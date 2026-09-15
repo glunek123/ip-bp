@@ -6,8 +6,8 @@
 
 - 每个新任务及上下文压缩/中断恢复后，先读取 [开发状态](docs/project-status.md) 和 [AI 开发规范](docs/ai-coding.md)，再核对相关源码；聊天记忆不能替代这些文件。
 - 按下节加载运行环境后执行 `pnpm context:check`。缺失或漂移表示需要检查真实改动、恢复检查点；不得直接刷新快照、回退代码或沿用旧验收结论。
-- 开工与有效检查点更新开发状态；同次交付同步受影响文档、实际验证和未决项。文档核对并格式化后显式 `pnpm context:record`，执行 `pnpm verify`；涉及跨端行为再执行 `pnpm test:e2e`。记录快照不等于测试通过。
-- 当前只允许通用底座维护、规范完善和用户明确授权的工作。用户指定 Demo 反向整理后，先区分已确认需求、Demo 观察和推断，再按获准需求开发业务模块；不自行将 Demo 转成业务表、角色权限或外部协议。
+- 开工与有效检查点更新开发状态；同次交付同步受影响文档、实际验证和未决项。按 [AI 开发规范](docs/ai-coding.md)完成验证、回填结果、最终快照和差异核对；验证后再改代码或配置时重新验证，仅回填文档时检查格式与快照。记录快照不等于测试通过，测试通过不等于获准上线。
+- 工作范围以用户明确授权及开发状态中有确认依据的阶段、任务为准。Demo 审核阶段仅开展通用底座维护、规范完善及另行授权任务；进入正式业务开发前登记已批准需求版本、实施范围和阶段切换依据。收到文档不自动切换阶段，Demo 观察和推断不等于已批准需求。
 - 收到字段或规则文档时，必须读取 [后续设计清单](docs/deferred-design.md)，登记输入版本、来源及确认依据，逐项检查触发条件，建立需求—设计—实现—测试映射。文档到齐不等于业务已实现；外部条件分别确认，只有设计、实现及验证齐全才能关闭事项。
 
 ## 按任务读取
@@ -15,6 +15,7 @@
 - 搭建工程、选择依赖、增加模块或调整目录前，读取 [技术基线](docs/architecture.md)。
 - 准备运行环境、安装依赖或生成工程前，读取 [环境报告](docs/environment.md)，使用其中链接的准确版本清单。
 - 编写或修改正式系统代码、接口、数据库、测试及外部对接前，读取 [开发规范](docs/conventions.md) 中相关章节。
+- 涉及真实数据、访问控制、共享环境迁移或发布时，必须读取开发规范中的安全、迁移及上线准入章节，逐项核对目标环境、授权与证据。
 - 修改 Demo 页面前，读取 `demo/DESIGN.md`。Demo 作为审核参考，正式系统与其分目录维护。
 - 业务实现以用户确认的需求为依据；Demo 的字段、流程、角色和演示数据不等于已批准需求。
 
@@ -33,6 +34,10 @@
 
 ## 工作约束
 
+- 修改前核对 Git 工作区及已有差异，保留并区分用户、其他任务和本次改动；交付前检查暂存范围，不覆盖、丢弃或混入无关改动。
+- 破坏性 Git 操作（清理未提交文件、重置、改写历史或强推）、删除持久化卷、数据库重置及生产写操作，须有对应目标和范围的明确授权。提交、推送、发布按本次授权或已确认长期策略执行；已有授权直接复用，不因例行开发重复确认，也不将开发授权扩大为危险操作授权。
+- 真实案件材料、个人信息和凭据按开发规范处理；后端承担权限与数据范围校验，前端隐藏控件不构成授权控制。
+
 - 技术选择遵循技术基线；查找并复用已有实现后再新增能力。
 - 未决事项按技术基线中的处理边界执行，仅暂停依赖该决定的工作，继续其他已授权工作。
 - 新增依赖需在交付说明中解释现有工具为何不足；替换框架、增加同类工具或独立服务，先提出影响和迁移方案。已有明确用户授权时直接执行并同步文档。
@@ -46,10 +51,7 @@
 
 ## CodeGraph
 
-In repositories indexed by CodeGraph (a `.codegraph/` directory exists at the repo root), reach for it BEFORE grep/find or reading files when you need to understand or locate code:
+存在根 `.codegraph/` 时，理解或定位代码优先使用 `codegraph_explore` MCP；工具不可用时尝试 `codegraph explore "<符号或问题>"`。命令缺失、执行失败、索引过期或结果不完整时，说明限制并回退到 `rg`、文件读取和相关验证，以当前源码为准；不反复调用失效工具阻塞已授权工作。
 
-- **MCP tool** (when available): `codegraph_explore` answers most code questions in one call — the relevant symbols' verbatim source plus the call paths between them, including dynamic-dispatch hops grep can't follow. Name a file or symbol in the query to read its current line-numbered source. If it's listed but deferred, load it by name via tool search.
-- **Shell** (always works): `codegraph explore "<symbol names or question>"` prints the same output.
-
-If there is no `.codegraph/` directory, skip CodeGraph entirely — indexing is the user's decision.
+没有 `.codegraph/` 时直接使用源码搜索；是否建立或更新索引由用户决定，不自行索引。
 <!-- CODEGRAPH_END -->
