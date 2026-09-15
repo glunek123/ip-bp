@@ -10,8 +10,14 @@
     "allowImportingTsExtensions": true,
     "noEmit": true,
     "lib": ["ES2023", "DOM", "DOM.Iterable"],
-    "types": ["vite/client", "node"],
+    "types": ["vite/client", "node", "web-bluetooth"],
     "forceConsistentCasingInFileNames": true
   },
-  "include": ["src/**/*.ts", "src/**/*.vue", "vite.config.ts"]
+  "include": [
+    "src/**/*.ts",
+    "src/**/*.vue",
+    "tests/compat/**/*.ts",
+    "tests/compat/**/*.vue",
+    "vite.config.ts"
+  ]
 }

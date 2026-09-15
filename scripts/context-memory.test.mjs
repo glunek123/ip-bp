@@ -42,6 +42,15 @@ test('missing checkpoint fails instead of inventing a completed state', (t) => {
   assert.throws(() => checkContext(fixture(t)), /snapshot|快照/i);
 });
 
+test('dependency patch changes invalidate the checkpoint', (t) => {
+  const root = fixture(t);
+  mkdirSync(join(root, 'patches'));
+  writeFileSync(join(root, 'patches/library.patch'), 'original patch');
+  recordContext(root);
+  writeFileSync(join(root, 'patches/library.patch'), 'changed patch');
+  assert.throws(() => checkContext(root), /library.patch/);
+});
+
 test('recorded and unchanged files pass without changing the status document', (t) => {
   const root = fixture(t);
   recordContext(root);

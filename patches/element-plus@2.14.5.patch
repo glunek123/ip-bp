@@ -1,0 +1,906 @@
+diff --git a/es/components/dropdown/src/dropdown-item.vue.d.ts b/es/components/dropdown/src/dropdown-item.vue.d.ts
+index 1cbbb0ef02cda102d2e9dc96ec1ec080865d4a98..39449c046f3fdcd79be06c0662b75c86ce6cadb4 100644
+--- a/es/components/dropdown/src/dropdown-item.vue.d.ts
++++ b/es/components/dropdown/src/dropdown-item.vue.d.ts
+@@ -76,7 +76,7 @@ declare const __VLS_export: _$vue.DefineComponent<_$vue.ExtractPropTypes<{
+     focusable: boolean;
+   }, {}, {
+     ElRovingFocusCollectionItem: {
+-      new (...args: any[]): _$vue.CreateComponentPublicInstanceWithMixins<Readonly<{}> & Readonly<{}>, {}, {}, {}, {}, _$vue.ComponentOptionsMixin, _$vue.ComponentOptionsMixin, {}, _$vue.PublicProps, {}, true, {}, {}, _$vue.GlobalComponents, _$vue.GlobalDirectives, string, {}, any, _$vue.ComponentProvideOptions, {
++      new (...args: any[]): _$vue.CreateComponentPublicInstanceWithMixins<Readonly<{}> & Readonly<{}>, {}, {}, {}, {}, _$vue.ComponentOptionsMixin, _$vue.ComponentOptionsMixin, {}, _$vue.PublicProps, {}, true, {}, {}, ProjectGlobalComponents, ProjectGlobalDirectives, string, {}, any, _$vue.ComponentProvideOptions, {
+         P: {};
+         B: {};
+         D: {};
+@@ -87,7 +87,7 @@ declare const __VLS_export: _$vue.DefineComponent<_$vue.ExtractPropTypes<{
+       __isFragment?: never;
+       __isTeleport?: never;
+       __isSuspense?: never;
+-    } & _$vue.ComponentOptionsBase<Readonly<{}> & Readonly<{}>, {}, {}, {}, {}, _$vue.ComponentOptionsMixin, _$vue.ComponentOptionsMixin, {}, string, {}, {}, string, {}, _$vue.GlobalComponents, _$vue.GlobalDirectives, string, _$vue.ComponentProvideOptions> & _$vue.VNodeProps & _$vue.AllowedComponentProps & _$vue.ComponentCustomProps & {
++    } & _$vue.ComponentOptionsBase<Readonly<{}> & Readonly<{}>, {}, {}, {}, {}, _$vue.ComponentOptionsMixin, _$vue.ComponentOptionsMixin, {}, string, {}, {}, string, {}, ProjectGlobalComponents, ProjectGlobalDirectives, string, _$vue.ComponentProvideOptions> & _$vue.VNodeProps & _$vue.AllowedComponentProps & _$vue.ComponentCustomProps & {
+       name: string;
+       setup(_: unknown, {
+         attrs
+@@ -155,7 +155,7 @@ declare const __VLS_export: _$vue.DefineComponent<_$vue.ExtractPropTypes<{
+     readonly divided: boolean;
+   }, {}, {
+     ElIcon: SFCWithInstall<{
+-      new (...args: any[]): _$vue.CreateComponentPublicInstanceWithMixins<Readonly<IconProps> & Readonly<{}>, {}, {}, {}, {}, _$vue.ComponentOptionsMixin, _$vue.ComponentOptionsMixin, {}, _$vue.PublicProps, {}, false, {}, {}, _$vue.GlobalComponents, _$vue.GlobalDirectives, string, {}, any, _$vue.ComponentProvideOptions, {
++      new (...args: any[]): _$vue.CreateComponentPublicInstanceWithMixins<Readonly<IconProps> & Readonly<{}>, {}, {}, {}, {}, _$vue.ComponentOptionsMixin, _$vue.ComponentOptionsMixin, {}, _$vue.PublicProps, {}, false, {}, {}, ProjectGlobalComponents, ProjectGlobalDirectives, string, {}, any, _$vue.ComponentProvideOptions, {
+         P: {};
+         B: {};
+         D: {};
+@@ -166,7 +166,7 @@ declare const __VLS_export: _$vue.DefineComponent<_$vue.ExtractPropTypes<{
+       __isFragment?: never;
+       __isTeleport?: never;
+       __isSuspense?: never;
+-    } & _$vue.ComponentOptionsBase<Readonly<IconProps> & Readonly<{}>, {}, {}, {}, {}, _$vue.ComponentOptionsMixin, _$vue.ComponentOptionsMixin, {}, string, {}, {}, string, {}, _$vue.GlobalComponents, _$vue.GlobalDirectives, string, _$vue.ComponentProvideOptions> & _$vue.VNodeProps & _$vue.AllowedComponentProps & _$vue.ComponentCustomProps & (new () => {
++    } & _$vue.ComponentOptionsBase<Readonly<IconProps> & Readonly<{}>, {}, {}, {}, {}, _$vue.ComponentOptionsMixin, _$vue.ComponentOptionsMixin, {}, string, {}, {}, string, {}, ProjectGlobalComponents, ProjectGlobalDirectives, string, _$vue.ComponentProvideOptions> & _$vue.VNodeProps & _$vue.AllowedComponentProps & _$vue.ComponentCustomProps & (new () => {
+       $slots: {
+         default?: (props: {}) => any;
+       };
+@@ -175,3 +175,7 @@ declare const __VLS_export: _$vue.DefineComponent<_$vue.ExtractPropTypes<{
+ }, {}, string, _$vue.ComponentProvideOptions, true, {}, any>;
+ //#endregion
+ export { _default as default };
++// Preserve all declared component keys without adding an open index signature.
++type ProjectGlobalComponents = { [K in keyof _$vue.GlobalComponents]: _$vue.GlobalComponents[K] };
++
++type ProjectGlobalDirectives = { [K in keyof _$vue.GlobalDirectives]: _$vue.GlobalDirectives[K] };
+diff --git a/es/components/dropdown/src/dropdown.vue.d.ts b/es/components/dropdown/src/dropdown.vue.d.ts
+index 9779d716233384f6405ef44b0ca92b36d5d8c456..cceffd291f384cef820d9154b4e1ddd53baffa9d 100644
+--- a/es/components/dropdown/src/dropdown.vue.d.ts
++++ b/es/components/dropdown/src/dropdown.vue.d.ts
+@@ -223,7 +223,7 @@ declare const __VLS_export: _$vue.DefineComponent<_$vue.ExtractPropTypes<{
+       plain: boolean;
+       autoInsertSpace: boolean;
+       tag: string | _$vue.Component;
+-    }, false, {}, {}, _$vue.GlobalComponents, _$vue.GlobalDirectives, string, {}, any, _$vue.ComponentProvideOptions, {
++    }, false, {}, {}, ProjectGlobalComponents, ProjectGlobalDirectives, string, {}, any, _$vue.ComponentProvideOptions, {
+       P: {};
+       B: {};
+       D: {};
+@@ -274,7 +274,7 @@ declare const __VLS_export: _$vue.DefineComponent<_$vue.ExtractPropTypes<{
+     plain: boolean;
+     autoInsertSpace: boolean;
+     tag: string | _$vue.Component;
+-  }, {}, string, {}, _$vue.GlobalComponents, _$vue.GlobalDirectives, string, _$vue.ComponentProvideOptions> & _$vue.VNodeProps & _$vue.AllowedComponentProps & _$vue.ComponentCustomProps & (new () => {
++  }, {}, string, {}, ProjectGlobalComponents, ProjectGlobalDirectives, string, _$vue.ComponentProvideOptions> & _$vue.VNodeProps & _$vue.AllowedComponentProps & _$vue.ComponentCustomProps & (new () => {
+     $slots: {
+       loading?: (props: {}) => any;
+     } & {
+@@ -326,7 +326,7 @@ declare const __VLS_export: _$vue.DefineComponent<_$vue.ExtractPropTypes<{
+     new (...args: any[]): _$vue.CreateComponentPublicInstanceWithMixins<Readonly<ButtonGroupProps> & Readonly<{}>, {}, {}, {}, {}, _$vue.ComponentOptionsMixin, _$vue.ComponentOptionsMixin, {}, _$vue.PublicProps, {
+       direction: "horizontal" | "vertical";
+       type: "" | "default" | "info" | "primary" | "success" | "warning" | "text" | "danger";
+-    }, false, {}, {}, _$vue.GlobalComponents, _$vue.GlobalDirectives, string, {}, any, _$vue.ComponentProvideOptions, {
++    }, false, {}, {}, ProjectGlobalComponents, ProjectGlobalDirectives, string, {}, any, _$vue.ComponentProvideOptions, {
+       P: {};
+       B: {};
+       D: {};
+@@ -343,7 +343,7 @@ declare const __VLS_export: _$vue.DefineComponent<_$vue.ExtractPropTypes<{
+   } & _$vue.ComponentOptionsBase<Readonly<ButtonGroupProps> & Readonly<{}>, {}, {}, {}, {}, _$vue.ComponentOptionsMixin, _$vue.ComponentOptionsMixin, {}, string, {
+     direction: "horizontal" | "vertical";
+     type: "" | "default" | "info" | "primary" | "success" | "warning" | "text" | "danger";
+-  }, {}, string, {}, _$vue.GlobalComponents, _$vue.GlobalDirectives, string, _$vue.ComponentProvideOptions> & _$vue.VNodeProps & _$vue.AllowedComponentProps & _$vue.ComponentCustomProps & (new () => {
++  }, {}, string, {}, ProjectGlobalComponents, ProjectGlobalDirectives, string, _$vue.ComponentProvideOptions> & _$vue.VNodeProps & _$vue.AllowedComponentProps & _$vue.ComponentCustomProps & (new () => {
+     $slots: {
+       default?: (props: {}) => any;
+     };
+@@ -382,7 +382,7 @@ declare const __VLS_export: _$vue.DefineComponent<_$vue.ExtractPropTypes<{
+       viewClass: string | false | Record<string, any> | ClassValue[] | null;
+       viewStyle: string | false | CSSProperties | _$vue.StyleValue[] | null;
+       minSize: number;
+-    }, false, {}, {}, _$vue.GlobalComponents, _$vue.GlobalDirectives, string, {}, any, _$vue.ComponentProvideOptions, {
++    }, false, {}, {}, ProjectGlobalComponents, ProjectGlobalDirectives, string, {}, any, _$vue.ComponentProvideOptions, {
+       P: {};
+       B: {};
+       D: {};
+@@ -453,7 +453,7 @@ declare const __VLS_export: _$vue.DefineComponent<_$vue.ExtractPropTypes<{
+     viewClass: string | false | Record<string, any> | ClassValue[] | null;
+     viewStyle: string | false | CSSProperties | _$vue.StyleValue[] | null;
+     minSize: number;
+-  }, {}, string, {}, _$vue.GlobalComponents, _$vue.GlobalDirectives, string, _$vue.ComponentProvideOptions> & _$vue.VNodeProps & _$vue.AllowedComponentProps & _$vue.ComponentCustomProps & (new () => {
++  }, {}, string, {}, ProjectGlobalComponents, ProjectGlobalDirectives, string, _$vue.ComponentProvideOptions> & _$vue.VNodeProps & _$vue.AllowedComponentProps & _$vue.ComponentCustomProps & (new () => {
+     $slots: {
+       default?: (props: {}) => any;
+     };
+@@ -512,7 +512,7 @@ declare const __VLS_export: _$vue.DefineComponent<_$vue.ExtractPropTypes<{
+       autoClose: number;
+       trigger: Arrayable<TooltipTriggerType>;
+       triggerKeys: string[];
+-    }, false, {}, {}, _$vue.GlobalComponents, _$vue.GlobalDirectives, string, {}, any, _$vue.ComponentProvideOptions, {
++    }, false, {}, {}, ProjectGlobalComponents, ProjectGlobalDirectives, string, {}, any, _$vue.ComponentProvideOptions, {
+       P: {};
+       B: {};
+       D: {};
+@@ -621,7 +621,7 @@ declare const __VLS_export: _$vue.DefineComponent<_$vue.ExtractPropTypes<{
+     autoClose: number;
+     trigger: Arrayable<TooltipTriggerType>;
+     triggerKeys: string[];
+-  }, {}, string, {}, _$vue.GlobalComponents, _$vue.GlobalDirectives, string, _$vue.ComponentProvideOptions> & _$vue.VNodeProps & _$vue.AllowedComponentProps & _$vue.ComponentCustomProps & (new () => {
++  }, {}, string, {}, ProjectGlobalComponents, ProjectGlobalDirectives, string, _$vue.ComponentProvideOptions> & _$vue.VNodeProps & _$vue.AllowedComponentProps & _$vue.ComponentCustomProps & (new () => {
+     $slots: {
+       default?: (props: {}) => any;
+     } & {
+@@ -630,7 +630,7 @@ declare const __VLS_export: _$vue.DefineComponent<_$vue.ExtractPropTypes<{
+   })>;
+   ElRovingFocusGroup: _$vue.DefineComponent<{}, {}, {}, {}, {}, _$vue.ComponentOptionsMixin, _$vue.ComponentOptionsMixin, {}, string, _$vue.PublicProps, Readonly<{}> & Readonly<{}>, {}, {}, {
+     ElFocusGroupCollection: {
+-      new (...args: any[]): _$vue.CreateComponentPublicInstanceWithMixins<Readonly<{}> & Readonly<{}>, {}, {}, {}, {}, _$vue.ComponentOptionsMixin, _$vue.ComponentOptionsMixin, {}, _$vue.PublicProps, {}, true, {}, {}, _$vue.GlobalComponents, _$vue.GlobalDirectives, string, {}, any, _$vue.ComponentProvideOptions, {
++      new (...args: any[]): _$vue.CreateComponentPublicInstanceWithMixins<Readonly<{}> & Readonly<{}>, {}, {}, {}, {}, _$vue.ComponentOptionsMixin, _$vue.ComponentOptionsMixin, {}, _$vue.PublicProps, {}, true, {}, {}, ProjectGlobalComponents, ProjectGlobalDirectives, string, {}, any, _$vue.ComponentProvideOptions, {
+         P: {};
+         B: {};
+         D: {};
+@@ -641,7 +641,7 @@ declare const __VLS_export: _$vue.DefineComponent<_$vue.ExtractPropTypes<{
+       __isFragment?: never;
+       __isTeleport?: never;
+       __isSuspense?: never;
+-    } & _$vue.ComponentOptionsBase<Readonly<{}> & Readonly<{}>, {}, {}, {}, {}, _$vue.ComponentOptionsMixin, _$vue.ComponentOptionsMixin, {}, string, {}, {}, string, {}, _$vue.GlobalComponents, _$vue.GlobalDirectives, string, _$vue.ComponentProvideOptions> & _$vue.VNodeProps & _$vue.AllowedComponentProps & _$vue.ComponentCustomProps & {
++    } & _$vue.ComponentOptionsBase<Readonly<{}> & Readonly<{}>, {}, {}, {}, {}, _$vue.ComponentOptionsMixin, _$vue.ComponentOptionsMixin, {}, string, {}, {}, string, {}, ProjectGlobalComponents, ProjectGlobalDirectives, string, _$vue.ComponentProvideOptions> & _$vue.VNodeProps & _$vue.AllowedComponentProps & _$vue.ComponentCustomProps & {
+       name: string;
+       setup(): void;
+     };
+@@ -698,7 +698,7 @@ declare const __VLS_export: _$vue.DefineComponent<_$vue.ExtractPropTypes<{
+     [key: string]: any;
+   }> | null, {}, {}, {}, _$vue.ComponentOptionsMixin, _$vue.ComponentOptionsMixin, {}, string, _$vue.PublicProps, Readonly<{}> & Readonly<{}>, {}, {}, {}, {}, string, _$vue.ComponentProvideOptions, true, {}, any>;
+   ElIcon: SFCWithInstall<{
+-    new (...args: any[]): _$vue.CreateComponentPublicInstanceWithMixins<Readonly<IconProps> & Readonly<{}>, {}, {}, {}, {}, _$vue.ComponentOptionsMixin, _$vue.ComponentOptionsMixin, {}, _$vue.PublicProps, {}, false, {}, {}, _$vue.GlobalComponents, _$vue.GlobalDirectives, string, {}, any, _$vue.ComponentProvideOptions, {
++    new (...args: any[]): _$vue.CreateComponentPublicInstanceWithMixins<Readonly<IconProps> & Readonly<{}>, {}, {}, {}, {}, _$vue.ComponentOptionsMixin, _$vue.ComponentOptionsMixin, {}, _$vue.PublicProps, {}, false, {}, {}, ProjectGlobalComponents, ProjectGlobalDirectives, string, {}, any, _$vue.ComponentProvideOptions, {
+       P: {};
+       B: {};
+       D: {};
+@@ -709,7 +709,7 @@ declare const __VLS_export: _$vue.DefineComponent<_$vue.ExtractPropTypes<{
+     __isFragment?: never;
+     __isTeleport?: never;
+     __isSuspense?: never;
+-  } & _$vue.ComponentOptionsBase<Readonly<IconProps> & Readonly<{}>, {}, {}, {}, {}, _$vue.ComponentOptionsMixin, _$vue.ComponentOptionsMixin, {}, string, {}, {}, string, {}, _$vue.GlobalComponents, _$vue.GlobalDirectives, string, _$vue.ComponentProvideOptions> & _$vue.VNodeProps & _$vue.AllowedComponentProps & _$vue.ComponentCustomProps & (new () => {
++  } & _$vue.ComponentOptionsBase<Readonly<IconProps> & Readonly<{}>, {}, {}, {}, {}, _$vue.ComponentOptionsMixin, _$vue.ComponentOptionsMixin, {}, string, {}, {}, string, {}, ProjectGlobalComponents, ProjectGlobalDirectives, string, _$vue.ComponentProvideOptions> & _$vue.VNodeProps & _$vue.AllowedComponentProps & _$vue.ComponentCustomProps & (new () => {
+     $slots: {
+       default?: (props: {}) => any;
+     };
+@@ -718,3 +718,7 @@ declare const __VLS_export: _$vue.DefineComponent<_$vue.ExtractPropTypes<{
+ }, {}, string, _$vue.ComponentProvideOptions, true, {}, any>;
+ //#endregion
+ export { _default as default };
++// Preserve all declared component keys without adding an open index signature.
++type ProjectGlobalComponents = { [K in keyof _$vue.GlobalComponents]: _$vue.GlobalComponents[K] };
++
++type ProjectGlobalDirectives = { [K in keyof _$vue.GlobalDirectives]: _$vue.GlobalDirectives[K] };
+diff --git a/es/components/select/src/select.vue.d.ts b/es/components/select/src/select.vue.d.ts
+index c322b33689ae66ed9303c64db5bf9e24a0a454ee..dc8a1dac2eb751d3d6e859976450443d0dadf788 100644
+--- a/es/components/select/src/select.vue.d.ts
++++ b/es/components/select/src/select.vue.d.ts
+@@ -586,7 +586,7 @@ declare const __VLS_export: _$vue.DefineComponent<_$vue.ExtractPropTypes<{
+     }, _$vue.PublicProps, {
+       type: "primary" | "success" | "info" | "warning" | "danger";
+       effect: "dark" | "light" | "plain";
+-    }, false, {}, {}, _$vue.GlobalComponents, _$vue.GlobalDirectives, string, {}, any, _$vue.ComponentProvideOptions, {
++    }, false, {}, {}, ProjectGlobalComponents, ProjectGlobalDirectives, string, {}, any, _$vue.ComponentProvideOptions, {
+       P: {};
+       B: {};
+       D: {};
+@@ -612,7 +612,7 @@ declare const __VLS_export: _$vue.DefineComponent<_$vue.ExtractPropTypes<{
+   }, string, {
+     type: "primary" | "success" | "info" | "warning" | "danger";
+     effect: "dark" | "light" | "plain";
+-  }, {}, string, {}, _$vue.GlobalComponents, _$vue.GlobalDirectives, string, _$vue.ComponentProvideOptions> & _$vue.VNodeProps & _$vue.AllowedComponentProps & _$vue.ComponentCustomProps & (new () => {
++  }, {}, string, {}, ProjectGlobalComponents, ProjectGlobalDirectives, string, _$vue.ComponentProvideOptions> & _$vue.VNodeProps & _$vue.AllowedComponentProps & _$vue.ComponentCustomProps & (new () => {
+     $slots: {
+       default?: (props: {}) => any;
+     } & {
+@@ -653,7 +653,7 @@ declare const __VLS_export: _$vue.DefineComponent<_$vue.ExtractPropTypes<{
+       viewClass: string | false | Record<string, any> | ClassValue[] | null;
+       viewStyle: string | false | _$vue.CSSProperties | _$vue.StyleValue[] | null;
+       minSize: number;
+-    }, false, {}, {}, _$vue.GlobalComponents, _$vue.GlobalDirectives, string, {}, any, _$vue.ComponentProvideOptions, {
++    }, false, {}, {}, ProjectGlobalComponents, ProjectGlobalDirectives, string, {}, any, _$vue.ComponentProvideOptions, {
+       P: {};
+       B: {};
+       D: {};
+@@ -724,7 +724,7 @@ declare const __VLS_export: _$vue.DefineComponent<_$vue.ExtractPropTypes<{
+     viewClass: string | false | Record<string, any> | ClassValue[] | null;
+     viewStyle: string | false | _$vue.CSSProperties | _$vue.StyleValue[] | null;
+     minSize: number;
+-  }, {}, string, {}, _$vue.GlobalComponents, _$vue.GlobalDirectives, string, _$vue.ComponentProvideOptions> & _$vue.VNodeProps & _$vue.AllowedComponentProps & _$vue.ComponentCustomProps & (new () => {
++  }, {}, string, {}, ProjectGlobalComponents, ProjectGlobalDirectives, string, _$vue.ComponentProvideOptions> & _$vue.VNodeProps & _$vue.AllowedComponentProps & _$vue.ComponentCustomProps & (new () => {
+     $slots: {
+       default?: (props: {}) => any;
+     };
+@@ -783,7 +783,7 @@ declare const __VLS_export: _$vue.DefineComponent<_$vue.ExtractPropTypes<{
+       autoClose: number;
+       trigger: Arrayable<TooltipTriggerType>;
+       triggerKeys: string[];
+-    }, false, {}, {}, _$vue.GlobalComponents, _$vue.GlobalDirectives, string, {}, any, _$vue.ComponentProvideOptions, {
++    }, false, {}, {}, ProjectGlobalComponents, ProjectGlobalDirectives, string, {}, any, _$vue.ComponentProvideOptions, {
+       P: {};
+       B: {};
+       D: {};
+@@ -892,7 +892,7 @@ declare const __VLS_export: _$vue.DefineComponent<_$vue.ExtractPropTypes<{
+     autoClose: number;
+     trigger: Arrayable<TooltipTriggerType>;
+     triggerKeys: string[];
+-  }, {}, string, {}, _$vue.GlobalComponents, _$vue.GlobalDirectives, string, _$vue.ComponentProvideOptions> & _$vue.VNodeProps & _$vue.AllowedComponentProps & _$vue.ComponentCustomProps & (new () => {
++  }, {}, string, {}, ProjectGlobalComponents, ProjectGlobalDirectives, string, _$vue.ComponentProvideOptions> & _$vue.VNodeProps & _$vue.AllowedComponentProps & _$vue.ComponentCustomProps & (new () => {
+     $slots: {
+       default?: (props: {}) => any;
+     } & {
+@@ -900,7 +900,7 @@ declare const __VLS_export: _$vue.DefineComponent<_$vue.ExtractPropTypes<{
+     };
+   })>;
+   ElIcon: SFCWithInstall<{
+-    new (...args: any[]): _$vue.CreateComponentPublicInstanceWithMixins<Readonly<IconProps> & Readonly<{}>, {}, {}, {}, {}, _$vue.ComponentOptionsMixin, _$vue.ComponentOptionsMixin, {}, _$vue.PublicProps, {}, false, {}, {}, _$vue.GlobalComponents, _$vue.GlobalDirectives, string, {}, any, _$vue.ComponentProvideOptions, {
++    new (...args: any[]): _$vue.CreateComponentPublicInstanceWithMixins<Readonly<IconProps> & Readonly<{}>, {}, {}, {}, {}, _$vue.ComponentOptionsMixin, _$vue.ComponentOptionsMixin, {}, _$vue.PublicProps, {}, false, {}, {}, ProjectGlobalComponents, ProjectGlobalDirectives, string, {}, any, _$vue.ComponentProvideOptions, {
+       P: {};
+       B: {};
+       D: {};
+@@ -911,7 +911,7 @@ declare const __VLS_export: _$vue.DefineComponent<_$vue.ExtractPropTypes<{
+     __isFragment?: never;
+     __isTeleport?: never;
+     __isSuspense?: never;
+-  } & _$vue.ComponentOptionsBase<Readonly<IconProps> & Readonly<{}>, {}, {}, {}, {}, _$vue.ComponentOptionsMixin, _$vue.ComponentOptionsMixin, {}, string, {}, {}, string, {}, _$vue.GlobalComponents, _$vue.GlobalDirectives, string, _$vue.ComponentProvideOptions> & _$vue.VNodeProps & _$vue.AllowedComponentProps & _$vue.ComponentCustomProps & (new () => {
++  } & _$vue.ComponentOptionsBase<Readonly<IconProps> & Readonly<{}>, {}, {}, {}, {}, _$vue.ComponentOptionsMixin, _$vue.ComponentOptionsMixin, {}, string, {}, {}, string, {}, ProjectGlobalComponents, ProjectGlobalDirectives, string, _$vue.ComponentProvideOptions> & _$vue.VNodeProps & _$vue.AllowedComponentProps & _$vue.ComponentCustomProps & (new () => {
+     $slots: {
+       default?: (props: {}) => any;
+     };
+@@ -921,3 +921,7 @@ declare const __VLS_export: _$vue.DefineComponent<_$vue.ExtractPropTypes<{
+ }, string, _$vue.ComponentProvideOptions, true, {}, any>;
+ //#endregion
+ export { _default as default };
++// Preserve all declared component keys without adding an open index signature.
++type ProjectGlobalComponents = { [K in keyof _$vue.GlobalComponents]: _$vue.GlobalComponents[K] };
++
++type ProjectGlobalDirectives = { [K in keyof _$vue.GlobalDirectives]: _$vue.GlobalDirectives[K] };
+diff --git a/es/components/select-v2/src/select.vue.d.ts b/es/components/select-v2/src/select.vue.d.ts
+index b4160bcfe507ccc4047c22c4874709c012440a72..871392507bb7fe357acf0c14adcdfdbd598e3d8f 100644
+--- a/es/components/select-v2/src/select.vue.d.ts
++++ b/es/components/select-v2/src/select.vue.d.ts
+@@ -462,7 +462,7 @@ declare const __VLS_export: _$vue.DefineComponent<_$vue.ExtractPropTypes<{
+     }, _$vue.PublicProps, {
+       type: "primary" | "success" | "info" | "warning" | "danger";
+       effect: "dark" | "light" | "plain";
+-    }, false, {}, {}, _$vue.GlobalComponents, _$vue.GlobalDirectives, string, {}, any, _$vue.ComponentProvideOptions, {
++    }, false, {}, {}, ProjectGlobalComponents, ProjectGlobalDirectives, string, {}, any, _$vue.ComponentProvideOptions, {
+       P: {};
+       B: {};
+       D: {};
+@@ -488,7 +488,7 @@ declare const __VLS_export: _$vue.DefineComponent<_$vue.ExtractPropTypes<{
+   }, string, {
+     type: "primary" | "success" | "info" | "warning" | "danger";
+     effect: "dark" | "light" | "plain";
+-  }, {}, string, {}, _$vue.GlobalComponents, _$vue.GlobalDirectives, string, _$vue.ComponentProvideOptions> & _$vue.VNodeProps & _$vue.AllowedComponentProps & _$vue.ComponentCustomProps & (new () => {
++  }, {}, string, {}, ProjectGlobalComponents, ProjectGlobalDirectives, string, _$vue.ComponentProvideOptions> & _$vue.VNodeProps & _$vue.AllowedComponentProps & _$vue.ComponentCustomProps & (new () => {
+     $slots: {
+       default?: (props: {}) => any;
+     } & {
+@@ -549,7 +549,7 @@ declare const __VLS_export: _$vue.DefineComponent<_$vue.ExtractPropTypes<{
+       autoClose: number;
+       trigger: Arrayable<TooltipTriggerType>;
+       triggerKeys: string[];
+-    }, false, {}, {}, _$vue.GlobalComponents, _$vue.GlobalDirectives, string, {}, any, _$vue.ComponentProvideOptions, {
++    }, false, {}, {}, ProjectGlobalComponents, ProjectGlobalDirectives, string, {}, any, _$vue.ComponentProvideOptions, {
+       P: {};
+       B: {};
+       D: {};
+@@ -658,7 +658,7 @@ declare const __VLS_export: _$vue.DefineComponent<_$vue.ExtractPropTypes<{
+     autoClose: number;
+     trigger: Arrayable<TooltipTriggerType>;
+     triggerKeys: string[];
+-  }, {}, string, {}, _$vue.GlobalComponents, _$vue.GlobalDirectives, string, _$vue.ComponentProvideOptions> & _$vue.VNodeProps & _$vue.AllowedComponentProps & _$vue.ComponentCustomProps & (new () => {
++  }, {}, string, {}, ProjectGlobalComponents, ProjectGlobalDirectives, string, _$vue.ComponentProvideOptions> & _$vue.VNodeProps & _$vue.AllowedComponentProps & _$vue.ComponentCustomProps & (new () => {
+     $slots: {
+       default?: (props: {}) => any;
+     } & {
+@@ -666,7 +666,7 @@ declare const __VLS_export: _$vue.DefineComponent<_$vue.ExtractPropTypes<{
+     };
+   })>;
+   ElIcon: SFCWithInstall<{
+-    new (...args: any[]): _$vue.CreateComponentPublicInstanceWithMixins<Readonly<IconProps> & Readonly<{}>, {}, {}, {}, {}, _$vue.ComponentOptionsMixin, _$vue.ComponentOptionsMixin, {}, _$vue.PublicProps, {}, false, {}, {}, _$vue.GlobalComponents, _$vue.GlobalDirectives, string, {}, any, _$vue.ComponentProvideOptions, {
++    new (...args: any[]): _$vue.CreateComponentPublicInstanceWithMixins<Readonly<IconProps> & Readonly<{}>, {}, {}, {}, {}, _$vue.ComponentOptionsMixin, _$vue.ComponentOptionsMixin, {}, _$vue.PublicProps, {}, false, {}, {}, ProjectGlobalComponents, ProjectGlobalDirectives, string, {}, any, _$vue.ComponentProvideOptions, {
+       P: {};
+       B: {};
+       D: {};
+@@ -677,7 +677,7 @@ declare const __VLS_export: _$vue.DefineComponent<_$vue.ExtractPropTypes<{
+     __isFragment?: never;
+     __isTeleport?: never;
+     __isSuspense?: never;
+-  } & _$vue.ComponentOptionsBase<Readonly<IconProps> & Readonly<{}>, {}, {}, {}, {}, _$vue.ComponentOptionsMixin, _$vue.ComponentOptionsMixin, {}, string, {}, {}, string, {}, _$vue.GlobalComponents, _$vue.GlobalDirectives, string, _$vue.ComponentProvideOptions> & _$vue.VNodeProps & _$vue.AllowedComponentProps & _$vue.ComponentCustomProps & (new () => {
++  } & _$vue.ComponentOptionsBase<Readonly<IconProps> & Readonly<{}>, {}, {}, {}, {}, _$vue.ComponentOptionsMixin, _$vue.ComponentOptionsMixin, {}, string, {}, {}, string, {}, ProjectGlobalComponents, ProjectGlobalDirectives, string, _$vue.ComponentProvideOptions> & _$vue.VNodeProps & _$vue.AllowedComponentProps & _$vue.ComponentCustomProps & (new () => {
+     $slots: {
+       default?: (props: {}) => any;
+     };
+@@ -687,3 +687,7 @@ declare const __VLS_export: _$vue.DefineComponent<_$vue.ExtractPropTypes<{
+ }, string, _$vue.ComponentProvideOptions, true, {}, any>;
+ //#endregion
+ export { _default as default };
++// Preserve all declared component keys without adding an open index signature.
++type ProjectGlobalComponents = { [K in keyof _$vue.GlobalComponents]: _$vue.GlobalComponents[K] };
++
++type ProjectGlobalDirectives = { [K in keyof _$vue.GlobalDirectives]: _$vue.GlobalDirectives[K] };
+diff --git a/es/components/table/src/table-header/index.d.ts b/es/components/table/src/table-header/index.d.ts
+index c1d57228e10276df2d27e2d331c0fc2c02469d18..a7bfe25ccdd14bb8b0ead3a4d8938eae97d8b2d4 100644
+--- a/es/components/table/src/table-header/index.d.ts
++++ b/es/components/table/src/table-header/index.d.ts
+@@ -136,7 +136,7 @@ declare const _default: _$vue.DefineComponent<_$vue.ExtractPropTypes<{
+       falseValue: string | number;
+       trueLabel: string | number;
+       falseLabel: string | number;
+-    }, false, {}, {}, _$vue.GlobalComponents, _$vue.GlobalDirectives, string, {}, any, _$vue.ComponentProvideOptions, {
++    }, false, {}, {}, ProjectGlobalComponents, ProjectGlobalDirectives, string, {}, any, _$vue.ComponentProvideOptions, {
+       P: {};
+       B: {};
+       D: {};
+@@ -180,7 +180,7 @@ declare const _default: _$vue.DefineComponent<_$vue.ExtractPropTypes<{
+     falseValue: string | number;
+     trueLabel: string | number;
+     falseLabel: string | number;
+-  }, {}, string, {}, _$vue.GlobalComponents, _$vue.GlobalDirectives, string, _$vue.ComponentProvideOptions> & _$vue.VNodeProps & _$vue.AllowedComponentProps & _$vue.ComponentCustomProps & (new () => {
++  }, {}, string, {}, ProjectGlobalComponents, ProjectGlobalDirectives, string, _$vue.ComponentProvideOptions> & _$vue.VNodeProps & _$vue.AllowedComponentProps & _$vue.ComponentCustomProps & (new () => {
+     $slots: {
+       default?: (props: {}) => any;
+     };
+@@ -212,3 +212,7 @@ declare const _default: _$vue.DefineComponent<_$vue.ExtractPropTypes<{
+ }, {}, string, _$vue.ComponentProvideOptions, true, {}, any>;
+ //#endregion
+ export { TableHeader, TableHeaderProps, _default as default };
++// Preserve all declared component keys without adding an open index signature.
++type ProjectGlobalComponents = { [K in keyof _$vue.GlobalComponents]: _$vue.GlobalComponents[K] };
++
++type ProjectGlobalDirectives = { [K in keyof _$vue.GlobalDirectives]: _$vue.GlobalDirectives[K] };
+diff --git a/es/components/table-v2/src/types.d.ts b/es/components/table-v2/src/types.d.ts
+index e1d0c1a43bb7a9888e4dc592ce313b41ac9885d0..6f857b5cd436be25488986f92ad8a7323a119fa1 100644
+--- a/es/components/table-v2/src/types.d.ts
++++ b/es/components/table-v2/src/types.d.ts
+@@ -1,3 +1,4 @@
++import type { ClassValue } from "vue";
+ import { ColumnAlignment } from "../../../constants/column-alignment.js";
+ import { FixedDir, SortOrder } from "./constants.js";
+ import { CSSProperties, FunctionalComponent, RendererElement, RendererNode, VNode } from "vue";
+@@ -93,7 +94,7 @@ type TableV2CustomizedHeaderSlotParam<T = any> = {
+   headerIndex: number;
+ };
+ type SimpleFunctionalComponentProps<T extends object> = {
+-  class?: JSX.IntrinsicAttributes['class'];
++  class?: ClassValue;
+   style?: CSSProperties;
+ } & T;
+ type SimpleFunctionalComponent<E extends object = {
+diff --git a/es/components/transfer/src/transfer.d.ts b/es/components/transfer/src/transfer.d.ts
+index 274fd090b3e3a68aa0ee57579936aa969617885e..036d59d5cdfdb5104433d31fec60e92a2613caa5 100644
+--- a/es/components/transfer/src/transfer.d.ts
++++ b/es/components/transfer/src/transfer.d.ts
+@@ -2,14 +2,14 @@ import { EpPropFinalized } from "../../../utils/vue/props/types.js";
+ import { Mutable } from "../../../utils/typescript.js";
+ import _default from "./transfer.vue.js";
+ import * as _$vue from "vue";
+-import { ComponentInstance, ExtractPublicPropTypes, VNode, h } from "vue";
++import { ComponentInstance, ExtractPublicPropTypes, VNode, h as vueH } from "vue";
+ import { ComponentExposed } from "vue-component-type-helpers";
+ 
+ //#region ../../packages/components/transfer/src/transfer.d.ts
+ type TransferKey = string | number;
+ type TransferDirection = 'left' | 'right';
+ type TransferDataItem = Record<string, any>;
+-type renderContent<T extends TransferDataItem = TransferDataItem> = (h: typeof h, option: T) => VNode | VNode[];
++type renderContent<T extends TransferDataItem = TransferDataItem> = (h: typeof vueH, option: T) => VNode | VNode[];
+ interface TransferFormat {
+   noChecked?: string;
+   hasChecked?: string;
+diff --git a/es/components/tree/src/tree.vue.d.ts b/es/components/tree/src/tree.vue.d.ts
+index 09da70e617167b8f46876823357708eb31d6bd48..f0f0ff66654f7269dc30503770b65ca75bb3bf0d 100644
+--- a/es/components/tree/src/tree.vue.d.ts
++++ b/es/components/tree/src/tree.vue.d.ts
+@@ -1457,7 +1457,7 @@ declare const __VLS_export: _$vue.DefineComponent<_$vue.ExtractPropTypes<{
+     showCheckbox: boolean;
+   }, {}, {
+     ElCollapseTransition: SFCWithInstall<{
+-      new (...args: any[]): _$vue.CreateComponentPublicInstanceWithMixins<Readonly<{}> & Readonly<{}>, {}, {}, {}, {}, _$vue.ComponentOptionsMixin, _$vue.ComponentOptionsMixin, {}, _$vue.PublicProps, {}, true, {}, {}, _$vue.GlobalComponents, _$vue.GlobalDirectives, string, {}, any, _$vue.ComponentProvideOptions, {
++      new (...args: any[]): _$vue.CreateComponentPublicInstanceWithMixins<Readonly<{}> & Readonly<{}>, {}, {}, {}, {}, _$vue.ComponentOptionsMixin, _$vue.ComponentOptionsMixin, {}, _$vue.PublicProps, {}, true, {}, {}, ProjectGlobalComponents, ProjectGlobalDirectives, string, {}, any, _$vue.ComponentProvideOptions, {
+         P: {};
+         B: {};
+         D: {};
+@@ -1468,7 +1468,7 @@ declare const __VLS_export: _$vue.DefineComponent<_$vue.ExtractPropTypes<{
+       __isFragment?: never;
+       __isTeleport?: never;
+       __isSuspense?: never;
+-    } & _$vue.ComponentOptionsBase<Readonly<{}> & Readonly<{}>, {}, {}, {}, {}, _$vue.ComponentOptionsMixin, _$vue.ComponentOptionsMixin, {}, string, {}, {}, string, {}, _$vue.GlobalComponents, _$vue.GlobalDirectives, string, _$vue.ComponentProvideOptions> & _$vue.VNodeProps & _$vue.AllowedComponentProps & _$vue.ComponentCustomProps & (new () => {
++    } & _$vue.ComponentOptionsBase<Readonly<{}> & Readonly<{}>, {}, {}, {}, {}, _$vue.ComponentOptionsMixin, _$vue.ComponentOptionsMixin, {}, string, {}, {}, string, {}, ProjectGlobalComponents, ProjectGlobalDirectives, string, _$vue.ComponentProvideOptions> & _$vue.VNodeProps & _$vue.AllowedComponentProps & _$vue.ComponentCustomProps & (new () => {
+       $slots: {
+         default?: (props: {}) => any;
+       };
+@@ -1492,7 +1492,7 @@ declare const __VLS_export: _$vue.DefineComponent<_$vue.ExtractPropTypes<{
+         falseValue: string | number;
+         trueLabel: string | number;
+         falseLabel: string | number;
+-      }, false, {}, {}, _$vue.GlobalComponents, _$vue.GlobalDirectives, string, {}, any, _$vue.ComponentProvideOptions, {
++      }, false, {}, {}, ProjectGlobalComponents, ProjectGlobalDirectives, string, {}, any, _$vue.ComponentProvideOptions, {
+         P: {};
+         B: {};
+         D: {};
+@@ -1536,7 +1536,7 @@ declare const __VLS_export: _$vue.DefineComponent<_$vue.ExtractPropTypes<{
+       falseValue: string | number;
+       trueLabel: string | number;
+       falseLabel: string | number;
+-    }, {}, string, {}, _$vue.GlobalComponents, _$vue.GlobalDirectives, string, _$vue.ComponentProvideOptions> & _$vue.VNodeProps & _$vue.AllowedComponentProps & _$vue.ComponentCustomProps & (new () => {
++    }, {}, string, {}, ProjectGlobalComponents, ProjectGlobalDirectives, string, _$vue.ComponentProvideOptions> & _$vue.VNodeProps & _$vue.AllowedComponentProps & _$vue.ComponentCustomProps & (new () => {
+       $slots: {
+         default?: (props: {}) => any;
+       };
+@@ -1579,7 +1579,7 @@ declare const __VLS_export: _$vue.DefineComponent<_$vue.ExtractPropTypes<{
+       renderContent: FunctionConstructor;
+     }>> & Readonly<{}>, {}, {}, {}, {}, string, _$vue.ComponentProvideOptions, true, {}, any>;
+     ElIcon: SFCWithInstall<{
+-      new (...args: any[]): _$vue.CreateComponentPublicInstanceWithMixins<Readonly<IconProps> & Readonly<{}>, {}, {}, {}, {}, _$vue.ComponentOptionsMixin, _$vue.ComponentOptionsMixin, {}, _$vue.PublicProps, {}, false, {}, {}, _$vue.GlobalComponents, _$vue.GlobalDirectives, string, {}, any, _$vue.ComponentProvideOptions, {
++      new (...args: any[]): _$vue.CreateComponentPublicInstanceWithMixins<Readonly<IconProps> & Readonly<{}>, {}, {}, {}, {}, _$vue.ComponentOptionsMixin, _$vue.ComponentOptionsMixin, {}, _$vue.PublicProps, {}, false, {}, {}, ProjectGlobalComponents, ProjectGlobalDirectives, string, {}, any, _$vue.ComponentProvideOptions, {
+         P: {};
+         B: {};
+         D: {};
+@@ -1590,7 +1590,7 @@ declare const __VLS_export: _$vue.DefineComponent<_$vue.ExtractPropTypes<{
+       __isFragment?: never;
+       __isTeleport?: never;
+       __isSuspense?: never;
+-    } & _$vue.ComponentOptionsBase<Readonly<IconProps> & Readonly<{}>, {}, {}, {}, {}, _$vue.ComponentOptionsMixin, _$vue.ComponentOptionsMixin, {}, string, {}, {}, string, {}, _$vue.GlobalComponents, _$vue.GlobalDirectives, string, _$vue.ComponentProvideOptions> & _$vue.VNodeProps & _$vue.AllowedComponentProps & _$vue.ComponentCustomProps & (new () => {
++    } & _$vue.ComponentOptionsBase<Readonly<IconProps> & Readonly<{}>, {}, {}, {}, {}, _$vue.ComponentOptionsMixin, _$vue.ComponentOptionsMixin, {}, string, {}, {}, string, {}, ProjectGlobalComponents, ProjectGlobalDirectives, string, _$vue.ComponentProvideOptions> & _$vue.VNodeProps & _$vue.AllowedComponentProps & _$vue.ComponentCustomProps & (new () => {
+       $slots: {
+         default?: (props: {}) => any;
+       };
+@@ -1600,3 +1600,7 @@ declare const __VLS_export: _$vue.DefineComponent<_$vue.ExtractPropTypes<{
+ }, {}, string, _$vue.ComponentProvideOptions, true, {}, any>;
+ //#endregion
+ export { _default as default };
++// Preserve all declared component keys without adding an open index signature.
++type ProjectGlobalComponents = { [K in keyof _$vue.GlobalComponents]: _$vue.GlobalComponents[K] };
++
++type ProjectGlobalDirectives = { [K in keyof _$vue.GlobalDirectives]: _$vue.GlobalDirectives[K] };
+diff --git a/lib/components/dropdown/src/dropdown-item.vue.d.ts b/lib/components/dropdown/src/dropdown-item.vue.d.ts
+index 1cbbb0ef02cda102d2e9dc96ec1ec080865d4a98..39449c046f3fdcd79be06c0662b75c86ce6cadb4 100644
+--- a/lib/components/dropdown/src/dropdown-item.vue.d.ts
++++ b/lib/components/dropdown/src/dropdown-item.vue.d.ts
+@@ -76,7 +76,7 @@ declare const __VLS_export: _$vue.DefineComponent<_$vue.ExtractPropTypes<{
+     focusable: boolean;
+   }, {}, {
+     ElRovingFocusCollectionItem: {
+-      new (...args: any[]): _$vue.CreateComponentPublicInstanceWithMixins<Readonly<{}> & Readonly<{}>, {}, {}, {}, {}, _$vue.ComponentOptionsMixin, _$vue.ComponentOptionsMixin, {}, _$vue.PublicProps, {}, true, {}, {}, _$vue.GlobalComponents, _$vue.GlobalDirectives, string, {}, any, _$vue.ComponentProvideOptions, {
++      new (...args: any[]): _$vue.CreateComponentPublicInstanceWithMixins<Readonly<{}> & Readonly<{}>, {}, {}, {}, {}, _$vue.ComponentOptionsMixin, _$vue.ComponentOptionsMixin, {}, _$vue.PublicProps, {}, true, {}, {}, ProjectGlobalComponents, ProjectGlobalDirectives, string, {}, any, _$vue.ComponentProvideOptions, {
+         P: {};
+         B: {};
+         D: {};
+@@ -87,7 +87,7 @@ declare const __VLS_export: _$vue.DefineComponent<_$vue.ExtractPropTypes<{
+       __isFragment?: never;
+       __isTeleport?: never;
+       __isSuspense?: never;
+-    } & _$vue.ComponentOptionsBase<Readonly<{}> & Readonly<{}>, {}, {}, {}, {}, _$vue.ComponentOptionsMixin, _$vue.ComponentOptionsMixin, {}, string, {}, {}, string, {}, _$vue.GlobalComponents, _$vue.GlobalDirectives, string, _$vue.ComponentProvideOptions> & _$vue.VNodeProps & _$vue.AllowedComponentProps & _$vue.ComponentCustomProps & {
++    } & _$vue.ComponentOptionsBase<Readonly<{}> & Readonly<{}>, {}, {}, {}, {}, _$vue.ComponentOptionsMixin, _$vue.ComponentOptionsMixin, {}, string, {}, {}, string, {}, ProjectGlobalComponents, ProjectGlobalDirectives, string, _$vue.ComponentProvideOptions> & _$vue.VNodeProps & _$vue.AllowedComponentProps & _$vue.ComponentCustomProps & {
+       name: string;
+       setup(_: unknown, {
+         attrs
+@@ -155,7 +155,7 @@ declare const __VLS_export: _$vue.DefineComponent<_$vue.ExtractPropTypes<{
+     readonly divided: boolean;
+   }, {}, {
+     ElIcon: SFCWithInstall<{
+-      new (...args: any[]): _$vue.CreateComponentPublicInstanceWithMixins<Readonly<IconProps> & Readonly<{}>, {}, {}, {}, {}, _$vue.ComponentOptionsMixin, _$vue.ComponentOptionsMixin, {}, _$vue.PublicProps, {}, false, {}, {}, _$vue.GlobalComponents, _$vue.GlobalDirectives, string, {}, any, _$vue.ComponentProvideOptions, {
++      new (...args: any[]): _$vue.CreateComponentPublicInstanceWithMixins<Readonly<IconProps> & Readonly<{}>, {}, {}, {}, {}, _$vue.ComponentOptionsMixin, _$vue.ComponentOptionsMixin, {}, _$vue.PublicProps, {}, false, {}, {}, ProjectGlobalComponents, ProjectGlobalDirectives, string, {}, any, _$vue.ComponentProvideOptions, {
+         P: {};
+         B: {};
+         D: {};
+@@ -166,7 +166,7 @@ declare const __VLS_export: _$vue.DefineComponent<_$vue.ExtractPropTypes<{
+       __isFragment?: never;
+       __isTeleport?: never;
+       __isSuspense?: never;
+-    } & _$vue.ComponentOptionsBase<Readonly<IconProps> & Readonly<{}>, {}, {}, {}, {}, _$vue.ComponentOptionsMixin, _$vue.ComponentOptionsMixin, {}, string, {}, {}, string, {}, _$vue.GlobalComponents, _$vue.GlobalDirectives, string, _$vue.ComponentProvideOptions> & _$vue.VNodeProps & _$vue.AllowedComponentProps & _$vue.ComponentCustomProps & (new () => {
++    } & _$vue.ComponentOptionsBase<Readonly<IconProps> & Readonly<{}>, {}, {}, {}, {}, _$vue.ComponentOptionsMixin, _$vue.ComponentOptionsMixin, {}, string, {}, {}, string, {}, ProjectGlobalComponents, ProjectGlobalDirectives, string, _$vue.ComponentProvideOptions> & _$vue.VNodeProps & _$vue.AllowedComponentProps & _$vue.ComponentCustomProps & (new () => {
+       $slots: {
+         default?: (props: {}) => any;
+       };
+@@ -175,3 +175,7 @@ declare const __VLS_export: _$vue.DefineComponent<_$vue.ExtractPropTypes<{
+ }, {}, string, _$vue.ComponentProvideOptions, true, {}, any>;
+ //#endregion
+ export { _default as default };
++// Preserve all declared component keys without adding an open index signature.
++type ProjectGlobalComponents = { [K in keyof _$vue.GlobalComponents]: _$vue.GlobalComponents[K] };
++
++type ProjectGlobalDirectives = { [K in keyof _$vue.GlobalDirectives]: _$vue.GlobalDirectives[K] };
+diff --git a/lib/components/dropdown/src/dropdown.vue.d.ts b/lib/components/dropdown/src/dropdown.vue.d.ts
+index 9779d716233384f6405ef44b0ca92b36d5d8c456..cceffd291f384cef820d9154b4e1ddd53baffa9d 100644
+--- a/lib/components/dropdown/src/dropdown.vue.d.ts
++++ b/lib/components/dropdown/src/dropdown.vue.d.ts
+@@ -223,7 +223,7 @@ declare const __VLS_export: _$vue.DefineComponent<_$vue.ExtractPropTypes<{
+       plain: boolean;
+       autoInsertSpace: boolean;
+       tag: string | _$vue.Component;
+-    }, false, {}, {}, _$vue.GlobalComponents, _$vue.GlobalDirectives, string, {}, any, _$vue.ComponentProvideOptions, {
++    }, false, {}, {}, ProjectGlobalComponents, ProjectGlobalDirectives, string, {}, any, _$vue.ComponentProvideOptions, {
+       P: {};
+       B: {};
+       D: {};
+@@ -274,7 +274,7 @@ declare const __VLS_export: _$vue.DefineComponent<_$vue.ExtractPropTypes<{
+     plain: boolean;
+     autoInsertSpace: boolean;
+     tag: string | _$vue.Component;
+-  }, {}, string, {}, _$vue.GlobalComponents, _$vue.GlobalDirectives, string, _$vue.ComponentProvideOptions> & _$vue.VNodeProps & _$vue.AllowedComponentProps & _$vue.ComponentCustomProps & (new () => {
++  }, {}, string, {}, ProjectGlobalComponents, ProjectGlobalDirectives, string, _$vue.ComponentProvideOptions> & _$vue.VNodeProps & _$vue.AllowedComponentProps & _$vue.ComponentCustomProps & (new () => {
+     $slots: {
+       loading?: (props: {}) => any;
+     } & {
+@@ -326,7 +326,7 @@ declare const __VLS_export: _$vue.DefineComponent<_$vue.ExtractPropTypes<{
+     new (...args: any[]): _$vue.CreateComponentPublicInstanceWithMixins<Readonly<ButtonGroupProps> & Readonly<{}>, {}, {}, {}, {}, _$vue.ComponentOptionsMixin, _$vue.ComponentOptionsMixin, {}, _$vue.PublicProps, {
+       direction: "horizontal" | "vertical";
+       type: "" | "default" | "info" | "primary" | "success" | "warning" | "text" | "danger";
+-    }, false, {}, {}, _$vue.GlobalComponents, _$vue.GlobalDirectives, string, {}, any, _$vue.ComponentProvideOptions, {
++    }, false, {}, {}, ProjectGlobalComponents, ProjectGlobalDirectives, string, {}, any, _$vue.ComponentProvideOptions, {
+       P: {};
+       B: {};
+       D: {};
+@@ -343,7 +343,7 @@ declare const __VLS_export: _$vue.DefineComponent<_$vue.ExtractPropTypes<{
+   } & _$vue.ComponentOptionsBase<Readonly<ButtonGroupProps> & Readonly<{}>, {}, {}, {}, {}, _$vue.ComponentOptionsMixin, _$vue.ComponentOptionsMixin, {}, string, {
+     direction: "horizontal" | "vertical";
+     type: "" | "default" | "info" | "primary" | "success" | "warning" | "text" | "danger";
+-  }, {}, string, {}, _$vue.GlobalComponents, _$vue.GlobalDirectives, string, _$vue.ComponentProvideOptions> & _$vue.VNodeProps & _$vue.AllowedComponentProps & _$vue.ComponentCustomProps & (new () => {
++  }, {}, string, {}, ProjectGlobalComponents, ProjectGlobalDirectives, string, _$vue.ComponentProvideOptions> & _$vue.VNodeProps & _$vue.AllowedComponentProps & _$vue.ComponentCustomProps & (new () => {
+     $slots: {
+       default?: (props: {}) => any;
+     };
+@@ -382,7 +382,7 @@ declare const __VLS_export: _$vue.DefineComponent<_$vue.ExtractPropTypes<{
+       viewClass: string | false | Record<string, any> | ClassValue[] | null;
+       viewStyle: string | false | CSSProperties | _$vue.StyleValue[] | null;
+       minSize: number;
+-    }, false, {}, {}, _$vue.GlobalComponents, _$vue.GlobalDirectives, string, {}, any, _$vue.ComponentProvideOptions, {
++    }, false, {}, {}, ProjectGlobalComponents, ProjectGlobalDirectives, string, {}, any, _$vue.ComponentProvideOptions, {
+       P: {};
+       B: {};
+       D: {};
+@@ -453,7 +453,7 @@ declare const __VLS_export: _$vue.DefineComponent<_$vue.ExtractPropTypes<{
+     viewClass: string | false | Record<string, any> | ClassValue[] | null;
+     viewStyle: string | false | CSSProperties | _$vue.StyleValue[] | null;
+     minSize: number;
+-  }, {}, string, {}, _$vue.GlobalComponents, _$vue.GlobalDirectives, string, _$vue.ComponentProvideOptions> & _$vue.VNodeProps & _$vue.AllowedComponentProps & _$vue.ComponentCustomProps & (new () => {
++  }, {}, string, {}, ProjectGlobalComponents, ProjectGlobalDirectives, string, _$vue.ComponentProvideOptions> & _$vue.VNodeProps & _$vue.AllowedComponentProps & _$vue.ComponentCustomProps & (new () => {
+     $slots: {
+       default?: (props: {}) => any;
+     };
+@@ -512,7 +512,7 @@ declare const __VLS_export: _$vue.DefineComponent<_$vue.ExtractPropTypes<{
+       autoClose: number;
+       trigger: Arrayable<TooltipTriggerType>;
+       triggerKeys: string[];
+-    }, false, {}, {}, _$vue.GlobalComponents, _$vue.GlobalDirectives, string, {}, any, _$vue.ComponentProvideOptions, {
++    }, false, {}, {}, ProjectGlobalComponents, ProjectGlobalDirectives, string, {}, any, _$vue.ComponentProvideOptions, {
+       P: {};
+       B: {};
+       D: {};
+@@ -621,7 +621,7 @@ declare const __VLS_export: _$vue.DefineComponent<_$vue.ExtractPropTypes<{
+     autoClose: number;
+     trigger: Arrayable<TooltipTriggerType>;
+     triggerKeys: string[];
+-  }, {}, string, {}, _$vue.GlobalComponents, _$vue.GlobalDirectives, string, _$vue.ComponentProvideOptions> & _$vue.VNodeProps & _$vue.AllowedComponentProps & _$vue.ComponentCustomProps & (new () => {
++  }, {}, string, {}, ProjectGlobalComponents, ProjectGlobalDirectives, string, _$vue.ComponentProvideOptions> & _$vue.VNodeProps & _$vue.AllowedComponentProps & _$vue.ComponentCustomProps & (new () => {
+     $slots: {
+       default?: (props: {}) => any;
+     } & {
+@@ -630,7 +630,7 @@ declare const __VLS_export: _$vue.DefineComponent<_$vue.ExtractPropTypes<{
+   })>;
+   ElRovingFocusGroup: _$vue.DefineComponent<{}, {}, {}, {}, {}, _$vue.ComponentOptionsMixin, _$vue.ComponentOptionsMixin, {}, string, _$vue.PublicProps, Readonly<{}> & Readonly<{}>, {}, {}, {
+     ElFocusGroupCollection: {
+-      new (...args: any[]): _$vue.CreateComponentPublicInstanceWithMixins<Readonly<{}> & Readonly<{}>, {}, {}, {}, {}, _$vue.ComponentOptionsMixin, _$vue.ComponentOptionsMixin, {}, _$vue.PublicProps, {}, true, {}, {}, _$vue.GlobalComponents, _$vue.GlobalDirectives, string, {}, any, _$vue.ComponentProvideOptions, {
++      new (...args: any[]): _$vue.CreateComponentPublicInstanceWithMixins<Readonly<{}> & Readonly<{}>, {}, {}, {}, {}, _$vue.ComponentOptionsMixin, _$vue.ComponentOptionsMixin, {}, _$vue.PublicProps, {}, true, {}, {}, ProjectGlobalComponents, ProjectGlobalDirectives, string, {}, any, _$vue.ComponentProvideOptions, {
+         P: {};
+         B: {};
+         D: {};
+@@ -641,7 +641,7 @@ declare const __VLS_export: _$vue.DefineComponent<_$vue.ExtractPropTypes<{
+       __isFragment?: never;
+       __isTeleport?: never;
+       __isSuspense?: never;
+-    } & _$vue.ComponentOptionsBase<Readonly<{}> & Readonly<{}>, {}, {}, {}, {}, _$vue.ComponentOptionsMixin, _$vue.ComponentOptionsMixin, {}, string, {}, {}, string, {}, _$vue.GlobalComponents, _$vue.GlobalDirectives, string, _$vue.ComponentProvideOptions> & _$vue.VNodeProps & _$vue.AllowedComponentProps & _$vue.ComponentCustomProps & {
++    } & _$vue.ComponentOptionsBase<Readonly<{}> & Readonly<{}>, {}, {}, {}, {}, _$vue.ComponentOptionsMixin, _$vue.ComponentOptionsMixin, {}, string, {}, {}, string, {}, ProjectGlobalComponents, ProjectGlobalDirectives, string, _$vue.ComponentProvideOptions> & _$vue.VNodeProps & _$vue.AllowedComponentProps & _$vue.ComponentCustomProps & {
+       name: string;
+       setup(): void;
+     };
+@@ -698,7 +698,7 @@ declare const __VLS_export: _$vue.DefineComponent<_$vue.ExtractPropTypes<{
+     [key: string]: any;
+   }> | null, {}, {}, {}, _$vue.ComponentOptionsMixin, _$vue.ComponentOptionsMixin, {}, string, _$vue.PublicProps, Readonly<{}> & Readonly<{}>, {}, {}, {}, {}, string, _$vue.ComponentProvideOptions, true, {}, any>;
+   ElIcon: SFCWithInstall<{
+-    new (...args: any[]): _$vue.CreateComponentPublicInstanceWithMixins<Readonly<IconProps> & Readonly<{}>, {}, {}, {}, {}, _$vue.ComponentOptionsMixin, _$vue.ComponentOptionsMixin, {}, _$vue.PublicProps, {}, false, {}, {}, _$vue.GlobalComponents, _$vue.GlobalDirectives, string, {}, any, _$vue.ComponentProvideOptions, {
++    new (...args: any[]): _$vue.CreateComponentPublicInstanceWithMixins<Readonly<IconProps> & Readonly<{}>, {}, {}, {}, {}, _$vue.ComponentOptionsMixin, _$vue.ComponentOptionsMixin, {}, _$vue.PublicProps, {}, false, {}, {}, ProjectGlobalComponents, ProjectGlobalDirectives, string, {}, any, _$vue.ComponentProvideOptions, {
+       P: {};
+       B: {};
+       D: {};
+@@ -709,7 +709,7 @@ declare const __VLS_export: _$vue.DefineComponent<_$vue.ExtractPropTypes<{
+     __isFragment?: never;
+     __isTeleport?: never;
+     __isSuspense?: never;
+-  } & _$vue.ComponentOptionsBase<Readonly<IconProps> & Readonly<{}>, {}, {}, {}, {}, _$vue.ComponentOptionsMixin, _$vue.ComponentOptionsMixin, {}, string, {}, {}, string, {}, _$vue.GlobalComponents, _$vue.GlobalDirectives, string, _$vue.ComponentProvideOptions> & _$vue.VNodeProps & _$vue.AllowedComponentProps & _$vue.ComponentCustomProps & (new () => {
++  } & _$vue.ComponentOptionsBase<Readonly<IconProps> & Readonly<{}>, {}, {}, {}, {}, _$vue.ComponentOptionsMixin, _$vue.ComponentOptionsMixin, {}, string, {}, {}, string, {}, ProjectGlobalComponents, ProjectGlobalDirectives, string, _$vue.ComponentProvideOptions> & _$vue.VNodeProps & _$vue.AllowedComponentProps & _$vue.ComponentCustomProps & (new () => {
+     $slots: {
+       default?: (props: {}) => any;
+     };
+@@ -718,3 +718,7 @@ declare const __VLS_export: _$vue.DefineComponent<_$vue.ExtractPropTypes<{
+ }, {}, string, _$vue.ComponentProvideOptions, true, {}, any>;
+ //#endregion
+ export { _default as default };
++// Preserve all declared component keys without adding an open index signature.
++type ProjectGlobalComponents = { [K in keyof _$vue.GlobalComponents]: _$vue.GlobalComponents[K] };
++
++type ProjectGlobalDirectives = { [K in keyof _$vue.GlobalDirectives]: _$vue.GlobalDirectives[K] };
+diff --git a/lib/components/select/src/select.vue.d.ts b/lib/components/select/src/select.vue.d.ts
+index c322b33689ae66ed9303c64db5bf9e24a0a454ee..dc8a1dac2eb751d3d6e859976450443d0dadf788 100644
+--- a/lib/components/select/src/select.vue.d.ts
++++ b/lib/components/select/src/select.vue.d.ts
+@@ -586,7 +586,7 @@ declare const __VLS_export: _$vue.DefineComponent<_$vue.ExtractPropTypes<{
+     }, _$vue.PublicProps, {
+       type: "primary" | "success" | "info" | "warning" | "danger";
+       effect: "dark" | "light" | "plain";
+-    }, false, {}, {}, _$vue.GlobalComponents, _$vue.GlobalDirectives, string, {}, any, _$vue.ComponentProvideOptions, {
++    }, false, {}, {}, ProjectGlobalComponents, ProjectGlobalDirectives, string, {}, any, _$vue.ComponentProvideOptions, {
+       P: {};
+       B: {};
+       D: {};
+@@ -612,7 +612,7 @@ declare const __VLS_export: _$vue.DefineComponent<_$vue.ExtractPropTypes<{
+   }, string, {
+     type: "primary" | "success" | "info" | "warning" | "danger";
+     effect: "dark" | "light" | "plain";
+-  }, {}, string, {}, _$vue.GlobalComponents, _$vue.GlobalDirectives, string, _$vue.ComponentProvideOptions> & _$vue.VNodeProps & _$vue.AllowedComponentProps & _$vue.ComponentCustomProps & (new () => {
++  }, {}, string, {}, ProjectGlobalComponents, ProjectGlobalDirectives, string, _$vue.ComponentProvideOptions> & _$vue.VNodeProps & _$vue.AllowedComponentProps & _$vue.ComponentCustomProps & (new () => {
+     $slots: {
+       default?: (props: {}) => any;
+     } & {
+@@ -653,7 +653,7 @@ declare const __VLS_export: _$vue.DefineComponent<_$vue.ExtractPropTypes<{
+       viewClass: string | false | Record<string, any> | ClassValue[] | null;
+       viewStyle: string | false | _$vue.CSSProperties | _$vue.StyleValue[] | null;
+       minSize: number;
+-    }, false, {}, {}, _$vue.GlobalComponents, _$vue.GlobalDirectives, string, {}, any, _$vue.ComponentProvideOptions, {
++    }, false, {}, {}, ProjectGlobalComponents, ProjectGlobalDirectives, string, {}, any, _$vue.ComponentProvideOptions, {
+       P: {};
+       B: {};
+       D: {};
+@@ -724,7 +724,7 @@ declare const __VLS_export: _$vue.DefineComponent<_$vue.ExtractPropTypes<{
+     viewClass: string | false | Record<string, any> | ClassValue[] | null;
+     viewStyle: string | false | _$vue.CSSProperties | _$vue.StyleValue[] | null;
+     minSize: number;
+-  }, {}, string, {}, _$vue.GlobalComponents, _$vue.GlobalDirectives, string, _$vue.ComponentProvideOptions> & _$vue.VNodeProps & _$vue.AllowedComponentProps & _$vue.ComponentCustomProps & (new () => {
++  }, {}, string, {}, ProjectGlobalComponents, ProjectGlobalDirectives, string, _$vue.ComponentProvideOptions> & _$vue.VNodeProps & _$vue.AllowedComponentProps & _$vue.ComponentCustomProps & (new () => {
+     $slots: {
+       default?: (props: {}) => any;
+     };
+@@ -783,7 +783,7 @@ declare const __VLS_export: _$vue.DefineComponent<_$vue.ExtractPropTypes<{
+       autoClose: number;
+       trigger: Arrayable<TooltipTriggerType>;
+       triggerKeys: string[];
+-    }, false, {}, {}, _$vue.GlobalComponents, _$vue.GlobalDirectives, string, {}, any, _$vue.ComponentProvideOptions, {
++    }, false, {}, {}, ProjectGlobalComponents, ProjectGlobalDirectives, string, {}, any, _$vue.ComponentProvideOptions, {
+       P: {};
+       B: {};
+       D: {};
+@@ -892,7 +892,7 @@ declare const __VLS_export: _$vue.DefineComponent<_$vue.ExtractPropTypes<{
+     autoClose: number;
+     trigger: Arrayable<TooltipTriggerType>;
+     triggerKeys: string[];
+-  }, {}, string, {}, _$vue.GlobalComponents, _$vue.GlobalDirectives, string, _$vue.ComponentProvideOptions> & _$vue.VNodeProps & _$vue.AllowedComponentProps & _$vue.ComponentCustomProps & (new () => {
++  }, {}, string, {}, ProjectGlobalComponents, ProjectGlobalDirectives, string, _$vue.ComponentProvideOptions> & _$vue.VNodeProps & _$vue.AllowedComponentProps & _$vue.ComponentCustomProps & (new () => {
+     $slots: {
+       default?: (props: {}) => any;
+     } & {
+@@ -900,7 +900,7 @@ declare const __VLS_export: _$vue.DefineComponent<_$vue.ExtractPropTypes<{
+     };
+   })>;
+   ElIcon: SFCWithInstall<{
+-    new (...args: any[]): _$vue.CreateComponentPublicInstanceWithMixins<Readonly<IconProps> & Readonly<{}>, {}, {}, {}, {}, _$vue.ComponentOptionsMixin, _$vue.ComponentOptionsMixin, {}, _$vue.PublicProps, {}, false, {}, {}, _$vue.GlobalComponents, _$vue.GlobalDirectives, string, {}, any, _$vue.ComponentProvideOptions, {
++    new (...args: any[]): _$vue.CreateComponentPublicInstanceWithMixins<Readonly<IconProps> & Readonly<{}>, {}, {}, {}, {}, _$vue.ComponentOptionsMixin, _$vue.ComponentOptionsMixin, {}, _$vue.PublicProps, {}, false, {}, {}, ProjectGlobalComponents, ProjectGlobalDirectives, string, {}, any, _$vue.ComponentProvideOptions, {
+       P: {};
+       B: {};
+       D: {};
+@@ -911,7 +911,7 @@ declare const __VLS_export: _$vue.DefineComponent<_$vue.ExtractPropTypes<{
+     __isFragment?: never;
+     __isTeleport?: never;
+     __isSuspense?: never;
+-  } & _$vue.ComponentOptionsBase<Readonly<IconProps> & Readonly<{}>, {}, {}, {}, {}, _$vue.ComponentOptionsMixin, _$vue.ComponentOptionsMixin, {}, string, {}, {}, string, {}, _$vue.GlobalComponents, _$vue.GlobalDirectives, string, _$vue.ComponentProvideOptions> & _$vue.VNodeProps & _$vue.AllowedComponentProps & _$vue.ComponentCustomProps & (new () => {
++  } & _$vue.ComponentOptionsBase<Readonly<IconProps> & Readonly<{}>, {}, {}, {}, {}, _$vue.ComponentOptionsMixin, _$vue.ComponentOptionsMixin, {}, string, {}, {}, string, {}, ProjectGlobalComponents, ProjectGlobalDirectives, string, _$vue.ComponentProvideOptions> & _$vue.VNodeProps & _$vue.AllowedComponentProps & _$vue.ComponentCustomProps & (new () => {
+     $slots: {
+       default?: (props: {}) => any;
+     };
+@@ -921,3 +921,7 @@ declare const __VLS_export: _$vue.DefineComponent<_$vue.ExtractPropTypes<{
+ }, string, _$vue.ComponentProvideOptions, true, {}, any>;
+ //#endregion
+ export { _default as default };
++// Preserve all declared component keys without adding an open index signature.
++type ProjectGlobalComponents = { [K in keyof _$vue.GlobalComponents]: _$vue.GlobalComponents[K] };
++
++type ProjectGlobalDirectives = { [K in keyof _$vue.GlobalDirectives]: _$vue.GlobalDirectives[K] };
+diff --git a/lib/components/select-v2/src/select.vue.d.ts b/lib/components/select-v2/src/select.vue.d.ts
+index b4160bcfe507ccc4047c22c4874709c012440a72..871392507bb7fe357acf0c14adcdfdbd598e3d8f 100644
+--- a/lib/components/select-v2/src/select.vue.d.ts
++++ b/lib/components/select-v2/src/select.vue.d.ts
+@@ -462,7 +462,7 @@ declare const __VLS_export: _$vue.DefineComponent<_$vue.ExtractPropTypes<{
+     }, _$vue.PublicProps, {
+       type: "primary" | "success" | "info" | "warning" | "danger";
+       effect: "dark" | "light" | "plain";
+-    }, false, {}, {}, _$vue.GlobalComponents, _$vue.GlobalDirectives, string, {}, any, _$vue.ComponentProvideOptions, {
++    }, false, {}, {}, ProjectGlobalComponents, ProjectGlobalDirectives, string, {}, any, _$vue.ComponentProvideOptions, {
+       P: {};
+       B: {};
+       D: {};
+@@ -488,7 +488,7 @@ declare const __VLS_export: _$vue.DefineComponent<_$vue.ExtractPropTypes<{
+   }, string, {
+     type: "primary" | "success" | "info" | "warning" | "danger";
+     effect: "dark" | "light" | "plain";
+-  }, {}, string, {}, _$vue.GlobalComponents, _$vue.GlobalDirectives, string, _$vue.ComponentProvideOptions> & _$vue.VNodeProps & _$vue.AllowedComponentProps & _$vue.ComponentCustomProps & (new () => {
++  }, {}, string, {}, ProjectGlobalComponents, ProjectGlobalDirectives, string, _$vue.ComponentProvideOptions> & _$vue.VNodeProps & _$vue.AllowedComponentProps & _$vue.ComponentCustomProps & (new () => {
+     $slots: {
+       default?: (props: {}) => any;
+     } & {
+@@ -549,7 +549,7 @@ declare const __VLS_export: _$vue.DefineComponent<_$vue.ExtractPropTypes<{
+       autoClose: number;
+       trigger: Arrayable<TooltipTriggerType>;
+       triggerKeys: string[];
+-    }, false, {}, {}, _$vue.GlobalComponents, _$vue.GlobalDirectives, string, {}, any, _$vue.ComponentProvideOptions, {
++    }, false, {}, {}, ProjectGlobalComponents, ProjectGlobalDirectives, string, {}, any, _$vue.ComponentProvideOptions, {
+       P: {};
+       B: {};
+       D: {};
+@@ -658,7 +658,7 @@ declare const __VLS_export: _$vue.DefineComponent<_$vue.ExtractPropTypes<{
+     autoClose: number;
+     trigger: Arrayable<TooltipTriggerType>;
+     triggerKeys: string[];
+-  }, {}, string, {}, _$vue.GlobalComponents, _$vue.GlobalDirectives, string, _$vue.ComponentProvideOptions> & _$vue.VNodeProps & _$vue.AllowedComponentProps & _$vue.ComponentCustomProps & (new () => {
++  }, {}, string, {}, ProjectGlobalComponents, ProjectGlobalDirectives, string, _$vue.ComponentProvideOptions> & _$vue.VNodeProps & _$vue.AllowedComponentProps & _$vue.ComponentCustomProps & (new () => {
+     $slots: {
+       default?: (props: {}) => any;
+     } & {
+@@ -666,7 +666,7 @@ declare const __VLS_export: _$vue.DefineComponent<_$vue.ExtractPropTypes<{
+     };
+   })>;
+   ElIcon: SFCWithInstall<{
+-    new (...args: any[]): _$vue.CreateComponentPublicInstanceWithMixins<Readonly<IconProps> & Readonly<{}>, {}, {}, {}, {}, _$vue.ComponentOptionsMixin, _$vue.ComponentOptionsMixin, {}, _$vue.PublicProps, {}, false, {}, {}, _$vue.GlobalComponents, _$vue.GlobalDirectives, string, {}, any, _$vue.ComponentProvideOptions, {
++    new (...args: any[]): _$vue.CreateComponentPublicInstanceWithMixins<Readonly<IconProps> & Readonly<{}>, {}, {}, {}, {}, _$vue.ComponentOptionsMixin, _$vue.ComponentOptionsMixin, {}, _$vue.PublicProps, {}, false, {}, {}, ProjectGlobalComponents, ProjectGlobalDirectives, string, {}, any, _$vue.ComponentProvideOptions, {
+       P: {};
+       B: {};
+       D: {};
+@@ -677,7 +677,7 @@ declare const __VLS_export: _$vue.DefineComponent<_$vue.ExtractPropTypes<{
+     __isFragment?: never;
+     __isTeleport?: never;
+     __isSuspense?: never;
+-  } & _$vue.ComponentOptionsBase<Readonly<IconProps> & Readonly<{}>, {}, {}, {}, {}, _$vue.ComponentOptionsMixin, _$vue.ComponentOptionsMixin, {}, string, {}, {}, string, {}, _$vue.GlobalComponents, _$vue.GlobalDirectives, string, _$vue.ComponentProvideOptions> & _$vue.VNodeProps & _$vue.AllowedComponentProps & _$vue.ComponentCustomProps & (new () => {
++  } & _$vue.ComponentOptionsBase<Readonly<IconProps> & Readonly<{}>, {}, {}, {}, {}, _$vue.ComponentOptionsMixin, _$vue.ComponentOptionsMixin, {}, string, {}, {}, string, {}, ProjectGlobalComponents, ProjectGlobalDirectives, string, _$vue.ComponentProvideOptions> & _$vue.VNodeProps & _$vue.AllowedComponentProps & _$vue.ComponentCustomProps & (new () => {
+     $slots: {
+       default?: (props: {}) => any;
+     };
+@@ -687,3 +687,7 @@ declare const __VLS_export: _$vue.DefineComponent<_$vue.ExtractPropTypes<{
+ }, string, _$vue.ComponentProvideOptions, true, {}, any>;
+ //#endregion
+ export { _default as default };
++// Preserve all declared component keys without adding an open index signature.
++type ProjectGlobalComponents = { [K in keyof _$vue.GlobalComponents]: _$vue.GlobalComponents[K] };
++
++type ProjectGlobalDirectives = { [K in keyof _$vue.GlobalDirectives]: _$vue.GlobalDirectives[K] };
+diff --git a/lib/components/table/src/table-header/index.d.ts b/lib/components/table/src/table-header/index.d.ts
+index c1d57228e10276df2d27e2d331c0fc2c02469d18..a7bfe25ccdd14bb8b0ead3a4d8938eae97d8b2d4 100644
+--- a/lib/components/table/src/table-header/index.d.ts
++++ b/lib/components/table/src/table-header/index.d.ts
+@@ -136,7 +136,7 @@ declare const _default: _$vue.DefineComponent<_$vue.ExtractPropTypes<{
+       falseValue: string | number;
+       trueLabel: string | number;
+       falseLabel: string | number;
+-    }, false, {}, {}, _$vue.GlobalComponents, _$vue.GlobalDirectives, string, {}, any, _$vue.ComponentProvideOptions, {
++    }, false, {}, {}, ProjectGlobalComponents, ProjectGlobalDirectives, string, {}, any, _$vue.ComponentProvideOptions, {
+       P: {};
+       B: {};
+       D: {};
+@@ -180,7 +180,7 @@ declare const _default: _$vue.DefineComponent<_$vue.ExtractPropTypes<{
+     falseValue: string | number;
+     trueLabel: string | number;
+     falseLabel: string | number;
+-  }, {}, string, {}, _$vue.GlobalComponents, _$vue.GlobalDirectives, string, _$vue.ComponentProvideOptions> & _$vue.VNodeProps & _$vue.AllowedComponentProps & _$vue.ComponentCustomProps & (new () => {
++  }, {}, string, {}, ProjectGlobalComponents, ProjectGlobalDirectives, string, _$vue.ComponentProvideOptions> & _$vue.VNodeProps & _$vue.AllowedComponentProps & _$vue.ComponentCustomProps & (new () => {
+     $slots: {
+       default?: (props: {}) => any;
+     };
+@@ -212,3 +212,7 @@ declare const _default: _$vue.DefineComponent<_$vue.ExtractPropTypes<{
+ }, {}, string, _$vue.ComponentProvideOptions, true, {}, any>;
+ //#endregion
+ export { TableHeader, TableHeaderProps, _default as default };
++// Preserve all declared component keys without adding an open index signature.
++type ProjectGlobalComponents = { [K in keyof _$vue.GlobalComponents]: _$vue.GlobalComponents[K] };
++
++type ProjectGlobalDirectives = { [K in keyof _$vue.GlobalDirectives]: _$vue.GlobalDirectives[K] };
+diff --git a/lib/components/table-v2/src/types.d.ts b/lib/components/table-v2/src/types.d.ts
+index e1d0c1a43bb7a9888e4dc592ce313b41ac9885d0..6f857b5cd436be25488986f92ad8a7323a119fa1 100644
+--- a/lib/components/table-v2/src/types.d.ts
++++ b/lib/components/table-v2/src/types.d.ts
+@@ -1,3 +1,4 @@
++import type { ClassValue } from "vue";
+ import { ColumnAlignment } from "../../../constants/column-alignment.js";
+ import { FixedDir, SortOrder } from "./constants.js";
+ import { CSSProperties, FunctionalComponent, RendererElement, RendererNode, VNode } from "vue";
+@@ -93,7 +94,7 @@ type TableV2CustomizedHeaderSlotParam<T = any> = {
+   headerIndex: number;
+ };
+ type SimpleFunctionalComponentProps<T extends object> = {
+-  class?: JSX.IntrinsicAttributes['class'];
++  class?: ClassValue;
+   style?: CSSProperties;
+ } & T;
+ type SimpleFunctionalComponent<E extends object = {
+diff --git a/lib/components/transfer/src/transfer.d.ts b/lib/components/transfer/src/transfer.d.ts
+index 274fd090b3e3a68aa0ee57579936aa969617885e..036d59d5cdfdb5104433d31fec60e92a2613caa5 100644
+--- a/lib/components/transfer/src/transfer.d.ts
++++ b/lib/components/transfer/src/transfer.d.ts
+@@ -2,14 +2,14 @@ import { EpPropFinalized } from "../../../utils/vue/props/types.js";
+ import { Mutable } from "../../../utils/typescript.js";
+ import _default from "./transfer.vue.js";
+ import * as _$vue from "vue";
+-import { ComponentInstance, ExtractPublicPropTypes, VNode, h } from "vue";
++import { ComponentInstance, ExtractPublicPropTypes, VNode, h as vueH } from "vue";
+ import { ComponentExposed } from "vue-component-type-helpers";
+ 
+ //#region ../../packages/components/transfer/src/transfer.d.ts
+ type TransferKey = string | number;
+ type TransferDirection = 'left' | 'right';
+ type TransferDataItem = Record<string, any>;
+-type renderContent<T extends TransferDataItem = TransferDataItem> = (h: typeof h, option: T) => VNode | VNode[];
++type renderContent<T extends TransferDataItem = TransferDataItem> = (h: typeof vueH, option: T) => VNode | VNode[];
+ interface TransferFormat {
+   noChecked?: string;
+   hasChecked?: string;
+diff --git a/lib/components/tree/src/tree.vue.d.ts b/lib/components/tree/src/tree.vue.d.ts
+index 09da70e617167b8f46876823357708eb31d6bd48..f0f0ff66654f7269dc30503770b65ca75bb3bf0d 100644
+--- a/lib/components/tree/src/tree.vue.d.ts
++++ b/lib/components/tree/src/tree.vue.d.ts
+@@ -1457,7 +1457,7 @@ declare const __VLS_export: _$vue.DefineComponent<_$vue.ExtractPropTypes<{
+     showCheckbox: boolean;
+   }, {}, {
+     ElCollapseTransition: SFCWithInstall<{
+-      new (...args: any[]): _$vue.CreateComponentPublicInstanceWithMixins<Readonly<{}> & Readonly<{}>, {}, {}, {}, {}, _$vue.ComponentOptionsMixin, _$vue.ComponentOptionsMixin, {}, _$vue.PublicProps, {}, true, {}, {}, _$vue.GlobalComponents, _$vue.GlobalDirectives, string, {}, any, _$vue.ComponentProvideOptions, {
++      new (...args: any[]): _$vue.CreateComponentPublicInstanceWithMixins<Readonly<{}> & Readonly<{}>, {}, {}, {}, {}, _$vue.ComponentOptionsMixin, _$vue.ComponentOptionsMixin, {}, _$vue.PublicProps, {}, true, {}, {}, ProjectGlobalComponents, ProjectGlobalDirectives, string, {}, any, _$vue.ComponentProvideOptions, {
+         P: {};
+         B: {};
+         D: {};
+@@ -1468,7 +1468,7 @@ declare const __VLS_export: _$vue.DefineComponent<_$vue.ExtractPropTypes<{
+       __isFragment?: never;
+       __isTeleport?: never;
+       __isSuspense?: never;
+-    } & _$vue.ComponentOptionsBase<Readonly<{}> & Readonly<{}>, {}, {}, {}, {}, _$vue.ComponentOptionsMixin, _$vue.ComponentOptionsMixin, {}, string, {}, {}, string, {}, _$vue.GlobalComponents, _$vue.GlobalDirectives, string, _$vue.ComponentProvideOptions> & _$vue.VNodeProps & _$vue.AllowedComponentProps & _$vue.ComponentCustomProps & (new () => {
++    } & _$vue.ComponentOptionsBase<Readonly<{}> & Readonly<{}>, {}, {}, {}, {}, _$vue.ComponentOptionsMixin, _$vue.ComponentOptionsMixin, {}, string, {}, {}, string, {}, ProjectGlobalComponents, ProjectGlobalDirectives, string, _$vue.ComponentProvideOptions> & _$vue.VNodeProps & _$vue.AllowedComponentProps & _$vue.ComponentCustomProps & (new () => {
+       $slots: {
+         default?: (props: {}) => any;
+       };
+@@ -1492,7 +1492,7 @@ declare const __VLS_export: _$vue.DefineComponent<_$vue.ExtractPropTypes<{
+         falseValue: string | number;
+         trueLabel: string | number;
+         falseLabel: string | number;
+-      }, false, {}, {}, _$vue.GlobalComponents, _$vue.GlobalDirectives, string, {}, any, _$vue.ComponentProvideOptions, {
++      }, false, {}, {}, ProjectGlobalComponents, ProjectGlobalDirectives, string, {}, any, _$vue.ComponentProvideOptions, {
+         P: {};
+         B: {};
+         D: {};
+@@ -1536,7 +1536,7 @@ declare const __VLS_export: _$vue.DefineComponent<_$vue.ExtractPropTypes<{
+       falseValue: string | number;
+       trueLabel: string | number;
+       falseLabel: string | number;
+-    }, {}, string, {}, _$vue.GlobalComponents, _$vue.GlobalDirectives, string, _$vue.ComponentProvideOptions> & _$vue.VNodeProps & _$vue.AllowedComponentProps & _$vue.ComponentCustomProps & (new () => {
++    }, {}, string, {}, ProjectGlobalComponents, ProjectGlobalDirectives, string, _$vue.ComponentProvideOptions> & _$vue.VNodeProps & _$vue.AllowedComponentProps & _$vue.ComponentCustomProps & (new () => {
+       $slots: {
+         default?: (props: {}) => any;
+       };
+@@ -1579,7 +1579,7 @@ declare const __VLS_export: _$vue.DefineComponent<_$vue.ExtractPropTypes<{
+       renderContent: FunctionConstructor;
+     }>> & Readonly<{}>, {}, {}, {}, {}, string, _$vue.ComponentProvideOptions, true, {}, any>;
+     ElIcon: SFCWithInstall<{
+-      new (...args: any[]): _$vue.CreateComponentPublicInstanceWithMixins<Readonly<IconProps> & Readonly<{}>, {}, {}, {}, {}, _$vue.ComponentOptionsMixin, _$vue.ComponentOptionsMixin, {}, _$vue.PublicProps, {}, false, {}, {}, _$vue.GlobalComponents, _$vue.GlobalDirectives, string, {}, any, _$vue.ComponentProvideOptions, {
++      new (...args: any[]): _$vue.CreateComponentPublicInstanceWithMixins<Readonly<IconProps> & Readonly<{}>, {}, {}, {}, {}, _$vue.ComponentOptionsMixin, _$vue.ComponentOptionsMixin, {}, _$vue.PublicProps, {}, false, {}, {}, ProjectGlobalComponents, ProjectGlobalDirectives, string, {}, any, _$vue.ComponentProvideOptions, {
+         P: {};
+         B: {};
+         D: {};
+@@ -1590,7 +1590,7 @@ declare const __VLS_export: _$vue.DefineComponent<_$vue.ExtractPropTypes<{
+       __isFragment?: never;
+       __isTeleport?: never;
+       __isSuspense?: never;
+-    } & _$vue.ComponentOptionsBase<Readonly<IconProps> & Readonly<{}>, {}, {}, {}, {}, _$vue.ComponentOptionsMixin, _$vue.ComponentOptionsMixin, {}, string, {}, {}, string, {}, _$vue.GlobalComponents, _$vue.GlobalDirectives, string, _$vue.ComponentProvideOptions> & _$vue.VNodeProps & _$vue.AllowedComponentProps & _$vue.ComponentCustomProps & (new () => {
++    } & _$vue.ComponentOptionsBase<Readonly<IconProps> & Readonly<{}>, {}, {}, {}, {}, _$vue.ComponentOptionsMixin, _$vue.ComponentOptionsMixin, {}, string, {}, {}, string, {}, ProjectGlobalComponents, ProjectGlobalDirectives, string, _$vue.ComponentProvideOptions> & _$vue.VNodeProps & _$vue.AllowedComponentProps & _$vue.ComponentCustomProps & (new () => {
+       $slots: {
+         default?: (props: {}) => any;
+       };
+@@ -1600,3 +1600,7 @@ declare const __VLS_export: _$vue.DefineComponent<_$vue.ExtractPropTypes<{
+ }, {}, string, _$vue.ComponentProvideOptions, true, {}, any>;
+ //#endregion
+ export { _default as default };
++// Preserve all declared component keys without adding an open index signature.
++type ProjectGlobalComponents = { [K in keyof _$vue.GlobalComponents]: _$vue.GlobalComponents[K] };
++
++type ProjectGlobalDirectives = { [K in keyof _$vue.GlobalDirectives]: _$vue.GlobalDirectives[K] };

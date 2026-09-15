@@ -21,3 +21,6 @@ minimumReleaseAgeExclude:
   - '@nestjs/platform-express@11.2.4'
   - '@nestjs/testing@11.2.4'
   - '@vitejs/plugin-vue@6.0.9'
+
+patchedDependencies:
+  element-plus@2.14.5: patches/element-plus@2.14.5.patch

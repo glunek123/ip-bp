@@ -44,6 +44,7 @@ const textExtensions = new Set([
   '.psm1',
   '.sh',
   '.svg',
+  '.patch',
 ]);
 const namedFiles = new Set([
   '.npmrc',

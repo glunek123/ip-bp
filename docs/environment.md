@@ -37,6 +37,8 @@
 
 完整且唯一的准确包版本、Node engines 和 peerDependencies 检查结果见 [environment-lock.json](environment-lock.json)。它是版本选择及核对证据；实际安装锁文件为根 pnpm-lock.yaml。第三步已验证 48 项直接依赖声明与版本清单、实际安装版本一致（同一依赖在不同包中分别计数）。
 
+CMP-01 保持 Vue/Element Plus/TypeScript 版本，前端显式增加已存在于依赖树的 @types/web-bluetooth 0.0.21。Element Plus 2.14.5 使用版本绑定、仅修改声明的 pnpm 补丁；实际包身份以锁文件 patchedDependencies 为准，补丁 SHA-256 和新增类型包依据写入版本清单 compatibility 节。安装与回归方法见 [组件兼容报告](component-compatibility.md)。
+
 | 核心项                                         | 选定版本                           |
 | ---------------------------------------------- | ---------------------------------- |
 | Node.js                                        | 24.21.0 LTS                        |

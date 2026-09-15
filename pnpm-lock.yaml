@@ -4,6 +4,9 @@ settings:
   autoInstallPeers: true
   excludeLinksFromLockfile: false
 
+patchedDependencies:
+  element-plus@2.14.5: b613b01315db9e3c203ff9bda261d1d9ab7a2d57358d86a34b9abaf668601461
+
 importers:
 
   .:
@@ -122,7 +125,7 @@ importers:
     dependencies:
       element-plus:
         specifier: 2.14.5
-        version: 2.14.5(vue@3.5.42(typescript@5.9.3))
+        version: 2.14.5(patch_hash=b613b01315db9e3c203ff9bda261d1d9ab7a2d57358d86a34b9abaf668601461)(vue@3.5.42(typescript@5.9.3))
       pinia:
         specifier: 3.0.4
         version: 3.0.4(typescript@5.9.3)(vue@3.5.42(typescript@5.9.3))
@@ -136,6 +139,9 @@ importers:
       '@types/node':
         specifier: 24.13.4
         version: 24.13.4
+      '@types/web-bluetooth':
+        specifier: 0.0.21
+        version: 0.0.21
       '@vitejs/plugin-vue':
         specifier: 6.0.9
         version: 6.0.9(vite@7.3.6(@types/node@24.13.4)(jiti@2.7.0)(terser@5.51.2))(vue@3.5.42(typescript@5.9.3))
@@ -7175,7 +7181,7 @@ snapshots:
 
   electron-to-chromium@1.5.427: {}
 
-  element-plus@2.14.5(vue@3.5.42(typescript@5.9.3)):
+  element-plus@2.14.5(patch_hash=b613b01315db9e3c203ff9bda261d1d9ab7a2d57358d86a34b9abaf668601461)(vue@3.5.42(typescript@5.9.3)):
     dependencies:
       '@ctrl/tinycolor': 4.2.1
       '@element-plus/icons-vue': 2.3.2(vue@3.5.42(typescript@5.9.3))

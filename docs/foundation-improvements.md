@@ -2,6 +2,8 @@
 
 日期：2026-09-15；任务 FND-002。用户批准范围为通用 HTTP、健康 API 分离、安全诊断、组件兼容检查、本地 Git 和后续设计清单。基线提交：046f8be。当前阶段与最新证据见 [开发状态](project-status.md)。
 
+本报告保留 FND-002 原始组件失败证据；后续 CMP-01 声明修复和复验见 [组件兼容报告](component-compatibility.md)，当前待办状态以 deferred-design.md 为准。
+
 ## 实现与接口
 
 - requestJson 接受 GET/POST/PUT/PATCH/DELETE；写请求可带 JsonValue，声明 JSON Content-Type；未提供 body 时不发送该头。204 返回 undefined，其余成功响应要求有效 JSON。getJson 保留原入口，沿用 30 秒默认超时、调用方取消和 ApiError；写请求不自动重试。

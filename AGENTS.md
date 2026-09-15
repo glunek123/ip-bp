@@ -38,7 +38,7 @@
 - 新增依赖需在交付说明中解释现有工具为何不足；替换框架、增加同类工具或独立服务，先提出影响和迁移方案。已有明确用户授权时直接执行并同步文档。
 - 目录先确定到模块层；按已确认需求增加具体业务模块，不批量生成待审核业务代码、表结构或空接口。
 - 检查命令以实际 `package.json` scripts 和工具配置为准：`pnpm typecheck`、`pnpm lint`、`pnpm format:check`、`pnpm test`、`pnpm build`。跨端测试先 `pnpm db:test:up`、`pnpm build`，再 `pnpm test:e2e`；首次需安装 Playwright Chromium，详见 [启动说明](README.md)。
-- 新增 Element Plus 控件按需导入实际组件和样式；当前全量入口含未使用组件的类型声明冲突。保持严格类型检查，不以 `skipLibCheck` 或放宽类型绕过问题。
+- 新增 Element Plus 控件按需导入实际组件和样式。CMP-01 使用版本绑定的声明补丁；全量 ESM/CJS 入口持续纳入前端类型检查，说明见 [组件兼容报告](docs/component-compatibility.md)。升级依赖时复核补丁与交互，不以 `skipLibCheck`、any 或开放全局索引签名绕过问题。
 - 本地开发库与测试库由根 `compose.yaml` 管理。测试必须使用 `backend/.env.test` 中的独立测试库；保留已有 `.env` 文件和开发数据卷，不打印或提交凭据。
 - 每次交付说明改动、实际验证结果和未完成事项。规则与配置冲突时查清原因并同步修正，不能靠关闭检查掩盖问题。
 

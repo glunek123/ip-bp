@@ -613,6 +613,12 @@
       "engines": {},
       "peerDependencies": {},
       "peerDependenciesMeta": {}
+    },
+    "@types/web-bluetooth": {
+      "version": "0.0.21",
+      "engines": {},
+      "peerDependencies": {},
+      "peerDependenciesMeta": {}
     }
   },
   "checks": [
@@ -1086,5 +1092,16 @@
     "node": "https://nodejs.org/en/blog/release/v24.21.0",
     "postgresql": "https://www.postgresql.org/support/versioning/",
     "postgresImage": "https://hub.docker.com/v2/repositories/library/postgres/tags/17.11-bookworm"
+  },
+  "compatibility": {
+    "task": "CMP-01",
+    "checkedAt": "2026-09-15T05:56:42.790Z",
+    "baseCommit": "3d968a1",
+    "addedDirectTypes": "@types/web-bluetooth@0.0.21 (already present transitively)",
+    "source": "https://registry.npmjs.org/@types%2fweb-bluetooth/0.0.21",
+    "package": "element-plus@2.14.5",
+    "patch": "patches/element-plus@2.14.5.patch",
+    "patchSha256": "b613b01315db9e3c203ff9bda261d1d9ab7a2d57358d86a34b9abaf668601461",
+    "scope": "Declaration-only ESM/CJS patch; no runtime JS changes. See docs/component-compatibility.md for validation."
   }
 }
