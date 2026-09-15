@@ -1,0 +1,43 @@
+{
+  "name": "@dev-cor/backend",
+  "version": "0.1.0",
+  "private": true,
+  "scripts": {
+    "db:validate": "prisma validate",
+    "typecheck": "pnpm db:generate && tsc --noEmit",
+    "dev": "pnpm db:generate && node --env-file=.env node_modules/@nestjs/cli/bin/nest.js start --watch",
+    "build": "pnpm db:generate && tsc -p tsconfig.build.json",
+    "test": "jest --runInBand",
+    "db:generate": "prisma generate",
+    "start": "node --env-file=.env dist/main.js",
+    "db:migrate": "node --env-file=.env node_modules/prisma/build/index.js migrate dev"
+  },
+  "dependencies": {
+    "@nestjs/common": "11.2.4",
+    "@nestjs/core": "11.2.4",
+    "@nestjs/platform-express": "11.2.4",
+    "@nestjs/config": "4.0.4",
+    "@nestjs/swagger": "11.4.7",
+    "@prisma/client": "7.10.0",
+    "@prisma/adapter-pg": "7.10.0",
+    "pg": "8.23.0",
+    "reflect-metadata": "0.2.2",
+    "rxjs": "7.8.2",
+    "class-validator": "0.15.1",
+    "class-transformer": "0.5.1"
+  },
+  "devDependencies": {
+    "prisma": "7.10.0",
+    "typescript": "5.9.3",
+    "@types/node": "24.13.4",
+    "@types/express": "5.0.6",
+    "@types/pg": "8.23.1",
+    "@types/jest": "30.0.0",
+    "@types/supertest": "6.0.3",
+    "@nestjs/testing": "11.2.4",
+    "jest": "30.5.1",
+    "supertest": "7.2.2",
+    "ts-jest": "29.4.12",
+    "@nestjs/cli": "11.0.24"
+  }
+}
