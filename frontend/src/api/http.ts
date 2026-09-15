@@ -21,9 +21,25 @@ function isRecord(value: unknown): value is Record<string, unknown> {
   return typeof value === 'object' && value !== null && !Array.isArray(value);
 }
 
-export async function getJson(
+export type JsonValue =
+  null | boolean | number | string | JsonValue[] | { [key: string]: JsonValue };
+export type RequestOptions = { timeoutMs?: number; signal?: AbortSignal };
+export type JsonRequestOptions = RequestOptions &
+  (
+    | { method?: 'GET'; body?: never }
+    | { method: 'POST' | 'PUT' | 'PATCH' | 'DELETE'; body?: JsonValue }
+  );
+
+export function getJson(
   path: string,
-  options: { timeoutMs?: number; signal?: AbortSignal } = {},
+  options: RequestOptions = {},
+): Promise<unknown> {
+  return requestJson(path, { ...options, method: 'GET' });
+}
+
+export async function requestJson(
+  path: string,
+  options: JsonRequestOptions = {},
 ): Promise<unknown> {
   const controller = new AbortController();
   const signal = options.signal
@@ -33,10 +49,20 @@ export async function getJson(
     controller.abort();
   }, options.timeoutMs ?? 30_000);
   try {
+    const bodyText =
+      options.body === undefined ? undefined : JSON.stringify(options.body);
     const response = await fetch(`/api/v1${path}`, {
+      method: options.method ?? 'GET',
       signal,
-      headers: { Accept: 'application/json' },
+      headers: {
+        Accept: 'application/json',
+        ...(bodyText === undefined
+          ? {}
+          : { 'Content-Type': 'application/json' }),
+      },
+      body: bodyText,
     });
+    if (response.status === 204) return undefined;
     let body: unknown;
     try {
       body = await response.json();

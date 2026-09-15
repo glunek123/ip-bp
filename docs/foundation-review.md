@@ -2,6 +2,8 @@
 
 日期：2026-09-15；任务 CTX-001。当前状态和后续工作见 [开发状态](project-status.md)。
 
+本报告保留 CTX-001 当时的欠缺及验证证据。后续通用能力完善、Git 和组件逐项检查见 [FND-002 验收](foundation-improvements.md)；剩余设计统一见 [后续设计清单](deferred-design.md)，不以本报告的历史欠缺作为当前待办。
+
 ## 范围结论
 
 正式工程保持通用技术骨架范围，没有将 Demo 的业务方案提前固化。证据为 backend/src/app.module.ts 仅装配配置和健康模块；backend/prisma/schema.prisma 没有 model；正式源码只有健康接口、数据库连接和技术边界。测试中的 count DTO 与 contract-test Controller 是测试夹具，不进入应用。

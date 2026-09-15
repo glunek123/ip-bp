@@ -1,7 +1,8 @@
 <script setup lang="ts">
 import { computed, onBeforeUnmount, onMounted, ref } from 'vue';
 import { ElButton } from 'element-plus/es/components/button/index.mjs';
-import { ApiError, getJson } from '../api/http';
+import { ApiError } from '../api/http';
+import { getHealth } from '../api/health';
 
 const state = ref<'loading' | 'ready' | 'failed'>('loading');
 const message = ref('正在检查服务与数据库连接…');
@@ -25,17 +26,7 @@ async function checkConnection(): Promise<void> {
   requestId.value = undefined;
   backendReached.value = false;
   try {
-    const data = await getJson('/health', { signal: controller.signal });
-    if (
-      !data ||
-      typeof data !== 'object' ||
-      !('status' in data) ||
-      data.status !== 'ok' ||
-      !('database' in data) ||
-      data.database !== 'up'
-    ) {
-      throw new ApiError('服务返回了无效的连接状态', 200, 'INVALID_RESPONSE');
-    }
+    await getHealth({ signal: controller.signal });
     if (controller.signal.aborted) return;
     backendReached.value = true;
     state.value = 'ready';

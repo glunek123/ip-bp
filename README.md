@@ -8,6 +8,8 @@ Demo 位于 `demo/`，正式工程位于 `frontend/`、`backend/`。当前工程
 
 每次交付同步状态和相关文档，再显式执行 `pnpm context:record`、`pnpm verify`。前者仅记录已核对的文件，后者执行本地交付检查；语义审查与真实测试结果仍须如实记录。历史报告只对其当时版本有效。
 
+收到 Demo 字段或规则文档时，按 [后续设计清单](docs/deferred-design.md)核对输入和待补能力。本地 Git 已建立，代码、文档和快照一起提交；未设置远程仓库或托管 CI。组件兼容范围见 [底座完善验收](docs/foundation-improvements.md)。
+
 ## 本机准备
 
 每个新的 PowerShell 会话在项目根目录先执行：

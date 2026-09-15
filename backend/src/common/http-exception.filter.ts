@@ -7,6 +7,7 @@ import {
 } from '@nestjs/common';
 import { randomUUID } from 'node:crypto';
 import type { Request, Response } from 'express';
+import { errorLocation, requestDiagnostics } from './request-diagnostics';
 
 export type RequestContext = Request & { requestId?: string };
 
@@ -94,6 +95,8 @@ export class HttpExceptionFilter implements ExceptionFilter {
         requestId,
         status,
         code,
+        ...requestDiagnostics(request),
+        location: errorLocation(exception),
         ...diagnosticFields(exception),
       });
     }

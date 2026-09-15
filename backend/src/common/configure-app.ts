@@ -7,6 +7,7 @@ import {
 import { randomUUID } from 'node:crypto';
 import type { NextFunction, Response } from 'express';
 import { HttpExceptionFilter, RequestContext } from './http-exception.filter';
+import { requestDiagnostics } from './request-diagnostics';
 
 export function configureApp(app: INestApplication): void {
   app.setGlobalPrefix('api/v1');
@@ -19,7 +20,7 @@ export function configureApp(app: INestApplication): void {
       logger.log({
         event: 'request_completed',
         requestId: request.requestId,
-        method: request.method,
+        ...requestDiagnostics(request),
         status: response.statusCode,
         durationMs: Date.now() - started,
       });

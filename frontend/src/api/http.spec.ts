@@ -1,11 +1,88 @@
 import { afterEach, describe, expect, it, vi } from 'vitest';
-import { getJson } from './http';
+import { getJson, requestJson } from './http';
 
 afterEach(() => {
   vi.unstubAllGlobals();
 });
 
 describe('HTTP boundary', () => {
+  it.each(['timeout', 'cancel'] as const)(
+    'handles %s while consuming a response body',
+    async (mode) => {
+      const caller = new AbortController();
+      vi.stubGlobal(
+        'fetch',
+        vi.fn((_url: string, init: RequestInit) =>
+          Promise.resolve({
+            status: 200,
+            ok: true,
+            json: () =>
+              new Promise((_resolve, reject) => {
+                init.signal?.addEventListener('abort', () =>
+                  reject(init.signal?.reason),
+                );
+                if (mode === 'cancel') caller.abort();
+              }),
+          }),
+        ),
+      );
+      await expect(
+        requestJson('/example', {
+          method: 'POST',
+          body: {},
+          timeoutMs: 5,
+          signal: caller.signal,
+        }),
+      ).rejects.toMatchObject(
+        mode === 'timeout' ? { code: 'TIMEOUT' } : { name: 'AbortError' },
+      );
+    },
+  );
+  it.each(['POST', 'PUT', 'PATCH', 'DELETE'] as const)(
+    'sends %s JSON once',
+    async (method) => {
+      const fetch = vi.fn().mockResolvedValue(new Response('{"saved":true}'));
+      vi.stubGlobal('fetch', fetch);
+      expect(
+        await requestJson('/example', { method, body: { value: null } }),
+      ).toEqual({ saved: true });
+      expect(fetch).toHaveBeenCalledExactlyOnceWith(
+        '/api/v1/example',
+        expect.objectContaining({
+          method,
+          body: '{"value":null}',
+          headers: {
+            Accept: 'application/json',
+            'Content-Type': 'application/json',
+          },
+        }),
+      );
+    },
+  );
+  it('accepts 204 without trying to parse JSON', async () => {
+    const fetch = vi
+      .fn()
+      .mockResolvedValue(new Response(null, { status: 204 }));
+    vi.stubGlobal('fetch', fetch);
+    expect(await requestJson('/example', { method: 'DELETE' })).toBeUndefined();
+    expect(fetch.mock.calls[0]?.[1].headers).toEqual({
+      Accept: 'application/json',
+    });
+  });
+  it('rejects malformed successful JSON', async () => {
+    vi.stubGlobal('fetch', vi.fn().mockResolvedValue(new Response('broken')));
+    await expect(getJson('/example')).rejects.toMatchObject({
+      code: 'INVALID_RESPONSE',
+    });
+  });
+  it('never retries failed writes', async () => {
+    const fetch = vi.fn().mockRejectedValue(new TypeError('network'));
+    vi.stubGlobal('fetch', fetch);
+    await expect(
+      requestJson('/example', { method: 'POST', body: {} }),
+    ).rejects.toMatchObject({ code: 'NETWORK_ERROR' });
+    expect(fetch).toHaveBeenCalledTimes(1);
+  });
   it('returns parsed JSON on success', async () => {
     vi.stubGlobal(
       'fetch',

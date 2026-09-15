@@ -7,6 +7,23 @@ afterEach(() => {
 });
 
 describe('connection page', () => {
+  it('shows loading and cancels the request on unmount', async () => {
+    let signal: AbortSignal | undefined;
+    vi.stubGlobal(
+      'fetch',
+      vi.fn((_url: string, init: RequestInit) => {
+        signal = init.signal ?? undefined;
+        return new Promise((_resolve, reject) =>
+          signal?.addEventListener('abort', () => reject(signal?.reason)),
+        );
+      }),
+    );
+    const wrapper = mount(HealthPage);
+    expect(wrapper.text()).toContain('正在检查连接');
+    wrapper.unmount();
+    expect(signal?.aborted).toBe(true);
+    await flushPromises();
+  });
   it('does not count a proxy failure as a backend response', async () => {
     vi.stubGlobal(
       'fetch',

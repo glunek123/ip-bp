@@ -24,14 +24,14 @@
 | Node.js        | 项目入口启用后 24.21.0                                                       | 已对齐；Codex 默认命令环境仍可能优先使用自带 24.19.0     |
 | pnpm           | 11.27.0                                                                      | 已对齐，在项目 Node 环境下实测可用                       |
 | npm            | 随项目 Node 分发                                                             | 项目依赖统一使用 pnpm                                    |
-| Git            | 2.54.0.windows.1                                                             | 可用；项目根目录未初始化 .git                            |
+| Git            | 2.54.0.windows.1                                                             | FND-002 已初始化本地 main；无远程                        |
 | Docker CLI     | 29.5.3                                                                       | 客户端可用                                               |
 | Docker Compose | 5.1.4                                                                        | 客户端可用                                               |
 | Docker 引擎    | Linux Server 29.5.3                                                          | 引擎连接成功，已创建项目开发与测试 PostgreSQL 容器       |
 | PostgreSQL     | PATH 未找到 psql；未发现匹配的 Windows 服务、所查常见安装目录或 5432 监听    | 未确认可用数据库；不代表磁盘其他位置一定没有安装         |
 | 外部元数据     | npm registry、Node 官方发布页、PostgreSQL 官方版本页和 Docker Hub 标签可访问 | 完成版本查询；一次长响应连接中断后改用精简元数据重试成功 |
 
-本次收尾安装了用户目录下的项目专用 Node 24.21.0，并复核此前已升级的 pnpm 11.27.0。项目入口仅调整当前 PowerShell 的 PATH，不修改系统或用户永久 PATH，不替换 Codex 内置运行时。第三步已创建数据库；尚未初始化 Git 仓库或设置远程。
+本次收尾安装了用户目录下的项目专用 Node 24.21.0，并复核此前已升级的 pnpm 11.27.0。项目入口仅调整当前 PowerShell 的 PATH，不修改系统或用户永久 PATH，不替换 Codex 内置运行时。第三步已创建数据库；FND-002 已初始化本地 Git，基线提交 046f8be，无远程或托管 CI。
 
 ## 3. 版本基线
 
@@ -66,7 +66,7 @@
 - 第二步检查仅覆盖引擎与 peer 声明；第三步已补充实际依赖安装、构建、浏览器、Prisma 生成和真实数据库连接验证。业务迁移尚无 schema，未执行。
 - `.node-version` 写入 24.21.0，供版本管理工具使用；它不会自动升级或切换当前 PowerShell 的 Node。
 - `.npmrc` 固定准确保存版本、严格引擎检查和严格 peer 检查；后续实际安装需使用项目根目录配置。
-- 根 package.json 已固定 packageManager、engines，前后端包使用准确依赖版本；根 pnpm-lock.yaml 已生成并验证冻结安装。尚未进行 Git 提交。
+- 根 package.json 已固定 packageManager、engines，前后端包使用准确依赖版本；根 pnpm-lock.yaml 已生成并验证冻结安装。本地 Git 基线已保存；后续提交与验证见 [开发状态](project-status.md)。
 
 ## 5. 第三步落实结果
 
