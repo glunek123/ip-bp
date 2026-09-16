@@ -41,8 +41,19 @@ const COURTS = [
 const PLATFORMS = ['淘宝', '拼多多', '京东', '天猫', '抖音', '小红书', '快手', '1688', '闲鱼', '美团', '大众点评', '地图', '其他'];
 /* 线索侧平台清单（v117b）：新建线索 / 编辑线索共用这一份。
    线索侧比案件侧多一个「微信」—— 此前这两处各自手写了一份一模一样的数组，
-   加平台时漏改过一处（2026-09-13），故收成单一来源，不要再另写副本。 */
-const LEAD_PLATFORMS = ['淘宝', '天猫', '拼多多', '京东', '抖音', '1688', '小红书', '快手', '微信', '闲鱼', '美团', '大众点评', '地图', '其他'];
+   加平台时漏改过一处（2026-09-13），故收成单一来源，不要再另写副本。
+   v156（用户口径）：按「线索来源」拆成线上 / 线下两份 ——
+     线上 = 淘宝 天猫 拼多多 京东 抖音 1688 小红书 快手 闲鱼 微信 其他
+     线下 = 美团 大众点评 地图 其他
+   新建 / 编辑线索的联动都走 leadPlatformsOf(source) 这个唯一判定口，不要再各写一份。 */
+const LEAD_PLATFORMS_ONLINE  = ['淘宝', '天猫', '拼多多', '京东', '抖音', '1688', '小红书', '快手', '闲鱼', '微信', '其他'];
+const LEAD_PLATFORMS_OFFLINE = ['美团', '大众点评', '地图', '其他'];
+// 合集：线上在前，线下独有项追加在后（无来源上下文的旧入口 / CSV 导入兜底用）
+const LEAD_PLATFORMS = LEAD_PLATFORMS_ONLINE.concat(LEAD_PLATFORMS_OFFLINE.filter(x => LEAD_PLATFORMS_ONLINE.indexOf(x) < 0));
+/* v156：线索来源 → 平台下拉内容的**唯一判定口**（新建 / 编辑线索共用） */
+function leadPlatformsOf(source) {
+  return String(source || '') === '线下' ? LEAD_PLATFORMS_OFFLINE.slice() : LEAD_PLATFORMS_ONLINE.slice();
+}
 // v11.2 创建案件：案由下拉
 // v95 侵权类型：单选 / 多选共用一套枚举（下拉勾选面板），落库为顿号分隔字符串，如「商标权、信息网络传播权」
 const INFRINGE_TYPES = ['商标权', '软件著作权', '美术作品著作权', '视听作品著作权', '文字作品著作权',
@@ -67,6 +78,9 @@ const CASES = [
     statusClass: 'pill-info',
     hearingAt: '2026-09-11',   // 仅兜底：运行时由 defaultState() 按「今天 +12 天」覆盖，避免写死日期过期后被自动流转
     hearingPlace: '广州知识产权法院 · 第七法庭',
+    // v156：保全演示数据（保全费 1,120 / 保全保费 120 由 caseExtras 按标的额派生进「费用明细」）
+    preserveDoc: '保全申请书-IP-20260315-001.pdf',
+    preserveAt: '2026-04-18',
     updated: '2 小时前',
   },
   {
@@ -585,25 +599,21 @@ function formModal({ title, fields, submitText = '保存', onSubmit, wide = fals
     const spanAttr = (!isFull && spanN > 1) ? ` style="grid-column:span ${spanN};"` : '';
     let input;
     if (f.type === 'file') {
-      // 只读框显示所选文件名 + 上传按钮 + 隐藏 file input（与阶段表单 stageUploadHTML 同款交互）
-      // v143：f.multiple 支持多选，文件名以「、」拼接；上传按钮文案相应改为「添加」
-      // v145：f.clear 提供「清除」按钮 —— 此前 file 字段只能整框替换，删除不了已上传的文件。
-      const multi = f.multiple ? ' multiple' : '';
-      const btnTxt = f.multiple ? '添加' : '上传';
-      const clearBtn = f.clear
-        ? `<button type="button" class="btn btn-ghost btn-sm" style="white-space:nowrap;" onclick="clearFileField('${f.key}')">清除</button>`
-        : '';
-      input = `<div style="display:flex;gap:8px;">
-        <input class="form-input" data-k="${f.key}" value="${esc(f.value || '')}" readonly placeholder="点击「${btnTxt}」选择文件">
-        <button type="button" class="btn btn-secondary btn-sm" style="white-space:nowrap;" onclick="document.getElementById('mff-${f.key}').click()">${btnTxt}</button>
-        <input type="file" id="mff-${f.key}" style="display:none"${multi} onchange="formFilePicked(this,'${f.key}')">
-        ${clearBtn}
-      </div>`;
+      // v143：f.multiple 多选（文件名以「、」拼接）；v145：f.clear 一键清除；v156：f.editable 可手填。
+      // v157：实现统一到 docUploadHTML —— 虚线加号框（点击 / 拖拽上传）+ 已上传文件卡片（右上角下载 / 删除），
+      //   上面三项能力全部保留（多选追加、可手填、清除按钮）。
+      input = docUploadHTML({
+        key: f.key, attr: 'data-k', val: f.value || '',
+        multiple: !!f.multiple, editable: !!f.editable, clear: !!f.clear,
+        accept: f.accept || '',
+        placeholder: f.editable ? '可直接填写，也可点「上传」选择文件（多个用「、」分隔）' : '',
+      });
     } else if (f.type === 'select') {
       // v110：f.placeholder 存在时前置一个空值占位项（如「请选择快递公司」）。
       // 没有它，浏览器会自动选中首个真实选项 —— 用户不动它直接保存就会把该值静默写进数据。
       const ph = f.placeholder ? `<option value="">${esc(f.placeholder)}</option>` : '';
-      input = `<select class="form-select" data-k="${f.key}">${ph}${f.options.map(o =>
+      // v156：f.onchange 支持联动（如「线索来源」变 → 重建「平台」选项）
+      input = `<select class="form-select" data-k="${f.key}"${f.onchange ? ` onchange="${f.onchange}"` : ''}>${ph}${f.options.map(o =>
         `<option value="${esc(o)}"${o === f.value ? ' selected' : ''}>${esc(o)}</option>`).join('')}</select>`;
     } else if (f.type === 'custom') {
       // v111：自定义区块 —— 承载「可增删多行」这类 formModal 原生字段装不下的控件。
@@ -690,7 +700,10 @@ function fillAssetFormFromDoc(name, text) {
 
 /* ---------- 持久化 ---------- */
 const SK = 'ipcase_demo_v2';
-const SAVE_VER = 21;   // v21：v151 费用记录新增 dir/src/proof、状态枚举扩「未发起 / 退原告 / 退律所」、
+const SAVE_VER = 25;   // v25：v157 案件新增 secondResult / secondJudgeGotAt / secondJudgeAmt / secondPaidFee / secondRefunds / secondInstanceAppellants（二审结果口径）
+                       //      （v155 那轮是公证种子补 archiveAt / archiveType / archiveReason）
+                       //      老存档重播种 —— 否则新字段全是空、文件管理里「保全文书」永远是灰的
+                       // v21：v151 费用记录新增 dir/src/proof、状态枚举扩「未发起 / 退原告 / 退律所」、
                        //      案件 expenses 新增 feeId 关联键（费用明细与费用中心同源），老存档必须重播种
                        // v15：匹配律师表单接入律师库（检索选择 + 律所名称/律师地址自动带入），新增 case.lawyerFirm/lawyerAddr，需重播种
                       // v8：案件明细（被告/费用/链接/时间轴）改为按案件派生，旧存档是共用模板值，必须丢弃重播种
@@ -912,6 +925,25 @@ function caseLog(c) {
   });
 }
 
+/* v156：保全费 / 保全保费的演示口径（只用于种子派生，两个数都按标的额算）
+   · 保全费按《诉讼费用交纳办法》财产案件保全费阶梯：1000 元以下 30 元；
+     1000 元 ~ 10 万元的部分 1%；10 万元以上部分 0.5%；上限 5000 元；
+   · 保全保费 = 诉责险保费，按标的额 0.1% 估（不足 100 元按 100 元计）。
+   真实数据以「费用管理 · 费用明细」里录入的为准 —— 这里只是让演示有数。 */
+function preserveFeeSeed(a) {
+  const amt = Number(a) || 0;
+  let v = 30;
+  if (amt > 1000) {
+    v = 30 + (Math.min(amt, 100000) - 1000) * 0.01;    // 1000 元 ~ 10 万元部分：1%
+    if (amt > 100000) v += (amt - 100000) * 0.005;     // 10 万元以上部分：0.5%
+  }
+  return Math.min(5000, Math.max(30, Math.round(v / 10) * 10));
+}
+function preservePremiumSeed(a) {
+  const amt = Number(a) || 0;
+  return Math.max(100, Math.round(amt * 0.001 / 10) * 10);
+}
+
 /* 案件明细：按案件逐条派生，每个案件独立持有一份，改动互不影响
    被告 / 费用 / 侵权链接 / 时间轴都由案件自身字段（店铺、标的额、客户行业、阶段）推导 */
 function caseExtras(c) {
@@ -967,6 +999,11 @@ function caseExtras(c) {
     mkExp('公证费', (c.type === '公证' ? int(18, 30) : int(8, 20)) * 100),
     mkExp('样品费', int(120, 890)),
   ];
+  // v156：保全费 / 保全保费 —— 保全发生在立案之后（诉中保全），立案前的案件不生成
+  if (!pre) {
+    expenses.push(mkExp('保全费', preserveFeeSeed(a)));
+    expenses.push(mkExp('保全保费', preservePremiumSeed(a)));
+  }
 
   /* --- 侵权商品链接：销售总额围绕标的额浮动，商品名随客户行业变 --- */
   const pool = productPool(c.client);
@@ -1857,7 +1894,8 @@ function caseStageForm(id) {
     extraBtns: isFormal ? [
       { label: '保存', onClick: () => { if (submitCaseStage(id, { saveOnly: true }) !== false) closeModal(); } },
       { label: '发起缴费', onClick: () => openPayFeeInit(id) },
-    ] : (isExecUpdate || isArchive ? [
+    ] : (isExecUpdate || isArchive || isSecond ? [
+      // v157：二审更新弹窗「提交」旁补「保存」—— 只落库二审文书信息、不流转（与「强制执行中 / 待归档」同款）
       { label: '保存', onClick: () => { if (submitCaseStage(id, { saveOnly: true }) !== false) closeModal(); } },
     ] : null),
     bodyHTML: `
@@ -1865,7 +1903,7 @@ function caseStageForm(id) {
       ${st.key === '待归档' ? '<div class="form-hint">客户结算金额 = 按该客户「结算条件」公式自动计算；律师结算金额 = 按该案「律师协议」（结算模式 / 基础费 / 分成比例）自动计算。两个金额都可在右侧「修改」里调整，鼠标悬停金额可查看计算过程。点击「保存」保存结案 / 付款 / 退费状态信息；案件停留在待归档。</div>' : ''}
       ${st.key === '待判决' ? '<div class="form-hint">上传判决书后自动识别判决金额 / 实缴诉讼费 / 诉讼退费；提交前需二次确认，确认后案件停留「待判决」，可点「二审抉择」选择转执行或进入二审。</div>' : ''}
       ${isExecConfirm ? '<div class="form-hint">请核对并修改执行申请材料内容，确认无误后提交；本弹窗需显式点击「取消」或「提交」才会关闭。</div>' : ''}
-      ${isSecond ? '<div class="form-hint">提交后请选择二审裁判结果：发回重审 或 维持原判。</div>' : ''}`,
+      ${isSecond ? '<div class="form-hint">「保存」只记录本次二审信息、案件仍停留「二审」；「提交」后请选择二审裁判结果：发回重审 / 改判 / 维持原判。</div>' : ''}`,
     onSubmit: () => {
       const r = st.key === '待判决' ? judgeUpdateSubmit(id)
         : isSecond ? secondUpdateSubmit(id)
@@ -1878,15 +1916,134 @@ function caseStageForm(id) {
   if (st.key === '案件待匹配') syncLawyerMode();
 }
 
+/* ---------- v157：统一文书上传控件（全项目一处实现） ----------
+   样式：左侧 = 已上传文件卡片（右上角悬浮「下载 / 删除」两个圆形图标）；右侧 = 虚线加号框（点击选文件，也可把文件拖进来）。
+   值承载：隐藏 input（attr = data-fk / data-k），多个文件名以「、」拼接 —— 与老实现完全一致，
+   所以 submitCaseStage / formModal 的取值逻辑、文件管理清单都不用改；
+   可手填字段（f.editable，现仅「侵权截图」在用）保留可见输入框，手填与上传写的是同一个值。
+   （v158：保全登记的「保全文书」已不再手填 —— 只留上传框，值由隐藏 input 承载。）
+   文件框 id 仍沿用老命名（阶段表单 sup-<k>、formModal mff-<key>），历史断言与外部引用继续可用。 */
+const DOC_SVG_DOWN  = '<svg width="12" height="12" viewBox="0 0 16 16" fill="none"><path d="M8 2.5v8m0 0l-3-3m3 3l3-3M3.5 13h9" stroke="currentColor" stroke-width="1.6" stroke-linecap="round" stroke-linejoin="round"/></svg>';
+const DOC_SVG_TRASH = '<svg width="12" height="12" viewBox="0 0 16 16" fill="none"><path d="M3 4.5h10M6.5 4.5V3h3v1.5M4.8 4.5l.6 8.5h5.2l.6-8.5" stroke="currentColor" stroke-width="1.4" stroke-linecap="round" stroke-linejoin="round"/></svg>';
+const DOC_SVG_FILE  = '<svg width="28" height="28" viewBox="0 0 32 32" fill="none"><path d="M8 4h11l5 5v19H8z" stroke="currentColor" stroke-width="1.5" stroke-linejoin="round"/><path d="M19 4v5h5" stroke="currentColor" stroke-width="1.5" stroke-linejoin="round"/></svg>';
+
+// 文件名统一解析：既吃数组（filingDocs）也吃「、」拼接的字符串（data-fk / data-k 落库形态）
+function docNamesOf(v) {
+  return (Array.isArray(v) ? v : String(v == null ? '' : v).split('、'))
+    .map(x => String(x).trim()).filter(Boolean);
+}
+// 找控件根（同一屏内 key + attr 唯一，不会串）：先弹窗内，再退回全局（一审卡片里的「调档文件」不在弹窗里）
+function docRootOf(key, attr) {
+  return document.querySelector('#modal-body [data-doc-up][data-doc-key="' + key + '"][data-doc-attr="' + attr + '"]')
+    || document.querySelector('[data-doc-up][data-doc-key="' + key + '"][data-doc-attr="' + attr + '"]');
+}
+/* 统一渲染口：o = { key, attr, val, accept, multiple, editable, clear, placeholder } */
+function docUploadHTML(o) {
+  o = o || {};
+  const key = String(o.key || '');
+  const attr = o.attr || 'data-fk';
+  const names = docNamesOf(o.val);
+  const accept = o.accept ? ' accept="' + esc(o.accept) + '"' : '';
+  const multiAttr = o.multiple ? ' multiple' : '';
+  const inpId = (attr === 'data-k' ? 'mff-' : 'sup-') + key;
+  const kEsc = esc(key), aEsc = esc(attr);
+  // v157：此处刻意用字符串拼接而非模板插值 —— 让扫描器（_scan_dead）拿到的是运行时可查的真实 id，
+  //   不会出现「id=\"\"${...}\"\" 被解析成空前缀」从而把所有按钮都误判成文件选择器的假绿。
+  const valInput = o.editable
+    ? '<input class="form-input" ' + attr + '="' + kEsc + '" data-upload="1" data-doc-val value="' + esc(names.join('、'))
+      + '" placeholder="' + esc(o.placeholder || '可直接填写，也可上传文件') + '" oninput="docRefresh(\'' + kEsc + '\',\'' + aEsc + '\')">'
+    : '<input type="hidden" ' + attr + '="' + kEsc + '" data-upload="1" data-doc-val value="' + esc(names.join('、')) + '">';
+  return '<div class="doc-up" data-doc-up data-doc-key="' + kEsc + '" data-doc-attr="' + aEsc + '"'
+    + (o.multiple ? ' data-doc-multi="1"' : '') + '>'
+    + valInput
+    + '<div class="doc-up-list" data-doc-list>' + docFileCardsHTML(names, key, attr) + '</div>'
+    + '<button type="button" class="doc-drop" data-doc-drop'
+    + ' onclick="document.getElementById(\'' + esc(inpId) + '\').click()"'
+    + ' ondragover="docDragOver(event,this)" ondragleave="docDragLeave(this)"'
+    + ' ondrop="docDrop(event,\'' + kEsc + '\',\'' + aEsc + '\')">'
+    + '<span class="doc-drop-plus">+</span><span class="doc-drop-txt">上传</span></button>'
+    + (o.clear ? '<button type="button" class="btn btn-ghost btn-sm doc-clear" onclick="clearFileField(\'' + kEsc + '\')">清除</button>' : '')
+    + '<input type="file" id="' + esc(inpId) + '" style="display:none"' + multiAttr + accept
+    + ' onchange="docFilePicked(this,\'' + kEsc + '\',\'' + aEsc + '\')">'
+    + '</div>';
+}
+// 文件卡片（已上传的每个文件名一张；右上角悬浮「下载 / 删除」）
+// removeCall：可选，给出后用它当删除动作（卡片型场景如「调档文件」→ removeFilingDoc）；不给则走表单版 docRemoveFile
+function docFileCardsHTML(names, key, attr, removeCall) {
+  return names.map(n => {
+    const del = removeCall ? removeCall(n)
+      : ('docRemoveFile(\'' + esc(n) + '\',\'' + esc(key) + '\',\'' + esc(attr) + '\')');
+    return '<div class="doc-file" title="' + esc(n) + '">'
+      + '<div class="doc-file-thumb">' + DOC_SVG_FILE + '</div>'
+      + '<div class="doc-file-name">' + esc(n) + '</div>'
+      + '<div class="doc-file-ops">'
+      + '<button type="button" title="下载" onclick="event.stopPropagation();docDownload(\'' + esc(n) + '\')">' + DOC_SVG_DOWN + '</button>'
+      + '<button type="button" title="删除" onclick="event.stopPropagation();' + del + '">' + DOC_SVG_TRASH + '</button>'
+      + '</div></div>';
+  }).join('');
+}
+// 重绘某个上传控件里的文件卡片（值变了就调它）
+function docRefresh(key, attr) {
+  const root = docRootOf(key, attr); if (!root) return;
+  const valEl = root.querySelector('[data-doc-val]');
+  const names = docNamesOf(valEl ? valEl.value : '');
+  const list = root.querySelector('[data-doc-list]');
+  if (list) list.innerHTML = docFileCardsHTML(names, key, attr);
+  // 值回写：删除 / 手填后同步（多个用「、」）
+  if (valEl && valEl.value !== names.join('、')) valEl.value = names.join('、');
+}
+// 选文件（点击 / 拖拽都汇到这里）
+function docFilePicked(inp, key, attr) {
+  if (attr === 'data-k') formFilePicked(inp, key);   // formModal 字段：复用老逻辑（多选追加 + 识别回调）
+  else stageFilePicked(inp, key);                    // 阶段表单字段：复用老逻辑（判决书自动识别金额）
+  docRefresh(key, attr);
+}
+function docApplyNames(key, attr, names) {
+  if (!names || !names.length) return;
+  const root = docRootOf(key, attr);
+  const valEl = root ? root.querySelector('[data-doc-val]')
+    : document.querySelector('#modal-body [' + attr + '="' + key + '"]');
+  if (!valEl) return;
+  const multi = !!(root && root.getAttribute('data-doc-multi') === '1');
+  if (multi) {
+    const cur = docNamesOf(valEl.value);
+    names.forEach(n => { if (cur.indexOf(n) < 0) cur.push(n); });
+    valEl.value = cur.join('、');
+  } else {
+    valEl.value = names[names.length - 1];
+  }
+  docRefresh(key, attr);
+}
+function docDragOver(e, el) { try { e.preventDefault(); } catch (_) {} try { el.classList.add('drag'); } catch (_) {} }
+function docDragLeave(el) { try { el.classList.remove('drag'); } catch (_) {} }
+function docDrop(e, key, attr) {
+  try { e.preventDefault(); } catch (_) {}
+  const el = e && e.currentTarget;
+  if (el && el.classList) el.classList.remove('drag');
+  const fl = (e && e.dataTransfer && e.dataTransfer.files) ? Array.prototype.slice.call(e.dataTransfer.files) : [];
+  const names = fl.map(f => f && f.name).filter(Boolean);
+  if (names.length) docApplyNames(key, attr, names);
+}
+// 删除一个文件（卡片右上角垃圾桶）
+function docRemoveFile(name, key, attr) {
+  const root = docRootOf(key, attr); if (!root) return;
+  const valEl = root.querySelector('[data-doc-val]'); if (!valEl) return;
+  valEl.value = docNamesOf(valEl.value).filter(n => n !== name).join('、');
+  docRefresh(key, attr);
+}
+// 下载（演示环境没有真实文件，走提示；真实接入时换成 a[download] 即可）
+function docDownload(name) {
+  toast('开始下载', name || '文件');
+}
+
 /* ---------- 阶段表单：图片 / 文件上传控件（立案截图=图片，证据材料=文件） ---------- */
-// 展示层：只读输入框显示已上传文件名 + 上传按钮 + 隐藏 file input；真实文件名写进 data-fk 输入框，随表单一并收集
+// v157：实现已统一到 docUploadHTML —— 这里只做「阶段表单字段」到统一控件的薄映射
 function stageUploadHTML(f, val) {
-  const acc = f.type === 'image' ? ' accept="image/*"' : '';
-  return `<div style="display:flex;gap:8px;">
-    <input class="form-input" data-fk="${f.k}" data-upload="1" value="${esc(val)}" readonly placeholder="点击「上传」选择${f.type === 'image' ? '图片' : '文件'}">
-    <button type="button" class="btn btn-secondary btn-sm" style="white-space:nowrap;" onclick="document.getElementById('sup-${f.k}').click()">上传</button>
-    <input type="file" id="sup-${f.k}" style="display:none"${acc} onchange="stageFilePicked(this,'${f.k}')">
-  </div>`;
+  return docUploadHTML({
+    key: f.k, attr: 'data-fk', val: val,
+    accept: f.type === 'image' ? 'image/*' : '',
+    multiple: !!f.multiple,
+  });
 }
 function stageFilePicked(inp, k) {
   const file = ((inp.files || [])[0]) || {};
@@ -1964,6 +2121,13 @@ function uploadFilingDocs(caseId) {
   };
   inp.click();
 }
+// v157：调档文件卡片右上角「删除」—— 从 c.filingDocs 移除该文件并重绘详情
+function removeFilingDoc(caseId, name) {
+  const c = (STATE.cases || []).find(x => x.id === caseId); if (!c) return;
+  c.filingDocs = (Array.isArray(c.filingDocs) ? c.filingDocs : []).filter(n => n !== name);
+  if (typeof renderCaseDetail === 'function') renderCaseDetail();
+  toast('已删除调档文件', name || '', 'info');
+}
 
 /* ---------- 一审信息卡：起诉状（v145 起支持多文件） ---------- */
 // 主存 c.authDocs（数组）；旧的单值 c.authDoc 自动兼容。返回去重后的文件名数组。
@@ -1974,45 +2138,54 @@ function authDocsOf(c) {
   var s = String(c.authDoc || '').trim();
   return s ? s.split(/[、,，]/).map(x => x.trim()).filter(Boolean) : [];
 }
-// 字段「清除」按钮：清空同组 file 字段的只读框（保存时按空值回写 → 即删除）
-function clearFileField(key) {
-  const el = document.querySelector('#modal-body [data-k="' + key + '"]');
+// 字段「清除」按钮：清空同组 file 字段的承载值（保存时按空值回写 → 即删除）
+// v157：支持 attr 参数（data-k = formModal 字段；data-fk = 阶段表单字段），并在清空后同步重绘文件卡片
+function clearFileField(key, attr) {
+  const a = attr || 'data-k';
+  const el = document.querySelector('#modal-body [' + a + '="' + key + '"]');
   if (el) el.value = '';
+  docRefresh(key, a);
 }
 
 /* ---------- 待判决「判决更新」：诉讼退费多笔编辑（含退费状态） ---------- */
 const REFUND_STATUSES = ['待退', '已提交', '已退未结算', '已结算', '已回款'];
-function refundRowHTML(r) {
+// v157：退费多笔控件参数化 —— pfx 为空 = 待判决那套（id 仍是 refund-rows / refund-total，老调用与老断言不受影响）；
+//   pfx='sec-' = 二审结果表单那套（sec-refund-rows / sec-refund-total），同屏两套互不干扰。
+//   注意参数顺序：可选参数一律排在最后（addRefundRow(r, pfx)），保证历史调用 addRefundRow({...}) 仍然正确。
+function refundRowHTML(r, pfx) {
   r = r || {};
+  const p = pfx || '';
   const stOpts = REFUND_STATUSES.map(s => `<option${(r.status || '待退') === s ? ' selected' : ''}>${s}</option>`).join('');
   return `<div class="refund-row" style="display:grid;grid-template-columns:1fr 1.2fr 1fr auto;gap:6px;margin-bottom:6px;">
     <select class="form-select" data-rk="from">
       <option${r.from === '被告' ? ' selected' : ''}>被告</option>
       <option${r.from === '法院' ? ' selected' : ''}>法院</option>
     </select>
-    <input class="form-input" placeholder="退费金额（元）" data-rk="amt" value="${r.amt || ''}" oninput="updateRefundTotal()">
+    <input class="form-input" placeholder="退费金额（元）" data-rk="amt" value="${r.amt || ''}" oninput="updateRefundTotal('${p}')">
     <select class="form-select" data-rk="status">${stOpts}</select>
-    <button type="button" class="btn btn-ghost btn-sm" onclick="this.closest('.refund-row').remove();updateRefundTotal();">删除</button>
+    <button type="button" class="btn btn-ghost btn-sm" onclick="this.closest('.refund-row').remove();updateRefundTotal('${p}');">删除</button>
   </div>`;
 }
-function refundsHTML(c) {
-  const list = Array.isArray(c.refunds) ? c.refunds : [];
-  return `<div id="refund-rows">${list.map(r => refundRowHTML(r)).join('')}</div>
-    <button type="button" class="btn btn-secondary btn-sm" onclick="addRefundRow()">+ 增加一笔退费</button>
-    <div style="margin-top:8px;font-size:13px;">退费合计：<b id="refund-total">${money0(list.reduce((a, r) => a + (Number(r.amt) || 0), 0))}</b></div>`;
+function refundsHTML(c, list, pfx) {
+  const p = pfx || '';
+  const arr = Array.isArray(list) ? list : (Array.isArray(c && c.refunds) ? c.refunds : []);
+  return `<div id="${p}refund-rows">${arr.map(r => refundRowHTML(r, p)).join('')}</div>
+    <button type="button" class="btn btn-secondary btn-sm" onclick="addRefundRow(null,'${p}')">+ 增加一笔退费</button>
+    <div style="margin-top:8px;font-size:13px;">退费合计：<b id="${p}refund-total">${money0(arr.reduce((a, r) => a + (Number(r.amt) || 0), 0))}</b></div>`;
 }
-function addRefundRow(r) {
-  const box = document.getElementById('refund-rows'); if (!box) return;
-  box.insertAdjacentHTML('beforeend', refundRowHTML(r || {}));
+function addRefundRow(r, pfx) {
+  const box = document.getElementById((pfx || '') + 'refund-rows'); if (!box) return;
+  box.insertAdjacentHTML('beforeend', refundRowHTML(r || {}, pfx));
 }
-function updateRefundTotal() {
-  const box = document.getElementById('refund-rows'); if (!box) return;
+function updateRefundTotal(pfx) {
+  const p = pfx || '';
+  const box = document.getElementById(p + 'refund-rows'); if (!box) return;
   let t = 0;
   box.querySelectorAll('.refund-row').forEach(row => { t += Number((row.querySelector('[data-rk="amt"]') || {}).value || 0) || 0; });
-  const el = document.getElementById('refund-total'); if (el) el.textContent = money0(t);
+  const el = document.getElementById(p + 'refund-total'); if (el) el.textContent = money0(t);
 }
-function collectRefunds(scope) {
-  const box = (scope || document).querySelector('#refund-rows'); const rows = [];
+function collectRefunds(scope, pfx) {
+  const box = (scope || document).querySelector('#' + (pfx || '') + 'refund-rows'); const rows = [];
   if (box) box.querySelectorAll('.refund-row').forEach(row => {
     const from = ((row.querySelector('[data-rk="from"]') || {}).value) || '法院';
     const amt = Number((row.querySelector('[data-rk="amt"]') || {}).value || 0) || 0;
@@ -2194,7 +2367,27 @@ function secondInstanceEnterForm(id) {
   });
 }
 
-/* ---------- 二审「二审更新」提交：先收值，再弹窗选择 发回重审 / 维持原判 ---------- */
+/* ---------- 二审判定口（唯一判定处） ---------- */
+// v157：上诉人是否为我方（原告）——决定二审结果表单里「二审诉讼退费」这一栏是否出现
+//   用户在「进入二审」弹窗选的 secondInstanceAppellants.role 为准；演示种子只写了 secondInstanceBy 文本，故做文本兜底
+function secondAppellantIsPlaintiff(c) {
+  const app = c && c.secondInstanceAppellants;
+  if (app && typeof app === 'object' && app.role) return app.role === 'plaintiff';
+  return String((c && c.secondInstanceBy) || '').indexOf('原告') >= 0;
+}
+// v157：二审进展 4 态 —— 二审进行中 / 发回重审 / 维持原判 / 改判（由「二审更新」提交时选择的裁判结果决定）
+const SECOND_PROGRESSES = ['二审进行中', '发回重审', '维持原判', '改判'];
+function secondProgressOf(c) {
+  const r = String((c && c.secondResult) || '');
+  return SECOND_PROGRESSES.indexOf(r) > 0 ? r : '二审进行中';
+}
+// v157：是否已进入二审流程 —— 「二审信息」面板显隐 / 「判决信息」是否拆两段，都以此为准（原先两处各写一套判定）
+function hasSecondInstance(c) {
+  return !!(c && (c.secondResult || c.secondJudgeGotAt || c.secondJudgeDoc
+    || c.secondJudge || c.secondDoc || c.secondHearingAt || c.secondHearingPlace || c.secondServiceDoc));
+}
+
+/* ---------- 二审「二审更新」提交：先收值，再弹窗选择 发回重审 / 改判 / 维持原判 ---------- */
 let SECOND_UPDATE_PENDING = {};   // 案件id -> 二审更新表单收集值（选择分支时取用）
 function secondUpdateSubmit(id) {
   const c = STATE.cases.find(x => x.id === id); if (!c) return false;
@@ -2216,22 +2409,23 @@ function secondUpdateSubmit(id) {
 
 function openSecondUpdateChoice(id) {
   const c = STATE.cases.find(x => x.id === id); if (!c) return;
+  const hasRefund = secondAppellantIsPlaintiff(c);
+  // v157：三项分支（发回重审 / 改判 / 维持原判）。退费字段的有无随「上诉人是否我方」变化，卡片说明里同步提示。
+  const card = (t, desc, cls, fn) => `
+    <div style="border:1px solid var(--color-hairline);border-radius:10px;padding:16px;display:flex;flex-direction:column;">
+      <div style="font-weight:600;margin-bottom:6px;">${t}</div>
+      <div style="color:var(--color-ink-muted);font-size:13px;line-height:1.6;flex:1;">${desc}</div>
+      <button class="btn ${cls}" style="margin-top:12px;" onclick="${fn}('${esc(c.id)}')">${t}</button>
+    </div>`;
   openModal({
     title: '二审更新', wide: true,
     okText: '', cancelBtn: true,
     bodyHTML: `
       <div class="lead-detail-section">二审信息已更新 · 请选择裁判结果</div>
-      <div style="display:grid;grid-template-columns:1fr 1fr;gap:12px;">
-        <div style="border:1px solid var(--color-line);border-radius:10px;padding:16px;">
-          <div style="font-weight:600;margin-bottom:6px;">发回重审</div>
-          <div style="color:var(--color-ink-muted);font-size:13px;line-height:1.6;">二审裁定发回重审，案件流转「待正式立案」，重新走立案流程。</div>
-          <button class="btn btn-primary" style="margin-top:12px;" onclick="secondUpdateRetrial('${esc(c.id)}')">发回重审</button>
-        </div>
-        <div style="border:1px solid var(--color-line);border-radius:10px;padding:16px;">
-          <div style="font-weight:600;margin-bottom:6px;">维持原判</div>
-          <div style="color:var(--color-ink-muted);font-size:13px;line-height:1.6;">二审维持原判，上传二审判决书后流转「待写执行材料」。</div>
-          <button class="btn btn-secondary" style="margin-top:12px;" onclick="secondUpdateAffirmForm('${esc(c.id)}')">维持原判</button>
-        </div>
+      <div style="display:grid;grid-template-columns:repeat(3,1fr);gap:12px;">
+        ${card('发回重审', '二审裁定发回重审，案件流转「待正式立案」，重新走立案流程。', 'btn-secondary', 'secondUpdateRetrial')}
+        ${card('改判', '二审改判：填收到二审判决日期 / 二审判决书 / 二审判决金额 / 二审实缴诉讼费' + (hasRefund ? ' / 二审诉讼退费' : '') + '，流转「待写执行材料」。', 'btn-primary', 'secondUpdateChangeForm')}
+        ${card('维持原判', '二审维持原判：填收到二审判决日期 / 二审判决书 / 二审实缴诉讼费' + (hasRefund ? ' / 二审诉讼退费' : '') + '，流转「待写执行材料」。', 'btn-secondary', 'secondUpdateAffirmForm')}
       </div>`,
   });
 }
@@ -2247,6 +2441,7 @@ function secondUpdateRetrial(id) {
   const c = STATE.cases.find(x => x.id === id); if (!c) return;
   const val = SECOND_UPDATE_PENDING[id] || {}; delete SECOND_UPDATE_PENDING[id];
   secondApplyVals(c, val);
+  c.secondResult = '发回重审';
   c.status = '转正式立案'; c.stageCls = 'pill-warning';
   c.updated = today();
   pushCaseTimeline(c, '二审更新：发回重审 → 待正式立案（重新立案）');
@@ -2255,36 +2450,66 @@ function secondUpdateRetrial(id) {
   toast('已发回重审', '二审 → 待正式立案');
 }
 
-// 维持原判：必填上传二审判决书 → 待写执行材料
-function secondUpdateAffirmForm(id) {
+/* v157：二审结果表单 —— 改判 / 维持原判共用一套（照「判决更新」模板排版）。
+   字段：收到二审判决日期 + [改判才有]二审判决金额 + 二审实缴诉讼费 + [上诉人是我方才有]二审诉讼退费（可多笔）+ 二审判决书。
+   金额只在 c.second* 上存一份；「二审诉讼退费」复用待判决那套多笔退费控件（容器 id 加 sec- 前缀避免与判决更新撞车）。 */
+function openSecondResultForm(id, mode) {
   const c = STATE.cases.find(x => x.id === id); if (!c) return;
+  const isChange = mode === '改判';
+  const hasRefund = secondAppellantIsPlaintiff(c);
   openModal({
-    title: '维持原判', wide: true, okText: '提交',
+    title: '二审' + mode, wide: true, okText: '提交',
     bodyHTML: `
-      <div class="lead-detail-section">上传二审判决书后，案件流转「待写执行材料」</div>
+      <div class="lead-detail-section">${mode} · 填写二审判决信息后，案件流转「待写执行材料」</div>
       <div class="form-grid">
+        <div class="form-field">
+          <label class="form-label">收到二审判决日期<span class="req">*</span></label>
+          <input class="form-input" type="date" data-fk="secondJudgeGotAt" value="${esc(c.secondJudgeGotAt || today())}">
+        </div>
+        ${isChange ? `<div class="form-field">
+          <label class="form-label">二审判决金额（元）</label>
+          <input class="form-input" type="number" data-fk="secondJudgeAmt" value="${esc(c.secondJudgeAmt || '')}" placeholder="改判后的判决金额">
+        </div>` : ''}
+        <div class="form-field">
+          <label class="form-label">二审实缴诉讼费（元）</label>
+          <input class="form-input" type="number" data-fk="secondPaidFee" value="${esc(c.secondPaidFee || '')}" placeholder="二审实际缴纳的诉讼费">
+        </div>
+        ${hasRefund ? `<div class="form-field full">
+          <label class="form-label">二审诉讼退费（可多笔）</label>
+          ${refundsHTML(c, Array.isArray(c.secondRefunds) ? c.secondRefunds : [], 'sec-')}
+        </div>` : ''}
         <div class="form-field full">
           <label class="form-label">二审判决书<span class="req">*</span></label>
-          ${stageUploadHTML({ k: 'secondJudgeDoc', type: 'file' }, c.secondJudgeDoc || '')}
+          ${docUploadHTML({ key: 'secondJudgeDoc', attr: 'data-fk', val: c.secondJudgeDoc || '', accept: 'application/pdf,image/*' })}
         </div>
-      </div>`,
+      </div>
+      <div class="form-hint">${hasRefund ? '' : '本案上诉人不是我方（原告），无需登记二审诉讼退费。'}提交后二审进展自动更新为「${mode}」，案件流转「待写执行材料」。</div>`,
     onSubmit: () => {
       const body = document.getElementById('modal-body') || document;
+      const got = String(((body.querySelector('[data-fk="secondJudgeGotAt"]') || {}).value) || '').trim();
       const doc = String(((body.querySelector('[data-fk="secondJudgeDoc"]') || {}).value) || '').trim();
-      if (!doc) { toast('请上传二审判决书', '维持原判需上传二审判决书', 'error'); return false; }
+      if (!got) { toast('请填写收到二审判决日期', '', 'error'); return false; }
+      if (!doc) { toast('请上传二审判决书', mode + '需上传二审判决书', 'error'); return false; }
       const val = SECOND_UPDATE_PENDING[id] || {}; delete SECOND_UPDATE_PENDING[id];
       secondApplyVals(c, val);
+      c.secondResult = mode;
+      c.secondJudgeGotAt = got;
       c.secondJudgeDoc = doc;
+      if (isChange) c.secondJudgeAmt = Number(((body.querySelector('[data-fk="secondJudgeAmt"]') || {}).value) || 0) || 0;
+      c.secondPaidFee = Number(((body.querySelector('[data-fk="secondPaidFee"]') || {}).value) || 0) || 0;
+      c.secondRefunds = hasRefund ? collectRefunds(body, 'sec-') : [];
       c.status = '待写执行材料'; c.stageCls = 'pill-info';
       c.updated = today();
-      pushCaseTimeline(c, '二审更新：维持原判 → 待写执行材料（二审判决书已归档）');
+      pushCaseTimeline(c, `二审更新：${mode} → 待写执行材料（二审判决书已归档）`);
       renderCaseStageNav(); renderCases(); updateNavBadges(); save();
       closeModal();
-      toast('已维持原判', '二审 → 待写执行材料');
+      toast('二审已' + mode, `${mode} · 二审 → 待写执行材料`);
       return true;
     },
   });
 }
+function secondUpdateAffirmForm(id) { openSecondResultForm(id, '维持原判'); }
+function secondUpdateChangeForm(id) { openSecondResultForm(id, '改判'); }
 
 // 收款截图：单入口控件 —— 未上传时只有一个「上传」按钮；已上传时按钮直接显示文件名，点击可重选
 // v125：原来「空只读框（placeholder 未上传）+ 上传按钮」并排两个控件，未上传时空框纯占列宽，合并成一个按钮即可省出空间
@@ -2476,11 +2701,13 @@ function submitCaseStage(id, opts = {}) {
     c.updated = '刚刚';
     const svMsg = st.key === '强制执行中' ? '执行更新已保存（未提交，案件仍在强制执行中）'
       : st.key === '待归档' ? '归档信息已保存（案件仍在待归档）'
+      : st.key === '二审' ? '二审信息已保存（未提交，案件仍在二审）'
       : '立案信息已保存（未提交，案件仍在转正式立案）';
     pushCaseTimeline(c, svMsg);
     renderCaseStageNav(); renderCases(); updateNavBadges(); save();
     toast('已保存', st.key === '强制执行中' ? '执行更新已记录，可继续编辑或「执行更新」'
       : st.key === '待归档' ? '归档信息已记录，案件停留在待归档'
+      : st.key === '二审' ? '二审信息已记录，可继续编辑或点「提交」选择裁判结果'
       : '立案信息已记录，可继续编辑或「发起缴费」');
     return true;
   }
@@ -3521,8 +3748,17 @@ function evOkDate(e) {
   return evDateInRange(evHearAt(e), EV_FILTER.hearFrom, EV_FILTER.hearTo) &&
          evDateInRange(evCloseAt(e), EV_FILTER.closeFrom, EV_FILTER.closeTo);
 }
+/* v155：办案律师搜索（用户口径：证物管理加一个搜索框，搜办案律师）。
+   取值与「办案律师」列同源（evLawyerOf → 关联案件 lawyerOf），模糊子串、大小写不敏感；空查询 = 不筛。
+   ⚠ 一律写 `EV_FILTER.lawyerQ || ''`：冒烟里有多处把 EV_FILTER 整体重置成 {status, stageSet}，
+     那一刻键会不存在，直接读会得到 undefined。 */
+function evOkLawyer(e) {
+  const q = String(EV_FILTER.lawyerQ || '').trim().toLowerCase();
+  if (!q) return true;
+  return String(evLawyerOf(e) || '').toLowerCase().indexOf(q) >= 0;
+}
 /* 当前筛选命中的证物行（列表渲染 / 全选 / 导出所选三处共用） */
-function filteredEvList() { return EVIDENCES.filter(e => evOkStatus(e) && evOkStage(e) && evOkDate(e)); }
+function filteredEvList() { return EVIDENCES.filter(e => evOkStatus(e) && evOkStage(e) && evOkDate(e) && evOkLawyer(e)); }
 /* 勾选键：caseId|证物编号 —— 证物编号只在同一案件下唯一，拼上 caseId 才能一行一键 */
 function evSelKey(e) { return ((e && e.caseId) || '') + '|' + ((e && e.id) || ''); }
 // 办案律师：同样按 caseId 反查案件（与「案件进展」列同一份数据源）
@@ -3535,6 +3771,7 @@ function evStageCountOf(k) {
   EVIDENCES.forEach(e => {
     if (EV_FILTER.status !== '全部' && e.status !== EV_FILTER.status) return;
     if (!evOkDate(e)) return;                       // v148：与「开庭/结案时间」区间联动
+    if (!evOkLawyer(e)) return;                     // v155：与「办案律师」搜索联动
     if (stageOfCase(e.caseId) === k) ids.add(e.caseId);
   });
   return ids.size;
@@ -3544,7 +3781,7 @@ function evStageCountOfAll() {
   const ids = new Set();
   EVIDENCES.forEach(e => {
     if (EV_FILTER.status === '全部' || e.status === EV_FILTER.status) {
-      if (evOkDate(e)) ids.add(e.caseId);          // v148：同上
+      if (evOkDate(e) && evOkLawyer(e)) ids.add(e.caseId);   // v148 / v155：同上 + 办案律师搜索
     }
   });
   return ids.size;
@@ -3632,6 +3869,10 @@ function addArchPayRow() {
 }
 /* v150：归档类型（用户 2026-09-14 口径）—— 就这 6 种，不要自行加值 */
 const ARCHIVE_TYPES = ['案件作废', '和解结案', '调解结案', '判决履行', '执行到款', '执行终本'];
+/* v153（用户口径）：线索侧归档类型 —— 就这 3 种，与案件侧 ARCHIVE_TYPES 不是同一套，不要复用 */
+const LEAD_ARCHIVE_TYPES = ['链接下架', '无侵权信息', '不取证'];
+/* v153（用户口径）：公证侧归档类型 —— 就这 6 种，同样独立于案件侧 */
+const NOTARY_ARCHIVE_TYPES = ['链接下架', '无侵权信息', '不取证', '不发货-仅退款', '收到货-不退货', '收到货-退货退款'];
 
 /* v150：待归档 → 已归档（批量终结归档）。
    用户口径：这个按钮在「待归档」流程里点开，弹窗只收 归档日期 / 归档类型 / 归档原因，
@@ -3846,6 +4087,16 @@ function seedStageDocs(c, stageKey, i) {
     c.secondDoc = '二审上诉状_' + tag + '.pdf';
     c.secondServiceDoc = '二审送达回证_' + tag + '.pdf';
     c.secondJudgeDoc = '二审判决书_' + tag + '.pdf';
+    // v157：二审裁判结果演示数据 —— 二审进展 4 态据此联动；判决信息面板也据此拆「一审判决信息 / 二审判决信息」两段。
+    //   上诉人 = 我方的案件才登记二审诉讼退费（不给被告作上诉人的案件造这笔数据，正好演示「该栏不出现」）。
+    const isPlaintiff = (i % 2 === 0);   // 与 seedSecondInstanceDemo 的 secondInstanceBy 口径保持一致
+    c.secondResult = (i % 2 === 0) ? '维持原判' : '改判';
+    c.secondJudgeGotAt = plusDays(today(), -(9 - (i % 6)));
+    c.secondPaidFee = 1200 + (i % 3) * 300;
+    if (c.secondResult === '改判') c.secondJudgeAmt = Math.round(numOf(c.amount) * 0.8);
+    c.secondInstanceBy = isPlaintiff ? '原告（我方）' : '被告';
+    c.secondInstanceAppellants = { role: isPlaintiff ? 'plaintiff' : 'defendant', names: [] };
+    c.secondRefunds = isPlaintiff ? [{ from: '法院', amt: 600 + (i % 4) * 200, status: '已退' }] : [];
   }
   if (r >= 4 && !c.execDoc) c.execDoc = '执行申请书_' + tag + '.doc';
   if (r >= 7) c.execFilingShot = '执行立案截图_' + tag + '.png';
@@ -3873,6 +4124,8 @@ function seedSecondInstanceDemo(c, i, court) {
   const sd = plusDays(today(), 5 + i);
   const ct = court || c.court || '—';
   c.secondInstanceBy = i % 2 ? '被告' : '原告（我方）';
+  // v157：把上诉人口径固化成结构化字段（二审结果表单据此决定「二审诉讼退费」栏是否出现）；已由其它播种逻辑写过的则不覆盖
+  if (!c.secondInstanceAppellants) c.secondInstanceAppellants = { role: i % 2 ? 'defendant' : 'plaintiff', names: [] };
   c.secondHearingAt = sd;
   c.secondHearingPlace = ct + ' · 第' + (i + 2) + '法庭';
   c.secondJudge = '二审法官' + (i + 1);
@@ -3996,7 +4249,7 @@ function renderCaseStageNav() {
    ③ 费用类型 = 诉讼退费 → 状态选项收敛为「退原告 / 退律所」（不是 未发起/发起/已支付）；
    ④ 状态多出「未发起」：调查费 / 披露费 / 公证费 / 样品费 在其它入口提交后自动落成「未发起」，
       再经「批量发起」推送到财务系统才变「发起」。 */
-const FEE_TYPES = ['诉讼费', '公告费', '调档费', '调查费', '公证费', '披露费', '样品费', '律师费', '诉讼退费', '其他'];
+const FEE_TYPES = ['诉讼费', '保全费', '保全保费', '公告费', '调档费', '调查费', '公证费', '披露费', '样品费', '样品费退款', '退货运费', '律师费', '诉讼退费', '其他'];
 const FEE_INCOME_TYPES = ['诉讼退费'];   // 收入类，其余均为支出
 const FEE_DIRS = ['支出', '收入'];       // 方向下拉（与列表「方向」列同一个字段）
 const FEE_STATUS = ['未发起', '发起', '已支付'];
@@ -4078,6 +4331,10 @@ function feeSeed() {
     { id: 'FEE-SEED-7', caseId: 'IP-20260305-005', type: '披露费',   amount: 1800,  dir: '支出', status: '已支付', date: '2026-07-03' },
     { id: 'FEE-SEED-8', caseId: 'IP-20260315-001', type: '样品费',   amount: 445,   dir: '支出', status: '未发起', date: '2026-09-12' },
     { id: 'FEE-SEED-9', caseId: 'IP-20260508-021', type: '诉讼退费', amount: 1500,  dir: '收入', status: '退律所', date: '2026-09-11' },
+    // v156：保全费 / 保全保费 —— 金额与 caseExtras 对 IP-20260315-001（标的额 12 万）的派生值一致，
+    //   保证「成本 · 保全」弹窗里的只读金额与费用中心看到的是同一个数
+    { id: 'FEE-SEED-10', caseId: 'IP-20260315-001', type: '保全费',   amount: 1120, dir: '支出', status: '已支付', date: '2026-04-18' },
+    { id: 'FEE-SEED-11', caseId: 'IP-20260315-001', type: '保全保费', amount: 120,  dir: '支出', status: '已支付', date: '2026-04-18' },
   ];
 }
 /* v151：feeCaseTitle 随「关联案件」列一起删除（列已拆成 平台 / 店铺名 / 被告 / 案号 4 列） */
@@ -4094,6 +4351,7 @@ const FEE_COL_DEFS = [
   { key: 'shop',      label: '店铺名' },
   { key: 'defendant', label: '被告' },
   { key: 'no',        label: '案号' },
+  { key: 'note',      label: '备注' },
 ];
 let FEE_COL_PREFS = {};
 try { FEE_COL_PREFS = JSON.parse(localStorage.getItem('ip_fee_col_prefs_v1') || '{}') || {}; } catch (e) { FEE_COL_PREFS = {}; }
@@ -4136,10 +4394,54 @@ function openFeeColPrefs() {
     },
   });
 }
+/* ---------- v153（用户口径）：费用中心把同一案件的「样品费」与「样品费退款」并成一条 ----------
+   · 合并后类型 = 样品费、金额 = 样品费 − 样品费退款、方向 = 支出；
+   · 差额为 0 → 这组两条都不出现；
+   · 只作用于**费用中心**（案件「费用明细」仍保留两条原始记录）；
+   · 合并行沿用「样品费」那条的身份（id / 状态 / 日期），状态与批量删除仍落在它身上；
+   · 只写了其中一侧（没有退款 / 没有样品费）时原样展示，不做加减。
+   v153 修正：被吃掉的只有**「样品费」与「样品费退款」这两类行本身**。
+   早先按「组」去重（`if (done[k]) return;` 落在组粒度上），会把同一案件里其它费用
+   （公证费 / 退货运费 / 诉讼费…）一并吞掉 —— 真机表现：退货处理推完「退货运费」，
+   费用中心列表里却找不到它。现在改为按行对象收集 drop 集合，非配对行一律原样输出。 */
+function mergeSampleFeeRows(list) {
+  const rows = (Array.isArray(list) ? list : []).filter(Boolean);
+  const grpKey = f => String(f.caseId || '') || ('no:' + String(f.no || '') + '|shop:' + String(f.shop || ''));
+  const groups = {};
+  rows.forEach(f => { const k = grpKey(f); (groups[k] = groups[k] || []).push(f); });
+  const drop = new Set();                 // 参与合并、要从原位置摘掉的原始行
+  const merged = {};                      // grpKey → 合并行 / null（差额为 0）
+  Object.keys(groups).forEach(k => {
+    const g = groups[k];
+    const pair = g.filter(f => f.type === '样品费' || f.type === '样品费退款');
+    const hasS = pair.some(f => f.type === '样品费');
+    const hasR = pair.some(f => f.type === '样品费退款');
+    if (!hasS || !hasR) return;                       // 只有一侧 → 保持原样
+    const sumT = t => pair.filter(f => f.type === t).reduce((a, f) => a + (Number(f.amount) || 0), 0);
+    const diff = sumT('样品费') - sumT('样品费退款');
+    pair.forEach(f => drop.add(f));                   // 只摘这两类行，同组其它费用不动
+    merged[k] = diff === 0 ? null : Object.assign({}, pair.find(f => f.type === '样品费'), {
+      type: '样品费', amount: diff, dir: '支出', mergeTypes: ['样品费', '样品费退款'],
+    });
+  });
+  const done = {};
+  const out = [];
+  rows.forEach(f => {
+    if (!drop.has(f)) { out.push(f); return; }        // 不参与合并的行原样（含同组其它费用）
+    const k = grpKey(f);
+    if (done[k]) return;                              // 同一组只输出一次（落在第一条配对行的位置）
+    done[k] = true;
+    if (merged[k]) out.push(merged[k]);               // null → 这两条都不出现
+  });
+  return out;
+}
 function feeFiltered() {
-  return (Array.isArray(STATE.fees) ? STATE.fees : []).filter(f => {
+  // v153：先按「样品费 − 样品费退款」合并，再套筛选（筛「样品费退款」时合并行也命中）
+  return mergeSampleFeeRows(STATE.fees).filter(f => {
     if (!f) return false;
-    if (FEE_FILTER.type !== '所有费用类型' && f.type !== FEE_FILTER.type) return false;
+    if (FEE_FILTER.type !== '所有费用类型' &&
+        f.type !== FEE_FILTER.type &&
+        (f.mergeTypes || []).indexOf(FEE_FILTER.type) < 0) return false;
     if (FEE_FILTER.status !== '所有状态' && f.status !== FEE_FILTER.status) return false;
     if (FEE_FILTER.dir !== '所有方向' && feeDirOf(f) !== FEE_FILTER.dir) return false;
     const d = String(f.date || '');
@@ -4225,7 +4527,8 @@ function setFeeStatus(id, val) {
 }
 
 function renderFees() {
-  const all = Array.isArray(STATE.fees) ? STATE.fees : [];
+  // v153：KPI 与列表统一按合并后的口径统计（否则样品费 + 样品费退款会被算两遍支出）
+  const all = mergeSampleFeeRows(STATE.fees);
   const fees = feeFiltered();
   const out = all.reduce((a, f) => {
     const amt = Number(f.amount) || 0;
@@ -4263,7 +4566,7 @@ function renderFees() {
   box.innerHTML = `<table class="table"><thead><tr>
       <th style="width:34px;"><div class="checkbox${allOn ? ' checked' : ''}" onclick="toggleAllFeeSel()" title="全选 / 取消全选（当前筛选结果）"></div></th>
       ${th('type', '费用类型')}${th('dir', '方向')}${th('amount', '金额', 'num')}${th('status', '状态')}${th('date', '日期')}
-      ${th('platform', '平台')}${th('shop', '店铺名')}${th('defendant', '被告')}${th('no', '案号')}
+      ${th('platform', '平台')}${th('shop', '店铺名')}${th('defendant', '被告')}${th('no', '案号')}${th('note', '备注')}
     </tr></thead><tbody>` +
     fees.map(f => {
       const cc = feeCaseCells(f);
@@ -4278,6 +4581,7 @@ function renderFees() {
       <td>${esc(cc.shop || '—')}</td>
       <td>${esc(cc.defendant || '—')}</td>
       <td class="mono">${esc(cc.no || '—')}</td>
+      <td class="fee-note-cell" title="${esc(feeNoteOf(f))}">${esc(feeNoteOf(f) || '—')}</td>
     </tr>`; }).join('') + '</tbody></table>';
   applyFeeColPrefs();
   updateFeeSelUI(fees);
@@ -4438,6 +4742,16 @@ function bulkDelFee() {
   });
 }
 
+/* ---------- v155（用户口径）：金额类「必填」= 填了数字就行，0 是合法值 ----------
+   全项目金额必填统一走这一个判定口：只拦「留空 / 非数字 / 负数」。
+   历史写法 `feeX <= 0` / `!(amt > 0)` 会把 0 一并拦掉，与用户口径相反，已全部替换。 */
+function amtFilled(v) {
+  const s = String(v == null ? '' : v).trim();
+  if (s === '') return false;
+  const n = Number(s);
+  return isFinite(n) && n >= 0;
+}
+
 /* ---------- 转正式立案：发起缴费（诉讼费）→ 自动保存 → 跳转费用中心并创建「发起」记录 ---------- */
 function openPayFeeInit(id) {
   const c = STATE.cases.find(x => x.id === id); if (!c) return;
@@ -4469,7 +4783,8 @@ function openPayFeeInit(id) {
     onSubmit: () => {
       const amtRaw = ((document.getElementById('pay-fee-amt') || {}).value || '').trim();
       const amt = Number(amtRaw);
-      if (!amtRaw || !(amt > 0)) { toast('请填写金额', '金额需大于 0', 'error'); return false; }
+      // v155（用户口径）：金额必填 = 填了数字就行，0 也可以
+      if (!amtFilled(amtRaw)) { toast('请填写金额', '金额为必填项，填 0 也可以', 'error'); return false; }
       const f = { id: feeId(), caseId: c.id, type: '诉讼费', amount: amt, dir: '支出',
                   status: '发起', date: today(), src: 'manual', proof: '' };
       STATE.fees.unshift(f);
@@ -4562,7 +4877,10 @@ function renderCaseDetail() {
   const head = $('#detail-head-actions');
   const cta = caseCta(c);
   const ctaFn = cta === '补充被告' ? `supplementDefendants('${c.id}')` : `caseStageForm('${c.id}')`;
-  head.innerHTML = badge + `<button class="btn btn-danger" onclick="deleteCase('${c.id}')" title="删除案件">删除</button>` + (cta
+  // v156（用户口径）：删除按钮左边新增「保全」按钮 —— 登记保全文书 / 保全日期
+  head.innerHTML = badge
+    + `<button class="btn btn-secondary" onclick="openPreserve('${c.id}')" title="登记保全文书 / 保全日期">保全</button>`
+    + `<button class="btn btn-danger" onclick="deleteCase('${c.id}')" title="删除案件">删除</button>` + (cta
     ? `
        <button class="btn btn-primary" onclick="${ctaFn}">
          <svg width="14" height="14" viewBox="0 0 16 16" fill="none"><path d="M3 8h10m0 0L9 4m4 4l-4 4" stroke="currentColor" stroke-width="1.6" stroke-linecap="round" stroke-linejoin="round"/></svg>
@@ -4589,6 +4907,46 @@ function renderCaseDetail() {
   initInlineEdit();
 }
 
+/* v156（用户口径）：案件详情「保全」按钮 —— 登记保全文书 / 保全日期。
+   保全费 / 保全保费**只读**，实时取该案件「费用管理 · 费用明细」里同类记录的合计
+   （单一数据源：金额只在费用明细里存一份，案件上不落副本）。 */
+function preserveFeeOf(c, name) {
+  return allExpensesOf(c).filter(e => e && e.name === name)
+    .reduce((a, e) => a + (Number(e.amt) || 0), 0);
+}
+function openPreserve(id) {
+  const c = STATE.cases.find(x => x.id === id); if (!c) return;
+  const dStr = v => { const q = String(v == null ? '' : v).split(' ')[0]; return (q && q !== '—') ? q : ''; };
+  const roHTML = (label, type, sum) => `<div class="form-input" style="background:var(--color-surface-2);cursor:not-allowed;display:flex;align-items:center;gap:8px;">
+      ${sum > 0 ? `<b>${money0(sum)}</b>` : '<span class="text-muted">—</span>'}
+      <span style="font-size:12px;color:var(--color-ink-muted);">来自费用明细「${esc(type)}」${sum > 0 ? '' : ' · 暂无记录'}</span>
+    </div>`;
+  formModal({
+    // v149 用户口径：弹窗标题里不出现完整案件名 —— 这里只带案件主键
+    title: '保全登记 · ' + c.id, wide: true, submitText: '保存',
+    fields: [
+      // v158（用户口径）：保全文书**只保留上传框** —— 不再给可手填的可见输入框。
+      //   值仍由隐藏 input（data-k="preserveDoc"）承载，formModal 取值逻辑与文件管理清单都不用改。
+      { key: 'preserveDoc', label: '保全文书', type: 'file', span: 2,
+        value: c.preserveDoc || '', hint: '可点击「上传」选择文件，也可把文件拖进来' },
+      { key: 'preserveAt', label: '保全日期', type: 'date', value: dStr(c.preserveAt) },
+      { type: 'custom', key: '__fee', span: 1, read: () => undefined,
+        html: `<div class="form-hint" style="margin-bottom:4px;">保全费</div>${roHTML('保全费', '保全费', preserveFeeOf(c, '保全费'))}` },
+      { type: 'custom', key: '__pre', span: 2, read: () => undefined,
+        html: `<div class="form-hint" style="margin-bottom:4px;">保全保费</div>${roHTML('保全保费', '保全保费', preserveFeeOf(c, '保全保费'))}` },
+    ],
+    onSubmit: d => {
+      const cur = STATE.cases.find(x => x.id === id); if (!cur) return false;
+      cur.preserveDoc = d.preserveDoc || '';
+      cur.preserveAt = d.preserveAt || '';
+      cur.updated = '刚刚';
+      save(); renderCaseDetail();
+      toast('保全信息已保存', (cur.preserveDoc || '未填保全文书') + (cur.preserveAt ? ' · ' + cur.preserveAt : ''));
+      return true;
+    },
+  });
+}
+
 function renderTimelineOf(c) {
   const log = c.log || [];
   const box = $('#overview-timeline');
@@ -4606,6 +4964,52 @@ function renderTimelineOf(c) {
     const caret = card.querySelector('.caret'); if (caret) caret.textContent = '▸';
     const stat  = card.querySelector('.status'); if (stat) stat.textContent = '展开';
   }
+}
+
+/* ---------- v157（用户口径）：流程时间轴「+ 添加记录」 ----------
+   录入沟通记录 → 提交后按既有节点格式（时间 + 操作人 + 标题 + 描述）插到时间轴最上方；
+   记录日期 / 时间默认生成（今天 + 当前时分），可改。 */
+function openTimelineAdd() {
+  const c = curCase(); if (!c) return;
+  const now = new Date();
+  const hm = pad(now.getHours()) + ':' + pad(now.getMinutes());
+  openModal({
+    title: '添加记录 · ' + caseNoOf(c),
+    okText: '提交',
+    bodyHTML: `
+      <div class="form-field">
+        <label class="form-label">记录日期<span class="req">*</span></label>
+        <input class="form-input" type="date" id="tl-add-date" value="${today()}">
+      </div>
+      <div class="form-field">
+        <label class="form-label">记录时间<span class="req">*</span></label>
+        <input class="form-input" type="time" id="tl-add-time" value="${hm}">
+      </div>
+      <div class="form-field">
+        <label class="form-label">沟通记录<span class="req">*</span></label>
+        <textarea class="form-textarea" id="tl-add-desc" placeholder="如：与客户确认和解方案，对方同意 8 月 20 日前答复"></textarea>
+        <div class="form-hint">提交后按「日期 时间」格式记录到流程时间轴最上方。</div>
+      </div>`,
+    onSubmit: () => {
+      const d = ((document.getElementById('tl-add-date') || {}).value || '').trim();
+      const t = ((document.getElementById('tl-add-time') || {}).value || '').trim();
+      const desc = ((document.getElementById('tl-add-desc') || {}).value || '').trim();
+      if (!d) { toast('请选择记录日期', '', 'error'); return false; }
+      if (!desc) { toast('请填写沟通记录', '', 'error'); return false; }
+      addTimelineRecord(c, d + ' ' + (t || '00:00'), desc);
+      closeModal();
+      return true;
+    },
+  });
+}
+function addTimelineRecord(c, time, desc) {
+  if (!c) return;
+  if (!Array.isArray(c.log)) c.log = caseLog(c);
+  c.log.unshift({ state: 'done', time: time, actor: c.operator || '运营', title: '沟通记录', desc: desc });
+  save(); renderTimelineOf(c);
+  const card = document.getElementById('detail-timeline-card');
+  if (card && !card.classList.contains('open')) toggleCollapse('timeline');
+  toast('记录已添加', '流程时间轴 · ' + time);
 }
 
 /* ---------- v82：费用状态 = 存储字段（5 态），由后续财务系统写入，不随案件流程派生 ----------
@@ -4627,6 +5031,7 @@ function expenseRowsHTML(c, srcIdx) {
   const aStatus = i => si < 0 ? `setExpenseStatus(${i}, this.value)` : `mergedExpenseStatus(${si}, ${i}, this.value)`;
   const aProof  = i => si < 0 ? `pickExpenseProof(${i})` : `mergedExpenseProof(${si}, ${i})`;
   const aClear  = i => si < 0 ? `clearExpenseProof(${i})` : `mergedExpenseClearProof(${si}, ${i})`;
+  const aNote   = i => si < 0 ? `setExpenseNote(${i}, this.value)` : `mergedExpenseNote(${si}, ${i}, this.value)`;
   const aDel    = i => si < 0 ? `removeExpense(${i})` : `mergedExpenseRemove(${si}, ${i})`;
   const total = list.reduce((s, e) => s + Number(e.amt || 0), 0);
   return list.map((e, i) => `
@@ -4638,6 +5043,7 @@ function expenseRowsHTML(c, srcIdx) {
         ? `<span class="link-mono" title="${esc(e.proof)}">${esc(e.proof)}</span>
            <button class="btn btn-ghost btn-sm btn-icon" onclick="${aClear(i)}" title="移除凭证">×</button>`
         : `<button class="btn btn-ghost btn-sm" onclick="${aProof(i)}">上传</button>`}</td>
+      <td><input class="exp-note-inp" value="${esc(e.note || '')}" placeholder="备注" title="${esc(e.note || '')}" onchange="${aNote(i)}"></td>
       <td style="width:32px;"><button class="btn btn-ghost btn-sm btn-icon" onclick="${aDel(i)}">×</button></td>
     </tr>`).join('') +
     `<tr style="background:var(--color-surface-2);">
@@ -4645,6 +5051,7 @@ function expenseRowsHTML(c, srcIdx) {
       <td class="num" style="color:var(--color-primary);font-weight:600;">${money(total)}</td>
       <td><span class="tag">${list.length} 笔</span></td>
       <td><span class="tag">${list.filter(e => e.proof).length} 份凭证</span></td>
+      <td><span class="tag">${list.filter(e => e.note).length} 条备注</span></td>
       <td></td>
     </tr>`;
 }
@@ -4666,6 +5073,14 @@ function mergedExpenseStatus(si, i, val) {
   const o = mergedExpenseItem(si, i); if (!o) return;
   o.e.status = val; save(); renderExpenses();
   toast('费用状态已更新', (shopOf(o.s) || '—') + ' · ' + o.e.name + ' · ' + val, 'info');
+}
+/* v157：合并案件下写备注（写回源店铺的费用对象，与状态 / 凭证同款） */
+function mergedExpenseNote(si, i, val) {
+  const o = mergedExpenseItem(si, i); if (!o) return;
+  const note = String(val == null ? '' : val).trim();
+  if ((o.e.note || '') === note) return;
+  o.e.note = note;
+  save(); renderExpenses();
 }
 function mergedExpenseProof(si, i) {
   const o = mergedExpenseItem(si, i); if (!o) { toast('请先选中一笔费用', '', 'info'); return; }
@@ -4707,7 +5122,7 @@ function renderExpenses() {
           <span class="src">来源案件 ${esc(caseNoOf(s))} · 费用合计 ${money0(expenseTotalOf(s))}</span>
         </div>
         <table class="table" style="background:transparent;"><thead><tr>
-          <th>费用类型</th><th class="num">金额</th><th>状态</th><th>凭证/发票</th><th style="width:32px;"></th>
+          <th>费用类型</th><th class="num">金额</th><th>状态</th><th>凭证/发票</th><th>备注</th><th style="width:32px;"></th>
         </tr></thead><tbody>${expenseRowsHTML(s, i)}</tbody></table>
       </div>`).join('');
     if (mainTable) mainTable.style.display = 'none';
@@ -4764,6 +5179,36 @@ function setExpenseStatus(i, val) {
   syncFeeFromExp(c.expenses[i].feeId, val);   // v151：状态双向同步到费用中心
   save(); renderExpenses(); renderFees();
   toast('费用状态已更新', c.expenses[i].name + ' · ' + val, 'info');
+}
+
+/* v157（用户口径）：费用明细「凭证/发票」右侧新增「备注」列（行内可编辑）。
+   数据只存一份：费用明细侧 e.note ↔ 费用中心同一条记录 f.note（按 e.feeId 关联），
+   与凭证列同一套同步口径（见 syncFeeProof / syncFeeNote）。 */
+function setExpenseNote(i, val) {
+  const c = curCase(); if (!c || !c.expenses || !c.expenses[i]) return;
+  const e = c.expenses[i];
+  const note = String(val == null ? '' : val).trim();
+  if ((e.note || '') === note) return;
+  e.note = note;
+  syncFeeNote(e);
+  save(); renderExpenses(); renderFees();
+}
+/* 费用明细的备注 → 费用中心同一条记录（统一数据来源：两侧不各存一份） */
+function syncFeeNote(e) {
+  if (!e || !e.feeId) return;
+  const f = (STATE.fees || []).find(x => x && x.id === e.feeId);
+  if (f) f.note = e.note || '';
+}
+/* v157：费用中心「备注」列的取值口。优先读自己的 note；种子 / 老存档里两侧还没通过 feeId 关联时，
+   按「关联案件 + 费用类型 + 金额」回落到费用明细侧 —— 避免出现「案件详情写了备注、费用中心却是空」的割裂。 */
+function feeNoteOf(f) {
+  if (!f) return '';
+  if (f.note) return f.note;
+  const c = (STATE.cases || []).find(x => x && x.id === f.caseId);
+  if (!c) return '';
+  const hit = allExpensesOf(c).find(e => e && e.name === f.type &&
+    (Number(e.amt) || 0) === (Number(f.amount) || 0) && e.note);
+  return (hit && hit.note) || '';
 }
 
 function renderLinks() {
@@ -4947,7 +5392,7 @@ function viewCustContract() {
 
 /* ---------- 客户经理（下拉，与运营 / 案件侧同一份枚举） ---------- */
 function custManagerOptions() { return Object.keys(OPERATORS); }
-function setCustManager(name) {
+function setCustManager(name, silent) {
   const c = curCustomer(); if (!c) return;
   const nm = String(name || '').trim();
   if (!nm || nm === c.manager) return;
@@ -4955,19 +5400,19 @@ function setCustManager(name) {
   c.manager = nm; c.opInitial = st.opInitial; c.opColor = st.opColor;
   c.updated = '刚刚';
   save(); renderCustomerDetail(); renderCustomers();
-  toast('客户经理已更新', c.name + ' · ' + nm);
+  if (!silent) toast('客户经理已更新', c.name + ' · ' + nm);   // v153：编辑弹窗里合并保存时不重复弹条
 }
 /* v151：客户「运营」（用户 2026-09-14 要求在客户经理后面补这一栏）——
    选项与客户经理 / 案件侧同源（OPERATORS），存 c.operator。 */
 function custOperatorOptions() { return Object.keys(OPERATORS); }
-function setCustOperator(name) {
+function setCustOperator(name, silent) {
   const c = curCustomer(); if (!c) return;
   const nm = String(name || '').trim();
   if (!nm || nm === c.operator) return;
   c.operator = nm;
   c.updated = '刚刚';
   save(); renderCustomerDetail(); renderCustomers();
-  toast('运营已更新', c.name + ' · ' + nm);
+  if (!silent) toast('运营已更新', c.name + ' · ' + nm);   // v153：编辑弹窗里合并保存时不重复弹条
 }
 
 /* ---------- 结算条件（客户）：录入的是一条公式 ----------
@@ -5476,22 +5921,10 @@ function renderCustomerDetail() {
   // 结算条件：只读公式（只决定客户结算金额，与律师结算无关）
   const condEl = document.getElementById('cust-settle-cond');
   if (condEl) condEl.innerHTML = `<span class="num-mono">${esc(custFormula(c))}</span>`;
-  // 客户经理：下拉（选项与运营 / 案件侧同源，选中当前客户经理）
-  const mgrSel = document.getElementById('cust-manager');
-  if (mgrSel) {
-    const opts = custManagerOptions();
-    const cur = opts.indexOf(c.manager) >= 0 ? c.manager : (opts[0] || '');
-    mgrSel.innerHTML = opts.map(o => `<option${o === cur ? ' selected' : ''}>${esc(o)}</option>`).join('');
-    if (cur) mgrSel.value = cur;
-  }
-  // v151：运营 —— 与客户经理同款下拉（用户要求放在客户经理后面；老客户没有该字段时默认第一位）
-  const opSel = document.getElementById('cust-operator');
-  if (opSel) {
-    const opts = custOperatorOptions();
-    const cur = opts.indexOf(c.operator) >= 0 ? c.operator : (opts[0] || '');
-    opSel.innerHTML = opts.map(o => `<option${o === cur ? ' selected' : ''}>${esc(o)}</option>`).join('');
-    if (cur) opSel.value = cur;
-  }
+  // v153（用户口径）：客户经理 / 运营 在卡片上**只读展示**，改值只能走卡片右上角「编辑」→ editCustomerCard()；
+  //   两者的写入口仍统一在 setCustManager / setCustOperator（编辑弹窗提交时调用），不另写一份。
+  setCustField('cust-manager', c.manager || (custManagerOptions()[0] || ''));
+  setCustField('cust-operator', c.operator || c.manager || (custOperatorOptions()[0] || ''));
 }
 
 /* 客户详情页头部 4 张小卡片
@@ -6214,14 +6647,20 @@ function editCard(caseId, card) {
         // 只读信息块：被告按面板口径（每行一个姓名）+ 案件单号 / 案件进展
         const ds = (Array.isArray(c.defendants) ? c.defendants : []).filter(d => d && d.name);
         const defRO = ds.length ? ds.map(d => esc(d.name)).join('<br>') : '—';
+        // v154：案件进展已按用户口径从只读区移出 → 改为可编辑下拉（见下方 status 字段）。
         const roBlock = `<div class="field-list cols-3" style="margin-bottom:16px;">
             ${fieldRow('被告', defRO)}
             ${fieldRow('案件单号', `<span class="mono">${esc(caseNoOf(c))}</span>`)}
-            ${fieldRow('案件进展', esc(c.status || '—'))}
           </div>`;
         const defRows = ds.length ? ds : [{}];
+        // v154：案件进展下拉选项 —— 排除「待归档」（该阶段由「归档」操作进入，不能直接跳）。
+        //   若当前案件本就处于「待归档」，仍把它留在选项里，否则下拉会显示成空白。
+        const statusOpts = STAGE_KEYS.filter(k => k !== '待归档' || k === c.status);
         return [
           { type: 'custom', key: '__ro', span: 2, html: roBlock, read: () => undefined },
+          { key: 'status',   label: '案件进展', type: 'select', span: 2, value: c.status || STAGE_KEYS[0],
+            options: statusOpts,
+            hint: '可改到任一流程阶段（「待归档」需通过「归档」操作进入，不在此选择）。保存后案件即进入该流程。' },
           { key: 'cust',     label: '客户',     span: 2, value: c.cust || c.client || '' },
           { key: 'client',   label: '权利主体', span: 2, value: c.client || '' },
           { key: 'reason',   label: '侵权类型', type: 'multi', value: normalizeInfringe(c.reason), options: INFRINGE_TYPES,
@@ -6240,6 +6679,17 @@ function editCard(caseId, card) {
         ];
       },
       apply: d => {
+        // v154：案件进展可在此直接改（16 档中除「待归档」外任选）→
+        //   写回 status + 同步 pill 色 stageCls + 时间轴留痕 + 侧栏计数 / 列表 / 徽标同步。
+        if (d.status && d.status !== c.status && d.status !== '待归档') {
+          const from = c.status;
+          c.status = d.status;
+          c.stageCls = stageOf(d.status).cls;
+          pushCaseTimeline(c, `案件进展修改：${from} → ${c.status}`);
+          if (typeof renderCaseStageNav === 'function') renderCaseStageNav();
+          if (typeof renderCases === 'function') renderCases();
+          if (typeof updateNavBadges === 'function') updateNavBadges();
+        }
         c.cust = d.cust; c.client = d.client; c.reason = d.reason;
         if (d.type !== c.type) { c.type = d.type; c.typeTag = CASE_TYPE_TAG[d.type] || 'tag-blue'; }
         c.operator = d.operator;
@@ -6468,7 +6918,7 @@ function reopenCase() {
 /* ---------- 明细：被告 / 费用 / 链接 ---------- */
 
 /* ---------- v151：添加费用 —— 支持一次添加多笔（用户口径），并同步生成费用中心记录 ---------- */
-const EXP_FEE_TYPE_OPTIONS = ['诉讼费', '公告费', '披露费', '调查费', '公证费', '样品费', '律师费', '其他'];
+const EXP_FEE_TYPE_OPTIONS = ['诉讼费', '保全费', '保全保费', '公告费', '披露费', '调查费', '公证费', '样品费', '样品费退款', '退货运费', '律师费', '其他'];
 function expenseRowHTML(e) {
   const d = e || {};
   return `<div class="exp-add-row" style="display:grid;grid-template-columns:1.15fr 1fr 1fr 34px;gap:8px;align-items:center;margin-bottom:6px;">
@@ -6615,10 +7065,9 @@ function editCustomerCard() {
         toast('结算条件公式无法解析', '例：客户结算金额=结案金额*70%', 'error');
         return false;
       }
-      const oldMgr = c.manager;
       Object.assign(c, {
         name: d.name, credit: d.credit, category: d.category, region: d.region,
-        manager: d.manager, operator: d.operator || c.operator || d.manager, model: d.model, status: d.status,
+        model: d.model, status: d.status,
         statusClass: CUST_STATUS_CLASS[d.status] || 'pill-neutral',
         coopFrom: d.coopFrom, coopTo: d.coopTo,
         settleFormula: f, settle: d.settle,
@@ -6626,7 +7075,9 @@ function editCustomerCard() {
         taxNo: d.taxNo, bank: d.bank,
         updated: '刚刚',
       });
-      if (d.manager !== oldMgr) { const st = operatorStyle(d.manager); c.opInitial = st.opInitial; c.opColor = st.opColor; }
+      // v153（用户口径）：卡片上客户经理 / 运营 已改只读，本弹窗是唯一修改入口 —— 但仍走统一写入口，不另写一份
+      setCustManager(d.manager, true);
+      setCustOperator(d.operator || c.operator || d.manager, true);
       if (picked) {
         c.contractName = picked.name;
         c.contractText = picked.text.trim() || ('合作协议：' + picked.name + '\n（未能读取文本内容，请手工补充协议正文）');
@@ -7481,6 +7932,8 @@ const LEADS = [
     reason: '商标权',
     shop: '××优品家居', shopId: '旺旺号 wang××01',
     remark: '店铺经营 3 年以上，店铺评分 4.8，建议优先处理',
+    // v156：侵权截图（图片或文件，只存文件名；线索详情 / 公证详情 / 案件详情三处同步展示）
+    shotFiles: ['侵权截图-××优品家居-01.png', '侵权截图-××优品家居-02.png', '店铺页面存档.pdf'],
     foundAt: '2026-09-01 10:22',
     links: [
       { url: 'https://item.taobao.com/item.htm?id=67890', title: '××同款保温杯 316不锈钢', qty: 1247, price: 89,  cmt: 387 },
@@ -7502,6 +7955,7 @@ const LEADS = [
     reason: '美术作品著作权、信息网络传播权',
     shop: '潮流女装旗舰店', shopId: '抖店 ID ××0521',
     remark: '直播时间 20:00-23:00',
+    shotFiles: ['侵权截图-潮流女装-直播间.png', '侵权截图-潮流女装-商品页.jpg'],
     foundAt: '2026-09-01 14:05',
     links: [
       { url: 'https://v.douyin.com/xxxx1/', title: '××联名款 直播间展示', qty: 880, price: 199, cmt: 234 },
@@ -7640,7 +8094,7 @@ const LEADS = [
     progress: '线索已归档',
     progressCls: 'pill-neutral',
     pushAt: '2026-09-05 10:10', pushBy: '王敏', auditResult: '不侵权', auditReason: '经比对，商品标识与权利人商标不构成近似', auditAt: '2026-09-06 09:30',
-    confirmResult: '', confirmAt: '', archiveAt: '2026-09-06', archiveReason: '客户判定不侵权，线索终止',
+    confirmResult: '', confirmAt: '', archiveAt: '2026-09-06', archiveType: '无侵权信息', archiveReason: '客户判定不侵权，线索终止',
     client: '北京××科技股份有限公司',
     party: '北京××科技股份有限公司',
     caseType: '民事',
@@ -7883,34 +8337,67 @@ function openLeadAudit(id) {
       </div>
       <div class="form-field" style="margin-top:14px;">
         <label class="form-label">审核结果<span class="req">*</span></label>
-        <select class="form-select" id="lead-audit-result" onchange="document.getElementById('lead-audit-reason-box').style.display = this.value === '不侵权' ? '' : 'none';">
+        <select class="form-select" id="lead-audit-result" onchange="toggleLeadAuditFields(this.value)">
           <option value="侵权">侵权</option>
           <option value="不侵权">不侵权</option>
         </select>
       </div>
-      <div class="form-field" id="lead-audit-reason-box" style="display:none;">
-        <label class="form-label">不侵权原因<span class="req">*</span></label>
-        <textarea class="form-textarea" id="lead-audit-reason" placeholder="如：已获得授权 / 商品不构成近似 / 权利人主体存疑"></textarea>
+      <div id="lead-audit-archive-box" style="display:none;">
+        <div class="form-field">
+          <label class="form-label">归档日期<span class="req">*</span></label>
+          <input class="form-input" type="date" id="lead-audit-archive-at" value="${today()}">
+        </div>
+        <div class="form-field">
+          <label class="form-label">归档类型<span class="req">*</span></label>
+          <select class="form-select" id="lead-audit-archive-type">
+            ${LEAD_ARCHIVE_TYPES.map(t => `<option value="${esc(t)}"${t === '无侵权信息' ? ' selected' : ''}>${esc(t)}</option>`).join('')}
+          </select>
+        </div>
+        <div class="form-field">
+          <label class="form-label">归档原因<span class="req">*</span></label>
+          <textarea class="form-textarea" id="lead-audit-archive-reason" placeholder="如：客户判定不侵权 / 商品不构成近似 / 权利人主体存疑"></textarea>
+          <div class="form-hint">选「不侵权」时归档三字段为必填项；归档日期默认为今天。</div>
+        </div>
       </div>`,
     onSubmit: () => {
       const result = (document.getElementById('lead-audit-result') || {}).value || '侵权';
-      const reason = ((document.getElementById('lead-audit-reason') || {}).value || '').trim();
-      if (result === '不侵权' && !reason) { toast('请填写不侵权原因', '不侵权必须备注原因', 'error'); return false; }
-      submitLeadAudit(id, result, reason);
+      const at = (document.getElementById('lead-audit-archive-at') || {}).value || today();
+      const ty = (document.getElementById('lead-audit-archive-type') || {}).value || '无侵权信息';
+      const rs = ((document.getElementById('lead-audit-archive-reason') || {}).value || '').trim();
+      if (result === '不侵权' && !rs) { toast('请填写归档原因', '选「不侵权」时须填归档日期 / 归档类型 / 归档原因', 'error'); return false; }
+      submitLeadAudit(id, result, at, ty, rs);
+      closeModal();
+      return true;
     },
   });
 }
 
-function submitLeadAudit(id, result, reason) {
+/* v157（用户口径）：线索审核弹窗选「不侵权」→ 就地展开归档三字段（不再弹二次归档窗）。
+   与「线索确认」弹窗选「不取证」的写法对齐，两处都是单弹窗内落地归档。 */
+function toggleLeadAuditFields(v) {
+  const box = document.getElementById('lead-audit-archive-box');
+  if (box) box.style.display = (v === '不侵权') ? '' : 'none';
+}
+
+function submitLeadAudit(id, result, archiveAt, archiveType, archiveReason) {
   const l = LEADS.find(x => x.id === id); if (!l) return;
+  // v157：一致性校验下沉到数据层（防其它入口绕过弹窗直接调用）
+  if (result === '不侵权' && !archiveReason) {
+    toast('请填写归档原因', '选「不侵权」时须填归档日期 / 归档类型 / 归档原因', 'error');
+    return;
+  }
   const now = today() + ' ' + new Date().toTimeString().slice(0, 5);
-  l.auditResult = result; l.auditReason = reason; l.auditAt = now;
+  l.auditResult = result; l.auditAt = now;
   if (result === '侵权') {
     l.progress = '线索待确认'; l.progressCls = 'pill-blue';
     toast('审核完成：侵权', `${l.shop} · 进入线索待确认`);
   } else {
-    // 不侵权 → 归档（填归档日期与原因）
-    openLeadArchive(id, reason || '客户判定不侵权');
+    // v157（用户口径）：不侵权 → 审核弹窗内直接落地归档（不再弹二次归档窗）
+    l.archiveAt = archiveAt || today();
+    l.archiveType = archiveType || '无侵权信息';
+    l.archiveReason = archiveReason;
+    l.progress = '线索已归档'; l.progressCls = 'pill-neutral';
+    toast('审核完成：不侵权', `${l.shop} · 已归档 · ${l.archiveAt}`);
   }
   renderLeads(); renderLeadStageNav(); updateNavBadges(); save();
 }
@@ -7936,10 +8423,19 @@ function openLeadConfirm(id) {
           <option value="不取证" selected>不取证（归档）</option>
         </select>
       </div>
-      <div class="form-field" id="lead-archive-box">
-        <label class="form-label">归档原因<span class="req">*</span></label>
-        <textarea class="form-textarea" id="lead-archive-reason" placeholder="如：客户判定不侵权 / 运营确认不取证"></textarea>
-        <div class="form-hint">选「不取证」时归档原因为必填项；归档日期默认为今天。</div>
+      <div id="lead-archive-box">
+        <div class="form-field">
+          <label class="form-label">归档类型<span class="req">*</span></label>
+          <select class="form-select" id="lead-confirm-archive-type">
+            ${LEAD_ARCHIVE_TYPES.map(t => `<option value="${esc(t)}">${esc(t)}</option>`).join('')}
+          </select>
+          <div class="form-hint">选「不取证」时归档类型为必填项。</div>
+        </div>
+        <div class="form-field">
+          <label class="form-label">归档原因<span class="req">*</span></label>
+          <textarea class="form-textarea" id="lead-archive-reason" placeholder="如：客户判定不侵权 / 运营确认不取证"></textarea>
+          <div class="form-hint">选「不取证」时归档原因为必填项；归档日期默认为今天。</div>
+        </div>
       </div>
       <div class="form-field" id="lead-office-box" style="display:none;">
         <label class="form-label">公证处<span class="req">*</span></label>
@@ -7952,7 +8448,12 @@ function openLeadConfirm(id) {
     onSubmit: () => {
       const result = (document.getElementById('lead-confirm-result') || {}).value || '取证';
       const archiveReason = ((document.getElementById('lead-archive-reason') || {}).value || '').trim();
+      const archiveType = ((document.getElementById('lead-confirm-archive-type') || {}).value || '').trim();
       const office = ((document.getElementById('lead-confirm-office') || {}).value || '').trim();
+      if (result === '不取证' && !archiveType) {
+        toast('请选择归档类型', '选「不取证」时归档类型为必填项', 'error');
+        return false;
+      }
       if (result === '不取证' && !archiveReason) {
         toast('请填写归档原因', '选「不取证」时归档原因为必填项', 'error');
         return false;
@@ -7961,7 +8462,7 @@ function openLeadConfirm(id) {
         toast('请选择公证处', '选「取证」时必须指定承接取证的公证处', 'error');
         return false;
       }
-      submitLeadConfirm(id, result, archiveReason, office);
+      submitLeadConfirm(id, result, archiveReason, office, archiveType);
     },
   });
 }
@@ -7974,9 +8475,13 @@ function toggleLeadConfirmFields(v) {
   if (oBox) oBox.style.display = (v === '取证') ? '' : 'none';
 }
 
-function submitLeadConfirm(id, result, archiveReason, office) {
+function submitLeadConfirm(id, result, archiveReason, office, archiveType) {
   const l = LEADS.find(x => x.id === id); if (!l) return;
   // 一致性校验：不取证须填归档原因、取证须选公证处，都拦截在数据层（防止其他入口绕过）
+  if (result === '不取证' && !archiveType) {
+    toast('请选择归档类型', '选「不取证」时归档类型为必填项', 'error');
+    return;
+  }
   if (result === '不取证' && !archiveReason) {
     toast('请填写归档原因', '选「不取证」时归档原因为必填项', 'error');
     return;
@@ -7998,35 +8503,51 @@ function submitLeadConfirm(id, result, archiveReason, office) {
   }
   // 不取证 → 单弹窗内直接落地归档（不走 openLeadArchive）
   l.archiveAt = today();
+  l.archiveType = archiveType || LEAD_ARCHIVE_TYPES[1];
   l.archiveReason = archiveReason;
   l.progress = '线索已归档'; l.progressCls = 'pill-neutral';
   renderLeads(); renderLeadStageNav(); updateNavBadges(); save();
   toast('线索已归档', `${l.shop} · ${now}`);
 }
 
-/* ---------- 归档：不侵权 / 不取证 → 线索已归档 ---------- */
-function openLeadArchive(id, presetReason) {
-  const l = LEADS.find(x => x.id === id); if (!l) return;
+/* v157：单条「线索归档」弹窗（openLeadArchive）已删除 —— 它唯一的上游入口是
+   「线索审核 → 不侵权」，该分支现已就地归档（见 toggleLeadAuditFields / submitLeadAudit），
+   不再弹二次窗。批量归档仍走下方 openLeadArchiveBatch。 */
+
+/* ---------- v153（用户口径）：线索库「归档」批量入口（勾选线索 → 统一归档） ---------- */
+function openLeadArchiveBatch() {
+  const targets = LEADS.filter(l => LEAD_SELECTED.has(l.id));
+  if (!targets.length) { toast('请先勾选线索', '勾选后可批量归档', 'info'); return; }
   openModal({
-    title: '线索归档 · ' + l.id,
-    okText: '确认归档',
+    title: `归档 · ${targets.length} 条线索`, okText: '确认归档', okClass: 'btn-primary',
     bodyHTML: `
       <div class="form-field">
-        <label class="form-label">归档日期<span class="req">*</span></label>
-        <input class="form-input" type="date" id="lead-archive-at" value="${today()}">
+        <label class="form-label">归档时间<span class="req">*</span></label>
+        <input class="form-input" type="date" id="lead-batch-archive-at" value="${today()}">
+      </div>
+      <div class="form-field">
+        <label class="form-label">归档类型<span class="req">*</span></label>
+        <select class="form-select" id="lead-batch-archive-type">
+          ${LEAD_ARCHIVE_TYPES.map(t => `<option value="${esc(t)}">${esc(t)}</option>`).join('')}
+        </select>
       </div>
       <div class="form-field">
         <label class="form-label">归档原因<span class="req">*</span></label>
-        <textarea class="form-textarea" id="lead-archive-reason" placeholder="如：客户判定不侵权 / 运营确认不取证">${esc(presetReason || '')}</textarea>
+        <textarea class="form-textarea" id="lead-batch-archive-reason" placeholder="如：链接下架 / 无侵权信息 / 不取证"></textarea>
       </div>`,
     onSubmit: () => {
-      const at = (document.getElementById('lead-archive-at') || {}).value || today();
-      const rs = ((document.getElementById('lead-archive-reason') || {}).value || '').trim();
+      const at = (document.getElementById('lead-batch-archive-at') || {}).value || today();
+      const ty = (document.getElementById('lead-batch-archive-type') || {}).value || LEAD_ARCHIVE_TYPES[0];
+      const rs = ((document.getElementById('lead-batch-archive-reason') || {}).value || '').trim();
       if (!rs) { toast('请填写归档原因', '', 'error'); return false; }
-      l.archiveAt = at; l.archiveReason = rs;
-      l.progress = '线索已归档'; l.progressCls = 'pill-neutral';
+      targets.forEach(l => {
+        l.archiveAt = at; l.archiveType = ty; l.archiveReason = rs;
+        l.progress = '线索已归档'; l.progressCls = 'pill-neutral';
+      });
+      LEAD_SELECTED.clear();
       renderLeads(); renderLeadStageNav(); updateNavBadges(); save();
-      toast('线索已归档', `${l.shop} · ${at}`);
+      closeModal();   // openModal 传了 onSubmit 后外层不自动关窗（见 MEMORY 的关窗口径），必须自己关
+      toast('线索已归档', targets.length + ' 条 · ' + at);
     },
   });
 }
@@ -8120,15 +8641,16 @@ function leadFormHTML() {
 
       <div class="form-field">
         <label class="form-label">线索来源<span class="req">*</span></label>
-        <select class="form-select" data-k="source">
+        <!-- v156：来源一变 → 平台下拉内容跟着换（线上 11 项 / 线下 4 项），唯一判定口 leadPlatformsOf -->
+        <select class="form-select" data-k="source" onchange="syncLeadPlatformOptions(this.value)">
           <option value="线上" selected>线上</option>
           <option value="线下">线下</option>
         </select>
       </div>
       <div class="form-field">
         <label class="form-label">平台<span class="req">*</span></label>
-        <select class="form-select" data-k="platform">
-          ${LEAD_PLATFORMS.map(o => `<option value="${esc(o)}">${esc(o)}</option>`).join('')}
+        <select class="form-select" data-k="platform" id="lead-platform-select">
+          ${leadPlatformsOf('线上').map(o => `<option value="${esc(o)}">${esc(o)}</option>`).join('')}
         </select>
       </div>
       <div class="form-field">
@@ -8164,6 +8686,14 @@ function leadFormHTML() {
         <label class="form-label">线索备注</label>
         <textarea class="form-textarea" data-k="remark" placeholder="如：店铺经营 3 年以上，店铺评分 4.8，建议优先处理"></textarea>
       </div>
+      <!-- v156：侵权截图 —— 图片或文件都能传，可多选；只记文件名（演示不落二进制），
+           同步展示在线索详情 / 公证详情 / 案件详情的线索信息里
+           v157：与「编辑线索」那一份对齐，改走统一上传控件（虚线加号框：点击 / 拖拽上传 +
+           已上传文件卡片右上角「下载 / 删除」），不再是「只读框 + 上传 / 清除」的老样式 -->
+      <div class="form-field full">
+        <label class="form-label">侵权截图</label>
+        ${docUploadHTML({ key: 'shotFiles', attr: 'data-k', val: '', multiple: true, editable: true, clear: true })}
+      </div>
 
       <div class="form-section-title">商品链接（可多条，销售额 = 销量×单价，没有销量时按 评论数×单价）</div>
     </div>
@@ -8175,6 +8705,31 @@ function leadFormHTML() {
     <button type="button" class="btn btn-secondary btn-sm" onclick="addLeadLinkRow()" style="margin-top:8px;">+ 添加一条链接</button>
   `;
 }
+/* v156：线索来源切换 → 重建平台下拉（唯一判定口 leadPlatformsOf）。
+   已选平台若仍在新清单里就保留，否则回落到第一项 —— 避免出现「来源=线下、平台=淘宝」这种矛盾组合。 */
+window.syncLeadPlatformOptions = function(source) {
+  const sel = document.getElementById('lead-platform-select');
+  if (!sel) return;
+  const cur = sel.value;
+  const list = leadPlatformsOf(source);
+  sel.innerHTML = list.map(o => `<option value="${esc(o)}">${esc(o)}</option>`).join('');
+  sel.value = list.indexOf(cur) >= 0 ? cur : list[0];
+};
+/* v156：新建线索「侵权截图」多选 —— 只取文件名，以「、」拼接进只读框；
+   重复选同一文件不叠加；选完清空 input，允许再选同一个。 */
+/* v156：编辑线索弹窗内 来源 → 平台 联动（与新建线索同一口径 leadPlatformsOf） */
+window.syncEditLeadPlatforms = function(source) {
+  const sel = document.querySelector('#modal-body [data-k="platform"]');
+  if (!sel) return;
+  const cur = sel.value;
+  const list = leadPlatformsOf(source);
+  sel.innerHTML = list.map(o => `<option value="${esc(o)}">${esc(o)}</option>`).join('');
+  sel.value = list.indexOf(cur) >= 0 ? cur : list[0];
+};
+// v157：新建线索的「侵权截图」也换成了统一上传控件（docUploadHTML，attr=data-k）→
+//   老的 leadShotPicked（写 #lead-shot-names）已无调用点，随样式一起删掉；
+//   选文件的落值与追加逻辑由 formFilePicked 统一负责（id 仍是 mff-shotFiles）。
+
 // 模态打开后立刻初始化链接编辑区（默认 1 行）
 window.addLeadLinkRow = function(prefill) {
   const box = document.getElementById('lead-links-box');
@@ -8278,12 +8833,23 @@ function readLeadForm() {
     needDisclose: get('needDisclose'),
     remark: get('remark'),
     foundAt: get('foundAt'),
+    shotFiles: String(get('shotFiles') || '').split('、').map(x => x.trim()).filter(Boolean),
     links: links,
   };
   LEADS.unshift(l);
   renderLeads(); updateNavBadges(); save();
   toast('线索已创建', `${l.id} · ${l.shop}`);
   return true;
+}
+
+/* v156：侵权截图（线索字段 l.shotFiles）的**统一展示口** —— 线索详情 / 公证详情 / 案件详情三处共用。
+   数组或「、」分隔字符串都吃；空值统一显「—」。
+   ⚠️ 文件名**不要**套 `class="link-mono"`：公证详情的商品链接断言（v98）是按这个 class 计数的，
+      套上会被算成「多出来的商品链接」（v156 首轮实红）。这里统一走纯文本 + 顿号。 */
+function shotFilesHTML(v) {
+  const arr = Array.isArray(v) ? v.filter(Boolean)
+    : String(v == null ? '' : v).split('、').map(x => x.trim()).filter(Boolean);
+  return arr.length ? esc(arr.join('、')) : '—';
 }
 
 /* ---------- 详情 ---------- */
@@ -8331,9 +8897,10 @@ function viewLead(id) {
       <div><span class="k">确认结果</span><span class="v">${esc(l.confirmResult || '—')}</span></div>
       <div><span class="k">确认日期</span><span class="v mono">${esc(l.confirmAt || '—')}</span></div>
       <div><span class="k">归档日期</span><span class="v mono">${esc(l.archiveAt || '—')}</span></div>
+      <div><span class="k">归档类型</span><span class="v">${esc(l.archiveType || '—')}</span></div>
       <div><span class="k">归档原因</span><span class="v">${esc(l.archiveReason || '—')}</span></div>
-      <div class="full"><span class="k">不侵权原因</span><span class="v">${esc(l.auditReason || '—')}</span></div>
       <div class="full"><span class="k">线索备注</span><span class="v">${esc(l.remark || '—')}</span></div>
+      <div class="full"><span class="k">侵权截图</span><span class="v">${shotFilesHTML(l.shotFiles)}</span></div>
     </div>
 
     <div class="lead-detail-section lead-detail-section-row">
@@ -8437,7 +9004,8 @@ window.editLeadLinks = function(id, from) {
 function editLeadInfo(id) {
   const l = LEADS.find(x => x.id === id); if (!l) return;
   const operators = [...new Set(['陈晓敏', '林伟', '王敏', l.operator].filter(Boolean))];
-  const platforms = [...new Set(LEAD_PLATFORMS.concat([l.platform]).filter(Boolean))];
+  // v156：平台候选按当前来源给（老数据的平台若不在清单内，仍保留在末尾 —— 不静默改值）
+  const platforms = [...new Set(leadPlatformsOf(l.source).concat([l.platform]).filter(Boolean))];
   formModal({
     title: '编辑线索 · ' + l.id, wide: true, submitText: '保存修改',
     fields: [
@@ -8445,7 +9013,8 @@ function editLeadInfo(id) {
       { key: 'party', label: '权利主体', required: true, value: l.party, placeholder: '按客户带出，也可直接输入' },
       { key: 'caseType', label: '案件类型', type: 'select', options: CASE_TYPES, value: l.caseType },
       { key: 'operator', label: '运营', type: 'select', options: operators, value: l.operator },
-      { key: 'source', label: '线索来源', type: 'select', options: ['线上', '线下'], value: l.source },
+      { key: 'source', label: '线索来源', type: 'select', options: ['线上', '线下'], value: l.source,
+        onchange: 'syncEditLeadPlatforms(this.value)' },
       { key: 'platform', label: '平台', type: 'select', options: platforms, value: l.platform },
       { key: 'reason', label: '侵权类型', required: true, type: 'multi', value: normalizeInfringe(l.reason),
         options: INFRINGE_TYPES, placeholder: '请选择侵权类型（可多选）' },
@@ -8457,6 +9026,9 @@ function editLeadInfo(id) {
         value: l.needDisclose === '是' ? '是' : '否' },
       { key: 'remark', label: '线索备注', type: 'textarea', span: 2, value: l.remark || '',
         placeholder: '如：店铺经营 3 年以上，店铺评分 4.8，建议优先处理' },
+      // v156：侵权截图可改可删（editable = 也能手打文件名；multiple = 可多选）
+      { key: 'shotFiles', label: '侵权截图', type: 'file', multiple: true, span: 2, editable: true,
+        value: (Array.isArray(l.shotFiles) ? l.shotFiles.join('、') : '') },
     ],
     onSubmit: d => {
       const lead = LEADS.find(x => x.id === id); if (!lead) return false;
@@ -8472,6 +9044,7 @@ function editLeadInfo(id) {
       lead.shopId = d.shopId || '—';
       lead.needDisclose = d.needDisclose;
       lead.remark = d.remark;
+      lead.shotFiles = String(d.shotFiles || '').split('、').map(x => x.trim()).filter(Boolean);
       lead.foundAt = String(d.foundAt || '').replace('T', ' ');
       save(); renderLeads();
       toast('线索信息已更新', `${lead.id} · ${lead.shop}`);
@@ -8750,7 +9323,7 @@ const NOTARY_FLOW = [
   { key: '开箱待审核', role: '运营 / 客户', fields: ['侵权 / 不侵权', '审核日期'], cta: '审核开箱照片' },
   { key: '开箱待确认', role: '运营', fields: ['出证 / 不出证', '确认日期'],                  cta: '确认是否出证' },
   { key: '待出证',     role: '公证处', fields: ['公证书编号', '公证费', '样品费', '披露文件', '披露信息'], cta: '填写出证信息' },
-  { key: '待退货',     role: '运营', fields: ['是否退货', '公证费', '退款金额', '退货运费'],   cta: '处理退货' },
+  { key: '待退货',     role: '运营', fields: ['是否退货', '公证费', '样品费退款', '退货运费'],   cta: '处理退货' },
   { key: '已归档',     role: '—',   fields: ['归档日期', '归档原因'],                         cta: null },
 ];
 const NOTARY_STAGE_KEYS = NOTARY_FLOW.map(f => f.key);
@@ -8815,7 +9388,7 @@ const NOTARY_ITEMS = [
     expressNo: '', openAuditResult: '', openAuditAt: '',
     openConfirmResult: '', openConfirmAt: '',
     discloseInfo: '', needReturn: '', refundAmt: 0, refundFreight: 0,
-    archiveAt: '', archiveReason: '', push: '2026-02-18', recv: '孙某某 / 138****1122', recvAddr: '北京市 海淀区 ××大厦 15 层',
+    archiveAt: '2026-03-05', archiveType: '链接下架', archiveReason: '出证完成，已流转诉讼阶段', push: '2026-02-18', recv: '孙某某 / 138****1122', recvAddr: '北京市 海淀区 ××大厦 15 层',
     photos: 8, ocr: true, docNo: '（2026）京公证字第04571号', docDate: '2026-03-05',
     feeN: 1800, feeP: 1200, feeD: 0, disclose: '披露函_北京××科技.pdf', audit: '侵权', auditCls: 'pill-success', office: '北京市方圆公证处' },
   { id: 'N-2026-008', case: '上海××设计 vs 淘宝"潮流集合"', caseId: 'IP-20260110-015', shop: '潮流集合',
@@ -8823,7 +9396,7 @@ const NOTARY_ITEMS = [
     expressNo: '', openAuditResult: '', openAuditAt: '',
     openConfirmResult: '', openConfirmAt: '',
     discloseInfo: '', needReturn: '', refundAmt: 0, refundFreight: 0,
-    archiveAt: '', archiveReason: '', push: '2025-12-20', recv: '吴某某 / 135****7788', recvAddr: '上海市 徐汇区 ××创意园 3 号楼',
+    archiveAt: '2026-01-08', archiveType: '无侵权信息', archiveReason: '出证完成，已流转诉讼阶段', push: '2025-12-20', recv: '吴某某 / 135****7788', recvAddr: '上海市 徐汇区 ××创意园 3 号楼',
     photos: 5, ocr: true, docNo: '（2025）沪公证字第33210号', docDate: '2026-01-08',
     feeN: 1500, feeP: 340, feeD: 0, disclose: '披露函_上海××设计工作室.pdf', audit: '不侵权', auditCls: 'pill-danger', office: '上海市东方公证处' },
 ];
@@ -8898,7 +9471,7 @@ const EVIDENCES = [
 /* v148：新增两组「区间」筛选（开庭时间 / 结案时间）+ 列表勾选集合。
    取值一律走 `EV_FILTER.xxx || ''` —— 冒烟里有几处会把 EV_FILTER 整体重置成
    { status, stageSet } 再渲染，缺字段时不能当成「有筛选条件」。 */
-let EV_FILTER = { status: '全部', stageSet: [], hearFrom: '', hearTo: '', closeFrom: '', closeTo: '' };
+let EV_FILTER = { status: '全部', stageSet: [], hearFrom: '', hearTo: '', closeFrom: '', closeTo: '', lawyerQ: '' };
 /* 勾选集合：键 = caseId|证物编号（证物编号在同一案件下唯一，跨案件可能重复，
    拼上 caseId 才能保证「一行一个键」；与公证阶段的 NOTARY_SELECTED 同一套做法） */
 let EV_SELECTED = new Set();
@@ -8956,7 +9529,7 @@ const CUST_BILLS = [
   { m: '2026-08-19', cust: '杭州××科技有限公司',     amt: 96000,  inv: 0,      rec: 0,      prog: '待发账单', cls: 'pill-warning', date: '2026-09-30', caseId: DEMO_NO.hz, nth: 1, billNo: '2026090100001', src: '一审结案结算' },
   { m: '2026-09-07', cust: '深圳××文化传播有限公司', amt: 82000,  inv: 0,      rec: 0,      prog: '待发账单', cls: 'pill-warning', date: '2026-09-30', caseId: DEMO_NO.sz, nth: 1, billNo: '', src: '一审结案结算' },
 ];
-let CUST_BILL_FILTER = { status: '全部' };
+let CUST_BILL_FILTER = { status: '全部', settleSet: [] };   // settleSet = 「结算进度 ▾」多选结果（v153）
 
 const LAW_BILLS = [
   { m: '2026-09-09', lawyer: '李建国', firm: '广东知恒律所',   cases: 4, amt: 32000, prog: '待提交', cls: 'pill-warning', date: '2026-10-10' },
@@ -8973,7 +9546,7 @@ const LAW_BILLS = [
   { m: '2026-08-28', lawyer: '郑楠',   firm: '广东法制盛邦',   cases: 1, amt: 15000, prog: '待提交', cls: 'pill-warning', date: '2026-10-30', caseId: DEMO_NO.dg, nth: 1, billNo: '2026090500001', src: '一审结案结算' },
   { m: '2026-09-13', lawyer: '周敏',   firm: '广东广信君达',   cases: 1, amt: 18000, prog: '待提交', cls: 'pill-warning', date: '2026-10-30', caseId: DEMO_NO.su, nth: 1, billNo: '', src: '一审结案结算' },
 ];
-let LAW_BILL_FILTER = { status: '全部' };
+let LAW_BILL_FILTER = { status: '全部', settleSet: [] };    // settleSet = 「结算进度 ▾」多选结果（v153）
 
 /* ---------- v146：账单台账（「结算明细 → 账单」两层） ----------
    ① 结算明细 = CUST_BILLS / LAW_BILLS —— 案件详情「发起结算」生成，只增不改；
@@ -9290,7 +9863,10 @@ function fillExpressNo(id) {
   const n = NOTARY_ITEMS.find(x => x.id === id); if (!n) return;
   openModal({
     title: '填写取证信息 · ' + n.id,
-    okText: '保存',
+    // v157（用户口径）：填了任意信息都能「保存」（草稿，不校验、不流转）；
+    // 「提交」才做完整性校验并把公证条目流转到「待取件开箱」。
+    okText: '提交',
+    extraBtn: { label: '保存', cls: 'btn-secondary', onClick: () => saveNotaryCollectDraft(n) },
     bodyHTML: `
       <div class="form-field">
         <label class="form-label">店铺名</label>
@@ -9322,12 +9898,36 @@ function fillExpressNo(id) {
       n.logistics = logistics;
       // v151：样品费属于「别的入口填的金额」→ 费用明细 + 费用中心同步生成一条（案件已存在时才落）
       pushFeeForNotary(n, '样品费', feeP, buyAt);
+      // v157（用户口径）：提交 → 流转至「待取件开箱」
+      n.stage = '待取件开箱';
+      n.stageCls = NOTARY_STAGE_CLS['待取件开箱'] || 'pill-progress';
       renderNotary(); renderNotaryStageNav(); updateNavBadges(); save();
-      toast('取证信息已保存', `${n.id} · 取证日期 ${n.buyAt} · 快递 ${logistics.length} 条`);
+      toast('取证信息已提交', `${n.id} · 已流转至「待取件开箱」`, 'success');
       closeModal();
       return true;
     },
   });
+}
+
+/* v157（用户口径）：「填写取证信息」的「保存」= 草稿 —— 不做必填校验、不流转、不改阶段，
+   只把已经填了的项落到公证条目上；样品费不在此触发费用同步（提交时才同步，避免半成品金额进台账）。 */
+function saveNotaryCollectDraft(n) {
+  if (!n) return;
+  const buyAt = ((document.getElementById('nt-buyAt') || {}).value || '').trim();
+  const feePraw = ((document.getElementById('nt-feeP') || {}).value || '').trim();
+  const logistics = readCourierRows('nt-couriers');
+  if (feePraw !== '' && (!isFinite(Number(feePraw)) || Number(feePraw) < 0)) {
+    toast('样品费需为不小于 0 的数字', '', 'error'); return;
+  }
+  if (!buyAt && feePraw === '' && !logistics.length) {
+    toast('请至少填写一项信息', '填了任意一项都可以保存', 'info'); return;
+  }
+  if (buyAt) n.buyAt = buyAt;
+  if (feePraw !== '') n.feeP = Number(feePraw);
+  if (logistics.length) n.logistics = logistics;
+  renderNotary(); renderNotaryStageNav(); updateNavBadges(); save();
+  closeModal();
+  toast('取证信息已保存', `${n.id} · 草稿已存（未流转）；点「提交」后进入「待取件开箱」`);
 }
 
 /* ---------- 待取证（线下线索）：上传调查报告 → 直接流转至开箱待审核 ---------- */
@@ -9448,16 +10048,14 @@ function uploadOpenPhotos(id) {
       <div class="form-field">
         <label class="form-label">开箱照片<span class="req">*</span></label>
         <input type="file" id="nt-open-photo-file" accept="image/*" multiple style="display:none" onchange="openPhotoPicked(this)">
-        <input type="file" id="nt-open-photo-dir" webkitdirectory style="display:none" onchange="openPhotoPicked(this)">
         <div style="display:flex;gap:8px;">
           <button type="button" class="btn btn-secondary btn-sm" onclick="document.getElementById('nt-open-photo-file').click()">选择照片</button>
-          <button type="button" class="btn btn-secondary btn-sm" onclick="document.getElementById('nt-open-photo-dir').click()">选择文件夹</button>
         </div>
         <div class="form-hint" style="margin-top:6px;" id="nt-open-photo-name">未选择</div>
       </div>
       <div class="form-hint">识别规则：从照片文件名 / 文件夹名中提取快递单号（如 SF1234567890123）→ 与本案快递单号比对，一致才归属本案，并自动填写发货姓名 / 电话 / 地址。${caseNo ? '' : '<br><b>本案尚未录入快递单号</b>：本次将按照片识别到的单号补录到本案。'}</div>`,
     onSubmit: () => {
-      if (!OPEN_PHOTO_FILES.length) { toast('请先选择开箱照片', '可多选照片，或直接选择整个开箱照片文件夹', 'error'); return false; }
+      if (!OPEN_PHOTO_FILES.length) { toast('请先选择开箱照片', '可一次多选若干张照片', 'error'); return false; }
       const picked = openPhotoRecognize(OPEN_PHOTO_FILES)[0] || '';
       const cur = openPhotoCaseNo(n);
       if (picked && cur && picked !== cur) {
@@ -9619,7 +10217,7 @@ function openNotaryAudit(id) {
         n.stage = '开箱待确认'; n.stageCls = NOTARY_STAGE_CLS['开箱待确认'];
         toast('审核完成：侵权', `${n.shop} · 进入开箱待确认`);
       } else {
-        openNotaryArchive(id, '开箱照片判定不侵权');
+        openNotaryArchive(id, '开箱照片判定不侵权', '无侵权信息');
       }
       renderNotary(); renderNotaryStageNav(); updateNavBadges(); save();
     },
@@ -9738,8 +10336,9 @@ function openNotaryDoc(id) {
     onSubmit: () => {
       const f = readForm();
       if (!f.docNo) { toast('请填写公证书编号', '', 'error'); return false; }
-      if (!isFinite(f.feeN) || f.feeN <= 0) { toast('请填写公证费（元）', '出证费（公证费）为必填项', 'error'); return false; }
-      if (!isFinite(f.feeP) || f.feeP <= 0) { toast('请填写样品费（元）', '样品费（原采买费）为必填项', 'error'); return false; }
+      // v155（用户口径）：改为「填了数字就行」—— 0 是合法金额，只拦留空 / 非数字 / 负数
+      if (!amtFilled((document.getElementById('nt-feen') || {}).value)) { toast('请填写公证费（元）', '出证费（公证费）为必填项，填 0 也可以', 'error'); return false; }
+      if (!amtFilled((document.getElementById('nt-feep') || {}).value)) { toast('请填写样品费（元）', '样品费（原采买费）为必填项，填 0 也可以', 'error'); return false; }
       // 「需要披露」的案件：披露文件必须上传（非空且脱离「待确认」状态）才能确认出证
       if (f.needDisclose === '是') {
         const uploaded = f.disclose && f.disclose !== '—' && f.disclose.indexOf('待确认') < 0;
@@ -9811,6 +10410,8 @@ function openNotaryReturn(id) {
   const draftReason = n.archiveReason || '';
   // v123：公证费入口 —— 预填「待出证」已填的公证费（回写同一字段 feeN，不另造副本）
   const draftFeeN = n.feeN != null && n.feeN !== '' ? n.feeN : '';
+  // v155：归档类型 —— 与「公证归档」弹窗共用同一个字段 archiveType（带出旧值，无则取首项）
+  const draftType = n.archiveType || NOTARY_ARCHIVE_TYPES[0];
   // 读取当前弹窗内已填写内容
   const readNeed = () => (document.getElementById('nt-needreturn') || {}).value || '否';
   // 公证费草稿：留空 = 不改动（草稿不把已有值清掉），填了合法数字才回写
@@ -9822,6 +10423,8 @@ function openNotaryReturn(id) {
   };
   const saveDraft = () => {
     n.needReturn = readNeed();
+    // v155：草稿保存也把归档类型落库（与提交口径一致，免得「保存了又丢」）
+    n.archiveType = (document.getElementById('nt-return-archive-type') || {}).value || n.archiveType || NOTARY_ARCHIVE_TYPES[0];
     const feeDraft = readDraftFeeN();
     if (feeDraft != null) n.feeN = feeDraft;
     if (n.needReturn === '是') {
@@ -9853,7 +10456,7 @@ function openNotaryReturn(id) {
         <label class="form-label">是否需要退货<span class="req">*</span></label>
         <select class="form-select" id="nt-needreturn" onchange="toggleReturnBoxes()">
           <option value="否"${needReturn === '否' ? ' selected' : ''}>否（填写归档原因后归档）</option>
-          <option value="是"${needReturn === '是' ? ' selected' : ''}>是（填写退款金额与退货运费后归档）</option>
+          <option value="是"${needReturn === '是' ? ' selected' : ''}>是（填写样品费退款与退货运费后归档）</option>
         </select>
       </div>
       <div class="form-field">
@@ -9861,10 +10464,17 @@ function openNotaryReturn(id) {
         <input class="form-input" type="number" id="nt-returnfeen" value="${draftFeeN}" placeholder="必填，取自「待出证」填写的公证费">
         <div class="form-hint">取自「待出证」阶段填写的公证费，可在此修正；保存 / 提交后同步到公证列表与详情费用。</div>
       </div>
+      <div class="form-field">
+        <label class="form-label">归档类型<span class="req">*</span></label>
+        <select class="form-select" id="nt-return-archive-type">
+          ${NOTARY_ARCHIVE_TYPES.map(t => `<option value="${esc(t)}"${t === draftType ? ' selected' : ''}>${esc(t)}</option>`).join('')}
+        </select>
+        <div class="form-hint">放在共用区（不随「是否退货」分支隐藏）：退货与不退货最终都要归档，类型只此一处。提交后会带进下一个「公证归档」弹窗作默认值。</div>
+      </div>
       <div id="nt-refund-box" style="display:${needReturn === '是' ? '' : 'none'};">
         <div class="form-field">
-          <label class="form-label">退款金额（元）<span class="req">*</span></label>
-          <input class="form-input" type="number" id="nt-refundamt" value="${draftAmt}" placeholder="必填，请输入退款金额">
+          <label class="form-label">样品费退款（元）<span class="req">*</span></label>
+          <input class="form-input" type="number" id="nt-refundamt" value="${draftAmt}" placeholder="必填，请输入样品费退款">
         </div>
         <div class="form-field">
           <label class="form-label">退货运费（元）<span class="req">*</span></label>
@@ -9881,18 +10491,23 @@ function openNotaryReturn(id) {
       // v123：公证费必填（与「待出证」同一口径）；预填已填值，正常情况下无需手输
       const feeRaw = (document.getElementById('nt-returnfeen') || {}).value;
       const feeVal = Number(feeRaw);
-      if (feeRaw == null || String(feeRaw).trim() === '' || !isFinite(feeVal) || feeVal <= 0) {
-        toast('请填写公证费（元）', '公证费为必填项', 'error');
+      // v155（用户口径）：公证费「必填」= 填了数字就行，0 也可以；只拦留空 / 非数字 / 负数
+      if (!amtFilled(feeRaw)) {
+        toast('请填写公证费（元）', '公证费为必填项，填 0 也可以', 'error');
         return false;
       }
       n.feeN = feeVal;
       const need = readNeed();
       n.needReturn = need;
+      // v155：退货处理卡片同样收「归档类型」（与公证归档弹窗共用同一字段），
+      //   跳到归档弹窗时作为默认值带过去，用户在第二道弹窗仍可改。
+      const tyRaw = (document.getElementById('nt-return-archive-type') || {}).value || NOTARY_ARCHIVE_TYPES[0];
+      n.archiveType = tyRaw;
       if (need === '是') {
         const amtRaw = (document.getElementById('nt-refundamt') || {}).value;
         const frtRaw = (document.getElementById('nt-refundfreight') || {}).value;
         const bad = [];
-        if (amtRaw == null || String(amtRaw).trim() === '' || isNaN(Number(amtRaw)) || Number(amtRaw) < 0) bad.push('退款金额');
+        if (amtRaw == null || String(amtRaw).trim() === '' || isNaN(Number(amtRaw)) || Number(amtRaw) < 0) bad.push('样品费退款');
         if (frtRaw == null || String(frtRaw).trim() === '' || isNaN(Number(frtRaw)) || Number(frtRaw) < 0) bad.push('退货运费');
         if (bad.length) {
           toast('请先填写' + bad.join('与'), '必填项完成后才能提交归档', 'error');
@@ -9900,8 +10515,12 @@ function openNotaryReturn(id) {
         }
         n.refundAmt = Number(amtRaw);
         n.refundFreight = Number(frtRaw);
+        // v153（用户口径）：退货处理填了金额并提交 → 费用管理同步生成两条
+        //   走 pushFeeForNotary 这个唯一同步写入口（双写案件费用明细 + 费用中心），金额 <= 0 不生成
+        pushFeeForNotary(n, '样品费退款', n.refundAmt, today());
+        pushFeeForNotary(n, '退货运费', n.refundFreight, today());
         save();
-        openNotaryArchive(id, `退货退款 ${n.refundAmt} 元 · 运费 ${n.refundFreight} 元`);
+        openNotaryArchive(id, `退货退款 ${n.refundAmt} 元 · 运费 ${n.refundFreight} 元`, tyRaw);
         return;
       }
       const reason = (function(el){ return el && el.value != null ? el.value : ''; })(document.getElementById('nt-reason')).trim();
@@ -9911,7 +10530,7 @@ function openNotaryReturn(id) {
       }
       n.archiveReason = reason;
       save();
-      openNotaryArchive(id, '不退货 · ' + reason);
+      openNotaryArchive(id, '不退货 · ' + reason, tyRaw);
     },
   });
 }
@@ -9924,9 +10543,13 @@ function toggleReturnBoxes() {
   if (rs) rs.style.display = need === '否' ? '' : 'none';
 }
 
-/* ---------- 归档：归档日期 + 归档原因 ---------- */
-function openNotaryArchive(id, preset) {
+/* ---------- 归档：归档日期 + 归档类型 + 归档原因 ----------
+   v155（用户口径）：补「归档类型」下拉（6 项，无空项 = 必有值），排在「归档原因」之前，
+   与线索归档 / 公证批量归档两处同一排序。第 3 个参数 presetType 由上游入口带默认值
+   （开箱判定不侵权 → 无侵权信息；退货处理 → 用户在退货卡片里选的那项）。 */
+function openNotaryArchive(id, preset, presetType) {
   const n = NOTARY_ITEMS.find(x => x.id === id); if (!n) return;
+  const curType = presetType || n.archiveType || NOTARY_ARCHIVE_TYPES[0];
   openModal({
     title: '公证归档 · ' + n.id,
     okText: '确认归档',
@@ -9936,17 +10559,100 @@ function openNotaryArchive(id, preset) {
         <input class="form-input" type="date" id="nt-archive-at" value="${today()}">
       </div>
       <div class="form-field">
+        <label class="form-label">归档类型<span class="req">*</span></label>
+        <select class="form-select" id="nt-archive-type">
+          ${NOTARY_ARCHIVE_TYPES.map(t => `<option value="${esc(t)}"${t === curType ? ' selected' : ''}>${esc(t)}</option>`).join('')}
+        </select>
+      </div>
+      <div class="form-field">
         <label class="form-label">归档原因<span class="req">*</span></label>
         <textarea class="form-textarea" id="nt-archive-reason" placeholder="如：不侵权 / 不出证 / 已完成退货">${esc(preset || '')}</textarea>
       </div>`,
     onSubmit: () => {
       const at = (document.getElementById('nt-archive-at') || {}).value || today();
+      const ty = (document.getElementById('nt-archive-type') || {}).value || NOTARY_ARCHIVE_TYPES[0];
       const rs = ((document.getElementById('nt-archive-reason') || {}).value || '').trim();
       if (!rs) { toast('请填写归档原因', '', 'error'); return false; }
-      n.archiveAt = at; n.archiveReason = rs;
+      n.archiveAt = at; n.archiveType = ty; n.archiveReason = rs;
       n.stage = '已归档'; n.stageCls = NOTARY_STAGE_CLS['已归档'];
       renderNotary(); renderNotaryStageNav(); updateNavBadges(); save();
       toast('已归档', `${n.shop} · ${at}`);
+    },
+  });
+}
+
+/* ---------- v153（用户口径）：公证阶段「归档」批量入口 ----------
+   两条硬约束：
+     ① 只能归档**同一「案件进展」流程**的条目 —— 勾选跨流程直接拦截（用户口径）；
+     ② 公证费 / 样品费：此前没填过 → 默认 0；填过 → 带出旧值，允许改。多条值不一致时置 0（提交后统一写入）。 */
+function openNotaryArchiveBatch() {
+  const targets = NOTARY_ITEMS.filter(n => NOTARY_SELECTED.has(n.id));
+  if (!targets.length) { toast('请先勾选公证条目', '勾选后可批量归档', 'info'); return; }
+  const stages = Array.from(new Set(targets.map(n => n.stage)));
+  if (stages.length > 1) {
+    toast('只能归档同一案件进展的条目', '当前勾选跨了 ' + stages.length + ' 个流程：' + stages.join(' / '), 'error');
+    return;
+  }
+  // 费用带出规则：全空 → 0；值一致 → 带出；不一致 → 0
+  const feeOf = key => {
+    const vals = targets.map(n => {
+      const v = n[key];
+      if (v === '' || v == null) return null;
+      const num = Number(v);
+      return isFinite(num) ? num : null;
+    });
+    if (vals.every(v => v === null)) return 0;
+    const first = vals[0];
+    return vals.every(v => v === first) ? first : 0;
+  };
+  openModal({
+    title: '归档 · ' + targets.length + ' 个条目（' + stages[0] + '）', wide: true,
+    okText: '确认归档', okClass: 'btn-primary',
+    bodyHTML: `
+      <div class="form-hint" style="margin-bottom:10px;">归档范围限「${esc(stages[0])}」流程；公证费 / 样品费没填过默认为 0，填过会带出旧值、可修改，提交后统一写入勾选条目。</div>
+      <div class="form-field">
+        <label class="form-label">公证费（元）<span class="req">*</span></label>
+        <input class="form-input" type="number" id="nt-batch-feen" value="${feeOf('feeN')}">
+      </div>
+      <div class="form-field">
+        <label class="form-label">样品费（元）<span class="req">*</span></label>
+        <input class="form-input" type="number" id="nt-batch-feep" value="${feeOf('feeP')}">
+      </div>
+      <div class="form-field">
+        <label class="form-label">归档时间<span class="req">*</span></label>
+        <input class="form-input" type="date" id="nt-batch-archive-at" value="${today()}">
+      </div>
+      <div class="form-field">
+        <label class="form-label">归档类型<span class="req">*</span></label>
+        <select class="form-select" id="nt-batch-archive-type">
+          ${NOTARY_ARCHIVE_TYPES.map(t => `<option value="${esc(t)}">${esc(t)}</option>`).join('')}
+        </select>
+      </div>
+      <div class="form-field">
+        <label class="form-label">归档原因<span class="req">*</span></label>
+        <textarea class="form-textarea" id="nt-batch-archive-reason" placeholder="如：链接下架 / 无侵权信息 / 不取证"></textarea>
+      </div>`,
+    onSubmit: () => {
+      // v155（用户口径）：公证费 / 样品费必填 = 填了数字就行，0 也可以
+      const fnRaw = (document.getElementById('nt-batch-feen') || {}).value;
+      const fpRaw = (document.getElementById('nt-batch-feep') || {}).value;
+      if (!amtFilled(fnRaw)) { toast('请填写公证费（元）', '公证费为必填项，填 0 也可以', 'error'); return false; }
+      if (!amtFilled(fpRaw)) { toast('请填写样品费（元）', '样品费为必填项，填 0 也可以', 'error'); return false; }
+      const fn = Number(fnRaw) || 0;
+      const fp = Number(fpRaw) || 0;
+      const at = (document.getElementById('nt-batch-archive-at') || {}).value || today();
+      const ty = (document.getElementById('nt-batch-archive-type') || {}).value || NOTARY_ARCHIVE_TYPES[0];
+      const rs = ((document.getElementById('nt-batch-archive-reason') || {}).value || '').trim();
+      if (!rs) { toast('请填写归档原因', '', 'error'); return false; }
+      targets.forEach(n => {
+        n.feeN = fn; n.feeP = fp;
+        n.archiveAt = at; n.archiveType = ty; n.archiveReason = rs;
+        n.stage = '已归档'; n.stageCls = NOTARY_STAGE_CLS['已归档'];
+      });
+      NOTARY_SELECTED.clear();
+      renderNotary(); renderNotaryStageNav(); updateNavBadges(); save();
+      closeModal();   // openModal 传了 onSubmit 后外层不自动关窗，必须自己关
+      toast('已归档', targets.length + ' 个公证条目 · ' + at);
     },
   });
 }
@@ -10015,6 +10721,13 @@ function notaryLeadOf(n) {
   return null;
 }
 
+/* v155：公证条目是否「已归档」—— 决定详情里是否固定渲染归档三件套（归档日期 / 类型 / 原因）。
+   判定同时看「阶段」与「任一归档字段有值」：合并起诉写出的归档记录 stage 可能不是「已归档」，
+   但只要落了归档字段就该显示，避免又出现「显示不全」（v146 的同类问题）。 */
+function notaryArchived(n) {
+  return !!n && (n.stage === '已归档' || !!(n.archiveAt || n.archiveType || n.archiveReason));
+}
+
 /* v96 公证详情：3 列排布。上半段「线索信息」把线索库详情卡的字段一并带过来，下半段「公证信息」；
    已删「关联案件」，并清掉此前重复的发货地址 / 公证书编号行。
    标题栏右侧有「编辑」，可修改本条目信息（案件进展仍走「推进下一阶段」）。 */
@@ -10037,6 +10750,7 @@ function notaryDetail(id) {
       + cell('店铺ID', `<span class="mono">${esc(lead.shopId || '—')}</span>`)
       + cell('是否需要披露', esc(lead.needDisclose || '—'))
       + cell('线索备注', esc(lead.remark || '—'), true)
+      + cell('侵权截图', shotFilesHTML(lead.shotFiles), true)
     : `<div class="full"><span class="k">线索信息</span><span class="v">${M('未匹配到关联线索（该公证条目不是由线索库流转而来）')}</span></div>`;
   const leadLinks = (lead && Array.isArray(lead.links)) ? lead.links : [];
   const leadLinkRows = leadLinks.map((p, i) => `
@@ -10090,8 +10804,9 @@ function notaryDetail(id) {
       ${cell('出证日期', `<span class="mono">${esc(n.docDate || '—')}</span>`)}
       ${cell('披露文件', esc(n.disclose || '—'))}
       ${cell('案件进展', `<span class="pill ${n.stageCls || 'pill-neutral'}">${esc(n.stage)}</span>`)}
-      ${(n.archiveAt || n.archiveReason) ? cell('归档日期', `<span class="mono">${esc(String(n.archiveAt || '—').slice(0, 10))}</span>`) : ''}
-      ${(n.archiveReason) ? cell('归档原因', esc(n.archiveReason)) : ''}
+      ${notaryArchived(n) ? cell('归档日期', `<span class="mono">${esc(String(n.archiveAt || '—').slice(0, 10))}</span>`)
+        + cell('归档类型', n.archiveType ? esc(n.archiveType) : M('—'))
+        + cell('归档原因', n.archiveReason ? esc(n.archiveReason) : M('—')) : ''}
       ${cell('客户审核', `<span class="pill ${n.auditCls || 'pill-neutral'}">${esc(n.audit || '—')}</span>`)}
       ${cell('费用', `公证费 ${money0(n.feeN)} · 调查费 ${money0(n.investFee)} · 样品费 ${money0(n.feeP)} · 披露费 ${money0(n.feeD)} · <b>合计 ${money0(notaryTotal(n))}</b>`, true)}
     </div>`,
@@ -10225,17 +10940,18 @@ function renderEvidence() {
     const sObj = (s && s !== '—') ? STAGES.find(x => x.key === s) : null;
     return sObj ? `<span class="pill ${sObj.cls}">${esc(s)}</span>` : '<span class="text-muted">—</span>';
   };
-  // status × stage × 时间 三个维度的判定口都在模块级（evOkStatus / evOkStage / evOkDate）：
+  // status × stage × 时间 × 律师 四个维度的判定口都在模块级（evOkStatus / evOkStage / evOkDate / evOkLawyer）：
   // pill 计数 / 进展浮层计数 / 列表行数 / 全选 / 导出五处共用，杜绝口径分叉
   // v148：「全部」也走同一套过滤（此前写死 EVIDENCES.length，设了时间区间后数字会与行数打架）
+  // v155：叠加「办案律师」搜索（一个条件只能有一个判定口 —— 不与列表行数分叉）
   $$('#ev-filters .filter-pill').forEach(p => {
     const el = p.querySelector('.count'); if (!el) return;
     const k = p.dataset.status;
-    const ec = s => EVIDENCES.filter(e => evOkStage(e) && evOkDate(e) && (s === '全部' || e.status === s)).length;
+    const ec = s => EVIDENCES.filter(e => evOkStage(e) && evOkDate(e) && evOkLawyer(e) && (s === '全部' || e.status === s)).length;
     el.textContent = ec(k);
   });
 
-  // 同时叠加 status × stage × 时间 三个维度（stage 多选，空集 = 不限）
+  // 同时叠加 status × stage × 时间 × 律师 四个维度（stage 多选，空集 = 不限）
   const evList = filteredEvList();
   // 按 caseId 关联公证信息：店铺名（NOTARY_ITEMS）、公证书编号+状态（NOTARY_DOCS）
   const findShop  = id => evShopOf(id);
@@ -10391,6 +11107,13 @@ function clearEvDateFilter() {
   EV_FILTER.hearFrom = ''; EV_FILTER.hearTo = ''; EV_FILTER.closeFrom = ''; EV_FILTER.closeTo = '';
   renderEvidence();
   toast('已清除时间筛选', '开庭时间 / 结案时间 均不限', 'info');
+}
+
+/* ---------- v155：证物台账「办案律师」搜索（唯一入口，输入即时筛） ----------
+   用户口径：只做输入框，不加「清除」小按钮（清空输入即回到全部）。 */
+function applyEvLawyerSearch(v) {
+  EV_FILTER.lawyerQ = String(v == null ? '' : v);
+  renderEvidence();
 }
 
 /* ---------- v111：证物「可增删多行」组件 ----------
@@ -10824,8 +11547,12 @@ function renderCalendar() {
     statCard('其他节点', byType('other') + ' <span class="unit">项</span>', '举证/上诉/执行期限', 'flat');
 
   // 即将到期列表
+  // v154：日历右侧「即将到期」卡片已按用户口径整体删除（index.html 里那张 card 已移除）。
+  //   这里保留渲染逻辑但加空值守卫 —— 节点不存在时直接跳过，不再抛错。
+  //   只加守卫、不补回 UI；要恢复卡片由用户决定。
   const colorMap = { court: '#5E6AD2', pay: '#B45309', contract: '#C4272B', other: '#057A55' };
-  $('#cal-due').innerHTML = soon.map(e => {
+  const dueBox = $('#cal-due');
+  if (dueBox) dueBox.innerHTML = soon.map(e => {
     const dd = daysTo(e.date);
     const cls = dd <= 3 ? 'urgent' : (dd <= 10 ? 'soon' : '');
     const tk = regTip(e);
@@ -10872,7 +11599,8 @@ function renderSettlementSplit() {
   // v146：明细表加「勾选」列 + 案件单号列（caseId / 第几次结算），勾选后可发起账单
   // v152：列头由「来源案件」统一改为「案件单号」（用户口径：字段表达统一）
   const custRows = cs.map((s, i) => ({ s, i, k: billRowKey(s) }))
-    .filter(o => CUST_BILL_FILTER.status === '全部' || o.s.prog === CUST_BILL_FILTER.status);
+    .filter(o => (CUST_BILL_FILTER.status === '全部' || o.s.prog === CUST_BILL_FILTER.status) &&
+      (!CUST_BILL_FILTER.settleSet.length || CUST_BILL_FILTER.settleSet.indexOf(o.s.prog) >= 0));
   $('#settle-cust-tbody').innerHTML = custRows.map(({ s, i, k }) => {
     const inBill = !!s.billNo;
     const on = billSelectable(s) && BILL_SEL.cust.has(k);
@@ -10881,7 +11609,7 @@ function renderSettlementSplit() {
       <td>${billCellHTML('cust', s, k, on)}</td>
       <td class="mono">${esc(s.m)}</td>
       <td style="color:var(--color-ink);">${esc(s.cust)}</td>
-      <td class="mono" style="font-size:12px;">${esc(s.caseId || '—')}${s.nth ? `<span class="case-id">第 ${s.nth} 次结算</span>` : ''}</td>
+      <td class="mono" style="font-size:12px;">${settleCaseNoHTML(s)}${s.nth ? `<span class="case-id">第 ${s.nth} 次结算</span>` : ''}</td>
       <td class="num">${money0(s.amt)}</td>
       <td class="num">${money0(s.inv)}</td>
       <td class="num" style="color:${s.rec > 0 ? 'var(--color-success)' : 'inherit'};">${money0(s.rec)}</td>
@@ -10911,7 +11639,8 @@ function renderSettlementSplit() {
   });
 
   const lawRows = ls.map((s, i) => ({ s, i, k: billRowKey(s) }))
-    .filter(o => LAW_BILL_FILTER.status === '全部' || o.s.prog === LAW_BILL_FILTER.status);
+    .filter(o => (LAW_BILL_FILTER.status === '全部' || o.s.prog === LAW_BILL_FILTER.status) &&
+      (!LAW_BILL_FILTER.settleSet.length || LAW_BILL_FILTER.settleSet.indexOf(o.s.prog) >= 0));
   $('#settle-law-tbody').innerHTML = lawRows.map(({ s, i, k }) => {
     const inBill = !!s.billNo;
     const on = billSelectable(s) && BILL_SEL.law.has(k);
@@ -10923,7 +11652,7 @@ function renderSettlementSplit() {
         <span class="case-name" style="font-size:13px;">${esc(s.lawyer)}</span>
         <span class="case-id">${esc(s.firm)}</span>
       </td>
-      <td class="mono" style="font-size:12px;">${esc(s.caseId || '—')}${s.nth ? `<span class="case-id">第 ${s.nth} 次结算</span>` : ''}</td>
+      <td class="mono" style="font-size:12px;">${settleCaseNoHTML(s)}${s.nth ? `<span class="case-id">第 ${s.nth} 次结算</span>` : ''}</td>
       <td class="num">${s.cases}</td>
       <td class="num">${money0(s.amt)}</td>
       <td><span class="pill ${s.cls}">${esc(s.prog)}</span>${inBill ? `<div class="case-id">${esc(s.billNo)}</div>` : ''}</td>
@@ -10941,6 +11670,98 @@ function renderSettlementSplit() {
   renderSettleBills('law');
   syncBillSelUI('cust');
   syncBillSelUI('law');
+  syncSettleStageFilterUI();   // v153：结算进度倒三角的激活态
+}
+
+/* ---------- v153（用户口径）：结算中心「结算进度 ▾」表头倒三角（单选 / 多选） ----------
+   与「我的案件」的「案件进展 ▾」同款交互与样式（th .stage-caret + .sfp-*），
+   客户结算 / 律师结算各持一份状态（CUST_BILL_FILTER.settleSet / LAW_BILL_FILTER.settleSet），
+   与上面那排单选 pill 取交集（pill 决定 status，倒三角决定 settleSet）。 */
+function settleProgScope(side) {
+  const list = (side === 'cust' ? CUST_BILLS : LAW_BILLS) || [];
+  const out = [];
+  list.forEach(s => { if (s && s.prog && out.indexOf(s.prog) < 0) out.push(s.prog); });
+  return out;
+}
+function settleProgSet(side) {
+  const f = side === 'cust' ? CUST_BILL_FILTER : LAW_BILL_FILTER;
+  if (!Array.isArray(f.settleSet)) f.settleSet = [];
+  return f.settleSet;
+}
+function settleProgCaretId(side) {
+  return side === 'cust' ? 'settle-cust-prog-caret' : 'settle-law-prog-caret';
+}
+function toggleSettleStageFilter(side, ev) {
+  if (ev) { ev.stopPropagation(); }
+  const panel = document.getElementById('settle-stage-panel');
+  if (!panel) return;
+  if (panel.style.display === 'block' && panel.dataset.side === side) { panel.style.display = 'none'; return; }
+  closeStageFilter(); closeEvStageFilter();      // 三套倒三角互斥，同时只挂一个浮层
+  panel.dataset.side = side;
+  renderSettleStageFilterPanel(side);
+  panel.style.display = 'block';
+  const caret = document.getElementById(settleProgCaretId(side));
+  if (caret && caret.getBoundingClientRect) {
+    const r = caret.getBoundingClientRect();
+    panel.style.top = (r.bottom + 6) + 'px';
+    panel.style.left = Math.max(12, r.left - 8) + 'px';
+  }
+}
+function closeSettleStageFilter() {
+  const panel = document.getElementById('settle-stage-panel');
+  if (panel) panel.style.display = 'none';
+}
+function renderSettleStageFilterPanel(side) {
+  const panel = document.getElementById('settle-stage-panel');
+  if (!panel) return;
+  const list = (side === 'cust' ? CUST_BILLS : LAW_BILLS) || [];
+  const set = settleProgSet(side);
+  const n = k => list.filter(s => s && s.prog === k).length;
+  const rows = settleProgScope(side).map(k =>
+    `<label class="sfp-item"><input type="checkbox"${set.indexOf(k) >= 0 ? ' checked' : ''} onchange="toggleSettleStageFilterKey('${esc(side)}', '${esc(k)}')"><span class="sfp-name">${esc(k)}</span><span class="sfp-count">${n(k)}</span></label>`).join('');
+  panel.innerHTML =
+    `<div class="sfp-head"><span>筛选结算进度（可多选）</span><button class="btn btn-ghost btn-sm" onclick="clearSettleStageFilter('${esc(side)}')">清除</button></div>` +
+    `<label class="sfp-item sfp-all"><input type="checkbox"${set.length === 0 ? ' checked' : ''} onchange="clearSettleStageFilter('${esc(side)}')"><span class="sfp-name">全部</span><span class="sfp-count">${list.length}</span></label>` +
+    rows;
+}
+function toggleSettleStageFilterKey(side, k) {
+  const set = settleProgSet(side);
+  const i = set.indexOf(k);
+  if (i >= 0) set.splice(i, 1); else set.push(k);
+  renderSettlementSplit();
+}
+function clearSettleStageFilter(side) {
+  const f = side === 'cust' ? CUST_BILL_FILTER : LAW_BILL_FILTER;
+  f.settleSet = [];
+  renderSettlementSplit();
+}
+function syncSettleStageFilterUI() {
+  ['cust', 'law'].forEach(side => {
+    const caret = document.getElementById(settleProgCaretId(side));
+    if (caret) caret.classList.toggle('active', settleProgSet(side).length > 0);
+  });
+  const panel = document.getElementById('settle-stage-panel');
+  if (panel && panel.style.display === 'block') renderSettleStageFilterPanel(panel.dataset.side || 'cust');
+}
+// 点击面板之外的区域自动收起（表头倒三角自己的 onclick 已 stopPropagation）
+document.addEventListener('click', e => {
+  const panel = document.getElementById('settle-stage-panel');
+  if (!panel || panel.style.display !== 'block') return;
+  if (e.target.closest('#settle-stage-panel')) return;
+  closeSettleStageFilter();
+});
+
+/* ---------- v153（用户口径）：结算中心「案件单号」点开对应案件详情 ----------
+   单号挂不到真实案件（出厂种子那 16 条）时退化成纯文本，不给出点了没反应的链接。 */
+function settleCaseNoHTML(s) {
+  const no = String((s && s.caseId) || '').trim();
+  if (!no) return '—';
+  // v153 修正：s.caseId 存的是**案件单号**（pushSettleRecord 写入的是 caseNoOf(c)），不是案件主键 c.id。
+  //   原先按 `x.id === no` 直比永远匹配不上 → 需求 11「案件单号点开跳案件详情」渲染不出链接。
+  //   这里按单号反查案件，再把 c.id 交给 openCase（openCase 只认主键）。
+  const c = (STATE.cases || []).find(x => x && caseNoOf(x) === no) || null;
+  if (!c) return esc(no);                       // 单号挂不到真实案件 → 退化成纯文本，不给点了没反应的链接
+  return `<a href="javascript:void(0)" class="link-mono" onclick="openCase('${esc(c.id)}')" title="查看案件详情">${esc(no)}</a>`;
 }
 
 /* ---------- v146：结算中心 —— 明细勾选 → 发起账单 ---------- */
@@ -11291,7 +12112,7 @@ function viewLawBill(i) {
   detailModal('律师结算单 · ' + s.m, [
     ['发起结算日期', s.m], ['律师', s.lawyer], ['所属律所', s.firm],
     ['结算案件数', s.cases + ' 件'], ['代理费', money0(s.amt)],
-    ['结算进展', s.prog], ['打款日期', s.date || '—'],
+    ['结算进度', s.prog], ['打款日期', s.date || '—'],
   ]);
 }
 
@@ -11600,8 +12421,13 @@ function filesGridHTML(c) {
   const doc = NOTARY_DOCS.find(d => (c.notaryId && d.caseId === c.notaryId) || d.caseId === c.id || (n && d.caseId === n.id)) || null;
   const discCount = (c.disclosures || []).length;
   const payCount = (c.payments || []).length;
-  // v64：缴费凭证 = 费用明细里每笔已缴费用的 proof 份数
-  const payProofCount = (c.expenses || []).filter(e => e.proof).length;
+  // v153（用户口径）：缴费凭证 = 费用管理里所有「凭证/发票」文件的合集（按顺序去重）
+  const payProofs = [];
+  (c.expenses || []).forEach(e => {
+    const s = String((e && e.proof) || '').trim();
+    if (s && s !== '—' && payProofs.indexOf(s) < 0) payProofs.push(s);
+  });
+  const payProofCount = payProofs.length;
   const hasDraft = !!draftTextOf(c);
 
   /* v62：每个文书字段对应的可下载文件。清洗规则：
@@ -11612,14 +12438,17 @@ function filesGridHTML(c) {
   const cleanFileName = (label, raw) => {
     const s = String(raw == null ? '' : raw).trim();
     if (!s || NOT_A_FILE.indexOf(s) >= 0) return '';
-    return /\.(pdf|docx?|xls[xm]?|txt|jpe?g|png|zip|rar|7z)$/i.test(s) ? s : label + '.doc';
+    // v153：含「、」的是多文件合集名（如缴费凭证），原样保留，不要再套 label + '.doc'
+    return (/\.(pdf|docx?|xls[xm]?|txt|jpe?g|png|zip|rar|7z)$/i.test(s) || s.indexOf('、') >= 0) ? s : label + '.doc';
   };
   const FILE_OF = {
     '公证书': doc && doc.file,
     '披露文件': discCount ? '披露文件清单.doc' : '',
     '起诉状': hasDraft ? '起诉状-' + draftDefName(c) + '.doc' : '',
     '立案受理通知书': c.acceptNotice,
-    '缴费凭证': payProofCount ? '缴费凭证清单.doc' : '',
+    // v156：案件详情「保全」按钮保存后写进 c.preserveDoc，这里跟着出现可勾选的一格
+    '保全文书': c.preserveDoc,
+    '缴费凭证': payProofCount ? payProofs.join('、') : '',
     '送达文书': c.serviceDoc,
     '披露数据附件': n.disclose || c.disclose,
     '判决书': c.judgeDoc,
@@ -11649,6 +12478,8 @@ function filesGridHTML(c) {
       items: [
         { label: '起诉状', value: hasDraft ? '已生成 · 点击预览' : '—', action: hasDraft ? 'previewDraft()' : null },
         { label: '立案受理通知书', value: c.acceptNotice ? `<span class="link-mono">${esc(c.acceptNotice)}</span>` : '—' },
+        // v156：保全按钮保存后，这一格才出现文件（可勾选 / 进批量下载 ZIP）
+        { label: '保全文书', value: c.preserveDoc ? `<span class="link-mono">${esc(c.preserveDoc)}</span>` : '—' },
         { label: '缴费凭证', value: payProofCount ? `<span class="link-mono">${esc(FILE_OF['缴费凭证'])}</span>` : '—' },
         { label: '送达文书', value: c.serviceDoc ? `<span class="link-mono">${esc(c.serviceDoc)}</span>` : '—' },
         { label: '披露数据附件', value: (n.disclose || c.disclose) ? `<span class="link-mono">${esc(n.disclose || c.disclose)}</span>` : '—' }
@@ -11685,7 +12516,7 @@ function filesGridHTML(c) {
     }
   ];
 
-  /* v63：6 个分组小标题与「文件清单」标题都去掉，14 个字段按流程顺序平铺成 5 列网格；
+  /* v63：6 个分组小标题与「文件清单」标题都去掉，字段按流程顺序平铺成 5 列网格（v156 起 16 个）；
      分组信息仍留在 FILES_ITEMS[].stage（ZIP 正文里的「所处阶段」用它），只是页面上不再显示标题。
      有文件的字段可勾选，无文件的字段用 .files-no-box 占位对齐。 */
   const cells = [];
@@ -11794,8 +12625,8 @@ function renderCollapsePanels(c) {
   const showFirst = idx >= K('转正式立案') && idx >= 0;
   // 判决更新点击后案件停留「待判决」（judgeGotAt 落库），此后任何阶段都视为已出判决
   const showJudge = (idx > K('待判决') && idx >= 0) || !!c.judgeGotAt;
-  // 进入过二审流程：当前处于二审阶段，或已留有二审阶段写入的数据
-  const showSecond = (idx >= K('二审') && idx >= 0) || !!(c.secondJudge || c.secondDoc || c.secondHearingAt || c.secondHearingPlace || c.secondServiceDoc);
+  // 进入过二审流程：当前处于二审阶段，或已留有二审阶段写入的数据（判定收敛到 hasSecondInstance，与判决信息拆分共用同一口）
+  const showSecond = (idx >= K('二审') && idx >= 0) || hasSecondInstance(c);
   const showExec  = idx >= K('待写执行材料') && idx >= 0;
   const showClose = idx >= K('待归档') && idx >= 0;
 
@@ -11803,8 +12634,9 @@ function renderCollapsePanels(c) {
     { key: 'case-info',  title: '案件信息',     open: false, render: () => renderCaseInfoPanel(c, st), edit: `editCard('${esc(c.id)}','case-info')`, editTitle: '编辑案件信息' },
     { key: 'lead-info',  title: '线索信息',     open: false, render: () => renderLeadInfoPanel(c), edit: `editCard('${esc(c.id)}','lead-info')`, editTitle: '编辑线索信息' },
     { key: 'first',      title: '一审信息',     open: false, hidden: !showFirst, render: () => renderFirstInstancePanel(c), edit: `editCard('${esc(c.id)}','first')`, editTitle: '编辑一审信息' },
-    { key: 'judgment',   title: '判决信息',     open: false, hidden: !showJudge, render: () => renderJudgmentPanel(c), edit: `editCard('${esc(c.id)}','judgment')`, editTitle: '编辑判决信息' },
     { key: 'second',     title: '二审信息',     open: false, hidden: !showSecond, render: () => renderSecondInstancePanel(c), edit: `editCard('${esc(c.id)}','second')`, editTitle: '编辑二审信息' },
+    // v157：判决信息挪到二审信息下面（未进二审时二审不显示，判决信息紧接一审，观感与旧版一致）
+    { key: 'judgment',   title: '判决信息',     open: false, hidden: !showJudge, render: () => renderJudgmentPanel(c), edit: `editCard('${esc(c.id)}','judgment')`, editTitle: '编辑判决信息' },
     { key: 'exec',       title: '执行信息',     open: false, hidden: !showExec, render: () => renderExecPanel(c), edit: `editCard('${esc(c.id)}','exec')`, editTitle: '编辑执行信息' },
     // 结案信息不提供编辑入口（只读展示：结算金额/律师费/结算状态均为派生值）
     { key: 'close',      title: '结案信息',     open: true,  hidden: !showClose, render: () => renderClosePanel(c) },
@@ -11935,6 +12767,9 @@ function renderLeadInfoPanel(c) {
 }
 function leadInfoBodyHTML(c) {
   const n = leadNotaryOf(c);
+  // v156：关联线索的查找提前到函数开头 —— 「侵权截图」要用它（原先只在「商品链接」区块前才查一次）
+  const shopC = shopOf(c), shopN = n && n.shop;
+  const lead = LEADS.find(l => l.shop && ((shopC && (l.shop === shopC || l.shop.indexOf(shopC) >= 0 || shopC.indexOf(l.shop) >= 0)) || (shopN && l.shop === shopN))) || null;
   const doc = NOTARY_DOCS.find(d => (c.notaryId && d.caseId === c.notaryId) || d.caseId === c.id || (n && d.caseId === n.id)) || null;
   const disc = Array.isArray(c.disclosures) ? c.disclosures : [];
   const discVal = disc.length ? disc.map(f => esc(f.name || '未命名文件')).join('<br>') : '—';
@@ -11965,8 +12800,6 @@ function leadInfoBodyHTML(c) {
     evBlock = `<div class="lead-detail-section" style="margin-top:14px;color:var(--color-ink-muted);">证物（0）</div>`;
   }
   /* 关联线索（按店铺名互相包含匹配，与披露判断同一套逻辑）→ 商品链接区块 */
-  const shopC = shopOf(c), shopN = n && n.shop;
-  const lead = LEADS.find(l => l.shop && ((shopC && (l.shop === shopC || l.shop.indexOf(shopC) >= 0 || shopC.indexOf(l.shop) >= 0)) || (shopN && l.shop === shopN))) || null;
   let linksBlock = '';
   if (lead && Array.isArray(lead.links) && lead.links.length) {
     const total = leadTotalAmt(lead.links);
@@ -11999,6 +12832,7 @@ function leadInfoBodyHTML(c) {
           ${fieldRow('平台', `<span class="tag tag-blue">${esc((n && n.platform && n.platform !== '—') ? n.platform : platformOf(c))}</span>`)}
           ${fieldRow('店铺名', esc((n && n.shop) || shopOf(c)))}
           ${fieldRow('店铺ID', esc((n && n.shopId) || '—'))}
+          ${fieldRow('侵权截图', shotFilesHTML(lead && lead.shotFiles))}
         </div>
       </div>
       <div class="col-6">
@@ -12039,10 +12873,12 @@ function renderFirstInstancePanel(c) {
   const disclosureDataVal = (c.discloseInfo && c.discloseInfo !== '—') ? esc(c.discloseInfo) : '—';
   const disclosureFileVal = (c.disclose && c.disclose !== '—') ? `<span class="link-mono">${esc(c.disclose)}</span>` : '—';
   const filingDocsArr = Array.isArray(c.filingDocs) ? c.filingDocs : [];
-  const filingDocsVal = filingDocsArr.length
-    ? filingDocsArr.map(n => `<span class="link-mono">${esc(n)}</span>`).join('、')
-    : '—';
-  const filingDocsBlock = `${filingDocsVal} <button type="button" class="btn btn-secondary btn-sm" style="margin-left:6px;white-space:nowrap;" onclick="uploadFilingDocs('${esc(c.id)}')">+ 上传</button>`;
+  // v157：调档文件换成统一上传样式（文件卡片 + 虚线加号框）。本处是案件卡片、不是弹窗，
+  //   所以删除动作走 removeFilingDoc（改数据后重绘详情），不走表单版的 docRemoveFile。
+  const filingDocsBlock = `<div class="doc-up">
+      <div class="doc-up-list">${docFileCardsHTML(filingDocsArr, 'filingDocs', '', n => `removeFilingDoc('${esc(c.id)}','${esc(n)}')`)}</div>
+      <button type="button" class="doc-drop" data-doc-drop title="上传调档文件（可多选）" onclick="uploadFilingDocs('${esc(c.id)}')"><span class="doc-drop-plus">+</span><span class="doc-drop-txt">上传</span></button>
+    </div>`;
   // v135：起诉状只显示「文件图标 + 文件名」（点击预览全文），不再把诉状正文摘要铺在字段里；
   //   未上传直接留空，不显示派生的模板文字
   // v145：起诉状支持多文件 → 逐个渲染成「诉 文件名」（每个都能点开预览），「、」与换行分隔。
@@ -12084,8 +12920,21 @@ function renderFirstInstancePanel(c) {
     </div>`;
 }
 
-/* 判决信息折叠面板：收到判决日期 / 判决金额 / 判决书 / 实缴诉讼费 / 诉讼退费 */
+/* 判决信息折叠面板：收到判决日期 / 判决金额 / 判决书 / 实缴诉讼费 / 诉讼退费
+   v157：面板挪到「二审信息」下面；进过二审的案件把本面板拆成「一审判决信息」+「二审判决信息」两段，
+   未进二审时仍只渲染原来那一段（内容与旧版逐字一致，避免观感回退）。 */
 function renderJudgmentPanel(c) {
+  const first = judgmentFirstBlockHTML(c);
+  if (!hasSecondInstance(c)) return first;
+  return `
+    <div class="lead-detail-section">一审判决信息</div>
+    ${first}
+    <div class="lead-detail-section" style="margin-top:14px;">二审判决信息</div>
+    ${judgmentSecondBlockHTML(c)}`;
+}
+
+/* 一审判决信息段（内容 = v156 以前的「判决信息」面板，原样保留） */
+function judgmentFirstBlockHTML(c) {
   const judgeAt = (c.judgeGotAt || logTime(c, '判决')).split(' ')[0];
   const judged = judgeAt !== '—';
   const fee = (c.expenses || []).find(x => x.name === '诉讼费') || { amt: 0, status: '未发起' };
@@ -12120,14 +12969,56 @@ function renderJudgmentPanel(c) {
     </div>`;
 }
 
-/* 二审信息折叠面板：进入二审流程后显示（二审进行中 / 已结 + 二审阶段字段） */
+/* 二审判决信息段（仅进过二审的案件出现）：
+   二审判决收到日期 / 二审判决书 / 二审实缴诉讼费 / 二审诉讼退费（如有；上诉人不是我方则整行不显示）
+   改判时另加「二审判决金额」。金额一律读 c.second* 顶层键，与二审结果表单同源。 */
+function judgmentSecondBlockHTML(c) {
+  const mode = secondProgressOf(c);
+  const isChange = mode === '改判';
+  const got = c.secondJudgeGotAt || '—';
+  const docVal = c.secondJudgeDoc
+    ? '<span class="text-success">已上传</span> · 1 份'
+    : '<span class="text-muted">待出具</span>';
+  const hasRefund = secondAppellantIsPlaintiff(c);
+  const refunds = Array.isArray(c.secondRefunds) ? c.secondRefunds : [];
+  const refundTotal = refunds.reduce((a, r) => a + (Number(r.amt) || 0), 0);
+  const refundVal = refundTotal
+    ? `<span class="num-mono">${money0(refundTotal)}</span>（${refunds.length} 笔）`
+      + refunds.map(r => `<div style="font-size:12px;color:var(--color-ink-muted);margin-top:2px;">`
+        + `${esc(r.from || '法院')} · ${money0(r.amt)} · ${esc(r.status || '待退')}</div>`).join('')
+    : '—';
+  return `
+    <div class="grid-12" style="gap:12px;">
+      <div class="col-4">
+        <div class="field-list">
+          ${fieldRow('二审判决收到日期', `<span class="mono">${esc(got)}</span>`)}
+          ${isChange ? fieldRow('二审判决金额', `<span class="num-mono">${c.secondJudgeAmt ? money(numOf(c.secondJudgeAmt)) : '—'}</span>`) : ''}
+        </div>
+      </div>
+      <div class="col-4">
+        <div class="field-list">
+          ${fieldRow('二审判决书', docVal)}
+          ${fieldRow('二审实缴诉讼费', `<span class="num-mono">${c.secondPaidFee ? money(numOf(c.secondPaidFee)) : money(0)}</span>`)}
+        </div>
+      </div>
+      <div class="col-4">
+        <div class="field-list">
+          ${hasRefund ? fieldRow('二审诉讼退费', refundVal) : ''}
+        </div>
+      </div>
+    </div>`;
+}
+
+/* 二审信息折叠面板：进入二审流程后显示（二审进展 4 态 + 二审阶段字段） */
 function renderSecondInstancePanel(c) {
-  const active = c.status === '二审';
+  // v157：二审进展 4 态（二审进行中 / 发回重审 / 维持原判 / 改判）—— 由「二审更新」提交时选的裁判结果自动决定
+  const prog = secondProgressOf(c);
+  const progCls = { '二审进行中': 'pill-warning', '发回重审': 'pill-neutral', '维持原判': 'pill-success', '改判': 'pill-info' }[prog] || 'pill-warning';
   return `
     <div class="grid-12" style="gap:12px;">
       <div class="col-6">
         <div class="field-list">
-          ${fieldRow('二审进展', `<span class="pill ${active ? 'pill-warning' : 'pill-success'}">${active ? '二审进行中' : '二审已结'}</span>`)}
+          ${fieldRow('二审进展', `<span class="pill ${progCls}">${prog}</span>`)}
           ${fieldRow('二审文书', c.secondDoc ? esc(c.secondDoc) : '—')}
           ${fieldRow('二审开庭日期', `<span class="mono">${esc(c.secondHearingAt || '—')}</span>`)}
         </div>
