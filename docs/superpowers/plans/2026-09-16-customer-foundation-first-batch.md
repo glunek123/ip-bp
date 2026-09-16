@@ -105,8 +105,8 @@ scope: backend/prisma/schema.prisma, backend/prisma/migrations/*, backend/src/ac
 risk: Q2
 acceptance: a test actor can read/create only within one valid grant and department; two grants never combine into broader edit access; revocation is effective on the next authorization call
 checks: backend Jest unit/integration tests; pnpm typecheck; pnpm lint
-status: PLANNED
-result_ref: none; task is not implemented
+status: IMPLEMENTED_UNVERIFIED_DB
+result_ref: task commit `feat: add minimal configurable customer authorization`; PostgreSQL migration evidence is blocked by the unavailable local Docker daemon
 evidence: backend/src/access-control/*.spec.ts and migration diff
 ```
 
@@ -151,11 +151,11 @@ evidence: backend/src/access-control/*.spec.ts and migration diff
   ): Promise<CustomerWhereInput>;
   ```
 
-- [ ] **Step 1: Write failing authorization tests**
+- [x] **Step 1: Write failing authorization tests**
 
   Add tests proving that one department-read grant plus one self-create grant does not produce department-create permission; a foreign department is denied; a disabled assignment and stale `authorizationRevision` are denied; the test identity adapter throws unless `NODE_ENV === 'test'`.
 
-- [ ] **Step 2: Run the focused tests and verify RED**
+- [x] **Step 2: Run the focused tests and verify RED**
 
   Run:
 
@@ -166,7 +166,7 @@ evidence: backend/src/access-control/*.spec.ts and migration diff
 
   Expected: FAIL because the access-control module and schema do not exist.
 
-- [ ] **Step 3: Add the minimal schema and service**
+- [x] **Step 3: Add the minimal schema and service**
 
   Add only department, user, role-template, role-grant and role-assignment records needed by the two customer actions. Store action and scope as constrained enums, version role/assignment changes, and derive query predicates from the same grant evaluation used by commands. Do not add a generic expression language or permission UI.
 
@@ -183,7 +183,9 @@ evidence: backend/src/access-control/*.spec.ts and migration diff
 
   Expected: all focused tests pass, including the negative cross-department and stale-revision cases.
 
-- [ ] **Step 5: Run task checks and commit**
+  Current checkpoint: Prisma Client generation and all 7 focused tests pass. `pnpm db:test:up` and migration execution remain unverified because Docker Desktop's daemon did not become ready and the local service could not be started with the available permissions.
+
+- [x] **Step 5: Run task checks and commit**
 
   ```powershell
   . .\Use-ProjectRuntime.ps1

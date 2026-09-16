@@ -1,6 +1,6 @@
 generator client {
-  provider = "prisma-client"
-  output = "../src/generated/prisma"
+  provider     = "prisma-client"
+  output       = "../src/generated/prisma"
   moduleFormat = "cjs"
 }
 
@@ -8,4 +8,105 @@ datasource db {
   provider = "postgresql"
 }
 
-// Business models and migrations are added only after requirements approval.
+enum PermissionAction {
+  CUSTOMER_READ         @map("customer.read")
+  CUSTOMER_CREATE_DRAFT @map("customer.create-draft")
+
+  @@map("permission_action")
+}
+
+enum PermissionScope {
+  SELF
+  TEAM
+  DEPARTMENT
+
+  @@map("permission_scope")
+}
+
+model Department {
+  id              String                 @id @default(uuid()) @db.Uuid
+  name            String
+  memberships     DepartmentMembership[]
+  roleTemplates   RoleTemplate[]
+  roleAssignments RoleAssignment[]
+  createdAt       DateTime               @default(now()) @map("created_at") @db.Timestamptz(3)
+  updatedAt       DateTime               @updatedAt @map("updated_at") @db.Timestamptz(3)
+
+  @@map("departments")
+}
+
+model UserAccount {
+  id                    String                 @id @default(uuid()) @db.Uuid
+  externalSubject       String                 @unique @map("external_subject")
+  active                Boolean                @default(true)
+  authorizationRevision Int                    @default(1) @map("authorization_revision")
+  memberships           DepartmentMembership[]
+  roleAssignments       RoleAssignment[]
+  createdAt             DateTime               @default(now()) @map("created_at") @db.Timestamptz(3)
+  updatedAt             DateTime               @updatedAt @map("updated_at") @db.Timestamptz(3)
+
+  @@map("user_accounts")
+}
+
+model DepartmentMembership {
+  id           String      @id @default(uuid()) @db.Uuid
+  userId       String      @map("user_id") @db.Uuid
+  departmentId String      @map("department_id") @db.Uuid
+  teamId       String?     @map("team_id") @db.Uuid
+  active       Boolean     @default(true)
+  user         UserAccount @relation(fields: [userId], references: [id], onDelete: Restrict)
+  department   Department  @relation(fields: [departmentId], references: [id], onDelete: Restrict)
+  createdAt    DateTime    @default(now()) @map("created_at") @db.Timestamptz(3)
+  updatedAt    DateTime    @updatedAt @map("updated_at") @db.Timestamptz(3)
+
+  @@unique([userId, departmentId])
+  @@index([departmentId, active])
+  @@map("department_memberships")
+}
+
+model RoleTemplate {
+  id           String           @id @default(uuid()) @db.Uuid
+  departmentId String           @map("department_id") @db.Uuid
+  name         String
+  active       Boolean          @default(true)
+  version      Int              @default(1)
+  department   Department       @relation(fields: [departmentId], references: [id], onDelete: Restrict)
+  grants       RoleGrant[]
+  assignments  RoleAssignment[]
+  createdAt    DateTime         @default(now()) @map("created_at") @db.Timestamptz(3)
+  updatedAt    DateTime         @updatedAt @map("updated_at") @db.Timestamptz(3)
+
+  @@unique([departmentId, name])
+  @@map("role_templates")
+}
+
+model RoleGrant {
+  id             String           @id @default(uuid()) @db.Uuid
+  roleTemplateId String           @map("role_template_id") @db.Uuid
+  action         PermissionAction
+  scope          PermissionScope
+  roleTemplate   RoleTemplate     @relation(fields: [roleTemplateId], references: [id], onDelete: Cascade)
+  createdAt      DateTime         @default(now()) @map("created_at") @db.Timestamptz(3)
+
+  @@unique([roleTemplateId, action, scope])
+  @@map("role_grants")
+}
+
+model RoleAssignment {
+  id             String       @id @default(uuid()) @db.Uuid
+  userId         String       @map("user_id") @db.Uuid
+  departmentId   String       @map("department_id") @db.Uuid
+  roleTemplateId String       @map("role_template_id") @db.Uuid
+  teamId         String?      @map("team_id") @db.Uuid
+  active         Boolean      @default(true)
+  version        Int          @default(1)
+  user           UserAccount  @relation(fields: [userId], references: [id], onDelete: Restrict)
+  department     Department   @relation(fields: [departmentId], references: [id], onDelete: Restrict)
+  roleTemplate   RoleTemplate @relation(fields: [roleTemplateId], references: [id], onDelete: Restrict)
+  createdAt      DateTime     @default(now()) @map("created_at") @db.Timestamptz(3)
+  updatedAt      DateTime     @updatedAt @map("updated_at") @db.Timestamptz(3)
+
+  @@unique([userId, departmentId, roleTemplateId, teamId])
+  @@index([userId, departmentId, active])
+  @@map("role_assignments")
+}

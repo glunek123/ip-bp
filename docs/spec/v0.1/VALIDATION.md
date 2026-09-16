@@ -1,5 +1,13 @@
 # SPEC-001 文档验证
 
+## CUST-FND-001／002首批实现门禁与最小授权核心（2026-09-16）
+
+用户引用会话`6aaa8346-93e0-83eb-a63e-2949b98d591a`，在环境漂移修复后明确要求按运营端优先路线执行；授权范围包含已确认Spec内的业务编码、开发库迁移、自动化测试和必要文档同步，不包含生产操作、生产数据、真实账号授权或范围外功能。实现门禁记录见[Q2检查](../../security/customer-foundation-q2-review.md)，最终独立安全复核前保持`IMPLEMENTED_UNVERIFIED`。
+
+CUST-FND-002先写负向测试并实测RED：授权服务、ActorContext及测试身份Adapter尚不存在，两个测试套件因模块缺失失败。随后实现最小部门、账号、部门成员、可编辑角色模板、操作＋范围Grant和角色分配schema，以及统一授权服务、Prisma读取Adapter和只允许`NODE_ENV=test`的合成身份Adapter；未加入策略语言、权限管理页面、真实SSO或案件权限。
+
+当前实测GREEN为授权核心7项Jest通过，覆盖部门读取Grant不能与本人创建Grant拼成部门创建、跨部门拒绝、停用分配、陈旧`authorizationRevision`、本人查询谓词及测试身份生产禁用；Prisma schema校验通过。完整`pnpm verify`通过：工具测试19项、后端Jest 30项、前端Vitest 24项，以及全仓TypeScript、ESLint、Prettier和前后端构建。Docker Desktop进程虽已启动，但daemon在两个等待周期内未就绪，本机`com.docker.service`又因权限不能启动，因此迁移尚未在`postgres-test`执行，数据库约束和查询隔离仍为未验证；本检查点不得标为最终Q2`VERIFIED`。
+
 ## GOV-LIVE-SPEC-001活Spec收口、自动检查与首批计划（2026-09-16）
 
 用户引用会话`6aaa7dd8-c60c-83eb-ab9f-b0cc48273eec`，要求把AI开发方式收敛为“必要上下文→本轮Spec检查→执行→按风险验证→最少留痕”，并直接完成此前已经批准的Spec修正、可再生文件清理和首批任务拆分，不再重复请求同一确认。本轮在现有入口修正SA-01～06：客户准入冻结`materialId + contentVersionId`，客户Module复用共享AuditEvent；就绪状态分为`PLAN_READY`、`IMPLEMENTATION_READY`和`INTEGRATION_BLOCKED`；客户角色改为可编辑模板与Grant；当前范围统一为SD-34／TD-BASE-05／TD-TRACE-UX-01；关系事实留存与敏感内容保留／清理分开表达。

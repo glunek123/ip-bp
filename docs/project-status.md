@@ -8,7 +8,7 @@
 
 ## 当前任务
 
-CUST-FND-001～004进行中：用户于2026-09-16引用会话“收口权限设计”，在确认环境漂移修复后明确要求按该会话执行；该会话授权在已确认Spec内开展业务编码、开发环境数据库迁移、自动化测试及必要文档同步，并确定运营端优先的D0～D8路线。当前基线为`ce7d6f1`，工作在功能分支`codex/operations-customer-foundation-impl`；Node v24.21.0、pnpm 11.27.0、`pnpm context:check`和`pnpm spec:check`已通过。实施路线为`ASTRA_DIRECT`：先完成Q2实现门禁与负向测试，再依次实现最小灵活授权、客户草稿后端和运营端直接页面。真实SSO／OIDC与对象存储仍分别受E01／E02阻断；当前不处理生产环境、生产数据、真实账号授权或真实证件。
+CUST-FND-001已完成，CUST-FND-002为`IMPLEMENTED_UNVERIFIED_DB`：用户于2026-09-16引用会话“收口权限设计”，在确认环境漂移修复后明确要求按该会话执行；该会话授权在已确认Spec内开展业务编码、开发环境数据库迁移、自动化测试及必要文档同步，并确定运营端优先的D0～D8路线。Q2实现门禁提交为`f127bd7`，当前工作在功能分支`codex/operations-customer-foundation-impl`，实施路线为`ASTRA_DIRECT`。授权核心已按TDD实现最小部门、账号、角色模板、Grant与分配模型；RED为模块缺失，GREEN为7项聚焦测试通过。完整`pnpm verify`通过：工具19项、后端30项、前端24项，以及类型、Lint、格式和前后端构建。Docker Desktop进程已启动但守护进程未就绪，本机服务因权限无法启动，因此测试库迁移和PostgreSQL集成验证仍未运行；不冒充数据库验证完成。真实SSO／OIDC与对象存储仍分别受E01／E02阻断；当前不处理生产环境、生产数据、真实账号授权或真实证件。
 
 GOV-LIVE-SPEC-001已完成：用户于2026-09-16引用会话“收口字段流程 Design”，明确要求对已批准范围直接修正、验证并交付，不再重复请求同一确认。本轮已修正客户材料精确版本、就绪门禁、陈旧权限／版本摘要、历史关系留存和重复审计事实；把最短有效执行链写入现有AI入口；以测试驱动实现`pnpm spec:check`；安全清理已批准的7个可再生目录；并拆出[首批客户基础小闭环任务](superpowers/plans/2026-09-16-customer-foundation-first-batch.md)。首次`pnpm verify`发现嵌套命令回落到Codex运行时，增加项目pnpm shim并将`.cmd`纳入上下文跟踪后完整复验通过。正式业务schema、API、迁移、页面、真实接入和生产操作仍未授权。
 
