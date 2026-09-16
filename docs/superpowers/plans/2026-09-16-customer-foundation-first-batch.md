@@ -10,9 +10,9 @@
 
 ## Global Constraints
 
-- Base ref: `effe519`; before implementation, compare the actual worktree and update this field only if a newer reviewed checkpoint exists.
+- Base ref: `ce7d6f1`; implementation runs on `codex/operations-customer-foundation-impl`.
 - Approved Spec: `REQ-XM-001/005/006`, `REQ-CU-001`, `AC-XM-001/005/006`, `AC-CU-001`, `SD-22/28/29/31/33/34`, `TD-AUTHZ-01`, `TD-TRACE-UX-01`, `TD-SLICE-CU-BASE-01 rev3`.
-- This plan is `PLAN_READY`, not coding authorization. Tasks 2–4 start only after Task 1 passes and the user explicitly authorizes business code and migrations.
+- The user explicitly authorized business code, development-database migrations, automated tests and necessary documentation synchronization on 2026-09-16 via the referenced conversation “收口权限设计”. Production changes, production data, real-account grants and out-of-scope features remain excluded.
 - Shared PostgreSQL tables must enforce department scope in every customer query. Frontend hiding is never authorization.
 - Role names are editable templates; authorization evaluates one grant that covers both action and scope. This batch does not build the permission administration UI.
 - The real SSO adapter remains `INTEGRATION_BLOCKED` by E01. Tests use an explicit test identity adapter and must not be reported as real authentication.
@@ -27,13 +27,13 @@
 ```yaml
 task_id: CUST-FND-001
 spec_refs: REQ-XM-001/005/006, AC-XM-001/005/006, SD-28/31/33/34, TD-AUTHZ-01, TD-TRACE-UX-01
-base_ref: effe519
+base_ref: ce7d6f1
 scope: docs/security/customer-foundation-q2-review.md, docs/project-status.md
 risk: Q2
-acceptance: independent review fixes or explicitly accepts every authorization, department-isolation, audit, session-revision and sensitive-data boundary listed below
+acceptance: implementation-gate review fixes or accepts every authorization, department-isolation, audit, session-revision and sensitive-data boundary; final Q2 VERIFIED still requires an independent security review
 checks: pnpm spec:check; pnpm context:check; pnpm format:check
-status: PLANNED
-result_ref: none; task is not implemented
+status: COMPLETED
+result_ref: task commit `docs: complete customer foundation Q2 gate`
 evidence: docs/security/customer-foundation-q2-review.md
 ```
 
@@ -47,7 +47,7 @@ evidence: docs/security/customer-foundation-q2-review.md
 - Consumes: `authorize(actor, action, resourceFacts)` and `buildQueryScope(actor, action, resourceType)` from TD-AUTHZ-01.
 - Produces: an accepted or blocked decision for the exact Task 2–4 scope; it does not approve real SSO, object storage, production migration, or release.
 
-- [ ] **Step 1: Record the review scope and threat cases**
+- [x] **Step 1: Record the review scope and threat cases**
 
   The review file must contain this decision table with a result and evidence for every row:
 
@@ -64,15 +64,15 @@ evidence: docs/security/customer-foundation-q2-review.md
   | Migration          | additive local/test migration only; no shared or production database execution is authorized                        |
   ```
 
-- [ ] **Step 2: Review against concrete negative tests**
+- [x] **Step 2: Review against concrete negative tests**
 
   Require these exact cases before acceptance: unauthenticated `401`; missing action `403`; same-department but outside scope non-leaking `404`; cross-department list returns zero foreign rows; cross-department detail `404`; forged `departmentId` ignored/rejected; revoked authorization fails on the next request; customer write rollback leaves no audit event and audit failure leaves no customer.
 
-- [ ] **Step 3: Mark the gate accurately**
+- [x] **Step 3: Mark the gate accurately**
 
   Set the review result to `ACCEPTED_FOR_INTERNAL_IMPLEMENTATION`, `CHANGES_REQUIRED`, or `BLOCKED`. Only the first result can unlock Task 2 after explicit coding authorization. Record reviewer, date, reviewed commit, exclusions, and concrete findings; do not write “passed” without evidence.
 
-- [ ] **Step 4: Run documentation checks**
+- [x] **Step 4: Run documentation checks**
 
   Run:
 
@@ -86,7 +86,7 @@ evidence: docs/security/customer-foundation-q2-review.md
 
   Expected: all commands pass; no source, schema, migration, or business test file is changed.
 
-- [ ] **Step 5: Commit**
+- [x] **Step 5: Commit**
 
   ```powershell
   git add docs/security/customer-foundation-q2-review.md docs/project-status.md docs/context-snapshot.json
