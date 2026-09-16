@@ -28,6 +28,7 @@ const textExtensions = new Set([
   '.jsx',
   '.mjs',
   '.cjs',
+  '.cmd',
   '.vue',
   '.html',
   '.css',

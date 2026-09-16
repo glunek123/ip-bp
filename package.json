@@ -22,8 +22,9 @@
     "db:test:up": "docker compose --profile test up -d --wait postgres-test",
     "context:check": "node scripts/context-memory.mjs check",
     "context:record": "node scripts/context-memory.mjs record",
+    "spec:check": "node scripts/spec-check.mjs",
     "test:context": "vitest run --config vitest.tools.config.mjs",
-    "verify": "pnpm context:check && pnpm typecheck && pnpm lint && pnpm format:check && pnpm test && pnpm build"
+    "verify": "pnpm context:check && pnpm spec:check && pnpm typecheck && pnpm lint && pnpm format:check && pnpm test && pnpm build"
   },
   "devDependencies": {
     "@eslint/js": "9.39.5",

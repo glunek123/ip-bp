@@ -51,6 +51,21 @@ test('dependency patch changes invalidate the checkpoint', (t) => {
   assert.throws(() => checkContext(root), /library.patch/);
 });
 
+test('Windows runtime command shims are tracked', (t) => {
+  const root = fixture(t);
+  mkdirSync(join(root, 'tools', 'project-runtime'), { recursive: true });
+  writeFileSync(
+    join(root, 'tools/project-runtime/pnpm.cmd'),
+    '@ECHO OFF\r\nECHO original\r\n',
+  );
+  recordContext(root);
+  writeFileSync(
+    join(root, 'tools/project-runtime/pnpm.cmd'),
+    '@ECHO OFF\r\nECHO changed\r\n',
+  );
+  assert.throws(() => checkContext(root), /pnpm\.cmd/);
+});
+
 test('recorded and unchanged files pass without changing the status document', (t) => {
   const root = fixture(t);
   recordContext(root);

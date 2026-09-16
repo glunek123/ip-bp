@@ -1,5 +1,15 @@
 # SPEC-001 文档验证
 
+## GOV-LIVE-SPEC-001活Spec收口、自动检查与首批计划（2026-09-16）
+
+用户引用会话`6aaa7dd8-c60c-83eb-ab9f-b0cc48273eec`，要求把AI开发方式收敛为“必要上下文→本轮Spec检查→执行→按风险验证→最少留痕”，并直接完成此前已经批准的Spec修正、可再生文件清理和首批任务拆分，不再重复请求同一确认。本轮在现有入口修正SA-01～06：客户准入冻结`materialId + contentVersionId`，客户Module复用共享AuditEvent；就绪状态分为`PLAN_READY`、`IMPLEMENTATION_READY`和`INTEGRATION_BLOCKED`；客户角色改为可编辑模板与Grant；当前范围统一为SD-34／TD-BASE-05／TD-TRACE-UX-01；关系事实留存与敏感内容保留／清理分开表达。
+
+新增`scripts/spec-check.mjs`和根命令`pnpm spec:check`，并纳入`pnpm verify`。测试先于实现建立，实测5个故障样例覆盖重复REQ、缺失REQ／SD引用、Markdown表列漂移和当前SD／TD版本过期；当前Spec检查结果为53个REQ、55个AC、11个BQ和34个SD，错误0。首批计划只含Q2复核、最小灵活授权、客户草稿／范围内读取／共享审计、直接页面与跨部门验收；编辑判重、证件版本、正式准入、权限管理页面和真实E01/E02适配不进入首批。本轮没有创建业务schema、迁移、接口或页面。
+
+启动时发现`Use-ProjectRuntime.ps1`只固定外层Node，嵌套`pnpm verify`仍回落到Codex自带pnpm 11.19.0／Node 24.19.0并被engine门禁拒绝。新增受版本文件驱动的`tools/project-runtime/pnpm.cmd`并将`.cmd`纳入上下文跟踪后，项目及嵌套脚本均使用Node 24.21.0／pnpm 11.27.0。最终`pnpm verify`通过：工具测试19项、后端Jest 23项、前端Vitest 24项，以及类型检查、ESLint、Prettier和前后端构建均通过。未运行Playwright E2E、数据库迁移、真实SSO、真实对象存储或外部联调。
+
+清理前逐项解析并验证仓库内绝对路径，删除`.tmp/`、`.local/`、`frontend/.local/`、`playwright-report/`、`test-results/`、`backend/dist/`和`frontend/dist/`中的6918个既有文件，共44,428,178字节；完整验证重新生成的两个`dist`目录共43个文件、209,653字节，验证后再次删除。最终7个目录均不存在，`.env`、`backend/.env`、`backend/.env.test`、`node_modules`、`backend/src/generated`、Demo和`pnpm-lock.yaml`均存在。被删目录不受Git跟踪，不能从提交恢复，但可由对应构建、测试或临时检查重新生成。
+
 ## TD-TRACE-UX-001低负担回溯与原页面易用性设计（2026-09-16）
 
 用户要求按引用会话`6aaa718a-18d0-83eb-8e44-d12b178ba737`修改系统设计，并先保存版本。改动前完整工作区已保存为本地提交`a7649ff`（`docs: save approved system design baseline`）。本轮登记INPUT-013和SD-34，新增REQ-XM-006／AC-XM-006及TD-TRACE-UX-01；A01～C04均回写现有DOMAIN、模块REQ／AC、CROSS-MODULE、GAPS、READINESS和COVERAGE，没有另建字段表、流程表、工作台、审批中心、审计台账或通用工作流。

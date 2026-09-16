@@ -9,5 +9,6 @@ $taskActualVersion = & $taskNodeExecutable --version
 if ($taskActualVersion -ne "v$taskNodeVersion") {
     throw "Unexpected Node version: $taskActualVersion"
 }
-$env:Path = "$taskNodeDirectory;$env:Path"
+$taskPnpmShimDirectory = Join-Path $PSScriptRoot 'tools/project-runtime'
+$env:Path = "$taskPnpmShimDirectory;$taskNodeDirectory;$env:Path"
 Write-Host "Project Node: $taskActualVersion ($taskNodeExecutable)"
