@@ -2,7 +2,7 @@
 
 案件应结算条件、一次发起、汇总账单、律师费发票和实际收付款分别建模。客户和律师两侧分别表达；SD-20已把公式后置，本阶段只设计数据字段，不能从Demo补造计算规则。
 
-依据：[固定事实](../../../demo-reverse/v158/modules/M06-settlement.md)、[候选](../../../demo-reverse/v158/modules/M06-settlement-candidates.md)、[决定](../../../demo-reverse/v158/DECISIONS.md)和[纠偏](../../../demo-reverse/v158/CORRECTIONS.md)。字段见[领域模型](../DOMAIN.md)，B/T/E见[缺口](../GAPS.md)，通用技术设计见[TD-BASE-04](../TECHNICAL-DESIGN.md)。本模块TD-SLICE、API、实现、迁移及正式测试未产生；所有AC为未执行目标场景。
+依据：[固定事实](../../../demo-reverse/v158/modules/M06-settlement.md)、[候选](../../../demo-reverse/v158/modules/M06-settlement-candidates.md)、[决定](../../../demo-reverse/v158/DECISIONS.md)和[纠偏](../../../demo-reverse/v158/CORRECTIONS.md)。字段见[领域模型](../DOMAIN.md)，B/T/E见[缺口](../GAPS.md)，通用技术设计见[TD-BASE-05／TD-TRACE-UX-01](../TECHNICAL-DESIGN.md)。本模块TD-SLICE、API、实现、迁移及正式测试未产生；所有AC为未执行目标场景。
 
 ## REQ-ST-001 案件条件和计算
 

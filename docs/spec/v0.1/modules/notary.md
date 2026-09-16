@@ -2,7 +2,7 @@
 
 线索取证来源与合并归档来源分开。普通办理候选：待取证→线上物流／线下报告→开箱待审核→开箱待确认→待出证→归档并转案；不出证转退货。线下确认可直接提诉的保留范围待审核。
 
-依据：[固定事实](../../../demo-reverse/v158/modules/M03-notary.md)、[候选](../../../demo-reverse/v158/modules/M03-notary-candidates.md)、[决定](../../../demo-reverse/v158/DECISIONS.md)和[纠偏](../../../demo-reverse/v158/CORRECTIONS.md)。字段只在[领域模型](../DOMAIN.md)维护；B/T/E编号见[缺口](../GAPS.md)，通用技术设计见[TD-BASE-04](../TECHNICAL-DESIGN.md)。本模块TD-SLICE、接口、实现及正式测试未产生。下列AC均为目标场景，未执行。
+依据：[固定事实](../../../demo-reverse/v158/modules/M03-notary.md)、[候选](../../../demo-reverse/v158/modules/M03-notary-candidates.md)、[决定](../../../demo-reverse/v158/DECISIONS.md)和[纠偏](../../../demo-reverse/v158/CORRECTIONS.md)。字段只在[领域模型](../DOMAIN.md)维护；B/T/E编号见[缺口](../GAPS.md)，通用技术设计见[TD-BASE-05／TD-TRACE-UX-01](../TECHNICAL-DESIGN.md)。本模块TD-SLICE、接口、实现及正式测试未产生。下列AC均为目标场景，未执行。
 
 ## REQ-NT-001 来源与取证记录
 

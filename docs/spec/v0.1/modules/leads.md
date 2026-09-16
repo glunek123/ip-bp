@@ -2,7 +2,7 @@
 
 待推送→线索待审核→线索待确认→移交公证并只读留存；不侵权／不取证走归档支路。阶段名沿用Demo草案，已移交的正式呈现方式不预设为新枚举。
 
-依据：[固定事实](../../../demo-reverse/v158/modules/M01-leads.md)、[候选](../../../demo-reverse/v158/modules/M01-leads-candidates.md)、[决定](../../../demo-reverse/v158/DECISIONS.md)和[纠偏](../../../demo-reverse/v158/CORRECTIONS.md)。字段只在[领域模型](../DOMAIN.md)维护；B/T/E编号见[缺口](../GAPS.md)，通用技术设计见[TD-BASE-04](../TECHNICAL-DESIGN.md)。本模块TD-SLICE、接口、实现及正式测试未产生。下列AC均为目标场景，未执行。
+依据：[固定事实](../../../demo-reverse/v158/modules/M01-leads.md)、[候选](../../../demo-reverse/v158/modules/M01-leads-candidates.md)、[决定](../../../demo-reverse/v158/DECISIONS.md)和[纠偏](../../../demo-reverse/v158/CORRECTIONS.md)。字段只在[领域模型](../DOMAIN.md)维护；B/T/E编号见[缺口](../GAPS.md)，通用技术设计见[TD-BASE-05／TD-TRACE-UX-01](../TECHNICAL-DESIGN.md)。本模块TD-SLICE、接口、实现及正式测试未产生。下列AC均为目标场景，未执行。
 
 SD-08已将Demo清晰字段、状态及正常入口作为本版业务基线；以下不再把字段列表、Demo明确的计算或批量技术一致性提交业务人员逐项选择。例外权限和更正仍按BQ审核。
 

@@ -2,7 +2,7 @@
 
 设置页中的Demo本机重置不是正式管理功能授权。迁移、恢复和模板只保留有依据的目标约束，功能范围逐项审核。
 
-依据：[固定事实](../../../demo-reverse/v158/modules/M09-settings.md)、[候选](../../../demo-reverse/v158/modules/M09-settings-candidates.md)、[决定](../../../demo-reverse/v158/DECISIONS.md)和[纠偏](../../../demo-reverse/v158/CORRECTIONS.md)。字段见[领域模型](../DOMAIN.md)，B/T/E见[缺口](../GAPS.md)，通用技术设计见[TD-BASE-04／TD-AUTHZ-01](../TECHNICAL-DESIGN.md)。本模块TD-SLICE、API、实现、迁移及正式测试未产生；所有AC为未执行目标场景。
+依据：[固定事实](../../../demo-reverse/v158/modules/M09-settings.md)、[候选](../../../demo-reverse/v158/modules/M09-settings-candidates.md)、[决定](../../../demo-reverse/v158/DECISIONS.md)和[纠偏](../../../demo-reverse/v158/CORRECTIONS.md)。字段见[领域模型](../DOMAIN.md)，B/T/E见[缺口](../GAPS.md)，通用技术设计见[TD-BASE-05／TD-AUTHZ-01／TD-TRACE-UX-01](../TECHNICAL-DESIGN.md)。本模块TD-SLICE、API、实现、迁移及正式测试未产生；所有AC为未执行目标场景。
 
 ## REQ-SY-001 迁移及恢复边界
 
