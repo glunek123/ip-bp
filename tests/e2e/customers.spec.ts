@@ -24,6 +24,7 @@ import {
   rejectCustomerUpdateAuditWrites,
   rejectNamedCustomerWrites,
   resetCustomerE2eData,
+  verifyAdmissionContactConstraintRejectsBlankValues,
   verifyRoleAssignmentMigrationRollback,
 } from '../support/customer-database.mjs';
 
@@ -139,6 +140,16 @@ test('contact validation accepts email-only data and rejects incomplete contact 
     },
   });
   expect(malformed.status()).toBe(400);
+});
+
+test('the database rejects blank admission contact values', async () => {
+  await expect(
+    verifyAdmissionContactConstraintRejectsBlankValues(),
+  ).resolves.toEqual([
+    'customers_admission_contact_complete_check',
+    'customers_admission_contact_complete_check',
+    'customers_admission_contact_complete_check',
+  ]);
 });
 
 test('another department cannot list or address the customer', async ({

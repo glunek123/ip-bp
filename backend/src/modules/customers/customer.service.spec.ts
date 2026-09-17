@@ -527,7 +527,7 @@ describe('CustomerService', () => {
     });
   });
 
-  it('updates an email-only admission contact and masks it in the shared audit', async () => {
+  it('updates an admission contact and masks all sensitive values in the shared audit', async () => {
     const current = {
       id: '33333333-3333-4333-8333-333333333333',
       name: '客户甲',
@@ -552,6 +552,7 @@ describe('CustomerService', () => {
     const updated = {
       ...current,
       admissionContactName: '李四',
+      admissionContactPhone: '13800138000',
       admissionContactEmail: 'contact@example.com',
       version: 2,
       updatedAt: new Date('2026-09-17T05:00:00.000Z'),
@@ -573,11 +574,12 @@ describe('CustomerService', () => {
       service.updateDraft(actor, current.id, {
         expectedVersion: 1,
         admissionContactName: '李四',
+        admissionContactPhone: '13800138000',
         admissionContactEmail: 'contact@example.com',
       } as never),
     ).resolves.toMatchObject({
       admissionContactName: '李四',
-      admissionContactPhone: null,
+      admissionContactPhone: '13800138000',
       admissionContactEmail: 'contact@example.com',
       version: 2,
     });
@@ -585,7 +587,7 @@ describe('CustomerService', () => {
       where: expect.objectContaining({ id: current.id, version: 1 }),
       data: expect.objectContaining({
         admissionContactName: '李四',
-        admissionContactPhone: null,
+        admissionContactPhone: '13800138000',
         admissionContactEmail: 'contact@example.com',
         version: { increment: 1 },
       }),
@@ -596,9 +598,18 @@ describe('CustomerService', () => {
         details: expect.objectContaining({
           changedFields: expect.arrayContaining([
             'admissionContactName',
+            'admissionContactPhone',
             'admissionContactEmail',
           ]),
           changes: expect.objectContaining({
+            admissionContactName: {
+              before: null,
+              after: '***',
+            },
+            admissionContactPhone: {
+              before: null,
+              after: '***8000',
+            },
             admissionContactEmail: {
               before: null,
               after: '***@example.com',
@@ -607,6 +618,11 @@ describe('CustomerService', () => {
         }),
       }),
     });
+    const serializedAudit = JSON.stringify(
+      txAuditCreate.mock.calls[0]?.[0]?.data.details,
+    );
+    expect(serializedAudit).not.toContain('李四');
+    expect(serializedAudit).not.toContain('13800138000');
   });
 
   it('preserves omitted fields in a partial edit', async () => {

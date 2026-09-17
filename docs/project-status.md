@@ -8,7 +8,7 @@
 
 ## 当前任务
 
-CUST-FND-008第三批首个纵向切片已获用户于2026-09-17明确授权并完成候选实现：在现有Customer聚合、权限范围、乐观版本、共享审计和运营端页面上维护一位准入联系人，字段仅为姓名及电话／邮箱至少一种。草稿可完全不填；填写时执行服务端空值和格式校验。联系人随客户TEAM／SELF／部门范围，不创建账号或权限，修改与客户版本及脱敏审计同事务。实施计划见[客户准入联系人计划](superpowers/plans/2026-09-17-customer-admission-contact.md)。本切片明确排除多联系人、主要联系人、删除策略、正式准入、材料／E02、真实登录／E01、权限平台、其他业务模块、生产迁移和发布；本轮不搭建`dev:acceptance`或执行人工localhost可视化验收。当前`pnpm verify`、空库7份迁移和数据库型Playwright 26/26均通过；独立Q2仍待完成，状态为`IMPLEMENTED_PENDING_INDEPENDENT_Q2`。
+CUST-FND-008第三批首个纵向切片已获用户于2026-09-17明确授权并完成候选实现：在现有Customer聚合、权限范围、乐观版本、共享审计和运营端页面上维护一位准入联系人，字段仅为姓名及电话／邮箱至少一种。草稿可完全不填；填写时执行服务端空值和格式校验。联系人随客户TEAM／SELF／部门范围，不创建账号或权限，修改与客户版本及脱敏审计同事务。实施计划见[客户准入联系人计划](superpowers/plans/2026-09-17-customer-admission-contact.md)。本切片明确排除多联系人、主要联系人、删除策略、正式准入、材料／E02、真实登录／E01、权限平台、其他业务模块、生产迁移和发布；本轮不搭建`dev:acceptance`或执行人工localhost可视化验收。首个固定候选`5b88467`的独立Q2结论为`BLOCKED`（Critical 0、Important 1），原因是数据库CHECK未拒绝纯空白联系人值；修复已增加`BTRIM`／`NULLIF`约束、原始SQL负向回归及姓名／电话审计脱敏断言，空库7份迁移和数据库型Playwright 27/27通过。当前状态仍为`IMPLEMENTED_PENDING_INDEPENDENT_Q2`，等待修复候选复核。
 
 CUST-FND-002～004首批实现已取得内部数据库与跨端证据。独立Q2前两轮结论为`BLOCKED`，对应Important项已通过前向迁移、服务端约束和真实数据库负向测试修复；2026-09-17最终独立复查结论为`ACCEPTED`，Critical 0、Important 0。该结论接受当前内部实现范围，不包含E01真实身份、E02对象存储、真实旧库恢复／生产迁移或上线许可；首批状态为`IMPLEMENTED_VERIFIED_INTERNAL_INTEGRATION`，不能简称为生产`VERIFIED`。
 
@@ -62,7 +62,7 @@ DOC-001历史整理结果：当时25份Spec的本地链接有效、49REQ／51AC�
 
 ## 最近验证
 
-本轮CUST-FND-008：新增后端测试先5项RED、前端/API测试先8项RED；实现Customer聚合内一位准入联系人后，后端聚焦31/31、前端53/53和全仓类型检查通过。只重建临时Compose服务`dev-cor-postgres-test-1`，Prisma从空库顺序应用7份迁移并报告schema最新；数据库型Playwright 26/26通过，覆盖真实页面与PostgreSQL持久化、仅电话／仅邮箱、空值／格式、TEAM／SELF／部门范围、跨部门404、撤权403、旧版本409、客户／审计事务回滚和审计邮箱脱敏。首次完整门禁在ESLint准确发现测试构造的3个未使用变量，修复后从头复验；最终`pnpm verify`通过上下文、Spec、类型、ESLint、Prettier、工具19项、后端68项、前端53项及前后端构建。未搭建`dev:acceptance`，未做人工localhost验收，未接E01/E02，未执行生产迁移或发布；独立Q2结论仍待本轮收尾。
+本轮CUST-FND-008：新增后端测试先5项RED、前端/API测试先8项RED；实现Customer聚合内一位准入联系人后，后端聚焦31/31、前端53/53和全仓类型检查通过。独立Q2对`5b88467`发现数据库CHECK只判断NULL、可被纯空白值绕过（Critical 0、Important 1）；修复将非空判断收紧为`NULLIF(BTRIM(...), '')`，并新增直接数据库负向测试和姓名／电话审计脱敏断言。只重建临时Compose服务`dev-cor-postgres-test-1`，Prisma从空库顺序应用7份迁移并报告schema最新；数据库型Playwright现为27/27通过，覆盖真实页面与PostgreSQL持久化、仅电话／仅邮箱、数据库空白约束、TEAM／SELF／部门范围、跨部门404、撤权403、旧版本409、客户／审计事务回滚和联系人敏感值脱敏。修复后的`pnpm verify`完整通过上下文、Spec、类型、ESLint、Prettier、工具19项、后端68项、前端53项及前后端构建；未搭建`dev:acceptance`，未做人工localhost验收，未接E01/E02，未执行生产迁移或发布，修复候选仍待独立Q2复查。
 
 本轮GIT-REMOTE-001：将已验证功能分支快进合并到本地`main`后，系统级`core.autocrlf=true`把未声明属性的文本检出为CRLF，导致Prettier行尾门禁稳定失败；新增仓库级`.gitattributes`将文本统一为LF，并保留既有补丁文件空行规则。格式化后索引与工作区均为LF；合并后的`pnpm verify`通过上下文、Spec、类型、ESLint、Prettier、工具19项、后端60项、前端49项及构建。该修复只稳定Windows／GitHub跨平台检出，不改变业务逻辑；远程目标为`https://github.com/glunek123/ip-bp.git`，推送不代表发布上线。
 

@@ -302,6 +302,70 @@ async function verifyRoleAssignmentMigrationRollback() {
   }
 }
 
+async function verifyAdmissionContactConstraintRejectsBlankValues() {
+  const client = new Client({ connectionString: databaseUrl });
+  const invalidContacts = [
+    {
+      id: '60000000-0000-4000-8000-000000000001',
+      name: '空白联系人姓名',
+      contactName: '   ',
+      contactPhone: '13800138000',
+      contactEmail: null,
+    },
+    {
+      id: '60000000-0000-4000-8000-000000000002',
+      name: '空白联系人电话',
+      contactName: '张三',
+      contactPhone: '   ',
+      contactEmail: null,
+    },
+    {
+      id: '60000000-0000-4000-8000-000000000003',
+      name: '空白联系人整体',
+      contactName: '',
+      contactPhone: '',
+      contactEmail: '   ',
+    },
+  ];
+  const rejectedBy = [];
+
+  await client.connect();
+  try {
+    await client.query('BEGIN');
+    for (const [index, contact] of invalidContacts.entries()) {
+      const savepoint = `contact_case_${index}`;
+      await client.query(`SAVEPOINT ${savepoint}`);
+      try {
+        await client.query(
+          `INSERT INTO customers(
+             id, name, normalized_name, department_id, responsible_user_id,
+             admission_contact_name, admission_contact_phone, admission_contact_email,
+             updated_at
+           ) VALUES ($1, $2, $2, $3, $4, $5, $6, $7, NOW())`,
+          [
+            contact.id,
+            contact.name,
+            e2eFixtures.departmentA,
+            e2eFixtures.userA,
+            contact.contactName,
+            contact.contactPhone,
+            contact.contactEmail,
+          ],
+        );
+        rejectedBy.push(null);
+      } catch (error) {
+        rejectedBy.push(error.constraint ?? null);
+      } finally {
+        await client.query(`ROLLBACK TO SAVEPOINT ${savepoint}`);
+      }
+    }
+    await client.query('ROLLBACK');
+    return rejectedBy;
+  } finally {
+    await client.end();
+  }
+}
+
 function disableDepartmentARoleAssignment() {
   return database.roleAssignment.updateMany({
     where: {
@@ -429,5 +493,6 @@ export {
   rejectCustomerUpdateAuditWrites,
   rejectNamedCustomerWrites,
   resetCustomerE2eData,
+  verifyAdmissionContactConstraintRejectsBlankValues,
   verifyRoleAssignmentMigrationRollback,
 };

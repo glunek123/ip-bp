@@ -63,6 +63,9 @@ export function verifyRoleAssignmentMigrationRollback(): Promise<{
   rejected: boolean;
   constraintNames: string[];
 }>;
+export function verifyAdmissionContactConstraintRejectsBlankValues(): Promise<
+  Array<string | null>
+>;
 export function disableDepartmentARoleAssignment(): Promise<unknown>;
 export function assignDepartmentBRoleInsideDepartmentA(): Promise<void>;
 export function duplicateDepartmentLevelRoleAssignment(): Promise<void>;

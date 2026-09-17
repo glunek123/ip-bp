@@ -14,10 +14,18 @@ ALTER TABLE "customers"
       AND "admission_contact_email" IS NULL
     )
     OR (
-      "admission_contact_name" IS NOT NULL
+      NULLIF(BTRIM("admission_contact_name"), '') IS NOT NULL
       AND (
-        "admission_contact_phone" IS NOT NULL
-        OR "admission_contact_email" IS NOT NULL
+        "admission_contact_phone" IS NULL
+        OR NULLIF(BTRIM("admission_contact_phone"), '') IS NOT NULL
+      )
+      AND (
+        "admission_contact_email" IS NULL
+        OR NULLIF(BTRIM("admission_contact_email"), '') IS NOT NULL
+      )
+      AND (
+        NULLIF(BTRIM("admission_contact_phone"), '') IS NOT NULL
+        OR NULLIF(BTRIM("admission_contact_email"), '') IS NOT NULL
       )
     )
   );
