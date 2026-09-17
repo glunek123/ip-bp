@@ -61,7 +61,12 @@ describe('AccessControlService', () => {
       service.authorizeCustomer(actor, 'customer.read', {
         departmentId: 'department-b',
       }),
-    ).rejects.toBeInstanceOf(ForbiddenException);
+    ).rejects.toMatchObject({
+      response: {
+        code: 'CUSTOMER_ACTION_FORBIDDEN',
+        message: '无权执行此客户操作',
+      },
+    });
   });
 
   it.each([
@@ -110,5 +115,31 @@ describe('AccessControlService', () => {
       departmentId: 'department-a',
       responsibleUserId: 'user-a',
     });
+  });
+
+  it('reports a denied action as a capability without hiding store failures', async () => {
+    const denied = new AccessControlService(
+      createStore({
+        active: true,
+        authorizationRevision: 4,
+        grants: [{ action: 'customer.read', scope: 'self' }],
+      }),
+    );
+    await expect(
+      denied.canAuthorizeCustomer(actor, 'customer.create-draft', {
+        departmentId: actor.departmentId,
+        responsibleUserId: actor.userId,
+      }),
+    ).resolves.toBe(false);
+
+    const failed = new AccessControlService({
+      loadSnapshot: jest.fn().mockRejectedValue(new Error('database failed')),
+    });
+    await expect(
+      failed.canAuthorizeCustomer(actor, 'customer.create-draft', {
+        departmentId: actor.departmentId,
+        responsibleUserId: actor.userId,
+      }),
+    ).rejects.toThrow('database failed');
   });
 });

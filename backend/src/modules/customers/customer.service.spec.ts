@@ -13,9 +13,11 @@ const actor: ActorContext = {
 describe('CustomerService', () => {
   const authorizeCustomer = jest.fn();
   const buildCustomerScope = jest.fn();
+  const canAuthorizeCustomer = jest.fn();
   const accessControl = {
     authorizeCustomer,
     buildCustomerScope,
+    canAuthorizeCustomer,
   } as unknown as AccessControlService;
   const customerCreate = jest.fn();
   const auditCreate = jest.fn();
@@ -39,6 +41,7 @@ describe('CustomerService', () => {
     jest.clearAllMocks();
     authorizeCustomer.mockResolvedValue(undefined);
     buildCustomerScope.mockResolvedValue({ departmentId: actor.departmentId });
+    canAuthorizeCustomer.mockResolvedValue(true);
   });
 
   it('creates a trimmed draft with server-derived ownership and one audit event', async () => {
@@ -134,6 +137,7 @@ describe('CustomerService', () => {
       total: 0,
       page: 1,
       pageSize: 20,
+      capabilities: { createDraft: true },
     });
     expect(customerFindMany).toHaveBeenCalledWith(
       expect.objectContaining({
@@ -144,6 +148,14 @@ describe('CustomerService', () => {
       }),
     );
     expect(customerCount).toHaveBeenCalledWith({ where: scope });
+    expect(canAuthorizeCustomer).toHaveBeenCalledWith(
+      actor,
+      'customer.create-draft',
+      {
+        departmentId: actor.departmentId,
+        responsibleUserId: actor.userId,
+      },
+    );
   });
 
   it('uses one non-leaking id-and-scope query for detail', async () => {
@@ -155,6 +167,50 @@ describe('CustomerService', () => {
     );
     expect(customerFindFirst).toHaveBeenCalledWith({
       where: { id: 'missing', departmentId: actor.departmentId },
+    });
+    expect(auditFindMany).not.toHaveBeenCalled();
+  });
+
+  it('returns the shared creation event only after the scoped customer is found', async () => {
+    const customer = {
+      id: '33333333-3333-4333-8333-333333333333',
+      name: '测试客户甲',
+      category: null,
+      region: null,
+      profileStatus: 'DRAFT',
+      departmentId: actor.departmentId,
+      responsibleUserId: actor.userId,
+      teamId: null,
+      version: 1,
+      updatedAt: new Date('2026-09-16T12:00:00.000Z'),
+    };
+    customerFindFirst.mockResolvedValue(customer);
+    auditFindMany.mockResolvedValue([
+      {
+        action: 'customer.draft-created',
+        actorUserId: actor.userId,
+        createdAt: new Date('2026-09-16T11:59:00.000Z'),
+      },
+    ]);
+
+    await expect(service.get(actor, customer.id)).resolves.toMatchObject({
+      id: customer.id,
+      history: [
+        {
+          action: 'customer.draft-created',
+          actorUserId: actor.userId,
+          occurredAt: '2026-09-16T11:59:00.000Z',
+        },
+      ],
+    });
+    expect(auditFindMany).toHaveBeenCalledWith({
+      where: {
+        departmentId: actor.departmentId,
+        resourceType: 'customer',
+        resourceId: customer.id,
+      },
+      orderBy: [{ createdAt: 'desc' }, { id: 'desc' }],
+      select: { action: true, actorUserId: true, createdAt: true },
     });
   });
 });

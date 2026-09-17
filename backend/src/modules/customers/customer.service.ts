@@ -28,6 +28,14 @@ export type CustomerSummary = {
   updatedAt: string;
 };
 
+export type CustomerDetail = CustomerSummary & {
+  history: Array<{
+    action: string;
+    actorUserId: string;
+    occurredAt: string;
+  }>;
+};
+
 @Injectable()
 export class CustomerService {
   constructor(
@@ -85,11 +93,15 @@ export class CustomerService {
     total: number;
     page: number;
     pageSize: number;
+    capabilities: { createDraft: boolean };
   }> {
-    const where = await this.accessControl.buildCustomerScope(
-      actor,
-      'customer.read',
-    );
+    const [where, canCreateDraft] = await Promise.all([
+      this.accessControl.buildCustomerScope(actor, 'customer.read'),
+      this.accessControl.canAuthorizeCustomer(actor, 'customer.create-draft', {
+        departmentId: actor.departmentId,
+        responsibleUserId: actor.userId,
+      }),
+    ]);
     const [customers, total] = await this.database.$transaction([
       this.database.customer.findMany({
         where,
@@ -105,10 +117,11 @@ export class CustomerService {
       total,
       page,
       pageSize,
+      capabilities: { createDraft: canCreateDraft },
     };
   }
 
-  async get(actor: ActorContext, id: string): Promise<CustomerSummary> {
+  async get(actor: ActorContext, id: string): Promise<CustomerDetail> {
     const scope = await this.accessControl.buildCustomerScope(
       actor,
       'customer.read',
@@ -122,7 +135,23 @@ export class CustomerService {
         message: '客户不存在或不可访问',
       });
     }
-    return this.toSummary(customer);
+    const history = await this.database.auditEvent.findMany({
+      where: {
+        departmentId: actor.departmentId,
+        resourceType: 'customer',
+        resourceId: customer.id,
+      },
+      orderBy: [{ createdAt: 'desc' }, { id: 'desc' }],
+      select: { action: true, actorUserId: true, createdAt: true },
+    });
+    return {
+      ...this.toSummary(customer),
+      history: history.map((event) => ({
+        action: event.action,
+        actorUserId: event.actorUserId,
+        occurredAt: event.createdAt.toISOString(),
+      })),
+    };
   }
 
   private toSummary(customer: CustomerRecord): CustomerSummary {

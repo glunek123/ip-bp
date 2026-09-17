@@ -95,7 +95,7 @@ describe('CustomerController', () => {
   it('returns 403 when the actor lacks the create action', async () => {
     createDraft.mockRejectedValueOnce(
       new ForbiddenException({
-        code: 'CUSTOMER_ACCESS_DENIED',
+        code: 'CUSTOMER_ACTION_FORBIDDEN',
         message: '无权创建客户草稿',
       }),
     );
@@ -106,7 +106,7 @@ describe('CustomerController', () => {
       .send({ name: '客户甲' })
       .expect(403)
       .expect((response) => {
-        expect(response.body.code).toBe('CUSTOMER_ACCESS_DENIED');
+        expect(response.body.code).toBe('CUSTOMER_ACTION_FORBIDDEN');
       });
   });
 

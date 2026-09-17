@@ -248,8 +248,11 @@ evidence: backend/src/modules/customers/*.spec.ts; docs/spec/v0.1/VALIDATION.md
     total: number;
     page: number;
     pageSize: number;
+    capabilities: { createDraft: boolean };
   }>;
-  get(actor: ActorContext, customerId: string): Promise<CustomerSummary>;
+  get(actor: ActorContext, customerId: string): Promise<CustomerSummary & {
+    history: Array<{ action: string; actorUserId: string; occurredAt: string }>;
+  }>;
   ```
 
 - [x] **Step 1: Write failing domain and HTTP tests**
@@ -297,9 +300,9 @@ scope: frontend/src/api/customers*, frontend/src/modules/customers/*, frontend/s
 risk: Q2
 acceptance: an allowed test user opens the customer list, creates a name-only draft in one submit, sees its detail/history, and a second-department user cannot find or open it
 checks: frontend Vitest; Playwright customer flow; pnpm verify
-status: PLANNED
-result_ref: none; task is not implemented
-evidence: frontend customer component tests and tests/e2e/customer-draft.spec.ts
+status: IMPLEMENTED_UNVERIFIED_INTEGRATION
+result_ref: working tree after e2be2c0; frontend unit/browser UI checks pass, database-backed cross-department E2E blocked
+evidence: frontend/src/api/customers.spec.ts; frontend/src/modules/customers/*.spec.ts; docs/spec/v0.1/VALIDATION.md
 ```
 
 **Files:**
@@ -320,15 +323,15 @@ evidence: frontend customer component tests and tests/e2e/customer-draft.spec.ts
 - Consumes: `GET /api/v1/customers`, `POST /api/v1/customers`, and `GET /api/v1/customers/:id` from Task 3 through the existing `requestJson` wrapper.
 - Produces routes `/customers`, `/customers/new`, `/customers/:id`; it does not add edit, duplicate override, upload, admission, or permission administration UI.
 
-- [ ] **Step 1: Write failing API decoder tests**
+- [x] **Step 1: Write failing API decoder tests**
 
   Verify that valid list/detail/create responses decode, malformed responses become `INVALID_RESPONSE`, and backend `401/403/404` codes remain available to page behavior.
 
-- [ ] **Step 2: Write failing component tests**
+- [x] **Step 2: Write failing component tests**
 
   Test separate loading, empty, failure and success states; one-click draft submit; blank-name field error; submit button disabled while pending; retained input after failure; detail shows `草稿` and a folded creation-history row; forbidden actions are absent for the test actor without create permission.
 
-- [ ] **Step 3: Run focused tests and verify RED**
+- [x] **Step 3: Run focused tests and verify RED**
 
   ```powershell
   . .\Use-ProjectRuntime.ps1
@@ -337,7 +340,7 @@ evidence: frontend customer component tests and tests/e2e/customer-draft.spec.ts
 
   Expected: FAIL because the customer API and pages do not exist.
 
-- [ ] **Step 4: Implement the direct pages**
+- [x] **Step 4: Implement the direct pages**
 
   Add only list, new and detail routes. Reuse the existing app router, HTTP wrapper, Element Plus components and CSS tokens. Keep list → new → save → detail as the primary path; do not add a wizard, approval step, dashboard, file controls, or configurable form engine.
 

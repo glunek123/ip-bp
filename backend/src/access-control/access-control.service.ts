@@ -49,7 +49,7 @@ export class AccessControlService {
     facts: CustomerResourceFacts,
   ): Promise<void> {
     if (facts.departmentId !== actor.departmentId) {
-      throw new ForbiddenException('CUSTOMER_ACCESS_DENIED');
+      throw this.forbidden();
     }
 
     const snapshot = await this.loadCurrentSnapshot(actor);
@@ -58,7 +58,23 @@ export class AccessControlService {
         grant.action === action && this.scopeCovers(grant, actor, facts),
     );
     if (!allowed) {
-      throw new ForbiddenException('CUSTOMER_ACCESS_DENIED');
+      throw this.forbidden();
+    }
+  }
+
+  async canAuthorizeCustomer(
+    actor: ActorContext,
+    action: CustomerAction,
+    facts: CustomerResourceFacts,
+  ): Promise<boolean> {
+    try {
+      await this.authorizeCustomer(actor, action, facts);
+      return true;
+    } catch (error) {
+      if (error instanceof ForbiddenException) {
+        return false;
+      }
+      throw error;
     }
   }
 
@@ -104,7 +120,7 @@ export class AccessControlService {
       };
     }
 
-    throw new ForbiddenException('CUSTOMER_ACCESS_DENIED');
+    throw this.forbidden();
   }
 
   private async loadCurrentSnapshot(
@@ -119,9 +135,16 @@ export class AccessControlService {
       !snapshot.active ||
       snapshot.authorizationRevision !== actor.authorizationRevision
     ) {
-      throw new ForbiddenException('CUSTOMER_ACCESS_DENIED');
+      throw this.forbidden();
     }
     return snapshot;
+  }
+
+  private forbidden(): ForbiddenException {
+    return new ForbiddenException({
+      code: 'CUSTOMER_ACTION_FORBIDDEN',
+      message: '无权执行此客户操作',
+    });
   }
 
   private scopeCovers(

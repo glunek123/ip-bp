@@ -272,8 +272,8 @@ saveCustomer(
 ) -> CustomerSummary + version
 
 listCustomers(QueryContext, query? + profileStatus? + page + pageSize)
-  -> items + total + page + pageSize
-getCustomer(QueryContext, customerId) -> CustomerDetail
+  -> items + total + page + pageSize + capabilities(createDraft)
+getCustomer(QueryContext, customerId) -> CustomerDetail + sharedAuditHistory
 findCustomerDuplicates(QueryContext, name + identityType? + identityNumber? + excludeCustomerId?)
   -> exactIdentityNumberMatch? + sameNameMatches[]
 ```
@@ -282,13 +282,13 @@ findCustomerDuplicates(QueryContext, name + identityType? + identityNumber? + ex
 
 ### 15.6 HTTP与OpenAPI映射
 
-| 方法与路径                         | Module Interface         | 关键输入／结果                                                 |
-| ---------------------------------- | ------------------------ | -------------------------------------------------------------- |
-| `GET /api/v1/customers`            | `listCustomers`          | `query`、`profileStatus`、`page`、`pageSize`；返回统一分页结构 |
-| `GET /api/v1/customers/duplicates` | `findCustomerDuplicates` | `name`必填，代码和排除身份可选；只返回当前数据范围内最小摘要   |
-| `POST /api/v1/customers`           | `saveCustomer`           | 新建；`intent`为`draft`或`admit`；接受`Idempotency-Key`        |
-| `GET /api/v1/customers/:id`        | `getCustomer`            | 越范围与不存在都不泄露其他部门资料；对外均返回404              |
-| `PATCH /api/v1/customers/:id`      | `saveCustomer`           | 编辑；`expectedVersion`必填，省略字段表示不修改                |
+| 方法与路径                         | Module Interface         | 关键输入／结果                                                             |
+| ---------------------------------- | ------------------------ | -------------------------------------------------------------------------- |
+| `GET /api/v1/customers`            | `listCustomers`          | `query`、`profileStatus`、`page`、`pageSize`；返回分页结构与服务端动作能力 |
+| `GET /api/v1/customers/duplicates` | `findCustomerDuplicates` | `name`必填，代码和排除身份可选；只返回当前数据范围内最小摘要               |
+| `POST /api/v1/customers`           | `saveCustomer`           | 新建；`intent`为`draft`或`admit`；接受`Idempotency-Key`                    |
+| `GET /api/v1/customers/:id`        | `getCustomer`            | 越范围与不存在均返回404；范围确认后投影可见的共享审计历史                  |
+| `PATCH /api/v1/customers/:id`      | `saveCustomer`           | 编辑；`expectedVersion`必填，省略字段表示不修改                            |
 
 DTO拒绝未知字段；部门、角色、操作者、资料状态、合作状态、版本和审计字段均不得由前端伪造。写响应返回当前版本和详情链接，不返回Prisma实体。`findCustomerDuplicates`只为交互提示，`saveCustomer`仍须在事务内重新校验。
 
@@ -478,7 +478,7 @@ getPrefillCandidates(QueryContext, source, targetAction) -> uniqueExplicitValues
 | 编号    | 既有落点与本次补强                                                | 设计状态                                               |
 | ------- | ----------------------------------------------------------------- | ------------------------------------------------------ |
 | A01/A02 | T02、CA13、审计索引；补自动事件及业务／录入／更正时间             | 共用设计完成；各切片定义差异字段，未实现               |
-| A03     | 现有客户／案件等详情Query；补权限内可折叠历史投影                 | 共用设计完成；页面实现未授权                           |
+| A03     | 现有客户／案件等详情Query；补权限内可折叠历史投影                 | 客户草稿详情已实现；其他模块仍随对应切片推进           |
 | A04/A06 | T05、MT01；补逻辑材料／内容版本、精确引用、校验值和原件／派生关系 | 共用设计完成；E02 Adapter和各材料限制待切片            |
 | A05     | SD-25、T05；补引用、期限、保留标记和权限四重清理守卫              | 设计完成；物理清理由E02及Q2复核阻断                    |
 | A07/A08 | TD-AUTHZ-01；补全入口统一范围、应用下载网关及导出执行／领取重检   | 设计完成；E01/E02、Q2复核和越权测试未产生              |
