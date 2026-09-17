@@ -78,3 +78,35 @@ export function allowCustomerUpdateAuditWrites(): Promise<void>;
 export function rejectNamedCustomerWrites(name: string): Promise<void>;
 export function allowNamedCustomerWrites(): Promise<void>;
 export function disconnectCustomerTestDatabase(): Promise<void>;
+export function getRightsHolderCounts(departmentId: string): Promise<{
+  holders: number;
+  links: number;
+  receipts: number;
+  createdAudits: number;
+  linkedAudits: number;
+}>;
+export function revokeRightsHolderGrant(
+  action: 'CUSTOMER_READ' | 'CUSTOMER_EDIT_ROUTINE',
+): Promise<unknown>;
+export function linkRightsHolderFixture(
+  customerId: string,
+  rightsHolderId: string,
+  departmentId: string,
+): Promise<unknown>;
+export function rejectRightsHolderAuditWrites(
+  action: 'rights-holder.created' | 'customer.rights-holder-linked',
+): Promise<void>;
+export function allowRightsHolderAuditWrites(): Promise<void>;
+export function verifyRightsHolderMigration(): Promise<{
+  previousMigrations: number;
+  previousSchema: string;
+  upgradedSchema: string;
+  preservedCustomers: number;
+  tables: string[];
+  validLinks: number;
+  rejections: Array<{ code: string | null; constraint: string | null }>;
+  failedMigrationCode: string | null;
+  partialTables: number;
+  partialConstraints: number;
+  failedCustomers: number;
+}>;

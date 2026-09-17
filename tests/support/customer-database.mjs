@@ -1,6 +1,9 @@
 import { createRequire } from 'node:module';
-import { readFile } from 'node:fs/promises';
+import { readFile, readdir } from 'node:fs/promises';
+import { readFileSync } from 'node:fs';
 import { resolve } from 'node:path';
+import { parseEnv } from 'node:util';
+import { randomUUID } from 'node:crypto';
 
 const requireFromBackend = createRequire(
   resolve(process.cwd(), 'backend/package.json'),
@@ -31,6 +34,22 @@ const databaseUrl = process.env.DATABASE_URL;
 if (databaseUrl === undefined) {
   throw new Error('DATABASE_URL is required for customer E2E setup');
 }
+const testEnvironment = parseEnv(
+  readFileSync(resolve(process.cwd(), 'backend/.env.test'), 'utf8'),
+);
+const testTarget = new URL(databaseUrl);
+if (
+  process.env.NODE_ENV !== 'test' ||
+  testEnvironment.NODE_ENV !== 'test' ||
+  databaseUrl !== testEnvironment.DATABASE_URL ||
+  testTarget.hostname !== '127.0.0.1' ||
+  testTarget.port !== '55433' ||
+  testTarget.pathname !== '/dev_cor_test'
+) {
+  throw new Error(
+    'Customer fixtures require the isolated backend/.env.test database',
+  );
+}
 
 const database = new PrismaClient({
   adapter: new PrismaPg({ connectionString: databaseUrl, max: 2 }),
@@ -42,6 +61,15 @@ async function resetCustomerE2eData() {
 
   await database.$transaction([
     database.auditEvent.deleteMany({
+      where: { departmentId: { in: departmentIds } },
+    }),
+    database.rightsHolderCommandReceipt.deleteMany({
+      where: { departmentId: { in: departmentIds } },
+    }),
+    database.customerRightsHolderLink.deleteMany({
+      where: { departmentId: { in: departmentIds } },
+    }),
+    database.rightsHolder.deleteMany({
       where: { departmentId: { in: departmentIds } },
     }),
     database.customer.deleteMany({
@@ -468,7 +496,220 @@ function disconnectCustomerTestDatabase() {
   return database.$disconnect();
 }
 
+async function getRightsHolderCounts(departmentId) {
+  const [holders, links, receipts, createdAudits, linkedAudits] =
+    await database.$transaction([
+      database.rightsHolder.count({ where: { departmentId } }),
+      database.customerRightsHolderLink.count({ where: { departmentId } }),
+      database.rightsHolderCommandReceipt.count({ where: { departmentId } }),
+      database.auditEvent.count({
+        where: { departmentId, action: 'rights-holder.created' },
+      }),
+      database.auditEvent.count({
+        where: { departmentId, action: 'customer.rights-holder-linked' },
+      }),
+    ]);
+  return { holders, links, receipts, createdAudits, linkedAudits };
+}
+
+function revokeRightsHolderGrant(action) {
+  return database.roleGrant.deleteMany({
+    where: { roleTemplateId: e2eFixtures.roleA, action },
+  });
+}
+
+function linkRightsHolderFixture(customerId, rightsHolderId, departmentId) {
+  return database.customerRightsHolderLink.create({
+    data: { customerId, rightsHolderId, departmentId },
+  });
+}
+
+async function rejectRightsHolderAuditWrites(action) {
+  if (
+    !['rights-holder.created', 'customer.rights-holder-linked'].includes(action)
+  ) {
+    throw new Error('Unsupported audit failure fixture');
+  }
+  await allowRightsHolderAuditWrites();
+  await database.$executeRawUnsafe(
+    `ALTER TABLE audit_events ADD CONSTRAINT e2e_reject_rights_holder_audit CHECK (action <> '${action}') NOT VALID`,
+  );
+}
+
+async function allowRightsHolderAuditWrites() {
+  await database.$executeRawUnsafe(
+    'ALTER TABLE audit_events DROP CONSTRAINT IF EXISTS e2e_reject_rights_holder_audit',
+  );
+}
+
+async function verifyRightsHolderMigration() {
+  const client = new Client({ connectionString: databaseUrl });
+  const migrationRoot = resolve(process.cwd(), 'backend/prisma/migrations');
+  const target = '20260917070000_add_customer_rights_holders';
+  const previous = '20260917060000_add_customer_admission_contact';
+  const migrations = (await readdir(migrationRoot))
+    .filter((name) => /^\d{14}_/.test(name))
+    .sort();
+  const previousMigrations = migrations.filter((name) => name <= previous);
+  const migrationSql = await readFile(
+    resolve(migrationRoot, target, 'migration.sql'),
+    'utf8',
+  );
+  const schema = `rights_holder_probe_${randomUUID().replaceAll('-', '')}`;
+  const failedSchema = `${schema}_failed`;
+  const ids = Array.from({ length: 12 }, () => randomUUID());
+  const [
+    departmentA,
+    departmentB,
+    userId,
+    customerA,
+    customerB,
+    holderA,
+    holderB,
+  ] = ids;
+  await client.connect();
+  try {
+    const actual = await client.query('SELECT current_database() AS database');
+    if (actual.rows[0].database !== 'dev_cor_test')
+      throw new Error('Unexpected migration database');
+    for (const namespace of [schema, failedSchema]) {
+      await client.query(`CREATE SCHEMA "${namespace}"`);
+      await client.query(`SET search_path TO "${namespace}"`);
+      for (const migration of previousMigrations) {
+        await client.query(
+          await readFile(
+            resolve(migrationRoot, migration, 'migration.sql'),
+            'utf8',
+          ),
+        );
+      }
+      await client.query(
+        "INSERT INTO departments(id,name,updated_at) VALUES ($1,'升级部门A',NOW()),($2,'升级部门B',NOW())",
+        [departmentA, departmentB],
+      );
+      await client.query(
+        "INSERT INTO user_accounts(id,external_subject,updated_at) VALUES ($1,'migration-synthetic-user',NOW())",
+        [userId],
+      );
+      await client.query(
+        'INSERT INTO department_memberships(id,user_id,department_id,updated_at) VALUES ($1,$3,$4,NOW()),($2,$3,$5,NOW())',
+        [ids[7], ids[8], userId, departmentA, departmentB],
+      );
+      await client.query(
+        `INSERT INTO customers(id,name,normalized_name,department_id,responsible_user_id,admission_contact_name,admission_contact_email,updated_at)
+        VALUES ($1,'迁移旧客户A','迁移旧客户A',$3,$5,'旧联系人','synthetic@example.test',NOW()),
+        ($2,'迁移旧客户B','迁移旧客户B',$4,$5,NULL,NULL,NOW())`,
+        [customerA, customerB, departmentA, departmentB, userId],
+      );
+    }
+    await client.query(`SET search_path TO "${schema}"`);
+    const before = (await client.query('SELECT * FROM customers ORDER BY id'))
+      .rows;
+    await client.query(migrationSql);
+    const after = (await client.query('SELECT * FROM customers ORDER BY id'))
+      .rows;
+    const tables = (
+      await client.query(
+        'SELECT table_name FROM information_schema.tables WHERE table_schema=$1 ORDER BY table_name',
+        [schema],
+      )
+    ).rows.map((row) => row.table_name);
+    await client.query(
+      "INSERT INTO rights_holders(id,name,department_id,updated_at) VALUES ($1,'迁移主体A',$3,NOW()),($2,'迁移主体B',$4,NOW())",
+      [holderA, holderB, departmentA, departmentB],
+    );
+    await client.query(
+      'INSERT INTO customer_rights_holder_links(id,customer_id,rights_holder_id,department_id) VALUES ($1,$2,$3,$4)',
+      [ids[9], customerA, holderA, departmentA],
+    );
+    const rejections = [];
+    const invalidStatements = [
+      ...[null, '', '   '].map((name) => ({
+        sql: 'INSERT INTO rights_holders(id,name,department_id,updated_at) VALUES ($1,$2,$3,NOW())',
+        values: [randomUUID(), name, departmentA],
+      })),
+      ...[
+        [customerB, holderA],
+        [customerA, holderB],
+        [customerA, holderA],
+      ].map(([customerId, holderId]) => ({
+        sql: 'INSERT INTO customer_rights_holder_links(id,customer_id,rights_holder_id,department_id) VALUES ($1,$2,$3,$4)',
+        values: [randomUUID(), customerId, holderId, departmentA],
+      })),
+    ];
+    for (const statement of invalidStatements) {
+      await client.query('BEGIN');
+      try {
+        await client.query(statement.sql, statement.values);
+        rejections.push({ code: null, constraint: null });
+      } catch (error) {
+        rejections.push({
+          code: error.code ?? null,
+          constraint: error.constraint ?? null,
+        });
+      } finally {
+        await client.query('ROLLBACK');
+      }
+    }
+    const validLinks = Number(
+      (await client.query('SELECT count(*) FROM customer_rights_holder_links'))
+        .rows[0].count,
+    );
+    await client.query(`SET search_path TO "${failedSchema}"`);
+    await client.query(
+      'CREATE TABLE rights_holder_command_receipts (fixture_marker TEXT)',
+    );
+    let failedMigrationCode = null;
+    try {
+      await client.query(migrationSql);
+    } catch (error) {
+      failedMigrationCode = error.code ?? null;
+      await client.query('ROLLBACK');
+    }
+    const partialTables = (
+      await client.query(
+        "SELECT table_name FROM information_schema.tables WHERE table_schema=$1 AND table_name IN ('rights_holders','customer_rights_holder_links')",
+        [failedSchema],
+      )
+    ).rows;
+    const partialConstraints = (
+      await client.query(
+        "SELECT conname FROM pg_constraint WHERE conrelid='customers'::regclass AND conname='customers_id_department_id_key'",
+      )
+    ).rows;
+    const failedCustomers = Number(
+      (await client.query('SELECT count(*) FROM customers')).rows[0].count,
+    );
+    return {
+      previousMigrations: previousMigrations.length,
+      previousSchema: previous,
+      upgradedSchema: target,
+      preservedCustomers:
+        JSON.stringify(before) === JSON.stringify(after) ? after.length : 0,
+      tables,
+      validLinks,
+      rejections,
+      failedMigrationCode,
+      partialTables: partialTables.length,
+      partialConstraints: partialConstraints.length,
+      failedCustomers,
+    };
+  } finally {
+    await client.query('ROLLBACK');
+    await client.query('RESET search_path');
+    await client.query(`DROP SCHEMA IF EXISTS "${schema}" CASCADE`);
+    await client.query(`DROP SCHEMA IF EXISTS "${failedSchema}" CASCADE`);
+    await client.end();
+  }
+}
+
 export {
+  allowRightsHolderAuditWrites,
+  getRightsHolderCounts,
+  linkRightsHolderFixture,
+  rejectRightsHolderAuditWrites,
+  revokeRightsHolderGrant,
+  verifyRightsHolderMigration,
   allowNamedCustomerWrites,
   allowCustomerDraftAuditWrites,
   allowCustomerUpdateAuditWrites,

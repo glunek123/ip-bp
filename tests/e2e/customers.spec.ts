@@ -1,5 +1,12 @@
-import { expect, test } from '@playwright/test';
+import { randomUUID } from 'node:crypto';
+import { expect, test, type APIRequestContext } from '@playwright/test';
 import {
+  allowRightsHolderAuditWrites,
+  getRightsHolderCounts,
+  linkRightsHolderFixture,
+  rejectRightsHolderAuditWrites,
+  revokeRightsHolderGrant,
+  verifyRightsHolderMigration,
   allowNamedCustomerWrites,
   allowCustomerDraftAuditWrites,
   allowCustomerUpdateAuditWrites,
@@ -34,12 +41,534 @@ const authorizationSelf = {
   Authorization: `Bearer ${e2eFixtures.tokenSelf}`,
 };
 
+async function createRightsCustomer(
+  request: APIRequestContext,
+  name: string,
+  headers = authorizationA,
+): Promise<string> {
+  const response = await request.post('/api/v1/customers', {
+    headers,
+    data: { name },
+  });
+  expect(response.status(), await response.text()).toBe(201);
+  const customer: { id: string } = await response.json();
+  return customer.id;
+}
+
+function createHolder(
+  request: APIRequestContext,
+  customerId: string,
+  data: Record<string, unknown>,
+  key = randomUUID(),
+  headers = authorizationA,
+) {
+  return request.post(`/api/v1/customers/${customerId}/rights-holders`, {
+    headers: { ...headers, 'Idempotency-Key': key },
+    data: { expectedCustomerVersion: 1, ...data },
+  });
+}
+
+function linkHolder(
+  request: APIRequestContext,
+  customerId: string,
+  rightsHolderId: string,
+  version = 1,
+  key = randomUUID(),
+  headers = authorizationA,
+) {
+  return request.post(`/api/v1/customers/${customerId}/rights-holder-links`, {
+    headers: { ...headers, 'Idempotency-Key': key },
+    data: { expectedCustomerVersion: version, rightsHolderId },
+  });
+}
+
+type HolderResult = {
+  holder: { id: string; name: string; credit: string | null };
+  linkId: string;
+  customerVersion: number;
+};
+
 test.beforeEach(async () => {
   await resetCustomerE2eData();
 });
 
 test.afterAll(async () => {
   await disconnectCustomerTestDatabase();
+});
+
+test('rights holder browser reuses the same stable identity from two customers', async ({
+  page,
+}) => {
+  await page.context().setExtraHTTPHeaders(authorizationA);
+  for (const name of ['主体客户 A', '主体客户 B']) {
+    await page.goto('/customers/new');
+    await page.getByLabel('客户名称').fill(name);
+    await page.getByRole('button', { name: '保存草稿' }).click();
+    await expect(
+      page.getByRole('heading', { name, exact: true }),
+    ).toBeVisible();
+  }
+  const customerA = await findCustomerId(e2eFixtures.departmentA, '主体客户 A');
+  const customerB = await findCustomerId(e2eFixtures.departmentA, '主体客户 B');
+  await page.goto(`/customers/${customerA}`);
+  await page.getByRole('button', { name: '新建主体', exact: true }).click();
+  await page.getByRole('button', { name: '创建并关联' }).click();
+  await expect(page.getByText('请填写权利主体名称')).toBeVisible();
+  await page.getByLabel('主体名称', { exact: true }).fill('共享权利主体 H');
+  await page.getByRole('button', { name: '创建并关联' }).click();
+  await page.getByRole('link', { name: '查看详情', exact: true }).click();
+  await expect(
+    page.getByRole('heading', { name: '共享权利主体 H' }),
+  ).toBeVisible();
+  const holderId = page.url().split('/').at(-1);
+  expect(holderId).toMatch(/^[0-9a-f-]{36}$/);
+  await expect(page.getByText(holderId!, { exact: true })).toBeVisible();
+  await expect(
+    page.getByRole('button', { name: /编辑|删除|解除|默认/ }),
+  ).toHaveCount(0);
+  await page.goto(`/customers/${customerB}`);
+  await page.getByRole('button', { name: '关联已有主体' }).click();
+  await page.getByLabel('共享权利主体 H', { exact: true }).check();
+  await page.getByRole('button', { name: '确认关联' }).click();
+  await page.getByRole('link', { name: '查看详情', exact: true }).click();
+  await expect(page).toHaveURL(
+    `/customers/${customerB}/rights-holders/${holderId}`,
+  );
+  await expect(page.getByText(holderId!, { exact: true })).toBeVisible();
+  await expect(page.getByText('主体客户 A', { exact: true })).toHaveCount(0);
+  await expect(getCustomerById(customerA)).resolves.toMatchObject({
+    version: 2,
+  });
+  await expect(getCustomerById(customerB)).resolves.toMatchObject({
+    version: 2,
+  });
+});
+
+test('rights holder validation rejects empty names but permits duplicate names and credits', async ({
+  request,
+}) => {
+  const customerId = await createRightsCustomer(request, '主体字段客户');
+  for (const name of ['', '   ', '\t\n']) {
+    const response = await createHolder(request, customerId, { name });
+    expect(response.status()).toBe(400);
+    expect(await response.json()).toMatchObject({ code: 'VALIDATION_ERROR' });
+  }
+  const first = await createHolder(request, customerId, {
+    name: '同名主体',
+    credit: 'DUPLICATE',
+  });
+  expect(first.status(), await first.text()).toBe(201);
+  const firstResult: HolderResult = await first.json();
+  const second = await createHolder(request, customerId, {
+    name: '同名主体',
+    credit: 'DUPLICATE',
+    expectedCustomerVersion: 2,
+  });
+  expect(second.status(), await second.text()).toBe(201);
+  const secondResult: HolderResult = await second.json();
+  expect(secondResult.holder.id).not.toBe(firstResult.holder.id);
+  expect(secondResult.customerVersion).toBe(3);
+});
+
+test('rights holder upgrade preserves old customers and enforces SQL constraints atomically', async () => {
+  const result = await verifyRightsHolderMigration();
+  expect(result).toMatchObject({
+    previousMigrations: 7,
+    previousSchema: '20260917060000_add_customer_admission_contact',
+    upgradedSchema: '20260917070000_add_customer_rights_holders',
+    preservedCustomers: 2,
+    validLinks: 1,
+    failedMigrationCode: '42P07',
+    partialTables: 0,
+    partialConstraints: 0,
+    failedCustomers: 2,
+  });
+  expect(result.tables).toEqual(
+    expect.arrayContaining([
+      'rights_holders',
+      'customer_rights_holder_links',
+      'rights_holder_command_receipts',
+    ]),
+  );
+  expect(result.rejections).toEqual([
+    { code: '23502', constraint: null },
+    { code: '23514', constraint: 'rights_holders_name_nonblank_check' },
+    { code: '23514', constraint: 'rights_holders_name_nonblank_check' },
+    {
+      code: '23503',
+      constraint: 'customer_rights_holder_links_customer_department_fkey',
+    },
+    {
+      code: '23503',
+      constraint: 'customer_rights_holder_links_holder_department_fkey',
+    },
+    {
+      code: '23505',
+      constraint: 'customer_rights_holder_links_customer_holder_key',
+    },
+  ]);
+});
+
+test('rights holder hidden UUID and cross-department routes never disclose hidden records', async ({
+  request,
+}) => {
+  const visibleCustomer = await createRightsCustomer(request, '当前客户');
+  const hiddenCustomer = await createRightsCustomer(
+    request,
+    '隐藏客户',
+    authorizationSelf,
+  );
+  const foreignCustomer = await createRightsCustomer(
+    request,
+    '外部门客户',
+    authorizationB,
+  );
+  const hiddenResponse = await createHolder(
+    request,
+    hiddenCustomer,
+    { name: '隐藏主体', credit: 'HIDDEN-CREDIT' },
+    randomUUID(),
+    authorizationSelf,
+  );
+  const foreignResponse = await createHolder(
+    request,
+    foreignCustomer,
+    { name: '外部门主体' },
+    randomUUID(),
+    authorizationB,
+  );
+  expect(hiddenResponse.status()).toBe(201);
+  expect(foreignResponse.status()).toBe(201);
+  const hidden: HolderResult = await hiddenResponse.json();
+  const foreign: HolderResult = await foreignResponse.json();
+  for (const holderId of [hidden.holder.id, foreign.holder.id, randomUUID()]) {
+    const detail = await request.get(
+      `/api/v1/customers/${visibleCustomer}/rights-holders/${holderId}`,
+      { headers: authorizationA },
+    );
+    expect(detail.status()).toBe(404);
+    expect(await detail.json()).toMatchObject({
+      code: 'RIGHTS_HOLDER_NOT_FOUND',
+    });
+    const link = await linkHolder(request, visibleCustomer, holderId);
+    expect(link.status()).toBe(404);
+    expect(await link.json()).toMatchObject({
+      code: 'RIGHTS_HOLDER_NOT_FOUND',
+    });
+    expect(await link.text()).not.toMatch(
+      /隐藏|外部门|HIDDEN-CREDIT|departmentId|rightsHolderId/,
+    );
+  }
+  for (const target of [hiddenCustomer, foreignCustomer]) {
+    const response = await createHolder(request, target, {
+      name: '越权新建主体',
+    });
+    expect(response.status()).toBe(404);
+    expect(await response.json()).toMatchObject({ code: 'CUSTOMER_NOT_FOUND' });
+  }
+  const candidates = await request.get(
+    `/api/v1/customers/${visibleCustomer}/linkable-rights-holders`,
+    { headers: authorizationA },
+  );
+  expect(await candidates.json()).toMatchObject({ items: [], total: 0 });
+  await expect(getCustomerById(visibleCustomer)).resolves.toMatchObject({
+    version: 1,
+  });
+});
+
+test('rights holder projections never expose another linked customer or private relationship', async ({
+  request,
+}) => {
+  const visibleCustomer = await createRightsCustomer(request, '可见锚点客户');
+  const nextCustomer = await createRightsCustomer(request, '目标客户');
+  const hiddenCustomer = await createRightsCustomer(
+    request,
+    '不应泄漏的其他客户',
+    authorizationSelf,
+  );
+  const created = await createHolder(request, visibleCustomer, {
+    name: '可见主体',
+  });
+  expect(created.status()).toBe(201);
+  const result: HolderResult = await created.json();
+  await linkRightsHolderFixture(
+    hiddenCustomer,
+    result.holder.id,
+    e2eFixtures.departmentA,
+  );
+  const responses = await Promise.all([
+    request.get(`/api/v1/customers/${visibleCustomer}/rights-holders`, {
+      headers: authorizationA,
+    }),
+    request.get(
+      `/api/v1/customers/${visibleCustomer}/rights-holders/${result.holder.id}`,
+      { headers: authorizationA },
+    ),
+    request.get(`/api/v1/customers/${nextCustomer}/linkable-rights-holders`, {
+      headers: authorizationA,
+    }),
+    linkHolder(request, nextCustomer, result.holder.id),
+  ]);
+  const expectedFields = [
+    'id',
+    'name',
+    'credit',
+    'address',
+    'legalRepresentative',
+    'duty',
+    'updatedAt',
+  ].sort();
+  for (const response of responses) {
+    expect(response.ok()).toBe(true);
+    const body = await response.json();
+    const summary = body.items?.[0] ?? body.holder ?? body;
+    expect(Object.keys(summary).sort()).toEqual(expectedFields);
+    expect(JSON.stringify(body)).not.toContain(hiddenCustomer);
+    expect(JSON.stringify(body)).not.toMatch(
+      /不应泄漏|departmentId|responsibleUserId|teamId|links|customers|linkCount/,
+    );
+  }
+  const hiddenDetail = await request.get(
+    `/api/v1/customers/${hiddenCustomer}/rights-holders/${result.holder.id}`,
+    { headers: authorizationA },
+  );
+  expect(hiddenDetail.status()).toBe(404);
+});
+
+test('rights holder concurrent duplicate links and idempotent replays persist one link and audit', async ({
+  request,
+}) => {
+  const source = await createRightsCustomer(request, '并发来源客户');
+  const target = await createRightsCustomer(request, '并发目标客户');
+  const sameKeyTarget = await createRightsCustomer(request, '同键目标客户');
+  const created = await createHolder(request, source, { name: '并发主体' });
+  expect(created.status()).toBe(201);
+  const result: HolderResult = await created.json();
+  const responses = await Promise.all([
+    linkHolder(request, target, result.holder.id),
+    linkHolder(request, target, result.holder.id),
+  ]);
+  expect(responses.map((response) => response.status()).sort()).toEqual([
+    201, 409,
+  ]);
+  const conflict = responses.find((response) => response.status() === 409)!;
+  expect(await conflict.json()).toMatchObject({
+    code: 'RIGHTS_HOLDER_ALREADY_LINKED',
+  });
+  const repeat = await linkHolder(request, target, result.holder.id, 2);
+  expect(repeat.status()).toBe(409);
+  expect(await repeat.json()).toMatchObject({
+    code: 'RIGHTS_HOLDER_ALREADY_LINKED',
+  });
+  const key = randomUUID();
+  const retries = await Promise.all([
+    linkHolder(request, sameKeyTarget, result.holder.id, 1, key),
+    linkHolder(request, sameKeyTarget, result.holder.id, 1, key),
+  ]);
+  expect(retries.map((response) => response.status())).toEqual([201, 201]);
+  expect(await retries[0]!.json()).toEqual(await retries[1]!.json());
+  const changed = await linkHolder(
+    request,
+    sameKeyTarget,
+    result.holder.id,
+    2,
+    key,
+  );
+  expect(changed.status()).toBe(409);
+  expect(await changed.json()).toMatchObject({
+    code: 'IDEMPOTENCY_KEY_REUSED',
+  });
+  await expect(getRightsHolderCounts(e2eFixtures.departmentA)).resolves.toEqual(
+    { holders: 1, links: 3, receipts: 3, createdAudits: 1, linkedAudits: 3 },
+  );
+  await expect(getCustomerById(target)).resolves.toMatchObject({ version: 2 });
+  await expect(getCustomerById(sameKeyTarget)).resolves.toMatchObject({
+    version: 2,
+  });
+});
+
+test('rights holder creation replays identical keys and separates new commands', async ({
+  request,
+}) => {
+  const customerId = await createRightsCustomer(request, '创建幂等客户');
+  const key = randomUUID();
+  const data = {
+    name: '幂等主体',
+    credit: 'PRIVATE-CREDIT',
+    address: 'PRIVATE-ADDRESS',
+    legalRepresentative: 'PRIVATE-PERSON',
+    duty: 'PRIVATE-DUTY',
+  };
+  const responses = await Promise.all([
+    createHolder(request, customerId, data, key),
+    createHolder(request, customerId, data, key),
+  ]);
+  expect(responses.map((response) => response.status())).toEqual([201, 201]);
+  const result: HolderResult = await responses[0]!.json();
+  expect(await responses[1]!.json()).toEqual(result);
+  const replay = await createHolder(request, customerId, data, key);
+  expect(await replay.json()).toEqual(result);
+  const mismatch = await createHolder(
+    request,
+    customerId,
+    { ...data, name: '不同请求' },
+    key,
+  );
+  expect(mismatch.status()).toBe(409);
+  expect(await mismatch.json()).toMatchObject({
+    code: 'IDEMPOTENCY_KEY_REUSED',
+  });
+  const differentKey = await createHolder(request, customerId, {
+    ...data,
+    expectedCustomerVersion: 2,
+  });
+  expect(differentKey.status()).toBe(201);
+  expect((await differentKey.json()).holder.id).not.toBe(result.holder.id);
+  await expect(getRightsHolderCounts(e2eFixtures.departmentA)).resolves.toEqual(
+    { holders: 2, links: 2, receipts: 2, createdAudits: 2, linkedAudits: 2 },
+  );
+  const createdAudit = await getLatestCustomerAudit(
+    result.holder.id,
+    'rights-holder.created',
+  );
+  expect(createdAudit.details).toEqual({ rightsHolderId: result.holder.id });
+  const linkedAudit = await getCustomerAuditEvents(
+    customerId,
+    'customer.rights-holder-linked',
+  );
+  expect(linkedAudit).toHaveLength(2);
+  expect(JSON.stringify([createdAudit, linkedAudit])).not.toMatch(
+    /PRIVATE-|幂等主体/,
+  );
+});
+
+test('rights holder stale versions and revoked grants prevent writes and receipt replay', async ({
+  request,
+}) => {
+  const source = await createRightsCustomer(request, '版本来源客户');
+  const target = await createRightsCustomer(request, '版本目标客户');
+  const key = randomUUID();
+  const created = await createHolder(
+    request,
+    source,
+    { name: '版本主体' },
+    key,
+  );
+  expect(created.status()).toBe(201);
+  const result: HolderResult = await created.json();
+  const edit = await request.patch(`/api/v1/customers/${target}`, {
+    headers: authorizationA,
+    data: { expectedVersion: 1, category: '企业' },
+  });
+  expect(edit.status(), await edit.text()).toBe(200);
+  for (const response of [
+    await createHolder(request, source, { name: '过期主体' }),
+    await linkHolder(request, target, result.holder.id),
+  ]) {
+    expect(response.status()).toBe(409);
+    expect(await response.json()).toMatchObject({
+      code: 'CUSTOMER_VERSION_CONFLICT',
+    });
+  }
+  await revokeRightsHolderGrant('CUSTOMER_EDIT_ROUTINE');
+  const list = await request.get(`/api/v1/customers/${source}/rights-holders`, {
+    headers: authorizationA,
+  });
+  expect(await list.json()).toMatchObject({
+    capabilities: { create: false, link: false },
+  });
+  for (const response of [
+    await createHolder(request, source, { name: '版本主体' }, key),
+    await linkHolder(request, target, result.holder.id, 2),
+  ]) {
+    expect(response.status()).toBe(403);
+    expect(await response.json()).toMatchObject({
+      code: 'CUSTOMER_ACTION_FORBIDDEN',
+    });
+  }
+  await expect(getRightsHolderCounts(e2eFixtures.departmentA)).resolves.toEqual(
+    { holders: 1, links: 1, receipts: 1, createdAudits: 1, linkedAudits: 1 },
+  );
+});
+
+test('rights holder link receipt replay requires current readable visibility', async ({
+  request,
+}) => {
+  const source = await createRightsCustomer(request, '撤销读取来源');
+  const target = await createRightsCustomer(request, '撤销读取目标');
+  const created = await createHolder(request, source, {
+    name: '不可继续读取主体',
+  });
+  const result: HolderResult = await created.json();
+  const key = randomUUID();
+  const link = await linkHolder(request, target, result.holder.id, 1, key);
+  expect(link.status()).toBe(201);
+  await revokeRightsHolderGrant('CUSTOMER_READ');
+  const replay = await linkHolder(request, target, result.holder.id, 1, key);
+  expect(replay.status()).toBe(404);
+  expect(await replay.json()).toMatchObject({
+    code: 'RIGHTS_HOLDER_NOT_FOUND',
+  });
+  expect(await replay.text()).not.toContain('不可继续读取主体');
+});
+
+test('rights holder each audit failure rolls back holder link receipt and version', async ({
+  request,
+}) => {
+  const source = await createRightsCustomer(request, '回滚来源');
+  const target = await createRightsCustomer(request, '回滚目标');
+  for (const action of [
+    'rights-holder.created',
+    'customer.rights-holder-linked',
+  ] as const) {
+    await rejectRightsHolderAuditWrites(action);
+    try {
+      const response = await createHolder(request, source, {
+        name: '不得持久化主体',
+      });
+      expect(response.status()).toBe(500);
+      expect(await response.json()).toMatchObject({ code: 'INTERNAL_ERROR' });
+      expect(await response.text()).not.toMatch(
+        /constraint|e2e_reject|Prisma|不得持久化/,
+      );
+      await expect(
+        getRightsHolderCounts(e2eFixtures.departmentA),
+      ).resolves.toEqual({
+        holders: 0,
+        links: 0,
+        receipts: 0,
+        createdAudits: 0,
+        linkedAudits: 0,
+      });
+      await expect(getCustomerById(source)).resolves.toMatchObject({
+        version: 1,
+      });
+    } finally {
+      await allowRightsHolderAuditWrites();
+    }
+  }
+  const created = await createHolder(request, source, { name: '应当保留主体' });
+  expect(created.status()).toBe(201);
+  const result: HolderResult = await created.json();
+  await rejectRightsHolderAuditWrites('customer.rights-holder-linked');
+  try {
+    const response = await linkHolder(request, target, result.holder.id);
+    expect(response.status()).toBe(500);
+    await expect(getCustomerById(target)).resolves.toMatchObject({
+      version: 1,
+    });
+    await expect(
+      getRightsHolderCounts(e2eFixtures.departmentA),
+    ).resolves.toEqual({
+      holders: 1,
+      links: 1,
+      receipts: 1,
+      createdAudits: 1,
+      linkedAudits: 1,
+    });
+  } finally {
+    await allowRightsHolderAuditWrites();
+  }
 });
 
 test('operations user creates a persisted draft and sees its audit history', async ({

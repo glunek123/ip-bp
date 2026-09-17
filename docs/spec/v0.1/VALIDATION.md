@@ -1,5 +1,28 @@
 # SPEC-001 文档验证
 
+## CUST-RH-001客户权利主体实现候选（2026-09-17）
+
+依据TD-SLICE-CU-RH-01 rev1与用户当日编码授权，范围仅为主体新建、只读查看及客户关联。Task 1/2实现固定至`c4891d1`；Task 3补充真实PostgreSQL／浏览器测试与迁移证据。Q2原因是客户范围、共享主体信息、组合部门约束、事务、审计、幂等与版本控制；最终状态仍为待独立Q2审查／未上线。
+
+- **运行环境与安全核验**：每次PowerShell加载项目入口，Node `v24.21.0`、pnpm `11.27.0`符合锁定值。读取`backend/.env.test`并只输出脱敏目标，确认`NODE_ENV=test`、`127.0.0.1:55433/dev_cor_test`，连接后`current_database()`也为`dev_cor_test`。测试helper再次比对连接串与该文件一致并限制本机专用库，才允许fixture清理、故障约束和临时schema。未操作开发库、生产或真实数据，未打印／提交凭据。
+- **首个RED**：先增加浏览器A／B创建客户、A新建H、B关联同一H和字段边界测试，再运行`pnpm db:test:up`、`pnpm build`及筛选。计划原命令`pnpm test:e2e -- --grep "rights holder"`把额外`--`原样转发，实际选中29项；首个组件冷启动超时后中止，不能记为主体RED。改用`pnpm test:e2e --grep "rights holder" --max-failures=1`实际选中2项，1失败／1未运行：主体表未迁移，后端`P2021 / 42P01`，页面无法出现“新建主体”，等待30秒超时。随后补齐fixture的receipt→link→holder→customer清理顺序及专项helper。
+- **空库全迁移**：只精确重建Compose `postgres-test`临时服务，重建前public表为9，重建后实际查询public表为0；随后Prisma `migrate deploy`顺序成功应用8份迁移至`20260917070000_add_customer_rights_holders`，`migrate status`报告schema最新。临时测试数据随容器重建清除，可由fixture重建；开发持久卷保持原状。
+- **上一schema升级**：`verifyRightsHolderMigration`在两个随机命名临时schema应用前7份迁移至`20260917060000_add_customer_admission_contact`，写入两部门、成员及含联系人资料的2个合成旧客户。应用新迁移后逐行全字段比较保留2/2；3张新表存在，同部门关联成功。原始SQL的NULL名称得到23502，空串／纯空格由`rights_holders_name_nonblank_check`拒绝，跨部门客户／主体分别由`customer_rights_holder_links_customer_department_fkey`及`customer_rights_holder_links_holder_department_fkey`拒绝，重复关联由`customer_rights_holder_links_customer_holder_key`拒绝。另以预存receipt表制造迁移中途42P07，回滚后新主体／关联表与客户组合唯一约束均为0，旧客户仍2/2；临时schema在finally清理。
+- **聚焦GREEN**：首次helper使用顶层await遇到Playwright模块转换`ReferenceError: await is not defined`，改为启动期同步读取安全配置后，`pnpm test:e2e --grep "rights holder"`退出0，10/10通过（7.4秒）。覆盖真实页面稳定身份复用、空名称及同名／同信用代码允许、猜测隐藏UUID、同部门SELF／TEAM与跨部门404、响应白名单和隐藏关系不泄漏、不同key并发关联与相同key并发重放、同key不同指纹、版本过期、编辑／读取撤权、两种创建审计失败及关联审计失败的全事务回滚、脱敏审计。
+- **完整候选门禁**：固定执行树`3a93717dab65e2c7da819537b18e660718a5d42c`，基于`c4891d1`，本地`main`及`origin/main`均为`e5b55de`。`pnpm verify`退出0，用时56.9秒，覆盖212文本上下文、Spec 53REQ／55AC／11BQ／34SD、工具19项、后端98项、前端95项、类型／Lint／格式和前后端构建；随后完整`pnpm test:e2e`退出0，37/37通过（Playwright 13.5秒，命令14.6秒）。两项完整门禁各正式执行1次；最初错误带`--`的29项选择被中止，单独保留为失败尝试，不计通过。服务由当前构建启动且禁止复用；数据库fixture串行重建，未改锁文件、测试配置或迁移。预期审计故障场景的脱敏500日志和Node颜色环境提示保留，不作失败隐藏。收口只追加这些非执行性结果及快照，业务验证复用该执行树。独立Q2由主代理另行组织，当前待独立Q2审查／未上线，未给出ACCEPTED。
+
+需求与证据：[REQ-CU-002／AC-CU-002](modules/customers.md)→[技术设计第19节](TECHNICAL-DESIGN.md)→[后端](../../../backend/src/modules/customers/rights-holder.service.ts)、[客户内页面](../../../frontend/src/modules/customers/CustomerRightsHolderPanel.vue)→[数据库／浏览器测试](../../../tests/e2e/customers.spec.ts)、[迁移helper](../../../tests/support/customer-database.mjs)。E01仍只阻断真实身份联调；E02不阻断本无文件切片。未实现主体编辑、删除、解除关联、默认主体、多联系人、资产、协议、合作状态或主链Query，未执行生产迁移／发布。
+
+## CUST-RH-DESIGN-001客户与权利主体最小关联设计（2026-09-17）
+
+用户引用会话`6aab8337-fe04-83eb-8e94-f5de0fd83e03`并要求按其中固定范围执行。本轮只设计权利主体新建、查看和客户关联，不创建业务代码、Prisma schema、迁移、接口、页面或可执行主体测试。TD-SLICE-CU-RH-01比较了客户锚定独立主体、Customer内嵌数组和部门级主体目录三种方案，采用独立稳定主体记录＋客户—主体关联，并把所有本轮入口锚定到一个有权访问的客户；多对多不简化为一对一，不建立主体名称／信用代码自动判重，也不暴露主体关联的其他不可见客户。
+
+设计复用已验证的`customer.read`和`customer.edit-routine`完整Grant：读取要求授权覆盖访问锚点客户，创建／关联要求授权覆盖目标客户；关联已有主体还要求主体已能通过操作者的客户读取范围到达。逻辑模型要求Customer、RightsHolder和关联的部门由组合外键或等价数据库约束保持一致，主体创建与首个关联、客户版本和两类共享审计同事务；共享主体编辑、删除、解除关联、默认主体、多联系人、资产、协议和合作状态均排除。实施拆为数据库／后端、原页面前端和PostgreSQL／浏览器／独立Q2三个连续任务，不并行修改共享schema和Customer Interface。
+
+设计自审检查了占位符、内部矛盾、范围漂移、跨客户信息泄露、猜测UUID、跨部门直接写入、重复／并发关联、乐观版本、审计正文和事务回滚。唯一未获确认的业务门槛是主体创建最低必填组合：现有DOMAIN只确认CU03字段语义，不代表必填已批准；设计建议名称必填、信用代码／地址／法定代表人／职务可空，用户确认前状态保持可评审而非`PLAN_READY`，也未获编码授权。E01缺失只阻断真实登录联调，E02与本无文件切片无直接依赖；两项缺失输入已按现有记录复核，没有选择供应商或把测试Adapter写成完成。
+
+本轮实际执行项目Node v24.21.0、pnpm 11.27.0与锁定值一致；开工`pnpm context:check`通过。首次`pnpm spec:check`因技术设计标题未显式包含当前SD-34而失败，补回有效约束标记后通过53个REQ、55个AC、11个BQ和34个SD；`git diff --check`通过。最终格式、上下文快照、本地链接及Git差异检查在收口命令后回填。纯设计文档任务不运行代码单元测试、构建、数据库E2E或迁移专项；静态通过不表示主体功能已实现或获得生产准入，独立Q2留在编码候选门禁。
+
 ## CUST-FND-008一位准入联系人纵向切片（2026-09-17）
 
 用户明确授权在不搭建`dev:acceptance`和不进行人工localhost验收的前提下，实现每个客户一位准入联系人。实现沿用Customer聚合、`customer.edit-routine`、客户数据范围、乐观版本和Shared AuditEvent；只增加联系人姓名、电话和邮箱三个可空字段。草稿允许三项全空；填写任一字段时，姓名必填且电话／邮箱至少一种。联系人不创建账号或权限；多联系人、主要标记、删除、正式准入、材料、E01/E02、权限页面和生产发布均未进入本批。
