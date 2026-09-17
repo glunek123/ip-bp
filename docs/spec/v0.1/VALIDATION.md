@@ -2,7 +2,7 @@
 
 ## CUST-RH-001客户权利主体实现候选（2026-09-17）
 
-依据TD-SLICE-CU-RH-01 rev1与用户当日编码授权，范围仅为主体新建、只读查看及客户关联。Task 1/2实现固定至`c4891d1`；Task 3补充真实PostgreSQL／浏览器测试与迁移证据。Q2原因是客户范围、共享主体信息、组合部门约束、事务、审计、幂等与版本控制；最终状态仍为待独立Q2审查／未上线。
+依据TD-SLICE-CU-RH-01 rev1与用户当日编码授权，范围仅为主体新建、只读查看及客户关联。Task 1/2实现固定至`c4891d1`；Task 3补充真实PostgreSQL／浏览器测试与迁移证据。Q2原因是客户范围、共享主体信息、组合部门约束、事务、审计、幂等与版本控制；修复候选最终独立Q2已`ACCEPTED`并进入内部集成，不包含生产上线许可。
 
 - **运行环境与安全核验**：每次PowerShell加载项目入口，Node `v24.21.0`、pnpm `11.27.0`符合锁定值。读取`backend/.env.test`并只输出脱敏目标，确认`NODE_ENV=test`、`127.0.0.1:55433/dev_cor_test`，连接后`current_database()`也为`dev_cor_test`。测试helper再次比对连接串与该文件一致并限制本机专用库，才允许fixture清理、故障约束和临时schema。未操作开发库、生产或真实数据，未打印／提交凭据。
 - **首个RED**：先增加浏览器A／B创建客户、A新建H、B关联同一H和字段边界测试，再运行`pnpm db:test:up`、`pnpm build`及筛选。计划原命令`pnpm test:e2e -- --grep "rights holder"`把额外`--`原样转发，实际选中29项；首个组件冷启动超时后中止，不能记为主体RED。改用`pnpm test:e2e --grep "rights holder" --max-failures=1`实际选中2项，1失败／1未运行：主体表未迁移，后端`P2021 / 42P01`，页面无法出现“新建主体”，等待30秒超时。随后补齐fixture的receipt→link→holder→customer清理顺序及专项helper。
@@ -12,6 +12,7 @@
 - **完整候选门禁**：固定执行树`3a93717dab65e2c7da819537b18e660718a5d42c`，基于`c4891d1`，本地`main`及`origin/main`均为`e5b55de`。`pnpm verify`退出0，用时56.9秒，覆盖212文本上下文、Spec 53REQ／55AC／11BQ／34SD、工具19项、后端98项、前端95项、类型／Lint／格式和前后端构建；随后完整`pnpm test:e2e`退出0，37/37通过（Playwright 13.5秒，命令14.6秒）。两项完整门禁各正式执行1次；最初错误带`--`的29项选择被中止，单独保留为失败尝试，不计通过。服务由当前构建启动且禁止复用；数据库fixture串行重建，未改锁文件、测试配置或迁移。预期审计故障场景的脱敏500日志和Node颜色环境提示保留，不作失败隐藏。收口只追加这些非执行性结果及快照，业务验证复用该执行树。独立Q2由主代理另行组织，当前待独立Q2审查／未上线，未给出ACCEPTED。
 - **独立Q2首轮与修复**：独立主体审查固定候选`70c4b41`后结论为`REJECTED`（Critical 0／Important 2／Minor 1）：070000的`BTRIM(name)`未拒绝tab／换行／Unicode空白；嵌套详情只在mount加载，复用RouterView切换参数会显示旧主体；一条投影E2E并行读写同一候选集合。修复均先有失败回归：新增080000前向迁移显式列出ECMAScript trim的25个WhiteSpace／LineTerminator码点，直接SQL逐项、CRLF及组合均由`rights_holders_name_nonblank_check`拒绝，U+200B／U+0085等非trim字符仍可作为名称；存量纯空白使升级23514失败，旧约束、脏主体与旧客户在事务回滚后保持。详情页监听客户和主体参数、立即清空旧数据、Abort旧请求并阻止旧响应覆盖，真实memory RouterView的三组参数切换、乱序和新锚点404共8/8通过；投影E2E改为先断言候选响应再关联。
 - **修复候选门禁**：精确重建唯一隔离的`postgres-test`临时服务后，从空库顺序应用9份迁移至080000，`migrate status`报告最新；开发库、生产、真实数据均未触及。主体专项11/11通过。随后`pnpm verify`退出0，覆盖213文本上下文、Spec 53REQ／55AC／11BQ／34SD、工具19项、后端98项、前端100项、类型／Lint／格式和双端构建；完整`pnpm test:e2e`退出0，38/38通过。预期故障注入500日志及Node颜色提示保留。当前仅待独立Q2复审，不据此集成、推送、上线或声明ACCEPTED。
+- **最终独立Q2**：复审对象`f63310a2556cb32a4e15fe471a4534b07c3e6732`、tree`8e3d3d8aa240968456c442032b66aec0f78fe625`。审查主体独立核对当前命名CHECK对25个ECMAScript trim码点的拒绝、9份已应用迁移校验和、真实SFC／RouterView参数切换与旧响应、投影E2E顺序，以及绑定同一HEAD/tree且前后工作区干净的完整原始verify／E2E输出。首轮I-01、I-02、M-01均关闭，无新增finding；结论`ACCEPTED`，Critical 0、Important 0、Minor 0，Task 3 Approved。状态为`IMPLEMENTED_VERIFIED_INTERNAL_INTEGRATION`；不代表E01、生产迁移、发布或真实数据获准。
 
 需求与证据：[REQ-CU-002／AC-CU-002](modules/customers.md)→[技术设计第19节](TECHNICAL-DESIGN.md)→[后端](../../../backend/src/modules/customers/rights-holder.service.ts)、[客户内页面](../../../frontend/src/modules/customers/CustomerRightsHolderPanel.vue)→[数据库／浏览器测试](../../../tests/e2e/customers.spec.ts)、[迁移helper](../../../tests/support/customer-database.mjs)。E01仍只阻断真实身份联调；E02不阻断本无文件切片。未实现主体编辑、删除、解除关联、默认主体、多联系人、资产、协议、合作状态或主链Query，未执行生产迁移／发布。
 
