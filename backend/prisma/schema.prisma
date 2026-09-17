@@ -31,15 +31,18 @@ enum CustomerProfileStatus {
 }
 
 model Department {
-  id              String                 @id @default(uuid()) @db.Uuid
-  name            String
-  memberships     DepartmentMembership[]
-  roleTemplates   RoleTemplate[]
-  roleAssignments RoleAssignment[]
-  customers       Customer[]
-  auditEvents     AuditEvent[]
-  createdAt       DateTime               @default(now()) @map("created_at") @db.Timestamptz(3)
-  updatedAt       DateTime               @updatedAt @map("updated_at") @db.Timestamptz(3)
+  id                          String                       @id @default(uuid()) @db.Uuid
+  name                        String
+  memberships                 DepartmentMembership[]
+  roleTemplates               RoleTemplate[]
+  roleAssignments             RoleAssignment[]
+  customers                   Customer[]
+  rightsHolders               RightsHolder[]
+  customerRightsHolderLinks   CustomerRightsHolderLink[]
+  rightsHolderCommandReceipts RightsHolderCommandReceipt[]
+  auditEvents                 AuditEvent[]
+  createdAt                   DateTime                     @default(now()) @map("created_at") @db.Timestamptz(3)
+  updatedAt                   DateTime                     @updatedAt @map("updated_at") @db.Timestamptz(3)
 
   @@map("departments")
 }
@@ -58,17 +61,18 @@ model UserAccount {
 }
 
 model DepartmentMembership {
-  id                   String       @id @default(uuid()) @db.Uuid
-  userId               String       @map("user_id") @db.Uuid
-  departmentId         String       @map("department_id") @db.Uuid
-  teamId               String?      @map("team_id") @db.Uuid
-  active               Boolean      @default(true)
-  user                 UserAccount  @relation(fields: [userId], references: [id], onDelete: Restrict)
-  department           Department   @relation(fields: [departmentId], references: [id], onDelete: Restrict)
-  responsibleCustomers Customer[]   @relation("CustomerResponsibleMembership")
-  auditEvents          AuditEvent[] @relation("AuditActorMembership")
-  createdAt            DateTime     @default(now()) @map("created_at") @db.Timestamptz(3)
-  updatedAt            DateTime     @updatedAt @map("updated_at") @db.Timestamptz(3)
+  id                          String                       @id @default(uuid()) @db.Uuid
+  userId                      String                       @map("user_id") @db.Uuid
+  departmentId                String                       @map("department_id") @db.Uuid
+  teamId                      String?                      @map("team_id") @db.Uuid
+  active                      Boolean                      @default(true)
+  user                        UserAccount                  @relation(fields: [userId], references: [id], onDelete: Restrict)
+  department                  Department                   @relation(fields: [departmentId], references: [id], onDelete: Restrict)
+  responsibleCustomers        Customer[]                   @relation("CustomerResponsibleMembership")
+  rightsHolderCommandReceipts RightsHolderCommandReceipt[] @relation("RightsHolderReceiptActor")
+  auditEvents                 AuditEvent[]                 @relation("AuditActorMembership")
+  createdAt                   DateTime                     @default(now()) @map("created_at") @db.Timestamptz(3)
+  updatedAt                   DateTime                     @updatedAt @map("updated_at") @db.Timestamptz(3)
 
   @@unique([userId, departmentId])
   @@index([departmentId, active])
@@ -124,35 +128,98 @@ model RoleAssignment {
 }
 
 model Customer {
-  id                       String                @id @default(uuid()) @db.Uuid
+  id                       String                       @id @default(uuid()) @db.Uuid
   name                     String
-  normalizedName           String                @map("normalized_name")
-  customerType             String?               @map("customer_type")
-  identityType             String?               @map("identity_type")
-  identityNumber           String?               @map("identity_number")
-  normalizedIdentityNumber String?               @map("normalized_identity_number")
-  issuingCountryOrRegion   String?               @map("issuing_country_or_region")
+  normalizedName           String                       @map("normalized_name")
+  customerType             String?                      @map("customer_type")
+  identityType             String?                      @map("identity_type")
+  identityNumber           String?                      @map("identity_number")
+  normalizedIdentityNumber String?                      @map("normalized_identity_number")
+  issuingCountryOrRegion   String?                      @map("issuing_country_or_region")
   category                 String?
   region                   String?
-  admissionContactName     String?               @map("admission_contact_name")
-  admissionContactPhone    String?               @map("admission_contact_phone")
-  admissionContactEmail    String?               @map("admission_contact_email")
-  profileStatus            CustomerProfileStatus @default(DRAFT) @map("profile_status")
-  departmentId             String                @map("department_id") @db.Uuid
-  responsibleUserId        String                @map("responsible_user_id") @db.Uuid
-  teamId                   String?               @map("team_id") @db.Uuid
-  version                  Int                   @default(1)
-  department               Department            @relation(fields: [departmentId], references: [id], onDelete: Restrict)
-  responsibleMembership    DepartmentMembership  @relation("CustomerResponsibleMembership", fields: [responsibleUserId, departmentId], references: [userId, departmentId], onDelete: Restrict)
-  createdAt                DateTime              @default(now()) @map("created_at") @db.Timestamptz(3)
-  updatedAt                DateTime              @updatedAt @map("updated_at") @db.Timestamptz(3)
+  admissionContactName     String?                      @map("admission_contact_name")
+  admissionContactPhone    String?                      @map("admission_contact_phone")
+  admissionContactEmail    String?                      @map("admission_contact_email")
+  profileStatus            CustomerProfileStatus        @default(DRAFT) @map("profile_status")
+  departmentId             String                       @map("department_id") @db.Uuid
+  responsibleUserId        String                       @map("responsible_user_id") @db.Uuid
+  teamId                   String?                      @map("team_id") @db.Uuid
+  version                  Int                          @default(1)
+  department               Department                   @relation(fields: [departmentId], references: [id], onDelete: Restrict)
+  responsibleMembership    DepartmentMembership         @relation("CustomerResponsibleMembership", fields: [responsibleUserId, departmentId], references: [userId, departmentId], onDelete: Restrict)
+  rightsHolderLinks        CustomerRightsHolderLink[]
+  rightsHolderReceipts     RightsHolderCommandReceipt[] @relation("RightsHolderReceiptCustomer")
+  createdAt                DateTime                     @default(now()) @map("created_at") @db.Timestamptz(3)
+  updatedAt                DateTime                     @updatedAt @map("updated_at") @db.Timestamptz(3)
 
   @@unique([departmentId, identityType, normalizedIdentityNumber])
+  @@unique([id, departmentId])
   @@index([departmentId, updatedAt, id])
   @@index([departmentId, normalizedName])
   @@index([responsibleUserId])
   @@index([teamId])
   @@map("customers")
+}
+
+model RightsHolder {
+  id                  String                       @id @default(uuid()) @db.Uuid
+  name                String
+  credit              String?
+  address             String?
+  legalRepresentative String?                      @map("legal_representative")
+  duty                String?
+  departmentId        String                       @map("department_id") @db.Uuid
+  department          Department                   @relation(fields: [departmentId], references: [id], onDelete: Restrict)
+  links               CustomerRightsHolderLink[]
+  commandReceipts     RightsHolderCommandReceipt[] @relation("RightsHolderReceiptHolder")
+  createdAt           DateTime                     @default(now()) @map("created_at") @db.Timestamptz(3)
+  updatedAt           DateTime                     @updatedAt @map("updated_at") @db.Timestamptz(3)
+
+  @@unique([id, departmentId])
+  @@index([departmentId, updatedAt, id])
+  @@index([departmentId, name])
+  @@map("rights_holders")
+}
+
+model CustomerRightsHolderLink {
+  id              String                       @id @default(uuid()) @db.Uuid
+  customerId      String                       @map("customer_id") @db.Uuid
+  rightsHolderId  String                       @map("rights_holder_id") @db.Uuid
+  departmentId    String                       @map("department_id") @db.Uuid
+  customer        Customer                     @relation(fields: [customerId, departmentId], references: [id, departmentId], onDelete: Restrict, map: "customer_rights_holder_links_customer_department_fkey")
+  rightsHolder    RightsHolder                 @relation(fields: [rightsHolderId, departmentId], references: [id, departmentId], onDelete: Restrict, map: "customer_rights_holder_links_holder_department_fkey")
+  department      Department                   @relation(fields: [departmentId], references: [id], onDelete: Restrict)
+  commandReceipts RightsHolderCommandReceipt[] @relation("RightsHolderReceiptLink")
+  createdAt       DateTime                     @default(now()) @map("created_at") @db.Timestamptz(3)
+
+  @@unique([id, departmentId])
+  @@unique([customerId, rightsHolderId], map: "customer_rights_holder_links_customer_holder_key")
+  @@index([departmentId, rightsHolderId])
+  @@map("customer_rights_holder_links")
+}
+
+model RightsHolderCommandReceipt {
+  id                    String                   @id @default(uuid()) @db.Uuid
+  departmentId          String                   @map("department_id") @db.Uuid
+  actorUserId           String                   @map("actor_user_id") @db.Uuid
+  action                String
+  idempotencyKey        String                   @map("idempotency_key")
+  requestFingerprint    String                   @map("request_fingerprint") @db.Char(64)
+  resultHolderId        String                   @map("result_holder_id") @db.Uuid
+  resultLinkId          String                   @map("result_link_id") @db.Uuid
+  resultCustomerId      String                   @map("result_customer_id") @db.Uuid
+  resultCustomerVersion Int                      @map("result_customer_version")
+  department            Department               @relation(fields: [departmentId], references: [id], onDelete: Restrict)
+  actorMembership       DepartmentMembership     @relation("RightsHolderReceiptActor", fields: [actorUserId, departmentId], references: [userId, departmentId], onDelete: Restrict, map: "rights_holder_command_receipts_actor_department_fkey")
+  resultHolder          RightsHolder             @relation("RightsHolderReceiptHolder", fields: [resultHolderId, departmentId], references: [id, departmentId], onDelete: Restrict, map: "rights_holder_command_receipts_holder_department_fkey")
+  resultLink            CustomerRightsHolderLink @relation("RightsHolderReceiptLink", fields: [resultLinkId, departmentId], references: [id, departmentId], onDelete: Restrict, map: "rights_holder_command_receipts_link_department_fkey")
+  resultCustomer        Customer                 @relation("RightsHolderReceiptCustomer", fields: [resultCustomerId, departmentId], references: [id, departmentId], onDelete: Restrict, map: "rights_holder_command_receipts_customer_department_fkey")
+  createdAt             DateTime                 @default(now()) @map("created_at") @db.Timestamptz(3)
+
+  @@unique([departmentId, actorUserId, action, idempotencyKey], map: "rights_holder_command_receipts_department_actor_action_key")
+  @@index([resultCustomerId, departmentId])
+  @@map("rights_holder_command_receipts")
 }
 
 model AuditEvent {
