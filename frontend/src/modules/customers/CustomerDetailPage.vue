@@ -18,7 +18,9 @@ function formatTime(value: string): string {
 }
 
 function actionLabel(action: string): string {
-  return action === 'customer.draft-created' ? '创建客户草稿' : '客户资料变更';
+  if (action === 'customer.draft-created') return '创建客户草稿';
+  if (action === 'customer.duplicate-name-overridden') return '同名核对后继续';
+  return '客户资料变更';
 }
 
 async function load(): Promise<void> {
@@ -85,7 +87,16 @@ onBeforeUnmount(() => activeRequest?.abort());
             <p class="section-kicker">客户详情</p>
             <h1>{{ customer.name }}</h1>
           </div>
-          <span class="status-chip status-chip--large">草稿</span>
+          <div class="detail-actions">
+            <RouterLink
+              v-if="customer.capabilities.editRoutine"
+              data-test="edit-customer"
+              :to="`/customers/${customer.id}/edit`"
+            >
+              编辑资料
+            </RouterLink>
+            <span class="status-chip status-chip--large">草稿</span>
+          </div>
         </div>
         <section class="ledger-panel detail-card">
           <dl class="detail-grid">
@@ -96,6 +107,22 @@ onBeforeUnmount(() => activeRequest?.abort());
             <div>
               <dt>客户类别</dt>
               <dd>{{ customer.category || '未填写' }}</dd>
+            </div>
+            <div>
+              <dt>客户类型</dt>
+              <dd>{{ customer.customerType || '未填写' }}</dd>
+            </div>
+            <div>
+              <dt>证件类型</dt>
+              <dd>{{ customer.identityType || '未填写' }}</dd>
+            </div>
+            <div>
+              <dt>证件号码</dt>
+              <dd>{{ customer.identityNumber || '未填写' }}</dd>
+            </div>
+            <div>
+              <dt>签发国家／地区</dt>
+              <dd>{{ customer.issuingCountryOrRegion || '未填写' }}</dd>
             </div>
             <div>
               <dt>所属地区</dt>

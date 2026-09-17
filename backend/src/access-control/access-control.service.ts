@@ -3,7 +3,8 @@ import { ActorContext } from './actor-context';
 
 export const ACCESS_CONTROL_STORE = Symbol('ACCESS_CONTROL_STORE');
 
-export type CustomerAction = 'customer.read' | 'customer.create-draft';
+export type CustomerAction =
+  'customer.read' | 'customer.create-draft' | 'customer.edit-routine';
 export type CustomerScope = 'self' | 'team' | 'department';
 
 export type CustomerResourceFacts = {
@@ -22,6 +23,7 @@ export type CustomerScopePredicate = {
 export type AccessControlSnapshot = {
   active: boolean;
   authorizationRevision: number;
+  membershipTeamId?: string;
   grants: Array<{
     action: CustomerAction;
     scope: CustomerScope;
@@ -59,6 +61,36 @@ export class AccessControlService {
     );
     if (!allowed) {
       throw this.forbidden();
+    }
+  }
+
+  async authorizeNewCustomer(
+    actor: ActorContext,
+  ): Promise<CustomerResourceFacts> {
+    const snapshot = await this.loadCurrentSnapshot(actor);
+    const facts: CustomerResourceFacts = {
+      departmentId: actor.departmentId,
+      responsibleUserId: actor.userId,
+      ...(snapshot.membershipTeamId === undefined
+        ? {}
+        : { teamId: snapshot.membershipTeamId }),
+    };
+    const allowed = snapshot.grants.some(
+      (grant) =>
+        grant.action === 'customer.create-draft' &&
+        this.scopeCovers(grant, actor, facts),
+    );
+    if (!allowed) throw this.forbidden();
+    return facts;
+  }
+
+  async canAuthorizeNewCustomer(actor: ActorContext): Promise<boolean> {
+    try {
+      await this.authorizeNewCustomer(actor);
+      return true;
+    } catch (error) {
+      if (error instanceof ForbiddenException) return false;
+      throw error;
     }
   }
 
@@ -121,6 +153,18 @@ export class AccessControlService {
     }
 
     throw this.forbidden();
+  }
+
+  async tryBuildCustomerScope(
+    actor: ActorContext,
+    action: CustomerAction,
+  ): Promise<CustomerScopePredicate | null> {
+    try {
+      return await this.buildCustomerScope(actor, action);
+    } catch (error) {
+      if (error instanceof ForbiddenException) return null;
+      throw error;
+    }
   }
 
   private async loadCurrentSnapshot(

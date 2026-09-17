@@ -10,6 +10,7 @@ import {
 const actionMap = {
   CUSTOMER_READ: 'customer.read',
   CUSTOMER_CREATE_DRAFT: 'customer.create-draft',
+  CUSTOMER_EDIT_ROUTINE: 'customer.edit-routine',
 } as const satisfies Record<string, CustomerAction>;
 
 const scopeMap = {
@@ -33,7 +34,7 @@ export class PrismaAccessControlStore implements AccessControlStore {
         authorizationRevision: true,
         memberships: {
           where: { departmentId, active: true },
-          select: { id: true },
+          select: { id: true, teamId: true },
         },
         roleAssignments: {
           where: { departmentId, active: true },
@@ -57,6 +58,10 @@ export class PrismaAccessControlStore implements AccessControlStore {
     return {
       active: user.active,
       authorizationRevision: user.authorizationRevision,
+      ...(user.memberships[0]?.teamId === null ||
+      user.memberships[0]?.teamId === undefined
+        ? {}
+        : { membershipTeamId: user.memberships[0].teamId }),
       grants: user.roleAssignments.flatMap((assignment) =>
         assignment.roleTemplate.active
           ? assignment.roleTemplate.grants.map((grant) => ({

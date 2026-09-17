@@ -15,6 +15,7 @@ async function bootstrap(): Promise<void> {
       .setTitle('知产案件管理系统')
       .setDescription('工程基础接口')
       .setVersion('1.0')
+      .addBearerAuth()
       .build();
     SwaggerModule.setup(
       'api/docs',

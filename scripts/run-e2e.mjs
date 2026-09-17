@@ -26,6 +26,11 @@ process.env.E2E_IDENTITY_FIXTURES = JSON.stringify({
     departmentId: '10000000-0000-4000-8000-000000000002',
     authorizationRevision: 1,
   },
+  'e2e-department-a-self': {
+    userId: '20000000-0000-4000-8000-000000000003',
+    departmentId: '10000000-0000-4000-8000-000000000001',
+    authorizationRevision: 1,
+  },
 });
 const result = spawnSync(
   process.execPath,

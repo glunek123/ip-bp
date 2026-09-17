@@ -23,6 +23,10 @@ describe('CustomerDetailPage', () => {
     api.getCustomer.mockResolvedValue({
       id: 'customer-1',
       name: '客户甲',
+      customerType: null,
+      identityType: null,
+      identityNumber: null,
+      issuingCountryOrRegion: null,
       category: null,
       region: null,
       profileStatus: 'draft',
@@ -30,6 +34,7 @@ describe('CustomerDetailPage', () => {
       responsibleUserId: 'user-1',
       version: 1,
       updatedAt: '2026-09-17T01:00:00.000Z',
+      capabilities: { editRoutine: true },
       history: [
         {
           action: 'customer.draft-created',
@@ -44,6 +49,9 @@ describe('CustomerDetailPage', () => {
     expect(wrapper.text()).toContain('草稿');
     expect(wrapper.get('details').attributes('open')).toBeUndefined();
     expect(wrapper.text()).toContain('创建客户草稿');
+    expect(wrapper.get('[data-test="edit-customer"]').text()).toContain(
+      '编辑资料',
+    );
   });
 
   it('shows a non-leaking unavailable state for 404', async () => {
@@ -51,5 +59,28 @@ describe('CustomerDetailPage', () => {
     const wrapper = await mountPage();
     await flushPromises();
     expect(wrapper.text()).toContain('客户不存在或当前不可访问');
+  });
+
+  it('does not render the edit action without the server capability', async () => {
+    api.getCustomer.mockResolvedValue({
+      id: 'customer-1',
+      name: '客户甲',
+      customerType: null,
+      identityType: null,
+      identityNumber: null,
+      issuingCountryOrRegion: null,
+      category: null,
+      region: null,
+      profileStatus: 'draft',
+      departmentId: 'department-1',
+      responsibleUserId: 'user-1',
+      version: 1,
+      updatedAt: '2026-09-17T01:00:00.000Z',
+      capabilities: { editRoutine: false },
+      history: [],
+    });
+    const wrapper = await mountPage();
+    await flushPromises();
+    expect(wrapper.find('[data-test="edit-customer"]').exists()).toBe(false);
   });
 });

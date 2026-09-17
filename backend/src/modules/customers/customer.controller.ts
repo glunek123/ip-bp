@@ -3,6 +3,8 @@ import {
   Controller,
   Get,
   Param,
+  ParseUUIDPipe,
+  Patch,
   Post,
   Query,
   UseGuards,
@@ -11,7 +13,12 @@ import { ApiBearerAuth, ApiTags } from '@nestjs/swagger';
 import { CurrentActor } from '../../access-control/actor-context.decorator';
 import { ActorContextGuard } from '../../access-control/actor-context.guard';
 import { ActorContext } from '../../access-control/actor-context';
-import { CreateCustomerDraftDto, CustomerListQueryDto } from './customer.dto';
+import {
+  CreateCustomerDraftDto,
+  CustomerDuplicatesQueryDto,
+  CustomerListQueryDto,
+  UpdateCustomerDraftDto,
+} from './customer.dto';
 import { CustomerService } from './customer.service';
 
 @ApiTags('customers')
@@ -37,8 +44,28 @@ export class CustomerController {
     return this.customers.list(actor, query.page, query.pageSize);
   }
 
+  @Get('duplicates')
+  findDuplicates(
+    @CurrentActor() actor: ActorContext,
+    @Query() query: CustomerDuplicatesQueryDto,
+  ) {
+    return this.customers.findDuplicates(actor, query);
+  }
+
+  @Patch(':id')
+  updateDraft(
+    @CurrentActor() actor: ActorContext,
+    @Param('id', new ParseUUIDPipe()) id: string,
+    @Body() input: UpdateCustomerDraftDto,
+  ) {
+    return this.customers.updateDraft(actor, id, input);
+  }
+
   @Get(':id')
-  get(@CurrentActor() actor: ActorContext, @Param('id') id: string) {
+  get(
+    @CurrentActor() actor: ActorContext,
+    @Param('id', new ParseUUIDPipe()) id: string,
+  ) {
     return this.customers.get(actor, id);
   }
 }

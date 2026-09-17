@@ -2,6 +2,7 @@ export interface Environment {
   NODE_ENV: 'development' | 'test' | 'production';
   PORT: number;
   DATABASE_URL: string;
+  E2E_IDENTITY_FIXTURES?: string;
 }
 
 export function validateEnvironment(
@@ -33,5 +34,19 @@ export function validateEnvironment(
   } catch {
     throw new Error('DATABASE_URL must be a PostgreSQL connection URL');
   }
-  return { NODE_ENV: mode, PORT: port, DATABASE_URL: databaseUrl };
+  const identityFixtures = input.E2E_IDENTITY_FIXTURES;
+  if (identityFixtures !== undefined && typeof identityFixtures !== 'string') {
+    throw new Error('E2E_IDENTITY_FIXTURES must be a JSON string');
+  }
+  if (identityFixtures !== undefined && mode !== 'test') {
+    throw new Error('E2E_IDENTITY_FIXTURES is allowed only in test');
+  }
+  return {
+    NODE_ENV: mode,
+    PORT: port,
+    DATABASE_URL: databaseUrl,
+    ...(identityFixtures === undefined
+      ? {}
+      : { E2E_IDENTITY_FIXTURES: identityFixtures }),
+  };
 }

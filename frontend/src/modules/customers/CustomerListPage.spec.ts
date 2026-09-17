@@ -10,6 +10,10 @@ afterEach(() => vi.clearAllMocks());
 const summary = {
   id: 'customer-1',
   name: '客户甲',
+  customerType: null,
+  identityType: null,
+  identityNumber: null,
+  issuingCountryOrRegion: null,
   category: null,
   region: null,
   profileStatus: 'draft' as const,

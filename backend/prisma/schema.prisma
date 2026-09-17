@@ -11,6 +11,7 @@ datasource db {
 enum PermissionAction {
   CUSTOMER_READ         @map("customer.read")
   CUSTOMER_CREATE_DRAFT @map("customer.create-draft")
+  CUSTOMER_EDIT_ROUTINE @map("customer.edit-routine")
 
   @@map("permission_action")
 }
@@ -50,8 +51,6 @@ model UserAccount {
   authorizationRevision Int                    @default(1) @map("authorization_revision")
   memberships           DepartmentMembership[]
   roleAssignments       RoleAssignment[]
-  responsibleCustomers  Customer[]
-  auditEvents           AuditEvent[]
   createdAt             DateTime               @default(now()) @map("created_at") @db.Timestamptz(3)
   updatedAt             DateTime               @updatedAt @map("updated_at") @db.Timestamptz(3)
 
@@ -59,15 +58,17 @@ model UserAccount {
 }
 
 model DepartmentMembership {
-  id           String      @id @default(uuid()) @db.Uuid
-  userId       String      @map("user_id") @db.Uuid
-  departmentId String      @map("department_id") @db.Uuid
-  teamId       String?     @map("team_id") @db.Uuid
-  active       Boolean     @default(true)
-  user         UserAccount @relation(fields: [userId], references: [id], onDelete: Restrict)
-  department   Department  @relation(fields: [departmentId], references: [id], onDelete: Restrict)
-  createdAt    DateTime    @default(now()) @map("created_at") @db.Timestamptz(3)
-  updatedAt    DateTime    @updatedAt @map("updated_at") @db.Timestamptz(3)
+  id                   String       @id @default(uuid()) @db.Uuid
+  userId               String       @map("user_id") @db.Uuid
+  departmentId         String       @map("department_id") @db.Uuid
+  teamId               String?      @map("team_id") @db.Uuid
+  active               Boolean      @default(true)
+  user                 UserAccount  @relation(fields: [userId], references: [id], onDelete: Restrict)
+  department           Department   @relation(fields: [departmentId], references: [id], onDelete: Restrict)
+  responsibleCustomers Customer[]   @relation("CustomerResponsibleMembership")
+  auditEvents          AuditEvent[] @relation("AuditActorMembership")
+  createdAt            DateTime     @default(now()) @map("created_at") @db.Timestamptz(3)
+  updatedAt            DateTime     @updatedAt @map("updated_at") @db.Timestamptz(3)
 
   @@unique([userId, departmentId])
   @@index([departmentId, active])
@@ -123,37 +124,45 @@ model RoleAssignment {
 }
 
 model Customer {
-  id                String                @id @default(uuid()) @db.Uuid
-  name              String
-  category          String?
-  region            String?
-  profileStatus     CustomerProfileStatus @default(DRAFT) @map("profile_status")
-  departmentId      String                @map("department_id") @db.Uuid
-  responsibleUserId String                @map("responsible_user_id") @db.Uuid
-  teamId            String?               @map("team_id") @db.Uuid
-  version           Int                   @default(1)
-  department        Department            @relation(fields: [departmentId], references: [id], onDelete: Restrict)
-  responsibleUser   UserAccount           @relation(fields: [responsibleUserId], references: [id], onDelete: Restrict)
-  createdAt         DateTime              @default(now()) @map("created_at") @db.Timestamptz(3)
-  updatedAt         DateTime              @updatedAt @map("updated_at") @db.Timestamptz(3)
+  id                       String                @id @default(uuid()) @db.Uuid
+  name                     String
+  normalizedName           String                @map("normalized_name")
+  customerType             String?               @map("customer_type")
+  identityType             String?               @map("identity_type")
+  identityNumber           String?               @map("identity_number")
+  normalizedIdentityNumber String?               @map("normalized_identity_number")
+  issuingCountryOrRegion   String?               @map("issuing_country_or_region")
+  category                 String?
+  region                   String?
+  profileStatus            CustomerProfileStatus @default(DRAFT) @map("profile_status")
+  departmentId             String                @map("department_id") @db.Uuid
+  responsibleUserId        String                @map("responsible_user_id") @db.Uuid
+  teamId                   String?               @map("team_id") @db.Uuid
+  version                  Int                   @default(1)
+  department               Department            @relation(fields: [departmentId], references: [id], onDelete: Restrict)
+  responsibleMembership    DepartmentMembership  @relation("CustomerResponsibleMembership", fields: [responsibleUserId, departmentId], references: [userId, departmentId], onDelete: Restrict)
+  createdAt                DateTime              @default(now()) @map("created_at") @db.Timestamptz(3)
+  updatedAt                DateTime              @updatedAt @map("updated_at") @db.Timestamptz(3)
 
+  @@unique([departmentId, identityType, normalizedIdentityNumber])
   @@index([departmentId, updatedAt, id])
+  @@index([departmentId, normalizedName])
   @@index([responsibleUserId])
   @@index([teamId])
   @@map("customers")
 }
 
 model AuditEvent {
-  id           String      @id @default(uuid()) @db.Uuid
-  departmentId String      @map("department_id") @db.Uuid
-  actorUserId  String      @map("actor_user_id") @db.Uuid
-  resourceType String      @map("resource_type")
-  resourceId   String      @map("resource_id") @db.Uuid
-  action       String
-  details      Json?
-  department   Department  @relation(fields: [departmentId], references: [id], onDelete: Restrict)
-  actorUser    UserAccount @relation(fields: [actorUserId], references: [id], onDelete: Restrict)
-  createdAt    DateTime    @default(now()) @map("created_at") @db.Timestamptz(3)
+  id              String               @id @default(uuid()) @db.Uuid
+  departmentId    String               @map("department_id") @db.Uuid
+  actorUserId     String               @map("actor_user_id") @db.Uuid
+  resourceType    String               @map("resource_type")
+  resourceId      String               @map("resource_id") @db.Uuid
+  action          String
+  details         Json?
+  department      Department           @relation(fields: [departmentId], references: [id], onDelete: Restrict)
+  actorMembership DepartmentMembership @relation("AuditActorMembership", fields: [actorUserId, departmentId], references: [userId, departmentId], onDelete: Restrict)
+  createdAt       DateTime             @default(now()) @map("created_at") @db.Timestamptz(3)
 
   @@index([departmentId, resourceType, resourceId, createdAt])
   @@index([actorUserId, createdAt])

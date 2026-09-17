@@ -20,11 +20,14 @@ const actor = {
   departmentId: '22222222-2222-4222-8222-222222222222',
   authorizationRevision: 3,
 };
+const customerId = '33333333-3333-4333-8333-333333333333';
 
 describe('CustomerController', () => {
   const createDraft = jest.fn();
   const list = jest.fn();
   const get = jest.fn();
+  const findDuplicates = jest.fn();
+  const updateDraft = jest.fn();
   let app: INestApplication;
 
   beforeAll(async () => {
@@ -40,7 +43,7 @@ describe('CustomerController', () => {
         { provide: IDENTITY_ADAPTER, useValue: identity },
         {
           provide: CustomerService,
-          useValue: { createDraft, list, get },
+          useValue: { createDraft, list, get, findDuplicates, updateDraft },
         },
       ],
     }).compile();
@@ -119,11 +122,122 @@ describe('CustomerController', () => {
     );
 
     await request(app.getHttpServer())
-      .get('/api/v1/customers/foreign-customer')
+      .get(`/api/v1/customers/${customerId}`)
       .set('Authorization', 'Bearer allowed-token')
       .expect(404)
       .expect((response) => {
         expect(response.body.code).toBe('CUSTOMER_NOT_FOUND');
       });
+  });
+
+  it('queries duplicate candidates without accepting a forged department', async () => {
+    findDuplicates.mockResolvedValue({ exactIdentity: [], sameName: [] });
+
+    await request(app.getHttpServer())
+      .get('/api/v1/customers/duplicates')
+      .query({ name: '客户甲', departmentId: 'forged-department' })
+      .set('Authorization', 'Bearer allowed-token')
+      .expect(400);
+    expect(findDuplicates).not.toHaveBeenCalled();
+  });
+
+  it('patches a draft with the trusted actor and expected version', async () => {
+    updateDraft.mockResolvedValue({
+      id: customerId,
+      name: '客户甲（更新）',
+      version: 2,
+    });
+
+    await request(app.getHttpServer())
+      .patch(`/api/v1/customers/${customerId}`)
+      .set('Authorization', 'Bearer allowed-token')
+      .send({
+        expectedVersion: 1,
+        name: '  客户甲（更新）  ',
+        customerType: 'enterprise',
+        identityType: 'credit-code',
+        identityNumber: '91310000abc123',
+      })
+      .expect(200)
+      .expect({
+        id: customerId,
+        name: '客户甲（更新）',
+        version: 2,
+      });
+    expect(updateDraft).toHaveBeenCalledWith(actor, customerId, {
+      expectedVersion: 1,
+      name: '客户甲（更新）',
+      customerType: 'enterprise',
+      identityType: 'credit-code',
+      identityNumber: '91310000abc123',
+    });
+  });
+
+  it('accepts a partial patch and rejects explicit null before the service', async () => {
+    updateDraft.mockResolvedValue({
+      id: customerId,
+      name: '客户甲（更新）',
+      version: 2,
+    });
+
+    await request(app.getHttpServer())
+      .patch(`/api/v1/customers/${customerId}`)
+      .set('Authorization', 'Bearer allowed-token')
+      .send({ expectedVersion: 1, name: '客户甲（更新）' })
+      .expect(200);
+    expect(updateDraft).toHaveBeenLastCalledWith(actor, customerId, {
+      expectedVersion: 1,
+      name: '客户甲（更新）',
+    });
+
+    updateDraft.mockClear();
+    await request(app.getHttpServer())
+      .patch(`/api/v1/customers/${customerId}`)
+      .set('Authorization', 'Bearer allowed-token')
+      .send({ expectedVersion: 1, category: null })
+      .expect(400);
+    expect(updateDraft).not.toHaveBeenCalled();
+  });
+
+  it('validates the duplicate-query exclusion id', async () => {
+    findDuplicates.mockResolvedValue({ exactIdentity: [], sameName: [] });
+    await request(app.getHttpServer())
+      .get('/api/v1/customers/duplicates')
+      .query({ name: '客户甲', excludeCustomerId: customerId })
+      .set('Authorization', 'Bearer allowed-token')
+      .expect(200);
+    expect(findDuplicates).toHaveBeenCalledWith(actor, {
+      name: '客户甲',
+      excludeCustomerId: customerId,
+    });
+
+    findDuplicates.mockClear();
+    await request(app.getHttpServer())
+      .get('/api/v1/customers/duplicates')
+      .query({ name: '客户甲', excludeCustomerId: 'not-a-uuid' })
+      .set('Authorization', 'Bearer allowed-token')
+      .expect(400);
+    expect(findDuplicates).not.toHaveBeenCalled();
+  });
+
+  it('rejects server-controlled fields on edit', async () => {
+    await request(app.getHttpServer())
+      .patch(`/api/v1/customers/${customerId}`)
+      .set('Authorization', 'Bearer allowed-token')
+      .send({
+        expectedVersion: 1,
+        name: '客户甲',
+        departmentId: 'forged-department',
+      })
+      .expect(400);
+    expect(updateDraft).not.toHaveBeenCalled();
+  });
+
+  it('rejects a malformed customer id without reaching the service', async () => {
+    await request(app.getHttpServer())
+      .get('/api/v1/customers/not-a-uuid')
+      .set('Authorization', 'Bearer allowed-token')
+      .expect(400);
+    expect(get).not.toHaveBeenCalled();
   });
 });

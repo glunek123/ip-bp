@@ -48,6 +48,49 @@ describe('AccessControlService', () => {
     ).resolves.toBeUndefined();
   });
 
+  it('does not combine a department read grant with a self edit grant', async () => {
+    const service = new AccessControlService(
+      createStore({
+        active: true,
+        authorizationRevision: 4,
+        grants: [
+          { action: 'customer.read', scope: 'department' },
+          { action: 'customer.edit-routine', scope: 'self' },
+        ],
+      }),
+    );
+
+    await expect(
+      service.authorizeCustomer(actor, 'customer.edit-routine', {
+        departmentId: 'department-a',
+        responsibleUserId: 'user-b',
+      }),
+    ).rejects.toBeInstanceOf(ForbiddenException);
+  });
+
+  it('derives the active membership team for a TEAM-scoped customer create', async () => {
+    const service = new AccessControlService(
+      createStore({
+        active: true,
+        authorizationRevision: 4,
+        membershipTeamId: 'team-a',
+        grants: [
+          {
+            action: 'customer.create-draft',
+            scope: 'team',
+            teamId: 'team-a',
+          },
+        ],
+      }),
+    );
+
+    await expect(service.authorizeNewCustomer(actor)).resolves.toEqual({
+      departmentId: 'department-a',
+      responsibleUserId: 'user-a',
+      teamId: 'team-a',
+    });
+  });
+
   it('denies a foreign department even when the action has department scope', async () => {
     const service = new AccessControlService(
       createStore({

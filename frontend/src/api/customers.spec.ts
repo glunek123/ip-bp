@@ -1,11 +1,21 @@
 import { afterEach, describe, expect, it, vi } from 'vitest';
-import { createCustomerDraft, getCustomer, listCustomers } from './customers';
+import {
+  createCustomerDraft,
+  findCustomerDuplicates,
+  getCustomer,
+  listCustomers,
+  updateCustomerDraft,
+} from './customers';
 
 afterEach(() => vi.unstubAllGlobals());
 
 const summary = {
   id: 'customer-1',
   name: '客户甲',
+  customerType: null,
+  identityType: null,
+  identityNumber: null,
+  issuingCountryOrRegion: null,
   category: null,
   region: null,
   profileStatus: 'draft',
@@ -72,6 +82,7 @@ describe('customer API', () => {
                 occurredAt: '2026-09-17T00:59:00.000Z',
               },
             ],
+            capabilities: { editRoutine: true },
           }),
         ),
       ),
@@ -81,6 +92,46 @@ describe('customer API', () => {
       id: 'customer-1',
       history: [{ action: 'customer.draft-created' }],
     });
+  });
+
+  it('patches a draft with its expected version and decoded fields', async () => {
+    const updated = {
+      ...summary,
+      name: '客户甲（更新）',
+      customerType: 'enterprise',
+      identityType: 'CREDIT-CODE',
+      identityNumber: '91310000ABC123',
+      version: 2,
+    };
+    const fetch = vi
+      .fn()
+      .mockResolvedValue(
+        new Response(JSON.stringify(updated), { status: 200 }),
+      );
+    vi.stubGlobal('fetch', fetch);
+
+    await expect(
+      updateCustomerDraft('customer-1', {
+        expectedVersion: 1,
+        name: '客户甲（更新）',
+        customerType: 'enterprise',
+        identityType: 'credit-code',
+        identityNumber: '91310000abc123',
+      }),
+    ).resolves.toEqual(updated);
+    expect(fetch).toHaveBeenCalledWith(
+      '/api/v1/customers/customer-1',
+      expect.objectContaining({
+        method: 'PATCH',
+        body: JSON.stringify({
+          expectedVersion: 1,
+          name: '客户甲（更新）',
+          customerType: 'enterprise',
+          identityType: 'credit-code',
+          identityNumber: '91310000abc123',
+        }),
+      }),
+    );
   });
 
   it('creates a name-only draft once and decodes the result', async () => {
@@ -119,6 +170,24 @@ describe('customer API', () => {
         code: 'CUSTOMER_ACTION_FORBIDDEN',
         requestId: 'request-1',
       },
+    );
+  });
+
+  it('passes the current customer exclusion to duplicate lookup', async () => {
+    const fetch = vi
+      .fn()
+      .mockResolvedValue(
+        new Response(JSON.stringify({ exactIdentity: [], sameName: [] })),
+      );
+    vi.stubGlobal('fetch', fetch);
+
+    await findCustomerDuplicates({
+      name: '客户甲',
+      excludeCustomerId: 'customer-1',
+    });
+    expect(fetch).toHaveBeenCalledWith(
+      '/api/v1/customers/duplicates?name=%E5%AE%A2%E6%88%B7%E7%94%B2&excludeCustomerId=customer-1',
+      expect.any(Object),
     );
   });
 });

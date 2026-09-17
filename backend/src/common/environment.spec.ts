@@ -32,4 +32,13 @@ describe('environment validation', () => {
       validateEnvironment({ ...valid, NODE_ENV: 'prodution' }),
     ).toThrow('NODE_ENV');
   });
+  it('rejects synthetic identity fixtures outside the test environment', () => {
+    expect(() =>
+      validateEnvironment({
+        ...valid,
+        NODE_ENV: 'production',
+        E2E_IDENTITY_FIXTURES: '{}',
+      }),
+    ).toThrow('only in test');
+  });
 });

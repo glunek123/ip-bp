@@ -30,7 +30,7 @@ spec_refs: REQ-XM-001/005/006, AC-XM-001/005/006, SD-28/31/33/34, TD-AUTHZ-01, T
 base_ref: ce7d6f1
 scope: docs/security/customer-foundation-q2-review.md, docs/project-status.md
 risk: Q2
-acceptance: implementation-gate review fixes or accepts every authorization, department-isolation, audit, session-revision and sensitive-data boundary; final Q2 VERIFIED still requires an independent security review
+acceptance: implementation-gate review fixes or accepts every authorization, department-isolation, audit, session-revision and sensitive-data boundary; independent Q2 accepted the remediated internal scope on 2026-09-17
 checks: pnpm spec:check; pnpm context:check; pnpm format:check
 status: COMPLETED
 result_ref: task commit `docs: complete customer foundation Q2 gate`
@@ -107,7 +107,7 @@ acceptance: a test actor can read/create only within one valid grant and departm
 checks: backend Jest unit/integration tests; pnpm typecheck; pnpm lint
 status: IMPLEMENTED_VERIFIED_DB
 result_ref: task commit `feat: add minimal configurable customer authorization` plus the 2026-09-17 database verification checkpoint
-evidence: backend/src/access-control/*.spec.ts, three applied migrations, and tests/e2e/customers.spec.ts; final Q2 still requires independent review
+evidence: backend/src/access-control/*.spec.ts, six applied migrations, tests/e2e/customers.spec.ts, and the 2026-09-17 independent Q2 ACCEPTED conclusion in docs/security/customer-foundation-q2-review.md
 ```
 
 **Files:**
@@ -344,11 +344,11 @@ evidence: frontend/src/api/customers.spec.ts; frontend/src/modules/customers/*.s
 
   Add only list, new and detail routes. Reuse the existing app router, HTTP wrapper, Element Plus components and CSS tokens. Keep list → new → save → detail as the primary path; do not add a wizard, approval step, dashboard, file controls, or configurable form engine.
 
-- [ ] **Step 5: Verify component tests and write the failing E2E**
+- [x] **Step 5: Verify component tests and write the failing E2E**
 
   The E2E creates `测试客户甲`, verifies its draft detail and creation history, switches to the second synthetic department, verifies list exclusion and direct URL `404`, then switches back and verifies access remains. Run once to confirm the flow fails before final wiring.
 
-- [ ] **Step 6: Complete wiring, run full checks, and commit**
+- [x] **Step 6: Complete wiring, run full checks, and commit**
 
   ```powershell
   . .\Use-ProjectRuntime.ps1
@@ -357,7 +357,7 @@ evidence: frontend/src/api/customers.spec.ts; frontend/src/modules/customers/*.s
   pnpm build
   pnpm test:e2e -- --grep "customer draft"
   pnpm verify
-  git add frontend/src tests/e2e/customer-draft.spec.ts docs/project-status.md docs/spec/v0.1/COVERAGE.md docs/spec/v0.1/VALIDATION.md docs/context-snapshot.json
+  git add frontend/src tests/e2e/customers.spec.ts docs/project-status.md docs/spec/v0.1/COVERAGE.md docs/spec/v0.1/VALIDATION.md docs/context-snapshot.json
   git commit -m "feat: deliver customer draft first batch"
   ```
 
@@ -365,7 +365,7 @@ evidence: frontend/src/api/customers.spec.ts; frontend/src/modules/customers/*.s
 
 ## Excluded Next Batches
 
-- Customer edit, optimistic concurrency, exact-number duplicate blocking and same-name override.
+- Customer edit, optimistic concurrency, exact-number duplicate blocking and same-name override moved to the authorized second batch on 2026-09-17 and are no longer part of this first-batch plan.
 - Stable material plus exact `contentVersionId`, real object storage, certificate upload and formal admission.
 - Permission administration UI, case members, export/download authorization, real SSO and production rollout.
 

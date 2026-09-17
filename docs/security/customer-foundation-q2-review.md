@@ -16,7 +16,23 @@ Docker Desktop的Linux引擎恢复后，三份迁移已在独立`dev_cor_test` P
 
 复核发现原`role_assignments.department_id`与`role_templates.department_id`缺少数据库级一致性约束。先以失败测试证明外部门角色模板能够被写入当前部门分配，再通过新增向前迁移`20260917020000_enforce_role_assignment_department`建立组合唯一键和组合外键；同一测试随后通过。测试身份现由显式环境映射创建，并同时满足`NODE_ENV=test`；生产或未提供映射时继续使用拒绝全部请求的Adapter。
 
-**当前结论：内部数据库与跨端证据已补齐；本节仍是实现者自审，不冒充独立Q2复核。** E01真实身份提供方／会话参数和E02真实对象存储／加密／备份恢复参数仍未提供，分别阻断真实登录和材料能力；独立审查主体签字前最终Q2保持`IMPLEMENTED_UNVERIFIED_EXTERNAL_REVIEW`，系统不可上线。
+**当时结论：内部数据库与跨端证据已补齐；本节仍是实现者自审，不冒充独立Q2复核。** E01真实身份提供方／会话参数和E02真实对象存储／加密／备份恢复参数仍未提供，分别阻断真实登录和材料能力；该检查点在独立审查主体签字前保持`IMPLEMENTED_UNVERIFIED_EXTERNAL_REVIEW`，系统不可上线。
+
+## 2026-09-17独立复核与修复
+
+独立Q2审查主体对固定范围`ce7d6f1...e811747`给出`BLOCKED`：无Critical；五项Important分别为TEAM授权未落入客户团队、客户负责人／审计操作者缺少部门成员数据库约束、可空团队角色分配唯一约束失效、缺SELF／TEAM真实数据库证据，以及既有角色模板加固迁移缺少存量预检和显式原子性。另有UUID路径、OpenAPI bearer和测试环境集中配置等Minor。
+
+当前工作区已按最小范围修复前四项并补强Minor：TEAM创建从活动部门成员关系派生团队；客户负责人和审计操作者以组合外键引用`DepartmentMembership(userId, departmentId)`；角色分配唯一索引使用PostgreSQL `NULLS NOT DISTINCT`；数据库型Playwright覆盖TEAM／SELF创建、列表、直接ID 404、`items/total`、撤权和跨部门边界；路径使用UUID pipe，OpenAPI注册bearer scheme，测试身份配置经集中环境校验。新增前向迁移`20260917030000_harden_customer_membership_scope`使用显式事务和存量预检，第二批迁移增加客户编辑字段、动作及部门内证件唯一约束。
+
+第二轮独立复查仍为`BLOCKED`：旧迁移的预检／原子性、PATCH省略／`null`语义、NFKC／空白规范化与持久化值、审计before/after为Important；同部门越权PATCH、前端可见重复摘要及隐藏记录泄漏为重要缺口。
+
+当前工作区已以测试先行修复：部分PATCH保留旧值且显式`null`返回400；名称／证件按NFKC、trim、连续空白折叠后存入规范化列；审计记录安全的before/after，短证件值完全遮蔽；重复结果只返回当前读范围摘要并可排除当前客户，隐藏同名创建／修改不产生可枚举差异；可见并发证件冲突保留专用错误码，创建／改名以部门＋规范化名称事务锁串行化；页面就地展示可见摘要和“打开已有客户”。`20260917020000`预检位于变更前并有显式事务，`040/050`也显式包裹事务。重建的独立测试库从零应用六份迁移，Playwright 25项验证上述边界、并发唯一性和迁移失败原子回滚。
+
+## 2026-09-17最终独立Q2结论
+
+**结果：`ACCEPTED`。Critical 0，Important 0。** 独立审查主体分别完成Spec轴与工程规范轴检查，并在前两轮`BLOCKED`发现全部修复后确认：版本冲突会读取最新详情、重跑判重、保留本地草稿并提供“基于最新版本重提／放弃草稿载入最新资料”两种选择；精确证件与同名候选使用两个独立、受读范围约束且各自限20条的查询；新建／编辑页均显示名称、类别、地区及现有客户入口。实现者随后补齐两种选择和摘要字段的组件回归断言。
+
+独立实测证据为后端聚焦11/11、前端48/48、typecheck、lint、format-check、build、`git diff --check`及PostgreSQL／Playwright 25/25；本轮新增两个Minor覆盖后，前端当前为49项。最终状态为`IMPLEMENTED_VERIFIED_INTERNAL_INTEGRATION`。此结论仅接受当前内部实现范围；E01、E02、真实旧库恢复／生产迁移及上线仍分别受限，不得据此发布。
 
 ## 边界决定
 
@@ -51,6 +67,6 @@ Docker Desktop的Linux引擎恢复后，三份迁移已在独立`dev_cor_test` P
 
 1. E01未提供实际身份提供方和会话参数，因此首批只验证应用内部稳定身份契约；不得宣称真实登录、撤销会话或MFA已经完成。
 2. E02未提供对象存储条件，因此本批不实现证件上传、内容版本、下载或正式准入；不得用本地文件路径冒充生产存储。
-3. 当前计划只实现`customer.read`和`customer.create-draft`。角色模板、Grant和分配使用可扩展数据结构，但不预建策略语言、案件权限或完整权限管理界面。
+3. 当前范围只实现客户所需的`customer.read`、`customer.create-draft`和`customer.edit-routine`。角色模板、Grant和分配使用可扩展数据结构，但不预建策略语言、案件权限或完整权限管理界面。
 4. 前端菜单和按钮只改善体验；所有列表、详情和创建请求都由后端重新授权。
 5. 当前审核允许开始内部实现，不代表最终安全验收、真实接入验收或上线准入。

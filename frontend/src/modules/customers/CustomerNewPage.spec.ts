@@ -2,8 +2,12 @@ import { flushPromises, mount } from '@vue/test-utils';
 import { createMemoryHistory, createRouter } from 'vue-router';
 import { afterEach, describe, expect, it, vi } from 'vitest';
 import CustomerNewPage from './CustomerNewPage.vue';
+import { ApiError } from '../../api/http';
 
-const api = vi.hoisted(() => ({ createCustomerDraft: vi.fn() }));
+const api = vi.hoisted(() => ({
+  createCustomerDraft: vi.fn(),
+  findCustomerDuplicates: vi.fn(),
+}));
 vi.mock('../../api/customers', () => api);
 
 afterEach(() => vi.clearAllMocks());
@@ -61,5 +65,40 @@ describe('CustomerNewPage', () => {
     await flushPromises();
     expect(wrapper.text()).toContain('草稿没有保存成功');
     expect((input.element as HTMLInputElement).value).toBe('客户甲');
+  });
+
+  it('asks for one reason after a same-name conflict and reuses the form', async () => {
+    api.findCustomerDuplicates.mockResolvedValue({
+      exactIdentity: [],
+      sameName: [
+        { id: 'customer-1', name: '客户甲', category: null, region: null },
+      ],
+    });
+    api.createCustomerDraft
+      .mockRejectedValueOnce(
+        new ApiError(
+          '本部门已有同名客户，请说明继续原因',
+          409,
+          'CUSTOMER_NAME_REASON_REQUIRED',
+        ),
+      )
+      .mockResolvedValueOnce({ id: 'customer-2' });
+    const { wrapper, router } = await mountPage();
+    await wrapper.get('input[name="name"]').setValue('客户甲');
+    await wrapper.get('form').trigger('submit');
+    await flushPromises();
+    expect(wrapper.text()).toContain('本部门已有同名客户');
+    expect(api.findCustomerDuplicates).toHaveBeenCalledWith({ name: '客户甲' });
+    expect(wrapper.text()).toContain('打开已有客户');
+    await wrapper
+      .get('textarea[name="duplicateNameReason"]')
+      .setValue('不同业务主体，经核对后继续');
+    await wrapper.get('form').trigger('submit');
+    await flushPromises();
+    expect(api.createCustomerDraft).toHaveBeenLastCalledWith({
+      name: '客户甲',
+      duplicateNameReason: '不同业务主体，经核对后继续',
+    });
+    expect(router.currentRoute.value.fullPath).toBe('/customers/customer-2');
   });
 });
