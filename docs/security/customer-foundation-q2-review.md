@@ -38,7 +38,7 @@ Docker Desktop的Linux引擎恢复后，三份迁移已在独立`dev_cor_test` P
 
 第三批首个切片只在Customer聚合增加一位准入联系人姓名、电话和邮箱；草稿允许三项全空，一旦出现任一联系人字段，姓名及电话／邮箱至少一种必须成立。联系人随既有客户TEAM／SELF／部门范围，不创建账号或Grant；创建／修改、乐观版本和脱敏AuditEvent使用既有事务。多联系人、主要标记、删除、正式准入、E01/E02、权限管理页面、生产迁移和发布均排除。
 
-首个固定候选`5b88467`的独立Q2结论为`BLOCKED`：Critical 0、Important 1、Minor 1。Important为数据库CHECK只判断NULL，不能拒绝纯空白姓名或空白联系方式；Minor为姓名和电话的审计脱敏缺少直接回归断言。修复已将约束收紧为`NULLIF(BTRIM(...), '')`，并新增直接数据库负向测试，精确验证三种空白组合均由`customers_admission_contact_complete_check`拒绝；服务测试同时断言姓名`***`、电话`***8000`且审计不含原值。临时`postgres-test`容器已再次精确重建，7份迁移从空库顺序应用且schema最新，数据库型Playwright 27/27及完整`pnpm verify`均通过。修复候选尚待独立Q2复查；在`ACCEPTED`前继续保持`IMPLEMENTED_PENDING_INDEPENDENT_Q2`，本节不构成上线许可。
+首个固定候选`5b88467`的独立Q2结论为`BLOCKED`：Critical 0、Important 1、Minor 1。Important为数据库CHECK只判断NULL，不能拒绝纯空白姓名或空白联系方式；Minor为姓名和电话的审计脱敏缺少直接回归断言。修复提交`a3ee91e`将约束收紧为`NULLIF(BTRIM(...), '')`，并新增直接数据库负向测试，精确验证三种空白组合均由`customers_admission_contact_complete_check`拒绝；服务测试同时断言姓名`***`、电话`***8000`且审计不含原值。临时`postgres-test`容器已再次精确重建，7份迁移从空库顺序应用且schema最新，数据库型Playwright 27/27及完整`pnpm verify`均通过。独立Q2复查结论为`ACCEPTED`：Critical 0、Important 0、Minor 0，上一轮Important和Minor均关闭。最终状态为`IMPLEMENTED_VERIFIED_INTERNAL_INTEGRATION`；该结论不包含E01/E02、人工localhost、生产迁移或上线许可。
 
 ## 边界决定
 

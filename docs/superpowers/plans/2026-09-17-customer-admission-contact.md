@@ -33,11 +33,11 @@
 
 **Interface:** `CustomerSummary` and customer create/update inputs add `admissionContactName`, `admissionContactPhone`, and `admissionContactEmail`, each nullable in output and optional in input.
 
-- [ ] Add failing service and HTTP tests for omitted contact, phone-only, email-only, missing name/method, malformed phone/email, partial update preservation, stale version, forbidden/scoped access, masked audit differences, and audit rollback.
-- [ ] Run focused backend tests and confirm the new tests fail because the contact contract/schema is absent.
-- [ ] Add nullable columns through one forward-only migration and Prisma schema fields.
-- [ ] Add DTO validation and aggregate validation; update the customer in the existing optimistic transaction and mask phone/email in audit details.
-- [ ] Run Prisma generation and focused backend tests until green.
+- [x] Add failing service and HTTP tests for omitted contact, phone-only, email-only, missing name/method, malformed phone/email, partial update preservation, stale version, forbidden/scoped access, masked audit differences, and audit rollback.
+- [x] Run focused backend tests and confirm the new tests fail because the contact contract/schema is absent.
+- [x] Add nullable columns through one forward-only migration and Prisma schema fields.
+- [x] Add DTO validation and aggregate validation; update the customer in the existing optimistic transaction and mask phone/email in audit details.
+- [x] Run Prisma generation and focused backend tests until green.
 
 ### Task 2: CUST-FND-008B — Existing operations pages
 
@@ -54,10 +54,10 @@
 
 **Interface:** The existing create and PATCH API functions send optional contact fields; customer responses always contain nullable contact fields.
 
-- [ ] Add failing API/component tests for create, edit, detail rendering, phone-only, email-only, invalid missing method, retained values after save failure, and version-conflict choices retaining or loading contact values.
-- [ ] Run focused frontend tests and confirm the missing fields/behavior cause failure.
-- [ ] Add contact inputs to the existing forms and contact display to the existing detail page without a new route or workflow.
-- [ ] Re-run focused frontend tests, typecheck, lint, format, and build until green.
+- [x] Add failing API/component tests for create, edit, detail rendering, phone-only, email-only, invalid missing method, retained values after save failure, and version-conflict choices retaining or loading contact values.
+- [x] Run focused frontend tests and confirm the missing fields/behavior cause failure.
+- [x] Add contact inputs to the existing forms and contact display to the existing detail page without a new route or workflow.
+- [x] Re-run focused frontend tests, typecheck, lint, format, and build until green.
 
 ### Task 3: CUST-FND-008C — PostgreSQL, browser, Q2, and trace
 
@@ -71,8 +71,8 @@
 - Modify: `docs/project-status.md`
 - Modify: `docs/context-snapshot.json`
 
-- [ ] Add database/browser tests for persisted phone-only and email-only contacts, transaction rollback, optimistic conflict, edit revocation, cross-department 404, and masked audit payloads.
-- [ ] Rebuild the isolated PostgreSQL test database from zero, apply every migration, and confirm schema is current.
-- [ ] Run focused tests, `pnpm verify`, and the README database Playwright command.
-- [ ] Submit the fixed candidate range and evidence to an independent Q2 reviewer; fix every Critical/Important issue and re-run affected gates.
-- [ ] Record actual verification, E01/E02 boundaries, no manual localhost acceptance, no release, and the final context snapshot.
+- [x] Add database/browser tests for persisted phone-only and email-only contacts, transaction rollback, optimistic conflict, edit revocation, cross-department 404, and masked audit payloads.
+- [x] Rebuild the isolated PostgreSQL test database from zero, apply every migration, and confirm schema is current.
+- [x] Run focused tests, `pnpm verify`, and the README database Playwright command.
+- [x] Submit the fixed candidate range and evidence to an independent Q2 reviewer; fix every Critical/Important issue and re-run affected gates.
+- [x] Record actual verification, E01/E02 boundaries, no manual localhost acceptance, no release, and the final context snapshot.
