@@ -78,6 +78,9 @@ export function allowCustomerUpdateAuditWrites(): Promise<void>;
 export function rejectNamedCustomerWrites(name: string): Promise<void>;
 export function allowNamedCustomerWrites(): Promise<void>;
 export function disconnectCustomerTestDatabase(): Promise<void>;
+export function verifyRightsHolderNames(
+  names: string[],
+): Promise<Array<string | null>>;
 export function getRightsHolderCounts(departmentId: string): Promise<{
   holders: number;
   links: number;
@@ -109,4 +112,8 @@ export function verifyRightsHolderMigration(): Promise<{
   partialTables: number;
   partialConstraints: number;
   failedCustomers: number;
+  preservedHolders: number;
+  whitespaceMigrationFailure: string | null;
+  whitespaceRollbackPreservedConstraint: boolean;
+  whitespaceRollbackPreservedHolder: boolean;
 }>;

@@ -546,6 +546,8 @@ async function verifyRightsHolderMigration() {
   const client = new Client({ connectionString: databaseUrl });
   const migrationRoot = resolve(process.cwd(), 'backend/prisma/migrations');
   const target = '20260917070000_add_customer_rights_holders';
+  const whitespaceTarget =
+    '20260917080000_enforce_rights_holder_name_whitespace';
   const previous = '20260917060000_add_customer_admission_contact';
   const migrations = (await readdir(migrationRoot))
     .filter((name) => /^\d{14}_/.test(name))
@@ -553,6 +555,10 @@ async function verifyRightsHolderMigration() {
   const previousMigrations = migrations.filter((name) => name <= previous);
   const migrationSql = await readFile(
     resolve(migrationRoot, target, 'migration.sql'),
+    'utf8',
+  );
+  const whitespaceMigrationSql = await readFile(
+    resolve(migrationRoot, whitespaceTarget, 'migration.sql'),
     'utf8',
   );
   const schema = `rights_holder_probe_${randomUUID().replaceAll('-', '')}`;
@@ -622,6 +628,16 @@ async function verifyRightsHolderMigration() {
       'INSERT INTO customer_rights_holder_links(id,customer_id,rights_holder_id,department_id) VALUES ($1,$2,$3,$4)',
       [ids[9], customerA, holderA, departmentA],
     );
+    const holdersBefore = (
+      await client.query('SELECT * FROM rights_holders ORDER BY id')
+    ).rows;
+    await client.query(whitespaceMigrationSql);
+    const holdersAfter = (
+      await client.query('SELECT * FROM rights_holders ORDER BY id')
+    ).rows;
+    const customersAfterWhitespace = (
+      await client.query('SELECT * FROM customers ORDER BY id')
+    ).rows;
     const rejections = [];
     const invalidStatements = [
       ...[null, '', '   '].map((name) => ({
@@ -680,12 +696,49 @@ async function verifyRightsHolderMigration() {
     const failedCustomers = Number(
       (await client.query('SELECT count(*) FROM customers')).rows[0].count,
     );
+    await client.query('DROP TABLE rights_holder_command_receipts');
+    await client.query(migrationSql);
+    await client.query(
+      'INSERT INTO rights_holders(id,name,department_id,updated_at) VALUES ($1,$2,$3,NOW())',
+      [holderA, '\t\n\u3000', departmentA],
+    );
+    const readNameConstraint = async () =>
+      (
+        await client.query(
+          "SELECT pg_get_constraintdef(oid) AS definition FROM pg_constraint WHERE conrelid='rights_holders'::regclass AND conname='rights_holders_name_nonblank_check'",
+        )
+      ).rows[0].definition;
+    const previousNameConstraint = await readNameConstraint();
+    let whitespaceMigrationFailure = null;
+    try {
+      await client.query(whitespaceMigrationSql);
+    } catch (error) {
+      whitespaceMigrationFailure = error.code ?? null;
+      await client.query('ROLLBACK');
+    }
+    const whitespaceRollbackPreservedConstraint =
+      (await readNameConstraint()) === previousNameConstraint;
+    const dirtyHolder = (
+      await client.query('SELECT name FROM rights_holders WHERE id=$1', [
+        holderA,
+      ])
+    ).rows[0];
     return {
       previousMigrations: previousMigrations.length,
       previousSchema: previous,
-      upgradedSchema: target,
+      upgradedSchema: whitespaceTarget,
       preservedCustomers:
-        JSON.stringify(before) === JSON.stringify(after) ? after.length : 0,
+        JSON.stringify(before) === JSON.stringify(after) &&
+        JSON.stringify(before) === JSON.stringify(customersAfterWhitespace)
+          ? after.length
+          : 0,
+      preservedHolders:
+        JSON.stringify(holdersBefore) === JSON.stringify(holdersAfter)
+          ? holdersAfter.length
+          : 0,
+      whitespaceMigrationFailure,
+      whitespaceRollbackPreservedConstraint,
+      whitespaceRollbackPreservedHolder: dirtyHolder?.name === '\t\n\u3000',
       tables,
       validLinks,
       rejections,
@@ -703,7 +756,33 @@ async function verifyRightsHolderMigration() {
   }
 }
 
+async function verifyRightsHolderNames(names) {
+  const client = new Client({ connectionString: databaseUrl });
+  await client.connect();
+  const results = [];
+  try {
+    for (const name of names) {
+      await client.query('BEGIN');
+      try {
+        await client.query(
+          'INSERT INTO rights_holders(id,name,department_id,updated_at) VALUES ($1,$2,$3,NOW())',
+          [randomUUID(), name, e2eFixtures.departmentA],
+        );
+        results.push(null);
+      } catch (error) {
+        results.push(error.constraint ?? error.code ?? null);
+      } finally {
+        await client.query('ROLLBACK');
+      }
+    }
+    return results;
+  } finally {
+    await client.end();
+  }
+}
+
 export {
+  verifyRightsHolderNames,
   allowRightsHolderAuditWrites,
   getRightsHolderCounts,
   linkRightsHolderFixture,

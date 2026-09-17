@@ -164,6 +164,7 @@ model Customer {
 
 model RightsHolder {
   id                  String                       @id @default(uuid()) @db.Uuid
+  /// SQL CHECK rights_holders_name_nonblank_check uses ECMAScript trim whitespace (20260917080000).
   name                String
   credit              String?
   address             String?

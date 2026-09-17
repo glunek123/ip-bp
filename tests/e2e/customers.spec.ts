@@ -1,5 +1,10 @@
 import { randomUUID } from 'node:crypto';
-import { expect, test, type APIRequestContext } from '@playwright/test';
+import {
+  expect,
+  test,
+  type APIRequestContext,
+  type APIResponse,
+} from '@playwright/test';
 import {
   allowRightsHolderAuditWrites,
   getRightsHolderCounts,
@@ -7,6 +12,7 @@ import {
   rejectRightsHolderAuditWrites,
   revokeRightsHolderGrant,
   verifyRightsHolderMigration,
+  verifyRightsHolderNames,
   allowNamedCustomerWrites,
   allowCustomerDraftAuditWrites,
   allowCustomerUpdateAuditWrites,
@@ -170,18 +176,46 @@ test('rights holder validation rejects empty names but permits duplicate names a
   expect(secondResult.customerVersion).toBe(3);
 });
 
+test('rights holder database rejects every ECMAScript trim whitespace character', async ({
+  request,
+}) => {
+  const whitespace = [
+    0x0009, 0x000a, 0x000b, 0x000c, 0x000d, 0x0020, 0x00a0, 0x1680, 0x2000,
+    0x2001, 0x2002, 0x2003, 0x2004, 0x2005, 0x2006, 0x2007, 0x2008, 0x2009,
+    0x200a, 0x2028, 0x2029, 0x202f, 0x205f, 0x3000, 0xfeff,
+  ].map((codePoint) => String.fromCodePoint(codePoint));
+  const blankNames = [...whitespace, '\r\n', whitespace.join('')];
+  expect(blankNames.every((name) => name.trim() === '')).toBe(true);
+  await expect(verifyRightsHolderNames(blankNames)).resolves.toEqual(
+    blankNames.map(() => 'rights_holders_name_nonblank_check'),
+  );
+  await expect(
+    verifyRightsHolderNames(['\t正常主体\u3000', '\u200b', '\u0085']),
+  ).resolves.toEqual([null, null, null]);
+  const customerId = await createRightsCustomer(request, '空白名称规范化客户');
+  const response = await createHolder(request, customerId, {
+    name: `${whitespace.join('')}正常主体${whitespace.join('')}`,
+  });
+  expect(response.status(), await response.text()).toBe(201);
+  expect(await response.json()).toMatchObject({ holder: { name: '正常主体' } });
+});
+
 test('rights holder upgrade preserves old customers and enforces SQL constraints atomically', async () => {
   const result = await verifyRightsHolderMigration();
   expect(result).toMatchObject({
     previousMigrations: 7,
     previousSchema: '20260917060000_add_customer_admission_contact',
-    upgradedSchema: '20260917070000_add_customer_rights_holders',
+    upgradedSchema: '20260917080000_enforce_rights_holder_name_whitespace',
     preservedCustomers: 2,
     validLinks: 1,
     failedMigrationCode: '42P07',
     partialTables: 0,
     partialConstraints: 0,
     failedCustomers: 2,
+    preservedHolders: 2,
+    whitespaceMigrationFailure: '23514',
+    whitespaceRollbackPreservedConstraint: true,
+    whitespaceRollbackPreservedHolder: true,
   });
   expect(result.tables).toEqual(
     expect.arrayContaining([
@@ -307,7 +341,6 @@ test('rights holder projections never expose another linked customer or private 
     request.get(`/api/v1/customers/${nextCustomer}/linkable-rights-holders`, {
       headers: authorizationA,
     }),
-    linkHolder(request, nextCustomer, result.holder.id),
   ]);
   const expectedFields = [
     'id',
@@ -318,7 +351,7 @@ test('rights holder projections never expose another linked customer or private 
     'duty',
     'updatedAt',
   ].sort();
-  for (const response of responses) {
+  const assertProjection = async (response: APIResponse) => {
     expect(response.ok()).toBe(true);
     const body = await response.json();
     const summary = body.items?.[0] ?? body.holder ?? body;
@@ -327,7 +360,11 @@ test('rights holder projections never expose another linked customer or private 
     expect(JSON.stringify(body)).not.toMatch(
       /不应泄漏|departmentId|responsibleUserId|teamId|links|customers|linkCount/,
     );
-  }
+  };
+  for (const response of responses) await assertProjection(response);
+  await assertProjection(
+    await linkHolder(request, nextCustomer, result.holder.id),
+  );
   const hiddenDetail = await request.get(
     `/api/v1/customers/${hiddenCustomer}/rights-holders/${result.holder.id}`,
     { headers: authorizationA },

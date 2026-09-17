@@ -1,5 +1,5 @@
 <script setup lang="ts">
-import { onBeforeUnmount, onMounted, ref } from 'vue';
+import { onBeforeUnmount, ref, watch } from 'vue';
 import { RouterLink, useRoute } from 'vue-router';
 import { ElButton } from 'element-plus/es/components/button/index.mjs';
 import {
@@ -29,14 +29,17 @@ async function load(): Promise<void> {
   activeRequest?.abort();
   const controller = new AbortController();
   activeRequest = controller;
+  holder.value = undefined;
   state.value = 'loading';
   try {
-    holder.value = await getCustomerRightsHolder(
+    const result = await getCustomerRightsHolder(
       String(route.params.customerId),
       String(route.params.rightsHolderId),
       { signal: controller.signal },
     );
-    if (!controller.signal.aborted) state.value = 'ready';
+    if (controller.signal.aborted) return;
+    holder.value = result;
+    state.value = 'ready';
   } catch (error) {
     if (controller.signal.aborted) return;
     state.value = isMissing(error) ? 'missing' : 'failed';
@@ -50,7 +53,11 @@ function formatTime(value: string): string {
   });
 }
 
-onMounted(() => void load());
+watch(
+  () => [route.params.customerId, route.params.rightsHolderId],
+  () => void load(),
+  { immediate: true },
+);
 onBeforeUnmount(() => activeRequest?.abort());
 </script>
 
