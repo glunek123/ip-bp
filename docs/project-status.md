@@ -8,9 +8,11 @@
 
 ## 当前任务
 
+GOV-RISK-GATES-001已完成：用户于2026-09-17明确授权开发流程去重与风险分级，范围仅为候选证据复用、数据库验证触发、独立审查和自动集成规则，不启动业务功能，不改业务代码、schema、迁移、依赖或测试服务。唯一完整规则为[.cursor自动集成规则](../.cursor/rules/verified-feature-integration.mdc)；`AGENTS.md`仅保留入口，本规范与README只说明调用关系。现有命令已能支持分级验证，因此未新增缓存、调度脚本或依赖；`pnpm verify`包含上下文、Spec、类型、Lint、格式、工具／前后端测试与构建，不包含数据库E2E。本任务按Q2执行旧门禁；基线为`0f66e34`，已验证候选为`65da7de`，tree为`942679e`，精确候选`pnpm verify`退出0、用时61.9秒。独立Q2首轮Critical 0、Important 5、Minor 1；修正后最终结论为`ACCEPTED`，Critical／Important／Minor均为0。数据库E2E未运行，因为候选未触及业务运行时、数据库路径、迁移、权限、事务或被测服务。现在只剩已授权的安全集成与远端核实；本段不提前宣称已推送。
+
 CUST-FND-008第三批首个纵向切片已获用户于2026-09-17明确授权并完成：在现有Customer聚合、权限范围、乐观版本、共享审计和运营端页面上维护一位准入联系人，字段仅为姓名及电话／邮箱至少一种。草稿可完全不填；填写时执行服务端空值和格式校验。联系人随客户TEAM／SELF／部门范围，不创建账号或权限，修改与客户版本及脱敏审计同事务。实施计划见[客户准入联系人计划](superpowers/plans/2026-09-17-customer-admission-contact.md)。本切片明确排除多联系人、主要联系人、删除策略、正式准入、材料／E02、真实登录／E01、权限平台、其他业务模块、生产迁移和发布；本轮不搭建`dev:acceptance`或执行人工localhost可视化验收。首个固定候选`5b88467`的独立Q2发现1项Important和1项Minor；修复提交`a3ee91e`增加`BTRIM`／`NULLIF`数据库约束、原始SQL负向回归及姓名／电话审计脱敏断言。独立复查结论为`ACCEPTED`（Critical 0、Important 0、Minor 0），空库7份迁移、完整`pnpm verify`和数据库型Playwright 27/27均通过；当前状态为`IMPLEMENTED_VERIFIED_INTERNAL_INTEGRATION`，不代表已上线。
 
-GOV-AUTO-VCS-001已由用户于2026-09-17确认为长期策略：单个功能完成实现、要求的验证和独立审查，且审查为`ACCEPTED`、Critical／Important／Minor均为0时，自动提交、合并到干净且未分叉的`main`，在合并结果上复验后推送`origin/main`，不再重复询问例行版本管理。冲突、主分支未提交改动、远端分叉、鉴权失败或门禁失败时保留现场并报告；标签、Release、部署、生产迁移和生产数据操作不在自动范围。唯一执行规则见[已验证功能自动集成](../.cursor/rules/verified-feature-integration.mdc)。
+GOV-AUTO-VCS-001的已批准自动版本管理并入GOV-RISK-GATES-001唯一规则入口：只有必要门禁通过、独立审查`ACCEPTED`且Critical／Important／Minor均为0才能自动集成并推送。冲突、脏工作区、异常分叉、鉴权或门禁失败时保留现场；不包含强推、标签、Release、部署、生产迁移或生产数据。
 
 CUST-FND-002～004首批实现已取得内部数据库与跨端证据。独立Q2前两轮结论为`BLOCKED`，对应Important项已通过前向迁移、服务端约束和真实数据库负向测试修复；2026-09-17最终独立复查结论为`ACCEPTED`，Critical 0、Important 0。该结论接受当前内部实现范围，不包含E01真实身份、E02对象存储、真实旧库恢复／生产迁移或上线许可；首批状态为`IMPLEMENTED_VERIFIED_INTERNAL_INTEGRATION`，不能简称为生产`VERIFIED`。
 
@@ -63,6 +65,8 @@ DOC-001历史整理结果：当时25份Spec的本地链接有效、49REQ／51AC�
 - 工程仍仅适用本地；ESLint 9 和部分间接依赖的弃用提示保留，版本升级单独评估。
 
 ## 最近验证
+
+本轮GOV-RISK-GATES-001：实测Node v24.21.0、pnpm 11.27.0与锁定值一致。新隔离工作树初次缺少`node_modules`，用`pnpm install --offline --frozen-lockfile`复用本地缓存初始化一次，用时117.0秒，未下载或升级依赖。基线`pnpm verify`通过，用时69.3秒；最终候选`65da7de`的`pnpm verify`也通过，用时61.9秒，覆盖上下文199个文本、Spec 53REQ／55AC／11BQ／34SD、工具19项、后端68项、前端53项、类型／Lint／格式和前后端构建。完整verify共执行2次（基线1、候选1），没有因阶段切换重复；数据库E2E执行0次，原因是本任务只改验证／集成规则与说明，未改业务代码、schema、迁移、数据库逻辑或服务。独立Q2最终核对SHA、tree、快照和完整验证证据后结论为`ACCEPTED`（Critical 0、Important 0、Minor 0）。
 
 本轮GOV-AUTO-VCS-001首次执行：已验证功能分支`codex/customer-admission-contact`以合并提交`db7e5d4`纳入`main`；合并前本地与`origin/main`差异为0／0且主分支干净。合并结果重新执行`pnpm verify`，上下文、Spec、类型、ESLint、Prettier、工具19项、后端68项、前端53项及构建全部通过；数据库型Playwright 27/27再次通过。GitHub已接受`7efdf56..5cb8464`并更新`origin/main`；该自动版本管理不包含标签、Release、部署、生产迁移或生产数据操作。
 

@@ -6,9 +6,9 @@ Demo 位于 `demo/`，正式工程位于 `frontend/`、`backend/`。当前工程
 
 先阅读 [当前开发状态](docs/project-status.md) 和 [AI 开发规范](docs/ai-coding.md)。加载下方运行入口后执行 `pnpm context:check`；它会指出与最近核对快照不同的源码、配置或文档。
 
-每次交付同步状态和相关文档，再显式执行 `pnpm context:record`、`pnpm verify`。前者仅记录已核对的文件，后者执行本地交付检查；语义审查与真实测试结果仍须如实记录。历史报告只对其当时版本有效。
+每次任务按[风险分级与已验证集成规则](.cursor/rules/verified-feature-integration.mdc)登记风险、固定候选并选择检查；收口时同步状态和相关文档，再显式执行`pnpm context:record`。`pnpm verify`是Q1／Q2候选完整本地门禁，数据库E2E另行触发；同一候选不重复运行没有新增证据的全量检查。
 
-收到 Demo 字段或规则文档时，按 [后续设计清单](docs/deferred-design.md)核对输入和待补能力。本地 Git 已建立，代码、文档和快照一起提交；未设置远程仓库或托管 CI。组件兼容、声明补丁及升级复验方法见 [组件兼容报告](docs/component-compatibility.md)。
+收到 Demo 字段或规则文档时，按 [后续设计清单](docs/deferred-design.md)核对输入和待补能力。GitHub远端已配置，代码、文档和快照一起提交；当前未见托管CI强制证据。组件兼容、声明补丁及升级复验方法见 [组件兼容报告](docs/component-compatibility.md)。
 
 ## 本机准备
 
@@ -46,6 +46,8 @@ pnpm dev
 | `pnpm format:check` | Prettier 格式检查                                                |
 | `pnpm format`       | 修正正式工程和文档格式，跳过 Demo                                |
 | `pnpm test`         | Vitest 文档同步检查器与前端行为测试、Jest/Supertest 后端契约测试 |
+| `pnpm verify`       | context、Spec、类型、Lint、格式、单元／契约测试及前后端构建      |
+| `pnpm test:e2e`     | 独立启动当前候选应用并对专用PostgreSQL执行Playwright；verify不含 |
 | `pnpm db:stop`      | 停止开发数据库，保留数据卷                                       |
 
 后端启动需要显式配置 `NODE_ENV`、`PORT`、`DATABASE_URL`；默认只监听本机。健康接口执行 Prisma `SELECT 1`，数据库不可达返回 503 和统一错误结构；成功仅表示本次检查通过。每个请求生成内部请求编号，并返回 `X-Request-Id`。
