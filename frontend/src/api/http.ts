@@ -23,7 +23,11 @@ function isRecord(value: unknown): value is Record<string, unknown> {
 
 export type JsonValue =
   null | boolean | number | string | JsonValue[] | { [key: string]: JsonValue };
-export type RequestOptions = { timeoutMs?: number; signal?: AbortSignal };
+export type RequestOptions = {
+  timeoutMs?: number;
+  signal?: AbortSignal;
+  headers?: Readonly<Record<string, string>>;
+};
 export type JsonRequestOptions = RequestOptions &
   (
     | { method?: 'GET'; body?: never }
@@ -59,6 +63,7 @@ export async function requestJson(
         ...(bodyText === undefined
           ? {}
           : { 'Content-Type': 'application/json' }),
+        ...options.headers,
       },
       body: bodyText,
     });

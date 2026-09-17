@@ -4,6 +4,7 @@ import { RouterLink, useRoute } from 'vue-router';
 import { ElButton } from 'element-plus/es/components/button/index.mjs';
 import { ApiError } from '../../api/http';
 import { getCustomer, type CustomerDetail } from '../../api/customers';
+import CustomerRightsHolderPanel from './CustomerRightsHolderPanel.vue';
 
 const route = useRoute();
 const state = ref<'loading' | 'ready' | 'missing' | 'failed'>('loading');
@@ -41,6 +42,18 @@ async function load(): Promise<void> {
         : isCustomerNotFound(error)
           ? 'missing'
           : 'failed';
+  }
+}
+
+function updateCustomerVersion(version: number): void {
+  if (customer.value) customer.value = { ...customer.value, version };
+}
+
+async function refreshCustomerVersion(): Promise<void> {
+  try {
+    customer.value = await getCustomer(String(route.params.id));
+  } catch {
+    // The panel keeps the user's command input and refresh prompt visible.
   }
 }
 
@@ -147,6 +160,13 @@ onBeforeUnmount(() => activeRequest?.abort());
           </dl>
           <p class="draft-note">资料尚未准入，可继续补充证件与联系人。</p>
         </section>
+        <CustomerRightsHolderPanel
+          :customer-id="customer.id"
+          :customer-version="customer.version"
+          :can-edit="customer.capabilities.editRoutine"
+          @version-updated="updateCustomerVersion"
+          @refresh-requested="refreshCustomerVersion"
+        />
         <details class="history-panel">
           <summary>办理历史 · {{ customer.history.length }} 条</summary>
           <ol>

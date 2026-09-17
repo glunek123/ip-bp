@@ -59,6 +59,27 @@ describe('HTTP boundary', () => {
       );
     },
   );
+  it('merges only explicitly supplied request headers', async () => {
+    const fetch = vi.fn().mockResolvedValue(new Response('{"saved":true}'));
+    vi.stubGlobal('fetch', fetch);
+
+    await requestJson('/customers/c1/rights-holders', {
+      method: 'POST',
+      headers: { 'Idempotency-Key': 'command-1' },
+      body: { expectedCustomerVersion: 1, name: '主体甲' },
+    });
+
+    expect(fetch).toHaveBeenCalledWith(
+      '/api/v1/customers/c1/rights-holders',
+      expect.objectContaining({
+        headers: expect.objectContaining({
+          Accept: 'application/json',
+          'Content-Type': 'application/json',
+          'Idempotency-Key': 'command-1',
+        }),
+      }),
+    );
+  });
   it('accepts 204 without trying to parse JSON', async () => {
     const fetch = vi
       .fn()

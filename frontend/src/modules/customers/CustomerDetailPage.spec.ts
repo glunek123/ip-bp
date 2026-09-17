@@ -6,6 +6,13 @@ import CustomerDetailPage from './CustomerDetailPage.vue';
 const api = vi.hoisted(() => ({ getCustomer: vi.fn() }));
 vi.mock('../../api/customers', () => api);
 
+const rightsHolderPanel = {
+  props: ['customerId', 'customerVersion', 'canEdit'],
+  emits: ['version-updated', 'refresh-requested'],
+  template:
+    '<section data-test="rights-holder-panel" :data-version="customerVersion" :data-can-edit="canEdit" @click="$emit(\'version-updated\', 2)">权利主体面板</section>',
+};
+
 afterEach(() => vi.clearAllMocks());
 
 async function mountPage() {
@@ -15,7 +22,12 @@ async function mountPage() {
   });
   await router.push('/customers/customer-1');
   await router.isReady();
-  return mount(CustomerDetailPage, { global: { plugins: [router] } });
+  return mount(CustomerDetailPage, {
+    global: {
+      plugins: [router],
+      stubs: { CustomerRightsHolderPanel: rightsHolderPanel },
+    },
+  });
 }
 
 describe('CustomerDetailPage', () => {
@@ -58,6 +70,15 @@ describe('CustomerDetailPage', () => {
     expect(wrapper.get('[data-test="edit-customer"]').text()).toContain(
       '编辑资料',
     );
+    expect(
+      wrapper.get('[data-test="rights-holder-panel"]').attributes(),
+    ).toMatchObject({ 'data-version': '1', 'data-can-edit': 'true' });
+    await wrapper.get('[data-test="rights-holder-panel"]').trigger('click');
+    expect(
+      wrapper
+        .get('[data-test="rights-holder-panel"]')
+        .attributes('data-version'),
+    ).toBe('2');
   });
 
   it('shows a non-leaking unavailable state for 404', async () => {
@@ -91,5 +112,10 @@ describe('CustomerDetailPage', () => {
     const wrapper = await mountPage();
     await flushPromises();
     expect(wrapper.find('[data-test="edit-customer"]').exists()).toBe(false);
+    expect(
+      wrapper
+        .get('[data-test="rights-holder-panel"]')
+        .attributes('data-can-edit'),
+    ).toBe('false');
   });
 });
