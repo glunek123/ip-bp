@@ -24,6 +24,7 @@ import {
   rejectCustomerUpdateAuditWrites,
   rejectNamedCustomerWrites,
   resetCustomerE2eData,
+  verifyAdmissionContactConstraintRejectsBlankValues,
   verifyRoleAssignmentMigrationRollback,
 } from '../support/customer-database.mjs';
 
@@ -51,12 +52,16 @@ test('operations user creates a persisted draft and sees its audit history', asy
   ).toBeVisible();
   await page.getByRole('link', { name: '新建客户' }).click();
   await page.getByLabel('客户名称').fill('真实数据库客户');
+  await page.getByLabel('联系人姓名').fill('张三');
+  await page.getByLabel('电话').fill('13800138000');
   await page.getByRole('button', { name: '保存草稿' }).click();
 
   await expect(
     page.getByRole('heading', { name: '真实数据库客户', exact: true }),
   ).toBeVisible();
   await expect(page.getByText('办理历史 · 1 条')).toBeVisible();
+  await expect(page.getByText('张三', { exact: true })).toBeVisible();
+  await expect(page.getByText('13800138000', { exact: true })).toBeVisible();
   await page.getByText('办理历史 · 1 条').click();
   await expect(page.getByText('创建客户草稿', { exact: true })).toBeVisible();
 
@@ -65,11 +70,15 @@ test('operations user creates a persisted draft and sees its audit history', asy
   await page.getByLabel('客户类型').fill('企业');
   await page.getByLabel('证件类型').fill('统一社会信用代码');
   await page.getByLabel('证件号码').fill('91310000abc123');
+  await page.getByLabel('邮箱').fill('contact@example.com');
   await page.getByRole('button', { name: '保存修改' }).click();
   await expect(
     page.getByRole('heading', { name: '真实数据库客户（更新）', exact: true }),
   ).toBeVisible();
   await expect(page.getByText('91310000ABC123', { exact: true })).toBeVisible();
+  await expect(
+    page.getByText('contact@example.com', { exact: true }),
+  ).toBeVisible();
   await expect(page.getByText('办理历史 · 2 条')).toBeVisible();
 
   const customerId = await findCustomerId(
@@ -77,6 +86,70 @@ test('operations user creates a persisted draft and sees its audit history', asy
     '真实数据库客户（更新）',
   );
   await expect(page).toHaveURL(`/customers/${customerId}`);
+  await expect(getCustomerById(customerId)).resolves.toMatchObject({
+    admissionContactName: '张三',
+    admissionContactPhone: '13800138000',
+    admissionContactEmail: 'contact@example.com',
+    version: 2,
+  });
+  const contactAudit = await getLatestCustomerAudit(customerId);
+  expect(contactAudit.details).toMatchObject({
+    changes: {
+      admissionContactEmail: {
+        before: null,
+        after: '***@example.com',
+      },
+    },
+  });
+  expect(JSON.stringify(contactAudit.details)).not.toContain(
+    'contact@example.com',
+  );
+});
+
+test('contact validation accepts email-only data and rejects incomplete contact data', async ({
+  request,
+}) => {
+  const emailOnly = await request.post('/api/v1/customers', {
+    headers: authorizationA,
+    data: {
+      name: '邮箱联系人客户',
+      admissionContactName: '李四',
+      admissionContactEmail: 'li.si@example.com',
+    },
+  });
+  expect(emailOnly.status(), await emailOnly.text()).toBe(201);
+  expect(await emailOnly.json()).toMatchObject({
+    admissionContactName: '李四',
+    admissionContactPhone: null,
+    admissionContactEmail: 'li.si@example.com',
+  });
+
+  const incomplete = await request.post('/api/v1/customers', {
+    headers: authorizationA,
+    data: { name: '缺少联系方式客户', admissionContactName: '王五' },
+  });
+  expect(incomplete.status()).toBe(400);
+  expect(await incomplete.json()).toMatchObject({ code: 'VALIDATION_ERROR' });
+
+  const malformed = await request.post('/api/v1/customers', {
+    headers: authorizationA,
+    data: {
+      name: '错误邮箱客户',
+      admissionContactName: '赵六',
+      admissionContactEmail: 'not-an-email',
+    },
+  });
+  expect(malformed.status()).toBe(400);
+});
+
+test('the database rejects blank admission contact values', async () => {
+  await expect(
+    verifyAdmissionContactConstraintRejectsBlankValues(),
+  ).resolves.toEqual([
+    'customers_admission_contact_complete_check',
+    'customers_admission_contact_complete_check',
+    'customers_admission_contact_complete_check',
+  ]);
 });
 
 test('another department cannot list or address the customer', async ({
@@ -215,7 +288,11 @@ test('edit revocation takes effect on the next request', async ({
 
   const response = await request.patch(`/api/v1/customers/${customer.id}`, {
     headers: authorizationA,
-    data: { expectedVersion: 1, name: '撤权后不得修改' },
+    data: {
+      expectedVersion: 1,
+      admissionContactName: '撤权联系人',
+      admissionContactPhone: '13800138000',
+    },
   });
   expect(response.status()).toBe(403);
   expect(await response.json()).toMatchObject({
@@ -646,7 +723,11 @@ test('a stale edit version cannot overwrite the current customer', async ({
 
   const stale = await request.patch(`/api/v1/customers/${customerId}`, {
     headers: authorizationA,
-    data: { expectedVersion: 1, name: '后到的旧版本' },
+    data: {
+      expectedVersion: 1,
+      admissionContactName: '旧版本联系人',
+      admissionContactPhone: '13900139000',
+    },
   });
   expect(stale.status()).toBe(409);
   expect(await stale.json()).toMatchObject({
@@ -708,7 +789,11 @@ test('an update audit failure rolls back the customer modification', async ({
   try {
     const response = await request.patch(`/api/v1/customers/${customerId}`, {
       headers: authorizationA,
-      data: { expectedVersion: 1, name: '不得留下的名称' },
+      data: {
+        expectedVersion: 1,
+        admissionContactName: '不得留下的联系人',
+        admissionContactPhone: '13800138000',
+      },
     });
     expect(response.status()).toBe(500);
   } finally {
@@ -717,7 +802,12 @@ test('an update audit failure rolls back the customer modification', async ({
 
   await expect(
     getCustomer(e2eFixtures.departmentA, '修改前名称'),
-  ).resolves.toMatchObject({ id: customerId, version: 1 });
+  ).resolves.toMatchObject({
+    id: customerId,
+    admissionContactName: null,
+    admissionContactPhone: null,
+    version: 1,
+  });
   await expect(
     countCustomerAuditEvents(e2eFixtures.departmentA, 'customer.updated'),
   ).resolves.toBe(0);

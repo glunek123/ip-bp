@@ -9,6 +9,9 @@ export type CustomerSummary = {
   issuingCountryOrRegion: string | null;
   category: string | null;
   region: string | null;
+  admissionContactName: string | null;
+  admissionContactPhone: string | null;
+  admissionContactEmail: string | null;
   profileStatus: 'draft';
   departmentId: string;
   responsibleUserId: string;
@@ -36,6 +39,9 @@ export type CustomerDraftInput = {
   issuingCountryOrRegion?: string;
   category?: string;
   region?: string;
+  admissionContactName?: string;
+  admissionContactPhone?: string;
+  admissionContactEmail?: string;
   duplicateNameReason?: string;
 };
 
@@ -71,6 +77,9 @@ function isCustomerSummary(value: unknown): value is CustomerSummary {
     isNullableString(value.issuingCountryOrRegion) &&
     isNullableString(value.category) &&
     isNullableString(value.region) &&
+    isNullableString(value.admissionContactName) &&
+    isNullableString(value.admissionContactPhone) &&
+    isNullableString(value.admissionContactEmail) &&
     value.profileStatus === 'draft' &&
     typeof value.departmentId === 'string' &&
     typeof value.responsibleUserId === 'string' &&
@@ -149,6 +158,9 @@ export async function createCustomerDraft(input: {
   name: string;
   category?: string;
   region?: string;
+  admissionContactName?: string;
+  admissionContactPhone?: string;
+  admissionContactEmail?: string;
   duplicateNameReason?: string;
 }): Promise<CustomerSummary> {
   const data = await requestJson('/customers', {

@@ -86,6 +86,53 @@ describe('CustomerController', () => {
     expect(createDraft).toHaveBeenCalledWith(actor, { name: '客户甲' });
   });
 
+  it('accepts one admission contact with a phone or email', async () => {
+    createDraft.mockResolvedValue({ id: 'customer-1', name: '客户甲' });
+    await request(app.getHttpServer())
+      .post('/api/v1/customers')
+      .set('Authorization', 'Bearer allowed-token')
+      .send({
+        name: '客户甲',
+        admissionContactName: ' 张三 ',
+        admissionContactPhone: ' +86 138-0013-8000 ',
+      })
+      .expect(201);
+    expect(createDraft).toHaveBeenCalledWith(actor, {
+      name: '客户甲',
+      admissionContactName: '张三',
+      admissionContactPhone: '+86 138-0013-8000',
+    });
+
+    createDraft.mockClear();
+    await request(app.getHttpServer())
+      .post('/api/v1/customers')
+      .set('Authorization', 'Bearer allowed-token')
+      .send({
+        name: '客户乙',
+        admissionContactName: '李四',
+        admissionContactEmail: 'contact@example.com',
+      })
+      .expect(201);
+    expect(createDraft).toHaveBeenCalledWith(actor, {
+      name: '客户乙',
+      admissionContactName: '李四',
+      admissionContactEmail: 'contact@example.com',
+    });
+  });
+
+  it.each([
+    { admissionContactName: '' },
+    { admissionContactPhone: 'abc' },
+    { admissionContactEmail: 'not-an-email' },
+  ])('rejects malformed admission contact input %#', async (contact) => {
+    await request(app.getHttpServer())
+      .post('/api/v1/customers')
+      .set('Authorization', 'Bearer allowed-token')
+      .send({ name: '客户甲', ...contact })
+      .expect(400);
+    expect(createDraft).not.toHaveBeenCalled();
+  });
+
   it('rejects a blank customer name', async () => {
     await request(app.getHttpServer())
       .post('/api/v1/customers')
@@ -195,6 +242,13 @@ describe('CustomerController', () => {
       .patch(`/api/v1/customers/${customerId}`)
       .set('Authorization', 'Bearer allowed-token')
       .send({ expectedVersion: 1, category: null })
+      .expect(400);
+    expect(updateDraft).not.toHaveBeenCalled();
+
+    await request(app.getHttpServer())
+      .patch(`/api/v1/customers/${customerId}`)
+      .set('Authorization', 'Bearer allowed-token')
+      .send({ expectedVersion: 1, admissionContactEmail: null })
       .expect(400);
     expect(updateDraft).not.toHaveBeenCalled();
   });

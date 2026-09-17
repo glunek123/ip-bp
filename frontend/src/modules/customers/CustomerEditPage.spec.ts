@@ -22,6 +22,9 @@ const customer = {
   issuingCountryOrRegion: null,
   category: null,
   region: null,
+  admissionContactName: '张三',
+  admissionContactPhone: '13800138000',
+  admissionContactEmail: null,
   profileStatus: 'draft',
   departmentId: 'department-1',
   responsibleUserId: 'user-1',
@@ -63,6 +66,9 @@ describe('CustomerEditPage', () => {
     await wrapper
       .get('input[name="identityNumber"]')
       .setValue('91310000abc123');
+    await wrapper
+      .get('input[name="admissionContactEmail"]')
+      .setValue('contact@example.com');
     await wrapper.get('form').trigger('submit');
     await flushPromises();
     expect(api.updateCustomerDraft).toHaveBeenCalledWith('customer-1', {
@@ -74,6 +80,9 @@ describe('CustomerEditPage', () => {
       issuingCountryOrRegion: '',
       category: '',
       region: '',
+      admissionContactName: '张三',
+      admissionContactPhone: '13800138000',
+      admissionContactEmail: 'contact@example.com',
     });
     expect(router.currentRoute.value.fullPath).toBe('/customers/customer-1');
   });
@@ -161,6 +170,9 @@ describe('CustomerEditPage', () => {
     const { wrapper } = await mountPage();
     await flushPromises();
     await wrapper.get('input[name="name"]').setValue('我的草稿');
+    await wrapper
+      .get('input[name="admissionContactPhone"]')
+      .setValue('13900139000');
     await wrapper.get('form').trigger('submit');
     await flushPromises();
 
@@ -175,6 +187,12 @@ describe('CustomerEditPage', () => {
     expect(
       (wrapper.get('input[name="name"]').element as HTMLInputElement).value,
     ).toBe('我的草稿');
+    expect(
+      (
+        wrapper.get('input[name="admissionContactPhone"]')
+          .element as HTMLInputElement
+      ).value,
+    ).toBe('13900139000');
     expect(api.updateCustomerDraft).toHaveBeenCalledTimes(1);
 
     await wrapper.get('button[name="retryLatest"]').trigger('click');
@@ -191,6 +209,9 @@ describe('CustomerEditPage', () => {
       name: '服务端新名称',
       category: '最新类别',
       region: '北京',
+      admissionContactName: '李四',
+      admissionContactPhone: null,
+      admissionContactEmail: 'latest@example.com',
       version: 2,
     });
     api.findCustomerDuplicates.mockResolvedValue({
@@ -217,6 +238,18 @@ describe('CustomerEditPage', () => {
     expect(
       (wrapper.get('input[name="region"]').element as HTMLInputElement).value,
     ).toBe('北京');
+    expect(
+      (
+        wrapper.get('input[name="admissionContactName"]')
+          .element as HTMLInputElement
+      ).value,
+    ).toBe('李四');
+    expect(
+      (
+        wrapper.get('input[name="admissionContactEmail"]')
+          .element as HTMLInputElement
+      ).value,
+    ).toBe('latest@example.com');
     expect(wrapper.find('button[name="useLatest"]').exists()).toBe(false);
     expect(api.updateCustomerDraft).toHaveBeenCalledTimes(1);
   });

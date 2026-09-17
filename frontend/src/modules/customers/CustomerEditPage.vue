@@ -24,12 +24,17 @@ const identityNumber = ref('');
 const issuingCountryOrRegion = ref('');
 const category = ref('');
 const region = ref('');
+const admissionContactName = ref('');
+const admissionContactPhone = ref('');
+const admissionContactEmail = ref('');
+const originalAdmissionContact = ref({ name: '', phone: '', email: '' });
 const duplicateNameReason = ref('');
 const needsDuplicateNameReason = ref(false);
 const duplicateMatches = ref<CustomerDuplicateSummary[]>([]);
 const latestSnapshot = ref<CustomerDetail | null>(null);
 const nameError = ref('');
 const identityError = ref('');
+const admissionContactError = ref('');
 const duplicateNameReasonError = ref('');
 const submitError = ref('');
 const saving = ref(false);
@@ -37,6 +42,59 @@ let activeRequest: AbortController | undefined;
 
 function editable(value: string): string {
   return value.trim();
+}
+
+function setOriginalAdmissionContact(customer: CustomerDetail): void {
+  originalAdmissionContact.value = {
+    name: customer.admissionContactName ?? '',
+    phone: customer.admissionContactPhone ?? '',
+    email: customer.admissionContactEmail ?? '',
+  };
+}
+
+function validateAdmissionContact(): boolean {
+  const contactName = admissionContactName.value.trim();
+  const contactPhone = admissionContactPhone.value.trim();
+  const contactEmail = admissionContactEmail.value.trim();
+  const original = originalAdmissionContact.value;
+  admissionContactError.value = '';
+  if (
+    (original.name && !contactName) ||
+    (original.phone && !contactPhone) ||
+    (original.email && !contactEmail)
+  ) {
+    admissionContactError.value = '本轮暂不支持删除联系人信息';
+  } else if ((contactName || contactPhone || contactEmail) && !contactName) {
+    admissionContactError.value = '请填写联系人姓名';
+  } else if (contactName && !contactPhone && !contactEmail) {
+    admissionContactError.value = '联系人至少填写电话或邮箱';
+  } else if (
+    contactPhone &&
+    !/^(?=(?:\D*\d){6,20}\D*$)[+()\d\s-]+$/u.test(contactPhone)
+  ) {
+    admissionContactError.value = '联系人电话格式不正确';
+  } else if (
+    contactEmail &&
+    !/^[^\s@]+@[^\s@]+\.[^\s@]+$/u.test(contactEmail)
+  ) {
+    admissionContactError.value = '联系人邮箱格式不正确';
+  }
+  return admissionContactError.value.length === 0;
+}
+
+function admissionContactPayload(): {
+  admissionContactName?: string;
+  admissionContactPhone?: string;
+  admissionContactEmail?: string;
+} {
+  const contactName = admissionContactName.value.trim();
+  const contactPhone = admissionContactPhone.value.trim();
+  const contactEmail = admissionContactEmail.value.trim();
+  return {
+    ...(contactName ? { admissionContactName: contactName } : {}),
+    ...(contactPhone ? { admissionContactPhone: contactPhone } : {}),
+    ...(contactEmail ? { admissionContactEmail: contactEmail } : {}),
+  };
 }
 
 async function loadVisibleDuplicates(
@@ -80,6 +138,7 @@ async function prepareVersionConflict(): Promise<void> {
 async function retryLatest(): Promise<void> {
   if (latestSnapshot.value === null) return;
   expectedVersion.value = latestSnapshot.value.version;
+  setOriginalAdmissionContact(latestSnapshot.value);
   latestSnapshot.value = null;
   await submit();
 }
@@ -95,6 +154,10 @@ function useLatestSnapshot(): void {
   issuingCountryOrRegion.value = latest.issuingCountryOrRegion ?? '';
   category.value = latest.category ?? '';
   region.value = latest.region ?? '';
+  admissionContactName.value = latest.admissionContactName ?? '';
+  admissionContactPhone.value = latest.admissionContactPhone ?? '';
+  admissionContactEmail.value = latest.admissionContactEmail ?? '';
+  setOriginalAdmissionContact(latest);
   latestSnapshot.value = null;
   duplicateMatches.value = [];
   submitError.value = '';
@@ -122,6 +185,10 @@ async function load(): Promise<void> {
     issuingCountryOrRegion.value = customer.issuingCountryOrRegion ?? '';
     category.value = customer.category ?? '';
     region.value = customer.region ?? '';
+    admissionContactName.value = customer.admissionContactName ?? '';
+    admissionContactPhone.value = customer.admissionContactPhone ?? '';
+    admissionContactEmail.value = customer.admissionContactEmail ?? '';
+    setOriginalAdmissionContact(customer);
     state.value = 'ready';
   } catch (error) {
     if (controller.signal.aborted) return;
@@ -141,6 +208,7 @@ async function submit(): Promise<void> {
     hasIdentityType === hasIdentityNumber
       ? ''
       : '证件类型和证件号码需要同时填写';
+  validateAdmissionContact();
   duplicateNameReasonError.value =
     needsDuplicateNameReason.value && !duplicateNameReason.value.trim()
       ? '请说明同名情况下继续保存的原因'
@@ -148,7 +216,12 @@ async function submit(): Promise<void> {
   submitError.value = '';
   duplicateMatches.value = [];
   latestSnapshot.value = null;
-  if (nameError.value || identityError.value || duplicateNameReasonError.value)
+  if (
+    nameError.value ||
+    identityError.value ||
+    admissionContactError.value ||
+    duplicateNameReasonError.value
+  )
     return;
 
   saving.value = true;
@@ -162,6 +235,7 @@ async function submit(): Promise<void> {
       issuingCountryOrRegion: editable(issuingCountryOrRegion.value),
       category: editable(category.value),
       region: editable(region.value),
+      ...admissionContactPayload(),
       ...(needsDuplicateNameReason.value
         ? { duplicateNameReason: duplicateNameReason.value.trim() }
         : {}),
@@ -328,6 +402,54 @@ onBeforeUnmount(() => activeRequest?.abort());
             class="text-input"
             maxlength="100"
           />
+
+          <fieldset class="form-section">
+            <legend>准入联系人（可选）</legend>
+            <p class="field-help">填写联系人时，电话或邮箱至少填写一种。</p>
+            <label class="field-label" for="admission-contact-name"
+              >联系人姓名</label
+            >
+            <input
+              id="admission-contact-name"
+              v-model="admissionContactName"
+              name="admissionContactName"
+              class="text-input"
+              autocomplete="name"
+              maxlength="100"
+              @input="admissionContactError = ''"
+            />
+            <label
+              class="field-label field-label--spaced"
+              for="admission-contact-phone"
+              >电话</label
+            >
+            <input
+              id="admission-contact-phone"
+              v-model="admissionContactPhone"
+              name="admissionContactPhone"
+              class="text-input"
+              autocomplete="tel"
+              maxlength="30"
+              @input="admissionContactError = ''"
+            />
+            <label
+              class="field-label field-label--spaced"
+              for="admission-contact-email"
+              >邮箱</label
+            >
+            <input
+              id="admission-contact-email"
+              v-model="admissionContactEmail"
+              name="admissionContactEmail"
+              class="text-input"
+              autocomplete="email"
+              maxlength="254"
+              @input="admissionContactError = ''"
+            />
+            <p v-if="admissionContactError" class="field-error">
+              {{ admissionContactError }}
+            </p>
+          </fieldset>
 
           <template v-if="needsDuplicateNameReason">
             <label

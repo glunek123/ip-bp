@@ -2,8 +2,10 @@ import { ApiProperty, ApiPropertyOptional } from '@nestjs/swagger';
 import { Transform, Type } from 'class-transformer';
 import {
   IsInt,
+  IsEmail,
   IsString,
   IsUUID,
+  Matches,
   Max,
   MaxLength,
   Min,
@@ -14,7 +16,37 @@ import {
 const trim = ({ value }: { value: unknown }): unknown =>
   typeof value === 'string' ? value.trim() : value;
 
-export class CreateCustomerDraftDto {
+const admissionPhonePattern = /^(?=(?:\D*\d){6,20}\D*$)[+()\d\s-]+$/u;
+
+class AdmissionContactFieldsDto {
+  @ApiPropertyOptional({ maxLength: 100 })
+  @Transform(trim)
+  @ValidateIf((_object, value) => value !== undefined)
+  @IsString()
+  @MinLength(1)
+  @MaxLength(100)
+  admissionContactName?: string;
+
+  @ApiPropertyOptional({ maxLength: 30 })
+  @Transform(trim)
+  @ValidateIf((_object, value) => value !== undefined)
+  @IsString()
+  @MinLength(6)
+  @MaxLength(30)
+  @Matches(admissionPhonePattern)
+  admissionContactPhone?: string;
+
+  @ApiPropertyOptional({ maxLength: 254 })
+  @Transform(trim)
+  @ValidateIf((_object, value) => value !== undefined)
+  @IsString()
+  @MinLength(3)
+  @MaxLength(254)
+  @IsEmail()
+  admissionContactEmail?: string;
+}
+
+export class CreateCustomerDraftDto extends AdmissionContactFieldsDto {
   @ApiProperty({ example: '测试客户甲', maxLength: 200 })
   @Transform(trim)
   @IsString()
@@ -44,7 +76,7 @@ export class CreateCustomerDraftDto {
   duplicateNameReason?: string;
 }
 
-export class UpdateCustomerDraftDto {
+export class UpdateCustomerDraftDto extends AdmissionContactFieldsDto {
   @ApiProperty({ minimum: 1 })
   @IsInt()
   @Min(1)

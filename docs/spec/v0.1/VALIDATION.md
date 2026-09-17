@@ -1,5 +1,13 @@
 # SPEC-001 文档验证
 
+## CUST-FND-008一位准入联系人纵向切片（2026-09-17）
+
+用户明确授权在不搭建`dev:acceptance`和不进行人工localhost验收的前提下，实现每个客户一位准入联系人。实现沿用Customer聚合、`customer.edit-routine`、客户数据范围、乐观版本和Shared AuditEvent；只增加联系人姓名、电话和邮箱三个可空字段。草稿允许三项全空；填写任一字段时，姓名必填且电话／邮箱至少一种。联系人不创建账号或权限；多联系人、主要标记、删除、正式准入、材料、E01/E02、权限页面和生产发布均未进入本批。
+
+测试先行证据：新增后端测试在实现前5项失败，原因分别为DTO拒绝字段、响应缺字段、缺少聚合校验和修改未生效；实现后客户后端聚焦31/31通过。新增前端/API测试在实现前8项失败，原因分别为响应未校验联系人契约、三张页面无字段及冲突流程未保留联系人；实现后前端当前53/53通过。全仓类型检查与前后端构建已通过。
+
+数据库证据：只重建Compose服务`dev-cor-postgres-test-1`，其目标为`127.0.0.1:55433/dev_cor_test`临时测试库；未触碰开发库、持久卷、共享库或生产库。Prisma从空库依次应用7份迁移并报告schema最新。首个固定候选`5b88467`的独立Q2为`BLOCKED`（Critical 0、Important 1、Minor 1）：数据库CHECK仅判断NULL，直接SQL可写入空白姓名或把空白电话／邮箱充当联系方式；审计测试也未直接断言姓名和电话脱敏。修复提交`a3ee91e`将CHECK改为`NULLIF(BTRIM(...), '')`非空判断，新增原始SQL负向回归，并精确断言姓名为`***`、电话为`***8000`且不含原值。重建测试库后7份迁移再次从零成功，数据库型Playwright 27/27通过；修复后的`pnpm verify`通过198个文本上下文、53 REQ／55 AC／11 BQ／34 SD、工具19项、后端Jest 68项、前端Vitest 53项、全仓TypeScript／ESLint／Prettier及前后端构建。独立复查结论为`ACCEPTED`（Critical 0、Important 0、Minor 0），上一轮问题全部关闭。本轮没有人工localhost截图／录屏，E01/E02、生产迁移和发布仍不在范围内。
+
 ## CUST-FND-DB-E2E数据库迁移与内部集成验收（2026-09-17）
 
 Docker Desktop Linux引擎恢复后，`postgres-test`在127.0.0.1:55433健康运行。Prisma对独立`dev_cor_test`实际应用`20260916120000_add_access_control`、`20260916123000_add_customer_draft`和`20260917020000_enforce_role_assignment_department`三份迁移，随后报告数据库schema为最新；未连接或修改开发库、共享库或生产库。

@@ -134,6 +134,9 @@ model Customer {
   issuingCountryOrRegion   String?               @map("issuing_country_or_region")
   category                 String?
   region                   String?
+  admissionContactName     String?               @map("admission_contact_name")
+  admissionContactPhone    String?               @map("admission_contact_phone")
+  admissionContactEmail    String?               @map("admission_contact_email")
   profileStatus            CustomerProfileStatus @default(DRAFT) @map("profile_status")
   departmentId             String                @map("department_id") @db.Uuid
   responsibleUserId        String                @map("responsible_user_id") @db.Uuid
