@@ -105,9 +105,9 @@ scope: backend/prisma/schema.prisma, backend/prisma/migrations/*, backend/src/ac
 risk: Q2
 acceptance: a test actor can read/create only within one valid grant and department; two grants never combine into broader edit access; revocation is effective on the next authorization call
 checks: backend Jest unit/integration tests; pnpm typecheck; pnpm lint
-status: IMPLEMENTED_UNVERIFIED_DB
-result_ref: task commit `feat: add minimal configurable customer authorization`; PostgreSQL migration evidence is blocked by the unavailable local Docker daemon
-evidence: backend/src/access-control/*.spec.ts and migration diff
+status: IMPLEMENTED_VERIFIED_DB
+result_ref: task commit `feat: add minimal configurable customer authorization` plus the 2026-09-17 database verification checkpoint
+evidence: backend/src/access-control/*.spec.ts, three applied migrations, and tests/e2e/customers.spec.ts; final Q2 still requires independent review
 ```
 
 **Files:**
@@ -170,7 +170,7 @@ evidence: backend/src/access-control/*.spec.ts and migration diff
 
   Add only department, user, role-template, role-grant and role-assignment records needed by the two customer actions. Store action and scope as constrained enums, version role/assignment changes, and derive query predicates from the same grant evaluation used by commands. Do not add a generic expression language or permission UI.
 
-- [ ] **Step 4: Generate the local/test migration and verify GREEN**
+- [x] **Step 4: Generate the local/test migration and verify GREEN**
 
   Run against the dedicated test database:
 
@@ -183,7 +183,7 @@ evidence: backend/src/access-control/*.spec.ts and migration diff
 
   Expected: all focused tests pass, including the negative cross-department and stale-revision cases.
 
-  Current checkpoint: Prisma Client generation and all 7 focused tests pass. `pnpm db:test:up` and migration execution remain unverified because Docker Desktop's daemon did not become ready and the local service could not be started with the available permissions.
+  Completed 2026-09-17: Docker test PostgreSQL became healthy; all three migrations applied and Prisma reported the schema current. Database E2E also proves next-request revocation and rejects a role template assigned through another department.
 
 - [x] **Step 5: Run task checks and commit**
 
@@ -207,9 +207,9 @@ scope: backend/prisma/schema.prisma, backend/prisma/migrations/*, backend/src/mo
 risk: Q2
 acceptance: an authorized actor creates a name-only draft, lists/reads it inside scope, cannot see a foreign-department draft, and gets one immutable shared audit event in the same transaction
 checks: customer service tests; customer HTTP tests; PostgreSQL rollback/isolation tests; pnpm typecheck; pnpm lint
-status: IMPLEMENTED_UNVERIFIED_DB
-result_ref: working tree after a91b4e2; customer unit/HTTP tests pass, database evidence blocked by unavailable Docker daemon
-evidence: backend/src/modules/customers/*.spec.ts; docs/spec/v0.1/VALIDATION.md
+status: IMPLEMENTED_VERIFIED_DB
+result_ref: customer backend commit `e2be2c0` plus the 2026-09-17 database verification checkpoint
+evidence: backend/src/modules/customers/*.spec.ts; tests/e2e/customers.spec.ts; docs/spec/v0.1/VALIDATION.md
 ```
 
 **Files:**
@@ -259,7 +259,7 @@ evidence: backend/src/modules/customers/*.spec.ts; docs/spec/v0.1/VALIDATION.md
 
   Tests must cover trimmed non-empty name, server-derived department/responsible user, default `draft`, stable pagination order `updatedAt desc, id asc`, unknown DTO fields rejected, unauthenticated `401`, missing create action `403`, inaccessible ID non-leaking `404`, and one `customer.draft-created` shared audit event.
 
-- [ ] **Step 2: Add failing transaction and isolation tests**
+- [x] **Step 2: Add failing transaction and isolation tests**
 
   With two departments in the test PostgreSQL database, prove that list and detail never return the other department. Force audit insertion to fail and assert that no customer remains; force customer insertion to fail and assert that no audit event remains.
 
@@ -300,9 +300,9 @@ scope: frontend/src/api/customers*, frontend/src/modules/customers/*, frontend/s
 risk: Q2
 acceptance: an allowed test user opens the customer list, creates a name-only draft in one submit, sees its detail/history, and a second-department user cannot find or open it
 checks: frontend Vitest; Playwright customer flow; pnpm verify
-status: IMPLEMENTED_UNVERIFIED_INTEGRATION
-result_ref: working tree after e2be2c0; frontend unit/browser UI checks pass, database-backed cross-department E2E blocked
-evidence: frontend/src/api/customers.spec.ts; frontend/src/modules/customers/*.spec.ts; docs/spec/v0.1/VALIDATION.md
+status: IMPLEMENTED_VERIFIED_INTERNAL_INTEGRATION
+result_ref: UI commit `28d7485` plus the 2026-09-17 database-backed Playwright checkpoint
+evidence: frontend/src/api/customers.spec.ts; frontend/src/modules/customers/*.spec.ts; tests/e2e/customers.spec.ts; docs/spec/v0.1/VALIDATION.md
 ```
 
 **Files:**

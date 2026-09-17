@@ -15,6 +15,18 @@ if (
   throw new Error('E2E requires the isolated local test database');
 }
 process.env.API_PROXY_TARGET = 'http://127.0.0.1:3101';
+process.env.E2E_IDENTITY_FIXTURES = JSON.stringify({
+  'e2e-department-a': {
+    userId: '20000000-0000-4000-8000-000000000001',
+    departmentId: '10000000-0000-4000-8000-000000000001',
+    authorizationRevision: 1,
+  },
+  'e2e-department-b': {
+    userId: '20000000-0000-4000-8000-000000000002',
+    departmentId: '10000000-0000-4000-8000-000000000002',
+    authorizationRevision: 1,
+  },
+});
 const result = spawnSync(
   process.execPath,
   [

@@ -10,6 +10,14 @@
 
 审核人：Codex（实现门禁自审）；审核提交：`ce7d6f1`；用户授权依据：2026-09-16引用会话“收口权限设计”中的明确编码、开发库迁移与自动化测试授权。
 
+## 2026-09-17实现后复核
+
+Docker Desktop的Linux引擎恢复后，三份迁移已在独立`dev_cor_test` PostgreSQL 17.11实例实际执行，Prisma报告schema为最新。实现者按本表逐项自审并运行数据库型Playwright；9项通过，覆盖真实草稿持久化、审计历史、跨部门列表为0、跨部门详情不泄漏404、下一请求撤权、客户写失败不留审计、审计写失败回滚客户、健康页及组件交互。
+
+复核发现原`role_assignments.department_id`与`role_templates.department_id`缺少数据库级一致性约束。先以失败测试证明外部门角色模板能够被写入当前部门分配，再通过新增向前迁移`20260917020000_enforce_role_assignment_department`建立组合唯一键和组合外键；同一测试随后通过。测试身份现由显式环境映射创建，并同时满足`NODE_ENV=test`；生产或未提供映射时继续使用拒绝全部请求的Adapter。
+
+**当前结论：内部数据库与跨端证据已补齐；本节仍是实现者自审，不冒充独立Q2复核。** E01真实身份提供方／会话参数和E02真实对象存储／加密／备份恢复参数仍未提供，分别阻断真实登录和材料能力；独立审查主体签字前最终Q2保持`IMPLEMENTED_UNVERIFIED_EXTERNAL_REVIEW`，系统不可上线。
+
 ## 边界决定
 
 | Boundary           | Required result                                                           | Review result and implementation evidence                                                                     |

@@ -6,10 +6,8 @@ import {
 } from './access-control.service';
 import { PrismaAccessControlStore } from './prisma-access-control.store';
 import { ActorContextGuard } from './actor-context.guard';
-import {
-  IDENTITY_ADAPTER,
-  UnavailableIdentityAdapter,
-} from './identity.adapter';
+import { IDENTITY_ADAPTER } from './identity.adapter';
+import { createIdentityAdapterFromEnvironment } from './identity-adapter.factory';
 
 @Module({
   imports: [DatabaseModule],
@@ -17,14 +15,13 @@ import {
     AccessControlService,
     ActorContextGuard,
     PrismaAccessControlStore,
-    UnavailableIdentityAdapter,
     {
       provide: ACCESS_CONTROL_STORE,
       useExisting: PrismaAccessControlStore,
     },
     {
       provide: IDENTITY_ADAPTER,
-      useExisting: UnavailableIdentityAdapter,
+      useFactory: () => createIdentityAdapterFromEnvironment(process.env),
     },
   ],
   exports: [AccessControlService, ActorContextGuard, IDENTITY_ADAPTER],

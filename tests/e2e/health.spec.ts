@@ -19,7 +19,7 @@ test('browser reaches the API and the real PostgreSQL test database', async ({
     'status',
     'database',
   ]);
-  await page.goto('/');
+  await page.goto('/health');
   await expect(
     page.getByRole('heading', { name: '连接正常', exact: true }),
   ).toBeVisible();
@@ -54,7 +54,7 @@ test('a failed response is visible and retry can recover', async ({ page }) => {
       }),
     }),
   );
-  await page.goto('/');
+  await page.goto('/health');
   await expect(
     page.getByRole('heading', { name: '连接失败', exact: true }),
   ).toBeVisible();

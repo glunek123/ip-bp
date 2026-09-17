@@ -87,6 +87,7 @@ model RoleTemplate {
   updatedAt    DateTime         @updatedAt @map("updated_at") @db.Timestamptz(3)
 
   @@unique([departmentId, name])
+  @@unique([id, departmentId])
   @@map("role_templates")
 }
 
@@ -112,7 +113,7 @@ model RoleAssignment {
   version        Int          @default(1)
   user           UserAccount  @relation(fields: [userId], references: [id], onDelete: Restrict)
   department     Department   @relation(fields: [departmentId], references: [id], onDelete: Restrict)
-  roleTemplate   RoleTemplate @relation(fields: [roleTemplateId], references: [id], onDelete: Restrict)
+  roleTemplate   RoleTemplate @relation(fields: [roleTemplateId, departmentId], references: [id, departmentId], onDelete: Restrict)
   createdAt      DateTime     @default(now()) @map("created_at") @db.Timestamptz(3)
   updatedAt      DateTime     @updatedAt @map("updated_at") @db.Timestamptz(3)
 
