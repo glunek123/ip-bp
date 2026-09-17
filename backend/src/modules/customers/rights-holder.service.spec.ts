@@ -1,4 +1,5 @@
 import { ForbiddenException } from '@nestjs/common';
+import { createHash } from 'node:crypto';
 import { AccessControlService } from '../../access-control/access-control.service';
 import { ActorContext } from '../../access-control/actor-context';
 import { DatabaseService } from '../../database/database.service';
@@ -14,6 +15,29 @@ const secondCustomerId = '44444444-4444-4444-8444-444444444444';
 const holderId = '55555555-5555-4555-8555-555555555555';
 const linkId = '66666666-6666-4666-8666-666666666666';
 const key = 'create-rights-holder-1';
+
+const linkFingerprint = (
+  idempotentCustomerId = customerId,
+  expectedCustomerVersion = 1,
+) =>
+  createHash('sha256')
+    .update(
+      JSON.stringify({
+        action: 'link-existing',
+        customerId: idempotentCustomerId,
+        expectedCustomerVersion,
+        rightsHolderId: holderId,
+      }),
+    )
+    .digest('hex');
+
+const linkReceipt = (requestFingerprint = linkFingerprint()) => ({
+  requestFingerprint,
+  resultCustomerId: customerId,
+  resultCustomerVersion: 2,
+  resultHolderId: holderId,
+  resultLinkId: linkId,
+});
 
 const customer = (id = customerId, version = 1) => ({
   id,
@@ -84,6 +108,7 @@ describe('RightsHolderService', () => {
     existingReceipt?: Record<string, unknown> | null;
     visibleHolder?: Record<string, unknown> | null;
     existingLink?: Record<string, unknown> | null;
+    existingLinkSequence?: Array<Record<string, unknown> | null>;
     updateCount?: number;
     linkFailure?: Error;
     auditFailureAt?: number;
@@ -103,6 +128,9 @@ describe('RightsHolderService', () => {
     const linkFindUnique = jest
       .fn()
       .mockResolvedValue(options?.existingLink ?? null);
+    for (const value of options?.existingLinkSequence ?? []) {
+      linkFindUnique.mockResolvedValueOnce(value);
+    }
     const auditCreate = jest.fn().mockImplementation(async () => {
       if (
         options?.auditFailureAt !== undefined &&
@@ -438,6 +466,108 @@ describe('RightsHolderService', () => {
       response: { code: 'IDEMPOTENCY_KEY_REUSED' },
     });
     expect(mocks.customerUpdateMany).not.toHaveBeenCalled();
+  });
+
+  it.each([
+    [
+      'the committed association is observed by the duplicate check',
+      { existingLinkSequence: [{ id: linkId }] },
+    ],
+    [
+      'the association becomes visible after the conditional version update loses the race',
+      {
+        updateCount: 0,
+        existingLinkSequence: [null, { id: linkId }],
+      },
+    ],
+  ])(
+    'replays an identical concurrent link command when %s',
+    async (_label, options) => {
+      commandTransaction(options);
+      receiptFindUniqueAfterRace.mockResolvedValue(linkReceipt());
+      holderFindFirst.mockResolvedValue(holder());
+
+      await expect(
+        service.linkExisting(actor, customerId, 'link-race', {
+          expectedCustomerVersion: 1,
+          rightsHolderId: holderId,
+        }),
+      ).resolves.toEqual({
+        customerVersion: 2,
+        holder: {
+          id: holderId,
+          name: '权利主体甲',
+          credit: null,
+          address: null,
+          legalRepresentative: null,
+          duty: null,
+          updatedAt: '2026-09-17T07:00:00.000Z',
+        },
+        linkId,
+      });
+      expect(receiptFindUniqueAfterRace).toHaveBeenCalledTimes(1);
+    },
+  );
+
+  it('returns idempotency conflict before duplicate-link mapping when the concurrent receipt has another fingerprint', async () => {
+    commandTransaction({ existingLinkSequence: [{ id: linkId }] });
+    receiptFindUniqueAfterRace.mockResolvedValue(linkReceipt('0'.repeat(64)));
+
+    await expect(
+      service.linkExisting(actor, customerId, 'link-race', {
+        expectedCustomerVersion: 1,
+        rightsHolderId: holderId,
+      }),
+    ).rejects.toMatchObject({
+      response: { code: 'IDEMPOTENCY_KEY_REUSED' },
+    });
+  });
+
+  it('does not replay a link receipt after all customer read scope is revoked', async () => {
+    tryBuildCustomerScope.mockResolvedValue(null);
+    const mocks = commandTransaction({ existingReceipt: linkReceipt() });
+
+    await expect(
+      service.linkExisting(actor, customerId, 'link-race', {
+        expectedCustomerVersion: 1,
+        rightsHolderId: holderId,
+      }),
+    ).rejects.toMatchObject({
+      response: { code: 'RIGHTS_HOLDER_NOT_FOUND' },
+    });
+    expect(mocks.rightsHolderFindFirst).not.toHaveBeenCalled();
+  });
+
+  it('does not rebuild a raced receipt when the holder is no longer reachable through the narrowed read scope', async () => {
+    const narrowedReadScope = {
+      departmentId: actor.departmentId,
+      responsibleUserId: '88888888-8888-4888-8888-888888888888',
+    };
+    tryBuildCustomerScope.mockResolvedValue(narrowedReadScope);
+    commandTransaction({
+      linkFailure: Object.assign(new Error('unique race'), { code: 'P2002' }),
+    });
+    receiptFindUniqueAfterRace.mockResolvedValue(linkReceipt());
+    holderFindFirst.mockImplementation(async (query) =>
+      query.where.links === undefined ? holder() : null,
+    );
+
+    await expect(
+      service.linkExisting(actor, customerId, 'link-race', {
+        expectedCustomerVersion: 1,
+        rightsHolderId: holderId,
+      }),
+    ).rejects.toMatchObject({
+      response: { code: 'RIGHTS_HOLDER_NOT_FOUND' },
+    });
+    expect(holderFindFirst).toHaveBeenCalledWith({
+      where: {
+        id: holderId,
+        departmentId: actor.departmentId,
+        links: { some: { customer: narrowedReadScope } },
+      },
+      select: expect.not.objectContaining({ links: true }),
+    });
   });
 
   it.each([

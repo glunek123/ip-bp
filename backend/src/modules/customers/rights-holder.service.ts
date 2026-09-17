@@ -5,9 +5,13 @@ import {
   NotFoundException,
 } from '@nestjs/common';
 import { createHash } from 'node:crypto';
-import { AccessControlService } from '../../access-control/access-control.service';
+import {
+  AccessControlService,
+  CustomerScopePredicate,
+} from '../../access-control/access-control.service';
 import { ActorContext } from '../../access-control/actor-context';
 import { DatabaseService } from '../../database/database.service';
+import type { Prisma } from '../../generated/prisma/client';
 import {
   CreateAndLinkRightsHolderDto,
   LinkExistingRightsHolderDto,
@@ -40,6 +44,13 @@ export type RightsHolderCommandResult = {
 };
 
 type CommandAction = 'create-and-link' | 'link-existing';
+
+type ReceiptResult = {
+  requestFingerprint: string;
+  resultHolderId: string;
+  resultLinkId: string;
+  resultCustomerVersion: number;
+};
 
 const holderSelect = {
   id: true,
@@ -97,22 +108,12 @@ export class RightsHolderService {
           },
         );
         if (receipt !== null) {
-          if (receipt.requestFingerprint !== fingerprint) {
-            throw this.idempotencyConflict();
-          }
-          const replayHolder = await transaction.rightsHolder.findFirst({
-            where: {
-              id: receipt.resultHolderId,
-              departmentId: actor.departmentId,
-            },
-            select: holderSelect,
-          });
-          if (replayHolder === null) throw this.holderNotFound();
-          return {
-            holder: this.toSummary(replayHolder),
-            linkId: receipt.resultLinkId,
-            customerVersion: receipt.resultCustomerVersion,
-          };
+          return await this.rebuildReceiptResult(
+            transaction,
+            actor,
+            receipt,
+            fingerprint,
+          );
         }
 
         await this.incrementCustomerVersion(
@@ -227,22 +228,13 @@ export class RightsHolderService {
           },
         );
         if (receipt !== null) {
-          if (receipt.requestFingerprint !== fingerprint) {
-            throw this.idempotencyConflict();
-          }
-          const replayHolder = await transaction.rightsHolder.findFirst({
-            where: {
-              id: receipt.resultHolderId,
-              departmentId: actor.departmentId,
-            },
-            select: holderSelect,
-          });
-          if (replayHolder === null) throw this.holderNotFound();
-          return {
-            holder: this.toSummary(replayHolder),
-            linkId: receipt.resultLinkId,
-            customerVersion: receipt.resultCustomerVersion,
-          };
+          return await this.rebuildReceiptResult(
+            transaction,
+            actor,
+            receipt,
+            fingerprint,
+            readScope,
+          );
         }
 
         const visibleHolder =
@@ -341,6 +333,7 @@ export class RightsHolderService {
         idempotencyKey,
         fingerprint,
         true,
+        readScope,
       );
     }
   }
@@ -496,34 +489,65 @@ export class RightsHolderService {
     idempotencyKey: string,
     fingerprint: string,
     mapUnclaimedUniqueToAlreadyLinked: boolean,
+    readScope?: CustomerScopePredicate | null,
   ): Promise<RightsHolderCommandResult> {
     const uniqueConstraint = this.isUniqueConstraintError(error);
-    if (!uniqueConstraint && !this.isVersionConflict(error)) throw error;
+    const alreadyLinked = this.isAlreadyLinked(error);
+    if (
+      !uniqueConstraint &&
+      !this.isVersionConflict(error) &&
+      !(mapUnclaimedUniqueToAlreadyLinked && alreadyLinked)
+    ) {
+      throw error;
+    }
     const receipt = await this.database.rightsHolderCommandReceipt.findUnique({
       where: this.receiptWhere(actor, action, idempotencyKey),
     });
     if (receipt !== null) {
-      if (receipt.requestFingerprint !== fingerprint) {
-        throw this.idempotencyConflict();
-      }
-      const item = await this.database.rightsHolder.findFirst({
-        where: {
-          id: receipt.resultHolderId,
-          departmentId: actor.departmentId,
-        },
-        select: holderSelect,
-      });
-      if (item === null) throw this.holderNotFound();
-      return {
-        holder: this.toSummary(item),
-        linkId: receipt.resultLinkId,
-        customerVersion: receipt.resultCustomerVersion,
-      };
+      return await this.rebuildReceiptResult(
+        this.database,
+        actor,
+        receipt,
+        fingerprint,
+        readScope,
+      );
     }
-    if (uniqueConstraint && mapUnclaimedUniqueToAlreadyLinked) {
+    if (
+      mapUnclaimedUniqueToAlreadyLinked &&
+      (uniqueConstraint || alreadyLinked)
+    ) {
       throw this.alreadyLinked();
     }
     throw error;
+  }
+
+  private async rebuildReceiptResult(
+    reader: DatabaseService | Prisma.TransactionClient,
+    actor: ActorContext,
+    receipt: ReceiptResult,
+    fingerprint: string,
+    readScope?: CustomerScopePredicate | null,
+  ): Promise<RightsHolderCommandResult> {
+    if (receipt.requestFingerprint !== fingerprint) {
+      throw this.idempotencyConflict();
+    }
+    if (readScope === null) throw this.holderNotFound();
+    const item = await reader.rightsHolder.findFirst({
+      where: {
+        id: receipt.resultHolderId,
+        departmentId: actor.departmentId,
+        ...(readScope === undefined
+          ? {}
+          : { links: { some: { customer: readScope } } }),
+      },
+      select: holderSelect,
+    });
+    if (item === null) throw this.holderNotFound();
+    return {
+      holder: this.toSummary(item),
+      linkId: receipt.resultLinkId,
+      customerVersion: receipt.resultCustomerVersion,
+    };
   }
 
   private receiptWhere(
@@ -624,6 +648,17 @@ export class RightsHolderService {
       typeof response === 'object' &&
       'code' in response &&
       response.code === 'CUSTOMER_VERSION_CONFLICT'
+    );
+  }
+
+  private isAlreadyLinked(error: unknown): boolean {
+    if (!(error instanceof ConflictException)) return false;
+    const response = error.getResponse();
+    return (
+      response !== null &&
+      typeof response === 'object' &&
+      'code' in response &&
+      response.code === 'RIGHTS_HOLDER_ALREADY_LINKED'
     );
   }
 }

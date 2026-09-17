@@ -218,7 +218,7 @@ model RightsHolderCommandReceipt {
   createdAt             DateTime                 @default(now()) @map("created_at") @db.Timestamptz(3)
 
   @@unique([departmentId, actorUserId, action, idempotencyKey], map: "rights_holder_command_receipts_department_actor_action_key")
-  @@index([resultCustomerId, departmentId])
+  @@index([resultCustomerId, departmentId], map: "rh_receipts_customer_department_idx")
   @@map("rights_holder_command_receipts")
 }
 

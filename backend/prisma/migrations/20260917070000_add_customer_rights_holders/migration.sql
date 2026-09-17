@@ -55,7 +55,7 @@ CREATE INDEX "rights_holders_department_id_name_idx"
   ON "rights_holders"("department_id", "name");
 CREATE INDEX "customer_rights_holder_links_department_id_rights_holder_id_idx"
   ON "customer_rights_holder_links"("department_id", "rights_holder_id");
-CREATE INDEX "rights_holder_command_receipts_result_customer_id_department_id_idx"
+CREATE INDEX "rh_receipts_customer_department_idx"
   ON "rights_holder_command_receipts"("result_customer_id", "department_id");
 
 ALTER TABLE "rights_holders"
