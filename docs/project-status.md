@@ -60,6 +60,8 @@ DOC-001历史整理结果：当时25份Spec的本地链接有效、49REQ／51AC�
 
 ## 最近验证
 
+本轮GIT-REMOTE-001：将已验证功能分支快进合并到本地`main`后，系统级`core.autocrlf=true`把未声明属性的文本检出为CRLF，导致Prettier行尾门禁稳定失败；新增仓库级`.gitattributes`将文本统一为LF，并保留既有补丁文件空行规则。格式化后索引与工作区均为LF；合并后的`pnpm verify`通过上下文、Spec、类型、ESLint、Prettier、工具19项、后端60项、前端49项及构建。该修复只稳定Windows／GitHub跨平台检出，不改变业务逻辑；远程目标为`https://github.com/glunek123/ip-bp.git`，推送不代表发布上线。
+
 本轮CUST-FND-Q2-REMEDIATION／CUST-FND-005～007：新增测试先分别因缺少编辑服务／路由／页面及PATCH合并缺陷而RED；最终`pnpm verify`通过上下文、Spec、类型、ESLint、Prettier、工具19项、后端60项、前端49项及前后端构建。`postgres-test`健康，六份迁移从零应用成功且schema最新；最终数据库型Playwright 25/25通过，覆盖真实页面新建→编辑→详情、TEAM／SELF同部门隔离、跨部门不泄漏、成员组合外键、空团队防重、撤权、部分PATCH保留、`null` 400、NFKC／空白判重、隐藏同名不可枚举、当前客户排除、并发证件唯一性／同名串行化、版本冲突两种用户选择、审计前后值／短值完全掩码、迁移失败原子回滚及创建／修改事务回滚。独立Q2最终复查为`ACCEPTED`（Critical 0、Important 0）；测试身份不等于E01，测试库不等于生产迁移，不发布上线。
 
 本轮CUST-FND-DB-E2E：Docker 29.5.3 Linux引擎恢复，`postgres-test`在127.0.0.1:55433健康运行；Prisma依次应用三份迁移并报告schema最新。新增数据库测试先证明测试身份未接入时全部401，并证明跨部门角色模板分配可被错误写入；受控测试身份Adapter与组合外键迁移完成后，Playwright 9项通过，覆盖真实客户草稿／审计历史、跨部门列表和不泄漏404、角色模板部门完整性、下一请求撤权、客户写失败不留审计、审计写失败回滚客户、健康页及组件交互。完整`pnpm verify`通过：工具19项、后端45项、前端39项、类型／Lint／格式／构建全部成功。实现者Q2自审已更新；独立复核、E01和E02未完成，不宣称可上线。
