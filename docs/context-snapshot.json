@@ -1,7 +1,8 @@
 {
   "version": 1,
-  "recordedAt": "2026-09-17T05:10:48.176Z",
+  "recordedAt": "2026-09-17T05:13:51.037Z",
   "files": {
+    ".cursor/rules/verified-feature-integration.mdc": "18c96e1b0d8bf052197d9bc47b49439994770b089676fab5f1637370644bb2e8",
     ".env.example": "b5b95bff09e0c76916adb608c27dcb611a32a2f67bf0b5455f70bee1a9cb1bff",
     ".gitattributes": "b4cebf3dd35dc75e5c469f4326cd59238b86334aeed5d99b8e3d91c139a321dd",
     ".gitignore": "ba9bc8399767569e5412f23f4783afc64e7dc21b38b61242b42fe6104eaed074",
@@ -9,7 +10,7 @@
     ".npmrc": "2421febef445a76babc0ee7ae760b4eac0e0849304d8b208c9cacddd9fe8073e",
     ".prettierignore": "4310827e455b8e7a0ef9a986c63c3e38edc571dd20a65dad40d51d97d7abea3c",
     ".prettierrc.json": "19a31ee3cb4414de07b4b6d1d04e2d13fca1a5d76806873280466230082fb741",
-    "AGENTS.md": "cd21a9f4ad85a1d7461b4abfa1fe32b456ffdc4babd9b43b860b866aa438e0b8",
+    "AGENTS.md": "81e54b2c287ecb3c56617f7b7abf88532691b3658a2e9cd8fff6437555eac426",
     "README.md": "eefcb2e285bfa7d4102fef9eaf596db107e6b65728ff721492a6b34e9e9000a9",
     "Use-ProjectRuntime.ps1": "1142dc29cde8acb5d1ceeae54556bfaf073457840dba2bc13766c8f5b03e7369",
     "backend/.env.example": "6e8afd3e8bddf601341ef9c465fd9fc7b7ec56d207c9e4041ce5bbbad5e227e7",
@@ -118,7 +119,7 @@
     "docs/environment.md": "4a2ec6767d6f103b454c19073a2b68b347e5fafc5d54f6eaede54ba94ef612dc",
     "docs/foundation-improvements.md": "bf18874ca3869d4c1e4370611327598b6e6182e1a09e1a83ed2a747be6aa39cb",
     "docs/foundation-review.md": "80ea2ac9d015ad5169c2e09ce6208adbd4a735ba4c94632a2044d6cb0c05454d",
-    "docs/project-status.md": "b9dbf703eab87c03f9d963e40a2f855264dcab99809fb382a9e9ccf68d82ba62",
+    "docs/project-status.md": "9410cd1ae20e4d872f65f7d376af91ce9a4ec46c82960551e911a74e2165445c",
     "docs/security/customer-foundation-q2-review.md": "391053e1f0ed7434ea2336bedffbcaa3fe0c6b7e785177ea54daf3b74d1395a7",
     "docs/spec/v0.1/BUSINESS-REVIEW.md": "950c73ac72470d2e3556fd416701b4486944c1e3ef21c84be11132cbe617c24e",
     "docs/spec/v0.1/CONSISTENCY.md": "4fde8f04c65ab75db5c46971923c59b4a1feaeeb6005aeb5c28bca275eaf5466",

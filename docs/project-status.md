@@ -10,6 +10,8 @@
 
 CUST-FND-008第三批首个纵向切片已获用户于2026-09-17明确授权并完成：在现有Customer聚合、权限范围、乐观版本、共享审计和运营端页面上维护一位准入联系人，字段仅为姓名及电话／邮箱至少一种。草稿可完全不填；填写时执行服务端空值和格式校验。联系人随客户TEAM／SELF／部门范围，不创建账号或权限，修改与客户版本及脱敏审计同事务。实施计划见[客户准入联系人计划](superpowers/plans/2026-09-17-customer-admission-contact.md)。本切片明确排除多联系人、主要联系人、删除策略、正式准入、材料／E02、真实登录／E01、权限平台、其他业务模块、生产迁移和发布；本轮不搭建`dev:acceptance`或执行人工localhost可视化验收。首个固定候选`5b88467`的独立Q2发现1项Important和1项Minor；修复提交`a3ee91e`增加`BTRIM`／`NULLIF`数据库约束、原始SQL负向回归及姓名／电话审计脱敏断言。独立复查结论为`ACCEPTED`（Critical 0、Important 0、Minor 0），空库7份迁移、完整`pnpm verify`和数据库型Playwright 27/27均通过；当前状态为`IMPLEMENTED_VERIFIED_INTERNAL_INTEGRATION`，不代表已上线。
 
+GOV-AUTO-VCS-001已由用户于2026-09-17确认为长期策略：单个功能完成实现、要求的验证和独立审查，且审查为`ACCEPTED`、Critical／Important／Minor均为0时，自动提交、合并到干净且未分叉的`main`，在合并结果上复验后推送`origin/main`，不再重复询问例行版本管理。冲突、主分支未提交改动、远端分叉、鉴权失败或门禁失败时保留现场并报告；标签、Release、部署、生产迁移和生产数据操作不在自动范围。唯一执行规则见[已验证功能自动集成](../.cursor/rules/verified-feature-integration.mdc)。
+
 CUST-FND-002～004首批实现已取得内部数据库与跨端证据。独立Q2前两轮结论为`BLOCKED`，对应Important项已通过前向迁移、服务端约束和真实数据库负向测试修复；2026-09-17最终独立复查结论为`ACCEPTED`，Critical 0、Important 0。该结论接受当前内部实现范围，不包含E01真实身份、E02对象存储、真实旧库恢复／生产迁移或上线许可；首批状态为`IMPLEMENTED_VERIFIED_INTERNAL_INTEGRATION`，不能简称为生产`VERIFIED`。
 
 CUST-FND-005～007第二批按[最小实施计划](superpowers/plans/2026-09-17-customer-foundation-second-batch.md)实施，范围仅为客户草稿基础信息编辑、既定判重和修改审计。当前已有`customer.edit-routine`动作、部分PATCH＋乐观版本、NFKC／空白规范化判重、同部门精确证件唯一约束、同名原因、重复摘要和跳转、同事务安全前后值审计、运营端编辑页和原详情页入口；六份迁移在重建的独立PostgreSQL测试库从零实跑且schema最新，数据库型Playwright 25项通过。正式准入、联系人、材料版本、权限管理页面和其他业务模块未进入本批，也未发布上线。
