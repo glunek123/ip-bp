@@ -64,7 +64,7 @@ DOC-001历史整理结果：当时25份Spec的本地链接有效、49REQ／51AC�
 
 ## 最近验证
 
-本轮GOV-AUTO-VCS-001首次执行：已验证功能分支`codex/customer-admission-contact`以合并提交`db7e5d4`纳入`main`；合并前本地与`origin/main`差异为0／0且主分支干净。合并结果重新执行`pnpm verify`，上下文、Spec、类型、ESLint、Prettier、工具19项、后端68项、前端53项及构建全部通过；数据库型Playwright 27/27再次通过。推送结果由本轮最终版本记录补充；该自动版本管理不包含标签、Release、部署、生产迁移或生产数据操作。
+本轮GOV-AUTO-VCS-001首次执行：已验证功能分支`codex/customer-admission-contact`以合并提交`db7e5d4`纳入`main`；合并前本地与`origin/main`差异为0／0且主分支干净。合并结果重新执行`pnpm verify`，上下文、Spec、类型、ESLint、Prettier、工具19项、后端68项、前端53项及构建全部通过；数据库型Playwright 27/27再次通过。GitHub已接受`7efdf56..5cb8464`并更新`origin/main`；该自动版本管理不包含标签、Release、部署、生产迁移或生产数据操作。
 
 本轮CUST-FND-008：新增后端测试先5项RED、前端/API测试先8项RED；实现Customer聚合内一位准入联系人后，后端聚焦31/31、前端53/53和全仓类型检查通过。独立Q2对`5b88467`发现数据库CHECK只判断NULL、可被纯空白值绕过（Critical 0、Important 1）；修复将非空判断收紧为`NULLIF(BTRIM(...), '')`，并新增直接数据库负向测试和姓名／电话审计脱敏断言。只重建临时Compose服务`dev-cor-postgres-test-1`，Prisma从空库顺序应用7份迁移并报告schema最新；数据库型Playwright现为27/27通过，覆盖真实页面与PostgreSQL持久化、仅电话／仅邮箱、数据库空白约束、TEAM／SELF／部门范围、跨部门404、撤权403、旧版本409、客户／审计事务回滚和联系人敏感值脱敏。修复后的`pnpm verify`完整通过上下文、Spec、类型、ESLint、Prettier、工具19项、后端68项、前端53项及前后端构建；独立Q2复查`a3ee91e`为`ACCEPTED`（Critical 0、Important 0、Minor 0）。未搭建`dev:acceptance`，未做人工localhost验收，未接E01/E02，未执行生产迁移或发布。
 
