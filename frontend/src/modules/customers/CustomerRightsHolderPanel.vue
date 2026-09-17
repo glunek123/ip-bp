@@ -53,12 +53,19 @@ const selectedHolderId = ref('');
 let activeRequest: AbortController | undefined;
 let createRetry: { signature: string; key: string } | undefined;
 let linkRetry: { signature: string; key: string } | undefined;
+let formIntentGeneration = 0;
+let linkableRequestGeneration = 0;
 
 const canCreate = computed(
   () => props.canEdit && !writeDenied.value && capabilities.value.create,
 );
 const canLink = computed(
   () => props.canEdit && !writeDenied.value && capabilities.value.link,
+);
+const hasVisibleSelection = computed(
+  () =>
+    selectedHolderId.value.length > 0 &&
+    linkable.value.some((holder) => holder.id === selectedHolderId.value),
 );
 
 function optional(value: string): string | undefined {
@@ -104,7 +111,12 @@ async function load(page = holdersPage.value): Promise<void> {
 }
 
 function openCreate(): void {
+  formIntentGeneration += 1;
+  linkableRequestGeneration += 1;
+  saving.value = false;
   createRetry = undefined;
+  linkRetry = undefined;
+  linkOpen.value = false;
   createOpen.value = true;
   nameError.value = '';
   createError.value = '';
@@ -112,6 +124,8 @@ function openCreate(): void {
 }
 
 function closeCreate(): void {
+  formIntentGeneration += 1;
+  saving.value = false;
   createRetry = undefined;
   createOpen.value = false;
 }
@@ -124,6 +138,16 @@ function denyWrites(): void {
 
 function isApiError(error: unknown, code: string): boolean {
   return error instanceof ApiError && error.code === code;
+}
+
+function isCurrentFormIntent(
+  generation: number,
+  kind: 'create' | 'link',
+): boolean {
+  return (
+    generation === formIntentGeneration &&
+    (kind === 'create' ? createOpen.value : linkOpen.value)
+  );
 }
 
 function createPayload(): CreateRightsHolderInput {
@@ -148,6 +172,7 @@ async function submitCreate(): Promise<void> {
   const input = createPayload();
   const signature = JSON.stringify(input);
   const key = commandKey(createRetry, signature);
+  const intentGeneration = formIntentGeneration;
   saving.value = true;
   try {
     const result = await createCustomerRightsHolder(
@@ -155,6 +180,7 @@ async function submitCreate(): Promise<void> {
       input,
       key,
     );
+    if (!isCurrentFormIntent(intentGeneration, 'create')) return;
     createRetry = undefined;
     createOpen.value = false;
     name.value = '';
@@ -166,6 +192,7 @@ async function submitCreate(): Promise<void> {
     holdersPage.value = 1;
     await load(1);
   } catch (error) {
+    if (!isCurrentFormIntent(intentGeneration, 'create')) return;
     if (isApiError(error, 'CUSTOMER_ACTION_FORBIDDEN')) {
       denyWrites();
     } else if (isApiError(error, 'CUSTOMER_NOT_FOUND')) {
@@ -184,11 +211,12 @@ async function submitCreate(): Promise<void> {
       createError.value = '权利主体创建失败，请稍后重试';
     }
   } finally {
-    saving.value = false;
+    if (intentGeneration === formIntentGeneration) saving.value = false;
   }
 }
 
 async function loadLinkable(page = 1): Promise<void> {
+  const requestGeneration = ++linkableRequestGeneration;
   linkableState.value = 'loading';
   linkError.value = '';
   selectedHolderId.value = '';
@@ -198,11 +226,15 @@ async function loadLinkable(page = 1): Promise<void> {
       page,
       pageSize: 20,
     });
+    if (requestGeneration !== linkableRequestGeneration || !linkOpen.value)
+      return;
     linkable.value = result.items;
     linkableTotal.value = result.total;
     linkablePage.value = result.page;
     linkableState.value = 'ready';
   } catch (error) {
+    if (requestGeneration !== linkableRequestGeneration || !linkOpen.value)
+      return;
     if (isApiError(error, 'CUSTOMER_NOT_FOUND')) {
       emit('customer-not-found');
     } else {
@@ -212,19 +244,26 @@ async function loadLinkable(page = 1): Promise<void> {
 }
 
 function openLink(): void {
+  formIntentGeneration += 1;
+  saving.value = false;
+  createRetry = undefined;
   linkRetry = undefined;
+  createOpen.value = false;
   linkOpen.value = true;
   versionConflict.value = false;
   void loadLinkable();
 }
 
 function closeLink(): void {
+  formIntentGeneration += 1;
+  linkableRequestGeneration += 1;
+  saving.value = false;
   linkRetry = undefined;
   linkOpen.value = false;
 }
 
 async function submitLink(): Promise<void> {
-  if (saving.value || !selectedHolderId.value) return;
+  if (saving.value || !hasVisibleSelection.value) return;
   linkError.value = '';
   versionConflict.value = false;
   const input = {
@@ -233,15 +272,18 @@ async function submitLink(): Promise<void> {
   };
   const signature = JSON.stringify(input);
   const key = commandKey(linkRetry, signature);
+  const intentGeneration = formIntentGeneration;
   saving.value = true;
   try {
     const result = await linkCustomerRightsHolder(props.customerId, input, key);
+    if (!isCurrentFormIntent(intentGeneration, 'link')) return;
     linkRetry = undefined;
     linkOpen.value = false;
     emit('version-updated', result.customerVersion);
     holdersPage.value = 1;
     await load(1);
   } catch (error) {
+    if (!isCurrentFormIntent(intentGeneration, 'link')) return;
     if (isApiError(error, 'CUSTOMER_ACTION_FORBIDDEN')) {
       denyWrites();
     } else if (isApiError(error, 'CUSTOMER_NOT_FOUND')) {
@@ -250,6 +292,7 @@ async function submitLink(): Promise<void> {
     } else if (isApiError(error, 'RIGHTS_HOLDER_ALREADY_LINKED')) {
       linkRetry = undefined;
       await Promise.all([load(1), loadLinkable(1)]);
+      if (!isCurrentFormIntent(intentGeneration, 'link')) return;
       linkError.value = '该权利主体已关联，列表已刷新';
     } else {
       linkRetry = { signature, key };
@@ -265,7 +308,7 @@ async function submitLink(): Promise<void> {
       linkError.value = '权利主体关联失败，请稍后重试';
     }
   } finally {
-    saving.value = false;
+    if (intentGeneration === formIntentGeneration) saving.value = false;
   }
 }
 
@@ -276,13 +319,19 @@ function requestRefresh(): void {
 watch(
   () => props.customerVersion,
   () => {
+    formIntentGeneration += 1;
+    saving.value = false;
     createRetry = undefined;
     linkRetry = undefined;
     versionConflict.value = false;
   },
 );
 onMounted(() => void load());
-onBeforeUnmount(() => activeRequest?.abort());
+onBeforeUnmount(() => {
+  formIntentGeneration += 1;
+  linkableRequestGeneration += 1;
+  activeRequest?.abort();
+});
 </script>
 
 <template>
@@ -482,7 +531,7 @@ onBeforeUnmount(() => activeRequest?.abort());
           data-test="submit-link-holder"
           type="primary"
           :loading="saving"
-          :disabled="saving || !selectedHolderId"
+          :disabled="saving || !hasVisibleSelection"
           @click="submitLink"
         >
           确认关联

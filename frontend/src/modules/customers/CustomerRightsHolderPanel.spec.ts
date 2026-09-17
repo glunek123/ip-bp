@@ -22,6 +22,16 @@ const holder = {
 };
 const holderB = { ...holder, id: 'holder-2', name: '主体乙' };
 
+function deferred<T>() {
+  let resolve!: (value: T) => void;
+  let reject!: (reason?: unknown) => void;
+  const promise = new Promise<T>((resolvePromise, rejectPromise) => {
+    resolve = resolvePromise;
+    reject = rejectPromise;
+  });
+  return { promise, reject, resolve };
+}
+
 function listResult(overrides: Record<string, unknown> = {}) {
   return {
     items: [holder],
@@ -327,6 +337,173 @@ describe('CustomerRightsHolderPanel', () => {
     ).toBe(true);
   });
 
+  it('keeps only the latest linkable response when searches resolve out of order', async () => {
+    api.listCustomerRightsHolders.mockResolvedValue(listResult());
+    const oldSearch = deferred<{
+      items: (typeof holder)[];
+      total: number;
+      page: number;
+      pageSize: number;
+    }>();
+    const newSearch = deferred<{
+      items: (typeof holder)[];
+      total: number;
+      page: number;
+      pageSize: number;
+    }>();
+    api.findLinkableRightsHolders
+      .mockReturnValueOnce(oldSearch.promise)
+      .mockReturnValueOnce(newSearch.promise);
+    api.linkCustomerRightsHolder.mockResolvedValue({
+      holder: holderB,
+      linkId: 'link-2',
+      customerVersion: 2,
+    });
+    vi.stubGlobal('crypto', { randomUUID: vi.fn(() => 'latest-key') });
+    const wrapper = mountPanel();
+    await flushPromises();
+    await wrapper.get('[data-test="open-link-holder"]').trigger('click');
+    await wrapper.get('[name="query"]').setValue('乙');
+    await wrapper.get('[data-test="search-linkable"]').trigger('click');
+
+    newSearch.resolve({
+      items: [holderB],
+      total: 1,
+      page: 1,
+      pageSize: 20,
+    });
+    await flushPromises();
+    await wrapper.get('[value="holder-2"]').setValue();
+    oldSearch.resolve({
+      items: [holder],
+      total: 1,
+      page: 1,
+      pageSize: 20,
+    });
+    await flushPromises();
+
+    expect(wrapper.find('[value="holder-2"]').exists()).toBe(true);
+    expect(wrapper.find('[value="holder-1"]').exists()).toBe(false);
+    await wrapper.get('[data-test="submit-link-holder"]').trigger('click');
+    await flushPromises();
+    expect(api.linkCustomerRightsHolder).toHaveBeenCalledWith(
+      'customer-1',
+      { expectedCustomerVersion: 1, rightsHolderId: 'holder-2' },
+      'latest-key',
+    );
+  });
+
+  it('refuses a selected holder id that is not in the visible candidate set', async () => {
+    api.listCustomerRightsHolders.mockResolvedValue(listResult());
+    api.findLinkableRightsHolders.mockResolvedValue({
+      items: [holderB],
+      total: 1,
+      page: 1,
+      pageSize: 20,
+    });
+    const wrapper = mountPanel();
+    await flushPromises();
+    await wrapper.get('[data-test="open-link-holder"]').trigger('click');
+    await flushPromises();
+    const radio = wrapper.get('[value="holder-2"]');
+    const radioElement = radio.element as HTMLInputElement & {
+      _value?: string;
+    };
+    radioElement.value = 'hidden-holder';
+    radioElement._value = 'hidden-holder';
+    await radio.setValue();
+
+    expect(
+      (
+        wrapper.get('[data-test="submit-link-holder"]')
+          .element as HTMLButtonElement
+      ).disabled,
+    ).toBe(true);
+    await wrapper.get('[data-test="submit-link-holder"]').trigger('click');
+    expect(api.linkCustomerRightsHolder).not.toHaveBeenCalled();
+  });
+
+  it('ignores an old create failure after cancel and reopen', async () => {
+    api.listCustomerRightsHolders.mockResolvedValue(listResult());
+    const oldCommand = deferred<never>();
+    const newCommand = deferred<never>();
+    api.createCustomerRightsHolder
+      .mockReturnValueOnce(oldCommand.promise)
+      .mockReturnValueOnce(newCommand.promise)
+      .mockResolvedValueOnce({ holder, linkId: 'link-1', customerVersion: 2 });
+    const randomUUID = vi
+      .fn()
+      .mockReturnValueOnce('old-create-key')
+      .mockReturnValueOnce('new-create-key');
+    vi.stubGlobal('crypto', { randomUUID });
+    const wrapper = mountPanel();
+    await flushPromises();
+    await wrapper.get('[data-test="open-create-holder"]').trigger('click');
+    await wrapper.get('[name="name"]').setValue('主体甲');
+    await wrapper.get('[data-test="submit-create-holder"]').trigger('click');
+
+    await wrapper.get('[data-test="cancel-create-holder"]').trigger('click');
+    await wrapper.get('[data-test="open-create-holder"]').trigger('click');
+    await wrapper.get('[data-test="submit-create-holder"]').trigger('click');
+    expect(api.createCustomerRightsHolder).toHaveBeenCalledTimes(2);
+
+    newCommand.reject(new Error('new failure'));
+    await flushPromises();
+    expect(wrapper.text()).toContain('创建失败');
+    oldCommand.reject(new Error('old failure'));
+    await flushPromises();
+    expect(
+      (wrapper.get('[name="name"]').element as HTMLInputElement).value,
+    ).toBe('主体甲');
+
+    await wrapper.get('[data-test="submit-create-holder"]').trigger('click');
+    await flushPromises();
+    expect(
+      api.createCustomerRightsHolder.mock.calls.map((call) => call[2]),
+    ).toEqual(['old-create-key', 'new-create-key', 'new-create-key']);
+  });
+
+  it('ignores an old link success after cancel and reopen', async () => {
+    api.listCustomerRightsHolders.mockResolvedValue(listResult());
+    api.findLinkableRightsHolders.mockResolvedValue({
+      items: [holderB],
+      total: 1,
+      page: 1,
+      pageSize: 20,
+    });
+    const oldCommand = deferred<{
+      holder: typeof holderB;
+      linkId: string;
+      customerVersion: number;
+    }>();
+    api.linkCustomerRightsHolder.mockReturnValueOnce(oldCommand.promise);
+    vi.stubGlobal('crypto', { randomUUID: vi.fn(() => 'old-link-key') });
+    const wrapper = mountPanel();
+    await flushPromises();
+    await wrapper.get('[data-test="open-link-holder"]').trigger('click');
+    await flushPromises();
+    await wrapper.get('[value="holder-2"]').setValue();
+    await wrapper.get('[data-test="submit-link-holder"]').trigger('click');
+
+    await wrapper.get('[data-test="cancel-link-holder"]').trigger('click');
+    await wrapper.get('[data-test="open-link-holder"]').trigger('click');
+    await flushPromises();
+    await wrapper.get('[value="holder-2"]').setValue();
+    oldCommand.resolve({
+      holder: holderB,
+      linkId: 'link-old',
+      customerVersion: 2,
+    });
+    await flushPromises();
+
+    expect(wrapper.find('[aria-label="关联已有权利主体"]').exists()).toBe(true);
+    expect(
+      (wrapper.get('[value="holder-2"]').element as HTMLInputElement).checked,
+    ).toBe(true);
+    expect(wrapper.emitted('version-updated')).toBeUndefined();
+    expect(api.listCustomerRightsHolders).toHaveBeenCalledTimes(1);
+  });
+
   it('uses a new create key after cancel and reopen while preserving direct retry identity', async () => {
     api.listCustomerRightsHolders.mockResolvedValue(listResult());
     api.createCustomerRightsHolder.mockRejectedValue(new Error('offline'));
@@ -468,6 +645,60 @@ describe('CustomerRightsHolderPanel', () => {
           .element as HTMLButtonElement
       ).disabled,
     ).toBe(true);
+  });
+
+  it('does not surface an old duplicate-link refresh after cancel and reopen', async () => {
+    const oldListRefresh = deferred<ReturnType<typeof listResult>>();
+    const oldLinkableRefresh = deferred<{
+      items: (typeof holder)[];
+      total: number;
+      page: number;
+      pageSize: number;
+    }>();
+    api.listCustomerRightsHolders
+      .mockResolvedValueOnce(listResult())
+      .mockReturnValueOnce(oldListRefresh.promise);
+    api.findLinkableRightsHolders
+      .mockResolvedValueOnce({
+        items: [holderB],
+        total: 1,
+        page: 1,
+        pageSize: 20,
+      })
+      .mockReturnValueOnce(oldLinkableRefresh.promise)
+      .mockResolvedValueOnce({
+        items: [holderB],
+        total: 1,
+        page: 1,
+        pageSize: 20,
+      });
+    api.linkCustomerRightsHolder.mockRejectedValue(
+      new ApiError('已关联', 409, 'RIGHTS_HOLDER_ALREADY_LINKED'),
+    );
+    vi.stubGlobal('crypto', { randomUUID: vi.fn(() => 'already-key') });
+    const wrapper = mountPanel();
+    await flushPromises();
+    await wrapper.get('[data-test="open-link-holder"]').trigger('click');
+    await flushPromises();
+    await wrapper.get('[value="holder-2"]').setValue();
+    await wrapper.get('[data-test="submit-link-holder"]').trigger('click');
+    await flushPromises();
+
+    await wrapper.get('[data-test="cancel-link-holder"]').trigger('click');
+    await wrapper.get('[data-test="open-link-holder"]').trigger('click');
+    await flushPromises();
+    oldListRefresh.resolve(listResult({ items: [holder, holderB], total: 2 }));
+    oldLinkableRefresh.resolve({
+      items: [],
+      total: 0,
+      page: 1,
+      pageSize: 20,
+    });
+    await flushPromises();
+
+    expect(wrapper.find('[aria-label="关联已有权利主体"]').exists()).toBe(true);
+    expect(wrapper.text()).not.toContain('该权利主体已关联，列表已刷新');
+    expect(wrapper.find('[value="holder-2"]').exists()).toBe(true);
   });
 
   it('keeps input and asks for a customer refresh on version conflict', async () => {
