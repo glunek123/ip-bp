@@ -12,6 +12,10 @@ import {
 const router = useRouter();
 const name = ref('');
 const nameError = ref('');
+const admissionContactName = ref('');
+const admissionContactPhone = ref('');
+const admissionContactEmail = ref('');
+const admissionContactError = ref('');
 const submitError = ref('');
 const duplicateNameReason = ref('');
 const duplicateNameReasonError = ref('');
@@ -31,18 +35,50 @@ async function submit(): Promise<void> {
   if (saving.value) return;
   const normalizedName = name.value.trim();
   nameError.value = normalizedName ? '' : '请输入客户名称';
+  const contactName = admissionContactName.value.trim();
+  const contactPhone = admissionContactPhone.value.trim();
+  const contactEmail = admissionContactEmail.value.trim();
+  const hasContact = Boolean(contactName || contactPhone || contactEmail);
+  admissionContactError.value = '';
+  if (hasContact && !contactName) {
+    admissionContactError.value = '请填写联系人姓名';
+  } else if (hasContact && !contactPhone && !contactEmail) {
+    admissionContactError.value = '联系人至少填写电话或邮箱';
+  } else if (
+    contactPhone &&
+    !/^(?=(?:\D*\d){6,20}\D*$)[+()\d\s-]+$/u.test(contactPhone)
+  ) {
+    admissionContactError.value = '联系人电话格式不正确';
+  } else if (
+    contactEmail &&
+    !/^[^\s@]+@[^\s@]+\.[^\s@]+$/u.test(contactEmail)
+  ) {
+    admissionContactError.value = '联系人邮箱格式不正确';
+  }
   duplicateNameReasonError.value =
     needsDuplicateNameReason.value && !duplicateNameReason.value.trim()
       ? '请说明同名情况下继续创建的原因'
       : '';
   submitError.value = '';
   duplicateMatches.value = [];
-  if (nameError.value || duplicateNameReasonError.value) return;
+  if (
+    nameError.value ||
+    admissionContactError.value ||
+    duplicateNameReasonError.value
+  )
+    return;
 
   saving.value = true;
   try {
     const created = await createCustomerDraft({
       name: normalizedName,
+      ...(hasContact
+        ? {
+            admissionContactName: contactName,
+            ...(contactPhone ? { admissionContactPhone: contactPhone } : {}),
+            ...(contactEmail ? { admissionContactEmail: contactEmail } : {}),
+          }
+        : {}),
       ...(needsDuplicateNameReason.value
         ? { duplicateNameReason: duplicateNameReason.value.trim() }
         : {}),
@@ -108,6 +144,54 @@ async function submit(): Promise<void> {
           {{ nameError }}
         </p>
         <p class="field-help">没有正式证件也可以保存，但暂不能进入正式业务。</p>
+
+        <fieldset class="form-section">
+          <legend>准入联系人（可选）</legend>
+          <p class="field-help">填写联系人时，电话或邮箱至少填写一种。</p>
+          <label class="field-label" for="admission-contact-name"
+            >联系人姓名</label
+          >
+          <input
+            id="admission-contact-name"
+            v-model="admissionContactName"
+            name="admissionContactName"
+            class="text-input"
+            autocomplete="name"
+            maxlength="100"
+            @input="admissionContactError = ''"
+          />
+          <label
+            class="field-label field-label--spaced"
+            for="admission-contact-phone"
+            >电话</label
+          >
+          <input
+            id="admission-contact-phone"
+            v-model="admissionContactPhone"
+            name="admissionContactPhone"
+            class="text-input"
+            autocomplete="tel"
+            maxlength="30"
+            @input="admissionContactError = ''"
+          />
+          <label
+            class="field-label field-label--spaced"
+            for="admission-contact-email"
+            >邮箱</label
+          >
+          <input
+            id="admission-contact-email"
+            v-model="admissionContactEmail"
+            name="admissionContactEmail"
+            class="text-input"
+            autocomplete="email"
+            maxlength="254"
+            @input="admissionContactError = ''"
+          />
+          <p v-if="admissionContactError" class="field-error">
+            {{ admissionContactError }}
+          </p>
+        </fieldset>
         <template v-if="needsDuplicateNameReason">
           <label
             class="field-label field-label--spaced"

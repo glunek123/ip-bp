@@ -91,6 +91,9 @@ describe('CustomerService', () => {
       name: '测试客户甲',
       category: null,
       region: null,
+      admissionContactName: null,
+      admissionContactPhone: null,
+      admissionContactEmail: null,
       profileStatus: 'draft',
       departmentId: actor.departmentId,
       responsibleUserId: actor.userId,
@@ -134,6 +137,77 @@ describe('CustomerService', () => {
       'audit failed',
     );
     expect(transaction).toHaveBeenCalledTimes(1);
+  });
+
+  it('creates a draft with one phone-only admission contact', async () => {
+    const created = {
+      id: '33333333-3333-4333-8333-333333333333',
+      name: '测试客户甲',
+      normalizedName: '测试客户甲',
+      customerType: null,
+      identityType: null,
+      identityNumber: null,
+      normalizedIdentityNumber: null,
+      issuingCountryOrRegion: null,
+      category: null,
+      region: null,
+      admissionContactName: '张三',
+      admissionContactPhone: '+86 138-0013-8000',
+      admissionContactEmail: null,
+      profileStatus: 'DRAFT',
+      departmentId: actor.departmentId,
+      responsibleUserId: actor.userId,
+      teamId: null,
+      version: 1,
+      updatedAt: new Date('2026-09-17T05:00:00.000Z'),
+    };
+    customerCreate.mockResolvedValue(created);
+    transaction.mockImplementation(async (callback) =>
+      callback({
+        customer: {
+          findFirst: jest.fn().mockResolvedValue(null),
+          create: customerCreate,
+        },
+        auditEvent: { create: jest.fn().mockResolvedValue({ id: 'audit-1' }) },
+      }),
+    );
+
+    await expect(
+      service.createDraft(actor, {
+        name: '测试客户甲',
+        admissionContactName: '张三',
+        admissionContactPhone: '+86 138-0013-8000',
+      } as never),
+    ).resolves.toMatchObject({
+      admissionContactName: '张三',
+      admissionContactPhone: '+86 138-0013-8000',
+      admissionContactEmail: null,
+    });
+    expect(customerCreate).toHaveBeenCalledWith({
+      data: expect.objectContaining({
+        admissionContactName: '张三',
+        admissionContactPhone: '+86 138-0013-8000',
+        admissionContactEmail: null,
+      }),
+    });
+  });
+
+  it.each([
+    {
+      name: '客户甲',
+      admissionContactName: '张三',
+      expectedMessage: '联系人至少填写电话或邮箱',
+    },
+    {
+      name: '客户甲',
+      admissionContactPhone: '13800138000',
+      expectedMessage: '请填写联系人姓名',
+    },
+  ])('rejects an incomplete admission contact %#', async (input) => {
+    await expect(service.createDraft(actor, input as never)).rejects.toThrow(
+      input.expectedMessage,
+    );
+    expect(transaction).not.toHaveBeenCalled();
   });
 
   it('applies the authorization predicate inside list database queries', async () => {
@@ -448,6 +522,88 @@ describe('CustomerService', () => {
         action: 'customer.duplicate-name-overridden',
         details: expect.objectContaining({
           reason: '不同业务主体，经核对后继续',
+        }),
+      }),
+    });
+  });
+
+  it('updates an email-only admission contact and masks it in the shared audit', async () => {
+    const current = {
+      id: '33333333-3333-4333-8333-333333333333',
+      name: '客户甲',
+      normalizedName: '客户甲',
+      category: null,
+      region: null,
+      customerType: null,
+      identityType: null,
+      identityNumber: null,
+      normalizedIdentityNumber: null,
+      issuingCountryOrRegion: null,
+      admissionContactName: null,
+      admissionContactPhone: null,
+      admissionContactEmail: null,
+      profileStatus: 'DRAFT',
+      departmentId: actor.departmentId,
+      responsibleUserId: actor.userId,
+      teamId: null,
+      version: 1,
+      updatedAt: new Date('2026-09-17T04:00:00.000Z'),
+    };
+    const updated = {
+      ...current,
+      admissionContactName: '李四',
+      admissionContactEmail: 'contact@example.com',
+      version: 2,
+      updatedAt: new Date('2026-09-17T05:00:00.000Z'),
+    };
+    const txUpdateMany = jest.fn().mockResolvedValue({ count: 1 });
+    const txAuditCreate = jest.fn().mockResolvedValue({ id: 'audit-1' });
+    transaction.mockImplementation(async (callback) =>
+      callback({
+        customer: {
+          findFirst: jest.fn().mockResolvedValueOnce(current),
+          updateMany: txUpdateMany,
+          findUnique: jest.fn().mockResolvedValue(updated),
+        },
+        auditEvent: { create: txAuditCreate },
+      }),
+    );
+
+    await expect(
+      service.updateDraft(actor, current.id, {
+        expectedVersion: 1,
+        admissionContactName: '李四',
+        admissionContactEmail: 'contact@example.com',
+      } as never),
+    ).resolves.toMatchObject({
+      admissionContactName: '李四',
+      admissionContactPhone: null,
+      admissionContactEmail: 'contact@example.com',
+      version: 2,
+    });
+    expect(txUpdateMany).toHaveBeenCalledWith({
+      where: expect.objectContaining({ id: current.id, version: 1 }),
+      data: expect.objectContaining({
+        admissionContactName: '李四',
+        admissionContactPhone: null,
+        admissionContactEmail: 'contact@example.com',
+        version: { increment: 1 },
+      }),
+    });
+    expect(txAuditCreate).toHaveBeenCalledWith({
+      data: expect.objectContaining({
+        action: 'customer.updated',
+        details: expect.objectContaining({
+          changedFields: expect.arrayContaining([
+            'admissionContactName',
+            'admissionContactEmail',
+          ]),
+          changes: expect.objectContaining({
+            admissionContactEmail: {
+              before: null,
+              after: '***@example.com',
+            },
+          }),
         }),
       }),
     });

@@ -18,6 +18,9 @@ const summary = {
   issuingCountryOrRegion: null,
   category: null,
   region: null,
+  admissionContactName: null,
+  admissionContactPhone: null,
+  admissionContactEmail: null,
   profileStatus: 'draft',
   departmentId: 'department-1',
   responsibleUserId: 'user-1',
@@ -62,6 +65,30 @@ describe('customer API', () => {
     vi.stubGlobal(
       'fetch',
       vi.fn().mockResolvedValue(new Response(JSON.stringify(body))),
+    );
+    await expect(listCustomers()).rejects.toMatchObject({
+      code: 'INVALID_RESPONSE',
+    });
+  });
+
+  it('rejects a customer response that omits the admission contact contract', async () => {
+    const incomplete: Partial<typeof summary> = { ...summary };
+    delete incomplete.admissionContactName;
+    delete incomplete.admissionContactPhone;
+    delete incomplete.admissionContactEmail;
+    vi.stubGlobal(
+      'fetch',
+      vi.fn().mockResolvedValue(
+        new Response(
+          JSON.stringify({
+            items: [incomplete],
+            total: 1,
+            page: 1,
+            pageSize: 20,
+            capabilities: { createDraft: true },
+          }),
+        ),
+      ),
     );
     await expect(listCustomers()).rejects.toMatchObject({
       code: 'INVALID_RESPONSE',
@@ -117,6 +144,8 @@ describe('customer API', () => {
         customerType: 'enterprise',
         identityType: 'credit-code',
         identityNumber: '91310000abc123',
+        admissionContactName: '张三',
+        admissionContactEmail: 'contact@example.com',
       }),
     ).resolves.toEqual(updated);
     expect(fetch).toHaveBeenCalledWith(
@@ -129,6 +158,8 @@ describe('customer API', () => {
           customerType: 'enterprise',
           identityType: 'credit-code',
           identityNumber: '91310000abc123',
+          admissionContactName: '张三',
+          admissionContactEmail: 'contact@example.com',
         }),
       }),
     );
@@ -146,6 +177,36 @@ describe('customer API', () => {
     expect(fetch).toHaveBeenCalledWith(
       '/api/v1/customers',
       expect.objectContaining({ method: 'POST', body: '{"name":"客户甲"}' }),
+    );
+  });
+
+  it('creates a draft with one admission contact', async () => {
+    const fetch = vi.fn().mockResolvedValue(
+      new Response(
+        JSON.stringify({
+          ...summary,
+          admissionContactName: '张三',
+          admissionContactPhone: '13800138000',
+        }),
+      ),
+    );
+    vi.stubGlobal('fetch', fetch);
+
+    await createCustomerDraft({
+      name: '客户甲',
+      admissionContactName: '张三',
+      admissionContactPhone: '13800138000',
+    });
+    expect(fetch).toHaveBeenCalledWith(
+      '/api/v1/customers',
+      expect.objectContaining({
+        method: 'POST',
+        body: JSON.stringify({
+          name: '客户甲',
+          admissionContactName: '张三',
+          admissionContactPhone: '13800138000',
+        }),
+      }),
     );
   });
 

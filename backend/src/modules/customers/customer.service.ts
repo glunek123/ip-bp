@@ -24,6 +24,9 @@ type CustomerRecord = {
   issuingCountryOrRegion: string | null;
   category: string | null;
   region: string | null;
+  admissionContactName: string | null;
+  admissionContactPhone: string | null;
+  admissionContactEmail: string | null;
   profileStatus: 'DRAFT';
   departmentId: string;
   responsibleUserId: string;
@@ -41,6 +44,9 @@ export type CustomerSummary = {
   issuingCountryOrRegion: string | null;
   category: string | null;
   region: string | null;
+  admissionContactName: string | null;
+  admissionContactPhone: string | null;
+  admissionContactEmail: string | null;
   profileStatus: 'draft';
   departmentId: string;
   responsibleUserId: string;
@@ -67,6 +73,9 @@ type NormalizedCustomerEdit = {
   issuingCountryOrRegion: string | null;
   category: string | null;
   region: string | null;
+  admissionContactName: string | null;
+  admissionContactPhone: string | null;
+  admissionContactEmail: string | null;
 };
 
 const editableFields: Array<keyof NormalizedCustomerEdit> = [
@@ -77,6 +86,9 @@ const editableFields: Array<keyof NormalizedCustomerEdit> = [
   'issuingCountryOrRegion',
   'category',
   'region',
+  'admissionContactName',
+  'admissionContactPhone',
+  'admissionContactEmail',
 ];
 
 @Injectable()
@@ -97,6 +109,7 @@ export class CustomerService {
     const duplicateNameReason = this.normalizeOptional(
       input.duplicateNameReason,
     );
+    const admissionContact = this.normalizeAdmissionContact(input);
     const readScope = await this.accessControl.tryBuildCustomerScope(
       actor,
       'customer.read',
@@ -123,6 +136,7 @@ export class CustomerService {
           normalizedName,
           category: this.normalizeOptional(input.category),
           region: this.normalizeOptional(input.region),
+          ...admissionContact,
           profileStatus: 'DRAFT',
           departmentId: actor.departmentId,
           responsibleUserId: actor.userId,
@@ -381,7 +395,7 @@ export class CustomerService {
         }
 
         const changedFields = editableFields.filter(
-          (field) => current[field] !== normalized[field],
+          (field) => (current[field] ?? null) !== normalized[field],
         );
         if (changedFields.length === 0) return this.toSummary(current);
 
@@ -407,7 +421,7 @@ export class CustomerService {
                 changedFields.map((field) => [
                   field,
                   {
-                    before: this.auditValue(field, current[field]),
+                    before: this.auditValue(field, current[field] ?? null),
                     after: this.auditValue(field, normalized[field]),
                   },
                 ]),
@@ -513,7 +527,89 @@ export class CustomerService {
         input.region !== undefined
           ? this.normalizeOptional(input.region)
           : current.region,
+      ...this.normalizeAdmissionContact(input, current),
     };
+  }
+
+  private normalizeAdmissionContact(
+    input: Pick<
+      CreateCustomerDraftDto | UpdateCustomerDraftDto,
+      'admissionContactName' | 'admissionContactPhone' | 'admissionContactEmail'
+    >,
+    current?: Pick<
+      CustomerRecord,
+      'admissionContactName' | 'admissionContactPhone' | 'admissionContactEmail'
+    >,
+  ): Pick<
+    CustomerRecord,
+    'admissionContactName' | 'admissionContactPhone' | 'admissionContactEmail'
+  > {
+    const admissionContactName = this.contactValue(
+      input.admissionContactName,
+      current?.admissionContactName ?? null,
+      '联系人姓名不能为空',
+    );
+    const admissionContactPhone = this.contactValue(
+      input.admissionContactPhone,
+      current?.admissionContactPhone ?? null,
+      '联系人电话不能为空',
+    );
+    const admissionContactEmail = this.contactValue(
+      input.admissionContactEmail,
+      current?.admissionContactEmail ?? null,
+      '联系人邮箱不能为空',
+    );
+
+    if (
+      admissionContactName === null &&
+      admissionContactPhone === null &&
+      admissionContactEmail === null
+    ) {
+      return {
+        admissionContactName: null,
+        admissionContactPhone: null,
+        admissionContactEmail: null,
+      };
+    }
+    if (admissionContactName === null) {
+      throw this.contactValidationError('请填写联系人姓名');
+    }
+    if (admissionContactPhone === null && admissionContactEmail === null) {
+      throw this.contactValidationError('联系人至少填写电话或邮箱');
+    }
+    if (
+      admissionContactPhone !== null &&
+      !/^(?=(?:\D*\d){6,20}\D*$)[+()\d\s-]+$/u.test(admissionContactPhone)
+    ) {
+      throw this.contactValidationError('联系人电话格式不正确');
+    }
+    if (
+      admissionContactEmail !== null &&
+      !/^[^\s@]+@[^\s@]+\.[^\s@]+$/u.test(admissionContactEmail)
+    ) {
+      throw this.contactValidationError('联系人邮箱格式不正确');
+    }
+    return {
+      admissionContactName,
+      admissionContactPhone,
+      admissionContactEmail,
+    };
+  }
+
+  private contactValue(
+    value: string | undefined,
+    current: string | null,
+    emptyMessage: string,
+  ): string | null {
+    if (value === undefined) return current;
+    if (typeof value !== 'string' || value.trim().length === 0) {
+      throw this.contactValidationError(emptyMessage);
+    }
+    return value.trim();
+  }
+
+  private contactValidationError(message: string): BadRequestException {
+    return new BadRequestException({ code: 'VALIDATION_ERROR', message });
   }
 
   private assertIdentityPair(
@@ -549,7 +645,15 @@ export class CustomerService {
     field: keyof NormalizedCustomerEdit,
     value: string | null,
   ): string | null {
-    if (field !== 'identityNumber' || value === null) return value;
+    if (value === null) return value;
+    if (field === 'admissionContactName') return '***';
+    if (field === 'admissionContactEmail') {
+      const separator = value.lastIndexOf('@');
+      return separator < 0 ? '***' : `***${value.slice(separator)}`;
+    }
+    if (field !== 'identityNumber' && field !== 'admissionContactPhone') {
+      return value;
+    }
     if (value.length <= 4) return '***';
     const suffix = value.slice(-4);
     return `***${suffix}`;
@@ -565,6 +669,9 @@ export class CustomerService {
       issuingCountryOrRegion: customer.issuingCountryOrRegion,
       category: customer.category,
       region: customer.region,
+      admissionContactName: customer.admissionContactName ?? null,
+      admissionContactPhone: customer.admissionContactPhone ?? null,
+      admissionContactEmail: customer.admissionContactEmail ?? null,
       profileStatus: 'draft',
       departmentId: customer.departmentId,
       responsibleUserId: customer.responsibleUserId,

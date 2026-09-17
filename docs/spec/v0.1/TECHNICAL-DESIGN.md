@@ -365,6 +365,8 @@ Customer Module使用动作名`customer.read`、`customer.create-draft`、`custo
 
 首批计划只覆盖权限／部门隔离最小基础、客户草稿建档和按范围查看；编辑判重、精确文件版本与正式准入按依赖进入后续批次。获得编码授权和Q2复核后，内部任务可使用测试Adapter推进；E01/E02参数到位后再完成真实适配与跨端验收。完整联系人、主体、资产、协议或合作状态动作另开切片，不顺带加入。
 
+第三批CUST-FND-008只落实上述`CustomerAdmissionContact`的草稿维护能力：Customer聚合保存一位联系人的姓名、电话和邮箱，三者全空表示未填写；一旦填写，姓名必填且电话／邮箱至少一种。POST／PATCH、现有新建／编辑／详情页面、客户范围、乐观版本和共享AuditEvent共同复用；电话、邮箱和联系人姓名在审计差异中脱敏。该切片不执行`intent=admit`，不实现联系人列表、主要标记、删除、账号或授权，也不依赖E01／E02。实现证据与独立Q2状态以[验证记录](VALIDATION.md)、[就绪清单](READINESS.md)和[Q2记录](../../security/customer-foundation-q2-review.md)为准。
+
 ## 16. TD-AUTHZ-01：可配置角色与案件成员授权
 
 ### 16.1 模块边界与接口

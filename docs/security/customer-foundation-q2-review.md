@@ -34,6 +34,12 @@ Docker Desktop的Linux引擎恢复后，三份迁移已在独立`dev_cor_test` P
 
 独立实测证据为后端聚焦11/11、前端48/48、typecheck、lint、format-check、build、`git diff --check`及PostgreSQL／Playwright 25/25；本轮新增两个Minor覆盖后，前端当前为49项。最终状态为`IMPLEMENTED_VERIFIED_INTERNAL_INTEGRATION`。此结论仅接受当前内部实现范围；E01、E02、真实旧库恢复／生产迁移及上线仍分别受限，不得据此发布。
 
+## 2026-09-17 CUST-FND-008准入联系人复核门禁
+
+第三批首个切片只在Customer聚合增加一位准入联系人姓名、电话和邮箱；草稿允许三项全空，一旦出现任一联系人字段，姓名及电话／邮箱至少一种必须成立。联系人随既有客户TEAM／SELF／部门范围，不创建账号或Grant；创建／修改、乐观版本和脱敏AuditEvent使用既有事务。多联系人、主要标记、删除、正式准入、E01/E02、权限管理页面、生产迁移和发布均排除。
+
+实现者当前证据：`pnpm verify`通过上下文、Spec、类型、ESLint、Prettier、工具19项、后端68项、前端53项及前后端构建；临时`postgres-test`容器已精确重建，7份迁移从空库顺序应用且schema最新；数据库型Playwright 26/26通过，覆盖真实页面持久化、仅电话、仅邮箱、格式／空值、跨部门不泄漏404、撤权、乐观版本、修改回滚及审计不含完整邮箱。固定候选版本和独立Q2结论尚待生成；本节不得作为自审通过或上线许可。
+
 ## 边界决定
 
 | Boundary           | Required result                                                           | Review result and implementation evidence                                                                     |

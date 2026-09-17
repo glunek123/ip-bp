@@ -10,7 +10,7 @@ const api = vi.hoisted(() => ({
 }));
 vi.mock('../../api/customers', () => api);
 
-afterEach(() => vi.clearAllMocks());
+afterEach(() => vi.resetAllMocks());
 
 async function mountPage() {
   const router = createRouter({
@@ -65,6 +65,41 @@ describe('CustomerNewPage', () => {
     await flushPromises();
     expect(wrapper.text()).toContain('草稿没有保存成功');
     expect((input.element as HTMLInputElement).value).toBe('客户甲');
+  });
+
+  it('saves one phone-only admission contact and keeps it after a failure', async () => {
+    api.createCustomerDraft
+      .mockRejectedValueOnce(new Error('offline'))
+      .mockResolvedValueOnce({ id: 'customer-1' });
+    const { wrapper } = await mountPage();
+    await wrapper.get('input[name="name"]').setValue('客户甲');
+    await wrapper.get('input[name="admissionContactName"]').setValue(' 张三 ');
+    await wrapper
+      .get('input[name="admissionContactPhone"]')
+      .setValue(' 13800138000 ');
+    await wrapper.get('form').trigger('submit');
+    await flushPromises();
+    expect(wrapper.text()).toContain('草稿没有保存成功');
+    expect(
+      (
+        wrapper.get('input[name="admissionContactName"]')
+          .element as HTMLInputElement
+      ).value,
+    ).toBe(' 张三 ');
+    expect(api.createCustomerDraft).toHaveBeenLastCalledWith({
+      name: '客户甲',
+      admissionContactName: '张三',
+      admissionContactPhone: '13800138000',
+    });
+  });
+
+  it('requires a contact method when a contact name is entered', async () => {
+    const { wrapper } = await mountPage();
+    await wrapper.get('input[name="name"]').setValue('客户甲');
+    await wrapper.get('input[name="admissionContactName"]').setValue('张三');
+    await wrapper.get('form').trigger('submit');
+    expect(wrapper.text()).toContain('联系人至少填写电话或邮箱');
+    expect(api.createCustomerDraft).not.toHaveBeenCalled();
   });
 
   it('asks for one reason after a same-name conflict and reuses the form', async () => {

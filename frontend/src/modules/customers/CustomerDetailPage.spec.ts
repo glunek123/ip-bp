@@ -29,6 +29,9 @@ describe('CustomerDetailPage', () => {
       issuingCountryOrRegion: null,
       category: null,
       region: null,
+      admissionContactName: '张三',
+      admissionContactPhone: '13800138000',
+      admissionContactEmail: null,
       profileStatus: 'draft',
       departmentId: 'department-1',
       responsibleUserId: 'user-1',
@@ -49,6 +52,9 @@ describe('CustomerDetailPage', () => {
     expect(wrapper.text()).toContain('草稿');
     expect(wrapper.get('details').attributes('open')).toBeUndefined();
     expect(wrapper.text()).toContain('创建客户草稿');
+    expect(wrapper.text()).toContain('准入联系人');
+    expect(wrapper.text()).toContain('张三');
+    expect(wrapper.text()).toContain('13800138000');
     expect(wrapper.get('[data-test="edit-customer"]').text()).toContain(
       '编辑资料',
     );
@@ -71,6 +77,9 @@ describe('CustomerDetailPage', () => {
       issuingCountryOrRegion: null,
       category: null,
       region: null,
+      admissionContactName: null,
+      admissionContactPhone: null,
+      admissionContactEmail: null,
       profileStatus: 'draft',
       departmentId: 'department-1',
       responsibleUserId: 'user-1',

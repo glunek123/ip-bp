@@ -129,6 +129,18 @@ onBeforeUnmount(() => activeRequest?.abort());
               <dd>{{ customer.region || '未填写' }}</dd>
             </div>
             <div>
+              <dt>准入联系人</dt>
+              <dd>{{ customer.admissionContactName || '未填写' }}</dd>
+            </div>
+            <div>
+              <dt>联系人电话</dt>
+              <dd>{{ customer.admissionContactPhone || '未填写' }}</dd>
+            </div>
+            <div>
+              <dt>联系人邮箱</dt>
+              <dd>{{ customer.admissionContactEmail || '未填写' }}</dd>
+            </div>
+            <div>
               <dt>最近更新</dt>
               <dd>{{ formatTime(customer.updatedAt) }}</dd>
             </div>
