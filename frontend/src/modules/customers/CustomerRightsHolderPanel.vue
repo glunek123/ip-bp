@@ -2,6 +2,8 @@
 import { computed, onBeforeUnmount, onMounted, ref, watch } from 'vue';
 import { RouterLink } from 'vue-router';
 import { ElButton } from 'element-plus/es/components/button/index.mjs';
+import { ElPagination } from 'element-plus/es/components/pagination/index.mjs';
+import 'element-plus/theme-chalk/el-pagination.css';
 import {
   createCustomerRightsHolder,
   findLinkableRightsHolders,
@@ -20,11 +22,16 @@ const props = defineProps<{
 const emit = defineEmits<{
   'version-updated': [version: number];
   'refresh-requested': [];
+  'customer-not-found': [];
 }>();
 
+const pageSize = 20;
 const state = ref<'loading' | 'ready' | 'failed'>('loading');
 const holders = ref<RightsHolderSummary[]>([]);
+const holdersTotal = ref(0);
+const holdersPage = ref(1);
 const capabilities = ref({ create: false, link: false });
+const writeDenied = ref(false);
 const createOpen = ref(false);
 const linkOpen = ref(false);
 const name = ref('');
@@ -47,8 +54,12 @@ let activeRequest: AbortController | undefined;
 let createRetry: { signature: string; key: string } | undefined;
 let linkRetry: { signature: string; key: string } | undefined;
 
-const canCreate = computed(() => props.canEdit && capabilities.value.create);
-const canLink = computed(() => props.canEdit && capabilities.value.link);
+const canCreate = computed(
+  () => props.canEdit && !writeDenied.value && capabilities.value.create,
+);
+const canLink = computed(
+  () => props.canEdit && !writeDenied.value && capabilities.value.link,
+);
 
 function optional(value: string): string | undefined {
   const normalized = value.trim();
@@ -64,29 +75,55 @@ function commandKey(
     : globalThis.crypto.randomUUID();
 }
 
-async function load(): Promise<void> {
+async function load(page = holdersPage.value): Promise<void> {
   activeRequest?.abort();
   const controller = new AbortController();
   activeRequest = controller;
   state.value = 'loading';
   try {
-    const result = await listCustomerRightsHolders(props.customerId, 1, 20, {
-      signal: controller.signal,
-    });
+    const result = await listCustomerRightsHolders(
+      props.customerId,
+      page,
+      pageSize,
+      { signal: controller.signal },
+    );
     if (controller.signal.aborted) return;
     holders.value = result.items;
+    holdersTotal.value = result.total;
+    holdersPage.value = result.page;
     capabilities.value = result.capabilities;
     state.value = 'ready';
-  } catch {
-    if (!controller.signal.aborted) state.value = 'failed';
+  } catch (error) {
+    if (controller.signal.aborted) return;
+    if (isApiError(error, 'CUSTOMER_NOT_FOUND')) {
+      emit('customer-not-found');
+    } else {
+      state.value = 'failed';
+    }
   }
 }
 
 function openCreate(): void {
+  createRetry = undefined;
   createOpen.value = true;
   nameError.value = '';
   createError.value = '';
   versionConflict.value = false;
+}
+
+function closeCreate(): void {
+  createRetry = undefined;
+  createOpen.value = false;
+}
+
+function denyWrites(): void {
+  writeDenied.value = true;
+  closeCreate();
+  closeLink();
+}
+
+function isApiError(error: unknown, code: string): boolean {
+  return error instanceof ApiError && error.code === code;
 }
 
 function createPayload(): CreateRightsHolderInput {
@@ -126,16 +163,24 @@ async function submitCreate(): Promise<void> {
     legalRepresentative.value = '';
     duty.value = '';
     emit('version-updated', result.customerVersion);
-    await load();
+    holdersPage.value = 1;
+    await load(1);
   } catch (error) {
-    createRetry = { signature, key };
-    if (
-      error instanceof ApiError &&
-      error.code === 'CUSTOMER_VERSION_CONFLICT'
-    ) {
+    if (isApiError(error, 'CUSTOMER_ACTION_FORBIDDEN')) {
+      denyWrites();
+    } else if (isApiError(error, 'CUSTOMER_NOT_FOUND')) {
+      createRetry = undefined;
+      emit('customer-not-found');
+    } else {
+      createRetry = { signature, key };
+    }
+    if (isApiError(error, 'CUSTOMER_VERSION_CONFLICT')) {
       versionConflict.value = true;
       createError.value = '客户资料已被他人更新，请先刷新客户版本再重试';
-    } else {
+    } else if (
+      !isApiError(error, 'CUSTOMER_ACTION_FORBIDDEN') &&
+      !isApiError(error, 'CUSTOMER_NOT_FOUND')
+    ) {
       createError.value = '权利主体创建失败，请稍后重试';
     }
   } finally {
@@ -146,6 +191,7 @@ async function submitCreate(): Promise<void> {
 async function loadLinkable(page = 1): Promise<void> {
   linkableState.value = 'loading';
   linkError.value = '';
+  selectedHolderId.value = '';
   try {
     const result = await findLinkableRightsHolders(props.customerId, {
       query: optional(query.value),
@@ -156,16 +202,25 @@ async function loadLinkable(page = 1): Promise<void> {
     linkableTotal.value = result.total;
     linkablePage.value = result.page;
     linkableState.value = 'ready';
-  } catch {
-    linkableState.value = 'failed';
+  } catch (error) {
+    if (isApiError(error, 'CUSTOMER_NOT_FOUND')) {
+      emit('customer-not-found');
+    } else {
+      linkableState.value = 'failed';
+    }
   }
 }
 
 function openLink(): void {
+  linkRetry = undefined;
   linkOpen.value = true;
-  selectedHolderId.value = '';
   versionConflict.value = false;
   void loadLinkable();
+}
+
+function closeLink(): void {
+  linkRetry = undefined;
+  linkOpen.value = false;
 }
 
 async function submitLink(): Promise<void> {
@@ -184,21 +239,29 @@ async function submitLink(): Promise<void> {
     linkRetry = undefined;
     linkOpen.value = false;
     emit('version-updated', result.customerVersion);
-    await load();
+    holdersPage.value = 1;
+    await load(1);
   } catch (error) {
-    linkRetry = { signature, key };
-    if (
-      error instanceof ApiError &&
-      error.code === 'CUSTOMER_VERSION_CONFLICT'
-    ) {
+    if (isApiError(error, 'CUSTOMER_ACTION_FORBIDDEN')) {
+      denyWrites();
+    } else if (isApiError(error, 'CUSTOMER_NOT_FOUND')) {
+      linkRetry = undefined;
+      emit('customer-not-found');
+    } else if (isApiError(error, 'RIGHTS_HOLDER_ALREADY_LINKED')) {
+      linkRetry = undefined;
+      await Promise.all([load(1), loadLinkable(1)]);
+      linkError.value = '该权利主体已关联，列表已刷新';
+    } else {
+      linkRetry = { signature, key };
+    }
+    if (isApiError(error, 'CUSTOMER_VERSION_CONFLICT')) {
       versionConflict.value = true;
       linkError.value = '客户资料已被他人更新，请先刷新客户版本再重试';
     } else if (
-      error instanceof ApiError &&
-      error.code === 'RIGHTS_HOLDER_ALREADY_LINKED'
+      !isApiError(error, 'CUSTOMER_ACTION_FORBIDDEN') &&
+      !isApiError(error, 'CUSTOMER_NOT_FOUND') &&
+      !isApiError(error, 'RIGHTS_HOLDER_ALREADY_LINKED')
     ) {
-      linkError.value = '该权利主体已关联，请刷新列表';
-    } else {
       linkError.value = '权利主体关联失败，请稍后重试';
     }
   } finally {
@@ -249,7 +312,7 @@ onBeforeUnmount(() => activeRequest?.abort());
     <p v-if="state === 'loading'">正在读取权利主体……</p>
     <div v-else-if="state === 'failed'">
       <p>权利主体暂时无法加载。</p>
-      <ElButton data-test="reload-holders" @click="load">重新加载</ElButton>
+      <ElButton data-test="reload-holders" @click="load()">重新加载</ElButton>
     </div>
     <p v-else-if="holders.length === 0">尚未关联权利主体。</p>
     <ul v-else class="duplicate-list">
@@ -262,6 +325,18 @@ onBeforeUnmount(() => activeRequest?.abort());
         </RouterLink>
       </li>
     </ul>
+    <ElPagination
+      v-if="state === 'ready' && holdersTotal > pageSize"
+      data-test="holder-pagination"
+      layout="prev, pager, next"
+      :current-page="holdersPage"
+      :page-size="pageSize"
+      :total="holdersTotal"
+      @current-change="load"
+    />
+    <p v-if="writeDenied" class="submit-error" role="alert">
+      当前账号没有编辑此客户的权限
+    </p>
 
     <section
       v-if="createOpen"
@@ -332,7 +407,9 @@ onBeforeUnmount(() => activeRequest?.abort());
         刷新客户版本
       </ElButton>
       <div class="form-actions">
-        <ElButton @click="createOpen = false">取消</ElButton>
+        <ElButton data-test="cancel-create-holder" @click="closeCreate"
+          >取消</ElButton
+        >
         <ElButton
           data-test="submit-create-holder"
           type="primary"
@@ -360,7 +437,9 @@ onBeforeUnmount(() => activeRequest?.abort());
         class="text-input"
         maxlength="200"
       />
-      <ElButton @click="loadLinkable(1)">搜索</ElButton>
+      <ElButton data-test="search-linkable" @click="loadLinkable(1)"
+        >搜索</ElButton
+      >
       <p v-if="linkableState === 'loading'">正在读取可关联主体……</p>
       <div v-else-if="linkableState === 'failed'">
         <p>可关联主体暂时无法加载。</p>
@@ -377,18 +456,16 @@ onBeforeUnmount(() => activeRequest?.abort());
           />
           {{ holder.name }}
         </label>
-        <p>第 {{ linkablePage }} 页 · 共 {{ linkableTotal }} 条</p>
-        <ElButton
-          :disabled="linkablePage <= 1"
-          @click="loadLinkable(linkablePage - 1)"
-          >上一页</ElButton
-        >
-        <ElButton
-          :disabled="linkablePage * 20 >= linkableTotal"
-          @click="loadLinkable(linkablePage + 1)"
-          >下一页</ElButton
-        >
       </template>
+      <ElPagination
+        v-if="linkableState === 'ready' && linkableTotal > pageSize"
+        data-test="linkable-pagination"
+        layout="prev, pager, next"
+        :current-page="linkablePage"
+        :page-size="pageSize"
+        :total="linkableTotal"
+        @current-change="loadLinkable"
+      />
       <p v-if="linkError" class="submit-error" role="alert">{{ linkError }}</p>
       <ElButton
         v-if="versionConflict"
@@ -398,7 +475,9 @@ onBeforeUnmount(() => activeRequest?.abort());
         刷新客户版本
       </ElButton>
       <div class="form-actions">
-        <ElButton @click="linkOpen = false">取消</ElButton>
+        <ElButton data-test="cancel-link-holder" @click="closeLink"
+          >取消</ElButton
+        >
         <ElButton
           data-test="submit-link-holder"
           type="primary"

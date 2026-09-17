@@ -1,12 +1,13 @@
 <script setup lang="ts">
 import { onBeforeUnmount, onMounted, ref } from 'vue';
-import { RouterLink, useRoute } from 'vue-router';
+import { RouterLink, useRoute, useRouter } from 'vue-router';
 import { ElButton } from 'element-plus/es/components/button/index.mjs';
 import { ApiError } from '../../api/http';
 import { getCustomer, type CustomerDetail } from '../../api/customers';
 import CustomerRightsHolderPanel from './CustomerRightsHolderPanel.vue';
 
 const route = useRoute();
+const router = useRouter();
 const state = ref<'loading' | 'ready' | 'missing' | 'failed'>('loading');
 const customer = ref<CustomerDetail>();
 let activeRequest: AbortController | undefined;
@@ -52,9 +53,14 @@ function updateCustomerVersion(version: number): void {
 async function refreshCustomerVersion(): Promise<void> {
   try {
     customer.value = await getCustomer(String(route.params.id));
-  } catch {
-    // The panel keeps the user's command input and refresh prompt visible.
+  } catch (error) {
+    if (isCustomerNotFound(error)) returnToCustomerList();
+    // Other failures leave the panel's input and refresh prompt visible.
   }
+}
+
+function returnToCustomerList(): void {
+  void router.push('/customers');
 }
 
 function isCustomerNotFound(error: unknown): boolean {
@@ -166,6 +172,7 @@ onBeforeUnmount(() => activeRequest?.abort());
           :can-edit="customer.capabilities.editRoutine"
           @version-updated="updateCustomerVersion"
           @refresh-requested="refreshCustomerVersion"
+          @customer-not-found="returnToCustomerList"
         />
         <details class="history-panel">
           <summary>办理历史 · {{ customer.history.length }} 条</summary>
