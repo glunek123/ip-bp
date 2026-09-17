@@ -1,6 +1,7 @@
 import { ActorContext } from './actor-context';
+import { IdentityAdapter } from './identity.adapter';
 
-export class TestIdentityAdapter {
+export class TestIdentityAdapter implements IdentityAdapter {
   private readonly actors = new Map<string, ActorContext>();
 
   constructor() {

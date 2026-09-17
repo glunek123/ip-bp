@@ -5,17 +5,28 @@ import {
   AccessControlService,
 } from './access-control.service';
 import { PrismaAccessControlStore } from './prisma-access-control.store';
+import { ActorContextGuard } from './actor-context.guard';
+import {
+  IDENTITY_ADAPTER,
+  UnavailableIdentityAdapter,
+} from './identity.adapter';
 
 @Module({
   imports: [DatabaseModule],
   providers: [
     AccessControlService,
+    ActorContextGuard,
     PrismaAccessControlStore,
+    UnavailableIdentityAdapter,
     {
       provide: ACCESS_CONTROL_STORE,
       useExisting: PrismaAccessControlStore,
     },
+    {
+      provide: IDENTITY_ADAPTER,
+      useExisting: UnavailableIdentityAdapter,
+    },
   ],
-  exports: [AccessControlService],
+  exports: [AccessControlService, ActorContextGuard, IDENTITY_ADAPTER],
 })
 export class AccessControlModule {}

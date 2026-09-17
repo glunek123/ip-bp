@@ -23,12 +23,20 @@ enum PermissionScope {
   @@map("permission_scope")
 }
 
+enum CustomerProfileStatus {
+  DRAFT
+
+  @@map("customer_profile_status")
+}
+
 model Department {
   id              String                 @id @default(uuid()) @db.Uuid
   name            String
   memberships     DepartmentMembership[]
   roleTemplates   RoleTemplate[]
   roleAssignments RoleAssignment[]
+  customers       Customer[]
+  auditEvents     AuditEvent[]
   createdAt       DateTime               @default(now()) @map("created_at") @db.Timestamptz(3)
   updatedAt       DateTime               @updatedAt @map("updated_at") @db.Timestamptz(3)
 
@@ -42,6 +50,8 @@ model UserAccount {
   authorizationRevision Int                    @default(1) @map("authorization_revision")
   memberships           DepartmentMembership[]
   roleAssignments       RoleAssignment[]
+  responsibleCustomers  Customer[]
+  auditEvents           AuditEvent[]
   createdAt             DateTime               @default(now()) @map("created_at") @db.Timestamptz(3)
   updatedAt             DateTime               @updatedAt @map("updated_at") @db.Timestamptz(3)
 
@@ -109,4 +119,42 @@ model RoleAssignment {
   @@unique([userId, departmentId, roleTemplateId, teamId])
   @@index([userId, departmentId, active])
   @@map("role_assignments")
+}
+
+model Customer {
+  id                String                @id @default(uuid()) @db.Uuid
+  name              String
+  category          String?
+  region            String?
+  profileStatus     CustomerProfileStatus @default(DRAFT) @map("profile_status")
+  departmentId      String                @map("department_id") @db.Uuid
+  responsibleUserId String                @map("responsible_user_id") @db.Uuid
+  teamId            String?               @map("team_id") @db.Uuid
+  version           Int                   @default(1)
+  department        Department            @relation(fields: [departmentId], references: [id], onDelete: Restrict)
+  responsibleUser   UserAccount           @relation(fields: [responsibleUserId], references: [id], onDelete: Restrict)
+  createdAt         DateTime              @default(now()) @map("created_at") @db.Timestamptz(3)
+  updatedAt         DateTime              @updatedAt @map("updated_at") @db.Timestamptz(3)
+
+  @@index([departmentId, updatedAt, id])
+  @@index([responsibleUserId])
+  @@index([teamId])
+  @@map("customers")
+}
+
+model AuditEvent {
+  id           String      @id @default(uuid()) @db.Uuid
+  departmentId String      @map("department_id") @db.Uuid
+  actorUserId  String      @map("actor_user_id") @db.Uuid
+  resourceType String      @map("resource_type")
+  resourceId   String      @map("resource_id") @db.Uuid
+  action       String
+  details      Json?
+  department   Department  @relation(fields: [departmentId], references: [id], onDelete: Restrict)
+  actorUser    UserAccount @relation(fields: [actorUserId], references: [id], onDelete: Restrict)
+  createdAt    DateTime    @default(now()) @map("created_at") @db.Timestamptz(3)
+
+  @@index([departmentId, resourceType, resourceId, createdAt])
+  @@index([actorUserId, createdAt])
+  @@map("audit_events")
 }

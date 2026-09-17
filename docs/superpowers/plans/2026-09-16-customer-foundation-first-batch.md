@@ -207,9 +207,9 @@ scope: backend/prisma/schema.prisma, backend/prisma/migrations/*, backend/src/mo
 risk: Q2
 acceptance: an authorized actor creates a name-only draft, lists/reads it inside scope, cannot see a foreign-department draft, and gets one immutable shared audit event in the same transaction
 checks: customer service tests; customer HTTP tests; PostgreSQL rollback/isolation tests; pnpm typecheck; pnpm lint
-status: PLANNED
-result_ref: none; task is not implemented
-evidence: backend/src/modules/customers/*.spec.ts
+status: IMPLEMENTED_UNVERIFIED_DB
+result_ref: working tree after a91b4e2; customer unit/HTTP tests pass, database evidence blocked by unavailable Docker daemon
+evidence: backend/src/modules/customers/*.spec.ts; docs/spec/v0.1/VALIDATION.md
 ```
 
 **Files:**
@@ -252,7 +252,7 @@ evidence: backend/src/modules/customers/*.spec.ts
   get(actor: ActorContext, customerId: string): Promise<CustomerSummary>;
   ```
 
-- [ ] **Step 1: Write failing domain and HTTP tests**
+- [x] **Step 1: Write failing domain and HTTP tests**
 
   Tests must cover trimmed non-empty name, server-derived department/responsible user, default `draft`, stable pagination order `updatedAt desc, id asc`, unknown DTO fields rejected, unauthenticated `401`, missing create action `403`, inaccessible ID non-leaking `404`, and one `customer.draft-created` shared audit event.
 
@@ -260,7 +260,7 @@ evidence: backend/src/modules/customers/*.spec.ts
 
   With two departments in the test PostgreSQL database, prove that list and detail never return the other department. Force audit insertion to fail and assert that no customer remains; force customer insertion to fail and assert that no audit event remains.
 
-- [ ] **Step 3: Run focused tests and verify RED**
+- [x] **Step 3: Run focused tests and verify RED**
 
   ```powershell
   . .\Use-ProjectRuntime.ps1
@@ -270,11 +270,11 @@ evidence: backend/src/modules/customers/*.spec.ts
 
   Expected: FAIL because customer and shared-audit modules do not exist.
 
-- [ ] **Step 4: Implement the minimal customer transaction**
+- [x] **Step 4: Implement the minimal customer transaction**
 
   Create only the fields used by the interface. `departmentId`, `responsibleUserId`, status, version, timestamps and audit actor are server-derived. The customer and `AuditEvent` append occur inside one Prisma transaction; there is no `CustomerAuditEvent` table.
 
-- [ ] **Step 5: Verify GREEN and commit**
+- [x] **Step 5: Verify GREEN and commit**
 
   ```powershell
   . .\Use-ProjectRuntime.ps1

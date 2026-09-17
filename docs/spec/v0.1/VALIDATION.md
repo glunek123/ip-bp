@@ -1,5 +1,13 @@
 # SPEC-001 文档验证
 
+## CUST-FND-003客户草稿、范围读取与原子审计（2026-09-17）
+
+中断恢复后重新核对功能分支、工作区、开发状态和AI规范，项目入口实际为Node v24.21.0／pnpm 11.27.0；`context:check`只报告两份新测试尚未登记，不再存在此前Node／pnpm解析漂移。客户测试先实测RED：服务、控制器、身份端口和Guard均不存在。
+
+随后实现生产默认拒绝的身份Adapter端口、逐请求ActorContext Guard、客户草稿schema及增量迁移、服务端派生部门／负责人、同一Prisma事务内的Customer＋共享AuditEvent写入，以及在数据库查询中合并授权范围的列表／详情。DTO拒绝未知字段，详情对不存在和越范围统一返回`CUSTOMER_NOT_FOUND`；列表固定按`updatedAt desc, id asc`排序。未加入编辑、判重、准入、文件、权限后台或真实SSO。
+
+聚焦Jest 10项通过，覆盖名称清理、服务端归属、默认草稿、共享审计、审计失败传播、范围谓词、稳定分页参数、未认证401、缺少创建动作403、伪造部门400及不泄漏404。完整`pnpm verify`通过：177个文本的上下文检查、53 REQ／55 AC／11 BQ／34 SD的Spec检查、工具19项、后端Jest 40项、前端Vitest 24项，以及全仓TypeScript、ESLint、Prettier和前后端构建均成功。`pnpm db:test:up`仍因本机Docker daemon不存在而失败，因此迁移执行、跨部门PostgreSQL查询隔离，以及客户／审计真实事务双向回滚尚无运行证据；状态保持`IMPLEMENTED_UNVERIFIED_DB`，且Q2最终`VERIFIED`仍需独立安全复核。
+
 ## CUST-FND-001／002首批实现门禁与最小授权核心（2026-09-16）
 
 用户引用会话`6aaa8346-93e0-83eb-a63e-2949b98d591a`，在环境漂移修复后明确要求按运营端优先路线执行；授权范围包含已确认Spec内的业务编码、开发库迁移、自动化测试和必要文档同步，不包含生产操作、生产数据、真实账号授权或范围外功能。实现门禁记录见[Q2检查](../../security/customer-foundation-q2-review.md)，最终独立安全复核前保持`IMPLEMENTED_UNVERIFIED`。
