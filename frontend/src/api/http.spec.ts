@@ -172,6 +172,60 @@ describe('HTTP boundary', () => {
     setCsrfToken(null);
   });
 
+  it('notifies the auth boundary when the refresh itself is unauthorized', async () => {
+    const { onUnauthorized, setCsrfToken } = await import('./http');
+    const listener = vi.fn();
+    const dispose = onUnauthorized(listener);
+    const fetch = vi
+      .fn()
+      .mockResolvedValueOnce(
+        new Response(JSON.stringify({ code: 'CSRF_INVALID' }), { status: 403 }),
+      )
+      .mockResolvedValueOnce(new Response(null, { status: 401 }));
+    vi.stubGlobal('fetch', fetch);
+    setCsrfToken('stale-csrf-token');
+
+    await expect(
+      requestJson('/customers', { method: 'POST', body: { name: '甲' } }),
+    ).rejects.toMatchObject({ status: 403, code: 'CSRF_INVALID' });
+    expect(listener).toHaveBeenCalledTimes(1);
+    setCsrfToken(null);
+    dispose();
+  });
+
+  it('refuses to replay a write once the session switched to another account', async () => {
+    const { onUnauthorized, setCsrfToken, setSessionIdentity } =
+      await import('./http');
+    const listener = vi.fn();
+    const dispose = onUnauthorized(listener);
+    const fetch = vi
+      .fn()
+      .mockResolvedValueOnce(
+        new Response(JSON.stringify({ code: 'CSRF_INVALID' }), { status: 403 }),
+      )
+      .mockResolvedValueOnce(
+        new Response(
+          JSON.stringify({
+            csrfToken: 'other-account-token',
+            user: { id: 'other-user' },
+          }),
+          { status: 200 },
+        ),
+      );
+    vi.stubGlobal('fetch', fetch);
+    setCsrfToken('stale-csrf-token');
+    setSessionIdentity('current-user');
+
+    await expect(
+      requestJson('/customers', { method: 'POST', body: { name: '甲' } }),
+    ).rejects.toMatchObject({ status: 403, code: 'CSRF_INVALID' });
+    expect(listener).toHaveBeenCalledTimes(1);
+    expect(fetch).toHaveBeenCalledTimes(2);
+    setCsrfToken(null);
+    setSessionIdentity(null);
+    dispose();
+  });
+
   it('notifies the auth boundary on 401 without calling it a network error', async () => {
     const { onUnauthorized } = await import('./http');
     const listener = vi.fn();

@@ -1,4 +1,10 @@
-import { ApiError, getJson, requestJson, setCsrfToken } from './http';
+import {
+  ApiError,
+  getJson,
+  requestJson,
+  setCsrfToken,
+  setSessionIdentity,
+} from './http';
 
 export type DepartmentChoice = { id: string; name: string };
 export type AuthSession = {
@@ -36,6 +42,7 @@ function parseSession(value: unknown): AuthSession {
   )
     throw new ApiError('服务返回了无效的登录信息', 200, 'INVALID_RESPONSE');
   setCsrfToken(session.csrfToken);
+  setSessionIdentity(session.user.id);
   return session;
 }
 
@@ -59,4 +66,5 @@ export async function getSession(): Promise<AuthSession> {
 export async function logout(): Promise<void> {
   await requestJson('/auth/logout', { method: 'POST' });
   setCsrfToken(null);
+  setSessionIdentity(null);
 }

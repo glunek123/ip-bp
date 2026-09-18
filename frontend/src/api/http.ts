@@ -39,10 +39,21 @@ export type JsonRequestOptions = RequestOptions &
   );
 
 let csrfToken: string | null = null;
+let sessionUserId: string | null = null;
 const unauthorizedListeners = new Set<() => void>();
 
 export function setCsrfToken(value: string | null): void {
   csrfToken = value;
+}
+
+export function setSessionIdentity(userId: string | null): void {
+  sessionUserId = userId;
+}
+
+function notifyUnauthorized(): void {
+  setCsrfToken(null);
+  sessionUserId = null;
+  for (const listener of unauthorizedListeners) listener();
 }
 
 let csrfRefreshInFlight: Promise<boolean> | null = null;
@@ -56,9 +67,25 @@ async function refreshCsrfFromSession(): Promise<boolean> {
         credentials: 'same-origin',
         headers: { Accept: 'application/json' },
       });
-      if (!response.ok) return false;
+      if (!response.ok) {
+        if (response.status === 401) notifyUnauthorized();
+        return false;
+      }
       const body: unknown = await response.json();
       if (!isRecord(body) || typeof body.csrfToken !== 'string') return false;
+      const userId =
+        isRecord(body.user) && typeof body.user.id === 'string'
+          ? body.user.id
+          : null;
+      if (
+        sessionUserId !== null &&
+        userId !== null &&
+        userId !== sessionUserId
+      ) {
+        notifyUnauthorized();
+        return false;
+      }
+      sessionUserId = userId;
       setCsrfToken(body.csrfToken);
       return true;
     } catch {
@@ -146,8 +173,7 @@ export async function requestJson(
         path !== '/auth/session' &&
         path !== '/auth/logout'
       ) {
-        setCsrfToken(null);
-        for (const listener of unauthorizedListeners) listener();
+        notifyUnauthorized();
       }
       if (
         apiError.status === 403 &&
