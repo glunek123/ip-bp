@@ -8,7 +8,7 @@
 
 ## 当前任务
 
-AUTH-LOCAL-001集成后环境修复：将工作区切回`main`独立运行后，发现`backend/.env`与`backend/.env.test`缺少`AUTH_THROTTLE_SECRET`，后端启动即因环境校验失败；已执行仓库自带的`pnpm setup:local`补齐根`.env`与两个后端环境文件的该密钥（脚本幂等、保留既有配置、不打印秘密），后端启动与登录恢复。开发库`admin`账号密码已按用户授权重置，实测登录返回200并进入单部门`知产部`。另将本机Git无法创建嵌套任务分支名（`codex/xxx` 静默失败、`commit` 会伪装成功并使HEAD变unborn）记录到[环境报告](environment.md)第7节作为规避依据。
+AUTH-LOCAL-001集成后环境修复：将工作区切回`main`独立运行后，发现`backend/.env`与`backend/.env.test`缺少`AUTH_THROTTLE_SECRET`，后端启动即因环境校验失败；已执行仓库自带的`pnpm setup:local`补齐根`.env`与两个后端环境文件的该密钥（脚本幂等、保留既有配置、不打印秘密），后端启动与登录恢复。开发库`admin`账号密码已按用户授权重置，实测登录返回200并进入单部门`知产部`。另将本机Git异常记录到[环境报告](environment.md)第7节作为规避依据：一是无法创建嵌套任务分支名（`codex/xxx` 静默失败、`commit` 会伪装成功并使HEAD变unborn），二是引用读取滞后（`fetch` 已更新 `origin/main` 但 `rev-parse` 仍读旧值，使领先／落后统计失真，须以 `git ls-remote` 判定远端是否同步）。
 
 AUTH-LOCAL-001第一切片已纳入主分支治理提交并完成独立复审修复：实现一次性首位管理员初始化、系统自有用户名／密码登录、不透明数据库会话、退出、稳定CSRF、事务级原子登录限速、前端登录页及匿名路由重定向；`NODE_ENV=test`的Bearer测试身份仅为既有自动化保留。首轮独立Q2为`REJECTED`（Critical 0／Important 11／Minor 2），修复后把`main`的治理提交`8e02126`纳入隔离分支形成合并候选；合并后`pnpm check:fast`、完整`pnpm verify`（后端142项）、数据库型Playwright 42/42及迁移专项（用例2/2、临时空库11份迁移）均通过。隔离复审对合并候选给出`REJECTED`（Critical 0／Important 1／Minor 2），首轮13项全部确认关闭；I-01文档证据补齐、M-01跨标签页CSRF自动刷新并重试一次、M-02补生产Secure与安全事件断言均已修复并加回归，登录失败文案不再提及"部门"（单部门用户会被误导）。修复后聚焦测试后端15项、前端24项通过；第二轮增量复查确认上述三项关闭，并新报两项Minor（刷新自身返回401未触发未授权通知、会话被另一标签页换成其他账号时写请求静默重放），已分别改为刷新401即转未授权、回填身份与已知会话身份不一致时拒绝重放并转登出，各补1项回归；聚焦测试前端28项通过。候选`3ed0681`最终复查为`ACCEPTED`，Critical／Important／Minor均为0，满足集成条件。
 

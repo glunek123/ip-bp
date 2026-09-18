@@ -108,6 +108,10 @@ pnpm --version
 
 规避方式：任务分支改用**顶层名**，用连字符代替斜杠，例如 `codex-local-account-auth`。`main` 等非嵌套分支名不受影响。
 
+同类现象：该仓库的引用读取还会出现**滞后**。例如 `git fetch origin` 明确输出 `e5b55de..9584918  main -> origin/main`，但随后 `git rev-parse refs/remotes/origin/main` 仍返回旧值 `e5b55de`（`.git/packed-refs` 未随之刷新），导致 `git rev-list --count` 统计出的"领先／落后"数目失真。
+
+判断远端是否真的同步，**以 `git ls-remote origin <branch>` 为准**，不要只依赖本地 `origin/*` 引用的比较结果。推送本身不受影响。
+
 ## 8. 本地环境初始化与启动前诊断
 
 首次启动或本地环境异常（后端启动报 `NODE_ENV`、`DATABASE_URL` 或 `AUTH_THROTTLE_SECRET` 校验失败）：
