@@ -108,9 +108,24 @@ pnpm --version
 
 规避方式：任务分支改用**顶层名**，用连字符代替斜杠，例如 `codex-local-account-auth`。`main` 等非嵌套分支名不受影响。
 
-同类现象：该仓库的引用读取还会出现**滞后**。例如 `git fetch origin` 明确输出 `e5b55de..9584918  main -> origin/main`，但随后 `git rev-parse refs/remotes/origin/main` 仍返回旧值 `e5b55de`（`.git/packed-refs` 未随之刷新），导致 `git rev-list --count` 统计出的"领先／落后"数目失真。
+### 真正的根因：Codex Desktop 后台进程会干预本仓库的 Git 引用
 
-判断远端是否真的同步，**以 `git ls-remote origin <branch>` 为准**，不要只依赖本地 `origin/*` 引用的比较结果。推送本身不受影响。
+2026-09-18 定位结论：**在 Codex Desktop 运行期间（`tasklist` 中可见 `codex.exe`、`codex-code-mode-host.exe` 等），它会持续干预该仓库的 Git 引用**，前述"嵌套分支名失败"与"remote-tracking ref 滞后"是**同一根因的两种表现**，不是 Git 缺陷，也不是仓库损坏。
+
+实测证据：
+
+- `mkdir -p .git/refs/remotes/origin` 成功，但**紧接着 `ls` 即报 `No such file or directory`**；`git update-ref refs/remotes/origin/main <sha>` 返回 0，引用仍不落地。
+- `git fetch origin` 会打印 `* [new branch] main -> origin/main`，但 `refs/remotes/origin/main` **既不写 loose ref、也不更新 `packed-refs`**；`git update-ref -d refs/remotes/origin/main` 反而能成功删除。
+- 手工写入 `refs/heads/codex/<name>` 能短暂存在，但下一个 ref 事务后被清除。
+- 对照：`refs/heads/main`、`refs/heads/<顶层名>`、`refs/stash`，以及 Codex 自己的 `refs/codex/turn-diffs/checkpoints/*` 均工作正常。
+
+因此判定为 **Codex Desktop 的引用管理逻辑在清理它认为非预期的引用**（覆盖 `refs/remotes/*` 与嵌套任务分支）。
+
+**处理方式：**
+
+- **修复 remote-tracking ref 的前提**：完全退出 Codex Desktop（确认 `tasklist` 中不再有 `codex.exe`），再执行 `git fetch origin`，`refs/remotes/origin/main` 才会正常建立。Codex 运行期间任何 fetch / update-ref 都无法保留结果。
+- **Codex 运行期间的判断方式**：不要依赖 `refs/remotes/*` 与由其派生的 ahead/behind 统计，判断远端是否同步一律以 `git ls-remote origin <branch>` 为准。推送本身不受影响。
+- **嵌套分支规避**：任务分支改用顶层名（连字符替代斜杠），例如 `codex-local-account-auth`；`main` 等顶层分支名不受影响。
 
 ## 8. 本地环境初始化与启动前诊断
 

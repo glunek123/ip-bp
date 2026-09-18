@@ -1,6 +1,6 @@
 {
   "version": 1,
-  "recordedAt": "2026-09-18T05:39:58.859Z",
+  "recordedAt": "2026-09-18T05:45:08.056Z",
   "files": {
     ".cursor/rules/verified-feature-integration.mdc": "728de22b41845a4a9aafda8afdb9da3b9570ae7a19c838a1f1bebf7bae3b6d04",
     ".env.example": "07211cde5c2b59efc21b619b752d4c9b871f0980d2d64ca3c146ad6151fd27ca",
@@ -145,10 +145,10 @@
     "docs/demo-reverse/v158/modules/M10-customers.md": "9bf444edc6c90b1f82d87ffde465ceee55a5eb86308ff92aa237f265fd91899f",
     "docs/engineering-verification.md": "b7f80f141d4a7da5f28944bf5e3ba6d76d294b326f5d614029964b02f539d122",
     "docs/environment-lock.json": "a994a66b4d2a596aa6d24895f1195f74ad512b44a23927d871c255ed4ae1e00a",
-    "docs/environment.md": "e0f249eadd6c02dd2b33706759153589cacb55423b37042b777cfd58048c4108",
+    "docs/environment.md": "f753c2990f313a6dc29acf1a14c46fec7579a05ca789de7d9bae54c0900cc98a",
     "docs/foundation-improvements.md": "bf18874ca3869d4c1e4370611327598b6e6182e1a09e1a83ed2a747be6aa39cb",
     "docs/foundation-review.md": "80ea2ac9d015ad5169c2e09ce6208adbd4a735ba4c94632a2044d6cb0c05454d",
-    "docs/project-status.md": "3a34a296ea422ac75f9238c9d4f911dce71a80f7da748dc7e8046e9fae670ba7",
+    "docs/project-status.md": "87d6aa2f9036f323d8dfff0f7e0232352fdb8e78b68ae42227ec66eff064722d",
     "docs/security/customer-foundation-q2-review.md": "f5745450cb85aedde92892646c6c824bc9670b8c9bf6f0d9761fe5e46cc6d109",
     "docs/security/local-account-auth-q2-review.md": "4e7b38d73b2597e483340490c788aa034ef6f465baccc12240be7ad2c6ec61f1",
     "docs/spec/v0.1/BUSINESS-REVIEW.md": "950c73ac72470d2e3556fd416701b4486944c1e3ef21c84be11132cbe617c24e",
