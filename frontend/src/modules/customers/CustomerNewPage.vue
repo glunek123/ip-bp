@@ -113,7 +113,7 @@ async function submit(): Promise<void> {
   <div class="workspace-shell">
     <header class="workspace-header">
       <RouterLink class="workspace-brand" to="/customers">
-        <span class="workspace-mark">知</span><span>知产案件管理</span>
+        <span class="workspace-mark">品知</span><span>品维·知产业务管理</span>
       </RouterLink>
       <span class="workspace-context">运营端 · 客户</span>
     </header>

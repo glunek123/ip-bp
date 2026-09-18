@@ -63,8 +63,8 @@ onBeforeUnmount(() => {
   <div class="page-shell">
     <header class="masthead">
       <div class="brand">
-        <span class="brand-mark" aria-hidden="true">知</span
-        ><strong>知产案件管理</strong>
+        <span class="brand-mark" aria-hidden="true">品知</span
+        ><strong>品维·知产业务管理</strong>
       </div>
       <span class="environment-label">本地开发环境</span>
     </header>
@@ -138,7 +138,7 @@ onBeforeUnmount(() => {
       </aside>
     </main>
     <footer class="page-footer">
-      <span>知产案件管理系统</span><span>工程准备阶段</span>
+      <span>品维·知产业务管理系统</span><span>工程准备阶段</span>
     </footer>
   </div>
 </template>

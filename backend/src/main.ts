@@ -12,7 +12,7 @@ async function bootstrap(): Promise<void> {
   const config = app.get(ConfigService);
   if (config.get<string>('NODE_ENV') !== 'production') {
     const definition = new DocumentBuilder()
-      .setTitle('知产案件管理系统')
+      .setTitle('品维·知产业务管理系统')
       .setDescription('工程基础接口')
       .setVersion('1.0')
       .addBearerAuth()

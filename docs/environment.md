@@ -100,32 +100,42 @@ pnpm --version
 
 换机器时需按上述来源下载并校验 ZIP，解压到同样的用户目录结构；运行入口在文件缺失或版本不符时会明确报错。
 
-## 7. 本机 Git 限制：无法创建嵌套任务分支名
+## 7. 本机 Git 多级引用历史故障（当前已恢复）
 
-2026-09-18 实测：本机 Git（2.54.0.windows.1）在该仓库中**无法创建嵌套分支名**。`git branch codex/xxx` 与 `git update-ref refs/heads/codex/xxx` 都会**静默失败**（退出码 0 但引用不落地），预先创建 `.git/refs/heads/codex` 目录也无效；同样的命令在全新临时仓库中成功，因此是该仓库与本机环境的组合现象，不是账号或权限问题。
+2026-09-18 历史实测：本机 Git（2.54.0.windows.1）**一度无法创建嵌套分支名**。`git branch codex/xxx` 与 `git update-ref refs/heads/codex/xxx` 都会**静默失败**（退出码 0 但引用不落地），预先创建 `.git/refs/heads/codex` 目录也无效。后续对照实验确认这是**全机现象**（C 盘、D 盘多个位置的全新仓库同样复现），不是该仓库特有，也不是账号或权限问题；调查现状见下节。
 
 危险后果：在这种分支上执行 `git commit`，会**创建提交对象但引用更新失败，却仍打印 `[branch hash]` 成功消息**——表面成功，实际 `HEAD` 变为 unborn，`git log` 报 "does not have any commits yet"。提交对象不会丢失，可用 `git cat-file -t <sha>` 找到，再用 `git update-ref` 或 `git reset --hard <sha>` 恢复。
 
 规避方式：任务分支改用**顶层名**，用连字符代替斜杠，例如 `codex-local-account-auth`。`main` 等非嵌套分支名不受影响。
 
-### 真正的根因：Codex Desktop 后台进程会干预本仓库的 Git 引用
+### 历史现象：Git 多级引用的 loose ref 写入被静默回滚
 
-2026-09-18 定位结论：**在 Codex Desktop 运行期间（`tasklist` 中可见 `codex.exe`、`codex-code-mode-host.exe` 等），它会持续干预该仓库的 Git 引用**，前述"嵌套分支名失败"与"remote-tracking ref 滞后"是**同一根因的两种表现**，不是 Git 缺陷，也不是仓库损坏。
+2026-09-18 调查中（两次阶段性结论——"Codex 干预"、"ACE 反作弊驱动"——均已被对照实验推翻，此处只记录已验证事实）：
 
-实测证据：
+**已验证事实：**
 
-- `mkdir -p .git/refs/remotes/origin` 成功，但**紧接着 `ls` 即报 `No such file or directory`**；`git update-ref refs/remotes/origin/main <sha>` 返回 0，引用仍不落地。
-- `git fetch origin` 会打印 `* [new branch] main -> origin/main`，但 `refs/remotes/origin/main` **既不写 loose ref、也不更新 `packed-refs`**；`git update-ref -d refs/remotes/origin/main` 反而能成功删除。
-- 手工写入 `refs/heads/codex/<name>` 能短暂存在，但下一个 ref 事务后被清除。
-- 对照：`refs/heads/main`、`refs/heads/<顶层名>`、`refs/stash`，以及 Codex 自己的 `refs/codex/turn-diffs/checkpoints/*` 均工作正常。
+- 文件系统级观测（`fs.watch` + 1ms 轮询）：`git update-ref refs/remotes/origin/main` 的写入**确实落盘**（观测到 `main.lock` 创建、rename 为 `main`、文件短暂存在），但**约 100–300ms 后整个 `origin/` 目录被移入回收站**——git 自身事务报告成功（`finish: 0`）。回收站 `D:\$RECYCLE.BIN` 中存在大量对应时间的 `.lock` 文件残留，可作进一步取证材料。
+- 对照实验：`node`/手工直写的同路径文件可以存活，只有 `git.exe` 进程的写入被清除——**按进程过滤**。
+- 影响范围是全机性的：C 盘、D 盘多个位置的**全新仓库**同样复现；两个不同来源的 Git（PortableGit 2.55 / 系统 2.54）同样失败——排除 Git 版本与仓库本身。
+- 已排除项：Codex Desktop（未运行时同样复现）、腾讯 ACE 反作弊（5 个内核驱动全部 STOPPED 后同样复现）、Git hooks（无启用）、`git maintenance`（无配置无计划任务）、Windows Defender 检测事件（运维日志无相关记录）、AppLocker/ASR（无事件）。
+- 统一规律：**任何需要新建子目录的多级引用**（`refs/remotes/*`、`refs/heads/<嵌套名>/*`）的 git 写入都被回滚；二级引用（`refs/heads/main`、`refs/stash`）与 `packed-refs` 文件不受影响。前述"嵌套分支名失败"与"remote-tracking ref 滞后"是同一现象的两种表现。
+- 关键线索（待深挖）：删除方式是**移入回收站**而非永久删除，说明删除方使用 Shell 回收站接口——这是应用层程序行为，不是内核驱动的典型特征。
 
-因此判定为 **Codex Desktop 的引用管理逻辑在清理它认为非预期的引用**（覆盖 `refs/remotes/*` 与嵌套任务分支）。
+**故障期间采用过的临时规避（当前不再需要）：**
 
-**处理方式：**
+- **修复 remote-tracking ref**：loose ref 路径不可靠，但 `packed-refs` 写入可以持久化。将 `<sha> refs/remotes/origin/main` 直接写入 `.git/packed-refs`（保持条目排序），`git rev-parse` / `git branch -vv` 随即恢复正常。
+- **注意**：`git fetch` 的引用更新走 loose ref 路径，仍会被回滚——fetch 会报告成功但 `refs/remotes/*` 读回旧值。推送（`git push`）本身不受影响；判断远端是否同步以 `git ls-remote origin <branch>` 为准。
+- **嵌套分支规避**：任务分支改用顶层名（连字符替代斜杠），例如 `codex-local-account-auth`。
 
-- **修复 remote-tracking ref 的前提**：完全退出 Codex Desktop（确认 `tasklist` 中不再有 `codex.exe`），再执行 `git fetch origin`，`refs/remotes/origin/main` 才会正常建立。Codex 运行期间任何 fetch / update-ref 都无法保留结果。
-- **Codex 运行期间的判断方式**：不要依赖 `refs/remotes/*` 与由其派生的 ahead/behind 统计，判断远端是否同步一律以 `git ls-remote origin <branch>` 为准。推送本身不受影响。
-- **嵌套分支规避**：任务分支改用顶层名（连字符替代斜杠），例如 `codex-local-account-auth`；`main` 等顶层分支名不受影响。
+### 收口复测
+
+2026-09-18 本轮收口时，故障已无法复现：
+
+- 工作区内的全新临时仓库成功创建 `codex/probe`，1 秒后仍可解析。
+- 本仓库中唯一临时 `codex/ref-probe-*` 分支与 `refs/remotes/ref-probe-*/main` 均创建成功，1.5 秒后仍解析为当前 HEAD，随后已由 Git 精确删除并确认不再存在。
+- `HEAD`、`origin/main` 和 `git ls-remote origin refs/heads/main` 一致。
+
+因此不再将“禁止斜杠分支”或“手工编辑 `packed-refs`”作为日常流程。事件的外部触发者仍无证据可以归因，故保留历史记录作为复发证据；若再出现 Git 返回成功但引用不存在，应立即停止在该分支上提交，保全对象 SHA 与文件系统轨迹，并以 `git ls-remote` 交叉核对远端。
 
 ## 8. 本地环境初始化与启动前诊断
 
