@@ -99,3 +99,11 @@ pnpm --version
 复核 Docker Server 为 29.5.3，Compose 为 5.1.4。第三步已完成项目依赖安装、容器启动、构建与数据库闭环验证。
 
 换机器时需按上述来源下载并校验 ZIP，解压到同样的用户目录结构；运行入口在文件缺失或版本不符时会明确报错。
+
+## 7. 本机 Git 限制：无法创建嵌套任务分支名
+
+2026-09-18 实测：本机 Git（2.54.0.windows.1）在该仓库中**无法创建嵌套分支名**。`git branch codex/xxx` 与 `git update-ref refs/heads/codex/xxx` 都会**静默失败**（退出码 0 但引用不落地），预先创建 `.git/refs/heads/codex` 目录也无效；同样的命令在全新临时仓库中成功，因此是该仓库与本机环境的组合现象，不是账号或权限问题。
+
+危险后果：在这种分支上执行 `git commit`，会**创建提交对象但引用更新失败，却仍打印 `[branch hash]` 成功消息**——表面成功，实际 `HEAD` 变为 unborn，`git log` 报 "does not have any commits yet"。提交对象不会丢失，可用 `git cat-file -t <sha>` 找到，再用 `git update-ref` 或 `git reset --hard <sha>` 恢复。
+
+规避方式：任务分支改用**顶层名**，用连字符代替斜杠，例如 `codex-local-account-auth`。`main` 等非嵌套分支名不受影响。
