@@ -1,5 +1,21 @@
 # SPEC-001 文档验证
 
+## GOV-AI-FLOW-002三级开发流程优化（2026-09-17）
+
+用户要求在不降低正式系统质量的前提下，减少AI Coding的时间和Token成本。审计范围覆盖`AGENTS.md`、AI开发规范、唯一Cursor集成规则、开发规范入口、README命令说明、根／前后端`package.json`、上下文检查器及测试配置；仓库没有托管CI workflow，也没有可靠的跨workspace依赖图。确认的低收益流程是：普通接口默认完整`verify`／E2E／独立审查，每项任务强制两批状态回填，新任务重复通读长规范，以及Skills／设计／计划／确认没有按真实分支触发。
+
+现已在原入口上收敛为Level 1轻量、Level 2默认、Level 3严格；历史Q0／Q1／Q2仅保留映射，不再用于新任务。`AGENTS.md`由原有全量启动规则改为状态入口＋相关模块按需加载，AI开发规范只负责恢复和文档同步，唯一Cursor规则负责全部风险与验证强度。Level 1／2不再默认完整E2E、独立审查、设计／计划文档或状态双写；Level 3继续保留完整`verify`、风险专项、必要E2E／迁移验证和合并前独立Review。类型、Lint、核心业务／契约、迁移、权限负向、数据隔离、核心事务、合并前完整验证和发布回归均未取消。
+
+自动化新增`pnpm check:fast`和`pnpm context:record:light`。前者采用并行workspace类型检查、根类型检查和位于既有忽略目录`.local`的ESLint内容缓存，并在独立Review后显式固定`--cache-strategy content`；后者最初可对任意路径关闭状态检查，被独立Review判为Important，现已收紧为只允许`demo/`和`frontend/src/styles/`差异，源码、配置、治理、Spec及其他路径必须使用标准状态支持的`context:record`。工具回归增加高风险源码拒绝场景。没有新增`test:affected`，因为当前无可靠依赖图；规则要求使用现有Jest／Vitest／Playwright过滤能力，避免用不完整自动选择冒充安全覆盖。
+
+生效入口冲突扫描未发现旧的Q1完整`verify`／E2E／轻量独立审查、每任务通读长规范或强制设计／计划确认仍在执行规则中；项目状态和历史验证中的Q2文字作为历史事实保留。首轮独立Review结论`REJECTED`（Critical 0／Important 3／Minor 1）；除上述轻量快照和缓存问题外，还指出Level 3缺少`ACCEPTED`＋0 finding的精确集成判据，以及身份／认证／会话／授权守卫未被真实数据库E2E强制触发。首轮修复后工具21/21、`check:fast`和完整`pnpm verify`通过；复审关闭原4项，但新增发现缺失快照时轻量模式仍可从零登记任意工作区，最终修复要求轻量模式必须存在可信旧快照并增加负向回归。最新完整`pnpm verify`退出0；同一`gpt-5.6-sol`独立终审结论`ACCEPTED`，Critical／Important／Minor均为0。本轮不改业务功能、schema、迁移、依赖版本或生产环境，数据库E2E不适用。
+
+## GOV-WORKTREE-CLEANUP-001合并后清理（2026-09-17）
+
+用户要求合并完成后清理任务worktree。现场审计确认4个任务分支的HEAD均为`main`祖先，且各分支`main..branch`提交数均为0；其中`customer-admission-contact`和`process-risk-gates`工作目录干净，另两个客户基础worktree分别有142和159项未提交／未跟踪状态。没有强制丢弃这些内容：先以`git stash push --include-untracked`保全为提交`6e240704c0f6342e5c9588bf02ae10555ce653a8`和`8e2edd1f49a022a8d05084cc66cdaa4baa76a664`，确认目录转为干净后再清理。恢复时应在合适分支使用`git stash apply <提交>`，核对内容后再决定是否保留。
+
+随后通过`git worktree remove`删除4个明确位于用户临时目录的任务worktree，删除4个已合并本地任务分支并执行`git worktree prune`。最终`git worktree list --porcelain`只列出`D:/工作项目/品维and知产/dev_cor`的`main`，目标本地分支清单为空；未删除远端分支、stash、未合并提交、开发数据、业务文件或生产内容。自动集成规则增加远端核实后的worktree／本地分支清理和脏现场保全门槛。Node v24.21.0／pnpm 11.27.0下完整`pnpm verify`退出0，用时149.8秒，覆盖213个上下文文本、Spec、类型、Lint、格式、工具／前后端测试和双端构建；本轮不改变业务运行时，数据库E2E不适用。首次格式命令未为`.mdc`指定解析器而退出2，改为显式Markdown解析后通过并继续，未关闭检查。收口回填后重新执行格式、上下文和Git差异检查；未调用独立审查主体，规则改动不自动集成或推送。
+
 ## CUST-RH-001客户权利主体实现候选（2026-09-17）
 
 依据TD-SLICE-CU-RH-01 rev1与用户当日编码授权，范围仅为主体新建、只读查看及客户关联。Task 1/2实现固定至`c4891d1`；Task 3补充真实PostgreSQL／浏览器测试与迁移证据。Q2原因是客户范围、共享主体信息、组合部门约束、事务、审计、幂等与版本控制；修复候选最终独立Q2已`ACCEPTED`并进入内部集成，不包含生产上线许可。

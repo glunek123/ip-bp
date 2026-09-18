@@ -39,7 +39,12 @@ function fixture(t) {
 }
 
 test('missing checkpoint fails instead of inventing a completed state', (t) => {
-  assert.throws(() => checkContext(fixture(t)), /snapshot|快照/i);
+  const root = fixture(t);
+  assert.throws(() => checkContext(root), /snapshot|快照/i);
+  assert.throws(
+    () => recordContext(root, { mode: 'light' }),
+    /existing trusted snapshot/,
+  );
 });
 
 test('dependency patch changes invalidate the checkpoint', (t) => {
@@ -105,6 +110,39 @@ test('status update plus explicit recording acknowledges a reviewed change', (t)
   );
   recordContext(root);
   assert.doesNotThrow(() => checkContext(root));
+});
+
+test('light recording accepts only Demo and frontend style changes', (t) => {
+  const root = fixture(t);
+  mkdirSync(join(root, 'frontend/src/styles'), { recursive: true });
+  writeFileSync(join(root, 'frontend/src/styles/local.css'), '.local {}\n');
+  recordContext(root);
+  writeFileSync(
+    join(root, 'frontend/src/styles/local.css'),
+    '.local { color: red; }\n',
+  );
+
+  recordContext(root, { mode: 'light' });
+
+  assert.doesNotThrow(() => checkContext(root));
+  assert.equal(
+    readFileSync(join(root, 'docs/project-status.md'), 'utf8'),
+    status,
+  );
+});
+
+test('light recording rejects source and governance changes', (t) => {
+  const root = fixture(t);
+  recordContext(root);
+  writeFileSync(
+    join(root, 'backend/src/main.ts'),
+    'export const ready = false;\n',
+  );
+
+  assert.throws(
+    () => recordContext(root, { mode: 'light' }),
+    /backend\/src\/main\.ts/,
+  );
 });
 
 test('new files and deleted files both invalidate the checkpoint', (t) => {
