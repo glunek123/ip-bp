@@ -4,7 +4,7 @@
 
 任务：AUTH-LOCAL-001
 
-状态：已获方案确认，待实施计划
+状态：已实现并完成内部集成；人员管理、重置密码、MFA、OIDC和生产迁移仍在范围外。实际验证见 [`docs/spec/v0.1/VALIDATION.md`](../../spec/v0.1/VALIDATION.md)。
 
 ## 1. 依据与目标
 
