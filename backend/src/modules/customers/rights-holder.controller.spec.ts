@@ -3,6 +3,7 @@ import { INestApplication, NotFoundException } from '@nestjs/common';
 import { Test } from '@nestjs/testing';
 import request from 'supertest';
 import { ActorContextGuard } from '../../access-control/actor-context.guard';
+import { AuthService } from '../../auth/auth.service';
 import {
   IDENTITY_ADAPTER,
   IdentityAdapter,
@@ -38,6 +39,7 @@ describe('RightsHolderController', () => {
       controllers: [RightsHolderController],
       providers: [
         ActorContextGuard,
+        { provide: AuthService, useValue: { resolveSession: jest.fn() } },
         { provide: IDENTITY_ADAPTER, useValue: identity },
         {
           provide: RightsHolderService,

@@ -2,6 +2,8 @@ export interface Environment {
   NODE_ENV: 'development' | 'test' | 'production';
   PORT: number;
   DATABASE_URL: string;
+  AUTH_THROTTLE_SECRET: string;
+  TRUST_PROXY_HOPS: number;
   E2E_IDENTITY_FIXTURES?: string;
 }
 
@@ -35,6 +37,23 @@ export function validateEnvironment(
     throw new Error('DATABASE_URL must be a PostgreSQL connection URL');
   }
   const identityFixtures = input.E2E_IDENTITY_FIXTURES;
+  const rawTrustProxyHops = input.TRUST_PROXY_HOPS ?? '0';
+  if (
+    typeof rawTrustProxyHops !== 'string' ||
+    !/^\d+$/.test(rawTrustProxyHops) ||
+    Number(rawTrustProxyHops) > 10
+  ) {
+    throw new Error('TRUST_PROXY_HOPS must be an integer between 0 and 10');
+  }
+  const throttleSecret = input.AUTH_THROTTLE_SECRET;
+  if (
+    typeof throttleSecret !== 'string' ||
+    !/^[a-f0-9]{64,}$/i.test(throttleSecret)
+  ) {
+    throw new Error(
+      'AUTH_THROTTLE_SECRET must be at least 32 random bytes encoded as hexadecimal',
+    );
+  }
   if (identityFixtures !== undefined && typeof identityFixtures !== 'string') {
     throw new Error('E2E_IDENTITY_FIXTURES must be a JSON string');
   }
@@ -45,6 +64,8 @@ export function validateEnvironment(
     NODE_ENV: mode,
     PORT: port,
     DATABASE_URL: databaseUrl,
+    AUTH_THROTTLE_SECRET: throttleSecret,
+    TRUST_PROXY_HOPS: Number(rawTrustProxyHops),
     ...(identityFixtures === undefined
       ? {}
       : { E2E_IDENTITY_FIXTURES: identityFixtures }),

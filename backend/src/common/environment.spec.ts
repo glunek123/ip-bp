@@ -4,11 +4,16 @@ const valid = {
   NODE_ENV: 'test',
   PORT: '3101',
   DATABASE_URL: 'postgresql://test:test@127.0.0.1:55433/dev_cor_test',
+  AUTH_THROTTLE_SECRET: 'a'.repeat(64),
 };
 
 describe('environment validation', () => {
   it('parses a valid explicit configuration', () => {
-    expect(validateEnvironment(valid)).toEqual({ ...valid, PORT: 3101 });
+    expect(validateEnvironment(valid)).toEqual({
+      ...valid,
+      PORT: 3101,
+      TRUST_PROXY_HOPS: 0,
+    });
   });
   it.each(['0', '65536', '3.5', '3000junk'])(
     'rejects invalid port %s',
@@ -31,6 +36,16 @@ describe('environment validation', () => {
     expect(() =>
       validateEnvironment({ ...valid, NODE_ENV: 'prodution' }),
     ).toThrow('NODE_ENV');
+  });
+  it('requires a high-entropy throttle digest secret', () => {
+    expect(() =>
+      validateEnvironment({ ...valid, AUTH_THROTTLE_SECRET: 'too-short' }),
+    ).toThrow('AUTH_THROTTLE_SECRET');
+  });
+  it.each(['-1', '11', 'one'])('rejects invalid proxy hops %s', (value) => {
+    expect(() =>
+      validateEnvironment({ ...valid, TRUST_PROXY_HOPS: value }),
+    ).toThrow('TRUST_PROXY_HOPS');
   });
   it('rejects synthetic identity fixtures outside the test environment', () => {
     expect(() =>

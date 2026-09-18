@@ -20,11 +20,12 @@ import {
   UpdateCustomerDraftDto,
 } from './customer.dto';
 import { CustomerService } from './customer.service';
+import { CsrfGuard } from '../../auth/csrf.guard';
 
 @ApiTags('customers')
 @ApiBearerAuth()
 @Controller('customers')
-@UseGuards(ActorContextGuard)
+@UseGuards(ActorContextGuard, CsrfGuard)
 export class CustomerController {
   constructor(private readonly customers: CustomerService) {}
 

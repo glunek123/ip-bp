@@ -9,17 +9,28 @@ const rootEnv = resolve(root, '.env');
 if (!existsSync(rootEnv)) {
   writeFileSync(
     rootEnv,
-    `POSTGRES_PASSWORD=${randomBytes(24).toString('hex')}\nPOSTGRES_TEST_PASSWORD=${randomBytes(24).toString('hex')}\n`,
+    `POSTGRES_PASSWORD=${randomBytes(24).toString('hex')}\nPOSTGRES_TEST_PASSWORD=${randomBytes(24).toString('hex')}\nAUTH_THROTTLE_SECRET=${randomBytes(32).toString('hex')}\n`,
     { flag: 'wx', mode: 0o600 },
   );
 }
-const values = parseEnv(readFileSync(rootEnv, 'utf8'));
+let rootEnvText = readFileSync(rootEnv, 'utf8');
+let values = parseEnv(rootEnvText);
+if (values.AUTH_THROTTLE_SECRET === undefined) {
+  rootEnvText = `${rootEnvText.trimEnd()}\nAUTH_THROTTLE_SECRET=${randomBytes(32).toString('hex')}\n`;
+  writeFileSync(rootEnv, rootEnvText, { mode: 0o600 });
+  values = parseEnv(rootEnvText);
+}
 for (const key of ['POSTGRES_PASSWORD', 'POSTGRES_TEST_PASSWORD']) {
   if (!/^[a-f0-9]{48}$/.test(values[key] ?? '')) {
     throw new Error(
       `${key} must be a 48-character random hexadecimal local password. Existing configuration was preserved.`,
     );
   }
+}
+if (!/^[a-f0-9]{64}$/.test(values.AUTH_THROTTLE_SECRET ?? '')) {
+  throw new Error(
+    'AUTH_THROTTLE_SECRET must be 32 random bytes encoded as hexadecimal. Existing configuration was preserved.',
+  );
 }
 const configs = [
   [
@@ -53,10 +64,21 @@ for (const [file, mode, port, database, dbPort, password] of configs) {
         `${file} differs from the local Compose configuration. Existing file was preserved; reconcile it before continuing.`,
       );
     }
+    if (current.AUTH_THROTTLE_SECRET === undefined) {
+      writeFileSync(
+        target,
+        `${readFileSync(target, 'utf8').trimEnd()}\nAUTH_THROTTLE_SECRET=${values.AUTH_THROTTLE_SECRET}\n`,
+        { mode: 0o600 },
+      );
+    } else if (current.AUTH_THROTTLE_SECRET !== values.AUTH_THROTTLE_SECRET) {
+      throw new Error(
+        `${file} uses a different AUTH_THROTTLE_SECRET. Existing file was preserved; reconcile it before continuing.`,
+      );
+    }
   } else {
     writeFileSync(
       target,
-      `NODE_ENV=${mode}\nPORT=${port}\nDATABASE_URL=${url}\n`,
+      `NODE_ENV=${mode}\nPORT=${port}\nDATABASE_URL=${url}\nAUTH_THROTTLE_SECRET=${values.AUTH_THROTTLE_SECRET}\n`,
       { flag: 'wx', mode: 0o600 },
     );
   }

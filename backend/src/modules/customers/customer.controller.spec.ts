@@ -14,6 +14,7 @@ import {
 import { ActorContextGuard } from '../../access-control/actor-context.guard';
 import { CustomerController } from './customer.controller';
 import { CustomerService } from './customer.service';
+import { AuthService } from '../../auth/auth.service';
 
 const actor = {
   userId: '11111111-1111-4111-8111-111111111111',
@@ -40,6 +41,7 @@ describe('CustomerController', () => {
       controllers: [CustomerController],
       providers: [
         ActorContextGuard,
+        { provide: AuthService, useValue: { resolveSession: jest.fn() } },
         { provide: IDENTITY_ADAPTER, useValue: identity },
         {
           provide: CustomerService,

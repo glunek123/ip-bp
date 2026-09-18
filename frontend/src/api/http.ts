@@ -2,18 +2,21 @@ export class ApiError extends Error {
   readonly status: number;
   readonly code: string;
   readonly requestId?: string;
+  readonly details?: Readonly<Record<string, unknown>>;
 
   constructor(
     message: string,
     status: number,
     code: string,
     requestId?: string,
+    details?: Readonly<Record<string, unknown>>,
   ) {
     super(message);
     this.name = 'ApiError';
     this.status = status;
     this.code = code;
     this.requestId = requestId;
+    this.details = details;
   }
 }
 
@@ -33,6 +36,18 @@ export type JsonRequestOptions = RequestOptions &
     | { method?: 'GET'; body?: never }
     | { method: 'POST' | 'PUT' | 'PATCH' | 'DELETE'; body?: JsonValue }
   );
+
+let csrfToken: string | null = null;
+const unauthorizedListeners = new Set<() => void>();
+
+export function setCsrfToken(value: string | null): void {
+  csrfToken = value;
+}
+
+export function onUnauthorized(listener: () => void): () => void {
+  unauthorizedListeners.add(listener);
+  return () => unauthorizedListeners.delete(listener);
+}
 
 export function getJson(
   path: string,
@@ -57,12 +72,18 @@ export async function requestJson(
       options.body === undefined ? undefined : JSON.stringify(options.body);
     const response = await fetch(`/api/v1${path}`, {
       method: options.method ?? 'GET',
+      credentials: 'same-origin',
       signal,
       headers: {
         Accept: 'application/json',
         ...(bodyText === undefined
           ? {}
           : { 'Content-Type': 'application/json' }),
+        ...(options.method !== undefined &&
+        options.method !== 'GET' &&
+        csrfToken
+          ? { 'X-CSRF-Token': csrfToken }
+          : {}),
         ...options.headers,
       },
       body: bodyText,
@@ -82,14 +103,25 @@ export async function requestJson(
     }
     if (!response.ok) {
       const error = isRecord(body) ? body : {};
-      throw new ApiError(
+      const apiError = new ApiError(
         typeof error.message === 'string'
           ? error.message
           : '服务暂时不可用，请稍后重试',
         response.status,
         typeof error.code === 'string' ? error.code : 'HTTP_ERROR',
         typeof error.requestId === 'string' ? error.requestId : undefined,
+        isRecord(error.details) ? error.details : error,
       );
+      if (
+        apiError.status === 401 &&
+        apiError.code === 'UNAUTHORIZED' &&
+        path !== '/auth/session' &&
+        path !== '/auth/logout'
+      ) {
+        setCsrfToken(null);
+        for (const listener of unauthorizedListeners) listener();
+      }
+      throw apiError;
     }
     return body;
   } catch (error) {

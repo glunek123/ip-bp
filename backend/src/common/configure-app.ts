@@ -10,6 +10,10 @@ import { HttpExceptionFilter, RequestContext } from './http-exception.filter';
 import { requestDiagnostics } from './request-diagnostics';
 
 export function configureApp(app: INestApplication): void {
+  const trustProxyHops = Number(process.env.TRUST_PROXY_HOPS ?? '0');
+  if (Number.isInteger(trustProxyHops) && trustProxyHops > 0) {
+    app.getHttpAdapter().getInstance().set('trust proxy', trustProxyHops);
+  }
   app.setGlobalPrefix('api/v1');
   const logger = new Logger('HTTP');
   app.use((request: RequestContext, response: Response, next: NextFunction) => {

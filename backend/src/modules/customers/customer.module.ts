@@ -5,9 +5,10 @@ import { CustomerController } from './customer.controller';
 import { CustomerService } from './customer.service';
 import { RightsHolderController } from './rights-holder.controller';
 import { RightsHolderService } from './rights-holder.service';
+import { AuthModule } from '../../auth/auth.module';
 
 @Module({
-  imports: [AccessControlModule, DatabaseModule],
+  imports: [AccessControlModule, AuthModule, DatabaseModule],
   controllers: [CustomerController, RightsHolderController],
   providers: [CustomerService, RightsHolderService],
   exports: [CustomerService, RightsHolderService],

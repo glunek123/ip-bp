@@ -9,9 +9,10 @@ import { PrismaAccessControlStore } from './prisma-access-control.store';
 import { ActorContextGuard } from './actor-context.guard';
 import { IDENTITY_ADAPTER } from './identity.adapter';
 import { createIdentityAdapterFromEnvironment } from './identity-adapter.factory';
+import { AuthModule } from '../auth/auth.module';
 
 @Module({
-  imports: [DatabaseModule],
+  imports: [DatabaseModule, AuthModule],
   providers: [
     AccessControlService,
     ActorContextGuard,

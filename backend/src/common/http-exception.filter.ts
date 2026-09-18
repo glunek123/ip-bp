@@ -33,6 +33,39 @@ function safeCode(value: unknown): string | undefined {
     : undefined;
 }
 
+function safeDetails(value: unknown): unknown {
+  if (
+    Array.isArray(value) &&
+    value.every((item: unknown) => typeof item === 'string')
+  )
+    return value;
+  const record = asRecord(value);
+  const departments = record.departments;
+  if (
+    Array.isArray(departments) &&
+    departments.every((item) => {
+      const department = asRecord(item);
+      return (
+        typeof department.id === 'string' && typeof department.name === 'string'
+      );
+    })
+  ) {
+    return {
+      departments: departments.map((item) => {
+        const department = asRecord(item);
+        return { id: department.id, name: department.name };
+      }),
+    };
+  }
+  if (
+    typeof record.retryAfterSeconds === 'number' &&
+    Number.isInteger(record.retryAfterSeconds) &&
+    record.retryAfterSeconds > 0
+  )
+    return { retryAfterSeconds: record.retryAfterSeconds };
+  return undefined;
+}
+
 function diagnosticFields(exception: unknown) {
   const cause =
     exception instanceof Error && exception.cause ? exception.cause : exception;
@@ -84,11 +117,7 @@ export class HttpExceptionFilter implements ExceptionFilter {
         : typeof payload.message === 'string'
           ? payload.message
           : '请求未能完成';
-    const details =
-      Array.isArray(payload.details) &&
-      payload.details.every((item: unknown) => typeof item === 'string')
-        ? payload.details
-        : undefined;
+    const details = safeDetails(payload.details);
     if (status >= 500) {
       this.logger.error({
         event: 'request_failed',

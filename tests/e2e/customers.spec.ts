@@ -47,6 +47,28 @@ const authorizationSelf = {
   Authorization: `Bearer ${e2eFixtures.tokenSelf}`,
 };
 
+async function configureBearerBrowser(page: import('@playwright/test').Page) {
+  await page.context().setExtraHTTPHeaders(authorizationA);
+  await page.route('**/api/v1/auth/session', (route) =>
+    route.fulfill({
+      status: 200,
+      contentType: 'application/json',
+      body: JSON.stringify({
+        user: {
+          id: e2eFixtures.userA,
+          displayName: '测试用户甲',
+          username: 'e2e-user-a',
+        },
+        department: { id: e2eFixtures.departmentA, name: 'E2E 知产部' },
+        departments: [{ id: e2eFixtures.departmentA, name: 'E2E 知产部' }],
+        authorizationRevision: 1,
+        expiresAt: '2099-01-01T00:00:00.000Z',
+        csrfToken: '',
+      }),
+    }),
+  );
+}
+
 async function createRightsCustomer(
   request: APIRequestContext,
   name: string,
@@ -105,7 +127,7 @@ test.afterAll(async () => {
 test('rights holder browser reuses the same stable identity from two customers', async ({
   page,
 }) => {
-  await page.context().setExtraHTTPHeaders(authorizationA);
+  await configureBearerBrowser(page);
   for (const name of ['主体客户 A', '主体客户 B']) {
     await page.goto('/customers/new');
     await page.getByLabel('客户名称').fill(name);
@@ -611,7 +633,7 @@ test('rights holder each audit failure rolls back holder link receipt and versio
 test('operations user creates a persisted draft and sees its audit history', async ({
   page,
 }) => {
-  await page.context().setExtraHTTPHeaders(authorizationA);
+  await configureBearerBrowser(page);
   await page.goto('/customers');
   await expect(
     page.getByRole('heading', { name: '客户', exact: true }),

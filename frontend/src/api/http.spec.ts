@@ -50,6 +50,7 @@ describe('HTTP boundary', () => {
         '/api/v1/example',
         expect.objectContaining({
           method,
+          credentials: 'same-origin',
           body: '{"value":null}',
           headers: {
             Accept: 'application/json',
@@ -79,6 +80,67 @@ describe('HTTP boundary', () => {
         }),
       }),
     );
+  });
+  it('adds the current CSRF token to cookie-authenticated writes', async () => {
+    const { setCsrfToken } = await import('./http');
+    const fetch = vi
+      .fn()
+      .mockResolvedValue(new Response(null, { status: 204 }));
+    vi.stubGlobal('fetch', fetch);
+    setCsrfToken('csrf-token');
+    await requestJson('/customers', { method: 'POST', body: { name: '甲' } });
+    expect(fetch).toHaveBeenCalledWith(
+      '/api/v1/customers',
+      expect.objectContaining({
+        headers: expect.objectContaining({ 'X-CSRF-Token': 'csrf-token' }),
+      }),
+    );
+    setCsrfToken(null);
+  });
+
+  it('notifies the auth boundary on 401 without calling it a network error', async () => {
+    const { onUnauthorized } = await import('./http');
+    const listener = vi.fn();
+    const dispose = onUnauthorized(listener);
+    vi.stubGlobal(
+      'fetch',
+      vi.fn().mockResolvedValue(
+        new Response(
+          JSON.stringify({ code: 'UNAUTHORIZED', message: '请登录' }),
+          {
+            status: 401,
+          },
+        ),
+      ),
+    );
+    await expect(getJson('/customers')).rejects.toMatchObject({
+      status: 401,
+      code: 'UNAUTHORIZED',
+    });
+    expect(listener).toHaveBeenCalledTimes(1);
+    dispose();
+  });
+  it('leaves logout failure handling to the caller', async () => {
+    const { onUnauthorized } = await import('./http');
+    const listener = vi.fn();
+    const dispose = onUnauthorized(listener);
+    vi.stubGlobal(
+      'fetch',
+      vi
+        .fn()
+        .mockResolvedValue(
+          new Response(
+            JSON.stringify({ code: 'UNAUTHORIZED', message: '退出失败' }),
+            { status: 401 },
+          ),
+        ),
+    );
+
+    await expect(
+      requestJson('/auth/logout', { method: 'POST' }),
+    ).rejects.toMatchObject({ status: 401, code: 'UNAUTHORIZED' });
+    expect(listener).not.toHaveBeenCalled();
+    dispose();
   });
   it('accepts 204 without trying to parse JSON', async () => {
     const fetch = vi

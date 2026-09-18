@@ -15,6 +15,22 @@ export const e2eFixtures: Readonly<{
 }>;
 
 export function resetCustomerE2eData(): Promise<void>;
+export function resetLocalAuthE2eData(): Promise<{
+  username: string;
+  password: string;
+}>;
+export function verifyLocalAuthMigration(): Promise<{
+  previousMigrations: number;
+  displayName: string | null;
+  externalSubject: string | null;
+  authTables: string[];
+  invalidUsernameConstraint: string | null;
+  failedMigrationCode: string | null;
+  failedColumns: number;
+  failedTables: number;
+  whitespaceMigrationCode: string | null;
+  whitespaceRollbackPreserved: boolean;
+}>;
 export function findCustomerId(
   departmentId: string,
   name: string,

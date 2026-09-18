@@ -26,6 +26,62 @@ button {
 ::selection {
   background: var(--el-color-primary-light-8);
 }
+.session-bar {
+  position: fixed;
+  z-index: 20;
+  right: max(20px, calc((100vw - 1120px) / 2));
+  bottom: 20px;
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  padding: 8px 10px 8px 14px;
+  border: 1px solid var(--color-hairline);
+  border-radius: 999px;
+  background: color-mix(in srgb, var(--color-surface-1) 94%, transparent);
+  box-shadow: 0 12px 38px rgba(15, 16, 17, 0.1);
+  color: var(--color-ink-muted);
+  font-size: 12px;
+}
+.session-error {
+  margin: 0;
+  color: var(--color-danger);
+}
+.login-shell {
+  min-height: 100vh;
+  display: grid;
+  place-items: center;
+  padding: 32px 20px;
+  background:
+    radial-gradient(circle at 20% 10%, #f6efe2 0, transparent 35%),
+    linear-gradient(135deg, #f8f8f6, #efeff1);
+}
+.login-card {
+  width: min(430px, 100%);
+  padding: 42px;
+  border: 1px solid var(--color-hairline);
+  border-radius: 14px;
+  background: var(--color-surface-1);
+  box-shadow: 0 24px 70px rgba(15, 16, 17, 0.09);
+}
+.login-brand {
+  margin-bottom: 28px;
+}
+.login-card h1 {
+  margin: 7px 0 8px;
+  font:
+    600 34px Georgia,
+    'Songti SC',
+    serif;
+  letter-spacing: -0.04em;
+}
+.login-intro {
+  margin: 0 0 30px;
+  color: var(--color-ink-muted);
+}
+.login-submit {
+  width: 100%;
+  margin-top: 28px;
+}
 
 .workspace-shell {
   min-height: 100vh;

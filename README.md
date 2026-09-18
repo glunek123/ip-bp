@@ -28,27 +28,33 @@ pnpm --version
 pnpm install --frozen-lockfile
 pnpm setup:local
 pnpm db:up
+pnpm db:migrate:deploy
+pnpm auth:bootstrap-local --department "知产部" --username admin --display-name "系统管理员" --expected-db-host 127.0.0.1 --expected-db-port 55432 --expected-db-name dev_cor
 pnpm dev
 ```
 
-打开 [连接检查页](http://127.0.0.1:5173)。本地后端为 `http://127.0.0.1:3000`；健康接口为 `/api/v1/health`，OpenAPI 为 `/api/docs`（JSON 为 `/api/docs-json`）。前端开发代理转发 `/api`。
+初始化命令会在终端中安全读取密码，不接受密码参数，也不会显示密码。命令要求操作者显式填写预期数据库的 host、port 和 database；程序会将三项逐一与实际 `DATABASE_URL` 比对，并且只允许 `development`／`test` 模式下的本机 PostgreSQL。任一项不符都会在读取密码或写库前终止。它只允许在没有任何本地账号或部分初始化痕迹时运行一次；后续人员账号管理属于下一切片。完成后打开[登录页](http://127.0.0.1:5173/login)。本地后端为 `http://127.0.0.1:3000`；健康接口为 `/api/v1/health`，OpenAPI 为 `/api/docs`（JSON 为 `/api/docs-json`）。前端开发代理转发 `/api`。
+
+若页面显示“无法连接服务”，先确认 Docker Desktop 已启动，再依次运行 `pnpm db:up`、`pnpm db:migrate:deploy` 和 `pnpm dev`。未登录访问客户页面会转到登录页，不再把 HTTP 401 显示为连接失败；只有浏览器确实连不到后端时才显示连接错误。
 
 `setup:local` 生成随机本地密码，写入根 `.env`、`backend/.env` 与 `backend/.env.test`，文件均被 Git 忽略。重复运行保留已有配置；发现不一致会报错，不会覆盖。示例文件仅包含占位值。数据库端口为 55432，专用测试库为 55433，均仅绑定 `127.0.0.1`。凭据只用于本地工程，生产配置另行确认。
 
 ## 开发与检查
 
-| 命令                | 用途                                                             |
-| ------------------- | ---------------------------------------------------------------- |
-| `pnpm dev`          | 并行启动 Vite 与 Nest 源码编译监听                               |
-| `pnpm build`        | 生成 Prisma Client、检查前端类型并构建两端                       |
-| `pnpm typecheck`    | 前后端严格 TypeScript 检查                                       |
-| `pnpm lint`         | ESLint 检查，警告也阻断                                          |
-| `pnpm format:check` | Prettier 格式检查                                                |
-| `pnpm format`       | 修正正式工程和文档格式，跳过 Demo                                |
-| `pnpm test`         | Vitest 文档同步检查器与前端行为测试、Jest/Supertest 后端契约测试 |
-| `pnpm verify`       | context、Spec、类型、Lint、格式、单元／契约测试及前后端构建      |
-| `pnpm test:e2e`     | 独立启动当前候选应用并对专用PostgreSQL执行Playwright；verify不含 |
-| `pnpm db:stop`      | 停止开发数据库，保留数据卷                                       |
+| 命令                        | 用途                                                             |
+| --------------------------- | ---------------------------------------------------------------- |
+| `pnpm dev`                  | 并行启动 Vite 与 Nest 源码编译监听                               |
+| `pnpm db:migrate:deploy`    | 将仓库内已有迁移安全应用到本地开发库                             |
+| `pnpm auth:bootstrap-local` | 一次性创建首位本地管理员（还需显式确认数据库 host/port/name）    |
+| `pnpm build`                | 生成 Prisma Client、检查前端类型并构建两端                       |
+| `pnpm typecheck`            | 前后端严格 TypeScript 检查                                       |
+| `pnpm lint`                 | ESLint 检查，警告也阻断                                          |
+| `pnpm format:check`         | Prettier 格式检查                                                |
+| `pnpm format`               | 修正正式工程和文档格式，跳过 Demo                                |
+| `pnpm test`                 | Vitest 文档同步检查器与前端行为测试、Jest/Supertest 后端契约测试 |
+| `pnpm verify`               | context、Spec、类型、Lint、格式、单元／契约测试及前后端构建      |
+| `pnpm test:e2e`             | 独立启动当前候选应用并对专用PostgreSQL执行Playwright；verify不含 |
+| `pnpm db:stop`              | 停止开发数据库，保留数据卷                                       |
 
 后端启动需要显式配置 `NODE_ENV`、`PORT`、`DATABASE_URL`；默认只监听本机。健康接口执行 Prisma `SELECT 1`，数据库不可达返回 503 和统一错误结构；成功仅表示本次检查通过。每个请求生成内部请求编号，并返回 `X-Request-Id`。
 
@@ -71,7 +77,7 @@ pnpm --filter @dev-cor/backend db:validate
 pnpm --filter @dev-cor/backend db:migrate --name approved-change
 ```
 
-当前 schema 仅定义 PostgreSQL 与 CJS Client 生成器，无业务模型或迁移。最后一条命令仅在确认业务模型、修改 schema 后执行。生成代码位于 `backend/src/generated/prisma`，由工具管理并忽略入库。不得手改生成文件，也不以 `db push` 代替迁移链。
+普通本地启动使用根命令 `pnpm db:migrate:deploy` 应用仓库内已批准的迁移。只有开发新的已批准 schema 变更时才使用最后一条 `db:migrate --name` 命令生成迁移。生成代码位于 `backend/src/generated/prisma`，由工具管理并忽略入库。不得手改生成文件，也不以 `db push` 代替迁移链。
 
 ## 依据与阶段结果
 
@@ -80,4 +86,4 @@ pnpm --filter @dev-cor/backend db:migrate --name approved-change
 - [环境及版本报告](docs/environment.md)
 - [第三步实施计划](docs/superpowers/plans/2026-09-15-engineering-foundation.md)
 
-登录、权限、业务字段、附件存储、AI 和业财对接、生产部署仍按基线中的待确认事项推进。
+本地正式账号登录第一切片已实现；人员账号管理、密码重置、MFA、外部 OIDC、附件存储、AI、业财对接和生产部署仍按基线中的待确认事项推进。

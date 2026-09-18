@@ -13,6 +13,7 @@ import {
 import { ApiBearerAuth, ApiHeader, ApiTags } from '@nestjs/swagger';
 import { CurrentActor } from '../../access-control/actor-context.decorator';
 import { ActorContextGuard } from '../../access-control/actor-context.guard';
+import { CsrfGuard } from '../../auth/csrf.guard';
 import { ActorContext } from '../../access-control/actor-context';
 import {
   CreateAndLinkRightsHolderDto,
@@ -25,7 +26,7 @@ import { RightsHolderService } from './rights-holder.service';
 @ApiTags('customer-rights-holders')
 @ApiBearerAuth()
 @Controller('customers/:customerId')
-@UseGuards(ActorContextGuard)
+@UseGuards(ActorContextGuard, CsrfGuard)
 export class RightsHolderController {
   constructor(private readonly rightsHolders: RightsHolderService) {}
 

@@ -13,6 +13,7 @@ const { Client } = requireFromBackend('pg');
 const { PrismaClient } = requireFromBackend(
   './dist/generated/prisma/client.js',
 );
+const { hashPassword } = requireFromBackend('./dist/auth/password.js');
 
 const e2eFixtures = {
   departmentA: '10000000-0000-4000-8000-000000000001',
@@ -54,6 +55,211 @@ if (
 const database = new PrismaClient({
   adapter: new PrismaPg({ connectionString: databaseUrl, max: 2 }),
 });
+
+async function resetLocalAuthE2eData() {
+  const departmentId = '10000000-0000-4000-8000-000000000010';
+  const userId = '20000000-0000-4000-8000-000000000010';
+  const roleId = '30000000-0000-4000-8000-000000000010';
+  const password = 'Browser-test-passphrase-2026';
+  const passwordHash = await hashPassword(password);
+  await database.$transaction(async (transaction) => {
+    await transaction.authSession.deleteMany({});
+    await transaction.authThrottle.deleteMany({});
+    await transaction.localCredential.deleteMany({});
+    await transaction.auditEvent.deleteMany({ where: { departmentId } });
+    await transaction.customer.deleteMany({ where: { departmentId } });
+    await transaction.roleAssignment.deleteMany({ where: { userId } });
+    await transaction.roleGrant.deleteMany({
+      where: { roleTemplateId: roleId },
+    });
+    await transaction.roleTemplate.deleteMany({ where: { id: roleId } });
+    await transaction.departmentMembership.deleteMany({ where: { userId } });
+    await transaction.userAccount.deleteMany({ where: { id: userId } });
+    await transaction.department.deleteMany({ where: { id: departmentId } });
+    await transaction.department.create({
+      data: { id: departmentId, name: 'E2E 认证部' },
+    });
+    await transaction.userAccount.create({
+      data: {
+        id: userId,
+        externalSubject: 'local:e2e-auth-user',
+        displayName: 'E2E 本地管理员',
+      },
+    });
+    await transaction.localCredential.create({
+      data: { userId, username: 'e2e.local.admin', passwordHash },
+    });
+    await transaction.departmentMembership.create({
+      data: { userId, departmentId },
+    });
+    await transaction.roleTemplate.create({
+      data: { id: roleId, departmentId, name: 'E2E 本地管理员模板' },
+    });
+    await transaction.roleGrant.createMany({
+      data: [
+        'CUSTOMER_READ',
+        'CUSTOMER_CREATE_DRAFT',
+        'CUSTOMER_EDIT_ROUTINE',
+      ].map((action) => ({
+        roleTemplateId: roleId,
+        action,
+        scope: 'DEPARTMENT',
+      })),
+    });
+    await transaction.roleAssignment.create({
+      data: { userId, departmentId, roleTemplateId: roleId },
+    });
+  });
+  return { username: 'e2e.local.admin', password };
+}
+
+async function verifyLocalAuthMigration() {
+  const client = new Client({ connectionString: databaseUrl });
+  const migrationRoot = resolve(process.cwd(), 'backend/prisma/migrations');
+  const previous = '20260917080000_enforce_rights_holder_name_whitespace';
+  const target = '20260917150000_add_local_authentication';
+  const whitespaceTarget =
+    '20260918010000_enforce_user_display_name_whitespace';
+  const migrations = (await readdir(migrationRoot))
+    .filter((name) => /^\d{14}_/.test(name))
+    .sort();
+  const previousMigrations = migrations.filter((name) => name <= previous);
+  const migrationSql = await readFile(
+    resolve(migrationRoot, target, 'migration.sql'),
+    'utf8',
+  );
+  const whitespaceMigrationSql = await readFile(
+    resolve(migrationRoot, whitespaceTarget, 'migration.sql'),
+    'utf8',
+  );
+  const schema = `auth_probe_${randomUUID().replaceAll('-', '')}`;
+  const failedSchema = `${schema}_failed`;
+  const whitespaceFailedSchema = `${schema}_whitespace_failed`;
+  await client.connect();
+  try {
+    const actual = await client.query('SELECT current_database() AS database');
+    if (actual.rows[0].database !== 'dev_cor_test')
+      throw new Error('Unexpected migration database');
+    for (const namespace of [schema, failedSchema, whitespaceFailedSchema]) {
+      await client.query(`CREATE SCHEMA "${namespace}"`);
+      await client.query(`SET search_path TO "${namespace}"`);
+      for (const migration of previousMigrations) {
+        await client.query(
+          await readFile(
+            resolve(migrationRoot, migration, 'migration.sql'),
+            'utf8',
+          ),
+        );
+      }
+    }
+
+    const userId = randomUUID();
+    await client.query(`SET search_path TO "${schema}"`);
+    await client.query(
+      "INSERT INTO user_accounts(id,external_subject,updated_at) VALUES ($1,'legacy-user',NOW())",
+      [userId],
+    );
+    await client.query(migrationSql);
+    await client.query(whitespaceMigrationSql);
+    const upgraded = (
+      await client.query(
+        'SELECT external_subject,display_name FROM user_accounts WHERE id=$1',
+        [userId],
+      )
+    ).rows[0];
+    const authTables = (
+      await client.query(
+        "SELECT table_name FROM information_schema.tables WHERE table_schema=$1 AND table_name IN ('local_credentials','auth_sessions','auth_throttles') ORDER BY table_name",
+        [schema],
+      )
+    ).rows.map((row) => row.table_name);
+    let invalidUsernameConstraint = null;
+    await client.query('BEGIN');
+    try {
+      await client.query(
+        "INSERT INTO local_credentials(id,user_id,username,password_hash,updated_at) VALUES ($1,$2,'Invalid User','hash',NOW())",
+        [randomUUID(), userId],
+      );
+    } catch (error) {
+      invalidUsernameConstraint = error.constraint ?? error.code ?? null;
+    } finally {
+      await client.query('ROLLBACK');
+    }
+
+    await client.query(`SET search_path TO "${failedSchema}"`);
+    await client.query(
+      "INSERT INTO user_accounts(id,external_subject,updated_at) VALUES ($1,'   ',NOW())",
+      [randomUUID()],
+    );
+    let failedMigrationCode = null;
+    try {
+      await client.query(migrationSql);
+    } catch (error) {
+      failedMigrationCode = error.code ?? null;
+      await client.query('ROLLBACK');
+    }
+    const failedColumns = Number(
+      (
+        await client.query(
+          "SELECT count(*) FROM information_schema.columns WHERE table_schema=$1 AND table_name='user_accounts' AND column_name='display_name'",
+          [failedSchema],
+        )
+      ).rows[0].count,
+    );
+    const failedTables = Number(
+      (
+        await client.query(
+          "SELECT count(*) FROM information_schema.tables WHERE table_schema=$1 AND table_name IN ('local_credentials','auth_sessions','auth_throttles')",
+          [failedSchema],
+        )
+      ).rows[0].count,
+    );
+    await client.query(`SET search_path TO "${whitespaceFailedSchema}"`);
+    const whitespaceUserId = randomUUID();
+    await client.query(
+      "INSERT INTO user_accounts(id,external_subject,updated_at) VALUES ($1,'legacy-whitespace',NOW())",
+      [whitespaceUserId],
+    );
+    await client.query(migrationSql);
+    await client.query('UPDATE user_accounts SET display_name=$2 WHERE id=$1', [
+      whitespaceUserId,
+      '\u00a0',
+    ]);
+    let whitespaceMigrationCode = null;
+    try {
+      await client.query(whitespaceMigrationSql);
+    } catch (error) {
+      whitespaceMigrationCode = error.code ?? null;
+      await client.query('ROLLBACK');
+    }
+    const whitespaceValue = (
+      await client.query('SELECT display_name FROM user_accounts WHERE id=$1', [
+        whitespaceUserId,
+      ])
+    ).rows[0]?.display_name;
+    return {
+      previousMigrations: previousMigrations.length,
+      displayName: upgraded?.display_name ?? null,
+      externalSubject: upgraded?.external_subject ?? null,
+      authTables,
+      invalidUsernameConstraint,
+      failedMigrationCode,
+      failedColumns,
+      failedTables,
+      whitespaceMigrationCode,
+      whitespaceRollbackPreserved: whitespaceValue === '\u00a0',
+    };
+  } finally {
+    await client.query('ROLLBACK');
+    await client.query('RESET search_path');
+    await client.query(`DROP SCHEMA IF EXISTS "${schema}" CASCADE`);
+    await client.query(`DROP SCHEMA IF EXISTS "${failedSchema}" CASCADE`);
+    await client.query(
+      `DROP SCHEMA IF EXISTS "${whitespaceFailedSchema}" CASCADE`,
+    );
+    await client.end();
+  }
+}
 
 async function resetCustomerE2eData() {
   const departmentIds = [e2eFixtures.departmentA, e2eFixtures.departmentB];
@@ -107,9 +313,21 @@ async function resetCustomerE2eData() {
   });
   await database.userAccount.createMany({
     data: [
-      { id: e2eFixtures.userA, externalSubject: 'e2e-user-a' },
-      { id: e2eFixtures.userB, externalSubject: 'e2e-user-b' },
-      { id: e2eFixtures.userSelf, externalSubject: 'e2e-user-self' },
+      {
+        id: e2eFixtures.userA,
+        externalSubject: 'e2e-user-a',
+        displayName: '测试用户甲',
+      },
+      {
+        id: e2eFixtures.userB,
+        externalSubject: 'e2e-user-b',
+        displayName: '测试用户乙',
+      },
+      {
+        id: e2eFixtures.userSelf,
+        externalSubject: 'e2e-user-self',
+        displayName: '测试用户本人',
+      },
     ],
   });
   await database.departmentMembership.createMany({
@@ -782,6 +1000,8 @@ async function verifyRightsHolderNames(names) {
 }
 
 export {
+  resetLocalAuthE2eData,
+  verifyLocalAuthMigration,
   verifyRightsHolderNames,
   allowRightsHolderAuditWrites,
   getRightsHolderCounts,
