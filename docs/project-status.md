@@ -10,6 +10,10 @@
 
 AUTH-LOCAL-001第一切片已在隔离分支实现：一次性初始化首位管理员、系统自有用户名／密码登录、不透明数据库会话、退出、稳定CSRF、事务级原子登录限速、前端登录页及匿名路由重定向均已完成；`NODE_ENV=test`的Bearer测试身份仅为既有自动化保留。5.6 Sol独立Q2首轮为`REJECTED`（Critical 0／Important 11／Minor 2）；密码成本、Unicode空白、故障恢复、多部门、并发限速、代理信任、初始化、语义日志、退出和跨标签页CSRF问题均已修复。工具19项、后端142项、前端120项、认证E2E 4/4、完整E2E 42/42及完整`pnpm verify`通过，当前等待同一主体复审。状态仍为`IMPLEMENTED_UNVERIFIED_Q2`，不提前集成。人员与权限管理页面、开放注册、重置密码、MFA、OIDC、生产迁移、发布和真实人员数据仍不在范围。
 
+GOV-AI-FLOW-002已完成并通过独立Review：用户于2026-09-17要求审计并精简AI Coding流程，现已以“风险分级＋按需上下文＋自动化门禁”替换旧默认重流程，只修改开发流程、Agent规则、上下文工具和检查入口，不改业务功能。唯一集成规则采用Level 1轻量／Level 2默认／Level 3严格；普通任务不再默认完整`verify`／E2E／独立审查、全量文档、状态双写、设计／计划确认或多Agent。首轮独立Review为`REJECTED`（Critical 0／Important 3／Minor 1），修复Review判据、身份认证数据库E2E触发、轻量快照路径约束和ESLint内容缓存后，复审又发现缺失旧快照时轻量模式可从零登记工作区；最终修复要求必须存在可信旧快照并增加负向测试。工具21/21、`check:fast`和完整`pnpm verify`通过；同一`gpt-5.6-sol`独立终审`ACCEPTED`，Critical／Important／Minor均为0。仓库无可靠依赖图，因此未新增会误报覆盖的`test:affected`；本轮不修改业务功能、schema、迁移、依赖版本或生产环境。
+
+GOV-WORKTREE-CLEANUP-001已完成本地清理：用户于2026-09-17要求合并完成后清理任务worktree。4个残留任务分支均无`main`之外提交；2个干净worktree直接删除，2个脏worktree先分别保全为stash提交`6e240704`和`8e2edd1f`，再删除worktree及4个已合并本地任务分支。`git worktree prune`后只剩当前`main`工作区；恢复保全现场可在合适分支执行`git stash apply <提交>`。自动集成规则现要求远端核实后立即删除干净任务worktree／已合并本地分支并prune复核，脏worktree必须先判断、保全，不得强删。Node v24.21.0／pnpm 11.27.0下完整`pnpm verify`退出0，用时149.8秒；范围不含远端分支、业务代码、schema、迁移、依赖、测试服务或生产环境，数据库E2E不适用。独立审查尚未执行，因此规则改动不自动提交／推送。
+
 CUST-RH-001已完成内部验证与集成门禁：修复候选`f63310a`保持070000迁移不变，以第9份前向迁移关闭数据库纯ECMAScript空白名称绕过；详情页参数切换／旧响应和投影E2E竞态均已修复。详情页8/8、主体专项11/11、完整verify（工具19、后端98、前端100）及数据库E2E 38/38通过，空库9份迁移和逐步升级／失败回滚通过；同一独立Q2主体复审结论`ACCEPTED`，Critical／Important／Minor均为0，按规则进入自动内部集成。最终状态`IMPLEMENTED_VERIFIED_INTERNAL_INTEGRATION`；不包含E01真实身份、生产迁移、发布、真实数据或范围外能力。
 
 CUST-RH-001C候选证据已齐：Task 1/2前后端固定至`c4891d1`，主体PostgreSQL／浏览器专项10/10通过；独立测试库从实测空库应用8份迁移，上一支持schema的旧客户保留、组合部门约束和失败原子回滚均通过。固定执行树`3a93717`的完整verify及数据库E2E 37/37通过；状态保持待独立Q2审查／未上线。临时协作记录迁入既有排除目录`.local/sdd`，不进入候选或上下文快照；不修改检查器排除规则。证据唯一记录于[验证记录](spec/v0.1/VALIDATION.md)。

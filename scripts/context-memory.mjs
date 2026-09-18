@@ -179,6 +179,20 @@ function differences(previous, current) {
     });
 }
 
+const lightRecordPrefixes = ['demo/', 'frontend/src/styles/'];
+
+function assertLightRecordChanges(changes) {
+  const blocked = changes.filter((change) => {
+    const path = change.slice(change.indexOf(' ') + 1);
+    return !lightRecordPrefixes.some((prefix) => path.startsWith(prefix));
+  });
+  if (blocked.length) {
+    throw new Error(
+      `Light context recording is limited to Demo and frontend style assets. Use the standard status-backed checkpoint for:\n${blocked.join('\n')}`,
+    );
+  }
+}
+
 export function checkContext(root) {
   const files = inspectFiles(root);
   const snapshot = loadSnapshot(root);
@@ -194,12 +208,20 @@ export function checkContext(root) {
   return { count: Object.keys(files).length, recordedAt: snapshot.recordedAt };
 }
 
-export function recordContext(root) {
+export function recordContext(root, { mode = 'standard' } = {}) {
   const files = inspectFiles(root);
   const previous = loadSnapshot(root);
+  if (mode === 'light' && !previous) {
+    throw new Error(
+      'Light context recording requires an existing trusted snapshot; use the standard status-backed checkpoint',
+    );
+  }
+  const changes = previous ? differences(previous.files, files) : [];
+  if (mode === 'light') assertLightRecordChanges(changes);
   if (
+    mode === 'standard' &&
     previous &&
-    differences(previous.files, files).length &&
+    changes.length &&
     previous.files[statusPath] === files[statusPath]
   ) {
     throw new Error(
@@ -224,10 +246,16 @@ if (
   try {
     const root = fileURLToPath(new URL('../', import.meta.url));
     const command = process.argv[2];
-    if (!['check', 'record'].includes(command))
-      throw new Error('Usage: node scripts/context-memory.mjs check|record');
+    if (!['check', 'record', 'record-light'].includes(command))
+      throw new Error(
+        'Usage: node scripts/context-memory.mjs check|record|record-light',
+      );
     const result =
-      command === 'check' ? checkContext(root) : recordContext(root);
+      command === 'check'
+        ? checkContext(root)
+        : recordContext(root, {
+            mode: command === 'record-light' ? 'light' : 'standard',
+          });
     console.log(
       `Context ${command}: ${result.count} tracked text files; checkpoint ${result.recordedAt}. File consistency only; not a test or semantic approval.`,
     );
