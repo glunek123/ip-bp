@@ -8,7 +8,7 @@
 
 ## 当前任务
 
-AUTH-LOCAL-001第一切片已在隔离分支实现：一次性初始化首位管理员、系统自有用户名／密码登录、不透明数据库会话、退出、稳定CSRF、事务级原子登录限速、前端登录页及匿名路由重定向均已完成；`NODE_ENV=test`的Bearer测试身份仅为既有自动化保留。5.6 Sol独立Q2首轮为`REJECTED`（Critical 0／Important 11／Minor 2）；密码成本、Unicode空白、故障恢复、多部门、并发限速、代理信任、初始化、语义日志、退出和跨标签页CSRF问题均已修复。工具19项、后端142项、前端120项、认证E2E 4/4、完整E2E 42/42及完整`pnpm verify`通过，当前等待同一主体复审。状态仍为`IMPLEMENTED_UNVERIFIED_Q2`，不提前集成。人员与权限管理页面、开放注册、重置密码、MFA、OIDC、生产迁移、发布和真实人员数据仍不在范围。
+AUTH-LOCAL-001第一切片已纳入主分支治理提交并完成独立复审修复：实现一次性首位管理员初始化、系统自有用户名／密码登录、不透明数据库会话、退出、稳定CSRF、事务级原子登录限速、前端登录页及匿名路由重定向；`NODE_ENV=test`的Bearer测试身份仅为既有自动化保留。首轮独立Q2为`REJECTED`（Critical 0／Important 11／Minor 2），修复后把`main`的治理提交`8e02126`纳入隔离分支形成合并候选；合并后`pnpm check:fast`、完整`pnpm verify`（后端142项）、数据库型Playwright 42/42及迁移专项（用例2/2、临时空库11份迁移）均通过。隔离复审对合并候选给出`REJECTED`（Critical 0／Important 1／Minor 2），首轮13项全部确认关闭；I-01文档证据补齐、M-01跨标签页CSRF自动刷新并重试一次、M-02补生产Secure与安全事件断言均已修复并加回归，登录失败文案不再提及"部门"（单部门用户会被误导）。修复后聚焦测试后端15项、前端24项通过，当前等待独立主体复查确认finding关闭。人员与权限管理页面、开放注册、重置密码、MFA、OIDC、生产迁移、发布和真实人员数据仍不在范围。
 
 GOV-AI-FLOW-002已完成并通过独立Review：用户于2026-09-17要求审计并精简AI Coding流程，现已以“风险分级＋按需上下文＋自动化门禁”替换旧默认重流程，只修改开发流程、Agent规则、上下文工具和检查入口，不改业务功能。唯一集成规则采用Level 1轻量／Level 2默认／Level 3严格；普通任务不再默认完整`verify`／E2E／独立审查、全量文档、状态双写、设计／计划确认或多Agent。首轮独立Review为`REJECTED`（Critical 0／Important 3／Minor 1），修复Review判据、身份认证数据库E2E触发、轻量快照路径约束和ESLint内容缓存后，复审又发现缺失旧快照时轻量模式可从零登记工作区；最终修复要求必须存在可信旧快照并增加负向测试。工具21/21、`check:fast`和完整`pnpm verify`通过；同一`gpt-5.6-sol`独立终审`ACCEPTED`，Critical／Important／Minor均为0。仓库无可靠依赖图，因此未新增会误报覆盖的`test:affected`；本轮不修改业务功能、schema、迁移、依赖版本或生产环境。
 

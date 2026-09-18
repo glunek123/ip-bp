@@ -30,6 +30,7 @@ export type RequestOptions = {
   timeoutMs?: number;
   signal?: AbortSignal;
   headers?: Readonly<Record<string, string>>;
+  retryOnCsrfInvalid?: boolean;
 };
 export type JsonRequestOptions = RequestOptions &
   (
@@ -42,6 +43,33 @@ const unauthorizedListeners = new Set<() => void>();
 
 export function setCsrfToken(value: string | null): void {
   csrfToken = value;
+}
+
+let csrfRefreshInFlight: Promise<boolean> | null = null;
+
+async function refreshCsrfFromSession(): Promise<boolean> {
+  if (csrfRefreshInFlight) return csrfRefreshInFlight;
+  csrfRefreshInFlight = (async () => {
+    try {
+      const response = await fetch('/api/v1/auth/session', {
+        method: 'GET',
+        credentials: 'same-origin',
+        headers: { Accept: 'application/json' },
+      });
+      if (!response.ok) return false;
+      const body: unknown = await response.json();
+      if (!isRecord(body) || typeof body.csrfToken !== 'string') return false;
+      setCsrfToken(body.csrfToken);
+      return true;
+    } catch {
+      return false;
+    }
+  })();
+  try {
+    return await csrfRefreshInFlight;
+  } finally {
+    csrfRefreshInFlight = null;
+  }
 }
 
 export function onUnauthorized(listener: () => void): () => void {
@@ -120,6 +148,18 @@ export async function requestJson(
       ) {
         setCsrfToken(null);
         for (const listener of unauthorizedListeners) listener();
+      }
+      if (
+        apiError.status === 403 &&
+        apiError.code === 'CSRF_INVALID' &&
+        options.retryOnCsrfInvalid !== false &&
+        path !== '/auth/session' &&
+        (await refreshCsrfFromSession())
+      ) {
+        return await requestJson(path, {
+          ...options,
+          retryOnCsrfInvalid: false,
+        });
       }
       throw apiError;
     }

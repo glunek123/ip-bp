@@ -1,3 +1,4 @@
+import { Logger } from '@nestjs/common';
 import { ConfigService } from '@nestjs/config';
 import { AuthService } from './auth.service';
 import { hashPassword } from './password';
@@ -35,6 +36,81 @@ function createDatabase() {
 }
 
 describe('AuthService', () => {
+  it('records a structured security event for every login outcome', async () => {
+    const logSpy = jest.spyOn(Logger.prototype, 'log').mockImplementation();
+    const warnSpy = jest.spyOn(Logger.prototype, 'warn').mockImplementation();
+    const config = {
+      getOrThrow: () => 'a'.repeat(64),
+    } as unknown as ConfigService;
+    try {
+      const succeeded = createDatabase();
+      succeeded.transaction.localCredential.findUnique.mockResolvedValue({
+        userId,
+        username: 'admin',
+        passwordHash: await hashPassword('correct horse battery staple'),
+        user: {
+          id: userId,
+          displayName: '管理员',
+          active: true,
+          authorizationRevision: 1,
+          memberships: [{ departmentId: department.id, department }],
+        },
+      });
+      await new AuthService(succeeded as never, config).login(
+        { username: 'admin', password: 'correct horse battery staple' },
+        '127.0.0.1',
+      );
+      expect(logSpy).toHaveBeenCalledWith({ event: 'auth_login_succeeded' });
+
+      const failed = createDatabase();
+      failed.transaction.localCredential.findUnique.mockResolvedValue(null);
+      await expect(
+        new AuthService(failed as never, config).login(
+          { username: 'nobody', password: 'wrong password value' },
+          '127.0.0.1',
+        ),
+      ).rejects.toMatchObject({
+        response: { code: 'AUTHENTICATION_FAILED' },
+      });
+      expect(warnSpy).toHaveBeenCalledWith({ event: 'auth_login_failed' });
+
+      const multi = createDatabase();
+      multi.transaction.localCredential.findUnique.mockResolvedValue({
+        userId,
+        username: 'admin',
+        passwordHash: await hashPassword('correct horse battery staple'),
+        user: {
+          id: userId,
+          displayName: '管理员',
+          active: true,
+          authorizationRevision: 1,
+          memberships: [
+            { departmentId: department.id, department },
+            {
+              departmentId: '10000000-0000-4000-8000-000000000002',
+              department: {
+                id: '10000000-0000-4000-8000-000000000002',
+                name: '品维部',
+              },
+            },
+          ],
+        },
+      });
+      await expect(
+        new AuthService(multi as never, config).login(
+          { username: 'admin', password: 'correct horse battery staple' },
+          '127.0.0.1',
+        ),
+      ).rejects.toMatchObject({ response: { code: 'DEPARTMENT_REQUIRED' } });
+      expect(logSpy).toHaveBeenCalledWith({
+        event: 'auth_department_required',
+      });
+    } finally {
+      logSpy.mockRestore();
+      warnSpy.mockRestore();
+    }
+  });
+
   it('creates a 12-hour opaque session for one active department', async () => {
     const database = createDatabase();
     database.transaction.localCredential.findUnique.mockResolvedValue({

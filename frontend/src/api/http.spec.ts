@@ -98,6 +98,80 @@ describe('HTTP boundary', () => {
     setCsrfToken(null);
   });
 
+  it('refreshes a stale CSRF token and retries the write once', async () => {
+    const { setCsrfToken } = await import('./http');
+    const fetch = vi
+      .fn()
+      .mockResolvedValueOnce(
+        new Response(
+          JSON.stringify({ code: 'CSRF_INVALID', message: '请刷新页面后重试' }),
+          { status: 403 },
+        ),
+      )
+      .mockResolvedValueOnce(
+        new Response(JSON.stringify({ csrfToken: 'fresh-csrf-token' }), {
+          status: 200,
+        }),
+      )
+      .mockResolvedValueOnce(new Response(null, { status: 204 }));
+    vi.stubGlobal('fetch', fetch);
+    setCsrfToken('stale-csrf-token');
+
+    await expect(
+      requestJson('/customers', { method: 'POST', body: { name: '甲' } }),
+    ).resolves.toBeUndefined();
+
+    expect(fetch).toHaveBeenCalledTimes(3);
+    expect(fetch.mock.calls[1]?.[0]).toBe('/api/v1/auth/session');
+    expect(fetch.mock.calls[2]?.[1].headers).toEqual(
+      expect.objectContaining({ 'X-CSRF-Token': 'fresh-csrf-token' }),
+    );
+    setCsrfToken(null);
+  });
+
+  it('surfaces the CSRF failure when the session cannot be refreshed', async () => {
+    const { setCsrfToken } = await import('./http');
+    const fetch = vi
+      .fn()
+      .mockResolvedValueOnce(
+        new Response(JSON.stringify({ code: 'CSRF_INVALID' }), { status: 403 }),
+      )
+      .mockResolvedValueOnce(new Response(null, { status: 401 }));
+    vi.stubGlobal('fetch', fetch);
+    setCsrfToken('stale-csrf-token');
+
+    await expect(
+      requestJson('/customers', { method: 'POST', body: { name: '甲' } }),
+    ).rejects.toMatchObject({ status: 403, code: 'CSRF_INVALID' });
+    expect(fetch).toHaveBeenCalledTimes(2);
+    setCsrfToken(null);
+  });
+
+  it('retries a refreshed CSRF write at most once', async () => {
+    const { setCsrfToken } = await import('./http');
+    const fetch = vi
+      .fn()
+      .mockResolvedValueOnce(
+        new Response(JSON.stringify({ code: 'CSRF_INVALID' }), { status: 403 }),
+      )
+      .mockResolvedValueOnce(
+        new Response(JSON.stringify({ csrfToken: 'fresh-csrf-token' }), {
+          status: 200,
+        }),
+      )
+      .mockResolvedValueOnce(
+        new Response(JSON.stringify({ code: 'CSRF_INVALID' }), { status: 403 }),
+      );
+    vi.stubGlobal('fetch', fetch);
+    setCsrfToken('stale-csrf-token');
+
+    await expect(
+      requestJson('/customers', { method: 'POST', body: { name: '甲' } }),
+    ).rejects.toMatchObject({ status: 403, code: 'CSRF_INVALID' });
+    expect(fetch).toHaveBeenCalledTimes(3);
+    setCsrfToken(null);
+  });
+
   it('notifies the auth boundary on 401 without calling it a network error', async () => {
     const { onUnauthorized } = await import('./http');
     const listener = vi.fn();

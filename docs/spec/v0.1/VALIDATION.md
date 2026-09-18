@@ -8,7 +8,9 @@
 
 连接故障修复：Vite代理显式传递转发主机／协议，后端同源校验据此判断浏览器原始来源；会话恢复401不再触发全局重复跳转，公共健康页在后端离线时仍可显示，只有status 0的真实传输失败显示“无法连接服务”。Docker Desktop恢复后专用测试库`127.0.0.1:55433/dev_cor_test`健康，十份迁移已应用且完整E2E通过。开发库仍需操作者运行迁移与一次性初始化命令；本轮未创建真实人员账号。
 
-审查与冲突边界：5.6 Sol独立Q2首轮为`REJECTED`（Critical 0／Important 11／Minor 2），密码成本、空白约束、网络失败、多部门、并发限速、代理信任、初始化安全、语义事件、退出和CSRF等问题均已修复并补回归，当前等待同一主体复审。候选位于隔离分支`codex/local-account-auth`，尚未纳入主分支治理提交；`package.json`、状态／验证／上下文文档等重叠必须显式解决，并对合并后的新候选再次门禁和独立复审。当前状态仍为`IMPLEMENTED_UNVERIFIED_Q2`，不执行自动集成、生产迁移、发布或真实数据写入。详见[安全复审记录](../../security/local-account-auth-q2-review.md)。
+分支治理纳入：候选已把`main`的治理提交`8e02126`纳入隔离分支，形成合并候选（父`a7d91fe`＋`8e02126`）；`README.md`、`docs/context-snapshot.json`、`docs/project-status.md`、`docs/spec/v0.1/VALIDATION.md`四处重叠已逐项人工解决，`package.json`自动合并，上下文快照重录。合并后门禁：`pnpm check:fast`退出0；`pnpm verify`退出0（后端142项、前端测试、双端生产构建）；完整数据库型Playwright 42/42；迁移专项用例2/2，并在临时空库顺序应用全部11份迁移成功（14张表、12个CHECK、5个UNIQUE）。本机`git`无法创建嵌套分支名，任务分支改用顶层名`codex-local-account-auth`承载同一提交。
+
+独立复审与修复：隔离审查对合并候选给出`REJECTED`（Critical 0／Important 1／Minor 2），首轮13项全部确认关闭。三项finding已修复：I-01补齐本记录与状态文档的合并候选证据；M-01在前端`http.ts`对`CSRF_INVALID`自动刷新会话并重试一次（并发去重、至多一次、刷新失败保留原错误），补3项回归；M-02新增`cookie.spec.ts`断言生产Secure分支与清除语义，并在`auth.service.spec.ts`断言登录成功／失败／需选部门三类结构化安全事件。另修正登录失败文案不再提及"部门"（单部门用户会被误导），并把`LoginPage.spec.ts`的`DEPARTMENT_REQUIRED`状态码由409更正为实际401。修复后聚焦测试后端15项、前端24项通过。当前状态`IMPLEMENTED_UNVERIFIED_Q2`，等待独立主体复查确认finding关闭；不执行生产迁移、发布或真实数据写入。详见[安全复审记录](../../security/local-account-auth-q2-review.md)。
 
 ## GOV-AI-FLOW-002三级开发流程优化（2026-09-17）
 

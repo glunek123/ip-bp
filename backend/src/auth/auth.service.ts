@@ -391,7 +391,7 @@ export class AuthService {
   private authenticationFailed(): never {
     throw new UnauthorizedException({
       code: 'AUTHENTICATION_FAILED',
-      message: '用户名、密码或部门不正确',
+      message: '用户名或密码不正确',
     });
   }
 

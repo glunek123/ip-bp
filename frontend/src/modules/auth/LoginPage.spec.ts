@@ -72,7 +72,7 @@ describe('LoginPage', () => {
   it('asks for an explicit department and retries with that choice', async () => {
     api.login
       .mockRejectedValueOnce(
-        new ApiError('请选择部门', 409, 'DEPARTMENT_REQUIRED', undefined, {
+        new ApiError('请选择部门', 401, 'DEPARTMENT_REQUIRED', undefined, {
           departments: [
             { id: 'department-1', name: '知产部' },
             { id: 'department-2', name: '品维部' },
