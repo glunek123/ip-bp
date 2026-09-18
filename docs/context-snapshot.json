@@ -1,6 +1,6 @@
 {
   "version": 1,
-  "recordedAt": "2026-09-18T03:31:12.504Z",
+  "recordedAt": "2026-09-18T03:46:32.410Z",
   "files": {
     ".cursor/rules/verified-feature-integration.mdc": "7d8692a494d776e900288a5a6d01a57357635679784b0036dc73c0ae275745bf",
     ".env.example": "b5b95bff09e0c76916adb608c27dcb611a32a2f67bf0b5455f70bee1a9cb1bff",
@@ -148,9 +148,9 @@
     "docs/environment.md": "4a2ec6767d6f103b454c19073a2b68b347e5fafc5d54f6eaede54ba94ef612dc",
     "docs/foundation-improvements.md": "bf18874ca3869d4c1e4370611327598b6e6182e1a09e1a83ed2a747be6aa39cb",
     "docs/foundation-review.md": "80ea2ac9d015ad5169c2e09ce6208adbd4a735ba4c94632a2044d6cb0c05454d",
-    "docs/project-status.md": "3176fd17e4cea3b31e2533731e7f69e616dc026c485f138a8d111c6cfc6f8a63",
+    "docs/project-status.md": "516f2c1ff7cb71b89628fd62a691a754492e51299cd2e2074ad6ee64ac7ab108",
     "docs/security/customer-foundation-q2-review.md": "f5745450cb85aedde92892646c6c824bc9670b8c9bf6f0d9761fe5e46cc6d109",
-    "docs/security/local-account-auth-q2-review.md": "780aaaebce2a02a9bb69fd9157dada8dddeef55c39523a6f2670e79cf3882c7c",
+    "docs/security/local-account-auth-q2-review.md": "936e17dd5548e58137ffd110b259297e991269ebc761bc333fbc37beb6a995df",
     "docs/spec/v0.1/BUSINESS-REVIEW.md": "950c73ac72470d2e3556fd416701b4486944c1e3ef21c84be11132cbe617c24e",
     "docs/spec/v0.1/CONSISTENCY.md": "4fde8f04c65ab75db5c46971923c59b4a1feaeeb6005aeb5c28bca275eaf5466",
     "docs/spec/v0.1/CONTEXT.md": "d14fd681c05e85ab90dc9419257fb79073ceacc5dc264d0f8314c6a132d17dc8",
