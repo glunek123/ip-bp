@@ -17,7 +17,7 @@ AUTH-LOCAL-001第一切片已纳入主分支治理提交并完成独立复审修
 - 自动测试／数据库E2E：**通过**（数据库型Playwright 42/42；迁移专项用例2/2，临时空库顺序应用全部11份迁移）。
 - 工程门禁：**通过**（`check:fast`、完整`pnpm verify`、context／spec／format）。
 - 既有同模型隔离审查：**已完成**（三轮增量复查，最终Critical／Important／Minor均为0；但审查者与主执行者同属一个模型家族，**独立性不足**）。
-- GPT-5.6 Sol 独立 Review：**Pending** — 受外部审查方可用性阻塞（ai-hive 账户余额不足，降级改用其他模型同样返回余额不足）。该项**未完成，不得写成"独立 Review 已通过"**，也不属于代码故障；待第三方审查方恢复可用后补做。人员与权限管理页面、开放注册、重置密码、MFA、OIDC、生产迁移、发布和真实人员数据仍不在范围。
+- 独立 Review（跨模型主体）：**Pending** — 受外部审查方可用性阻塞（ai-hive 账户余额不足，改用其他模型同样返回余额不足）。已按[集成规则](../.cursor/rules/verified-feature-integration.mdc)的「Review 主体可用性降级」条款**降级为同模型家族的隔离审查**推进：审查范围、证据核对与 finding 计数不变，结论标注`独立性不足`；该降级**不表述为"独立 Review 已通过"**，也不属于代码故障，待外部主体恢复可用后补做并回填结论。人员与权限管理页面、开放注册、重置密码、MFA、OIDC、生产迁移、发布和真实人员数据仍不在范围。
 
 GOV-AI-FLOW-002已完成并通过独立Review：用户于2026-09-17要求审计并精简AI Coding流程，现已以“风险分级＋按需上下文＋自动化门禁”替换旧默认重流程，只修改开发流程、Agent规则、上下文工具和检查入口，不改业务功能。唯一集成规则采用Level 1轻量／Level 2默认／Level 3严格；普通任务不再默认完整`verify`／E2E／独立审查、全量文档、状态双写、设计／计划确认或多Agent。首轮独立Review为`REJECTED`（Critical 0／Important 3／Minor 1），修复Review判据、身份认证数据库E2E触发、轻量快照路径约束和ESLint内容缓存后，复审又发现缺失旧快照时轻量模式可从零登记工作区；最终修复要求必须存在可信旧快照并增加负向测试。工具21/21、`check:fast`和完整`pnpm verify`通过；同一`gpt-5.6-sol`独立终审`ACCEPTED`，Critical／Important／Minor均为0。仓库无可靠依赖图，因此未新增会误报覆盖的`test:affected`；本轮不修改业务功能、schema、迁移、依赖版本或生产环境。
 
