@@ -12,7 +12,9 @@ export function validateEnvironment(
 ): Environment {
   const mode = input.NODE_ENV;
   if (mode !== 'development' && mode !== 'test' && mode !== 'production') {
-    throw new Error('NODE_ENV must be development, test or production');
+    throw new Error(
+      'NODE_ENV must be development, test or production. Run "pnpm setup:local" at the repository root to generate the local environment files.',
+    );
   }
   const rawPort = input.PORT;
   if (typeof rawPort !== 'string' || !/^\d+$/.test(rawPort)) {
@@ -50,8 +52,12 @@ export function validateEnvironment(
     typeof throttleSecret !== 'string' ||
     !/^[a-f0-9]{64,}$/i.test(throttleSecret)
   ) {
+    const hint =
+      mode === 'production'
+        ? 'Provide it through the deployment secret store; never commit a real secret.'
+        : 'Run "pnpm setup:local" at the repository root to generate the local environment files.';
     throw new Error(
-      'AUTH_THROTTLE_SECRET must be at least 32 random bytes encoded as hexadecimal',
+      `AUTH_THROTTLE_SECRET must be at least 32 random bytes encoded as hexadecimal. ${hint}`,
     );
   }
   if (identityFixtures !== undefined && typeof identityFixtures !== 'string') {

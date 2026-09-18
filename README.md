@@ -39,6 +39,14 @@ pnpm dev
 
 `setup:local` 生成随机本地密码，写入根 `.env`、`backend/.env` 与 `backend/.env.test`，文件均被 Git 忽略。重复运行保留已有配置；发现不一致会报错，不会覆盖。示例文件仅包含占位值。数据库端口为 55432，专用测试库为 55433，均仅绑定 `127.0.0.1`。凭据只用于本地工程，生产配置另行确认。
 
+**首次启动或本地环境异常**（后端启动时报 `NODE_ENV`、`DATABASE_URL` 或 `AUTH_THROTTLE_SECRET` 校验失败）：
+
+```powershell
+pnpm setup:local
+```
+
+`setup:local` 是本地环境的唯一初始化入口：缺失的 `AUTH_THROTTLE_SECRET` 会自动生成（32 随机字节、hex 编码），已有配置不会被覆盖，且不打印任何秘密值。**不要手工复制真实 Secret**，也不要提交真实 `.env`。
+
 ## 开发与检查
 
 | 命令                        | 用途                                                             |

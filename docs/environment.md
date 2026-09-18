@@ -107,3 +107,15 @@ pnpm --version
 危险后果：在这种分支上执行 `git commit`，会**创建提交对象但引用更新失败，却仍打印 `[branch hash]` 成功消息**——表面成功，实际 `HEAD` 变为 unborn，`git log` 报 "does not have any commits yet"。提交对象不会丢失，可用 `git cat-file -t <sha>` 找到，再用 `git update-ref` 或 `git reset --hard <sha>` 恢复。
 
 规避方式：任务分支改用**顶层名**，用连字符代替斜杠，例如 `codex-local-account-auth`。`main` 等非嵌套分支名不受影响。
+
+## 8. 本地环境初始化与启动前诊断
+
+首次启动或本地环境异常（后端启动报 `NODE_ENV`、`DATABASE_URL` 或 `AUTH_THROTTLE_SECRET` 校验失败）：
+
+```powershell
+pnpm setup:local
+```
+
+`pnpm setup:local`（`scripts/setup-local.mjs`）是本地环境的**唯一初始化入口**：幂等，已有配置不会被覆盖；缺失的 `AUTH_THROTTLE_SECRET` 会自动生成（32 随机字节、hex 编码）；不打印任何秘密值。新 clone 的项目执行一次即可获得可启动的本地环境，**不需要手工复制真实 Secret**。根 `.env`、`backend/.env`、`backend/.env.test` 均被 Git 忽略，示例文件只保存占位说明。
+
+启动前诊断复用 `backend/src/common/environment.ts` 的同一套校验，对 `NODE_ENV`、`PORT`、`DATABASE_URL`、`TRUST_PROXY_HOPS`、`AUTH_THROTTLE_SECRET` 做 fail-fast 检查，错误信息只描述字段和格式、不回显取值；本地场景的错误会直接提示执行 `pnpm setup:local`。生产环境的 Secret 仍由部署侧密钥管理提供，不在该脚本范围内。
