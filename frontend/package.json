@@ -5,7 +5,8 @@
   "type": "module",
   "scripts": {
     "test": "vitest run",
-    "build": "vue-tsc --noEmit && vite build",
+    "build": "pnpm typecheck && pnpm build:bundle",
+    "build:bundle": "vite build",
     "typecheck": "vue-tsc --noEmit",
     "dev": "vite"
   },

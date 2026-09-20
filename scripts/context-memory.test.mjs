@@ -53,7 +53,7 @@ test('dependency patch changes invalidate the checkpoint', (t) => {
   writeFileSync(join(root, 'patches/library.patch'), 'original patch');
   recordContext(root);
   writeFileSync(join(root, 'patches/library.patch'), 'changed patch');
-  assert.throws(() => checkContext(root), /library.patch/);
+  assert.throws(() => checkContext(root, { strict: true }), /library.patch/);
 });
 
 test('Windows runtime command shims are tracked', (t) => {
@@ -68,7 +68,7 @@ test('Windows runtime command shims are tracked', (t) => {
     join(root, 'tools/project-runtime/pnpm.cmd'),
     '@ECHO OFF\r\nECHO changed\r\n',
   );
-  assert.throws(() => checkContext(root), /pnpm\.cmd/);
+  assert.throws(() => checkContext(root, { strict: true }), /pnpm\.cmd/);
 });
 
 test('recorded and unchanged files pass without changing the status document', (t) => {
@@ -81,35 +81,34 @@ test('recorded and unchanged files pass without changing the status document', (
   );
 });
 
-test('a changed source invalidates the checkpoint and cannot be blindly recorded', (t) => {
+test('a changed source is reported by default and blocked in strict mode', (t) => {
   const root = fixture(t);
   recordContext(root);
-  const before = readFileSync(join(root, 'docs/context-snapshot.json'), 'utf8');
   writeFileSync(
     join(root, 'backend/src/main.ts'),
     'export const ready = false;\n',
   );
-  assert.throws(() => checkContext(root), /backend\/src\/main.ts/);
-  assert.throws(() => recordContext(root), /project-status.md/);
-  assert.equal(
-    readFileSync(join(root, 'docs/context-snapshot.json'), 'utf8'),
-    before,
+  const result = checkContext(root);
+  assert.deepEqual(result.changes, ['MODIFIED backend/src/main.ts']);
+  assert.throws(
+    () => checkContext(root, { strict: true }),
+    /backend\/src\/main.ts/,
   );
 });
 
-test('status update plus explicit recording acknowledges a reviewed change', (t) => {
+test('standard recording acknowledges reviewed source changes without status churn', (t) => {
   const root = fixture(t);
   recordContext(root);
   writeFileSync(
     join(root, 'backend/src/main.ts'),
     'export const ready = false;\n',
   );
-  writeFileSync(
-    join(root, 'docs/project-status.md'),
-    `${status}\n检查点：源文件已修改，等待测试。\n`,
-  );
   recordContext(root);
   assert.doesNotThrow(() => checkContext(root));
+  assert.equal(
+    readFileSync(join(root, 'docs/project-status.md'), 'utf8'),
+    status,
+  );
 });
 
 test('light recording accepts only Demo and frontend style changes', (t) => {
@@ -149,9 +148,12 @@ test('new files and deleted files both invalidate the checkpoint', (t) => {
   const root = fixture(t);
   recordContext(root);
   writeFileSync(join(root, 'backend/src/new.ts'), 'export {};\n');
-  assert.throws(() => checkContext(root), /backend\/src\/new.ts/);
+  assert.deepEqual(checkContext(root).changes, ['ADDED backend/src/new.ts']);
   rmSync(join(root, 'backend/src/main.ts'));
-  assert.throws(() => checkContext(root), /backend\/src\/main.ts/);
+  assert.deepEqual(checkContext(root).changes, [
+    'DELETED backend/src/main.ts',
+    'ADDED backend/src/new.ts',
+  ]);
 });
 
 test('documentation and Demo changes are tracked', (t) => {
@@ -161,8 +163,11 @@ test('documentation and Demo changes are tracked', (t) => {
   recordContext(root);
   writeFileSync(join(root, 'demo/index.html'), '<h1>Updated Demo</h1>');
   writeFileSync(join(root, 'docs/decision.md'), '# New decision');
-  assert.throws(() => checkContext(root), /demo\/index.html/);
-  assert.throws(() => recordContext(root), /project-status.md/);
+  assert.deepEqual(checkContext(root).changes, [
+    'MODIFIED demo/index.html',
+    'ADDED docs/decision.md',
+  ]);
+  assert.doesNotThrow(() => recordContext(root));
 });
 
 test('generated files and secrets do not enter the checkpoint', (t) => {

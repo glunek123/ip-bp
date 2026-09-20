@@ -27,8 +27,8 @@
 
 - Level 1同会话短任务不改开发状态。Level 2只在业务状态变化、跨会话或需要恢复时更新；Level 3、阶段切换、业务／架构决定和阻断必须留下简短检查点。
 - 状态只写任务、范围、依据、真实验证和未决项；命令流水、反复尝试和详细审查留在既有验证记录或Git，不新建重复台账。
-- 开工执行`pnpm context:check`。漂移时核对列出的文件、最近提交和工作区，不通过刷新快照掩盖未知改动。
-- 已检查最终diff且差异仅位于`demo/`或`frontend/src/styles/`时，可使用`pnpm context:record:light`记录快照，无需为了纯Demo／样式调整修改状态文档；工具会拒绝源码、配置、治理、Spec和其他路径。其余任务先按所属Level判断是否需要同步状态，再使用标准`pnpm context:record`。
+- 开工执行`pnpm context:check`；它报告漂移但不因普通文件漂移失败，当前任务必须结合列出的文件、最近提交和工作区判断是否重叠。Level 3、Merge、Release和完整`verify`使用`pnpm context:check:strict`，未解释漂移会失败。两种模式下都不得通过刷新快照掩盖未知改动。
+- 已检查最终diff且差异仅位于`demo/`或`frontend/src/styles/`时，可使用`pnpm context:record:light`记录快照；工具会拒绝源码、配置、治理、Spec和其他路径。其余任务在核对真实差异后使用标准`pnpm context:record`。标准记录不再机械要求状态文件同时变化；是否更新状态只由阶段、活动Slice、阻断、重要风险、架构、Merge／Release或跨会话恢复信息的语义变化决定。
 - 快照是文件一致性检查，不是测试或批准。记录后仍按所属Level执行测试；收口只追加非执行性结果时不循环重跑业务门禁。
 
 ## 文档同步
@@ -36,6 +36,13 @@
 只有以下变化更新对应Spec／Decision：业务规则、字段语义、状态机、Workflow、权限、API契约、数据结构或重要架构决定。纯实现细节、小型重构、文案、样式和局部交互只在代码与测试中表达。
 
 收到外部字段／规则文档时读取[后续设计清单](deferred-design.md)，登记版本／来源／确认依据并只更新受影响映射。Demo观察、外部文档到齐和测试通过都不自动代表业务批准或生产准入。
+
+## 分级验证入口
+
+- 当前显式Level 2入口为`pnpm verify:slice:customer`和`pnpm verify:slice:right-holder`，分别组合定向单元／契约、`check:fast`、Slice格式、后端构建及对应数据库E2E；规则／字段语义／公共契约变化时另运行`pnpm spec:check`，普通迁移另运行迁移专项。
+- `pnpm verify:slice:auth`只用于认证开发循环和聚焦回归，不替代Auth所属Level 3的完整`pnpm verify`、数据库风险专项与Review。
+- 数据库入口为`test:e2e:customer`、`test:e2e:right-holder`、`test:e2e:auth`和`test:e2e:full`；前三者缩小范围但仍使用同一隔离测试库保护和Playwright runner。Jest、Vitest与Playwright匹配0项时必须失败。
+- Slice门禁全部成功后才可调用`evidence:record`；证据保存在忽略目录`.local/validation-evidence/`，只认干净固定候选、完全相同Git tree、环境和检查集合。Auth focused证据不能冒充完整Level 3证据；新的组合tree不做自动affected推断。
 
 ## 恢复与交付
 

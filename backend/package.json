@@ -4,9 +4,11 @@
   "private": true,
   "scripts": {
     "db:validate": "prisma validate",
-    "typecheck": "pnpm db:generate && tsc --noEmit",
+    "typecheck": "pnpm db:generate && pnpm typecheck:prepared",
+    "typecheck:prepared": "tsc --noEmit",
     "dev": "pnpm db:generate && node --env-file=.env node_modules/@nestjs/cli/bin/nest.js start --watch",
-    "build": "pnpm db:generate && tsc -p tsconfig.build.json",
+    "build": "pnpm db:generate && pnpm build:prepared",
+    "build:prepared": "tsc -p tsconfig.build.json",
     "test": "jest --runInBand",
     "db:generate": "prisma generate",
     "start": "node --env-file=.env dist/main.js",
