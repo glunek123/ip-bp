@@ -37,7 +37,7 @@
 
 ## 验证与交付
 
-- 开发循环运行直接相关测试；快速静态门禁使用`pnpm check:fast`。普通Level 2使用显式切片门禁，不默认完整`verify`、完整数据库E2E或独立Review；`pnpm verify`用于Level 3、未验证的新组合tree、Release、核心架构变更或跨模块回归怀疑。最终tree与可信证据完全一致时复用；没有可靠依赖图时不自动推导affected范围。
+- 开发循环运行直接相关测试；快速静态门禁使用`pnpm check:fast`。稳定候选直接运行所属正式门禁，不在tree未变化时紧邻重复门禁已经包含的检查。普通Level 2使用显式切片门禁，不默认完整`verify`、完整数据库E2E或独立Review；Level 3先Review和修复，再在稳定候选集中执行最终门禁。`pnpm verify`用于Level 3、未验证的新组合tree、Release、核心架构变更或跨模块回归怀疑。最终tree与可信证据完全一致时复用；没有可靠依赖图时不自动推导affected范围。
 - 没有可靠依赖图时不伪造`test:affected`；直接用workspace过滤和测试文件／名称选择器运行相关Jest、Vitest或Playwright。
 - 相同候选和输入的可信结果直接复用。失败后只重跑被修改输入影响的聚焦检查，最终稳定候选再执行所属层级门禁。
 - 收口同步真正受影响的Spec、Decision、架构或运行说明。最终报告只列完成内容、实际验证、已知风险和必要下一步，不输出命令流水账。

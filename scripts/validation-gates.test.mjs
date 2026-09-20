@@ -3,6 +3,7 @@ import { fileURLToPath } from 'node:url';
 import { resolve } from 'node:path';
 import { test } from 'vitest';
 import assert from 'node:assert/strict';
+import { validationScopes } from './validation-scopes.mjs';
 
 const root = resolve(fileURLToPath(new URL('..', import.meta.url)));
 const packageJson = JSON.parse(readFileSync(resolve(root, 'package.json')));
@@ -85,6 +86,50 @@ test('scoped E2E commands reuse the guarded runner and full remains explicit', (
   assert.doesNotMatch(
     backendPackage.scripts['db:migrate:deploy:test'],
     /--env-file|DATABASE_URL/,
+  );
+});
+
+test('formal slice scopes already subsume their immediate development checks', () => {
+  const expected = {
+    customer: [
+      'prepare:prisma',
+      'test:unit:customer',
+      'check:fast:prepared',
+      'format:check:slice:customer',
+      'build:backend:prepared',
+      'test:e2e:customer',
+    ],
+    'right-holder': [
+      'prepare:prisma',
+      'test:unit:right-holder',
+      'check:fast:prepared',
+      'format:check:slice:right-holder',
+      'build:backend:prepared',
+      'test:e2e:right-holder',
+    ],
+    'auth-focused': [
+      'prepare:prisma',
+      'test:unit:auth',
+      'check:fast:prepared',
+      'format:check:slice:auth',
+      'build:backend:prepared',
+      'test:e2e:auth',
+    ],
+  };
+
+  for (const [name, ids] of Object.entries(expected)) {
+    assert.deepEqual(
+      validationScopes[name].commands.map(({ id }) => id),
+      ids,
+    );
+  }
+});
+
+test('full engineering verify and database E2E remain separate sets', () => {
+  assert.doesNotMatch(packageJson.scripts.verify, /test:e2e/);
+  assert.equal(
+    packageJson.scripts['test:e2e:full'],
+    'node scripts/run-e2e.mjs',
   );
 });
 
