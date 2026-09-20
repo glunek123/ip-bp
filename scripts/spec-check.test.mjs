@@ -90,3 +90,12 @@ test('rejects copied current implementation progress in the Spec README', () => 
   assert.match(errors.join('\n'), /implementation state source/i);
   assert.match(errors.join('\n'), /copied implementation progress/i);
 });
+
+test('allows business approval states without treating them as implementation progress', () => {
+  assert.deepEqual(
+    auditImplementationStatusOwnership(
+      '# Spec\n\n当前实现状态与开发顺序只见[功能开发路线图](../../feature-roadmap.md)，当前活动任务只见[项目状态](../../project-status.md)。\n\n✅ 已确认业务方向。\n',
+    ),
+    [],
+  );
+});

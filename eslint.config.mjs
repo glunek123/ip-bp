@@ -26,7 +26,13 @@ export default tseslint.config(
         {
           patterns: [
             {
-              group: ['**/database/database.service', '**/generated/prisma/**'],
+              group: [
+                '@prisma/client',
+                '@prisma/client/**',
+                '**/database/database.service',
+                '**/generated/prisma',
+                '**/generated/prisma/**',
+              ],
               message:
                 'ARCH-CONTROLLER-DATABASE: controllers must call a business module interface instead of Prisma or DatabaseService.',
             },
@@ -37,7 +43,25 @@ export default tseslint.config(
   },
   {
     files: ['backend/src/health/health.controller.ts'],
-    rules: { 'no-restricted-imports': 'off' },
+    rules: {
+      'no-restricted-imports': [
+        'error',
+        {
+          patterns: [
+            {
+              group: [
+                '@prisma/client',
+                '@prisma/client/**',
+                '**/generated/prisma',
+                '**/generated/prisma/**',
+              ],
+              message:
+                'ARCH-CONTROLLER-DATABASE: the health controller exception permits DatabaseService only, not Prisma Client.',
+            },
+          ],
+        },
+      ],
+    },
   },
   {
     files: ['**/*.vue'],

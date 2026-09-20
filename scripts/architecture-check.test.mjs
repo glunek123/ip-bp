@@ -46,6 +46,8 @@ test('rejects static and dynamic imports of another module internals', (t) => {
       "import { secret } from '../cases/internal'; void secret;\n",
     'backend/src/modules/customers/dynamic.ts':
       "export const load = () => import('../cases/internal');\n",
+    'backend/src/modules/customers/template.ts':
+      'export const load = () => import(`../cases/internal`);\n',
   });
 
   const errors = auditArchitecture(root, {
@@ -54,6 +56,7 @@ test('rejects static and dynamic imports of another module internals', (t) => {
   assert.match(errors, /ARCH-MODULE-IMPORT/);
   assert.match(errors, /static\.ts/);
   assert.match(errors, /dynamic\.ts/);
+  assert.match(errors, /template\.ts/);
 });
 
 test('checks Vue imports using the same public-entry rule', (t) => {
@@ -61,12 +64,12 @@ test('checks Vue imports using the same public-entry rule', (t) => {
     'backend/prisma/schema.prisma': schema,
     'frontend/src/modules/cases/internal.ts': 'export const secret = 1;\n',
     'frontend/src/modules/customers/Page.vue':
-      '<script setup lang="ts">\nimport { secret } from \'../cases/internal\';\nvoid secret;\n</script>\n',
+      '<template>\n  <main />\n</template>\n<script setup lang="ts">\nimport { secret } from \'../cases/internal\';\nvoid secret;\n</script>\n',
   });
 
   assert.match(
     auditArchitecture(root, { Customer: 'customers' }).errors.join('\n'),
-    /ARCH-MODULE-IMPORT.*Page\.vue/,
+    /ARCH-MODULE-IMPORT.*Page\.vue:5/,
   );
 });
 
@@ -106,4 +109,22 @@ test('ESLint blocks database imports in business controllers but preserves the h
     /ARCH-CONTROLLER-DATABASE/,
   );
   assert.deepEqual(restricted(health), []);
+
+  const [prismaClient] = await eslint.lintText(
+    "import { PrismaClient } from '@prisma/client';\nvoid PrismaClient;\n",
+    { filePath: businessPath },
+  );
+  assert.match(
+    restricted(prismaClient)[0]?.message ?? '',
+    /ARCH-CONTROLLER-DATABASE/,
+  );
+
+  const [healthPrisma] = await eslint.lintText(
+    "import { PrismaClient } from '../generated/prisma/client';\nvoid PrismaClient;\n",
+    { filePath: healthPath },
+  );
+  assert.match(
+    restricted(healthPrisma)[0]?.message ?? '',
+    /ARCH-CONTROLLER-DATABASE/,
+  );
 });

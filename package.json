@@ -50,7 +50,7 @@
     "context:record:light": "node scripts/context-memory.mjs record-light",
     "spec:check": "node scripts/spec-check.mjs",
     "test:context": "vitest run --config vitest.tools.config.mjs",
-    "verify": "pnpm context:check:strict && pnpm spec:check && pnpm prepare:prisma && pnpm typecheck:prepared && pnpm lint && pnpm format:check && pnpm test && pnpm build:prepared"
+    "verify": "pnpm context:check:strict && pnpm spec:check && pnpm architecture:check && pnpm prepare:prisma && pnpm typecheck:prepared && pnpm lint && pnpm format:check && pnpm test && pnpm build:prepared"
   },
   "devDependencies": {
     "@eslint/js": "9.39.5",

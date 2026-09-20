@@ -128,6 +128,10 @@ test('formal slice scopes already subsume their immediate development checks', (
 test('full engineering verify and database E2E remain separate sets', () => {
   assert.doesNotMatch(packageJson.scripts.verify, /test:e2e/);
   assert.equal(
+    packageJson.scripts.verify.match(/architecture:check/g)?.length,
+    1,
+  );
+  assert.equal(
     packageJson.scripts['test:e2e:full'],
     'node scripts/run-e2e.mjs',
   );
@@ -135,6 +139,7 @@ test('full engineering verify and database E2E remain separate sets', () => {
 
 test('full verify prepares Prisma and typechecks the frontend only once', () => {
   assert.match(packageJson.scripts.verify, /context:check:strict/);
+  assert.match(packageJson.scripts.verify, /architecture:check/);
   assert.match(packageJson.scripts.verify, /prepare:prisma/);
   assert.match(packageJson.scripts.verify, /typecheck:prepared/);
   assert.match(packageJson.scripts.verify, /build:prepared/);

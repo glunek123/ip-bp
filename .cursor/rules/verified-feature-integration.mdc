@@ -30,6 +30,7 @@ Level 1不默认扫描全仓、更新Spec、写设计／计划、跑完整E2E或
 ## 自动化与数据库
 
 - `pnpm check:fast`承担类型和Lint；格式检查、相关Jest／Vitest／Playwright使用现有命令和过滤参数。项目没有可靠依赖图，因此不提供会误报安全的自动`test:affected`。
+- 当前最小架构护栏检查业务模块的项目内相对导入、Prisma Model主责声明，以及Controller的静态数据库导入；无插值动态导入按静态路径处理。计算型动态导入和未来新增的路径别名仍须在相关改动中Review，新增别名时必须同步扩展护栏正反例，不能把未覆盖写法表述为已证明安全。
 - 普通`pnpm context:check`报告漂移但不因漂移失败；任务开始结合`git status`／diff判断重叠。`pnpm context:check:strict`在Level 3、Merge、Release及完整`pnpm verify`中阻断未解释漂移。缺失／损坏快照和文档结构错误始终失败。
 - `pnpm verify`覆盖严格context、Spec、类型、Lint、格式、工具／前后端测试和构建，不含数据库E2E。发布前执行完整回归；托管CI未配置时不得声称服务器已验证。
 - 当前Level 2正式候选入口为`verify:slice:customer`和`verify:slice:right-holder`；认证聚焦入口`verify:slice:auth`只提供聚焦候选证据，不能替代Auth的Level 3最终门禁。开发循环直接使用对应单元／过滤命令和`check:fast`。数据库入口为`test:e2e:customer`、`test:e2e:right-holder`、`test:e2e:auth`和`test:e2e:full`，任何匹配0项的测试范围必须失败。

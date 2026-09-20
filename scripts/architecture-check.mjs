@@ -28,9 +28,17 @@ function moduleLocation(path) {
 
 function scriptText(file, text) {
   if (extname(file) !== '.vue') return text;
-  return [...text.matchAll(/<script\b[^>]*>([\s\S]*?)<\/script>/gi)]
-    .map((match) => match[1])
-    .join('\n');
+  const masked = [...text].map((character) =>
+    character === '\n' || character === '\r' ? character : ' ',
+  );
+  for (const match of text.matchAll(/<script\b[^>]*>([\s\S]*?)<\/script>/gi)) {
+    const body = match[1];
+    const bodyOffset = match.index + match[0].indexOf(body);
+    for (let index = 0; index < body.length; index += 1) {
+      masked[bodyOffset + index] = body[index];
+    }
+  }
+  return masked.join('');
 }
 
 function importedSpecifiers(file, text) {
@@ -64,7 +72,8 @@ function importedSpecifiers(file, text) {
     } else if (
       ts.isCallExpression(node) &&
       node.arguments.length === 1 &&
-      ts.isStringLiteral(node.arguments[0]) &&
+      (ts.isStringLiteral(node.arguments[0]) ||
+        ts.isNoSubstitutionTemplateLiteral(node.arguments[0])) &&
       (node.expression.kind === ts.SyntaxKind.ImportKeyword ||
         (ts.isIdentifier(node.expression) &&
           node.expression.text === 'require'))

@@ -17,7 +17,6 @@ const copiedProgressPatterns = [
   /已内部集成/,
   /已取得(?:PostgreSQL|数据库|浏览器)/,
   /(?:当前|唯一)Next Slice/i,
-  /[✅🟡🔵⚪🔴]/u,
 ];
 
 export function auditImplementationStatusOwnership(readmeText) {
