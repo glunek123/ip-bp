@@ -98,15 +98,18 @@ describe('PeopleAccessPage', () => {
     expect(wrapper.find('textarea').exists()).toBe(false);
   });
 
-  it('changes team directly and explains an assignment conflict', async () => {
+  it('automatically retries the retained Team after the conflicting role is stopped', async () => {
     api.getOrganizationManagementContext.mockResolvedValue(context);
-    api.updateOrganizationMembership.mockRejectedValue(
-      new ApiError(
-        '请先停用成员现有的团队范围角色分配',
-        409,
-        'ACTIVE_TEAM_ROLE_ASSIGNMENT_EXISTS',
-      ),
-    );
+    api.updateOrganizationMembership
+      .mockRejectedValueOnce(
+        new ApiError(
+          '请先停用成员现有的团队范围角色分配',
+          409,
+          'ACTIVE_TEAM_ROLE_ASSIGNMENT_EXISTS',
+        ),
+      )
+      .mockResolvedValueOnce(undefined);
+    api.setOrganizationRoleAssignmentStatus.mockResolvedValue(undefined);
     const wrapper = mount(PeopleAccessPage, {
       global: { stubs: { RouterLink: { template: '<a><slot /></a>' } } },
     });
@@ -120,6 +123,23 @@ describe('PeopleAccessPage', () => {
     });
     expect(wrapper.get('[role="alert"]').text()).toContain(
       '先停用该人员当前的团队范围角色',
+    );
+
+    await wrapper
+      .findAll('.role-row button')
+      .find((button) => button.text() === '停用')!
+      .trigger('click');
+    await flushPromises();
+
+    expect(api.setOrganizationRoleAssignmentStatus).toHaveBeenCalledWith(
+      'user-1',
+      'assignment-1',
+      false,
+    );
+    expect(api.updateOrganizationMembership).toHaveBeenCalledTimes(2);
+    expect(api.updateOrganizationMembership).toHaveBeenLastCalledWith(
+      'user-1',
+      { teamId: 'team-1' },
     );
   });
 

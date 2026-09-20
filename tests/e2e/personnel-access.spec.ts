@@ -105,10 +105,6 @@ test('team conflict is explained, then role revoke allows the direct move', asyn
     '先停用该人员当前的团队范围角色',
   );
   await operatorCard.getByRole('button', { name: '停用', exact: true }).click();
-  await operatorCard
-    .locator('select')
-    .first()
-    .selectOption(personnelFixtures.teamBId);
   await expect
     .poll(
       async () => (await getPersonnelAccessSnapshot('operator.b')).memberships,

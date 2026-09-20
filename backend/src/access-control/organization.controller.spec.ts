@@ -2,6 +2,7 @@ import 'reflect-metadata';
 import { ForbiddenException, INestApplication } from '@nestjs/common';
 import { Test } from '@nestjs/testing';
 import request from 'supertest';
+import { DocumentBuilder, SwaggerModule } from '@nestjs/swagger';
 import { AuthService } from '../auth/auth.service';
 import { configureApp } from '../common/configure-app';
 import { ActorContextGuard } from './actor-context.guard';
@@ -89,6 +90,40 @@ describe('OrganizationController', () => {
       .get('/api/v1/organization/management-context')
       .expect(401);
     expect(getManagementContext).not.toHaveBeenCalled();
+  });
+
+  it('documents successful JSON responses for every organization endpoint', () => {
+    const document = SwaggerModule.createDocument(
+      app,
+      new DocumentBuilder().setTitle('test').setVersion('1').build(),
+    );
+    const responses = [
+      ['GET', '/api/v1/organization/management-context', '200'],
+      ['POST', '/api/v1/organization/users', '201'],
+      ['PATCH', '/api/v1/organization/users/{userId}/status', '200'],
+      ['POST', '/api/v1/organization/users/{userId}/password-reset', '200'],
+      ['PATCH', '/api/v1/organization/users/{userId}/membership', '200'],
+      ['POST', '/api/v1/organization/users/{userId}/role-assignments', '201'],
+      [
+        'PATCH',
+        '/api/v1/organization/users/{userId}/role-assignments/{assignmentId}',
+        '200',
+      ],
+      ['POST', '/api/v1/organization/teams', '201'],
+      ['PATCH', '/api/v1/organization/teams/{teamId}/status', '200'],
+    ] as const;
+
+    for (const [method, path, status] of responses) {
+      const operation = document.paths[path]?.[method.toLowerCase() as 'get'];
+      const response = operation?.responses[status];
+      expect(response).toBeDefined();
+      expect(response !== undefined && 'content' in response).toBe(true);
+      if (response !== undefined && 'content' in response) {
+        expect(response.content?.['application/json']?.schema).toEqual({
+          $ref: expect.stringMatching(/^#\/components\/schemas\//),
+        });
+      }
+    }
   });
 
   it('forwards the trusted actor to the management context query', async () => {

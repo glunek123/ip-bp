@@ -10,7 +10,12 @@ import {
   Post,
   UseGuards,
 } from '@nestjs/common';
-import { ApiBearerAuth, ApiTags } from '@nestjs/swagger';
+import {
+  ApiBearerAuth,
+  ApiCreatedResponse,
+  ApiOkResponse,
+  ApiTags,
+} from '@nestjs/swagger';
 import { CsrfGuard } from '../auth/csrf.guard';
 import { ActorContext } from './actor-context';
 import { CurrentActor } from './actor-context.decorator';
@@ -26,6 +31,15 @@ import {
   SetUserStatusDto,
   UpdateMembershipDto,
 } from './organization.dto';
+import {
+  CreateOrganizationUserResponseDto,
+  OrganizationManagementContextResponseDto,
+  OrganizationMembershipResponseDto,
+  OrganizationPasswordResetResponseDto,
+  OrganizationRoleAssignmentResponseDto,
+  OrganizationTeamResponseDto,
+  OrganizationUserStatusResponseDto,
+} from './organization-response.dto';
 
 @ApiTags('organization')
 @ApiBearerAuth()
@@ -35,11 +49,13 @@ export class OrganizationController {
   constructor(private readonly organization: OrganizationService) {}
 
   @Get('management-context')
+  @ApiOkResponse({ type: OrganizationManagementContextResponseDto })
   getManagementContext(@CurrentActor() actor: ActorContext) {
     return this.organization.getManagementContext(actor);
   }
 
   @Post('users')
+  @ApiCreatedResponse({ type: CreateOrganizationUserResponseDto })
   createUser(
     @CurrentActor() actor: ActorContext,
     @Body() input: CreateOrganizationUserDto,
@@ -53,6 +69,7 @@ export class OrganizationController {
   }
 
   @Patch('users/:userId/status')
+  @ApiOkResponse({ type: OrganizationUserStatusResponseDto })
   setUserStatus(
     @CurrentActor() actor: ActorContext,
     @Param('userId', new ParseUUIDPipe()) userId: string,
@@ -65,6 +82,7 @@ export class OrganizationController {
 
   @Post('users/:userId/password-reset')
   @HttpCode(200)
+  @ApiOkResponse({ type: OrganizationPasswordResetResponseDto })
   resetUserPassword(
     @CurrentActor() actor: ActorContext,
     @Param('userId', new ParseUUIDPipe()) userId: string,
@@ -76,6 +94,7 @@ export class OrganizationController {
   }
 
   @Patch('users/:userId/membership')
+  @ApiOkResponse({ type: OrganizationMembershipResponseDto })
   updateMembership(
     @CurrentActor() actor: ActorContext,
     @Param('userId', new ParseUUIDPipe()) userId: string,
@@ -87,6 +106,7 @@ export class OrganizationController {
   }
 
   @Post('users/:userId/role-assignments')
+  @ApiCreatedResponse({ type: OrganizationRoleAssignmentResponseDto })
   assignRole(
     @CurrentActor() actor: ActorContext,
     @Param('userId', new ParseUUIDPipe()) userId: string,
@@ -102,6 +122,7 @@ export class OrganizationController {
   }
 
   @Patch('users/:userId/role-assignments/:assignmentId')
+  @ApiOkResponse({ type: OrganizationRoleAssignmentResponseDto })
   setRoleAssignmentStatus(
     @CurrentActor() actor: ActorContext,
     @Param('userId', new ParseUUIDPipe()) userId: string,
@@ -119,6 +140,7 @@ export class OrganizationController {
   }
 
   @Post('teams')
+  @ApiCreatedResponse({ type: OrganizationTeamResponseDto })
   createTeam(
     @CurrentActor() actor: ActorContext,
     @Body() input: CreateTeamDto,
@@ -129,6 +151,7 @@ export class OrganizationController {
   }
 
   @Patch('teams/:teamId/status')
+  @ApiOkResponse({ type: OrganizationTeamResponseDto })
   setTeamStatus(
     @CurrentActor() actor: ActorContext,
     @Param('teamId', new ParseUUIDPipe()) teamId: string,

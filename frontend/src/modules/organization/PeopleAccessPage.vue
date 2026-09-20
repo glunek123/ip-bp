@@ -178,6 +178,28 @@ async function assignRole(user: OrganizationUser): Promise<void> {
   );
 }
 
+async function setRoleStatus(
+  user: OrganizationUser,
+  assignment: OrganizationUser['assignments'][number],
+): Promise<void> {
+  const changed = await run(`role-${assignment.id}`, () =>
+    setOrganizationRoleAssignmentStatus(
+      user.id,
+      assignment.id,
+      !assignment.active,
+    ),
+  );
+  const retainedTeamId = pendingTeamChanges[user.id];
+  if (!changed || !assignment.active || retainedTeamId === undefined) return;
+
+  const moved = await run(`team-${user.id}`, () =>
+    updateOrganizationMembership(user.id, {
+      teamId: retainedTeamId || null,
+    }),
+  );
+  if (moved) delete pendingTeamChanges[user.id];
+}
+
 function openPasswordReset(user: OrganizationUser): void {
   resetTarget.value = user;
   newPassword.value = '';
@@ -403,15 +425,7 @@ onBeforeUnmount(() => activeRequest?.abort());
                     text
                     size="small"
                     :disabled="Boolean(pending)"
-                    @click="
-                      run(`role-${assignment.id}`, () =>
-                        setOrganizationRoleAssignmentStatus(
-                          user.id,
-                          assignment.id,
-                          !assignment.active,
-                        ),
-                      )
-                    "
+                    @click="setRoleStatus(user, assignment)"
                     >{{ assignment.active ? '停用' : '恢复' }}</ElButton
                   >
                 </div>
