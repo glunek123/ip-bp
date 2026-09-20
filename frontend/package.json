@@ -8,6 +8,7 @@
     "build": "pnpm typecheck && pnpm build:bundle",
     "build:bundle": "vite build",
     "typecheck": "vue-tsc --noEmit",
+    "typecheck:prepared": "vue-tsc --noEmit",
     "dev": "vite"
   },
   "dependencies": {

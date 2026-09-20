@@ -6,7 +6,7 @@ Demo 位于 `demo/`，正式工程位于 `frontend/`、`backend/`。当前正式
 
 新任务先阅读[当前开发状态](docs/project-status.md)，检查Git现场并只加载相关模块的Spec、源码和测试；上下文压缩／中断恢复、快照漂移或流程治理时再读[AI开发规范](docs/ai-coding.md)。加载下方运行入口后执行`pnpm context:check`，它会指出与最近核对快照不同的源码、配置或文档。
 
-开发任务按[三级开发与集成规则](.cursor/rules/verified-feature-integration.mdc)选择Level 1／2／3。开发循环优先定向测试和`pnpm check:fast`；`pnpm verify`只在Level 3、完整业务切片、合并`main`前、核心架构变更或怀疑跨模块回归时运行。数据库E2E按风险单独触发，相同候选不重复全量验证。
+开发任务按[三级开发与集成规则](.cursor/rules/verified-feature-integration.mdc)选择Level 1／2／3；风险等级、完整`verify`、数据库E2E、证据复用和Review的触发条件只在该规则维护。开发循环优先定向测试和`pnpm check:fast`，不因普通L2是“完整Slice”或发生合并动作就自动升级为完整门禁。
 
 收到 Demo 字段或规则文档时，按 [后续设计清单](docs/deferred-design.md)核对输入和待补能力。GitHub远端已配置，代码、文档和快照一起提交；当前未见托管CI强制证据。组件兼容、声明补丁及升级复验方法见 [组件兼容报告](docs/component-compatibility.md)。
 
@@ -47,24 +47,28 @@ pnpm setup:local
 
 `setup:local` 是本地环境的唯一初始化入口：缺失的 `AUTH_THROTTLE_SECRET` 会自动生成（32 随机字节、hex 编码），已有配置不会被覆盖，且不打印任何秘密值。**不要手工复制真实 Secret**，也不要提交真实 `.env`。
 
+新的worktree、依赖重装或生成目录被清理后，直接运行后端单测前先执行一次`pnpm prepare:prisma`。正式`verify:slice:*`入口会自行准备并只生成一次；普通开发循环可在有未提交改动时直接运行聚焦测试，不要求先提交或生成evidence。
+
 ## 开发与检查
 
-| 命令                        | 用途                                                             |
-| --------------------------- | ---------------------------------------------------------------- |
-| `pnpm dev`                  | 并行启动 Vite 与 Nest 源码编译监听                               |
-| `pnpm db:migrate:deploy`    | 将仓库内已有迁移安全应用到本地开发库                             |
-| `pnpm auth:bootstrap-local` | 一次性创建首位本地管理员（还需显式确认数据库 host/port/name）    |
-| `pnpm build`                | 生成 Prisma Client、检查前端类型并构建两端                       |
-| `pnpm typecheck`            | 前后端严格 TypeScript 检查                                       |
-| `pnpm lint`                 | ESLint 检查，警告也阻断                                          |
-| `pnpm check:fast`           | 普通开发的快速静态门禁：类型检查＋Lint                           |
-| `pnpm format:check`         | Prettier 格式检查                                                |
-| `pnpm format`               | 修正正式工程和文档格式，跳过 Demo                                |
-| `pnpm test`                 | Vitest 文档同步检查器与前端行为测试、Jest/Supertest 后端契约测试 |
-| `pnpm verify`               | context、Spec、类型、Lint、格式、单元／契约测试及前后端构建      |
-| `pnpm test:e2e`             | 独立启动当前候选应用并对专用PostgreSQL执行Playwright；verify不含 |
-| `pnpm context:record:light` | 仅为已核对的Demo／前端样式改动记录轻量快照；其他路径会拒绝       |
-| `pnpm db:stop`              | 停止开发数据库，保留数据卷                                       |
+| 命令                          | 用途                                                             |
+| ----------------------------- | ---------------------------------------------------------------- |
+| `pnpm dev`                    | 并行启动 Vite 与 Nest 源码编译监听                               |
+| `pnpm db:migrate:deploy`      | 将仓库内已有迁移安全应用到本地开发库                             |
+| `pnpm db:test:migrate:deploy` | 将仓库内已有迁移应用到专用测试库，不执行reset                    |
+| `pnpm auth:bootstrap-local`   | 一次性创建首位本地管理员（还需显式确认数据库 host/port/name）    |
+| `pnpm build`                  | 生成 Prisma Client、检查前端类型并构建两端                       |
+| `pnpm prepare:prisma`         | 为冷worktree显式生成一次 Prisma Client                           |
+| `pnpm typecheck`              | 前后端严格 TypeScript 检查                                       |
+| `pnpm lint`                   | ESLint 检查，警告也阻断                                          |
+| `pnpm check:fast`             | 普通开发的快速静态门禁：类型检查＋Lint                           |
+| `pnpm format:check`           | Prettier 格式检查                                                |
+| `pnpm format`                 | 修正正式工程和文档格式，跳过 Demo                                |
+| `pnpm test`                   | Vitest 文档同步检查器与前端行为测试、Jest/Supertest 后端契约测试 |
+| `pnpm verify`                 | context、Spec、类型、Lint、格式、单元／契约测试及前后端构建      |
+| `pnpm test:e2e`               | 独立启动当前候选应用并对专用PostgreSQL执行Playwright；verify不含 |
+| `pnpm context:record:light`   | 仅为已核对的Demo／前端样式改动记录轻量快照；其他路径会拒绝       |
+| `pnpm db:stop`                | 停止开发数据库，保留数据卷                                       |
 
 后端启动需要显式配置 `NODE_ENV`、`PORT`、`DATABASE_URL`；默认只监听本机。健康接口执行 Prisma `SELECT 1`，数据库不可达返回 503 和统一错误结构；成功仅表示本次检查通过。每个请求生成内部请求编号，并返回 `X-Request-Id`。
 
@@ -72,12 +76,13 @@ pnpm setup:local
 
 ```powershell
 pnpm db:test:up
+pnpm db:test:migrate:deploy
 pnpm exec playwright install chromium
 pnpm build
 pnpm test:e2e
 ```
 
-测试使用后端 3101、前端 5174 和 `backend/.env.test`；不会复用已经启动的应用。测试包含真实 PostgreSQL 连通性、失败展示及重试恢复。HTML 报告位于 `playwright-report/`，截图和失败追踪位于 `test-results/`。测试库使用临时内存文件系统；可用 `docker compose --profile test stop postgres-test` 停止测试库。应用测试进程由 Playwright 管理。
+测试使用后端 3101、前端 5174 和 `backend/.env.test`；统一入口会拒绝与文件冲突的Shell覆盖，并只串行化共享测试库及固定端口，不会复用已经启动的应用。测试包含真实 PostgreSQL 连通性、失败展示及重试恢复。HTML 报告位于 `playwright-report/`，截图和失败追踪位于 `test-results/`。测试库使用临时内存文件系统；可用 `docker compose --profile test stop postgres-test` 停止测试库。应用测试进程由 Playwright 管理。
 
 ## Prisma 与数据
 
@@ -89,11 +94,11 @@ pnpm --filter @dev-cor/backend db:migrate --name approved-change
 
 普通本地启动使用根命令 `pnpm db:migrate:deploy` 应用仓库内已批准的迁移。只有开发新的已批准 schema 变更时才使用最后一条 `db:migrate --name` 命令生成迁移。生成代码位于 `backend/src/generated/prisma`，由工具管理并忽略入库。不得手改生成文件，也不以 `db push` 代替迁移链。
 
-## 依据与阶段结果
+## 依据与当前状态
 
 - [技术基线](docs/architecture.md)
 - [开发规范](docs/conventions.md)
 - [环境及版本报告](docs/environment.md)
-- [第三步实施计划](docs/superpowers/plans/2026-09-15-engineering-foundation.md)
+- [功能开发路线图](docs/feature-roadmap.md)
 
-本地正式账号登录第一切片已实现；人员账号管理、密码重置、MFA、外部 OIDC、附件存储、AI、业财对接和生产部署仍按基线中的待确认事项推进。
+业务完成范围、当前任务和未决项不在README重复维护，分别以路线图和[当前开发状态](docs/project-status.md)为准。

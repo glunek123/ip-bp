@@ -1,6 +1,6 @@
 # 功能开发路线图
 
-更新日期：2026-09-20。审计基线：`main@9bb2d9f`。
+更新日期：2026-09-20。业务实现审计基线：`e6caef4`；流程工具的后续变更不改变本表业务完成判定。
 
 本文只回答“已经做到哪里、下一步做什么、之后按什么依赖顺序做”。详细业务规则仍以 [`docs/spec/`](spec/) 为准，技术方案以设计文档为准，当前切片的技术任务以实施计划为准，实际验证结果以 [`docs/project-status.md`](project-status.md) 和 [`docs/spec/v0.1/VALIDATION.md`](spec/v0.1/VALIDATION.md) 为准。
 

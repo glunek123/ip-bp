@@ -29,7 +29,7 @@
 - 状态只写任务、范围、依据、真实验证和未决项；命令流水、反复尝试和详细审查留在既有验证记录或Git，不新建重复台账。
 - 开工执行`pnpm context:check`；它报告漂移但不因普通文件漂移失败，当前任务必须结合列出的文件、最近提交和工作区判断是否重叠。Level 3、Merge、Release和完整`verify`使用`pnpm context:check:strict`，未解释漂移会失败。两种模式下都不得通过刷新快照掩盖未知改动。
 - 已检查最终diff且差异仅位于`demo/`或`frontend/src/styles/`时，可使用`pnpm context:record:light`记录快照；工具会拒绝源码、配置、治理、Spec和其他路径。其余任务在核对真实差异后使用标准`pnpm context:record`。标准记录不再机械要求状态文件同时变化；是否更新状态只由阶段、活动Slice、阻断、重要风险、架构、Merge／Release或跨会话恢复信息的语义变化决定。
-- 快照是文件一致性检查，不是测试或批准。记录后仍按所属Level执行测试；收口只追加非执行性结果时不循环重跑业务门禁。
+- 快照是文件一致性检查，不是测试或批准。影响规则、执行或交付说明的文档在候选冻结前完成；最终运行结果与Review优先写入树外证据或PR。后续文档形成新tree时可以准确记载旧tree的历史结果，但不能把旧证据标成新tree实际执行；AGENTS、规则、业务Spec、测试规范、脚本和配置不适用非执行性收口例外。
 
 ## 文档同步
 
@@ -39,15 +39,16 @@
 
 ## 分级验证入口
 
-- 当前显式Level 2入口为`pnpm verify:slice:customer`和`pnpm verify:slice:right-holder`，分别组合定向单元／契约、`check:fast`、Slice格式、后端构建及对应数据库E2E；规则／字段语义／公共契约变化时另运行`pnpm spec:check`，普通迁移另运行迁移专项。
-- `pnpm verify:slice:auth`只用于认证开发循环和聚焦回归，不替代Auth所属Level 3的完整`pnpm verify`、数据库风险专项与Review。
+- 开发循环可在有本任务未提交修改的工作区直接运行定向单元／契约、过滤E2E和`check:fast`，不要求提前提交、创建evidence或额外worktree。正式`verify:slice:*`才要求干净固定候选并生成证据。
+- 当前Level 2正式候选入口为`pnpm verify:slice:customer`和`pnpm verify:slice:right-holder`，依次组合一次Prisma准备、定向单元／契约、prepared静态检查、Slice格式、prepared后端构建及对应数据库E2E；规则／字段语义／公共契约变化时另运行`pnpm spec:check`，普通迁移另运行迁移专项。
+- `pnpm verify:slice:auth`只提供认证聚焦候选证据，不替代Auth所属Level 3的完整`pnpm verify`、数据库风险专项与Review。
 - 数据库入口为`test:e2e:customer`、`test:e2e:right-holder`、`test:e2e:auth`和`test:e2e:full`；前三者缩小范围但仍使用同一隔离测试库保护和Playwright runner。Jest、Vitest与Playwright匹配0项时必须失败。
-- Slice入口通过固定配置顺序执行检查；runner在第一项检查前锁定干净候选tree，全部成功后再次确认仍为同一干净tree，并根据实际命令自动记录规范化检查ID，不提供可由调用者自报检查集合的独立记录命令。证据保存在Git common directory下，可在同一仓库的worktree之间复用，只认干净固定候选、完全相同Git tree、环境和检查集合；可用`pnpm evidence:check --scope <name>`核对。Auth focused证据不能冒充完整Level 3证据；新的组合tree不做自动affected推断。
+- Slice入口通过固定配置执行；runner在首项前保存`running`，每项命令前后核对同一干净HEAD／tree和统一测试环境快照，全部成功后原子发布`success`。Evidence v2只认同一tree、scope、有序检查集合、环境指纹及最新成功尝试；同键重跑一旦开始，旧成功不再可复用，失败、中断、v1与损坏记录均拒绝。秘密输入使用Git common directory中的本地随机HMAC密钥生成指纹，原值不入证据；密钥缺失或变化时旧证据自然失配。证据和验证键锁位于Git common directory，同仓库worktree共享；E2E只对共享测试库和固定端口加机器级互斥，普通单元、类型和格式检查不被全局串行。锁异常残留时不按超时自动删除，须先确认原进程及子进程结束再人工恢复。可用`pnpm evidence:check --scope <name>`核对；Auth focused证据不能冒充完整Level 3证据，新的组合tree不做自动affected推断。
 
 ## 恢复与交付
 
 - 中断恢复先看状态、Git和快照漂移；保留用户及其他任务改动。只恢复当前授权范围，不自行启动下一阶段。
-- 检查失败保留首次有效证据；修复后只重跑失效范围，最终稳定候选再执行所属Level门禁。同一候选的可信结果可复用。
+- 检查失败保留输出供诊断；修复后只重跑失效范围，最终稳定候选再执行所属Level门禁。真正启动同一验证键的新尝试会先使旧成功失效；仅查询证据不会改变状态。
 - 最终差异必须与用户范围一致，不提交真实`.env`、凭据或运行产物。工程检查通过不等于上线获准；发布仍遵守开发规范。
 - 最终汇报保持四项：完成内容、实际验证、已知风险、必要下一步。没有风险或下一步时直接说明“无”，不输出内部推理和命令流水。
 

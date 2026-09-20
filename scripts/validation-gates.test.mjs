@@ -74,6 +74,14 @@ test('scoped E2E commands reuse the guarded runner and full remains explicit', (
     packageJson.scripts['test:e2e:full'],
     'node scripts/run-e2e.mjs',
   );
+  assert.equal(
+    packageJson.scripts['db:test:migrate:deploy'],
+    'pnpm --filter @dev-cor/backend db:migrate:deploy:test',
+  );
+  assert.match(
+    backendPackage.scripts['db:migrate:deploy:test'],
+    /--env-file=\.env\.test.*migrate deploy/,
+  );
 });
 
 test('full verify prepares Prisma and typechecks the frontend only once', () => {
@@ -100,4 +108,25 @@ test('full verify prepares Prisma and typechecks the frontend only once', () => 
   );
   assert.equal(frontendPackage.scripts['build:bundle'], 'vite build');
   assert.doesNotMatch(packageJson.scripts['build:prepared'], /vue-tsc/);
+});
+
+test('prepared fast checks preserve typecheck and lint without regenerating Prisma', () => {
+  assert.equal(
+    packageJson.scripts['check:fast:prepared'],
+    'pnpm typecheck:prepared && eslint . --cache --cache-strategy content --cache-location .local/eslint-cache --max-warnings 0',
+  );
+  assert.equal(
+    packageJson.scripts['typecheck:prepared'],
+    'pnpm -r --parallel typecheck:prepared && tsc --noEmit',
+  );
+  assert.equal(
+    frontendPackage.scripts['typecheck:prepared'],
+    'vue-tsc --noEmit',
+  );
+  assert.match(packageJson.scripts['typecheck:prepared'], /tsc --noEmit/);
+  assert.doesNotMatch(
+    packageJson.scripts['check:fast:prepared'],
+    /db:generate/,
+  );
+  assert.match(packageJson.scripts['check:fast'], /typecheck/);
 });

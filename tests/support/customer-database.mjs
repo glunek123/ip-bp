@@ -1,8 +1,6 @@
 import { createRequire } from 'node:module';
 import { readFile, readdir } from 'node:fs/promises';
-import { readFileSync } from 'node:fs';
 import { resolve } from 'node:path';
-import { parseEnv } from 'node:util';
 import { randomUUID } from 'node:crypto';
 
 const requireFromBackend = createRequire(
@@ -43,20 +41,15 @@ const databaseUrl = process.env.DATABASE_URL;
 if (databaseUrl === undefined) {
   throw new Error('DATABASE_URL is required for customer E2E setup');
 }
-const testEnvironment = parseEnv(
-  readFileSync(resolve(process.cwd(), 'backend/.env.test'), 'utf8'),
-);
 const testTarget = new URL(databaseUrl);
 if (
   process.env.NODE_ENV !== 'test' ||
-  testEnvironment.NODE_ENV !== 'test' ||
-  databaseUrl !== testEnvironment.DATABASE_URL ||
   testTarget.hostname !== '127.0.0.1' ||
   testTarget.port !== '55433' ||
   testTarget.pathname !== '/dev_cor_test'
 ) {
   throw new Error(
-    'Customer fixtures require the isolated backend/.env.test database',
+    'Customer fixtures require the fixed isolated E2E database environment',
   );
 }
 

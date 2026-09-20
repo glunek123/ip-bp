@@ -1,11 +1,22 @@
-import { existsSync, mkdirSync, readFileSync, writeFileSync } from 'node:fs';
+import {
+  existsSync,
+  mkdirSync,
+  readFileSync,
+  renameSync,
+  unlinkSync,
+  writeFileSync,
+} from 'node:fs';
+import { createHash, randomUUID } from 'node:crypto';
 import { execFileSync } from 'node:child_process';
-import { dirname, join, resolve } from 'node:path';
+import { join, resolve } from 'node:path';
 import { fileURLToPath, pathToFileURL } from 'node:url';
+import { acquireLocalLock } from './local-lock.mjs';
+import { captureTestEnvironment } from './test-environment.mjs';
 import { validationScope } from './validation-scopes.mjs';
 
-const evidenceVersion = 1;
-const levels = new Set(['L1', 'L2', 'L3']);
+const evidenceVersion = 2;
+const evidenceProtocol = 'dev-cor-validation-v2';
+const attemptStatuses = new Set(['running', 'success', 'failed', 'aborted']);
 
 function git(root, ...args) {
   return execFileSync('git', ['-C', root, ...args], {
@@ -14,37 +25,11 @@ function git(root, ...args) {
   }).trim();
 }
 
-function normalizeRequest(request) {
-  const level = request.level;
-  const scope = request.scope;
-  const checks = request.checks;
-  if (!levels.has(level)) throw new Error(`Invalid evidence level: ${level}`);
-  if (typeof scope !== 'string' || !/^[a-z0-9][a-z0-9-]{0,63}$/.test(scope))
-    throw new Error(`Invalid evidence scope: ${scope}`);
-  if (!Array.isArray(checks) || checks.length === 0)
-    throw new Error('Evidence requires at least one successful named check');
-  if (
-    checks.some(
-      (check) =>
-        typeof check !== 'string' ||
-        !/^[a-z0-9][a-z0-9:.-]{0,127}$/.test(check),
-    )
-  )
-    throw new Error('Invalid evidence check name');
-  if (new Set(checks).size !== checks.length)
-    throw new Error('Duplicate evidence check names are not allowed');
-  if (
-    typeof request.nodeVersion !== 'string' ||
-    typeof request.pnpmVersion !== 'string'
-  )
-    throw new Error('Evidence requires Node and pnpm versions');
-  return {
-    level,
-    scope,
-    checks: [...checks],
-    nodeVersion: request.nodeVersion,
-    pnpmVersion: request.pnpmVersion,
-  };
+function commonEvidenceDirectory(root) {
+  return join(
+    resolve(root, git(root, 'rev-parse', '--git-common-dir')),
+    'dev-cor-validation-evidence',
+  );
 }
 
 function candidate(root) {
@@ -63,123 +48,250 @@ export function captureValidationCandidate(root) {
   return candidate(root);
 }
 
-function evidencePath(root, tree) {
-  const commonDirectory = resolve(
-    root,
-    git(root, 'rev-parse', '--git-common-dir'),
-  );
-  return join(commonDirectory, 'dev-cor-validation-evidence', `${tree}.json`);
-}
-
-function recordEvidence(root, request, expectedTree) {
-  const normalized = normalizeRequest(request);
-  const fixed = candidate(root);
-  if (fixed.tree !== expectedTree)
+export function assertValidationCandidate(root, expected) {
+  const current = candidate(root);
+  if (current.commit !== expected.commit || current.tree !== expected.tree) {
     throw new Error(
-      `Validation candidate tree changed during checks: expected ${expectedTree}, found ${fixed.tree}`,
+      `Validation candidate changed during checks: expected ${expected.commit}/${expected.tree}, found ${current.commit}/${current.tree}`,
     );
-  const record = {
-    commit: fixed.commit,
-    level: normalized.level,
-    scope: normalized.scope,
-    checks: normalized.checks,
-    environment: {
-      node: normalized.nodeVersion,
-      pnpm: normalized.pnpmVersion,
-    },
-    createdAt: new Date().toISOString(),
-  };
-  const path = evidencePath(root, fixed.tree);
-  let evidence = { version: evidenceVersion, tree: fixed.tree, records: [] };
-  if (existsSync(path)) {
-    try {
-      const existing = JSON.parse(readFileSync(path, 'utf8'));
-      if (
-        existing?.version === evidenceVersion &&
-        existing.tree === fixed.tree &&
-        Array.isArray(existing.records)
-      )
-        evidence = existing;
-    } catch {
-      // Replace corrupt local cache only after all candidate checks succeeded.
-    }
   }
-  evidence.records = evidence.records.filter(
-    (item) =>
-      !(
-        item.level === record.level &&
-        item.scope === record.scope &&
-        item.environment?.node === record.environment.node &&
-        item.environment?.pnpm === record.environment.pnpm &&
-        JSON.stringify(item.checks) === JSON.stringify(record.checks)
-      ),
-  );
-  evidence.records.push(record);
-  mkdirSync(dirname(path), { recursive: true });
-  writeFileSync(path, `${JSON.stringify(evidence, null, 2)}\n`, 'utf8');
-  return { path, tree: fixed.tree, ...record };
+  return current;
 }
 
-function findReusableEvidence(root, request) {
-  const normalized = normalizeRequest(request);
+function normalizeEnvironment(environment) {
+  if (
+    typeof environment?.fingerprint !== 'string' ||
+    !/^[0-9a-f]{64}$/.test(environment.fingerprint)
+  ) {
+    throw new Error('Validation evidence requires an environment fingerprint');
+  }
+  const metadata = environment.metadata;
+  for (const key of ['node', 'pnpm', 'platform', 'architecture']) {
+    if (typeof metadata?.[key] !== 'string' || metadata[key].length === 0)
+      throw new Error(
+        `Validation evidence requires environment metadata: ${key}`,
+      );
+  }
+  return {
+    fingerprint: environment.fingerprint,
+    node: metadata.node,
+    pnpm: metadata.pnpm,
+    platform: metadata.platform,
+    architecture: metadata.architecture,
+  };
+}
+
+function scopeRequest(name, environment, fixedCandidate) {
+  const configured = validationScope(name);
+  return {
+    protocol: evidenceProtocol,
+    tree: fixedCandidate.tree,
+    commit: fixedCandidate.commit,
+    level: configured.level,
+    scope: name,
+    checks: configured.commands.map(({ id }) => id),
+    environment: normalizeEnvironment(environment),
+  };
+}
+
+function requestKey(request) {
+  return createHash('sha256')
+    .update(
+      JSON.stringify({
+        protocol: request.protocol,
+        tree: request.tree,
+        level: request.level,
+        scope: request.scope,
+        checks: request.checks,
+        environment: request.environment,
+      }),
+    )
+    .digest('hex');
+}
+
+function evidencePath(root, tree) {
+  return join(commonEvidenceDirectory(root), `${tree}.json`);
+}
+
+function emptyEvidence(tree) {
+  return { version: evidenceVersion, tree, records: [] };
+}
+
+function readEvidence(path, tree) {
+  if (!existsSync(path)) return undefined;
+  try {
+    const value = JSON.parse(readFileSync(path, 'utf8'));
+    if (
+      value?.version !== evidenceVersion ||
+      value.tree !== tree ||
+      !Array.isArray(value.records)
+    ) {
+      return undefined;
+    }
+    return value;
+  } catch {
+    return undefined;
+  }
+}
+
+function atomicWrite(path, value) {
+  const temporary = `${path}.${process.pid}.${randomUUID()}.tmp`;
+  try {
+    writeFileSync(temporary, `${JSON.stringify(value, null, 2)}\n`, {
+      flag: 'wx',
+      mode: 0o600,
+    });
+    renameSync(temporary, path);
+  } catch (error) {
+    if (existsSync(temporary)) unlinkSync(temporary);
+    throw error;
+  }
+}
+
+function updateEvidence(root, tree, update) {
+  const directory = commonEvidenceDirectory(root);
+  mkdirSync(directory, { recursive: true });
+  const writeLock = acquireLocalLock(
+    join(directory, 'locks'),
+    'evidence-write',
+  );
+  try {
+    const path = evidencePath(root, tree);
+    const evidence = readEvidence(path, tree) ?? emptyEvidence(tree);
+    update(evidence.records);
+    atomicWrite(path, evidence);
+    return path;
+  } finally {
+    writeLock.release();
+  }
+}
+
+function recordFor(request, key, attemptId, status, startedAt) {
+  return {
+    key,
+    attemptId,
+    commit: request.commit,
+    level: request.level,
+    scope: request.scope,
+    checks: request.checks,
+    environment: request.environment,
+    status,
+    startedAt,
+    ...(status === 'running' ? {} : { completedAt: new Date().toISOString() }),
+  };
+}
+
+export function beginValidationScopeAttempt(
+  root,
+  name,
+  environment,
+  fixedCandidate,
+) {
+  if (
+    typeof fixedCandidate?.commit !== 'string' ||
+    typeof fixedCandidate?.tree !== 'string'
+  ) {
+    throw new Error('Validation attempt requires a captured candidate');
+  }
+  assertValidationCandidate(root, fixedCandidate);
+  const request = scopeRequest(name, environment, fixedCandidate);
+  const key = requestKey(request);
+  const lock = acquireLocalLock(
+    join(commonEvidenceDirectory(root), 'locks'),
+    `attempt-${key}`,
+  );
+  const attemptId = randomUUID();
+  const startedAt = new Date().toISOString();
+  let path;
+  try {
+    path = updateEvidence(root, request.tree, (records) => {
+      const next = recordFor(request, key, attemptId, 'running', startedAt);
+      const existing = records.findIndex((record) => record?.key === key);
+      if (existing === -1) records.push(next);
+      else records[existing] = next;
+    });
+  } catch (error) {
+    lock.release();
+    throw error;
+  }
+  return {
+    path,
+    key,
+    attemptId,
+    tree: request.tree,
+    commit: request.commit,
+    request,
+    release: () => lock.release(),
+  };
+}
+
+function finishAttempt(root, attempt, status) {
+  if (!attemptStatuses.has(status) || status === 'running')
+    throw new Error(`Invalid final validation status: ${status}`);
+  const path = updateEvidence(root, attempt.tree, (records) => {
+    const index = records.findIndex((record) => record?.key === attempt.key);
+    if (
+      index === -1 ||
+      records[index]?.attemptId !== attempt.attemptId ||
+      records[index]?.status !== 'running'
+    ) {
+      throw new Error('Validation attempt is no longer the current attempt');
+    }
+    records[index] = recordFor(
+      attempt.request,
+      attempt.key,
+      attempt.attemptId,
+      status,
+      records[index].startedAt,
+    );
+  });
+  attempt.path = path;
+  return { ...attempt, status };
+}
+
+export function completeValidationScopeAttempt(root, attempt) {
+  return finishAttempt(root, attempt, 'success');
+}
+
+export function failValidationScopeAttempt(root, attempt, status = 'failed') {
+  if (status !== 'failed' && status !== 'aborted')
+    throw new Error('Failed attempts must be marked failed or aborted');
+  return finishAttempt(root, attempt, status);
+}
+
+function isReusableRecord(record, request, key) {
+  return (
+    record?.key === key &&
+    typeof record.attemptId === 'string' &&
+    typeof record.commit === 'string' &&
+    /^[0-9a-f]{40,64}$/.test(record.commit) &&
+    record.level === request.level &&
+    record.scope === request.scope &&
+    record.status === 'success' &&
+    typeof record.startedAt === 'string' &&
+    typeof record.completedAt === 'string' &&
+    JSON.stringify(record.checks) === JSON.stringify(request.checks) &&
+    JSON.stringify(record.environment) === JSON.stringify(request.environment)
+  );
+}
+
+export function findReusableValidationScopeEvidence(root, name, environment) {
+  const configured = validationScope(name);
+  void configured;
   let fixed;
   try {
     fixed = candidate(root);
   } catch {
     return undefined;
   }
-  const path = evidencePath(root, fixed.tree);
-  if (!existsSync(path)) return undefined;
-  let evidence;
-  try {
-    evidence = JSON.parse(readFileSync(path, 'utf8'));
-  } catch {
-    return undefined;
-  }
-  if (
-    evidence?.version !== evidenceVersion ||
-    evidence.tree !== fixed.tree ||
-    !Array.isArray(evidence.records)
-  )
-    return undefined;
-  const record = evidence.records.find(
-    (item) =>
-      item.level === normalized.level &&
-      item.scope === normalized.scope &&
-      item.environment?.node === normalized.nodeVersion &&
-      item.environment?.pnpm === normalized.pnpmVersion &&
-      JSON.stringify(item.checks) === JSON.stringify(normalized.checks),
-  );
-  return record ? { tree: fixed.tree, ...record } : undefined;
-}
-
-function scopeRequest(name, environment) {
-  const configured = validationScope(name);
-  return {
-    level: configured.level,
-    scope: name,
-    checks: configured.commands.map(({ id }) => id),
-    nodeVersion: environment.nodeVersion,
-    pnpmVersion: environment.pnpmVersion,
-  };
-}
-
-export function recordValidationScopeEvidence(
-  root,
-  name,
-  environment,
-  expectedTree,
-) {
-  if (
-    typeof expectedTree !== 'string' ||
-    !/^[0-9a-f]{40,64}$/.test(expectedTree)
-  )
-    throw new Error('Validation evidence requires the captured candidate tree');
-  return recordEvidence(root, scopeRequest(name, environment), expectedTree);
-}
-
-export function findReusableValidationScopeEvidence(root, name, environment) {
-  return findReusableEvidence(root, scopeRequest(name, environment));
+  const request = scopeRequest(name, environment, fixed);
+  const key = requestKey(request);
+  const evidence = readEvidence(evidencePath(root, fixed.tree), fixed.tree);
+  if (!evidence) return undefined;
+  const record = evidence.records.find((item) => item?.key === key);
+  return isReusableRecord(record, request, key)
+    ? { tree: fixed.tree, ...record }
+    : undefined;
 }
 
 function parseArguments(values) {
@@ -215,10 +327,9 @@ if (
     const options = parseArguments(process.argv.slice(3));
     if (!options.scope || Object.keys(options).length !== 1)
       throw new Error('Evidence check requires only --scope name');
-    const environment = {
-      nodeVersion: process.version,
+    const environment = captureTestEnvironment(root, {
       pnpmVersion: currentPnpmVersion(),
-    };
+    });
     const result = findReusableValidationScopeEvidence(
       root,
       options.scope,
@@ -226,7 +337,7 @@ if (
     );
     if (!result) {
       console.error(
-        'No reusable validation evidence matches this exact tree and scope',
+        'No reusable validation evidence matches this exact tree, scope, checks, and environment',
       );
       process.exitCode = 1;
     } else {

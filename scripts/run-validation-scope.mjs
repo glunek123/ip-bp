@@ -2,9 +2,13 @@ import { execFileSync } from 'node:child_process';
 import { resolve } from 'node:path';
 import { fileURLToPath, pathToFileURL } from 'node:url';
 import {
+  assertValidationCandidate,
+  beginValidationScopeAttempt,
   captureValidationCandidate,
-  recordValidationScopeEvidence,
+  completeValidationScopeAttempt,
+  failValidationScopeAttempt,
 } from './validation-evidence.mjs';
+import { captureTestEnvironment } from './test-environment.mjs';
 import { validationScope } from './validation-scopes.mjs';
 
 function currentPnpmVersion() {
@@ -15,34 +19,76 @@ function currentPnpmVersion() {
   return match[1];
 }
 
-function executePnpm(root, command) {
+function executePnpm(root, command, childEnvironment) {
   const pnpmCli = process.env.npm_execpath;
   if (!pnpmCli) throw new Error('pnpm executable path is unavailable');
   execFileSync(process.execPath, [pnpmCli, ...command.args], {
     cwd: root,
     stdio: 'inherit',
+    env: childEnvironment ?? process.env,
   });
+}
+
+function assertEnvironment(expected, current) {
+  if (
+    current.fingerprint !== expected.fingerprint ||
+    JSON.stringify(current.metadata) !== JSON.stringify(expected.metadata)
+  ) {
+    throw new Error('Validation environment changed during checks');
+  }
+}
+
+function abortedByInputChange(error) {
+  return /candidate changed|environment changed|clean fixed candidate|conflicts with the fixed E2E environment/i.test(
+    error instanceof Error ? error.message : String(error),
+  );
 }
 
 export async function runValidationScope(root, name, dependencies = {}) {
   const configured = validationScope(name);
+  const pnpmVersion = dependencies.pnpmVersion ?? currentPnpmVersion();
   const execute =
-    dependencies.execute ?? ((command) => executePnpm(root, command));
-  const record = dependencies.record ?? recordValidationScopeEvidence;
-  const capture = dependencies.capture ?? captureValidationCandidate;
-  const candidate = capture(root);
+    dependencies.execute ??
+    ((command, childEnvironment) =>
+      executePnpm(root, command, childEnvironment));
+  const captureCandidate =
+    dependencies.captureCandidate ?? captureValidationCandidate;
+  const assertCandidate =
+    dependencies.assertCandidate ?? assertValidationCandidate;
+  const captureEnvironment =
+    dependencies.captureEnvironment ??
+    ((repositoryRoot) =>
+      captureTestEnvironment(repositoryRoot, { pnpmVersion }));
+  const begin = dependencies.begin ?? beginValidationScopeAttempt;
+  const succeed = dependencies.succeed ?? completeValidationScopeAttempt;
+  const fail = dependencies.fail ?? failValidationScopeAttempt;
 
-  for (const command of configured.commands) await execute(command);
+  const fixedCandidate = captureCandidate(root);
+  const fixedEnvironment = captureEnvironment(root);
+  const attempt = begin(root, name, fixedEnvironment, fixedCandidate);
 
-  return record(
-    root,
-    name,
-    {
-      nodeVersion: dependencies.nodeVersion ?? process.version,
-      pnpmVersion: dependencies.pnpmVersion ?? currentPnpmVersion(),
-    },
-    candidate.tree,
-  );
+  try {
+    for (const command of configured.commands) {
+      assertCandidate(root, fixedCandidate);
+      assertEnvironment(fixedEnvironment, captureEnvironment(root));
+      await execute(
+        command,
+        command.testEnvironment ? fixedEnvironment.childEnvironment : undefined,
+      );
+      assertCandidate(root, fixedCandidate);
+      assertEnvironment(fixedEnvironment, captureEnvironment(root));
+    }
+    return succeed(root, attempt);
+  } catch (error) {
+    try {
+      fail(root, attempt, abortedByInputChange(error) ? 'aborted' : 'failed');
+    } catch {
+      // A running record is deliberately non-reusable if final state cannot publish.
+    }
+    throw error;
+  } finally {
+    attempt.release();
+  }
 }
 
 if (
