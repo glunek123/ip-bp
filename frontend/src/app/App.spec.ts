@@ -6,11 +6,17 @@ import { ApiError } from '../api/http';
 import { useAuthStore } from '../stores/auth';
 import App from './App.vue';
 
-const api = vi.hoisted(() => ({ logout: vi.fn() }));
+const api = vi.hoisted(() => ({
+  logout: vi.fn(),
+  getOrganizationManagementContext: vi.fn(),
+}));
 
 vi.mock('../api/auth', async (importOriginal) => ({
   ...(await importOriginal<typeof import('../api/auth')>()),
   logout: api.logout,
+}));
+vi.mock('../api/organization', () => ({
+  getOrganizationManagementContext: api.getOrganizationManagementContext,
 }));
 
 const session = {
@@ -22,7 +28,10 @@ const session = {
   csrfToken: 'csrf-token',
 };
 
-beforeEach(() => vi.resetAllMocks());
+beforeEach(() => {
+  vi.resetAllMocks();
+  api.getOrganizationManagementContext.mockResolvedValue({});
+});
 
 async function mountApp() {
   const pinia = createPinia();
@@ -35,6 +44,10 @@ async function mountApp() {
     routes: [
       { path: '/login', component: { template: '<div>登录页</div>' } },
       { path: '/customers', component: { template: '<div>客户页</div>' } },
+      {
+        path: '/settings/people-access',
+        component: { template: '<div>人员页</div>' },
+      },
     ],
   });
   await router.push('/customers');
@@ -44,6 +57,23 @@ async function mountApp() {
 }
 
 describe('application session controls', () => {
+  it('shows personnel navigation only when management context is readable', async () => {
+    const allowed = await mountApp();
+    await flushPromises();
+    expect(
+      allowed.wrapper.find('[data-test="people-access-nav"]').exists(),
+    ).toBe(true);
+
+    api.getOrganizationManagementContext.mockRejectedValue(
+      new ApiError('无权执行此管理操作', 403, 'MANAGEMENT_ACTION_FORBIDDEN'),
+    );
+    const denied = await mountApp();
+    await flushPromises();
+    expect(
+      denied.wrapper.find('[data-test="people-access-nav"]').exists(),
+    ).toBe(false);
+  });
+
   it('keeps the signed-in UI and explains a failed logout', async () => {
     api.logout.mockRejectedValue(
       new ApiError('服务暂时不可用，请稍后重试', 503, 'HTTP_ERROR'),

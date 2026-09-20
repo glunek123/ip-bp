@@ -86,6 +86,16 @@ export async function hashPassword(password: string): Promise<string> {
   ].join('$');
 }
 
+export function prepareLocalCredential(
+  username: string,
+  password: string,
+): { username: string; passwordHash: Promise<string> } {
+  return {
+    username: normalizeUsername(username),
+    passwordHash: hashPassword(password),
+  };
+}
+
 export async function verifyPassword(
   password: string,
   encoded: string,

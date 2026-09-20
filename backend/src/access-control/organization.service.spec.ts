@@ -28,6 +28,40 @@ function createFixture(options?: {
     teamId: string | null;
     version: number;
   }>;
+  contextMemberships?: Array<{
+    id: string;
+    active: boolean;
+    teamId: string | null;
+    user: {
+      id: string;
+      displayName: string;
+      active: boolean;
+      localCredential: { username: string } | null;
+      roleAssignments: Array<{
+        id: string;
+        roleTemplateId: string;
+        teamId: string | null;
+        active: boolean;
+        version: number;
+        roleTemplate: { name: string };
+      }>;
+    };
+  }>;
+  contextTeams?: Array<{
+    id: string;
+    name: string;
+    status: 'ACTIVE' | 'INACTIVE';
+  }>;
+  contextRoles?: Array<{
+    id: string;
+    name: string;
+    active: boolean;
+    grants: Array<{ action: string; scope: string }>;
+  }>;
+  targetAccountActive?: boolean;
+  targetActiveMemberships?: Array<{ id: string; departmentId: string }>;
+  targetCredentialHash?: string;
+  targetAssignmentActive?: boolean;
 }) {
   const actorGrants = options?.actorGrants ?? [
     departmentGrant('ROLE_ASSIGN'),
@@ -46,10 +80,38 @@ function createFixture(options?: {
         Promise.resolve(
           where.id === actor.userId
             ? { active: true, authorizationRevision: 4 }
-            : { active: true, authorizationRevision: 2 },
+            : {
+                id: where.id,
+                active: options?.targetAccountActive ?? true,
+                authorizationRevision: 2,
+              },
         ),
       ),
-      update: jest.fn().mockResolvedValue({ authorizationRevision: 3 }),
+      create: jest.fn().mockResolvedValue({
+        id: 'user-new',
+        displayName: '运营乙',
+        active: true,
+      }),
+      update: jest.fn(({ data }: { data: { active?: boolean } }) =>
+        Promise.resolve({
+          id: 'target-user',
+          active: data.active ?? options?.targetAccountActive ?? true,
+          authorizationRevision: 3,
+        }),
+      ),
+    },
+    localCredential: {
+      findUnique: jest.fn().mockResolvedValue({
+        passwordHash:
+          options?.targetCredentialHash ??
+          'scrypt$v1$16384$8$1$bGVnYWN5LXYxLXNhbHQhIQ$pZvZij3YSVf7LX5VNmX3dOn3DDbUNnc_8tRQaxJ-8iVLMXv4RH7IN2FajhK1bgIUjV-zOu8vUuC8cGrmSxBi7A',
+        passwordChangedAt: new Date('2026-09-20T00:00:00.000Z'),
+      }),
+      create: jest.fn().mockResolvedValue({
+        id: 'credential-new',
+        username: 'operator.b',
+      }),
+      update: jest.fn().mockResolvedValue({ id: 'credential-target' }),
     },
     departmentMembership: {
       findUnique: jest.fn(
@@ -88,9 +150,35 @@ function createFixture(options?: {
           });
         },
       ),
+      create: jest.fn().mockResolvedValue({
+        id: 'membership-new',
+        active: true,
+        teamId: targetTeamId,
+      }),
+      findMany: jest.fn(({ where }: { where?: { userId?: string } } = {}) =>
+        Promise.resolve(
+          where?.userId === undefined
+            ? (options?.contextMemberships ?? [])
+            : (options?.targetActiveMemberships ?? [
+                {
+                  id: 'membership-target',
+                  departmentId: actor.departmentId,
+                },
+              ]),
+        ),
+      ),
       update: jest.fn(),
     },
     roleAssignment: {
+      findUnique: jest.fn().mockResolvedValue({
+        id: 'assignment-existing',
+        userId: 'target-user',
+        departmentId: actor.departmentId,
+        roleTemplateId: 'target-role',
+        teamId: targetTeamId,
+        active: options?.targetAssignmentActive ?? true,
+        version: 1,
+      }),
       findMany: jest.fn(
         ({ where }: { where: { userId: string; roleTemplateId?: string } }) =>
           Promise.resolve(
@@ -128,6 +216,7 @@ function createFixture(options?: {
         departmentId: targetDepartmentId,
         grants: targetRoleGrants,
       }),
+      findMany: jest.fn().mockResolvedValue(options?.contextRoles ?? []),
     },
     team: {
       findUnique: jest.fn().mockResolvedValue(
@@ -151,10 +240,15 @@ function createFixture(options?: {
         name: '团队甲',
         status: 'INACTIVE',
       }),
+      findMany: jest.fn().mockResolvedValue(options?.contextTeams ?? []),
     },
     auditEvent: { create: jest.fn().mockResolvedValue({ id: 'audit-1' }) },
+    authSession: {
+      updateMany: jest.fn().mockResolvedValue({ count: 2 }),
+    },
   };
   const database = {
+    localCredential: transaction.localCredential,
     $transaction: jest.fn(
       async (callback: (value: typeof transaction) => unknown) =>
         callback(transaction),
@@ -166,6 +260,524 @@ function createFixture(options?: {
     transaction,
   };
 }
+
+describe('OrganizationService management context', () => {
+  const sameTeamMembership = {
+    id: 'membership-same-team',
+    active: true,
+    teamId: 'team-a',
+    user: {
+      id: 'same-team-user',
+      displayName: '同组人员',
+      active: true,
+      localCredential: { username: 'same.team' },
+      roleAssignments: [],
+    },
+  };
+  const otherTeamMembership = {
+    id: 'membership-other-team',
+    active: true,
+    teamId: 'team-b',
+    user: {
+      id: 'other-team-user',
+      displayName: '其他组人员',
+      active: true,
+      localCredential: { username: 'other.team' },
+      roleAssignments: [],
+    },
+  };
+
+  it('returns all current-department management data to a department reader', async () => {
+    const fixture = createFixture({
+      actorGrants: [
+        departmentGrant('USER_READ'),
+        departmentGrant('USER_MANAGE'),
+        departmentGrant('TEAM_READ'),
+        departmentGrant('TEAM_MANAGE'),
+        departmentGrant('ROLE_READ'),
+        departmentGrant('ROLE_ASSIGN'),
+        departmentGrant('CUSTOMER_READ'),
+      ],
+      contextMemberships: [sameTeamMembership, otherTeamMembership],
+      contextTeams: [
+        { id: 'team-a', name: '团队甲', status: 'ACTIVE' },
+        { id: 'team-b', name: '团队乙', status: 'ACTIVE' },
+      ],
+      contextRoles: [
+        {
+          id: 'role-a',
+          name: '运营',
+          active: true,
+          grants: [{ action: 'CUSTOMER_READ', scope: 'SELF' }],
+        },
+      ],
+    });
+
+    const result = await fixture.service.getManagementContext(actor);
+
+    expect(result.users.map((user) => user.id)).toEqual([
+      'same-team-user',
+      'other-team-user',
+    ]);
+    expect(result.teams.map((team) => team.id)).toEqual(['team-a', 'team-b']);
+    expect(result.roles.map((role) => role.id)).toEqual(['role-a']);
+    expect(result.capabilities).toEqual({
+      createUser: true,
+      manageUsers: true,
+      createTeam: true,
+      manageTeams: true,
+      assignDepartmentRoles: true,
+      assignTeamRoles: false,
+    });
+  });
+
+  it('constrains TEAM-scoped management reads to the active actor Team', async () => {
+    const fixture = createFixture({
+      actorTeamId: 'team-a',
+      actorGrants: [
+        { action: 'USER_READ', scope: 'TEAM' },
+        { action: 'TEAM_READ', scope: 'TEAM' },
+        { action: 'ROLE_READ', scope: 'TEAM' },
+        { action: 'ROLE_ASSIGN', scope: 'TEAM' },
+        { action: 'CUSTOMER_READ', scope: 'TEAM' },
+      ],
+      contextMemberships: [sameTeamMembership],
+      contextTeams: [{ id: 'team-a', name: '团队甲', status: 'ACTIVE' }],
+      contextRoles: [
+        {
+          id: 'role-team',
+          name: '组内运营',
+          active: true,
+          grants: [{ action: 'CUSTOMER_READ', scope: 'TEAM' }],
+        },
+        {
+          id: 'role-self',
+          name: '本人运营',
+          active: true,
+          grants: [{ action: 'CUSTOMER_READ', scope: 'SELF' }],
+        },
+      ],
+    });
+
+    const result = await fixture.service.getManagementContext(actor);
+
+    expect(result.users.map((user) => user.id)).toEqual(['same-team-user']);
+    expect(result.teams.map((team) => team.id)).toEqual(['team-a']);
+    expect(result.roles.map((role) => role.id)).toEqual(['role-team']);
+    expect(result.capabilities.assignTeamRoles).toBe(true);
+    expect(
+      fixture.transaction.departmentMembership.findMany,
+    ).toHaveBeenCalledWith(
+      expect.objectContaining({
+        where: expect.objectContaining({ teamId: 'team-a' }),
+      }),
+    );
+  });
+
+  it('rejects a caller without any management read grant', async () => {
+    const fixture = createFixture({
+      actorGrants: [departmentGrant('CUSTOMER_READ')],
+    });
+
+    await expect(
+      fixture.service.getManagementContext(actor),
+    ).rejects.toBeInstanceOf(ForbiddenException);
+    expect(
+      fixture.transaction.departmentMembership.findMany,
+    ).not.toHaveBeenCalled();
+  });
+});
+
+describe('OrganizationService personnel creation', () => {
+  it('creates account, credential, membership, assignment, and audit in one transaction', async () => {
+    const fixture = createFixture({
+      actorGrants: [
+        departmentGrant('USER_MANAGE'),
+        departmentGrant('ROLE_ASSIGN'),
+        departmentGrant('CUSTOMER_READ'),
+      ],
+    });
+
+    await expect(
+      fixture.service.createUser(actor, {
+        displayName: ' 运营乙 ',
+        username: ' Operator.B ',
+        password: 'temporary-pass-123',
+        teamId: null,
+        roleTemplateId: 'target-role',
+      }),
+    ).resolves.toMatchObject({
+      id: 'user-new',
+      displayName: '运营乙',
+      username: 'operator.b',
+      accountActive: true,
+      membership: { id: 'membership-new', active: true, teamId: null },
+      assignment: { id: 'assignment-new', active: true },
+    });
+
+    expect(fixture.database.$transaction).toHaveBeenCalledTimes(1);
+    expect(fixture.transaction.userAccount.create).toHaveBeenCalledTimes(1);
+    expect(fixture.transaction.localCredential.create).toHaveBeenCalledWith({
+      data: expect.objectContaining({
+        userId: 'user-new',
+        username: 'operator.b',
+        passwordHash: expect.stringMatching(/^scrypt\$v2\$/),
+      }),
+    });
+    expect(
+      fixture.transaction.departmentMembership.create,
+    ).toHaveBeenCalledTimes(1);
+    expect(fixture.transaction.roleAssignment.create).toHaveBeenCalledTimes(1);
+    expect(fixture.transaction.auditEvent.create).toHaveBeenCalledWith({
+      data: expect.objectContaining({
+        action: 'user.created',
+        resourceId: 'user-new',
+      }),
+    });
+  });
+
+  it('does not create an account without department-scoped user.manage', async () => {
+    const fixture = createFixture({
+      actorGrants: [
+        { action: 'USER_MANAGE', scope: 'TEAM' },
+        departmentGrant('ROLE_ASSIGN'),
+        departmentGrant('CUSTOMER_READ'),
+      ],
+    });
+
+    await expect(
+      fixture.service.createUser(actor, {
+        displayName: '运营乙',
+        username: 'operator.b',
+        password: 'temporary-pass-123',
+        teamId: null,
+        roleTemplateId: 'target-role',
+      }),
+    ).rejects.toBeInstanceOf(ForbiddenException);
+
+    expect(fixture.transaction.userAccount.create).not.toHaveBeenCalled();
+  });
+
+  it('maps a concurrent username conflict without exposing Prisma details', async () => {
+    const fixture = createFixture({
+      actorGrants: [
+        departmentGrant('USER_MANAGE'),
+        departmentGrant('ROLE_ASSIGN'),
+        departmentGrant('CUSTOMER_READ'),
+      ],
+    });
+    fixture.database.$transaction.mockRejectedValueOnce(
+      Object.assign(new Error('unique constraint metadata'), { code: 'P2002' }),
+    );
+
+    await expect(
+      fixture.service.createUser(actor, {
+        displayName: '运营乙',
+        username: 'operator.b',
+        password: 'temporary-pass-123',
+        teamId: null,
+        roleTemplateId: 'target-role',
+      }),
+    ).rejects.toMatchObject({
+      response: {
+        code: 'USERNAME_ALREADY_EXISTS',
+        message: '用户名已存在',
+      },
+    });
+  });
+});
+
+describe('OrganizationService account lifecycle', () => {
+  it('deactivates a single-department account and revokes every session atomically', async () => {
+    const fixture = createFixture({
+      actorGrants: [departmentGrant('USER_MANAGE')],
+    });
+
+    await expect(
+      fixture.service.setUserStatus(actor, 'target-user', {
+        active: false,
+      }),
+    ).resolves.toMatchObject({ id: 'target-user', active: false });
+
+    expect(fixture.transaction.userAccount.update).toHaveBeenCalledWith({
+      where: { id: 'target-user' },
+      data: {
+        active: false,
+        authorizationRevision: { increment: 1 },
+      },
+      select: { id: true, active: true, authorizationRevision: true },
+    });
+    expect(fixture.transaction.authSession.updateMany).toHaveBeenCalledWith({
+      where: { userId: 'target-user', revokedAt: null },
+      data: { revokedAt: expect.any(Date) },
+    });
+    expect(fixture.transaction.auditEvent.create).toHaveBeenCalledWith({
+      data: expect.objectContaining({
+        action: 'user.status-changed',
+        details: { from: true, to: false },
+      }),
+    });
+    expect(fixture.database.$transaction).toHaveBeenCalledTimes(1);
+  });
+
+  it('rejects global account changes for a multi-department target', async () => {
+    const fixture = createFixture({
+      actorGrants: [departmentGrant('USER_MANAGE')],
+      targetActiveMemberships: [
+        { id: 'membership-a', departmentId: actor.departmentId },
+        { id: 'membership-b', departmentId: 'department-b' },
+      ],
+    });
+
+    await expect(
+      fixture.service.setUserStatus(actor, 'target-user', {
+        active: false,
+      }),
+    ).rejects.toMatchObject({
+      response: { code: 'GLOBAL_ACCOUNT_MANAGEMENT_REQUIRED' },
+    });
+    expect(fixture.transaction.userAccount.update).not.toHaveBeenCalled();
+  });
+
+  it('forbids changing the current actor account', async () => {
+    const fixture = createFixture({
+      actorGrants: [departmentGrant('USER_MANAGE')],
+    });
+
+    await expect(
+      fixture.service.setUserStatus(actor, actor.userId, {
+        active: false,
+      }),
+    ).rejects.toBeInstanceOf(ForbiddenException);
+  });
+});
+
+describe('OrganizationService denial audit', () => {
+  it('stores only the actor membership, operation, and stable denial code', async () => {
+    const fixture = createFixture();
+
+    await fixture.service.recordDeniedAttempt(actor, 'role.assign');
+
+    expect(fixture.transaction.auditEvent.create).toHaveBeenCalledWith({
+      data: {
+        departmentId: actor.departmentId,
+        actorUserId: actor.userId,
+        resourceType: 'access-control-attempt',
+        resourceId: 'membership-actor',
+        action: 'access-control.denied',
+        details: { operation: 'role.assign', code: 'FORBIDDEN' },
+      },
+    });
+    expect(
+      JSON.stringify(fixture.transaction.auditEvent.create.mock.calls),
+    ).not.toContain('target-user');
+  });
+});
+
+describe('OrganizationService password reset', () => {
+  it('uses the active admin session and revokes target sessions', async () => {
+    const fixture = createFixture({
+      actorGrants: [departmentGrant('USER_MANAGE')],
+    });
+
+    await expect(
+      fixture.service.resetUserPassword(actor, 'target-user', {
+        newPassword: 'replacement-pass-123',
+      }),
+    ).resolves.toEqual({ id: 'target-user', passwordReset: true });
+
+    expect(fixture.transaction.localCredential.update).toHaveBeenCalledWith({
+      where: { userId: 'target-user' },
+      data: {
+        passwordHash: expect.stringMatching(/^scrypt\$v2\$/),
+        passwordChangedAt: expect.any(Date),
+      },
+    });
+    expect(fixture.transaction.authSession.updateMany).toHaveBeenCalledWith({
+      where: { userId: 'target-user', revokedAt: null },
+      data: { revokedAt: expect.any(Date) },
+    });
+    expect(fixture.transaction.userAccount.update).toHaveBeenCalledWith({
+      where: { id: 'target-user' },
+      data: { authorizationRevision: { increment: 1 } },
+    });
+    expect(fixture.transaction.auditEvent.create).toHaveBeenCalledWith({
+      data: expect.objectContaining({
+        action: 'user.password-reset',
+        details: {},
+      }),
+    });
+    expect(
+      JSON.stringify(fixture.transaction.auditEvent.create.mock.calls),
+    ).not.toContain('replacement-pass-123');
+  });
+});
+
+describe('OrganizationService membership lifecycle', () => {
+  it('deactivates a department membership and revokes its sessions', async () => {
+    const fixture = createFixture({
+      actorGrants: [departmentGrant('USER_MANAGE')],
+    });
+    fixture.transaction.departmentMembership.update.mockResolvedValueOnce({
+      id: 'membership-target',
+      active: false,
+      teamId: null,
+    });
+
+    await expect(
+      fixture.service.updateMembership(actor, 'target-user', {
+        active: false,
+      }),
+    ).resolves.toMatchObject({ id: 'membership-target', active: false });
+
+    expect(
+      fixture.transaction.departmentMembership.update,
+    ).toHaveBeenCalledWith({
+      where: { id: 'membership-target' },
+      data: { active: false },
+      select: { id: true, active: true, teamId: true },
+    });
+    expect(fixture.transaction.authSession.updateMany).toHaveBeenCalledWith({
+      where: {
+        userId: 'target-user',
+        departmentId: actor.departmentId,
+        revokedAt: null,
+      },
+      data: { revokedAt: expect.any(Date) },
+    });
+    expect(fixture.transaction.auditEvent.create).toHaveBeenCalledWith({
+      data: expect.objectContaining({
+        action: 'department-membership.status-changed',
+        details: {
+          from: true,
+          to: false,
+        },
+      }),
+    });
+  });
+
+  it('treats a transformed undefined Team field as absent for status changes', async () => {
+    const fixture = createFixture({
+      actorGrants: [departmentGrant('USER_MANAGE')],
+    });
+    fixture.transaction.departmentMembership.update.mockResolvedValueOnce({
+      id: 'membership-target',
+      active: false,
+      teamId: null,
+    });
+
+    await expect(
+      fixture.service.updateMembership(actor, 'target-user', {
+        active: false,
+        teamId: undefined,
+      }),
+    ).resolves.toMatchObject({ id: 'membership-target', active: false });
+  });
+
+  it('keeps the active Team-assignment conflict for explicit Team changes', async () => {
+    const fixture = createFixture({
+      targetTeamId: 'team-old',
+      actorGrants: [departmentGrant('USER_MANAGE')],
+    });
+    fixture.transaction.roleAssignment.findFirst.mockResolvedValueOnce({
+      id: 'team-assignment',
+    });
+
+    await expect(
+      fixture.service.updateMembership(actor, 'target-user', {
+        teamId: 'team-a',
+      }),
+    ).rejects.toMatchObject({
+      response: { code: 'ACTIVE_TEAM_ROLE_ASSIGNMENT_EXISTS' },
+    });
+    expect(
+      fixture.transaction.departmentMembership.update,
+    ).not.toHaveBeenCalled();
+  });
+});
+
+describe('OrganizationService role lifecycle', () => {
+  it('revokes an active role assignment and invalidates authorization', async () => {
+    const fixture = createFixture({
+      actorGrants: [
+        departmentGrant('ROLE_ASSIGN'),
+        departmentGrant('CUSTOMER_READ'),
+      ],
+    });
+    fixture.transaction.roleAssignment.update.mockResolvedValueOnce({
+      id: 'assignment-existing',
+      active: false,
+      teamId: null,
+      version: 2,
+    });
+
+    await expect(
+      fixture.service.setRoleAssignmentStatus(
+        actor,
+        'target-user',
+        'assignment-existing',
+        { active: false },
+      ),
+    ).resolves.toMatchObject({
+      id: 'assignment-existing',
+      active: false,
+      version: 2,
+    });
+
+    expect(fixture.transaction.roleAssignment.update).toHaveBeenCalledWith({
+      where: { id: 'assignment-existing' },
+      data: { active: false, version: { increment: 1 } },
+      select: { id: true, active: true, teamId: true, version: true },
+    });
+    expect(fixture.transaction.userAccount.update).toHaveBeenCalledWith({
+      where: { id: 'target-user' },
+      data: { authorizationRevision: { increment: 1 } },
+    });
+    expect(fixture.transaction.auditEvent.create).toHaveBeenCalledWith({
+      data: expect.objectContaining({
+        action: 'role-assignment.revoked',
+        details: expect.not.objectContaining({ reason: expect.anything() }),
+      }),
+    });
+  });
+
+  it('restores an inactive assignment through the current Grant Boundary', async () => {
+    const fixture = createFixture({
+      targetAssignmentActive: false,
+      existingAssignments: [
+        {
+          id: 'assignment-existing',
+          active: false,
+          teamId: null,
+          version: 1,
+        },
+      ],
+      actorGrants: [
+        departmentGrant('ROLE_ASSIGN'),
+        departmentGrant('CUSTOMER_READ'),
+      ],
+    });
+
+    await expect(
+      fixture.service.setRoleAssignmentStatus(
+        actor,
+        'target-user',
+        'assignment-existing',
+        { active: true },
+      ),
+    ).resolves.toMatchObject({
+      id: 'assignment-existing',
+      active: true,
+      version: 2,
+    });
+    expect(fixture.transaction.auditEvent.create).toHaveBeenCalledWith({
+      data: expect.objectContaining({
+        action: 'role-assignment.restored-or-rebound',
+        details: expect.not.objectContaining({ reason: expect.anything() }),
+      }),
+    });
+  });
+});
 
 describe('OrganizationService role assignment boundary', () => {
   it('allows a department grant to assign a covered role to another member', async () => {

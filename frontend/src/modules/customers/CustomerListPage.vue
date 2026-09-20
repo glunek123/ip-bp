@@ -43,7 +43,9 @@ onBeforeUnmount(() => activeRequest?.abort());
         <span class="workspace-mark">品知</span>
         <span>品维·知产业务管理</span>
       </RouterLink>
-      <span class="workspace-context">运营端 · 客户</span>
+      <nav class="workspace-nav" aria-label="主要导航">
+        <span class="workspace-context">客户</span>
+      </nav>
     </header>
     <main class="workspace-main">
       <div class="section-heading">

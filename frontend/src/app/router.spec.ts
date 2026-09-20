@@ -42,4 +42,12 @@ describe('authentication routing', () => {
       '/login?returnTo=/customers/customer-1?tab=history',
     );
   });
+
+  it('protects the personnel management route', async () => {
+    await router.push('/settings/people-access');
+
+    expect(router.currentRoute.value.fullPath).toBe(
+      '/login?returnTo=/settings/people-access',
+    );
+  });
 });
