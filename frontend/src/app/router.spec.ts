@@ -44,10 +44,10 @@ describe('authentication routing', () => {
   });
 
   it('protects the personnel management route', async () => {
-    await router.push('/settings/people');
+    await router.push('/settings/people-access');
 
     expect(router.currentRoute.value.fullPath).toBe(
-      '/login?returnTo=/settings/people',
+      '/login?returnTo=/settings/people-access',
     );
   });
 });

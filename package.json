@@ -24,6 +24,7 @@
     "test:e2e:customer": "node scripts/run-e2e.mjs tests/e2e/customers.spec.ts --grep-invert \"rights holder\"",
     "test:e2e:right-holder": "node scripts/run-e2e.mjs tests/e2e/customers.spec.ts --grep \"rights holder\"",
     "test:e2e:auth": "node scripts/run-e2e.mjs tests/e2e/auth.spec.ts",
+    "test:e2e:personnel-access": "node scripts/run-e2e.mjs tests/e2e/personnel-access.spec.ts",
     "test:e2e:full": "node scripts/run-e2e.mjs",
     "test:unit:customer": "pnpm --filter @dev-cor/backend test src/modules/customers/customer.controller.spec.ts src/modules/customers/customer.service.spec.ts && pnpm --filter @dev-cor/frontend test src/api/customers.spec.ts src/modules/customers/CustomerDetailPage.spec.ts src/modules/customers/CustomerEditPage.spec.ts src/modules/customers/CustomerListPage.spec.ts src/modules/customers/CustomerNewPage.spec.ts",
     "test:unit:right-holder": "pnpm --filter @dev-cor/backend test src/modules/customers/rights-holder.controller.spec.ts src/modules/customers/rights-holder.service.spec.ts && pnpm --filter @dev-cor/frontend test src/api/rights-holders.spec.ts src/modules/customers/CustomerRightsHolderPanel.spec.ts src/modules/customers/RightsHolderDetailPage.spec.ts",

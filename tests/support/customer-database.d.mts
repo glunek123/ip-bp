@@ -16,6 +16,30 @@ export const e2eFixtures: Readonly<{
 }>;
 
 export function resetCustomerE2eData(): Promise<void>;
+export const personnelFixtures: Readonly<{
+  departmentId: string;
+  adminUserId: string;
+  adminRoleId: string;
+  operatorRoleId: string;
+  teamAId: string;
+  teamBId: string;
+}>;
+export function resetPersonnelAccessE2eData(): Promise<{
+  username: string;
+  password: string;
+}>;
+export function getPersonnelAccessSnapshot(username: string): Promise<{
+  accountActive: boolean;
+  memberships: Array<{ active: boolean; teamId: string | null }>;
+  assignments: Array<{
+    active: boolean;
+    roleTemplateId: string;
+    teamId: string | null;
+  }>;
+  auditActions: string[];
+  serializedAudits: string;
+  passwordHash: string;
+}>;
 export function resetLocalAuthE2eData(): Promise<{
   username: string;
   password: string;

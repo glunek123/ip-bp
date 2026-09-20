@@ -242,7 +242,7 @@ onBeforeUnmount(() => activeRequest?.abort());
           </label>
           <label>
             <span>团队</span>
-            <select v-model="createForm.teamId">
+            <select v-model="createForm.teamId" data-test="create-user-team">
               <option value="">暂不分组</option>
               <option
                 v-for="team in activeTeams"

@@ -24,7 +24,7 @@ export const router = createRouter({
       component: RightsHolderDetailPage,
     },
     { path: '/customers/:id', component: CustomerDetailPage },
-    { path: '/settings/people', component: PeopleAccessPage },
+    { path: '/settings/people-access', component: PeopleAccessPage },
   ],
 });
 

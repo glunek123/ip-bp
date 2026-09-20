@@ -1932,7 +1932,191 @@ async function verifyRightsHolderNames(names) {
   }
 }
 
+const personnelFixtures = {
+  departmentId: '10000000-0000-4000-8000-000000000020',
+  adminUserId: '20000000-0000-4000-8000-000000000020',
+  adminRoleId: '30000000-0000-4000-8000-000000000020',
+  operatorRoleId: '30000000-0000-4000-8000-000000000021',
+  teamAId: '40000000-0000-4000-8000-000000000020',
+  teamBId: '40000000-0000-4000-8000-000000000021',
+};
+
+async function resetPersonnelAccessE2eData() {
+  const departmentId = personnelFixtures.departmentId;
+  const memberships = await database.departmentMembership.findMany({
+    where: { departmentId },
+    select: { userId: true },
+  });
+  const userIds = [
+    personnelFixtures.adminUserId,
+    ...memberships.map((membership) => membership.userId),
+  ];
+  await database.$transaction(async (transaction) => {
+    await transaction.authSession.deleteMany({
+      where: { userId: { in: userIds } },
+    });
+    await transaction.authThrottle.deleteMany({});
+    await transaction.auditEvent.deleteMany({ where: { departmentId } });
+    await transaction.customer.deleteMany({ where: { departmentId } });
+    await transaction.roleAssignment.deleteMany({ where: { departmentId } });
+    await transaction.roleGrant.deleteMany({
+      where: {
+        roleTemplateId: {
+          in: [personnelFixtures.adminRoleId, personnelFixtures.operatorRoleId],
+        },
+      },
+    });
+    await transaction.roleTemplate.deleteMany({ where: { departmentId } });
+    await transaction.departmentMembership.deleteMany({
+      where: { departmentId },
+    });
+    await transaction.team.deleteMany({ where: { departmentId } });
+    await transaction.localCredential.deleteMany({
+      where: { userId: { in: userIds } },
+    });
+    await transaction.userAccount.deleteMany({
+      where: { id: { in: userIds } },
+    });
+    await transaction.department.deleteMany({ where: { id: departmentId } });
+  });
+
+  const password = 'Personnel-admin-pass-2026';
+  const passwordHash = await hashPassword(password);
+  await database.$transaction(async (transaction) => {
+    await transaction.department.create({
+      data: { id: departmentId, name: 'E2E 人员管理部' },
+    });
+    await transaction.userAccount.create({
+      data: {
+        id: personnelFixtures.adminUserId,
+        externalSubject: 'local:e2e-personnel-admin',
+        displayName: 'E2E 人员管理员',
+      },
+    });
+    await transaction.localCredential.create({
+      data: {
+        userId: personnelFixtures.adminUserId,
+        username: 'e2e.personnel.admin',
+        passwordHash,
+      },
+    });
+    await transaction.team.createMany({
+      data: [
+        {
+          id: personnelFixtures.teamAId,
+          departmentId,
+          name: '商标一组',
+        },
+        {
+          id: personnelFixtures.teamBId,
+          departmentId,
+          name: '商标二组',
+        },
+      ],
+    });
+    await transaction.departmentMembership.create({
+      data: {
+        userId: personnelFixtures.adminUserId,
+        departmentId,
+        teamId: personnelFixtures.teamAId,
+      },
+    });
+    await transaction.roleTemplate.createMany({
+      data: [
+        {
+          id: personnelFixtures.adminRoleId,
+          departmentId,
+          name: '部门管理员',
+        },
+        {
+          id: personnelFixtures.operatorRoleId,
+          departmentId,
+          name: '团队客户经办',
+        },
+      ],
+    });
+    const departmentActions = [
+      'USER_READ',
+      'USER_MANAGE',
+      'TEAM_READ',
+      'TEAM_MANAGE',
+      'ROLE_READ',
+      'ROLE_ASSIGN',
+      'CUSTOMER_READ',
+      'CUSTOMER_CREATE_DRAFT',
+      'CUSTOMER_EDIT_ROUTINE',
+    ];
+    await transaction.roleGrant.createMany({
+      data: [
+        ...departmentActions.map((action) => ({
+          roleTemplateId: personnelFixtures.adminRoleId,
+          action,
+          scope: 'DEPARTMENT',
+        })),
+        ...[
+          'CUSTOMER_READ',
+          'CUSTOMER_CREATE_DRAFT',
+          'CUSTOMER_EDIT_ROUTINE',
+        ].map((action) => ({
+          roleTemplateId: personnelFixtures.operatorRoleId,
+          action,
+          scope: 'TEAM',
+        })),
+      ],
+    });
+    await transaction.roleAssignment.create({
+      data: {
+        userId: personnelFixtures.adminUserId,
+        departmentId,
+        roleTemplateId: personnelFixtures.adminRoleId,
+      },
+    });
+  });
+  return { username: 'e2e.personnel.admin', password };
+}
+
+async function getPersonnelAccessSnapshot(username) {
+  const credential = await database.localCredential.findUniqueOrThrow({
+    where: { username },
+    select: {
+      passwordHash: true,
+      user: {
+        select: {
+          id: true,
+          active: true,
+          memberships: {
+            where: { departmentId: personnelFixtures.departmentId },
+            select: { active: true, teamId: true },
+          },
+          roleAssignments: {
+            where: { departmentId: personnelFixtures.departmentId },
+            select: { active: true, roleTemplateId: true, teamId: true },
+          },
+        },
+      },
+    },
+  });
+  const audits = await database.auditEvent.findMany({
+    where: {
+      departmentId: personnelFixtures.departmentId,
+      resourceId: credential.user.id,
+    },
+    select: { action: true, details: true },
+  });
+  return {
+    accountActive: credential.user.active,
+    memberships: credential.user.memberships,
+    assignments: credential.user.roleAssignments,
+    auditActions: audits.map((audit) => audit.action),
+    serializedAudits: JSON.stringify(audits),
+    passwordHash: credential.passwordHash,
+  };
+}
+
 export {
+  personnelFixtures,
+  resetPersonnelAccessE2eData,
+  getPersonnelAccessSnapshot,
   resetLocalAuthE2eData,
   verifyLocalAuthMigration,
   verifyRightsHolderNames,
