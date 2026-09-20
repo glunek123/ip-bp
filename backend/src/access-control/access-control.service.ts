@@ -3,9 +3,19 @@ import { ActorContext } from './actor-context';
 
 export const ACCESS_CONTROL_STORE = Symbol('ACCESS_CONTROL_STORE');
 
-export type CustomerAction =
-  'customer.read' | 'customer.create-draft' | 'customer.edit-routine';
-export type CustomerScope = 'self' | 'team' | 'department';
+export type PermissionAction =
+  | 'customer.read'
+  | 'customer.create-draft'
+  | 'customer.edit-routine'
+  | 'user.read'
+  | 'user.manage'
+  | 'team.read'
+  | 'team.manage'
+  | 'role.read'
+  | 'role.assign';
+export type CustomerAction = Extract<PermissionAction, `customer.${string}`>;
+export type PermissionScope = 'self' | 'team' | 'department';
+export type CustomerScope = PermissionScope;
 
 export type CustomerResourceFacts = {
   departmentId: string;
@@ -24,9 +34,10 @@ export type AccessControlSnapshot = {
   active: boolean;
   authorizationRevision: number;
   membershipTeamId?: string;
+  membershipTeamActive?: boolean;
   grants: Array<{
-    action: CustomerAction;
-    scope: CustomerScope;
+    action: PermissionAction;
+    scope: PermissionScope;
     teamId?: string;
   }>;
 };
@@ -71,7 +82,8 @@ export class AccessControlService {
     const facts: CustomerResourceFacts = {
       departmentId: actor.departmentId,
       responsibleUserId: actor.userId,
-      ...(snapshot.membershipTeamId === undefined
+      ...(snapshot.membershipTeamId === undefined ||
+      snapshot.membershipTeamActive === false
         ? {}
         : { teamId: snapshot.membershipTeamId }),
     };

@@ -1,6 +1,7 @@
 import {
   BadRequestException,
   ConflictException,
+  ForbiddenException,
   Injectable,
   NotFoundException,
 } from '@nestjs/common';
@@ -119,6 +120,23 @@ export class CustomerService {
         'SELECT pg_advisory_xact_lock(hashtextextended($1, 0))',
         `${actor.departmentId}:${normalizedName}`,
       );
+      if (facts.teamId !== undefined) {
+        const teams = await transaction.$queryRawUnsafe<
+          Array<{ status: 'ACTIVE' | 'INACTIVE' }>
+        >(
+          `SELECT "status" FROM "teams"
+           WHERE "id" = $1::uuid AND "department_id" = $2::uuid
+           FOR SHARE`,
+          facts.teamId,
+          actor.departmentId,
+        );
+        if (teams.length !== 1 || teams[0]?.status !== 'ACTIVE') {
+          throw new ForbiddenException({
+            code: 'CUSTOMER_ACTION_FORBIDDEN',
+            message: '无权执行此客户操作',
+          });
+        }
+      }
       const sameName =
         readScope === null
           ? null

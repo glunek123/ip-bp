@@ -12,7 +12,7 @@
 4. 查[缺口](GAPS.md)和[就绪清单](READINESS.md)，只将明确确认且依赖闭合的范围交给切片技术设计；共用机制和本次字段准备设计见[技术设计](TECHNICAL-DESIGN.md)。
 5. 实际验证与历史交付见[验证报告](VALIDATION.md)，当前任务只看[项目状态](../../project-status.md)。
 
-固定输入：[反向证据指纹](EVIDENCE.md)、[v158事实](../../demo-reverse/v158/AS-IS.md)、[12项用户决定](../../demo-reverse/v158/DECISIONS.md)、[纠偏](../../demo-reverse/v158/CORRECTIONS.md)及[INPUT-001](../../deferred-design.md)。新增决定见[SD-01～35](DECISIONS.md)；BR-03原始回件及指纹也登记在EVIDENCE，后续确认依据登记为INPUT-010～015。目标条款与Demo或原建议不同可能是有意纠偏；不得用源码反向覆盖用户决定。
+固定输入：[反向证据指纹](EVIDENCE.md)、[v158事实](../../demo-reverse/v158/AS-IS.md)、[12项用户决定](../../demo-reverse/v158/DECISIONS.md)、[纠偏](../../demo-reverse/v158/CORRECTIONS.md)及[INPUT-001](../../deferred-design.md)。新增决定见[SD-01～36](DECISIONS.md)；BR-03原始回件及指纹也登记在EVIDENCE，后续确认依据登记为INPUT-010～015。目标条款与Demo或原建议不同可能是有意纠偏；不得用源码反向覆盖用户决定。
 
 ## 文档导航：按用途读取
 

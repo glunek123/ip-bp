@@ -1,5 +1,17 @@
 # SPEC-001 文档验证
 
+## TEAM-AUTHZ-ARCH-001团队与管理授权前置收口（2026-09-20）
+
+本任务只收口Next Slice之前的Team引用完整性和管理授权上限。Prisma新增部门直属`Team`及ACTIVE／INACTIVE状态，数据库拒绝改变Team部门，`DepartmentMembership`、`RoleAssignment`、`Customer`的非空团队引用改由`(teamId, departmentId)`组合外键约束；不增加Team编码、层级或物理删除。停用Team保留既有成员、角色和客户引用，既有客户仍可按原权限维护，但新建／恢复成员或角色绑定及新客户绑定必须使用活动Team。
+
+PostgreSQL前向迁移拆为两个显式事务：第一步只提交六个管理`PermissionAction`枚举值，第二步在事务和引用表锁内创建Team、确定性兼容映射、组合外键并受控补齐引导角色Grant。跨部门复用同一旧UUID时按确定规则只由首个部门保留原UUID，其余部门生成稳定新UUID，三个引用表共用映射；原`NULL`不回填。模拟第二步中途冲突时事务整体回滚，原引用保持；第一步已提交的枚举值按PostgreSQL限制保留。共享角色明确不补权，避免把其他受让人静默提升为管理员。没有删除或清空既有业务数据，也没有运行开发库或生产迁移。
+
+服务端新增`user.read`、`user.manage`、`team.read`、`team.manage`、`role.read`、`role.assign`。角色分配在可串行化事务和数据库行锁中重读操作者状态和Grant：先确认`role.assign`覆盖目标活动Team成员，再逐项确认待授角色每个Action／Scope均被操作者同Action实际覆盖；SELF不跨主体，TEAM要求操作者活动成员Team与分配Team一致，只覆盖同一目标Team的TEAM范围且不推导SELF。Team新建／启停只接受DEPARTMENT `team.manage`。实现不读取角色名称、用户名、特殊管理员标记或前端按钮作为授权依据；成功分配与审计、目标账号授权修订同事务提交。
+
+最终Level 3证据：`pnpm verify`退出0，覆盖上下文与Spec（53 REQ／55 AC／11 BQ／36 SD）、工具35项、后端168项、前端125项、类型／Lint／格式和双端构建。隔离`postgres-test`从空库顺序应用13份迁移；完整PostgreSQL／Playwright 48／48通过。覆盖无效／跨部门Team引用、Team部门不可变、停用历史与新增绑定拒绝、三表非空UUID共用映射及各表`NULL`保留、共享角色不补权、迁移回滚、实际OrganizationService有权／无权／跨Team／超上限／审计失败回滚，以及用独立连接和`pg_blocking_pids`证明停用／撤权竞态按锁序拒绝且无业务、审计或修订残留。独立复审最终`ACCEPTED`，Critical／Important／Minor均为0。
+
+`CustomerProfileStatus`保持只有`DRAFT`；正式准入继续按文件能力→资料完整性→准入规则→状态机→Command→Audit顺序另开Slice。未创建Lead、Case、Notary、File、Fee、Settlement或Report表。
+
 ## AUTH-LOCAL-001本地账号认证第一切片（2026-09-18）
 
 本切片按已确认设计实现一次性首位管理员初始化、规范化用户名与版本化scrypt密码、12小时绝对期限的不透明数据库会话、退出、Cookie写请求CSRF、用户名／来源双桶登录限速、前端登录页及匿名路由重定向。会话仅持久化SHA-256摘要，来源仅持久化带服务端密钥的HMAC；账号、成员、部门状态和授权修订在每次请求重新读取。生产Cookie要求Secure；登录先校验同源。原Bearer身份只在`NODE_ENV=test`保留，未进入正式认证路径。

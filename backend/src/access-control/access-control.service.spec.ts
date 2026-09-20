@@ -91,6 +91,52 @@ describe('AccessControlService', () => {
     });
   });
 
+  it('denies a TEAM-only customer create when the membership Team is inactive', async () => {
+    const service = new AccessControlService(
+      createStore({
+        active: true,
+        authorizationRevision: 4,
+        membershipTeamId: 'team-a',
+        membershipTeamActive: false,
+        grants: [
+          {
+            action: 'customer.create-draft',
+            scope: 'team',
+            teamId: 'team-a',
+          },
+        ],
+      }),
+    );
+
+    await expect(service.authorizeNewCustomer(actor)).rejects.toBeInstanceOf(
+      ForbiddenException,
+    );
+  });
+
+  it('creates an unbound customer through SELF scope when the membership Team is inactive', async () => {
+    const service = new AccessControlService(
+      createStore({
+        active: true,
+        authorizationRevision: 4,
+        membershipTeamId: 'team-a',
+        membershipTeamActive: false,
+        grants: [
+          { action: 'customer.create-draft', scope: 'self' },
+          {
+            action: 'customer.create-draft',
+            scope: 'team',
+            teamId: 'team-a',
+          },
+        ],
+      }),
+    );
+
+    await expect(service.authorizeNewCustomer(actor)).resolves.toEqual({
+      departmentId: 'department-a',
+      responsibleUserId: 'user-a',
+    });
+  });
+
   it('denies a foreign department even when the action has department scope', async () => {
     const service = new AccessControlService(
       createStore({

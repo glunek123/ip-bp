@@ -3,21 +3,31 @@ import { DatabaseService } from '../database/database.service';
 import {
   AccessControlSnapshot,
   AccessControlStore,
-  CustomerAction,
-  CustomerScope,
+  PermissionAction,
+  PermissionScope,
 } from './access-control.service';
+import {
+  PermissionAction as PrismaPermissionAction,
+  PermissionScope as PrismaPermissionScope,
+} from '../generated/prisma/enums';
 
 const actionMap = {
   CUSTOMER_READ: 'customer.read',
   CUSTOMER_CREATE_DRAFT: 'customer.create-draft',
   CUSTOMER_EDIT_ROUTINE: 'customer.edit-routine',
-} as const satisfies Record<string, CustomerAction>;
+  USER_READ: 'user.read',
+  USER_MANAGE: 'user.manage',
+  TEAM_READ: 'team.read',
+  TEAM_MANAGE: 'team.manage',
+  ROLE_READ: 'role.read',
+  ROLE_ASSIGN: 'role.assign',
+} as const satisfies Record<PrismaPermissionAction, PermissionAction>;
 
 const scopeMap = {
   SELF: 'self',
   TEAM: 'team',
   DEPARTMENT: 'department',
-} as const satisfies Record<string, CustomerScope>;
+} as const satisfies Record<PrismaPermissionScope, PermissionScope>;
 
 @Injectable()
 export class PrismaAccessControlStore implements AccessControlStore {
@@ -34,7 +44,11 @@ export class PrismaAccessControlStore implements AccessControlStore {
         authorizationRevision: true,
         memberships: {
           where: { departmentId, active: true },
-          select: { id: true, teamId: true },
+          select: {
+            id: true,
+            teamId: true,
+            team: { select: { status: true } },
+          },
         },
         roleAssignments: {
           where: { departmentId, active: true },
@@ -61,7 +75,10 @@ export class PrismaAccessControlStore implements AccessControlStore {
       ...(user.memberships[0]?.teamId === null ||
       user.memberships[0]?.teamId === undefined
         ? {}
-        : { membershipTeamId: user.memberships[0].teamId }),
+        : {
+            membershipTeamId: user.memberships[0].teamId,
+            membershipTeamActive: user.memberships[0].team?.status === 'ACTIVE',
+          }),
       grants: user.roleAssignments.flatMap((assignment) =>
         assignment.roleTemplate.active
           ? assignment.roleTemplate.grants.map((grant) => ({

@@ -19,6 +19,11 @@ import {
   assignForeignDepartmentAuditActor,
   assignForeignDepartmentResponsibility,
   assignDepartmentBRoleInsideDepartmentA,
+  assignCrossDepartmentTeamToMembership,
+  assignCrossDepartmentTeamToCustomer,
+  assignMissingTeamToMembership,
+  assignMissingTeamToRoleAssignment,
+  createTeamForMissingDepartment,
   countCustomerAuditEvents,
   countCustomerResourceAuditEvents,
   countCustomersByNormalizedIdentity,
@@ -28,17 +33,24 @@ import {
   disconnectCustomerTestDatabase,
   duplicateDepartmentLevelRoleAssignment,
   e2eFixtures,
+  exerciseRoleAssignmentBoundary,
+  exerciseAuthorizationLockConcurrency,
   findCustomerId,
   getCustomer,
   getCustomerById,
   getCustomerAuditEvents,
   getLatestCustomerAudit,
+  getTeamReferenceCounts,
+  getTeamArchitectureSnapshot,
   rejectCustomerDraftAuditWrites,
   rejectCustomerUpdateAuditWrites,
   rejectNamedCustomerWrites,
   resetCustomerE2eData,
+  setTeamStatus,
+  moveTeamToDepartment,
   verifyAdmissionContactConstraintRejectsBlankValues,
   verifyRoleAssignmentMigrationRollback,
+  verifyTeamArchitectureMigration,
 } from '../support/customer-database.mjs';
 
 const authorizationA = { Authorization: `Bearer ${e2eFixtures.tokenA}` };
@@ -768,6 +780,108 @@ test('another department cannot list or address the customer', async ({
 
 test('the database rejects a role template assigned through another department', async () => {
   await expect(assignDepartmentBRoleInsideDepartmentA()).rejects.toBeDefined();
+});
+
+test('Team master schema and management permission actions are database constrained', async () => {
+  await expect(getTeamArchitectureSnapshot()).resolves.toEqual({
+    actions: expect.arrayContaining([
+      'user.read',
+      'user.manage',
+      'team.read',
+      'team.manage',
+      'role.read',
+      'role.assign',
+    ]),
+    hasTeamTable: true,
+    constraints: [
+      'customers_team_department_fkey',
+      'department_memberships_team_department_fkey',
+      'role_assignments_team_department_fkey',
+    ],
+  });
+});
+
+test('Team foreign keys reject missing and cross-department bindings', async () => {
+  await expect(createTeamForMissingDepartment()).rejects.toBeDefined();
+  await expect(assignMissingTeamToMembership()).rejects.toBeDefined();
+  await expect(assignMissingTeamToRoleAssignment()).rejects.toBeDefined();
+  await expect(assignCrossDepartmentTeamToMembership()).rejects.toBeDefined();
+  await expect(assignCrossDepartmentTeamToCustomer()).rejects.toBeDefined();
+  await expect(
+    moveTeamToDepartment(e2eFixtures.teamA, e2eFixtures.departmentB),
+  ).rejects.toBeDefined();
+});
+
+test('an inactive Team preserves historical customer access but blocks new TEAM bindings', async ({
+  request,
+}) => {
+  const created = await request.post('/api/v1/customers', {
+    headers: authorizationA,
+    data: { name: '停用团队历史客户' },
+  });
+  expect(created.status()).toBe(201);
+  const customer = (await created.json()) as { id: string; version: number };
+
+  await setTeamStatus(e2eFixtures.teamA, 'INACTIVE');
+  await expect(getTeamReferenceCounts(e2eFixtures.teamA)).resolves.toEqual({
+    memberships: 1,
+    roleAssignments: 1,
+    customers: 1,
+  });
+
+  const edited = await request.patch(`/api/v1/customers/${customer.id}`, {
+    headers: authorizationA,
+    data: { expectedVersion: customer.version, name: '停用后仍可维护' },
+  });
+  expect(edited.status(), await edited.text()).toBe(200);
+
+  const newBinding = await request.post('/api/v1/customers', {
+    headers: authorizationA,
+    data: { name: '停用后不得新增' },
+  });
+  expect(newBinding.status()).toBe(403);
+  expect(await newBinding.json()).toMatchObject({
+    code: 'CUSTOMER_ACTION_FORBIDDEN',
+  });
+});
+
+test('Team migration remaps cross-department UUID collisions and rolls back its second phase atomically', async () => {
+  await expect(verifyTeamArchitectureMigration()).resolves.toMatchObject({
+    upgraded: {
+      distinctTeams: 2,
+      preservedReferences: true,
+      managementGrantCount: 6,
+      unrelatedManagementGrantCount: 0,
+      upgradedAuthorizationRevision: 2,
+      nullReferencesPreserved: true,
+      sharedRoleManagementGrantCount: 0,
+      sharedRoleRevisionChanges: 0,
+    },
+    failed: {
+      rejected: true,
+      teamTableExists: false,
+      originalTeamIdPreserved: true,
+    },
+  });
+});
+
+test('role assignment Grant Boundary is enforced by the service and rolls back on audit failure', async () => {
+  await expect(exerciseRoleAssignmentBoundary()).resolves.toEqual({
+    authorizedAssignmentCommitted: true,
+    unauthorizedDenied: true,
+    crossTeamDenied: true,
+    higherScopeDenied: true,
+    auditFailureRolledBack: true,
+  });
+});
+
+test('Team binding and role assignment serialize against concurrent deactivation and revocation', async () => {
+  await expect(exerciseAuthorizationLockConcurrency()).resolves.toEqual({
+    customerWaitedForTeamLock: true,
+    inactiveTeamCreationDenied: true,
+    assignmentWaitedForGrantLock: true,
+    concurrentRevocationDenied: true,
+  });
 });
 
 test('the role-assignment hardening migration rejects dirty data atomically', async () => {

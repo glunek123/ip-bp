@@ -12,6 +12,12 @@ enum PermissionAction {
   CUSTOMER_READ         @map("customer.read")
   CUSTOMER_CREATE_DRAFT @map("customer.create-draft")
   CUSTOMER_EDIT_ROUTINE @map("customer.edit-routine")
+  USER_READ             @map("user.read")
+  USER_MANAGE           @map("user.manage")
+  TEAM_READ             @map("team.read")
+  TEAM_MANAGE           @map("team.manage")
+  ROLE_READ             @map("role.read")
+  ROLE_ASSIGN           @map("role.assign")
 
   @@map("permission_action")
 }
@@ -30,6 +36,13 @@ enum CustomerProfileStatus {
   @@map("customer_profile_status")
 }
 
+enum TeamStatus {
+  ACTIVE
+  INACTIVE
+
+  @@map("team_status")
+}
+
 model Department {
   id                          String                       @id @default(uuid()) @db.Uuid
   name                        String
@@ -42,10 +55,28 @@ model Department {
   rightsHolderCommandReceipts RightsHolderCommandReceipt[]
   auditEvents                 AuditEvent[]
   authSessions                AuthSession[]
+  teams                       Team[]
   createdAt                   DateTime                     @default(now()) @map("created_at") @db.Timestamptz(3)
   updatedAt                   DateTime                     @updatedAt @map("updated_at") @db.Timestamptz(3)
 
   @@map("departments")
+}
+
+model Team {
+  id              String                 @id @default(uuid()) @db.Uuid
+  departmentId    String                 @map("department_id") @db.Uuid
+  name            String
+  status          TeamStatus             @default(ACTIVE)
+  department      Department             @relation(fields: [departmentId], references: [id], onDelete: Restrict, onUpdate: Restrict)
+  memberships     DepartmentMembership[]
+  roleAssignments RoleAssignment[]
+  customers       Customer[]
+  createdAt       DateTime               @default(now()) @map("created_at") @db.Timestamptz(3)
+  updatedAt       DateTime               @updatedAt @map("updated_at") @db.Timestamptz(3)
+
+  @@unique([id, departmentId])
+  @@index([departmentId, status])
+  @@map("teams")
 }
 
 model UserAccount {
@@ -118,6 +149,7 @@ model DepartmentMembership {
   active                      Boolean                      @default(true)
   user                        UserAccount                  @relation(fields: [userId], references: [id], onDelete: Restrict)
   department                  Department                   @relation(fields: [departmentId], references: [id], onDelete: Restrict)
+  team                        Team?                        @relation(fields: [teamId, departmentId], references: [id, departmentId], onDelete: Restrict, onUpdate: Restrict, map: "department_memberships_team_department_fkey")
   responsibleCustomers        Customer[]                   @relation("CustomerResponsibleMembership")
   rightsHolderCommandReceipts RightsHolderCommandReceipt[] @relation("RightsHolderReceiptActor")
   auditEvents                 AuditEvent[]                 @relation("AuditActorMembership")
@@ -169,6 +201,7 @@ model RoleAssignment {
   user           UserAccount  @relation(fields: [userId], references: [id], onDelete: Restrict)
   department     Department   @relation(fields: [departmentId], references: [id], onDelete: Restrict)
   roleTemplate   RoleTemplate @relation(fields: [roleTemplateId, departmentId], references: [id, departmentId], onDelete: Restrict)
+  team           Team?        @relation(fields: [teamId, departmentId], references: [id, departmentId], onDelete: Restrict, onUpdate: Restrict, map: "role_assignments_team_department_fkey")
   createdAt      DateTime     @default(now()) @map("created_at") @db.Timestamptz(3)
   updatedAt      DateTime     @updatedAt @map("updated_at") @db.Timestamptz(3)
 
@@ -197,6 +230,7 @@ model Customer {
   teamId                   String?                      @map("team_id") @db.Uuid
   version                  Int                          @default(1)
   department               Department                   @relation(fields: [departmentId], references: [id], onDelete: Restrict)
+  team                     Team?                        @relation(fields: [teamId, departmentId], references: [id, departmentId], onDelete: Restrict, onUpdate: Restrict, map: "customers_team_department_fkey")
   responsibleMembership    DepartmentMembership         @relation("CustomerResponsibleMembership", fields: [responsibleUserId, departmentId], references: [userId, departmentId], onDelete: Restrict)
   rightsHolderLinks        CustomerRightsHolderLink[]
   rightsHolderReceipts     RightsHolderCommandReceipt[] @relation("RightsHolderReceiptCustomer")

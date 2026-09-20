@@ -1,7 +1,7 @@
 import { bootstrapLocalAccount } from './bootstrap-local-account.service';
 
 describe('bootstrapLocalAccount', () => {
-  it('creates the first local account and every current customer grant atomically', async () => {
+  it('creates the first local account and every current fixed grant atomically', async () => {
     const transaction = {
       localCredential: { count: jest.fn().mockResolvedValue(0) },
       userAccount: {
@@ -66,6 +66,12 @@ describe('bootstrapLocalAccount', () => {
           action: 'CUSTOMER_EDIT_ROUTINE',
           scope: 'DEPARTMENT',
         }),
+        expect.objectContaining({ action: 'USER_READ', scope: 'DEPARTMENT' }),
+        expect.objectContaining({ action: 'USER_MANAGE', scope: 'DEPARTMENT' }),
+        expect.objectContaining({ action: 'TEAM_READ', scope: 'DEPARTMENT' }),
+        expect.objectContaining({ action: 'TEAM_MANAGE', scope: 'DEPARTMENT' }),
+        expect.objectContaining({ action: 'ROLE_READ', scope: 'DEPARTMENT' }),
+        expect.objectContaining({ action: 'ROLE_ASSIGN', scope: 'DEPARTMENT' }),
       ]),
     });
   });

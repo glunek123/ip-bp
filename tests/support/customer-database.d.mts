@@ -8,6 +8,7 @@ export const e2eFixtures: Readonly<{
   roleB: string;
   roleSelf: string;
   teamA: string;
+  teamB: string;
   teamSelf: string;
   tokenA: string;
   tokenB: string;
@@ -78,6 +79,59 @@ export function getCustomerAuditEvents(
 export function verifyRoleAssignmentMigrationRollback(): Promise<{
   rejected: boolean;
   constraintNames: string[];
+}>;
+export function getTeamArchitectureSnapshot(): Promise<{
+  actions: string[];
+  hasTeamTable: boolean;
+  constraints: string[];
+}>;
+export function createTeamForMissingDepartment(): Promise<unknown>;
+export function assignMissingTeamToMembership(): Promise<unknown>;
+export function assignMissingTeamToRoleAssignment(): Promise<unknown>;
+export function assignCrossDepartmentTeamToMembership(): Promise<unknown>;
+export function assignCrossDepartmentTeamToCustomer(): Promise<unknown>;
+export function setTeamStatus(
+  teamId: string,
+  status: 'ACTIVE' | 'INACTIVE',
+): Promise<unknown>;
+export function moveTeamToDepartment(
+  teamId: string,
+  departmentId: string,
+): Promise<unknown>;
+export function getTeamReferenceCounts(teamId: string): Promise<{
+  memberships: number;
+  roleAssignments: number;
+  customers: number;
+}>;
+export function verifyTeamArchitectureMigration(): Promise<{
+  upgraded: {
+    distinctTeams: number;
+    preservedReferences: boolean;
+    managementGrantCount: number;
+    unrelatedManagementGrantCount: number;
+    upgradedAuthorizationRevision: number;
+    nullReferencesPreserved: boolean;
+    sharedRoleManagementGrantCount: number;
+    sharedRoleRevisionChanges: number;
+  };
+  failed: {
+    rejected: boolean;
+    teamTableExists: boolean;
+    originalTeamIdPreserved: boolean;
+  };
+}>;
+export function exerciseRoleAssignmentBoundary(): Promise<{
+  authorizedAssignmentCommitted: boolean;
+  unauthorizedDenied: boolean;
+  crossTeamDenied: boolean;
+  higherScopeDenied: boolean;
+  auditFailureRolledBack: boolean;
+}>;
+export function exerciseAuthorizationLockConcurrency(): Promise<{
+  customerWaitedForTeamLock: boolean;
+  inactiveTeamCreationDenied: boolean;
+  assignmentWaitedForGrantLock: boolean;
+  concurrentRevocationDenied: boolean;
 }>;
 export function verifyAdmissionContactConstraintRejectsBlankValues(): Promise<
   Array<string | null>

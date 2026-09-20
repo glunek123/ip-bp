@@ -10,6 +10,7 @@ import { ActorContextGuard } from './actor-context.guard';
 import { IDENTITY_ADAPTER } from './identity.adapter';
 import { createIdentityAdapterFromEnvironment } from './identity-adapter.factory';
 import { AuthModule } from '../auth/auth.module';
+import { OrganizationService } from './organization.service';
 
 @Module({
   imports: [DatabaseModule, AuthModule],
@@ -17,6 +18,7 @@ import { AuthModule } from '../auth/auth.module';
     AccessControlService,
     ActorContextGuard,
     PrismaAccessControlStore,
+    OrganizationService,
     {
       provide: ACCESS_CONTROL_STORE,
       useExisting: PrismaAccessControlStore,
@@ -31,6 +33,11 @@ import { AuthModule } from '../auth/auth.module';
         }),
     },
   ],
-  exports: [AccessControlService, ActorContextGuard, IDENTITY_ADAPTER],
+  exports: [
+    AccessControlService,
+    OrganizationService,
+    ActorContextGuard,
+    IDENTITY_ADAPTER,
+  ],
 })
 export class AccessControlModule {}

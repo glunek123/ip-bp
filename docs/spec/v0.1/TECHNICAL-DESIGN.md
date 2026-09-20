@@ -1,6 +1,6 @@
 # 技术设计基线、低负担回溯、可配置授权与客户切片
 
-版本：TD-BASE-05／TD-SLICE-CU-BASE-01 rev3／TD-SLICE-CU-RH-01 rev1／TD-AUTHZ-01／TD-TRACE-UX-01／AUTH-LOCAL-001；日期：2026-09-18；任务：CTD-001／BR-005～007／TD-CU-001／TD-AUTHZ-001／TD-TRACE-UX-001／GOV-LIVE-SPEC-001／CUST-FND-001～008／CUST-RH-DESIGN-001／CUST-RH-001／AUTH-LOCAL-001。状态：SD-34低负担回溯约束保持有效；客户草稿、最小授权、共享审计、运营端直接页面、编辑判重、一位准入联系人及权利主体最小关联已取得PostgreSQL、跨端及独立Q2内部验证；SD-35固定的v0.1系统自有账号第一切片也已完成实现、数据库型Playwright、隔离复审及内部集成；人员／角色管理、MFA／OIDC和生产迁移仍属后续；E02真实存储单独阻断依赖它的能力。
+版本：TD-BASE-05／TD-SLICE-CU-BASE-01 rev3／TD-SLICE-CU-RH-01 rev1／TD-AUTHZ-01 rev2／TD-TRACE-UX-01／AUTH-LOCAL-001；日期：2026-09-20；任务：CTD-001／BR-005～007／TD-CU-001／TD-AUTHZ-001／TD-TRACE-UX-001／GOV-LIVE-SPEC-001／CUST-FND-001～008／CUST-RH-DESIGN-001／CUST-RH-001／AUTH-LOCAL-001／TEAM-AUTHZ-ARCH-001。状态：SD-34低负担回溯与SD-36团队授权约束保持有效；客户草稿、最小授权、共享审计、运营端直接页面、编辑判重、一位准入联系人及权利主体最小关联已取得PostgreSQL、跨端及独立Q2内部验证；SD-35固定的v0.1系统自有账号第一切片也已完成实现、数据库型Playwright、隔离复审及内部集成；Team最小主数据、组合引用完整性、六项管理Action和服务端Grant Boundary已通过Level 3门禁、数据库并发验证和独立复审；人员管理UI/API、角色模板Grant编辑、MFA／OIDC和生产迁移仍属后续；E02真实存储单独阻断依赖它的能力。
 
 本页主体仍是TD-BASE通用机制；BR-03及后续确认已补齐客户准入、正常阶段／历史补录、可配置角色权限、文件生命周期、金额基础和合并语义。INPUT-013进一步要求在原页面和原操作顺序内补强回溯、材料精确版本、统一授权、检索及防重复。业务字段和关系仍以[领域模型](DOMAIN.md)为准，动作与阶段仍以[模块Spec](README.md)及[准备包](preparation/README.md)为准，缺口及责任仍由[GAPS](GAPS.md)管理。本页只固化这些决定共用的最小技术形状，不补造资金公式、审理执行、证物实物或报表口径。
 
@@ -415,6 +415,18 @@ transferResponsibility(CommandContext, resourceIds[] + newResponsible + reason)
 | 文件查看／下载／导出    | 三类动作分别验证，不因可查看案件自动取得证件下载或批量导出         |
 
 该范围涉及认证、租户隔离和敏感证件，按Q2门禁必须在实现前接受独立安全设计复核，在合并前以真实PostgreSQL执行跨部门、撤权、缓存和并发越权测试。本轮没有产生实现或可执行测试。
+
+### 16.5 Team完整性与Grant Boundary最小收口
+
+- `Team`只表达部门直属团队，包含稳定ID、不可变部门、名称、ACTIVE／INACTIVE和时间戳；不增加编码、层级、虚拟组织或物理删除。数据库触发器拒绝改变Team部门，`DepartmentMembership`、`RoleAssignment`、`Customer`通过`(teamId, departmentId)`组合外键引用同部门Team。
+- 停用Team保留成员、角色和客户历史引用；现有客户可按原权限继续维护。新成员绑定、新角色绑定、恢复旧绑定和新客户绑定必须使用ACTIVE Team，防止产生新的停用引用。
+- 管理动作固定为`user.read`、`user.manage`、`team.read`、`team.manage`、`role.read`、`role.assign`。它们与客户动作一样只能经服务端Grant放行，不承认首位管理员、角色名称、用户名、固定ID或前端可见性为授权来源。
+- 角色分配的授予上限同时校验操作者的`role.assign`是否覆盖目标成员，以及待授角色每个Grant是否被操作者同Action的当前有效范围覆盖。DEPARTMENT只覆盖同部门；TEAM只覆盖同一目标Team的TEAM范围；SELF只属于原主体，不能向他人转授；TEAM也不能推导目标成员未来SELF数据。没有业务不变量证明包含关系时默认拒绝。
+- Team新建／启停要求DEPARTMENT `team.manage`；SELF不适用于Team主数据。TEAM Grant仅在操作者当前成员Team为ACTIVE且分配Team一致时有效；任何活动且绑定Team的角色分配都必须先处理，成员才能调队。
+- 管理变更在可串行化事务内重读操作者账号、成员、授权修订和Grant，并按固定顺序锁定部门授权序列及账号、成员、角色、Grant、Team和分配行；客户新建在写事务内共享锁定Team并重检ACTIVE。角色分配成功与审计、目标账号授权修订递增同事务提交，失败整体回滚。
+- `PermissionAction`枚举扩展与Team建模分为两个有顺序依赖、各自显式事务化的前向迁移，因为PostgreSQL新增枚举值需先提交后才能用于Grant回填。第二迁移锁定引用表，先建立兼容Team与确定性映射，再建立组合外键；原`NULL`不回填。只有满足既有引导账号结构特征且角色未被其他账号共享的唯一关系获得六项管理Grant，不按角色名称批量升级。
+
+本收口不提供人员／Team／角色管理HTTP或页面，不允许直接修改客户状态，也不创建Lead、Case、File、Fee、Settlement或Report表；每个未来业务域仍须在其Slice中定义专属Action、范围查询和数据库越权测试。
 
 ## 17. TD-TRACE-UX-01：低负担回溯与原页面易用性
 

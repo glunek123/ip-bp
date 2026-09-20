@@ -139,6 +139,37 @@ describe('CustomerService', () => {
     expect(transaction).toHaveBeenCalledTimes(1);
   });
 
+  it('rechecks and locks an active Team inside the customer write transaction', async () => {
+    authorizeNewCustomer.mockResolvedValue({
+      departmentId: actor.departmentId,
+      responsibleUserId: actor.userId,
+      teamId: '33333333-3333-4333-8333-333333333334',
+    });
+    const queryRaw = jest.fn().mockResolvedValue([{ status: 'INACTIVE' }]);
+    transaction.mockImplementation(async (callback) =>
+      callback({
+        $queryRawUnsafe: queryRaw,
+        customer: {
+          findFirst: jest.fn().mockResolvedValue(null),
+          create: customerCreate,
+        },
+        auditEvent: { create: auditCreate },
+      }),
+    );
+
+    await expect(
+      service.createDraft(actor, { name: '停用团队新客户' }),
+    ).rejects.toMatchObject({
+      response: { code: 'CUSTOMER_ACTION_FORBIDDEN' },
+    });
+    expect(queryRaw).toHaveBeenCalledWith(
+      expect.stringContaining('FOR SHARE'),
+      '33333333-3333-4333-8333-333333333334',
+      actor.departmentId,
+    );
+    expect(customerCreate).not.toHaveBeenCalled();
+  });
+
   it('creates a draft with one phone-only admission contact', async () => {
     const created = {
       id: '33333333-3333-4333-8333-333333333333',
