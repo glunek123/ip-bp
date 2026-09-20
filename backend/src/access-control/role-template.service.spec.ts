@@ -270,6 +270,21 @@ describe('RoleTemplateService copy', () => {
     });
   });
 
+  it('retries one serialization conflict so a concurrent revocation is re-read', async () => {
+    const fixture = createFixture();
+    fixture.database.$transaction.mockRejectedValueOnce({
+      code: 'P2010',
+      meta: {
+        driverAdapterError: { cause: { originalCode: '40001' } },
+      },
+    });
+
+    await expect(fixture.service.copy(actor, input)).resolves.toEqual(
+      expect.objectContaining({ name: '复制角色' }),
+    );
+    expect(fixture.database.$transaction).toHaveBeenCalledTimes(2);
+  });
+
   it('does not report success when the transaction audit write fails', async () => {
     const fixture = createFixture();
     fixture.transaction.auditEvent.create.mockRejectedValueOnce(

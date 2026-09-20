@@ -93,6 +93,7 @@ describe('RoleTemplateController', () => {
     expect(recordDeniedAttempt).toHaveBeenCalledWith(
       actor,
       'role-template.impact',
+      'MANAGEMENT_ACTION_FORBIDDEN',
     );
   });
 
@@ -169,6 +170,7 @@ describe('RoleTemplateController', () => {
     expect(recordDeniedAttempt).toHaveBeenCalledWith(
       actor,
       'role-template.copy',
+      'ROLE_TEMPLATE_GRANT_NOT_COVERED',
     );
   });
 
@@ -230,6 +232,7 @@ describe('RoleTemplateController', () => {
     expect(recordDeniedAttempt).toHaveBeenCalledWith(
       actor,
       'role-template.update',
+      'ROLE_TEMPLATE_GRANT_NOT_COVERED',
     );
   });
 });

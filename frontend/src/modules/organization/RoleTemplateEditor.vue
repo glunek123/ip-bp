@@ -187,7 +187,7 @@ onBeforeUnmount(() => {
           >{{
             impact.activeAssignmentCount
           }}
-          位人员将在下一次请求时重新登录</span
+          位人员将在下一次请求时使用新权限，无需重新登录</span
         >
         <p v-if="impact.affectedUsers.length">
           {{ impact.affectedUsers.map((user) => user.displayName).join('、') }}

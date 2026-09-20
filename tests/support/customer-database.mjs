@@ -2189,7 +2189,7 @@ async function getPersonnelAccessSnapshot(username) {
 }
 
 async function getRoleTemplateSnapshot(name) {
-  return database.roleTemplate.findUnique({
+  const role = await database.roleTemplate.findUnique({
     where: {
       departmentId_name: {
         departmentId: personnelFixtures.departmentId,
@@ -2214,6 +2214,13 @@ async function getRoleTemplateSnapshot(name) {
       },
     },
   });
+  if (role === null) return null;
+  return {
+    ...role,
+    updateAuditCount: await database.auditEvent.count({
+      where: { resourceId: role.id, action: 'role-template.updated' },
+    }),
+  };
 }
 
 async function setPersonnelAdminRoleManageScope(scope) {
@@ -2231,6 +2238,94 @@ async function setPersonnelAdminRoleManageScope(scope) {
         scope,
       },
     });
+  }
+}
+
+async function setPersonnelAdminActionScope(action, scope) {
+  if (!['USER_MANAGE', 'ROLE_MANAGE'].includes(action)) {
+    throw new Error('Unsupported personnel admin action fixture');
+  }
+  await database.roleGrant.deleteMany({
+    where: { roleTemplateId: personnelFixtures.adminRoleId, action },
+  });
+  if (scope !== null) {
+    await database.roleGrant.create({
+      data: {
+        roleTemplateId: personnelFixtures.adminRoleId,
+        action,
+        scope,
+      },
+    });
+  }
+}
+
+async function assignRoleTemplateToPersonnelAdmin(roleTemplateId) {
+  await database.roleAssignment.create({
+    data: {
+      userId: personnelFixtures.adminUserId,
+      departmentId: personnelFixtures.departmentId,
+      roleTemplateId,
+      teamId: null,
+    },
+  });
+}
+
+async function exerciseRoleTemplateRevocationConcurrency(issueRequest) {
+  const blocker = new Client({ connectionString: databaseUrl });
+  let connected = false;
+  let requestPromise = null;
+  try {
+    await blocker.connect();
+    connected = true;
+    const blockerPid = Number(
+      (await blocker.query('SELECT pg_backend_pid() AS pid')).rows[0].pid,
+    );
+    await blocker.query('BEGIN');
+    await blocker.query('SELECT id FROM departments WHERE id=$1 FOR UPDATE', [
+      personnelFixtures.departmentId,
+    ]);
+    await blocker.query(
+      `DELETE FROM role_grants
+       WHERE role_template_id=$1 AND action='role.manage' AND scope='DEPARTMENT'`,
+      [personnelFixtures.adminRoleId],
+    );
+    requestPromise = issueRequest();
+    const waitedForRevocation = await waitForBlockedBy(blocker, blockerPid);
+    if (!waitedForRevocation) {
+      throw new Error('Role template request did not wait for revocation');
+    }
+    await blocker.query('COMMIT');
+    const response = await requestPromise;
+    const denial = await database.auditEvent.findFirst({
+      where: {
+        departmentId: personnelFixtures.departmentId,
+        actorUserId: personnelFixtures.adminUserId,
+        action: 'access-control.denied',
+      },
+      orderBy: { createdAt: 'desc' },
+      select: { details: true },
+    });
+    return {
+      waitedForRevocation,
+      status: response.status(),
+      denialCode: denial?.details?.code ?? null,
+    };
+  } finally {
+    if (connected) {
+      await blocker.query('ROLLBACK').catch(() => undefined);
+    }
+    await Promise.allSettled(requestPromise === null ? [] : [requestPromise]);
+    await database.roleGrant.createMany({
+      data: [
+        {
+          roleTemplateId: personnelFixtures.adminRoleId,
+          action: 'ROLE_MANAGE',
+          scope: 'DEPARTMENT',
+        },
+      ],
+      skipDuplicates: true,
+    });
+    if (connected) await blocker.end();
   }
 }
 
@@ -2426,7 +2521,71 @@ async function verifyRoleManageMigration() {
         ).rows[0].authorization_revision,
       );
     }
-    return { counts, revisions };
+    await client.query(
+      await readFile(
+        resolve(migrationRoot, backfillTarget, 'migration.sql'),
+        'utf8',
+      ),
+    );
+    const idempotentRevision = Number(
+      (
+        await client.query(
+          'SELECT authorization_revision FROM user_accounts WHERE id=$1',
+          [ids.validUser],
+        )
+      ).rows[0].authorization_revision,
+    );
+
+    await client.query(
+      "DELETE FROM role_grants WHERE role_template_id=$1 AND action='role.manage'",
+      [ids.validRole],
+    );
+    await client.query(
+      'UPDATE user_accounts SET authorization_revision=1 WHERE id=$1',
+      [ids.validUser],
+    );
+    await client.query(
+      `ALTER TABLE role_grants ADD CONSTRAINT role_manage_probe_reject_insert
+       CHECK (action <> 'role.manage') NOT VALID`,
+    );
+    let failureCode = null;
+    try {
+      await client.query(
+        await readFile(
+          resolve(migrationRoot, backfillTarget, 'migration.sql'),
+          'utf8',
+        ),
+      );
+    } catch (error) {
+      failureCode = error.code ?? null;
+      await client.query('ROLLBACK').catch(() => undefined);
+    }
+    const rollbackGrantCount = Number(
+      (
+        await client.query(
+          "SELECT COUNT(*) FROM role_grants WHERE role_template_id=$1 AND action='role.manage'",
+          [ids.validRole],
+        )
+      ).rows[0].count,
+    );
+    const rollbackRevision = Number(
+      (
+        await client.query(
+          'SELECT authorization_revision FROM user_accounts WHERE id=$1',
+          [ids.validUser],
+        )
+      ).rows[0].authorization_revision,
+    );
+    return {
+      counts,
+      revisions,
+      idempotentRevision,
+      failure: {
+        code: failureCode,
+        grantCount: rollbackGrantCount,
+        revision: rollbackRevision,
+      },
+    };
   } finally {
     await client.query('RESET search_path').catch(() => undefined);
     await client
@@ -2446,6 +2605,9 @@ export {
   allowPersonnelCreatedAuditWrites,
   getRoleTemplateSnapshot,
   setPersonnelAdminRoleManageScope,
+  setPersonnelAdminActionScope,
+  assignRoleTemplateToPersonnelAdmin,
+  exerciseRoleTemplateRevocationConcurrency,
   rejectRoleTemplateAuditWrites,
   allowRoleTemplateAuditWrites,
   countRoleTemplatesByName,

@@ -38,6 +38,12 @@ WHERE "assignment"."active" = true
       AND "shared_assignment"."user_id" <> "assignment"."user_id"
   )
   AND NOT EXISTS (
+    SELECT 1 FROM "role_grants" AS "existing_role_manage"
+    WHERE "existing_role_manage"."role_template_id" = "assignment"."role_template_id"
+      AND "existing_role_manage"."action" = 'role.manage'
+      AND "existing_role_manage"."scope" = 'DEPARTMENT'
+  )
+  AND NOT EXISTS (
     SELECT 1
     FROM (VALUES
       ('customer.read'::"permission_action"),

@@ -127,7 +127,11 @@ export class OrganizationService {
             }
           : null;
       const canReadRoles = grants.some((grant) => grant.action === 'ROLE_READ');
-      if (userWhere === null && teamWhere === null && !canReadRoles) {
+      const canManageRoleTemplates = hasDepartmentGrant('ROLE_MANAGE');
+      const canLoadRoles = canReadRoles || canManageRoleTemplates;
+      const canViewAllRoles =
+        hasDepartmentGrant('ROLE_READ') || canManageRoleTemplates;
+      if (userWhere === null && teamWhere === null && !canLoadRoles) {
         throw this.forbidden();
       }
 
@@ -170,7 +174,7 @@ export class OrganizationService {
               select: { id: true, name: true, status: true },
               orderBy: [{ name: 'asc' }, { id: 'asc' }],
             }),
-        canReadRoles
+        canLoadRoles
           ? transaction.roleTemplate.findMany({
               where: { departmentId: actor.departmentId, active: true },
               select: {
@@ -216,8 +220,7 @@ export class OrganizationService {
       const canAssignDepartmentRoles = hasDepartmentGrant('ROLE_ASSIGN');
       const canAssignTeamRoles = teamGrant('ROLE_ASSIGN') !== undefined;
       const canManageTeams = hasDepartmentGrant('TEAM_MANAGE');
-      const canManageRoleTemplates = hasDepartmentGrant('ROLE_MANAGE');
-      const visibleRoles = canManageRoleTemplates ? roles : rolesActorCanAssign;
+      const visibleRoles = canViewAllRoles ? roles : rolesActorCanAssign;
 
       return {
         capabilities: {
@@ -287,6 +290,7 @@ export class OrganizationService {
       | 'role-template.impact'
       | 'role-template.copy'
       | 'role-template.update',
+    code = 'FORBIDDEN',
   ): Promise<void> {
     try {
       await this.database.$transaction(async (transaction) => {
@@ -309,7 +313,7 @@ export class OrganizationService {
             resourceType: 'access-control-attempt',
             resourceId: membership.id,
             action: 'access-control.denied',
-            details: { operation, code: 'FORBIDDEN' },
+            details: { operation, code },
           },
         });
       });

@@ -57,10 +57,25 @@ export function getRoleTemplateSnapshot(name: string): Promise<{
     userId: string;
     user: { authorizationRevision: number };
   }>;
+  updateAuditCount: number;
 } | null>;
 export function setPersonnelAdminRoleManageScope(
   scope: 'SELF' | 'TEAM' | 'DEPARTMENT' | null,
 ): Promise<void>;
+export function setPersonnelAdminActionScope(
+  action: 'USER_MANAGE' | 'ROLE_MANAGE',
+  scope: 'SELF' | 'TEAM' | 'DEPARTMENT' | null,
+): Promise<void>;
+export function assignRoleTemplateToPersonnelAdmin(
+  roleTemplateId: string,
+): Promise<void>;
+export function exerciseRoleTemplateRevocationConcurrency(
+  issueRequest: () => Promise<{ status(): number }>,
+): Promise<{
+  waitedForRevocation: boolean;
+  status: number;
+  denialCode: unknown;
+}>;
 export function rejectRoleTemplateAuditWrites(
   action: 'role-template.created' | 'role-template.updated',
 ): Promise<void>;
@@ -69,6 +84,8 @@ export function countRoleTemplatesByName(name: string): Promise<number>;
 export function verifyRoleManageMigration(): Promise<{
   counts: { valid: number; shared: number; incomplete: number };
   revisions: { valid: number; shared: number; incomplete: number };
+  idempotentRevision: number;
+  failure: { code: string | null; grantCount: number; revision: number };
 }>;
 export function resetLocalAuthE2eData(): Promise<{
   username: string;

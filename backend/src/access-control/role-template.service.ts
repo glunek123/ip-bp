@@ -95,7 +95,17 @@ export class RoleTemplateService {
     });
   }
 
-  async copy(actor: ActorContext, input: CopyRoleTemplateInput) {
+  async copy(
+    actor: ActorContext,
+    input: CopyRoleTemplateInput,
+    retrySerialization = true,
+  ): Promise<{
+    id: string;
+    name: string;
+    version: number;
+    activeAssignmentCount: number;
+    grants: RoleGrantInput[];
+  }> {
     const name = input.name.trim();
     if (name.length === 0 || Array.from(name).length > 100) {
       throw new BadRequestException({
@@ -194,6 +204,9 @@ export class RoleTemplateService {
         { isolationLevel: 'Serializable' },
       );
     } catch (error) {
+      if (retrySerialization && this.isSerializationConflict(error)) {
+        return this.copy(actor, input, false);
+      }
       if (
         typeof error === 'object' &&
         error !== null &&

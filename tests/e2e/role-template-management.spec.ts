@@ -1,13 +1,16 @@
 import { expect, test } from '@playwright/test';
 import {
   allowRoleTemplateAuditWrites,
+  assignRoleTemplateToPersonnelAdmin,
   countRoleTemplatesByName,
   disconnectCustomerTestDatabase,
+  exerciseRoleTemplateRevocationConcurrency,
   getRoleTemplateSnapshot,
   personnelFixtures,
   rejectRoleTemplateAuditWrites,
   resetPersonnelAccessE2eData,
   setPersonnelAdminRoleManageScope,
+  setPersonnelAdminActionScope,
   verifyRoleManageMigration,
 } from '../support/customer-database.mjs';
 
@@ -172,6 +175,36 @@ test('department boundary, duplicate name, and audit failure are rejected withou
   expect(teamOnly.status(), await teamOnly.text()).toBe(403);
   await setPersonnelAdminRoleManageScope('DEPARTMENT');
 
+  await setPersonnelAdminActionScope('USER_MANAGE', null);
+  const uncovered = await api.request.post(
+    '/api/v1/organization/role-templates',
+    {
+      headers: api.headers,
+      data: {
+        ...command,
+        name: '不应越级的模板',
+        grants: [{ action: 'USER_MANAGE', scope: 'DEPARTMENT' }],
+      },
+    },
+  );
+  expect(uncovered.status(), await uncovered.text()).toBe(403);
+  expect(await countRoleTemplatesByName('不应越级的模板')).toBe(0);
+  await setPersonnelAdminActionScope('USER_MANAGE', 'DEPARTMENT');
+
+  const revokedDuringSave = await exerciseRoleTemplateRevocationConcurrency(
+    () =>
+      api.request.post('/api/v1/organization/role-templates', {
+        headers: api.headers,
+        data: { ...command, name: '并发撤权模板' },
+      }),
+  );
+  expect(revokedDuringSave).toEqual({
+    waitedForRevocation: true,
+    status: 403,
+    denialCode: 'MANAGEMENT_ACTION_FORBIDDEN',
+  });
+  expect(await countRoleTemplatesByName('并发撤权模板')).toBe(0);
+
   await rejectRoleTemplateAuditWrites('role-template.created');
   try {
     const auditFailure = await api.request.post(
@@ -231,6 +264,10 @@ test('concurrent edits allow one version winner and roll audit failures back', a
     version: number;
   };
 
+  await assignRoleTemplateToPersonnelAdmin(created.id);
+  const beforeFailure = await getRoleTemplateSnapshot(winner.name);
+  expect(beforeFailure?.assignments).toHaveLength(1);
+
   await rejectRoleTemplateAuditWrites('role-template.updated');
   try {
     const failed = await api.request.patch(
@@ -246,9 +283,12 @@ test('concurrent edits allow one version winner and roll audit failures back', a
     );
     expect(failed.status()).toBe(500);
     expect(await countRoleTemplatesByName('不应提交的模板名')).toBe(0);
-    expect((await getRoleTemplateSnapshot(winner.name))?.version).toBe(
-      winner.version,
-    );
+    const afterFailure = await getRoleTemplateSnapshot(winner.name);
+    expect(afterFailure).toEqual(beforeFailure);
+    expect(afterFailure?.version).toBe(winner.version);
+    expect(afterFailure?.grants).toEqual([
+      { action: 'CUSTOMER_READ', scope: 'DEPARTMENT' },
+    ]);
   } finally {
     await allowRoleTemplateAuditWrites();
   }
@@ -260,5 +300,7 @@ test('migration upgrades only the structurally verified unshared bootstrap role'
   expect(result).toEqual({
     counts: { valid: 1, shared: 0, incomplete: 0 },
     revisions: { valid: 2, shared: 1, incomplete: 1 },
+    idempotentRevision: 2,
+    failure: { code: '23514', grantCount: 0, revision: 1 },
   });
 });

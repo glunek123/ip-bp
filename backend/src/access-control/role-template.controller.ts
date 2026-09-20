@@ -84,7 +84,15 @@ export class RoleTemplateController {
       return await action();
     } catch (error) {
       if (error instanceof ForbiddenException) {
-        await this.organization.recordDeniedAttempt(actor, operation);
+        const response = error.getResponse();
+        const code =
+          typeof response === 'object' &&
+          response !== null &&
+          'code' in response &&
+          typeof response.code === 'string'
+            ? response.code
+            : 'FORBIDDEN';
+        await this.organization.recordDeniedAttempt(actor, operation, code);
       }
       throw error;
     }

@@ -400,6 +400,48 @@ describe('OrganizationService management context', () => {
     );
   });
 
+  it('returns role summaries to a ROLE_READ caller without requiring ROLE_ASSIGN', async () => {
+    const fixture = createFixture({
+      actorGrants: [departmentGrant('ROLE_READ')],
+      contextRoles: [
+        {
+          id: 'role-readable',
+          name: '只读可见角色',
+          active: true,
+          version: 1,
+          grants: [{ action: 'CUSTOMER_READ', scope: 'SELF' }],
+          assignments: [],
+        },
+      ],
+    });
+
+    const result = await fixture.service.getManagementContext(actor);
+
+    expect(result.roles.map((role) => role.id)).toEqual(['role-readable']);
+    expect(result.capabilities.manageRoleTemplates).toBe(false);
+  });
+
+  it('returns the templates needed by a ROLE_MANAGE caller without ROLE_READ', async () => {
+    const fixture = createFixture({
+      actorGrants: [departmentGrant('ROLE_MANAGE')],
+      contextRoles: [
+        {
+          id: 'role-manageable',
+          name: '可管理角色',
+          active: true,
+          version: 1,
+          grants: [{ action: 'ROLE_MANAGE', scope: 'DEPARTMENT' }],
+          assignments: [],
+        },
+      ],
+    });
+
+    const result = await fixture.service.getManagementContext(actor);
+
+    expect(result.roles.map((role) => role.id)).toEqual(['role-manageable']);
+    expect(result.capabilities.manageRoleTemplates).toBe(true);
+  });
+
   it('rejects a caller without any management read grant', async () => {
     const fixture = createFixture({
       actorGrants: [departmentGrant('CUSTOMER_READ')],
