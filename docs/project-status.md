@@ -8,7 +8,7 @@
 
 ## 当前任务
 
-**ROLE-TEMPLATE-001（Level 3）已正式领取**：基于`main@3c7497a`，在`codex/role-template-management`隔离分支按已确认方案 A 开发“角色模板复制与 Grant 配置闭环”。当前处于设计固化和实施计划阶段；新增独立`ROLE_MANAGE`，模板写操作只接受部门级授权，并在现有人员与权限工作区提供复制、编辑、自动影响预览和下一请求生效。具体范围见[设计](superpowers/specs/2026-09-20-role-template-management-design.md)，业务 Current／Next 只在[功能开发路线图](feature-roadmap.md)维护。
+**ROLE-TEMPLATE-001（Level 3）已正式领取**：基于`main@3c7497a`，在`codex/role-template-management`隔离分支按已确认方案 A 开发“角色模板复制与 Grant 配置闭环”。设计已固化，实施按[计划](superpowers/plans/2026-09-20-role-template-management.md)推进；新增独立`ROLE_MANAGE`，模板写操作只接受部门级授权，并在现有人员与权限工作区提供复制、编辑、自动影响预览和下一请求生效。具体范围见[设计](superpowers/specs/2026-09-20-role-template-management-design.md)，业务 Current／Next 只在[功能开发路线图](feature-roadmap.md)维护。
 
 ## 已实现
 
