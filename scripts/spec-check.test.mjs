@@ -3,7 +3,10 @@ import assert from 'node:assert/strict';
 import { mkdtempSync, mkdirSync, writeFileSync, rmSync } from 'node:fs';
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
-import { auditSpec } from './spec-check.mjs';
+import {
+  auditImplementationStatusOwnership,
+  auditSpec,
+} from './spec-check.mjs';
 
 function fixture(t, overrides = {}) {
   const root = mkdtempSync(join(tmpdir(), 'dev-cor-spec-'));
@@ -13,7 +16,7 @@ function fixture(t, overrides = {}) {
     'DECISIONS.md':
       '# Decisions\n\n| 编号 | 决定 |\n| --- | --- |\n| SD-01 | first |\n| SD-02 | second |\n',
     'README.md':
-      '# Spec\n\n当前决定：[SD-01～02](DECISIONS.md)，设计TD-BASE-05／TD-TRACE-UX-01。\n',
+      '# Spec\n\n当前决定：[SD-01～02](DECISIONS.md)，设计TD-BASE-05／TD-TRACE-UX-01。\n\n当前实现状态与开发顺序只见[功能开发路线图](../../feature-roadmap.md)，当前活动任务只见[项目状态](../../project-status.md)。\n',
     'COVERAGE.md': '# Coverage\n\nREQ-CU-001映射到SD-01。\n',
     'READINESS.md':
       '# Ready\n\n按SD-01～02回填，使用TD-BASE-05／TD-TRACE-UX-01。\n',
@@ -69,4 +72,21 @@ test('rejects stale current summary versions', (t) => {
   assert.match(errors, /READINESS\.md.*SD-02/i);
   assert.match(errors, /TECHNICAL-DESIGN\.md.*TD-BASE-05/i);
   assert.match(errors, /TECHNICAL-DESIGN\.md.*TD-TRACE-UX-01/i);
+});
+
+test('requires the Spec README to delegate implementation state', () => {
+  assert.deepEqual(
+    auditImplementationStatusOwnership(
+      '# Spec\n\n当前实现状态与开发顺序只见[功能开发路线图](../../feature-roadmap.md)，当前活动任务只见[项目状态](../../project-status.md)。\n',
+    ),
+    [],
+  );
+});
+
+test('rejects copied current implementation progress in the Spec README', () => {
+  const errors = auditImplementationStatusOwnership(
+    '# Spec\n\n本地账号第一切片待计划／实现，客户能力已内部集成。\n',
+  );
+  assert.match(errors.join('\n'), /implementation state source/i);
+  assert.match(errors.join('\n'), /copied implementation progress/i);
 });

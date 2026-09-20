@@ -10,6 +10,26 @@ const requiredFiles = [
   'TECHNICAL-DESIGN.md',
 ];
 const currentTechnicalMarkers = ['TD-BASE-05', 'TD-TRACE-UX-01'];
+const implementationSourceSentence =
+  '当前实现状态与开发顺序只见[功能开发路线图](../../feature-roadmap.md)，当前活动任务只见[项目状态](../../project-status.md)。';
+const copiedProgressPatterns = [
+  /待计划[／/]实现/,
+  /已内部集成/,
+  /已取得(?:PostgreSQL|数据库|浏览器)/,
+  /(?:当前|唯一)Next Slice/i,
+  /[✅🟡🔵⚪🔴]/u,
+];
+
+export function auditImplementationStatusOwnership(readmeText) {
+  const errors = [];
+  if (!readmeText.includes(implementationSourceSentence)) {
+    errors.push('README.md must declare the implementation state source');
+  }
+  if (copiedProgressPatterns.some((pattern) => pattern.test(readmeText))) {
+    errors.push('README.md contains copied implementation progress');
+  }
+  return errors;
+}
 
 function collectMarkdown(root, directory = '') {
   return readdirSync(join(root, directory), { withFileTypes: true }).flatMap(
@@ -145,6 +165,10 @@ export function auditSpec(specRoot) {
       }
     }
   }
+
+  errors.push(
+    ...auditImplementationStatusOwnership(documents.get('README.md')),
+  );
 
   return {
     errors: [...new Set(errors)].sort(),

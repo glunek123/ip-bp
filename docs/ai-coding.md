@@ -4,15 +4,16 @@
 
 默认采用“风险分级＋按需上下文＋自动化门禁”：减少重复阅读、确认、文档和全量验证，同时保留正式系统必需的安全与质量证据。三级模式和测试强度只在[三级开发与集成规则](../.cursor/rules/verified-feature-integration.mdc)定义，本文件只负责上下文、恢复和文档同步。
 
-| 信息                               | 唯一来源                                                  | 何时读取／更新                 |
-| ---------------------------------- | --------------------------------------------------------- | ------------------------------ |
-| 当前阶段、活动任务、阻断和最近证据 | [project-status.md](project-status.md)                    | 新任务先读；状态实质变化时更新 |
-| 业务规则与验收                     | 对应Living Spec／Decision                                 | 相关功能或语义变化时           |
-| 技术边界与待决架构                 | [architecture.md](architecture.md)                        | 新模块、依赖、目录或架构分叉时 |
-| 开发、安全、迁移和上线规范         | [conventions.md](conventions.md)                          | 只读本任务相关章节             |
-| 环境与版本                         | [environment.md](environment.md)、`environment-lock.json` | 安装、生成、环境异常或升级时   |
-| 实际依赖、schema和命令             | 源码、配置、`package.json`、锁文件                        | 直接查看，不在文档复制清单     |
-| 已核对文件版本                     | `context-snapshot.json`                                   | 核对真实差异后显式记录         |
+| 信息                                           | 唯一来源                                                  | 何时读取／更新                   |
+| ---------------------------------------------- | --------------------------------------------------------- | -------------------------------- |
+| 全部Slice实现状态、依赖顺序和唯一Current／Next | [feature-roadmap.md](feature-roadmap.md)                  | 能力状态实质变化时更新           |
+| 当前任务指针、恢复事实、当前限制和下一动作     | [project-status.md](project-status.md)                    | 长任务、阶段或恢复信息变化时更新 |
+| 业务规则与验收                                 | 对应Living Spec／Decision                                 | 相关功能或语义变化时             |
+| 技术边界与待决架构                             | [architecture.md](architecture.md)                        | 新模块、依赖、目录或架构分叉时   |
+| 开发、安全、迁移和上线规范                     | [conventions.md](conventions.md)                          | 只读本任务相关章节               |
+| 环境与版本                                     | [environment.md](environment.md)、`environment-lock.json` | 安装、生成、环境异常或升级时     |
+| 实际依赖、schema和命令                         | 源码、配置、`package.json`、锁文件                        | 直接查看，不在文档复制清单       |
+| 已核对文件版本                                 | `context-snapshot.json`                                   | 核对真实差异后显式记录           |
 
 用户确认的需求决定“应该做什么”，源码和当次验证说明“已经做成什么”。历史报告只对其候选有效，不能替代当前现场。
 
