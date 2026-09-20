@@ -1,0 +1,17 @@
+export const prismaModelOwners = Object.freeze({
+  Department: 'access-control',
+  Team: 'access-control',
+  UserAccount: 'access-control',
+  LocalCredential: 'auth',
+  AuthSession: 'auth',
+  AuthThrottle: 'auth',
+  DepartmentMembership: 'access-control',
+  RoleTemplate: 'access-control',
+  RoleGrant: 'access-control',
+  RoleAssignment: 'access-control',
+  Customer: 'customers',
+  RightsHolder: 'customers',
+  CustomerRightsHolderLink: 'customers',
+  RightsHolderCommandReceipt: 'customers',
+  AuditEvent: 'shared-audit',
+});

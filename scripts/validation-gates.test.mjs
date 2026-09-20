@@ -162,7 +162,11 @@ test('full verify prepares Prisma and typechecks the frontend only once', () => 
 test('prepared fast checks preserve typecheck and lint without regenerating Prisma', () => {
   assert.equal(
     packageJson.scripts['check:fast:prepared'],
-    'pnpm typecheck:prepared && eslint . --cache --cache-strategy content --cache-location .local/eslint-cache --max-warnings 0',
+    'pnpm architecture:check && pnpm typecheck:prepared && eslint . --cache --cache-strategy content --cache-location .local/eslint-cache --max-warnings 0',
+  );
+  assert.equal(
+    packageJson.scripts['architecture:check'],
+    'node scripts/architecture-check.mjs',
   );
   assert.equal(
     packageJson.scripts['typecheck:prepared'],
@@ -178,4 +182,20 @@ test('prepared fast checks preserve typecheck and lint without regenerating Pris
     /db:generate/,
   );
   assert.match(packageJson.scripts['check:fast'], /typecheck/);
+  assert.equal(
+    packageJson.scripts['check:fast'].match(/architecture:check/g)?.length,
+    1,
+  );
+  assert.equal(
+    packageJson.scripts['check:fast:prepared'].match(/architecture:check/g)
+      ?.length,
+    1,
+  );
+  for (const configured of Object.values(validationScopes)) {
+    assert.equal(
+      configured.commands.filter(({ id }) => id === 'architecture:check')
+        .length,
+      0,
+    );
+  }
 });

@@ -18,6 +18,28 @@ export default tseslint.config(
   ...tseslint.configs.recommended,
   ...vue.configs['flat/essential'],
   {
+    files: ['backend/src/**/*.controller.ts'],
+    ignores: ['backend/src/health/health.controller.ts'],
+    rules: {
+      'no-restricted-imports': [
+        'error',
+        {
+          patterns: [
+            {
+              group: ['**/database/database.service', '**/generated/prisma/**'],
+              message:
+                'ARCH-CONTROLLER-DATABASE: controllers must call a business module interface instead of Prisma or DatabaseService.',
+            },
+          ],
+        },
+      ],
+    },
+  },
+  {
+    files: ['backend/src/health/health.controller.ts'],
+    rules: { 'no-restricted-imports': 'off' },
+  },
+  {
     files: ['**/*.vue'],
     languageOptions: {
       globals: { AbortController: 'readonly' },
