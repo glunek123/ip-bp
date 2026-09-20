@@ -8,7 +8,7 @@
 
 ## 当前任务
 
-**PERSONNEL-ACCESS-001（Level 3）收口中**：实现与聚焦验收已完成，正在冻结最终候选并执行完整`verify`、身份／授权数据库E2E和Level 3 Review。开工基线为`main@49d8ba0`；实现分支为`codex/personnel-access-management`，未修改schema或新增依赖。
+**PERSONNEL-ACCESS-001（Level 3）收口中**：实现、聚焦验收及首轮Review整改已完成，正在冻结最终候选并执行完整`verify`、身份／授权数据库E2E和复审。开工基线为`main@49d8ba0`；实现分支为`codex/personnel-access-management`，未修改schema或新增依赖。
 
 ## 已实现
 
@@ -29,8 +29,8 @@
 ## 最近验证
 
 - Team候选`e6caef4`的完整`verify`、独立测试库迁移／Playwright及Level 3复审曾通过；历史检查数量与审查过程保留在[验证记录](spec/v0.1/VALIDATION.md)，该记录未绑定tree，不能作为新候选的可复用证据。
-- PERSONNEL-ACCESS-001聚焦证据：后端认证／访问控制87项、前端全量134项及`check:fast`通过；独立测试库中的3项Playwright通过，覆盖页面建号后新人员登录、团队角色冲突后撤权调队、只输入新密码完成重置且旧密码失效。完整`verify`、完整E2E与最终Review仍待本候选执行。
+- PERSONNEL-ACCESS-001聚焦证据：后端人员服务33项、前端相关19项及`check:fast`通过；独立测试库中的6项Playwright通过，覆盖页面建号后新人员登录、团队角色冲突后撤权调队、只输入新密码完成重置且旧密码失效、账号／成员／角色生命周期、跨部门／自操作／多部门拒绝及创建事务回滚。首轮Review的4项Important和1项Minor已整改，完整`verify`、完整E2E与最终复审仍待本候选执行。
 
 ## 下一步
 
-冻结干净候选，执行完整`pnpm verify`、`test:e2e:personnel-access`、`test:e2e:auth`、`test:e2e:full`和Level 3 Review。通过后本地交付；未经明确授权不推送、不发布、不操作生产数据库。
+冻结干净候选，执行完整`pnpm verify`、`test:e2e:personnel-access`、`test:e2e:auth`、`test:e2e:full`和Level 3复审。通过后本地交付；未经明确授权不推送、不发布、不操作生产数据库。
