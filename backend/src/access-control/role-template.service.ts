@@ -375,7 +375,7 @@ export class RoleTemplateService {
       });
     }
     const normalized = this.sortGrants(grants);
-    const keys = normalized.map((grant) => `${grant.action}:${grant.scope}`);
+    const keys = normalized.map((grant) => grant.action);
     if (new Set(keys).size !== keys.length) {
       throw new BadRequestException({
         code: 'ROLE_TEMPLATE_DUPLICATE_GRANT',

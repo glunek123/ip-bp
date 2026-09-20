@@ -225,6 +225,14 @@ describe('RoleTemplateService copy', () => {
     ).rejects.toMatchObject({
       response: { code: 'ROLE_TEMPLATE_DUPLICATE_GRANT' },
     });
+    await expect(
+      fixture.service.copy(actor, {
+        ...input,
+        grants: [input.grants[0], { action: 'CUSTOMER_READ', scope: 'SELF' }],
+      }),
+    ).rejects.toMatchObject({
+      response: { code: 'ROLE_TEMPLATE_DUPLICATE_GRANT' },
+    });
     expect(fixture.database.$transaction).not.toHaveBeenCalled();
   });
 
