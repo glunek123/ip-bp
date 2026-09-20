@@ -71,6 +71,40 @@ describe('organization API', () => {
     });
   });
 
+  it.each([
+    {
+      ...context,
+      users: [{ ...context.users[0], passwordHash: 'must-not-pass' }],
+    },
+    {
+      ...context,
+      roles: [
+        {
+          ...context.roles[0],
+          grants: [{ action: 'MADE_UP_ACTION', scope: 'DEPARTMENT' }],
+        },
+      ],
+    },
+    {
+      ...context,
+      roles: [
+        {
+          ...context.roles[0],
+          grants: [{ action: 'CUSTOMER_READ', scope: 'GLOBAL' }],
+        },
+      ],
+    },
+  ])('rejects sensitive or invalid management shapes %#', async (body) => {
+    vi.stubGlobal(
+      'fetch',
+      vi.fn().mockResolvedValue(new Response(JSON.stringify(body))),
+    );
+
+    await expect(getOrganizationManagementContext()).rejects.toMatchObject({
+      code: 'INVALID_RESPONSE',
+    });
+  });
+
   it('creates a person through the organization endpoint', async () => {
     const fetch = vi
       .fn()

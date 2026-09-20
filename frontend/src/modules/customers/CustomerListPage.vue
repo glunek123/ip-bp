@@ -45,7 +45,6 @@ onBeforeUnmount(() => activeRequest?.abort());
       </RouterLink>
       <nav class="workspace-nav" aria-label="主要导航">
         <span class="workspace-context">客户</span>
-        <RouterLink to="/settings/people-access">人员与权限</RouterLink>
       </nav>
     </header>
     <main class="workspace-main">

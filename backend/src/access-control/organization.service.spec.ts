@@ -373,6 +373,19 @@ describe('OrganizationService management context', () => {
       }),
     );
   });
+
+  it('rejects a caller without any management read grant', async () => {
+    const fixture = createFixture({
+      actorGrants: [departmentGrant('CUSTOMER_READ')],
+    });
+
+    await expect(
+      fixture.service.getManagementContext(actor),
+    ).rejects.toBeInstanceOf(ForbiddenException);
+    expect(
+      fixture.transaction.departmentMembership.findMany,
+    ).not.toHaveBeenCalled();
+  });
 });
 
 describe('OrganizationService personnel creation', () => {
@@ -641,6 +654,24 @@ describe('OrganizationService membership lifecycle', () => {
         },
       }),
     });
+  });
+
+  it('treats a transformed undefined Team field as absent for status changes', async () => {
+    const fixture = createFixture({
+      actorGrants: [departmentGrant('USER_MANAGE')],
+    });
+    fixture.transaction.departmentMembership.update.mockResolvedValueOnce({
+      id: 'membership-target',
+      active: false,
+      teamId: null,
+    });
+
+    await expect(
+      fixture.service.updateMembership(actor, 'target-user', {
+        active: false,
+        teamId: undefined,
+      }),
+    ).resolves.toMatchObject({ id: 'membership-target', active: false });
   });
 
   it('keeps the active Team-assignment conflict for explicit Team changes', async () => {

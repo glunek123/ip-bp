@@ -54,9 +54,35 @@ function isNullableString(value: unknown): value is string | null {
   return value === null || typeof value === 'string';
 }
 
+function hasExactKeys(
+  value: Record<string, unknown>,
+  keys: readonly string[],
+): boolean {
+  const actual = Object.keys(value).sort();
+  const expected = [...keys].sort();
+  return (
+    actual.length === expected.length &&
+    actual.every((key, index) => key === expected[index])
+  );
+}
+
+const permissionActions = new Set([
+  'CUSTOMER_READ',
+  'CUSTOMER_CREATE_DRAFT',
+  'CUSTOMER_EDIT_ROUTINE',
+  'USER_READ',
+  'USER_MANAGE',
+  'TEAM_READ',
+  'TEAM_MANAGE',
+  'ROLE_READ',
+  'ROLE_ASSIGN',
+]);
+const permissionScopes = new Set(['SELF', 'TEAM', 'DEPARTMENT']);
+
 function isTeam(value: unknown): value is OrganizationTeam {
   return (
     isRecord(value) &&
+    hasExactKeys(value, ['id', 'name', 'status']) &&
     typeof value.id === 'string' &&
     typeof value.name === 'string' &&
     (value.status === 'ACTIVE' || value.status === 'INACTIVE')
@@ -66,6 +92,14 @@ function isTeam(value: unknown): value is OrganizationTeam {
 function isAssignment(value: unknown): value is OrganizationRoleAssignment {
   return (
     isRecord(value) &&
+    hasExactKeys(value, [
+      'id',
+      'roleTemplateId',
+      'roleName',
+      'teamId',
+      'active',
+      'version',
+    ]) &&
     typeof value.id === 'string' &&
     typeof value.roleTemplateId === 'string' &&
     typeof value.roleName === 'string' &&
@@ -78,11 +112,20 @@ function isAssignment(value: unknown): value is OrganizationRoleAssignment {
 function isUser(value: unknown): value is OrganizationUser {
   return (
     isRecord(value) &&
+    hasExactKeys(value, [
+      'id',
+      'displayName',
+      'username',
+      'accountActive',
+      'membership',
+      'assignments',
+    ]) &&
     typeof value.id === 'string' &&
     typeof value.displayName === 'string' &&
     typeof value.username === 'string' &&
     typeof value.accountActive === 'boolean' &&
     isRecord(value.membership) &&
+    hasExactKeys(value.membership, ['id', 'active', 'teamId']) &&
     typeof value.membership.id === 'string' &&
     typeof value.membership.active === 'boolean' &&
     isNullableString(value.membership.teamId) &&
@@ -94,14 +137,18 @@ function isUser(value: unknown): value is OrganizationUser {
 function isRole(value: unknown): value is OrganizationRole {
   return (
     isRecord(value) &&
+    hasExactKeys(value, ['id', 'name', 'grants']) &&
     typeof value.id === 'string' &&
     typeof value.name === 'string' &&
     Array.isArray(value.grants) &&
     value.grants.every(
       (grant) =>
         isRecord(grant) &&
+        hasExactKeys(grant, ['action', 'scope']) &&
         typeof grant.action === 'string' &&
-        typeof grant.scope === 'string',
+        permissionActions.has(grant.action) &&
+        typeof grant.scope === 'string' &&
+        permissionScopes.has(grant.scope),
     )
   );
 }
@@ -109,6 +156,14 @@ function isRole(value: unknown): value is OrganizationRole {
 function isCapabilities(value: unknown): value is OrganizationCapabilities {
   return (
     isRecord(value) &&
+    hasExactKeys(value, [
+      'createUser',
+      'manageUsers',
+      'createTeam',
+      'manageTeams',
+      'assignDepartmentRoles',
+      'assignTeamRoles',
+    ]) &&
     typeof value.createUser === 'boolean' &&
     typeof value.manageUsers === 'boolean' &&
     typeof value.createTeam === 'boolean' &&
@@ -132,6 +187,7 @@ export async function getOrganizationManagementContext(
   const data = await getJson('/organization/management-context', options);
   if (
     !isRecord(data) ||
+    !hasExactKeys(data, ['capabilities', 'users', 'teams', 'roles']) ||
     !isCapabilities(data.capabilities) ||
     !Array.isArray(data.users) ||
     !data.users.every(isUser) ||

@@ -1934,7 +1934,9 @@ async function verifyRightsHolderNames(names) {
 
 const personnelFixtures = {
   departmentId: '10000000-0000-4000-8000-000000000020',
+  foreignDepartmentId: '10000000-0000-4000-8000-000000000021',
   adminUserId: '20000000-0000-4000-8000-000000000020',
+  foreignUserId: '20000000-0000-4000-8000-000000000021',
   adminRoleId: '30000000-0000-4000-8000-000000000020',
   operatorRoleId: '30000000-0000-4000-8000-000000000021',
   teamAId: '40000000-0000-4000-8000-000000000020',
@@ -1942,13 +1944,16 @@ const personnelFixtures = {
 };
 
 async function resetPersonnelAccessE2eData() {
+  await allowPersonnelCreatedAuditWrites();
   const departmentId = personnelFixtures.departmentId;
+  const departmentIds = [departmentId, personnelFixtures.foreignDepartmentId];
   const memberships = await database.departmentMembership.findMany({
-    where: { departmentId },
+    where: { departmentId: { in: departmentIds } },
     select: { userId: true },
   });
   const userIds = [
     personnelFixtures.adminUserId,
+    personnelFixtures.foreignUserId,
     ...memberships.map((membership) => membership.userId),
   ];
   await database.$transaction(async (transaction) => {
@@ -1956,9 +1961,15 @@ async function resetPersonnelAccessE2eData() {
       where: { userId: { in: userIds } },
     });
     await transaction.authThrottle.deleteMany({});
-    await transaction.auditEvent.deleteMany({ where: { departmentId } });
-    await transaction.customer.deleteMany({ where: { departmentId } });
-    await transaction.roleAssignment.deleteMany({ where: { departmentId } });
+    await transaction.auditEvent.deleteMany({
+      where: { departmentId: { in: departmentIds } },
+    });
+    await transaction.customer.deleteMany({
+      where: { departmentId: { in: departmentIds } },
+    });
+    await transaction.roleAssignment.deleteMany({
+      where: { departmentId: { in: departmentIds } },
+    });
     await transaction.roleGrant.deleteMany({
       where: {
         roleTemplateId: {
@@ -1966,18 +1977,24 @@ async function resetPersonnelAccessE2eData() {
         },
       },
     });
-    await transaction.roleTemplate.deleteMany({ where: { departmentId } });
-    await transaction.departmentMembership.deleteMany({
-      where: { departmentId },
+    await transaction.roleTemplate.deleteMany({
+      where: { departmentId: { in: departmentIds } },
     });
-    await transaction.team.deleteMany({ where: { departmentId } });
+    await transaction.departmentMembership.deleteMany({
+      where: { departmentId: { in: departmentIds } },
+    });
+    await transaction.team.deleteMany({
+      where: { departmentId: { in: departmentIds } },
+    });
     await transaction.localCredential.deleteMany({
       where: { userId: { in: userIds } },
     });
     await transaction.userAccount.deleteMany({
       where: { id: { in: userIds } },
     });
-    await transaction.department.deleteMany({ where: { id: departmentId } });
+    await transaction.department.deleteMany({
+      where: { id: { in: departmentIds } },
+    });
   });
 
   const password = 'Personnel-admin-pass-2026';
@@ -1985,6 +2002,12 @@ async function resetPersonnelAccessE2eData() {
   await database.$transaction(async (transaction) => {
     await transaction.department.create({
       data: { id: departmentId, name: 'E2E 人员管理部' },
+    });
+    await transaction.department.create({
+      data: {
+        id: personnelFixtures.foreignDepartmentId,
+        name: 'E2E 其他部门',
+      },
     });
     await transaction.userAccount.create({
       data: {
@@ -1998,6 +2021,19 @@ async function resetPersonnelAccessE2eData() {
         userId: personnelFixtures.adminUserId,
         username: 'e2e.personnel.admin',
         passwordHash,
+      },
+    });
+    await transaction.userAccount.create({
+      data: {
+        id: personnelFixtures.foreignUserId,
+        externalSubject: 'local:e2e-personnel-foreign',
+        displayName: 'E2E 其他部门人员',
+      },
+    });
+    await transaction.departmentMembership.create({
+      data: {
+        userId: personnelFixtures.foreignUserId,
+        departmentId: personnelFixtures.foreignDepartmentId,
       },
     });
     await transaction.team.createMany({
@@ -2075,6 +2111,36 @@ async function resetPersonnelAccessE2eData() {
   return { username: 'e2e.personnel.admin', password };
 }
 
+async function addPersonnelForeignMembership(username) {
+  const credential = await database.localCredential.findUniqueOrThrow({
+    where: { username },
+    select: { userId: true },
+  });
+  await database.departmentMembership.create({
+    data: {
+      userId: credential.userId,
+      departmentId: personnelFixtures.foreignDepartmentId,
+    },
+  });
+}
+
+async function countPersonnelCredentials(username) {
+  return database.localCredential.count({ where: { username } });
+}
+
+async function rejectPersonnelCreatedAuditWrites() {
+  await allowPersonnelCreatedAuditWrites();
+  await database.$executeRawUnsafe(
+    `ALTER TABLE "audit_events" ADD CONSTRAINT "e2e_reject_personnel_created_audit" CHECK ("action" <> 'user.created') NOT VALID`,
+  );
+}
+
+async function allowPersonnelCreatedAuditWrites() {
+  await database.$executeRawUnsafe(
+    'ALTER TABLE "audit_events" DROP CONSTRAINT IF EXISTS "e2e_reject_personnel_created_audit"',
+  );
+}
+
 async function getPersonnelAccessSnapshot(username) {
   const credential = await database.localCredential.findUniqueOrThrow({
     where: { username },
@@ -2104,6 +2170,7 @@ async function getPersonnelAccessSnapshot(username) {
     select: { action: true, details: true },
   });
   return {
+    userId: credential.user.id,
     accountActive: credential.user.active,
     memberships: credential.user.memberships,
     assignments: credential.user.roleAssignments,
@@ -2117,6 +2184,10 @@ export {
   personnelFixtures,
   resetPersonnelAccessE2eData,
   getPersonnelAccessSnapshot,
+  addPersonnelForeignMembership,
+  countPersonnelCredentials,
+  rejectPersonnelCreatedAuditWrites,
+  allowPersonnelCreatedAuditWrites,
   resetLocalAuthE2eData,
   verifyLocalAuthMigration,
   verifyRightsHolderNames,

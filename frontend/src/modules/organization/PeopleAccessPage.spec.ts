@@ -144,4 +144,52 @@ describe('PeopleAccessPage', () => {
     );
     expect(wrapper.text()).not.toContain('当前密码');
   });
+
+  it('clears password fields after failed requests', async () => {
+    api.getOrganizationManagementContext.mockResolvedValue(context);
+    api.createOrganizationUser.mockRejectedValue(
+      new ApiError('用户名已存在', 409, 'USERNAME_ALREADY_EXISTS'),
+    );
+    api.resetOrganizationUserPassword.mockRejectedValue(
+      new ApiError('无权操作', 403, 'MANAGEMENT_ACTION_FORBIDDEN'),
+    );
+    const wrapper = mount(PeopleAccessPage, {
+      global: { stubs: { RouterLink: { template: '<a><slot /></a>' } } },
+    });
+    await flushPromises();
+
+    await wrapper.get('[data-test="open-create-user"]').trigger('click');
+    await wrapper.get('[data-test="display-name"]').setValue('运营乙');
+    await wrapper.get('[data-test="username"]').setValue('operator-b');
+    await wrapper.get('[data-test="password"]').setValue('LongPassword12');
+    await wrapper.get('[data-test="role-template"]').setValue('role-1');
+    await wrapper.get('[data-test="submit-create-user"]').trigger('click');
+    await flushPromises();
+    expect(wrapper.get('[data-test="password"]').element).toHaveProperty(
+      'value',
+      '',
+    );
+
+    await wrapper.get('[data-test="open-reset-user-1"]').trigger('click');
+    await wrapper.get('[data-test="new-password"]').setValue('NewPassword123');
+    await wrapper.get('[data-test="submit-reset-password"]').trigger('click');
+    await flushPromises();
+    expect(wrapper.get('[data-test="new-password"]').element).toHaveProperty(
+      'value',
+      '',
+    );
+  });
+
+  it('shows authorization denial separately from a connection failure', async () => {
+    api.getOrganizationManagementContext.mockRejectedValue(
+      new ApiError('无权执行此管理操作', 403, 'MANAGEMENT_ACTION_FORBIDDEN'),
+    );
+    const wrapper = mount(PeopleAccessPage, {
+      global: { stubs: { RouterLink: { template: '<a><slot /></a>' } } },
+    });
+    await flushPromises();
+
+    expect(wrapper.text()).toContain('当前账号不能查看人员与权限');
+    expect(wrapper.text()).not.toContain('连接失败');
+  });
 });

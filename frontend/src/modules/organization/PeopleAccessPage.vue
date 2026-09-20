@@ -19,7 +19,7 @@ import {
 import { useAuthStore } from '../../stores/auth';
 
 const auth = useAuthStore();
-const state = ref<'loading' | 'ready' | 'failed'>('loading');
+const state = ref<'loading' | 'ready' | 'forbidden' | 'failed'>('loading');
 const context = ref<OrganizationManagementContext | null>(null);
 const actionError = ref('');
 const pending = ref('');
@@ -28,6 +28,7 @@ const resetTarget = ref<OrganizationUser | null>(null);
 const newPassword = ref('');
 const newTeamName = ref('');
 const selectedRoles = reactive<Record<string, string>>({});
+const pendingTeamChanges = reactive<Record<string, string>>({});
 const createForm = reactive({
   displayName: '',
   username: '',
@@ -73,8 +74,13 @@ async function load(showLoading = true): Promise<void> {
     }
     createForm.roleTemplateId ||= result.roles[0]?.id ?? '';
     state.value = 'ready';
-  } catch {
-    if (!controller.signal.aborted) state.value = 'failed';
+  } catch (error) {
+    if (!controller.signal.aborted) {
+      state.value =
+        error instanceof ApiError && error.status === 403
+          ? 'forbidden'
+          : 'failed';
+    }
   }
 }
 
@@ -104,6 +110,16 @@ async function submitCreateUser(): Promise<void> {
     actionError.value = '请填写姓名、用户名、至少 12 位密码和初始角色。';
     return;
   }
+  const initialRole = context.value?.roles.find(
+    (role) => role.id === createForm.roleTemplateId,
+  );
+  if (
+    initialRole?.grants.some((grant) => grant.scope === 'TEAM') &&
+    !createForm.teamId
+  ) {
+    actionError.value = '这个角色按团队生效，请先选择团队。';
+    return;
+  }
   const created = await run('create-user', () =>
     createOrganizationUser({
       displayName: createForm.displayName.trim(),
@@ -113,6 +129,7 @@ async function submitCreateUser(): Promise<void> {
       roleTemplateId: createForm.roleTemplateId,
     }),
   );
+  createForm.password = '';
   if (created) {
     showCreateUser.value = false;
     Object.assign(createForm, {
@@ -137,9 +154,11 @@ async function changeTeam(
     typeof target.value === 'string'
       ? target.value
       : '';
-  await run(`team-${user.id}`, () =>
+  pendingTeamChanges[user.id] = value;
+  const changed = await run(`team-${user.id}`, () =>
     updateOrganizationMembership(user.id, { teamId: value || null }),
   );
+  if (changed) delete pendingTeamChanges[user.id];
 }
 
 async function assignRole(user: OrganizationUser): Promise<void> {
@@ -174,6 +193,7 @@ async function submitPasswordReset(): Promise<void> {
   const reset = await run('password-reset', () =>
     resetOrganizationUserPassword(resetTarget.value!.id, newPassword.value),
   );
+  newPassword.value = '';
   if (reset) resetTarget.value = null;
 }
 
@@ -287,6 +307,14 @@ onBeforeUnmount(() => activeRequest?.abort());
         <h2>人员管理暂时无法加载</h2>
         <ElButton data-test="retry" @click="load()">重新加载</ElButton>
       </section>
+      <section
+        v-else-if="state === 'forbidden'"
+        class="ledger-panel state-panel"
+      >
+        <span class="state-index">无权访问</span>
+        <h2>当前账号不能查看人员与权限</h2>
+        <p>如需办理，请联系部门权限管理员。</p>
+      </section>
       <template v-else-if="context">
         <section class="people-section">
           <div class="subsection-heading">
@@ -334,7 +362,9 @@ onBeforeUnmount(() => activeRequest?.abort());
               <label class="inline-field">
                 <span>团队</span>
                 <select
-                  :value="user.membership.teamId ?? ''"
+                  :value="
+                    pendingTeamChanges[user.id] ?? user.membership.teamId ?? ''
+                  "
                   :data-test="`team-${user.id}`"
                   :disabled="
                     isSelf(user) ||

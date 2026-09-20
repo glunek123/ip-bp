@@ -122,6 +122,9 @@ export class OrganizationService {
             }
           : null;
       const canReadRoles = grants.some((grant) => grant.action === 'ROLE_READ');
+      if (userWhere === null && teamWhere === null && !canReadRoles) {
+        throw this.forbidden();
+      }
 
       const [memberships, teams, roles] = await Promise.all([
         userWhere === null
@@ -727,7 +730,7 @@ export class OrganizationService {
   ) {
     if (targetUserId === actor.userId) throw this.forbidden();
     const changesStatus = typeof command.active === 'boolean';
-    const changesTeam = Object.prototype.hasOwnProperty.call(command, 'teamId');
+    const changesTeam = command.teamId !== undefined;
     if (changesStatus === changesTeam) {
       throw new BadRequestException({
         code: 'MEMBERSHIP_CHANGE_INVALID',
