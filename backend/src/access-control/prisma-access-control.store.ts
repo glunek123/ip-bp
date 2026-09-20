@@ -21,6 +21,7 @@ const actionMap = {
   TEAM_MANAGE: 'team.manage',
   ROLE_READ: 'role.read',
   ROLE_ASSIGN: 'role.assign',
+  ROLE_MANAGE: 'role.manage',
 } as const satisfies Record<PrismaPermissionAction, PermissionAction>;
 
 const scopeMap = {

@@ -72,6 +72,7 @@ describe('bootstrapLocalAccount', () => {
         expect.objectContaining({ action: 'TEAM_MANAGE', scope: 'DEPARTMENT' }),
         expect.objectContaining({ action: 'ROLE_READ', scope: 'DEPARTMENT' }),
         expect.objectContaining({ action: 'ROLE_ASSIGN', scope: 'DEPARTMENT' }),
+        expect.objectContaining({ action: 'ROLE_MANAGE', scope: 'DEPARTMENT' }),
       ]),
     });
   });

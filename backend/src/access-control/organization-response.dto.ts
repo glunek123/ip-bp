@@ -10,6 +10,7 @@ const permissionActions = [
   'TEAM_MANAGE',
   'ROLE_READ',
   'ROLE_ASSIGN',
+  'ROLE_MANAGE',
 ] as const;
 
 export class OrganizationCapabilitiesResponseDto {

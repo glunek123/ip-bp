@@ -41,7 +41,10 @@ const context = {
     {
       id: 'role-1',
       name: '客户经办',
-      grants: [{ action: 'CUSTOMER_READ', scope: 'DEPARTMENT' }],
+      grants: [
+        { action: 'CUSTOMER_READ', scope: 'DEPARTMENT' },
+        { action: 'ROLE_MANAGE', scope: 'DEPARTMENT' },
+      ],
     },
   ],
 };

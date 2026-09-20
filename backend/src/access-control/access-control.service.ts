@@ -12,7 +12,8 @@ export type PermissionAction =
   | 'team.read'
   | 'team.manage'
   | 'role.read'
-  | 'role.assign';
+  | 'role.assign'
+  | 'role.manage';
 export type CustomerAction = Extract<PermissionAction, `customer.${string}`>;
 export type PermissionScope = 'self' | 'team' | 'department';
 export type CustomerScope = PermissionScope;

@@ -18,6 +18,7 @@ enum PermissionAction {
   TEAM_MANAGE           @map("team.manage")
   ROLE_READ             @map("role.read")
   ROLE_ASSIGN           @map("role.assign")
+  ROLE_MANAGE           @map("role.manage")
 
   @@map("permission_action")
 }

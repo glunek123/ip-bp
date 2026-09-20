@@ -76,6 +76,7 @@ const permissionActions = new Set([
   'TEAM_MANAGE',
   'ROLE_READ',
   'ROLE_ASSIGN',
+  'ROLE_MANAGE',
 ]);
 const permissionScopes = new Set(['SELF', 'TEAM', 'DEPARTMENT']);
 
