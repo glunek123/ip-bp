@@ -8,6 +8,8 @@
 
 当前开发期证据：角色模板Service／Controller后端25项、组织API／模板组件／人员工作区前端25项通过；独立`postgres-test`数据库型Playwright专用4/4通过，覆盖正式页面复制模板、创建第二位人员并分配、新人员登录、影响预览、模板编辑、授权修订递增和同一会话下一请求只获得新Grant，以及重名、TEAM管理权、跨部门、并发版本竞争、审计失败全事务回滚和迁移结构识别。相邻人员权限浏览器回归6/6通过。本段不提前声称最终Level 3完成；固定候选的完整`pnpm verify`、commit／tree及独立Review结果将在同一候选验证后回填。
 
+首个固定候选`d810cbc`的完整`pnpm verify`通过（工具65项、前端152项、后端222项及双端构建），角色模板E2E 4/4、人员E2E 6/6通过；独立Review仍以4项Important和1项Minor拒绝。修复候选随后解除`ROLE_READ`与`ROLE_ASSIGN`的错误耦合并让`ROLE_MANAGE`具备必要模板投影；补权迁移排除已存在`role.manage`的候选，避免重复执行空增授权修订；拒绝审计保留稳定业务码；复制事务对一次PostgreSQL序列化冲突重试并重新读取撤权；页面明确同一会话无需重登。数据库验收新增未覆盖Action、并发撤权等待、带活动受让人的Grant／版本／修订／审计共同回滚，以及迁移重复执行和约束故障整体回滚。修复后专用E2E重新4/4通过；最终门禁和复审仍绑定下一固定候选，不复用被拒绝候选结论。
+
 ## TEAM-AUTHZ-ARCH-001团队与管理授权前置收口（2026-09-20）
 
 本任务只收口Next Slice之前的Team引用完整性和管理授权上限。Prisma新增部门直属`Team`及ACTIVE／INACTIVE状态，数据库拒绝改变Team部门，`DepartmentMembership`、`RoleAssignment`、`Customer`的非空团队引用改由`(teamId, departmentId)`组合外键约束；不增加Team编码、层级或物理删除。停用Team保留既有成员、角色和客户引用，既有客户仍可按原权限维护，但新建／恢复成员或角色绑定及新客户绑定必须使用活动Team。
