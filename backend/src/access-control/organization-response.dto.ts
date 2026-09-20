@@ -20,6 +20,7 @@ export class OrganizationCapabilitiesResponseDto {
   @ApiProperty() manageTeams!: boolean;
   @ApiProperty() assignDepartmentRoles!: boolean;
   @ApiProperty() assignTeamRoles!: boolean;
+  @ApiProperty() manageRoleTemplates!: boolean;
 }
 
 export class OrganizationGrantResponseDto {
@@ -30,8 +31,17 @@ export class OrganizationGrantResponseDto {
 export class OrganizationRoleResponseDto {
   @ApiProperty({ format: 'uuid' }) id!: string;
   @ApiProperty() name!: string;
+  @ApiProperty({ minimum: 1 }) version!: number;
+  @ApiProperty({ minimum: 0 }) activeAssignmentCount!: number;
   @ApiProperty({ type: () => [OrganizationGrantResponseDto] })
   grants!: OrganizationGrantResponseDto[];
+}
+
+export class OrganizationPermissionCatalogResponseDto {
+  @ApiProperty({ enum: permissionActions }) action!: string;
+  @ApiProperty() label!: string;
+  @ApiProperty({ enum: ['SELF', 'TEAM', 'DEPARTMENT'], isArray: true })
+  scopes!: string[];
 }
 
 export class OrganizationTeamResponseDto {
@@ -90,6 +100,21 @@ export class OrganizationManagementContextResponseDto {
   teams!: OrganizationContextTeamResponseDto[];
   @ApiProperty({ type: () => [OrganizationRoleResponseDto] })
   roles!: OrganizationRoleResponseDto[];
+  @ApiProperty({ type: () => [OrganizationPermissionCatalogResponseDto] })
+  permissionCatalog!: OrganizationPermissionCatalogResponseDto[];
+}
+
+export class RoleTemplateAffectedUserResponseDto {
+  @ApiProperty({ format: 'uuid' }) id!: string;
+  @ApiProperty() displayName!: string;
+}
+
+export class RoleTemplateImpactResponseDto {
+  @ApiProperty({ format: 'uuid' }) roleTemplateId!: string;
+  @ApiProperty({ minimum: 1 }) version!: number;
+  @ApiProperty({ minimum: 0 }) activeAssignmentCount!: number;
+  @ApiProperty({ type: () => [RoleTemplateAffectedUserResponseDto] })
+  affectedUsers!: RoleTemplateAffectedUserResponseDto[];
 }
 
 export class CreateOrganizationUserResponseDto {

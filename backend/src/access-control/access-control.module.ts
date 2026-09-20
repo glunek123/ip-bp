@@ -12,15 +12,18 @@ import { createIdentityAdapterFromEnvironment } from './identity-adapter.factory
 import { AuthModule } from '../auth/auth.module';
 import { OrganizationService } from './organization.service';
 import { OrganizationController } from './organization.controller';
+import { RoleTemplateService } from './role-template.service';
+import { RoleTemplateController } from './role-template.controller';
 
 @Module({
   imports: [DatabaseModule, AuthModule],
-  controllers: [OrganizationController],
+  controllers: [OrganizationController, RoleTemplateController],
   providers: [
     AccessControlService,
     ActorContextGuard,
     PrismaAccessControlStore,
     OrganizationService,
+    RoleTemplateService,
     {
       provide: ACCESS_CONTROL_STORE,
       useExisting: PrismaAccessControlStore,
@@ -38,6 +41,7 @@ import { OrganizationController } from './organization.controller';
   exports: [
     AccessControlService,
     OrganizationService,
+    RoleTemplateService,
     ActorContextGuard,
     IDENTITY_ADAPTER,
   ],

@@ -56,7 +56,9 @@ function createFixture(options?: {
     id: string;
     name: string;
     active: boolean;
+    version: number;
     grants: Array<{ action: string; scope: string }>;
+    assignments: Array<{ userId: string }>;
   }>;
   targetAccountActive?: boolean;
   targetActiveMemberships?: Array<{ id: string; departmentId: string }>;
@@ -296,6 +298,7 @@ describe('OrganizationService management context', () => {
         departmentGrant('TEAM_MANAGE'),
         departmentGrant('ROLE_READ'),
         departmentGrant('ROLE_ASSIGN'),
+        departmentGrant('ROLE_MANAGE'),
         departmentGrant('CUSTOMER_READ'),
       ],
       contextMemberships: [sameTeamMembership, otherTeamMembership],
@@ -308,7 +311,12 @@ describe('OrganizationService management context', () => {
           id: 'role-a',
           name: '运营',
           active: true,
+          version: 3,
           grants: [{ action: 'CUSTOMER_READ', scope: 'SELF' }],
+          assignments: [
+            { userId: 'same-team-user' },
+            { userId: 'other-team-user' },
+          ],
         },
       ],
     });
@@ -320,7 +328,13 @@ describe('OrganizationService management context', () => {
       'other-team-user',
     ]);
     expect(result.teams.map((team) => team.id)).toEqual(['team-a', 'team-b']);
-    expect(result.roles.map((role) => role.id)).toEqual(['role-a']);
+    expect(result.roles).toEqual([
+      expect.objectContaining({
+        id: 'role-a',
+        version: 3,
+        activeAssignmentCount: 2,
+      }),
+    ]);
     expect(result.capabilities).toEqual({
       createUser: true,
       manageUsers: true,
@@ -328,6 +342,13 @@ describe('OrganizationService management context', () => {
       manageTeams: true,
       assignDepartmentRoles: true,
       assignTeamRoles: false,
+      manageRoleTemplates: true,
+    });
+    expect(result.permissionCatalog).toHaveLength(10);
+    expect(result.permissionCatalog).toContainEqual({
+      action: 'ROLE_MANAGE',
+      label: '管理角色模板',
+      scopes: ['SELF', 'TEAM', 'DEPARTMENT'],
     });
   });
 
@@ -348,13 +369,17 @@ describe('OrganizationService management context', () => {
           id: 'role-team',
           name: '组内运营',
           active: true,
+          version: 1,
           grants: [{ action: 'CUSTOMER_READ', scope: 'TEAM' }],
+          assignments: [],
         },
         {
           id: 'role-self',
           name: '本人运营',
           active: true,
+          version: 1,
           grants: [{ action: 'CUSTOMER_READ', scope: 'SELF' }],
+          assignments: [],
         },
       ],
     });
@@ -365,6 +390,7 @@ describe('OrganizationService management context', () => {
     expect(result.teams.map((team) => team.id)).toEqual(['team-a']);
     expect(result.roles.map((role) => role.id)).toEqual(['role-team']);
     expect(result.capabilities.assignTeamRoles).toBe(true);
+    expect(result.capabilities.manageRoleTemplates).toBe(false);
     expect(
       fixture.transaction.departmentMembership.findMany,
     ).toHaveBeenCalledWith(

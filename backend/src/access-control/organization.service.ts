@@ -11,6 +11,7 @@ import { DatabaseService } from '../database/database.service';
 import { Prisma } from '../generated/prisma/client';
 import { PermissionAction, PermissionScope } from '../generated/prisma/enums';
 import { ActorContext } from './actor-context';
+import { permissionCatalog, PermissionCatalogItem } from './permission-catalog';
 
 type AssignRoleCommand = {
   targetUserId: string;
@@ -26,7 +27,7 @@ type CreateUserCommand = {
   roleTemplateId: string;
 };
 
-type EffectiveGrant = {
+export type EffectiveGrant = {
   action: PermissionAction;
   scope: PermissionScope;
   teamId: string | null;
@@ -42,6 +43,7 @@ export type ManagementContext = {
     manageTeams: boolean;
     assignDepartmentRoles: boolean;
     assignTeamRoles: boolean;
+    manageRoleTemplates: boolean;
   };
   users: Array<{
     id: string;
@@ -70,8 +72,11 @@ export type ManagementContext = {
   roles: Array<{
     id: string;
     name: string;
+    version: number;
+    activeAssignmentCount: number;
     grants: RoleGrant[];
   }>;
+  permissionCatalog: PermissionCatalogItem[];
 };
 
 @Injectable()
@@ -172,7 +177,12 @@ export class OrganizationService {
                 id: true,
                 name: true,
                 active: true,
+                version: true,
                 grants: { select: { action: true, scope: true } },
+                assignments: {
+                  where: { active: true },
+                  select: { userId: true },
+                },
               },
               orderBy: [{ name: 'asc' }, { id: 'asc' }],
             })
@@ -206,6 +216,8 @@ export class OrganizationService {
       const canAssignDepartmentRoles = hasDepartmentGrant('ROLE_ASSIGN');
       const canAssignTeamRoles = teamGrant('ROLE_ASSIGN') !== undefined;
       const canManageTeams = hasDepartmentGrant('TEAM_MANAGE');
+      const canManageRoleTemplates = hasDepartmentGrant('ROLE_MANAGE');
+      const visibleRoles = canManageRoleTemplates ? roles : rolesActorCanAssign;
 
       return {
         capabilities: {
@@ -215,6 +227,7 @@ export class OrganizationService {
           manageTeams: canManageTeams,
           assignDepartmentRoles: canAssignDepartmentRoles,
           assignTeamRoles: canAssignTeamRoles,
+          manageRoleTemplates: canManageRoleTemplates,
         },
         users: memberships.flatMap((membership) => {
           if (membership.user.localCredential === null) return [];
@@ -243,10 +256,18 @@ export class OrganizationService {
           ];
         }),
         teams,
-        roles: rolesActorCanAssign.map((role) => ({
+        roles: visibleRoles.map((role) => ({
           id: role.id,
           name: role.name,
+          version: role.version,
+          activeAssignmentCount: new Set(
+            role.assignments.map((assignment) => assignment.userId),
+          ).size,
           grants: role.grants,
+        })),
+        permissionCatalog: permissionCatalog.map((item) => ({
+          ...item,
+          scopes: [...item.scopes],
         })),
       };
     });
@@ -262,7 +283,8 @@ export class OrganizationService {
       | 'role.assign'
       | 'role.status'
       | 'team.create'
-      | 'team.status',
+      | 'team.status'
+      | 'role-template.impact',
   ): Promise<void> {
     try {
       await this.database.$transaction(async (transaction) => {
@@ -1252,7 +1274,7 @@ export class OrganizationService {
     return assignment;
   }
 
-  private async loadCurrentActorGrants(
+  async loadCurrentActorGrants(
     transaction: Prisma.TransactionClient,
     actor: ActorContext,
   ): Promise<EffectiveGrant[]> {
