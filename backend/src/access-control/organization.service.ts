@@ -5,7 +5,11 @@ import {
   Injectable,
 } from '@nestjs/common';
 import { randomUUID } from 'node:crypto';
-import { prepareLocalCredential } from '../auth/password';
+import {
+  hashPassword,
+  prepareLocalCredential,
+  verifyPassword,
+} from '../auth/password';
 import { DatabaseService } from '../database/database.service';
 import { Prisma } from '../generated/prisma/client';
 import { PermissionAction, PermissionScope } from '../generated/prisma/enums';
@@ -373,6 +377,233 @@ export class OrganizationService {
     }
   }
 
+  async setUserStatus(
+    actor: ActorContext,
+    targetUserId: string,
+    command: { active: boolean; reason: string },
+  ) {
+    if (targetUserId === actor.userId) throw this.forbidden();
+    const reason = this.validateReason(command.reason);
+    return this.database.$transaction(
+      async (transaction) => {
+        await this.lockDepartment(transaction, actor.departmentId);
+        const actorGrants = await this.loadCurrentActorGrants(
+          transaction,
+          actor,
+        );
+        if (
+          !actorGrants.some(
+            (grant) =>
+              grant.action === 'USER_MANAGE' && grant.scope === 'DEPARTMENT',
+          )
+        ) {
+          throw this.forbidden();
+        }
+        await this.lockMembership(
+          transaction,
+          actor.departmentId,
+          targetUserId,
+        );
+        const membership = await transaction.departmentMembership.findUnique({
+          where: {
+            userId_departmentId: {
+              userId: targetUserId,
+              departmentId: actor.departmentId,
+            },
+          },
+          select: { id: true, active: true },
+        });
+        if (membership === null) throw this.forbidden();
+
+        await this.lockUserAccount(transaction, targetUserId);
+        const [target, activeMemberships] = await Promise.all([
+          transaction.userAccount.findUnique({
+            where: { id: targetUserId },
+            select: { id: true, active: true, authorizationRevision: true },
+          }),
+          transaction.departmentMembership.findMany({
+            where: { userId: targetUserId, active: true },
+            select: { id: true, departmentId: true },
+            take: 2,
+          }),
+        ]);
+        if (target === null) throw this.forbidden();
+        if (
+          activeMemberships.length !== 1 ||
+          activeMemberships[0]?.departmentId !== actor.departmentId
+        ) {
+          throw new ConflictException({
+            code: 'GLOBAL_ACCOUNT_MANAGEMENT_REQUIRED',
+            message: '该账号属于多个部门，需要公司级账号管理员处理',
+          });
+        }
+        if (target.active === command.active) return target;
+
+        const updated = await transaction.userAccount.update({
+          where: { id: targetUserId },
+          data: {
+            active: command.active,
+            authorizationRevision: { increment: 1 },
+          },
+          select: { id: true, active: true, authorizationRevision: true },
+        });
+        if (!command.active) {
+          await transaction.authSession.updateMany({
+            where: { userId: targetUserId, revokedAt: null },
+            data: { revokedAt: new Date() },
+          });
+        }
+        await transaction.auditEvent.create({
+          data: {
+            departmentId: actor.departmentId,
+            actorUserId: actor.userId,
+            resourceType: 'user-account',
+            resourceId: targetUserId,
+            action: 'user.status-changed',
+            details: {
+              from: target.active,
+              to: command.active,
+              reason,
+            },
+          },
+        });
+        return updated;
+      },
+      { isolationLevel: 'Serializable' },
+    );
+  }
+
+  async resetUserPassword(
+    actor: ActorContext,
+    targetUserId: string,
+    command: {
+      currentPassword: string;
+      newPassword: string;
+      reason: string;
+    },
+  ): Promise<{ id: string; passwordReset: true }> {
+    if (targetUserId === actor.userId) throw this.forbidden();
+    const reason = this.validateReason(command.reason);
+    const actorCredential = await this.database.localCredential.findUnique({
+      where: { userId: actor.userId },
+      select: { passwordHash: true, passwordChangedAt: true },
+    });
+    if (
+      actorCredential === null ||
+      !(await verifyPassword(
+        command.currentPassword,
+        actorCredential.passwordHash,
+      ))
+    ) {
+      throw this.reauthenticationFailed();
+    }
+    let passwordHash: string;
+    try {
+      passwordHash = await hashPassword(command.newPassword);
+    } catch (error) {
+      if (error instanceof Error && error.message === 'PASSWORD_INVALID') {
+        throw new BadRequestException({
+          code: 'PASSWORD_INVALID',
+          message: '密码长度必须为12至128个字符',
+        });
+      }
+      throw error;
+    }
+
+    return this.database.$transaction(
+      async (transaction) => {
+        await this.lockDepartment(transaction, actor.departmentId);
+        const actorGrants = await this.loadCurrentActorGrants(
+          transaction,
+          actor,
+        );
+        if (
+          !actorGrants.some(
+            (grant) =>
+              grant.action === 'USER_MANAGE' && grant.scope === 'DEPARTMENT',
+          )
+        ) {
+          throw this.forbidden();
+        }
+
+        await this.lockLocalCredential(transaction, actor.userId);
+        const currentActorCredential =
+          await transaction.localCredential.findUnique({
+            where: { userId: actor.userId },
+            select: { passwordHash: true, passwordChangedAt: true },
+          });
+        if (
+          currentActorCredential === null ||
+          currentActorCredential.passwordHash !==
+            actorCredential.passwordHash ||
+          currentActorCredential.passwordChangedAt.getTime() !==
+            actorCredential.passwordChangedAt.getTime()
+        ) {
+          throw this.reauthenticationFailed();
+        }
+
+        await this.lockMembership(
+          transaction,
+          actor.departmentId,
+          targetUserId,
+        );
+        const membership = await transaction.departmentMembership.findUnique({
+          where: {
+            userId_departmentId: {
+              userId: targetUserId,
+              departmentId: actor.departmentId,
+            },
+          },
+          select: { id: true, active: true },
+        });
+        if (membership === null || !membership.active) throw this.forbidden();
+
+        await this.lockUserAccount(transaction, targetUserId);
+        const activeMemberships =
+          await transaction.departmentMembership.findMany({
+            where: { userId: targetUserId, active: true },
+            select: { id: true, departmentId: true },
+            take: 2,
+          });
+        if (
+          activeMemberships.length !== 1 ||
+          activeMemberships[0]?.departmentId !== actor.departmentId
+        ) {
+          throw new ConflictException({
+            code: 'GLOBAL_ACCOUNT_MANAGEMENT_REQUIRED',
+            message: '该账号属于多个部门，需要公司级账号管理员处理',
+          });
+        }
+
+        const changedAt = new Date();
+        await transaction.localCredential.update({
+          where: { userId: targetUserId },
+          data: { passwordHash, passwordChangedAt: changedAt },
+        });
+        await transaction.authSession.updateMany({
+          where: { userId: targetUserId, revokedAt: null },
+          data: { revokedAt: changedAt },
+        });
+        await transaction.userAccount.update({
+          where: { id: targetUserId },
+          data: { authorizationRevision: { increment: 1 } },
+        });
+        await transaction.auditEvent.create({
+          data: {
+            departmentId: actor.departmentId,
+            actorUserId: actor.userId,
+            resourceType: 'user-account',
+            resourceId: targetUserId,
+            action: 'user.password-reset',
+            details: { reason },
+          },
+        });
+        return { id: targetUserId, passwordReset: true };
+      },
+      { isolationLevel: 'Serializable' },
+    );
+  }
+
   async createTeam(actor: ActorContext, input: { name: string }) {
     const name = input.name.trim();
     if (name.length === 0 || Array.from(name).length > 100) {
@@ -474,7 +705,27 @@ export class OrganizationService {
     actor: ActorContext,
     command: { targetUserId: string; teamId: string | null },
   ) {
-    if (command.targetUserId === actor.userId) throw this.forbidden();
+    return this.updateMembership(actor, command.targetUserId, {
+      teamId: command.teamId,
+      reason: '调整人员团队',
+    });
+  }
+
+  async updateMembership(
+    actor: ActorContext,
+    targetUserId: string,
+    command: { active?: boolean; teamId?: string | null; reason: string },
+  ) {
+    if (targetUserId === actor.userId) throw this.forbidden();
+    const reason = this.validateReason(command.reason);
+    const changesStatus = typeof command.active === 'boolean';
+    const changesTeam = Object.prototype.hasOwnProperty.call(command, 'teamId');
+    if (changesStatus === changesTeam) {
+      throw new BadRequestException({
+        code: 'MEMBERSHIP_CHANGE_INVALID',
+        message: '每次只能修改成员状态或团队',
+      });
+    }
     return this.database.$transaction(
       async (transaction) => {
         await this.lockDepartment(transaction, actor.departmentId);
@@ -490,12 +741,12 @@ export class OrganizationService {
         await this.lockMembership(
           transaction,
           actor.departmentId,
-          command.targetUserId,
+          targetUserId,
         );
         const membership = await transaction.departmentMembership.findUnique({
           where: {
             userId_departmentId: {
-              userId: command.targetUserId,
+              userId: targetUserId,
               departmentId: actor.departmentId,
             },
           },
@@ -507,20 +758,62 @@ export class OrganizationService {
             team: { select: { status: true } },
           },
         });
-        if (membership === null || !membership.active) throw this.forbidden();
-        if (membership.teamId === command.teamId) return membership;
+        if (membership === null) throw this.forbidden();
 
-        if (command.teamId !== null) {
+        if (changesStatus) {
+          const nextActive = command.active as boolean;
+          if (membership.active === nextActive) return membership;
+          const updated = await transaction.departmentMembership.update({
+            where: { id: membership.id },
+            data: { active: nextActive },
+            select: { id: true, active: true, teamId: true },
+          });
+          if (!nextActive) {
+            await transaction.authSession.updateMany({
+              where: {
+                userId: targetUserId,
+                departmentId: actor.departmentId,
+                revokedAt: null,
+              },
+              data: { revokedAt: new Date() },
+            });
+          }
+          await transaction.auditEvent.create({
+            data: {
+              departmentId: actor.departmentId,
+              actorUserId: actor.userId,
+              resourceType: 'department-membership',
+              resourceId: membership.id,
+              action: 'department-membership.status-changed',
+              details: {
+                from: membership.active,
+                to: nextActive,
+                reason,
+              },
+            },
+          });
+          await transaction.userAccount.update({
+            where: { id: targetUserId },
+            data: { authorizationRevision: { increment: 1 } },
+          });
+          return updated;
+        }
+
+        if (!membership.active) throw this.forbidden();
+        const nextTeamId = command.teamId ?? null;
+        if (membership.teamId === nextTeamId) return membership;
+
+        if (nextTeamId !== null) {
           await this.lockTeam(
             transaction,
             actor.departmentId,
-            command.teamId,
+            nextTeamId,
             'SHARE',
           );
           const team = await transaction.team.findUnique({
             where: {
               id_departmentId: {
-                id: command.teamId,
+                id: nextTeamId,
                 departmentId: actor.departmentId,
               },
             },
@@ -533,7 +826,7 @@ export class OrganizationService {
         const activeTeamAssignment = await transaction.roleAssignment.findFirst(
           {
             where: {
-              userId: command.targetUserId,
+              userId: targetUserId,
               departmentId: actor.departmentId,
               active: true,
               teamId: { not: null },
@@ -549,7 +842,7 @@ export class OrganizationService {
         }
         const updated = await transaction.departmentMembership.update({
           where: { id: membership.id },
-          data: { teamId: command.teamId },
+          data: { teamId: nextTeamId },
           select: { id: true, departmentId: true, teamId: true, active: true },
         });
         await transaction.auditEvent.create({
@@ -561,12 +854,13 @@ export class OrganizationService {
             action: 'department-membership.team-changed',
             details: {
               fromTeamId: membership.teamId,
-              toTeamId: command.teamId,
+              toTeamId: nextTeamId,
+              reason,
             },
           },
         });
         await transaction.userAccount.update({
-          where: { id: command.targetUserId },
+          where: { id: targetUserId },
           data: { authorizationRevision: { increment: 1 } },
         });
         return updated;
@@ -596,11 +890,174 @@ export class OrganizationService {
     );
   }
 
+  async setRoleAssignmentStatus(
+    actor: ActorContext,
+    targetUserId: string,
+    assignmentId: string,
+    command: { active: boolean; reason: string },
+  ) {
+    if (targetUserId === actor.userId) throw this.forbidden();
+    const reason = this.validateReason(command.reason);
+    return this.database.$transaction(
+      async (transaction) => {
+        await this.lockDepartment(transaction, actor.departmentId);
+        const actorGrants = await this.loadCurrentActorGrants(
+          transaction,
+          actor,
+        );
+        await this.lockRoleAssignments(
+          transaction,
+          actor.departmentId,
+          targetUserId,
+        );
+        const assignment = await transaction.roleAssignment.findUnique({
+          where: { id: assignmentId },
+          select: {
+            id: true,
+            userId: true,
+            departmentId: true,
+            roleTemplateId: true,
+            teamId: true,
+            active: true,
+            version: true,
+          },
+        });
+        if (
+          assignment === null ||
+          assignment.userId !== targetUserId ||
+          assignment.departmentId !== actor.departmentId
+        ) {
+          throw this.forbidden();
+        }
+        if (assignment.active === command.active) {
+          throw new ConflictException({
+            code: command.active
+              ? 'ROLE_ASSIGNMENT_ALREADY_ACTIVE'
+              : 'ROLE_ASSIGNMENT_NOT_ACTIVE',
+            message: command.active ? '该角色分配已生效' : '该角色分配已停用',
+          });
+        }
+        if (command.active) {
+          return this.assignRoleInTransaction(
+            transaction,
+            actor,
+            {
+              targetUserId,
+              roleTemplateId: assignment.roleTemplateId,
+              teamId: assignment.teamId,
+            },
+            actorGrants,
+            reason,
+          );
+        }
+
+        await this.lockMembership(
+          transaction,
+          actor.departmentId,
+          targetUserId,
+        );
+        const targetMembership =
+          await transaction.departmentMembership.findUnique({
+            where: {
+              userId_departmentId: {
+                userId: targetUserId,
+                departmentId: actor.departmentId,
+              },
+            },
+            select: {
+              id: true,
+              active: true,
+              teamId: true,
+              team: { select: { status: true } },
+            },
+          });
+        if (
+          targetMembership === null ||
+          !targetMembership.active ||
+          !this.coversManagementTarget(
+            actorGrants,
+            'ROLE_ASSIGN',
+            actor.userId,
+            targetUserId,
+            targetMembership.team?.status === 'ACTIVE'
+              ? targetMembership.teamId
+              : null,
+          )
+        ) {
+          throw this.forbidden();
+        }
+        await this.lockRoleTemplate(
+          transaction,
+          actor.departmentId,
+          assignment.roleTemplateId,
+        );
+        const role = await transaction.roleTemplate.findUnique({
+          where: {
+            id_departmentId: {
+              id: assignment.roleTemplateId,
+              departmentId: actor.departmentId,
+            },
+          },
+          select: {
+            id: true,
+            active: true,
+            grants: { select: { action: true, scope: true } },
+          },
+        });
+        if (
+          role === null ||
+          role.grants.some(
+            (grant) =>
+              !actorGrants.some((actorGrant) =>
+                this.coversAssignedGrant(
+                  actorGrant,
+                  grant,
+                  actor.userId,
+                  targetUserId,
+                  assignment.teamId,
+                ),
+              ),
+          )
+        ) {
+          throw this.forbidden();
+        }
+
+        const updated = await transaction.roleAssignment.update({
+          where: { id: assignment.id },
+          data: { active: false, version: { increment: 1 } },
+          select: { id: true, active: true, teamId: true, version: true },
+        });
+        await transaction.auditEvent.create({
+          data: {
+            departmentId: actor.departmentId,
+            actorUserId: actor.userId,
+            resourceType: 'role-assignment',
+            resourceId: assignment.id,
+            action: 'role-assignment.revoked',
+            details: {
+              targetUserId,
+              roleTemplateId: assignment.roleTemplateId,
+              teamId: assignment.teamId,
+              reason,
+            },
+          },
+        });
+        await transaction.userAccount.update({
+          where: { id: targetUserId },
+          data: { authorizationRevision: { increment: 1 } },
+        });
+        return updated;
+      },
+      { isolationLevel: 'Serializable' },
+    );
+  }
+
   private async assignRoleInTransaction(
     transaction: Prisma.TransactionClient,
     actor: ActorContext,
     command: AssignRoleCommand,
     actorGrants: EffectiveGrant[],
+    reason?: string,
   ) {
     if (command.targetUserId === actor.userId) throw this.forbidden();
     await this.lockMembership(
@@ -780,6 +1237,7 @@ export class OrganizationService {
           targetUserId: command.targetUserId,
           roleTemplateId: command.roleTemplateId,
           teamId: command.teamId,
+          ...(reason === undefined ? {} : { reason }),
         },
       },
     });
@@ -886,6 +1344,26 @@ export class OrganizationService {
        FOR SHARE OF "grant", "role"`,
       actor.userId,
       actor.departmentId,
+    );
+  }
+
+  private async lockUserAccount(
+    transaction: Prisma.TransactionClient,
+    userId: string,
+  ): Promise<void> {
+    await transaction.$queryRawUnsafe(
+      'SELECT "id" FROM "user_accounts" WHERE "id" = $1::uuid FOR UPDATE',
+      userId,
+    );
+  }
+
+  private async lockLocalCredential(
+    transaction: Prisma.TransactionClient,
+    userId: string,
+  ): Promise<void> {
+    await transaction.$queryRawUnsafe(
+      'SELECT "id" FROM "local_credentials" WHERE "user_id" = $1::uuid FOR UPDATE',
+      userId,
     );
   }
 
@@ -1001,6 +1479,24 @@ export class OrganizationService {
       );
     }
     return targetGrant.scope === 'SELF' && actorUserId === targetUserId;
+  }
+
+  private validateReason(value: string): string {
+    const reason = value.trim();
+    if (reason.length === 0 || Array.from(reason).length > 500) {
+      throw new BadRequestException({
+        code: 'REASON_INVALID',
+        message: '原因不能为空且不得超过500个字符',
+      });
+    }
+    return reason;
+  }
+
+  private reauthenticationFailed(): ForbiddenException {
+    return new ForbiddenException({
+      code: 'REAUTHENTICATION_FAILED',
+      message: '当前密码验证失败',
+    });
   }
 
   private forbidden(): ForbiddenException {

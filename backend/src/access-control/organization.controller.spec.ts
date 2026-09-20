@@ -31,6 +31,11 @@ describe('OrganizationController', () => {
   };
   const getManagementContext = jest.fn();
   const createUser = jest.fn();
+  const setUserStatus = jest.fn();
+  const resetUserPassword = jest.fn();
+  const updateMembership = jest.fn();
+  const assignRole = jest.fn();
+  const setRoleAssignmentStatus = jest.fn();
   let app: INestApplication;
 
   beforeAll(async () => {
@@ -47,7 +52,15 @@ describe('OrganizationController', () => {
         { provide: IDENTITY_ADAPTER, useValue: identity },
         {
           provide: OrganizationService,
-          useValue: { getManagementContext, createUser },
+          useValue: {
+            getManagementContext,
+            createUser,
+            setUserStatus,
+            resetUserPassword,
+            updateMembership,
+            assignRole,
+            setRoleAssignmentStatus,
+          },
         },
       ],
     }).compile();
@@ -131,5 +144,97 @@ describe('OrganizationController', () => {
       .expect(400);
 
     expect(createUser).not.toHaveBeenCalled();
+  });
+
+  it('updates account status with a reason', async () => {
+    setUserStatus.mockResolvedValueOnce({
+      id: '33333333-3333-4333-8333-333333333333',
+      active: false,
+    });
+
+    await request(app.getHttpServer())
+      .patch(
+        '/api/v1/organization/users/33333333-3333-4333-8333-333333333333/status',
+      )
+      .set('Authorization', 'Bearer allowed-token')
+      .send({ active: false, reason: ' 离职停用 ' })
+      .expect(200);
+
+    expect(setUserStatus).toHaveBeenCalledWith(
+      actor,
+      '33333333-3333-4333-8333-333333333333',
+      { active: false, reason: '离职停用' },
+    );
+  });
+
+  it('resets a target password without returning password material', async () => {
+    resetUserPassword.mockResolvedValueOnce({
+      id: '33333333-3333-4333-8333-333333333333',
+      passwordReset: true,
+    });
+
+    await request(app.getHttpServer())
+      .post(
+        '/api/v1/organization/users/33333333-3333-4333-8333-333333333333/password-reset',
+      )
+      .set('Authorization', 'Bearer allowed-token')
+      .send({
+        currentPassword: 'administrator-pass-123',
+        newPassword: 'replacement-pass-123',
+        reason: ' 本人无法登录 ',
+      })
+      .expect(200)
+      .expect({
+        id: '33333333-3333-4333-8333-333333333333',
+        passwordReset: true,
+      });
+
+    expect(resetUserPassword).toHaveBeenCalledWith(
+      actor,
+      '33333333-3333-4333-8333-333333333333',
+      {
+        currentPassword: 'administrator-pass-123',
+        newPassword: 'replacement-pass-123',
+        reason: '本人无法登录',
+      },
+    );
+  });
+
+  it('updates membership and role status through validated UUID routes', async () => {
+    updateMembership.mockResolvedValueOnce({
+      id: 'membership-target',
+      active: false,
+    });
+    setRoleAssignmentStatus.mockResolvedValueOnce({
+      id: '44444444-4444-4444-8444-444444444444',
+      active: false,
+    });
+
+    await request(app.getHttpServer())
+      .patch(
+        '/api/v1/organization/users/33333333-3333-4333-8333-333333333333/membership',
+      )
+      .set('Authorization', 'Bearer allowed-token')
+      .send({ active: false, reason: ' 调离部门 ' })
+      .expect(200);
+    expect(updateMembership).toHaveBeenCalledWith(
+      actor,
+      '33333333-3333-4333-8333-333333333333',
+      { active: false, reason: '调离部门' },
+    );
+
+    await request(app.getHttpServer())
+      .patch(
+        '/api/v1/organization/users/33333333-3333-4333-8333-333333333333/role-assignments/44444444-4444-4444-8444-444444444444',
+      )
+      .set('Authorization', 'Bearer allowed-token')
+      .send({ active: false, reason: ' 撤销权限 ' })
+      .expect(200);
+    expect(setRoleAssignmentStatus).toHaveBeenCalledWith(
+      actor,
+      '33333333-3333-4333-8333-333333333333',
+      '44444444-4444-4444-8444-444444444444',
+      { active: false, reason: '撤销权限' },
+    );
   });
 });
