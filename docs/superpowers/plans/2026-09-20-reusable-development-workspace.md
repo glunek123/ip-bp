@@ -118,7 +118,8 @@ Run:
 ```powershell
 . .\Use-ProjectRuntime.ps1
 pnpm context:check
-pnpm exec prettier .cursor/rules/verified-feature-integration.mdc AGENTS.md docs/ai-coding.md docs/superpowers/specs/2026-09-20-reusable-development-workspace-design.md docs/superpowers/plans/2026-09-20-reusable-development-workspace.md --check
+pnpm exec prettier AGENTS.md docs/ai-coding.md docs/superpowers/specs/2026-09-20-reusable-development-workspace-design.md docs/superpowers/plans/2026-09-20-reusable-development-workspace.md --check
+pnpm exec prettier .cursor/rules/verified-feature-integration.mdc --parser markdown --check
 ```
 
 Expected: context reports only the intended documentation changes and Prettier exits zero. No business, schema, migration, test, build, or runtime code changed, so no business E2E or full `verify` is triggered solely by this policy clarification.
@@ -150,7 +151,8 @@ Run:
 ```powershell
 . .\Use-ProjectRuntime.ps1
 pnpm context:check:strict
-pnpm exec prettier .cursor/rules/verified-feature-integration.mdc AGENTS.md docs/ai-coding.md docs/superpowers/specs/2026-09-20-reusable-development-workspace-design.md docs/superpowers/plans/2026-09-20-reusable-development-workspace.md --check
+pnpm exec prettier AGENTS.md docs/ai-coding.md docs/superpowers/specs/2026-09-20-reusable-development-workspace-design.md docs/superpowers/plans/2026-09-20-reusable-development-workspace.md --check
+pnpm exec prettier .cursor/rules/verified-feature-integration.mdc --parser markdown --check
 git diff main...HEAD --check
 git status --short
 ```
