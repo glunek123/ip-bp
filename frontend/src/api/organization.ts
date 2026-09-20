@@ -7,6 +7,7 @@ export type OrganizationCapabilities = {
   manageTeams: boolean;
   assignDepartmentRoles: boolean;
   assignTeamRoles: boolean;
+  manageRoleTemplates: boolean;
 };
 
 export type OrganizationTeam = {
@@ -18,7 +19,54 @@ export type OrganizationTeam = {
 export type OrganizationRole = {
   id: string;
   name: string;
-  grants: Array<{ action: string; scope: string }>;
+  version: number;
+  activeAssignmentCount: number;
+  grants: OrganizationGrant[];
+};
+
+export const permissionActionValues = [
+  'CUSTOMER_READ',
+  'CUSTOMER_CREATE_DRAFT',
+  'CUSTOMER_EDIT_ROUTINE',
+  'USER_READ',
+  'USER_MANAGE',
+  'TEAM_READ',
+  'TEAM_MANAGE',
+  'ROLE_READ',
+  'ROLE_ASSIGN',
+  'ROLE_MANAGE',
+] as const;
+export const permissionScopeValues = ['SELF', 'TEAM', 'DEPARTMENT'] as const;
+
+export type PermissionAction = (typeof permissionActionValues)[number];
+export type PermissionScope = (typeof permissionScopeValues)[number];
+export type OrganizationGrant = {
+  action: PermissionAction;
+  scope: PermissionScope;
+};
+export type OrganizationPermissionCatalogItem = {
+  action: PermissionAction;
+  label: string;
+  scopes: PermissionScope[];
+};
+
+export type RoleTemplateImpact = {
+  roleTemplateId: string;
+  version: number;
+  activeAssignmentCount: number;
+  affectedUsers: Array<{ id: string; displayName: string }>;
+};
+
+export type CopyRoleTemplateInput = {
+  sourceRoleTemplateId: string;
+  name: string;
+  grants: OrganizationGrant[];
+};
+
+export type UpdateRoleTemplateInput = {
+  name: string;
+  expectedVersion: number;
+  grants: OrganizationGrant[];
 };
 
 export type OrganizationRoleAssignment = {
@@ -44,6 +92,7 @@ export type OrganizationManagementContext = {
   users: OrganizationUser[];
   teams: OrganizationTeam[];
   roles: OrganizationRole[];
+  permissionCatalog: OrganizationPermissionCatalogItem[];
 };
 
 function isRecord(value: unknown): value is Record<string, unknown> {
@@ -66,19 +115,8 @@ function hasExactKeys(
   );
 }
 
-const permissionActions = new Set([
-  'CUSTOMER_READ',
-  'CUSTOMER_CREATE_DRAFT',
-  'CUSTOMER_EDIT_ROUTINE',
-  'USER_READ',
-  'USER_MANAGE',
-  'TEAM_READ',
-  'TEAM_MANAGE',
-  'ROLE_READ',
-  'ROLE_ASSIGN',
-  'ROLE_MANAGE',
-]);
-const permissionScopes = new Set(['SELF', 'TEAM', 'DEPARTMENT']);
+const permissionActions = new Set<string>(permissionActionValues);
+const permissionScopes = new Set<string>(permissionScopeValues);
 
 function isTeam(value: unknown): value is OrganizationTeam {
   return (
@@ -138,20 +176,62 @@ function isUser(value: unknown): value is OrganizationUser {
 function isRole(value: unknown): value is OrganizationRole {
   return (
     isRecord(value) &&
-    hasExactKeys(value, ['id', 'name', 'grants']) &&
+    hasExactKeys(value, [
+      'id',
+      'name',
+      'version',
+      'activeAssignmentCount',
+      'grants',
+    ]) &&
     typeof value.id === 'string' &&
     typeof value.name === 'string' &&
+    Number.isInteger(value.version) &&
+    Number(value.version) >= 1 &&
+    Number.isInteger(value.activeAssignmentCount) &&
+    Number(value.activeAssignmentCount) >= 0 &&
     Array.isArray(value.grants) &&
-    value.grants.every(
-      (grant) =>
-        isRecord(grant) &&
-        hasExactKeys(grant, ['action', 'scope']) &&
-        typeof grant.action === 'string' &&
-        permissionActions.has(grant.action) &&
-        typeof grant.scope === 'string' &&
-        permissionScopes.has(grant.scope),
-    )
+    value.grants.every(isGrant)
   );
+}
+
+function isGrant(value: unknown): value is OrganizationGrant {
+  return (
+    isRecord(value) &&
+    hasExactKeys(value, ['action', 'scope']) &&
+    typeof value.action === 'string' &&
+    permissionActions.has(value.action) &&
+    typeof value.scope === 'string' &&
+    permissionScopes.has(value.scope)
+  );
+}
+
+function isPermissionCatalog(
+  value: unknown,
+): value is OrganizationPermissionCatalogItem[] {
+  if (!Array.isArray(value) || value.length !== permissionActionValues.length) {
+    return false;
+  }
+  const actions = new Set<string>();
+  for (const item of value) {
+    if (
+      !isRecord(item) ||
+      !hasExactKeys(item, ['action', 'label', 'scopes']) ||
+      typeof item.action !== 'string' ||
+      !permissionActions.has(item.action) ||
+      typeof item.label !== 'string' ||
+      item.label.length === 0 ||
+      !Array.isArray(item.scopes) ||
+      item.scopes.length === 0 ||
+      !item.scopes.every(
+        (scope) => typeof scope === 'string' && permissionScopes.has(scope),
+      ) ||
+      new Set(item.scopes).size !== item.scopes.length
+    ) {
+      return false;
+    }
+    actions.add(item.action);
+  }
+  return actions.size === permissionActionValues.length;
 }
 
 function isCapabilities(value: unknown): value is OrganizationCapabilities {
@@ -164,13 +244,15 @@ function isCapabilities(value: unknown): value is OrganizationCapabilities {
       'manageTeams',
       'assignDepartmentRoles',
       'assignTeamRoles',
+      'manageRoleTemplates',
     ]) &&
     typeof value.createUser === 'boolean' &&
     typeof value.manageUsers === 'boolean' &&
     typeof value.createTeam === 'boolean' &&
     typeof value.manageTeams === 'boolean' &&
     typeof value.assignDepartmentRoles === 'boolean' &&
-    typeof value.assignTeamRoles === 'boolean'
+    typeof value.assignTeamRoles === 'boolean' &&
+    typeof value.manageRoleTemplates === 'boolean'
   );
 }
 
@@ -188,18 +270,86 @@ export async function getOrganizationManagementContext(
   const data = await getJson('/organization/management-context', options);
   if (
     !isRecord(data) ||
-    !hasExactKeys(data, ['capabilities', 'users', 'teams', 'roles']) ||
+    !hasExactKeys(data, [
+      'capabilities',
+      'users',
+      'teams',
+      'roles',
+      'permissionCatalog',
+    ]) ||
     !isCapabilities(data.capabilities) ||
     !Array.isArray(data.users) ||
     !data.users.every(isUser) ||
     !Array.isArray(data.teams) ||
     !data.teams.every(isTeam) ||
     !Array.isArray(data.roles) ||
-    !data.roles.every(isRole)
+    !data.roles.every(isRole) ||
+    !isPermissionCatalog(data.permissionCatalog)
   ) {
     throw invalidResponse();
   }
   return data as OrganizationManagementContext;
+}
+
+function isRoleTemplateImpact(value: unknown): value is RoleTemplateImpact {
+  return (
+    isRecord(value) &&
+    hasExactKeys(value, [
+      'roleTemplateId',
+      'version',
+      'activeAssignmentCount',
+      'affectedUsers',
+    ]) &&
+    typeof value.roleTemplateId === 'string' &&
+    Number.isInteger(value.version) &&
+    Number(value.version) >= 1 &&
+    Number.isInteger(value.activeAssignmentCount) &&
+    Number(value.activeAssignmentCount) >= 0 &&
+    Array.isArray(value.affectedUsers) &&
+    value.affectedUsers.every(
+      (user) =>
+        isRecord(user) &&
+        hasExactKeys(user, ['id', 'displayName']) &&
+        typeof user.id === 'string' &&
+        typeof user.displayName === 'string',
+    ) &&
+    value.affectedUsers.length === value.activeAssignmentCount
+  );
+}
+
+export async function getRoleTemplateImpact(
+  roleTemplateId: string,
+  options: RequestOptions = {},
+): Promise<RoleTemplateImpact> {
+  const data = await getJson(
+    `/organization/role-templates/${encodeURIComponent(roleTemplateId)}/impact`,
+    options,
+  );
+  if (!isRoleTemplateImpact(data)) throw invalidResponse();
+  return data;
+}
+
+export async function copyRoleTemplate(
+  input: CopyRoleTemplateInput,
+): Promise<OrganizationRole> {
+  const data = await requestJson('/organization/role-templates', {
+    method: 'POST',
+    body: input,
+  });
+  if (!isRole(data)) throw invalidResponse();
+  return data;
+}
+
+export async function updateRoleTemplate(
+  roleTemplateId: string,
+  input: UpdateRoleTemplateInput,
+): Promise<OrganizationRole> {
+  const data = await requestJson(
+    `/organization/role-templates/${encodeURIComponent(roleTemplateId)}`,
+    { method: 'PATCH', body: input },
+  );
+  if (!isRole(data)) throw invalidResponse();
+  return data;
 }
 
 export async function createOrganizationUser(input: {
