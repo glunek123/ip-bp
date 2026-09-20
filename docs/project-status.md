@@ -8,22 +8,22 @@
 
 ## 当前任务
 
-**FLOW-LEAN-001（Level 3）实现与Review已完成**：实现提交截至`98f3cb6`，独立复审`ACCEPTED`且未关闭Critical／Important／Minor均为0。范围只包括删除重复确认／门禁调用暗示、明确Roadmap为实现状态唯一来源、限制跨模块内部导入和Controller数据库访问，并要求Prisma Model声明主责；不修改业务代码、schema、依赖或生产环境。当前隔离worktree等待固定最终tree的完整工程门禁，尚未集成、推送或发布。
+**ROLE-TEMPLATE-001（Level 3）已正式领取**：基于`main@3c7497a`，在`codex/role-template-management`隔离分支按已确认方案 A 开发“角色模板复制与 Grant 配置闭环”。当前处于设计固化和实施计划阶段；新增独立`ROLE_MANAGE`，模板写操作只接受部门级授权，并在现有人员与权限工作区提供复制、编辑、自动影响预览和下一请求生效。具体范围见[设计](superpowers/specs/2026-09-20-role-template-management-design.md)，业务 Current／Next 只在[功能开发路线图](feature-roadmap.md)维护。
 
 ## 已实现
 
 - 全部业务实现状态和完成证据索引见[功能开发路线图](feature-roadmap.md)；本节只保留该唯一来源指针，不重复列举能力。
-- 本轮已将正式Slice门禁的实际检查集合固化为工具测试，并加入跨模块内部导入、Controller静态数据库导入和Prisma Model主责声明三个最小护栏。
+- `FLOW-LEAN-001`已随`3c7497a`进入本地及远端`main`并收口，不再是待集成任务；其架构护栏继续作为本任务门禁。
 
 ## 未决与限制
 
-- 最小架构检查只覆盖项目内相对模块导入、无插值动态路径、声明式Model主责和Controller静态数据库导入；计算型动态导入、未来路径别名及任意跨模块数据库写入仍须由相关改动Review。
-- 本轮不修改业务、schema、依赖、数据库数据或生产环境；不建设依赖图、通用事务框架、Repository层或测试调度平台。
+- 本任务不创建自定义权限表达式、跨部门／全局角色、模板删除／停用、审批流或其他业务模块能力。
+- 只允许测试库前向迁移和验证；不推送、不发布、不操作生产数据库，也不重置或删除持久化数据。
 
 ## 最近验证
 
-- FLOW-LEAN-001初步检查：工具测试65项、`spec:check`、`check:fast`、Lint和聚焦格式检查通过；`architecture:check`三次实测最大0.896秒。独立复审结论为`ACCEPTED`，未关闭Critical／Important／Minor均为0；完整`verify`将在最终上下文记录提交后对固定tree执行，结果不在本文件预写。
+- 新隔离worktree完成依赖和Prisma客户端准备后，基线测试通过：工具65项、前端140项、后端195项。首次后端失败仅因新worktree缺少被忽略的生成客户端，执行仓库规定的`pnpm prepare:prisma`后同一基线全部通过，未发现业务回归。
 
 ## 下一步
 
-记录最终上下文并在固定tree执行一次完整`pnpm verify`；通过后按用户选择集成并恢复为无活动编码切片。业务唯一Next Slice仍由[功能开发路线图](feature-roadmap.md)维护，本流程任务不改变业务开发顺序。未经明确授权不推送、不发布、不操作生产数据库。
+按实施计划以测试先行完成迁移、后端契约、正式页面和数据库型浏览器验收；固定候选执行Level 3完整门禁和独立Review。完成本任务后转入“多联系人及客户关系维护”。
