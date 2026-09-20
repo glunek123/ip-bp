@@ -8,7 +8,7 @@
 
 ## 当前任务
 
-**FLOW-LEAN-001（Level 3）实施中**：精简现有开发流程并补最小静态护栏。范围只包括删除重复确认／门禁调用暗示、明确Roadmap为实现状态唯一来源、限制跨模块内部导入和Controller数据库访问，并要求Prisma Model声明主责；不修改业务代码、schema、依赖或生产环境。人员权限候选已通过`4c20d1d`合并进入`main`，尚未推送或发布。
+**FLOW-LEAN-001（Level 3）实现与Review已完成**：实现提交截至`98f3cb6`，独立复审`ACCEPTED`且未关闭Critical／Important／Minor均为0。范围只包括删除重复确认／门禁调用暗示、明确Roadmap为实现状态唯一来源、限制跨模块内部导入和Controller数据库访问，并要求Prisma Model声明主责；不修改业务代码、schema、依赖或生产环境。当前隔离worktree等待固定最终tree的完整工程门禁，尚未集成、推送或发布。
 
 ## 已实现
 
@@ -22,8 +22,8 @@
 
 ## 最近验证
 
-- FLOW-LEAN-001初步检查：工具测试64项、`spec:check`、`check:fast`、Lint和聚焦格式检查通过；`architecture:check`三次实测最大0.896秒。最终Review与完整`verify`尚未完成，不得预先视为通过。
+- FLOW-LEAN-001初步检查：工具测试65项、`spec:check`、`check:fast`、Lint和聚焦格式检查通过；`architecture:check`三次实测最大0.896秒。独立复审结论为`ACCEPTED`，未关闭Critical／Important／Minor均为0；完整`verify`将在最终上下文记录提交后对固定tree执行，结果不在本文件预写。
 
 ## 下一步
 
-完成FLOW-LEAN-001的工具测试、静态门禁、前置Review和最终`pnpm verify`；随后恢复为无活动编码切片。业务唯一Next Slice仍由[功能开发路线图](feature-roadmap.md)维护，本流程任务不改变业务开发顺序。未经明确授权不推送、不发布、不操作生产数据库。
+记录最终上下文并在固定tree执行一次完整`pnpm verify`；通过后按用户选择集成并恢复为无活动编码切片。业务唯一Next Slice仍由[功能开发路线图](feature-roadmap.md)维护，本流程任务不改变业务开发顺序。未经明确授权不推送、不发布、不操作生产数据库。
