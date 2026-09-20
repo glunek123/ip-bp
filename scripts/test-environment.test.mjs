@@ -60,6 +60,10 @@ function capture(root, inheritedEnvironment = {}) {
     pnpmVersion: '11.27.0',
     platform: 'win32',
     architecture: 'x64',
+    externalConditions: {
+      databaseImage: 'sha256:database-image',
+      browserManifest: 'sha256:browser-manifest',
+    },
   });
 }
 
@@ -157,4 +161,29 @@ test('shares the HMAC key across worktrees without binding absolute paths', (t) 
   } finally {
     git(root, 'worktree', 'remove', '--force', linked);
   }
+});
+
+test('binds actual external test conditions without serializing them', (t) => {
+  const root = repository(t);
+  const first = capture(root);
+  const changed = captureTestEnvironment(root, {
+    inheritedEnvironment: {},
+    nodeVersion: 'v24.21.0',
+    pnpmVersion: '11.27.0',
+    platform: 'win32',
+    architecture: 'x64',
+    externalConditions: {
+      databaseImage: 'sha256:different-database-image',
+      browserManifest: 'sha256:browser-manifest',
+    },
+  });
+
+  assert.notEqual(changed.fingerprint, first.fingerprint);
+  assert.doesNotMatch(
+    JSON.stringify({
+      fingerprint: first.fingerprint,
+      metadata: first.metadata,
+    }),
+    /database-image|browser-manifest/,
+  );
 });

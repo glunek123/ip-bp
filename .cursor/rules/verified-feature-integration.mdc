@@ -32,7 +32,7 @@ Level 1不默认扫描全仓、更新Spec、写设计／计划、跑完整E2E或
 - `pnpm verify`覆盖严格context、Spec、类型、Lint、格式、工具／前后端测试和构建，不含数据库E2E。发布前执行完整回归；托管CI未配置时不得声称服务器已验证。
 - 当前Level 2正式候选入口为`verify:slice:customer`和`verify:slice:right-holder`；认证聚焦入口`verify:slice:auth`只提供聚焦候选证据，不能替代Auth的Level 3最终门禁。开发循环直接使用对应单元／过滤命令和`check:fast`。数据库入口为`test:e2e:customer`、`test:e2e:right-holder`、`test:e2e:auth`和`test:e2e:full`，任何匹配0项的测试范围必须失败。
 - 正式Slice按“准备Prisma一次→聚焦单元／契约→prepared静态检查→受影响格式→prepared后端构建→对应E2E”执行；prepared入口只省略已经完成的生成或构建内类型检查，不减少前后端类型、根TypeScript或Lint覆盖。完整`verify`继续只生成一次Prisma Client、只执行一次必要的前端类型检查。
-- E2E入口统一解析`backend/.env.test`并拒绝冲突Shell覆盖；证据只保存本地HMAC环境指纹和非秘密运行时元数据。正式Scope固定HEAD和tree，并在每项命令前后核对可观察的候选与环境变化；这与按需使用停止编辑的隔离worktree共同降低干扰，但不冒充对任意本地写进程的只读隔离。
+- E2E入口统一解析`backend/.env.test`并拒绝冲突Shell覆盖；环境指纹同时绑定实际PostgreSQL镜像摘要和锁定Playwright浏览器清单，证据只保存本地HMAC指纹及非秘密运行时元数据，不宣称数据库当前数据状态相同。正式Scope固定HEAD和tree，并在每项命令前后核对可观察的候选与环境变化；这与按需使用停止编辑的隔离worktree共同降低干扰，但不冒充对任意本地写进程的只读隔离。
 - Evidence v2按tree、固定scope、有序检查集合、环境指纹和协议版本区分验证键。真正开始同键新尝试时先原子发布`running`并使旧成功失效；只有最新`success`可复用，`running`／`failed`／`aborted`、v1、损坏或不完整记录均不可复用。验证键锁与证据短写锁位于Git common directory；统一E2E入口另按共享测试库和固定端口互斥，不串行普通单元、类型或格式检查。
 - 身份、认证、会话、授权守卫、权限／数据范围、查询隔离、事务、并发、乐观锁、审计或真实写入路径发生行为变化时，必须运行覆盖该路径的真实数据库E2E；不得只以单元、契约或`pnpm verify`替代。只有验证迁移／约束、环境变化或状态不可信时重建独立测试库。
 - 普通非破坏性迁移可保持Level 2，但必须从确认空库运行全部迁移，并从上一支持schema验证合成旧数据升级、失败原子性和绕过DTO的负向输入；失败回滚不代表必须提供down migration。删除／重解释字段、历史数据重写、大量数据迁移、跨租户／部门边界变化或不可安全向前修复的迁移升级Level 3。执行reset／drop前核对目标、测试标识和授权范围。

@@ -1,7 +1,14 @@
-import { existsSync, mkdirSync, readFileSync, writeFileSync } from 'node:fs';
-import { createHmac, randomBytes } from 'node:crypto';
+import {
+  existsSync,
+  mkdirSync,
+  readFileSync,
+  realpathSync,
+  writeFileSync,
+} from 'node:fs';
+import { createHash, createHmac, randomBytes } from 'node:crypto';
 import { execFileSync } from 'node:child_process';
 import { join, resolve } from 'node:path';
+import { createRequire } from 'node:module';
 import { parseEnv } from 'node:util';
 
 const applicationKeys = [
@@ -155,6 +162,52 @@ function rejectConflicts(inheritedEnvironment, effectiveEnvironment) {
   }
 }
 
+function actualExternalConditions(root) {
+  let database;
+  try {
+    database = execFileSync(
+      'docker',
+      [
+        'inspect',
+        'dev-cor-postgres-test-1',
+        '--format',
+        '{{.Image}}|{{.Config.Image}}|{{.State.Health.Status}}',
+      ],
+      { encoding: 'utf8', stdio: ['ignore', 'pipe', 'pipe'] },
+    ).trim();
+  } catch {
+    throw new Error('The shared test database must be running and inspectable');
+  }
+  const [imageId, imageReference, health] = database.split('|');
+  if (
+    !/^sha256:[0-9a-f]{64}$/i.test(imageId ?? '') ||
+    !imageReference ||
+    health !== 'healthy'
+  ) {
+    throw new Error('The shared test database must be healthy and image-bound');
+  }
+
+  let browserManifest;
+  try {
+    const requireFromPlaywright = createRequire(
+      realpathSync(resolve(root, 'node_modules/@playwright/test/package.json')),
+    );
+    const packagePath = requireFromPlaywright.resolve(
+      'playwright-core/package.json',
+    );
+    browserManifest = readFileSync(resolve(packagePath, '..', 'browsers.json'));
+  } catch {
+    throw new Error('The locked Playwright browser manifest is unavailable');
+  }
+
+  return {
+    databaseImage: createHash('sha256')
+      .update(`${imageId}\0${imageReference}`)
+      .digest('hex'),
+    browserManifest: createHash('sha256').update(browserManifest).digest('hex'),
+  };
+}
+
 export function captureTestEnvironment(root, options = {}) {
   const inheritedEnvironment = options.inheritedEnvironment ?? process.env;
   const { bytes, values } = readTestEnvironmentFile(root);
@@ -169,6 +222,18 @@ export function captureTestEnvironment(root, options = {}) {
   if (typeof metadata.pnpm !== 'string' || metadata.pnpm.length === 0)
     throw new Error('The pnpm version is required for validation evidence');
   const controls = relevantControls(inheritedEnvironment);
+  const externalConditions =
+    options.externalConditions ?? actualExternalConditions(root);
+  for (const key of ['databaseImage', 'browserManifest']) {
+    if (
+      typeof externalConditions?.[key] !== 'string' ||
+      externalConditions[key].length === 0
+    ) {
+      throw new Error(
+        `Validation evidence requires external condition: ${key}`,
+      );
+    }
+  }
   const hmac = createHmac('sha256', fingerprintKey(root));
   hmac.update(bytes);
   hmac.update('\0');
@@ -178,6 +243,7 @@ export function captureTestEnvironment(root, options = {}) {
       effectiveEnvironment,
       controls,
       metadata,
+      externalConditions,
     }),
   );
   return {

@@ -43,7 +43,7 @@
 - 当前Level 2正式候选入口为`pnpm verify:slice:customer`和`pnpm verify:slice:right-holder`，依次组合一次Prisma准备、定向单元／契约、prepared静态检查、Slice格式、prepared后端构建及对应数据库E2E；规则／字段语义／公共契约变化时另运行`pnpm spec:check`，普通迁移另运行迁移专项。
 - `pnpm verify:slice:auth`只提供认证聚焦候选证据，不替代Auth所属Level 3的完整`pnpm verify`、数据库风险专项与Review。
 - 数据库入口为`test:e2e:customer`、`test:e2e:right-holder`、`test:e2e:auth`和`test:e2e:full`；前三者缩小范围但仍使用同一隔离测试库保护和Playwright runner。Jest、Vitest与Playwright匹配0项时必须失败。
-- Slice入口通过固定配置执行；runner在首项前保存`running`，每项命令前后核对同一干净HEAD／tree和统一测试环境快照，全部成功后原子发布`success`。Evidence v2只认同一tree、scope、有序检查集合、环境指纹及最新成功尝试；同键重跑一旦开始，旧成功不再可复用，失败、中断、v1与损坏记录均拒绝。秘密输入使用Git common directory中的本地随机HMAC密钥生成指纹，原值不入证据；密钥缺失或变化时旧证据自然失配。证据和验证键锁位于Git common directory，同仓库worktree共享；E2E只对共享测试库和固定端口加机器级互斥，普通单元、类型和格式检查不被全局串行。锁异常残留时不按超时自动删除，须先确认原进程及子进程结束再人工恢复。可用`pnpm evidence:check --scope <name>`核对；Auth focused证据不能冒充完整Level 3证据，新的组合tree不做自动affected推断。
+- Slice入口通过固定配置执行；runner在首项前保存`running`，每项命令前后核对同一干净HEAD／tree和统一测试环境快照，全部成功后原子发布`success`。Evidence v2只认同一tree、scope、有序检查集合、环境指纹及最新成功尝试；同键重跑一旦开始，旧成功不再可复用，失败、中断、v1与损坏记录均拒绝。环境指纹包含测试配置的有效值、运行时／平台、相关工具控制变量、实际PostgreSQL镜像摘要和锁定Playwright浏览器清单；不散列整个`process.env`或数据库内容。秘密输入使用Git common directory中的本地随机HMAC密钥生成指纹，原值不入证据；密钥缺失或变化时旧证据自然失配。证据和验证键锁位于Git common directory，同仓库worktree共享；E2E只对同一主机用户下的共享测试库和固定端口互斥，普通单元、类型和格式检查不被全局串行。锁异常残留时不按超时自动删除，须先确认原进程及子进程结束再人工恢复。可用`pnpm evidence:check --scope <name>`核对；Auth focused证据不能冒充完整Level 3证据，新的组合tree不做自动affected推断。
 
 ## 恢复与交付
 
