@@ -74,6 +74,7 @@ export type ManagementContext = {
     name: string;
     version: number;
     activeAssignmentCount: number;
+    assignable: boolean;
     grants: RoleGrant[];
   }>;
   permissionCatalog: PermissionCatalogItem[];
@@ -221,6 +222,9 @@ export class OrganizationService {
       const canAssignTeamRoles = teamGrant('ROLE_ASSIGN') !== undefined;
       const canManageTeams = hasDepartmentGrant('TEAM_MANAGE');
       const visibleRoles = canViewAllRoles ? roles : rolesActorCanAssign;
+      const assignableRoleIds = new Set(
+        rolesActorCanAssign.map((role) => role.id),
+      );
 
       return {
         capabilities: {
@@ -267,6 +271,7 @@ export class OrganizationService {
             role.assignments.map((assignment) => assignment.userId),
           ).size,
           grants: role.grants,
+          assignable: assignableRoleIds.has(role.id),
         })),
         permissionCatalog: permissionCatalog.map((item) => ({
           ...item,

@@ -47,6 +47,7 @@ const context = {
       name: '客户经办',
       version: 2,
       activeAssignmentCount: 1,
+      assignable: true,
       grants: [
         { action: 'CUSTOMER_READ', scope: 'DEPARTMENT' },
         { action: 'ROLE_MANAGE', scope: 'DEPARTMENT' },
@@ -199,7 +200,14 @@ describe('organization API', () => {
   });
 
   it('sends exact copy and update commands and strictly decodes results', async () => {
-    const role = context.roles[0];
+    const source = context.roles[0];
+    const role = {
+      id: source.id,
+      name: source.name,
+      version: source.version,
+      activeAssignmentCount: source.activeAssignmentCount,
+      grants: source.grants,
+    };
     const fetch = vi
       .fn()
       .mockImplementation(async () => new Response(JSON.stringify(role)));

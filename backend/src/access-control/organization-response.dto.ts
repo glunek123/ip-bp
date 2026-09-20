@@ -37,6 +37,10 @@ export class OrganizationRoleResponseDto {
   grants!: OrganizationGrantResponseDto[];
 }
 
+export class OrganizationContextRoleResponseDto extends OrganizationRoleResponseDto {
+  @ApiProperty() assignable!: boolean;
+}
+
 export class OrganizationPermissionCatalogResponseDto {
   @ApiProperty({ enum: permissionActions }) action!: string;
   @ApiProperty() label!: string;
@@ -98,8 +102,8 @@ export class OrganizationManagementContextResponseDto {
   users!: OrganizationContextUserResponseDto[];
   @ApiProperty({ type: () => [OrganizationContextTeamResponseDto] })
   teams!: OrganizationContextTeamResponseDto[];
-  @ApiProperty({ type: () => [OrganizationRoleResponseDto] })
-  roles!: OrganizationRoleResponseDto[];
+  @ApiProperty({ type: () => [OrganizationContextRoleResponseDto] })
+  roles!: OrganizationContextRoleResponseDto[];
   @ApiProperty({ type: () => [OrganizationPermissionCatalogResponseDto] })
   permissionCatalog!: OrganizationPermissionCatalogResponseDto[];
 }

@@ -333,6 +333,7 @@ describe('OrganizationService management context', () => {
         id: 'role-a',
         version: 3,
         activeAssignmentCount: 2,
+        assignable: true,
       }),
     ]);
     expect(result.capabilities).toEqual({
@@ -418,6 +419,7 @@ describe('OrganizationService management context', () => {
     const result = await fixture.service.getManagementContext(actor);
 
     expect(result.roles.map((role) => role.id)).toEqual(['role-readable']);
+    expect(result.roles[0]?.assignable).toBe(false);
     expect(result.capabilities.manageRoleTemplates).toBe(false);
   });
 
@@ -439,6 +441,7 @@ describe('OrganizationService management context', () => {
     const result = await fixture.service.getManagementContext(actor);
 
     expect(result.roles.map((role) => role.id)).toEqual(['role-manageable']);
+    expect(result.roles[0]?.assignable).toBe(false);
     expect(result.capabilities.manageRoleTemplates).toBe(true);
   });
 

@@ -42,6 +42,9 @@ let activeRequest: AbortController | undefined;
 const activeTeams = computed(
   () => context.value?.teams.filter((team) => team.status === 'ACTIVE') ?? [],
 );
+const assignableRoles = computed(
+  () => context.value?.roles.filter((role) => role.assignable) ?? [],
+);
 
 function isSelf(user: OrganizationUser): boolean {
   return auth.session?.user.id === user.id;
@@ -71,9 +74,11 @@ async function load(showLoading = true): Promise<void> {
     if (controller.signal.aborted) return;
     context.value = result;
     for (const user of result.users) {
-      selectedRoles[user.id] ??= result.roles[0]?.id ?? '';
+      selectedRoles[user.id] ??=
+        result.roles.find((role) => role.assignable)?.id ?? '';
     }
-    createForm.roleTemplateId ||= result.roles[0]?.id ?? '';
+    createForm.roleTemplateId ||=
+      result.roles.find((role) => role.assignable)?.id ?? '';
     state.value = 'ready';
   } catch (error) {
     if (!controller.signal.aborted) {
@@ -111,7 +116,7 @@ async function submitCreateUser(): Promise<void> {
     actionError.value = '请填写姓名、用户名、至少 12 位密码和初始角色。';
     return;
   }
-  const initialRole = context.value?.roles.find(
+  const initialRole = assignableRoles.value.find(
     (role) => role.id === createForm.roleTemplateId,
   );
   if (
@@ -138,7 +143,7 @@ async function submitCreateUser(): Promise<void> {
       username: '',
       password: '',
       teamId: '',
-      roleTemplateId: context.value?.roles[0]?.id ?? '',
+      roleTemplateId: assignableRoles.value[0]?.id ?? '',
     });
   }
 }
@@ -164,7 +169,7 @@ async function changeTeam(
 
 async function assignRole(user: OrganizationUser): Promise<void> {
   const roleTemplateId = selectedRoles[user.id];
-  const role = context.value?.roles.find((item) => item.id === roleTemplateId);
+  const role = assignableRoles.value.find((item) => item.id === roleTemplateId);
   if (!roleTemplateId || !role) return;
   const needsTeam = role.grants.some((grant) => grant.scope === 'TEAM');
   if (needsTeam && !user.membership.teamId) {
@@ -303,7 +308,7 @@ onBeforeUnmount(() => activeRequest?.abort());
               data-test="role-template"
             >
               <option
-                v-for="role in context?.roles"
+                v-for="role in assignableRoles"
                 :key="role.id"
                 :value="role.id"
               >
@@ -431,7 +436,7 @@ onBeforeUnmount(() => activeRequest?.abort());
                   >
                 </div>
                 <div
-                  v-if="!isSelf(user) && context.roles.length"
+                  v-if="!isSelf(user) && assignableRoles.length"
                   class="role-add"
                 >
                   <select
@@ -439,7 +444,7 @@ onBeforeUnmount(() => activeRequest?.abort());
                     :aria-label="`${user.displayName}新增角色`"
                   >
                     <option
-                      v-for="role in context.roles"
+                      v-for="role in assignableRoles"
                       :key="role.id"
                       :value="role.id"
                     >

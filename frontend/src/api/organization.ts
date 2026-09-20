@@ -24,6 +24,10 @@ export type OrganizationRole = {
   grants: OrganizationGrant[];
 };
 
+export type OrganizationContextRole = OrganizationRole & {
+  assignable: boolean;
+};
+
 export const permissionActionValues = [
   'CUSTOMER_READ',
   'CUSTOMER_CREATE_DRAFT',
@@ -91,7 +95,7 @@ export type OrganizationManagementContext = {
   capabilities: OrganizationCapabilities;
   users: OrganizationUser[];
   teams: OrganizationTeam[];
-  roles: OrganizationRole[];
+  roles: OrganizationContextRole[];
   permissionCatalog: OrganizationPermissionCatalogItem[];
 };
 
@@ -194,6 +198,13 @@ function isRole(value: unknown): value is OrganizationRole {
   );
 }
 
+function isContextRole(value: unknown): value is OrganizationContextRole {
+  if (!isRecord(value) || typeof value.assignable !== 'boolean') return false;
+  const role = { ...value };
+  delete role.assignable;
+  return isRole(role);
+}
+
 function isGrant(value: unknown): value is OrganizationGrant {
   return (
     isRecord(value) &&
@@ -283,7 +294,7 @@ export async function getOrganizationManagementContext(
     !Array.isArray(data.teams) ||
     !data.teams.every(isTeam) ||
     !Array.isArray(data.roles) ||
-    !data.roles.every(isRole) ||
+    !data.roles.every(isContextRole) ||
     !isPermissionCatalog(data.permissionCatalog)
   ) {
     throw invalidResponse();

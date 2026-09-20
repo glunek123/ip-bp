@@ -56,6 +56,7 @@ const context = {
       name: '客户经办',
       version: 2,
       activeAssignmentCount: 1,
+      assignable: true,
       grants: [{ action: 'CUSTOMER_READ', scope: 'DEPARTMENT' }],
     },
   ],
@@ -83,6 +84,26 @@ describe('PeopleAccessPage', () => {
     expect(wrapper.text()).toContain('运营甲');
     expect(wrapper.text()).toContain('商标组');
     expect(wrapper.text()).toContain('客户经办');
+  });
+
+  it('shows readable templates without offering non-assignable role actions', async () => {
+    api.getOrganizationManagementContext.mockResolvedValue({
+      ...context,
+      capabilities: {
+        ...context.capabilities,
+        createUser: false,
+        assignDepartmentRoles: false,
+      },
+      roles: context.roles.map((role) => ({ ...role, assignable: false })),
+    });
+    const wrapper = mount(PeopleAccessPage, {
+      global: { stubs: { RouterLink: { template: '<a><slot /></a>' } } },
+    });
+    await flushPromises();
+
+    expect(wrapper.text()).toContain('客户经办');
+    expect(wrapper.text()).not.toContain('添加角色');
+    expect(wrapper.find('[data-test="open-create-user"]').exists()).toBe(false);
   });
 
   it('opens role template editing with an automatic impact preview', async () => {
