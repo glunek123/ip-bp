@@ -483,7 +483,6 @@ describe('OrganizationService account lifecycle', () => {
     await expect(
       fixture.service.setUserStatus(actor, 'target-user', {
         active: false,
-        reason: '离职停用',
       }),
     ).resolves.toMatchObject({ id: 'target-user', active: false });
 
@@ -502,7 +501,7 @@ describe('OrganizationService account lifecycle', () => {
     expect(fixture.transaction.auditEvent.create).toHaveBeenCalledWith({
       data: expect.objectContaining({
         action: 'user.status-changed',
-        details: { from: true, to: false, reason: '离职停用' },
+        details: { from: true, to: false },
       }),
     });
     expect(fixture.database.$transaction).toHaveBeenCalledTimes(1);
@@ -520,7 +519,6 @@ describe('OrganizationService account lifecycle', () => {
     await expect(
       fixture.service.setUserStatus(actor, 'target-user', {
         active: false,
-        reason: '离职停用',
       }),
     ).rejects.toMatchObject({
       response: { code: 'GLOBAL_ACCOUNT_MANAGEMENT_REQUIRED' },
@@ -536,23 +534,42 @@ describe('OrganizationService account lifecycle', () => {
     await expect(
       fixture.service.setUserStatus(actor, actor.userId, {
         active: false,
-        reason: '错误操作',
       }),
     ).rejects.toBeInstanceOf(ForbiddenException);
   });
 });
 
+describe('OrganizationService denial audit', () => {
+  it('stores only the actor membership, operation, and stable denial code', async () => {
+    const fixture = createFixture();
+
+    await fixture.service.recordDeniedAttempt(actor, 'role.assign');
+
+    expect(fixture.transaction.auditEvent.create).toHaveBeenCalledWith({
+      data: {
+        departmentId: actor.departmentId,
+        actorUserId: actor.userId,
+        resourceType: 'access-control-attempt',
+        resourceId: 'membership-actor',
+        action: 'access-control.denied',
+        details: { operation: 'role.assign', code: 'FORBIDDEN' },
+      },
+    });
+    expect(
+      JSON.stringify(fixture.transaction.auditEvent.create.mock.calls),
+    ).not.toContain('target-user');
+  });
+});
+
 describe('OrganizationService password reset', () => {
-  it('requires actor reauthentication and revokes target sessions', async () => {
+  it('uses the active admin session and revokes target sessions', async () => {
     const fixture = createFixture({
       actorGrants: [departmentGrant('USER_MANAGE')],
     });
 
     await expect(
       fixture.service.resetUserPassword(actor, 'target-user', {
-        currentPassword: 'legacy passphrase value',
         newPassword: 'replacement-pass-123',
-        reason: '本人无法登录',
       }),
     ).resolves.toEqual({ id: 'target-user', passwordReset: true });
 
@@ -574,30 +591,12 @@ describe('OrganizationService password reset', () => {
     expect(fixture.transaction.auditEvent.create).toHaveBeenCalledWith({
       data: expect.objectContaining({
         action: 'user.password-reset',
-        details: { reason: '本人无法登录' },
+        details: {},
       }),
     });
     expect(
       JSON.stringify(fixture.transaction.auditEvent.create.mock.calls),
     ).not.toContain('replacement-pass-123');
-  });
-
-  it('rejects an incorrect actor password before opening a write transaction', async () => {
-    const fixture = createFixture({
-      actorGrants: [departmentGrant('USER_MANAGE')],
-    });
-
-    await expect(
-      fixture.service.resetUserPassword(actor, 'target-user', {
-        currentPassword: 'incorrect password value',
-        newPassword: 'replacement-pass-123',
-        reason: '本人无法登录',
-      }),
-    ).rejects.toMatchObject({
-      response: { code: 'REAUTHENTICATION_FAILED' },
-    });
-    expect(fixture.database.$transaction).not.toHaveBeenCalled();
-    expect(fixture.transaction.localCredential.update).not.toHaveBeenCalled();
   });
 });
 
@@ -615,7 +614,6 @@ describe('OrganizationService membership lifecycle', () => {
     await expect(
       fixture.service.updateMembership(actor, 'target-user', {
         active: false,
-        reason: '调离当前部门',
       }),
     ).resolves.toMatchObject({ id: 'membership-target', active: false });
 
@@ -640,7 +638,6 @@ describe('OrganizationService membership lifecycle', () => {
         details: {
           from: true,
           to: false,
-          reason: '调离当前部门',
         },
       }),
     });
@@ -658,7 +655,6 @@ describe('OrganizationService membership lifecycle', () => {
     await expect(
       fixture.service.updateMembership(actor, 'target-user', {
         teamId: 'team-a',
-        reason: '调岗到团队甲',
       }),
     ).rejects.toMatchObject({
       response: { code: 'ACTIVE_TEAM_ROLE_ASSIGNMENT_EXISTS' },
@@ -689,7 +685,7 @@ describe('OrganizationService role lifecycle', () => {
         actor,
         'target-user',
         'assignment-existing',
-        { active: false, reason: '撤销客户访问' },
+        { active: false },
       ),
     ).resolves.toMatchObject({
       id: 'assignment-existing',
@@ -709,7 +705,7 @@ describe('OrganizationService role lifecycle', () => {
     expect(fixture.transaction.auditEvent.create).toHaveBeenCalledWith({
       data: expect.objectContaining({
         action: 'role-assignment.revoked',
-        details: expect.objectContaining({ reason: '撤销客户访问' }),
+        details: expect.not.objectContaining({ reason: expect.anything() }),
       }),
     });
   });
@@ -736,7 +732,7 @@ describe('OrganizationService role lifecycle', () => {
         actor,
         'target-user',
         'assignment-existing',
-        { active: true, reason: '恢复客户访问' },
+        { active: true },
       ),
     ).resolves.toMatchObject({
       id: 'assignment-existing',
@@ -746,7 +742,7 @@ describe('OrganizationService role lifecycle', () => {
     expect(fixture.transaction.auditEvent.create).toHaveBeenCalledWith({
       data: expect.objectContaining({
         action: 'role-assignment.restored-or-rebound',
-        details: expect.objectContaining({ reason: '恢复客户访问' }),
+        details: expect.not.objectContaining({ reason: expect.anything() }),
       }),
     });
   });

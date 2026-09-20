@@ -280,20 +280,19 @@ git commit -m "feat: create personnel atomically"
 
 - [ ] **Step 1: Add RED tests for account status and multi-department safety**
 
-Cover self-target denial, department USER_MANAGE requirement, exactly-one-active-membership requirement, all-session revocation on deactivate, authorization revision increment, re-enable not restoring sessions, required reason, and `GLOBAL_ACCOUNT_MANAGEMENT_REQUIRED`.
+Cover self-target denial, department USER_MANAGE requirement, exactly-one-active-membership requirement, all-session revocation on deactivate, authorization revision increment, re-enable not restoring sessions, and `GLOBAL_ACCOUNT_MANAGEMENT_REQUIRED`.
 
 Expected call shape:
 
 ```ts
 await service.setUserStatus(actor, 'target-user', {
   active: false,
-  reason: '离职停用',
 });
 ```
 
 - [ ] **Step 2: Implement account lifecycle and make focused tests green**
 
-Lock actor, target account, current membership, target memberships, assignments, and sessions in the fixed order. Deactivation updates the account, increments revision, revokes every unrevoked target session, and audits the reason in one transaction. Activation never clears `revokedAt`.
+Lock actor, target account, current membership, target memberships, assignments, and sessions in the fixed order. Deactivation updates the account, increments revision, revokes every unrevoked target session, and automatically audits the transition in one transaction. Activation never clears `revokedAt`.
 
 - [ ] **Step 3: Add RED tests for password reset with reauthentication**
 
@@ -301,19 +300,17 @@ Cover wrong actor password, actor credential changed between verification and tr
 
 ```ts
 await service.resetUserPassword(actor, 'target-user', {
-  currentPassword: 'admin-current-pass',
   newPassword: 'target-new-pass-123',
-  reason: '本人无法登录',
 });
 ```
 
 - [ ] **Step 4: Implement safe password reset**
 
-Verify actor password outside the transaction, retain the exact verified credential hash/version, then lock and require the stored credential to be unchanged inside the transaction. Hash the target password outside the transaction. A mismatch returns `REAUTHENTICATION_FAILED`; success updates `passwordHash` and `passwordChangedAt`, revokes target sessions, increments revision, and audits only the reason.
+Rely on the current authenticated session plus department-level `user.manage`; do not require a second administrator password entry. Hash the target password outside the transaction. Success updates `passwordHash` and `passwordChangedAt`, revokes target sessions, increments revision, and automatically audits the action.
 
 - [ ] **Step 5: Add RED tests for membership and role lifecycle**
 
-Cover membership deactivate/reactivate, department-session revocation, self-target denial, Team change using the existing active-team-assignment conflict, role revoke, already-inactive conflict, restore through full Grant Boundary, stale/non-target assignment denial, revision increments, and required reasons.
+Cover membership deactivate/reactivate, department-session revocation, self-target denial, Team change using the existing active-team-assignment conflict, role revoke, already-inactive conflict, restore through full Grant Boundary, stale/non-target assignment denial, and revision increments.
 
 - [ ] **Step 6: Implement membership and role lifecycle**
 
@@ -323,12 +320,10 @@ Use these signatures:
 updateMembership(actor, targetUserId, {
   active?: boolean;
   teamId?: string | null;
-  reason: string;
 })
 
 setRoleAssignmentStatus(actor, targetUserId, assignmentId, {
   active: boolean;
-  reason: string;
 })
 ```
 
@@ -450,7 +445,7 @@ Use Element Plus imports from component subpaths. Keep one page with a people le
 
 - [ ] **Step 5: Add RED lifecycle interaction tests**
 
-Cover account/membership status reason dialog, reset requiring current and new password, role revoke/restore, Team create/status, active-Team-role conflict guidance, forbidden state, and 401 delegating to the existing auth store.
+Cover direct account/membership status changes, reset requiring only the target new password, role revoke/restore, Team create/status, active-Team-role conflict guidance, forbidden state, and 401 delegating to the existing auth store.
 
 - [ ] **Step 6: Implement lifecycle interactions and navigation**
 

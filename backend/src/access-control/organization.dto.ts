@@ -2,6 +2,7 @@ import { ApiProperty, ApiPropertyOptional } from '@nestjs/swagger';
 import { Transform } from 'class-transformer';
 import {
   IsBoolean,
+  IsIn,
   IsOptional,
   IsString,
   IsUUID,
@@ -44,28 +45,13 @@ export class CreateOrganizationUserDto {
   roleTemplateId!: string;
 }
 
-class ReasonDto {
-  @ApiProperty({ maxLength: 500 })
-  @Transform(trim)
-  @IsString()
-  @MinLength(1)
-  @MaxLength(500)
-  reason!: string;
-}
-
-export class SetUserStatusDto extends ReasonDto {
+export class SetUserStatusDto {
   @ApiProperty()
   @IsBoolean()
   active!: boolean;
 }
 
-export class ResetUserPasswordDto extends ReasonDto {
-  @ApiProperty({ minLength: 12, maxLength: 128 })
-  @IsString()
-  @MinLength(12)
-  @MaxLength(128)
-  currentPassword!: string;
-
+export class ResetUserPasswordDto {
   @ApiProperty({ minLength: 12, maxLength: 128 })
   @IsString()
   @MinLength(12)
@@ -73,7 +59,7 @@ export class ResetUserPasswordDto extends ReasonDto {
   newPassword!: string;
 }
 
-export class UpdateMembershipDto extends ReasonDto {
+export class UpdateMembershipDto {
   @ApiPropertyOptional()
   @IsOptional()
   @IsBoolean()
@@ -96,8 +82,23 @@ export class AssignRoleDto {
   teamId?: string | null;
 }
 
-export class SetRoleAssignmentStatusDto extends ReasonDto {
+export class SetRoleAssignmentStatusDto {
   @ApiProperty()
   @IsBoolean()
   active!: boolean;
+}
+
+export class CreateTeamDto {
+  @ApiProperty({ maxLength: 100 })
+  @Transform(trim)
+  @IsString()
+  @MinLength(1)
+  @MaxLength(100)
+  name!: string;
+}
+
+export class SetTeamStatusDto {
+  @ApiProperty({ enum: ['ACTIVE', 'INACTIVE'] })
+  @IsIn(['ACTIVE', 'INACTIVE'])
+  status!: 'ACTIVE' | 'INACTIVE';
 }

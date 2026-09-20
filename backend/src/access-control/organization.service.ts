@@ -3,13 +3,10 @@ import {
   ConflictException,
   ForbiddenException,
   Injectable,
+  Logger,
 } from '@nestjs/common';
 import { randomUUID } from 'node:crypto';
-import {
-  hashPassword,
-  prepareLocalCredential,
-  verifyPassword,
-} from '../auth/password';
+import { hashPassword, prepareLocalCredential } from '../auth/password';
 import { DatabaseService } from '../database/database.service';
 import { Prisma } from '../generated/prisma/client';
 import { PermissionAction, PermissionScope } from '../generated/prisma/enums';
@@ -79,6 +76,8 @@ export type ManagementContext = {
 
 @Injectable()
 export class OrganizationService {
+  private readonly logger = new Logger('OrganizationSecurity');
+
   constructor(private readonly database: DatabaseService) {}
 
   async getManagementContext(actor: ActorContext): Promise<ManagementContext> {
@@ -250,6 +249,53 @@ export class OrganizationService {
     });
   }
 
+  async recordDeniedAttempt(
+    actor: ActorContext,
+    operation:
+      | 'user.create'
+      | 'user.status'
+      | 'user.password-reset'
+      | 'membership.update'
+      | 'role.assign'
+      | 'role.status'
+      | 'team.create'
+      | 'team.status',
+  ): Promise<void> {
+    try {
+      await this.database.$transaction(async (transaction) => {
+        const membership = await transaction.departmentMembership.findUnique({
+          where: {
+            userId_departmentId: {
+              userId: actor.userId,
+              departmentId: actor.departmentId,
+            },
+          },
+          select: { id: true, active: true },
+        });
+        if (membership === null || !membership.active) {
+          throw new Error('ACTOR_MEMBERSHIP_UNAVAILABLE');
+        }
+        await transaction.auditEvent.create({
+          data: {
+            departmentId: actor.departmentId,
+            actorUserId: actor.userId,
+            resourceType: 'access-control-attempt',
+            resourceId: membership.id,
+            action: 'access-control.denied',
+            details: { operation, code: 'FORBIDDEN' },
+          },
+        });
+      });
+    } catch {
+      this.logger.error({
+        event: 'organization_denial_audit_failed',
+        operation,
+        actorUserId: actor.userId,
+        departmentId: actor.departmentId,
+      });
+    }
+  }
+
   async createUser(actor: ActorContext, command: CreateUserCommand) {
     const displayName = command.displayName.trim();
     if (displayName.length === 0 || Array.from(displayName).length > 100) {
@@ -380,10 +426,9 @@ export class OrganizationService {
   async setUserStatus(
     actor: ActorContext,
     targetUserId: string,
-    command: { active: boolean; reason: string },
+    command: { active: boolean },
   ) {
     if (targetUserId === actor.userId) throw this.forbidden();
-    const reason = this.validateReason(command.reason);
     return this.database.$transaction(
       async (transaction) => {
         await this.lockDepartment(transaction, actor.departmentId);
@@ -463,7 +508,6 @@ export class OrganizationService {
             details: {
               from: target.active,
               to: command.active,
-              reason,
             },
           },
         });
@@ -476,27 +520,9 @@ export class OrganizationService {
   async resetUserPassword(
     actor: ActorContext,
     targetUserId: string,
-    command: {
-      currentPassword: string;
-      newPassword: string;
-      reason: string;
-    },
+    command: { newPassword: string },
   ): Promise<{ id: string; passwordReset: true }> {
     if (targetUserId === actor.userId) throw this.forbidden();
-    const reason = this.validateReason(command.reason);
-    const actorCredential = await this.database.localCredential.findUnique({
-      where: { userId: actor.userId },
-      select: { passwordHash: true, passwordChangedAt: true },
-    });
-    if (
-      actorCredential === null ||
-      !(await verifyPassword(
-        command.currentPassword,
-        actorCredential.passwordHash,
-      ))
-    ) {
-      throw this.reauthenticationFailed();
-    }
     let passwordHash: string;
     try {
       passwordHash = await hashPassword(command.newPassword);
@@ -524,22 +550,6 @@ export class OrganizationService {
           )
         ) {
           throw this.forbidden();
-        }
-
-        await this.lockLocalCredential(transaction, actor.userId);
-        const currentActorCredential =
-          await transaction.localCredential.findUnique({
-            where: { userId: actor.userId },
-            select: { passwordHash: true, passwordChangedAt: true },
-          });
-        if (
-          currentActorCredential === null ||
-          currentActorCredential.passwordHash !==
-            actorCredential.passwordHash ||
-          currentActorCredential.passwordChangedAt.getTime() !==
-            actorCredential.passwordChangedAt.getTime()
-        ) {
-          throw this.reauthenticationFailed();
         }
 
         await this.lockMembership(
@@ -595,7 +605,7 @@ export class OrganizationService {
             resourceType: 'user-account',
             resourceId: targetUserId,
             action: 'user.password-reset',
-            details: { reason },
+            details: {},
           },
         });
         return { id: targetUserId, passwordReset: true };
@@ -707,17 +717,15 @@ export class OrganizationService {
   ) {
     return this.updateMembership(actor, command.targetUserId, {
       teamId: command.teamId,
-      reason: '调整人员团队',
     });
   }
 
   async updateMembership(
     actor: ActorContext,
     targetUserId: string,
-    command: { active?: boolean; teamId?: string | null; reason: string },
+    command: { active?: boolean; teamId?: string | null },
   ) {
     if (targetUserId === actor.userId) throw this.forbidden();
-    const reason = this.validateReason(command.reason);
     const changesStatus = typeof command.active === 'boolean';
     const changesTeam = Object.prototype.hasOwnProperty.call(command, 'teamId');
     if (changesStatus === changesTeam) {
@@ -788,7 +796,6 @@ export class OrganizationService {
               details: {
                 from: membership.active,
                 to: nextActive,
-                reason,
               },
             },
           });
@@ -855,7 +862,6 @@ export class OrganizationService {
             details: {
               fromTeamId: membership.teamId,
               toTeamId: nextTeamId,
-              reason,
             },
           },
         });
@@ -894,10 +900,9 @@ export class OrganizationService {
     actor: ActorContext,
     targetUserId: string,
     assignmentId: string,
-    command: { active: boolean; reason: string },
+    command: { active: boolean },
   ) {
     if (targetUserId === actor.userId) throw this.forbidden();
-    const reason = this.validateReason(command.reason);
     return this.database.$transaction(
       async (transaction) => {
         await this.lockDepartment(transaction, actor.departmentId);
@@ -947,7 +952,6 @@ export class OrganizationService {
               teamId: assignment.teamId,
             },
             actorGrants,
-            reason,
           );
         }
 
@@ -1038,7 +1042,6 @@ export class OrganizationService {
               targetUserId,
               roleTemplateId: assignment.roleTemplateId,
               teamId: assignment.teamId,
-              reason,
             },
           },
         });
@@ -1057,7 +1060,6 @@ export class OrganizationService {
     actor: ActorContext,
     command: AssignRoleCommand,
     actorGrants: EffectiveGrant[],
-    reason?: string,
   ) {
     if (command.targetUserId === actor.userId) throw this.forbidden();
     await this.lockMembership(
@@ -1237,7 +1239,6 @@ export class OrganizationService {
           targetUserId: command.targetUserId,
           roleTemplateId: command.roleTemplateId,
           teamId: command.teamId,
-          ...(reason === undefined ? {} : { reason }),
         },
       },
     });
@@ -1357,16 +1358,6 @@ export class OrganizationService {
     );
   }
 
-  private async lockLocalCredential(
-    transaction: Prisma.TransactionClient,
-    userId: string,
-  ): Promise<void> {
-    await transaction.$queryRawUnsafe(
-      'SELECT "id" FROM "local_credentials" WHERE "user_id" = $1::uuid FOR UPDATE',
-      userId,
-    );
-  }
-
   private async lockMembership(
     transaction: Prisma.TransactionClient,
     departmentId: string,
@@ -1479,24 +1470,6 @@ export class OrganizationService {
       );
     }
     return targetGrant.scope === 'SELF' && actorUserId === targetUserId;
-  }
-
-  private validateReason(value: string): string {
-    const reason = value.trim();
-    if (reason.length === 0 || Array.from(reason).length > 500) {
-      throw new BadRequestException({
-        code: 'REASON_INVALID',
-        message: '原因不能为空且不得超过500个字符',
-      });
-    }
-    return reason;
-  }
-
-  private reauthenticationFailed(): ForbiddenException {
-    return new ForbiddenException({
-      code: 'REAUTHENTICATION_FAILED',
-      message: '当前密码验证失败',
-    });
   }
 
   private forbidden(): ForbiddenException {
