@@ -23,9 +23,218 @@ type EffectiveGrant = {
 
 type RoleGrant = { action: PermissionAction; scope: PermissionScope };
 
+export type ManagementContext = {
+  capabilities: {
+    createUser: boolean;
+    manageUsers: boolean;
+    createTeam: boolean;
+    manageTeams: boolean;
+    assignDepartmentRoles: boolean;
+    assignTeamRoles: boolean;
+  };
+  users: Array<{
+    id: string;
+    displayName: string;
+    username: string;
+    accountActive: boolean;
+    membership: {
+      id: string;
+      active: boolean;
+      teamId: string | null;
+    };
+    assignments: Array<{
+      id: string;
+      roleTemplateId: string;
+      roleName: string;
+      teamId: string | null;
+      active: boolean;
+      version: number;
+    }>;
+  }>;
+  teams: Array<{
+    id: string;
+    name: string;
+    status: 'ACTIVE' | 'INACTIVE';
+  }>;
+  roles: Array<{
+    id: string;
+    name: string;
+    grants: RoleGrant[];
+  }>;
+};
+
 @Injectable()
 export class OrganizationService {
   constructor(private readonly database: DatabaseService) {}
+
+  async getManagementContext(actor: ActorContext): Promise<ManagementContext> {
+    return this.database.$transaction(async (transaction) => {
+      const grants = await this.loadCurrentActorGrants(transaction, actor);
+      const hasDepartmentGrant = (action: PermissionAction) =>
+        grants.some(
+          (grant) => grant.action === action && grant.scope === 'DEPARTMENT',
+        );
+      const teamGrant = (action: PermissionAction) =>
+        grants.find(
+          (grant) =>
+            grant.action === action &&
+            grant.scope === 'TEAM' &&
+            grant.teamId !== null,
+        );
+      const hasSelfGrant = (action: PermissionAction) =>
+        grants.some(
+          (grant) => grant.action === action && grant.scope === 'SELF',
+        );
+
+      const userReadTeamId = teamGrant('USER_READ')?.teamId ?? null;
+      const teamReadTeamId = teamGrant('TEAM_READ')?.teamId ?? null;
+      const userWhere = hasDepartmentGrant('USER_READ')
+        ? { departmentId: actor.departmentId }
+        : userReadTeamId !== null
+          ? {
+              departmentId: actor.departmentId,
+              teamId: userReadTeamId,
+              team: { status: 'ACTIVE' as const },
+            }
+          : hasSelfGrant('USER_READ')
+            ? { departmentId: actor.departmentId, userId: actor.userId }
+            : null;
+      const teamWhere = hasDepartmentGrant('TEAM_READ')
+        ? { departmentId: actor.departmentId }
+        : teamReadTeamId !== null
+          ? {
+              departmentId: actor.departmentId,
+              id: teamReadTeamId,
+              status: 'ACTIVE' as const,
+            }
+          : null;
+      const canReadRoles = grants.some((grant) => grant.action === 'ROLE_READ');
+
+      const [memberships, teams, roles] = await Promise.all([
+        userWhere === null
+          ? Promise.resolve([])
+          : transaction.departmentMembership.findMany({
+              where: userWhere,
+              select: {
+                id: true,
+                active: true,
+                teamId: true,
+                user: {
+                  select: {
+                    id: true,
+                    displayName: true,
+                    active: true,
+                    localCredential: { select: { username: true } },
+                    roleAssignments: {
+                      where: { departmentId: actor.departmentId },
+                      select: {
+                        id: true,
+                        roleTemplateId: true,
+                        teamId: true,
+                        active: true,
+                        version: true,
+                        roleTemplate: { select: { name: true } },
+                      },
+                      orderBy: { createdAt: 'asc' },
+                    },
+                  },
+                },
+              },
+              orderBy: [{ user: { displayName: 'asc' } }, { id: 'asc' }],
+            }),
+        teamWhere === null
+          ? Promise.resolve([])
+          : transaction.team.findMany({
+              where: teamWhere,
+              select: { id: true, name: true, status: true },
+              orderBy: [{ name: 'asc' }, { id: 'asc' }],
+            }),
+        canReadRoles
+          ? transaction.roleTemplate.findMany({
+              where: { departmentId: actor.departmentId, active: true },
+              select: {
+                id: true,
+                name: true,
+                active: true,
+                grants: { select: { action: true, scope: true } },
+              },
+              orderBy: [{ name: 'asc' }, { id: 'asc' }],
+            })
+          : Promise.resolve([]),
+      ]);
+
+      const roleAssignmentTeamId = teamGrant('ROLE_ASSIGN')?.teamId ?? null;
+      const rolesActorCanAssign = roles.filter(
+        (role) =>
+          this.coversManagementTarget(
+            grants,
+            'ROLE_ASSIGN',
+            actor.userId,
+            '__management-target__',
+            roleAssignmentTeamId,
+          ) &&
+          role.grants.every((roleGrant) =>
+            grants.some((actorGrant) =>
+              this.coversAssignedGrant(
+                actorGrant,
+                roleGrant,
+                actor.userId,
+                '__management-target__',
+                roleAssignmentTeamId,
+              ),
+            ),
+          ),
+      );
+
+      const canManageUsers = hasDepartmentGrant('USER_MANAGE');
+      const canAssignDepartmentRoles = hasDepartmentGrant('ROLE_ASSIGN');
+      const canAssignTeamRoles = teamGrant('ROLE_ASSIGN') !== undefined;
+      const canManageTeams = hasDepartmentGrant('TEAM_MANAGE');
+
+      return {
+        capabilities: {
+          createUser: canManageUsers && canAssignDepartmentRoles,
+          manageUsers: canManageUsers,
+          createTeam: canManageTeams,
+          manageTeams: canManageTeams,
+          assignDepartmentRoles: canAssignDepartmentRoles,
+          assignTeamRoles: canAssignTeamRoles,
+        },
+        users: memberships.flatMap((membership) => {
+          if (membership.user.localCredential === null) return [];
+          return [
+            {
+              id: membership.user.id,
+              displayName: membership.user.displayName,
+              username: membership.user.localCredential.username,
+              accountActive: membership.user.active,
+              membership: {
+                id: membership.id,
+                active: membership.active,
+                teamId: membership.teamId,
+              },
+              assignments: membership.user.roleAssignments.map(
+                (assignment) => ({
+                  id: assignment.id,
+                  roleTemplateId: assignment.roleTemplateId,
+                  roleName: assignment.roleTemplate.name,
+                  teamId: assignment.teamId,
+                  active: assignment.active,
+                  version: assignment.version,
+                }),
+              ),
+            },
+          ];
+        }),
+        teams,
+        roles: rolesActorCanAssign.map((role) => ({
+          id: role.id,
+          name: role.name,
+          grants: role.grants,
+        })),
+      };
+    });
+  }
 
   async createTeam(actor: ActorContext, input: { name: string }) {
     const name = input.name.trim();

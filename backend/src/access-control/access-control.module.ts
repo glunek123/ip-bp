@@ -11,9 +11,11 @@ import { IDENTITY_ADAPTER } from './identity.adapter';
 import { createIdentityAdapterFromEnvironment } from './identity-adapter.factory';
 import { AuthModule } from '../auth/auth.module';
 import { OrganizationService } from './organization.service';
+import { OrganizationController } from './organization.controller';
 
 @Module({
   imports: [DatabaseModule, AuthModule],
+  controllers: [OrganizationController],
   providers: [
     AccessControlService,
     ActorContextGuard,

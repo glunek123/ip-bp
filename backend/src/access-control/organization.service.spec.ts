@@ -28,6 +28,36 @@ function createFixture(options?: {
     teamId: string | null;
     version: number;
   }>;
+  contextMemberships?: Array<{
+    id: string;
+    active: boolean;
+    teamId: string | null;
+    user: {
+      id: string;
+      displayName: string;
+      active: boolean;
+      localCredential: { username: string } | null;
+      roleAssignments: Array<{
+        id: string;
+        roleTemplateId: string;
+        teamId: string | null;
+        active: boolean;
+        version: number;
+        roleTemplate: { name: string };
+      }>;
+    };
+  }>;
+  contextTeams?: Array<{
+    id: string;
+    name: string;
+    status: 'ACTIVE' | 'INACTIVE';
+  }>;
+  contextRoles?: Array<{
+    id: string;
+    name: string;
+    active: boolean;
+    grants: Array<{ action: string; scope: string }>;
+  }>;
 }) {
   const actorGrants = options?.actorGrants ?? [
     departmentGrant('ROLE_ASSIGN'),
@@ -88,6 +118,7 @@ function createFixture(options?: {
           });
         },
       ),
+      findMany: jest.fn().mockResolvedValue(options?.contextMemberships ?? []),
       update: jest.fn(),
     },
     roleAssignment: {
@@ -128,6 +159,7 @@ function createFixture(options?: {
         departmentId: targetDepartmentId,
         grants: targetRoleGrants,
       }),
+      findMany: jest.fn().mockResolvedValue(options?.contextRoles ?? []),
     },
     team: {
       findUnique: jest.fn().mockResolvedValue(
@@ -151,6 +183,7 @@ function createFixture(options?: {
         name: '团队甲',
         status: 'INACTIVE',
       }),
+      findMany: jest.fn().mockResolvedValue(options?.contextTeams ?? []),
     },
     auditEvent: { create: jest.fn().mockResolvedValue({ id: 'audit-1' }) },
   };
@@ -166,6 +199,120 @@ function createFixture(options?: {
     transaction,
   };
 }
+
+describe('OrganizationService management context', () => {
+  const sameTeamMembership = {
+    id: 'membership-same-team',
+    active: true,
+    teamId: 'team-a',
+    user: {
+      id: 'same-team-user',
+      displayName: '同组人员',
+      active: true,
+      localCredential: { username: 'same.team' },
+      roleAssignments: [],
+    },
+  };
+  const otherTeamMembership = {
+    id: 'membership-other-team',
+    active: true,
+    teamId: 'team-b',
+    user: {
+      id: 'other-team-user',
+      displayName: '其他组人员',
+      active: true,
+      localCredential: { username: 'other.team' },
+      roleAssignments: [],
+    },
+  };
+
+  it('returns all current-department management data to a department reader', async () => {
+    const fixture = createFixture({
+      actorGrants: [
+        departmentGrant('USER_READ'),
+        departmentGrant('USER_MANAGE'),
+        departmentGrant('TEAM_READ'),
+        departmentGrant('TEAM_MANAGE'),
+        departmentGrant('ROLE_READ'),
+        departmentGrant('ROLE_ASSIGN'),
+        departmentGrant('CUSTOMER_READ'),
+      ],
+      contextMemberships: [sameTeamMembership, otherTeamMembership],
+      contextTeams: [
+        { id: 'team-a', name: '团队甲', status: 'ACTIVE' },
+        { id: 'team-b', name: '团队乙', status: 'ACTIVE' },
+      ],
+      contextRoles: [
+        {
+          id: 'role-a',
+          name: '运营',
+          active: true,
+          grants: [{ action: 'CUSTOMER_READ', scope: 'SELF' }],
+        },
+      ],
+    });
+
+    const result = await fixture.service.getManagementContext(actor);
+
+    expect(result.users.map((user) => user.id)).toEqual([
+      'same-team-user',
+      'other-team-user',
+    ]);
+    expect(result.teams.map((team) => team.id)).toEqual(['team-a', 'team-b']);
+    expect(result.roles.map((role) => role.id)).toEqual(['role-a']);
+    expect(result.capabilities).toEqual({
+      createUser: true,
+      manageUsers: true,
+      createTeam: true,
+      manageTeams: true,
+      assignDepartmentRoles: true,
+      assignTeamRoles: false,
+    });
+  });
+
+  it('constrains TEAM-scoped management reads to the active actor Team', async () => {
+    const fixture = createFixture({
+      actorTeamId: 'team-a',
+      actorGrants: [
+        { action: 'USER_READ', scope: 'TEAM' },
+        { action: 'TEAM_READ', scope: 'TEAM' },
+        { action: 'ROLE_READ', scope: 'TEAM' },
+        { action: 'ROLE_ASSIGN', scope: 'TEAM' },
+        { action: 'CUSTOMER_READ', scope: 'TEAM' },
+      ],
+      contextMemberships: [sameTeamMembership],
+      contextTeams: [{ id: 'team-a', name: '团队甲', status: 'ACTIVE' }],
+      contextRoles: [
+        {
+          id: 'role-team',
+          name: '组内运营',
+          active: true,
+          grants: [{ action: 'CUSTOMER_READ', scope: 'TEAM' }],
+        },
+        {
+          id: 'role-self',
+          name: '本人运营',
+          active: true,
+          grants: [{ action: 'CUSTOMER_READ', scope: 'SELF' }],
+        },
+      ],
+    });
+
+    const result = await fixture.service.getManagementContext(actor);
+
+    expect(result.users.map((user) => user.id)).toEqual(['same-team-user']);
+    expect(result.teams.map((team) => team.id)).toEqual(['team-a']);
+    expect(result.roles.map((role) => role.id)).toEqual(['role-team']);
+    expect(result.capabilities.assignTeamRoles).toBe(true);
+    expect(
+      fixture.transaction.departmentMembership.findMany,
+    ).toHaveBeenCalledWith(
+      expect.objectContaining({
+        where: expect.objectContaining({ teamId: 'team-a' }),
+      }),
+    );
+  });
+});
 
 describe('OrganizationService role assignment boundary', () => {
   it('allows a department grant to assign a covered role to another member', async () => {
