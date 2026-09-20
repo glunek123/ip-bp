@@ -20,6 +20,7 @@ const roleId = '33333333-3333-4333-8333-333333333333';
 
 describe('RoleTemplateController', () => {
   const getImpact = jest.fn();
+  const copy = jest.fn();
   const recordDeniedAttempt = jest.fn();
   let app: INestApplication;
 
@@ -35,7 +36,7 @@ describe('RoleTemplateController', () => {
         ActorContextGuard,
         { provide: AuthService, useValue: { resolveSession: jest.fn() } },
         { provide: IDENTITY_ADAPTER, useValue: identity },
-        { provide: RoleTemplateService, useValue: { getImpact } },
+        { provide: RoleTemplateService, useValue: { getImpact, copy } },
         {
           provide: OrganizationService,
           useValue: { recordDeniedAttempt },
@@ -106,5 +107,67 @@ describe('RoleTemplateController', () => {
 
     expect(response).toBeDefined();
     expect(response !== undefined && 'content' in response).toBe(true);
+  });
+
+  it('validates and forwards a complete template copy command', async () => {
+    copy.mockResolvedValueOnce({
+      id: '44444444-4444-4444-8444-444444444444',
+      name: '复制角色',
+      version: 1,
+      activeAssignmentCount: 0,
+      grants: [{ action: 'CUSTOMER_READ', scope: 'TEAM' }],
+    });
+
+    await request(app.getHttpServer())
+      .post('/api/v1/organization/role-templates')
+      .set('Authorization', 'Bearer allowed-token')
+      .send({
+        sourceRoleTemplateId: roleId,
+        name: ' 复制角色 ',
+        grants: [{ action: 'CUSTOMER_READ', scope: 'TEAM' }],
+      })
+      .expect(201);
+
+    expect(copy).toHaveBeenCalledWith(actor, {
+      sourceRoleTemplateId: roleId,
+      name: '复制角色',
+      grants: [{ action: 'CUSTOMER_READ', scope: 'TEAM' }],
+    });
+  });
+
+  it('rejects unknown actions and server-controlled copy fields', async () => {
+    await request(app.getHttpServer())
+      .post('/api/v1/organization/role-templates')
+      .set('Authorization', 'Bearer allowed-token')
+      .send({
+        sourceRoleTemplateId: roleId,
+        departmentId: actor.departmentId,
+        name: '复制角色',
+        grants: [{ action: 'MADE_UP_ACTION', scope: 'TEAM' }],
+      })
+      .expect(400);
+
+    expect(copy).not.toHaveBeenCalled();
+  });
+
+  it('records a denied copy attempt', async () => {
+    copy.mockRejectedValueOnce(
+      new ForbiddenException({ code: 'ROLE_TEMPLATE_GRANT_NOT_COVERED' }),
+    );
+
+    await request(app.getHttpServer())
+      .post('/api/v1/organization/role-templates')
+      .set('Authorization', 'Bearer allowed-token')
+      .send({
+        sourceRoleTemplateId: roleId,
+        name: '复制角色',
+        grants: [{ action: 'CUSTOMER_READ', scope: 'TEAM' }],
+      })
+      .expect(403);
+
+    expect(recordDeniedAttempt).toHaveBeenCalledWith(
+      actor,
+      'role-template.copy',
+    );
   });
 });

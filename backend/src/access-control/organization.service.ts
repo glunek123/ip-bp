@@ -284,7 +284,8 @@ export class OrganizationService {
       | 'role.status'
       | 'team.create'
       | 'team.status'
-      | 'role-template.impact',
+      | 'role-template.impact'
+      | 'role-template.copy',
   ): Promise<void> {
     try {
       await this.database.$transaction(async (transaction) => {
@@ -1416,22 +1417,23 @@ export class OrganizationService {
     );
   }
 
-  private async lockRoleTemplate(
+  async lockRoleTemplate(
     transaction: Prisma.TransactionClient,
     departmentId: string,
     roleTemplateId: string,
+    mode: 'SHARE' | 'UPDATE' = 'SHARE',
   ): Promise<void> {
     await transaction.$queryRawUnsafe(
       `SELECT "id" FROM "role_templates"
        WHERE "id" = $1::uuid AND "department_id" = $2::uuid
-       FOR SHARE`,
+       FOR ${mode}`,
       roleTemplateId,
       departmentId,
     );
     await transaction.$queryRawUnsafe(
       `SELECT "id" FROM "role_grants"
        WHERE "role_template_id" = $1::uuid
-       FOR SHARE`,
+       FOR ${mode}`,
       roleTemplateId,
     );
   }
@@ -1451,7 +1453,7 @@ export class OrganizationService {
     );
   }
 
-  private async lockDepartment(
+  async lockDepartment(
     transaction: Prisma.TransactionClient,
     departmentId: string,
   ): Promise<void> {

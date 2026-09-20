@@ -26,7 +26,14 @@ function createFixture(options?: {
             ? { id: 'role-a', departmentId: actor.departmentId, version: 2 }
             : options.role,
         ),
+      create: jest.fn().mockResolvedValue({
+        id: 'role-copy',
+        name: '复制角色',
+        version: 1,
+      }),
     },
+    roleGrant: { createMany: jest.fn().mockResolvedValue({ count: 1 }) },
+    auditEvent: { create: jest.fn().mockResolvedValue({ id: 'audit-1' }) },
     roleAssignment: {
       findMany: jest.fn().mockResolvedValue(
         options?.assignments ?? [
@@ -44,13 +51,14 @@ function createFixture(options?: {
     ),
   };
   const organization = {
-    loadCurrentActorGrants: jest
-      .fn()
-      .mockResolvedValue(
-        options?.actorGrants ?? [
-          { action: 'ROLE_MANAGE', scope: 'DEPARTMENT', teamId: null },
-        ],
-      ),
+    lockDepartment: jest.fn().mockResolvedValue(undefined),
+    lockRoleTemplate: jest.fn().mockResolvedValue(undefined),
+    loadCurrentActorGrants: jest.fn().mockResolvedValue(
+      options?.actorGrants ?? [
+        { action: 'ROLE_MANAGE', scope: 'DEPARTMENT', teamId: null },
+        { action: 'CUSTOMER_READ', scope: 'DEPARTMENT', teamId: null },
+      ],
+    ),
   };
 
   return {
@@ -58,6 +66,7 @@ function createFixture(options?: {
       database as never,
       organization as unknown as OrganizationService,
     ),
+    database,
     transaction,
     organization,
   };
@@ -117,5 +126,128 @@ describe('RoleTemplateService impact preview', () => {
       fixture.service.getImpact(actor, 'foreign-role'),
     ).rejects.toBeInstanceOf(ForbiddenException);
     expect(fixture.transaction.roleAssignment.findMany).not.toHaveBeenCalled();
+  });
+});
+
+describe('RoleTemplateService copy', () => {
+  const input = {
+    sourceRoleTemplateId: 'role-a',
+    name: ' 复制角色 ',
+    grants: [{ action: 'CUSTOMER_READ' as const, scope: 'TEAM' as const }],
+  };
+
+  it('creates the complete copied template and audit atomically', async () => {
+    const fixture = createFixture();
+
+    await expect(fixture.service.copy(actor, input)).resolves.toEqual({
+      id: 'role-copy',
+      name: '复制角色',
+      version: 1,
+      activeAssignmentCount: 0,
+      grants: [{ action: 'CUSTOMER_READ', scope: 'TEAM' }],
+    });
+
+    expect(fixture.organization.lockDepartment).toHaveBeenCalledWith(
+      fixture.transaction,
+      actor.departmentId,
+    );
+    expect(fixture.organization.lockRoleTemplate).toHaveBeenCalledWith(
+      fixture.transaction,
+      actor.departmentId,
+      'role-a',
+      'SHARE',
+    );
+    expect(fixture.transaction.roleTemplate.create).toHaveBeenCalledWith({
+      data: { departmentId: actor.departmentId, name: '复制角色' },
+      select: { id: true, name: true, version: true },
+    });
+    expect(fixture.transaction.roleGrant.createMany).toHaveBeenCalledWith({
+      data: [
+        {
+          roleTemplateId: 'role-copy',
+          action: 'CUSTOMER_READ',
+          scope: 'TEAM',
+        },
+      ],
+    });
+    expect(fixture.transaction.auditEvent.create).toHaveBeenCalledWith({
+      data: expect.objectContaining({
+        action: 'role-template.created',
+        resourceId: 'role-copy',
+        details: {
+          sourceRoleTemplateId: 'role-a',
+          version: 1,
+          grants: [{ action: 'CUSTOMER_READ', scope: 'TEAM' }],
+        },
+      }),
+    });
+    expect(fixture.database.$transaction).toHaveBeenCalledWith(
+      expect.any(Function),
+      { isolationLevel: 'Serializable' },
+    );
+  });
+
+  it('rejects an empty or duplicate Grant set before opening a transaction', async () => {
+    const fixture = createFixture();
+
+    await expect(
+      fixture.service.copy(actor, { ...input, grants: [] }),
+    ).rejects.toMatchObject({
+      response: { code: 'ROLE_TEMPLATE_GRANTS_REQUIRED' },
+    });
+    await expect(
+      fixture.service.copy(actor, {
+        ...input,
+        grants: [input.grants[0], input.grants[0]],
+      }),
+    ).rejects.toMatchObject({
+      response: { code: 'ROLE_TEMPLATE_DUPLICATE_GRANT' },
+    });
+    expect(fixture.database.$transaction).not.toHaveBeenCalled();
+  });
+
+  it('rejects a Grant action the actor does not cover at department scope', async () => {
+    const fixture = createFixture({
+      actorGrants: [
+        { action: 'ROLE_MANAGE', scope: 'DEPARTMENT', teamId: null },
+        { action: 'CUSTOMER_READ', scope: 'TEAM', teamId: 'team-a' },
+      ],
+    });
+
+    await expect(fixture.service.copy(actor, input)).rejects.toMatchObject({
+      response: { code: 'ROLE_TEMPLATE_GRANT_NOT_COVERED' },
+    });
+    expect(fixture.transaction.roleTemplate.create).not.toHaveBeenCalled();
+  });
+
+  it('conceals an unavailable source template', async () => {
+    const fixture = createFixture({ role: null });
+
+    await expect(fixture.service.copy(actor, input)).rejects.toMatchObject({
+      response: { code: 'ROLE_TEMPLATE_SOURCE_UNAVAILABLE' },
+    });
+    expect(fixture.transaction.roleTemplate.create).not.toHaveBeenCalled();
+  });
+
+  it('maps a concurrent duplicate name without exposing Prisma details', async () => {
+    const fixture = createFixture();
+    fixture.database.$transaction.mockRejectedValueOnce(
+      Object.assign(new Error('unique metadata'), { code: 'P2002' }),
+    );
+
+    await expect(fixture.service.copy(actor, input)).rejects.toMatchObject({
+      response: { code: 'ROLE_TEMPLATE_NAME_ALREADY_EXISTS' },
+    });
+  });
+
+  it('does not report success when the transaction audit write fails', async () => {
+    const fixture = createFixture();
+    fixture.transaction.auditEvent.create.mockRejectedValueOnce(
+      new Error('audit unavailable'),
+    );
+
+    await expect(fixture.service.copy(actor, input)).rejects.toThrow(
+      'audit unavailable',
+    );
   });
 });
