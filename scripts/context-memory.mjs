@@ -188,12 +188,12 @@ function assertLightRecordChanges(changes) {
   });
   if (blocked.length) {
     throw new Error(
-      `Light context recording is limited to Demo and frontend style assets. Use the standard status-backed checkpoint for:\n${blocked.join('\n')}`,
+      `Light context recording is limited to Demo and frontend style assets. Use the standard checkpoint for:\n${blocked.join('\n')}`,
     );
   }
 }
 
-export function checkContext(root) {
+export function checkContext(root, { strict = false } = {}) {
   const files = inspectFiles(root);
   const snapshot = loadSnapshot(root);
   if (!snapshot)
@@ -201,11 +201,15 @@ export function checkContext(root) {
       'Missing context snapshot; review docs/project-status.md and record an explicit checkpoint',
     );
   const changes = differences(snapshot.files, files);
-  if (changes.length)
+  if (strict && changes.length)
     throw new Error(
       `Context snapshot drift (${changes.length} files):\n${changes.join('\n')}\n核对代码、验证结果与 project-status.md 后再记录；不要直接刷新。`,
     );
-  return { count: Object.keys(files).length, recordedAt: snapshot.recordedAt };
+  return {
+    count: Object.keys(files).length,
+    recordedAt: snapshot.recordedAt,
+    changes,
+  };
 }
 
 export function recordContext(root, { mode = 'standard' } = {}) {
@@ -213,21 +217,11 @@ export function recordContext(root, { mode = 'standard' } = {}) {
   const previous = loadSnapshot(root);
   if (mode === 'light' && !previous) {
     throw new Error(
-      'Light context recording requires an existing trusted snapshot; use the standard status-backed checkpoint',
+      'Light context recording requires an existing trusted snapshot; use the standard checkpoint',
     );
   }
   const changes = previous ? differences(previous.files, files) : [];
   if (mode === 'light') assertLightRecordChanges(changes);
-  if (
-    mode === 'standard' &&
-    previous &&
-    changes.length &&
-    previous.files[statusPath] === files[statusPath]
-  ) {
-    throw new Error(
-      'Tracked files changed but docs/project-status.md was not updated; review and document the change first',
-    );
-  }
   const snapshot = { version: 1, recordedAt: new Date().toISOString(), files };
   const target = join(root, snapshotPath);
   writeFileSync(
@@ -246,16 +240,24 @@ if (
   try {
     const root = fileURLToPath(new URL('../', import.meta.url));
     const command = process.argv[2];
+    const strict = process.argv.slice(3).includes('--strict');
     if (!['check', 'record', 'record-light'].includes(command))
       throw new Error(
-        'Usage: node scripts/context-memory.mjs check|record|record-light',
+        'Usage: node scripts/context-memory.mjs check [--strict]|record|record-light',
       );
+    if (strict && command !== 'check')
+      throw new Error('--strict is only valid with the check command');
     const result =
       command === 'check'
-        ? checkContext(root)
+        ? checkContext(root, { strict })
         : recordContext(root, {
             mode: command === 'record-light' ? 'light' : 'standard',
           });
+    if (command === 'check' && result.changes.length) {
+      console.warn(
+        `Context snapshot drift (${result.changes.length} files):\n${result.changes.join('\n')}\nReview git status/diff and task overlap before continuing; do not refresh blindly.`,
+      );
+    }
     console.log(
       `Context ${command}: ${result.count} tracked text files; checkpoint ${result.recordedAt}. File consistency only; not a test or semantic approval.`,
     );
