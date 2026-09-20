@@ -80,7 +80,11 @@ test('scoped E2E commands reuse the guarded runner and full remains explicit', (
   );
   assert.match(
     backendPackage.scripts['db:migrate:deploy:test'],
-    /--env-file=\.env\.test.*migrate deploy/,
+    /run-test-migration\.mjs/,
+  );
+  assert.doesNotMatch(
+    backendPackage.scripts['db:migrate:deploy:test'],
+    /--env-file|DATABASE_URL/,
   );
 });
 

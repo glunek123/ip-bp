@@ -33,7 +33,7 @@
 
 ## 最近验证
 
-- Team候选`e6caef4`的完整`verify`、独立测试库迁移／Playwright及Level 3复审曾通过；精确检查数量、tree与审查过程保留在[验证记录](spec/v0.1/VALIDATION.md)，不在状态页重复维护。
+- Team候选`e6caef4`的完整`verify`、独立测试库迁移／Playwright及Level 3复审曾通过；历史检查数量与审查过程保留在[验证记录](spec/v0.1/VALIDATION.md)，该记录未绑定tree，不能作为新候选的可复用证据。
 - 本轮加固的正式候选、完整门禁、数据库E2E和Review结果尚未写入仓库；以最终树外交付记录为准，不得预先视为通过。
 
 ## 下一步

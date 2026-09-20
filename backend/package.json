@@ -14,7 +14,7 @@
     "start": "node --env-file=.env dist/main.js",
     "db:migrate": "node --env-file=.env node_modules/prisma/build/index.js migrate dev",
     "db:migrate:deploy": "node --env-file=.env node_modules/prisma/build/index.js migrate deploy",
-    "db:migrate:deploy:test": "node --env-file=.env.test node_modules/prisma/build/index.js migrate deploy",
+    "db:migrate:deploy:test": "node ../scripts/run-test-migration.mjs",
     "auth:bootstrap-local": "node --env-file=.env dist/auth/bootstrap-local-account.js"
   },
   "dependencies": {
