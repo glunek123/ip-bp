@@ -364,6 +364,22 @@ describe('RoleTemplateService update', () => {
     expect(fixture.transaction.userAccount.updateMany).not.toHaveBeenCalled();
   });
 
+  it('maps a PostgreSQL serialization loser to a stable version conflict', async () => {
+    const fixture = createFixture();
+    fixture.database.$transaction.mockRejectedValueOnce({
+      code: 'P2010',
+      meta: {
+        driverAdapterError: { cause: { originalCode: '40001' } },
+      },
+    });
+
+    await expect(
+      fixture.service.update(actor, 'role-a', input),
+    ).rejects.toMatchObject({
+      response: { code: 'ROLE_TEMPLATE_VERSION_CONFLICT' },
+    });
+  });
+
   it('permits editing a template assigned to the actor without exceeding current authority', async () => {
     const fixture = createFixture({
       assignments: [{ userId: actor.userId, user: { displayName: '管理员' } }],

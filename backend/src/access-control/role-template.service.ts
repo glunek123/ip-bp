@@ -352,6 +352,12 @@ export class RoleTemplateService {
         { isolationLevel: 'Serializable' },
       );
     } catch (error) {
+      if (this.isSerializationConflict(error)) {
+        throw new ConflictException({
+          code: 'ROLE_TEMPLATE_VERSION_CONFLICT',
+          message: '角色模板已被他人修改，请刷新后重试',
+        });
+      }
       if (
         typeof error === 'object' &&
         error !== null &&
@@ -393,6 +399,32 @@ export class RoleTemplateService {
           `${right.action}:${right.scope}`,
         ),
       );
+  }
+
+  private isSerializationConflict(error: unknown): boolean {
+    if (typeof error !== 'object' || error === null || !('code' in error)) {
+      return false;
+    }
+    if (error.code === 'P2034') return true;
+    if (error.code !== 'P2010' || !('meta' in error)) return false;
+    const meta = error.meta;
+    if (typeof meta !== 'object' || meta === null) return false;
+    const adapter =
+      'driverAdapterError' in meta ? meta.driverAdapterError : undefined;
+    if (
+      typeof adapter !== 'object' ||
+      adapter === null ||
+      !('cause' in adapter)
+    ) {
+      return false;
+    }
+    const cause = adapter.cause;
+    return (
+      typeof cause === 'object' &&
+      cause !== null &&
+      (('originalCode' in cause && cause.originalCode === '40001') ||
+        ('sqlState' in cause && cause.sqlState === '40001'))
+    );
   }
 
   private forbidden(): ForbiddenException {

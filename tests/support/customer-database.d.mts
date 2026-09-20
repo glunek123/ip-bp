@@ -23,6 +23,7 @@ export const personnelFixtures: Readonly<{
   foreignUserId: string;
   adminRoleId: string;
   operatorRoleId: string;
+  foreignRoleId: string;
   teamAId: string;
   teamBId: string;
 }>;
@@ -47,6 +48,28 @@ export function addPersonnelForeignMembership(username: string): Promise<void>;
 export function countPersonnelCredentials(username: string): Promise<number>;
 export function rejectPersonnelCreatedAuditWrites(): Promise<void>;
 export function allowPersonnelCreatedAuditWrites(): Promise<void>;
+export function getRoleTemplateSnapshot(name: string): Promise<{
+  id: string;
+  name: string;
+  version: number;
+  grants: Array<{ action: string; scope: string }>;
+  assignments: Array<{
+    userId: string;
+    user: { authorizationRevision: number };
+  }>;
+} | null>;
+export function setPersonnelAdminRoleManageScope(
+  scope: 'SELF' | 'TEAM' | 'DEPARTMENT' | null,
+): Promise<void>;
+export function rejectRoleTemplateAuditWrites(
+  action: 'role-template.created' | 'role-template.updated',
+): Promise<void>;
+export function allowRoleTemplateAuditWrites(): Promise<void>;
+export function countRoleTemplatesByName(name: string): Promise<number>;
+export function verifyRoleManageMigration(): Promise<{
+  counts: { valid: number; shared: number; incomplete: number };
+  revisions: { valid: number; shared: number; incomplete: number };
+}>;
 export function resetLocalAuthE2eData(): Promise<{
   username: string;
   password: string;

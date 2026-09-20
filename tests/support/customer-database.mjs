@@ -1939,12 +1939,14 @@ const personnelFixtures = {
   foreignUserId: '20000000-0000-4000-8000-000000000021',
   adminRoleId: '30000000-0000-4000-8000-000000000020',
   operatorRoleId: '30000000-0000-4000-8000-000000000021',
+  foreignRoleId: '30000000-0000-4000-8000-000000000022',
   teamAId: '40000000-0000-4000-8000-000000000020',
   teamBId: '40000000-0000-4000-8000-000000000021',
 };
 
 async function resetPersonnelAccessE2eData() {
   await allowPersonnelCreatedAuditWrites();
+  await allowRoleTemplateAuditWrites();
   const departmentId = personnelFixtures.departmentId;
   const departmentIds = [departmentId, personnelFixtures.foreignDepartmentId];
   const memberships = await database.departmentMembership.findMany({
@@ -2069,6 +2071,11 @@ async function resetPersonnelAccessE2eData() {
           departmentId,
           name: '团队客户经办',
         },
+        {
+          id: personnelFixtures.foreignRoleId,
+          departmentId: personnelFixtures.foreignDepartmentId,
+          name: '其他部门角色',
+        },
       ],
     });
     const departmentActions = [
@@ -2078,6 +2085,7 @@ async function resetPersonnelAccessE2eData() {
       'TEAM_MANAGE',
       'ROLE_READ',
       'ROLE_ASSIGN',
+      'ROLE_MANAGE',
       'CUSTOMER_READ',
       'CUSTOMER_CREATE_DRAFT',
       'CUSTOMER_EDIT_ROUTINE',
@@ -2180,6 +2188,254 @@ async function getPersonnelAccessSnapshot(username) {
   };
 }
 
+async function getRoleTemplateSnapshot(name) {
+  return database.roleTemplate.findUnique({
+    where: {
+      departmentId_name: {
+        departmentId: personnelFixtures.departmentId,
+        name,
+      },
+    },
+    select: {
+      id: true,
+      name: true,
+      version: true,
+      grants: {
+        select: { action: true, scope: true },
+        orderBy: [{ action: 'asc' }, { scope: 'asc' }],
+      },
+      assignments: {
+        where: { active: true },
+        select: {
+          userId: true,
+          user: { select: { authorizationRevision: true } },
+        },
+        orderBy: { userId: 'asc' },
+      },
+    },
+  });
+}
+
+async function setPersonnelAdminRoleManageScope(scope) {
+  await database.roleGrant.deleteMany({
+    where: {
+      roleTemplateId: personnelFixtures.adminRoleId,
+      action: 'ROLE_MANAGE',
+    },
+  });
+  if (scope !== null) {
+    await database.roleGrant.create({
+      data: {
+        roleTemplateId: personnelFixtures.adminRoleId,
+        action: 'ROLE_MANAGE',
+        scope,
+      },
+    });
+  }
+}
+
+async function rejectRoleTemplateAuditWrites(action) {
+  await allowRoleTemplateAuditWrites();
+  if (!['role-template.created', 'role-template.updated'].includes(action)) {
+    throw new Error('Unsupported role template audit action');
+  }
+  await database.$executeRawUnsafe(
+    `ALTER TABLE "audit_events" ADD CONSTRAINT "e2e_reject_role_template_audit" CHECK ("action" <> '${action}') NOT VALID`,
+  );
+}
+
+async function allowRoleTemplateAuditWrites() {
+  await database.$executeRawUnsafe(
+    'ALTER TABLE "audit_events" DROP CONSTRAINT IF EXISTS "e2e_reject_role_template_audit"',
+  );
+}
+
+async function countRoleTemplatesByName(name) {
+  return database.roleTemplate.count({
+    where: { departmentId: personnelFixtures.departmentId, name },
+  });
+}
+
+async function verifyRoleManageMigration() {
+  const client = new Client({ connectionString: databaseUrl });
+  const migrationRoot = resolve(process.cwd(), 'backend/prisma/migrations');
+  const actionTarget = '20260920030000_add_role_manage_action';
+  const backfillTarget = '20260920040000_backfill_role_manage_grant';
+  const migrations = (await readdir(migrationRoot))
+    .filter((name) => /^\d{14}_/.test(name))
+    .sort();
+  const previousMigrations = migrations.filter((name) => name < actionTarget);
+  const schema = `role_manage_probe_${randomUUID().replaceAll('-', '')}`;
+  const ids = {
+    validDepartment: randomUUID(),
+    validUser: randomUUID(),
+    validRole: randomUUID(),
+    sharedDepartment: randomUUID(),
+    sharedUser: randomUUID(),
+    sharedOtherUser: randomUUID(),
+    sharedRole: randomUUID(),
+    incompleteDepartment: randomUUID(),
+    incompleteUser: randomUUID(),
+    incompleteRole: randomUUID(),
+  };
+  const allExistingActions = [
+    'customer.read',
+    'customer.create-draft',
+    'customer.edit-routine',
+    'user.read',
+    'user.manage',
+    'team.read',
+    'team.manage',
+    'role.read',
+    'role.assign',
+  ];
+
+  await client.connect();
+  try {
+    const actual = await client.query('SELECT current_database() AS database');
+    if (actual.rows[0].database !== 'dev_cor_test') {
+      throw new Error('Unexpected migration database');
+    }
+    await client.query(`CREATE SCHEMA "${schema}"`);
+    await client.query(`SET search_path TO "${schema}"`);
+    for (const migration of previousMigrations) {
+      await client.query(
+        await readFile(
+          resolve(migrationRoot, migration, 'migration.sql'),
+          'utf8',
+        ),
+      );
+    }
+
+    for (const [departmentId, name] of [
+      [ids.validDepartment, '有效引导部门'],
+      [ids.sharedDepartment, '共享角色部门'],
+      [ids.incompleteDepartment, '非引导部门'],
+    ]) {
+      await client.query(
+        'INSERT INTO departments(id,name,updated_at) VALUES ($1,$2,NOW())',
+        [departmentId, name],
+      );
+    }
+    for (const [userId, subject, displayName] of [
+      [ids.validUser, 'local:valid-bootstrap', '有效管理员'],
+      [ids.sharedUser, 'local:shared-bootstrap', '共享管理员'],
+      [ids.sharedOtherUser, 'external:shared-user', '共享受让人'],
+      [ids.incompleteUser, 'local:incomplete-bootstrap', '非引导管理员'],
+    ]) {
+      await client.query(
+        'INSERT INTO user_accounts(id,external_subject,display_name,updated_at) VALUES ($1,$2,$3,NOW())',
+        [userId, subject, displayName],
+      );
+    }
+    for (const [userId, departmentId] of [
+      [ids.validUser, ids.validDepartment],
+      [ids.sharedUser, ids.sharedDepartment],
+      [ids.sharedOtherUser, ids.sharedDepartment],
+      [ids.incompleteUser, ids.incompleteDepartment],
+    ]) {
+      await client.query(
+        'INSERT INTO department_memberships(id,user_id,department_id,updated_at) VALUES ($1,$2,$3,NOW())',
+        [randomUUID(), userId, departmentId],
+      );
+    }
+    for (const [userId, username] of [
+      [ids.validUser, 'migration.valid'],
+      [ids.sharedUser, 'migration.shared'],
+      [ids.incompleteUser, 'migration.incomplete'],
+    ]) {
+      await client.query(
+        'INSERT INTO local_credentials(id,user_id,username,password_hash,updated_at) VALUES ($1,$2,$3,$4,NOW())',
+        [randomUUID(), userId, username, 'hash'],
+      );
+    }
+    for (const [roleId, departmentId, name] of [
+      [ids.validRole, ids.validDepartment, '任意名称甲'],
+      [ids.sharedRole, ids.sharedDepartment, '任意名称乙'],
+      [ids.incompleteRole, ids.incompleteDepartment, '任意名称丙'],
+    ]) {
+      await client.query(
+        'INSERT INTO role_templates(id,department_id,name,updated_at) VALUES ($1,$2,$3,NOW())',
+        [roleId, departmentId, name],
+      );
+    }
+    for (const [roleId, actions] of [
+      [ids.validRole, allExistingActions],
+      [ids.sharedRole, allExistingActions],
+      [ids.incompleteRole, allExistingActions.slice(0, -1)],
+    ]) {
+      for (const action of actions) {
+        await client.query(
+          "INSERT INTO role_grants(id,role_template_id,action,scope) VALUES ($1,$2,$3,'DEPARTMENT')",
+          [randomUUID(), roleId, action],
+        );
+      }
+    }
+    for (const [userId, departmentId, roleId] of [
+      [ids.validUser, ids.validDepartment, ids.validRole],
+      [ids.sharedUser, ids.sharedDepartment, ids.sharedRole],
+      [ids.sharedOtherUser, ids.sharedDepartment, ids.sharedRole],
+      [ids.incompleteUser, ids.incompleteDepartment, ids.incompleteRole],
+    ]) {
+      await client.query(
+        'INSERT INTO role_assignments(id,user_id,department_id,role_template_id,updated_at) VALUES ($1,$2,$3,$4,NOW())',
+        [randomUUID(), userId, departmentId, roleId],
+      );
+    }
+
+    await client.query(
+      await readFile(
+        resolve(migrationRoot, actionTarget, 'migration.sql'),
+        'utf8',
+      ),
+    );
+    await client.query(
+      await readFile(
+        resolve(migrationRoot, backfillTarget, 'migration.sql'),
+        'utf8',
+      ),
+    );
+
+    const counts = {};
+    for (const [key, roleId] of [
+      ['valid', ids.validRole],
+      ['shared', ids.sharedRole],
+      ['incomplete', ids.incompleteRole],
+    ]) {
+      counts[key] = Number(
+        (
+          await client.query(
+            "SELECT COUNT(*) FROM role_grants WHERE role_template_id=$1 AND action='role.manage' AND scope='DEPARTMENT'",
+            [roleId],
+          )
+        ).rows[0].count,
+      );
+    }
+    const revisions = {};
+    for (const [key, userId] of [
+      ['valid', ids.validUser],
+      ['shared', ids.sharedUser],
+      ['incomplete', ids.incompleteUser],
+    ]) {
+      revisions[key] = Number(
+        (
+          await client.query(
+            'SELECT authorization_revision FROM user_accounts WHERE id=$1',
+            [userId],
+          )
+        ).rows[0].authorization_revision,
+      );
+    }
+    return { counts, revisions };
+  } finally {
+    await client.query('RESET search_path').catch(() => undefined);
+    await client
+      .query(`DROP SCHEMA IF EXISTS "${schema}" CASCADE`)
+      .catch(() => undefined);
+    await client.end();
+  }
+}
+
 export {
   personnelFixtures,
   resetPersonnelAccessE2eData,
@@ -2188,6 +2444,12 @@ export {
   countPersonnelCredentials,
   rejectPersonnelCreatedAuditWrites,
   allowPersonnelCreatedAuditWrites,
+  getRoleTemplateSnapshot,
+  setPersonnelAdminRoleManageScope,
+  rejectRoleTemplateAuditWrites,
+  allowRoleTemplateAuditWrites,
+  countRoleTemplatesByName,
+  verifyRoleManageMigration,
   resetLocalAuthE2eData,
   verifyLocalAuthMigration,
   verifyRightsHolderNames,
