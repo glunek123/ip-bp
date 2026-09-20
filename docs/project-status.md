@@ -8,7 +8,7 @@
 
 ## 当前任务
 
-**GOV-FLOW-GATES-003（候选实现完成，待审查／集成）**：隔离分支`codex/dev-flow-gates`已落实“L2轻量、L3严格、Merge按最终Git tree复用、Release最完整”。范围仅含治理规则、上下文工具、显式Slice验证入口、tree evidence、门禁去重、状态／历史分离及其测试；未修改业务功能、Prisma schema、迁移、依赖版本、生产配置或真实数据。
+**GOV-FLOW-GATES-003（实现与审查完成，待决定集成方式）**：隔离分支`codex/dev-flow-gates`已落实“L2轻量、L3严格、Merge按最终Git tree复用、Release最完整”。范围仅含治理规则、上下文工具、显式Slice验证入口、tree evidence、门禁去重、状态／历史分离及其测试；未修改业务功能、Prisma schema、迁移、依赖版本、生产配置或真实数据。
 
 当前实施顺序：
 
@@ -39,8 +39,9 @@
 - TDD新增context、Slice配置、固定runner和tree evidence回归；工具现为35项，包含检查期间HEAD切换到不同tree时拒绝落证据。Jest、Vitest、Playwright的无匹配范围均实测退出非0；显式Unit范围通过：客户后端／前端31／31、权利主体30／44、认证46／40。
 - 独立测试库从空库应用11份迁移；权利主体数据库E2E 11／11、认证数据库E2E 4／4通过。该证据验证新入口范围，不代表业务功能发生新变化。
 - 审查前候选完整`pnpm verify`退出0，用时80.04秒；首轮修复后为66.59秒；加入候选tree前后锁定后的最新完整`pnpm verify`再次退出0，用时65.47秒，覆盖strict context、Spec、工具35项、后端148项、前端125项及双端构建。同机旧等价流程曾退出0、用时89.24秒，去重效果得到保留。
-- `project-status.md`由约42KB缩至约3.2KB，原历史完整迁至[历史状态](project-status-history-through-2026-09-18.md)。首轮独立审查`REJECTED`（Critical 0／Important 2／Minor 2）的4项均已关闭；第二轮为`REJECTED`（Critical 0／Important 1／Minor 0），新发现检查期间tree可能变化，现已通过前后锁定同一干净tree及负向回归修复，等待最终门禁与复审。本任务尚未集成或推送。
+- 固定候选`20f890a`的`verify:slice:right-holder`退出0，用时37.46秒，包含定向Unit、快速静态门禁、Slice格式、后端构建和隔离数据库E2E 11／11；evidence核对命中tree `a57526719c4590ded95b01761054365aa9f5f55e`。
+- `project-status.md`由约42KB缩至约3.2KB，原历史完整迁至[历史状态](project-status-history-through-2026-09-18.md)。首轮独立审查`REJECTED`（Critical 0／Important 2／Minor 2）的4项均已关闭；第二轮`REJECTED`（Critical 0／Important 1／Minor 0）的候选tree竞态也已修复；第三轮最终复审`ACCEPTED`，Critical／Important／Minor均为0，未发现新问题。本任务尚未集成或推送。
 
 ## 下一步
 
-重录上下文并执行最终完整门禁；固定候选提交后运行Level 2 runner、核对跨worktree tree evidence并完成独立复审，随后再决定集成方式。业务侧唯一下一Slice仍为“人员账号、部门成员与角色分配闭环”，不因治理任务自动获得编码或发布授权。
+决定是否将`codex/dev-flow-gates`集成到`main`；如集成，按三级规则先获取远端并核对最终组合tree。业务侧唯一下一Slice仍为“人员账号、部门成员与角色分配闭环”，不因治理任务自动获得编码或发布授权。
