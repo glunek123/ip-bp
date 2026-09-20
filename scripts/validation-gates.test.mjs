@@ -40,24 +40,22 @@ test('explicit slice and database E2E gates are defined', () => {
 });
 
 test('slice gates stay scoped and never turn zero tests into success', () => {
-  for (const name of sliceScripts) {
-    const command = packageJson.scripts[name];
-    assert.match(command, /test:unit:/, name);
-    assert.match(command, /test:e2e:/, name);
-    assert.match(command, /check:fast/, name);
-    assert.match(command, /format:check:slice:/, name);
-    assert.match(command, /build:prepared/, name);
-    assert.match(command, /evidence:record/, name);
-    assert.doesNotMatch(command, /pnpm verify(?:\s|$)/, name);
-    assert.doesNotMatch(command, /test:e2e:full/, name);
-    assert.doesNotMatch(
-      command,
-      /\btest -- /,
-      `${name} must forward file filters`,
-    );
-  }
+  assert.equal(
+    packageJson.scripts['verify:slice:customer'],
+    'node scripts/run-validation-scope.mjs customer',
+  );
+  assert.equal(
+    packageJson.scripts['verify:slice:right-holder'],
+    'node scripts/run-validation-scope.mjs right-holder',
+  );
+  assert.equal(
+    packageJson.scripts['verify:slice:auth'],
+    'node scripts/run-validation-scope.mjs auth-focused',
+  );
+  assert.equal(packageJson.scripts['evidence:record'], undefined);
   for (const command of Object.values(packageJson.scripts)) {
     assert.doesNotMatch(command, /passWithNoTests|pass-with-no-tests/);
+    assert.doesNotMatch(command, /validation-evidence\.mjs record/);
   }
   for (const name of unitScripts) {
     assert.doesNotMatch(

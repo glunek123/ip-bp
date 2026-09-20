@@ -5,8 +5,8 @@ import { tmpdir } from 'node:os';
 import { join } from 'node:path';
 import { execFileSync } from 'node:child_process';
 import {
-  findReusableEvidence,
-  recordEvidence,
+  findReusableValidationScopeEvidence,
+  recordValidationScopeEvidence,
 } from './validation-evidence.mjs';
 
 function git(root, ...args) {
@@ -29,93 +29,107 @@ function repository(t) {
   return root;
 }
 
-const request = {
-  level: 'L2',
-  scope: 'customer',
-  checks: [
-    'test:unit:customer',
-    'check:fast',
-    'format:check:slice:customer',
-    'test:e2e:customer',
-  ],
+const environment = {
   nodeVersion: 'v24.21.0',
   pnpmVersion: '11.27.0',
 };
 
 test('records and reuses evidence only for the exact clean tree and check set', (t) => {
   const root = repository(t);
-  const result = recordEvidence(root, request);
+  const result = recordValidationScopeEvidence(root, 'customer', environment);
   const saved = JSON.parse(readFileSync(result.path, 'utf8'));
 
   assert.equal(saved.tree, git(root, 'rev-parse', 'HEAD^{tree}'));
   assert.equal(saved.records[0].commit, git(root, 'rev-parse', 'HEAD'));
-  assert.deepEqual(saved.records[0].checks, request.checks);
-  assert.equal(findReusableEvidence(root, request)?.tree, saved.tree);
   assert.equal(
-    findReusableEvidence(root, { ...request, checks: ['check:fast'] }),
+    findReusableValidationScopeEvidence(root, 'customer', environment)?.tree,
+    saved.tree,
+  );
+  assert.equal(
+    findReusableValidationScopeEvidence(root, 'right-holder', environment),
     undefined,
   );
   assert.equal(
-    findReusableEvidence(root, { ...request, pnpmVersion: '0.0.0' }),
+    findReusableValidationScopeEvidence(root, 'customer', {
+      ...environment,
+      pnpmVersion: '0.0.0',
+    }),
     undefined,
   );
 
   git(root, 'commit', '--allow-empty', '-qm', 'same tree, new commit');
-  assert.equal(findReusableEvidence(root, request)?.tree, saved.tree);
+  assert.equal(
+    findReusableValidationScopeEvidence(root, 'customer', environment)?.tree,
+    saved.tree,
+  );
 });
 
 test('keeps independent validation records for the same tree', (t) => {
   const root = repository(t);
-  const customer = recordEvidence(root, request);
-  const holderRequest = {
-    ...request,
-    scope: 'right-holder',
-    checks: ['test:unit:right-holder', 'test:e2e:right-holder'],
-  };
-  recordEvidence(root, holderRequest);
+  const customer = recordValidationScopeEvidence(root, 'customer', environment);
+  recordValidationScopeEvidence(root, 'right-holder', environment);
 
-  assert.equal(findReusableEvidence(root, request)?.tree, customer.tree);
   assert.equal(
-    findReusableEvidence(root, holderRequest)?.scope,
+    findReusableValidationScopeEvidence(root, 'customer', environment)?.tree,
+    customer.tree,
+  );
+  assert.equal(
+    findReusableValidationScopeEvidence(root, 'right-holder', environment)
+      ?.scope,
     'right-holder',
   );
+});
+
+test('reuses evidence from another worktree of the same repository', (t) => {
+  const root = repository(t);
+  const linked = mkdtempSync(join(tmpdir(), 'dev-cor-evidence-linked-'));
+  rmSync(linked, { recursive: true, force: true });
+  git(root, 'worktree', 'add', '--detach', linked, 'HEAD');
+
+  try {
+    const recorded = recordValidationScopeEvidence(
+      root,
+      'customer',
+      environment,
+    );
+    assert.equal(
+      findReusableValidationScopeEvidence(linked, 'customer', environment)
+        ?.tree,
+      recorded.tree,
+    );
+  } finally {
+    git(root, 'worktree', 'remove', '--force', linked);
+  }
 });
 
 test('rejects tracked, staged, and untracked candidate changes', (t) => {
   const tracked = repository(t);
   writeFileSync(join(tracked, 'source.txt'), 'dirty\n');
-  assert.throws(() => recordEvidence(tracked, request), /clean|dirty/i);
+  assert.throws(
+    () => recordValidationScopeEvidence(tracked, 'customer', environment),
+    /clean|dirty/i,
+  );
 
   const staged = repository(t);
   writeFileSync(join(staged, 'source.txt'), 'staged\n');
   git(staged, 'add', 'source.txt');
-  assert.throws(() => recordEvidence(staged, request), /clean|dirty/i);
+  assert.throws(
+    () => recordValidationScopeEvidence(staged, 'customer', environment),
+    /clean|dirty/i,
+  );
 
   const untracked = repository(t);
   writeFileSync(join(untracked, 'extra.txt'), 'untracked\n');
-  assert.throws(() => recordEvidence(untracked, request), /clean|dirty/i);
+  assert.throws(
+    () => recordValidationScopeEvidence(untracked, 'customer', environment),
+    /clean|dirty/i,
+  );
 });
 
-test('rejects invalid levels, scopes, and empty or duplicate checks', (t) => {
+test('derives checks from known scopes and rejects caller-defined scope names', (t) => {
   const root = repository(t);
   assert.throws(
-    () => recordEvidence(root, { ...request, level: 'L4' }),
-    /level/i,
-  );
-  assert.throws(
-    () => recordEvidence(root, { ...request, scope: '../escape' }),
+    () => recordValidationScopeEvidence(root, '../escape', environment),
     /scope/i,
-  );
-  assert.throws(
-    () => recordEvidence(root, { ...request, checks: [] }),
-    /check/i,
-  );
-  assert.throws(
-    () =>
-      recordEvidence(root, {
-        ...request,
-        checks: ['check:fast', 'check:fast'],
-      }),
-    /duplicate/i,
   );
 });

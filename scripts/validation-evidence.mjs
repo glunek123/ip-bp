@@ -2,6 +2,7 @@ import { existsSync, mkdirSync, readFileSync, writeFileSync } from 'node:fs';
 import { execFileSync } from 'node:child_process';
 import { dirname, join, resolve } from 'node:path';
 import { fileURLToPath, pathToFileURL } from 'node:url';
+import { validationScope } from './validation-scopes.mjs';
 
 const evidenceVersion = 1;
 const levels = new Set(['L1', 'L2', 'L3']);
@@ -59,10 +60,14 @@ function candidate(root) {
 }
 
 function evidencePath(root, tree) {
-  return join(root, '.local', 'validation-evidence', `${tree}.json`);
+  const commonDirectory = resolve(
+    root,
+    git(root, 'rev-parse', '--git-common-dir'),
+  );
+  return join(commonDirectory, 'dev-cor-validation-evidence', `${tree}.json`);
 }
 
-export function recordEvidence(root, request) {
+function recordEvidence(root, request) {
   const normalized = normalizeRequest(request);
   const fixed = candidate(root);
   const record = {
@@ -107,7 +112,7 @@ export function recordEvidence(root, request) {
   return { path, tree: fixed.tree, ...record };
 }
 
-export function findReusableEvidence(root, request) {
+function findReusableEvidence(root, request) {
   const normalized = normalizeRequest(request);
   let fixed;
   try {
@@ -140,15 +145,32 @@ export function findReusableEvidence(root, request) {
   return record ? { tree: fixed.tree, ...record } : undefined;
 }
 
+function scopeRequest(name, environment) {
+  const configured = validationScope(name);
+  return {
+    level: configured.level,
+    scope: name,
+    checks: configured.commands.map(({ id }) => id),
+    nodeVersion: environment.nodeVersion,
+    pnpmVersion: environment.pnpmVersion,
+  };
+}
+
+export function recordValidationScopeEvidence(root, name, environment) {
+  return recordEvidence(root, scopeRequest(name, environment));
+}
+
+export function findReusableValidationScopeEvidence(root, name, environment) {
+  return findReusableEvidence(root, scopeRequest(name, environment));
+}
+
 function parseArguments(values) {
   const options = {};
   for (let index = 0; index < values.length; index += 2) {
     const name = values[index];
     const value = values[index + 1];
     if (!name?.startsWith('--') || value === undefined)
-      throw new Error(
-        'Usage: validation-evidence.mjs record|check --level L1|L2|L3 --scope name --checks comma,separated',
-      );
+      throw new Error('Usage: validation-evidence.mjs check --scope name');
     options[name.slice(2)] = value;
   }
   return options;
@@ -171,33 +193,26 @@ if (
   try {
     const root = fileURLToPath(new URL('..', import.meta.url));
     const command = process.argv[2];
-    if (!['record', 'check'].includes(command))
-      throw new Error('Evidence command must be record or check');
+    if (command !== 'check') throw new Error('Evidence command must be check');
     const options = parseArguments(process.argv.slice(3));
-    const request = {
-      level: options.level,
-      scope: options.scope,
-      checks: options.checks?.split(',').filter(Boolean) ?? [],
+    if (!options.scope || Object.keys(options).length !== 1)
+      throw new Error('Evidence check requires only --scope name');
+    const environment = {
       nodeVersion: process.version,
       pnpmVersion: currentPnpmVersion(),
     };
-    if (command === 'record') {
-      const result = recordEvidence(root, request);
-      console.log(
-        `Recorded validation evidence for tree ${result.tree}: ${result.path}`,
+    const result = findReusableValidationScopeEvidence(
+      root,
+      options.scope,
+      environment,
+    );
+    if (!result) {
+      console.error(
+        'No reusable validation evidence matches this exact tree and scope',
       );
+      process.exitCode = 1;
     } else {
-      const result = findReusableEvidence(root, request);
-      if (!result) {
-        console.error(
-          'No reusable validation evidence matches this exact tree and request',
-        );
-        process.exitCode = 1;
-      } else {
-        console.log(
-          `Reusable validation evidence found for tree ${result.tree}`,
-        );
-      }
+      console.log(`Reusable validation evidence found for tree ${result.tree}`);
     }
   } catch (error) {
     console.error(

@@ -42,7 +42,7 @@
 - 当前显式Level 2入口为`pnpm verify:slice:customer`和`pnpm verify:slice:right-holder`，分别组合定向单元／契约、`check:fast`、Slice格式、后端构建及对应数据库E2E；规则／字段语义／公共契约变化时另运行`pnpm spec:check`，普通迁移另运行迁移专项。
 - `pnpm verify:slice:auth`只用于认证开发循环和聚焦回归，不替代Auth所属Level 3的完整`pnpm verify`、数据库风险专项与Review。
 - 数据库入口为`test:e2e:customer`、`test:e2e:right-holder`、`test:e2e:auth`和`test:e2e:full`；前三者缩小范围但仍使用同一隔离测试库保护和Playwright runner。Jest、Vitest与Playwright匹配0项时必须失败。
-- Slice门禁全部成功后才可调用`evidence:record`；证据保存在忽略目录`.local/validation-evidence/`，只认干净固定候选、完全相同Git tree、环境和检查集合。Auth focused证据不能冒充完整Level 3证据；新的组合tree不做自动affected推断。
+- Slice入口通过固定配置顺序执行检查，全部成功后由runner根据实际命令自动记录规范化检查ID；不提供可由调用者自报检查集合的独立记录命令。证据保存在Git common directory下，可在同一仓库的worktree之间复用，只认干净固定候选、完全相同Git tree、环境和检查集合；可用`pnpm evidence:check --scope <name>`核对。Auth focused证据不能冒充完整Level 3证据；新的组合tree不做自动affected推断。
 
 ## 恢复与交付
 

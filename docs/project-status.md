@@ -14,7 +14,7 @@
 
 1. 修正规则，解耦`context:record`与状态文件，并增加strict检查。
 2. 为现有客户、权利主体和认证路径增加少量显式Slice／E2E入口及零测试防护。
-3. 增加只支持完全相同Git tree的本地轻量验证证据。
+3. 增加只支持完全相同Git tree、可跨同仓库worktree复用的本地轻量验证证据。
 4. 消除完整`verify`中重复的Prisma generate和`vue-tsc`，再执行所属Level门禁。
 
 ## 已实现
@@ -23,7 +23,7 @@
 - 本地账号登录、会话、CSRF、限速，以及客户草稿建档／维护、一位准入联系人和权利主体最小关联已形成明确范围内的内部闭环。
 - 工程已有Node/pnpm锁定运行时、上下文与Spec检查、类型／Lint／格式／单元／契约／构建门禁及独立测试库Playwright。
 - 普通context检查现报告漂移但不阻断，strict模式继续阻断；标准记录已与状态文件机械更新解耦。客户／权利主体／认证已有显式Unit和数据库E2E入口，0测试匹配会失败。
-- 本地evidence只记录干净固定候选，并以Git tree、环境和精确检查集合复用；同一tree可保留多个范围，commit变化但tree相同仍可复用，新的组合tree仍需完整门禁。
+- Slice runner拥有固定的命令与规范化检查ID，全部检查成功后才自动记录evidence，调用者不能自报检查集合；证据位于Git common directory，只记录干净固定候选，并以Git tree、环境和精确检查集合在同仓库worktree间复用。同一tree可保留多个范围，commit变化但tree相同仍可复用，新的组合tree仍需完整门禁。
 - 完整`verify`已改为只生成一次Prisma Client、只运行一次`vue-tsc`，保留strict context、Spec、类型、Lint、格式、工具／前后端测试和双端构建。
 
 ## 未决与限制
@@ -36,11 +36,11 @@
 ## 最近验证
 
 - 2026-09-20：隔离worktree在生成Prisma Client后基线通过，工具22项、后端148项、前端125项；首次未生成Client的失败属于新worktree准备步骤，不是代码回归。
-- TDD新增context、Slice配置和tree evidence回归；工具现为30项。Jest、Vitest、Playwright的无匹配范围均实测退出非0；显式Unit范围通过：客户后端／前端31／31、权利主体30／44、认证46／40。
+- TDD新增context、Slice配置、固定runner和tree evidence回归；工具现为34项。Jest、Vitest、Playwright的无匹配范围均实测退出非0；显式Unit范围通过：客户后端／前端31／31、权利主体30／44、认证46／40。
 - 独立测试库从空库应用11份迁移；权利主体数据库E2E 11／11、认证数据库E2E 4／4通过。该证据验证新入口范围，不代表业务功能发生新变化。
-- 最终候选完整`pnpm verify`退出0，用时80.04秒，覆盖strict context、Spec、工具30项、后端148项、前端125项及双端构建；同机旧等价流程退出0、用时89.24秒，去重后减少9.20秒（约10.3%）。
-- `project-status.md`由约42KB缩至约3.2KB，原历史完整迁至[历史状态](project-status-history-through-2026-09-18.md)。外部子Agent因额度限制未能执行审查；本任务尚未集成或推送。
+- 审查前候选完整`pnpm verify`退出0，用时80.04秒；修复审查finding后的最终完整`pnpm verify`再次退出0，用时66.59秒，覆盖strict context、Spec、工具34项、后端148项、前端125项及双端构建。同机旧等价流程曾退出0、用时89.24秒，去重效果得到保留。
+- `project-status.md`由约42KB缩至约3.2KB，原历史完整迁至[历史状态](project-status-history-through-2026-09-18.md)。首轮独立审查结论为`REJECTED`（Critical 0／Important 2／Minor 2）：指出证据不能跨worktree复用、执行命令与证据标签可脱节，以及两处文案过时；现已逐项修复并增加跨worktree和runner失败不记证据的回归测试，等待最终门禁与复审。本任务尚未集成或推送。
 
 ## 下一步
 
-回填最终非执行性结果并重录上下文，固定候选提交后核对tree evidence；外部审查恢复可用时完成Review，随后再决定集成方式。业务侧唯一下一Slice仍为“人员账号、部门成员与角色分配闭环”，不因治理任务自动获得编码或发布授权。
+重录上下文并执行最终完整门禁；固定候选提交后运行Level 2 runner、核对跨worktree tree evidence并完成独立复审，随后再决定集成方式。业务侧唯一下一Slice仍为“人员账号、部门成员与角色分配闭环”，不因治理任务自动获得编码或发布授权。

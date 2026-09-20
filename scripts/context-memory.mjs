@@ -188,7 +188,7 @@ function assertLightRecordChanges(changes) {
   });
   if (blocked.length) {
     throw new Error(
-      `Light context recording is limited to Demo and frontend style assets. Use the standard status-backed checkpoint for:\n${blocked.join('\n')}`,
+      `Light context recording is limited to Demo and frontend style assets. Use the standard checkpoint for:\n${blocked.join('\n')}`,
     );
   }
 }
