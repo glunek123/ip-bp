@@ -285,7 +285,8 @@ export class OrganizationService {
       | 'team.create'
       | 'team.status'
       | 'role-template.impact'
-      | 'role-template.copy',
+      | 'role-template.copy'
+      | 'role-template.update',
   ): Promise<void> {
     try {
       await this.database.$transaction(async (transaction) => {
@@ -1434,6 +1435,26 @@ export class OrganizationService {
       `SELECT "id" FROM "role_grants"
        WHERE "role_template_id" = $1::uuid
        FOR ${mode}`,
+      roleTemplateId,
+    );
+  }
+
+  async lockRoleTemplateAssignmentsAndUsers(
+    transaction: Prisma.TransactionClient,
+    departmentId: string,
+    roleTemplateId: string,
+  ): Promise<void> {
+    await transaction.$queryRawUnsafe(
+      `SELECT "assignment"."id", "account"."id"
+       FROM "role_assignments" AS "assignment"
+       JOIN "user_accounts" AS "account"
+         ON "account"."id" = "assignment"."user_id"
+       WHERE "assignment"."department_id" = $1::uuid
+         AND "assignment"."role_template_id" = $2::uuid
+         AND "assignment"."active" = true
+       ORDER BY "account"."id", "assignment"."id"
+       FOR UPDATE OF "assignment", "account"`,
+      departmentId,
       roleTemplateId,
     );
   }

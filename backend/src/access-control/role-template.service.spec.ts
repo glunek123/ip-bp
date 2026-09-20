@@ -11,7 +11,13 @@ const actor: ActorContext = {
 
 function createFixture(options?: {
   actorGrants?: Array<{ action: string; scope: string; teamId: string | null }>;
-  role?: { id: string; departmentId: string; version: number } | null;
+  role?: {
+    id: string;
+    departmentId: string;
+    name: string;
+    version: number;
+    grants: Array<{ action: string; scope: string }>;
+  } | null;
   assignments?: Array<{
     userId: string;
     user: { displayName: string };
@@ -19,20 +25,35 @@ function createFixture(options?: {
 }) {
   const transaction = {
     roleTemplate: {
-      findFirst: jest
-        .fn()
-        .mockResolvedValue(
-          options?.role === undefined
-            ? { id: 'role-a', departmentId: actor.departmentId, version: 2 }
-            : options.role,
-        ),
+      findFirst: jest.fn().mockResolvedValue(
+        options?.role === undefined
+          ? {
+              id: 'role-a',
+              departmentId: actor.departmentId,
+              name: '原角色',
+              version: 2,
+              grants: [{ action: 'CUSTOMER_READ', scope: 'SELF' }],
+            }
+          : options.role,
+      ),
       create: jest.fn().mockResolvedValue({
         id: 'role-copy',
         name: '复制角色',
         version: 1,
       }),
+      update: jest.fn().mockResolvedValue({
+        id: 'role-a',
+        name: '更新角色',
+        version: 3,
+      }),
     },
-    roleGrant: { createMany: jest.fn().mockResolvedValue({ count: 1 }) },
+    roleGrant: {
+      createMany: jest.fn().mockResolvedValue({ count: 1 }),
+      deleteMany: jest.fn().mockResolvedValue({ count: 1 }),
+    },
+    userAccount: {
+      updateMany: jest.fn().mockResolvedValue({ count: 2 }),
+    },
     auditEvent: { create: jest.fn().mockResolvedValue({ id: 'audit-1' }) },
     roleAssignment: {
       findMany: jest.fn().mockResolvedValue(
@@ -53,6 +74,7 @@ function createFixture(options?: {
   const organization = {
     lockDepartment: jest.fn().mockResolvedValue(undefined),
     lockRoleTemplate: jest.fn().mockResolvedValue(undefined),
+    lockRoleTemplateAssignmentsAndUsers: jest.fn().mockResolvedValue(undefined),
     loadCurrentActorGrants: jest.fn().mockResolvedValue(
       options?.actorGrants ?? [
         { action: 'ROLE_MANAGE', scope: 'DEPARTMENT', teamId: null },
@@ -249,5 +271,113 @@ describe('RoleTemplateService copy', () => {
     await expect(fixture.service.copy(actor, input)).rejects.toThrow(
       'audit unavailable',
     );
+  });
+});
+
+describe('RoleTemplateService update', () => {
+  const input = {
+    name: ' 更新角色 ',
+    expectedVersion: 2,
+    grants: [
+      { action: 'CUSTOMER_READ' as const, scope: 'DEPARTMENT' as const },
+    ],
+  };
+
+  it('replaces Grants, increments the version, and invalidates distinct affected users', async () => {
+    const fixture = createFixture();
+
+    await expect(
+      fixture.service.update(actor, 'role-a', input),
+    ).resolves.toEqual({
+      id: 'role-a',
+      name: '更新角色',
+      version: 3,
+      activeAssignmentCount: 2,
+      grants: [{ action: 'CUSTOMER_READ', scope: 'DEPARTMENT' }],
+    });
+
+    expect(
+      fixture.organization.lockRoleTemplateAssignmentsAndUsers,
+    ).toHaveBeenCalledWith(fixture.transaction, actor.departmentId, 'role-a');
+    expect(fixture.transaction.roleGrant.deleteMany).toHaveBeenCalledWith({
+      where: { roleTemplateId: 'role-a' },
+    });
+    expect(fixture.transaction.roleGrant.createMany).toHaveBeenCalledWith({
+      data: [
+        {
+          roleTemplateId: 'role-a',
+          action: 'CUSTOMER_READ',
+          scope: 'DEPARTMENT',
+        },
+      ],
+    });
+    expect(fixture.transaction.roleTemplate.update).toHaveBeenCalledWith({
+      where: { id: 'role-a' },
+      data: { name: '更新角色', version: { increment: 1 } },
+      select: { id: true, name: true, version: true },
+    });
+    expect(fixture.transaction.userAccount.updateMany).toHaveBeenCalledWith({
+      where: { id: { in: ['user-b', 'user-c'] } },
+      data: { authorizationRevision: { increment: 1 } },
+    });
+    expect(fixture.transaction.auditEvent.create).toHaveBeenCalledWith({
+      data: expect.objectContaining({
+        action: 'role-template.updated',
+        resourceId: 'role-a',
+        details: {
+          from: {
+            name: '原角色',
+            version: 2,
+            grants: [{ action: 'CUSTOMER_READ', scope: 'SELF' }],
+          },
+          to: {
+            name: '更新角色',
+            version: 3,
+            grants: [{ action: 'CUSTOMER_READ', scope: 'DEPARTMENT' }],
+          },
+          affectedUserCount: 2,
+        },
+      }),
+    });
+  });
+
+  it('rejects a stale version before replacing Grants', async () => {
+    const fixture = createFixture();
+
+    await expect(
+      fixture.service.update(actor, 'role-a', {
+        ...input,
+        expectedVersion: 1,
+      }),
+    ).rejects.toMatchObject({
+      response: { code: 'ROLE_TEMPLATE_VERSION_CONFLICT' },
+    });
+    expect(fixture.transaction.roleGrant.deleteMany).not.toHaveBeenCalled();
+    expect(fixture.transaction.userAccount.updateMany).not.toHaveBeenCalled();
+  });
+
+  it('permits editing a template assigned to the actor without exceeding current authority', async () => {
+    const fixture = createFixture({
+      assignments: [{ userId: actor.userId, user: { displayName: '管理员' } }],
+    });
+
+    await expect(
+      fixture.service.update(actor, 'role-a', input),
+    ).resolves.toEqual(expect.objectContaining({ activeAssignmentCount: 1 }));
+    expect(fixture.transaction.userAccount.updateMany).toHaveBeenCalledWith({
+      where: { id: { in: [actor.userId] } },
+      data: { authorizationRevision: { increment: 1 } },
+    });
+  });
+
+  it('does not report success when an update audit write fails', async () => {
+    const fixture = createFixture();
+    fixture.transaction.auditEvent.create.mockRejectedValueOnce(
+      new Error('audit unavailable'),
+    );
+
+    await expect(
+      fixture.service.update(actor, 'role-a', input),
+    ).rejects.toThrow('audit unavailable');
   });
 });

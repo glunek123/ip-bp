@@ -4,6 +4,7 @@ import {
   Get,
   Param,
   ParseUUIDPipe,
+  Patch,
   Post,
   Body,
   UseGuards,
@@ -23,7 +24,10 @@ import {
   OrganizationRoleResponseDto,
   RoleTemplateImpactResponseDto,
 } from './organization-response.dto';
-import { CopyRoleTemplateDto } from './role-template.dto';
+import {
+  CopyRoleTemplateDto,
+  UpdateRoleTemplateDto,
+} from './role-template.dto';
 import { RoleTemplateService } from './role-template.service';
 
 @ApiTags('organization-role-templates')
@@ -47,6 +51,18 @@ export class RoleTemplateController {
     );
   }
 
+  @Patch(':roleTemplateId')
+  @ApiOkResponse({ type: OrganizationRoleResponseDto })
+  update(
+    @CurrentActor() actor: ActorContext,
+    @Param('roleTemplateId', new ParseUUIDPipe()) roleTemplateId: string,
+    @Body() input: UpdateRoleTemplateDto,
+  ) {
+    return this.execute(actor, 'role-template.update', () =>
+      this.roleTemplates.update(actor, roleTemplateId, input),
+    );
+  }
+
   @Get(':roleTemplateId/impact')
   @ApiOkResponse({ type: RoleTemplateImpactResponseDto })
   getImpact(
@@ -60,7 +76,8 @@ export class RoleTemplateController {
 
   private async execute<T>(
     actor: ActorContext,
-    operation: 'role-template.impact' | 'role-template.copy',
+    operation:
+      'role-template.impact' | 'role-template.copy' | 'role-template.update',
     action: () => Promise<T>,
   ): Promise<T> {
     try {

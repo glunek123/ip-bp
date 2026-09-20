@@ -21,6 +21,7 @@ const roleId = '33333333-3333-4333-8333-333333333333';
 describe('RoleTemplateController', () => {
   const getImpact = jest.fn();
   const copy = jest.fn();
+  const update = jest.fn();
   const recordDeniedAttempt = jest.fn();
   let app: INestApplication;
 
@@ -36,7 +37,7 @@ describe('RoleTemplateController', () => {
         ActorContextGuard,
         { provide: AuthService, useValue: { resolveSession: jest.fn() } },
         { provide: IDENTITY_ADAPTER, useValue: identity },
-        { provide: RoleTemplateService, useValue: { getImpact, copy } },
+        { provide: RoleTemplateService, useValue: { getImpact, copy, update } },
         {
           provide: OrganizationService,
           useValue: { recordDeniedAttempt },
@@ -168,6 +169,67 @@ describe('RoleTemplateController', () => {
     expect(recordDeniedAttempt).toHaveBeenCalledWith(
       actor,
       'role-template.copy',
+    );
+  });
+
+  it('validates and forwards a versioned template update', async () => {
+    update.mockResolvedValueOnce({
+      id: roleId,
+      name: '更新角色',
+      version: 3,
+      activeAssignmentCount: 1,
+      grants: [{ action: 'CUSTOMER_READ', scope: 'DEPARTMENT' }],
+    });
+
+    await request(app.getHttpServer())
+      .patch(`/api/v1/organization/role-templates/${roleId}`)
+      .set('Authorization', 'Bearer allowed-token')
+      .send({
+        name: ' 更新角色 ',
+        expectedVersion: 2,
+        grants: [{ action: 'CUSTOMER_READ', scope: 'DEPARTMENT' }],
+      })
+      .expect(200);
+
+    expect(update).toHaveBeenCalledWith(actor, roleId, {
+      name: '更新角色',
+      expectedVersion: 2,
+      grants: [{ action: 'CUSTOMER_READ', scope: 'DEPARTMENT' }],
+    });
+  });
+
+  it('rejects an invalid template version before update', async () => {
+    await request(app.getHttpServer())
+      .patch(`/api/v1/organization/role-templates/${roleId}`)
+      .set('Authorization', 'Bearer allowed-token')
+      .send({
+        name: '更新角色',
+        expectedVersion: 0,
+        grants: [{ action: 'CUSTOMER_READ', scope: 'DEPARTMENT' }],
+      })
+      .expect(400);
+
+    expect(update).not.toHaveBeenCalled();
+  });
+
+  it('records a denied update attempt', async () => {
+    update.mockRejectedValueOnce(
+      new ForbiddenException({ code: 'ROLE_TEMPLATE_GRANT_NOT_COVERED' }),
+    );
+
+    await request(app.getHttpServer())
+      .patch(`/api/v1/organization/role-templates/${roleId}`)
+      .set('Authorization', 'Bearer allowed-token')
+      .send({
+        name: '更新角色',
+        expectedVersion: 2,
+        grants: [{ action: 'CUSTOMER_READ', scope: 'DEPARTMENT' }],
+      })
+      .expect(403);
+
+    expect(recordDeniedAttempt).toHaveBeenCalledWith(
+      actor,
+      'role-template.update',
     );
   });
 });

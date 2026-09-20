@@ -27,6 +27,12 @@ export type CopyRoleTemplateInput = {
   grants: RoleGrantInput[];
 };
 
+export type UpdateRoleTemplateInput = {
+  name: string;
+  grants: RoleGrantInput[];
+  expectedVersion: number;
+};
+
 @Injectable()
 export class RoleTemplateService {
   constructor(
@@ -203,6 +209,164 @@ export class RoleTemplateService {
     }
   }
 
+  async update(
+    actor: ActorContext,
+    roleTemplateId: string,
+    input: UpdateRoleTemplateInput,
+  ) {
+    const name = input.name.trim();
+    if (name.length === 0 || Array.from(name).length > 100) {
+      throw new BadRequestException({
+        code: 'ROLE_TEMPLATE_NAME_INVALID',
+        message: '角色模板名称不能为空且不得超过100个字符',
+      });
+    }
+    const grants = this.normalizeGrants(input.grants);
+
+    try {
+      return await this.database.$transaction(
+        async (transaction) => {
+          await this.organization.lockDepartment(
+            transaction,
+            actor.departmentId,
+          );
+          const actorGrants = await this.organization.loadCurrentActorGrants(
+            transaction,
+            actor,
+          );
+          if (
+            !actorGrants.some(
+              (grant) =>
+                grant.action === 'ROLE_MANAGE' && grant.scope === 'DEPARTMENT',
+            )
+          ) {
+            throw this.forbidden();
+          }
+          for (const grant of grants) {
+            if (
+              !actorGrants.some(
+                (actorGrant) =>
+                  actorGrant.action === grant.action &&
+                  actorGrant.scope === 'DEPARTMENT',
+              )
+            ) {
+              throw new ForbiddenException({
+                code: 'ROLE_TEMPLATE_GRANT_NOT_COVERED',
+                message: '不能配置超出本人部门权限的授权',
+              });
+            }
+          }
+
+          await this.organization.lockRoleTemplate(
+            transaction,
+            actor.departmentId,
+            roleTemplateId,
+            'UPDATE',
+          );
+          const role = await transaction.roleTemplate.findFirst({
+            where: {
+              id: roleTemplateId,
+              departmentId: actor.departmentId,
+              active: true,
+            },
+            select: {
+              id: true,
+              departmentId: true,
+              name: true,
+              version: true,
+              grants: { select: { action: true, scope: true } },
+            },
+          });
+          if (role === null) throw this.forbidden();
+          if (role.version !== input.expectedVersion) {
+            throw new ConflictException({
+              code: 'ROLE_TEMPLATE_VERSION_CONFLICT',
+              message: '角色模板已被他人修改，请刷新后重试',
+            });
+          }
+
+          await this.organization.lockRoleTemplateAssignmentsAndUsers(
+            transaction,
+            actor.departmentId,
+            roleTemplateId,
+          );
+          const assignments = await transaction.roleAssignment.findMany({
+            where: {
+              roleTemplateId,
+              departmentId: actor.departmentId,
+              active: true,
+            },
+            select: { userId: true },
+            orderBy: { userId: 'asc' },
+          });
+          const affectedUserIds = Array.from(
+            new Set(assignments.map((assignment) => assignment.userId)),
+          );
+
+          await transaction.roleGrant.deleteMany({
+            where: { roleTemplateId },
+          });
+          await transaction.roleGrant.createMany({
+            data: grants.map((grant) => ({ roleTemplateId, ...grant })),
+          });
+          const updated = await transaction.roleTemplate.update({
+            where: { id: roleTemplateId },
+            data: { name, version: { increment: 1 } },
+            select: { id: true, name: true, version: true },
+          });
+          if (affectedUserIds.length > 0) {
+            await transaction.userAccount.updateMany({
+              where: { id: { in: affectedUserIds } },
+              data: { authorizationRevision: { increment: 1 } },
+            });
+          }
+          await transaction.auditEvent.create({
+            data: {
+              departmentId: actor.departmentId,
+              actorUserId: actor.userId,
+              resourceType: 'role-template',
+              resourceId: roleTemplateId,
+              action: 'role-template.updated',
+              details: {
+                from: {
+                  name: role.name,
+                  version: role.version,
+                  grants: this.sortGrants(role.grants),
+                },
+                to: {
+                  name: updated.name,
+                  version: updated.version,
+                  grants,
+                },
+                affectedUserCount: affectedUserIds.length,
+              },
+            },
+          });
+
+          return {
+            ...updated,
+            activeAssignmentCount: affectedUserIds.length,
+            grants,
+          };
+        },
+        { isolationLevel: 'Serializable' },
+      );
+    } catch (error) {
+      if (
+        typeof error === 'object' &&
+        error !== null &&
+        'code' in error &&
+        error.code === 'P2002'
+      ) {
+        throw new ConflictException({
+          code: 'ROLE_TEMPLATE_NAME_ALREADY_EXISTS',
+          message: '角色模板名称已存在',
+        });
+      }
+      throw error;
+    }
+  }
+
   private normalizeGrants(grants: RoleGrantInput[]): RoleGrantInput[] {
     if (grants.length === 0) {
       throw new BadRequestException({
@@ -210,13 +374,7 @@ export class RoleTemplateService {
         message: '至少选择一项授权',
       });
     }
-    const normalized = grants
-      .map((grant) => ({ action: grant.action, scope: grant.scope }))
-      .sort((left, right) =>
-        `${left.action}:${left.scope}`.localeCompare(
-          `${right.action}:${right.scope}`,
-        ),
-      );
+    const normalized = this.sortGrants(grants);
     const keys = normalized.map((grant) => `${grant.action}:${grant.scope}`);
     if (new Set(keys).size !== keys.length) {
       throw new BadRequestException({
@@ -225,6 +383,16 @@ export class RoleTemplateService {
       });
     }
     return normalized;
+  }
+
+  private sortGrants(grants: RoleGrantInput[]): RoleGrantInput[] {
+    return grants
+      .map((grant) => ({ action: grant.action, scope: grant.scope }))
+      .sort((left, right) =>
+        `${left.action}:${left.scope}`.localeCompare(
+          `${right.action}:${right.scope}`,
+        ),
+      );
   }
 
   private forbidden(): ForbiddenException {
