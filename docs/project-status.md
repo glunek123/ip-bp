@@ -8,7 +8,7 @@
 
 ## 当前任务
 
-**PERSONNEL-ACCESS-001（Level 3）收口中**：实现、聚焦验收及两轮Review整改已完成，正在冻结最终候选并执行完整`verify`、身份／授权数据库E2E和最终复审。开工基线为`main@49d8ba0`；实现分支为`codex/personnel-access-management`，未修改schema或新增依赖。
+**PERSONNEL-ACCESS-001（Level 3）已完成内部候选验收**：代码候选`4cb7329`通过完整门禁、身份／授权数据库E2E和最终复审；Review结论为`ACCEPTED`，未关闭Critical／Important／Minor均为0。开工基线为`main@49d8ba0`；实现分支为`codex/personnel-access-management`，未修改schema或新增依赖，尚未推送、合并或发布。
 
 ## 已实现
 
@@ -29,8 +29,8 @@
 ## 最近验证
 
 - Team候选`e6caef4`的完整`verify`、独立测试库迁移／Playwright及Level 3复审曾通过；历史检查数量与审查过程保留在[验证记录](spec/v0.1/VALIDATION.md)，该记录未绑定tree，不能作为新候选的可复用证据。
-- PERSONNEL-ACCESS-001聚焦证据：后端人员Controller 10项、前端人员页面6项及`check:fast`通过；独立测试库中的6项Playwright通过，覆盖页面建号后新人员登录、团队角色冲突后一次撤权自动调队、只输入新密码完成重置且旧密码失效、账号／成员／角色生命周期、跨部门／自操作／多部门拒绝及创建事务回滚。首轮Review的4项Important和1项Minor、复审的2项Important均已整改；最终`verify`、完整E2E与复审仍待新候选执行。
+- PERSONNEL-ACCESS-001代码候选`4cb7329`：完整`verify`通过（工具55项、前端140项、后端195项，类型、Lint、格式和生产构建通过）；独立测试库人员E2E 6项、认证E2E 4项及完整E2E 54项全部通过。三轮Review累计发现的问题均已整改，最终复审`ACCEPTED`且未关闭项为0。
 
 ## 下一步
 
-冻结干净候选，执行完整`pnpm verify`、`test:e2e:personnel-access`、`test:e2e:auth`、`test:e2e:full`和Level 3复审。通过后本地交付；未经明确授权不推送、不发布、不操作生产数据库。
+当前没有活动编码切片。唯一Next Slice为[功能开发路线图](feature-roadmap.md)中的“角色模板复制与Grant配置闭环”；需由用户另行启动。未经明确授权不推送、不合并、不发布、不操作生产数据库。
