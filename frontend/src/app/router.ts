@@ -6,6 +6,7 @@ import CustomerDetailPage from '../modules/customers/CustomerDetailPage.vue';
 import CustomerEditPage from '../modules/customers/CustomerEditPage.vue';
 import RightsHolderDetailPage from '../modules/customers/RightsHolderDetailPage.vue';
 import LoginPage from '../modules/auth/LoginPage.vue';
+import PeopleAccessPage from '../modules/organization/PeopleAccessPage.vue';
 import { useAuthStore } from '../stores/auth';
 import { pinia } from './pinia';
 
@@ -23,6 +24,7 @@ export const router = createRouter({
       component: RightsHolderDetailPage,
     },
     { path: '/customers/:id', component: CustomerDetailPage },
+    { path: '/settings/people', component: PeopleAccessPage },
   ],
 });
 

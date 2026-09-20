@@ -124,6 +124,18 @@ button {
   letter-spacing: 0.08em;
   text-transform: uppercase;
 }
+.workspace-nav {
+  display: flex;
+  align-items: center;
+  gap: 20px;
+}
+.workspace-nav a {
+  color: var(--color-ink-muted);
+  text-decoration: none;
+}
+.workspace-nav a:hover {
+  color: var(--color-primary);
+}
 .workspace-main {
   width: min(1040px, calc(100% - 56px));
   margin: 0 auto;
@@ -307,6 +319,193 @@ button {
   margin-top: 34px;
   padding-top: 22px;
   border-top: 1px solid var(--color-hairline);
+}
+
+.people-create-panel {
+  margin-bottom: 26px;
+}
+.compact-form {
+  display: grid;
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+  gap: 18px;
+}
+.compact-form label,
+.simple-dialog label {
+  display: grid;
+  gap: 7px;
+  color: var(--color-ink-muted);
+  font-size: 12px;
+}
+.compact-form input,
+.compact-form select,
+.inline-field select,
+.role-add select,
+.team-create input,
+.simple-dialog input {
+  width: 100%;
+  min-height: 40px;
+  padding: 0 11px;
+  border: 1px solid #cfcfd5;
+  border-radius: 7px;
+  background: #fff;
+  color: var(--color-ink);
+  font: inherit;
+}
+.compact-form .el-button {
+  align-self: end;
+  min-height: 40px;
+}
+.people-section {
+  margin-top: 38px;
+}
+.subsection-heading {
+  display: flex;
+  justify-content: space-between;
+  align-items: end;
+  margin-bottom: 14px;
+}
+.subsection-heading h2,
+.subsection-heading p {
+  margin: 0;
+}
+.subsection-heading p {
+  color: var(--color-ink-muted);
+}
+.person-card {
+  margin-bottom: 14px;
+  overflow: hidden;
+  border: 1px solid var(--color-hairline);
+  border-radius: 10px;
+  background: var(--color-surface-1);
+  box-shadow: 0 10px 30px rgba(15, 16, 17, 0.035);
+}
+.person-card__header,
+.person-card__body,
+.person-card__actions {
+  padding: 18px 22px;
+}
+.person-card__header {
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  border-bottom: 1px solid var(--color-hairline);
+}
+.person-card__header h3,
+.person-card__header p {
+  margin: 0;
+}
+.person-card__header p {
+  color: var(--color-ink-muted);
+  font: 12px var(--font-mono);
+}
+.person-card__status,
+.person-card__actions,
+.role-add {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+}
+.status-chip--off {
+  opacity: 0.55;
+}
+.person-card__body {
+  display: grid;
+  grid-template-columns: minmax(180px, 0.7fr) minmax(280px, 1.3fr);
+  gap: 28px;
+}
+.inline-field {
+  display: grid;
+  align-content: start;
+  gap: 7px;
+  color: var(--color-ink-muted);
+  font-size: 12px;
+}
+.role-stack__title {
+  margin-bottom: 6px;
+  color: var(--color-ink-muted);
+  font-size: 12px;
+}
+.role-row {
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  min-height: 36px;
+  border-bottom: 1px solid var(--color-hairline);
+}
+.role-row small {
+  color: var(--color-ink-muted);
+}
+.role-add {
+  margin-top: 12px;
+}
+.person-card__actions {
+  justify-content: flex-end;
+  border-top: 1px solid var(--color-hairline);
+  background: var(--color-surface-2);
+}
+.team-create {
+  display: flex;
+  gap: 10px;
+  max-width: 420px;
+  margin-bottom: 14px;
+}
+.team-grid {
+  display: grid;
+  grid-template-columns: repeat(auto-fit, minmax(220px, 1fr));
+  gap: 12px;
+}
+.team-card {
+  display: grid;
+  grid-template-columns: 1fr auto auto;
+  gap: 12px;
+  align-items: center;
+  padding: 16px 18px;
+  border: 1px solid var(--color-hairline);
+  border-radius: 9px;
+  background: var(--color-surface-1);
+}
+.team-card span {
+  color: var(--color-ink-muted);
+  font-size: 12px;
+}
+.dialog-backdrop {
+  position: fixed;
+  z-index: 50;
+  inset: 0;
+  display: grid;
+  place-items: center;
+  padding: 20px;
+  background: rgba(15, 16, 17, 0.32);
+}
+.simple-dialog {
+  width: min(440px, 100%);
+  padding: 28px;
+  border-radius: 12px;
+  background: var(--color-surface-1);
+  box-shadow: 0 24px 70px rgba(15, 16, 17, 0.2);
+}
+.simple-dialog h2 {
+  margin: 0;
+}
+.simple-dialog > p {
+  margin: 6px 0 22px;
+  color: var(--color-ink-muted);
+}
+.dialog-actions {
+  display: flex;
+  justify-content: flex-end;
+  gap: 10px;
+  margin-top: 24px;
+}
+
+@media (max-width: 720px) {
+  .compact-form,
+  .person-card__body {
+    grid-template-columns: 1fr;
+  }
+  .workspace-nav {
+    display: none;
+  }
 }
 .detail-card {
   overflow: hidden;
