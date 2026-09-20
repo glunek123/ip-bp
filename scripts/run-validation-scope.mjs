@@ -1,7 +1,10 @@
 import { execFileSync } from 'node:child_process';
 import { resolve } from 'node:path';
 import { fileURLToPath, pathToFileURL } from 'node:url';
-import { recordValidationScopeEvidence } from './validation-evidence.mjs';
+import {
+  captureValidationCandidate,
+  recordValidationScopeEvidence,
+} from './validation-evidence.mjs';
 import { validationScope } from './validation-scopes.mjs';
 
 function currentPnpmVersion() {
@@ -26,13 +29,20 @@ export async function runValidationScope(root, name, dependencies = {}) {
   const execute =
     dependencies.execute ?? ((command) => executePnpm(root, command));
   const record = dependencies.record ?? recordValidationScopeEvidence;
+  const capture = dependencies.capture ?? captureValidationCandidate;
+  const candidate = capture(root);
 
   for (const command of configured.commands) await execute(command);
 
-  return record(root, name, {
-    nodeVersion: dependencies.nodeVersion ?? process.version,
-    pnpmVersion: dependencies.pnpmVersion ?? currentPnpmVersion(),
-  });
+  return record(
+    root,
+    name,
+    {
+      nodeVersion: dependencies.nodeVersion ?? process.version,
+      pnpmVersion: dependencies.pnpmVersion ?? currentPnpmVersion(),
+    },
+    candidate.tree,
+  );
 }
 
 if (

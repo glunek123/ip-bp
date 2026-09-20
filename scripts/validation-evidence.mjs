@@ -59,6 +59,10 @@ function candidate(root) {
   };
 }
 
+export function captureValidationCandidate(root) {
+  return candidate(root);
+}
+
 function evidencePath(root, tree) {
   const commonDirectory = resolve(
     root,
@@ -67,9 +71,13 @@ function evidencePath(root, tree) {
   return join(commonDirectory, 'dev-cor-validation-evidence', `${tree}.json`);
 }
 
-function recordEvidence(root, request) {
+function recordEvidence(root, request, expectedTree) {
   const normalized = normalizeRequest(request);
   const fixed = candidate(root);
+  if (fixed.tree !== expectedTree)
+    throw new Error(
+      `Validation candidate tree changed during checks: expected ${expectedTree}, found ${fixed.tree}`,
+    );
   const record = {
     commit: fixed.commit,
     level: normalized.level,
@@ -156,8 +164,18 @@ function scopeRequest(name, environment) {
   };
 }
 
-export function recordValidationScopeEvidence(root, name, environment) {
-  return recordEvidence(root, scopeRequest(name, environment));
+export function recordValidationScopeEvidence(
+  root,
+  name,
+  environment,
+  expectedTree,
+) {
+  if (
+    typeof expectedTree !== 'string' ||
+    !/^[0-9a-f]{40,64}$/.test(expectedTree)
+  )
+    throw new Error('Validation evidence requires the captured candidate tree');
+  return recordEvidence(root, scopeRequest(name, environment), expectedTree);
 }
 
 export function findReusableValidationScopeEvidence(root, name, environment) {

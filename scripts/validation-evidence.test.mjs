@@ -5,6 +5,7 @@ import { tmpdir } from 'node:os';
 import { join } from 'node:path';
 import { execFileSync } from 'node:child_process';
 import {
+  captureValidationCandidate,
   findReusableValidationScopeEvidence,
   recordValidationScopeEvidence,
 } from './validation-evidence.mjs';
@@ -34,9 +35,14 @@ const environment = {
   pnpmVersion: '11.27.0',
 };
 
+function record(root, scope = 'customer') {
+  const captured = captureValidationCandidate(root);
+  return recordValidationScopeEvidence(root, scope, environment, captured.tree);
+}
+
 test('records and reuses evidence only for the exact clean tree and check set', (t) => {
   const root = repository(t);
-  const result = recordValidationScopeEvidence(root, 'customer', environment);
+  const result = record(root);
   const saved = JSON.parse(readFileSync(result.path, 'utf8'));
 
   assert.equal(saved.tree, git(root, 'rev-parse', 'HEAD^{tree}'));
@@ -66,8 +72,8 @@ test('records and reuses evidence only for the exact clean tree and check set', 
 
 test('keeps independent validation records for the same tree', (t) => {
   const root = repository(t);
-  const customer = recordValidationScopeEvidence(root, 'customer', environment);
-  recordValidationScopeEvidence(root, 'right-holder', environment);
+  const customer = record(root);
+  record(root, 'right-holder');
 
   assert.equal(
     findReusableValidationScopeEvidence(root, 'customer', environment)?.tree,
@@ -87,11 +93,7 @@ test('reuses evidence from another worktree of the same repository', (t) => {
   git(root, 'worktree', 'add', '--detach', linked, 'HEAD');
 
   try {
-    const recorded = recordValidationScopeEvidence(
-      root,
-      'customer',
-      environment,
-    );
+    const recorded = record(root);
     assert.equal(
       findReusableValidationScopeEvidence(linked, 'customer', environment)
         ?.tree,
@@ -105,31 +107,19 @@ test('reuses evidence from another worktree of the same repository', (t) => {
 test('rejects tracked, staged, and untracked candidate changes', (t) => {
   const tracked = repository(t);
   writeFileSync(join(tracked, 'source.txt'), 'dirty\n');
-  assert.throws(
-    () => recordValidationScopeEvidence(tracked, 'customer', environment),
-    /clean|dirty/i,
-  );
+  assert.throws(() => record(tracked), /clean|dirty/i);
 
   const staged = repository(t);
   writeFileSync(join(staged, 'source.txt'), 'staged\n');
   git(staged, 'add', 'source.txt');
-  assert.throws(
-    () => recordValidationScopeEvidence(staged, 'customer', environment),
-    /clean|dirty/i,
-  );
+  assert.throws(() => record(staged), /clean|dirty/i);
 
   const untracked = repository(t);
   writeFileSync(join(untracked, 'extra.txt'), 'untracked\n');
-  assert.throws(
-    () => recordValidationScopeEvidence(untracked, 'customer', environment),
-    /clean|dirty/i,
-  );
+  assert.throws(() => record(untracked), /clean|dirty/i);
 });
 
 test('derives checks from known scopes and rejects caller-defined scope names', (t) => {
   const root = repository(t);
-  assert.throws(
-    () => recordValidationScopeEvidence(root, '../escape', environment),
-    /scope/i,
-  );
+  assert.throws(() => record(root, '../escape'), /scope/i);
 });
