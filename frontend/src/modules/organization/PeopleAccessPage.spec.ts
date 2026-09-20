@@ -14,6 +14,9 @@ const api = vi.hoisted(() => ({
   setOrganizationRoleAssignmentStatus: vi.fn(),
   createOrganizationTeam: vi.fn(),
   setOrganizationTeamStatus: vi.fn(),
+  getRoleTemplateImpact: vi.fn(),
+  copyRoleTemplate: vi.fn(),
+  updateRoleTemplate: vi.fn(),
 }));
 vi.mock('../../api/organization', () => api);
 
@@ -25,6 +28,7 @@ const context = {
     manageTeams: true,
     assignDepartmentRoles: true,
     assignTeamRoles: false,
+    manageRoleTemplates: true,
   },
   users: [
     {
@@ -50,7 +54,16 @@ const context = {
     {
       id: 'role-1',
       name: '客户经办',
+      version: 2,
+      activeAssignmentCount: 1,
       grants: [{ action: 'CUSTOMER_READ', scope: 'DEPARTMENT' }],
+    },
+  ],
+  permissionCatalog: [
+    {
+      action: 'CUSTOMER_READ',
+      label: '查看客户',
+      scopes: ['SELF', 'TEAM', 'DEPARTMENT'],
     },
   ],
 };
@@ -70,6 +83,28 @@ describe('PeopleAccessPage', () => {
     expect(wrapper.text()).toContain('运营甲');
     expect(wrapper.text()).toContain('商标组');
     expect(wrapper.text()).toContain('客户经办');
+  });
+
+  it('opens role template editing with an automatic impact preview', async () => {
+    api.getOrganizationManagementContext.mockResolvedValue(context);
+    api.getRoleTemplateImpact.mockResolvedValue({
+      roleTemplateId: 'role-1',
+      version: 2,
+      activeAssignmentCount: 1,
+      affectedUsers: [{ id: 'user-1', displayName: '运营甲' }],
+    });
+    const wrapper = mount(PeopleAccessPage, {
+      global: { stubs: { RouterLink: { template: '<a><slot /></a>' } } },
+    });
+    await flushPromises();
+
+    await wrapper.get('[data-test="edit-role-role-1"]').trigger('click');
+    await flushPromises();
+
+    expect(api.getRoleTemplateImpact).toHaveBeenCalledWith('role-1');
+    expect(
+      wrapper.get('[data-test="role-template-name"]').element,
+    ).toHaveProperty('value', '客户经办');
   });
 
   it('creates a person without asking for an operation reason', async () => {

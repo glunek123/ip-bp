@@ -17,6 +17,7 @@ import {
   type OrganizationUser,
 } from '../../api/organization';
 import { useAuthStore } from '../../stores/auth';
+import RoleTemplatePanel from './RoleTemplatePanel.vue';
 
 const auth = useAuthStore();
 const state = ref<'loading' | 'ready' | 'forbidden' | 'failed'>('loading');
@@ -492,6 +493,13 @@ onBeforeUnmount(() => activeRequest?.abort());
             </footer>
           </article>
         </section>
+
+        <RoleTemplatePanel
+          :roles="context.roles"
+          :permission-catalog="context.permissionCatalog"
+          :can-manage="context.capabilities.manageRoleTemplates"
+          @saved="load(false)"
+        />
 
         <section class="people-section">
           <div class="subsection-heading">
