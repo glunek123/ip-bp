@@ -1,6 +1,6 @@
 # 技术设计基线、低负担回溯、可配置授权与客户切片
 
-版本：TD-BASE-05／TD-SLICE-CU-BASE-01 rev3／TD-SLICE-CU-RH-01 rev1／TD-AUTHZ-01 rev2／TD-TRACE-UX-01／AUTH-LOCAL-001；日期：2026-09-20；任务：CTD-001／BR-005～007／TD-CU-001／TD-AUTHZ-001／TD-TRACE-UX-001／GOV-LIVE-SPEC-001／CUST-FND-001～008／CUST-RH-DESIGN-001／CUST-RH-001／AUTH-LOCAL-001／TEAM-AUTHZ-ARCH-001。状态：SD-34低负担回溯与SD-36团队授权约束保持有效；客户草稿、最小授权、共享审计、运营端直接页面、编辑判重、一位准入联系人及权利主体最小关联已取得PostgreSQL、跨端及独立Q2内部验证；SD-35固定的v0.1系统自有账号第一切片也已完成实现、数据库型Playwright、隔离复审及内部集成；Team最小主数据、组合引用完整性、六项管理Action和服务端Grant Boundary已通过Level 3门禁、数据库并发验证和独立复审；人员管理UI/API、角色模板Grant编辑、MFA／OIDC和生产迁移仍属后续；E02真实存储单独阻断依赖它的能力。
+版本：TD-BASE-05／TD-SLICE-CU-BASE-01 rev3／TD-SLICE-CU-RH-01 rev1／TD-AUTHZ-01 rev3／TD-TRACE-UX-01／AUTH-LOCAL-001；日期：2026-09-20；任务：CTD-001／BR-005～007／TD-CU-001／TD-AUTHZ-001／TD-TRACE-UX-001／GOV-LIVE-SPEC-001／CUST-FND-001～008／CUST-RH-DESIGN-001／CUST-RH-001／AUTH-LOCAL-001／TEAM-AUTHZ-ARCH-001／PERSONNEL-ACCESS-001。状态：SD-34低负担回溯与SD-36团队授权约束保持有效；客户草稿、最小授权、共享审计、运营端直接页面、编辑判重、一位准入联系人及权利主体最小关联已取得PostgreSQL、跨端及独立Q2内部验证；SD-35固定的v0.1系统自有账号第一切片和人员账号／当前部门成员／Team／已有角色分配管理切片均已形成正式实现与数据库型Playwright链路；角色模板Grant编辑、MFA／OIDC和生产迁移仍属后续；E02真实存储单独阻断依赖它的能力。
 
 本页主体仍是TD-BASE通用机制；BR-03及后续确认已补齐客户准入、正常阶段／历史补录、可配置角色权限、文件生命周期、金额基础和合并语义。INPUT-013进一步要求在原页面和原操作顺序内补强回溯、材料精确版本、统一授权、检索及防重复。业务字段和关系仍以[领域模型](DOMAIN.md)为准，动作与阶段仍以[模块Spec](README.md)及[准备包](preparation/README.md)为准，缺口及责任仍由[GAPS](GAPS.md)管理。本页只固化这些决定共用的最小技术形状，不补造资金公式、审理执行、证物实物或报表口径。
 
@@ -359,7 +359,7 @@ Customer Module使用动作名`customer.read`、`customer.create-draft`、`custo
 **结论：TD-SLICE-CU-BASE-01 rev3已达到`PLAN_READY`，且用户已明确授权首批内部业务编码、开发库迁移和自动化测试。** 就绪状态分开判断：`PLAN_READY`表示需求／设计足以拆任务；本批在Q2实现门禁、负向测试和开发环境约束下进入`IMPLEMENTING`；只有独立安全复核和相应运行证据齐全后才可标为`VERIFIED`；`INTEGRATION_BLOCKED`表示真实适配或跨端验收仍等待外部参数。原五项设计选择已经由SD-28～33关闭，剩余是实施前提而不是继续让业务选择：
 
 1. **内部实现门禁**：TD-AUTHZ-01与TD-TRACE-UX-01须先形成Q2边界检查和可执行负向测试；ActorContext、部门查询约束、测试身份Adapter等契约明确后开展内部实现。客户域最小授权与认证已完成该门禁；其他业务域仍不得以页面菜单、演示账号或自审代替Q2验证。
-2. **E01正式身份门禁**：SD-35选择的系统自有账号和AUTH-LOCAL-001第一切片已完成密码、会话撤销、CSRF、限速及真实浏览器联调并内部集成；日常建号／禁用／重置、MFA、找回密码和OIDC仍分别属于后续切片，不冒充已完成。
+2. **E01正式身份门禁**：SD-35选择的系统自有账号和AUTH-LOCAL-001第一切片已完成密码、会话撤销、CSRF、限速及真实浏览器联调；日常建号／禁用／管理员重置也已由PERSONNEL-ACCESS-001实现，MFA、找回密码和OIDC仍分别属于后续切片，不冒充已完成。
 3. **E02真实接入门禁**：真实上传、下载、加密和备份恢复联调为`INTEGRATION_BLOCKED`，等待私有对象存储、隔离命名空间、网络和数据使用许可；测试Adapter只能证明内部契约，不能冒充真实存储验收。
 4. **明确编码授权**：用户已授权当前首批创建业务schema、开发库迁移、接口、运营端页面和自动化测试；不授权生产变更、生产数据、真实账号授权、真实证件数据或超出既定业务范围的功能。
 
@@ -388,7 +388,7 @@ transferResponsibility(CommandContext, resourceIds[] + newResponsible + reason)
 
 ### 16.2 两个管理入口
 
-- “系统设置→人员与权限”：组织归属、模板复制／修改、Grant和人员分配；修改模板前展示受影响人员。高风险变更填写原因并直接保存，不新建审批流。
+- “系统设置→人员与权限”：当前切片直接维护人员账号、当前部门成员、Team和已有角色分配；日常启停、调队、重置密码与撤权／恢复自动审计，不要求人工填写原因或重复验证管理员密码。模板复制／修改、Grant编辑和影响预览另开切片。
 - “案件详情→成员与权限”：调整负责人、律师、只读／办理协作成员。这里不能编辑角色模板，也不能把“办理”扩成合并、终止、归档、导出或证件下载。
 
 ### 16.3 授权顺序与不变量
@@ -426,7 +426,7 @@ transferResponsibility(CommandContext, resourceIds[] + newResponsible + reason)
 - 管理变更在可串行化事务内重读操作者账号、成员、授权修订和Grant，并按固定顺序锁定部门授权序列及账号、成员、角色、Grant、Team和分配行；客户新建在写事务内共享锁定Team并重检ACTIVE。角色分配成功与审计、目标账号授权修订递增同事务提交，失败整体回滚。
 - `PermissionAction`枚举扩展与Team建模分为两个有顺序依赖、各自显式事务化的前向迁移，因为PostgreSQL新增枚举值需先提交后才能用于Grant回填。第二迁移锁定引用表，先建立兼容Team与确定性映射，再建立组合外键；原`NULL`不回填。只有满足既有引导账号结构特征且角色未被其他账号共享的唯一关系获得六项管理Grant，不按角色名称批量升级。
 
-本收口不提供人员／Team／角色管理HTTP或页面，不允许直接修改客户状态，也不创建Lead、Case、File、Fee、Settlement或Report表；每个未来业务域仍须在其Slice中定义专属Action、范围查询和数据库越权测试。
+本收口原先不提供管理HTTP或页面；PERSONNEL-ACCESS-001现已在不改变schema和权限目录的前提下补齐`OrganizationService`事务边界、`/api/v1/organization`管理接口及`/settings/people-access`工作区。创建账号、凭据、当前部门成员、初始角色与成功审计共享一个可串行化事务；账号或成员停用、密码重置和角色变化递增授权修订并撤销适用会话。角色模板编辑、跨部门全局账号管理以及Lead、Case、File、Fee、Settlement或Report仍不在本切片。
 
 ## 17. TD-TRACE-UX-01：低负担回溯与原页面易用性
 
