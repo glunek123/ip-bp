@@ -30,6 +30,7 @@ describe('OrganizationController', () => {
     roles: [],
   };
   const getManagementContext = jest.fn();
+  const createUser = jest.fn();
   let app: INestApplication;
 
   beforeAll(async () => {
@@ -44,7 +45,10 @@ describe('OrganizationController', () => {
         ActorContextGuard,
         { provide: AuthService, useValue: { resolveSession: jest.fn() } },
         { provide: IDENTITY_ADAPTER, useValue: identity },
-        { provide: OrganizationService, useValue: { getManagementContext } },
+        {
+          provide: OrganizationService,
+          useValue: { getManagementContext, createUser },
+        },
       ],
     }).compile();
     app = module.createNestApplication();
@@ -78,5 +82,54 @@ describe('OrganizationController', () => {
       .expect(managementContext);
 
     expect(getManagementContext).toHaveBeenCalledWith(actor);
+  });
+
+  it('validates and creates a person for the trusted actor', async () => {
+    createUser.mockResolvedValueOnce({
+      id: '33333333-3333-4333-8333-333333333333',
+      displayName: '运营乙',
+      username: 'operator.b',
+    });
+
+    await request(app.getHttpServer())
+      .post('/api/v1/organization/users')
+      .set('Authorization', 'Bearer allowed-token')
+      .send({
+        displayName: ' 运营乙 ',
+        username: ' Operator.B ',
+        password: 'temporary-pass-123',
+        teamId: null,
+        roleTemplateId: '44444444-4444-4444-8444-444444444444',
+      })
+      .expect(201)
+      .expect({
+        id: '33333333-3333-4333-8333-333333333333',
+        displayName: '运营乙',
+        username: 'operator.b',
+      });
+
+    expect(createUser).toHaveBeenCalledWith(actor, {
+      displayName: '运营乙',
+      username: 'Operator.B',
+      password: 'temporary-pass-123',
+      teamId: null,
+      roleTemplateId: '44444444-4444-4444-8444-444444444444',
+    });
+  });
+
+  it('rejects invalid and server-controlled person fields', async () => {
+    await request(app.getHttpServer())
+      .post('/api/v1/organization/users')
+      .set('Authorization', 'Bearer allowed-token')
+      .send({
+        displayName: '运营乙',
+        username: 'operator.b',
+        password: 'short',
+        roleTemplateId: 'not-a-uuid',
+        departmentId: actor.departmentId,
+      })
+      .expect(400);
+
+    expect(createUser).not.toHaveBeenCalled();
   });
 });

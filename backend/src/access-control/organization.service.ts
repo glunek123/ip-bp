@@ -4,6 +4,8 @@ import {
   ForbiddenException,
   Injectable,
 } from '@nestjs/common';
+import { randomUUID } from 'node:crypto';
+import { prepareLocalCredential } from '../auth/password';
 import { DatabaseService } from '../database/database.service';
 import { Prisma } from '../generated/prisma/client';
 import { PermissionAction, PermissionScope } from '../generated/prisma/enums';
@@ -13,6 +15,14 @@ type AssignRoleCommand = {
   targetUserId: string;
   roleTemplateId: string;
   teamId: string | null;
+};
+
+type CreateUserCommand = {
+  displayName: string;
+  username: string;
+  password: string;
+  teamId: string | null;
+  roleTemplateId: string;
 };
 
 type EffectiveGrant = {
@@ -236,6 +246,133 @@ export class OrganizationService {
     });
   }
 
+  async createUser(actor: ActorContext, command: CreateUserCommand) {
+    const displayName = command.displayName.trim();
+    if (displayName.length === 0 || Array.from(displayName).length > 100) {
+      throw new BadRequestException({
+        code: 'DISPLAY_NAME_INVALID',
+        message: '姓名不能为空且不得超过100个字符',
+      });
+    }
+    let credential: ReturnType<typeof prepareLocalCredential>;
+    try {
+      credential = prepareLocalCredential(command.username, command.password);
+    } catch (error) {
+      const code =
+        error instanceof Error && error.message === 'USERNAME_INVALID'
+          ? 'USERNAME_INVALID'
+          : 'PASSWORD_INVALID';
+      throw new BadRequestException({
+        code,
+        message:
+          code === 'USERNAME_INVALID'
+            ? '用户名格式不正确'
+            : '密码长度必须为12至128个字符',
+      });
+    }
+    let passwordHash: string;
+    try {
+      passwordHash = await credential.passwordHash;
+    } catch (error) {
+      if (error instanceof Error && error.message === 'PASSWORD_INVALID') {
+        throw new BadRequestException({
+          code: 'PASSWORD_INVALID',
+          message: '密码长度必须为12至128个字符',
+        });
+      }
+      throw error;
+    }
+
+    try {
+      return await this.database.$transaction(
+        async (transaction) => {
+          await this.lockDepartment(transaction, actor.departmentId);
+          const actorGrants = await this.loadCurrentActorGrants(
+            transaction,
+            actor,
+          );
+          if (
+            !actorGrants.some(
+              (grant) =>
+                grant.action === 'USER_MANAGE' && grant.scope === 'DEPARTMENT',
+            )
+          ) {
+            throw this.forbidden();
+          }
+
+          const user = await transaction.userAccount.create({
+            data: {
+              externalSubject: `local:${randomUUID()}`,
+              displayName,
+            },
+            select: { id: true, displayName: true, active: true },
+          });
+          await transaction.localCredential.create({
+            data: {
+              userId: user.id,
+              username: credential.username,
+              passwordHash,
+            },
+          });
+          const membership = await transaction.departmentMembership.create({
+            data: {
+              userId: user.id,
+              departmentId: actor.departmentId,
+              teamId: command.teamId,
+            },
+            select: { id: true, active: true, teamId: true },
+          });
+          const assignment = await this.assignRoleInTransaction(
+            transaction,
+            actor,
+            {
+              targetUserId: user.id,
+              roleTemplateId: command.roleTemplateId,
+              teamId: command.teamId,
+            },
+            actorGrants,
+          );
+          await transaction.auditEvent.create({
+            data: {
+              departmentId: actor.departmentId,
+              actorUserId: actor.userId,
+              resourceType: 'user-account',
+              resourceId: user.id,
+              action: 'user.created',
+              details: {
+                membershipId: membership.id,
+                roleAssignmentId: assignment.id,
+                teamId: membership.teamId,
+              },
+            },
+          });
+          return {
+            id: user.id,
+            displayName: user.displayName,
+            username: credential.username,
+            accountActive: user.active,
+            membership,
+            assignment,
+          };
+        },
+        { isolationLevel: 'Serializable' },
+      );
+    } catch (error) {
+      if (
+        typeof error === 'object' &&
+        error !== null &&
+        'code' in error &&
+        error.code === 'P2002'
+      ) {
+        throw new ConflictException({
+          code: 'USERNAME_ALREADY_EXISTS',
+          message: '用户名已存在',
+        });
+      }
+      throw error;
+    }
+  }
+
   async createTeam(actor: ActorContext, input: { name: string }) {
     const name = input.name.trim();
     if (name.length === 0 || Array.from(name).length > 100) {
@@ -448,195 +585,209 @@ export class OrganizationService {
           transaction,
           actor,
         );
-        await this.lockMembership(
+        return this.assignRoleInTransaction(
           transaction,
-          actor.departmentId,
-          command.targetUserId,
+          actor,
+          command,
+          actorGrants,
         );
-        const targetMembership =
-          await transaction.departmentMembership.findUnique({
-            where: {
-              userId_departmentId: {
-                userId: command.targetUserId,
-                departmentId: actor.departmentId,
-              },
-            },
-            select: {
-              id: true,
-              active: true,
-              departmentId: true,
-              teamId: true,
-              team: { select: { status: true } },
-            },
-          });
-        if (targetMembership === null || !targetMembership.active) {
-          throw this.forbidden();
-        }
-        if (
-          !this.coversManagementTarget(
-            actorGrants,
-            'ROLE_ASSIGN',
-            actor.userId,
-            command.targetUserId,
-            targetMembership.team?.status === 'ACTIVE'
-              ? targetMembership.teamId
-              : null,
-          )
-        ) {
-          throw this.forbidden();
-        }
-
-        await this.lockRoleTemplate(
-          transaction,
-          actor.departmentId,
-          command.roleTemplateId,
-        );
-        const role = await transaction.roleTemplate.findUnique({
-          where: {
-            id_departmentId: {
-              id: command.roleTemplateId,
-              departmentId: actor.departmentId,
-            },
-          },
-          select: {
-            id: true,
-            departmentId: true,
-            active: true,
-            grants: { select: { action: true, scope: true } },
-          },
-        });
-        if (role === null || !role.active) throw this.forbidden();
-
-        if (command.teamId !== null) {
-          await this.lockTeam(
-            transaction,
-            actor.departmentId,
-            command.teamId,
-            'SHARE',
-          );
-          const team = await transaction.team.findUnique({
-            where: {
-              id_departmentId: {
-                id: command.teamId,
-                departmentId: actor.departmentId,
-              },
-            },
-            select: { id: true, departmentId: true, status: true },
-          });
-          if (
-            team === null ||
-            team.status !== 'ACTIVE' ||
-            targetMembership.teamId !== team.id ||
-            targetMembership.team?.status !== 'ACTIVE'
-          ) {
-            throw this.forbidden();
-          }
-        }
-        if (
-          role.grants.some(
-            (grant) => grant.scope === 'TEAM' && command.teamId === null,
-          )
-        ) {
-          throw new BadRequestException({
-            code: 'ROLE_ASSIGNMENT_TEAM_REQUIRED',
-            message: '团队范围角色必须绑定有效团队',
-          });
-        }
-
-        for (const grant of role.grants) {
-          if (
-            !actorGrants.some((actorGrant) =>
-              this.coversAssignedGrant(
-                actorGrant,
-                grant,
-                actor.userId,
-                command.targetUserId,
-                command.teamId,
-              ),
-            )
-          ) {
-            throw this.forbidden();
-          }
-        }
-
-        await this.lockRoleAssignments(
-          transaction,
-          actor.departmentId,
-          command.targetUserId,
-        );
-        const existingAssignments = await transaction.roleAssignment.findMany({
-          where: {
-            userId: command.targetUserId,
-            departmentId: actor.departmentId,
-            roleTemplateId: command.roleTemplateId,
-          },
-          select: { id: true, active: true, teamId: true, version: true },
-          take: 2,
-        });
-        if (existingAssignments.length > 1) {
-          throw new ConflictException({
-            code: 'ROLE_ASSIGNMENT_AMBIGUOUS',
-            message: '存在多个历史角色分配，需先人工收口',
-          });
-        }
-        const existing = existingAssignments[0];
-        if (
-          existing !== undefined &&
-          existing.active &&
-          existing.teamId === command.teamId
-        ) {
-          throw new ConflictException({
-            code: 'ROLE_ASSIGNMENT_ALREADY_ACTIVE',
-            message: '该角色分配已生效',
-          });
-        }
-
-        const assignment =
-          existing === undefined
-            ? await transaction.roleAssignment.create({
-                data: {
-                  userId: command.targetUserId,
-                  departmentId: actor.departmentId,
-                  roleTemplateId: command.roleTemplateId,
-                  teamId: command.teamId,
-                },
-                select: { id: true, active: true, teamId: true, version: true },
-              })
-            : await transaction.roleAssignment.update({
-                where: { id: existing.id },
-                data: {
-                  active: true,
-                  teamId: command.teamId,
-                  version: { increment: 1 },
-                },
-                select: { id: true, active: true, teamId: true, version: true },
-              });
-
-        await transaction.auditEvent.create({
-          data: {
-            departmentId: actor.departmentId,
-            actorUserId: actor.userId,
-            resourceType: 'role-assignment',
-            resourceId: assignment.id,
-            action:
-              existing === undefined
-                ? 'role-assignment.created'
-                : 'role-assignment.restored-or-rebound',
-            details: {
-              targetUserId: command.targetUserId,
-              roleTemplateId: command.roleTemplateId,
-              teamId: command.teamId,
-            },
-          },
-        });
-        await transaction.userAccount.update({
-          where: { id: command.targetUserId },
-          data: { authorizationRevision: { increment: 1 } },
-        });
-        return assignment;
       },
       { isolationLevel: 'Serializable' },
     );
+  }
+
+  private async assignRoleInTransaction(
+    transaction: Prisma.TransactionClient,
+    actor: ActorContext,
+    command: AssignRoleCommand,
+    actorGrants: EffectiveGrant[],
+  ) {
+    if (command.targetUserId === actor.userId) throw this.forbidden();
+    await this.lockMembership(
+      transaction,
+      actor.departmentId,
+      command.targetUserId,
+    );
+    const targetMembership = await transaction.departmentMembership.findUnique({
+      where: {
+        userId_departmentId: {
+          userId: command.targetUserId,
+          departmentId: actor.departmentId,
+        },
+      },
+      select: {
+        id: true,
+        active: true,
+        departmentId: true,
+        teamId: true,
+        team: { select: { status: true } },
+      },
+    });
+    if (targetMembership === null || !targetMembership.active) {
+      throw this.forbidden();
+    }
+    if (
+      !this.coversManagementTarget(
+        actorGrants,
+        'ROLE_ASSIGN',
+        actor.userId,
+        command.targetUserId,
+        targetMembership.team?.status === 'ACTIVE'
+          ? targetMembership.teamId
+          : null,
+      )
+    ) {
+      throw this.forbidden();
+    }
+
+    await this.lockRoleTemplate(
+      transaction,
+      actor.departmentId,
+      command.roleTemplateId,
+    );
+    const role = await transaction.roleTemplate.findUnique({
+      where: {
+        id_departmentId: {
+          id: command.roleTemplateId,
+          departmentId: actor.departmentId,
+        },
+      },
+      select: {
+        id: true,
+        departmentId: true,
+        active: true,
+        grants: { select: { action: true, scope: true } },
+      },
+    });
+    if (role === null || !role.active) throw this.forbidden();
+
+    if (command.teamId !== null) {
+      await this.lockTeam(
+        transaction,
+        actor.departmentId,
+        command.teamId,
+        'SHARE',
+      );
+      const team = await transaction.team.findUnique({
+        where: {
+          id_departmentId: {
+            id: command.teamId,
+            departmentId: actor.departmentId,
+          },
+        },
+        select: { id: true, departmentId: true, status: true },
+      });
+      if (
+        team === null ||
+        team.status !== 'ACTIVE' ||
+        targetMembership.teamId !== team.id ||
+        targetMembership.team?.status !== 'ACTIVE'
+      ) {
+        throw this.forbidden();
+      }
+    }
+    if (
+      role.grants.some(
+        (grant) => grant.scope === 'TEAM' && command.teamId === null,
+      )
+    ) {
+      throw new BadRequestException({
+        code: 'ROLE_ASSIGNMENT_TEAM_REQUIRED',
+        message: '团队范围角色必须绑定有效团队',
+      });
+    }
+
+    for (const grant of role.grants) {
+      if (
+        !actorGrants.some((actorGrant) =>
+          this.coversAssignedGrant(
+            actorGrant,
+            grant,
+            actor.userId,
+            command.targetUserId,
+            command.teamId,
+          ),
+        )
+      ) {
+        throw this.forbidden();
+      }
+    }
+
+    await this.lockRoleAssignments(
+      transaction,
+      actor.departmentId,
+      command.targetUserId,
+    );
+    const existingAssignments = await transaction.roleAssignment.findMany({
+      where: {
+        userId: command.targetUserId,
+        departmentId: actor.departmentId,
+        roleTemplateId: command.roleTemplateId,
+      },
+      select: { id: true, active: true, teamId: true, version: true },
+      take: 2,
+    });
+    if (existingAssignments.length > 1) {
+      throw new ConflictException({
+        code: 'ROLE_ASSIGNMENT_AMBIGUOUS',
+        message: '存在多个历史角色分配，需先人工收口',
+      });
+    }
+    const existing = existingAssignments[0];
+    if (
+      existing !== undefined &&
+      existing.active &&
+      existing.teamId === command.teamId
+    ) {
+      throw new ConflictException({
+        code: 'ROLE_ASSIGNMENT_ALREADY_ACTIVE',
+        message: '该角色分配已生效',
+      });
+    }
+
+    const assignment =
+      existing === undefined
+        ? await transaction.roleAssignment.create({
+            data: {
+              userId: command.targetUserId,
+              departmentId: actor.departmentId,
+              roleTemplateId: command.roleTemplateId,
+              teamId: command.teamId,
+            },
+            select: { id: true, active: true, teamId: true, version: true },
+          })
+        : await transaction.roleAssignment.update({
+            where: { id: existing.id },
+            data: {
+              active: true,
+              teamId: command.teamId,
+              version: { increment: 1 },
+            },
+            select: { id: true, active: true, teamId: true, version: true },
+          });
+
+    await transaction.auditEvent.create({
+      data: {
+        departmentId: actor.departmentId,
+        actorUserId: actor.userId,
+        resourceType: 'role-assignment',
+        resourceId: assignment.id,
+        action:
+          existing === undefined
+            ? 'role-assignment.created'
+            : 'role-assignment.restored-or-rebound',
+        details: {
+          targetUserId: command.targetUserId,
+          roleTemplateId: command.roleTemplateId,
+          teamId: command.teamId,
+        },
+      },
+    });
+    await transaction.userAccount.update({
+      where: { id: command.targetUserId },
+      data: { authorizationRevision: { increment: 1 } },
+    });
+    return assignment;
   }
 
   private async loadCurrentActorGrants(

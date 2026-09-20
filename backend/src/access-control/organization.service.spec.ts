@@ -79,7 +79,18 @@ function createFixture(options?: {
             : { active: true, authorizationRevision: 2 },
         ),
       ),
+      create: jest.fn().mockResolvedValue({
+        id: 'user-new',
+        displayName: '运营乙',
+        active: true,
+      }),
       update: jest.fn().mockResolvedValue({ authorizationRevision: 3 }),
+    },
+    localCredential: {
+      create: jest.fn().mockResolvedValue({
+        id: 'credential-new',
+        username: 'operator.b',
+      }),
     },
     departmentMembership: {
       findUnique: jest.fn(
@@ -118,6 +129,11 @@ function createFixture(options?: {
           });
         },
       ),
+      create: jest.fn().mockResolvedValue({
+        id: 'membership-new',
+        active: true,
+        teamId: targetTeamId,
+      }),
       findMany: jest.fn().mockResolvedValue(options?.contextMemberships ?? []),
       update: jest.fn(),
     },
@@ -311,6 +327,105 @@ describe('OrganizationService management context', () => {
         where: expect.objectContaining({ teamId: 'team-a' }),
       }),
     );
+  });
+});
+
+describe('OrganizationService personnel creation', () => {
+  it('creates account, credential, membership, assignment, and audit in one transaction', async () => {
+    const fixture = createFixture({
+      actorGrants: [
+        departmentGrant('USER_MANAGE'),
+        departmentGrant('ROLE_ASSIGN'),
+        departmentGrant('CUSTOMER_READ'),
+      ],
+    });
+
+    await expect(
+      fixture.service.createUser(actor, {
+        displayName: ' 运营乙 ',
+        username: ' Operator.B ',
+        password: 'temporary-pass-123',
+        teamId: null,
+        roleTemplateId: 'target-role',
+      }),
+    ).resolves.toMatchObject({
+      id: 'user-new',
+      displayName: '运营乙',
+      username: 'operator.b',
+      accountActive: true,
+      membership: { id: 'membership-new', active: true, teamId: null },
+      assignment: { id: 'assignment-new', active: true },
+    });
+
+    expect(fixture.database.$transaction).toHaveBeenCalledTimes(1);
+    expect(fixture.transaction.userAccount.create).toHaveBeenCalledTimes(1);
+    expect(fixture.transaction.localCredential.create).toHaveBeenCalledWith({
+      data: expect.objectContaining({
+        userId: 'user-new',
+        username: 'operator.b',
+        passwordHash: expect.stringMatching(/^scrypt\$v2\$/),
+      }),
+    });
+    expect(
+      fixture.transaction.departmentMembership.create,
+    ).toHaveBeenCalledTimes(1);
+    expect(fixture.transaction.roleAssignment.create).toHaveBeenCalledTimes(1);
+    expect(fixture.transaction.auditEvent.create).toHaveBeenCalledWith({
+      data: expect.objectContaining({
+        action: 'user.created',
+        resourceId: 'user-new',
+      }),
+    });
+  });
+
+  it('does not create an account without department-scoped user.manage', async () => {
+    const fixture = createFixture({
+      actorGrants: [
+        { action: 'USER_MANAGE', scope: 'TEAM' },
+        departmentGrant('ROLE_ASSIGN'),
+        departmentGrant('CUSTOMER_READ'),
+      ],
+    });
+
+    await expect(
+      fixture.service.createUser(actor, {
+        displayName: '运营乙',
+        username: 'operator.b',
+        password: 'temporary-pass-123',
+        teamId: null,
+        roleTemplateId: 'target-role',
+      }),
+    ).rejects.toBeInstanceOf(ForbiddenException);
+
+    expect(fixture.transaction.userAccount.create).not.toHaveBeenCalled();
+  });
+
+  it('maps a concurrent username conflict without exposing Prisma details', async () => {
+    const fixture = createFixture({
+      actorGrants: [
+        departmentGrant('USER_MANAGE'),
+        departmentGrant('ROLE_ASSIGN'),
+        departmentGrant('CUSTOMER_READ'),
+      ],
+    });
+    fixture.database.$transaction.mockRejectedValueOnce(
+      Object.assign(new Error('unique constraint metadata'), { code: 'P2002' }),
+    );
+
+    await expect(
+      fixture.service.createUser(actor, {
+        displayName: '运营乙',
+        username: 'operator.b',
+        password: 'temporary-pass-123',
+        teamId: null,
+        roleTemplateId: 'target-role',
+      }),
+    ).rejects.toMatchObject({
+      response: {
+        code: 'USERNAME_ALREADY_EXISTS',
+        message: '用户名已存在',
+      },
+    });
   });
 });
 

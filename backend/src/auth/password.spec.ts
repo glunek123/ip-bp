@@ -1,6 +1,7 @@
 import {
   hashPassword,
   normalizeUsername,
+  prepareLocalCredential,
   validatePassword,
   verifyPassword,
 } from './password';
@@ -20,6 +21,21 @@ describe('local password boundary', () => {
     expect(() => validatePassword('🔐'.repeat(12))).not.toThrow();
     expect(() => validatePassword('short')).toThrow('PASSWORD_INVALID');
     expect(() => validatePassword('a'.repeat(129))).toThrow('PASSWORD_INVALID');
+  });
+
+  it('prepares a normalized username and non-plaintext credential for account creation', async () => {
+    const prepared = prepareLocalCredential(
+      '  Operator.B  ',
+      'temporary-pass-123',
+    );
+
+    expect(prepared.username).toBe('operator.b');
+    await expect(prepared.passwordHash).resolves.toMatch(
+      /^scrypt\$v2\$131072\$8\$1\$/,
+    );
+    await expect(prepared.passwordHash).resolves.not.toContain(
+      'temporary-pass-123',
+    );
   });
 
   it('stores a versioned scrypt hash and verifies in constant-time form', async () => {
