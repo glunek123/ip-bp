@@ -8,7 +8,7 @@
 
 ## 当前任务
 
-**ROLE-TEMPLATE-001（Level 3）已正式领取**：基于`main@3c7497a`，在`codex/role-template-management`隔离分支按已确认方案 A 开发“角色模板复制与 Grant 配置闭环”。设计已固化，实施按[计划](superpowers/plans/2026-09-20-role-template-management.md)推进；新增独立`ROLE_MANAGE`，模板写操作只接受部门级授权，并在现有人员与权限工作区提供复制、编辑、自动影响预览和下一请求生效。具体范围见[设计](superpowers/specs/2026-09-20-role-template-management-design.md)，业务 Current／Next 只在[功能开发路线图](feature-roadmap.md)维护。
+**ROLE-TEMPLATE-001（Level 3）正在固定候选**：基于`main@3c7497a`，在`codex/role-template-management`隔离分支按已确认方案 A 完成“角色模板复制与 Grant 配置闭环”的正式实现和聚焦验收。新增独立`ROLE_MANAGE`，模板写操作只接受部门级授权，并在现有人员与权限工作区提供复制、编辑、自动影响预览和下一请求生效。具体范围见[设计](superpowers/specs/2026-09-20-role-template-management-design.md)，业务 Current／Next 只在[功能开发路线图](feature-roadmap.md)维护。
 
 ## 已实现
 
@@ -22,8 +22,9 @@
 
 ## 最近验证
 
-- 新隔离worktree完成依赖和Prisma客户端准备后，基线测试通过：工具65项、前端140项、后端195项。首次后端失败仅因新worktree缺少被忽略的生成客户端，执行仓库规定的`pnpm prepare:prisma`后同一基线全部通过，未发现业务回归。
+- 新隔离worktree完成依赖和Prisma客户端准备后，基线测试通过：工具65项、前端140项、后端195项。
+- 角色模板后端聚焦25项、前端聚焦25项通过；独立测试库专用浏览器E2E 4/4、相邻人员权限E2E 6/6通过。专用E2E覆盖正式页面复制／分配／编辑、同会话下一请求使用新Grant、跨部门与TEAM管理权拒绝、重名、并发版本冲突、审计失败回滚及结构化迁移补权。最终完整`verify`、固定候选标识和独立Review尚待执行，不提前记为完成。
 
 ## 下一步
 
-按实施计划以测试先行完成迁移、后端契约、正式页面和数据库型浏览器验收；固定候选执行Level 3完整门禁和独立Review。完成本任务后转入“多联系人及客户关系维护”。
+同步Living Spec并固定干净候选，执行Level 3完整门禁和独立Review；全部证据通过后关闭Current Slice并转入“多联系人及客户关系维护”。

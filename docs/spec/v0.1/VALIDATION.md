@@ -1,5 +1,13 @@
 # SPEC-001 文档验证
 
+## ROLE-TEMPLATE-001角色模板复制与Grant配置候选（2026-09-20）
+
+本切片在`codex/role-template-management`隔离worktree按方案A实现：新增独立`ROLE_MANAGE`，只允许当前部门DEPARTMENT范围的模板写入；复制和编辑均提交完整Grant集合，并逐Action验证操作者的DEPARTMENT覆盖。编辑采用模板乐观版本和Serializable事务，模板、Grant、受影响账号授权修订与成功审计共同提交；并发序列化失败稳定映射为409。管理上下文提供严格固定权限目录、模板版本、活动受让人数和capability，正式页面使用复选框加单范围选择并自动加载影响预览，不增加原因、审批或重复认证。
+
+迁移只增加`role.manage`枚举，并在后续事务中按唯一引导关系、未共享角色和结构条件受控补`ROLE_MANAGE / DEPARTMENT`；不按角色名称或用户名猜测。专用升级探针已证明共享角色和非引导角色不补权。模板删除／停用、跨部门或全局角色、自定义策略、角色继承、新业务Action、生产迁移和发布不在本切片。
+
+当前开发期证据：角色模板Service／Controller后端25项、组织API／模板组件／人员工作区前端25项通过；独立`postgres-test`数据库型Playwright专用4/4通过，覆盖正式页面复制模板、创建第二位人员并分配、新人员登录、影响预览、模板编辑、授权修订递增和同一会话下一请求只获得新Grant，以及重名、TEAM管理权、跨部门、并发版本竞争、审计失败全事务回滚和迁移结构识别。相邻人员权限浏览器回归6/6通过。本段不提前声称最终Level 3完成；固定候选的完整`pnpm verify`、commit／tree及独立Review结果将在同一候选验证后回填。
+
 ## TEAM-AUTHZ-ARCH-001团队与管理授权前置收口（2026-09-20）
 
 本任务只收口Next Slice之前的Team引用完整性和管理授权上限。Prisma新增部门直属`Team`及ACTIVE／INACTIVE状态，数据库拒绝改变Team部门，`DepartmentMembership`、`RoleAssignment`、`Customer`的非空团队引用改由`(teamId, departmentId)`组合外键约束；不增加Team编码、层级或物理删除。停用Team保留既有成员、角色和客户引用，既有客户仍可按原权限维护，但新建／恢复成员或角色绑定及新客户绑定必须使用活动Team。

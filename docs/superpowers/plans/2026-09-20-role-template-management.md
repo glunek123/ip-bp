@@ -340,7 +340,7 @@ pnpm --filter @dev-cor/backend test src/access-control/role-template.service.spe
 
 Use the same actor and department locks as copy, then lock the template, its Grants, active assignments, and affected user accounts in deterministic UUID order. Compare `expectedVersion`, validate the complete resulting set, delete and recreate Grants inside the transaction, increment template version, increment every distinct affected account's authorization revision, and insert `role-template.updated` audit.
 
-Do not revoke sessions directly: the existing auth request path already compares the session's captured authorization revision with the current account value, so the next request becomes unauthorized and re-login reads current Grants.
+Do not revoke sessions directly: the existing auth request path reloads the current account authorization revision and the access-control snapshot reloads live Grants, so the next request uses current permissions without forcing a re-login.
 
 - [ ] **Step 5: Add PATCH contract and GREEN tests**
 
@@ -498,8 +498,8 @@ git commit -m "feat: manage role template grants in people workspace"
 2. The new template has selected Grants in PostgreSQL and appears in the existing role-assignment UI.
 3. Administrator assigns it to a real second user; that user logs in and sees exactly the selected customer scope.
 4. Administrator edits the template and sees the affected user preview.
-5. The user's next authenticated request is rejected because the authorization revision changed.
-6. After re-login, the user sees only the updated scope.
+5. The affected account's authorization revision increases with the template version.
+6. The user's next authenticated request in the same session sees only the updated scope.
 
 - [ ] **Step 1: Add a dedicated E2E script and fixtures**
 

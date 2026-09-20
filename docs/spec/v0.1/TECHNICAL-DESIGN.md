@@ -1,6 +1,6 @@
 # 技术设计基线、低负担回溯、可配置授权与客户切片
 
-版本：TD-BASE-05／TD-SLICE-CU-BASE-01 rev3／TD-SLICE-CU-RH-01 rev1／TD-AUTHZ-01 rev3／TD-TRACE-UX-01／AUTH-LOCAL-001；日期：2026-09-20；任务：CTD-001／BR-005～007／TD-CU-001／TD-AUTHZ-001／TD-TRACE-UX-001／GOV-LIVE-SPEC-001／CUST-FND-001～008／CUST-RH-DESIGN-001／CUST-RH-001／AUTH-LOCAL-001／TEAM-AUTHZ-ARCH-001／PERSONNEL-ACCESS-001。状态：SD-34低负担回溯与SD-36团队授权约束保持有效；客户草稿、最小授权、共享审计、运营端直接页面、编辑判重、一位准入联系人及权利主体最小关联已取得PostgreSQL、跨端及独立Q2内部验证；SD-35固定的v0.1系统自有账号第一切片和人员账号／当前部门成员／Team／已有角色分配管理切片均已形成正式实现与数据库型Playwright链路；角色模板Grant编辑、MFA／OIDC和生产迁移仍属后续；E02真实存储单独阻断依赖它的能力。
+版本：TD-BASE-05／TD-SLICE-CU-BASE-01 rev3／TD-SLICE-CU-RH-01 rev1／TD-AUTHZ-01 rev4／TD-TRACE-UX-01／AUTH-LOCAL-001；日期：2026-09-20；任务：CTD-001／BR-005～007／TD-CU-001／TD-AUTHZ-001／TD-TRACE-UX-001／GOV-LIVE-SPEC-001／CUST-FND-001～008／CUST-RH-DESIGN-001／CUST-RH-001／AUTH-LOCAL-001／TEAM-AUTHZ-ARCH-001／PERSONNEL-ACCESS-001／ROLE-TEMPLATE-001。状态：SD-34低负担回溯与SD-36团队授权约束保持有效；客户草稿、最小授权、共享审计、运营端直接页面、编辑判重、一位准入联系人及权利主体最小关联已取得PostgreSQL、跨端及独立Q2内部验证；SD-35固定的v0.1系统自有账号、人员账号／当前部门成员／Team／已有角色分配以及当前部门角色模板复制／Grant编辑均已形成正式实现与数据库型Playwright链路；MFA／OIDC、跨部门全局角色和生产迁移仍属后续；E02真实存储单独阻断依赖它的能力。
 
 本页主体仍是TD-BASE通用机制；BR-03及后续确认已补齐客户准入、正常阶段／历史补录、可配置角色权限、文件生命周期、金额基础和合并语义。INPUT-013进一步要求在原页面和原操作顺序内补强回溯、材料精确版本、统一授权、检索及防重复。业务字段和关系仍以[领域模型](DOMAIN.md)为准，动作与阶段仍以[模块Spec](README.md)及[准备包](preparation/README.md)为准，缺口及责任仍由[GAPS](GAPS.md)管理。本页只固化这些决定共用的最小技术形状，不补造资金公式、审理执行、证物实物或报表口径。
 
@@ -656,3 +656,13 @@ E02与本切片无文件能力依赖，不阻断实现；系统自有账号真�
 SD-35细化SD-31：v0.1不等待外部SSO，第一切片采用系统自有实名账号和PostgreSQL不透明会话，登录后仍映射到现有`UserAccount`、部门成员、角色和Grant；未来OIDC作为并列Identity Adapter接入，不改写业务Module。
 
 本切片仅包含受控命令创建首个账号、用户名／密码登录、会话恢复、退出、CSRF／登录限速及前端登录页；不开放注册，不实现日常建号／禁用／重置、权限管理页面、MFA、找回密码、OIDC或生产部署。完整模型、接口、安全边界和Q2验收见[系统自有账号认证设计](../../superpowers/specs/2026-09-17-local-account-auth-design.md)。该切片现已完成schema、迁移、接口、页面、数据库型Playwright、隔离复审和内部集成；范围外能力仍须另开切片。
+
+## 22. ROLE-TEMPLATE-001：角色模板复制与 Grant 配置
+
+角色模板写入与既有角色分配拆权：`ROLE_ASSIGN`只分配已有模板，`ROLE_MANAGE`负责复制和编辑模板。写接口只接受当前部门的`ROLE_MANAGE / DEPARTMENT`；结果中的每个Action还必须由操作者以同Action的DEPARTMENT Grant覆盖。TEAM／SELF管理Grant、角色名称、用户名、前端按钮和引导管理员身份均不构成授权。
+
+`POST /organization/role-templates`以活动来源模板、名称和完整Grant集合一次创建；`PATCH /organization/role-templates/:id`以`expectedVersion`和完整Grant集合原子替换。两者都在Serializable事务内重新锁定并验证操作者、部门和模板，成功事实与审计共同提交。编辑按确定顺序锁定活动受让人并让每个不同账号的`authorizationRevision`只递增一次；并发更新只有一个版本获胜，PostgreSQL `40001`和显式旧版本均映射为稳定409。下一次认证请求重读当前账号修订和实时Grant，因此旧权限立即停止生效，但正常模板调整不强制退出登录。
+
+管理上下文返回严格的固定Action目录、允许范围、模板版本、活动受让人数和`manageRoleTemplates` capability；影响预览只显示当前部门活动受让人的最小投影，保存事务仍重新计算真实影响。前端在既有人员与权限工作区直接复用一个复制／编辑表单，Action使用复选框加单范围选择，编辑时自动预览；不要求修改原因、审批或二次认证，409保留输入。
+
+迁移分为枚举和值补权两步。第一步只增加`role.manage`；第二步在事务和引用锁内只为未共享且满足唯一引导关系结构的角色补`ROLE_MANAGE / DEPARTMENT`，不按角色名或用户名猜测。共享角色、非引导角色和冲突升级不得获得新权限。完整边界见[角色模板管理设计](../../superpowers/specs/2026-09-20-role-template-management-design.md)；模板删除／停用、跨部门或全局角色、自定义策略、角色继承和新业务Action均不在本切片。
