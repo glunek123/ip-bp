@@ -8,7 +8,7 @@
 
 ## 当前任务
 
-**ROLE-TEMPLATE-001（Level 3）正在固定候选**：基于`main@3c7497a`，在`codex/role-template-management`隔离分支按已确认方案 A 完成“角色模板复制与 Grant 配置闭环”的正式实现和聚焦验收。新增独立`ROLE_MANAGE`，模板写操作只接受部门级授权，并在现有人员与权限工作区提供复制、编辑、自动影响预览和下一请求生效。具体范围见[设计](superpowers/specs/2026-09-20-role-template-management-design.md)，业务 Current／Next 只在[功能开发路线图](feature-roadmap.md)维护。
+**ROLE-TEMPLATE-001（Level 3）已完成**：基于`main@3c7497a`，在`codex/role-template-management`隔离分支按方案 A 完成“角色模板复制与 Grant 配置闭环”。代码候选`d542c31`、tree`cae336d`通过完整门禁、数据库型浏览器验收和独立终审；终审`ACCEPTED`且Critical／Important／Minor均为0。具体范围见[设计](superpowers/specs/2026-09-20-role-template-management-design.md)，业务 Current／Next 只在[功能开发路线图](feature-roadmap.md)维护。
 
 ## 已实现
 
@@ -26,7 +26,8 @@
 - 角色模板后端聚焦25项、前端聚焦25项通过；独立测试库专用浏览器E2E 4/4、相邻人员权限E2E 6/6通过。专用E2E覆盖正式页面复制／分配／编辑、同会话下一请求使用新Grant、跨部门与TEAM管理权拒绝、重名、并发版本冲突、审计失败回滚及结构化迁移补权。最终完整`verify`、固定候选标识和独立Review尚待执行，不提前记为完成。
 - 首个固定候选的完整门禁通过但独立Review以4项Important和1项Minor拒绝；只读可见性、迁移幂等、拒绝审计码、数据库负向证据和页面文案均已修正，专用E2E再次4/4通过。必须对新候选重跑完整门禁和独立复审，旧候选的通过记录不作为最终完成证据。
 - 第二个固定候选完整门禁通过后，复审确认上述5项关闭但新增1项Important：可读模板被页面误用为可分配模板。现已由后端逐模板返回`assignable`并由页面只展示可分配子集，聚焦测试、快速门禁和专用E2E通过；仍须对第三个候选重跑完整门禁和复审。
+- 最终代码候选`d542c31`的`pnpm verify`通过：工具65项、前端153项、后端225项、类型／Lint／格式和双端生产构建全部通过；角色模板E2E 4/4、人员权限E2E 6/6通过。独立终审`ACCEPTED`，未关闭finding为0。测试只使用`dev_cor_test`，未执行生产迁移、推送、合并或发布。
 
 ## 下一步
 
-同步Living Spec并固定干净候选，执行Level 3完整门禁和独立Review；全部证据通过后关闭Current Slice并转入“多联系人及客户关系维护”。
+本任务已收口，Current Slice已清空。等待用户决定是否领取唯一Next Slice“多联系人及客户关系维护”；不自动推送、合并、发布或操作生产数据库。
