@@ -8,7 +8,7 @@
 
 ## 当前任务
 
-**CORE-LD-001（独立Q2修复中）**：最小客户准入、真实私有材料字节、运营新建／查看／编辑待推送线索及四阶段计数已实现，聚焦单元、静态、真实PostgreSQL／Chromium与迁移专项通过。首轮独立Q2为Critical 0／Important 4／Minor 1，当前正在加固测试DSN与实际容器绑定、迁移补权故障探针、ADMITTED负例及时序文档；修复候选复审和唯一正式`verify:slice:core-ld`仍待完成。[功能开发路线图](feature-roadmap.md)保持唯一Current为`CORE-LD-001｜运营新建待推送线索`，唯一Next为`CORE-LD-002｜运营推送至真实客户端审核`。
+**CORE-LD-001（正式门禁待执行）**：最小客户准入、真实私有材料字节、运营新建／查看／编辑待推送线索及四阶段计数已实现，聚焦单元、静态、真实PostgreSQL／Chromium与迁移专项通过。修复候选独立Q2复审已`APPROVED`，Critical／Important均为0；唯一Minor是本文件执行顺序与路线图冲突，现已修正。[功能开发路线图](feature-roadmap.md)保持唯一Current为`CORE-LD-001｜运营新建待推送线索`，唯一Next为`CORE-LD-002｜运营推送至真实客户端审核`，当前须先在该状态候选上运行正式`verify:slice:core-ld`。
 
 ## 已实现
 
@@ -29,7 +29,8 @@
 - `test:unit:core-ld`后端226/226、前端71/71，`test:context` 67/67，`check:fast:prepared`的架构、全仓类型和ESLint通过。`test:e2e:core-ld` 9/9通过，覆盖8组业务场景和1组迁移探针；空库完整22迁移、上一schema映射／保留／补权和两个故障阶段回滚均已真实执行。
 - 开发期E2E暴露并修复两个实现缺陷：计数器999后先触发数据库CHECK而返500，以及Prisma adapter的`P2010/40001`未进入既定可串行化重试。修复后第1000号返409 `LEAD_NUMBER_EXHAUSTED`，并发成功编号无重复，重试耗尽返回稳定`VERSION_CONFLICT`。
 - 首轮独立Q2固定`c60bd18`后报告Critical 0／Important 4／Minor 1。当前修复已禁止PostgreSQL连接query覆盖，随机端口必须绑定唯一健康测试容器和锁定17.11镜像，迁移探针证明4次补权INSERT后才在授权修订UPDATE失败并整体回滚；ADMITTED负例只保留主体／证件类型不兼容。修复后上下文69/69、CORE-LD E2E 9/9及`check:fast`通过，仍待固定提交与独立复审。
+- 修复候选`fe2ba4e`独立复审已`APPROVED`，Critical 0／Important 0；唯一Minor是状态文档把路线推进写在正式门禁之前，本次只纠正执行顺序，不改变业务实现或范围。
 
 ## 下一步
 
-固定并提交CORE-LD-001修复候选，完成限定范围独立Q2复审；复审finding为0后，才把Current／Next推进至CORE-LD-002／003，并在最终同一tree上运行唯一`verify:slice:core-ld`。不自动推送、发布或操作生产数据库。
+固定本次时序文档修复候选并保持Current／Next为CORE-LD-001／002，在该干净候选上运行正式`verify:slice:core-ld`；只有门禁成功，才依据实际证据把Current／Next推进至CORE-LD-002／003并提交最终状态。因状态提交会形成新tree，随后须在最终干净tree上重新运行并绑定正式门禁证据。不自动推送、发布或操作生产数据库。
