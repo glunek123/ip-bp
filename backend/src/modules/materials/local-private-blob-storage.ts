@@ -1,10 +1,10 @@
-import { createHash, randomUUID } from 'node:crypto';
+import { createHash } from 'node:crypto';
 import {
   access,
   link,
   mkdir,
   open as openFile,
-  rm,
+  stat,
   unlink,
 } from 'node:fs/promises';
 import { createReadStream, createWriteStream } from 'node:fs';
@@ -14,6 +14,7 @@ import { pipeline } from 'node:stream/promises';
 import { containsPdfEncryptionToken, detectMimeType } from './file-signature';
 import {
   BlobNotFoundError,
+  BlobStorageUnavailableError,
   BlobValidationError,
   PrivateBlobStorage,
 } from './private-blob-storage';
@@ -24,9 +25,16 @@ const PDF_TOKEN_OVERLAP = 7;
 
 export class LocalPrivateBlobStorage implements PrivateBlobStorage {
   private readonly root: string;
+  private readonly linkFile: typeof link;
+  private readonly unlinkFile: typeof unlink;
 
-  constructor(root: string) {
+  constructor(
+    root: string,
+    operations: { link?: typeof link; unlink?: typeof unlink } = {},
+  ) {
     this.root = resolve(root);
+    this.linkFile = operations.link ?? link;
+    this.unlinkFile = operations.unlink ?? unlink;
   }
 
   async put(
@@ -38,16 +46,19 @@ export class LocalPrivateBlobStorage implements PrivateBlobStorage {
     detectedMimeType: string;
   }> {
     const target = this.resolveStorageKey(storageKey);
-    await mkdir(this.root, { recursive: true, mode: 0o700 });
-    await mkdir(dirname(target), { recursive: true, mode: 0o700 });
     const temporaryDirectory = resolve(this.root, '.tmp');
-    await mkdir(temporaryDirectory, { recursive: true, mode: 0o700 });
-    const temporaryPath = resolve(temporaryDirectory, randomUUID());
+    const temporaryPath = resolve(
+      temporaryDirectory,
+      createHash('sha256').update(storageKey, 'utf8').digest('hex'),
+    );
     const hash = createHash('sha256');
     let sizeBytes = 0;
     let prefix = Buffer.alloc(0);
     let pdfTail = Buffer.alloc(0);
     let encryptedPdf = false;
+    let ownsTemporary = false;
+    let linked = false;
+    let temporaryHandle: Awaited<ReturnType<typeof openFile>> | undefined;
 
     const inspector = new Transform({
       transform(chunk: Buffer | string, encoding, callback) {
@@ -71,39 +82,70 @@ export class LocalPrivateBlobStorage implements PrivateBlobStorage {
     });
 
     try {
+      await mkdir(this.root, { recursive: true, mode: 0o700 });
+      await mkdir(dirname(target), { recursive: true, mode: 0o700 });
+      await mkdir(temporaryDirectory, { recursive: true, mode: 0o700 });
+      temporaryHandle = await openFile(temporaryPath, 'wx', 0o600);
+      ownsTemporary = true;
       await pipeline(
         source,
         inspector,
-        createWriteStream(temporaryPath, { flags: 'wx', mode: 0o600 }),
+        createWriteStream(temporaryPath, { flags: 'r+', mode: 0o600 }),
       );
       const detectedMimeType = detectMimeType(prefix);
       if (detectedMimeType === 'application/pdf' && encryptedPdf) {
         throw new BlobValidationError('encrypted PDF files are not accepted');
       }
-      const handle = await openFile(temporaryPath, 'r+');
-      try {
-        await handle.sync();
-      } finally {
-        await handle.close();
-      }
+      await temporaryHandle.sync();
+      const temporaryIdentity = await temporaryHandle.stat();
       const sha256 = hash.digest('hex');
       try {
-        await link(temporaryPath, target);
+        await this.linkFile(temporaryPath, target);
       } catch (error) {
         if (isNodeError(error) && error.code === 'EEXIST') {
           throw new BlobValidationError('Private blob key already exists');
         }
         throw error;
       }
-      await rm(temporaryPath, { force: true }).catch(() => undefined);
+      linked = true;
+      const publishedIdentity = await stat(target);
+      if (
+        publishedIdentity.dev !== temporaryIdentity.dev ||
+        publishedIdentity.ino !== temporaryIdentity.ino
+      ) {
+        throw this.storageUnavailable();
+      }
+      try {
+        await temporaryHandle.close();
+        temporaryHandle = undefined;
+        await this.unlinkFile(temporaryPath);
+      } catch {
+        throw this.storageUnavailable();
+      }
       return {
         sizeBytes,
         sha256,
         detectedMimeType,
       };
     } catch (error) {
-      await rm(temporaryPath, { force: true }).catch(() => undefined);
-      throw error;
+      let handleClosed = true;
+      if (temporaryHandle !== undefined) {
+        try {
+          await temporaryHandle.close();
+        } catch {
+          handleClosed = false;
+        }
+      }
+      const cleaned = linked
+        ? await this.deletePaths([target, temporaryPath])
+        : !ownsTemporary || (await this.deletePaths([temporaryPath]));
+      if (!handleClosed || !cleaned) throw this.storageUnavailable();
+      if (error instanceof BlobValidationError) throw error;
+      if (error instanceof BlobStorageUnavailableError) throw error;
+      if (isNodeError(error) && error.code === 'EEXIST') {
+        throw new BlobValidationError('Private blob key already exists');
+      }
+      throw this.storageUnavailable();
     }
   }
 
@@ -111,18 +153,25 @@ export class LocalPrivateBlobStorage implements PrivateBlobStorage {
     const target = this.resolveStorageKey(storageKey);
     try {
       await access(target);
-    } catch {
-      throw new BlobNotFoundError('Private blob not found');
+    } catch (error) {
+      if (isNodeError(error) && error.code === 'ENOENT') {
+        throw new BlobNotFoundError('Private blob not found');
+      }
+      throw this.storageUnavailable();
     }
     return createReadStream(target);
   }
 
   async delete(storageKey: string): Promise<void> {
     const target = this.resolveStorageKey(storageKey);
-    await unlink(target).catch((error: unknown) => {
-      if (isNodeError(error) && error.code === 'ENOENT') return;
-      throw error;
-    });
+    const temporaryPath = resolve(
+      this.root,
+      '.tmp',
+      createHash('sha256').update(storageKey, 'utf8').digest('hex'),
+    );
+    if (!(await this.deletePaths([target, temporaryPath]))) {
+      throw this.storageUnavailable();
+    }
   }
 
   async health(): Promise<'ready' | 'unavailable'> {
@@ -157,6 +206,24 @@ export class LocalPrivateBlobStorage implements PrivateBlobStorage {
       throw new BlobValidationError('Invalid storage key');
     }
     return target;
+  }
+
+  private async deletePaths(paths: string[]): Promise<boolean> {
+    let cleaned = true;
+    for (const path of paths) {
+      try {
+        await this.unlinkFile(path);
+      } catch (error) {
+        if (!isNodeError(error) || error.code !== 'ENOENT') cleaned = false;
+      }
+    }
+    return cleaned;
+  }
+
+  private storageUnavailable(): BlobStorageUnavailableError {
+    return new BlobStorageUnavailableError(
+      'Private blob storage is unavailable',
+    );
   }
 }
 

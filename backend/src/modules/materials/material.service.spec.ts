@@ -4,8 +4,11 @@ import { Test } from '@nestjs/testing';
 import { ActorContext } from '../../access-control/actor-context';
 import { AccessControlService } from '../../access-control/access-control.service';
 import { DatabaseService } from '../../database/database.service';
-import { PrivateBlobStorage } from './private-blob-storage';
-import { PRIVATE_BLOB_STORAGE } from './private-blob-storage';
+import {
+  BlobStorageUnavailableError,
+  PRIVATE_BLOB_STORAGE,
+  PrivateBlobStorage,
+} from './private-blob-storage';
 import { MaterialCleanupService } from './material-cleanup.service';
 import { MaterialService } from './material.service';
 
@@ -426,6 +429,31 @@ describe('MaterialService', () => {
     });
   });
 
+  it('maps a filesystem put failure and keeps pending cleanup when delete also fails', async () => {
+    const fixture = createFixture();
+    fixture.db.uploadDraft.findUnique.mockResolvedValue(openDraft());
+    fixture.storage.put.mockRejectedValue(
+      new BlobStorageUnavailableError('Private blob storage is unavailable'),
+    );
+    fixture.storage.delete.mockRejectedValue(
+      new BlobStorageUnavailableError('Private blob storage is unavailable'),
+    );
+
+    await expect(
+      fixture.service.finalizeUpload(
+        actor,
+        '44444444-4444-4444-8444-444444444444',
+        Readable.from(Buffer.from('bytes')),
+      ),
+    ).rejects.toMatchObject({ response: { code: 'STORAGE_UNAVAILABLE' } });
+    expect(fixture.storage.delete).toHaveBeenCalledTimes(1);
+    expect(fixture.db.uploadDraft.updateMany).toHaveBeenCalledTimes(1);
+    expect(fixture.db.uploadDraft.updateMany).toHaveBeenCalledWith({
+      where: expect.objectContaining({ pendingStorageKey: null }),
+      data: { pendingStorageKey: expect.any(String) },
+    });
+  });
+
   it('enforces the owner/category limit inside the serialized finalize transaction', async () => {
     const fixture = createFixture();
     fixture.db.uploadDraft.findUnique.mockResolvedValue(openDraft());
@@ -533,6 +561,83 @@ describe('MaterialService', () => {
       results.filter((result) => result.status === 'rejected')[0],
     ).toMatchObject({ reason: { response: { code: 'VALIDATION_ERROR' } } });
     expect(fixture.transaction.material.create).toHaveBeenCalledTimes(1);
+  });
+
+  it('rejects restore when a deleted slot has already been refilled', async () => {
+    const fixture = createFixture();
+    fixture.db.material.findFirst.mockResolvedValue({
+      ...materialRecord(),
+      status: 'DELETED',
+      deletedAt: new Date(now.getTime() - 60_000),
+    });
+    fixture.transaction.material.count.mockResolvedValue(20);
+    fixture.db.$transaction.mockImplementation(async (callback) =>
+      callback(fixture.transaction),
+    );
+
+    await expect(
+      fixture.service.restore(actor, 'material-1', 1),
+    ).rejects.toMatchObject({ response: { code: 'VALIDATION_ERROR' } });
+    expect(fixture.transaction.$executeRawUnsafe).toHaveBeenCalledWith(
+      expect.stringContaining('pg_advisory_xact_lock'),
+      expect.stringContaining(
+        `${actor.departmentId}:LEAD_DRAFT:reserved-owner:LEAD_SCREENSHOT`,
+      ),
+    );
+    expect(fixture.transaction.material.updateMany).not.toHaveBeenCalled();
+  });
+
+  it('serializes restore with finalize so only one takes the remaining owner quota', async () => {
+    const fixture = createFixture();
+    fixture.db.material.findFirst.mockResolvedValue({
+      ...materialRecord(),
+      status: 'DELETED',
+      deletedAt: new Date(now.getTime() - 60_000),
+    });
+    fixture.db.uploadDraft.findUnique.mockResolvedValue(openDraft());
+    fixture.storage.put.mockResolvedValue({
+      sizeBytes: 10,
+      sha256: 'f'.repeat(64),
+      detectedMimeType: 'image/png',
+    });
+    let activeCount = 19;
+    let queue = Promise.resolve();
+    fixture.transaction.material.count.mockImplementation(
+      async () => activeCount,
+    );
+    fixture.transaction.material.create.mockImplementation(async ({ data }) => {
+      activeCount += 1;
+      return data;
+    });
+    fixture.transaction.material.updateMany.mockImplementation(async () => {
+      activeCount += 1;
+      return { count: 1 };
+    });
+    fixture.db.$transaction.mockImplementation((callback) => {
+      const result = queue.then(() => callback(fixture.transaction));
+      queue = result.then(
+        () => undefined,
+        () => undefined,
+      );
+      return result;
+    });
+
+    const results = await Promise.allSettled([
+      fixture.service.restore(actor, 'material-1', 1),
+      fixture.service.finalizeUpload(
+        actor,
+        '44444444-4444-4444-8444-444444444444',
+        Readable.from('bytes'),
+      ),
+    ]);
+
+    expect(
+      results.filter((result) => result.status === 'fulfilled'),
+    ).toHaveLength(1);
+    expect(
+      results.filter((result) => result.status === 'rejected')[0],
+    ).toMatchObject({ reason: { response: { code: 'VALIDATION_ERROR' } } });
+    expect(activeCount).toBe(20);
   });
 
   it('opens an authorized exact version and preserves its exact content hash', async () => {
@@ -689,6 +794,7 @@ function materialRecord() {
     departmentId: actor.departmentId,
     ownerType: 'LEAD_DRAFT',
     ownerId: 'reserved-owner',
+    category: 'LEAD_SCREENSHOT',
     status: 'ACTIVE',
     version: 1,
     deletedAt: null,
@@ -702,6 +808,7 @@ function createFixture() {
     material: {
       create: jest.fn(async ({ data }) => data),
       update: jest.fn(async ({ data }) => data),
+      updateMany: jest.fn(async () => ({ count: 1 })),
       count: jest.fn(async () => 0),
     },
     contentVersion: { create: jest.fn(async ({ data }) => data) },
@@ -726,7 +833,10 @@ function createFixture() {
       updateMany: jest.fn(),
     },
     materialReference: { count: jest.fn() },
-    $transaction: jest.fn(),
+    $transaction: jest.fn(
+      async (callback: (value: typeof transaction) => Promise<unknown>) =>
+        callback(transaction),
+    ),
   };
   const access = {
     buildCustomerScope: jest.fn(),

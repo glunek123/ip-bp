@@ -196,7 +196,7 @@ export class MaterialService {
     const materialId = randomUUID();
     const contentVersionId = randomUUID();
     const storageKey = `${actor.departmentId}/${materialId}/${contentVersionId}`;
-    let written = false;
+    let pendingClaimed = false;
     try {
       const claimed = await this.database.uploadDraft.updateMany({
         where: {
@@ -210,8 +210,8 @@ export class MaterialService {
         data: { pendingStorageKey: storageKey },
       });
       if (claimed.count !== 1) throw this.versionConflict();
+      pendingClaimed = true;
       const blob = await this.storage.put(storageKey, source);
-      written = true;
       if (
         blob.detectedMimeType !== declaredMimeType ||
         !isMimeAllowedForPurpose(
@@ -223,15 +223,9 @@ export class MaterialService {
         throw this.invalidVersion();
       }
       await this.database.$transaction(async (transaction) => {
-        const quotaKey = [
-          actor.departmentId,
-          draft.ownerType,
-          draft.ownerId,
-          draft.category,
-        ].join(':');
         await transaction.$executeRawUnsafe(
           'SELECT pg_advisory_xact_lock(hashtextextended($1, 0))',
-          quotaKey,
+          ownerQuotaKey(draft),
         );
         const activeCount = await transaction.material.count({
           where: {
@@ -294,8 +288,8 @@ export class MaterialService {
         sha256: blob.sha256,
       };
     } catch (error) {
-      let storageIsClean = !written;
-      if (written) {
+      let storageIsClean = false;
+      if (pendingClaimed) {
         try {
           await this.storage.delete(storageKey);
           storageIsClean = true;
@@ -303,7 +297,7 @@ export class MaterialService {
           // Keep the durable pending key for the cleanup service to retry.
         }
       }
-      if (storageIsClean) {
+      if (pendingClaimed && storageIsClean) {
         await this.database.uploadDraft
           .updateMany({
             where: { id: draft.id, pendingStorageKey: storageKey },
@@ -429,15 +423,33 @@ export class MaterialService {
     ) {
       throw this.versionConflict();
     }
-    const changed = await this.database.material.updateMany({
-      where: { id: materialId, status: 'DELETED', version: expectedVersion },
-      data: {
-        status: 'ACTIVE',
-        deletedAt: null,
-        version: { increment: 1 },
-      },
+    await this.database.$transaction(async (transaction) => {
+      await transaction.$executeRawUnsafe(
+        'SELECT pg_advisory_xact_lock(hashtextextended($1, 0))',
+        ownerQuotaKey(material),
+      );
+      const activeCount = await transaction.material.count({
+        where: {
+          departmentId: material.departmentId,
+          ownerType: material.ownerType,
+          ownerId: material.ownerId,
+          category: material.category,
+          status: 'ACTIVE',
+        },
+      });
+      if (activeCount >= materialLimit(material.category)) {
+        throw this.validationError();
+      }
+      const changed = await transaction.material.updateMany({
+        where: { id: materialId, status: 'DELETED', version: expectedVersion },
+        data: {
+          status: 'ACTIVE',
+          deletedAt: null,
+          version: { increment: 1 },
+        },
+      });
+      if (changed.count !== 1) throw this.versionConflict();
     });
-    if (changed.count !== 1) throw this.versionConflict();
     return {
       id: materialId,
       status: 'ACTIVE' as const,
@@ -649,6 +661,20 @@ function normalizeMimeType(value: string): string {
 
 function materialLimit(category: keyof typeof allowedMimeTypes): number {
   return category === 'CUSTOMER_IDENTITY' ? 10 : 20;
+}
+
+function ownerQuotaKey(input: {
+  departmentId: string;
+  ownerType: MaterialOwnerTypeValue;
+  ownerId: string;
+  category: keyof typeof allowedMimeTypes;
+}): string {
+  return [
+    input.departmentId,
+    input.ownerType,
+    input.ownerId,
+    input.category,
+  ].join(':');
 }
 
 function hasControlCharacters(value: string): boolean {
