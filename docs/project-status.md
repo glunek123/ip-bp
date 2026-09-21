@@ -8,7 +8,7 @@
 
 ## 当前任务
 
-**CORE-ROADMAP-001（设计阶段）**：用户已确认把开发重心调整为核心主线，并进一步确认“四个里程碑＋逐状态动作小切片”的粒度。详细设计见[核心主线设计](superpowers/specs/2026-09-21-core-business-mainline-roadmap-design.md)；[路线图](feature-roadmap.md)已把`CORE-LD-001｜运营新建待推送线索`设为唯一Current，`CORE-LD-002｜运营推送至真实客户端审核`设为唯一Next。正式业务代码尚未开始，须在书面Spec复核后只为Current Slice生成实施计划。
+**CORE-ROADMAP-001（设计阶段）**：用户已确认把开发重心调整为核心主线，并进一步确认“四个里程碑＋逐状态动作小切片”的粒度。详细设计见[核心主线设计](superpowers/specs/2026-09-21-core-business-mainline-roadmap-design.md)，精确字段、受控选项、附件、材料版本和存储边界已收口到[核心业务字段、附件与存储契约](superpowers/specs/2026-09-21-core-flow-field-material-contract.md)；[路线图](feature-roadmap.md)已把`CORE-LD-001｜运营新建待推送线索`设为唯一Current，`CORE-LD-002｜运营推送至真实客户端审核`设为唯一Next。正式业务代码尚未开始，须在书面Spec复核后只为Current Slice生成实施计划。
 
 ## 已实现
 
@@ -20,14 +20,14 @@
 - SD-22／30正式准入门槛保持有效；客户资料准入不是线索阶段，CORE-LD-001只补正式线索所需的最小准入和本地／测试私有存储Adapter，不冒充生产E02完成。
 - CORE-LD-002开始交付最小真实客户端；不再用运营代录客户审核，也不提前建设完整客户门户。
 - 多联系人、资产协议、CSV／批量、完整外部端、费用结算和报表后置。OCR与爬虫当前只保留领域Command、幂等和来源追踪缝隙，候选暂存、批次、供应商和协议到对应功能时设计。
-- 当前只完成设计和路线重排；未授权推送、发布、生产数据库操作或持久化数据删除。
+- 当前只完成设计、字段／附件／存储契约和路线重排；未授权推送、发布、生产数据库操作或持久化数据删除。契约中标记`BLOCKED_BY`的后段动作必须等待对应业务决定，不得由实施AI补猜；不影响此前无阻塞的Slice。
 
 ## 最近验证
 
 - 2026-09-21在本地`main@b8d04bf`执行`pnpm context:check`通过；Node v24.21.0、pnpm 11.27.0与项目锁定环境一致。
-- 本轮仅修改Decision、设计、路线图和状态文档；没有修改正式代码、Schema或测试，未运行代码测试、构建、数据库E2E或生产联调。
+- 本轮新增核心字段／附件／存储契约，并同步主线设计、路线图、状态和上下文快照；`pnpm spec:check`、目标文档Prettier检查、`git diff --check`和`pnpm context:check:strict`通过。没有修改正式代码、Schema或测试，未运行代码测试、构建、数据库E2E或生产联调。
 - 上一任务最终代码候选`d542c31`的完整`pnpm verify`、角色模板E2E 4/4、人员权限E2E 6/6和独立终审`ACCEPTED`仍只证明该候选，不作为未来核心业务tree的验证证据。
 
 ## 下一步
 
-请用户复核细化后的[核心主线设计](superpowers/specs/2026-09-21-core-business-mainline-roadmap-design.md)。确认书面Spec后按设计规范只生成`CORE-LD-001`实施计划，再进入正式编码；不重复选择路线，不自动推送、发布或操作生产数据库。
+请用户一并复核细化后的[核心主线设计](superpowers/specs/2026-09-21-core-business-mainline-roadmap-design.md)和[字段、附件与存储契约](superpowers/specs/2026-09-21-core-flow-field-material-contract.md)。确认书面Spec后按设计规范只生成`CORE-LD-001`实施计划，再进入正式编码；不重复选择路线，不自动推送、发布或操作生产数据库。

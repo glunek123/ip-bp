@@ -2,7 +2,7 @@
 
 更新日期：2026-09-21。业务实现审计基线：`d542c31`；SD-37已把后续交付重心调整为核心业务主线，纯文档重排不改变既有能力完成判定。
 
-本文只回答“已经做到哪里、下一步做什么、之后按什么依赖顺序做”。详细业务规则仍以 [`docs/spec/`](spec/) 为准，技术方案以设计文档为准，当前切片的技术任务以实施计划为准，实际验证结果以 [`docs/project-status.md`](project-status.md) 和 [`docs/spec/v0.1/VALIDATION.md`](spec/v0.1/VALIDATION.md) 为准。
+本文只回答“已经做到哪里、下一步做什么、之后按什么依赖顺序做”。详细业务规则仍以 [`docs/spec/`](spec/) 为准，核心主线的编码级字段、附件与存储边界以[核心业务字段、附件与存储契约](superpowers/specs/2026-09-21-core-flow-field-material-contract.md)为准，技术方案以设计文档为准，当前切片的技术任务以实施计划为准，实际验证结果以 [`docs/project-status.md`](project-status.md) 和 [`docs/spec/v0.1/VALIDATION.md`](spec/v0.1/VALIDATION.md) 为准。
 
 ## 状态判定
 
@@ -22,7 +22,7 @@
 
 ### Current Slice
 
-**CORE-LD-001｜运营新建待推送线索。** 当前处于书面Spec复核，尚未开始正式代码。本Slice的业务结果只到运营创建待推送线索；为满足既有正式线索门槛，同步补齐最小客户准入和本地／测试私有材料Adapter。线索范围包括运营端列表、四阶段计数、新建、详情和允许范围内的编辑，以及线索／商品的API、PostgreSQL、最小权限、审计和真实浏览器链；不包含推送、客户端审核、取证确认或公证表。范围见[核心主线设计](superpowers/specs/2026-09-21-core-business-mainline-roadmap-design.md)。
+**CORE-LD-001｜运营新建待推送线索。** 当前处于书面Spec复核，尚未开始正式代码。本Slice的业务结果只到运营创建待推送线索；为满足既有正式线索门槛，同步补齐最小客户准入和本地／测试私有材料Adapter。线索范围包括运营端列表、四阶段计数、新建、详情和允许范围内的编辑，以及线索／商品的API、PostgreSQL、最小权限、审计和真实浏览器链；不包含推送、客户端审核、取证确认或公证表。范围见[核心主线设计](superpowers/specs/2026-09-21-core-business-mainline-roadmap-design.md)，字段、附件和存储实现必须遵守[编码级契约](superpowers/specs/2026-09-21-core-flow-field-material-contract.md)。
 
 ### Next Slice
 
