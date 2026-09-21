@@ -1,11 +1,125 @@
 import { afterEach, describe, expect, it, vi } from 'vitest';
-import { getJson, requestJson } from './http';
+import {
+  getBlob,
+  getJson,
+  requestBinary,
+  requestJson,
+  setCsrfToken,
+  setSessionIdentity,
+} from './http';
 
 afterEach(() => {
+  setCsrfToken(null);
+  setSessionIdentity(null);
   vi.unstubAllGlobals();
 });
 
 describe('HTTP boundary', () => {
+  it('sends a raw Blob through the shared authenticated request boundary', async () => {
+    const body = new Blob(['real-file-bytes'], { type: 'application/pdf' });
+    const fetch = vi
+      .fn()
+      .mockResolvedValue(new Response('{"stored":true}', { status: 200 }));
+    vi.stubGlobal('fetch', fetch);
+
+    await expect(
+      requestBinary('/materials/upload-drafts/draft-1/content', body, {
+        method: 'PUT',
+      }),
+    ).resolves.toEqual({ stored: true });
+    expect(fetch).toHaveBeenCalledExactlyOnceWith(
+      '/api/v1/materials/upload-drafts/draft-1/content',
+      expect.objectContaining({
+        method: 'PUT',
+        credentials: 'same-origin',
+        body,
+        headers: {
+          Accept: 'application/json',
+          'Content-Type': 'application/octet-stream',
+        },
+      }),
+    );
+  });
+
+  it('refreshes CSRF and replays the same raw Blob once', async () => {
+    const { setCsrfToken } = await import('./http');
+    const body = new Blob(['real-file-bytes']);
+    const fetch = vi
+      .fn()
+      .mockResolvedValueOnce(
+        new Response(JSON.stringify({ code: 'CSRF_INVALID' }), { status: 403 }),
+      )
+      .mockResolvedValueOnce(
+        new Response(JSON.stringify({ csrfToken: 'fresh-token' })),
+      )
+      .mockResolvedValueOnce(new Response('{"stored":true}'));
+    vi.stubGlobal('fetch', fetch);
+    setCsrfToken('stale-token');
+
+    await requestBinary('/materials/upload-drafts/draft-1/content', body, {
+      method: 'PUT',
+    });
+
+    expect(fetch).toHaveBeenCalledTimes(3);
+    expect(fetch.mock.calls[2]?.[1]).toEqual(
+      expect.objectContaining({
+        body,
+        headers: expect.objectContaining({ 'X-CSRF-Token': 'fresh-token' }),
+      }),
+    );
+    setCsrfToken(null);
+  });
+
+  it('parses a structured JSON error returned by a binary endpoint', async () => {
+    vi.stubGlobal(
+      'fetch',
+      vi.fn().mockResolvedValue(
+        new Response(
+          JSON.stringify({
+            code: 'MATERIAL_INVALID_VERSION',
+            message: '文件内容不符合要求',
+            requestId: 'request-binary-1',
+          }),
+          { status: 400, headers: { 'Content-Type': 'application/json' } },
+        ),
+      ),
+    );
+
+    await expect(
+      requestBinary('/materials/upload-drafts/draft-1/content', new Blob(), {
+        method: 'PUT',
+      }),
+    ).rejects.toMatchObject({
+      status: 400,
+      code: 'MATERIAL_INVALID_VERSION',
+      requestId: 'request-binary-1',
+    });
+  });
+
+  it('downloads a Blob with a decoded RFC 5987 filename', async () => {
+    vi.stubGlobal(
+      'fetch',
+      vi.fn().mockResolvedValue(
+        new Response('downloaded-bytes', {
+          headers: {
+            'Content-Type': 'application/pdf',
+            'Content-Disposition':
+              "attachment; filename*=UTF-8''%E8%90%A5%E4%B8%9A%E6%89%A7%E7%85%A7.pdf",
+          },
+        }),
+      ),
+    );
+
+    const result = await getBlob('/materials/m1/versions/v1/content');
+
+    expect(result.blob).toBeInstanceOf(Blob);
+    expect(result.blob.size).toBe(16);
+    expect(result).toMatchObject({
+      filename: '营业执照.pdf',
+      mimeType: 'application/pdf',
+    });
+  });
+
   it.each(['timeout', 'cancel'] as const)(
     'handles %s while consuming a response body',
     async (mode) => {

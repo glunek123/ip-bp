@@ -71,6 +71,26 @@ const context = {
       scopes: ['SELF', 'TEAM', 'DEPARTMENT'],
     },
     {
+      action: 'CUSTOMER_ADMIT',
+      label: '准入客户',
+      scopes: ['SELF', 'TEAM', 'DEPARTMENT'],
+    },
+    {
+      action: 'LEAD_READ',
+      label: '查看线索',
+      scopes: ['SELF', 'TEAM', 'DEPARTMENT'],
+    },
+    {
+      action: 'LEAD_CREATE',
+      label: '创建线索',
+      scopes: ['SELF', 'TEAM', 'DEPARTMENT'],
+    },
+    {
+      action: 'LEAD_EDIT',
+      label: '编辑线索',
+      scopes: ['SELF', 'TEAM', 'DEPARTMENT'],
+    },
+    {
       action: 'USER_READ',
       label: '查看人员',
       scopes: ['SELF', 'TEAM', 'DEPARTMENT'],

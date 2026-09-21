@@ -1,4 +1,9 @@
 import { ApiError, getJson, requestJson, type RequestOptions } from './http';
+import type {
+  CustomerTypeCode,
+  IdentityTypeCode,
+  IdentityValidityModeCode,
+} from '../modules/customers/customer-admission-options';
 
 export type CustomerSummary = {
   id: string;
@@ -7,12 +12,16 @@ export type CustomerSummary = {
   identityType: string | null;
   identityNumber: string | null;
   issuingCountryOrRegion: string | null;
+  identityValidFrom: string | null;
+  identityValidTo: string | null;
+  identityValidityMode: IdentityValidityModeCode | null;
+  admittedAt: string | null;
   category: string | null;
   region: string | null;
   admissionContactName: string | null;
   admissionContactPhone: string | null;
   admissionContactEmail: string | null;
-  profileStatus: 'draft';
+  profileStatus: 'draft' | 'admitted';
   departmentId: string;
   responsibleUserId: string;
   version: number;
@@ -26,7 +35,7 @@ export type CustomerHistoryEvent = {
 };
 
 export type CustomerDetail = CustomerSummary & {
-  capabilities: { editRoutine: boolean };
+  capabilities: { editRoutine: boolean; admit: boolean };
   history: CustomerHistoryEvent[];
 };
 
@@ -43,6 +52,22 @@ export type CustomerDraftInput = {
   admissionContactPhone?: string;
   admissionContactEmail?: string;
   duplicateNameReason?: string;
+};
+
+export type AdmitCustomerInput = {
+  expectedVersion: number;
+  customerType: CustomerTypeCode;
+  name: string;
+  identityType: IdentityTypeCode;
+  identityNumber: string;
+  issuingCountryOrRegion?: string;
+  identityValidFrom?: string;
+  identityValidTo?: string;
+  identityValidityMode: IdentityValidityModeCode;
+  admissionContactName: string;
+  admissionContactPhone?: string;
+  admissionContactEmail?: string;
+  identityDocumentContentVersionIds: string[];
 };
 
 export type CustomerDuplicateSummary = Pick<
@@ -66,6 +91,17 @@ function isNullableString(value: unknown): value is string | null {
   return value === null || typeof value === 'string';
 }
 
+function isIdentityValidityMode(
+  value: unknown,
+): value is IdentityValidityModeCode | null {
+  return (
+    value === null ||
+    value === 'FIXED' ||
+    value === 'LONG_TERM' ||
+    value === 'NOT_STATED'
+  );
+}
+
 function isCustomerSummary(value: unknown): value is CustomerSummary {
   return (
     isRecord(value) &&
@@ -75,12 +111,16 @@ function isCustomerSummary(value: unknown): value is CustomerSummary {
     isNullableString(value.identityType) &&
     isNullableString(value.identityNumber) &&
     isNullableString(value.issuingCountryOrRegion) &&
+    isNullableString(value.identityValidFrom) &&
+    isNullableString(value.identityValidTo) &&
+    isIdentityValidityMode(value.identityValidityMode) &&
+    isNullableString(value.admittedAt) &&
     isNullableString(value.category) &&
     isNullableString(value.region) &&
     isNullableString(value.admissionContactName) &&
     isNullableString(value.admissionContactPhone) &&
     isNullableString(value.admissionContactEmail) &&
-    value.profileStatus === 'draft' &&
+    (value.profileStatus === 'draft' || value.profileStatus === 'admitted') &&
     typeof value.departmentId === 'string' &&
     typeof value.responsibleUserId === 'string' &&
     Number.isInteger(value.version) &&
@@ -137,6 +177,7 @@ export async function getCustomer(
     !Array.isArray(history) ||
     !isRecord(capabilities) ||
     typeof capabilities.editRoutine !== 'boolean' ||
+    typeof capabilities.admit !== 'boolean' ||
     !history.every(
       (event: unknown) =>
         isRecord(event) &&
@@ -149,7 +190,10 @@ export async function getCustomer(
   }
   return {
     ...data,
-    capabilities: { editRoutine: capabilities.editRoutine },
+    capabilities: {
+      editRoutine: capabilities.editRoutine,
+      admit: capabilities.admit,
+    },
     history: history as CustomerHistoryEvent[],
   };
 }
@@ -182,6 +226,36 @@ export async function updateCustomerDraft(
     body: input,
   });
   if (!isCustomerSummary(data)) throw invalidResponse();
+  return data;
+}
+
+export async function admitCustomer(
+  id: string,
+  input: AdmitCustomerInput,
+  idempotencyKey: string,
+): Promise<CustomerSummary> {
+  const data = await requestJson(
+    `/customers/${encodeURIComponent(id)}/admission`,
+    {
+      method: 'POST',
+      headers: { 'Idempotency-Key': idempotencyKey },
+      body: input,
+    },
+  );
+  if (
+    !isCustomerSummary(data) ||
+    data.id !== id ||
+    data.profileStatus !== 'admitted' ||
+    data.admittedAt === null ||
+    data.customerType !== input.customerType ||
+    data.identityType !== input.identityType ||
+    data.identityNumber === null ||
+    data.identityValidityMode !== input.identityValidityMode ||
+    data.admissionContactName === null ||
+    (data.admissionContactPhone === null && data.admissionContactEmail === null)
+  ) {
+    throw invalidResponse();
+  }
   return data;
 }
 

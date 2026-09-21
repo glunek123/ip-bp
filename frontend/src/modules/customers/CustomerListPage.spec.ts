@@ -77,4 +77,19 @@ describe('CustomerListPage', () => {
     expect(wrapper.text()).toContain('客户甲');
     expect(wrapper.find('[data-test="create-customer"]').exists()).toBe(false);
   });
+
+  it('shows the admitted status returned by the server', async () => {
+    api.listCustomers.mockResolvedValue({
+      items: [{ ...summary, profileStatus: 'admitted' }],
+      total: 1,
+      page: 1,
+      pageSize: 20,
+      capabilities: { createDraft: true },
+    });
+    const wrapper = mount(CustomerListPage, {
+      global: { stubs: { RouterLink: { template: '<a><slot /></a>' } } },
+    });
+    await flushPromises();
+    expect(wrapper.get('.status-chip').text()).toBe('已准入');
+  });
 });

@@ -13,6 +13,13 @@ const rightsHolderPanel = {
     '<section data-test="rights-holder-panel" :data-version="customerVersion" :data-can-edit="canEdit" @click="$emit(\'version-updated\', 2)">权利主体面板<button data-test="refresh-requested" @click.stop="$emit(\'refresh-requested\')">刷新</button><button data-test="customer-not-found" @click.stop="$emit(\'customer-not-found\')">客户不存在</button></section>',
 };
 
+const admissionPanel = {
+  props: ['customer'],
+  emits: ['admitted', 'customer-refreshed', 'customer-not-found'],
+  template:
+    '<section data-test="admission-panel" :data-version="customer.version"><button data-test="admitted" @click="$emit(\'admitted\', { ...customer, profileStatus: \'admitted\', admittedAt: \'2026-09-21T03:00:00.000Z\', version: customer.version + 1, capabilities: { ...customer.capabilities, admit: false } })">准入完成</button></section>',
+};
+
 afterEach(() => vi.clearAllMocks());
 
 async function mountPage() {
@@ -28,7 +35,10 @@ async function mountPage() {
   const wrapper = mount(CustomerDetailPage, {
     global: {
       plugins: [router],
-      stubs: { CustomerRightsHolderPanel: rightsHolderPanel },
+      stubs: {
+        CustomerRightsHolderPanel: rightsHolderPanel,
+        CustomerAdmissionPanel: admissionPanel,
+      },
     },
   });
   return { router, wrapper };
@@ -53,7 +63,7 @@ describe('CustomerDetailPage', () => {
       responsibleUserId: 'user-1',
       version: 1,
       updatedAt: '2026-09-17T01:00:00.000Z',
-      capabilities: { editRoutine: true },
+      capabilities: { editRoutine: true, admit: true },
       history: [
         {
           action: 'customer.draft-created',
@@ -83,6 +93,50 @@ describe('CustomerDetailPage', () => {
         .get('[data-test="rights-holder-panel"]')
         .attributes('data-version'),
     ).toBe('2');
+    expect(
+      wrapper.get('[data-test="admission-panel"]').attributes(),
+    ).toMatchObject({ 'data-version': '2' });
+  });
+
+  it('replaces the draft admission panel with the admitted state after success', async () => {
+    const draft = {
+      id: 'customer-1',
+      name: '客户甲',
+      customerType: 'ENTERPRISE',
+      identityType: 'BUSINESS_LICENSE',
+      identityNumber: '91310000ABC123',
+      issuingCountryOrRegion: null,
+      identityValidFrom: null,
+      identityValidTo: null,
+      identityValidityMode: 'LONG_TERM',
+      admittedAt: null,
+      category: null,
+      region: null,
+      admissionContactName: '张三',
+      admissionContactPhone: '13800138000',
+      admissionContactEmail: null,
+      profileStatus: 'draft',
+      departmentId: 'department-1',
+      responsibleUserId: 'user-1',
+      version: 1,
+      updatedAt: '2026-09-17T01:00:00.000Z',
+      capabilities: { editRoutine: true, admit: true },
+      history: [],
+    };
+    api.getCustomer.mockResolvedValueOnce(draft).mockResolvedValueOnce({
+      ...draft,
+      profileStatus: 'admitted',
+      admittedAt: '2026-09-21T03:00:00.000Z',
+      version: 2,
+      capabilities: { editRoutine: true, admit: false },
+    });
+    const { wrapper } = await mountPage();
+    await flushPromises();
+
+    await wrapper.get('[data-test="admitted"]').trigger('click');
+
+    expect(wrapper.text()).toContain('已准入');
+    expect(wrapper.find('[data-test="admission-panel"]').exists()).toBe(false);
   });
 
   it('shows a non-leaking unavailable state for 404', async () => {
@@ -110,7 +164,7 @@ describe('CustomerDetailPage', () => {
       responsibleUserId: 'user-1',
       version: 1,
       updatedAt: '2026-09-17T01:00:00.000Z',
-      capabilities: { editRoutine: false },
+      capabilities: { editRoutine: false, admit: false },
       history: [],
     });
     const { wrapper } = await mountPage();
@@ -121,6 +175,7 @@ describe('CustomerDetailPage', () => {
         .get('[data-test="rights-holder-panel"]')
         .attributes('data-can-edit'),
     ).toBe('false');
+    expect(wrapper.find('[data-test="admission-panel"]').exists()).toBe(false);
   });
 
   it('returns to the customer list when the rights-holder panel loses its customer anchor', async () => {
@@ -141,7 +196,7 @@ describe('CustomerDetailPage', () => {
       responsibleUserId: 'user-1',
       version: 1,
       updatedAt: '2026-09-17T01:00:00.000Z',
-      capabilities: { editRoutine: true },
+      capabilities: { editRoutine: true, admit: true },
       history: [],
     });
     const { router, wrapper } = await mountPage();
@@ -170,7 +225,7 @@ describe('CustomerDetailPage', () => {
         responsibleUserId: 'user-1',
         version: 1,
         updatedAt: '2026-09-17T01:00:00.000Z',
-        capabilities: { editRoutine: true },
+        capabilities: { editRoutine: true, admit: true },
         history: [],
       })
       .mockRejectedValueOnce({ code: 'CUSTOMER_NOT_FOUND' });

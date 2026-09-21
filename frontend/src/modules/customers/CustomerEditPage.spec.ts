@@ -30,7 +30,7 @@ const customer = {
   responsibleUserId: 'user-1',
   version: 1,
   updatedAt: '2026-09-17T01:00:00.000Z',
-  capabilities: { editRoutine: true },
+  capabilities: { editRoutine: true, admit: true },
   history: [],
 };
 
@@ -61,8 +61,10 @@ describe('CustomerEditPage', () => {
     const { wrapper, router } = await mountPage();
     await flushPromises();
     await wrapper.get('input[name="name"]').setValue('客户甲（更新）');
-    await wrapper.get('input[name="customerType"]').setValue('enterprise');
-    await wrapper.get('input[name="identityType"]').setValue('credit-code');
+    await wrapper.get('select[name="customerType"]').setValue('ENTERPRISE');
+    await wrapper
+      .get('select[name="identityType"]')
+      .setValue('BUSINESS_LICENSE');
     await wrapper
       .get('input[name="identityNumber"]')
       .setValue('91310000abc123');
@@ -74,8 +76,8 @@ describe('CustomerEditPage', () => {
     expect(api.updateCustomerDraft).toHaveBeenCalledWith('customer-1', {
       expectedVersion: 1,
       name: '客户甲（更新）',
-      customerType: 'enterprise',
-      identityType: 'credit-code',
+      customerType: 'ENTERPRISE',
+      identityType: 'BUSINESS_LICENSE',
       identityNumber: '91310000abc123',
       issuingCountryOrRegion: '',
       category: '',
@@ -85,6 +87,41 @@ describe('CustomerEditPage', () => {
       admissionContactEmail: 'contact@example.com',
     });
     expect(router.currentRoute.value.fullPath).toBe('/customers/customer-1');
+  });
+
+  it('uses controlled compatible type options and maps supported legacy values', async () => {
+    api.getCustomer.mockResolvedValue({
+      ...customer,
+      customerType: 'enterprise',
+      identityType: 'credit-code',
+    });
+    const { wrapper } = await mountPage();
+    await flushPromises();
+
+    expect(
+      (wrapper.get('select[name="customerType"]').element as HTMLSelectElement)
+        .value,
+    ).toBe('ENTERPRISE');
+    expect(
+      (wrapper.get('select[name="identityType"]').element as HTMLSelectElement)
+        .value,
+    ).toBe('BUSINESS_LICENSE');
+
+    await wrapper.get('select[name="customerType"]').setValue('NATURAL_PERSON');
+    const identityOptions = wrapper
+      .get('select[name="identityType"]')
+      .findAll('option')
+      .map((option) => option.attributes('value'));
+    expect(identityOptions).toEqual([
+      '',
+      'NATIONAL_ID',
+      'PASSPORT',
+      'OTHER_VALID_ID',
+    ]);
+    expect(
+      (wrapper.get('select[name="identityType"]').element as HTMLSelectElement)
+        .value,
+    ).toBe('');
   });
 
   it('shows one same-name reason field and retains input for retry', async () => {

@@ -38,6 +38,13 @@ export type JsonRequestOptions = RequestOptions &
     | { method: 'POST' | 'PUT' | 'PATCH' | 'DELETE'; body?: JsonValue }
   );
 
+type RequestMethod = 'GET' | 'POST' | 'PUT' | 'PATCH' | 'DELETE';
+type RequestExecutorOptions = RequestOptions & {
+  method: RequestMethod;
+  body?: BodyInit;
+  headers: Readonly<Record<string, string>>;
+};
+
 let csrfToken: string | null = null;
 let sessionUserId: string | null = null;
 const unauthorizedListeners = new Set<() => void>();
@@ -115,6 +122,85 @@ export async function requestJson(
   path: string,
   options: JsonRequestOptions = {},
 ): Promise<unknown> {
+  const body =
+    options.body === undefined ? undefined : JSON.stringify(options.body);
+  return executeRequest(
+    path,
+    {
+      ...options,
+      method: options.method ?? 'GET',
+      body,
+      headers: {
+        Accept: 'application/json',
+        ...(body === undefined ? {} : { 'Content-Type': 'application/json' }),
+        ...options.headers,
+      },
+    },
+    parseJsonSuccess,
+  );
+}
+
+export function requestBinary(
+  path: string,
+  body: Blob,
+  options: RequestOptions & { method: 'PUT' },
+): Promise<unknown> {
+  return executeRequest(
+    path,
+    {
+      ...options,
+      body,
+      headers: {
+        Accept: 'application/json',
+        ...options.headers,
+        'Content-Type': 'application/octet-stream',
+      },
+    },
+    parseJsonSuccess,
+  );
+}
+
+export function getBlob(
+  path: string,
+  options: RequestOptions = {},
+): Promise<{ blob: Blob; filename: string; mimeType: string }> {
+  return executeRequest(
+    path,
+    {
+      ...options,
+      method: 'GET',
+      headers: { Accept: 'application/octet-stream', ...options.headers },
+    },
+    async (response, signal) => {
+      if (response.status === 204) {
+        throw new ApiError(
+          '服务返回了无效的文件数据',
+          response.status,
+          'INVALID_RESPONSE',
+        );
+      }
+      const blob = await response.blob();
+      if (signal.aborted) signal.throwIfAborted();
+      const mimeType =
+        response.headers.get('Content-Type')?.split(';', 1)[0]?.trim() ||
+        blob.type ||
+        'application/octet-stream';
+      return {
+        blob,
+        filename: parseDownloadFilename(
+          response.headers.get('Content-Disposition'),
+        ),
+        mimeType,
+      };
+    },
+  );
+}
+
+async function executeRequest<T>(
+  path: string,
+  options: RequestExecutorOptions,
+  parseSuccess: (response: Response, signal: AbortSignal) => Promise<T>,
+): Promise<T> {
   const controller = new AbortController();
   const signal = options.signal
     ? AbortSignal.any([controller.signal, options.signal])
@@ -123,40 +209,20 @@ export async function requestJson(
     controller.abort();
   }, options.timeoutMs ?? 30_000);
   try {
-    const bodyText =
-      options.body === undefined ? undefined : JSON.stringify(options.body);
     const response = await fetch(`/api/v1${path}`, {
-      method: options.method ?? 'GET',
+      method: options.method,
       credentials: 'same-origin',
       signal,
       headers: {
-        Accept: 'application/json',
-        ...(bodyText === undefined
-          ? {}
-          : { 'Content-Type': 'application/json' }),
-        ...(options.method !== undefined &&
-        options.method !== 'GET' &&
-        csrfToken
+        ...(options.method !== 'GET' && csrfToken
           ? { 'X-CSRF-Token': csrfToken }
           : {}),
         ...options.headers,
       },
-      body: bodyText,
+      body: options.body,
     });
-    if (response.status === 204) return undefined;
-    let body: unknown;
-    try {
-      body = await response.json();
-    } catch {
-      if (signal.aborted) signal.throwIfAborted();
-      if (response.ok)
-        throw new ApiError(
-          '服务返回了无效的数据',
-          response.status,
-          'INVALID_RESPONSE',
-        );
-    }
     if (!response.ok) {
+      const body = await parseErrorBody(response, signal);
       const error = isRecord(body) ? body : {};
       const apiError = new ApiError(
         typeof error.message === 'string'
@@ -182,14 +248,18 @@ export async function requestJson(
         path !== '/auth/session' &&
         (await refreshCsrfFromSession())
       ) {
-        return await requestJson(path, {
-          ...options,
-          retryOnCsrfInvalid: false,
-        });
+        return await executeRequest(
+          path,
+          {
+            ...options,
+            retryOnCsrfInvalid: false,
+          },
+          parseSuccess,
+        );
       }
       throw apiError;
     }
-    return body;
+    return await parseSuccess(response, signal);
   } catch (error) {
     if (options.signal?.aborted) throw options.signal.reason;
     if (controller.signal.aborted)
@@ -203,4 +273,51 @@ export async function requestJson(
   } finally {
     clearTimeout(timer);
   }
+}
+
+async function parseJsonSuccess(
+  response: Response,
+  signal: AbortSignal,
+): Promise<unknown> {
+  if (response.status === 204) return undefined;
+  try {
+    return await response.json();
+  } catch {
+    if (signal.aborted) signal.throwIfAborted();
+    throw new ApiError(
+      '服务返回了无效的数据',
+      response.status,
+      'INVALID_RESPONSE',
+    );
+  }
+}
+
+async function parseErrorBody(
+  response: Response,
+  signal: AbortSignal,
+): Promise<unknown> {
+  try {
+    return await response.json();
+  } catch {
+    if (signal.aborted) signal.throwIfAborted();
+    return undefined;
+  }
+}
+
+function parseDownloadFilename(contentDisposition: string | null): string {
+  if (contentDisposition === null) return 'download';
+  const encoded = /filename\*\s*=\s*UTF-8''([^;]+)/iu.exec(
+    contentDisposition,
+  )?.[1];
+  if (encoded) {
+    try {
+      return decodeURIComponent(encoded.trim());
+    } catch {
+      return 'download';
+    }
+  }
+  const plain = /filename\s*=\s*(?:"([^"]+)"|([^;]+))/iu.exec(
+    contentDisposition,
+  );
+  return (plain?.[1] ?? plain?.[2] ?? 'download').trim();
 }

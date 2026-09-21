@@ -1,5 +1,5 @@
 <script setup lang="ts">
-import { onBeforeUnmount, onMounted, ref } from 'vue';
+import { computed, onBeforeUnmount, onMounted, ref } from 'vue';
 import { RouterLink, useRoute, useRouter } from 'vue-router';
 import { ElButton } from 'element-plus/es/components/button/index.mjs';
 import {
@@ -10,6 +10,15 @@ import {
   type CustomerDuplicateSummary,
 } from '../../api/customers';
 import { ApiError } from '../../api/http';
+import {
+  compatibleIdentityOptions,
+  customerTypeOptionsWithCurrent,
+  identityCompatibility,
+  isCustomerTypeCode,
+  isIdentityTypeCode,
+  normalizeCustomerTypeOption,
+  normalizeIdentityTypeOption,
+} from './customer-admission-options';
 
 const route = useRoute();
 const router = useRouter();
@@ -39,6 +48,24 @@ const duplicateNameReasonError = ref('');
 const submitError = ref('');
 const saving = ref(false);
 let activeRequest: AbortController | undefined;
+
+const displayedCustomerTypeOptions = computed(() =>
+  customerTypeOptionsWithCurrent(customerType.value),
+);
+const displayedIdentityTypeOptions = computed(() =>
+  compatibleIdentityOptions(customerType.value, identityType.value),
+);
+
+function onCustomerTypeChanged(): void {
+  if (
+    isCustomerTypeCode(customerType.value) &&
+    (!isIdentityTypeCode(identityType.value) ||
+      !identityCompatibility[customerType.value].includes(identityType.value))
+  ) {
+    identityType.value = '';
+  }
+  identityError.value = '';
+}
 
 function editable(value: string): string {
   return value.trim();
@@ -148,8 +175,8 @@ function useLatestSnapshot(): void {
   if (latest === null) return;
   expectedVersion.value = latest.version;
   name.value = latest.name;
-  customerType.value = latest.customerType ?? '';
-  identityType.value = latest.identityType ?? '';
+  customerType.value = normalizeCustomerTypeOption(latest.customerType);
+  identityType.value = normalizeIdentityTypeOption(latest.identityType);
   identityNumber.value = latest.identityNumber ?? '';
   issuingCountryOrRegion.value = latest.issuingCountryOrRegion ?? '';
   category.value = latest.category ?? '';
@@ -179,8 +206,8 @@ async function load(): Promise<void> {
     }
     expectedVersion.value = customer.version;
     name.value = customer.name;
-    customerType.value = customer.customerType ?? '';
-    identityType.value = customer.identityType ?? '';
+    customerType.value = normalizeCustomerTypeOption(customer.customerType);
+    identityType.value = normalizeIdentityTypeOption(customer.identityType);
     identityNumber.value = customer.identityNumber ?? '';
     issuingCountryOrRegion.value = customer.issuingCountryOrRegion ?? '';
     category.value = customer.category ?? '';
@@ -339,24 +366,42 @@ onBeforeUnmount(() => activeRequest?.abort());
           <label class="field-label field-label--spaced" for="customer-type"
             >客户类型</label
           >
-          <input
+          <select
             id="customer-type"
             v-model="customerType"
             name="customerType"
             class="text-input"
-            maxlength="50"
-          />
+            @change="onCustomerTypeChanged"
+          >
+            <option value="">请选择</option>
+            <option
+              v-for="option in displayedCustomerTypeOptions"
+              :key="option.value"
+              :value="option.value"
+            >
+              {{ option.label }}
+            </option>
+          </select>
 
           <label class="field-label field-label--spaced" for="identity-type"
             >证件类型</label
           >
-          <input
+          <select
             id="identity-type"
             v-model="identityType"
             name="identityType"
             class="text-input"
-            maxlength="50"
-          />
+            @change="identityError = ''"
+          >
+            <option value="">请选择</option>
+            <option
+              v-for="option in displayedIdentityTypeOptions"
+              :key="option.value"
+              :value="option.value"
+            >
+              {{ option.label }}
+            </option>
+          </select>
 
           <label class="field-label field-label--spaced" for="identity-number"
             >证件号码</label

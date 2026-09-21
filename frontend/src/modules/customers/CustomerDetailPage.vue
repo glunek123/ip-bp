@@ -3,8 +3,13 @@ import { onBeforeUnmount, onMounted, ref } from 'vue';
 import { RouterLink, useRoute, useRouter } from 'vue-router';
 import { ElButton } from 'element-plus/es/components/button/index.mjs';
 import { ApiError } from '../../api/http';
-import { getCustomer, type CustomerDetail } from '../../api/customers';
+import {
+  getCustomer,
+  type CustomerDetail,
+  type CustomerSummary,
+} from '../../api/customers';
 import CustomerRightsHolderPanel from './CustomerRightsHolderPanel.vue';
+import CustomerAdmissionPanel from './CustomerAdmissionPanel.vue';
 
 const route = useRoute();
 const router = useRouter();
@@ -22,7 +27,12 @@ function formatTime(value: string): string {
 function actionLabel(action: string): string {
   if (action === 'customer.draft-created') return '创建客户草稿';
   if (action === 'customer.duplicate-name-overridden') return '同名核对后继续';
+  if (action === 'customer.admitted') return '客户准入完成';
   return '客户资料变更';
+}
+
+function profileLabel(status: CustomerSummary['profileStatus']): string {
+  return status === 'admitted' ? '已准入' : '草稿';
 }
 
 async function load(): Promise<void> {
@@ -48,6 +58,26 @@ async function load(): Promise<void> {
 
 function updateCustomerVersion(version: number): void {
   if (customer.value) customer.value = { ...customer.value, version };
+}
+
+function acceptRefreshedCustomer(latest: CustomerDetail): void {
+  customer.value = latest;
+}
+
+async function acceptAdmission(admitted: CustomerSummary): Promise<void> {
+  const current = customer.value;
+  if (current === undefined) return;
+  customer.value = {
+    ...current,
+    ...admitted,
+    capabilities: { ...current.capabilities, admit: false },
+    history: current.history,
+  };
+  try {
+    customer.value = await getCustomer(admitted.id);
+  } catch {
+    // The admitted snapshot is already authoritative; a detail refresh can be retried later.
+  }
 }
 
 async function refreshCustomerVersion(): Promise<void> {
@@ -114,14 +144,16 @@ onBeforeUnmount(() => activeRequest?.abort());
             >
               编辑资料
             </RouterLink>
-            <span class="status-chip status-chip--large">草稿</span>
+            <span class="status-chip status-chip--large">{{
+              profileLabel(customer.profileStatus)
+            }}</span>
           </div>
         </div>
         <section class="ledger-panel detail-card">
           <dl class="detail-grid">
             <div>
               <dt>资料状态</dt>
-              <dd>草稿</dd>
+              <dd>{{ profileLabel(customer.profileStatus) }}</dd>
             </div>
             <div>
               <dt>客户类别</dt>
@@ -144,6 +176,18 @@ onBeforeUnmount(() => activeRequest?.abort());
               <dd>{{ customer.issuingCountryOrRegion || '未填写' }}</dd>
             </div>
             <div>
+              <dt>证件有效期</dt>
+              <dd>
+                {{
+                  customer.identityValidityMode === 'LONG_TERM'
+                    ? '长期有效'
+                    : customer.identityValidityMode === 'NOT_STATED'
+                      ? '证件未注明'
+                      : customer.identityValidTo || '未填写'
+                }}
+              </dd>
+            </div>
+            <div>
               <dt>所属地区</dt>
               <dd>{{ customer.region || '未填写' }}</dd>
             </div>
@@ -164,7 +208,13 @@ onBeforeUnmount(() => activeRequest?.abort());
               <dd>{{ formatTime(customer.updatedAt) }}</dd>
             </div>
           </dl>
-          <p class="draft-note">资料尚未准入，可继续补充证件与联系人。</p>
+          <p class="draft-note">
+            {{
+              customer.profileStatus === 'admitted'
+                ? '客户已完成准入，可用于创建正式线索。'
+                : '资料尚未准入，可继续补充证件与联系人。'
+            }}
+          </p>
         </section>
         <CustomerRightsHolderPanel
           :customer-id="customer.id"
@@ -172,6 +222,15 @@ onBeforeUnmount(() => activeRequest?.abort());
           :can-edit="customer.capabilities.editRoutine"
           @version-updated="updateCustomerVersion"
           @refresh-requested="refreshCustomerVersion"
+          @customer-not-found="returnToCustomerList"
+        />
+        <CustomerAdmissionPanel
+          v-if="
+            customer.profileStatus === 'draft' && customer.capabilities.admit
+          "
+          :customer="customer"
+          @admitted="acceptAdmission"
+          @customer-refreshed="acceptRefreshedCustomer"
           @customer-not-found="returnToCustomerList"
         />
         <details class="history-panel">

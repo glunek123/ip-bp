@@ -91,7 +91,9 @@ onBeforeUnmount(() => activeRequest?.abort());
             :to="`/customers/${customer.id}`"
           >
             <strong>{{ customer.name }}</strong>
-            <span class="status-chip">草稿</span>
+            <span class="status-chip">{{
+              customer.profileStatus === 'admitted' ? '已准入' : '草稿'
+            }}</span>
             <time>{{ formatTime(customer.updatedAt) }}</time>
           </RouterLink>
         </div>

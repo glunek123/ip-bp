@@ -1,5 +1,6 @@
 import { afterEach, describe, expect, it, vi } from 'vitest';
 import {
+  admitCustomer,
   createCustomerDraft,
   findCustomerDuplicates,
   getCustomer,
@@ -16,6 +17,10 @@ const summary = {
   identityType: null,
   identityNumber: null,
   issuingCountryOrRegion: null,
+  identityValidFrom: null,
+  identityValidTo: null,
+  identityValidityMode: null,
+  admittedAt: null,
   category: null,
   region: null,
   admissionContactName: null,
@@ -55,7 +60,7 @@ describe('customer API', () => {
     {},
     { items: [], total: '0', page: 1, pageSize: 20 },
     {
-      items: [{ ...summary, profileStatus: 'admitted' }],
+      items: [{ ...summary, identityValidityMode: 'FOREVER' }],
       total: 1,
       page: 1,
       pageSize: 20,
@@ -109,7 +114,7 @@ describe('customer API', () => {
                 occurredAt: '2026-09-17T00:59:00.000Z',
               },
             ],
-            capabilities: { editRoutine: true },
+            capabilities: { editRoutine: true, admit: true },
           }),
         ),
       ),
@@ -117,8 +122,127 @@ describe('customer API', () => {
 
     await expect(getCustomer('customer-1')).resolves.toMatchObject({
       id: 'customer-1',
+      capabilities: { editRoutine: true, admit: true },
       history: [{ action: 'customer.draft-created' }],
     });
+  });
+
+  it('admits a customer with an idempotency key and validates the admitted snapshot', async () => {
+    const admitted = {
+      ...summary,
+      customerType: 'ENTERPRISE',
+      identityType: 'BUSINESS_LICENSE',
+      identityNumber: '91310000ABC123',
+      identityValidityMode: 'LONG_TERM',
+      admittedAt: '2026-09-21T03:00:00.000Z',
+      admissionContactName: '张三',
+      admissionContactPhone: '13800138000',
+      profileStatus: 'admitted',
+      version: 2,
+    };
+    const fetch = vi
+      .fn()
+      .mockResolvedValue(new Response(JSON.stringify(admitted)));
+    vi.stubGlobal('fetch', fetch);
+
+    await expect(
+      admitCustomer(
+        'customer-1',
+        {
+          expectedVersion: 1,
+          customerType: 'ENTERPRISE',
+          name: '客户甲',
+          identityType: 'BUSINESS_LICENSE',
+          identityNumber: '91310000ABC123',
+          identityValidityMode: 'LONG_TERM',
+          admissionContactName: '张三',
+          admissionContactPhone: '13800138000',
+          identityDocumentContentVersionIds: ['version-1'],
+        },
+        'admit-command-1',
+      ),
+    ).resolves.toEqual(admitted);
+    expect(fetch).toHaveBeenCalledWith(
+      '/api/v1/customers/customer-1/admission',
+      expect.objectContaining({
+        method: 'POST',
+        headers: expect.objectContaining({
+          'Idempotency-Key': 'admit-command-1',
+        }),
+      }),
+    );
+  });
+
+  it('rejects an incomplete admission response', async () => {
+    vi.stubGlobal(
+      'fetch',
+      vi.fn().mockResolvedValue(
+        new Response(
+          JSON.stringify({
+            ...summary,
+            profileStatus: 'admitted',
+            admittedAt: null,
+          }),
+        ),
+      ),
+    );
+
+    await expect(
+      admitCustomer(
+        'customer-1',
+        {
+          expectedVersion: 1,
+          customerType: 'ENTERPRISE',
+          name: '客户甲',
+          identityType: 'BUSINESS_LICENSE',
+          identityNumber: '91310000ABC123',
+          identityValidityMode: 'NOT_STATED',
+          admissionContactName: '张三',
+          admissionContactEmail: 'contact@example.com',
+          identityDocumentContentVersionIds: ['version-1'],
+        },
+        'admit-command-1',
+      ),
+    ).rejects.toMatchObject({ code: 'INVALID_RESPONSE' });
+  });
+
+  it('rejects an admitted response with an unknown subject code', async () => {
+    vi.stubGlobal(
+      'fetch',
+      vi.fn().mockResolvedValue(
+        new Response(
+          JSON.stringify({
+            ...summary,
+            customerType: 'UNKNOWN_SUBJECT',
+            identityType: 'BUSINESS_LICENSE',
+            identityNumber: '91310000ABC123',
+            identityValidityMode: 'LONG_TERM',
+            admittedAt: '2026-09-21T03:00:00.000Z',
+            admissionContactName: '张三',
+            admissionContactPhone: '13800138000',
+            profileStatus: 'admitted',
+          }),
+        ),
+      ),
+    );
+
+    await expect(
+      admitCustomer(
+        'customer-1',
+        {
+          expectedVersion: 1,
+          customerType: 'ENTERPRISE',
+          name: '客户甲',
+          identityType: 'BUSINESS_LICENSE',
+          identityNumber: '91310000ABC123',
+          identityValidityMode: 'LONG_TERM',
+          admissionContactName: '张三',
+          admissionContactPhone: '13800138000',
+          identityDocumentContentVersionIds: ['version-1'],
+        },
+        'admit-command-1',
+      ),
+    ).rejects.toMatchObject({ code: 'INVALID_RESPONSE' });
   });
 
   it('patches a draft with its expected version and decoded fields', async () => {
