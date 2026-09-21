@@ -1,6 +1,6 @@
 {
   "version": 1,
-  "recordedAt": "2026-09-21T10:48:20.824Z",
+  "recordedAt": "2026-09-21T10:52:32.061Z",
   "files": {
     ".cursor/rules/verified-feature-integration.mdc": "8cbd3df851df782bf5359f4e7d6a56d3e3061baf45862020286383253fefb2aa",
     ".env.example": "07211cde5c2b59efc21b619b752d4c9b871f0980d2d64ca3c146ad6151fd27ca",
@@ -10,7 +10,7 @@
     ".npmrc": "2421febef445a76babc0ee7ae760b4eac0e0849304d8b208c9cacddd9fe8073e",
     ".prettierignore": "4310827e455b8e7a0ef9a986c63c3e38edc571dd20a65dad40d51d97d7abea3c",
     ".prettierrc.json": "19a31ee3cb4414de07b4b6d1d04e2d13fca1a5d76806873280466230082fb741",
-    ".superpowers/sdd/final-fix-report.md": "db4a8ed481454c038a558457ebeab71d337f7b041451b85325cc21985ab88e9a",
+    ".superpowers/sdd/final-fix-report.md": "029013e5406a21b48ddf45b19ccac9ad4a1c8e330a7bdb6dc55fd76a9cab774d",
     ".superpowers/sdd/progress.md": "41c8b1dc467ca79745205bef340e44b20651fb6dcb9df51a4b56ba3512a7627d",
     ".superpowers/sdd/task-1-brief.md": "e190402f0783b580272a9563d9f155b4d53a753fcc83d0c0d4e37bcebed7f911",
     ".superpowers/sdd/task-1-report.md": "0d160985e34cade1b20a7dd52b9e50d6f99f8c2cc337e4b4423066ed2c51e5a5",
@@ -27,7 +27,7 @@
     ".superpowers/sdd/task-6-brief.md": "37da557ac030d1f37addbccb948794e151de0f6f578add850ed49b32f188bfd2",
     ".superpowers/sdd/task-6-report.md": "0cb327f2a10c1fadda6f36ae4662175a2a72045385a9656f23cc3f40d3cdfb47",
     ".superpowers/sdd/task-7-brief.md": "d0b40fbf802f2d43b6c004fd8d0a3ca7bc284fc65f326629470ea5a5421f4706",
-    ".superpowers/sdd/task-7-report.md": "57095876d469e8f3bd84697997c00c960436c6527342c01d9528783ca353d284",
+    ".superpowers/sdd/task-7-report.md": "f95ced9833e5c0de59281ca964fdc7c8e60da69f95bbf128c3f4b0ca33ca5818",
     "AGENTS.md": "d0b5674cd157ae8e8db803435d429c4a2448287795035fe49df8f6964211c78b",
     "README.md": "dcf766e138abd99e5f64d795e3210fa72403cb200999360328da6453aea9d41b",
     "Use-ProjectRuntime.ps1": "1142dc29cde8acb5d1ceeae54556bfaf073457840dba2bc13766c8f5b03e7369",
