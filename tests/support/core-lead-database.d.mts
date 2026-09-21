@@ -72,6 +72,7 @@ export function verifyCoreLeadMigration(): Promise<{
       profile_status: string;
     };
     invalidAdmittedCode: string | null;
+    compatibleAdmittedStatus: string | null;
     grantCounts: Record<string, number>;
     revisions: Record<string, number>;
   };
@@ -85,6 +86,8 @@ export function verifyCoreLeadMigration(): Promise<{
     code: string | null;
     grantCount: number;
     revision: number;
+    grantInsertAttempts: number;
+    revisionUpdateAttempts: number;
   };
 }>;
 export function disconnectCoreLeadTestDatabase(): Promise<void>;

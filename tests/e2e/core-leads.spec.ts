@@ -652,6 +652,7 @@ test('core lead migrations preserve legacy facts and roll back failed phases', a
       profile_status: 'DRAFT',
     },
     invalidAdmittedCode: '23514',
+    compatibleAdmittedStatus: 'ADMITTED',
     grantCounts: { bootstrap: 4, shared: 0, incomplete: 0 },
     revisions: { bootstrap: 2, shared: 1, incomplete: 1 },
   });
@@ -665,5 +666,7 @@ test('core lead migrations preserve legacy facts and roll back failed phases', a
     code: '23514',
     grantCount: 0,
     revision: 1,
+    grantInsertAttempts: 4,
+    revisionUpdateAttempts: 1,
   });
 });

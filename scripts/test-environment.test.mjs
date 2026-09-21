@@ -11,6 +11,7 @@ import { tmpdir } from 'node:os';
 import { join } from 'node:path';
 import { execFileSync } from 'node:child_process';
 import { captureTestEnvironment } from './test-environment.mjs';
+import * as testEnvironment from './test-environment.mjs';
 
 const secret = 'a'.repeat(64);
 const databaseUrl =
@@ -200,7 +201,7 @@ test('binds actual external test conditions without serializing them', (t) => {
 test('accepts an explicit isolated local database override for unavailable fixed ports', (t) => {
   const root = repository(t);
   const override =
-    'postgresql://dev_cor_test:alternate-secret@127.0.0.1:49123/dev_cor_test';
+    'postgresql://dev_cor_test:local-test-password@127.0.0.1:49123/dev_cor_test';
   const result = capture(root, { DEV_COR_TEST_DATABASE_URL: override });
 
   assert.equal(result.childEnvironment.DATABASE_URL, override);
@@ -209,13 +210,13 @@ test('accepts an explicit isolated local database override for unavailable fixed
       fingerprint: result.fingerprint,
       metadata: result.metadata,
     }),
-    /alternate-secret|49123/,
+    /local-test-password|49123/,
   );
   assert.throws(
     () =>
       capture(root, {
         DEV_COR_TEST_DATABASE_URL:
-          'postgresql://dev_cor_test:alternate-secret@example.com:49123/dev_cor_test',
+          'postgresql://dev_cor_test:local-test-password@example.com:49123/dev_cor_test',
       }),
     /isolated local test database/i,
   );
@@ -223,8 +224,111 @@ test('accepts an explicit isolated local database override for unavailable fixed
     () =>
       capture(root, {
         DEV_COR_TEST_DATABASE_URL:
-          'postgresql://dev_cor_test:alternate-secret@127.0.0.1:49123/dev_cor',
+          'postgresql://dev_cor_test:local-test-password@127.0.0.1:49123/dev_cor',
       }),
     /isolated local test database/i,
+  );
+  assert.throws(
+    () =>
+      capture(root, {
+        DEV_COR_TEST_DATABASE_URL:
+          'postgresql://dev_cor_test:other-password@127.0.0.1:49123/dev_cor_test',
+      }),
+    /isolated local test database/i,
+  );
+});
+
+test('rejects every PostgreSQL query override before a connection can be attempted', (t) => {
+  const root = repository(t);
+  for (const query of [
+    'host=remote.example&port=5432&user=other&password=other',
+    'host=%2Ftmp&database=dev_cor_test',
+    'sslmode=require',
+    'sslrootcert=C%3A%5Csecrets%5Croot.crt',
+    'options=-c%20search_path%3Dpublic',
+  ]) {
+    assert.throws(
+      () =>
+        capture(root, {
+          DEV_COR_TEST_DATABASE_URL: `${databaseUrl}?${query}`,
+        }),
+      /query parameters|isolated local test database/i,
+    );
+  }
+});
+
+test('binds the effective target to one healthy pinned test container', () => {
+  const imageId =
+    'sha256:051f7b7b3abdd564d5d1bd1e8c4b9c1b6e77087d1dd22020ede611c096a272e0';
+  const target = {
+    hostname: '127.0.0.1',
+    port: 49123,
+    username: 'dev_cor_test',
+    database: 'dev_cor_test',
+  };
+  const expected = {
+    Id: 'a'.repeat(64),
+    Name: '/dev-cor-postgres-test-1',
+    Image: imageId,
+    Config: {
+      Image: 'postgres:17.11-bookworm',
+      Env: ['POSTGRES_USER=dev_cor_test', 'POSTGRES_DB=dev_cor_test'],
+      Labels: {},
+    },
+    State: { Running: true, Health: { Status: 'healthy' } },
+    NetworkSettings: {
+      Ports: {
+        '5432/tcp': [{ HostIp: '127.0.0.1', HostPort: '49123' }],
+      },
+    },
+  };
+
+  assert.deepEqual(
+    testEnvironment.selectTestDatabaseContainer(target, [expected], imageId),
+    {
+      containerId: expected.Id,
+      containerName: 'dev-cor-postgres-test-1',
+      imageId,
+      imageReference: 'postgres:17.11-bookworm',
+      host: '127.0.0.1',
+      port: 49123,
+    },
+  );
+
+  assert.throws(
+    () =>
+      testEnvironment.selectTestDatabaseContainer(
+        target,
+        [{ ...expected, Name: '/unrelated-local-postgres' }],
+        imageId,
+      ),
+    /test container/i,
+  );
+  assert.throws(
+    () =>
+      testEnvironment.selectTestDatabaseContainer(
+        target,
+        [{ ...expected, Image: `sha256:${'b'.repeat(64)}` }],
+        imageId,
+      ),
+    /pinned PostgreSQL image/i,
+  );
+  assert.throws(
+    () =>
+      testEnvironment.selectTestDatabaseContainer(
+        target,
+        [
+          {
+            ...expected,
+            NetworkSettings: {
+              Ports: {
+                '5432/tcp': [{ HostIp: '127.0.0.1', HostPort: '49124' }],
+              },
+            },
+          },
+        ],
+        imageId,
+      ),
+    /published port/i,
   );
 });

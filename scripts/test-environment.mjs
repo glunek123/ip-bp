@@ -11,6 +11,14 @@ import { join, resolve } from 'node:path';
 import { createRequire } from 'node:module';
 import { parseEnv } from 'node:util';
 
+const requireFromBackend = createRequire(
+  resolve(process.cwd(), 'backend/package.json'),
+);
+const ConnectionParameters = requireFromBackend('pg/lib/connection-parameters');
+
+const expectedTestDatabaseImageId =
+  'sha256:051f7b7b3abdd564d5d1bd1e8c4b9c1b6e77087d1dd22020ede611c096a272e0';
+
 const applicationKeys = [
   'NODE_ENV',
   'PORT',
@@ -99,6 +107,52 @@ function readTestEnvironmentFile(root) {
   return { bytes, values };
 }
 
+export function validateIsolatedTestDatabaseUrl(
+  value,
+  { allowRandomPort = false } = {},
+) {
+  let url;
+  try {
+    url = new URL(value);
+  } catch {
+    throw new Error('The isolated local test database URL is invalid');
+  }
+  if (url.searchParams.size > 0) {
+    throw new Error(
+      'The isolated local test database URL must not contain query parameters',
+    );
+  }
+  let parameters;
+  try {
+    parameters = new ConnectionParameters(value);
+  } catch {
+    throw new Error('The isolated local test database URL is invalid');
+  }
+  const port = Number(parameters.port);
+  if (
+    !['postgres:', 'postgresql:'].includes(url.protocol) ||
+    parameters.host !== '127.0.0.1' ||
+    parameters.database !== 'dev_cor_test' ||
+    parameters.user !== 'dev_cor_test' ||
+    typeof parameters.password !== 'string' ||
+    parameters.password.length === 0 ||
+    !Number.isInteger(port) ||
+    port < 1 ||
+    port > 65535 ||
+    (!allowRandomPort && port !== 55433)
+  ) {
+    throw new Error('The URL must target the isolated local test database');
+  }
+  return {
+    connectionString: url.href,
+    hostname: parameters.host,
+    port,
+    username: parameters.user,
+    password: parameters.password,
+    database: parameters.database,
+  };
+}
+
 function validatedApplicationEnvironment(root, values, databaseOverride) {
   if (values.NODE_ENV !== 'test')
     throw new Error('backend/.env.test must set NODE_ENV=test');
@@ -108,22 +162,24 @@ function validatedApplicationEnvironment(root, values, databaseOverride) {
     throw new Error(
       'backend/.env.test must contain a valid AUTH_THROTTLE_SECRET',
     );
+  let fixedDatabase;
   let database;
   try {
-    database = new URL(databaseOverride ?? values.DATABASE_URL);
+    fixedDatabase = validateIsolatedTestDatabaseUrl(values.DATABASE_URL);
+    database = validateIsolatedTestDatabaseUrl(
+      databaseOverride ?? values.DATABASE_URL,
+      { allowRandomPort: databaseOverride !== undefined },
+    );
   } catch {
     throw new Error(
-      'backend/.env.test must contain the isolated E2E database URL',
+      'backend/.env.test must target the isolated local test database',
     );
   }
   if (
-    !['postgres:', 'postgresql:'].includes(database.protocol) ||
-    database.hostname !== '127.0.0.1' ||
-    database.pathname !== '/dev_cor_test' ||
-    database.username !== 'dev_cor_test' ||
-    (databaseOverride === undefined
-      ? database.port !== '55433'
-      : !/^\d{2,5}$/u.test(database.port) || Number(database.port) > 65535)
+    database.hostname !== fixedDatabase.hostname ||
+    database.username !== fixedDatabase.username ||
+    database.password !== fixedDatabase.password ||
+    database.database !== fixedDatabase.database
   ) {
     throw new Error(
       'backend/.env.test must target the isolated local test database',
@@ -142,14 +198,17 @@ function validatedApplicationEnvironment(root, values, databaseOverride) {
     );
   }
   return {
-    NODE_ENV: 'test',
-    PORT: '3101',
-    DATABASE_URL: database.href,
-    AUTH_THROTTLE_SECRET: values.AUTH_THROTTLE_SECRET,
-    PRIVATE_FILE_ROOT: expectedPrivateFileRoot,
-    TRUST_PROXY_HOPS: trustProxyHops,
-    API_PROXY_TARGET: 'http://127.0.0.1:3101',
-    E2E_IDENTITY_FIXTURES: identityFixtures,
+    environment: {
+      NODE_ENV: 'test',
+      PORT: '3101',
+      DATABASE_URL: database.connectionString,
+      AUTH_THROTTLE_SECRET: values.AUTH_THROTTLE_SECRET,
+      PRIVATE_FILE_ROOT: expectedPrivateFileRoot,
+      TRUST_PROXY_HOPS: trustProxyHops,
+      API_PROXY_TARGET: 'http://127.0.0.1:3101',
+      E2E_IDENTITY_FIXTURES: identityFixtures,
+    },
+    databaseTarget: database,
   };
 }
 
@@ -176,30 +235,83 @@ function rejectConflicts(inheritedEnvironment, effectiveEnvironment) {
   }
 }
 
-function actualExternalConditions(root) {
-  let database;
+export function selectTestDatabaseContainer(
+  target,
+  containers,
+  expectedImageId = expectedTestDatabaseImageId,
+) {
+  const mappingMatches = containers.filter((container) =>
+    (container.NetworkSettings?.Ports?.['5432/tcp'] ?? []).some(
+      (mapping) =>
+        mapping.HostIp === target.hostname &&
+        Number(mapping.HostPort) === target.port,
+    ),
+  );
+  if (mappingMatches.length !== 1) {
+    throw new Error(
+      'The isolated database target must match one running published port',
+    );
+  }
+  const container = mappingMatches[0];
+  const labels = container.Config?.Labels ?? {};
+  const name = String(container.Name ?? '').replace(/^\//u, '');
+  const namedTestContainer = name === 'dev-cor-postgres-test-1';
+  const composeTestContainer =
+    labels['com.docker.compose.project'] === 'dev-cor' &&
+    labels['com.docker.compose.service'] === 'postgres-test' &&
+    labels['com.docker.compose.container-number'] === '1';
+  const environment = new Set(container.Config?.Env ?? []);
+  if (
+    (!namedTestContainer && !composeTestContainer) ||
+    !environment.has('POSTGRES_USER=dev_cor_test') ||
+    !environment.has('POSTGRES_DB=dev_cor_test')
+  ) {
+    throw new Error('The published port does not belong to the test container');
+  }
+  if (container.Image !== expectedImageId) {
+    throw new Error(
+      'The test container does not use the pinned PostgreSQL image',
+    );
+  }
+  if (
+    container.State?.Running !== true ||
+    container.State?.Health?.Status !== 'healthy'
+  ) {
+    throw new Error('The test database container must be running and healthy');
+  }
+  return {
+    containerId: container.Id,
+    containerName: name,
+    imageId: container.Image,
+    imageReference: container.Config?.Image,
+    host: target.hostname,
+    port: target.port,
+  };
+}
+
+function actualExternalConditions(root, databaseTarget) {
+  let containers;
   try {
-    database = execFileSync(
+    const ids = execFileSync(
       'docker',
-      [
-        'inspect',
-        'dev-cor-postgres-test-1',
-        '--format',
-        '{{.Image}}|{{.Config.Image}}|{{.State.Health.Status}}',
-      ],
+      ['ps', '--filter', 'status=running', '--format', '{{.ID}}'],
       { encoding: 'utf8', stdio: ['ignore', 'pipe', 'pipe'] },
-    ).trim();
+    )
+      .trim()
+      .split(/\r?\n/u)
+      .filter(Boolean);
+    containers = ids.length
+      ? JSON.parse(
+          execFileSync('docker', ['inspect', ...ids], {
+            encoding: 'utf8',
+            stdio: ['ignore', 'pipe', 'pipe'],
+          }),
+        )
+      : [];
   } catch {
     throw new Error('The shared test database must be running and inspectable');
   }
-  const [imageId, imageReference, health] = database.split('|');
-  if (
-    !/^sha256:[0-9a-f]{64}$/i.test(imageId ?? '') ||
-    !imageReference ||
-    health !== 'healthy'
-  ) {
-    throw new Error('The shared test database must be healthy and image-bound');
-  }
+  const database = selectTestDatabaseContainer(databaseTarget, containers);
 
   let browserManifest;
   try {
@@ -216,7 +328,7 @@ function actualExternalConditions(root) {
 
   return {
     databaseImage: createHash('sha256')
-      .update(`${imageId}\0${imageReference}`)
+      .update(JSON.stringify(database))
       .digest('hex'),
     browserManifest: createHash('sha256').update(browserManifest).digest('hex'),
   };
@@ -225,11 +337,12 @@ function actualExternalConditions(root) {
 export function captureTestEnvironment(root, options = {}) {
   const inheritedEnvironment = options.inheritedEnvironment ?? process.env;
   const { bytes, values } = readTestEnvironmentFile(root);
-  const effectiveEnvironment = validatedApplicationEnvironment(
-    root,
-    values,
-    inheritedEnvironment.DEV_COR_TEST_DATABASE_URL,
-  );
+  const { environment: effectiveEnvironment, databaseTarget } =
+    validatedApplicationEnvironment(
+      root,
+      values,
+      inheritedEnvironment.DEV_COR_TEST_DATABASE_URL,
+    );
   rejectConflicts(inheritedEnvironment, effectiveEnvironment);
   const metadata = {
     node: options.nodeVersion ?? process.version,
@@ -241,7 +354,8 @@ export function captureTestEnvironment(root, options = {}) {
     throw new Error('The pnpm version is required for validation evidence');
   const controls = relevantControls(inheritedEnvironment);
   const externalConditions =
-    options.externalConditions ?? actualExternalConditions(root);
+    options.externalConditions ??
+    actualExternalConditions(root, databaseTarget);
   for (const key of ['databaseImage', 'browserManifest']) {
     if (
       typeof externalConditions?.[key] !== 'string' ||

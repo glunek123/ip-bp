@@ -4,11 +4,13 @@
 
 本切片完成最小客户正式准入、本地／测试私有材料Adapter、证件与线索截图的不可变内容版本，以及运营端待推送线索列表、四阶段计数、新建、详情和允许范围内编辑。后端强制客户已准入、客户—权利主体当前关联、Action与SELF／TEAM／DEPARTMENT数据范围；准入、线索和材料成功事实与审计／引用同事务提交。业务号按Asia/Shanghai业务日生成`LD-YYYYMMDD-NNN`；原子计数器在999停止，第1000号稳定返回`LEAD_NUMBER_EXHAUSTED`，PostgreSQL adapter形态的`40001`也进入既定有界整事务重试。
 
-迁移专项在随机临时schema中实际执行22份完整链，并从`20260920040000_backfill_role_manage_grant`后的上一支持schema升级：已知`enterprise`／`credit-code`分别映射为`ENTERPRISE`／`BUSINESS_LICENSE`，未知遗留值原样保留且仍为DRAFT，绕过DTO直写不兼容ADMITTED由23514拒绝。只有结构上唯一、未共享且已具备所有既有Grant的引导角色获得4个CORE Action并将授权修订加一，共享角色和结构不完整角色均不补权。预建冲突表导致schema阶段42P07时，本阶段新表、客户列和约束均为0；受控CHECK导致补权阶段23514时，新Grant为0且授权修订仍为1。
+迁移专项在随机临时schema中实际执行22份完整链，并从`20260920040000_backfill_role_manage_grant`后的上一支持schema升级：已知`enterprise`／`credit-code`分别映射为`ENTERPRISE`／`BUSINESS_LICENSE`，未知遗留值原样保留且仍为DRAFT。绕过DTO直写的负例已补齐其余全部合法必填字段，只以`ENTERPRISE`／`NATIONAL_ID`不兼容组合触发23514；同一数据改为`BUSINESS_LICENSE`的控制组可进入ADMITTED。只有结构上唯一、未共享且已具备所有既有Grant的引导角色获得4个CORE Action并将授权修订加一，共享角色和结构不完整角色均不补权。预建冲突表导致schema阶段42P07时，本阶段新表、客户列和约束均为0；补权故障精确注入授权修订UPDATE阶段，非事务序列证明4次Grant INSERT和1次修订UPDATE已尝试，最终新Grant为0且授权修订仍为1。
 
-当前聚焦证据均为GREEN：`test:unit:core-ld`后端226项、前端71项；工具／上下文查验67项；`check:fast:prepared`覆盖架构、前后端与根TypeScript及ESLint；独立PostgreSQL 17容器和Chromium的`test:e2e:core-ld` 9/9通过，其中8组业务场景覆盖真实PDF／JPEG字节上下载、准入刷新、创建／编辑持久化、商品估算、越权与不泄漏、幂等／旧版本冲突、审计／子表／材料元数据失败回滚与Blob补偿、材料删除／恢复／冻结，以及999／1000边界和并发不重号。固定端口55433处于Windows排除区间，本次使用同一锁定镜像的随机本机端口和显式隔离测试DSN，未回退到开发库。
+当前聚焦证据均为GREEN：`test:unit:core-ld`后端226项、前端71项；工具／上下文查验69项；`check:fast`覆盖架构、前后端与根TypeScript及ESLint；独立PostgreSQL 17容器和Chromium的`test:e2e:core-ld` 9/9通过，其中8组业务场景覆盖真实PDF／JPEG字节上传下载、准入刷新、创建／编辑持久化、商品估算、越权与不泄漏、幂等／旧版本冲突、审计／子表／材料元数据失败回滚与Blob补偿、材料删除／恢复／冻结，以及999／1000边界和并发不重号。固定端口55433处于Windows排除区间，本次使用同一锁定镜像的随机本机端口和显式隔离测试DSN，未回退到开发库。
 
-本记录在固定候选提交之前只陈述上述已执行证据；最终`verify:slice:core-ld` Evidence v2和独立Q2结论将绑定同一候选tree并保存在树外，本段不提前声称它们通过。范围不包含推送、真实客户端、客户侵权结论、取证／公证、CSV／OCR／爬虫、生产E02 Provider、发布或生产迁移。
+首个固定候选`c60bd18`的独立Q2为Critical 0／Important 4／Minor 1：PostgreSQL query参数可绕过URL字段检查；随机端口未绑定实际目标容器；补权故障在Grant INSERT阶段过早失败；路线图提前推进；ADMITTED负例同时缺少其他必填事实。修复候选现在禁止所有连接query，以实际`pg`解析器校验最终host／port／user／database／password，随机覆盖只允许改变端口且必须匹配唯一运行中、健康、测试身份和锁定PostgreSQL 17.11镜像的容器；外部条件指纹绑定实际容器ID与端口映射，fixture复用同一URL断言。迁移与文档问题也按上段及路线图修复。安全边界8/8、完整上下文69/69和完整CORE-LD E2E 9/9通过；独立复审与正式Level 2仍待下一固定候选，不据此推进Current。
+
+本记录只陈述上述已执行证据；最终`verify:slice:core-ld` Evidence v2和独立Q2复审结论将绑定同一最终候选tree并保存在树外，本段不提前声称它们通过。范围不包含推送、真实客户端、客户侵权结论、取证／公证、CSV／OCR／爬虫、生产E02 Provider、发布或生产迁移。
 
 ## ROLE-TEMPLATE-001角色模板复制与Grant配置候选（2026-09-20）
 

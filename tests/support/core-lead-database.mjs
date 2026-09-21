@@ -2,6 +2,7 @@ import { createRequire } from 'node:module';
 import { resolve } from 'node:path';
 import { randomUUID } from 'node:crypto';
 import { mkdir, readFile, readdir, rm } from 'node:fs/promises';
+import { validateIsolatedTestDatabaseUrl } from '../../scripts/test-environment.mjs';
 
 const requireFromBackend = createRequire(
   resolve(process.cwd(), 'backend/package.json'),
@@ -14,14 +15,10 @@ const { PrismaClient } = requireFromBackend(
 
 const databaseUrl = process.env.DATABASE_URL;
 if (databaseUrl === undefined) throw new Error('DATABASE_URL is required');
-const target = new URL(databaseUrl);
-if (
-  process.env.NODE_ENV !== 'test' ||
-  target.hostname !== '127.0.0.1' ||
-  target.pathname !== '/dev_cor_test'
-) {
+if (process.env.NODE_ENV !== 'test') {
   throw new Error('Core lead fixtures require an isolated local test database');
 }
+validateIsolatedTestDatabaseUrl(databaseUrl, { allowRandomPort: true });
 const privateFileRoot = resolve(process.env.PRIVATE_FILE_ROOT ?? '');
 const expectedPrivateFileRoot = resolve(
   process.cwd(),
@@ -795,12 +792,29 @@ export async function verifyCoreLeadMigration() {
     let invalidAdmittedCode = null;
     try {
       await client.query(
-        "UPDATE customers SET profile_status='ADMITTED' WHERE id=$1",
-        [upgradeIds.unknownCustomer],
+        `UPDATE customers
+         SET customer_type='ENTERPRISE', identity_type='NATIONAL_ID',
+             identity_validity_mode='LONG_TERM', identity_valid_from=CURRENT_DATE,
+             identity_valid_to=NULL, admitted_at=NOW(), profile_status='ADMITTED'
+         WHERE id=$1`,
+        [upgradeIds.knownCustomer],
       );
     } catch (error) {
       invalidAdmittedCode = error.code ?? null;
     }
+    await client.query(
+      `UPDATE customers
+       SET customer_type='ENTERPRISE', identity_type='BUSINESS_LICENSE',
+           identity_validity_mode='LONG_TERM', identity_valid_from=CURRENT_DATE,
+           identity_valid_to=NULL, admitted_at=NOW(), profile_status='ADMITTED'
+       WHERE id=$1`,
+      [upgradeIds.knownCustomer],
+    );
+    const compatibleAdmittedStatus = (
+      await client.query('SELECT profile_status FROM customers WHERE id=$1', [
+        upgradeIds.knownCustomer,
+      ])
+    ).rows[0]?.profile_status;
     const grantCounts = {};
     for (const [name, roleId] of [
       ['bootstrap', upgradeIds.bootstrapRole],
@@ -889,11 +903,44 @@ export async function verifyCoreLeadMigration() {
     await apply(previousMigrations);
     const failureIds = await seedLegacy(schemas.backfillFailure);
     await apply([actionTarget, schemaTarget]);
+    await client.query('CREATE SEQUENCE core_ld_probe_grant_insert_attempts');
     await client.query(
-      `ALTER TABLE role_grants ADD CONSTRAINT core_ld_probe_reject_grants
-       CHECK (action NOT IN (
+      'CREATE SEQUENCE core_ld_probe_revision_update_attempts',
+    );
+    await client.query(
+      `CREATE FUNCTION core_ld_probe_count_grant_insert() RETURNS trigger
+       LANGUAGE plpgsql AS $$
+       BEGIN
+         PERFORM nextval('core_ld_probe_grant_insert_attempts');
+         RETURN NEW;
+       END
+       $$`,
+    );
+    await client.query(
+      `CREATE TRIGGER core_ld_probe_count_grant_insert
+       BEFORE INSERT ON role_grants
+       FOR EACH ROW
+       WHEN (NEW.action::text IN (
          'customer.admit','lead.read','lead.create','lead.edit'
-       )) NOT VALID`,
+       ))
+       EXECUTE FUNCTION core_ld_probe_count_grant_insert()`,
+    );
+    await client.query(
+      `CREATE FUNCTION core_ld_probe_reject_revision_update() RETURNS trigger
+       LANGUAGE plpgsql AS $$
+       BEGIN
+         PERFORM nextval('core_ld_probe_revision_update_attempts');
+         RAISE EXCEPTION 'injected authorization revision failure'
+           USING ERRCODE = '23514';
+       END
+       $$`,
+    );
+    await client.query(
+      `CREATE TRIGGER core_ld_probe_reject_revision_update
+       BEFORE UPDATE OF authorization_revision ON user_accounts
+       FOR EACH ROW
+       WHEN (NEW.authorization_revision > OLD.authorization_revision)
+       EXECUTE FUNCTION core_ld_probe_reject_revision_update()`,
     );
     let backfillFailureCode = null;
     try {
@@ -920,6 +967,20 @@ export async function verifyCoreLeadMigration() {
         )
       ).rows[0].authorization_revision,
     );
+    const grantInsertAttempts = Number(
+      (
+        await client.query(
+          'SELECT last_value FROM core_ld_probe_grant_insert_attempts',
+        )
+      ).rows[0].last_value,
+    );
+    const revisionUpdateAttempts = Number(
+      (
+        await client.query(
+          'SELECT last_value FROM core_ld_probe_revision_update_attempts',
+        )
+      ).rows[0].last_value,
+    );
 
     return {
       empty: { tables: emptyTables },
@@ -927,6 +988,7 @@ export async function verifyCoreLeadMigration() {
         known,
         unknown,
         invalidAdmittedCode,
+        compatibleAdmittedStatus,
         grantCounts,
         revisions,
       },
@@ -940,6 +1002,8 @@ export async function verifyCoreLeadMigration() {
         code: backfillFailureCode,
         grantCount: backfillGrantCount,
         revision: backfillRevision,
+        grantInsertAttempts,
+        revisionUpdateAttempts,
       },
     };
   } finally {
