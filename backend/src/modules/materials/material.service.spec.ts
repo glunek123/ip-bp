@@ -10,7 +10,7 @@ import {
   PrivateBlobStorage,
 } from './private-blob-storage';
 import { MaterialCleanupService } from './material-cleanup.service';
-import { MaterialService } from './material.service';
+import { MaterialService, MaterialTransactionClient } from './material.service';
 import { MaterialStorageKeyCoordinator } from './material-storage-key-coordinator';
 
 const actor: ActorContext = {
@@ -842,6 +842,265 @@ describe('MaterialService', () => {
       fixture.service.restore(actor, 'material-1', 2),
     ).rejects.toMatchObject({ response: { code: 'VERSION_CONFLICT' } });
   });
+
+  it('returns validated available-version facts in caller order with stable purposes', async () => {
+    const fixture = createFixture();
+    const transaction = createMaterialTransaction();
+    fixture.access.buildCustomerScope.mockResolvedValue({
+      departmentId: actor.departmentId,
+    });
+    transaction.customer.findFirst.mockResolvedValue({
+      departmentId: actor.departmentId,
+      responsibleUserId: actor.userId,
+      teamId: null,
+    });
+    transaction.material.findMany.mockResolvedValue([
+      availableMaterial('material-a', 'version-a', 'IDENTITY_FRONT'),
+      availableMaterial('material-b', 'version-b', 'IDENTITY_BACK'),
+    ]);
+
+    const facts = await fixture.service.assertAvailableVersions(
+      asTransactionClient(transaction),
+      actor,
+      {
+        ownerType: 'CUSTOMER',
+        ownerId: customerId,
+        category: 'CUSTOMER_IDENTITY',
+        contentVersionIds: ['version-b', 'version-a'],
+        minCount: 2,
+        maxCount: 2,
+      },
+    );
+
+    expect(facts).toEqual([
+      expect.objectContaining({
+        materialId: 'material-b',
+        contentVersionId: 'version-b',
+        purpose: 'IDENTITY_BACK',
+        mimeType: 'image/png',
+        ownerType: 'CUSTOMER',
+        ownerId: customerId,
+      }),
+      expect.objectContaining({
+        materialId: 'material-a',
+        contentVersionId: 'version-a',
+        purpose: 'IDENTITY_FRONT',
+      }),
+    ]);
+    expect(Object.isFrozen(facts)).toBe(true);
+    expect(facts.every(Object.isFrozen)).toBe(true);
+    expect(transaction.material.findMany).toHaveBeenCalledWith({
+      where: {
+        departmentId: actor.departmentId,
+        ownerType: 'CUSTOMER',
+        ownerId: customerId,
+        category: 'CUSTOMER_IDENTITY',
+        status: 'ACTIVE',
+      },
+      select: expect.objectContaining({ contentVersions: expect.any(Object) }),
+    });
+  });
+
+  it.each([
+    ['duplicate ids', ['version-a', 'version-a'], []],
+    [
+      'missing id',
+      ['version-a', 'version-missing'],
+      [availableMaterial('material-a', 'version-a', 'IDENTITY_FULL')],
+    ],
+    [
+      'cross owner',
+      ['version-a'],
+      [
+        availableMaterial(
+          'material-a',
+          'version-a',
+          'IDENTITY_FULL',
+          'CUSTOMER',
+          '44444444-4444-4444-8444-444444444444',
+        ),
+      ],
+    ],
+    [
+      'cross department',
+      ['version-a'],
+      [
+        availableMaterial(
+          'material-a',
+          'version-a',
+          'IDENTITY_FULL',
+          'CUSTOMER',
+          customerId,
+          'CUSTOMER_IDENTITY',
+          { departmentId: '44444444-4444-4444-8444-444444444444' },
+        ),
+      ],
+    ],
+    [
+      'deleted material',
+      ['version-a'],
+      [
+        availableMaterial(
+          'material-a',
+          'version-a',
+          'IDENTITY_FULL',
+          'CUSTOMER',
+          customerId,
+          'CUSTOMER_IDENTITY',
+          { materialStatus: 'DELETED' },
+        ),
+      ],
+    ],
+    [
+      'purged version',
+      ['version-a'],
+      [
+        availableMaterial(
+          'material-a',
+          'version-a',
+          'IDENTITY_FULL',
+          'CUSTOMER',
+          customerId,
+          'CUSTOMER_IDENTITY',
+          { versionStatus: 'PURGED' },
+        ),
+      ],
+    ],
+  ])(
+    'rejects %s while asserting available versions',
+    async (_case, ids, rows) => {
+      const fixture = createFixture();
+      const transaction = createMaterialTransaction();
+      fixture.access.buildCustomerScope.mockResolvedValue({
+        departmentId: actor.departmentId,
+      });
+      transaction.customer.findFirst.mockResolvedValue({
+        departmentId: actor.departmentId,
+        responsibleUserId: actor.userId,
+        teamId: null,
+      });
+      transaction.material.findMany.mockResolvedValue(rows);
+
+      await expect(
+        fixture.service.assertAvailableVersions(
+          asTransactionClient(transaction),
+          actor,
+          {
+            ownerType: 'CUSTOMER',
+            ownerId: customerId,
+            category: 'CUSTOMER_IDENTITY',
+            contentVersionIds: ids,
+          },
+        ),
+      ).rejects.toMatchObject({
+        response: { code: 'MATERIAL_VERSION_INVALID' },
+      });
+    },
+  );
+
+  it('uses the caller transaction and current lead-draft authorization', async () => {
+    const fixture = createFixture();
+    const transaction = createMaterialTransaction();
+    transaction.uploadDraft.findFirst.mockResolvedValue({ id: 'draft-1' });
+    transaction.material.findMany.mockResolvedValue([
+      availableMaterial(
+        'material-lead',
+        'version-lead',
+        'LEAD_SCREENSHOT',
+        'LEAD_DRAFT',
+        '55555555-5555-4555-8555-555555555555',
+        'LEAD_SCREENSHOT',
+      ),
+    ]);
+
+    await expect(
+      fixture.service.assertAvailableVersions(
+        asTransactionClient(transaction),
+        actor,
+        {
+          ownerType: 'LEAD_DRAFT',
+          ownerId: '55555555-5555-4555-8555-555555555555',
+          category: 'LEAD_SCREENSHOT',
+          contentVersionIds: ['version-lead'],
+        },
+      ),
+    ).resolves.toHaveLength(1);
+
+    expect(fixture.access.canAuthorizeNewLead).toHaveBeenCalledWith(actor);
+    expect(transaction.uploadDraft.findFirst).toHaveBeenCalledWith({
+      where: expect.objectContaining({
+        departmentId: actor.departmentId,
+        actorUserId: actor.userId,
+        expiresAt: { gt: now },
+      }),
+      select: { id: true },
+    });
+    expect(fixture.db.uploadDraft.findFirst).not.toHaveBeenCalled();
+  });
+
+  it('freezes exact references on the same transaction without caller-controlled purpose', async () => {
+    const fixture = createFixture();
+    const transaction = createMaterialTransaction();
+    fixture.access.buildCustomerScope.mockResolvedValue({
+      departmentId: actor.departmentId,
+    });
+    transaction.customer.findFirst.mockResolvedValue({
+      departmentId: actor.departmentId,
+      responsibleUserId: actor.userId,
+      teamId: null,
+    });
+    transaction.material.findMany.mockResolvedValue([
+      availableMaterial('material-a', 'version-a', 'IDENTITY_FULL'),
+    ]);
+    const facts = await fixture.service.assertAvailableVersions(
+      asTransactionClient(transaction),
+      actor,
+      {
+        ownerType: 'CUSTOMER',
+        ownerId: customerId,
+        category: 'CUSTOMER_IDENTITY',
+        contentVersionIds: ['version-a'],
+      },
+    );
+
+    await fixture.service.freezeReferences(asTransactionClient(transaction), {
+      departmentId: actor.departmentId,
+      resourceType: 'CUSTOMER_ADMISSION',
+      resourceId: customerId,
+      facts,
+      actionEventId: '77777777-7777-4777-8777-777777777777',
+    });
+
+    expect(transaction.materialReference.createMany).toHaveBeenCalledWith({
+      data: [
+        {
+          departmentId: actor.departmentId,
+          resourceType: 'CUSTOMER_ADMISSION',
+          resourceId: customerId,
+          purpose: 'IDENTITY_FULL',
+          materialId: 'material-a',
+          contentVersionId: 'version-a',
+          actionEventId: '77777777-7777-4777-8777-777777777777',
+        },
+      ],
+      skipDuplicates: true,
+    });
+
+    const forged = {
+      ...facts[0],
+      purpose: 'CALLER_FORGED_PURPOSE',
+    };
+    await expect(
+      fixture.service.freezeReferences(asTransactionClient(transaction), {
+        departmentId: actor.departmentId,
+        resourceType: 'CUSTOMER_ADMISSION',
+        resourceId: customerId,
+        facts: [forged],
+      }),
+    ).rejects.toMatchObject({
+      response: { code: 'MATERIAL_VERSION_INVALID' },
+    });
+  });
 });
 
 function openDraft(overrides: Record<string, unknown> = {}) {
@@ -874,6 +1133,55 @@ function materialRecord() {
     deletedAt: null,
     contentVersions: [{ uploadedBy: actor.userId }],
   };
+}
+
+function availableMaterial(
+  materialId: string,
+  contentVersionId: string,
+  purpose: string,
+  ownerType = 'CUSTOMER',
+  ownerId = customerId,
+  category = 'CUSTOMER_IDENTITY',
+  overrides: {
+    departmentId?: string;
+    materialStatus?: 'ACTIVE' | 'DELETED';
+    versionStatus?: 'AVAILABLE' | 'DELETED' | 'PURGED';
+  } = {},
+) {
+  return {
+    id: materialId,
+    departmentId: overrides.departmentId ?? actor.departmentId,
+    ownerType,
+    ownerId,
+    category,
+    purpose,
+    status: overrides.materialStatus ?? 'ACTIVE',
+    contentVersions: [
+      {
+        id: contentVersionId,
+        mimeType: 'image/png',
+        status: overrides.versionStatus ?? 'AVAILABLE',
+      },
+    ],
+  };
+}
+
+function createMaterialTransaction() {
+  return {
+    customer: { findFirst: jest.fn() },
+    uploadDraft: { findFirst: jest.fn() },
+    lead: { findFirst: jest.fn() },
+    material: { findMany: jest.fn() },
+    materialReference: {
+      createMany: jest.fn(async () => ({ count: 1 })),
+    },
+  };
+}
+
+function asTransactionClient(
+  transaction: ReturnType<typeof createMaterialTransaction>,
+): MaterialTransactionClient {
+  return transaction as unknown as MaterialTransactionClient;
 }
 
 function createFixture() {

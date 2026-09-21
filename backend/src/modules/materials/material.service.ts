@@ -12,7 +12,12 @@ import {
 import { AccessControlService } from '../../access-control/access-control.service';
 import { ActorContext } from '../../access-control/actor-context';
 import { DatabaseService } from '../../database/database.service';
-import { CreateUploadDraftDto, MaterialOwnerTypeValue } from './material.dto';
+import type { Prisma } from '../../generated/prisma/client';
+import {
+  CreateUploadDraftDto,
+  MaterialCategoryValue,
+  MaterialOwnerTypeValue,
+} from './material.dto';
 import {
   BlobNotFoundError,
   BlobStorageUnavailableError,
@@ -25,6 +30,43 @@ import { MaterialStorageKeyCoordinator } from './material-storage-key-coordinato
 const DAY_MS = 24 * 60 * 60 * 1000;
 const RETENTION_MS = 90 * DAY_MS;
 export const MATERIAL_SERVICE_CLOCK = Symbol('MATERIAL_SERVICE_CLOCK');
+const VALIDATED_MATERIAL_VERSION = Symbol('VALIDATED_MATERIAL_VERSION');
+
+export type MaterialTransactionClient = Prisma.TransactionClient;
+
+export type AssertAvailableVersionsInput = Readonly<{
+  ownerType: MaterialOwnerTypeValue;
+  ownerId: string;
+  category: MaterialCategoryValue;
+  contentVersionIds: readonly string[];
+  minCount?: number;
+  maxCount?: number;
+}>;
+
+export type ValidatedMaterialVersionFact = Readonly<{
+  departmentId: string;
+  materialId: string;
+  contentVersionId: string;
+  purpose: string;
+  mimeType: string;
+  ownerType: MaterialOwnerTypeValue;
+  ownerId: string;
+  category: MaterialCategoryValue;
+  [VALIDATED_MATERIAL_VERSION]: true;
+}>;
+
+export type FreezeMaterialReferencesInput = Readonly<{
+  departmentId: string;
+  resourceType: string;
+  resourceId: string;
+  facts: readonly ValidatedMaterialVersionFact[];
+  actionEventId?: string;
+}>;
+
+type MaterialAuthorizationReader = Pick<
+  MaterialTransactionClient,
+  'customer' | 'uploadDraft' | 'lead'
+>;
 const allowedMimeTypes = {
   CUSTOMER_IDENTITY: new Set(['application/pdf', 'image/jpeg', 'image/png']),
   LEAD_SCREENSHOT: new Set([
@@ -317,6 +359,143 @@ export class MaterialService {
     });
   }
 
+  async assertAvailableVersions(
+    transaction: MaterialTransactionClient,
+    actor: ActorContext,
+    input: AssertAvailableVersionsInput,
+  ): Promise<readonly ValidatedMaterialVersionFact[]> {
+    const contentVersionIds = [...input.contentVersionIds];
+    const minCount = input.minCount ?? 1;
+    const maxCount = input.maxCount ?? Number.MAX_SAFE_INTEGER;
+    if (
+      !Number.isSafeInteger(minCount) ||
+      !Number.isSafeInteger(maxCount) ||
+      minCount < 0 ||
+      maxCount < minCount ||
+      contentVersionIds.length < minCount ||
+      contentVersionIds.length > maxCount ||
+      new Set(contentVersionIds).size !== contentVersionIds.length
+    ) {
+      throw this.invalidVersion();
+    }
+
+    await this.authorizeOwner(
+      actor,
+      input.ownerType,
+      input.ownerId,
+      'read',
+      transaction,
+    );
+    const materials = await transaction.material.findMany({
+      where: {
+        departmentId: actor.departmentId,
+        ownerType: input.ownerType,
+        ownerId: input.ownerId,
+        category: input.category,
+        status: 'ACTIVE',
+      },
+      select: {
+        id: true,
+        departmentId: true,
+        ownerType: true,
+        ownerId: true,
+        category: true,
+        purpose: true,
+        status: true,
+        contentVersions: {
+          where: {
+            id: { in: contentVersionIds },
+            status: 'AVAILABLE',
+          },
+          select: { id: true, mimeType: true, status: true },
+        },
+      },
+    });
+
+    const facts = new Map<string, ValidatedMaterialVersionFact>();
+    for (const material of materials) {
+      if (
+        material.departmentId !== actor.departmentId ||
+        material.ownerType !== input.ownerType ||
+        material.ownerId !== input.ownerId ||
+        material.category !== input.category ||
+        material.status !== 'ACTIVE'
+      ) {
+        throw this.invalidVersion();
+      }
+      for (const version of material.contentVersions) {
+        if (
+          version.status !== 'AVAILABLE' ||
+          facts.has(version.id) ||
+          !contentVersionIds.includes(version.id)
+        ) {
+          throw this.invalidVersion();
+        }
+        const fact = {
+          departmentId: material.departmentId,
+          materialId: material.id,
+          contentVersionId: version.id,
+          purpose: material.purpose,
+          mimeType: version.mimeType,
+          ownerType: material.ownerType,
+          ownerId: material.ownerId,
+          category: material.category,
+        };
+        Object.defineProperty(fact, VALIDATED_MATERIAL_VERSION, {
+          value: true,
+        });
+        facts.set(
+          version.id,
+          Object.freeze(fact) as ValidatedMaterialVersionFact,
+        );
+      }
+    }
+    if (facts.size !== contentVersionIds.length) {
+      throw this.invalidVersion();
+    }
+    return Object.freeze(
+      contentVersionIds.map((contentVersionId) => {
+        const fact = facts.get(contentVersionId);
+        if (fact === undefined) throw this.invalidVersion();
+        return fact;
+      }),
+    );
+  }
+
+  async freezeReferences(
+    transaction: MaterialTransactionClient,
+    input: FreezeMaterialReferencesInput,
+  ) {
+    if (
+      input.facts.length === 0 ||
+      input.departmentId.trim().length === 0 ||
+      input.resourceType.trim().length === 0 ||
+      input.resourceId.trim().length === 0 ||
+      input.facts.some(
+        (fact) =>
+          fact[VALIDATED_MATERIAL_VERSION] !== true ||
+          fact.departmentId !== input.departmentId,
+      )
+    ) {
+      throw this.invalidVersion();
+    }
+
+    return transaction.materialReference.createMany({
+      data: input.facts.map((fact) => ({
+        departmentId: input.departmentId,
+        resourceType: input.resourceType,
+        resourceId: input.resourceId,
+        purpose: fact.purpose,
+        materialId: fact.materialId,
+        contentVersionId: fact.contentVersionId,
+        ...(input.actionEventId === undefined
+          ? {}
+          : { actionEventId: input.actionEventId }),
+      })),
+      skipDuplicates: true,
+    });
+  }
+
   async listOwnerMaterials(
     actor: ActorContext,
     ownerType: MaterialOwnerTypeValue,
@@ -492,12 +671,13 @@ export class MaterialService {
     ownerType: MaterialOwnerTypeValue,
     ownerId: string,
     operation: 'read' | 'write',
+    reader: MaterialAuthorizationReader = this.database,
   ): Promise<void> {
     if (ownerType === 'LEAD_DRAFT') {
       if (!(await this.accessControl.canAuthorizeNewLead(actor))) {
         throw this.forbidden();
       }
-      const draft = await this.database.uploadDraft.findFirst({
+      const draft = await reader.uploadDraft.findFirst({
         where: {
           departmentId: actor.departmentId,
           actorUserId: actor.userId,
@@ -517,7 +697,7 @@ export class MaterialService {
           operation === 'read' ? 'customer.read' : 'customer.admit',
         ),
       );
-      const customer = await this.database.customer.findFirst({
+      const customer = await reader.customer.findFirst({
         where: { id: ownerId, ...scope },
         select: {
           departmentId: true,
@@ -540,7 +720,7 @@ export class MaterialService {
     const scope = await this.withMaterialAuthorization(() =>
       this.accessControl.buildLeadScope(actor, 'lead.read'),
     );
-    const lead = await this.database.lead.findFirst({
+    const lead = await reader.lead.findFirst({
       where: { id: ownerId, ...scope },
       select: {
         departmentId: true,

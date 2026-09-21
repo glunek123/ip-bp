@@ -289,7 +289,7 @@ git commit -m "feat: add core lead schema and actions"
 **Interfaces:**
 
 - Produces `PRIVATE_BLOB_STORAGE`, `PrivateBlobStorage`, `LocalPrivateBlobStorage`.
-- Produces `MaterialService.createUploadDraft()`, `finalizeUpload()`, `listOwnerMaterials()`, `openVersion()`, `softDelete()`, `restore()`.
+- Produces `MaterialService.createUploadDraft()`, `finalizeUpload()`, `listOwnerMaterials()`, `openVersion()`, `softDelete()`, `restore()`, `assertAvailableVersions()` and `freezeReferences()`.
 - HTTP: `POST /materials/upload-drafts`的JSON持久化`ownerType/ownerId?/category/purpose/originalFilename/declaredMimeType`；`PUT /materials/upload-drafts/:id/content`只接收 untouched `application/octet-stream`原始字节；另有`GET /materials?ownerType=&ownerId=`、`GET /materials/:materialId/versions/:versionId/content`、`DELETE /materials/:materialId`、`POST /materials/:materialId/restore`。
 
 - [ ] **Step 1: Write failing storage and material tests**
@@ -346,6 +346,8 @@ Write to `<PRIVATE_FILE_ROOT>/.tmp/<sha256(storageKey)>` so cleanup can determin
 - [ ] **Step 4: Implement upload draft and material lifecycle**
 
 `CreateUploadDraftDto` accepts and persists the exact category/purpose matrix plus`originalFilename/declaredMimeType`. CUSTOMER requires existing visible customer ID and`customer.admit`; LEAD_DRAFT may omit owner ID, in which case the server generates`reservedOwnerId`; subsequent drafts using it must match department and actor. `finalizeUpload()` reads metadata only from the OPEN/unexpired draft, acquires the module-shared storage-key coordinator before conditionally persisting the pending key, holds it through Blob write and database finalize or compensation, verifies actual signature/size and declared MIME, then transactionally serializes and enforces the owner/category limit (CUSTOMER_IDENTITY 10, LEAD_SCREENSHOT 20), creates a stable Material with purpose and an immutable ContentVersion whose filename comes from the draft and whose MIME is the detected value, clears the pending key and sets the draft FINALIZED. `restore()` acquires the exact same owner/category transaction advisory lock, recounts ACTIVE material and performs its state/version CAS in that transaction, so a restored item cannot bypass or race the quota. On upload transaction/storage failure it calls Blob delete and returns no version; failed cleanup leaves the pending key for retry. LEAD_DRAFT list/open/delete/restore recheck current`lead.create`and the unexpired reserved owner. Add both forward-only migrations after the three adjacent CORE-LD base migrations; do not rewrite them.
+
+`assertAvailableVersions(transaction, actor, input)` uses only the caller's Prisma transaction client for authorization reads and material reads. It rejects duplicate, missing, foreign-department/owner/category, non-ACTIVE material and non-AVAILABLE content-version IDs, and returns immutable validated facts in caller order with the stable Material purpose. `freezeReferences(transaction, input)` accepts only those validated facts, derives purpose from them rather than caller input, and writes the exact material/version references with `createMany({ skipDuplicates: true })` through that same caller transaction. Customer admission and lead creation must call both methods inside their enclosing Serializable transaction; they must not duplicate the material query or fall back to the global database client.
 
 Use stable error codes from the contract: `VALIDATION_ERROR`, `ACTION_FORBIDDEN`, `RESOURCE_NOT_FOUND`, `MATERIAL_VERSION_INVALID`, `VERSION_CONFLICT`, `STORAGE_UNAVAILABLE`.
 
