@@ -12,6 +12,10 @@ enum PermissionAction {
   CUSTOMER_READ         @map("customer.read")
   CUSTOMER_CREATE_DRAFT @map("customer.create-draft")
   CUSTOMER_EDIT_ROUTINE @map("customer.edit-routine")
+  CUSTOMER_ADMIT        @map("customer.admit")
+  LEAD_READ             @map("lead.read")
+  LEAD_CREATE           @map("lead.create")
+  LEAD_EDIT             @map("lead.edit")
   USER_READ             @map("user.read")
   USER_MANAGE           @map("user.manage")
   TEAM_READ             @map("team.read")
@@ -33,8 +37,128 @@ enum PermissionScope {
 
 enum CustomerProfileStatus {
   DRAFT
+  ADMITTED
 
   @@map("customer_profile_status")
+}
+
+enum IdentityValidityMode {
+  FIXED
+  LONG_TERM
+  NOT_STATED
+
+  @@map("identity_validity_mode")
+}
+
+enum UploadDraftStatus {
+  OPEN
+  FINALIZED
+  EXPIRED
+
+  @@map("upload_draft_status")
+}
+
+enum MaterialOwnerType {
+  CUSTOMER
+  LEAD_DRAFT
+  LEAD
+
+  @@map("material_owner_type")
+}
+
+enum MaterialCategory {
+  CUSTOMER_IDENTITY
+  LEAD_SCREENSHOT
+
+  @@map("material_category")
+}
+
+enum MaterialStatus {
+  ACTIVE
+  DELETED
+
+  @@map("material_status")
+}
+
+enum ContentVersionStatus {
+  AVAILABLE
+  DELETED
+  PURGED
+
+  @@map("content_version_status")
+}
+
+enum LeadStatus {
+  WAITING_PUSH
+  WAITING_REVIEW
+  WAITING_EVIDENCE_DECISION
+  ARCHIVED
+
+  @@map("lead_status")
+}
+
+enum LeadCaseType {
+  CIVIL
+  CRIMINAL
+  ADMINISTRATIVE
+  INVESTIGATION
+  NOTARIZATION
+  HEARING_REPRESENTATION
+
+  @@map("lead_case_type")
+}
+
+enum InfringementType {
+  TRADEMARK
+  SOFTWARE_COPYRIGHT
+  ART_COPYRIGHT
+  AUDIOVISUAL_COPYRIGHT
+  TEXT_COPYRIGHT
+  INVENTION_PATENT
+  DESIGN_PATENT
+  UTILITY_MODEL_PATENT
+  UNFAIR_COMPETITION
+  NETWORK_DISSEMINATION
+  PORTRAIT_RIGHT
+  OTHER
+
+  @@map("infringement_type")
+}
+
+enum LeadSource {
+  ONLINE
+  OFFLINE
+
+  @@map("lead_source")
+}
+
+enum LeadPlatform {
+  TAOBAO
+  TMALL
+  PINDUODUO
+  JD
+  DOUYIN
+  ALIBABA_1688
+  XIAOHONGSHU
+  KUAISHOU
+  XIANYU
+  WECHAT
+  MEITUAN
+  DIANPING
+  MAP
+  OTHER
+
+  @@map("lead_platform")
+}
+
+enum LeadCreationChannel {
+  MANUAL
+  OCR
+  CRAWLER
+  CSV
+  HISTORICAL
+
+  @@map("lead_creation_channel")
 }
 
 enum TeamStatus {
@@ -57,6 +181,12 @@ model Department {
   auditEvents                 AuditEvent[]
   authSessions                AuthSession[]
   teams                       Team[]
+  uploadDrafts                UploadDraft[]
+  materials                   Material[]
+  materialReferences          MaterialReference[]
+  customerAdmissionReceipts   CustomerAdmissionReceipt[]
+  leads                       Lead[]
+  leadCommandReceipts         LeadCommandReceipt[]
   createdAt                   DateTime                     @default(now()) @map("created_at") @db.Timestamptz(3)
   updatedAt                   DateTime                     @updatedAt @map("updated_at") @db.Timestamptz(3)
 
@@ -72,6 +202,7 @@ model Team {
   memberships     DepartmentMembership[]
   roleAssignments RoleAssignment[]
   customers       Customer[]
+  leads           Lead[]
   createdAt       DateTime               @default(now()) @map("created_at") @db.Timestamptz(3)
   updatedAt       DateTime               @updatedAt @map("updated_at") @db.Timestamptz(3)
 
@@ -90,6 +221,7 @@ model UserAccount {
   authSessions          AuthSession[]
   memberships           DepartmentMembership[]
   roleAssignments       RoleAssignment[]
+  uploadedContent       ContentVersion[]
   createdAt             DateTime               @default(now()) @map("created_at") @db.Timestamptz(3)
   updatedAt             DateTime               @updatedAt @map("updated_at") @db.Timestamptz(3)
 
@@ -154,6 +286,10 @@ model DepartmentMembership {
   responsibleCustomers        Customer[]                   @relation("CustomerResponsibleMembership")
   rightsHolderCommandReceipts RightsHolderCommandReceipt[] @relation("RightsHolderReceiptActor")
   auditEvents                 AuditEvent[]                 @relation("AuditActorMembership")
+  uploadDrafts                UploadDraft[]                @relation("UploadDraftActor")
+  customerAdmissionReceipts   CustomerAdmissionReceipt[]   @relation("CustomerAdmissionReceiptActor")
+  responsibleLeads            Lead[]                       @relation("LeadResponsibleMembership")
+  leadCommandReceipts         LeadCommandReceipt[]         @relation("LeadCommandReceiptActor")
   createdAt                   DateTime                     @default(now()) @map("created_at") @db.Timestamptz(3)
   updatedAt                   DateTime                     @updatedAt @map("updated_at") @db.Timestamptz(3)
 
@@ -225,6 +361,10 @@ model Customer {
   admissionContactName     String?                      @map("admission_contact_name")
   admissionContactPhone    String?                      @map("admission_contact_phone")
   admissionContactEmail    String?                      @map("admission_contact_email")
+  identityValidFrom        DateTime?                    @map("identity_valid_from") @db.Date
+  identityValidTo          DateTime?                    @map("identity_valid_to") @db.Date
+  identityValidityMode     IdentityValidityMode?        @map("identity_validity_mode")
+  admittedAt               DateTime?                    @map("admitted_at") @db.Timestamptz(3)
   profileStatus            CustomerProfileStatus        @default(DRAFT) @map("profile_status")
   departmentId             String                       @map("department_id") @db.Uuid
   responsibleUserId        String                       @map("responsible_user_id") @db.Uuid
@@ -235,6 +375,8 @@ model Customer {
   responsibleMembership    DepartmentMembership         @relation("CustomerResponsibleMembership", fields: [responsibleUserId, departmentId], references: [userId, departmentId], onDelete: Restrict)
   rightsHolderLinks        CustomerRightsHolderLink[]
   rightsHolderReceipts     RightsHolderCommandReceipt[] @relation("RightsHolderReceiptCustomer")
+  admissionReceipts        CustomerAdmissionReceipt[]
+  leads                    Lead[]
   createdAt                DateTime                     @default(now()) @map("created_at") @db.Timestamptz(3)
   updatedAt                DateTime                     @updatedAt @map("updated_at") @db.Timestamptz(3)
 
@@ -259,6 +401,7 @@ model RightsHolder {
   department          Department                   @relation(fields: [departmentId], references: [id], onDelete: Restrict)
   links               CustomerRightsHolderLink[]
   commandReceipts     RightsHolderCommandReceipt[] @relation("RightsHolderReceiptHolder")
+  leads               Lead[]
   createdAt           DateTime                     @default(now()) @map("created_at") @db.Timestamptz(3)
   updatedAt           DateTime                     @updatedAt @map("updated_at") @db.Timestamptz(3)
 
@@ -308,17 +451,215 @@ model RightsHolderCommandReceipt {
   @@map("rights_holder_command_receipts")
 }
 
-model AuditEvent {
+model UploadDraft {
   id              String               @id @default(uuid()) @db.Uuid
   departmentId    String               @map("department_id") @db.Uuid
   actorUserId     String               @map("actor_user_id") @db.Uuid
-  resourceType    String               @map("resource_type")
-  resourceId      String               @map("resource_id") @db.Uuid
-  action          String
-  details         Json?
+  ownerType       MaterialOwnerType    @map("owner_type")
+  ownerId         String               @map("owner_id") @db.Uuid
+  category        MaterialCategory
+  status          UploadDraftStatus    @default(OPEN)
+  expiresAt       DateTime             @map("expires_at") @db.Timestamptz(3)
   department      Department           @relation(fields: [departmentId], references: [id], onDelete: Restrict)
-  actorMembership DepartmentMembership @relation("AuditActorMembership", fields: [actorUserId, departmentId], references: [userId, departmentId], onDelete: Restrict)
+  actorMembership DepartmentMembership @relation("UploadDraftActor", fields: [actorUserId, departmentId], references: [userId, departmentId], onDelete: Restrict, map: "upload_drafts_actor_department_fkey")
   createdAt       DateTime             @default(now()) @map("created_at") @db.Timestamptz(3)
+  updatedAt       DateTime             @updatedAt @map("updated_at") @db.Timestamptz(3)
+
+  @@index([departmentId, ownerType, ownerId, status])
+  @@index([status, expiresAt])
+  @@map("upload_drafts")
+}
+
+model Material {
+  id               String              @id @default(uuid()) @db.Uuid
+  departmentId     String              @map("department_id") @db.Uuid
+  ownerType        MaterialOwnerType   @map("owner_type")
+  ownerId          String              @map("owner_id") @db.Uuid
+  category         MaterialCategory
+  currentVersionId String?             @map("current_version_id") @db.Uuid
+  status           MaterialStatus      @default(ACTIVE)
+  version          Int                 @default(1)
+  deletedAt        DateTime?           @map("deleted_at") @db.Timestamptz(3)
+  department       Department          @relation(fields: [departmentId], references: [id], onDelete: Restrict)
+  currentVersion   ContentVersion?     @relation("MaterialCurrentVersion", fields: [id, currentVersionId], references: [materialId, id], onDelete: Restrict, map: "materials_current_version_fkey")
+  contentVersions  ContentVersion[]    @relation("MaterialContentVersions")
+  references       MaterialReference[]
+  createdAt        DateTime            @default(now()) @map("created_at") @db.Timestamptz(3)
+  updatedAt        DateTime            @updatedAt @map("updated_at") @db.Timestamptz(3)
+
+  @@unique([id, departmentId])
+  @@index([departmentId, ownerType, ownerId, status])
+  @@map("materials")
+}
+
+model ContentVersion {
+  id                   String               @id @default(uuid()) @db.Uuid
+  materialId           String               @map("material_id") @db.Uuid
+  storageKey           String               @unique @map("storage_key") @db.VarChar(500)
+  originalFilename     String               @map("original_filename") @db.VarChar(200)
+  mimeType             String               @map("mime_type") @db.VarChar(100)
+  sizeBytes            BigInt               @map("size_bytes")
+  sha256               String               @db.Char(64)
+  uploadedBy           String               @map("uploaded_by") @db.Uuid
+  derivedFromVersionId String?              @map("derived_from_version_id") @db.Uuid
+  status               ContentVersionStatus @default(AVAILABLE)
+  material             Material             @relation("MaterialContentVersions", fields: [materialId], references: [id], onDelete: Restrict)
+  currentForMaterials  Material[]           @relation("MaterialCurrentVersion")
+  uploader             UserAccount          @relation(fields: [uploadedBy], references: [id], onDelete: Restrict)
+  derivedFromVersion   ContentVersion?      @relation("DerivedContentVersions", fields: [derivedFromVersionId], references: [id], onDelete: Restrict)
+  derivedVersions      ContentVersion[]     @relation("DerivedContentVersions")
+  materialReferences   MaterialReference[]
+  createdAt            DateTime             @default(now()) @map("created_at") @db.Timestamptz(3)
+
+  @@unique([materialId, id])
+  @@index([materialId, status, createdAt])
+  @@index([sha256])
+  @@map("content_versions")
+}
+
+model MaterialReference {
+  id               String         @id @default(uuid()) @db.Uuid
+  departmentId     String         @map("department_id") @db.Uuid
+  resourceType     String         @map("resource_type") @db.VarChar(100)
+  resourceId       String         @map("resource_id") @db.Uuid
+  purpose          String         @db.VarChar(100)
+  materialId       String         @map("material_id") @db.Uuid
+  contentVersionId String         @map("content_version_id") @db.Uuid
+  actionEventId    String?        @map("action_event_id") @db.Uuid
+  department       Department     @relation(fields: [departmentId], references: [id], onDelete: Restrict)
+  material         Material       @relation(fields: [materialId, departmentId], references: [id, departmentId], onDelete: Restrict, map: "material_references_material_department_fkey")
+  contentVersion   ContentVersion @relation(fields: [materialId, contentVersionId], references: [materialId, id], onDelete: Restrict, map: "material_references_content_material_fkey")
+  actionEvent      AuditEvent?    @relation(fields: [actionEventId], references: [id], onDelete: Restrict)
+  createdAt        DateTime       @default(now()) @map("created_at") @db.Timestamptz(3)
+
+  @@unique([resourceType, resourceId, purpose, contentVersionId], map: "material_references_resource_purpose_version_key")
+  @@index([departmentId, resourceType, resourceId])
+  @@index([materialId])
+  @@map("material_references")
+}
+
+model CustomerAdmissionReceipt {
+  id                    String               @id @default(uuid()) @db.Uuid
+  departmentId          String               @map("department_id") @db.Uuid
+  actorUserId           String               @map("actor_user_id") @db.Uuid
+  idempotencyKey        String               @map("idempotency_key") @db.VarChar(128)
+  requestFingerprint    String               @map("request_fingerprint") @db.Char(64)
+  resultCustomerId      String               @map("result_customer_id") @db.Uuid
+  resultCustomerVersion Int                  @map("result_customer_version")
+  department            Department           @relation(fields: [departmentId], references: [id], onDelete: Restrict)
+  actorMembership       DepartmentMembership @relation("CustomerAdmissionReceiptActor", fields: [actorUserId, departmentId], references: [userId, departmentId], onDelete: Restrict, map: "customer_admission_receipts_actor_department_fkey")
+  resultCustomer        Customer             @relation(fields: [resultCustomerId, departmentId], references: [id, departmentId], onDelete: Restrict, map: "customer_admission_receipts_customer_department_fkey")
+  createdAt             DateTime             @default(now()) @map("created_at") @db.Timestamptz(3)
+
+  @@unique([departmentId, actorUserId, idempotencyKey], map: "customer_admission_receipts_department_actor_key")
+  @@index([resultCustomerId, departmentId], map: "customer_admission_receipts_customer_department_idx")
+  @@map("customer_admission_receipts")
+}
+
+model Lead {
+  id                    String               @id @default(uuid()) @db.Uuid
+  departmentId          String               @map("department_id") @db.Uuid
+  businessNo            String               @unique @map("business_no") @db.VarChar(100)
+  customerId            String               @map("customer_id") @db.Uuid
+  rightsHolderId        String               @map("rights_holder_id") @db.Uuid
+  responsibleUserId     String               @map("responsible_user_id") @db.Uuid
+  teamId                String?              @map("team_id") @db.Uuid
+  status                LeadStatus           @default(WAITING_PUSH)
+  caseType              LeadCaseType         @map("case_type")
+  source                LeadSource
+  platform              LeadPlatform
+  foundAt               DateTime             @map("found_at") @db.Timestamptz(3)
+  shopName              String               @map("shop_name") @db.VarChar(200)
+  shopExternalId        String?              @map("shop_external_id") @db.VarChar(100)
+  needDisclose          Boolean              @map("need_disclose")
+  remark                String?
+  creationChannel       LeadCreationChannel  @default(MANUAL) @map("creation_channel")
+  externalSourceRef     String?              @map("external_source_ref") @db.VarChar(100)
+  version               Int                  @default(1)
+  department            Department           @relation(fields: [departmentId], references: [id], onDelete: Restrict)
+  customer              Customer             @relation(fields: [customerId, departmentId], references: [id, departmentId], onDelete: Restrict, map: "leads_customer_department_fkey")
+  rightsHolder          RightsHolder         @relation(fields: [rightsHolderId, departmentId], references: [id, departmentId], onDelete: Restrict, map: "leads_rights_holder_department_fkey")
+  responsibleMembership DepartmentMembership @relation("LeadResponsibleMembership", fields: [responsibleUserId, departmentId], references: [userId, departmentId], onDelete: Restrict, map: "leads_responsible_department_fkey")
+  team                  Team?                @relation(fields: [teamId, departmentId], references: [id, departmentId], onDelete: Restrict, onUpdate: Restrict, map: "leads_team_department_fkey")
+  products              LeadProduct[]
+  infringements         LeadInfringement[]
+  commandReceipts       LeadCommandReceipt[]
+  createdAt             DateTime             @default(now()) @map("created_at") @db.Timestamptz(3)
+  updatedAt             DateTime             @updatedAt @map("updated_at") @db.Timestamptz(3)
+
+  @@unique([id, departmentId])
+  @@unique([departmentId, creationChannel, externalSourceRef])
+  @@index([departmentId, status, updatedAt, id])
+  @@index([responsibleUserId])
+  @@index([teamId])
+  @@map("leads")
+}
+
+model LeadProduct {
+  id              String  @id @default(uuid()) @db.Uuid
+  leadId          String  @map("lead_id") @db.Uuid
+  position        Int
+  url             String? @db.VarChar(2048)
+  title           String? @db.VarChar(200)
+  quantity        Int     @default(0)
+  unitPrice       Decimal @map("unit_price") @db.Decimal(18, 2)
+  commentCount    Int     @default(0) @map("comment_count")
+  estimatedAmount Decimal @map("estimated_amount") @db.Decimal(18, 2)
+  lead            Lead    @relation(fields: [leadId], references: [id], onDelete: Cascade)
+
+  @@unique([leadId, position])
+  @@map("lead_products")
+}
+
+model LeadInfringement {
+  id     String           @id @default(uuid()) @db.Uuid
+  leadId String           @map("lead_id") @db.Uuid
+  type   InfringementType @map("infringement_type")
+  lead   Lead             @relation(fields: [leadId], references: [id], onDelete: Cascade)
+
+  @@unique([leadId, type])
+  @@map("lead_infringements")
+}
+
+model LeadNumberCounter {
+  businessDate DateTime @id @map("business_date") @db.Date
+  lastValue    Int      @default(0) @map("last_value")
+  updatedAt    DateTime @updatedAt @map("updated_at") @db.Timestamptz(3)
+
+  @@map("lead_number_counters")
+}
+
+model LeadCommandReceipt {
+  id                 String               @id @default(uuid()) @db.Uuid
+  departmentId       String               @map("department_id") @db.Uuid
+  actorUserId        String               @map("actor_user_id") @db.Uuid
+  action             String               @db.VarChar(100)
+  idempotencyKey     String               @map("idempotency_key") @db.VarChar(128)
+  requestFingerprint String               @map("request_fingerprint") @db.Char(64)
+  resultLeadId       String               @map("result_lead_id") @db.Uuid
+  resultLeadVersion  Int                  @map("result_lead_version")
+  department         Department           @relation(fields: [departmentId], references: [id], onDelete: Restrict)
+  actorMembership    DepartmentMembership @relation("LeadCommandReceiptActor", fields: [actorUserId, departmentId], references: [userId, departmentId], onDelete: Restrict, map: "lead_command_receipts_actor_department_fkey")
+  resultLead         Lead                 @relation(fields: [resultLeadId, departmentId], references: [id, departmentId], onDelete: Restrict, map: "lead_command_receipts_lead_department_fkey")
+  createdAt          DateTime             @default(now()) @map("created_at") @db.Timestamptz(3)
+
+  @@unique([departmentId, actorUserId, action, idempotencyKey], map: "lead_command_receipts_department_actor_action_key")
+  @@index([resultLeadId, departmentId])
+  @@map("lead_command_receipts")
+}
+
+model AuditEvent {
+  id                 String               @id @default(uuid()) @db.Uuid
+  departmentId       String               @map("department_id") @db.Uuid
+  actorUserId        String               @map("actor_user_id") @db.Uuid
+  resourceType       String               @map("resource_type")
+  resourceId         String               @map("resource_id") @db.Uuid
+  action             String
+  details            Json?
+  department         Department           @relation(fields: [departmentId], references: [id], onDelete: Restrict)
+  actorMembership    DepartmentMembership @relation("AuditActorMembership", fields: [actorUserId, departmentId], references: [userId, departmentId], onDelete: Restrict)
+  materialReferences MaterialReference[]
+  createdAt          DateTime             @default(now()) @map("created_at") @db.Timestamptz(3)
 
   @@index([departmentId, resourceType, resourceId, createdAt])
   @@index([actorUserId, createdAt])

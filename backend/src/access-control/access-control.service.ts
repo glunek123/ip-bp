@@ -7,6 +7,10 @@ export type PermissionAction =
   | 'customer.read'
   | 'customer.create-draft'
   | 'customer.edit-routine'
+  | 'customer.admit'
+  | 'lead.read'
+  | 'lead.create'
+  | 'lead.edit'
   | 'user.read'
   | 'user.manage'
   | 'team.read'
@@ -17,6 +21,7 @@ export type PermissionAction =
 export type CustomerAction = Extract<PermissionAction, `customer.${string}`>;
 export type PermissionScope = 'self' | 'team' | 'department';
 export type CustomerScope = PermissionScope;
+export type LeadAction = Extract<PermissionAction, `lead.${string}`>;
 
 export type CustomerResourceFacts = {
   departmentId: string;
@@ -25,6 +30,19 @@ export type CustomerResourceFacts = {
 };
 
 export type CustomerScopePredicate = {
+  departmentId: string;
+  responsibleUserId?: string;
+  OR?: Array<{ responsibleUserId: string } | { teamId: { in: string[] } }>;
+  teamId?: { in: string[] };
+};
+
+export type LeadResourceFacts = {
+  departmentId: string;
+  responsibleUserId?: string;
+  teamId?: string;
+};
+
+export type LeadScopePredicate = {
   departmentId: string;
   responsibleUserId?: string;
   OR?: Array<{ responsibleUserId: string } | { teamId: { in: string[] } }>;
@@ -180,6 +198,92 @@ export class AccessControlService {
     }
   }
 
+  async authorizeLead(
+    actor: ActorContext,
+    action: LeadAction,
+    facts: LeadResourceFacts,
+  ): Promise<void> {
+    if (facts.departmentId !== actor.departmentId) {
+      throw this.leadForbidden();
+    }
+
+    const snapshot = await this.loadCurrentSnapshot(actor);
+    const allowed = snapshot.grants.some(
+      (grant) =>
+        grant.action === action && this.scopeCovers(grant, actor, facts),
+    );
+    if (!allowed) {
+      throw this.leadForbidden();
+    }
+  }
+
+  async buildLeadScope(
+    actor: ActorContext,
+    action: LeadAction,
+  ): Promise<LeadScopePredicate> {
+    const snapshot = await this.loadCurrentSnapshot(actor);
+    const grants = snapshot.grants.filter((grant) => grant.action === action);
+
+    if (grants.some((grant) => grant.scope === 'department')) {
+      return { departmentId: actor.departmentId };
+    }
+
+    const teamIds = [
+      ...new Set(
+        grants
+          .filter(
+            (grant): grant is typeof grant & { teamId: string } =>
+              grant.scope === 'team' && typeof grant.teamId === 'string',
+          )
+          .map((grant) => grant.teamId),
+      ),
+    ];
+    const hasSelf = grants.some((grant) => grant.scope === 'self');
+
+    if (teamIds.length > 0 && hasSelf) {
+      return {
+        departmentId: actor.departmentId,
+        OR: [{ responsibleUserId: actor.userId }, { teamId: { in: teamIds } }],
+      };
+    }
+    if (teamIds.length > 0) {
+      return {
+        departmentId: actor.departmentId,
+        teamId: { in: teamIds },
+      };
+    }
+    if (hasSelf) {
+      return {
+        departmentId: actor.departmentId,
+        responsibleUserId: actor.userId,
+      };
+    }
+
+    throw this.leadForbidden();
+  }
+
+  async canAuthorizeNewLead(actor: ActorContext): Promise<boolean> {
+    try {
+      const snapshot = await this.loadCurrentSnapshot(actor);
+      const facts: LeadResourceFacts = {
+        departmentId: actor.departmentId,
+        responsibleUserId: actor.userId,
+        ...(snapshot.membershipTeamId === undefined ||
+        snapshot.membershipTeamActive === false
+          ? {}
+          : { teamId: snapshot.membershipTeamId }),
+      };
+      return snapshot.grants.some(
+        (grant) =>
+          grant.action === 'lead.create' &&
+          this.scopeCovers(grant, actor, facts),
+      );
+    } catch (error) {
+      if (error instanceof ForbiddenException) return false;
+      throw error;
+    }
+  }
+
   private async loadCurrentSnapshot(
     actor: ActorContext,
   ): Promise<AccessControlSnapshot> {
@@ -204,10 +308,17 @@ export class AccessControlService {
     });
   }
 
+  private leadForbidden(): ForbiddenException {
+    return new ForbiddenException({
+      code: 'LEAD_ACTION_FORBIDDEN',
+      message: '无权执行此线索操作',
+    });
+  }
+
   private scopeCovers(
     grant: AccessControlSnapshot['grants'][number],
     actor: ActorContext,
-    facts: CustomerResourceFacts,
+    facts: CustomerResourceFacts | LeadResourceFacts,
   ): boolean {
     if (grant.scope === 'department') {
       return true;

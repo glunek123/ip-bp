@@ -28,7 +28,7 @@ type CustomerRecord = {
   admissionContactName: string | null;
   admissionContactPhone: string | null;
   admissionContactEmail: string | null;
-  profileStatus: 'DRAFT';
+  profileStatus: 'DRAFT' | 'ADMITTED';
   departmentId: string;
   responsibleUserId: string;
   teamId: string | null;
