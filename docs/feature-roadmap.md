@@ -22,7 +22,7 @@
 
 ### Current Slice
 
-**CORE-LD-001｜运营新建待推送线索。** 当前处于书面Spec复核，尚未开始正式代码。本Slice的业务结果只到运营创建待推送线索；为满足既有正式线索门槛，同步补齐最小客户准入和本地／测试私有材料Adapter。线索范围包括运营端列表、四阶段计数、新建、详情和允许范围内的编辑，以及线索／商品的API、PostgreSQL、最小权限、审计和真实浏览器链；不包含推送、客户端审核、取证确认或公证表。范围见[核心主线设计](superpowers/specs/2026-09-21-core-business-mainline-roadmap-design.md)，字段、附件和存储实现必须遵守[编码级契约](superpowers/specs/2026-09-21-core-flow-field-material-contract.md)。
+**CORE-LD-001｜运营新建待推送线索。** 书面Spec与编码级契约已确认，[实施计划](superpowers/plans/2026-09-21-core-ld-001-waiting-push-lead.md)已生成，尚未开始正式代码。本Slice的业务结果只到运营创建待推送线索；为满足既有正式线索门槛，同步补齐最小客户准入和本地／测试私有材料Adapter。线索范围包括运营端列表、四阶段计数、新建、详情和允许范围内的编辑，以及线索／商品的API、PostgreSQL、最小权限、审计和真实浏览器链；不包含推送、客户端审核、取证确认或公证表。范围见[核心主线设计](superpowers/specs/2026-09-21-core-business-mainline-roadmap-design.md)，字段、附件和存储实现必须遵守[编码级契约](superpowers/specs/2026-09-21-core-flow-field-material-contract.md)。
 
 ### Next Slice
 

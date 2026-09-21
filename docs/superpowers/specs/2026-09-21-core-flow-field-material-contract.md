@@ -4,7 +4,7 @@
 
 任务：CORE-FIELD-CONTRACT-001
 
-状态：依据现有Demo反向文档、正式Spec、Decision和BR-03回件收口；已确认规则可直接进入对应Slice计划，列为`BLOCKED_BY`的动作不得由实施AI补猜。本文所列技术默认值是本设计固定的首期实现基线，不再留给实施AI二次选择；改变它们必须先修改本文并复核。
+状态：依据现有Demo反向文档、正式Spec、Decision和BR-03回件收口，并已获用户确认进入实施；列为`BLOCKED_BY`的动作不得由实施AI补猜。本文所列技术默认值是本设计固定的首期实现基线，不再留给实施AI二次选择；改变它们必须先修改本文并复核。
 
 ## 1. 权威范围与使用规则
 
@@ -44,7 +44,7 @@ delete(opaqueStorageKey) -> void
 health() -> ready | unavailable
 ```
 
-- 开发／测试使用`LocalPrivateBlobStorage`，根目录由`PRIVATE_FILE_ROOT`显式配置并由Compose命名卷持久化；目录不得位于前端静态目录，不提交Git，也不返回给浏览器。
+- 开发／测试使用`LocalPrivateBlobStorage`，根目录由`PRIVATE_FILE_ROOT`显式配置；当前后端进程运行在宿主机，因此分别使用仓库已忽略的`.local/private-files/development`和`.local/private-files/test`目录，不虚构无法由宿主进程直接访问的Compose命名卷。未来后端容器化时才把同一配置指向容器私有命名卷；目录不得位于前端静态目录，不提交Git，也不返回给浏览器。
 - 内部存储键由服务端生成，逻辑形状为`departmentId/materialId/contentVersionId`；用户文件名不参与定位。
 - 生产使用`ObjectStoragePrivateBlobStorage`，provider、bucket、凭据、加密、备份恢复和安全扫描继续由E02决定。替换Adapter不改变业务表、DTO或材料引用。
 - 浏览器预览／下载只调用应用层`FileAccessGateway`；每次按材料、对象范围和当前授权重新校验，不返回永久公开地址。
@@ -67,6 +67,8 @@ health() -> ready | unavailable
 3. 已被流程动作引用的材料不能普通删除或覆盖；更正时新增`ContentVersion`，旧版本可标记作废但继续供历史动作读取。当前详情默认展示新版本，历史动作始终打开其冻结版本。
 4. 同一`sha256`只用于提示本次对象内重复上传，不跨部门查重、复用或暴露存在性；即便字节相同，每个部门和业务对象仍保持自己的授权关系。
 5. E02未关闭前，内部MVP只承诺受控格式、真实MIME、大小和哈希校验，不声称已完成病毒扫描、生产加密、备份或灾难恢复。
+
+新业务对象上传使用服务端预留身份，不允许浏览器自行生成正式业务ID：客户材料必须提交已有`customerId`；新线索第一次创建`UploadDraft(ownerType=LEAD_DRAFT)`时由服务端同时生成`reservedOwnerId`，同一操作者可在当前部门继续使用该ID创建其余截图。`CreateLeadCommand.reservedLeadId`消费该预留ID后，把材料owner原子改为`LEAD`并建立精确版本引用；未消费的`LEAD_DRAFT`及Blob按24小时过期规则清理。没有预上传截图时，创建Command由服务端直接生成线索ID。
 
 ## 3. 通用字段和校验类型
 
@@ -167,7 +169,9 @@ health() -> ready | unavailable
 | Product | `unitPrice`                                             | Money／必填                                 | 允许0，不允许负数                                                                               |
 | Product | `estimatedAmount`                                       | Money／服务端计算                           | `quantity>0 ? quantity : commentCount`乘`unitPrice`，最终按分四舍五入；不冒充交易流水           |
 
-创建Command另含`leadScreenshotContentVersionIds[0..20]`和`idempotencyKey`。编辑仅允许`WAITING_PUSH`状态，提交`expectedVersion`；不允许编辑身份、部门、业务号、状态、操作者和计算结果。删除不在本Slice。
+创建Command另含`reservedLeadId?`、`leadScreenshotContentVersionIds[0..20]`和`idempotencyKey`；提供`reservedLeadId`时，所有版本必须来自同一操作者、当前部门和该`LEAD_DRAFT`预留身份。编辑仅允许`WAITING_PUSH`状态，提交`expectedVersion`；不允许编辑身份、部门、业务号、状态、操作者和计算结果。删除不在本Slice。
+
+线索业务号按Asia/Shanghai业务日使用全库并发安全日序列生成：格式固定为`LD-YYYYMMDD-NNN`，当日从`001`递增到`999`且全局唯一；第1000条明确返回`LEAD_NUMBER_EXHAUSTED`，不得回绕、随机补号或复用已删除号码。
 
 ### 5.3 CORE-LD-002～006动作
 

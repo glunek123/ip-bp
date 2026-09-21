@@ -8,7 +8,7 @@
 
 ## 当前任务
 
-**CORE-ROADMAP-001（设计阶段）**：用户已确认把开发重心调整为核心主线，并进一步确认“四个里程碑＋逐状态动作小切片”的粒度。详细设计见[核心主线设计](superpowers/specs/2026-09-21-core-business-mainline-roadmap-design.md)，精确字段、受控选项、附件、材料版本和存储边界已收口到[核心业务字段、附件与存储契约](superpowers/specs/2026-09-21-core-flow-field-material-contract.md)；[路线图](feature-roadmap.md)已把`CORE-LD-001｜运营新建待推送线索`设为唯一Current，`CORE-LD-002｜运营推送至真实客户端审核`设为唯一Next。正式业务代码尚未开始，须在书面Spec复核后只为Current Slice生成实施计划。
+**CORE-LD-001（计划就绪）**：用户已确认核心主线设计及字段／附件／存储契约；[实施计划](superpowers/plans/2026-09-21-core-ld-001-waiting-push-lead.md)已按唯一Current Slice生成。范围是最小客户准入、真实私有材料、运营新建／查看／编辑待推送线索及四阶段计数；`CORE-LD-002｜运营推送至真实客户端审核`仍是唯一Next。正式业务代码尚未开始。
 
 ## 已实现
 
@@ -25,9 +25,9 @@
 ## 最近验证
 
 - 2026-09-21在本地`main@b8d04bf`执行`pnpm context:check`通过；Node v24.21.0、pnpm 11.27.0与项目锁定环境一致。
-- 本轮新增核心字段／附件／存储契约，并同步主线设计、路线图、状态和上下文快照；`pnpm spec:check`、目标文档Prettier检查、`git diff --check`和`pnpm context:check:strict`通过。没有修改正式代码、Schema或测试，未运行代码测试、构建、数据库E2E或生产联调。
+- 本轮新增核心字段／附件／存储契约和`CORE-LD-001`实施计划，并同步主线设计、路线图、状态和上下文快照；`pnpm spec:check`、目标文档Prettier检查、`git diff --check`和`pnpm context:check:strict`通过。没有修改正式代码、Schema或测试，未运行代码测试、构建、数据库E2E或生产联调。
 - 上一任务最终代码候选`d542c31`的完整`pnpm verify`、角色模板E2E 4/4、人员权限E2E 6/6和独立终审`ACCEPTED`仍只证明该候选，不作为未来核心业务tree的验证证据。
 
 ## 下一步
 
-请用户一并复核细化后的[核心主线设计](superpowers/specs/2026-09-21-core-business-mainline-roadmap-design.md)和[字段、附件与存储契约](superpowers/specs/2026-09-21-core-flow-field-material-contract.md)。确认书面Spec后按设计规范只生成`CORE-LD-001`实施计划，再进入正式编码；不重复选择路线，不自动推送、发布或操作生产数据库。
+按[CORE-LD-001实施计划](superpowers/plans/2026-09-21-core-ld-001-waiting-push-lead.md)开始正式编码；执行时不得扩入推送、客户端审核或公证，不自动推送、发布或操作生产数据库。
