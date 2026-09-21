@@ -27,6 +27,7 @@ describe('MaterialCleanupService', () => {
     const fixture = createFixture();
     fixture.queryRaw
       .mockResolvedValueOnce([])
+      .mockResolvedValueOnce([])
       .mockResolvedValueOnce([
         { id: 'version-unreferenced', storageKey: 'unreferenced/key' },
       ])
@@ -34,7 +35,7 @@ describe('MaterialCleanupService', () => {
 
     await fixture.service.runOnce();
 
-    expect(fixture.queryRaw.mock.calls[1]?.[0]).toContain('NOT EXISTS');
+    expect(fixture.queryRaw.mock.calls[2]?.[0]).toContain('NOT EXISTS');
     expect(fixture.contentVersion.updateMany).toHaveBeenNthCalledWith(1, {
       where: {
         id: 'version-unreferenced',
@@ -54,11 +55,12 @@ describe('MaterialCleanupService', () => {
     fixture.queryRaw
       .mockResolvedValueOnce([])
       .mockResolvedValueOnce([])
+      .mockResolvedValueOnce([])
       .mockResolvedValueOnce([{ id: 'version-90d', storageKey: 'old/key' }]);
 
     await fixture.service.runOnce();
 
-    const purgeSql = fixture.queryRaw.mock.calls[2]?.[0] ?? '';
+    const purgeSql = fixture.queryRaw.mock.calls[3]?.[0] ?? '';
     expect(purgeSql).toContain("INTERVAL '90 days'");
     expect(purgeSql).toContain('NOT EXISTS');
     expect(fixture.storage.delete).toHaveBeenCalledWith('old/key');
@@ -68,6 +70,7 @@ describe('MaterialCleanupService', () => {
     const warning = jest.spyOn(Logger.prototype, 'warn').mockImplementation();
     const fixture = createFixture();
     fixture.queryRaw
+      .mockResolvedValueOnce([])
       .mockResolvedValueOnce([])
       .mockResolvedValueOnce([{ id: 'version-retry', storageKey: 'retry/key' }])
       .mockResolvedValueOnce([]);
@@ -85,14 +88,65 @@ describe('MaterialCleanupService', () => {
     warning.mockRestore();
   });
 
+  it('retains and retries a pending orphan key when blob deletion fails', async () => {
+    const warning = jest.spyOn(Logger.prototype, 'warn').mockImplementation();
+    const fixture = createFixture();
+    fixture.queryRaw
+      .mockResolvedValueOnce([])
+      .mockResolvedValueOnce([{ id: 'draft-orphan', storageKey: 'orphan/key' }])
+      .mockResolvedValueOnce([])
+      .mockResolvedValueOnce([])
+      .mockResolvedValueOnce([])
+      .mockResolvedValueOnce([{ id: 'draft-orphan', storageKey: 'orphan/key' }])
+      .mockResolvedValueOnce([])
+      .mockResolvedValueOnce([]);
+    fixture.storage.delete
+      .mockRejectedValueOnce(new Error('temporary failure'))
+      .mockResolvedValueOnce(undefined);
+
+    await fixture.service.runOnce();
+    expect(fixture.uploadDraft.updateMany).not.toHaveBeenCalledWith(
+      expect.objectContaining({ data: { pendingStorageKey: null } }),
+    );
+    await fixture.service.runOnce();
+    expect(fixture.storage.delete).toHaveBeenCalledTimes(2);
+    expect(fixture.uploadDraft.updateMany).toHaveBeenCalledWith({
+      where: { id: 'draft-orphan', pendingStorageKey: 'orphan/key' },
+      data: { pendingStorageKey: null },
+    });
+    warning.mockRestore();
+  });
+
+  it('catches startup and interval failures at the scheduling boundary', async () => {
+    jest.useFakeTimers();
+    const warning = jest.spyOn(Logger.prototype, 'warn').mockImplementation();
+    const fixture = createFixture();
+    const run = jest
+      .spyOn(fixture.service, 'runOnce')
+      .mockRejectedValue(new Error('database unavailable'));
+
+    fixture.service.onModuleInit();
+    await jest.advanceTimersByTimeAsync(0);
+    await jest.advanceTimersByTimeAsync(15 * 60 * 1000);
+
+    expect(run).toHaveBeenCalledTimes(2);
+    expect(warning).toHaveBeenCalledTimes(2);
+    expect(warning).toHaveBeenCalledWith(
+      'Private material cleanup run failed and will be retried',
+    );
+    fixture.service.onModuleDestroy();
+    warning.mockRestore();
+    jest.useRealTimers();
+  });
+
   it('starts immediately, repeats every 15 minutes and unreferences its timer', async () => {
     jest.useFakeTimers();
     const fixture = createFixture();
     fixture.service.onModuleInit();
     await jest.advanceTimersByTimeAsync(0);
-    expect(fixture.queryRaw).toHaveBeenCalledTimes(3);
+    expect(fixture.queryRaw).toHaveBeenCalledTimes(4);
     await jest.advanceTimersByTimeAsync(15 * 60 * 1000);
-    expect(fixture.queryRaw.mock.calls.length).toBeGreaterThan(3);
+    expect(fixture.queryRaw.mock.calls.length).toBeGreaterThan(4);
     fixture.service.onModuleDestroy();
     jest.useRealTimers();
   });

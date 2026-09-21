@@ -263,6 +263,7 @@ git commit -m "feat: add core lead schema and actions"
 **Files:**
 
 - Create: `backend/prisma/migrations/20260921013000_add_material_upload_metadata/migration.sql`
+- Create: `backend/prisma/migrations/20260921014000_add_upload_draft_pending_storage_key/migration.sql`
 - Create: `backend/src/modules/materials/private-blob-storage.ts`
 - Create: `backend/src/modules/materials/local-private-blob-storage.ts`
 - Create: `backend/src/modules/materials/file-signature.ts`
@@ -291,7 +292,7 @@ git commit -m "feat: add core lead schema and actions"
 
 - [ ] **Step 1: Write failing storage and material tests**
 
-Cover atomic temporary-write→rename, path traversal rejection, same-key replacement rejection, missing blob, cleanup, PDF/JPEG/PNG/WEBP signatures, spoofed MIME, encrypted PDF rejection, 20MB limit, wrong actor/department/owner, expired draft, exact content hash, compensation delete, referenced delete rejection, unreferenced delete/restore and 90-day state. Cleanup tests use a fake clock and prove OPEN drafts expire after24 hours, unconsumed LEAD_DRAFT bytes are purged, referenced versions survive, and unreferenced soft-deleted material is purged only after90 days.
+Cover atomic temporary-write→no-replace publish, concurrent same-key replacement rejection, path traversal rejection, missing blob, cleanup, PDF/JPEG/PNG/WEBP signatures, spoofed MIME, encrypted PDF rejection, 20MB limit, wrong actor/department/owner, expired draft, exact content hash, compensation delete and persistent orphan retry, per-owner 10/20 limits including concurrent finalize, current LEAD_DRAFT authorization, referenced delete rejection, unreferenced delete/restore and 90-day state. Cleanup tests use a fake clock and prove OPEN drafts expire after24 hours, unconsumed LEAD_DRAFT bytes are purged, referenced versions survive, scheduler failures are contained, and unreferenced soft-deleted material is purged only after90 days.
 
 Use this port exactly:
 
@@ -338,11 +339,11 @@ const signatures = [
 ] as const;
 ```
 
-Write to `<PRIVATE_FILE_ROOT>/.tmp/<uuid>`, compute SHA-256 and detected MIME while streaming, reject a PDF stream containing an `/Encrypt` dictionary token, `fsync`, then atomically rename to the server-generated storage key. Resolve every final path and reject it unless it remains below the configured root. Never log filename, bytes or full path.
+Write to `<PRIVATE_FILE_ROOT>/.tmp/<uuid>`, compute SHA-256 and detected MIME while streaming, reject a PDF stream containing an `/Encrypt` dictionary token, `fsync`, then atomically publish without replacement to the server-generated storage key (local Adapter uses a same-filesystem hard link). Resolve every final path and reject it unless it remains below the configured root. Never log filename, bytes or full path.
 
 - [ ] **Step 4: Implement upload draft and material lifecycle**
 
-`CreateUploadDraftDto` accepts and persists the exact category/purpose matrix plus`originalFilename/declaredMimeType`. CUSTOMER requires existing visible customer ID and`customer.admit`; LEAD_DRAFT may omit owner ID, in which case the server generates`reservedOwnerId`; subsequent drafts using it must match department and actor. `finalizeUpload()` reads metadata only from the OPEN/unexpired draft, verifies actual signature/size and declared MIME, writes the Blob, then transactionally creates a stable Material with purpose, an immutable ContentVersion whose filename comes from the draft and whose MIME is the detected value, and sets the draft FINALIZED. On transaction failure it calls Blob delete and returns no version. Add the forward-only metadata migration after the three adjacent CORE-LD base migrations; do not rewrite them.
+`CreateUploadDraftDto` accepts and persists the exact category/purpose matrix plus`originalFilename/declaredMimeType`. CUSTOMER requires existing visible customer ID and`customer.admit`; LEAD_DRAFT may omit owner ID, in which case the server generates`reservedOwnerId`; subsequent drafts using it must match department and actor. `finalizeUpload()` reads metadata only from the OPEN/unexpired draft, persists a unique server-side pending storage key before writing, verifies actual signature/size and declared MIME, writes the Blob, then transactionally serializes and enforces the owner/category limit (CUSTOMER_IDENTITY 10, LEAD_SCREENSHOT 20), creates a stable Material with purpose and an immutable ContentVersion whose filename comes from the draft and whose MIME is the detected value, clears the pending key and sets the draft FINALIZED. On transaction failure it calls Blob delete and returns no version; failed compensation leaves the pending key for cleanup retry. LEAD_DRAFT list/open/delete/restore recheck current`lead.create`and the unexpired reserved owner. Add both forward-only migrations after the three adjacent CORE-LD base migrations; do not rewrite them.
 
 Use stable error codes from the contract: `VALIDATION_ERROR`, `ACTION_FORBIDDEN`, `RESOURCE_NOT_FOUND`, `MATERIAL_VERSION_INVALID`, `VERSION_CONFLICT`, `STORAGE_UNAVAILABLE`.
 
@@ -352,7 +353,7 @@ The metadata request is JSON and contains ownership, category, purpose, original
 
 - [ ] **Step 6: Implement deterministic cleanup without a scheduler dependency**
 
-`MaterialCleanupService` implements `OnModuleInit/OnModuleDestroy`, runs once at startup and then every15 minutes with an unreferenced Node timer. Each batch locks at most100 rows with`FOR UPDATE SKIP LOCKED`. It expires OPEN drafts older than24 hours, deletes blobs for expired unconsumed LEAD_DRAFT materials, and purges unreferenced material only after`deletedAt + 90 days`. Blob delete is idempotent: mark content`DELETED`, delete the key, then mark`PURGED`; a crash between steps is retried on the next pass. Never purge a content version with an effective MaterialReference.
+`MaterialCleanupService` implements `OnModuleInit/OnModuleDestroy`, runs once at startup and then every15 minutes with an unreferenced Node timer and catches each scheduled rejection with a metadata-free warning. Each batch locks at most100 rows with`FOR UPDATE SKIP LOCKED`. It expires OPEN drafts older than24 hours, retries pending orphan keys after15 minutes unless a ContentVersion owns the key, deletes blobs for expired unconsumed LEAD_DRAFT materials, and purges unreferenced material only after`deletedAt + 90 days`. Blob delete is idempotent: mark content`DELETED`, delete the key, then mark`PURGED`; a crash between steps is retried on the next pass. Never purge a content version with an effective MaterialReference.
 
 - [ ] **Step 7: Add explicit local/test configuration**
 

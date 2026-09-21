@@ -1,9 +1,9 @@
 import { createHash, randomUUID } from 'node:crypto';
 import {
   access,
+  link,
   mkdir,
   open as openFile,
-  rename,
   rm,
   unlink,
 } from 'node:fs/promises';
@@ -40,7 +40,6 @@ export class LocalPrivateBlobStorage implements PrivateBlobStorage {
     const target = this.resolveStorageKey(storageKey);
     await mkdir(this.root, { recursive: true, mode: 0o700 });
     await mkdir(dirname(target), { recursive: true, mode: 0o700 });
-    await this.assertTargetMissing(target);
     const temporaryDirectory = resolve(this.root, '.tmp');
     await mkdir(temporaryDirectory, { recursive: true, mode: 0o700 });
     const temporaryPath = resolve(temporaryDirectory, randomUUID());
@@ -87,11 +86,19 @@ export class LocalPrivateBlobStorage implements PrivateBlobStorage {
       } finally {
         await handle.close();
       }
-      await this.assertTargetMissing(target);
-      await rename(temporaryPath, target);
+      const sha256 = hash.digest('hex');
+      try {
+        await link(temporaryPath, target);
+      } catch (error) {
+        if (isNodeError(error) && error.code === 'EEXIST') {
+          throw new BlobValidationError('Private blob key already exists');
+        }
+        throw error;
+      }
+      await rm(temporaryPath, { force: true }).catch(() => undefined);
       return {
         sizeBytes,
-        sha256: hash.digest('hex'),
+        sha256,
         detectedMimeType,
       };
     } catch (error) {
@@ -150,16 +157,6 @@ export class LocalPrivateBlobStorage implements PrivateBlobStorage {
       throw new BlobValidationError('Invalid storage key');
     }
     return target;
-  }
-
-  private async assertTargetMissing(target: string): Promise<void> {
-    try {
-      await access(target);
-      throw new BlobValidationError('Private blob key already exists');
-    } catch (error) {
-      if (isNodeError(error) && error.code === 'ENOENT') return;
-      throw error;
-    }
   }
 }
 

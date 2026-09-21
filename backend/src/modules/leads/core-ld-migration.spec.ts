@@ -12,6 +12,8 @@ describe('CORE-LD migrations', () => {
     '20260921012000_backfill_core_ld_bootstrap_grants';
   const materialMetadataMigrationName =
     '20260921013000_add_material_upload_metadata';
+  const pendingStorageMigrationName =
+    '20260921014000_add_upload_draft_pending_storage_key';
 
   function readMigration(name: string): string {
     return readFileSync(resolve(migrationRoot, name, 'migration.sql'), 'utf8');
@@ -28,6 +30,9 @@ describe('CORE-LD migrations', () => {
     expect(migrations.indexOf(materialMetadataMigrationName)).toBeGreaterThan(
       migrations.indexOf(backfillMigrationName),
     );
+    expect(migrations.indexOf(pendingStorageMigrationName)).toBeGreaterThan(
+      migrations.indexOf(materialMetadataMigrationName),
+    );
 
     const actionSql = readMigration(actionMigrationName);
     const schemaSql = readMigration(schemaMigrationName);
@@ -37,6 +42,15 @@ describe('CORE-LD migrations', () => {
     expect(actionSql).toContain("ADD VALUE 'lead.create'");
     expect(actionSql).toContain("ADD VALUE 'lead.edit'");
     expect(schemaSql).not.toMatch(/DROP TABLE|DROP COLUMN/);
+  });
+
+  it('persists a nullable orphan cleanup key before blob publication', () => {
+    const pendingSql = readMigration(pendingStorageMigrationName);
+
+    expect(pendingSql).toContain('"pending_storage_key" VARCHAR(500)');
+    expect(pendingSql).toContain('CREATE UNIQUE INDEX');
+    expect(pendingSql).toContain('NULLIF(BTRIM("pending_storage_key"), \'\')');
+    expect(pendingSql).not.toMatch(/DROP TABLE|DROP COLUMN/);
   });
 
   it('persists upload metadata before raw content is finalized', () => {

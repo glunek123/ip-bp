@@ -461,6 +461,7 @@ model UploadDraft {
   purpose          String               @db.VarChar(100)
   originalFilename String               @map("original_filename") @db.VarChar(200)
   declaredMimeType String               @map("declared_mime_type") @db.VarChar(100)
+  pendingStorageKey String?             @unique(map: "upload_drafts_pending_storage_key_key") @map("pending_storage_key") @db.VarChar(500)
   status           UploadDraftStatus    @default(OPEN)
   expiresAt        DateTime             @map("expires_at") @db.Timestamptz(3)
   department       Department           @relation(fields: [departmentId], references: [id], onDelete: Restrict)

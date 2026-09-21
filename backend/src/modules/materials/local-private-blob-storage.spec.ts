@@ -64,6 +64,28 @@ describe('LocalPrivateBlobStorage', () => {
     ).toEqual(pdf);
   });
 
+  it('atomically allows only one concurrent publisher for the same key', async () => {
+    const key = 'department/material/concurrent-version';
+    const results = await Promise.allSettled([
+      storage.put(key, Readable.from(pdf)),
+      storage.put(key, Readable.from(png)),
+    ]);
+
+    expect(
+      results.filter((result) => result.status === 'fulfilled'),
+    ).toHaveLength(1);
+    const rejected = results.find(
+      (result): result is PromiseRejectedResult => result.status === 'rejected',
+    );
+    expect(rejected?.reason).toEqual(
+      expect.objectContaining({
+        message: expect.stringContaining('already exists'),
+      }),
+    );
+    const published = await readStream(await storage.open(key));
+    expect([published.equals(pdf), published.equals(png)]).toContain(true);
+  });
+
   it('reports missing blobs and supports idempotent cleanup', async () => {
     await expect(storage.open('missing/blob')).rejects.toThrow('not found');
     await storage.put('department/material/version', Readable.from(pdf));

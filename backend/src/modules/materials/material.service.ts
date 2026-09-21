@@ -198,6 +198,18 @@ export class MaterialService {
     const storageKey = `${actor.departmentId}/${materialId}/${contentVersionId}`;
     let written = false;
     try {
+      const claimed = await this.database.uploadDraft.updateMany({
+        where: {
+          id: draft.id,
+          departmentId: actor.departmentId,
+          actorUserId: actor.userId,
+          status: 'OPEN',
+          expiresAt: { gt: this.clock() },
+          pendingStorageKey: null,
+        },
+        data: { pendingStorageKey: storageKey },
+      });
+      if (claimed.count !== 1) throw this.versionConflict();
       const blob = await this.storage.put(storageKey, source);
       written = true;
       if (
@@ -211,6 +223,28 @@ export class MaterialService {
         throw this.invalidVersion();
       }
       await this.database.$transaction(async (transaction) => {
+        const quotaKey = [
+          actor.departmentId,
+          draft.ownerType,
+          draft.ownerId,
+          draft.category,
+        ].join(':');
+        await transaction.$executeRawUnsafe(
+          'SELECT pg_advisory_xact_lock(hashtextextended($1, 0))',
+          quotaKey,
+        );
+        const activeCount = await transaction.material.count({
+          where: {
+            departmentId: actor.departmentId,
+            ownerType: draft.ownerType,
+            ownerId: draft.ownerId,
+            category: draft.category,
+            status: 'ACTIVE',
+          },
+        });
+        if (activeCount >= materialLimit(draft.category)) {
+          throw this.validationError();
+        }
         await transaction.material.create({
           data: {
             id: materialId,
@@ -242,8 +276,9 @@ export class MaterialService {
             id: draft.id,
             status: 'OPEN',
             expiresAt: { gt: this.clock() },
+            pendingStorageKey: storageKey,
           },
-          data: { status: 'FINALIZED' },
+          data: { status: 'FINALIZED', pendingStorageKey: null },
         });
         if (finalized.count !== 1) throw this.versionConflict();
       });
@@ -259,7 +294,23 @@ export class MaterialService {
         sha256: blob.sha256,
       };
     } catch (error) {
-      if (written) await this.storage.delete(storageKey).catch(() => undefined);
+      let storageIsClean = !written;
+      if (written) {
+        try {
+          await this.storage.delete(storageKey);
+          storageIsClean = true;
+        } catch {
+          // Keep the durable pending key for the cleanup service to retry.
+        }
+      }
+      if (storageIsClean) {
+        await this.database.uploadDraft
+          .updateMany({
+            where: { id: draft.id, pendingStorageKey: storageKey },
+            data: { pendingStorageKey: null },
+          })
+          .catch(() => undefined);
+      }
       if (error instanceof BlobValidationError) throw this.invalidVersion();
       if (error instanceof BlobStorageUnavailableError) {
         throw this.storageUnavailable();
@@ -427,16 +478,20 @@ export class MaterialService {
     operation: 'read' | 'write',
   ): Promise<void> {
     if (ownerType === 'LEAD_DRAFT') {
+      if (!(await this.accessControl.canAuthorizeNewLead(actor))) {
+        throw this.forbidden();
+      }
       const draft = await this.database.uploadDraft.findFirst({
         where: {
           departmentId: actor.departmentId,
           actorUserId: actor.userId,
           ownerType,
           ownerId,
+          expiresAt: { gt: this.clock() },
         },
         select: { id: true },
       });
-      if (draft === null) throw this.forbidden();
+      if (draft === null) throw this.notFound();
       return;
     }
     if (ownerType === 'CUSTOMER') {
@@ -590,6 +645,10 @@ function isMimeAllowedForPurpose(
 function normalizeMimeType(value: string): string {
   const normalized = value.trim().toLowerCase();
   return normalized === 'image/jpg' ? 'image/jpeg' : normalized;
+}
+
+function materialLimit(category: keyof typeof allowedMimeTypes): number {
+  return category === 'CUSTOMER_IDENTITY' ? 10 : 20;
 }
 
 function hasControlCharacters(value: string): boolean {

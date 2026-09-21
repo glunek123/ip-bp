@@ -36,8 +36,8 @@ export class MaterialCleanupService implements OnModuleInit, OnModuleDestroy {
   }
 
   onModuleInit(): void {
-    void this.runOnce();
-    this.timer = setInterval(() => void this.runOnce(), INTERVAL_MS);
+    this.scheduleRun();
+    this.timer = setInterval(() => this.scheduleRun(), INTERVAL_MS);
     this.timer.unref();
   }
 
@@ -51,6 +51,7 @@ export class MaterialCleanupService implements OnModuleInit, OnModuleDestroy {
     try {
       const now = this.clock();
       await this.expireDrafts(now);
+      await this.cleanupPendingStorageKeys(now);
       const leadDraftCandidates = await this.lockLeadDraftCandidates(now);
       await this.purgeCandidates(leadDraftCandidates);
       const deletedCandidates = await this.lockDeletedCandidates(now);
@@ -58,6 +59,46 @@ export class MaterialCleanupService implements OnModuleInit, OnModuleDestroy {
     } finally {
       this.running = false;
     }
+  }
+
+  private scheduleRun(): void {
+    void this.runOnce().catch(() => {
+      this.logger.warn(
+        'Private material cleanup run failed and will be retried',
+      );
+    });
+  }
+
+  private async cleanupPendingStorageKeys(now: Date): Promise<void> {
+    await this.database.$transaction(async (transaction) => {
+      const rows = await transaction.$queryRawUnsafe<PurgeCandidate[]>(
+        `SELECT d."id", d."pending_storage_key" AS "storageKey"
+         FROM "upload_drafts" d
+         WHERE d."pending_storage_key" IS NOT NULL
+           AND d."updated_at" <= $1 - INTERVAL '15 minutes'
+           AND NOT EXISTS (
+             SELECT 1 FROM "content_versions" cv
+             WHERE cv."storage_key" = d."pending_storage_key"
+           )
+         ORDER BY d."updated_at", d."id"
+         FOR UPDATE OF d SKIP LOCKED LIMIT $2`,
+        now,
+        BATCH_SIZE,
+      );
+      for (const row of rows) {
+        try {
+          await this.storage.delete(row.storageKey);
+          await transaction.uploadDraft.updateMany({
+            where: { id: row.id, pendingStorageKey: row.storageKey },
+            data: { pendingStorageKey: null },
+          });
+        } catch {
+          this.logger.warn(
+            'Private material orphan cleanup will retry a failed blob deletion',
+          );
+        }
+      }
+    });
   }
 
   private async expireDrafts(now: Date): Promise<void> {

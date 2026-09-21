@@ -279,6 +279,28 @@ describe('MaterialService', () => {
       ),
       expect.any(Readable),
     );
+    expect(fixture.db.uploadDraft.updateMany).toHaveBeenCalledWith({
+      where: expect.objectContaining({
+        id: '44444444-4444-4444-8444-444444444444',
+        pendingStorageKey: null,
+      }),
+      data: { pendingStorageKey: expect.any(String) },
+    });
+    expect(fixture.transaction.$executeRawUnsafe).toHaveBeenCalledWith(
+      expect.stringContaining('pg_advisory_xact_lock'),
+      expect.stringContaining(
+        `${actor.departmentId}:CUSTOMER:${customerId}:CUSTOMER_IDENTITY`,
+      ),
+    );
+    expect(fixture.transaction.material.count).toHaveBeenCalledWith({
+      where: {
+        departmentId: actor.departmentId,
+        ownerType: 'CUSTOMER',
+        ownerId: customerId,
+        category: 'CUSTOMER_IDENTITY',
+        status: 'ACTIVE',
+      },
+    });
     expect(fixture.transaction.contentVersion.create).toHaveBeenCalledWith({
       data: expect.objectContaining({
         originalFilename: 'identity.pdf',
@@ -293,7 +315,7 @@ describe('MaterialService', () => {
     });
     expect(fixture.transaction.uploadDraft.updateMany).toHaveBeenCalledWith({
       where: expect.objectContaining({ status: 'OPEN' }),
-      data: { status: 'FINALIZED' },
+      data: { status: 'FINALIZED', pendingStorageKey: null },
     });
     expect(result).toMatchObject({
       mimeType: 'application/pdf',
@@ -370,6 +392,147 @@ describe('MaterialService', () => {
       ),
     ).rejects.toThrow('database unavailable');
     expect(fixture.storage.delete).toHaveBeenCalledTimes(1);
+    expect(fixture.db.uploadDraft.updateMany).toHaveBeenLastCalledWith({
+      where: expect.objectContaining({ pendingStorageKey: expect.any(String) }),
+      data: { pendingStorageKey: null },
+    });
+  });
+
+  it('keeps a persistent orphan key when transaction and compensation delete both fail', async () => {
+    const fixture = createFixture();
+    fixture.db.uploadDraft.findUnique.mockResolvedValue(openDraft());
+    fixture.storage.put.mockResolvedValue({
+      sizeBytes: 10,
+      sha256: 'c'.repeat(64),
+      detectedMimeType: 'image/png',
+    });
+    fixture.db.$transaction.mockRejectedValue(
+      new Error('database unavailable'),
+    );
+    fixture.storage.delete.mockRejectedValue(new Error('storage unavailable'));
+
+    await expect(
+      fixture.service.finalizeUpload(
+        actor,
+        '44444444-4444-4444-8444-444444444444',
+        Readable.from(Buffer.from('bytes')),
+      ),
+    ).rejects.toThrow('database unavailable');
+
+    expect(fixture.db.uploadDraft.updateMany).toHaveBeenCalledTimes(1);
+    expect(fixture.db.uploadDraft.updateMany).toHaveBeenCalledWith({
+      where: expect.objectContaining({ pendingStorageKey: null }),
+      data: { pendingStorageKey: expect.any(String) },
+    });
+  });
+
+  it('enforces the owner/category limit inside the serialized finalize transaction', async () => {
+    const fixture = createFixture();
+    fixture.db.uploadDraft.findUnique.mockResolvedValue(openDraft());
+    fixture.storage.put.mockResolvedValue({
+      sizeBytes: 10,
+      sha256: 'e'.repeat(64),
+      detectedMimeType: 'image/png',
+    });
+    fixture.transaction.material.count.mockResolvedValue(20);
+    fixture.db.$transaction.mockImplementation(async (callback) =>
+      callback(fixture.transaction),
+    );
+
+    await expect(
+      fixture.service.finalizeUpload(
+        actor,
+        '44444444-4444-4444-8444-444444444444',
+        Readable.from(Buffer.from('bytes')),
+      ),
+    ).rejects.toMatchObject({ response: { code: 'VALIDATION_ERROR' } });
+    expect(fixture.transaction.material.create).not.toHaveBeenCalled();
+    expect(fixture.storage.delete).toHaveBeenCalledTimes(1);
+  });
+
+  it('caps CUSTOMER_IDENTITY at ten active materials for one owner', async () => {
+    const fixture = createFixture();
+    fixture.db.uploadDraft.findUnique.mockResolvedValue(
+      openDraft({
+        ownerType: 'CUSTOMER',
+        ownerId: customerId,
+        category: 'CUSTOMER_IDENTITY',
+        purpose: 'IDENTITY_FULL',
+      }),
+    );
+    fixture.access.buildCustomerScope.mockResolvedValue({
+      departmentId: actor.departmentId,
+    });
+    fixture.db.customer.findFirst.mockResolvedValue({
+      departmentId: actor.departmentId,
+      responsibleUserId: actor.userId,
+      teamId: null,
+    });
+    fixture.storage.put.mockResolvedValue({
+      sizeBytes: 10,
+      sha256: 'e'.repeat(64),
+      detectedMimeType: 'image/png',
+    });
+    fixture.transaction.material.count.mockResolvedValue(10);
+    fixture.db.$transaction.mockImplementation(async (callback) =>
+      callback(fixture.transaction),
+    );
+
+    await expect(
+      fixture.service.finalizeUpload(
+        actor,
+        '44444444-4444-4444-8444-444444444444',
+        Readable.from(Buffer.from('bytes')),
+      ),
+    ).rejects.toMatchObject({ response: { code: 'VALIDATION_ERROR' } });
+    expect(fixture.transaction.material.create).not.toHaveBeenCalled();
+    expect(fixture.storage.delete).toHaveBeenCalledTimes(1);
+  });
+
+  it('serializes concurrent finalizes so only one crosses the remaining owner quota', async () => {
+    const fixture = createFixture();
+    const drafts = new Map([
+      ['draft-a', openDraft({ id: 'draft-a' })],
+      ['draft-b', openDraft({ id: 'draft-b' })],
+    ]);
+    fixture.db.uploadDraft.findUnique.mockImplementation(async ({ where }) =>
+      drafts.get(where.id),
+    );
+    fixture.storage.put.mockResolvedValue({
+      sizeBytes: 10,
+      sha256: 'f'.repeat(64),
+      detectedMimeType: 'image/png',
+    });
+    let activeCount = 19;
+    let queue = Promise.resolve();
+    fixture.transaction.material.count.mockImplementation(
+      async () => activeCount,
+    );
+    fixture.transaction.material.create.mockImplementation(async ({ data }) => {
+      activeCount += 1;
+      return data;
+    });
+    fixture.db.$transaction.mockImplementation((callback) => {
+      const result = queue.then(() => callback(fixture.transaction));
+      queue = result.then(
+        () => undefined,
+        () => undefined,
+      );
+      return result;
+    });
+
+    const results = await Promise.allSettled([
+      fixture.service.finalizeUpload(actor, 'draft-a', Readable.from('a')),
+      fixture.service.finalizeUpload(actor, 'draft-b', Readable.from('b')),
+    ]);
+
+    expect(
+      results.filter((result) => result.status === 'fulfilled'),
+    ).toHaveLength(1);
+    expect(
+      results.filter((result) => result.status === 'rejected')[0],
+    ).toMatchObject({ reason: { response: { code: 'VALIDATION_ERROR' } } });
+    expect(fixture.transaction.material.create).toHaveBeenCalledTimes(1);
   });
 
   it('opens an authorized exact version and preserves its exact content hash', async () => {
@@ -394,6 +557,10 @@ describe('MaterialService', () => {
       ],
     });
     fixture.storage.open.mockResolvedValue(Readable.from(Buffer.from('data')));
+    fixture.db.uploadDraft.findFirst.mockResolvedValue({
+      id: 'draft',
+      expiresAt: now,
+    });
 
     const opened = await fixture.service.openVersion(
       actor,
@@ -402,6 +569,63 @@ describe('MaterialService', () => {
     );
     expect(opened.sha256).toBe('d'.repeat(64));
     expect(opened.stream).toBeInstanceOf(Readable);
+  });
+
+  it.each(['list', 'open', 'delete', 'restore'] as const)(
+    'rechecks current lead.create for LEAD_DRAFT %s',
+    async (operation) => {
+      const fixture = createFixture();
+      fixture.access.canAuthorizeNewLead.mockResolvedValue(false);
+      fixture.db.material.findFirst.mockResolvedValue(
+        operation === 'open'
+          ? {
+              ...materialRecord(),
+              contentVersions: [
+                {
+                  id: 'version-1',
+                  storageKey: 'key',
+                  originalFilename: 'capture.png',
+                  mimeType: 'image/png',
+                  sizeBytes: 4n,
+                  sha256: 'd'.repeat(64),
+                  uploadedBy: actor.userId,
+                  status: 'AVAILABLE',
+                },
+              ],
+            }
+          : materialRecord(),
+      );
+
+      const request =
+        operation === 'list'
+          ? fixture.service.listOwnerMaterials(
+              actor,
+              'LEAD_DRAFT',
+              'reserved-owner',
+            )
+          : operation === 'open'
+            ? fixture.service.openVersion(actor, 'material-1', 'version-1')
+            : operation === 'delete'
+              ? fixture.service.softDelete(actor, 'material-1', 1)
+              : fixture.service.restore(actor, 'material-1', 1);
+
+      await expect(request).rejects.toMatchObject({
+        response: { code: 'ACTION_FORBIDDEN' },
+      });
+    },
+  );
+
+  it('treats an expired LEAD_DRAFT reserved owner as out of scope', async () => {
+    const fixture = createFixture();
+    fixture.db.uploadDraft.findFirst.mockResolvedValue(null);
+
+    await expect(
+      fixture.service.listOwnerMaterials(actor, 'LEAD_DRAFT', 'reserved-owner'),
+    ).rejects.toMatchObject({ response: { code: 'RESOURCE_NOT_FOUND' } });
+    expect(fixture.db.uploadDraft.findFirst).toHaveBeenCalledWith({
+      where: expect.objectContaining({ expiresAt: { gt: now } }),
+      select: { id: true },
+    });
   });
 
   it('rejects deleting referenced material, and supports versioned delete/restore for unreferenced material', async () => {
@@ -449,6 +673,7 @@ function openDraft(overrides: Record<string, unknown> = {}) {
     ownerType: 'LEAD_DRAFT',
     ownerId: '55555555-5555-4555-8555-555555555555',
     category: 'LEAD_SCREENSHOT',
+    pendingStorageKey: null,
     purpose: 'LEAD_SCREENSHOT',
     originalFilename: 'capture.png',
     declaredMimeType: 'image/png',
@@ -473,9 +698,11 @@ function materialRecord() {
 
 function createFixture() {
   const transaction = {
+    $executeRawUnsafe: jest.fn(async () => 1),
     material: {
       create: jest.fn(async ({ data }) => data),
       update: jest.fn(async ({ data }) => data),
+      count: jest.fn(async () => 0),
     },
     contentVersion: { create: jest.fn(async ({ data }) => data) },
     uploadDraft: { updateMany: jest.fn(async () => ({ count: 1 })) },
@@ -484,8 +711,14 @@ function createFixture() {
     customer: { findFirst: jest.fn() },
     uploadDraft: {
       create: jest.fn(async ({ data }) => ({ id: 'draft-1', ...data })),
-      findFirst: jest.fn(),
+      findFirst: jest.fn<Promise<{ id: string; expiresAt: Date } | null>, []>(
+        async () => ({
+          id: 'draft-1',
+          expiresAt: new Date(now.getTime() + 60_000),
+        }),
+      ),
       findUnique: jest.fn(),
+      updateMany: jest.fn(async () => ({ count: 1 })),
     },
     material: {
       findFirst: jest.fn(),
