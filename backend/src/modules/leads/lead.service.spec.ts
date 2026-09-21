@@ -62,6 +62,7 @@ describe('LeadService', () => {
           .fn()
           .mockResolvedValue([{ status: 'WAITING_PUSH', _count: { _all: 2 } }]),
       },
+      materialReference: { findMany: jest.fn().mockResolvedValue([]) },
       $transaction: jest.fn(async (operations) => Promise.all(operations)),
     } as unknown as DatabaseService;
     const access = {
@@ -343,16 +344,30 @@ describe('LeadService', () => {
 
   it('keeps Lead, children, material and receipt writes in the audit transaction', async () => {
     const fixture = createCreateFixture();
+    const versionId = '66666666-6666-4666-8666-666666666666';
+    const fact = { materialId: 'm', contentVersionId: versionId };
+    (fixture.materials.assertAvailableVersions as jest.Mock).mockResolvedValue([
+      fact,
+    ]);
     fixture.tx.auditEvent.create.mockRejectedValue(new Error('audit failed'));
     await expect(
       fixture.service.create(actor, 'audit-rollback', {
         ...validCreate(),
         reservedLeadId: fixture.createdLead.id,
+        leadScreenshotContentVersionIds: [versionId],
       }),
     ).rejects.toThrow('audit failed');
     expect(fixture.transaction).toHaveBeenCalledWith(expect.any(Function), {
       isolationLevel: 'Serializable',
     });
+    expect(fixture.materials.adoptLeadDraftVersions).toHaveBeenCalledWith(
+      fixture.tx,
+      expect.objectContaining({ versions: [fact] }),
+    );
+    expect(fixture.materials.freezeReferences).toHaveBeenCalledWith(
+      fixture.tx,
+      expect.objectContaining({ facts: [fact] }),
+    );
     expect(fixture.tx.leadCommandReceipt.create).not.toHaveBeenCalled();
   });
 
@@ -371,7 +386,10 @@ describe('LeadService', () => {
       groupBy: jest.fn().mockResolvedValue([]),
       findFirst: jest.fn().mockResolvedValue(lead),
     };
-    const database = { lead: leadRepo } as unknown as DatabaseService;
+    const database = {
+      lead: leadRepo,
+      materialReference: { findMany: jest.fn().mockResolvedValue([]) },
+    } as unknown as DatabaseService;
     const access = {
       buildLeadScope: jest.fn().mockResolvedValue(scope),
       canAuthorizeNewLead: jest.fn().mockResolvedValue(false),
@@ -444,6 +462,177 @@ describe('LeadService', () => {
       }),
     );
   });
+
+  it('applies customer.read scope inside create transaction', async () => {
+    const fixture = createCreateFixture();
+    const customerScope = {
+      departmentId: actor.departmentId,
+      responsibleUserId: actor.userId,
+    };
+    (fixture.access.buildCustomerScope as jest.Mock).mockResolvedValue(
+      customerScope,
+    );
+    await fixture.service.create(actor, 'customer-scope', validCreate());
+    expect(fixture.access.buildCustomerScope).toHaveBeenCalledWith(
+      actor,
+      'customer.read',
+      fixture.tx,
+    );
+    expect(fixture.tx.customer.findFirst).toHaveBeenCalledWith({
+      where: {
+        id: validCreate().customerId,
+        ...customerScope,
+        profileStatus: 'ADMITTED',
+      },
+      select: { id: true },
+    });
+  });
+
+  it('edits only Lead-owned screenshots and replaces only mutable draft references', async () => {
+    const fixture = createUpdateFixture();
+    const versionId = '66666666-6666-4666-8666-666666666666';
+    const fact = { contentVersionId: versionId };
+    (fixture.materials.assertAvailableVersions as jest.Mock).mockResolvedValue([
+      fact,
+    ]);
+    const result = await fixture.service.update(actor, fixture.current.id, {
+      ...validUpdate(),
+      leadScreenshotContentVersionIds: [versionId],
+    });
+    expect(fixture.materials.assertAvailableVersions).toHaveBeenCalledWith(
+      fixture.tx,
+      actor,
+      {
+        ownerType: 'LEAD',
+        ownerId: fixture.current.id,
+        category: 'LEAD_SCREENSHOT',
+        contentVersionIds: [versionId],
+        minCount: 0,
+        maxCount: 20,
+        leadAction: 'lead.edit',
+      },
+    );
+    expect(fixture.materials.adoptLeadDraftVersions).not.toHaveBeenCalled();
+    expect(fixture.tx.materialReference.deleteMany).toHaveBeenCalledWith({
+      where: {
+        departmentId: actor.departmentId,
+        resourceType: 'lead',
+        resourceId: fixture.current.id,
+        purpose: 'LEAD_SCREENSHOT',
+        actionEventId: null,
+      },
+    });
+    expect(fixture.materials.freezeReferences).toHaveBeenCalledWith(
+      fixture.tx,
+      {
+        departmentId: actor.departmentId,
+        resourceType: 'lead',
+        resourceId: fixture.current.id,
+        facts: [fact],
+      },
+    );
+    expect(result.leadScreenshotContentVersionIds).toEqual([versionId]);
+  });
+
+  it('rejects a screenshot owned by another Lead before replacing references', async () => {
+    const fixture = createUpdateFixture();
+    (fixture.materials.assertAvailableVersions as jest.Mock).mockRejectedValue({
+      response: { code: 'MATERIAL_VERSION_INVALID' },
+    });
+    await expect(
+      fixture.service.update(actor, fixture.current.id, {
+        ...validUpdate(),
+        leadScreenshotContentVersionIds: [
+          '66666666-6666-4666-8666-666666666666',
+        ],
+      }),
+    ).rejects.toMatchObject({
+      response: { code: 'MATERIAL_VERSION_INVALID' },
+    });
+    expect(fixture.tx.materialReference.deleteMany).not.toHaveBeenCalled();
+  });
+
+  it.each(['create', 'edit'] as const)(
+    'hides a customer outside customer.read scope during %s',
+    async (operation) => {
+      const fixture =
+        operation === 'create' ? createCreateFixture() : createUpdateFixture();
+      (fixture.access.buildCustomerScope as jest.Mock).mockResolvedValue({
+        departmentId: actor.departmentId,
+        responsibleUserId: '99999999-9999-4999-8999-999999999999',
+      });
+      fixture.tx.customer.findFirst.mockResolvedValue(null);
+      const result =
+        operation === 'create'
+          ? fixture.service.create(actor, 'scope-hidden', validCreate())
+          : fixture.service.update(
+              actor,
+              createUpdateFixture().current.id,
+              validUpdate(),
+            );
+      await expect(result).rejects.toMatchObject({
+        response: { code: 'RESOURCE_NOT_FOUND' },
+      });
+    },
+  );
+
+  it('persists estimates computed from quantity, comment fallback, zero and max money', async () => {
+    const fixture = createCreateFixture();
+    await fixture.service.create(actor, 'amounts', {
+      ...validCreate(),
+      products: [
+        { title: '销量', quantity: 2, unitPrice: '1.55', commentCount: 9 },
+        { title: '评论', quantity: 0, unitPrice: '1.55', commentCount: 3 },
+        { title: '零', quantity: 0, unitPrice: '0', commentCount: 0 },
+        {
+          title: '边界',
+          quantity: 1,
+          unitPrice: '9999999999999999.99',
+          commentCount: 0,
+        },
+      ],
+    });
+    const products =
+      fixture.tx.lead.create.mock.calls[0]?.[0]?.data.products.create;
+    expect(
+      products.map(
+        (product: { estimatedAmount: { toFixed(scale: number): string } }) =>
+          product.estimatedAmount.toFixed(2),
+      ),
+    ).toEqual(['3.10', '4.65', '0.00', '9999999999999999.99']);
+  });
+
+  it('retries create once on P2034 and then succeeds', async () => {
+    const fixture = createCreateFixture();
+    fixture.transaction
+      .mockRejectedValueOnce({ code: 'P2034' })
+      .mockImplementationOnce(async (callback) => callback(fixture.tx));
+    await expect(
+      fixture.service.create(actor, 'create-retry', validCreate()),
+    ).resolves.toMatchObject({ status: 'WAITING_PUSH' });
+    expect(fixture.transaction).toHaveBeenCalledTimes(2);
+  });
+
+  it.each(['create', 'edit'] as const)(
+    'maps three exhausted P2034 %s attempts to VERSION_CONFLICT',
+    async (operation) => {
+      const fixture =
+        operation === 'create' ? createCreateFixture() : createUpdateFixture();
+      fixture.transaction.mockRejectedValue({ code: 'P2034' });
+      const result =
+        operation === 'create'
+          ? fixture.service.create(actor, 'exhausted', validCreate())
+          : fixture.service.update(
+              actor,
+              createUpdateFixture().current.id,
+              validUpdate(),
+            );
+      await expect(result).rejects.toMatchObject({
+        response: { code: 'VERSION_CONFLICT' },
+      });
+      expect(fixture.transaction).toHaveBeenCalledTimes(3);
+    },
+  );
 });
 
 function validCreate() {
@@ -533,6 +722,9 @@ function createCreateFixture() {
   const access = {
     canAuthorizeNewLead: jest.fn().mockResolvedValue(true),
     authorizeLead: jest.fn().mockResolvedValue(undefined),
+    buildCustomerScope: jest
+      .fn()
+      .mockResolvedValue({ departmentId: actor.departmentId }),
   } as unknown as AccessControlService;
   const materials = {
     assertAvailableVersions: jest.fn().mockResolvedValue([]),
@@ -545,6 +737,7 @@ function createCreateFixture() {
     tx,
     createdLead,
     materials,
+    access,
   };
 }
 
@@ -580,12 +773,16 @@ function createUpdateFixture() {
     },
     leadProduct: { deleteMany: jest.fn(), createMany: jest.fn() },
     leadInfringement: { deleteMany: jest.fn(), createMany: jest.fn() },
+    materialReference: { deleteMany: jest.fn() },
     auditEvent: { create: jest.fn() },
   };
   const transaction = jest.fn(async (callback) => callback(tx));
   const database = { $transaction: transaction } as unknown as DatabaseService;
   const access = {
     buildLeadScope: jest
+      .fn()
+      .mockResolvedValue({ departmentId: actor.departmentId }),
+    buildCustomerScope: jest
       .fn()
       .mockResolvedValue({ departmentId: actor.departmentId }),
   } as unknown as AccessControlService;
@@ -599,5 +796,7 @@ function createUpdateFixture() {
     transaction,
     tx,
     current,
+    materials,
+    access,
   };
 }

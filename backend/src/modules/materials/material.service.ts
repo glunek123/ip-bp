@@ -12,6 +12,7 @@ import {
 import {
   AccessControlService,
   AccessControlSnapshotReader,
+  LeadAction,
 } from '../../access-control/access-control.service';
 import { ActorContext } from '../../access-control/actor-context';
 import { DatabaseService } from '../../database/database.service';
@@ -44,6 +45,7 @@ export type AssertAvailableVersionsInput = Readonly<{
   contentVersionIds: readonly string[];
   minCount?: number;
   maxCount?: number;
+  leadAction?: Extract<LeadAction, 'lead.read' | 'lead.edit'>;
 }>;
 
 type CanonicalMaterialVersionFact = Readonly<{
@@ -397,6 +399,13 @@ export class MaterialService {
     ) {
       throw this.invalidVersion();
     }
+    if (
+      input.leadAction !== undefined &&
+      (input.ownerType !== 'LEAD' ||
+        (input.leadAction !== 'lead.read' && input.leadAction !== 'lead.edit'))
+    ) {
+      throw this.invalidVersion();
+    }
 
     await this.authorizeOwner(
       actor,
@@ -405,6 +414,7 @@ export class MaterialService {
       'read',
       transaction,
       transaction,
+      input.leadAction,
     );
     const materials = await transaction.material.findMany({
       where: {
@@ -738,6 +748,7 @@ export class MaterialService {
     operation: 'read' | 'write',
     reader: MaterialAuthorizationReader = this.database,
     snapshotReader?: AccessControlSnapshotReader,
+    leadAction?: Extract<LeadAction, 'lead.read' | 'lead.edit'>,
   ): Promise<void> {
     if (ownerType === 'LEAD_DRAFT') {
       if (
@@ -791,8 +802,10 @@ export class MaterialService {
       }
       return;
     }
+    const action =
+      leadAction ?? (operation === 'write' ? 'lead.edit' : 'lead.read');
     const scope = await this.withMaterialAuthorization(() =>
-      this.accessControl.buildLeadScope(actor, 'lead.read', snapshotReader),
+      this.accessControl.buildLeadScope(actor, action, snapshotReader),
     );
     const lead = await reader.lead.findFirst({
       where: { id: ownerId, ...scope },

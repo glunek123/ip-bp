@@ -31,6 +31,44 @@ const MAX_SERIALIZABLE_ATTEMPTS = 3;
 const leadInclude = {
   products: { orderBy: { position: 'asc' as const } },
   infringements: { orderBy: { type: 'asc' as const } },
+} satisfies Prisma.LeadInclude;
+
+type LeadRecord = Prisma.LeadGetPayload<{ include: typeof leadInclude }>;
+type LeadProductResponse = {
+  id: string;
+  position: number;
+  url: string | null;
+  title: string | null;
+  quantity: number;
+  unitPrice: string;
+  commentCount: number;
+  estimatedAmount: string;
+};
+type LeadResponse = {
+  id: string;
+  businessNo: string;
+  departmentId: string;
+  customerId: string;
+  rightsHolderId: string;
+  responsibleUserId: string;
+  teamId: string | null;
+  status: LeadRecord['status'];
+  caseType: LeadRecord['caseType'];
+  infringementTypes: LeadRecord['infringements'][number]['type'][];
+  source: LeadRecord['source'];
+  platform: LeadRecord['platform'];
+  foundAt: string;
+  shopName: string;
+  shopExternalId: string | null;
+  needDisclose: boolean;
+  remark: string | null;
+  creationChannel: LeadRecord['creationChannel'];
+  externalSourceRef: string | null;
+  products: LeadProductResponse[];
+  leadScreenshotContentVersionIds: string[];
+  version: number;
+  createdAt: string;
+  updatedAt: string;
 };
 
 type ProductInput = CreateLeadCommand['products'][number];
@@ -55,13 +93,6 @@ type Receipt = {
   resultLeadId: string;
   resultLeadVersion: number;
   resultSnapshot: unknown;
-};
-type LeadView = {
-  id: unknown;
-  departmentId: unknown;
-  version: unknown;
-  products: Array<Record<string, unknown>>;
-  [key: string]: unknown;
 };
 
 @Injectable()
@@ -140,8 +171,14 @@ export class LeadService {
       LEAD_STATUSES.map((status) => [status, 0]),
     ) as Record<(typeof LEAD_STATUSES)[number], number>;
     for (const group of groups) counts[group.status] = group._count._all;
+    const screenshotIds = await this.currentScreenshotIds(
+      actor.departmentId,
+      items.map((item) => item.id),
+    );
     return {
-      items: items.map((item) => this.view(item)),
+      items: items.map((item) =>
+        this.view(item, screenshotIds.get(item.id) ?? []),
+      ),
       total,
       page,
       pageSize,
@@ -162,7 +199,10 @@ export class LeadService {
       include: leadInclude,
     });
     if (lead === null) throw this.notFound();
-    return this.view(lead);
+    const screenshotIds = await this.currentScreenshotIds(actor.departmentId, [
+      lead.id,
+    ]);
+    return this.view(lead, screenshotIds.get(lead.id) ?? []);
   }
 
   async create(
@@ -328,7 +368,9 @@ export class LeadService {
                 },
               },
             });
-            const result = this.view(created);
+            const result = this.view(created, [
+              ...input.leadScreenshotContentVersionIds,
+            ]);
             await transaction.leadCommandReceipt.create({
               data: {
                 departmentId: actor.departmentId,
@@ -338,7 +380,7 @@ export class LeadService {
                 requestFingerprint: fingerprint,
                 resultLeadId: leadId,
                 resultLeadVersion: 1,
-                resultSnapshot: result as Prisma.InputJsonObject,
+                resultSnapshot: this.responseSnapshot(result),
               },
             });
             return result;
@@ -408,7 +450,7 @@ export class LeadService {
                     transaction,
                     actor,
                     {
-                      ownerType: 'LEAD_DRAFT',
+                      ownerType: 'LEAD',
                       ownerId: id,
                       category: 'LEAD_SCREENSHOT',
                       contentVersionIds: [
@@ -416,6 +458,7 @@ export class LeadService {
                       ],
                       minCount: 0,
                       maxCount: 20,
+                      leadAction: 'lead.edit',
                     },
                   );
             const changed = await transaction.lead.updateMany({
@@ -461,10 +504,14 @@ export class LeadService {
                 type,
               })),
             });
-            await this.materials.adoptLeadDraftVersions(transaction, {
-              reservedLeadId: id,
-              targetLeadId: id,
-              versions: materialFacts,
+            await transaction.materialReference.deleteMany({
+              where: {
+                departmentId: actor.departmentId,
+                resourceType: 'lead',
+                resourceId: id,
+                purpose: 'LEAD_SCREENSHOT',
+                actionEventId: null,
+              },
             });
             if (materialFacts.length > 0) {
               await this.materials.freezeReferences(transaction, {
@@ -499,7 +546,9 @@ export class LeadService {
               include: leadInclude,
             });
             if (updated === null) throw this.notFound();
-            return this.view(updated);
+            return this.view(updated, [
+              ...input.leadScreenshotContentVersionIds,
+            ]);
           },
           { isolationLevel: 'Serializable' },
         );
@@ -520,6 +569,27 @@ export class LeadService {
     customerId: string,
     rightsHolderId: string,
   ) {
+    let customerScope;
+    try {
+      customerScope = await this.access.buildCustomerScope(
+        actor,
+        'customer.read',
+        transaction,
+      );
+    } catch {
+      throw this.notFound();
+    }
+    const customerWhere = {
+      id: customerId,
+      ...customerScope,
+      departmentId: actor.departmentId,
+      profileStatus: 'ADMITTED' as const,
+    };
+    const visibleCustomer = await transaction.customer.findFirst({
+      where: customerWhere,
+      select: { id: true },
+    });
+    if (visibleCustomer === null) throw this.notFound();
     const locked = await transaction.$queryRawUnsafe<
       Array<{ customer_id: string }>
     >(
@@ -536,11 +606,7 @@ export class LeadService {
     );
     if (locked.length !== 1) throw this.notFound();
     const customer = await transaction.customer.findFirst({
-      where: {
-        id: customerId,
-        departmentId: actor.departmentId,
-        profileStatus: 'ADMITTED',
-      },
+      where: customerWhere,
       select: { id: true },
     });
     if (customer === null) throw this.notFound();
@@ -652,13 +718,10 @@ export class LeadService {
     return `LD-${dateCode}-${String(sequence).padStart(3, '0')}`;
   }
 
-  private view(record: {
-    [key: string]: unknown;
-    products?: readonly { [key: string]: unknown }[];
-    infringements?: readonly { type: unknown }[];
-  }): LeadView {
-    const date = (value: unknown) =>
-      value instanceof Date ? value.toISOString() : value;
+  private view(
+    record: LeadRecord,
+    leadScreenshotContentVersionIds: readonly string[],
+  ): LeadResponse {
     return {
       id: record.id,
       businessNo: record.businessNo,
@@ -669,17 +732,17 @@ export class LeadService {
       teamId: record.teamId ?? null,
       status: record.status,
       caseType: record.caseType,
-      infringementTypes: (record.infringements ?? []).map(({ type }) => type),
+      infringementTypes: record.infringements.map(({ type }) => type),
       source: record.source,
       platform: record.platform,
-      foundAt: date(record.foundAt),
+      foundAt: record.foundAt.toISOString(),
       shopName: record.shopName,
       shopExternalId: record.shopExternalId ?? null,
       needDisclose: record.needDisclose,
       remark: record.remark ?? null,
       creationChannel: record.creationChannel,
       externalSourceRef: record.externalSourceRef ?? null,
-      products: (record.products ?? []).map((product) => ({
+      products: record.products.map((product) => ({
         id: product.id,
         position: product.position,
         url: product.url ?? null,
@@ -689,19 +752,127 @@ export class LeadService {
         commentCount: product.commentCount,
         estimatedAmount: this.decimal(product.estimatedAmount),
       })),
+      leadScreenshotContentVersionIds: [...leadScreenshotContentVersionIds],
       version: record.version,
-      createdAt: date(record.createdAt),
-      updatedAt: date(record.updatedAt),
+      createdAt: record.createdAt.toISOString(),
+      updatedAt: record.updatedAt.toISOString(),
     };
   }
 
-  private decimal(value: unknown) {
-    return value !== null &&
-      typeof value === 'object' &&
-      'toFixed' in value &&
-      typeof value.toFixed === 'function'
-      ? value.toFixed(2)
-      : String(value);
+  private decimal(value: Prisma.Decimal) {
+    return value.toFixed(2);
+  }
+  private async currentScreenshotIds(
+    departmentId: string,
+    leadIds: readonly string[],
+  ) {
+    const result = new Map<string, string[]>();
+    if (leadIds.length === 0) return result;
+    const references = await this.database.materialReference.findMany({
+      where: {
+        departmentId,
+        resourceType: 'lead',
+        resourceId: { in: [...leadIds] },
+        purpose: 'LEAD_SCREENSHOT',
+        actionEventId: null,
+      },
+      orderBy: [{ resourceId: 'asc' }, { createdAt: 'asc' }, { id: 'asc' }],
+      select: { resourceId: true, contentVersionId: true },
+    });
+    for (const reference of references) {
+      const ids = result.get(reference.resourceId) ?? [];
+      ids.push(reference.contentVersionId);
+      result.set(reference.resourceId, ids);
+    }
+    return result;
+  }
+  private responseSnapshot(response: LeadResponse): Prisma.InputJsonObject {
+    return {
+      id: response.id,
+      businessNo: response.businessNo,
+      departmentId: response.departmentId,
+      customerId: response.customerId,
+      rightsHolderId: response.rightsHolderId,
+      responsibleUserId: response.responsibleUserId,
+      teamId: response.teamId,
+      status: response.status,
+      caseType: response.caseType,
+      infringementTypes: [...response.infringementTypes],
+      source: response.source,
+      platform: response.platform,
+      foundAt: response.foundAt,
+      shopName: response.shopName,
+      shopExternalId: response.shopExternalId,
+      needDisclose: response.needDisclose,
+      remark: response.remark,
+      creationChannel: response.creationChannel,
+      externalSourceRef: response.externalSourceRef,
+      products: response.products.map((product) => ({
+        id: product.id,
+        position: product.position,
+        url: product.url,
+        title: product.title,
+        quantity: product.quantity,
+        unitPrice: product.unitPrice,
+        commentCount: product.commentCount,
+        estimatedAmount: product.estimatedAmount,
+      })),
+      leadScreenshotContentVersionIds: [
+        ...response.leadScreenshotContentVersionIds,
+      ],
+      version: response.version,
+      createdAt: response.createdAt,
+      updatedAt: response.updatedAt,
+    };
+  }
+  private isLeadResponse(value: unknown): value is LeadResponse {
+    if (value === null || typeof value !== 'object' || Array.isArray(value))
+      return false;
+    const candidate = value as Partial<LeadResponse>;
+    return (
+      typeof candidate.id === 'string' &&
+      typeof candidate.businessNo === 'string' &&
+      typeof candidate.departmentId === 'string' &&
+      typeof candidate.customerId === 'string' &&
+      typeof candidate.rightsHolderId === 'string' &&
+      typeof candidate.responsibleUserId === 'string' &&
+      (candidate.teamId === null || typeof candidate.teamId === 'string') &&
+      LEAD_STATUSES.includes(
+        candidate.status as (typeof LEAD_STATUSES)[number],
+      ) &&
+      typeof candidate.caseType === 'string' &&
+      Array.isArray(candidate.infringementTypes) &&
+      typeof candidate.source === 'string' &&
+      typeof candidate.platform === 'string' &&
+      typeof candidate.foundAt === 'string' &&
+      typeof candidate.shopName === 'string' &&
+      (candidate.shopExternalId === null ||
+        typeof candidate.shopExternalId === 'string') &&
+      typeof candidate.needDisclose === 'boolean' &&
+      (candidate.remark === null || typeof candidate.remark === 'string') &&
+      typeof candidate.creationChannel === 'string' &&
+      (candidate.externalSourceRef === null ||
+        typeof candidate.externalSourceRef === 'string') &&
+      Array.isArray(candidate.products) &&
+      candidate.products.every(
+        (product) =>
+          typeof product.id === 'string' &&
+          Number.isInteger(product.position) &&
+          (product.url === null || typeof product.url === 'string') &&
+          (product.title === null || typeof product.title === 'string') &&
+          Number.isInteger(product.quantity) &&
+          typeof product.unitPrice === 'string' &&
+          Number.isInteger(product.commentCount) &&
+          typeof product.estimatedAmount === 'string',
+      ) &&
+      Array.isArray(candidate.leadScreenshotContentVersionIds) &&
+      candidate.leadScreenshotContentVersionIds.every(
+        (id) => typeof id === 'string',
+      ) &&
+      Number.isInteger(candidate.version) &&
+      typeof candidate.createdAt === 'string' &&
+      typeof candidate.updatedAt === 'string'
+    );
   }
   private fingerprint(input: unknown) {
     return createHash('sha256').update(JSON.stringify(input)).digest('hex');
@@ -734,24 +905,21 @@ export class LeadService {
     actor: ActorContext,
     receipt: Receipt,
     fingerprint: string,
-  ) {
+  ): LeadResponse {
     if (receipt.requestFingerprint !== fingerprint)
       throw this.idempotencyConflict();
     const snapshot = receipt.resultSnapshot;
     if (
-      snapshot === null ||
-      typeof snapshot !== 'object' ||
-      Array.isArray(snapshot) ||
-      (snapshot as Record<string, unknown>).id !== receipt.resultLeadId ||
-      (snapshot as Record<string, unknown>).version !==
-        receipt.resultLeadVersion ||
-      (snapshot as Record<string, unknown>).departmentId !== actor.departmentId
+      !this.isLeadResponse(snapshot) ||
+      snapshot.id !== receipt.resultLeadId ||
+      snapshot.version !== receipt.resultLeadVersion ||
+      snapshot.departmentId !== actor.departmentId
     )
       throw this.corruptReceipt();
-    return snapshot as LeadView;
+    return snapshot;
   }
   private changedFields(
-    current: Record<string, unknown>,
+    current: LeadRecord,
     normalized: NormalizedBusiness,
     rightsHolderId: string,
     screenshotChanged: boolean,
@@ -781,18 +949,13 @@ export class LeadService {
     for (const [name, before, after] of scalarPairs) {
       if (before !== after) changed.push(name);
     }
-    const currentProducts = Array.isArray(current.products)
-      ? current.products.map((value) => {
-          const product = value as Record<string, unknown>;
-          return {
-            url: product.url ?? null,
-            title: product.title ?? null,
-            quantity: product.quantity,
-            unitPrice: this.decimal(product.unitPrice),
-            commentCount: product.commentCount,
-          };
-        })
-      : [];
+    const currentProducts = current.products.map((product) => ({
+      url: product.url,
+      title: product.title,
+      quantity: product.quantity,
+      unitPrice: this.decimal(product.unitPrice),
+      commentCount: product.commentCount,
+    }));
     const nextProducts = normalized.products.map((product) => ({
       url: product.url,
       title: product.title,
@@ -802,11 +965,9 @@ export class LeadService {
     }));
     if (JSON.stringify(currentProducts) !== JSON.stringify(nextProducts))
       changed.push('products');
-    const currentInfringements = Array.isArray(current.infringements)
-      ? current.infringements
-          .map((value) => (value as { type: unknown }).type)
-          .sort()
-      : [];
+    const currentInfringements = current.infringements
+      .map(({ type }) => type)
+      .sort();
     const nextInfringements = [...normalized.infringementTypes].sort();
     if (
       JSON.stringify(currentInfringements) !== JSON.stringify(nextInfringements)

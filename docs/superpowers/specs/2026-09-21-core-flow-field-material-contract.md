@@ -172,7 +172,7 @@ health() -> ready | unavailable
 | Product | `unitPrice`                                             | Money／必填                                 | 允许0，不允许负数                                                                               |
 | Product | `estimatedAmount`                                       | Money／服务端计算                           | `quantity>0 ? quantity : commentCount`乘`unitPrice`，最终按分四舍五入；不冒充交易流水           |
 
-创建Command另含`reservedLeadId?`、`leadScreenshotContentVersionIds[0..20]`和`idempotencyKey`；提供`reservedLeadId`时，所有版本必须来自同一操作者、当前部门和该`LEAD_DRAFT`预留身份。编辑仅允许`WAITING_PUSH`状态，提交`expectedVersion`；不允许编辑身份、部门、业务号、状态、操作者和计算结果。删除不在本Slice。
+创建Command另含`reservedLeadId?`、`leadScreenshotContentVersionIds[0..20]`和`idempotencyKey`；提供`reservedLeadId`时，所有版本必须来自同一操作者、当前部门和该`LEAD_DRAFT`预留身份。编辑仅允许`WAITING_PUSH`状态，提交`expectedVersion`；编辑端点不承担新上传，截图ID必须完整表示当前已属于该Lead的可变截图集合，服务端以`lead.edit`范围校验`ownerType=LEAD`版本，并只替换`actionEventId=null`的当前集合引用，保留后续流程动作冻结的历史引用。创建和编辑响应均返回该当前集合，客户端不得用其他Lead或仍属草稿的版本猜测替换。不允许编辑身份、部门、业务号、状态、操作者和计算结果。删除不在本Slice。
 
 线索业务号按Asia/Shanghai业务日使用全库并发安全日序列生成：格式固定为`LD-YYYYMMDD-NNN`，当日从`001`递增到`999`且全局唯一；第1000条明确返回`LEAD_NUMBER_EXHAUSTED`，不得回绕、随机补号或复用已删除号码。
 

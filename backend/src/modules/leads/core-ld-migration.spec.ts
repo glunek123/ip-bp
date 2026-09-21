@@ -63,6 +63,8 @@ describe('CORE-LD migrations', () => {
     );
     expect(snapshotSql).toContain('lead."id" IS NULL');
     expect(snapshotSql).toContain('jsonb_build_object');
+    expect(snapshotSql).toContain("'leadScreenshotContentVersionIds'");
+    expect(snapshotSql).toContain('reference."action_event_id" IS NULL');
     expect(snapshotSql).toContain(
       'ALTER COLUMN "result_snapshot" SET NOT NULL',
     );

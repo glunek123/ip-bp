@@ -1234,6 +1234,64 @@ describe('MaterialService', () => {
       response: { code: 'MATERIAL_VERSION_INVALID' },
     });
   });
+
+  it('validates Lead-owned versions with lead.edit in the caller transaction', async () => {
+    const fixture = createFixture();
+    const transaction = createMaterialTransaction();
+    const leadId = '55555555-5555-4555-8555-555555555555';
+    fixture.access.buildLeadScope.mockResolvedValue({
+      departmentId: actor.departmentId,
+      responsibleUserId: actor.userId,
+    });
+    transaction.lead.findFirst.mockResolvedValue({
+      departmentId: actor.departmentId,
+      responsibleUserId: actor.userId,
+      teamId: null,
+    });
+    transaction.material.findMany.mockResolvedValue([
+      availableMaterial(
+        'material-a',
+        'version-a',
+        'LEAD_SCREENSHOT',
+        'LEAD',
+        leadId,
+        'LEAD_SCREENSHOT',
+      ),
+    ]);
+
+    await expect(
+      fixture.service.assertAvailableVersions(
+        asTransactionClient(transaction),
+        actor,
+        {
+          ownerType: 'LEAD',
+          ownerId: leadId,
+          category: 'LEAD_SCREENSHOT',
+          contentVersionIds: ['version-a'],
+          leadAction: 'lead.edit',
+        },
+      ),
+    ).resolves.toHaveLength(1);
+    expect(fixture.access.buildLeadScope).toHaveBeenCalledWith(
+      actor,
+      'lead.edit',
+      asTransactionClient(transaction),
+    );
+    expect(transaction.lead.findFirst).toHaveBeenCalledWith({
+      where: {
+        id: leadId,
+        departmentId: actor.departmentId,
+        responsibleUserId: actor.userId,
+      },
+      select: {
+        departmentId: true,
+        responsibleUserId: true,
+        teamId: true,
+      },
+    });
+    expect(transaction.uploadDraft.findFirst).not.toHaveBeenCalled();
+    expect(fixture.access.canAuthorizeNewLead).not.toHaveBeenCalled();
+  });
 });
 
 function openDraft(overrides: Record<string, unknown> = {}) {

@@ -48,6 +48,14 @@ SET "result_snapshot" = jsonb_build_object(
     ) ORDER BY p."position")
     FROM "lead_products" p WHERE p."lead_id" = lead."id"
   ), '[]'::jsonb),
+  'leadScreenshotContentVersionIds', COALESCE((
+    SELECT jsonb_agg(reference."content_version_id" ORDER BY reference."created_at", reference."id")
+    FROM "material_references" reference
+    WHERE reference."resource_type" = 'lead'
+      AND reference."resource_id" = lead."id"
+      AND reference."purpose" = 'LEAD_SCREENSHOT'
+      AND reference."action_event_id" IS NULL
+  ), '[]'::jsonb),
   'version', lead."version",
   'createdAt', lead."created_at",
   'updatedAt', lead."updated_at"

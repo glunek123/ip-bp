@@ -117,7 +117,12 @@ export class LeadBusinessFieldsDto {
   @ValidateNested({ each: true })
   @Type(() => LeadProductDto)
   products!: LeadProductDto[];
-  @ApiProperty({ type: [String], maxItems: 20 })
+  @ApiProperty({
+    type: [String],
+    maxItems: 20,
+    description:
+      '创建时仅接受预留 Lead 草稿版本；编辑时必须完整提交当前已属于该 Lead 的可变截图版本集合。',
+  })
   @IsArray()
   @ArrayMaxSize(20)
   @ArrayUnique()
