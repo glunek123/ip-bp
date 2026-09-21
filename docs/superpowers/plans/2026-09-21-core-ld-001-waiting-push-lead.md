@@ -492,6 +492,7 @@ git commit -m "feat: admit customers with identity materials"
 - HTTP `GET /leads/form-context`, `GET /leads`, `GET /leads/:id`, `POST /leads`, `PATCH /leads/:id`.
 - List result `{items,total,page,pageSize,counts,capabilities}` where counts always contains all four Lead statuses.
 - Form context returns only visible ADMITTED customers with current linked rights holders and the exact controlled dictionaries.
+- Lead列表、详情与编辑不直接访问`MaterialReference`；它们分别消费材料层`listCurrentReferenceVersionIds(reader, actor, input)`与`replaceCurrentReferences(transaction, actor, input)`公共边界。前者以`lead.read`返回稳定排序的`actionEventId=null`当前集合；后者以`lead.edit`验证同tx canonical Lead-owned facts，只替换null-action引用并保留历史引用。
 
 - [ ] **Step 1: Write failing Lead service tests**
 
@@ -550,7 +551,7 @@ const estimatedAmount = new Prisma.Decimal(product.unitPrice)
 
 Create order: authorize new Lead→lock/read ADMITTED customer and relation→validate active membership/team→validate screenshot versions and reserved ID→allocate number→create Lead/products/infringements→convert LEAD_DRAFT owners to LEAD and freeze references→AuditEvent→LeadCommandReceipt. All database facts commit or roll back together; Blob bytes already uploaded remain governed by draft cleanup if creation fails.
 
-Edit accepts only business-editable fields plus`expectedVersion`, locks the Lead, requires`WAITING_PUSH`, re-runs relationship/options/product/material validation, replaces product and infringement child rows in the same transaction, increments version and writes changed-field audit. It must not accept customer/department/responsible/team/businessNo/status/creationChannel/externalSourceRef.
+Edit accepts only business-editable fields plus`expectedVersion`, locks the Lead, requires`WAITING_PUSH`, re-runs relationship/options/product/material validation, replaces product and infringement child rows in the same transaction, increments version and writes changed-field audit. Screenshot change auditing uses the material boundary's set-based`changed`result; order alone is not a business change. It must not accept customer/department/responsible/team/businessNo/status/creationChannel/externalSourceRef.
 
 - [ ] **Step 6: Implement Controller and stable errors**
 

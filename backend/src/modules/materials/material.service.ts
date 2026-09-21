@@ -77,10 +77,30 @@ export type AdoptLeadDraftVersionsInput = Readonly<{
   versions: readonly ValidatedMaterialVersionFact[];
 }>;
 
+export type CurrentLeadReferenceInput = Readonly<{
+  resourceType: 'lead';
+  resourceId: string;
+  purpose: 'LEAD_SCREENSHOT';
+}>;
+
+export type ReplaceCurrentLeadReferencesInput = CurrentLeadReferenceInput &
+  Readonly<{
+    versions: readonly ValidatedMaterialVersionFact[];
+  }>;
+
+export type ReplaceCurrentReferencesResult = Readonly<{
+  beforeVersionIds: readonly string[];
+  afterVersionIds: readonly string[];
+  changed: boolean;
+}>;
+
 type MaterialAuthorizationReader = Pick<
   MaterialTransactionClient,
   'customer' | 'uploadDraft' | 'lead'
 >;
+export type MaterialReferenceReader = MaterialAuthorizationReader &
+  AccessControlSnapshotReader &
+  Pick<MaterialTransactionClient, 'materialReference'>;
 const allowedMimeTypes = {
   CUSTOMER_IDENTITY: new Set(['application/pdf', 'image/jpeg', 'image/png']),
   LEAD_SCREENSHOT: new Set([
@@ -534,6 +554,91 @@ export class MaterialService {
     });
   }
 
+  async listCurrentReferenceVersionIds(
+    reader: MaterialReferenceReader,
+    actor: ActorContext,
+    input: CurrentLeadReferenceInput,
+  ): Promise<readonly string[]> {
+    this.assertCurrentLeadReferenceInput(input);
+    await this.authorizeOwner(
+      actor,
+      'LEAD',
+      input.resourceId,
+      'read',
+      reader,
+      reader,
+      'lead.read',
+    );
+    return this.readCurrentReferenceVersionIds(reader, actor, input);
+  }
+
+  async replaceCurrentReferences(
+    transaction: MaterialTransactionClient,
+    actor: ActorContext,
+    input: ReplaceCurrentLeadReferencesInput,
+  ): Promise<ReplaceCurrentReferencesResult> {
+    this.assertCurrentLeadReferenceInput(input);
+    await this.authorizeOwner(
+      actor,
+      'LEAD',
+      input.resourceId,
+      'read',
+      transaction,
+      transaction,
+      'lead.edit',
+    );
+    const canonicalFacts = input.versions.map((fact) => {
+      const validation = this.validatedVersionFacts.get(fact);
+      if (
+        validation === undefined ||
+        validation.transaction !== transaction ||
+        validation.canonicalFact.departmentId !== actor.departmentId ||
+        validation.canonicalFact.ownerType !== 'LEAD' ||
+        validation.canonicalFact.ownerId !== input.resourceId ||
+        validation.canonicalFact.category !== 'LEAD_SCREENSHOT' ||
+        validation.canonicalFact.purpose !== input.purpose
+      ) {
+        throw this.invalidVersion();
+      }
+      return validation.canonicalFact;
+    });
+    const beforeVersionIds = await this.readCurrentReferenceVersionIds(
+      transaction,
+      actor,
+      input,
+    );
+    const afterVersionIds = [
+      ...new Set(canonicalFacts.map((fact) => fact.contentVersionId)),
+    ].sort();
+    await transaction.materialReference.deleteMany({
+      where: {
+        departmentId: actor.departmentId,
+        resourceType: input.resourceType,
+        resourceId: input.resourceId,
+        purpose: input.purpose,
+        actionEventId: null,
+      },
+    });
+    if (input.versions.length > 0) {
+      await this.freezeReferences(transaction, {
+        departmentId: actor.departmentId,
+        resourceType: input.resourceType,
+        resourceId: input.resourceId,
+        facts: input.versions,
+      });
+    }
+    return {
+      beforeVersionIds,
+      afterVersionIds,
+      changed:
+        beforeVersionIds.length !== afterVersionIds.length ||
+        beforeVersionIds.some(
+          (contentVersionId, index) =>
+            contentVersionId !== afterVersionIds[index],
+        ),
+    };
+  }
+
   async adoptLeadDraftVersions(
     transaction: MaterialTransactionClient,
     input: AdoptLeadDraftVersionsInput,
@@ -569,6 +674,41 @@ export class MaterialService {
       data: { ownerType: 'LEAD', ownerId: input.targetLeadId },
     });
     if (changed.count !== materialIds.length) throw this.invalidVersion();
+  }
+
+  private assertCurrentLeadReferenceInput(
+    input: CurrentLeadReferenceInput,
+  ): void {
+    if (
+      input.resourceType !== 'lead' ||
+      input.resourceId.trim().length === 0 ||
+      input.purpose !== 'LEAD_SCREENSHOT'
+    ) {
+      throw this.invalidVersion();
+    }
+  }
+
+  private async readCurrentReferenceVersionIds(
+    reader: MaterialReferenceReader,
+    actor: ActorContext,
+    input: CurrentLeadReferenceInput,
+  ): Promise<readonly string[]> {
+    const references = await reader.materialReference.findMany({
+      where: {
+        departmentId: actor.departmentId,
+        resourceType: input.resourceType,
+        resourceId: input.resourceId,
+        purpose: input.purpose,
+        actionEventId: null,
+      },
+      orderBy: { contentVersionId: 'asc' },
+      select: { contentVersionId: true },
+    });
+    return Object.freeze(
+      [
+        ...new Set(references.map(({ contentVersionId }) => contentVersionId)),
+      ].sort(),
+    );
   }
 
   async listOwnerMaterials(

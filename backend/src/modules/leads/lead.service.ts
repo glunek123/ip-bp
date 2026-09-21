@@ -172,7 +172,7 @@ export class LeadService {
     ) as Record<(typeof LEAD_STATUSES)[number], number>;
     for (const group of groups) counts[group.status] = group._count._all;
     const screenshotIds = await this.currentScreenshotIds(
-      actor.departmentId,
+      actor,
       items.map((item) => item.id),
     );
     return {
@@ -199,9 +199,7 @@ export class LeadService {
       include: leadInclude,
     });
     if (lead === null) throw this.notFound();
-    const screenshotIds = await this.currentScreenshotIds(actor.departmentId, [
-      lead.id,
-    ]);
+    const screenshotIds = await this.currentScreenshotIds(actor, [lead.id]);
     return this.view(lead, screenshotIds.get(lead.id) ?? []);
   }
 
@@ -504,28 +502,22 @@ export class LeadService {
                 type,
               })),
             });
-            await transaction.materialReference.deleteMany({
-              where: {
-                departmentId: actor.departmentId,
-                resourceType: 'lead',
-                resourceId: id,
-                purpose: 'LEAD_SCREENSHOT',
-                actionEventId: null,
-              },
-            });
-            if (materialFacts.length > 0) {
-              await this.materials.freezeReferences(transaction, {
-                departmentId: actor.departmentId,
-                resourceType: 'lead',
-                resourceId: id,
-                facts: materialFacts,
-              });
-            }
+            const referenceResult =
+              await this.materials.replaceCurrentReferences(
+                transaction,
+                actor,
+                {
+                  resourceType: 'lead',
+                  resourceId: id,
+                  purpose: 'LEAD_SCREENSHOT',
+                  versions: materialFacts,
+                },
+              );
             const changedFields = this.changedFields(
               current,
               normalized,
               input.rightsHolderId,
-              materialFacts.length > 0,
+              referenceResult.changed,
             );
             await transaction.auditEvent.create({
               data: {
@@ -546,9 +538,7 @@ export class LeadService {
               include: leadInclude,
             });
             if (updated === null) throw this.notFound();
-            return this.view(updated, [
-              ...input.leadScreenshotContentVersionIds,
-            ]);
+            return this.view(updated, referenceResult.afterVersionIds);
           },
           { isolationLevel: 'Serializable' },
         );
@@ -763,26 +753,22 @@ export class LeadService {
     return value.toFixed(2);
   }
   private async currentScreenshotIds(
-    departmentId: string,
+    actor: ActorContext,
     leadIds: readonly string[],
   ) {
     const result = new Map<string, string[]>();
     if (leadIds.length === 0) return result;
-    const references = await this.database.materialReference.findMany({
-      where: {
-        departmentId,
-        resourceType: 'lead',
-        resourceId: { in: [...leadIds] },
-        purpose: 'LEAD_SCREENSHOT',
-        actionEventId: null,
-      },
-      orderBy: [{ resourceId: 'asc' }, { createdAt: 'asc' }, { id: 'asc' }],
-      select: { resourceId: true, contentVersionId: true },
-    });
-    for (const reference of references) {
-      const ids = result.get(reference.resourceId) ?? [];
-      ids.push(reference.contentVersionId);
-      result.set(reference.resourceId, ids);
+    const versionIds = await Promise.all(
+      leadIds.map((leadId) =>
+        this.materials.listCurrentReferenceVersionIds(this.database, actor, {
+          resourceType: 'lead',
+          resourceId: leadId,
+          purpose: 'LEAD_SCREENSHOT',
+        }),
+      ),
+    );
+    for (const [index, leadId] of leadIds.entries()) {
+      result.set(leadId, [...(versionIds[index] ?? [])]);
     }
     return result;
   }

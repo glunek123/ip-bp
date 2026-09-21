@@ -1292,6 +1292,218 @@ describe('MaterialService', () => {
     expect(transaction.uploadDraft.findFirst).not.toHaveBeenCalled();
     expect(fixture.access.canAuthorizeNewLead).not.toHaveBeenCalled();
   });
+
+  it('lists only stable current Lead screenshot reference ids with lead.read', async () => {
+    const fixture = createFixture();
+    const transaction = createMaterialTransaction();
+    const leadId = '55555555-5555-4555-8555-555555555555';
+    fixture.access.buildLeadScope.mockResolvedValue({
+      departmentId: actor.departmentId,
+    });
+    transaction.lead.findFirst.mockResolvedValue({
+      departmentId: actor.departmentId,
+      responsibleUserId: actor.userId,
+      teamId: null,
+    });
+    transaction.materialReference.findMany.mockResolvedValue([
+      { contentVersionId: 'version-b' },
+      { contentVersionId: 'version-a' },
+      { contentVersionId: 'version-a' },
+    ]);
+
+    await expect(
+      fixture.service.listCurrentReferenceVersionIds(
+        asTransactionClient(transaction),
+        actor,
+        {
+          resourceType: 'lead',
+          resourceId: leadId,
+          purpose: 'LEAD_SCREENSHOT',
+        },
+      ),
+    ).resolves.toEqual(['version-a', 'version-b']);
+    expect(fixture.access.buildLeadScope).toHaveBeenCalledWith(
+      actor,
+      'lead.read',
+      asTransactionClient(transaction),
+    );
+    expect(transaction.materialReference.findMany).toHaveBeenCalledWith({
+      where: {
+        departmentId: actor.departmentId,
+        resourceType: 'lead',
+        resourceId: leadId,
+        purpose: 'LEAD_SCREENSHOT',
+        actionEventId: null,
+      },
+      orderBy: { contentVersionId: 'asc' },
+      select: { contentVersionId: true },
+    });
+  });
+
+  it.each([
+    [['version-a'], [], true],
+    [['version-a'], ['version-a'], false],
+    [['version-a'], ['version-b'], true],
+  ] as const)(
+    'replaces current Lead refs %j -> %j with changed=%s',
+    async (before, after, changed) => {
+      const fixture = createFixture();
+      const transaction = createMaterialTransaction();
+      const leadId = '55555555-5555-4555-8555-555555555555';
+      fixture.access.canAuthorizeNewLead.mockResolvedValue(false);
+      fixture.access.buildLeadScope.mockResolvedValue({
+        departmentId: actor.departmentId,
+      });
+      transaction.lead.findFirst.mockResolvedValue({
+        departmentId: actor.departmentId,
+        responsibleUserId: actor.userId,
+        teamId: null,
+      });
+      transaction.materialReference.findMany.mockResolvedValue(
+        before.map((contentVersionId) => ({ contentVersionId })),
+      );
+      transaction.material.findMany.mockResolvedValue(
+        after.map((contentVersionId, index) =>
+          availableMaterial(
+            `material-${index}`,
+            contentVersionId,
+            'LEAD_SCREENSHOT',
+            'LEAD',
+            leadId,
+            'LEAD_SCREENSHOT',
+          ),
+        ),
+      );
+      const facts =
+        after.length === 0
+          ? []
+          : await fixture.service.assertAvailableVersions(
+              asTransactionClient(transaction),
+              actor,
+              {
+                ownerType: 'LEAD',
+                ownerId: leadId,
+                category: 'LEAD_SCREENSHOT',
+                contentVersionIds: [...after],
+                leadAction: 'lead.edit',
+              },
+            );
+
+      await expect(
+        fixture.service.replaceCurrentReferences(
+          asTransactionClient(transaction),
+          actor,
+          {
+            resourceType: 'lead',
+            resourceId: leadId,
+            purpose: 'LEAD_SCREENSHOT',
+            versions: facts,
+          },
+        ),
+      ).resolves.toEqual({
+        beforeVersionIds: [...before],
+        afterVersionIds: [...after],
+        changed,
+      });
+      expect(transaction.materialReference.deleteMany).toHaveBeenCalledWith({
+        where: {
+          departmentId: actor.departmentId,
+          resourceType: 'lead',
+          resourceId: leadId,
+          purpose: 'LEAD_SCREENSHOT',
+          actionEventId: null,
+        },
+      });
+      expect(fixture.access.buildLeadScope).toHaveBeenLastCalledWith(
+        actor,
+        'lead.edit',
+        asTransactionClient(transaction),
+      );
+      expect(fixture.access.canAuthorizeNewLead).not.toHaveBeenCalled();
+      if (after.length === 0) {
+        expect(transaction.materialReference.createMany).not.toHaveBeenCalled();
+      } else {
+        expect(transaction.materialReference.createMany).toHaveBeenCalledWith({
+          data: after.map((contentVersionId, index) => ({
+            departmentId: actor.departmentId,
+            resourceType: 'lead',
+            resourceId: leadId,
+            purpose: 'LEAD_SCREENSHOT',
+            materialId: `material-${index}`,
+            contentVersionId,
+          })),
+          skipDuplicates: true,
+        });
+      }
+    },
+  );
+
+  it('rejects forged and cross-transaction facts when replacing current refs', async () => {
+    const fixture = createFixture();
+    const transaction = createMaterialTransaction();
+    const leadId = '55555555-5555-4555-8555-555555555555';
+    fixture.access.buildLeadScope.mockResolvedValue({
+      departmentId: actor.departmentId,
+    });
+    transaction.lead.findFirst.mockResolvedValue({
+      departmentId: actor.departmentId,
+      responsibleUserId: actor.userId,
+      teamId: null,
+    });
+    transaction.material.findMany.mockResolvedValue([
+      availableMaterial(
+        'material-a',
+        'version-a',
+        'LEAD_SCREENSHOT',
+        'LEAD',
+        leadId,
+        'LEAD_SCREENSHOT',
+      ),
+    ]);
+    const facts = await fixture.service.assertAvailableVersions(
+      asTransactionClient(transaction),
+      actor,
+      {
+        ownerType: 'LEAD',
+        ownerId: leadId,
+        category: 'LEAD_SCREENSHOT',
+        contentVersionIds: ['version-a'],
+        leadAction: 'lead.edit',
+      },
+    );
+    const input = {
+      resourceType: 'lead' as const,
+      resourceId: leadId,
+      purpose: 'LEAD_SCREENSHOT' as const,
+    };
+    await expect(
+      fixture.service.replaceCurrentReferences(
+        asTransactionClient(transaction),
+        actor,
+        {
+          ...input,
+          versions: [{ ...facts[0] } as ValidatedMaterialVersionFact],
+        },
+      ),
+    ).rejects.toMatchObject({
+      response: { code: 'MATERIAL_VERSION_INVALID' },
+    });
+    const otherTransaction = createMaterialTransaction();
+    otherTransaction.lead.findFirst.mockResolvedValue({
+      departmentId: actor.departmentId,
+      responsibleUserId: actor.userId,
+      teamId: null,
+    });
+    await expect(
+      fixture.service.replaceCurrentReferences(
+        asTransactionClient(otherTransaction),
+        actor,
+        { ...input, versions: facts },
+      ),
+    ).rejects.toMatchObject({
+      response: { code: 'MATERIAL_VERSION_INVALID' },
+    });
+  });
 });
 
 function openDraft(overrides: Record<string, unknown> = {}) {
@@ -1367,6 +1579,8 @@ function createMaterialTransaction() {
       updateMany: jest.fn(async () => ({ count: 1 })),
     },
     materialReference: {
+      findMany: jest.fn(),
+      deleteMany: jest.fn(),
       createMany: jest.fn(async () => ({ count: 1 })),
     },
   };
