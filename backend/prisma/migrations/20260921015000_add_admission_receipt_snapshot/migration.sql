@@ -1,5 +1,24 @@
 BEGIN;
 
+-- A legacy receipt can only be reconstructed from the current customer when the
+-- aggregate has not changed since that receipt was written. Never fabricate a
+-- historical response by combining current fields with an older receipt version.
+DO $$
+BEGIN
+  IF EXISTS (
+    SELECT 1
+    FROM "customer_admission_receipts" AS receipt
+    LEFT JOIN "customers" AS customer
+      ON customer."id" = receipt."result_customer_id"
+      AND customer."department_id" = receipt."department_id"
+    WHERE customer."id" IS NULL
+      OR customer."version" <> receipt."result_customer_version"
+  ) THEN
+    RAISE EXCEPTION
+      'cannot backfill customer admission receipt snapshots: current customer version does not match receipt version; restore or remove unsupported legacy receipts before retrying';
+  END IF;
+END $$;
+
 -- Align historical customer identities with the single application canonical form
 -- before future writes rely on the department/type/number unique constraint.
 DO $$

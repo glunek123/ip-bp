@@ -42,6 +42,24 @@ type NormalizedAdmission = {
   identityDocumentContentVersionIds: string[];
 };
 
+type CanonicalAdmissionFingerprint = {
+  expectedVersion: number;
+  customerType: string;
+  name: string;
+  normalizedName: string;
+  identityType: string;
+  identityNumber: string;
+  normalizedIdentityNumber: string;
+  issuingCountryOrRegion: string | null;
+  identityValidFrom: string | null;
+  identityValidTo: string | null;
+  identityValidityMode: string;
+  admissionContactName: string;
+  admissionContactPhone: string | null;
+  admissionContactEmail: string | null;
+  identityDocumentContentVersionIds: string[];
+};
+
 type AdmissionReceipt = {
   requestFingerprint: string;
   resultCustomerId: string;
@@ -65,8 +83,8 @@ export class CustomerAdmissionService {
     idempotencyKey: string,
     input: AdmitCustomerDto,
   ): Promise<CustomerSummary> {
-    const normalized = this.normalize(input);
-    const fingerprint = this.fingerprint(customerId, normalized);
+    const canonical = this.canonicalizeForFingerprint(input);
+    const fingerprint = this.fingerprint(customerId, canonical);
     for (let attempt = 1; attempt <= MAX_SERIALIZABLE_ATTEMPTS; attempt += 1) {
       try {
         return await this.database.$transaction(
@@ -104,12 +122,14 @@ export class CustomerAdmissionService {
               return this.rebuildReceiptResult(actor, receipt, fingerprint);
             }
 
-            if (current.version !== normalized.expectedVersion) {
+            if (current.version !== input.expectedVersion) {
               throw this.versionConflict();
             }
             if (current.profileStatus !== 'DRAFT') {
               throw this.stateConflict();
             }
+
+            const normalized = this.validateAndNormalizeDomain(input);
 
             const duplicate = await transaction.customer.findFirst({
               where: {
@@ -229,7 +249,48 @@ export class CustomerAdmissionService {
     throw this.versionConflict();
   }
 
-  private normalize(input: AdmitCustomerDto): NormalizedAdmission {
+  private canonicalizeForFingerprint(
+    input: AdmitCustomerDto,
+  ): CanonicalAdmissionFingerprint {
+    const name = this.canonicalText(input.name);
+    const identity =
+      typeof input.identityNumber === 'string'
+        ? normalizeCustomerIdentityNumber(input.identityNumber)
+        : { display: null, normalized: null };
+    return {
+      expectedVersion: input.expectedVersion,
+      customerType: this.canonicalText(input.customerType),
+      name,
+      normalizedName: name,
+      identityType: this.canonicalText(input.identityType),
+      identityNumber: identity.display ?? '',
+      normalizedIdentityNumber: identity.normalized ?? '',
+      issuingCountryOrRegion: this.canonicalOptionalText(
+        input.issuingCountryOrRegion,
+      ),
+      identityValidFrom: this.canonicalOptionalText(input.identityValidFrom),
+      identityValidTo: this.canonicalOptionalText(input.identityValidTo),
+      identityValidityMode: this.canonicalText(input.identityValidityMode),
+      admissionContactName: this.canonicalText(input.admissionContactName),
+      admissionContactPhone: this.canonicalOptionalText(
+        input.admissionContactPhone,
+      ),
+      admissionContactEmail: this.canonicalOptionalText(
+        input.admissionContactEmail,
+      ),
+      identityDocumentContentVersionIds: Array.isArray(
+        input.identityDocumentContentVersionIds,
+      )
+        ? input.identityDocumentContentVersionIds.map((value) =>
+            this.canonicalText(value),
+          )
+        : [],
+    };
+  }
+
+  private validateAndNormalizeDomain(
+    input: AdmitCustomerDto,
+  ): NormalizedAdmission {
     const name = this.required(input.name);
     const identity = normalizeCustomerIdentityNumber(input.identityNumber);
     if (
@@ -451,17 +512,23 @@ export class CustomerAdmissionService {
     };
   }
 
-  private fingerprint(customerId: string, input: NormalizedAdmission): string {
+  private fingerprint(
+    customerId: string,
+    input: CanonicalAdmissionFingerprint,
+  ): string {
     return createHash('sha256')
-      .update(
-        JSON.stringify({
-          customerId,
-          ...input,
-          identityValidFrom: this.dateString(input.identityValidFrom),
-          identityValidTo: this.dateString(input.identityValidTo),
-        }),
-      )
+      .update(JSON.stringify({ customerId, ...input }))
       .digest('hex');
+  }
+
+  private canonicalText(value: unknown): string {
+    return typeof value === 'string' ? this.normalizeComparable(value) : '';
+  }
+
+  private canonicalOptionalText(value: unknown): string | null {
+    if (value === undefined || value === null) return null;
+    const canonical = this.canonicalText(value);
+    return canonical.length === 0 ? null : canonical;
   }
 
   private date(value: string | undefined): Date | null {

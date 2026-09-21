@@ -125,3 +125,29 @@ pnpm --filter @dev-cor/backend test src/modules/customers/customer-admission.ser
 ### 剩余担忧
 
 - P2034 的三种分支由完整单元测试覆盖；本 Task 没有在真实 PostgreSQL 上人为制造并发 serialization 冲突，留给 Task 7 的数据库并发 E2E。迁移本身已在隔离 PG17 上执行真实空库和历史 backfill 探针。
+
+## 第二次审查修复（2026-09-21）
+
+### 实现与顺序
+
+- 15000 迁移在任何号码或 schema 写入前检查全部 legacy receipt：Customer 必须以相同 `id/department_id` 存在，且当前 `customer.version` 必须精确等于 `receipt.result_customer_version`。不匹配时抛出不含客户/证件值的运维错误并由外层 `BEGIN/COMMIT` 原子回滚；只对版本可证明相等的数据构造快照。
+- 准入服务拆分为无拒绝的 `canonicalizeForFingerprint()` 与事务内 `validateAndNormalizeDomain()`。前者只做稳定 trim/NFKC/号码 canonicalization 和 SHA-256 输入构造；权限、可见性、行锁、既有回执、版本/DRAFT 判断完成后，才执行兼容矩阵、联系人、日期和材料领域校验。
+- 因而无权限/隐藏客户不会被领域错误侧漏，旧版本稳定返回 `CUSTOMER_VERSION_CONFLICT`；已有 Key 配上不兼容的新请求先按指纹返回 `IDEMPOTENCY_CONFLICT`，同键同指纹仍可直接重放快照。
+- 合同与实施计划明确：该能力尚未正式部署，正常升级不预期 legacy receipt；若异常存在且版本/关联不符，必须依据审计证据人工恢复或清理，迁移不得自动猜测历史响应。
+
+### TDD RED→GREEN
+
+- 在准入服务增加无权限、隐藏客户、旧版本、同 Key 不兼容异指纹四种错误优先级回归；在迁移测试增加版本/关联 guard 必须先于 `result_snapshot` schema 写入的顺序断言。
+- 首次运行 2 suites / 56 tests 得到 6 个预期失败：四种优先级均被 `CUSTOMER_ADMISSION_INCOMPLETE` 抢先，迁移 guard 缺失；另一个既有 not-found 用例因前置 normalize 未消费授权 mock 而串扰失败。实现拆分与 guard 后相同命令 2 suites / 56 tests 全部 GREEN。
+
+### PostgreSQL 17 探针
+
+- 随机端口全新 `postgres:17.11-alpine` 空库通过 21/21 `prisma migrate deploy`。
+- matching 库先执行前 20 个迁移并插入 `customer.version=2 / receipt.version=2`：15000 成功，`result_snapshot NOT NULL`、号码 `AB123`、快照 version=2 与可确认字段正确。
+- mismatch 库插入 `customer.version=3 / receipt.version=2`：15000 以预期无敏感值错误失败；事后 `result_snapshot` 列计数仍为 0、旧 normalized 值仍为 `legacy`，证明无半迁移。所有临时容器均已停止并自动删除，未触碰固定测试库。
+
+### 最终门禁
+
+- 最终候选聚焦准入/客户/迁移 5 suites / 105 tests、完整 customers 6 suites / 129 tests 均 PASS。
+- `prisma validate`、`pnpm check:fast`（architecture、Prisma generate、backend/frontend/root TypeScript、ESLint）、`pnpm spec:check`、受影响文件 Prettier check 与 `git diff --check` 全部 PASS。
+- 未运行固定测试库 E2E、浏览器 E2E 或完整 `pnpm verify`；随机端口 PG17 的空库/matching/mismatch 三路径已覆盖本次迁移风险。

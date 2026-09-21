@@ -444,10 +444,45 @@ describe('CustomerAdmissionService', () => {
     expect(assertAvailableVersions).not.toHaveBeenCalled();
   });
 
+  it('returns authorization failure before rejecting incompatible domain fields', async () => {
+    buildCustomerScope.mockRejectedValueOnce(
+      new ForbiddenException({
+        code: 'CUSTOMER_ACTION_FORBIDDEN',
+        message: 'forbidden',
+      }),
+    );
+
+    await expect(
+      service.admit(
+        actor,
+        customerId,
+        'forbidden-invalid-domain',
+        command({ customerType: 'ENTERPRISE', identityType: 'PASSPORT' }),
+      ),
+    ).rejects.toMatchObject({
+      response: { code: 'CUSTOMER_ACTION_FORBIDDEN' },
+    });
+    expect(queryRaw).not.toHaveBeenCalled();
+  });
+
   it('returns CUSTOMER_NOT_FOUND for a customer outside the current department scope', async () => {
     customerFindFirst.mockResolvedValueOnce(null);
     await expect(
       service.admit(actor, customerId, 'wrong-department', command()),
+    ).rejects.toMatchObject({ response: { code: 'CUSTOMER_NOT_FOUND' } });
+    expect(queryRaw).not.toHaveBeenCalled();
+  });
+
+  it('returns hidden-target not found before rejecting incompatible domain fields', async () => {
+    customerFindFirst.mockResolvedValueOnce(null);
+
+    await expect(
+      service.admit(
+        actor,
+        customerId,
+        'hidden-invalid-domain',
+        command({ customerType: 'ENTERPRISE', identityType: 'PASSPORT' }),
+      ),
     ).rejects.toMatchObject({ response: { code: 'CUSTOMER_NOT_FOUND' } });
     expect(queryRaw).not.toHaveBeenCalled();
   });
@@ -457,6 +492,22 @@ describe('CustomerAdmissionService', () => {
     customerFindFirst.mockResolvedValue(stale);
     await expect(
       service.admit(actor, customerId, 'stale', command()),
+    ).rejects.toMatchObject({
+      response: { code: 'CUSTOMER_VERSION_CONFLICT' },
+    });
+    expect(assertAvailableVersions).not.toHaveBeenCalled();
+  });
+
+  it('returns a stale-version conflict before rejecting incompatible domain fields', async () => {
+    customerFindFirst.mockResolvedValue({ ...current, version: 2 });
+
+    await expect(
+      service.admit(
+        actor,
+        customerId,
+        'stale-invalid-domain',
+        command({ customerType: 'ENTERPRISE', identityType: 'PASSPORT' }),
+      ),
     ).rejects.toMatchObject({
       response: { code: 'CUSTOMER_VERSION_CONFLICT' },
     });
@@ -542,6 +593,22 @@ describe('CustomerAdmissionService', () => {
       service.admit(actor, customerId, 'same-key', command()),
     ).rejects.toMatchObject({ response: { code: 'IDEMPOTENCY_CONFLICT' } });
     expect(customerUpdateMany).not.toHaveBeenCalled();
+  });
+
+  it('returns idempotency conflict before rejecting incompatible replay fields', async () => {
+    await service.admit(actor, customerId, 'invalid-reuse', command());
+    const receipt = receiptCreate.mock.calls[0]?.[0]?.data;
+    receiptFindUnique.mockResolvedValue(receipt);
+
+    await expect(
+      service.admit(
+        actor,
+        customerId,
+        'invalid-reuse',
+        command({ customerType: 'ENTERPRISE', identityType: 'PASSPORT' }),
+      ),
+    ).rejects.toMatchObject({ response: { code: 'IDEMPOTENCY_CONFLICT' } });
+    expect(assertAvailableVersions).toHaveBeenCalledTimes(1);
   });
 
   it('rolls back reference and customer writes when audit creation fails', async () => {

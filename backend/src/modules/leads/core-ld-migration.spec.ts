@@ -51,8 +51,19 @@ describe('CORE-LD migrations', () => {
 
   it('safely backfills immutable admission receipt snapshots before requiring them', () => {
     const snapshotSql = readMigration(admissionSnapshotMigrationName);
+    const versionGuardIndex = snapshotSql.indexOf(
+      'current customer version does not match receipt version',
+    );
+    const addSnapshotIndex = snapshotSql.indexOf(
+      'ADD COLUMN "result_snapshot" JSONB',
+    );
 
-    expect(snapshotSql).toContain('ADD COLUMN "result_snapshot" JSONB');
+    expect(versionGuardIndex).toBeGreaterThanOrEqual(0);
+    expect(versionGuardIndex).toBeLessThan(addSnapshotIndex);
+    expect(snapshotSql).toContain(
+      'customer."version" <> receipt."result_customer_version"',
+    );
+    expect(snapshotSql).toContain('customer."id" IS NULL');
     expect(snapshotSql).toContain('UPDATE "customer_admission_receipts"');
     expect(snapshotSql).toContain('jsonb_build_object');
     expect(snapshotSql).toContain('"result_customer_version"');
