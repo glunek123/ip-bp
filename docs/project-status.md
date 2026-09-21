@@ -8,7 +8,7 @@
 
 ## 当前任务
 
-**CORE-LD-001（最终审查修复中）**：最终全分支审查确认材料删除／恢复／清理与引用冻结之间缺少统一的 PostgreSQL 并发边界，且材料列表仍会扩散内部持久化字段。路线图已暂退为唯一 Current `CORE-LD-001`、唯一 Next `CORE-LD-002`；当前等待真实 PostgreSQL 确定性交错回归、实现修复、最终总审和正式门禁。此前候选的通过证据保留为历史事实，不绑定本次修复 tree。
+**CORE-LD-001（内部集成完成）**：材料生命周期最终修复已统一删除／恢复／清理与引用冻结的 PostgreSQL 并发边界，并以显式响应DTO封闭内部字段。最终全分支总审`APPROVED`，Critical／Important／Minor均为0；固定修复候选`18ee49fc36a69da948aed90eec36711c5c60a43b`、tree`d742a1b6caeb04d2b7f9f18ab7186bb77b2368f0`已通过正式`verify:slice:core-ld`。路线图据此推进为唯一Current `CORE-LD-002｜运营推送至真实客户端审核`、唯一Next `CORE-LD-003｜客户确认侵权并进入待确认`。
 
 ## 已实现
 
@@ -25,13 +25,10 @@
 
 ## 最近验证
 
-- Node v24.21.0、pnpm 11.27.0与项目锁定环境一致。固定测试端口55433被Windows系统排除，本轮在锁定PostgreSQL 17镜像上使用随机本地端口和显式隔离DSN，不降级到开发库。
-- `test:unit:core-ld`后端226/226、前端71/71，`test:context` 67/67，`check:fast:prepared`的架构、全仓类型和ESLint通过。`test:e2e:core-ld` 9/9通过，覆盖8组业务场景和1组迁移探针；空库完整22迁移、上一schema映射／保留／补权和两个故障阶段回滚均已真实执行。
-- 开发期E2E暴露并修复两个实现缺陷：计数器999后先触发数据库CHECK而返500，以及Prisma adapter的`P2010/40001`未进入既定可串行化重试。修复后第1000号返409 `LEAD_NUMBER_EXHAUSTED`，并发成功编号无重复，重试耗尽返回稳定`VERSION_CONFLICT`。
-- 首轮独立Q2固定`c60bd18`后报告Critical 0／Important 4／Minor 1。当前修复已禁止PostgreSQL连接query覆盖，随机端口必须绑定唯一健康测试容器和锁定17.11镜像，迁移探针证明4次补权INSERT后才在授权修订UPDATE失败并整体回滚；ADMITTED负例只保留主体／证件类型不兼容。修复后上下文69/69、CORE-LD E2E 9/9及`check:fast`通过，仍待固定提交与独立复审。
-- 修复候选`fe2ba4e`独立复审已`APPROVED`，Critical 0／Important 0；唯一Minor是状态文档把路线推进写在正式门禁之前，本次只纠正执行顺序，不改变业务实现或范围。
-- 时序修复候选`d4063f0`、tree`57021801a858033ce4f4befc3be0f2b5808b5073`的正式`verify:slice:core-ld`通过并生成Evidence v2：后端226项、前端71项、架构／类型／ESLint／Slice格式、后端构建及真实PostgreSQL／Chromium 9/9均通过。门禁后工作树保持干净。
+- Node v24.21.0、pnpm 11.27.0与项目锁定环境一致；使用锁定PostgreSQL 17.11镜像、随机本地端口和显式隔离测试DSN，不降级到开发库。
+- 最终全分支总审结论为`APPROVED`，Critical 0／Important 0／Minor 0。材料删除在Serializable事务内完成当前授权、material/current-version facts、引用重查、CAS与审计并支持`P2034`及`P2010/40001`整事务重试；恢复与cleanup共享material→current content version锁顺序，真实交错不产生`ACTIVE + PURGED`。
+- 固定候选`18ee49fc36a69da948aed90eec36711c5c60a43b`、tree`d742a1b6caeb04d2b7f9f18ab7186bb77b2368f0`的正式`verify:slice:core-ld`通过并生成Evidence v2：后端228项、前端71项、架构／类型／ESLint、Slice格式、后端构建及真实PostgreSQL／Chromium 13/13均通过。证据位于Git common目录`dev-cor-validation-evidence/d742a1b6caeb04d2b7f9f18ab7186bb77b2368f0.json`。
 
 ## 下一步
 
-完成材料生命周期并发修复与显式响应 DTO，先通过最终总审，再在最终干净 tree 上运行并绑定 `verify:slice:core-ld` Evidence v2；成功后方可推进 CORE-LD-002。不自动推送、发布或操作生产数据库。
+状态推进提交形成的新tree按既定流程重新绑定同一`verify:slice:core-ld` Evidence v2；随后从CORE-LD-002开始推送与最小真实客户端切片。不自动推送、发布或操作生产数据库。
