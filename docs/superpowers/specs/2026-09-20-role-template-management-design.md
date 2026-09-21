@@ -136,4 +136,4 @@ Prisma `PermissionAction` 新增 `ROLE_MANAGE @map("role.manage")`。权限语�
 
 ## 10. 后续
 
-本 Slice 完成后，唯一 Next Slice 为“多联系人及客户关系维护”。角色模板停用／删除、全局角色、自定义策略、跨部门管理和业务域新增 Action 仍需独立设计，不因本任务自动获批。
+本 Slice 收口时记录的唯一 Next Slice 为“多联系人及客户关系维护”；该历史顺序已于2026-09-21被SD-37和[核心主线设计](2026-09-21-core-business-mainline-roadmap-design.md)替代。角色模板停用／删除、全局角色、自定义策略、跨部门管理和业务域新增Action仍需独立设计，不因本任务自动获批。

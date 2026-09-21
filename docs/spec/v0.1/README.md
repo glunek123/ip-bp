@@ -14,7 +14,7 @@
 
 当前实现状态与开发顺序只见[功能开发路线图](../../feature-roadmap.md)，当前活动任务只见[项目状态](../../project-status.md)。
 
-固定输入：[反向证据指纹](EVIDENCE.md)、[v158事实](../../demo-reverse/v158/AS-IS.md)、[12项用户决定](../../demo-reverse/v158/DECISIONS.md)、[纠偏](../../demo-reverse/v158/CORRECTIONS.md)及[INPUT-001](../../deferred-design.md)。新增决定见[SD-01～36](DECISIONS.md)；BR-03原始回件及指纹也登记在EVIDENCE，后续确认依据登记为INPUT-010～015。目标条款与Demo或原建议不同可能是有意纠偏；不得用源码反向覆盖用户决定。
+固定输入：[反向证据指纹](EVIDENCE.md)、[v158事实](../../demo-reverse/v158/AS-IS.md)、[12项用户决定](../../demo-reverse/v158/DECISIONS.md)、[纠偏](../../demo-reverse/v158/CORRECTIONS.md)及[INPUT-001](../../deferred-design.md)。新增决定见[SD-01～37](DECISIONS.md)；BR-03原始回件及指纹也登记在EVIDENCE，后续确认依据登记为INPUT-010～015。目标条款与Demo或原建议不同可能是有意纠偏；不得用源码反向覆盖用户决定。
 
 ## 文档导航：按用途读取
 
