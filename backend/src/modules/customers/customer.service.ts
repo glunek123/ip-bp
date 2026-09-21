@@ -14,7 +14,7 @@ import {
   UpdateCustomerDraftDto,
 } from './customer.dto';
 
-type CustomerRecord = {
+export type CustomerRecord = {
   id: string;
   name: string;
   normalizedName: string;
@@ -28,6 +28,10 @@ type CustomerRecord = {
   admissionContactName: string | null;
   admissionContactPhone: string | null;
   admissionContactEmail: string | null;
+  identityValidFrom: Date | null;
+  identityValidTo: Date | null;
+  identityValidityMode: 'FIXED' | 'LONG_TERM' | 'NOT_STATED' | null;
+  admittedAt: Date | null;
   profileStatus: 'DRAFT' | 'ADMITTED';
   departmentId: string;
   responsibleUserId: string;
@@ -48,7 +52,11 @@ export type CustomerSummary = {
   admissionContactName: string | null;
   admissionContactPhone: string | null;
   admissionContactEmail: string | null;
-  profileStatus: 'draft';
+  identityValidFrom: string | null;
+  identityValidTo: string | null;
+  identityValidityMode: 'FIXED' | 'LONG_TERM' | 'NOT_STATED' | null;
+  admittedAt: string | null;
+  profileStatus: 'draft' | 'admitted';
   departmentId: string;
   responsibleUserId: string;
   version: number;
@@ -56,7 +64,7 @@ export type CustomerSummary = {
 };
 
 export type CustomerDetail = CustomerSummary & {
-  capabilities: { editRoutine: boolean };
+  capabilities: { editRoutine: boolean; admit: boolean };
   history: Array<{
     action: string;
     actorUserId: string;
@@ -233,7 +241,12 @@ export class CustomerService {
     });
     if (customer === null) throw this.notFound();
 
-    const [history, editRoutine] = await Promise.all([
+    const facts = {
+      departmentId: customer.departmentId,
+      responsibleUserId: customer.responsibleUserId,
+      ...(customer.teamId === null ? {} : { teamId: customer.teamId }),
+    };
+    const [history, editRoutine, admit] = await Promise.all([
       this.database.auditEvent.findMany({
         where: {
           departmentId: actor.departmentId,
@@ -243,15 +256,16 @@ export class CustomerService {
         orderBy: [{ createdAt: 'desc' }, { id: 'desc' }],
         select: { action: true, actorUserId: true, createdAt: true },
       }),
-      this.accessControl.canAuthorizeCustomer(actor, 'customer.edit-routine', {
-        departmentId: customer.departmentId,
-        responsibleUserId: customer.responsibleUserId,
-        ...(customer.teamId === null ? {} : { teamId: customer.teamId }),
-      }),
+      this.accessControl.canAuthorizeCustomer(
+        actor,
+        'customer.edit-routine',
+        facts,
+      ),
+      this.accessControl.canAuthorizeCustomer(actor, 'customer.admit', facts),
     ]);
     return {
       ...this.toSummary(customer),
-      capabilities: { editRoutine },
+      capabilities: { editRoutine, admit },
       history: history.map((event) => ({
         action: event.action,
         actorUserId: event.actorUserId,
@@ -678,24 +692,7 @@ export class CustomerService {
   }
 
   private toSummary(customer: CustomerRecord): CustomerSummary {
-    return {
-      id: customer.id,
-      name: customer.name,
-      customerType: customer.customerType,
-      identityType: customer.identityType,
-      identityNumber: customer.identityNumber,
-      issuingCountryOrRegion: customer.issuingCountryOrRegion,
-      category: customer.category,
-      region: customer.region,
-      admissionContactName: customer.admissionContactName ?? null,
-      admissionContactPhone: customer.admissionContactPhone ?? null,
-      admissionContactEmail: customer.admissionContactEmail ?? null,
-      profileStatus: 'draft',
-      departmentId: customer.departmentId,
-      responsibleUserId: customer.responsibleUserId,
-      version: customer.version,
-      updatedAt: customer.updatedAt.toISOString(),
-    };
+    return toCustomerSummary(customer);
   }
 
   private notFound(): NotFoundException {
@@ -740,4 +737,37 @@ export class CustomerService {
     if (record.code === 'P2002') return true;
     return this.isUniqueConstraintError(record.cause);
   }
+}
+
+export function toCustomerSummary(customer: CustomerRecord): CustomerSummary {
+  return {
+    id: customer.id,
+    name: customer.name,
+    customerType: customer.customerType ?? null,
+    identityType: customer.identityType ?? null,
+    identityNumber: customer.identityNumber ?? null,
+    issuingCountryOrRegion: customer.issuingCountryOrRegion ?? null,
+    category: customer.category ?? null,
+    region: customer.region ?? null,
+    admissionContactName: customer.admissionContactName ?? null,
+    admissionContactPhone: customer.admissionContactPhone ?? null,
+    admissionContactEmail: customer.admissionContactEmail ?? null,
+    identityValidFrom:
+      customer.identityValidFrom === null ||
+      customer.identityValidFrom === undefined
+        ? null
+        : customer.identityValidFrom.toISOString().slice(0, 10),
+    identityValidTo:
+      customer.identityValidTo === null ||
+      customer.identityValidTo === undefined
+        ? null
+        : customer.identityValidTo.toISOString().slice(0, 10),
+    identityValidityMode: customer.identityValidityMode ?? null,
+    admittedAt: customer.admittedAt?.toISOString() ?? null,
+    profileStatus: customer.profileStatus === 'ADMITTED' ? 'admitted' : 'draft',
+    departmentId: customer.departmentId,
+    responsibleUserId: customer.responsibleUserId,
+    version: customer.version,
+    updatedAt: customer.updatedAt.toISOString(),
+  };
 }

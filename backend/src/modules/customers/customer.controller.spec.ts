@@ -13,6 +13,7 @@ import {
 } from '../../access-control/identity.adapter';
 import { ActorContextGuard } from '../../access-control/actor-context.guard';
 import { CustomerController } from './customer.controller';
+import { CustomerAdmissionService } from './customer-admission.service';
 import { CustomerService } from './customer.service';
 import { AuthService } from '../../auth/auth.service';
 
@@ -29,6 +30,7 @@ describe('CustomerController', () => {
   const get = jest.fn();
   const findDuplicates = jest.fn();
   const updateDraft = jest.fn();
+  const admit = jest.fn();
   let app: INestApplication;
 
   beforeAll(async () => {
@@ -47,6 +49,7 @@ describe('CustomerController', () => {
           provide: CustomerService,
           useValue: { createDraft, list, get, findDuplicates, updateDraft },
         },
+        { provide: CustomerAdmissionService, useValue: { admit } },
       ],
     }).compile();
     app = module.createNestApplication();
@@ -287,6 +290,90 @@ describe('CustomerController', () => {
       })
       .expect(400);
     expect(updateDraft).not.toHaveBeenCalled();
+  });
+
+  it('admits a customer with a required 1..128 character Idempotency-Key', async () => {
+    admit.mockResolvedValue({
+      id: customerId,
+      profileStatus: 'admitted',
+      version: 2,
+    });
+    const body = {
+      expectedVersion: 1,
+      customerType: 'ENTERPRISE',
+      name: ' 客户甲 ',
+      identityType: 'BUSINESS_LICENSE',
+      identityNumber: ' 91310000ABC123 ',
+      identityValidityMode: 'LONG_TERM',
+      admissionContactName: ' 张三 ',
+      admissionContactPhone: ' 13800138000 ',
+      identityDocumentContentVersionIds: [
+        '44444444-4444-4444-8444-444444444444',
+      ],
+    };
+    await request(app.getHttpServer())
+      .post(`/api/v1/customers/${customerId}/admission`)
+      .set('Authorization', 'Bearer allowed-token')
+      .set('Idempotency-Key', ' command-1 ')
+      .send(body)
+      .expect(201)
+      .expect({ id: customerId, profileStatus: 'admitted', version: 2 });
+    expect(admit).toHaveBeenCalledWith(actor, customerId, 'command-1', {
+      ...body,
+      name: '客户甲',
+      identityNumber: '91310000ABC123',
+      admissionContactName: '张三',
+      admissionContactPhone: '13800138000',
+    });
+  });
+
+  it.each([undefined, '   ', 'x'.repeat(129)])(
+    'rejects an invalid admission Idempotency-Key %#',
+    async (key) => {
+      const pending = request(app.getHttpServer())
+        .post(`/api/v1/customers/${customerId}/admission`)
+        .set('Authorization', 'Bearer allowed-token');
+      if (key !== undefined) pending.set('Idempotency-Key', key);
+      await pending
+        .send({
+          expectedVersion: 1,
+          customerType: 'ENTERPRISE',
+          name: '客户甲',
+          identityType: 'BUSINESS_LICENSE',
+          identityNumber: '91310000ABC123',
+          identityValidityMode: 'LONG_TERM',
+          admissionContactName: '张三',
+          admissionContactPhone: '13800138000',
+          identityDocumentContentVersionIds: [
+            '44444444-4444-4444-8444-444444444444',
+          ],
+        })
+        .expect(400);
+      expect(admit).not.toHaveBeenCalled();
+    },
+  );
+
+  it('strictly rejects unknown or free-text admission fields', async () => {
+    await request(app.getHttpServer())
+      .post(`/api/v1/customers/${customerId}/admission`)
+      .set('Authorization', 'Bearer allowed-token')
+      .set('Idempotency-Key', 'command-2')
+      .send({
+        expectedVersion: 1,
+        customerType: '企业',
+        name: '客户甲',
+        identityType: 'credit-code',
+        identityNumber: '91310000ABC123',
+        identityValidityMode: 'LONG_TERM',
+        admissionContactName: '张三',
+        admissionContactPhone: '13800138000',
+        identityDocumentContentVersionIds: [
+          '44444444-4444-4444-8444-444444444444',
+        ],
+        departmentId: actor.departmentId,
+      })
+      .expect(400);
+    expect(admit).not.toHaveBeenCalled();
   });
 
   it('rejects a malformed customer id without reaching the service', async () => {

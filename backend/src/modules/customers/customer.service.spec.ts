@@ -89,11 +89,19 @@ describe('CustomerService', () => {
     ).resolves.toEqual({
       id: created.id,
       name: '测试客户甲',
+      customerType: null,
+      identityType: null,
+      identityNumber: null,
+      issuingCountryOrRegion: null,
       category: null,
       region: null,
       admissionContactName: null,
       admissionContactPhone: null,
       admissionContactEmail: null,
+      identityValidFrom: null,
+      identityValidTo: null,
+      identityValidityMode: null,
+      admittedAt: null,
       profileStatus: 'draft',
       departmentId: actor.departmentId,
       responsibleUserId: actor.userId,
@@ -324,6 +332,60 @@ describe('CustomerService', () => {
       orderBy: [{ createdAt: 'desc' }, { id: 'desc' }],
       select: { action: true, actorUserId: true, createdAt: true },
     });
+  });
+
+  it('exposes admitted validity, admittedAt, history, and admit capability', async () => {
+    const customer = {
+      id: '33333333-3333-4333-8333-333333333333',
+      name: '已准入客户',
+      customerType: 'ENTERPRISE',
+      identityType: 'BUSINESS_LICENSE',
+      identityNumber: '91310000ABC123',
+      normalizedIdentityNumber: '91310000ABC123',
+      issuingCountryOrRegion: '中国',
+      identityValidFrom: new Date('2026-01-01T00:00:00.000Z'),
+      identityValidTo: null,
+      identityValidityMode: 'LONG_TERM',
+      admittedAt: new Date('2026-09-21T03:00:00.000Z'),
+      category: null,
+      region: null,
+      admissionContactName: '张三',
+      admissionContactPhone: '13800138000',
+      admissionContactEmail: null,
+      profileStatus: 'ADMITTED',
+      departmentId: actor.departmentId,
+      responsibleUserId: actor.userId,
+      teamId: null,
+      version: 2,
+      updatedAt: new Date('2026-09-21T03:00:00.000Z'),
+    };
+    customerFindFirst.mockResolvedValue(customer);
+    auditFindMany.mockResolvedValue([
+      {
+        action: 'customer.admitted',
+        actorUserId: actor.userId,
+        createdAt: new Date('2026-09-21T03:00:00.000Z'),
+      },
+    ]);
+    canAuthorizeCustomer
+      .mockResolvedValueOnce(true)
+      .mockResolvedValueOnce(false);
+
+    await expect(service.get(actor, customer.id)).resolves.toMatchObject({
+      profileStatus: 'admitted',
+      identityValidFrom: '2026-01-01',
+      identityValidTo: null,
+      identityValidityMode: 'LONG_TERM',
+      admittedAt: '2026-09-21T03:00:00.000Z',
+      capabilities: { editRoutine: true, admit: false },
+      history: [expect.objectContaining({ action: 'customer.admitted' })],
+    });
+    expect(canAuthorizeCustomer).toHaveBeenNthCalledWith(
+      2,
+      actor,
+      'customer.admit',
+      expect.objectContaining({ departmentId: actor.departmentId }),
+    );
   });
 
   it('keeps exact identity results independent from a crowded same-name result set', async () => {
@@ -751,5 +813,67 @@ describe('CustomerService', () => {
       response: { code: 'CUSTOMER_VERSION_CONFLICT' },
     });
     expect(txAuditCreate).not.toHaveBeenCalled();
+  });
+
+  it('keeps an admitted customer admitted during a routine edit', async () => {
+    const current = {
+      id: '33333333-3333-4333-8333-333333333333',
+      name: '已准入客户',
+      normalizedName: '已准入客户',
+      category: null,
+      region: null,
+      customerType: 'ENTERPRISE',
+      identityType: 'BUSINESS_LICENSE',
+      identityNumber: '91310000ABC123',
+      normalizedIdentityNumber: '91310000ABC123',
+      issuingCountryOrRegion: '中国',
+      admissionContactName: '张三',
+      admissionContactPhone: '13800138000',
+      admissionContactEmail: null,
+      identityValidFrom: new Date('2026-01-01T00:00:00.000Z'),
+      identityValidTo: null,
+      identityValidityMode: 'LONG_TERM',
+      admittedAt: new Date('2026-09-21T03:00:00.000Z'),
+      profileStatus: 'ADMITTED',
+      departmentId: actor.departmentId,
+      responsibleUserId: actor.userId,
+      teamId: null,
+      version: 2,
+      updatedAt: new Date('2026-09-21T03:00:00.000Z'),
+    };
+    const updated = {
+      ...current,
+      category: '重点客户',
+      version: 3,
+      updatedAt: new Date('2026-09-21T04:00:00.000Z'),
+    };
+    const txUpdateMany = jest.fn().mockResolvedValue({ count: 1 });
+    transaction.mockImplementation(async (callback) =>
+      callback({
+        customer: {
+          findFirst: jest
+            .fn()
+            .mockResolvedValueOnce(current)
+            .mockResolvedValueOnce(null),
+          updateMany: txUpdateMany,
+          findUnique: jest.fn().mockResolvedValue(updated),
+        },
+        auditEvent: { create: jest.fn().mockResolvedValue({ id: 'audit-1' }) },
+      }),
+    );
+
+    await expect(
+      service.updateDraft(actor, current.id, {
+        expectedVersion: 2,
+        category: '重点客户',
+      }),
+    ).resolves.toMatchObject({
+      profileStatus: 'admitted',
+      admittedAt: '2026-09-21T03:00:00.000Z',
+      version: 3,
+    });
+    const updateData = txUpdateMany.mock.calls[0]?.[0]?.data;
+    expect(updateData).not.toHaveProperty('profileStatus');
+    expect(updateData).not.toHaveProperty('admittedAt');
   });
 });
