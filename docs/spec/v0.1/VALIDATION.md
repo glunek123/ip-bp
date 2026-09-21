@@ -10,7 +10,7 @@
 
 首个固定候选`c60bd18`的独立Q2为Critical 0／Important 4／Minor 1：PostgreSQL query参数可绕过URL字段检查；随机端口未绑定实际目标容器；补权故障在Grant INSERT阶段过早失败；路线图提前推进；ADMITTED负例同时缺少其他必填事实。修复候选现在禁止所有连接query，以实际`pg`解析器校验最终host／port／user／database／password，随机覆盖只允许改变端口且必须匹配唯一运行中、健康、测试身份和锁定PostgreSQL 17.11镜像的容器；外部条件指纹绑定实际容器ID与端口映射，fixture复用同一URL断言。迁移与文档问题也按上段及路线图修复。安全边界8/8、完整上下文69/69和完整CORE-LD E2E 9/9通过；独立复审与正式Level 2仍待下一固定候选，不据此推进Current。
 
-本记录只陈述上述已执行证据；最终`verify:slice:core-ld` Evidence v2和独立Q2复审结论将绑定同一最终候选tree并保存在树外，本段不提前声称它们通过。范围不包含推送、真实客户端、客户侵权结论、取证／公证、CSV／OCR／爬虫、生产E02 Provider、发布或生产迁移。
+独立Q2复审固定修复候选`fe2ba4e`并得出`APPROVED`，Critical 0／Important 0；唯一新增Minor是状态文档执行顺序与路线图冲突，已在不改变业务实现的时序修复候选关闭。保持CORE-LD-001为Current的提交`d4063f0`、tree`57021801a858033ce4f4befc3be0f2b5808b5073`已通过正式`verify:slice:core-ld`并生成Evidence v2：后端226项、前端71项、架构／类型／ESLint／Slice格式、后端构建及真实PostgreSQL 17／Chromium 9/9均通过。该证据满足推进状态的前置；状态提交形成的新tree须再运行一次正式门禁并以树外Evidence v2绑定，本段不预填其结果。范围不包含推送、真实客户端、客户侵权结论、取证／公证、CSV／OCR／爬虫、生产E02 Provider、发布或生产迁移。
 
 ## ROLE-TEMPLATE-001角色模板复制与Grant配置候选（2026-09-20）
 
