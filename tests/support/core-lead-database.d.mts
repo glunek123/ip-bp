@@ -58,6 +58,25 @@ export function getMaterialByVersion(versionId: string): Promise<{
   materialId: string;
   material: { id: string };
 } | null>;
+export function installMaterialStatusBarrier(
+  materialId: string,
+  status: 'ACTIVE' | 'DELETED',
+): Promise<{ wait(): Promise<void>; release(): Promise<void> }>;
+export function setMaterialDeletedAt(
+  materialId: string,
+  deletedAt: Date,
+): Promise<void>;
+export function getMaterialLifecycle(materialId: string): Promise<{
+  status: string;
+  version: number;
+  contentVersions: Array<{ status: string }>;
+} | null>;
+export function getMaterialAuditActions(materialId: string): Promise<string[]>;
+export function startMaterialCleanup(now: Date): {
+  deleteStarted: Promise<void>;
+  allowDelete(): void;
+  result: Promise<void>;
+};
 export function verifyCoreLeadMigration(): Promise<{
   empty: { tables: string[] };
   upgrade: {

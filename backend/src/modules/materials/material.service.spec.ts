@@ -913,6 +913,11 @@ describe('MaterialService', () => {
     await expect(
       fixture.service.restore(actor, 'material-1', 2),
     ).resolves.toMatchObject({ status: 'ACTIVE', version: 3 });
+    expect(
+      fixture.transaction.auditEvent.create.mock.calls.map(
+        ([input]) => input.data.action,
+      ),
+    ).toEqual(['material.deleted', 'material.restored']);
 
     fixture.db.material.findFirst.mockResolvedValue({
       ...materialRecord(),
@@ -923,6 +928,38 @@ describe('MaterialService', () => {
     await expect(
       fixture.service.restore(actor, 'material-1', 2),
     ).rejects.toMatchObject({ response: { code: 'VERSION_CONFLICT' } });
+  });
+
+  it('retries the whole serializable delete transaction for adapter 40001', async () => {
+    const fixture = createFixture();
+    fixture.db.material.findFirst.mockResolvedValue(materialRecord());
+    fixture.db.materialReference.count.mockResolvedValue(0);
+    fixture.db.$transaction.mockRejectedValueOnce({
+      code: 'P2010',
+      meta: {
+        driverAdapterError: { cause: { originalCode: '40001' } },
+      },
+    });
+
+    await expect(
+      fixture.service.softDelete(actor, 'material-1', 1),
+    ).resolves.toEqual({ id: 'material-1', status: 'DELETED', version: 2 });
+    expect(fixture.db.$transaction).toHaveBeenCalledTimes(2);
+    expect(fixture.db.$transaction).toHaveBeenNthCalledWith(
+      2,
+      expect.any(Function),
+      { isolationLevel: 'Serializable' },
+    );
+  });
+
+  it('maps exhausted P2034 delete retries to the stable version conflict', async () => {
+    const fixture = createFixture();
+    fixture.db.$transaction.mockRejectedValue({ code: 'P2034' });
+
+    await expect(
+      fixture.service.softDelete(actor, 'material-1', 1),
+    ).rejects.toMatchObject({ response: { code: 'VERSION_CONFLICT' } });
+    expect(fixture.db.$transaction).toHaveBeenCalledTimes(3);
   });
 
   it('returns validated available-version facts in caller order with stable purposes', async () => {
@@ -1534,7 +1571,10 @@ function materialRecord() {
     status: 'ACTIVE',
     version: 1,
     deletedAt: null,
-    contentVersions: [{ uploadedBy: actor.userId }],
+    currentVersionId: 'version-1',
+    contentVersions: [
+      { id: 'version-1', uploadedBy: actor.userId, status: 'AVAILABLE' },
+    ],
   };
 }
 
@@ -1594,36 +1634,56 @@ function asTransactionClient(
 
 function createFixture() {
   const coordinator = new MaterialStorageKeyCoordinator();
+  const materialFindFirst = jest.fn();
+  const materialReferenceCount = jest.fn();
+  const customerFindFirst = jest.fn();
+  const uploadDraftFindFirst = jest.fn<
+    Promise<{ id: string; expiresAt: Date } | null>,
+    []
+  >(async () => ({
+    id: 'draft-1',
+    expiresAt: new Date(now.getTime() + 60_000),
+  }));
+  const leadFindFirst = jest.fn();
   const transaction = {
     $executeRawUnsafe: jest.fn(async () => 1),
+    $queryRawUnsafe: jest.fn(async () => [{ id: 'material-1' }]),
+    customer: { findFirst: customerFindFirst },
+    lead: { findFirst: leadFindFirst },
     material: {
+      findFirst: materialFindFirst,
       create: jest.fn(async ({ data }) => data),
       update: jest.fn(async ({ data }) => data),
       updateMany: jest.fn(async () => ({ count: 1 })),
       count: jest.fn(async () => 0),
     },
     contentVersion: { create: jest.fn(async ({ data }) => data) },
-    uploadDraft: { updateMany: jest.fn(async () => ({ count: 1 })) },
+    uploadDraft: {
+      findFirst: uploadDraftFindFirst,
+      updateMany: jest.fn(async () => ({ count: 1 })),
+    },
+    materialReference: {
+      count: materialReferenceCount,
+      findMany: jest.fn(),
+      deleteMany: jest.fn(),
+      createMany: jest.fn(),
+    },
+    auditEvent: { create: jest.fn(async ({ data }) => data) },
   };
   const db = {
-    customer: { findFirst: jest.fn() },
+    customer: { findFirst: customerFindFirst },
     uploadDraft: {
       create: jest.fn(async ({ data }) => ({ id: 'draft-1', ...data })),
-      findFirst: jest.fn<Promise<{ id: string; expiresAt: Date } | null>, []>(
-        async () => ({
-          id: 'draft-1',
-          expiresAt: new Date(now.getTime() + 60_000),
-        }),
-      ),
+      findFirst: uploadDraftFindFirst,
       findUnique: jest.fn(),
       updateMany: jest.fn(async () => ({ count: 1 })),
     },
     material: {
-      findFirst: jest.fn(),
+      findFirst: materialFindFirst,
       findMany: jest.fn(),
       updateMany: jest.fn(),
     },
-    materialReference: { count: jest.fn() },
+    materialReference: { count: materialReferenceCount },
     $transaction: jest.fn(
       async (callback: (value: typeof transaction) => Promise<unknown>) =>
         callback(transaction),

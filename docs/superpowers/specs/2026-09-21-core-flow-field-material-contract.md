@@ -72,6 +72,7 @@ health() -> ready | unavailable
 4. 同一`sha256`只用于提示本次对象内重复上传，不跨部门查重、复用或暴露存在性；即便字节相同，每个部门和业务对象仍保持自己的授权关系。
 5. E02未关闭前，内部MVP只承诺受控格式、真实MIME、大小和哈希校验，不声称已完成病毒扫描、生产加密、备份或灾难恢复。
 6. 每个部门内的同一owner最多保留10个`CUSTOMER_IDENTITY`或20个`LEAD_SCREENSHOT`活跃材料；finalize和restore必须在数据库事务内取得完全相同的owner／category串行锁，重新计数ACTIVE材料后再执行创建或恢复CAS，不允许删除后补上传再恢复或并发绕过。
+7. 删除必须在有界重试的Serializable事务内重新读取当前授权、材料／当前内容版本、引用，完成版本CAS和`material.deleted`审计；恢复的CAS与`material.restored`审计也必须同事务。准入或线索冻结在同一材料事实上的并发读写必须形成SSI冲突，重试后若已出现引用则稳定拒绝删除。恢复与后台清理按material→current content version的统一顺序取得`FOR NO KEY UPDATE`行锁；cleanup claim先把内容版本置为`DELETED`再释放锁，恢复只接受仍为`AVAILABLE`且未越过90天截止的当前版本，任何方向都不得产生`ACTIVE`材料配`PURGED`字节。
 
 新业务对象上传使用服务端预留身份，不允许浏览器自行生成正式业务ID：客户材料必须提交已有`customerId`；新线索第一次创建`UploadDraft(ownerType=LEAD_DRAFT)`时由服务端同时生成`reservedOwnerId`，同一操作者可在当前部门继续使用该ID创建其余截图。`CreateLeadCommand.reservedLeadId`消费该预留ID后，把材料owner原子改为`LEAD`并建立精确版本引用；未消费的`LEAD_DRAFT`及Blob按24小时过期规则清理。没有预上传截图时，创建Command由服务端直接生成线索ID。
 

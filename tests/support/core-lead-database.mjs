@@ -2,6 +2,7 @@ import { createRequire } from 'node:module';
 import { resolve } from 'node:path';
 import { randomUUID } from 'node:crypto';
 import { mkdir, readFile, readdir, rm } from 'node:fs/promises';
+import { setImmediate as waitForImmediate } from 'node:timers/promises';
 import { validateIsolatedTestDatabaseUrl } from '../../scripts/test-environment.mjs';
 
 const requireFromBackend = createRequire(
@@ -11,6 +12,12 @@ const { PrismaPg } = requireFromBackend('@prisma/adapter-pg');
 const { Client } = requireFromBackend('pg');
 const { PrismaClient } = requireFromBackend(
   './dist/generated/prisma/client.js',
+);
+const { MaterialCleanupService } = requireFromBackend(
+  './dist/modules/materials/material-cleanup.service.js',
+);
+const { MaterialStorageKeyCoordinator } = requireFromBackend(
+  './dist/modules/materials/material-storage-key-coordinator.js',
 );
 
 const databaseUrl = process.env.DATABASE_URL;
@@ -72,6 +79,12 @@ const actionNames = Object.freeze({
 });
 
 async function dropFaults() {
+  await database.$executeRawUnsafe(
+    'DROP TRIGGER IF EXISTS "core_ld_material_barrier" ON "materials"',
+  );
+  await database.$executeRawUnsafe(
+    'DROP FUNCTION IF EXISTS core_ld_material_barrier()',
+  );
   for (const [table, constraint] of [
     ['audit_events', 'core_ld_reject_audit'],
     ['lead_products', 'core_ld_reject_product'],
@@ -81,6 +94,119 @@ async function dropFaults() {
       `ALTER TABLE "${table}" DROP CONSTRAINT IF EXISTS "${constraint}"`,
     );
   }
+}
+
+const materialBarrierKey = 918273645;
+
+export async function installMaterialStatusBarrier(materialId, status) {
+  if (!/^[0-9a-f-]{36}$/iu.test(materialId)) {
+    throw new Error('Invalid material barrier id');
+  }
+  if (status !== 'ACTIVE' && status !== 'DELETED') {
+    throw new Error('Invalid material barrier status');
+  }
+  const blocker = new Client({ connectionString: databaseUrl });
+  await blocker.connect();
+  await blocker.query('SELECT pg_advisory_lock($1)', [materialBarrierKey]);
+  await database.$executeRawUnsafe(
+    `CREATE FUNCTION core_ld_material_barrier() RETURNS trigger
+     LANGUAGE plpgsql AS $$
+     BEGIN
+       IF NEW."id" = '${materialId}'::uuid AND NEW."status" = '${status}' THEN
+         PERFORM pg_advisory_xact_lock(${materialBarrierKey});
+       END IF;
+       RETURN NEW;
+     END
+     $$`,
+  );
+  await database.$executeRawUnsafe(
+    `CREATE TRIGGER "core_ld_material_barrier"
+     BEFORE UPDATE ON "materials"
+     FOR EACH ROW EXECUTE FUNCTION core_ld_material_barrier()`,
+  );
+  return {
+    async wait() {
+      const deadline = Date.now() + 10_000;
+      while (Date.now() < deadline) {
+        const waiting = await database.$queryRawUnsafe(
+          `SELECT EXISTS (
+             SELECT 1 FROM pg_locks
+             WHERE locktype = 'advisory' AND granted = false
+           ) AS waiting`,
+        );
+        if (waiting[0]?.waiting === true) return;
+        await waitForImmediate();
+      }
+      throw new Error('Material status transition did not reach the barrier');
+    },
+    async release() {
+      await blocker.query('SELECT pg_advisory_unlock($1)', [
+        materialBarrierKey,
+      ]);
+      await blocker.end();
+    },
+  };
+}
+
+export async function setMaterialDeletedAt(materialId, deletedAt) {
+  await database.material.update({
+    where: { id: materialId },
+    data: { deletedAt },
+  });
+}
+
+export async function getMaterialLifecycle(materialId) {
+  return database.material.findUnique({
+    where: { id: materialId },
+    include: { contentVersions: { orderBy: { createdAt: 'asc' } } },
+  });
+}
+
+export async function getMaterialAuditActions(materialId) {
+  const rows = await database.auditEvent.findMany({
+    where: { resourceType: 'material', resourceId: materialId },
+    orderBy: { createdAt: 'asc' },
+    select: { action: true },
+  });
+  return rows.map(({ action }) => action);
+}
+
+export function startMaterialCleanup(now) {
+  let markDeleteStarted;
+  let allowDelete;
+  const deleteStarted = new Promise((resolvePromise) => {
+    markDeleteStarted = resolvePromise;
+  });
+  const deleteAllowed = new Promise((resolvePromise) => {
+    allowDelete = resolvePromise;
+  });
+  const storage = {
+    async delete() {
+      markDeleteStarted();
+      await deleteAllowed;
+    },
+    async health() {
+      return 'ready';
+    },
+    async open() {
+      throw new Error('not used');
+    },
+    async put() {
+      throw new Error('not used');
+    },
+  };
+  const service = new MaterialCleanupService(
+    database,
+    storage,
+    new MaterialStorageKeyCoordinator(),
+    () => now,
+  );
+  const result = service.runOnce();
+  return {
+    deleteStarted,
+    allowDelete: () => allowDelete(),
+    result,
+  };
 }
 
 async function clearPrivateBytes() {

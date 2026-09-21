@@ -16,7 +16,10 @@ import {
   disconnectCoreLeadTestDatabase,
   getCustomer,
   getLead,
+  getMaterialAuditActions,
+  getMaterialLifecycle,
   getMaterialByVersion,
+  installMaterialStatusBarrier,
   markContentVersion,
   rejectAuditWrites,
   rejectLeadProductWrites,
@@ -24,6 +27,8 @@ import {
   resetCoreLeadE2eData,
   setGrant,
   setLeadCounter,
+  setMaterialDeletedAt,
+  startMaterialCleanup,
   verifyCoreLeadMigration,
 } from '../support/core-lead-database.mjs';
 
@@ -203,6 +208,9 @@ test('authorized supervisor admits a customer with real PDF and JPEG bytes', asy
     }>;
   } = await materials.json();
   expect(listed.items).toHaveLength(2);
+  expect(JSON.stringify(listed)).not.toContain('storageKey');
+  expect(JSON.stringify(listed)).not.toContain('uploadedBy');
+  expect(JSON.stringify(listed)).not.toContain('departmentId');
   for (const item of listed.items) {
     const downloaded = await request.get(
       `/api/v1/materials/${item.id}/versions/${item.currentVersionId}/content`,
@@ -592,6 +600,165 @@ test('unreferenced material can be restored while frozen evidence cannot be dele
     { headers: authorizationA },
   );
   expect(frozenLead.status()).toBe(409);
+});
+
+test('delete serialization rejects a material frozen after its zero-reference read', async ({
+  request,
+}) => {
+  const material = await upload(request, {
+    ownerType: 'CUSTOMER',
+    ownerId: coreLeadFixtures.draftCustomer,
+    purpose: 'IDENTITY_FULL',
+    name: 'delete-race.pdf',
+    mime: 'application/pdf',
+    bytes: pdfBytes,
+  });
+  const stored = await getMaterialByVersion(material.contentVersionId);
+  const barrier = await installMaterialStatusBarrier(
+    stored!.materialId,
+    'DELETED',
+  );
+  const deleting = request.delete(
+    `/api/v1/materials/${stored!.materialId}?expectedVersion=1`,
+    { headers: authorizationA },
+  );
+  await barrier.wait();
+  const admitted = await request.post(
+    `/api/v1/customers/${coreLeadFixtures.draftCustomer}/admission`,
+    {
+      headers: { ...authorizationA, 'Idempotency-Key': randomUUID() },
+      data: admissionInput([material.contentVersionId]),
+    },
+  );
+  expect(admitted.status(), await admitted.text()).toBe(201);
+  await barrier.release();
+  const removed = await deleting;
+  expect(removed.status(), await removed.text()).toBe(409);
+  expect(await getMaterialLifecycle(stored!.materialId)).toMatchObject({
+    status: 'ACTIVE',
+    version: 1,
+    contentVersions: [{ status: 'AVAILABLE' }],
+  });
+  expect(await getMaterialAuditActions(stored!.materialId)).toEqual([]);
+});
+
+test('material delete audit failure rolls back its state transition', async ({
+  request,
+}) => {
+  const material = await upload(request, {
+    ownerType: 'CUSTOMER',
+    ownerId: coreLeadFixtures.draftCustomer,
+    purpose: 'IDENTITY_FULL',
+    name: 'delete-audit.pdf',
+    mime: 'application/pdf',
+    bytes: pdfBytes,
+  });
+  const stored = await getMaterialByVersion(material.contentVersionId);
+  await rejectAuditWrites('material.deleted');
+  const removed = await request.delete(
+    `/api/v1/materials/${stored!.materialId}?expectedVersion=1`,
+    { headers: authorizationA },
+  );
+  expect(removed.status()).toBe(500);
+  await allowInjectedFailures();
+  expect(await getMaterialLifecycle(stored!.materialId)).toMatchObject({
+    status: 'ACTIVE',
+    version: 1,
+    contentVersions: [{ status: 'AVAILABLE' }],
+  });
+  expect(await getMaterialAuditActions(stored!.materialId)).toEqual([]);
+});
+
+test('cleanup claim wins over restore without producing ACTIVE material with purged bytes', async ({
+  request,
+}) => {
+  const material = await upload(request, {
+    ownerType: 'CUSTOMER',
+    ownerId: coreLeadFixtures.draftCustomer,
+    purpose: 'IDENTITY_FULL',
+    name: 'cleanup-wins.pdf',
+    mime: 'application/pdf',
+    bytes: pdfBytes,
+  });
+  const stored = await getMaterialByVersion(material.contentVersionId);
+  const removed = await request.delete(
+    `/api/v1/materials/${stored!.materialId}?expectedVersion=1`,
+    { headers: authorizationA },
+  );
+  expect(removed.status(), await removed.text()).toBe(200);
+  const now = new Date();
+  await setMaterialDeletedAt(
+    stored!.materialId,
+    new Date(now.getTime() - 89 * 24 * 60 * 60 * 1000),
+  );
+  const cleanup = startMaterialCleanup(
+    new Date(now.getTime() + 2 * 24 * 60 * 60 * 1000),
+  );
+  await cleanup.deleteStarted;
+  const restored = await request.post(
+    `/api/v1/materials/${stored!.materialId}/restore`,
+    { headers: authorizationA, data: { expectedVersion: 2 } },
+  );
+  expect(restored.status(), await restored.text()).toBe(409);
+  cleanup.allowDelete();
+  await cleanup.result;
+  expect(await getMaterialLifecycle(stored!.materialId)).toMatchObject({
+    status: 'DELETED',
+    version: 2,
+    contentVersions: [{ status: 'PURGED' }],
+  });
+  expect(await getMaterialAuditActions(stored!.materialId)).toEqual([
+    'material.deleted',
+  ]);
+});
+
+test('restore lock makes cleanup skip the same material and current content version', async ({
+  request,
+}) => {
+  const material = await upload(request, {
+    ownerType: 'CUSTOMER',
+    ownerId: coreLeadFixtures.draftCustomer,
+    purpose: 'IDENTITY_FULL',
+    name: 'restore-wins.pdf',
+    mime: 'application/pdf',
+    bytes: pdfBytes,
+  });
+  const stored = await getMaterialByVersion(material.contentVersionId);
+  const removed = await request.delete(
+    `/api/v1/materials/${stored!.materialId}?expectedVersion=1`,
+    { headers: authorizationA },
+  );
+  expect(removed.status(), await removed.text()).toBe(200);
+  const now = new Date();
+  await setMaterialDeletedAt(
+    stored!.materialId,
+    new Date(now.getTime() - 89 * 24 * 60 * 60 * 1000),
+  );
+  const barrier = await installMaterialStatusBarrier(
+    stored!.materialId,
+    'ACTIVE',
+  );
+  const restoring = request.post(
+    `/api/v1/materials/${stored!.materialId}/restore`,
+    { headers: authorizationA, data: { expectedVersion: 2 } },
+  );
+  await barrier.wait();
+  const cleanup = startMaterialCleanup(
+    new Date(now.getTime() + 2 * 24 * 60 * 60 * 1000),
+  );
+  await cleanup.result;
+  await barrier.release();
+  const restored = await restoring;
+  expect(restored.status(), await restored.text()).toBe(201);
+  expect(await getMaterialLifecycle(stored!.materialId)).toMatchObject({
+    status: 'ACTIVE',
+    version: 3,
+    contentVersions: [{ status: 'AVAILABLE' }],
+  });
+  expect(await getMaterialAuditActions(stored!.materialId)).toEqual([
+    'material.deleted',
+    'material.restored',
+  ]);
 });
 
 test('lead numbers stop after 999 and concurrent creation never duplicates a number', async ({

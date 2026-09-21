@@ -20,6 +20,7 @@ import type { Prisma } from '../../generated/prisma/client';
 import {
   CreateUploadDraftDto,
   MaterialCategoryValue,
+  OwnerMaterialListDto,
   MaterialOwnerTypeValue,
 } from './material.dto';
 import {
@@ -98,6 +99,8 @@ type MaterialAuthorizationReader = Pick<
   MaterialTransactionClient,
   'customer' | 'uploadDraft' | 'lead'
 >;
+type MaterialMutationReader = MaterialAuthorizationReader &
+  Pick<MaterialTransactionClient, 'material'>;
 export type MaterialReferenceReader = MaterialAuthorizationReader &
   AccessControlSnapshotReader &
   Pick<MaterialTransactionClient, 'materialReference'>;
@@ -715,7 +718,7 @@ export class MaterialService {
     actor: ActorContext,
     ownerType: MaterialOwnerTypeValue,
     ownerId: string,
-  ) {
+  ): Promise<OwnerMaterialListDto> {
     await this.authorizeOwner(actor, ownerType, ownerId, 'read');
     const items = await this.database.material.findMany({
       where: {
@@ -725,14 +728,56 @@ export class MaterialService {
         status: 'ACTIVE',
       },
       orderBy: [{ createdAt: 'desc' }, { id: 'asc' }],
-      include: { contentVersions: { orderBy: { createdAt: 'desc' } } },
+      select: {
+        id: true,
+        ownerType: true,
+        ownerId: true,
+        category: true,
+        purpose: true,
+        currentVersionId: true,
+        status: true,
+        version: true,
+        deletedAt: true,
+        createdAt: true,
+        updatedAt: true,
+        contentVersions: {
+          where: { status: 'AVAILABLE' },
+          orderBy: { createdAt: 'desc' },
+          select: {
+            id: true,
+            materialId: true,
+            originalFilename: true,
+            mimeType: true,
+            sizeBytes: true,
+            sha256: true,
+            status: true,
+            createdAt: true,
+          },
+        },
+      },
     });
     return {
       items: items.map((material) => ({
-        ...material,
+        id: material.id,
+        ownerType: material.ownerType,
+        ownerId: material.ownerId,
+        category: material.category,
+        purpose: toMaterialPurpose(material.purpose),
+        currentVersionId: material.currentVersionId,
+        status: 'ACTIVE' as const,
+        version: material.version,
+        deletedAt: material.deletedAt,
+        createdAt: material.createdAt,
+        updatedAt: material.updatedAt,
         contentVersions: material.contentVersions.map((version) => ({
-          ...version,
+          id: version.id,
+          materialId: version.materialId,
+          originalFilename: version.originalFilename,
+          mimeType: version.mimeType,
           sizeBytes: Number(version.sizeBytes),
+          sha256: version.sha256,
+          status: 'AVAILABLE' as const,
+          createdAt: version.createdAt,
         })),
       })),
       total: items.length,
@@ -786,21 +831,54 @@ export class MaterialService {
     materialId: string,
     expectedVersion: number,
   ) {
-    const material = await this.findMaterialForMutation(actor, materialId);
-    if (material.status !== 'ACTIVE') throw this.versionConflict();
-    const references = await this.database.materialReference.count({
-      where: { materialId },
+    await this.withSerializableMaterialMutation(async (transaction) => {
+      await this.lockMaterialAndCurrentVersion(
+        transaction,
+        actor.departmentId,
+        materialId,
+      );
+      const material = await this.findMaterialForMutation(
+        actor,
+        materialId,
+        transaction,
+        transaction,
+      );
+      const currentVersion = material.contentVersions.find(
+        (version) => version.id === material.currentVersionId,
+      );
+      if (
+        material.status !== 'ACTIVE' ||
+        currentVersion?.status !== 'AVAILABLE'
+      ) {
+        throw this.versionConflict();
+      }
+      const references = await transaction.materialReference.count({
+        where: { materialId },
+      });
+      if (references > 0) throw this.versionConflict();
+      const changed = await transaction.material.updateMany({
+        where: { id: materialId, status: 'ACTIVE', version: expectedVersion },
+        data: {
+          status: 'DELETED',
+          deletedAt: this.clock(),
+          version: { increment: 1 },
+        },
+      });
+      if (changed.count !== 1) throw this.versionConflict();
+      await transaction.auditEvent.create({
+        data: {
+          departmentId: actor.departmentId,
+          actorUserId: actor.userId,
+          resourceType: 'material',
+          resourceId: materialId,
+          action: 'material.deleted',
+          details: {
+            fromVersion: expectedVersion,
+            toVersion: expectedVersion + 1,
+          },
+        },
+      });
     });
-    if (references > 0) throw this.versionConflict();
-    const changed = await this.database.material.updateMany({
-      where: { id: materialId, status: 'ACTIVE', version: expectedVersion },
-      data: {
-        status: 'DELETED',
-        deletedAt: this.clock(),
-        version: { increment: 1 },
-      },
-    });
-    if (changed.count !== 1) throw this.versionConflict();
     return {
       id: materialId,
       status: 'DELETED' as const,
@@ -813,15 +891,29 @@ export class MaterialService {
     materialId: string,
     expectedVersion: number,
   ) {
-    const material = await this.findMaterialForMutation(actor, materialId);
-    if (
-      material.status !== 'DELETED' ||
-      material.deletedAt === null ||
-      this.clock().getTime() - material.deletedAt.getTime() >= RETENTION_MS
-    ) {
-      throw this.versionConflict();
-    }
-    await this.database.$transaction(async (transaction) => {
+    await this.withSerializableMaterialMutation(async (transaction) => {
+      await this.lockMaterialAndCurrentVersion(
+        transaction,
+        actor.departmentId,
+        materialId,
+      );
+      const material = await this.findMaterialForMutation(
+        actor,
+        materialId,
+        transaction,
+        transaction,
+      );
+      const currentVersion = material.contentVersions.find(
+        (version) => version.id === material.currentVersionId,
+      );
+      if (
+        material.status !== 'DELETED' ||
+        material.deletedAt === null ||
+        this.clock().getTime() - material.deletedAt.getTime() >= RETENTION_MS ||
+        currentVersion?.status !== 'AVAILABLE'
+      ) {
+        throw this.versionConflict();
+      }
       await transaction.$executeRawUnsafe(
         'SELECT pg_advisory_xact_lock(hashtextextended($1, 0))',
         ownerQuotaKey(material),
@@ -847,6 +939,19 @@ export class MaterialService {
         },
       });
       if (changed.count !== 1) throw this.versionConflict();
+      await transaction.auditEvent.create({
+        data: {
+          departmentId: actor.departmentId,
+          actorUserId: actor.userId,
+          resourceType: 'material',
+          resourceId: materialId,
+          action: 'material.restored',
+          details: {
+            fromVersion: expectedVersion,
+            toVersion: expectedVersion + 1,
+          },
+        },
+      });
     });
     return {
       id: materialId,
@@ -858,10 +963,16 @@ export class MaterialService {
   private async findMaterialForMutation(
     actor: ActorContext,
     materialId: string,
+    reader: MaterialMutationReader = this.database,
+    snapshotReader?: AccessControlSnapshotReader,
   ) {
-    const material = await this.database.material.findFirst({
+    const material = await reader.material.findFirst({
       where: { id: materialId, departmentId: actor.departmentId },
-      include: { contentVersions: { select: { uploadedBy: true } } },
+      include: {
+        contentVersions: {
+          select: { id: true, uploadedBy: true, status: true },
+        },
+      },
     });
     if (material === null) throw this.notFound();
     await this.authorizeOwner(
@@ -869,6 +980,8 @@ export class MaterialService {
       material.ownerType,
       material.ownerId,
       'write',
+      reader,
+      snapshotReader,
     );
     if (
       material.ownerType === 'LEAD_DRAFT' &&
@@ -879,6 +992,67 @@ export class MaterialService {
       throw this.forbidden();
     }
     return material;
+  }
+
+  private async lockMaterialAndCurrentVersion(
+    transaction: MaterialTransactionClient,
+    departmentId: string,
+    materialId: string,
+  ): Promise<void> {
+    const locked = await transaction.$queryRawUnsafe<Array<{ id: string }>>(
+      `SELECT m."id"
+       FROM "materials" m
+       JOIN "content_versions" cv ON cv."id" = m."current_version_id"
+       WHERE m."id" = $1::uuid AND m."department_id" = $2::uuid
+       FOR NO KEY UPDATE OF m, cv`,
+      materialId,
+      departmentId,
+    );
+    if (locked.length !== 1) throw this.notFound();
+  }
+
+  private async withSerializableMaterialMutation<T>(
+    operation: (transaction: MaterialTransactionClient) => Promise<T>,
+  ): Promise<T> {
+    for (let attempt = 0; attempt < 3; attempt += 1) {
+      try {
+        return await this.database.$transaction(operation, {
+          isolationLevel: 'Serializable',
+        });
+      } catch (error) {
+        if (!this.isSerializationConflict(error)) throw error;
+        if (attempt === 2) throw this.versionConflict();
+      }
+    }
+    throw this.versionConflict();
+  }
+
+  private isSerializationConflict(error: unknown): boolean {
+    if (error === null || typeof error !== 'object') return false;
+    const record = error as Record<string, unknown>;
+    if (record.code === 'P2034') return true;
+    if (record.code === 'P2010') {
+      const meta = record.meta;
+      const adapter =
+        meta !== null &&
+        typeof meta === 'object' &&
+        'driverAdapterError' in meta
+          ? meta.driverAdapterError
+          : undefined;
+      const cause =
+        adapter !== null && typeof adapter === 'object' && 'cause' in adapter
+          ? adapter.cause
+          : undefined;
+      if (
+        cause !== null &&
+        typeof cause === 'object' &&
+        (('originalCode' in cause && cause.originalCode === '40001') ||
+          ('sqlState' in cause && cause.sqlState === '40001'))
+      ) {
+        return true;
+      }
+    }
+    return this.isSerializationConflict(record.cause);
   }
 
   private async authorizeOwner(
@@ -1073,6 +1247,18 @@ function isMimeAllowedForPurpose(
 function normalizeMimeType(value: string): string {
   const normalized = value.trim().toLowerCase();
   return normalized === 'image/jpg' ? 'image/jpeg' : normalized;
+}
+
+function toMaterialPurpose(value: string) {
+  if (
+    value === 'IDENTITY_FULL' ||
+    value === 'IDENTITY_FRONT' ||
+    value === 'IDENTITY_BACK' ||
+    value === 'LEAD_SCREENSHOT'
+  ) {
+    return value;
+  }
+  throw new Error('Invalid persisted material purpose');
 }
 
 function materialLimit(category: keyof typeof allowedMimeTypes): number {

@@ -13,7 +13,7 @@ import {
 } from './private-blob-storage';
 import { MaterialStorageKeyCoordinator } from './material-storage-key-coordinator';
 
-type PurgeCandidate = { id: string; storageKey: string };
+type PurgeCandidate = { id: string; materialId?: string; storageKey: string };
 const BATCH_SIZE = 100;
 const INTERVAL_MS = 15 * 60 * 1000;
 export const MATERIAL_CLEANUP_CLOCK = Symbol('MATERIAL_CLEANUP_CLOCK');
@@ -77,7 +77,7 @@ export class MaterialCleanupService implements OnModuleInit, OnModuleDestroy {
         `SELECT d."id", d."pending_storage_key" AS "storageKey"
          FROM "upload_drafts" d
          WHERE d."pending_storage_key" IS NOT NULL
-           AND d."updated_at" <= $1 - INTERVAL '15 minutes'
+           AND d."updated_at" <= $1::timestamptz - INTERVAL '15 minutes'
            AND NOT EXISTS (
              SELECT 1 FROM "content_versions" cv
              WHERE cv."storage_key" = d."pending_storage_key"
@@ -105,7 +105,7 @@ export class MaterialCleanupService implements OnModuleInit, OnModuleDestroy {
          FROM "upload_drafts" d
          WHERE d."id" = $1
            AND d."pending_storage_key" = $2
-           AND d."updated_at" <= $3 - INTERVAL '15 minutes'
+           AND d."updated_at" <= $3::timestamptz - INTERVAL '15 minutes'
            AND NOT EXISTS (
              SELECT 1 FROM "content_versions" cv
              WHERE cv."storage_key" = d."pending_storage_key"
@@ -153,7 +153,7 @@ export class MaterialCleanupService implements OnModuleInit, OnModuleDestroy {
 
   private lockLeadDraftCandidates(now: Date): Promise<PurgeCandidate[]> {
     return this.lockCandidates(
-      `SELECT cv."id", cv."storage_key" AS "storageKey"
+      `SELECT cv."id", m."id" AS "materialId", cv."storage_key" AS "storageKey"
        FROM "content_versions" cv
        JOIN "materials" m ON m."id" = cv."material_id"
        WHERE m."owner_type" = 'LEAD_DRAFT'
@@ -170,25 +170,25 @@ export class MaterialCleanupService implements OnModuleInit, OnModuleDestroy {
            WHERE mr."content_version_id" = cv."id"
          )
        ORDER BY cv."id"
-       FOR UPDATE OF cv SKIP LOCKED LIMIT $2`,
+       FOR NO KEY UPDATE OF m, cv SKIP LOCKED LIMIT $2`,
       now,
     );
   }
 
   private lockDeletedCandidates(now: Date): Promise<PurgeCandidate[]> {
     return this.lockCandidates(
-      `SELECT cv."id", cv."storage_key" AS "storageKey"
+      `SELECT cv."id", m."id" AS "materialId", cv."storage_key" AS "storageKey"
        FROM "content_versions" cv
        JOIN "materials" m ON m."id" = cv."material_id"
        WHERE m."status" = 'DELETED'
-         AND m."deleted_at" + INTERVAL '90 days' <= $1
+         AND m."deleted_at" + INTERVAL '90 days' <= $1::timestamptz
          AND cv."status" IN ('AVAILABLE', 'DELETED')
          AND NOT EXISTS (
            SELECT 1 FROM "material_references" mr
            WHERE mr."content_version_id" = cv."id"
          )
        ORDER BY cv."id"
-       FOR UPDATE OF cv SKIP LOCKED LIMIT $2`,
+       FOR NO KEY UPDATE OF m, cv SKIP LOCKED LIMIT $2`,
       now,
     );
   }

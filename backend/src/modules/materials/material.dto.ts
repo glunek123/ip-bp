@@ -86,3 +86,75 @@ export class RestoreMaterialDto {
   @Min(1)
   expectedVersion!: number;
 }
+
+export class MaterialContentVersionDto {
+  @ApiProperty({ format: 'uuid' })
+  id!: string;
+
+  @ApiProperty({ format: 'uuid' })
+  materialId!: string;
+
+  @ApiProperty()
+  originalFilename!: string;
+
+  @ApiProperty()
+  mimeType!: string;
+
+  @ApiProperty({ minimum: 0 })
+  sizeBytes!: number;
+
+  @ApiProperty({ pattern: '^[a-f0-9]{64}$' })
+  sha256!: string;
+
+  @ApiProperty({ enum: ['AVAILABLE'] })
+  status!: 'AVAILABLE';
+
+  @ApiProperty({ format: 'date-time' })
+  createdAt!: Date;
+}
+
+export class OwnerMaterialDto {
+  @ApiProperty({ format: 'uuid' })
+  id!: string;
+
+  @ApiProperty({ enum: materialOwnerTypes })
+  ownerType!: MaterialOwnerTypeValue;
+
+  @ApiProperty({ format: 'uuid' })
+  ownerId!: string;
+
+  @ApiProperty({ enum: materialCategories })
+  category!: MaterialCategoryValue;
+
+  @ApiProperty({ enum: materialPurposes })
+  purpose!: MaterialPurposeValue;
+
+  @ApiPropertyOptional({ format: 'uuid', nullable: true })
+  currentVersionId!: string | null;
+
+  @ApiProperty({ enum: ['ACTIVE'] })
+  status!: 'ACTIVE';
+
+  @ApiProperty({ minimum: 1 })
+  version!: number;
+
+  @ApiPropertyOptional({ format: 'date-time', nullable: true })
+  deletedAt!: Date | null;
+
+  @ApiProperty({ format: 'date-time' })
+  createdAt!: Date;
+
+  @ApiProperty({ format: 'date-time' })
+  updatedAt!: Date;
+
+  @ApiProperty({ type: () => [MaterialContentVersionDto] })
+  contentVersions!: MaterialContentVersionDto[];
+}
+
+export class OwnerMaterialListDto {
+  @ApiProperty({ type: () => [OwnerMaterialDto] })
+  items!: OwnerMaterialDto[];
+
+  @ApiProperty({ minimum: 0 })
+  total!: number;
+}

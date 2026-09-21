@@ -64,6 +64,7 @@ describe('MaterialCleanupService', () => {
     const purgeSql = fixture.queryRaw.mock.calls[3]?.[0] ?? '';
     expect(purgeSql).toContain("INTERVAL '90 days'");
     expect(purgeSql).toContain('NOT EXISTS');
+    expect(purgeSql).toContain('FOR NO KEY UPDATE OF m, cv SKIP LOCKED');
     expect(fixture.storage.delete).toHaveBeenCalledWith('old/key');
   });
 

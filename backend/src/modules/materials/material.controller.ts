@@ -13,7 +13,7 @@ import {
   Res,
   UseGuards,
 } from '@nestjs/common';
-import { ApiBearerAuth, ApiTags } from '@nestjs/swagger';
+import { ApiBearerAuth, ApiOkResponse, ApiTags } from '@nestjs/swagger';
 import { Request, Response } from 'express';
 import { pipeline } from 'node:stream/promises';
 import { ActorContext } from '../../access-control/actor-context';
@@ -24,6 +24,7 @@ import {
   CreateUploadDraftDto,
   MaterialListQueryDto,
   MaterialVersionQueryDto,
+  OwnerMaterialListDto,
   RestoreMaterialDto,
 } from './material.dto';
 import { MaterialService } from './material.service';
@@ -63,6 +64,7 @@ export class MaterialController {
   }
 
   @Get()
+  @ApiOkResponse({ type: OwnerMaterialListDto })
   list(
     @CurrentActor() actor: ActorContext,
     @Query() query: MaterialListQueryDto,
