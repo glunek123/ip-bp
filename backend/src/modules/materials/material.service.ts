@@ -69,6 +69,12 @@ export type FreezeMaterialReferencesInput = Readonly<{
   actionEventId?: string;
 }>;
 
+export type AdoptLeadDraftVersionsInput = Readonly<{
+  reservedLeadId: string;
+  targetLeadId: string;
+  versions: readonly ValidatedMaterialVersionFact[];
+}>;
+
 type MaterialAuthorizationReader = Pick<
   MaterialTransactionClient,
   'customer' | 'uploadDraft' | 'lead'
@@ -516,6 +522,43 @@ export class MaterialService {
       })),
       skipDuplicates: true,
     });
+  }
+
+  async adoptLeadDraftVersions(
+    transaction: MaterialTransactionClient,
+    input: AdoptLeadDraftVersionsInput,
+  ): Promise<void> {
+    if (input.targetLeadId !== input.reservedLeadId)
+      throw this.invalidVersion();
+    const facts = input.versions.map((fact) => {
+      const record = this.validatedVersionFacts.get(fact);
+      if (
+        record === undefined ||
+        record.transaction !== transaction ||
+        record.canonicalFact.ownerType !== 'LEAD_DRAFT' ||
+        record.canonicalFact.ownerId !== input.reservedLeadId ||
+        record.canonicalFact.category !== 'LEAD_SCREENSHOT'
+      )
+        throw this.invalidVersion();
+      return record.canonicalFact;
+    });
+    if (facts.length === 0) return;
+    const departmentId = facts[0]!.departmentId;
+    if (facts.some((fact) => fact.departmentId !== departmentId))
+      throw this.invalidVersion();
+    const materialIds = [...new Set(facts.map((fact) => fact.materialId))];
+    const changed = await transaction.material.updateMany({
+      where: {
+        id: { in: materialIds },
+        departmentId,
+        ownerType: 'LEAD_DRAFT',
+        ownerId: input.reservedLeadId,
+        category: 'LEAD_SCREENSHOT',
+        status: 'ACTIVE',
+      },
+      data: { ownerType: 'LEAD', ownerId: input.targetLeadId },
+    });
+    if (changed.count !== materialIds.length) throw this.invalidVersion();
   }
 
   async listOwnerMaterials(

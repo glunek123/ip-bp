@@ -1,0 +1,897 @@
+import { randomUUID, createHash } from 'node:crypto';
+import {
+  BadRequestException,
+  ConflictException,
+  ForbiddenException,
+  Injectable,
+  InternalServerErrorException,
+  NotFoundException,
+} from '@nestjs/common';
+import { AccessControlService } from '../../access-control/access-control.service';
+import { ActorContext } from '../../access-control/actor-context';
+import { DatabaseService } from '../../database/database.service';
+import { Prisma } from '../../generated/prisma/client';
+import { MaterialService } from '../materials';
+import {
+  CASE_TYPE_OPTIONS,
+  CASE_TYPES,
+  INFRINGEMENT_TYPE_OPTIONS,
+  INFRINGEMENT_TYPES,
+  LEAD_STATUSES,
+  LeadPlatform,
+  LeadSource,
+  PLATFORM_OPTIONS,
+  PLATFORMS,
+  SOURCE_OPTIONS,
+  SOURCES,
+} from './lead.constants';
+import { CreateLeadCommand, UpdateLeadDto } from './lead.dto';
+
+const MAX_SERIALIZABLE_ATTEMPTS = 3;
+const leadInclude = {
+  products: { orderBy: { position: 'asc' as const } },
+  infringements: { orderBy: { type: 'asc' as const } },
+};
+
+type ProductInput = CreateLeadCommand['products'][number];
+type NormalizedBusiness = Omit<
+  CreateLeadCommand,
+  'reservedLeadId' | 'customerId' | 'rightsHolderId' | 'products'
+> & {
+  products: Array<
+    ProductInput & {
+      url: string | null;
+      title: string | null;
+      estimatedAmount: Prisma.Decimal;
+    }
+  >;
+  shopExternalId: string | null;
+  remark: string | null;
+  foundAtDate: Date;
+};
+
+type Receipt = {
+  requestFingerprint: string;
+  resultLeadId: string;
+  resultLeadVersion: number;
+  resultSnapshot: unknown;
+};
+type LeadView = {
+  id: unknown;
+  departmentId: unknown;
+  version: unknown;
+  products: Array<Record<string, unknown>>;
+  [key: string]: unknown;
+};
+
+@Injectable()
+export class LeadService {
+  constructor(
+    private readonly database: DatabaseService,
+    private readonly access: AccessControlService,
+    private readonly materials: MaterialService,
+  ) {}
+
+  async formContext(actor: ActorContext) {
+    try {
+      if (!(await this.access.canAuthorizeNewLead(actor)))
+        throw this.actionForbidden();
+      const customerScope = await this.access.buildCustomerScope(
+        actor,
+        'customer.read',
+      );
+      const customers = await this.database.customer.findMany({
+        where: { ...customerScope, profileStatus: 'ADMITTED' },
+        orderBy: [{ name: 'asc' }, { id: 'asc' }],
+        select: {
+          id: true,
+          name: true,
+          rightsHolderLinks: {
+            orderBy: { id: 'asc' },
+            select: { rightsHolder: { select: { id: true, name: true } } },
+          },
+        },
+      });
+      return {
+        customers: customers.map((customer) => ({
+          id: customer.id,
+          name: customer.name,
+          rightsHolders: customer.rightsHolderLinks.map(
+            (link) => link.rightsHolder,
+          ),
+        })),
+        dictionaries: {
+          caseTypes: CASE_TYPE_OPTIONS,
+          infringementTypes: INFRINGEMENT_TYPE_OPTIONS,
+          sources: SOURCE_OPTIONS,
+          platforms: PLATFORM_OPTIONS,
+        },
+      };
+    } catch (error) {
+      throw this.mapAuthorization(error);
+    }
+  }
+
+  async list(actor: ActorContext, page: number, pageSize: number) {
+    let scope;
+    try {
+      scope = await this.access.buildLeadScope(actor, 'lead.read');
+    } catch (error) {
+      throw this.mapAuthorization(error);
+    }
+    const [items, total, groups, create] = await Promise.all([
+      this.database.lead.findMany({
+        where: scope,
+        orderBy: [{ updatedAt: 'desc' }, { id: 'asc' }],
+        skip: (page - 1) * pageSize,
+        take: pageSize,
+        include: leadInclude,
+      }),
+      this.database.lead.count({ where: scope }),
+      this.database.lead.groupBy({
+        by: ['status'],
+        where: scope,
+        orderBy: { status: 'asc' },
+        _count: { _all: true },
+      }),
+      this.access.canAuthorizeNewLead(actor),
+    ]);
+    const counts = Object.fromEntries(
+      LEAD_STATUSES.map((status) => [status, 0]),
+    ) as Record<(typeof LEAD_STATUSES)[number], number>;
+    for (const group of groups) counts[group.status] = group._count._all;
+    return {
+      items: items.map((item) => this.view(item)),
+      total,
+      page,
+      pageSize,
+      counts,
+      capabilities: { create },
+    };
+  }
+
+  async get(actor: ActorContext, id: string) {
+    let scope;
+    try {
+      scope = await this.access.buildLeadScope(actor, 'lead.read');
+    } catch (error) {
+      throw this.mapAuthorization(error);
+    }
+    const lead = await this.database.lead.findFirst({
+      where: { id, ...scope },
+      include: leadInclude,
+    });
+    if (lead === null) throw this.notFound();
+    return this.view(lead);
+  }
+
+  async create(
+    actor: ActorContext,
+    idempotencyKey: string,
+    input: CreateLeadCommand,
+  ) {
+    try {
+      if (!(await this.access.canAuthorizeNewLead(actor)))
+        throw this.actionForbidden();
+    } catch (error) {
+      throw this.mapAuthorization(error);
+    }
+    const normalized = this.normalizeBusiness(input);
+    if (
+      input.leadScreenshotContentVersionIds.length > 0 &&
+      input.reservedLeadId === undefined
+    )
+      throw this.validation();
+    const leadId = input.reservedLeadId ?? randomUUID();
+    const fingerprint = this.fingerprint({
+      ...input,
+      ...this.fingerprintBusiness(normalized),
+      reservedLeadId: input.reservedLeadId ?? null,
+    });
+    for (let attempt = 1; attempt <= MAX_SERIALIZABLE_ATTEMPTS; attempt += 1) {
+      try {
+        return await this.database.$transaction(
+          async (transaction) => {
+            if (!(await this.access.canAuthorizeNewLead(actor, transaction)))
+              throw this.actionForbidden();
+            const receipt = await transaction.leadCommandReceipt.findUnique({
+              where: this.receiptWhere(actor, 'create', idempotencyKey),
+            });
+            if (receipt !== null)
+              return this.receiptResult(actor, receipt, fingerprint);
+
+            const membership = await transaction.departmentMembership.findFirst(
+              {
+                where: {
+                  userId: actor.userId,
+                  departmentId: actor.departmentId,
+                  active: true,
+                },
+                select: { teamId: true, team: { select: { status: true } } },
+              },
+            );
+            if (
+              membership === null ||
+              (membership.teamId !== null &&
+                membership.team?.status !== 'ACTIVE')
+            )
+              throw this.actionForbidden();
+            const facts = {
+              departmentId: actor.departmentId,
+              responsibleUserId: actor.userId,
+              ...(membership.teamId === null
+                ? {}
+                : { teamId: membership.teamId }),
+            };
+            try {
+              await this.access.authorizeLead(
+                actor,
+                'lead.create',
+                facts,
+                transaction,
+              );
+            } catch (error) {
+              throw this.mapAuthorization(error);
+            }
+            await this.assertCustomerAndHolder(
+              transaction,
+              actor,
+              input.customerId,
+              input.rightsHolderId,
+            );
+
+            const materialFacts =
+              input.reservedLeadId === undefined
+                ? []
+                : await this.materials.assertAvailableVersions(
+                    transaction,
+                    actor,
+                    {
+                      ownerType: 'LEAD_DRAFT',
+                      ownerId: input.reservedLeadId,
+                      category: 'LEAD_SCREENSHOT',
+                      contentVersionIds: [
+                        ...input.leadScreenshotContentVersionIds,
+                      ],
+                      minCount: 0,
+                      maxCount: 20,
+                    },
+                  );
+            const businessNo = await this.allocateBusinessNo(transaction);
+            const created = await transaction.lead.create({
+              data: {
+                id: leadId,
+                departmentId: actor.departmentId,
+                businessNo,
+                customerId: input.customerId,
+                rightsHolderId: input.rightsHolderId,
+                responsibleUserId: actor.userId,
+                teamId: membership.teamId,
+                status: 'WAITING_PUSH',
+                caseType: normalized.caseType,
+                source: normalized.source,
+                platform: normalized.platform,
+                foundAt: normalized.foundAtDate,
+                shopName: normalized.shopName,
+                shopExternalId: normalized.shopExternalId,
+                needDisclose: normalized.needDisclose,
+                remark: normalized.remark,
+                creationChannel: 'MANUAL',
+                externalSourceRef: null,
+                products: {
+                  create: normalized.products.map((product, index) => ({
+                    position: index + 1,
+                    url: product.url,
+                    title: product.title,
+                    quantity: product.quantity,
+                    unitPrice: product.unitPrice,
+                    commentCount: product.commentCount,
+                    estimatedAmount: product.estimatedAmount,
+                  })),
+                },
+                infringements: {
+                  create: normalized.infringementTypes.map((type) => ({
+                    type,
+                  })),
+                },
+              },
+              include: leadInclude,
+            });
+            if (input.reservedLeadId !== undefined) {
+              await this.materials.adoptLeadDraftVersions(transaction, {
+                reservedLeadId: input.reservedLeadId,
+                targetLeadId: leadId,
+                versions: materialFacts,
+              });
+            }
+            if (materialFacts.length > 0) {
+              await this.materials.freezeReferences(transaction, {
+                departmentId: actor.departmentId,
+                resourceType: 'lead',
+                resourceId: leadId,
+                facts: materialFacts,
+              });
+            }
+            await transaction.auditEvent.create({
+              data: {
+                departmentId: actor.departmentId,
+                actorUserId: actor.userId,
+                resourceType: 'lead',
+                resourceId: leadId,
+                action: 'lead.created',
+                details: {
+                  businessNo,
+                  version: 1,
+                  productCount: normalized.products.length,
+                  infringementCount: normalized.infringementTypes.length,
+                  screenshotCount: materialFacts.length,
+                },
+              },
+            });
+            const result = this.view(created);
+            await transaction.leadCommandReceipt.create({
+              data: {
+                departmentId: actor.departmentId,
+                actorUserId: actor.userId,
+                action: 'create',
+                idempotencyKey,
+                requestFingerprint: fingerprint,
+                resultLeadId: leadId,
+                resultLeadVersion: 1,
+                resultSnapshot: result as Prisma.InputJsonObject,
+              },
+            });
+            return result;
+          },
+          { isolationLevel: 'Serializable' },
+        );
+      } catch (error) {
+        if (this.isSerializationConflict(error)) {
+          if (attempt < MAX_SERIALIZABLE_ATTEMPTS) continue;
+          throw this.versionConflict();
+        }
+        if (this.isUnique(error)) {
+          const receipt = await this.database.leadCommandReceipt.findUnique({
+            where: this.receiptWhere(actor, 'create', idempotencyKey),
+          });
+          if (receipt !== null)
+            return this.receiptResult(actor, receipt, fingerprint);
+        }
+        throw this.mapAuthorization(error);
+      }
+    }
+    throw this.versionConflict();
+  }
+
+  async update(actor: ActorContext, id: string, input: UpdateLeadDto) {
+    const normalized = this.normalizeBusiness(input);
+    for (let attempt = 1; attempt <= MAX_SERIALIZABLE_ATTEMPTS; attempt += 1) {
+      try {
+        return await this.database.$transaction(
+          async (transaction) => {
+            let scope;
+            try {
+              scope = await this.access.buildLeadScope(
+                actor,
+                'lead.edit',
+                transaction,
+              );
+            } catch (error) {
+              throw this.mapAuthorization(error);
+            }
+            const locked = await transaction.$queryRawUnsafe<
+              Array<{ id: string }>
+            >(
+              'SELECT "id" FROM "leads" WHERE "id" = $1::uuid AND "department_id" = $2::uuid FOR UPDATE',
+              id,
+              actor.departmentId,
+            );
+            if (locked.length !== 1) throw this.notFound();
+            const current = await transaction.lead.findFirst({
+              where: { id, ...scope },
+              include: leadInclude,
+            });
+            if (current === null) throw this.notFound();
+            if (current.status !== 'WAITING_PUSH') throw this.invalidState();
+            if (current.version !== input.expectedVersion)
+              throw this.versionConflict();
+            await this.assertCustomerAndHolder(
+              transaction,
+              actor,
+              current.customerId,
+              input.rightsHolderId,
+            );
+            const materialFacts =
+              input.leadScreenshotContentVersionIds.length === 0
+                ? []
+                : await this.materials.assertAvailableVersions(
+                    transaction,
+                    actor,
+                    {
+                      ownerType: 'LEAD_DRAFT',
+                      ownerId: id,
+                      category: 'LEAD_SCREENSHOT',
+                      contentVersionIds: [
+                        ...input.leadScreenshotContentVersionIds,
+                      ],
+                      minCount: 0,
+                      maxCount: 20,
+                    },
+                  );
+            const changed = await transaction.lead.updateMany({
+              where: {
+                id,
+                departmentId: actor.departmentId,
+                version: input.expectedVersion,
+                status: 'WAITING_PUSH',
+              },
+              data: {
+                rightsHolderId: input.rightsHolderId,
+                caseType: normalized.caseType,
+                source: normalized.source,
+                platform: normalized.platform,
+                foundAt: normalized.foundAtDate,
+                shopName: normalized.shopName,
+                shopExternalId: normalized.shopExternalId,
+                needDisclose: normalized.needDisclose,
+                remark: normalized.remark,
+                version: { increment: 1 },
+              },
+            });
+            if (changed.count !== 1) throw this.versionConflict();
+            await transaction.leadProduct.deleteMany({ where: { leadId: id } });
+            await transaction.leadInfringement.deleteMany({
+              where: { leadId: id },
+            });
+            await transaction.leadProduct.createMany({
+              data: normalized.products.map((product, index) => ({
+                leadId: id,
+                position: index + 1,
+                url: product.url,
+                title: product.title,
+                quantity: product.quantity,
+                unitPrice: product.unitPrice,
+                commentCount: product.commentCount,
+                estimatedAmount: product.estimatedAmount,
+              })),
+            });
+            await transaction.leadInfringement.createMany({
+              data: normalized.infringementTypes.map((type) => ({
+                leadId: id,
+                type,
+              })),
+            });
+            await this.materials.adoptLeadDraftVersions(transaction, {
+              reservedLeadId: id,
+              targetLeadId: id,
+              versions: materialFacts,
+            });
+            if (materialFacts.length > 0) {
+              await this.materials.freezeReferences(transaction, {
+                departmentId: actor.departmentId,
+                resourceType: 'lead',
+                resourceId: id,
+                facts: materialFacts,
+              });
+            }
+            const changedFields = this.changedFields(
+              current,
+              normalized,
+              input.rightsHolderId,
+              materialFacts.length > 0,
+            );
+            await transaction.auditEvent.create({
+              data: {
+                departmentId: actor.departmentId,
+                actorUserId: actor.userId,
+                resourceType: 'lead',
+                resourceId: id,
+                action: 'lead.updated',
+                details: {
+                  fromVersion: input.expectedVersion,
+                  toVersion: input.expectedVersion + 1,
+                  changedFields,
+                },
+              },
+            });
+            const updated = await transaction.lead.findUnique({
+              where: { id },
+              include: leadInclude,
+            });
+            if (updated === null) throw this.notFound();
+            return this.view(updated);
+          },
+          { isolationLevel: 'Serializable' },
+        );
+      } catch (error) {
+        if (this.isSerializationConflict(error)) {
+          if (attempt < MAX_SERIALIZABLE_ATTEMPTS) continue;
+          throw this.versionConflict();
+        }
+        throw this.mapAuthorization(error);
+      }
+    }
+    throw this.versionConflict();
+  }
+
+  private async assertCustomerAndHolder(
+    transaction: Prisma.TransactionClient,
+    actor: ActorContext,
+    customerId: string,
+    rightsHolderId: string,
+  ) {
+    const locked = await transaction.$queryRawUnsafe<
+      Array<{ customer_id: string }>
+    >(
+      `SELECT customer."id" AS "customer_id"
+       FROM "customers" customer
+       JOIN "customer_rights_holder_links" link
+         ON link."customer_id" = customer."id" AND link."department_id" = customer."department_id"
+       WHERE customer."id" = $1::uuid AND customer."department_id" = $2::uuid
+         AND customer."profile_status" = 'ADMITTED' AND link."rights_holder_id" = $3::uuid
+       FOR SHARE OF customer, link`,
+      customerId,
+      actor.departmentId,
+      rightsHolderId,
+    );
+    if (locked.length !== 1) throw this.notFound();
+    const customer = await transaction.customer.findFirst({
+      where: {
+        id: customerId,
+        departmentId: actor.departmentId,
+        profileStatus: 'ADMITTED',
+      },
+      select: { id: true },
+    });
+    if (customer === null) throw this.notFound();
+    const link = await transaction.customerRightsHolderLink.findFirst({
+      where: { customerId, rightsHolderId, departmentId: actor.departmentId },
+      select: { id: true },
+    });
+    if (link === null) throw this.notFound();
+  }
+
+  private normalizeBusiness(
+    input: CreateLeadCommand | UpdateLeadDto,
+  ): NormalizedBusiness {
+    if (
+      !CASE_TYPES.includes(input.caseType) ||
+      !SOURCES.includes(input.source) ||
+      !PLATFORMS.includes(input.platform) ||
+      !Array.isArray(input.infringementTypes) ||
+      input.infringementTypes.length < 1 ||
+      input.infringementTypes.length > 12 ||
+      new Set(input.infringementTypes).size !==
+        input.infringementTypes.length ||
+      input.infringementTypes.some(
+        (type) => !INFRINGEMENT_TYPES.includes(type),
+      ) ||
+      !this.platformMatches(input.source, input.platform) ||
+      !Array.isArray(input.products) ||
+      input.products.length < 1 ||
+      input.products.length > 100 ||
+      !Array.isArray(input.leadScreenshotContentVersionIds) ||
+      input.leadScreenshotContentVersionIds.length > 20 ||
+      new Set(input.leadScreenshotContentVersionIds).size !==
+        input.leadScreenshotContentVersionIds.length
+    )
+      throw this.validation();
+    const shopName = this.required(input.shopName, 200);
+    const foundAtDate = new Date(input.foundAt);
+    if (Number.isNaN(foundAtDate.getTime())) throw this.validation();
+    const products = input.products.map((product) => this.product(product));
+    return {
+      ...input,
+      shopName,
+      foundAtDate,
+      shopExternalId: this.optional(input.shopExternalId, 100),
+      remark: this.optional(input.remark, 5000),
+      products,
+    } as NormalizedBusiness;
+  }
+
+  private product(product: ProductInput) {
+    const url = this.optional(product.url, 2048);
+    const title = this.optional(product.title, 200);
+    if (url === null && title === null) throw this.validation();
+    if (url !== null) {
+      try {
+        const parsed = new URL(url);
+        if (parsed.protocol !== 'http:' && parsed.protocol !== 'https:')
+          throw this.validation();
+      } catch (error) {
+        if (error instanceof BadRequestException) throw error;
+        throw this.validation();
+      }
+    }
+    if (
+      !Number.isInteger(product.quantity) ||
+      product.quantity < 0 ||
+      product.quantity > 2_147_483_647 ||
+      !Number.isInteger(product.commentCount) ||
+      product.commentCount < 0 ||
+      product.commentCount > 2_147_483_647 ||
+      typeof product.unitPrice !== 'string' ||
+      !/^(0|[1-9]\d{0,15})(\.\d{1,2})?$/u.test(product.unitPrice)
+    )
+      throw this.validation();
+    const basis =
+      product.quantity > 0 ? product.quantity : product.commentCount;
+    const estimatedAmount = new Prisma.Decimal(product.unitPrice)
+      .mul(basis)
+      .toDecimalPlaces(2, Prisma.Decimal.ROUND_HALF_UP);
+    if (estimatedAmount.greaterThan('9999999999999999.99'))
+      throw this.validation();
+    return { ...product, url, title, estimatedAmount };
+  }
+
+  private platformMatches(source: LeadSource, platform: LeadPlatform) {
+    return PLATFORM_OPTIONS[source].some((option) => option.value === platform);
+  }
+
+  private async allocateBusinessNo(transaction: Prisma.TransactionClient) {
+    const rows = await transaction.$queryRawUnsafe<
+      Array<{ sequence: number; business_date: Date | string }>
+    >(
+      `INSERT INTO "lead_number_counters" ("business_date", "last_value", "updated_at")
+       VALUES ((CURRENT_TIMESTAMP AT TIME ZONE 'Asia/Shanghai')::date, 1, CURRENT_TIMESTAMP)
+       ON CONFLICT ("business_date") DO UPDATE SET "last_value" = "lead_number_counters"."last_value" + 1, "updated_at" = CURRENT_TIMESTAMP
+       RETURNING "last_value" AS "sequence", "business_date"`,
+    );
+    const sequence = Number(rows[0]?.sequence);
+    if (!Number.isInteger(sequence) || sequence < 1 || sequence > 999)
+      throw this.numberExhausted();
+    const businessDate = rows[0]?.business_date;
+    const dateCode =
+      businessDate instanceof Date
+        ? businessDate.toISOString().slice(0, 10).replaceAll('-', '')
+        : String(businessDate ?? '')
+            .slice(0, 10)
+            .replaceAll('-', '');
+    if (!/^\d{8}$/u.test(dateCode)) throw this.versionConflict();
+    return `LD-${dateCode}-${String(sequence).padStart(3, '0')}`;
+  }
+
+  private view(record: {
+    [key: string]: unknown;
+    products?: readonly { [key: string]: unknown }[];
+    infringements?: readonly { type: unknown }[];
+  }): LeadView {
+    const date = (value: unknown) =>
+      value instanceof Date ? value.toISOString() : value;
+    return {
+      id: record.id,
+      businessNo: record.businessNo,
+      departmentId: record.departmentId,
+      customerId: record.customerId,
+      rightsHolderId: record.rightsHolderId,
+      responsibleUserId: record.responsibleUserId,
+      teamId: record.teamId ?? null,
+      status: record.status,
+      caseType: record.caseType,
+      infringementTypes: (record.infringements ?? []).map(({ type }) => type),
+      source: record.source,
+      platform: record.platform,
+      foundAt: date(record.foundAt),
+      shopName: record.shopName,
+      shopExternalId: record.shopExternalId ?? null,
+      needDisclose: record.needDisclose,
+      remark: record.remark ?? null,
+      creationChannel: record.creationChannel,
+      externalSourceRef: record.externalSourceRef ?? null,
+      products: (record.products ?? []).map((product) => ({
+        id: product.id,
+        position: product.position,
+        url: product.url ?? null,
+        title: product.title ?? null,
+        quantity: product.quantity,
+        unitPrice: this.decimal(product.unitPrice),
+        commentCount: product.commentCount,
+        estimatedAmount: this.decimal(product.estimatedAmount),
+      })),
+      version: record.version,
+      createdAt: date(record.createdAt),
+      updatedAt: date(record.updatedAt),
+    };
+  }
+
+  private decimal(value: unknown) {
+    return value !== null &&
+      typeof value === 'object' &&
+      'toFixed' in value &&
+      typeof value.toFixed === 'function'
+      ? value.toFixed(2)
+      : String(value);
+  }
+  private fingerprint(input: unknown) {
+    return createHash('sha256').update(JSON.stringify(input)).digest('hex');
+  }
+  private fingerprintBusiness(input: NormalizedBusiness) {
+    return {
+      ...input,
+      foundAtDate: input.foundAtDate.toISOString(),
+      products: input.products.map(({ estimatedAmount, ...product }) => ({
+        ...product,
+        estimatedAmount: estimatedAmount.toFixed(2),
+      })),
+    };
+  }
+  private receiptWhere(
+    actor: ActorContext,
+    action: string,
+    idempotencyKey: string,
+  ) {
+    return {
+      departmentId_actorUserId_action_idempotencyKey: {
+        departmentId: actor.departmentId,
+        actorUserId: actor.userId,
+        action,
+        idempotencyKey,
+      },
+    };
+  }
+  private receiptResult(
+    actor: ActorContext,
+    receipt: Receipt,
+    fingerprint: string,
+  ) {
+    if (receipt.requestFingerprint !== fingerprint)
+      throw this.idempotencyConflict();
+    const snapshot = receipt.resultSnapshot;
+    if (
+      snapshot === null ||
+      typeof snapshot !== 'object' ||
+      Array.isArray(snapshot) ||
+      (snapshot as Record<string, unknown>).id !== receipt.resultLeadId ||
+      (snapshot as Record<string, unknown>).version !==
+        receipt.resultLeadVersion ||
+      (snapshot as Record<string, unknown>).departmentId !== actor.departmentId
+    )
+      throw this.corruptReceipt();
+    return snapshot as LeadView;
+  }
+  private changedFields(
+    current: Record<string, unknown>,
+    normalized: NormalizedBusiness,
+    rightsHolderId: string,
+    screenshotChanged: boolean,
+  ) {
+    const changed: string[] = [];
+    const scalarPairs: Array<[string, unknown, unknown]> = [
+      ['rightsHolderId', current.rightsHolderId, rightsHolderId],
+      ['caseType', current.caseType, normalized.caseType],
+      ['source', current.source, normalized.source],
+      ['platform', current.platform, normalized.platform],
+      [
+        'foundAt',
+        current.foundAt instanceof Date
+          ? current.foundAt.toISOString()
+          : current.foundAt,
+        normalized.foundAtDate.toISOString(),
+      ],
+      ['shopName', current.shopName, normalized.shopName],
+      [
+        'shopExternalId',
+        current.shopExternalId ?? null,
+        normalized.shopExternalId,
+      ],
+      ['needDisclose', current.needDisclose, normalized.needDisclose],
+      ['remark', current.remark ?? null, normalized.remark],
+    ];
+    for (const [name, before, after] of scalarPairs) {
+      if (before !== after) changed.push(name);
+    }
+    const currentProducts = Array.isArray(current.products)
+      ? current.products.map((value) => {
+          const product = value as Record<string, unknown>;
+          return {
+            url: product.url ?? null,
+            title: product.title ?? null,
+            quantity: product.quantity,
+            unitPrice: this.decimal(product.unitPrice),
+            commentCount: product.commentCount,
+          };
+        })
+      : [];
+    const nextProducts = normalized.products.map((product) => ({
+      url: product.url,
+      title: product.title,
+      quantity: product.quantity,
+      unitPrice: new Prisma.Decimal(product.unitPrice).toFixed(2),
+      commentCount: product.commentCount,
+    }));
+    if (JSON.stringify(currentProducts) !== JSON.stringify(nextProducts))
+      changed.push('products');
+    const currentInfringements = Array.isArray(current.infringements)
+      ? current.infringements
+          .map((value) => (value as { type: unknown }).type)
+          .sort()
+      : [];
+    const nextInfringements = [...normalized.infringementTypes].sort();
+    if (
+      JSON.stringify(currentInfringements) !== JSON.stringify(nextInfringements)
+    )
+      changed.push('infringementTypes');
+    if (screenshotChanged) changed.push('leadScreenshotContentVersionIds');
+    return changed;
+  }
+  private required(value: unknown, max: number) {
+    if (typeof value !== 'string') throw this.validation();
+    const result = value.normalize('NFKC').trim();
+    if (!result || result.length > max) throw this.validation();
+    return result;
+  }
+  private optional(value: unknown, max: number) {
+    if (value === undefined || value === null) return null;
+    const result = this.required(value, max);
+    return result;
+  }
+  private mapAuthorization(error: unknown): unknown {
+    if (error instanceof ForbiddenException) return this.actionForbidden();
+    return error;
+  }
+  private isSerializationConflict(error: unknown): boolean {
+    return (
+      error !== null &&
+      typeof error === 'object' &&
+      ((error as { code?: unknown }).code === 'P2034' ||
+        this.isSerializationConflict((error as { cause?: unknown }).cause))
+    );
+  }
+  private isUnique(error: unknown): boolean {
+    return (
+      error !== null &&
+      typeof error === 'object' &&
+      ((error as { code?: unknown }).code === 'P2002' ||
+        this.isUnique((error as { cause?: unknown }).cause))
+    );
+  }
+  private validation() {
+    return new BadRequestException({
+      code: 'VALIDATION_ERROR',
+      message: '请求字段不符合接口要求',
+    });
+  }
+  private actionForbidden() {
+    return new ForbiddenException({
+      code: 'ACTION_FORBIDDEN',
+      message: '无权执行此线索操作',
+    });
+  }
+  private notFound() {
+    return new NotFoundException({
+      code: 'RESOURCE_NOT_FOUND',
+      message: '线索或关联资源不存在或不可访问',
+    });
+  }
+  private invalidState() {
+    return new ConflictException({
+      code: 'INVALID_STATE',
+      message: '仅待推送线索可以编辑',
+    });
+  }
+  private versionConflict() {
+    return new ConflictException({
+      code: 'VERSION_CONFLICT',
+      message: '线索已被他人更新，请重新加载',
+    });
+  }
+  private idempotencyConflict() {
+    return new ConflictException({
+      code: 'IDEMPOTENCY_CONFLICT',
+      message: '该 Idempotency-Key 已用于不同请求',
+    });
+  }
+  private numberExhausted() {
+    return new ConflictException({
+      code: 'LEAD_NUMBER_EXHAUSTED',
+      message: '当日线索编号已用尽',
+    });
+  }
+  private corruptReceipt() {
+    return new InternalServerErrorException({
+      code: 'INTERNAL_ERROR',
+      message: '线索回执数据损坏',
+    });
+  }
+}

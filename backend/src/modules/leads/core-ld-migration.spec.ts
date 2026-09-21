@@ -16,6 +16,7 @@ describe('CORE-LD migrations', () => {
     '20260921014000_add_upload_draft_pending_storage_key';
   const admissionSnapshotMigrationName =
     '20260921015000_add_admission_receipt_snapshot';
+  const leadSnapshotMigrationName = '20260921016000_add_lead_receipt_snapshot';
 
   function readMigration(name: string): string {
     return readFileSync(resolve(migrationRoot, name, 'migration.sql'), 'utf8');
@@ -38,6 +39,9 @@ describe('CORE-LD migrations', () => {
     expect(migrations.indexOf(admissionSnapshotMigrationName)).toBeGreaterThan(
       migrations.indexOf(pendingStorageMigrationName),
     );
+    expect(migrations.indexOf(leadSnapshotMigrationName)).toBeGreaterThan(
+      migrations.indexOf(admissionSnapshotMigrationName),
+    );
 
     const actionSql = readMigration(actionMigrationName);
     const schemaSql = readMigration(schemaMigrationName);
@@ -47,6 +51,22 @@ describe('CORE-LD migrations', () => {
     expect(actionSql).toContain("ADD VALUE 'lead.create'");
     expect(actionSql).toContain("ADD VALUE 'lead.edit'");
     expect(schemaSql).not.toMatch(/DROP TABLE|DROP COLUMN/);
+  });
+
+  it('backfills lead receipt snapshots only from the exact current version', () => {
+    const snapshotSql = readMigration(leadSnapshotMigrationName);
+    expect(snapshotSql).toContain(
+      'current lead version does not match receipt version',
+    );
+    expect(snapshotSql).toContain(
+      'lead."version" <> receipt."result_lead_version"',
+    );
+    expect(snapshotSql).toContain('lead."id" IS NULL');
+    expect(snapshotSql).toContain('jsonb_build_object');
+    expect(snapshotSql).toContain(
+      'ALTER COLUMN "result_snapshot" SET NOT NULL',
+    );
+    expect(snapshotSql).not.toMatch(/DROP TABLE|DROP COLUMN/);
   });
 
   it('safely backfills immutable admission receipt snapshots before requiring them', () => {

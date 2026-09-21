@@ -644,6 +644,7 @@ model LeadCommandReceipt {
   requestFingerprint String               @map("request_fingerprint") @db.Char(64)
   resultLeadId       String               @map("result_lead_id") @db.Uuid
   resultLeadVersion  Int                  @map("result_lead_version")
+  resultSnapshot     Json                 @map("result_snapshot")
   department         Department           @relation(fields: [departmentId], references: [id], onDelete: Restrict)
   actorMembership    DepartmentMembership @relation("LeadCommandReceiptActor", fields: [actorUserId, departmentId], references: [userId, departmentId], onDelete: Restrict, map: "lead_command_receipts_actor_department_fkey")
   resultLead         Lead                 @relation(fields: [resultLeadId, departmentId], references: [id, departmentId], onDelete: Restrict, map: "lead_command_receipts_lead_department_fkey")

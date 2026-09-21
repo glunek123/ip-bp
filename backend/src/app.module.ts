@@ -6,6 +6,7 @@ import { AccessControlModule } from './access-control/access-control.module';
 import { CustomerModule } from './modules/customers/customer.module';
 import { AuthModule } from './auth/auth.module';
 import { MaterialModule } from './modules/materials/material.module';
+import { LeadModule } from './modules/leads/lead.module';
 
 @Module({
   imports: [
@@ -18,6 +19,7 @@ import { MaterialModule } from './modules/materials/material.module';
     AccessControlModule,
     CustomerModule,
     MaterialModule,
+    LeadModule,
     HealthModule,
   ],
 })

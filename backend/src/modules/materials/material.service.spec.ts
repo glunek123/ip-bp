@@ -26,6 +26,84 @@ const customerId = '33333333-3333-4333-8333-333333333333';
 const now = new Date('2026-09-21T04:00:00.000Z');
 
 describe('MaterialService', () => {
+  it.each([
+    'success',
+    'target',
+    'forged',
+    'transaction',
+    'customer',
+    'cas',
+    'empty',
+  ])('adopts only validated exact draft materials: %s', async (scenario) => {
+    const fixture = createFixture();
+    const transaction = createMaterialTransaction();
+    transaction.uploadDraft.findFirst.mockResolvedValue({ id: 'draft' });
+    transaction.customer.findFirst.mockResolvedValue({
+      departmentId: actor.departmentId,
+    });
+    fixture.access.buildCustomerScope.mockResolvedValue({
+      departmentId: actor.departmentId,
+    });
+    const isCustomer = scenario === 'customer';
+    transaction.material.findMany.mockResolvedValue(
+      scenario === 'empty'
+        ? []
+        : [
+            availableMaterial(
+              'material-a',
+              'version-a',
+              isCustomer ? 'IDENTITY_FULL' : 'LEAD_SCREENSHOT',
+              isCustomer ? 'CUSTOMER' : 'LEAD_DRAFT',
+              customerId,
+              isCustomer ? 'CUSTOMER_IDENTITY' : 'LEAD_SCREENSHOT',
+            ),
+          ],
+    );
+    const tx = asTransactionClient(transaction);
+    const facts = await fixture.service.assertAvailableVersions(tx, actor, {
+      ownerType: isCustomer ? 'CUSTOMER' : 'LEAD_DRAFT',
+      ownerId: customerId,
+      category: isCustomer ? 'CUSTOMER_IDENTITY' : 'LEAD_SCREENSHOT',
+      contentVersionIds: scenario === 'empty' ? [] : ['version-a'],
+      minCount: 0,
+      maxCount: 20,
+    });
+    if (scenario === 'cas')
+      transaction.material.updateMany.mockResolvedValue({ count: 0 });
+    const result = fixture.service.adoptLeadDraftVersions(
+      scenario === 'transaction'
+        ? asTransactionClient(createMaterialTransaction())
+        : tx,
+      {
+        reservedLeadId: customerId,
+        targetLeadId: scenario === 'target' ? actor.userId : customerId,
+        versions:
+          scenario === 'forged'
+            ? [{ ...facts[0] } as ValidatedMaterialVersionFact]
+            : facts,
+      },
+    );
+    if (scenario === 'success' || scenario === 'empty') {
+      await expect(result).resolves.toBeUndefined();
+      if (scenario === 'empty')
+        expect(transaction.material.updateMany).not.toHaveBeenCalled();
+      else
+        expect(transaction.material.updateMany).toHaveBeenCalledWith({
+          where: {
+            id: { in: ['material-a'] },
+            departmentId: actor.departmentId,
+            ownerType: 'LEAD_DRAFT',
+            ownerId: customerId,
+            category: 'LEAD_SCREENSHOT',
+            status: 'ACTIVE',
+          },
+          data: { ownerType: 'LEAD', ownerId: customerId },
+        });
+    } else
+      await expect(result).rejects.toMatchObject({
+        response: { code: 'MATERIAL_VERSION_INVALID' },
+      });
+  });
   it('lets Nest use default clocks without requiring a Function provider', async () => {
     const module = await Test.createTestingModule({
       providers: [
@@ -1226,7 +1304,10 @@ function createMaterialTransaction() {
     customer: { findFirst: jest.fn() },
     uploadDraft: { findFirst: jest.fn() },
     lead: { findFirst: jest.fn() },
-    material: { findMany: jest.fn() },
+    material: {
+      findMany: jest.fn(),
+      updateMany: jest.fn(async () => ({ count: 1 })),
+    },
     materialReference: {
       createMany: jest.fn(async () => ({ count: 1 })),
     },
