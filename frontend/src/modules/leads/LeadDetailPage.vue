@@ -90,8 +90,8 @@ async function load(): Promise<void> {
     ]);
     customerName.value = customer?.name ?? current.customerId;
     holderName.value = holder?.name ?? current.rightsHolderId;
-    screenshots.value =
-      materials?.items.flatMap((material) => {
+    const available = new Map(
+      (materials?.items ?? []).flatMap((material) => {
         if (!material.currentVersionId || material.status !== 'ACTIVE')
           return [];
         const version = material.contentVersions.find(
@@ -99,14 +99,24 @@ async function load(): Promise<void> {
         );
         return version
           ? [
-              {
-                materialId: material.id,
-                versionId: version.id,
-                filename: version.originalFilename,
-              },
+              [
+                version.id,
+                {
+                  materialId: material.id,
+                  versionId: version.id,
+                  filename: version.originalFilename,
+                },
+              ] as const,
             ]
           : [];
-      }) ?? [];
+      }),
+    );
+    screenshots.value = current.leadScreenshotContentVersionIds.flatMap(
+      (versionId) => {
+        const screenshot = available.get(versionId);
+        return screenshot === undefined ? [] : [screenshot];
+      },
+    );
     if (!controller.signal.aborted) state.value = 'ready';
   } catch (error) {
     if (controller.signal.aborted) return;

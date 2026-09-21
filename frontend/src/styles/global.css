@@ -764,7 +764,7 @@ button {
   gap: 12px;
   margin-bottom: 18px;
 }
-.lead-counter-grid article {
+.lead-counter-grid button {
   display: flex;
   align-items: end;
   justify-content: space-between;
@@ -773,6 +773,14 @@ button {
   border: 1px solid var(--color-hairline);
   border-radius: 9px;
   background: var(--color-surface-1);
+  color: var(--color-ink);
+  cursor: pointer;
+  text-align: left;
+}
+.lead-counter-grid button:hover,
+.lead-counter-grid button.is-active {
+  border-color: var(--color-accent);
+  background: var(--color-surface-2);
 }
 .lead-counter-grid span,
 .lead-row time,
@@ -782,6 +790,19 @@ button {
 }
 .lead-counter-grid strong {
   font: 600 27px var(--font-mono);
+}
+.lead-filter-row {
+  display: flex;
+  justify-content: flex-end;
+  margin-bottom: 12px;
+}
+.lead-pagination {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  gap: 16px;
+  padding: 18px 24px;
+  border-top: 1px solid var(--color-hairline);
 }
 .lead-list__row {
   display: grid;

@@ -66,8 +66,7 @@ export type LeadProductInput = {
   unitPrice: string;
   commentCount: number;
 };
-export type LeadBusinessInput = {
-  rightsHolderId: string;
+export type LeadMutableBusinessInput = {
   caseType: LeadCaseType;
   infringementTypes: readonly InfringementType[];
   source: LeadSource;
@@ -80,11 +79,16 @@ export type LeadBusinessInput = {
   products: readonly LeadProductInput[];
   leadScreenshotContentVersionIds: readonly string[];
 };
+export type LeadBusinessInput = LeadMutableBusinessInput & {
+  rightsHolderId: string;
+};
 export type CreateLeadInput = LeadBusinessInput & {
   customerId: string;
   reservedLeadId?: string;
 };
-export type UpdateLeadInput = LeadBusinessInput & { expectedVersion: number };
+export type UpdateLeadInput = LeadMutableBusinessInput & {
+  expectedVersion: number;
+};
 
 export type LeadProduct = {
   id: string;
@@ -287,10 +291,7 @@ function invalidResponse(): ApiError {
   return new ApiError('服务返回了无效的线索数据', 200, 'INVALID_RESPONSE');
 }
 
-export async function getLeadFormContext(
-  options: RequestOptions = {},
-): Promise<LeadFormContext> {
-  const data = await getJson('/leads/form-context', options);
+function decodeLeadFormContext(data: unknown): LeadFormContext {
   if (
     !isRecord(data) ||
     !Array.isArray(data.customers) ||
@@ -334,15 +335,33 @@ export async function getLeadFormContext(
   return data as LeadFormContext;
 }
 
+export async function getLeadFormContext(
+  options: RequestOptions = {},
+): Promise<LeadFormContext> {
+  return decodeLeadFormContext(await getJson('/leads/form-context', options));
+}
+
+export async function getLeadEditContext(
+  id: string,
+  options: RequestOptions = {},
+): Promise<LeadFormContext> {
+  return decodeLeadFormContext(
+    await getJson(`/leads/${encodeURIComponent(id)}/edit-context`, options),
+  );
+}
+
 export async function listLeads(
   page = 1,
   pageSize = 20,
   options: RequestOptions = {},
+  status?: LeadStatus,
 ): Promise<LeadList> {
-  const data = await getJson(
-    `/leads?page=${page}&pageSize=${pageSize}`,
-    options,
-  );
+  const query = new URLSearchParams({
+    page: String(page),
+    pageSize: String(pageSize),
+  });
+  if (status !== undefined) query.set('status', status);
+  const data = await getJson(`/leads?${query.toString()}`, options);
   const counts = isRecord(data) ? data.counts : undefined;
   const capabilities = isRecord(data) ? data.capabilities : undefined;
   if (

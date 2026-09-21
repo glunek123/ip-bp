@@ -33,7 +33,13 @@ export class LeadController {
     @CurrentActor() actor: ActorContext,
     @Query() query: LeadListQueryDto,
   ) {
-    return this.leads.list(actor, query.page, query.pageSize);
+    return this.leads.list(actor, query.page, query.pageSize, query.status);
+  }
+  @Get(':id/edit-context') editContext(
+    @CurrentActor() actor: ActorContext,
+    @Param('id', new ParseUUIDPipe()) id: string,
+  ) {
+    return this.leads.editContext(actor, id);
   }
   @Get(':id') get(
     @CurrentActor() actor: ActorContext,

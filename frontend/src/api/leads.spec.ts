@@ -11,6 +11,7 @@ vi.mock('./http', async (importOriginal) => ({
 import {
   createLead,
   getLead,
+  getLeadEditContext,
   getLeadFormContext,
   listLeads,
   updateLead,
@@ -109,6 +110,15 @@ describe('Lead API', () => {
     await expect(getLead('lead-1')).rejects.toBeInstanceOf(ApiError);
   });
 
+  it('loads the target-scoped edit context from its dedicated route', async () => {
+    http.getJson.mockResolvedValue(context);
+    await expect(getLeadEditContext('lead/1')).resolves.toEqual(context);
+    expect(http.getJson).toHaveBeenCalledWith(
+      '/leads/lead%2F1/edit-context',
+      {},
+    );
+  });
+
   it('requires all four status counters and preserves decimal strings', async () => {
     http.getJson.mockResolvedValue({
       items: [lead],
@@ -140,6 +150,27 @@ describe('Lead API', () => {
     await expect(listLeads()).rejects.toMatchObject({
       code: 'INVALID_RESPONSE',
     });
+  });
+
+  it('adds an optional status filter without dropping pagination', async () => {
+    http.getJson.mockResolvedValue({
+      items: [lead],
+      total: 21,
+      page: 2,
+      pageSize: 20,
+      counts: {
+        WAITING_PUSH: 21,
+        WAITING_REVIEW: 0,
+        WAITING_EVIDENCE_DECISION: 0,
+        ARCHIVED: 0,
+      },
+      capabilities: { create: true },
+    });
+    await listLeads(2, 20, {}, 'WAITING_PUSH');
+    expect(http.getJson).toHaveBeenCalledWith(
+      '/leads?page=2&pageSize=20&status=WAITING_PUSH',
+      {},
+    );
   });
 
   it('requires a server edit capability on details', async () => {
@@ -183,7 +214,6 @@ describe('Lead API', () => {
     });
 
     const business = {
-      rightsHolderId: createInput.rightsHolderId,
       caseType: createInput.caseType,
       infringementTypes: createInput.infringementTypes,
       source: createInput.source,

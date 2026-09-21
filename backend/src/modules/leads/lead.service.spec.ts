@@ -1,4 +1,4 @@
-import { ConflictException } from '@nestjs/common';
+import { ConflictException, ForbiddenException } from '@nestjs/common';
 import { AccessControlService } from '../../access-control/access-control.service';
 import { ActorContext } from '../../access-control/actor-context';
 import { DatabaseService } from '../../database/database.service';
@@ -472,6 +472,38 @@ describe('LeadService', () => {
     },
   );
 
+  it('filters list items and total by status while keeping global counters', async () => {
+    const scope = { departmentId: actor.departmentId };
+    const leadRepo = {
+      findMany: jest.fn().mockResolvedValue([]),
+      count: jest.fn().mockResolvedValue(0),
+      groupBy: jest.fn().mockResolvedValue([]),
+    };
+    const database = { lead: leadRepo } as unknown as DatabaseService;
+    const access = {
+      buildLeadScope: jest.fn().mockResolvedValue(scope),
+      canAuthorizeNewLead: jest.fn().mockResolvedValue(false),
+    } as unknown as AccessControlService;
+    const service = new LeadService(database, access, {
+      listCurrentReferenceVersionIds: jest.fn(),
+    } as unknown as MaterialService);
+
+    await service.list(actor, 2, 20, 'WAITING_PUSH');
+    expect(leadRepo.findMany).toHaveBeenCalledWith(
+      expect.objectContaining({
+        where: { ...scope, status: 'WAITING_PUSH' },
+        skip: 20,
+        take: 20,
+      }),
+    );
+    expect(leadRepo.count).toHaveBeenCalledWith({
+      where: { ...scope, status: 'WAITING_PUSH' },
+    });
+    expect(leadRepo.groupBy).toHaveBeenCalledWith(
+      expect.objectContaining({ where: scope }),
+    );
+  });
+
   it('returns RESOURCE_NOT_FOUND when a scoped detail query cannot see the Lead', async () => {
     const database = {
       lead: { findFirst: jest.fn().mockResolvedValue(null) },
@@ -527,6 +559,120 @@ describe('LeadService', () => {
         }),
       }),
     );
+  });
+
+  it('returns a scoped edit context without requiring lead.create', async () => {
+    const leadFindFirst = jest.fn().mockResolvedValue({
+      id: 'lead-1',
+      status: 'WAITING_PUSH',
+      customerId: 'customer-1',
+      rightsHolderId: 'holder-1',
+    });
+    const customerFindFirst = jest.fn().mockResolvedValue({
+      id: 'customer-1',
+      name: '客户甲',
+      rightsHolderLinks: [{ rightsHolder: { id: 'holder-1', name: '主体甲' } }],
+    });
+    const database = {
+      lead: { findFirst: leadFindFirst },
+      customer: { findFirst: customerFindFirst },
+    } as unknown as DatabaseService;
+    const access = {
+      buildLeadScope: jest.fn().mockResolvedValue({
+        departmentId: actor.departmentId,
+        responsibleUserId: actor.userId,
+      }),
+      buildCustomerScope: jest.fn().mockResolvedValue({
+        departmentId: actor.departmentId,
+      }),
+      canAuthorizeNewLead: jest.fn().mockResolvedValue(false),
+    } as unknown as AccessControlService;
+
+    await expect(
+      new LeadService(database, access, {} as MaterialService).editContext(
+        actor,
+        'lead-1',
+      ),
+    ).resolves.toMatchObject({
+      customers: [
+        {
+          id: 'customer-1',
+          name: '客户甲',
+          rightsHolders: [{ id: 'holder-1', name: '主体甲' }],
+        },
+      ],
+      dictionaries: { caseTypes: CASE_TYPE_OPTIONS },
+    });
+    expect(access.buildLeadScope).toHaveBeenCalledWith(actor, 'lead.edit');
+    expect(access.buildCustomerScope).toHaveBeenCalledWith(
+      actor,
+      'customer.read',
+    );
+    expect(access.canAuthorizeNewLead).not.toHaveBeenCalled();
+  });
+
+  it('rejects edit context without lead.edit before reading Lead facts', async () => {
+    const leadFindFirst = jest.fn();
+    const access = {
+      buildLeadScope: jest
+        .fn()
+        .mockRejectedValue(new ForbiddenException('denied')),
+    } as unknown as AccessControlService;
+    const database = {
+      lead: { findFirst: leadFindFirst },
+    } as unknown as DatabaseService;
+
+    await expect(
+      new LeadService(database, access, {} as MaterialService).editContext(
+        actor,
+        'lead-1',
+      ),
+    ).rejects.toMatchObject({ response: { code: 'ACTION_FORBIDDEN' } });
+    expect(leadFindFirst).not.toHaveBeenCalled();
+  });
+
+  it('hides a Lead outside edit scope from edit context', async () => {
+    const database = {
+      lead: { findFirst: jest.fn().mockResolvedValue(null) },
+    } as unknown as DatabaseService;
+    const access = {
+      buildLeadScope: jest.fn().mockResolvedValue({
+        departmentId: actor.departmentId,
+        responsibleUserId: actor.userId,
+      }),
+    } as unknown as AccessControlService;
+
+    await expect(
+      new LeadService(database, access, {} as MaterialService).editContext(
+        actor,
+        'foreign-lead',
+      ),
+    ).rejects.toMatchObject({ response: { code: 'RESOURCE_NOT_FOUND' } });
+  });
+
+  it('rejects edit context after the Lead leaves WAITING_PUSH', async () => {
+    const database = {
+      lead: {
+        findFirst: jest.fn().mockResolvedValue({
+          id: 'lead-1',
+          status: 'WAITING_REVIEW',
+          customerId: 'customer-1',
+          rightsHolderId: 'holder-1',
+        }),
+      },
+    } as unknown as DatabaseService;
+    const access = {
+      buildLeadScope: jest.fn().mockResolvedValue({
+        departmentId: actor.departmentId,
+      }),
+    } as unknown as AccessControlService;
+
+    await expect(
+      new LeadService(database, access, {} as MaterialService).editContext(
+        actor,
+        'lead-1',
+      ),
+    ).rejects.toMatchObject({ response: { code: 'INVALID_STATE' } });
   });
 
   it('applies customer.read scope inside create transaction', async () => {
@@ -648,29 +794,32 @@ describe('LeadService', () => {
     },
   );
 
-  it.each(['create', 'edit'] as const)(
-    'hides a customer outside customer.read scope during %s',
-    async (operation) => {
-      const fixture =
-        operation === 'create' ? createCreateFixture() : createUpdateFixture();
-      (fixture.access.buildCustomerScope as jest.Mock).mockResolvedValue({
-        departmentId: actor.departmentId,
-        responsibleUserId: '99999999-9999-4999-8999-999999999999',
-      });
-      fixture.tx.customer.findFirst.mockResolvedValue(null);
-      const result =
-        operation === 'create'
-          ? fixture.service.create(actor, 'scope-hidden', validCreate())
-          : fixture.service.update(
-              actor,
-              createUpdateFixture().current.id,
-              validUpdate(),
-            );
-      await expect(result).rejects.toMatchObject({
-        response: { code: 'RESOURCE_NOT_FOUND' },
-      });
-    },
-  );
+  it('hides a customer outside customer.read scope during create', async () => {
+    const fixture = createCreateFixture();
+    (fixture.access.buildCustomerScope as jest.Mock).mockResolvedValue({
+      departmentId: actor.departmentId,
+      responsibleUserId: '99999999-9999-4999-8999-999999999999',
+    });
+    fixture.tx.customer.findFirst.mockResolvedValue(null);
+    await expect(
+      fixture.service.create(actor, 'scope-hidden', validCreate()),
+    ).rejects.toMatchObject({
+      response: { code: 'RESOURCE_NOT_FOUND' },
+    });
+  });
+
+  it('keeps customer and rights holder immutable during edit', async () => {
+    const fixture = createUpdateFixture();
+    await fixture.service.update(actor, fixture.current.id, validUpdate());
+    expect(fixture.tx.lead.updateMany).toHaveBeenCalledWith(
+      expect.objectContaining({
+        data: expect.not.objectContaining({
+          rightsHolderId: expect.anything(),
+        }),
+      }),
+    );
+    expect(fixture.access.buildCustomerScope).not.toHaveBeenCalled();
+  });
 
   it('persists estimates computed from quantity, comment fallback, zero and max money', async () => {
     const fixture = createCreateFixture();
@@ -838,10 +987,18 @@ function createCreateFixture() {
 }
 
 function validUpdate() {
+  const create = validCreate();
   return {
-    ...validCreate(),
+    caseType: create.caseType,
+    infringementTypes: create.infringementTypes,
+    source: create.source,
+    platform: create.platform,
+    foundAt: create.foundAt,
+    shopName: create.shopName,
+    needDisclose: create.needDisclose,
+    products: create.products,
+    leadScreenshotContentVersionIds: create.leadScreenshotContentVersionIds,
     expectedVersion: 1,
-    rightsHolderId: validCreate().rightsHolderId,
   };
 }
 

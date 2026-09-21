@@ -138,4 +138,42 @@ describe('LeadDetailPage', () => {
     await flushPromises();
     expect(wrapper.find('[data-test="edit-lead"]').exists()).toBe(false);
   });
+
+  it('shows only the exact screenshot versions referenced by the Lead', async () => {
+    leadApi.getLead.mockResolvedValue({
+      ...lead,
+      leadScreenshotContentVersionIds: ['version-b'],
+    });
+    materialApi.listOwnerMaterials.mockResolvedValue({
+      items: [
+        {
+          id: 'material-a',
+          status: 'ACTIVE',
+          currentVersionId: 'version-a',
+          contentVersions: [
+            { id: 'version-a', originalFilename: '旧截图.png' },
+          ],
+        },
+        {
+          id: 'material-b',
+          status: 'ACTIVE',
+          currentVersionId: 'version-b',
+          contentVersions: [
+            { id: 'version-b', originalFilename: '当前截图.png' },
+          ],
+        },
+      ],
+      total: 2,
+    });
+
+    const wrapper = await mountPage();
+    expect(wrapper.text()).toContain('当前截图.png');
+    expect(wrapper.text()).not.toContain('旧截图.png');
+    expect(
+      wrapper.find('[data-test="download-screenshot-version-a"]').exists(),
+    ).toBe(false);
+    expect(
+      wrapper.find('[data-test="download-screenshot-version-b"]').exists(),
+    ).toBe(true);
+  });
 });

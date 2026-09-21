@@ -189,10 +189,17 @@ function firstErrorSelector(): string | undefined {
     ['shopName', '[name="shopName"]'],
   ];
   for (const [key, selector] of order) if (errors[key]) return selector;
-  const productKey = Object.keys(errors).find((key) =>
-    key.startsWith('product-'),
-  );
-  if (productKey) return `[name="${productKey}"]`;
+  for (const index of products.value.keys()) {
+    for (const key of [
+      `productUrl-${index}`,
+      `productTitle-${index}`,
+      `quantity-${index}`,
+      `unitPrice-${index}`,
+      `commentCount-${index}`,
+    ]) {
+      if (errors[key]) return `[name="${key}"]`;
+    }
+  }
   if (errors.screenshots) return '[name="screenshots"]';
   return undefined;
 }
@@ -212,13 +219,13 @@ function validate(): boolean {
   if (!shopName.value.trim()) errors.shopName = '请输入店铺名称';
   products.value.forEach((product, index) => {
     if (!product.url.trim() && !product.title.trim())
-      errors[`product-title-${index}`] = '商品链接和标题至少填写一项';
+      errors[`productTitle-${index}`] = '商品链接和标题至少填写一项';
     if (product.url.trim()) {
       try {
         const parsed = new globalThis.URL(product.url.trim());
         if (!['http:', 'https:'].includes(parsed.protocol)) throw new Error();
       } catch {
-        errors[`product-url-${index}`] = '商品链接仅支持 http/https';
+        errors[`productUrl-${index}`] = '商品链接仅支持 http/https';
       }
     }
     if (!nonNegativeInteger(product.quantity))
@@ -298,6 +305,7 @@ async function submit(): Promise<void> {
         <select
           name="rightsHolderId"
           class="text-input"
+          :disabled="customerLocked"
           v-model="rightsHolderId"
           @change="errors.rightsHolderId = ''"
         >
@@ -444,14 +452,12 @@ async function submit(): Promise<void> {
           <label
             ><span>商品链接</span
             ><input
-              :name="`product-url-${index}`"
+              :name="`productUrl-${index}`"
               class="text-input"
               v-model="product.url"
-            /><small
-              v-if="errors[`product-url-${index}`]"
-              class="field-error"
-              >{{ errors[`product-url-${index}`] }}</small
-            ></label
+            /><small v-if="errors[`productUrl-${index}`]" class="field-error">{{
+              errors[`productUrl-${index}`]
+            }}</small></label
           >
           <label
             ><span>商品标题</span
@@ -461,9 +467,9 @@ async function submit(): Promise<void> {
               maxlength="200"
               v-model="product.title"
             /><small
-              v-if="errors[`product-title-${index}`]"
+              v-if="errors[`productTitle-${index}`]"
               class="field-error"
-              >{{ errors[`product-title-${index}`] }}</small
+              >{{ errors[`productTitle-${index}`] }}</small
             ></label
           >
           <label

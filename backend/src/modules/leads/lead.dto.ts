@@ -25,9 +25,11 @@ import {
   CASE_TYPES,
   INFRINGEMENT_TYPES,
   LeadCaseType,
+  LeadStatus,
   InfringementType,
   LeadPlatform,
   LeadSource,
+  LEAD_STATUSES,
   PLATFORMS,
   SOURCES,
 } from './lead.constants';
@@ -141,7 +143,6 @@ export class CreateLeadDto extends LeadBusinessFieldsDto {
 
 export class UpdateLeadDto extends LeadBusinessFieldsDto {
   @ApiProperty({ minimum: 1 }) @IsInt() @Min(1) expectedVersion!: number;
-  @ApiProperty({ format: 'uuid' }) @IsUUID('4') rightsHolderId!: string;
 }
 
 export class LeadListQueryDto {
@@ -158,6 +159,10 @@ export class LeadListQueryDto {
   @Max(100)
   @IsOptional()
   pageSize = 20;
+  @ApiPropertyOptional({ enum: LEAD_STATUSES })
+  @IsIn(LEAD_STATUSES)
+  @IsOptional()
+  status?: LeadStatus;
 }
 
 export type CreateLeadCommand = CreateLeadDto;

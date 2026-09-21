@@ -1,5 +1,5 @@
 import { BadRequestException, ValidationPipe } from '@nestjs/common';
-import { CreateLeadDto, UpdateLeadDto } from './lead.dto';
+import { CreateLeadDto, LeadListQueryDto, UpdateLeadDto } from './lead.dto';
 import { LeadController } from './lead.controller';
 import { LeadService } from './lead.service';
 
@@ -27,17 +27,56 @@ describe('LeadController', () => {
     expect(service.create).toHaveBeenCalledWith({ userId: 'u' }, 'key', {});
   });
 
+  it('delegates the immutable-relation edit context', async () => {
+    const service = {
+      editContext: jest.fn().mockResolvedValue({ customers: [] }),
+    } as unknown as LeadService;
+    const controller = new LeadController(service);
+
+    await expect(
+      controller.editContext({ userId: 'u' } as never, 'lead-1'),
+    ).resolves.toEqual({ customers: [] });
+    expect(service.editContext).toHaveBeenCalledWith({ userId: 'u' }, 'lead-1');
+  });
+
+  it('accepts only controlled status filters', async () => {
+    const pipe = new ValidationPipe({ transform: true });
+    await expect(
+      pipe.transform(
+        { page: '2', pageSize: '20', status: 'WAITING_PUSH' },
+        { type: 'query', metatype: LeadListQueryDto },
+      ),
+    ).resolves.toMatchObject({ page: 2, pageSize: 20, status: 'WAITING_PUSH' });
+    await expect(
+      pipe.transform(
+        { status: 'UNKNOWN' },
+        { type: 'query', metatype: LeadListQueryDto },
+      ),
+    ).rejects.toBeInstanceOf(BadRequestException);
+  });
+
   it.each([
     [CreateLeadDto, { ...validBody(), departmentId: 'forged' }],
     [
       UpdateLeadDto,
       {
-        ...validBody(),
+        ...validUpdateBody(),
         expectedVersion: 1,
         customerId: '33333333-3333-4333-8333-333333333333',
       },
     ],
-    [UpdateLeadDto, { ...validBody(), expectedVersion: 1, status: 'ARCHIVED' }],
+    [
+      UpdateLeadDto,
+      {
+        ...validUpdateBody(),
+        expectedVersion: 1,
+        rightsHolderId: '44444444-4444-4444-8444-444444444444',
+      },
+    ],
+    [
+      UpdateLeadDto,
+      { ...validUpdateBody(), expectedVersion: 1, status: 'ARCHIVED' },
+    ],
   ])(
     'rejects unknown and immutable body fields %#',
     async (metatype, value) => {
@@ -69,5 +108,20 @@ function validBody() {
       { title: '商品', quantity: 1, unitPrice: '1.00', commentCount: 0 },
     ],
     leadScreenshotContentVersionIds: [],
+  };
+}
+
+function validUpdateBody() {
+  const body = validBody();
+  return {
+    caseType: body.caseType,
+    infringementTypes: body.infringementTypes,
+    source: body.source,
+    platform: body.platform,
+    foundAt: body.foundAt,
+    shopName: body.shopName,
+    needDisclose: body.needDisclose,
+    products: body.products,
+    leadScreenshotContentVersionIds: body.leadScreenshotContentVersionIds,
   };
 }

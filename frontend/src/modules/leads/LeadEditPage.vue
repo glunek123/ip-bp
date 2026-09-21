@@ -5,7 +5,7 @@ import { ElButton } from 'element-plus/es/components/button/index.mjs';
 import { ApiError } from '../../api/http';
 import {
   getLead,
-  getLeadFormContext,
+  getLeadEditContext,
   updateLead,
   type LeadDetail,
   type LeadFormContext,
@@ -37,7 +37,7 @@ async function load(): Promise<void> {
       state.value = 'denied';
       return;
     }
-    const formContext = await getLeadFormContext({
+    const formContext = await getLeadEditContext(current.id, {
       signal: controller.signal,
     });
     if (controller.signal.aborted) return;
@@ -57,7 +57,6 @@ async function submit(value: LeadFormSubmission): Promise<void> {
   submitError.value = '';
   try {
     await updateLead(lead.value.id, {
-      rightsHolderId: value.fields.rightsHolderId,
       caseType: value.fields.caseType,
       infringementTypes: [...value.fields.infringementTypes],
       source: value.fields.source,

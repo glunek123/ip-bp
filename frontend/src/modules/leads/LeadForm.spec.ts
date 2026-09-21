@@ -1,5 +1,5 @@
 import { mount } from '@vue/test-utils';
-import { describe, expect, it } from 'vitest';
+import { afterEach, describe, expect, it } from 'vitest';
 import LeadForm from './LeadForm.vue';
 
 const context = {
@@ -51,6 +51,9 @@ async function fillRequired(wrapper: ReturnType<typeof mount>) {
 }
 
 describe('LeadForm', () => {
+  afterEach(() => {
+    document.body.innerHTML = '';
+  });
   it('links admitted customers to only their rights holders and clears a hidden relation', async () => {
     const wrapper = mount(LeadForm, { props: { context } });
     await wrapper.get('select[name="customerId"]').setValue('customer-a');
@@ -150,5 +153,23 @@ describe('LeadForm', () => {
     });
     expect(payload.fields).not.toHaveProperty('status');
     expect(payload.fields).not.toHaveProperty('estimatedAmount');
+  });
+
+  it.each([
+    ['productTitle-0', ''],
+    ['quantity-0', '-1'],
+    ['unitPrice-0', '1.999'],
+    ['commentCount-0', '-1'],
+  ])('focuses the first invalid product field %s', async (name, value) => {
+    const wrapper = mount(LeadForm, {
+      attachTo: document.body,
+      props: { context },
+    });
+    await fillRequired(wrapper);
+    await wrapper.get(`[name="${name}"]`).setValue(value);
+    await wrapper.get('form').trigger('submit');
+
+    expect((document.activeElement as HTMLInputElement).name).toBe(name);
+    wrapper.unmount();
   });
 });

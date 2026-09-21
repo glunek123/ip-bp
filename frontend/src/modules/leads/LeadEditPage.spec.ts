@@ -6,6 +6,7 @@ import LeadEditPage from './LeadEditPage.vue';
 const api = vi.hoisted(() => ({
   getLead: vi.fn(),
   getLeadFormContext: vi.fn(),
+  getLeadEditContext: vi.fn(),
   updateLead: vi.fn(),
 }));
 vi.mock('../../api/leads', () => api);
@@ -72,6 +73,7 @@ beforeEach(() => {
   vi.resetAllMocks();
   api.getLead.mockResolvedValue(lead);
   api.getLeadFormContext.mockResolvedValue(context);
+  api.getLeadEditContext.mockResolvedValue(context);
   api.updateLead.mockResolvedValue({ ...lead, version: 3 });
 });
 
@@ -82,19 +84,27 @@ describe('LeadEditPage', () => {
     expect(wrapper.text()).toContain('当前线索不可编辑');
     expect(wrapper.find('form').exists()).toBe(false);
     expect(api.getLeadFormContext).not.toHaveBeenCalled();
+    expect(api.getLeadEditContext).not.toHaveBeenCalled();
   });
 
   it('submits only editable fields with current version and existing screenshots', async () => {
     const wrapper = await mountPage();
+    expect(api.getLeadEditContext).toHaveBeenCalledWith(
+      'l',
+      expect.objectContaining({ signal: expect.any(AbortSignal) }),
+    );
+    expect(api.getLeadFormContext).not.toHaveBeenCalled();
     await wrapper.get('form').trigger('submit');
     await flushPromises();
     expect(api.updateLead).toHaveBeenCalledWith(
       'l',
       expect.objectContaining({
         expectedVersion: 2,
-        rightsHolderId: 'r',
         leadScreenshotContentVersionIds: ['v'],
       }),
+    );
+    expect(api.updateLead.mock.calls[0]?.[1]).not.toHaveProperty(
+      'rightsHolderId',
     );
     expect(api.updateLead.mock.calls[0]?.[1]).not.toHaveProperty('customerId');
     expect(api.updateLead.mock.calls[0]?.[1]).not.toHaveProperty('status');

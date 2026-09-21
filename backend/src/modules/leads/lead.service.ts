@@ -20,6 +20,7 @@ import {
   LEAD_STATUSES,
   LeadPlatform,
   LeadSource,
+  LeadStatus,
   PLATFORM_OPTIONS,
   PLATFORMS,
   SOURCE_OPTIONS,
@@ -143,22 +144,28 @@ export class LeadService {
     }
   }
 
-  async list(actor: ActorContext, page: number, pageSize: number) {
+  async list(
+    actor: ActorContext,
+    page: number,
+    pageSize: number,
+    status?: LeadStatus,
+  ) {
     let scope;
     try {
       scope = await this.access.buildLeadScope(actor, 'lead.read');
     } catch (error) {
       throw this.mapAuthorization(error);
     }
+    const itemScope = status === undefined ? scope : { ...scope, status };
     const [items, total, groups, create] = await Promise.all([
       this.database.lead.findMany({
-        where: scope,
+        where: itemScope,
         orderBy: [{ updatedAt: 'desc' }, { id: 'asc' }],
         skip: (page - 1) * pageSize,
         take: pageSize,
         include: leadInclude,
       }),
-      this.database.lead.count({ where: scope }),
+      this.database.lead.count({ where: itemScope }),
       this.database.lead.groupBy({
         by: ['status'],
         where: scope,
@@ -184,6 +191,68 @@ export class LeadService {
       pageSize,
       counts,
       capabilities: { create },
+    };
+  }
+
+  async editContext(actor: ActorContext, id: string) {
+    let leadScope;
+    try {
+      leadScope = await this.access.buildLeadScope(actor, 'lead.edit');
+    } catch (error) {
+      throw this.mapAuthorization(error);
+    }
+    const lead = await this.database.lead.findFirst({
+      where: { id, ...leadScope },
+      select: {
+        id: true,
+        status: true,
+        customerId: true,
+        rightsHolderId: true,
+      },
+    });
+    if (lead === null) throw this.notFound();
+    if (lead.status !== 'WAITING_PUSH') throw this.invalidState();
+
+    let customerScope;
+    try {
+      customerScope = await this.access.buildCustomerScope(
+        actor,
+        'customer.read',
+      );
+    } catch {
+      throw this.notFound();
+    }
+    const customer = await this.database.customer.findFirst({
+      where: {
+        id: lead.customerId,
+        ...customerScope,
+        profileStatus: 'ADMITTED',
+      },
+      select: {
+        id: true,
+        name: true,
+        rightsHolderLinks: {
+          where: { rightsHolderId: lead.rightsHolderId },
+          select: { rightsHolder: { select: { id: true, name: true } } },
+        },
+      },
+    });
+    const holder = customer?.rightsHolderLinks[0]?.rightsHolder;
+    if (customer === null || holder === undefined) throw this.notFound();
+    return {
+      customers: [
+        {
+          id: customer.id,
+          name: customer.name,
+          rightsHolders: [holder],
+        },
+      ],
+      dictionaries: {
+        caseTypes: CASE_TYPE_OPTIONS,
+        infringementTypes: INFRINGEMENT_TYPE_OPTIONS,
+        sources: SOURCE_OPTIONS,
+        platforms: PLATFORM_OPTIONS,
+      },
     };
   }
 
@@ -441,12 +510,6 @@ export class LeadService {
             if (current.status !== 'WAITING_PUSH') throw this.invalidState();
             if (current.version !== input.expectedVersion)
               throw this.versionConflict();
-            await this.assertCustomerAndHolder(
-              transaction,
-              actor,
-              current.customerId,
-              input.rightsHolderId,
-            );
             const materialFacts =
               input.leadScreenshotContentVersionIds.length === 0
                 ? []
@@ -473,7 +536,6 @@ export class LeadService {
                 status: 'WAITING_PUSH',
               },
               data: {
-                rightsHolderId: input.rightsHolderId,
                 caseType: normalized.caseType,
                 source: normalized.source,
                 platform: normalized.platform,
@@ -522,7 +584,6 @@ export class LeadService {
             const changedFields = this.changedFields(
               current,
               normalized,
-              input.rightsHolderId,
               referenceResult.changed,
             );
             await transaction.auditEvent.create({
@@ -928,12 +989,10 @@ export class LeadService {
   private changedFields(
     current: LeadRecord,
     normalized: NormalizedBusiness,
-    rightsHolderId: string,
     screenshotChanged: boolean,
   ) {
     const changed: string[] = [];
     const scalarPairs: Array<[string, unknown, unknown]> = [
-      ['rightsHolderId', current.rightsHolderId, rightsHolderId],
       ['caseType', current.caseType, normalized.caseType],
       ['source', current.source, normalized.source],
       ['platform', current.platform, normalized.platform],
