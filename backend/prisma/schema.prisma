@@ -551,6 +551,7 @@ model CustomerAdmissionReceipt {
   requestFingerprint    String               @map("request_fingerprint") @db.Char(64)
   resultCustomerId      String               @map("result_customer_id") @db.Uuid
   resultCustomerVersion Int                  @map("result_customer_version")
+  resultSnapshot        Json                 @map("result_snapshot")
   department            Department           @relation(fields: [departmentId], references: [id], onDelete: Restrict)
   actorMembership       DepartmentMembership @relation("CustomerAdmissionReceiptActor", fields: [actorUserId, departmentId], references: [userId, departmentId], onDelete: Restrict, map: "customer_admission_receipts_actor_department_fkey")
   resultCustomer        Customer             @relation(fields: [resultCustomerId, departmentId], references: [id, departmentId], onDelete: Restrict, map: "customer_admission_receipts_customer_department_fkey")

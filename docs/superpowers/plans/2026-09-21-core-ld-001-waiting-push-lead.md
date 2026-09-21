@@ -404,6 +404,8 @@ git commit -m "feat: add private material storage"
 - Modify: `backend/src/modules/customers/customer.service.ts`
 - Modify: `backend/src/modules/customers/customer.service.spec.ts`
 - Modify: `backend/src/modules/customers/customer.module.ts`
+- Create: `backend/prisma/migrations/20260921015000_add_admission_receipt_snapshot/migration.sql`
+- Modify: `backend/prisma/schema.prisma`
 
 **Interfaces:**
 
@@ -448,11 +450,11 @@ Export one compatibility map shared by validation/service tests. Do not accept a
 
 - [ ] **Step 4: Implement idempotent atomic admission**
 
-The service order is: authorize visible customer with`customer.admit`→lock customer→check version and DRAFT→normalize/validate fields→check department identity uniqueness→lock and validate content versions→create frozen references→update Customer to ADMITTED/version+1/admittedAt→write AuditEvent→write CustomerAdmissionReceipt. Use Serializable transaction and return a prior receipt for identical retry; reject fingerprint mismatch.
+The service order is: authorize visible customer with`customer.admit`→lock customer→check version and DRAFT→normalize/validate fields→check department identity uniqueness→lock and validate content versions→create frozen references→update Customer to ADMITTED/version+1/admittedAt→write AuditEvent→write CustomerAdmissionReceipt. The receipt persists the complete response snapshot in the same transaction; identical retries parse and return that immutable snapshot rather than rebuilding from the mutable Customer row. Use a bounded three-attempt Serializable retry for Prisma `P2034`; exhausted retries become a stable version conflict, and fingerprint mismatch returns `IDEMPOTENCY_CONFLICT`.
 
 - [ ] **Step 5: Expose capability and history**
 
-`CustomerService.get()` returns `capabilities.admit` based on `customer.admit`; list/detail status labels reflect ADMITTED; history maps`customer.admitted`. Existing routine edit remains separate and must not demote ADMITTED or replace frozen identity versions.
+`CustomerService.get()` returns `capabilities.admit` based on `customer.admit`; list/detail status labels reflect ADMITTED; history maps`customer.admitted`. Existing routine edit remains separate and must not demote ADMITTED or replace frozen identity versions. Once ADMITTED, routine edits preserve `name/customerType/identityType/identityNumber` (semantically identical repeats are no-ops), while category and other non-identity routine fields remain editable. Admission, duplicate queries and draft edits share the same identity-number canonicalization: NFKC/trim, Latin uppercase, and removal of approved display whitespace/hyphens.
 
 - [ ] **Step 6: Run focused GREEN tests**
 

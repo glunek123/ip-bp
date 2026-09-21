@@ -14,6 +14,8 @@ describe('CORE-LD migrations', () => {
     '20260921013000_add_material_upload_metadata';
   const pendingStorageMigrationName =
     '20260921014000_add_upload_draft_pending_storage_key';
+  const admissionSnapshotMigrationName =
+    '20260921015000_add_admission_receipt_snapshot';
 
   function readMigration(name: string): string {
     return readFileSync(resolve(migrationRoot, name, 'migration.sql'), 'utf8');
@@ -33,6 +35,9 @@ describe('CORE-LD migrations', () => {
     expect(migrations.indexOf(pendingStorageMigrationName)).toBeGreaterThan(
       migrations.indexOf(materialMetadataMigrationName),
     );
+    expect(migrations.indexOf(admissionSnapshotMigrationName)).toBeGreaterThan(
+      migrations.indexOf(pendingStorageMigrationName),
+    );
 
     const actionSql = readMigration(actionMigrationName);
     const schemaSql = readMigration(schemaMigrationName);
@@ -42,6 +47,22 @@ describe('CORE-LD migrations', () => {
     expect(actionSql).toContain("ADD VALUE 'lead.create'");
     expect(actionSql).toContain("ADD VALUE 'lead.edit'");
     expect(schemaSql).not.toMatch(/DROP TABLE|DROP COLUMN/);
+  });
+
+  it('safely backfills immutable admission receipt snapshots before requiring them', () => {
+    const snapshotSql = readMigration(admissionSnapshotMigrationName);
+
+    expect(snapshotSql).toContain('ADD COLUMN "result_snapshot" JSONB');
+    expect(snapshotSql).toContain('UPDATE "customer_admission_receipts"');
+    expect(snapshotSql).toContain('jsonb_build_object');
+    expect(snapshotSql).toContain('"result_customer_version"');
+    expect(snapshotSql).toContain(
+      'ALTER COLUMN "result_snapshot" SET NOT NULL',
+    );
+    expect(snapshotSql).toContain('normalized_identity_number');
+    expect(snapshotSql).toContain('normalize("identity_number", NFKC)');
+    expect(snapshotSql).toMatch(/regexp_replace[\s\S]*\[:space:\][\s\S]*-/i);
+    expect(snapshotSql).not.toMatch(/DROP TABLE|DROP COLUMN/);
   });
 
   it('persists a nullable orphan cleanup key before blob publication', () => {

@@ -13,6 +13,7 @@ import {
   CustomerDuplicatesQueryDto,
   UpdateCustomerDraftDto,
 } from './customer.dto';
+import { normalizeCustomerIdentityNumber } from './customer-identity';
 
 export type CustomerRecord = {
   id: string;
@@ -295,9 +296,9 @@ export class CustomerService {
     const normalizedName =
       name === null ? null : this.normalizeComparable(name);
     const identityType = this.normalizeIdentity(query.identityType);
-    const normalizedIdentityNumber = this.normalizeIdentity(
+    const normalizedIdentityNumber = normalizeCustomerIdentityNumber(
       query.identityNumber,
-    );
+    ).normalized;
     this.assertIdentityPair(identityType, normalizedIdentityNumber);
     if (normalizedName === null && normalizedIdentityNumber === null) {
       throw new BadRequestException({
@@ -518,35 +519,57 @@ export class CustomerService {
     current: CustomerRecord,
     input: UpdateCustomerDraftDto,
   ): NormalizedCustomerEdit {
-    const name = input.name !== undefined ? input.name?.trim() : current.name;
+    let name = input.name !== undefined ? input.name?.trim() : current.name;
     if (name === undefined || name.length === 0) {
+      if (current.profileStatus === 'ADMITTED') throw this.invalidState();
       throw new BadRequestException({
         code: 'VALIDATION_ERROR',
         message: '客户名称不能为空',
       });
     }
-    const identityType =
+    let customerType =
+      input.customerType !== undefined
+        ? this.normalizeOptional(input.customerType)
+        : current.customerType;
+    let identityType =
       input.identityType !== undefined
         ? this.normalizeIdentity(input.identityType)
         : current.identityType;
-    const identityNumber =
-      input.identityNumber !== undefined
-        ? this.normalizeIdentity(input.identityNumber)
-        : current.identityNumber;
-    this.assertIdentityPair(identityType, identityNumber);
+    let identityNumber = current.identityNumber ?? null;
+    let normalizedIdentityNumber = current.normalizedIdentityNumber ?? null;
+    if (input.identityNumber !== undefined) {
+      const identity = normalizeCustomerIdentityNumber(input.identityNumber);
+      identityNumber = identity.display;
+      normalizedIdentityNumber = identity.normalized;
+    }
+
+    if (current.profileStatus === 'ADMITTED') {
+      const identityChanged =
+        (input.name !== undefined &&
+          this.normalizeComparable(name) !== current.normalizedName) ||
+        (input.customerType !== undefined &&
+          customerType !== current.customerType) ||
+        (input.identityType !== undefined &&
+          identityType !== current.identityType) ||
+        (input.identityNumber !== undefined &&
+          normalizedIdentityNumber !== current.normalizedIdentityNumber);
+      if (identityChanged) throw this.invalidState();
+
+      name = current.name;
+      customerType = current.customerType;
+      identityType = current.identityType;
+      identityNumber = current.identityNumber;
+      normalizedIdentityNumber = current.normalizedIdentityNumber;
+    }
+
+    this.assertIdentityPair(identityType, normalizedIdentityNumber);
     return {
       name,
       normalizedName: this.normalizeComparable(name),
-      customerType:
-        input.customerType !== undefined
-          ? this.normalizeOptional(input.customerType)
-          : current.customerType,
+      customerType,
       identityType,
       identityNumber,
-      normalizedIdentityNumber:
-        identityNumber === null
-          ? null
-          : this.normalizeComparable(identityNumber).toUpperCase(),
+      normalizedIdentityNumber,
       issuingCountryOrRegion:
         input.issuingCountryOrRegion !== undefined
           ? this.normalizeOptional(input.issuingCountryOrRegion)
@@ -648,7 +671,10 @@ export class CustomerService {
     identityType: string | null,
     identityNumber: string | null,
   ): void {
-    if ((identityType === null) !== (identityNumber === null)) {
+    if (
+      (identityType === null) !== (identityNumber === null) ||
+      identityNumber === ''
+    ) {
       throw new BadRequestException({
         code: 'VALIDATION_ERROR',
         message: '证件类型和证件号码必须同时填写或同时留空',
@@ -728,6 +754,13 @@ export class CustomerService {
     return new ConflictException({
       code: 'CUSTOMER_VERSION_CONFLICT',
       message: '客户资料已被他人更新，请重新加载后再提交',
+    });
+  }
+
+  private invalidState(): ConflictException {
+    return new ConflictException({
+      code: 'INVALID_STATE',
+      message: '已准入客户的主体和证件信息不可通过日常编辑修改',
     });
   }
 

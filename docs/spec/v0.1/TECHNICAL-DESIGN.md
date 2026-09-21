@@ -241,7 +241,7 @@ SD-20明确当前先设计字段、暂缓公式；SD-13确认运营发起律师�
 | CustomerAdmissionContact    | 本切片准入所需联系人姓名及一种联系方式；不自动创建账号，不替代后续完整联系人管理           |
 | Shared AuditEvent           | 复用TD-TRACE-UX统一审计事件记录客户动作；客户Module只追加／投影，不建立第二套客户审计事实  |
 
-`normalizedName`和`normalizedIdentityNumber`是判重派生值，不是用户展示字段。第一版只做不改变业务含义的归一化：Unicode NFKC、去除首尾空白、合并连续空白；号码中的拉丁字母再转大写。不得擅自删除标点、企业类型后缀或内部字符，也不使用相似度算法。格式校验按主体和证件类型分别定义，不能把所有客户强制为18位统一社会信用代码。
+`normalizedName`和`normalizedIdentityNumber`是判重派生值，不是用户展示字段。名称只做不改变业务含义的归一化：Unicode NFKC、去除首尾空白、合并连续空白。证件号码在此基础上统一拉丁字母大写，并移除批准的展示分隔空白和连字符；不得擅自删除其他标点、企业类型后缀或内部字符，也不使用相似度算法。格式校验按主体和证件类型分别定义，不能把所有客户强制为18位统一社会信用代码。
 
 精确号码唯一性限定在同一部门和适用证件类型内。共享库使用“部门＋证件类型＋归一化号码”的条件唯一约束；不开展跨部门查询、提示或自动合并，同一现实客户可在两个部门分别建档。
 
@@ -333,7 +333,7 @@ Customer Module使用动作名`customer.read`、`customer.create-draft`、`custo
 | 409  | `CUSTOMER_ADMISSION_INCOMPLETE` | 保留表单，列出缺少的准入字段／材料类别                   |
 | 409  | `CUSTOMER_DOCUMENT_INVALID`     | 标记失效、越范围或类别不符的材料，不把上传成功当准入成功 |
 | 409  | `CUSTOMER_VERSION_CONFLICT`     | 重新读取详情，由用户决定是否重新提交                     |
-| 409  | `IDEMPOTENCY_KEY_REUSED`        | 不重复创建，提示刷新结果                                 |
+| 409  | `IDEMPOTENCY_CONFLICT`          | 不重复创建，提示刷新结果                                 |
 
 错误正文仍遵守统一`code/message/requestId/details?`结构；`details`只放允许展示的字段名或材料类别，不返回其他部门客户资料、文件地址或数据库原文。
 
@@ -619,7 +619,7 @@ DTO拒绝未知字段；部门、操作者、关联身份、版本、审计字�
 
 两个写Command都先锁定／条件更新目标客户版本，再在一个PostgreSQL事务内完成主体或关联、客户版本递增和共享审计。创建主体同时追加`rights-holder.created`和`customer.rights-holder-linked`两个不同事实；关联已有主体只追加后者。审计只保存稳定身份、操作者、时点和必要动作信息，不复制名称、信用代码、地址或法定代表人等正文。
 
-同一`Idempotency-Key`与相同请求指纹返回原结果，同键不同指纹返回`IDEMPOTENCY_KEY_REUSED`。两个请求并发关联同一客户—主体时，组合唯一约束保证只产生一个关联；非重试的第二次显式关联返回`RIGHTS_HOLDER_ALREADY_LINKED`。客户版本已变化返回`CUSTOMER_VERSION_CONFLICT`，不静默覆盖。主体创建、关联、客户版本或任一审计写入失败时全部回滚。
+同一`Idempotency-Key`与相同请求指纹返回原结果，同键不同指纹返回`IDEMPOTENCY_CONFLICT`。两个请求并发关联同一客户—主体时，组合唯一约束保证只产生一个关联；非重试的第二次显式关联返回`RIGHTS_HOLDER_ALREADY_LINKED`。客户版本已变化返回`CUSTOMER_VERSION_CONFLICT`，不静默覆盖。主体创建、关联、客户版本或任一审计写入失败时全部回滚。
 
 | HTTP | code                           | 页面处理                                                       |
 | ---- | ------------------------------ | -------------------------------------------------------------- |
@@ -629,7 +629,7 @@ DTO拒绝未知字段；部门、操作者、关联身份、版本、审计字�
 | 404  | `RIGHTS_HOLDER_NOT_FOUND`      | 主体不存在、不可见、跨部门或未与当前详情客户关联，均不枚举原因 |
 | 409  | `RIGHTS_HOLDER_ALREADY_LINKED` | 刷新当前客户主体列表，不重复创建关联                           |
 | 409  | `CUSTOMER_VERSION_CONFLICT`    | 重新加载客户详情后由用户重新选择是否提交                       |
-| 409  | `IDEMPOTENCY_KEY_REUSED`       | 不重复写入，提示刷新已有结果                                   |
+| 409  | `IDEMPOTENCY_CONFLICT`         | 不重复写入，提示刷新已有结果                                   |
 
 ### 19.8 实施拆分与可执行验收
 

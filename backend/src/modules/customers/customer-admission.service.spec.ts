@@ -477,24 +477,59 @@ describe('CustomerAdmissionService', () => {
     expect(assertAvailableVersions).not.toHaveBeenCalled();
   });
 
-  it('returns the original result for an identical idempotency replay', async () => {
-    await service.admit(actor, customerId, 'same-key', command());
+  it('returns the exact original snapshot after a later routine edit', async () => {
+    const original = await service.admit(
+      actor,
+      customerId,
+      'same-key',
+      command(),
+    );
     const fingerprint = receiptCreate.mock.calls[0]?.[0]?.data
       .requestFingerprint as string;
+    const resultSnapshot = receiptCreate.mock.calls[0]?.[0]?.data
+      .resultSnapshot as unknown;
     const writesAfterFirst = customerUpdateMany.mock.calls.length;
     receiptFindUnique.mockResolvedValue({
       requestFingerprint: fingerprint,
       resultCustomerId: customerId,
       resultCustomerVersion: 2,
+      resultSnapshot,
     });
-    customerFindUnique.mockResolvedValue(updated);
+    customerFindUnique.mockResolvedValue({
+      ...updated,
+      category: '后来修改的分类',
+      version: 3,
+      updatedAt: new Date('2026-09-21T04:00:00.000Z'),
+    });
 
     await expect(
       service.admit(actor, customerId, 'same-key', command()),
-    ).resolves.toMatchObject({ id: customerId, version: 2 });
+    ).resolves.toEqual(original);
     expect(customerUpdateMany).toHaveBeenCalledTimes(writesAfterFirst);
     expect(freezeReferences).toHaveBeenCalledTimes(1);
     expect(auditCreate).toHaveBeenCalledTimes(1);
+    expect(customerFindUnique).toHaveBeenCalledTimes(1);
+  });
+
+  it('returns a stable internal error for a corrupted receipt snapshot', async () => {
+    const first = await service.admit(
+      actor,
+      customerId,
+      'snapshot-seed',
+      command(),
+    );
+    const fingerprint = receiptCreate.mock.calls[0]?.[0]?.data
+      .requestFingerprint as string;
+    receiptFindUnique.mockResolvedValue({
+      requestFingerprint: fingerprint,
+      resultCustomerId: customerId,
+      resultCustomerVersion: first.version,
+      resultSnapshot: { broken: true },
+    });
+
+    await expect(
+      service.admit(actor, customerId, 'snapshot-seed', command()),
+    ).rejects.toMatchObject({ response: { code: 'INTERNAL_ERROR' } });
   });
 
   it('rejects the same idempotency key with a different fingerprint', async () => {
@@ -505,7 +540,7 @@ describe('CustomerAdmissionService', () => {
     });
     await expect(
       service.admit(actor, customerId, 'same-key', command()),
-    ).rejects.toMatchObject({ response: { code: 'IDEMPOTENCY_KEY_REUSED' } });
+    ).rejects.toMatchObject({ response: { code: 'IDEMPOTENCY_CONFLICT' } });
     expect(customerUpdateMany).not.toHaveBeenCalled();
   });
 
@@ -595,6 +630,11 @@ describe('CustomerAdmissionService', () => {
         requestFingerprint: expect.stringMatching(/^[0-9a-f]{64}$/),
         resultCustomerId: customerId,
         resultCustomerVersion: 2,
+        resultSnapshot: expect.objectContaining({
+          id: customerId,
+          profileStatus: 'admitted',
+          version: 2,
+        }),
       }),
     });
     expect(freezeReferences.mock.invocationCallOrder[0]).toBeLessThan(
@@ -613,5 +653,57 @@ describe('CustomerAdmissionService', () => {
     await expect(
       service.admit(actor, customerId, 'transaction-error', command()),
     ).rejects.toThrow('serialization');
+  });
+
+  it('retries P2034 and recovers the same-key snapshot receipt', async () => {
+    const original = await service.admit(
+      actor,
+      customerId,
+      'retry-key',
+      command(),
+    );
+    const receipt = receiptCreate.mock.calls[0]?.[0]?.data;
+    transaction.mockReset();
+    transaction
+      .mockRejectedValueOnce({ code: 'P2034' })
+      .mockImplementationOnce(async (callback, options) => {
+        expect(options).toEqual({ isolationLevel: 'Serializable' });
+        receiptFindUnique.mockResolvedValue(receipt);
+        return callback(tx);
+      });
+
+    await expect(
+      service.admit(actor, customerId, 'retry-key', command()),
+    ).resolves.toEqual(original);
+    expect(transaction).toHaveBeenCalledTimes(2);
+  });
+
+  it('retries P2034 and returns a version conflict when another command won', async () => {
+    transaction.mockReset();
+    transaction
+      .mockRejectedValueOnce({ code: 'P2034' })
+      .mockImplementationOnce(async (callback, options) => {
+        expect(options).toEqual({ isolationLevel: 'Serializable' });
+        customerFindFirst.mockResolvedValue({ ...current, version: 2 });
+        return callback(tx);
+      });
+
+    await expect(
+      service.admit(actor, customerId, 'other-key', command()),
+    ).rejects.toMatchObject({
+      response: { code: 'CUSTOMER_VERSION_CONFLICT' },
+    });
+    expect(transaction).toHaveBeenCalledTimes(2);
+  });
+
+  it('maps three consecutive P2034 failures to a stable version conflict', async () => {
+    transaction.mockReset().mockRejectedValue({ code: 'P2034' });
+
+    await expect(
+      service.admit(actor, customerId, 'exhausted', command()),
+    ).rejects.toMatchObject({
+      response: { code: 'CUSTOMER_VERSION_CONFLICT' },
+    });
+    expect(transaction).toHaveBeenCalledTimes(3);
   });
 });

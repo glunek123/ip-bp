@@ -242,6 +242,7 @@ health() -> ready | unavailable
 所有动作至少稳定区分：`VALIDATION_ERROR`、`ACTION_FORBIDDEN`、`RESOURCE_NOT_FOUND`（含越范围）、`INVALID_STATE`、`MATERIAL_VERSION_INVALID`、`VERSION_CONFLICT`、`IDEMPOTENCY_CONFLICT`、`STORAGE_UNAVAILABLE`和`DEPENDENCY_RULE_BLOCKED`。
 
 - 单聚合写入、审计和幂等回执同一数据库事务；跨模块移交／转案的全部数据库事实同成同败。
+- 幂等回执保存首次成功响应的不可变快照；相同请求重放只返回该快照，不从随后可编辑的聚合当前态重建历史结果。Serializable 冲突只做有界整事务重试，耗尽后返回稳定并发冲突。
 - Blob写入与数据库提交使用上传草稿和补偿清理，不宣称跨存储原子事务。
 - 真实PostgreSQL测试覆盖数据库约束、重复请求、旧版本冲突、跨部门和事务回滚。
 - 浏览器测试必须上传真实字节、刷新后下载并校验内容；只有文件名或Mock URL不算通过。

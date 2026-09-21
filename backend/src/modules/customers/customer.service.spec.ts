@@ -876,4 +876,188 @@ describe('CustomerService', () => {
     expect(updateData).not.toHaveProperty('profileStatus');
     expect(updateData).not.toHaveProperty('admittedAt');
   });
+
+  it.each([
+    { name: '' },
+    { customerType: 'NATURAL_PERSON' },
+    { identityType: 'PASSPORT' },
+    { identityNumber: 'AB-124' },
+  ])(
+    'rejects identity-changing routine edits on an admitted customer %#',
+    async (change) => {
+      const admitted = {
+        id: '33333333-3333-4333-8333-333333333333',
+        name: '已准入客户',
+        normalizedName: '已准入客户',
+        category: null,
+        region: null,
+        customerType: 'ENTERPRISE',
+        identityType: 'BUSINESS_LICENSE',
+        identityNumber: 'AB-123',
+        normalizedIdentityNumber: 'AB123',
+        issuingCountryOrRegion: '中国',
+        admissionContactName: '张三',
+        admissionContactPhone: '13800138000',
+        admissionContactEmail: null,
+        identityValidFrom: new Date('2026-01-01T00:00:00.000Z'),
+        identityValidTo: null,
+        identityValidityMode: 'LONG_TERM',
+        admittedAt: new Date('2026-09-21T03:00:00.000Z'),
+        profileStatus: 'ADMITTED',
+        departmentId: actor.departmentId,
+        responsibleUserId: actor.userId,
+        teamId: null,
+        version: 2,
+        updatedAt: new Date('2026-09-21T03:00:00.000Z'),
+      };
+      const txUpdate = jest.fn();
+      transaction.mockImplementation(async (callback) =>
+        callback({
+          customer: {
+            findFirst: jest.fn().mockResolvedValue(admitted),
+            updateMany: txUpdate,
+          },
+          auditEvent: { create: jest.fn() },
+        }),
+      );
+      await expect(
+        service.updateDraft(actor, admitted.id, {
+          expectedVersion: 2,
+          ...change,
+        }),
+      ).rejects.toMatchObject({ response: { code: 'INVALID_STATE' } });
+      expect(txUpdate).not.toHaveBeenCalled();
+    },
+  );
+
+  it.each([
+    ['category only', {}],
+    [
+      'semantically identical identity fields',
+      {
+        name: ' 已准入客户 ',
+        customerType: 'ENTERPRISE',
+        identityType: 'business_license',
+        identityNumber: 'ab 123',
+      },
+    ],
+  ])('preserves admitted identity for %s', async (_label, identityInput) => {
+    const admitted = {
+      id: '33333333-3333-4333-8333-333333333333',
+      name: '已准入客户',
+      normalizedName: '已准入客户',
+      category: null,
+      region: null,
+      customerType: 'ENTERPRISE',
+      identityType: 'BUSINESS_LICENSE',
+      identityNumber: 'AB-123',
+      normalizedIdentityNumber: 'AB123',
+      issuingCountryOrRegion: '中国',
+      admissionContactName: '张三',
+      admissionContactPhone: '13800138000',
+      admissionContactEmail: null,
+      identityValidFrom: new Date('2026-01-01T00:00:00.000Z'),
+      identityValidTo: null,
+      identityValidityMode: 'LONG_TERM',
+      admittedAt: new Date('2026-09-21T03:00:00.000Z'),
+      profileStatus: 'ADMITTED',
+      departmentId: actor.departmentId,
+      responsibleUserId: actor.userId,
+      teamId: null,
+      version: 2,
+      updatedAt: new Date('2026-09-21T03:00:00.000Z'),
+    };
+    const updated = {
+      ...admitted,
+      category: '重点客户',
+      version: 3,
+      updatedAt: new Date('2026-09-21T04:00:00.000Z'),
+    };
+    const txUpdate = jest.fn().mockResolvedValue({ count: 1 });
+    transaction.mockImplementation(async (callback) =>
+      callback({
+        customer: {
+          findFirst: jest
+            .fn()
+            .mockResolvedValueOnce(admitted)
+            .mockResolvedValueOnce(null),
+          updateMany: txUpdate,
+          findUnique: jest.fn().mockResolvedValue(updated),
+        },
+        auditEvent: { create: jest.fn().mockResolvedValue({ id: 'audit-1' }) },
+      }),
+    );
+
+    await expect(
+      service.updateDraft(actor, admitted.id, {
+        expectedVersion: 2,
+        ...identityInput,
+        category: '重点客户',
+      }),
+    ).resolves.toMatchObject({
+      profileStatus: 'admitted',
+      category: '重点客户',
+      identityNumber: 'AB-123',
+    });
+    expect(txUpdate).toHaveBeenCalledWith({
+      where: expect.objectContaining({ id: admitted.id, version: 2 }),
+      data: expect.objectContaining({
+        category: '重点客户',
+        identityNumber: 'AB-123',
+        normalizedIdentityNumber: 'AB123',
+      }),
+    });
+  });
+
+  it('normalizes display separators before checking a draft identity duplicate', async () => {
+    const draft = {
+      id: '33333333-3333-4333-8333-333333333333',
+      name: '草稿客户',
+      normalizedName: '草稿客户',
+      category: null,
+      region: null,
+      customerType: null,
+      identityType: null,
+      identityNumber: null,
+      normalizedIdentityNumber: null,
+      issuingCountryOrRegion: null,
+      admissionContactName: null,
+      admissionContactPhone: null,
+      admissionContactEmail: null,
+      identityValidFrom: null,
+      identityValidTo: null,
+      identityValidityMode: null,
+      admittedAt: null,
+      profileStatus: 'DRAFT',
+      departmentId: actor.departmentId,
+      responsibleUserId: actor.userId,
+      teamId: null,
+      version: 1,
+      updatedAt: new Date('2026-09-21T03:00:00.000Z'),
+    };
+    const txFind = jest
+      .fn()
+      .mockResolvedValueOnce(draft)
+      .mockResolvedValueOnce({ id: 'another-customer' });
+    transaction.mockImplementation(async (callback) =>
+      callback({ customer: { findFirst: txFind } }),
+    );
+
+    await expect(
+      service.updateDraft(actor, draft.id, {
+        expectedVersion: 1,
+        customerType: 'ENTERPRISE',
+        identityType: 'BUSINESS_LICENSE',
+        identityNumber: 'ab - 123',
+      }),
+    ).rejects.toMatchObject({
+      response: { code: 'CUSTOMER_IDENTITY_DUPLICATE' },
+    });
+    expect(txFind).toHaveBeenNthCalledWith(
+      2,
+      expect.objectContaining({
+        where: expect.objectContaining({ normalizedIdentityNumber: 'AB123' }),
+      }),
+    );
+  });
 });

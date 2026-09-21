@@ -86,7 +86,6 @@ export class UpdateCustomerDraftDto extends AdmissionContactFieldsDto {
   @Transform(trim)
   @ValidateIf((_object, value) => value !== undefined)
   @IsString()
-  @MinLength(1)
   @MaxLength(200)
   name?: string;
 

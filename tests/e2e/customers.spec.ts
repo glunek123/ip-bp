@@ -447,7 +447,7 @@ test('rights holder concurrent duplicate links and idempotent replays persist on
   );
   expect(changed.status()).toBe(409);
   expect(await changed.json()).toMatchObject({
-    code: 'IDEMPOTENCY_KEY_REUSED',
+    code: 'IDEMPOTENCY_CONFLICT',
   });
   await expect(getRightsHolderCounts(e2eFixtures.departmentA)).resolves.toEqual(
     { holders: 1, links: 3, receipts: 3, createdAudits: 1, linkedAudits: 3 },
@@ -487,7 +487,7 @@ test('rights holder creation replays identical keys and separates new commands',
   );
   expect(mismatch.status()).toBe(409);
   expect(await mismatch.json()).toMatchObject({
-    code: 'IDEMPOTENCY_KEY_REUSED',
+    code: 'IDEMPOTENCY_CONFLICT',
   });
   const differentKey = await createHolder(request, customerId, {
     ...data,

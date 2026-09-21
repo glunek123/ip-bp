@@ -3,6 +3,7 @@ import {
   BadRequestException,
   ConflictException,
   Injectable,
+  InternalServerErrorException,
   NotFoundException,
 } from '@nestjs/common';
 import { AccessControlService } from '../../access-control/access-control.service';
@@ -21,6 +22,7 @@ import {
   IdentityValidityModeCode,
 } from './customer-admission.dto';
 import { CustomerSummary, toCustomerSummary } from './customer.service';
+import { normalizeCustomerIdentityNumber } from './customer-identity';
 
 type NormalizedAdmission = {
   expectedVersion: number;
@@ -44,7 +46,10 @@ type AdmissionReceipt = {
   requestFingerprint: string;
   resultCustomerId: string;
   resultCustomerVersion: number;
+  resultSnapshot: unknown;
 };
+
+const MAX_SERIALIZABLE_ATTEMPTS = 3;
 
 @Injectable()
 export class CustomerAdmissionService {
@@ -60,174 +65,180 @@ export class CustomerAdmissionService {
     idempotencyKey: string,
     input: AdmitCustomerDto,
   ): Promise<CustomerSummary> {
-    try {
-      return await this.database.$transaction(
-        async (transaction) => {
-          const scope = await this.accessControl.buildCustomerScope(
-            actor,
-            'customer.admit',
-            transaction,
-          );
-          const visible = await transaction.customer.findFirst({
-            where: { id: customerId, ...scope },
-          });
-          if (visible === null) throw this.notFound();
+    const normalized = this.normalize(input);
+    const fingerprint = this.fingerprint(customerId, normalized);
+    for (let attempt = 1; attempt <= MAX_SERIALIZABLE_ATTEMPTS; attempt += 1) {
+      try {
+        return await this.database.$transaction(
+          async (transaction) => {
+            const scope = await this.accessControl.buildCustomerScope(
+              actor,
+              'customer.admit',
+              transaction,
+            );
+            const visible = await transaction.customer.findFirst({
+              where: { id: customerId, ...scope },
+            });
+            if (visible === null) throw this.notFound();
 
-          const locked = await transaction.$queryRawUnsafe<
-            Array<{ id: string }>
-          >(
-            `SELECT "id" FROM "customers"
+            const locked = await transaction.$queryRawUnsafe<
+              Array<{ id: string }>
+            >(
+              `SELECT "id" FROM "customers"
              WHERE "id" = $1::uuid AND "department_id" = $2::uuid
              FOR UPDATE`,
-            customerId,
-            actor.departmentId,
-          );
-          if (locked.length !== 1) throw this.notFound();
-          const current = await transaction.customer.findFirst({
-            where: { id: customerId, ...scope },
-          });
-          if (current === null) throw this.notFound();
+              customerId,
+              actor.departmentId,
+            );
+            if (locked.length !== 1) throw this.notFound();
+            const current = await transaction.customer.findFirst({
+              where: { id: customerId, ...scope },
+            });
+            if (current === null) throw this.notFound();
 
-          const normalized = this.normalize(input);
-          const fingerprint = this.fingerprint(customerId, normalized);
-          const receipt = await transaction.customerAdmissionReceipt.findUnique(
-            {
-              where: this.receiptWhere(actor, idempotencyKey),
-            },
-          );
-          if (receipt !== null) {
-            return this.rebuildReceiptResult(
+            const receipt =
+              await transaction.customerAdmissionReceipt.findUnique({
+                where: this.receiptWhere(actor, idempotencyKey),
+              });
+            if (receipt !== null) {
+              return this.rebuildReceiptResult(actor, receipt, fingerprint);
+            }
+
+            if (current.version !== normalized.expectedVersion) {
+              throw this.versionConflict();
+            }
+            if (current.profileStatus !== 'DRAFT') {
+              throw this.stateConflict();
+            }
+
+            const duplicate = await transaction.customer.findFirst({
+              where: {
+                departmentId: actor.departmentId,
+                identityType: normalized.identityType,
+                normalizedIdentityNumber: normalized.normalizedIdentityNumber,
+                id: { not: customerId },
+              },
+              select: { id: true },
+            });
+            if (duplicate !== null) throw this.identityDuplicate();
+
+            const facts = await this.materials.assertAvailableVersions(
               transaction,
               actor,
-              receipt,
-              fingerprint,
+              {
+                ownerType: 'CUSTOMER',
+                ownerId: customerId,
+                category: 'CUSTOMER_IDENTITY',
+                contentVersionIds: normalized.identityDocumentContentVersionIds,
+                minCount: 1,
+                maxCount: 10,
+              },
             );
-          }
-
-          if (current.version !== normalized.expectedVersion) {
-            throw this.versionConflict();
-          }
-          if (current.profileStatus !== 'DRAFT') {
-            throw this.stateConflict();
-          }
-
-          const duplicate = await transaction.customer.findFirst({
-            where: {
+            this.assertIdentityDocuments(normalized.identityType, facts);
+            await this.materials.freezeReferences(transaction, {
               departmentId: actor.departmentId,
-              identityType: normalized.identityType,
-              normalizedIdentityNumber: normalized.normalizedIdentityNumber,
-              id: { not: customerId },
-            },
-            select: { id: true },
-          });
-          if (duplicate !== null) throw this.identityDuplicate();
-
-          const facts = await this.materials.assertAvailableVersions(
-            transaction,
-            actor,
-            {
-              ownerType: 'CUSTOMER',
-              ownerId: customerId,
-              category: 'CUSTOMER_IDENTITY',
-              contentVersionIds: normalized.identityDocumentContentVersionIds,
-              minCount: 1,
-              maxCount: 10,
-            },
-          );
-          this.assertIdentityDocuments(normalized.identityType, facts);
-          await this.materials.freezeReferences(transaction, {
-            departmentId: actor.departmentId,
-            resourceType: 'customer',
-            resourceId: customerId,
-            facts,
-          });
-
-          const admittedAt = new Date();
-          const changed = await transaction.customer.updateMany({
-            where: {
-              id: customerId,
-              departmentId: actor.departmentId,
-              version: normalized.expectedVersion,
-              profileStatus: 'DRAFT',
-            },
-            data: {
-              customerType: normalized.customerType,
-              name: normalized.name,
-              normalizedName: normalized.normalizedName,
-              identityType: normalized.identityType,
-              identityNumber: normalized.identityNumber,
-              normalizedIdentityNumber: normalized.normalizedIdentityNumber,
-              issuingCountryOrRegion: normalized.issuingCountryOrRegion,
-              identityValidFrom: normalized.identityValidFrom,
-              identityValidTo: normalized.identityValidTo,
-              identityValidityMode: normalized.identityValidityMode,
-              admissionContactName: normalized.admissionContactName,
-              admissionContactPhone: normalized.admissionContactPhone,
-              admissionContactEmail: normalized.admissionContactEmail,
-              profileStatus: 'ADMITTED',
-              admittedAt,
-              version: { increment: 1 },
-            },
-          });
-          if (changed.count !== 1) throw this.versionConflict();
-
-          const resultCustomerVersion = normalized.expectedVersion + 1;
-          await transaction.auditEvent.create({
-            data: {
-              departmentId: actor.departmentId,
-              actorUserId: actor.userId,
               resourceType: 'customer',
               resourceId: customerId,
-              action: 'customer.admitted',
-              details: {
-                fromVersion: normalized.expectedVersion,
-                toVersion: resultCustomerVersion,
-                customerType: normalized.customerType,
-                identityType: normalized.identityType,
-                identityValidityMode: normalized.identityValidityMode,
-                identityDocumentCount: facts.length,
-              },
-            },
-          });
-          await transaction.customerAdmissionReceipt.create({
-            data: {
-              departmentId: actor.departmentId,
-              actorUserId: actor.userId,
-              idempotencyKey,
-              requestFingerprint: fingerprint,
-              resultCustomerId: customerId,
-              resultCustomerVersion,
-            },
-          });
+              facts,
+            });
 
-          const admitted = await transaction.customer.findUnique({
-            where: { id: customerId },
-          });
-          if (admitted === null) throw this.notFound();
-          return toCustomerSummary(admitted);
-        },
-        { isolationLevel: 'Serializable' },
-      );
-    } catch (error) {
-      if (!this.isUniqueConstraintError(error)) throw error;
-      const normalized = this.normalize(input);
-      const fingerprint = this.fingerprint(customerId, normalized);
-      const receipt = await this.database.customerAdmissionReceipt.findUnique({
-        where: this.receiptWhere(actor, idempotencyKey),
-      });
-      if (receipt === null) throw this.identityDuplicate();
-      return this.rebuildReceiptResult(
-        this.database,
-        actor,
-        receipt,
-        fingerprint,
-      );
+            const admittedAt = new Date();
+            const changed = await transaction.customer.updateMany({
+              where: {
+                id: customerId,
+                departmentId: actor.departmentId,
+                version: normalized.expectedVersion,
+                profileStatus: 'DRAFT',
+              },
+              data: {
+                customerType: normalized.customerType,
+                name: normalized.name,
+                normalizedName: normalized.normalizedName,
+                identityType: normalized.identityType,
+                identityNumber: normalized.identityNumber,
+                normalizedIdentityNumber: normalized.normalizedIdentityNumber,
+                issuingCountryOrRegion: normalized.issuingCountryOrRegion,
+                identityValidFrom: normalized.identityValidFrom,
+                identityValidTo: normalized.identityValidTo,
+                identityValidityMode: normalized.identityValidityMode,
+                admissionContactName: normalized.admissionContactName,
+                admissionContactPhone: normalized.admissionContactPhone,
+                admissionContactEmail: normalized.admissionContactEmail,
+                profileStatus: 'ADMITTED',
+                admittedAt,
+                version: { increment: 1 },
+              },
+            });
+            if (changed.count !== 1) throw this.versionConflict();
+
+            const resultCustomerVersion = normalized.expectedVersion + 1;
+            await transaction.auditEvent.create({
+              data: {
+                departmentId: actor.departmentId,
+                actorUserId: actor.userId,
+                resourceType: 'customer',
+                resourceId: customerId,
+                action: 'customer.admitted',
+                details: {
+                  fromVersion: normalized.expectedVersion,
+                  toVersion: resultCustomerVersion,
+                  customerType: normalized.customerType,
+                  identityType: normalized.identityType,
+                  identityValidityMode: normalized.identityValidityMode,
+                  identityDocumentCount: facts.length,
+                },
+              },
+            });
+            const admitted = await transaction.customer.findUnique({
+              where: { id: customerId },
+            });
+            if (admitted === null) throw this.notFound();
+            const result = toCustomerSummary(admitted);
+            await transaction.customerAdmissionReceipt.create({
+              data: {
+                departmentId: actor.departmentId,
+                actorUserId: actor.userId,
+                idempotencyKey,
+                requestFingerprint: fingerprint,
+                resultCustomerId: customerId,
+                resultCustomerVersion,
+                resultSnapshot: this.resultSnapshot(result),
+              },
+            });
+            return result;
+          },
+          { isolationLevel: 'Serializable' },
+        );
+      } catch (error) {
+        if (this.isSerializationConflict(error)) {
+          if (attempt === MAX_SERIALIZABLE_ATTEMPTS) {
+            throw this.versionConflict();
+          }
+          continue;
+        }
+        if (!this.isUniqueConstraintError(error)) throw error;
+        const receipt = await this.database.customerAdmissionReceipt.findUnique(
+          {
+            where: this.receiptWhere(actor, idempotencyKey),
+          },
+        );
+        if (receipt === null) throw this.identityDuplicate();
+        return this.rebuildReceiptResult(actor, receipt, fingerprint);
+      }
     }
+    throw this.versionConflict();
   }
 
   private normalize(input: AdmitCustomerDto): NormalizedAdmission {
     const name = this.required(input.name);
-    const identityNumber = this.required(input.identityNumber).toUpperCase();
+    const identity = normalizeCustomerIdentityNumber(input.identityNumber);
+    if (
+      identity.display === null ||
+      identity.normalized === null ||
+      identity.normalized.length === 0
+    ) {
+      throw this.admissionIncomplete();
+    }
     const admissionContactName = this.required(input.admissionContactName);
     const admissionContactPhone = this.optional(input.admissionContactPhone);
     const admissionContactEmail = this.optional(input.admissionContactEmail);
@@ -287,10 +298,8 @@ export class CustomerAdmissionService {
       name,
       normalizedName: this.normalizeComparable(name),
       identityType: input.identityType,
-      identityNumber,
-      normalizedIdentityNumber: this.normalizeComparable(identityNumber)
-        .replace(/[\s-]+/gu, '')
-        .toUpperCase(),
+      identityNumber: identity.display,
+      normalizedIdentityNumber: identity.normalized,
       issuingCountryOrRegion: this.optional(input.issuingCountryOrRegion),
       identityValidFrom,
       identityValidTo,
@@ -328,25 +337,108 @@ export class CustomerAdmissionService {
     if (!oneFullPdf && !frontAndBackImages) throw this.documentInvalid();
   }
 
-  private async rebuildReceiptResult(
-    reader: DatabaseService | Prisma.TransactionClient,
+  private rebuildReceiptResult(
     actor: ActorContext,
     receipt: AdmissionReceipt,
     fingerprint: string,
-  ): Promise<CustomerSummary> {
+  ): CustomerSummary {
     if (receipt.requestFingerprint !== fingerprint) {
       throw this.idempotencyConflict();
     }
-    const customer = await reader.customer.findUnique({
-      where: { id: receipt.resultCustomerId },
-    });
-    if (customer === null || customer.departmentId !== actor.departmentId) {
-      throw this.notFound();
+    const snapshot = receipt.resultSnapshot;
+    if (
+      !this.isCustomerSummary(snapshot) ||
+      snapshot.id !== receipt.resultCustomerId ||
+      snapshot.version !== receipt.resultCustomerVersion ||
+      snapshot.departmentId !== actor.departmentId
+    ) {
+      throw this.corruptReceipt();
     }
-    return toCustomerSummary({
-      ...customer,
-      version: receipt.resultCustomerVersion,
-    });
+    return {
+      id: snapshot.id,
+      name: snapshot.name,
+      customerType: snapshot.customerType,
+      identityType: snapshot.identityType,
+      identityNumber: snapshot.identityNumber,
+      issuingCountryOrRegion: snapshot.issuingCountryOrRegion,
+      category: snapshot.category,
+      region: snapshot.region,
+      admissionContactName: snapshot.admissionContactName,
+      admissionContactPhone: snapshot.admissionContactPhone,
+      admissionContactEmail: snapshot.admissionContactEmail,
+      identityValidFrom: snapshot.identityValidFrom,
+      identityValidTo: snapshot.identityValidTo,
+      identityValidityMode: snapshot.identityValidityMode,
+      admittedAt: snapshot.admittedAt,
+      profileStatus: snapshot.profileStatus,
+      departmentId: snapshot.departmentId,
+      responsibleUserId: snapshot.responsibleUserId,
+      version: snapshot.version,
+      updatedAt: snapshot.updatedAt,
+    };
+  }
+
+  private resultSnapshot(result: CustomerSummary): Prisma.InputJsonObject {
+    return {
+      id: result.id,
+      name: result.name,
+      customerType: result.customerType,
+      identityType: result.identityType,
+      identityNumber: result.identityNumber,
+      issuingCountryOrRegion: result.issuingCountryOrRegion,
+      category: result.category,
+      region: result.region,
+      admissionContactName: result.admissionContactName,
+      admissionContactPhone: result.admissionContactPhone,
+      admissionContactEmail: result.admissionContactEmail,
+      identityValidFrom: result.identityValidFrom,
+      identityValidTo: result.identityValidTo,
+      identityValidityMode: result.identityValidityMode,
+      admittedAt: result.admittedAt,
+      profileStatus: result.profileStatus,
+      departmentId: result.departmentId,
+      responsibleUserId: result.responsibleUserId,
+      version: result.version,
+      updatedAt: result.updatedAt,
+    };
+  }
+
+  private isCustomerSummary(value: unknown): value is CustomerSummary {
+    if (value === null || typeof value !== 'object' || Array.isArray(value)) {
+      return false;
+    }
+    const snapshot = value as Record<string, unknown>;
+    const nullableStrings = [
+      'customerType',
+      'identityType',
+      'identityNumber',
+      'issuingCountryOrRegion',
+      'category',
+      'region',
+      'admissionContactName',
+      'admissionContactPhone',
+      'admissionContactEmail',
+      'identityValidFrom',
+      'identityValidTo',
+      'admittedAt',
+    ];
+    return (
+      typeof snapshot.id === 'string' &&
+      typeof snapshot.name === 'string' &&
+      nullableStrings.every(
+        (field) =>
+          snapshot[field] === null || typeof snapshot[field] === 'string',
+      ) &&
+      (snapshot.identityValidityMode === null ||
+        snapshot.identityValidityMode === 'FIXED' ||
+        snapshot.identityValidityMode === 'LONG_TERM' ||
+        snapshot.identityValidityMode === 'NOT_STATED') &&
+      snapshot.profileStatus === 'admitted' &&
+      typeof snapshot.departmentId === 'string' &&
+      typeof snapshot.responsibleUserId === 'string' &&
+      Number.isInteger(snapshot.version) &&
+      typeof snapshot.updatedAt === 'string'
+    );
   }
 
   private receiptWhere(actor: ActorContext, idempotencyKey: string) {
@@ -448,8 +540,15 @@ export class CustomerAdmissionService {
 
   private idempotencyConflict(): ConflictException {
     return new ConflictException({
-      code: 'IDEMPOTENCY_KEY_REUSED',
+      code: 'IDEMPOTENCY_CONFLICT',
       message: '该 Idempotency-Key 已用于不同请求',
+    });
+  }
+
+  private corruptReceipt(): InternalServerErrorException {
+    return new InternalServerErrorException({
+      code: 'INTERNAL_ERROR',
+      message: '客户准入回执数据损坏',
     });
   }
 
@@ -465,5 +564,12 @@ export class CustomerAdmissionService {
     const record = error as Record<string, unknown>;
     if (record.code === 'P2002') return true;
     return this.isUniqueConstraintError(record.cause);
+  }
+
+  private isSerializationConflict(error: unknown): boolean {
+    if (error === null || typeof error !== 'object') return false;
+    const record = error as Record<string, unknown>;
+    if (record.code === 'P2034') return true;
+    return this.isSerializationConflict(record.cause);
   }
 }

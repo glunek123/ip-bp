@@ -463,7 +463,7 @@ describe('RightsHolderService', () => {
         name: '不同主体',
       }),
     ).rejects.toMatchObject({
-      response: { code: 'IDEMPOTENCY_KEY_REUSED' },
+      response: { code: 'IDEMPOTENCY_CONFLICT' },
     });
     expect(mocks.customerUpdateMany).not.toHaveBeenCalled();
   });
@@ -519,7 +519,7 @@ describe('RightsHolderService', () => {
         rightsHolderId: holderId,
       }),
     ).rejects.toMatchObject({
-      response: { code: 'IDEMPOTENCY_KEY_REUSED' },
+      response: { code: 'IDEMPOTENCY_CONFLICT' },
     });
   });
 

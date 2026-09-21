@@ -628,7 +628,7 @@ export class RightsHolderService {
 
   private idempotencyConflict(): ConflictException {
     return new ConflictException({
-      code: 'IDEMPOTENCY_KEY_REUSED',
+      code: 'IDEMPOTENCY_CONFLICT',
       message: '该 Idempotency-Key 已用于不同请求',
     });
   }
