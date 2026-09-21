@@ -20,6 +20,7 @@ import {
   PRIVATE_BLOB_STORAGE,
   PrivateBlobStorage,
 } from './private-blob-storage';
+import { MaterialStorageKeyCoordinator } from './material-storage-key-coordinator';
 
 const DAY_MS = 24 * 60 * 60 * 1000;
 const RETENTION_MS = 90 * DAY_MS;
@@ -43,6 +44,7 @@ export class MaterialService {
     private readonly accessControl: AccessControlService,
     @Inject(PRIVATE_BLOB_STORAGE)
     private readonly storage: PrivateBlobStorage,
+    private readonly storageKeyCoordinator: MaterialStorageKeyCoordinator,
     @Optional()
     @Inject(MATERIAL_SERVICE_CLOCK)
     clock?: () => Date,
@@ -196,121 +198,123 @@ export class MaterialService {
     const materialId = randomUUID();
     const contentVersionId = randomUUID();
     const storageKey = `${actor.departmentId}/${materialId}/${contentVersionId}`;
-    let pendingClaimed = false;
-    try {
-      const claimed = await this.database.uploadDraft.updateMany({
-        where: {
-          id: draft.id,
-          departmentId: actor.departmentId,
-          actorUserId: actor.userId,
-          status: 'OPEN',
-          expiresAt: { gt: this.clock() },
-          pendingStorageKey: null,
-        },
-        data: { pendingStorageKey: storageKey },
-      });
-      if (claimed.count !== 1) throw this.versionConflict();
-      pendingClaimed = true;
-      const blob = await this.storage.put(storageKey, source);
-      if (
-        blob.detectedMimeType !== declaredMimeType ||
-        !isMimeAllowedForPurpose(
-          draft.category,
-          draft.purpose,
-          blob.detectedMimeType,
-        )
-      ) {
-        throw this.invalidVersion();
-      }
-      await this.database.$transaction(async (transaction) => {
-        await transaction.$executeRawUnsafe(
-          'SELECT pg_advisory_xact_lock(hashtextextended($1, 0))',
-          ownerQuotaKey(draft),
-        );
-        const activeCount = await transaction.material.count({
-          where: {
-            departmentId: actor.departmentId,
-            ownerType: draft.ownerType,
-            ownerId: draft.ownerId,
-            category: draft.category,
-            status: 'ACTIVE',
-          },
-        });
-        if (activeCount >= materialLimit(draft.category)) {
-          throw this.validationError();
-        }
-        await transaction.material.create({
-          data: {
-            id: materialId,
-            departmentId: actor.departmentId,
-            ownerType: draft.ownerType,
-            ownerId: draft.ownerId,
-            category: draft.category,
-            purpose: draft.purpose,
-          },
-        });
-        await transaction.contentVersion.create({
-          data: {
-            id: contentVersionId,
-            materialId,
-            storageKey,
-            originalFilename,
-            mimeType: blob.detectedMimeType,
-            sizeBytes: BigInt(blob.sizeBytes),
-            sha256: blob.sha256,
-            uploadedBy: actor.userId,
-          },
-        });
-        await transaction.material.update({
-          where: { id: materialId },
-          data: { currentVersionId: contentVersionId },
-        });
-        const finalized = await transaction.uploadDraft.updateMany({
+    return this.storageKeyCoordinator.withKey(storageKey, async () => {
+      let pendingClaimed = false;
+      try {
+        const claimed = await this.database.uploadDraft.updateMany({
           where: {
             id: draft.id,
+            departmentId: actor.departmentId,
+            actorUserId: actor.userId,
             status: 'OPEN',
             expiresAt: { gt: this.clock() },
-            pendingStorageKey: storageKey,
+            pendingStorageKey: null,
           },
-          data: { status: 'FINALIZED', pendingStorageKey: null },
+          data: { pendingStorageKey: storageKey },
         });
-        if (finalized.count !== 1) throw this.versionConflict();
-      });
-      return {
-        materialId,
-        contentVersionId,
-        reservedOwnerId:
-          draft.ownerType === 'LEAD_DRAFT' ? draft.ownerId : undefined,
-        originalFilename,
-        purpose: draft.purpose,
-        mimeType: blob.detectedMimeType,
-        sizeBytes: blob.sizeBytes,
-        sha256: blob.sha256,
-      };
-    } catch (error) {
-      let storageIsClean = false;
-      if (pendingClaimed) {
-        try {
-          await this.storage.delete(storageKey);
-          storageIsClean = true;
-        } catch {
-          // Keep the durable pending key for the cleanup service to retry.
+        if (claimed.count !== 1) throw this.versionConflict();
+        pendingClaimed = true;
+        const blob = await this.storage.put(storageKey, source);
+        if (
+          blob.detectedMimeType !== declaredMimeType ||
+          !isMimeAllowedForPurpose(
+            draft.category,
+            draft.purpose,
+            blob.detectedMimeType,
+          )
+        ) {
+          throw this.invalidVersion();
         }
+        await this.database.$transaction(async (transaction) => {
+          await transaction.$executeRawUnsafe(
+            'SELECT pg_advisory_xact_lock(hashtextextended($1, 0))',
+            ownerQuotaKey(draft),
+          );
+          const activeCount = await transaction.material.count({
+            where: {
+              departmentId: actor.departmentId,
+              ownerType: draft.ownerType,
+              ownerId: draft.ownerId,
+              category: draft.category,
+              status: 'ACTIVE',
+            },
+          });
+          if (activeCount >= materialLimit(draft.category)) {
+            throw this.validationError();
+          }
+          await transaction.material.create({
+            data: {
+              id: materialId,
+              departmentId: actor.departmentId,
+              ownerType: draft.ownerType,
+              ownerId: draft.ownerId,
+              category: draft.category,
+              purpose: draft.purpose,
+            },
+          });
+          await transaction.contentVersion.create({
+            data: {
+              id: contentVersionId,
+              materialId,
+              storageKey,
+              originalFilename,
+              mimeType: blob.detectedMimeType,
+              sizeBytes: BigInt(blob.sizeBytes),
+              sha256: blob.sha256,
+              uploadedBy: actor.userId,
+            },
+          });
+          await transaction.material.update({
+            where: { id: materialId },
+            data: { currentVersionId: contentVersionId },
+          });
+          const finalized = await transaction.uploadDraft.updateMany({
+            where: {
+              id: draft.id,
+              status: 'OPEN',
+              expiresAt: { gt: this.clock() },
+              pendingStorageKey: storageKey,
+            },
+            data: { status: 'FINALIZED', pendingStorageKey: null },
+          });
+          if (finalized.count !== 1) throw this.versionConflict();
+        });
+        return {
+          materialId,
+          contentVersionId,
+          reservedOwnerId:
+            draft.ownerType === 'LEAD_DRAFT' ? draft.ownerId : undefined,
+          originalFilename,
+          purpose: draft.purpose,
+          mimeType: blob.detectedMimeType,
+          sizeBytes: blob.sizeBytes,
+          sha256: blob.sha256,
+        };
+      } catch (error) {
+        let storageIsClean = false;
+        if (pendingClaimed) {
+          try {
+            await this.storage.delete(storageKey);
+            storageIsClean = true;
+          } catch {
+            // Keep the durable pending key for the cleanup service to retry.
+          }
+        }
+        if (pendingClaimed && storageIsClean) {
+          await this.database.uploadDraft
+            .updateMany({
+              where: { id: draft.id, pendingStorageKey: storageKey },
+              data: { pendingStorageKey: null },
+            })
+            .catch(() => undefined);
+        }
+        if (error instanceof BlobValidationError) throw this.invalidVersion();
+        if (error instanceof BlobStorageUnavailableError) {
+          throw this.storageUnavailable();
+        }
+        throw error;
       }
-      if (pendingClaimed && storageIsClean) {
-        await this.database.uploadDraft
-          .updateMany({
-            where: { id: draft.id, pendingStorageKey: storageKey },
-            data: { pendingStorageKey: null },
-          })
-          .catch(() => undefined);
-      }
-      if (error instanceof BlobValidationError) throw this.invalidVersion();
-      if (error instanceof BlobStorageUnavailableError) {
-        throw this.storageUnavailable();
-      }
-      throw error;
-    }
+    });
   }
 
   async listOwnerMaterials(

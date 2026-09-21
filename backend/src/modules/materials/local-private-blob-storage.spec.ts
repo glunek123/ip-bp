@@ -169,6 +169,24 @@ describe('LocalPrivateBlobStorage', () => {
     );
   });
 
+  it('defensively deletes the deterministic temp path before the final path', async () => {
+    const key = 'department/material/delete-order';
+    const paths: string[] = [];
+    storage = new LocalPrivateBlobStorage(root, {
+      unlink: async (path) => {
+        paths.push(String(path));
+        throw Object.assign(new Error('missing'), { code: 'ENOENT' });
+      },
+    });
+
+    await storage.delete(key);
+
+    expect(paths).toEqual([
+      deterministicTemporaryPath(root, key),
+      join(root, ...key.split('/')),
+    ]);
+  });
+
   it('rejects unknown signatures and encrypted PDFs without publishing a blob', async () => {
     await expect(
       storage.put('unknown', Readable.from(Buffer.from('not an image'))),

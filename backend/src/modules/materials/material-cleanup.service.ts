@@ -11,6 +11,7 @@ import {
   PRIVATE_BLOB_STORAGE,
   PrivateBlobStorage,
 } from './private-blob-storage';
+import { MaterialStorageKeyCoordinator } from './material-storage-key-coordinator';
 
 type PurgeCandidate = { id: string; storageKey: string };
 const BATCH_SIZE = 100;
@@ -28,6 +29,7 @@ export class MaterialCleanupService implements OnModuleInit, OnModuleDestroy {
     private readonly database: DatabaseService,
     @Inject(PRIVATE_BLOB_STORAGE)
     private readonly storage: PrivateBlobStorage,
+    private readonly storageKeyCoordinator: MaterialStorageKeyCoordinator,
     @Optional()
     @Inject(MATERIAL_CLEANUP_CLOCK)
     clock?: () => Date,
@@ -70,8 +72,8 @@ export class MaterialCleanupService implements OnModuleInit, OnModuleDestroy {
   }
 
   private async cleanupPendingStorageKeys(now: Date): Promise<void> {
-    await this.database.$transaction(async (transaction) => {
-      const rows = await transaction.$queryRawUnsafe<PurgeCandidate[]>(
+    const candidates = await this.database.$transaction(async (transaction) =>
+      transaction.$queryRawUnsafe<PurgeCandidate[]>(
         `SELECT d."id", d."pending_storage_key" AS "storageKey"
          FROM "upload_drafts" d
          WHERE d."pending_storage_key" IS NOT NULL
@@ -79,24 +81,53 @@ export class MaterialCleanupService implements OnModuleInit, OnModuleDestroy {
            AND NOT EXISTS (
              SELECT 1 FROM "content_versions" cv
              WHERE cv."storage_key" = d."pending_storage_key"
-           )
+         )
          ORDER BY d."updated_at", d."id"
          FOR UPDATE OF d SKIP LOCKED LIMIT $2`,
         now,
         BATCH_SIZE,
+      ),
+    );
+    for (const candidate of candidates) {
+      await this.storageKeyCoordinator.withKey(candidate.storageKey, () =>
+        this.cleanupPendingStorageKey(now, candidate),
       );
-      for (const row of rows) {
-        try {
-          await this.storage.delete(row.storageKey);
-          await transaction.uploadDraft.updateMany({
-            where: { id: row.id, pendingStorageKey: row.storageKey },
-            data: { pendingStorageKey: null },
-          });
-        } catch {
-          this.logger.warn(
-            'Private material orphan cleanup will retry a failed blob deletion',
-          );
-        }
+    }
+  }
+
+  private async cleanupPendingStorageKey(
+    now: Date,
+    candidate: PurgeCandidate,
+  ): Promise<void> {
+    await this.database.$transaction(async (transaction) => {
+      const rows = await transaction.$queryRawUnsafe<PurgeCandidate[]>(
+        `SELECT d."id", d."pending_storage_key" AS "storageKey"
+         FROM "upload_drafts" d
+         WHERE d."id" = $1
+           AND d."pending_storage_key" = $2
+           AND d."updated_at" <= $3 - INTERVAL '15 minutes'
+           AND NOT EXISTS (
+             SELECT 1 FROM "content_versions" cv
+             WHERE cv."storage_key" = d."pending_storage_key"
+           )
+         FOR UPDATE OF d`,
+        candidate.id,
+        candidate.storageKey,
+        now,
+      );
+      if (rows.length === 0) return;
+      const current = rows[0];
+      if (current === undefined) return;
+      try {
+        await this.storage.delete(current.storageKey);
+        await transaction.uploadDraft.updateMany({
+          where: { id: current.id, pendingStorageKey: current.storageKey },
+          data: { pendingStorageKey: null },
+        });
+      } catch {
+        this.logger.warn(
+          'Private material orphan cleanup will retry a failed blob deletion',
+        );
       }
     });
   }

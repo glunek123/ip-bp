@@ -11,6 +11,7 @@ import {
 } from './private-blob-storage';
 import { MaterialCleanupService } from './material-cleanup.service';
 import { MaterialService } from './material.service';
+import { MaterialStorageKeyCoordinator } from './material-storage-key-coordinator';
 
 const actor: ActorContext = {
   userId: '11111111-1111-4111-8111-111111111111',
@@ -26,6 +27,7 @@ describe('MaterialService', () => {
       providers: [
         MaterialService,
         MaterialCleanupService,
+        MaterialStorageKeyCoordinator,
         { provide: DatabaseService, useValue: {} },
         { provide: AccessControlService, useValue: {} },
         {
@@ -454,6 +456,78 @@ describe('MaterialService', () => {
     });
   });
 
+  it('keeps cleanup behind a claimed pending key until put and database finalize finish', async () => {
+    const fixture = createFixture();
+    fixture.db.uploadDraft.findUnique.mockResolvedValue(openDraft());
+    const putStarted = deferred<void>();
+    const releasePut = deferred<void>();
+    let storageKey = '';
+    let finalized = false;
+    fixture.storage.put.mockImplementation(async (key) => {
+      storageKey = key;
+      putStarted.resolve();
+      await releasePut.promise;
+      return {
+        sizeBytes: 10,
+        sha256: 'f'.repeat(64),
+        detectedMimeType: 'image/png',
+      };
+    });
+    fixture.transaction.uploadDraft.updateMany.mockImplementation(async () => {
+      finalized = true;
+      return { count: 1 };
+    });
+    const finalize = fixture.service.finalizeUpload(
+      actor,
+      '44444444-4444-4444-8444-444444444444',
+      Readable.from('bytes'),
+    );
+    await putStarted.promise;
+
+    const queryRaw = jest.fn(async (sql: string) => {
+      if (sql.includes('ORDER BY d."updated_at"')) {
+        return [{ id: openDraft().id, storageKey }];
+      }
+      if (sql.includes('d."pending_storage_key" = $2')) {
+        return finalized ? [] : [{ id: openDraft().id, storageKey }];
+      }
+      return [];
+    });
+    const cleanupTransaction = {
+      $queryRawUnsafe: queryRaw,
+      uploadDraft: { updateMany: jest.fn(async () => ({ count: 1 })) },
+      contentVersion: { updateMany: jest.fn(async () => ({ count: 1 })) },
+    };
+    const cleanupDatabase = {
+      $transaction: jest.fn(
+        async (
+          callback: (value: typeof cleanupTransaction) => Promise<unknown>,
+        ) => callback(cleanupTransaction),
+      ),
+      contentVersion: cleanupTransaction.contentVersion,
+    };
+    const cleanupService = new MaterialCleanupService(
+      cleanupDatabase as unknown as DatabaseService,
+      fixture.storage,
+      fixture.coordinator,
+      () => now,
+    );
+    const cleanup = cleanupService.runOnce();
+    await new Promise((resolve) => setImmediate(resolve));
+    expect(queryRaw).toHaveBeenCalledTimes(2);
+    expect(fixture.storage.delete).not.toHaveBeenCalled();
+
+    releasePut.resolve();
+    await finalize;
+    await cleanup;
+
+    expect(finalized).toBe(true);
+    expect(queryRaw.mock.calls[2]?.[0]).toContain(
+      'd."pending_storage_key" = $2',
+    );
+    expect(fixture.storage.delete).not.toHaveBeenCalled();
+  });
+
   it('enforces the owner/category limit inside the serialized finalize transaction', async () => {
     const fixture = createFixture();
     fixture.db.uploadDraft.findUnique.mockResolvedValue(openDraft());
@@ -803,6 +877,7 @@ function materialRecord() {
 }
 
 function createFixture() {
+  const coordinator = new MaterialStorageKeyCoordinator();
   const transaction = {
     $executeRawUnsafe: jest.fn(async () => 1),
     material: {
@@ -856,11 +931,21 @@ function createFixture() {
     access,
     storage,
     transaction,
+    coordinator,
     service: new MaterialService(
       db as unknown as DatabaseService,
       access as unknown as AccessControlService,
       storage,
+      coordinator,
       () => now,
     ),
   };
+}
+
+function deferred<T>() {
+  let resolve!: (value: T | PromiseLike<T>) => void;
+  const promise = new Promise<T>((resolver) => {
+    resolve = resolver;
+  });
+  return { promise, resolve };
 }

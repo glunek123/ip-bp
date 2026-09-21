@@ -8,6 +8,7 @@ import { LocalPrivateBlobStorage } from './local-private-blob-storage';
 import { MaterialCleanupService } from './material-cleanup.service';
 import { MaterialController } from './material.controller';
 import { MaterialService } from './material.service';
+import { MaterialStorageKeyCoordinator } from './material-storage-key-coordinator';
 import {
   PRIVATE_BLOB_STORAGE,
   UnavailablePrivateBlobStorage,
@@ -29,6 +30,7 @@ import {
         );
       },
     },
+    MaterialStorageKeyCoordinator,
     MaterialService,
     MaterialCleanupService,
   ],

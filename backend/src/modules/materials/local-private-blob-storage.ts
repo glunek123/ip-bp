@@ -137,7 +137,7 @@ export class LocalPrivateBlobStorage implements PrivateBlobStorage {
         }
       }
       const cleaned = linked
-        ? await this.deletePaths([target, temporaryPath])
+        ? await this.deletePaths([temporaryPath, target])
         : !ownsTemporary || (await this.deletePaths([temporaryPath]));
       if (!handleClosed || !cleaned) throw this.storageUnavailable();
       if (error instanceof BlobValidationError) throw error;
@@ -169,7 +169,7 @@ export class LocalPrivateBlobStorage implements PrivateBlobStorage {
       '.tmp',
       createHash('sha256').update(storageKey, 'utf8').digest('hex'),
     );
-    if (!(await this.deletePaths([target, temporaryPath]))) {
+    if (!(await this.deletePaths([temporaryPath, target]))) {
       throw this.storageUnavailable();
     }
   }

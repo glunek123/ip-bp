@@ -1,6 +1,7 @@
 import { Logger } from '@nestjs/common';
 import { DatabaseService } from '../../database/database.service';
 import { MaterialCleanupService } from './material-cleanup.service';
+import { MaterialStorageKeyCoordinator } from './material-storage-key-coordinator';
 import { PrivateBlobStorage } from './private-blob-storage';
 
 const now = new Date('2026-09-21T04:00:00.000Z');
@@ -94,9 +95,11 @@ describe('MaterialCleanupService', () => {
     fixture.queryRaw
       .mockResolvedValueOnce([])
       .mockResolvedValueOnce([{ id: 'draft-orphan', storageKey: 'orphan/key' }])
+      .mockResolvedValueOnce([{ id: 'draft-orphan', storageKey: 'orphan/key' }])
       .mockResolvedValueOnce([])
       .mockResolvedValueOnce([])
       .mockResolvedValueOnce([])
+      .mockResolvedValueOnce([{ id: 'draft-orphan', storageKey: 'orphan/key' }])
       .mockResolvedValueOnce([{ id: 'draft-orphan', storageKey: 'orphan/key' }])
       .mockResolvedValueOnce([])
       .mockResolvedValueOnce([]);
@@ -115,6 +118,91 @@ describe('MaterialCleanupService', () => {
       data: { pendingStorageKey: null },
     });
     warning.mockRestore();
+  });
+
+  it('waits for the key lock and rechecks pending ownership before deleting', async () => {
+    const fixture = createFixture();
+    fixture.queryRaw
+      .mockResolvedValueOnce([])
+      .mockResolvedValueOnce([
+        { id: 'draft-pending', storageKey: 'pending/key' },
+      ])
+      .mockResolvedValueOnce([
+        { id: 'draft-pending', storageKey: 'pending/key' },
+      ])
+      .mockResolvedValueOnce([])
+      .mockResolvedValueOnce([]);
+    const holderEntered = deferred<void>();
+    const releaseHolder = deferred<void>();
+    const holder = fixture.coordinator.withKey('pending/key', async () => {
+      holderEntered.resolve();
+      await releaseHolder.promise;
+    });
+    await holderEntered.promise;
+
+    const cleanup = fixture.service.runOnce();
+    await new Promise((resolve) => setImmediate(resolve));
+    expect(fixture.storage.delete).not.toHaveBeenCalled();
+    expect(fixture.queryRaw).toHaveBeenCalledTimes(2);
+
+    releaseHolder.resolve();
+    await holder;
+    await cleanup;
+
+    expect(fixture.queryRaw.mock.calls[2]?.[0]).toContain(
+      'd."pending_storage_key" = $2',
+    );
+    expect(fixture.queryRaw.mock.calls[2]?.[0]).toContain('NOT EXISTS');
+    expect(fixture.storage.delete).toHaveBeenCalledWith('pending/key');
+  });
+
+  it('keeps a writer asleep across both cleanup delete phases and clears pending last', async () => {
+    const fixture = createFixture();
+    fixture.queryRaw
+      .mockResolvedValueOnce([])
+      .mockResolvedValueOnce([
+        { id: 'draft-pending', storageKey: 'pending/key' },
+      ])
+      .mockResolvedValueOnce([
+        { id: 'draft-pending', storageKey: 'pending/key' },
+      ])
+      .mockResolvedValueOnce([])
+      .mockResolvedValueOnce([]);
+    let pendingStorageKey: string | null = 'pending/key';
+    let temporaryExists = true;
+    let finalExists = true;
+    const temporaryDeleted = deferred<void>();
+    const releaseFinalDelete = deferred<void>();
+    fixture.storage.delete.mockImplementation(async () => {
+      temporaryExists = false;
+      temporaryDeleted.resolve();
+      await releaseFinalDelete.promise;
+      finalExists = false;
+    });
+    fixture.uploadDraft.updateMany.mockImplementation(async () => {
+      pendingStorageKey = null;
+      return { count: 1 };
+    });
+
+    const cleanup = fixture.service.runOnce();
+    await temporaryDeleted.promise;
+    let writerEntered = false;
+    const writer = fixture.coordinator.withKey('pending/key', async () => {
+      writerEntered = true;
+    });
+    await Promise.resolve();
+
+    expect(temporaryExists).toBe(false);
+    expect(finalExists).toBe(true);
+    expect(pendingStorageKey).toBe('pending/key');
+    expect(writerEntered).toBe(false);
+
+    releaseFinalDelete.resolve();
+    await cleanup;
+    await writer;
+    expect(finalExists).toBe(false);
+    expect(pendingStorageKey).toBeNull();
+    expect(writerEntered).toBe(true);
   });
 
   it('catches startup and interval failures at the scheduling boundary', async () => {
@@ -153,6 +241,7 @@ describe('MaterialCleanupService', () => {
 });
 
 function createFixture() {
+  const coordinator = new MaterialStorageKeyCoordinator();
   const queryRaw = jest.fn<Promise<unknown[]>, [string, ...unknown[]]>(
     async () => [],
   );
@@ -186,10 +275,20 @@ function createFixture() {
     contentVersion,
     uploadDraft,
     storage,
+    coordinator,
     service: new MaterialCleanupService(
       db as unknown as DatabaseService,
       storage,
+      coordinator,
       () => now,
     ),
   };
+}
+
+function deferred<T>() {
+  let resolve!: (value: T | PromiseLike<T>) => void;
+  const promise = new Promise<T>((resolver) => {
+    resolve = resolver;
+  });
+  return { promise, resolve };
 }
