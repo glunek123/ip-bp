@@ -75,6 +75,54 @@ describe('materials API', () => {
     ]);
   });
 
+  it('normalizes surrounding filename whitespace for metadata while uploading the original File bytes', async () => {
+    const file = new File(['real-file-content'], '  营业执照.pdf  ', {
+      type: 'application/pdf',
+    });
+    const fetch = vi
+      .fn()
+      .mockResolvedValueOnce(
+        new Response(
+          JSON.stringify({
+            id: 'draft-1',
+            ownerType: 'CUSTOMER',
+            ownerId: 'customer-1',
+            category: 'CUSTOMER_IDENTITY',
+            purpose: 'IDENTITY_FULL',
+            originalFilename: '营业执照.pdf',
+            declaredMimeType: file.type,
+            expiresAt: '2026-09-22T00:00:00.000Z',
+          }),
+        ),
+      )
+      .mockResolvedValueOnce(
+        new Response(
+          JSON.stringify({
+            ...uploaded,
+            originalFilename: '营业执照.pdf',
+            sizeBytes: file.size,
+          }),
+        ),
+      );
+    vi.stubGlobal('fetch', fetch);
+
+    await expect(
+      uploadMaterialFile({
+        ownerType: 'CUSTOMER',
+        ownerId: 'customer-1',
+        category: 'CUSTOMER_IDENTITY',
+        purpose: 'IDENTITY_FULL',
+        file,
+      }),
+    ).resolves.toMatchObject({ originalFilename: '营业执照.pdf' });
+    expect(JSON.parse(String(fetch.mock.calls[0]?.[1]?.body))).toMatchObject({
+      originalFilename: '营业执照.pdf',
+    });
+    expect(fetch.mock.calls[1]?.[1]).toEqual(
+      expect.objectContaining({ body: file }),
+    );
+  });
+
   it('accepts and returns the server-reserved owner for lead drafts', async () => {
     const file = new File(['image'], '线索.png', { type: 'image/png' });
     const fetch = vi

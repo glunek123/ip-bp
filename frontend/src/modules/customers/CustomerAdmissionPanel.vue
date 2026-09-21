@@ -66,8 +66,17 @@ const submitting = ref(false);
 const formError = ref('');
 const materialError = ref('');
 const staleReview = ref(false);
+const externalSnapshotChanged = ref(false);
+const identityNumberError = ref('');
+const identityNumberInput =
+  ref<InstanceType<typeof globalThis.HTMLInputElement>>();
 let pendingCommand: { fingerprint: string; key: string } | undefined;
 
+const canManageMaterials = computed(
+  () =>
+    props.customer.profileStatus === 'draft' &&
+    props.customer.capabilities.admit,
+);
 const compatibleOptions = computed(() =>
   compatibleIdentityOptions(customerType.value),
 );
@@ -89,10 +98,35 @@ const purposeOptions = computed<
 watch(
   () => props.customer.version,
   (version) => {
-    if (!submitting.value && !staleReview.value)
-      expectedVersion.value = version;
+    if (version === expectedVersion.value) return;
+    externalSnapshotChanged.value = true;
+    pendingCommand = undefined;
+    formError.value =
+      '客户资料已在其他区域更新。为避免用旧字段覆盖新资料，请重新载入后核对。';
   },
 );
+
+function loadCustomerSnapshot(): void {
+  expectedVersion.value = props.customer.version;
+  name.value = props.customer.name;
+  customerType.value = normalizeCustomerTypeOption(props.customer.customerType);
+  identityType.value = normalizeIdentityTypeOption(props.customer.identityType);
+  identityNumber.value = props.customer.identityNumber ?? '';
+  issuingCountryOrRegion.value = props.customer.issuingCountryOrRegion ?? '';
+  identityValidFrom.value = props.customer.identityValidFrom ?? '';
+  identityValidTo.value = props.customer.identityValidTo ?? '';
+  identityValidityMode.value =
+    props.customer.identityValidityMode ?? 'NOT_STATED';
+  admissionContactName.value = props.customer.admissionContactName ?? '';
+  admissionContactPhone.value = props.customer.admissionContactPhone ?? '';
+  admissionContactEmail.value = props.customer.admissionContactEmail ?? '';
+  externalSnapshotChanged.value = false;
+  staleReview.value = false;
+  identityNumberError.value = '';
+  formError.value = '';
+  pendingCommand = undefined;
+  void reloadMaterials();
+}
 
 function onCustomerTypeChanged(): void {
   if (
@@ -115,9 +149,26 @@ async function reloadMaterials(): Promise<void> {
   materialError.value = '';
   try {
     const result = await listOwnerMaterials('CUSTOMER', props.customer.id);
-    materials.value = result.items;
-  } catch {
-    materialError.value = '证件材料暂时无法读取，请稍后重试';
+    const activeIds = new Set(result.items.map((item) => item.id));
+    const locallyDeleted = materials.value.filter(
+      (item) => item.status === 'DELETED' && !activeIds.has(item.id),
+    );
+    materials.value = [...result.items, ...locallyDeleted];
+  } catch (error) {
+    if (
+      error instanceof ApiError &&
+      (error.code === 'RESOURCE_NOT_FOUND' ||
+        error.code === 'CUSTOMER_NOT_FOUND')
+    ) {
+      emit('customer-not-found');
+      return;
+    }
+    materialError.value =
+      error instanceof ApiError &&
+      (error.code === 'ACTION_FORBIDDEN' ||
+        error.code === 'CUSTOMER_ACTION_FORBIDDEN')
+        ? '当前账号无权查看客户材料'
+        : '证件材料暂时无法读取，请稍后重试';
   } finally {
     materialsLoading.value = false;
   }
@@ -210,10 +261,24 @@ async function upload(event: { target: unknown }): Promise<void> {
     ];
     await reloadMaterials();
   } catch (error) {
-    materialError.value =
-      error instanceof ApiError && error.code === 'MATERIAL_VALIDATION_ERROR'
-        ? '文件格式、内容或数量不符合要求，请核对后重试'
-        : '文件上传没有完成，已保留当前填写内容';
+    if (
+      error instanceof ApiError &&
+      (error.code === 'RESOURCE_NOT_FOUND' ||
+        error.code === 'CUSTOMER_NOT_FOUND')
+    ) {
+      emit('customer-not-found');
+    } else if (
+      error instanceof ApiError &&
+      (error.code === 'ACTION_FORBIDDEN' ||
+        error.code === 'CUSTOMER_ACTION_FORBIDDEN')
+    ) {
+      materialError.value = '当前账号无权上传客户材料';
+    } else {
+      materialError.value =
+        error instanceof ApiError && error.code === 'MATERIAL_VALIDATION_ERROR'
+          ? '文件格式、内容或数量不符合要求，请核对后重试'
+          : '文件上传没有完成，已保留当前填写内容';
+    }
   } finally {
     uploadingFilename.value = '';
   }
@@ -225,8 +290,15 @@ async function download(material: OwnerMaterial): Promise<void> {
   materialError.value = '';
   try {
     await downloadMaterialVersion(material.id, version.id);
-  } catch {
-    materialError.value = '文件下载没有完成，请稍后重试';
+  } catch (error) {
+    materialError.value =
+      error instanceof ApiError &&
+      (error.code === 'ACTION_FORBIDDEN' ||
+        error.code === 'CUSTOMER_ACTION_FORBIDDEN')
+        ? '当前账号无权下载此客户材料'
+        : error instanceof ApiError && error.code === 'RESOURCE_NOT_FOUND'
+          ? '文件已不存在，请刷新材料列表'
+          : '文件下载没有完成，请稍后重试';
   }
 }
 
@@ -234,11 +306,25 @@ async function remove(material: OwnerMaterial): Promise<void> {
   materialError.value = '';
   try {
     const deleted = await deleteMaterial(material.id, material.version);
-    material.status = deleted.status;
-    material.version = deleted.version;
-    material.deletedAt = new Date().toISOString();
-  } catch {
-    materialError.value = '材料没有移除，可能已被流程引用或版本已变化';
+    materials.value = materials.value.map((item) =>
+      item.id === material.id
+        ? {
+            ...item,
+            status: deleted.status,
+            version: deleted.version,
+            deletedAt: new Date().toISOString(),
+          }
+        : item,
+    );
+  } catch (error) {
+    materialError.value =
+      error instanceof ApiError &&
+      (error.code === 'ACTION_FORBIDDEN' ||
+        error.code === 'CUSTOMER_ACTION_FORBIDDEN')
+        ? '当前账号无权移除客户材料'
+        : error instanceof ApiError && error.code === 'RESOURCE_NOT_FOUND'
+          ? '材料已不存在，请刷新后核对'
+          : '材料没有移除，可能已被流程引用或版本已变化';
   }
 }
 
@@ -246,11 +332,25 @@ async function restore(material: OwnerMaterial): Promise<void> {
   materialError.value = '';
   try {
     const restored = await restoreMaterial(material.id, material.version);
-    material.status = restored.status;
-    material.version = restored.version;
-    material.deletedAt = null;
-  } catch {
-    materialError.value = '材料没有恢复，请刷新后核对当前状态';
+    materials.value = materials.value.map((item) =>
+      item.id === material.id
+        ? {
+            ...item,
+            status: restored.status,
+            version: restored.version,
+            deletedAt: null,
+          }
+        : item,
+    );
+  } catch (error) {
+    materialError.value =
+      error instanceof ApiError &&
+      (error.code === 'ACTION_FORBIDDEN' ||
+        error.code === 'CUSTOMER_ACTION_FORBIDDEN')
+        ? '当前账号无权恢复客户材料'
+        : error instanceof ApiError && error.code === 'RESOURCE_NOT_FOUND'
+          ? '材料已不存在，请刷新后核对'
+          : '材料没有恢复，请刷新后核对当前状态';
   }
 }
 
@@ -391,7 +491,14 @@ async function refreshAfterConflict(): Promise<void> {
 }
 
 async function submit(): Promise<void> {
-  if (submitting.value || uploadingFilename.value) return;
+  if (
+    submitting.value ||
+    uploadingFilename.value ||
+    externalSnapshotChanged.value ||
+    !canManageMaterials.value
+  )
+    return;
+  identityNumberError.value = '';
   const input = validate();
   if (input === undefined) return;
   submitting.value = true;
@@ -403,6 +510,7 @@ async function submit(): Promise<void> {
       commandKey(input),
     );
     pendingCommand = undefined;
+    expectedVersion.value = admitted.version;
     emit('admitted', admitted);
   } catch (error) {
     if (
@@ -410,6 +518,13 @@ async function submit(): Promise<void> {
       error.code === 'CUSTOMER_VERSION_CONFLICT'
     ) {
       await refreshAfterConflict();
+    } else if (
+      error instanceof ApiError &&
+      (error.code === 'RESOURCE_NOT_FOUND' ||
+        error.code === 'CUSTOMER_NOT_FOUND')
+    ) {
+      pendingCommand = undefined;
+      emit('customer-not-found');
     } else {
       if (
         error instanceof ApiError &&
@@ -418,12 +533,36 @@ async function submit(): Promise<void> {
       ) {
         pendingCommand = undefined;
       }
-      formError.value =
+      if (
         error instanceof ApiError &&
-        (error.code === 'CUSTOMER_ADMISSION_INCOMPLETE' ||
-          error.code === 'CUSTOMER_IDENTITY_DOCUMENT_INVALID')
-          ? '准入条件还不完整，请核对主体、证件、有效期、联系人和材料'
-          : '准入没有完成，已保留当前填写内容，请稍后重试';
+        error.code === 'CUSTOMER_IDENTITY_DUPLICATE'
+      ) {
+        identityNumberError.value =
+          '该证件号码已用于其他客户，请核对号码或打开已有客户';
+        formError.value = identityNumberError.value;
+        identityNumberInput.value?.focus();
+      } else if (
+        error instanceof ApiError &&
+        error.code === 'CUSTOMER_DOCUMENT_INVALID'
+      ) {
+        materialError.value =
+          '证件材料已失效或不符合准入要求，请重新选择有效材料';
+        formError.value = materialError.value;
+      } else if (
+        error instanceof ApiError &&
+        (error.code === 'ACTION_FORBIDDEN' ||
+          error.code === 'CUSTOMER_ACTION_FORBIDDEN')
+      ) {
+        formError.value = '当前账号无权执行客户准入，请联系管理员授权';
+      } else if (
+        error instanceof ApiError &&
+        error.code === 'CUSTOMER_ADMISSION_INCOMPLETE'
+      ) {
+        formError.value =
+          '准入条件还不完整，请核对主体、证件、有效期、联系人和材料';
+      } else {
+        formError.value = '准入没有完成，已保留当前填写内容，请稍后重试';
+      }
     }
   } finally {
     submitting.value = false;
@@ -440,15 +579,27 @@ void reloadMaterials();
   >
     <div class="admission-heading">
       <div>
-        <p class="section-kicker">客户准入</p>
-        <h2 id="admission-title">补齐主体证明后直接准入</h2>
-        <p>选择主体与证件，上传真实材料，一次确认即可完成。</p>
+        <p class="section-kicker">
+          {{ canManageMaterials ? '客户准入' : '客户材料' }}
+        </p>
+        <h2 id="admission-title">
+          {{ canManageMaterials ? '补齐主体证明后直接准入' : '身份证明材料' }}
+        </h2>
+        <p>
+          {{
+            canManageMaterials
+              ? '选择主体与证件，上传真实材料，一次确认即可完成。'
+              : '可查看并下载当前有权访问的客户材料。'
+          }}
+        </p>
       </div>
-      <span class="admission-step">01 · 准入</span>
+      <span class="admission-step">{{
+        canManageMaterials ? '01 · 准入' : '只读'
+      }}</span>
     </div>
 
     <form @submit.prevent="submit">
-      <div class="admission-grid">
+      <div v-if="canManageMaterials" class="admission-grid">
         <label>
           <span>客户主体类型</span>
           <select
@@ -497,11 +648,17 @@ void reloadMaterials();
         <label>
           <span>证件号码</span>
           <input
+            ref="identityNumberInput"
             v-model="identityNumber"
             name="identityNumber"
             class="text-input"
             maxlength="100"
+            :aria-invalid="identityNumberError ? 'true' : undefined"
+            @input="identityNumberError = ''"
           />
+          <small v-if="identityNumberError" class="field-error">
+            {{ identityNumberError }}
+          </small>
         </label>
         <label>
           <span>签发国家／地区（可选）</span>
@@ -548,7 +705,7 @@ void reloadMaterials();
         </label>
       </div>
 
-      <fieldset class="admission-section">
+      <fieldset v-if="canManageMaterials" class="admission-section">
         <legend>准入联系人</legend>
         <div class="admission-grid admission-grid--three">
           <label>
@@ -584,7 +741,7 @@ void reloadMaterials();
       <fieldset class="admission-section material-section">
         <legend>身份证明材料</legend>
         <div class="upload-row">
-          <label>
+          <label v-if="canManageMaterials">
             <span>材料用途</span>
             <select
               v-model="documentPurpose"
@@ -601,6 +758,7 @@ void reloadMaterials();
             </select>
           </label>
           <label
+            v-if="canManageMaterials"
             class="file-picker"
             :class="{ 'file-picker--busy': uploadingFilename }"
           >
@@ -625,7 +783,7 @@ void reloadMaterials();
             刷新材料
           </ElButton>
         </div>
-        <p class="field-help">
+        <p v-if="canManageMaterials" class="field-help">
           支持 PDF、JPG/JPEG、PNG；单份不超过 20MB，最多 10 份。
         </p>
         <p v-if="materialError" class="field-error" role="alert">
@@ -651,19 +809,26 @@ void reloadMaterials();
             <div class="material-actions">
               <button
                 v-if="material.status === 'ACTIVE'"
+                :data-test="`download-material-${material.id}`"
                 type="button"
                 @click="download(material)"
               >
                 下载
               </button>
               <button
-                v-if="material.status === 'ACTIVE'"
+                v-if="material.status === 'ACTIVE' && canManageMaterials"
+                :data-test="`remove-material-${material.id}`"
                 type="button"
                 @click="remove(material)"
               >
                 移除
               </button>
-              <button v-else type="button" @click="restore(material)">
+              <button
+                v-else-if="canManageMaterials"
+                :data-test="`restore-material-${material.id}`"
+                type="button"
+                @click="restore(material)"
+              >
                 恢复
               </button>
             </div>
@@ -675,10 +840,17 @@ void reloadMaterials();
       </fieldset>
 
       <p v-if="formError" class="submit-error" role="alert">{{ formError }}</p>
-      <div class="admission-submit">
+      <div v-if="canManageMaterials" class="admission-submit">
         <p>准入后即可用于创建正式线索。</p>
         <ElButton
-          v-if="staleReview"
+          v-if="externalSnapshotChanged"
+          data-test="reload-customer-snapshot"
+          @click="loadCustomerSnapshot"
+        >
+          重新载入客户资料
+        </ElButton>
+        <ElButton
+          v-if="staleReview && !externalSnapshotChanged"
           data-test="retry-admission"
           @click="
             staleReview = false;
@@ -692,7 +864,12 @@ void reloadMaterials();
           native-type="submit"
           type="primary"
           :loading="submitting"
-          :disabled="submitting || Boolean(uploadingFilename) || staleReview"
+          :disabled="
+            submitting ||
+            Boolean(uploadingFilename) ||
+            staleReview ||
+            externalSnapshotChanged
+          "
         >
           确认准入
         </ElButton>

@@ -113,12 +113,13 @@ function isUploadDraft(value: unknown): value is UploadDraftResponse {
 function uploadDraftMatches(
   draft: UploadDraftResponse,
   input: UploadMaterialFileInput,
+  originalFilename: string,
 ): boolean {
   return (
     draft.ownerType === input.ownerType &&
     draft.category === input.category &&
     draft.purpose === input.purpose &&
-    draft.originalFilename === input.file.name &&
+    draft.originalFilename === originalFilename &&
     draft.declaredMimeType === input.file.type &&
     (input.ownerId === undefined || draft.ownerId === input.ownerId) &&
     (input.ownerType === 'LEAD_DRAFT'
@@ -184,6 +185,10 @@ function isOwnerMaterial(value: unknown): value is OwnerMaterial {
 export async function uploadMaterialFile(
   input: UploadMaterialFileInput,
 ): Promise<UploadedMaterial> {
+  const originalFilename = input.file.name.trim();
+  if (originalFilename.length === 0) {
+    throw new ApiError('文件名不能为空', 400, 'MATERIAL_VALIDATION_ERROR');
+  }
   const draft = await requestJson('/materials/upload-drafts', {
     method: 'POST',
     body: {
@@ -191,11 +196,14 @@ export async function uploadMaterialFile(
       ...(input.ownerId === undefined ? {} : { ownerId: input.ownerId }),
       category: input.category,
       purpose: input.purpose,
-      originalFilename: input.file.name,
+      originalFilename,
       declaredMimeType: input.file.type,
     },
   });
-  if (!isUploadDraft(draft) || !uploadDraftMatches(draft, input)) {
+  if (
+    !isUploadDraft(draft) ||
+    !uploadDraftMatches(draft, input, originalFilename)
+  ) {
     throw invalidResponse();
   }
 
@@ -207,7 +215,7 @@ export async function uploadMaterialFile(
   if (
     !isUploadedMaterial(uploaded) ||
     uploaded.purpose !== input.purpose ||
-    uploaded.originalFilename !== input.file.name ||
+    uploaded.originalFilename !== originalFilename ||
     uploaded.mimeType !== input.file.type ||
     uploaded.sizeBytes !== input.file.size ||
     (input.ownerType === 'LEAD_DRAFT'

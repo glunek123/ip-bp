@@ -68,7 +68,10 @@ const fullMaterial = {
   ],
 };
 
-afterEach(() => vi.resetAllMocks());
+afterEach(() => {
+  vi.resetAllMocks();
+  document.body.innerHTML = '';
+});
 
 async function mountPanel(items: object[] = []) {
   materialApi.listOwnerMaterials.mockResolvedValue({
@@ -251,6 +254,275 @@ describe('CustomerAdmissionPanel', () => {
       (wrapper.get('input[name="identityNumber"]').element as HTMLInputElement)
         .value,
     ).toBe('91310000ABC123');
+  });
+
+  it('reuses the same idempotency key when an ordinary failure is retried', async () => {
+    customerApi.admitCustomer
+      .mockRejectedValueOnce(
+        new ApiError('暂时失败', 503, 'STORAGE_UNAVAILABLE', 'request-1'),
+      )
+      .mockResolvedValueOnce({
+        ...customer,
+        profileStatus: 'admitted',
+        admittedAt: '2026-09-21T03:00:00.000Z',
+        version: 2,
+      });
+    const wrapper = await mountPanel([fullMaterial]);
+    await fillEnterpriseAdmission(wrapper);
+
+    await wrapper.get('form').trigger('submit');
+    await flushPromises();
+    await wrapper.get('form').trigger('submit');
+    await flushPromises();
+
+    expect(customerApi.admitCustomer).toHaveBeenCalledTimes(2);
+    expect(customerApi.admitCustomer.mock.calls[1]?.[2]).toBe(
+      customerApi.admitCustomer.mock.calls[0]?.[2],
+    );
+  });
+
+  it('accepts its own successful admission version without showing an external-change warning', async () => {
+    const admitted = {
+      ...customer,
+      customerType: 'ENTERPRISE',
+      identityType: 'BUSINESS_LICENSE',
+      identityNumber: '91310000ABC123',
+      identityValidityMode: 'LONG_TERM' as const,
+      profileStatus: 'admitted' as const,
+      admittedAt: '2026-09-21T03:00:00.000Z',
+      version: 2,
+      capabilities: { editRoutine: true, admit: false },
+    };
+    customerApi.admitCustomer.mockResolvedValue(admitted);
+    const wrapper = await mountPanel([fullMaterial]);
+    await fillEnterpriseAdmission(wrapper);
+    await wrapper.get('form').trigger('submit');
+    await flushPromises();
+    await wrapper.setProps({ customer: admitted });
+    await flushPromises();
+
+    expect(wrapper.text()).not.toContain('客户资料已在其他区域更新');
+    expect(wrapper.text()).toContain('客户材料');
+    expect(
+      wrapper.find('[data-test="reload-customer-snapshot"]').exists(),
+    ).toBe(false);
+  });
+
+  it('blocks stale local input when the parent supplies a newer customer snapshot', async () => {
+    const wrapper = await mountPanel([fullMaterial]);
+    await fillEnterpriseAdmission(wrapper);
+    await wrapper.get('input[name="identityNumber"]').setValue('LOCAL-DRAFT');
+
+    await wrapper.setProps({
+      customer: {
+        ...customer,
+        version: 2,
+        identityNumber: 'SERVER-VALUE',
+        updatedAt: '2026-09-21T02:00:00.000Z',
+      },
+    });
+    await flushPromises();
+
+    expect(wrapper.text()).toContain('客户资料已在其他区域更新');
+    expect(
+      (wrapper.get('input[name="identityNumber"]').element as HTMLInputElement)
+        .value,
+    ).toBe('LOCAL-DRAFT');
+    expect(
+      wrapper.get('button[data-test="admit-submit"]').attributes('disabled'),
+    ).toBeDefined();
+    await wrapper.get('form').trigger('submit');
+    expect(customerApi.admitCustomer).not.toHaveBeenCalled();
+
+    await wrapper
+      .get('[data-test="reload-customer-snapshot"]')
+      .trigger('click');
+    expect(
+      (wrapper.get('input[name="identityNumber"]').element as HTMLInputElement)
+        .value,
+    ).toBe('SERVER-VALUE');
+  });
+
+  it('keeps a deleted material recoverable when a later reload returns a newly uploaded active material', async () => {
+    materialApi.deleteMaterial.mockResolvedValue({
+      id: 'material-1',
+      status: 'DELETED',
+      version: 2,
+    });
+    materialApi.uploadMaterialFile.mockResolvedValue({
+      materialId: 'material-2',
+      contentVersionId: 'version-2',
+      originalFilename: '新证件.pdf',
+      purpose: 'IDENTITY_FULL',
+      mimeType: 'application/pdf',
+      sizeBytes: 3,
+      sha256: 'b'.repeat(64),
+    });
+    const newMaterial = {
+      ...fullMaterial,
+      id: 'material-2',
+      currentVersionId: 'version-2',
+      contentVersions: [
+        {
+          ...fullMaterial.contentVersions[0],
+          id: 'version-2',
+          materialId: 'material-2',
+          originalFilename: '新证件.pdf',
+          sha256: 'b'.repeat(64),
+        },
+      ],
+    };
+    materialApi.listOwnerMaterials
+      .mockResolvedValueOnce({ items: [fullMaterial], total: 1 })
+      .mockResolvedValueOnce({ items: [newMaterial], total: 1 });
+    const wrapper = mount(CustomerAdmissionPanel, { props: { customer } });
+    await flushPromises();
+    await fillEnterpriseAdmission(wrapper);
+
+    await wrapper
+      .get('[data-test="remove-material-material-1"]')
+      .trigger('click');
+    await setFile(
+      wrapper,
+      new File(['pdf'], '新证件.pdf', { type: 'application/pdf' }),
+    );
+    await flushPromises();
+
+    expect(wrapper.text()).toContain('证件.pdf');
+    expect(wrapper.text()).toContain('新证件.pdf');
+    expect(
+      wrapper.find('[data-test="restore-material-material-1"]').exists(),
+    ).toBe(true);
+  });
+
+  it('renders customer materials read-only and still allows authorized download', async () => {
+    materialApi.downloadMaterialVersion.mockResolvedValue(undefined);
+    materialApi.listOwnerMaterials.mockResolvedValue({
+      items: [fullMaterial],
+      total: 1,
+    });
+    const wrapper = mount(CustomerAdmissionPanel, {
+      props: {
+        customer: {
+          ...customer,
+          profileStatus: 'admitted',
+          admittedAt: '2026-09-21T03:00:00.000Z',
+          capabilities: { editRoutine: false, admit: false },
+        },
+      },
+    });
+    await flushPromises();
+
+    expect(wrapper.text()).toContain('客户材料');
+    expect(wrapper.find('input[name="identityDocument"]').exists()).toBe(false);
+    expect(
+      wrapper.find('[data-test="remove-material-material-1"]').exists(),
+    ).toBe(false);
+    await wrapper
+      .get('[data-test="download-material-material-1"]')
+      .trigger('click');
+    expect(materialApi.downloadMaterialVersion).toHaveBeenCalledWith(
+      'material-1',
+      'version-1',
+    );
+  });
+
+  it.each([
+    ['CUSTOMER_DOCUMENT_INVALID', '证件材料已失效或不符合准入要求'],
+    ['ACTION_FORBIDDEN', '当前账号无权执行客户准入'],
+  ])('maps %s to an actionable admission message', async (code, message) => {
+    customerApi.admitCustomer.mockRejectedValue(
+      new ApiError('rejected', code === 'ACTION_FORBIDDEN' ? 403 : 409, code),
+    );
+    const wrapper = await mountPanel([fullMaterial]);
+    await fillEnterpriseAdmission(wrapper);
+    await wrapper.get('form').trigger('submit');
+    await flushPromises();
+    expect(wrapper.text()).toContain(message);
+  });
+
+  it('locates an identity duplicate at the certificate number field', async () => {
+    customerApi.admitCustomer.mockRejectedValue(
+      new ApiError('duplicate', 409, 'CUSTOMER_IDENTITY_DUPLICATE'),
+    );
+    materialApi.listOwnerMaterials.mockResolvedValue({
+      items: [fullMaterial],
+      total: 1,
+    });
+    const wrapper = mount(CustomerAdmissionPanel, {
+      attachTo: document.body,
+      props: { customer },
+    });
+    await flushPromises();
+    await fillEnterpriseAdmission(wrapper);
+    await wrapper.get('form').trigger('submit');
+    await flushPromises();
+
+    expect(wrapper.text()).toContain('该证件号码已用于其他客户');
+    expect(
+      wrapper.get('input[name="identityNumber"]').attributes('aria-invalid'),
+    ).toBe('true');
+    expect(document.activeElement).toBe(
+      wrapper.get('input[name="identityNumber"]').element,
+    );
+  });
+
+  it('reports inaccessible materials without exposing mutation actions', async () => {
+    materialApi.listOwnerMaterials.mockRejectedValue(
+      new ApiError('forbidden', 403, 'ACTION_FORBIDDEN'),
+    );
+    const wrapper = mount(CustomerAdmissionPanel, { props: { customer } });
+    await flushPromises();
+    expect(wrapper.text()).toContain('当前账号无权查看客户材料');
+  });
+
+  it('reports forbidden upload as a permission problem', async () => {
+    materialApi.uploadMaterialFile.mockRejectedValue(
+      new ApiError('forbidden', 403, 'ACTION_FORBIDDEN'),
+    );
+    const wrapper = await mountPanel();
+    await fillEnterpriseAdmission(wrapper);
+    await setFile(
+      wrapper,
+      new File(['pdf'], '营业执照.pdf', { type: 'application/pdf' }),
+    );
+    await flushPromises();
+    expect(wrapper.text()).toContain('当前账号无权上传客户材料');
+  });
+
+  it('reports forbidden removal without dropping the material card', async () => {
+    materialApi.deleteMaterial.mockRejectedValue(
+      new ApiError('forbidden', 403, 'ACTION_FORBIDDEN'),
+    );
+    const wrapper = await mountPanel([fullMaterial]);
+    await wrapper
+      .get('[data-test="remove-material-material-1"]')
+      .trigger('click');
+    await flushPromises();
+    expect(wrapper.text()).toContain('当前账号无权移除客户材料');
+    expect(
+      wrapper.find('[data-test="download-material-material-1"]').exists(),
+    ).toBe(true);
+  });
+
+  it('emits customer-not-found when admission loses access to the customer', async () => {
+    customerApi.admitCustomer.mockRejectedValue(
+      new ApiError('hidden', 404, 'RESOURCE_NOT_FOUND'),
+    );
+    const wrapper = await mountPanel([fullMaterial]);
+    await fillEnterpriseAdmission(wrapper);
+    await wrapper.get('form').trigger('submit');
+    await flushPromises();
+    expect(wrapper.emitted('customer-not-found')).toHaveLength(1);
+  });
+
+  it('emits customer-not-found when the material owner becomes inaccessible', async () => {
+    materialApi.listOwnerMaterials.mockRejectedValue(
+      new ApiError('hidden', 404, 'RESOURCE_NOT_FOUND'),
+    );
+    const wrapper = mount(CustomerAdmissionPanel, { props: { customer } });
+    await flushPromises();
+    expect(wrapper.emitted('customer-not-found')).toHaveLength(1);
   });
 
   it('reloads stale data, preserves input, and retries only after review', async () => {

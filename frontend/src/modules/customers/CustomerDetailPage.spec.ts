@@ -136,7 +136,10 @@ describe('CustomerDetailPage', () => {
     await wrapper.get('[data-test="admitted"]').trigger('click');
 
     expect(wrapper.text()).toContain('已准入');
-    expect(wrapper.find('[data-test="admission-panel"]').exists()).toBe(false);
+    expect(wrapper.find('[data-test="admission-panel"]').exists()).toBe(true);
+    expect(
+      wrapper.get('[data-test="admission-panel"]').attributes('data-version'),
+    ).toBe('2');
   });
 
   it('shows a non-leaking unavailable state for 404', async () => {
@@ -175,7 +178,7 @@ describe('CustomerDetailPage', () => {
         .get('[data-test="rights-holder-panel"]')
         .attributes('data-can-edit'),
     ).toBe('false');
-    expect(wrapper.find('[data-test="admission-panel"]').exists()).toBe(false);
+    expect(wrapper.find('[data-test="admission-panel"]').exists()).toBe(true);
   });
 
   it('returns to the customer list when the rights-holder panel loses its customer anchor', async () => {

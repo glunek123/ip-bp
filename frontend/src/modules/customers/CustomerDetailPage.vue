@@ -225,9 +225,6 @@ onBeforeUnmount(() => activeRequest?.abort());
           @customer-not-found="returnToCustomerList"
         />
         <CustomerAdmissionPanel
-          v-if="
-            customer.profileStatus === 'draft' && customer.capabilities.admit
-          "
           :customer="customer"
           @admitted="acceptAdmission"
           @customer-refreshed="acceptRefreshedCustomer"
