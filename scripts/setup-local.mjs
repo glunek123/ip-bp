@@ -6,6 +6,10 @@ import { parseEnv } from 'node:util';
 
 const root = fileURLToPath(new URL('../', import.meta.url));
 const rootEnv = resolve(root, '.env');
+const privateFileRoots = {
+  development: resolve(root, '.local/private-files/development'),
+  test: resolve(root, '.local/private-files/test'),
+};
 if (!existsSync(rootEnv)) {
   writeFileSync(
     rootEnv,
@@ -58,7 +62,9 @@ for (const [file, mode, port, database, dbPort, password] of configs) {
     if (
       current.DATABASE_URL !== url ||
       current.NODE_ENV !== mode ||
-      current.PORT !== String(port)
+      current.PORT !== String(port) ||
+      (current.PRIVATE_FILE_ROOT !== undefined &&
+        current.PRIVATE_FILE_ROOT !== privateFileRoots[mode])
     ) {
       throw new Error(
         `${file} differs from the local Compose configuration. Existing file was preserved; reconcile it before continuing.`,
@@ -75,10 +81,17 @@ for (const [file, mode, port, database, dbPort, password] of configs) {
         `${file} uses a different AUTH_THROTTLE_SECRET. Existing file was preserved; reconcile it before continuing.`,
       );
     }
+    if (current.PRIVATE_FILE_ROOT === undefined) {
+      writeFileSync(
+        target,
+        `${readFileSync(target, 'utf8').trimEnd()}\nPRIVATE_FILE_ROOT=${privateFileRoots[mode]}\n`,
+        { mode: 0o600 },
+      );
+    }
   } else {
     writeFileSync(
       target,
-      `NODE_ENV=${mode}\nPORT=${port}\nDATABASE_URL=${url}\nAUTH_THROTTLE_SECRET=${values.AUTH_THROTTLE_SECRET}\n`,
+      `NODE_ENV=${mode}\nPORT=${port}\nDATABASE_URL=${url}\nAUTH_THROTTLE_SECRET=${values.AUTH_THROTTLE_SECRET}\nPRIVATE_FILE_ROOT=${privateFileRoots[mode]}\n`,
       { flag: 'wx', mode: 0o600 },
     );
   }

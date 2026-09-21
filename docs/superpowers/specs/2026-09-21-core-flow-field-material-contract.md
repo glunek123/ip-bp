@@ -51,14 +51,14 @@ health() -> ready | unavailable
 
 ### 2.3 材料数据模型
 
-| 模型                | 必须字段                                                                                                                                              | 规则                                                                                     |
-| ------------------- | ----------------------------------------------------------------------------------------------------------------------------------------------------- | ---------------------------------------------------------------------------------------- |
-| `UploadDraft`       | `id`、`departmentId`、`actorUserId`、预期`ownerType/ownerId`、`category`、`status`、`expiresAt`                                                       | 状态`OPEN/FINALIZED/EXPIRED`；只能由创建人或当前目标的获授权人员完成；切换目标后不能复用 |
-| `Material`          | `id`、`departmentId`、`ownerType/ownerId`、`category`、`currentVersionId?`、`status`、`version`                                                       | 稳定逻辑身份；状态`ACTIVE/DELETED`；业务对象与部门使用组合外键或等价数据库约束           |
-| `ContentVersion`    | `id`、`materialId`、`storageKey`、`originalFilename`、`mimeType`、`sizeBytes`、`sha256`、`uploadedBy`、`createdAt`、`derivedFromVersionId?`、`status` | 内容不可变；状态`AVAILABLE/DELETED/PURGED`；新版本不覆盖旧版本                           |
-| `MaterialReference` | `id`、`departmentId`、`resourceType/resourceId`、`purpose`、`materialId`、`contentVersionId`、`actionEventId?`、`createdAt`                           | 流程动作冻结精确`contentVersionId`；有有效引用的版本不得普通删除                         |
+| 模型                | 必须字段                                                                                                                                              | 规则                                                                                                                                     |
+| ------------------- | ----------------------------------------------------------------------------------------------------------------------------------------------------- | ---------------------------------------------------------------------------------------------------------------------------------------- |
+| `UploadDraft`       | `id`、`departmentId`、`actorUserId`、预期`ownerType/ownerId`、`category`、`purpose`、`originalFilename`、`declaredMimeType`、`status`、`expiresAt`    | JSON元数据先持久化；状态`OPEN/FINALIZED/EXPIRED`；只能由创建人或当前目标的获授权人员完成；切换目标后不能复用                             |
+| `Material`          | `id`、`departmentId`、`ownerType/ownerId`、`category`、稳定`purpose`、`currentVersionId?`、`status`、`version`                                        | 稳定逻辑身份；purpose供后续Command按内容版本校验，不从文件名或顺序猜测；状态`ACTIVE/DELETED`；业务对象与部门使用组合外键或等价数据库约束 |
+| `ContentVersion`    | `id`、`materialId`、`storageKey`、`originalFilename`、`mimeType`、`sizeBytes`、`sha256`、`uploadedBy`、`createdAt`、`derivedFromVersionId?`、`status` | 内容不可变；状态`AVAILABLE/DELETED/PURGED`；新版本不覆盖旧版本                                                                           |
+| `MaterialReference` | `id`、`departmentId`、`resourceType/resourceId`、`purpose`、`materialId`、`contentVersionId`、`actionEventId?`、`createdAt`                           | 流程动作冻结精确`contentVersionId`；有有效引用的版本不得普通删除                                                                         |
 
-上传顺序：创建草稿→流式写入Adapter并计算真实MIME／大小／SHA-256→数据库事务完成`ContentVersion`和`Material`→草稿`FINALIZED`。写入失败不得产生可用版本；数据库提交失败的孤立Blob进入清理队列，但不得显示上传成功。
+上传顺序：JSON创建草稿并持久化`purpose/originalFilename/declaredMimeType`→`application/octet-stream`原始请求体流式写入Adapter并计算真实MIME／大小／SHA-256→以声明MIME做伪装校验→数据库事务完成带稳定purpose的`Material`和`ContentVersion`→草稿`FINALIZED`。PUT不重复携带purpose或文件元数据，`ContentVersion.originalFilename`来自草稿，`mimeType`保存真实检测值。写入失败不得产生可用版本；数据库提交失败的孤立Blob进入清理队列，但不得显示上传成功。
 
 生命周期固定如下：
 

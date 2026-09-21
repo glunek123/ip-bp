@@ -262,6 +262,7 @@ git commit -m "feat: add core lead schema and actions"
 
 **Files:**
 
+- Create: `backend/prisma/migrations/20260921013000_add_material_upload_metadata/migration.sql`
 - Create: `backend/src/modules/materials/private-blob-storage.ts`
 - Create: `backend/src/modules/materials/local-private-blob-storage.ts`
 - Create: `backend/src/modules/materials/file-signature.ts`
@@ -275,6 +276,8 @@ git commit -m "feat: add core lead schema and actions"
 - Create: `backend/src/modules/materials/material.controller.spec.ts`
 - Create: `backend/src/modules/materials/material-cleanup.service.spec.ts`
 - Modify: `backend/src/app.module.ts`
+- Modify: `backend/prisma/schema.prisma`
+- Modify: `backend/src/modules/leads/core-ld-migration.spec.ts`
 - Modify: `backend/src/common/environment.ts`
 - Modify: `backend/src/common/environment.spec.ts`
 - Modify: `scripts/setup-local.mjs`
@@ -284,7 +287,7 @@ git commit -m "feat: add core lead schema and actions"
 
 - Produces `PRIVATE_BLOB_STORAGE`, `PrivateBlobStorage`, `LocalPrivateBlobStorage`.
 - Produces `MaterialService.createUploadDraft()`, `finalizeUpload()`, `listOwnerMaterials()`, `openVersion()`, `softDelete()`, `restore()`.
-- HTTP: `POST /materials/upload-drafts`, `PUT /materials/upload-drafts/:id/content`, `GET /materials?ownerType=&ownerId=`, `GET /materials/:materialId/versions/:versionId/content`, `DELETE /materials/:materialId`, `POST /materials/:materialId/restore`.
+- HTTP: `POST /materials/upload-drafts`的JSON持久化`ownerType/ownerId?/category/purpose/originalFilename/declaredMimeType`；`PUT /materials/upload-drafts/:id/content`只接收 untouched `application/octet-stream`原始字节；另有`GET /materials?ownerType=&ownerId=`、`GET /materials/:materialId/versions/:versionId/content`、`DELETE /materials/:materialId`、`POST /materials/:materialId/restore`。
 
 - [ ] **Step 1: Write failing storage and material tests**
 
@@ -339,13 +342,13 @@ Write to `<PRIVATE_FILE_ROOT>/.tmp/<uuid>`, compute SHA-256 and detected MIME wh
 
 - [ ] **Step 4: Implement upload draft and material lifecycle**
 
-`CreateUploadDraftDto` accepts the exact category/purpose matrix. CUSTOMER requires existing visible customer ID and`customer.admit`; LEAD_DRAFT may omit owner ID, in which case the server generates `reservedOwnerId`; subsequent drafts using it must match department and actor. `finalizeUpload()` verifies OPEN/unexpired draft, actual signature/size, writes the Blob, then transactionally creates stable Material and immutable ContentVersion and sets draft FINALIZED. On transaction failure it calls Blob delete and returns no version.
+`CreateUploadDraftDto` accepts and persists the exact category/purpose matrix plus`originalFilename/declaredMimeType`. CUSTOMER requires existing visible customer ID and`customer.admit`; LEAD_DRAFT may omit owner ID, in which case the server generates`reservedOwnerId`; subsequent drafts using it must match department and actor. `finalizeUpload()` reads metadata only from the OPEN/unexpired draft, verifies actual signature/size and declared MIME, writes the Blob, then transactionally creates a stable Material with purpose, an immutable ContentVersion whose filename comes from the draft and whose MIME is the detected value, and sets the draft FINALIZED. On transaction failure it calls Blob delete and returns no version. Add the forward-only metadata migration after the three adjacent CORE-LD base migrations; do not rewrite them.
 
 Use stable error codes from the contract: `VALIDATION_ERROR`, `ACTION_FORBIDDEN`, `RESOURCE_NOT_FOUND`, `MATERIAL_VERSION_INVALID`, `VERSION_CONFLICT`, `STORAGE_UNAVAILABLE`.
 
 - [ ] **Step 5: Implement raw-byte Controller without a new dependency**
 
-The metadata request is JSON. The content request sends the file as the request body with `Content-Type: application/octet-stream`; Controller passes the untouched Express request stream to `finalizeUpload()` and does not buffer/base64 encode it. Download sets `Content-Type`, sanitized `Content-Disposition`, `Content-Length` and `Cache-Control: private, no-store` after current authorization.
+The metadata request is JSON and contains ownership, category, purpose, original filename and declared MIME. The content request sends only the file as the request body with `Content-Type: application/octet-stream`; it does not repeat metadata in PUT headers. Controller passes the untouched Express request stream to `finalizeUpload()` and does not buffer/base64 encode it. Download sets `Content-Type`, sanitized `Content-Disposition`, `Content-Length` and `Cache-Control: private, no-store` after current authorization.
 
 - [ ] **Step 6: Implement deterministic cleanup without a scheduler dependency**
 

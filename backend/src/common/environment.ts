@@ -1,3 +1,5 @@
+import { isAbsolute, parse, relative, resolve, sep } from 'node:path';
+
 export interface Environment {
   NODE_ENV: 'development' | 'test' | 'production';
   PORT: number;
@@ -5,6 +7,7 @@ export interface Environment {
   AUTH_THROTTLE_SECRET: string;
   TRUST_PROXY_HOPS: number;
   E2E_IDENTITY_FIXTURES?: string;
+  PRIVATE_FILE_ROOT?: string;
 }
 
 export function validateEnvironment(
@@ -66,14 +69,54 @@ export function validateEnvironment(
   if (identityFixtures !== undefined && mode !== 'test') {
     throw new Error('E2E_IDENTITY_FIXTURES is allowed only in test');
   }
+  const privateFileRoot = input.PRIVATE_FILE_ROOT;
+  if (mode !== 'production' && typeof privateFileRoot !== 'string') {
+    throw new Error('PRIVATE_FILE_ROOT is required in development and test');
+  }
+  if (privateFileRoot !== undefined) {
+    if (
+      typeof privateFileRoot !== 'string' ||
+      !isSafePrivateRoot(privateFileRoot)
+    ) {
+      throw new Error(
+        'PRIVATE_FILE_ROOT must be an absolute non-public path outside tracked source directories',
+      );
+    }
+  }
   return {
     NODE_ENV: mode,
     PORT: port,
     DATABASE_URL: databaseUrl,
     AUTH_THROTTLE_SECRET: throttleSecret,
     TRUST_PROXY_HOPS: Number(rawTrustProxyHops),
+    ...(privateFileRoot === undefined
+      ? {}
+      : { PRIVATE_FILE_ROOT: resolve(privateFileRoot) }),
     ...(identityFixtures === undefined
       ? {}
       : { E2E_IDENTITY_FIXTURES: identityFixtures }),
   };
+}
+
+function isSafePrivateRoot(value: string): boolean {
+  if (!isAbsolute(value)) return false;
+  const candidate = resolve(value);
+  if (candidate === parse(candidate).root) return false;
+  const repositoryRoot = resolve(__dirname, '../../..');
+  const allowedLocalRoot = resolve(repositoryRoot, '.local/private-files');
+  if (
+    isWithin(repositoryRoot, candidate) &&
+    !isWithin(allowedLocalRoot, candidate)
+  ) {
+    return false;
+  }
+  return true;
+}
+
+function isWithin(parent: string, child: string): boolean {
+  const path = relative(parent, child);
+  return (
+    path === '' ||
+    (path !== '..' && !path.startsWith(`..${sep}`) && !isAbsolute(path))
+  );
 }

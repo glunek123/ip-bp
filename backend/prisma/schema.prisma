@@ -452,18 +452,21 @@ model RightsHolderCommandReceipt {
 }
 
 model UploadDraft {
-  id              String               @id @default(uuid()) @db.Uuid
-  departmentId    String               @map("department_id") @db.Uuid
-  actorUserId     String               @map("actor_user_id") @db.Uuid
-  ownerType       MaterialOwnerType    @map("owner_type")
-  ownerId         String               @map("owner_id") @db.Uuid
-  category        MaterialCategory
-  status          UploadDraftStatus    @default(OPEN)
-  expiresAt       DateTime             @map("expires_at") @db.Timestamptz(3)
-  department      Department           @relation(fields: [departmentId], references: [id], onDelete: Restrict)
-  actorMembership DepartmentMembership @relation("UploadDraftActor", fields: [actorUserId, departmentId], references: [userId, departmentId], onDelete: Restrict, map: "upload_drafts_actor_department_fkey")
-  createdAt       DateTime             @default(now()) @map("created_at") @db.Timestamptz(3)
-  updatedAt       DateTime             @updatedAt @map("updated_at") @db.Timestamptz(3)
+  id               String               @id @default(uuid()) @db.Uuid
+  departmentId     String               @map("department_id") @db.Uuid
+  actorUserId      String               @map("actor_user_id") @db.Uuid
+  ownerType        MaterialOwnerType    @map("owner_type")
+  ownerId          String               @map("owner_id") @db.Uuid
+  category         MaterialCategory
+  purpose          String               @db.VarChar(100)
+  originalFilename String               @map("original_filename") @db.VarChar(200)
+  declaredMimeType String               @map("declared_mime_type") @db.VarChar(100)
+  status           UploadDraftStatus    @default(OPEN)
+  expiresAt        DateTime             @map("expires_at") @db.Timestamptz(3)
+  department       Department           @relation(fields: [departmentId], references: [id], onDelete: Restrict)
+  actorMembership  DepartmentMembership @relation("UploadDraftActor", fields: [actorUserId, departmentId], references: [userId, departmentId], onDelete: Restrict, map: "upload_drafts_actor_department_fkey")
+  createdAt        DateTime             @default(now()) @map("created_at") @db.Timestamptz(3)
+  updatedAt        DateTime             @updatedAt @map("updated_at") @db.Timestamptz(3)
 
   @@index([departmentId, ownerType, ownerId, status])
   @@index([status, expiresAt])
@@ -476,6 +479,7 @@ model Material {
   ownerType        MaterialOwnerType   @map("owner_type")
   ownerId          String              @map("owner_id") @db.Uuid
   category         MaterialCategory
+  purpose          String              @db.VarChar(100)
   currentVersionId String?             @map("current_version_id") @db.Uuid
   status           MaterialStatus      @default(ACTIVE)
   version          Int                 @default(1)
