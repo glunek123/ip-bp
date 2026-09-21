@@ -41,4 +41,12 @@ describe('CORE-LD migrations', () => {
     expect(backfillSql).not.toMatch(/role\."name"\s*=/i);
     expect(backfillSql).not.toMatch(/credential\."username"\s*=/i);
   });
+
+  it('requires both classification fields before a customer can be ADMITTED', () => {
+    const schemaSql = readMigration(schemaMigrationName);
+
+    expect(schemaSql).toMatch(
+      /"profile_status" <> 'ADMITTED'\s+OR \(\s+"customer_type" IS NOT NULL\s+AND "identity_type" IS NOT NULL\s+AND "customer_type" IN/,
+    );
+  });
 });

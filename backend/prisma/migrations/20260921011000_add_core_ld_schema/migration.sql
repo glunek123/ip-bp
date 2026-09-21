@@ -40,7 +40,9 @@ ALTER TABLE "customers"
     CHECK (
       "profile_status" <> 'ADMITTED'
       OR (
-        "customer_type" IN (
+        "customer_type" IS NOT NULL
+        AND "identity_type" IS NOT NULL
+        AND "customer_type" IN (
           'ENTERPRISE', 'SOLE_PROPRIETOR', 'NATURAL_PERSON',
           'PUBLIC_INSTITUTION', 'SOCIAL_ORGANIZATION', 'OTHER_ORGANIZATION'
         )
