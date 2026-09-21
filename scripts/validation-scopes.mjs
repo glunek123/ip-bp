@@ -56,6 +56,24 @@ export const validationScopes = Object.freeze({
       testEnvironment: true,
     },
   ]),
+  'core-ld': scope('L2', [
+    { id: 'prepare:prisma', args: ['prepare:prisma'] },
+    { id: 'test:unit:core-ld', args: ['test:unit:core-ld'] },
+    { id: 'check:fast:prepared', args: ['check:fast:prepared'] },
+    {
+      id: 'format:check:slice:core-ld',
+      args: ['format:check:slice:core-ld'],
+    },
+    {
+      id: 'build:backend:prepared',
+      args: ['--filter', '@dev-cor/backend', 'build:prepared'],
+    },
+    {
+      id: 'test:e2e:core-ld',
+      args: ['test:e2e:core-ld'],
+      testEnvironment: true,
+    },
+  ]),
 });
 
 export function validationScope(name) {

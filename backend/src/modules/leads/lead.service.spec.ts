@@ -178,6 +178,24 @@ describe('LeadService', () => {
     expect(fixture.tx.lead.create).not.toHaveBeenCalled();
   });
 
+  it('prevents the database counter from incrementing past 999', async () => {
+    const fixture = createCreateFixture();
+    fixture.tx.$queryRawUnsafe.mockImplementation(async (sql: string) =>
+      sql.includes('lead_number_counters')
+        ? []
+        : [{ customer_id: validCreate().customerId }],
+    );
+    await expect(
+      fixture.service.create(actor, 'key', validCreate()),
+    ).rejects.toMatchObject({ response: { code: 'LEAD_NUMBER_EXHAUSTED' } });
+    expect(fixture.tx.$queryRawUnsafe).toHaveBeenCalledWith(
+      expect.stringContaining(
+        'WHERE "lead_number_counters"."last_value" < 999',
+      ),
+    );
+    expect(fixture.tx.lead.create).not.toHaveBeenCalled();
+  });
+
   it('uses the database-returned Shanghai business date for sequence 999', async () => {
     const fixture = createCreateFixture();
     fixture.tx.$queryRawUnsafe.mockResolvedValue([
@@ -897,6 +915,22 @@ describe('LeadService', () => {
       .mockImplementationOnce(async (callback) => callback(fixture.tx));
     await expect(
       fixture.service.create(actor, 'create-retry', validCreate()),
+    ).resolves.toMatchObject({ status: 'WAITING_PUSH' });
+    expect(fixture.transaction).toHaveBeenCalledTimes(2);
+  });
+
+  it('retries the PostgreSQL adapter form of a serialization conflict', async () => {
+    const fixture = createCreateFixture();
+    fixture.transaction
+      .mockRejectedValueOnce({
+        code: 'P2010',
+        meta: {
+          driverAdapterError: { cause: { originalCode: '40001' } },
+        },
+      })
+      .mockImplementationOnce(async (callback) => callback(fixture.tx));
+    await expect(
+      fixture.service.create(actor, 'adapter-retry', validCreate()),
     ).resolves.toMatchObject({ status: 'WAITING_PUSH' });
     expect(fixture.transaction).toHaveBeenCalledTimes(2);
   });

@@ -765,6 +765,7 @@ export class LeadService {
       `INSERT INTO "lead_number_counters" ("business_date", "last_value", "updated_at")
        VALUES ((CURRENT_TIMESTAMP AT TIME ZONE 'Asia/Shanghai')::date, 1, CURRENT_TIMESTAMP)
        ON CONFLICT ("business_date") DO UPDATE SET "last_value" = "lead_number_counters"."last_value" + 1, "updated_at" = CURRENT_TIMESTAMP
+       WHERE "lead_number_counters"."last_value" < 999
        RETURNING "last_value" AS "sequence", "business_date"`,
     );
     const sequence = Number(rows[0]?.sequence);
@@ -1064,12 +1065,30 @@ export class LeadService {
     return error;
   }
   private isSerializationConflict(error: unknown): boolean {
-    return (
-      error !== null &&
-      typeof error === 'object' &&
-      ((error as { code?: unknown }).code === 'P2034' ||
-        this.isSerializationConflict((error as { cause?: unknown }).cause))
-    );
+    if (error === null || typeof error !== 'object') return false;
+    const record = error as Record<string, unknown>;
+    if (record.code === 'P2034') return true;
+    if (record.code === 'P2010') {
+      const meta = record.meta;
+      const adapter =
+        meta !== null &&
+        typeof meta === 'object' &&
+        'driverAdapterError' in meta
+          ? meta.driverAdapterError
+          : undefined;
+      const cause =
+        adapter !== null && typeof adapter === 'object' && 'cause' in adapter
+          ? adapter.cause
+          : undefined;
+      if (
+        cause !== null &&
+        typeof cause === 'object' &&
+        (('originalCode' in cause && cause.originalCode === '40001') ||
+          ('sqlState' in cause && cause.sqlState === '40001'))
+      )
+        return true;
+    }
+    return this.isSerializationConflict(record.cause);
   }
   private isUnique(error: unknown): boolean {
     return (

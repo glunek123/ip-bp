@@ -16,6 +16,7 @@ const applicationKeys = [
   'PORT',
   'DATABASE_URL',
   'AUTH_THROTTLE_SECRET',
+  'PRIVATE_FILE_ROOT',
   'TRUST_PROXY_HOPS',
   'API_PROXY_TARGET',
   'E2E_IDENTITY_FIXTURES',
@@ -98,7 +99,7 @@ function readTestEnvironmentFile(root) {
   return { bytes, values };
 }
 
-function validatedApplicationEnvironment(values) {
+function validatedApplicationEnvironment(root, values, databaseOverride) {
   if (values.NODE_ENV !== 'test')
     throw new Error('backend/.env.test must set NODE_ENV=test');
   if (values.PORT !== '3101')
@@ -109,7 +110,7 @@ function validatedApplicationEnvironment(values) {
     );
   let database;
   try {
-    database = new URL(values.DATABASE_URL);
+    database = new URL(databaseOverride ?? values.DATABASE_URL);
   } catch {
     throw new Error(
       'backend/.env.test must contain the isolated E2E database URL',
@@ -118,8 +119,11 @@ function validatedApplicationEnvironment(values) {
   if (
     !['postgres:', 'postgresql:'].includes(database.protocol) ||
     database.hostname !== '127.0.0.1' ||
-    database.port !== '55433' ||
-    database.pathname !== '/dev_cor_test'
+    database.pathname !== '/dev_cor_test' ||
+    database.username !== 'dev_cor_test' ||
+    (databaseOverride === undefined
+      ? database.port !== '55433'
+      : !/^\d{2,5}$/u.test(database.port) || Number(database.port) > 65535)
   ) {
     throw new Error(
       'backend/.env.test must target the isolated local test database',
@@ -128,11 +132,21 @@ function validatedApplicationEnvironment(values) {
   const trustProxyHops = values.TRUST_PROXY_HOPS ?? '0';
   if (!/^\d+$/.test(trustProxyHops) || Number(trustProxyHops) > 10)
     throw new Error('backend/.env.test contains an invalid TRUST_PROXY_HOPS');
+  const expectedPrivateFileRoot = resolve(root, '.local/private-files/test');
+  if (
+    typeof values.PRIVATE_FILE_ROOT !== 'string' ||
+    resolve(values.PRIVATE_FILE_ROOT) !== expectedPrivateFileRoot
+  ) {
+    throw new Error(
+      'backend/.env.test must use the isolated test private-file root',
+    );
+  }
   return {
     NODE_ENV: 'test',
     PORT: '3101',
-    DATABASE_URL: values.DATABASE_URL,
+    DATABASE_URL: database.href,
     AUTH_THROTTLE_SECRET: values.AUTH_THROTTLE_SECRET,
+    PRIVATE_FILE_ROOT: expectedPrivateFileRoot,
     TRUST_PROXY_HOPS: trustProxyHops,
     API_PROXY_TARGET: 'http://127.0.0.1:3101',
     E2E_IDENTITY_FIXTURES: identityFixtures,
@@ -211,7 +225,11 @@ function actualExternalConditions(root) {
 export function captureTestEnvironment(root, options = {}) {
   const inheritedEnvironment = options.inheritedEnvironment ?? process.env;
   const { bytes, values } = readTestEnvironmentFile(root);
-  const effectiveEnvironment = validatedApplicationEnvironment(values);
+  const effectiveEnvironment = validatedApplicationEnvironment(
+    root,
+    values,
+    inheritedEnvironment.DEV_COR_TEST_DATABASE_URL,
+  );
   rejectConflicts(inheritedEnvironment, effectiveEnvironment);
   const metadata = {
     node: options.nodeVersion ?? process.version,
@@ -235,12 +253,19 @@ export function captureTestEnvironment(root, options = {}) {
     }
   }
   const hmac = createHmac('sha256', fingerprintKey(root));
-  hmac.update(bytes);
+  hmac.update(
+    bytes
+      .toString('utf8')
+      .replaceAll(values.PRIVATE_FILE_ROOT, '<PRIVATE_FILE_ROOT>'),
+  );
   hmac.update('\0');
   hmac.update(
     JSON.stringify({
       protocol: 1,
-      effectiveEnvironment,
+      effectiveEnvironment: {
+        ...effectiveEnvironment,
+        PRIVATE_FILE_ROOT: '<PRIVATE_FILE_ROOT>',
+      },
       controls,
       metadata,
       externalConditions,

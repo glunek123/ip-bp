@@ -243,3 +243,26 @@ test('all configured scopes prepare once and preserve full prepared checks', () 
     assert.equal(configured.commands.at(-1).testEnvironment, true);
   }
 });
+
+test('core-ld fixes the Level 2 prepared order and database boundary', () => {
+  const configured = validationScopes['core-ld'];
+  assert.equal(configured.level, 'L2');
+  assert.deepEqual(configured.commands, [
+    { id: 'prepare:prisma', args: ['prepare:prisma'] },
+    { id: 'test:unit:core-ld', args: ['test:unit:core-ld'] },
+    { id: 'check:fast:prepared', args: ['check:fast:prepared'] },
+    {
+      id: 'format:check:slice:core-ld',
+      args: ['format:check:slice:core-ld'],
+    },
+    {
+      id: 'build:backend:prepared',
+      args: ['--filter', '@dev-cor/backend', 'build:prepared'],
+    },
+    {
+      id: 'test:e2e:core-ld',
+      args: ['test:e2e:core-ld'],
+      testEnvironment: true,
+    },
+  ]);
+});

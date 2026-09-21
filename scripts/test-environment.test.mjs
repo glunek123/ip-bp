@@ -38,7 +38,11 @@ function repository(t) {
   return root;
 }
 
-function writeTestEnvironment(root, suffix = '') {
+function writeTestEnvironment(
+  root,
+  suffix = '',
+  privateFileRoot = join(root, '.local/private-files/test'),
+) {
   writeFileSync(
     join(root, 'backend', '.env.test'),
     [
@@ -46,6 +50,7 @@ function writeTestEnvironment(root, suffix = '') {
       'PORT=3101',
       `DATABASE_URL=${databaseUrl}`,
       `AUTH_THROTTLE_SECRET=${secret}`,
+      `PRIVATE_FILE_ROOT=${privateFileRoot}`,
       suffix,
     ]
       .filter(Boolean)
@@ -83,6 +88,10 @@ test('builds one validated effective environment without exposing secrets', (t) 
   assert.equal(result.childEnvironment.DATABASE_URL, databaseUrl);
   assert.equal(result.childEnvironment.AUTH_THROTTLE_SECRET, secret);
   assert.equal(result.childEnvironment.TRUST_PROXY_HOPS, '0');
+  assert.equal(
+    result.childEnvironment.PRIVATE_FILE_ROOT,
+    join(root, '.local/private-files/test'),
+  );
   assert.equal(
     result.childEnvironment.API_PROXY_TARGET,
     'http://127.0.0.1:3101',
@@ -185,5 +194,37 @@ test('binds actual external test conditions without serializing them', (t) => {
       metadata: first.metadata,
     }),
     /database-image|browser-manifest/,
+  );
+});
+
+test('accepts an explicit isolated local database override for unavailable fixed ports', (t) => {
+  const root = repository(t);
+  const override =
+    'postgresql://dev_cor_test:alternate-secret@127.0.0.1:49123/dev_cor_test';
+  const result = capture(root, { DEV_COR_TEST_DATABASE_URL: override });
+
+  assert.equal(result.childEnvironment.DATABASE_URL, override);
+  assert.doesNotMatch(
+    JSON.stringify({
+      fingerprint: result.fingerprint,
+      metadata: result.metadata,
+    }),
+    /alternate-secret|49123/,
+  );
+  assert.throws(
+    () =>
+      capture(root, {
+        DEV_COR_TEST_DATABASE_URL:
+          'postgresql://dev_cor_test:alternate-secret@example.com:49123/dev_cor_test',
+      }),
+    /isolated local test database/i,
+  );
+  assert.throws(
+    () =>
+      capture(root, {
+        DEV_COR_TEST_DATABASE_URL:
+          'postgresql://dev_cor_test:alternate-secret@127.0.0.1:49123/dev_cor',
+      }),
+    /isolated local test database/i,
   );
 });

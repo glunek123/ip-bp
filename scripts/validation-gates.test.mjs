@@ -18,12 +18,14 @@ const sliceScripts = [
   'verify:slice:customer',
   'verify:slice:right-holder',
   'verify:slice:auth',
+  'verify:slice:core-ld',
 ];
 
 const e2eScripts = [
   'test:e2e:customer',
   'test:e2e:right-holder',
   'test:e2e:auth',
+  'test:e2e:core-ld',
   'test:e2e:full',
 ];
 
@@ -31,6 +33,7 @@ const unitScripts = [
   'test:unit:customer',
   'test:unit:right-holder',
   'test:unit:auth',
+  'test:unit:core-ld',
 ];
 
 test('explicit slice and database E2E gates are defined', () => {
@@ -53,6 +56,10 @@ test('slice gates stay scoped and never turn zero tests into success', () => {
     packageJson.scripts['verify:slice:auth'],
     'node scripts/run-validation-scope.mjs auth-focused',
   );
+  assert.equal(
+    packageJson.scripts['verify:slice:core-ld'],
+    'node scripts/run-validation-scope.mjs core-ld',
+  );
   assert.equal(packageJson.scripts['evidence:record'], undefined);
   for (const command of Object.values(packageJson.scripts)) {
     assert.doesNotMatch(command, /passWithNoTests|pass-with-no-tests/);
@@ -71,6 +78,10 @@ test('scoped E2E commands reuse the guarded runner and full remains explicit', (
   assert.match(packageJson.scripts['test:e2e:customer'], /run-e2e\.mjs/);
   assert.match(packageJson.scripts['test:e2e:right-holder'], /--grep/);
   assert.match(packageJson.scripts['test:e2e:auth'], /auth\.spec\.ts/);
+  assert.equal(
+    packageJson.scripts['test:e2e:core-ld'],
+    'node scripts/run-e2e.mjs tests/e2e/core-leads.spec.ts',
+  );
   assert.equal(
     packageJson.scripts['test:e2e:full'],
     'node scripts/run-e2e.mjs',
@@ -114,6 +125,14 @@ test('formal slice scopes already subsume their immediate development checks', (
       'format:check:slice:auth',
       'build:backend:prepared',
       'test:e2e:auth',
+    ],
+    'core-ld': [
+      'prepare:prisma',
+      'test:unit:core-ld',
+      'check:fast:prepared',
+      'format:check:slice:core-ld',
+      'build:backend:prepared',
+      'test:e2e:core-ld',
     ],
   };
 
