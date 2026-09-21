@@ -808,9 +808,15 @@ describe('LeadService', () => {
     });
   });
 
-  it('keeps customer and rights holder immutable during edit', async () => {
+  it('edits with customer.read but without lead.create while keeping relations immutable', async () => {
     const fixture = createUpdateFixture();
     await fixture.service.update(actor, fixture.current.id, validUpdate());
+    expect(fixture.access.buildCustomerScope).toHaveBeenCalledWith(
+      actor,
+      'customer.read',
+      fixture.tx,
+    );
+    expect(fixture.access.canAuthorizeNewLead).not.toHaveBeenCalled();
     expect(fixture.tx.lead.updateMany).toHaveBeenCalledWith(
       expect.objectContaining({
         data: expect.not.objectContaining({
@@ -818,7 +824,44 @@ describe('LeadService', () => {
         }),
       }),
     );
-    expect(fixture.access.buildCustomerScope).not.toHaveBeenCalled();
+  });
+
+  it.each([
+    [
+      'current customer is outside customer.read scope',
+      (fixture: ReturnType<typeof createUpdateFixture>) => {
+        (fixture.access.buildCustomerScope as jest.Mock).mockRejectedValueOnce(
+          new ForbiddenException('denied'),
+        );
+      },
+    ],
+    [
+      'current customer is no longer ADMITTED',
+      (fixture: ReturnType<typeof createUpdateFixture>) => {
+        fixture.tx.customer.findFirst.mockResolvedValueOnce(null);
+      },
+    ],
+    [
+      'current customer-rights holder link no longer exists',
+      (fixture: ReturnType<typeof createUpdateFixture>) => {
+        fixture.tx.$queryRawUnsafe.mockImplementationOnce(async () => [
+          { id: fixture.current.id },
+        ]);
+        fixture.tx.$queryRawUnsafe.mockImplementationOnce(async () => []);
+      },
+    ],
+  ])('rejects edit without writes when %s', async (_reason, arrange) => {
+    const fixture = createUpdateFixture();
+    arrange(fixture);
+
+    await expect(
+      fixture.service.update(actor, fixture.current.id, validUpdate()),
+    ).rejects.toMatchObject({ response: { code: 'RESOURCE_NOT_FOUND' } });
+    expect(fixture.tx.lead.updateMany).not.toHaveBeenCalled();
+    expect(fixture.tx.leadProduct.deleteMany).not.toHaveBeenCalled();
+    expect(fixture.tx.leadInfringement.deleteMany).not.toHaveBeenCalled();
+    expect(fixture.tx.auditEvent.create).not.toHaveBeenCalled();
+    expect(fixture.materials.replaceCurrentReferences).not.toHaveBeenCalled();
   });
 
   it('persists estimates computed from quantity, comment fallback, zero and max money', async () => {
@@ -1037,6 +1080,7 @@ function createUpdateFixture() {
     buildCustomerScope: jest
       .fn()
       .mockResolvedValue({ departmentId: actor.departmentId }),
+    canAuthorizeNewLead: jest.fn().mockResolvedValue(false),
   } as unknown as AccessControlService;
   const materials = {
     assertAvailableVersions: jest.fn().mockResolvedValue([]),

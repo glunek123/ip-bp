@@ -510,6 +510,12 @@ export class LeadService {
             if (current.status !== 'WAITING_PUSH') throw this.invalidState();
             if (current.version !== input.expectedVersion)
               throw this.versionConflict();
+            await this.assertCustomerAndHolder(
+              transaction,
+              actor,
+              current.customerId,
+              current.rightsHolderId,
+            );
             const materialFacts =
               input.leadScreenshotContentVersionIds.length === 0
                 ? []
