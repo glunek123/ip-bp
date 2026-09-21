@@ -5,6 +5,10 @@ import CustomerNewPage from '../modules/customers/CustomerNewPage.vue';
 import CustomerDetailPage from '../modules/customers/CustomerDetailPage.vue';
 import CustomerEditPage from '../modules/customers/CustomerEditPage.vue';
 import RightsHolderDetailPage from '../modules/customers/RightsHolderDetailPage.vue';
+import LeadListPage from '../modules/leads/LeadListPage.vue';
+import LeadNewPage from '../modules/leads/LeadNewPage.vue';
+import LeadDetailPage from '../modules/leads/LeadDetailPage.vue';
+import LeadEditPage from '../modules/leads/LeadEditPage.vue';
 import LoginPage from '../modules/auth/LoginPage.vue';
 import PeopleAccessPage from '../modules/organization/PeopleAccessPage.vue';
 import { useAuthStore } from '../stores/auth';
@@ -24,6 +28,10 @@ export const router = createRouter({
       component: RightsHolderDetailPage,
     },
     { path: '/customers/:id', component: CustomerDetailPage },
+    { path: '/leads', component: LeadListPage },
+    { path: '/leads/new', component: LeadNewPage },
+    { path: '/leads/:id/edit', component: LeadEditPage },
+    { path: '/leads/:id', component: LeadDetailPage },
     { path: '/settings/people-access', component: PeopleAccessPage },
   ],
 });

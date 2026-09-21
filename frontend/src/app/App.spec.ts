@@ -44,6 +44,7 @@ async function mountApp() {
     routes: [
       { path: '/login', component: { template: '<div>登录页</div>' } },
       { path: '/customers', component: { template: '<div>客户页</div>' } },
+      { path: '/leads', component: { template: '<div>线索页</div>' } },
       {
         path: '/settings/people-access',
         component: { template: '<div>人员页</div>' },
@@ -100,5 +101,16 @@ describe('application session controls', () => {
     expect(auth.session).toBeNull();
     expect(router.currentRoute.value.path).toBe('/login');
     expect(wrapper.find('[data-test="logout"]').exists()).toBe(false);
+  });
+
+  it('keeps primary customer and lead navigation available to signed-in users', async () => {
+    const { wrapper } = await mountApp();
+    await flushPromises();
+    expect(wrapper.get('[data-test="customer-nav"]').attributes('href')).toBe(
+      '/customers',
+    );
+    expect(wrapper.get('[data-test="lead-nav"]').attributes('href')).toBe(
+      '/leads',
+    );
   });
 });

@@ -50,4 +50,15 @@ describe('authentication routing', () => {
       '/login?returnTo=/settings/people-access',
     );
   });
+
+  it.each(['/leads', '/leads/new', '/leads/lead-1', '/leads/lead-1/edit'])(
+    'protects the lead route %s',
+    async (path) => {
+      await router.push(path);
+
+      expect(router.currentRoute.value.fullPath).toBe(
+        `/login?returnTo=${path}`,
+      );
+    },
+  );
 });

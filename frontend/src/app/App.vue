@@ -61,6 +61,8 @@ async function logout(): Promise<void> {
       >{{ auth.session.user.displayName }} ·
       {{ auth.session.department.name }}</span
     >
+    <RouterLink to="/customers" data-test="customer-nav">客户</RouterLink>
+    <RouterLink to="/leads" data-test="lead-nav">线索</RouterLink>
     <RouterLink
       v-if="canViewPeople"
       to="/settings/people-access"

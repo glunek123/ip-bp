@@ -199,8 +199,14 @@ export class LeadService {
       include: leadInclude,
     });
     if (lead === null) throw this.notFound();
-    const screenshotIds = await this.currentScreenshotIds(actor, [lead.id]);
-    return this.view(lead, screenshotIds.get(lead.id) ?? []);
+    const [screenshotIds, edit] = await Promise.all([
+      this.currentScreenshotIds(actor, [lead.id]),
+      this.canEdit(actor, lead),
+    ]);
+    return {
+      ...this.view(lead, screenshotIds.get(lead.id) ?? []),
+      capabilities: { edit },
+    };
   }
 
   async create(
@@ -771,6 +777,21 @@ export class LeadService {
       result.set(leadId, [...(versionIds[index] ?? [])]);
     }
     return result;
+  }
+  private async canEdit(actor: ActorContext, lead: LeadRecord) {
+    if (lead.status !== 'WAITING_PUSH') return false;
+    try {
+      const scope = await this.access.buildLeadScope(actor, 'lead.edit');
+      return (
+        (await this.database.lead.findFirst({
+          where: { id: lead.id, ...scope },
+          select: { id: true },
+        })) !== null
+      );
+    } catch (error) {
+      if (error instanceof ForbiddenException) return false;
+      throw error;
+    }
   }
   private responseSnapshot(response: LeadResponse): Prisma.InputJsonObject {
     return {

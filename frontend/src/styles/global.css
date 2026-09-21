@@ -757,3 +757,143 @@ button {
     border-right: 0;
   }
 }
+
+.lead-counter-grid {
+  display: grid;
+  grid-template-columns: repeat(4, minmax(0, 1fr));
+  gap: 12px;
+  margin-bottom: 18px;
+}
+.lead-counter-grid article {
+  display: flex;
+  align-items: end;
+  justify-content: space-between;
+  min-height: 82px;
+  padding: 16px 18px;
+  border: 1px solid var(--color-hairline);
+  border-radius: 9px;
+  background: var(--color-surface-1);
+}
+.lead-counter-grid span,
+.lead-row time,
+.lead-product-card span {
+  color: var(--color-ink-muted);
+  font-size: 12px;
+}
+.lead-counter-grid strong {
+  font: 600 27px var(--font-mono);
+}
+.lead-list__row {
+  display: grid;
+  grid-template-columns: 190px minmax(160px, 1fr) 120px 190px;
+  align-items: center;
+  gap: 18px;
+}
+.lead-row {
+  min-height: 72px;
+  padding: 0 24px;
+  border-bottom: 1px solid var(--color-hairline);
+  color: var(--color-ink);
+  text-decoration: none;
+}
+.lead-row:last-child,
+.product-row:last-child {
+  border-bottom: 0;
+}
+.lead-row:hover {
+  background: var(--color-surface-2);
+}
+.lead-form__grid {
+  display: grid;
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+  gap: 20px;
+}
+.lead-form__grid label {
+  display: grid;
+  align-content: start;
+  gap: 7px;
+}
+.form-section {
+  margin: 28px 0 0;
+  padding: 20px;
+  border: 1px solid var(--color-hairline);
+  border-radius: 9px;
+}
+.form-section legend {
+  padding: 0 7px;
+  font-weight: 650;
+}
+.check-option {
+  display: inline-flex;
+  align-items: center;
+  gap: 7px;
+  margin: 8px 18px 8px 0;
+}
+.product-row {
+  margin-bottom: 16px;
+  padding-bottom: 20px;
+  border-bottom: 1px solid var(--color-hairline);
+}
+.product-row__heading {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  margin-bottom: 14px;
+}
+.estimate-preview {
+  align-self: end;
+  margin: 0;
+  padding: 12px 14px;
+  border-radius: 7px;
+  background: var(--color-surface-2);
+  font: 13px var(--font-mono);
+}
+.disclose-field {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  margin-top: 24px;
+}
+.file-name-list {
+  margin: 12px 0 0;
+  color: var(--color-ink-muted);
+}
+.operation-progress {
+  padding: 10px 14px;
+  border-left: 3px solid var(--color-primary);
+  background: var(--color-surface-2);
+}
+.detail-grid__wide {
+  grid-column: 1 / -1;
+  border-right: 0 !important;
+}
+.lead-detail-section {
+  margin-top: 18px;
+  padding: 24px 26px;
+}
+.lead-detail-section h2 {
+  margin: 0 0 16px;
+  font-size: 17px;
+}
+.lead-detail-section p {
+  margin: 5px 0;
+}
+.lead-product-card {
+  display: grid;
+  grid-template-columns: minmax(160px, 1fr) auto auto;
+  gap: 18px;
+  padding: 13px 0;
+  border-top: 1px solid var(--color-hairline);
+}
+
+@media (max-width: 720px) {
+  .lead-counter-grid,
+  .lead-form__grid {
+    grid-template-columns: 1fr;
+  }
+  .lead-list__row,
+  .lead-product-card {
+    grid-template-columns: 1fr;
+    gap: 7px;
+  }
+}

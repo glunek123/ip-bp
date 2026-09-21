@@ -423,6 +423,55 @@ describe('LeadService', () => {
     expect(detailResult.leadScreenshotContentVersionIds).toEqual(['version-a']);
   });
 
+  it.each([
+    ['granted', 'WAITING_PUSH', true, true],
+    ['read-only', 'WAITING_PUSH', false, false],
+    ['wrong state', 'WAITING_REVIEW', true, false],
+  ])(
+    'reports edit capability for %s detail',
+    async (_label, status, editVisible, expected) => {
+      const lead = { ...createCreateFixture().createdLead, status };
+      const leadRepo = {
+        findFirst: jest
+          .fn()
+          .mockResolvedValueOnce(lead)
+          .mockResolvedValueOnce(editVisible ? { id: lead.id } : null),
+      };
+      const database = { lead: leadRepo } as unknown as DatabaseService;
+      const access = {
+        buildLeadScope: jest
+          .fn()
+          .mockResolvedValueOnce({ departmentId: actor.departmentId })
+          .mockResolvedValueOnce(
+            editVisible
+              ? { departmentId: actor.departmentId }
+              : { id: '__never__' },
+          ),
+      } as unknown as AccessControlService;
+      const service = new LeadService(database, access, {
+        listCurrentReferenceVersionIds: jest.fn().mockResolvedValue([]),
+      } as unknown as MaterialService);
+
+      await expect(service.get(actor, lead.id)).resolves.toMatchObject({
+        capabilities: { edit: expected },
+      });
+      expect(access.buildLeadScope).toHaveBeenNthCalledWith(
+        1,
+        actor,
+        'lead.read',
+      );
+      if (status === 'WAITING_PUSH') {
+        expect(access.buildLeadScope).toHaveBeenNthCalledWith(
+          2,
+          actor,
+          'lead.edit',
+        );
+      } else {
+        expect(access.buildLeadScope).toHaveBeenCalledTimes(1);
+      }
+    },
+  );
+
   it('returns RESOURCE_NOT_FOUND when a scoped detail query cannot see the Lead', async () => {
     const database = {
       lead: { findFirst: jest.fn().mockResolvedValue(null) },
