@@ -123,6 +123,21 @@ describe('materials API', () => {
     );
   });
 
+  it('rejects an empty normalized filename with the backend validation code before metadata upload', async () => {
+    const fetch = vi.fn();
+    vi.stubGlobal('fetch', fetch);
+    await expect(
+      uploadMaterialFile({
+        ownerType: 'CUSTOMER',
+        ownerId: 'customer-1',
+        category: 'CUSTOMER_IDENTITY',
+        purpose: 'IDENTITY_FULL',
+        file: new File(['content'], '   ', { type: 'application/pdf' }),
+      }),
+    ).rejects.toMatchObject({ code: 'VALIDATION_ERROR' });
+    expect(fetch).not.toHaveBeenCalled();
+  });
+
   it('accepts and returns the server-reserved owner for lead drafts', async () => {
     const file = new File(['image'], '线索.png', { type: 'image/png' });
     const fetch = vi

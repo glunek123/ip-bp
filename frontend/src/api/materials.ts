@@ -187,7 +187,7 @@ export async function uploadMaterialFile(
 ): Promise<UploadedMaterial> {
   const originalFilename = input.file.name.trim();
   if (originalFilename.length === 0) {
-    throw new ApiError('文件名不能为空', 400, 'MATERIAL_VALIDATION_ERROR');
+    throw new ApiError('文件名不能为空', 400, 'VALIDATION_ERROR');
   }
   const draft = await requestJson('/materials/upload-drafts', {
     method: 'POST',

@@ -274,10 +274,16 @@ async function upload(event: { target: unknown }): Promise<void> {
     ) {
       materialError.value = '当前账号无权上传客户材料';
     } else {
-      materialError.value =
-        error instanceof ApiError && error.code === 'MATERIAL_VALIDATION_ERROR'
-          ? '文件格式、内容或数量不符合要求，请核对后重试'
-          : '文件上传没有完成，已保留当前填写内容';
+      if (error instanceof ApiError && error.code === 'VALIDATION_ERROR') {
+        materialError.value = '文件格式、内容或数量不符合要求，请核对后重试';
+      } else if (
+        error instanceof ApiError &&
+        error.code === 'MATERIAL_VERSION_INVALID'
+      ) {
+        materialError.value = '材料版本已失效，请刷新后重新选择文件';
+      } else {
+        materialError.value = '文件上传没有完成，已保留当前填写内容';
+      }
     }
   } finally {
     uploadingFilename.value = '';
@@ -543,10 +549,11 @@ async function submit(): Promise<void> {
         identityNumberInput.value?.focus();
       } else if (
         error instanceof ApiError &&
-        error.code === 'CUSTOMER_DOCUMENT_INVALID'
+        (error.code === 'CUSTOMER_DOCUMENT_INVALID' ||
+          error.code === 'MATERIAL_VERSION_INVALID')
       ) {
         materialError.value =
-          '证件材料已失效或不符合准入要求，请重新选择有效材料';
+          '证件材料已失效或不符合准入要求，请刷新后重新选择有效材料';
         formError.value = materialError.value;
       } else if (
         error instanceof ApiError &&

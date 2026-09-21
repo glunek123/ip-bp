@@ -429,6 +429,7 @@ describe('CustomerAdmissionPanel', () => {
 
   it.each([
     ['CUSTOMER_DOCUMENT_INVALID', '证件材料已失效或不符合准入要求'],
+    ['MATERIAL_VERSION_INVALID', '请刷新后重新选择有效材料'],
     ['ACTION_FORBIDDEN', '当前账号无权执行客户准入'],
   ])('maps %s to an actionable admission message', async (code, message) => {
     customerApi.admitCustomer.mockRejectedValue(
@@ -489,6 +490,26 @@ describe('CustomerAdmissionPanel', () => {
     await flushPromises();
     expect(wrapper.text()).toContain('当前账号无权上传客户材料');
   });
+
+  it.each([
+    ['VALIDATION_ERROR', '文件格式、内容或数量不符合要求'],
+    ['MATERIAL_VERSION_INVALID', '材料版本已失效，请刷新后重新选择文件'],
+  ])(
+    'maps upload %s to an actionable material message',
+    async (code, message) => {
+      materialApi.uploadMaterialFile.mockRejectedValue(
+        new ApiError('invalid', 400, code),
+      );
+      const wrapper = await mountPanel();
+      await fillEnterpriseAdmission(wrapper);
+      await setFile(
+        wrapper,
+        new File(['pdf'], '营业执照.pdf', { type: 'application/pdf' }),
+      );
+      await flushPromises();
+      expect(wrapper.text()).toContain(message);
+    },
+  );
 
   it('reports forbidden removal without dropping the material card', async () => {
     materialApi.deleteMaterial.mockRejectedValue(
