@@ -2,6 +2,7 @@ import { ForbiddenException } from '@nestjs/common';
 import {
   AccessControlService,
   AccessControlSnapshot,
+  AccessControlSnapshotReader,
   AccessControlStore,
 } from './access-control.service';
 import { ActorContext } from './actor-context';
@@ -21,6 +22,63 @@ function createStore(
 }
 
 describe('AccessControlService', () => {
+  it('passes an explicit snapshot reader through without changing the scope algorithm', async () => {
+    const store = createStore({
+      active: true,
+      authorizationRevision: 4,
+      grants: [
+        { action: 'customer.read', scope: 'department' },
+        { action: 'lead.read', scope: 'self' },
+        { action: 'lead.create', scope: 'self' },
+      ],
+    });
+    const service = new AccessControlService(store);
+    const reader = {} as AccessControlSnapshotReader;
+
+    await expect(
+      service.buildCustomerScope(actor, 'customer.read', reader),
+    ).resolves.toEqual({ departmentId: actor.departmentId });
+    await expect(
+      service.buildLeadScope(actor, 'lead.read', reader),
+    ).resolves.toEqual({
+      departmentId: actor.departmentId,
+      responsibleUserId: actor.userId,
+    });
+    await expect(service.canAuthorizeNewLead(actor, reader)).resolves.toBe(
+      true,
+    );
+    expect(store.loadSnapshot).toHaveBeenCalledTimes(3);
+    expect(store.loadSnapshot).toHaveBeenNthCalledWith(
+      1,
+      actor.userId,
+      actor.departmentId,
+      reader,
+    );
+    expect(store.loadSnapshot).toHaveBeenLastCalledWith(
+      actor.userId,
+      actor.departmentId,
+      reader,
+    );
+  });
+
+  it('keeps using the default store path when no snapshot reader is passed', async () => {
+    const store = createStore({
+      active: true,
+      authorizationRevision: 4,
+      membershipTeamId: 'team-a',
+      membershipTeamActive: true,
+      grants: [{ action: 'lead.create', scope: 'self' }],
+    });
+    const service = new AccessControlService(store);
+
+    await expect(service.canAuthorizeNewLead(actor)).resolves.toBe(true);
+    expect(store.loadSnapshot).toHaveBeenCalledWith(
+      actor.userId,
+      actor.departmentId,
+      undefined,
+    );
+  });
+
   it('does not combine a department read grant with a self create grant', async () => {
     const service = new AccessControlService(
       createStore({

@@ -1,4 +1,5 @@
 import { ForbiddenException, Inject, Injectable } from '@nestjs/common';
+import type { Prisma } from '../generated/prisma/client';
 import { ActorContext } from './actor-context';
 
 export const ACCESS_CONTROL_STORE = Symbol('ACCESS_CONTROL_STORE');
@@ -61,10 +62,16 @@ export type AccessControlSnapshot = {
   }>;
 };
 
+export type AccessControlSnapshotReader = Pick<
+  Prisma.TransactionClient,
+  'userAccount'
+>;
+
 export interface AccessControlStore {
   loadSnapshot(
     userId: string,
     departmentId: string,
+    reader?: AccessControlSnapshotReader,
   ): Promise<AccessControlSnapshot | null>;
 }
 
@@ -79,12 +86,13 @@ export class AccessControlService {
     actor: ActorContext,
     action: CustomerAction,
     facts: CustomerResourceFacts,
+    reader?: AccessControlSnapshotReader,
   ): Promise<void> {
     if (facts.departmentId !== actor.departmentId) {
       throw this.forbidden();
     }
 
-    const snapshot = await this.loadCurrentSnapshot(actor);
+    const snapshot = await this.loadCurrentSnapshot(actor, reader);
     const allowed = snapshot.grants.some(
       (grant) =>
         grant.action === action && this.scopeCovers(grant, actor, facts),
@@ -96,8 +104,9 @@ export class AccessControlService {
 
   async authorizeNewCustomer(
     actor: ActorContext,
+    reader?: AccessControlSnapshotReader,
   ): Promise<CustomerResourceFacts> {
-    const snapshot = await this.loadCurrentSnapshot(actor);
+    const snapshot = await this.loadCurrentSnapshot(actor, reader);
     const facts: CustomerResourceFacts = {
       departmentId: actor.departmentId,
       responsibleUserId: actor.userId,
@@ -115,9 +124,12 @@ export class AccessControlService {
     return facts;
   }
 
-  async canAuthorizeNewCustomer(actor: ActorContext): Promise<boolean> {
+  async canAuthorizeNewCustomer(
+    actor: ActorContext,
+    reader?: AccessControlSnapshotReader,
+  ): Promise<boolean> {
     try {
-      await this.authorizeNewCustomer(actor);
+      await this.authorizeNewCustomer(actor, reader);
       return true;
     } catch (error) {
       if (error instanceof ForbiddenException) return false;
@@ -129,9 +141,10 @@ export class AccessControlService {
     actor: ActorContext,
     action: CustomerAction,
     facts: CustomerResourceFacts,
+    reader?: AccessControlSnapshotReader,
   ): Promise<boolean> {
     try {
-      await this.authorizeCustomer(actor, action, facts);
+      await this.authorizeCustomer(actor, action, facts, reader);
       return true;
     } catch (error) {
       if (error instanceof ForbiddenException) {
@@ -144,8 +157,9 @@ export class AccessControlService {
   async buildCustomerScope(
     actor: ActorContext,
     action: CustomerAction,
+    reader?: AccessControlSnapshotReader,
   ): Promise<CustomerScopePredicate> {
-    const snapshot = await this.loadCurrentSnapshot(actor);
+    const snapshot = await this.loadCurrentSnapshot(actor, reader);
     const grants = snapshot.grants.filter((grant) => grant.action === action);
 
     if (grants.some((grant) => grant.scope === 'department')) {
@@ -189,9 +203,10 @@ export class AccessControlService {
   async tryBuildCustomerScope(
     actor: ActorContext,
     action: CustomerAction,
+    reader?: AccessControlSnapshotReader,
   ): Promise<CustomerScopePredicate | null> {
     try {
-      return await this.buildCustomerScope(actor, action);
+      return await this.buildCustomerScope(actor, action, reader);
     } catch (error) {
       if (error instanceof ForbiddenException) return null;
       throw error;
@@ -202,12 +217,13 @@ export class AccessControlService {
     actor: ActorContext,
     action: LeadAction,
     facts: LeadResourceFacts,
+    reader?: AccessControlSnapshotReader,
   ): Promise<void> {
     if (facts.departmentId !== actor.departmentId) {
       throw this.leadForbidden();
     }
 
-    const snapshot = await this.loadCurrentSnapshot(actor);
+    const snapshot = await this.loadCurrentSnapshot(actor, reader);
     const allowed = snapshot.grants.some(
       (grant) =>
         grant.action === action && this.scopeCovers(grant, actor, facts),
@@ -220,8 +236,9 @@ export class AccessControlService {
   async buildLeadScope(
     actor: ActorContext,
     action: LeadAction,
+    reader?: AccessControlSnapshotReader,
   ): Promise<LeadScopePredicate> {
-    const snapshot = await this.loadCurrentSnapshot(actor);
+    const snapshot = await this.loadCurrentSnapshot(actor, reader);
     const grants = snapshot.grants.filter((grant) => grant.action === action);
 
     if (grants.some((grant) => grant.scope === 'department')) {
@@ -262,9 +279,12 @@ export class AccessControlService {
     throw this.leadForbidden();
   }
 
-  async canAuthorizeNewLead(actor: ActorContext): Promise<boolean> {
+  async canAuthorizeNewLead(
+    actor: ActorContext,
+    reader?: AccessControlSnapshotReader,
+  ): Promise<boolean> {
     try {
-      const snapshot = await this.loadCurrentSnapshot(actor);
+      const snapshot = await this.loadCurrentSnapshot(actor, reader);
       const facts: LeadResourceFacts = {
         departmentId: actor.departmentId,
         responsibleUserId: actor.userId,
@@ -286,10 +306,12 @@ export class AccessControlService {
 
   private async loadCurrentSnapshot(
     actor: ActorContext,
+    reader?: AccessControlSnapshotReader,
   ): Promise<AccessControlSnapshot> {
     const snapshot = await this.store.loadSnapshot(
       actor.userId,
       actor.departmentId,
+      reader,
     );
     if (
       snapshot === null ||

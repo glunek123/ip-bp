@@ -5,6 +5,13 @@ describe('role template management migrations', () => {
   const migrationRoot = resolve(process.cwd(), 'prisma/migrations');
   const actionMigrationName = '20260920030000_add_role_manage_action';
   const backfillMigrationName = '20260920040000_backfill_role_manage_grant';
+  const subsequentCoreLdMigrations = [
+    '20260921010000_add_core_ld_actions',
+    '20260921011000_add_core_ld_schema',
+    '20260921012000_backfill_core_ld_bootstrap_grants',
+    '20260921013000_add_material_upload_metadata',
+    '20260921014000_add_upload_draft_pending_storage_key',
+  ];
 
   it('adds ROLE_MANAGE to the schema and uses two ordered forward migrations', () => {
     const schema = readFileSync(
@@ -17,10 +24,19 @@ describe('role template management migrations', () => {
 
     expect(schema).toContain('ROLE_MANAGE');
     expect(schema).toContain('@map("role.manage")');
-    expect(migrations.slice(-2)).toEqual([
+    const actionIndex = migrations.indexOf(actionMigrationName);
+    expect(migrations.slice(actionIndex, actionIndex + 2)).toEqual([
       actionMigrationName,
       backfillMigrationName,
     ]);
+    expect(migrations).toEqual(
+      expect.arrayContaining(subsequentCoreLdMigrations),
+    );
+    expect(
+      subsequentCoreLdMigrations.every(
+        (name) => migrations.indexOf(name) > actionIndex + 1,
+      ),
+    ).toBe(true);
   });
 
   it('commits the enum value before the backfill transaction uses it', () => {

@@ -345,7 +345,15 @@ describe('OrganizationService management context', () => {
       assignTeamRoles: false,
       manageRoleTemplates: true,
     });
-    expect(result.permissionCatalog).toHaveLength(10);
+    expect(result.permissionCatalog).toHaveLength(14);
+    expect(result.permissionCatalog.map(({ action }) => action)).toEqual(
+      expect.arrayContaining([
+        'CUSTOMER_ADMIT',
+        'LEAD_READ',
+        'LEAD_CREATE',
+        'LEAD_EDIT',
+      ]),
+    );
     expect(result.permissionCatalog).toContainEqual({
       action: 'ROLE_MANAGE',
       label: '管理角色模板',

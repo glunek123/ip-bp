@@ -10,7 +10,11 @@ import {
   PrivateBlobStorage,
 } from './private-blob-storage';
 import { MaterialCleanupService } from './material-cleanup.service';
-import { MaterialService, MaterialTransactionClient } from './material.service';
+import {
+  MaterialService,
+  MaterialTransactionClient,
+  ValidatedMaterialVersionFact,
+} from './material.service';
 import { MaterialStorageKeyCoordinator } from './material-storage-key-coordinator';
 
 const actor: ActorContext = {
@@ -889,6 +893,11 @@ describe('MaterialService', () => {
     ]);
     expect(Object.isFrozen(facts)).toBe(true);
     expect(facts.every(Object.isFrozen)).toBe(true);
+    expect(fixture.access.buildCustomerScope).toHaveBeenCalledWith(
+      actor,
+      'customer.read',
+      asTransactionClient(transaction),
+    );
     expect(transaction.material.findMany).toHaveBeenCalledWith({
       where: {
         departmentId: actor.departmentId,
@@ -1026,7 +1035,10 @@ describe('MaterialService', () => {
       ),
     ).resolves.toHaveLength(1);
 
-    expect(fixture.access.canAuthorizeNewLead).toHaveBeenCalledWith(actor);
+    expect(fixture.access.canAuthorizeNewLead).toHaveBeenCalledWith(
+      actor,
+      asTransactionClient(transaction),
+    );
     expect(transaction.uploadDraft.findFirst).toHaveBeenCalledWith({
       where: expect.objectContaining({
         departmentId: actor.departmentId,
@@ -1097,6 +1109,49 @@ describe('MaterialService', () => {
         resourceId: customerId,
         facts: [forged],
       }),
+    ).rejects.toMatchObject({
+      response: { code: 'MATERIAL_VERSION_INVALID' },
+    });
+
+    const inherited = Object.create(facts[0]) as object;
+    Object.defineProperty(inherited, 'purpose', {
+      value: 'PROTOTYPE_FORGED_PURPOSE',
+    });
+    await expect(
+      fixture.service.freezeReferences(asTransactionClient(transaction), {
+        departmentId: actor.departmentId,
+        resourceType: 'CUSTOMER_ADMISSION',
+        resourceId: customerId,
+        facts: [inherited as ValidatedMaterialVersionFact],
+      }),
+    ).rejects.toMatchObject({
+      response: { code: 'MATERIAL_VERSION_INVALID' },
+    });
+
+    const roundTripped = JSON.parse(
+      JSON.stringify(facts[0]),
+    ) as ValidatedMaterialVersionFact;
+    await expect(
+      fixture.service.freezeReferences(asTransactionClient(transaction), {
+        departmentId: actor.departmentId,
+        resourceType: 'CUSTOMER_ADMISSION',
+        resourceId: customerId,
+        facts: [roundTripped],
+      }),
+    ).rejects.toMatchObject({
+      response: { code: 'MATERIAL_VERSION_INVALID' },
+    });
+
+    await expect(
+      fixture.service.freezeReferences(
+        asTransactionClient(createMaterialTransaction()),
+        {
+          departmentId: actor.departmentId,
+          resourceType: 'CUSTOMER_ADMISSION',
+          resourceId: customerId,
+          facts,
+        },
+      ),
     ).rejects.toMatchObject({
       response: { code: 'MATERIAL_VERSION_INVALID' },
     });

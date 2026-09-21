@@ -9,7 +9,10 @@ import {
   Optional,
   ServiceUnavailableException,
 } from '@nestjs/common';
-import { AccessControlService } from '../../access-control/access-control.service';
+import {
+  AccessControlService,
+  AccessControlSnapshotReader,
+} from '../../access-control/access-control.service';
 import { ActorContext } from '../../access-control/actor-context';
 import { DatabaseService } from '../../database/database.service';
 import type { Prisma } from '../../generated/prisma/client';
@@ -30,7 +33,7 @@ import { MaterialStorageKeyCoordinator } from './material-storage-key-coordinato
 const DAY_MS = 24 * 60 * 60 * 1000;
 const RETENTION_MS = 90 * DAY_MS;
 export const MATERIAL_SERVICE_CLOCK = Symbol('MATERIAL_SERVICE_CLOCK');
-const VALIDATED_MATERIAL_VERSION = Symbol('VALIDATED_MATERIAL_VERSION');
+declare const VALIDATED_MATERIAL_VERSION: unique symbol;
 
 export type MaterialTransactionClient = Prisma.TransactionClient;
 
@@ -43,7 +46,7 @@ export type AssertAvailableVersionsInput = Readonly<{
   maxCount?: number;
 }>;
 
-export type ValidatedMaterialVersionFact = Readonly<{
+type CanonicalMaterialVersionFact = Readonly<{
   departmentId: string;
   materialId: string;
   contentVersionId: string;
@@ -52,8 +55,11 @@ export type ValidatedMaterialVersionFact = Readonly<{
   ownerType: MaterialOwnerTypeValue;
   ownerId: string;
   category: MaterialCategoryValue;
-  [VALIDATED_MATERIAL_VERSION]: true;
 }>;
+
+export type ValidatedMaterialVersionFact = CanonicalMaterialVersionFact & {
+  [VALIDATED_MATERIAL_VERSION]: true;
+};
 
 export type FreezeMaterialReferencesInput = Readonly<{
   departmentId: string;
@@ -80,6 +86,13 @@ const allowedMimeTypes = {
 @Injectable()
 export class MaterialService {
   private readonly clock: () => Date;
+  private readonly validatedVersionFacts = new WeakMap<
+    ValidatedMaterialVersionFact,
+    {
+      transaction: MaterialTransactionClient;
+      canonicalFact: CanonicalMaterialVersionFact;
+    }
+  >();
 
   constructor(
     private readonly database: DatabaseService,
@@ -385,6 +398,7 @@ export class MaterialService {
       input.ownerId,
       'read',
       transaction,
+      transaction,
     );
     const materials = await transaction.material.findMany({
       where: {
@@ -431,7 +445,7 @@ export class MaterialService {
         ) {
           throw this.invalidVersion();
         }
-        const fact = {
+        const canonicalFact = Object.freeze({
           departmentId: material.departmentId,
           materialId: material.id,
           contentVersionId: version.id,
@@ -440,14 +454,15 @@ export class MaterialService {
           ownerType: material.ownerType,
           ownerId: material.ownerId,
           category: material.category,
-        };
-        Object.defineProperty(fact, VALIDATED_MATERIAL_VERSION, {
-          value: true,
         });
-        facts.set(
-          version.id,
-          Object.freeze(fact) as ValidatedMaterialVersionFact,
-        );
+        const fact = Object.freeze({
+          ...canonicalFact,
+        }) as ValidatedMaterialVersionFact;
+        this.validatedVersionFacts.set(fact, {
+          transaction,
+          canonicalFact,
+        });
+        facts.set(version.id, fact);
       }
     }
     if (facts.size !== contentVersionIds.length) {
@@ -470,18 +485,25 @@ export class MaterialService {
       input.facts.length === 0 ||
       input.departmentId.trim().length === 0 ||
       input.resourceType.trim().length === 0 ||
-      input.resourceId.trim().length === 0 ||
-      input.facts.some(
-        (fact) =>
-          fact[VALIDATED_MATERIAL_VERSION] !== true ||
-          fact.departmentId !== input.departmentId,
-      )
+      input.resourceId.trim().length === 0
     ) {
       throw this.invalidVersion();
     }
 
+    const canonicalFacts = input.facts.map((fact) => {
+      const validation = this.validatedVersionFacts.get(fact);
+      if (
+        validation === undefined ||
+        validation.transaction !== transaction ||
+        validation.canonicalFact.departmentId !== input.departmentId
+      ) {
+        throw this.invalidVersion();
+      }
+      return validation.canonicalFact;
+    });
+
     return transaction.materialReference.createMany({
-      data: input.facts.map((fact) => ({
+      data: canonicalFacts.map((fact) => ({
         departmentId: input.departmentId,
         resourceType: input.resourceType,
         resourceId: input.resourceId,
@@ -672,9 +694,12 @@ export class MaterialService {
     ownerId: string,
     operation: 'read' | 'write',
     reader: MaterialAuthorizationReader = this.database,
+    snapshotReader?: AccessControlSnapshotReader,
   ): Promise<void> {
     if (ownerType === 'LEAD_DRAFT') {
-      if (!(await this.accessControl.canAuthorizeNewLead(actor))) {
+      if (
+        !(await this.accessControl.canAuthorizeNewLead(actor, snapshotReader))
+      ) {
         throw this.forbidden();
       }
       const draft = await reader.uploadDraft.findFirst({
@@ -695,6 +720,7 @@ export class MaterialService {
         this.accessControl.buildCustomerScope(
           actor,
           operation === 'read' ? 'customer.read' : 'customer.admit',
+          snapshotReader,
         ),
       );
       const customer = await reader.customer.findFirst({
@@ -708,17 +734,22 @@ export class MaterialService {
       if (customer === null) throw this.notFound();
       if (operation === 'write') {
         await this.withMaterialAuthorization(() =>
-          this.accessControl.authorizeCustomer(actor, 'customer.admit', {
-            departmentId: customer.departmentId,
-            responsibleUserId: customer.responsibleUserId,
-            ...(customer.teamId === null ? {} : { teamId: customer.teamId }),
-          }),
+          this.accessControl.authorizeCustomer(
+            actor,
+            'customer.admit',
+            {
+              departmentId: customer.departmentId,
+              responsibleUserId: customer.responsibleUserId,
+              ...(customer.teamId === null ? {} : { teamId: customer.teamId }),
+            },
+            snapshotReader,
+          ),
         );
       }
       return;
     }
     const scope = await this.withMaterialAuthorization(() =>
-      this.accessControl.buildLeadScope(actor, 'lead.read'),
+      this.accessControl.buildLeadScope(actor, 'lead.read', snapshotReader),
     );
     const lead = await reader.lead.findFirst({
       where: { id: ownerId, ...scope },
@@ -731,11 +762,16 @@ export class MaterialService {
     if (lead === null) throw this.notFound();
     if (operation === 'write') {
       await this.withMaterialAuthorization(() =>
-        this.accessControl.authorizeLead(actor, 'lead.edit', {
-          departmentId: lead.departmentId,
-          responsibleUserId: lead.responsibleUserId,
-          ...(lead.teamId === null ? {} : { teamId: lead.teamId }),
-        }),
+        this.accessControl.authorizeLead(
+          actor,
+          'lead.edit',
+          {
+            departmentId: lead.departmentId,
+            responsibleUserId: lead.responsibleUserId,
+            ...(lead.teamId === null ? {} : { teamId: lead.teamId }),
+          },
+          snapshotReader,
+        ),
       );
     }
   }

@@ -2,6 +2,7 @@ import { Injectable } from '@nestjs/common';
 import { DatabaseService } from '../database/database.service';
 import {
   AccessControlSnapshot,
+  AccessControlSnapshotReader,
   AccessControlStore,
   PermissionAction,
   PermissionScope,
@@ -41,8 +42,9 @@ export class PrismaAccessControlStore implements AccessControlStore {
   async loadSnapshot(
     userId: string,
     departmentId: string,
+    reader?: AccessControlSnapshotReader,
   ): Promise<AccessControlSnapshot | null> {
-    const user = await this.database.userAccount.findUnique({
+    const user = await (reader ?? this.database).userAccount.findUnique({
       where: { id: userId },
       select: {
         active: true,
