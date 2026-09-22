@@ -19,6 +19,7 @@ const lead = {
   creationChannel: 'MANUAL',
   externalSourceRef: null,
   status: 'WAITING_REVIEW',
+  version: 2,
   caseType: 'CIVIL',
   source: 'ONLINE',
   platform: 'TAOBAO',
@@ -41,6 +42,26 @@ const lead = {
   ],
   infringements: [{ type: 'TRADEMARK' }],
   rightsHolder: { name: '权利主体甲' },
+  reviewDecision: null,
+};
+
+const processedLead = {
+  ...lead,
+  status: 'WAITING_EVIDENCE_DECISION',
+  version: 3,
+  reviewDecision: {
+    id: 'decision-secret',
+    departmentId: actor.departmentId,
+    leadId: lead.id,
+    customerId: actor.clientCustomerId,
+    reviewerUserId: 'reviewer-secret',
+    customerAccountBindingId: 'binding-secret',
+    reviewerDisplayNameSnapshot: '企业审核员',
+    result: 'INFRINGEMENT',
+    decidedAt: new Date('2026-09-22T03:00:00.000Z'),
+    fromVersion: 2,
+    toVersion: 3,
+  },
 };
 
 function setup() {
@@ -65,9 +86,9 @@ function setup() {
 }
 
 describe('ClientLeadService', () => {
-  it('lists only pushed leads for the actor enterprise with a redacted projection', async () => {
+  it('lists only pushed pending leads for the actor enterprise with a redacted projection', async () => {
     const { service, database } = setup();
-    const result = await service.list(actor, 1, 20);
+    const result = await service.list(actor, 'PENDING', 1, 20);
 
     expect(database.lead.findMany).toHaveBeenCalledWith(
       expect.objectContaining({
@@ -84,13 +105,62 @@ describe('ClientLeadService', () => {
     expect(result.items[0]).toMatchObject({
       id: lead.id,
       status: 'WAITING_REVIEW',
+      version: 2,
       rightsHolderName: '权利主体甲',
+      reviewDecision: null,
+      capabilities: { review: true },
     });
     expect(result.items[0]).not.toHaveProperty('departmentId');
     expect(result.items[0]).not.toHaveProperty('responsibleUserId');
     expect(result.items[0]).not.toHaveProperty('teamId');
     expect(result.items[0]).not.toHaveProperty('remark');
     expect(result.items[0]).not.toHaveProperty('creationChannel');
+    expect(result.items[0]).not.toHaveProperty('externalSourceRef');
+  });
+
+  it('lists only processed leads with a formal decision and redacts decision internals', async () => {
+    const { service, database } = setup();
+    database.lead.findMany.mockResolvedValue([processedLead]);
+
+    const result = await service.list(actor, 'PROCESSED', 2, 10);
+
+    expect(database.lead.findMany).toHaveBeenCalledWith(
+      expect.objectContaining({
+        where: {
+          departmentId: actor.departmentId,
+          customerId: actor.clientCustomerId,
+          status: 'WAITING_EVIDENCE_DECISION',
+          pushedAt: { not: null },
+          pushedByUserId: { not: null },
+          reviewDecision: { isNot: null },
+        },
+        skip: 10,
+        take: 10,
+        include: expect.objectContaining({
+          reviewDecision: {
+            select: {
+              result: true,
+              reviewerDisplayNameSnapshot: true,
+              decidedAt: true,
+            },
+          },
+        }),
+      }),
+    );
+    expect(result.items[0]).toMatchObject({
+      status: 'WAITING_EVIDENCE_DECISION',
+      version: 3,
+      reviewDecision: {
+        result: 'INFRINGEMENT',
+        reviewerDisplayName: '企业审核员',
+        decidedAt: '2026-09-22T03:00:00.000Z',
+      },
+      capabilities: { review: false },
+    });
+    expect(result.items[0].reviewDecision).not.toHaveProperty('id');
+    expect(result.items[0].reviewDecision).not.toHaveProperty('reviewerUserId');
+    expect(result.items[0].reviewDecision).not.toHaveProperty('fromVersion');
+    expect(result.items[0].reviewDecision).not.toHaveProperty('toVersion');
   });
 
   it('returns not found for another enterprise or a waiting-push lead', async () => {
@@ -105,9 +175,15 @@ describe('ClientLeadService', () => {
           id: lead.id,
           departmentId: actor.departmentId,
           customerId: actor.clientCustomerId,
-          status: 'WAITING_REVIEW',
           pushedAt: { not: null },
           pushedByUserId: { not: null },
+          OR: [
+            { status: 'WAITING_REVIEW' },
+            {
+              status: 'WAITING_EVIDENCE_DECISION',
+              reviewDecision: { isNot: null },
+            },
+          ],
         },
       }),
     );
@@ -120,7 +196,7 @@ describe('ClientLeadService', () => {
       departmentId: actor.departmentId,
       authorizationRevision: actor.authorizationRevision,
     };
-    await expect(service.list(internal, 1, 20)).rejects.toMatchObject({
+    await expect(service.list(internal, 'PENDING', 1, 20)).rejects.toMatchObject({
       response: { code: 'ACTION_FORBIDDEN' },
     });
     expect(database.lead.findMany).not.toHaveBeenCalled();
@@ -139,5 +215,23 @@ describe('ClientLeadService', () => {
       },
     );
     expect(result.leadScreenshotContentVersionIds).toEqual(['version-1']);
+  });
+
+  it('projects a processed decision in detail after revalidating the client binding', async () => {
+    const { service, database } = setup();
+    database.lead.findFirst.mockResolvedValue(processedLead);
+
+    const result = await service.get(actor, lead.id);
+
+    expect(database.customerAccountBinding.findFirst).toHaveBeenCalledTimes(1);
+    expect(result).toMatchObject({
+      status: 'WAITING_EVIDENCE_DECISION',
+      reviewDecision: {
+        result: 'INFRINGEMENT',
+        reviewerDisplayName: '企业审核员',
+        decidedAt: '2026-09-22T03:00:00.000Z',
+      },
+      capabilities: { review: false },
+    });
   });
 });

@@ -13,10 +13,22 @@ class ClientLeadProductResponseDto {
   estimatedAmount!: string;
 }
 
+export class ClientLeadReviewDecisionResponseDto {
+  @ApiProperty({ enum: ['INFRINGEMENT'] }) result!: 'INFRINGEMENT';
+  @ApiProperty() reviewerDisplayName!: string;
+  @ApiProperty({ format: 'date-time' }) decidedAt!: string;
+}
+
+class ClientLeadCapabilitiesResponseDto {
+  @ApiProperty() review!: boolean;
+}
+
 export class ClientLeadResponseDto {
   @ApiProperty({ format: 'uuid' }) id!: string;
   @ApiProperty() businessNo!: string;
-  @ApiProperty({ enum: ['WAITING_REVIEW'] }) status!: 'WAITING_REVIEW';
+  @ApiProperty({ enum: ['WAITING_REVIEW', 'WAITING_EVIDENCE_DECISION'] })
+  status!: 'WAITING_REVIEW' | 'WAITING_EVIDENCE_DECISION';
+  @ApiProperty({ minimum: 1 }) version!: number;
   @ApiProperty() caseType!: string;
   @ApiProperty({ type: [String] }) infringementTypes!: string[];
   @ApiProperty() source!: string;
@@ -30,6 +42,13 @@ export class ClientLeadResponseDto {
   @ApiProperty({ type: [String], format: 'uuid' })
   leadScreenshotContentVersionIds!: string[];
   @ApiProperty({ format: 'date-time' }) pushedAt!: string;
+  @ApiProperty({
+    nullable: true,
+    type: () => ClientLeadReviewDecisionResponseDto,
+  })
+  reviewDecision!: ClientLeadReviewDecisionResponseDto | null;
+  @ApiProperty({ type: () => ClientLeadCapabilitiesResponseDto })
+  capabilities!: ClientLeadCapabilitiesResponseDto;
 }
 
 export class ClientLeadListResponseDto {

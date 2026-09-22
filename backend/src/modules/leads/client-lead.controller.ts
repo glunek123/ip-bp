@@ -11,7 +11,7 @@ import { CurrentActor } from '../../access-control/actor-context.decorator';
 import { ActorContextGuard } from '../../access-control/actor-context.guard';
 import { ActorContext } from '../../access-control/actor-context';
 import { CsrfGuard } from '../../auth/csrf.guard';
-import { LeadListQueryDto } from './lead.dto';
+import { ClientLeadListQueryDto } from './client-lead-review.dto';
 import { ClientLeadService } from './client-lead.service';
 import {
   ClientLeadListResponseDto,
@@ -27,8 +27,11 @@ export class ClientLeadController {
 
   @Get()
   @ApiOkResponse({ type: ClientLeadListResponseDto })
-  list(@CurrentActor() actor: ActorContext, @Query() query: LeadListQueryDto) {
-    return this.leads.list(actor, query.page, query.pageSize);
+  list(
+    @CurrentActor() actor: ActorContext,
+    @Query() query: ClientLeadListQueryDto,
+  ) {
+    return this.leads.list(actor, query.view, query.page, query.pageSize);
   }
 
   @Get(':id')

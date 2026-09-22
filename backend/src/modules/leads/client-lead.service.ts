@@ -7,11 +7,19 @@ import { ActorContext } from '../../access-control/actor-context';
 import { DatabaseService } from '../../database/database.service';
 import type { Prisma } from '../../generated/prisma/client';
 import { MaterialService } from '../materials';
+import type { ClientLeadView } from './client-lead-review.dto';
 
 const clientLeadInclude = {
   products: { orderBy: { position: 'asc' as const } },
   infringements: { orderBy: { type: 'asc' as const } },
   rightsHolder: { select: { name: true } },
+  reviewDecision: {
+    select: {
+      result: true,
+      reviewerDisplayNameSnapshot: true,
+      decidedAt: true,
+    },
+  },
 } satisfies Prisma.LeadInclude;
 
 type ClientLeadRecord = Prisma.LeadGetPayload<{
@@ -25,14 +33,24 @@ export class ClientLeadService {
     private readonly materials: MaterialService,
   ) {}
 
-  async list(actor: ActorContext, page: number, pageSize: number) {
+  async list(
+    actor: ActorContext,
+    view: ClientLeadView,
+    page: number,
+    pageSize: number,
+  ) {
     const customerId = await this.assertClient(actor);
-    const where = {
+    const where: Prisma.LeadWhereInput = {
       departmentId: actor.departmentId,
       customerId,
-      status: 'WAITING_REVIEW' as const,
       pushedAt: { not: null },
       pushedByUserId: { not: null },
+      ...(view === 'PENDING'
+        ? { status: 'WAITING_REVIEW' as const }
+        : {
+            status: 'WAITING_EVIDENCE_DECISION' as const,
+            reviewDecision: { isNot: null },
+          }),
     };
     const [items, total] = await Promise.all([
       this.database.lead.findMany({
@@ -59,9 +77,15 @@ export class ClientLeadService {
         id,
         departmentId: actor.departmentId,
         customerId,
-        status: 'WAITING_REVIEW',
         pushedAt: { not: null },
         pushedByUserId: { not: null },
+        OR: [
+          { status: 'WAITING_REVIEW' },
+          {
+            status: 'WAITING_EVIDENCE_DECISION',
+            reviewDecision: { isNot: null },
+          },
+        ],
       },
       include: clientLeadInclude,
     });
@@ -102,7 +126,8 @@ export class ClientLeadService {
     return {
       id: lead.id,
       businessNo: lead.businessNo,
-      status: 'WAITING_REVIEW' as const,
+      status: lead.status,
+      version: lead.version,
       caseType: lead.caseType,
       infringementTypes: lead.infringements.map(({ type }) => type),
       source: lead.source,
@@ -123,6 +148,15 @@ export class ClientLeadService {
       })),
       leadScreenshotContentVersionIds: [...leadScreenshotContentVersionIds],
       pushedAt: lead.pushedAt?.toISOString() ?? null,
+      reviewDecision: lead.reviewDecision
+        ? {
+            result: lead.reviewDecision.result,
+            reviewerDisplayName:
+              lead.reviewDecision.reviewerDisplayNameSnapshot,
+            decidedAt: lead.reviewDecision.decidedAt.toISOString(),
+          }
+        : null,
+      capabilities: { review: lead.status === 'WAITING_REVIEW' },
     };
   }
 
