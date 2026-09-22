@@ -283,3 +283,11 @@ CUST-FND-002先写负向测试并实测RED：授权服务、ActorContext及测�
 同一最终代码tree的完整数据库型Chromium E2E为76/76。主链由管理员创建并绑定真实客户账号、运营创建／选择待推送线索并推送、运营端显示待审核和推送记录、退出运营账号、客户以真实密码登录、只见本企业已推送线索、打开详情和下载附件、刷新后状态持续存在。负向覆盖其他企业和待推送线索不可见、无`LEAD_PUSH`、未绑定／停用账号、客户非ADMITTED、错误状态、无有效商品、同键重放／异参冲突、旧版本／并发竞争、审计或回执失败整体回滚，以及账号／绑定撤销后下一请求立即失效。
 
 独立Review首轮发现内部角色请求DTO仍可接受客户专属`CLIENT_LEAD_READ`这一项Important。修复后，内部可分配Action由后端共享集合统一驱动目录、响应DTO、请求DTO和OpenAPI，服务绕过DTO也会在事务前拒绝客户专属Action；`LEAD_PUSH`保持可分配。最终复审结论为`ACCEPTED`，Critical 0／Important 0／Minor 0。未执行远端推送、main合并、发布、生产迁移或任何生产数据操作；生产对象存储E02仍是上线前置，不否定本地／测试闭环完成。
+
+## CORE-LD-002 快速上手 UX 硬化（2026-09-22）
+
+固定代码候选为`667da39`，tree为`4fe53798ef755ca7cab59ff3b0427f833a60a6fb`。本轮不改变CORE-LD-002的业务状态、权限范围或企业隔离；新增可访问的必填标识和未保存离开保护，统一客户／权利人／线索／客户端术语，唯一权利人自动带出，条件必填和输入限制在操作前可见，停用与推送均预先说明实际影响；后端增补只读派生的`pushedByDisplayName`，运营页不再向用户暴露推送人UUID。客户端仍只读，未实现CORE-LD-003／004或完整客户门户。
+
+独立UX Review首轮发现Critical 0／Important 4／Minor 3，两轮修复补齐团队停用实际撤权影响、商品增删脏状态、放弃草稿后的状态清理、条件必填及输入帮助的`aria-describedby`关联；最终复审为`ACCEPTED`，Critical／Important／Minor未关闭数均为0。
+
+同一代码tree的正式`verify:slice:core-ld`通过：后端Jest 309项、前端Vitest 155项、架构／类型／ESLint／Slice格式／后端构建全部成功，真实PostgreSQL／Chromium 18/18通过。Evidence v2位于Git common目录`dev-cor-validation-evidence/4fe53798ef755ca7cab59ff3b0427f833a60a6fb.json`。为用户手动测试启动的本地服务曾占用3101端口，关闭手动服务后重跑可稳定通过；业务测试本身无端口依赖回归。

@@ -1,6 +1,6 @@
 # 功能开发路线图
 
-更新日期：2026-09-22。当前代码审计基线：`CORE-LD-002@6be15b2`，tree `f71f44e4db09699f310e608e135254204ea3679e`；SD-37已把后续交付重心调整为核心业务主线，纯文档重排不改变既有能力完成判定。
+更新日期：2026-09-22。当前代码审计基线：`CORE-LD-002-UX@667da39`，tree `4fe53798ef755ca7cab59ff3b0427f833a60a6fb`；SD-37已把后续交付重心调整为核心业务主线，SD-38固定快速上手验收原则。本轮UX硬化不改变既有能力完成判定或Current／Next。
 
 本文只回答“已经做到哪里、下一步做什么、之后按什么依赖顺序做”。详细业务规则仍以 [`docs/spec/`](spec/) 为准，核心主线的编码级字段、附件与存储边界以[核心业务字段、附件与存储契约](superpowers/specs/2026-09-21-core-flow-field-material-contract.md)为准，技术方案以设计文档为准，当前切片的技术任务以实施计划为准，实际验证结果以 [`docs/project-status.md`](project-status.md) 和 [`docs/spec/v0.1/VALIDATION.md`](spec/v0.1/VALIDATION.md) 为准。
 
@@ -22,7 +22,7 @@
 
 `CORE-LD-001｜运营新建待推送线索`已完成明确边界内的UI、API、后端规则、PostgreSQL、权限、审计、迁移与真实浏览器验收。核心实现最终全分支总审为`APPROVED`（Critical／Important／Minor均为0）；叠加Demo对齐前端后的当前合并候选`71ecc0f`、tree`daae709e60906d993c2f18df2d338936d3676f9e`已通过正式Level 2门禁。本完成态不扩大为生产上线许可。
 
-`CORE-LD-002｜运营推送至真实客户端审核`已完成`WAITING_PUSH → WAITING_REVIEW`唯一状态变化、真实企业客户账号绑定与密码会话、企业固定数据范围、推送幂等／版本／审计，以及运营推送和客户端只读列表／详情／附件页面。固定代码候选`6be15b2`、tree`f71f44e4db09699f310e608e135254204ea3679e`已通过Level 3完整门禁、76项数据库型浏览器验收、空库24份迁移和独立终审；本完成态不包含客户审核Command或生产上线许可。
+`CORE-LD-002｜运营推送至真实客户端审核`已完成`WAITING_PUSH → WAITING_REVIEW`唯一状态变化、真实企业客户账号绑定与密码会话、企业固定数据范围、推送幂等／版本／审计，以及运营推送和客户端只读列表／详情／附件页面。原始完成候选`6be15b2`已通过Level 3完整门禁、76项数据库型浏览器验收、空库24份迁移和独立终审；随后的快速上手硬化候选`667da39`、tree`4fe53798ef755ca7cab59ff3b0427f833a60a6fb`又通过CORE-LD切片门禁和独立UX终审。本完成态不包含客户审核Command或生产上线许可。
 
 ### Current Slice
 
