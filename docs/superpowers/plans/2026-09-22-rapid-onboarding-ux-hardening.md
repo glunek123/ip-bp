@@ -43,7 +43,7 @@
 - Create: `frontend/src/app/RequiredFieldMark.spec.ts`
 - Create: `frontend/src/app/use-unsaved-form.ts`
 - Create: `frontend/src/app/use-unsaved-form.spec.ts`
-- Modify: `frontend/src/styles/main.css`
+- Modify: `frontend/src/styles/global.css`
 
 **Interfaces:**
 
@@ -114,7 +114,7 @@ Expected: both files PASS without warnings.
 - [ ] **Step 5: Commit**
 
 ```powershell
-git add frontend/src/app/RequiredFieldMark.vue frontend/src/app/RequiredFieldMark.spec.ts frontend/src/app/use-unsaved-form.ts frontend/src/app/use-unsaved-form.spec.ts frontend/src/styles/main.css
+git add frontend/src/app/RequiredFieldMark.vue frontend/src/app/RequiredFieldMark.spec.ts frontend/src/app/use-unsaved-form.ts frontend/src/app/use-unsaved-form.spec.ts frontend/src/styles/global.css
 git commit -m "feat: add rapid onboarding form helpers"
 ```
 
@@ -237,7 +237,7 @@ git commit -m "feat: clarify customer onboarding actions"
 - Modify/Test: `frontend/src/modules/leads/LeadForm.vue` and `.spec.ts`
 - Modify/Test: `frontend/src/modules/leads/LeadNewPage.vue` and `.spec.ts`
 - Modify/Test: `frontend/src/modules/leads/LeadEditPage.vue` and `.spec.ts`
-- Modify: `frontend/src/styles/main.css`
+- Modify: `frontend/src/styles/demo-components.css`
 
 **Interfaces:**
 
@@ -313,7 +313,7 @@ Expected: all three files PASS.
 - [ ] **Step 5: Commit**
 
 ```powershell
-git add frontend/src/modules/leads frontend/src/styles/main.css
+git add frontend/src/modules/leads frontend/src/styles/demo-components.css
 git commit -m "feat: streamline lead data entry"
 ```
 
