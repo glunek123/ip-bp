@@ -291,3 +291,5 @@ CUST-FND-002先写负向测试并实测RED：授权服务、ActorContext及测�
 独立UX Review首轮发现Critical 0／Important 4／Minor 3，两轮修复补齐团队停用实际撤权影响、商品增删脏状态、放弃草稿后的状态清理、条件必填及输入帮助的`aria-describedby`关联；最终复审为`ACCEPTED`，Critical／Important／Minor未关闭数均为0。
 
 同一代码tree的正式`verify:slice:core-ld`通过：后端Jest 309项、前端Vitest 155项、架构／类型／ESLint／Slice格式／后端构建全部成功，真实PostgreSQL／Chromium 18/18通过。Evidence v2位于Git common目录`dev-cor-validation-evidence/4fe53798ef755ca7cab59ff3b0427f833a60a6fb.json`。为用户手动测试启动的本地服务曾占用3101端口，关闭手动服务后重跑可稳定通过；业务测试本身无端口依赖回归。
+
+记录上述代码证据和状态后的收口候选`d20675d`、tree`03ac4e412281e1c736973536509b3d5add847887`通过完整`pnpm verify`：上下文严格检查、53个REQ／55个AC／11个BQ／38个SD、架构、类型、ESLint、Prettier、工具71项、后端Jest 500项、前端Vitest 268项及双端生产构建均成功。随后只补写本验证记录并重录上下文，不改动已验证代码。
