@@ -26,6 +26,108 @@ const customerId = '33333333-3333-4333-8333-333333333333';
 const now = new Date('2026-09-21T04:00:00.000Z');
 
 describe('MaterialService', () => {
+  it('allows a client to read only its own WAITING_REVIEW lead materials without internal scope derivation', async () => {
+    const fixture = createFixture();
+    const clientActor = {
+      ...actor,
+      clientCustomerId: customerId,
+    };
+    fixture.db.lead.findFirst.mockResolvedValue({ id: 'lead-1' });
+    fixture.db.materialReference.findMany.mockResolvedValue([
+      { materialId: 'material-a', contentVersionId: 'version-a' },
+    ]);
+    fixture.db.material.findMany.mockResolvedValue([]);
+
+    await expect(
+      fixture.service.listOwnerMaterials(clientActor, 'LEAD', 'lead-1'),
+    ).resolves.toEqual({ items: [], total: 0 });
+    expect(fixture.db.lead.findFirst).toHaveBeenCalledWith({
+      where: {
+        id: 'lead-1',
+        departmentId: actor.departmentId,
+        customerId,
+        status: 'WAITING_REVIEW',
+      },
+      select: { id: true },
+    });
+    expect(fixture.access.buildLeadScope).not.toHaveBeenCalled();
+    expect(fixture.db.material.findMany).toHaveBeenCalledWith(
+      expect.objectContaining({
+        where: expect.objectContaining({ id: { in: ['material-a'] } }),
+        select: expect.objectContaining({
+          contentVersions: expect.objectContaining({
+            where: {
+              id: { in: ['version-a'] },
+              status: 'AVAILABLE',
+            },
+          }),
+        }),
+      }),
+    );
+
+    fixture.db.lead.findFirst.mockResolvedValue(null);
+    await expect(
+      fixture.service.listOwnerMaterials(clientActor, 'LEAD', 'foreign'),
+    ).rejects.toMatchObject({ response: { code: 'RESOURCE_NOT_FOUND' } });
+  });
+
+  it('opens only an exact current screenshot reference for a client', async () => {
+    const fixture = createFixture();
+    const clientActor = { ...actor, clientCustomerId: customerId };
+    fixture.db.lead.findFirst.mockResolvedValue({ id: 'lead-1' });
+    fixture.db.material.findFirst.mockResolvedValue({
+      id: 'material-a',
+      departmentId: actor.departmentId,
+      ownerType: 'LEAD',
+      ownerId: 'lead-1',
+      status: 'ACTIVE',
+      contentVersions: [
+        {
+          id: 'version-a',
+          storageKey: 'key',
+          originalFilename: 'capture.png',
+          mimeType: 'image/png',
+          sizeBytes: 4n,
+          sha256: 'd'.repeat(64),
+          uploadedBy: actor.userId,
+          status: 'AVAILABLE',
+        },
+      ],
+    });
+    fixture.storage.open.mockResolvedValue(Readable.from(Buffer.from('data')));
+
+    fixture.db.materialReference.findFirst.mockResolvedValue(null);
+    await expect(
+      fixture.service.openVersion(
+        clientActor,
+        'material-a',
+        'version-a',
+      ),
+    ).rejects.toMatchObject({ response: { code: 'RESOURCE_NOT_FOUND' } });
+
+    fixture.db.materialReference.findFirst.mockResolvedValue({
+      id: 'reference-a',
+    });
+    await expect(
+      fixture.service.openVersion(
+        clientActor,
+        'material-a',
+        'version-a',
+      ),
+    ).resolves.toMatchObject({ sha256: 'd'.repeat(64) });
+    expect(fixture.db.materialReference.findFirst).toHaveBeenLastCalledWith({
+      where: {
+        departmentId: actor.departmentId,
+        resourceType: 'lead',
+        resourceId: 'lead-1',
+        purpose: 'LEAD_SCREENSHOT',
+        materialId: 'material-a',
+        contentVersionId: 'version-a',
+        actionEventId: null,
+      },
+      select: { id: true },
+    });
+  });
   it.each([
     'success',
     'target',
@@ -1683,7 +1785,12 @@ function createFixture() {
       findMany: jest.fn(),
       updateMany: jest.fn(),
     },
-    materialReference: { count: materialReferenceCount },
+    materialReference: {
+      count: materialReferenceCount,
+      findMany: jest.fn(),
+      findFirst: jest.fn(),
+    },
+    lead: { findFirst: leadFindFirst },
     $transaction: jest.fn(
       async (callback: (value: typeof transaction) => Promise<unknown>) =>
         callback(transaction),

@@ -720,12 +720,35 @@ export class MaterialService {
     ownerId: string,
   ): Promise<OwnerMaterialListDto> {
     await this.authorizeOwner(actor, ownerType, ownerId, 'read');
+    const clientReferences =
+      actor.clientCustomerId === undefined
+        ? null
+        : await this.database.materialReference.findMany({
+            where: {
+              departmentId: actor.departmentId,
+              resourceType: 'lead',
+              resourceId: ownerId,
+              purpose: 'LEAD_SCREENSHOT',
+              actionEventId: null,
+            },
+            select: { materialId: true, contentVersionId: true },
+          });
+    if (clientReferences?.length === 0) return { items: [], total: 0 };
+    const clientMaterialIds = clientReferences?.map(
+      ({ materialId }) => materialId,
+    );
+    const clientVersionIds = clientReferences?.map(
+      ({ contentVersionId }) => contentVersionId,
+    );
     const items = await this.database.material.findMany({
       where: {
         departmentId: actor.departmentId,
         ownerType,
         ownerId,
         status: 'ACTIVE',
+        ...(clientMaterialIds === undefined
+          ? {}
+          : { id: { in: clientMaterialIds } }),
       },
       orderBy: [{ createdAt: 'desc' }, { id: 'asc' }],
       select: {
@@ -741,7 +764,12 @@ export class MaterialService {
         createdAt: true,
         updatedAt: true,
         contentVersions: {
-          where: { status: 'AVAILABLE' },
+          where: {
+            status: 'AVAILABLE',
+            ...(clientVersionIds === undefined
+              ? {}
+              : { id: { in: clientVersionIds } }),
+          },
           orderBy: { createdAt: 'desc' },
           select: {
             id: true,
@@ -803,6 +831,21 @@ export class MaterialService {
       material.ownerId,
       'read',
     );
+    if (actor.clientCustomerId !== undefined) {
+      const reference = await this.database.materialReference.findFirst({
+        where: {
+          departmentId: actor.departmentId,
+          resourceType: 'lead',
+          resourceId: material.ownerId,
+          purpose: 'LEAD_SCREENSHOT',
+          materialId,
+          contentVersionId: versionId,
+          actionEventId: null,
+        },
+        select: { id: true },
+      });
+      if (reference === null) throw this.notFound();
+    }
     if (
       material.ownerType === 'LEAD_DRAFT' &&
       version.uploadedBy !== actor.userId
@@ -1064,6 +1107,21 @@ export class MaterialService {
     snapshotReader?: AccessControlSnapshotReader,
     leadAction?: Extract<LeadAction, 'lead.read' | 'lead.edit'>,
   ): Promise<void> {
+    if (actor.clientCustomerId !== undefined) {
+      if (operation !== 'read' || ownerType !== 'LEAD')
+        throw this.forbidden();
+      const lead = await reader.lead.findFirst({
+        where: {
+          id: ownerId,
+          departmentId: actor.departmentId,
+          customerId: actor.clientCustomerId,
+          status: 'WAITING_REVIEW',
+        },
+        select: { id: true },
+      });
+      if (lead === null) throw this.notFound();
+      return;
+    }
     if (ownerType === 'LEAD_DRAFT') {
       if (
         !(await this.accessControl.canAuthorizeNewLead(actor, snapshotReader))

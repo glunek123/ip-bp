@@ -5,11 +5,13 @@ import { DatabaseModule } from '../../database/database.module';
 import { MaterialModule } from '../materials';
 import { LeadController } from './lead.controller';
 import { LeadService } from './lead.service';
+import { ClientLeadController } from './client-lead.controller';
+import { ClientLeadService } from './client-lead.service';
 
 @Module({
   imports: [AccessControlModule, AuthModule, DatabaseModule, MaterialModule],
-  controllers: [LeadController],
-  providers: [LeadService],
-  exports: [LeadService],
+  controllers: [LeadController, ClientLeadController],
+  providers: [LeadService, ClientLeadService],
+  exports: [LeadService, ClientLeadService],
 })
 export class LeadModule {}
