@@ -276,162 +276,170 @@ async function submit(): Promise<void> {
 </script>
 
 <template>
-  <form class="form-panel lead-form" @submit.prevent="submit">
-    <div class="lead-form__grid">
-      <label>
-        <span>客户</span>
-        <select
-          name="customerId"
-          class="text-input"
-          :disabled="customerLocked"
-          v-model="customerId"
-          @change="onCustomerChanged"
-        >
-          <option value="">请选择</option>
-          <option
-            v-for="customer in context.customers"
-            :key="customer.id"
-            :value="customer.id"
+  <form class="demo-form lead-form" @submit.prevent="submit">
+    <section class="demo-card demo-card--pad" data-test="lead-facts-section">
+      <h2 class="form-section-title">线索基础</h2>
+      <div class="demo-form-grid">
+        <label>
+          <span>客户</span>
+          <select
+            v-model="customerId"
+            name="customerId"
+            class="text-input"
+            :disabled="customerLocked"
+            @change="onCustomerChanged"
           >
-            {{ customer.name }}
-          </option>
-        </select>
-        <small v-if="errors.customerId" class="field-error">{{
-          errors.customerId
-        }}</small>
-      </label>
-      <label>
-        <span>权利主体</span>
-        <select
-          name="rightsHolderId"
-          class="text-input"
-          :disabled="customerLocked"
-          v-model="rightsHolderId"
-          @change="errors.rightsHolderId = ''"
-        >
-          <option value="">请选择</option>
-          <option
-            v-for="holder in rightsHolders"
-            :key="holder.id"
-            :value="holder.id"
+            <option value="">请选择</option>
+            <option
+              v-for="customer in context.customers"
+              :key="customer.id"
+              :value="customer.id"
+            >
+              {{ customer.name }}
+            </option>
+          </select>
+          <small v-if="errors.customerId" class="field-error">{{
+            errors.customerId
+          }}</small>
+        </label>
+        <label>
+          <span>权利主体</span>
+          <select
+            v-model="rightsHolderId"
+            name="rightsHolderId"
+            class="text-input"
+            :disabled="customerLocked"
+            @change="errors.rightsHolderId = ''"
           >
-            {{ holder.name }}
-          </option>
-        </select>
-        <small v-if="errors.rightsHolderId" class="field-error">{{
-          errors.rightsHolderId
-        }}</small>
-      </label>
-      <label>
-        <span>案件类型</span>
-        <select name="caseType" class="text-input" v-model="caseType">
-          <option value="">请选择</option>
-          <option
-            v-for="option in context.dictionaries.caseTypes"
-            :key="option.value"
-            :value="option.value"
+            <option value="">请选择</option>
+            <option
+              v-for="holder in rightsHolders"
+              :key="holder.id"
+              :value="holder.id"
+            >
+              {{ holder.name }}
+            </option>
+          </select>
+          <small v-if="errors.rightsHolderId" class="field-error">{{
+            errors.rightsHolderId
+          }}</small>
+        </label>
+        <label>
+          <span>案件类型</span>
+          <select v-model="caseType" name="caseType" class="text-input">
+            <option value="">请选择</option>
+            <option
+              v-for="option in context.dictionaries.caseTypes"
+              :key="option.value"
+              :value="option.value"
+            >
+              {{ option.label }}
+            </option>
+          </select>
+          <small v-if="errors.caseType" class="field-error">{{
+            errors.caseType
+          }}</small>
+        </label>
+        <label>
+          <span>发现时间</span>
+          <input
+            v-model="foundAt"
+            name="foundAt"
+            class="text-input"
+            type="datetime-local"
+          />
+          <small v-if="errors.foundAt" class="field-error">{{
+            errors.foundAt
+          }}</small>
+        </label>
+        <label>
+          <span>来源</span>
+          <select
+            v-model="source"
+            name="source"
+            class="text-input"
+            @change="onSourceChanged"
           >
-            {{ option.label }}
-          </option>
-        </select>
-        <small v-if="errors.caseType" class="field-error">{{
-          errors.caseType
-        }}</small>
-      </label>
-      <label>
-        <span>发现时间</span>
-        <input
-          name="foundAt"
-          class="text-input"
-          type="datetime-local"
-          v-model="foundAt"
-        />
-        <small v-if="errors.foundAt" class="field-error">{{
-          errors.foundAt
-        }}</small>
-      </label>
-      <label>
-        <span>来源</span>
-        <select
-          name="source"
-          class="text-input"
-          v-model="source"
-          @change="onSourceChanged"
-        >
-          <option value="">请选择</option>
-          <option
-            v-for="option in context.dictionaries.sources"
-            :key="option.value"
-            :value="option.value"
-          >
-            {{ option.label }}
-          </option>
-        </select>
-        <small v-if="errors.source" class="field-error">{{
-          errors.source
-        }}</small>
-      </label>
-      <label>
-        <span>平台</span>
-        <select name="platform" class="text-input" v-model="platform">
-          <option value="">请选择</option>
-          <option
-            v-for="option in platforms"
-            :key="option.value"
-            :value="option.value"
-          >
-            {{ option.label }}
-          </option>
-        </select>
-        <small v-if="errors.platform" class="field-error">{{
-          errors.platform
-        }}</small>
-      </label>
-      <label>
-        <span>店铺名称</span>
-        <input
-          name="shopName"
-          class="text-input"
-          maxlength="200"
-          v-model="shopName"
-        />
-        <small v-if="errors.shopName" class="field-error">{{
-          errors.shopName
-        }}</small>
-      </label>
-      <label>
-        <span>店铺外部编号（可选）</span>
-        <input
-          name="shopExternalId"
-          class="text-input"
-          maxlength="100"
-          v-model="shopExternalId"
-        />
-      </label>
-    </div>
+            <option value="">请选择</option>
+            <option
+              v-for="option in context.dictionaries.sources"
+              :key="option.value"
+              :value="option.value"
+            >
+              {{ option.label }}
+            </option>
+          </select>
+          <small v-if="errors.source" class="field-error">{{
+            errors.source
+          }}</small>
+        </label>
+        <label>
+          <span>平台</span>
+          <select v-model="platform" name="platform" class="text-input">
+            <option value="">请选择</option>
+            <option
+              v-for="option in platforms"
+              :key="option.value"
+              :value="option.value"
+            >
+              {{ option.label }}
+            </option>
+          </select>
+          <small v-if="errors.platform" class="field-error">{{
+            errors.platform
+          }}</small>
+        </label>
+        <label>
+          <span>店铺名称</span>
+          <input
+            v-model="shopName"
+            name="shopName"
+            class="text-input"
+            maxlength="200"
+          />
+          <small v-if="errors.shopName" class="field-error">{{
+            errors.shopName
+          }}</small>
+        </label>
+        <label>
+          <span>店铺外部编号（可选）</span>
+          <input
+            v-model="shopExternalId"
+            name="shopExternalId"
+            class="text-input"
+            maxlength="100"
+          />
+        </label>
+      </div>
 
-    <fieldset class="form-section">
-      <legend>侵权类型</legend>
-      <label
-        v-for="option in context.dictionaries.infringementTypes"
-        :key="option.value"
-        class="check-option"
-      >
-        <input
-          name="infringementTypes"
-          type="checkbox"
-          :value="option.value"
-          v-model="infringementTypes"
-        />
-        {{ option.label }}
-      </label>
-      <p v-if="errors.infringementTypes" class="field-error">
-        {{ errors.infringementTypes }}
-      </p>
-    </fieldset>
+      <fieldset class="form-section lead-rights-fieldset">
+        <legend>侵权类型</legend>
+        <label
+          v-for="option in context.dictionaries.infringementTypes"
+          :key="option.value"
+          class="check-option"
+        >
+          <input
+            v-model="infringementTypes"
+            name="infringementTypes"
+            type="checkbox"
+            :value="option.value"
+          />
+          {{ option.label }}
+        </label>
+        <p v-if="errors.infringementTypes" class="field-error">
+          {{ errors.infringementTypes }}
+        </p>
+      </fieldset>
+    </section>
 
-    <fieldset class="form-section">
-      <legend>商品</legend>
+    <section class="demo-card demo-card--pad" data-test="products-section">
+      <div class="lead-form__section-head">
+        <h2 class="form-section-title">商品链接</h2>
+        <ElButton data-test="add-product" @click="addProduct"
+          >添加商品</ElButton
+        >
+      </div>
       <article
         v-for="(product, index) in products"
         :key="index"
@@ -448,13 +456,13 @@ async function submit(): Promise<void> {
             >移除</ElButton
           >
         </div>
-        <div class="lead-form__grid">
+        <div class="demo-form-grid product-fields">
           <label
             ><span>商品链接</span
             ><input
+              v-model="product.url"
               :name="`productUrl-${index}`"
               class="text-input"
-              v-model="product.url"
             /><small v-if="errors[`productUrl-${index}`]" class="field-error">{{
               errors[`productUrl-${index}`]
             }}</small></label
@@ -462,10 +470,10 @@ async function submit(): Promise<void> {
           <label
             ><span>商品标题</span
             ><input
+              v-model="product.title"
               :name="`productTitle-${index}`"
               class="text-input"
               maxlength="200"
-              v-model="product.title"
             /><small
               v-if="errors[`productTitle-${index}`]"
               class="field-error"
@@ -475,10 +483,10 @@ async function submit(): Promise<void> {
           <label
             ><span>数量</span
             ><input
+              v-model="product.quantity"
               :name="`quantity-${index}`"
               class="text-input"
               inputmode="numeric"
-              v-model="product.quantity"
             /><small v-if="errors[`quantity-${index}`]" class="field-error">{{
               errors[`quantity-${index}`]
             }}</small></label
@@ -486,10 +494,10 @@ async function submit(): Promise<void> {
           <label
             ><span>单价</span
             ><input
+              v-model="product.unitPrice"
               :name="`unitPrice-${index}`"
               class="text-input"
               inputmode="decimal"
-              v-model="product.unitPrice"
             /><small v-if="errors[`unitPrice-${index}`]" class="field-error">{{
               errors[`unitPrice-${index}`]
             }}</small></label
@@ -497,60 +505,65 @@ async function submit(): Promise<void> {
           <label
             ><span>评论数</span
             ><input
+              v-model="product.commentCount"
               :name="`commentCount-${index}`"
               class="text-input"
               inputmode="numeric"
-              v-model="product.commentCount"
             /><small
               v-if="errors[`commentCount-${index}`]"
               class="field-error"
               >{{ errors[`commentCount-${index}`] }}</small
             ></label
           >
-          <p class="estimate-preview" :data-test="`estimate-${index}`">
+          <p class="estimate-preview mono" :data-test="`estimate-${index}`">
             估算额 {{ estimate(product) }}
           </p>
         </div>
       </article>
-      <ElButton data-test="add-product" @click="addProduct">添加商品</ElButton>
-    </fieldset>
+    </section>
 
-    <label class="disclose-field"
-      ><input name="needDisclose" type="checkbox" v-model="needDisclose" />
-      需要披露</label
-    >
-    <label class="field-label field-label--spaced" for="lead-remark"
-      >备注</label
-    >
-    <textarea
-      id="lead-remark"
-      name="remark"
-      class="text-area"
-      maxlength="5000"
-      v-model="remark"
-    />
-
-    <fieldset v-if="allowScreenshots" class="form-section">
-      <legend>线索截图（可选）</legend>
-      <input
-        name="screenshots"
-        type="file"
-        multiple
-        accept="application/pdf,image/jpeg,image/png,image/webp"
-        @change="onFilesChanged"
+    <section class="demo-card demo-card--pad" data-test="screenshots-section">
+      <h2 class="form-section-title">附件与备注</h2>
+      <label class="disclose-field">
+        <input v-model="needDisclose" name="needDisclose" type="checkbox" />
+        需要披露
+      </label>
+      <label class="field-label field-label--spaced" for="lead-remark"
+        >备注</label
+      >
+      <textarea
+        id="lead-remark"
+        v-model="remark"
+        name="remark"
+        class="text-area"
+        maxlength="5000"
       />
-      <p class="field-help">最多 20 份，每份不超过 20MB。</p>
-      <p v-if="errors.screenshots" class="field-error">
-        {{ errors.screenshots }}
-      </p>
-      <ul v-if="screenshotFiles.length" class="file-name-list">
-        <li v-for="file in screenshotFiles" :key="file.name">
-          {{ file.name }}
-        </li>
-      </ul>
-    </fieldset>
 
-    <div class="form-actions">
+      <div v-if="allowScreenshots" class="lead-upload">
+        <label class="field-label" for="lead-screenshots"
+          >线索截图（可选）</label
+        >
+        <input
+          id="lead-screenshots"
+          name="screenshots"
+          type="file"
+          multiple
+          accept="application/pdf,image/jpeg,image/png,image/webp"
+          @change="onFilesChanged"
+        />
+        <p class="field-help">最多 20 份，每份不超过 20MB。</p>
+        <p v-if="errors.screenshots" class="field-error">
+          {{ errors.screenshots }}
+        </p>
+        <ul v-if="screenshotFiles.length" class="file-name-list">
+          <li v-for="file in screenshotFiles" :key="file.name">
+            {{ file.name }}
+          </li>
+        </ul>
+      </div>
+    </section>
+
+    <footer class="demo-form-actions">
       <slot name="cancel" />
       <ElButton
         native-type="submit"
@@ -559,6 +572,6 @@ async function submit(): Promise<void> {
         :disabled="submitting"
         >{{ submitLabel }}</ElButton
       >
-    </div>
+    </footer>
   </form>
 </template>

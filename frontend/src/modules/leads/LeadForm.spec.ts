@@ -54,6 +54,31 @@ describe('LeadForm', () => {
   afterEach(() => {
     document.body.innerHTML = '';
   });
+
+  it('groups formal fields without changing their control names', () => {
+    const wrapper = mount(LeadForm, { props: { context } });
+
+    expect(wrapper.get('form').classes()).toContain('demo-form');
+    expect(
+      wrapper
+        .get('[data-test="lead-facts-section"]')
+        .find('select[name="customerId"]')
+        .exists(),
+    ).toBe(true);
+    expect(
+      wrapper
+        .get('[data-test="products-section"]')
+        .find('input[name="productTitle-0"]')
+        .exists(),
+    ).toBe(true);
+    expect(
+      wrapper
+        .get('[data-test="screenshots-section"]')
+        .find('input[name="screenshots"]')
+        .exists(),
+    ).toBe(true);
+  });
+
   it('links admitted customers to only their rights holders and clears a hidden relation', async () => {
     const wrapper = mount(LeadForm, { props: { context } });
     await wrapper.get('select[name="customerId"]').setValue('customer-a');

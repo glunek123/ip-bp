@@ -96,7 +96,14 @@ onBeforeUnmount(() => request?.abort());
 <template>
   <div class="page-view page-view--narrow">
     <main>
-      <RouterLink class="back-link" to="/leads">← 返回线索列表</RouterLink>
+      <div class="page-head">
+        <div>
+          <span class="pill">待推送</span>
+          <h1>新建线索</h1>
+          <p>填写业务事实并保存，暂不执行推送。</p>
+        </div>
+        <RouterLink class="back-link" to="/leads">返回线索列表</RouterLink>
+      </div>
       <section v-if="state === 'loading'" class="state-panel ledger-panel">
         <h1>正在准备线索表单</h1>
       </section>
@@ -104,14 +111,7 @@ onBeforeUnmount(() => request?.abort());
         <h1>线索表单暂时无法加载</h1>
         <ElButton @click="load">重新加载</ElButton>
       </section>
-      <template v-else-if="context"
-        ><div class="section-heading section-heading--form">
-          <div>
-            <p class="section-kicker">待推送</p>
-            <h1>新建线索</h1>
-            <p>填写业务事实并保存，暂不执行推送。</p>
-          </div>
-        </div>
+      <template v-else-if="context">
         <p v-if="progress" class="operation-progress" aria-live="polite">
           {{ progress }}
         </p>
