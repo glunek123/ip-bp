@@ -196,6 +196,121 @@ describe('LeadService', () => {
     expect(fixture.tx.lead.create).not.toHaveBeenCalled();
   });
 
+  it('atomically pushes an authorized waiting lead and records an immutable result', async () => {
+    const fixture = createPushFixture();
+    const result = await fixture.service.push(
+      actor,
+      fixture.current.id,
+      'push-key',
+      { expectedVersion: 1 },
+    );
+
+    expect(fixture.access.authorizeLead).toHaveBeenCalledWith(
+      actor,
+      'lead.push',
+      {
+        departmentId: actor.departmentId,
+        responsibleUserId: actor.userId,
+      },
+      fixture.tx,
+    );
+    expect(fixture.tx.lead.updateMany).toHaveBeenCalledWith({
+      where: {
+        id: fixture.current.id,
+        departmentId: actor.departmentId,
+        version: 1,
+        status: 'WAITING_PUSH',
+      },
+      data: {
+        status: 'WAITING_REVIEW',
+        pushedAt: expect.any(Date),
+        pushedByUserId: actor.userId,
+        version: { increment: 1 },
+      },
+    });
+    expect(fixture.tx.auditEvent.create).toHaveBeenCalledWith({
+      data: expect.objectContaining({
+        action: 'lead.pushed',
+        details: { fromVersion: 1, toVersion: 2 },
+      }),
+    });
+    expect(fixture.tx.leadCommandReceipt.create).toHaveBeenCalledWith({
+      data: expect.objectContaining({
+        action: 'push',
+        idempotencyKey: 'push-key',
+        resultLeadVersion: 2,
+        resultSnapshot: expect.objectContaining({
+          status: 'WAITING_REVIEW',
+          pushedAt: expect.any(String),
+          pushedByUserId: actor.userId,
+        }),
+      }),
+    });
+    expect(result).toMatchObject({ status: 'WAITING_REVIEW', version: 2 });
+  });
+
+  it('replays the first push result and rejects the same key with a different version', async () => {
+    const fixture = createPushFixture();
+    const first = await fixture.service.push(
+      actor,
+      fixture.current.id,
+      'same-key',
+      { expectedVersion: 1 },
+    );
+    const receipt = fixture.tx.leadCommandReceipt.create.mock.calls[0]?.[0]?.data;
+    fixture.tx.leadCommandReceipt.findUnique.mockResolvedValue(receipt);
+    fixture.tx.lead.updateMany.mockClear();
+
+    await expect(
+      fixture.service.push(actor, fixture.current.id, 'same-key', {
+        expectedVersion: 1,
+      }),
+    ).resolves.toEqual(first);
+    await expect(
+      fixture.service.push(actor, fixture.current.id, 'same-key', {
+        expectedVersion: 2,
+      }),
+    ).rejects.toMatchObject({ response: { code: 'IDEMPOTENCY_CONFLICT' } });
+    expect(fixture.tx.lead.updateMany).not.toHaveBeenCalled();
+  });
+
+  it.each([
+    ['wrong state', { status: 'WAITING_REVIEW' }, 'INVALID_STATE'],
+    ['stale version', { version: 2 }, 'VERSION_CONFLICT'],
+    ['no products', { products: [] }, 'LEAD_PRODUCTS_REQUIRED'],
+    [
+      'customer no longer admitted',
+      { customer: { profileStatus: 'DRAFT', clientAccountBindings: [] } },
+      'CUSTOMER_NOT_ADMITTED',
+    ],
+    [
+      'no active client account',
+      { customer: { profileStatus: 'ADMITTED', clientAccountBindings: [] } },
+      'CLIENT_ACCOUNT_UNAVAILABLE',
+    ],
+  ])('rejects push when %s', async (_label, override, code) => {
+    const fixture = createPushFixture(override);
+    await expect(
+      fixture.service.push(actor, fixture.current.id, `key-${code}`, {
+        expectedVersion: 1,
+      }),
+    ).rejects.toMatchObject({ response: { code } });
+    expect(fixture.tx.lead.updateMany).not.toHaveBeenCalled();
+  });
+
+  it('rejects push without lead.push permission before mutation', async () => {
+    const fixture = createPushFixture();
+    (fixture.access.authorizeLead as jest.Mock).mockRejectedValue(
+      new ForbiddenException('denied'),
+    );
+    await expect(
+      fixture.service.push(actor, fixture.current.id, 'denied', {
+        expectedVersion: 1,
+      }),
+    ).rejects.toMatchObject({ response: { code: 'ACTION_FORBIDDEN' } });
+    expect(fixture.tx.lead.updateMany).not.toHaveBeenCalled();
+  });
+
   it('uses the database-returned Shanghai business date for sequence 999', async () => {
     const fixture = createCreateFixture();
     fixture.tx.$queryRawUnsafe.mockResolvedValue([
@@ -409,6 +524,7 @@ describe('LeadService', () => {
     const access = {
       buildLeadScope: jest.fn().mockResolvedValue(scope),
       canAuthorizeNewLead: jest.fn().mockResolvedValue(false),
+      authorizeLead: jest.fn().mockResolvedValue(undefined),
     } as unknown as AccessControlService;
     const listCurrentReferenceVersionIds = jest
       .fn()
@@ -465,6 +581,7 @@ describe('LeadService', () => {
               ? { departmentId: actor.departmentId }
               : { id: '__never__' },
           ),
+        authorizeLead: jest.fn().mockResolvedValue(undefined),
       } as unknown as AccessControlService;
       const service = new LeadService(database, access, {
         listCurrentReferenceVersionIds: jest.fn().mockResolvedValue([]),
@@ -1132,6 +1249,59 @@ function createUpdateFixture() {
     tx,
     current,
     materials,
+    access,
+  };
+}
+
+function createPushFixture(override: Record<string, unknown> = {}) {
+  const base = createCreateFixture().createdLead;
+  const current = {
+    ...base,
+    pushedAt: null,
+    pushedByUserId: null,
+    customer: {
+      profileStatus: 'ADMITTED',
+      clientAccountBindings: [{ user: { active: true }, active: true }],
+    },
+    ...override,
+  };
+  const pushedAt = new Date('2026-09-22T04:00:00.000Z');
+  const updated = {
+    ...current,
+    status: 'WAITING_REVIEW',
+    version: 2,
+    pushedAt,
+    pushedByUserId: actor.userId,
+  };
+  const tx = {
+    $queryRawUnsafe: jest.fn().mockResolvedValue([{ id: current.id }]),
+    leadCommandReceipt: {
+      findUnique: jest.fn().mockResolvedValue(null),
+      create: jest.fn().mockResolvedValue({}),
+    },
+    lead: {
+      findFirst: jest.fn().mockResolvedValue(current),
+      updateMany: jest.fn().mockResolvedValue({ count: 1 }),
+      findUnique: jest.fn().mockResolvedValue(updated),
+    },
+    auditEvent: { create: jest.fn().mockResolvedValue({ id: 'audit-push' }) },
+  };
+  const transaction = jest.fn(async (callback) => callback(tx));
+  const database = {
+    $transaction: transaction,
+    leadCommandReceipt: { findUnique: jest.fn().mockResolvedValue(null) },
+  } as unknown as DatabaseService;
+  const access = {
+    authorizeLead: jest.fn().mockResolvedValue(undefined),
+  } as unknown as AccessControlService;
+  const materials = {
+    listCurrentReferenceVersionIds: jest.fn().mockResolvedValue([]),
+  } as unknown as MaterialService;
+  return {
+    service: new LeadService(database, access, materials),
+    transaction,
+    tx,
+    current,
     access,
   };
 }

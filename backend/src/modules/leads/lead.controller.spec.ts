@@ -1,5 +1,10 @@
 import { BadRequestException, ValidationPipe } from '@nestjs/common';
-import { CreateLeadDto, LeadListQueryDto, UpdateLeadDto } from './lead.dto';
+import {
+  CreateLeadDto,
+  LeadListQueryDto,
+  PushLeadDto,
+  UpdateLeadDto,
+} from './lead.dto';
 import { LeadController } from './lead.controller';
 import { LeadService } from './lead.service';
 
@@ -25,6 +30,24 @@ describe('LeadController', () => {
       controller.create({ userId: 'u' } as never, ' key ', {} as never),
     ).resolves.toEqual({ id: 'lead' });
     expect(service.create).toHaveBeenCalledWith({ userId: 'u' }, 'key', {});
+  });
+
+  it('passes the push version and trimmed idempotency key to the service', async () => {
+    const service = {
+      push: jest.fn().mockResolvedValue({ status: 'WAITING_REVIEW' }),
+    } as unknown as LeadService;
+    const controller = new LeadController(service);
+    await expect(
+      controller.push({ userId: 'u' } as never, 'lead-1', ' push-key ', {
+        expectedVersion: 3,
+      }),
+    ).resolves.toEqual({ status: 'WAITING_REVIEW' });
+    expect(service.push).toHaveBeenCalledWith(
+      { userId: 'u' },
+      'lead-1',
+      'push-key',
+      { expectedVersion: 3 },
+    );
   });
 
   it('delegates the immutable-relation edit context', async () => {
@@ -65,6 +88,7 @@ describe('LeadController', () => {
         customerId: '33333333-3333-4333-8333-333333333333',
       },
     ],
+    [PushLeadDto, { expectedVersion: 1, status: 'WAITING_REVIEW' }],
     [
       UpdateLeadDto,
       {

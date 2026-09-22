@@ -26,7 +26,7 @@ import {
   SOURCE_OPTIONS,
   SOURCES,
 } from './lead.constants';
-import { CreateLeadCommand, UpdateLeadDto } from './lead.dto';
+import { CreateLeadCommand, PushLeadDto, UpdateLeadDto } from './lead.dto';
 
 const MAX_SERIALIZABLE_ATTEMPTS = 3;
 const leadInclude = {
@@ -68,6 +68,8 @@ type LeadResponse = {
   products: LeadProductResponse[];
   leadScreenshotContentVersionIds: string[];
   version: number;
+  pushedAt: string | null;
+  pushedByUserId: string | null;
   createdAt: string;
   updatedAt: string;
 };
@@ -94,6 +96,15 @@ type Receipt = {
   resultLeadId: string;
   resultLeadVersion: number;
   resultSnapshot: unknown;
+};
+
+type LeadPushResponse = {
+  id: string;
+  businessNo: string;
+  status: 'WAITING_REVIEW';
+  version: number;
+  pushedAt: string;
+  pushedByUserId: string;
 };
 
 @Injectable()
@@ -268,13 +279,14 @@ export class LeadService {
       include: leadInclude,
     });
     if (lead === null) throw this.notFound();
-    const [screenshotIds, edit] = await Promise.all([
+    const [screenshotIds, edit, push] = await Promise.all([
       this.currentScreenshotIds(actor, [lead.id]),
       this.canEdit(actor, lead),
+      this.canPush(actor, lead),
     ]);
     return {
       ...this.view(lead, screenshotIds.get(lead.id) ?? []),
-      capabilities: { edit },
+      capabilities: { edit, push },
     };
   }
 
@@ -626,6 +638,141 @@ export class LeadService {
     throw this.versionConflict();
   }
 
+  async push(
+    actor: ActorContext,
+    id: string,
+    idempotencyKey: string,
+    input: PushLeadDto,
+  ): Promise<LeadPushResponse> {
+    const fingerprint = this.fingerprint({ leadId: id, ...input });
+    for (let attempt = 1; attempt <= MAX_SERIALIZABLE_ATTEMPTS; attempt += 1) {
+      try {
+        return await this.database.$transaction(
+          async (transaction) => {
+            const locked = await transaction.$queryRawUnsafe<
+              Array<{ id: string }>
+            >(
+              'SELECT "id" FROM "leads" WHERE "id" = $1::uuid AND "department_id" = $2::uuid FOR UPDATE',
+              id,
+              actor.departmentId,
+            );
+            if (locked.length !== 1) throw this.notFound();
+            const current = await transaction.lead.findFirst({
+              where: { id, departmentId: actor.departmentId },
+              include: {
+                products: { orderBy: { position: 'asc' } },
+                infringements: { orderBy: { type: 'asc' } },
+                customer: {
+                  select: {
+                    profileStatus: true,
+                    clientAccountBindings: {
+                      where: { active: true, user: { active: true } },
+                      select: { id: true },
+                      take: 1,
+                    },
+                  },
+                },
+              },
+            });
+            if (current === null) throw this.notFound();
+            try {
+              await this.access.authorizeLead(
+                actor,
+                'lead.push',
+                {
+                  departmentId: current.departmentId,
+                  responsibleUserId: current.responsibleUserId,
+                  ...(current.teamId === null ? {} : { teamId: current.teamId }),
+                },
+                transaction,
+              );
+            } catch (error) {
+              throw this.mapAuthorization(error);
+            }
+            const receipt = await transaction.leadCommandReceipt.findUnique({
+              where: this.receiptWhere(actor, 'push', idempotencyKey),
+            });
+            if (receipt !== null)
+              return this.pushReceiptResult(actor, receipt, fingerprint, id);
+            if (current.status !== 'WAITING_PUSH') throw this.pushInvalidState();
+            if (current.version !== input.expectedVersion)
+              throw this.versionConflict();
+            if (current.customer.profileStatus !== 'ADMITTED')
+              throw this.customerNotAdmitted();
+            if (current.products.length === 0) throw this.productsRequired();
+            if (current.customer.clientAccountBindings.length === 0)
+              throw this.clientAccountUnavailable();
+            const pushedAt = new Date();
+            const changed = await transaction.lead.updateMany({
+              where: {
+                id,
+                departmentId: actor.departmentId,
+                version: input.expectedVersion,
+                status: 'WAITING_PUSH',
+              },
+              data: {
+                status: 'WAITING_REVIEW',
+                pushedAt,
+                pushedByUserId: actor.userId,
+                version: { increment: 1 },
+              },
+            });
+            if (changed.count !== 1) throw this.versionConflict();
+            await transaction.auditEvent.create({
+              data: {
+                departmentId: actor.departmentId,
+                actorUserId: actor.userId,
+                resourceType: 'lead',
+                resourceId: id,
+                action: 'lead.pushed',
+                details: {
+                  fromVersion: input.expectedVersion,
+                  toVersion: input.expectedVersion + 1,
+                },
+              },
+            });
+            const result: LeadPushResponse = {
+              id,
+              businessNo: current.businessNo,
+              status: 'WAITING_REVIEW',
+              version: input.expectedVersion + 1,
+              pushedAt: pushedAt.toISOString(),
+              pushedByUserId: actor.userId,
+            };
+            await transaction.leadCommandReceipt.create({
+              data: {
+                departmentId: actor.departmentId,
+                actorUserId: actor.userId,
+                action: 'push',
+                idempotencyKey,
+                requestFingerprint: fingerprint,
+                resultLeadId: id,
+                resultLeadVersion: result.version,
+                resultSnapshot: result,
+              },
+            });
+            return result;
+          },
+          { isolationLevel: 'Serializable' },
+        );
+      } catch (error) {
+        if (this.isSerializationConflict(error)) {
+          if (attempt < MAX_SERIALIZABLE_ATTEMPTS) continue;
+          throw this.versionConflict();
+        }
+        if (this.isUnique(error)) {
+          const receipt = await this.database.leadCommandReceipt.findUnique({
+            where: this.receiptWhere(actor, 'push', idempotencyKey),
+          });
+          if (receipt !== null)
+            return this.pushReceiptResult(actor, receipt, fingerprint, id);
+        }
+        throw this.mapAuthorization(error);
+      }
+    }
+    throw this.versionConflict();
+  }
+
   private async assertCustomerAndHolder(
     transaction: Prisma.TransactionClient,
     actor: ActorContext,
@@ -818,6 +965,8 @@ export class LeadService {
       })),
       leadScreenshotContentVersionIds: [...leadScreenshotContentVersionIds],
       version: record.version,
+      pushedAt: record.pushedAt?.toISOString() ?? null,
+      pushedByUserId: record.pushedByUserId ?? null,
       createdAt: record.createdAt.toISOString(),
       updatedAt: record.updatedAt.toISOString(),
     };
@@ -861,6 +1010,20 @@ export class LeadService {
       throw error;
     }
   }
+  private async canPush(actor: ActorContext, lead: LeadRecord) {
+    if (lead.status !== 'WAITING_PUSH') return false;
+    try {
+      await this.access.authorizeLead(actor, 'lead.push', {
+        departmentId: lead.departmentId,
+        responsibleUserId: lead.responsibleUserId,
+        ...(lead.teamId === null ? {} : { teamId: lead.teamId }),
+      });
+      return true;
+    } catch (error) {
+      if (error instanceof ForbiddenException) return false;
+      throw error;
+    }
+  }
   private responseSnapshot(response: LeadResponse): Prisma.InputJsonObject {
     return {
       id: response.id,
@@ -896,6 +1059,8 @@ export class LeadService {
         ...response.leadScreenshotContentVersionIds,
       ],
       version: response.version,
+      pushedAt: response.pushedAt,
+      pushedByUserId: response.pushedByUserId,
       createdAt: response.createdAt,
       updatedAt: response.updatedAt,
     };
@@ -945,6 +1110,10 @@ export class LeadService {
         (id) => typeof id === 'string',
       ) &&
       Number.isInteger(candidate.version) &&
+      (candidate.pushedAt === null ||
+        typeof candidate.pushedAt === 'string') &&
+      (candidate.pushedByUserId === null ||
+        typeof candidate.pushedByUserId === 'string') &&
       typeof candidate.createdAt === 'string' &&
       typeof candidate.updatedAt === 'string'
     );
@@ -992,6 +1161,35 @@ export class LeadService {
     )
       throw this.corruptReceipt();
     return snapshot;
+  }
+  private pushReceiptResult(
+    actor: ActorContext,
+    receipt: Receipt,
+    fingerprint: string,
+    leadId: string,
+  ): LeadPushResponse {
+    if (receipt.requestFingerprint !== fingerprint)
+      throw this.idempotencyConflict();
+    const snapshot = receipt.resultSnapshot;
+    if (
+      snapshot === null ||
+      typeof snapshot !== 'object' ||
+      Array.isArray(snapshot)
+    )
+      throw this.corruptReceipt();
+    const result = snapshot as Record<string, unknown>;
+    if (
+      result.id !== leadId ||
+      result.id !== receipt.resultLeadId ||
+      result.status !== 'WAITING_REVIEW' ||
+      result.version !== receipt.resultLeadVersion ||
+      typeof result.businessNo !== 'string' ||
+      typeof result.pushedAt !== 'string' ||
+      typeof result.pushedByUserId !== 'string' ||
+      result.pushedByUserId !== actor.userId
+    )
+      throw this.corruptReceipt();
+    return result as LeadPushResponse;
   }
   private changedFields(
     current: LeadRecord,
@@ -1120,6 +1318,30 @@ export class LeadService {
     return new ConflictException({
       code: 'INVALID_STATE',
       message: '仅待推送线索可以编辑',
+    });
+  }
+  private pushInvalidState() {
+    return new ConflictException({
+      code: 'INVALID_STATE',
+      message: '仅待推送线索可以推送',
+    });
+  }
+  private customerNotAdmitted() {
+    return new ConflictException({
+      code: 'CUSTOMER_NOT_ADMITTED',
+      message: '客户已不处于准入状态',
+    });
+  }
+  private productsRequired() {
+    return new ConflictException({
+      code: 'LEAD_PRODUCTS_REQUIRED',
+      message: '线索至少需要一项有效商品',
+    });
+  }
+  private clientAccountUnavailable() {
+    return new ConflictException({
+      code: 'CLIENT_ACCOUNT_UNAVAILABLE',
+      message: '客户没有可用的已绑定账号',
     });
   }
   private versionConflict() {

@@ -16,7 +16,12 @@ import { CurrentActor } from '../../access-control/actor-context.decorator';
 import { ActorContextGuard } from '../../access-control/actor-context.guard';
 import { ActorContext } from '../../access-control/actor-context';
 import { CsrfGuard } from '../../auth/csrf.guard';
-import { CreateLeadDto, LeadListQueryDto, UpdateLeadDto } from './lead.dto';
+import {
+  CreateLeadDto,
+  LeadListQueryDto,
+  PushLeadDto,
+  UpdateLeadDto,
+} from './lead.dto';
 import { LeadService } from './lead.service';
 
 @ApiTags('leads')
@@ -69,6 +74,22 @@ export class LeadController {
     @Body() input: UpdateLeadDto,
   ) {
     return this.leads.update(actor, id, input);
+  }
+
+  @Post(':id/push')
+  @ApiHeader({ name: 'Idempotency-Key', required: true })
+  push(
+    @CurrentActor() actor: ActorContext,
+    @Param('id', new ParseUUIDPipe()) id: string,
+    @Headers('idempotency-key') idempotencyKey: string | undefined,
+    @Body() input: PushLeadDto,
+  ) {
+    return this.leads.push(
+      actor,
+      id,
+      this.requireIdempotencyKey(idempotencyKey),
+      input,
+    );
   }
 
   private requireIdempotencyKey(value: string | undefined) {

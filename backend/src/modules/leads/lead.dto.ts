@@ -145,6 +145,10 @@ export class UpdateLeadDto extends LeadBusinessFieldsDto {
   @ApiProperty({ minimum: 1 }) @IsInt() @Min(1) expectedVersion!: number;
 }
 
+export class PushLeadDto {
+  @ApiProperty({ minimum: 1 }) @IsInt() @Min(1) expectedVersion!: number;
+}
+
 export class LeadListQueryDto {
   @ApiPropertyOptional({ minimum: 1, default: 1 })
   @Type(() => Number)
