@@ -17,6 +17,8 @@ describe('CORE-LD migrations', () => {
   const admissionSnapshotMigrationName =
     '20260921015000_add_admission_receipt_snapshot';
   const leadSnapshotMigrationName = '20260921016000_add_lead_receipt_snapshot';
+  const clientPushMigrationName =
+    '20260922010000_add_client_accounts_and_lead_push';
 
   function readMigration(name: string): string {
     return readFileSync(resolve(migrationRoot, name, 'migration.sql'), 'utf8');
@@ -134,5 +136,28 @@ describe('CORE-LD migrations', () => {
     expect(schemaSql).toMatch(
       /"profile_status" <> 'ADMITTED'\s+OR \(\s+"customer_type" IS NOT NULL\s+AND "identity_type" IS NOT NULL\s+AND "customer_type" IN/,
     );
+  });
+
+  it('adds enterprise client identity isolation and paired push facts in one forward migration', () => {
+    expect(migrations.at(-1)).toBe(clientPushMigrationName);
+    const sql = readMigration(clientPushMigrationName);
+
+    expect(sql).toContain("ADD VALUE 'lead.push'");
+    expect(sql).toContain("ADD VALUE 'client.lead.read'");
+    expect(sql).toContain('CREATE TYPE "user_account_type"');
+    expect(sql).toContain('CREATE TABLE "customer_account_bindings"');
+    expect(sql).toContain('"user_id" UUID NOT NULL');
+    expect(sql).toContain('"customer_id" UUID NOT NULL');
+    expect(sql).toContain('"department_id" UUID NOT NULL');
+    expect(sql).toContain('customer_account_bindings_user_id_key');
+    expect(sql).toContain('customer_account_bindings_customer_department_fkey');
+    expect(sql).toContain('reject_client_internal_membership');
+    expect(sql).toContain('reject_internal_client_binding');
+    expect(sql).toContain('"pushed_at" TIMESTAMPTZ(3)');
+    expect(sql).toContain('"pushed_by_user_id" UUID');
+    expect(sql).toContain('leads_push_fields_paired_check');
+    expect(sql).toContain('bootstrap_roles_to_upgrade');
+    expect(sql).toContain('authorization_revision');
+    expect(sql).not.toMatch(/DROP TABLE|DROP COLUMN/);
   });
 });

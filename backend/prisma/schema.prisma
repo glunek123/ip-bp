@@ -16,6 +16,8 @@ enum PermissionAction {
   LEAD_READ             @map("lead.read")
   LEAD_CREATE           @map("lead.create")
   LEAD_EDIT             @map("lead.edit")
+  LEAD_PUSH             @map("lead.push")
+  CLIENT_LEAD_READ      @map("client.lead.read")
   USER_READ             @map("user.read")
   USER_MANAGE           @map("user.manage")
   TEAM_READ             @map("team.read")
@@ -25,6 +27,13 @@ enum PermissionAction {
   ROLE_MANAGE           @map("role.manage")
 
   @@map("permission_action")
+}
+
+enum UserAccountType {
+  INTERNAL
+  CLIENT
+
+  @@map("user_account_type")
 }
 
 enum PermissionScope {
@@ -187,6 +196,7 @@ model Department {
   customerAdmissionReceipts   CustomerAdmissionReceipt[]
   leads                       Lead[]
   leadCommandReceipts         LeadCommandReceipt[]
+  clientAccountBindings       CustomerAccountBinding[]
   createdAt                   DateTime                     @default(now()) @map("created_at") @db.Timestamptz(3)
   updatedAt                   DateTime                     @updatedAt @map("updated_at") @db.Timestamptz(3)
 
@@ -216,12 +226,15 @@ model UserAccount {
   externalSubject       String                 @unique @map("external_subject")
   displayName           String                 @map("display_name")
   active                Boolean                @default(true)
+  accountType           UserAccountType        @default(INTERNAL) @map("account_type")
   authorizationRevision Int                    @default(1) @map("authorization_revision")
   localCredential       LocalCredential?
   authSessions          AuthSession[]
   memberships           DepartmentMembership[]
   roleAssignments       RoleAssignment[]
   uploadedContent       ContentVersion[]
+  clientBinding         CustomerAccountBinding?
+  pushedLeads           Lead[]                 @relation("LeadPushedBy")
   createdAt             DateTime               @default(now()) @map("created_at") @db.Timestamptz(3)
   updatedAt             DateTime               @updatedAt @map("updated_at") @db.Timestamptz(3)
 
@@ -377,6 +390,7 @@ model Customer {
   rightsHolderReceipts     RightsHolderCommandReceipt[] @relation("RightsHolderReceiptCustomer")
   admissionReceipts        CustomerAdmissionReceipt[]
   leads                    Lead[]
+  clientAccountBindings    CustomerAccountBinding[]
   createdAt                DateTime                     @default(now()) @map("created_at") @db.Timestamptz(3)
   updatedAt                DateTime                     @updatedAt @map("updated_at") @db.Timestamptz(3)
 
@@ -387,6 +401,23 @@ model Customer {
   @@index([responsibleUserId])
   @@index([teamId])
   @@map("customers")
+}
+
+model CustomerAccountBinding {
+  id           String      @id @default(uuid()) @db.Uuid
+  userId       String      @unique @map("user_id") @db.Uuid
+  customerId   String      @map("customer_id") @db.Uuid
+  departmentId String      @map("department_id") @db.Uuid
+  active       Boolean     @default(true)
+  version      Int         @default(1)
+  user         UserAccount @relation(fields: [userId], references: [id], onDelete: Restrict)
+  customer     Customer    @relation(fields: [customerId, departmentId], references: [id, departmentId], onDelete: Restrict, map: "customer_account_bindings_customer_department_fkey")
+  department   Department  @relation(fields: [departmentId], references: [id], onDelete: Restrict)
+  createdAt    DateTime    @default(now()) @map("created_at") @db.Timestamptz(3)
+  updatedAt    DateTime    @updatedAt @map("updated_at") @db.Timestamptz(3)
+
+  @@index([customerId, departmentId, active])
+  @@map("customer_account_bindings")
 }
 
 model RightsHolder {
@@ -582,11 +613,14 @@ model Lead {
   creationChannel       LeadCreationChannel  @default(MANUAL) @map("creation_channel")
   externalSourceRef     String?              @map("external_source_ref") @db.VarChar(100)
   version               Int                  @default(1)
+  pushedAt              DateTime?            @map("pushed_at") @db.Timestamptz(3)
+  pushedByUserId        String?              @map("pushed_by_user_id") @db.Uuid
   department            Department           @relation(fields: [departmentId], references: [id], onDelete: Restrict)
   customer              Customer             @relation(fields: [customerId, departmentId], references: [id, departmentId], onDelete: Restrict, map: "leads_customer_department_fkey")
   rightsHolder          RightsHolder         @relation(fields: [rightsHolderId, departmentId], references: [id, departmentId], onDelete: Restrict, map: "leads_rights_holder_department_fkey")
   responsibleMembership DepartmentMembership @relation("LeadResponsibleMembership", fields: [responsibleUserId, departmentId], references: [userId, departmentId], onDelete: Restrict, map: "leads_responsible_department_fkey")
   team                  Team?                @relation(fields: [teamId, departmentId], references: [id, departmentId], onDelete: Restrict, onUpdate: Restrict, map: "leads_team_department_fkey")
+  pushedBy              UserAccount?         @relation("LeadPushedBy", fields: [pushedByUserId], references: [id], onDelete: Restrict)
   products              LeadProduct[]
   infringements         LeadInfringement[]
   commandReceipts       LeadCommandReceipt[]
