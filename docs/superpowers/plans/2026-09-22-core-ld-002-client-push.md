@@ -25,6 +25,7 @@
 **Files:**
 
 - Modify: `backend/prisma/schema.prisma`
+- Create: `backend/prisma/migrations/20260922009000_add_client_identity_actions/migration.sql`
 - Create: `backend/prisma/migrations/20260922010000_add_client_accounts_and_lead_push/migration.sql`
 - Modify: `backend/src/modules/leads/core-ld-migration.spec.ts`
 
@@ -32,6 +33,7 @@
 
 - Produces: `UserAccountType`, `CustomerAccountBinding`, `Lead.pushedAt`, `Lead.pushedByUserId`, `PermissionAction.LEAD_PUSH`, `PermissionAction.CLIENT_LEAD_READ`.
 - Database invariant: a `CLIENT` account has one client binding and no internal membership/assignment; lead push fields are both null or both non-null.
+- Migration invariant: enum/type additions are retry-safe and committed before the transactional schema phase, so a failed schema phase leaves no partially installed tables, columns, triggers, grants or revision bumps.
 
 - [ ] **Step 1: Add failing migration assertions**
 

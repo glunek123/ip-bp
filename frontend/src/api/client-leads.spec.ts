@@ -57,7 +57,23 @@ describe('client lead API', () => {
     expect(http.getJson).toHaveBeenLastCalledWith('/client/leads/lead%2F1', {});
   });
 
-  it('rejects internal fields, invalid push facts and malformed products', async () => {
+  it('rejects extra internal fields, invalid push facts and malformed products', async () => {
+    http.getJson.mockResolvedValue({ ...lead, departmentId: 'internal' });
+    await expect(getClientLead('lead-1')).rejects.toMatchObject({
+      code: 'INVALID_RESPONSE',
+    });
+
+    http.getJson.mockResolvedValue({
+      items: [lead],
+      total: 1,
+      page: 1,
+      pageSize: 20,
+      internalCount: 1,
+    });
+    await expect(listClientLeads()).rejects.toMatchObject({
+      code: 'INVALID_RESPONSE',
+    });
+
     http.getJson.mockResolvedValue({ ...lead, pushedAt: null });
     await expect(getClientLead('lead-1')).rejects.toMatchObject({
       code: 'INVALID_RESPONSE',
@@ -66,6 +82,14 @@ describe('client lead API', () => {
     http.getJson.mockResolvedValue({
       ...lead,
       products: [{ ...lead.products[0], position: 2 }],
+    });
+    await expect(getClientLead('lead-1')).rejects.toMatchObject({
+      code: 'INVALID_RESPONSE',
+    });
+
+    http.getJson.mockResolvedValue({
+      ...lead,
+      products: [{ ...lead.products[0], internalCost: '1.00' }],
     });
     await expect(getClientLead('lead-1')).rejects.toMatchObject({
       code: 'INVALID_RESPONSE',

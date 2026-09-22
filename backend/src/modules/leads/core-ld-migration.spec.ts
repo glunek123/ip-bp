@@ -17,6 +17,8 @@ describe('CORE-LD migrations', () => {
   const admissionSnapshotMigrationName =
     '20260921015000_add_admission_receipt_snapshot';
   const leadSnapshotMigrationName = '20260921016000_add_lead_receipt_snapshot';
+  const clientIdentityActionMigrationName =
+    '20260922009000_add_client_identity_actions';
   const clientPushMigrationName =
     '20260922010000_add_client_accounts_and_lead_push';
 
@@ -138,13 +140,27 @@ describe('CORE-LD migrations', () => {
     );
   });
 
-  it('adds enterprise client identity isolation and paired push facts in one forward migration', () => {
+  it('adds client actions in a retry-safe phase before the transactional schema migration', () => {
+    expect(migrations.slice(-2)).toEqual([
+      clientIdentityActionMigrationName,
+      clientPushMigrationName,
+    ]);
+    const actionSql = readMigration(clientIdentityActionMigrationName);
+    const schemaSql = readMigration(clientPushMigrationName);
+
+    expect(actionSql).toContain("ADD VALUE IF NOT EXISTS 'lead.push'");
+    expect(actionSql).toContain("ADD VALUE IF NOT EXISTS 'client.lead.read'");
+    expect(actionSql).toContain("type.typname = 'user_account_type'");
+    expect(actionSql).toContain("ARRAY['INTERNAL', 'CLIENT']::TEXT[]");
+    expect(actionSql).toContain('existing user_account_type is incompatible');
+    expect(schemaSql.trim().startsWith('BEGIN;')).toBe(true);
+    expect(schemaSql.trim().endsWith('COMMIT;')).toBe(true);
+  });
+
+  it('adds enterprise client identity isolation and paired push facts transactionally', () => {
     expect(migrations.at(-1)).toBe(clientPushMigrationName);
     const sql = readMigration(clientPushMigrationName);
 
-    expect(sql).toContain("ADD VALUE 'lead.push'");
-    expect(sql).toContain("ADD VALUE 'client.lead.read'");
-    expect(sql).toContain('CREATE TYPE "user_account_type"');
     expect(sql).toContain('CREATE TABLE "customer_account_bindings"');
     expect(sql).toContain('"user_id" UUID NOT NULL');
     expect(sql).toContain('"customer_id" UUID NOT NULL');
@@ -153,6 +169,8 @@ describe('CORE-LD migrations', () => {
     expect(sql).toContain('customer_account_bindings_customer_department_fkey');
     expect(sql).toContain('reject_client_internal_membership');
     expect(sql).toContain('reject_internal_client_binding');
+    expect(sql).toContain('assert_client_account_binding_cardinality');
+    expect(sql).toContain('DEFERRABLE INITIALLY DEFERRED');
     expect(sql).toContain('"pushed_at" TIMESTAMPTZ(3)');
     expect(sql).toContain('"pushed_by_user_id" UUID');
     expect(sql).toContain('leads_push_fields_paired_check');

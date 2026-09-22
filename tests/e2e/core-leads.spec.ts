@@ -1163,6 +1163,23 @@ test('core lead migrations preserve legacy facts and roll back failed phases', a
     grantCounts: { bootstrap: 4, shared: 0, incomplete: 0 },
     pushGrantCounts: { bootstrap: 1, shared: 0, incomplete: 0 },
     revisions: { bootstrap: 3, shared: 1, incomplete: 1 },
+    identityIsolation: {
+      unboundClientCode: '23514',
+      clientMembershipCode: '23514',
+      clientRoleCode: '23514',
+      internalBindingCode: '23514',
+      lastBindingDeleteCode: '23514',
+      pushedAtOnlyCode: '23514',
+      pushedByOnlyCode: '23514',
+    },
+  });
+  expect(result.clientActionRecovery).toEqual({
+    pushActionCount: 2,
+    accountTypeExists: true,
+  });
+  expect(result.clientSchemaFailure).toEqual({
+    code: '42P07',
+    addedColumns: 0,
   });
   expect(result.schemaFailure).toEqual({
     code: '42P07',

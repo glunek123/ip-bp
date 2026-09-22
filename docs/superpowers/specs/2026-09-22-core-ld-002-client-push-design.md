@@ -16,12 +16,12 @@
 
 - `UserAccount.accountType` 新增 `INTERNAL | CLIENT`，历史账号前向迁移为 `INTERNAL`。
 - 新增 `CustomerAccountBinding`：稳定 UUID、`userId` 唯一、`customerId + departmentId` 组合外键、`active`、`version` 和时间戳。一个客户可绑定多个账号，一个客户账号只锚定一个企业。
-- 数据库触发器阻止 `CLIENT` 账号拥有 `DepartmentMembership` 或 `RoleAssignment`，也阻止 `INTERNAL` 账号建立客户绑定；服务层同时校验，避免只靠应用约定维持身份隔离。
+- 数据库触发器阻止 `CLIENT` 账号拥有 `DepartmentMembership` 或 `RoleAssignment`，也阻止 `INTERNAL` 账号建立客户绑定；事务末延迟约束进一步保证每个已提交的 `CLIENT` 账号恰有一条企业绑定。服务层同时校验，避免只靠应用约定维持身份隔离。
 - `AuthSession.departmentId` 继续保存会话所属数据分区：内部账号取登录部门，客户账号取绑定客户的部门。会话视图新增 `principalType`，内部返回部门信息，客户返回企业信息；客户页面不展示内部部门。
 - `ActorContext` 增加只由服务端真实会话解析得到的 `clientCustomerId`。内部服务仍必须通过成员关系和角色授权；客户 Query 必须要求该字段且重新读取当前有效绑定。停用账号或绑定后，下一请求立即失效并撤销已有会话。
 - `Lead` 新增 `pushedAt`、`pushedByUserId`，两者必须同时为空或同时非空；仅推送 Command 写入。
 - `PermissionAction` 新增 `lead.push` 和 `client.lead.read`。`lead.push` 进入内部角色 Grant 目录并支持现有三种内部范围；`client.lead.read` 不进入可分配内部角色目录，由有效客户绑定固定承载，避免把外部企业范围误配成内部组织范围。
-- 新增前向迁移；只对满足现有“单一 bootstrap 管理角色”安全识别条件的角色补 `lead.push@DEPARTMENT`，不向任意自定义角色扩大授权。
+- 新增分阶段前向迁移：可重放的枚举／类型阶段先提交，结构、约束和安全回填阶段保持单事务；只对满足现有“单一 bootstrap 管理角色”安全识别条件的角色补 `lead.push@DEPARTMENT`，不向任意自定义角色扩大授权。
 
 ## 管理入口
 

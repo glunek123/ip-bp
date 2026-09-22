@@ -257,7 +257,8 @@ describe('LeadService', () => {
       'same-key',
       { expectedVersion: 1 },
     );
-    const receipt = fixture.tx.leadCommandReceipt.create.mock.calls[0]?.[0]?.data;
+    const receipt =
+      fixture.tx.leadCommandReceipt.create.mock.calls[0]?.[0]?.data;
     fixture.tx.leadCommandReceipt.findUnique.mockResolvedValue(receipt);
     fixture.tx.lead.updateMany.mockClear();
 

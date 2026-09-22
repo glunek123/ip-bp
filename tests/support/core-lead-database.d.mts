@@ -109,6 +109,23 @@ export function verifyCoreLeadMigration(): Promise<{
     grantCounts: Record<string, number>;
     pushGrantCounts: Record<string, number>;
     revisions: Record<string, number>;
+    identityIsolation: {
+      unboundClientCode: string | null;
+      clientMembershipCode: string | null;
+      clientRoleCode: string | null;
+      internalBindingCode: string | null;
+      lastBindingDeleteCode: string | null;
+      pushedAtOnlyCode: string | null;
+      pushedByOnlyCode: string | null;
+    };
+  };
+  clientActionRecovery: {
+    pushActionCount: number;
+    accountTypeExists: boolean;
+  };
+  clientSchemaFailure: {
+    code: string | null;
+    addedColumns: number;
   };
   schemaFailure: {
     code: string | null;

@@ -11,7 +11,12 @@ import {
   Query,
   UseGuards,
 } from '@nestjs/common';
-import { ApiBearerAuth, ApiHeader, ApiTags } from '@nestjs/swagger';
+import {
+  ApiBearerAuth,
+  ApiCreatedResponse,
+  ApiHeader,
+  ApiTags,
+} from '@nestjs/swagger';
 import { CurrentActor } from '../../access-control/actor-context.decorator';
 import { ActorContextGuard } from '../../access-control/actor-context.guard';
 import { ActorContext } from '../../access-control/actor-context';
@@ -23,6 +28,7 @@ import {
   UpdateLeadDto,
 } from './lead.dto';
 import { LeadService } from './lead.service';
+import { LeadPushResponseDto } from './lead-push-response.dto';
 
 @ApiTags('leads')
 @ApiBearerAuth()
@@ -78,6 +84,7 @@ export class LeadController {
 
   @Post(':id/push')
   @ApiHeader({ name: 'Idempotency-Key', required: true })
+  @ApiCreatedResponse({ type: LeadPushResponseDto })
   push(
     @CurrentActor() actor: ActorContext,
     @Param('id', new ParseUUIDPipe()) id: string,

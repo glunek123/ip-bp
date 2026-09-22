@@ -173,8 +173,7 @@ export class AuthService {
                   id: binding.customer.id,
                   name: binding.customer.name,
                 },
-                authorizationRevision:
-                  credential.user.authorizationRevision,
+                authorizationRevision: credential.user.authorizationRevision,
                 expiresAt: expiresAt.toISOString(),
                 csrfToken,
               },

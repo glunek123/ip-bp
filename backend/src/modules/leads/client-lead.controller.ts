@@ -6,13 +6,17 @@ import {
   Query,
   UseGuards,
 } from '@nestjs/common';
-import { ApiBearerAuth, ApiTags } from '@nestjs/swagger';
+import { ApiBearerAuth, ApiOkResponse, ApiTags } from '@nestjs/swagger';
 import { CurrentActor } from '../../access-control/actor-context.decorator';
 import { ActorContextGuard } from '../../access-control/actor-context.guard';
 import { ActorContext } from '../../access-control/actor-context';
 import { CsrfGuard } from '../../auth/csrf.guard';
 import { LeadListQueryDto } from './lead.dto';
 import { ClientLeadService } from './client-lead.service';
+import {
+  ClientLeadListResponseDto,
+  ClientLeadResponseDto,
+} from './client-lead-response.dto';
 
 @ApiTags('client-leads')
 @ApiBearerAuth()
@@ -22,14 +26,13 @@ export class ClientLeadController {
   constructor(private readonly leads: ClientLeadService) {}
 
   @Get()
-  list(
-    @CurrentActor() actor: ActorContext,
-    @Query() query: LeadListQueryDto,
-  ) {
+  @ApiOkResponse({ type: ClientLeadListResponseDto })
+  list(@CurrentActor() actor: ActorContext, @Query() query: LeadListQueryDto) {
     return this.leads.list(actor, query.page, query.pageSize);
   }
 
   @Get(':id')
+  @ApiOkResponse({ type: ClientLeadResponseDto })
   get(
     @CurrentActor() actor: ActorContext,
     @Param('id', new ParseUUIDPipe()) id: string,

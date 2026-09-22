@@ -39,6 +39,47 @@ function isRecord(value: unknown): value is Record<string, unknown> {
   return typeof value === 'object' && value !== null && !Array.isArray(value);
 }
 
+function hasExactKeys(
+  value: Record<string, unknown>,
+  expected: readonly string[],
+): boolean {
+  const actual = Object.keys(value);
+  return (
+    actual.length === expected.length &&
+    actual.every((key) => expected.includes(key))
+  );
+}
+
+const productKeys = [
+  'id',
+  'position',
+  'url',
+  'title',
+  'quantity',
+  'unitPrice',
+  'commentCount',
+  'estimatedAmount',
+] as const;
+
+const clientLeadKeys = [
+  'id',
+  'businessNo',
+  'status',
+  'caseType',
+  'infringementTypes',
+  'source',
+  'platform',
+  'foundAt',
+  'shopName',
+  'shopExternalId',
+  'rightsHolderName',
+  'products',
+  'leadScreenshotContentVersionIds',
+  'pushedAt',
+] as const;
+
+const clientLeadListKeys = ['items', 'total', 'page', 'pageSize'] as const;
+
 function isDateTime(value: unknown): value is string {
   return typeof value === 'string' && !Number.isNaN(Date.parse(value));
 }
@@ -56,6 +97,7 @@ function isMoney(value: unknown): value is string {
 function isProduct(value: unknown, index: number): value is ClientLeadProduct {
   return (
     isRecord(value) &&
+    hasExactKeys(value, productKeys) &&
     typeof value.id === 'string' &&
     value.position === index + 1 &&
     isNullableString(value.url) &&
@@ -72,6 +114,7 @@ function isProduct(value: unknown, index: number): value is ClientLeadProduct {
 function isClientLead(value: unknown): value is ClientLead {
   if (!isRecord(value)) return false;
   return (
+    hasExactKeys(value, clientLeadKeys) &&
     typeof value.id === 'string' &&
     typeof value.businessNo === 'string' &&
     value.status === 'WAITING_REVIEW' &&
@@ -114,6 +157,7 @@ export async function listClientLeads(
   const value = await getJson(`/client/leads?${query.toString()}`, options);
   if (
     !isRecord(value) ||
+    !hasExactKeys(value, clientLeadListKeys) ||
     !Array.isArray(value.items) ||
     !value.items.every(isClientLead) ||
     !Number.isInteger(value.total) ||

@@ -17,18 +17,16 @@ beforeEach(() => {
 describe('CustomerAccountPanel', () => {
   it('creates and reloads a real enterprise-bound credential', async () => {
     api.createClientAccount.mockResolvedValue({ id: 'user-1' });
-    api.listClientAccounts
-      .mockResolvedValueOnce([])
-      .mockResolvedValueOnce([
-        {
-          id: 'user-1',
-          displayName: '客户审核人',
-          username: 'client.a',
-          accountActive: true,
-          bindingActive: true,
-          bindingVersion: 1,
-        },
-      ]);
+    api.listClientAccounts.mockResolvedValueOnce([]).mockResolvedValueOnce([
+      {
+        id: 'user-1',
+        displayName: '客户审核人',
+        username: 'client.a',
+        accountActive: true,
+        bindingActive: true,
+        bindingVersion: 1,
+      },
+    ]);
     const wrapper = mount(CustomerAccountPanel, {
       props: { customerId: 'customer-1', admitted: true },
     });

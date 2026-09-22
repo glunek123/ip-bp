@@ -127,7 +127,11 @@ onMounted(() => void load());
       <div class="inline-form-grid">
         <label>
           <span>姓名</span>
-          <input v-model="displayName" name="clientDisplayName" class="text-input" />
+          <input
+            v-model="displayName"
+            name="clientDisplayName"
+            class="text-input"
+          />
         </label>
         <label>
           <span>用户名</span>

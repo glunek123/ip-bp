@@ -283,20 +283,25 @@ async function clearDatabase() {
   await database.customerRightsHolderLink.deleteMany({
     where: { departmentId: { in: departmentIds } },
   });
-  await database.customerAccountBinding.deleteMany({
-    where: { departmentId: { in: departmentIds } },
+  await database.authSession.deleteMany({
+    where: { userId: { in: allUserIds } },
+  });
+  await database.localCredential.deleteMany({
+    where: { userId: { in: allUserIds } },
+  });
+  await database.$transaction(async (transaction) => {
+    await transaction.customerAccountBinding.deleteMany({
+      where: { departmentId: { in: departmentIds } },
+    });
+    await transaction.userAccount.deleteMany({
+      where: { id: { in: clientBindings.map(({ userId }) => userId) } },
+    });
   });
   await database.rightsHolder.deleteMany({
     where: { departmentId: { in: departmentIds } },
   });
   await database.customer.deleteMany({
     where: { departmentId: { in: departmentIds } },
-  });
-  await database.authSession.deleteMany({
-    where: { userId: { in: allUserIds } },
-  });
-  await database.localCredential.deleteMany({
-    where: { userId: { in: allUserIds } },
   });
   await database.roleAssignment.deleteMany({
     where: { departmentId: { in: departmentIds } },
@@ -321,7 +326,7 @@ async function clearDatabase() {
   await database.team.deleteMany({
     where: { departmentId: { in: departmentIds } },
   });
-  await database.userAccount.deleteMany({ where: { id: { in: allUserIds } } });
+  await database.userAccount.deleteMany({ where: { id: { in: userIds } } });
   await database.department.deleteMany({
     where: { id: { in: departmentIds } },
   });
@@ -805,6 +810,8 @@ export async function verifyCoreLeadMigration() {
   const actionTarget = '20260921010000_add_core_ld_actions';
   const schemaTarget = '20260921011000_add_core_ld_schema';
   const backfillTarget = '20260921012000_backfill_core_ld_bootstrap_grants';
+  const clientActionTarget = '20260922009000_add_client_identity_actions';
+  const clientSchemaTarget = '20260922010000_add_client_accounts_and_lead_push';
   const migrations = (await readdir(migrationRoot))
     .filter((name) => /^\d{14}_/u.test(name))
     .sort();
@@ -816,6 +823,8 @@ export async function verifyCoreLeadMigration() {
     upgrade: `core_ld_upgrade_${probe}`,
     schemaFailure: `core_ld_schema_failure_${probe}`,
     backfillFailure: `core_ld_backfill_failure_${probe}`,
+    clientActionRecovery: `core_ld_client_action_recovery_${probe}`,
+    clientSchemaFailure: `core_ld_client_schema_failure_${probe}`,
   };
   const client = new Client({ connectionString: databaseUrl });
 
@@ -1081,6 +1090,159 @@ export async function verifyCoreLeadMigration() {
       );
     }
 
+    const clientUserId = randomUUID();
+    const clientBindingId = randomUUID();
+    await client.query('BEGIN');
+    await client.query(
+      `INSERT INTO user_accounts(
+         id,external_subject,display_name,account_type,updated_at
+       ) VALUES ($1,$2,$3,'CLIENT',NOW())`,
+      [clientUserId, `local:${clientUserId}`, '迁移客户账号'],
+    );
+    await client.query(
+      `INSERT INTO customer_account_bindings(
+         id,user_id,customer_id,department_id,updated_at
+       ) VALUES ($1,$2,$3,$4,NOW())`,
+      [
+        clientBindingId,
+        clientUserId,
+        upgradeIds.knownCustomer,
+        upgradeIds.bootstrapDepartment,
+      ],
+    );
+    await client.query('COMMIT');
+
+    async function rejectedCode(sql, params = []) {
+      try {
+        await client.query(sql, params);
+        return null;
+      } catch (error) {
+        await client.query('ROLLBACK').catch(() => undefined);
+        return error.code ?? null;
+      }
+    }
+
+    const unboundClientCode = await rejectedCode(
+      `INSERT INTO user_accounts(
+         id,external_subject,display_name,account_type,updated_at
+       ) VALUES ($1,$2,$3,'CLIENT',NOW())`,
+      [randomUUID(), `local:${randomUUID()}`, '无绑定客户账号'],
+    );
+    const clientMembershipCode = await rejectedCode(
+      `INSERT INTO department_memberships(
+         id,user_id,department_id,updated_at
+       ) VALUES ($1,$2,$3,NOW())`,
+      [randomUUID(), clientUserId, upgradeIds.bootstrapDepartment],
+    );
+    const clientRoleCode = await rejectedCode(
+      `INSERT INTO role_assignments(
+         id,user_id,department_id,role_template_id,updated_at
+       ) VALUES ($1,$2,$3,$4,NOW())`,
+      [
+        randomUUID(),
+        clientUserId,
+        upgradeIds.bootstrapDepartment,
+        upgradeIds.bootstrapRole,
+      ],
+    );
+    const internalBindingCode = await rejectedCode(
+      `INSERT INTO customer_account_bindings(
+         id,user_id,customer_id,department_id,updated_at
+       ) VALUES ($1,$2,$3,$4,NOW())`,
+      [
+        randomUUID(),
+        upgradeIds.bootstrapUser,
+        upgradeIds.knownCustomer,
+        upgradeIds.bootstrapDepartment,
+      ],
+    );
+    const lastBindingDeleteCode = await rejectedCode(
+      'DELETE FROM customer_account_bindings WHERE id=$1',
+      [clientBindingId],
+    );
+
+    const constraintHolderId = randomUUID();
+    const constraintLeadId = randomUUID();
+    await client.query(
+      `INSERT INTO rights_holders(id,name,department_id,updated_at)
+       VALUES ($1,$2,$3,NOW())`,
+      [constraintHolderId, '迁移约束权利人', upgradeIds.bootstrapDepartment],
+    );
+    await client.query(
+      `INSERT INTO leads(
+         id,department_id,business_no,customer_id,rights_holder_id,
+         responsible_user_id,case_type,source,platform,found_at,
+         shop_name,need_disclose,updated_at
+       ) VALUES (
+         $1,$2,$3,$4,$5,$6,'CIVIL','ONLINE','TAOBAO',NOW(),$7,false,NOW()
+       )`,
+      [
+        constraintLeadId,
+        upgradeIds.bootstrapDepartment,
+        `LD-MIGRATION-${probe}`,
+        upgradeIds.knownCustomer,
+        constraintHolderId,
+        upgradeIds.bootstrapUser,
+        '迁移约束店铺',
+      ],
+    );
+    const pushedAtOnlyCode = await rejectedCode(
+      'UPDATE leads SET pushed_at=NOW() WHERE id=$1',
+      [constraintLeadId],
+    );
+    const pushedByOnlyCode = await rejectedCode(
+      'UPDATE leads SET pushed_by_user_id=$2 WHERE id=$1',
+      [constraintLeadId, upgradeIds.bootstrapUser],
+    );
+
+    await useSchema(schemas.clientActionRecovery);
+    await apply(migrations.filter((name) => name < clientActionTarget));
+    await apply([clientActionTarget, clientActionTarget]);
+    const clientActionRecovery = {
+      pushActionCount: Number(
+        (
+          await client.query(
+            `SELECT COUNT(*) FROM pg_enum e
+             JOIN pg_type t ON t.oid=e.enumtypid
+             JOIN pg_namespace n ON n.oid=t.typnamespace
+             WHERE n.nspname=$1 AND t.typname='permission_action'
+               AND e.enumlabel IN ('lead.push','client.lead.read')`,
+            [schemas.clientActionRecovery],
+          )
+        ).rows[0].count,
+      ),
+      accountTypeExists: Boolean(
+        (
+          await client.query(
+            `SELECT 1 FROM pg_type t
+             JOIN pg_namespace n ON n.oid=t.typnamespace
+             WHERE n.nspname=$1 AND t.typname='user_account_type'`,
+            [schemas.clientActionRecovery],
+          )
+        ).rowCount,
+      ),
+    };
+
+    await useSchema(schemas.clientSchemaFailure);
+    await apply(migrations.filter((name) => name < clientActionTarget));
+    await apply([clientActionTarget]);
+    await client.query('CREATE TABLE customer_account_bindings(id UUID)');
+    const clientSchemaFailureCode = await rejectedCode(
+      await migrationSql(clientSchemaTarget),
+    );
+    const clientSchemaFailureColumns = Number(
+      (
+        await client.query(
+          `SELECT COUNT(*) FROM information_schema.columns
+           WHERE table_schema=$1 AND (
+             (table_name='user_accounts' AND column_name='account_type')
+             OR (table_name='leads' AND column_name IN ('pushed_at','pushed_by_user_id'))
+           )`,
+          [schemas.clientSchemaFailure],
+        )
+      ).rows[0].count,
+    );
+
     await useSchema(schemas.schemaFailure);
     await apply(previousMigrations);
     await apply([actionTarget]);
@@ -1225,6 +1387,20 @@ export async function verifyCoreLeadMigration() {
         grantCounts,
         pushGrantCounts,
         revisions,
+        identityIsolation: {
+          unboundClientCode,
+          clientMembershipCode,
+          clientRoleCode,
+          internalBindingCode,
+          lastBindingDeleteCode,
+          pushedAtOnlyCode,
+          pushedByOnlyCode,
+        },
+      },
+      clientActionRecovery,
+      clientSchemaFailure: {
+        code: clientSchemaFailureCode,
+        addedColumns: clientSchemaFailureColumns,
       },
       schemaFailure: {
         code: schemaFailureCode,

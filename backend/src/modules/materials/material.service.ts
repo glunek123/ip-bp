@@ -1108,8 +1108,7 @@ export class MaterialService {
     leadAction?: Extract<LeadAction, 'lead.read' | 'lead.edit'>,
   ): Promise<void> {
     if (actor.clientCustomerId !== undefined) {
-      if (operation !== 'read' || ownerType !== 'LEAD')
-        throw this.forbidden();
+      if (operation !== 'read' || ownerType !== 'LEAD') throw this.forbidden();
       const lead = await reader.lead.findFirst({
         where: {
           id: ownerId,

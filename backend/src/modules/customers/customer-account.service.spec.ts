@@ -64,9 +64,11 @@ function setup() {
   };
   const access = { authorizeCustomer: jest.fn().mockResolvedValue(undefined) };
   const organization = {
-    loadCurrentActorGrants: jest.fn().mockResolvedValue([
-      { action: 'USER_MANAGE', scope: 'DEPARTMENT', teamId: null },
-    ]),
+    loadCurrentActorGrants: jest
+      .fn()
+      .mockResolvedValue([
+        { action: 'USER_MANAGE', scope: 'DEPARTMENT', teamId: null },
+      ]),
   };
   const service = new CustomerAccountService(
     database as never,

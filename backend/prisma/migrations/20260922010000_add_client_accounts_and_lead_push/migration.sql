@@ -1,13 +1,5 @@
 BEGIN;
 
-ALTER TYPE "permission_action" ADD VALUE 'lead.push';
-ALTER TYPE "permission_action" ADD VALUE 'client.lead.read';
-CREATE TYPE "user_account_type" AS ENUM ('INTERNAL', 'CLIENT');
-
-COMMIT;
-
-BEGIN;
-
 ALTER TABLE "user_accounts"
   ADD COLUMN "account_type" "user_account_type" NOT NULL DEFAULT 'INTERNAL';
 
@@ -116,6 +108,68 @@ $$;
 CREATE TRIGGER "user_accounts_enforce_account_type_change"
 BEFORE UPDATE OF "account_type" ON "user_accounts"
 FOR EACH ROW EXECUTE FUNCTION enforce_user_account_type_change();
+
+CREATE OR REPLACE FUNCTION assert_client_account_binding_cardinality(target_user_id UUID)
+RETURNS void LANGUAGE plpgsql AS $$
+DECLARE
+  account_kind "user_account_type";
+  binding_count BIGINT;
+BEGIN
+  SELECT "account_type" INTO account_kind
+  FROM "user_accounts"
+  WHERE "id" = target_user_id;
+
+  IF NOT FOUND THEN
+    RETURN;
+  END IF;
+
+  SELECT COUNT(*) INTO binding_count
+  FROM "customer_account_bindings"
+  WHERE "user_id" = target_user_id;
+
+  IF account_kind = 'CLIENT' AND binding_count <> 1 THEN
+    RAISE EXCEPTION 'client accounts require exactly one customer binding'
+      USING ERRCODE = '23514';
+  END IF;
+  IF account_kind = 'INTERNAL' AND binding_count <> 0 THEN
+    RAISE EXCEPTION 'internal accounts cannot have customer bindings'
+      USING ERRCODE = '23514';
+  END IF;
+END;
+$$;
+
+CREATE OR REPLACE FUNCTION enforce_user_client_binding_cardinality()
+RETURNS trigger LANGUAGE plpgsql AS $$
+BEGIN
+  PERFORM assert_client_account_binding_cardinality(NEW."id");
+  RETURN NEW;
+END;
+$$;
+
+CREATE CONSTRAINT TRIGGER "user_accounts_client_binding_cardinality"
+AFTER INSERT OR UPDATE OF "account_type" ON "user_accounts"
+DEFERRABLE INITIALLY DEFERRED
+FOR EACH ROW EXECUTE FUNCTION enforce_user_client_binding_cardinality();
+
+CREATE OR REPLACE FUNCTION enforce_binding_client_account_cardinality()
+RETURNS trigger LANGUAGE plpgsql AS $$
+BEGIN
+  IF TG_OP <> 'INSERT' THEN
+    PERFORM assert_client_account_binding_cardinality(OLD."user_id");
+  END IF;
+  IF TG_OP <> 'DELETE' AND (
+    TG_OP = 'INSERT' OR OLD."user_id" IS DISTINCT FROM NEW."user_id"
+  ) THEN
+    PERFORM assert_client_account_binding_cardinality(NEW."user_id");
+  END IF;
+  RETURN COALESCE(NEW, OLD);
+END;
+$$;
+
+CREATE CONSTRAINT TRIGGER "customer_account_bindings_client_cardinality"
+AFTER INSERT OR UPDATE OR DELETE ON "customer_account_bindings"
+DEFERRABLE INITIALLY DEFERRED
+FOR EACH ROW EXECUTE FUNCTION enforce_binding_client_account_cardinality();
 
 LOCK TABLE "department_memberships", "role_assignments", "role_templates", "role_grants", "local_credentials", "user_accounts"
 IN SHARE ROW EXCLUSIVE MODE;

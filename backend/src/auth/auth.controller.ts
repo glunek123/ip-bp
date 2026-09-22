@@ -9,9 +9,11 @@ import {
   Res,
   UnauthorizedException,
 } from '@nestjs/common';
+import { ApiOkResponse } from '@nestjs/swagger';
 import type { Request, Response } from 'express';
 import { AuthService } from './auth.service';
 import { LoginDto } from './auth.dto';
+import { AuthSessionResponseDto } from './auth-response.dto';
 import {
   clearSessionCookie,
   clearCsrfCookie,
@@ -28,6 +30,7 @@ export class AuthController {
 
   @Post('login')
   @HttpCode(200)
+  @ApiOkResponse({ type: AuthSessionResponseDto })
   async login(
     @Body() input: LoginDto,
     @Req() request: Request,
@@ -49,6 +52,7 @@ export class AuthController {
   }
 
   @Get('session')
+  @ApiOkResponse({ type: AuthSessionResponseDto })
   session(@Req() request: Request) {
     const token = readCookie(request.headers.cookie, SESSION_COOKIE_NAME);
     const csrfToken = readCookie(request.headers.cookie, CSRF_COOKIE_NAME);

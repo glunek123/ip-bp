@@ -11,7 +11,13 @@ import {
   Query,
   UseGuards,
 } from '@nestjs/common';
-import { ApiBearerAuth, ApiHeader, ApiTags } from '@nestjs/swagger';
+import {
+  ApiBearerAuth,
+  ApiCreatedResponse,
+  ApiHeader,
+  ApiOkResponse,
+  ApiTags,
+} from '@nestjs/swagger';
 import { CurrentActor } from '../../access-control/actor-context.decorator';
 import { ActorContextGuard } from '../../access-control/actor-context.guard';
 import { ActorContext } from '../../access-control/actor-context';
@@ -30,6 +36,10 @@ import {
   SetCustomerAccountStatusDto,
 } from './customer-account.dto';
 import { CustomerAccountService } from './customer-account.service';
+import {
+  CustomerAccountListResponseDto,
+  CustomerAccountResponseDto,
+} from './customer-account-response.dto';
 
 @ApiTags('customers')
 @ApiBearerAuth()
@@ -100,6 +110,7 @@ export class CustomerController {
   }
 
   @Get(':id/client-accounts')
+  @ApiOkResponse({ type: CustomerAccountListResponseDto })
   listClientAccounts(
     @CurrentActor() actor: ActorContext,
     @Param('id', new ParseUUIDPipe()) id: string,
@@ -108,6 +119,7 @@ export class CustomerController {
   }
 
   @Post(':id/client-accounts')
+  @ApiCreatedResponse({ type: CustomerAccountResponseDto })
   createClientAccount(
     @CurrentActor() actor: ActorContext,
     @Param('id', new ParseUUIDPipe()) id: string,
@@ -117,6 +129,7 @@ export class CustomerController {
   }
 
   @Patch(':id/client-accounts/:userId/status')
+  @ApiOkResponse({ type: CustomerAccountResponseDto })
   setClientAccountStatus(
     @CurrentActor() actor: ActorContext,
     @Param('id', new ParseUUIDPipe()) id: string,

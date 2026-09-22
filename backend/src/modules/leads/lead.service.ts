@@ -682,7 +682,9 @@ export class LeadService {
                 {
                   departmentId: current.departmentId,
                   responsibleUserId: current.responsibleUserId,
-                  ...(current.teamId === null ? {} : { teamId: current.teamId }),
+                  ...(current.teamId === null
+                    ? {}
+                    : { teamId: current.teamId }),
                 },
                 transaction,
               );
@@ -694,7 +696,8 @@ export class LeadService {
             });
             if (receipt !== null)
               return this.pushReceiptResult(actor, receipt, fingerprint, id);
-            if (current.status !== 'WAITING_PUSH') throw this.pushInvalidState();
+            if (current.status !== 'WAITING_PUSH')
+              throw this.pushInvalidState();
             if (current.version !== input.expectedVersion)
               throw this.versionConflict();
             if (current.customer.profileStatus !== 'ADMITTED')
@@ -1110,8 +1113,7 @@ export class LeadService {
         (id) => typeof id === 'string',
       ) &&
       Number.isInteger(candidate.version) &&
-      (candidate.pushedAt === null ||
-        typeof candidate.pushedAt === 'string') &&
+      (candidate.pushedAt === null || typeof candidate.pushedAt === 'string') &&
       (candidate.pushedByUserId === null ||
         typeof candidate.pushedByUserId === 'string') &&
       typeof candidate.createdAt === 'string' &&

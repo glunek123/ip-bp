@@ -76,7 +76,10 @@ export class CustomerAccountService {
   ): Promise<ClientAccountView> {
     const displayName = input.displayName.trim();
     if (displayName.length === 0 || Array.from(displayName).length > 100)
-      throw this.validation('DISPLAY_NAME_INVALID', '姓名不能为空且不得超过100个字符');
+      throw this.validation(
+        'DISPLAY_NAME_INVALID',
+        '姓名不能为空且不得超过100个字符',
+      );
     let credential: ReturnType<typeof prepareLocalCredential>;
     try {
       credential = prepareLocalCredential(input.username, input.password);
@@ -199,8 +202,8 @@ export class CustomerAccountService {
         });
         if (
           current === null ||
-          current.user.accountType !== undefined &&
-            current.user.accountType !== 'CLIENT'
+          (current.user.accountType !== undefined &&
+            current.user.accountType !== 'CLIENT')
         )
           throw this.notFound();
         if (current.active === active && current.user.active === active)

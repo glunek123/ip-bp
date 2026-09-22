@@ -98,22 +98,14 @@ describe('MaterialService', () => {
 
     fixture.db.materialReference.findFirst.mockResolvedValue(null);
     await expect(
-      fixture.service.openVersion(
-        clientActor,
-        'material-a',
-        'version-a',
-      ),
+      fixture.service.openVersion(clientActor, 'material-a', 'version-a'),
     ).rejects.toMatchObject({ response: { code: 'RESOURCE_NOT_FOUND' } });
 
     fixture.db.materialReference.findFirst.mockResolvedValue({
       id: 'reference-a',
     });
     await expect(
-      fixture.service.openVersion(
-        clientActor,
-        'material-a',
-        'version-a',
-      ),
+      fixture.service.openVersion(clientActor, 'material-a', 'version-a'),
     ).resolves.toMatchObject({ sha256: 'd'.repeat(64) });
     expect(fixture.db.materialReference.findFirst).toHaveBeenLastCalledWith({
       where: {
