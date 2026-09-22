@@ -195,7 +195,7 @@ async function setRoleStatus(
 ): Promise<void> {
   if (
     assignment.active &&
-    !window.confirm(
+    !globalThis.window.confirm(
       `确认停用“${user.displayName}”的“${assignment.roleName}”角色吗？该人员下一次请求将失去“${assignment.roleName}”对应权限。`,
     )
   )
@@ -221,7 +221,7 @@ async function setRoleStatus(
 async function setMembershipStatus(user: OrganizationUser): Promise<void> {
   if (
     user.membership.active &&
-    !window.confirm(
+    !globalThis.window.confirm(
       `确认停用“${user.displayName}”的部门成员关系吗？该人员下一次请求将不能再以本部门成员身份办理业务。`,
     )
   )
@@ -236,7 +236,7 @@ async function setMembershipStatus(user: OrganizationUser): Promise<void> {
 async function setAccountStatus(user: OrganizationUser): Promise<void> {
   if (
     user.accountActive &&
-    !window.confirm(
+    !globalThis.window.confirm(
       `确认停用“${user.displayName}”的账号吗？现有登录会立即失效，下一次请求将无法继续访问系统。`,
     )
   )
@@ -251,7 +251,7 @@ async function setTeamStatus(
 ): Promise<void> {
   if (
     team.status === 'ACTIVE' &&
-    !window.confirm(
+    !globalThis.window.confirm(
       `确认停用“${team.name}”吗？该团队不能再用于新的人员分组，已有历史记录仍会保留。`,
     )
   )

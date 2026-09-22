@@ -164,7 +164,7 @@ function pushErrorMessage(error: unknown): string {
 async function push(): Promise<void> {
   if (!lead.value || !lead.value.capabilities.push || pushing.value) return;
   if (
-    !window.confirm(
+    !globalThis.window.confirm(
       `确认将线索 ${lead.value.businessNo} 推送给“${customerName.value}”审核吗？状态将变为“线索待审核”，该企业的有效客户账号下一次读取会立即可见，当前阶段将不能继续编辑。`,
     )
   )

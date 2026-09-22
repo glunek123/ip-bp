@@ -79,7 +79,7 @@ async function toggle(account: ClientAccount): Promise<void> {
   if (changingId.value) return;
   if (
     account.bindingActive &&
-    !window.confirm(
+    !globalThis.window.confirm(
       `确认停用“${account.displayName}”吗？该账号现有登录会立即失效，下一次请求将不能访问本企业线索。`,
     )
   )

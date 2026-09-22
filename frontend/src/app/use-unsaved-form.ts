@@ -5,7 +5,9 @@ export function useUnsavedForm(
   isDirty: Readonly<Ref<boolean>>,
   message = '当前填写内容尚未保存，确认离开吗？',
 ): void {
-  onBeforeRouteLeave(() => !isDirty.value || window.confirm(message));
+  onBeforeRouteLeave(
+    () => !isDirty.value || globalThis.window.confirm(message),
+  );
 
   const warnBeforeUnload = (event: BeforeUnloadEvent) => {
     if (!isDirty.value) return;
@@ -14,8 +16,10 @@ export function useUnsavedForm(
     event.returnValue = '';
   };
 
-  onMounted(() => window.addEventListener('beforeunload', warnBeforeUnload));
+  onMounted(() =>
+    globalThis.window.addEventListener('beforeunload', warnBeforeUnload),
+  );
   onBeforeUnmount(() =>
-    window.removeEventListener('beforeunload', warnBeforeUnload),
+    globalThis.window.removeEventListener('beforeunload', warnBeforeUnload),
   );
 }

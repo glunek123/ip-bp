@@ -264,10 +264,8 @@ describe('LeadService', () => {
     );
     const receipt =
       fixture.tx.leadCommandReceipt.create.mock.calls[0]?.[0]?.data;
-    const {
-      pushedByDisplayName: _legacyMissingDisplayName,
-      ...legacySnapshot
-    } = receipt.resultSnapshot;
+    const legacySnapshot = { ...receipt.resultSnapshot };
+    Reflect.deleteProperty(legacySnapshot, 'pushedByDisplayName');
     receipt.resultSnapshot = legacySnapshot;
     fixture.tx.leadCommandReceipt.findUnique.mockResolvedValue(receipt);
     fixture.tx.lead.updateMany.mockClear();
