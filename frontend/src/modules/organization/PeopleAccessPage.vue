@@ -50,6 +50,11 @@ function isSelf(user: OrganizationUser): boolean {
   return auth.session?.user.id === user.id;
 }
 
+function toggleCreateUser(): void {
+  showCreateUser.value = !showCreateUser.value;
+  actionError.value = '';
+}
+
 function errorMessage(error: unknown): string {
   if (
     error instanceof ApiError &&
@@ -227,7 +232,10 @@ async function submitPasswordReset(): Promise<void> {
 
 async function submitTeam(): Promise<void> {
   const name = newTeamName.value.trim();
-  if (!name) return;
+  if (!name) {
+    actionError.value = '请输入团队名称。';
+    return;
+  }
   const created = await run('create-team', () => createOrganizationTeam(name));
   if (created) newTeamName.value = '';
 }
@@ -260,7 +268,7 @@ onBeforeUnmount(() => activeRequest?.abort());
           v-if="context?.capabilities.createUser"
           type="primary"
           data-test="open-create-user"
-          @click="showCreateUser = !showCreateUser"
+          @click="toggleCreateUser"
           >{{ showCreateUser ? '收起' : '开通人员' }}</ElButton
         >
       </div>

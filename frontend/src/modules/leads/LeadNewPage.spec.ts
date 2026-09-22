@@ -65,6 +65,21 @@ beforeEach(() => {
 });
 
 describe('LeadNewPage', () => {
+  it('guides the operator to customer admission when no customer is eligible', async () => {
+    leadApi.getLeadFormContext.mockResolvedValue({
+      ...context,
+      customers: [],
+    });
+
+    const { wrapper } = await mountPage();
+
+    expect(wrapper.text()).toContain('尚无已准入客户');
+    expect(
+      wrapper.get('[data-test="go-to-customers"]').attributes('href'),
+    ).toBe('/customers');
+    expect(wrapper.find('form').exists()).toBe(false);
+  });
+
   it('prevents duplicate submits and reuses one idempotency key', async () => {
     let reject!: (reason?: unknown) => void;
     leadApi.createLead.mockImplementation(

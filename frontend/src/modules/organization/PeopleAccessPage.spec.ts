@@ -154,6 +154,35 @@ describe('PeopleAccessPage', () => {
     expect(wrapper.find('textarea').exists()).toBe(false);
   });
 
+  it('clears create-person validation when the form is closed', async () => {
+    api.getOrganizationManagementContext.mockResolvedValue(context);
+    const wrapper = mount(PeopleAccessPage, {
+      global: { stubs: { RouterLink: { template: '<a><slot /></a>' } } },
+    });
+    await flushPromises();
+
+    await wrapper.get('[data-test="open-create-user"]').trigger('click');
+    await wrapper.get('[data-test="submit-create-user"]').trigger('click');
+    expect(wrapper.get('[role="alert"]').text()).toContain('请填写姓名');
+
+    await wrapper.get('[data-test="open-create-user"]').trigger('click');
+
+    expect(wrapper.find('[role="alert"]').exists()).toBe(false);
+  });
+
+  it('shows feedback when a team name is empty', async () => {
+    api.getOrganizationManagementContext.mockResolvedValue(context);
+    const wrapper = mount(PeopleAccessPage, {
+      global: { stubs: { RouterLink: { template: '<a><slot /></a>' } } },
+    });
+    await flushPromises();
+
+    await wrapper.get('form.team-create').trigger('submit');
+
+    expect(wrapper.get('[role="alert"]').text()).toBe('请输入团队名称。');
+    expect(api.createOrganizationTeam).not.toHaveBeenCalled();
+  });
+
   it('automatically retries the retained Team after the conflicting role is stopped', async () => {
     api.getOrganizationManagementContext.mockResolvedValue(context);
     api.updateOrganizationMembership

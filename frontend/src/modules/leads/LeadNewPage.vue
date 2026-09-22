@@ -124,7 +124,19 @@ onBeforeUnmount(() => request?.abort());
         <p v-if="submitError" class="submit-error" role="alert">
           {{ submitError }}
         </p>
+        <section
+          v-if="context.customers.length === 0"
+          class="ledger-panel state-panel"
+          data-test="no-admitted-customers"
+        >
+          <h2>尚无已准入客户</h2>
+          <p>线索只能关联已完成准入的客户，请先完成客户准入。</p>
+          <RouterLink data-test="go-to-customers" to="/customers">
+            <ElButton type="primary">去客户列表</ElButton>
+          </RouterLink>
+        </section>
         <LeadForm
+          v-else
           :context="context"
           :submitting="saving"
           submit-label="创建线索"
