@@ -25,6 +25,20 @@ const summary = {
   businessNo: 'LD-20260921-001',
   shopName: '测试店铺',
   status: 'WAITING_PUSH',
+  platform: 'TAOBAO',
+  foundAt: '2026-09-20T03:00:00Z',
+  products: [
+    {
+      id: 'product-1',
+      position: 1,
+      url: 'https://example.com/product-1',
+      title: '测试商品',
+      quantity: 1,
+      unitPrice: '10.00',
+      commentCount: 0,
+      estimatedAmount: '10.00',
+    },
+  ],
   updatedAt: '2026-09-21T04:00:00Z',
 };
 
@@ -48,15 +62,23 @@ async function mountWithRoute(path: string) {
 afterEach(() => vi.resetAllMocks());
 
 describe('LeadListPage', () => {
-  it('shows exactly four workflow counters and a separate empty state', async () => {
+  it('leaves workflow counters to the shared shell and keeps an empty state', async () => {
     api.listLeads.mockResolvedValue(result);
     const { wrapper } = await mountWithRoute('/leads');
-    expect(wrapper.findAll('[data-test="lead-counter"]')).toHaveLength(4);
-    expect(wrapper.text()).toContain('待推送7');
-    expect(wrapper.text()).toContain('线索待审核3');
-    expect(wrapper.text()).toContain('线索待确认2');
-    expect(wrapper.text()).toContain('线索已归档1');
+    expect(wrapper.findAll('[data-test="lead-counter"]')).toHaveLength(0);
     expect(wrapper.text()).toContain('还没有线索记录');
+  });
+
+  it('renders the compact lead table with platform and product count', async () => {
+    api.listLeads.mockResolvedValue({ ...result, items: [summary], total: 1 });
+    const { wrapper } = await mountWithRoute('/leads');
+
+    expect(wrapper.get('[data-test="lead-row"]').text()).toContain(
+      'LD-20260921-001',
+    );
+    expect(wrapper.get('[data-test="lead-row"]').text()).toContain('淘宝');
+    expect(wrapper.get('[data-test="lead-product-count"]').text()).toBe('1');
+    expect(wrapper.find('table.demo-table').exists()).toBe(true);
   });
 
   it('keeps failure distinct from empty and retries', async () => {
@@ -64,15 +86,7 @@ describe('LeadListPage', () => {
       .mockRejectedValueOnce(new Error('offline'))
       .mockResolvedValueOnce({
         ...result,
-        items: [
-          {
-            id: 'lead-1',
-            businessNo: 'LD-20260921-001',
-            shopName: '测试店铺',
-            status: 'WAITING_PUSH',
-            updatedAt: '2026-09-21T04:00:00Z',
-          },
-        ],
+        items: [summary],
         total: 1,
       });
     const { wrapper } = await mountWithRoute('/leads');

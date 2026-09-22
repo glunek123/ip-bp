@@ -1,4 +1,4 @@
-import type { LeadStatus } from '../../api/leads';
+import type { LeadPlatform, LeadStatus } from '../../api/leads';
 
 export const leadStatusCards: ReadonlyArray<{
   status: LeadStatus;
@@ -13,6 +13,27 @@ export const leadStatusCards: ReadonlyArray<{
 export const leadStatusLabels: Record<LeadStatus, string> = Object.fromEntries(
   leadStatusCards.map(({ status, label }) => [status, label]),
 ) as Record<LeadStatus, string>;
+
+export const leadPlatformLabels: Record<LeadPlatform, string> = {
+  TAOBAO: '淘宝',
+  TMALL: '天猫',
+  PINDUODUO: '拼多多',
+  JD: '京东',
+  DOUYIN: '抖音',
+  ALIBABA_1688: '1688',
+  XIAOHONGSHU: '小红书',
+  KUAISHOU: '快手',
+  XIANYU: '闲鱼',
+  WECHAT: '微信',
+  MEITUAN: '美团',
+  DIANPING: '大众点评',
+  MAP: '地图',
+  OTHER: '其他',
+};
+
+export function labelLeadPlatform(platform: LeadPlatform): string {
+  return leadPlatformLabels[platform];
+}
 
 export function decimalEstimate(
   quantity: string,

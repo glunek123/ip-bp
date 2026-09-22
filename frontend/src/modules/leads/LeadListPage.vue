@@ -3,7 +3,11 @@ import { computed, onBeforeUnmount, ref, watch } from 'vue';
 import { RouterLink, useRoute, useRouter } from 'vue-router';
 import { ElButton } from 'element-plus/es/components/button/index.mjs';
 import { listLeads, type Lead, type LeadStatus } from '../../api/leads';
-import { leadStatusCards, leadStatusLabels } from './lead-options';
+import {
+  labelLeadPlatform,
+  leadStatusCards,
+  leadStatusLabels,
+} from './lead-options';
 
 const route = useRoute();
 const router = useRouter();
@@ -12,12 +16,6 @@ const items = ref<Lead[]>([]);
 const total = ref(0);
 const currentPage = ref(1);
 const pageSize = ref(20);
-const counts = ref({
-  WAITING_PUSH: 0,
-  WAITING_REVIEW: 0,
-  WAITING_EVIDENCE_DECISION: 0,
-  ARCHIVED: 0,
-});
 const canCreate = ref(false);
 let request: AbortController | undefined;
 
@@ -58,7 +56,6 @@ async function load(): Promise<void> {
     total.value = result.total;
     currentPage.value = result.page;
     pageSize.value = result.pageSize;
-    counts.value = result.counts;
     canCreate.value = result.capabilities.create;
     state.value = 'ready';
   } catch {
@@ -69,11 +66,6 @@ async function goToPage(page: number): Promise<void> {
   if (page < 1 || page > totalPages.value || page === requestedPage.value)
     return;
   await router.push({ query: { ...route.query, page: String(page) } });
-}
-async function filterBy(status?: LeadStatus): Promise<void> {
-  const query = { ...route.query, page: '1', status };
-  if (status === undefined) delete query.status;
-  await router.push({ query });
 }
 function formatTime(value: string): string {
   return new Date(value).toLocaleString('zh-CN', {
@@ -92,9 +84,8 @@ onBeforeUnmount(() => request?.abort());
 <template>
   <div class="page-view">
     <main>
-      <div class="section-heading">
+      <div class="page-head">
         <div>
-          <p class="section-kicker">运营工作台</p>
           <h1>线索</h1>
           <p>记录当前账号有权查看的线索。</p>
         </div>
@@ -105,29 +96,7 @@ onBeforeUnmount(() => request?.abort());
           ><ElButton type="primary">新建线索</ElButton></RouterLink
         >
       </div>
-      <div class="lead-filter-row" aria-label="筛选线索状态">
-        <ElButton
-          :type="selectedStatus === undefined ? 'primary' : 'default'"
-          data-test="all-statuses"
-          @click="filterBy()"
-          >全部状态</ElButton
-        >
-      </div>
-      <section class="lead-counter-grid" aria-label="线索阶段计数">
-        <button
-          v-for="card in leadStatusCards"
-          :key="card.status"
-          type="button"
-          data-test="lead-counter"
-          :class="{ 'is-active': selectedStatus === card.status }"
-          :aria-pressed="selectedStatus === card.status"
-          @click="filterBy(card.status)"
-        >
-          <span>{{ card.label }}</span
-          ><strong>{{ counts[card.status] }}</strong>
-        </button>
-      </section>
-      <section class="ledger-panel" aria-live="polite">
+      <section class="demo-card" aria-live="polite">
         <div v-if="state === 'loading'" class="state-panel">
           <span class="state-index">读取中</span>
           <h2>正在读取线索</h2>
@@ -143,21 +112,39 @@ onBeforeUnmount(() => request?.abort());
           <h2>还没有线索记录</h2>
           <p>有创建权限时，可从右上角新建待推送线索。</p>
         </div>
-        <div v-else class="lead-list">
-          <div class="list-head lead-list__row" aria-hidden="true">
-            <span>线索编号</span><span>店铺</span><span>状态</span
-            ><span>最近更新</span>
-          </div>
-          <RouterLink
-            v-for="lead in items"
-            :key="lead.id"
-            class="lead-list__row lead-row"
-            :to="`/leads/${lead.id}`"
-            ><strong>{{ lead.businessNo }}</strong
-            ><span>{{ lead.shopName }}</span
-            ><span class="status-chip">{{ leadStatusLabels[lead.status] }}</span
-            ><time>{{ formatTime(lead.updatedAt) }}</time></RouterLink
-          >
+        <div v-else class="demo-table-wrap">
+          <table class="demo-table">
+            <thead>
+              <tr>
+                <th>操作／线索编号</th>
+                <th>状态</th>
+                <th>平台</th>
+                <th>店铺</th>
+                <th class="num">商品数</th>
+                <th>发现时间</th>
+                <th>最近更新</th>
+              </tr>
+            </thead>
+            <tbody>
+              <tr v-for="lead in items" :key="lead.id" data-test="lead-row">
+                <td>
+                  <RouterLink :to="`/leads/${lead.id}`">
+                    {{ lead.businessNo }}
+                  </RouterLink>
+                </td>
+                <td>
+                  <span class="pill">{{ leadStatusLabels[lead.status] }}</span>
+                </td>
+                <td>{{ labelLeadPlatform(lead.platform) }}</td>
+                <td>{{ lead.shopName }}</td>
+                <td class="num mono" data-test="lead-product-count">
+                  {{ lead.products.length }}
+                </td>
+                <td class="mono">{{ formatTime(lead.foundAt) }}</td>
+                <td class="mono">{{ formatTime(lead.updatedAt) }}</td>
+              </tr>
+            </tbody>
+          </table>
         </div>
         <nav
           v-if="state === 'ready' && totalPages > 1"
