@@ -1,5 +1,5 @@
 import { flushPromises, mount } from '@vue/test-utils';
-import { createMemoryHistory, createRouter } from 'vue-router';
+import { createMemoryHistory, createRouter, RouterView } from 'vue-router';
 import { beforeEach, describe, expect, it, vi } from 'vitest';
 import LeadEditPage from './LeadEditPage.vue';
 
@@ -64,9 +64,9 @@ async function mountPage() {
   });
   await router.push('/leads/l/edit');
   await router.isReady();
-  const wrapper = mount(LeadEditPage, { global: { plugins: [router] } });
+  const wrapper = mount(RouterView, { global: { plugins: [router] } });
   await flushPromises();
-  return wrapper;
+  return { wrapper, router };
 }
 
 beforeEach(() => {
@@ -78,12 +78,23 @@ beforeEach(() => {
 });
 
 describe('LeadEditPage', () => {
+  it('warns before leaving after an edit and stays when cancelled', async () => {
+    const confirm = vi.spyOn(window, 'confirm').mockReturnValue(false);
+    const { wrapper, router } = await mountPage();
+
+    await wrapper.get('input[name="shopName"]').setValue('修改后的店铺');
+    await router.push('/leads/l');
+
+    expect(router.currentRoute.value.path).toBe('/leads/l/edit');
+    expect(confirm).toHaveBeenCalled();
+  });
+
   it('blocks editing when the backend capability is false', async () => {
     api.getLead.mockResolvedValue({
       ...lead,
       capabilities: { edit: false, push: false },
     });
-    const wrapper = await mountPage();
+    const { wrapper } = await mountPage();
     expect(wrapper.text()).toContain('当前线索不可编辑');
     expect(wrapper.find('form').exists()).toBe(false);
     expect(api.getLeadFormContext).not.toHaveBeenCalled();
@@ -91,7 +102,7 @@ describe('LeadEditPage', () => {
   });
 
   it('submits only editable fields with current version and existing screenshots', async () => {
-    const wrapper = await mountPage();
+    const { wrapper } = await mountPage();
     expect(api.getLeadEditContext).toHaveBeenCalledWith(
       'l',
       expect.objectContaining({ signal: expect.any(AbortSignal) }),

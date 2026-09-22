@@ -1,5 +1,5 @@
 import { flushPromises, mount } from '@vue/test-utils';
-import { createMemoryHistory, createRouter } from 'vue-router';
+import { createMemoryHistory, createRouter, RouterView } from 'vue-router';
 import { beforeEach, describe, expect, it, vi } from 'vitest';
 import LeadNewPage from './LeadNewPage.vue';
 
@@ -38,7 +38,7 @@ async function mountPage() {
   });
   await router.push('/leads/new');
   await router.isReady();
-  const wrapper = mount(LeadNewPage, { global: { plugins: [router] } });
+  const wrapper = mount(RouterView, { global: { plugins: [router] } });
   await flushPromises();
   return { wrapper, router };
 }
@@ -65,6 +65,19 @@ beforeEach(() => {
 });
 
 describe('LeadNewPage', () => {
+  it('warns before leaving after form input and stays when cancelled', async () => {
+    const confirm = vi.spyOn(window, 'confirm').mockReturnValue(false);
+    const { wrapper, router } = await mountPage();
+
+    await wrapper.get('select[name="customerId"]').setValue('customer-1');
+    await router.push('/leads');
+
+    expect(router.currentRoute.value.path).toBe('/leads/new');
+    expect(confirm).toHaveBeenCalledWith(
+      expect.stringContaining('当前填写内容尚未保存'),
+    );
+  });
+
   it('guides the operator to customer admission when no customer is eligible', async () => {
     leadApi.getLeadFormContext.mockResolvedValue({
       ...context,

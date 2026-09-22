@@ -207,17 +207,17 @@
 }
 
 .demo-form-actions {
-  position: sticky;
-  bottom: 0;
-  z-index: 4;
   display: flex;
   align-items: center;
   justify-content: flex-end;
   gap: var(--s-4);
   padding: var(--s-4) 0;
   border-top: 1px solid var(--color-hairline);
-  background: color-mix(in srgb, var(--color-canvas) 94%, transparent);
-  backdrop-filter: blur(8px);
+  background: transparent;
+}
+
+.product-estimate-guidance {
+  grid-column: 1 / -1;
 }
 
 .form-section-title,

@@ -3,6 +3,7 @@ import { onBeforeUnmount, onMounted, ref } from 'vue';
 import { RouterLink, useRoute, useRouter } from 'vue-router';
 import { ElButton } from 'element-plus/es/components/button/index.mjs';
 import { ApiError } from '../../api/http';
+import { useUnsavedForm } from '../../app/use-unsaved-form';
 import {
   getLead,
   getLeadEditContext,
@@ -21,7 +22,10 @@ const lead = ref<LeadDetail>();
 const context = ref<LeadFormContext>();
 const saving = ref(false);
 const submitError = ref('');
+const isDirty = ref(false);
 let request: AbortController | undefined;
+
+useUnsavedForm(isDirty);
 async function load(): Promise<void> {
   request?.abort();
   const controller = new AbortController();
@@ -76,6 +80,7 @@ async function submit(value: LeadFormSubmission): Promise<void> {
         ...lead.value.leadScreenshotContentVersionIds,
       ],
     });
+    isDirty.value = false;
     await router.push(`/leads/${lead.value.id}`);
   } catch (error) {
     submitError.value =
@@ -127,6 +132,7 @@ onBeforeUnmount(() => request?.abort());
           :allow-screenshots="false"
           :submitting="saving"
           submit-label="保存修改"
+          @dirty="isDirty = true"
           @submit="submit"
           ><template #cancel
             ><RouterLink :to="`/leads/${lead.id}`">取消</RouterLink></template

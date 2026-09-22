@@ -9,6 +9,7 @@ import type {
   LeadPlatform,
   LeadSource,
 } from '../../api/leads';
+import RequiredFieldMark from '../../app/RequiredFieldMark.vue';
 import { decimalEstimate } from './lead-options';
 
 type EditableFields = Omit<
@@ -57,7 +58,10 @@ const props = withDefaults(
     submitLabel: '保存线索',
   },
 );
-const emit = defineEmits<{ submit: [value: LeadFormSubmission] }>();
+const emit = defineEmits<{
+  submit: [value: LeadFormSubmission];
+  dirty: [];
+}>();
 
 const initial = props.initialValue;
 const customerId = ref(initial?.customerId ?? '');
@@ -93,6 +97,13 @@ const selectedCustomer = computed(() =>
 const rightsHolders = computed(
   () => selectedCustomer.value?.rightsHolders ?? [],
 );
+const rightsHolderGuidance = computed(() => {
+  if (!customerId.value) return '请先选择客户。';
+  if (rightsHolders.value.length === 0)
+    return '该客户尚未维护权利人，请先前往客户详情添加后再创建线索。';
+  if (rightsHolders.value.length === 1) return '已按客户自动带出。';
+  return '该客户有多个权利人，请选择本线索对应的一项。';
+});
 const platforms = computed(() =>
   source.value ? props.context.dictionaries.platforms[source.value] : [],
 );
@@ -114,13 +125,18 @@ function toLocalDateTime(value?: string): string {
   return new Date(date.getTime() - offset).toISOString().slice(0, 16);
 }
 function onCustomerChanged(): void {
-  if (
+  if (rightsHolders.value.length === 1) {
+    rightsHolderId.value = rightsHolders.value[0]!.id;
+  } else if (
     !rightsHolders.value.some((holder) => holder.id === rightsHolderId.value)
   ) {
     rightsHolderId.value = '';
   }
   errors.customerId = '';
   errors.rightsHolderId = '';
+}
+function markDirty(): void {
+  emit('dirty');
 }
 function onSourceChanged(): void {
   if (!platforms.value.some((option) => option.value === platform.value)) {
@@ -208,8 +224,8 @@ function validate(): boolean {
   for (const key of Object.keys(errors)) delete errors[key];
   if (screenshotError) errors.screenshots = screenshotError;
   if (!customerId.value) errors.customerId = '请选择客户';
-  if (!rightsHolderId.value) errors.rightsHolderId = '请选择权利主体';
-  if (!caseType.value) errors.caseType = '请选择案件类型';
+  if (!rightsHolderId.value) errors.rightsHolderId = '请选择权利人';
+  if (!caseType.value) errors.caseType = '请选择拟办理业务类型';
   if (infringementTypes.value.length === 0)
     errors.infringementTypes = '请至少选择一种侵权类型';
   if (!source.value) errors.source = '请选择线索来源';
@@ -276,12 +292,17 @@ async function submit(): Promise<void> {
 </script>
 
 <template>
-  <form class="demo-form lead-form" @submit.prevent="submit">
+  <form
+    class="demo-form lead-form"
+    @submit.prevent="submit"
+    @input="markDirty"
+    @change="markDirty"
+  >
     <section class="demo-card demo-card--pad" data-test="lead-facts-section">
       <h2 class="form-section-title">线索基础</h2>
       <div class="demo-form-grid">
         <label>
-          <span>客户</span>
+          <span>客户<RequiredFieldMark /></span>
           <select
             v-model="customerId"
             name="customerId"
@@ -303,7 +324,7 @@ async function submit(): Promise<void> {
           }}</small>
         </label>
         <label>
-          <span>权利主体</span>
+          <span>权利人<RequiredFieldMark /></span>
           <select
             v-model="rightsHolderId"
             name="rightsHolderId"
@@ -323,9 +344,10 @@ async function submit(): Promise<void> {
           <small v-if="errors.rightsHolderId" class="field-error">{{
             errors.rightsHolderId
           }}</small>
+          <small class="field-guidance">{{ rightsHolderGuidance }}</small>
         </label>
         <label>
-          <span>案件类型</span>
+          <span>拟办理业务类型<RequiredFieldMark /></span>
           <select v-model="caseType" name="caseType" class="text-input">
             <option value="">请选择</option>
             <option
@@ -341,7 +363,7 @@ async function submit(): Promise<void> {
           }}</small>
         </label>
         <label>
-          <span>发现时间</span>
+          <span>发现时间<RequiredFieldMark /></span>
           <input
             v-model="foundAt"
             name="foundAt"
@@ -353,7 +375,7 @@ async function submit(): Promise<void> {
           }}</small>
         </label>
         <label>
-          <span>来源</span>
+          <span>线索来源<RequiredFieldMark /></span>
           <select
             v-model="source"
             name="source"
@@ -374,7 +396,7 @@ async function submit(): Promise<void> {
           }}</small>
         </label>
         <label>
-          <span>平台</span>
+          <span>发现平台<RequiredFieldMark /></span>
           <select v-model="platform" name="platform" class="text-input">
             <option value="">请选择</option>
             <option
@@ -390,7 +412,7 @@ async function submit(): Promise<void> {
           }}</small>
         </label>
         <label>
-          <span>店铺名称</span>
+          <span>店铺名称<RequiredFieldMark /></span>
           <input
             v-model="shopName"
             name="shopName"
@@ -402,7 +424,7 @@ async function submit(): Promise<void> {
           }}</small>
         </label>
         <label>
-          <span>店铺外部编号（可选）</span>
+          <span>平台店铺ID（选填）</span>
           <input
             v-model="shopExternalId"
             name="shopExternalId"
@@ -413,7 +435,7 @@ async function submit(): Promise<void> {
       </div>
 
       <fieldset class="form-section lead-rights-fieldset">
-        <legend>侵权类型</legend>
+        <legend>疑似侵权类型<RequiredFieldMark /></legend>
         <label
           v-for="option in context.dictionaries.infringementTypes"
           :key="option.value"
@@ -481,7 +503,7 @@ async function submit(): Promise<void> {
             ></label
           >
           <label
-            ><span>数量</span
+            ><span>销量<RequiredFieldMark /></span
             ><input
               v-model="product.quantity"
               :name="`quantity-${index}`"
@@ -492,7 +514,7 @@ async function submit(): Promise<void> {
             }}</small></label
           >
           <label
-            ><span>单价</span
+            ><span>单价（元）<RequiredFieldMark /></span
             ><input
               v-model="product.unitPrice"
               :name="`unitPrice-${index}`"
@@ -503,7 +525,7 @@ async function submit(): Promise<void> {
             }}</small></label
           >
           <label
-            ><span>评论数</span
+            ><span>评论数<RequiredFieldMark /></span
             ><input
               v-model="product.commentCount"
               :name="`commentCount-${index}`"
@@ -516,7 +538,11 @@ async function submit(): Promise<void> {
             ></label
           >
           <p class="estimate-preview mono" :data-test="`estimate-${index}`">
-            估算额 {{ estimate(product) }}
+            预估销售额（元） {{ estimate(product) }}
+          </p>
+          <p class="field-guidance product-estimate-guidance">
+            预估销售额 = 单价 × 销量；销量为 0
+            时使用评论数。该金额仅供线索评估，不代表真实成交金额。
           </p>
         </div>
       </article>
@@ -526,7 +552,7 @@ async function submit(): Promise<void> {
       <h2 class="form-section-title">附件与备注</h2>
       <label class="disclose-field">
         <input v-model="needDisclose" name="needDisclose" type="checkbox" />
-        需要披露
+        申请披露店铺经营者信息
       </label>
       <label class="field-label field-label--spaced" for="lead-remark"
         >备注</label

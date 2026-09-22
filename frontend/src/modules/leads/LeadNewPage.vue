@@ -9,6 +9,7 @@ import {
   type LeadFormContext,
 } from '../../api/leads';
 import { uploadMaterialFile } from '../../api/materials';
+import { useUnsavedForm } from '../../app/use-unsaved-form';
 import LeadForm, { type LeadFormSubmission } from './LeadForm.vue';
 
 const router = useRouter();
@@ -17,10 +18,13 @@ const context = ref<LeadFormContext>();
 const saving = ref(false);
 const submitError = ref('');
 const progress = ref('');
+const isDirty = ref(false);
 const uploadIds = new Map<InstanceType<typeof globalThis.File>, string>();
 let reservedLeadId: string | undefined;
 let request: AbortController | undefined;
 const idempotencyKey = makeKey();
+
+useUnsavedForm(isDirty);
 
 function makeKey(): string {
   return (
@@ -78,6 +82,7 @@ async function submit(value: LeadFormSubmission): Promise<void> {
       },
       idempotencyKey,
     );
+    isDirty.value = false;
     await router.push(`/leads/${created.id}`);
   } catch (error) {
     submitError.value =
@@ -134,6 +139,7 @@ onBeforeUnmount(() => request?.abort());
           :context="context"
           :submitting="saving"
           submit-label="创建线索"
+          @dirty="isDirty = true"
           @submit="submit"
           ><template #cancel
             ><RouterLink to="/leads">取消</RouterLink></template

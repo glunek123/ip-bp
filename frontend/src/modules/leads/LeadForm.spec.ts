@@ -79,7 +79,7 @@ describe('LeadForm', () => {
     ).toBe(true);
   });
 
-  it('links admitted customers to only their rights holders and clears a hidden relation', async () => {
+  it('automatically selects the only rights holder and requires a choice for many', async () => {
     const wrapper = mount(LeadForm, { props: { context } });
     await wrapper.get('select[name="customerId"]').setValue('customer-a');
     await wrapper.get('select[name="rightsHolderId"]').setValue('holder-b');
@@ -89,13 +89,38 @@ describe('LeadForm', () => {
         wrapper.get('select[name="rightsHolderId"]')
           .element as HTMLSelectElement
       ).value,
-    ).toBe('');
+    ).toBe('holder-c');
+    expect(wrapper.text()).toContain('已按客户自动带出');
     expect(wrapper.get('select[name="rightsHolderId"]').text()).toContain(
       '主体丙',
     );
     expect(wrapper.get('select[name="rightsHolderId"]').text()).not.toContain(
       '主体甲',
     );
+
+    await wrapper.get('select[name="customerId"]').setValue('customer-a');
+    expect(
+      (
+        wrapper.get('select[name="rightsHolderId"]')
+          .element as HTMLSelectElement
+      ).value,
+    ).toBe('');
+    expect(wrapper.text()).toContain(
+      '该客户有多个权利人，请选择本线索对应的一项',
+    );
+  });
+
+  it('uses business wording and explains the estimate', () => {
+    const wrapper = mount(LeadForm, { props: { context } });
+
+    expect(wrapper.text()).toContain('权利人');
+    expect(wrapper.text()).toContain('拟办理业务类型');
+    expect(wrapper.text()).toContain('平台店铺ID（选填）');
+    expect(wrapper.text()).toContain('销量');
+    expect(wrapper.text()).toContain('预估销售额（元）');
+    expect(wrapper.text()).toContain('销量为 0 时使用评论数');
+    expect(wrapper.text()).toContain('申请披露店铺经营者信息');
+    expect(wrapper.findAll('.required-mark').length).toBeGreaterThan(0);
   });
 
   it('resets only an incompatible platform when source changes', async () => {
