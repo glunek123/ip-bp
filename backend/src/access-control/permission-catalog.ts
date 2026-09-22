@@ -1,12 +1,43 @@
 import { PermissionAction, PermissionScope } from '../generated/prisma/enums';
 
 export type PermissionCatalogItem = {
-  action: PermissionAction;
+  action: InternalAssignablePermissionAction;
   label: string;
   scopes: PermissionScope[];
 };
 
 const allScopes: PermissionScope[] = ['SELF', 'TEAM', 'DEPARTMENT'];
+
+export const internalAssignablePermissionActions = [
+  'CUSTOMER_READ',
+  'CUSTOMER_CREATE_DRAFT',
+  'CUSTOMER_EDIT_ROUTINE',
+  'CUSTOMER_ADMIT',
+  'LEAD_READ',
+  'LEAD_CREATE',
+  'LEAD_EDIT',
+  'LEAD_PUSH',
+  'USER_READ',
+  'USER_MANAGE',
+  'TEAM_READ',
+  'TEAM_MANAGE',
+  'ROLE_READ',
+  'ROLE_ASSIGN',
+  'ROLE_MANAGE',
+] as const satisfies readonly PermissionAction[];
+
+export type InternalAssignablePermissionAction =
+  (typeof internalAssignablePermissionActions)[number];
+
+const internalAssignablePermissionActionSet = new Set<PermissionAction>(
+  internalAssignablePermissionActions,
+);
+
+export function isInternalAssignablePermissionAction(
+  action: PermissionAction,
+): action is InternalAssignablePermissionAction {
+  return internalAssignablePermissionActionSet.has(action);
+}
 
 const catalog: PermissionCatalogItem[] = [
   { action: 'CUSTOMER_READ', label: '查看客户', scopes: allScopes },

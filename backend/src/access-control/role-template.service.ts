@@ -8,6 +8,7 @@ import { DatabaseService } from '../database/database.service';
 import { PermissionAction, PermissionScope } from '../generated/prisma/enums';
 import { ActorContext } from './actor-context';
 import { OrganizationService } from './organization.service';
+import { isInternalAssignablePermissionAction } from './permission-catalog';
 
 export type RoleTemplateImpact = {
   roleTemplateId: string;
@@ -391,6 +392,16 @@ export class RoleTemplateService {
       throw new BadRequestException({
         code: 'ROLE_TEMPLATE_GRANTS_REQUIRED',
         message: '至少选择一项授权',
+      });
+    }
+    if (
+      grants.some(
+        (grant) => !isInternalAssignablePermissionAction(grant.action),
+      )
+    ) {
+      throw new BadRequestException({
+        code: 'ROLE_TEMPLATE_ACTION_NOT_ASSIGNABLE',
+        message: '角色模板包含不可分配的权限',
       });
     }
     const normalized = this.sortGrants(grants);

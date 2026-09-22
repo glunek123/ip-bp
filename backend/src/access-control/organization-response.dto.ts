@@ -1,22 +1,5 @@
 import { ApiProperty, ApiPropertyOptional } from '@nestjs/swagger';
-
-const permissionActions = [
-  'CUSTOMER_READ',
-  'CUSTOMER_CREATE_DRAFT',
-  'CUSTOMER_EDIT_ROUTINE',
-  'CUSTOMER_ADMIT',
-  'LEAD_READ',
-  'LEAD_CREATE',
-  'LEAD_EDIT',
-  'LEAD_PUSH',
-  'USER_READ',
-  'USER_MANAGE',
-  'TEAM_READ',
-  'TEAM_MANAGE',
-  'ROLE_READ',
-  'ROLE_ASSIGN',
-  'ROLE_MANAGE',
-] as const;
+import { internalAssignablePermissionActions } from './permission-catalog';
 
 export class OrganizationCapabilitiesResponseDto {
   @ApiProperty() createUser!: boolean;
@@ -29,7 +12,7 @@ export class OrganizationCapabilitiesResponseDto {
 }
 
 export class OrganizationGrantResponseDto {
-  @ApiProperty({ enum: permissionActions }) action!: string;
+  @ApiProperty({ enum: internalAssignablePermissionActions }) action!: string;
   @ApiProperty({ enum: ['SELF', 'TEAM', 'DEPARTMENT'] }) scope!: string;
 }
 
@@ -47,7 +30,7 @@ export class OrganizationContextRoleResponseDto extends OrganizationRoleResponse
 }
 
 export class OrganizationPermissionCatalogResponseDto {
-  @ApiProperty({ enum: permissionActions }) action!: string;
+  @ApiProperty({ enum: internalAssignablePermissionActions }) action!: string;
   @ApiProperty() label!: string;
   @ApiProperty({ enum: ['SELF', 'TEAM', 'DEPARTMENT'], isArray: true })
   scopes!: string[];

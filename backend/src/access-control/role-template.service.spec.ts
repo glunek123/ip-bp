@@ -236,6 +236,25 @@ describe('RoleTemplateService copy', () => {
     expect(fixture.database.$transaction).not.toHaveBeenCalled();
   });
 
+  it('rejects a client-only action before opening a transaction', async () => {
+    const fixture = createFixture({
+      actorGrants: [
+        { action: 'ROLE_MANAGE', scope: 'DEPARTMENT', teamId: null },
+        { action: 'CLIENT_LEAD_READ', scope: 'DEPARTMENT', teamId: null },
+      ],
+    });
+
+    await expect(
+      fixture.service.copy(actor, {
+        ...input,
+        grants: [{ action: 'CLIENT_LEAD_READ', scope: 'DEPARTMENT' }],
+      }),
+    ).rejects.toMatchObject({
+      response: { code: 'ROLE_TEMPLATE_ACTION_NOT_ASSIGNABLE' },
+    });
+    expect(fixture.database.$transaction).not.toHaveBeenCalled();
+  });
+
   it('rejects a Grant action the actor does not cover at department scope', async () => {
     const fixture = createFixture({
       actorGrants: [

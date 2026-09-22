@@ -111,6 +111,20 @@ describe('RoleTemplateController', () => {
     expect(response !== undefined && 'content' in response).toBe(true);
   });
 
+  it('documents only internally assignable role Grant actions', () => {
+    const document = SwaggerModule.createDocument(
+      app,
+      new DocumentBuilder().setTitle('test').setVersion('1').build(),
+    );
+    const actionSchema = document.components?.schemas?.RoleGrantInputDto as
+      { properties?: { action?: { enum?: string[] } } } | undefined;
+
+    expect(actionSchema?.properties?.action?.enum).toContain('LEAD_PUSH');
+    expect(actionSchema?.properties?.action?.enum).not.toContain(
+      'CLIENT_LEAD_READ',
+    );
+  });
+
   it('validates and forwards a complete template copy command', async () => {
     copy.mockResolvedValueOnce({
       id: '44444444-4444-4444-8444-444444444444',
@@ -146,6 +160,20 @@ describe('RoleTemplateController', () => {
         departmentId: actor.departmentId,
         name: '复制角色',
         grants: [{ action: 'MADE_UP_ACTION', scope: 'TEAM' }],
+      })
+      .expect(400);
+
+    expect(copy).not.toHaveBeenCalled();
+  });
+
+  it('rejects the client-only read action before copying a role template', async () => {
+    await request(app.getHttpServer())
+      .post('/api/v1/organization/role-templates')
+      .set('Authorization', 'Bearer allowed-token')
+      .send({
+        sourceRoleTemplateId: roleId,
+        name: '复制角色',
+        grants: [{ action: 'CLIENT_LEAD_READ', scope: 'DEPARTMENT' }],
       })
       .expect(400);
 

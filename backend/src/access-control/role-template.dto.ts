@@ -4,6 +4,7 @@ import {
   ArrayMinSize,
   IsArray,
   IsEnum,
+  IsIn,
   IsInt,
   IsString,
   IsUUID,
@@ -12,15 +13,19 @@ import {
   MinLength,
   ValidateNested,
 } from 'class-validator';
-import { PermissionAction, PermissionScope } from '../generated/prisma/enums';
+import { PermissionScope } from '../generated/prisma/enums';
+import {
+  internalAssignablePermissionActions,
+  type InternalAssignablePermissionAction,
+} from './permission-catalog';
 
 const trim = ({ value }: { value: unknown }): unknown =>
   typeof value === 'string' ? value.trim() : value;
 
 export class RoleGrantInputDto {
-  @ApiProperty({ enum: PermissionAction })
-  @IsEnum(PermissionAction)
-  action!: PermissionAction;
+  @ApiProperty({ enum: internalAssignablePermissionActions })
+  @IsIn(internalAssignablePermissionActions)
+  action!: InternalAssignablePermissionAction;
 
   @ApiProperty({ enum: PermissionScope })
   @IsEnum(PermissionScope)
