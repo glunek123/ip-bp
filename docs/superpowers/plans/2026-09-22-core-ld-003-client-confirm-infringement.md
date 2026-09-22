@@ -19,7 +19,7 @@
 - Use only forward migrations. Database tests may use only the isolated database selected by `backend/.env.test`; do not reset development, production or persistent-volume data.
 - Reuse current authentication, CSRF, request, material storage, shared visual components and command error conventions. Add no dependency.
 - Follow SD-38: explain inputs and consequences before action, expose only real choices, and keep consequential confirmation explicit.
-- Default execution is one agent. Use a separate `gpt-5.6-sol` reviewer only for the required independent final review; do not use `gpt-6-astra` above `high`.
+- Use task-bounded subagents for independently testable implementation tasks and a separate `gpt-5.6-sol` reviewer for the required independent final review; do not use `gpt-6-astra` above `high`.
 - Do not push, merge, publish, release or access production systems.
 
 ---
