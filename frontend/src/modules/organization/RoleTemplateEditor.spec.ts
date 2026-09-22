@@ -59,6 +59,10 @@ describe('RoleTemplateEditor', () => {
       wrapper.get('[data-test="scope-CUSTOMER_READ"]').element,
     ).toHaveProperty('value', 'DEPARTMENT');
     expect(wrapper.text()).toContain('运营甲');
+    expect(wrapper.text()).toContain('本人：仅本人负责的数据');
+    expect(wrapper.text()).toContain('团队：当前团队数据');
+    expect(wrapper.text()).toContain('部门：本部门数据');
+    expect(wrapper.text()).not.toContain('CUSTOMER_READ');
     expect(wrapper.find('[data-test="change-reason"]').exists()).toBe(false);
     expect(wrapper.find('[data-test="approval-step"]').exists()).toBe(false);
   });

@@ -2,6 +2,7 @@
 import { computed, onBeforeUnmount, onMounted, reactive, ref } from 'vue';
 import { ElButton } from 'element-plus/es/components/button/index.mjs';
 import { ApiError } from '../../api/http';
+import RequiredFieldMark from '../../app/RequiredFieldMark.vue';
 import {
   assignOrganizationRole,
   createOrganizationTeam,
@@ -113,7 +114,7 @@ async function run(key: string, action: () => Promise<void>): Promise<boolean> {
 async function submitCreateUser(): Promise<void> {
   if (
     !createForm.displayName.trim() ||
-    !createForm.username.trim() ||
+    createForm.username.trim().length < 3 ||
     createForm.password.length < 12 ||
     !createForm.roleTemplateId
   ) {
@@ -192,6 +193,13 @@ async function setRoleStatus(
   user: OrganizationUser,
   assignment: OrganizationUser['assignments'][number],
 ): Promise<void> {
+  if (
+    assignment.active &&
+    !window.confirm(
+      `确认停用“${user.displayName}”的“${assignment.roleName}”角色吗？该人员下一次请求将失去“${assignment.roleName}”对应权限。`,
+    )
+  )
+    return;
   const changed = await run(`role-${assignment.id}`, () =>
     setOrganizationRoleAssignmentStatus(
       user.id,
@@ -208,6 +216,52 @@ async function setRoleStatus(
     }),
   );
   if (moved) delete pendingTeamChanges[user.id];
+}
+
+async function setMembershipStatus(user: OrganizationUser): Promise<void> {
+  if (
+    user.membership.active &&
+    !window.confirm(
+      `确认停用“${user.displayName}”的部门成员关系吗？该人员下一次请求将不能再以本部门成员身份办理业务。`,
+    )
+  )
+    return;
+  await run(`member-${user.id}`, () =>
+    updateOrganizationMembership(user.id, {
+      active: !user.membership.active,
+    }),
+  );
+}
+
+async function setAccountStatus(user: OrganizationUser): Promise<void> {
+  if (
+    user.accountActive &&
+    !window.confirm(
+      `确认停用“${user.displayName}”的账号吗？现有登录会立即失效，下一次请求将无法继续访问系统。`,
+    )
+  )
+    return;
+  await run(`account-${user.id}`, () =>
+    setOrganizationUserStatus(user.id, !user.accountActive),
+  );
+}
+
+async function setTeamStatus(
+  team: OrganizationManagementContext['teams'][number],
+): Promise<void> {
+  if (
+    team.status === 'ACTIVE' &&
+    !window.confirm(
+      `确认停用“${team.name}”吗？该团队不能再用于新的人员分组，已有历史记录仍会保留。`,
+    )
+  )
+    return;
+  await run(`team-status-${team.id}`, () =>
+    setOrganizationTeamStatus(
+      team.id,
+      team.status === 'ACTIVE' ? 'INACTIVE' : 'ACTIVE',
+    ),
+  );
 }
 
 function openPasswordReset(user: OrganizationUser): void {
@@ -268,15 +322,15 @@ onBeforeUnmount(() => activeRequest?.abort());
       <section v-if="showCreateUser" class="form-panel people-create-panel">
         <form class="compact-form" @submit.prevent="submitCreateUser">
           <label>
-            <span>姓名</span>
+            <span>姓名<RequiredFieldMark /></span>
             <input v-model="createForm.displayName" data-test="display-name" />
           </label>
           <label>
-            <span>登录用户名</span>
+            <span>登录用户名<RequiredFieldMark /></span>
             <input v-model="createForm.username" data-test="username" />
           </label>
           <label>
-            <span>初始密码</span>
+            <span>初始密码<RequiredFieldMark /></span>
             <input
               v-model="createForm.password"
               data-test="password"
@@ -298,7 +352,7 @@ onBeforeUnmount(() => activeRequest?.abort());
             </select>
           </label>
           <label>
-            <span>初始角色</span>
+            <span>初始角色<RequiredFieldMark /></span>
             <select
               v-model="createForm.roleTemplateId"
               data-test="role-template"
@@ -312,6 +366,10 @@ onBeforeUnmount(() => activeRequest?.abort());
               </option>
             </select>
           </label>
+          <p class="field-guidance inline-form-grid__guidance">
+            用户名至少 3 个字符；初始密码至少 12
+            个字符。本人：仅本人负责的数据；团队：当前团队数据；部门：本部门数据。
+          </p>
           <ElButton
             type="primary"
             data-test="submit-create-user"
@@ -426,6 +484,7 @@ onBeforeUnmount(() => activeRequest?.abort());
                     "
                     text
                     size="small"
+                    :data-test="`${assignment.active ? 'stop' : 'restore'}-role-${assignment.id}`"
                     :disabled="Boolean(pending)"
                     @click="setRoleStatus(user, assignment)"
                     >{{ assignment.active ? '停用' : '恢复' }}</ElButton
@@ -470,24 +529,16 @@ onBeforeUnmount(() => activeRequest?.abort());
               <ElButton
                 text
                 :disabled="Boolean(pending)"
-                @click="
-                  run(`member-${user.id}`, () =>
-                    updateOrganizationMembership(user.id, {
-                      active: !user.membership.active,
-                    }),
-                  )
-                "
+                :data-test="`${user.membership.active ? 'stop' : 'restore'}-membership-${user.id}`"
+                @click="setMembershipStatus(user)"
               >
                 {{ user.membership.active ? '停用成员' : '恢复成员' }}
               </ElButton>
               <ElButton
                 text
                 :disabled="Boolean(pending)"
-                @click="
-                  run(`account-${user.id}`, () =>
-                    setOrganizationUserStatus(user.id, !user.accountActive),
-                  )
-                "
+                :data-test="`${user.accountActive ? 'stop' : 'restore'}-account-${user.id}`"
+                @click="setAccountStatus(user)"
               >
                 {{ user.accountActive ? '停用账号' : '启用账号' }}
               </ElButton>
@@ -531,14 +582,8 @@ onBeforeUnmount(() => activeRequest?.abort());
                 v-if="context.capabilities.manageTeams"
                 text
                 :disabled="Boolean(pending)"
-                @click="
-                  run(`team-status-${team.id}`, () =>
-                    setOrganizationTeamStatus(
-                      team.id,
-                      team.status === 'ACTIVE' ? 'INACTIVE' : 'ACTIVE',
-                    ),
-                  )
-                "
+                :data-test="`${team.status === 'ACTIVE' ? 'stop' : 'restore'}-team-${team.id}`"
+                @click="setTeamStatus(team)"
                 >{{ team.status === 'ACTIVE' ? '停用' : '启用' }}</ElButton
               >
             </div>

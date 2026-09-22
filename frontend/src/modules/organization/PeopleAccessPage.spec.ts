@@ -74,6 +74,45 @@ afterEach(() => vi.clearAllMocks());
 beforeEach(() => setActivePinia(createPinia()));
 
 describe('PeopleAccessPage', () => {
+  it('explains account requirements and confirms destructive access changes', async () => {
+    api.getOrganizationManagementContext.mockResolvedValue(context);
+    const confirm = vi.spyOn(window, 'confirm').mockReturnValue(false);
+    const wrapper = mount(PeopleAccessPage, {
+      global: { stubs: { RouterLink: { template: '<a><slot /></a>' } } },
+    });
+    await flushPromises();
+
+    await wrapper.get('[data-test="open-create-user"]').trigger('click');
+    expect(wrapper.text()).toContain('用户名至少 3 个字符');
+    expect(wrapper.text()).toContain('初始密码至少 12 个字符');
+    expect(wrapper.text()).toContain('本人：仅本人负责的数据');
+    expect(wrapper.findAll('.required-mark').length).toBeGreaterThanOrEqual(4);
+
+    await wrapper.get('[data-test="stop-account-user-1"]').trigger('click');
+    expect(confirm).toHaveBeenLastCalledWith(
+      expect.stringContaining('现有登录会立即失效'),
+    );
+    expect(api.setOrganizationUserStatus).not.toHaveBeenCalled();
+
+    await wrapper.get('[data-test="stop-membership-user-1"]').trigger('click');
+    expect(confirm).toHaveBeenLastCalledWith(
+      expect.stringContaining('不能再以本部门成员身份办理业务'),
+    );
+    expect(api.updateOrganizationMembership).not.toHaveBeenCalled();
+
+    await wrapper.get('[data-test="stop-role-assignment-1"]').trigger('click');
+    expect(confirm).toHaveBeenLastCalledWith(
+      expect.stringContaining('将失去“客户经办”对应权限'),
+    );
+    expect(api.setOrganizationRoleAssignmentStatus).not.toHaveBeenCalled();
+
+    await wrapper.get('[data-test="stop-team-team-1"]').trigger('click');
+    expect(confirm).toHaveBeenLastCalledWith(
+      expect.stringContaining('不能再用于新的人员分组'),
+    );
+    expect(api.setOrganizationTeamStatus).not.toHaveBeenCalled();
+  });
+
   it('loads the people, teams and roles in one workspace', async () => {
     api.getOrganizationManagementContext.mockResolvedValue(context);
     const wrapper = mount(PeopleAccessPage, {
@@ -187,6 +226,7 @@ describe('PeopleAccessPage', () => {
   });
 
   it('automatically retries the retained Team after the conflicting role is stopped', async () => {
+    vi.spyOn(window, 'confirm').mockReturnValue(true);
     api.getOrganizationManagementContext.mockResolvedValue(context);
     api.updateOrganizationMembership
       .mockRejectedValueOnce(

@@ -148,6 +148,9 @@ onBeforeUnmount(() => {
         <strong>权限配置</strong>
         <span>勾选动作，再选择适用范围</span>
       </div>
+      <p class="field-guidance grant-scope-guidance">
+        本人：仅本人负责的数据；团队：当前团队数据；部门：本部门数据。
+      </p>
       <label
         v-for="item in permissionCatalog"
         :key="item.action"
@@ -159,9 +162,8 @@ onBeforeUnmount(() => {
           type="checkbox"
           :data-test="`grant-${item.action}`"
         />
-        <span class="grant-option__label">
+        <span class="grant-option__label" :title="item.action">
           <strong>{{ item.label }}</strong>
-          <small>{{ item.action }}</small>
         </span>
         <select
           v-model="scopes[item.action]"
