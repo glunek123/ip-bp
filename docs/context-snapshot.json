@@ -1,6 +1,6 @@
 {
   "version": 1,
-  "recordedAt": "2026-09-22T06:37:32.233Z",
+  "recordedAt": "2026-09-22T07:27:35.003Z",
   "files": {
     ".cursor/rules/verified-feature-integration.mdc": "8cbd3df851df782bf5359f4e7d6a56d3e3061baf45862020286383253fefb2aa",
     ".env.example": "07211cde5c2b59efc21b619b752d4c9b871f0980d2d64ca3c146ad6151fd27ca",
@@ -276,6 +276,7 @@
     "docs/superpowers/specs/2026-09-21-core-flow-field-material-contract.md": "46eede507c36616b35d334c5911e37fd0f8652beb764adc73c69cbde4c8cd7e5",
     "docs/superpowers/specs/2026-09-22-core-ld-002-client-push-design.md": "5f45cd7f5bbca0a39c0f69c3a76f5f4604deedaf2d69e53d235941a3f5c605f9",
     "docs/superpowers/specs/2026-09-22-demo-aligned-frontend-shell-leads-design.md": "bc3b76aa062034f9ea05084a29ef0e1995bf229506a50f961312f4ca127cdc37",
+    "docs/superpowers/specs/2026-09-22-rapid-onboarding-ux-hardening-design.md": "cce9a3c02619fb08e3504878accc428be722128642511a277199b6974cac236b",
     "eslint.config.mjs": "daf2a32e995b6fe0ec4648d5e116ddb6e028a2dfa04df23914b3bef88e3fc3d2",
     "frontend/index.html": "d39846e0c586d9b779c4eab746d32f690b878c293128e824cfee6170623b14d8",
     "frontend/package.json": "11be5d17686715dce6637d942b3fa994380b34de28216c4134935f040f40b44b",
