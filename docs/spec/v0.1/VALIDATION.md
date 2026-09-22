@@ -271,3 +271,15 @@ CUST-FND-002先写负向测试并实测RED：授权服务、ActorContext及测�
 固定代码候选`4cb7329`的最终Level 3结果：完整`pnpm verify`通过，包含工具55项、前端140项、后端195项以及类型、Lint、格式和生产构建；独立测试库人员E2E 6项、认证E2E 4项、完整E2E 54项全部通过。最终隔离复审结论为`ACCEPTED`，Critical／Important／Minor未关闭数量均为0。该证据仅绑定`4cb7329`；其后的文档性收口不改动已验证代码。未执行推送、合并、发布或生产数据库操作。
 
 本记录不提前声称最终Level 3候选已通过完整`verify`、完整E2E或Review；这些结果以固定干净候选的树外证据和最终交付报告为准。未执行生产迁移、推送或发布。
+
+# CORE-LD-002 运营推送至真实客户端审核（2026-09-22）
+
+固定代码候选为`6be15b2`，tree为`f71f44e4db09699f310e608e135254204ea3679e`。实现范围严格限定为`WAITING_PUSH → WAITING_REVIEW`：新增真实企业客户账号与客户企业绑定、复用本地密码和Cookie会话、服务端固定企业数据范围、`LEAD_PUSH`内部授权和客户专属读取边界；推送Command在同一事务中校验状态、客户准入、有效商品、有效绑定账号、操作者范围、`expectedVersion`和`idempotencyKey`，并写入推送事实、成功审计和幂等回执。正式页面包含管理员在客户详情创建／绑定账号、运营在线索详情推送、客户端待审核列表／详情和允许附件读取；未实现确认侵权、不侵权归档、批量推送或完整门户。
+
+数据层使用两份前向迁移`20260922009000_add_client_identity_actions`和`20260922010000_add_client_accounts_and_lead_push`。独立测试库目标经只读确认是`dev_cor_test|dev_cor_test`后，从空库重新创建并依次成功应用全部24份迁移；同一代码候选的迁移专项还验证上一支持schema升级、脏数据拒绝和失败阶段回滚。数据库延迟约束保证已提交CLIENT账号恰有一个企业绑定，触发器阻止客户账号获得内部成员／角色以及内部账号获得客户绑定。
+
+正式`pnpm verify`在同一tree通过：`context:check:strict`、53个REQ／55个AC／11个BQ／37个SD、架构、全仓类型、ESLint、Prettier、工具71项、后端Jest 499项、前端Vitest 253项及前后端生产构建全部成功。正式`verify:slice:core-ld`也在同一tree通过并生成Evidence v2：后端308项、前端147项、架构／类型／ESLint、Slice格式、后端构建和真实PostgreSQL／Chromium 18/18；证据位于Git common目录`dev-cor-validation-evidence/f71f44e4db09699f310e608e135254204ea3679e.json`。
+
+同一最终代码tree的完整数据库型Chromium E2E为76/76。主链由管理员创建并绑定真实客户账号、运营创建／选择待推送线索并推送、运营端显示待审核和推送记录、退出运营账号、客户以真实密码登录、只见本企业已推送线索、打开详情和下载附件、刷新后状态持续存在。负向覆盖其他企业和待推送线索不可见、无`LEAD_PUSH`、未绑定／停用账号、客户非ADMITTED、错误状态、无有效商品、同键重放／异参冲突、旧版本／并发竞争、审计或回执失败整体回滚，以及账号／绑定撤销后下一请求立即失效。
+
+独立Review首轮发现内部角色请求DTO仍可接受客户专属`CLIENT_LEAD_READ`这一项Important。修复后，内部可分配Action由后端共享集合统一驱动目录、响应DTO、请求DTO和OpenAPI，服务绕过DTO也会在事务前拒绝客户专属Action；`LEAD_PUSH`保持可分配。最终复审结论为`ACCEPTED`，Critical 0／Important 0／Minor 0。未执行远端推送、main合并、发布、生产迁移或任何生产数据操作；生产对象存储E02仍是上线前置，不否定本地／测试闭环完成。
