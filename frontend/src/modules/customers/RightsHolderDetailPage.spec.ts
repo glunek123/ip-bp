@@ -75,7 +75,7 @@ describe('RightsHolderDetailPage', () => {
         holderId,
         expect.objectContaining({ signal: expect.any(AbortSignal) }),
       );
-      expect(wrapper.text()).toContain('正在读取权利主体');
+      expect(wrapper.text()).toContain('正在读取权利人');
       expect(wrapper.text()).not.toContain('旧锚点主体');
       resolve(holder(holderId, '新锚点主体'));
       await flushPromises();
@@ -116,12 +116,12 @@ describe('RightsHolderDetailPage', () => {
     await flushPromises();
     await router.push('/customers/hidden-customer/rights-holders/holder-1');
     await flushPromises();
-    expect(wrapper.text()).toContain('权利主体不存在或当前不可访问');
+    expect(wrapper.text()).toContain('权利人不存在或当前不可访问');
     expect(wrapper.text()).not.toContain('旧锚点主体');
     await router.push('/customers/customer-3/rights-holders/holder-3');
     await flushPromises();
-    expect(wrapper.text()).toContain('正在读取权利主体');
-    expect(wrapper.text()).not.toContain('权利主体不存在或当前不可访问');
+    expect(wrapper.text()).toContain('正在读取权利人');
+    expect(wrapper.text()).not.toContain('权利人不存在或当前不可访问');
     resolveThird(holder('holder-3', '第三锚点主体'));
     await flushPromises();
     expect(wrapper.text()).toContain('第三锚点主体');
@@ -133,7 +133,7 @@ describe('RightsHolderDetailPage', () => {
       new Promise((done) => (resolve = done)),
     );
     const wrapper = await mountPage();
-    expect(wrapper.text()).toContain('正在读取权利主体');
+    expect(wrapper.text()).toContain('正在读取权利人');
     resolve({
       id: 'holder-1',
       name: '主体甲',
@@ -156,7 +156,7 @@ describe('RightsHolderDetailPage', () => {
       api.getCustomerRightsHolder.mockRejectedValue({ code });
       const wrapper = await mountPage();
       await flushPromises();
-      expect(wrapper.text()).toContain('权利主体不存在或当前不可访问');
+      expect(wrapper.text()).toContain('权利人不存在或当前不可访问');
     },
   );
 });

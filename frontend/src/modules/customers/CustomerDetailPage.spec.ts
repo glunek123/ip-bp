@@ -136,6 +136,12 @@ describe('CustomerDetailPage', () => {
     await wrapper.get('[data-test="admitted"]').trigger('click');
 
     expect(wrapper.text()).toContain('已准入');
+    expect(wrapper.text()).toContain('客户组织类型');
+    expect(wrapper.text()).toContain('企业');
+    expect(wrapper.text()).toContain('身份证明类型');
+    expect(wrapper.text()).toContain('营业执照');
+    expect(wrapper.text()).not.toContain('ENTERPRISE');
+    expect(wrapper.text()).not.toContain('BUSINESS_LICENSE');
     expect(wrapper.find('[data-test="admission-panel"]').exists()).toBe(true);
     expect(
       wrapper.get('[data-test="admission-panel"]').attributes('data-version'),

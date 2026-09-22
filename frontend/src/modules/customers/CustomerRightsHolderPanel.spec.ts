@@ -62,10 +62,10 @@ describe('CustomerRightsHolderPanel', () => {
       new Promise((resolve) => (resolveList = resolve)),
     );
     const wrapper = mountPanel();
-    expect(wrapper.text()).toContain('正在读取权利主体');
+    expect(wrapper.text()).toContain('正在读取权利人');
     resolveList(listResult({ items: [], total: 0 }));
     await flushPromises();
-    expect(wrapper.text()).toContain('尚未关联权利主体');
+    expect(wrapper.text()).toContain('尚未关联权利人');
   });
 
   it('shows a retryable failure state', async () => {
@@ -74,7 +74,7 @@ describe('CustomerRightsHolderPanel', () => {
       .mockResolvedValueOnce(listResult());
     const wrapper = mountPanel();
     await flushPromises();
-    expect(wrapper.text()).toContain('权利主体暂时无法加载');
+    expect(wrapper.text()).toContain('权利人暂时无法加载');
     await wrapper.get('[data-test="reload-holders"]').trigger('click');
     await flushPromises();
     expect(wrapper.text()).toContain('主体甲');
@@ -135,8 +135,11 @@ describe('CustomerRightsHolderPanel', () => {
     const wrapper = mountPanel();
     await flushPromises();
     await wrapper.get('[data-test="open-create-holder"]').trigger('click');
+    expect(
+      wrapper.find('label[for="holder-name"] .required-mark').exists(),
+    ).toBe(true);
     await wrapper.get('[data-test="submit-create-holder"]').trigger('click');
-    expect(wrapper.text()).toContain('请填写权利主体名称');
+    expect(wrapper.text()).toContain('请填写权利人名称');
 
     for (const [selector, value] of [
       ['name', '主体甲'],
@@ -293,7 +296,7 @@ describe('CustomerRightsHolderPanel', () => {
     await wrapper.get('[name="query"]').setValue('不存在');
     await wrapper.get('[data-test="search-linkable"]').trigger('click');
     await flushPromises();
-    expect(wrapper.text()).toContain('没有可关联的权利主体');
+    expect(wrapper.text()).toContain('没有可关联的权利人');
     expect(
       (
         wrapper.get('[data-test="submit-link-holder"]')
@@ -496,7 +499,7 @@ describe('CustomerRightsHolderPanel', () => {
     });
     await flushPromises();
 
-    expect(wrapper.find('[aria-label="关联已有权利主体"]').exists()).toBe(true);
+    expect(wrapper.find('[aria-label="关联已有权利人"]').exists()).toBe(true);
     expect(
       (wrapper.get('[value="holder-2"]').element as HTMLInputElement).checked,
     ).toBe(true);
@@ -638,7 +641,7 @@ describe('CustomerRightsHolderPanel', () => {
     expect(api.listCustomerRightsHolders).toHaveBeenCalledTimes(2);
     expect(api.findLinkableRightsHolders).toHaveBeenCalledTimes(2);
     expect(wrapper.text()).toContain('主体乙');
-    expect(wrapper.text()).toContain('没有可关联的权利主体');
+    expect(wrapper.text()).toContain('没有可关联的权利人');
     expect(
       (
         wrapper.get('[data-test="submit-link-holder"]')
@@ -696,8 +699,8 @@ describe('CustomerRightsHolderPanel', () => {
     });
     await flushPromises();
 
-    expect(wrapper.find('[aria-label="关联已有权利主体"]').exists()).toBe(true);
-    expect(wrapper.text()).not.toContain('该权利主体已关联，列表已刷新');
+    expect(wrapper.find('[aria-label="关联已有权利人"]').exists()).toBe(true);
+    expect(wrapper.text()).not.toContain('该权利人已关联，列表已刷新');
     expect(wrapper.find('[value="holder-2"]').exists()).toBe(true);
   });
 

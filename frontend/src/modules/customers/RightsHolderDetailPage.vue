@@ -72,22 +72,22 @@ onBeforeUnmount(() => activeRequest?.abort());
       </RouterLink>
       <section v-if="state === 'loading'" class="state-panel ledger-panel">
         <span class="state-index">读取中</span>
-        <h1>正在读取权利主体</h1>
+        <h1>正在读取权利人</h1>
       </section>
       <section v-else-if="state === 'missing'" class="state-panel ledger-panel">
         <span class="state-index">404</span>
-        <h1>权利主体不存在或当前不可访问</h1>
-        <p>请返回客户详情，从已关联的主体中重新选择。</p>
+        <h1>权利人不存在或当前不可访问</h1>
+        <p>请返回客户详情，从已关联的权利人中重新选择。</p>
       </section>
       <section v-else-if="state === 'failed'" class="state-panel ledger-panel">
         <span class="state-index">连接失败</span>
-        <h1>权利主体暂时无法加载</h1>
+        <h1>权利人暂时无法加载</h1>
         <ElButton @click="load">重新加载</ElButton>
       </section>
       <template v-else-if="holder">
         <div class="detail-heading">
           <div>
-            <p class="section-kicker">权利主体详情</p>
+            <p class="section-kicker">权利人详情</p>
             <h1>{{ holder.name }}</h1>
           </div>
           <span class="status-chip status-chip--large">只读</span>
@@ -95,11 +95,7 @@ onBeforeUnmount(() => activeRequest?.abort());
         <section class="ledger-panel detail-card">
           <dl class="detail-grid">
             <div>
-              <dt>稳定主体标识</dt>
-              <dd>{{ holder.id }}</dd>
-            </div>
-            <div>
-              <dt>主体名称</dt>
+              <dt>权利人名称</dt>
               <dd>{{ holder.name }}</dd>
             </div>
             <div>

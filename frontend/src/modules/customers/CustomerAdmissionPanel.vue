@@ -9,6 +9,7 @@ import {
   type CustomerSummary,
 } from '../../api/customers';
 import { ApiError } from '../../api/http';
+import RequiredFieldMark from '../../app/RequiredFieldMark.vue';
 import {
   deleteMaterial,
   downloadMaterialVersion,
@@ -590,7 +591,7 @@ void reloadMaterials();
           {{ canManageMaterials ? '客户准入' : '客户材料' }}
         </p>
         <h2 id="admission-title">
-          {{ canManageMaterials ? '补齐主体证明后直接准入' : '身份证明材料' }}
+          {{ canManageMaterials ? '补齐客户身份证明并准入' : '身份证明材料' }}
         </h2>
         <p>
           {{
@@ -608,7 +609,7 @@ void reloadMaterials();
     <form @submit.prevent="submit">
       <div v-if="canManageMaterials" class="admission-grid">
         <label>
-          <span>客户主体类型</span>
+          <span>客户组织类型<RequiredFieldMark /></span>
           <select
             v-model="customerType"
             name="customerType"
@@ -626,7 +627,7 @@ void reloadMaterials();
           </select>
         </label>
         <label>
-          <span>身份证件类型</span>
+          <span>身份证明类型<RequiredFieldMark /></span>
           <select
             v-model="identityType"
             name="identityType"
@@ -644,7 +645,7 @@ void reloadMaterials();
           </select>
         </label>
         <label class="admission-grid__wide">
-          <span>客户名称</span>
+          <span>客户名称<RequiredFieldMark /></span>
           <input
             v-model="name"
             name="admissionName"
@@ -653,7 +654,7 @@ void reloadMaterials();
           />
         </label>
         <label>
-          <span>证件号码</span>
+          <span>证件号码<RequiredFieldMark /></span>
           <input
             ref="identityNumberInput"
             v-model="identityNumber"
@@ -677,7 +678,7 @@ void reloadMaterials();
           />
         </label>
         <label>
-          <span>有效期类型</span>
+          <span>有效期类型<RequiredFieldMark /></span>
           <select
             v-model="identityValidityMode"
             name="identityValidityMode"
@@ -702,7 +703,7 @@ void reloadMaterials();
           />
         </label>
         <label v-if="identityValidityMode === 'FIXED'">
-          <span>有效期截止</span>
+          <span>有效期截止<RequiredFieldMark /></span>
           <input
             v-model="identityValidTo"
             name="identityValidTo"
@@ -716,7 +717,7 @@ void reloadMaterials();
         <legend>准入联系人</legend>
         <div class="admission-grid admission-grid--three">
           <label>
-            <span>姓名</span>
+            <span>联系人姓名<RequiredFieldMark /></span>
             <input
               v-model="admissionContactName"
               name="admissionContactName"
@@ -749,8 +750,12 @@ void reloadMaterials();
         <legend>身份证明材料</legend>
         <div class="upload-row">
           <label v-if="canManageMaterials">
-            <span>材料用途</span>
+            <span>材料用途<RequiredFieldMark /></span>
+            <span v-if="purposeOptions.length === 1" class="sole-choice">
+              完整身份证明材料
+            </span>
             <select
+              v-else
               v-model="documentPurpose"
               name="documentPurpose"
               class="text-input"

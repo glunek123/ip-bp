@@ -15,6 +15,35 @@ beforeEach(() => {
 });
 
 describe('CustomerAccountPanel', () => {
+  it('explains account requirements and confirms immediate revocation', async () => {
+    const activeAccount = {
+      id: 'user-1',
+      displayName: '客户审核人',
+      username: 'client.a',
+      accountActive: true,
+      bindingActive: true,
+      bindingVersion: 1,
+    };
+    api.listClientAccounts.mockResolvedValue([activeAccount]);
+    const confirm = vi.spyOn(window, 'confirm').mockReturnValue(false);
+    const wrapper = mount(CustomerAccountPanel, {
+      props: { customerId: 'customer-1', admitted: true },
+    });
+    await flushPromises();
+
+    expect(wrapper.text()).toContain('用户名至少 3 个字符');
+    expect(wrapper.text()).toContain('初始密码至少 12 个字符');
+    expect(wrapper.text()).toContain('客户侧使用人姓名');
+    expect(wrapper.text()).not.toContain('Client access');
+
+    await wrapper.get('[data-test="toggle-client-user-1"]').trigger('click');
+
+    expect(api.setClientAccountStatus).not.toHaveBeenCalled();
+    expect(confirm).toHaveBeenCalledWith(
+      expect.stringContaining('现有登录会立即失效'),
+    );
+  });
+
   it('creates and reloads a real enterprise-bound credential', async () => {
     api.createClientAccount.mockResolvedValue({ id: 'user-1' });
     api.listClientAccounts.mockResolvedValueOnce([]).mockResolvedValueOnce([

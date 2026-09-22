@@ -29,6 +29,14 @@ async function mountPage() {
 }
 
 describe('CustomerNewPage', () => {
+  it('marks the only unconditional field as required', async () => {
+    const { wrapper } = await mountPage();
+
+    expect(
+      wrapper.get('label[for="customer-name"] .required-mark').text(),
+    ).toBe('*必填');
+  });
+
   it('shows a field error for a blank name without calling the API', async () => {
     const { wrapper } = await mountPage();
     await wrapper.get('form').trigger('submit');

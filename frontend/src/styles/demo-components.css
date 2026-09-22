@@ -107,6 +107,42 @@
   gap: var(--s-4);
 }
 
+.detail-anchor-nav {
+  display: flex;
+  flex-wrap: wrap;
+  gap: var(--s-2);
+  margin-bottom: var(--s-4);
+}
+
+.detail-anchor-nav a {
+  padding: 5px 10px;
+  border: 1px solid var(--color-hairline);
+  border-radius: 999px;
+  color: var(--color-ink-muted);
+  font-size: 12px;
+  text-decoration: none;
+}
+
+.detail-anchor-nav a:hover {
+  border-color: var(--color-primary);
+  color: var(--color-primary);
+}
+
+.inline-form-grid__guidance {
+  grid-column: 1 / -1;
+}
+
+.sole-choice {
+  display: flex;
+  min-height: 40px;
+  align-items: center;
+  padding: 0 11px;
+  border: 1px solid var(--color-hairline);
+  border-radius: 6px;
+  background: var(--color-surface-2);
+  color: var(--color-ink);
+}
+
 .demo-form-grid,
 .demo-detail-grid {
   display: grid;

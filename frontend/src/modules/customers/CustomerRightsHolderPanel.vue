@@ -13,6 +13,7 @@ import {
   type RightsHolderSummary,
 } from '../../api/rights-holders';
 import { ApiError } from '../../api/http';
+import RequiredFieldMark from '../../app/RequiredFieldMark.vue';
 
 const props = defineProps<{
   customerId: string;
@@ -165,7 +166,7 @@ function createPayload(): CreateRightsHolderInput {
 
 async function submitCreate(): Promise<void> {
   if (saving.value) return;
-  nameError.value = name.value.trim() ? '' : '请填写权利主体名称';
+  nameError.value = name.value.trim() ? '' : '请填写权利人名称';
   createError.value = '';
   versionConflict.value = false;
   if (nameError.value) return;
@@ -208,7 +209,7 @@ async function submitCreate(): Promise<void> {
       !isApiError(error, 'CUSTOMER_ACTION_FORBIDDEN') &&
       !isApiError(error, 'CUSTOMER_NOT_FOUND')
     ) {
-      createError.value = '权利主体创建失败，请稍后重试';
+      createError.value = '权利人创建失败，请稍后重试';
     }
   } finally {
     if (intentGeneration === formIntentGeneration) saving.value = false;
@@ -293,7 +294,7 @@ async function submitLink(): Promise<void> {
       linkRetry = undefined;
       await Promise.all([load(1), loadLinkable(1)]);
       if (!isCurrentFormIntent(intentGeneration, 'link')) return;
-      linkError.value = '该权利主体已关联，列表已刷新';
+      linkError.value = '该权利人已关联，列表已刷新';
     } else {
       linkRetry = { signature, key };
     }
@@ -305,7 +306,7 @@ async function submitLink(): Promise<void> {
       !isApiError(error, 'CUSTOMER_NOT_FOUND') &&
       !isApiError(error, 'RIGHTS_HOLDER_ALREADY_LINKED')
     ) {
-      linkError.value = '权利主体关联失败，请稍后重试';
+      linkError.value = '权利人关联失败，请稍后重试';
     }
   } finally {
     if (intentGeneration === formIntentGeneration) saving.value = false;
@@ -342,7 +343,8 @@ onBeforeUnmount(() => {
     <div class="detail-heading">
       <div>
         <p class="section-kicker">客户关联</p>
-        <h2 id="rights-holder-title">权利主体</h2>
+        <h2 id="rights-holder-title">权利人</h2>
+        <p class="field-guidance">知识产权实际所属方，可与当前客户企业不同。</p>
       </div>
       <div v-if="canCreate || canLink" class="detail-actions">
         <ElButton
@@ -350,20 +352,20 @@ onBeforeUnmount(() => {
           data-test="open-create-holder"
           @click="openCreate"
         >
-          新建主体
+          新建权利人
         </ElButton>
         <ElButton v-if="canLink" data-test="open-link-holder" @click="openLink">
-          关联已有主体
+          关联已有权利人
         </ElButton>
       </div>
     </div>
 
-    <p v-if="state === 'loading'">正在读取权利主体……</p>
+    <p v-if="state === 'loading'">正在读取权利人……</p>
     <div v-else-if="state === 'failed'">
-      <p>权利主体暂时无法加载。</p>
+      <p>权利人暂时无法加载。</p>
       <ElButton data-test="reload-holders" @click="load()">重新加载</ElButton>
     </div>
-    <p v-else-if="holders.length === 0">尚未关联权利主体。</p>
+    <p v-else-if="holders.length === 0">尚未关联权利人。</p>
     <ul v-else class="duplicate-list">
       <li v-for="holder in holders" :key="holder.id">
         <span>{{ holder.name }}</span>
@@ -391,10 +393,12 @@ onBeforeUnmount(() => {
       v-if="createOpen"
       class="form-section"
       role="dialog"
-      aria-label="新建权利主体"
+      aria-label="新建权利人"
     >
-      <h3>新建权利主体</h3>
-      <label class="field-label" for="holder-name">主体名称</label>
+      <h3>新建权利人</h3>
+      <label class="field-label" for="holder-name"
+        >权利人名称<RequiredFieldMark
+      /></label>
       <input
         id="holder-name"
         v-model="name"
@@ -475,9 +479,9 @@ onBeforeUnmount(() => {
       v-if="linkOpen"
       class="form-section"
       role="dialog"
-      aria-label="关联已有权利主体"
+      aria-label="关联已有权利人"
     >
-      <h3>关联已有权利主体</h3>
+      <h3>关联已有权利人</h3>
       <label class="field-label" for="holder-query">按名称搜索</label>
       <input
         id="holder-query"
@@ -494,7 +498,7 @@ onBeforeUnmount(() => {
         <p>可关联主体暂时无法加载。</p>
         <ElButton @click="loadLinkable(linkablePage)">重新加载</ElButton>
       </div>
-      <p v-else-if="linkable.length === 0">没有可关联的权利主体。</p>
+      <p v-else-if="linkable.length === 0">没有可关联的权利人。</p>
       <template v-else>
         <label v-for="holder in linkable" :key="holder.id" class="field-label">
           <input

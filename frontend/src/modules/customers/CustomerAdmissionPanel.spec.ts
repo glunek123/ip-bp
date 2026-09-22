@@ -102,6 +102,17 @@ async function fillEnterpriseAdmission(wrapper: ReturnType<typeof mount>) {
 }
 
 describe('CustomerAdmissionPanel', () => {
+  it('uses plain-language required labels and removes a sole-purpose choice', async () => {
+    const wrapper = await mountPanel();
+
+    expect(wrapper.text()).toContain('补齐客户身份证明并准入');
+    expect(wrapper.text()).toContain('客户组织类型');
+    expect(wrapper.text()).toContain('身份证明类型');
+    expect(wrapper.text()).toContain('完整身份证明材料');
+    expect(wrapper.find('select[name="documentPurpose"]').exists()).toBe(false);
+    expect(wrapper.findAll('.required-mark').length).toBeGreaterThan(0);
+  });
+
   it('links identity choices to the selected subject type', async () => {
     const wrapper = await mountPanel();
 

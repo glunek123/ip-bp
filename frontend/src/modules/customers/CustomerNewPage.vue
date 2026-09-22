@@ -8,6 +8,8 @@ import {
   findCustomerDuplicates,
   type CustomerDuplicateSummary,
 } from '../../api/customers';
+import RequiredFieldMark from '../../app/RequiredFieldMark.vue';
+import { useUnsavedForm } from '../../app/use-unsaved-form';
 
 const router = useRouter();
 const name = ref('');
@@ -22,6 +24,9 @@ const duplicateNameReasonError = ref('');
 const needsDuplicateNameReason = ref(false);
 const duplicateMatches = ref<CustomerDuplicateSummary[]>([]);
 const saving = ref(false);
+const isDirty = ref(false);
+
+useUnsavedForm(isDirty);
 
 async function loadVisibleSameName(name: string): Promise<void> {
   try {
@@ -83,6 +88,7 @@ async function submit(): Promise<void> {
         ? { duplicateNameReason: duplicateNameReason.value.trim() }
         : {}),
     });
+    isDirty.value = false;
     await router.push(`/customers/${created.id}`);
   } catch (error) {
     if (
@@ -120,8 +126,15 @@ async function submit(): Promise<void> {
           <p>只需客户名称即可开始，证件和联系人稍后补充。</p>
         </div>
       </div>
-      <form class="form-panel" @submit.prevent="submit">
-        <label class="field-label" for="customer-name">客户名称</label>
+      <form
+        class="form-panel"
+        @submit.prevent="submit"
+        @input="isDirty = true"
+        @change="isDirty = true"
+      >
+        <label class="field-label" for="customer-name"
+          >客户名称<RequiredFieldMark
+        /></label>
         <input
           id="customer-name"
           v-model="name"

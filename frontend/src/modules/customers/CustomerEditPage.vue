@@ -10,6 +10,8 @@ import {
   type CustomerDuplicateSummary,
 } from '../../api/customers';
 import { ApiError } from '../../api/http';
+import RequiredFieldMark from '../../app/RequiredFieldMark.vue';
+import { useUnsavedForm } from '../../app/use-unsaved-form';
 import {
   compatibleIdentityOptions,
   customerTypeOptionsWithCurrent,
@@ -47,7 +49,10 @@ const admissionContactError = ref('');
 const duplicateNameReasonError = ref('');
 const submitError = ref('');
 const saving = ref(false);
+const isDirty = ref(false);
 let activeRequest: AbortController | undefined;
+
+useUnsavedForm(isDirty);
 
 const displayedCustomerTypeOptions = computed(() =>
   customerTypeOptionsWithCurrent(customerType.value),
@@ -267,6 +272,7 @@ async function submit(): Promise<void> {
         ? { duplicateNameReason: duplicateNameReason.value.trim() }
         : {}),
     });
+    isDirty.value = false;
     await router.push(`/customers/${String(route.params.id)}`);
   } catch (error) {
     if (error instanceof ApiError) {
@@ -346,8 +352,15 @@ onBeforeUnmount(() => activeRequest?.abort());
             <p>保存后立即生效，并自动记录本次修改。</p>
           </div>
         </div>
-        <form class="form-panel" @submit.prevent="submit">
-          <label class="field-label" for="customer-name">客户名称</label>
+        <form
+          class="form-panel"
+          @submit.prevent="submit"
+          @input="isDirty = true"
+          @change="isDirty = true"
+        >
+          <label class="field-label" for="customer-name"
+            >客户名称<RequiredFieldMark
+          /></label>
           <input
             id="customer-name"
             v-model="name"
@@ -358,7 +371,7 @@ onBeforeUnmount(() => activeRequest?.abort());
           <p v-if="nameError" class="field-error">{{ nameError }}</p>
 
           <label class="field-label field-label--spaced" for="customer-type"
-            >客户类型</label
+            >客户组织类型</label
           >
           <select
             id="customer-type"
@@ -378,7 +391,7 @@ onBeforeUnmount(() => activeRequest?.abort());
           </select>
 
           <label class="field-label field-label--spaced" for="identity-type"
-            >证件类型</label
+            >身份证明类型</label
           >
           <select
             id="identity-type"

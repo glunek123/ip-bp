@@ -8,6 +8,7 @@ import {
   setClientAccountStatus,
   type ClientAccount,
 } from '../../api/client-accounts';
+import RequiredFieldMark from '../../app/RequiredFieldMark.vue';
 
 const props = defineProps<{ customerId: string; admitted: boolean }>();
 const accounts = ref<ClientAccount[]>([]);
@@ -68,6 +69,13 @@ async function create(): Promise<void> {
 
 async function toggle(account: ClientAccount): Promise<void> {
   if (changingId.value) return;
+  if (
+    account.bindingActive &&
+    !window.confirm(
+      `确认停用“${account.displayName}”吗？该账号现有登录会立即失效，下一次请求将不能访问本企业线索。`,
+    )
+  )
+    return;
   changingId.value = account.id;
   errorMessage.value = '';
   successMessage.value = '';
@@ -98,7 +106,7 @@ onMounted(() => void load());
   <section class="ledger-panel detail-card" data-test="client-account-panel">
     <div class="panel-heading">
       <div>
-        <p class="section-kicker">Client access</p>
+        <p class="section-kicker">企业登录账号</p>
         <h2>客户账号</h2>
       </div>
       <ElButton v-if="admitted" text :loading="loading" @click="load"
@@ -116,6 +124,7 @@ onMounted(() => void load());
           </span>
           <ElButton
             text
+            :data-test="`toggle-client-${account.id}`"
             :loading="changingId === account.id"
             :disabled="Boolean(changingId)"
             @click="toggle(account)"
@@ -126,7 +135,7 @@ onMounted(() => void load());
       </ul>
       <div class="inline-form-grid">
         <label>
-          <span>姓名</span>
+          <span>客户侧使用人姓名<RequiredFieldMark /></span>
           <input
             v-model="displayName"
             name="clientDisplayName"
@@ -134,11 +143,11 @@ onMounted(() => void load());
           />
         </label>
         <label>
-          <span>用户名</span>
+          <span>用户名<RequiredFieldMark /></span>
           <input v-model="username" name="clientUsername" class="text-input" />
         </label>
         <label>
-          <span>初始密码</span>
+          <span>初始密码<RequiredFieldMark /></span>
           <input
             v-model="password"
             name="clientPassword"
@@ -147,6 +156,10 @@ onMounted(() => void load());
             autocomplete="new-password"
           />
         </label>
+        <p class="field-guidance inline-form-grid__guidance">
+          用户名至少 3 个字符；初始密码至少 12
+          个字符。创建后，该账号将绑定当前客户企业，只能查看本企业已推送线索。
+        </p>
         <ElButton
           type="primary"
           data-test="create-client-account"

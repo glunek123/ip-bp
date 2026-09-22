@@ -11,6 +11,7 @@ import {
 import CustomerRightsHolderPanel from './CustomerRightsHolderPanel.vue';
 import CustomerAdmissionPanel from './CustomerAdmissionPanel.vue';
 import CustomerAccountPanel from './CustomerAccountPanel.vue';
+import { labelCustomerType, labelIdentityType } from './customer-labels';
 
 const route = useRoute();
 const router = useRouter();
@@ -144,7 +145,14 @@ onBeforeUnmount(() => activeRequest?.abort());
             }}</span>
           </div>
         </div>
-        <section class="ledger-panel detail-card">
+        <nav class="detail-anchor-nav" aria-label="客户详情快速导航">
+          <a href="#customer-profile">客户资料</a>
+          <a href="#customer-rights-holders">权利人</a>
+          <a href="#customer-admission">身份材料</a>
+          <a href="#customer-accounts">企业账号</a>
+          <a href="#customer-history">办理历史</a>
+        </nav>
+        <section id="customer-profile" class="ledger-panel detail-card">
           <dl class="detail-grid">
             <div>
               <dt>资料状态</dt>
@@ -155,12 +163,12 @@ onBeforeUnmount(() => activeRequest?.abort());
               <dd>{{ customer.category || '未填写' }}</dd>
             </div>
             <div>
-              <dt>客户类型</dt>
-              <dd>{{ customer.customerType || '未填写' }}</dd>
+              <dt>客户组织类型</dt>
+              <dd>{{ labelCustomerType(customer.customerType) }}</dd>
             </div>
             <div>
-              <dt>证件类型</dt>
-              <dd>{{ customer.identityType || '未填写' }}</dd>
+              <dt>身份证明类型</dt>
+              <dd>{{ labelIdentityType(customer.identityType) }}</dd>
             </div>
             <div>
               <dt>证件号码</dt>
@@ -212,6 +220,7 @@ onBeforeUnmount(() => activeRequest?.abort());
           </p>
         </section>
         <CustomerRightsHolderPanel
+          id="customer-rights-holders"
           :customer-id="customer.id"
           :customer-version="customer.version"
           :can-edit="customer.capabilities.editRoutine"
@@ -220,16 +229,18 @@ onBeforeUnmount(() => activeRequest?.abort());
           @customer-not-found="returnToCustomerList"
         />
         <CustomerAdmissionPanel
+          id="customer-admission"
           :customer="customer"
           @admitted="acceptAdmission"
           @customer-refreshed="acceptRefreshedCustomer"
           @customer-not-found="returnToCustomerList"
         />
         <CustomerAccountPanel
+          id="customer-accounts"
           :customer-id="customer.id"
           :admitted="customer.profileStatus === 'admitted'"
         />
-        <details class="history-panel">
+        <details id="customer-history" class="history-panel">
           <summary>办理历史 · {{ customer.history.length }} 条</summary>
           <ol>
             <li
