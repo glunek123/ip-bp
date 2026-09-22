@@ -58,6 +58,11 @@ describe('RoleTemplateEditor', () => {
     expect(
       wrapper.get('[data-test="scope-CUSTOMER_READ"]').element,
     ).toHaveProperty('value', 'DEPARTMENT');
+    expect(
+      wrapper
+        .get('[data-test="scope-CUSTOMER_READ"]')
+        .attributes('aria-describedby'),
+    ).toBe('grant-scope-guidance');
     expect(wrapper.text()).toContain('运营甲');
     expect(wrapper.text()).toContain('本人：仅本人负责的数据');
     expect(wrapper.text()).toContain('团队：当前团队数据');

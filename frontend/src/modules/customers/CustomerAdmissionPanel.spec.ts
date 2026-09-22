@@ -102,6 +102,18 @@ async function fillEnterpriseAdmission(wrapper: ReturnType<typeof mount>) {
 }
 
 describe('CustomerAdmissionPanel', () => {
+  it('associates material format limits with the file picker', async () => {
+    const wrapper = await mountPanel();
+    expect(
+      wrapper
+        .get('input[name="identityDocument"]')
+        .attributes('aria-describedby'),
+    ).toBe('identity-document-guidance');
+    expect(wrapper.get('#identity-document-guidance').text()).toContain(
+      '单份不超过 20MB',
+    );
+  });
+
   it('uses plain-language required labels and removes a sole-purpose choice', async () => {
     const wrapper = await mountPanel();
 

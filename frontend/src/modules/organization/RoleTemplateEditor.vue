@@ -148,7 +148,7 @@ onBeforeUnmount(() => {
         <strong>权限配置</strong>
         <span>勾选动作，再选择适用范围</span>
       </div>
-      <p class="field-guidance grant-scope-guidance">
+      <p id="grant-scope-guidance" class="field-guidance grant-scope-guidance">
         本人：仅本人负责的数据；团队：当前团队数据；部门：本部门数据。
       </p>
       <label
@@ -169,6 +169,7 @@ onBeforeUnmount(() => {
           v-model="scopes[item.action]"
           :disabled="!selected[item.action]"
           :aria-label="`${item.label}范围`"
+          aria-describedby="grant-scope-guidance"
           :data-test="`scope-${item.action}`"
         >
           <option v-for="scope in item.scopes" :key="scope" :value="scope">

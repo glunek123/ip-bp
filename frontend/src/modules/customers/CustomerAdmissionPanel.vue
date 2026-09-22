@@ -779,6 +779,7 @@ void reloadMaterials();
               type="file"
               accept=".pdf,.jpg,.jpeg,.png,application/pdf,image/jpeg,image/png"
               :disabled="Boolean(uploadingFilename)"
+              aria-describedby="identity-document-guidance"
               @change="upload"
             />
             <span>{{
@@ -795,7 +796,11 @@ void reloadMaterials();
             刷新材料
           </ElButton>
         </div>
-        <p v-if="canManageMaterials" class="field-help">
+        <p
+          v-if="canManageMaterials"
+          id="identity-document-guidance"
+          class="field-help"
+        >
           支持 PDF、JPG/JPEG、PNG；单份不超过 20MB，最多 10 份。
         </p>
         <p v-if="materialError" class="field-error" role="alert">

@@ -216,6 +216,7 @@
   background: transparent;
 }
 
+.product-entry-guidance,
 .product-estimate-guidance {
   grid-column: 1 / -1;
 }

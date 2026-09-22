@@ -488,12 +488,20 @@ async function submit(): Promise<void> {
           >
         </div>
         <div class="demo-form-grid product-fields">
+          <p
+            :id="`product-entry-guidance-${index}`"
+            class="field-guidance product-entry-guidance"
+            :data-test="`product-entry-guidance-${index}`"
+          >
+            商品信息<RequiredFieldMark />：商品链接和商品标题至少填写一项。
+          </p>
           <label
             ><span>商品链接</span
             ><input
               v-model="product.url"
               :name="`productUrl-${index}`"
               class="text-input"
+              :aria-describedby="`product-entry-guidance-${index}`"
             /><small v-if="errors[`productUrl-${index}`]" class="field-error">{{
               errors[`productUrl-${index}`]
             }}</small></label
@@ -505,6 +513,7 @@ async function submit(): Promise<void> {
               :name="`productTitle-${index}`"
               class="text-input"
               maxlength="200"
+              :aria-describedby="`product-entry-guidance-${index}`"
             /><small
               v-if="errors[`productTitle-${index}`]"
               class="field-error"
@@ -518,6 +527,7 @@ async function submit(): Promise<void> {
               :name="`quantity-${index}`"
               class="text-input"
               inputmode="numeric"
+              :aria-describedby="`product-estimate-guidance-${index}`"
             /><small v-if="errors[`quantity-${index}`]" class="field-error">{{
               errors[`quantity-${index}`]
             }}</small></label
@@ -529,6 +539,7 @@ async function submit(): Promise<void> {
               :name="`unitPrice-${index}`"
               class="text-input"
               inputmode="decimal"
+              :aria-describedby="`product-estimate-guidance-${index}`"
             /><small v-if="errors[`unitPrice-${index}`]" class="field-error">{{
               errors[`unitPrice-${index}`]
             }}</small></label
@@ -540,6 +551,7 @@ async function submit(): Promise<void> {
               :name="`commentCount-${index}`"
               class="text-input"
               inputmode="numeric"
+              :aria-describedby="`product-estimate-guidance-${index}`"
             /><small
               v-if="errors[`commentCount-${index}`]"
               class="field-error"
@@ -549,7 +561,10 @@ async function submit(): Promise<void> {
           <p class="estimate-preview mono" :data-test="`estimate-${index}`">
             预估销售额（元） {{ estimate(product) }}
           </p>
-          <p class="field-guidance product-estimate-guidance">
+          <p
+            :id="`product-estimate-guidance-${index}`"
+            class="field-guidance product-estimate-guidance"
+          >
             预估销售额 = 单价 × 销量；销量为 0
             时使用评论数。该金额仅供线索评估，不代表真实成交金额。
           </p>
@@ -584,9 +599,12 @@ async function submit(): Promise<void> {
           type="file"
           multiple
           accept="application/pdf,image/jpeg,image/png,image/webp"
+          aria-describedby="lead-screenshots-guidance"
           @change="onFilesChanged"
         />
-        <p class="field-help">最多 20 份，每份不超过 20MB。</p>
+        <p id="lead-screenshots-guidance" class="field-help">
+          最多 20 份，每份不超过 20MB。
+        </p>
         <p v-if="errors.screenshots" class="field-error">
           {{ errors.screenshots }}
         </p>

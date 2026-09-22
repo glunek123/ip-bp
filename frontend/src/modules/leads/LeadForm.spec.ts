@@ -124,6 +124,22 @@ describe('LeadForm', () => {
     expect(wrapper.text()).toContain('销量');
     expect(wrapper.text()).toContain('预估销售额（元）');
     expect(wrapper.text()).toContain('销量为 0 时使用评论数');
+    expect(wrapper.text()).toContain('商品链接和商品标题至少填写一项');
+    expect(
+      wrapper.get('input[name="productUrl-0"]').attributes('aria-describedby'),
+    ).toBe('product-entry-guidance-0');
+    expect(
+      wrapper.get('input[name="quantity-0"]').attributes('aria-describedby'),
+    ).toBe('product-estimate-guidance-0');
+    expect(
+      wrapper.get('input[name="screenshots"]').attributes('aria-describedby'),
+    ).toBe('lead-screenshots-guidance');
+    expect(
+      wrapper
+        .get('[data-test="product-entry-guidance-0"]')
+        .find('.required-mark')
+        .exists(),
+    ).toBe(true);
     expect(wrapper.text()).toContain('申请披露店铺经营者信息');
     expect(wrapper.findAll('.required-mark').length).toBeGreaterThan(0);
   });
