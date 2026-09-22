@@ -20,6 +20,8 @@ export const coreLeadFixtures: Readonly<{
   tokenA: string;
   tokenB: string;
   tokenSelf: string;
+  operatorUsername: string;
+  operatorPassword: string;
 }>;
 
 export function resetCoreLeadE2eData(): Promise<void>;
@@ -35,12 +37,24 @@ export function getLead(id: string): Promise<{
 export function countLeads(): Promise<number>;
 export function countAdmissionReceipts(): Promise<number>;
 export function countLeadReceipts(): Promise<number>;
+export function countLeadPushReceipts(leadId: string): Promise<number>;
+export function countLeadPushAudits(leadId: string): Promise<number>;
 export function setGrant(action: string, enabled: boolean): Promise<unknown>;
+export function setCustomerStatus(
+  customerId: string,
+  profileStatus: 'DRAFT' | 'ADMITTED',
+): Promise<unknown>;
+export function setClientAccountActive(
+  customerId: string,
+  active: boolean,
+): Promise<{ id: string; userId: string }>;
+export function removeLeadProducts(leadId: string): Promise<unknown>;
 export function markContentVersion(
   versionId: string,
   status: 'AVAILABLE' | 'DELETED' | 'PURGED',
 ): Promise<unknown>;
 export function rejectAuditWrites(action: string): Promise<void>;
+export function rejectLeadPushReceiptWrites(): Promise<void>;
 export function rejectLeadProductWrites(): Promise<void>;
 export function rejectMaterialMetadataWrites(): Promise<void>;
 export function allowInjectedFailures(): Promise<void>;
@@ -93,6 +107,7 @@ export function verifyCoreLeadMigration(): Promise<{
     invalidAdmittedCode: string | null;
     compatibleAdmittedStatus: string | null;
     grantCounts: Record<string, number>;
+    pushGrantCounts: Record<string, number>;
     revisions: Record<string, number>;
   };
   schemaFailure: {

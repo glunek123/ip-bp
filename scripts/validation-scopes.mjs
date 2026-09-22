@@ -56,7 +56,7 @@ export const validationScopes = Object.freeze({
       testEnvironment: true,
     },
   ]),
-  'core-ld': scope('L2', [
+  'core-ld': scope('L3', [
     { id: 'prepare:prisma', args: ['prepare:prisma'] },
     { id: 'test:unit:core-ld', args: ['test:unit:core-ld'] },
     { id: 'check:fast:prepared', args: ['check:fast:prepared'] },

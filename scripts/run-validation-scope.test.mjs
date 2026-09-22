@@ -244,9 +244,9 @@ test('all configured scopes prepare once and preserve full prepared checks', () 
   }
 });
 
-test('core-ld fixes the Level 2 prepared order and database boundary', () => {
+test('core-ld fixes the Level 3 prepared order and database boundary', () => {
   const configured = validationScopes['core-ld'];
-  assert.equal(configured.level, 'L2');
+  assert.equal(configured.level, 'L3');
   assert.deepEqual(configured.commands, [
     { id: 'prepare:prisma', args: ['prepare:prisma'] },
     { id: 'test:unit:core-ld', args: ['test:unit:core-ld'] },

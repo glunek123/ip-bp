@@ -19,6 +19,7 @@ const { MaterialCleanupService } = requireFromBackend(
 const { MaterialStorageKeyCoordinator } = requireFromBackend(
   './dist/modules/materials/material-storage-key-coordinator.js',
 );
+const { hashPassword } = requireFromBackend('./dist/auth/password.js');
 
 const databaseUrl = process.env.DATABASE_URL;
 if (databaseUrl === undefined) throw new Error('DATABASE_URL is required');
@@ -61,7 +62,11 @@ export const coreLeadFixtures = Object.freeze({
   tokenA: 'e2e-department-a',
   tokenB: 'e2e-department-b',
   tokenSelf: 'e2e-department-a-self',
+  operatorUsername: 'core-lead-operator',
+  operatorPassword: 'correct horse battery staple',
 });
+
+const operatorPasswordHash = hashPassword(coreLeadFixtures.operatorPassword);
 
 const allActions = [
   'CUSTOMER_READ',
@@ -69,6 +74,7 @@ const allActions = [
   'LEAD_READ',
   'LEAD_CREATE',
   'LEAD_EDIT',
+  'LEAD_PUSH',
 ];
 const actionNames = Object.freeze({
   'customer.read': 'CUSTOMER_READ',
@@ -76,6 +82,7 @@ const actionNames = Object.freeze({
   'lead.read': 'LEAD_READ',
   'lead.create': 'LEAD_CREATE',
   'lead.edit': 'LEAD_EDIT',
+  'lead.push': 'LEAD_PUSH',
 });
 
 async function dropFaults() {
@@ -89,6 +96,7 @@ async function dropFaults() {
     ['audit_events', 'core_ld_reject_audit'],
     ['lead_products', 'core_ld_reject_product'],
     ['content_versions', 'core_ld_reject_metadata'],
+    ['lead_command_receipts', 'core_ld_reject_push_receipt'],
   ]) {
     await database.$executeRawUnsafe(
       `ALTER TABLE "${table}" DROP CONSTRAINT IF EXISTS "${constraint}"`,
@@ -232,6 +240,14 @@ async function clearDatabase() {
     coreLeadFixtures.userB,
     coreLeadFixtures.userSelf,
   ];
+  const clientBindings = await database.customerAccountBinding.findMany({
+    where: { departmentId: { in: departmentIds } },
+    select: { userId: true },
+  });
+  const allUserIds = [
+    ...userIds,
+    ...clientBindings.map(({ userId }) => userId),
+  ];
   await dropFaults();
   await database.materialReference.deleteMany({
     where: { departmentId: { in: departmentIds } },
@@ -267,15 +283,20 @@ async function clearDatabase() {
   await database.customerRightsHolderLink.deleteMany({
     where: { departmentId: { in: departmentIds } },
   });
+  await database.customerAccountBinding.deleteMany({
+    where: { departmentId: { in: departmentIds } },
+  });
   await database.rightsHolder.deleteMany({
     where: { departmentId: { in: departmentIds } },
   });
   await database.customer.deleteMany({
     where: { departmentId: { in: departmentIds } },
   });
-  await database.authSession.deleteMany({ where: { userId: { in: userIds } } });
+  await database.authSession.deleteMany({
+    where: { userId: { in: allUserIds } },
+  });
   await database.localCredential.deleteMany({
-    where: { userId: { in: userIds } },
+    where: { userId: { in: allUserIds } },
   });
   await database.roleAssignment.deleteMany({
     where: { departmentId: { in: departmentIds } },
@@ -300,7 +321,7 @@ async function clearDatabase() {
   await database.team.deleteMany({
     where: { departmentId: { in: departmentIds } },
   });
-  await database.userAccount.deleteMany({ where: { id: { in: userIds } } });
+  await database.userAccount.deleteMany({ where: { id: { in: allUserIds } } });
   await database.department.deleteMany({
     where: { id: { in: departmentIds } },
   });
@@ -328,6 +349,7 @@ function admittedCustomer(id, departmentId, userId, teamId, name, identity) {
 }
 
 export async function resetCoreLeadE2eData() {
+  const resolvedOperatorPasswordHash = await operatorPasswordHash;
   await clearDatabase();
   await clearPrivateBytes();
   await database.department.createMany({
@@ -354,6 +376,13 @@ export async function resetCoreLeadE2eData() {
         displayName: '本人范围人员',
       },
     ],
+  });
+  await database.localCredential.create({
+    data: {
+      userId: coreLeadFixtures.userA,
+      username: coreLeadFixtures.operatorUsername,
+      passwordHash: resolvedOperatorPasswordHash,
+    },
   });
   await database.team.createMany({
     data: [
@@ -413,11 +442,21 @@ export async function resetCoreLeadE2eData() {
         action,
         scope: 'TEAM',
       })),
+      {
+        roleTemplateId: coreLeadFixtures.roleA,
+        action: 'USER_MANAGE',
+        scope: 'DEPARTMENT',
+      },
       ...allActions.map((action) => ({
         roleTemplateId: coreLeadFixtures.roleB,
         action,
         scope: 'DEPARTMENT',
       })),
+      {
+        roleTemplateId: coreLeadFixtures.roleB,
+        action: 'USER_MANAGE',
+        scope: 'DEPARTMENT',
+      },
       ...allActions.map((action) => ({
         roleTemplateId: coreLeadFixtures.roleSelf,
         action,
@@ -596,6 +635,56 @@ export function countLeadReceipts() {
   });
 }
 
+export function countLeadPushReceipts(leadId) {
+  return database.leadCommandReceipt.count({
+    where: {
+      departmentId: coreLeadFixtures.departmentA,
+      resultLeadId: leadId,
+      action: 'push',
+    },
+  });
+}
+
+export function countLeadPushAudits(leadId) {
+  return database.auditEvent.count({
+    where: {
+      departmentId: coreLeadFixtures.departmentA,
+      resourceType: 'lead',
+      resourceId: leadId,
+      action: 'lead.pushed',
+    },
+  });
+}
+
+export function setCustomerStatus(customerId, profileStatus) {
+  return database.customer.update({
+    where: { id: customerId },
+    data: { profileStatus },
+  });
+}
+
+export function setClientAccountActive(customerId, active) {
+  return database.$transaction(async (transaction) => {
+    const binding = await transaction.customerAccountBinding.findFirstOrThrow({
+      where: { customerId },
+      select: { id: true, userId: true },
+    });
+    await transaction.customerAccountBinding.update({
+      where: { id: binding.id },
+      data: { active, version: { increment: 1 } },
+    });
+    await transaction.userAccount.update({
+      where: { id: binding.userId },
+      data: { active, authorizationRevision: { increment: 1 } },
+    });
+    return binding;
+  });
+}
+
+export function removeLeadProducts(leadId) {
+  return database.leadProduct.deleteMany({ where: { leadId } });
+}
+
 export function setGrant(action, enabled) {
   const prismaAction = actionNames[action];
   if (prismaAction === undefined) throw new Error('Unsupported fixture action');
@@ -624,6 +713,13 @@ export async function rejectAuditWrites(action) {
   await dropFaults();
   await database.$executeRawUnsafe(
     `ALTER TABLE "audit_events" ADD CONSTRAINT "core_ld_reject_audit" CHECK ("action" <> '${action.replaceAll("'", "''")}') NOT VALID`,
+  );
+}
+
+export async function rejectLeadPushReceiptWrites() {
+  await dropFaults();
+  await database.$executeRawUnsafe(
+    `ALTER TABLE "lead_command_receipts" ADD CONSTRAINT "core_ld_reject_push_receipt" CHECK ("action" <> 'push') NOT VALID`,
   );
 }
 
@@ -892,7 +988,8 @@ export async function verifyCoreLeadMigration() {
         `SELECT table_name FROM information_schema.tables
          WHERE table_schema=$1 AND table_name IN (
            'upload_drafts','materials','customer_admission_receipts',
-           'leads','lead_number_counters','lead_command_receipts'
+           'leads','lead_number_counters','lead_command_receipts',
+           'customer_account_bindings'
          ) ORDER BY table_name`,
         [schemas.empty],
       )
@@ -942,6 +1039,7 @@ export async function verifyCoreLeadMigration() {
       ])
     ).rows[0]?.profile_status;
     const grantCounts = {};
+    const pushGrantCounts = {};
     for (const [name, roleId] of [
       ['bootstrap', upgradeIds.bootstrapRole],
       ['shared', upgradeIds.sharedRole],
@@ -953,6 +1051,15 @@ export async function verifyCoreLeadMigration() {
             `SELECT COUNT(*) FROM role_grants
              WHERE role_template_id=$1
                AND action IN ('customer.admit','lead.read','lead.create','lead.edit')`,
+            [roleId],
+          )
+        ).rows[0].count,
+      );
+      pushGrantCounts[name] = Number(
+        (
+          await client.query(
+            `SELECT COUNT(*) FROM role_grants
+             WHERE role_template_id=$1 AND action='lead.push'`,
             [roleId],
           )
         ).rows[0].count,
@@ -1116,6 +1223,7 @@ export async function verifyCoreLeadMigration() {
         invalidAdmittedCode,
         compatibleAdmittedStatus,
         grantCounts,
+        pushGrantCounts,
         revisions,
       },
       schemaFailure: {

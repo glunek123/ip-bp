@@ -115,7 +115,11 @@ describe('ClientLeadService', () => {
 
   it('rejects an internal actor instead of deriving an internal scope', async () => {
     const { service, database } = setup();
-    const { clientCustomerId: _clientCustomerId, ...internal } = actor;
+    const internal: ActorContext = {
+      userId: actor.userId,
+      departmentId: actor.departmentId,
+      authorizationRevision: actor.authorizationRevision,
+    };
     await expect(service.list(internal, 1, 20)).rejects.toMatchObject({
       response: { code: 'ACTION_FORBIDDEN' },
     });

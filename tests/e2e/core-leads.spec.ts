@@ -10,6 +10,8 @@ import {
   coreLeadFixtures,
   countAdmissionReceipts,
   countLeadReceipts,
+  countLeadPushAudits,
+  countLeadPushReceipts,
   countLeads,
   countStoredFiles,
   databaseCounts,
@@ -22,9 +24,13 @@ import {
   installMaterialStatusBarrier,
   markContentVersion,
   rejectAuditWrites,
+  rejectLeadPushReceiptWrites,
   rejectLeadProductWrites,
   rejectMaterialMetadataWrites,
   resetCoreLeadE2eData,
+  removeLeadProducts,
+  setClientAccountActive,
+  setCustomerStatus,
   setGrant,
   setLeadCounter,
   setMaterialDeletedAt,
@@ -50,6 +56,7 @@ async function configureBrowser(page: Page) {
       status: 200,
       contentType: 'application/json',
       body: JSON.stringify({
+        principalType: 'INTERNAL',
         user: {
           id: coreLeadFixtures.userA,
           displayName: '核心主管',
@@ -59,6 +66,7 @@ async function configureBrowser(page: Page) {
         departments: [
           { id: coreLeadFixtures.departmentA, name: 'CORE 知产部' },
         ],
+        customer: null,
         authorizationRevision: 1,
         expiresAt: '2099-01-01T00:00:00.000Z',
         csrfToken: '',
@@ -145,6 +153,41 @@ async function createLead(
   return request.post('/api/v1/leads', {
     headers: { ...headers, 'Idempotency-Key': key },
     data: input,
+  });
+}
+
+async function createClientAccount(
+  request: APIRequestContext,
+  input: {
+    customerId?: string;
+    username?: string;
+    password?: string;
+    headers?: Record<string, string>;
+  } = {},
+) {
+  const username = input.username ?? `client-${randomUUID().slice(0, 8)}`;
+  const password = input.password ?? 'client correct horse battery';
+  const response = await request.post(
+    `/api/v1/customers/${input.customerId ?? coreLeadFixtures.admittedCustomer}/client-accounts`,
+    {
+      headers: input.headers ?? authorizationA,
+      data: { displayName: '企业审核员', username, password },
+    },
+  );
+  expect(response.status(), await response.text()).toBe(201);
+  return { account: await response.json(), username, password };
+}
+
+function pushLead(
+  request: APIRequestContext,
+  leadId: string,
+  expectedVersion: number,
+  key = randomUUID(),
+  headers = authorizationA,
+) {
+  return request.post(`/api/v1/leads/${leadId}/push`, {
+    headers: { ...headers, 'Idempotency-Key': key },
+    data: { expectedVersion },
   });
 }
 
@@ -295,6 +338,81 @@ test('operator creates, refreshes, views, and edits a waiting-push lead', async 
     version: 2,
     shopName: '浏览器店铺已修改',
   });
+});
+
+test('real operator login, client-account binding, push, client login, read, download, and refresh form one browser chain', async ({
+  page,
+}) => {
+  const clientUsername = `browser-client-${randomUUID().slice(0, 8)}`;
+  const clientPassword = 'browser client password 2026';
+
+  await page.goto('/customers');
+  await expect(page).toHaveURL(/\/login\?returnTo=/u);
+  await page.getByLabel('用户名').fill(coreLeadFixtures.operatorUsername);
+  await page.getByLabel('密码').fill(coreLeadFixtures.operatorPassword);
+  await page.getByRole('button', { name: '登录', exact: true }).click();
+  await expect(page).toHaveURL(/\/customers$/u);
+
+  await page.getByRole('link', { name: '已准入客户' }).click();
+  await expect(
+    page.locator('[data-test="client-account-panel"]'),
+  ).toBeVisible();
+  await page.getByLabel('姓名').fill('浏览器企业审核员');
+  await page.getByLabel('用户名').fill(clientUsername);
+  await page.getByLabel('初始密码').fill(clientPassword);
+  await page.locator('[data-test="create-client-account"]').click();
+  await expect(page.getByText('账号已创建并绑定')).toBeVisible();
+  await expect(page.getByText(clientUsername)).toBeVisible();
+
+  await page.locator('[data-test="lead-nav"]').click();
+  await page.locator('[data-test="create-lead"]').click();
+  await page.getByLabel('客户').selectOption(coreLeadFixtures.admittedCustomer);
+  await page.getByLabel('权利主体').selectOption(coreLeadFixtures.holder);
+  await page.getByLabel('案件类型').selectOption('CIVIL');
+  await page.getByLabel('发现时间').fill('2026-09-22T10:30');
+  await page.getByLabel('来源').selectOption('ONLINE');
+  await page.getByLabel('平台').selectOption('TAOBAO');
+  await page.getByLabel('店铺名称').fill('客户端闭环店铺');
+  await page.getByLabel('商标权').check();
+  await page.locator('input[name="productTitle-0"]').fill('客户端闭环商品');
+  await page.locator('input[name="quantity-0"]').fill('2');
+  await page.locator('input[name="unitPrice-0"]').fill('8.00');
+  await page.locator('input[name="commentCount-0"]').fill('0');
+  await page.locator('input[name="screenshots"]').setInputFiles({
+    name: 'client-review.jpg',
+    mimeType: 'image/jpeg',
+    buffer: jpegBytes,
+  });
+  await page.getByRole('button', { name: '创建线索' }).click();
+  await expect(page.getByRole('heading', { name: /^LD-/u })).toBeVisible();
+  const leadId = page.url().split('/').at(-1)!;
+
+  await page.locator('[data-test="push-lead"]').click();
+  await expect(page.locator('[data-test="push-success"]')).toContainText(
+    '已推送给客户审核',
+  );
+  await expect(page.locator('.page-head .pill')).toHaveText('线索待审核');
+  await expect(page.locator('[data-test="push-record"]')).toBeVisible();
+
+  await page.getByRole('button', { name: '退出登录' }).click();
+  await expect(page).toHaveURL(/\/login$/u);
+  await page.getByLabel('用户名').fill(clientUsername);
+  await page.getByLabel('密码').fill(clientPassword);
+  await page.getByRole('button', { name: '登录', exact: true }).click();
+  await expect(page).toHaveURL(/\/client\/leads$/u);
+  const row = page.locator('[data-test="client-lead-row"]');
+  await expect(row).toContainText('客户端闭环店铺');
+  await row.getByRole('link').click();
+  await expect(page).toHaveURL(new RegExp(`/client/leads/${leadId}$`, 'u'));
+  await expect(page.getByText('客户端闭环商品')).toBeVisible();
+  await expect(page.getByText('client-review.jpg')).toBeVisible();
+
+  const download = page.waitForEvent('download');
+  await page.locator('[data-test^="download-screenshot-"]').click();
+  await expect((await download).suggestedFilename()).toBe('client-review.jpg');
+  await page.reload();
+  await expect(page.getByText('客户端闭环店铺')).toBeVisible();
+  await expect(page.getByText('client-review.jpg')).toBeVisible();
 });
 
 test('Demo-aligned shell works on desktop and mobile', async ({ page }) => {
@@ -494,6 +612,212 @@ test('customer admission and lead creation are idempotent while stale edits conf
   });
   expect(stale.status()).toBe(409);
   expect(await stale.json()).toMatchObject({ code: 'VERSION_CONFLICT' });
+});
+
+test('push revalidates account, permission, customer, products, state, version, idempotency, and concurrency', async ({
+  request,
+}) => {
+  const unavailableLeadResponse = await createLead(request);
+  const unavailableLead = await unavailableLeadResponse.json();
+  const unavailable = await pushLead(request, unavailableLead.id, 1);
+  expect(unavailable.status()).toBe(409);
+  expect(await unavailable.json()).toMatchObject({
+    code: 'CLIENT_ACCOUNT_UNAVAILABLE',
+  });
+
+  await createClientAccount(request);
+  const key = randomUUID();
+  const first = await pushLead(request, unavailableLead.id, 1, key);
+  expect(first.status(), await first.text()).toBe(201);
+  const firstResult = await first.json();
+  const replay = await pushLead(request, unavailableLead.id, 1, key);
+  expect(replay.status()).toBe(201);
+  expect(await replay.json()).toEqual(firstResult);
+  expect(await countLeadPushAudits(unavailableLead.id)).toBe(1);
+  expect(await countLeadPushReceipts(unavailableLead.id)).toBe(1);
+
+  const sameKeyDifferentRequest = await pushLead(
+    request,
+    unavailableLead.id,
+    2,
+    key,
+  );
+  expect(sameKeyDifferentRequest.status()).toBe(409);
+  expect(await sameKeyDifferentRequest.json()).toMatchObject({
+    code: 'IDEMPOTENCY_CONFLICT',
+  });
+  const wrongState = await pushLead(request, unavailableLead.id, 2);
+  expect(wrongState.status()).toBe(409);
+  expect(await wrongState.json()).toMatchObject({ code: 'INVALID_STATE' });
+
+  const staleLeadResponse = await createLead(request);
+  const staleLead = await staleLeadResponse.json();
+  const updatedStaleLead = await request.patch(
+    `/api/v1/leads/${staleLead.id}`,
+    {
+      headers: authorizationA,
+      data: {
+        ...leadInput(),
+        customerId: undefined,
+        rightsHolderId: undefined,
+        expectedVersion: 1,
+      },
+    },
+  );
+  expect(updatedStaleLead.status()).toBe(200);
+  const stale = await pushLead(request, staleLead.id, 1);
+  expect(stale.status()).toBe(409);
+  expect(await stale.json()).toMatchObject({ code: 'VERSION_CONFLICT' });
+
+  await setGrant('lead.push', false);
+  const permissionLeadResponse = await createLead(request);
+  const permissionLead = await permissionLeadResponse.json();
+  const forbidden = await pushLead(request, permissionLead.id, 1);
+  expect(forbidden.status()).toBe(403);
+  expect(await forbidden.json()).toMatchObject({ code: 'ACTION_FORBIDDEN' });
+  await setGrant('lead.push', true);
+
+  await setClientAccountActive(coreLeadFixtures.admittedCustomer, false);
+  const inactive = await pushLead(request, permissionLead.id, 1);
+  expect(inactive.status()).toBe(409);
+  expect(await inactive.json()).toMatchObject({
+    code: 'CLIENT_ACCOUNT_UNAVAILABLE',
+  });
+  await setClientAccountActive(coreLeadFixtures.admittedCustomer, true);
+
+  await setCustomerStatus(coreLeadFixtures.admittedCustomer, 'DRAFT');
+  const notAdmitted = await pushLead(request, permissionLead.id, 1);
+  expect(notAdmitted.status()).toBe(409);
+  expect(await notAdmitted.json()).toMatchObject({
+    code: 'CUSTOMER_NOT_ADMITTED',
+  });
+  await setCustomerStatus(coreLeadFixtures.admittedCustomer, 'ADMITTED');
+
+  await removeLeadProducts(permissionLead.id);
+  const withoutProducts = await pushLead(request, permissionLead.id, 1);
+  expect(withoutProducts.status()).toBe(409);
+  expect(await withoutProducts.json()).toMatchObject({
+    code: 'LEAD_PRODUCTS_REQUIRED',
+  });
+
+  const concurrentLeadResponse = await createLead(request);
+  const concurrentLead = await concurrentLeadResponse.json();
+  const competitors = await Promise.all([
+    pushLead(request, concurrentLead.id, 1),
+    pushLead(request, concurrentLead.id, 1),
+  ]);
+  expect(
+    competitors.filter((response) => response.status() === 201),
+  ).toHaveLength(1);
+  expect(
+    competitors.filter((response) => response.status() === 409),
+  ).toHaveLength(1);
+  expect(await countLeadPushAudits(concurrentLead.id)).toBe(1);
+  expect(await countLeadPushReceipts(concurrentLead.id)).toBe(1);
+});
+
+test('push rolls back status, audit, and receipt when either durable record fails', async ({
+  request,
+}) => {
+  await createClientAccount(request);
+  const auditLeadResponse = await createLead(request);
+  const auditLead = await auditLeadResponse.json();
+  await rejectAuditWrites('lead.pushed');
+  const auditFailure = await pushLead(request, auditLead.id, 1);
+  expect(auditFailure.status()).toBe(500);
+  expect(await getLead(auditLead.id)).toMatchObject({
+    status: 'WAITING_PUSH',
+    version: 1,
+    pushedAt: null,
+    pushedByUserId: null,
+  });
+  expect(await countLeadPushAudits(auditLead.id)).toBe(0);
+  expect(await countLeadPushReceipts(auditLead.id)).toBe(0);
+
+  await rejectLeadPushReceiptWrites();
+  const receiptLeadResponse = await createLead(request);
+  const receiptLead = await receiptLeadResponse.json();
+  const receiptFailure = await pushLead(request, receiptLead.id, 1);
+  expect(receiptFailure.status()).toBe(500);
+  expect(await getLead(receiptLead.id)).toMatchObject({
+    status: 'WAITING_PUSH',
+    version: 1,
+    pushedAt: null,
+    pushedByUserId: null,
+  });
+  expect(await countLeadPushAudits(receiptLead.id)).toBe(0);
+  expect(await countLeadPushReceipts(receiptLead.id)).toBe(0);
+  await allowInjectedFailures();
+});
+
+test('client session sees only its enterprise pushed leads and revocation is immediate', async ({
+  request,
+}) => {
+  const clientA = await createClientAccount(request, {
+    username: 'client-enterprise-a',
+  });
+  await createClientAccount(request, {
+    customerId: coreLeadFixtures.foreignCustomer,
+    username: 'client-enterprise-b',
+    headers: { Authorization: `Bearer ${coreLeadFixtures.tokenB}` },
+  });
+  const ownResponse = await createLead(request);
+  const own = await ownResponse.json();
+  expect((await pushLead(request, own.id, 1)).status()).toBe(201);
+  const waitingResponse = await createLead(request);
+  const waiting = await waitingResponse.json();
+
+  const foreignResponse = await createLead(
+    request,
+    leadInput({
+      customerId: coreLeadFixtures.foreignCustomer,
+      rightsHolderId: coreLeadFixtures.foreignHolder,
+      shopName: '外企业线索',
+    }),
+    randomUUID(),
+    { Authorization: `Bearer ${coreLeadFixtures.tokenB}` },
+  );
+  const foreign = await foreignResponse.json();
+  expect(
+    (
+      await pushLead(request, foreign.id, 1, randomUUID(), {
+        Authorization: `Bearer ${coreLeadFixtures.tokenB}`,
+      })
+    ).status(),
+  ).toBe(201);
+
+  const login = await request.post('/api/v1/auth/login', {
+    headers: { Origin: 'http://127.0.0.1:5174' },
+    data: { username: clientA.username, password: clientA.password },
+  });
+  expect(login.status(), await login.text()).toBe(200);
+  expect(await login.json()).toMatchObject({
+    principalType: 'CLIENT',
+    customer: { id: coreLeadFixtures.admittedCustomer },
+    department: null,
+  });
+
+  const list = await request.get('/api/v1/client/leads?page=1&pageSize=20');
+  expect(list.status(), await list.text()).toBe(200);
+  const listed = await list.json();
+  expect(listed.items.map((item: { id: string }) => item.id)).toEqual([own.id]);
+  expect(JSON.stringify(listed)).not.toContain('responsibleUserId');
+  expect(JSON.stringify(listed)).not.toContain('remark');
+
+  expect((await request.get(`/api/v1/client/leads/${own.id}`)).status()).toBe(
+    200,
+  );
+  expect(
+    (await request.get(`/api/v1/client/leads/${waiting.id}`)).status(),
+  ).toBe(404);
+  expect(
+    (await request.get(`/api/v1/client/leads/${foreign.id}`)).status(),
+  ).toBe(404);
+
+  await setClientAccountActive(coreLeadFixtures.admittedCustomer, false);
+  const revoked = await request.get(`/api/v1/client/leads/${own.id}`);
+  expect(revoked.status()).toBe(401);
+  expect(await revoked.json()).toMatchObject({ code: 'UNAUTHORIZED' });
 });
 
 test('audit, child-table, and material metadata failures roll back with blob compensation', async ({
@@ -815,6 +1139,7 @@ test('lead numbers stop after 999 and concurrent creation never duplicates a num
 test('core lead migrations preserve legacy facts and roll back failed phases', async () => {
   const result = await verifyCoreLeadMigration();
   expect(result.empty.tables).toEqual([
+    'customer_account_bindings',
     'customer_admission_receipts',
     'lead_command_receipts',
     'lead_number_counters',
@@ -836,7 +1161,8 @@ test('core lead migrations preserve legacy facts and roll back failed phases', a
     invalidAdmittedCode: '23514',
     compatibleAdmittedStatus: 'ADMITTED',
     grantCounts: { bootstrap: 4, shared: 0, incomplete: 0 },
-    revisions: { bootstrap: 2, shared: 1, incomplete: 1 },
+    pushGrantCounts: { bootstrap: 1, shared: 0, incomplete: 0 },
+    revisions: { bootstrap: 3, shared: 1, incomplete: 1 },
   });
   expect(result.schemaFailure).toEqual({
     code: '42P07',
