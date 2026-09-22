@@ -1,0 +1,145 @@
+.page-view {
+  width: min(100%, 1180px);
+  margin: 0 auto;
+  padding: 32px 32px 72px;
+}
+
+.page-view--narrow {
+  max-width: 860px;
+}
+
+.page-head {
+  display: flex;
+  align-items: flex-end;
+  justify-content: space-between;
+  gap: var(--s-6);
+  margin-bottom: var(--s-6);
+}
+
+.page-head h1 {
+  margin: 0;
+  font-size: 24px;
+  font-weight: 650;
+  letter-spacing: -0.025em;
+}
+
+.page-head p {
+  margin: var(--s-2) 0 0;
+  color: var(--color-ink-muted);
+}
+
+.demo-card {
+  border: 1px solid var(--color-hairline);
+  border-radius: 8px;
+  background: var(--color-surface-1);
+}
+
+.demo-card--pad {
+  padding: var(--s-6);
+}
+
+.demo-table-wrap {
+  width: 100%;
+  overflow-x: auto;
+}
+
+.demo-table {
+  width: 100%;
+  border-collapse: collapse;
+  background: var(--color-surface-1);
+  font-size: 13px;
+}
+
+.demo-table th,
+.demo-table td {
+  height: 44px;
+  padding: 0 16px;
+  border-bottom: 1px solid var(--color-hairline);
+  text-align: left;
+  white-space: nowrap;
+}
+
+.demo-table th {
+  color: var(--color-ink-subtle);
+  font-size: 11px;
+  font-weight: 650;
+  letter-spacing: 0.03em;
+}
+
+.demo-table tbody tr:last-child td {
+  border-bottom: 0;
+}
+
+.demo-table tbody tr:hover {
+  background: var(--color-surface-2);
+}
+
+.demo-table .num {
+  text-align: right;
+}
+
+.mono {
+  font-family: var(--font-mono);
+  font-variant-numeric: tabular-nums;
+}
+
+.pill {
+  display: inline-flex;
+  min-height: 22px;
+  align-items: center;
+  padding: 2px 8px;
+  border: 1px solid var(--color-hairline-strong);
+  border-radius: 999px;
+  background: var(--color-surface-2);
+  color: var(--color-ink-muted);
+  font-size: 11px;
+  font-weight: 550;
+}
+
+.empty-state {
+  padding: 72px 24px;
+  color: var(--color-ink-muted);
+  text-align: center;
+}
+
+.demo-form {
+  display: grid;
+  gap: var(--s-4);
+}
+
+.demo-form-grid,
+.demo-detail-grid {
+  display: grid;
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+  gap: var(--s-4);
+}
+
+.form-section-title,
+.card-section-title {
+  margin: 0 0 var(--s-5);
+  font-size: 14px;
+  font-weight: 650;
+}
+
+@media (max-width: 767px) {
+  .page-view {
+    padding: 24px 16px 56px;
+  }
+
+  .page-head {
+    align-items: flex-start;
+    flex-direction: column;
+    gap: var(--s-3);
+  }
+
+  .demo-form-grid,
+  .demo-detail-grid {
+    grid-template-columns: 1fr;
+  }
+}
+
+@media (min-width: 1280px) {
+  .demo-detail-grid {
+    grid-template-columns: repeat(3, minmax(0, 1fr));
+  }
+}

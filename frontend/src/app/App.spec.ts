@@ -9,6 +9,7 @@ import App from './App.vue';
 const api = vi.hoisted(() => ({
   logout: vi.fn(),
   getOrganizationManagementContext: vi.fn(),
+  listLeads: vi.fn(),
 }));
 
 vi.mock('../api/auth', async (importOriginal) => ({
@@ -17,6 +18,9 @@ vi.mock('../api/auth', async (importOriginal) => ({
 }));
 vi.mock('../api/organization', () => ({
   getOrganizationManagementContext: api.getOrganizationManagementContext,
+}));
+vi.mock('../api/leads', () => ({
+  listLeads: api.listLeads,
 }));
 
 const session = {
@@ -31,13 +35,26 @@ const session = {
 beforeEach(() => {
   vi.resetAllMocks();
   api.getOrganizationManagementContext.mockResolvedValue({});
+  api.listLeads.mockResolvedValue({
+    items: [],
+    total: 0,
+    page: 1,
+    pageSize: 1,
+    counts: {
+      WAITING_PUSH: 0,
+      WAITING_REVIEW: 0,
+      WAITING_EVIDENCE_DECISION: 0,
+      ARCHIVED: 0,
+    },
+    capabilities: { create: false },
+  });
 });
 
-async function mountApp() {
+async function mountApp(signedIn = true) {
   const pinia = createPinia();
   setActivePinia(pinia);
   const auth = useAuthStore(pinia);
-  auth.session = session;
+  auth.session = signedIn ? session : null;
   auth.restored = true;
   const router = createRouter({
     history: createMemoryHistory(),
@@ -58,6 +75,22 @@ async function mountApp() {
 }
 
 describe('application session controls', () => {
+  it('wraps authenticated routes in the shared application shell', async () => {
+    const { wrapper } = await mountApp();
+    await flushPromises();
+
+    expect(wrapper.get('[data-test="app-shell"]')).toBeDefined();
+  });
+
+  it('renders public routes without the authenticated shell', async () => {
+    const { router, wrapper } = await mountApp(false);
+    await router.push('/login');
+    await flushPromises();
+
+    expect(wrapper.text()).toContain('登录页');
+    expect(wrapper.find('[data-test="app-shell"]').exists()).toBe(false);
+  });
+
   it('shows personnel navigation only when management context is readable', async () => {
     const allowed = await mountApp();
     await flushPromises();
