@@ -163,6 +163,12 @@ function pushErrorMessage(error: unknown): string {
 }
 async function push(): Promise<void> {
   if (!lead.value || !lead.value.capabilities.push || pushing.value) return;
+  if (
+    !window.confirm(
+      `确认将线索 ${lead.value.businessNo} 推送给“${customerName.value}”审核吗？状态将变为“线索待审核”，该企业的有效客户账号下一次读取会立即可见，当前阶段将不能继续编辑。`,
+    )
+  )
+    return;
   pushing.value = true;
   pushError.value = '';
   pushSuccess.value = '';
@@ -352,7 +358,7 @@ onBeforeUnmount(() => request?.abort());
           </p>
           <p v-if="lead.pushedAt" class="mono" data-test="push-record">
             推送于 {{ formatTime(lead.pushedAt) }} · 操作人
-            {{ lead.pushedByUserId }}
+            {{ lead.pushedByDisplayName || '已记录运营人员' }}
           </p>
         </section>
       </template>

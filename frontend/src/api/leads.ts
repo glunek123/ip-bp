@@ -125,6 +125,7 @@ export type Lead = {
   version: number;
   pushedAt: string | null;
   pushedByUserId: string | null;
+  pushedByDisplayName: string | null;
   createdAt: string;
   updatedAt: string;
 };
@@ -138,6 +139,7 @@ export type LeadPushResult = {
   version: number;
   pushedAt: string;
   pushedByUserId: string;
+  pushedByDisplayName: string;
 };
 export type LeadList = {
   items: Lead[];
@@ -297,8 +299,13 @@ function isLead(value: unknown): value is Lead {
     (value.version as number) >= 1 &&
     (value.pushedAt === null || isDateTime(value.pushedAt)) &&
     isNullableString(value.pushedByUserId) &&
-    ((value.pushedAt === null && value.pushedByUserId === null) ||
-      (value.pushedAt !== null && value.pushedByUserId !== null)) &&
+    isNullableString(value.pushedByDisplayName) &&
+    ((value.pushedAt === null &&
+      value.pushedByUserId === null &&
+      value.pushedByDisplayName === null) ||
+      (value.pushedAt !== null &&
+        value.pushedByUserId !== null &&
+        value.pushedByDisplayName !== null)) &&
     isDateTime(value.createdAt) &&
     isDateTime(value.updatedAt)
   );
@@ -441,7 +448,8 @@ export async function pushLead(
     !Number.isInteger(data.version) ||
     (data.version as number) !== expectedVersion + 1 ||
     !isDateTime(data.pushedAt) ||
-    typeof data.pushedByUserId !== 'string'
+    typeof data.pushedByUserId !== 'string' ||
+    typeof data.pushedByDisplayName !== 'string'
   )
     throw invalidResponse();
   return data as LeadPushResult;

@@ -7,4 +7,5 @@ export class LeadPushResponseDto {
   @ApiProperty({ minimum: 1 }) version!: number;
   @ApiProperty({ format: 'date-time' }) pushedAt!: string;
   @ApiProperty({ format: 'uuid' }) pushedByUserId!: string;
+  @ApiProperty() pushedByDisplayName!: string;
 }

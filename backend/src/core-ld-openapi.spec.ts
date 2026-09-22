@@ -90,4 +90,19 @@ describe('CORE-LD-002 OpenAPI contract', () => {
       }
     },
   );
+
+  it('documents the human push operator name', () => {
+    const document = SwaggerModule.createDocument(
+      app,
+      new DocumentBuilder().setTitle('test').setVersion('1').build(),
+    );
+    const schema = document.components?.schemas?.LeadPushResponseDto;
+
+    expect(schema).toMatchObject({
+      required: expect.arrayContaining(['pushedByDisplayName']),
+      properties: {
+        pushedByDisplayName: { type: 'string' },
+      },
+    });
+  });
 });

@@ -246,7 +246,12 @@ describe('LeadService', () => {
         }),
       }),
     });
-    expect(result).toMatchObject({ status: 'WAITING_REVIEW', version: 2 });
+    expect(result).toMatchObject({
+      status: 'WAITING_REVIEW',
+      version: 2,
+      pushedByUserId: actor.userId,
+      pushedByDisplayName: '运营甲',
+    });
   });
 
   it('replays the first push result and rejects the same key with a different version', async () => {
@@ -259,6 +264,11 @@ describe('LeadService', () => {
     );
     const receipt =
       fixture.tx.leadCommandReceipt.create.mock.calls[0]?.[0]?.data;
+    const {
+      pushedByDisplayName: _legacyMissingDisplayName,
+      ...legacySnapshot
+    } = receipt.resultSnapshot;
+    receipt.resultSnapshot = legacySnapshot;
     fixture.tx.leadCommandReceipt.findUnique.mockResolvedValue(receipt);
     fixture.tx.lead.updateMany.mockClear();
 
@@ -1285,12 +1295,18 @@ function createPushFixture(override: Record<string, unknown> = {}) {
       updateMany: jest.fn().mockResolvedValue({ count: 1 }),
       findUnique: jest.fn().mockResolvedValue(updated),
     },
+    userAccount: {
+      findUnique: jest.fn().mockResolvedValue({ displayName: '运营甲' }),
+    },
     auditEvent: { create: jest.fn().mockResolvedValue({ id: 'audit-push' }) },
   };
   const transaction = jest.fn(async (callback) => callback(tx));
   const database = {
     $transaction: transaction,
     leadCommandReceipt: { findUnique: jest.fn().mockResolvedValue(null) },
+    userAccount: {
+      findUnique: jest.fn().mockResolvedValue({ displayName: '运营甲' }),
+    },
   } as unknown as DatabaseService;
   const access = {
     authorizeLead: jest.fn().mockResolvedValue(undefined),

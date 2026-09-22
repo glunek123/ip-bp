@@ -74,6 +74,7 @@ const lead = {
   version: 1,
   pushedAt: null,
   pushedByUserId: null,
+  pushedByDisplayName: null,
   createdAt: '2026-09-21T04:00:00.000Z',
   updatedAt: '2026-09-21T04:00:00.000Z',
 };
@@ -246,6 +247,7 @@ describe('Lead API', () => {
       version: 2,
       pushedAt: '2026-09-22T02:00:00.000Z',
       pushedByUserId: 'user-1',
+      pushedByDisplayName: '运营甲',
     });
     await expect(pushLead(lead.id, 1, 'push-key')).resolves.toMatchObject({
       status: 'WAITING_REVIEW',

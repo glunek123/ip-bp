@@ -32,6 +32,7 @@ const MAX_SERIALIZABLE_ATTEMPTS = 3;
 const leadInclude = {
   products: { orderBy: { position: 'asc' as const } },
   infringements: { orderBy: { type: 'asc' as const } },
+  pushedBy: { select: { displayName: true } },
 } satisfies Prisma.LeadInclude;
 
 type LeadRecord = Prisma.LeadGetPayload<{ include: typeof leadInclude }>;
@@ -70,6 +71,7 @@ type LeadResponse = {
   version: number;
   pushedAt: string | null;
   pushedByUserId: string | null;
+  pushedByDisplayName: string | null;
   createdAt: string;
   updatedAt: string;
 };
@@ -105,6 +107,7 @@ type LeadPushResponse = {
   version: number;
   pushedAt: string;
   pushedByUserId: string;
+  pushedByDisplayName: string;
 };
 
 @Injectable()
@@ -691,11 +694,25 @@ export class LeadService {
             } catch (error) {
               throw this.mapAuthorization(error);
             }
+            const pusher = await transaction.userAccount.findUnique({
+              where: { id: actor.userId },
+              select: { displayName: true },
+            });
+            if (pusher === null)
+              throw new InternalServerErrorException(
+                '推送操作人账号不可用，请稍后重试',
+              );
             const receipt = await transaction.leadCommandReceipt.findUnique({
               where: this.receiptWhere(actor, 'push', idempotencyKey),
             });
             if (receipt !== null)
-              return this.pushReceiptResult(actor, receipt, fingerprint, id);
+              return this.pushReceiptResult(
+                actor,
+                receipt,
+                fingerprint,
+                id,
+                pusher.displayName,
+              );
             if (current.status !== 'WAITING_PUSH')
               throw this.pushInvalidState();
             if (current.version !== input.expectedVersion)
@@ -741,6 +758,7 @@ export class LeadService {
               version: input.expectedVersion + 1,
               pushedAt: pushedAt.toISOString(),
               pushedByUserId: actor.userId,
+              pushedByDisplayName: pusher.displayName,
             };
             await transaction.leadCommandReceipt.create({
               data: {
@@ -767,8 +785,20 @@ export class LeadService {
           const receipt = await this.database.leadCommandReceipt.findUnique({
             where: this.receiptWhere(actor, 'push', idempotencyKey),
           });
-          if (receipt !== null)
-            return this.pushReceiptResult(actor, receipt, fingerprint, id);
+          if (receipt !== null) {
+            const pusher = await this.database.userAccount.findUnique({
+              where: { id: actor.userId },
+              select: { displayName: true },
+            });
+            if (pusher !== null)
+              return this.pushReceiptResult(
+                actor,
+                receipt,
+                fingerprint,
+                id,
+                pusher.displayName,
+              );
+          }
         }
         throw this.mapAuthorization(error);
       }
@@ -970,6 +1000,7 @@ export class LeadService {
       version: record.version,
       pushedAt: record.pushedAt?.toISOString() ?? null,
       pushedByUserId: record.pushedByUserId ?? null,
+      pushedByDisplayName: record.pushedBy?.displayName ?? null,
       createdAt: record.createdAt.toISOString(),
       updatedAt: record.updatedAt.toISOString(),
     };
@@ -1064,6 +1095,7 @@ export class LeadService {
       version: response.version,
       pushedAt: response.pushedAt,
       pushedByUserId: response.pushedByUserId,
+      pushedByDisplayName: response.pushedByDisplayName,
       createdAt: response.createdAt,
       updatedAt: response.updatedAt,
     };
@@ -1116,6 +1148,9 @@ export class LeadService {
       (candidate.pushedAt === null || typeof candidate.pushedAt === 'string') &&
       (candidate.pushedByUserId === null ||
         typeof candidate.pushedByUserId === 'string') &&
+      (candidate.pushedByDisplayName === undefined ||
+        candidate.pushedByDisplayName === null ||
+        typeof candidate.pushedByDisplayName === 'string') &&
       typeof candidate.createdAt === 'string' &&
       typeof candidate.updatedAt === 'string'
     );
@@ -1162,13 +1197,17 @@ export class LeadService {
       snapshot.departmentId !== actor.departmentId
     )
       throw this.corruptReceipt();
-    return snapshot;
+    return {
+      ...snapshot,
+      pushedByDisplayName: snapshot.pushedByDisplayName ?? null,
+    };
   }
   private pushReceiptResult(
     actor: ActorContext,
     receipt: Receipt,
     fingerprint: string,
     leadId: string,
+    fallbackDisplayName: string,
   ): LeadPushResponse {
     if (receipt.requestFingerprint !== fingerprint)
       throw this.idempotencyConflict();
@@ -1188,10 +1227,18 @@ export class LeadService {
       typeof result.businessNo !== 'string' ||
       typeof result.pushedAt !== 'string' ||
       typeof result.pushedByUserId !== 'string' ||
-      result.pushedByUserId !== actor.userId
+      result.pushedByUserId !== actor.userId ||
+      (result.pushedByDisplayName !== undefined &&
+        typeof result.pushedByDisplayName !== 'string')
     )
       throw this.corruptReceipt();
-    return result as LeadPushResponse;
+    return {
+      ...(result as Omit<LeadPushResponse, 'pushedByDisplayName'>),
+      pushedByDisplayName:
+        typeof result.pushedByDisplayName === 'string'
+          ? result.pushedByDisplayName
+          : fallbackDisplayName,
+    };
   }
   private changedFields(
     current: LeadRecord,

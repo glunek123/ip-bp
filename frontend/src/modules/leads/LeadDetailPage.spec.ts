@@ -46,6 +46,7 @@ const lead = {
   version: 1,
   pushedAt: null,
   pushedByUserId: null,
+  pushedByDisplayName: null,
   createdAt: '2026-09-21T04:00:00Z',
   updatedAt: '2026-09-21T04:00:00Z',
   capabilities: { edit: true, push: true },
@@ -104,10 +105,24 @@ beforeEach(() => {
     version: 2,
     pushedAt: '2026-09-22T02:00:00.000Z',
     pushedByUserId: 'u',
+    pushedByDisplayName: '运营甲',
   });
 });
 
 describe('LeadDetailPage', () => {
+  it('requires confirmation before pushing and does nothing when cancelled', async () => {
+    const confirm = vi.spyOn(window, 'confirm').mockReturnValue(false);
+    const wrapper = await mountPage();
+
+    await wrapper.get('[data-test="push-lead"]').trigger('click');
+
+    expect(confirm).toHaveBeenCalledWith(
+      expect.stringContaining('状态将变为“线索待审核”'),
+    );
+    expect(confirm).toHaveBeenCalledWith(expect.stringContaining('客户甲'));
+    expect(leadApi.pushLead).not.toHaveBeenCalled();
+  });
+
   it('uses the Demo detail grid, product table and attachment section', async () => {
     const wrapper = await mountPage();
 
@@ -161,6 +176,7 @@ describe('LeadDetailPage', () => {
 
   it('pushes once with the current version, shows success and reloads', async () => {
     vi.stubGlobal('crypto', { randomUUID: vi.fn(() => 'push-uuid') });
+    vi.spyOn(window, 'confirm').mockReturnValue(true);
     const wrapper = await mountPage();
     await wrapper.get('[data-test="push-lead"]').trigger('click');
     await flushPromises();
@@ -177,6 +193,7 @@ describe('LeadDetailPage', () => {
     leadApi.pushLead.mockRejectedValue(
       new ApiError('客户账号不可用', 409, 'CLIENT_ACCOUNT_UNAVAILABLE'),
     );
+    vi.spyOn(window, 'confirm').mockReturnValue(true);
     const wrapper = await mountPage();
     await wrapper.get('[data-test="push-lead"]').trigger('click');
     await flushPromises();
@@ -185,6 +202,24 @@ describe('LeadDetailPage', () => {
       '客户账号不可用',
     );
     expect(wrapper.text()).toContain('测试店铺');
+  });
+
+  it('shows a human operator name in the push record', async () => {
+    leadApi.getLead.mockResolvedValue({
+      ...lead,
+      status: 'WAITING_REVIEW',
+      pushedAt: '2026-09-22T02:00:00.000Z',
+      pushedByUserId: 'user-uuid',
+      pushedByDisplayName: '运营甲',
+      capabilities: { edit: false, push: false },
+    });
+
+    const wrapper = await mountPage();
+
+    expect(wrapper.get('[data-test="push-record"]').text()).toContain('运营甲');
+    expect(wrapper.get('[data-test="push-record"]').text()).not.toContain(
+      'user-uuid',
+    );
   });
 
   it('shows only the exact screenshot versions referenced by the Lead', async () => {
