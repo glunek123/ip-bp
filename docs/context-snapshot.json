@@ -1,6 +1,6 @@
 {
   "version": 1,
-  "recordedAt": "2026-09-22T09:20:05.263Z",
+  "recordedAt": "2026-09-22T09:23:06.359Z",
   "files": {
     ".cursor/rules/verified-feature-integration.mdc": "8cbd3df851df782bf5359f4e7d6a56d3e3061baf45862020286383253fefb2aa",
     ".env.example": "07211cde5c2b59efc21b619b752d4c9b871f0980d2d64ca3c146ad6151fd27ca",
@@ -230,9 +230,9 @@
     "docs/engineering-verification.md": "b7f80f141d4a7da5f28944bf5e3ba6d76d294b326f5d614029964b02f539d122",
     "docs/environment-lock.json": "a994a66b4d2a596aa6d24895f1195f74ad512b44a23927d871c255ed4ae1e00a",
     "docs/environment.md": "2c07c5c2ccecb30055e318b6670c8c910d4474e691d7fd1d645016a2d657debf",
-    "docs/feature-roadmap.md": "e945d6844067366f7d9dcd45f739f09a16bccc96f7156934ba5e464d167668b7",
+    "docs/feature-roadmap.md": "ade4e23b29429605455e9813494cc9d4224bc77ffeec1044fc7d2090f1bbd695",
     "docs/project-status-history-through-2026-09-18.md": "c7c858eb4b2a935ce78a85c75e5d3227691382186101d6ff6911249e38729208",
-    "docs/project-status.md": "474e74d2007c336ea829ac2d80e365d3d57cd81d4b790fece8dbab3a6bf9dc2d",
+    "docs/project-status.md": "564cbc04d744352c058d2a65ea18c4c8702d1c40f97825173bc034286af5135c",
     "docs/security/customer-foundation-q2-review.md": "f5745450cb85aedde92892646c6c824bc9670b8c9bf6f0d9761fe5e46cc6d109",
     "docs/security/local-account-auth-q2-review.md": "4e7b38d73b2597e483340490c788aa034ef6f465baccc12240be7ad2c6ec61f1",
     "docs/spec/v0.1/BUSINESS-REVIEW.md": "950c73ac72470d2e3556fd416701b4486944c1e3ef21c84be11132cbe617c24e",
