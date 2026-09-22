@@ -303,8 +303,12 @@ test('operator creates, refreshes, views, and edits a waiting-push lead', async 
   ]);
   await page.locator('[data-test="create-lead"]').click();
   await expect(page.locator('.required-mark').first()).toBeVisible();
-  await page.getByLabel('客户').selectOption(coreLeadFixtures.admittedCustomer);
-  await expect(page.getByLabel('权利人')).toHaveValue(coreLeadFixtures.holder);
+  await page
+    .locator('select[name="customerId"]')
+    .selectOption(coreLeadFixtures.admittedCustomer);
+  await expect(page.locator('select[name="rightsHolderId"]')).toHaveValue(
+    coreLeadFixtures.holder,
+  );
   await expect(page.getByText('已按客户自动带出')).toBeVisible();
   await page.getByLabel('拟办理业务类型').selectOption('CIVIL');
   await page.getByLabel('发现时间').fill('2026-09-21T10:30');
@@ -369,8 +373,12 @@ test('real operator login, client-account binding, push, client login, read, dow
 
   await page.locator('[data-test="lead-nav"]').click();
   await page.locator('[data-test="create-lead"]').click();
-  await page.getByLabel('客户').selectOption(coreLeadFixtures.admittedCustomer);
-  await expect(page.getByLabel('权利人')).toHaveValue(coreLeadFixtures.holder);
+  await page
+    .locator('select[name="customerId"]')
+    .selectOption(coreLeadFixtures.admittedCustomer);
+  await expect(page.locator('select[name="rightsHolderId"]')).toHaveValue(
+    coreLeadFixtures.holder,
+  );
   await page.getByLabel('拟办理业务类型').selectOption('CIVIL');
   await page.getByLabel('发现时间').fill('2026-09-22T10:30');
   await page.getByLabel('线索来源').selectOption('ONLINE');
