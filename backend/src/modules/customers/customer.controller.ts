@@ -25,6 +25,11 @@ import { CustomerService } from './customer.service';
 import { CsrfGuard } from '../../auth/csrf.guard';
 import { AdmitCustomerDto } from './customer-admission.dto';
 import { CustomerAdmissionService } from './customer-admission.service';
+import {
+  CreateCustomerAccountDto,
+  SetCustomerAccountStatusDto,
+} from './customer-account.dto';
+import { CustomerAccountService } from './customer-account.service';
 
 @ApiTags('customers')
 @ApiBearerAuth()
@@ -34,6 +39,7 @@ export class CustomerController {
   constructor(
     private readonly customers: CustomerService,
     private readonly admissions: CustomerAdmissionService,
+    private readonly clientAccounts: CustomerAccountService,
   ) {}
 
   @Post()
@@ -91,6 +97,33 @@ export class CustomerController {
     @Param('id', new ParseUUIDPipe()) id: string,
   ) {
     return this.customers.get(actor, id);
+  }
+
+  @Get(':id/client-accounts')
+  listClientAccounts(
+    @CurrentActor() actor: ActorContext,
+    @Param('id', new ParseUUIDPipe()) id: string,
+  ) {
+    return this.clientAccounts.list(actor, id);
+  }
+
+  @Post(':id/client-accounts')
+  createClientAccount(
+    @CurrentActor() actor: ActorContext,
+    @Param('id', new ParseUUIDPipe()) id: string,
+    @Body() input: CreateCustomerAccountDto,
+  ) {
+    return this.clientAccounts.create(actor, id, input);
+  }
+
+  @Patch(':id/client-accounts/:userId/status')
+  setClientAccountStatus(
+    @CurrentActor() actor: ActorContext,
+    @Param('id', new ParseUUIDPipe()) id: string,
+    @Param('userId', new ParseUUIDPipe()) userId: string,
+    @Body() input: SetCustomerAccountStatusDto,
+  ) {
+    return this.clientAccounts.setStatus(actor, id, userId, input.active);
   }
 
   private requireIdempotencyKey(value: string | undefined): string {

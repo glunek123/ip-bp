@@ -24,6 +24,7 @@ const catalog: PermissionCatalogItem[] = [
   { action: 'LEAD_READ', label: '查看线索', scopes: allScopes },
   { action: 'LEAD_CREATE', label: '创建线索', scopes: allScopes },
   { action: 'LEAD_EDIT', label: '编辑线索', scopes: allScopes },
+  { action: 'LEAD_PUSH', label: '推送线索', scopes: allScopes },
   { action: 'USER_READ', label: '查看人员', scopes: allScopes },
   { action: 'USER_MANAGE', label: '管理人员', scopes: allScopes },
   { action: 'TEAM_READ', label: '查看团队', scopes: allScopes },

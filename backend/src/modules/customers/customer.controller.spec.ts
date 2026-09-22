@@ -16,6 +16,7 @@ import { CustomerController } from './customer.controller';
 import { CustomerAdmissionService } from './customer-admission.service';
 import { CustomerService } from './customer.service';
 import { AuthService } from '../../auth/auth.service';
+import { CustomerAccountService } from './customer-account.service';
 
 const actor = {
   userId: '11111111-1111-4111-8111-111111111111',
@@ -31,6 +32,9 @@ describe('CustomerController', () => {
   const findDuplicates = jest.fn();
   const updateDraft = jest.fn();
   const admit = jest.fn();
+  const listClientAccounts = jest.fn();
+  const createClientAccount = jest.fn();
+  const setClientAccountStatus = jest.fn();
   let app: INestApplication;
 
   beforeAll(async () => {
@@ -50,6 +54,14 @@ describe('CustomerController', () => {
           useValue: { createDraft, list, get, findDuplicates, updateDraft },
         },
         { provide: CustomerAdmissionService, useValue: { admit } },
+        {
+          provide: CustomerAccountService,
+          useValue: {
+            list: listClientAccounts,
+            create: createClientAccount,
+            setStatus: setClientAccountStatus,
+          },
+        },
       ],
     }).compile();
     app = module.createNestApplication();

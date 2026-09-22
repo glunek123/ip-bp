@@ -10,6 +10,7 @@ import {
 } from '../../api/customers';
 import CustomerRightsHolderPanel from './CustomerRightsHolderPanel.vue';
 import CustomerAdmissionPanel from './CustomerAdmissionPanel.vue';
+import CustomerAccountPanel from './CustomerAccountPanel.vue';
 
 const route = useRoute();
 const router = useRouter();
@@ -223,6 +224,10 @@ onBeforeUnmount(() => activeRequest?.abort());
           @admitted="acceptAdmission"
           @customer-refreshed="acceptRefreshedCustomer"
           @customer-not-found="returnToCustomerList"
+        />
+        <CustomerAccountPanel
+          :customer-id="customer.id"
+          :admitted="customer.profileStatus === 'admitted'"
         />
         <details class="history-panel">
           <summary>办理历史 · {{ customer.history.length }} 条</summary>

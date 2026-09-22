@@ -8,11 +8,22 @@ import { RightsHolderService } from './rights-holder.service';
 import { AuthModule } from '../../auth/auth.module';
 import { MaterialModule } from '../materials';
 import { CustomerAdmissionService } from './customer-admission.service';
+import { CustomerAccountService } from './customer-account.service';
 
 @Module({
   imports: [AccessControlModule, AuthModule, DatabaseModule, MaterialModule],
   controllers: [CustomerController, RightsHolderController],
-  providers: [CustomerService, CustomerAdmissionService, RightsHolderService],
-  exports: [CustomerService, CustomerAdmissionService, RightsHolderService],
+  providers: [
+    CustomerService,
+    CustomerAdmissionService,
+    CustomerAccountService,
+    RightsHolderService,
+  ],
+  exports: [
+    CustomerService,
+    CustomerAdmissionService,
+    CustomerAccountService,
+    RightsHolderService,
+  ],
 })
 export class CustomerModule {}
