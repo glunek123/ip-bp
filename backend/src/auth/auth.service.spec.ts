@@ -27,6 +27,7 @@ function createDatabase() {
       update: jest.fn(),
     },
     departmentMembership: { findUnique: jest.fn() },
+    customerAccountBinding: { findUnique: jest.fn() },
     $transaction: jest.fn(
       async (callback: (value: typeof transaction) => unknown) =>
         callback(transaction),
@@ -137,9 +138,11 @@ describe('AuthService', () => {
 
     expect(result.sessionToken).toMatch(/^[A-Za-z0-9_-]{43,}$/);
     expect(result.view).toMatchObject({
+      principalType: 'INTERNAL',
       user: { id: userId, displayName: '管理员', username: 'admin' },
       department,
       departments: [department],
+      customer: null,
       authorizationRevision: 3,
     });
     expect(database.transaction.authSession.create).toHaveBeenCalledWith({
@@ -152,6 +155,53 @@ describe('AuthService', () => {
     });
     expect(database.transaction.authThrottle.deleteMany).toHaveBeenCalledWith({
       where: expect.objectContaining({ kind: 'USERNAME' }),
+    });
+  });
+
+  it('creates a real session for an active enterprise-bound client account', async () => {
+    const database = createDatabase();
+    const customer = {
+      id: '40000000-0000-4000-8000-000000000001',
+      name: '甲方企业',
+      departmentId: department.id,
+      profileStatus: 'ADMITTED',
+    };
+    database.transaction.localCredential.findUnique.mockResolvedValue({
+      userId,
+      username: 'client.a',
+      passwordHash: await hashPassword('correct horse battery staple'),
+      user: {
+        id: userId,
+        displayName: '甲方审核人',
+        active: true,
+        accountType: 'CLIENT',
+        authorizationRevision: 4,
+        memberships: [],
+        clientBinding: { active: true, customer },
+      },
+    });
+    const auth = new AuthService(
+      database as never,
+      { getOrThrow: () => 'a'.repeat(64) } as unknown as ConfigService,
+    );
+
+    const result = await auth.login(
+      { username: 'client.a', password: 'correct horse battery staple' },
+      '127.0.0.1',
+    );
+
+    expect(result.view).toMatchObject({
+      principalType: 'CLIENT',
+      department: null,
+      departments: [],
+      customer: { id: customer.id, name: customer.name },
+      authorizationRevision: 4,
+    });
+    expect(database.transaction.authSession.create).toHaveBeenCalledWith({
+      data: expect.objectContaining({
+        userId,
+        departmentId: department.id,
+      }),
     });
   });
 
@@ -323,6 +373,79 @@ describe('AuthService', () => {
     });
     database.departmentMembership.findUnique.mockResolvedValue({
       active: false,
+    });
+    const auth = new AuthService(
+      database as never,
+      { getOrThrow: () => 'a'.repeat(64) } as unknown as ConfigService,
+    );
+
+    await expect(auth.resolveSession('token')).resolves.toBeNull();
+  });
+
+  it('re-reads an active enterprise binding for every client request', async () => {
+    const database = createDatabase();
+    const customerId = '40000000-0000-4000-8000-000000000001';
+    database.authSession.findUnique.mockResolvedValue({
+      id: '30000000-0000-4000-8000-000000000001',
+      userId,
+      departmentId: department.id,
+      csrfDigest: 'a'.repeat(64),
+      revokedAt: null,
+      expiresAt: new Date(Date.now() + 10_000),
+      user: {
+        active: true,
+        accountType: 'CLIENT',
+        authorizationRevision: 9,
+      },
+    });
+    database.customerAccountBinding.findUnique.mockResolvedValue({
+      active: true,
+      departmentId: department.id,
+      customer: { id: customerId, profileStatus: 'ADMITTED' },
+    });
+    const auth = new AuthService(
+      database as never,
+      { getOrThrow: () => 'a'.repeat(64) } as unknown as ConfigService,
+    );
+
+    await expect(auth.resolveSession('token')).resolves.toEqual({
+      actor: {
+        userId,
+        departmentId: department.id,
+        authorizationRevision: 9,
+        clientCustomerId: customerId,
+      },
+      authentication: {
+        kind: 'session',
+        sessionId: '30000000-0000-4000-8000-000000000001',
+        csrfDigest: 'a'.repeat(64),
+      },
+    });
+    expect(database.departmentMembership.findUnique).not.toHaveBeenCalled();
+  });
+
+  it('rejects a revoked client binding on the next request', async () => {
+    const database = createDatabase();
+    database.authSession.findUnique.mockResolvedValue({
+      id: '30000000-0000-4000-8000-000000000001',
+      userId,
+      departmentId: department.id,
+      csrfDigest: 'a'.repeat(64),
+      revokedAt: null,
+      expiresAt: new Date(Date.now() + 10_000),
+      user: {
+        active: true,
+        accountType: 'CLIENT',
+        authorizationRevision: 1,
+      },
+    });
+    database.customerAccountBinding.findUnique.mockResolvedValue({
+      active: false,
+      departmentId: department.id,
+      customer: {
+        id: '40000000-0000-4000-8000-000000000001',
+        profileStatus: 'ADMITTED',
+      },
     });
     const auth = new AuthService(
       database as never,

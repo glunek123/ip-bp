@@ -8,9 +8,11 @@ import {
 
 export type DepartmentChoice = { id: string; name: string };
 export type AuthSession = {
+  principalType: 'INTERNAL' | 'CLIENT';
   user: { id: string; displayName: string; username: string };
-  department: DepartmentChoice;
+  department: DepartmentChoice | null;
   departments: DepartmentChoice[];
+  customer: { id: string; name: string } | null;
   authorizationRevision: number;
   expiresAt: string;
   csrfToken: string;
@@ -21,15 +23,26 @@ function isRecord(value: unknown): value is Record<string, unknown> {
 }
 
 function parseSession(value: unknown): AuthSession {
-  if (!isRecord(value) || !isRecord(value.user) || !isRecord(value.department))
+  if (!isRecord(value) || !isRecord(value.user))
     throw new ApiError('服务返回了无效的登录信息', 200, 'INVALID_RESPONSE');
   const session = value as unknown as AuthSession;
+  const validDepartment =
+    session.department === null ||
+    (isRecord(session.department) &&
+      typeof session.department.id === 'string' &&
+      typeof session.department.name === 'string');
+  const validCustomer =
+    session.customer === null ||
+    (isRecord(session.customer) &&
+      typeof session.customer.id === 'string' &&
+      typeof session.customer.name === 'string');
   if (
+    (session.principalType !== 'INTERNAL' &&
+      session.principalType !== 'CLIENT') ||
     typeof session.user.id !== 'string' ||
     typeof session.user.displayName !== 'string' ||
     typeof session.user.username !== 'string' ||
-    typeof session.department.id !== 'string' ||
-    typeof session.department.name !== 'string' ||
+    !validDepartment ||
     !Array.isArray(session.departments) ||
     !session.departments.every(
       (department) =>
@@ -38,7 +51,12 @@ function parseSession(value: unknown): AuthSession {
     ) ||
     typeof session.authorizationRevision !== 'number' ||
     typeof session.expiresAt !== 'string' ||
-    typeof session.csrfToken !== 'string'
+    typeof session.csrfToken !== 'string' ||
+    !validCustomer ||
+    (session.principalType === 'INTERNAL' &&
+      (session.department === null || session.customer !== null)) ||
+    (session.principalType === 'CLIENT' &&
+      (session.department !== null || session.customer === null))
   )
     throw new ApiError('服务返回了无效的登录信息', 200, 'INVALID_RESPONSE');
   setCsrfToken(session.csrfToken);

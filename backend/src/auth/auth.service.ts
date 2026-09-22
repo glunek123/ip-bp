@@ -31,8 +31,10 @@ const DUMMY_PASSWORD_HASH =
 
 export type AuthSessionView = {
   user: { id: string; displayName: string; username: string };
-  department: { id: string; name: string };
+  principalType: 'INTERNAL' | 'CLIENT';
+  department: { id: string; name: string } | null;
   departments: Array<{ id: string; name: string }>;
+  customer: { id: string; name: string } | null;
   authorizationRevision: number;
   expiresAt: string;
   csrfToken: string;
@@ -105,6 +107,7 @@ export class AuthService {
                   include: { department: true },
                   orderBy: { department: { name: 'asc' } },
                 },
+                clientBinding: { include: { customer: true } },
               },
             },
           },
@@ -126,6 +129,58 @@ export class AuthService {
           id: department.id,
           name: department.name,
         }));
+        if (credential.user.accountType === 'CLIENT') {
+          const binding = credential.user.clientBinding;
+          if (
+            input.departmentId !== undefined ||
+            binding === null ||
+            !binding.active ||
+            binding.customer.profileStatus !== 'ADMITTED'
+          ) {
+            await this.recordFailure(transaction, usernameDigest, sourceDigest);
+            return { kind: 'failed' };
+          }
+          const sessionToken = createOpaqueToken();
+          const csrfToken = createOpaqueToken();
+          const expiresAt = new Date(Date.now() + SESSION_MS);
+          await transaction.authThrottle.deleteMany({
+            where: { kind: 'USERNAME', identifierDigest: usernameDigest },
+          });
+          await transaction.authSession.create({
+            data: {
+              tokenDigest: digestToken(sessionToken),
+              csrfDigest: digestToken(csrfToken),
+              userId: credential.userId,
+              departmentId: binding.customer.departmentId,
+              authorizationRevision: credential.user.authorizationRevision,
+              expiresAt,
+            },
+          });
+          return {
+            kind: 'success',
+            result: {
+              sessionToken,
+              view: {
+                user: {
+                  id: credential.user.id,
+                  displayName: credential.user.displayName,
+                  username: credential.username,
+                },
+                principalType: 'CLIENT',
+                department: null,
+                departments: [],
+                customer: {
+                  id: binding.customer.id,
+                  name: binding.customer.name,
+                },
+                authorizationRevision:
+                  credential.user.authorizationRevision,
+                expiresAt: expiresAt.toISOString(),
+                csrfToken,
+              },
+            },
+          };
+        }
         if (input.departmentId === undefined && memberships.length > 1) {
           return { kind: 'department-required', departments };
         }
@@ -169,7 +224,9 @@ export class AuthService {
                 id: membership.department.id,
                 name: membership.department.name,
               },
+              principalType: 'INTERNAL',
               departments,
+              customer: null,
               authorizationRevision: credential.user.authorizationRevision,
               expiresAt: expiresAt.toISOString(),
               csrfToken,
@@ -219,15 +276,31 @@ export class AuthService {
       !session.user.active
     )
       return null;
-    const membership = await this.database.departmentMembership.findUnique({
-      where: {
-        userId_departmentId: {
-          userId: session.userId,
-          departmentId: session.departmentId,
+    let clientCustomerId: string | undefined;
+    if (session.user.accountType === 'CLIENT') {
+      const binding = await this.database.customerAccountBinding.findUnique({
+        where: { userId: session.userId },
+        include: { customer: true },
+      });
+      if (
+        binding === null ||
+        !binding.active ||
+        binding.departmentId !== session.departmentId ||
+        binding.customer.profileStatus !== 'ADMITTED'
+      )
+        return null;
+      clientCustomerId = binding.customer.id;
+    } else {
+      const membership = await this.database.departmentMembership.findUnique({
+        where: {
+          userId_departmentId: {
+            userId: session.userId,
+            departmentId: session.departmentId,
+          },
         },
-      },
-    });
-    if (membership === null || !membership.active) return null;
+      });
+      if (membership === null || !membership.active) return null;
+    }
     await this.database.authSession.update({
       where: { id: session.id },
       data: {
@@ -240,6 +313,7 @@ export class AuthService {
         userId: session.userId,
         departmentId: session.departmentId,
         authorizationRevision: session.user.authorizationRevision,
+        ...(clientCustomerId === undefined ? {} : { clientCustomerId }),
       },
       authentication: {
         kind: 'session',
@@ -268,12 +342,37 @@ export class AuthService {
               include: { department: true },
               orderBy: { department: { name: 'asc' } },
             },
+            clientBinding: { include: { customer: true } },
           },
         },
         department: true,
       },
     });
     if (session.user.localCredential === null) this.unauthorized();
+    if (session.user.accountType === 'CLIENT') {
+      const binding = session.user.clientBinding;
+      if (
+        binding === null ||
+        !binding.active ||
+        binding.customer.profileStatus !== 'ADMITTED' ||
+        binding.departmentId !== session.departmentId
+      )
+        this.unauthorized();
+      return {
+        user: {
+          id: session.user.id,
+          displayName: session.user.displayName,
+          username: session.user.localCredential.username,
+        },
+        principalType: 'CLIENT',
+        department: null,
+        departments: [],
+        customer: { id: binding.customer.id, name: binding.customer.name },
+        authorizationRevision: session.user.authorizationRevision,
+        expiresAt: session.expiresAt.toISOString(),
+        csrfToken,
+      };
+    }
     return {
       user: {
         id: session.user.id,
@@ -281,10 +380,12 @@ export class AuthService {
         username: session.user.localCredential.username,
       },
       department: { id: session.department.id, name: session.department.name },
+      principalType: 'INTERNAL',
       departments: session.user.memberships.map(({ department }) => ({
         id: department.id,
         name: department.name,
       })),
+      customer: null,
       authorizationRevision: session.user.authorizationRevision,
       expiresAt: session.expiresAt.toISOString(),
       csrfToken,
