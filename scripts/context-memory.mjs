@@ -11,6 +11,7 @@ import { fileURLToPath, pathToFileURL } from 'node:url';
 
 const snapshotPath = 'docs/context-snapshot.json';
 const statusPath = 'docs/project-status.md';
+const roadmapPath = 'docs/feature-roadmap.md';
 const ignoredDirectories = new Set([
   'node_modules',
   '.git',
@@ -76,6 +77,49 @@ function digest(text) {
   return createHash('sha256').update(text).digest('hex');
 }
 
+function section(text, heading, level) {
+  const marker = `${'#'.repeat(level)} ${heading}`;
+  const matches = [...text.matchAll(new RegExp(`^${marker}$`, 'gm'))];
+  if (matches.length !== 1)
+    throw new Error(`Expected exactly one ${marker}, found ${matches.length}`);
+  const start = matches[0].index + marker.length;
+  const nextHeading = text.indexOf(`\n${'#'.repeat(level)} `, start);
+  return text.slice(start, nextHeading === -1 ? undefined : nextHeading);
+}
+
+function firstCoreSlice(text, source) {
+  const match = text.match(/\bCORE-[A-Z]+-\d{3}\b/);
+  if (!match) throw new Error(`Missing CORE Slice identifier in ${source}`);
+  return match[0];
+}
+
+function assertStatusAlignment(root, status) {
+  const roadmapFile = join(root, roadmapPath);
+  if (!existsSync(roadmapFile))
+    throw new Error(`Missing 功能开发路线图: ${roadmapPath}`);
+  const roadmap = readText(roadmapFile);
+  const current = firstCoreSlice(
+    section(roadmap, 'Current Slice', 3),
+    `${roadmapPath} Current Slice`,
+  );
+  const next = firstCoreSlice(
+    section(roadmap, 'Next Slice', 3),
+    `${roadmapPath} Next Slice`,
+  );
+  if (current === next)
+    throw new Error(
+      `Current Slice and Next Slice must differ in ${roadmapPath}: ${current}`,
+    );
+  const statusCurrent = firstCoreSlice(
+    section(status, '当前任务', 2),
+    `${statusPath} 当前任务`,
+  );
+  if (statusCurrent !== current)
+    throw new Error(
+      `状态对齐失败: ${statusPath} 当前任务为 ${statusCurrent}，但 ${roadmapPath} Current Slice 为 ${current}`,
+    );
+}
+
 function collectFiles(root, directory = '') {
   const files = [];
   for (const entry of readdirSync(join(root, directory), {
@@ -115,6 +159,7 @@ function inspectFiles(root) {
     if (!status.split('\n').includes(`## ${section}`))
       throw new Error(`状态文档缺少 ${section}: ${statusPath}`);
   }
+  assertStatusAlignment(root, status);
   const files = {};
   for (const relative of collectFiles(root)) {
     const text = readText(join(root, relative));

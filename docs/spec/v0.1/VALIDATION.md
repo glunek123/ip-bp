@@ -1,5 +1,11 @@
 # SPEC-001 文档验证
 
+## Demo对齐前端壳层与线索页面合并候选（2026-09-22）
+
+登录后共享壳层、线索列表、新建／编辑和详情页已按已确认的Demo视觉与操作层级完成对齐；正式页面继续使用真实API、后端capability和PostgreSQL数据，没有引入推送、客户审核或其他未实现动作的假入口。当前`main`与`origin/main`一致于`71ecc0f4a7805d2a9177b785da57f105c2107794`，tree为`daae709e60906d993c2f18df2d338936d3676f9e`。
+
+该tree的`verify:slice:core-ld` Evidence v2状态为`success`，检查集合为Prisma准备、CORE-LD单元／契约、快速静态门禁、Slice格式、后端构建及CORE-LD数据库型浏览器测试；结果为后端228项、前端切片75项和Chromium 14/14通过。证据位于Git common目录`dev-cor-validation-evidence/daae709e60906d993c2f18df2d338936d3676f9e.json`。本次随后进行的状态治理只修正文档、检查器和上下文快照，不把该旧tree证据冒充为治理新tree的执行结果，也不改变CORE-LD-002仍未实现的判断。
+
 ## CORE-LD-001运营新建待推送线索候选（2026-09-21）
 
 本切片完成最小客户正式准入、本地／测试私有材料Adapter、证件与线索截图的不可变内容版本，以及运营端待推送线索列表、四阶段计数、新建、详情和允许范围内编辑。后端强制客户已准入、客户—权利主体当前关联、Action与SELF／TEAM／DEPARTMENT数据范围；准入、线索和材料成功事实与审计／引用同事务提交。业务号按Asia/Shanghai业务日生成`LD-YYYYMMDD-NNN`；原子计数器在999停止，第1000号稳定返回`LEAD_NUMBER_EXHAUSTED`，PostgreSQL adapter形态的`40001`也进入既定有界整事务重试。

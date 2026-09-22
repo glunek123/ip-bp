@@ -3,7 +3,7 @@
 日期：2026-09-22  
 状态：已实现并通过验收
 
-实施候选：`75c8eda0bf16a22d01a04a5c279e797e434c5e89`，tree `6db788110084adfc4e15af935ed2c8227e985da9`。正式 `verify:slice:core-ld` 证据位于 Git common 目录 `dev-cor-validation-evidence/6db788110084adfc4e15af935ed2c8227e985da9.json`；后端 228 项、前端切片 75 项、架构／类型／ESLint／格式／后端构建及真实 PostgreSQL／Chromium 14/14 均通过。
+首个实现候选为`75c8eda0bf16a22d01a04a5c279e797e434c5e89`；完成验证记录收口并合并后的运行候选为`71ecc0f4a7805d2a9177b785da57f105c2107794`，tree `daae709e60906d993c2f18df2d338936d3676f9e`。正式 `verify:slice:core-ld` Evidence v2位于Git common目录`dev-cor-validation-evidence/daae709e60906d993c2f18df2d338936d3676f9e.json`；后端228项、前端切片75项、架构／类型／ESLint／格式／后端构建及真实PostgreSQL／Chromium 14/14均通过。
 
 ## 目标
 

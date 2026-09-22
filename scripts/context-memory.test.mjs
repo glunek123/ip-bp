@@ -12,7 +12,9 @@ import { join, resolve, sep } from 'node:path';
 import { checkContext, recordContext } from './context-memory.mjs';
 
 const status =
-  '# 当前开发状态\n\n## 当前阶段\n通用骨架\n## 当前任务\n检查\n## 已实现\n健康检查\n## 未决与限制\n需求待确认\n## 最近验证\n未运行业务测试\n## 下一步\n等待需求\n';
+  '# 当前开发状态\n\n## 当前阶段\n通用骨架\n## 当前任务\nCORE-LD-001｜检查\n## 已实现\n健康检查\n## 未决与限制\n需求待确认\n## 最近验证\n未运行业务测试\n## 下一步\n等待需求\n';
+const roadmap =
+  '# 功能开发路线图\n\n### Current Slice\n\n**CORE-LD-001｜当前。**\n\n### Next Slice\n\n**CORE-LD-002｜下一项。**\n';
 
 function fixture(t) {
   const prefix = join(tmpdir(), 'dev-cor-context-');
@@ -31,6 +33,7 @@ function fixture(t) {
   mkdirSync(join(root, 'docs'));
   mkdirSync(join(root, 'backend', 'src'), { recursive: true });
   writeFileSync(join(root, 'docs/project-status.md'), status);
+  writeFileSync(join(root, 'docs/feature-roadmap.md'), roadmap);
   writeFileSync(
     join(root, 'backend/src/main.ts'),
     'export const ready = true;\n',
@@ -79,6 +82,24 @@ test('recorded and unchanged files pass without changing the status document', (
     readFileSync(join(root, 'docs/project-status.md'), 'utf8'),
     status,
   );
+});
+
+test('status current task must match the roadmap current slice', (t) => {
+  const root = fixture(t);
+  writeFileSync(
+    join(root, 'docs/project-status.md'),
+    status.replace('CORE-LD-001｜检查', 'CORE-LD-003｜检查'),
+  );
+  assert.throws(() => recordContext(root), /状态对齐失败|CORE-LD-003/);
+});
+
+test('roadmap current and next slices must be unique and different', (t) => {
+  const root = fixture(t);
+  writeFileSync(
+    join(root, 'docs/feature-roadmap.md'),
+    roadmap.replace('CORE-LD-002｜下一项', 'CORE-LD-001｜下一项'),
+  );
+  assert.throws(() => recordContext(root), /must differ|CORE-LD-001/);
 });
 
 test('a changed source is reported by default and blocked in strict mode', (t) => {

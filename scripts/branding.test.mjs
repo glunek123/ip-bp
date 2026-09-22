@@ -19,12 +19,8 @@ const fullNameFiles = [
 const shortNameFiles = [
   'frontend/src/app/HealthPage.vue',
   'frontend/src/modules/auth/LoginPage.vue',
-  'frontend/src/modules/customers/CustomerListPage.vue',
-  'frontend/src/modules/customers/CustomerNewPage.vue',
-  'frontend/src/modules/customers/CustomerEditPage.vue',
-  'frontend/src/modules/customers/CustomerDetailPage.vue',
-  'frontend/src/modules/customers/RightsHolderDetailPage.vue',
 ];
+const authenticatedShellFile = 'frontend/src/app/AppShell.vue';
 
 test('active product surfaces use the approved dual-department name', () => {
   for (const path of fullNameFiles) {
@@ -54,4 +50,21 @@ test('active product surfaces use the approved dual-department name', () => {
       `${path} still uses the old name`,
     );
   }
+
+  const authenticatedShell = readFileSync(authenticatedShellFile, 'utf8');
+  assert.match(
+    authenticatedShell,
+    /品维·知产/,
+    `${authenticatedShellFile} must use the approved brand name`,
+  );
+  assert.match(
+    authenticatedShell,
+    /业务管理系统/,
+    `${authenticatedShellFile} must use the approved product descriptor`,
+  );
+  assert.doesNotMatch(
+    authenticatedShell,
+    /知产案件管理/,
+    `${authenticatedShellFile} still uses the old name`,
+  );
 });

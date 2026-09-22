@@ -32,6 +32,15 @@
 - 已检查最终diff且差异仅位于`demo/`或`frontend/src/styles/`时，可使用`pnpm context:record:light`记录快照；工具会拒绝源码、配置、治理、Spec和其他路径。其余任务在核对真实差异后使用标准`pnpm context:record`。标准记录不再机械要求状态文件同时变化；是否更新状态只由阶段、活动Slice、阻断、重要风险、架构、Merge／Release或跨会话恢复信息的语义变化决定。
 - 快照是文件一致性检查，不是测试或批准。影响规则、执行或交付说明的文档在候选冻结前完成；最终运行结果与Review优先写入树外证据或PR。后续文档形成新tree时可以准确记载旧tree的历史结果，但不能把旧证据标成新tree实际执行；AGENTS、规则、业务Spec、测试规范、脚本和配置不适用非执行性收口例外。
 
+### 状态对齐顺序
+
+阶段或活动Slice变化时按以下顺序维护，避免多个入口分别推进：
+
+1. 先以当前代码、Git提交／tree和真实Evidence确定“已经做成什么”，历史候选不得覆盖较新的合并候选。
+2. 只在`feature-roadmap.md`设置唯一Current／Next及能力状态；`project-status.md`的“当前任务”只引用同一个Current并记录恢复所需边界，不再维护竞争顺序。
+3. 历史验证写入`VALIDATION.md`或既有设计的验收段；项目状态只保留最新可复用证据，不复制完整流水。
+4. 最后执行标准`context:record`并运行`context:check:strict`。检查器会拒绝项目状态当前任务与路线图Current Slice编号不一致、Current／Next相同或标题不唯一；通过只表示文本和指针一致，不替代业务验证。
+
 ## 文档同步
 
 只有以下变化更新对应Spec／Decision：业务规则、字段语义、状态机、Workflow、权限、API契约、数据结构或重要架构决定。纯实现细节、小型重构、文案、样式和局部交互只在代码与测试中表达。
