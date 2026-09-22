@@ -66,6 +66,7 @@ async function configureBearerBrowser(page: import('@playwright/test').Page) {
       status: 200,
       contentType: 'application/json',
       body: JSON.stringify({
+        principalType: 'INTERNAL',
         user: {
           id: e2eFixtures.userA,
           displayName: '测试用户甲',
@@ -73,6 +74,7 @@ async function configureBearerBrowser(page: import('@playwright/test').Page) {
         },
         department: { id: e2eFixtures.departmentA, name: 'E2E 知产部' },
         departments: [{ id: e2eFixtures.departmentA, name: 'E2E 知产部' }],
+        customer: null,
         authorizationRevision: 1,
         expiresAt: '2099-01-01T00:00:00.000Z',
         csrfToken: '',
@@ -667,8 +669,8 @@ test('operations user creates a persisted draft and sees its audit history', asy
 
   await page.getByRole('link', { name: '编辑资料' }).click();
   await page.getByLabel('客户名称').fill('真实数据库客户（更新）');
-  await page.getByLabel('客户类型').fill('企业');
-  await page.getByLabel('证件类型').fill('统一社会信用代码');
+  await page.getByLabel('客户类型').selectOption('ENTERPRISE');
+  await page.getByLabel('证件类型').selectOption('BUSINESS_LICENSE');
   await page.getByLabel('证件号码').fill('91310000abc123');
   await page.getByLabel('邮箱').fill('contact@example.com');
   await page.getByRole('button', { name: '保存修改' }).click();
@@ -1169,7 +1171,7 @@ test('concurrent identity updates accept only one customer', async ({
     countCustomersByNormalizedIdentity(
       e2eFixtures.departmentA,
       'CREDIT-CODE',
-      'RACE-91310000',
+      'RACE91310000',
     ),
   ).resolves.toBe(1);
 });

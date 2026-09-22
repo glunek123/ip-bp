@@ -36,6 +36,7 @@ export const permissionActionValues = [
   'LEAD_READ',
   'LEAD_CREATE',
   'LEAD_EDIT',
+  'LEAD_PUSH',
   'USER_READ',
   'USER_MANAGE',
   'TEAM_READ',

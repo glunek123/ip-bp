@@ -122,6 +122,7 @@ test('password reset needs only the new password and invalidates the old one', a
   await operatorCard.getByRole('button', { name: '重置密码' }).click();
   await page.getByLabel('新密码').fill('Operator-new-pass-2026');
   await page.getByRole('button', { name: '确认重置' }).click();
+  await expect(page.getByRole('dialog')).toBeHidden();
   await page.getByRole('button', { name: '退出登录' }).click();
 
   await login(page, 'operator.b', 'Operator-pass-2026');

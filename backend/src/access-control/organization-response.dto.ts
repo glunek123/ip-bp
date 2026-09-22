@@ -9,7 +9,6 @@ const permissionActions = [
   'LEAD_CREATE',
   'LEAD_EDIT',
   'LEAD_PUSH',
-  'CLIENT_LEAD_READ',
   'USER_READ',
   'USER_MANAGE',
   'TEAM_READ',

@@ -91,6 +91,11 @@ const context = {
       scopes: ['SELF', 'TEAM', 'DEPARTMENT'],
     },
     {
+      action: 'LEAD_PUSH',
+      label: '推送线索',
+      scopes: ['SELF', 'TEAM', 'DEPARTMENT'],
+    },
+    {
       action: 'USER_READ',
       label: '查看人员',
       scopes: ['SELF', 'TEAM', 'DEPARTMENT'],
@@ -187,6 +192,12 @@ describe('organization API', () => {
       ...context,
       permissionCatalog: context.permissionCatalog.map((item, index) =>
         index === 0 ? { ...item, extra: true } : item,
+      ),
+    },
+    {
+      ...context,
+      permissionCatalog: context.permissionCatalog.map((item, index) =>
+        index === 0 ? { ...item, action: 'CLIENT_LEAD_READ' } : item,
       ),
     },
   ])('rejects sensitive or invalid management shapes %#', async (body) => {

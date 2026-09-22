@@ -265,49 +265,93 @@ async function verifyLocalAuthMigration() {
 async function resetCustomerE2eData() {
   const departmentIds = [e2eFixtures.departmentA, e2eFixtures.departmentB];
   const userIds = [e2eFixtures.userA, e2eFixtures.userB, e2eFixtures.userSelf];
+  const clientBindings = await database.customerAccountBinding.findMany({
+    where: { departmentId: { in: departmentIds } },
+    select: { userId: true },
+  });
+  const clientUserIds = clientBindings.map(({ userId }) => userId);
+  const allUserIds = [...userIds, ...clientUserIds];
 
-  await database.$transaction([
-    database.auditEvent.deleteMany({
+  await database.$transaction(async (transaction) => {
+    await transaction.materialReference.deleteMany({
       where: { departmentId: { in: departmentIds } },
-    }),
-    database.rightsHolderCommandReceipt.deleteMany({
+    });
+    await transaction.customerAdmissionReceipt.deleteMany({
       where: { departmentId: { in: departmentIds } },
-    }),
-    database.customerRightsHolderLink.deleteMany({
+    });
+    await transaction.leadCommandReceipt.deleteMany({
       where: { departmentId: { in: departmentIds } },
-    }),
-    database.rightsHolder.deleteMany({
+    });
+    await transaction.lead.deleteMany({
       where: { departmentId: { in: departmentIds } },
-    }),
-    database.customer.deleteMany({
+    });
+    await transaction.uploadDraft.deleteMany({
       where: { departmentId: { in: departmentIds } },
-    }),
-    database.roleAssignment.deleteMany({
+    });
+    await transaction.material.updateMany({
       where: { departmentId: { in: departmentIds } },
-    }),
-    database.roleGrant.deleteMany({
+      data: { currentVersionId: null },
+    });
+    await transaction.contentVersion.deleteMany({
+      where: { material: { departmentId: { in: departmentIds } } },
+    });
+    await transaction.material.deleteMany({
+      where: { departmentId: { in: departmentIds } },
+    });
+    await transaction.auditEvent.deleteMany({
+      where: { departmentId: { in: departmentIds } },
+    });
+    await transaction.rightsHolderCommandReceipt.deleteMany({
+      where: { departmentId: { in: departmentIds } },
+    });
+    await transaction.customerRightsHolderLink.deleteMany({
+      where: { departmentId: { in: departmentIds } },
+    });
+    await transaction.authSession.deleteMany({
+      where: { userId: { in: allUserIds } },
+    });
+    await transaction.localCredential.deleteMany({
+      where: { userId: { in: allUserIds } },
+    });
+    await transaction.customerAccountBinding.deleteMany({
+      where: { departmentId: { in: departmentIds } },
+    });
+    await transaction.userAccount.deleteMany({
+      where: { id: { in: clientUserIds } },
+    });
+    await transaction.rightsHolder.deleteMany({
+      where: { departmentId: { in: departmentIds } },
+    });
+    await transaction.customer.deleteMany({
+      where: { departmentId: { in: departmentIds } },
+    });
+    await transaction.roleAssignment.deleteMany({
+      where: { departmentId: { in: departmentIds } },
+    });
+    await transaction.roleGrant.deleteMany({
       where: {
         roleTemplateId: {
           in: [e2eFixtures.roleA, e2eFixtures.roleB, e2eFixtures.roleSelf],
         },
       },
-    }),
-    database.roleTemplate.deleteMany({
+    });
+    await transaction.roleTemplate.deleteMany({
       where: { departmentId: { in: departmentIds } },
-    }),
-    database.departmentMembership.deleteMany({
+    });
+    await transaction.departmentMembership.deleteMany({
       where: { departmentId: { in: departmentIds } },
-    }),
-    database.team.deleteMany({
+    });
+    await transaction.team.deleteMany({
       where: { departmentId: { in: departmentIds } },
-    }),
-    database.userAccount.deleteMany({
+    });
+    await transaction.userAccount.deleteMany({
       where: { id: { in: userIds } },
-    }),
-    database.department.deleteMany({
+    });
+    await transaction.department.deleteMany({
       where: { id: { in: departmentIds } },
-    }),
-  ]);
+    });
+    await transaction.leadNumberCounter.deleteMany({});
+  });
 
   await database.department.createMany({
     data: [
