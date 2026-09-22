@@ -146,10 +146,16 @@ function onSourceChanged(): void {
   errors.platform = '';
 }
 function addProduct(): void {
-  if (products.value.length < 100) products.value.push(newProduct());
+  if (products.value.length < 100) {
+    products.value.push(newProduct());
+    markDirty();
+  }
 }
 function removeProduct(index: number): void {
-  if (products.value.length > 1) products.value.splice(index, 1);
+  if (products.value.length > 1) {
+    products.value.splice(index, 1);
+    markDirty();
+  }
 }
 function estimate(product: ProductDraft): string {
   return (
@@ -330,6 +336,7 @@ async function submit(): Promise<void> {
             name="rightsHolderId"
             class="text-input"
             :disabled="customerLocked"
+            aria-describedby="rights-holder-guidance"
             @change="errors.rightsHolderId = ''"
           >
             <option value="">请选择</option>
@@ -344,7 +351,9 @@ async function submit(): Promise<void> {
           <small v-if="errors.rightsHolderId" class="field-error">{{
             errors.rightsHolderId
           }}</small>
-          <small class="field-guidance">{{ rightsHolderGuidance }}</small>
+          <small id="rights-holder-guidance" class="field-guidance">{{
+            rightsHolderGuidance
+          }}</small>
         </label>
         <label>
           <span>拟办理业务类型<RequiredFieldMark /></span>
@@ -567,7 +576,7 @@ async function submit(): Promise<void> {
 
       <div v-if="allowScreenshots" class="lead-upload">
         <label class="field-label" for="lead-screenshots"
-          >线索截图（可选）</label
+          >线索截图（选填）</label
         >
         <input
           id="lead-screenshots"

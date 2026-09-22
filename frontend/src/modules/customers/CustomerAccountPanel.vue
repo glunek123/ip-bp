@@ -148,11 +148,25 @@ onMounted(() => void load());
             v-model="displayName"
             name="clientDisplayName"
             class="text-input"
+            :aria-describedby="
+              missingRequirements.length
+                ? 'client-account-guidance client-account-missing'
+                : 'client-account-guidance'
+            "
           />
         </label>
         <label>
           <span>用户名<RequiredFieldMark /></span>
-          <input v-model="username" name="clientUsername" class="text-input" />
+          <input
+            v-model="username"
+            name="clientUsername"
+            class="text-input"
+            :aria-describedby="
+              missingRequirements.length
+                ? 'client-account-guidance client-account-missing'
+                : 'client-account-guidance'
+            "
+          />
         </label>
         <label>
           <span>初始密码<RequiredFieldMark /></span>
@@ -162,14 +176,23 @@ onMounted(() => void load());
             class="text-input"
             type="password"
             autocomplete="new-password"
+            :aria-describedby="
+              missingRequirements.length
+                ? 'client-account-guidance client-account-missing'
+                : 'client-account-guidance'
+            "
           />
         </label>
-        <p class="field-guidance inline-form-grid__guidance">
+        <p
+          id="client-account-guidance"
+          class="field-guidance inline-form-grid__guidance"
+        >
           用户名至少 3 个字符；初始密码至少 12
           个字符。创建后，该账号将绑定当前客户企业，只能查看本企业已推送线索。
         </p>
         <p
           v-if="missingRequirements.length"
+          id="client-account-missing"
           class="field-guidance inline-form-grid__guidance"
           role="status"
         >

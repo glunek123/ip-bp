@@ -1,5 +1,5 @@
 import { flushPromises, mount } from '@vue/test-utils';
-import { createMemoryHistory, createRouter } from 'vue-router';
+import { createMemoryHistory, createRouter, RouterView } from 'vue-router';
 import { afterEach, describe, expect, it, vi } from 'vitest';
 import { ApiError } from '../../api/http';
 import CustomerEditPage from './CustomerEditPage.vue';
@@ -45,7 +45,7 @@ async function mountPage() {
   await router.push('/customers/customer-1/edit');
   await router.isReady();
   return {
-    wrapper: mount(CustomerEditPage, { global: { plugins: [router] } }),
+    wrapper: mount(RouterView, { global: { plugins: [router] } }),
     router,
   };
 }
@@ -60,6 +60,18 @@ describe('CustomerEditPage', () => {
     });
     const { wrapper, router } = await mountPage();
     await flushPromises();
+    expect(wrapper.text()).not.toContain('准入联系人（可选）');
+    expect(
+      wrapper
+        .find('label[for="admission-contact-name"] .required-mark')
+        .exists(),
+    ).toBe(true);
+    expect(
+      wrapper
+        .get('[data-test="admission-contact-channel-requirement"]')
+        .find('.required-mark')
+        .exists(),
+    ).toBe(true);
     await wrapper.get('input[name="name"]').setValue('客户甲（更新）');
     await wrapper.get('select[name="customerType"]').setValue('ENTERPRISE');
     await wrapper
@@ -258,7 +270,10 @@ describe('CustomerEditPage', () => {
     api.updateCustomerDraft.mockRejectedValueOnce(
       new ApiError('客户资料已被他人更新', 409, 'CUSTOMER_VERSION_CONFLICT'),
     );
-    const { wrapper } = await mountPage();
+    const { wrapper, router } = await mountPage();
+    const confirm = vi
+      .spyOn(globalThis.window, 'confirm')
+      .mockReturnValue(false);
     await flushPromises();
     await wrapper.get('input[name="name"]').setValue('我的草稿');
     await wrapper.get('form').trigger('submit');
@@ -289,6 +304,10 @@ describe('CustomerEditPage', () => {
     ).toBe('latest@example.com');
     expect(wrapper.find('button[name="useLatest"]').exists()).toBe(false);
     expect(api.updateCustomerDraft).toHaveBeenCalledTimes(1);
+
+    await router.push('/customers/customer-1');
+    expect(router.currentRoute.value.fullPath).toBe('/customers/customer-1');
+    expect(confirm).not.toHaveBeenCalled();
   });
 
   it('does not show an editable form if capability is absent', async () => {

@@ -91,6 +91,11 @@ describe('LeadForm', () => {
       ).value,
     ).toBe('holder-c');
     expect(wrapper.text()).toContain('已按客户自动带出');
+    expect(
+      wrapper
+        .get('select[name="rightsHolderId"]')
+        .attributes('aria-describedby'),
+    ).toContain('rights-holder-guidance');
     expect(wrapper.get('select[name="rightsHolderId"]').text()).toContain(
       '主体丙',
     );
@@ -162,10 +167,13 @@ describe('LeadForm', () => {
     const wrapper = mount(LeadForm, { props: { context } });
     await fillRequired(wrapper);
     expect(wrapper.get('[data-test="estimate-0"]').text()).toContain('0.30');
+    const dirtyCountBeforeAdd = wrapper.emitted('dirty')?.length ?? 0;
     await wrapper.get('[data-test="add-product"]').trigger('click');
     expect(wrapper.findAll('[data-test="product-row"]')).toHaveLength(2);
+    expect(wrapper.emitted('dirty')).toHaveLength(dirtyCountBeforeAdd + 1);
     await wrapper.get('[data-test="remove-product-1"]').trigger('click');
     expect(wrapper.findAll('[data-test="product-row"]')).toHaveLength(1);
+    expect(wrapper.emitted('dirty')).toHaveLength(dirtyCountBeforeAdd + 2);
   });
 
   it('rejects more than 20 screenshots and emits files separately from API fields', async () => {

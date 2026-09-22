@@ -38,6 +38,16 @@ describe('CustomerAccountPanel', () => {
       '创建前还需：填写客户侧使用人姓名、填写至少 3 个字符的用户名、填写至少 12 个字符的初始密码',
     );
     expect(wrapper.text()).not.toContain('Client access');
+    expect(
+      wrapper
+        .get('input[name="clientUsername"]')
+        .attributes('aria-describedby'),
+    ).toBe('client-account-guidance client-account-missing');
+    expect(
+      wrapper
+        .get('input[name="clientPassword"]')
+        .attributes('aria-describedby'),
+    ).toBe('client-account-guidance client-account-missing');
 
     await wrapper.get('[data-test="toggle-client-user-1"]').trigger('click');
 

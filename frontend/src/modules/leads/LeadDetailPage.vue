@@ -244,11 +244,11 @@ onBeforeUnmount(() => request?.abort());
               <dd>{{ customerName }}</dd>
             </div>
             <div>
-              <dt>权利主体</dt>
+              <dt>权利人</dt>
               <dd>{{ holderName }}</dd>
             </div>
             <div>
-              <dt>案件类型</dt>
+              <dt>拟办理业务类型</dt>
               <dd>{{ label(lead.caseType) }}</dd>
             </div>
             <div>

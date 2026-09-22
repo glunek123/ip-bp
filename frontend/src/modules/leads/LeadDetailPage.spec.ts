@@ -139,6 +139,10 @@ describe('LeadDetailPage', () => {
 
   it('renders real detail fields, record information and push action', async () => {
     const wrapper = await mountPage();
+    expect(wrapper.text()).toContain('权利人');
+    expect(wrapper.text()).toContain('拟办理业务类型');
+    expect(wrapper.text()).not.toContain('权利主体');
+    expect(wrapper.text()).not.toContain('案件类型');
     expect(wrapper.text()).toContain('客户甲');
     expect(wrapper.text()).toContain('主体甲');
     expect(wrapper.text()).toContain('测试店铺');

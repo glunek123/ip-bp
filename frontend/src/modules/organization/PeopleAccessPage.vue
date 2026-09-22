@@ -252,7 +252,7 @@ async function setTeamStatus(
   if (
     team.status === 'ACTIVE' &&
     !globalThis.window.confirm(
-      `确认停用“${team.name}”吗？该团队不能再用于新的人员分组，已有历史记录仍会保留。`,
+      `确认停用“${team.name}”吗？该团队成员现有团队范围权限将在下一次请求立即失效，且团队不能再用于新的人员分组；已有历史记录仍会保留。`,
     )
   )
     return;
@@ -327,7 +327,11 @@ onBeforeUnmount(() => activeRequest?.abort());
           </label>
           <label>
             <span>登录用户名<RequiredFieldMark /></span>
-            <input v-model="createForm.username" data-test="username" />
+            <input
+              v-model="createForm.username"
+              data-test="username"
+              aria-describedby="organization-user-guidance"
+            />
           </label>
           <label>
             <span>初始密码<RequiredFieldMark /></span>
@@ -336,11 +340,16 @@ onBeforeUnmount(() => activeRequest?.abort());
               data-test="password"
               type="password"
               autocomplete="new-password"
+              aria-describedby="organization-user-guidance"
             />
           </label>
           <label>
             <span>团队</span>
-            <select v-model="createForm.teamId" data-test="create-user-team">
+            <select
+              v-model="createForm.teamId"
+              data-test="create-user-team"
+              aria-describedby="organization-user-guidance"
+            >
               <option value="">暂不分组</option>
               <option
                 v-for="team in activeTeams"
@@ -356,6 +365,7 @@ onBeforeUnmount(() => activeRequest?.abort());
             <select
               v-model="createForm.roleTemplateId"
               data-test="role-template"
+              aria-describedby="organization-user-guidance"
             >
               <option
                 v-for="role in assignableRoles"
@@ -366,7 +376,10 @@ onBeforeUnmount(() => activeRequest?.abort());
               </option>
             </select>
           </label>
-          <p class="field-guidance inline-form-grid__guidance">
+          <p
+            id="organization-user-guidance"
+            class="field-guidance inline-form-grid__guidance"
+          >
             用户名至少 3 个字符；初始密码至少 12
             个字符。本人：仅本人负责的数据；团队：当前团队数据；部门：本部门数据。
           </p>
@@ -604,14 +617,18 @@ onBeforeUnmount(() => activeRequest?.abort());
         aria-labelledby="reset-title"
       >
         <h2 id="reset-title">重置 {{ resetTarget.displayName }} 的密码</h2>
-        <p>保存后，该人员已有登录会立即失效。</p>
+        <p id="reset-password-guidance">
+          新密码至少 12 个字符。保存后，该人员已有登录会立即失效。
+        </p>
         <label>
-          <span>新密码</span>
+          <span>新密码<RequiredFieldMark /></span>
           <input
             v-model="newPassword"
             data-test="new-password"
             type="password"
             autocomplete="new-password"
+            required
+            aria-describedby="reset-password-guidance"
           />
         </label>
         <div class="dialog-actions">

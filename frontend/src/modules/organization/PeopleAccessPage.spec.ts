@@ -87,6 +87,12 @@ describe('PeopleAccessPage', () => {
     expect(wrapper.text()).toContain('初始密码至少 12 个字符');
     expect(wrapper.text()).toContain('本人：仅本人负责的数据');
     expect(wrapper.findAll('.required-mark').length).toBeGreaterThanOrEqual(4);
+    expect(
+      wrapper.get('[data-test="password"]').attributes('aria-describedby'),
+    ).toBe('organization-user-guidance');
+    expect(
+      wrapper.get('[data-test="role-template"]').attributes('aria-describedby'),
+    ).toBe('organization-user-guidance');
 
     await wrapper.get('[data-test="stop-account-user-1"]').trigger('click');
     expect(confirm).toHaveBeenLastCalledWith(
@@ -108,7 +114,7 @@ describe('PeopleAccessPage', () => {
 
     await wrapper.get('[data-test="stop-team-team-1"]').trigger('click');
     expect(confirm).toHaveBeenLastCalledWith(
-      expect.stringContaining('不能再用于新的人员分组'),
+      expect.stringContaining('现有团队范围权限将在下一次请求立即失效'),
     );
     expect(api.setOrganizationTeamStatus).not.toHaveBeenCalled();
   });
@@ -280,6 +286,11 @@ describe('PeopleAccessPage', () => {
     await flushPromises();
 
     await wrapper.get('[data-test="open-reset-user-1"]').trigger('click');
+    expect(wrapper.text()).toContain('新密码至少 12 个字符');
+    expect(
+      wrapper.get('[data-test="new-password"]').attributes('aria-describedby'),
+    ).toBe('reset-password-guidance');
+    expect(wrapper.find('.simple-dialog .required-mark').exists()).toBe(true);
     await wrapper
       .get('[data-test="new-password"]')
       .setValue('AnotherPassword12');

@@ -669,7 +669,7 @@ void reloadMaterials();
           </small>
         </label>
         <label>
-          <span>签发国家／地区（可选）</span>
+          <span>签发国家／地区（选填）</span>
           <input
             v-model="issuingCountryOrRegion"
             name="issuingCountryOrRegion"
@@ -694,7 +694,7 @@ void reloadMaterials();
           </select>
         </label>
         <label>
-          <span>有效期开始（可选）</span>
+          <span>有效期开始（选填）</span>
           <input
             v-model="identityValidFrom"
             name="identityValidFrom"

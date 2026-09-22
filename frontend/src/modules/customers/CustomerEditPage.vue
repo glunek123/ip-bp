@@ -60,6 +60,13 @@ const displayedCustomerTypeOptions = computed(() =>
 const displayedIdentityTypeOptions = computed(() =>
   compatibleIdentityOptions(customerType.value, identityType.value),
 );
+const hasAdmissionContact = computed(() =>
+  Boolean(
+    admissionContactName.value.trim() ||
+    admissionContactPhone.value.trim() ||
+    admissionContactEmail.value.trim(),
+  ),
+);
 
 function onCustomerTypeChanged(): void {
   if (
@@ -193,6 +200,7 @@ function useLatestSnapshot(): void {
   latestSnapshot.value = null;
   duplicateMatches.value = [];
   submitError.value = '';
+  isDirty.value = false;
 }
 
 async function load(): Promise<void> {
@@ -456,11 +464,13 @@ onBeforeUnmount(() => activeRequest?.abort());
           />
 
           <fieldset class="form-section">
-            <legend>准入联系人（可选）</legend>
-            <p class="field-help">填写联系人时，电话或邮箱至少填写一种。</p>
-            <label class="field-label" for="admission-contact-name"
-              >联系人姓名</label
-            >
+            <legend>准入联系人</legend>
+            <p id="admission-contact-guidance" class="field-help">
+              整组可不填；开始填写后，联系人姓名必填，电话或邮箱至少填写一种。
+            </p>
+            <label class="field-label" for="admission-contact-name">
+              联系人姓名<RequiredFieldMark v-if="hasAdmissionContact" />
+            </label>
             <input
               id="admission-contact-name"
               v-model="admissionContactName"
@@ -468,8 +478,22 @@ onBeforeUnmount(() => activeRequest?.abort());
               class="text-input"
               autocomplete="name"
               maxlength="100"
+              :required="hasAdmissionContact"
+              :aria-describedby="
+                admissionContactError
+                  ? 'admission-contact-guidance admission-contact-error'
+                  : 'admission-contact-guidance'
+              "
               @input="admissionContactError = ''"
             />
+            <p
+              data-test="admission-contact-channel-requirement"
+              class="field-help field-label--spaced"
+            >
+              联系方式：电话或邮箱至少一种<RequiredFieldMark
+                v-if="hasAdmissionContact"
+              />
+            </p>
             <label
               class="field-label field-label--spaced"
               for="admission-contact-phone"
@@ -482,6 +506,7 @@ onBeforeUnmount(() => activeRequest?.abort());
               class="text-input"
               autocomplete="tel"
               maxlength="30"
+              aria-describedby="admission-contact-guidance"
               @input="admissionContactError = ''"
             />
             <label
@@ -496,9 +521,14 @@ onBeforeUnmount(() => activeRequest?.abort());
               class="text-input"
               autocomplete="email"
               maxlength="254"
+              aria-describedby="admission-contact-guidance"
               @input="admissionContactError = ''"
             />
-            <p v-if="admissionContactError" class="field-error">
+            <p
+              v-if="admissionContactError"
+              id="admission-contact-error"
+              class="field-error"
+            >
               {{ admissionContactError }}
             </p>
           </fieldset>

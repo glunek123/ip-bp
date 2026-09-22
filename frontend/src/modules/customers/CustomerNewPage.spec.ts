@@ -103,8 +103,25 @@ describe('CustomerNewPage', () => {
 
   it('requires a contact method when a contact name is entered', async () => {
     const { wrapper } = await mountPage();
+    expect(wrapper.text()).not.toContain('准入联系人（可选）');
+    expect(
+      wrapper
+        .find('label[for="admission-contact-name"] .required-mark')
+        .exists(),
+    ).toBe(false);
     await wrapper.get('input[name="name"]').setValue('客户甲');
     await wrapper.get('input[name="admissionContactName"]').setValue('张三');
+    expect(
+      wrapper
+        .find('label[for="admission-contact-name"] .required-mark')
+        .exists(),
+    ).toBe(true);
+    expect(
+      wrapper
+        .get('[data-test="admission-contact-channel-requirement"]')
+        .find('.required-mark')
+        .exists(),
+    ).toBe(true);
     await wrapper.get('form').trigger('submit');
     expect(wrapper.text()).toContain('联系人至少填写电话或邮箱');
     expect(api.createCustomerDraft).not.toHaveBeenCalled();
