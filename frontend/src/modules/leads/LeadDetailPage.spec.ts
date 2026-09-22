@@ -98,6 +98,20 @@ beforeEach(() => {
 });
 
 describe('LeadDetailPage', () => {
+  it('uses the Demo detail grid, product table and attachment section', async () => {
+    const wrapper = await mountPage();
+
+    expect(wrapper.get('[data-test="lead-facts"]').classes()).toContain(
+      'demo-detail-grid',
+    );
+    expect(
+      wrapper.get('[data-test="lead-products-table"]').find('table').exists(),
+    ).toBe(true);
+    expect(wrapper.get('[data-test="lead-attachments"]').text()).toContain(
+      '侵权截图.png',
+    );
+  });
+
   it('renders real detail fields, record information and no push action', async () => {
     const wrapper = await mountPage();
     expect(wrapper.text()).toContain('客户甲');

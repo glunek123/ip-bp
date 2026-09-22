@@ -155,10 +155,10 @@ onBeforeUnmount(() => request?.abort());
         <h1>线索详情暂时无法加载</h1>
         <ElButton data-test="refresh" @click="load">重新加载</ElButton>
       </section>
-      <template v-else-if="lead"
-        ><div class="detail-heading">
+      <template v-else-if="lead">
+        <div class="page-head">
           <div>
-            <p class="section-kicker">线索详情</p>
+            <span class="pill">{{ leadStatusLabels[lead.status] }}</span>
             <h1>{{ lead.businessNo }}</h1>
           </div>
           <div class="detail-actions">
@@ -167,14 +167,11 @@ onBeforeUnmount(() => request?.abort());
               data-test="edit-lead"
               :to="`/leads/${lead.id}/edit`"
               >编辑线索</RouterLink
-            ><ElButton data-test="refresh" text @click="load">刷新</ElButton
-            ><span class="status-chip status-chip--large">{{
-              leadStatusLabels[lead.status]
-            }}</span>
+            ><ElButton data-test="refresh" text @click="load">刷新</ElButton>
           </div>
         </div>
-        <section class="ledger-panel detail-card">
-          <dl class="detail-grid">
+        <section class="demo-card demo-card--pad">
+          <dl class="demo-detail-grid" data-test="lead-facts">
             <div>
               <dt>客户</dt>
               <dd>{{ customerName }}</dd>
@@ -202,7 +199,7 @@ onBeforeUnmount(() => request?.abort());
             </div>
             <div>
               <dt>发现时间</dt>
-              <dd>{{ formatTime(lead.foundAt) }}</dd>
+              <dd class="mono">{{ formatTime(lead.foundAt) }}</dd>
             </div>
             <div>
               <dt>侵权类型</dt>
@@ -218,22 +215,46 @@ onBeforeUnmount(() => request?.abort());
             </div>
           </dl>
         </section>
-        <section class="ledger-panel lead-detail-section">
-          <h2>商品及估算</h2>
-          <article
-            v-for="product in lead.products"
-            :key="product.id"
-            class="lead-product-card"
-          >
-            <strong>{{ product.title || product.url }}</strong
-            ><span
-              >数量 {{ product.quantity }} · 评论 {{ product.commentCount }} ·
-              单价 {{ product.unitPrice }}</span
-            ><b>估算 {{ product.estimatedAmount }}</b>
-          </article>
+        <section class="demo-card" data-test="lead-products-table">
+          <h2 class="card-section-title">商品及估算</h2>
+          <div class="demo-table-wrap">
+            <table class="demo-table">
+              <thead>
+                <tr>
+                  <th>名称／链接</th>
+                  <th class="num">数量</th>
+                  <th class="num">单价</th>
+                  <th class="num">评论数</th>
+                  <th class="num">估算额</th>
+                </tr>
+              </thead>
+              <tbody>
+                <tr v-for="product in lead.products" :key="product.id">
+                  <td>
+                    <strong>{{ product.title || '未命名商品' }}</strong>
+                    <a
+                      v-if="product.url"
+                      class="product-link"
+                      :href="product.url"
+                      target="_blank"
+                      rel="noreferrer"
+                      >{{ product.url }}</a
+                    >
+                  </td>
+                  <td class="num mono">{{ product.quantity }}</td>
+                  <td class="num mono">{{ product.unitPrice }}</td>
+                  <td class="num mono">{{ product.commentCount }}</td>
+                  <td class="num mono">{{ product.estimatedAmount }}</td>
+                </tr>
+              </tbody>
+            </table>
+          </div>
         </section>
-        <section class="ledger-panel lead-detail-section">
-          <h2>截图</h2>
+        <section
+          class="demo-card demo-card--pad lead-attachments"
+          data-test="lead-attachments"
+        >
+          <h2 class="form-section-title">截图</h2>
           <p v-if="lead.leadScreenshotContentVersionIds.length === 0">
             未上传截图
           </p>
@@ -262,10 +283,10 @@ onBeforeUnmount(() => request?.abort());
             {{ downloadError }}
           </p>
         </section>
-        <section class="ledger-panel lead-detail-section">
-          <h2>记录信息</h2>
-          <p>创建于 {{ formatTime(lead.createdAt) }}</p>
-          <p>
+        <section class="demo-card demo-card--pad lead-record-meta">
+          <h2 class="form-section-title">记录信息</h2>
+          <p class="mono">创建于 {{ formatTime(lead.createdAt) }}</p>
+          <p class="mono">
             更新于 {{ formatTime(lead.updatedAt) }} · 版本 {{ lead.version }}
           </p>
         </section>
