@@ -22,6 +22,8 @@ async function mountPage(returnTo = '/customers') {
       { path: '/login', component: LoginPage },
       { path: '/customers', component: { template: '<div />' } },
       { path: '/customers/:id', component: { template: '<div />' } },
+      { path: '/client/leads', component: { template: '<div />' } },
+      { path: '/client/leads/:id', component: { template: '<div />' } },
     ],
   });
   await router.push({ path: '/login', query: { returnTo } });
@@ -43,7 +45,7 @@ async function fillCredentials(
 
 describe('LoginPage', () => {
   it('logs in and returns only to a safe internal path', async () => {
-    api.login.mockResolvedValue(undefined);
+    api.login.mockResolvedValue(internalSession());
     const { wrapper, router } = await mountPage('/customers/customer-1');
     await fillCredentials(wrapper);
 
@@ -59,7 +61,7 @@ describe('LoginPage', () => {
   });
 
   it('rejects a backslash return path and uses the customer home', async () => {
-    api.login.mockResolvedValue(undefined);
+    api.login.mockResolvedValue(internalSession());
     const { wrapper, router } = await mountPage('/\\evil.example');
     await fillCredentials(wrapper);
 
@@ -79,7 +81,7 @@ describe('LoginPage', () => {
           ],
         }),
       )
-      .mockResolvedValueOnce(undefined);
+      .mockResolvedValueOnce(internalSession());
     const { wrapper } = await mountPage();
     await fillCredentials(wrapper);
 
@@ -97,4 +99,47 @@ describe('LoginPage', () => {
       'department-2',
     );
   });
+
+  it('sends a client principal only to a client return path or client home', async () => {
+    api.login.mockResolvedValue(clientSession());
+    const first = await mountPage('/customers/customer-1');
+    await fillCredentials(first.wrapper);
+    await first.wrapper.get('form').trigger('submit');
+    await flushPromises();
+    expect(first.router.currentRoute.value.fullPath).toBe('/client/leads');
+
+    const second = await mountPage('/client/leads/lead-1');
+    await fillCredentials(second.wrapper);
+    await second.wrapper.get('form').trigger('submit');
+    await flushPromises();
+    expect(second.router.currentRoute.value.fullPath).toBe(
+      '/client/leads/lead-1',
+    );
+  });
 });
+
+function internalSession() {
+  return {
+    principalType: 'INTERNAL' as const,
+    user: { id: 'user-1', displayName: '管理员', username: 'admin' },
+    department: { id: 'department-1', name: '知产部' },
+    departments: [{ id: 'department-1', name: '知产部' }],
+    customer: null,
+    authorizationRevision: 1,
+    expiresAt: '2026-09-18T00:00:00.000Z',
+    csrfToken: 'csrf-token',
+  };
+}
+
+function clientSession() {
+  return {
+    principalType: 'CLIENT' as const,
+    user: { id: 'client-1', displayName: '甲公司审核员', username: 'client-a' },
+    department: null,
+    departments: [],
+    customer: { id: 'customer-1', name: '甲公司' },
+    authorizationRevision: 1,
+    expiresAt: '2026-09-18T00:00:00.000Z',
+    csrfToken: 'csrf-token',
+  };
+}

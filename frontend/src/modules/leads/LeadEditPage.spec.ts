@@ -50,7 +50,7 @@ const lead = {
   leadScreenshotContentVersionIds: ['v'],
   version: 2,
   status: 'WAITING_PUSH',
-  capabilities: { edit: true },
+  capabilities: { edit: true, push: false },
 };
 
 async function mountPage() {
@@ -79,7 +79,10 @@ beforeEach(() => {
 
 describe('LeadEditPage', () => {
   it('blocks editing when the backend capability is false', async () => {
-    api.getLead.mockResolvedValue({ ...lead, capabilities: { edit: false } });
+    api.getLead.mockResolvedValue({
+      ...lead,
+      capabilities: { edit: false, push: false },
+    });
     const wrapper = await mountPage();
     expect(wrapper.text()).toContain('当前线索不可编辑');
     expect(wrapper.find('form').exists()).toBe(false);

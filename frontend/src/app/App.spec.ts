@@ -24,9 +24,22 @@ vi.mock('../api/leads', () => ({
 }));
 
 const session = {
+  principalType: 'INTERNAL' as const,
   user: { id: 'user-1', displayName: '管理员', username: 'admin' },
   department: { id: 'department-1', name: '知产部' },
   departments: [{ id: 'department-1', name: '知产部' }],
+  customer: null,
+  authorizationRevision: 1,
+  expiresAt: '2026-09-18T00:00:00.000Z',
+  csrfToken: 'csrf-token',
+};
+
+const clientSession = {
+  principalType: 'CLIENT' as const,
+  user: { id: 'client-1', displayName: '甲公司审核员', username: 'client-a' },
+  department: null,
+  departments: [],
+  customer: { id: 'customer-1', name: '甲公司' },
   authorizationRevision: 1,
   expiresAt: '2026-09-18T00:00:00.000Z',
   csrfToken: 'csrf-token',
@@ -62,6 +75,10 @@ async function mountApp(signedIn = true) {
       { path: '/login', component: { template: '<div>登录页</div>' } },
       { path: '/customers', component: { template: '<div>客户页</div>' } },
       { path: '/leads', component: { template: '<div>线索页</div>' } },
+      {
+        path: '/client/leads',
+        component: { template: '<div>客户线索页</div>' },
+      },
       {
         path: '/settings/people-access',
         component: { template: '<div>人员页</div>' },
@@ -145,5 +162,31 @@ describe('application session controls', () => {
     expect(wrapper.get('[data-test="lead-nav"]').attributes('href')).toBe(
       '/leads',
     );
+  });
+
+  it('shows only the client review navigation for a client principal', async () => {
+    const pinia = createPinia();
+    setActivePinia(pinia);
+    const auth = useAuthStore(pinia);
+    auth.session = clientSession;
+    auth.restored = true;
+    const router = createRouter({
+      history: createMemoryHistory(),
+      routes: [
+        {
+          path: '/client/leads',
+          component: { template: '<div>客户线索页</div>' },
+        },
+      ],
+    });
+    await router.push('/client/leads');
+    await router.isReady();
+    const wrapper = mount(App, { global: { plugins: [pinia, router] } });
+    await flushPromises();
+
+    expect(wrapper.get('[data-test="client-lead-nav"]')).toBeDefined();
+    expect(wrapper.find('[data-test="customer-nav"]').exists()).toBe(false);
+    expect(wrapper.find('[data-test="lead-nav"]').exists()).toBe(false);
+    expect(api.getOrganizationManagementContext).not.toHaveBeenCalled();
   });
 });

@@ -16,9 +16,11 @@ vi.mock('../api/organization', () => ({
 vi.mock('../api/leads', () => ({ listLeads: api.listLeads }));
 
 const session = {
+  principalType: 'INTERNAL' as const,
   user: { id: 'user-1', displayName: '管理员', username: 'admin' },
   department: { id: 'department-1', name: '知产部' },
   departments: [{ id: 'department-1', name: '知产部' }],
+  customer: null,
   authorizationRevision: 1,
   expiresAt: '2026-09-18T00:00:00.000Z',
   csrfToken: 'csrf-token',

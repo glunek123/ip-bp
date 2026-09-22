@@ -19,14 +19,19 @@ const canSubmit = computed(
   () => username.value.trim().length >= 3 && password.value.length >= 12,
 );
 
-function safeReturnPath(): string {
+function safeReturnPath(principalType: 'INTERNAL' | 'CLIENT'): string {
   const value = route.query.returnTo;
-  return typeof value === 'string' &&
+  const safe =
+    typeof value === 'string' &&
     value.startsWith('/') &&
     !value.startsWith('//') &&
     !value.includes('\\')
-    ? value
-    : '/customers';
+      ? value
+      : null;
+  const clientPath =
+    safe === '/client/leads' || safe?.startsWith('/client/leads/');
+  if (principalType === 'CLIENT') return clientPath ? safe! : '/client/leads';
+  return safe !== null && !clientPath ? safe : '/customers';
 }
 
 async function submit(): Promise<void> {
@@ -39,7 +44,8 @@ async function submit(): Promise<void> {
       password.value,
       departmentId.value || undefined,
     );
-    await router.replace(safeReturnPath());
+    if (auth.session === null) throw new Error('登录会话未建立');
+    await router.replace(safeReturnPath(auth.session.principalType));
   } catch (error) {
     if (
       error instanceof ApiError &&
@@ -68,9 +74,11 @@ async function submit(): Promise<void> {
   <main class="login-shell">
     <section class="login-card">
       <div class="login-brand"><span class="workspace-mark">品知</span></div>
-      <p class="section-kicker">Operations access</p>
+      <p class="section-kicker">Secure access</p>
       <h1>登录品维·知产业务管理</h1>
-      <p class="login-intro">使用管理员为你创建的内部账号登录。</p>
+      <p class="login-intro">
+        使用管理员为你创建的内部账号或企业客户账号登录。
+      </p>
       <form @submit.prevent="submit">
         <label class="field-label" for="username">用户名</label>
         <input

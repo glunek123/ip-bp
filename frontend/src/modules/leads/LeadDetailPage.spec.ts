@@ -3,7 +3,7 @@ import { createMemoryHistory, createRouter } from 'vue-router';
 import { beforeEach, describe, expect, it, vi } from 'vitest';
 import LeadDetailPage from './LeadDetailPage.vue';
 
-const leadApi = vi.hoisted(() => ({ getLead: vi.fn() }));
+const leadApi = vi.hoisted(() => ({ getLead: vi.fn(), pushLead: vi.fn() }));
 const customerApi = vi.hoisted(() => ({ getCustomer: vi.fn() }));
 const holderApi = vi.hoisted(() => ({ getCustomerRightsHolder: vi.fn() }));
 const materialApi = vi.hoisted(() => ({
@@ -44,9 +44,11 @@ const lead = {
   ],
   leadScreenshotContentVersionIds: ['version-1'],
   version: 1,
+  pushedAt: null,
+  pushedByUserId: null,
   createdAt: '2026-09-21T04:00:00Z',
   updatedAt: '2026-09-21T04:00:00Z',
-  capabilities: { edit: true },
+  capabilities: { edit: true, push: true },
   departmentId: 'd',
   responsibleUserId: 'u',
   teamId: null,
@@ -95,6 +97,14 @@ beforeEach(() => {
     total: 1,
   });
   materialApi.downloadMaterialVersion.mockResolvedValue(undefined);
+  leadApi.pushLead.mockResolvedValue({
+    id: lead.id,
+    businessNo: lead.businessNo,
+    status: 'WAITING_REVIEW',
+    version: 2,
+    pushedAt: '2026-09-22T02:00:00.000Z',
+    pushedByUserId: 'u',
+  });
 });
 
 describe('LeadDetailPage', () => {
@@ -112,7 +122,7 @@ describe('LeadDetailPage', () => {
     );
   });
 
-  it('renders real detail fields, record information and no push action', async () => {
+  it('renders real detail fields, record information and push action', async () => {
     const wrapper = await mountPage();
     expect(wrapper.text()).toContain('客户甲');
     expect(wrapper.text()).toContain('主体甲');
@@ -121,12 +131,7 @@ describe('LeadDetailPage', () => {
     expect(wrapper.text()).toContain('6.00');
     expect(wrapper.text()).toContain('侵权截图.png');
     expect(wrapper.text()).toContain('版本 1');
-    expect(wrapper.find('[data-test="push-lead"]').exists()).toBe(false);
-    expect(
-      wrapper
-        .findAll('button')
-        .some((button) => button.text().includes('推送')),
-    ).toBe(false);
+    expect(wrapper.find('[data-test="push-lead"]').exists()).toBe(true);
     expect(materialApi.listOwnerMaterials).toHaveBeenCalledWith(
       'LEAD',
       'lead-1',
@@ -146,11 +151,40 @@ describe('LeadDetailPage', () => {
     expect(wrapper.find('[data-test="edit-lead"]').exists()).toBe(true);
     leadApi.getLead.mockResolvedValueOnce({
       ...lead,
-      capabilities: { edit: false },
+      capabilities: { edit: false, push: false },
     });
     await wrapper.get('[data-test="refresh"]').trigger('click');
     await flushPromises();
     expect(wrapper.find('[data-test="edit-lead"]').exists()).toBe(false);
+    expect(wrapper.find('[data-test="push-lead"]').exists()).toBe(false);
+  });
+
+  it('pushes once with the current version, shows success and reloads', async () => {
+    vi.stubGlobal('crypto', { randomUUID: vi.fn(() => 'push-uuid') });
+    const wrapper = await mountPage();
+    await wrapper.get('[data-test="push-lead"]').trigger('click');
+    await flushPromises();
+
+    expect(leadApi.pushLead).toHaveBeenCalledWith('lead-1', 1, 'push-uuid');
+    expect(leadApi.getLead).toHaveBeenCalledTimes(2);
+    expect(wrapper.get('[data-test="push-success"]').text()).toContain(
+      '已推送给客户审核',
+    );
+  });
+
+  it('maps a stable push failure without hiding the loaded detail', async () => {
+    const { ApiError } = await import('../../api/http');
+    leadApi.pushLead.mockRejectedValue(
+      new ApiError('客户账号不可用', 409, 'CLIENT_ACCOUNT_UNAVAILABLE'),
+    );
+    const wrapper = await mountPage();
+    await wrapper.get('[data-test="push-lead"]').trigger('click');
+    await flushPromises();
+
+    expect(wrapper.get('[data-test="push-error"]').text()).toContain(
+      '客户账号不可用',
+    );
+    expect(wrapper.text()).toContain('测试店铺');
   });
 
   it('shows only the exact screenshot versions referenced by the Lead', async () => {

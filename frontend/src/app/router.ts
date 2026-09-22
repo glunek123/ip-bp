@@ -11,6 +11,8 @@ import LeadDetailPage from '../modules/leads/LeadDetailPage.vue';
 import LeadEditPage from '../modules/leads/LeadEditPage.vue';
 import LoginPage from '../modules/auth/LoginPage.vue';
 import PeopleAccessPage from '../modules/organization/PeopleAccessPage.vue';
+import ClientLeadListPage from '../modules/client/ClientLeadListPage.vue';
+import ClientLeadDetailPage from '../modules/client/ClientLeadDetailPage.vue';
 import { useAuthStore } from '../stores/auth';
 import { pinia } from './pinia';
 
@@ -23,52 +25,102 @@ export const router = createRouter({
     {
       path: '/customers',
       component: CustomerListPage,
-      meta: { section: '客户', breadcrumbs: ['客户'] },
+      meta: { audience: 'INTERNAL', section: '客户', breadcrumbs: ['客户'] },
     },
     {
       path: '/customers/new',
       component: CustomerNewPage,
-      meta: { section: '客户', breadcrumbs: ['客户', '新建客户'] },
+      meta: {
+        audience: 'INTERNAL',
+        section: '客户',
+        breadcrumbs: ['客户', '新建客户'],
+      },
     },
     {
       path: '/customers/:id/edit',
       component: CustomerEditPage,
-      meta: { section: '客户', breadcrumbs: ['客户', '编辑客户'] },
+      meta: {
+        audience: 'INTERNAL',
+        section: '客户',
+        breadcrumbs: ['客户', '编辑客户'],
+      },
     },
     {
       path: '/customers/:customerId/rights-holders/:rightsHolderId',
       component: RightsHolderDetailPage,
-      meta: { section: '客户', breadcrumbs: ['客户', '权利主体'] },
+      meta: {
+        audience: 'INTERNAL',
+        section: '客户',
+        breadcrumbs: ['客户', '权利主体'],
+      },
     },
     {
       path: '/customers/:id',
       component: CustomerDetailPage,
-      meta: { section: '客户', breadcrumbs: ['客户', '客户详情'] },
+      meta: {
+        audience: 'INTERNAL',
+        section: '客户',
+        breadcrumbs: ['客户', '客户详情'],
+      },
     },
     {
       path: '/leads',
       component: LeadListPage,
-      meta: { section: '线索', breadcrumbs: ['线索'] },
+      meta: { audience: 'INTERNAL', section: '线索', breadcrumbs: ['线索'] },
     },
     {
       path: '/leads/new',
       component: LeadNewPage,
-      meta: { section: '线索', breadcrumbs: ['线索', '新建线索'] },
+      meta: {
+        audience: 'INTERNAL',
+        section: '线索',
+        breadcrumbs: ['线索', '新建线索'],
+      },
     },
     {
       path: '/leads/:id/edit',
       component: LeadEditPage,
-      meta: { section: '线索', breadcrumbs: ['线索', '编辑线索'] },
+      meta: {
+        audience: 'INTERNAL',
+        section: '线索',
+        breadcrumbs: ['线索', '编辑线索'],
+      },
     },
     {
       path: '/leads/:id',
       component: LeadDetailPage,
-      meta: { section: '线索', breadcrumbs: ['线索', '线索详情'] },
+      meta: {
+        audience: 'INTERNAL',
+        section: '线索',
+        breadcrumbs: ['线索', '线索详情'],
+      },
     },
     {
       path: '/settings/people-access',
       component: PeopleAccessPage,
-      meta: { section: '设置', breadcrumbs: ['设置', '人员与权限'] },
+      meta: {
+        audience: 'INTERNAL',
+        section: '设置',
+        breadcrumbs: ['设置', '人员与权限'],
+      },
+    },
+    {
+      path: '/client/leads',
+      component: ClientLeadListPage,
+      meta: {
+        audience: 'CLIENT',
+        section: '待审核线索',
+        breadcrumbs: ['待审核线索'],
+      },
+    },
+    {
+      path: '/client/leads/:id',
+      component: ClientLeadDetailPage,
+      meta: {
+        audience: 'CLIENT',
+        section: '待审核线索',
+        breadcrumbs: ['待审核线索', '线索详情'],
+      },
     },
   ],
 });
@@ -76,7 +128,8 @@ export const router = createRouter({
 router.beforeEach(async (to) => {
   const auth = useAuthStore(pinia);
   if (to.meta.public === true) {
-    if (to.path === '/login' && auth.session !== null) return '/customers';
+    if (to.path === '/login' && auth.session !== null)
+      return homeFor(auth.session.principalType);
     return true;
   }
   try {
@@ -84,10 +137,22 @@ router.beforeEach(async (to) => {
   } catch {
     return '/health';
   }
-  if (auth.session !== null) return true;
+  if (auth.session !== null) {
+    const audience = to.meta.audience;
+    if (
+      (audience === 'INTERNAL' || audience === 'CLIENT') &&
+      audience !== auth.session.principalType
+    )
+      return homeFor(auth.session.principalType);
+    return true;
+  }
   const returnTo =
     to.fullPath.startsWith('/') && !to.fullPath.startsWith('//')
       ? to.fullPath
       : '/customers';
   return { path: '/login', query: { returnTo } };
 });
+
+function homeFor(principalType: 'INTERNAL' | 'CLIENT'): string {
+  return principalType === 'CLIENT' ? '/client/leads' : '/customers';
+}

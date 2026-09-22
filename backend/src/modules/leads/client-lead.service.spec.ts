@@ -55,9 +55,7 @@ function setup() {
     },
   };
   const materials = {
-    listCurrentReferenceVersionIds: jest
-      .fn()
-      .mockResolvedValue(['version-1']),
+    listCurrentReferenceVersionIds: jest.fn().mockResolvedValue(['version-1']),
   };
   return {
     service: new ClientLeadService(database as never, materials as never),
@@ -77,6 +75,8 @@ describe('ClientLeadService', () => {
           departmentId: actor.departmentId,
           customerId: actor.clientCustomerId,
           status: 'WAITING_REVIEW',
+          pushedAt: { not: null },
+          pushedByUserId: { not: null },
         },
         orderBy: [{ pushedAt: 'desc' }, { id: 'asc' }],
       }),
@@ -106,6 +106,8 @@ describe('ClientLeadService', () => {
           departmentId: actor.departmentId,
           customerId: actor.clientCustomerId,
           status: 'WAITING_REVIEW',
+          pushedAt: { not: null },
+          pushedByUserId: { not: null },
         },
       }),
     );

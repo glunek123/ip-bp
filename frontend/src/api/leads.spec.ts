@@ -14,6 +14,7 @@ import {
   getLeadEditContext,
   getLeadFormContext,
   listLeads,
+  pushLead,
   updateLead,
 } from './leads';
 
@@ -71,6 +72,8 @@ const lead = {
   ],
   leadScreenshotContentVersionIds: ['version-1'],
   version: 1,
+  pushedAt: null,
+  pushedByUserId: null,
   createdAt: '2026-09-21T04:00:00.000Z',
   updatedAt: '2026-09-21T04:00:00.000Z',
 };
@@ -174,9 +177,12 @@ describe('Lead API', () => {
   });
 
   it('requires a server edit capability on details', async () => {
-    http.getJson.mockResolvedValue({ ...lead, capabilities: { edit: false } });
+    http.getJson.mockResolvedValue({
+      ...lead,
+      capabilities: { edit: false, push: true },
+    });
     await expect(getLead('lead-1')).resolves.toMatchObject({
-      capabilities: { edit: false },
+      capabilities: { edit: false, push: true },
     });
     http.getJson.mockResolvedValueOnce(lead);
     await expect(getLead('lead-1')).rejects.toMatchObject({
@@ -188,7 +194,7 @@ describe('Lead API', () => {
     http.getJson.mockResolvedValueOnce({
       ...lead,
       products: [{ ...lead.products[0], quantity: -1 }],
-      capabilities: { edit: true },
+      capabilities: { edit: true, push: true },
     });
     await expect(getLead('lead-1')).rejects.toMatchObject({
       code: 'INVALID_RESPONSE',
@@ -197,7 +203,7 @@ describe('Lead API', () => {
     http.getJson.mockResolvedValueOnce({
       ...lead,
       platform: 'MAP',
-      capabilities: { edit: true },
+      capabilities: { edit: true, push: true },
     });
     await expect(getLead('lead-1')).rejects.toMatchObject({
       code: 'INVALID_RESPONSE',
@@ -229,6 +235,35 @@ describe('Lead API', () => {
     expect(http.requestJson).toHaveBeenNthCalledWith(2, '/leads/lead-1', {
       method: 'PATCH',
       body: { ...business, expectedVersion: 1 },
+    });
+  });
+
+  it('pushes with optimistic version and a caller idempotency key', async () => {
+    http.requestJson.mockResolvedValue({
+      id: lead.id,
+      businessNo: lead.businessNo,
+      status: 'WAITING_REVIEW',
+      version: 2,
+      pushedAt: '2026-09-22T02:00:00.000Z',
+      pushedByUserId: 'user-1',
+    });
+    await expect(pushLead(lead.id, 1, 'push-key')).resolves.toMatchObject({
+      status: 'WAITING_REVIEW',
+      version: 2,
+    });
+    expect(http.requestJson).toHaveBeenCalledWith('/leads/lead-1/push', {
+      method: 'POST',
+      headers: { 'Idempotency-Key': 'push-key' },
+      body: { expectedVersion: 1 },
+    });
+
+    http.requestJson.mockResolvedValueOnce({
+      id: lead.id,
+      status: 'WAITING_REVIEW',
+      version: 1,
+    });
+    await expect(pushLead(lead.id, 1, 'push-key')).rejects.toMatchObject({
+      code: 'INVALID_RESPONSE',
     });
   });
 });

@@ -2,7 +2,10 @@ import { ApiError } from '../api/http';
 import { beforeEach, describe, expect, it, vi } from 'vitest';
 
 const auth = vi.hoisted(() => ({
-  session: null as null | { user: { id: string } },
+  session: null as null | {
+    principalType: 'INTERNAL' | 'CLIENT';
+    user: { id: string };
+  },
   restore: vi.fn(),
 }));
 
@@ -61,4 +64,32 @@ describe('authentication routing', () => {
       );
     },
   );
+
+  it('keeps client and internal routes separated by principal type', async () => {
+    auth.session = {
+      principalType: 'CLIENT',
+      user: { id: 'client-user' },
+    };
+    await router.push('/customers');
+    expect(router.currentRoute.value.path).toBe('/client/leads');
+
+    await router.push('/client/leads/lead-1');
+    expect(router.currentRoute.value.path).toBe('/client/leads/lead-1');
+
+    auth.session = {
+      principalType: 'INTERNAL',
+      user: { id: 'operator-user' },
+    };
+    await router.push('/client/leads');
+    expect(router.currentRoute.value.path).toBe('/customers');
+  });
+
+  it('opens the correct home when an authenticated principal visits login', async () => {
+    auth.session = {
+      principalType: 'CLIENT',
+      user: { id: 'client-user' },
+    };
+    await router.push('/login');
+    expect(router.currentRoute.value.path).toBe('/client/leads');
+  });
 });

@@ -3,7 +3,7 @@ import { onBeforeUnmount, onMounted, ref } from 'vue';
 import { RouterLink, useRoute } from 'vue-router';
 import { ElButton } from 'element-plus/es/components/button/index.mjs';
 import { ApiError } from '../../api/http';
-import { getLead, type LeadDetail } from '../../api/leads';
+import { getLead, pushLead, type LeadDetail } from '../../api/leads';
 import { getCustomer } from '../../api/customers';
 import { getCustomerRightsHolder } from '../../api/rights-holders';
 import {
@@ -21,6 +21,10 @@ const screenshots = ref<
   Array<{ materialId: string; versionId: string; filename: string }>
 >([]);
 const downloadError = ref('');
+const pushing = ref(false);
+const pushError = ref('');
+const pushSuccess = ref('');
+let pushKey: string | undefined;
 let request: AbortController | undefined;
 const labels: Record<string, string> = {
   CIVIL: '民事',
@@ -137,6 +141,43 @@ async function downloadScreenshot(
     downloadError.value = '截图下载失败，请稍后重试';
   }
 }
+function makePushKey(): string {
+  return (
+    globalThis.crypto?.randomUUID?.() ??
+    `lead-push-${Date.now()}-${Math.random().toString(16).slice(2)}`
+  );
+}
+function pushErrorMessage(error: unknown): string {
+  if (!(error instanceof ApiError)) return '推送失败，请稍后重试';
+  const messages: Partial<Record<string, string>> = {
+    CLIENT_ACCOUNT_UNAVAILABLE: '客户账号不可用，请先创建或启用企业客户账号',
+    CUSTOMER_NOT_ADMITTED: '客户当前不是已准入状态，无法推送',
+    LEAD_PRODUCTS_REQUIRED: '线索至少需要一项有效商品才能推送',
+    VERSION_CONFLICT: '线索已被其他操作更新，请刷新后重试',
+    INVALID_STATE: '线索当前状态不允许推送',
+    ACTION_FORBIDDEN: '当前账号无权推送此线索',
+    IDEMPOTENCY_CONFLICT: '本次推送请求与已提交请求冲突，请刷新后重试',
+    NETWORK_ERROR: '推送结果未知，请重试；系统不会重复推进',
+  };
+  return messages[error.code] ?? error.message;
+}
+async function push(): Promise<void> {
+  if (!lead.value || !lead.value.capabilities.push || pushing.value) return;
+  pushing.value = true;
+  pushError.value = '';
+  pushSuccess.value = '';
+  pushKey ??= makePushKey();
+  try {
+    await pushLead(lead.value.id, lead.value.version, pushKey);
+    pushKey = undefined;
+    pushSuccess.value = '已推送给客户审核，客户下次读取立即可见';
+    await load();
+  } catch (error) {
+    pushError.value = pushErrorMessage(error);
+  } finally {
+    pushing.value = false;
+  }
+}
 onMounted(() => void load());
 onBeforeUnmount(() => request?.abort());
 </script>
@@ -162,6 +203,15 @@ onBeforeUnmount(() => request?.abort());
             <h1>{{ lead.businessNo }}</h1>
           </div>
           <div class="detail-actions">
+            <ElButton
+              v-if="lead.capabilities.push"
+              type="primary"
+              data-test="push-lead"
+              :loading="pushing"
+              :disabled="pushing"
+              @click="push"
+              >推送客户审核</ElButton
+            >
             <RouterLink
               v-if="lead.capabilities.edit"
               data-test="edit-lead"
@@ -170,6 +220,17 @@ onBeforeUnmount(() => request?.abort());
             ><ElButton data-test="refresh" text @click="load">刷新</ElButton>
           </div>
         </div>
+        <p v-if="pushSuccess" class="submit-success" data-test="push-success">
+          {{ pushSuccess }}
+        </p>
+        <p
+          v-if="pushError"
+          class="submit-error"
+          data-test="push-error"
+          role="alert"
+        >
+          {{ pushError }}
+        </p>
         <section class="demo-card demo-card--pad">
           <dl class="demo-detail-grid" data-test="lead-facts">
             <div>
@@ -288,6 +349,10 @@ onBeforeUnmount(() => request?.abort());
           <p class="mono">创建于 {{ formatTime(lead.createdAt) }}</p>
           <p class="mono">
             更新于 {{ formatTime(lead.updatedAt) }} · 版本 {{ lead.version }}
+          </p>
+          <p v-if="lead.pushedAt" class="mono" data-test="push-record">
+            推送于 {{ formatTime(lead.pushedAt) }} · 操作人
+            {{ lead.pushedByUserId }}
           </p>
         </section>
       </template>

@@ -123,10 +123,22 @@ export type Lead = {
   products: LeadProduct[];
   leadScreenshotContentVersionIds: string[];
   version: number;
+  pushedAt: string | null;
+  pushedByUserId: string | null;
   createdAt: string;
   updatedAt: string;
 };
-export type LeadDetail = Lead & { capabilities: { edit: boolean } };
+export type LeadDetail = Lead & {
+  capabilities: { edit: boolean; push: boolean };
+};
+export type LeadPushResult = {
+  id: string;
+  businessNo: string;
+  status: 'WAITING_REVIEW';
+  version: number;
+  pushedAt: string;
+  pushedByUserId: string;
+};
 export type LeadList = {
   items: Lead[];
   total: number;
@@ -283,6 +295,10 @@ function isLead(value: unknown): value is Lead {
     screenshotIds.every((id) => typeof id === 'string') &&
     Number.isInteger(value.version) &&
     (value.version as number) >= 1 &&
+    (value.pushedAt === null || isDateTime(value.pushedAt)) &&
+    isNullableString(value.pushedByUserId) &&
+    ((value.pushedAt === null && value.pushedByUserId === null) ||
+      (value.pushedAt !== null && value.pushedByUserId !== null)) &&
     isDateTime(value.createdAt) &&
     isDateTime(value.updatedAt)
   );
@@ -397,10 +413,38 @@ export async function getLead(
   if (
     !isLead(data) ||
     !isRecord(capabilities) ||
-    typeof capabilities.edit !== 'boolean'
+    typeof capabilities.edit !== 'boolean' ||
+    typeof capabilities.push !== 'boolean'
   )
     throw invalidResponse();
-  return { ...data, capabilities: { edit: capabilities.edit } };
+  return {
+    ...data,
+    capabilities: { edit: capabilities.edit, push: capabilities.push },
+  };
+}
+
+export async function pushLead(
+  id: string,
+  expectedVersion: number,
+  idempotencyKey: string,
+): Promise<LeadPushResult> {
+  const data = await requestJson(`/leads/${encodeURIComponent(id)}/push`, {
+    method: 'POST',
+    headers: { 'Idempotency-Key': idempotencyKey },
+    body: { expectedVersion },
+  });
+  if (
+    !isRecord(data) ||
+    typeof data.id !== 'string' ||
+    typeof data.businessNo !== 'string' ||
+    data.status !== 'WAITING_REVIEW' ||
+    !Number.isInteger(data.version) ||
+    (data.version as number) !== expectedVersion + 1 ||
+    !isDateTime(data.pushedAt) ||
+    typeof data.pushedByUserId !== 'string'
+  )
+    throw invalidResponse();
+  return data as LeadPushResult;
 }
 
 function requestBody(input: CreateLeadInput | UpdateLeadInput) {

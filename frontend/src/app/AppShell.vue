@@ -16,6 +16,10 @@ const canViewPeople = ref(false);
 const leadCounts = ref<Record<LeadStatus, number> | null>(null);
 const loggingOut = ref(false);
 const logoutError = ref('');
+const isClient = computed(() => auth.session?.principalType === 'CLIENT');
+const homePath = computed(() =>
+  isClient.value ? '/client/leads' : '/customers',
+);
 
 const identity = computed(() =>
   auth.session === null
@@ -33,6 +37,9 @@ const isCustomerRoute = computed(() => route.path.startsWith('/customers'));
 const isLeadRoute = computed(
   () => route.path === '/leads' || route.path.startsWith('/leads/'),
 );
+const isClientLeadRoute = computed(() =>
+  route.path.startsWith('/client/leads'),
+);
 const selectedLeadStatus = computed(() =>
   typeof route.query.status === 'string' ? route.query.status : undefined,
 );
@@ -44,7 +51,7 @@ watch(
   identity,
   async (currentIdentity, _previousIdentity, onCleanup) => {
     canViewPeople.value = false;
-    if (currentIdentity === null) return;
+    if (currentIdentity === null || isClient.value) return;
     const controller = new AbortController();
     let current = true;
     onCleanup(() => {
@@ -67,7 +74,8 @@ watch(
   [identity, () => route.fullPath],
   async ([currentIdentity], _previous, onCleanup) => {
     leadCounts.value = null;
-    if (currentIdentity === null || !isLeadRoute.value) return;
+    if (currentIdentity === null || isClient.value || !isLeadRoute.value)
+      return;
     const controller = new AbortController();
     let current = true;
     onCleanup(() => {
@@ -118,17 +126,18 @@ async function logout(): Promise<void> {
       @click="closeDrawer"
     />
     <aside class="app-sidebar" data-test="app-sidebar" :data-open="drawerOpen">
-      <RouterLink class="app-brand" to="/customers" @click="closeDrawer">
+      <RouterLink class="app-brand" :to="homePath" @click="closeDrawer">
         <span class="app-brand__mark" aria-hidden="true">品</span>
         <span>
           <strong>品维·知产</strong>
-          <small>业务管理系统</small>
+          <small>{{ isClient ? '企业审核端' : '业务管理系统' }}</small>
         </span>
       </RouterLink>
 
       <nav class="app-nav" aria-label="主要导航">
         <p class="app-nav__label">工作台</p>
         <RouterLink
+          v-if="!isClient"
           class="app-nav__item"
           :class="{ active: isCustomerRoute }"
           data-test="customer-nav"
@@ -141,6 +150,7 @@ async function logout(): Promise<void> {
           <span>客户</span>
         </RouterLink>
         <RouterLink
+          v-if="!isClient"
           class="app-nav__item"
           :class="{ active: isLeadRoute }"
           data-test="lead-nav"
@@ -153,7 +163,11 @@ async function logout(): Promise<void> {
           <span>线索</span>
         </RouterLink>
 
-        <div v-if="isLeadRoute" class="app-subnav" aria-label="线索状态">
+        <div
+          v-if="!isClient && isLeadRoute"
+          class="app-subnav"
+          aria-label="线索状态"
+        >
           <RouterLink
             class="app-subnav__item"
             :class="{ active: selectedLeadStatus === undefined }"
@@ -178,7 +192,21 @@ async function logout(): Promise<void> {
           </RouterLink>
         </div>
 
-        <template v-if="canViewPeople">
+        <RouterLink
+          v-if="isClient"
+          class="app-nav__item"
+          :class="{ active: isClientLeadRoute }"
+          data-test="client-lead-nav"
+          to="/client/leads"
+          @click="closeDrawer"
+        >
+          <svg class="app-nav__icon" viewBox="0 0 20 20" aria-hidden="true">
+            <path d="M3 3.5h14v13H3zM6 7h8M6 10h8M6 13h5" />
+          </svg>
+          <span>待审核线索</span>
+        </RouterLink>
+
+        <template v-if="!isClient && canViewPeople">
           <p class="app-nav__label app-nav__label--spaced">系统</p>
           <RouterLink
             class="app-nav__item"
@@ -204,7 +232,9 @@ async function logout(): Promise<void> {
         }}</span>
         <span class="app-user__identity">
           <strong>{{ auth.session.user.displayName }}</strong>
-          <small>{{ auth.session.department.name }}</small>
+          <small>{{
+            auth.session.customer?.name ?? auth.session.department?.name
+          }}</small>
         </span>
         <ElButton
           text

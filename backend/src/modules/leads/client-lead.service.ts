@@ -31,6 +31,8 @@ export class ClientLeadService {
       departmentId: actor.departmentId,
       customerId,
       status: 'WAITING_REVIEW' as const,
+      pushedAt: { not: null },
+      pushedByUserId: { not: null },
     };
     const [items, total] = await Promise.all([
       this.database.lead.findMany({
@@ -58,20 +60,21 @@ export class ClientLeadService {
         departmentId: actor.departmentId,
         customerId,
         status: 'WAITING_REVIEW',
+        pushedAt: { not: null },
+        pushedByUserId: { not: null },
       },
       include: clientLeadInclude,
     });
     if (lead === null) throw this.notFound();
-    const versionIds =
-      await this.materials.listCurrentReferenceVersionIds(
-        this.database,
-        actor,
-        {
-          resourceType: 'lead',
-          resourceId: lead.id,
-          purpose: 'LEAD_SCREENSHOT',
-        },
-      );
+    const versionIds = await this.materials.listCurrentReferenceVersionIds(
+      this.database,
+      actor,
+      {
+        resourceType: 'lead',
+        resourceId: lead.id,
+        purpose: 'LEAD_SCREENSHOT',
+      },
+    );
     return this.view(lead, versionIds);
   }
 
@@ -118,9 +121,7 @@ export class ClientLeadService {
         commentCount: product.commentCount,
         estimatedAmount: product.estimatedAmount.toFixed(2),
       })),
-      leadScreenshotContentVersionIds: [
-        ...leadScreenshotContentVersionIds,
-      ],
+      leadScreenshotContentVersionIds: [...leadScreenshotContentVersionIds],
       pushedAt: lead.pushedAt?.toISOString() ?? null,
     };
   }
