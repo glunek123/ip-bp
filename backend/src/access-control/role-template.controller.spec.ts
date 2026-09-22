@@ -120,8 +120,8 @@ describe('RoleTemplateController', () => {
       { properties?: { action?: { enum?: string[] } } } | undefined;
 
     expect(actionSchema?.properties?.action?.enum).toContain('LEAD_PUSH');
-    expect(actionSchema?.properties?.action?.enum).not.toContain(
-      'CLIENT_LEAD_READ',
+    expect(actionSchema?.properties?.action?.enum).toEqual(
+      expect.not.arrayContaining(['CLIENT_LEAD_READ', 'CLIENT_LEAD_REVIEW']),
     );
   });
 
@@ -166,19 +166,22 @@ describe('RoleTemplateController', () => {
     expect(copy).not.toHaveBeenCalled();
   });
 
-  it('rejects the client-only read action before copying a role template', async () => {
-    await request(app.getHttpServer())
-      .post('/api/v1/organization/role-templates')
-      .set('Authorization', 'Bearer allowed-token')
-      .send({
-        sourceRoleTemplateId: roleId,
-        name: '复制角色',
-        grants: [{ action: 'CLIENT_LEAD_READ', scope: 'DEPARTMENT' }],
-      })
-      .expect(400);
+  it.each(['CLIENT_LEAD_READ', 'CLIENT_LEAD_REVIEW'])(
+    'rejects the client-only %s action before copying a role template',
+    async (action) => {
+      await request(app.getHttpServer())
+        .post('/api/v1/organization/role-templates')
+        .set('Authorization', 'Bearer allowed-token')
+        .send({
+          sourceRoleTemplateId: roleId,
+          name: '复制角色',
+          grants: [{ action, scope: 'DEPARTMENT' }],
+        })
+        .expect(400);
 
-    expect(copy).not.toHaveBeenCalled();
-  });
+      expect(copy).not.toHaveBeenCalled();
+    },
+  );
 
   it('records a denied copy attempt', async () => {
     copy.mockRejectedValueOnce(

@@ -1,4 +1,5 @@
 import { ForbiddenException } from '@nestjs/common';
+import type { PermissionAction } from '../generated/prisma/enums';
 import { ActorContext } from './actor-context';
 import { OrganizationService } from './organization.service';
 import { RoleTemplateService } from './role-template.service';
@@ -236,24 +237,32 @@ describe('RoleTemplateService copy', () => {
     expect(fixture.database.$transaction).not.toHaveBeenCalled();
   });
 
-  it('rejects a client-only action before opening a transaction', async () => {
-    const fixture = createFixture({
-      actorGrants: [
-        { action: 'ROLE_MANAGE', scope: 'DEPARTMENT', teamId: null },
-        { action: 'CLIENT_LEAD_READ', scope: 'DEPARTMENT', teamId: null },
-      ],
-    });
+  it.each(['CLIENT_LEAD_READ', 'CLIENT_LEAD_REVIEW'])(
+    'rejects client-only action %s before opening a transaction',
+    async (clientOnlyAction) => {
+      const fixture = createFixture({
+        actorGrants: [
+          { action: 'ROLE_MANAGE', scope: 'DEPARTMENT', teamId: null },
+          { action: clientOnlyAction, scope: 'DEPARTMENT', teamId: null },
+        ],
+      });
 
-    await expect(
-      fixture.service.copy(actor, {
-        ...input,
-        grants: [{ action: 'CLIENT_LEAD_READ', scope: 'DEPARTMENT' }],
-      }),
-    ).rejects.toMatchObject({
-      response: { code: 'ROLE_TEMPLATE_ACTION_NOT_ASSIGNABLE' },
-    });
-    expect(fixture.database.$transaction).not.toHaveBeenCalled();
-  });
+      await expect(
+        fixture.service.copy(actor, {
+          ...input,
+          grants: [
+            {
+              action: clientOnlyAction as PermissionAction,
+              scope: 'DEPARTMENT',
+            },
+          ],
+        }),
+      ).rejects.toMatchObject({
+        response: { code: 'ROLE_TEMPLATE_ACTION_NOT_ASSIGNABLE' },
+      });
+      expect(fixture.database.$transaction).not.toHaveBeenCalled();
+    },
+  );
 
   it('rejects a Grant action the actor does not cover at department scope', async () => {
     const fixture = createFixture({

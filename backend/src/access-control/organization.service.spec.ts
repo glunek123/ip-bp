@@ -355,8 +355,8 @@ describe('OrganizationService management context', () => {
         'LEAD_PUSH',
       ]),
     );
-    expect(result.permissionCatalog.map(({ action }) => action)).not.toContain(
-      'CLIENT_LEAD_READ',
+    expect(result.permissionCatalog.map(({ action }) => action)).toEqual(
+      expect.not.arrayContaining(['CLIENT_LEAD_READ', 'CLIENT_LEAD_REVIEW']),
     );
     expect(result.permissionCatalog).toContainEqual({
       action: 'ROLE_MANAGE',

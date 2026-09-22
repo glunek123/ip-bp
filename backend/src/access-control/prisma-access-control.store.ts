@@ -22,6 +22,7 @@ const actionMap = {
   LEAD_EDIT: 'lead.edit',
   LEAD_PUSH: 'lead.push',
   CLIENT_LEAD_READ: 'client.lead.read',
+  CLIENT_LEAD_REVIEW: 'client.lead.review',
   USER_READ: 'user.read',
   USER_MANAGE: 'user.manage',
   TEAM_READ: 'team.read',

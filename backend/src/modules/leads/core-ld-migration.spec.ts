@@ -21,6 +21,10 @@ describe('CORE-LD migrations', () => {
     '20260922009000_add_client_identity_actions';
   const clientPushMigrationName =
     '20260922010000_add_client_accounts_and_lead_push';
+  const clientReviewActionMigrationName =
+    '20260922011000_add_client_lead_review_action';
+  const clientReviewSchemaMigrationName =
+    '20260922012000_add_client_lead_review';
 
   function readMigration(name: string): string {
     return readFileSync(resolve(migrationRoot, name, 'migration.sql'), 'utf8');
@@ -141,7 +145,9 @@ describe('CORE-LD migrations', () => {
   });
 
   it('adds client actions in a retry-safe phase before the transactional schema migration', () => {
-    expect(migrations.slice(-2)).toEqual([
+    const actionIndex = migrations.indexOf(clientIdentityActionMigrationName);
+    expect(actionIndex).toBeGreaterThanOrEqual(0);
+    expect(migrations.slice(actionIndex, actionIndex + 2)).toEqual([
       clientIdentityActionMigrationName,
       clientPushMigrationName,
     ]);
@@ -158,7 +164,9 @@ describe('CORE-LD migrations', () => {
   });
 
   it('adds enterprise client identity isolation and paired push facts transactionally', () => {
-    expect(migrations.at(-1)).toBe(clientPushMigrationName);
+    expect(migrations.indexOf(clientPushMigrationName)).toBeGreaterThan(
+      migrations.indexOf(clientIdentityActionMigrationName),
+    );
     const sql = readMigration(clientPushMigrationName);
 
     expect(sql).toContain('CREATE TABLE "customer_account_bindings"');
@@ -176,6 +184,25 @@ describe('CORE-LD migrations', () => {
     expect(sql).toContain('leads_push_fields_paired_check');
     expect(sql).toContain('bootstrap_roles_to_upgrade');
     expect(sql).toContain('authorization_revision');
+    expect(sql).not.toMatch(/DROP TABLE|DROP COLUMN/);
+  });
+
+  it('adds client review action before the transactional review schema', () => {
+    expect(migrations.slice(-2)).toEqual([
+      clientReviewActionMigrationName,
+      clientReviewSchemaMigrationName,
+    ]);
+    expect(readMigration(clientReviewActionMigrationName)).toContain(
+      "ADD VALUE IF NOT EXISTS 'client.lead.review'",
+    );
+    const sql = readMigration(clientReviewSchemaMigrationName);
+    expect(sql.trim().startsWith('BEGIN;')).toBe(true);
+    expect(sql).toContain('CREATE TYPE "lead_review_result"');
+    expect(sql).toContain('CREATE TABLE "lead_review_decisions"');
+    expect(sql).toContain('CREATE TABLE "client_lead_review_receipts"');
+    expect(sql).toContain('reject_lead_review_decision_mutation');
+    expect(sql).toContain('client_lead_review_receipts_action_check');
+    expect(sql.trim().endsWith('COMMIT;')).toBe(true);
     expect(sql).not.toMatch(/DROP TABLE|DROP COLUMN/);
   });
 });

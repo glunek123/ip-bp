@@ -14,6 +14,7 @@ export type PermissionAction =
   | 'lead.edit'
   | 'lead.push'
   | 'client.lead.read'
+  | 'client.lead.review'
   | 'user.read'
   | 'user.manage'
   | 'team.read'

@@ -24,5 +24,7 @@ export const prismaModelOwners = Object.freeze({
   LeadInfringement: 'leads',
   LeadNumberCounter: 'leads',
   LeadCommandReceipt: 'leads',
+  LeadReviewDecision: 'leads',
+  ClientLeadReviewReceipt: 'leads',
   AuditEvent: 'shared-audit',
 });
