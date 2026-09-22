@@ -28,6 +28,14 @@ const canSubmit = computed(
     password.value.length >= 12 &&
     !submitting.value,
 );
+const missingRequirements = computed(() => {
+  const missing: string[] = [];
+  if (!displayName.value.trim()) missing.push('填写客户侧使用人姓名');
+  if (username.value.trim().length < 3)
+    missing.push('填写至少 3 个字符的用户名');
+  if (password.value.length < 12) missing.push('填写至少 12 个字符的初始密码');
+  return missing;
+});
 
 async function load(): Promise<void> {
   if (!props.admitted) return;
@@ -159,6 +167,13 @@ onMounted(() => void load());
         <p class="field-guidance inline-form-grid__guidance">
           用户名至少 3 个字符；初始密码至少 12
           个字符。创建后，该账号将绑定当前客户企业，只能查看本企业已推送线索。
+        </p>
+        <p
+          v-if="missingRequirements.length"
+          class="field-guidance inline-form-grid__guidance"
+          role="status"
+        >
+          创建前还需：{{ missingRequirements.join('、') }}
         </p>
         <ElButton
           type="primary"

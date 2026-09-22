@@ -34,6 +34,9 @@ describe('CustomerAccountPanel', () => {
     expect(wrapper.text()).toContain('用户名至少 3 个字符');
     expect(wrapper.text()).toContain('初始密码至少 12 个字符');
     expect(wrapper.text()).toContain('客户侧使用人姓名');
+    expect(wrapper.text()).toContain(
+      '创建前还需：填写客户侧使用人姓名、填写至少 3 个字符的用户名、填写至少 12 个字符的初始密码',
+    );
     expect(wrapper.text()).not.toContain('Client access');
 
     await wrapper.get('[data-test="toggle-client-user-1"]').trigger('click');

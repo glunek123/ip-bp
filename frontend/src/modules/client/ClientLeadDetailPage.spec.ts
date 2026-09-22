@@ -90,6 +90,8 @@ describe('ClientLeadDetailPage', () => {
     expect(wrapper.text()).not.toContain('旧截图.png');
     expect(wrapper.text()).not.toContain('确认侵权');
     expect(wrapper.text()).not.toContain('备注');
+    expect(wrapper.text()).toContain('当前可查看线索内容');
+    expect(wrapper.text()).not.toContain('后续切片');
 
     await wrapper
       .get('[data-test="download-screenshot-version-current"]')

@@ -48,6 +48,8 @@ describe('ClientLeadListPage', () => {
     );
     expect(wrapper.text()).toContain('线索待审核');
     expect(wrapper.text()).toContain('主体甲');
+    expect(wrapper.text()).toContain('企业线索审核');
+    expect(wrapper.text()).not.toContain('Enterprise review');
     expect(wrapper.text()).not.toContain('确认侵权');
   });
 

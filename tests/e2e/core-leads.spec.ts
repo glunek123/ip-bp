@@ -220,9 +220,9 @@ test('authorized supervisor admits a customer with real PDF and JPEG bytes', asy
   await configureBrowser(page);
   await page.goto(`/customers/${coreLeadFixtures.draftCustomer}`);
   await expect(page.getByRole('heading', { name: '待准入客户' })).toBeVisible();
-  await page.getByLabel('客户主体类型').selectOption('ENTERPRISE');
-  await page.getByLabel('身份证件类型').selectOption('BUSINESS_LICENSE');
-  await page.getByLabel('材料用途').selectOption('IDENTITY_FULL');
+  await page.getByLabel('客户组织类型').selectOption('ENTERPRISE');
+  await page.getByLabel('身份证明类型').selectOption('BUSINESS_LICENSE');
+  await expect(page.getByText('完整身份证明材料')).toBeVisible();
   const picker = page.locator('input[name="identityDocument"]');
   await picker.setInputFiles({
     name: 'license.pdf',
@@ -270,7 +270,7 @@ test('authorized supervisor admits a customer with real PDF and JPEG bytes', asy
 
   await page.getByLabel('证件号码').fill('CORE-ADMIT-001');
   await page.getByLabel('有效期类型').selectOption('LONG_TERM');
-  await page.getByLabel('姓名').fill('张主管');
+  await page.getByLabel('联系人姓名').fill('张主管');
   await page.getByLabel('电话').fill('13800000000');
   await page.locator('[data-test="admit-submit"]').click();
   await expect(
@@ -302,12 +302,14 @@ test('operator creates, refreshes, views, and edits a waiting-push lead', async 
     '线索已归档1',
   ]);
   await page.locator('[data-test="create-lead"]').click();
+  await expect(page.locator('.required-mark').first()).toBeVisible();
   await page.getByLabel('客户').selectOption(coreLeadFixtures.admittedCustomer);
-  await page.getByLabel('权利主体').selectOption(coreLeadFixtures.holder);
-  await page.getByLabel('案件类型').selectOption('CIVIL');
+  await expect(page.getByLabel('权利人')).toHaveValue(coreLeadFixtures.holder);
+  await expect(page.getByText('已按客户自动带出')).toBeVisible();
+  await page.getByLabel('拟办理业务类型').selectOption('CIVIL');
   await page.getByLabel('发现时间').fill('2026-09-21T10:30');
-  await page.getByLabel('来源').selectOption('ONLINE');
-  await page.getByLabel('平台').selectOption('TAOBAO');
+  await page.getByLabel('线索来源').selectOption('ONLINE');
+  await page.getByLabel('发现平台').selectOption('TAOBAO');
   await page.getByLabel('店铺名称').fill('浏览器店铺');
   await page.getByLabel('商标权').check();
   await page.locator('input[name="productTitle-0"]').fill('浏览器商品');
@@ -357,7 +359,8 @@ test('real operator login, client-account binding, push, client login, read, dow
   await expect(
     page.locator('[data-test="client-account-panel"]'),
   ).toBeVisible();
-  await page.getByLabel('姓名').fill('浏览器企业审核员');
+  await page.getByLabel('客户侧使用人姓名').fill('浏览器企业审核员');
+  await expect(page.getByText('初始密码至少 12 个字符')).toBeVisible();
   await page.getByLabel('用户名').fill(clientUsername);
   await page.getByLabel('初始密码').fill(clientPassword);
   await page.locator('[data-test="create-client-account"]').click();
@@ -367,11 +370,11 @@ test('real operator login, client-account binding, push, client login, read, dow
   await page.locator('[data-test="lead-nav"]').click();
   await page.locator('[data-test="create-lead"]').click();
   await page.getByLabel('客户').selectOption(coreLeadFixtures.admittedCustomer);
-  await page.getByLabel('权利主体').selectOption(coreLeadFixtures.holder);
-  await page.getByLabel('案件类型').selectOption('CIVIL');
+  await expect(page.getByLabel('权利人')).toHaveValue(coreLeadFixtures.holder);
+  await page.getByLabel('拟办理业务类型').selectOption('CIVIL');
   await page.getByLabel('发现时间').fill('2026-09-22T10:30');
-  await page.getByLabel('来源').selectOption('ONLINE');
-  await page.getByLabel('平台').selectOption('TAOBAO');
+  await page.getByLabel('线索来源').selectOption('ONLINE');
+  await page.getByLabel('发现平台').selectOption('TAOBAO');
   await page.getByLabel('店铺名称').fill('客户端闭环店铺');
   await page.getByLabel('商标权').check();
   await page.locator('input[name="productTitle-0"]').fill('客户端闭环商品');
@@ -387,12 +390,25 @@ test('real operator login, client-account binding, push, client login, read, dow
   await expect(page.getByRole('heading', { name: /^LD-/u })).toBeVisible();
   const leadId = page.url().split('/').at(-1)!;
 
+  page.once('dialog', async (dialog) => {
+    expect(dialog.message()).toContain('状态将变为“线索待审核”');
+    await dialog.dismiss();
+  });
+  await page.locator('[data-test="push-lead"]').click();
+  await expect(page.locator('.page-head .pill')).toHaveText('待推送');
+
+  page.once('dialog', async (dialog) => {
+    expect(dialog.message()).toContain('已准入客户');
+    await dialog.accept();
+  });
   await page.locator('[data-test="push-lead"]').click();
   await expect(page.locator('[data-test="push-success"]')).toContainText(
     '已推送给客户审核',
   );
   await expect(page.locator('.page-head .pill')).toHaveText('线索待审核');
-  await expect(page.locator('[data-test="push-record"]')).toBeVisible();
+  await expect(page.locator('[data-test="push-record"]')).toContainText(
+    '核心主管',
+  );
 
   await page.getByRole('button', { name: '退出登录' }).click();
   await expect(page).toHaveURL(/\/login$/u);

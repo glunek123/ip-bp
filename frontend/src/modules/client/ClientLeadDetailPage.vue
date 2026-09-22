@@ -137,11 +137,11 @@ onBeforeUnmount(() => request?.abort());
         <section class="demo-card demo-card--pad">
           <dl class="demo-detail-grid" data-test="client-lead-facts">
             <div>
-              <dt>权利主体</dt>
+              <dt>权利人</dt>
               <dd>{{ lead.rightsHolderName }}</dd>
             </div>
             <div>
-              <dt>案件类型</dt>
+              <dt>拟办理业务类型</dt>
               <dd>{{ label(lead.caseType) }}</dd>
             </div>
             <div>
@@ -174,10 +174,10 @@ onBeforeUnmount(() => request?.abort());
               <thead>
                 <tr>
                   <th>名称／链接</th>
-                  <th class="num">数量</th>
-                  <th class="num">单价</th>
+                  <th class="num">销量</th>
+                  <th class="num">单价（元）</th>
                   <th class="num">评论数</th>
-                  <th class="num">估算额</th>
+                  <th class="num">预估销售额（元）</th>
                 </tr>
               </thead>
               <tbody>
@@ -224,7 +224,7 @@ onBeforeUnmount(() => request?.abort());
           </p>
         </section>
         <section class="demo-card demo-card--pad">
-          <p>本页面当前仅供查看，审核操作将在后续切片开放。</p>
+          <p>当前可查看线索内容；如需补充或反馈，请联系负责运营。</p>
         </section>
       </template>
     </main>

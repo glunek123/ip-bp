@@ -70,7 +70,7 @@ onBeforeUnmount(() => request?.abort());
     <main>
       <div class="page-head">
         <div>
-          <span class="section-kicker">Enterprise review</span>
+          <span class="section-kicker">企业线索审核</span>
           <h1>待审核线索</h1>
           <p>仅展示已推送给当前企业的线索。当前阶段只读，不会提交审核结论。</p>
         </div>
@@ -96,7 +96,7 @@ onBeforeUnmount(() => request?.abort());
               <tr>
                 <th>线索编号</th>
                 <th>状态</th>
-                <th>权利主体</th>
+                <th>权利人</th>
                 <th>店铺</th>
                 <th class="num">商品数</th>
                 <th>推送时间</th>
