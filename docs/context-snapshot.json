@@ -1,6 +1,6 @@
 {
   "version": 1,
-  "recordedAt": "2026-09-22T07:27:35.003Z",
+  "recordedAt": "2026-09-22T07:35:38.412Z",
   "files": {
     ".cursor/rules/verified-feature-integration.mdc": "8cbd3df851df782bf5359f4e7d6a56d3e3061baf45862020286383253fefb2aa",
     ".env.example": "07211cde5c2b59efc21b619b752d4c9b871f0980d2d64ca3c146ad6151fd27ca",
@@ -268,6 +268,7 @@
     "docs/superpowers/plans/2026-09-21-core-ld-001-waiting-push-lead.md": "fa4683fdef3825e5db41dcde3b11214b9487cac24211eed35ef9d2b61f0b9b2f",
     "docs/superpowers/plans/2026-09-22-core-ld-002-client-push.md": "84ecd25c40e630ec50e5d9bc9c7f01e833333393224cba7ec9e7c2478f1e115d",
     "docs/superpowers/plans/2026-09-22-demo-aligned-frontend-shell-leads.md": "0561925bf00c9ed4c0a3e19a2103c2da7fc3a14440d9da0fd54e9ca6c90fcc96",
+    "docs/superpowers/plans/2026-09-22-rapid-onboarding-ux-hardening.md": "a4a62a0c4863f49be84968e9f64dfb7203777529c66dcb4acd44b0ea0a7cfe36",
     "docs/superpowers/specs/2026-09-17-local-account-auth-design.md": "90318fbebae983c71e9558138cbd40b30ef02afce332a0e52f70797601a23d6f",
     "docs/superpowers/specs/2026-09-20-personnel-access-management-design.md": "bfeaf41d0356417c57a5030fd6dc9de0cfafa37d5404bb20cd3f7cff76ee5bda",
     "docs/superpowers/specs/2026-09-20-role-template-management-design.md": "51c18905b48e4b2b3ca835446b59dcb4e489eb8813b4922255fd403161b90dd8",
