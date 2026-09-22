@@ -328,6 +328,17 @@
   .app-topbar {
     padding-inline: 12px;
   }
+
+  .app-nav__item,
+  .app-subnav__item {
+    min-height: 40px;
+  }
+}
+
+@media (min-width: 1280px) {
+  .app-shell {
+    grid-template-columns: 232px minmax(0, 1fr);
+  }
 }
 
 @media (min-width: 1680px) {

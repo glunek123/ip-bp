@@ -642,7 +642,7 @@ test('Demo-aligned shell works on desktop and mobile', async ({ page }) => {
 . .\Use-ProjectRuntime.ps1
 pnpm db:test:up
 pnpm db:test:migrate:deploy
-node scripts/run-e2e.mjs tests/e2e/core-leads.spec.ts --grep "Demo-aligned shell"
+pnpm test:e2e:core-ld --grep "Demo-aligned shell"
 ```
 
 Expected before final CSS completion: test fails only on an unmet visibility/drawer behavior assertion. If it already passes, do not add artificial behavior; retain it as regression coverage.

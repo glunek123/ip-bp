@@ -270,6 +270,16 @@
     gap: var(--s-3);
   }
 
+  .page-head .detail-actions,
+  .demo-form-actions {
+    width: 100%;
+    flex-wrap: wrap;
+  }
+
+  .page-view .el-button {
+    min-height: 40px;
+  }
+
   .demo-form-grid,
   .demo-detail-grid {
     grid-template-columns: 1fr;
@@ -277,6 +287,12 @@
 
   .product-fields {
     grid-template-columns: 1fr;
+  }
+}
+
+@media (min-width: 768px) and (max-width: 1279px) {
+  .demo-detail-grid {
+    grid-template-columns: repeat(2, minmax(0, 1fr));
   }
 }
 

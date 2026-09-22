@@ -297,6 +297,21 @@ test('operator creates, refreshes, views, and edits a waiting-push lead', async 
   });
 });
 
+test('Demo-aligned shell works on desktop and mobile', async ({ page }) => {
+  await configureBrowser(page);
+  await page.setViewportSize({ width: 1440, height: 900 });
+  await page.goto('/leads');
+  await expect(page.locator('[data-test="app-sidebar"]')).toBeVisible();
+  await expect(page.locator('[data-test="mobile-nav-toggle"]')).toBeHidden();
+
+  await page.setViewportSize({ width: 390, height: 844 });
+  await expect(page.locator('[data-test="app-sidebar"]')).toBeHidden();
+  await page.locator('[data-test="mobile-nav-toggle"]').click();
+  await expect(page.locator('[data-test="app-sidebar"]')).toBeVisible();
+  await page.locator('[data-test="lead-counter"]').first().click();
+  await expect(page.locator('[data-test="app-sidebar"]')).toBeHidden();
+});
+
 test('product estimates use quantity then comments and reject invalid counts', async ({
   request,
 }) => {
