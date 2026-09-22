@@ -94,14 +94,8 @@ onBeforeUnmount(() => request?.abort());
 </script>
 
 <template>
-  <div class="workspace-shell">
-    <header class="workspace-header">
-      <RouterLink class="workspace-brand" to="/leads"
-        ><span class="workspace-mark">品知</span
-        ><span>品维·知产业务管理</span></RouterLink
-      ><span class="workspace-context">运营端 · 新建线索</span>
-    </header>
-    <main class="workspace-main workspace-main--narrow">
+  <div class="page-view page-view--narrow">
+    <main>
       <RouterLink class="back-link" to="/leads">← 返回线索列表</RouterLink>
       <section v-if="state === 'loading'" class="state-panel ledger-panel">
         <h1>正在准备线索表单</h1>

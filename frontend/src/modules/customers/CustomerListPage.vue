@@ -37,17 +37,8 @@ onBeforeUnmount(() => activeRequest?.abort());
 </script>
 
 <template>
-  <div class="workspace-shell">
-    <header class="workspace-header">
-      <RouterLink class="workspace-brand" to="/customers">
-        <span class="workspace-mark">品知</span>
-        <span>品维·知产业务管理</span>
-      </RouterLink>
-      <nav class="workspace-nav" aria-label="主要导航">
-        <span class="workspace-context">客户</span>
-      </nav>
-    </header>
-    <main class="workspace-main">
+  <div class="page-view">
+    <main>
       <div class="section-heading">
         <div>
           <p class="section-kicker">客户基础</p>

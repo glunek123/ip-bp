@@ -78,6 +78,9 @@ describe('LeadNewPage', () => {
       wrapper.get('[data-test="go-to-customers"]').attributes('href'),
     ).toBe('/customers');
     expect(wrapper.find('form').exists()).toBe(false);
+    expect(wrapper.find('.workspace-header').exists()).toBe(false);
+    expect(wrapper.find('.workspace-shell').exists()).toBe(false);
+    expect(wrapper.find('.page-view').exists()).toBe(true);
   });
 
   it('prevents duplicate submits and reuses one idempotency key', async () => {

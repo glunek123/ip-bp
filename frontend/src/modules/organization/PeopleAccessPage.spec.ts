@@ -84,6 +84,9 @@ describe('PeopleAccessPage', () => {
     expect(wrapper.text()).toContain('运营甲');
     expect(wrapper.text()).toContain('商标组');
     expect(wrapper.text()).toContain('客户经办');
+    expect(wrapper.find('.workspace-header').exists()).toBe(false);
+    expect(wrapper.find('.workspace-shell').exists()).toBe(false);
+    expect(wrapper.find('.page-view').exists()).toBe(true);
   });
 
   it('shows readable templates without offering non-assignable role actions', async () => {

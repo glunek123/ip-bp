@@ -91,14 +91,8 @@ onBeforeUnmount(() => request?.abort());
 </script>
 
 <template>
-  <div class="workspace-shell">
-    <header class="workspace-header">
-      <RouterLink class="workspace-brand" to="/leads"
-        ><span class="workspace-mark">品知</span
-        ><span>品维·知产业务管理</span></RouterLink
-      ><span class="workspace-context">运营端 · 编辑线索</span>
-    </header>
-    <main class="workspace-main workspace-main--narrow">
+  <div class="page-view page-view--narrow">
+    <main>
       <RouterLink class="back-link" :to="`/leads/${String(route.params.id)}`"
         >← 返回线索详情</RouterLink
       >

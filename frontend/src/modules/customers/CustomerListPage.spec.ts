@@ -40,6 +40,9 @@ describe('CustomerListPage', () => {
     });
     await flushPromises();
     expect(wrapper.text()).toContain('还没有客户记录');
+    expect(wrapper.find('.workspace-header').exists()).toBe(false);
+    expect(wrapper.find('.workspace-shell').exists()).toBe(false);
+    expect(wrapper.find('.page-view').exists()).toBe(true);
   });
 
   it('shows a readable failure and retries', async () => {

@@ -1,6 +1,5 @@
 <script setup lang="ts">
 import { computed, onBeforeUnmount, onMounted, reactive, ref } from 'vue';
-import { RouterLink } from 'vue-router';
 import { ElButton } from 'element-plus/es/components/button/index.mjs';
 import { ApiError } from '../../api/http';
 import {
@@ -245,19 +244,8 @@ onBeforeUnmount(() => activeRequest?.abort());
 </script>
 
 <template>
-  <div class="workspace-shell">
-    <header class="workspace-header">
-      <RouterLink class="workspace-brand" to="/customers">
-        <span class="workspace-mark">品知</span>
-        <span>品维·知产业务管理</span>
-      </RouterLink>
-      <nav class="workspace-nav" aria-label="主要导航">
-        <RouterLink to="/customers">客户</RouterLink>
-        <span class="workspace-context">人员与权限</span>
-      </nav>
-    </header>
-
-    <main class="workspace-main">
+  <div class="page-view">
+    <main>
       <div class="section-heading">
         <div>
           <p class="section-kicker">系统设置</p>

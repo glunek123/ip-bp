@@ -107,14 +107,8 @@ onBeforeUnmount(() => activeRequest?.abort());
 </script>
 
 <template>
-  <div class="workspace-shell">
-    <header class="workspace-header">
-      <RouterLink class="workspace-brand" to="/customers">
-        <span class="workspace-mark">品知</span><span>品维·知产业务管理</span>
-      </RouterLink>
-      <span class="workspace-context">运营端 · 客户</span>
-    </header>
-    <main class="workspace-main workspace-main--narrow">
+  <div class="page-view page-view--narrow">
+    <main>
       <RouterLink class="back-link" to="/customers">← 返回客户列表</RouterLink>
       <section v-if="state === 'loading'" class="state-panel ledger-panel">
         <span class="state-index">读取中</span>

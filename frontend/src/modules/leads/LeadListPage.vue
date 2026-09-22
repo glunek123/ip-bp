@@ -90,18 +90,8 @@ onBeforeUnmount(() => request?.abort());
 </script>
 
 <template>
-  <div class="workspace-shell">
-    <header class="workspace-header">
-      <RouterLink class="workspace-brand" to="/leads"
-        ><span class="workspace-mark">品知</span
-        ><span>品维·知产业务管理</span></RouterLink
-      >
-      <nav class="workspace-nav">
-        <RouterLink to="/customers">客户</RouterLink
-        ><span class="workspace-context">运营端 · 线索</span>
-      </nav>
-    </header>
-    <main class="workspace-main">
+  <div class="page-view">
+    <main>
       <div class="section-heading">
         <div>
           <p class="section-kicker">运营工作台</p>
