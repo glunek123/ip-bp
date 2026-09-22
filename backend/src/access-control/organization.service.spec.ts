@@ -345,14 +345,18 @@ describe('OrganizationService management context', () => {
       assignTeamRoles: false,
       manageRoleTemplates: true,
     });
-    expect(result.permissionCatalog).toHaveLength(14);
+    expect(result.permissionCatalog).toHaveLength(15);
     expect(result.permissionCatalog.map(({ action }) => action)).toEqual(
       expect.arrayContaining([
         'CUSTOMER_ADMIT',
         'LEAD_READ',
         'LEAD_CREATE',
         'LEAD_EDIT',
+        'LEAD_PUSH',
       ]),
+    );
+    expect(result.permissionCatalog.map(({ action }) => action)).not.toContain(
+      'CLIENT_LEAD_READ',
     );
     expect(result.permissionCatalog).toContainEqual({
       action: 'ROLE_MANAGE',
