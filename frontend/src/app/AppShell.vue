@@ -203,7 +203,7 @@ async function logout(): Promise<void> {
           <svg class="app-nav__icon" viewBox="0 0 20 20" aria-hidden="true">
             <path d="M3 3.5h14v13H3zM6 7h8M6 10h8M6 13h5" />
           </svg>
-          <span>待审核线索</span>
+          <span>线索审核</span>
         </RouterLink>
 
         <template v-if="!isClient && canViewPeople">

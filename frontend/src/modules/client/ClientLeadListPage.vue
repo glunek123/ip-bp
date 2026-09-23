@@ -13,6 +13,18 @@ const page = ref(1);
 const pageSize = ref(20);
 let request: AbortController | undefined;
 
+const currentView = computed(() =>
+  route.query.view === 'processed' ? 'processed' : 'pending',
+);
+const queueTitle = computed(() =>
+  currentView.value === 'processed' ? '已处理线索' : '待我审核',
+);
+const emptyTitle = computed(() =>
+  currentView.value === 'processed' ? '暂无已处理线索' : '暂无待审核线索',
+);
+const queueApiView = computed(() =>
+  currentView.value === 'processed' ? 'PROCESSED' : 'PENDING',
+);
 const requestedPage = computed(() => {
   const value = Array.isArray(route.query.page)
     ? route.query.page[0]
@@ -30,9 +42,14 @@ async function load(): Promise<void> {
   request = controller;
   state.value = 'loading';
   try {
-    const result = await listClientLeads('PENDING', requestedPage.value, 20, {
-      signal: controller.signal,
-    });
+    const result = await listClientLeads(
+      queueApiView.value,
+      requestedPage.value,
+      20,
+      {
+        signal: controller.signal,
+      },
+    );
     if (controller.signal.aborted) return;
     items.value = result.items;
     total.value = result.total;
@@ -47,7 +64,14 @@ async function load(): Promise<void> {
 async function goToPage(next: number): Promise<void> {
   if (next < 1 || next > totalPages.value || next === requestedPage.value)
     return;
-  await router.push({ query: { page: String(next) } });
+  await router.push({
+    query: { view: currentView.value, page: String(next) },
+  });
+}
+
+async function selectView(view: 'pending' | 'processed'): Promise<void> {
+  if (view === currentView.value) return;
+  await router.push({ query: { view, page: '1' } });
 }
 
 function formatTime(value: string): string {
@@ -58,7 +82,7 @@ function formatTime(value: string): string {
 }
 
 watch(
-  () => route.query.page,
+  () => [route.query.view, route.query.page],
   () => void load(),
   { immediate: true },
 );
@@ -71,24 +95,38 @@ onBeforeUnmount(() => request?.abort());
       <div class="page-head">
         <div>
           <span class="section-kicker">企业线索审核</span>
-          <h1>待审核线索</h1>
-          <p>仅展示已推送给当前企业的线索。当前阶段只读，不会提交审核结论。</p>
+          <h1>{{ queueTitle }}</h1>
+          <p>在待我审核中确认结论；完成后可在已处理中回看</p>
         </div>
       </div>
+      <nav class="client-queue-tabs" aria-label="线索队列">
+        <ElButton
+          data-test="client-view-pending"
+          :aria-current="currentView === 'pending' ? 'page' : undefined"
+          @click="selectView('pending')"
+          >待我审核</ElButton
+        >
+        <ElButton
+          data-test="client-view-processed"
+          :aria-current="currentView === 'processed' ? 'page' : undefined"
+          @click="selectView('processed')"
+          >已处理</ElButton
+        >
+      </nav>
       <section class="demo-card" aria-live="polite">
         <div v-if="state === 'loading'" class="state-panel">
           <span class="state-index">读取中</span>
-          <h2>正在读取待审核线索</h2>
+          <h2>正在读取{{ queueTitle }}</h2>
         </div>
         <div v-else-if="state === 'failed'" class="state-panel">
           <span class="state-index">连接失败</span>
-          <h2>待审核线索暂时无法加载</h2>
+          <h2>{{ queueTitle }}暂时无法加载</h2>
           <ElButton data-test="retry" @click="load">重新加载</ElButton>
         </div>
         <div v-else-if="items.length === 0" class="state-panel">
           <span class="state-index">0 条记录</span>
-          <h2>暂无待审核线索</h2>
-          <p>运营推送后会立即出现在这里。</p>
+          <h2>{{ emptyTitle }}</h2>
+          <p v-if="currentView === 'pending'">运营推送后会立即出现在这里。</p>
         </div>
         <div v-else class="demo-table-wrap">
           <table class="demo-table">
@@ -113,7 +151,11 @@ onBeforeUnmount(() => request?.abort());
                     lead.businessNo
                   }}</RouterLink>
                 </td>
-                <td><span class="pill">线索待审核</span></td>
+                <td>
+                  <span class="pill">{{
+                    currentView === 'processed' ? '已确认侵权' : '线索待审核'
+                  }}</span>
+                </td>
                 <td>{{ lead.rightsHolderName }}</td>
                 <td>{{ lead.shopName }}</td>
                 <td class="num mono">{{ lead.products.length }}</td>
@@ -125,7 +167,7 @@ onBeforeUnmount(() => request?.abort());
         <nav
           v-if="state === 'ready' && totalPages > 1"
           class="lead-pagination"
-          aria-label="待审核线索分页"
+          :aria-label="`${queueTitle}分页`"
         >
           <ElButton
             data-test="previous-page"

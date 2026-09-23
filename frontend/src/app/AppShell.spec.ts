@@ -2,6 +2,7 @@ import { flushPromises, mount } from '@vue/test-utils';
 import { createPinia, setActivePinia } from 'pinia';
 import { createMemoryHistory, createRouter } from 'vue-router';
 import { beforeEach, describe, expect, it, vi } from 'vitest';
+import type { AuthSession } from '../api/auth';
 import { useAuthStore } from '../stores/auth';
 import AppShell from './AppShell.vue';
 
@@ -44,11 +45,14 @@ beforeEach(() => {
   });
 });
 
-async function mountShell(path = '/leads') {
+async function mountShell(
+  path = '/leads',
+  activeSession: AuthSession = session,
+) {
   const pinia = createPinia();
   setActivePinia(pinia);
   const auth = useAuthStore(pinia);
-  auth.session = session;
+  auth.session = activeSession;
   auth.restored = true;
   const router = createRouter({
     history: createMemoryHistory(),
@@ -119,5 +123,23 @@ describe('AppShell', () => {
     expect(
       wrapper.get('[data-test="app-sidebar"]').attributes('data-open'),
     ).toBe('false');
+  });
+
+  it('labels the client navigation for both review queues', async () => {
+    const clientSession = {
+      ...session,
+      principalType: 'CLIENT' as const,
+      customer: { id: 'customer-1', name: '客户甲' },
+      department: null,
+      departments: [],
+    };
+    const { wrapper } = await mountShell('/client/leads', clientSession);
+
+    expect(wrapper.get('[data-test="client-lead-nav"]').text()).toContain(
+      '线索审核',
+    );
+    expect(wrapper.text()).not.toContain('待审核线索');
+    expect(wrapper.find('[data-test="lead-nav"]').exists()).toBe(false);
+    expect(wrapper.find('[data-test="customer-nav"]').exists()).toBe(false);
   });
 });
