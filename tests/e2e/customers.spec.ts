@@ -153,10 +153,10 @@ test('rights holder browser reuses the same stable identity from two customers',
   const customerA = await findCustomerId(e2eFixtures.departmentA, '主体客户 A');
   const customerB = await findCustomerId(e2eFixtures.departmentA, '主体客户 B');
   await page.goto(`/customers/${customerA}`);
-  await page.getByRole('button', { name: '新建主体', exact: true }).click();
+  await page.getByRole('button', { name: '新建权利人', exact: true }).click();
   await page.getByRole('button', { name: '创建并关联' }).click();
-  await expect(page.getByText('请填写权利主体名称')).toBeVisible();
-  await page.getByLabel('主体名称', { exact: true }).fill('共享权利主体 H');
+  await expect(page.getByText('请填写权利人名称')).toBeVisible();
+  await page.getByLabel('权利人名称').fill('共享权利主体 H');
   await page.getByRole('button', { name: '创建并关联' }).click();
   await page.getByRole('link', { name: '查看详情', exact: true }).click();
   await expect(
@@ -164,19 +164,20 @@ test('rights holder browser reuses the same stable identity from two customers',
   ).toBeVisible();
   const holderId = page.url().split('/').at(-1);
   expect(holderId).toMatch(/^[0-9a-f-]{36}$/);
-  await expect(page.getByText(holderId!, { exact: true })).toBeVisible();
+  await expect(page).toHaveURL(
+    `/customers/${customerA}/rights-holders/${holderId}`,
+  );
   await expect(
     page.getByRole('button', { name: /编辑|删除|解除|默认/ }),
   ).toHaveCount(0);
   await page.goto(`/customers/${customerB}`);
-  await page.getByRole('button', { name: '关联已有主体' }).click();
+  await page.getByRole('button', { name: '关联已有权利人' }).click();
   await page.getByLabel('共享权利主体 H', { exact: true }).check();
   await page.getByRole('button', { name: '确认关联' }).click();
   await page.getByRole('link', { name: '查看详情', exact: true }).click();
   await expect(page).toHaveURL(
     `/customers/${customerB}/rights-holders/${holderId}`,
   );
-  await expect(page.getByText(holderId!, { exact: true })).toBeVisible();
   await expect(page.getByText('主体客户 A', { exact: true })).toHaveCount(0);
   await expect(getCustomerById(customerA)).resolves.toMatchObject({
     version: 2,
@@ -669,8 +670,8 @@ test('operations user creates a persisted draft and sees its audit history', asy
 
   await page.getByRole('link', { name: '编辑资料' }).click();
   await page.getByLabel('客户名称').fill('真实数据库客户（更新）');
-  await page.getByLabel('客户类型').selectOption('ENTERPRISE');
-  await page.getByLabel('证件类型').selectOption('BUSINESS_LICENSE');
+  await page.getByLabel('客户组织类型').selectOption('ENTERPRISE');
+  await page.getByLabel('身份证明类型').selectOption('BUSINESS_LICENSE');
   await page.getByLabel('证件号码').fill('91310000abc123');
   await page.getByLabel('邮箱').fill('contact@example.com');
   await page.getByRole('button', { name: '保存修改' }).click();

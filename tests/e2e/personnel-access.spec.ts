@@ -23,6 +23,20 @@ async function login(
   await page.getByRole('button', { name: '登录', exact: true }).click();
 }
 
+async function acceptConfirm(
+  page: import('@playwright/test').Page,
+  expectedMessage: string,
+  action: () => Promise<unknown>,
+): Promise<void> {
+  const dialogPromise = page.waitForEvent('dialog');
+  const actionPromise = action();
+  const dialog = await dialogPromise;
+  expect(dialog.type()).toBe('confirm');
+  expect(dialog.message()).toContain(expectedMessage);
+  await dialog.accept();
+  await actionPromise;
+}
+
 async function createOperator(page: import('@playwright/test').Page) {
   await login(page, admin.username, admin.password);
   await expect(page).toHaveURL(/\/customers$/);
@@ -104,7 +118,9 @@ test('team conflict is explained, then role revoke allows the direct move', asyn
   await expect(page.getByRole('alert')).toContainText(
     '先停用该人员当前的团队范围角色',
   );
-  await operatorCard.getByRole('button', { name: '停用', exact: true }).click();
+  await acceptConfirm(page, '确认停用“运营乙”的“', () =>
+    operatorCard.getByRole('button', { name: '停用', exact: true }).click(),
+  );
   await expect
     .poll(
       async () => (await getPersonnelAccessSnapshot('operator.b')).memberships,
@@ -148,7 +164,9 @@ test('account, membership, and role lifecycle take effect without extra forms', 
     await login(operatorPage, 'operator.b', 'Operator-pass-2026');
     await expect(operatorPage).toHaveURL(/\/customers$/);
 
-    await operatorCard.getByRole('button', { name: '停用成员' }).click();
+    await acceptConfirm(page, '确认停用“运营乙”的部门成员关系吗？', () =>
+      operatorCard.getByRole('button', { name: '停用成员' }).click(),
+    );
     await expect(
       operatorCard.getByRole('button', { name: '恢复成员' }),
     ).toBeVisible();
@@ -159,7 +177,9 @@ test('account, membership, and role lifecycle take effect without extra forms', 
     await login(operatorPage, 'operator.b', 'Operator-pass-2026');
     await expect(operatorPage).toHaveURL(/\/customers$/);
 
-    await operatorCard.getByRole('button', { name: '停用账号' }).click();
+    await acceptConfirm(page, '确认停用“运营乙”的账号吗？', () =>
+      operatorCard.getByRole('button', { name: '停用账号' }).click(),
+    );
     await expect(
       operatorCard.getByRole('button', { name: '启用账号' }),
     ).toBeVisible();
@@ -167,9 +187,9 @@ test('account, membership, and role lifecycle take effect without extra forms', 
     await expect(operatorPage).toHaveURL(/\/login\?returnTo=/);
     await operatorCard.getByRole('button', { name: '启用账号' }).click();
 
-    await operatorCard
-      .getByRole('button', { name: '停用', exact: true })
-      .click();
+    await acceptConfirm(page, '确认停用“运营乙”的“', () =>
+      operatorCard.getByRole('button', { name: '停用', exact: true }).click(),
+    );
     await expect(
       operatorCard.getByRole('button', { name: '恢复', exact: true }),
     ).toBeVisible();
