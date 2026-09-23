@@ -63,6 +63,32 @@ describe('ClientLeadController', () => {
     ).rejects.toBeInstanceOf(BadRequestException);
   });
 
+  it('counts variation selectors and accepts a multiline 5000-code-point reason', async () => {
+    const valid = {
+      result: 'NO_INFRINGEMENT',
+      reason: `${'✈️'.repeat(2499)}\nA`,
+      expectedVersion: 2,
+    };
+    await expect(
+      pipe.transform(valid, {
+        type: 'body',
+        metatype: ReviewClientLeadDto,
+      }),
+    ).resolves.toEqual(valid);
+    await expect(
+      pipe.transform(
+        {
+          ...valid,
+          reason: '✈️'.repeat(2501),
+        },
+        {
+          type: 'body',
+          metatype: ReviewClientLeadDto,
+        },
+      ),
+    ).rejects.toBeInstanceOf(BadRequestException);
+  });
+
   it.each([undefined, '', '  ', 'x'.repeat(5001), 123])(
     'rejects invalid no-infringement reason %p',
     async (reason) => {

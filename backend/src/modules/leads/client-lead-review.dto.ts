@@ -5,6 +5,7 @@ import {
   IsInt,
   IsOptional,
   IsString,
+  Matches,
   Max,
   MaxLength,
   Min,
@@ -60,6 +61,7 @@ export class ReviewClientLeadDto {
   @IsOptional()
   @IsString()
   @MaxLength(5000)
+  @Matches(/^[\s\S]{1,5000}$/u)
   reason?: string;
 
   @ApiProperty({ minimum: 1 })
