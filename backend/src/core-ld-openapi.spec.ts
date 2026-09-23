@@ -111,4 +111,31 @@ describe('CORE-LD-002 OpenAPI contract', () => {
       },
     });
   });
+
+  it('documents both client review conclusions and archive facts', () => {
+    const document = SwaggerModule.createDocument(
+      app,
+      new DocumentBuilder().setTitle('test').setVersion('1').build(),
+    );
+    const schemas = document.components?.schemas;
+    expect(schemas?.ReviewClientLeadDto).toMatchObject({
+      properties: {
+        result: { enum: ['INFRINGEMENT', 'NO_INFRINGEMENT'] },
+        reason: { maxLength: 5000 },
+      },
+    });
+    expect(schemas?.ClientLeadReviewResultDto).toMatchObject({
+      properties: {
+        status: { enum: ['WAITING_EVIDENCE_DECISION', 'ARCHIVED'] },
+      },
+    });
+    expect(schemas?.ClientLeadReviewDecisionResponseDto).toMatchObject({
+      properties: {
+        result: { enum: ['INFRINGEMENT', 'NO_INFRINGEMENT'] },
+        reason: { maxLength: 5000 },
+        archiveType: { enum: ['NO_INFRINGEMENT'] },
+        archivedAt: { format: 'date-time' },
+      },
+    });
+  });
 });

@@ -23,10 +23,39 @@ describe('ClientLeadController', () => {
     ).resolves.toEqual({ result: 'INFRINGEMENT', expectedVersion: 2 });
   });
 
-  it('rejects review results outside the current slice', async () => {
+  it('accepts and trims the no-infringement reason', async () => {
     await expect(
       pipe.transform(
-        { result: 'NO_INFRINGEMENT', expectedVersion: 2 },
+        {
+          result: 'NO_INFRINGEMENT',
+          reason: '  不构成侵权  ',
+          expectedVersion: 2,
+        },
+        { type: 'body', metatype: ReviewClientLeadDto },
+      ),
+    ).resolves.toEqual({
+      result: 'NO_INFRINGEMENT',
+      reason: '不构成侵权',
+      expectedVersion: 2,
+    });
+  });
+
+  it.each([undefined, '', '  ', 'x'.repeat(5001), 123])(
+    'rejects invalid no-infringement reason %p',
+    async (reason) => {
+      await expect(
+        pipe.transform(
+          { result: 'NO_INFRINGEMENT', reason, expectedVersion: 2 },
+          { type: 'body', metatype: ReviewClientLeadDto },
+        ),
+      ).rejects.toBeInstanceOf(BadRequestException);
+    },
+  );
+
+  it('rejects a reason on an infringement review', async () => {
+    await expect(
+      pipe.transform(
+        { result: 'INFRINGEMENT', reason: 'not allowed', expectedVersion: 2 },
         { type: 'body', metatype: ReviewClientLeadDto },
       ),
     ).rejects.toBeInstanceOf(BadRequestException);

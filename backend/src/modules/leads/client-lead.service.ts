@@ -1,4 +1,5 @@
 import {
+  BadRequestException,
   ConflictException,
   ForbiddenException,
   Injectable,
@@ -29,14 +30,28 @@ type ClientBindingFacts = {
 type ClientLeadReviewResult = {
   id: string;
   businessNo: string;
-  status: 'WAITING_EVIDENCE_DECISION';
   version: number;
-  reviewDecision: {
-    result: 'INFRINGEMENT';
-    reviewerDisplayName: string;
-    decidedAt: string;
-  };
-};
+} & (
+  | {
+      status: 'WAITING_EVIDENCE_DECISION';
+      reviewDecision: {
+        result: 'INFRINGEMENT';
+        reviewerDisplayName: string;
+        decidedAt: string;
+      };
+    }
+  | {
+      status: 'ARCHIVED';
+      reviewDecision: {
+        result: 'NO_INFRINGEMENT';
+        reason: string;
+        reviewerDisplayName: string;
+        decidedAt: string;
+        archiveType: 'NO_INFRINGEMENT';
+        archivedAt: string;
+      };
+    }
+);
 
 const clientLeadInclude = {
   products: { orderBy: { position: 'asc' as const } },
@@ -137,14 +152,32 @@ export class ClientLeadService {
     idempotencyKey: string,
     input: ReviewClientLeadDto,
   ): Promise<ClientLeadReviewResult> {
+    if (
+      (input.result === 'NO_INFRINGEMENT' &&
+        (typeof input.reason !== 'string' ||
+          input.reason.trim().length < 1 ||
+          input.reason.trim().length > 5000)) ||
+      (input.result === 'INFRINGEMENT' && input.reason !== undefined)
+    )
+      throw new BadRequestException({
+        code: 'VALIDATION_ERROR',
+        message: '审核原因与结论不匹配',
+      });
+    const request =
+      input.result === 'INFRINGEMENT'
+        ? {
+            leadId: id,
+            result: input.result,
+            expectedVersion: input.expectedVersion,
+          }
+        : {
+            leadId: id,
+            result: input.result,
+            reason: input.reason!.trim(),
+            expectedVersion: input.expectedVersion,
+          };
     const fingerprint = createHash('sha256')
-      .update(
-        JSON.stringify({
-          leadId: id,
-          result: input.result,
-          expectedVersion: input.expectedVersion,
-        }),
-      )
+      .update(JSON.stringify(request))
       .digest('hex');
     for (let attempt = 1; attempt <= MAX_SERIALIZABLE_ATTEMPTS; attempt += 1) {
       try {
@@ -192,6 +225,11 @@ export class ClientLeadService {
             if (current.version !== input.expectedVersion)
               throw this.versionConflict();
 
+            const nextStatus =
+              input.result === 'INFRINGEMENT'
+                ? 'WAITING_EVIDENCE_DECISION'
+                : 'ARCHIVED';
+            const decidedAt = new Date();
             const changed = await transaction.lead.updateMany({
               where: {
                 id,
@@ -203,7 +241,7 @@ export class ClientLeadService {
                 pushedByUserId: { not: null },
               },
               data: {
-                status: 'WAITING_EVIDENCE_DECISION',
+                status: nextStatus,
                 version: { increment: 1 },
               },
             });
@@ -217,22 +255,48 @@ export class ClientLeadService {
                 reviewerUserId: actor.userId,
                 customerAccountBindingId: binding.id,
                 reviewerDisplayNameSnapshot: binding.reviewerDisplayName,
-                result: 'INFRINGEMENT',
+                result: input.result,
                 fromVersion: input.expectedVersion,
                 toVersion: input.expectedVersion + 1,
+                decidedAt,
+                ...(input.result === 'NO_INFRINGEMENT'
+                  ? {
+                      reason: input.reason!.trim(),
+                      archiveType: 'NO_INFRINGEMENT' as const,
+                      archivedAt: decidedAt,
+                    }
+                  : {}),
               },
             });
-            const result: ClientLeadReviewResult = {
-              id,
-              businessNo: current.businessNo,
-              status: 'WAITING_EVIDENCE_DECISION',
-              version: input.expectedVersion + 1,
-              reviewDecision: {
-                result: 'INFRINGEMENT',
-                reviewerDisplayName: binding.reviewerDisplayName,
-                decidedAt: decision.decidedAt.toISOString(),
-              },
+            const decisionSnapshot = {
+              reviewerDisplayName: binding.reviewerDisplayName,
+              decidedAt: decision.decidedAt.toISOString(),
             };
+            const result: ClientLeadReviewResult =
+              input.result === 'INFRINGEMENT'
+                ? {
+                    id,
+                    businessNo: current.businessNo,
+                    status: 'WAITING_EVIDENCE_DECISION',
+                    version: input.expectedVersion + 1,
+                    reviewDecision: {
+                      result: 'INFRINGEMENT',
+                      ...decisionSnapshot,
+                    },
+                  }
+                : {
+                    id,
+                    businessNo: current.businessNo,
+                    status: 'ARCHIVED',
+                    version: input.expectedVersion + 1,
+                    reviewDecision: {
+                      result: 'NO_INFRINGEMENT',
+                      reason: input.reason!.trim(),
+                      ...decisionSnapshot,
+                      archiveType: 'NO_INFRINGEMENT',
+                      archivedAt: decidedAt.toISOString(),
+                    },
+                  };
             await transaction.clientLeadReviewReceipt.create({
               data: {
                 departmentId: actor.departmentId,
@@ -342,13 +406,26 @@ export class ClientLeadService {
     if (
       receipt.resultLeadId !== leadId ||
       value.id !== leadId ||
-      value.status !== 'WAITING_EVIDENCE_DECISION' ||
       value.version !== receipt.resultLeadVersion ||
       typeof value.businessNo !== 'string' ||
       decisionFields === null ||
-      decisionFields.result !== 'INFRINGEMENT' ||
       typeof decisionFields.reviewerDisplayName !== 'string' ||
-      typeof decisionFields.decidedAt !== 'string'
+      typeof decisionFields.decidedAt !== 'string' ||
+      !(
+        (value.status === 'WAITING_EVIDENCE_DECISION' &&
+          decisionFields.result === 'INFRINGEMENT' &&
+          decisionFields.reason === undefined &&
+          decisionFields.archiveType === undefined &&
+          decisionFields.archivedAt === undefined) ||
+        (value.status === 'ARCHIVED' &&
+          decisionFields.result === 'NO_INFRINGEMENT' &&
+          typeof decisionFields.reason === 'string' &&
+          decisionFields.reason.trim().length > 0 &&
+          decisionFields.reason === decisionFields.reason.trim() &&
+          decisionFields.reason.length <= 5000 &&
+          decisionFields.archiveType === 'NO_INFRINGEMENT' &&
+          decisionFields.archivedAt === decisionFields.decidedAt)
+      )
     )
       throw this.corruptReceipt();
     return value as ClientLeadReviewResult;

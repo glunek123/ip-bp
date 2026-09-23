@@ -1,6 +1,29 @@
 import { ApiProperty, ApiPropertyOptional } from '@nestjs/swagger';
-import { Type } from 'class-transformer';
-import { IsIn, IsInt, Max, Min } from 'class-validator';
+import { Transform, Type } from 'class-transformer';
+import {
+  IsIn,
+  IsInt,
+  IsOptional,
+  IsString,
+  Max,
+  MaxLength,
+  Min,
+  Validate,
+  ValidationArguments,
+  ValidatorConstraint,
+  ValidatorConstraintInterface,
+} from 'class-validator';
+
+@ValidatorConstraint({ name: 'reviewReasonMatchesResult' })
+class ReviewReasonMatchesResult implements ValidatorConstraintInterface {
+  validate(_result: unknown, { object }: ValidationArguments): boolean {
+    const input = object as ReviewClientLeadDto;
+    if (input.result === 'INFRINGEMENT') return input.reason === undefined;
+    if (input.result === 'NO_INFRINGEMENT')
+      return typeof input.reason === 'string' && input.reason.trim().length > 0;
+    return true;
+  }
+}
 
 export const CLIENT_LEAD_VIEWS = ['PENDING', 'PROCESSED'] as const;
 export type ClientLeadView = (typeof CLIENT_LEAD_VIEWS)[number];
@@ -25,9 +48,19 @@ export class ClientLeadListQueryDto {
 }
 
 export class ReviewClientLeadDto {
-  @ApiProperty({ enum: ['INFRINGEMENT'] })
-  @IsIn(['INFRINGEMENT'])
-  result!: 'INFRINGEMENT';
+  @ApiProperty({ enum: ['INFRINGEMENT', 'NO_INFRINGEMENT'] })
+  @IsIn(['INFRINGEMENT', 'NO_INFRINGEMENT'])
+  @Validate(ReviewReasonMatchesResult)
+  result!: 'INFRINGEMENT' | 'NO_INFRINGEMENT';
+
+  @ApiPropertyOptional({ maxLength: 5000 })
+  @Transform(({ value }: { value: unknown }) =>
+    typeof value === 'string' ? value.trim() : value,
+  )
+  @IsOptional()
+  @IsString()
+  @MaxLength(5000)
+  reason?: string;
 
   @ApiProperty({ minimum: 1 })
   @IsInt()

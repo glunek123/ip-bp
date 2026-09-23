@@ -1,4 +1,4 @@
-import { ApiProperty } from '@nestjs/swagger';
+import { ApiProperty, ApiPropertyOptional } from '@nestjs/swagger';
 
 class ClientLeadProductResponseDto {
   @ApiProperty({ format: 'uuid' }) id!: string;
@@ -14,9 +14,14 @@ class ClientLeadProductResponseDto {
 }
 
 export class ClientLeadReviewDecisionResponseDto {
-  @ApiProperty({ enum: ['INFRINGEMENT'] }) result!: 'INFRINGEMENT';
+  @ApiProperty({ enum: ['INFRINGEMENT', 'NO_INFRINGEMENT'] })
+  result!: 'INFRINGEMENT' | 'NO_INFRINGEMENT';
   @ApiProperty() reviewerDisplayName!: string;
   @ApiProperty({ format: 'date-time' }) decidedAt!: string;
+  @ApiPropertyOptional({ maxLength: 5000 }) reason?: string;
+  @ApiPropertyOptional({ enum: ['NO_INFRINGEMENT'] })
+  archiveType?: 'NO_INFRINGEMENT';
+  @ApiPropertyOptional({ format: 'date-time' }) archivedAt?: string;
 }
 
 class ClientLeadCapabilitiesResponseDto {
@@ -62,8 +67,8 @@ export class ClientLeadListResponseDto {
 export class ClientLeadReviewResultDto {
   @ApiProperty({ format: 'uuid' }) id!: string;
   @ApiProperty() businessNo!: string;
-  @ApiProperty({ enum: ['WAITING_EVIDENCE_DECISION'] })
-  status!: 'WAITING_EVIDENCE_DECISION';
+  @ApiProperty({ enum: ['WAITING_EVIDENCE_DECISION', 'ARCHIVED'] })
+  status!: 'WAITING_EVIDENCE_DECISION' | 'ARCHIVED';
   @ApiProperty({ minimum: 1 }) version!: number;
   @ApiProperty({ type: () => ClientLeadReviewDecisionResponseDto })
   reviewDecision!: ClientLeadReviewDecisionResponseDto;

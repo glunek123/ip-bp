@@ -1,3 +1,4 @@
+import { createHash } from 'node:crypto';
 import { ActorContext } from '../../access-control/actor-context';
 import { MaterialService } from '../materials';
 import { ClientLeadService } from './client-lead.service';
@@ -336,6 +337,164 @@ function setupReview() {
 }
 
 describe('ClientLeadService.review', () => {
+  it('archives a no-infringement decision and writes one matching receipt', async () => {
+    const { service, transaction } = setupReview();
+    const result = await service.review(actor, lead.id, 'archive-key', {
+      result: 'NO_INFRINGEMENT',
+      reason: '不构成侵权',
+      expectedVersion: 2,
+    });
+    expect(result).toMatchObject({
+      status: 'ARCHIVED',
+      version: 3,
+      reviewDecision: {
+        result: 'NO_INFRINGEMENT',
+        reason: '不构成侵权',
+        archiveType: 'NO_INFRINGEMENT',
+      },
+    });
+    expect(transaction.lead.updateMany).toHaveBeenCalledWith(
+      expect.objectContaining({
+        where: expect.objectContaining({
+          status: 'WAITING_REVIEW',
+          version: 2,
+        }),
+        data: { status: 'ARCHIVED', version: { increment: 1 } },
+      }),
+    );
+    expect(transaction.leadReviewDecision.create).toHaveBeenCalledWith({
+      data: expect.objectContaining({
+        result: 'NO_INFRINGEMENT',
+        reason: '不构成侵权',
+        archiveType: 'NO_INFRINGEMENT',
+        archivedAt: expect.any(Date),
+        decidedAt: expect.any(Date),
+      }),
+    });
+    const decisionData =
+      transaction.leadReviewDecision.create.mock.calls[0][0].data;
+    expect(decisionData.archivedAt).toBe(decisionData.decidedAt);
+    expect(transaction.clientLeadReviewReceipt.create).toHaveBeenCalledTimes(1);
+    expect(transaction.clientLeadReviewReceipt.create).toHaveBeenCalledWith({
+      data: expect.objectContaining({ resultSnapshot: result }),
+    });
+  });
+
+  it.each([undefined, '', '  ', 123, 'x'.repeat(5001)])(
+    'rejects invalid no-infringement reason %p before writing',
+    async (reason) => {
+      const { service, transaction } = setupReview();
+      await expect(
+        service.review(actor, lead.id, 'archive-key', {
+          result: 'NO_INFRINGEMENT',
+          reason,
+          expectedVersion: 2,
+        } as never),
+      ).rejects.toMatchObject({ response: { code: 'VALIDATION_ERROR' } });
+      expect(transaction.lead.updateMany).not.toHaveBeenCalled();
+    },
+  );
+
+  it('rejects an infringement reason before writing', async () => {
+    const { service, transaction } = setupReview();
+    await expect(
+      service.review(actor, lead.id, 'review-key', {
+        result: 'INFRINGEMENT',
+        reason: 'unexpected',
+        expectedVersion: 2,
+      } as never),
+    ).rejects.toMatchObject({ response: { code: 'VALIDATION_ERROR' } });
+    expect(transaction.lead.updateMany).not.toHaveBeenCalled();
+  });
+
+  it('replays the exact archive snapshot and conflicts on changed reason or result', async () => {
+    const { service, transaction } = setupReview();
+    const input = {
+      result: 'NO_INFRINGEMENT',
+      reason: '不构成侵权',
+      expectedVersion: 2,
+    } as const;
+    const first = await service.review(actor, lead.id, 'archive-key', input);
+    const receiptData =
+      transaction.clientLeadReviewReceipt.create.mock.calls[0][0].data;
+    transaction.clientLeadReviewReceipt.findUnique.mockResolvedValue(
+      receiptData,
+    );
+    transaction.lead.updateMany.mockClear();
+    await expect(
+      service.review(actor, lead.id, 'archive-key', input),
+    ).resolves.toEqual(first);
+    expect(transaction.lead.updateMany).not.toHaveBeenCalled();
+    await expect(
+      service.review(actor, lead.id, 'archive-key', {
+        ...input,
+        reason: '另一原因',
+      }),
+    ).rejects.toMatchObject({ response: { code: 'IDEMPOTENCY_CONFLICT' } });
+    await expect(
+      service.review(actor, lead.id, 'archive-key', {
+        result: 'INFRINGEMENT',
+        expectedVersion: 2,
+      }),
+    ).rejects.toMatchObject({ response: { code: 'IDEMPOTENCY_CONFLICT' } });
+  });
+
+  it('preserves the historical infringement fingerprint and five-key receipt snapshot', async () => {
+    const { review, transaction } = setupReview();
+    const first = await review();
+    const receiptData =
+      transaction.clientLeadReviewReceipt.create.mock.calls[0][0].data;
+    expect(receiptData.requestFingerprint).toBe(
+      createHash('sha256')
+        .update(
+          JSON.stringify({
+            leadId: lead.id,
+            result: 'INFRINGEMENT',
+            expectedVersion: 2,
+          }),
+        )
+        .digest('hex'),
+    );
+    expect(Object.keys(first)).toEqual([
+      'id',
+      'businessNo',
+      'status',
+      'version',
+      'reviewDecision',
+    ]);
+    expect(Object.keys(first.reviewDecision)).toEqual([
+      'result',
+      'reviewerDisplayName',
+      'decidedAt',
+    ]);
+    transaction.clientLeadReviewReceipt.findUnique.mockResolvedValue(
+      receiptData,
+    );
+    await expect(review()).resolves.toEqual(first);
+  });
+
+  it.each(['decision', 'receipt'])(
+    'does not return an archived result when the %s write fails',
+    async (failure) => {
+      const { service, transaction } = setupReview();
+      const error = new Error('write failed');
+      if (failure === 'decision')
+        transaction.leadReviewDecision.create.mockRejectedValue(error);
+      else transaction.clientLeadReviewReceipt.create.mockRejectedValue(error);
+      await expect(
+        service.review(actor, lead.id, 'archive-key', {
+          result: 'NO_INFRINGEMENT',
+          reason: '不构成侵权',
+          expectedVersion: 2,
+        }),
+      ).rejects.toBe(error);
+      expect(transaction.lead.updateMany).toHaveBeenCalledTimes(1);
+      expect(transaction.clientLeadReviewReceipt.create).toHaveBeenCalledTimes(
+        failure === 'decision' ? 0 : 1,
+      );
+    },
+  );
+
   it('atomically advances a pushed lead and records one decision and receipt', async () => {
     const { review, transaction, database } = setupReview();
     await expect(review()).resolves.toEqual({
@@ -346,7 +505,7 @@ describe('ClientLeadService.review', () => {
       reviewDecision: {
         result: 'INFRINGEMENT',
         reviewerDisplayName: '企业审核员',
-        decidedAt: '2026-09-22T03:00:00.000Z',
+        decidedAt: expect.any(String),
       },
     });
     expect(database.$transaction).toHaveBeenCalledWith(expect.any(Function), {
