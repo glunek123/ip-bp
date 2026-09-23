@@ -24,6 +24,36 @@
 3. 用户范围明确即直接执行；不把需求重复拆成设计确认、计划确认和编码确认。只有产品方向分叉、不可逆影响、关键架构变化、规则冲突或关键业务信息缺失时询问。
 4. Skill只在对应问题出现时加载；方法论、审查和浏览器工具不是普通任务的固定仪式。
 
+## 多 Agent 协作路由
+
+只在任务可独立验收且并行或交接确有收益时派发子Agent；主Agent负责全局契约、风险裁决、集成和最终质量。Agent模型路由与Level 1／2／3验证分级分别判断：普通前向迁移可以是Level 2，但migration Task仍按下表使用Sol和独立审查。
+
+| Task性质                                                                                                                                 | 执行模型与交接                                                          |
+| ---------------------------------------------------------------------------------------------------------------------------------------- | ----------------------------------------------------------------------- |
+| 架构裁决、跨模块公共契约、核心Command／状态机、schema／migration、权限／安全／企业隔离、事务／并发／锁／幂等、不可逆操作                 | `gpt-6-sol`执行；聚焦测试后由另一名`gpt-6-sol`独立Review，通过后集成。  |
+| 方向已定的普通实现、简单Spec／DTO／API类型同步、fixture／helper、普通UI接线、测试与普通失败修复、文档／roadmap／progress、格式和静态检查 | `gpt-6-luna`执行；自审、聚焦测试、简报交接，默认不设独立Task Reviewer。 |
+
+Luna遇到架构或公共契约变更、schema／migration、权限或安全边界、事务／并发／幂等、业务语义不明、Brief与现场冲突，或必须明显扩围时，立即停止扩大修改并升级主Agent；由主Agent裁决或改派Sol，不让Luna自行重构。
+
+派发Brief只含Goal、允许文件、相关接口／契约、验收条件、必要测试、禁止改动和关键业务约束；以文件指针或局部摘要交接，不复制项目历史、完整设计讨论和其他Task报告。每个子Agent按下列字段简报；普通Luna报告为PASS、无风险且公共契约未变时，主Agent核对报告、文件清单、diff摘要和测试结果即可集成；出现越界、缺证据、失败或契约风险再展开源码／完整diff，不重做同一Task。
+
+```text
+Task:
+Model:
+Commit:
+Changed files:
+Tests executed:
+Result: PASS / FAIL
+Contract changes:
+Self-review findings:
+Known risks:
+Requires Sol attention: YES / NO
+```
+
+测试分层：Worker运行本Task聚焦测试及必要的类型／构建检查；高风险Reviewer只按finding补针对性验证，不默认复跑Worker测试；主Agent在阶段集成后运行集成测试和快速门禁。所有Task集成为固定候选后，由独立`gpt-6-sol`做一次Final Review，修复并关闭finding后再运行Level 3完整门禁及适用数据库E2E／迁移专项。同一tree及输入的可信结果直接复用；Level 3已运行完整`verify`与对应E2E时，不为重复覆盖额外运行Slice门禁，除非该Slice证据是明确交付要求。普通技术失败由Luna在原Task内修复；首次暴露上述高风险或语义冲突即升级Sol。
+
+既有实施计划或方法Skill若要求每个Task都配独立Reviewer，普通Task按本节风险路由执行；高风险Task与集成后Final Review仍不可省略。
+
 ## 状态与检查点
 
 - Level 1同会话短任务不改开发状态。Level 2只在业务状态变化、跨会话或需要恢复时更新；Level 3、阶段切换、业务／架构决定和阻断必须留下简短检查点。

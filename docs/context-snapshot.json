@@ -1,8 +1,8 @@
 {
   "version": 1,
-  "recordedAt": "2026-09-23T02:59:55.032Z",
+  "recordedAt": "2026-09-23T03:19:16.340Z",
   "files": {
-    ".cursor/rules/verified-feature-integration.mdc": "527a0238c24ff57c8a21be44a33875e0cb70cb9d98c816da8823afa50e4ea7cb",
+    ".cursor/rules/verified-feature-integration.mdc": "0a705f3638ce678b7a457bce61ec5b97aa50eb166fe39fabc1d5dd10a03c1848",
     ".env.example": "07211cde5c2b59efc21b619b752d4c9b871f0980d2d64ca3c146ad6151fd27ca",
     ".gitattributes": "b4cebf3dd35dc75e5c469f4326cd59238b86334aeed5d99b8e3d91c139a321dd",
     ".gitignore": "ba9bc8399767569e5412f23f4783afc64e7dc21b38b61242b42fe6104eaed074",
@@ -49,7 +49,7 @@
     ".superpowers/sdd/task-6-report.md": "0cb327f2a10c1fadda6f36ae4662175a2a72045385a9656f23cc3f40d3cdfb47",
     ".superpowers/sdd/task-7-brief.md": "d0b40fbf802f2d43b6c004fd8d0a3ca7bc284fc65f326629470ea5a5421f4706",
     ".superpowers/sdd/task-7-report.md": "f95ced9833e5c0de59281ca964fdc7c8e60da69f95bbf128c3f4b0ca33ca5818",
-    "AGENTS.md": "21b365841e48480733d610c41889250b58b8236827f769fbcf5011d8d83fa8b7",
+    "AGENTS.md": "2415221c01d5b01e3208a8ba289a2d412437cd1f66ace4d5b9f107dd2c5c4e40",
     "README.md": "dcf766e138abd99e5f64d795e3210fa72403cb200999360328da6453aea9d41b",
     "Use-ProjectRuntime.ps1": "1142dc29cde8acb5d1ceeae54556bfaf073457840dba2bc13766c8f5b03e7369",
     "backend/.env.example": "7c5c0ad7160b1618568a607a82428bf04347ee820d883e628a91e957d5849f72",
@@ -207,7 +207,7 @@
     "demo/app.js": "a4caad5bb00ed08152ff70e59e7af08a5c581a8c770586bd3868713e3de9d0e8",
     "demo/index.html": "e433b6f6125623c788bd4c020dae2d723a40fb889f48d577853136e967dd1721",
     "demo/styles.css": "b3f1f86112d2948271a790c5e050b831ea2325f5645ecc496d0aaf04bc87edf3",
-    "docs/ai-coding.md": "e13bfefccd9e17f9ed1366b4a30b58fbd7ca6e60c7d0660020aaa2c3c6ad364b",
+    "docs/ai-coding.md": "8d4bb6701ee22157d47e72c996e13b827c8913fd7ddd3b49f63ac6d6f939c1be",
     "docs/architecture.md": "a618a7d150ac735db4bfb6c34a80552dda795b75458966391906d10f0288c8cc",
     "docs/component-compatibility.md": "7c2f7b7b6b13e02d276af4809a5c904a9c88af1ca0a065aeed8ec896008c2200",
     "docs/conventions.md": "94139e195e5cbff3f52a07bf1456fad057935aa3409b742dad600e26bd460208",

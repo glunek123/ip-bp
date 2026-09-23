@@ -15,8 +15,8 @@
 - 修改正式代码、接口、数据库或测试时，只读[开发规范](docs/conventions.md)的相关章节；真实数据、访问控制、共享迁移或发布必须再读安全／迁移／上线章节。
 - 新字段、规则或流程改变时读对应Living Spec和最近Decision；收到外部字段／规则文档时再读[后续设计清单](docs/deferred-design.md)。纯实现细节、小型重构、文案和样式不扩写业务设计文档。
 - 修改Demo时读`demo/DESIGN.md`。Demo仅是审核参考，不代表正式业务规则获批。
-- Skills按问题触发：复杂设计用设计类，真实故障用调试类，浏览器验证用测试类，高风险验收用验证类；普通开发不叠加方法论Skills。按可独立验收的任务边界使用子Agent，大范围审查或高风险发布前Review可交给独立子Agent；避免多个Agent重复研究或实现同一问题。
-- Agent模型分工：主Agent和独立Reviewer，以及架构、高风险Command、并发、迁移审查使用`gpt-6-sol`；边界清晰的子Agent任务（跑测试、分析失败日志、补简单Spec、同步API类型、更新文档、查漏项）使用`gpt-6-luna`。
+- Skills按问题触发：复杂设计用设计类，真实故障用调试类，浏览器验证用测试类，高风险验收用验证类；普通开发不叠加方法论Skills。按可独立验收的任务边界使用子Agent，避免多个Agent重复研究或实现同一问题。
+- 多Agent任务派发前读[协作路由](docs/ai-coding.md#多-agent-协作路由)：主Agent、高风险Task及其独立Reviewer、最终集成Reviewer使用`gpt-6-sol`；边界清晰的执行Task使用`gpt-6-luna`。普通Task由自审、聚焦测试和报告交接，不逐Task增设独立Reviewer。
 
 ## PowerShell运行环境
 
