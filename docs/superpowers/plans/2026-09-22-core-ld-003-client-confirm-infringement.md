@@ -183,6 +183,56 @@ git add backend/prisma backend/src/access-control backend/src/modules/leads/core
 git commit -m "feat: add immutable client lead review records"
 ```
 
+### Task 12: Enforce review identity consistency in PostgreSQL (prerequisite before Task 3)
+
+**Files:**
+
+- Modify: `backend/prisma/schema.prisma`
+- Create: `backend/prisma/migrations/20260922013000_harden_client_lead_review_integrity/migration.sql`
+- Modify: `backend/src/modules/leads/core-ld-migration.spec.ts`
+- Modify: `tests/support/core-lead-database.mjs`
+- Modify: `tests/e2e/core-leads.spec.ts`
+
+**Interfaces:**
+
+- Consumes: Task 1 review tables and the existing Lead and CustomerAccountBinding identity fields.
+- Produces: database guarantees that each decision names its lead's customer and the reviewer's actual enterprise binding; each receipt names the same actor, binding, lead and result version as its decision.
+- Both the decision and receipt reject later `UPDATE` or `DELETE`. Parent identity fields cannot change after a decision is recorded.
+
+- [ ] **Step 1: Add failing migration and PostgreSQL tests**
+
+Assert the new migration exists after the first review migration and adds composite references. In the isolated `backend/.env.test` database, insert valid review facts, then reject a decision with a same-department but wrong customer, a wrong reviewer for the binding, or a binding for another customer. Reject a receipt whose actor, binding, lead or version differs from its decision. Reject receipt update/delete and parent Lead/Binding identity changes after a decision exists.
+
+- [ ] **Step 2: Run the focused tests RED**
+
+```text
+pnpm --filter @dev-cor/backend test src/modules/leads/core-ld-migration.spec.ts
+pnpm test:e2e:core-ld -- --grep "core lead migrations"
+```
+
+Expected: missing migration assertions and PostgreSQL mismatch probes fail.
+
+- [ ] **Step 3: Add Prisma composite relation keys and a forward-only migration**
+
+Add unique keys on `Lead(id, customerId, departmentId)` and `CustomerAccountBinding(id, userId, customerId, departmentId)`. Add the corresponding composite foreign keys from `LeadReviewDecision`. Add a unique key on the decision identity tuple `(id, departmentId, leadId, reviewerUserId, customerAccountBindingId, toVersion)` and a composite foreign key from `ClientLeadReviewReceipt` using its matching six fields. Use `ON UPDATE RESTRICT`; retain existing singular relations and the one-decision-per-lead unique key. Add a receipt `BEFORE UPDATE OR DELETE` trigger raising SQLSTATE `55000`. Do not alter previously committed migrations.
+
+- [ ] **Step 4: Run Prisma generation and focused PostgreSQL tests GREEN**
+
+```text
+pnpm --filter @dev-cor/backend db:generate
+pnpm --filter @dev-cor/backend test src/modules/leads/core-ld-migration.spec.ts
+pnpm test:e2e:core-ld -- --grep "core lead migrations"
+```
+
+Expected: Prisma generation and tests pass, with no changes to development or production databases.
+
+- [ ] **Step 5: Commit the integrity migration**
+
+```text
+git add backend/prisma backend/src/modules/leads/core-ld-migration.spec.ts tests/support/core-lead-database.mjs tests/e2e/core-leads.spec.ts
+git commit -m "fix: enforce client review identity integrity"
+```
+
 ### Task 2: Client review DTOs and redacted query projections
 
 **Files:**
