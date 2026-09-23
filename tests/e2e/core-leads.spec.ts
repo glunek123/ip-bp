@@ -221,10 +221,16 @@ function reviewLead(
   expectedVersion: number,
   csrfToken: string,
   key = randomUUID(),
+  result: 'INFRINGEMENT' | 'NO_INFRINGEMENT' = 'INFRINGEMENT',
+  reason?: string,
 ) {
+  const data =
+    result === 'INFRINGEMENT'
+      ? { result, expectedVersion }
+      : { result, reason, expectedVersion };
   return request.post(`/api/v1/client/leads/${leadId}/reviews`, {
     headers: { 'Idempotency-Key': key, 'X-CSRF-Token': csrfToken },
-    data: { result: 'INFRINGEMENT', expectedVersion },
+    data,
   });
 }
 
@@ -550,6 +556,140 @@ test('real operator and client logins persist infringement review, screenshot an
   await expect(
     page.locator('[data-test="client-review-record"]'),
   ).toContainText(reviewerTime!);
+});
+
+test('real operator and client logins archive a no-infringement review and preserve it across refresh and processed view', async ({
+  page,
+}) => {
+  const clientUsername = `archive-client-${randomUUID().slice(0, 8)}`;
+  const clientPassword = 'archive client password 2026';
+  const reason = '经核对，浏览器证据中的商品未使用我司权利标识';
+
+  await page.goto('/customers');
+  await expect(page).toHaveURL(/\/login\?returnTo=/u);
+  await page.getByLabel('用户名').fill(coreLeadFixtures.operatorUsername);
+  await page.getByLabel('密码').fill(coreLeadFixtures.operatorPassword);
+  await page.getByRole('button', { name: '登录', exact: true }).click();
+  await expect(page).toHaveURL(/\/customers$/u);
+
+  await page.getByRole('link', { name: '已准入客户' }).click();
+  await expect(
+    page.locator('[data-test="client-account-panel"]'),
+  ).toBeVisible();
+  await page.getByLabel('客户侧使用人姓名').fill('归档浏览器审核员');
+  await page.getByLabel('用户名').fill(clientUsername);
+  await page.getByLabel('初始密码').fill(clientPassword);
+  await page.locator('[data-test="create-client-account"]').click();
+  await expect(page.getByText('账号已创建并绑定')).toBeVisible();
+
+  await page.locator('[data-test="lead-nav"]').click();
+  await page.locator('[data-test="create-lead"]').click();
+  await page
+    .locator('select[name="customerId"]')
+    .selectOption(coreLeadFixtures.admittedCustomer);
+  await page.getByLabel('拟办理业务类型').selectOption('CIVIL');
+  await page.getByLabel('发现时间').fill('2026-09-22T10:30');
+  await page.getByLabel('线索来源').selectOption('ONLINE');
+  await page.getByLabel('发现平台').selectOption('TAOBAO');
+  await page.getByLabel('店铺名称').fill('不侵权浏览器链路店铺');
+  await page.getByLabel('商标权').check();
+  await page.locator('input[name="productTitle-0"]').fill('待归档浏览器商品');
+  await page.locator('input[name="quantity-0"]').fill('1');
+  await page.locator('input[name="unitPrice-0"]').fill('12.00');
+  await page.locator('input[name="commentCount-0"]').fill('0');
+  await page.locator('input[name="screenshots"]').setInputFiles({
+    name: 'archive-review.jpg',
+    mimeType: 'image/jpeg',
+    buffer: jpegBytes,
+  });
+  await page.getByRole('button', { name: '创建线索' }).click();
+  await expect(page.getByRole('heading', { name: /^LD-/u })).toBeVisible();
+  const leadId = page.url().split('/').at(-1)!;
+
+  page.once('dialog', (dialog) => dialog.accept());
+  await page.locator('[data-test="push-lead"]').click();
+  await expect(page.locator('[data-test="push-success"]')).toContainText(
+    '已推送给客户审核',
+  );
+  await page.getByRole('button', { name: '退出登录' }).click();
+  await expect(page).toHaveURL(/\/login$/u);
+  await page.getByLabel('用户名').fill(clientUsername);
+  await page.getByLabel('密码').fill(clientPassword);
+  await page.getByRole('button', { name: '登录', exact: true }).click();
+  await expect(page).toHaveURL(/\/client\/leads$/u);
+  const row = page.locator('[data-test="client-lead-row"]');
+  await expect(row).toContainText('不侵权浏览器链路店铺');
+  await row.getByRole('link').click();
+  await expect(page).toHaveURL(
+    new RegExp(`/client/leads/${leadId}(\\?|$)`, 'u'),
+  );
+  await expect(page.getByText('archive-review.jpg')).toBeVisible();
+  const screenshot = page.waitForEvent('download');
+  await page.locator('[data-test^="download-screenshot-"]').click();
+  expect(await readFile(await (await screenshot).path())).toEqual(jpegBytes);
+
+  const reasonInput = page.locator('[data-test="no-infringement-reason"]');
+  await expect(reasonInput).toHaveAttribute('aria-required', 'true');
+  await reasonInput.fill(`  ${reason}  `);
+  page.once('dialog', (dialog) => {
+    expect(dialog.message()).toContain('当前版本不能在页面直接撤回');
+    dialog.accept();
+  });
+  await page.locator('[data-test="confirm-no-infringement"]').click();
+  await expect(page.locator('.page-head .pill')).toHaveText('线索已归档');
+  const record = page.locator('[data-test="client-review-record"]');
+  await expect(record).toContainText('判定不侵权并归档');
+  await expect(record).toContainText(reason);
+  await expect(record).toContainText('归档浏览器审核员');
+  const archivedTime = (await record.locator('p').nth(4).textContent())
+    ?.replace('归档时间：', '')
+    .trim();
+  expect(archivedTime).toBeTruthy();
+  expect(await countLeadReviewDecisions(leadId)).toBe(1);
+  expect(await countClientLeadReviewReceipts(leadId)).toBe(1);
+
+  await page.reload();
+  await expect(
+    page.locator('[data-test="confirm-no-infringement"]'),
+  ).toHaveCount(0);
+  await expect(
+    page.locator('[data-test="client-review-record"]'),
+  ).toContainText(reason);
+  await expect(
+    page.locator('[data-test="client-review-record"]'),
+  ).toContainText(archivedTime!);
+  const afterArchiveDownload = page.waitForEvent('download');
+  await page.locator('[data-test^="download-screenshot-"]').click();
+  expect(await readFile(await (await afterArchiveDownload).path())).toEqual(
+    jpegBytes,
+  );
+
+  await page.getByRole('link', { name: /返回待审核线索/u }).click();
+  await page.locator('[data-test="client-view-processed"]').click();
+  await expect(page).toHaveURL(/view=processed/u);
+  await expect(page.locator('[data-test="client-lead-row"]')).toContainText(
+    '不侵权浏览器链路店铺',
+  );
+  await page.locator('[data-test="client-lead-row"] a').click();
+  await expect(
+    page.locator('[data-test="client-review-record"]'),
+  ).toContainText(archivedTime!);
+
+  await page.getByRole('button', { name: '退出登录' }).click();
+  await expect(page).toHaveURL(/\/login$/u);
+  await page.getByLabel('用户名').fill(coreLeadFixtures.operatorUsername);
+  await page.getByLabel('密码').fill(coreLeadFixtures.operatorPassword);
+  await page.getByRole('button', { name: '登录', exact: true }).click();
+  await expect(page).toHaveURL(/\/customers$/u);
+  await page.goto('/leads?status=ARCHIVED');
+  const operatorRow = page
+    .locator('[data-test="lead-row"]')
+    .filter({ hasText: '不侵权浏览器链路店铺' });
+  await expect(operatorRow).toContainText('线索已归档');
+  await operatorRow.getByRole('link').click();
+  const operatorRecord = page.locator('[data-test="client-review-record"]');
+  await expect(operatorRecord).toContainText(reason);
+  await expect(operatorRecord).toContainText(archivedTime!);
 });
 
 test('Demo-aligned shell works on desktop and mobile', async ({ page }) => {
@@ -1084,6 +1224,331 @@ test('client review enforces enterprise scope, state, version and idempotency in
   expect((await retained.json()).reviewDecision).toEqual(
     firstResult.reviewDecision,
   );
+});
+
+test('client no-infringement review validates reason and archives with a durable replay snapshot', async ({
+  request,
+}) => {
+  const clientA = await createClientAccount(request);
+  const clientB = await createClientAccount(request, {
+    customerId: coreLeadFixtures.foreignCustomer,
+    headers: { Authorization: `Bearer ${coreLeadFixtures.tokenB}` },
+  });
+  const own = await (await createLead(request)).json();
+  const unpushed = await (await createLead(request)).json();
+  const foreign = await (
+    await createLead(
+      request,
+      leadInput({
+        customerId: coreLeadFixtures.foreignCustomer,
+        rightsHolderId: coreLeadFixtures.foreignHolder,
+      }),
+      randomUUID(),
+      { Authorization: `Bearer ${coreLeadFixtures.tokenB}` },
+    )
+  ).json();
+  expect((await pushLead(request, own.id, 1)).status()).toBe(201);
+  expect(
+    (
+      await pushLead(request, foreign.id, 1, randomUUID(), {
+        Authorization: `Bearer ${coreLeadFixtures.tokenB}`,
+      })
+    ).status(),
+  ).toBe(201);
+
+  const foreignCsrf = await loginClient(
+    request,
+    clientB.username,
+    clientB.password,
+  );
+  expect(
+    (
+      await reviewLead(
+        request,
+        own.id,
+        2,
+        foreignCsrf,
+        randomUUID(),
+        'NO_INFRINGEMENT',
+        '不侵权原因',
+      )
+    ).status(),
+  ).toBe(404);
+  const csrf = await loginClient(request, clientA.username, clientA.password);
+  expect(
+    (
+      await reviewLead(
+        request,
+        unpushed.id,
+        1,
+        csrf,
+        randomUUID(),
+        'NO_INFRINGEMENT',
+        '不侵权原因',
+      )
+    ).status(),
+  ).toBe(404);
+  expect(
+    (
+      await reviewLead(
+        request,
+        foreign.id,
+        2,
+        csrf,
+        randomUUID(),
+        'NO_INFRINGEMENT',
+        '不侵权原因',
+      )
+    ).status(),
+  ).toBe(404);
+
+  for (const reason of ['', '   ', 'x'.repeat(5001), 7 as unknown as string]) {
+    const invalid = await reviewLead(
+      request,
+      own.id,
+      2,
+      csrf,
+      randomUUID(),
+      'NO_INFRINGEMENT',
+      reason,
+    );
+    expect(invalid.status(), await invalid.text()).toBe(400);
+    expect(await invalid.json()).toMatchObject({ code: 'VALIDATION_ERROR' });
+  }
+  const stale = await reviewLead(
+    request,
+    own.id,
+    1,
+    csrf,
+    randomUUID(),
+    'NO_INFRINGEMENT',
+    '合理原因',
+  );
+  expect(stale.status()).toBe(409);
+  expect(await stale.json()).toMatchObject({ code: 'VERSION_CONFLICT' });
+
+  const key = randomUUID();
+  const submitted = await reviewLead(
+    request,
+    own.id,
+    2,
+    csrf,
+    key,
+    'NO_INFRINGEMENT',
+    '  经核对，该商品未使用我司权利标识  ',
+  );
+  expect(submitted.status(), await submitted.text()).toBe(201);
+  const firstResult = await submitted.json();
+  expect(firstResult).toMatchObject({
+    id: own.id,
+    status: 'ARCHIVED',
+    version: 3,
+    reviewDecision: {
+      result: 'NO_INFRINGEMENT',
+      reason: '经核对，该商品未使用我司权利标识',
+      archiveType: 'NO_INFRINGEMENT',
+      reviewerDisplayName: '企业审核员',
+    },
+  });
+  expect(firstResult.reviewDecision.archivedAt).toBe(
+    firstResult.reviewDecision.decidedAt,
+  );
+  const persisted = await getLeadReviewDecision(own.id);
+  expect(persisted).toMatchObject({
+    result: 'NO_INFRINGEMENT',
+    reason: '经核对，该商品未使用我司权利标识',
+    archiveType: 'NO_INFRINGEMENT',
+    fromVersion: 2,
+    toVersion: 3,
+  });
+  expect(persisted?.archivedAt?.toISOString()).toBe(
+    firstResult.reviewDecision.archivedAt,
+  );
+  expect(await getLead(own.id)).toMatchObject({
+    status: 'ARCHIVED',
+    version: 3,
+  });
+  expect(await countLeadReviewDecisions(own.id)).toBe(1);
+  expect(await countClientLeadReviewReceipts(own.id)).toBe(1);
+
+  const replay = await reviewLead(
+    request,
+    own.id,
+    2,
+    csrf,
+    key,
+    'NO_INFRINGEMENT',
+    '经核对，该商品未使用我司权利标识',
+  );
+  expect(replay.status()).toBe(201);
+  expect(await replay.json()).toEqual(firstResult);
+  const conflict = await reviewLead(
+    request,
+    own.id,
+    2,
+    csrf,
+    key,
+    'NO_INFRINGEMENT',
+    '另一个原因',
+  );
+  expect(conflict.status()).toBe(409);
+  expect(await conflict.json()).toMatchObject({ code: 'IDEMPOTENCY_CONFLICT' });
+  const wrongState = await reviewLead(
+    request,
+    own.id,
+    3,
+    csrf,
+    randomUUID(),
+    'NO_INFRINGEMENT',
+    '合理原因',
+  );
+  expect(wrongState.status()).toBe(409);
+  expect(await wrongState.json()).toMatchObject({ code: 'INVALID_STATE' });
+  expect(await countLeadReviewDecisions(own.id)).toBe(1);
+  expect(await countClientLeadReviewReceipts(own.id)).toBe(1);
+
+  const processed = await request.get(
+    '/api/v1/client/leads?view=PROCESSED&page=1&pageSize=20',
+  );
+  expect(processed.status()).toBe(200);
+  expect(
+    (await processed.json()).items.map((item: { id: string }) => item.id),
+  ).toContain(own.id);
+  const clientDetail = await request.get(`/api/v1/client/leads/${own.id}`);
+  expect(clientDetail.status()).toBe(200);
+  expect((await clientDetail.json()).reviewDecision).toEqual(
+    firstResult.reviewDecision,
+  );
+  const operatorDetail = await request.get(`/api/v1/leads/${own.id}`, {
+    headers: authorizationA,
+  });
+  expect(operatorDetail.status()).toBe(200);
+  expect((await operatorDetail.json()).reviewDecision).toEqual(
+    firstResult.reviewDecision,
+  );
+});
+
+test('distinct no-infringement keys race safely and injected writes roll back every fact', async ({
+  request,
+}) => {
+  const client = await createClientAccount(request);
+  const racing = await (await createLead(request)).json();
+  const firstFailure = await (await createLead(request)).json();
+  const secondFailure = await (await createLead(request)).json();
+  for (const lead of [racing, firstFailure, secondFailure]) {
+    expect((await pushLead(request, lead.id, 1)).status()).toBe(201);
+  }
+  const csrf = await loginClient(request, client.username, client.password);
+  const responses = await Promise.all([
+    reviewLead(
+      request,
+      racing.id,
+      2,
+      csrf,
+      randomUUID(),
+      'NO_INFRINGEMENT',
+      '核对后确认无侵权',
+    ),
+    reviewLead(
+      request,
+      racing.id,
+      2,
+      csrf,
+      randomUUID(),
+      'NO_INFRINGEMENT',
+      '核对后确认无侵权',
+    ),
+  ]);
+  expect(
+    responses.filter((response) => response.status() === 201),
+  ).toHaveLength(1);
+  expect(
+    responses.filter((response) => response.status() === 409),
+  ).toHaveLength(1);
+  expect(await countLeadReviewDecisions(racing.id)).toBe(1);
+  expect(await countClientLeadReviewReceipts(racing.id)).toBe(1);
+
+  await rejectLeadReviewDecisionWrites();
+  expect(
+    (
+      await reviewLead(
+        request,
+        firstFailure.id,
+        2,
+        csrf,
+        randomUUID(),
+        'NO_INFRINGEMENT',
+        '核对后确认无侵权',
+      )
+    ).status(),
+  ).toBe(500);
+  await allowInjectedFailures();
+  expect(await getLead(firstFailure.id)).toMatchObject({
+    status: 'WAITING_REVIEW',
+    version: 2,
+  });
+  expect(await countLeadReviewDecisions(firstFailure.id)).toBe(0);
+  expect(await countClientLeadReviewReceipts(firstFailure.id)).toBe(0);
+
+  await rejectClientLeadReviewReceiptWrites();
+  expect(
+    (
+      await reviewLead(
+        request,
+        secondFailure.id,
+        2,
+        csrf,
+        randomUUID(),
+        'NO_INFRINGEMENT',
+        '核对后确认无侵权',
+      )
+    ).status(),
+  ).toBe(500);
+  await allowInjectedFailures();
+  expect(await getLead(secondFailure.id)).toMatchObject({
+    status: 'WAITING_REVIEW',
+    version: 2,
+  });
+  expect(await countLeadReviewDecisions(secondFailure.id)).toBe(0);
+  expect(await countClientLeadReviewReceipts(secondFailure.id)).toBe(0);
+});
+
+test('account, binding and admission revocation deny no-infringement review', async ({
+  request,
+}) => {
+  const client = await createClientAccount(request);
+  const lead = await (await createLead(request)).json();
+  expect((await pushLead(request, lead.id, 1)).status()).toBe(201);
+  let csrf = await loginClient(request, client.username, client.password);
+  const submit = () =>
+    reviewLead(
+      request,
+      lead.id,
+      2,
+      csrf,
+      randomUUID(),
+      'NO_INFRINGEMENT',
+      '核对后确认无侵权',
+    );
+
+  await setClientUserActive(coreLeadFixtures.admittedCustomer, false);
+  expect((await submit()).status()).toBe(401);
+  await setClientUserActive(coreLeadFixtures.admittedCustomer, true);
+  csrf = await loginClient(request, client.username, client.password);
+
+  await setClientBindingActive(coreLeadFixtures.admittedCustomer, false);
+  expect([401, 403]).toContain((await submit()).status());
+  await setClientBindingActive(coreLeadFixtures.admittedCustomer, true);
+  csrf = await loginClient(request, client.username, client.password);
+
+  await setCustomerStatus(coreLeadFixtures.admittedCustomer, 'DRAFT');
+  expect([401, 403]).toContain((await submit()).status());
+  expect(await countLeadReviewDecisions(lead.id)).toBe(0);
+  expect(await countClientLeadReviewReceipts(lead.id)).toBe(0);
+  expect(await getLead(lead.id)).toMatchObject({
+    status: 'WAITING_REVIEW',
+    version: 2,
+  });
 });
 
 test('two distinct client review keys allow exactly one committed decision', async ({
