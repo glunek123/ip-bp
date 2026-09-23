@@ -1,9 +1,15 @@
 <script setup lang="ts">
-import { onBeforeUnmount, onMounted, ref } from 'vue';
+import { computed, onBeforeUnmount, onMounted, ref } from 'vue';
 import { RouterLink, useRoute } from 'vue-router';
 import { ElButton } from 'element-plus/es/components/button/index.mjs';
+import RequiredFieldMark from '../../app/RequiredFieldMark.vue';
 import { ApiError } from '../../api/http';
-import { getLead, pushLead, type LeadDetail } from '../../api/leads';
+import {
+  applyLeadWithdrawal,
+  getLead,
+  pushLead,
+  type LeadDetail,
+} from '../../api/leads';
 import { getCustomer } from '../../api/customers';
 import { getCustomerRightsHolder } from '../../api/rights-holders';
 import {
@@ -24,7 +30,24 @@ const downloadError = ref('');
 const pushing = ref(false);
 const pushError = ref('');
 const pushSuccess = ref('');
+const withdrawalReason = ref('');
+const withdrawalSubmitting = ref(false);
+const withdrawalError = ref('');
+const withdrawalSuccess = ref('');
+const withdrawalRetryLocked = ref(false);
+const normalizedWithdrawalReason = computed(() =>
+  withdrawalReason.value.trim(),
+);
+const withdrawalReasonLength = computed(
+  () => [...normalizedWithdrawalReason.value].length,
+);
+const withdrawalReasonTooLong = computed(
+  () => withdrawalReasonLength.value > 5000,
+);
 let pushKey: string | undefined;
+let withdrawalKey: string | undefined;
+let frozenWithdrawalReason: string | undefined;
+let frozenWithdrawalVersion: number | undefined;
 let request: AbortController | undefined;
 const labels: Record<string, string> = {
   CIVIL: '民事',
@@ -161,6 +184,82 @@ function pushErrorMessage(error: unknown): string {
   };
   return messages[error.code] ?? error.message;
 }
+function withdrawalErrorMessage(error: unknown): string {
+  if (!(error instanceof ApiError))
+    return '申请结果暂时未知，可使用同一原因和请求安全重试';
+  if (error.code === 'VERSION_CONFLICT' || error.code === 'INVALID_STATE') {
+    withdrawalKey = undefined;
+    frozenWithdrawalReason = undefined;
+    frozenWithdrawalVersion = undefined;
+    withdrawalRetryLocked.value = false;
+    return '线索状态已变化，请刷新查看最新结果';
+  }
+  if (error.code === 'ACTION_FORBIDDEN' || error.code === 'RESOURCE_NOT_FOUND')
+    return '当前账号无权申请撤回此线索，请刷新页面或联系管理员';
+  if (error.code === 'IDEMPOTENCY_CONFLICT') {
+    withdrawalKey = undefined;
+    frozenWithdrawalReason = undefined;
+    frozenWithdrawalVersion = undefined;
+    frozenWithdrawalVersion = undefined;
+    withdrawalRetryLocked.value = false;
+    return '本次申请请求冲突，请核对线索状态后重新填写';
+  }
+  if (error.code === 'NETWORK_ERROR' || error.code === 'TIMEOUT')
+    return '申请结果暂时未知；原因和请求键已锁定，可安全重试或刷新查看结果';
+  return '申请撤回失败，请稍后重试';
+}
+function makeWithdrawalKey(): string {
+  return (
+    globalThis.crypto?.randomUUID?.() ??
+    `lead-withdraw-${Date.now()}-${Math.random().toString(16).slice(2)}`
+  );
+}
+async function applyWithdrawal(): Promise<void> {
+  if (
+    !lead.value ||
+    !lead.value.capabilities.withdrawApply ||
+    lead.value.status !== 'ARCHIVED' ||
+    withdrawalSubmitting.value
+  )
+    return;
+  const reason = withdrawalRetryLocked.value
+    ? frozenWithdrawalReason
+    : normalizedWithdrawalReason.value;
+  if (!reason || [...reason].length > 5000) return;
+  if (
+    !globalThis.window.confirm(
+      '提交申请后线索仍保持归档，只有原客户企业确认后才会回到待审核。确定申请撤回归档吗？',
+    )
+  )
+    return;
+  frozenWithdrawalReason ??= reason;
+  frozenWithdrawalVersion ??= lead.value.version;
+  withdrawalReason.value = frozenWithdrawalReason;
+  withdrawalRetryLocked.value = true;
+  withdrawalKey ??= makeWithdrawalKey();
+  withdrawalError.value = '';
+  withdrawalSuccess.value = '';
+  withdrawalSubmitting.value = true;
+  try {
+    await applyLeadWithdrawal(
+      lead.value.id,
+      frozenWithdrawalReason,
+      frozenWithdrawalVersion,
+      withdrawalKey,
+    );
+    withdrawalKey = undefined;
+    frozenWithdrawalReason = undefined;
+    frozenWithdrawalVersion = undefined;
+    withdrawalRetryLocked.value = false;
+    withdrawalSuccess.value =
+      '已提交撤回申请；线索仍保持归档，等待原客户企业确认';
+    await load();
+  } catch (error) {
+    withdrawalError.value = withdrawalErrorMessage(error);
+  } finally {
+    withdrawalSubmitting.value = false;
+  }
+}
 async function push(): Promise<void> {
   if (!lead.value || !lead.value.capabilities.push || pushing.value) return;
   if (
@@ -236,6 +335,22 @@ onBeforeUnmount(() => request?.abort());
           role="alert"
         >
           {{ pushError }}
+        </p>
+        <p
+          v-if="withdrawalSuccess"
+          class="submit-success"
+          data-test="withdrawal-success"
+          role="status"
+        >
+          {{ withdrawalSuccess }}
+        </p>
+        <p
+          v-if="withdrawalError"
+          class="submit-error"
+          data-test="withdrawal-error"
+          role="alert"
+        >
+          {{ withdrawalError }}
         </p>
         <section class="demo-card demo-card--pad">
           <dl class="demo-detail-grid" data-test="lead-facts">
@@ -388,6 +503,105 @@ onBeforeUnmount(() => request?.abort());
               </dd>
             </div>
           </dl>
+        </section>
+        <section
+          v-if="lead.pendingWithdrawalApplication"
+          class="demo-card demo-card--pad"
+          data-test="withdrawal-pending"
+        >
+          <h2 class="form-section-title">待客户确认的撤回申请</h2>
+          <p>
+            申请人：{{ lead.pendingWithdrawalApplication.applicantDisplayName }}
+          </p>
+          <p>
+            申请时间：{{
+              formatTime(lead.pendingWithdrawalApplication.appliedAt)
+            }}
+          </p>
+          <p>申请原因：{{ lead.pendingWithdrawalApplication.reason }}</p>
+          <p>线索仍保持归档，等待原客户企业确认。</p>
+        </section>
+        <section
+          v-if="lead.capabilities.withdrawApply"
+          class="demo-card demo-card--pad"
+          data-test="withdrawal-form"
+        >
+          <h2 class="form-section-title">申请撤回归档</h2>
+          <p>
+            说明申请原因。提交后线索仍保持归档；原客户企业确认后才会回到待审核。
+          </p>
+          <label
+            class="field-label field-label--spaced"
+            for="withdrawal-reason"
+          >
+            撤回原因<RequiredFieldMark />
+          </label>
+          <textarea
+            id="withdrawal-reason"
+            v-model="withdrawalReason"
+            class="text-area"
+            data-test="withdrawal-reason"
+            aria-required="true"
+            :disabled="withdrawalSubmitting || withdrawalRetryLocked"
+          />
+          <p class="field-help" aria-live="polite">
+            已输入 {{ withdrawalReasonLength }} / 5000 个字符（按 Unicode
+            码点计）
+          </p>
+          <p v-if="withdrawalReasonTooLong" class="field-error" role="alert">
+            撤回原因最多为 5000 个 Unicode 码点。
+          </p>
+          <p v-if="withdrawalRetryLocked" class="field-help">
+            提交结果未确认，原因已锁定；可使用同一请求安全重试，或刷新查看结果。
+          </p>
+          <ElButton
+            type="primary"
+            data-test="apply-withdrawal"
+            :loading="withdrawalSubmitting"
+            :disabled="
+              withdrawalSubmitting ||
+              !normalizedWithdrawalReason ||
+              withdrawalReasonTooLong
+            "
+            @click="applyWithdrawal"
+            >申请撤回归档</ElButton
+          >
+        </section>
+        <section
+          v-if="lead.history?.length"
+          class="demo-card demo-card--pad"
+          data-test="withdrawal-history"
+        >
+          <h2 class="form-section-title">审核和撤回历史</h2>
+          <ol>
+            <li v-for="item in lead.history" :key="item.id">
+              {{
+                item.kind === 'REVIEW_DECISION'
+                  ? '客户审核'
+                  : item.kind === 'WITHDRAWAL_APPLICATION'
+                    ? '撤回申请'
+                    : '客户确认撤回'
+              }}
+              · {{ formatTime(item.occurredAt) }}
+              <span v-if="item.reviewerDisplayName">
+                · {{ item.reviewerDisplayName }}</span
+              >
+              <span v-if="item.applicantDisplayName">
+                · {{ item.applicantDisplayName }}</span
+              >
+              <span v-if="item.result">
+                ·
+                {{
+                  item.result === 'NO_INFRINGEMENT'
+                    ? '判定不侵权'
+                    : item.result === 'INFRINGEMENT'
+                      ? '确认侵权'
+                      : item.result
+                }}</span
+              >
+              <span v-if="item.reason"> · {{ item.reason }}</span>
+            </li>
+          </ol>
         </section>
         <section class="demo-card demo-card--pad lead-record-meta">
           <h2 class="form-section-title">记录信息</h2>

@@ -45,7 +45,30 @@ export type ClientLead = {
   leadScreenshotContentVersionIds: string[];
   pushedAt: string;
   reviewDecision: ClientLeadReviewDecision | null;
-  capabilities: { review: boolean };
+  pendingWithdrawalApplication: ClientLeadPendingWithdrawal | null;
+  history: ClientLeadHistory[];
+  capabilities: { review: boolean; confirmWithdrawal: boolean };
+};
+export type ClientLeadPendingWithdrawal = {
+  id: string;
+  reason: string;
+  applicantDisplayName: string;
+  appliedAt: string;
+};
+export type ClientLeadHistory = {
+  kind:
+    'REVIEW_DECISION' | 'WITHDRAWAL_APPLICATION' | 'WITHDRAWAL_CONFIRMATION';
+  id: string;
+  fromVersion: number;
+  toVersion: number;
+  occurredAt: string;
+  result?: string;
+  reason?: string | null;
+  reviewerDisplayName?: string;
+  applicantDisplayName?: string;
+  applicationId?: string;
+  archiveType?: string | null;
+  archivedAt?: string | null;
 };
 
 export type ClientLeadReviewResult =
@@ -69,6 +92,15 @@ export type ClientLeadList = {
   total: number;
   page: number;
   pageSize: number;
+};
+export type ClientLeadWithdrawalConfirmationResult = {
+  id: string;
+  applicationId: string;
+  leadId: string;
+  status: 'WAITING_REVIEW';
+  version: number;
+  confirmedByDisplayName: string;
+  confirmedAt: string;
 };
 
 function isRecord(value: unknown): value is Record<string, unknown> {
@@ -114,6 +146,8 @@ const clientLeadKeys = [
   'leadScreenshotContentVersionIds',
   'pushedAt',
   'reviewDecision',
+  'pendingWithdrawalApplication',
+  'history',
   'capabilities',
 ] as const;
 
@@ -196,6 +230,48 @@ function isClientReviewDecision(
   );
 }
 
+function isPendingWithdrawal(
+  value: unknown,
+): value is ClientLeadPendingWithdrawal | null {
+  return (
+    value === null ||
+    (isRecord(value) &&
+      typeof value.id === 'string' &&
+      typeof value.reason === 'string' &&
+      [...value.reason].length >= 1 &&
+      [...value.reason].length <= 5000 &&
+      typeof value.applicantDisplayName === 'string' &&
+      isDateTime(value.appliedAt))
+  );
+}
+
+function isClientHistory(value: unknown): value is ClientLeadHistory[] {
+  return (
+    Array.isArray(value) &&
+    value.every(
+      (item) =>
+        isRecord(item) &&
+        (item.kind === 'REVIEW_DECISION' ||
+          item.kind === 'WITHDRAWAL_APPLICATION' ||
+          item.kind === 'WITHDRAWAL_CONFIRMATION') &&
+        typeof item.id === 'string' &&
+        Number.isInteger(item.fromVersion) &&
+        Number.isInteger(item.toVersion) &&
+        (item.toVersion as number) > (item.fromVersion as number) &&
+        isDateTime(item.occurredAt) &&
+        (item.reason === undefined ||
+          item.reason === null ||
+          typeof item.reason === 'string') &&
+        (item.applicantDisplayName === undefined ||
+          typeof item.applicantDisplayName === 'string') &&
+        (item.reviewerDisplayName === undefined ||
+          typeof item.reviewerDisplayName === 'string') &&
+        (item.applicationId === undefined ||
+          typeof item.applicationId === 'string'),
+    )
+  );
+}
+
 function isClientLead(value: unknown): value is ClientLead {
   if (!isRecord(value)) return false;
   return (
@@ -227,23 +303,34 @@ function isClientLead(value: unknown): value is ClientLead {
     new Set(value.leadScreenshotContentVersionIds).size ===
       value.leadScreenshotContentVersionIds.length &&
     isDateTime(value.pushedAt) &&
+    isPendingWithdrawal(value.pendingWithdrawalApplication) &&
+    isClientHistory(value.history) &&
     ((value.status === 'WAITING_REVIEW' &&
       value.reviewDecision === null &&
+      value.pendingWithdrawalApplication === null &&
       isRecord(value.capabilities) &&
-      hasExactKeys(value.capabilities, ['review']) &&
-      value.capabilities.review === true) ||
+      hasExactKeys(value.capabilities, ['review', 'confirmWithdrawal']) &&
+      value.capabilities.review === true &&
+      value.capabilities.confirmWithdrawal === false) ||
       (value.status === 'WAITING_EVIDENCE_DECISION' &&
         isClientReviewDecision(value.reviewDecision) &&
         value.reviewDecision.result === 'INFRINGEMENT' &&
+        value.pendingWithdrawalApplication === null &&
         isRecord(value.capabilities) &&
-        hasExactKeys(value.capabilities, ['review']) &&
-        value.capabilities.review === false) ||
+        hasExactKeys(value.capabilities, ['review', 'confirmWithdrawal']) &&
+        value.capabilities.review === false &&
+        value.capabilities.confirmWithdrawal === false) ||
       (value.status === 'ARCHIVED' &&
+        isRecord(value.capabilities) &&
+        hasExactKeys(value.capabilities, ['review', 'confirmWithdrawal']) &&
         isClientReviewDecision(value.reviewDecision) &&
         value.reviewDecision.result === 'NO_INFRINGEMENT' &&
-        isRecord(value.capabilities) &&
-        hasExactKeys(value.capabilities, ['review']) &&
-        value.capabilities.review === false))
+        (value.pendingWithdrawalApplication === null ||
+          (value.pendingWithdrawalApplication !== null &&
+            value.capabilities.confirmWithdrawal === true)) &&
+        value.capabilities.review === false &&
+        value.capabilities.confirmWithdrawal ===
+          (value.pendingWithdrawalApplication !== null)))
   );
 }
 
@@ -292,9 +379,12 @@ export async function listClientLeads(
       (item) =>
         isClientLead(item) &&
         (view === 'PENDING'
-          ? item.status === 'WAITING_REVIEW'
+          ? item.status === 'WAITING_REVIEW' ||
+            (item.status === 'ARCHIVED' &&
+              item.pendingWithdrawalApplication !== null)
           : item.status === 'WAITING_EVIDENCE_DECISION' ||
-            item.status === 'ARCHIVED'),
+            (item.status === 'ARCHIVED' &&
+              item.pendingWithdrawalApplication === null)),
     ) ||
     !Number.isInteger(value.total) ||
     (value.total as number) < 0 ||
@@ -351,6 +441,36 @@ export async function reviewClientLeadNoInfringement(
   if (!isClientLeadReviewResult(value, expectedVersion, 'NO_INFRINGEMENT'))
     throw invalidResponse();
   return value;
+}
+
+export async function confirmClientLeadWithdrawal(
+  id: string,
+  applicationId: string,
+  expectedVersion: number,
+  idempotencyKey: string,
+  options: RequestOptions = {},
+): Promise<ClientLeadWithdrawalConfirmationResult> {
+  const value = await requestJson(
+    `/client/leads/${encodeURIComponent(id)}/withdrawal-confirmations`,
+    {
+      ...options,
+      method: 'POST',
+      headers: { ...options.headers, 'Idempotency-Key': idempotencyKey },
+      body: { applicationId, expectedVersion },
+    },
+  );
+  if (
+    !isRecord(value) ||
+    typeof value.id !== 'string' ||
+    value.applicationId !== applicationId ||
+    value.leadId !== id ||
+    value.status !== 'WAITING_REVIEW' ||
+    value.version !== expectedVersion + 1 ||
+    typeof value.confirmedByDisplayName !== 'string' ||
+    !isDateTime(value.confirmedAt)
+  )
+    throw invalidResponse();
+  return value as ClientLeadWithdrawalConfirmationResult;
 }
 
 export async function getClientLead(

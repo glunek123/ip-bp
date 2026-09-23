@@ -145,7 +145,39 @@ export type Lead = {
   updatedAt: string;
 };
 export type LeadDetail = Lead & {
-  capabilities: { edit: boolean; push: boolean };
+  capabilities: { edit: boolean; push: boolean; withdrawApply: boolean };
+  pendingWithdrawalApplication: LeadWithdrawalApplication | null;
+  history: LeadHistory[];
+};
+export type LeadWithdrawalApplication = {
+  id: string;
+  reason: string;
+  applicantDisplayName: string;
+  appliedAt: string;
+};
+export type LeadHistory = {
+  kind:
+    'REVIEW_DECISION' | 'WITHDRAWAL_APPLICATION' | 'WITHDRAWAL_CONFIRMATION';
+  id: string;
+  fromVersion: number;
+  toVersion: number;
+  occurredAt: string;
+  result?: string;
+  reason?: string | null;
+  reviewerDisplayName?: string;
+  applicantDisplayName?: string;
+  applicationId?: string;
+  archiveType?: string | null;
+  archivedAt?: string | null;
+};
+export type LeadWithdrawalApplicationResult = {
+  id: string;
+  leadId: string;
+  status: 'ARCHIVED';
+  version: number;
+  reason: string;
+  applicantDisplayName: string;
+  appliedAt: string;
 };
 export type LeadPushResult = {
   id: string;
@@ -467,18 +499,102 @@ export async function getLead(
   options: RequestOptions = {},
 ): Promise<LeadDetail> {
   const data = await getJson(`/leads/${encodeURIComponent(id)}`, options);
-  const capabilities = isRecord(data) ? data.capabilities : undefined;
+  if (!isRecord(data)) throw invalidResponse();
+  const detail: Record<string, unknown> = data;
+  const capabilities = detail.capabilities;
+  const history = detail.history;
+  const pendingWithdrawalApplication = detail.pendingWithdrawalApplication;
   if (
     !isLead(data) ||
     !isRecord(capabilities) ||
     typeof capabilities.edit !== 'boolean' ||
-    typeof capabilities.push !== 'boolean'
+    typeof capabilities.push !== 'boolean' ||
+    typeof capabilities.withdrawApply !== 'boolean' ||
+    !isLeadHistory(history) ||
+    !isPendingWithdrawalApplication(pendingWithdrawalApplication)
   )
     throw invalidResponse();
   return {
     ...data,
-    capabilities: { edit: capabilities.edit, push: capabilities.push },
+    pendingWithdrawalApplication,
+    history,
+    capabilities: {
+      edit: capabilities.edit,
+      push: capabilities.push,
+      withdrawApply: capabilities.withdrawApply,
+    },
   };
+}
+
+function isPendingWithdrawalApplication(
+  value: unknown,
+): value is LeadWithdrawalApplication | null {
+  return (
+    value === null ||
+    (isRecord(value) &&
+      typeof value.id === 'string' &&
+      typeof value.reason === 'string' &&
+      [...value.reason].length >= 1 &&
+      [...value.reason].length <= 5000 &&
+      typeof value.applicantDisplayName === 'string' &&
+      isDateTime(value.appliedAt))
+  );
+}
+
+function isLeadHistory(value: unknown): value is LeadHistory[] {
+  return (
+    Array.isArray(value) &&
+    value.every(
+      (item) =>
+        isRecord(item) &&
+        (item.kind === 'REVIEW_DECISION' ||
+          item.kind === 'WITHDRAWAL_APPLICATION' ||
+          item.kind === 'WITHDRAWAL_CONFIRMATION') &&
+        typeof item.id === 'string' &&
+        Number.isInteger(item.fromVersion) &&
+        Number.isInteger(item.toVersion) &&
+        (item.toVersion as number) > (item.fromVersion as number) &&
+        isDateTime(item.occurredAt) &&
+        (item.reason === undefined ||
+          item.reason === null ||
+          typeof item.reason === 'string') &&
+        (item.applicantDisplayName === undefined ||
+          typeof item.applicantDisplayName === 'string') &&
+        (item.reviewerDisplayName === undefined ||
+          typeof item.reviewerDisplayName === 'string') &&
+        (item.applicationId === undefined ||
+          typeof item.applicationId === 'string'),
+    )
+  );
+}
+
+export async function applyLeadWithdrawal(
+  id: string,
+  reason: string,
+  expectedVersion: number,
+  idempotencyKey: string,
+): Promise<LeadWithdrawalApplicationResult> {
+  const data = await requestJson(
+    `/leads/${encodeURIComponent(id)}/withdrawal-applications`,
+    {
+      method: 'POST',
+      headers: { 'Idempotency-Key': idempotencyKey },
+      body: { reason, expectedVersion },
+    },
+  );
+  if (
+    !isRecord(data) ||
+    typeof data.id !== 'string' ||
+    typeof data.leadId !== 'string' ||
+    data.leadId !== id ||
+    data.status !== 'ARCHIVED' ||
+    data.version !== expectedVersion + 1 ||
+    typeof data.reason !== 'string' ||
+    typeof data.applicantDisplayName !== 'string' ||
+    !isDateTime(data.appliedAt)
+  )
+    throw invalidResponse();
+  return data as LeadWithdrawalApplicationResult;
 }
 
 export async function pushLead(

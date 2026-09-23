@@ -5,6 +5,7 @@ import { ElButton } from 'element-plus/es/components/button/index.mjs';
 import RequiredFieldMark from '../../app/RequiredFieldMark.vue';
 import { ApiError } from '../../api/http';
 import {
+  confirmClientLeadWithdrawal,
   getClientLead,
   reviewClientLead,
   reviewClientLeadNoInfringement,
@@ -24,6 +25,8 @@ const screenshots = ref<
 const downloadError = ref('');
 const reviewError = ref('');
 const reviewSuccess = ref('');
+const withdrawalError = ref('');
+const withdrawalSuccess = ref('');
 const reviewing = ref(false);
 const noInfringementReason = ref('');
 const noInfringementRetryLocked = ref(false);
@@ -39,6 +42,9 @@ const noInfringementReasonTooLong = computed(
 let reviewKey: string | undefined;
 let noInfringementKey: string | undefined;
 let frozenNoInfringementReason: string | undefined;
+let withdrawalKey: string | undefined;
+let frozenWithdrawalPayload:
+  { applicationId: string; expectedVersion: number } | undefined;
 let request: AbortController | undefined;
 
 const returnTo = computed(() => {
@@ -110,6 +116,63 @@ function makeReviewKey(): string {
     globalThis.crypto?.randomUUID?.() ??
     `client-lead-review-${Date.now()}-${Math.random().toString(16).slice(2)}`
   );
+}
+
+async function confirmWithdrawal(): Promise<void> {
+  if (
+    !lead.value?.capabilities.confirmWithdrawal ||
+    !lead.value.pendingWithdrawalApplication ||
+    reviewing.value
+  )
+    return;
+  const payload = frozenWithdrawalPayload ?? {
+    applicationId: lead.value.pendingWithdrawalApplication.id,
+    expectedVersion: lead.value.version,
+  };
+  if (
+    !globalThis.window.confirm(
+      '确认后线索回到待审核，原结论和归档记录保留。确定确认撤回吗？',
+    )
+  )
+    return;
+  frozenWithdrawalPayload = payload;
+  withdrawalKey ??= makeReviewKey();
+  withdrawalError.value = '';
+  withdrawalSuccess.value = '';
+  reviewing.value = true;
+  try {
+    await confirmClientLeadWithdrawal(
+      lead.value.id,
+      payload.applicationId,
+      payload.expectedVersion,
+      withdrawalKey,
+    );
+    withdrawalKey = undefined;
+    frozenWithdrawalPayload = undefined;
+    withdrawalSuccess.value =
+      '已确认撤回，线索回到待审核；原结论和归档记录仍保留';
+    await load();
+  } catch (error) {
+    const code = error instanceof ApiError ? error.code : '';
+    if (code === 'VERSION_CONFLICT' || code === 'INVALID_STATE') {
+      withdrawalKey = undefined;
+      frozenWithdrawalPayload = undefined;
+      withdrawalError.value = '线索状态已变化，请刷新查看最新结果';
+    } else if (code === 'ACTION_FORBIDDEN' || code === 'RESOURCE_NOT_FOUND') {
+      withdrawalError.value = '当前账号无权确认此申请，请刷新登录状态后重试';
+    } else if (code === 'IDEMPOTENCY_CONFLICT') {
+      withdrawalKey = undefined;
+      frozenWithdrawalPayload = undefined;
+      withdrawalError.value = '本次确认请求冲突，请刷新后重新确认';
+    } else if (code === 'NETWORK_ERROR' || code === 'TIMEOUT') {
+      withdrawalError.value =
+        '确认结果暂时未知；请求已锁定，可安全重试或刷新查看结果';
+    } else {
+      withdrawalError.value = '确认撤回失败，请稍后重试';
+    }
+  } finally {
+    reviewing.value = false;
+  }
 }
 
 async function confirmInfringement(): Promise<void> {
@@ -273,6 +336,22 @@ onBeforeUnmount(() => request?.abort());
       <p v-if="reviewSuccess" role="status" class="submit-success">
         {{ reviewSuccess }}
       </p>
+      <p
+        v-if="withdrawalSuccess"
+        role="status"
+        class="submit-success"
+        data-test="withdrawal-success"
+      >
+        {{ withdrawalSuccess }}
+      </p>
+      <p
+        v-if="withdrawalError"
+        role="alert"
+        class="field-error"
+        data-test="withdrawal-error"
+      >
+        {{ withdrawalError }}
+      </p>
       <section v-if="state === 'loading'" class="state-panel ledger-panel">
         <h1>正在读取线索</h1>
       </section>
@@ -299,6 +378,34 @@ onBeforeUnmount(() => request?.abort());
           <ElButton data-test="refresh" text @click="load">刷新</ElButton>
         </div>
         <section class="demo-card demo-card--pad">
+          <section
+            v-if="lead.pendingWithdrawalApplication"
+            class="client-review-record"
+            data-test="withdrawal-application"
+          >
+            <h2 class="form-section-title">待确认撤回申请</h2>
+            <p>
+              申请人：{{
+                lead.pendingWithdrawalApplication.applicantDisplayName
+              }}
+            </p>
+            <p>
+              申请时间：{{
+                formatTime(lead.pendingWithdrawalApplication.appliedAt)
+              }}
+            </p>
+            <p>申请原因：{{ lead.pendingWithdrawalApplication.reason }}</p>
+            <p>确认后回到待审核，原结论和归档记录保留。</p>
+            <ElButton
+              v-if="lead.capabilities.confirmWithdrawal"
+              data-test="confirm-withdrawal"
+              type="primary"
+              :loading="reviewing"
+              :disabled="reviewing"
+              @click="confirmWithdrawal"
+              >确认撤回归档</ElButton
+            >
+          </section>
           <dl class="demo-detail-grid" data-test="client-lead-facts">
             <div>
               <dt>权利人</dt>
@@ -494,6 +601,42 @@ onBeforeUnmount(() => request?.abort());
           <p v-if="!lead.reviewDecision">
             当前可查看线索内容；如需补充或反馈，请联系负责运营。
           </p>
+          <section
+            v-if="lead.history?.length"
+            data-test="client-withdrawal-history"
+            class="client-review-record"
+          >
+            <h2 class="form-section-title">审核和撤回历史</h2>
+            <ol>
+              <li v-for="item in lead.history" :key="item.id">
+                {{
+                  item.kind === 'REVIEW_DECISION'
+                    ? '客户审核'
+                    : item.kind === 'WITHDRAWAL_APPLICATION'
+                      ? '撤回申请'
+                      : '客户确认撤回'
+                }}
+                · {{ formatTime(item.occurredAt) }}
+                <span v-if="item.reviewerDisplayName">
+                  · {{ item.reviewerDisplayName }}</span
+                >
+                <span v-if="item.applicantDisplayName">
+                  · {{ item.applicantDisplayName }}</span
+                >
+                <span v-if="item.result">
+                  ·
+                  {{
+                    item.result === 'NO_INFRINGEMENT'
+                      ? '判定不侵权'
+                      : item.result === 'INFRINGEMENT'
+                        ? '确认侵权'
+                        : item.result
+                  }}</span
+                >
+                <span v-if="item.reason"> · {{ item.reason }}</span>
+              </li>
+            </ol>
+          </section>
         </section>
       </template>
     </main>

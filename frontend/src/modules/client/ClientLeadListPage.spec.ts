@@ -75,6 +75,42 @@ describe('ClientLeadListPage', () => {
     ).toBe(false);
   });
 
+  it('labels a pending archive withdrawal in the pending queue and excludes it from processed', async () => {
+    const withdrawal = {
+      ...archivedLead,
+      pendingWithdrawalApplication: {
+        id: 'application-1',
+        reason: '补充证据',
+        applicantDisplayName: '运营甲',
+        appliedAt: '2026-09-22T04:00:00.000Z',
+      },
+      history: [],
+      capabilities: { review: false, confirmWithdrawal: true },
+    };
+    api.listClientLeads.mockResolvedValueOnce({
+      items: [withdrawal],
+      total: 1,
+      page: 1,
+      pageSize: 20,
+    });
+    const { wrapper } = await mountPage();
+    expect(wrapper.get('[data-test="client-lead-row"]').text()).toContain(
+      '待确认撤回',
+    );
+    expect(
+      wrapper.get('[data-test="client-lead-row"] a').attributes('href'),
+    ).toContain('/client/leads/lead-1');
+
+    await wrapper.get('[data-test="client-view-processed"]').trigger('click');
+    await flushPromises();
+    expect(api.listClientLeads).toHaveBeenLastCalledWith(
+      'PROCESSED',
+      1,
+      20,
+      expect.anything(),
+    );
+  });
+
   it('loads the pending queue by default and switches to processed at page one', async () => {
     const { wrapper, router } = await mountPage(
       '/client/leads?view=pending&page=3',

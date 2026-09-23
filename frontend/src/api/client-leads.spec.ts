@@ -12,6 +12,7 @@ import {
   listClientLeads,
   reviewClientLead,
   reviewClientLeadNoInfringement,
+  confirmClientLeadWithdrawal,
 } from './client-leads';
 
 const lead = {
@@ -42,7 +43,9 @@ const lead = {
   leadScreenshotContentVersionIds: ['version-1'],
   pushedAt: '2026-09-22T02:00:00.000Z',
   reviewDecision: null,
-  capabilities: { review: true },
+  pendingWithdrawalApplication: null,
+  history: [],
+  capabilities: { review: true, confirmWithdrawal: false },
 };
 
 const reviewedLead = {
@@ -54,7 +57,7 @@ const reviewedLead = {
     reviewerDisplayName: '企业审核员',
     decidedAt: '2026-09-22T03:00:00.000Z',
   },
-  capabilities: { review: false },
+  capabilities: { review: false, confirmWithdrawal: false },
 };
 const archivedLead = {
   ...lead,
@@ -68,7 +71,9 @@ const archivedLead = {
     archiveType: 'NO_INFRINGEMENT',
     archivedAt: '2026-09-22T03:00:00.000Z',
   },
-  capabilities: { review: false },
+  pendingWithdrawalApplication: null,
+  history: [],
+  capabilities: { review: false, confirmWithdrawal: false },
 };
 
 beforeEach(() => vi.resetAllMocks());
@@ -92,6 +97,69 @@ describe('client lead API', () => {
     http.getJson.mockResolvedValue(lead);
     await expect(getClientLead('lead/1')).resolves.toEqual(lead);
     expect(http.getJson).toHaveBeenLastCalledWith('/client/leads/lead%2F1', {});
+  });
+
+  it('decodes pending withdrawal and submits confirmation with version and key', async () => {
+    const pending = {
+      ...archivedLead,
+      pendingWithdrawalApplication: {
+        id: 'application-1',
+        reason: '补充证据',
+        applicantDisplayName: '运营甲',
+        appliedAt: '2026-09-22T04:00:00.000Z',
+      },
+      history: [
+        {
+          kind: 'WITHDRAWAL_APPLICATION',
+          id: 'application-1',
+          fromVersion: 3,
+          toVersion: 4,
+          occurredAt: '2026-09-22T04:00:00.000Z',
+          reason: '补充证据',
+          applicantDisplayName: '运营甲',
+        },
+      ],
+      version: 4,
+      capabilities: { review: false, confirmWithdrawal: true },
+    };
+    http.getJson.mockResolvedValue(pending);
+    await expect(getClientLead('lead-1')).resolves.toMatchObject({
+      pendingWithdrawalApplication: { applicantDisplayName: '运营甲' },
+      capabilities: { confirmWithdrawal: true },
+    });
+    http.getJson.mockResolvedValue({
+      items: [pending],
+      total: 1,
+      page: 1,
+      pageSize: 20,
+    });
+    await expect(listClientLeads('PENDING')).resolves.toMatchObject({
+      items: [pending],
+    });
+    await expect(listClientLeads('PROCESSED')).rejects.toMatchObject({
+      code: 'INVALID_RESPONSE',
+    });
+
+    http.requestJson.mockResolvedValue({
+      id: 'confirmation-1',
+      applicationId: 'application-1',
+      leadId: 'lead-1',
+      status: 'WAITING_REVIEW',
+      version: 5,
+      confirmedByDisplayName: '客户甲',
+      confirmedAt: '2026-09-22T05:00:00.000Z',
+    });
+    await expect(
+      confirmClientLeadWithdrawal('lead-1', 'application-1', 4, 'confirm-key'),
+    ).resolves.toMatchObject({ status: 'WAITING_REVIEW', version: 5 });
+    expect(http.requestJson).toHaveBeenCalledWith(
+      '/client/leads/lead-1/withdrawal-confirmations',
+      {
+        method: 'POST',
+        headers: { 'Idempotency-Key': 'confirm-key' },
+        body: { applicationId: 'application-1', expectedVersion: 4 },
+      },
+    );
   });
 
   it('decodes processed decisions but rejects status, decision and capability mismatches', async () => {

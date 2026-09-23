@@ -15,6 +15,7 @@ import {
   getLeadFormContext,
   listLeads,
   pushLead,
+  applyLeadWithdrawal,
   updateLead,
 } from './leads';
 
@@ -76,6 +77,8 @@ const lead = {
   pushedByUserId: null,
   pushedByDisplayName: null,
   reviewDecision: null,
+  pendingWithdrawalApplication: null,
+  history: [],
   createdAt: '2026-09-21T04:00:00.000Z',
   updatedAt: '2026-09-21T04:00:00.000Z',
 };
@@ -181,7 +184,7 @@ describe('Lead API', () => {
   it('requires a server edit capability on details', async () => {
     http.getJson.mockResolvedValue({
       ...lead,
-      capabilities: { edit: false, push: true },
+      capabilities: { edit: false, push: true, withdrawApply: false },
     });
     await expect(getLead('lead-1')).resolves.toMatchObject({
       capabilities: { edit: false, push: true },
@@ -190,6 +193,51 @@ describe('Lead API', () => {
     await expect(getLead('lead-1')).rejects.toMatchObject({
       code: 'INVALID_RESPONSE',
     });
+  });
+
+  it('decodes withdrawal state and sends an idempotent application request', async () => {
+    const detail = {
+      ...lead,
+      status: 'ARCHIVED',
+      version: 4,
+      reviewDecision: {
+        result: 'NO_INFRINGEMENT',
+        reason: '旧结论',
+        reviewerDisplayName: '客户审核员',
+        decidedAt: '2026-09-22T03:00:00.000Z',
+        archiveType: 'NO_INFRINGEMENT',
+        archivedAt: '2026-09-22T03:00:00.000Z',
+      },
+      capabilities: { edit: false, push: false, withdrawApply: true },
+      pendingWithdrawalApplication: null,
+      history: [],
+    };
+    http.getJson.mockResolvedValue(detail);
+    await expect(getLead('lead-1')).resolves.toMatchObject({
+      capabilities: { withdrawApply: true },
+      history: [],
+    });
+
+    http.requestJson.mockResolvedValue({
+      id: 'application-1',
+      leadId: 'lead-1',
+      status: 'ARCHIVED',
+      version: 5,
+      reason: '补充证据',
+      applicantDisplayName: '运营甲',
+      appliedAt: '2026-09-23T01:00:00.000Z',
+    });
+    await expect(
+      applyLeadWithdrawal('lead-1', '补充证据', 4, 'withdraw-key'),
+    ).resolves.toMatchObject({ version: 5, status: 'ARCHIVED' });
+    expect(http.requestJson).toHaveBeenCalledWith(
+      '/leads/lead-1/withdrawal-applications',
+      {
+        method: 'POST',
+        headers: { 'Idempotency-Key': 'withdraw-key' },
+        body: { reason: '补充证据', expectedVersion: 4 },
+      },
+    );
   });
 
   it('reads a formal client review from the immutable display-name snapshot', async () => {
@@ -205,7 +253,7 @@ describe('Lead API', () => {
         reviewerDisplayName: '企业审核员',
         decidedAt: '2026-09-22T03:00:00.000Z',
       },
-      capabilities: { edit: false, push: false },
+      capabilities: { edit: false, push: false, withdrawApply: false },
     };
     http.getJson.mockResolvedValue(reviewed);
     await expect(getLead('lead-1')).resolves.toMatchObject({
@@ -235,7 +283,7 @@ describe('Lead API', () => {
         archiveType: 'NO_INFRINGEMENT',
         archivedAt: '2026-09-22T03:00:00.000Z',
       },
-      capabilities: { edit: false, push: false },
+      capabilities: { edit: false, push: false, withdrawApply: false },
     };
     http.getJson.mockResolvedValueOnce({
       ...archived,
@@ -254,7 +302,7 @@ describe('Lead API', () => {
     http.getJson.mockResolvedValueOnce({
       ...lead,
       products: [{ ...lead.products[0], quantity: -1 }],
-      capabilities: { edit: true, push: true },
+      capabilities: { edit: true, push: true, withdrawApply: false },
     });
     await expect(getLead('lead-1')).rejects.toMatchObject({
       code: 'INVALID_RESPONSE',
@@ -263,7 +311,7 @@ describe('Lead API', () => {
     http.getJson.mockResolvedValueOnce({
       ...lead,
       platform: 'MAP',
-      capabilities: { edit: true, push: true },
+      capabilities: { edit: true, push: true, withdrawApply: false },
     });
     await expect(getLead('lead-1')).rejects.toMatchObject({
       code: 'INVALID_RESPONSE',

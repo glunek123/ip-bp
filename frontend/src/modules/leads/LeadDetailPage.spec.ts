@@ -1,9 +1,14 @@
 import { flushPromises, mount } from '@vue/test-utils';
 import { createMemoryHistory, createRouter } from 'vue-router';
 import { beforeEach, describe, expect, it, vi } from 'vitest';
+import { ApiError } from '../../api/http';
 import LeadDetailPage from './LeadDetailPage.vue';
 
-const leadApi = vi.hoisted(() => ({ getLead: vi.fn(), pushLead: vi.fn() }));
+const leadApi = vi.hoisted(() => ({
+  getLead: vi.fn(),
+  pushLead: vi.fn(),
+  applyLeadWithdrawal: vi.fn(),
+}));
 const customerApi = vi.hoisted(() => ({ getCustomer: vi.fn() }));
 const holderApi = vi.hoisted(() => ({ getCustomerRightsHolder: vi.fn() }));
 const materialApi = vi.hoisted(() => ({
@@ -50,7 +55,9 @@ const lead = {
   reviewDecision: null,
   createdAt: '2026-09-21T04:00:00Z',
   updatedAt: '2026-09-21T04:00:00Z',
-  capabilities: { edit: true, push: true },
+  capabilities: { edit: true, push: true, withdrawApply: false },
+  pendingWithdrawalApplication: null,
+  history: [],
   departmentId: 'd',
   responsibleUserId: 'u',
   teamId: null,
@@ -111,6 +118,139 @@ beforeEach(() => {
 });
 
 describe('LeadDetailPage', () => {
+  it('shows a required withdrawal reason only when allowed and explains confirmation', async () => {
+    leadApi.getLead.mockResolvedValueOnce({
+      ...lead,
+      status: 'ARCHIVED',
+      version: 4,
+      reviewDecision: {
+        result: 'NO_INFRINGEMENT',
+        reason: '旧结论',
+        reviewerDisplayName: '客户审核员',
+        decidedAt: '2026-09-22T03:00:00.000Z',
+        archiveType: 'NO_INFRINGEMENT',
+        archivedAt: '2026-09-22T03:00:00.000Z',
+      },
+      capabilities: { edit: false, push: false, withdrawApply: true },
+      pendingWithdrawalApplication: null,
+      history: [],
+    });
+    const wrapper = await mountPage();
+    expect(wrapper.text()).toContain('申请撤回归档');
+    expect(wrapper.text()).toContain('仍保持归档');
+    expect(wrapper.text()).toContain('原客户企业确认');
+    expect(wrapper.text()).toContain('必填');
+    expect(wrapper.find('[data-test="apply-withdrawal"]').exists()).toBe(true);
+  });
+
+  it('submits a withdrawal application then reloads the retained history', async () => {
+    const archived = {
+      ...lead,
+      status: 'ARCHIVED',
+      version: 4,
+      reviewDecision: {
+        result: 'NO_INFRINGEMENT',
+        reason: '旧结论',
+        reviewerDisplayName: '客户审核员',
+        decidedAt: '2026-09-22T03:00:00.000Z',
+        archiveType: 'NO_INFRINGEMENT',
+        archivedAt: '2026-09-22T03:00:00.000Z',
+      },
+      capabilities: { edit: false, push: false, withdrawApply: true },
+      pendingWithdrawalApplication: null,
+      history: [],
+    };
+    const pending = {
+      ...archived,
+      version: 5,
+      capabilities: { ...archived.capabilities, withdrawApply: false },
+      pendingWithdrawalApplication: {
+        id: 'application-1',
+        reason: '补充证据',
+        applicantDisplayName: '运营甲',
+        appliedAt: '2026-09-23T01:00:00.000Z',
+      },
+      history: [
+        {
+          kind: 'WITHDRAWAL_APPLICATION',
+          id: 'application-1',
+          fromVersion: 4,
+          toVersion: 5,
+          occurredAt: '2026-09-23T01:00:00.000Z',
+          reason: '补充证据',
+          applicantDisplayName: '运营甲',
+        },
+      ],
+    };
+    leadApi.getLead
+      .mockReset()
+      .mockResolvedValueOnce(archived)
+      .mockResolvedValueOnce(pending);
+    leadApi.applyLeadWithdrawal.mockResolvedValue({ version: 5 });
+    const confirm = vi.spyOn(window, 'confirm').mockReturnValue(true);
+    const wrapper = await mountPage();
+    await wrapper.get('[data-test="withdrawal-reason"]').setValue('补充证据');
+    await wrapper.get('[data-test="apply-withdrawal"]').trigger('click');
+    await flushPromises();
+    expect(leadApi.applyLeadWithdrawal).toHaveBeenCalledWith(
+      'lead-1',
+      '补充证据',
+      4,
+      expect.any(String),
+    );
+    expect(wrapper.get('[data-test="withdrawal-history"]').text()).toContain(
+      '运营甲',
+    );
+    expect(wrapper.get('[data-test="withdrawal-history"]').text()).toContain(
+      '补充证据',
+    );
+    expect(confirm).toHaveBeenCalledWith(expect.stringContaining('仍保持归档'));
+    confirm.mockRestore();
+  });
+
+  it('retries an unknown application with the same frozen reason and key', async () => {
+    const archived = {
+      ...lead,
+      status: 'ARCHIVED',
+      version: 4,
+      reviewDecision: {
+        result: 'NO_INFRINGEMENT',
+        reason: '旧结论',
+        reviewerDisplayName: '客户审核员',
+        decidedAt: '2026-09-22T03:00:00.000Z',
+        archiveType: 'NO_INFRINGEMENT',
+        archivedAt: '2026-09-22T03:00:00.000Z',
+      },
+      capabilities: { edit: false, push: false, withdrawApply: true },
+      pendingWithdrawalApplication: null,
+      history: [],
+    };
+    leadApi.getLead
+      .mockReset()
+      .mockResolvedValueOnce(archived)
+      .mockResolvedValue({ ...archived, version: 5 });
+    leadApi.applyLeadWithdrawal
+      .mockRejectedValueOnce(new ApiError('unknown', 0, 'NETWORK_ERROR'))
+      .mockRejectedValueOnce(new ApiError('unknown', 0, 'NETWORK_ERROR'));
+    const confirm = vi.spyOn(window, 'confirm').mockReturnValue(true);
+    const wrapper = await mountPage();
+    const reason = wrapper.get('[data-test="withdrawal-reason"]');
+    await reason.setValue('原因甲');
+    await wrapper.get('[data-test="apply-withdrawal"]').trigger('click');
+    await flushPromises();
+    const first = leadApi.applyLeadWithdrawal.mock.calls[0];
+    await wrapper.get('[data-test="refresh"]').trigger('click');
+    await flushPromises();
+    await reason.setValue('修改原因');
+    await wrapper.get('[data-test="apply-withdrawal"]').trigger('click');
+    await flushPromises();
+    expect(leadApi.applyLeadWithdrawal.mock.calls[1]?.slice(1)).toEqual(
+      first?.slice(1),
+    );
+    expect(wrapper.text()).toContain('结果暂时未知');
+    confirm.mockRestore();
+  });
+
   it('requires confirmation before pushing and does nothing when cancelled', async () => {
     const confirm = vi.spyOn(window, 'confirm').mockReturnValue(false);
     const wrapper = await mountPage();

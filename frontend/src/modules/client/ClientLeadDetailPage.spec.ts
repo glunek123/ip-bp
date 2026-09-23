@@ -8,6 +8,7 @@ const leadApi = vi.hoisted(() => ({
   getClientLead: vi.fn(),
   reviewClientLead: vi.fn(),
   reviewClientLeadNoInfringement: vi.fn(),
+  confirmClientLeadWithdrawal: vi.fn(),
 }));
 const materialApi = vi.hoisted(() => ({
   listOwnerMaterials: vi.fn(),
@@ -44,7 +45,9 @@ const lead = {
   leadScreenshotContentVersionIds: ['version-current'],
   pushedAt: '2026-09-22T02:00:00.000Z',
   reviewDecision: null,
-  capabilities: { review: true },
+  capabilities: { review: true, confirmWithdrawal: false },
+  pendingWithdrawalApplication: null,
+  history: [],
 };
 
 const processedLead = {
@@ -56,7 +59,7 @@ const processedLead = {
     reviewerDisplayName: '企业审核员',
     decidedAt: '2026-09-22T03:00:00.000Z',
   },
-  capabilities: { review: false },
+  capabilities: { review: false, confirmWithdrawal: false },
 };
 const archivedLead = {
   ...lead,
@@ -70,7 +73,9 @@ const archivedLead = {
     archiveType: 'NO_INFRINGEMENT',
     archivedAt: '2026-09-22T03:00:00.000Z',
   },
-  capabilities: { review: false },
+  pendingWithdrawalApplication: null,
+  history: [],
+  capabilities: { review: false, confirmWithdrawal: false },
 };
 
 async function mountPage(path = '/client/leads/lead-1') {
@@ -124,6 +129,120 @@ beforeEach(() => {
 });
 
 describe('ClientLeadDetailPage', () => {
+  it('shows the server-enabled confirmation, consequence and application history', async () => {
+    const pending = {
+      ...archivedLead,
+      version: 4,
+      pendingWithdrawalApplication: {
+        id: 'application-1',
+        reason: '补充证据',
+        applicantDisplayName: '运营甲',
+        appliedAt: '2026-09-22T04:00:00.000Z',
+      },
+      history: [
+        {
+          kind: 'WITHDRAWAL_APPLICATION',
+          id: 'application-1',
+          fromVersion: 3,
+          toVersion: 4,
+          occurredAt: '2026-09-22T04:00:00.000Z',
+          reason: '补充证据',
+          applicantDisplayName: '运营甲',
+        },
+      ],
+      capabilities: { review: false, confirmWithdrawal: true },
+    };
+    leadApi.getClientLead.mockResolvedValue(pending);
+    const wrapper = await mountPage();
+    expect(
+      wrapper.get('[data-test="withdrawal-application"]').text(),
+    ).toContain('运营甲');
+    expect(wrapper.text()).toContain('确认后回到待审核');
+    expect(wrapper.text()).toContain('原结论和归档记录保留');
+    expect(wrapper.find('[data-test="confirm-withdrawal"]').exists()).toBe(
+      true,
+    );
+    expect(wrapper.find('[data-test="confirm-no-infringement"]').exists()).toBe(
+      false,
+    );
+  });
+
+  it('confirms the application and reloads into the normal second review', async () => {
+    const pending = {
+      ...archivedLead,
+      version: 4,
+      pendingWithdrawalApplication: {
+        id: 'application-1',
+        reason: '补充证据',
+        applicantDisplayName: '运营甲',
+        appliedAt: '2026-09-22T04:00:00.000Z',
+      },
+      history: [],
+      capabilities: { review: false, confirmWithdrawal: true },
+    };
+    const reopened = {
+      ...lead,
+      version: 5,
+      pendingWithdrawalApplication: null,
+      history: [],
+      capabilities: { review: true, confirmWithdrawal: false },
+    };
+    leadApi.getClientLead
+      .mockReset()
+      .mockResolvedValueOnce(pending)
+      .mockResolvedValueOnce(reopened);
+    leadApi.confirmClientLeadWithdrawal.mockResolvedValue({
+      status: 'WAITING_REVIEW',
+    });
+    const confirm = vi.spyOn(window, 'confirm').mockReturnValue(true);
+    const wrapper = await mountPage();
+    await wrapper.get('[data-test="confirm-withdrawal"]').trigger('click');
+    await flushPromises();
+    expect(confirm).toHaveBeenCalledWith(
+      expect.stringContaining('原结论和归档记录保留'),
+    );
+    expect(leadApi.confirmClientLeadWithdrawal).toHaveBeenCalledWith(
+      'lead-1',
+      'application-1',
+      4,
+      expect.any(String),
+    );
+    expect(wrapper.find('[data-test="confirm-infringement"]').exists()).toBe(
+      true,
+    );
+    confirm.mockRestore();
+  });
+
+  it('retries an unknown withdrawal confirmation with its original key and payload', async () => {
+    leadApi.getClientLead.mockResolvedValue({
+      ...archivedLead,
+      version: 4,
+      pendingWithdrawalApplication: {
+        id: 'application-1',
+        reason: '补充证据',
+        applicantDisplayName: '运营甲',
+        appliedAt: '2026-09-22T04:00:00.000Z',
+      },
+      history: [],
+      capabilities: { review: false, confirmWithdrawal: true },
+    });
+    leadApi.confirmClientLeadWithdrawal
+      .mockRejectedValueOnce(new ApiError('unknown', 0, 'TIMEOUT'))
+      .mockRejectedValueOnce(new ApiError('unknown', 0, 'TIMEOUT'));
+    const confirm = vi.spyOn(window, 'confirm').mockReturnValue(true);
+    const wrapper = await mountPage();
+    await wrapper.get('[data-test="confirm-withdrawal"]').trigger('click');
+    await flushPromises();
+    const first = leadApi.confirmClientLeadWithdrawal.mock.calls[0];
+    await wrapper.get('[data-test="confirm-withdrawal"]').trigger('click');
+    await flushPromises();
+    expect(leadApi.confirmClientLeadWithdrawal.mock.calls[1]?.slice(1)).toEqual(
+      first?.slice(1),
+    );
+    expect(wrapper.text()).toContain('结果暂时未知');
+    confirm.mockRestore();
+  });
+
   it('shows the redacted read-only detail and only current allowed attachments', async () => {
     const wrapper = await mountPage();
     expect(wrapper.get('[data-test="client-lead-facts"]').text()).toContain(

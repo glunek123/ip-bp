@@ -167,11 +167,14 @@ onBeforeUnmount(() => request?.abort());
                 </td>
                 <td>
                   <span class="pill">{{
-                    currentView !== 'processed'
-                      ? '线索待审核'
-                      : lead.reviewDecision?.result === 'NO_INFRINGEMENT'
-                        ? '已判定不侵权并归档'
-                        : '已确认侵权'
+                    lead.status === 'ARCHIVED' &&
+                    lead.pendingWithdrawalApplication
+                      ? '待确认撤回'
+                      : currentView !== 'processed'
+                        ? '线索待审核'
+                        : lead.reviewDecision?.result === 'NO_INFRINGEMENT'
+                          ? '已判定不侵权并归档'
+                          : '已确认侵权'
                   }}</span>
                 </td>
                 <td>{{ lead.rightsHolderName }}</td>
