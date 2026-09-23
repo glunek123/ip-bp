@@ -1,6 +1,6 @@
 {
   "version": 1,
-  "recordedAt": "2026-09-23T06:46:32.731Z",
+  "recordedAt": "2026-09-23T06:50:08.823Z",
   "files": {
     ".cursor/rules/verified-feature-integration.mdc": "0a705f3638ce678b7a457bce61ec5b97aa50eb166fe39fabc1d5dd10a03c1848",
     ".env.example": "07211cde5c2b59efc21b619b752d4c9b871f0980d2d64ca3c146ad6151fd27ca",
@@ -41,7 +41,7 @@
     ".superpowers/sdd/core-ld-004-task-4-brief.md": "1d9562ef33e7a4339d2baed16423e095a66a186829284e20a26920ffcc71d680",
     ".superpowers/sdd/core-ld-004-task-4-report.md": "31ef31a9001f8e3e7fdc70d67f23b6839a2f21c600d449203c817f49df254251",
     ".superpowers/sdd/core-ld-004-task-5-brief.md": "ba1cc71546590bff09f0c280092cc8f3e7d2e13becb221044c07ecd694375349",
-    ".superpowers/sdd/core-ld-004-task-5-report.md": "a15fb17b0676ecdb28beceb3fa9f005e93d32bd0d46b751d14f12be885f40066",
+    ".superpowers/sdd/core-ld-004-task-5-report.md": "b0acf69871b4c69e983ef6a1b3be70fdfe276605f4d5b14faf766abc8d174f50",
     ".superpowers/sdd/final-fix-report.md": "029013e5406a21b48ddf45b19ccac9ad4a1c8e330a7bdb6dc55fd76a9cab774d",
     ".superpowers/sdd/progress.md": "1763fa577c7a614a1ed07093aafc4a7d69b0289a9c740c9a16db066bea2cdd55",
     ".superpowers/sdd/task-1-brief.md": "5730f82af452800706676dd88ed79effdd29c2df983c06221a3fda203e349975",
