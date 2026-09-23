@@ -1114,7 +1114,15 @@ export class MaterialService {
           id: ownerId,
           departmentId: actor.departmentId,
           customerId: actor.clientCustomerId,
-          status: 'WAITING_REVIEW',
+          pushedAt: { not: null },
+          pushedByUserId: { not: null },
+          OR: [
+            { status: 'WAITING_REVIEW' },
+            {
+              status: 'WAITING_EVIDENCE_DECISION',
+              reviewDecision: { isNot: null },
+            },
+          ],
         },
         select: { id: true },
       });

@@ -32,7 +32,11 @@ describe('MaterialService', () => {
       ...actor,
       clientCustomerId: customerId,
     };
-    fixture.db.lead.findFirst.mockResolvedValue({ id: 'lead-1' });
+    const lead = clientLeadRecord({ status: 'WAITING_REVIEW' });
+    fixture.db.lead.findFirst.mockImplementation(
+      ({ where }: { where: ClientLeadWhere }) =>
+        clientLeadMatchesWhere(lead, where) ? { id: lead.id } : null,
+    );
     fixture.db.materialReference.findMany.mockResolvedValue([
       { materialId: 'material-a', contentVersionId: 'version-a' },
     ]);
@@ -46,7 +50,15 @@ describe('MaterialService', () => {
         id: 'lead-1',
         departmentId: actor.departmentId,
         customerId,
-        status: 'WAITING_REVIEW',
+        pushedAt: { not: null },
+        pushedByUserId: { not: null },
+        OR: [
+          { status: 'WAITING_REVIEW' },
+          {
+            status: 'WAITING_EVIDENCE_DECISION',
+            reviewDecision: { isNot: null },
+          },
+        ],
       },
       select: { id: true },
     });
@@ -65,10 +77,57 @@ describe('MaterialService', () => {
       }),
     );
 
-    fixture.db.lead.findFirst.mockResolvedValue(null);
     await expect(
       fixture.service.listOwnerMaterials(clientActor, 'LEAD', 'foreign'),
     ).rejects.toMatchObject({ response: { code: 'RESOURCE_NOT_FOUND' } });
+  });
+
+  it.each([
+    ['waiting push', { status: 'WAITING_PUSH' }],
+    ['other enterprise', { customerId: 'other-customer' }],
+    ['other department', { departmentId: 'other-department' }],
+    ['missing push time', { pushedAt: null }],
+    ['missing pushing user', { pushedByUserId: null }],
+    [
+      'processed without decision',
+      { status: 'WAITING_EVIDENCE_DECISION', reviewDecision: null },
+    ],
+    ['archived', { status: 'ARCHIVED' }],
+  ])('denies client material reads for %s', async (_reason, overrides) => {
+    const fixture = createFixture();
+    const clientActor = { ...actor, clientCustomerId: customerId };
+    const lead = clientLeadRecord({
+      status: 'WAITING_REVIEW',
+      reviewDecision: null,
+      ...overrides,
+    });
+    fixture.db.lead.findFirst.mockImplementation(
+      ({ where }: { where: ClientLeadWhere }) =>
+        clientLeadMatchesWhere(lead, where) ? { id: lead.id } : null,
+    );
+
+    await expect(
+      fixture.service.listOwnerMaterials(clientActor, 'LEAD', lead.id),
+    ).rejects.toMatchObject({ response: { code: 'RESOURCE_NOT_FOUND' } });
+    expect(fixture.db.material.findMany).not.toHaveBeenCalled();
+  });
+
+  it('denies client reads for another owner type and client writes', async () => {
+    const fixture = createFixture();
+    const clientActor = { ...actor, clientCustomerId: customerId };
+    fixture.db.material.findFirst.mockResolvedValue({
+      ...materialRecord(),
+      ownerType: 'LEAD',
+      ownerId: 'lead-1',
+    });
+
+    await expect(
+      fixture.service.listOwnerMaterials(clientActor, 'CUSTOMER', customerId),
+    ).rejects.toMatchObject({ response: { code: 'ACTION_FORBIDDEN' } });
+    await expect(
+      fixture.service.softDelete(clientActor, 'material-1', 1),
+    ).rejects.toMatchObject({ response: { code: 'ACTION_FORBIDDEN' } });
+    expect(fixture.db.lead.findFirst).not.toHaveBeenCalled();
   });
 
   it('opens only an exact current screenshot reference for a client', async () => {
@@ -1636,6 +1695,57 @@ describe('MaterialService', () => {
     });
   });
 });
+
+type ClientLeadWhere = {
+  id?: string;
+  departmentId?: string;
+  customerId?: string;
+  status?: string;
+  pushedAt?: { not: null };
+  pushedByUserId?: { not: null };
+  reviewDecision?: { isNot: null };
+  OR?: ClientLeadWhere[];
+};
+
+function clientLeadRecord(
+  overrides: {
+    status?: string;
+    departmentId?: string;
+    customerId?: string;
+    pushedAt?: Date | null;
+    pushedByUserId?: string | null;
+    reviewDecision?: object | null;
+  } = {},
+) {
+  return {
+    id: 'lead-1',
+    departmentId: actor.departmentId,
+    customerId,
+    status: 'WAITING_EVIDENCE_DECISION',
+    pushedAt: now,
+    pushedByUserId: actor.userId,
+    reviewDecision: { result: 'INFRINGEMENT' },
+    ...overrides,
+  };
+}
+
+function clientLeadMatchesWhere(
+  lead: ReturnType<typeof clientLeadRecord>,
+  where: ClientLeadWhere,
+): boolean {
+  return (
+    (where.id === undefined || where.id === lead.id) &&
+    (where.departmentId === undefined ||
+      where.departmentId === lead.departmentId) &&
+    (where.customerId === undefined || where.customerId === lead.customerId) &&
+    (where.status === undefined || where.status === lead.status) &&
+    (where.pushedAt === undefined || lead.pushedAt !== null) &&
+    (where.pushedByUserId === undefined || lead.pushedByUserId !== null) &&
+    (where.reviewDecision === undefined || lead.reviewDecision !== null) &&
+    (where.OR === undefined ||
+      where.OR.some((branch) => clientLeadMatchesWhere(lead, branch)))
+  );
+}
 
 function openDraft(overrides: Record<string, unknown> = {}) {
   return {

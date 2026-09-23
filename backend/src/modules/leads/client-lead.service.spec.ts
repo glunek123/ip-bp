@@ -1,17 +1,19 @@
 import { ActorContext } from '../../access-control/actor-context';
+import { MaterialService } from '../materials';
 import { ClientLeadService } from './client-lead.service';
 
+const customerId = '33333333-3333-4333-8333-333333333333';
 const actor: ActorContext = {
   userId: '11111111-1111-4111-8111-111111111111',
   departmentId: '22222222-2222-4222-8222-222222222222',
   authorizationRevision: 3,
-  clientCustomerId: '33333333-3333-4333-8333-333333333333',
+  clientCustomerId: customerId,
 };
 
 const lead = {
   id: '44444444-4444-4444-8444-444444444444',
   businessNo: 'LD-20260922-001',
-  customerId: actor.clientCustomerId,
+  customerId,
   departmentId: actor.departmentId,
   responsibleUserId: 'operator-secret',
   teamId: 'team-secret',
@@ -28,6 +30,7 @@ const lead = {
   shopExternalId: 'shop-1',
   needDisclose: false,
   pushedAt: new Date('2026-09-22T02:00:00.000Z'),
+  pushedByUserId: 'operator-secret',
   products: [
     {
       id: 'product-1',
@@ -53,7 +56,7 @@ const processedLead = {
     id: 'decision-secret',
     departmentId: actor.departmentId,
     leadId: lead.id,
-    customerId: actor.clientCustomerId,
+    customerId,
     reviewerUserId: 'reviewer-secret',
     customerAccountBindingId: 'binding-secret',
     reviewerDisplayNameSnapshot: '企业审核员',
@@ -196,7 +199,9 @@ describe('ClientLeadService', () => {
       departmentId: actor.departmentId,
       authorizationRevision: actor.authorizationRevision,
     };
-    await expect(service.list(internal, 'PENDING', 1, 20)).rejects.toMatchObject({
+    await expect(
+      service.list(internal, 'PENDING', 1, 20),
+    ).rejects.toMatchObject({
       response: { code: 'ACTION_FORBIDDEN' },
     });
     expect(database.lead.findMany).not.toHaveBeenCalled();
@@ -234,4 +239,120 @@ describe('ClientLeadService', () => {
       capabilities: { review: false },
     });
   });
+
+  it('returns allowed screenshot version ids through the real material service for a processed lead', async () => {
+    const { service, database } = setupWithRealMaterials(processedLead);
+
+    const result = await service.get(actor, processedLead.id);
+
+    expect(result).toMatchObject({
+      status: 'WAITING_EVIDENCE_DECISION',
+      reviewDecision: { result: 'INFRINGEMENT' },
+      leadScreenshotContentVersionIds: ['version-a', 'version-b'],
+    });
+    expect(database.lead.findFirst).toHaveBeenCalledTimes(2);
+    expect(database.materialReference.findMany).toHaveBeenCalledWith({
+      where: {
+        departmentId: actor.departmentId,
+        resourceType: 'lead',
+        resourceId: processedLead.id,
+        purpose: 'LEAD_SCREENSHOT',
+        actionEventId: null,
+      },
+      orderBy: { contentVersionId: 'asc' },
+      select: { contentVersionId: true },
+    });
+  });
+
+  it('hides a processed lead without a formal decision before querying screenshot versions', async () => {
+    const { service, database } = setupWithRealMaterials({
+      ...processedLead,
+      reviewDecision: null,
+    });
+
+    await expect(service.get(actor, processedLead.id)).rejects.toMatchObject({
+      response: { code: 'RESOURCE_NOT_FOUND' },
+    });
+    expect(database.lead.findFirst).toHaveBeenCalledTimes(1);
+    expect(database.materialReference.findMany).not.toHaveBeenCalled();
+  });
 });
+
+type ClientLeadWhere = {
+  id?: string;
+  departmentId?: string;
+  customerId?: string;
+  status?: string;
+  pushedAt?: { not: null };
+  pushedByUserId?: { not: null };
+  reviewDecision?: { isNot: null };
+  OR?: ClientLeadWhere[];
+};
+
+function setupWithRealMaterials(record: {
+  id: string;
+  departmentId: string;
+  customerId: string;
+  status: string;
+  pushedAt: Date | null;
+  pushedByUserId: string | null;
+  reviewDecision: object | null;
+}) {
+  const database = {
+    customerAccountBinding: {
+      findFirst: jest.fn().mockResolvedValue({ id: 'binding-1' }),
+    },
+    lead: {
+      findFirst: jest
+        .fn()
+        .mockImplementation(({ where }: { where: ClientLeadWhere }) =>
+          matchesClientLeadWhere(record, where) ? record : null,
+        ),
+    },
+    materialReference: {
+      findMany: jest
+        .fn()
+        .mockResolvedValue([
+          { contentVersionId: 'version-b' },
+          { contentVersionId: 'version-a' },
+          { contentVersionId: 'version-a' },
+        ]),
+    },
+  };
+  const materials = new MaterialService(
+    database as never,
+    {} as never,
+    {} as never,
+    {} as never,
+  );
+  return {
+    database,
+    service: new ClientLeadService(database as never, materials),
+  };
+}
+
+function matchesClientLeadWhere(
+  lead: {
+    id: string;
+    departmentId: string;
+    customerId: string;
+    status: string;
+    pushedAt: Date | null;
+    pushedByUserId: string | null;
+    reviewDecision: object | null;
+  },
+  where: ClientLeadWhere,
+): boolean {
+  return (
+    (where.id === undefined || where.id === lead.id) &&
+    (where.departmentId === undefined ||
+      where.departmentId === lead.departmentId) &&
+    (where.customerId === undefined || where.customerId === lead.customerId) &&
+    (where.status === undefined || where.status === lead.status) &&
+    (where.pushedAt === undefined || lead.pushedAt !== null) &&
+    (where.pushedByUserId === undefined || lead.pushedByUserId !== null) &&
+    (where.reviewDecision === undefined || lead.reviewDecision !== null) &&
+    (where.OR === undefined ||
+      where.OR.some((branch) => matchesClientLeadWhere(lead, branch)))
+  );
+}
