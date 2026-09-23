@@ -877,6 +877,8 @@ export async function verifyCoreLeadMigration() {
   const reviewSchemaTarget = '20260922012000_add_client_lead_review';
   const reviewIntegrityTarget =
     '20260922013000_harden_client_lead_review_integrity';
+  const reviewResultTarget = '20260923010000_add_no_infringement_review_result';
+  const archiveFactsTarget = '20260923011000_add_no_infringement_archive_facts';
   const migrations = (await readdir(migrationRoot))
     .filter((name) => /^\d{14}_/u.test(name))
     .sort();
@@ -895,6 +897,7 @@ export async function verifyCoreLeadMigration() {
     reviewActionRecovery: `core_ld_review_action_recovery_${probe}`,
     reviewSchemaFailure: `core_ld_review_schema_failure_${probe}`,
     reviewIntegrityFailure: `core_ld_review_integrity_failure_${probe}`,
+    archiveFailure: `core_ld_archive_failure_${probe}`,
   };
   const client = new Client({ connectionString: databaseUrl });
 
@@ -1485,6 +1488,158 @@ export async function verifyCoreLeadMigration() {
       ),
     };
 
+    await apply([reviewResultTarget, archiveFactsTarget]);
+    const archivedOldRow = (
+      await client.query(
+        `SELECT d.reason,d.archive_type,d.archived_at,r.result_snapshot,r.request_fingerprint,
+                r.review_decision_id
+         FROM lead_review_decisions d
+         JOIN client_lead_review_receipts r ON r.review_decision_id=d.id
+         WHERE d.id=$1`,
+        [reviewIds.decision],
+      )
+    ).rows[0];
+    const archiveUpgrade = {
+      oldFactsNull:
+        archivedOldRow?.reason === null &&
+        archivedOldRow.archive_type === null &&
+        archivedOldRow.archived_at === null,
+      oldSnapshotPreserved:
+        JSON.stringify(archivedOldRow?.result_snapshot) ===
+        JSON.stringify(reviewFactsBefore.result_snapshot),
+      oldFingerprintPreserved:
+        archivedOldRow?.request_fingerprint ===
+        reviewFactsBefore.request_fingerprint,
+      oldReceiptLinked:
+        archivedOldRow?.review_decision_id === reviewIds.decision,
+    };
+    const archiveLeadId = randomUUID();
+    const archiveDecisionId = randomUUID();
+    const archiveReject = async (sql, values) => {
+      await client.query('SAVEPOINT archive_probe');
+      try {
+        await client.query(sql, values);
+        await client.query('ROLLBACK TO SAVEPOINT archive_probe');
+        return null;
+      } catch (error) {
+        await client.query('ROLLBACK TO SAVEPOINT archive_probe');
+        return error.code ?? null;
+      } finally {
+        await client.query('RELEASE SAVEPOINT archive_probe');
+      }
+    };
+    await client.query('BEGIN');
+    let archiveConstraints;
+    try {
+      await client.query(
+        `INSERT INTO leads(id,department_id,business_no,customer_id,rights_holder_id,responsible_user_id,status,version,case_type,source,platform,found_at,shop_name,need_disclose,pushed_at,pushed_by_user_id,updated_at)
+         VALUES ($1,$2,$3,$4,$5,$6,'ARCHIVED',2,'CIVIL','ONLINE','TAOBAO',NOW(),'归档约束店铺',false,NOW(),$6,NOW())`,
+        [
+          archiveLeadId,
+          reviewIds.department,
+          `ARCHIVE-PROBE-${probe}`,
+          reviewIds.customer,
+          reviewIds.holder,
+          reviewIds.operator,
+        ],
+      );
+      const insertArchive = `INSERT INTO lead_review_decisions(
+        id,department_id,lead_id,customer_id,reviewer_user_id,
+        customer_account_binding_id,reviewer_display_name_snapshot,
+        result,reason,archive_type,archived_at,from_version,to_version)
+        VALUES ($1,$2,$3,$4,$5,$6,'归档审核人',$7,$8,$9,$10,1,2)`;
+      const values = (overrides = {}) =>
+        [
+          archiveDecisionId,
+          reviewIds.department,
+          archiveLeadId,
+          reviewIds.customer,
+          reviewIds.reviewer,
+          reviewIds.binding,
+          'NO_INFRINGEMENT',
+          '经核对未使用权利标识',
+          'NO_INFRINGEMENT',
+          reviewDecisionAt,
+        ].map((value, index) =>
+          Object.hasOwn(overrides, index) ? overrides[index] : value,
+        );
+      archiveConstraints = {
+        valid: await archiveReject(insertArchive, values()),
+        blank: await archiveReject(insertArchive, values({ 7: '   ' })),
+        overlong: await archiveReject(
+          insertArchive,
+          values({ 7: '字'.repeat(5001) }),
+        ),
+        missingType: await archiveReject(insertArchive, values({ 8: null })),
+        missingTime: await archiveReject(insertArchive, values({ 9: null })),
+        mismatchedFacts: await archiveReject(
+          insertArchive,
+          values({ 6: 'INFRINGEMENT' }),
+        ),
+        decisionUpdate: await archiveReject(
+          'UPDATE lead_review_decisions SET reason=$1 WHERE id=$2',
+          ['篡改', reviewIds.decision],
+        ),
+        decisionDelete: await archiveReject(
+          'DELETE FROM lead_review_decisions WHERE id=$1',
+          [reviewIds.decision],
+        ),
+      };
+    } finally {
+      await client.query('ROLLBACK');
+    }
+
+    await useSchema(schemas.archiveFailure);
+    await apply(migrations.filter((name) => name <= reviewResultTarget));
+    await client.query(
+      'ALTER TABLE lead_review_decisions ADD COLUMN archived_at TIMESTAMPTZ(3)',
+    );
+    const archiveFailureCode = await rejectedCode(
+      await migrationSql(archiveFactsTarget),
+    );
+    const archiveFailure = {
+      code: archiveFailureCode,
+      originalColumnPreserved: Number(
+        (
+          await client.query(
+            `SELECT COUNT(*) FROM information_schema.columns
+             WHERE table_schema=$1 AND table_name='lead_review_decisions'
+               AND column_name='archived_at'`,
+            [schemas.archiveFailure],
+          )
+        ).rows[0].count,
+      ),
+      addedColumns: Number(
+        (
+          await client.query(
+            `SELECT COUNT(*) FROM information_schema.columns
+             WHERE table_schema=$1 AND table_name='lead_review_decisions'
+               AND column_name IN ('reason','archive_type')`,
+            [schemas.archiveFailure],
+          )
+        ).rows[0].count,
+      ),
+      archiveTypes: Number(
+        (
+          await client.query(
+            `SELECT COUNT(*) FROM pg_type t JOIN pg_namespace n ON n.oid=t.typnamespace
+             WHERE n.nspname=$1 AND t.typname='lead_archive_type'`,
+            [schemas.archiveFailure],
+          )
+        ).rows[0].count,
+      ),
+      addedConstraints: Number(
+        (
+          await client.query(
+            `SELECT COUNT(*) FROM information_schema.table_constraints
+             WHERE table_schema=$1 AND table_name='lead_review_decisions'
+               AND constraint_name='lead_review_decisions_result_archive_check'`,
+            [schemas.archiveFailure],
+          )
+        ).rows[0].count,
+      ),
+    };
+
     await useSchema(schemas.reviewActionRecovery);
     await apply(migrations.filter((name) => name < reviewActionTarget));
     await apply([reviewActionTarget, reviewActionTarget]);
@@ -1950,6 +2105,9 @@ export async function verifyCoreLeadMigration() {
       empty: { tables: emptyTables },
       reviewIntegrity,
       reviewUpgrade,
+      archiveUpgrade,
+      archiveConstraints,
+      archiveFailure,
       reviewActionRecovery,
       reviewSchemaFailure,
       reviewIntegrityFailure,

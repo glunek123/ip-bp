@@ -138,6 +138,29 @@ export function verifyCoreLeadMigration(): Promise<{
     decisionCount: number;
     receiptCount: number;
   };
+  archiveUpgrade: {
+    oldFactsNull: boolean;
+    oldSnapshotPreserved: boolean;
+    oldFingerprintPreserved: boolean;
+    oldReceiptLinked: boolean;
+  };
+  archiveConstraints: {
+    valid: string | null;
+    blank: string | null;
+    overlong: string | null;
+    missingType: string | null;
+    missingTime: string | null;
+    mismatchedFacts: string | null;
+    decisionUpdate: string | null;
+    decisionDelete: string | null;
+  };
+  archiveFailure: {
+    code: string | null;
+    originalColumnPreserved: number;
+    addedColumns: number;
+    archiveTypes: number;
+    addedConstraints: number;
+  };
   reviewActionRecovery: { actionCount: number };
   reviewSchemaFailure: {
     code: string | null;

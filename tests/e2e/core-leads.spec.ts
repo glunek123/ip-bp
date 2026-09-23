@@ -1523,6 +1523,29 @@ test('core lead migrations preserve legacy facts and roll back failed phases', a
     decisionCount: 1,
     receiptCount: 1,
   });
+  expect(result.archiveUpgrade).toEqual({
+    oldFactsNull: true,
+    oldSnapshotPreserved: true,
+    oldFingerprintPreserved: true,
+    oldReceiptLinked: true,
+  });
+  expect(result.archiveConstraints).toEqual({
+    valid: null,
+    blank: '23514',
+    overlong: '23514',
+    missingType: '23514',
+    missingTime: '23514',
+    mismatchedFacts: '23514',
+    decisionUpdate: '55000',
+    decisionDelete: '55000',
+  });
+  expect(result.archiveFailure).toEqual({
+    code: '42701',
+    originalColumnPreserved: 1,
+    addedColumns: 0,
+    archiveTypes: 0,
+    addedConstraints: 0,
+  });
   expect(result.reviewActionRecovery).toEqual({ actionCount: 1 });
   expect(result.reviewSchemaFailure).toEqual({
     code: '42P07',

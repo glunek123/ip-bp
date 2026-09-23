@@ -109,8 +109,15 @@ enum LeadStatus {
 
 enum LeadReviewResult {
   INFRINGEMENT
+  NO_INFRINGEMENT
 
   @@map("lead_review_result")
+}
+
+enum LeadArchiveType {
+  NO_INFRINGEMENT
+
+  @@map("lead_archive_type")
 }
 
 enum LeadCaseType {
@@ -662,6 +669,9 @@ model LeadReviewDecision {
   customerAccountBindingId    String                   @map("customer_account_binding_id") @db.Uuid
   reviewerDisplayNameSnapshot String                   @map("reviewer_display_name_snapshot")
   result                      LeadReviewResult
+  reason                      String?                  @db.Text
+  archiveType                 LeadArchiveType?         @map("archive_type")
+  archivedAt                  DateTime?                @map("archived_at") @db.Timestamptz(3)
   decidedAt                   DateTime                 @default(now()) @map("decided_at") @db.Timestamptz(3)
   fromVersion                 Int                      @map("from_version")
   toVersion                   Int                      @map("to_version")

@@ -27,6 +27,8 @@ describe('CORE-LD migrations', () => {
     '20260922012000_add_client_lead_review';
   const clientReviewIntegrityMigrationName =
     '20260922013000_harden_client_lead_review_integrity';
+  const resultMigration = '20260923010000_add_no_infringement_review_result';
+  const archiveMigration = '20260923011000_add_no_infringement_archive_facts';
 
   function readMigration(name: string): string {
     return readFileSync(resolve(migrationRoot, name, 'migration.sql'), 'utf8');
@@ -212,7 +214,8 @@ describe('CORE-LD migrations', () => {
   });
 
   it('hardens review identities after the review schema with composite references and immutable receipts', () => {
-    expect(migrations.slice(-2)).toEqual([
+    const oldReviewIndex = migrations.indexOf(clientReviewSchemaMigrationName);
+    expect(migrations.slice(oldReviewIndex, oldReviewIndex + 2)).toEqual([
       clientReviewSchemaMigrationName,
       clientReviewIntegrityMigrationName,
     ]);
@@ -231,5 +234,19 @@ describe('CORE-LD migrations', () => {
     expect(sql).toContain("ERRCODE = '55000'");
     expect(sql.trim().endsWith('COMMIT;')).toBe(true);
     expect(sql).not.toMatch(/DROP TABLE|DROP COLUMN/);
+  });
+
+  it('extends immutable review facts in two forward phases', () => {
+    expect(migrations.slice(-2)).toEqual([resultMigration, archiveMigration]);
+    expect(readMigration(resultMigration)).toContain(
+      "ADD VALUE 'NO_INFRINGEMENT'",
+    );
+    const sql = readMigration(archiveMigration);
+    expect(sql).toContain('CREATE TYPE "lead_archive_type"');
+    expect(sql).toContain('"reason" TEXT');
+    expect(sql).toContain('"archive_type" "lead_archive_type"');
+    expect(sql).toContain('"archived_at" TIMESTAMPTZ(3)');
+    expect(sql).toContain('lead_review_decisions_result_archive_check');
+    expect(sql).not.toMatch(/DROP TABLE|DROP COLUMN|DELETE FROM/);
   });
 });

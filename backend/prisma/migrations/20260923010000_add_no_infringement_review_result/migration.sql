@@ -1,0 +1,1 @@
+ALTER TYPE "lead_review_result" ADD VALUE 'NO_INFRINGEMENT';
