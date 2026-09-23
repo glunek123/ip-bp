@@ -966,9 +966,9 @@ Before deleting leads, the isolated reset must execute exactly `TRUNCATE TABLE "
 Update `runCoreLeadMigrationTest()` to prove:
 
 - empty-schema migration creates both review tables;
-- previous supported schema upgrades without rewriting existing lead facts;
+- previous supported schema (immediately before `20260922013000`) upgrades with valid existing review decision and receipt rows, without rewriting their facts;
 - action migration is retry-safe;
-- structural migration failure rolls back both tables and trigger;
+- failure of the original review-table migration rolls back both tables and its trigger; an injected `20260922013000` failure rolls back every new composite key, foreign key and receipt trigger;
 - decision `UPDATE` and `DELETE` return SQLSTATE `55000`;
 - invalid version pairs and non-review receipt actions are rejected.
 
