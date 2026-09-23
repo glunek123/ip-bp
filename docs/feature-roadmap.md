@@ -30,7 +30,7 @@
 
 **CORE-LD-004｜客户判定不侵权并归档。**
 
-CORE-LD-003已完成并通过最终门禁。CORE-LD-004已在`codex/core-ld-004-client-no-infringement-archive`正式领取，现为唯一Current；小粒度设计已确认、实施计划已成稿，尚未实现。
+CORE-LD-003已完成并通过最终门禁。CORE-LD-004已在`codex/core-ld-004-client-no-infringement-archive`正式领取，现为唯一Current；小粒度设计已确认，代码及聚焦数据库／浏览器测试已完成，独立Final Review与Level 3正式门禁待完成，尚未收口为已完成切片。
 
 已绑定企业的获权客户对本企业已推送线索判定不侵权并归档；只补本动作必需的规则、权限、审计和页面，不扩建完整客户门户。
 
