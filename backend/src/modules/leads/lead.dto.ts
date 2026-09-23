@@ -149,6 +149,17 @@ export class PushLeadDto {
   @ApiProperty({ minimum: 1 }) @IsInt() @Min(1) expectedVersion!: number;
 }
 
+export class ApplyLeadWithdrawalDto {
+  @ApiProperty({
+    minLength: 1,
+    maxLength: 5000,
+    description: 'Trimmed Unicode reason; length is counted in code points',
+  })
+  @IsString()
+  reason!: string;
+  @ApiProperty({ minimum: 1 }) @IsInt() @Min(1) expectedVersion!: number;
+}
+
 export class LeadListQueryDto {
   @ApiPropertyOptional({ minimum: 1, default: 1 })
   @Type(() => Number)

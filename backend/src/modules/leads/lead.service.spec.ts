@@ -126,6 +126,126 @@ describe('LeadService', () => {
     );
   });
 
+  it('projects pending withdrawal and version-ordered safe history with scoped capability', async () => {
+    const base = createCreateFixture().createdLead;
+    const decisionId = '33333333-3333-4333-8333-333333333333';
+    const application = {
+      id: 'application-1',
+      originalDecisionId: decisionId,
+      fromVersion: 2,
+      toVersion: 3,
+      reason: '纠错',
+      appliedAt: new Date('2026-09-23T02:00:00Z'),
+      resultSnapshot: { applicantDisplayName: '申请时姓名' },
+      confirmation: null,
+    };
+    const lead = {
+      ...base,
+      status: 'ARCHIVED',
+      version: 3,
+      activeReviewDecisionId: decisionId,
+      reviewDecision: {
+        id: decisionId,
+        result: 'NO_INFRINGEMENT',
+        reason: '不侵权',
+        archiveType: 'NO_INFRINGEMENT',
+        archivedAt: new Date('2026-09-23T01:00:00Z'),
+        decidedAt: new Date('2026-09-23T01:00:00Z'),
+        reviewerDisplayNameSnapshot: '审核时姓名',
+      },
+      reviewDecisions: [
+        {
+          id: decisionId,
+          result: 'NO_INFRINGEMENT',
+          reason: '不侵权',
+          archiveType: 'NO_INFRINGEMENT',
+          archivedAt: new Date('2026-09-23T01:00:00Z'),
+          decidedAt: new Date('2026-09-23T01:00:00Z'),
+          reviewerDisplayNameSnapshot: '审核时姓名',
+          fromVersion: 1,
+          toVersion: 2,
+        },
+      ],
+      withdrawalApplications: [application],
+    };
+    const access = {
+      buildLeadScope: jest
+        .fn()
+        .mockResolvedValue({ departmentId: actor.departmentId }),
+      authorizeLead: jest.fn().mockResolvedValue(undefined),
+    };
+    const service = new LeadService(
+      {
+        lead: { findFirst: jest.fn().mockResolvedValue(lead) },
+      } as unknown as DatabaseService,
+      access as unknown as AccessControlService,
+      {
+        listCurrentReferenceVersionIds: jest.fn().mockResolvedValue([]),
+      } as unknown as MaterialService,
+    );
+    const result = await service.get(actor, lead.id);
+    expect(result.capabilities.withdrawApply).toBe(false);
+    expect(result.pendingWithdrawalApplication).toMatchObject({
+      id: application.id,
+      reason: '纠错',
+      applicantDisplayName: '申请时姓名',
+    });
+    expect(result.history.map(({ kind }) => kind)).toEqual([
+      'REVIEW_DECISION',
+      'WITHDRAWAL_APPLICATION',
+    ]);
+    expect(JSON.stringify(result.history)).not.toContain('resultSnapshot');
+  });
+
+  it('shows withdrawApply only for an unrequested current archive with its own Grant', async () => {
+    const base = createCreateFixture().createdLead;
+    const lead = {
+      ...base,
+      status: 'ARCHIVED',
+      activeReviewDecisionId: 'decision-1',
+      reviewDecision: {
+        result: 'NO_INFRINGEMENT',
+        archiveType: 'NO_INFRINGEMENT',
+        reason: '不侵权',
+        archivedAt: new Date(),
+        decidedAt: new Date(),
+        reviewerDisplayNameSnapshot: '审核人',
+      },
+      reviewDecisions: [],
+      withdrawalApplications: [],
+    };
+    const access = {
+      buildLeadScope: jest
+        .fn()
+        .mockResolvedValue({ departmentId: actor.departmentId }),
+      authorizeLead: jest.fn().mockResolvedValue(undefined),
+    };
+    const service = new LeadService(
+      {
+        lead: { findFirst: jest.fn().mockResolvedValue(lead) },
+      } as unknown as DatabaseService,
+      access as unknown as AccessControlService,
+      {
+        listCurrentReferenceVersionIds: jest.fn().mockResolvedValue([]),
+      } as unknown as MaterialService,
+    );
+    await expect(service.get(actor, lead.id)).resolves.toMatchObject({
+      capabilities: { withdrawApply: true },
+      pendingWithdrawalApplication: null,
+    });
+    expect(access.authorizeLead).toHaveBeenCalledWith(
+      actor,
+      'lead.withdraw.apply',
+      expect.objectContaining({
+        departmentId: actor.departmentId,
+      }),
+    );
+    access.authorizeLead.mockRejectedValue(new ForbiddenException());
+    await expect(service.get(actor, lead.id)).resolves.toMatchObject({
+      capabilities: { withdrawApply: false },
+    });
+  });
+
   it('exposes only the approved controlled dictionaries', () => {
     expect(CASE_TYPE_OPTIONS.map(({ value }) => value)).toEqual([
       'CIVIL',
@@ -361,6 +481,183 @@ describe('LeadService', () => {
       pushedByDisplayName: '运营甲',
     });
   });
+
+  it('applies to withdraw an archived no-infringement decision without changing that decision', async () => {
+    const fixture = createWithdrawalFixture();
+    const result = await fixture.service.applyWithdrawal(
+      actor,
+      fixture.current.id,
+      'withdraw-key',
+      { reason: ' 纠错 😀 ', expectedVersion: 2 },
+    );
+    expect(result).toMatchObject({
+      id: expect.any(String),
+      leadId: fixture.current.id,
+      status: 'ARCHIVED',
+      version: 3,
+      reason: '纠错 😀',
+      applicantDisplayName: '运营甲',
+      appliedAt: expect.any(String),
+    });
+    expect(fixture.tx.lead.updateMany).toHaveBeenCalledWith({
+      where: expect.objectContaining({
+        id: fixture.current.id,
+        version: 2,
+        status: 'ARCHIVED',
+      }),
+      data: { version: { increment: 1 } },
+    });
+    expect(fixture.tx.leadWithdrawalApplication.create).toHaveBeenCalledWith({
+      data: expect.objectContaining({
+        originalDecisionId: fixture.current.activeReviewDecisionId,
+        reason: '纠错 😀',
+        fromVersion: 2,
+        toVersion: 3,
+        resultSnapshot: result,
+      }),
+    });
+    expect(fixture.tx.auditEvent.create).toHaveBeenCalledTimes(1);
+    expect(fixture.tx.auditEvent.create).toHaveBeenCalledWith({
+      data: expect.objectContaining({ action: 'lead.withdrawal_applied' }),
+    });
+  });
+
+  it('replays the normalized request only after current authorization and rejects changed requests', async () => {
+    const fixture = createWithdrawalFixture();
+    const first = await fixture.service.applyWithdrawal(
+      actor,
+      fixture.current.id,
+      'same',
+      {
+        reason: ' 纠错 ',
+        expectedVersion: 2,
+      },
+    );
+    const saved =
+      fixture.tx.leadWithdrawalApplication.create.mock.calls[0][0].data;
+    fixture.tx.leadWithdrawalApplication.findUnique.mockResolvedValue(saved);
+    fixture.tx.lead.updateMany.mockClear();
+    await expect(
+      fixture.service.applyWithdrawal(actor, fixture.current.id, 'same', {
+        reason: '纠错',
+        expectedVersion: 2,
+      }),
+    ).resolves.toEqual(first);
+    await expect(
+      fixture.service.applyWithdrawal(actor, fixture.current.id, 'same', {
+        reason: '别的原因',
+        expectedVersion: 2,
+      }),
+    ).rejects.toMatchObject({ response: { code: 'IDEMPOTENCY_CONFLICT' } });
+    expect(fixture.access.authorizeLead).toHaveBeenCalledTimes(3);
+    expect(fixture.tx.lead.updateMany).not.toHaveBeenCalled();
+  });
+
+  it('rejects a damaged stored application response instead of replaying it', async () => {
+    const fixture = createWithdrawalFixture();
+    await fixture.service.applyWithdrawal(actor, fixture.current.id, 'same', {
+      reason: '纠错',
+      expectedVersion: 2,
+    });
+    const saved =
+      fixture.tx.leadWithdrawalApplication.create.mock.calls[0][0].data;
+    fixture.tx.leadWithdrawalApplication.findUnique.mockResolvedValue({
+      ...saved,
+      resultSnapshot: { ...saved.resultSnapshot, reason: '被篡改' },
+    });
+    await expect(
+      fixture.service.applyWithdrawal(actor, fixture.current.id, 'same', {
+        reason: '纠错',
+        expectedVersion: 2,
+      }),
+    ).rejects.toMatchObject({ response: { code: 'INTERNAL_ERROR' } });
+  });
+
+  it.each([
+    ['stale version', { version: 3 }, 'VERSION_CONFLICT'],
+    ['wrong state', { status: 'WAITING_REVIEW' }, 'INVALID_STATE'],
+    [
+      'other archive',
+      { reviewDecision: { result: 'INFRINGEMENT', archiveType: null } },
+      'INVALID_STATE',
+    ],
+    [
+      'already requested',
+      {
+        withdrawalApplications: [
+          { originalDecisionId: '33333333-3333-4333-8333-333333333333' },
+        ],
+      },
+      'INVALID_STATE',
+    ],
+  ])('refuses withdrawal for %s', async (_label, override, code) => {
+    const fixture = createWithdrawalFixture(override);
+    await expect(
+      fixture.service.applyWithdrawal(actor, fixture.current.id, 'new', {
+        reason: '纠错',
+        expectedVersion: 2,
+      }),
+    ).rejects.toMatchObject({ response: { code } });
+    expect(fixture.tx.lead.updateMany).not.toHaveBeenCalled();
+  });
+
+  it('refuses withdrawal after Grant revocation even for a saved key', async () => {
+    const fixture = createWithdrawalFixture();
+    (fixture.access.authorizeLead as jest.Mock).mockRejectedValue(
+      new ForbiddenException(),
+    );
+    await expect(
+      fixture.service.applyWithdrawal(actor, fixture.current.id, 'saved', {
+        reason: '纠错',
+        expectedVersion: 2,
+      }),
+    ).rejects.toMatchObject({ response: { code: 'ACTION_FORBIDDEN' } });
+    expect(
+      fixture.tx.leadWithdrawalApplication.findUnique,
+    ).not.toHaveBeenCalled();
+  });
+
+  it.each(['', '  ', '😀'.repeat(5001)])(
+    'rejects invalid normalized reason without a transaction',
+    async (reason) => {
+      const fixture = createWithdrawalFixture();
+      await expect(
+        fixture.service.applyWithdrawal(actor, fixture.current.id, 'key', {
+          reason,
+          expectedVersion: 2,
+        }),
+      ).rejects.toMatchObject({ response: { code: 'VALIDATION_ERROR' } });
+      expect(fixture.tx.lead.updateMany).not.toHaveBeenCalled();
+    },
+  );
+
+  it('rejects another department before returning any lead or receipt', async () => {
+    const fixture = createWithdrawalFixture();
+    fixture.tx.$queryRawUnsafe.mockResolvedValue([]);
+    await expect(
+      fixture.service.applyWithdrawal(actor, fixture.current.id, 'key', {
+        reason: '纠错',
+        expectedVersion: 2,
+      }),
+    ).rejects.toMatchObject({ response: { code: 'RESOURCE_NOT_FOUND' } });
+    expect(
+      fixture.tx.leadWithdrawalApplication.findUnique,
+    ).not.toHaveBeenCalled();
+  });
+
+  it.each(['leadWithdrawalApplication', 'auditEvent'] as const)(
+    'propagates %s persistence failure to roll back the transaction',
+    async (table) => {
+      const fixture = createWithdrawalFixture();
+      fixture.tx[table].create.mockRejectedValue(new Error('injected failure'));
+      await expect(
+        fixture.service.applyWithdrawal(actor, fixture.current.id, 'key', {
+          reason: '纠错',
+          expectedVersion: 2,
+        }),
+      ).rejects.toThrow('injected failure');
+    },
+  );
 
   it('replays the first push result and rejects the same key with a different version', async () => {
     const fixture = createPushFixture();
@@ -1434,4 +1731,44 @@ function createPushFixture(override: Record<string, unknown> = {}) {
     current,
     access,
   };
+}
+
+function createWithdrawalFixture(override: Record<string, unknown> = {}) {
+  const base = createCreateFixture().createdLead;
+  const current = {
+    ...base,
+    version: 2,
+    status: 'ARCHIVED',
+    activeReviewDecisionId: '33333333-3333-4333-8333-333333333333',
+    reviewDecision: {
+      result: 'NO_INFRINGEMENT',
+      archiveType: 'NO_INFRINGEMENT',
+      reason: '不侵权',
+    },
+    withdrawalApplications: [],
+    ...override,
+  };
+  const tx = {
+    $queryRawUnsafe: jest.fn().mockResolvedValue([{ id: current.id }]),
+    lead: {
+      findFirst: jest.fn().mockResolvedValue(current),
+      updateMany: jest.fn().mockResolvedValue({ count: 1 }),
+    },
+    leadWithdrawalApplication: {
+      findUnique: jest.fn().mockResolvedValue(null),
+      create: jest.fn().mockImplementation(async ({ data }) => data),
+    },
+    userAccount: {
+      findUnique: jest.fn().mockResolvedValue({ displayName: '运营甲' }),
+    },
+    auditEvent: { create: jest.fn().mockResolvedValue({ id: 'audit' }) },
+  };
+  const database = {
+    $transaction: jest.fn(async (callback) => callback(tx)),
+  } as unknown as DatabaseService;
+  const access = {
+    authorizeLead: jest.fn().mockResolvedValue(undefined),
+  } as unknown as AccessControlService;
+  const service = new LeadService(database, access, {} as MaterialService);
+  return { service, tx, current, access };
 }

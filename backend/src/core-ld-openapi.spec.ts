@@ -70,6 +70,12 @@ describe('CORE-LD-002 OpenAPI contract', () => {
       'CustomerAccountResponseDto',
     ],
     ['post', '/api/v1/leads/{id}/push', '201', 'LeadPushResponseDto'],
+    [
+      'post',
+      '/api/v1/leads/{id}/withdrawal-applications',
+      '201',
+      'LeadWithdrawalApplicationResponseDto',
+    ],
     ['get', '/api/v1/client/leads', '200', 'ClientLeadListResponseDto'],
     ['get', '/api/v1/client/leads/{id}', '200', 'ClientLeadResponseDto'],
     [
@@ -109,6 +115,40 @@ describe('CORE-LD-002 OpenAPI contract', () => {
       properties: {
         pushedByDisplayName: { type: 'string' },
       },
+    });
+  });
+
+  it('documents the withdrawal application request and durable result', () => {
+    const document = SwaggerModule.createDocument(
+      app,
+      new DocumentBuilder().setTitle('test').setVersion('1').build(),
+    );
+    const operation =
+      document.paths['/api/v1/leads/{id}/withdrawal-applications']?.post;
+    expect(operation?.parameters).toEqual(
+      expect.arrayContaining([
+        expect.objectContaining({ name: 'Idempotency-Key', required: true }),
+      ]),
+    );
+    expect(document.components?.schemas?.ApplyLeadWithdrawalDto).toMatchObject({
+      required: expect.arrayContaining(['reason', 'expectedVersion']),
+      properties: {
+        reason: { maxLength: 5000 },
+        expectedVersion: { minimum: 1 },
+      },
+    });
+    expect(
+      document.components?.schemas?.LeadWithdrawalApplicationResponseDto,
+    ).toMatchObject({
+      required: expect.arrayContaining([
+        'id',
+        'leadId',
+        'status',
+        'version',
+        'reason',
+        'applicantDisplayName',
+        'appliedAt',
+      ]),
     });
   });
 

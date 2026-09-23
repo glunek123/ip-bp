@@ -22,6 +22,7 @@ import { ActorContextGuard } from '../../access-control/actor-context.guard';
 import { ActorContext } from '../../access-control/actor-context';
 import { CsrfGuard } from '../../auth/csrf.guard';
 import {
+  ApplyLeadWithdrawalDto,
   CreateLeadDto,
   LeadListQueryDto,
   PushLeadDto,
@@ -29,6 +30,7 @@ import {
 } from './lead.dto';
 import { LeadService } from './lead.service';
 import { LeadPushResponseDto } from './lead-push-response.dto';
+import { LeadWithdrawalApplicationResponseDto } from './lead-withdrawal-application-response.dto';
 
 @ApiTags('leads')
 @ApiBearerAuth()
@@ -92,6 +94,23 @@ export class LeadController {
     @Body() input: PushLeadDto,
   ) {
     return this.leads.push(
+      actor,
+      id,
+      this.requireIdempotencyKey(idempotencyKey),
+      input,
+    );
+  }
+
+  @Post(':id/withdrawal-applications')
+  @ApiHeader({ name: 'Idempotency-Key', required: true })
+  @ApiCreatedResponse({ type: LeadWithdrawalApplicationResponseDto })
+  applyWithdrawal(
+    @CurrentActor() actor: ActorContext,
+    @Param('id', new ParseUUIDPipe()) id: string,
+    @Headers('idempotency-key') idempotencyKey: string | undefined,
+    @Body() input: ApplyLeadWithdrawalDto,
+  ) {
+    return this.leads.applyWithdrawal(
       actor,
       id,
       this.requireIdempotencyKey(idempotencyKey),

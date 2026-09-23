@@ -1,5 +1,6 @@
 import { BadRequestException, ValidationPipe } from '@nestjs/common';
 import {
+  ApplyLeadWithdrawalDto,
   CreateLeadDto,
   LeadListQueryDto,
   PushLeadDto,
@@ -48,6 +49,57 @@ describe('LeadController', () => {
       'push-key',
       { expectedVersion: 3 },
     );
+  });
+
+  it('passes a withdrawal application with its normalized key to the service', async () => {
+    const service = {
+      applyWithdrawal: jest.fn().mockResolvedValue({ status: 'ARCHIVED' }),
+    } as unknown as LeadService;
+    const controller = new LeadController(service);
+    await expect(
+      controller.applyWithdrawal({ userId: 'u' } as never, 'lead-1', ' key ', {
+        reason: ' correction ',
+        expectedVersion: 3,
+      }),
+    ).resolves.toEqual({ status: 'ARCHIVED' });
+    expect(service.applyWithdrawal).toHaveBeenCalledWith(
+      { userId: 'u' },
+      'lead-1',
+      'key',
+      { reason: ' correction ', expectedVersion: 3 },
+    );
+  });
+
+  it.each([undefined, '', ' '.repeat(3), 'x'.repeat(129)])(
+    'rejects withdrawal with invalid Idempotency-Key %#',
+    (key) => {
+      const service = { applyWithdrawal: jest.fn() } as unknown as LeadService;
+      const controller = new LeadController(service);
+      expect(() =>
+        controller.applyWithdrawal({} as never, 'lead-1', key, {} as never),
+      ).toThrow(BadRequestException);
+      expect(service.applyWithdrawal).not.toHaveBeenCalled();
+    },
+  );
+
+  it('rejects non-string withdrawal reason and unknown fields', async () => {
+    const pipe = new ValidationPipe({
+      whitelist: true,
+      forbidNonWhitelisted: true,
+      transform: true,
+    });
+    await expect(
+      pipe.transform(
+        { reason: 123, expectedVersion: 2 },
+        { type: 'body', metatype: ApplyLeadWithdrawalDto },
+      ),
+    ).rejects.toBeInstanceOf(BadRequestException);
+    await expect(
+      pipe.transform(
+        { reason: '纠错', expectedVersion: 2, status: 'ARCHIVED' },
+        { type: 'body', metatype: ApplyLeadWithdrawalDto },
+      ),
+    ).rejects.toBeInstanceOf(BadRequestException);
   });
 
   it('delegates the immutable-relation edit context', async () => {

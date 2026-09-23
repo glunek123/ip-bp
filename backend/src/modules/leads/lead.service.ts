@@ -26,7 +26,12 @@ import {
   SOURCE_OPTIONS,
   SOURCES,
 } from './lead.constants';
-import { CreateLeadCommand, PushLeadDto, UpdateLeadDto } from './lead.dto';
+import {
+  ApplyLeadWithdrawalDto,
+  CreateLeadCommand,
+  PushLeadDto,
+  UpdateLeadDto,
+} from './lead.dto';
 
 const MAX_SERIALIZABLE_ATTEMPTS = 3;
 const leadInclude = {
@@ -45,7 +50,46 @@ const leadInclude = {
   },
 } satisfies Prisma.LeadInclude;
 
+const leadDetailInclude = {
+  ...leadInclude,
+  reviewDecisions: {
+    select: {
+      id: true,
+      result: true,
+      reason: true,
+      archiveType: true,
+      archivedAt: true,
+      reviewerDisplayNameSnapshot: true,
+      decidedAt: true,
+      fromVersion: true,
+      toVersion: true,
+    },
+  },
+  withdrawalApplications: {
+    select: {
+      id: true,
+      originalDecisionId: true,
+      reason: true,
+      appliedAt: true,
+      fromVersion: true,
+      toVersion: true,
+      resultSnapshot: true,
+      confirmation: {
+        select: {
+          id: true,
+          confirmedAt: true,
+          fromVersion: true,
+          toVersion: true,
+        },
+      },
+    },
+  },
+} satisfies Prisma.LeadInclude;
+
 type LeadRecord = Prisma.LeadGetPayload<{ include: typeof leadInclude }>;
+type LeadDetailRecord = Prisma.LeadGetPayload<{
+  include: typeof leadDetailInclude;
+}>;
 type LeadProductResponse = {
   id: string;
   position: number;
@@ -129,6 +173,16 @@ type LeadPushResponse = {
   pushedAt: string;
   pushedByUserId: string;
   pushedByDisplayName: string;
+};
+
+type LeadWithdrawalApplicationResponse = {
+  id: string;
+  leadId: string;
+  status: 'ARCHIVED';
+  version: number;
+  reason: string;
+  applicantDisplayName: string;
+  appliedAt: string;
 };
 
 @Injectable()
@@ -300,18 +354,119 @@ export class LeadService {
     }
     const lead = await this.database.lead.findFirst({
       where: { id, ...scope },
-      include: leadInclude,
+      include: leadDetailInclude,
     });
     if (lead === null) throw this.notFound();
-    const [screenshotIds, edit, push] = await Promise.all([
+    const [screenshotIds, edit, push, withdrawApply] = await Promise.all([
       this.currentScreenshotIds(actor, [lead.id]),
       this.canEdit(actor, lead),
       this.canPush(actor, lead),
+      this.canApplyWithdrawal(actor, lead),
     ]);
+    const applications = lead.withdrawalApplications ?? [];
+    const pending = applications.find(
+      (application) =>
+        application.originalDecisionId === lead.activeReviewDecisionId &&
+        application.confirmation === null,
+    );
+    const history = [
+      ...(lead.reviewDecisions ?? []).map((decision) => ({
+        kind: 'REVIEW_DECISION' as const,
+        id: decision.id,
+        fromVersion: decision.fromVersion,
+        toVersion: decision.toVersion,
+        result: decision.result,
+        reason: decision.reason,
+        archiveType: decision.archiveType,
+        archivedAt: decision.archivedAt?.toISOString() ?? null,
+        reviewerDisplayName: decision.reviewerDisplayNameSnapshot,
+        occurredAt: decision.decidedAt.toISOString(),
+      })),
+      ...applications.flatMap((application) => [
+        {
+          kind: 'WITHDRAWAL_APPLICATION' as const,
+          id: application.id,
+          fromVersion: application.fromVersion,
+          toVersion: application.toVersion,
+          reason: application.reason,
+          applicantDisplayName: this.applicationDisplayName(
+            application.resultSnapshot,
+          ),
+          occurredAt: application.appliedAt.toISOString(),
+        },
+        ...(application.confirmation === null
+          ? []
+          : [
+              {
+                kind: 'WITHDRAWAL_CONFIRMATION' as const,
+                id: application.confirmation.id,
+                applicationId: application.id,
+                fromVersion: application.confirmation.fromVersion,
+                toVersion: application.confirmation.toVersion,
+                occurredAt: application.confirmation.confirmedAt.toISOString(),
+              },
+            ]),
+      ]),
+    ].sort(
+      (left, right) =>
+        left.fromVersion - right.fromVersion || left.id.localeCompare(right.id),
+    );
     return {
       ...this.view(lead, screenshotIds.get(lead.id) ?? []),
-      capabilities: { edit, push },
+      capabilities: { edit, push, withdrawApply },
+      pendingWithdrawalApplication:
+        pending === undefined
+          ? null
+          : {
+              id: pending.id,
+              reason: pending.reason,
+              applicantDisplayName: this.applicationDisplayName(
+                pending.resultSnapshot,
+              ),
+              appliedAt: pending.appliedAt.toISOString(),
+            },
+      history,
     };
+  }
+
+  private applicationDisplayName(snapshot: unknown): string {
+    if (
+      snapshot === null ||
+      typeof snapshot !== 'object' ||
+      Array.isArray(snapshot) ||
+      !('applicantDisplayName' in snapshot) ||
+      typeof snapshot.applicantDisplayName !== 'string'
+    )
+      throw this.corruptReceipt();
+    return snapshot.applicantDisplayName;
+  }
+
+  private async canApplyWithdrawal(
+    actor: ActorContext,
+    lead: LeadDetailRecord,
+  ): Promise<boolean> {
+    if (
+      lead.status !== 'ARCHIVED' ||
+      typeof lead.activeReviewDecisionId !== 'string' ||
+      lead.reviewDecision?.result !== 'NO_INFRINGEMENT' ||
+      lead.reviewDecision.archiveType !== 'NO_INFRINGEMENT' ||
+      (lead.withdrawalApplications ?? []).some(
+        (application) =>
+          application.originalDecisionId === lead.activeReviewDecisionId,
+      )
+    )
+      return false;
+    try {
+      await this.access.authorizeLead(actor, 'lead.withdraw.apply', {
+        departmentId: lead.departmentId,
+        responsibleUserId: lead.responsibleUserId,
+        ...(lead.teamId === null ? {} : { teamId: lead.teamId }),
+      });
+      return true;
+    } catch (error) {
+      if (error instanceof ForbiddenException) return false;
+      throw error;
+    }
   }
 
   async create(
@@ -825,6 +980,204 @@ export class LeadService {
       }
     }
     throw this.versionConflict();
+  }
+
+  async applyWithdrawal(
+    actor: ActorContext,
+    id: string,
+    idempotencyKey: string,
+    input: ApplyLeadWithdrawalDto,
+  ): Promise<LeadWithdrawalApplicationResponse> {
+    if (typeof input.reason !== 'string') throw this.validation();
+    const reason = input.reason.trim();
+    const reasonLength = Array.from(reason).length;
+    if (reasonLength < 1 || reasonLength > 5000) throw this.validation();
+    if (!Number.isInteger(input.expectedVersion) || input.expectedVersion < 1)
+      throw this.validation();
+    const fingerprint = this.fingerprint({
+      leadId: id,
+      reason,
+      expectedVersion: input.expectedVersion,
+    });
+    for (let attempt = 1; attempt <= MAX_SERIALIZABLE_ATTEMPTS; attempt += 1) {
+      try {
+        return await this.database.$transaction(
+          async (transaction) => {
+            const locked = await transaction.$queryRawUnsafe<
+              Array<{ id: string }>
+            >(
+              'SELECT "id" FROM "leads" WHERE "id" = $1::uuid AND "department_id" = $2::uuid FOR UPDATE',
+              id,
+              actor.departmentId,
+            );
+            if (locked.length !== 1) throw this.notFound();
+            const current = await transaction.lead.findFirst({
+              where: { id, departmentId: actor.departmentId },
+              include: {
+                reviewDecision: { select: { result: true, archiveType: true } },
+                withdrawalApplications: {
+                  select: { originalDecisionId: true },
+                },
+              },
+            });
+            if (current === null) throw this.notFound();
+            try {
+              await this.access.authorizeLead(
+                actor,
+                'lead.withdraw.apply',
+                {
+                  departmentId: current.departmentId,
+                  responsibleUserId: current.responsibleUserId,
+                  ...(current.teamId === null
+                    ? {}
+                    : { teamId: current.teamId }),
+                },
+                transaction,
+              );
+            } catch (error) {
+              throw this.mapAuthorization(error);
+            }
+            const prior =
+              await transaction.leadWithdrawalApplication.findUnique({
+                where: {
+                  departmentId_applicantUserId_idempotencyKey: {
+                    departmentId: actor.departmentId,
+                    applicantUserId: actor.userId,
+                    idempotencyKey,
+                  },
+                },
+              });
+            if (prior !== null)
+              return this.withdrawalApplicationSnapshot(prior, fingerprint, id);
+            if (
+              current.status !== 'ARCHIVED' ||
+              current.activeReviewDecisionId === null ||
+              current.reviewDecision?.result !== 'NO_INFRINGEMENT' ||
+              current.reviewDecision.archiveType !== 'NO_INFRINGEMENT' ||
+              current.withdrawalApplications.some(
+                (application) =>
+                  application.originalDecisionId ===
+                  current.activeReviewDecisionId,
+              )
+            )
+              throw this.withdrawalInvalidState();
+            if (current.version !== input.expectedVersion)
+              throw this.versionConflict();
+            const applicant = await transaction.userAccount.findUnique({
+              where: { id: actor.userId },
+              select: { displayName: true },
+            });
+            if (applicant === null) throw this.actionForbidden();
+            const changed = await transaction.lead.updateMany({
+              where: {
+                id,
+                departmentId: actor.departmentId,
+                version: input.expectedVersion,
+                status: 'ARCHIVED',
+                activeReviewDecisionId: current.activeReviewDecisionId,
+              },
+              data: { version: { increment: 1 } },
+            });
+            if (changed.count !== 1) throw this.versionConflict();
+            const applicationId = randomUUID();
+            const appliedAt = new Date();
+            const result: LeadWithdrawalApplicationResponse = {
+              id: applicationId,
+              leadId: id,
+              status: 'ARCHIVED',
+              version: input.expectedVersion + 1,
+              reason,
+              applicantDisplayName: applicant.displayName,
+              appliedAt: appliedAt.toISOString(),
+            };
+            await transaction.leadWithdrawalApplication.create({
+              data: {
+                id: applicationId,
+                originalDecisionId: current.activeReviewDecisionId,
+                leadId: id,
+                customerId: current.customerId,
+                departmentId: current.departmentId,
+                applicantUserId: actor.userId,
+                reason,
+                appliedAt,
+                fromVersion: input.expectedVersion,
+                toVersion: result.version,
+                idempotencyKey,
+                requestFingerprint: fingerprint,
+                resultSnapshot: result,
+              },
+            });
+            await transaction.auditEvent.create({
+              data: {
+                departmentId: actor.departmentId,
+                actorUserId: actor.userId,
+                resourceType: 'lead',
+                resourceId: id,
+                action: 'lead.withdrawal_applied',
+                details: {
+                  applicationId,
+                  originalDecisionId: current.activeReviewDecisionId,
+                  fromVersion: input.expectedVersion,
+                  toVersion: result.version,
+                },
+              },
+            });
+            return result;
+          },
+          { isolationLevel: 'Serializable' },
+        );
+      } catch (error) {
+        if (this.isSerializationConflict(error)) {
+          if (attempt < MAX_SERIALIZABLE_ATTEMPTS) continue;
+          throw this.versionConflict();
+        }
+        if (this.isUnique(error)) {
+          if (attempt < MAX_SERIALIZABLE_ATTEMPTS) continue;
+          throw this.withdrawalInvalidState();
+        }
+        throw this.mapAuthorization(error);
+      }
+    }
+    throw this.versionConflict();
+  }
+
+  private withdrawalApplicationSnapshot(
+    application: {
+      requestFingerprint: string;
+      resultSnapshot: unknown;
+      leadId: string;
+      id: string;
+      toVersion: number;
+      reason: string;
+      appliedAt: Date;
+    },
+    fingerprint: string,
+    leadId: string,
+  ): LeadWithdrawalApplicationResponse {
+    if (
+      application.requestFingerprint !== fingerprint ||
+      application.leadId !== leadId
+    )
+      throw this.idempotencyConflict();
+    const snapshot = application.resultSnapshot;
+    if (
+      snapshot === null ||
+      typeof snapshot !== 'object' ||
+      Array.isArray(snapshot)
+    )
+      throw this.corruptReceipt();
+    const result = snapshot as Record<string, unknown>;
+    if (
+      result.id !== application.id ||
+      result.leadId !== leadId ||
+      result.status !== 'ARCHIVED' ||
+      result.version !== application.toVersion ||
+      result.reason !== application.reason ||
+      typeof result.applicantDisplayName !== 'string' ||
+      result.appliedAt !== application.appliedAt.toISOString()
+    )
+      throw this.corruptReceipt();
+    return result as LeadWithdrawalApplicationResponse;
   }
 
   private async assertCustomerAndHolder(
@@ -1443,6 +1796,12 @@ export class LeadService {
     return new ConflictException({
       code: 'INVALID_STATE',
       message: '仅待推送线索可以推送',
+    });
+  }
+  private withdrawalInvalidState() {
+    return new ConflictException({
+      code: 'INVALID_STATE',
+      message: '仅当前未申请撤回的不侵权归档线索可以申请',
     });
   }
   private customerNotAdmitted() {
