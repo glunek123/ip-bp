@@ -18,6 +18,67 @@ const actor: ActorContext = {
 };
 
 describe('LeadService', () => {
+  it('projects the immutable customer review decision for operations', async () => {
+    const fixture = createCreateFixture();
+    const decisionLead = {
+      ...fixture.createdLead,
+      reviewDecision: {
+        result: 'INFRINGEMENT',
+        reviewerDisplayNameSnapshot: '企业审核员',
+        decidedAt: new Date('2026-09-22T03:00:00.000Z'),
+        reviewer: { displayName: '已改名的账号' },
+      },
+    };
+    const service = new LeadService(
+      {
+        lead: { findFirst: jest.fn().mockResolvedValue(decisionLead) },
+      } as unknown as DatabaseService,
+      {
+        buildLeadScope: jest
+          .fn()
+          .mockResolvedValue({ departmentId: actor.departmentId }),
+        authorizeLead: jest.fn(),
+      } as unknown as AccessControlService,
+      {
+        listCurrentReferenceVersionIds: jest.fn().mockResolvedValue([]),
+      } as unknown as MaterialService,
+    );
+
+    const result = await service.get(actor, fixture.createdLead.id);
+
+    expect(result.reviewDecision).toEqual({
+      result: 'INFRINGEMENT',
+      reviewerDisplayName: '企业审核员',
+      decidedAt: '2026-09-22T03:00:00.000Z',
+    });
+    expect(result.reviewDecision?.reviewerDisplayName).not.toBe('已改名的账号');
+  });
+
+  it('projects a null customer review decision for leads without a formal decision', async () => {
+    const fixture = createCreateFixture();
+    const service = new LeadService(
+      {
+        lead: { findFirst: jest.fn().mockResolvedValue(fixture.createdLead) },
+      } as unknown as DatabaseService,
+      {
+        buildLeadScope: jest
+          .fn()
+          .mockResolvedValue({ departmentId: actor.departmentId }),
+        authorizeLead: jest.fn(),
+      } as unknown as AccessControlService,
+      {
+        listCurrentReferenceVersionIds: jest.fn().mockResolvedValue([]),
+      } as unknown as MaterialService,
+    );
+
+    await expect(
+      service.get(actor, fixture.createdLead.id),
+    ).resolves.toMatchObject({
+      status: 'WAITING_PUSH',
+      reviewDecision: null,
+    });
+  });
+
   it('exposes only the approved controlled dictionaries', () => {
     expect(CASE_TYPE_OPTIONS.map(({ value }) => value)).toEqual([
       'CIVIL',
@@ -399,7 +460,13 @@ describe('LeadService', () => {
     const first = await fixture.service.create(actor, 'same-key', input);
     const receiptData =
       fixture.tx.leadCommandReceipt.create.mock.calls[0]?.[0]?.data;
-    fixture.tx.leadCommandReceipt.findUnique.mockResolvedValue(receiptData);
+    expect(receiptData.resultSnapshot.reviewDecision).toBeNull();
+    const legacySnapshot = { ...receiptData.resultSnapshot };
+    Reflect.deleteProperty(legacySnapshot, 'reviewDecision');
+    fixture.tx.leadCommandReceipt.findUnique.mockResolvedValue({
+      ...receiptData,
+      resultSnapshot: legacySnapshot,
+    });
     fixture.tx.lead.create.mockClear();
     await expect(
       fixture.service.create(actor, 'same-key', input),
@@ -1137,6 +1204,7 @@ function createCreateFixture() {
       },
     ],
     infringements: [{ type: 'TRADEMARK' }],
+    reviewDecision: null,
   };
   const tx = {
     $queryRawUnsafe: jest

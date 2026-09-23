@@ -33,6 +33,13 @@ const leadInclude = {
   products: { orderBy: { position: 'asc' as const } },
   infringements: { orderBy: { type: 'asc' as const } },
   pushedBy: { select: { displayName: true } },
+  reviewDecision: {
+    select: {
+      result: true,
+      reviewerDisplayNameSnapshot: true,
+      decidedAt: true,
+    },
+  },
 } satisfies Prisma.LeadInclude;
 
 type LeadRecord = Prisma.LeadGetPayload<{ include: typeof leadInclude }>;
@@ -72,6 +79,11 @@ type LeadResponse = {
   pushedAt: string | null;
   pushedByUserId: string | null;
   pushedByDisplayName: string | null;
+  reviewDecision: {
+    result: 'INFRINGEMENT';
+    reviewerDisplayName: string;
+    decidedAt: string;
+  } | null;
   createdAt: string;
   updatedAt: string;
 };
@@ -1001,6 +1013,14 @@ export class LeadService {
       pushedAt: record.pushedAt?.toISOString() ?? null,
       pushedByUserId: record.pushedByUserId ?? null,
       pushedByDisplayName: record.pushedBy?.displayName ?? null,
+      reviewDecision: record.reviewDecision
+        ? {
+            result: record.reviewDecision.result,
+            reviewerDisplayName:
+              record.reviewDecision.reviewerDisplayNameSnapshot,
+            decidedAt: record.reviewDecision.decidedAt.toISOString(),
+          }
+        : null,
       createdAt: record.createdAt.toISOString(),
       updatedAt: record.updatedAt.toISOString(),
     };
@@ -1096,6 +1116,13 @@ export class LeadService {
       pushedAt: response.pushedAt,
       pushedByUserId: response.pushedByUserId,
       pushedByDisplayName: response.pushedByDisplayName,
+      reviewDecision: response.reviewDecision
+        ? {
+            result: response.reviewDecision.result,
+            reviewerDisplayName: response.reviewDecision.reviewerDisplayName,
+            decidedAt: response.reviewDecision.decidedAt,
+          }
+        : null,
       createdAt: response.createdAt,
       updatedAt: response.updatedAt,
     };
@@ -1148,6 +1175,13 @@ export class LeadService {
       (candidate.pushedAt === null || typeof candidate.pushedAt === 'string') &&
       (candidate.pushedByUserId === null ||
         typeof candidate.pushedByUserId === 'string') &&
+      (candidate.reviewDecision === undefined ||
+        candidate.reviewDecision === null ||
+        (typeof candidate.reviewDecision === 'object' &&
+          !Array.isArray(candidate.reviewDecision) &&
+          candidate.reviewDecision.result === 'INFRINGEMENT' &&
+          typeof candidate.reviewDecision.reviewerDisplayName === 'string' &&
+          typeof candidate.reviewDecision.decidedAt === 'string')) &&
       (candidate.pushedByDisplayName === undefined ||
         candidate.pushedByDisplayName === null ||
         typeof candidate.pushedByDisplayName === 'string') &&
@@ -1200,6 +1234,7 @@ export class LeadService {
     return {
       ...snapshot,
       pushedByDisplayName: snapshot.pushedByDisplayName ?? null,
+      reviewDecision: snapshot.reviewDecision ?? null,
     };
   }
   private pushReceiptResult(
