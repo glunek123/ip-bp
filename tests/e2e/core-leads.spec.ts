@@ -1,4 +1,5 @@
 import { randomUUID } from 'node:crypto';
+import { execFileSync } from 'node:child_process';
 import { readFile } from 'node:fs/promises';
 import {
   expect,
@@ -14,6 +15,9 @@ import {
   countLeadPushAudits,
   countLeadPushReceipts,
   countLeadReviewDecisions,
+  countLeadWithdrawalApplications,
+  countLeadWithdrawalAudits,
+  countLeadWithdrawalConfirmations,
   countClientLeadReviewReceipts,
   countLeads,
   countStoredFiles,
@@ -22,6 +26,8 @@ import {
   getCustomer,
   getLead,
   getLeadReviewDecision,
+  getLeadReviewDecisions,
+  getLeadWithdrawalApplication,
   getMaterialAuditActions,
   getMaterialLifecycle,
   getMaterialByVersion,
@@ -31,6 +37,8 @@ import {
   rejectLeadPushReceiptWrites,
   rejectLeadReviewDecisionWrites,
   rejectClientLeadReviewReceiptWrites,
+  rejectWithdrawalApplicationWrites,
+  rejectWithdrawalConfirmationWrites,
   rejectLeadProductWrites,
   rejectMaterialMetadataWrites,
   resetCoreLeadE2eData,
@@ -40,6 +48,7 @@ import {
   setClientUserActive,
   setCustomerStatus,
   setGrant,
+  setTeamActive,
   setLeadCounter,
   setMaterialDeletedAt,
   startMaterialCleanup,
@@ -232,6 +241,60 @@ function reviewLead(
     headers: { 'Idempotency-Key': key, 'X-CSRF-Token': csrfToken },
     data,
   });
+}
+
+async function archiveLeadForWithdrawal(
+  request: APIRequestContext,
+  csrfToken: string,
+  input = leadInput(),
+) {
+  const created = await createLead(request, input);
+  expect(created.status(), await created.text()).toBe(201);
+  const lead: { id: string } = await created.json();
+  expect((await pushLead(request, lead.id, 1)).status()).toBe(201);
+  const reviewKey = randomUUID();
+  const review = await reviewLead(
+    request,
+    lead.id,
+    2,
+    csrfToken,
+    reviewKey,
+    'NO_INFRINGEMENT',
+    '原审核结论保持不变',
+  );
+  expect(review.status(), await review.text()).toBe(201);
+  return { lead, reviewKey, reviewResult: await review.json() };
+}
+
+function applyLeadWithdrawal(
+  request: APIRequestContext,
+  leadId: string,
+  expectedVersion: number,
+  reason: string,
+  key = randomUUID(),
+  headers = authorizationA,
+) {
+  return request.post(`/api/v1/leads/${leadId}/withdrawal-applications`, {
+    headers: { ...headers, 'Idempotency-Key': key },
+    data: { reason, expectedVersion },
+  });
+}
+
+function confirmLeadWithdrawal(
+  request: APIRequestContext,
+  leadId: string,
+  applicationId: string,
+  expectedVersion: number,
+  csrfToken: string,
+  key = randomUUID(),
+) {
+  return request.post(
+    `/api/v1/client/leads/${leadId}/withdrawal-confirmations`,
+    {
+      headers: { 'Idempotency-Key': key, 'X-CSRF-Token': csrfToken },
+      data: { applicationId, expectedVersion },
+    },
+  );
 }
 
 function admissionInput(versionIds: string[]) {
@@ -690,6 +753,170 @@ test('real operator and client logins archive a no-infringement review and prese
   const operatorRecord = page.locator('[data-test="client-review-record"]');
   await expect(operatorRecord).toContainText(reason);
   await expect(operatorRecord).toContainText(archivedTime!);
+
+  const originalDecision = await getLeadReviewDecision(leadId);
+  expect(originalDecision).toMatchObject({
+    result: 'NO_INFRINGEMENT',
+    reason,
+    archiveType: 'NO_INFRINGEMENT',
+    fromVersion: 2,
+    toVersion: 3,
+  });
+  const applicationReason = '发现新的权属证明，请原客户企业复核';
+  await page.locator('[data-test="withdrawal-reason"]').fill(applicationReason);
+  page.once('dialog', (dialog) => {
+    expect(dialog.message()).toContain('仍保持归档');
+    return dialog.accept();
+  });
+  await page.locator('[data-test="apply-withdrawal"]').click();
+  await expect(page.locator('.page-head .pill')).toHaveText('线索已归档');
+  await expect(page.locator('[data-test="withdrawal-success"]')).toContainText(
+    '等待原客户企业确认',
+  );
+  const application = await getLeadWithdrawalApplication(leadId);
+  expect(application).toMatchObject({
+    reason: applicationReason,
+    fromVersion: 3,
+    toVersion: 4,
+    confirmation: null,
+  });
+  expect(application?.resultSnapshot).toMatchObject({
+    status: 'ARCHIVED',
+    version: 4,
+    reason: applicationReason,
+  });
+  expect(await getLead(leadId)).toMatchObject({
+    status: 'ARCHIVED',
+    version: 4,
+    activeReviewDecisionId: originalDecision?.id,
+  });
+  expect(await countLeadWithdrawalAudits(leadId)).toBe(1);
+
+  await page.getByRole('button', { name: '退出登录' }).click();
+  await expect(page).toHaveURL(/\/login$/u);
+  await page.getByLabel('用户名').fill(clientUsername);
+  await page.getByLabel('密码').fill(clientPassword);
+  await page.getByRole('button', { name: '登录', exact: true }).click();
+  await expect(page).toHaveURL(/\/client\/leads$/u);
+  const pendingRow = page.locator('[data-test="client-lead-row"]');
+  await expect(pendingRow).toContainText('待确认撤回');
+  await expect(pendingRow).toContainText('不侵权浏览器链路店铺');
+  await page.locator('[data-test="client-view-processed"]').click();
+  await expect(
+    page.getByRole('heading', { name: '已处理线索', exact: true }),
+  ).toBeVisible();
+  await expect(
+    page
+      .locator('[data-test="client-lead-row"]')
+      .filter({ hasText: '不侵权浏览器链路店铺' }),
+  ).toHaveCount(0);
+  await page.locator('[data-test="client-view-pending"]').click();
+  await expect(
+    page.getByRole('heading', { name: '待我审核', exact: true }),
+  ).toBeVisible();
+  await pendingRow.getByRole('link').click();
+  await expect(
+    page.locator('[data-test="withdrawal-application"]'),
+  ).toContainText(applicationReason);
+  await expect(page.locator('[data-test="confirm-withdrawal"]')).toBeVisible();
+  const firstScreenshot = page.waitForEvent('download');
+  await page.locator('[data-test^="download-screenshot-"]').click();
+  expect(await readFile(await (await firstScreenshot).path())).toEqual(
+    jpegBytes,
+  );
+  page.once('dialog', (dialog) => {
+    expect(dialog.message()).toContain('原结论和归档记录保留');
+    return dialog.accept();
+  });
+  await page.locator('[data-test="confirm-withdrawal"]').click();
+  await expect(page.locator('.page-head .pill')).toHaveText('线索待审核');
+  await expect(page.locator('[data-test="withdrawal-success"]')).toContainText(
+    '原结论和归档记录仍保留',
+  );
+  expect(await getLead(leadId)).toMatchObject({
+    status: 'WAITING_REVIEW',
+    version: 5,
+    activeReviewDecisionId: null,
+  });
+  const confirmedApplication = await getLeadWithdrawalApplication(leadId);
+  expect(confirmedApplication?.confirmation).toMatchObject({
+    fromVersion: 4,
+    toVersion: 5,
+    resultSnapshot: expect.objectContaining({ status: 'WAITING_REVIEW' }),
+  });
+  expect(await countLeadWithdrawalConfirmations(leadId)).toBe(1);
+  expect(await countLeadReviewDecisions(leadId)).toBe(1);
+  await page.reload();
+  await expect(page.locator('.page-head .pill')).toHaveText('线索待审核');
+  await expect(
+    page.locator('[data-test="client-withdrawal-history"]'),
+  ).toContainText(reason);
+  await expect(
+    page.locator('[data-test="client-withdrawal-history"]'),
+  ).toContainText(applicationReason);
+  const afterConfirmationDownload = page.waitForEvent('download');
+  await page.locator('[data-test^="download-screenshot-"]').click();
+  expect(
+    await readFile(await (await afterConfirmationDownload).path()),
+  ).toEqual(jpegBytes);
+
+  page.once('dialog', (dialog) => {
+    expect(dialog.message()).toContain('当前入口不能撤回');
+    return dialog.accept();
+  });
+  await page.locator('[data-test="confirm-infringement"]').click();
+  await expect(page.locator('.page-head .pill')).toHaveText('线索待确认');
+  expect(await countLeadReviewDecisions(leadId)).toBe(2);
+  expect(await countClientLeadReviewReceipts(leadId)).toBe(2);
+  await page.reload();
+  await expect(page.locator('.page-head .pill')).toHaveText('线索待确认');
+  await expect(
+    page.locator('[data-test="client-withdrawal-history"]'),
+  ).toContainText('确认侵权');
+  await expect(
+    page.locator('[data-test="client-withdrawal-history"]'),
+  ).toContainText('客户确认撤回');
+
+  await page.getByRole('button', { name: '退出登录' }).click();
+  await expect(page).toHaveURL(/\/login$/u);
+  await page.getByLabel('用户名').fill(coreLeadFixtures.operatorUsername);
+  await page.getByLabel('密码').fill(coreLeadFixtures.operatorPassword);
+  await page.getByRole('button', { name: '登录', exact: true }).click();
+  await expect(page).toHaveURL(/\/customers$/u);
+  await page.goto('/leads?status=WAITING_EVIDENCE_DECISION');
+  const finalOperatorRow = page
+    .locator('[data-test="lead-row"]')
+    .filter({ hasText: '不侵权浏览器链路店铺' });
+  await expect(finalOperatorRow).toContainText('线索待确认');
+  await finalOperatorRow.getByRole('link').click();
+  await expect(page.locator('[data-test="withdrawal-history"]')).toContainText(
+    reason,
+  );
+  await expect(page.locator('[data-test="withdrawal-history"]')).toContainText(
+    applicationReason,
+  );
+  await expect(page.locator('[data-test="withdrawal-history"]')).toContainText(
+    '客户确认撤回',
+  );
+  const decisions = await getLeadReviewDecisions(leadId);
+  expect(decisions.map((decision) => decision.result)).toEqual([
+    'NO_INFRINGEMENT',
+    'INFRINGEMENT',
+  ]);
+  expect(decisions[0].receipt?.resultSnapshot).toMatchObject({
+    status: 'ARCHIVED',
+    version: 3,
+    reviewDecision: { reason },
+  });
+  expect(await getLeadReviewDecision(leadId)).toMatchObject({
+    result: 'INFRINGEMENT',
+    fromVersion: 5,
+    toVersion: 6,
+  });
+  expect(await getLead(leadId)).toMatchObject({
+    status: 'WAITING_EVIDENCE_DECISION',
+    version: 6,
+  });
 });
 
 test('Demo-aligned shell works on desktop and mobile', async ({ page }) => {
@@ -1951,6 +2178,441 @@ test('lead numbers stop after 999 and concurrent creation never duplicates a num
   expect(await countLeads()).toBe(4 + successes.length);
 });
 
+test('withdrawal application enforces Grant, state, retries, races, and full transaction rollback', async ({
+  request,
+}) => {
+  const client = await createClientAccount(request);
+  const csrf = await loginClient(request, client.username, client.password);
+  const archived = await archiveLeadForWithdrawal(request, csrf);
+  const leadId = archived.lead.id;
+  const originalDecision = await getLeadReviewDecision(leadId);
+  expect(originalDecision?.result).toBe('NO_INFRINGEMENT');
+
+  const waiting = await (await createLead(request)).json();
+  expect(
+    (await applyLeadWithdrawal(request, waiting.id, 1, '未归档')).status(),
+  ).toBe(409);
+  const infringementLead = await (await createLead(request)).json();
+  expect((await pushLead(request, infringementLead.id, 1)).status()).toBe(201);
+  const infringementReview = await reviewLead(
+    request,
+    infringementLead.id,
+    2,
+    csrf,
+  );
+  expect(infringementReview.status()).toBe(201);
+  const wrongArchive = await applyLeadWithdrawal(
+    request,
+    infringementLead.id,
+    3,
+    '错误归档类型',
+  );
+  expect(wrongArchive.status()).toBe(409);
+  expect(await wrongArchive.json()).toMatchObject({ code: 'INVALID_STATE' });
+  for (const reason of ['', '   ', 'x'.repeat(5001)]) {
+    const invalid = await applyLeadWithdrawal(request, leadId, 3, reason);
+    expect(invalid.status(), await invalid.text()).toBe(400);
+    expect(await invalid.json()).toMatchObject({ code: 'VALIDATION_ERROR' });
+  }
+  const stale = await applyLeadWithdrawal(request, leadId, 2, '过期版本');
+  expect(stale.status()).toBe(409);
+  expect(await stale.json()).toMatchObject({ code: 'VERSION_CONFLICT' });
+  await setGrant('lead.withdraw.apply', false);
+  expect(
+    (await applyLeadWithdrawal(request, leadId, 3, '无授权')).status(),
+  ).toBe(403);
+  await setGrant('lead.withdraw.apply', true);
+  await setTeamActive(coreLeadFixtures.teamA, false);
+  expect(
+    (await applyLeadWithdrawal(request, leadId, 3, '团队停用')).status(),
+  ).toBe(403);
+  await setTeamActive(coreLeadFixtures.teamA, true);
+
+  const key = randomUUID();
+  const accepted = await applyLeadWithdrawal(
+    request,
+    leadId,
+    3,
+    '  补充关键证据  ',
+    key,
+  );
+  expect(accepted.status(), await accepted.text()).toBe(201);
+  const snapshot = await accepted.json();
+  expect(snapshot).toMatchObject({
+    leadId,
+    status: 'ARCHIVED',
+    version: 4,
+    reason: '补充关键证据',
+  });
+  await setGrant('lead.withdraw.apply', false);
+  const revokedReplay = await applyLeadWithdrawal(
+    request,
+    leadId,
+    3,
+    '补充关键证据',
+    key,
+  );
+  expect(revokedReplay.status()).toBe(403);
+  await setGrant('lead.withdraw.apply', true);
+  const replay = await applyLeadWithdrawal(
+    request,
+    leadId,
+    3,
+    '补充关键证据',
+    key,
+  );
+  expect(replay.status()).toBe(201);
+  expect(await replay.json()).toEqual(snapshot);
+  const conflict = await applyLeadWithdrawal(
+    request,
+    leadId,
+    3,
+    '另一原因',
+    key,
+  );
+  expect(conflict.status()).toBe(409);
+  expect(await conflict.json()).toMatchObject({ code: 'IDEMPOTENCY_CONFLICT' });
+  expect(await getLead(leadId)).toMatchObject({
+    status: 'ARCHIVED',
+    version: 4,
+    activeReviewDecisionId: originalDecision?.id,
+  });
+  expect(await getLeadReviewDecision(leadId)).toEqual(originalDecision);
+  expect(await countLeadWithdrawalApplications(leadId)).toBe(1);
+  expect(await countLeadWithdrawalAudits(leadId)).toBe(1);
+
+  const racing = await archiveLeadForWithdrawal(
+    request,
+    await loginClient(request, client.username, client.password),
+  );
+  const raced = await Promise.all([
+    applyLeadWithdrawal(request, racing.lead.id, 3, '并发申请', randomUUID()),
+    applyLeadWithdrawal(request, racing.lead.id, 3, '并发申请', randomUUID()),
+  ]);
+  expect(raced.filter((response) => response.status() === 201)).toHaveLength(1);
+  expect(raced.filter((response) => response.status() === 409)).toHaveLength(1);
+  expect(await countLeadWithdrawalApplications(racing.lead.id)).toBe(1);
+  expect(await countLeadWithdrawalAudits(racing.lead.id)).toBe(1);
+
+  for (const failure of ['application', 'audit'] as const) {
+    const rollback = await archiveLeadForWithdrawal(
+      request,
+      await loginClient(request, client.username, client.password),
+    );
+    if (failure === 'application') await rejectWithdrawalApplicationWrites();
+    else await rejectAuditWrites('lead.withdrawal_applied');
+    expect(
+      (
+        await applyLeadWithdrawal(request, rollback.lead.id, 3, '应整体回滚')
+      ).status(),
+    ).toBe(500);
+    await allowInjectedFailures();
+    expect(await getLead(rollback.lead.id)).toMatchObject({
+      status: 'ARCHIVED',
+      version: 3,
+    });
+    expect(await countLeadWithdrawalApplications(rollback.lead.id)).toBe(0);
+    expect(await countLeadWithdrawalAudits(rollback.lead.id)).toBe(0);
+  }
+});
+
+test('withdrawal confirmation revalidates client identity, rolls back, and preserves immutable replay history', async ({
+  request,
+}) => {
+  const owner = await createClientAccount(request);
+  const foreign = await createClientAccount(request, {
+    customerId: coreLeadFixtures.foreignCustomer,
+    headers: { Authorization: `Bearer ${coreLeadFixtures.tokenB}` },
+  });
+  let csrf = await loginClient(request, owner.username, owner.password);
+  const screenshot = await upload(request, {
+    ownerType: 'LEAD_DRAFT',
+    purpose: 'LEAD_SCREENSHOT',
+    name: 'withdrawal-allowed.jpg',
+    mime: 'image/jpeg',
+    bytes: jpegBytes,
+  });
+  const archived = await archiveLeadForWithdrawal(
+    request,
+    csrf,
+    leadInput({
+      reservedLeadId: screenshot.reservedOwnerId,
+      leadScreenshotContentVersionIds: [screenshot.contentVersionId],
+    }),
+  );
+  const applied = await applyLeadWithdrawal(
+    request,
+    archived.lead.id,
+    3,
+    '原企业确认',
+  );
+  expect(applied.status()).toBe(201);
+  const application = await applied.json();
+  const foreignCsrf = await loginClient(
+    request,
+    foreign.username,
+    foreign.password,
+  );
+  expect(
+    (
+      await confirmLeadWithdrawal(
+        request,
+        archived.lead.id,
+        application.id,
+        4,
+        foreignCsrf,
+      )
+    ).status(),
+  ).toBe(404);
+  expect(
+    (await request.get(`/api/v1/client/leads/${archived.lead.id}`)).status(),
+  ).toBe(404);
+  const foreignMaterial = await getMaterialByVersion(
+    screenshot.contentVersionId,
+  );
+  const foreignScreenshot = await request.get(
+    `/api/v1/materials/${foreignMaterial!.materialId}/versions/${screenshot.contentVersionId}/content`,
+  );
+  expect(foreignScreenshot.status()).toBe(404);
+  csrf = await loginClient(request, owner.username, owner.password);
+  const unpushed = await (await createLead(request)).json();
+  expect(
+    (
+      await confirmLeadWithdrawal(request, unpushed.id, randomUUID(), 1, csrf)
+    ).status(),
+  ).toBe(404);
+  const stale = await confirmLeadWithdrawal(
+    request,
+    archived.lead.id,
+    application.id,
+    3,
+    csrf,
+  );
+  expect(stale.status()).toBe(409);
+  expect(await stale.json()).toMatchObject({ code: 'VERSION_CONFLICT' });
+
+  await setClientUserActive(coreLeadFixtures.admittedCustomer, false);
+  expect(
+    (
+      await confirmLeadWithdrawal(
+        request,
+        archived.lead.id,
+        application.id,
+        4,
+        csrf,
+      )
+    ).status(),
+  ).toBe(401);
+  await setClientUserActive(coreLeadFixtures.admittedCustomer, true);
+  csrf = await loginClient(request, owner.username, owner.password);
+  await setClientBindingActive(coreLeadFixtures.admittedCustomer, false);
+  expect([401, 403]).toContain(
+    (
+      await confirmLeadWithdrawal(
+        request,
+        archived.lead.id,
+        application.id,
+        4,
+        csrf,
+      )
+    ).status(),
+  );
+  await setClientBindingActive(coreLeadFixtures.admittedCustomer, true);
+  csrf = await loginClient(request, owner.username, owner.password);
+  await setCustomerStatus(coreLeadFixtures.admittedCustomer, 'DRAFT');
+  expect([401, 403]).toContain(
+    (
+      await confirmLeadWithdrawal(
+        request,
+        archived.lead.id,
+        application.id,
+        4,
+        csrf,
+      )
+    ).status(),
+  );
+  await setCustomerStatus(coreLeadFixtures.admittedCustomer, 'ADMITTED');
+  csrf = await loginClient(request, owner.username, owner.password);
+
+  const allowedMaterial = await getMaterialByVersion(
+    screenshot.contentVersionId,
+  );
+  expect(allowedMaterial).not.toBeNull();
+  const allowedScreenshot = await request.get(
+    `/api/v1/materials/${allowedMaterial!.materialId}/versions/${screenshot.contentVersionId}/content`,
+  );
+  expect(allowedScreenshot.status()).toBe(200);
+  expect(await allowedScreenshot.body()).toEqual(jpegBytes);
+  const unlinkedScreenshot = await upload(request, {
+    ownerType: 'LEAD_DRAFT',
+    purpose: 'LEAD_SCREENSHOT',
+    name: 'withdrawal-unlinked.jpg',
+    mime: 'image/jpeg',
+    bytes: jpegBytes,
+  });
+  const unlinkedMaterial = await getMaterialByVersion(
+    unlinkedScreenshot.contentVersionId,
+  );
+  const deniedUnlinked = await request.get(
+    `/api/v1/materials/${unlinkedMaterial!.materialId}/versions/${unlinkedScreenshot.contentVersionId}/content`,
+  );
+  expect([403, 404]).toContain(deniedUnlinked.status());
+
+  await rejectWithdrawalConfirmationWrites();
+  expect(
+    (
+      await confirmLeadWithdrawal(
+        request,
+        archived.lead.id,
+        application.id,
+        4,
+        csrf,
+      )
+    ).status(),
+  ).toBe(500);
+  await allowInjectedFailures();
+  expect(await getLead(archived.lead.id)).toMatchObject({
+    status: 'ARCHIVED',
+    version: 4,
+  });
+  expect(await countLeadWithdrawalConfirmations(archived.lead.id)).toBe(0);
+  const confirmationKey = randomUUID();
+  const confirmed = await confirmLeadWithdrawal(
+    request,
+    archived.lead.id,
+    application.id,
+    4,
+    csrf,
+    confirmationKey,
+  );
+  expect(confirmed.status(), await confirmed.text()).toBe(201);
+  const confirmationSnapshot = await confirmed.json();
+  expect(confirmationSnapshot).toMatchObject({
+    status: 'WAITING_REVIEW',
+    version: 5,
+    applicationId: application.id,
+  });
+  const repeatedWithNewKey = await confirmLeadWithdrawal(
+    request,
+    archived.lead.id,
+    application.id,
+    5,
+    csrf,
+  );
+  expect(repeatedWithNewKey.status()).toBe(409);
+  expect(await repeatedWithNewKey.json()).toMatchObject({
+    code: 'INVALID_STATE',
+  });
+  await rejectClientLeadReviewReceiptWrites();
+  expect((await reviewLead(request, archived.lead.id, 5, csrf)).status()).toBe(
+    500,
+  );
+  await allowInjectedFailures();
+  expect(await getLead(archived.lead.id)).toMatchObject({
+    status: 'WAITING_REVIEW',
+    version: 5,
+    activeReviewDecisionId: null,
+  });
+  expect(await countLeadReviewDecisions(archived.lead.id)).toBe(1);
+  const second = await reviewLead(request, archived.lead.id, 5, csrf);
+  expect(second.status()).toBe(201);
+  const secondSnapshot = await second.json();
+  const priorReviewReplay = await reviewLead(
+    request,
+    archived.lead.id,
+    2,
+    csrf,
+    archived.reviewKey,
+    'NO_INFRINGEMENT',
+    '原审核结论保持不变',
+  );
+  expect(priorReviewReplay.status()).toBe(201);
+  expect(await priorReviewReplay.json()).toEqual(archived.reviewResult);
+  const confirmationReplay = await confirmLeadWithdrawal(
+    request,
+    archived.lead.id,
+    application.id,
+    4,
+    csrf,
+    confirmationKey,
+  );
+  expect(await confirmationReplay.json()).toEqual(confirmationSnapshot);
+  expect(await getLead(archived.lead.id)).toMatchObject({
+    status: 'WAITING_EVIDENCE_DECISION',
+    version: 6,
+  });
+  const decisions = await getLeadReviewDecisions(archived.lead.id);
+  expect(decisions.map((decision) => decision.result)).toEqual([
+    'NO_INFRINGEMENT',
+    'INFRINGEMENT',
+  ]);
+  expect(decisions[0].receipt?.resultSnapshot).toEqual(archived.reviewResult);
+  expect(decisions[1].receipt?.resultSnapshot).toEqual(secondSnapshot);
+  const historicalScreenshot = await request.get(
+    `/api/v1/materials/${allowedMaterial!.materialId}/versions/${screenshot.contentVersionId}/content`,
+  );
+  expect(historicalScreenshot.status()).toBe(200);
+  expect(await historicalScreenshot.body()).toEqual(jpegBytes);
+
+  const racingCsrf = await loginClient(request, owner.username, owner.password);
+  const racing = await archiveLeadForWithdrawal(request, racingCsrf);
+  const racingApplicationResponse = await applyLeadWithdrawal(
+    request,
+    racing.lead.id,
+    3,
+    '并发确认',
+  );
+  const racingApplication = await racingApplicationResponse.json();
+  const confirmRace = await Promise.all([
+    confirmLeadWithdrawal(
+      request,
+      racing.lead.id,
+      racingApplication.id,
+      4,
+      racingCsrf,
+      randomUUID(),
+    ),
+    confirmLeadWithdrawal(
+      request,
+      racing.lead.id,
+      racingApplication.id,
+      4,
+      racingCsrf,
+      randomUUID(),
+    ),
+  ]);
+  expect(
+    confirmRace.filter((response) => response.status() === 201),
+    JSON.stringify(
+      await Promise.all(
+        confirmRace.map(async (response) => ({
+          status: response.status(),
+          body: await response.text(),
+        })),
+      ),
+    ),
+  ).toHaveLength(1);
+  expect(
+    confirmRace.filter((response) => response.status() === 409),
+  ).toHaveLength(1);
+  expect(await countLeadWithdrawalConfirmations(racing.lead.id)).toBe(1);
+  expect(await getLead(racing.lead.id)).toMatchObject({
+    status: 'WAITING_REVIEW',
+    version: 5,
+    activeReviewDecisionId: null,
+  });
+});
+
+test('withdrawal migrations upgrade empty and previous schemas without losing immutable history', async () => {
+  const output = execFileSync(
+    process.execPath,
+    ['backend/src/modules/leads/core-ld-withdrawal-migration-probe.mjs'],
+    { cwd: process.cwd(), encoding: 'utf8', stdio: ['ignore', 'pipe', 'pipe'] },
+  );
+  expect(output).toContain('empty migration chain passed:');
+  expect(output).toContain('previous-schema upgrade and constraints passed');
+});
+
 test('core lead migrations preserve legacy facts and roll back failed phases', async () => {
   const result = await verifyCoreLeadMigration();
   expect(result.empty.tables).toEqual([
@@ -2039,7 +2701,7 @@ test('core lead migrations preserve legacy facts and roll back failed phases', a
     compatibleAdmittedStatus: 'ADMITTED',
     grantCounts: { bootstrap: 4, shared: 0, incomplete: 0 },
     pushGrantCounts: { bootstrap: 1, shared: 0, incomplete: 0 },
-    revisions: { bootstrap: 3, shared: 1, incomplete: 1 },
+    revisions: { bootstrap: 4, shared: 1, incomplete: 1 },
     identityIsolation: {
       unboundClientCode: '23514',
       clientMembershipCode: '23514',

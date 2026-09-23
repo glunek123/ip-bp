@@ -75,6 +75,7 @@ const allActions = [
   'LEAD_CREATE',
   'LEAD_EDIT',
   'LEAD_PUSH',
+  'LEAD_WITHDRAW_APPLY',
 ];
 const actionNames = Object.freeze({
   'customer.read': 'CUSTOMER_READ',
@@ -83,6 +84,7 @@ const actionNames = Object.freeze({
   'lead.create': 'LEAD_CREATE',
   'lead.edit': 'LEAD_EDIT',
   'lead.push': 'LEAD_PUSH',
+  'lead.withdraw.apply': 'LEAD_WITHDRAW_APPLY',
 });
 
 async function dropFaults() {
@@ -99,6 +101,8 @@ async function dropFaults() {
     ['lead_command_receipts', 'core_ld_reject_push_receipt'],
     ['lead_review_decisions', 'core_ld_reject_review_decision'],
     ['client_lead_review_receipts', 'core_ld_reject_review_receipt'],
+    ['lead_withdrawal_applications', 'core_ld_reject_withdrawal_application'],
+    ['lead_withdrawal_confirmations', 'core_ld_reject_withdrawal_confirmation'],
   ]) {
     await database.$executeRawUnsafe(
       `ALTER TABLE "${table}" DROP CONSTRAINT IF EXISTS "${constraint}"`,
@@ -247,6 +251,48 @@ async function clearDatabase() {
     coreLeadFixtures.departmentA,
     coreLeadFixtures.departmentB,
   ];
+  await dropFaults();
+  for (const table of [
+    'client_lead_review_receipts',
+    'lead_review_decisions',
+    'lead_withdrawal_applications',
+    'lead_withdrawal_confirmations',
+  ]) {
+    await database.$executeRawUnsafe(
+      `ALTER TABLE "${table}" DISABLE TRIGGER USER`,
+    );
+  }
+  try {
+    await database.$transaction(async (transaction) => {
+      await transaction.lead.updateMany({
+        where: { departmentId: { in: departmentIds } },
+        data: { activeReviewDecisionId: null },
+      });
+      await transaction.leadWithdrawalConfirmation.deleteMany({
+        where: { departmentId: { in: departmentIds } },
+      });
+      await transaction.leadWithdrawalApplication.deleteMany({
+        where: { departmentId: { in: departmentIds } },
+      });
+      await transaction.clientLeadReviewReceipt.deleteMany({
+        where: { departmentId: { in: departmentIds } },
+      });
+      await transaction.leadReviewDecision.deleteMany({
+        where: { departmentId: { in: departmentIds } },
+      });
+    });
+  } finally {
+    for (const table of [
+      'lead_withdrawal_confirmations',
+      'lead_withdrawal_applications',
+      'lead_review_decisions',
+      'client_lead_review_receipts',
+    ]) {
+      await database.$executeRawUnsafe(
+        `ALTER TABLE "${table}" ENABLE TRIGGER USER`,
+      );
+    }
+  }
   const userIds = [
     coreLeadFixtures.userA,
     coreLeadFixtures.userB,
@@ -260,10 +306,6 @@ async function clearDatabase() {
     ...userIds,
     ...clientBindings.map(({ userId }) => userId),
   ];
-  await dropFaults();
-  await database.$executeRawUnsafe(
-    'TRUNCATE TABLE "client_lead_review_receipts", "lead_review_decisions"',
-  );
   await database.materialReference.deleteMany({
     where: { departmentId: { in: departmentIds } },
   });
@@ -677,7 +719,44 @@ export function countLeadPushAudits(leadId) {
 }
 
 export function getLeadReviewDecision(leadId) {
-  return database.leadReviewDecision.findUnique({ where: { leadId } });
+  return database.leadReviewDecision.findFirst({
+    where: { leadId },
+    orderBy: { fromVersion: 'desc' },
+  });
+}
+
+export function getLeadReviewDecisions(leadId) {
+  return database.leadReviewDecision.findMany({
+    where: { leadId },
+    orderBy: { fromVersion: 'asc' },
+    include: { receipt: true },
+  });
+}
+
+export function getLeadWithdrawalApplication(leadId) {
+  return database.leadWithdrawalApplication.findFirst({
+    where: { leadId },
+    include: { confirmation: true },
+  });
+}
+
+export function countLeadWithdrawalApplications(leadId) {
+  return database.leadWithdrawalApplication.count({ where: { leadId } });
+}
+
+export function countLeadWithdrawalConfirmations(leadId) {
+  return database.leadWithdrawalConfirmation.count({ where: { leadId } });
+}
+
+export function countLeadWithdrawalAudits(leadId) {
+  return database.auditEvent.count({
+    where: {
+      departmentId: coreLeadFixtures.departmentA,
+      resourceType: 'lead',
+      resourceId: leadId,
+      action: 'lead.withdrawal_applied',
+    },
+  });
 }
 
 export function countLeadReviewDecisions(leadId) {
@@ -754,6 +833,13 @@ export function setGrant(action, enabled) {
   });
 }
 
+export function setTeamActive(teamId, active) {
+  return database.team.update({
+    where: { id: teamId },
+    data: { status: active ? 'ACTIVE' : 'INACTIVE' },
+  });
+}
+
 export function markContentVersion(versionId, status) {
   return database.contentVersion.update({
     where: { id: versionId },
@@ -786,6 +872,20 @@ export async function rejectClientLeadReviewReceiptWrites() {
   await dropFaults();
   await database.$executeRawUnsafe(
     'ALTER TABLE "client_lead_review_receipts" ADD CONSTRAINT "core_ld_reject_review_receipt" CHECK (false) NOT VALID',
+  );
+}
+
+export async function rejectWithdrawalApplicationWrites() {
+  await dropFaults();
+  await database.$executeRawUnsafe(
+    'ALTER TABLE "lead_withdrawal_applications" ADD CONSTRAINT "core_ld_reject_withdrawal_application" CHECK (false) NOT VALID',
+  );
+}
+
+export async function rejectWithdrawalConfirmationWrites() {
+  await dropFaults();
+  await database.$executeRawUnsafe(
+    'ALTER TABLE "lead_withdrawal_confirmations" ADD CONSTRAINT "core_ld_reject_withdrawal_confirmation" CHECK (false) NOT VALID',
   );
 }
 

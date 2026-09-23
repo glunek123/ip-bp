@@ -53,6 +53,49 @@ export function getLeadReviewDecision(leadId: string): Promise<{
 } | null>;
 export function countLeadReviewDecisions(leadId: string): Promise<number>;
 export function countClientLeadReviewReceipts(leadId: string): Promise<number>;
+export function getLeadReviewDecisions(leadId: string): Promise<
+  Array<{
+    id: string;
+    leadId: string;
+    result: string;
+    reason: string | null;
+    archiveType: 'NO_INFRINGEMENT' | null;
+    archivedAt: Date | null;
+    fromVersion: number;
+    toVersion: number;
+    receipt: { id: string; resultSnapshot: unknown } | null;
+  }>
+>;
+export function getLeadWithdrawalApplication(leadId: string): Promise<{
+  id: string;
+  originalDecisionId: string;
+  leadId: string;
+  customerId: string;
+  departmentId: string;
+  applicantUserId: string;
+  reason: string;
+  appliedAt: Date;
+  fromVersion: number;
+  toVersion: number;
+  idempotencyKey: string;
+  requestFingerprint: string;
+  resultSnapshot: unknown;
+  confirmation: {
+    id: string;
+    actorUserId: string;
+    customerAccountBindingId: string;
+    fromVersion: number;
+    toVersion: number;
+    resultSnapshot: unknown;
+  } | null;
+} | null>;
+export function countLeadWithdrawalApplications(
+  leadId: string,
+): Promise<number>;
+export function countLeadWithdrawalConfirmations(
+  leadId: string,
+): Promise<number>;
+export function countLeadWithdrawalAudits(leadId: string): Promise<number>;
 export function setClientBindingActive(
   customerId: string,
   active: boolean,
@@ -62,6 +105,10 @@ export function setClientUserActive(
   active: boolean,
 ): Promise<unknown>;
 export function setGrant(action: string, enabled: boolean): Promise<unknown>;
+export function setTeamActive(
+  teamId: string,
+  active: boolean,
+): Promise<unknown>;
 export function setCustomerStatus(
   customerId: string,
   profileStatus: 'DRAFT' | 'ADMITTED',
@@ -79,6 +126,8 @@ export function rejectAuditWrites(action: string): Promise<void>;
 export function rejectLeadPushReceiptWrites(): Promise<void>;
 export function rejectLeadReviewDecisionWrites(): Promise<void>;
 export function rejectClientLeadReviewReceiptWrites(): Promise<void>;
+export function rejectWithdrawalApplicationWrites(): Promise<void>;
+export function rejectWithdrawalConfirmationWrites(): Promise<void>;
 export function rejectLeadProductWrites(): Promise<void>;
 export function rejectMaterialMetadataWrites(): Promise<void>;
 export function allowInjectedFailures(): Promise<void>;
