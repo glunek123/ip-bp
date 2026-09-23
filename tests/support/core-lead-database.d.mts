@@ -43,6 +43,9 @@ export function getLeadReviewDecision(leadId: string): Promise<{
   id: string;
   leadId: string;
   result: string;
+  reason: string | null;
+  archiveType: 'NO_INFRINGEMENT' | null;
+  archivedAt: Date | null;
   reviewerDisplayNameSnapshot: string;
   decidedAt: Date;
   fromVersion: number;
