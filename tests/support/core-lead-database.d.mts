@@ -93,6 +93,21 @@ export function startMaterialCleanup(now: Date): {
 };
 export function verifyCoreLeadMigration(): Promise<{
   empty: { tables: string[] };
+  reviewIntegrity: {
+    wrongCustomer: string | null;
+    wrongReviewer: string | null;
+    wrongBindingCustomer: string | null;
+    wrongActor: string | null;
+    wrongReceiptBinding: string | null;
+    wrongLead: string | null;
+    wrongVersion: string | null;
+    decisionUpdate: string | null;
+    decisionDelete: string | null;
+    receiptUpdate: string | null;
+    receiptDelete: string | null;
+    leadIdentityUpdate: string | null;
+    bindingIdentityUpdate: string | null;
+  };
   upgrade: {
     known: {
       customer_type: string;

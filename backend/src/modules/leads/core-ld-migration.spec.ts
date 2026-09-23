@@ -25,6 +25,8 @@ describe('CORE-LD migrations', () => {
     '20260922011000_add_client_lead_review_action';
   const clientReviewSchemaMigrationName =
     '20260922012000_add_client_lead_review';
+  const clientReviewIntegrityMigrationName =
+    '20260922013000_harden_client_lead_review_integrity';
 
   function readMigration(name: string): string {
     return readFileSync(resolve(migrationRoot, name, 'migration.sql'), 'utf8');
@@ -188,7 +190,10 @@ describe('CORE-LD migrations', () => {
   });
 
   it('adds client review action before the transactional review schema', () => {
-    expect(migrations.slice(-2)).toEqual([
+    const reviewActionIndex = migrations.indexOf(
+      clientReviewActionMigrationName,
+    );
+    expect(migrations.slice(reviewActionIndex, reviewActionIndex + 2)).toEqual([
       clientReviewActionMigrationName,
       clientReviewSchemaMigrationName,
     ]);
@@ -202,6 +207,28 @@ describe('CORE-LD migrations', () => {
     expect(sql).toContain('CREATE TABLE "client_lead_review_receipts"');
     expect(sql).toContain('reject_lead_review_decision_mutation');
     expect(sql).toContain('client_lead_review_receipts_action_check');
+    expect(sql.trim().endsWith('COMMIT;')).toBe(true);
+    expect(sql).not.toMatch(/DROP TABLE|DROP COLUMN/);
+  });
+
+  it('hardens review identities after the review schema with composite references and immutable receipts', () => {
+    expect(migrations.slice(-2)).toEqual([
+      clientReviewSchemaMigrationName,
+      clientReviewIntegrityMigrationName,
+    ]);
+    const sql = readMigration(clientReviewIntegrityMigrationName);
+    expect(sql.trim().startsWith('BEGIN;')).toBe(true);
+    expect(sql).toContain('leads_review_identity_key');
+    expect(sql).toContain('customer_account_bindings_review_identity_key');
+    expect(sql).toContain(
+      'lead_review_decisions_lead_customer_department_fkey',
+    );
+    expect(sql).toContain(
+      'lead_review_decisions_binding_reviewer_customer_department_fkey',
+    );
+    expect(sql).toContain('client_lead_review_receipts_decision_identity_fkey');
+    expect(sql).toContain('reject_client_lead_review_receipt_mutation');
+    expect(sql).toContain("ERRCODE = '55000'");
     expect(sql.trim().endsWith('COMMIT;')).toBe(true);
     expect(sql).not.toMatch(/DROP TABLE|DROP COLUMN/);
   });

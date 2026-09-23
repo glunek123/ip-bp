@@ -431,6 +431,7 @@ model CustomerAccountBinding {
   updatedAt            DateTime                  @updatedAt @map("updated_at") @db.Timestamptz(3)
 
   @@index([customerId, departmentId, active])
+  @@unique([id, userId, customerId, departmentId], map: "customer_account_bindings_review_identity_key")
   @@map("customer_account_bindings")
 }
 
@@ -644,6 +645,7 @@ model Lead {
   updatedAt             DateTime                  @updatedAt @map("updated_at") @db.Timestamptz(3)
 
   @@unique([id, departmentId])
+  @@unique([id, customerId, departmentId], map: "leads_review_identity_key")
   @@unique([departmentId, creationChannel, externalSourceRef])
   @@index([departmentId, status, updatedAt, id])
   @@index([responsibleUserId])
@@ -664,13 +666,15 @@ model LeadReviewDecision {
   fromVersion                 Int                      @map("from_version")
   toVersion                   Int                      @map("to_version")
   department                  Department               @relation(fields: [departmentId], references: [id], onDelete: Restrict)
-  lead                        Lead                     @relation(fields: [leadId, departmentId], references: [id, departmentId], onDelete: Restrict, map: "lead_review_decisions_lead_department_fkey")
+  lead                        Lead                     @relation(fields: [leadId, customerId, departmentId], references: [id, customerId, departmentId], onDelete: Restrict, onUpdate: Restrict, map: "lead_review_decisions_lead_customer_department_fkey")
   customer                    Customer                 @relation(fields: [customerId, departmentId], references: [id, departmentId], onDelete: Restrict, map: "lead_review_decisions_customer_department_fkey")
   reviewer                    UserAccount              @relation("LeadReviewDecisionReviewer", fields: [reviewerUserId], references: [id], onDelete: Restrict)
-  customerAccountBinding      CustomerAccountBinding   @relation(fields: [customerAccountBindingId], references: [id], onDelete: Restrict)
+  customerAccountBinding      CustomerAccountBinding   @relation(fields: [customerAccountBindingId, reviewerUserId, customerId, departmentId], references: [id, userId, customerId, departmentId], onDelete: Restrict, onUpdate: Restrict, map: "lead_review_decisions_binding_reviewer_customer_department_fkey")
   receipt                     ClientLeadReviewReceipt?
 
   @@unique([leadId, departmentId])
+  @@unique([leadId, customerId, departmentId], map: "lead_review_decisions_lead_identity_key")
+  @@unique([id, departmentId, leadId, reviewerUserId, customerAccountBindingId, toVersion], map: "lead_review_decisions_receipt_identity_key")
   @@index([departmentId, customerId, decidedAt])
   @@map("lead_review_decisions")
 }
@@ -691,10 +695,11 @@ model ClientLeadReviewReceipt {
   actor                    UserAccount            @relation("ClientLeadReviewReceiptActor", fields: [actorUserId], references: [id], onDelete: Restrict)
   customerAccountBinding   CustomerAccountBinding @relation(fields: [customerAccountBindingId], references: [id], onDelete: Restrict)
   resultLead               Lead                   @relation(fields: [resultLeadId, departmentId], references: [id, departmentId], onDelete: Restrict, map: "client_lead_review_receipts_lead_department_fkey")
-  reviewDecision           LeadReviewDecision     @relation(fields: [reviewDecisionId], references: [id], onDelete: Restrict)
+  reviewDecision           LeadReviewDecision     @relation(fields: [reviewDecisionId, departmentId, resultLeadId, actorUserId, customerAccountBindingId, resultLeadVersion], references: [id, departmentId, leadId, reviewerUserId, customerAccountBindingId, toVersion], onDelete: Restrict, onUpdate: Restrict, map: "client_lead_review_receipts_decision_identity_fkey")
   createdAt                DateTime               @default(now()) @map("created_at") @db.Timestamptz(3)
 
   @@unique([departmentId, actorUserId, action, idempotencyKey], map: "client_lead_review_receipts_department_actor_action_key")
+  @@unique([reviewDecisionId, departmentId, resultLeadId, actorUserId, customerAccountBindingId, resultLeadVersion], map: "client_lead_review_receipts_decision_identity_key")
   @@index([resultLeadId, departmentId])
   @@map("client_lead_review_receipts")
 }

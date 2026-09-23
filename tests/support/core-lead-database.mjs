@@ -825,6 +825,7 @@ export async function verifyCoreLeadMigration() {
     backfillFailure: `core_ld_backfill_failure_${probe}`,
     clientActionRecovery: `core_ld_client_action_recovery_${probe}`,
     clientSchemaFailure: `core_ld_client_schema_failure_${probe}`,
+    reviewIntegrity: `core_ld_review_integrity_${probe}`,
   };
   const client = new Client({ connectionString: databaseUrl });
 
@@ -838,6 +839,186 @@ export async function verifyCoreLeadMigration() {
 
   async function useSchema(schema) {
     await client.query(`SET search_path TO "${schema}"`);
+  }
+
+  async function probeReviewIntegrity() {
+    const ids = Object.fromEntries(
+      [
+        'department',
+        'operator',
+        'reviewer',
+        'otherReviewer',
+        'customer',
+        'otherCustomer',
+        'holder',
+        'binding',
+        'otherBinding',
+        'lead',
+        'otherLead',
+        'decision',
+        'receipt',
+      ].map((key) => [key, randomUUID()]),
+    );
+    const reject = async (sql, values) => {
+      await client.query('SAVEPOINT review_probe');
+      try {
+        await client.query(sql, values);
+        await client.query('ROLLBACK TO SAVEPOINT review_probe');
+        return null;
+      } catch (error) {
+        await client.query('ROLLBACK TO SAVEPOINT review_probe');
+        return error.code ?? null;
+      } finally {
+        await client.query('RELEASE SAVEPOINT review_probe');
+      }
+    };
+    await client.query('BEGIN');
+    try {
+      await client.query(
+        'INSERT INTO departments(id,name,updated_at) VALUES ($1,$2,NOW())',
+        [ids.department, '审核约束部门'],
+      );
+      for (const [id, type] of [
+        [ids.operator, 'INTERNAL'],
+        [ids.reviewer, 'CLIENT'],
+        [ids.otherReviewer, 'CLIENT'],
+      ]) {
+        await client.query(
+          'INSERT INTO user_accounts(id,external_subject,display_name,account_type,updated_at) VALUES ($1,$2,$2,$3,NOW())',
+          [id, `review-${id}`, type],
+        );
+      }
+      await client.query(
+        'INSERT INTO department_memberships(id,user_id,department_id,updated_at) VALUES ($1,$2,$3,NOW())',
+        [randomUUID(), ids.operator, ids.department],
+      );
+      for (const id of [ids.customer, ids.otherCustomer]) {
+        await client.query(
+          'INSERT INTO customers(id,name,normalized_name,department_id,responsible_user_id,updated_at) VALUES ($1,$2,$2,$3,$4,NOW())',
+          [id, `审核客户-${id}`, ids.department, ids.operator],
+        );
+      }
+      await client.query(
+        'INSERT INTO rights_holders(id,name,department_id,updated_at) VALUES ($1,$2,$3,NOW())',
+        [ids.holder, '审核权利人', ids.department],
+      );
+      for (const [id, userId, customerId] of [
+        [ids.binding, ids.reviewer, ids.customer],
+        [ids.otherBinding, ids.otherReviewer, ids.otherCustomer],
+      ]) {
+        await client.query(
+          'INSERT INTO customer_account_bindings(id,user_id,customer_id,department_id,updated_at) VALUES ($1,$2,$3,$4,NOW())',
+          [id, userId, customerId, ids.department],
+        );
+      }
+      for (const [id, customerId] of [
+        [ids.lead, ids.customer],
+        [ids.otherLead, ids.otherCustomer],
+      ]) {
+        await client.query(
+          `INSERT INTO leads(id,department_id,business_no,customer_id,rights_holder_id,responsible_user_id,case_type,source,platform,found_at,shop_name,need_disclose,updated_at)
+          VALUES ($1,$2,$3,$4,$5,$6,'CIVIL','ONLINE','TAOBAO',NOW(),'审核测试店铺',false,NOW())`,
+          [
+            id,
+            ids.department,
+            `REVIEW-${id}`,
+            customerId,
+            ids.holder,
+            ids.operator,
+          ],
+        );
+      }
+      const decisionSql = `INSERT INTO lead_review_decisions(id,department_id,lead_id,customer_id,reviewer_user_id,customer_account_binding_id,reviewer_display_name_snapshot,result,from_version,to_version)
+        VALUES ($1,$2,$3,$4,$5,$6,'审核人','INFRINGEMENT',1,2)`;
+      const decision = (overrides = {}) =>
+        [
+          ids.decision,
+          ids.department,
+          ids.lead,
+          ids.customer,
+          ids.reviewer,
+          ids.binding,
+        ].map((value, index) => overrides[index] ?? value);
+      const wrongCustomer = await reject(
+        decisionSql,
+        decision({ 3: ids.otherCustomer }),
+      );
+      const wrongReviewer = await reject(
+        decisionSql,
+        decision({ 4: ids.otherReviewer }),
+      );
+      const wrongBindingCustomer = await reject(
+        decisionSql,
+        decision({ 5: ids.otherBinding, 4: ids.otherReviewer }),
+      );
+      await client.query(decisionSql, decision());
+      const receiptSql = `INSERT INTO client_lead_review_receipts(id,department_id,actor_user_id,customer_account_binding_id,action,idempotency_key,request_fingerprint,result_lead_id,result_lead_version,review_decision_id,result_snapshot)
+        VALUES ($1,$2,$3,$4,'client.lead.review',$5,$6,$7,$8,$9,'{}'::jsonb)`;
+      const receipt = (overrides = {}) =>
+        [
+          ids.receipt,
+          ids.department,
+          ids.reviewer,
+          ids.binding,
+          randomUUID(),
+          'a'.repeat(64),
+          ids.lead,
+          2,
+          ids.decision,
+        ].map((value, index) => overrides[index] ?? value);
+      const wrongActor = await reject(
+        receiptSql,
+        receipt({ 2: ids.otherReviewer }),
+      );
+      const wrongReceiptBinding = await reject(
+        receiptSql,
+        receipt({ 3: ids.otherBinding }),
+      );
+      const wrongLead = await reject(receiptSql, receipt({ 6: ids.otherLead }));
+      const wrongVersion = await reject(receiptSql, receipt({ 7: 3 }));
+      await client.query(receiptSql, receipt());
+      const decisionUpdate = await reject(
+        'UPDATE lead_review_decisions SET to_version=3 WHERE id=$1',
+        [ids.decision],
+      );
+      const decisionDelete = await reject(
+        'DELETE FROM lead_review_decisions WHERE id=$1',
+        [ids.decision],
+      );
+      const receiptUpdate = await reject(
+        'UPDATE client_lead_review_receipts SET result_lead_version=3 WHERE id=$1',
+        [ids.receipt],
+      );
+      const receiptDelete = await reject(
+        'DELETE FROM client_lead_review_receipts WHERE id=$1',
+        [ids.receipt],
+      );
+      const leadIdentityUpdate = await reject(
+        'UPDATE leads SET customer_id=$1 WHERE id=$2',
+        [ids.otherCustomer, ids.lead],
+      );
+      const bindingIdentityUpdate = await reject(
+        'UPDATE customer_account_bindings SET customer_id=$1 WHERE id=$2',
+        [ids.otherCustomer, ids.binding],
+      );
+      return {
+        wrongCustomer,
+        wrongReviewer,
+        wrongBindingCustomer,
+        wrongActor,
+        wrongReceiptBinding,
+        wrongLead,
+        wrongVersion,
+        decisionUpdate,
+        decisionDelete,
+        receiptUpdate,
+        receiptDelete,
+        leadIdentityUpdate,
+        bindingIdentityUpdate,
+      };
+    } finally {
+      await client.query('ROLLBACK');
+    }
   }
 
   async function seedLegacy(schema) {
@@ -992,6 +1173,10 @@ export async function verifyCoreLeadMigration() {
 
     await useSchema(schemas.empty);
     await apply(migrations);
+    await useSchema(schemas.reviewIntegrity);
+    await apply(migrations);
+    const reviewIntegrity = await probeReviewIntegrity();
+    await useSchema(schemas.empty);
     const emptyTables = (
       await client.query(
         `SELECT table_name FROM information_schema.tables
@@ -1379,6 +1564,7 @@ export async function verifyCoreLeadMigration() {
 
     return {
       empty: { tables: emptyTables },
+      reviewIntegrity,
       upgrade: {
         known,
         unknown,

@@ -1171,6 +1171,21 @@ test('core lead migrations preserve legacy facts and roll back failed phases', a
     'materials',
     'upload_drafts',
   ]);
+  expect(result.reviewIntegrity).toEqual({
+    wrongCustomer: '23503',
+    wrongReviewer: '23503',
+    wrongBindingCustomer: '23503',
+    wrongActor: '23503',
+    wrongReceiptBinding: '23503',
+    wrongLead: '23503',
+    wrongVersion: '23503',
+    decisionUpdate: '55000',
+    decisionDelete: '55000',
+    receiptUpdate: '55000',
+    receiptDelete: '55000',
+    leadIdentityUpdate: '23503',
+    bindingIdentityUpdate: '23503',
+  });
   expect(result.upgrade).toMatchObject({
     known: {
       customer_type: 'ENTERPRISE',
