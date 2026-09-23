@@ -207,7 +207,7 @@ Assert the new migration exists after the first review migration and adds compos
 
 ```text
 pnpm --filter @dev-cor/backend test src/modules/leads/core-ld-migration.spec.ts
-pnpm test:e2e:core-ld -- --grep "core lead migrations"
+pnpm exec node scripts/run-e2e.mjs tests/e2e/core-leads.spec.ts --grep "core lead migrations"
 ```
 
 Expected: missing migration assertions and PostgreSQL mismatch probes fail.
@@ -221,7 +221,7 @@ Add unique keys on `Lead(id, customerId, departmentId)` and `CustomerAccountBind
 ```text
 pnpm --filter @dev-cor/backend db:generate
 pnpm --filter @dev-cor/backend test src/modules/leads/core-ld-migration.spec.ts
-pnpm test:e2e:core-ld -- --grep "core lead migrations"
+pnpm exec node scripts/run-e2e.mjs tests/e2e/core-leads.spec.ts --grep "core lead migrations"
 ```
 
 Expected: Prisma generation and tests pass, with no changes to development or production databases.
@@ -975,7 +975,7 @@ Update `runCoreLeadMigrationTest()` to prove:
 Run:
 
 ```text
-pnpm test:e2e:core-ld -- --grep "core lead migrations"
+pnpm exec node scripts/run-e2e.mjs tests/e2e/core-leads.spec.ts --grep "core lead migrations"
 ```
 
 Expected before implementation: FAIL for missing review migration results. Expected after helper/migration work: PASS.
