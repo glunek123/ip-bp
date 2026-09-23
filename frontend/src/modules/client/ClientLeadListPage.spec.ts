@@ -14,6 +14,18 @@ const lead = {
   products: [{ id: 'product-1' }],
   pushedAt: '2026-09-22T02:00:00.000Z',
 };
+const archivedLead = {
+  ...lead,
+  status: 'ARCHIVED',
+  reviewDecision: {
+    result: 'NO_INFRINGEMENT',
+    reason: '经核对未使用我司标识',
+    reviewerDisplayName: '企业审核员',
+    decidedAt: '2026-09-22T03:00:00.000Z',
+    archiveType: 'NO_INFRINGEMENT',
+    archivedAt: '2026-09-22T03:00:00.000Z',
+  },
+};
 
 async function mountPage(path = '/client/leads') {
   const router = createRouter({
@@ -151,6 +163,19 @@ describe('ClientLeadListPage', () => {
         .findAll('button')
         .some((button) => button.text().includes('确认侵权')),
     ).toBe(false);
+  });
+
+  it('labels the no-infringement archive in the processed queue', async () => {
+    api.listClientLeads.mockResolvedValue({
+      items: [archivedLead],
+      total: 1,
+      page: 1,
+      pageSize: 20,
+    });
+    const { wrapper } = await mountPage('/client/leads?view=processed&page=1');
+    expect(wrapper.get('[data-test="client-lead-row"]').text()).toContain(
+      '已判定不侵权并归档',
+    );
   });
 
   it('carries the active queue and page into the detail link', async () => {

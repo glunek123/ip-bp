@@ -2,11 +2,20 @@ import { ApiError, getJson, requestJson, type RequestOptions } from './http';
 
 export type ClientLeadView = 'PENDING' | 'PROCESSED';
 
-export type ClientLeadReviewDecision = {
-  result: 'INFRINGEMENT';
-  reviewerDisplayName: string;
-  decidedAt: string;
-};
+export type ClientLeadReviewDecision =
+  | {
+      result: 'INFRINGEMENT';
+      reviewerDisplayName: string;
+      decidedAt: string;
+    }
+  | {
+      result: 'NO_INFRINGEMENT';
+      reason: string;
+      reviewerDisplayName: string;
+      decidedAt: string;
+      archiveType: 'NO_INFRINGEMENT';
+      archivedAt: string;
+    };
 
 export type ClientLeadProduct = {
   id: string;
@@ -22,7 +31,7 @@ export type ClientLeadProduct = {
 export type ClientLead = {
   id: string;
   businessNo: string;
-  status: 'WAITING_REVIEW' | 'WAITING_EVIDENCE_DECISION';
+  status: 'WAITING_REVIEW' | 'WAITING_EVIDENCE_DECISION' | 'ARCHIVED';
   version: number;
   caseType: string;
   infringementTypes: string[];
@@ -39,13 +48,21 @@ export type ClientLead = {
   capabilities: { review: boolean };
 };
 
-export type ClientLeadReviewResult = Pick<
-  ClientLead,
-  'id' | 'businessNo' | 'status' | 'version' | 'reviewDecision'
-> & {
-  status: 'WAITING_EVIDENCE_DECISION';
-  reviewDecision: ClientLeadReviewDecision;
-};
+export type ClientLeadReviewResult =
+  | (Pick<ClientLead, 'id' | 'businessNo' | 'version'> & {
+      status: 'WAITING_EVIDENCE_DECISION';
+      reviewDecision: Extract<
+        ClientLeadReviewDecision,
+        { result: 'INFRINGEMENT' }
+      >;
+    })
+  | (Pick<ClientLead, 'id' | 'businessNo' | 'version'> & {
+      status: 'ARCHIVED';
+      reviewDecision: Extract<
+        ClientLeadReviewDecision,
+        { result: 'NO_INFRINGEMENT' }
+      >;
+    });
 
 export type ClientLeadList = {
   items: ClientLead[];
@@ -100,7 +117,19 @@ const clientLeadKeys = [
   'capabilities',
 ] as const;
 
-const decisionKeys = ['result', 'reviewerDisplayName', 'decidedAt'] as const;
+const infringementDecisionKeys = [
+  'result',
+  'reviewerDisplayName',
+  'decidedAt',
+] as const;
+const noInfringementDecisionKeys = [
+  'result',
+  'reason',
+  'reviewerDisplayName',
+  'decidedAt',
+  'archiveType',
+  'archivedAt',
+] as const;
 const reviewResultKeys = [
   'id',
   'businessNo',
@@ -145,12 +174,25 @@ function isProduct(value: unknown, index: number): value is ClientLeadProduct {
 function isClientReviewDecision(
   value: unknown,
 ): value is ClientLeadReviewDecision {
-  return (
+  if (!isRecord(value)) return false;
+  if (
     isRecord(value) &&
-    hasExactKeys(value, decisionKeys) &&
+    hasExactKeys(value, infringementDecisionKeys) &&
     value.result === 'INFRINGEMENT' &&
     typeof value.reviewerDisplayName === 'string' &&
     isDateTime(value.decidedAt)
+  )
+    return true;
+  return (
+    hasExactKeys(value, noInfringementDecisionKeys) &&
+    value.result === 'NO_INFRINGEMENT' &&
+    typeof value.reason === 'string' &&
+    value.reason.trim().length > 0 &&
+    [...value.reason].length <= 5000 &&
+    typeof value.reviewerDisplayName === 'string' &&
+    isDateTime(value.decidedAt) &&
+    value.archiveType === 'NO_INFRINGEMENT' &&
+    isDateTime(value.archivedAt)
   );
 }
 
@@ -161,7 +203,8 @@ function isClientLead(value: unknown): value is ClientLead {
     typeof value.id === 'string' &&
     typeof value.businessNo === 'string' &&
     (value.status === 'WAITING_REVIEW' ||
-      value.status === 'WAITING_EVIDENCE_DECISION') &&
+      value.status === 'WAITING_EVIDENCE_DECISION' ||
+      value.status === 'ARCHIVED') &&
     Number.isInteger(value.version) &&
     (value.version as number) >= 1 &&
     typeof value.caseType === 'string' &&
@@ -191,6 +234,13 @@ function isClientLead(value: unknown): value is ClientLead {
       value.capabilities.review === true) ||
       (value.status === 'WAITING_EVIDENCE_DECISION' &&
         isClientReviewDecision(value.reviewDecision) &&
+        value.reviewDecision.result === 'INFRINGEMENT' &&
+        isRecord(value.capabilities) &&
+        hasExactKeys(value.capabilities, ['review']) &&
+        value.capabilities.review === false) ||
+      (value.status === 'ARCHIVED' &&
+        isClientReviewDecision(value.reviewDecision) &&
+        value.reviewDecision.result === 'NO_INFRINGEMENT' &&
         isRecord(value.capabilities) &&
         hasExactKeys(value.capabilities, ['review']) &&
         value.capabilities.review === false))
@@ -200,17 +250,22 @@ function isClientLead(value: unknown): value is ClientLead {
 function isClientLeadReviewResult(
   value: unknown,
   expectedVersion: number,
+  result: ClientLeadReviewDecision['result'],
 ): value is ClientLeadReviewResult {
-  return (
+  if (!(
     isRecord(value) &&
     hasExactKeys(value, reviewResultKeys) &&
     typeof value.id === 'string' &&
     typeof value.businessNo === 'string' &&
-    value.status === 'WAITING_EVIDENCE_DECISION' &&
     Number.isInteger(value.version) &&
     value.version === expectedVersion + 1 &&
     isClientReviewDecision(value.reviewDecision)
-  );
+  ))
+    return false;
+  return result === 'INFRINGEMENT'
+    ? value.status === 'WAITING_EVIDENCE_DECISION' &&
+        value.reviewDecision.result === result
+    : value.status === 'ARCHIVED' && value.reviewDecision.result === result;
 }
 
 function invalidResponse(): ApiError {
@@ -236,8 +291,10 @@ export async function listClientLeads(
     !value.items.every(
       (item) =>
         isClientLead(item) &&
-        item.status ===
-          (view === 'PENDING' ? 'WAITING_REVIEW' : 'WAITING_EVIDENCE_DECISION'),
+        (view === 'PENDING'
+          ? item.status === 'WAITING_REVIEW'
+          : item.status === 'WAITING_EVIDENCE_DECISION' ||
+            item.status === 'ARCHIVED'),
     ) ||
     !Number.isInteger(value.total) ||
     (value.total as number) < 0 ||
@@ -266,7 +323,32 @@ export async function reviewClientLead(
       body: { result: 'INFRINGEMENT', expectedVersion },
     },
   );
-  if (!isClientLeadReviewResult(value, expectedVersion))
+  if (!isClientLeadReviewResult(value, expectedVersion, 'INFRINGEMENT'))
+    throw invalidResponse();
+  return value;
+}
+
+export async function reviewClientLeadNoInfringement(
+  id: string,
+  expectedVersion: number,
+  reason: string,
+  idempotencyKey: string,
+  options: RequestOptions = {},
+): Promise<ClientLeadReviewResult> {
+  const value = await requestJson(
+    `/client/leads/${encodeURIComponent(id)}/reviews`,
+    {
+      ...options,
+      method: 'POST',
+      headers: { ...options.headers, 'Idempotency-Key': idempotencyKey },
+      body: {
+        result: 'NO_INFRINGEMENT',
+        reason: reason.trim(),
+        expectedVersion,
+      },
+    },
+  );
+  if (!isClientLeadReviewResult(value, expectedVersion, 'NO_INFRINGEMENT'))
     throw invalidResponse();
   return value;
 }

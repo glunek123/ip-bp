@@ -11,6 +11,7 @@ import {
   getClientLead,
   listClientLeads,
   reviewClientLead,
+  reviewClientLeadNoInfringement,
 } from './client-leads';
 
 const lead = {
@@ -52,6 +53,20 @@ const reviewedLead = {
     result: 'INFRINGEMENT',
     reviewerDisplayName: '企业审核员',
     decidedAt: '2026-09-22T03:00:00.000Z',
+  },
+  capabilities: { review: false },
+};
+const archivedLead = {
+  ...lead,
+  status: 'ARCHIVED',
+  version: 3,
+  reviewDecision: {
+    result: 'NO_INFRINGEMENT',
+    reason: '  经核对未使用我司标识  ',
+    reviewerDisplayName: '企业审核员',
+    decidedAt: '2026-09-22T03:00:00.000Z',
+    archiveType: 'NO_INFRINGEMENT',
+    archivedAt: '2026-09-22T03:00:00.000Z',
   },
   capabilities: { review: false },
 };
@@ -124,6 +139,36 @@ describe('client lead API', () => {
     });
   });
 
+  it('decodes archived no-infringement projections and rejects malformed archive facts', async () => {
+    http.getJson.mockResolvedValue({
+      items: [archivedLead],
+      total: 1,
+      page: 1,
+      pageSize: 20,
+    });
+    await expect(listClientLeads('PROCESSED')).resolves.toMatchObject({
+      items: [archivedLead],
+    });
+    http.getJson.mockResolvedValue(archivedLead);
+    await expect(getClientLead('lead-1')).resolves.toMatchObject(archivedLead);
+    for (const reviewDecision of [
+      { ...archivedLead.reviewDecision, reason: '  ' },
+      {
+        result: 'NO_INFRINGEMENT',
+        reason: '原因',
+        reviewerDisplayName: '甲',
+        decidedAt: archivedLead.reviewDecision.decidedAt,
+        archiveType: 'NO_INFRINGEMENT',
+      },
+      { ...archivedLead.reviewDecision, archiveType: 'OTHER' },
+    ]) {
+      http.getJson.mockResolvedValue({ ...archivedLead, reviewDecision });
+      await expect(getClientLead('lead-1')).rejects.toMatchObject({
+        code: 'INVALID_RESPONSE',
+      });
+    }
+  });
+
   it('rejects records returned in the wrong requested queue', async () => {
     http.getJson.mockResolvedValue({
       items: [lead],
@@ -179,6 +224,53 @@ describe('client lead API', () => {
     ).rejects.toMatchObject({
       code: 'INVALID_RESPONSE',
     });
+  });
+
+  it('submits a trimmed no-infringement reason through the shared request layer', async () => {
+    http.requestJson.mockResolvedValue({
+      id: lead.id,
+      businessNo: lead.businessNo,
+      status: 'ARCHIVED',
+      version: 3,
+      reviewDecision: {
+        ...archivedLead.reviewDecision,
+        reason: '经核对未使用我司标识',
+      },
+    });
+    await expect(
+      reviewClientLeadNoInfringement(
+        'lead/1',
+        2,
+        '  经核对未使用我司标识  ',
+        'archive-key',
+        { headers: { 'X-CSRF-Test': 'token' } },
+      ),
+    ).resolves.toMatchObject({
+      status: 'ARCHIVED',
+      reviewDecision: { result: 'NO_INFRINGEMENT' },
+    });
+    expect(http.requestJson).toHaveBeenCalledWith(
+      '/client/leads/lead%2F1/reviews',
+      {
+        method: 'POST',
+        headers: { 'X-CSRF-Test': 'token', 'Idempotency-Key': 'archive-key' },
+        body: {
+          result: 'NO_INFRINGEMENT',
+          reason: '经核对未使用我司标识',
+          expectedVersion: 2,
+        },
+      },
+    );
+    http.requestJson.mockResolvedValueOnce({
+      id: lead.id,
+      businessNo: lead.businessNo,
+      status: 'ARCHIVED',
+      version: 3,
+      reviewDecision: { ...archivedLead.reviewDecision, reason: ' ' },
+    });
+    await expect(
+      reviewClientLeadNoInfringement('lead-1', 2, '原因', 'key'),
+    ).rejects.toMatchObject({ code: 'INVALID_RESPONSE' });
   });
 
   it('rejects extra internal fields, invalid push facts and malformed products', async () => {

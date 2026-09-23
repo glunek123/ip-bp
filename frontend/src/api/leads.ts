@@ -100,11 +100,20 @@ export type LeadProduct = {
   commentCount: number;
   estimatedAmount: string;
 };
-export type LeadReviewDecision = {
-  result: 'INFRINGEMENT';
-  reviewerDisplayName: string;
-  decidedAt: string;
-};
+export type LeadReviewDecision =
+  | {
+      result: 'INFRINGEMENT';
+      reviewerDisplayName: string;
+      decidedAt: string;
+    }
+  | {
+      result: 'NO_INFRINGEMENT';
+      reason: string;
+      reviewerDisplayName: string;
+      decidedAt: string;
+      archiveType: 'NO_INFRINGEMENT';
+      archivedAt: string;
+    };
 export type Lead = {
   id: string;
   businessNo: string;
@@ -258,7 +267,7 @@ function isProduct(value: unknown): value is LeadProduct {
 function isReviewDecision(value: unknown): value is LeadReviewDecision {
   if (!isRecord(value)) return false;
   const keys = Object.keys(value);
-  return (
+  if (
     keys.length === 3 &&
     keys.every((key) =>
       ['result', 'reviewerDisplayName', 'decidedAt'].includes(key),
@@ -266,6 +275,28 @@ function isReviewDecision(value: unknown): value is LeadReviewDecision {
     value.result === 'INFRINGEMENT' &&
     typeof value.reviewerDisplayName === 'string' &&
     isDateTime(value.decidedAt)
+  )
+    return true;
+  return (
+    keys.length === 6 &&
+    keys.every((key) =>
+      [
+        'result',
+        'reason',
+        'reviewerDisplayName',
+        'decidedAt',
+        'archiveType',
+        'archivedAt',
+      ].includes(key),
+    ) &&
+    value.result === 'NO_INFRINGEMENT' &&
+    typeof value.reason === 'string' &&
+    value.reason.trim().length > 0 &&
+    [...value.reason].length <= 5000 &&
+    typeof value.reviewerDisplayName === 'string' &&
+    isDateTime(value.decidedAt) &&
+    value.archiveType === 'NO_INFRINGEMENT' &&
+    isDateTime(value.archivedAt)
   );
 }
 function isLead(value: unknown): value is Lead {

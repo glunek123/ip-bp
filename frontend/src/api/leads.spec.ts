@@ -223,6 +223,33 @@ describe('Lead API', () => {
     });
   });
 
+  it('decodes the exact no-infringement archive facts for operators', async () => {
+    const archived = {
+      ...lead,
+      status: 'ARCHIVED',
+      reviewDecision: {
+        result: 'NO_INFRINGEMENT',
+        reason: '经核对未使用我司标识',
+        reviewerDisplayName: '企业审核员',
+        decidedAt: '2026-09-22T03:00:00.000Z',
+        archiveType: 'NO_INFRINGEMENT',
+        archivedAt: '2026-09-22T03:00:00.000Z',
+      },
+      capabilities: { edit: false, push: false },
+    };
+    http.getJson.mockResolvedValueOnce({
+      ...archived,
+      reviewDecision: { ...archived.reviewDecision, archivedAt: undefined },
+    });
+    await expect(getLead('lead-1')).rejects.toMatchObject({
+      code: 'INVALID_RESPONSE',
+    });
+    http.getJson.mockResolvedValueOnce(archived);
+    await expect(getLead('lead-1')).resolves.toMatchObject({
+      reviewDecision: archived.reviewDecision,
+    });
+  });
+
   it('rejects impossible response facts instead of trusting typed-looking fields', async () => {
     http.getJson.mockResolvedValueOnce({
       ...lead,

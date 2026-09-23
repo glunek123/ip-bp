@@ -256,6 +256,33 @@ describe('LeadDetailPage', () => {
     expect(wrapper.find('[data-test="push-lead"]').exists()).toBe(false);
   });
 
+  it('shows archived no-infringement reason and archive time without an operator review action', async () => {
+    leadApi.getLead.mockResolvedValue({
+      ...lead,
+      status: 'ARCHIVED',
+      version: 3,
+      pushedAt: '2026-09-22T02:00:00.000Z',
+      pushedByUserId: 'operator-uuid',
+      pushedByDisplayName: '运营甲',
+      reviewDecision: {
+        result: 'NO_INFRINGEMENT',
+        reason: '经核对未使用我司标识',
+        reviewerDisplayName: '企业审核员',
+        decidedAt: '2026-09-22T03:00:00.000Z',
+        archiveType: 'NO_INFRINGEMENT',
+        archivedAt: '2026-09-22T03:00:00.000Z',
+      },
+      capabilities: { edit: false, push: false },
+    });
+    const wrapper = await mountPage();
+    const record = wrapper.get('[data-test="client-review-record"]');
+    expect(record.text()).toContain('判定不侵权并归档');
+    expect(record.text()).toContain('经核对未使用我司标识');
+    expect(record.text()).toContain('归档时间');
+    expect(wrapper.find('[data-test="push-lead"]').exists()).toBe(false);
+    expect(wrapper.find('[data-test="push-lead"]').exists()).toBe(false);
+  });
+
   it('does not infer a client decision from the lead status alone', async () => {
     leadApi.getLead.mockResolvedValue({
       ...lead,

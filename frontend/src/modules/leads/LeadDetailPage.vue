@@ -359,11 +359,27 @@ onBeforeUnmount(() => request?.abort());
           <dl class="demo-detail-grid">
             <div>
               <dt>审核结论</dt>
-              <dd>确认侵权</dd>
+              <dd>
+                {{
+                  lead.reviewDecision.result === 'INFRINGEMENT'
+                    ? '确认侵权'
+                    : '判定不侵权并归档'
+                }}
+              </dd>
+            </div>
+            <div v-if="lead.reviewDecision.result === 'NO_INFRINGEMENT'">
+              <dt>不侵权原因</dt>
+              <dd>{{ lead.reviewDecision.reason }}</dd>
             </div>
             <div>
               <dt>审核人</dt>
               <dd>{{ lead.reviewDecision.reviewerDisplayName }}</dd>
+            </div>
+            <div v-if="lead.reviewDecision.result === 'NO_INFRINGEMENT'">
+              <dt>归档时间</dt>
+              <dd class="mono">
+                {{ formatTime(lead.reviewDecision.archivedAt) }}
+              </dd>
             </div>
             <div>
               <dt>审核时间</dt>

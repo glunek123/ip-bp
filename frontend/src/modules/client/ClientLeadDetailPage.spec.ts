@@ -7,6 +7,7 @@ import ClientLeadDetailPage from './ClientLeadDetailPage.vue';
 const leadApi = vi.hoisted(() => ({
   getClientLead: vi.fn(),
   reviewClientLead: vi.fn(),
+  reviewClientLeadNoInfringement: vi.fn(),
 }));
 const materialApi = vi.hoisted(() => ({
   listOwnerMaterials: vi.fn(),
@@ -57,6 +58,20 @@ const processedLead = {
   },
   capabilities: { review: false },
 };
+const archivedLead = {
+  ...lead,
+  status: 'ARCHIVED',
+  version: 3,
+  reviewDecision: {
+    result: 'NO_INFRINGEMENT',
+    reason: '经核对未使用我司标识',
+    reviewerDisplayName: '企业审核员',
+    decidedAt: '2026-09-22T03:00:00.000Z',
+    archiveType: 'NO_INFRINGEMENT',
+    archivedAt: '2026-09-22T03:00:00.000Z',
+  },
+  capabilities: { review: false },
+};
 
 async function mountPage(path = '/client/leads/lead-1') {
   const router = createRouter({
@@ -84,6 +99,13 @@ beforeEach(() => {
     status: processedLead.status,
     version: processedLead.version,
     reviewDecision: processedLead.reviewDecision,
+  });
+  leadApi.reviewClientLeadNoInfringement.mockResolvedValue({
+    id: archivedLead.id,
+    businessNo: archivedLead.businessNo,
+    status: 'ARCHIVED',
+    version: archivedLead.version,
+    reviewDecision: archivedLead.reviewDecision,
   });
   materialApi.listOwnerMaterials.mockResolvedValue({
     items: [
@@ -139,6 +161,153 @@ describe('ClientLeadDetailPage', () => {
     await wrapper.get('[data-test="confirm-infringement"]').trigger('click');
     expect(confirm).toHaveBeenCalled();
     expect(leadApi.reviewClientLead).not.toHaveBeenCalled();
+    confirm.mockRestore();
+  });
+
+  it('requires a reason and consequential confirmation before archiving', async () => {
+    const confirm = vi.spyOn(window, 'confirm').mockReturnValue(false);
+    const wrapper = await mountPage();
+    expect(wrapper.find('[data-test="no-infringement-reason"]').exists()).toBe(
+      true,
+    );
+    expect(wrapper.text()).toContain('必填');
+    const button = wrapper.get('[data-test="confirm-no-infringement"]');
+    expect(button.attributes('aria-disabled')).toBe('true');
+    await wrapper.get('[data-test="no-infringement-reason"]').setValue('   ');
+    expect(button.attributes('aria-disabled')).toBe('true');
+    await wrapper
+      .get('[data-test="no-infringement-reason"]')
+      .setValue(' 经核对未使用我司标识 ');
+    expect(button.attributes('aria-disabled')).toBe('false');
+    await button.trigger('click');
+    expect(confirm).toHaveBeenCalledWith(
+      '提交后线索将归档，当前版本不能在页面直接撤回。确定判定不侵权吗？',
+    );
+    expect(leadApi.reviewClientLeadNoInfringement).not.toHaveBeenCalled();
+    confirm.mockRestore();
+  });
+
+  it('submits normalized reason and refreshes the archived immutable record', async () => {
+    const confirm = vi.spyOn(window, 'confirm').mockReturnValue(true);
+    leadApi.getClientLead
+      .mockResolvedValueOnce(lead)
+      .mockResolvedValueOnce(archivedLead);
+    const wrapper = await mountPage();
+    await wrapper
+      .get('[data-test="no-infringement-reason"]')
+      .setValue('  经核对未使用我司标识  ');
+    await wrapper.get('[data-test="confirm-no-infringement"]').trigger('click');
+    await flushPromises();
+    expect(leadApi.reviewClientLeadNoInfringement).toHaveBeenCalledWith(
+      'lead-1',
+      2,
+      '经核对未使用我司标识',
+      expect.any(String),
+    );
+    const record = wrapper.get('[data-test="client-review-record"]');
+    expect(record.text()).toContain('判定不侵权并归档');
+    expect(record.text()).toContain('经核对未使用我司标识');
+    expect(record.text()).toContain('2026/9/22 11:00:00');
+    expect(wrapper.find('[data-test="confirm-no-infringement"]').exists()).toBe(
+      false,
+    );
+    confirm.mockRestore();
+  });
+
+  it.each(['NETWORK_ERROR', 'TIMEOUT'])(
+    'retries an unknown archive result with the same key and frozen reason (%s)',
+    async (code) => {
+      const confirm = vi.spyOn(window, 'confirm').mockReturnValue(true);
+      leadApi.reviewClientLeadNoInfringement.mockRejectedValueOnce(
+        new ApiError('unknown', 0, code),
+      );
+      const wrapper = await mountPage();
+      await wrapper
+        .get('[data-test="no-infringement-reason"]')
+        .setValue('原因甲');
+      await wrapper
+        .get('[data-test="confirm-no-infringement"]')
+        .trigger('click');
+      await flushPromises();
+      expect(wrapper.text()).toContain('提交结果暂时未知');
+      const first = leadApi.reviewClientLeadNoInfringement.mock.calls[0];
+      expect(
+        wrapper
+          .get('[data-test="no-infringement-reason"]')
+          .attributes('disabled'),
+      ).toBeDefined();
+      await wrapper
+        .get('[data-test="confirm-no-infringement"]')
+        .trigger('click');
+      await flushPromises();
+      const second = leadApi.reviewClientLeadNoInfringement.mock.calls[1];
+      expect(second?.[2]).toBe(first?.[2]);
+      expect(second?.[3]).toBe(first?.[3]);
+      confirm.mockRestore();
+    },
+  );
+
+  it('disables both review actions while the no-infringement request is pending', async () => {
+    const confirm = vi.spyOn(window, 'confirm').mockReturnValue(true);
+    let resolveRequest: () => void = () => undefined;
+    leadApi.reviewClientLeadNoInfringement.mockReturnValueOnce(
+      new Promise((resolve) => {
+        resolveRequest = () =>
+          resolve({
+            id: archivedLead.id,
+            businessNo: archivedLead.businessNo,
+            status: 'ARCHIVED',
+            version: archivedLead.version,
+            reviewDecision: archivedLead.reviewDecision,
+          });
+      }),
+    );
+    const wrapper = await mountPage();
+    await wrapper
+      .get('[data-test="no-infringement-reason"]')
+      .setValue('原因甲');
+    const pending = wrapper
+      .get('[data-test="confirm-no-infringement"]')
+      .trigger('click');
+    await flushPromises();
+    expect(
+      wrapper
+        .get('[data-test="confirm-infringement"]')
+        .attributes('aria-disabled'),
+    ).toBe('true');
+    expect(
+      wrapper
+        .get('[data-test="confirm-no-infringement"]')
+        .attributes('aria-disabled'),
+    ).toBe('true');
+    resolveRequest();
+    await pending;
+    await flushPromises();
+    confirm.mockRestore();
+  });
+
+  it('uses a fresh key after an explicit no-infringement idempotency conflict', async () => {
+    const confirm = vi.spyOn(window, 'confirm').mockReturnValue(true);
+    leadApi.reviewClientLeadNoInfringement.mockRejectedValueOnce(
+      new ApiError('conflict', 409, 'IDEMPOTENCY_CONFLICT'),
+    );
+    const wrapper = await mountPage();
+    await wrapper
+      .get('[data-test="no-infringement-reason"]')
+      .setValue('原因甲');
+    await wrapper.get('[data-test="confirm-no-infringement"]').trigger('click');
+    await flushPromises();
+    const firstKey = leadApi.reviewClientLeadNoInfringement.mock.calls[0]?.[3];
+    expect(
+      wrapper
+        .get('[data-test="no-infringement-reason"]')
+        .attributes('disabled'),
+    ).toBeUndefined();
+    await wrapper.get('[data-test="confirm-no-infringement"]').trigger('click');
+    await flushPromises();
+    expect(leadApi.reviewClientLeadNoInfringement.mock.calls[1]?.[3]).not.toBe(
+      firstKey,
+    );
     confirm.mockRestore();
   });
 
