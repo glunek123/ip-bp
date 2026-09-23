@@ -129,6 +129,24 @@ beforeEach(() => {
 });
 
 describe('ClientLeadDetailPage', () => {
+  it('returns a direct pending-withdrawal detail link to the pending queue', async () => {
+    leadApi.getClientLead.mockResolvedValue({
+      ...archivedLead,
+      version: 4,
+      pendingWithdrawalApplication: {
+        id: 'application-1',
+        reason: '补充证据',
+        applicantDisplayName: '运营甲',
+        appliedAt: '2026-09-22T04:00:00.000Z',
+      },
+      capabilities: { review: false, confirmWithdrawal: true },
+    });
+    const wrapper = await mountPage('/client/leads/lead-1');
+    expect(wrapper.get('.back-link').attributes('href')).toBe(
+      '/client/leads?view=pending',
+    );
+  });
+
   it('shows the server-enabled confirmation, consequence and application history', async () => {
     const pending = {
       ...archivedLead,

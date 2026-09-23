@@ -48,11 +48,13 @@ let frozenWithdrawalPayload:
 let request: AbortController | undefined;
 
 const returnTo = computed(() => {
-  const view =
-    route.query.view === 'processed' ||
-    (!route.query.view &&
-      (lead.value?.status === 'WAITING_EVIDENCE_DECISION' ||
-        lead.value?.status === 'ARCHIVED'))
+  const pendingWithdrawal = Boolean(lead.value?.pendingWithdrawalApplication);
+  const view = pendingWithdrawal
+    ? 'pending'
+    : route.query.view === 'processed' ||
+        (!route.query.view &&
+          (lead.value?.status === 'WAITING_EVIDENCE_DECISION' ||
+            lead.value?.status === 'ARCHIVED'))
       ? 'processed'
       : 'pending';
   const page = Array.isArray(route.query.page)
@@ -61,7 +63,9 @@ const returnTo = computed(() => {
   return {
     path: '/client/leads',
     query: {
-      ...(view === 'processed' || route.query.view === 'pending'
+      ...(view === 'processed' ||
+      route.query.view === 'pending' ||
+      pendingWithdrawal
         ? { view }
         : {}),
       ...(page ? { page } : {}),
