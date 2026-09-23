@@ -97,6 +97,8 @@ async function dropFaults() {
     ['lead_products', 'core_ld_reject_product'],
     ['content_versions', 'core_ld_reject_metadata'],
     ['lead_command_receipts', 'core_ld_reject_push_receipt'],
+    ['lead_review_decisions', 'core_ld_reject_review_decision'],
+    ['client_lead_review_receipts', 'core_ld_reject_review_receipt'],
   ]) {
     await database.$executeRawUnsafe(
       `ALTER TABLE "${table}" DROP CONSTRAINT IF EXISTS "${constraint}"`,
@@ -231,6 +233,16 @@ async function clearPrivateBytes() {
 }
 
 async function clearDatabase() {
+  if (process.env.NODE_ENV !== 'test') {
+    throw new Error('Core lead reset requires NODE_ENV=test');
+  }
+  validateIsolatedTestDatabaseUrl(databaseUrl, { allowRandomPort: true });
+  const actualDatabase = await database.$queryRawUnsafe(
+    'SELECT current_database() AS name',
+  );
+  if (actualDatabase[0]?.name !== 'dev_cor_test') {
+    throw new Error('Refusing to reset an unexpected database');
+  }
   const departmentIds = [
     coreLeadFixtures.departmentA,
     coreLeadFixtures.departmentB,
@@ -249,6 +261,9 @@ async function clearDatabase() {
     ...clientBindings.map(({ userId }) => userId),
   ];
   await dropFaults();
+  await database.$executeRawUnsafe(
+    'TRUNCATE TABLE "client_lead_review_receipts", "lead_review_decisions"',
+  );
   await database.materialReference.deleteMany({
     where: { departmentId: { in: departmentIds } },
   });
@@ -661,6 +676,38 @@ export function countLeadPushAudits(leadId) {
   });
 }
 
+export function getLeadReviewDecision(leadId) {
+  return database.leadReviewDecision.findUnique({ where: { leadId } });
+}
+
+export function countLeadReviewDecisions(leadId) {
+  return database.leadReviewDecision.count({ where: { leadId } });
+}
+
+export function countClientLeadReviewReceipts(leadId) {
+  return database.clientLeadReviewReceipt.count({
+    where: { resultLeadId: leadId },
+  });
+}
+
+export function setClientBindingActive(customerId, active) {
+  return database.customerAccountBinding.updateMany({
+    where: { customerId },
+    data: { active, version: { increment: 1 } },
+  });
+}
+
+export async function setClientUserActive(customerId, active) {
+  const binding = await database.customerAccountBinding.findFirstOrThrow({
+    where: { customerId },
+    select: { userId: true },
+  });
+  return database.userAccount.update({
+    where: { id: binding.userId },
+    data: { active, authorizationRevision: { increment: 1 } },
+  });
+}
+
 export function setCustomerStatus(customerId, profileStatus) {
   return database.customer.update({
     where: { id: customerId },
@@ -725,6 +772,20 @@ export async function rejectLeadPushReceiptWrites() {
   await dropFaults();
   await database.$executeRawUnsafe(
     `ALTER TABLE "lead_command_receipts" ADD CONSTRAINT "core_ld_reject_push_receipt" CHECK ("action" <> 'push') NOT VALID`,
+  );
+}
+
+export async function rejectLeadReviewDecisionWrites() {
+  await dropFaults();
+  await database.$executeRawUnsafe(
+    'ALTER TABLE "lead_review_decisions" ADD CONSTRAINT "core_ld_reject_review_decision" CHECK (false) NOT VALID',
+  );
+}
+
+export async function rejectClientLeadReviewReceiptWrites() {
+  await dropFaults();
+  await database.$executeRawUnsafe(
+    'ALTER TABLE "client_lead_review_receipts" ADD CONSTRAINT "core_ld_reject_review_receipt" CHECK (false) NOT VALID',
   );
 }
 
@@ -812,6 +873,10 @@ export async function verifyCoreLeadMigration() {
   const backfillTarget = '20260921012000_backfill_core_ld_bootstrap_grants';
   const clientActionTarget = '20260922009000_add_client_identity_actions';
   const clientSchemaTarget = '20260922010000_add_client_accounts_and_lead_push';
+  const reviewActionTarget = '20260922011000_add_client_lead_review_action';
+  const reviewSchemaTarget = '20260922012000_add_client_lead_review';
+  const reviewIntegrityTarget =
+    '20260922013000_harden_client_lead_review_integrity';
   const migrations = (await readdir(migrationRoot))
     .filter((name) => /^\d{14}_/u.test(name))
     .sort();
@@ -826,6 +891,10 @@ export async function verifyCoreLeadMigration() {
     clientActionRecovery: `core_ld_client_action_recovery_${probe}`,
     clientSchemaFailure: `core_ld_client_schema_failure_${probe}`,
     reviewIntegrity: `core_ld_review_integrity_${probe}`,
+    reviewUpgrade: `core_ld_review_upgrade_${probe}`,
+    reviewActionRecovery: `core_ld_review_action_recovery_${probe}`,
+    reviewSchemaFailure: `core_ld_review_schema_failure_${probe}`,
+    reviewIntegrityFailure: `core_ld_review_integrity_failure_${probe}`,
   };
   const client = new Client({ connectionString: databaseUrl });
 
@@ -951,6 +1020,10 @@ export async function verifyCoreLeadMigration() {
         decisionSql,
         decision({ 5: ids.otherBinding, 4: ids.otherReviewer }),
       );
+      const invalidVersionPair = await reject(
+        decisionSql.replace('1,2)', '2,4)'),
+        decision(),
+      );
       await client.query(decisionSql, decision());
       const receiptSql = `INSERT INTO client_lead_review_receipts(id,department_id,actor_user_id,customer_account_binding_id,action,idempotency_key,request_fingerprint,result_lead_id,result_lead_version,review_decision_id,result_snapshot)
         VALUES ($1,$2,$3,$4,'client.lead.review',$5,$6,$7,$8,$9,'{}'::jsonb)`;
@@ -976,6 +1049,10 @@ export async function verifyCoreLeadMigration() {
       );
       const wrongLead = await reject(receiptSql, receipt({ 6: ids.otherLead }));
       const wrongVersion = await reject(receiptSql, receipt({ 7: 3 }));
+      const nonReviewAction = await reject(
+        receiptSql.replace("'client.lead.review'", "'lead.push'"),
+        receipt(),
+      );
       await client.query(receiptSql, receipt());
       const decisionUpdate = await reject(
         'UPDATE lead_review_decisions SET to_version=3 WHERE id=$1',
@@ -1009,6 +1086,8 @@ export async function verifyCoreLeadMigration() {
         wrongReceiptBinding,
         wrongLead,
         wrongVersion,
+        invalidVersionPair,
+        nonReviewAction,
         decisionUpdate,
         decisionDelete,
         receiptUpdate,
@@ -1183,11 +1262,229 @@ export async function verifyCoreLeadMigration() {
          WHERE table_schema=$1 AND table_name IN (
            'upload_drafts','materials','customer_admission_receipts',
            'leads','lead_number_counters','lead_command_receipts',
-           'customer_account_bindings'
+           'customer_account_bindings','lead_review_decisions',
+           'client_lead_review_receipts'
          ) ORDER BY table_name`,
         [schemas.empty],
       )
     ).rows.map(({ table_name: tableName }) => tableName);
+
+    await useSchema(schemas.reviewUpgrade);
+    await apply(migrations.filter((name) => name <= reviewSchemaTarget));
+    const reviewIds = Object.fromEntries(
+      [
+        'department',
+        'operator',
+        'reviewer',
+        'customer',
+        'holder',
+        'binding',
+        'lead',
+        'decision',
+        'receipt',
+      ].map((key) => [key, randomUUID()]),
+    );
+    await client.query('BEGIN');
+    await client.query(
+      'INSERT INTO departments(id,name,updated_at) VALUES ($1,$2,NOW())',
+      [reviewIds.department, '升级审核部门'],
+    );
+    for (const [id, type] of [
+      [reviewIds.operator, 'INTERNAL'],
+      [reviewIds.reviewer, 'CLIENT'],
+    ]) {
+      await client.query(
+        'INSERT INTO user_accounts(id,external_subject,display_name,account_type,updated_at) VALUES ($1,$2,$2,$3,NOW())',
+        [id, `upgrade-${id}`, type],
+      );
+    }
+    await client.query(
+      'INSERT INTO department_memberships(id,user_id,department_id,updated_at) VALUES ($1,$2,$3,NOW())',
+      [randomUUID(), reviewIds.operator, reviewIds.department],
+    );
+    await client.query(
+      'INSERT INTO customers(id,name,normalized_name,department_id,responsible_user_id,updated_at) VALUES ($1,$2,$2,$3,$4,NOW())',
+      [
+        reviewIds.customer,
+        '升级审核客户',
+        reviewIds.department,
+        reviewIds.operator,
+      ],
+    );
+    await client.query(
+      'INSERT INTO rights_holders(id,name,department_id,updated_at) VALUES ($1,$2,$3,NOW())',
+      [reviewIds.holder, '升级审核权利人', reviewIds.department],
+    );
+    await client.query(
+      'INSERT INTO customer_account_bindings(id,user_id,customer_id,department_id,updated_at) VALUES ($1,$2,$3,$4,NOW())',
+      [
+        reviewIds.binding,
+        reviewIds.reviewer,
+        reviewIds.customer,
+        reviewIds.department,
+      ],
+    );
+    await client.query('COMMIT');
+    await client.query(
+      `INSERT INTO leads(id,department_id,business_no,customer_id,rights_holder_id,responsible_user_id,case_type,source,platform,found_at,shop_name,need_disclose,updated_at)
+       VALUES ($1,$2,$3,$4,$5,$6,'CIVIL','ONLINE','TAOBAO',NOW(),'升级审核店铺',false,NOW())`,
+      [
+        reviewIds.lead,
+        reviewIds.department,
+        `REVIEW-UPGRADE-${probe}`,
+        reviewIds.customer,
+        reviewIds.holder,
+        reviewIds.operator,
+      ],
+    );
+    await client.query(
+      `INSERT INTO lead_review_decisions(id,department_id,lead_id,customer_id,reviewer_user_id,customer_account_binding_id,reviewer_display_name_snapshot,result,from_version,to_version)
+       VALUES ($1,$2,$3,$4,$5,$6,'升级前审核人','INFRINGEMENT',1,2)`,
+      [
+        reviewIds.decision,
+        reviewIds.department,
+        reviewIds.lead,
+        reviewIds.customer,
+        reviewIds.reviewer,
+        reviewIds.binding,
+      ],
+    );
+    await client.query(
+      `INSERT INTO client_lead_review_receipts(id,department_id,actor_user_id,customer_account_binding_id,action,idempotency_key,request_fingerprint,result_lead_id,result_lead_version,review_decision_id,result_snapshot)
+       VALUES ($1,$2,$3,$4,'client.lead.review','upgrade-key',$5,$6,2,$7,'{"version":2}'::jsonb)`,
+      [
+        reviewIds.receipt,
+        reviewIds.department,
+        reviewIds.reviewer,
+        reviewIds.binding,
+        'a'.repeat(64),
+        reviewIds.lead,
+        reviewIds.decision,
+      ],
+    );
+    const reviewFactsBefore = (
+      await client.query(
+        `SELECT d.id AS decision_id,d.lead_id,d.customer_id,d.reviewer_user_id,d.customer_account_binding_id,
+                d.reviewer_display_name_snapshot,d.result,d.decided_at,d.from_version,d.to_version,
+                r.id AS receipt_id,r.actor_user_id,r.idempotency_key,r.request_fingerprint,
+                r.result_lead_id,r.result_lead_version,r.review_decision_id,r.result_snapshot,r.created_at
+         FROM lead_review_decisions d JOIN client_lead_review_receipts r ON r.review_decision_id=d.id
+         WHERE d.id=$1`,
+        [reviewIds.decision],
+      )
+    ).rows[0];
+    await apply([reviewIntegrityTarget]);
+    const reviewFactsAfter = (
+      await client.query(
+        `SELECT d.id AS decision_id,d.lead_id,d.customer_id,d.reviewer_user_id,d.customer_account_binding_id,
+                d.reviewer_display_name_snapshot,d.result,d.decided_at,d.from_version,d.to_version,
+                r.id AS receipt_id,r.actor_user_id,r.idempotency_key,r.request_fingerprint,
+                r.result_lead_id,r.result_lead_version,r.review_decision_id,r.result_snapshot,r.created_at
+         FROM lead_review_decisions d JOIN client_lead_review_receipts r ON r.review_decision_id=d.id
+         WHERE d.id=$1`,
+        [reviewIds.decision],
+      )
+    ).rows[0];
+    const reviewUpgrade = {
+      rowsPreserved:
+        JSON.stringify(reviewFactsAfter) === JSON.stringify(reviewFactsBefore),
+      decisionCount: Number(
+        (await client.query('SELECT COUNT(*) FROM lead_review_decisions'))
+          .rows[0].count,
+      ),
+      receiptCount: Number(
+        (await client.query('SELECT COUNT(*) FROM client_lead_review_receipts'))
+          .rows[0].count,
+      ),
+    };
+
+    await useSchema(schemas.reviewActionRecovery);
+    await apply(migrations.filter((name) => name < reviewActionTarget));
+    await apply([reviewActionTarget, reviewActionTarget]);
+    const reviewActionRecovery = {
+      actionCount: Number(
+        (
+          await client.query(
+            `SELECT COUNT(*) FROM pg_enum e
+             JOIN pg_type t ON t.oid=e.enumtypid
+             JOIN pg_namespace n ON n.oid=t.typnamespace
+             WHERE n.nspname=$1 AND t.typname='permission_action'
+               AND e.enumlabel='client.lead.review'`,
+            [schemas.reviewActionRecovery],
+          )
+        ).rows[0].count,
+      ),
+    };
+
+    await useSchema(schemas.reviewSchemaFailure);
+    await apply(migrations.filter((name) => name < reviewSchemaTarget));
+    await client.query('CREATE TABLE lead_review_decisions(id UUID)');
+    const reviewSchemaFailureCode = await rejectedCode(
+      await migrationSql(reviewSchemaTarget),
+    );
+    const reviewSchemaFailure = {
+      code: reviewSchemaFailureCode,
+      originalDecisionColumns: Number(
+        (
+          await client.query(
+            `SELECT COUNT(*) FROM information_schema.columns WHERE table_schema=$1 AND table_name='lead_review_decisions'`,
+            [schemas.reviewSchemaFailure],
+          )
+        ).rows[0].count,
+      ),
+      receiptTables: Number(
+        (
+          await client.query(
+            `SELECT COUNT(*) FROM information_schema.tables WHERE table_schema=$1 AND table_name='client_lead_review_receipts'`,
+            [schemas.reviewSchemaFailure],
+          )
+        ).rows[0].count,
+      ),
+      mutationTriggers: Number(
+        (
+          await client.query(
+            `SELECT COUNT(*) FROM information_schema.triggers WHERE trigger_schema=$1 AND trigger_name='reject_lead_review_decision_mutation'`,
+            [schemas.reviewSchemaFailure],
+          )
+        ).rows[0].count,
+      ),
+      reviewEnumTypes: Number(
+        (
+          await client.query(
+            `SELECT COUNT(*) FROM pg_type t JOIN pg_namespace n ON n.oid=t.typnamespace WHERE n.nspname=$1 AND t.typname='lead_review_result'`,
+            [schemas.reviewSchemaFailure],
+          )
+        ).rows[0].count,
+      ),
+    };
+
+    await useSchema(schemas.reviewIntegrityFailure);
+    await apply(migrations.filter((name) => name < reviewIntegrityTarget));
+    await client.query(
+      `CREATE FUNCTION reject_client_lead_review_receipt_mutation() RETURNS trigger LANGUAGE plpgsql AS $$ BEGIN RETURN NEW; END $$`,
+    );
+    const reviewIntegrityFailureCode = await rejectedCode(
+      await migrationSql(reviewIntegrityTarget),
+    );
+    const reviewIntegrityFailure = {
+      code: reviewIntegrityFailureCode,
+      addedConstraints: Number(
+        (
+          await client.query(
+            `SELECT COUNT(*) FROM information_schema.table_constraints WHERE table_schema=$1 AND constraint_name IN ('leads_review_identity_key','customer_account_bindings_review_identity_key','lead_review_decisions_lead_identity_key','lead_review_decisions_receipt_identity_key','lead_review_decisions_lead_customer_department_fkey','lead_review_decisions_binding_reviewer_customer_department_fkey','client_lead_review_receipts_decision_identity_key','client_lead_review_receipts_decision_identity_fkey')`,
+            [schemas.reviewIntegrityFailure],
+          )
+        ).rows[0].count,
+      ),
+      receiptTriggers: Number(
+        (
+          await client.query(
+            `SELECT COUNT(*) FROM information_schema.triggers WHERE trigger_schema=$1 AND trigger_name='reject_client_lead_review_receipt_mutation'`,
+            [schemas.reviewIntegrityFailure],
+          )
+        ).rows[0].count,
+      ),
+    };
 
     await useSchema(schemas.upgrade);
     await apply(previousMigrations);
@@ -1565,6 +1862,10 @@ export async function verifyCoreLeadMigration() {
     return {
       empty: { tables: emptyTables },
       reviewIntegrity,
+      reviewUpgrade,
+      reviewActionRecovery,
+      reviewSchemaFailure,
+      reviewIntegrityFailure,
       upgrade: {
         known,
         unknown,

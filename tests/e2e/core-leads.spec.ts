@@ -1,4 +1,5 @@
 import { randomUUID } from 'node:crypto';
+import { readFile } from 'node:fs/promises';
 import {
   expect,
   test,
@@ -12,12 +13,15 @@ import {
   countLeadReceipts,
   countLeadPushAudits,
   countLeadPushReceipts,
+  countLeadReviewDecisions,
+  countClientLeadReviewReceipts,
   countLeads,
   countStoredFiles,
   databaseCounts,
   disconnectCoreLeadTestDatabase,
   getCustomer,
   getLead,
+  getLeadReviewDecision,
   getMaterialAuditActions,
   getMaterialLifecycle,
   getMaterialByVersion,
@@ -25,11 +29,15 @@ import {
   markContentVersion,
   rejectAuditWrites,
   rejectLeadPushReceiptWrites,
+  rejectLeadReviewDecisionWrites,
+  rejectClientLeadReviewReceiptWrites,
   rejectLeadProductWrites,
   rejectMaterialMetadataWrites,
   resetCoreLeadE2eData,
   removeLeadProducts,
   setClientAccountActive,
+  setClientBindingActive,
+  setClientUserActive,
   setCustomerStatus,
   setGrant,
   setLeadCounter,
@@ -191,6 +199,35 @@ function pushLead(
   });
 }
 
+async function loginClient(
+  request: APIRequestContext,
+  username: string,
+  password: string,
+): Promise<string> {
+  const response = await request.post('/api/v1/auth/login', {
+    headers: { Origin: 'http://127.0.0.1:5174' },
+    data: { username, password },
+  });
+  expect(response.status(), await response.text()).toBe(200);
+  const session: { principalType: string; csrfToken: string } =
+    await response.json();
+  expect(session.principalType).toBe('CLIENT');
+  return session.csrfToken;
+}
+
+function reviewLead(
+  request: APIRequestContext,
+  leadId: string,
+  expectedVersion: number,
+  csrfToken: string,
+  key = randomUUID(),
+) {
+  return request.post(`/api/v1/client/leads/${leadId}/reviews`, {
+    headers: { 'Idempotency-Key': key, 'X-CSRF-Token': csrfToken },
+    data: { result: 'INFRINGEMENT', expectedVersion },
+  });
+}
+
 function admissionInput(versionIds: string[]) {
   return {
     expectedVersion: 1,
@@ -346,7 +383,7 @@ test('operator creates, refreshes, views, and edits a waiting-push lead', async 
   });
 });
 
-test('real operator login, client-account binding, push, client login, read, download, and refresh form one browser chain', async ({
+test('real operator and client logins persist infringement review, screenshot and operator follow-up in one browser chain', async ({
   page,
 }) => {
   const clientUsername = `browser-client-${randomUUID().slice(0, 8)}`;
@@ -427,16 +464,92 @@ test('real operator login, client-account binding, push, client login, read, dow
   const row = page.locator('[data-test="client-lead-row"]');
   await expect(row).toContainText('客户端闭环店铺');
   await row.getByRole('link').click();
-  await expect(page).toHaveURL(new RegExp(`/client/leads/${leadId}$`, 'u'));
+  await expect(page).toHaveURL(
+    new RegExp(`/client/leads/${leadId}(\\?|$)`, 'u'),
+  );
   await expect(page.getByText('客户端闭环商品')).toBeVisible();
   await expect(page.getByText('client-review.jpg')).toBeVisible();
 
   const download = page.waitForEvent('download');
   await page.locator('[data-test^="download-screenshot-"]').click();
-  await expect((await download).suggestedFilename()).toBe('client-review.jpg');
+  const originalDownload = await download;
+  await expect(originalDownload.suggestedFilename()).toBe('client-review.jpg');
+  expect(await readFile(await originalDownload.path())).toEqual(jpegBytes);
   await page.reload();
   await expect(page.getByText('客户端闭环店铺')).toBeVisible();
   await expect(page.getByText('client-review.jpg')).toBeVisible();
+  await expect(
+    page.locator('[data-test="confirm-infringement"]'),
+  ).toBeVisible();
+
+  page.once('dialog', async (dialog) => {
+    expect(dialog.message()).toContain('不能撤回');
+    await dialog.dismiss();
+  });
+  await page.locator('[data-test="confirm-infringement"]').click();
+  await expect(page.locator('.page-head .pill')).toHaveText('线索待审核');
+  expect(await countLeadReviewDecisions(leadId)).toBe(0);
+
+  page.once('dialog', async (dialog) => {
+    expect(dialog.message()).toContain('线索待确认');
+    await dialog.accept();
+  });
+  await page.locator('[data-test="confirm-infringement"]').click();
+  const clientRecord = page.locator('[data-test="client-review-record"]');
+  await expect(clientRecord).toContainText('确认侵权');
+  await expect(clientRecord).toContainText('浏览器企业审核员');
+  await expect(clientRecord).toContainText('等待运营确认是否取证');
+  const reviewerTime = (await clientRecord.locator('p').nth(2).textContent())
+    ?.replace('审核时间：', '')
+    .trim();
+  expect(reviewerTime).toBeTruthy();
+  await expect(page.locator('.page-head .pill')).toHaveText('线索待确认');
+  expect(await countLeadReviewDecisions(leadId)).toBe(1);
+  expect(await countClientLeadReviewReceipts(leadId)).toBe(1);
+
+  await page.reload();
+  await expect(
+    page.locator('[data-test="client-review-record"]'),
+  ).toContainText('浏览器企业审核员');
+  await expect(
+    page.locator('[data-test="client-review-record"]'),
+  ).toContainText(reviewerTime!);
+  const afterReviewDownload = page.waitForEvent('download');
+  await page.locator('[data-test^="download-screenshot-"]').click();
+  expect(await readFile(await (await afterReviewDownload).path())).toEqual(
+    jpegBytes,
+  );
+
+  await page.getByRole('link', { name: /返回待审核线索/u }).click();
+  await page.locator('[data-test="client-view-processed"]').click();
+  await expect(
+    page.getByRole('heading', { name: '已处理线索', exact: true }),
+  ).toBeVisible();
+  const processedRow = page.locator('[data-test="client-lead-row"]');
+  await expect(processedRow).toContainText('客户端闭环店铺');
+  await processedRow.getByRole('link').click();
+  await expect(
+    page.locator('[data-test="client-review-record"]'),
+  ).toContainText(reviewerTime!);
+
+  await page.getByRole('button', { name: '退出登录' }).click();
+  await expect(page).toHaveURL(/\/login$/u);
+  await page.getByLabel('用户名').fill(coreLeadFixtures.operatorUsername);
+  await page.getByLabel('密码').fill(coreLeadFixtures.operatorPassword);
+  await page.getByRole('button', { name: '登录', exact: true }).click();
+  await expect(page).toHaveURL(/\/customers$/u);
+  await page.goto('/leads?status=WAITING_EVIDENCE_DECISION');
+  const operatorRow = page
+    .locator('[data-test="lead-row"]')
+    .filter({ hasText: '客户端闭环店铺' });
+  await expect(operatorRow).toContainText('线索待确认');
+  await operatorRow.getByRole('link').click();
+  await expect(
+    page.locator('[data-test="client-review-record"]'),
+  ).toContainText('浏览器企业审核员');
+  await expect(
+    page.locator('[data-test="client-review-record"]'),
+  ).toContainText(reviewerTime!);
 });
 
 test('Demo-aligned shell works on desktop and mobile', async ({ page }) => {
@@ -788,6 +901,14 @@ test('client session sees only its enterprise pushed leads and revocation is imm
   const ownResponse = await createLead(request);
   const own = await ownResponse.json();
   expect((await pushLead(request, own.id, 1)).status()).toBe(201);
+  const internalReview = await request.post(
+    `/api/v1/client/leads/${own.id}/reviews`,
+    {
+      headers: { ...authorizationA, 'Idempotency-Key': randomUUID() },
+      data: { result: 'INFRINGEMENT', expectedVersion: 2 },
+    },
+  );
+  expect(internalReview.status()).toBe(403);
   const waitingResponse = await createLead(request);
   const waiting = await waitingResponse.json();
 
@@ -842,6 +963,211 @@ test('client session sees only its enterprise pushed leads and revocation is imm
   const revoked = await request.get(`/api/v1/client/leads/${own.id}`);
   expect(revoked.status()).toBe(401);
   expect(await revoked.json()).toMatchObject({ code: 'UNAUTHORIZED' });
+});
+
+test('client review enforces enterprise scope, state, version and idempotency in PostgreSQL', async ({
+  request,
+}) => {
+  const clientA = await createClientAccount(request);
+  const clientB = await createClientAccount(request, {
+    customerId: coreLeadFixtures.foreignCustomer,
+    headers: { Authorization: `Bearer ${coreLeadFixtures.tokenB}` },
+  });
+  const own = await (await createLead(request)).json();
+  const unpushed = await (await createLead(request)).json();
+  const foreign = await (
+    await createLead(
+      request,
+      leadInput({
+        customerId: coreLeadFixtures.foreignCustomer,
+        rightsHolderId: coreLeadFixtures.foreignHolder,
+      }),
+      randomUUID(),
+      { Authorization: `Bearer ${coreLeadFixtures.tokenB}` },
+    )
+  ).json();
+  expect((await pushLead(request, own.id, 1)).status()).toBe(201);
+  expect(
+    (
+      await pushLead(request, foreign.id, 1, randomUUID(), {
+        Authorization: `Bearer ${coreLeadFixtures.tokenB}`,
+      })
+    ).status(),
+  ).toBe(201);
+
+  const foreignCsrf = await loginClient(
+    request,
+    clientB.username,
+    clientB.password,
+  );
+  expect((await reviewLead(request, own.id, 2, foreignCsrf)).status()).toBe(
+    404,
+  );
+  const csrf = await loginClient(request, clientA.username, clientA.password);
+  expect((await reviewLead(request, unpushed.id, 1, csrf)).status()).toBe(404);
+  expect((await reviewLead(request, foreign.id, 2, csrf)).status()).toBe(404);
+  const stale = await reviewLead(request, own.id, 1, csrf);
+  expect(stale.status()).toBe(409);
+  expect(await stale.json()).toMatchObject({ code: 'VERSION_CONFLICT' });
+
+  const key = randomUUID();
+  const accepted = await reviewLead(request, own.id, 2, csrf, key);
+  expect(accepted.status(), await accepted.text()).toBe(201);
+  const firstResult = await accepted.json();
+  expect(firstResult).toMatchObject({
+    id: own.id,
+    status: 'WAITING_EVIDENCE_DECISION',
+    version: 3,
+    reviewDecision: {
+      result: 'INFRINGEMENT',
+      reviewerDisplayName: '企业审核员',
+    },
+  });
+  const persisted = await getLeadReviewDecision(own.id);
+  expect(persisted).toMatchObject({
+    result: 'INFRINGEMENT',
+    fromVersion: 2,
+    toVersion: 3,
+  });
+  expect(persisted?.decidedAt.toISOString()).toBe(
+    firstResult.reviewDecision.decidedAt,
+  );
+  expect(await getLead(own.id)).toMatchObject({
+    status: 'WAITING_EVIDENCE_DECISION',
+    version: 3,
+  });
+  expect(await countLeadReviewDecisions(own.id)).toBe(1);
+  expect(await countClientLeadReviewReceipts(own.id)).toBe(1);
+  const replay = await reviewLead(request, own.id, 2, csrf, key);
+  expect(replay.status()).toBe(201);
+  expect(await replay.json()).toEqual(firstResult);
+  const conflict = await reviewLead(request, own.id, 3, csrf, key);
+  expect(conflict.status()).toBe(409);
+  expect(await conflict.json()).toMatchObject({
+    code: 'IDEMPOTENCY_CONFLICT',
+  });
+  const wrongState = await reviewLead(request, own.id, 3, csrf);
+  expect(wrongState.status()).toBe(409);
+  expect(await wrongState.json()).toMatchObject({ code: 'INVALID_STATE' });
+  expect(await countLeadReviewDecisions(own.id)).toBe(1);
+  expect(await countClientLeadReviewReceipts(own.id)).toBe(1);
+
+  const processed = await request.get(
+    '/api/v1/client/leads?view=PROCESSED&page=1&pageSize=20',
+  );
+  expect(processed.status()).toBe(200);
+  expect(
+    (await processed.json()).items.map((item: { id: string }) => item.id),
+  ).toEqual([own.id]);
+  const clientDetail = await request.get(`/api/v1/client/leads/${own.id}`);
+  expect(clientDetail.status()).toBe(200);
+  expect((await clientDetail.json()).reviewDecision).toEqual(
+    firstResult.reviewDecision,
+  );
+  const operatorDetail = await request.get(`/api/v1/leads/${own.id}`, {
+    headers: authorizationA,
+  });
+  expect(operatorDetail.status()).toBe(200);
+  expect((await operatorDetail.json()).reviewDecision).toEqual(
+    firstResult.reviewDecision,
+  );
+
+  await setClientAccountActive(coreLeadFixtures.admittedCustomer, false);
+  expect((await request.get(`/api/v1/client/leads/${own.id}`)).status()).toBe(
+    401,
+  );
+  expect((await reviewLead(request, own.id, 2, csrf, key)).status()).toBe(401);
+  const retained = await request.get(`/api/v1/leads/${own.id}`, {
+    headers: authorizationA,
+  });
+  expect(retained.status()).toBe(200);
+  expect((await retained.json()).reviewDecision).toEqual(
+    firstResult.reviewDecision,
+  );
+});
+
+test('two distinct client review keys allow exactly one committed decision', async ({
+  request,
+}) => {
+  const client = await createClientAccount(request);
+  const lead = await (await createLead(request)).json();
+  expect((await pushLead(request, lead.id, 1)).status()).toBe(201);
+  const csrf = await loginClient(request, client.username, client.password);
+  const responses = await Promise.all([
+    reviewLead(request, lead.id, 2, csrf),
+    reviewLead(request, lead.id, 2, csrf),
+  ]);
+  expect(
+    responses.filter((response) => response.status() === 201),
+  ).toHaveLength(1);
+  expect(
+    responses.filter((response) => response.status() === 409),
+  ).toHaveLength(1);
+  expect(await countLeadReviewDecisions(lead.id)).toBe(1);
+  expect(await countClientLeadReviewReceipts(lead.id)).toBe(1);
+});
+
+test('decision or receipt write failures roll back client review state', async ({
+  request,
+}) => {
+  const client = await createClientAccount(request);
+  const first = await (await createLead(request)).json();
+  const second = await (await createLead(request)).json();
+  expect((await pushLead(request, first.id, 1)).status()).toBe(201);
+  expect((await pushLead(request, second.id, 1)).status()).toBe(201);
+  const csrf = await loginClient(request, client.username, client.password);
+
+  await rejectLeadReviewDecisionWrites();
+  expect((await reviewLead(request, first.id, 2, csrf)).status()).toBe(500);
+  expect(await getLead(first.id)).toMatchObject({
+    status: 'WAITING_REVIEW',
+    version: 2,
+  });
+  expect(await countLeadReviewDecisions(first.id)).toBe(0);
+  expect(await countClientLeadReviewReceipts(first.id)).toBe(0);
+  await allowInjectedFailures();
+
+  await rejectClientLeadReviewReceiptWrites();
+  expect((await reviewLead(request, second.id, 2, csrf)).status()).toBe(500);
+  expect(await getLead(second.id)).toMatchObject({
+    status: 'WAITING_REVIEW',
+    version: 2,
+  });
+  expect(await countLeadReviewDecisions(second.id)).toBe(0);
+  expect(await countClientLeadReviewReceipts(second.id)).toBe(0);
+  await allowInjectedFailures();
+});
+
+test('account, binding and admission revocation deny the next client review request', async ({
+  request,
+}) => {
+  const client = await createClientAccount(request);
+  const lead = await (await createLead(request)).json();
+  expect((await pushLead(request, lead.id, 1)).status()).toBe(201);
+  let csrf = await loginClient(request, client.username, client.password);
+
+  await setClientUserActive(coreLeadFixtures.admittedCustomer, false);
+  expect((await reviewLead(request, lead.id, 2, csrf)).status()).toBe(401);
+  await setClientUserActive(coreLeadFixtures.admittedCustomer, true);
+  csrf = await loginClient(request, client.username, client.password);
+
+  await setClientBindingActive(coreLeadFixtures.admittedCustomer, false);
+  expect([401, 403]).toContain(
+    (await reviewLead(request, lead.id, 2, csrf)).status(),
+  );
+  await setClientBindingActive(coreLeadFixtures.admittedCustomer, true);
+  csrf = await loginClient(request, client.username, client.password);
+
+  await setCustomerStatus(coreLeadFixtures.admittedCustomer, 'DRAFT');
+  expect([401, 403]).toContain(
+    (await reviewLead(request, lead.id, 2, csrf)).status(),
+  );
+  expect(await countLeadReviewDecisions(lead.id)).toBe(0);
+  expect(await countClientLeadReviewReceipts(lead.id)).toBe(0);
+  expect(await getLead(lead.id)).toMatchObject({
+    status: 'WAITING_REVIEW',
+    version: 2,
+  });
 });
 
 test('audit, child-table, and material metadata failures roll back with blob compensation', async ({
@@ -1163,10 +1489,12 @@ test('lead numbers stop after 999 and concurrent creation never duplicates a num
 test('core lead migrations preserve legacy facts and roll back failed phases', async () => {
   const result = await verifyCoreLeadMigration();
   expect(result.empty.tables).toEqual([
+    'client_lead_review_receipts',
     'customer_account_bindings',
     'customer_admission_receipts',
     'lead_command_receipts',
     'lead_number_counters',
+    'lead_review_decisions',
     'leads',
     'materials',
     'upload_drafts',
@@ -1179,12 +1507,32 @@ test('core lead migrations preserve legacy facts and roll back failed phases', a
     wrongReceiptBinding: '23503',
     wrongLead: '23503',
     wrongVersion: '23503',
+    invalidVersionPair: '23514',
+    nonReviewAction: '23514',
     decisionUpdate: '55000',
     decisionDelete: '55000',
     receiptUpdate: '55000',
     receiptDelete: '55000',
     leadIdentityUpdate: '23503',
     bindingIdentityUpdate: '23503',
+  });
+  expect(result.reviewUpgrade).toEqual({
+    rowsPreserved: true,
+    decisionCount: 1,
+    receiptCount: 1,
+  });
+  expect(result.reviewActionRecovery).toEqual({ actionCount: 1 });
+  expect(result.reviewSchemaFailure).toEqual({
+    code: '42P07',
+    originalDecisionColumns: 1,
+    receiptTables: 0,
+    mutationTriggers: 0,
+    reviewEnumTypes: 0,
+  });
+  expect(result.reviewIntegrityFailure).toEqual({
+    code: '42723',
+    addedConstraints: 0,
+    receiptTriggers: 0,
   });
   expect(result.upgrade).toMatchObject({
     known: {

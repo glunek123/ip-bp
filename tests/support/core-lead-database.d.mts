@@ -39,6 +39,25 @@ export function countAdmissionReceipts(): Promise<number>;
 export function countLeadReceipts(): Promise<number>;
 export function countLeadPushReceipts(leadId: string): Promise<number>;
 export function countLeadPushAudits(leadId: string): Promise<number>;
+export function getLeadReviewDecision(leadId: string): Promise<{
+  id: string;
+  leadId: string;
+  result: string;
+  reviewerDisplayNameSnapshot: string;
+  decidedAt: Date;
+  fromVersion: number;
+  toVersion: number;
+} | null>;
+export function countLeadReviewDecisions(leadId: string): Promise<number>;
+export function countClientLeadReviewReceipts(leadId: string): Promise<number>;
+export function setClientBindingActive(
+  customerId: string,
+  active: boolean,
+): Promise<unknown>;
+export function setClientUserActive(
+  customerId: string,
+  active: boolean,
+): Promise<unknown>;
 export function setGrant(action: string, enabled: boolean): Promise<unknown>;
 export function setCustomerStatus(
   customerId: string,
@@ -55,6 +74,8 @@ export function markContentVersion(
 ): Promise<unknown>;
 export function rejectAuditWrites(action: string): Promise<void>;
 export function rejectLeadPushReceiptWrites(): Promise<void>;
+export function rejectLeadReviewDecisionWrites(): Promise<void>;
+export function rejectClientLeadReviewReceiptWrites(): Promise<void>;
 export function rejectLeadProductWrites(): Promise<void>;
 export function rejectMaterialMetadataWrites(): Promise<void>;
 export function allowInjectedFailures(): Promise<void>;
@@ -101,12 +122,32 @@ export function verifyCoreLeadMigration(): Promise<{
     wrongReceiptBinding: string | null;
     wrongLead: string | null;
     wrongVersion: string | null;
+    invalidVersionPair: string | null;
+    nonReviewAction: string | null;
     decisionUpdate: string | null;
     decisionDelete: string | null;
     receiptUpdate: string | null;
     receiptDelete: string | null;
     leadIdentityUpdate: string | null;
     bindingIdentityUpdate: string | null;
+  };
+  reviewUpgrade: {
+    rowsPreserved: boolean;
+    decisionCount: number;
+    receiptCount: number;
+  };
+  reviewActionRecovery: { actionCount: number };
+  reviewSchemaFailure: {
+    code: string | null;
+    originalDecisionColumns: number;
+    receiptTables: number;
+    mutationTriggers: number;
+    reviewEnumTypes: number;
+  };
+  reviewIntegrityFailure: {
+    code: string | null;
+    addedConstraints: number;
+    receiptTriggers: number;
   };
   upgrade: {
     known: {
