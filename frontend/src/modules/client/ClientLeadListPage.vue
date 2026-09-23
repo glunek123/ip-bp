@@ -51,6 +51,13 @@ async function load(): Promise<void> {
       },
     );
     if (controller.signal.aborted) return;
+    const lastPage = Math.max(1, Math.ceil(result.total / result.pageSize));
+    if (requestedPage.value > lastPage) {
+      await router.replace({
+        query: { view: currentView.value, page: String(lastPage) },
+      });
+      return;
+    }
     items.value = result.items;
     total.value = result.total;
     page.value = result.page;

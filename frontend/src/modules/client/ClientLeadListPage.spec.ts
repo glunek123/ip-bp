@@ -154,10 +154,42 @@ describe('ClientLeadListPage', () => {
   });
 
   it('carries the active queue and page into the detail link', async () => {
+    api.listClientLeads.mockResolvedValue({
+      items: [lead],
+      total: 21,
+      page: 2,
+      pageSize: 20,
+    });
     const { wrapper } = await mountPage('/client/leads?view=processed&page=2');
     expect(
       wrapper.get('[data-test="client-lead-row"] a').attributes('href'),
     ).toBe('/client/leads/lead-1?view=processed&page=2');
+  });
+
+  it('returns to the last valid page when a reviewed final-page item disappears', async () => {
+    api.listClientLeads
+      .mockResolvedValueOnce({ items: [], total: 20, page: 2, pageSize: 20 })
+      .mockResolvedValueOnce({
+        items: [lead],
+        total: 20,
+        page: 1,
+        pageSize: 20,
+      });
+    const { wrapper, router } = await mountPage(
+      '/client/leads?view=pending&page=2',
+    );
+    await flushPromises();
+    expect(router.currentRoute.value.fullPath).toBe(
+      '/client/leads?view=pending&page=1',
+    );
+    expect(api.listClientLeads).toHaveBeenLastCalledWith(
+      'PENDING',
+      1,
+      20,
+      expect.anything(),
+    );
+    expect(wrapper.text()).toContain('LD-20260922-001');
+    expect(wrapper.text()).not.toContain('暂无待审核线索');
   });
 
   it('normalizes an invalid view to the pending queue', async () => {
