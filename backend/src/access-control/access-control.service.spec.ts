@@ -308,7 +308,7 @@ describe('AccessControlService', () => {
     });
   });
 
-  it('revokes TEAM-scoped withdrawal authorization and capability when the membership Team is inactive', async () => {
+  it('retains TEAM-scoped grants for existing facts when the membership Team is inactive', async () => {
     const service = new AccessControlService(
       createStore({
         active: true,
@@ -317,6 +317,7 @@ describe('AccessControlService', () => {
         membershipTeamActive: false,
         grants: [
           { action: 'lead.withdraw.apply', scope: 'team', teamId: 'team-a' },
+          { action: 'customer.edit-routine', scope: 'team', teamId: 'team-a' },
         ],
       }),
     );
@@ -327,10 +328,16 @@ describe('AccessControlService', () => {
     };
     await expect(
       service.authorizeLead(actor, 'lead.withdraw.apply', facts),
-    ).rejects.toMatchObject({ response: { code: 'LEAD_ACTION_FORBIDDEN' } });
+    ).resolves.toBeUndefined();
     await expect(
       service.buildLeadScope(actor, 'lead.withdraw.apply'),
-    ).rejects.toMatchObject({ response: { code: 'LEAD_ACTION_FORBIDDEN' } });
+    ).resolves.toEqual({
+      departmentId: actor.departmentId,
+      teamId: { in: ['team-a'] },
+    });
+    await expect(
+      service.authorizeCustomer(actor, 'customer.edit-routine', facts),
+    ).resolves.toBeUndefined();
   });
 
   it('keeps DEPARTMENT and SELF Lead grants effective when the membership Team is inactive', async () => {
@@ -356,7 +363,7 @@ describe('AccessControlService', () => {
     ).resolves.toBeUndefined();
     await expect(service.buildLeadScope(actor, 'lead.read')).resolves.toEqual({
       departmentId: actor.departmentId,
-      responsibleUserId: actor.userId,
+      OR: [{ responsibleUserId: actor.userId }, { teamId: { in: ['team-a'] } }],
     });
   });
 

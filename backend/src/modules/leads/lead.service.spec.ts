@@ -246,7 +246,7 @@ describe('LeadService', () => {
     });
   });
 
-  it('hides withdrawApply when the only matching TEAM Grant belongs to an inactive membership Team', async () => {
+  it('keeps withdrawApply for an existing lead covered by a TEAM Grant after Team deactivation', async () => {
     const base = createCreateFixture().createdLead;
     const lead = {
       ...base,
@@ -286,7 +286,7 @@ describe('LeadService', () => {
       } as unknown as MaterialService,
     );
     await expect(service.get(actor, lead.id)).resolves.toMatchObject({
-      capabilities: { withdrawApply: false },
+      capabilities: { withdrawApply: true },
     });
   });
 

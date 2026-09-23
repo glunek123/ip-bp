@@ -2223,10 +2223,6 @@ test('withdrawal application enforces Grant, state, retries, races, and full tra
   ).toBe(403);
   await setGrant('lead.withdraw.apply', true);
   await setTeamActive(coreLeadFixtures.teamA, false);
-  expect(
-    (await applyLeadWithdrawal(request, leadId, 3, '团队停用')).status(),
-  ).toBe(403);
-  await setTeamActive(coreLeadFixtures.teamA, true);
 
   const key = randomUUID();
   const accepted = await applyLeadWithdrawal(
@@ -2237,6 +2233,7 @@ test('withdrawal application enforces Grant, state, retries, races, and full tra
     key,
   );
   expect(accepted.status(), await accepted.text()).toBe(201);
+  await setTeamActive(coreLeadFixtures.teamA, true);
   const snapshot = await accepted.json();
   expect(snapshot).toMatchObject({
     leadId,
