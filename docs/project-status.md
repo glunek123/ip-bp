@@ -8,7 +8,7 @@
 
 ## 当前任务
 
-**CORE-LD-004｜客户判定不侵权并归档（路线图唯一Current，待设计与实施）**：CORE-LD-003客户确认侵权并进入待确认已完成，详细证据见[验证记录](spec/v0.1/VALIDATION.md)。CORE-LD-004之后的唯一Next为CORE-LD-005；唯一Current／Next及后续顺序以[功能开发路线图](feature-roadmap.md)为准。
+**CORE-LD-004｜客户判定不侵权并归档（路线图唯一Current，已正式领取，待设计与实施）**：从已合并并推送的本地`main@0cbf548`建立`codex/core-ld-004-client-no-infringement-archive`分支；CORE-LD-003完成证据见[验证记录](spec/v0.1/VALIDATION.md)。CORE-LD-004之后的唯一Next为CORE-LD-005；唯一Current／Next及后续顺序以[功能开发路线图](feature-roadmap.md)为准。
 
 ## 已实现
 
@@ -37,4 +37,4 @@
 
 ## 下一步
 
-下一步按CORE-LD-004补齐小粒度设计和实施计划，再实现客户判定不侵权并归档；CORE-LD-005保持Next。CORE-LD-003的完成仅覆盖客户确认侵权及待确认结果，不包含不侵权归档、运营取证／不取证、公证移交或完整客户门户。未上线、未推送、未合并，未执行生产迁移。
+下一步按CORE-LD-004补齐小粒度设计和实施计划，再实现客户判定不侵权并归档；CORE-LD-005保持Next。CORE-LD-003的完成仅覆盖客户确认侵权及待确认结果，不包含不侵权归档、运营取证／不取证、公证移交或完整客户门户。上一阶段已合并并推送至`origin/main@0cbf548`；未上线、未执行生产迁移。
