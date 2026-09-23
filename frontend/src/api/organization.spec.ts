@@ -96,6 +96,11 @@ const context = {
       scopes: ['SELF', 'TEAM', 'DEPARTMENT'],
     },
     {
+      action: 'LEAD_WITHDRAW_APPLY',
+      label: '申请撤回归档',
+      scopes: ['SELF', 'TEAM', 'DEPARTMENT'],
+    },
+    {
       action: 'USER_READ',
       label: '查看人员',
       scopes: ['SELF', 'TEAM', 'DEPARTMENT'],
@@ -134,6 +139,33 @@ const context = {
 };
 
 describe('organization API', () => {
+  it('decodes the exact 16-action backend permission catalog', async () => {
+    vi.stubGlobal(
+      'fetch',
+      vi.fn().mockResolvedValue(new Response(JSON.stringify(context))),
+    );
+
+    const result = await getOrganizationManagementContext();
+    expect(result.permissionCatalog.map(({ action }) => action)).toEqual([
+      'CUSTOMER_READ',
+      'CUSTOMER_CREATE_DRAFT',
+      'CUSTOMER_EDIT_ROUTINE',
+      'CUSTOMER_ADMIT',
+      'LEAD_READ',
+      'LEAD_CREATE',
+      'LEAD_EDIT',
+      'LEAD_PUSH',
+      'LEAD_WITHDRAW_APPLY',
+      'USER_READ',
+      'USER_MANAGE',
+      'TEAM_READ',
+      'TEAM_MANAGE',
+      'ROLE_READ',
+      'ROLE_ASSIGN',
+      'ROLE_MANAGE',
+    ]);
+  });
+
   it('decodes the management context', async () => {
     vi.stubGlobal(
       'fetch',
