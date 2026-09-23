@@ -8,7 +8,7 @@
 
 ## 当前任务
 
-**CORE-LD-004｜客户判定不侵权并归档（路线图唯一Current，已正式领取，待设计与实施）**：从已合并并推送的本地`main@0cbf548`建立`codex/core-ld-004-client-no-infringement-archive`分支；CORE-LD-003完成证据见[验证记录](spec/v0.1/VALIDATION.md)。CORE-LD-004之后的唯一Next为CORE-LD-005；唯一Current／Next及后续顺序以[功能开发路线图](feature-roadmap.md)为准。
+**CORE-LD-004｜客户判定不侵权并归档（路线图唯一Current，已正式领取，设计待确认、待计划与实施）**：从已合并并推送的本地`main@0cbf548`建立`codex/core-ld-004-client-no-infringement-archive`分支；CORE-LD-003完成证据见[验证记录](spec/v0.1/VALIDATION.md)。按SD-40，CORE-LD-004之后的唯一Next为CORE-LD-007纠错闭环，再进入CORE-LD-005；顺序以[功能开发路线图](feature-roadmap.md)为准。
 
 ## 已实现
 
@@ -37,4 +37,4 @@
 
 ## 下一步
 
-下一步按CORE-LD-004补齐小粒度设计和实施计划，再实现客户判定不侵权并归档；CORE-LD-005保持Next。CORE-LD-003的完成仅覆盖客户确认侵权及待确认结果，不包含不侵权归档、运营取证／不取证、公证移交或完整客户门户。上一阶段已合并并推送至`origin/main@0cbf548`；未上线、未执行生产迁移。
+下一步先确认[CORE-LD-004小粒度设计](superpowers/specs/2026-09-23-core-ld-004-client-no-infringement-archive-design.md)，再补实施计划并实现客户判定不侵权归档；CORE-LD-007为Next，后接CORE-LD-005。CORE-LD-004不冒充归档后撤回已可用；只有CORE-LD-007的运营申请→原客户确认→重新审核通过真实浏览器和数据库验收，才称客户审核与纠错闭环完成。上一阶段已合并并推送至`origin/main@0cbf548`；未上线、未执行生产迁移。

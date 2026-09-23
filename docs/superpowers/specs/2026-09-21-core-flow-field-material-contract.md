@@ -8,7 +8,7 @@
 
 ## 1. 权威范围与使用规则
 
-本文是`CORE-LD-001～006`、`CORE-NT-001～006`和`CORE-CA-001～017`的字段、附件及持久化契约。它把以下既有来源合并为一处可编码输入：
+本文是`CORE-LD-001～007`、`CORE-NT-001～006`和`CORE-CA-001～017`的字段、附件及持久化契约。它把以下既有来源合并为一处可编码输入：
 
 - `DOMAIN.md`中的CU／LD／NT／CA／MT字段词典。
 - `modules/leads.md`、`notary.md`、`cases.md`中的动作、状态和守卫。
@@ -179,15 +179,16 @@ health() -> ready | unavailable
 
 线索业务号按Asia/Shanghai业务日使用全库并发安全日序列生成：格式固定为`LD-YYYYMMDD-NNN`，当日从`001`递增到`999`且全局唯一；第1000条明确返回`LEAD_NUMBER_EXHAUSTED`，不得回绕、随机补号或复用已删除号码。
 
-### 5.3 CORE-LD-002～006动作
+### 5.3 CORE-LD-002～007动作
 
-| Slice／动作          | 前置                                                                            | 输入字段／附件                                                                                                                                       | 原子结果                                                                                               |
-| -------------------- | ------------------------------------------------------------------------------- | ---------------------------------------------------------------------------------------------------------------------------------------------------- | ------------------------------------------------------------------------------------------------------ |
-| LD-002推送           | `WAITING_PUSH`；客户仍`ADMITTED`；至少1项有效商品；存在绑定该企业的有效客户账号 | `expectedVersion`、`idempotencyKey`                                                                                                                  | `WAITING_REVIEW`；服务端写`pushedAt/pushedBy`；客户端企业范围立即可见                                  |
-| LD-003客户确认侵权   | `WAITING_REVIEW`；操作者绑定目标企业                                            | `result=INFRINGEMENT`、`expectedVersion`、`idempotencyKey`                                                                                           | `WAITING_EVIDENCE_DECISION`；写审核人／时间和不可变决定事件                                            |
-| LD-004客户判定不侵权 | 同上                                                                            | `result=NO_INFRINGEMENT`、`reason`必填LongText、`expectedVersion`、`idempotencyKey`                                                                  | `ARCHIVED`；`archiveType=NO_INFRINGEMENT`，归档时间服务端写入                                          |
-| LD-005运营不取证     | `WAITING_EVIDENCE_DECISION`                                                     | `result=NO_EVIDENCE`、`reason`必填LongText、`expectedVersion`、`idempotencyKey`                                                                      | `ARCHIVED`；`archiveType=NO_EVIDENCE`                                                                  |
-| LD-006确认取证       | `WAITING_EVIDENCE_DECISION`；客户仍可开展正式业务                               | `selectedProductIds[1..n]`、`selectedContentVersionIds[0..n]`、`notaryOfficeId`、`evidenceMode=ONLINE_PURCHASE`、`expectedVersion`、`idempotencyKey` | 同事务创建`NotaryMatter(stage=PENDING_EVIDENCE)`及来源快照；线索保留并停止普通编辑；重复请求返回原事项 |
+| Slice／动作          | 前置                                                                               | 输入字段／附件                                                                                                                                       | 原子结果                                                                                               |
+| -------------------- | ---------------------------------------------------------------------------------- | ---------------------------------------------------------------------------------------------------------------------------------------------------- | ------------------------------------------------------------------------------------------------------ |
+| LD-002推送           | `WAITING_PUSH`；客户仍`ADMITTED`；至少1项有效商品；存在绑定该企业的有效客户账号    | `expectedVersion`、`idempotencyKey`                                                                                                                  | `WAITING_REVIEW`；服务端写`pushedAt/pushedBy`；客户端企业范围立即可见                                  |
+| LD-003客户确认侵权   | `WAITING_REVIEW`；操作者绑定目标企业                                               | `result=INFRINGEMENT`、`expectedVersion`、`idempotencyKey`                                                                                           | `WAITING_EVIDENCE_DECISION`；写审核人／时间和不可变决定事件                                            |
+| LD-004客户判定不侵权 | 同上                                                                               | `result=NO_INFRINGEMENT`、`reason`必填LongText、`expectedVersion`、`idempotencyKey`                                                                  | `ARCHIVED`；`archiveType=NO_INFRINGEMENT`，归档时间服务端写入                                          |
+| LD-007归档撤回       | 仅已按LD-004不侵权归档且尚未被撤回；运营申请仍有效，原客户企业当前有效获权账号确认 | 运营申请与客户确认分别携带当前版本／幂等键；申请原因与确认身份留痕，精确字段由LD-007小粒度设计确定                                                   | 申请不改变原归档；确认后回到`WAITING_REVIEW`并允许新决定，原决定／归档事实和两次操作历史不可删除或覆盖 |
+| LD-005运营不取证     | `WAITING_EVIDENCE_DECISION`                                                        | `result=NO_EVIDENCE`、`reason`必填LongText、`expectedVersion`、`idempotencyKey`                                                                      | `ARCHIVED`；`archiveType=NO_EVIDENCE`                                                                  |
+| LD-006确认取证       | `WAITING_EVIDENCE_DECISION`；客户仍可开展正式业务                                  | `selectedProductIds[1..n]`、`selectedContentVersionIds[0..n]`、`notaryOfficeId`、`evidenceMode=ONLINE_PURCHASE`、`expectedVersion`、`idempotencyKey` | 同事务创建`NotaryMatter(stage=PENDING_EVIDENCE)`及来源快照；线索保留并停止普通编辑；重复请求返回原事项 |
 
 ## 6. CORE-NT字段与动作契约
 
