@@ -124,6 +124,27 @@ describe('client lead API', () => {
     });
   });
 
+  it('rejects records returned in the wrong requested queue', async () => {
+    http.getJson.mockResolvedValue({
+      items: [lead],
+      total: 1,
+      page: 1,
+      pageSize: 20,
+    });
+    await expect(listClientLeads('PROCESSED')).rejects.toMatchObject({
+      code: 'INVALID_RESPONSE',
+    });
+    http.getJson.mockResolvedValue({
+      items: [reviewedLead],
+      total: 1,
+      page: 1,
+      pageSize: 20,
+    });
+    await expect(listClientLeads('PENDING')).rejects.toMatchObject({
+      code: 'INVALID_RESPONSE',
+    });
+  });
+
   it('confirms infringement with one idempotency key and validates the result snapshot', async () => {
     http.requestJson.mockResolvedValue({
       id: lead.id,

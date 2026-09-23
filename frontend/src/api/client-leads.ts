@@ -233,7 +233,12 @@ export async function listClientLeads(
     !isRecord(value) ||
     !hasExactKeys(value, clientLeadListKeys) ||
     !Array.isArray(value.items) ||
-    !value.items.every(isClientLead) ||
+    !value.items.every(
+      (item) =>
+        isClientLead(item) &&
+        item.status ===
+          (view === 'PENDING' ? 'WAITING_REVIEW' : 'WAITING_EVIDENCE_DECISION'),
+    ) ||
     !Number.isInteger(value.total) ||
     (value.total as number) < 0 ||
     !Number.isInteger(value.page) ||
