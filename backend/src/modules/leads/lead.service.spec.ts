@@ -79,6 +79,55 @@ describe('LeadService', () => {
     });
   });
 
+  it('projects the immutable no-infringement archive facts for scoped operations detail', async () => {
+    const fixture = createCreateFixture();
+    const service = new LeadService(
+      {
+        lead: {
+          findFirst: jest
+            .fn()
+            .mockResolvedValue({
+              ...fixture.createdLead,
+              status: 'ARCHIVED',
+              reviewDecision: {
+                result: 'NO_INFRINGEMENT',
+                reason: '不构成侵权',
+                archiveType: 'NO_INFRINGEMENT',
+                archivedAt: new Date('2026-09-22T03:00:00.000Z'),
+                reviewerDisplayNameSnapshot: '企业审核员',
+                decidedAt: new Date('2026-09-22T03:00:00.000Z'),
+                reviewerUserId: 'reviewer-secret',
+              },
+            }),
+        },
+      } as unknown as DatabaseService,
+      {
+        buildLeadScope: jest
+          .fn()
+          .mockResolvedValue({ departmentId: actor.departmentId }),
+        authorizeLead: jest.fn(),
+      } as unknown as AccessControlService,
+      {
+        listCurrentReferenceVersionIds: jest.fn().mockResolvedValue([]),
+      } as unknown as MaterialService,
+    );
+    const result = await service.get(actor, fixture.createdLead.id);
+    expect(result.reviewDecision).toEqual({
+      result: 'NO_INFRINGEMENT',
+      reason: '不构成侵权',
+      reviewerDisplayName: '企业审核员',
+      decidedAt: '2026-09-22T03:00:00.000Z',
+      archiveType: 'NO_INFRINGEMENT',
+      archivedAt: '2026-09-22T03:00:00.000Z',
+    });
+    expect(JSON.stringify(result.reviewDecision)).not.toContain(
+      'reviewer-secret',
+    );
+    expect(result.capabilities).toEqual(
+      expect.objectContaining({ edit: false }),
+    );
+  });
+
   it('exposes only the approved controlled dictionaries', () => {
     expect(CASE_TYPE_OPTIONS.map(({ value }) => value)).toEqual([
       'CIVIL',

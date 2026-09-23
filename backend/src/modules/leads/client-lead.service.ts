@@ -60,6 +60,9 @@ const clientLeadInclude = {
   reviewDecision: {
     select: {
       result: true,
+      reason: true,
+      archiveType: true,
+      archivedAt: true,
       reviewerDisplayNameSnapshot: true,
       decidedAt: true,
     },
@@ -92,8 +95,22 @@ export class ClientLeadService {
       ...(view === 'PENDING'
         ? { status: 'WAITING_REVIEW' as const }
         : {
-            status: 'WAITING_EVIDENCE_DECISION' as const,
-            reviewDecision: { isNot: null },
+            OR: [
+              {
+                status: 'WAITING_EVIDENCE_DECISION' as const,
+                reviewDecision: { is: { result: 'INFRINGEMENT' as const } },
+              },
+              {
+                status: 'ARCHIVED' as const,
+                reviewDecision: {
+                  is: {
+                    result: 'NO_INFRINGEMENT' as const,
+                    archiveType: 'NO_INFRINGEMENT' as const,
+                    archivedAt: { not: null },
+                  },
+                },
+              },
+            ],
           }),
     };
     const [items, total] = await Promise.all([
@@ -127,7 +144,17 @@ export class ClientLeadService {
           { status: 'WAITING_REVIEW' },
           {
             status: 'WAITING_EVIDENCE_DECISION',
-            reviewDecision: { isNot: null },
+            reviewDecision: { is: { result: 'INFRINGEMENT' } },
+          },
+          {
+            status: 'ARCHIVED',
+            reviewDecision: {
+              is: {
+                result: 'NO_INFRINGEMENT',
+                archiveType: 'NO_INFRINGEMENT',
+                archivedAt: { not: null },
+              },
+            },
           },
         ],
       },
@@ -521,12 +548,22 @@ export class ClientLeadService {
       leadScreenshotContentVersionIds: [...leadScreenshotContentVersionIds],
       pushedAt: lead.pushedAt?.toISOString() ?? null,
       reviewDecision: lead.reviewDecision
-        ? {
-            result: lead.reviewDecision.result,
-            reviewerDisplayName:
-              lead.reviewDecision.reviewerDisplayNameSnapshot,
-            decidedAt: lead.reviewDecision.decidedAt.toISOString(),
-          }
+        ? lead.reviewDecision.result === 'NO_INFRINGEMENT'
+          ? {
+              result: 'NO_INFRINGEMENT' as const,
+              reason: lead.reviewDecision.reason,
+              reviewerDisplayName:
+                lead.reviewDecision.reviewerDisplayNameSnapshot,
+              decidedAt: lead.reviewDecision.decidedAt.toISOString(),
+              archiveType: lead.reviewDecision.archiveType,
+              archivedAt: lead.reviewDecision.archivedAt?.toISOString() ?? null,
+            }
+          : {
+              result: 'INFRINGEMENT' as const,
+              reviewerDisplayName:
+                lead.reviewDecision.reviewerDisplayNameSnapshot,
+              decidedAt: lead.reviewDecision.decidedAt.toISOString(),
+            }
         : null,
       capabilities: { review: lead.status === 'WAITING_REVIEW' },
     };

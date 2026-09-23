@@ -36,6 +36,9 @@ const leadInclude = {
   reviewDecision: {
     select: {
       result: true,
+      reason: true,
+      archiveType: true,
+      archivedAt: true,
       reviewerDisplayNameSnapshot: true,
       decidedAt: true,
     },
@@ -79,11 +82,17 @@ type LeadResponse = {
   pushedAt: string | null;
   pushedByUserId: string | null;
   pushedByDisplayName: string | null;
-  reviewDecision: {
-    result: 'INFRINGEMENT';
-    reviewerDisplayName: string;
-    decidedAt: string;
-  } | null;
+  reviewDecision:
+    | { result: 'INFRINGEMENT'; reviewerDisplayName: string; decidedAt: string }
+    | {
+        result: 'NO_INFRINGEMENT';
+        reason: string;
+        reviewerDisplayName: string;
+        decidedAt: string;
+        archiveType: 'NO_INFRINGEMENT';
+        archivedAt: string;
+      }
+    | null;
   createdAt: string;
   updatedAt: string;
 };
@@ -1014,12 +1023,22 @@ export class LeadService {
       pushedByUserId: record.pushedByUserId ?? null,
       pushedByDisplayName: record.pushedBy?.displayName ?? null,
       reviewDecision: record.reviewDecision
-        ? {
-            result: record.reviewDecision.result,
-            reviewerDisplayName:
-              record.reviewDecision.reviewerDisplayNameSnapshot,
-            decidedAt: record.reviewDecision.decidedAt.toISOString(),
-          }
+        ? record.reviewDecision.result === 'NO_INFRINGEMENT'
+          ? {
+              result: 'NO_INFRINGEMENT',
+              reason: record.reviewDecision.reason!,
+              reviewerDisplayName:
+                record.reviewDecision.reviewerDisplayNameSnapshot,
+              decidedAt: record.reviewDecision.decidedAt.toISOString(),
+              archiveType: record.reviewDecision.archiveType!,
+              archivedAt: record.reviewDecision.archivedAt!.toISOString(),
+            }
+          : {
+              result: 'INFRINGEMENT',
+              reviewerDisplayName:
+                record.reviewDecision.reviewerDisplayNameSnapshot,
+              decidedAt: record.reviewDecision.decidedAt.toISOString(),
+            }
         : null,
       createdAt: record.createdAt.toISOString(),
       updatedAt: record.updatedAt.toISOString(),
@@ -1117,11 +1136,20 @@ export class LeadService {
       pushedByUserId: response.pushedByUserId,
       pushedByDisplayName: response.pushedByDisplayName,
       reviewDecision: response.reviewDecision
-        ? {
-            result: response.reviewDecision.result,
-            reviewerDisplayName: response.reviewDecision.reviewerDisplayName,
-            decidedAt: response.reviewDecision.decidedAt,
-          }
+        ? response.reviewDecision.result === 'NO_INFRINGEMENT'
+          ? {
+              result: response.reviewDecision.result,
+              reason: response.reviewDecision.reason,
+              reviewerDisplayName: response.reviewDecision.reviewerDisplayName,
+              decidedAt: response.reviewDecision.decidedAt,
+              archiveType: response.reviewDecision.archiveType,
+              archivedAt: response.reviewDecision.archivedAt,
+            }
+          : {
+              result: response.reviewDecision.result,
+              reviewerDisplayName: response.reviewDecision.reviewerDisplayName,
+              decidedAt: response.reviewDecision.decidedAt,
+            }
         : null,
       createdAt: response.createdAt,
       updatedAt: response.updatedAt,
@@ -1179,9 +1207,16 @@ export class LeadService {
         candidate.reviewDecision === null ||
         (typeof candidate.reviewDecision === 'object' &&
           !Array.isArray(candidate.reviewDecision) &&
-          candidate.reviewDecision.result === 'INFRINGEMENT' &&
           typeof candidate.reviewDecision.reviewerDisplayName === 'string' &&
-          typeof candidate.reviewDecision.decidedAt === 'string')) &&
+          typeof candidate.reviewDecision.decidedAt === 'string' &&
+          (candidate.reviewDecision.result === 'INFRINGEMENT'
+            ? !('reason' in candidate.reviewDecision) &&
+              !('archiveType' in candidate.reviewDecision) &&
+              !('archivedAt' in candidate.reviewDecision)
+            : candidate.reviewDecision.result === 'NO_INFRINGEMENT' &&
+              typeof candidate.reviewDecision.reason === 'string' &&
+              candidate.reviewDecision.archiveType === 'NO_INFRINGEMENT' &&
+              typeof candidate.reviewDecision.archivedAt === 'string'))) &&
       (candidate.pushedByDisplayName === undefined ||
         candidate.pushedByDisplayName === null ||
         typeof candidate.pushedByDisplayName === 'string') &&

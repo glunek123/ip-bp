@@ -56,7 +56,17 @@ describe('MaterialService', () => {
           { status: 'WAITING_REVIEW' },
           {
             status: 'WAITING_EVIDENCE_DECISION',
-            reviewDecision: { isNot: null },
+            reviewDecision: { is: { result: 'INFRINGEMENT' } },
+          },
+          {
+            status: 'ARCHIVED',
+            reviewDecision: {
+              is: {
+                result: 'NO_INFRINGEMENT',
+                archiveType: 'NO_INFRINGEMENT',
+                archivedAt: { not: null },
+              },
+            },
           },
         ],
       },
@@ -128,6 +138,88 @@ describe('MaterialService', () => {
       fixture.service.softDelete(clientActor, 'material-1', 1),
     ).rejects.toMatchObject({ response: { code: 'ACTION_FORBIDDEN' } });
     expect(fixture.db.lead.findFirst).not.toHaveBeenCalled();
+  });
+
+  it('permits exact archived screenshots and rejects an unrelated archived decision', async () => {
+    const fixture = createFixture();
+    const clientActor = { ...actor, clientCustomerId: customerId };
+    let lead = clientLeadRecord({
+      status: 'ARCHIVED',
+      reviewDecision: {
+        result: 'NO_INFRINGEMENT',
+        archiveType: 'NO_INFRINGEMENT',
+        archivedAt: now,
+      },
+    });
+    fixture.db.lead.findFirst.mockImplementation(
+      ({ where }: { where: ClientLeadWhere }) =>
+        clientLeadMatchesWhere(lead, where) ? { id: lead.id } : null,
+    );
+    fixture.db.materialReference.findMany.mockResolvedValue([
+      { materialId: 'material-a', contentVersionId: 'version-a' },
+    ]);
+    fixture.db.material.findMany.mockResolvedValue([]);
+    await expect(
+      fixture.service.listOwnerMaterials(clientActor, 'LEAD', lead.id),
+    ).resolves.toEqual({ items: [], total: 0 });
+    lead = clientLeadRecord({
+      status: 'ARCHIVED',
+      reviewDecision: {
+        result: 'OTHER',
+        archiveType: 'OTHER',
+        archivedAt: now,
+      },
+    });
+    await expect(
+      fixture.service.listOwnerMaterials(clientActor, 'LEAD', lead.id),
+    ).rejects.toMatchObject({ response: { code: 'RESOURCE_NOT_FOUND' } });
+  });
+
+  it('opens an archived screenshot only when its current exact reference exists', async () => {
+    const fixture = createFixture();
+    const clientActor = { ...actor, clientCustomerId: customerId };
+    const lead = clientLeadRecord({
+      status: 'ARCHIVED',
+      reviewDecision: {
+        result: 'NO_INFRINGEMENT',
+        archiveType: 'NO_INFRINGEMENT',
+        archivedAt: now,
+      },
+    });
+    fixture.db.lead.findFirst.mockImplementation(
+      ({ where }: { where: ClientLeadWhere }) =>
+        clientLeadMatchesWhere(lead, where) ? { id: lead.id } : null,
+    );
+    fixture.db.material.findFirst.mockResolvedValue({
+      id: 'material-a',
+      departmentId: actor.departmentId,
+      ownerType: 'LEAD',
+      ownerId: lead.id,
+      status: 'ACTIVE',
+      contentVersions: [
+        {
+          id: 'version-a',
+          storageKey: 'key',
+          originalFilename: 'capture.png',
+          mimeType: 'image/png',
+          sizeBytes: 4n,
+          sha256: 'd'.repeat(64),
+          uploadedBy: actor.userId,
+          status: 'AVAILABLE',
+        },
+      ],
+    });
+    fixture.storage.open.mockResolvedValue(Readable.from(Buffer.from('data')));
+    fixture.db.materialReference.findFirst.mockResolvedValue({
+      id: 'reference-a',
+    });
+    await expect(
+      fixture.service.openVersion(clientActor, 'material-a', 'version-a'),
+    ).resolves.toMatchObject({ sha256: 'd'.repeat(64) });
+    fixture.db.materialReference.findFirst.mockResolvedValue(null);
+    await expect(
+      fixture.service.openVersion(clientActor, 'material-a', 'version-a'),
+    ).rejects.toMatchObject({ response: { code: 'RESOURCE_NOT_FOUND' } });
   });
 
   it('opens only an exact current screenshot reference for a client', async () => {
@@ -1703,7 +1795,10 @@ type ClientLeadWhere = {
   status?: string;
   pushedAt?: { not: null };
   pushedByUserId?: { not: null };
-  reviewDecision?: { isNot: null };
+  reviewDecision?: {
+    isNot?: null;
+    is?: { result?: string; archiveType?: string; archivedAt?: { not: null } };
+  };
   OR?: ClientLeadWhere[];
 };
 
@@ -1741,7 +1836,15 @@ function clientLeadMatchesWhere(
     (where.status === undefined || where.status === lead.status) &&
     (where.pushedAt === undefined || lead.pushedAt !== null) &&
     (where.pushedByUserId === undefined || lead.pushedByUserId !== null) &&
-    (where.reviewDecision === undefined || lead.reviewDecision !== null) &&
+    (where.reviewDecision === undefined ||
+      (lead.reviewDecision !== null &&
+        (where.reviewDecision.is === undefined ||
+          Object.entries(where.reviewDecision.is).every(([key, value]) =>
+            key === 'archivedAt'
+              ? (lead.reviewDecision as { archivedAt?: Date }).archivedAt !=
+                null
+              : (lead.reviewDecision as Record<string, unknown>)[key] === value,
+          )))) &&
     (where.OR === undefined ||
       where.OR.some((branch) => clientLeadMatchesWhere(lead, branch)))
   );

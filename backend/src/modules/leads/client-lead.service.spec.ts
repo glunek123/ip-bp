@@ -67,6 +67,18 @@ const processedLead = {
     toVersion: 3,
   },
 };
+const archivedLead = {
+  ...processedLead,
+  id: '55555555-5555-4555-8555-555555555555',
+  status: 'ARCHIVED',
+  reviewDecision: {
+    ...processedLead.reviewDecision,
+    result: 'NO_INFRINGEMENT',
+    reason: '不构成侵权',
+    archiveType: 'NO_INFRINGEMENT',
+    archivedAt: new Date('2026-09-22T03:00:00.000Z'),
+  },
+};
 
 function setup() {
   const database = {
@@ -137,10 +149,24 @@ describe('ClientLeadService', () => {
         where: {
           departmentId: actor.departmentId,
           customerId: actor.clientCustomerId,
-          status: 'WAITING_EVIDENCE_DECISION',
           pushedAt: { not: null },
           pushedByUserId: { not: null },
-          reviewDecision: { isNot: null },
+          OR: [
+            {
+              status: 'WAITING_EVIDENCE_DECISION',
+              reviewDecision: { is: { result: 'INFRINGEMENT' } },
+            },
+            {
+              status: 'ARCHIVED',
+              reviewDecision: {
+                is: {
+                  result: 'NO_INFRINGEMENT',
+                  archiveType: 'NO_INFRINGEMENT',
+                  archivedAt: { not: null },
+                },
+              },
+            },
+          ],
         },
         skip: 10,
         take: 10,
@@ -148,6 +174,9 @@ describe('ClientLeadService', () => {
           reviewDecision: {
             select: {
               result: true,
+              reason: true,
+              archiveType: true,
+              archivedAt: true,
               reviewerDisplayNameSnapshot: true,
               decidedAt: true,
             },
@@ -171,6 +200,47 @@ describe('ClientLeadService', () => {
     expect(result.items[0].reviewDecision).not.toHaveProperty('toVersion');
   });
 
+  it('lists only both valid processed decisions for the bound enterprise and redacts archived internals', async () => {
+    const { service, database } = setup();
+    const records = [
+      archivedLead,
+      processedLead,
+      { ...archivedLead, id: 'bad-archive', reviewDecision: null },
+      { ...archivedLead, id: 'foreign', customerId: 'foreign' },
+      { ...archivedLead, id: 'not-pushed', pushedAt: null },
+    ];
+    database.lead.findMany.mockImplementation(
+      ({ where }: { where: ClientLeadWhere }) =>
+        records.filter((record) => matchesClientLeadWhere(record, where)),
+    );
+    database.lead.count.mockImplementation(
+      ({ where }: { where: ClientLeadWhere }) =>
+        records.filter((record) => matchesClientLeadWhere(record, where))
+          .length,
+    );
+    const result = await service.list(actor, 'PROCESSED', 1, 20);
+    expect(result.items.map((item) => item.status)).toEqual([
+      'ARCHIVED',
+      'WAITING_EVIDENCE_DECISION',
+    ]);
+    expect(result.total).toBe(2);
+    expect(result.items[0].reviewDecision).toEqual({
+      result: 'NO_INFRINGEMENT',
+      reason: '不构成侵权',
+      reviewerDisplayName: '企业审核员',
+      decidedAt: '2026-09-22T03:00:00.000Z',
+      archiveType: 'NO_INFRINGEMENT',
+      archivedAt: '2026-09-22T03:00:00.000Z',
+    });
+    expect(JSON.stringify(result.items[0])).not.toContain('operator-secret');
+    expect(JSON.stringify(result.items[0])).not.toContain('reviewer-secret');
+    expect(Object.keys(result.items[1].reviewDecision ?? {})).toEqual([
+      'result',
+      'reviewerDisplayName',
+      'decidedAt',
+    ]);
+  });
+
   it('returns not found for another enterprise or a waiting-push lead', async () => {
     const { service, database } = setup();
     database.lead.findFirst.mockResolvedValue(null);
@@ -189,13 +259,80 @@ describe('ClientLeadService', () => {
             { status: 'WAITING_REVIEW' },
             {
               status: 'WAITING_EVIDENCE_DECISION',
-              reviewDecision: { isNot: null },
+              reviewDecision: { is: { result: 'INFRINGEMENT' } },
+            },
+            {
+              status: 'ARCHIVED',
+              reviewDecision: {
+                is: {
+                  result: 'NO_INFRINGEMENT',
+                  archiveType: 'NO_INFRINGEMENT',
+                  archivedAt: { not: null },
+                },
+              },
             },
           ],
         },
       }),
     );
   });
+
+  it('reads archived detail and screenshots only for the bound enterprise and matching archive facts', async () => {
+    const { service, database } = setupWithRealMaterials(archivedLead);
+    const result = await service.get(actor, archivedLead.id);
+    expect(result.status).toBe('ARCHIVED');
+    expect(result.reviewDecision).toMatchObject({
+      result: 'NO_INFRINGEMENT',
+      reason: '不构成侵权',
+      archiveType: 'NO_INFRINGEMENT',
+    });
+    expect(result.leadScreenshotContentVersionIds).toEqual([
+      'version-a',
+      'version-b',
+    ]);
+    expect(result.capabilities).toEqual({ review: false });
+    expect(database.lead.findFirst).toHaveBeenCalledWith(
+      expect.objectContaining({
+        where: expect.objectContaining({
+          customerId,
+          departmentId: actor.departmentId,
+          pushedAt: { not: null },
+          pushedByUserId: { not: null },
+        }),
+      }),
+    );
+  });
+
+  it.each([
+    ['another enterprise', { customerId: 'foreign' }],
+    ['not pushed', { pushedAt: null }],
+    ['no decision', { reviewDecision: null }],
+    [
+      'wrong archive type',
+      {
+        reviewDecision: {
+          ...archivedLead.reviewDecision,
+          archiveType: 'OTHER',
+        },
+      },
+    ],
+    [
+      'no archive time',
+      { reviewDecision: { ...archivedLead.reviewDecision, archivedAt: null } },
+    ],
+  ])(
+    'hides archived detail for %s before listing screenshots',
+    async (_case, overrides) => {
+      const { service, database } = setupWithRealMaterials({
+        ...archivedLead,
+        ...overrides,
+      });
+      await expect(service.get(actor, archivedLead.id)).rejects.toMatchObject({
+        response: { code: 'RESOURCE_NOT_FOUND' },
+      });
+      expect(database.materialReference.findMany).not.toHaveBeenCalled();
+    },
+  );
 
   it('rejects an internal actor instead of deriving an internal scope', async () => {
     const { service, database } = setup();
@@ -851,7 +988,10 @@ type ClientLeadWhere = {
   status?: string;
   pushedAt?: { not: null };
   pushedByUserId?: { not: null };
-  reviewDecision?: { isNot: null };
+  reviewDecision?: {
+    isNot?: null;
+    is?: { result?: string; archiveType?: string; archivedAt?: { not: null } };
+  };
   OR?: ClientLeadWhere[];
 };
 
@@ -921,7 +1061,15 @@ function matchesClientLeadWhere(
     (where.status === undefined || where.status === lead.status) &&
     (where.pushedAt === undefined || lead.pushedAt !== null) &&
     (where.pushedByUserId === undefined || lead.pushedByUserId !== null) &&
-    (where.reviewDecision === undefined || lead.reviewDecision !== null) &&
+    (where.reviewDecision === undefined ||
+      (lead.reviewDecision !== null &&
+        (where.reviewDecision.is === undefined ||
+          Object.entries(where.reviewDecision.is).every(([key, value]) =>
+            key === 'archivedAt'
+              ? (lead.reviewDecision as { archivedAt?: Date }).archivedAt !=
+                null
+              : (lead.reviewDecision as Record<string, unknown>)[key] === value,
+          )))) &&
     (where.OR === undefined ||
       where.OR.some((branch) => matchesClientLeadWhere(lead, branch)))
   );

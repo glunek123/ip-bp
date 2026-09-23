@@ -31,8 +31,10 @@ class ClientLeadCapabilitiesResponseDto {
 export class ClientLeadResponseDto {
   @ApiProperty({ format: 'uuid' }) id!: string;
   @ApiProperty() businessNo!: string;
-  @ApiProperty({ enum: ['WAITING_REVIEW', 'WAITING_EVIDENCE_DECISION'] })
-  status!: 'WAITING_REVIEW' | 'WAITING_EVIDENCE_DECISION';
+  @ApiProperty({
+    enum: ['WAITING_REVIEW', 'WAITING_EVIDENCE_DECISION', 'ARCHIVED'],
+  })
+  status!: 'WAITING_REVIEW' | 'WAITING_EVIDENCE_DECISION' | 'ARCHIVED';
   @ApiProperty({ minimum: 1 }) version!: number;
   @ApiProperty() caseType!: string;
   @ApiProperty({ type: [String] }) infringementTypes!: string[];

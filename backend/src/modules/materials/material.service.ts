@@ -1120,7 +1120,17 @@ export class MaterialService {
             { status: 'WAITING_REVIEW' },
             {
               status: 'WAITING_EVIDENCE_DECISION',
-              reviewDecision: { isNot: null },
+              reviewDecision: { is: { result: 'INFRINGEMENT' } },
+            },
+            {
+              status: 'ARCHIVED',
+              reviewDecision: {
+                is: {
+                  result: 'NO_INFRINGEMENT',
+                  archiveType: 'NO_INFRINGEMENT',
+                  archivedAt: { not: null },
+                },
+              },
             },
           ],
         },
