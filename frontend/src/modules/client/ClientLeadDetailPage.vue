@@ -1,9 +1,13 @@
 <script setup lang="ts">
-import { onBeforeUnmount, onMounted, ref } from 'vue';
+import { computed, onBeforeUnmount, onMounted, ref } from 'vue';
 import { RouterLink, useRoute } from 'vue-router';
 import { ElButton } from 'element-plus/es/components/button/index.mjs';
 import { ApiError } from '../../api/http';
-import { getClientLead, type ClientLead } from '../../api/client-leads';
+import {
+  getClientLead,
+  reviewClientLead,
+  type ClientLead,
+} from '../../api/client-leads';
 import {
   downloadMaterialVersion,
   listOwnerMaterials,
@@ -16,7 +20,31 @@ const screenshots = ref<
   Array<{ materialId: string; versionId: string; filename: string }>
 >([]);
 const downloadError = ref('');
+const reviewError = ref('');
+const reviewSuccess = ref('');
+const reviewing = ref(false);
+let reviewKey: string | undefined;
 let request: AbortController | undefined;
+
+const returnTo = computed(() => {
+  const view =
+    route.query.view === 'processed' ||
+    (!route.query.view && lead.value?.status === 'WAITING_EVIDENCE_DECISION')
+      ? 'processed'
+      : 'pending';
+  const page = Array.isArray(route.query.page)
+    ? route.query.page[0]
+    : route.query.page;
+  return {
+    path: '/client/leads',
+    query: {
+      ...(view === 'processed' || route.query.view === 'pending'
+        ? { view }
+        : {}),
+      ...(page ? { page } : {}),
+    },
+  };
+});
 
 const labels: Record<string, string> = {
   CIVIL: '民事',
@@ -59,6 +87,50 @@ const formatTime = (value: string) =>
     timeZone: 'Asia/Shanghai',
     hour12: false,
   });
+
+function makeReviewKey(): string {
+  return (
+    globalThis.crypto?.randomUUID?.() ??
+    `client-lead-review-${Date.now()}-${Math.random().toString(16).slice(2)}`
+  );
+}
+
+async function confirmInfringement(): Promise<void> {
+  if (!lead.value || !lead.value.capabilities.review || reviewing.value) return;
+  if (
+    !globalThis.window.confirm(
+      '确认后线索将进入“线索待确认”，由运营决定是否取证；当前入口不能撤回。确定确认侵权吗？',
+    )
+  )
+    return;
+
+  reviewKey ??= makeReviewKey();
+  reviewError.value = '';
+  reviewSuccess.value = '';
+  reviewing.value = true;
+  try {
+    await reviewClientLead(lead.value.id, lead.value.version, reviewKey);
+    reviewKey = undefined;
+    reviewSuccess.value = '已确认侵权，等待运营确认是否取证';
+    await load();
+  } catch (error) {
+    const code = error instanceof ApiError ? error.code : '';
+    if (code === 'VERSION_CONFLICT' || code === 'INVALID_STATE') {
+      reviewError.value = '线索状态已变化，请刷新查看最新结果';
+    } else if (code === 'IDEMPOTENCY_CONFLICT') {
+      reviewKey = undefined;
+      reviewError.value = '本次操作未执行，请重新确认后重试';
+    } else if (code === 'ACTION_FORBIDDEN') {
+      reviewError.value = '当前账号无权审核此线索，请刷新登录状态后重试';
+    } else if (code === 'NETWORK_ERROR') {
+      reviewError.value = '提交结果暂时未知，请重试；系统会安全处理重复请求';
+    } else {
+      reviewError.value = '确认侵权失败，请稍后重试';
+    }
+  } finally {
+    reviewing.value = false;
+  }
+}
 
 async function load(): Promise<void> {
   request?.abort();
@@ -112,8 +184,10 @@ onBeforeUnmount(() => request?.abort());
 <template>
   <div class="page-view page-view--narrow">
     <main>
-      <RouterLink class="back-link" to="/client/leads"
-        >← 返回待审核线索</RouterLink
+      <RouterLink class="back-link" :to="returnTo"
+        >← 返回{{
+          returnTo.query.view === 'processed' ? '已处理线索' : '待审核线索'
+        }}</RouterLink
       >
       <section v-if="state === 'loading'" class="state-panel ledger-panel">
         <h1>正在读取线索</h1>
@@ -128,7 +202,9 @@ onBeforeUnmount(() => request?.abort());
       <template v-else-if="lead">
         <div class="page-head">
           <div>
-            <span class="pill">线索待审核</span>
+            <span class="pill">{{
+              lead.status === 'WAITING_REVIEW' ? '线索待审核' : '线索待确认'
+            }}</span>
             <h1>{{ lead.businessNo }}</h1>
             <p>推送于 {{ formatTime(lead.pushedAt) }}</p>
           </div>
@@ -224,7 +300,41 @@ onBeforeUnmount(() => request?.abort());
           </p>
         </section>
         <section class="demo-card demo-card--pad">
-          <p>当前可查看线索内容；如需补充或反馈，请联系负责运营。</p>
+          <template v-if="lead.reviewDecision">
+            <section
+              class="client-review-record"
+              data-test="client-review-record"
+            >
+              <h2 class="form-section-title">客户审核记录</h2>
+              <p>审核结论：确认侵权</p>
+              <p>审核人：{{ lead.reviewDecision.reviewerDisplayName }}</p>
+              <p>审核时间：{{ formatTime(lead.reviewDecision.decidedAt) }}</p>
+              <p>下一步：等待运营确认是否取证</p>
+            </section>
+          </template>
+          <template v-else>
+            <p>
+              确认后，线索将进入“线索待确认”，由运营决定是否取证；当前入口不能撤回。
+            </p>
+            <ElButton
+              v-if="
+                lead.capabilities.review && lead.status === 'WAITING_REVIEW'
+              "
+              data-test="confirm-infringement"
+              type="primary"
+              :loading="reviewing"
+              :disabled="reviewing"
+              @click="confirmInfringement"
+              >确认侵权</ElButton
+            >
+          </template>
+          <p v-if="reviewSuccess" role="status">{{ reviewSuccess }}</p>
+          <p v-if="reviewError" class="field-error" role="alert">
+            {{ reviewError }}
+          </p>
+          <p v-if="!lead.reviewDecision">
+            当前可查看线索内容；如需补充或反馈，请联系负责运营。
+          </p>
         </section>
       </template>
     </main>
