@@ -27,6 +27,15 @@ const reviewSuccess = ref('');
 const reviewing = ref(false);
 const noInfringementReason = ref('');
 const noInfringementRetryLocked = ref(false);
+const normalizedNoInfringementReason = computed(() =>
+  noInfringementReason.value.trim(),
+);
+const noInfringementReasonLength = computed(
+  () => [...normalizedNoInfringementReason.value].length,
+);
+const noInfringementReasonTooLong = computed(
+  () => noInfringementReasonLength.value > 5000,
+);
 let reviewKey: string | undefined;
 let noInfringementKey: string | undefined;
 let frozenNoInfringementReason: string | undefined;
@@ -150,8 +159,8 @@ async function confirmNoInfringement(): Promise<void> {
     return;
   const normalizedReason = noInfringementRetryLocked.value
     ? frozenNoInfringementReason
-    : noInfringementReason.value.trim();
-  if (!normalizedReason) return;
+    : normalizedNoInfringementReason.value;
+  if (!normalizedReason || [...normalizedReason].length > 5000) return;
   if (
     !globalThis.window.confirm(
       '提交后线索将归档，当前版本不能在页面直接撤回。确定判定不侵权吗？',
@@ -436,9 +445,32 @@ onBeforeUnmount(() => request?.abort());
                 class="text-area"
                 data-test="no-infringement-reason"
                 aria-required="true"
-                maxlength="5000"
+                :aria-describedby="
+                  noInfringementReasonTooLong
+                    ? 'no-infringement-reason-count no-infringement-reason-error'
+                    : 'no-infringement-reason-count'
+                "
                 :disabled="reviewing || noInfringementRetryLocked"
               />
+              <p
+                id="no-infringement-reason-count"
+                class="field-help"
+                aria-live="polite"
+              >
+                已输入 {{ noInfringementReasonLength }} / 5000 个字符（按
+                Unicode 码点计）
+              </p>
+              <p
+                v-if="noInfringementReasonTooLong"
+                id="no-infringement-reason-error"
+                class="field-error"
+                data-test="no-infringement-reason-error"
+                role="alert"
+              >
+                不侵权原因最多为 5000 个 Unicode 码点，目前为
+                {{ noInfringementReasonLength }}
+                个；已保留输入，请删减后再提交。
+              </p>
               <p v-if="noInfringementRetryLocked" class="field-help">
                 提交结果未确认，原因已锁定；可使用同一请求安全重试，或刷新查看服务端结果。
               </p>
@@ -446,7 +478,11 @@ onBeforeUnmount(() => request?.abort());
                 data-test="confirm-no-infringement"
                 type="primary"
                 :loading="reviewing"
-                :disabled="reviewing || !noInfringementReason.trim()"
+                :disabled="
+                  reviewing ||
+                  !normalizedNoInfringementReason ||
+                  noInfringementReasonTooLong
+                "
                 @click="confirmNoInfringement"
                 >判定不侵权并归档</ElButton
               >

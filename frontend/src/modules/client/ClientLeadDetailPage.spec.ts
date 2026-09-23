@@ -187,6 +187,55 @@ describe('ClientLeadDetailPage', () => {
     confirm.mockRestore();
   });
 
+  it('accepts and submits a valid 3000-code-point emoji reason without truncation', async () => {
+    const confirm = vi.spyOn(window, 'confirm').mockReturnValue(true);
+    const reason = '😀'.repeat(3000);
+    const wrapper = await mountPage();
+    const textarea = wrapper.get('[data-test="no-infringement-reason"]');
+    expect(textarea.attributes('maxlength')).toBeUndefined();
+    await textarea.setValue(reason);
+    expect((textarea.element as HTMLTextAreaElement).value).toBe(reason);
+    expect(
+      wrapper
+        .get('[data-test="confirm-no-infringement"]')
+        .attributes('aria-disabled'),
+    ).toBe('false');
+    await wrapper.get('[data-test="confirm-no-infringement"]').trigger('click');
+    await flushPromises();
+    expect(leadApi.reviewClientLeadNoInfringement).toHaveBeenCalledWith(
+      'lead-1',
+      2,
+      reason,
+      expect.any(String),
+    );
+    confirm.mockRestore();
+  });
+
+  it('keeps a reason over 5000 code points intact and blocks its submission', async () => {
+    const confirm = vi.spyOn(window, 'confirm').mockReturnValue(true);
+    const reason = '😀'.repeat(5001);
+    const wrapper = await mountPage();
+    const textarea = wrapper.get('[data-test="no-infringement-reason"]');
+    expect(textarea.attributes('maxlength')).toBeUndefined();
+    await textarea.setValue(reason);
+    expect((textarea.element as HTMLTextAreaElement).value).toBe(reason);
+    expect(textarea.attributes('aria-describedby')).toContain(
+      'no-infringement-reason-error',
+    );
+    expect(
+      wrapper.get('[data-test="no-infringement-reason-error"]').text(),
+    ).toContain('5001');
+    expect(
+      wrapper
+        .get('[data-test="confirm-no-infringement"]')
+        .attributes('aria-disabled'),
+    ).toBe('true');
+    await wrapper.get('[data-test="confirm-no-infringement"]').trigger('click');
+    expect(confirm).not.toHaveBeenCalled();
+    expect(leadApi.reviewClientLeadNoInfringement).not.toHaveBeenCalled();
+    confirm.mockRestore();
+  });
+
   it('submits normalized reason and refreshes the archived immutable record', async () => {
     const confirm = vi.spyOn(window, 'confirm').mockReturnValue(true);
     leadApi.getClientLead
