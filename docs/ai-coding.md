@@ -60,7 +60,7 @@ Requires Sol attention: YES / NO
 - 状态只写任务、范围、依据、真实验证和未决项；命令流水、反复尝试和详细审查留在既有验证记录或Git，不新建重复台账。
 - 开工执行`pnpm context:check`；它报告漂移但不因普通文件漂移失败，当前任务必须结合列出的文件、最近提交和工作区判断是否重叠。Level 3、Merge、Release和完整`verify`使用`pnpm context:check:strict`，未解释漂移会失败。两种模式下都不得通过刷新快照掩盖未知改动。
 - 已检查最终diff且差异仅位于`demo/`或`frontend/src/styles/`时，可使用`pnpm context:record:light`记录快照；工具会拒绝源码、配置、治理、Spec和其他路径。其余任务在核对真实差异后使用标准`pnpm context:record`。标准记录不再机械要求状态文件同时变化；是否更新状态只由阶段、活动Slice、阻断、重要风险、架构、Merge／Release或跨会话恢复信息的语义变化决定。
-- 快照是文件一致性检查，不是测试或批准。影响规则、执行或交付说明的文档在候选冻结前完成；最终运行结果与Review优先写入树外证据或PR。后续文档形成新tree时可以准确记载旧tree的历史结果，但不能把旧证据标成新tree实际执行；AGENTS、规则、业务Spec、测试规范、脚本和配置不适用非执行性收口例外。
+- 快照是文件一致性检查，不是测试或批准。候选冻结、门禁及门禁后的记录顺序和非执行性文档例外，只按[三级规则](../.cursor/rules/verified-feature-integration.mdc#文档skills与review)执行；不能把旧候选证据标成新tree实际执行，也不能仅凭文件扩展名省略验证。
 
 ### 状态对齐顺序
 

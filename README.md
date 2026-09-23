@@ -1,6 +1,6 @@
 # 品维·知产业务管理系统
 
-Demo 位于 `demo/`，正式工程位于 `frontend/`、`backend/`。当前正式工程已实现本地账号登录、客户草稿建档／维护、一位准入联系人、权利主体最小关联，以及客户域的部门／TEAM／SELF权限隔离；其他业务功能按确认范围逐项加入。开发先后顺序与真实完成度见[功能开发路线图](docs/feature-roadmap.md)。
+Demo 位于 `demo/`，正式工程位于 `frontend/`、`backend/`。当前正式能力、MVP缺口和开发先后顺序统一见[功能开发路线图](docs/feature-roadmap.md)；Demo页面不代表正式功能已可用。
 
 ## 恢复开发上下文
 
