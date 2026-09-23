@@ -84,21 +84,19 @@ describe('LeadService', () => {
     const service = new LeadService(
       {
         lead: {
-          findFirst: jest
-            .fn()
-            .mockResolvedValue({
-              ...fixture.createdLead,
-              status: 'ARCHIVED',
-              reviewDecision: {
-                result: 'NO_INFRINGEMENT',
-                reason: '不构成侵权',
-                archiveType: 'NO_INFRINGEMENT',
-                archivedAt: new Date('2026-09-22T03:00:00.000Z'),
-                reviewerDisplayNameSnapshot: '企业审核员',
-                decidedAt: new Date('2026-09-22T03:00:00.000Z'),
-                reviewerUserId: 'reviewer-secret',
-              },
-            }),
+          findFirst: jest.fn().mockResolvedValue({
+            ...fixture.createdLead,
+            status: 'ARCHIVED',
+            reviewDecision: {
+              result: 'NO_INFRINGEMENT',
+              reason: '不构成侵权',
+              archiveType: 'NO_INFRINGEMENT',
+              archivedAt: new Date('2026-09-22T03:00:00.000Z'),
+              reviewerDisplayNameSnapshot: '企业审核员',
+              decidedAt: new Date('2026-09-22T03:00:00.000Z'),
+              reviewerUserId: 'reviewer-secret',
+            },
+          }),
         },
       } as unknown as DatabaseService,
       {
