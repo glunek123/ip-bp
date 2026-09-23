@@ -350,6 +350,29 @@ onBeforeUnmount(() => request?.abort());
             {{ downloadError }}
           </p>
         </section>
+        <section
+          v-if="lead.reviewDecision"
+          class="demo-card demo-card--pad"
+          data-test="client-review-record"
+        >
+          <h2 class="form-section-title">客户审核记录</h2>
+          <dl class="demo-detail-grid">
+            <div>
+              <dt>审核结论</dt>
+              <dd>确认侵权</dd>
+            </div>
+            <div>
+              <dt>审核人</dt>
+              <dd>{{ lead.reviewDecision.reviewerDisplayName }}</dd>
+            </div>
+            <div>
+              <dt>审核时间</dt>
+              <dd class="mono">
+                {{ formatTime(lead.reviewDecision.decidedAt) }}
+              </dd>
+            </div>
+          </dl>
+        </section>
         <section class="demo-card demo-card--pad lead-record-meta">
           <h2 class="form-section-title">记录信息</h2>
           <p class="mono">创建于 {{ formatTime(lead.createdAt) }}</p>

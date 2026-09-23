@@ -47,6 +47,7 @@ const lead = {
   pushedAt: null,
   pushedByUserId: null,
   pushedByDisplayName: null,
+  reviewDecision: null,
   createdAt: '2026-09-21T04:00:00Z',
   updatedAt: '2026-09-21T04:00:00Z',
   capabilities: { edit: true, push: true },
@@ -223,6 +224,48 @@ describe('LeadDetailPage', () => {
     expect(wrapper.get('[data-test="push-record"]').text()).toContain('运营甲');
     expect(wrapper.get('[data-test="push-record"]').text()).not.toContain(
       'user-uuid',
+    );
+  });
+
+  it('shows the formal client decision read-only using the reviewer snapshot', async () => {
+    leadApi.getLead.mockResolvedValue({
+      ...lead,
+      status: 'WAITING_EVIDENCE_DECISION',
+      version: 3,
+      pushedAt: '2026-09-22T02:00:00.000Z',
+      pushedByUserId: 'operator-uuid',
+      pushedByDisplayName: '运营甲',
+      reviewDecision: {
+        result: 'INFRINGEMENT',
+        reviewerDisplayName: '企业审核员',
+        decidedAt: '2026-09-22T03:00:00.000Z',
+      },
+      capabilities: { edit: false, push: false },
+    });
+    const wrapper = await mountPage();
+    expect(wrapper.text()).toContain('线索待确认');
+    const record = wrapper.get('[data-test="client-review-record"]');
+    expect(record.text()).toContain('客户审核记录');
+    expect(record.text()).toContain('确认侵权');
+    expect(record.text()).toContain('企业审核员');
+    expect(record.text()).toContain('2026');
+    expect(record.text()).not.toContain('reviewer-uuid');
+    expect(wrapper.text()).not.toContain('确认取证');
+    expect(wrapper.text()).not.toContain('不取证');
+    expect(wrapper.text()).not.toContain('移交公证');
+    expect(wrapper.find('[data-test="push-lead"]').exists()).toBe(false);
+  });
+
+  it('does not infer a client decision from the lead status alone', async () => {
+    leadApi.getLead.mockResolvedValue({
+      ...lead,
+      status: 'WAITING_EVIDENCE_DECISION',
+      reviewDecision: null,
+      capabilities: { edit: false, push: false },
+    });
+    const wrapper = await mountPage();
+    expect(wrapper.find('[data-test="client-review-record"]').exists()).toBe(
+      false,
     );
   });
 
