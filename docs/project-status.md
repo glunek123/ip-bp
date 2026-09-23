@@ -8,7 +8,7 @@
 
 ## 当前任务
 
-**CORE-LD-004｜客户判定不侵权并归档（路线图唯一Current，代码及聚焦数据库／浏览器测试已完成，Final Review已通过，Level 3正式门禁待完成）**：工作位于`codex/core-ld-004-client-no-infringement-archive`分支；CORE-LD-003完成证据见[验证记录](spec/v0.1/VALIDATION.md)。按SD-40，CORE-LD-004之后的唯一Next为CORE-LD-007纠错闭环，再进入CORE-LD-005；顺序以[功能开发路线图](feature-roadmap.md)为准。
+**CORE-LD-007｜不侵权归档撤回纠错（路线图唯一Current，尚未实现）**：CORE-LD-004已完成并通过Level 3正式门禁；固定候选及证据见[验证记录](spec/v0.1/VALIDATION.md)。按SD-40，007之后的唯一Next为CORE-LD-005，顺序以[功能开发路线图](feature-roadmap.md)为准。
 
 ## 已实现
 
@@ -16,7 +16,7 @@
 - `ROLE-TEMPLATE-001`代码候选`d542c31`、tree`cae336d`已通过完整Level 3门禁、数据库型浏览器验收和独立终审；其可配置Grant底座供核心业务Action复用。
 - `CORE-LD-001`已实现`customer.admit`与`lead.read/create/edit`、ADMITTED准入约束、材料／内容版本／冻结引用、线索／商品／侵权类型／日编号／幂等回执，以及正式运营端页面。详细证据见[验证记录](spec/v0.1/VALIDATION.md)。
 - `CORE-LD-002`已实现真实企业客户账号绑定、密码会话、`WAITING_PUSH → WAITING_REVIEW`原子推送、`lead.push`内部授权、客户固定企业范围、幂等／版本／审计，以及运营推送和客户端只读列表／详情／附件页面。详细证据见[验证记录](spec/v0.1/VALIDATION.md)。
-- 登录后共享壳层及运营／客户端页面已按Demo共享视觉层级对齐；客户确认侵权及CORE-LD-004不侵权归档已有真实API和正式页面候选，后者Final Review已通过、Level 3正式门禁待完成；后续取证动作仍未实现。
+- 登录后共享壳层及运营／客户端页面已按Demo共享视觉层级对齐；客户确认侵权和CORE-LD-004不侵权归档已有真实API与正式页面，并通过Level 3门禁；007撤回纠错及后续取证动作仍未实现。
 
 ## 未决与限制
 
@@ -27,6 +27,7 @@
 
 ## 最近验证
 
+- CORE-LD-004固定候选`500e7cd4c5f4306a6ae744a4ac4207c783a84053`、tree`ef4f199a9867c1a80c4a50b85d68d11d778298ca`已通过正式Level 3门禁；细节见[验证记录](spec/v0.1/VALIDATION.md)。
 - Node v24.21.0、pnpm 11.27.0与项目锁定环境一致；使用锁定PostgreSQL 17.11镜像、随机本地端口和显式隔离测试DSN，不降级到开发库。
 - `CORE-LD-001`最终全分支总审结论为`APPROVED`，Critical 0／Important 0／Minor 0；其材料并发边界和事务修复结论保持有效。
 - `CORE-LD-002`固定代码候选`6be15b2`、tree`f71f44e4db09699f310e608e135254204ea3679e`的完整`pnpm verify`通过：工具71项、后端499项、前端253项，以及规范、架构、类型、Lint、格式和生产构建全部成功；完整数据库型Chromium E2E 76/76通过。
@@ -37,4 +38,4 @@
 
 ## 下一步
 
-下一步完成CORE-LD-004 Level 3正式门禁并收口；CORE-LD-007为Next，后接CORE-LD-005。CORE-LD-004不冒充归档后撤回已可用；只有CORE-LD-007的运营申请→原客户确认→重新审核通过真实浏览器和数据库验收，才称客户审核与纠错闭环完成。上一阶段已合并并推送至`origin/main@0cbf548`；未上线、未执行生产迁移。
+下一步实施CORE-LD-007撤回纠错；CORE-LD-005为Next。007尚未实现，仍需验证运营申请→原客户确认→重新审核闭环后，才能称客户审核及纠错闭环完成。CORE-LD-004未推送、未合并、未上线，未执行生产迁移。
