@@ -2,7 +2,7 @@
 
 待推送→线索待审核→线索待确认→移交公证并只读留存；不侵权／不取证走归档支路。阶段名沿用Demo草案，已移交的正式呈现方式不预设为新枚举。
 
-依据：[固定事实](../../../demo-reverse/v158/modules/M01-leads.md)、[候选](../../../demo-reverse/v158/modules/M01-leads-candidates.md)、[决定](../../../demo-reverse/v158/DECISIONS.md)和[纠偏](../../../demo-reverse/v158/CORRECTIONS.md)。字段只在[领域模型](../DOMAIN.md)维护；B/T/E编号见[缺口](../GAPS.md)，通用技术设计见[TD-BASE-05／TD-TRACE-UX-01](../TECHNICAL-DESIGN.md)。CORE-LD-001已实现最小待推送线索，CORE-LD-002已实现单条运营推送、客户企业账号绑定和客户端只读入口；CORE-LD-003进一步实现客户确认侵权并进入待确认。CORE-LD-004的不侵权归档已有代码候选及聚焦PostgreSQL／Chromium验收证据，仍待独立Final Review、Level 3正式门禁及收口；CSV、运营取证和公证移交仍未实现。下列AC只按实际证据判断，不因局部切片整体标记通过。
+依据：[固定事实](../../../demo-reverse/v158/modules/M01-leads.md)、[候选](../../../demo-reverse/v158/modules/M01-leads-candidates.md)、[决定](../../../demo-reverse/v158/DECISIONS.md)和[纠偏](../../../demo-reverse/v158/CORRECTIONS.md)。字段只在[领域模型](../DOMAIN.md)维护；B/T/E编号见[缺口](../GAPS.md)，通用技术设计见[TD-BASE-05／TD-TRACE-UX-01](../TECHNICAL-DESIGN.md)。CORE-LD-001已实现最小待推送线索，CORE-LD-002已实现单条运营推送、客户企业账号绑定和客户端只读入口；CORE-LD-003进一步实现客户确认侵权并进入待确认。CORE-LD-004的不侵权归档已有代码候选及聚焦PostgreSQL／Chromium验收证据，独立Final Review已通过，Level 3正式门禁与收口待完成；CSV、运营取证和公证移交仍未实现。下列AC只按实际证据判断，不因局部切片整体标记通过。
 
 SD-08已将Demo清晰字段、状态及正常入口作为本版业务基线；以下不再把字段列表、Demo明确的计算或批量技术一致性提交业务人员逐项选择。例外权限和更正仍按BQ审核。
 
@@ -47,7 +47,7 @@ SD-08已将Demo清晰字段、状态及正常入口作为本版业务基线；�
 
 ### CORE-LD-004候选行为与CORE-LD-007已确认边界
 
-- CORE-LD-004当前代码候选及聚焦PostgreSQL／Chromium测试已实现并验收以下行为，尚不代表该切片正式完成：本企业有效绑定的客户账号仅可对本企业已推送且处于`WAITING_REVIEW`的线索提交`NO_INFRINGEMENT`；原因首尾去空白后须为1–5000个Unicode码点，并携带`expectedVersion`和`Idempotency-Key`。同一事务原子推进至`ARCHIVED`并写入不可变决定、归档事实及幂等回执；客户端“已处理”列表、详情和允许的截图读取可查看结果，获`lead.read`范围覆盖的运营可在详情回看。保留既有`INFRINGEMENT`请求、指纹及回执响应兼容。错误状态、跨企业、无效身份／绑定／准入、旧版本、同键异参及竞争请求稳定拒绝；决定或回执写入失败时整体回滚。独立Final Review与Level 3正式门禁尚未完成。
+- CORE-LD-004当前代码候选及聚焦PostgreSQL／Chromium测试已实现并验收以下行为，尚不代表该切片正式完成：本企业有效绑定的客户账号仅可对本企业已推送且处于`WAITING_REVIEW`的线索提交`NO_INFRINGEMENT`；原因首尾去空白后须为1–5000个Unicode码点，并携带`expectedVersion`和`Idempotency-Key`。同一事务原子推进至`ARCHIVED`并写入不可变决定、归档事实及幂等回执；客户端“已处理”列表、详情和允许的截图读取可查看结果，获`lead.read`范围覆盖的运营可在详情回看。保留既有`INFRINGEMENT`请求、指纹及回执响应兼容。错误状态、跨企业、无效身份／绑定／准入、旧版本、同键异参及竞争请求稳定拒绝；决定或回执写入失败时整体回滚。独立Final Review已通过，Level 3正式门禁待完成。
 - SD-40要求CORE-LD-007紧随CORE-LD-004：运营申请撤回不改变归档；原客户企业的当前有效获权账号确认后才生效并回到可重新审核状态。撤回前的客户结论与归档事实、运营申请和客户确认均为历史记录；后续重新审核产生新决定，不覆盖或删除原决定。该异常路径未交付前，不声称客户审核与纠错闭环完成。
 - CORE-LD-007尚未实现。客户本人不能从普通审核页自行撤回；运营也不能代替客户确认。CORE-LD-004不提供撤回入口。其他归档类型、超过此路径的重开／更正权限仍由BQ-03／08约束。
 
