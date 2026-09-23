@@ -26,6 +26,38 @@ export class ClientLeadReviewDecisionResponseDto {
 
 class ClientLeadCapabilitiesResponseDto {
   @ApiProperty() review!: boolean;
+  @ApiProperty() confirmWithdrawal!: boolean;
+}
+
+export class ClientLeadPendingWithdrawalResponseDto {
+  @ApiProperty({ format: 'uuid' }) id!: string;
+  @ApiProperty({ maxLength: 5000 }) reason!: string;
+  @ApiProperty() applicantDisplayName!: string;
+  @ApiProperty({ format: 'date-time' }) appliedAt!: string;
+}
+
+export class ClientLeadHistoryResponseDto {
+  @ApiProperty({
+    enum: [
+      'REVIEW_DECISION',
+      'WITHDRAWAL_APPLICATION',
+      'WITHDRAWAL_CONFIRMATION',
+    ],
+  })
+  kind!: string;
+  @ApiProperty({ format: 'uuid' }) id!: string;
+  @ApiProperty({ minimum: 1 }) fromVersion!: number;
+  @ApiProperty({ minimum: 1 }) toVersion!: number;
+  @ApiProperty({ format: 'date-time' }) occurredAt!: string;
+  @ApiPropertyOptional() result?: string;
+  @ApiPropertyOptional({ nullable: true, type: String }) reason?: string | null;
+  @ApiPropertyOptional() reviewerDisplayName?: string;
+  @ApiPropertyOptional() applicantDisplayName?: string;
+  @ApiPropertyOptional({ format: 'uuid' }) applicationId?: string;
+  @ApiPropertyOptional({ enum: ['NO_INFRINGEMENT'], nullable: true })
+  archiveType?: string | null;
+  @ApiPropertyOptional({ format: 'date-time', nullable: true }) archivedAt?:
+    string | null;
 }
 
 export class ClientLeadResponseDto {
@@ -54,6 +86,13 @@ export class ClientLeadResponseDto {
     type: () => ClientLeadReviewDecisionResponseDto,
   })
   reviewDecision!: ClientLeadReviewDecisionResponseDto | null;
+  @ApiProperty({
+    nullable: true,
+    type: () => ClientLeadPendingWithdrawalResponseDto,
+  })
+  pendingWithdrawalApplication!: ClientLeadPendingWithdrawalResponseDto | null;
+  @ApiProperty({ type: () => [ClientLeadHistoryResponseDto] })
+  history!: ClientLeadHistoryResponseDto[];
   @ApiProperty({ type: () => ClientLeadCapabilitiesResponseDto })
   capabilities!: ClientLeadCapabilitiesResponseDto;
 }
@@ -74,4 +113,14 @@ export class ClientLeadReviewResultDto {
   @ApiProperty({ minimum: 1 }) version!: number;
   @ApiProperty({ type: () => ClientLeadReviewDecisionResponseDto })
   reviewDecision!: ClientLeadReviewDecisionResponseDto;
+}
+
+export class ClientLeadWithdrawalConfirmationResultDto {
+  @ApiProperty({ format: 'uuid' }) id!: string;
+  @ApiProperty({ format: 'uuid' }) applicationId!: string;
+  @ApiProperty({ format: 'uuid' }) leadId!: string;
+  @ApiProperty({ enum: ['WAITING_REVIEW'] }) status!: 'WAITING_REVIEW';
+  @ApiProperty({ minimum: 1 }) version!: number;
+  @ApiProperty() confirmedByDisplayName!: string;
+  @ApiProperty({ format: 'date-time' }) confirmedAt!: string;
 }

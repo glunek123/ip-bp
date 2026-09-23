@@ -5,6 +5,7 @@ import {
   IsInt,
   IsOptional,
   IsString,
+  IsUUID,
   Matches,
   Max,
   MaxLength,
@@ -63,6 +64,17 @@ export class ReviewClientLeadDto {
   @MaxLength(5000)
   @Matches(/^[\s\S]{1,5000}$/u)
   reason?: string;
+
+  @ApiProperty({ minimum: 1 })
+  @IsInt()
+  @Min(1)
+  expectedVersion!: number;
+}
+
+export class ConfirmClientLeadWithdrawalDto {
+  @ApiProperty({ format: 'uuid' })
+  @IsUUID()
+  applicationId!: string;
 
   @ApiProperty({ minimum: 1 })
   @IsInt()

@@ -26,6 +26,43 @@ const customerId = '33333333-3333-4333-8333-333333333333';
 const now = new Date('2026-09-21T04:00:00.000Z');
 
 describe('MaterialService', () => {
+  it('reads reopened lead screenshots only with a null current pointer and exact enterprise scope', async () => {
+    const fixture = createFixture();
+    const clientActor = { ...actor, clientCustomerId: customerId };
+    let lead = clientLeadRecord({
+      status: 'WAITING_REVIEW',
+      reviewDecision: null,
+      activeReviewDecisionId: null,
+    });
+    fixture.db.lead.findFirst.mockImplementation(
+      ({ where }: { where: ClientLeadWhere }) =>
+        clientLeadMatchesWhere(lead, where) ? { id: lead.id } : null,
+    );
+    fixture.db.materialReference.findMany.mockResolvedValue([
+      { materialId: 'material-a', contentVersionId: 'version-a' },
+    ]);
+    fixture.db.material.findMany.mockResolvedValue([]);
+    await expect(
+      fixture.service.listOwnerMaterials(clientActor, 'LEAD', lead.id),
+    ).resolves.toEqual({ items: [], total: 0 });
+    lead = clientLeadRecord({
+      status: 'WAITING_REVIEW',
+      reviewDecision: { result: 'NO_INFRINGEMENT' },
+      activeReviewDecisionId: 'old-decision',
+    });
+    await expect(
+      fixture.service.listOwnerMaterials(clientActor, 'LEAD', lead.id),
+    ).rejects.toMatchObject({ response: { code: 'RESOURCE_NOT_FOUND' } });
+    lead = clientLeadRecord({
+      status: 'WAITING_REVIEW',
+      customerId: 'foreign',
+      reviewDecision: null,
+      activeReviewDecisionId: null,
+    });
+    await expect(
+      fixture.service.listOwnerMaterials(clientActor, 'LEAD', lead.id),
+    ).rejects.toMatchObject({ response: { code: 'RESOURCE_NOT_FOUND' } });
+  });
   it('allows a client to read only its own WAITING_REVIEW lead materials without internal scope derivation', async () => {
     const fixture = createFixture();
     const clientActor = {
@@ -53,7 +90,7 @@ describe('MaterialService', () => {
         pushedAt: { not: null },
         pushedByUserId: { not: null },
         OR: [
-          { status: 'WAITING_REVIEW' },
+          { status: 'WAITING_REVIEW', activeReviewDecisionId: null },
           {
             status: 'WAITING_EVIDENCE_DECISION',
             reviewDecision: { is: { result: 'INFRINGEMENT' } },
@@ -1793,6 +1830,7 @@ type ClientLeadWhere = {
   departmentId?: string;
   customerId?: string;
   status?: string;
+  activeReviewDecisionId?: null;
   pushedAt?: { not: null };
   pushedByUserId?: { not: null };
   reviewDecision?: {
@@ -1810,6 +1848,7 @@ function clientLeadRecord(
     pushedAt?: Date | null;
     pushedByUserId?: string | null;
     reviewDecision?: object | null;
+    activeReviewDecisionId?: string | null;
   } = {},
 ) {
   return {
@@ -1820,6 +1859,7 @@ function clientLeadRecord(
     pushedAt: now,
     pushedByUserId: actor.userId,
     reviewDecision: { result: 'INFRINGEMENT' },
+    activeReviewDecisionId: null,
     ...overrides,
   };
 }
@@ -1834,6 +1874,8 @@ function clientLeadMatchesWhere(
       where.departmentId === lead.departmentId) &&
     (where.customerId === undefined || where.customerId === lead.customerId) &&
     (where.status === undefined || where.status === lead.status) &&
+    (where.activeReviewDecisionId === undefined ||
+      lead.activeReviewDecisionId === null) &&
     (where.pushedAt === undefined || lead.pushedAt !== null) &&
     (where.pushedByUserId === undefined || lead.pushedByUserId !== null) &&
     (where.reviewDecision === undefined ||

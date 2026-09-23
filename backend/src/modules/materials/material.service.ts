@@ -1117,7 +1117,7 @@ export class MaterialService {
           pushedAt: { not: null },
           pushedByUserId: { not: null },
           OR: [
-            { status: 'WAITING_REVIEW' },
+            { status: 'WAITING_REVIEW', activeReviewDecisionId: null },
             {
               status: 'WAITING_EVIDENCE_DECISION',
               reviewDecision: { is: { result: 'INFRINGEMENT' } },

@@ -23,6 +23,7 @@ const lead = {
   externalSourceRef: null,
   status: 'WAITING_REVIEW',
   version: 2,
+  activeReviewDecisionId: null,
   caseType: 'CIVIL',
   source: 'ONLINE',
   platform: 'TAOBAO',
@@ -106,6 +107,124 @@ function setup() {
 }
 
 describe('ClientLeadService', () => {
+  it('puts this enterprise pending withdrawal in pending, excludes it from processed, and exposes safe detail history', async () => {
+    const { service, database } = setup();
+    const application = {
+      id: 'application-1',
+      originalDecisionId: 'decision-1',
+      reason: '纠错原因',
+      appliedAt: new Date('2026-09-22T04:00:00.000Z'),
+      fromVersion: 3,
+      toVersion: 4,
+      resultSnapshot: {
+        applicantDisplayName: '运营甲',
+        secret: 'internal-secret',
+      },
+      confirmation: null,
+    };
+    const record = {
+      ...archivedLead,
+      activeReviewDecisionId: 'decision-1',
+      version: 4,
+      withdrawalApplications: [application],
+      reviewDecisions: [
+        {
+          ...archivedLead.reviewDecision,
+          id: 'decision-1',
+          fromVersion: 2,
+          toVersion: 3,
+        },
+      ],
+    };
+    database.lead.findMany.mockResolvedValue([record]);
+    database.lead.findFirst.mockResolvedValue(record);
+    const pending = await service.list(actor, 'PENDING', 1, 20);
+    expect(database.lead.findMany).toHaveBeenCalledWith(
+      expect.objectContaining({
+        where: expect.objectContaining({
+          OR: expect.arrayContaining([
+            expect.objectContaining({
+              withdrawalApplications: { some: { confirmation: { is: null } } },
+            }),
+          ]),
+        }),
+      }),
+    );
+    expect(pending.items[0].capabilities).toEqual({
+      review: false,
+      confirmWithdrawal: true,
+    });
+    expect(pending.items[0].pendingWithdrawalApplication).toEqual({
+      id: application.id,
+      reason: application.reason,
+      applicantDisplayName: '运营甲',
+      appliedAt: application.appliedAt.toISOString(),
+    });
+    await service.list(actor, 'PROCESSED', 1, 20);
+    expect(database.lead.findMany).toHaveBeenLastCalledWith(
+      expect.objectContaining({
+        where: expect.objectContaining({
+          OR: expect.arrayContaining([
+            expect.objectContaining({
+              withdrawalApplications: { none: { confirmation: { is: null } } },
+            }),
+          ]),
+        }),
+      }),
+    );
+    const detail = await service.get(actor, record.id);
+    expect(detail.history.map((entry) => entry.kind)).toEqual([
+      'REVIEW_DECISION',
+      'WITHDRAWAL_APPLICATION',
+    ]);
+    expect(JSON.stringify(detail)).not.toContain('internal-secret');
+    expect(JSON.stringify(detail)).not.toContain('reviewer-secret');
+  });
+
+  it('shows reopened lead as current waiting review while retaining ordered historical facts', async () => {
+    const { service, database } = setup();
+    database.lead.findFirst.mockResolvedValue({
+      ...lead,
+      version: 5,
+      activeReviewDecisionId: null,
+      reviewDecisions: [
+        {
+          ...archivedLead.reviewDecision,
+          id: 'decision-1',
+          fromVersion: 2,
+          toVersion: 3,
+        },
+      ],
+      withdrawalApplications: [
+        {
+          id: 'application-1',
+          originalDecisionId: 'decision-1',
+          reason: '纠错原因',
+          appliedAt: new Date('2026-09-22T04:00:00.000Z'),
+          fromVersion: 3,
+          toVersion: 4,
+          resultSnapshot: { applicantDisplayName: '运营甲' },
+          confirmation: {
+            id: 'confirmation-1',
+            confirmedAt: new Date('2026-09-22T05:00:00.000Z'),
+            fromVersion: 4,
+            toVersion: 5,
+          },
+        },
+      ],
+    });
+    const detail = await service.get(actor, lead.id);
+    expect(detail.reviewDecision).toBeNull();
+    expect(detail.capabilities).toEqual({
+      review: true,
+      confirmWithdrawal: false,
+    });
+    expect(detail.history.map((entry) => entry.kind)).toEqual([
+      'REVIEW_DECISION',
+      'WITHDRAWAL_APPLICATION',
+      'WITHDRAWAL_CONFIRMATION',
+    ]);
+  });
   it('lists only pushed pending leads for the actor enterprise with a redacted projection', async () => {
     const { service, database } = setup();
     const result = await service.list(actor, 'PENDING', 1, 20);
@@ -115,7 +234,20 @@ describe('ClientLeadService', () => {
         where: {
           departmentId: actor.departmentId,
           customerId: actor.clientCustomerId,
-          status: 'WAITING_REVIEW',
+          OR: [
+            { status: 'WAITING_REVIEW', activeReviewDecisionId: null },
+            {
+              status: 'ARCHIVED',
+              reviewDecision: {
+                is: {
+                  result: 'NO_INFRINGEMENT',
+                  archiveType: 'NO_INFRINGEMENT',
+                  archivedAt: { not: null },
+                },
+              },
+              withdrawalApplications: { some: { confirmation: { is: null } } },
+            },
+          ],
           pushedAt: { not: null },
           pushedByUserId: { not: null },
         },
@@ -158,6 +290,7 @@ describe('ClientLeadService', () => {
             },
             {
               status: 'ARCHIVED',
+              withdrawalApplications: { none: { confirmation: { is: null } } },
               reviewDecision: {
                 is: {
                   result: 'NO_INFRINGEMENT',
@@ -256,7 +389,7 @@ describe('ClientLeadService', () => {
           pushedAt: { not: null },
           pushedByUserId: { not: null },
           OR: [
-            { status: 'WAITING_REVIEW' },
+            { status: 'WAITING_REVIEW', activeReviewDecisionId: null },
             {
               status: 'WAITING_EVIDENCE_DECISION',
               reviewDecision: { is: { result: 'INFRINGEMENT' } },
@@ -290,7 +423,10 @@ describe('ClientLeadService', () => {
       'version-a',
       'version-b',
     ]);
-    expect(result.capabilities).toEqual({ review: false });
+    expect(result.capabilities).toEqual({
+      review: false,
+      confirmWithdrawal: false,
+    });
     expect(database.lead.findFirst).toHaveBeenCalledWith(
       expect.objectContaining({
         where: expect.objectContaining({
@@ -437,6 +573,7 @@ function setupReview() {
     lead: {
       findFirst: jest.fn().mockResolvedValue(lead),
       updateMany: jest.fn().mockResolvedValue({ count: 1 }),
+      update: jest.fn().mockResolvedValue({}),
     },
     leadReviewDecision: {
       create: jest.fn().mockImplementation(({ data }: { data: object }) =>
@@ -463,6 +600,7 @@ function setupReview() {
       }),
     },
     clientLeadReviewReceipt: { findUnique: jest.fn().mockResolvedValue(null) },
+    lead: { findFirst: jest.fn().mockResolvedValue(lead) },
   };
   const service = new ClientLeadService(database as never, {} as never);
   const review = () =>
@@ -474,6 +612,55 @@ function setupReview() {
 }
 
 describe('ClientLeadService.review', () => {
+  it('creates a new decision only after the active pointer was cleared, and preserves the old receipt', async () => {
+    const { service, transaction } = setupReview();
+    transaction.lead.findFirst.mockResolvedValue({
+      ...lead,
+      version: 5,
+      activeReviewDecisionId: null,
+    });
+    const first = await service.review(actor, lead.id, 'second-key', {
+      result: 'INFRINGEMENT',
+      expectedVersion: 5,
+    });
+    expect(first.version).toBe(6);
+    expect(transaction.lead.updateMany).toHaveBeenCalledWith(
+      expect.objectContaining({
+        where: expect.objectContaining({ activeReviewDecisionId: null }),
+      }),
+    );
+    expect(transaction.lead.update).toHaveBeenCalledWith(
+      expect.objectContaining({
+        data: { activeReviewDecisionId: 'decision-1' },
+      }),
+    );
+    transaction.clientLeadReviewReceipt.findUnique.mockResolvedValue({
+      ...transaction.clientLeadReviewReceipt.create.mock.calls[0][0].data,
+      resultSnapshot: first,
+    });
+    await expect(
+      service.review(actor, lead.id, 'second-key', {
+        result: 'INFRINGEMENT',
+        expectedVersion: 5,
+      }),
+    ).resolves.toEqual(first);
+    expect(transaction.leadReviewDecision.create).toHaveBeenCalledTimes(1);
+  });
+
+  it('rejects a pending review with a non-null active pointer', async () => {
+    const { service, transaction } = setupReview();
+    transaction.lead.findFirst.mockResolvedValue({
+      ...lead,
+      activeReviewDecisionId: 'old-decision',
+    });
+    await expect(
+      service.review(actor, lead.id, 'new-key', {
+        result: 'INFRINGEMENT',
+        expectedVersion: 2,
+      }),
+    ).rejects.toMatchObject({ response: { code: 'INVALID_STATE' } });
+    expect(transaction.leadReviewDecision.create).not.toHaveBeenCalled();
+  });
   it.each([2501, 5000])(
     'accepts a no-infringement reason of %i Unicode code points',
     async (count) => {
@@ -736,6 +923,7 @@ describe('ClientLeadService.review', () => {
         departmentId: actor.departmentId,
         customerId,
         status: 'WAITING_REVIEW',
+        activeReviewDecisionId: null,
         version: 2,
         pushedAt: { not: null },
         pushedByUserId: { not: null },
@@ -852,6 +1040,24 @@ describe('ClientLeadService.review', () => {
     await expect(review()).resolves.toEqual(snapshot);
     expect(transaction.lead.updateMany).not.toHaveBeenCalled();
     expect(transaction.leadReviewDecision.create).not.toHaveBeenCalled();
+  });
+
+  it('does not replay an old review receipt after the actor is bound to another enterprise', async () => {
+    const { review, transaction } = setupReview();
+    await review();
+    transaction.clientLeadReviewReceipt.findUnique.mockResolvedValue(
+      transaction.clientLeadReviewReceipt.create.mock.calls[0][0].data,
+    );
+    transaction.customerAccountBinding.findFirst.mockResolvedValue({
+      id: 'binding-foreign',
+      customerId: 'foreign-customer',
+      user: { displayName: '审核员' },
+    });
+    transaction.lead.findFirst.mockResolvedValue(null);
+    await expect(review()).rejects.toMatchObject({
+      response: { code: 'RESOURCE_NOT_FOUND' },
+    });
+    expect(transaction.lead.updateMany).toHaveBeenCalledTimes(1);
   });
 
   it('rejects a reused key with another request', async () => {
@@ -978,6 +1184,298 @@ describe('ClientLeadService.review', () => {
     ).toHaveLength(1);
     expect(transaction.leadReviewDecision.create).toHaveBeenCalledTimes(1);
     expect(transaction.clientLeadReviewReceipt.create).toHaveBeenCalledTimes(1);
+  });
+});
+
+const applicationId = 'aaaaaaaa-aaaa-4aaa-8aaa-aaaaaaaaaaaa';
+const originalDecisionId = 'bbbbbbbb-bbbb-4bbb-8bbb-bbbbbbbbbbbb';
+
+function setupConfirmation() {
+  const application = {
+    id: applicationId,
+    originalDecisionId,
+    leadId: lead.id,
+    customerId,
+    departmentId: actor.departmentId,
+    reason: '申请原因',
+    appliedAt: new Date('2026-09-22T04:00:00.000Z'),
+    fromVersion: 3,
+    toVersion: 4,
+    confirmation: null,
+    resultSnapshot: { applicantDisplayName: '运营甲' },
+  };
+  const current = {
+    ...archivedLead,
+    id: lead.id,
+    version: 4,
+    activeReviewDecisionId: originalDecisionId,
+    reviewDecision: { ...archivedLead.reviewDecision, id: originalDecisionId },
+    withdrawalApplications: [application],
+  };
+  const transaction = {
+    customerAccountBinding: {
+      findFirst: jest.fn().mockResolvedValue({
+        id: 'binding-other-account',
+        customerId,
+        user: { displayName: '另一位企业审核员' },
+      }),
+    },
+    leadWithdrawalConfirmation: {
+      findUnique: jest.fn().mockResolvedValue(null),
+      create: jest.fn().mockImplementation(({ data }: { data: object }) =>
+        Promise.resolve({
+          id: 'confirmation-1',
+          confirmedAt: new Date('2026-09-22T05:00:00.000Z'),
+          ...data,
+        }),
+      ),
+    },
+    $queryRawUnsafe: jest.fn().mockResolvedValue([{ id: lead.id }]),
+    lead: {
+      findFirst: jest.fn().mockResolvedValue(current),
+      updateMany: jest.fn().mockResolvedValue({ count: 1 }),
+    },
+  };
+  const database = {
+    $transaction: jest
+      .fn()
+      .mockImplementation(
+        (fn: (client: typeof transaction) => Promise<unknown>) =>
+          fn(transaction),
+      ),
+    customerAccountBinding: {
+      findFirst: jest.fn().mockResolvedValue({
+        id: 'binding-other-account',
+        customerId,
+        user: { displayName: '另一位企业审核员' },
+      }),
+    },
+    leadWithdrawalConfirmation: {
+      findUnique: jest.fn().mockResolvedValue(null),
+    },
+  };
+  return {
+    service: new ClientLeadService(database as never, {} as never),
+    database,
+    transaction,
+    current,
+    application,
+  };
+}
+
+describe('ClientLeadService.confirmWithdrawal', () => {
+  const input = { applicationId, expectedVersion: 4 };
+  const confirm = (
+    fixture: ReturnType<typeof setupConfirmation>,
+    key = 'confirm-key',
+  ) => fixture.service.confirmWithdrawal(actor, lead.id, key, input);
+
+  it('lets another effective account of the original enterprise confirm atomically', async () => {
+    const fixture = setupConfirmation();
+    const result = await confirm(fixture);
+    expect(result).toMatchObject({
+      leadId: lead.id,
+      applicationId,
+      status: 'WAITING_REVIEW',
+      version: 5,
+      confirmedByDisplayName: '另一位企业审核员',
+    });
+    expect(fixture.database.$transaction).toHaveBeenCalledWith(
+      expect.any(Function),
+      { isolationLevel: 'Serializable' },
+    );
+    expect(fixture.transaction.lead.updateMany).toHaveBeenCalledWith(
+      expect.objectContaining({
+        where: expect.objectContaining({
+          activeReviewDecisionId: originalDecisionId,
+          version: 4,
+        }),
+        data: {
+          status: 'WAITING_REVIEW',
+          activeReviewDecisionId: null,
+          version: { increment: 1 },
+        },
+      }),
+    );
+    expect(
+      fixture.transaction.leadWithdrawalConfirmation.create,
+    ).toHaveBeenCalledWith({
+      data: expect.objectContaining({
+        applicationId,
+        originalDecisionId,
+        customerAccountBindingId: 'binding-other-account',
+        resultSnapshot: result,
+      }),
+    });
+  });
+
+  it('replays the original snapshot after current identity validation and rejects changed payload', async () => {
+    const fixture = setupConfirmation();
+    const first = await confirm(fixture);
+    const receipt =
+      fixture.transaction.leadWithdrawalConfirmation.create.mock.calls[0][0]
+        .data;
+    fixture.transaction.leadWithdrawalConfirmation.findUnique.mockResolvedValue(
+      receipt,
+    );
+    fixture.transaction.lead.updateMany.mockClear();
+    await expect(confirm(fixture)).resolves.toEqual(first);
+    expect(fixture.transaction.lead.updateMany).not.toHaveBeenCalled();
+    await expect(
+      fixture.service.confirmWithdrawal(actor, lead.id, 'confirm-key', {
+        ...input,
+        expectedVersion: 5,
+      }),
+    ).rejects.toMatchObject({ response: { code: 'IDEMPOTENCY_CONFLICT' } });
+    fixture.transaction.customerAccountBinding.findFirst.mockResolvedValue(
+      null,
+    );
+    await expect(confirm(fixture)).rejects.toMatchObject({
+      response: { code: 'ACTION_FORBIDDEN' },
+    });
+  });
+
+  it.each([
+    'wrong enterprise',
+    'unpushed',
+    'missing application',
+    'different decision',
+    'already confirmed',
+    'wrong state',
+    'stale version',
+    'application version mismatch',
+  ])('rejects %s without a confirmation fact', async (scenario) => {
+    const fixture = setupConfirmation();
+    if (scenario === 'wrong enterprise')
+      fixture.transaction.$queryRawUnsafe.mockResolvedValue([]);
+    if (scenario === 'unpushed')
+      fixture.transaction.lead.findFirst.mockResolvedValue({
+        ...fixture.current,
+        pushedAt: null,
+      });
+    if (scenario === 'missing application')
+      fixture.transaction.lead.findFirst.mockResolvedValue({
+        ...fixture.current,
+        withdrawalApplications: [],
+      });
+    if (scenario === 'different decision')
+      fixture.transaction.lead.findFirst.mockResolvedValue({
+        ...fixture.current,
+        activeReviewDecisionId: 'other-decision',
+      });
+    if (scenario === 'already confirmed')
+      fixture.transaction.lead.findFirst.mockResolvedValue({
+        ...fixture.current,
+        withdrawalApplications: [
+          { ...fixture.application, confirmation: { id: 'done' } },
+        ],
+      });
+    if (scenario === 'wrong state')
+      fixture.transaction.lead.findFirst.mockResolvedValue({
+        ...fixture.current,
+        status: 'WAITING_REVIEW',
+      });
+    if (scenario === 'stale version')
+      fixture.transaction.lead.findFirst.mockResolvedValue({
+        ...fixture.current,
+        version: 5,
+      });
+    if (scenario === 'application version mismatch')
+      fixture.transaction.lead.findFirst.mockResolvedValue({
+        ...fixture.current,
+        withdrawalApplications: [{ ...fixture.application, toVersion: 3 }],
+      });
+    await expect(confirm(fixture)).rejects.toMatchObject({
+      response: {
+        code:
+          scenario === 'wrong enterprise' || scenario === 'unpushed'
+            ? 'RESOURCE_NOT_FOUND'
+            : scenario === 'stale version'
+              ? 'VERSION_CONFLICT'
+              : 'INVALID_STATE',
+      },
+    });
+    expect(
+      fixture.transaction.leadWithdrawalConfirmation.create,
+    ).not.toHaveBeenCalled();
+  });
+
+  it('rejects revoked account, binding or non-admitted customer before replay and mutation', async () => {
+    const fixture = setupConfirmation();
+    fixture.transaction.customerAccountBinding.findFirst.mockResolvedValue(
+      null,
+    );
+    await expect(confirm(fixture)).rejects.toMatchObject({
+      response: { code: 'ACTION_FORBIDDEN' },
+    });
+    expect(
+      fixture.transaction.leadWithdrawalConfirmation.findUnique,
+    ).not.toHaveBeenCalled();
+  });
+
+  it('does not return success when the immutable confirmation write fails', async () => {
+    const fixture = setupConfirmation();
+    const error = new Error('confirmation failed');
+    fixture.transaction.leadWithdrawalConfirmation.create.mockRejectedValue(
+      error,
+    );
+    await expect(confirm(fixture)).rejects.toBe(error);
+    expect(fixture.transaction.lead.updateMany).toHaveBeenCalledTimes(1);
+  });
+
+  it('allows only one winner for distinct keys', async () => {
+    const fixture = setupConfirmation();
+    await confirm(fixture, 'key-a');
+    fixture.transaction.lead.findFirst.mockResolvedValue({
+      ...fixture.current,
+      status: 'WAITING_REVIEW',
+      activeReviewDecisionId: null,
+      version: 5,
+    });
+    await expect(confirm(fixture, 'key-b')).rejects.toMatchObject({
+      response: { code: 'INVALID_STATE' },
+    });
+    expect(
+      fixture.transaction.leadWithdrawalConfirmation.create,
+    ).toHaveBeenCalledTimes(1);
+  });
+
+  it('replays the winning confirmation after a unique-key race only for a still valid account', async () => {
+    const fixture = setupConfirmation();
+    const first = await confirm(fixture);
+    const receipt =
+      fixture.transaction.leadWithdrawalConfirmation.create.mock.calls[0][0]
+        .data;
+    fixture.database.$transaction.mockRejectedValueOnce({ code: 'P2002' });
+    fixture.database.leadWithdrawalConfirmation.findUnique.mockResolvedValue(
+      receipt,
+    );
+    await expect(confirm(fixture)).resolves.toEqual(first);
+    fixture.database.$transaction.mockRejectedValueOnce({ code: 'P2002' });
+    fixture.database.customerAccountBinding.findFirst.mockResolvedValue(null);
+    await expect(confirm(fixture)).rejects.toMatchObject({
+      response: { code: 'ACTION_FORBIDDEN' },
+    });
+  });
+
+  it('returns a version conflict when another confirmation wins with a different key', async () => {
+    const fixture = setupConfirmation();
+    fixture.database.$transaction.mockRejectedValueOnce({ code: 'P2002' });
+    await expect(confirm(fixture, 'losing-key')).rejects.toMatchObject({
+      response: { code: 'VERSION_CONFLICT' },
+    });
+    expect(
+      fixture.database.customerAccountBinding.findFirst,
+    ).toHaveBeenCalledTimes(1);
+  });
+
+  it('retries serialization failures and caps a persistent race at version conflict', async () => {
+    const fixture = setupConfirmation();
+    fixture.database.$transaction.mockRejectedValue({ code: 'P2034' });
+    await expect(confirm(fixture)).rejects.toMatchObject({
+      response: { code: 'VERSION_CONFLICT' },
+    });
+    expect(fixture.database.$transaction).toHaveBeenCalledTimes(3);
   });
 });
 

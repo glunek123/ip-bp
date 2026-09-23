@@ -84,6 +84,12 @@ describe('CORE-LD-002 OpenAPI contract', () => {
       '201',
       'ClientLeadReviewResultDto',
     ],
+    [
+      'post',
+      '/api/v1/client/leads/{id}/withdrawal-confirmations',
+      '201',
+      'ClientLeadWithdrawalConfirmationResultDto',
+    ],
   ] as const)(
     'documents %s %s response %s',
     (method, path, status, schemaName) => {
@@ -176,6 +182,46 @@ describe('CORE-LD-002 OpenAPI contract', () => {
         archiveType: { enum: ['NO_INFRINGEMENT'] },
         archivedAt: { format: 'date-time' },
       },
+    });
+  });
+
+  it('documents confirmation input, key and safe client detail history', () => {
+    const document = SwaggerModule.createDocument(
+      app,
+      new DocumentBuilder().setTitle('test').setVersion('1').build(),
+    );
+    const operation =
+      document.paths['/api/v1/client/leads/{id}/withdrawal-confirmations']
+        ?.post;
+    expect(operation?.parameters).toEqual(
+      expect.arrayContaining([
+        expect.objectContaining({ name: 'Idempotency-Key', required: true }),
+      ]),
+    );
+    expect(
+      document.components?.schemas?.ConfirmClientLeadWithdrawalDto,
+    ).toMatchObject({
+      required: expect.arrayContaining(['applicationId', 'expectedVersion']),
+      properties: {
+        applicationId: { format: 'uuid' },
+        expectedVersion: { minimum: 1 },
+      },
+    });
+    expect(document.components?.schemas?.ClientLeadResponseDto).toMatchObject({
+      required: expect.arrayContaining([
+        'pendingWithdrawalApplication',
+        'history',
+        'capabilities',
+      ]),
+      properties: {
+        pendingWithdrawalApplication: expect.any(Object),
+        history: expect.any(Object),
+      },
+    });
+    expect(
+      document.components?.schemas?.ClientLeadCapabilitiesResponseDto,
+    ).toMatchObject({
+      required: expect.arrayContaining(['review', 'confirmWithdrawal']),
     });
   });
 });

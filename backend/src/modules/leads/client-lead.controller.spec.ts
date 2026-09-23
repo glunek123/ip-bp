@@ -1,12 +1,72 @@
 import { BadRequestException, ValidationPipe } from '@nestjs/common';
 import {
   ClientLeadListQueryDto,
+  ConfirmClientLeadWithdrawalDto,
   ReviewClientLeadDto,
 } from './client-lead-review.dto';
 import { ClientLeadController } from './client-lead.controller';
 import { ClientLeadService } from './client-lead.service';
 
 describe('ClientLeadController', () => {
+  it('validates withdrawal confirmation input', async () => {
+    const input = {
+      applicationId: 'aaaaaaaa-aaaa-4aaa-8aaa-aaaaaaaaaaaa',
+      expectedVersion: 4,
+    };
+    await expect(
+      pipe.transform(input, {
+        type: 'body',
+        metatype: ConfirmClientLeadWithdrawalDto,
+      }),
+    ).resolves.toEqual(input);
+    for (const invalid of [
+      { ...input, applicationId: 'bad' },
+      { ...input, expectedVersion: 0 },
+      { ...input, extra: true },
+    ])
+      await expect(
+        pipe.transform(invalid, {
+          type: 'body',
+          metatype: ConfirmClientLeadWithdrawalDto,
+        }),
+      ).rejects.toBeInstanceOf(BadRequestException);
+  });
+
+  it('validates confirmation key and delegates the command', async () => {
+    const service = {
+      confirmWithdrawal: jest.fn().mockResolvedValue({ version: 5 }),
+    } as unknown as ClientLeadService;
+    const controller = new ClientLeadController(service);
+    const input = {
+      applicationId: 'aaaaaaaa-aaaa-4aaa-8aaa-aaaaaaaaaaaa',
+      expectedVersion: 4,
+    };
+    expect(() =>
+      controller.confirmWithdrawal({} as never, 'lead-1', ' ', input),
+    ).toThrow(BadRequestException);
+    expect(() =>
+      controller.confirmWithdrawal(
+        {} as never,
+        'lead-1',
+        'x'.repeat(129),
+        input,
+      ),
+    ).toThrow(BadRequestException);
+    await expect(
+      controller.confirmWithdrawal(
+        { userId: 'user-1' } as never,
+        'lead-1',
+        ' key ',
+        input,
+      ),
+    ).resolves.toEqual({ version: 5 });
+    expect(service.confirmWithdrawal).toHaveBeenCalledWith(
+      { userId: 'user-1' },
+      'lead-1',
+      'key',
+      input,
+    );
+  });
   const pipe = new ValidationPipe({
     whitelist: true,
     forbidNonWhitelisted: true,
