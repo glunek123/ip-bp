@@ -345,7 +345,7 @@ describe('OrganizationService management context', () => {
       assignTeamRoles: false,
       manageRoleTemplates: true,
     });
-    expect(result.permissionCatalog).toHaveLength(15);
+    expect(result.permissionCatalog).toHaveLength(16);
     expect(result.permissionCatalog.map(({ action }) => action)).toEqual(
       expect.arrayContaining([
         'CUSTOMER_ADMIT',
@@ -353,10 +353,15 @@ describe('OrganizationService management context', () => {
         'LEAD_CREATE',
         'LEAD_EDIT',
         'LEAD_PUSH',
+        'LEAD_WITHDRAW_APPLY',
       ]),
     );
     expect(result.permissionCatalog.map(({ action }) => action)).toEqual(
-      expect.not.arrayContaining(['CLIENT_LEAD_READ', 'CLIENT_LEAD_REVIEW']),
+      expect.not.arrayContaining([
+        'CLIENT_LEAD_READ',
+        'CLIENT_LEAD_REVIEW',
+        'CLIENT_LEAD_WITHDRAW_CONFIRM',
+      ]),
     );
     expect(result.permissionCatalog).toContainEqual({
       action: 'ROLE_MANAGE',

@@ -29,6 +29,12 @@ describe('CORE-LD migrations', () => {
     '20260922013000_harden_client_lead_review_integrity';
   const resultMigration = '20260923010000_add_no_infringement_review_result';
   const archiveMigration = '20260923011000_add_no_infringement_archive_facts';
+  const withdrawalActionsMigration =
+    '20260923012000_add_lead_withdrawal_actions';
+  const withdrawalHistoryMigration =
+    '20260923013000_add_lead_withdrawal_history';
+  const withdrawalReasonMigration =
+    '20260923014000_harden_lead_withdrawal_reason';
 
   function readMigration(name: string): string {
     return readFileSync(resolve(migrationRoot, name, 'migration.sql'), 'utf8');
@@ -237,7 +243,12 @@ describe('CORE-LD migrations', () => {
   });
 
   it('extends immutable review facts in two forward phases', () => {
-    expect(migrations.slice(-2)).toEqual([resultMigration, archiveMigration]);
+    expect(
+      migrations.slice(
+        migrations.indexOf(resultMigration),
+        migrations.indexOf(resultMigration) + 2,
+      ),
+    ).toEqual([resultMigration, archiveMigration]);
     expect(readMigration(resultMigration)).toContain(
       "ADD VALUE 'NO_INFRINGEMENT'",
     );
@@ -248,5 +259,83 @@ describe('CORE-LD migrations', () => {
     expect(sql).toContain('"archived_at" TIMESTAMPTZ(3)');
     expect(sql).toContain('lead_review_decisions_result_archive_check');
     expect(sql).not.toMatch(/DROP TABLE|DROP COLUMN|DELETE FROM/);
+  });
+
+  it('commits both withdrawal actions before any grant uses them', () => {
+    expect(migrations.slice(-3)).toEqual([
+      withdrawalActionsMigration,
+      withdrawalHistoryMigration,
+      withdrawalReasonMigration,
+    ]);
+    const actions = readMigration(withdrawalActionsMigration);
+    const history = readMigration(withdrawalHistoryMigration);
+    expect(actions).toContain("ADD VALUE IF NOT EXISTS 'lead.withdraw.apply'");
+    expect(actions).toContain(
+      "ADD VALUE IF NOT EXISTS 'client.lead.withdraw.confirm'",
+    );
+    expect(actions).not.toContain('role_grants');
+    expect(history).toContain('bootstrap_roles_to_upgrade');
+    expect(history).toContain('shared_assignment');
+    expect(history).toContain('authorization_revision');
+    expect(history).not.toContain(
+      '\'client.lead.withdraw.confirm\'::"permission_action"',
+    );
+  });
+
+  it('backfills an exact current decision pointer while preserving all review history', () => {
+    const sql = readMigration(withdrawalHistoryMigration);
+    const schema = readFileSync(
+      resolve(process.cwd(), 'prisma/schema.prisma'),
+      'utf8',
+    );
+    expect(sql).toContain('ADD COLUMN "active_review_decision_id" UUID');
+    expect(sql).toContain('UPDATE "leads" AS "lead"');
+    expect(sql).toContain('"active_review_decision_id" = "decision"."id"');
+    expect(sql).toContain('leads_active_review_decision_identity_fkey');
+    expect(sql).toContain(
+      '("active_review_decision_id", "id", "customer_id", "department_id")',
+    );
+    expect(sql).toContain('("id", "lead_id", "customer_id", "department_id")');
+    expect(sql).toContain('lead_review_decisions_lead_id_from_version_key');
+    for (const key of [
+      'lead_review_decisions_lead_id_key',
+      'lead_review_decisions_lead_id_department_id_key',
+      'lead_review_decisions_lead_identity_key',
+    ])
+      expect(sql).toContain(`DROP CONSTRAINT "${key}"`);
+    expect(sql).not.toMatch(
+      /DROP TABLE|DELETE FROM "lead_review_decisions"|DELETE FROM "client_lead_review_receipts"/,
+    );
+    expect(schema).toContain('activeReviewDecisionId');
+    expect(schema).toContain('reviewDecisions');
+    expect(schema).toContain('reviewDecision');
+    expect(schema).not.toMatch(/leadId\s+String\s+@unique/);
+  });
+
+  it('anchors immutable withdrawal facts to decision, application, and client binding identity', () => {
+    const sql = readMigration(withdrawalHistoryMigration);
+    expect(sql).toContain('CREATE TABLE "lead_withdrawal_applications"');
+    expect(sql).toContain('CREATE TABLE "lead_withdrawal_confirmations"');
+    expect(sql).toContain(
+      'lead_withdrawal_applications_original_decision_id_key',
+    );
+    expect(sql).toContain('lead_withdrawal_confirmations_application_id_key');
+    expect(sql).toContain(
+      'lead_withdrawal_applications_decision_identity_fkey',
+    );
+    expect(sql).toContain(
+      'lead_withdrawal_confirmations_application_identity_fkey',
+    );
+    expect(sql).toContain(
+      'lead_withdrawal_confirmations_binding_identity_fkey',
+    );
+    expect(sql).toContain('CHAR_LENGTH("reason") BETWEEN 1 AND 5000');
+    const reasonSql = readMigration(withdrawalReasonMigration);
+    expect(reasonSql).toContain('"reason" ~ \'[^[:space:]]\'');
+    expect(sql).toContain('reject_lead_withdrawal_application_mutation');
+    expect(sql).toContain('reject_lead_withdrawal_confirmation_mutation');
+    expect(sql).toContain('BEFORE UPDATE OR DELETE');
+    expect(sql.trim().startsWith('BEGIN;')).toBe(true);
+    expect(sql.trim().endsWith('COMMIT;')).toBe(true);
   });
 });

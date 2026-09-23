@@ -9,23 +9,25 @@ datasource db {
 }
 
 enum PermissionAction {
-  CUSTOMER_READ         @map("customer.read")
-  CUSTOMER_CREATE_DRAFT @map("customer.create-draft")
-  CUSTOMER_EDIT_ROUTINE @map("customer.edit-routine")
-  CUSTOMER_ADMIT        @map("customer.admit")
-  LEAD_READ             @map("lead.read")
-  LEAD_CREATE           @map("lead.create")
-  LEAD_EDIT             @map("lead.edit")
-  LEAD_PUSH             @map("lead.push")
-  CLIENT_LEAD_READ      @map("client.lead.read")
-  CLIENT_LEAD_REVIEW    @map("client.lead.review")
-  USER_READ             @map("user.read")
-  USER_MANAGE           @map("user.manage")
-  TEAM_READ             @map("team.read")
-  TEAM_MANAGE           @map("team.manage")
-  ROLE_READ             @map("role.read")
-  ROLE_ASSIGN           @map("role.assign")
-  ROLE_MANAGE           @map("role.manage")
+  CUSTOMER_READ                @map("customer.read")
+  CUSTOMER_CREATE_DRAFT        @map("customer.create-draft")
+  CUSTOMER_EDIT_ROUTINE        @map("customer.edit-routine")
+  CUSTOMER_ADMIT               @map("customer.admit")
+  LEAD_READ                    @map("lead.read")
+  LEAD_CREATE                  @map("lead.create")
+  LEAD_EDIT                    @map("lead.edit")
+  LEAD_PUSH                    @map("lead.push")
+  LEAD_WITHDRAW_APPLY          @map("lead.withdraw.apply")
+  CLIENT_LEAD_READ             @map("client.lead.read")
+  CLIENT_LEAD_REVIEW           @map("client.lead.review")
+  CLIENT_LEAD_WITHDRAW_CONFIRM @map("client.lead.withdraw.confirm")
+  USER_READ                    @map("user.read")
+  USER_MANAGE                  @map("user.manage")
+  TEAM_READ                    @map("team.read")
+  TEAM_MANAGE                  @map("team.manage")
+  ROLE_READ                    @map("role.read")
+  ROLE_ASSIGN                  @map("role.assign")
+  ROLE_MANAGE                  @map("role.manage")
 
   @@map("permission_action")
 }
@@ -321,6 +323,7 @@ model DepartmentMembership {
   customerAdmissionReceipts   CustomerAdmissionReceipt[]   @relation("CustomerAdmissionReceiptActor")
   responsibleLeads            Lead[]                       @relation("LeadResponsibleMembership")
   leadCommandReceipts         LeadCommandReceipt[]         @relation("LeadCommandReceiptActor")
+  withdrawalApplications      LeadWithdrawalApplication[]
   createdAt                   DateTime                     @default(now()) @map("created_at") @db.Timestamptz(3)
   updatedAt                   DateTime                     @updatedAt @map("updated_at") @db.Timestamptz(3)
 
@@ -423,22 +426,23 @@ model Customer {
 }
 
 model CustomerAccountBinding {
-  id                   String                    @id @default(uuid()) @db.Uuid
-  userId               String                    @unique @map("user_id") @db.Uuid
-  customerId           String                    @map("customer_id") @db.Uuid
-  departmentId         String                    @map("department_id") @db.Uuid
-  active               Boolean                   @default(true)
-  version              Int                       @default(1)
-  user                 UserAccount               @relation(fields: [userId], references: [id], onDelete: Restrict)
-  customer             Customer                  @relation(fields: [customerId, departmentId], references: [id, departmentId], onDelete: Restrict, map: "customer_account_bindings_customer_department_fkey")
-  department           Department                @relation(fields: [departmentId], references: [id], onDelete: Restrict)
-  leadReviewDecisions  LeadReviewDecision[]
-  clientReviewReceipts ClientLeadReviewReceipt[]
-  createdAt            DateTime                  @default(now()) @map("created_at") @db.Timestamptz(3)
-  updatedAt            DateTime                  @updatedAt @map("updated_at") @db.Timestamptz(3)
+  id                      String                       @id @default(uuid()) @db.Uuid
+  userId                  String                       @unique @map("user_id") @db.Uuid
+  customerId              String                       @map("customer_id") @db.Uuid
+  departmentId            String                       @map("department_id") @db.Uuid
+  active                  Boolean                      @default(true)
+  version                 Int                          @default(1)
+  user                    UserAccount                  @relation(fields: [userId], references: [id], onDelete: Restrict)
+  customer                Customer                     @relation(fields: [customerId, departmentId], references: [id, departmentId], onDelete: Restrict, map: "customer_account_bindings_customer_department_fkey")
+  department              Department                   @relation(fields: [departmentId], references: [id], onDelete: Restrict)
+  leadReviewDecisions     LeadReviewDecision[]
+  clientReviewReceipts    ClientLeadReviewReceipt[]
+  withdrawalConfirmations LeadWithdrawalConfirmation[]
+  createdAt               DateTime                     @default(now()) @map("created_at") @db.Timestamptz(3)
+  updatedAt               DateTime                     @updatedAt @map("updated_at") @db.Timestamptz(3)
 
-  @@index([customerId, departmentId, active])
   @@unique([id, userId, customerId, departmentId], map: "customer_account_bindings_review_identity_key")
+  @@index([customerId, departmentId, active])
   @@map("customer_account_bindings")
 }
 
@@ -505,22 +509,22 @@ model RightsHolderCommandReceipt {
 }
 
 model UploadDraft {
-  id               String               @id @default(uuid()) @db.Uuid
-  departmentId     String               @map("department_id") @db.Uuid
-  actorUserId      String               @map("actor_user_id") @db.Uuid
-  ownerType        MaterialOwnerType    @map("owner_type")
-  ownerId          String               @map("owner_id") @db.Uuid
-  category         MaterialCategory
-  purpose          String               @db.VarChar(100)
-  originalFilename String               @map("original_filename") @db.VarChar(200)
-  declaredMimeType String               @map("declared_mime_type") @db.VarChar(100)
-  pendingStorageKey String?             @unique(map: "upload_drafts_pending_storage_key_key") @map("pending_storage_key") @db.VarChar(500)
-  status           UploadDraftStatus    @default(OPEN)
-  expiresAt        DateTime             @map("expires_at") @db.Timestamptz(3)
-  department       Department           @relation(fields: [departmentId], references: [id], onDelete: Restrict)
-  actorMembership  DepartmentMembership @relation("UploadDraftActor", fields: [actorUserId, departmentId], references: [userId, departmentId], onDelete: Restrict, map: "upload_drafts_actor_department_fkey")
-  createdAt        DateTime             @default(now()) @map("created_at") @db.Timestamptz(3)
-  updatedAt        DateTime             @updatedAt @map("updated_at") @db.Timestamptz(3)
+  id                String               @id @default(uuid()) @db.Uuid
+  departmentId      String               @map("department_id") @db.Uuid
+  actorUserId       String               @map("actor_user_id") @db.Uuid
+  ownerType         MaterialOwnerType    @map("owner_type")
+  ownerId           String               @map("owner_id") @db.Uuid
+  category          MaterialCategory
+  purpose           String               @db.VarChar(100)
+  originalFilename  String               @map("original_filename") @db.VarChar(200)
+  declaredMimeType  String               @map("declared_mime_type") @db.VarChar(100)
+  pendingStorageKey String?              @unique(map: "upload_drafts_pending_storage_key_key") @map("pending_storage_key") @db.VarChar(500)
+  status            UploadDraftStatus    @default(OPEN)
+  expiresAt         DateTime             @map("expires_at") @db.Timestamptz(3)
+  department        Department           @relation(fields: [departmentId], references: [id], onDelete: Restrict)
+  actorMembership   DepartmentMembership @relation("UploadDraftActor", fields: [actorUserId, departmentId], references: [userId, departmentId], onDelete: Restrict, map: "upload_drafts_actor_department_fkey")
+  createdAt         DateTime             @default(now()) @map("created_at") @db.Timestamptz(3)
+  updatedAt         DateTime             @updatedAt @map("updated_at") @db.Timestamptz(3)
 
   @@index([departmentId, ownerType, ownerId, status])
   @@index([status, expiresAt])
@@ -616,43 +620,47 @@ model CustomerAdmissionReceipt {
 }
 
 model Lead {
-  id                    String                    @id @default(uuid()) @db.Uuid
-  departmentId          String                    @map("department_id") @db.Uuid
-  businessNo            String                    @unique @map("business_no") @db.VarChar(100)
-  customerId            String                    @map("customer_id") @db.Uuid
-  rightsHolderId        String                    @map("rights_holder_id") @db.Uuid
-  responsibleUserId     String                    @map("responsible_user_id") @db.Uuid
-  teamId                String?                   @map("team_id") @db.Uuid
-  status                LeadStatus                @default(WAITING_PUSH)
-  caseType              LeadCaseType              @map("case_type")
-  source                LeadSource
-  platform              LeadPlatform
-  foundAt               DateTime                  @map("found_at") @db.Timestamptz(3)
-  shopName              String                    @map("shop_name") @db.VarChar(200)
-  shopExternalId        String?                   @map("shop_external_id") @db.VarChar(100)
-  needDisclose          Boolean                   @map("need_disclose")
-  remark                String?
-  creationChannel       LeadCreationChannel       @default(MANUAL) @map("creation_channel")
-  externalSourceRef     String?                   @map("external_source_ref") @db.VarChar(100)
-  version               Int                       @default(1)
-  pushedAt              DateTime?                 @map("pushed_at") @db.Timestamptz(3)
-  pushedByUserId        String?                   @map("pushed_by_user_id") @db.Uuid
-  department            Department                @relation(fields: [departmentId], references: [id], onDelete: Restrict)
-  customer              Customer                  @relation(fields: [customerId, departmentId], references: [id, departmentId], onDelete: Restrict, map: "leads_customer_department_fkey")
-  rightsHolder          RightsHolder              @relation(fields: [rightsHolderId, departmentId], references: [id, departmentId], onDelete: Restrict, map: "leads_rights_holder_department_fkey")
-  responsibleMembership DepartmentMembership      @relation("LeadResponsibleMembership", fields: [responsibleUserId, departmentId], references: [userId, departmentId], onDelete: Restrict, map: "leads_responsible_department_fkey")
-  team                  Team?                     @relation(fields: [teamId, departmentId], references: [id, departmentId], onDelete: Restrict, onUpdate: Restrict, map: "leads_team_department_fkey")
-  pushedBy              UserAccount?              @relation("LeadPushedBy", fields: [pushedByUserId], references: [id], onDelete: Restrict)
-  products              LeadProduct[]
-  infringements         LeadInfringement[]
-  commandReceipts       LeadCommandReceipt[]
-  reviewDecision        LeadReviewDecision?
-  clientReviewReceipts  ClientLeadReviewReceipt[]
-  createdAt             DateTime                  @default(now()) @map("created_at") @db.Timestamptz(3)
-  updatedAt             DateTime                  @updatedAt @map("updated_at") @db.Timestamptz(3)
+  id                     String                      @id @default(uuid()) @db.Uuid
+  departmentId           String                      @map("department_id") @db.Uuid
+  businessNo             String                      @unique @map("business_no") @db.VarChar(100)
+  customerId             String                      @map("customer_id") @db.Uuid
+  rightsHolderId         String                      @map("rights_holder_id") @db.Uuid
+  responsibleUserId      String                      @map("responsible_user_id") @db.Uuid
+  teamId                 String?                     @map("team_id") @db.Uuid
+  status                 LeadStatus                  @default(WAITING_PUSH)
+  caseType               LeadCaseType                @map("case_type")
+  source                 LeadSource
+  platform               LeadPlatform
+  foundAt                DateTime                    @map("found_at") @db.Timestamptz(3)
+  shopName               String                      @map("shop_name") @db.VarChar(200)
+  shopExternalId         String?                     @map("shop_external_id") @db.VarChar(100)
+  needDisclose           Boolean                     @map("need_disclose")
+  remark                 String?
+  creationChannel        LeadCreationChannel         @default(MANUAL) @map("creation_channel")
+  externalSourceRef      String?                     @map("external_source_ref") @db.VarChar(100)
+  version                Int                         @default(1)
+  pushedAt               DateTime?                   @map("pushed_at") @db.Timestamptz(3)
+  pushedByUserId         String?                     @map("pushed_by_user_id") @db.Uuid
+  activeReviewDecisionId String?                     @unique(map: "leads_active_review_decision_id_key") @map("active_review_decision_id") @db.Uuid
+  department             Department                  @relation(fields: [departmentId], references: [id], onDelete: Restrict)
+  customer               Customer                    @relation(fields: [customerId, departmentId], references: [id, departmentId], onDelete: Restrict, map: "leads_customer_department_fkey")
+  rightsHolder           RightsHolder                @relation(fields: [rightsHolderId, departmentId], references: [id, departmentId], onDelete: Restrict, map: "leads_rights_holder_department_fkey")
+  responsibleMembership  DepartmentMembership        @relation("LeadResponsibleMembership", fields: [responsibleUserId, departmentId], references: [userId, departmentId], onDelete: Restrict, map: "leads_responsible_department_fkey")
+  team                   Team?                       @relation(fields: [teamId, departmentId], references: [id, departmentId], onDelete: Restrict, onUpdate: Restrict, map: "leads_team_department_fkey")
+  pushedBy               UserAccount?                @relation("LeadPushedBy", fields: [pushedByUserId], references: [id], onDelete: Restrict)
+  products               LeadProduct[]
+  infringements          LeadInfringement[]
+  commandReceipts        LeadCommandReceipt[]
+  reviewDecision         LeadReviewDecision?         @relation("LeadActiveReviewDecision", fields: [activeReviewDecisionId, id, customerId, departmentId], references: [id, leadId, customerId, departmentId], onDelete: Restrict, onUpdate: Restrict, map: "leads_active_review_decision_identity_fkey")
+  reviewDecisions        LeadReviewDecision[]        @relation("LeadReviewHistory")
+  withdrawalApplications LeadWithdrawalApplication[]
+  clientReviewReceipts   ClientLeadReviewReceipt[]
+  createdAt              DateTime                    @default(now()) @map("created_at") @db.Timestamptz(3)
+  updatedAt              DateTime                    @updatedAt @map("updated_at") @db.Timestamptz(3)
 
   @@unique([id, departmentId])
   @@unique([id, customerId, departmentId], map: "leads_review_identity_key")
+  @@unique([activeReviewDecisionId, id, customerId, departmentId], map: "leads_active_review_decision_identity_key")
   @@unique([departmentId, creationChannel, externalSourceRef])
   @@index([departmentId, status, updatedAt, id])
   @@index([responsibleUserId])
@@ -661,32 +669,84 @@ model Lead {
 }
 
 model LeadReviewDecision {
-  id                          String                   @id @default(uuid()) @db.Uuid
-  departmentId                String                   @map("department_id") @db.Uuid
-  leadId                      String                   @unique @map("lead_id") @db.Uuid
-  customerId                  String                   @map("customer_id") @db.Uuid
-  reviewerUserId              String                   @map("reviewer_user_id") @db.Uuid
-  customerAccountBindingId    String                   @map("customer_account_binding_id") @db.Uuid
-  reviewerDisplayNameSnapshot String                   @map("reviewer_display_name_snapshot")
+  id                          String                     @id @default(uuid()) @db.Uuid
+  departmentId                String                     @map("department_id") @db.Uuid
+  leadId                      String                     @map("lead_id") @db.Uuid
+  customerId                  String                     @map("customer_id") @db.Uuid
+  reviewerUserId              String                     @map("reviewer_user_id") @db.Uuid
+  customerAccountBindingId    String                     @map("customer_account_binding_id") @db.Uuid
+  reviewerDisplayNameSnapshot String                     @map("reviewer_display_name_snapshot")
   result                      LeadReviewResult
-  reason                      String?                  @db.Text
-  archiveType                 LeadArchiveType?         @map("archive_type")
-  archivedAt                  DateTime?                @map("archived_at") @db.Timestamptz(3)
-  decidedAt                   DateTime                 @default(now()) @map("decided_at") @db.Timestamptz(3)
-  fromVersion                 Int                      @map("from_version")
-  toVersion                   Int                      @map("to_version")
-  department                  Department               @relation(fields: [departmentId], references: [id], onDelete: Restrict)
-  lead                        Lead                     @relation(fields: [leadId, customerId, departmentId], references: [id, customerId, departmentId], onDelete: Restrict, onUpdate: Restrict, map: "lead_review_decisions_lead_customer_department_fkey")
-  customer                    Customer                 @relation(fields: [customerId, departmentId], references: [id, departmentId], onDelete: Restrict, map: "lead_review_decisions_customer_department_fkey")
-  reviewer                    UserAccount              @relation("LeadReviewDecisionReviewer", fields: [reviewerUserId], references: [id], onDelete: Restrict)
-  customerAccountBinding      CustomerAccountBinding   @relation(fields: [customerAccountBindingId, reviewerUserId, customerId, departmentId], references: [id, userId, customerId, departmentId], onDelete: Restrict, onUpdate: Restrict, map: "lead_review_decisions_binding_reviewer_customer_department_fkey")
+  reason                      String?                    @db.Text
+  archiveType                 LeadArchiveType?           @map("archive_type")
+  archivedAt                  DateTime?                  @map("archived_at") @db.Timestamptz(3)
+  decidedAt                   DateTime                   @default(now()) @map("decided_at") @db.Timestamptz(3)
+  fromVersion                 Int                        @map("from_version")
+  toVersion                   Int                        @map("to_version")
+  department                  Department                 @relation(fields: [departmentId], references: [id], onDelete: Restrict)
+  lead                        Lead                       @relation("LeadReviewHistory", fields: [leadId, customerId, departmentId], references: [id, customerId, departmentId], onDelete: Restrict, onUpdate: Restrict, map: "lead_review_decisions_lead_customer_department_fkey")
+  activeForLead               Lead?                      @relation("LeadActiveReviewDecision")
+  customer                    Customer                   @relation(fields: [customerId, departmentId], references: [id, departmentId], onDelete: Restrict, map: "lead_review_decisions_customer_department_fkey")
+  reviewer                    UserAccount                @relation("LeadReviewDecisionReviewer", fields: [reviewerUserId], references: [id], onDelete: Restrict)
+  customerAccountBinding      CustomerAccountBinding     @relation(fields: [customerAccountBindingId, reviewerUserId, customerId, departmentId], references: [id, userId, customerId, departmentId], onDelete: Restrict, onUpdate: Restrict, map: "lead_review_decisions_binding_reviewer_customer_department_fkey")
   receipt                     ClientLeadReviewReceipt?
+  withdrawalApplication       LeadWithdrawalApplication?
 
-  @@unique([leadId, departmentId])
-  @@unique([leadId, customerId, departmentId], map: "lead_review_decisions_lead_identity_key")
+  @@unique([leadId, fromVersion], map: "lead_review_decisions_lead_id_from_version_key")
+  @@unique([id, leadId, customerId, departmentId], map: "lead_review_decisions_active_identity_key")
   @@unique([id, departmentId, leadId, reviewerUserId, customerAccountBindingId, toVersion], map: "lead_review_decisions_receipt_identity_key")
   @@index([departmentId, customerId, decidedAt])
   @@map("lead_review_decisions")
+}
+
+model LeadWithdrawalApplication {
+  id                  String                      @id @default(uuid()) @db.Uuid
+  originalDecisionId  String                      @unique(map: "lead_withdrawal_applications_original_decision_id_key") @map("original_decision_id") @db.Uuid
+  leadId              String                      @map("lead_id") @db.Uuid
+  customerId          String                      @map("customer_id") @db.Uuid
+  departmentId        String                      @map("department_id") @db.Uuid
+  applicantUserId     String                      @map("applicant_user_id") @db.Uuid
+  reason              String                      @db.Text
+  appliedAt           DateTime                    @default(now()) @map("applied_at") @db.Timestamptz(3)
+  fromVersion         Int                         @map("from_version")
+  toVersion           Int                         @map("to_version")
+  idempotencyKey      String                      @map("idempotency_key") @db.VarChar(128)
+  requestFingerprint  String                      @map("request_fingerprint") @db.Char(64)
+  resultSnapshot      Json                        @map("result_snapshot")
+  lead                Lead                        @relation(fields: [leadId, customerId, departmentId], references: [id, customerId, departmentId], onDelete: Restrict, onUpdate: Restrict, map: "lead_withdrawal_applications_lead_identity_fkey")
+  originalDecision    LeadReviewDecision          @relation(fields: [originalDecisionId, leadId, customerId, departmentId], references: [id, leadId, customerId, departmentId], onDelete: Restrict, onUpdate: Restrict, map: "lead_withdrawal_applications_decision_identity_fkey")
+  applicantMembership DepartmentMembership        @relation(fields: [applicantUserId, departmentId], references: [userId, departmentId], onDelete: Restrict, onUpdate: Restrict, map: "lead_withdrawal_applications_applicant_membership_fkey")
+  confirmation        LeadWithdrawalConfirmation?
+
+  @@unique([id, originalDecisionId, leadId, customerId, departmentId], map: "lead_withdrawal_applications_identity_key")
+  @@unique([originalDecisionId, leadId, customerId, departmentId], map: "lead_withdrawal_applications_decision_identity_key")
+  @@unique([departmentId, applicantUserId, idempotencyKey], map: "lead_withdrawal_applications_department_actor_key")
+  @@index([leadId, fromVersion], map: "lead_withdrawal_applications_lead_version_idx")
+  @@map("lead_withdrawal_applications")
+}
+
+model LeadWithdrawalConfirmation {
+  id                       String                    @id @default(uuid()) @db.Uuid
+  applicationId            String                    @unique(map: "lead_withdrawal_confirmations_application_id_key") @map("application_id") @db.Uuid
+  originalDecisionId       String                    @map("original_decision_id") @db.Uuid
+  leadId                   String                    @map("lead_id") @db.Uuid
+  customerId               String                    @map("customer_id") @db.Uuid
+  departmentId             String                    @map("department_id") @db.Uuid
+  actorUserId              String                    @map("actor_user_id") @db.Uuid
+  customerAccountBindingId String                    @map("customer_account_binding_id") @db.Uuid
+  confirmedAt              DateTime                  @default(now()) @map("confirmed_at") @db.Timestamptz(3)
+  fromVersion              Int                       @map("from_version")
+  toVersion                Int                       @map("to_version")
+  idempotencyKey           String                    @map("idempotency_key") @db.VarChar(128)
+  requestFingerprint       String                    @map("request_fingerprint") @db.Char(64)
+  resultSnapshot           Json                      @map("result_snapshot")
+  application              LeadWithdrawalApplication @relation(fields: [applicationId, originalDecisionId, leadId, customerId, departmentId], references: [id, originalDecisionId, leadId, customerId, departmentId], onDelete: Restrict, onUpdate: Restrict, map: "lead_withdrawal_confirmations_application_identity_fkey")
+  customerAccountBinding   CustomerAccountBinding    @relation(fields: [customerAccountBindingId, actorUserId, customerId, departmentId], references: [id, userId, customerId, departmentId], onDelete: Restrict, onUpdate: Restrict, map: "lead_withdrawal_confirmations_binding_identity_fkey")
+
+  @@unique([departmentId, actorUserId, idempotencyKey], map: "lead_withdrawal_confirmations_department_actor_key")
+  @@unique([applicationId, originalDecisionId, leadId, customerId, departmentId], map: "lead_withdrawal_confirmations_application_identity_key")
+  @@index([leadId, fromVersion], map: "lead_withdrawal_confirmations_lead_version_idx")
+  @@map("lead_withdrawal_confirmations")
 }
 
 model ClientLeadReviewReceipt {

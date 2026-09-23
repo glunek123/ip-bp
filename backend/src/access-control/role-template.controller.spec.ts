@@ -120,8 +120,15 @@ describe('RoleTemplateController', () => {
       { properties?: { action?: { enum?: string[] } } } | undefined;
 
     expect(actionSchema?.properties?.action?.enum).toContain('LEAD_PUSH');
+    expect(actionSchema?.properties?.action?.enum).toContain(
+      'LEAD_WITHDRAW_APPLY',
+    );
     expect(actionSchema?.properties?.action?.enum).toEqual(
-      expect.not.arrayContaining(['CLIENT_LEAD_READ', 'CLIENT_LEAD_REVIEW']),
+      expect.not.arrayContaining([
+        'CLIENT_LEAD_READ',
+        'CLIENT_LEAD_REVIEW',
+        'CLIENT_LEAD_WITHDRAW_CONFIRM',
+      ]),
     );
   });
 
