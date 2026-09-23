@@ -19,7 +19,7 @@
 - Use only forward migrations. Database tests may use only the isolated database selected by `backend/.env.test`; do not reset development, production or persistent-volume data.
 - Reuse current authentication, CSRF, request, material storage, shared visual components and command error conventions. Add no dependency.
 - Follow SD-38: explain inputs and consequences before action, expose only real choices, and keep consequential confirmation explicit.
-- Use task-bounded subagents for independently testable implementation tasks and a separate `gpt-5.6-sol` reviewer for the required independent final review; do not use `gpt-6-astra` above `high`.
+- Use task-bounded subagents for independently testable implementation tasks. Use `gpt-6-sol` for independent review, architecture, high-risk commands, concurrency and migration review; use `gpt-6-luna` for clearly bounded test runs, failure-log analysis, simple spec additions, API type synchronization, documentation and gap checks.
 - Do not push, merge, publish, release or access production systems.
 
 ---
@@ -1005,7 +1005,7 @@ Expected: PASS. Fix failures and rerun only affected focused tests until the tre
 
 - [ ] **Step 2: Perform the required independent review**
 
-Freeze the candidate commit/tree, then use one independent `gpt-5.6-sol` reviewer against the design commit `a9c87cbe36a31be39ae0184d40e414ae2af353bc` and current candidate. Review specifically for enterprise isolation, revocation timing, receipt replay ordering, serializable races, immutable-event enforcement, response redaction, post-review attachment scope and accidental LD-004/005/006 implementation.
+Freeze the candidate commit/tree, then use one independent `gpt-6-sol` reviewer against the design commit `a9c87cbe36a31be39ae0184d40e414ae2af353bc` and current candidate. Review specifically for enterprise isolation, revocation timing, receipt replay ordering, serializable races, immutable-event enforcement, response redaction, post-review attachment scope and accidental LD-004/005/006 implementation.
 
 Expected: no unresolved Critical or Important findings. Apply valid fixes, add regression tests, and repeat the focused checks affected by each fix.
 
