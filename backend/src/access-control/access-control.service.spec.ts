@@ -132,6 +132,7 @@ describe('AccessControlService', () => {
         active: true,
         authorizationRevision: 4,
         membershipTeamId: 'team-a',
+        membershipTeamActive: true,
         grants: [
           {
             action: 'customer.create-draft',
@@ -280,6 +281,8 @@ describe('AccessControlService', () => {
       createStore({
         active: true,
         authorizationRevision: 4,
+        membershipTeamId: 'team-a',
+        membershipTeamActive: true,
         grants: [{ action: 'lead.read', scope: 'team', teamId: 'team-a' }],
       }),
     );
@@ -302,6 +305,58 @@ describe('AccessControlService', () => {
     ).resolves.toEqual({
       departmentId: 'department-a',
       responsibleUserId: 'user-a',
+    });
+  });
+
+  it('revokes TEAM-scoped withdrawal authorization and capability when the membership Team is inactive', async () => {
+    const service = new AccessControlService(
+      createStore({
+        active: true,
+        authorizationRevision: 4,
+        membershipTeamId: 'team-a',
+        membershipTeamActive: false,
+        grants: [
+          { action: 'lead.withdraw.apply', scope: 'team', teamId: 'team-a' },
+        ],
+      }),
+    );
+    const facts = {
+      departmentId: actor.departmentId,
+      responsibleUserId: 'user-b',
+      teamId: 'team-a',
+    };
+    await expect(
+      service.authorizeLead(actor, 'lead.withdraw.apply', facts),
+    ).rejects.toMatchObject({ response: { code: 'LEAD_ACTION_FORBIDDEN' } });
+    await expect(
+      service.buildLeadScope(actor, 'lead.withdraw.apply'),
+    ).rejects.toMatchObject({ response: { code: 'LEAD_ACTION_FORBIDDEN' } });
+  });
+
+  it('keeps DEPARTMENT and SELF Lead grants effective when the membership Team is inactive', async () => {
+    const service = new AccessControlService(
+      createStore({
+        active: true,
+        authorizationRevision: 4,
+        membershipTeamId: 'team-a',
+        membershipTeamActive: false,
+        grants: [
+          { action: 'lead.withdraw.apply', scope: 'department' },
+          { action: 'lead.read', scope: 'self' },
+          { action: 'lead.read', scope: 'team', teamId: 'team-a' },
+        ],
+      }),
+    );
+    await expect(
+      service.authorizeLead(actor, 'lead.withdraw.apply', {
+        departmentId: actor.departmentId,
+        responsibleUserId: 'user-b',
+        teamId: 'team-a',
+      }),
+    ).resolves.toBeUndefined();
+    await expect(service.buildLeadScope(actor, 'lead.read')).resolves.toEqual({
+      departmentId: actor.departmentId,
+      responsibleUserId: actor.userId,
     });
   });
 

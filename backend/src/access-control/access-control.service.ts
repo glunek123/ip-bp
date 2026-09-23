@@ -325,7 +325,15 @@ export class AccessControlService {
     ) {
       throw this.forbidden();
     }
-    return snapshot;
+    return {
+      ...snapshot,
+      grants: snapshot.grants.filter(
+        (grant) =>
+          grant.scope !== 'team' ||
+          (snapshot.membershipTeamActive === true &&
+            snapshot.membershipTeamId === grant.teamId),
+      ),
+    };
   }
 
   private forbidden(): ForbiddenException {

@@ -246,6 +246,50 @@ describe('LeadService', () => {
     });
   });
 
+  it('hides withdrawApply when the only matching TEAM Grant belongs to an inactive membership Team', async () => {
+    const base = createCreateFixture().createdLead;
+    const lead = {
+      ...base,
+      status: 'ARCHIVED',
+      activeReviewDecisionId: 'decision-1',
+      teamId: 'team-a',
+      reviewDecision: {
+        result: 'NO_INFRINGEMENT',
+        archiveType: 'NO_INFRINGEMENT',
+        reason: '不侵权',
+        archivedAt: new Date(),
+        decidedAt: new Date(),
+        reviewerDisplayNameSnapshot: '审核人',
+      },
+      reviewDecisions: [],
+      withdrawalApplications: [],
+    };
+    const access = new AccessControlService({
+      loadSnapshot: jest.fn().mockResolvedValue({
+        active: true,
+        authorizationRevision: actor.authorizationRevision,
+        membershipTeamId: 'team-a',
+        membershipTeamActive: false,
+        grants: [
+          { action: 'lead.read', scope: 'department' },
+          { action: 'lead.withdraw.apply', scope: 'team', teamId: 'team-a' },
+        ],
+      }),
+    });
+    const service = new LeadService(
+      {
+        lead: { findFirst: jest.fn().mockResolvedValue(lead) },
+      } as unknown as DatabaseService,
+      access,
+      {
+        listCurrentReferenceVersionIds: jest.fn().mockResolvedValue([]),
+      } as unknown as MaterialService,
+    );
+    await expect(service.get(actor, lead.id)).resolves.toMatchObject({
+      capabilities: { withdrawApply: false },
+    });
+  });
+
   it('exposes only the approved controlled dictionaries', () => {
     expect(CASE_TYPE_OPTIONS.map(({ value }) => value)).toEqual([
       'CIVIL',
