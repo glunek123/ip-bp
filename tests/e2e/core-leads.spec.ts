@@ -1518,6 +1518,8 @@ test('core lead migrations preserve legacy facts and roll back failed phases', a
   });
   expect(result.reviewUpgrade).toEqual({
     rowsPreserved: true,
+    leadFactsPreserved: true,
+    receiptReplayable: true,
     decisionCount: 1,
     receiptCount: 1,
   });

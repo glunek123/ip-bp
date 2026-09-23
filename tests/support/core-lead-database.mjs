@@ -1312,6 +1312,15 @@ export async function verifyCoreLeadMigration() {
       ],
     );
     await client.query(
+      `UPDATE customers SET profile_status='ADMITTED',customer_type='ENTERPRISE',
+         identity_type='BUSINESS_LICENSE',identity_number='UPGRADE-REVIEW-LICENSE',
+         normalized_identity_number='UPGRADE-REVIEW-LICENSE',
+         admission_contact_name='升级审核联系人',admission_contact_phone='13800000000',
+         identity_validity_mode='LONG_TERM',admitted_at=NOW()
+       WHERE id=$1`,
+      [reviewIds.customer],
+    );
+    await client.query(
       'INSERT INTO rights_holders(id,name,department_id,updated_at) VALUES ($1,$2,$3,NOW())',
       [reviewIds.holder, '升级审核权利人', reviewIds.department],
     );
@@ -1326,8 +1335,8 @@ export async function verifyCoreLeadMigration() {
     );
     await client.query('COMMIT');
     await client.query(
-      `INSERT INTO leads(id,department_id,business_no,customer_id,rights_holder_id,responsible_user_id,case_type,source,platform,found_at,shop_name,need_disclose,updated_at)
-       VALUES ($1,$2,$3,$4,$5,$6,'CIVIL','ONLINE','TAOBAO',NOW(),'升级审核店铺',false,NOW())`,
+      `INSERT INTO leads(id,department_id,business_no,customer_id,rights_holder_id,responsible_user_id,status,version,case_type,source,platform,found_at,shop_name,need_disclose,pushed_at,pushed_by_user_id,updated_at)
+       VALUES ($1,$2,$3,$4,$5,$6,'WAITING_EVIDENCE_DECISION',2,'CIVIL','ONLINE','TAOBAO',NOW(),'升级审核店铺',false,NOW(),$6,NOW())`,
       [
         reviewIds.lead,
         reviewIds.department,
@@ -1337,9 +1346,11 @@ export async function verifyCoreLeadMigration() {
         reviewIds.operator,
       ],
     );
+    const reviewDecisionAt = '2026-09-22T12:34:56.000Z';
+    const reviewBusinessNo = `REVIEW-UPGRADE-${probe}`;
     await client.query(
-      `INSERT INTO lead_review_decisions(id,department_id,lead_id,customer_id,reviewer_user_id,customer_account_binding_id,reviewer_display_name_snapshot,result,from_version,to_version)
-       VALUES ($1,$2,$3,$4,$5,$6,'升级前审核人','INFRINGEMENT',1,2)`,
+      `INSERT INTO lead_review_decisions(id,department_id,lead_id,customer_id,reviewer_user_id,customer_account_binding_id,reviewer_display_name_snapshot,result,from_version,to_version,decided_at)
+       VALUES ($1,$2,$3,$4,$5,$6,'升级前审核人','INFRINGEMENT',1,2,$7)`,
       [
         reviewIds.decision,
         reviewIds.department,
@@ -1347,11 +1358,23 @@ export async function verifyCoreLeadMigration() {
         reviewIds.customer,
         reviewIds.reviewer,
         reviewIds.binding,
+        reviewDecisionAt,
       ],
     );
+    const reviewResultSnapshot = {
+      id: reviewIds.lead,
+      businessNo: reviewBusinessNo,
+      status: 'WAITING_EVIDENCE_DECISION',
+      version: 2,
+      reviewDecision: {
+        result: 'INFRINGEMENT',
+        reviewerDisplayName: '升级前审核人',
+        decidedAt: reviewDecisionAt,
+      },
+    };
     await client.query(
       `INSERT INTO client_lead_review_receipts(id,department_id,actor_user_id,customer_account_binding_id,action,idempotency_key,request_fingerprint,result_lead_id,result_lead_version,review_decision_id,result_snapshot)
-       VALUES ($1,$2,$3,$4,'client.lead.review','upgrade-key',$5,$6,2,$7,'{"version":2}'::jsonb)`,
+       VALUES ($1,$2,$3,$4,'client.lead.review','upgrade-key',$5,$6,2,$7,$8::jsonb)`,
       [
         reviewIds.receipt,
         reviewIds.department,
@@ -1360,15 +1383,20 @@ export async function verifyCoreLeadMigration() {
         'a'.repeat(64),
         reviewIds.lead,
         reviewIds.decision,
+        JSON.stringify(reviewResultSnapshot),
       ],
     );
     const reviewFactsBefore = (
       await client.query(
-        `SELECT d.id AS decision_id,d.lead_id,d.customer_id,d.reviewer_user_id,d.customer_account_binding_id,
+        `SELECT l.business_no,l.status AS lead_status,l.version AS lead_version,
+                l.pushed_at,l.pushed_by_user_id,
+                d.id AS decision_id,d.lead_id,d.customer_id,d.reviewer_user_id,d.customer_account_binding_id,
                 d.reviewer_display_name_snapshot,d.result,d.decided_at,d.from_version,d.to_version,
                 r.id AS receipt_id,r.actor_user_id,r.idempotency_key,r.request_fingerprint,
                 r.result_lead_id,r.result_lead_version,r.review_decision_id,r.result_snapshot,r.created_at
-         FROM lead_review_decisions d JOIN client_lead_review_receipts r ON r.review_decision_id=d.id
+         FROM lead_review_decisions d
+         JOIN client_lead_review_receipts r ON r.review_decision_id=d.id
+         JOIN leads l ON l.id=d.lead_id
          WHERE d.id=$1`,
         [reviewIds.decision],
       )
@@ -1376,11 +1404,15 @@ export async function verifyCoreLeadMigration() {
     await apply([reviewIntegrityTarget]);
     const reviewFactsAfter = (
       await client.query(
-        `SELECT d.id AS decision_id,d.lead_id,d.customer_id,d.reviewer_user_id,d.customer_account_binding_id,
+        `SELECT l.business_no,l.status AS lead_status,l.version AS lead_version,
+                l.pushed_at,l.pushed_by_user_id,
+                d.id AS decision_id,d.lead_id,d.customer_id,d.reviewer_user_id,d.customer_account_binding_id,
                 d.reviewer_display_name_snapshot,d.result,d.decided_at,d.from_version,d.to_version,
                 r.id AS receipt_id,r.actor_user_id,r.idempotency_key,r.request_fingerprint,
                 r.result_lead_id,r.result_lead_version,r.review_decision_id,r.result_snapshot,r.created_at
-         FROM lead_review_decisions d JOIN client_lead_review_receipts r ON r.review_decision_id=d.id
+         FROM lead_review_decisions d
+         JOIN client_lead_review_receipts r ON r.review_decision_id=d.id
+         JOIN leads l ON l.id=d.lead_id
          WHERE d.id=$1`,
         [reviewIds.decision],
       )
@@ -1388,6 +1420,34 @@ export async function verifyCoreLeadMigration() {
     const reviewUpgrade = {
       rowsPreserved:
         JSON.stringify(reviewFactsAfter) === JSON.stringify(reviewFactsBefore),
+      leadFactsPreserved:
+        reviewFactsBefore.lead_status === 'WAITING_EVIDENCE_DECISION' &&
+        reviewFactsBefore.lead_version === 2 &&
+        reviewFactsBefore.pushed_at !== null &&
+        reviewFactsBefore.pushed_by_user_id === reviewIds.operator &&
+        reviewFactsAfter.lead_status === reviewFactsBefore.lead_status &&
+        reviewFactsAfter.lead_version === reviewFactsBefore.lead_version &&
+        reviewFactsAfter.pushed_at?.getTime() ===
+          reviewFactsBefore.pushed_at?.getTime() &&
+        reviewFactsAfter.pushed_by_user_id ===
+          reviewFactsBefore.pushed_by_user_id,
+      receiptReplayable: (() => {
+        const snapshot = reviewFactsAfter.result_snapshot;
+        const decision = snapshot?.reviewDecision;
+        return (
+          Object.keys(snapshot ?? {}).length === 5 &&
+          snapshot.id === reviewIds.lead &&
+          snapshot.businessNo === reviewFactsAfter.business_no &&
+          snapshot.status === 'WAITING_EVIDENCE_DECISION' &&
+          snapshot.version === 2 &&
+          decision?.result === 'INFRINGEMENT' &&
+          decision.reviewerDisplayName ===
+            reviewFactsAfter.reviewer_display_name_snapshot &&
+          decision.decidedAt === reviewFactsAfter.decided_at.toISOString() &&
+          reviewFactsAfter.result_lead_id === reviewIds.lead &&
+          reviewFactsAfter.result_lead_version === snapshot.version
+        );
+      })(),
       decisionCount: Number(
         (await client.query('SELECT COUNT(*) FROM lead_review_decisions'))
           .rows[0].count,
