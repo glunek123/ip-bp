@@ -4,7 +4,7 @@
 
 固定已验证候选`500e7cd4c5f4306a6ae744a4ac4207c783a84053`、tree`ef4f199a9867c1a80c4a50b85d68d11d778298ca`通过正式Level 3门禁。`pnpm verify`通过严格上下文检查、Spec（54 REQ／55 AC／11 BQ／40 SD）、架构（8模块／28模型）、类型、Lint、格式、工具71项、后端Jest 589项、前端Vitest 309项及前后端生产构建；`pnpm test:e2e:full`通过84/84真实隔离PostgreSQL／Chromium测试，覆盖空库及上一支持Schema迁移与失败回滚、跨企业拒绝、幂等重放与并发竞争、决定／回执故障原子回滚，以及运营推送→客户登录判定归档→客户端处理详情／截图和运营详情回看。独立Final Review为`ACCEPTED`，未关闭Critical／Important／Minor为0／0／0。
 
-本段证据仅绑定上述候选及tree；本次及后续文档收口会形成不同tree，不声称已在新tree重跑门禁。此完成态只涵盖CORE-LD-004，不包含CORE-LD-007撤回纠错；未推送、未合并、未发布、未执行生产迁移。
+随后仅有状态、路线图、线索Spec、验证记录和上下文快照变化。最终文档收口候选`42d270ae993de6ed9d8068887ed5df19568690f2`、tree`05f5ff12e267e7d864e33901dcec3700210f0f19`再次通过完整`pnpm verify`（工具71项、后端589项、前端309项，含严格上下文、Spec、架构、类型、Lint、格式及双端构建）和`pnpm test:e2e:full`（独立测试库／Chromium 84/84）。此处补记只绑定`42d270a`的实际结果；本次补记产生的新文档tree不冒称已重跑。完成态仅涵盖CORE-LD-004，不包含CORE-LD-007撤回纠错；未发布或执行生产迁移。
 
 ## CORE-LD-003客户确认侵权并进入待确认（2026-09-23）
 

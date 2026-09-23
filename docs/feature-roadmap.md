@@ -1,6 +1,6 @@
 # 功能开发路线图
 
-更新日期：2026-09-23。当前代码审计基线：`CORE-LD-004@500e7cd4c5f4306a6ae744a4ac4207c783a84053`，tree `ef4f199a9867c1a80c4a50b85d68d11d778298ca`；SD-37已把后续交付重心调整为核心业务主线，SD-38固定快速上手验收原则。CORE-LD-004已通过Level 3门禁并完成状态收口；CORE-LD-007为唯一Current，CORE-LD-005为Next。
+更新日期：2026-09-23。当前已验证候选：`CORE-LD-004@42d270ae993de6ed9d8068887ed5df19568690f2`，tree `05f5ff12e267e7d864e33901dcec3700210f0f19`；SD-37已把后续交付重心调整为核心业务主线，SD-38固定快速上手验收原则。CORE-LD-004已通过Level 3门禁并完成状态收口；CORE-LD-007为唯一Current，CORE-LD-005为Next。
 
 本文只回答“已经做到哪里、下一步做什么、之后按什么依赖顺序做”。详细业务规则仍以 [`docs/spec/`](spec/) 为准，核心主线的编码级字段、附件与存储边界以[核心业务字段、附件与存储契约](superpowers/specs/2026-09-21-core-flow-field-material-contract.md)为准，技术方案以设计文档为准，当前切片的技术任务以实施计划为准，实际验证结果以 [`docs/project-status.md`](project-status.md) 和 [`docs/spec/v0.1/VALIDATION.md`](spec/v0.1/VALIDATION.md) 为准。
 
