@@ -1,6 +1,6 @@
 import { createRequire } from 'node:module';
 import { resolve } from 'node:path';
-import { randomUUID } from 'node:crypto';
+import { createHash, randomUUID } from 'node:crypto';
 import { mkdir, readFile, readdir, rm } from 'node:fs/promises';
 import { setImmediate as waitForImmediate } from 'node:timers/promises';
 import { validateIsolatedTestDatabaseUrl } from '../../scripts/test-environment.mjs';
@@ -1284,6 +1284,9 @@ export async function verifyCoreLeadMigration() {
         'receipt',
       ].map((key) => [key, randomUUID()]),
     );
+    const admittedAt = '2026-09-21T09:00:00.000Z';
+    const pushedAt = '2026-09-22T09:00:00.000Z';
+    const reviewDecisionAt = '2026-09-22T12:34:56.000Z';
     await client.query('BEGIN');
     await client.query(
       'INSERT INTO departments(id,name,updated_at) VALUES ($1,$2,NOW())',
@@ -1316,9 +1319,9 @@ export async function verifyCoreLeadMigration() {
          identity_type='BUSINESS_LICENSE',identity_number='UPGRADE-REVIEW-LICENSE',
          normalized_identity_number='UPGRADE-REVIEW-LICENSE',
          admission_contact_name='升级审核联系人',admission_contact_phone='13800000000',
-         identity_validity_mode='LONG_TERM',admitted_at=NOW()
+         identity_validity_mode='LONG_TERM',admitted_at=$2
        WHERE id=$1`,
-      [reviewIds.customer],
+      [reviewIds.customer, admittedAt],
     );
     await client.query(
       'INSERT INTO rights_holders(id,name,department_id,updated_at) VALUES ($1,$2,$3,NOW())',
@@ -1336,7 +1339,7 @@ export async function verifyCoreLeadMigration() {
     await client.query('COMMIT');
     await client.query(
       `INSERT INTO leads(id,department_id,business_no,customer_id,rights_holder_id,responsible_user_id,status,version,case_type,source,platform,found_at,shop_name,need_disclose,pushed_at,pushed_by_user_id,updated_at)
-       VALUES ($1,$2,$3,$4,$5,$6,'WAITING_EVIDENCE_DECISION',2,'CIVIL','ONLINE','TAOBAO',NOW(),'升级审核店铺',false,NOW(),$6,NOW())`,
+       VALUES ($1,$2,$3,$4,$5,$6,'WAITING_EVIDENCE_DECISION',2,'CIVIL','ONLINE','TAOBAO',NOW(),'升级审核店铺',false,$7,$6,NOW())`,
       [
         reviewIds.lead,
         reviewIds.department,
@@ -1344,9 +1347,9 @@ export async function verifyCoreLeadMigration() {
         reviewIds.customer,
         reviewIds.holder,
         reviewIds.operator,
+        pushedAt,
       ],
     );
-    const reviewDecisionAt = '2026-09-22T12:34:56.000Z';
     const reviewBusinessNo = `REVIEW-UPGRADE-${probe}`;
     await client.query(
       `INSERT INTO lead_review_decisions(id,department_id,lead_id,customer_id,reviewer_user_id,customer_account_binding_id,reviewer_display_name_snapshot,result,from_version,to_version,decided_at)
@@ -1380,7 +1383,15 @@ export async function verifyCoreLeadMigration() {
         reviewIds.department,
         reviewIds.reviewer,
         reviewIds.binding,
-        'a'.repeat(64),
+        createHash('sha256')
+          .update(
+            JSON.stringify({
+              leadId: reviewIds.lead,
+              result: 'INFRINGEMENT',
+              expectedVersion: 1,
+            }),
+          )
+          .digest('hex'),
         reviewIds.lead,
         reviewIds.decision,
         JSON.stringify(reviewResultSnapshot),
@@ -1389,6 +1400,7 @@ export async function verifyCoreLeadMigration() {
     const reviewFactsBefore = (
       await client.query(
         `SELECT l.business_no,l.status AS lead_status,l.version AS lead_version,
+                c.admitted_at,
                 l.pushed_at,l.pushed_by_user_id,
                 d.id AS decision_id,d.lead_id,d.customer_id,d.reviewer_user_id,d.customer_account_binding_id,
                 d.reviewer_display_name_snapshot,d.result,d.decided_at,d.from_version,d.to_version,
@@ -1397,6 +1409,7 @@ export async function verifyCoreLeadMigration() {
          FROM lead_review_decisions d
          JOIN client_lead_review_receipts r ON r.review_decision_id=d.id
          JOIN leads l ON l.id=d.lead_id
+         JOIN customers c ON c.id=l.customer_id
          WHERE d.id=$1`,
         [reviewIds.decision],
       )
@@ -1405,6 +1418,7 @@ export async function verifyCoreLeadMigration() {
     const reviewFactsAfter = (
       await client.query(
         `SELECT l.business_no,l.status AS lead_status,l.version AS lead_version,
+                c.admitted_at,
                 l.pushed_at,l.pushed_by_user_id,
                 d.id AS decision_id,d.lead_id,d.customer_id,d.reviewer_user_id,d.customer_account_binding_id,
                 d.reviewer_display_name_snapshot,d.result,d.decided_at,d.from_version,d.to_version,
@@ -1413,6 +1427,7 @@ export async function verifyCoreLeadMigration() {
          FROM lead_review_decisions d
          JOIN client_lead_review_receipts r ON r.review_decision_id=d.id
          JOIN leads l ON l.id=d.lead_id
+         JOIN customers c ON c.id=l.customer_id
          WHERE d.id=$1`,
         [reviewIds.decision],
       )
@@ -1434,7 +1449,19 @@ export async function verifyCoreLeadMigration() {
       receiptReplayable: (() => {
         const snapshot = reviewFactsAfter.result_snapshot;
         const decision = snapshot?.reviewDecision;
+        const expectedFingerprint = createHash('sha256')
+          .update(
+            JSON.stringify({
+              leadId: reviewIds.lead,
+              result: 'INFRINGEMENT',
+              expectedVersion: 1,
+            }),
+          )
+          .digest('hex');
         return (
+          reviewFactsAfter.request_fingerprint === expectedFingerprint &&
+          reviewFactsAfter.admitted_at < reviewFactsAfter.pushed_at &&
+          reviewFactsAfter.pushed_at < reviewFactsAfter.decided_at &&
           Object.keys(snapshot ?? {}).length === 5 &&
           snapshot.id === reviewIds.lead &&
           snapshot.businessNo === reviewFactsAfter.business_no &&

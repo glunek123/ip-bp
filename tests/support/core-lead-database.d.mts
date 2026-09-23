@@ -133,6 +133,8 @@ export function verifyCoreLeadMigration(): Promise<{
   };
   reviewUpgrade: {
     rowsPreserved: boolean;
+    leadFactsPreserved: boolean;
+    receiptReplayable: boolean;
     decisionCount: number;
     receiptCount: number;
   };
