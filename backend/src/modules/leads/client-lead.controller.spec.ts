@@ -80,4 +80,38 @@ describe('ClientLeadController', () => {
       10,
     );
   });
+
+  it.each([undefined, '', '  ', 'x'.repeat(129)])(
+    'rejects invalid review key %p',
+    async (key) => {
+      const service = { review: jest.fn() } as unknown as ClientLeadService;
+      const controller = new ClientLeadController(service);
+      expect(() =>
+        controller.review({ userId: 'user-1' } as never, 'lead-1', key, {
+          result: 'INFRINGEMENT',
+          expectedVersion: 2,
+        }),
+      ).toThrow(BadRequestException);
+      expect(service.review).not.toHaveBeenCalled();
+    },
+  );
+
+  it('trims the review key and passes the command contract', async () => {
+    const response = { id: 'lead-1' };
+    const service = {
+      review: jest.fn().mockResolvedValue(response),
+    } as unknown as ClientLeadService;
+    const controller = new ClientLeadController(service);
+    const actor = { userId: 'user-1' } as never;
+    const input = { result: 'INFRINGEMENT', expectedVersion: 2 } as const;
+    await expect(
+      controller.review(actor, 'lead-1', ' review-key ', input),
+    ).resolves.toBe(response);
+    expect(service.review).toHaveBeenCalledWith(
+      actor,
+      'lead-1',
+      'review-key',
+      input,
+    );
+  });
 });

@@ -58,3 +58,13 @@ export class ClientLeadListResponseDto {
   @ApiProperty({ minimum: 1 }) page!: number;
   @ApiProperty({ minimum: 1, maximum: 100 }) pageSize!: number;
 }
+
+export class ClientLeadReviewResultDto {
+  @ApiProperty({ format: 'uuid' }) id!: string;
+  @ApiProperty() businessNo!: string;
+  @ApiProperty({ enum: ['WAITING_EVIDENCE_DECISION'] })
+  status!: 'WAITING_EVIDENCE_DECISION';
+  @ApiProperty({ minimum: 1 }) version!: number;
+  @ApiProperty({ type: () => ClientLeadReviewDecisionResponseDto })
+  reviewDecision!: ClientLeadReviewDecisionResponseDto;
+}

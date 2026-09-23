@@ -70,7 +70,11 @@ const processedLead = {
 function setup() {
   const database = {
     customerAccountBinding: {
-      findFirst: jest.fn().mockResolvedValue({ id: 'binding-1' }),
+      findFirst: jest.fn().mockResolvedValue({
+        id: 'binding-1',
+        customerId,
+        user: { displayName: '企业审核员' },
+      }),
     },
     lead: {
       findMany: jest.fn().mockResolvedValue([lead]),
@@ -278,6 +282,339 @@ describe('ClientLeadService', () => {
   });
 });
 
+function setupReview() {
+  const transaction = {
+    customerAccountBinding: {
+      findFirst: jest.fn().mockResolvedValue({
+        id: 'binding-1',
+        customerId,
+        user: { displayName: '企业审核员' },
+      }),
+    },
+    clientLeadReviewReceipt: {
+      findUnique: jest.fn().mockResolvedValue(null),
+      create: jest.fn().mockResolvedValue({}),
+    },
+    $queryRawUnsafe: jest.fn().mockResolvedValue([{ id: lead.id }]),
+    lead: {
+      findFirst: jest.fn().mockResolvedValue(lead),
+      updateMany: jest.fn().mockResolvedValue({ count: 1 }),
+    },
+    leadReviewDecision: {
+      create: jest.fn().mockImplementation(({ data }: { data: object }) =>
+        Promise.resolve({
+          id: 'decision-1',
+          decidedAt: new Date('2026-09-22T03:00:00.000Z'),
+          ...data,
+        }),
+      ),
+    },
+  };
+  const database = {
+    $transaction: jest
+      .fn()
+      .mockImplementation(
+        (fn: (client: typeof transaction) => Promise<unknown>) =>
+          fn(transaction),
+      ),
+    customerAccountBinding: {
+      findFirst: jest.fn().mockResolvedValue({
+        id: 'binding-1',
+        customerId,
+        user: { displayName: '企业审核员' },
+      }),
+    },
+    clientLeadReviewReceipt: { findUnique: jest.fn().mockResolvedValue(null) },
+  };
+  const service = new ClientLeadService(database as never, {} as never);
+  const review = () =>
+    service.review(actor, lead.id, 'review-key', {
+      result: 'INFRINGEMENT',
+      expectedVersion: 2,
+    });
+  return { transaction, database, service, review };
+}
+
+describe('ClientLeadService.review', () => {
+  it('atomically advances a pushed lead and records one decision and receipt', async () => {
+    const { review, transaction, database } = setupReview();
+    await expect(review()).resolves.toEqual({
+      id: lead.id,
+      businessNo: lead.businessNo,
+      status: 'WAITING_EVIDENCE_DECISION',
+      version: 3,
+      reviewDecision: {
+        result: 'INFRINGEMENT',
+        reviewerDisplayName: '企业审核员',
+        decidedAt: '2026-09-22T03:00:00.000Z',
+      },
+    });
+    expect(database.$transaction).toHaveBeenCalledWith(expect.any(Function), {
+      isolationLevel: 'Serializable',
+    });
+    expect(transaction.customerAccountBinding.findFirst).toHaveBeenCalledWith(
+      expect.objectContaining({
+        where: expect.objectContaining({
+          userId: actor.userId,
+          customerId,
+          departmentId: actor.departmentId,
+          active: true,
+          user: { active: true, accountType: 'CLIENT' },
+          customer: { profileStatus: 'ADMITTED' },
+        }),
+      }),
+    );
+    expect(transaction.lead.updateMany).toHaveBeenCalledWith({
+      where: {
+        id: lead.id,
+        departmentId: actor.departmentId,
+        customerId,
+        status: 'WAITING_REVIEW',
+        version: 2,
+        pushedAt: { not: null },
+        pushedByUserId: { not: null },
+      },
+      data: { status: 'WAITING_EVIDENCE_DECISION', version: { increment: 1 } },
+    });
+    expect(transaction.leadReviewDecision.create).toHaveBeenCalledWith({
+      data: expect.objectContaining({
+        leadId: lead.id,
+        customerId,
+        reviewerUserId: actor.userId,
+        result: 'INFRINGEMENT',
+        fromVersion: 2,
+        toVersion: 3,
+      }),
+    });
+    expect(transaction.clientLeadReviewReceipt.create).toHaveBeenCalledWith({
+      data: expect.objectContaining({
+        action: 'client.lead.review',
+        idempotencyKey: 'review-key',
+        resultLeadVersion: 3,
+      }),
+    });
+  });
+
+  it.each(['inactive', 'unbound', 'not-admitted'])(
+    'rejects %s client before mutation',
+    async () => {
+      const { review, transaction } = setupReview();
+      transaction.customerAccountBinding.findFirst.mockResolvedValue(null);
+      await expect(review()).rejects.toMatchObject({
+        response: { code: 'ACTION_FORBIDDEN' },
+      });
+      expect(transaction.lead.updateMany).not.toHaveBeenCalled();
+    },
+  );
+
+  it('rejects an internal actor before mutation', async () => {
+    const { service, transaction } = setupReview();
+    await expect(
+      service.review(
+        {
+          userId: actor.userId,
+          departmentId: actor.departmentId,
+          authorizationRevision: 1,
+        },
+        lead.id,
+        'review-key',
+        { result: 'INFRINGEMENT', expectedVersion: 2 },
+      ),
+    ).rejects.toMatchObject({ response: { code: 'ACTION_FORBIDDEN' } });
+    expect(transaction.lead.updateMany).not.toHaveBeenCalled();
+  });
+
+  it.each(['other enterprise', 'unpushed'])(
+    'hides %s lead',
+    async (scenario) => {
+      const { review, transaction } = setupReview();
+      if (scenario === 'other enterprise')
+        transaction.$queryRawUnsafe.mockResolvedValue([]);
+      else
+        transaction.lead.findFirst.mockResolvedValue({
+          ...lead,
+          pushedAt: null,
+        });
+      await expect(review()).rejects.toMatchObject({
+        response: { code: 'RESOURCE_NOT_FOUND' },
+      });
+      expect(transaction.lead.updateMany).not.toHaveBeenCalled();
+    },
+  );
+
+  it('rejects wrong state and stale version distinctly', async () => {
+    const { review, transaction } = setupReview();
+    transaction.lead.findFirst.mockResolvedValueOnce({
+      ...lead,
+      status: 'WAITING_EVIDENCE_DECISION',
+    });
+    await expect(review()).rejects.toMatchObject({
+      response: { code: 'INVALID_STATE' },
+    });
+    transaction.lead.findFirst.mockResolvedValueOnce({ ...lead, version: 3 });
+    await expect(review()).rejects.toMatchObject({
+      response: { code: 'VERSION_CONFLICT' },
+    });
+  });
+
+  it('replays the exact first snapshot before checking current state', async () => {
+    const { review, transaction } = setupReview();
+    const snapshot = {
+      id: lead.id,
+      businessNo: lead.businessNo,
+      status: 'WAITING_EVIDENCE_DECISION',
+      version: 3,
+      reviewDecision: {
+        result: 'INFRINGEMENT',
+        reviewerDisplayName: '企业审核员',
+        decidedAt: '2026-09-22T03:00:00.000Z',
+      },
+    };
+    await review();
+    const receiptData =
+      transaction.clientLeadReviewReceipt.create.mock.calls[0][0].data;
+    transaction.clientLeadReviewReceipt.findUnique.mockResolvedValue({
+      ...receiptData,
+      resultSnapshot: snapshot,
+    });
+    transaction.lead.findFirst.mockResolvedValue({
+      ...lead,
+      status: 'WAITING_EVIDENCE_DECISION',
+    });
+    transaction.lead.updateMany.mockClear();
+    transaction.leadReviewDecision.create.mockClear();
+    await expect(review()).resolves.toEqual(snapshot);
+    expect(transaction.lead.updateMany).not.toHaveBeenCalled();
+    expect(transaction.leadReviewDecision.create).not.toHaveBeenCalled();
+  });
+
+  it('rejects a reused key with another request', async () => {
+    const { review, transaction, service } = setupReview();
+    await review();
+    transaction.clientLeadReviewReceipt.findUnique.mockResolvedValue(
+      transaction.clientLeadReviewReceipt.create.mock.calls[0][0].data,
+    );
+    await expect(
+      service.review(actor, lead.id, 'review-key', {
+        result: 'INFRINGEMENT',
+        expectedVersion: 3,
+      }),
+    ).rejects.toMatchObject({ response: { code: 'IDEMPOTENCY_CONFLICT' } });
+  });
+
+  it.each(['decision', 'receipt'])(
+    'rejects failed %s creation inside the transaction',
+    async (failure) => {
+      const { review, transaction } = setupReview();
+      const error = new Error('write failed');
+      if (failure === 'decision')
+        transaction.leadReviewDecision.create.mockRejectedValue(error);
+      else transaction.clientLeadReviewReceipt.create.mockRejectedValue(error);
+      await expect(review()).rejects.toBe(error);
+      expect(transaction.lead.updateMany).toHaveBeenCalledTimes(1);
+    },
+  );
+
+  it('caps serialization retries at three and returns version conflict', async () => {
+    const { review, database } = setupReview();
+    database.$transaction.mockRejectedValue({ code: 'P2034' });
+    await expect(review()).rejects.toMatchObject({
+      response: { code: 'VERSION_CONFLICT' },
+    });
+    expect(database.$transaction).toHaveBeenCalledTimes(3);
+  });
+
+  it('revalidates binding before replaying a winning receipt after a unique conflict', async () => {
+    const { review, transaction, database } = setupReview();
+    await review();
+    const receiptData =
+      transaction.clientLeadReviewReceipt.create.mock.calls[0][0].data;
+    database.$transaction.mockRejectedValueOnce({ code: 'P2002' });
+    database.clientLeadReviewReceipt.findUnique.mockResolvedValue({
+      ...receiptData,
+    });
+    database.customerAccountBinding.findFirst.mockResolvedValue(null);
+    await expect(review()).rejects.toMatchObject({
+      response: { code: 'ACTION_FORBIDDEN' },
+    });
+  });
+
+  it('replays a winning receipt after a unique-key race', async () => {
+    const { review, transaction, database } = setupReview();
+    const first = await review();
+    const receiptData =
+      transaction.clientLeadReviewReceipt.create.mock.calls[0][0].data;
+    database.$transaction.mockRejectedValueOnce({ code: 'P2002' });
+    database.clientLeadReviewReceipt.findUnique.mockResolvedValue(receiptData);
+    await expect(review()).resolves.toEqual(first);
+    expect(database.customerAccountBinding.findFirst).toHaveBeenCalledTimes(1);
+  });
+
+  it('allows only one decision when a distinct key follows a completed review', async () => {
+    const { service, transaction } = setupReview();
+    let current = { ...lead };
+    transaction.lead.findFirst.mockImplementation(() =>
+      Promise.resolve(current),
+    );
+    transaction.lead.updateMany.mockImplementation(() => {
+      current = { ...current, status: 'WAITING_EVIDENCE_DECISION', version: 3 };
+      return Promise.resolve({ count: 1 });
+    });
+    const input = { result: 'INFRINGEMENT', expectedVersion: 2 } as const;
+    await service.review(actor, lead.id, 'key-a', input);
+    await expect(
+      service.review(actor, lead.id, 'key-b', input),
+    ).rejects.toMatchObject({ response: { code: 'INVALID_STATE' } });
+    expect(transaction.leadReviewDecision.create).toHaveBeenCalledTimes(1);
+    expect(transaction.clientLeadReviewReceipt.create).toHaveBeenCalledTimes(1);
+  });
+
+  it('does not create a second decision when a concurrent attempt retries after serialization failure', async () => {
+    const { service, transaction, database } = setupReview();
+    let current = { ...lead };
+    transaction.lead.findFirst.mockImplementation(() =>
+      Promise.resolve(current),
+    );
+    transaction.lead.updateMany.mockImplementation(() => {
+      current = { ...current, status: 'WAITING_EVIDENCE_DECISION', version: 3 };
+      return Promise.resolve({ count: 1 });
+    });
+    const runTransaction = database.$transaction.getMockImplementation() as (
+      fn: (client: typeof transaction) => Promise<unknown>,
+    ) => Promise<unknown>;
+    let releaseFirst!: () => void;
+    const firstFinished = new Promise<void>((resolve) => {
+      releaseFirst = resolve;
+    });
+    let calls = 0;
+    database.$transaction.mockImplementation(
+      async (fn: (client: typeof transaction) => Promise<unknown>) => {
+        const call = ++calls;
+        if (call === 2) {
+          await firstFinished;
+          throw { code: 'P2034' };
+        }
+        const result = await runTransaction(fn);
+        if (call === 1) releaseFirst();
+        return result;
+      },
+    );
+    const input = { result: 'INFRINGEMENT', expectedVersion: 2 } as const;
+    const results = await Promise.allSettled([
+      service.review(actor, lead.id, 'key-a', input),
+      service.review(actor, lead.id, 'key-b', input),
+    ]);
+    expect(
+      results.filter((result) => result.status === 'fulfilled'),
+    ).toHaveLength(1);
+    expect(
+      results.filter((result) => result.status === 'rejected'),
+    ).toHaveLength(1);
+    expect(transaction.leadReviewDecision.create).toHaveBeenCalledTimes(1);
+    expect(transaction.clientLeadReviewReceipt.create).toHaveBeenCalledTimes(1);
+  });
+});
+
 type ClientLeadWhere = {
   id?: string;
   departmentId?: string;
@@ -300,7 +637,11 @@ function setupWithRealMaterials(record: {
 }) {
   const database = {
     customerAccountBinding: {
-      findFirst: jest.fn().mockResolvedValue({ id: 'binding-1' }),
+      findFirst: jest.fn().mockResolvedValue({
+        id: 'binding-1',
+        customerId,
+        user: { displayName: '企业审核员' },
+      }),
     },
     lead: {
       findFirst: jest

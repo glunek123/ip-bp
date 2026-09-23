@@ -72,6 +72,12 @@ describe('CORE-LD-002 OpenAPI contract', () => {
     ['post', '/api/v1/leads/{id}/push', '201', 'LeadPushResponseDto'],
     ['get', '/api/v1/client/leads', '200', 'ClientLeadListResponseDto'],
     ['get', '/api/v1/client/leads/{id}', '200', 'ClientLeadResponseDto'],
+    [
+      'post',
+      '/api/v1/client/leads/{id}/reviews',
+      '201',
+      'ClientLeadReviewResultDto',
+    ],
   ] as const)(
     'documents %s %s response %s',
     (method, path, status, schemaName) => {
