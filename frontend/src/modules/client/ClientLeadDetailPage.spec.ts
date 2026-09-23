@@ -163,32 +163,51 @@ describe('ClientLeadDetailPage', () => {
     confirm.mockRestore();
   });
 
-  it('disables the action while submitting and reuses the key after an unknown result', async () => {
+  it.each(['NETWORK_ERROR', 'TIMEOUT'])(
+    'disables the action and reuses the key after an unknown %s result',
+    async (code) => {
+      const confirm = vi.spyOn(window, 'confirm').mockReturnValue(true);
+      let rejectRequest: (error: ApiError) => void = () => undefined;
+      leadApi.reviewClientLead.mockReturnValueOnce(
+        new Promise((_, reject) => {
+          rejectRequest = reject;
+        }),
+      );
+      const wrapper = await mountPage();
+      const button = wrapper.get('[data-test="confirm-infringement"]');
+      const firstAttempt = button.trigger('click');
+      await flushPromises();
+      expect(button.attributes('aria-disabled')).toBe('true');
+      const firstKey = leadApi.reviewClientLead.mock.calls[0]?.[2];
+      rejectRequest(new ApiError('network', 0, code));
+      await firstAttempt;
+      await flushPromises();
+      expect(
+        wrapper
+          .get('[data-test="confirm-infringement"]')
+          .attributes('aria-disabled'),
+      ).toBe('false');
+      await wrapper.get('[data-test="confirm-infringement"]').trigger('click');
+      await flushPromises();
+      expect(leadApi.reviewClientLead).toHaveBeenCalledTimes(2);
+      expect(leadApi.reviewClientLead.mock.calls[1]?.[2]).toBe(firstKey);
+      confirm.mockRestore();
+    },
+  );
+
+  it('keeps committed-success feedback visible if the detail reload fails', async () => {
     const confirm = vi.spyOn(window, 'confirm').mockReturnValue(true);
-    let rejectRequest: (error: ApiError) => void = () => undefined;
-    leadApi.reviewClientLead.mockReturnValueOnce(
-      new Promise((_, reject) => {
-        rejectRequest = reject;
-      }),
-    );
+    leadApi.getClientLead
+      .mockResolvedValueOnce(lead)
+      .mockRejectedValueOnce(new ApiError('offline', 0, 'NETWORK_ERROR'));
     const wrapper = await mountPage();
-    const button = wrapper.get('[data-test="confirm-infringement"]');
-    const firstAttempt = button.trigger('click');
-    await flushPromises();
-    expect(button.attributes('aria-disabled')).toBe('true');
-    const firstKey = leadApi.reviewClientLead.mock.calls[0]?.[2];
-    rejectRequest(new ApiError('network', 0, 'NETWORK_ERROR'));
-    await firstAttempt;
-    await flushPromises();
-    expect(
-      wrapper
-        .get('[data-test="confirm-infringement"]')
-        .attributes('aria-disabled'),
-    ).toBe('false');
     await wrapper.get('[data-test="confirm-infringement"]').trigger('click');
     await flushPromises();
-    expect(leadApi.reviewClientLead).toHaveBeenCalledTimes(2);
-    expect(leadApi.reviewClientLead.mock.calls[1]?.[2]).toBe(firstKey);
+    expect(wrapper.text()).toContain('已确认侵权，等待运营确认是否取证');
+    expect(wrapper.text()).toContain('线索详情暂时无法加载');
+    expect(wrapper.find('[data-test="confirm-infringement"]').exists()).toBe(
+      false,
+    );
     confirm.mockRestore();
   });
 
@@ -240,6 +259,7 @@ describe('ClientLeadDetailPage', () => {
     ['IDEMPOTENCY_CONFLICT', '本次操作未执行，请重新确认后重试'],
     ['ACTION_FORBIDDEN', '当前账号无权审核此线索，请刷新登录状态后重试'],
     ['NETWORK_ERROR', '提交结果暂时未知，请重试；系统会安全处理重复请求'],
+    ['TIMEOUT', '提交结果暂时未知，请重试；系统会安全处理重复请求'],
   ])(
     'shows stable %s feedback while keeping the loaded facts',
     async (code, copy) => {

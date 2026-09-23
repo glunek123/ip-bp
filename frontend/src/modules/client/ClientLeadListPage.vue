@@ -147,9 +147,16 @@ onBeforeUnmount(() => request?.abort());
                 data-test="client-lead-row"
               >
                 <td>
-                  <RouterLink :to="`/client/leads/${lead.id}`">{{
-                    lead.businessNo
-                  }}</RouterLink>
+                  <RouterLink
+                    :to="{
+                      path: `/client/leads/${lead.id}`,
+                      query: {
+                        view: currentView,
+                        page: String(requestedPage),
+                      },
+                    }"
+                    >{{ lead.businessNo }}</RouterLink
+                  >
                 </td>
                 <td>
                   <span class="pill">{{

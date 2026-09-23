@@ -153,6 +153,13 @@ describe('ClientLeadListPage', () => {
     ).toBe(false);
   });
 
+  it('carries the active queue and page into the detail link', async () => {
+    const { wrapper } = await mountPage('/client/leads?view=processed&page=2');
+    expect(
+      wrapper.get('[data-test="client-lead-row"] a').attributes('href'),
+    ).toBe('/client/leads/lead-1?view=processed&page=2');
+  });
+
   it('normalizes an invalid view to the pending queue', async () => {
     await mountPage('/client/leads?view=unknown&page=1');
     expect(api.listClientLeads).toHaveBeenCalledWith(

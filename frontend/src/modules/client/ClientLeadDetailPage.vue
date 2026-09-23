@@ -122,7 +122,7 @@ async function confirmInfringement(): Promise<void> {
       reviewError.value = '本次操作未执行，请重新确认后重试';
     } else if (code === 'ACTION_FORBIDDEN') {
       reviewError.value = '当前账号无权审核此线索，请刷新登录状态后重试';
-    } else if (code === 'NETWORK_ERROR') {
+    } else if (code === 'NETWORK_ERROR' || code === 'TIMEOUT') {
       reviewError.value = '提交结果暂时未知，请重试；系统会安全处理重复请求';
     } else {
       reviewError.value = '确认侵权失败，请稍后重试';
@@ -189,6 +189,9 @@ onBeforeUnmount(() => request?.abort());
           returnTo.query.view === 'processed' ? '已处理线索' : '待审核线索'
         }}</RouterLink
       >
+      <p v-if="reviewSuccess" role="status" class="submit-success">
+        {{ reviewSuccess }}
+      </p>
       <section v-if="state === 'loading'" class="state-panel ledger-panel">
         <h1>正在读取线索</h1>
       </section>
@@ -328,7 +331,6 @@ onBeforeUnmount(() => request?.abort());
               >确认侵权</ElButton
             >
           </template>
-          <p v-if="reviewSuccess" role="status">{{ reviewSuccess }}</p>
           <p v-if="reviewError" class="field-error" role="alert">
             {{ reviewError }}
           </p>
