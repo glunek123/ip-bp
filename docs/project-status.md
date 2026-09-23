@@ -8,7 +8,7 @@
 
 ## 当前任务
 
-**CORE-LD-007｜不侵权归档撤回纠错（路线图唯一Current，尚未实现）**：CORE-LD-004已完成并通过Level 3正式门禁；固定候选及证据见[验证记录](spec/v0.1/VALIDATION.md)。按SD-40，007之后的唯一Next为CORE-LD-005，顺序以[功能开发路线图](feature-roadmap.md)为准。
+**CORE-LD-005｜运营不取证归档（路线图唯一Current）**：CORE-LD-007已完成并通过独立Final Review、正式完整门禁及完整数据库型浏览器验收；固定候选及证据见[验证记录](spec/v0.1/VALIDATION.md)。按SD-40及路线图，CORE-LD-006为唯一Next。
 
 ## 已实现
 
@@ -16,7 +16,7 @@
 - `ROLE-TEMPLATE-001`代码候选`d542c31`、tree`cae336d`已通过完整Level 3门禁、数据库型浏览器验收和独立终审；其可配置Grant底座供核心业务Action复用。
 - `CORE-LD-001`已实现`customer.admit`与`lead.read/create/edit`、ADMITTED准入约束、材料／内容版本／冻结引用、线索／商品／侵权类型／日编号／幂等回执，以及正式运营端页面。详细证据见[验证记录](spec/v0.1/VALIDATION.md)。
 - `CORE-LD-002`已实现真实企业客户账号绑定、密码会话、`WAITING_PUSH → WAITING_REVIEW`原子推送、`lead.push`内部授权、客户固定企业范围、幂等／版本／审计，以及运营推送和客户端只读列表／详情／附件页面。详细证据见[验证记录](spec/v0.1/VALIDATION.md)。
-- 登录后共享壳层及运营／客户端页面已按Demo共享视觉层级对齐；客户确认侵权和CORE-LD-004不侵权归档已有真实API与正式页面，并通过Level 3门禁；007撤回纠错及后续取证动作仍未实现。
+- 登录后共享壳层及运营／客户端页面已按Demo共享视觉层级对齐；客户确认侵权、CORE-LD-004不侵权归档及CORE-LD-007撤回纠错已有真实API与正式页面，并通过相应门禁；CORE-LD-005／006取证决定动作仍未实现。
 
 ## 未决与限制
 
@@ -27,7 +27,7 @@
 
 ## 最近验证
 
-- CORE-LD-004最终已验证候选`42d270ae993de6ed9d8068887ed5df19568690f2`、tree`05f5ff12e267e7d864e33901dcec3700210f0f19`已通过正式Level 3门禁及完整数据库型浏览器验收；细节见[验证记录](spec/v0.1/VALIDATION.md)。
+- CORE-LD-007最终已验证候选`95b59274ad3e5b17827d78d6599e3b2ba24a9676`、tree`349b96d6ae86f32f1c61c335a31911cba29bf768`已通过独立Final Review、完整`pnpm verify`及完整数据库型浏览器验收；细节见[验证记录](spec/v0.1/VALIDATION.md)。
 - Node v24.21.0、pnpm 11.27.0与项目锁定环境一致；使用锁定PostgreSQL 17.11镜像、随机本地端口和显式隔离测试DSN，不降级到开发库。
 - `CORE-LD-001`最终全分支总审结论为`APPROVED`，Critical 0／Important 0／Minor 0；其材料并发边界和事务修复结论保持有效。
 - `CORE-LD-002`固定代码候选`6be15b2`、tree`f71f44e4db09699f310e608e135254204ea3679e`的完整`pnpm verify`通过：工具71项、后端499项、前端253项，以及规范、架构、类型、Lint、格式和生产构建全部成功；完整数据库型Chromium E2E 76/76通过。
@@ -38,4 +38,4 @@
 
 ## 下一步
 
-下一步实施CORE-LD-007撤回纠错；CORE-LD-005为Next。007尚未实现，仍需验证运营申请→原客户确认→重新审核闭环后，才能称客户审核及纠错闭环完成。CORE-LD-004未上线，未执行生产迁移。
+下一步实施CORE-LD-005运营不取证归档；CORE-LD-006为Next。CORE-LD-007已完成运营申请→原客户企业确认→重新审核闭环的验证，但整个客户审核及纠错范围仅按该切片边界完成。未上线，未执行生产迁移。

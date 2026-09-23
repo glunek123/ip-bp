@@ -1,5 +1,11 @@
 # SPEC-001 文档验证
 
+## CORE-LD-007 不侵权归档撤回纠错（2026-09-23）
+
+固定候选`95b59274ad3e5b17827d78d6599e3b2ba24a9676`、tree`349b96d6ae86f32f1c61c335a31911cba29bf768`通过独立Final Review，结论`ACCEPTED`，未关闭Critical／Important／Minor为0／0／0。完整`pnpm verify`通过：工具71/71、后端645/645、前端320/320，以及严格上下文、Spec、架构、类型、Lint、格式和双端构建；独立隔离测试库`pnpm test:e2e:full`通过87/87。CORE-LD-007专项真实PostgreSQL／Chromium用例29/29通过，真实运营账号申请、原客户企业真实账号确认、再次审核并刷新后核对历史；迁移专项空库和上一支持Schema探测通过，并覆盖授权／撤权与企业隔离、回执和材料边界。早期候选发现的TEAM Grant及组织目录回归已修复，并在最终完整E2E前完成聚焦浏览器复核。
+
+本证据只证明CORE-LD-007在该候选的SD-40范围；不表示CORE-LD-005／006、公证或案件动作已实现，也不代表生产部署、生产迁移或公证事项已办理。全部数据库验证只使用`backend/.env.test`指向的独立测试库，未重置开发库；未推送、合并或发布。
+
 ## CORE-LD-004客户判定不侵权并归档（2026-09-23）
 
 固定已验证候选`500e7cd4c5f4306a6ae744a4ac4207c783a84053`、tree`ef4f199a9867c1a80c4a50b85d68d11d778298ca`通过正式Level 3门禁。`pnpm verify`通过严格上下文检查、Spec（54 REQ／55 AC／11 BQ／40 SD）、架构（8模块／28模型）、类型、Lint、格式、工具71项、后端Jest 589项、前端Vitest 309项及前后端生产构建；`pnpm test:e2e:full`通过84/84真实隔离PostgreSQL／Chromium测试，覆盖空库及上一支持Schema迁移与失败回滚、跨企业拒绝、幂等重放与并发竞争、决定／回执故障原子回滚，以及运营推送→客户登录判定归档→客户端处理详情／截图和运营详情回看。独立Final Review为`ACCEPTED`，未关闭Critical／Important／Minor为0／0／0。
