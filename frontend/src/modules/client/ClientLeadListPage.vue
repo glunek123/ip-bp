@@ -30,7 +30,7 @@ async function load(): Promise<void> {
   request = controller;
   state.value = 'loading';
   try {
-    const result = await listClientLeads(requestedPage.value, 20, {
+    const result = await listClientLeads('PENDING', requestedPage.value, 20, {
       signal: controller.signal,
     });
     if (controller.signal.aborted) return;

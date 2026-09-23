@@ -656,7 +656,7 @@ Test pending and processed shapes, mismatched state/decision rejection, extra in
 expect(http.requestJson).toHaveBeenCalledWith('/client/leads/lead-1/reviews', {
   method: 'POST',
   headers: { 'Idempotency-Key': 'review-key' },
-  body: JSON.stringify({ result: 'INFRINGEMENT', expectedVersion: 2 }),
+  body: { result: 'INFRINGEMENT', expectedVersion: 2 },
 });
 ```
 
@@ -706,7 +706,7 @@ export async function reviewClientLead(
       ...options,
       method: 'POST',
       headers: { 'Idempotency-Key': idempotencyKey },
-      body: JSON.stringify({ result: 'INFRINGEMENT', expectedVersion }),
+      body: { result: 'INFRINGEMENT', expectedVersion },
     },
   );
   if (!isClientLeadReviewResult(value)) throw invalidResponse();

@@ -75,6 +75,7 @@ const lead = {
   pushedAt: null,
   pushedByUserId: null,
   pushedByDisplayName: null,
+  reviewDecision: null,
   createdAt: '2026-09-21T04:00:00.000Z',
   updatedAt: '2026-09-21T04:00:00.000Z',
 };
@@ -186,6 +187,37 @@ describe('Lead API', () => {
       capabilities: { edit: false, push: true },
     });
     http.getJson.mockResolvedValueOnce(lead);
+    await expect(getLead('lead-1')).rejects.toMatchObject({
+      code: 'INVALID_RESPONSE',
+    });
+  });
+
+  it('reads a formal client review from the immutable display-name snapshot', async () => {
+    const reviewed = {
+      ...lead,
+      status: 'WAITING_EVIDENCE_DECISION',
+      version: 3,
+      pushedAt: '2026-09-22T02:00:00.000Z',
+      pushedByUserId: 'operator-1',
+      pushedByDisplayName: '运营甲',
+      reviewDecision: {
+        result: 'INFRINGEMENT',
+        reviewerDisplayName: '企业审核员',
+        decidedAt: '2026-09-22T03:00:00.000Z',
+      },
+      capabilities: { edit: false, push: false },
+    };
+    http.getJson.mockResolvedValue(reviewed);
+    await expect(getLead('lead-1')).resolves.toMatchObject({
+      reviewDecision: reviewed.reviewDecision,
+    });
+    http.getJson.mockResolvedValue({
+      ...reviewed,
+      reviewDecision: {
+        ...reviewed.reviewDecision,
+        reviewerUserId: 'internal',
+      },
+    });
     await expect(getLead('lead-1')).rejects.toMatchObject({
       code: 'INVALID_RESPONSE',
     });

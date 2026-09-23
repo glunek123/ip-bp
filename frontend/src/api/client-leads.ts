@@ -1,4 +1,12 @@
-import { ApiError, getJson, type RequestOptions } from './http';
+import { ApiError, getJson, requestJson, type RequestOptions } from './http';
+
+export type ClientLeadView = 'PENDING' | 'PROCESSED';
+
+export type ClientLeadReviewDecision = {
+  result: 'INFRINGEMENT';
+  reviewerDisplayName: string;
+  decidedAt: string;
+};
 
 export type ClientLeadProduct = {
   id: string;
@@ -14,7 +22,8 @@ export type ClientLeadProduct = {
 export type ClientLead = {
   id: string;
   businessNo: string;
-  status: 'WAITING_REVIEW';
+  status: 'WAITING_REVIEW' | 'WAITING_EVIDENCE_DECISION';
+  version: number;
   caseType: string;
   infringementTypes: string[];
   source: string;
@@ -26,6 +35,16 @@ export type ClientLead = {
   products: ClientLeadProduct[];
   leadScreenshotContentVersionIds: string[];
   pushedAt: string;
+  reviewDecision: ClientLeadReviewDecision | null;
+  capabilities: { review: boolean };
+};
+
+export type ClientLeadReviewResult = Pick<
+  ClientLead,
+  'id' | 'businessNo' | 'status' | 'version' | 'reviewDecision'
+> & {
+  status: 'WAITING_EVIDENCE_DECISION';
+  reviewDecision: ClientLeadReviewDecision;
 };
 
 export type ClientLeadList = {
@@ -65,6 +84,7 @@ const clientLeadKeys = [
   'id',
   'businessNo',
   'status',
+  'version',
   'caseType',
   'infringementTypes',
   'source',
@@ -76,6 +96,17 @@ const clientLeadKeys = [
   'products',
   'leadScreenshotContentVersionIds',
   'pushedAt',
+  'reviewDecision',
+  'capabilities',
+] as const;
+
+const decisionKeys = ['result', 'reviewerDisplayName', 'decidedAt'] as const;
+const reviewResultKeys = [
+  'id',
+  'businessNo',
+  'status',
+  'version',
+  'reviewDecision',
 ] as const;
 
 const clientLeadListKeys = ['items', 'total', 'page', 'pageSize'] as const;
@@ -111,13 +142,28 @@ function isProduct(value: unknown, index: number): value is ClientLeadProduct {
   );
 }
 
+function isClientReviewDecision(
+  value: unknown,
+): value is ClientLeadReviewDecision {
+  return (
+    isRecord(value) &&
+    hasExactKeys(value, decisionKeys) &&
+    value.result === 'INFRINGEMENT' &&
+    typeof value.reviewerDisplayName === 'string' &&
+    isDateTime(value.decidedAt)
+  );
+}
+
 function isClientLead(value: unknown): value is ClientLead {
   if (!isRecord(value)) return false;
   return (
     hasExactKeys(value, clientLeadKeys) &&
     typeof value.id === 'string' &&
     typeof value.businessNo === 'string' &&
-    value.status === 'WAITING_REVIEW' &&
+    (value.status === 'WAITING_REVIEW' ||
+      value.status === 'WAITING_EVIDENCE_DECISION') &&
+    Number.isInteger(value.version) &&
+    (value.version as number) >= 1 &&
     typeof value.caseType === 'string' &&
     Array.isArray(value.infringementTypes) &&
     value.infringementTypes.length >= 1 &&
@@ -137,7 +183,33 @@ function isClientLead(value: unknown): value is ClientLead {
     ) &&
     new Set(value.leadScreenshotContentVersionIds).size ===
       value.leadScreenshotContentVersionIds.length &&
-    isDateTime(value.pushedAt)
+    isDateTime(value.pushedAt) &&
+    ((value.status === 'WAITING_REVIEW' &&
+      value.reviewDecision === null &&
+      isRecord(value.capabilities) &&
+      hasExactKeys(value.capabilities, ['review']) &&
+      value.capabilities.review === true) ||
+      (value.status === 'WAITING_EVIDENCE_DECISION' &&
+        isClientReviewDecision(value.reviewDecision) &&
+        isRecord(value.capabilities) &&
+        hasExactKeys(value.capabilities, ['review']) &&
+        value.capabilities.review === false))
+  );
+}
+
+function isClientLeadReviewResult(
+  value: unknown,
+  expectedVersion: number,
+): value is ClientLeadReviewResult {
+  return (
+    isRecord(value) &&
+    hasExactKeys(value, reviewResultKeys) &&
+    typeof value.id === 'string' &&
+    typeof value.businessNo === 'string' &&
+    value.status === 'WAITING_EVIDENCE_DECISION' &&
+    Number.isInteger(value.version) &&
+    value.version === expectedVersion + 1 &&
+    isClientReviewDecision(value.reviewDecision)
   );
 }
 
@@ -146,11 +218,13 @@ function invalidResponse(): ApiError {
 }
 
 export async function listClientLeads(
+  view: ClientLeadView = 'PENDING',
   page = 1,
   pageSize = 20,
   options: RequestOptions = {},
 ): Promise<ClientLeadList> {
   const query = new URLSearchParams({
+    view,
     page: String(page),
     pageSize: String(pageSize),
   });
@@ -170,6 +244,26 @@ export async function listClientLeads(
   )
     throw invalidResponse();
   return value as ClientLeadList;
+}
+
+export async function reviewClientLead(
+  id: string,
+  expectedVersion: number,
+  idempotencyKey: string,
+  options: RequestOptions = {},
+): Promise<ClientLeadReviewResult> {
+  const value = await requestJson(
+    `/client/leads/${encodeURIComponent(id)}/reviews`,
+    {
+      ...options,
+      method: 'POST',
+      headers: { ...options.headers, 'Idempotency-Key': idempotencyKey },
+      body: { result: 'INFRINGEMENT', expectedVersion },
+    },
+  );
+  if (!isClientLeadReviewResult(value, expectedVersion))
+    throw invalidResponse();
+  return value;
 }
 
 export async function getClientLead(

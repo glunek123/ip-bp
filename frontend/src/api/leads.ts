@@ -100,6 +100,11 @@ export type LeadProduct = {
   commentCount: number;
   estimatedAmount: string;
 };
+export type LeadReviewDecision = {
+  result: 'INFRINGEMENT';
+  reviewerDisplayName: string;
+  decidedAt: string;
+};
 export type Lead = {
   id: string;
   businessNo: string;
@@ -126,6 +131,7 @@ export type Lead = {
   pushedAt: string | null;
   pushedByUserId: string | null;
   pushedByDisplayName: string | null;
+  reviewDecision: LeadReviewDecision | null;
   createdAt: string;
   updatedAt: string;
 };
@@ -249,6 +255,19 @@ function isProduct(value: unknown): value is LeadProduct {
     moneyPattern.test(value.estimatedAmount)
   );
 }
+function isReviewDecision(value: unknown): value is LeadReviewDecision {
+  if (!isRecord(value)) return false;
+  const keys = Object.keys(value);
+  return (
+    keys.length === 3 &&
+    keys.every((key) =>
+      ['result', 'reviewerDisplayName', 'decidedAt'].includes(key),
+    ) &&
+    value.result === 'INFRINGEMENT' &&
+    typeof value.reviewerDisplayName === 'string' &&
+    isDateTime(value.decidedAt)
+  );
+}
 function isLead(value: unknown): value is Lead {
   if (!isRecord(value)) return false;
   const source = value.source;
@@ -306,6 +325,7 @@ function isLead(value: unknown): value is Lead {
       (value.pushedAt !== null &&
         value.pushedByUserId !== null &&
         value.pushedByDisplayName !== null)) &&
+    (value.reviewDecision === null || isReviewDecision(value.reviewDecision)) &&
     isDateTime(value.createdAt) &&
     isDateTime(value.updatedAt)
   );
