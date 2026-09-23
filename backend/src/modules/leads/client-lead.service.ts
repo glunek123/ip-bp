@@ -155,8 +155,8 @@ export class ClientLeadService {
     if (
       (input.result === 'NO_INFRINGEMENT' &&
         (typeof input.reason !== 'string' ||
-          input.reason.trim().length < 1 ||
-          input.reason.trim().length > 5000)) ||
+          [...input.reason.trim()].length < 1 ||
+          [...input.reason.trim()].length > 5000)) ||
       (input.result === 'INFRINGEMENT' && input.reason !== undefined)
     )
       throw new BadRequestException({
@@ -422,7 +422,7 @@ export class ClientLeadService {
           typeof decisionFields.reason === 'string' &&
           decisionFields.reason.trim().length > 0 &&
           decisionFields.reason === decisionFields.reason.trim() &&
-          decisionFields.reason.length <= 5000 &&
+          [...decisionFields.reason].length <= 5000 &&
           decisionFields.archiveType === 'NO_INFRINGEMENT' &&
           decisionFields.archivedAt === decisionFields.decidedAt)
       )
@@ -466,7 +466,7 @@ export class ClientLeadService {
   private invalidState() {
     return new ConflictException({
       code: 'INVALID_STATE',
-      message: '仅待审核线索可以确认侵权',
+      message: '仅待审核线索可以提交审核',
     });
   }
 

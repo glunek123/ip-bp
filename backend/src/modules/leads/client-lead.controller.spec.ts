@@ -40,6 +40,29 @@ describe('ClientLeadController', () => {
     });
   });
 
+  it('validates no-infringement length in Unicode code points', async () => {
+    const valid = {
+      result: 'NO_INFRINGEMENT',
+      reason: '😀'.repeat(5000),
+      expectedVersion: 2,
+    };
+    await expect(
+      pipe.transform(valid, {
+        type: 'body',
+        metatype: ReviewClientLeadDto,
+      }),
+    ).resolves.toEqual(valid);
+    await expect(
+      pipe.transform(
+        { ...valid, reason: '😀'.repeat(5001) },
+        {
+          type: 'body',
+          metatype: ReviewClientLeadDto,
+        },
+      ),
+    ).rejects.toBeInstanceOf(BadRequestException);
+  });
+
   it.each([undefined, '', '  ', 'x'.repeat(5001), 123])(
     'rejects invalid no-infringement reason %p',
     async (reason) => {

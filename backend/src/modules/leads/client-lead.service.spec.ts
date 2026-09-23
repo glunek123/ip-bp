@@ -337,6 +337,76 @@ function setupReview() {
 }
 
 describe('ClientLeadService.review', () => {
+  it.each([2501, 5000])(
+    'accepts a no-infringement reason of %i Unicode code points',
+    async (count) => {
+      const { service, transaction } = setupReview();
+      const reason = '😀'.repeat(count);
+      const result = await service.review(actor, lead.id, 'emoji-key', {
+        result: 'NO_INFRINGEMENT',
+        reason,
+        expectedVersion: 2,
+      });
+      expect(result.reviewDecision).toMatchObject({ reason });
+      expect(transaction.leadReviewDecision.create).toHaveBeenCalledWith({
+        data: expect.objectContaining({ reason }),
+      });
+    },
+  );
+
+  it('rejects a no-infringement reason above 5000 Unicode code points', async () => {
+    const { service, transaction } = setupReview();
+    await expect(
+      service.review(actor, lead.id, 'emoji-key', {
+        result: 'NO_INFRINGEMENT',
+        reason: '😀'.repeat(5001),
+        expectedVersion: 2,
+      }),
+    ).rejects.toMatchObject({ response: { code: 'VALIDATION_ERROR' } });
+    expect(transaction.lead.updateMany).not.toHaveBeenCalled();
+  });
+
+  it.each([2501, 5000])(
+    'replays an archive receipt with %i Unicode code points in its reason',
+    async (count) => {
+      const { service, transaction } = setupReview();
+      const input = {
+        result: 'NO_INFRINGEMENT',
+        reason: '😀'.repeat(count),
+        expectedVersion: 2,
+      } as const;
+      const first = await service.review(actor, lead.id, 'emoji-key', input);
+      const receiptData =
+        transaction.clientLeadReviewReceipt.create.mock.calls[0][0].data;
+      transaction.clientLeadReviewReceipt.findUnique.mockResolvedValue(
+        receiptData,
+      );
+      transaction.lead.updateMany.mockClear();
+      await expect(
+        service.review(actor, lead.id, 'emoji-key', input),
+      ).resolves.toEqual(first);
+      expect(transaction.lead.updateMany).not.toHaveBeenCalled();
+    },
+  );
+
+  it('uses a neutral invalid-state message for either review outcome', async () => {
+    const { service, transaction } = setupReview();
+    transaction.lead.findFirst.mockResolvedValue({
+      ...lead,
+      status: 'ARCHIVED',
+      version: 3,
+    });
+    await expect(
+      service.review(actor, lead.id, 'archive-key', {
+        result: 'NO_INFRINGEMENT',
+        reason: '不构成侵权',
+        expectedVersion: 2,
+      }),
+    ).rejects.toMatchObject({
+      response: { code: 'INVALID_STATE', message: '仅待审核线索可以提交审核' },
+    });
+  });
+
   it('archives a no-infringement decision and writes one matching receipt', async () => {
     const { service, transaction } = setupReview();
     const result = await service.review(actor, lead.id, 'archive-key', {
