@@ -2,7 +2,7 @@
 
 更新日期：2026-09-24。当前已验证代码候选：`CORE-LD-005@b9add2c9e016043ad645454e2033ce59c6cecf7b`，tree `5ea88857728ec7ef1d631352a55cd155f624e8f8`；SD-37已把后续交付重心调整为核心业务主线，SD-38固定快速上手验收原则。CORE-LD-005已通过独立Final Review、完整Level 3门禁及完整数据库型浏览器验收；CORE-LD-006为唯一Current，CORE-NT-001为Next。
 
-本文只回答“已经做到哪里、下一步做什么、之后按什么依赖顺序做”。详细业务规则仍以 [`docs/spec/`](spec/) 为准，核心主线的编码级字段、附件与存储边界以[核心业务字段、附件与存储契约](superpowers/specs/2026-09-21-core-flow-field-material-contract.md)为准，技术方案以设计文档为准，当前切片的技术任务以实施计划为准，实际验证结果以 [`docs/project-status.md`](project-status.md) 和 [`docs/spec/v0.1/VALIDATION.md`](spec/v0.1/VALIDATION.md) 为准。
+本文只回答“已经做到哪里、下一步做什么、之后按什么依赖顺序做”。详细业务规则仍以 [`docs/spec/`](spec/) 为准，核心主线的编码级字段、附件与存储边界以[核心业务字段、附件与存储契约](superpowers/specs/2026-09-21-core-flow-field-material-contract.md)为准，技术方案以设计文档为准，当前切片的技术任务以实施计划为准，实际验证结果以 [`docs/spec/v0.1/VALIDATION.md`](spec/v0.1/VALIDATION.md) 为准；[`docs/project-status.md`](project-status.md)仅保留当前恢复摘要。
 
 ## 状态判定
 
