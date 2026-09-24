@@ -1,6 +1,6 @@
 {
   "version": 1,
-  "recordedAt": "2026-09-24T02:02:42.563Z",
+  "recordedAt": "2026-09-24T02:13:51.102Z",
   "files": {
     ".cursor/rules/verified-feature-integration.mdc": "deaa0f81681c8ac17f6fd7d7b7db3e9fe2f5b672c62980895b992943fd19b3c0",
     ".env.example": "07211cde5c2b59efc21b619b752d4c9b871f0980d2d64ca3c146ad6151fd27ca",
@@ -291,7 +291,7 @@
     "docs/environment.md": "2c07c5c2ccecb30055e318b6670c8c910d4474e691d7fd1d645016a2d657debf",
     "docs/feature-roadmap.md": "311a7ee0a7f8d784b0d97510f90b06895f7c7f5f9fcf3faac89896c502db73b8",
     "docs/project-status-history-through-2026-09-18.md": "c7c858eb4b2a935ce78a85c75e5d3227691382186101d6ff6911249e38729208",
-    "docs/project-status.md": "2fe27517c18bf9cb386415e02243ad1fdaee3d23aa550cef8bb8b3927d3e001c",
+    "docs/project-status.md": "9d0c0d9421ba03d220f01c7d9082a18fcbe0dafde9e98be74c8bbd62dbf17fcf",
     "docs/security/customer-foundation-q2-review.md": "f5745450cb85aedde92892646c6c824bc9670b8c9bf6f0d9761fe5e46cc6d109",
     "docs/security/local-account-auth-q2-review.md": "4e7b38d73b2597e483340490c788aa034ef6f465baccc12240be7ad2c6ec61f1",
     "docs/spec/v0.1/BUSINESS-REVIEW.md": "950c73ac72470d2e3556fd416701b4486944c1e3ef21c84be11132cbe617c24e",
@@ -331,7 +331,7 @@
     "docs/superpowers/plans/2026-09-22-rapid-onboarding-ux-hardening.md": "95b349ad80e6c3c7f1473367c004f99c04d928340597c5161aefefe8da6777b7",
     "docs/superpowers/plans/2026-09-23-core-ld-004-client-no-infringement-archive.md": "a4b6673253664827d506ca7a9f9d0b5523b3fe4259d104a73ada3774b14493ab",
     "docs/superpowers/plans/2026-09-23-core-ld-007-withdrawal.md": "d8a8ddec8f2dde03cbe4360afd8931b764cfd911fc8e59931d3e83e3c087ed74",
-    "docs/superpowers/plans/2026-09-24-core-ld-005-no-evidence-archive.md": "2963d0ff02399dbe7949a5eaffd8ce2c83288686ebe72bb4756255b6611c413a",
+    "docs/superpowers/plans/2026-09-24-core-ld-005-no-evidence-archive.md": "122a372431187f8ebee7768f82900294019912126c3a961777776613f34dbf77",
     "docs/superpowers/specs/2026-09-17-local-account-auth-design.md": "90318fbebae983c71e9558138cbd40b30ef02afce332a0e52f70797601a23d6f",
     "docs/superpowers/specs/2026-09-20-personnel-access-management-design.md": "bfeaf41d0356417c57a5030fd6dc9de0cfafa37d5404bb20cd3f7cff76ee5bda",
     "docs/superpowers/specs/2026-09-20-role-template-management-design.md": "51c18905b48e4b2b3ca835446b59dcb4e489eb8813b4922255fd403161b90dd8",
@@ -474,6 +474,6 @@
     "tests/support/customer-database.mjs": "cc66e2e896be814f81f46721ee7d6a5b2786b49ba1e05f58a16cad33d3c3365e",
     "tools/project-runtime/pnpm.cmd": "ac586525b47f64eaf5e540676428c50fc78fd8fa0f8faa04f730c70f04a968b9",
     "tsconfig.json": "5808a45c690a3f2b628d77202bb9f0f25b418dd15ddaeeccf39cd9af3305fcf1",
-    "vitest.tools.config.mjs": "427d1e032b604edd8116e9184a3fee256a9baf936c29acd3b34b12c92c3b60c9"
+    "vitest.tools.config.mjs": "3585c9415a36d82da5f44b1cba30b499573b2d49e752df2f014f3d44b9509ec7"
   }
 }

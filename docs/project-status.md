@@ -8,7 +8,7 @@
 
 ## 当前任务
 
-**CORE-LD-005｜运营不取证归档（路线图唯一Current）**：在`codex/core-ld-005-no-evidence-archive`实施中。新增运营决定Command、前向迁移、授权和运营／客户端页面；聚焦单元测试、35份迁移空库链及旧Schema升级、三条PostgreSQL／Chromium主链与反例已通过。共享材料授权曾遗漏新归档类型并被集成测试发现，已补精确测试和修复；独立Review、完整Level 3门禁及最终状态收口尚未完成，不能标记Slice完成。按SD-40及路线图，CORE-LD-006仍为唯一Next。
+**CORE-LD-005｜运营不取证归档（路线图唯一Current）**：在`codex/core-ld-005-no-evidence-archive`实施中。新增运营决定Command、前向迁移、授权和运营／客户端页面；聚焦单元测试、35份迁移空库链及旧Schema升级已通过，代码候选的完整PostgreSQL／Chromium验收89/89通过。集成测试发现的共享材料授权及权限目录契约缺口均已修复；独立Final Review为`ACCEPTED`，未关闭Critical／Important／Minor为0／0／0。最终Level 3完整门禁和状态收口尚未完成，不能标记Slice完成。按SD-40及路线图，CORE-LD-006仍为唯一Next。
 
 ## 已实现
 
