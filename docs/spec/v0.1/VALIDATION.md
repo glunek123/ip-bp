@@ -6,7 +6,7 @@
 
 该候选的 `pnpm check:fast`、`pnpm spec:check`、受影响文件 Prettier 检查、双端 `pnpm build:prepared` 均退出 0；聚焦 Jest 215/215、Vitest 87/87 通过。隔离 PostgreSQL 17.11（测试容器映射端口 56233，经 `DEV_COR_TEST_DATABASE_URL` 仅覆盖固定测试 DSN 端口）与 Chromium 的 `core-leads.spec.ts` 三条定向 E2E 3/3 通过：一条来源线索生成两个事项后的列表／计数与页面归属、SELF／跨部门／客户端读取边界、未知阶段拒绝、取证和开箱后阶段计数。故障注入产生的两次 500 属既有回滚反例，测试断言通过。未运行全量 `pnpm verify` 或完整 E2E；本修复按 Level 2 单独验收，不冒充当前 `CORE-NT-003` 已集成或生产发布。
 
-后续将本分支与主线切片合并时，须核对 `NotaryMatterStage` 是否新增已交付阶段，并在新的集成 tree 上重跑受影响门禁；当前预览服务仍基于原 `main`，不代表本候选已部署。
+按用户要求，修复分支已并入开发中的 `codex/core-nt-003-opening-review`，合并提交 `379b9d2378e59f0b27d899e803f47b7fb3ee8741`、tree `80c8c2c1c9032eb35f4a5f357e522c2a2f29d593`，无文本冲突；该时点 NT-003 仅有领取／设计文档，尚未新增公证阶段。新组合 tree 上 `pnpm check:fast`、`pnpm spec:check`、受影响文件 Prettier、双端 `pnpm build:prepared`、聚焦 Jest 215/215、Vitest 87/87，以及隔离 PostgreSQL／Chromium 三条定向 E2E 3/3 均通过。后续 NT-003 若实际新增阶段，仍须同步公证列表允许值和导航并重新验证；当前预览服务仍基于 `main`，本次未推送、未合并 `main` 或发布。
 
 ## CORE-NT-002 开箱材料（2026-09-24）
 
