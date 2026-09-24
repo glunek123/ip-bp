@@ -1,6 +1,6 @@
 {
   "version": 1,
-  "recordedAt": "2026-09-24T08:11:53.711Z",
+  "recordedAt": "2026-09-24T08:13:02.276Z",
   "files": {
     ".cursor/rules/verified-feature-integration.mdc": "ffd2306612ba6f09749629c5adb9e645f7f37aa6ee27ff1bc1c3d8b14efeca38",
     ".env.example": "07211cde5c2b59efc21b619b752d4c9b871f0980d2d64ca3c146ad6151fd27ca",
@@ -241,8 +241,8 @@
     "backend/src/modules/materials/material.controller.ts": "e4d8e2297339ff9131ac8a4688685792087937b132930e11c8caa033c4760dcb",
     "backend/src/modules/materials/material.dto.ts": "1b00205210d1bbf40fd69f57116f98eb0c1cd22e5e0ee5a30b07959e09593e09",
     "backend/src/modules/materials/material.module.ts": "7261d832a8d1e5d4fb656c7026454678d6388f394347e69b38e627afe5ae5c2f",
-    "backend/src/modules/materials/material.service.spec.ts": "828632e7288f539c49ce52319c5b8b7414970d1d682f3090862208bb99048db3",
-    "backend/src/modules/materials/material.service.ts": "451670f1cb225a9aaa58392af2dcac680b1d73176c834cf7941133638fe1a7d2",
+    "backend/src/modules/materials/material.service.spec.ts": "8a7a31837ab48c97bc9f5e7e88bb391e9373b9ef9a3aba7c0121ac39294b8651",
+    "backend/src/modules/materials/material.service.ts": "1a9fdfa02006d4caec1d796051b1dfe97d63aa0e5f801cd462ff8ce6bd89e48a",
     "backend/src/modules/materials/private-blob-storage.ts": "3329398f5c306ce5be828f1a50bb78b7553f04bb5c0e74f758f613bd2b59e52a",
     "backend/tsconfig.build.json": "c1356deac63c61a1d71754141fcec1da3af20b39aab9a6494b38b0e3717c124f",
     "backend/tsconfig.json": "55e4eded85cf4444b6e8a9a7a765dae427ab4704a902ef971db6910071d1d158",

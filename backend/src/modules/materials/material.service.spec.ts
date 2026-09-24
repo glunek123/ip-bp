@@ -2012,7 +2012,9 @@ describe('notary opening material authorization', () => {
       stage: 'WAITING_UNBOX',
       sourceLead: { responsibleUserId: actor.userId, teamId: null },
     });
-    await expect(f.service.createUploadDraft(actor, input)).resolves.toMatchObject({
+    await expect(
+      f.service.createUploadDraft(actor, input),
+    ).resolves.toMatchObject({
       ownerType: 'NOTARY_MATTER',
       ownerId: matterId,
       category: 'NOTARY_OPENING_PHOTO',
@@ -2024,7 +2026,10 @@ describe('notary opening material authorization', () => {
       undefined,
     );
     await expect(
-      f.service.createUploadDraft({ ...actor, clientCustomerId: customerId }, input),
+      f.service.createUploadDraft(
+        { ...actor, clientCustomerId: customerId },
+        input,
+      ),
     ).rejects.toMatchObject({ response: { code: 'ACTION_FORBIDDEN' } });
     f.db.notaryMatter.findFirst.mockResolvedValue({
       id: matterId,
@@ -2032,7 +2037,9 @@ describe('notary opening material authorization', () => {
       stage: 'UNBOX_REVIEW',
       sourceLead: { responsibleUserId: actor.userId, teamId: null },
     });
-    await expect(f.service.createUploadDraft(actor, input)).rejects.toMatchObject({
+    await expect(
+      f.service.createUploadDraft(actor, input),
+    ).rejects.toMatchObject({
       response: { code: 'VERSION_CONFLICT' },
     });
   });
@@ -2040,7 +2047,9 @@ describe('notary opening material authorization', () => {
   it('rejects cross-matter and disallowed file combinations', async () => {
     const f = createFixture();
     f.db.notaryMatter.findFirst.mockResolvedValue(null);
-    await expect(f.service.createUploadDraft(actor, input)).rejects.toMatchObject({
+    await expect(
+      f.service.createUploadDraft(actor, input),
+    ).rejects.toMatchObject({
       response: { code: 'RESOURCE_NOT_FOUND' },
     });
     await expect(

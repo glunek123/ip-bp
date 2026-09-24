@@ -100,8 +100,7 @@ export type ReplaceCurrentReferencesResult = Readonly<{
 
 type MaterialAuthorizationReader = Pick<
   MaterialTransactionClient,
-  'customer' | 'uploadDraft' | 'lead'
-  | 'notaryMatter'
+  'customer' | 'uploadDraft' | 'lead' | 'notaryMatter'
 >;
 type MaterialMutationReader = MaterialAuthorizationReader &
   Pick<MaterialTransactionClient, 'material'>;
@@ -116,11 +115,7 @@ const allowedMimeTypes = {
     'image/png',
     'image/webp',
   ]),
-  NOTARY_OPENING_PHOTO: new Set([
-    'image/jpeg',
-    'image/png',
-    'image/webp',
-  ]),
+  NOTARY_OPENING_PHOTO: new Set(['image/jpeg', 'image/png', 'image/webp']),
 } as const;
 
 @Injectable()
@@ -278,12 +273,7 @@ export class MaterialService {
         }),
       );
     } else if (draft.ownerType === 'NOTARY_MATTER') {
-      await this.authorizeOwner(
-        actor,
-        'NOTARY_MATTER',
-        draft.ownerId,
-        'write',
-      );
+      await this.authorizeOwner(actor, 'NOTARY_MATTER', draft.ownerId, 'write');
     } else if (
       draft.ownerType !== 'LEAD_DRAFT' ||
       !(await this.accessControl.canAuthorizeNewLead(actor))
@@ -1180,7 +1170,9 @@ export class MaterialService {
     }
     if (ownerType === 'NOTARY_MATTER') {
       const action =
-        operation === 'write' ? 'notary.unbox.record' : (leadAction ?? 'lead.read');
+        operation === 'write'
+          ? 'notary.unbox.record'
+          : (leadAction ?? 'lead.read');
       const scope = await this.withMaterialAuthorization(() =>
         this.accessControl.buildLeadScope(actor, action, snapshotReader),
       );
