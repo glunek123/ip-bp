@@ -8,7 +8,7 @@
 
 ## 当前任务
 
-**CORE-LD-006｜运营确认取证并移交（路线图唯一Current，实施中）**：CORE-LD-005已完成，候选、Review及门禁结果见[验证记录](spec/v0.1/VALIDATION.md)。本轮在独立开发分支实施006并验证；完成前不推进Current／Next。CORE-NT-001仍为唯一Next。
+**CORE-NT-001｜取证物流（路线图唯一Current，待实施）**：CORE-LD-006已完成运营确认取证、公证事项来源与查看，固定候选、Review及门禁结果见[验证记录](spec/v0.1/VALIDATION.md)。CORE-NT-002为唯一Next；本轮尚未领取或实施NT-001。
 
 ## 已实现
 
@@ -16,7 +16,7 @@
 - `ROLE-TEMPLATE-001`代码候选`d542c31`、tree`cae336d`已通过完整Level 3门禁、数据库型浏览器验收和独立终审；其可配置Grant底座供核心业务Action复用。
 - `CORE-LD-001`已实现`customer.admit`与`lead.read/create/edit`、ADMITTED准入约束、材料／内容版本／冻结引用、线索／商品／侵权类型／日编号／幂等回执，以及正式运营端页面。详细证据见[验证记录](spec/v0.1/VALIDATION.md)。
 - `CORE-LD-002`已实现真实企业客户账号绑定、密码会话、`WAITING_PUSH → WAITING_REVIEW`原子推送、`lead.push`内部授权、客户固定企业范围、幂等／版本／审计，以及运营推送和客户端只读列表／详情／附件页面。详细证据见[验证记录](spec/v0.1/VALIDATION.md)。
-- 登录后共享壳层及运营／客户端页面已按Demo共享视觉层级对齐；客户确认侵权、CORE-LD-004不侵权归档、CORE-LD-007撤回纠错及CORE-LD-005运营不取证归档已有真实API与正式页面，并通过相应门禁；CORE-LD-006确认取证及移交尚未实现。
+- 登录后共享壳层及运营／客户端页面已按Demo共享视觉层级对齐；客户确认侵权、CORE-LD-004不侵权归档、CORE-LD-007撤回纠错及CORE-LD-005／006运营两分支取证决定已有真实API与正式页面，并通过相应门禁；公证后续办理从CORE-NT-001开始。
 
 ## 未决与限制
 
@@ -27,6 +27,7 @@
 
 ## 最近验证
 
+- CORE-LD-006固定代码候选`eafd131c61c37e9e7759a3430c489f95d8e714d3`、tree`9f2a7c67f95ba7e6fa55677699013523f1460a09`已通过独立Final Review、完整`pnpm verify`和完整数据库型浏览器验收91/91；本次仅做非执行性状态收口，证据边界见[验证记录](spec/v0.1/VALIDATION.md)。
 - CORE-LD-005固定代码候选及随后状态收口候选的Review、完整门禁、独立数据库／浏览器验收和两份tree的证据边界见[验证记录](spec/v0.1/VALIDATION.md)；本文件不复制各次结果。
 - CORE-LD-007最终已验证候选`95b59274ad3e5b17827d78d6599e3b2ba24a9676`、tree`349b96d6ae86f32f1c61c335a31911cba29bf768`已通过独立Final Review、完整`pnpm verify`及完整数据库型浏览器验收；细节见[验证记录](spec/v0.1/VALIDATION.md)。
 - Node v24.21.0、pnpm 11.27.0与项目锁定环境一致；使用锁定PostgreSQL 17.11镜像、随机本地端口和显式隔离测试DSN，不降级到开发库。
@@ -39,4 +40,4 @@
 
 ## 下一步
 
-下一步是CORE-LD-006运营确认取证并移交（路线图唯一Current），CORE-NT-001取证物流为Next。CORE-LD-007已完成运营申请→原客户企业确认→重新审核闭环的验证，但整个客户审核及纠错范围仅按该切片边界完成。未上线，未执行生产迁移。
+下一步是CORE-NT-001取证物流（路线图唯一Current），CORE-NT-002开箱材料为Next。CORE-LD-006已将客户确认侵权的线索移交为稳定来源的公证事项；后续办理尚未实现。未上线，未执行生产迁移。
