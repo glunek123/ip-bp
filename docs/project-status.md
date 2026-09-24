@@ -27,7 +27,7 @@
 
 ## 最近验证
 
-- CORE-LD-005固定代码候选`b9add2c9e016043ad645454e2033ce59c6cecf7b`、tree`5ea88857728ec7ef1d631352a55cd155f624e8f8`通过独立Final Review（未关闭Critical／Important／Minor为0／0／0）、完整`pnpm verify`（工具71、后端666、前端328及双端构建）和完整独立PostgreSQL／Chromium验收89/89；35份前向迁移的空库链及上一支持Schema升级／回滚专项通过。详细边界和重验原因见[验证记录](spec/v0.1/VALIDATION.md)。
+- CORE-LD-005固定代码候选`b9add2c9e016043ad645454e2033ce59c6cecf7b`、tree`5ea88857728ec7ef1d631352a55cd155f624e8f8`通过独立Final Review（未关闭Critical／Important／Minor为0／0／0）、完整`pnpm verify`（工具71、后端666、前端328及双端构建）和完整独立PostgreSQL／Chromium验收89/89；35份前向迁移的空库链及上一支持Schema升级／回滚专项通过。完成状态候选`04fe63b7812607c3700663ba863a874d1c9a5f65`、tree`e768ea370dc7a17174d7ce1550d2139f8f5e1583`也通过完整`pnpm verify`；两份tree的证据边界及重验原因见[验证记录](spec/v0.1/VALIDATION.md)。
 - CORE-LD-007最终已验证候选`95b59274ad3e5b17827d78d6599e3b2ba24a9676`、tree`349b96d6ae86f32f1c61c335a31911cba29bf768`已通过独立Final Review、完整`pnpm verify`及完整数据库型浏览器验收；细节见[验证记录](spec/v0.1/VALIDATION.md)。
 - Node v24.21.0、pnpm 11.27.0与项目锁定环境一致；使用锁定PostgreSQL 17.11镜像、随机本地端口和显式隔离测试DSN，不降级到开发库。
 - `CORE-LD-001`最终全分支总审结论为`APPROVED`，Critical 0／Important 0／Minor 0；其材料并发边界和事务修复结论保持有效。
