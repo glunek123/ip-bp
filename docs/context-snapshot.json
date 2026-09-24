@@ -1,6 +1,6 @@
 {
   "version": 1,
-  "recordedAt": "2026-09-24T04:19:38.965Z",
+  "recordedAt": "2026-09-24T04:21:37.879Z",
   "files": {
     ".cursor/rules/verified-feature-integration.mdc": "0b9688e6b952bf917034badbcc812493ea7c9f2fe9de2beffb38efab27143250",
     ".env.example": "07211cde5c2b59efc21b619b752d4c9b871f0980d2d64ca3c146ad6151fd27ca",
@@ -174,7 +174,7 @@
     "backend/src/common/http-exception.filter.ts": "3b1db5e0ca9c95526506ee9589d6bfed12cf47d8b58a34c907a6a37b76f9e05c",
     "backend/src/common/request-diagnostics.spec.ts": "1772daf02249c93ee1d0bb765e185d69503cbae4d50fe1d74bd53cc759802362",
     "backend/src/common/request-diagnostics.ts": "4d0e2bafe8ad38919d6c6a28b36c417193acf132b85766ea55884c60d9d7cda6",
-    "backend/src/core-ld-openapi.spec.ts": "ea1f646bf50f393862d85070b9bd2e1327aff140c7d57fd4ad2d5f1d7299070a",
+    "backend/src/core-ld-openapi.spec.ts": "7f1f0bdf13356c6a0b374cb2e4092b444c50caed79512c05f5da7b0e2afd69a6",
     "backend/src/database/database.module.ts": "fc2035345e69048ca39912d89d564d3ddd586c2cf7f1a5c3992dd0ee285ec75e",
     "backend/src/database/database.service.ts": "0534086a27beb1132a0f6fc849429838db920db734233f16c3a1dc9bfbe7ec44",
     "backend/src/health/health-response.dto.ts": "5786f072df63118349a167feea2e08867595d67eb0a141feddba80b0dda571e0",
@@ -202,7 +202,7 @@
     "backend/src/modules/customers/rights-holder.dto.ts": "6274f9dd892eac5a5a39bd887b2bcea4d21db98cffc2c970e38ae61029e93bec",
     "backend/src/modules/customers/rights-holder.service.spec.ts": "5f14786f451c5f5218363792cb578b84de4173fa53159af0804cc2e9d5e49b62",
     "backend/src/modules/customers/rights-holder.service.ts": "ae2921946d32d91517d23b99154b04a5494e9831fe0c1b6d63c465f3a5d7955a",
-    "backend/src/modules/leads/client-lead-response.dto.ts": "6e25e5404a2df2ef677866a8b556b2981d93f0b1fee3646197441e4631d9923d",
+    "backend/src/modules/leads/client-lead-response.dto.ts": "85cefad437401bd837beffa7868ad435838a3e813d40c88f34d49990c2d67be2",
     "backend/src/modules/leads/client-lead-review.dto.ts": "b0c87273fb3d3706cdd02f3780922d9a48b94949d1d86fd96af8506a7f90dedb",
     "backend/src/modules/leads/client-lead.controller.spec.ts": "af93b3bdf3d88716fb65d4c64eec571a450aef165f7720205aa880fc2729816b",
     "backend/src/modules/leads/client-lead.controller.ts": "448d3fcafb38bffa55c8ae04e95ccde5d40e0cd98c003a23825583d016f379bc",
