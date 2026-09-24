@@ -28,6 +28,7 @@ import {
 } from './lead.constants';
 import {
   ApplyLeadWithdrawalDto,
+  DecideLeadEvidenceDto,
   CreateLeadCommand,
   PushLeadDto,
   UpdateLeadDto,
@@ -46,6 +47,19 @@ const leadInclude = {
       archivedAt: true,
       reviewerDisplayNameSnapshot: true,
       decidedAt: true,
+    },
+  },
+  evidenceDecision: {
+    select: {
+      id: true,
+      result: true,
+      reason: true,
+      actorDisplayNameSnapshot: true,
+      decidedAt: true,
+      archiveType: true,
+      archivedAt: true,
+      fromVersion: true,
+      toVersion: true,
     },
   },
 } satisfies Prisma.LeadInclude;
@@ -137,6 +151,14 @@ type LeadResponse = {
         archivedAt: string;
       }
     | null;
+  evidenceDecision: {
+    result: 'NO_EVIDENCE';
+    reason: string;
+    decidedByDisplayName: string;
+    decidedAt: string;
+    archiveType: 'NO_EVIDENCE';
+    archivedAt: string;
+  } | null;
   createdAt: string;
   updatedAt: string;
 };
@@ -183,6 +205,19 @@ type LeadWithdrawalApplicationResponse = {
   reason: string;
   applicantDisplayName: string;
   appliedAt: string;
+};
+
+type LeadEvidenceDecisionResponse = {
+  id: string;
+  leadId: string;
+  status: 'ARCHIVED';
+  version: number;
+  result: 'NO_EVIDENCE';
+  reason: string;
+  decidedByDisplayName: string;
+  decidedAt: string;
+  archiveType: 'NO_EVIDENCE';
+  archivedAt: string;
 };
 
 @Injectable()
@@ -357,12 +392,14 @@ export class LeadService {
       include: leadDetailInclude,
     });
     if (lead === null) throw this.notFound();
-    const [screenshotIds, edit, push, withdrawApply] = await Promise.all([
-      this.currentScreenshotIds(actor, [lead.id]),
-      this.canEdit(actor, lead),
-      this.canPush(actor, lead),
-      this.canApplyWithdrawal(actor, lead),
-    ]);
+    const [screenshotIds, edit, push, withdrawApply, evidenceDecide] =
+      await Promise.all([
+        this.currentScreenshotIds(actor, [lead.id]),
+        this.canEdit(actor, lead),
+        this.canPush(actor, lead),
+        this.canApplyWithdrawal(actor, lead),
+        this.canDecideEvidence(actor, lead),
+      ]);
     const applications = lead.withdrawalApplications ?? [];
     const pending = applications.find(
       (application) =>
@@ -370,6 +407,23 @@ export class LeadService {
         application.confirmation === null,
     );
     const history = [
+      ...(lead.evidenceDecision === null || lead.evidenceDecision === undefined
+        ? []
+        : [
+            {
+              kind: 'EVIDENCE_DECISION' as const,
+              id: lead.evidenceDecision.id,
+              fromVersion: lead.evidenceDecision.fromVersion,
+              toVersion: lead.evidenceDecision.toVersion,
+              result: lead.evidenceDecision.result,
+              reason: lead.evidenceDecision.reason,
+              archiveType: lead.evidenceDecision.archiveType,
+              archivedAt: lead.evidenceDecision.archivedAt.toISOString(),
+              decidedByDisplayName:
+                lead.evidenceDecision.actorDisplayNameSnapshot,
+              occurredAt: lead.evidenceDecision.decidedAt.toISOString(),
+            },
+          ]),
       ...(lead.reviewDecisions ?? []).map((decision) => ({
         kind: 'REVIEW_DECISION' as const,
         id: decision.id,
@@ -413,7 +467,7 @@ export class LeadService {
     );
     return {
       ...this.view(lead, screenshotIds.get(lead.id) ?? []),
-      capabilities: { edit, push, withdrawApply },
+      capabilities: { edit, push, withdrawApply, evidenceDecide },
       pendingWithdrawalApplication:
         pending === undefined
           ? null
@@ -458,6 +512,35 @@ export class LeadService {
       return false;
     try {
       await this.access.authorizeLead(actor, 'lead.withdraw.apply', {
+        departmentId: lead.departmentId,
+        responsibleUserId: lead.responsibleUserId,
+        ...(lead.teamId === null ? {} : { teamId: lead.teamId }),
+      });
+      return true;
+    } catch (error) {
+      if (error instanceof ForbiddenException) return false;
+      throw error;
+    }
+  }
+
+  private async canDecideEvidence(
+    actor: ActorContext,
+    lead: LeadDetailRecord,
+  ): Promise<boolean> {
+    if (
+      lead.status !== 'WAITING_EVIDENCE_DECISION' ||
+      lead.activeReviewDecisionId === null ||
+      lead.reviewDecision?.result !== 'INFRINGEMENT' ||
+      lead.evidenceDecision !== null
+    )
+      return false;
+    const account = await this.database.userAccount.findUnique({
+      where: { id: actor.userId },
+      select: { accountType: true },
+    });
+    if (account?.accountType !== 'INTERNAL') return false;
+    try {
+      await this.access.authorizeLead(actor, 'lead.evidence.decide', {
         departmentId: lead.departmentId,
         responsibleUserId: lead.responsibleUserId,
         ...(lead.teamId === null ? {} : { teamId: lead.teamId }),
@@ -1141,6 +1224,209 @@ export class LeadService {
     throw this.versionConflict();
   }
 
+  async decideEvidence(
+    actor: ActorContext,
+    id: string,
+    idempotencyKey: string,
+    input: DecideLeadEvidenceDto,
+  ): Promise<LeadEvidenceDecisionResponse> {
+    if (input.result !== 'NO_EVIDENCE' || typeof input.reason !== 'string')
+      throw this.validation();
+    const reason = input.reason.trim();
+    if (Array.from(reason).length < 1 || Array.from(reason).length > 5000)
+      throw this.validation();
+    if (!Number.isInteger(input.expectedVersion) || input.expectedVersion < 1)
+      throw this.validation();
+    const fingerprint = this.fingerprint({
+      leadId: id,
+      result: input.result,
+      reason,
+      expectedVersion: input.expectedVersion,
+    });
+    for (let attempt = 1; attempt <= MAX_SERIALIZABLE_ATTEMPTS; attempt += 1) {
+      try {
+        return await this.database.$transaction(
+          async (transaction) => {
+            const locked = await transaction.$queryRawUnsafe<
+              Array<{ id: string }>
+            >(
+              'SELECT "id" FROM "leads" WHERE "id" = $1::uuid AND "department_id" = $2::uuid FOR UPDATE',
+              id,
+              actor.departmentId,
+            );
+            if (locked.length !== 1) throw this.notFound();
+            const current = await transaction.lead.findFirst({
+              where: { id, departmentId: actor.departmentId },
+              include: {
+                reviewDecision: { select: { id: true, result: true } },
+              },
+            });
+            if (current === null) throw this.notFound();
+            const actorAccount = await transaction.userAccount.findUnique({
+              where: { id: actor.userId },
+              select: { displayName: true, accountType: true },
+            });
+            if (actorAccount?.accountType !== 'INTERNAL')
+              throw this.actionForbidden();
+            try {
+              await this.access.authorizeLead(
+                actor,
+                'lead.evidence.decide',
+                {
+                  departmentId: current.departmentId,
+                  responsibleUserId: current.responsibleUserId,
+                  ...(current.teamId === null
+                    ? {}
+                    : { teamId: current.teamId }),
+                },
+                transaction,
+              );
+            } catch (error) {
+              throw this.mapAuthorization(error);
+            }
+            const prior = await transaction.leadCommandReceipt.findUnique({
+              where: this.receiptWhere(
+                actor,
+                'evidence_decide',
+                idempotencyKey,
+              ),
+            });
+            if (prior !== null)
+              return this.evidenceDecisionSnapshot(prior, fingerprint, id);
+            if (
+              current.status !== 'WAITING_EVIDENCE_DECISION' ||
+              current.activeReviewDecisionId === null ||
+              current.reviewDecision?.id !== current.activeReviewDecisionId ||
+              current.reviewDecision.result !== 'INFRINGEMENT'
+            )
+              throw this.evidenceInvalidState();
+            if (current.version !== input.expectedVersion)
+              throw this.versionConflict();
+            const changed = await transaction.lead.updateMany({
+              where: {
+                id,
+                departmentId: actor.departmentId,
+                version: input.expectedVersion,
+                status: 'WAITING_EVIDENCE_DECISION',
+                activeReviewDecisionId: current.activeReviewDecisionId,
+              },
+              data: { status: 'ARCHIVED', version: { increment: 1 } },
+            });
+            if (changed.count !== 1) throw this.versionConflict();
+            const evidenceDecisionId = randomUUID();
+            const decidedAt = new Date();
+            const result: LeadEvidenceDecisionResponse = {
+              id: evidenceDecisionId,
+              leadId: id,
+              status: 'ARCHIVED',
+              version: input.expectedVersion + 1,
+              result: 'NO_EVIDENCE',
+              reason,
+              decidedByDisplayName: actorAccount.displayName,
+              decidedAt: decidedAt.toISOString(),
+              archiveType: 'NO_EVIDENCE',
+              archivedAt: decidedAt.toISOString(),
+            };
+            await transaction.leadEvidenceDecision.create({
+              data: {
+                id: evidenceDecisionId,
+                originalReviewDecisionId: current.activeReviewDecisionId,
+                originalReviewResult: 'INFRINGEMENT',
+                leadId: id,
+                customerId: current.customerId,
+                departmentId: current.departmentId,
+                actorUserId: actor.userId,
+                actorDisplayNameSnapshot: actorAccount.displayName,
+                result: 'NO_EVIDENCE',
+                reason,
+                archiveType: 'NO_EVIDENCE',
+                decidedAt,
+                archivedAt: decidedAt,
+                fromVersion: input.expectedVersion,
+                toVersion: result.version,
+              },
+            });
+            await transaction.auditEvent.create({
+              data: {
+                departmentId: actor.departmentId,
+                actorUserId: actor.userId,
+                resourceType: 'lead',
+                resourceId: id,
+                action: 'lead.evidence_decided',
+                details: {
+                  evidenceDecisionId,
+                  originalReviewDecisionId: current.activeReviewDecisionId,
+                  result: 'NO_EVIDENCE',
+                  fromVersion: input.expectedVersion,
+                  toVersion: result.version,
+                },
+              },
+            });
+            await transaction.leadCommandReceipt.create({
+              data: {
+                departmentId: actor.departmentId,
+                actorUserId: actor.userId,
+                action: 'evidence_decide',
+                idempotencyKey,
+                requestFingerprint: fingerprint,
+                resultLeadId: id,
+                resultLeadVersion: result.version,
+                resultSnapshot: result,
+              },
+            });
+            return result;
+          },
+          { isolationLevel: 'Serializable' },
+        );
+      } catch (error) {
+        if (this.isSerializationConflict(error)) {
+          if (attempt < MAX_SERIALIZABLE_ATTEMPTS) continue;
+          throw this.versionConflict();
+        }
+        if (this.isUnique(error)) {
+          if (attempt < MAX_SERIALIZABLE_ATTEMPTS) continue;
+          throw this.evidenceInvalidState();
+        }
+        throw this.mapAuthorization(error);
+      }
+    }
+    throw this.versionConflict();
+  }
+
+  private evidenceDecisionSnapshot(
+    receipt: Receipt,
+    fingerprint: string,
+    leadId: string,
+  ): LeadEvidenceDecisionResponse {
+    if (
+      receipt.requestFingerprint !== fingerprint ||
+      receipt.resultLeadId !== leadId
+    )
+      throw this.idempotencyConflict();
+    const snapshot = receipt.resultSnapshot;
+    if (
+      snapshot === null ||
+      typeof snapshot !== 'object' ||
+      Array.isArray(snapshot)
+    )
+      throw this.corruptReceipt();
+    const result = snapshot as Record<string, unknown>;
+    if (
+      typeof result.id !== 'string' ||
+      result.leadId !== leadId ||
+      result.status !== 'ARCHIVED' ||
+      result.version !== receipt.resultLeadVersion ||
+      result.result !== 'NO_EVIDENCE' ||
+      typeof result.reason !== 'string' ||
+      typeof result.decidedByDisplayName !== 'string' ||
+      typeof result.decidedAt !== 'string' ||
+      result.archiveType !== 'NO_EVIDENCE' ||
+      result.archivedAt !== result.decidedAt
+    )
+      throw this.corruptReceipt();
+    return result as LeadEvidenceDecisionResponse;
+  }
+
   private withdrawalApplicationSnapshot(
     application: {
       requestFingerprint: string;
@@ -1383,7 +1669,7 @@ export class LeadService {
               reviewerDisplayName:
                 record.reviewDecision.reviewerDisplayNameSnapshot,
               decidedAt: record.reviewDecision.decidedAt.toISOString(),
-              archiveType: record.reviewDecision.archiveType!,
+              archiveType: 'NO_INFRINGEMENT',
               archivedAt: record.reviewDecision.archivedAt!.toISOString(),
             }
           : {
@@ -1392,6 +1678,17 @@ export class LeadService {
                 record.reviewDecision.reviewerDisplayNameSnapshot,
               decidedAt: record.reviewDecision.decidedAt.toISOString(),
             }
+        : null,
+      evidenceDecision: record.evidenceDecision
+        ? {
+            result: record.evidenceDecision.result,
+            reason: record.evidenceDecision.reason,
+            decidedByDisplayName:
+              record.evidenceDecision.actorDisplayNameSnapshot,
+            decidedAt: record.evidenceDecision.decidedAt.toISOString(),
+            archiveType: 'NO_EVIDENCE',
+            archivedAt: record.evidenceDecision.archivedAt.toISOString(),
+          }
         : null,
       createdAt: record.createdAt.toISOString(),
       updatedAt: record.updatedAt.toISOString(),
@@ -1623,6 +1920,7 @@ export class LeadService {
       ...snapshot,
       pushedByDisplayName: snapshot.pushedByDisplayName ?? null,
       reviewDecision: snapshot.reviewDecision ?? null,
+      evidenceDecision: snapshot.evidenceDecision ?? null,
     };
   }
   private pushReceiptResult(
@@ -1802,6 +2100,12 @@ export class LeadService {
     return new ConflictException({
       code: 'INVALID_STATE',
       message: '仅当前未申请撤回的不侵权归档线索可以申请',
+    });
+  }
+  private evidenceInvalidState() {
+    return new ConflictException({
+      code: 'INVALID_STATE',
+      message: '仅客户确认侵权后的待确认线索可以决定不取证',
     });
   }
   private customerNotAdmitted() {

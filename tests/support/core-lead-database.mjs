@@ -75,6 +75,7 @@ const allActions = [
   'LEAD_CREATE',
   'LEAD_EDIT',
   'LEAD_PUSH',
+  'LEAD_EVIDENCE_DECIDE',
   'LEAD_WITHDRAW_APPLY',
 ];
 const actionNames = Object.freeze({
@@ -84,6 +85,7 @@ const actionNames = Object.freeze({
   'lead.create': 'LEAD_CREATE',
   'lead.edit': 'LEAD_EDIT',
   'lead.push': 'LEAD_PUSH',
+  'lead.evidence.decide': 'LEAD_EVIDENCE_DECIDE',
   'lead.withdraw.apply': 'LEAD_WITHDRAW_APPLY',
 });
 
@@ -103,6 +105,7 @@ async function dropFaults() {
     ['client_lead_review_receipts', 'core_ld_reject_review_receipt'],
     ['lead_withdrawal_applications', 'core_ld_reject_withdrawal_application'],
     ['lead_withdrawal_confirmations', 'core_ld_reject_withdrawal_confirmation'],
+    ['lead_evidence_decisions', 'core_ld_reject_evidence_decision'],
   ]) {
     await database.$executeRawUnsafe(
       `ALTER TABLE "${table}" DROP CONSTRAINT IF EXISTS "${constraint}"`,
@@ -257,6 +260,7 @@ async function clearDatabase() {
     'lead_review_decisions',
     'lead_withdrawal_applications',
     'lead_withdrawal_confirmations',
+    'lead_evidence_decisions',
   ]) {
     await database.$executeRawUnsafe(
       `ALTER TABLE "${table}" DISABLE TRIGGER USER`,
@@ -274,6 +278,9 @@ async function clearDatabase() {
       await transaction.leadWithdrawalApplication.deleteMany({
         where: { departmentId: { in: departmentIds } },
       });
+      await transaction.leadEvidenceDecision.deleteMany({
+        where: { departmentId: { in: departmentIds } },
+      });
       await transaction.clientLeadReviewReceipt.deleteMany({
         where: { departmentId: { in: departmentIds } },
       });
@@ -285,6 +292,7 @@ async function clearDatabase() {
     for (const table of [
       'lead_withdrawal_confirmations',
       'lead_withdrawal_applications',
+      'lead_evidence_decisions',
       'lead_review_decisions',
       'client_lead_review_receipts',
     ]) {
@@ -718,6 +726,30 @@ export function countLeadPushAudits(leadId) {
   });
 }
 
+export function getLeadEvidenceDecision(leadId) {
+  return database.leadEvidenceDecision.findFirst({ where: { leadId } });
+}
+
+export function countLeadEvidenceDecisions(leadId) {
+  return database.leadEvidenceDecision.count({ where: { leadId } });
+}
+
+export function countLeadEvidenceReceipts(leadId) {
+  return database.leadCommandReceipt.count({
+    where: { resultLeadId: leadId, action: 'evidence_decide' },
+  });
+}
+
+export function countLeadEvidenceAudits(leadId) {
+  return database.auditEvent.count({
+    where: {
+      resourceType: 'lead',
+      resourceId: leadId,
+      action: 'lead.evidence_decided',
+    },
+  });
+}
+
 export function getLeadReviewDecision(leadId) {
   return database.leadReviewDecision.findFirst({
     where: { leadId },
@@ -858,6 +890,20 @@ export async function rejectLeadPushReceiptWrites() {
   await dropFaults();
   await database.$executeRawUnsafe(
     `ALTER TABLE "lead_command_receipts" ADD CONSTRAINT "core_ld_reject_push_receipt" CHECK ("action" <> 'push') NOT VALID`,
+  );
+}
+
+export async function rejectLeadEvidenceDecisionWrites() {
+  await dropFaults();
+  await database.$executeRawUnsafe(
+    'ALTER TABLE "lead_evidence_decisions" ADD CONSTRAINT "core_ld_reject_evidence_decision" CHECK (false) NOT VALID',
+  );
+}
+
+export async function rejectLeadEvidenceReceiptWrites() {
+  await dropFaults();
+  await database.$executeRawUnsafe(
+    `ALTER TABLE "lead_command_receipts" ADD CONSTRAINT "core_ld_reject_push_receipt" CHECK ("action" <> 'evidence_decide') NOT VALID`,
   );
 }
 

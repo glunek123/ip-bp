@@ -1124,6 +1124,10 @@ export class MaterialService {
             },
             {
               status: 'ARCHIVED',
+              evidenceDecision: { is: { result: 'NO_EVIDENCE' } },
+            },
+            {
+              status: 'ARCHIVED',
               reviewDecision: {
                 is: {
                   result: 'NO_INFRINGEMENT',

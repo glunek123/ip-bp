@@ -26,6 +26,35 @@ const customerId = '33333333-3333-4333-8333-333333333333';
 const now = new Date('2026-09-21T04:00:00.000Z');
 
 describe('MaterialService', () => {
+  it('reads current screenshots for this enterprise archived with a no-evidence fact', async () => {
+    const fixture = createFixture();
+    const clientActor = { ...actor, clientCustomerId: customerId };
+    const lead = clientLeadRecord({
+      status: 'ARCHIVED',
+      activeReviewDecisionId: 'review-1',
+      evidenceDecision: { result: 'NO_EVIDENCE' },
+    });
+    fixture.db.lead.findFirst.mockImplementation(
+      ({ where }: { where: ClientLeadWhere }) =>
+        clientLeadMatchesWhere(lead, where) ? { id: lead.id } : null,
+    );
+    fixture.db.materialReference.findMany.mockResolvedValue([
+      { contentVersionId: 'version-a' },
+    ]);
+    await expect(
+      fixture.service.listCurrentReferenceVersionIds(
+        fixture.db as never,
+        clientActor,
+        {
+          resourceType: 'lead',
+          resourceId: lead.id,
+          purpose: 'LEAD_SCREENSHOT',
+        },
+      ),
+    ).resolves.toEqual(['version-a']);
+    expect(fixture.access.buildLeadScope).not.toHaveBeenCalled();
+  });
+
   it('reads reopened lead screenshots only with a null current pointer and exact enterprise scope', async () => {
     const fixture = createFixture();
     const clientActor = { ...actor, clientCustomerId: customerId };
@@ -94,6 +123,10 @@ describe('MaterialService', () => {
           {
             status: 'WAITING_EVIDENCE_DECISION',
             reviewDecision: { is: { result: 'INFRINGEMENT' } },
+          },
+          {
+            status: 'ARCHIVED',
+            evidenceDecision: { is: { result: 'NO_EVIDENCE' } },
           },
           {
             status: 'ARCHIVED',
@@ -1837,6 +1870,7 @@ type ClientLeadWhere = {
     isNot?: null;
     is?: { result?: string; archiveType?: string; archivedAt?: { not: null } };
   };
+  evidenceDecision?: { is?: { result?: string } };
   OR?: ClientLeadWhere[];
 };
 
@@ -1848,6 +1882,7 @@ function clientLeadRecord(
     pushedAt?: Date | null;
     pushedByUserId?: string | null;
     reviewDecision?: object | null;
+    evidenceDecision?: object | null;
     activeReviewDecisionId?: string | null;
   } = {},
 ) {
@@ -1859,6 +1894,7 @@ function clientLeadRecord(
     pushedAt: now,
     pushedByUserId: actor.userId,
     reviewDecision: { result: 'INFRINGEMENT' },
+    evidenceDecision: null,
     activeReviewDecisionId: null,
     ...overrides,
   };
@@ -1887,6 +1923,10 @@ function clientLeadMatchesWhere(
                 null
               : (lead.reviewDecision as Record<string, unknown>)[key] === value,
           )))) &&
+    (where.evidenceDecision === undefined ||
+      (lead.evidenceDecision !== null &&
+        where.evidenceDecision.is?.result ===
+          (lead.evidenceDecision as { result?: string }).result)) &&
     (where.OR === undefined ||
       where.OR.some((branch) => clientLeadMatchesWhere(lead, branch)))
   );

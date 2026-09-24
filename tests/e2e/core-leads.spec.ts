@@ -14,6 +14,9 @@ import {
   countLeadReceipts,
   countLeadPushAudits,
   countLeadPushReceipts,
+  countLeadEvidenceDecisions,
+  countLeadEvidenceReceipts,
+  countLeadEvidenceAudits,
   countLeadReviewDecisions,
   countLeadWithdrawalApplications,
   countLeadWithdrawalAudits,
@@ -25,6 +28,7 @@ import {
   disconnectCoreLeadTestDatabase,
   getCustomer,
   getLead,
+  getLeadEvidenceDecision,
   getLeadReviewDecision,
   getLeadReviewDecisions,
   getLeadWithdrawalApplication,
@@ -35,6 +39,8 @@ import {
   markContentVersion,
   rejectAuditWrites,
   rejectLeadPushReceiptWrites,
+  rejectLeadEvidenceDecisionWrites,
+  rejectLeadEvidenceReceiptWrites,
   rejectLeadReviewDecisionWrites,
   rejectClientLeadReviewReceiptWrites,
   rejectWithdrawalApplicationWrites,
@@ -208,6 +214,20 @@ function pushLead(
   });
 }
 
+function decideNoEvidence(
+  request: APIRequestContext,
+  leadId: string,
+  expectedVersion: number,
+  reason: string,
+  key = randomUUID(),
+  headers: Record<string, string> = authorizationA,
+) {
+  return request.post(`/api/v1/leads/${leadId}/evidence-decisions`, {
+    headers: { ...headers, 'Idempotency-Key': key },
+    data: { result: 'NO_EVIDENCE', reason, expectedVersion },
+  });
+}
+
 async function loginClient(
   request: APIRequestContext,
   username: string,
@@ -264,6 +284,19 @@ async function archiveLeadForWithdrawal(
   );
   expect(review.status(), await review.text()).toBe(201);
   return { lead, reviewKey, reviewResult: await review.json() };
+}
+
+async function createInfringementReviewedLead(
+  request: APIRequestContext,
+  csrfToken: string,
+) {
+  const created = await createLead(request);
+  expect(created.status(), await created.text()).toBe(201);
+  const lead: { id: string } = await created.json();
+  expect((await pushLead(request, lead.id, 1)).status()).toBe(201);
+  const reviewed = await reviewLead(request, lead.id, 2, csrfToken);
+  expect(reviewed.status(), await reviewed.text()).toBe(201);
+  return lead;
 }
 
 function applyLeadWithdrawal(
@@ -619,6 +652,54 @@ test('real operator and client logins persist infringement review, screenshot an
   await expect(
     page.locator('[data-test="client-review-record"]'),
   ).toContainText(reviewerTime!);
+  const noEvidenceReason = '现场取证成本与现有材料不匹配，本次不再取证';
+  await expect(
+    page.locator('[data-test="no-evidence-reason"]'),
+  ).toHaveAttribute('aria-required', 'true');
+  await page.locator('[data-test="no-evidence-reason"]').fill(noEvidenceReason);
+  page.once('dialog', (dialog) => {
+    expect(dialog.message()).toContain('当前页面不能撤回');
+    dialog.accept();
+  });
+  await page.locator('[data-test="archive-no-evidence"]').click();
+  await expect(page.locator('.page-head .pill')).toHaveText('线索已归档');
+  await expect(
+    page.locator('[data-test="evidence-decision-record"]'),
+  ).toContainText(noEvidenceReason);
+  await expect(
+    page.locator('[data-test="client-review-record"]'),
+  ).toContainText(reviewerTime!);
+
+  await page.reload();
+  await expect(
+    page.locator('[data-test="evidence-decision-record"]'),
+  ).toContainText(noEvidenceReason);
+  await page.getByRole('button', { name: '退出登录' }).click();
+  await page.getByLabel('用户名').fill(clientUsername);
+  await page.getByLabel('密码').fill(clientPassword);
+  await page.getByRole('button', { name: '登录', exact: true }).click();
+  await page.locator('[data-test="client-view-processed"]').click();
+  await page
+    .locator('[data-test="client-lead-row"]')
+    .filter({ hasText: '客户端闭环店铺' })
+    .getByRole('link')
+    .click();
+  await expect(
+    page.locator('[data-test="client-evidence-decision-record"]'),
+  ).toContainText(noEvidenceReason);
+  await expect(page.getByText('下一步：等待运营确认是否取证')).toHaveCount(0);
+  await expect(
+    page.locator('[data-test="client-review-record"]'),
+  ).toContainText(reviewerTime!);
+  const archivedDownload = page.waitForEvent('download');
+  await page.locator('[data-test^="download-screenshot-"]').click();
+  expect(await readFile(await (await archivedDownload).path())).toEqual(
+    jpegBytes,
+  );
+  await page.reload();
+  await expect(
+    page.locator('[data-test="client-evidence-decision-record"]'),
+  ).toContainText(noEvidenceReason);
 });
 
 test('real operator and client logins archive a no-infringement review and preserve it across refresh and processed view', async ({
@@ -2176,6 +2257,190 @@ test('lead numbers stop after 999 and concurrent creation never duplicates a num
   );
   expect(new Set(numbers).size).toBe(numbers.length);
   expect(await countLeads()).toBe(4 + successes.length);
+});
+
+test('no-evidence archive enforces Grant, state, version, replay and enterprise read scope', async ({
+  request,
+}) => {
+  const clientA = await createClientAccount(request);
+  const clientB = await createClientAccount(request, {
+    customerId: coreLeadFixtures.foreignCustomer,
+    headers: { Authorization: `Bearer ${coreLeadFixtures.tokenB}` },
+  });
+  const csrfA = await loginClient(request, clientA.username, clientA.password);
+  const lead = await createInfringementReviewedLead(request, csrfA);
+  const clientCannotArchive = await decideNoEvidence(
+    request,
+    lead.id,
+    3,
+    '客户不能代替运营决定',
+    randomUUID(),
+    { 'X-CSRF-Token': csrfA },
+  );
+  expect(clientCannotArchive.status()).toBe(403);
+  const waiting = await (await createLead(request)).json();
+  expect(
+    (await decideNoEvidence(request, waiting.id, 1, '状态错误')).status(),
+  ).toBe(409);
+  const missingReview = await decideNoEvidence(
+    request,
+    '70000000-0000-4000-8000-000000000002',
+    1,
+    '缺少客户确认侵权事实',
+  );
+  expect(missingReview.status()).toBe(409);
+  const stale = await decideNoEvidence(request, lead.id, 2, '版本过期');
+  expect(stale.status()).toBe(409);
+  expect(await stale.json()).toMatchObject({ code: 'VERSION_CONFLICT' });
+  for (const reason of ['', '   ', 'x'.repeat(5001)]) {
+    const invalid = await decideNoEvidence(request, lead.id, 3, reason);
+    expect(invalid.status(), await invalid.text()).toBe(400);
+  }
+  expect(
+    (
+      await decideNoEvidence(
+        request,
+        lead.id,
+        3,
+        '无范围',
+        randomUUID(),
+        authorizationSelf,
+      )
+    ).status(),
+  ).toBe(403);
+  const otherDepartment = await decideNoEvidence(
+    request,
+    lead.id,
+    3,
+    '跨部门',
+    randomUUID(),
+    { Authorization: `Bearer ${coreLeadFixtures.tokenB}` },
+  );
+  expect(otherDepartment.status()).toBe(404);
+  await setGrant('lead.evidence.decide', false);
+  expect((await decideNoEvidence(request, lead.id, 3, '无权限')).status()).toBe(
+    403,
+  );
+  await setGrant('lead.evidence.decide', true);
+
+  const key = randomUUID();
+  const first = await decideNoEvidence(
+    request,
+    lead.id,
+    3,
+    '  本次不再取证  ',
+    key,
+  );
+  expect(first.status(), await first.text()).toBe(201);
+  const snapshot = await first.json();
+  expect(snapshot).toMatchObject({
+    leadId: lead.id,
+    status: 'ARCHIVED',
+    version: 4,
+    reason: '本次不再取证',
+  });
+  expect(await getLead(lead.id)).toMatchObject({
+    status: 'ARCHIVED',
+    version: 4,
+  });
+  expect(await getLeadEvidenceDecision(lead.id)).toMatchObject({
+    leadId: lead.id,
+    result: 'NO_EVIDENCE',
+    reason: '本次不再取证',
+    archiveType: 'NO_EVIDENCE',
+    fromVersion: 3,
+    toVersion: 4,
+  });
+  expect(await countLeadReviewDecisions(lead.id)).toBe(1);
+  expect(await countLeadEvidenceDecisions(lead.id)).toBe(1);
+  expect(await countLeadEvidenceAudits(lead.id)).toBe(1);
+  expect(await countLeadEvidenceReceipts(lead.id)).toBe(1);
+  const replay = await decideNoEvidence(
+    request,
+    lead.id,
+    3,
+    '  本次不再取证  ',
+    key,
+  );
+  expect(replay.status()).toBe(201);
+  expect(await replay.json()).toEqual(snapshot);
+  const changedIntent = await decideNoEvidence(
+    request,
+    lead.id,
+    3,
+    '不同原因',
+    key,
+  );
+  expect(changedIntent.status()).toBe(409);
+  expect(await changedIntent.json()).toMatchObject({
+    code: 'IDEMPOTENCY_CONFLICT',
+  });
+  expect(
+    (await decideNoEvidence(request, lead.id, 4, '再次归档')).status(),
+  ).toBe(409);
+
+  await setGrant('lead.evidence.decide', false);
+  expect(
+    (
+      await decideNoEvidence(request, lead.id, 3, '  本次不再取证  ', key)
+    ).status(),
+  ).toBe(403);
+  await setGrant('lead.evidence.decide', true);
+  const detail = await request.get(`/api/v1/client/leads/${lead.id}`);
+  expect(detail.status(), await detail.text()).toBe(200);
+  const clientDetail = await detail.json();
+  expect(clientDetail.evidenceDecision).toMatchObject({
+    reason: '本次不再取证',
+    archiveType: 'NO_EVIDENCE',
+  });
+  expect(clientDetail.reviewDecision).toMatchObject({ result: 'INFRINGEMENT' });
+  expect(JSON.stringify(clientDetail)).not.toContain('responsibleUserId');
+  const processed = await request.get('/api/v1/client/leads?view=PROCESSED');
+  expect(processed.status(), await processed.text()).toBe(200);
+  expect(
+    (await processed.json()).items.map((item: { id: string }) => item.id),
+  ).toContain(lead.id);
+
+  await loginClient(request, clientB.username, clientB.password);
+  expect((await request.get(`/api/v1/client/leads/${lead.id}`)).status()).toBe(
+    404,
+  );
+});
+
+test('no-evidence competing commands and failed durable writes never leave partial archive facts', async ({
+  request,
+}) => {
+  const client = await createClientAccount(request);
+  const csrf = await loginClient(request, client.username, client.password);
+  const lead = await createInfringementReviewedLead(request, csrf);
+  const contenders = await Promise.all([
+    decideNoEvidence(request, lead.id, 3, '并发甲'),
+    decideNoEvidence(request, lead.id, 3, '并发乙'),
+  ]);
+  expect(contenders.map((result) => result.status()).sort()).toEqual([
+    201, 409,
+  ]);
+  expect(await countLeadEvidenceDecisions(lead.id)).toBe(1);
+  expect(await countLeadEvidenceReceipts(lead.id)).toBe(1);
+  expect(await countLeadEvidenceAudits(lead.id)).toBe(1);
+
+  for (const reject of [
+    () => rejectLeadEvidenceDecisionWrites(),
+    () => rejectLeadEvidenceReceiptWrites(),
+    () => rejectAuditWrites('lead.evidence_decided'),
+  ]) {
+    const candidate = await createInfringementReviewedLead(request, csrf);
+    await reject();
+    const failed = await decideNoEvidence(request, candidate.id, 3, '写入失败');
+    expect(failed.status()).toBeGreaterThanOrEqual(500);
+    expect(await getLead(candidate.id)).toMatchObject({
+      status: 'WAITING_EVIDENCE_DECISION',
+      version: 3,
+    });
+    expect(await countLeadEvidenceDecisions(candidate.id)).toBe(0);
+    expect(await countLeadEvidenceAudits(candidate.id)).toBe(0);
+    expect(await countLeadEvidenceReceipts(candidate.id)).toBe(0);
+  }
 });
 
 test('withdrawal application enforces Grant, state, retries, races, and full transaction rollback', async ({

@@ -69,6 +69,10 @@ async function run() {
       ),
     );
     await assertUpgrade();
+    await applyMigrations(
+      migrations.filter((name) => name >= '20260924010000'),
+    );
+    await assertEvidenceUpgrade();
     console.log('previous-schema upgrade and constraints passed');
   } finally {
     await client.query('SET search_path TO public');
@@ -411,6 +415,127 @@ async function assertUpgrade() {
     if (rounds.rows[0].count !== 2)
       throw new Error('second review round was not preserved');
     await client.query('COMMIT');
+  } catch (error) {
+    await client.query('ROLLBACK');
+    throw error;
+  }
+}
+
+async function assertEvidenceUpgrade() {
+  const oldFacts = await client.query(
+    `SELECT (SELECT count(*)::int FROM lead_review_decisions) AS decisions,
+            (SELECT count(*)::int FROM client_lead_review_receipts) AS receipts,
+            (SELECT count(*)::int FROM lead_withdrawal_applications) AS applications`,
+  );
+  if (
+    oldFacts.rows[0].decisions !== 3 ||
+    oldFacts.rows[0].receipts !== 2 ||
+    oldFacts.rows[0].applications !== 1
+  )
+    throw new Error('upgrade changed pre-existing review or withdrawal facts');
+  await client.query('BEGIN');
+  try {
+    const insert = `INSERT INTO lead_evidence_decisions
+      (id,original_review_decision_id,lead_id,customer_id,department_id,actor_user_id,
+       actor_display_name_snapshot,result,reason,archive_type,decided_at,archived_at,from_version,to_version)
+      VALUES ($1,$2,$3,$4,$5,$6,'Operator Original','NO_EVIDENCE',$7,'NO_EVIDENCE',now(),now(),6,7)`;
+    const factId = '13131313-1313-4313-8313-131313131313';
+    await rejects(
+      insert,
+      [
+        factId,
+        ids.decisionA,
+        ids.leadA,
+        ids.customerA,
+        ids.department,
+        ids.operator,
+        'Bad review',
+      ],
+      '23503',
+    );
+    await rejects(
+      insert,
+      [
+        factId,
+        ids.decisionB,
+        ids.leadA,
+        ids.customerA,
+        ids.department,
+        ids.operator,
+        'Wrong lead',
+      ],
+      '23503',
+    );
+    await rejects(
+      insert,
+      [
+        factId,
+        '12121212-1212-4212-8212-121212121212',
+        ids.leadA,
+        ids.customerB,
+        ids.department,
+        ids.operator,
+        'Wrong enterprise',
+      ],
+      '23503',
+    );
+    await rejects(
+      insert,
+      [
+        factId,
+        '12121212-1212-4212-8212-121212121212',
+        ids.leadA,
+        ids.customerA,
+        ids.department,
+        ids.operator,
+        ' ',
+      ],
+      '23514',
+    );
+    await rejects(
+      insert,
+      [
+        factId,
+        '12121212-1212-4212-8212-121212121212',
+        ids.leadA,
+        ids.customerA,
+        ids.department,
+        ids.operator,
+        'x'.repeat(5001),
+      ],
+      '23514',
+    );
+    await client.query(insert, [
+      factId,
+      '12121212-1212-4212-8212-121212121212',
+      ids.leadA,
+      ids.customerA,
+      ids.department,
+      ids.operator,
+      'Valid reason',
+    ]);
+    await rejects(
+      `UPDATE lead_evidence_decisions SET reason='changed' WHERE id=$1`,
+      [factId],
+      '55000',
+    );
+    await rejects(
+      `DELETE FROM lead_evidence_decisions WHERE id=$1`,
+      [factId],
+      '55000',
+    );
+    const archive = await client.query(
+      `SELECT result,reason,actor_display_name_snapshot,archive_type FROM lead_evidence_decisions WHERE id=$1`,
+      [factId],
+    );
+    if (
+      archive.rows[0]?.result !== 'NO_EVIDENCE' ||
+      archive.rows[0]?.reason !== 'Valid reason' ||
+      archive.rows[0]?.actor_display_name_snapshot !== 'Operator Original' ||
+      archive.rows[0]?.archive_type !== 'NO_EVIDENCE'
+    )
+      throw new Error('evidence archive facts were not preserved');
+    await client.query('ROLLBACK');
   } catch (error) {
     await client.query('ROLLBACK');
     throw error;

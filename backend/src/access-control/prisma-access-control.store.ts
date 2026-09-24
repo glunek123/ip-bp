@@ -22,6 +22,7 @@ const actionMap = {
   LEAD_EDIT: 'lead.edit',
   LEAD_PUSH: 'lead.push',
   LEAD_WITHDRAW_APPLY: 'lead.withdraw.apply',
+  LEAD_EVIDENCE_DECIDE: 'lead.evidence.decide',
   CLIENT_LEAD_READ: 'client.lead.read',
   CLIENT_LEAD_REVIEW: 'client.lead.review',
   CLIENT_LEAD_WITHDRAW_CONFIRM: 'client.lead.withdraw.confirm',

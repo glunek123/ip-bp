@@ -18,6 +18,102 @@ const actor: ActorContext = {
 };
 
 describe('LeadService', () => {
+  it.each([
+    ['CLIENT', false],
+    ['INTERNAL', true],
+  ] as const)(
+    'shows evidence decision capability only to a current %s actor',
+    async (accountType, allowed) => {
+      const base = createCreateFixture().createdLead;
+      const record = {
+        ...base,
+        status: 'WAITING_EVIDENCE_DECISION',
+        activeReviewDecisionId: '55555555-5555-4555-8555-555555555555',
+        reviewDecision: {
+          result: 'INFRINGEMENT',
+          reviewerDisplayNameSnapshot: '客户审核员',
+          decidedAt: new Date('2026-09-24T01:00:00Z'),
+        },
+        evidenceDecision: null,
+      };
+      const access = {
+        buildLeadScope: jest
+          .fn()
+          .mockResolvedValue({ departmentId: actor.departmentId }),
+        authorizeLead: jest.fn().mockResolvedValue(undefined),
+      };
+      const service = new LeadService(
+        {
+          lead: { findFirst: jest.fn().mockResolvedValue(record) },
+          userAccount: {
+            findUnique: jest.fn().mockResolvedValue({ accountType }),
+          },
+        } as unknown as DatabaseService,
+        access as unknown as AccessControlService,
+        {
+          listCurrentReferenceVersionIds: jest.fn().mockResolvedValue([]),
+        } as unknown as MaterialService,
+      );
+      const result = await service.get(actor, record.id);
+      expect(result.capabilities.evidenceDecide).toBe(allowed);
+    },
+  );
+  it('projects no-evidence archive fact and capability on internal detail', async () => {
+    const base = createCreateFixture().createdLead;
+    const record = {
+      ...base,
+      status: 'ARCHIVED',
+      activeReviewDecisionId: '55555555-5555-4555-8555-555555555555',
+      reviewDecision: {
+        result: 'INFRINGEMENT',
+        reviewerDisplayNameSnapshot: '客户审核员',
+        decidedAt: new Date('2026-09-24T01:00:00Z'),
+      },
+      evidenceDecision: {
+        id: '66666666-6666-4666-8666-666666666666',
+        result: 'NO_EVIDENCE',
+        reason: '无法继续取证',
+        actorDisplayNameSnapshot: '运营原名',
+        decidedAt: new Date('2026-09-24T02:00:00Z'),
+        archiveType: 'NO_EVIDENCE',
+        archivedAt: new Date('2026-09-24T02:00:00Z'),
+        fromVersion: 3,
+        toVersion: 4,
+      },
+    };
+    const service = new LeadService(
+      {
+        lead: { findFirst: jest.fn().mockResolvedValue(record) },
+      } as unknown as DatabaseService,
+      {
+        buildLeadScope: jest
+          .fn()
+          .mockResolvedValue({ departmentId: actor.departmentId }),
+        authorizeLead: jest.fn(),
+      } as unknown as AccessControlService,
+      {
+        listCurrentReferenceVersionIds: jest.fn().mockResolvedValue([]),
+      } as unknown as MaterialService,
+    );
+    const result = await service.get(actor, record.id);
+    expect(result.evidenceDecision).toEqual({
+      result: 'NO_EVIDENCE',
+      reason: '无法继续取证',
+      decidedByDisplayName: '运营原名',
+      decidedAt: '2026-09-24T02:00:00.000Z',
+      archiveType: 'NO_EVIDENCE',
+      archivedAt: '2026-09-24T02:00:00.000Z',
+    });
+    expect(result.capabilities.evidenceDecide).toBe(false);
+    expect(result.history).toEqual(
+      expect.arrayContaining([
+        expect.objectContaining({
+          kind: 'EVIDENCE_DECISION',
+          result: 'NO_EVIDENCE',
+        }),
+      ]),
+    );
+  });
   it('projects the immutable customer review decision for operations', async () => {
     const fixture = createCreateFixture();
     const decisionLead = {

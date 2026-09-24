@@ -8,6 +8,7 @@ const leadApi = vi.hoisted(() => ({
   getLead: vi.fn(),
   pushLead: vi.fn(),
   applyLeadWithdrawal: vi.fn(),
+  decideLeadNoEvidence: vi.fn(),
 }));
 const customerApi = vi.hoisted(() => ({ getCustomer: vi.fn() }));
 const holderApi = vi.hoisted(() => ({ getCustomerRightsHolder: vi.fn() }));
@@ -118,6 +119,114 @@ beforeEach(() => {
 });
 
 describe('LeadDetailPage', () => {
+  it('archives a waiting evidence decision with a required reason and shows its immutable record', async () => {
+    const confirm = vi.spyOn(window, 'confirm').mockReturnValue(true);
+    const waiting = {
+      ...lead,
+      status: 'WAITING_EVIDENCE_DECISION',
+      version: 3,
+      capabilities: {
+        edit: false,
+        push: false,
+        withdrawApply: false,
+        evidenceDecide: true,
+      },
+      evidenceDecision: null,
+      reviewDecision: {
+        result: 'INFRINGEMENT',
+        reviewerDisplayName: '企业审核员',
+        decidedAt: '2026-09-22T03:00:00Z',
+      },
+    };
+    const archived = {
+      ...waiting,
+      status: 'ARCHIVED',
+      version: 4,
+      capabilities: { ...waiting.capabilities, evidenceDecide: false },
+      evidenceDecision: {
+        result: 'NO_EVIDENCE',
+        reason: '现阶段不取证',
+        decidedAt: '2026-09-22T04:00:00Z',
+        decidedByDisplayName: '运营甲',
+        archiveType: 'NO_EVIDENCE',
+        archivedAt: '2026-09-22T04:00:00Z',
+      },
+    };
+    leadApi.getLead
+      .mockReset()
+      .mockResolvedValueOnce(waiting)
+      .mockResolvedValueOnce(archived);
+    leadApi.decideLeadNoEvidence.mockResolvedValue({ status: 'ARCHIVED' });
+    const wrapper = await mountPage();
+    expect(wrapper.text()).toContain('提交后线索将立即归档');
+    expect(
+      wrapper
+        .get('[data-test="archive-no-evidence"]')
+        .attributes('aria-disabled'),
+    ).toBe('true');
+    await wrapper
+      .get('[data-test="no-evidence-reason"]')
+      .setValue('  现阶段不取证  ');
+    await wrapper.get('[data-test="archive-no-evidence"]').trigger('click');
+    await flushPromises();
+    expect(confirm).toHaveBeenCalled();
+    expect(leadApi.decideLeadNoEvidence).toHaveBeenCalledWith(
+      'lead-1',
+      '现阶段不取证',
+      3,
+      expect.any(String),
+    );
+    expect(
+      wrapper.get('[data-test="evidence-decision-record"]').text(),
+    ).toContain('运营甲');
+    expect(
+      wrapper.get('[data-test="evidence-decision-record"]').text(),
+    ).toContain('现阶段不取证');
+    expect(wrapper.text()).toContain('已判定不取证，线索已归档');
+    confirm.mockRestore();
+  });
+
+  it('keeps the entered reason after a version conflict', async () => {
+    const confirm = vi.spyOn(window, 'confirm').mockReturnValue(true);
+    leadApi.getLead.mockResolvedValue({
+      ...lead,
+      status: 'WAITING_EVIDENCE_DECISION',
+      version: 3,
+      evidenceDecision: null,
+      reviewDecision: {
+        result: 'INFRINGEMENT',
+        reviewerDisplayName: '企业审核员',
+        decidedAt: '2026-09-22T03:00:00Z',
+      },
+      capabilities: {
+        edit: false,
+        push: false,
+        withdrawApply: false,
+        evidenceDecide: true,
+      },
+    });
+    leadApi.decideLeadNoEvidence.mockRejectedValue(
+      new ApiError('conflict', 409, 'VERSION_CONFLICT'),
+    );
+    const wrapper = await mountPage();
+    const reason = '版本变化时仍保留这段原因';
+    await wrapper.get('[data-test="no-evidence-reason"]').setValue(reason);
+    await wrapper.get('[data-test="archive-no-evidence"]').trigger('click');
+    await flushPromises();
+    expect(wrapper.text()).toContain('线索状态已变化，请刷新查看最新结果');
+    expect(
+      (
+        wrapper.get('[data-test="no-evidence-reason"]')
+          .element as HTMLTextAreaElement
+      ).value,
+    ).toBe(reason);
+    expect(
+      wrapper
+        .get('[data-test="archive-no-evidence"]')
+        .attributes('aria-disabled'),
+    ).toBe('false');
+    confirm.mockRestore();
+  });
   it('shows a required withdrawal reason only when allowed and explains confirmation', async () => {
     leadApi.getLead.mockResolvedValueOnce({
       ...lead,

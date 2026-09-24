@@ -219,6 +219,13 @@ describe('CORE-LD-002 OpenAPI contract', () => {
       },
     });
     expect(
+      document.components?.schemas?.ClientLeadHistoryResponseDto,
+    ).toMatchObject({
+      properties: {
+        archiveType: { enum: ['NO_INFRINGEMENT', 'NO_EVIDENCE'] },
+      },
+    });
+    expect(
       document.components?.schemas?.ClientLeadCapabilitiesResponseDto,
     ).toMatchObject({
       required: expect.arrayContaining(['review', 'confirmWithdrawal']),

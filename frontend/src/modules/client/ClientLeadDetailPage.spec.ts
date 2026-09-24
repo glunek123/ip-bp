@@ -77,6 +77,21 @@ const archivedLead = {
   history: [],
   capabilities: { review: false, confirmWithdrawal: false },
 };
+const noEvidenceLead = {
+  ...lead,
+  status: 'ARCHIVED',
+  version: 4,
+  reviewDecision: processedLead.reviewDecision,
+  evidenceDecision: {
+    result: 'NO_EVIDENCE',
+    reason: '现阶段不取证',
+    decidedAt: '2026-09-22T04:00:00Z',
+    decidedByDisplayName: '运营甲',
+    archiveType: 'NO_EVIDENCE',
+    archivedAt: '2026-09-22T04:00:00Z',
+  },
+  capabilities: { review: false, confirmWithdrawal: false },
+};
 
 async function mountPage(path = '/client/leads/lead-1') {
   const router = createRouter({
@@ -129,6 +144,19 @@ beforeEach(() => {
 });
 
 describe('ClientLeadDetailPage', () => {
+  it('shows the safe no-evidence archive outcome to the client without operator-only data', async () => {
+    leadApi.getClientLead.mockResolvedValue(noEvidenceLead);
+    const wrapper = await mountPage();
+    const record = wrapper.get('[data-test="client-evidence-decision-record"]');
+    expect(record.text()).toContain('运营决定：不取证并归档');
+    expect(record.text()).toContain('运营甲');
+    expect(record.text()).toContain('现阶段不取证');
+    expect(wrapper.text()).not.toContain('下一步：等待运营确认是否取证');
+    expect(record.text()).not.toContain('decidedByUserId');
+    expect(wrapper.find('[data-test="confirm-infringement"]').exists()).toBe(
+      false,
+    );
+  });
   it('returns a direct pending-withdrawal detail link to the pending queue', async () => {
     leadApi.getClientLead.mockResolvedValue({
       ...archivedLead,

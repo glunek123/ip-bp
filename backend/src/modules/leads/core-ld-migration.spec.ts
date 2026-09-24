@@ -35,6 +35,10 @@ describe('CORE-LD migrations', () => {
     '20260923013000_add_lead_withdrawal_history';
   const withdrawalReasonMigration =
     '20260923014000_harden_lead_withdrawal_reason';
+  const evidenceActionMigration = '20260924010000_add_lead_evidence_action';
+  const evidenceSchemaMigration = '20260924011000_add_lead_evidence_decision';
+  const evidenceGrantMigration =
+    '20260924012000_backfill_lead_evidence_bootstrap_grant';
 
   function readMigration(name: string): string {
     return readFileSync(resolve(migrationRoot, name, 'migration.sql'), 'utf8');
@@ -262,7 +266,12 @@ describe('CORE-LD migrations', () => {
   });
 
   it('commits both withdrawal actions before any grant uses them', () => {
-    expect(migrations.slice(-3)).toEqual([
+    expect(
+      migrations.slice(
+        migrations.indexOf(withdrawalActionsMigration),
+        migrations.indexOf(withdrawalActionsMigration) + 3,
+      ),
+    ).toEqual([
       withdrawalActionsMigration,
       withdrawalHistoryMigration,
       withdrawalReasonMigration,
@@ -280,6 +289,28 @@ describe('CORE-LD migrations', () => {
     expect(history).not.toContain(
       '\'client.lead.withdraw.confirm\'::"permission_action"',
     );
+  });
+
+  it('commits evidence action and archive enum before the immutable fact and scoped grant', () => {
+    expect(migrations.slice(-3)).toEqual([
+      evidenceActionMigration,
+      evidenceSchemaMigration,
+      evidenceGrantMigration,
+    ]);
+    const actions = readMigration(evidenceActionMigration);
+    const facts = readMigration(evidenceSchemaMigration);
+    const grants = readMigration(evidenceGrantMigration);
+    expect(actions).toContain("ADD VALUE IF NOT EXISTS 'lead.evidence.decide'");
+    expect(actions).toContain("ADD VALUE IF NOT EXISTS 'NO_EVIDENCE'");
+    expect(facts).toContain('CREATE TABLE "lead_evidence_decisions"');
+    expect(facts).toContain('lead_evidence_decisions_review_identity_fkey');
+    expect(facts).toContain(
+      'lead_evidence_decisions_original_review_result_check',
+    );
+    expect(facts).toContain('reject_lead_evidence_decision_mutation');
+    expect(facts).not.toMatch(/DROP TABLE|DROP COLUMN|DELETE FROM/);
+    expect(grants).toContain('shared_assignment');
+    expect(grants).toContain('authorization_revision');
   });
 
   it('backfills an exact current decision pointer while preserving all review history', () => {
@@ -309,7 +340,9 @@ describe('CORE-LD migrations', () => {
     expect(schema).toContain('activeReviewDecisionId');
     expect(schema).toContain('reviewDecisions');
     expect(schema).toContain('reviewDecision');
-    expect(schema).not.toMatch(/leadId\s+String\s+@unique/);
+    expect(
+      schema.match(/model LeadReviewDecision \{[\s\S]*?\n\}/)?.[0],
+    ).not.toMatch(/leadId\s+String\s+@unique/);
   });
 
   it('anchors immutable withdrawal facts to decision, application, and client binding identity', () => {

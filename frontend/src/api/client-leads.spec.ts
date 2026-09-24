@@ -43,6 +43,7 @@ const lead = {
   leadScreenshotContentVersionIds: ['version-1'],
   pushedAt: '2026-09-22T02:00:00.000Z',
   reviewDecision: null,
+  evidenceDecision: null,
   pendingWithdrawalApplication: null,
   history: [],
   capabilities: { review: true, confirmWithdrawal: false },
@@ -73,6 +74,21 @@ const archivedLead = {
   },
   pendingWithdrawalApplication: null,
   history: [],
+  capabilities: { review: false, confirmWithdrawal: false },
+};
+const noEvidenceLead = {
+  ...lead,
+  status: 'ARCHIVED',
+  version: 4,
+  reviewDecision: reviewedLead.reviewDecision,
+  evidenceDecision: {
+    result: 'NO_EVIDENCE',
+    reason: '现阶段不取证',
+    decidedAt: '2026-09-22T04:00:00.000Z',
+    decidedByDisplayName: '运营甲',
+    archiveType: 'NO_EVIDENCE',
+    archivedAt: '2026-09-22T04:00:00.000Z',
+  },
   capabilities: { review: false, confirmWithdrawal: false },
 };
 
@@ -231,6 +247,60 @@ describe('client lead API', () => {
       { ...archivedLead.reviewDecision, archiveType: 'OTHER' },
     ]) {
       http.getJson.mockResolvedValue({ ...archivedLead, reviewDecision });
+      await expect(getClientLead('lead-1')).rejects.toMatchObject({
+        code: 'INVALID_RESPONSE',
+      });
+    }
+  });
+
+  it('decodes only the safe no-evidence decision projection for a processed client', async () => {
+    http.getJson.mockResolvedValue(noEvidenceLead);
+    await expect(getClientLead('lead-1')).resolves.toMatchObject({
+      evidenceDecision: noEvidenceLead.evidenceDecision,
+    });
+    http.getJson.mockResolvedValue({
+      ...noEvidenceLead,
+      evidenceDecision: {
+        ...noEvidenceLead.evidenceDecision,
+        decidedByUserId: 'internal-user',
+      },
+    });
+    await expect(getClientLead('lead-1')).rejects.toMatchObject({
+      code: 'INVALID_RESPONSE',
+    });
+  });
+
+  it('decodes safe evidence-decision history and rejects incomplete event facts', async () => {
+    const evidenceHistory = {
+      kind: 'EVIDENCE_DECISION',
+      id: 'decision-1',
+      fromVersion: 3,
+      toVersion: 4,
+      occurredAt: '2026-09-22T04:00:00.000Z',
+      result: 'NO_EVIDENCE',
+      reason: '现阶段不取证',
+      decidedByDisplayName: '运营甲',
+      archiveType: 'NO_EVIDENCE',
+      archivedAt: '2026-09-22T04:00:00.000Z',
+    };
+    http.getJson.mockResolvedValueOnce({
+      ...noEvidenceLead,
+      history: [evidenceHistory],
+    });
+    await expect(getClientLead('lead-1')).resolves.toMatchObject({
+      history: [evidenceHistory],
+    });
+    for (const history of [
+      { ...evidenceHistory, result: 'NO_INFRINGEMENT' },
+      { ...evidenceHistory, reason: undefined },
+      { ...evidenceHistory, decidedByDisplayName: undefined },
+      { ...evidenceHistory, archiveType: 'OTHER' },
+      { ...evidenceHistory, archivedAt: undefined },
+    ]) {
+      http.getJson.mockResolvedValueOnce({
+        ...noEvidenceLead,
+        history: [history],
+      });
       await expect(getClientLead('lead-1')).rejects.toMatchObject({
         code: 'INVALID_RESPONSE',
       });

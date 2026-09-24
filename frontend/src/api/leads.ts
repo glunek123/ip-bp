@@ -114,6 +114,14 @@ export type LeadReviewDecision =
       archiveType: 'NO_INFRINGEMENT';
       archivedAt: string;
     };
+export type LeadEvidenceDecision = {
+  result: 'NO_EVIDENCE';
+  reason: string;
+  decidedAt: string;
+  decidedByDisplayName: string;
+  archiveType: 'NO_EVIDENCE';
+  archivedAt: string;
+};
 export type Lead = {
   id: string;
   businessNo: string;
@@ -145,7 +153,13 @@ export type Lead = {
   updatedAt: string;
 };
 export type LeadDetail = Lead & {
-  capabilities: { edit: boolean; push: boolean; withdrawApply: boolean };
+  capabilities: {
+    edit: boolean;
+    push: boolean;
+    withdrawApply: boolean;
+    evidenceDecide: boolean;
+  };
+  evidenceDecision: LeadEvidenceDecision | null;
   pendingWithdrawalApplication: LeadWithdrawalApplication | null;
   history: LeadHistory[];
 };
@@ -157,7 +171,10 @@ export type LeadWithdrawalApplication = {
 };
 export type LeadHistory = {
   kind:
-    'REVIEW_DECISION' | 'WITHDRAWAL_APPLICATION' | 'WITHDRAWAL_CONFIRMATION';
+    | 'REVIEW_DECISION'
+    | 'WITHDRAWAL_APPLICATION'
+    | 'WITHDRAWAL_CONFIRMATION'
+    | 'EVIDENCE_DECISION';
   id: string;
   fromVersion: number;
   toVersion: number;
@@ -165,6 +182,7 @@ export type LeadHistory = {
   result?: string;
   reason?: string | null;
   reviewerDisplayName?: string;
+  decidedByDisplayName?: string;
   applicantDisplayName?: string;
   applicationId?: string;
   archiveType?: string | null;
@@ -178,6 +196,18 @@ export type LeadWithdrawalApplicationResult = {
   reason: string;
   applicantDisplayName: string;
   appliedAt: string;
+};
+export type LeadEvidenceDecisionResult = {
+  id: string;
+  leadId: string;
+  status: 'ARCHIVED';
+  version: number;
+  result: 'NO_EVIDENCE';
+  reason: string;
+  decidedByDisplayName: string;
+  decidedAt: string;
+  archiveType: 'NO_EVIDENCE';
+  archivedAt: string;
 };
 export type LeadPushResult = {
   id: string;
@@ -328,6 +358,29 @@ function isReviewDecision(value: unknown): value is LeadReviewDecision {
     typeof value.reviewerDisplayName === 'string' &&
     isDateTime(value.decidedAt) &&
     value.archiveType === 'NO_INFRINGEMENT' &&
+    isDateTime(value.archivedAt)
+  );
+}
+function isEvidenceDecision(value: unknown): value is LeadEvidenceDecision {
+  const keys = [
+    'result',
+    'reason',
+    'decidedAt',
+    'decidedByDisplayName',
+    'archiveType',
+    'archivedAt',
+  ];
+  return (
+    isRecord(value) &&
+    Object.keys(value).length === keys.length &&
+    Object.keys(value).every((key) => keys.includes(key)) &&
+    value.result === 'NO_EVIDENCE' &&
+    typeof value.reason === 'string' &&
+    value.reason.trim().length > 0 &&
+    [...value.reason].length <= 5000 &&
+    typeof value.decidedByDisplayName === 'string' &&
+    isDateTime(value.decidedAt) &&
+    value.archiveType === 'NO_EVIDENCE' &&
     isDateTime(value.archivedAt)
   );
 }
@@ -510,6 +563,9 @@ export async function getLead(
     typeof capabilities.edit !== 'boolean' ||
     typeof capabilities.push !== 'boolean' ||
     typeof capabilities.withdrawApply !== 'boolean' ||
+    typeof capabilities.evidenceDecide !== 'boolean' ||
+    (detail.evidenceDecision !== null &&
+      !isEvidenceDecision(detail.evidenceDecision)) ||
     !isLeadHistory(history) ||
     !isPendingWithdrawalApplication(pendingWithdrawalApplication)
   )
@@ -518,10 +574,12 @@ export async function getLead(
     ...data,
     pendingWithdrawalApplication,
     history,
+    evidenceDecision: detail.evidenceDecision as LeadEvidenceDecision | null,
     capabilities: {
       edit: capabilities.edit,
       push: capabilities.push,
       withdrawApply: capabilities.withdrawApply,
+      evidenceDecide: capabilities.evidenceDecide,
     },
   };
 }
@@ -549,7 +607,8 @@ function isLeadHistory(value: unknown): value is LeadHistory[] {
         isRecord(item) &&
         (item.kind === 'REVIEW_DECISION' ||
           item.kind === 'WITHDRAWAL_APPLICATION' ||
-          item.kind === 'WITHDRAWAL_CONFIRMATION') &&
+          item.kind === 'WITHDRAWAL_CONFIRMATION' ||
+          item.kind === 'EVIDENCE_DECISION') &&
         typeof item.id === 'string' &&
         Number.isInteger(item.fromVersion) &&
         Number.isInteger(item.toVersion) &&
@@ -562,6 +621,16 @@ function isLeadHistory(value: unknown): value is LeadHistory[] {
           typeof item.applicantDisplayName === 'string') &&
         (item.reviewerDisplayName === undefined ||
           typeof item.reviewerDisplayName === 'string') &&
+        (item.decidedByDisplayName === undefined ||
+          typeof item.decidedByDisplayName === 'string') &&
+        (item.kind !== 'EVIDENCE_DECISION' ||
+          (item.result === 'NO_EVIDENCE' &&
+            typeof item.reason === 'string' &&
+            item.reason.trim().length > 0 &&
+            [...item.reason].length <= 5000 &&
+            typeof item.decidedByDisplayName === 'string' &&
+            item.archiveType === 'NO_EVIDENCE' &&
+            isDateTime(item.archivedAt))) &&
         (item.applicationId === undefined ||
           typeof item.applicationId === 'string'),
     )
@@ -595,6 +664,42 @@ export async function applyLeadWithdrawal(
   )
     throw invalidResponse();
   return data as LeadWithdrawalApplicationResult;
+}
+
+export async function decideLeadNoEvidence(
+  id: string,
+  reason: string,
+  expectedVersion: number,
+  idempotencyKey: string,
+): Promise<LeadEvidenceDecisionResult> {
+  const normalizedReason = reason.trim();
+  const data = await requestJson(
+    `/leads/${encodeURIComponent(id)}/evidence-decisions`,
+    {
+      method: 'POST',
+      headers: { 'Idempotency-Key': idempotencyKey },
+      body: {
+        result: 'NO_EVIDENCE',
+        reason: normalizedReason,
+        expectedVersion,
+      },
+    },
+  );
+  if (
+    !isRecord(data) ||
+    typeof data.id !== 'string' ||
+    data.leadId !== id ||
+    data.status !== 'ARCHIVED' ||
+    data.version !== expectedVersion + 1 ||
+    data.result !== 'NO_EVIDENCE' ||
+    data.reason !== normalizedReason ||
+    typeof data.decidedByDisplayName !== 'string' ||
+    !isDateTime(data.decidedAt) ||
+    data.archiveType !== 'NO_EVIDENCE' ||
+    !isDateTime(data.archivedAt)
+  )
+    throw invalidResponse();
+  return data as LeadEvidenceDecisionResult;
 }
 
 export async function pushLead(

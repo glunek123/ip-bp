@@ -14,6 +14,7 @@ export type PermissionAction =
   | 'lead.edit'
   | 'lead.push'
   | 'lead.withdraw.apply'
+  | 'lead.evidence.decide'
   | 'client.lead.read'
   | 'client.lead.review'
   | 'client.lead.withdraw.confirm'

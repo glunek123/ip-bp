@@ -16,6 +16,7 @@ import {
   listLeads,
   pushLead,
   applyLeadWithdrawal,
+  decideLeadNoEvidence,
   updateLead,
 } from './leads';
 
@@ -77,6 +78,7 @@ const lead = {
   pushedByUserId: null,
   pushedByDisplayName: null,
   reviewDecision: null,
+  evidenceDecision: null,
   pendingWithdrawalApplication: null,
   history: [],
   createdAt: '2026-09-21T04:00:00.000Z',
@@ -184,7 +186,12 @@ describe('Lead API', () => {
   it('requires a server edit capability on details', async () => {
     http.getJson.mockResolvedValue({
       ...lead,
-      capabilities: { edit: false, push: true, withdrawApply: false },
+      capabilities: {
+        edit: false,
+        push: true,
+        withdrawApply: false,
+        evidenceDecide: false,
+      },
     });
     await expect(getLead('lead-1')).resolves.toMatchObject({
       capabilities: { edit: false, push: true },
@@ -208,7 +215,12 @@ describe('Lead API', () => {
         archiveType: 'NO_INFRINGEMENT',
         archivedAt: '2026-09-22T03:00:00.000Z',
       },
-      capabilities: { edit: false, push: false, withdrawApply: true },
+      capabilities: {
+        edit: false,
+        push: false,
+        withdrawApply: true,
+        evidenceDecide: false,
+      },
       pendingWithdrawalApplication: null,
       history: [],
     };
@@ -253,7 +265,12 @@ describe('Lead API', () => {
         reviewerDisplayName: '企业审核员',
         decidedAt: '2026-09-22T03:00:00.000Z',
       },
-      capabilities: { edit: false, push: false, withdrawApply: false },
+      capabilities: {
+        edit: false,
+        push: false,
+        withdrawApply: false,
+        evidenceDecide: false,
+      },
     };
     http.getJson.mockResolvedValue(reviewed);
     await expect(getLead('lead-1')).resolves.toMatchObject({
@@ -283,7 +300,12 @@ describe('Lead API', () => {
         archiveType: 'NO_INFRINGEMENT',
         archivedAt: '2026-09-22T03:00:00.000Z',
       },
-      capabilities: { edit: false, push: false, withdrawApply: false },
+      capabilities: {
+        edit: false,
+        push: false,
+        withdrawApply: false,
+        evidenceDecide: false,
+      },
     };
     http.getJson.mockResolvedValueOnce({
       ...archived,
@@ -298,11 +320,112 @@ describe('Lead API', () => {
     });
   });
 
+  it('decodes evidence-decision history only when its immutable facts are complete', async () => {
+    const evidenceHistory = {
+      kind: 'EVIDENCE_DECISION',
+      id: 'decision-1',
+      fromVersion: 3,
+      toVersion: 4,
+      occurredAt: '2026-09-22T04:00:00.000Z',
+      result: 'NO_EVIDENCE',
+      reason: '现阶段不取证',
+      decidedByDisplayName: '运营甲',
+      archiveType: 'NO_EVIDENCE',
+      archivedAt: '2026-09-22T04:00:00.000Z',
+    };
+    const detail = {
+      ...lead,
+      status: 'ARCHIVED',
+      version: 4,
+      evidenceDecision: {
+        result: 'NO_EVIDENCE',
+        reason: '现阶段不取证',
+        decidedAt: evidenceHistory.occurredAt,
+        decidedByDisplayName: '运营甲',
+        archiveType: 'NO_EVIDENCE',
+        archivedAt: evidenceHistory.archivedAt,
+      },
+      history: [evidenceHistory],
+      capabilities: {
+        edit: false,
+        push: false,
+        withdrawApply: false,
+        evidenceDecide: false,
+      },
+    };
+    http.getJson.mockResolvedValueOnce(detail);
+    await expect(getLead('lead-1')).resolves.toMatchObject({
+      history: [evidenceHistory],
+    });
+    for (const history of [
+      { ...evidenceHistory, result: 'NO_INFRINGEMENT' },
+      { ...evidenceHistory, reason: undefined },
+      { ...evidenceHistory, decidedByDisplayName: undefined },
+      { ...evidenceHistory, archiveType: 'OTHER' },
+      { ...evidenceHistory, archivedAt: undefined },
+    ]) {
+      http.getJson.mockResolvedValueOnce({ ...detail, history: [history] });
+      await expect(getLead('lead-1')).rejects.toMatchObject({
+        code: 'INVALID_RESPONSE',
+      });
+    }
+  });
+
+  it('submits and validates an idempotent no-evidence archive decision', async () => {
+    http.requestJson.mockResolvedValue({
+      id: 'decision-1',
+      leadId: 'lead/1',
+      status: 'ARCHIVED',
+      version: 4,
+      result: 'NO_EVIDENCE',
+      reason: '现阶段不取证',
+      decidedByDisplayName: '运营甲',
+      decidedAt: '2026-09-22T03:00:00.000Z',
+      archiveType: 'NO_EVIDENCE',
+      archivedAt: '2026-09-22T03:00:00.000Z',
+    });
+    await expect(
+      decideLeadNoEvidence('lead/1', '  现阶段不取证  ', 3, 'evidence-key'),
+    ).resolves.toMatchObject({ status: 'ARCHIVED', version: 4 });
+    expect(http.requestJson).toHaveBeenCalledWith(
+      '/leads/lead%2F1/evidence-decisions',
+      {
+        method: 'POST',
+        headers: { 'Idempotency-Key': 'evidence-key' },
+        body: {
+          result: 'NO_EVIDENCE',
+          reason: '现阶段不取证',
+          expectedVersion: 3,
+        },
+      },
+    );
+    http.requestJson.mockResolvedValueOnce({
+      id: 'decision-1',
+      leadId: 'lead-1',
+      status: 'ARCHIVED',
+      version: 4,
+      result: 'OTHER',
+      reason: '现阶段不取证',
+      decidedByDisplayName: '运营甲',
+      decidedAt: '2026-09-22T03:00:00.000Z',
+      archiveType: 'NO_EVIDENCE',
+      archivedAt: '2026-09-22T03:00:00.000Z',
+    });
+    await expect(
+      decideLeadNoEvidence('lead-1', '现阶段不取证', 3, 'evidence-key'),
+    ).rejects.toMatchObject({ code: 'INVALID_RESPONSE' });
+  });
+
   it('rejects impossible response facts instead of trusting typed-looking fields', async () => {
     http.getJson.mockResolvedValueOnce({
       ...lead,
       products: [{ ...lead.products[0], quantity: -1 }],
-      capabilities: { edit: true, push: true, withdrawApply: false },
+      capabilities: {
+        edit: true,
+        push: true,
+        withdrawApply: false,
+        evidenceDecide: false,
+      },
     });
     await expect(getLead('lead-1')).rejects.toMatchObject({
       code: 'INVALID_RESPONSE',
@@ -311,7 +434,12 @@ describe('Lead API', () => {
     http.getJson.mockResolvedValueOnce({
       ...lead,
       platform: 'MAP',
-      capabilities: { edit: true, push: true, withdrawApply: false },
+      capabilities: {
+        edit: true,
+        push: true,
+        withdrawApply: false,
+        evidenceDecide: false,
+      },
     });
     await expect(getLead('lead-1')).rejects.toMatchObject({
       code: 'INVALID_RESPONSE',

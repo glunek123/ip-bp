@@ -24,6 +24,15 @@ export class ClientLeadReviewDecisionResponseDto {
   @ApiPropertyOptional({ format: 'date-time' }) archivedAt?: string;
 }
 
+export class ClientLeadEvidenceDecisionResponseDto {
+  @ApiProperty({ enum: ['NO_EVIDENCE'] }) result!: 'NO_EVIDENCE';
+  @ApiProperty({ maxLength: 5000 }) reason!: string;
+  @ApiProperty() decidedByDisplayName!: string;
+  @ApiProperty({ format: 'date-time' }) decidedAt!: string;
+  @ApiProperty({ enum: ['NO_EVIDENCE'] }) archiveType!: 'NO_EVIDENCE';
+  @ApiProperty({ format: 'date-time' }) archivedAt!: string;
+}
+
 class ClientLeadCapabilitiesResponseDto {
   @ApiProperty() review!: boolean;
   @ApiProperty() confirmWithdrawal!: boolean;
@@ -42,6 +51,7 @@ export class ClientLeadHistoryResponseDto {
       'REVIEW_DECISION',
       'WITHDRAWAL_APPLICATION',
       'WITHDRAWAL_CONFIRMATION',
+      'EVIDENCE_DECISION',
     ],
   })
   kind!: string;
@@ -53,9 +63,13 @@ export class ClientLeadHistoryResponseDto {
   @ApiPropertyOptional({ nullable: true, type: String }) reason?: string | null;
   @ApiPropertyOptional() reviewerDisplayName?: string;
   @ApiPropertyOptional() applicantDisplayName?: string;
+  @ApiPropertyOptional() decidedByDisplayName?: string;
   @ApiPropertyOptional({ format: 'uuid' }) applicationId?: string;
-  @ApiPropertyOptional({ enum: ['NO_INFRINGEMENT'], nullable: true })
-  archiveType?: string | null;
+  @ApiPropertyOptional({
+    enum: ['NO_INFRINGEMENT', 'NO_EVIDENCE'],
+    nullable: true,
+  })
+  archiveType?: 'NO_INFRINGEMENT' | 'NO_EVIDENCE' | null;
   @ApiPropertyOptional({ format: 'date-time', nullable: true }) archivedAt?:
     string | null;
 }
@@ -86,6 +100,11 @@ export class ClientLeadResponseDto {
     type: () => ClientLeadReviewDecisionResponseDto,
   })
   reviewDecision!: ClientLeadReviewDecisionResponseDto | null;
+  @ApiProperty({
+    nullable: true,
+    type: () => ClientLeadEvidenceDecisionResponseDto,
+  })
+  evidenceDecision!: ClientLeadEvidenceDecisionResponseDto | null;
   @ApiProperty({
     nullable: true,
     type: () => ClientLeadPendingWithdrawalResponseDto,

@@ -107,6 +107,49 @@ function setup() {
 }
 
 describe('ClientLeadService', () => {
+  it('includes no-evidence archive in processed and exposes only safe decision facts', async () => {
+    const { service, database } = setup();
+    const archived = {
+      ...processedLead,
+      status: 'ARCHIVED',
+      evidenceDecision: {
+        id: 'internal-decision-id',
+        actorUserId: 'internal-actor-id',
+        result: 'NO_EVIDENCE',
+        reason: '运营决定不取证',
+        actorDisplayNameSnapshot: '运营原名',
+        decidedAt: new Date('2026-09-24T05:00:00Z'),
+        archiveType: 'NO_EVIDENCE',
+        archivedAt: new Date('2026-09-24T05:00:00Z'),
+        fromVersion: 3,
+        toVersion: 4,
+      },
+    };
+    database.lead.findMany.mockResolvedValue([archived]);
+    database.lead.findFirst.mockResolvedValue(archived);
+    const list = await service.list(actor, 'PROCESSED', 1, 20);
+    expect(database.lead.findMany.mock.calls[0]?.[0]?.where.OR).toEqual(
+      expect.arrayContaining([
+        expect.objectContaining({
+          status: 'ARCHIVED',
+          evidenceDecision: { is: { result: 'NO_EVIDENCE' } },
+        }),
+      ]),
+    );
+    expect(list.items[0]?.evidenceDecision).toMatchObject({
+      result: 'NO_EVIDENCE',
+    });
+    const detail = await service.get(actor, archived.id);
+    expect(detail.evidenceDecision).toEqual({
+      result: 'NO_EVIDENCE',
+      reason: '运营决定不取证',
+      decidedByDisplayName: '运营原名',
+      decidedAt: '2026-09-24T05:00:00.000Z',
+      archiveType: 'NO_EVIDENCE',
+      archivedAt: '2026-09-24T05:00:00.000Z',
+    });
+    expect(JSON.stringify(detail)).not.toContain('internal-actor-id');
+  });
   it('puts this enterprise pending withdrawal in pending, excludes it from processed, and exposes safe detail history', async () => {
     const { service, database } = setup();
     const application = {
@@ -290,6 +333,10 @@ describe('ClientLeadService', () => {
             },
             {
               status: 'ARCHIVED',
+              evidenceDecision: { is: { result: 'NO_EVIDENCE' } },
+            },
+            {
+              status: 'ARCHIVED',
               withdrawalApplications: { none: { confirmation: { is: null } } },
               reviewDecision: {
                 is: {
@@ -393,6 +440,10 @@ describe('ClientLeadService', () => {
             {
               status: 'WAITING_EVIDENCE_DECISION',
               reviewDecision: { is: { result: 'INFRINGEMENT' } },
+            },
+            {
+              status: 'ARCHIVED',
+              evidenceDecision: { is: { result: 'NO_EVIDENCE' } },
             },
             {
               status: 'ARCHIVED',
@@ -1490,6 +1541,7 @@ type ClientLeadWhere = {
     isNot?: null;
     is?: { result?: string; archiveType?: string; archivedAt?: { not: null } };
   };
+  evidenceDecision?: { is?: { result?: string } };
   OR?: ClientLeadWhere[];
 };
 
@@ -1568,6 +1620,11 @@ function matchesClientLeadWhere(
                 null
               : (lead.reviewDecision as Record<string, unknown>)[key] === value,
           )))) &&
+    (where.evidenceDecision === undefined ||
+      ('evidenceDecision' in lead &&
+        lead.evidenceDecision !== null &&
+        where.evidenceDecision.is?.result ===
+          (lead.evidenceDecision as { result?: string }).result)) &&
     (where.OR === undefined ||
       where.OR.some((branch) => matchesClientLeadWhere(lead, branch)))
   );

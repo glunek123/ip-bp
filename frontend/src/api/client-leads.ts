@@ -16,6 +16,14 @@ export type ClientLeadReviewDecision =
       archiveType: 'NO_INFRINGEMENT';
       archivedAt: string;
     };
+export type ClientLeadEvidenceDecision = {
+  result: 'NO_EVIDENCE';
+  reason: string;
+  decidedAt: string;
+  decidedByDisplayName: string;
+  archiveType: 'NO_EVIDENCE';
+  archivedAt: string;
+};
 
 export type ClientLeadProduct = {
   id: string;
@@ -45,6 +53,7 @@ export type ClientLead = {
   leadScreenshotContentVersionIds: string[];
   pushedAt: string;
   reviewDecision: ClientLeadReviewDecision | null;
+  evidenceDecision: ClientLeadEvidenceDecision | null;
   pendingWithdrawalApplication: ClientLeadPendingWithdrawal | null;
   history: ClientLeadHistory[];
   capabilities: { review: boolean; confirmWithdrawal: boolean };
@@ -57,7 +66,10 @@ export type ClientLeadPendingWithdrawal = {
 };
 export type ClientLeadHistory = {
   kind:
-    'REVIEW_DECISION' | 'WITHDRAWAL_APPLICATION' | 'WITHDRAWAL_CONFIRMATION';
+    | 'REVIEW_DECISION'
+    | 'WITHDRAWAL_APPLICATION'
+    | 'WITHDRAWAL_CONFIRMATION'
+    | 'EVIDENCE_DECISION';
   id: string;
   fromVersion: number;
   toVersion: number;
@@ -65,6 +77,7 @@ export type ClientLeadHistory = {
   result?: string;
   reason?: string | null;
   reviewerDisplayName?: string;
+  decidedByDisplayName?: string;
   applicantDisplayName?: string;
   applicationId?: string;
   archiveType?: string | null;
@@ -146,6 +159,7 @@ const clientLeadKeys = [
   'leadScreenshotContentVersionIds',
   'pushedAt',
   'reviewDecision',
+  'evidenceDecision',
   'pendingWithdrawalApplication',
   'history',
   'capabilities',
@@ -161,6 +175,14 @@ const noInfringementDecisionKeys = [
   'reason',
   'reviewerDisplayName',
   'decidedAt',
+  'archiveType',
+  'archivedAt',
+] as const;
+const evidenceDecisionKeys = [
+  'result',
+  'reason',
+  'decidedAt',
+  'decidedByDisplayName',
   'archiveType',
   'archivedAt',
 ] as const;
@@ -230,6 +252,23 @@ function isClientReviewDecision(
   );
 }
 
+function isClientEvidenceDecision(
+  value: unknown,
+): value is ClientLeadEvidenceDecision {
+  return (
+    isRecord(value) &&
+    hasExactKeys(value, evidenceDecisionKeys) &&
+    value.result === 'NO_EVIDENCE' &&
+    typeof value.reason === 'string' &&
+    value.reason.trim().length > 0 &&
+    [...value.reason].length <= 5000 &&
+    typeof value.decidedByDisplayName === 'string' &&
+    isDateTime(value.decidedAt) &&
+    value.archiveType === 'NO_EVIDENCE' &&
+    isDateTime(value.archivedAt)
+  );
+}
+
 function isPendingWithdrawal(
   value: unknown,
 ): value is ClientLeadPendingWithdrawal | null {
@@ -253,7 +292,8 @@ function isClientHistory(value: unknown): value is ClientLeadHistory[] {
         isRecord(item) &&
         (item.kind === 'REVIEW_DECISION' ||
           item.kind === 'WITHDRAWAL_APPLICATION' ||
-          item.kind === 'WITHDRAWAL_CONFIRMATION') &&
+          item.kind === 'WITHDRAWAL_CONFIRMATION' ||
+          item.kind === 'EVIDENCE_DECISION') &&
         typeof item.id === 'string' &&
         Number.isInteger(item.fromVersion) &&
         Number.isInteger(item.toVersion) &&
@@ -266,6 +306,16 @@ function isClientHistory(value: unknown): value is ClientLeadHistory[] {
           typeof item.applicantDisplayName === 'string') &&
         (item.reviewerDisplayName === undefined ||
           typeof item.reviewerDisplayName === 'string') &&
+        (item.decidedByDisplayName === undefined ||
+          typeof item.decidedByDisplayName === 'string') &&
+        (item.kind !== 'EVIDENCE_DECISION' ||
+          (item.result === 'NO_EVIDENCE' &&
+            typeof item.reason === 'string' &&
+            item.reason.trim().length > 0 &&
+            [...item.reason].length <= 5000 &&
+            typeof item.decidedByDisplayName === 'string' &&
+            item.archiveType === 'NO_EVIDENCE' &&
+            isDateTime(item.archivedAt))) &&
         (item.applicationId === undefined ||
           typeof item.applicationId === 'string'),
     )
@@ -303,6 +353,8 @@ function isClientLead(value: unknown): value is ClientLead {
     new Set(value.leadScreenshotContentVersionIds).size ===
       value.leadScreenshotContentVersionIds.length &&
     isDateTime(value.pushedAt) &&
+    (value.evidenceDecision === null ||
+      isClientEvidenceDecision(value.evidenceDecision)) &&
     isPendingWithdrawal(value.pendingWithdrawalApplication) &&
     isClientHistory(value.history) &&
     ((value.status === 'WAITING_REVIEW' &&
@@ -324,13 +376,18 @@ function isClientLead(value: unknown): value is ClientLead {
         isRecord(value.capabilities) &&
         hasExactKeys(value.capabilities, ['review', 'confirmWithdrawal']) &&
         isClientReviewDecision(value.reviewDecision) &&
-        value.reviewDecision.result === 'NO_INFRINGEMENT' &&
+        (value.evidenceDecision === null
+          ? value.reviewDecision.result === 'NO_INFRINGEMENT'
+          : value.reviewDecision.result === 'INFRINGEMENT') &&
         (value.pendingWithdrawalApplication === null ||
           (value.pendingWithdrawalApplication !== null &&
             value.capabilities.confirmWithdrawal === true)) &&
         value.capabilities.review === false &&
         value.capabilities.confirmWithdrawal ===
-          (value.pendingWithdrawalApplication !== null)))
+          (value.pendingWithdrawalApplication !== null) &&
+        (value.evidenceDecision === null ||
+          (value.evidenceDecision !== null &&
+            value.reviewDecision.result === 'INFRINGEMENT'))))
   );
 }
 

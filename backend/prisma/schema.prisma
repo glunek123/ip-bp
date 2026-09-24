@@ -18,6 +18,7 @@ enum PermissionAction {
   LEAD_EDIT                    @map("lead.edit")
   LEAD_PUSH                    @map("lead.push")
   LEAD_WITHDRAW_APPLY          @map("lead.withdraw.apply")
+  LEAD_EVIDENCE_DECIDE         @map("lead.evidence.decide")
   CLIENT_LEAD_READ             @map("client.lead.read")
   CLIENT_LEAD_REVIEW           @map("client.lead.review")
   CLIENT_LEAD_WITHDRAW_CONFIRM @map("client.lead.withdraw.confirm")
@@ -118,8 +119,15 @@ enum LeadReviewResult {
 
 enum LeadArchiveType {
   NO_INFRINGEMENT
+  NO_EVIDENCE
 
   @@map("lead_archive_type")
+}
+
+enum LeadEvidenceResult {
+  NO_EVIDENCE
+
+  @@map("lead_evidence_result")
 }
 
 enum LeadCaseType {
@@ -254,6 +262,7 @@ model UserAccount {
   clientBinding         CustomerAccountBinding?
   pushedLeads           Lead[]                    @relation("LeadPushedBy")
   reviewedLeadDecisions LeadReviewDecision[]      @relation("LeadReviewDecisionReviewer")
+  evidenceDecisions     LeadEvidenceDecision[]    @relation("LeadEvidenceDecisionActor")
   clientReviewReceipts  ClientLeadReviewReceipt[] @relation("ClientLeadReviewReceiptActor")
   createdAt             DateTime                  @default(now()) @map("created_at") @db.Timestamptz(3)
   updatedAt             DateTime                  @updatedAt @map("updated_at") @db.Timestamptz(3)
@@ -324,6 +333,7 @@ model DepartmentMembership {
   responsibleLeads            Lead[]                       @relation("LeadResponsibleMembership")
   leadCommandReceipts         LeadCommandReceipt[]         @relation("LeadCommandReceiptActor")
   withdrawalApplications      LeadWithdrawalApplication[]
+  evidenceDecisions           LeadEvidenceDecision[]
   createdAt                   DateTime                     @default(now()) @map("created_at") @db.Timestamptz(3)
   updatedAt                   DateTime                     @updatedAt @map("updated_at") @db.Timestamptz(3)
 
@@ -654,6 +664,7 @@ model Lead {
   reviewDecision         LeadReviewDecision?         @relation("LeadActiveReviewDecision", fields: [activeReviewDecisionId, id, customerId, departmentId], references: [id, leadId, customerId, departmentId], onDelete: Restrict, onUpdate: Restrict, map: "leads_active_review_decision_identity_fkey")
   reviewDecisions        LeadReviewDecision[]        @relation("LeadReviewHistory")
   withdrawalApplications LeadWithdrawalApplication[]
+  evidenceDecision       LeadEvidenceDecision?
   clientReviewReceipts   ClientLeadReviewReceipt[]
   createdAt              DateTime                    @default(now()) @map("created_at") @db.Timestamptz(3)
   updatedAt              DateTime                    @updatedAt @map("updated_at") @db.Timestamptz(3)
@@ -691,12 +702,42 @@ model LeadReviewDecision {
   customerAccountBinding      CustomerAccountBinding     @relation(fields: [customerAccountBindingId, reviewerUserId, customerId, departmentId], references: [id, userId, customerId, departmentId], onDelete: Restrict, onUpdate: Restrict, map: "lead_review_decisions_binding_reviewer_customer_department_fkey")
   receipt                     ClientLeadReviewReceipt?
   withdrawalApplication       LeadWithdrawalApplication?
+  evidenceArchive             LeadEvidenceDecision?
 
   @@unique([leadId, fromVersion], map: "lead_review_decisions_lead_id_from_version_key")
   @@unique([id, leadId, customerId, departmentId], map: "lead_review_decisions_active_identity_key")
+  @@unique([id, leadId, customerId, departmentId, result], map: "lead_review_decisions_evidence_identity_key")
   @@unique([id, departmentId, leadId, reviewerUserId, customerAccountBindingId, toVersion], map: "lead_review_decisions_receipt_identity_key")
   @@index([departmentId, customerId, decidedAt])
   @@map("lead_review_decisions")
+}
+
+model LeadEvidenceDecision {
+  id                       String               @id @default(uuid()) @db.Uuid
+  originalReviewDecisionId String               @unique @map("original_review_decision_id") @db.Uuid
+  originalReviewResult     LeadReviewResult     @default(INFRINGEMENT) @map("original_review_result")
+  leadId                   String               @unique @map("lead_id") @db.Uuid
+  customerId               String               @map("customer_id") @db.Uuid
+  departmentId             String               @map("department_id") @db.Uuid
+  actorUserId              String               @map("actor_user_id") @db.Uuid
+  actorDisplayNameSnapshot String               @map("actor_display_name_snapshot")
+  result                   LeadEvidenceResult
+  reason                   String               @db.Text
+  archiveType              LeadArchiveType      @map("archive_type")
+  decidedAt                DateTime             @default(now()) @map("decided_at") @db.Timestamptz(3)
+  archivedAt               DateTime             @map("archived_at") @db.Timestamptz(3)
+  fromVersion              Int                  @map("from_version")
+  toVersion                Int                  @map("to_version")
+  lead                     Lead                 @relation(fields: [leadId, customerId, departmentId], references: [id, customerId, departmentId], onDelete: Restrict, onUpdate: Restrict, map: "lead_evidence_decisions_lead_identity_fkey")
+  originalReviewDecision   LeadReviewDecision   @relation(fields: [originalReviewDecisionId, leadId, customerId, departmentId, originalReviewResult], references: [id, leadId, customerId, departmentId, result], onDelete: Restrict, onUpdate: Restrict, map: "lead_evidence_decisions_review_identity_fkey")
+  actor                    UserAccount          @relation("LeadEvidenceDecisionActor", fields: [actorUserId], references: [id], onDelete: Restrict)
+  actorMembership          DepartmentMembership @relation(fields: [actorUserId, departmentId], references: [userId, departmentId], onDelete: Restrict, onUpdate: Restrict, map: "lead_evidence_decisions_actor_membership_fkey")
+
+  @@unique([leadId, customerId, departmentId], map: "lead_evidence_decisions_lead_identity_key")
+  @@unique([originalReviewDecisionId, leadId, customerId, departmentId], map: "lead_evidence_decisions_review_identity_key")
+  @@unique([originalReviewDecisionId, leadId, customerId, departmentId, originalReviewResult], map: "lead_evidence_decisions_review_result_identity_key")
+  @@index([departmentId, customerId, decidedAt])
+  @@map("lead_evidence_decisions")
 }
 
 model LeadWithdrawalApplication {

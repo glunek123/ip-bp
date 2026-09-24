@@ -499,6 +499,18 @@ onBeforeUnmount(() => request?.abort());
           </p>
         </section>
         <section class="demo-card demo-card--pad">
+          <section
+            v-if="lead.evidenceDecision"
+            class="client-review-record"
+            data-test="client-evidence-decision-record"
+          >
+            <h2 class="form-section-title">运营处理结果</h2>
+            <p>运营决定：不取证并归档</p>
+            <p>处理人：{{ lead.evidenceDecision.decidedByDisplayName }}</p>
+            <p>处理时间：{{ formatTime(lead.evidenceDecision.decidedAt) }}</p>
+            <p>不取证原因：{{ lead.evidenceDecision.reason }}</p>
+            <p>归档时间：{{ formatTime(lead.evidenceDecision.archivedAt) }}</p>
+          </section>
           <template v-if="lead.reviewDecision">
             <section
               class="client-review-record"
@@ -517,10 +529,15 @@ onBeforeUnmount(() => request?.abort());
               </p>
               <p>审核人：{{ lead.reviewDecision.reviewerDisplayName }}</p>
               <p>审核时间：{{ formatTime(lead.reviewDecision.decidedAt) }}</p>
-              <p v-if="lead.reviewDecision.result === 'INFRINGEMENT'">
+              <p
+                v-if="
+                  lead.reviewDecision.result === 'INFRINGEMENT' &&
+                  lead.status === 'WAITING_EVIDENCE_DECISION'
+                "
+              >
                 下一步：等待运营确认是否取证
               </p>
-              <p v-else>
+              <p v-if="lead.reviewDecision.result === 'NO_INFRINGEMENT'">
                 归档时间：{{ formatTime(lead.reviewDecision.archivedAt) }}
               </p>
             </section>

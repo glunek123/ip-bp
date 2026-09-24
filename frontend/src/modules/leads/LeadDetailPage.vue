@@ -6,6 +6,7 @@ import RequiredFieldMark from '../../app/RequiredFieldMark.vue';
 import { ApiError } from '../../api/http';
 import {
   applyLeadWithdrawal,
+  decideLeadNoEvidence,
   getLead,
   pushLead,
   type LeadDetail,
@@ -35,6 +36,16 @@ const withdrawalSubmitting = ref(false);
 const withdrawalError = ref('');
 const withdrawalSuccess = ref('');
 const withdrawalRetryLocked = ref(false);
+const evidenceReason = ref('');
+const evidenceSubmitting = ref(false);
+const evidenceError = ref('');
+const evidenceSuccess = ref('');
+const evidenceRetryLocked = ref(false);
+const normalizedEvidenceReason = computed(() => evidenceReason.value.trim());
+const evidenceReasonLength = computed(
+  () => [...normalizedEvidenceReason.value].length,
+);
+const evidenceReasonTooLong = computed(() => evidenceReasonLength.value > 5000);
 const normalizedWithdrawalReason = computed(() =>
   withdrawalReason.value.trim(),
 );
@@ -48,6 +59,9 @@ let pushKey: string | undefined;
 let withdrawalKey: string | undefined;
 let frozenWithdrawalReason: string | undefined;
 let frozenWithdrawalVersion: number | undefined;
+let evidenceKey: string | undefined;
+let frozenEvidenceReason: string | undefined;
+let frozenEvidenceVersion: number | undefined;
 let request: AbortController | undefined;
 const labels: Record<string, string> = {
   CIVIL: '民事',
@@ -214,6 +228,78 @@ function makeWithdrawalKey(): string {
     `lead-withdraw-${Date.now()}-${Math.random().toString(16).slice(2)}`
   );
 }
+function makeEvidenceKey(): string {
+  return (
+    globalThis.crypto?.randomUUID?.() ??
+    `lead-evidence-${Date.now()}-${Math.random().toString(16).slice(2)}`
+  );
+}
+async function archiveNoEvidence(): Promise<void> {
+  if (
+    !lead.value ||
+    !lead.value.capabilities.evidenceDecide ||
+    lead.value.status !== 'WAITING_EVIDENCE_DECISION' ||
+    evidenceSubmitting.value
+  )
+    return;
+  const reason = evidenceRetryLocked.value
+    ? frozenEvidenceReason
+    : normalizedEvidenceReason.value;
+  if (!reason || [...reason].length > 5000) return;
+  if (
+    !globalThis.window.confirm(
+      '提交后线索将立即归档，运营决定和原因将作为历史记录保留，当前页面不能撤回。确定不取证并归档吗？',
+    )
+  )
+    return;
+  frozenEvidenceReason ??= reason;
+  frozenEvidenceVersion ??= lead.value.version;
+  evidenceReason.value = frozenEvidenceReason;
+  evidenceRetryLocked.value = true;
+  evidenceKey ??= makeEvidenceKey();
+  evidenceError.value = '';
+  evidenceSuccess.value = '';
+  evidenceSubmitting.value = true;
+  try {
+    await decideLeadNoEvidence(
+      lead.value.id,
+      frozenEvidenceReason,
+      frozenEvidenceVersion,
+      evidenceKey,
+    );
+    evidenceKey = undefined;
+    frozenEvidenceReason = undefined;
+    frozenEvidenceVersion = undefined;
+    evidenceRetryLocked.value = false;
+    evidenceSuccess.value = '已判定不取证，线索已归档';
+    await load();
+  } catch (error) {
+    const code = error instanceof ApiError ? error.code : '';
+    if (code === 'VERSION_CONFLICT' || code === 'INVALID_STATE') {
+      evidenceKey = undefined;
+      frozenEvidenceReason = undefined;
+      frozenEvidenceVersion = undefined;
+      evidenceRetryLocked.value = false;
+      evidenceError.value = '线索状态已变化，请刷新查看最新结果';
+    } else if (code === 'ACTION_FORBIDDEN' || code === 'RESOURCE_NOT_FOUND') {
+      evidenceError.value = '当前账号无权处理此线索，请刷新登录状态后重试';
+    } else if (code === 'IDEMPOTENCY_CONFLICT') {
+      evidenceKey = undefined;
+      frozenEvidenceReason = undefined;
+      frozenEvidenceVersion = undefined;
+      evidenceRetryLocked.value = false;
+      evidenceError.value = '本次操作未执行，请重新确认后重试';
+    } else if (code === 'NETWORK_ERROR' || code === 'TIMEOUT') {
+      evidenceError.value =
+        '提交结果暂时未知；原因和请求键已锁定，可安全重试或刷新查看结果';
+    } else {
+      evidenceError.value =
+        '不取证归档失败；原因和请求键已锁定，可安全重试或刷新查看结果';
+    }
+  } finally {
+    evidenceSubmitting.value = false;
+  }
+}
 async function applyWithdrawal(): Promise<void> {
   if (
     !lead.value ||
@@ -351,6 +437,12 @@ onBeforeUnmount(() => request?.abort());
           role="alert"
         >
           {{ withdrawalError }}
+        </p>
+        <p v-if="evidenceSuccess" class="submit-success" role="status">
+          {{ evidenceSuccess }}
+        </p>
+        <p v-if="evidenceError" class="submit-error" role="alert">
+          {{ evidenceError }}
         </p>
         <section class="demo-card demo-card--pad">
           <dl class="demo-detail-grid" data-test="lead-facts">
@@ -503,6 +595,67 @@ onBeforeUnmount(() => request?.abort());
               </dd>
             </div>
           </dl>
+        </section>
+        <section
+          v-if="lead.evidenceDecision"
+          class="demo-card demo-card--pad"
+          data-test="evidence-decision-record"
+        >
+          <h2 class="form-section-title">运营不取证归档记录</h2>
+          <p>决定：不取证并归档</p>
+          <p>操作人：{{ lead.evidenceDecision.decidedByDisplayName }}</p>
+          <p>决定时间：{{ formatTime(lead.evidenceDecision.decidedAt) }}</p>
+          <p>原因：{{ lead.evidenceDecision.reason }}</p>
+          <p>归档时间：{{ formatTime(lead.evidenceDecision.archivedAt) }}</p>
+        </section>
+        <section
+          v-if="
+            lead.capabilities.evidenceDecide &&
+            lead.status === 'WAITING_EVIDENCE_DECISION'
+          "
+          class="demo-card demo-card--pad"
+          data-test="evidence-decision-form"
+        >
+          <h2 class="form-section-title">不取证并归档</h2>
+          <p>
+            提交后线索将立即归档，运营决定及原因会保留为历史记录，当前页面不能撤回。
+          </p>
+          <label
+            class="field-label field-label--spaced"
+            for="no-evidence-reason"
+          >
+            不取证原因<RequiredFieldMark />
+          </label>
+          <textarea
+            id="no-evidence-reason"
+            v-model="evidenceReason"
+            class="text-area"
+            data-test="no-evidence-reason"
+            aria-required="true"
+            :disabled="evidenceSubmitting || evidenceRetryLocked"
+          />
+          <p class="field-help" aria-live="polite">
+            已输入 {{ evidenceReasonLength }} / 5000 个字符（按 Unicode 码点计）
+          </p>
+          <p v-if="evidenceReasonTooLong" class="field-error" role="alert">
+            原因最多为 5000 个 Unicode 码点，目前为
+            {{ evidenceReasonLength }} 个；已保留输入，请删减后再提交。
+          </p>
+          <p v-if="evidenceRetryLocked" class="field-help">
+            提交结果未确认，原因已锁定；可使用同一请求安全重试，或刷新查看服务端结果。
+          </p>
+          <ElButton
+            data-test="archive-no-evidence"
+            type="primary"
+            :loading="evidenceSubmitting"
+            :disabled="
+              evidenceSubmitting ||
+              !normalizedEvidenceReason ||
+              evidenceReasonTooLong
+            "
+            @click="archiveNoEvidence"
+            >不取证并归档</ElButton
+          >
         </section>
         <section
           v-if="lead.pendingWithdrawalApplication"

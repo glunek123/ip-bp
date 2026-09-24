@@ -25,6 +25,7 @@ export const prismaModelOwners = Object.freeze({
   LeadNumberCounter: 'leads',
   LeadCommandReceipt: 'leads',
   LeadReviewDecision: 'leads',
+  LeadEvidenceDecision: 'leads',
   LeadWithdrawalApplication: 'leads',
   LeadWithdrawalConfirmation: 'leads',
   ClientLeadReviewReceipt: 'leads',

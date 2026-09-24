@@ -1,6 +1,7 @@
 import { BadRequestException, ValidationPipe } from '@nestjs/common';
 import {
   ApplyLeadWithdrawalDto,
+  DecideLeadEvidenceDto,
   CreateLeadDto,
   LeadListQueryDto,
   PushLeadDto,
@@ -10,6 +11,66 @@ import { LeadController } from './lead.controller';
 import { LeadService } from './lead.service';
 
 describe('LeadController', () => {
+  it('passes a no-evidence decision with normalized idempotency key', async () => {
+    const service = {
+      decideEvidence: jest.fn().mockResolvedValue({ result: 'NO_EVIDENCE' }),
+    } as unknown as LeadService;
+    const controller = new LeadController(service);
+    const input = {
+      result: 'NO_EVIDENCE' as const,
+      reason: '不取证',
+      expectedVersion: 3,
+    };
+    await expect(
+      controller.decideEvidence(
+        { userId: 'u' } as never,
+        'lead-1',
+        ' key ',
+        input,
+      ),
+    ).resolves.toEqual({ result: 'NO_EVIDENCE' });
+    expect(service.decideEvidence).toHaveBeenCalledWith(
+      { userId: 'u' },
+      'lead-1',
+      'key',
+      input,
+    );
+  });
+
+  it('rejects invalid no-evidence body and missing key', async () => {
+    const pipe = new ValidationPipe({
+      whitelist: true,
+      forbidNonWhitelisted: true,
+      transform: true,
+    });
+    await expect(
+      pipe.transform(
+        { result: 'EVIDENCE', reason: 'x', expectedVersion: 3 },
+        { type: 'body', metatype: DecideLeadEvidenceDto },
+      ),
+    ).rejects.toBeInstanceOf(BadRequestException);
+    await expect(
+      pipe.transform(
+        {
+          result: 'NO_EVIDENCE',
+          reason: 'x',
+          expectedVersion: 3,
+          archiveType: 'NO_EVIDENCE',
+        },
+        { type: 'body', metatype: DecideLeadEvidenceDto },
+      ),
+    ).rejects.toBeInstanceOf(BadRequestException);
+    const service = { decideEvidence: jest.fn() } as unknown as LeadService;
+    expect(() =>
+      new LeadController(service).decideEvidence(
+        {} as never,
+        'lead-1',
+        undefined,
+        {} as never,
+      ),
+    ).toThrow(BadRequestException);
+    expect(service.decideEvidence).not.toHaveBeenCalled();
+  });
   it.each([undefined, '', ' '.repeat(3), 'x'.repeat(129)])(
     'rejects invalid Idempotency-Key %#',
     async (key) => {

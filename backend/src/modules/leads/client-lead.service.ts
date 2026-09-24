@@ -70,6 +70,19 @@ const clientLeadInclude = {
       decidedAt: true,
     },
   },
+  evidenceDecision: {
+    select: {
+      id: true,
+      result: true,
+      reason: true,
+      actorDisplayNameSnapshot: true,
+      decidedAt: true,
+      archiveType: true,
+      archivedAt: true,
+      fromVersion: true,
+      toVersion: true,
+    },
+  },
   withdrawalApplications: {
     select: {
       id: true,
@@ -174,6 +187,10 @@ export class ClientLeadService {
               },
               {
                 status: 'ARCHIVED' as const,
+                evidenceDecision: { is: { result: 'NO_EVIDENCE' as const } },
+              },
+              {
+                status: 'ARCHIVED' as const,
                 withdrawalApplications: {
                   none: { confirmation: { is: null } },
                 },
@@ -220,6 +237,10 @@ export class ClientLeadService {
           {
             status: 'WAITING_EVIDENCE_DECISION',
             reviewDecision: { is: { result: 'INFRINGEMENT' } },
+          },
+          {
+            status: 'ARCHIVED',
+            evidenceDecision: { is: { result: 'NO_EVIDENCE' } },
           },
           {
             status: 'ARCHIVED',
@@ -877,6 +898,24 @@ export class ClientLeadService {
     const history =
       detail && 'reviewDecisions' in lead
         ? [
+            ...(lead.evidenceDecision === null ||
+            lead.evidenceDecision === undefined
+              ? []
+              : [
+                  {
+                    kind: 'EVIDENCE_DECISION' as const,
+                    id: lead.evidenceDecision.id,
+                    fromVersion: lead.evidenceDecision.fromVersion,
+                    toVersion: lead.evidenceDecision.toVersion,
+                    result: lead.evidenceDecision.result,
+                    reason: lead.evidenceDecision.reason,
+                    archiveType: lead.evidenceDecision.archiveType,
+                    archivedAt: lead.evidenceDecision.archivedAt.toISOString(),
+                    decidedByDisplayName:
+                      lead.evidenceDecision.actorDisplayNameSnapshot,
+                    occurredAt: lead.evidenceDecision.decidedAt.toISOString(),
+                  },
+                ]),
             ...lead.reviewDecisions.map((decision) => ({
               kind: 'REVIEW_DECISION' as const,
               id: decision.id,
@@ -963,6 +1002,17 @@ export class ClientLeadService {
                 lead.reviewDecision.reviewerDisplayNameSnapshot,
               decidedAt: lead.reviewDecision.decidedAt.toISOString(),
             }
+        : null,
+      evidenceDecision: lead.evidenceDecision
+        ? {
+            result: lead.evidenceDecision.result,
+            reason: lead.evidenceDecision.reason,
+            decidedByDisplayName:
+              lead.evidenceDecision.actorDisplayNameSnapshot,
+            decidedAt: lead.evidenceDecision.decidedAt.toISOString(),
+            archiveType: lead.evidenceDecision.archiveType,
+            archivedAt: lead.evidenceDecision.archivedAt.toISOString(),
+          }
         : null,
       pendingWithdrawalApplication:
         pending === undefined

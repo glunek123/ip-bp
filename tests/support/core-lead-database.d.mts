@@ -39,6 +39,20 @@ export function countAdmissionReceipts(): Promise<number>;
 export function countLeadReceipts(): Promise<number>;
 export function countLeadPushReceipts(leadId: string): Promise<number>;
 export function countLeadPushAudits(leadId: string): Promise<number>;
+export function getLeadEvidenceDecision(leadId: string): Promise<{
+  id: string;
+  leadId: string;
+  result: string;
+  reason: string;
+  archiveType: string;
+  decidedAt: Date;
+  actorUserId: string;
+  fromVersion: number;
+  toVersion: number;
+} | null>;
+export function countLeadEvidenceDecisions(leadId: string): Promise<number>;
+export function countLeadEvidenceReceipts(leadId: string): Promise<number>;
+export function countLeadEvidenceAudits(leadId: string): Promise<number>;
 export function getLeadReviewDecision(leadId: string): Promise<{
   id: string;
   leadId: string;
@@ -124,6 +138,8 @@ export function markContentVersion(
 ): Promise<unknown>;
 export function rejectAuditWrites(action: string): Promise<void>;
 export function rejectLeadPushReceiptWrites(): Promise<void>;
+export function rejectLeadEvidenceDecisionWrites(): Promise<void>;
+export function rejectLeadEvidenceReceiptWrites(): Promise<void>;
 export function rejectLeadReviewDecisionWrites(): Promise<void>;
 export function rejectClientLeadReviewReceiptWrites(): Promise<void>;
 export function rejectWithdrawalApplicationWrites(): Promise<void>;
