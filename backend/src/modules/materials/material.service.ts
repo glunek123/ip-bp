@@ -48,7 +48,7 @@ export type AssertAvailableVersionsInput = Readonly<{
   maxCount?: number;
   leadAction?: Extract<
     LeadAction,
-    'lead.read' | 'lead.edit' | 'lead.evidence.decide'
+    'lead.read' | 'lead.edit' | 'lead.evidence.decide' | 'notary.unbox.record'
   >;
 }>;
 
@@ -101,6 +101,7 @@ export type ReplaceCurrentReferencesResult = Readonly<{
 type MaterialAuthorizationReader = Pick<
   MaterialTransactionClient,
   'customer' | 'uploadDraft' | 'lead'
+  | 'notaryMatter'
 >;
 type MaterialMutationReader = MaterialAuthorizationReader &
   Pick<MaterialTransactionClient, 'material'>;
@@ -111,6 +112,11 @@ const allowedMimeTypes = {
   CUSTOMER_IDENTITY: new Set(['application/pdf', 'image/jpeg', 'image/png']),
   LEAD_SCREENSHOT: new Set([
     'application/pdf',
+    'image/jpeg',
+    'image/png',
+    'image/webp',
+  ]),
+  NOTARY_OPENING_PHOTO: new Set([
     'image/jpeg',
     'image/png',
     'image/webp',
@@ -176,6 +182,10 @@ export class MaterialService {
         }),
       );
       ownerId = customer.id;
+    } else if (input.ownerType === 'NOTARY_MATTER') {
+      if (input.ownerId === undefined) throw this.validationError();
+      await this.authorizeOwner(actor, 'NOTARY_MATTER', input.ownerId, 'write');
+      ownerId = input.ownerId;
     } else {
       if (!(await this.accessControl.canAuthorizeNewLead(actor))) {
         throw this.forbidden();
@@ -266,6 +276,13 @@ export class MaterialService {
           responsibleUserId: customer.responsibleUserId,
           ...(customer.teamId === null ? {} : { teamId: customer.teamId }),
         }),
+      );
+    } else if (draft.ownerType === 'NOTARY_MATTER') {
+      await this.authorizeOwner(
+        actor,
+        'NOTARY_MATTER',
+        draft.ownerId,
+        'write',
       );
     } else if (
       draft.ownerType !== 'LEAD_DRAFT' ||
@@ -427,10 +444,12 @@ export class MaterialService {
     }
     if (
       input.leadAction !== undefined &&
-      (input.ownerType !== 'LEAD' ||
-        !['lead.read', 'lead.edit', 'lead.evidence.decide'].includes(
-          input.leadAction,
-        ))
+      (input.ownerType === 'LEAD'
+        ? !['lead.read', 'lead.edit', 'lead.evidence.decide'].includes(
+            input.leadAction,
+          )
+        : input.ownerType !== 'NOTARY_MATTER' ||
+          input.leadAction !== 'notary.unbox.record')
     ) {
       throw this.invalidVersion();
     }
@@ -1116,7 +1135,7 @@ export class MaterialService {
     snapshotReader?: AccessControlSnapshotReader,
     leadAction?: Extract<
       LeadAction,
-      'lead.read' | 'lead.edit' | 'lead.evidence.decide'
+      'lead.read' | 'lead.edit' | 'lead.evidence.decide' | 'notary.unbox.record'
     >,
   ): Promise<void> {
     if (actor.clientCustomerId !== undefined) {
@@ -1157,6 +1176,46 @@ export class MaterialService {
         select: { id: true },
       });
       if (lead === null) throw this.notFound();
+      return;
+    }
+    if (ownerType === 'NOTARY_MATTER') {
+      const action =
+        operation === 'write' ? 'notary.unbox.record' : (leadAction ?? 'lead.read');
+      const scope = await this.withMaterialAuthorization(() =>
+        this.accessControl.buildLeadScope(actor, action, snapshotReader),
+      );
+      const matter = await reader.notaryMatter.findFirst({
+        where: {
+          id: ownerId,
+          departmentId: actor.departmentId,
+          sourceLead: scope,
+        },
+        select: {
+          stage: true,
+          departmentId: true,
+          sourceLead: {
+            select: { responsibleUserId: true, teamId: true },
+          },
+        },
+      });
+      if (matter === null) throw this.notFound();
+      if (operation === 'write') {
+        if (matter.stage !== 'WAITING_UNBOX') throw this.versionConflict();
+        await this.withMaterialAuthorization(() =>
+          this.accessControl.authorizeLead(
+            actor,
+            'notary.unbox.record',
+            {
+              departmentId: matter.departmentId,
+              responsibleUserId: matter.sourceLead.responsibleUserId,
+              ...(matter.sourceLead.teamId === null
+                ? {}
+                : { teamId: matter.sourceLead.teamId }),
+            },
+            snapshotReader,
+          ),
+        );
+      }
       return;
     }
     if (ownerType === 'LEAD_DRAFT') {
@@ -1254,7 +1313,10 @@ export class MaterialService {
         )) ||
       (input.ownerType === 'LEAD_DRAFT' &&
         input.category === 'LEAD_SCREENSHOT' &&
-        input.purpose === 'LEAD_SCREENSHOT');
+        input.purpose === 'LEAD_SCREENSHOT') ||
+      (input.ownerType === 'NOTARY_MATTER' &&
+        input.category === 'NOTARY_OPENING_PHOTO' &&
+        input.purpose === 'NOTARY_OPENING_PHOTO');
     if (!valid) throw this.validationError();
   }
 
@@ -1349,7 +1411,8 @@ function toMaterialPurpose(value: string) {
     value === 'IDENTITY_FULL' ||
     value === 'IDENTITY_FRONT' ||
     value === 'IDENTITY_BACK' ||
-    value === 'LEAD_SCREENSHOT'
+    value === 'LEAD_SCREENSHOT' ||
+    value === 'NOTARY_OPENING_PHOTO'
   ) {
     return value;
   }
@@ -1357,7 +1420,11 @@ function toMaterialPurpose(value: string) {
 }
 
 function materialLimit(category: keyof typeof allowedMimeTypes): number {
-  return category === 'CUSTOMER_IDENTITY' ? 10 : 20;
+  return category === 'CUSTOMER_IDENTITY'
+    ? 10
+    : category === 'NOTARY_OPENING_PHOTO'
+      ? 50
+      : 20;
 }
 
 function ownerQuotaKey(input: {

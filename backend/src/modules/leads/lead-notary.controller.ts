@@ -18,10 +18,12 @@ import { CsrfGuard } from '../../auth/csrf.guard';
 import {
   CreateNotaryOfficeDto,
   RecordNotaryEvidenceDto,
+  RecordNotaryOpeningDto,
   SetNotaryOfficeStatusDto,
   TransferLeadToNotaryDto,
 } from './lead-notary.dto';
 import { LeadNotaryService } from './lead-notary.service';
+import { NotaryOpeningService } from './notary-opening.service';
 
 @ApiTags('notary-offices')
 @ApiBearerAuth()
@@ -58,7 +60,10 @@ export class NotaryOfficeController {
 @Controller()
 @UseGuards(ActorContextGuard, CsrfGuard)
 export class LeadNotaryController {
-  constructor(private readonly notary: LeadNotaryService) {}
+  constructor(
+    private readonly notary: LeadNotaryService,
+    private readonly opening: NotaryOpeningService,
+  ) {}
 
   @Post('leads/:id/notary-matters')
   @ApiHeader({ name: 'Idempotency-Key', required: true })
@@ -100,5 +105,22 @@ export class LeadNotaryController {
         message: 'Idempotency-Key 必须为 1 至 128 个字符',
       });
     return this.notary.recordEvidence(actor, id, key, input);
+  }
+
+  @Post('notary-matters/:id/opening')
+  @ApiHeader({ name: 'Idempotency-Key', required: true })
+  recordOpening(
+    @CurrentActor() actor: ActorContext,
+    @Param('id', new ParseUUIDPipe()) id: string,
+    @Headers('idempotency-key') idempotencyKey: string | undefined,
+    @Body() input: RecordNotaryOpeningDto,
+  ) {
+    const key = idempotencyKey?.trim();
+    if (key === undefined || key.length < 1 || key.length > 128)
+      throw new BadRequestException({
+        code: 'VALIDATION_ERROR',
+        message: 'Idempotency-Key 必须为 1 至 128 个字符',
+      });
+    return this.opening.record(actor, id, key, input);
   }
 }

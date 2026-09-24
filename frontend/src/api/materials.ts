@@ -10,7 +10,7 @@ import {
 export type MaterialOwnerType =
   'CUSTOMER' | 'LEAD_DRAFT' | 'LEAD' | 'NOTARY_MATTER';
 export type MaterialCategory =
-  'CUSTOMER_IDENTITY' | 'LEAD_SCREENSHOT' | 'NOTARY_OPENING';
+  'CUSTOMER_IDENTITY' | 'LEAD_SCREENSHOT' | 'NOTARY_OPENING_PHOTO';
 export type MaterialPurpose =
   | 'IDENTITY_FULL'
   | 'IDENTITY_FRONT'
@@ -98,7 +98,7 @@ function isCategory(value: unknown): value is MaterialCategory {
   return (
     value === 'CUSTOMER_IDENTITY' ||
     value === 'LEAD_SCREENSHOT' ||
-    value === 'NOTARY_OPENING'
+    value === 'NOTARY_OPENING_PHOTO'
   );
 }
 

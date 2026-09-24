@@ -24,6 +24,7 @@ const actionMap = {
   LEAD_WITHDRAW_APPLY: 'lead.withdraw.apply',
   LEAD_EVIDENCE_DECIDE: 'lead.evidence.decide',
   NOTARY_EVIDENCE_RECORD: 'notary.evidence.record',
+  NOTARY_UNBOX_RECORD: 'notary.unbox.record',
   NOTARY_OFFICE_MANAGE: 'notary.office.manage',
   CLIENT_LEAD_READ: 'client.lead.read',
   CLIENT_LEAD_REVIEW: 'client.lead.review',

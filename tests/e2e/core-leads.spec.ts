@@ -24,6 +24,10 @@ import {
   countNotaryLogistics,
   countNotaryEvidenceReceipts,
   countNotaryEvidenceAudits,
+  countNotaryOpenings,
+  countNotaryOpeningReceipts,
+  countNotaryOpeningAudits,
+  countNotaryOpeningReferences,
   countLeadReviewDecisions,
   countLeadWithdrawalApplications,
   countLeadWithdrawalAudits,
@@ -51,6 +55,8 @@ import {
   rejectNotaryHandoffReceiptWrites,
   rejectNotaryEvidenceWrites,
   rejectNotaryEvidenceReceiptWrites,
+  rejectNotaryOpeningWrites,
+  rejectNotaryOpeningReferenceWrites,
   rejectLeadReviewDecisionWrites,
   rejectClientLeadReviewReceiptWrites,
   rejectWithdrawalApplicationWrites,
@@ -117,9 +123,9 @@ type Uploaded = {
 async function upload(
   request: APIRequestContext,
   input: {
-    ownerType: 'CUSTOMER' | 'LEAD_DRAFT';
+    ownerType: 'CUSTOMER' | 'LEAD_DRAFT' | 'NOTARY_MATTER';
     ownerId?: string;
-    purpose: 'IDENTITY_FULL' | 'LEAD_SCREENSHOT';
+    purpose: 'IDENTITY_FULL' | 'LEAD_SCREENSHOT' | 'NOTARY_OPENING_PHOTO';
     name: string;
     mime: string;
     bytes: Buffer;
@@ -134,7 +140,9 @@ async function upload(
       category:
         input.ownerType === 'CUSTOMER'
           ? 'CUSTOMER_IDENTITY'
-          : 'LEAD_SCREENSHOT',
+          : input.ownerType === 'NOTARY_MATTER'
+            ? 'NOTARY_OPENING_PHOTO'
+            : 'LEAD_SCREENSHOT',
       purpose: input.purpose,
       originalFilename: input.name,
       declaredMimeType: input.mime,
@@ -272,6 +280,34 @@ function recordNotaryEvidence(
     headers: { ...headers, 'Idempotency-Key': key },
     data: input,
   });
+}
+
+function recordNotaryOpening(
+  request: APIRequestContext,
+  matterId: string,
+  input: Record<string, unknown>,
+  key = randomUUID(),
+  headers: Record<string, string> = authorizationA,
+) {
+  return request.post(`/api/v1/notary-matters/${matterId}/opening`, {
+    headers: { ...headers, 'Idempotency-Key': key },
+    data: input,
+  });
+}
+
+async function createWaitingUnboxMatter(
+  request: APIRequestContext,
+  clientCsrf: string,
+) {
+  const matterId = await createPendingNotaryMatter(request, clientCsrf);
+  const evidence = await recordNotaryEvidence(request, matterId, {
+    evidenceAt: '2026-09-24',
+    sampleFeeState: 'PENDING',
+    logistics: [{ companyState: 'NONE', trackingState: 'NONE' }],
+    expectedVersion: 1,
+  });
+  expect(evidence.status(), await evidence.text()).toBe(201);
+  return matterId;
 }
 
 async function createPendingNotaryMatter(
@@ -946,6 +982,33 @@ test('real operator and client logins transfer a lead and record notary evidence
     '12.00 元',
   );
 
+  await expect(page.locator('[data-test="opening-form"]')).toBeVisible();
+  await page.locator('[data-test="opening-photo-files"]').setInputFiles({
+    name: '真实开箱照片.jpg',
+    mimeType: 'image/jpeg',
+    buffer: jpegBytes,
+  });
+  await expect(page.locator('[data-test="opening-form"]')).toContainText(
+    '已上传',
+  );
+  await page.locator('[data-test="opening-sender-name"]').fill('真实寄件人');
+  await page.locator('[data-test="opening-sender-phone"]').fill('13800000000');
+  await page.locator('[data-test="record-opening-submit"]').click();
+  await expect(page.locator('.page-head .pill')).toHaveText('开箱审核中');
+  await expect(page.locator('[data-test="saved-opening"]')).toContainText(
+    '真实开箱照片.jpg',
+  );
+  await page.reload();
+  await expect(page.locator('.page-head .pill')).toHaveText('开箱审核中');
+  await expect(page.locator('[data-test="saved-opening"]')).toContainText(
+    '真实寄件人',
+  );
+  const openingDownload = page.waitForEvent('download');
+  await page.locator('[data-test^="download-opening-photo-"]').click();
+  expect(await readFile(await (await openingDownload).path())).toEqual(
+    jpegBytes,
+  );
+
   const foreignClient = await createClientAccount(request, {
     customerId: coreLeadFixtures.foreignCustomer,
     headers: { Authorization: `Bearer ${coreLeadFixtures.tokenB}` },
@@ -1343,6 +1406,229 @@ test('notary evidence audit, fact or receipt failure rolls back every durable ch
       expect(await countNotaryLogistics(matterId)).toBe(0);
       expect(await countNotaryEvidenceReceipts(matterId)).toBe(0);
       expect(await countNotaryEvidenceAudits(matterId)).toBe(0);
+      await allowInjectedFailures();
+    }
+  } finally {
+    await allowInjectedFailures();
+  }
+});
+
+test('notary opening enforces scope, photo ownership, state, version, replay and one concurrent winner', async ({
+  request,
+}) => {
+  const client = await createClientAccount(request);
+  const csrf = await loginClient(request, client.username, client.password);
+  const matterId = await createWaitingUnboxMatter(request, csrf);
+  const otherMatterId = await createWaitingUnboxMatter(request, csrf);
+  const photo = await upload(request, {
+    ownerType: 'NOTARY_MATTER',
+    ownerId: matterId,
+    purpose: 'NOTARY_OPENING_PHOTO',
+    name: 'opening.jpg',
+    mime: 'image/jpeg',
+    bytes: jpegBytes,
+  });
+  const otherPhoto = await upload(request, {
+    ownerType: 'NOTARY_MATTER',
+    ownerId: otherMatterId,
+    purpose: 'NOTARY_OPENING_PHOTO',
+    name: 'other.jpg',
+    mime: 'image/jpeg',
+    bytes: jpegBytes,
+  });
+  const input = {
+    expectedVersion: 2,
+    contentVersionIds: [photo.contentVersionId],
+    senderName: '  真实寄件人  ',
+  };
+  const before = await request.get(`/api/v1/notary-matters/${matterId}`, {
+    headers: authorizationA,
+  });
+  expect(await before.json()).toMatchObject({
+    stage: 'WAITING_UNBOX',
+    version: 2,
+    opening: null,
+    capabilities: { recordOpening: true },
+  });
+  expect(
+    (
+      await request.post(`/api/v1/notary-matters/${matterId}/opening`, {
+        headers: authorizationA,
+        data: input,
+      })
+    ).status(),
+  ).toBe(400);
+  expect(
+    (
+      await recordNotaryOpening(request, matterId, input, randomUUID(), {
+        'X-CSRF-Token': csrf,
+      })
+    ).status(),
+  ).toBe(403);
+  expect(
+    (
+      await recordNotaryOpening(request, matterId, input, randomUUID(), {
+        Authorization: `Bearer ${coreLeadFixtures.tokenB}`,
+      })
+    ).status(),
+  ).toBe(404);
+  await setGrant('notary.unbox.record', false);
+  expect((await recordNotaryOpening(request, matterId, input)).status()).toBe(
+    403,
+  );
+  await setGrant('notary.unbox.record', true);
+  for (const invalid of [
+    { ...input, contentVersionIds: [] },
+    {
+      ...input,
+      contentVersionIds: [photo.contentVersionId, photo.contentVersionId],
+    },
+    { ...input, contentVersionIds: [otherPhoto.contentVersionId] },
+    { ...input, expectedVersion: 99 },
+  ]) {
+    const response = await recordNotaryOpening(request, matterId, invalid);
+    expect([400, 409].includes(response.status()), await response.text()).toBe(
+      true,
+    );
+  }
+  await markContentVersion(photo.contentVersionId, 'DELETED');
+  expect((await recordNotaryOpening(request, matterId, input)).status()).toBe(
+    400,
+  );
+  await markContentVersion(photo.contentVersionId, 'AVAILABLE');
+  expect(await countNotaryOpenings(matterId)).toBe(0);
+  const pendingId = await createPendingNotaryMatter(request, csrf);
+  expect((await recordNotaryOpening(request, pendingId, input)).status()).toBe(
+    409,
+  );
+
+  const key = randomUUID();
+  const outcomes = await Promise.all([
+    recordNotaryOpening(request, matterId, input, key),
+    recordNotaryOpening(request, matterId, {
+      ...input,
+      senderName: '另一寄件人',
+    }),
+  ]);
+  expect(outcomes.map((response) => response.status()).sort()).toEqual([
+    201, 409,
+  ]);
+  const winner = outcomes.find((response) => response.status() === 201)!;
+  const result = await winner.json();
+  expect(result).toMatchObject({
+    id: matterId,
+    stage: 'UNBOX_REVIEW',
+    version: 3,
+    opening: { photos: [{ contentVersionId: photo.contentVersionId }] },
+  });
+  expect(await countNotaryOpenings(matterId)).toBe(1);
+  expect(await countNotaryOpeningReceipts(matterId)).toBe(1);
+  expect(await countNotaryOpeningAudits(matterId)).toBe(1);
+  expect(await countNotaryOpeningReferences(matterId)).toBe(1);
+  const detail = await request.get(`/api/v1/notary-matters/${matterId}`, {
+    headers: authorizationA,
+  });
+  expect(await detail.json()).toMatchObject({
+    stage: 'UNBOX_REVIEW',
+    version: 3,
+    opening: { photos: [{ originalFilename: 'opening.jpg' }] },
+    capabilities: { recordOpening: false },
+  });
+  const stored = await getMaterialByVersion(photo.contentVersionId);
+  expect(stored).not.toBeNull();
+  const download = await request.get(
+    `/api/v1/materials/${stored!.materialId}/versions/${photo.contentVersionId}/content`,
+    { headers: authorizationA },
+  );
+  expect(download.status()).toBe(200);
+  expect(await download.body()).toEqual(jpegBytes);
+  expect(
+    (
+      await request.get(
+        `/api/v1/materials/${stored!.materialId}/versions/${photo.contentVersionId}/content`,
+        { headers: { 'X-CSRF-Token': csrf } },
+      )
+    ).status(),
+  ).toBe(403);
+  expect(
+    (
+      await request.get(
+        `/api/v1/materials/${stored!.materialId}/versions/${photo.contentVersionId}/content`,
+        { headers: { Authorization: `Bearer ${coreLeadFixtures.tokenB}` } },
+      )
+    ).status(),
+  ).toBe(404);
+  expect(
+    (
+      await request.delete(
+        `/api/v1/materials/${stored!.materialId}?expectedVersion=1`,
+        { headers: authorizationA },
+      )
+    ).status(),
+  ).toBe(409);
+  const replay = await recordNotaryOpening(request, matterId, input, key);
+  if (result.opening.senderName === '真实寄件人') {
+    expect(replay.status()).toBe(201);
+    expect(await replay.json()).toEqual(result);
+    expect(
+      (
+        await recordNotaryOpening(
+          request,
+          matterId,
+          {
+            ...input,
+            senderName: 'changed',
+          },
+          key,
+        )
+      ).status(),
+    ).toBe(409);
+  }
+  await setGrant('notary.unbox.record', false);
+  expect(
+    (await recordNotaryOpening(request, matterId, input, key)).status(),
+  ).toBe(403);
+});
+
+test('notary opening fact, audit or receipt failure rolls back stage, photos and receipt', async ({
+  request,
+}) => {
+  const client = await createClientAccount(request);
+  const csrf = await loginClient(request, client.username, client.password);
+  try {
+    for (const inject of [
+      rejectNotaryOpeningWrites,
+      () => rejectAuditWrites('notary.opening_recorded'),
+      rejectNotaryOpeningReferenceWrites,
+      rejectNotaryEvidenceReceiptWrites,
+    ]) {
+      const matterId = await createWaitingUnboxMatter(request, csrf);
+      const photo = await upload(request, {
+        ownerType: 'NOTARY_MATTER',
+        ownerId: matterId,
+        purpose: 'NOTARY_OPENING_PHOTO',
+        name: 'rollback.jpg',
+        mime: 'image/jpeg',
+        bytes: jpegBytes,
+      });
+      await inject();
+      const failed = await recordNotaryOpening(request, matterId, {
+        expectedVersion: 2,
+        contentVersionIds: [photo.contentVersionId],
+      });
+      expect(failed.status()).toBeGreaterThanOrEqual(500);
+      const detail = await request.get(`/api/v1/notary-matters/${matterId}`, {
+        headers: authorizationA,
+      });
+      expect(await detail.json()).toMatchObject({
+        stage: 'WAITING_UNBOX',
+        version: 2,
+        opening: null,
+      });
+      expect(await countNotaryOpenings(matterId)).toBe(0);
+      expect(await countNotaryOpeningAudits(matterId)).toBe(0);
+      expect(await countNotaryOpeningReceipts(matterId)).toBe(0);
+      expect(await countNotaryOpeningReferences(matterId)).toBe(0);
       await allowInjectedFailures();
     }
   } finally {

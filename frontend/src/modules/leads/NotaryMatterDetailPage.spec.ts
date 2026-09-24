@@ -295,7 +295,7 @@ describe('NotaryMatterDetailPage', () => {
     expect(materials.uploadMaterialFile).toHaveBeenCalledWith({
       ownerType: 'NOTARY_MATTER',
       ownerId: 'matter-1',
-      category: 'NOTARY_OPENING',
+      category: 'NOTARY_OPENING_PHOTO',
       purpose: 'NOTARY_OPENING_PHOTO',
       file,
     });

@@ -3,12 +3,14 @@ import { Type } from 'class-transformer';
 import {
   IsArray,
   ArrayMinSize,
+  ArrayMaxSize,
   IsBoolean,
   IsIn,
   IsInt,
   IsOptional,
   IsString,
   IsUUID,
+  MaxLength,
   Min,
   ValidateNested,
 } from 'class-validator';
@@ -103,6 +105,38 @@ export class RecordNotaryEvidenceDto {
   @ValidateNested({ each: true })
   @Type(() => NotaryLogisticsDto)
   logistics!: NotaryLogisticsDto[];
+
+  @ApiProperty({ minimum: 1 })
+  @IsInt()
+  @Min(1)
+  expectedVersion!: number;
+}
+
+export class RecordNotaryOpeningDto {
+  @ApiProperty({ type: [String], format: 'uuid', minItems: 1, maxItems: 50 })
+  @IsArray()
+  @ArrayMinSize(1)
+  @ArrayMaxSize(50)
+  @IsUUID('4', { each: true })
+  contentVersionIds!: string[];
+
+  @ApiPropertyOptional({ nullable: true, maxLength: 200 })
+  @IsOptional()
+  @IsString()
+  @MaxLength(200)
+  senderName?: string | null;
+
+  @ApiPropertyOptional({ nullable: true, maxLength: 100 })
+  @IsOptional()
+  @IsString()
+  @MaxLength(100)
+  senderPhone?: string | null;
+
+  @ApiPropertyOptional({ nullable: true, maxLength: 500 })
+  @IsOptional()
+  @IsString()
+  @MaxLength(500)
+  senderAddress?: string | null;
 
   @ApiProperty({ minimum: 1 })
   @IsInt()

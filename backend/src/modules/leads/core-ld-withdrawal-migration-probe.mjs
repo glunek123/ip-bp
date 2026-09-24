@@ -27,10 +27,10 @@ async function run() {
     const emptyNotary = await client.query(
       `SELECT count(*)::int AS count FROM information_schema.tables
        WHERE table_schema=$1 AND table_name IN
-         ('notary_matter_evidence','notary_matter_logistics','notary_matter_command_receipts')`,
+         ('notary_matter_evidence','notary_matter_logistics','notary_matter_command_receipts','notary_matter_opening')`,
       [schema],
     );
-    if (emptyNotary.rows[0].count !== 3)
+    if (emptyNotary.rows[0].count !== 4)
       throw new Error('empty migration chain lacks notary evidence tables');
     console.log('empty migration chain passed:', migrations.length);
     await client.query(`CREATE SCHEMA "${upgradeSchema}"`);
@@ -118,7 +118,9 @@ async function run() {
     let evidenceFailureObserved = false;
     try {
       await applyMigrations(
-        migrations.filter((name) => name >= '20260924017000'),
+        migrations.filter(
+          (name) => name >= '20260924017000' && name < '20260924018000',
+        ),
       );
     } catch (error) {
       if (!error.message.includes('already exists')) throw error;
@@ -144,9 +146,42 @@ async function run() {
       );
     await client.query('DROP TABLE notary_matter_logistics');
     await applyMigrations(
-      migrations.filter((name) => name >= '20260924017000'),
+      migrations.filter(
+        (name) => name >= '20260924017000' && name < '20260924018000',
+      ),
     );
     await assertNotaryUpgrade();
+    await client.query('CREATE TABLE notary_matter_opening (probe integer)');
+    let openingFailureObserved = false;
+    try {
+      await applyMigrations(
+        migrations.filter(
+          (name) => name === '20260924018000_add_notary_opening_materials',
+        ),
+      );
+    } catch (error) {
+      if (!error.message.includes('already exists')) throw error;
+      openingFailureObserved = true;
+      await client.query('ROLLBACK');
+    }
+    if (!openingFailureObserved)
+      throw new Error('notary opening migration rollback probe did not fail');
+    const partialOpening = await client.query(
+      `SELECT count(*)::int AS count FROM pg_proc p JOIN pg_namespace n ON n.oid=p.pronamespace
+       WHERE n.nspname=$1 AND p.proname='reject_notary_opening_mutation'`,
+      [upgradeSchema],
+    );
+    if (partialOpening.rows[0].count !== 0)
+      throw new Error(
+        'failed notary opening migration left a trigger function',
+      );
+    await client.query('DROP TABLE notary_matter_opening');
+    await applyMigrations(
+      migrations.filter(
+        (name) => name === '20260924018000_add_notary_opening_materials',
+      ),
+    );
+    await assertOpeningUpgrade();
     console.log('previous-schema upgrade and constraints passed');
   } finally {
     await client.query('SET search_path TO public');
@@ -746,6 +781,55 @@ async function assertNotaryUpgrade() {
     await client.query(
       `UPDATE notary_matters SET stage='WAITING_UNBOX',version=2 WHERE id=$1`,
       [ids.notaryMatter],
+    );
+    await client.query('ROLLBACK');
+  } catch (error) {
+    await client.query('ROLLBACK');
+    throw error;
+  }
+}
+async function assertOpeningUpgrade() {
+  const oldFacts = await client.query(
+    `SELECT (SELECT count(*)::int FROM lead_review_decisions) AS decisions,
+            (SELECT count(*)::int FROM notary_matters) AS matters,
+            (SELECT count(*)::int FROM notary_matter_evidence) AS evidence`,
+  );
+  if (
+    oldFacts.rows[0].decisions !== 3 ||
+    oldFacts.rows[0].matters !== 1 ||
+    oldFacts.rows[0].evidence !== 0
+  )
+    throw new Error('notary opening upgrade changed historical facts');
+  await client.query('BEGIN');
+  try {
+    const insert = `INSERT INTO notary_matter_opening
+      (matter_id,department_id,sender_name,recorded_by_user_id)
+      VALUES ($1,$2,$3,$4)`;
+    await rejects(
+      insert,
+      [ids.notaryMatter, ids.department, '  untrimmed  ', ids.operator],
+      '23514',
+    );
+    await rejects(
+      insert,
+      [ids.notaryMatter, ids.department, 'Probe', ids.client],
+      '23503',
+    );
+    await client.query(insert, [
+      ids.notaryMatter,
+      ids.department,
+      'Probe',
+      ids.operator,
+    ]);
+    await rejects(
+      `UPDATE notary_matter_opening SET sender_name='Changed' WHERE matter_id=$1`,
+      [ids.notaryMatter],
+      '55000',
+    );
+    await rejects(
+      `DELETE FROM notary_matter_opening WHERE matter_id=$1`,
+      [ids.notaryMatter],
+      '55000',
     );
     await client.query('ROLLBACK');
   } catch (error) {

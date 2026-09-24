@@ -12,6 +12,7 @@ import {
   NotaryOfficeController,
 } from './lead-notary.controller';
 import { LeadNotaryService } from './lead-notary.service';
+import { NotaryOpeningService } from './notary-opening.service';
 
 @Module({
   imports: [AccessControlModule, AuthModule, DatabaseModule, MaterialModule],
@@ -21,7 +22,12 @@ import { LeadNotaryService } from './lead-notary.service';
     LeadNotaryController,
     NotaryOfficeController,
   ],
-  providers: [LeadService, ClientLeadService, LeadNotaryService],
+  providers: [
+    LeadService,
+    ClientLeadService,
+    LeadNotaryService,
+    NotaryOpeningService,
+  ],
   exports: [LeadService, ClientLeadService, LeadNotaryService],
 })
 export class LeadModule {}

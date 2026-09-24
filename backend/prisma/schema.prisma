@@ -20,6 +20,7 @@ enum PermissionAction {
   LEAD_WITHDRAW_APPLY          @map("lead.withdraw.apply")
   LEAD_EVIDENCE_DECIDE         @map("lead.evidence.decide")
   NOTARY_EVIDENCE_RECORD       @map("notary.evidence.record")
+  NOTARY_UNBOX_RECORD          @map("notary.unbox.record")
   NOTARY_OFFICE_MANAGE         @map("notary.office.manage")
   CLIENT_LEAD_READ             @map("client.lead.read")
   CLIENT_LEAD_REVIEW           @map("client.lead.review")
@@ -77,6 +78,7 @@ enum MaterialOwnerType {
   CUSTOMER
   LEAD_DRAFT
   LEAD
+  NOTARY_MATTER
 
   @@map("material_owner_type")
 }
@@ -84,6 +86,7 @@ enum MaterialOwnerType {
 enum MaterialCategory {
   CUSTOMER_IDENTITY
   LEAD_SCREENSHOT
+  NOTARY_OPENING_PHOTO
 
   @@map("material_category")
 }
@@ -123,6 +126,7 @@ enum NotaryOfficeStatus {
 enum NotaryMatterStage {
   PENDING_EVIDENCE
   WAITING_UNBOX
+  UNBOX_REVIEW
 
   @@map("notary_matter_stage")
 }
@@ -382,6 +386,7 @@ model DepartmentMembership {
   responsibleLeads            Lead[]                       @relation("LeadResponsibleMembership")
   leadCommandReceipts         LeadCommandReceipt[]         @relation("LeadCommandReceiptActor")
   notaryMatterCommandReceipts NotaryMatterCommandReceipt[] @relation("NotaryMatterReceiptActor")
+  recordedNotaryOpenings      NotaryMatterOpening[]        @relation("NotaryOpeningRecorder")
   withdrawalApplications      LeadWithdrawalApplication[]
   evidenceDecisions           LeadEvidenceDecision[]
   createdAt                   DateTime                     @default(now()) @map("created_at") @db.Timestamptz(3)
@@ -929,6 +934,7 @@ model NotaryMatter {
   selectedProducts      NotaryMatterProduct[]
   selectedMaterials     NotaryMatterMaterial[]
   evidence              NotaryMatterEvidence?
+  opening               NotaryMatterOpening?
   commandReceipts       NotaryMatterCommandReceipt[]
   createdAt             DateTime              @default(now()) @map("created_at") @db.Timestamptz(3)
 
@@ -952,6 +958,21 @@ model NotaryMatterEvidence {
 
   @@unique([matterId, departmentId], map: "notary_matter_evidence_matter_department_key")
   @@map("notary_matter_evidence")
+}
+
+model NotaryMatterOpening {
+  matterId         String               @id @map("matter_id") @db.Uuid
+  departmentId     String               @map("department_id") @db.Uuid
+  senderName       String?              @map("sender_name") @db.VarChar(200)
+  senderPhone      String?              @map("sender_phone") @db.VarChar(100)
+  senderAddress    String?              @map("sender_address") @db.VarChar(500)
+  recordedByUserId String               @map("recorded_by_user_id") @db.Uuid
+  recordedAt       DateTime             @default(now()) @map("recorded_at") @db.Timestamptz(3)
+  matter           NotaryMatter         @relation(fields: [matterId, departmentId], references: [id, departmentId], onDelete: Restrict, onUpdate: Restrict, map: "notary_matter_opening_matter_department_fkey")
+  recordedBy       DepartmentMembership @relation("NotaryOpeningRecorder", fields: [recordedByUserId, departmentId], references: [userId, departmentId], onDelete: Restrict, onUpdate: Restrict, map: "notary_matter_opening_actor_department_fkey")
+
+  @@unique([matterId, departmentId], map: "notary_matter_opening_matter_department_key")
+  @@map("notary_matter_opening")
 }
 
 model NotaryMatterLogistics {

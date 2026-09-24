@@ -198,7 +198,7 @@ describe('materials API', () => {
             id: 'draft-1',
             ownerType: 'NOTARY_MATTER',
             ownerId: 'matter-1',
-            category: 'NOTARY_OPENING',
+            category: 'NOTARY_OPENING_PHOTO',
             purpose: 'NOTARY_OPENING_PHOTO',
             originalFilename: file.name,
             declaredMimeType: file.type,
@@ -213,7 +213,7 @@ describe('materials API', () => {
       uploadMaterialFile({
         ownerType: 'NOTARY_MATTER',
         ownerId: 'matter-1',
-        category: 'NOTARY_OPENING',
+        category: 'NOTARY_OPENING_PHOTO',
         purpose: 'NOTARY_OPENING_PHOTO',
         file,
       }),
@@ -221,7 +221,7 @@ describe('materials API', () => {
     expect(JSON.parse(String(fetch.mock.calls[0]?.[1]?.body))).toMatchObject({
       ownerType: 'NOTARY_MATTER',
       ownerId: 'matter-1',
-      category: 'NOTARY_OPENING',
+      category: 'NOTARY_OPENING_PHOTO',
       purpose: 'NOTARY_OPENING_PHOTO',
     });
     expect(fetch.mock.calls[1]?.[1]).toEqual(

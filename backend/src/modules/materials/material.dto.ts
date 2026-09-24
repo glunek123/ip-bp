@@ -14,11 +14,17 @@ import {
 const trim = ({ value }: { value: unknown }): unknown =>
   typeof value === 'string' ? value.trim() : value;
 
-export const materialOwnerTypes = ['CUSTOMER', 'LEAD_DRAFT', 'LEAD'] as const;
+export const materialOwnerTypes = [
+  'CUSTOMER',
+  'LEAD_DRAFT',
+  'LEAD',
+  'NOTARY_MATTER',
+] as const;
 export type MaterialOwnerTypeValue = (typeof materialOwnerTypes)[number];
 export const materialCategories = [
   'CUSTOMER_IDENTITY',
   'LEAD_SCREENSHOT',
+  'NOTARY_OPENING_PHOTO',
 ] as const;
 export type MaterialCategoryValue = (typeof materialCategories)[number];
 export const materialPurposes = [
@@ -26,13 +32,17 @@ export const materialPurposes = [
   'IDENTITY_FRONT',
   'IDENTITY_BACK',
   'LEAD_SCREENSHOT',
+  'NOTARY_OPENING_PHOTO',
 ] as const;
 export type MaterialPurposeValue = (typeof materialPurposes)[number];
 
 export class CreateUploadDraftDto {
-  @ApiProperty({ enum: ['CUSTOMER', 'LEAD_DRAFT'] })
-  @IsIn(['CUSTOMER', 'LEAD_DRAFT'])
-  ownerType!: Extract<MaterialOwnerTypeValue, 'CUSTOMER' | 'LEAD_DRAFT'>;
+  @ApiProperty({ enum: ['CUSTOMER', 'LEAD_DRAFT', 'NOTARY_MATTER'] })
+  @IsIn(['CUSTOMER', 'LEAD_DRAFT', 'NOTARY_MATTER'])
+  ownerType!: Extract<
+    MaterialOwnerTypeValue,
+    'CUSTOMER' | 'LEAD_DRAFT' | 'NOTARY_MATTER'
+  >;
 
   @ApiPropertyOptional({ format: 'uuid' })
   @ValidateIf((_object, value) => value !== undefined)

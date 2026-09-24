@@ -77,6 +77,7 @@ const allActions = [
   'LEAD_PUSH',
   'LEAD_EVIDENCE_DECIDE',
   'NOTARY_EVIDENCE_RECORD',
+  'NOTARY_UNBOX_RECORD',
   'NOTARY_OFFICE_MANAGE',
   'LEAD_WITHDRAW_APPLY',
 ];
@@ -89,6 +90,7 @@ const actionNames = Object.freeze({
   'lead.push': 'LEAD_PUSH',
   'lead.evidence.decide': 'LEAD_EVIDENCE_DECIDE',
   'notary.evidence.record': 'NOTARY_EVIDENCE_RECORD',
+  'notary.unbox.record': 'NOTARY_UNBOX_RECORD',
   'notary.office.manage': 'NOTARY_OFFICE_MANAGE',
   'lead.withdraw.apply': 'LEAD_WITHDRAW_APPLY',
 });
@@ -111,6 +113,8 @@ async function dropFaults() {
     ['lead_withdrawal_confirmations', 'core_ld_reject_withdrawal_confirmation'],
     ['lead_evidence_decisions', 'core_ld_reject_evidence_decision'],
     ['notary_matter_evidence', 'core_nt_reject_evidence'],
+    ['notary_matter_opening', 'core_nt_reject_opening'],
+    ['material_references', 'core_nt_reject_opening_ref'],
     ['notary_matter_command_receipts', 'core_nt_reject_receipt'],
   ]) {
     await database.$executeRawUnsafe(
@@ -271,6 +275,7 @@ async function clearDatabase() {
     'notary_matter_products',
     'notary_matter_materials',
     'notary_matter_evidence',
+    'notary_matter_opening',
     'notary_matter_logistics',
   ];
   await database.$transaction(async (transaction) => {
@@ -286,6 +291,9 @@ async function clearDatabase() {
       where: { evidence: { departmentId: { in: departmentIds } } },
     });
     await transaction.notaryMatterEvidence.deleteMany({
+      where: { departmentId: { in: departmentIds } },
+    });
+    await transaction.notaryMatterOpening.deleteMany({
       where: { departmentId: { in: departmentIds } },
     });
     await transaction.notaryMatterProduct.deleteMany({
@@ -820,6 +828,32 @@ export function countNotaryEvidenceAudits(matterId) {
   });
 }
 
+export function countNotaryOpenings(matterId) {
+  return database.notaryMatterOpening.count({ where: { matterId } });
+}
+
+export function countNotaryOpeningReceipts(matterId) {
+  return database.notaryMatterCommandReceipt.count({
+    where: { resultMatterId: matterId, action: 'opening.record' },
+  });
+}
+
+export function countNotaryOpeningAudits(matterId) {
+  return database.auditEvent.count({
+    where: {
+      resourceType: 'notary_matter',
+      resourceId: matterId,
+      action: 'notary.opening_recorded',
+    },
+  });
+}
+
+export function countNotaryOpeningReferences(matterId) {
+  return database.materialReference.count({
+    where: { resourceType: 'notary_matter', resourceId: matterId },
+  });
+}
+
 export function countLeadEvidenceAudits(leadId) {
   return database.auditEvent.count({
     where: {
@@ -1005,6 +1039,20 @@ export async function rejectNotaryEvidenceReceiptWrites() {
   await dropFaults();
   await database.$executeRawUnsafe(
     'ALTER TABLE "notary_matter_command_receipts" ADD CONSTRAINT "core_nt_reject_receipt" CHECK (false) NOT VALID',
+  );
+}
+
+export async function rejectNotaryOpeningWrites() {
+  await dropFaults();
+  await database.$executeRawUnsafe(
+    'ALTER TABLE "notary_matter_opening" ADD CONSTRAINT "core_nt_reject_opening" CHECK (false) NOT VALID',
+  );
+}
+
+export async function rejectNotaryOpeningReferenceWrites() {
+  await dropFaults();
+  await database.$executeRawUnsafe(
+    'ALTER TABLE "material_references" ADD CONSTRAINT "core_nt_reject_opening_ref" CHECK (false) NOT VALID',
   );
 }
 

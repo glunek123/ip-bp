@@ -667,6 +667,7 @@ export class LeadNotaryService {
         evidence: {
           include: { logistics: { orderBy: { position: 'asc' } } },
         },
+        opening: true,
         selectedProducts: { orderBy: { leadProductId: 'asc' } },
         selectedMaterials: {
           include: {
@@ -680,6 +681,7 @@ export class LeadNotaryService {
     });
     if (matter === null) throw this.notFound();
     let recordEvidence = false;
+    let recordOpening = false;
     if (matter.stage === 'PENDING_EVIDENCE') {
       try {
         await this.access.authorizeLead(actor, 'notary.evidence.record', {
@@ -694,7 +696,51 @@ export class LeadNotaryService {
         if (!(error instanceof ForbiddenException)) throw error;
       }
     }
+    if (matter.stage === 'WAITING_UNBOX') {
+      try {
+        await this.access.authorizeLead(actor, 'notary.unbox.record', {
+          departmentId: matter.departmentId,
+          responsibleUserId: matter.sourceLead.responsibleUserId,
+          ...(matter.sourceLead.teamId === null
+            ? {}
+            : { teamId: matter.sourceLead.teamId }),
+        });
+        recordOpening = true;
+      } catch (error) {
+        if (!(error instanceof ForbiddenException)) throw error;
+      }
+    }
     if (matter.stage === 'WAITING_UNBOX' && matter.evidence === null)
+      throw this.corruptReceipt();
+    if (matter.stage === 'UNBOX_REVIEW' && matter.opening === null)
+      throw this.corruptReceipt();
+    const openingReferences =
+      matter.opening === null
+        ? []
+        : await this.database.materialReference.findMany({
+            where: {
+              departmentId: actor.departmentId,
+              resourceType: 'notary_matter',
+              resourceId: id,
+              purpose: 'NOTARY_OPENING_PHOTO',
+              actionEventId: { not: null },
+              material: {
+                ownerType: 'NOTARY_MATTER',
+                ownerId: id,
+                category: 'NOTARY_OPENING_PHOTO',
+                status: 'ACTIVE',
+              },
+            },
+            orderBy: { createdAt: 'asc' },
+            select: {
+              materialId: true,
+              contentVersionId: true,
+              contentVersion: {
+                select: { originalFilename: true, mimeType: true },
+              },
+            },
+          });
+    if (matter.opening !== null && openingReferences.length < 1)
       throw this.corruptReceipt();
     const productSnapshot = this.selectedProductSnapshot(
       matter.sourceSnapshot,
@@ -712,7 +758,23 @@ export class LeadNotaryService {
       leadVersion: matter.toLeadVersion,
       stage: matter.stage,
       version: matter.version,
-      capabilities: { recordEvidence },
+      capabilities: { recordEvidence, recordOpening },
+      opening:
+        matter.opening === null
+          ? null
+          : {
+              senderName: matter.opening.senderName,
+              senderPhone: matter.opening.senderPhone,
+              senderAddress: matter.opening.senderAddress,
+              recordedAt: matter.opening.recordedAt.toISOString(),
+              recordedByUserId: matter.opening.recordedByUserId,
+              photos: openingReferences.map((reference) => ({
+                materialId: reference.materialId,
+                contentVersionId: reference.contentVersionId,
+                originalFilename: reference.contentVersion.originalFilename,
+                mimeType: reference.contentVersion.mimeType,
+              })),
+            },
       evidence:
         matter.evidence === null
           ? null

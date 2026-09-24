@@ -1993,6 +1993,65 @@ function clientLeadMatchesWhere(
   );
 }
 
+describe('notary opening material authorization', () => {
+  const matterId = 'aaaaaaaa-aaaa-4aaa-8aaa-aaaaaaaaaaaa';
+  const input = {
+    ownerType: 'NOTARY_MATTER' as const,
+    ownerId: matterId,
+    category: 'NOTARY_OPENING_PHOTO' as const,
+    purpose: 'NOTARY_OPENING_PHOTO' as const,
+    originalFilename: 'opening.png',
+    declaredMimeType: 'image/png',
+  };
+
+  it('allows only an authorized internal actor to upload to a waiting matter', async () => {
+    const f = createFixture();
+    f.db.notaryMatter.findFirst.mockResolvedValue({
+      id: matterId,
+      departmentId: actor.departmentId,
+      stage: 'WAITING_UNBOX',
+      sourceLead: { responsibleUserId: actor.userId, teamId: null },
+    });
+    await expect(f.service.createUploadDraft(actor, input)).resolves.toMatchObject({
+      ownerType: 'NOTARY_MATTER',
+      ownerId: matterId,
+      category: 'NOTARY_OPENING_PHOTO',
+    });
+    expect(f.access.authorizeLead).toHaveBeenCalledWith(
+      actor,
+      'notary.unbox.record',
+      expect.objectContaining({ departmentId: actor.departmentId }),
+      undefined,
+    );
+    await expect(
+      f.service.createUploadDraft({ ...actor, clientCustomerId: customerId }, input),
+    ).rejects.toMatchObject({ response: { code: 'ACTION_FORBIDDEN' } });
+    f.db.notaryMatter.findFirst.mockResolvedValue({
+      id: matterId,
+      departmentId: actor.departmentId,
+      stage: 'UNBOX_REVIEW',
+      sourceLead: { responsibleUserId: actor.userId, teamId: null },
+    });
+    await expect(f.service.createUploadDraft(actor, input)).rejects.toMatchObject({
+      response: { code: 'VERSION_CONFLICT' },
+    });
+  });
+
+  it('rejects cross-matter and disallowed file combinations', async () => {
+    const f = createFixture();
+    f.db.notaryMatter.findFirst.mockResolvedValue(null);
+    await expect(f.service.createUploadDraft(actor, input)).rejects.toMatchObject({
+      response: { code: 'RESOURCE_NOT_FOUND' },
+    });
+    await expect(
+      f.service.createUploadDraft(actor, {
+        ...input,
+        declaredMimeType: 'application/pdf',
+      }),
+    ).rejects.toMatchObject({ response: { code: 'VALIDATION_ERROR' } });
+  });
+});
+
 function openDraft(overrides: Record<string, unknown> = {}) {
   return {
     id: '44444444-4444-4444-8444-444444444444',
@@ -2064,6 +2123,7 @@ function createMaterialTransaction() {
     customer: { findFirst: jest.fn() },
     uploadDraft: { findFirst: jest.fn() },
     lead: { findFirst: jest.fn() },
+    notaryMatter: { findFirst: jest.fn() },
     material: {
       findMany: jest.fn(),
       updateMany: jest.fn(async () => ({ count: 1 })),
@@ -2095,11 +2155,13 @@ function createFixture() {
     expiresAt: new Date(now.getTime() + 60_000),
   }));
   const leadFindFirst = jest.fn();
+  const notaryMatterFindFirst = jest.fn();
   const transaction = {
     $executeRawUnsafe: jest.fn(async () => 1),
     $queryRawUnsafe: jest.fn(async () => [{ id: 'material-1' }]),
     customer: { findFirst: customerFindFirst },
     lead: { findFirst: leadFindFirst },
+    notaryMatter: { findFirst: notaryMatterFindFirst },
     material: {
       findFirst: materialFindFirst,
       create: jest.fn(async ({ data }) => data),
@@ -2139,6 +2201,7 @@ function createFixture() {
       findFirst: jest.fn(),
     },
     lead: { findFirst: leadFindFirst },
+    notaryMatter: { findFirst: notaryMatterFindFirst },
     $transaction: jest.fn(
       async (callback: (value: typeof transaction) => Promise<unknown>) =>
         callback(transaction),

@@ -36,7 +36,11 @@ const openingSenderName = ref('');
 const openingSenderPhone = ref('');
 const openingSenderAddress = ref('');
 const openingPhotos = ref<
-  Array<{ file: File; uploaded?: UploadedMaterial; error?: string }>
+  Array<{
+    file: InstanceType<typeof globalThis.File>;
+    uploaded?: UploadedMaterial;
+    error?: string;
+  }>
 >([]);
 const openingUploadError = ref('');
 const openingError = ref('');
@@ -96,9 +100,11 @@ const allowedOpeningPhotoTypes = new Set([
 ]);
 const maxOpeningPhotoSize = 20 * 1024 * 1024;
 
-async function uploadOpeningFiles(event: Event): Promise<void> {
+async function uploadOpeningFiles(
+  event: InstanceType<typeof globalThis.Event>,
+): Promise<void> {
   const input = event.target;
-  if (!(input instanceof HTMLInputElement)) return;
+  if (!(input instanceof globalThis.HTMLInputElement)) return;
   const files = Array.from(input.files ?? []);
   input.value = '';
   openingUploadError.value = '';
@@ -107,7 +113,7 @@ async function uploadOpeningFiles(event: Event): Promise<void> {
     return;
   }
   const accepted: Array<{
-    file: File;
+    file: InstanceType<typeof globalThis.File>;
     uploaded?: UploadedMaterial;
     error?: string;
   }> = [];
@@ -131,7 +137,7 @@ async function uploadOpeningFiles(event: Event): Promise<void> {
         photo.uploaded = await uploadMaterialFile({
           ownerType: 'NOTARY_MATTER',
           ownerId: matter.value?.id ?? String(route.params.id),
-          category: 'NOTARY_OPENING',
+          category: 'NOTARY_OPENING_PHOTO',
           purpose: 'NOTARY_OPENING_PHOTO',
           file: photo.file,
         });
@@ -145,7 +151,7 @@ async function uploadOpeningFiles(event: Event): Promise<void> {
 }
 
 async function retryOpeningPhoto(photo: {
-  file: File;
+  file: InstanceType<typeof globalThis.File>;
   uploaded?: UploadedMaterial;
   error?: string;
 }): Promise<void> {
@@ -154,7 +160,7 @@ async function retryOpeningPhoto(photo: {
     photo.uploaded = await uploadMaterialFile({
       ownerType: 'NOTARY_MATTER',
       ownerId: matter.value?.id ?? String(route.params.id),
-      category: 'NOTARY_OPENING',
+      category: 'NOTARY_OPENING_PHOTO',
       purpose: 'NOTARY_OPENING_PHOTO',
       file: photo.file,
     });
