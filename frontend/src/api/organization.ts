@@ -39,6 +39,7 @@ export const permissionActionValues = [
   'LEAD_PUSH',
   'LEAD_WITHDRAW_APPLY',
   'LEAD_EVIDENCE_DECIDE',
+  'NOTARY_EVIDENCE_RECORD',
   'NOTARY_OFFICE_MANAGE',
   'USER_READ',
   'USER_MANAGE',

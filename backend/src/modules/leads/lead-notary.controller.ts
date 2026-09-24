@@ -17,6 +17,7 @@ import { ActorContextGuard } from '../../access-control/actor-context.guard';
 import { CsrfGuard } from '../../auth/csrf.guard';
 import {
   CreateNotaryOfficeDto,
+  RecordNotaryEvidenceDto,
   SetNotaryOfficeStatusDto,
   TransferLeadToNotaryDto,
 } from './lead-notary.dto';
@@ -82,5 +83,22 @@ export class LeadNotaryController {
     @Param('id', new ParseUUIDPipe()) id: string,
   ) {
     return this.notary.getMatter(actor, id);
+  }
+
+  @Post('notary-matters/:id/evidence')
+  @ApiHeader({ name: 'Idempotency-Key', required: true })
+  recordEvidence(
+    @CurrentActor() actor: ActorContext,
+    @Param('id', new ParseUUIDPipe()) id: string,
+    @Headers('idempotency-key') idempotencyKey: string | undefined,
+    @Body() input: RecordNotaryEvidenceDto,
+  ) {
+    const key = idempotencyKey?.trim();
+    if (key === undefined || key.length < 1 || key.length > 128)
+      throw new BadRequestException({
+        code: 'VALIDATION_ERROR',
+        message: 'Idempotency-Key 必须为 1 至 128 个字符',
+      });
+    return this.notary.recordEvidence(actor, id, key, input);
   }
 }

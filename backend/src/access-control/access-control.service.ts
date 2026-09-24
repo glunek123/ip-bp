@@ -15,6 +15,7 @@ export type PermissionAction =
   | 'lead.push'
   | 'lead.withdraw.apply'
   | 'lead.evidence.decide'
+  | 'notary.evidence.record'
   | 'notary.office.manage'
   | 'client.lead.read'
   | 'client.lead.review'
@@ -29,7 +30,8 @@ export type PermissionAction =
 export type CustomerAction = Extract<PermissionAction, `customer.${string}`>;
 export type PermissionScope = 'self' | 'team' | 'department';
 export type CustomerScope = PermissionScope;
-export type LeadAction = Extract<PermissionAction, `lead.${string}`>;
+export type LeadAction =
+  Extract<PermissionAction, `lead.${string}`> | 'notary.evidence.record';
 
 export type CustomerResourceFacts = {
   departmentId: string;

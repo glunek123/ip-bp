@@ -76,6 +76,7 @@ const allActions = [
   'LEAD_EDIT',
   'LEAD_PUSH',
   'LEAD_EVIDENCE_DECIDE',
+  'NOTARY_EVIDENCE_RECORD',
   'NOTARY_OFFICE_MANAGE',
   'LEAD_WITHDRAW_APPLY',
 ];
@@ -87,6 +88,7 @@ const actionNames = Object.freeze({
   'lead.edit': 'LEAD_EDIT',
   'lead.push': 'LEAD_PUSH',
   'lead.evidence.decide': 'LEAD_EVIDENCE_DECIDE',
+  'notary.evidence.record': 'NOTARY_EVIDENCE_RECORD',
   'notary.office.manage': 'NOTARY_OFFICE_MANAGE',
   'lead.withdraw.apply': 'LEAD_WITHDRAW_APPLY',
 });
@@ -108,6 +110,8 @@ async function dropFaults() {
     ['lead_withdrawal_applications', 'core_ld_reject_withdrawal_application'],
     ['lead_withdrawal_confirmations', 'core_ld_reject_withdrawal_confirmation'],
     ['lead_evidence_decisions', 'core_ld_reject_evidence_decision'],
+    ['notary_matter_evidence', 'core_nt_reject_evidence'],
+    ['notary_matter_command_receipts', 'core_nt_reject_receipt'],
   ]) {
     await database.$executeRawUnsafe(
       `ALTER TABLE "${table}" DROP CONSTRAINT IF EXISTS "${constraint}"`,
@@ -266,6 +270,8 @@ async function clearDatabase() {
     'notary_matters',
     'notary_matter_products',
     'notary_matter_materials',
+    'notary_matter_evidence',
+    'notary_matter_logistics',
   ];
   await database.$transaction(async (transaction) => {
     for (const table of immutableTables) {
@@ -273,6 +279,15 @@ async function clearDatabase() {
         `ALTER TABLE "${table}" DISABLE TRIGGER USER`,
       );
     }
+    await transaction.notaryMatterCommandReceipt.deleteMany({
+      where: { departmentId: { in: departmentIds } },
+    });
+    await transaction.notaryMatterLogistics.deleteMany({
+      where: { evidence: { departmentId: { in: departmentIds } } },
+    });
+    await transaction.notaryMatterEvidence.deleteMany({
+      where: { departmentId: { in: departmentIds } },
+    });
     await transaction.notaryMatterProduct.deleteMany({
       where: { matter: { departmentId: { in: departmentIds } } },
     });
@@ -781,6 +796,30 @@ export function countNotaryHandoffAudits(leadId) {
   });
 }
 
+export function countNotaryEvidence(matterId) {
+  return database.notaryMatterEvidence.count({ where: { matterId } });
+}
+
+export function countNotaryLogistics(matterId) {
+  return database.notaryMatterLogistics.count({ where: { matterId } });
+}
+
+export function countNotaryEvidenceReceipts(matterId) {
+  return database.notaryMatterCommandReceipt.count({
+    where: { resultMatterId: matterId, action: 'evidence.record' },
+  });
+}
+
+export function countNotaryEvidenceAudits(matterId) {
+  return database.auditEvent.count({
+    where: {
+      resourceType: 'notary_matter',
+      resourceId: matterId,
+      action: 'notary.evidence_recorded',
+    },
+  });
+}
+
 export function countLeadEvidenceAudits(leadId) {
   return database.auditEvent.count({
     where: {
@@ -952,6 +991,20 @@ export async function rejectNotaryHandoffReceiptWrites() {
   await dropFaults();
   await database.$executeRawUnsafe(
     `ALTER TABLE "lead_command_receipts" ADD CONSTRAINT "core_ld_reject_push_receipt" CHECK ("action" <> 'notary_handoff') NOT VALID`,
+  );
+}
+
+export async function rejectNotaryEvidenceWrites() {
+  await dropFaults();
+  await database.$executeRawUnsafe(
+    'ALTER TABLE "notary_matter_evidence" ADD CONSTRAINT "core_nt_reject_evidence" CHECK (false) NOT VALID',
+  );
+}
+
+export async function rejectNotaryEvidenceReceiptWrites() {
+  await dropFaults();
+  await database.$executeRawUnsafe(
+    'ALTER TABLE "notary_matter_command_receipts" ADD CONSTRAINT "core_nt_reject_receipt" CHECK (false) NOT VALID',
   );
 }
 

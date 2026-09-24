@@ -13,6 +13,7 @@ import {
   createNotaryOffice,
   getNotaryMatter,
   listNotaryOffices,
+  recordNotaryEvidence,
 } from './notary';
 
 const matter = {
@@ -22,6 +23,9 @@ const matter = {
   leadStatus: 'TRANSFERRED_TO_NOTARY',
   leadVersion: 4,
   stage: 'PENDING_EVIDENCE',
+  version: 2,
+  capabilities: { recordEvidence: true },
+  evidence: null,
   notaryOffice: { id: 'office-1', name: '广州市南方公证处' },
   selectedProductIds: ['product-1'],
   selectedContentVersionIds: ['content-1'],
@@ -147,5 +151,191 @@ describe('notary API', () => {
       selectedProducts: [{ id: 'product-1', title: '商品甲' }],
     });
     expect(http.getJson).toHaveBeenCalledWith('/notary-matters/matter%2F1', {});
+  });
+
+  it('loads the evidence capability and persisted evidence contract', async () => {
+    const logistics = [
+      {
+        id: 'logistics-1',
+        companyState: 'PRESENT',
+        companyValue: '顺丰',
+        trackingState: 'NONE',
+        trackingValue: null,
+      },
+    ];
+    http.getJson.mockResolvedValue({
+      ...matter,
+      version: 2,
+      capabilities: { recordEvidence: true },
+      evidence: null,
+      sourceLead: { id: 'lead-1', businessNo: 'LD-20260921-001' },
+      selectedProducts: [
+        {
+          id: 'product-1',
+          position: 1,
+          url: null,
+          title: '商品甲',
+          quantity: 1,
+          unitPrice: '9.00',
+          commentCount: 1,
+          estimatedAmount: '9.00',
+        },
+      ],
+      selectedMaterials: [
+        {
+          materialId: 'material-1',
+          contentVersionId: 'content-1',
+          originalFilename: '截图.png',
+          mimeType: 'image/png',
+        },
+      ],
+    });
+    await expect(getNotaryMatter('matter-1')).resolves.toMatchObject({
+      version: 2,
+      capabilities: { recordEvidence: true },
+      evidence: null,
+    });
+    http.getJson.mockResolvedValueOnce({
+      ...matter,
+      version: 3,
+      stage: 'WAITING_UNBOX',
+      capabilities: { recordEvidence: false },
+      evidence: {
+        evidenceAt: '2026-09-24',
+        sampleFeeState: 'PENDING',
+        sampleFeeAmount: null,
+        recordedAt: '2026-09-24T02:00:00.000Z',
+        recordedByUserId: 'user-1',
+        logistics,
+      },
+      sourceLead: { id: 'lead-1', businessNo: 'LD-20260921-001' },
+      selectedProducts: [
+        {
+          id: 'product-1',
+          position: 1,
+          url: null,
+          title: '商品甲',
+          quantity: 1,
+          unitPrice: '9.00',
+          commentCount: 1,
+          estimatedAmount: '9.00',
+        },
+      ],
+      selectedMaterials: [
+        {
+          materialId: 'material-1',
+          contentVersionId: 'content-1',
+          originalFilename: '截图.png',
+          mimeType: 'image/png',
+        },
+      ],
+    });
+    await expect(getNotaryMatter('matter-1')).resolves.toMatchObject({
+      stage: 'WAITING_UNBOX',
+      evidence: { logistics },
+    });
+  });
+
+  it('records evidence with the idempotency key and validates the transition response', async () => {
+    const input = {
+      evidenceAt: '2026-09-24',
+      sampleFeeState: 'KNOWN' as const,
+      sampleFeeAmount: '0.00',
+      logistics: [
+        {
+          companyState: 'PRESENT' as const,
+          companyValue: '顺丰',
+          trackingState: 'NONE' as const,
+          trackingValue: null,
+        },
+      ],
+      expectedVersion: 2,
+    };
+    const result = {
+      id: 'matter-1',
+      stage: 'WAITING_UNBOX',
+      version: 3,
+      evidence: {
+        evidenceAt: input.evidenceAt,
+        sampleFeeState: input.sampleFeeState,
+        sampleFeeAmount: input.sampleFeeAmount,
+        recordedAt: '2026-09-24T02:00:00.000Z',
+        recordedByUserId: 'user-1',
+        logistics: [{ id: 'logistics-1', ...input.logistics[0] }],
+      },
+    };
+    http.requestJson.mockResolvedValue(result);
+    await expect(
+      recordNotaryEvidence('matter-1', input, 'evidence-key'),
+    ).resolves.toEqual(result);
+    expect(http.requestJson).toHaveBeenCalledWith(
+      '/notary-matters/matter-1/evidence',
+      {
+        method: 'POST',
+        headers: { 'Idempotency-Key': 'evidence-key' },
+        body: { ...input, logistics: input.logistics },
+      },
+    );
+  });
+
+  it('omits sample fee amount when the fee is pending', async () => {
+    http.requestJson.mockResolvedValue({
+      id: 'matter-1',
+      stage: 'WAITING_UNBOX',
+      version: 3,
+      evidence: {
+        evidenceAt: '2026-09-24',
+        sampleFeeState: 'PENDING',
+        sampleFeeAmount: null,
+        recordedAt: '2026-09-24T02:00:00.000Z',
+        recordedByUserId: 'user-1',
+        logistics: [
+          {
+            id: 'logistics-1',
+            companyState: 'NONE',
+            companyValue: null,
+            trackingState: 'NONE',
+            trackingValue: null,
+          },
+        ],
+      },
+    });
+    await recordNotaryEvidence(
+      'matter-1',
+      {
+        evidenceAt: '2026-09-24',
+        sampleFeeState: 'PENDING',
+        expectedVersion: 2,
+        logistics: [
+          {
+            companyState: 'NONE',
+            companyValue: null,
+            trackingState: 'NONE',
+            trackingValue: null,
+          },
+        ],
+      },
+      'pending-key',
+    );
+    expect(http.requestJson).toHaveBeenCalledWith(
+      '/notary-matters/matter-1/evidence',
+      {
+        method: 'POST',
+        headers: { 'Idempotency-Key': 'pending-key' },
+        body: {
+          evidenceAt: '2026-09-24',
+          sampleFeeState: 'PENDING',
+          expectedVersion: 2,
+          logistics: [
+            {
+              companyState: 'NONE',
+              companyValue: null,
+              trackingState: 'NONE',
+              trackingValue: null,
+            },
+          ],
+        },
+      },
+    );
   });
 });

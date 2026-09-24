@@ -7,6 +7,7 @@ const actor = {
   authorizationRevision: 1,
 };
 const leadId = '33333333-3333-4333-8333-333333333333';
+const matterId = 'aaaaaaaa-aaaa-4aaa-8aaa-aaaaaaaaaaaa';
 const productId = '44444444-4444-4444-8444-444444444444';
 const officeId = '55555555-5555-4555-8555-555555555555';
 
@@ -53,7 +54,7 @@ function fixture(status = 'WAITING_EVIDENCE_DECISION') {
         Promise.resolve(
           sql.includes('INSERT INTO "notary_matter_number_counters"')
             ? [{ sequence: 1, business_date: '2026-09-24' }]
-            : [{ id: leadId }],
+            : [{ id: sql.includes('"notary_matters"') ? matterId : leadId }],
         ),
       ),
     lead: {
@@ -77,6 +78,17 @@ function fixture(status = 'WAITING_EVIDENCE_DECISION') {
     },
     notaryMatter: {
       create: jest.fn().mockResolvedValue({}),
+      findFirst: jest.fn().mockResolvedValue({
+        id: matterId,
+        departmentId: actor.departmentId,
+        sourceLeadId: leadId,
+        responsibleUserId: actor.userId,
+        stage: 'PENDING_EVIDENCE',
+        evidenceMode: 'ONLINE_PURCHASE',
+        version: 1,
+        sourceLead: { responsibleUserId: actor.userId, teamId: null },
+      }),
+      updateMany: jest.fn().mockResolvedValue({ count: 1 }),
       count: jest
         .fn()
         .mockResolvedValue(status === 'TRANSFERRED_TO_NOTARY' ? 1 : 0),
@@ -86,6 +98,16 @@ function fixture(status = 'WAITING_EVIDENCE_DECISION') {
     },
     notaryMatterMaterial: {
       createMany: jest.fn().mockResolvedValue({ count: 0 }),
+    },
+    notaryMatterLogistics: {
+      createMany: jest.fn().mockResolvedValue({ count: 1 }),
+    },
+    notaryMatterEvidence: {
+      create: jest.fn().mockResolvedValue({}),
+    },
+    notaryMatterCommandReceipt: {
+      findUnique: jest.fn().mockResolvedValue(null),
+      create: jest.fn().mockResolvedValue({}),
     },
     auditEvent: { create: jest.fn().mockResolvedValue({}) },
   };
@@ -289,6 +311,198 @@ describe('LeadNotaryService transfer', () => {
       f.service.transfer(actor, leadId, 'key', command),
     ).rejects.toThrow('audit write failed');
     expect(f.tx.leadCommandReceipt.create).not.toHaveBeenCalled();
+  });
+});
+
+const evidenceCommand = {
+  evidenceAt: '2026-09-24',
+  sampleFeeState: 'KNOWN' as const,
+  sampleFeeAmount: '0.00',
+  logistics: [
+    {
+      companyState: 'PRESENT' as const,
+      companyValue: '真实快递',
+      trackingState: 'PRESENT' as const,
+      trackingValue: 'REAL-123',
+    },
+  ],
+  expectedVersion: 1,
+};
+
+describe('LeadNotaryService recordEvidence', () => {
+  function action(f: ReturnType<typeof fixture>) {
+    return f.service as unknown as {
+      recordEvidence: (
+        who: typeof actor,
+        id: string,
+        key: string,
+        input: unknown,
+      ) => Promise<{
+        id: string;
+        stage: string;
+        version: number;
+        evidence: { logistics: Array<{ trackingValue: string | null }> };
+      }>;
+    };
+  }
+
+  it('atomically records real logistics and advances exactly one stage', async () => {
+    const f = fixture();
+    const result = await action(f).recordEvidence(
+      actor,
+      matterId,
+      'evidence-1',
+      evidenceCommand,
+    );
+    expect(result).toMatchObject({
+      id: matterId,
+      stage: 'WAITING_UNBOX',
+      version: 2,
+      evidence: { logistics: [{ trackingValue: 'REAL-123' }] },
+    });
+    expect(f.access.authorizeLead).toHaveBeenCalledWith(
+      actor,
+      'notary.evidence.record',
+      expect.objectContaining({ departmentId: actor.departmentId }),
+      f.tx,
+    );
+    expect(f.tx.notaryMatter.updateMany).toHaveBeenCalledWith(
+      expect.objectContaining({
+        where: expect.objectContaining({
+          id: matterId,
+          stage: 'PENDING_EVIDENCE',
+          version: 1,
+        }),
+        data: expect.objectContaining({ stage: 'WAITING_UNBOX', version: 2 }),
+      }),
+    );
+    expect(f.tx.notaryMatterLogistics.createMany).toHaveBeenCalled();
+    expect(f.tx.auditEvent.create).toHaveBeenCalled();
+    expect(f.tx.notaryMatterCommandReceipt.create).toHaveBeenCalledWith({
+      data: expect.objectContaining({ resultSnapshot: result }),
+    });
+  });
+
+  it('does not substitute unknown sample fee with zero or invent logistics', async () => {
+    const f = fixture();
+    const result = await action(f).recordEvidence(actor, matterId, 'none', {
+      ...evidenceCommand,
+      sampleFeeState: 'PENDING',
+      sampleFeeAmount: undefined,
+      logistics: [
+        {
+          companyState: 'NONE',
+          companyValue: null,
+          trackingState: 'NONE',
+          trackingValue: null,
+        },
+      ],
+    });
+    expect(result.evidence.logistics[0]?.trackingValue).toBeNull();
+    expect(f.tx.notaryMatterEvidence.create).toHaveBeenCalledWith(
+      expect.objectContaining({
+        data: expect.objectContaining({ sampleFeeAmount: null }),
+      }),
+    );
+  });
+
+  it('rejects invalid dates, fee state and incomplete logistics before writing', async () => {
+    const invalid = [
+      { ...evidenceCommand, evidenceAt: '2026-02-30' },
+      { ...evidenceCommand, sampleFeeAmount: '-1.00' },
+      { ...evidenceCommand, sampleFeeState: 'PENDING' },
+      { ...evidenceCommand, logistics: [] },
+      {
+        ...evidenceCommand,
+        logistics: [
+          {
+            companyState: 'NONE',
+            companyValue: null,
+            trackingState: 'PRESENT',
+            trackingValue: '',
+          },
+        ],
+      },
+    ];
+    for (const input of invalid) {
+      const f = fixture();
+      await expect(
+        action(f).recordEvidence(actor, matterId, 'invalid', input),
+      ).rejects.toMatchObject({ response: { code: 'VALIDATION_ERROR' } });
+      expect(f.tx.notaryMatter.updateMany).not.toHaveBeenCalled();
+    }
+  });
+
+  it('rejects non-internal or revoked grant even when a receipt exists', async () => {
+    const f = fixture();
+    f.tx.userAccount.findUnique.mockResolvedValue({ accountType: 'CLIENT' });
+    await expect(
+      action(f).recordEvidence(actor, matterId, 'key', evidenceCommand),
+    ).rejects.toMatchObject({ response: { code: 'ACTION_FORBIDDEN' } });
+    f.tx.userAccount.findUnique.mockResolvedValue({
+      accountType: 'INTERNAL',
+      active: true,
+    });
+    f.access.authorizeLead.mockRejectedValue(new ForbiddenException());
+    await expect(
+      action(f).recordEvidence(actor, matterId, 'key', evidenceCommand),
+    ).rejects.toMatchObject({ response: { code: 'ACTION_FORBIDDEN' } });
+    expect(f.tx.notaryMatterCommandReceipt.findUnique).not.toHaveBeenCalled();
+  });
+
+  it('replays the same key without another write and rejects changed intent', async () => {
+    const f = fixture();
+    const first = await action(f).recordEvidence(
+      actor,
+      matterId,
+      'same',
+      evidenceCommand,
+    );
+    f.tx.notaryMatterCommandReceipt.findUnique.mockResolvedValue(
+      f.tx.notaryMatterCommandReceipt.create.mock.calls[0][0].data,
+    );
+    f.tx.notaryMatter.updateMany.mockClear();
+    await expect(
+      action(f).recordEvidence(actor, matterId, 'same', evidenceCommand),
+    ).resolves.toEqual(first);
+    await expect(
+      action(f).recordEvidence(actor, matterId, 'same', {
+        ...evidenceCommand,
+        evidenceAt: '2026-09-23',
+      }),
+    ).rejects.toMatchObject({ response: { code: 'IDEMPOTENCY_CONFLICT' } });
+    expect(f.tx.notaryMatter.updateMany).not.toHaveBeenCalled();
+  });
+
+  it('rejects stale version, wrong stage and a lost update', async () => {
+    const f = fixture();
+    f.tx.notaryMatter.findFirst.mockResolvedValueOnce({
+      ...(await f.tx.notaryMatter.findFirst()),
+      stage: 'WAITING_UNBOX',
+    });
+    await expect(
+      action(f).recordEvidence(actor, matterId, 'stage', evidenceCommand),
+    ).rejects.toMatchObject({ response: { code: 'INVALID_STATE' } });
+    f.tx.notaryMatter.findFirst.mockResolvedValueOnce({
+      ...(await f.tx.notaryMatter.findFirst()),
+      version: 2,
+    });
+    await expect(
+      action(f).recordEvidence(actor, matterId, 'version', evidenceCommand),
+    ).rejects.toMatchObject({ response: { code: 'VERSION_CONFLICT' } });
+    f.tx.notaryMatter.updateMany.mockResolvedValue({ count: 0 });
+    await expect(
+      action(f).recordEvidence(actor, matterId, 'competition', evidenceCommand),
+    ).rejects.toMatchObject({ response: { code: 'VERSION_CONFLICT' } });
+  });
+
+  it('does not write a receipt when audit fails', async () => {
+    const f = fixture();
+    f.tx.auditEvent.create.mockRejectedValue(new Error('audit failed'));
+    await expect(
+      action(f).recordEvidence(actor, matterId, 'audit', evidenceCommand),
+    ).rejects.toThrow('audit failed');
+    expect(f.tx.notaryMatterCommandReceipt.create).not.toHaveBeenCalled();
   });
 });
 

@@ -37,7 +37,47 @@ export type NotaryMatterResult = {
   createdAt: string;
 };
 
-export type NotaryMatterDetail = NotaryMatterResult & {
+export type NotaryEvidenceLogistics = {
+  id: string;
+  companyState: 'PRESENT' | 'NONE';
+  companyValue: string | null;
+  trackingState: 'PRESENT' | 'NONE';
+  trackingValue: string | null;
+};
+
+export type NotaryEvidence = {
+  evidenceAt: string;
+  sampleFeeState: 'KNOWN' | 'PENDING';
+  sampleFeeAmount: string | null;
+  recordedAt: string;
+  recordedByUserId: string;
+  logistics: NotaryEvidenceLogistics[];
+};
+
+type RecordNotaryEvidenceBaseInput = {
+  evidenceAt: string;
+  logistics: Array<Omit<NotaryEvidenceLogistics, 'id'>>;
+  expectedVersion: number;
+};
+
+export type RecordNotaryEvidenceInput = RecordNotaryEvidenceBaseInput &
+  (
+    | { sampleFeeState: 'KNOWN'; sampleFeeAmount: string }
+    | { sampleFeeState: 'PENDING'; sampleFeeAmount?: never }
+  );
+
+export type RecordNotaryEvidenceResult = {
+  id: string;
+  stage: 'WAITING_UNBOX';
+  version: number;
+  evidence: NotaryEvidence;
+};
+
+export type NotaryMatterDetail = Omit<NotaryMatterResult, 'stage'> & {
+  stage: 'PENDING_EVIDENCE' | 'WAITING_UNBOX';
+  version: number;
+  capabilities: { recordEvidence: boolean };
+  evidence: NotaryEvidence | null;
   sourceLead: { id: string; businessNo: string };
   selectedProducts: LeadProduct[];
   selectedMaterials: Array<{
@@ -47,6 +87,51 @@ export type NotaryMatterDetail = NotaryMatterResult & {
     mimeType: string;
   }>;
 };
+
+function isLogistics(value: unknown): value is NotaryEvidenceLogistics {
+  return (
+    isRecord(value) &&
+    typeof value.id === 'string' &&
+    value.id.length > 0 &&
+    (value.companyState === 'PRESENT' || value.companyState === 'NONE') &&
+    (value.trackingState === 'PRESENT' || value.trackingState === 'NONE') &&
+    (value.companyState === 'PRESENT'
+      ? typeof value.companyValue === 'string' &&
+        value.companyValue.trim().length > 0
+      : value.companyValue === null) &&
+    (value.trackingState === 'PRESENT'
+      ? typeof value.trackingValue === 'string' &&
+        value.trackingValue.trim().length > 0
+      : value.trackingValue === null)
+  );
+}
+
+function isEvidence(value: unknown): value is NotaryEvidence {
+  return (
+    isRecord(value) &&
+    typeof value.evidenceAt === 'string' &&
+    isCalendarDate(value.evidenceAt) &&
+    (value.sampleFeeState === 'KNOWN' || value.sampleFeeState === 'PENDING') &&
+    (value.sampleFeeState === 'KNOWN'
+      ? isMoney(value.sampleFeeAmount)
+      : value.sampleFeeAmount === null) &&
+    typeof value.recordedAt === 'string' &&
+    !Number.isNaN(Date.parse(value.recordedAt)) &&
+    typeof value.recordedByUserId === 'string' &&
+    value.recordedByUserId.length > 0 &&
+    Array.isArray(value.logistics) &&
+    value.logistics.length > 0 &&
+    value.logistics.every(isLogistics)
+  );
+}
+
+function isCalendarDate(value: string): boolean {
+  if (!/^\d{4}-\d{2}-\d{2}$/u.test(value)) return false;
+  const date = new Date(`${value}T00:00:00.000Z`);
+  return (
+    !Number.isNaN(date.getTime()) && date.toISOString().slice(0, 10) === value
+  );
+}
 
 function isRecord(value: unknown): value is Record<string, unknown> {
   return typeof value === 'object' && value !== null && !Array.isArray(value);
@@ -130,17 +215,35 @@ function sameIds(left: unknown, right: string[]): boolean {
 }
 
 function isMatterDetail(value: unknown): value is NotaryMatterDetail {
-  if (!isMatterResult(value)) return false;
+  if (
+    !isRecord(value) ||
+    !isMatterResult({ ...value, stage: 'PENDING_EVIDENCE' })
+  )
+    return false;
   const detail = value as Record<string, unknown>;
   const sourceLead = detail.sourceLead;
   const selectedProducts = detail.selectedProducts;
   const selectedMaterials = detail.selectedMaterials;
+  const selectedProductIds = detail.selectedProductIds;
+  const selectedContentVersionIds = detail.selectedContentVersionIds;
   return (
+    Number.isInteger(detail.version) &&
+    (detail.version as number) >= 1 &&
+    (detail.stage === 'PENDING_EVIDENCE' || detail.stage === 'WAITING_UNBOX') &&
+    isRecord(detail.capabilities) &&
+    typeof detail.capabilities.recordEvidence === 'boolean' &&
+    (detail.evidence === null || isEvidence(detail.evidence)) &&
+    (detail.stage === 'PENDING_EVIDENCE'
+      ? detail.evidence === null
+      : detail.evidence !== null &&
+        detail.capabilities.recordEvidence === false) &&
     isRecord(sourceLead) &&
     typeof sourceLead.id === 'string' &&
     typeof sourceLead.businessNo === 'string' &&
     Array.isArray(selectedProducts) &&
     selectedProducts.every(isProductSnapshot) &&
+    Array.isArray(selectedProductIds) &&
+    selectedProductIds.every((id) => typeof id === 'string') &&
     Array.isArray(selectedMaterials) &&
     selectedMaterials.every(
       (material) =>
@@ -150,18 +253,33 @@ function isMatterDetail(value: unknown): value is NotaryMatterDetail {
         typeof material.originalFilename === 'string' &&
         typeof material.mimeType === 'string',
     ) &&
-    (selectedProducts as LeadProduct[]).length ===
-      value.selectedProductIds.length &&
-    value.selectedProductIds.every((id) =>
+    Array.isArray(selectedContentVersionIds) &&
+    selectedContentVersionIds.every((id) => typeof id === 'string') &&
+    (selectedProducts as LeadProduct[]).length === selectedProductIds.length &&
+    selectedProductIds.every((id) =>
       (selectedProducts as LeadProduct[]).some((product) => product.id === id),
     ) &&
     (selectedMaterials as Array<Record<string, unknown>>).length ===
-      value.selectedContentVersionIds.length &&
-    value.selectedContentVersionIds.every((id) =>
+      selectedContentVersionIds.length &&
+    selectedContentVersionIds.every((id) =>
       (selectedMaterials as Array<Record<string, unknown>>).some(
         (material) => material.contentVersionId === id,
       ),
     )
+  );
+}
+
+function isRecordEvidenceResult(
+  value: unknown,
+): value is RecordNotaryEvidenceResult {
+  return (
+    isRecord(value) &&
+    typeof value.id === 'string' &&
+    value.id.length > 0 &&
+    value.stage === 'WAITING_UNBOX' &&
+    Number.isInteger(value.version) &&
+    (value.version as number) >= 2 &&
+    isEvidence(value.evidence)
   );
 }
 
@@ -189,6 +307,51 @@ export async function getNotaryMatter(
     options,
   );
   if (!isMatterDetail(data)) throw invalidResponse();
+  return data;
+}
+
+export async function recordNotaryEvidence(
+  id: string,
+  input: RecordNotaryEvidenceInput,
+  idempotencyKey: string,
+): Promise<RecordNotaryEvidenceResult> {
+  const data = await requestJson(
+    `/notary-matters/${encodeURIComponent(id)}/evidence`,
+    {
+      method: 'POST',
+      headers: { 'Idempotency-Key': idempotencyKey },
+      body: {
+        evidenceAt: input.evidenceAt,
+        sampleFeeState: input.sampleFeeState,
+        ...(input.sampleFeeState === 'KNOWN'
+          ? { sampleFeeAmount: input.sampleFeeAmount }
+          : {}),
+        logistics: input.logistics.map((row) => ({ ...row })),
+        expectedVersion: input.expectedVersion,
+      },
+    },
+  );
+  if (
+    !isRecordEvidenceResult(data) ||
+    data.id !== id ||
+    data.version !== input.expectedVersion + 1 ||
+    data.evidence.evidenceAt !== input.evidenceAt ||
+    data.evidence.sampleFeeState !== input.sampleFeeState ||
+    (input.sampleFeeState === 'KNOWN'
+      ? data.evidence.sampleFeeAmount !== input.sampleFeeAmount
+      : data.evidence.sampleFeeAmount !== null) ||
+    data.evidence.logistics.length !== input.logistics.length ||
+    data.evidence.logistics.some((row, index) => {
+      const submitted = input.logistics[index];
+      return (
+        row.companyState !== submitted.companyState ||
+        row.companyValue !== submitted.companyValue ||
+        row.trackingState !== submitted.trackingState ||
+        row.trackingValue !== submitted.trackingValue
+      );
+    })
+  )
+    throw invalidResponse();
   return data;
 }
 

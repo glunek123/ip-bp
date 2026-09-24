@@ -8,7 +8,7 @@
 
 ## 当前任务
 
-**CORE-NT-001｜取证物流（路线图唯一Current，待实施）**：CORE-LD-006已完成运营确认取证、公证事项来源与查看，固定候选、Review及门禁结果见[验证记录](spec/v0.1/VALIDATION.md)。CORE-NT-002为唯一Next；本轮尚未领取或实施NT-001。
+**CORE-NT-001｜取证物流（路线图唯一Current，实施中）**：从已验证并推送的`main`组合树`8d07c855`创建`codex/core-nt-001-evidence-logistics`，按[小粒度计划](superpowers/plans/2026-09-24-core-nt-001-evidence-logistics.md)开发。CORE-LD-006已有稳定来源的待取证事项；CORE-NT-002仍为唯一Next。NT-001尚未通过实现验收，不标完成。
 
 ## 已实现
 

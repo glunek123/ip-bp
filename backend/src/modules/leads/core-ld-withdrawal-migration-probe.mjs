@@ -24,6 +24,14 @@ async function run() {
   try {
     await client.query(`SET search_path TO "${schema}"`);
     await applyMigrations(migrations);
+    const emptyNotary = await client.query(
+      `SELECT count(*)::int AS count FROM information_schema.tables
+       WHERE table_schema=$1 AND table_name IN
+         ('notary_matter_evidence','notary_matter_logistics','notary_matter_command_receipts')`,
+      [schema],
+    );
+    if (emptyNotary.rows[0].count !== 3)
+      throw new Error('empty migration chain lacks notary evidence tables');
     console.log('empty migration chain passed:', migrations.length);
     await client.query(`CREATE SCHEMA "${upgradeSchema}"`);
     await client.query(`SET search_path TO "${upgradeSchema}"`);
@@ -100,9 +108,44 @@ async function run() {
       throw new Error('failed notary migration left a partial matter table');
     await client.query('DROP TABLE notary_offices');
     await applyMigrations(
-      migrations.filter((name) => name >= '20260924014000'),
+      migrations.filter(
+        (name) => name >= '20260924014000' && name < '20260924017000',
+      ),
     );
     await assertEvidenceUpgrade();
+    await seedPreviousNotaryMatter();
+    await client.query('CREATE TABLE notary_matter_logistics (probe integer)');
+    let evidenceFailureObserved = false;
+    try {
+      await applyMigrations(
+        migrations.filter((name) => name >= '20260924017000'),
+      );
+    } catch (error) {
+      if (!error.message.includes('already exists')) throw error;
+      evidenceFailureObserved = true;
+      await client.query('ROLLBACK');
+    }
+    if (!evidenceFailureObserved)
+      throw new Error('notary evidence migration rollback probe did not fail');
+    const partialEvidence = await client.query(
+      `SELECT
+        (SELECT count(*)::int FROM information_schema.tables
+          WHERE table_schema=$1 AND table_name IN ('notary_matter_evidence','notary_matter_command_receipts')) AS tables,
+        (SELECT count(*)::int FROM pg_type t JOIN pg_namespace n ON n.oid=t.typnamespace
+          WHERE n.nspname=$1 AND t.typname IN ('notary_sample_fee_state','notary_logistics_field_state')) AS types`,
+      [upgradeSchema],
+    );
+    if (
+      partialEvidence.rows[0].tables !== 0 ||
+      partialEvidence.rows[0].types !== 0
+    )
+      throw new Error(
+        'failed notary evidence migration left partial tables or types',
+      );
+    await client.query('DROP TABLE notary_matter_logistics');
+    await applyMigrations(
+      migrations.filter((name) => name >= '20260924017000'),
+    );
     await assertNotaryUpgrade();
     console.log('previous-schema upgrade and constraints passed');
   } finally {
@@ -145,6 +188,10 @@ const ids = {
   receiptB: 'dddddddd-dddd-4ddd-8ddd-dddddddddddd',
   application: 'eeeeeeee-eeee-4eee-8eee-eeeeeeeeeeee',
   confirmation: 'ffffffff-ffff-4fff-8fff-ffffffffffff',
+  notaryOffice: '14141414-1414-4414-8414-141414141414',
+  notaryMatter: '15151515-1515-4515-8515-151515151515',
+  notaryProduct: '16161616-1616-4616-8616-161616161616',
+  otherNotaryProduct: '17171717-1717-4717-8717-171717171717',
 };
 
 async function seedPreviousSchema() {
@@ -573,6 +620,57 @@ async function assertEvidenceUpgrade() {
   }
 }
 
+async function seedPreviousNotaryMatter() {
+  await client.query('BEGIN');
+  try {
+    await client.query(
+      `INSERT INTO notary_offices(id,department_id,name,created_by_user_id) VALUES ($1,$2,'Probe Notary',$3)`,
+      [ids.notaryOffice, ids.department, ids.operator],
+    );
+    await client.query(
+      `INSERT INTO lead_products(id,lead_id,position,title,quantity,unit_price,comment_count,estimated_amount) VALUES ($1,$2,1,'Probe A',1,10,0,10),($3,$4,1,'Probe B',1,10,0,10)`,
+      [ids.notaryProduct, ids.leadA, ids.otherNotaryProduct, ids.leadB],
+    );
+    const insert = `INSERT INTO notary_matters(id,business_no,department_id,source_lead_id,customer_id,rights_holder_id,responsible_user_id,notary_office_id,evidence_mode,batch_purpose,source_snapshot,created_by_user_id,from_lead_version,to_lead_version)
+      VALUES ($1,'NT-20260924-001',$2,$3,$4,$5,$6,$7,'ONLINE_PURCHASE','Probe batch','{}',$6,6,7)`;
+    await rejects(
+      insert,
+      [
+        ids.notaryMatter,
+        ids.department,
+        ids.leadA,
+        ids.customerB,
+        ids.rights,
+        ids.operator,
+        ids.notaryOffice,
+      ],
+      '23503',
+    );
+    await client.query(insert, [
+      ids.notaryMatter,
+      ids.department,
+      ids.leadA,
+      ids.customerA,
+      ids.rights,
+      ids.operator,
+      ids.notaryOffice,
+    ]);
+    await rejects(
+      `INSERT INTO notary_matter_products(notary_matter_id,source_lead_id,lead_product_id) VALUES ($1,$2,$3)`,
+      [ids.notaryMatter, ids.leadA, ids.otherNotaryProduct],
+      '23503',
+    );
+    await client.query(
+      `INSERT INTO notary_matter_products(notary_matter_id,source_lead_id,lead_product_id) VALUES ($1,$2,$3)`,
+      [ids.notaryMatter, ids.leadA, ids.notaryProduct],
+    );
+    await client.query('COMMIT');
+  } catch (error) {
+    await client.query('ROLLBACK');
+    throw error;
+  }
+}
+
 async function assertNotaryUpgrade() {
   const oldFacts = await client.query(
     `SELECT (SELECT count(*)::int FROM lead_review_decisions) AS decisions,
@@ -587,59 +685,14 @@ async function assertNotaryUpgrade() {
     throw new Error('notary upgrade changed historical lead facts');
   await client.query('BEGIN');
   try {
-    const office = '14141414-1414-4414-8414-141414141414';
-    const matter = '15151515-1515-4515-8515-151515151515';
-    const product = '16161616-1616-4616-8616-161616161616';
-    const otherProduct = '17171717-1717-4717-8717-171717171717';
-    await client.query(
-      `INSERT INTO notary_offices(id,department_id,name,created_by_user_id) VALUES ($1,$2,'Probe Notary',$3)`,
-      [office, ids.department, ids.operator],
-    );
-    await client.query(
-      `INSERT INTO lead_products(id,lead_id,position,title,quantity,unit_price,comment_count,estimated_amount) VALUES ($1,$2,1,'Probe A',1,10,0,10),($3,$4,1,'Probe B',1,10,0,10)`,
-      [product, ids.leadA, otherProduct, ids.leadB],
-    );
-    const insert = `INSERT INTO notary_matters(id,business_no,department_id,source_lead_id,customer_id,rights_holder_id,responsible_user_id,notary_office_id,evidence_mode,batch_purpose,source_snapshot,created_by_user_id,from_lead_version,to_lead_version)
-      VALUES ($1,'NT-20260924-001',$2,$3,$4,$5,$6,$7,'ONLINE_PURCHASE','Probe batch','{}',$6,6,7)`;
-    await rejects(
-      insert,
-      [
-        matter,
-        ids.department,
-        ids.leadA,
-        ids.customerB,
-        ids.rights,
-        ids.operator,
-        office,
-      ],
-      '23503',
-    );
-    await client.query(insert, [
-      matter,
-      ids.department,
-      ids.leadA,
-      ids.customerA,
-      ids.rights,
-      ids.operator,
-      office,
-    ]);
-    await rejects(
-      `INSERT INTO notary_matter_products(notary_matter_id,source_lead_id,lead_product_id) VALUES ($1,$2,$3)`,
-      [matter, ids.leadA, otherProduct],
-      '23503',
-    );
-    await client.query(
-      `INSERT INTO notary_matter_products(notary_matter_id,source_lead_id,lead_product_id) VALUES ($1,$2,$3)`,
-      [matter, ids.leadA, product],
-    );
     await rejects(
       `UPDATE notary_matters SET batch_purpose='Changed' WHERE id=$1`,
-      [matter],
+      [ids.notaryMatter],
       '55000',
     );
     await rejects(
       `DELETE FROM notary_matter_products WHERE notary_matter_id=$1`,
-      [matter],
+      [ids.notaryMatter],
       '55000',
     );
     const facts = await client.query(
@@ -648,6 +701,52 @@ async function assertNotaryUpgrade() {
     );
     if (facts.rows[0].count !== 1)
       throw new Error('notary handoff source link missing');
+    const legacyMatter = await client.query(
+      `SELECT stage,version FROM notary_matters WHERE id=$1`,
+      [ids.notaryMatter],
+    );
+    if (
+      legacyMatter.rows[0].stage !== 'PENDING_EVIDENCE' ||
+      legacyMatter.rows[0].version !== 1
+    )
+      throw new Error('previous notary matter changed during upgrade');
+    const evidence = `INSERT INTO notary_matter_evidence
+      (matter_id,department_id,evidence_at,sample_fee_state,sample_fee_amount,recorded_by_user_id)
+      VALUES ($1,$2,'2026-09-24',$3,$4,$5)`;
+    await rejects(
+      evidence,
+      [ids.notaryMatter, ids.department, 'KNOWN', null, ids.operator],
+      '23514',
+    );
+    await client.query(evidence, [
+      ids.notaryMatter,
+      ids.department,
+      'PENDING',
+      null,
+      ids.operator,
+    ]);
+    await rejects(
+      `INSERT INTO notary_matter_logistics
+        (id,matter_id,position,company_state,company_value,tracking_state,tracking_value)
+        VALUES (gen_random_uuid(),$1,1,'PRESENT',NULL,'NONE',NULL)`,
+      [ids.notaryMatter],
+      '23514',
+    );
+    await client.query(
+      `INSERT INTO notary_matter_logistics
+        (id,matter_id,position,company_state,company_value,tracking_state,tracking_value)
+        VALUES (gen_random_uuid(),$1,1,'NONE',NULL,'NONE',NULL)`,
+      [ids.notaryMatter],
+    );
+    await rejects(
+      `UPDATE notary_matter_evidence SET evidence_at='2026-09-23' WHERE matter_id=$1`,
+      [ids.notaryMatter],
+      '55000',
+    );
+    await client.query(
+      `UPDATE notary_matters SET stage='WAITING_UNBOX',version=2 WHERE id=$1`,
+      [ids.notaryMatter],
+    );
     await client.query('ROLLBACK');
   } catch (error) {
     await client.query('ROLLBACK');

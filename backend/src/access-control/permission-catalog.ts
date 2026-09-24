@@ -19,6 +19,7 @@ export const internalAssignablePermissionActions = [
   'LEAD_PUSH',
   'LEAD_WITHDRAW_APPLY',
   'LEAD_EVIDENCE_DECIDE',
+  'NOTARY_EVIDENCE_RECORD',
   'NOTARY_OFFICE_MANAGE',
   'USER_READ',
   'USER_MANAGE',
@@ -63,6 +64,11 @@ const catalog: PermissionCatalogItem[] = [
   {
     action: 'LEAD_EVIDENCE_DECIDE',
     label: '确认取证或不取证',
+    scopes: allScopes,
+  },
+  {
+    action: 'NOTARY_EVIDENCE_RECORD',
+    label: '登记取证与物流',
     scopes: allScopes,
   },
   {

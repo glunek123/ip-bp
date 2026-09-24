@@ -14,6 +14,7 @@ import { Prisma } from '../../generated/prisma/client';
 import { MaterialService } from '../materials';
 import {
   CreateNotaryOfficeDto,
+  RecordNotaryEvidenceDto,
   SetNotaryOfficeStatusDto,
   TransferLeadToNotaryDto,
 } from './lead-notary.dto';
@@ -33,6 +34,28 @@ type TransferResult = {
   evidenceMode: 'ONLINE_PURCHASE';
   batchPurpose: string;
   createdAt: string;
+};
+
+type EvidenceLogistics = {
+  id: string;
+  companyState: 'PRESENT' | 'NONE';
+  companyValue: string | null;
+  trackingState: 'PRESENT' | 'NONE';
+  trackingValue: string | null;
+};
+
+type EvidenceResult = {
+  id: string;
+  stage: 'WAITING_UNBOX';
+  version: number;
+  evidence: {
+    evidenceAt: string;
+    sampleFeeState: 'KNOWN' | 'PENDING';
+    sampleFeeAmount: string | null;
+    recordedAt: string;
+    recordedByUserId: string;
+    logistics: EvidenceLogistics[];
+  };
 };
 
 @Injectable()
@@ -457,6 +480,170 @@ export class LeadNotaryService {
     throw this.versionConflict();
   }
 
+  async recordEvidence(
+    actor: ActorContext,
+    matterId: string,
+    idempotencyKey: string,
+    input: RecordNotaryEvidenceDto,
+  ): Promise<EvidenceResult> {
+    const normalized = this.normalizeEvidence(input);
+    const fingerprint = this.fingerprint({
+      matterId,
+      ...normalized.fingerprint,
+    });
+    for (let attempt = 1; attempt <= MAX_SERIALIZABLE_ATTEMPTS; attempt += 1) {
+      try {
+        return await this.database.$transaction(
+          async (tx) => {
+            const locked = await tx.$queryRawUnsafe<Array<{ id: string }>>(
+              'SELECT "id" FROM "notary_matters" WHERE "id" = $1::uuid AND "department_id" = $2::uuid FOR UPDATE',
+              matterId,
+              actor.departmentId,
+            );
+            if (locked.length !== 1) throw this.notFound();
+            const matter = await tx.notaryMatter.findFirst({
+              where: { id: matterId, departmentId: actor.departmentId },
+              include: {
+                sourceLead: {
+                  select: { responsibleUserId: true, teamId: true },
+                },
+              },
+            });
+            if (matter === null) throw this.notFound();
+            await this.assertInternal(actor, tx);
+            try {
+              await this.access.authorizeLead(
+                actor,
+                'notary.evidence.record',
+                {
+                  departmentId: matter.departmentId,
+                  responsibleUserId: matter.sourceLead.responsibleUserId,
+                  ...(matter.sourceLead.teamId === null
+                    ? {}
+                    : { teamId: matter.sourceLead.teamId }),
+                },
+                tx,
+              );
+            } catch (error) {
+              throw this.mapAuthorization(error);
+            }
+            const receipt = await tx.notaryMatterCommandReceipt.findUnique({
+              where: {
+                departmentId_actorUserId_action_idempotencyKey: {
+                  departmentId: actor.departmentId,
+                  actorUserId: actor.userId,
+                  action: 'evidence.record',
+                  idempotencyKey,
+                },
+              },
+            });
+            if (receipt !== null)
+              return this.evidenceReceiptResult(receipt, fingerprint, matterId);
+            if (
+              matter.stage !== 'PENDING_EVIDENCE' ||
+              matter.evidenceMode !== 'ONLINE_PURCHASE'
+            )
+              throw new ConflictException({
+                code: 'INVALID_STATE',
+                message: '该公证事项当前不能登记取证物流',
+              });
+            if (matter.version !== input.expectedVersion)
+              throw this.matterVersionConflict();
+            const changed = await tx.notaryMatter.updateMany({
+              where: {
+                id: matterId,
+                departmentId: actor.departmentId,
+                stage: 'PENDING_EVIDENCE',
+                version: input.expectedVersion,
+              },
+              data: {
+                stage: 'WAITING_UNBOX',
+                version: input.expectedVersion + 1,
+              },
+            });
+            if (changed.count !== 1) throw this.matterVersionConflict();
+            const recordedAt = new Date();
+            const logistics = normalized.logistics.map((row) => ({
+              id: randomUUID(),
+              ...row,
+            }));
+            await tx.notaryMatterEvidence.create({
+              data: {
+                matterId,
+                departmentId: actor.departmentId,
+                evidenceAt: normalized.evidenceDate,
+                sampleFeeState: normalized.sampleFeeState,
+                sampleFeeAmount: normalized.sampleFeeAmount,
+                recordedByUserId: actor.userId,
+                recordedAt,
+              },
+            });
+            await tx.notaryMatterLogistics.createMany({
+              data: logistics.map((row, index) => ({
+                ...row,
+                matterId,
+                position: index + 1,
+              })),
+            });
+            const result: EvidenceResult = {
+              id: matterId,
+              stage: 'WAITING_UNBOX',
+              version: input.expectedVersion + 1,
+              evidence: {
+                evidenceAt: normalized.evidenceAt,
+                sampleFeeState: normalized.sampleFeeState,
+                sampleFeeAmount: normalized.sampleFeeAmount,
+                recordedAt: recordedAt.toISOString(),
+                recordedByUserId: actor.userId,
+                logistics,
+              },
+            };
+            await tx.auditEvent.create({
+              data: {
+                departmentId: actor.departmentId,
+                actorUserId: actor.userId,
+                resourceType: 'notary_matter',
+                resourceId: matterId,
+                action: 'notary.evidence_recorded',
+                details: {
+                  fromStage: 'PENDING_EVIDENCE',
+                  toStage: 'WAITING_UNBOX',
+                  fromVersion: input.expectedVersion,
+                  toVersion: result.version,
+                  evidenceAt: normalized.evidenceAt,
+                  sampleFeeState: normalized.sampleFeeState,
+                  sampleFeeAmount: normalized.sampleFeeAmount,
+                  logisticsIds: logistics.map((row) => row.id),
+                },
+              },
+            });
+            await tx.notaryMatterCommandReceipt.create({
+              data: {
+                departmentId: actor.departmentId,
+                actorUserId: actor.userId,
+                action: 'evidence.record',
+                idempotencyKey,
+                requestFingerprint: fingerprint,
+                resultMatterId: matterId,
+                resultMatterVersion: result.version,
+                resultSnapshot: result,
+              },
+            });
+            return result;
+          },
+          { isolationLevel: 'Serializable' },
+        );
+      } catch (error) {
+        if (this.isSerializationConflict(error) || this.isUnique(error)) {
+          if (attempt < MAX_SERIALIZABLE_ATTEMPTS) continue;
+          throw this.matterVersionConflict();
+        }
+        throw this.mapAuthorization(error);
+      }
+    }
+    throw this.matterVersionConflict();
+  }
+
   async getMatter(actor: ActorContext, id: string) {
     await this.assertInternal(actor);
     let scope;
@@ -468,8 +655,18 @@ export class LeadNotaryService {
     const matter = await this.database.notaryMatter.findFirst({
       where: { id, departmentId: actor.departmentId, sourceLead: scope },
       include: {
-        sourceLead: { select: { id: true, businessNo: true } },
+        sourceLead: {
+          select: {
+            id: true,
+            businessNo: true,
+            responsibleUserId: true,
+            teamId: true,
+          },
+        },
         notaryOffice: { select: { id: true, name: true } },
+        evidence: {
+          include: { logistics: { orderBy: { position: 'asc' } } },
+        },
         selectedProducts: { orderBy: { leadProductId: 'asc' } },
         selectedMaterials: {
           include: {
@@ -482,6 +679,23 @@ export class LeadNotaryService {
       },
     });
     if (matter === null) throw this.notFound();
+    let recordEvidence = false;
+    if (matter.stage === 'PENDING_EVIDENCE') {
+      try {
+        await this.access.authorizeLead(actor, 'notary.evidence.record', {
+          departmentId: matter.departmentId,
+          responsibleUserId: matter.sourceLead.responsibleUserId,
+          ...(matter.sourceLead.teamId === null
+            ? {}
+            : { teamId: matter.sourceLead.teamId }),
+        });
+        recordEvidence = true;
+      } catch (error) {
+        if (!(error instanceof ForbiddenException)) throw error;
+      }
+    }
+    if (matter.stage === 'WAITING_UNBOX' && matter.evidence === null)
+      throw this.corruptReceipt();
     const productSnapshot = this.selectedProductSnapshot(
       matter.sourceSnapshot,
       matter.selectedProducts.map((item) => item.leadProductId),
@@ -497,13 +711,36 @@ export class LeadNotaryService {
       leadStatus: 'TRANSFERRED_TO_NOTARY' as const,
       leadVersion: matter.toLeadVersion,
       stage: matter.stage,
+      version: matter.version,
+      capabilities: { recordEvidence },
+      evidence:
+        matter.evidence === null
+          ? null
+          : {
+              evidenceAt: matter.evidence.evidenceAt.toISOString().slice(0, 10),
+              sampleFeeState: matter.evidence.sampleFeeState,
+              sampleFeeAmount:
+                matter.evidence.sampleFeeAmount?.toFixed(2) ?? null,
+              recordedAt: matter.evidence.recordedAt.toISOString(),
+              recordedByUserId: matter.evidence.recordedByUserId,
+              logistics: matter.evidence.logistics.map((row) => ({
+                id: row.id,
+                companyState: row.companyState,
+                companyValue: row.companyValue,
+                trackingState: row.trackingState,
+                trackingValue: row.trackingValue,
+              })),
+            },
       notaryOffice: matter.notaryOffice,
       selectedProductIds: productSnapshot.map((item) => item.id),
       selectedContentVersionIds: versionSnapshot,
       evidenceMode: matter.evidenceMode,
       batchPurpose: matter.batchPurpose,
       createdAt: matter.createdAt.toISOString(),
-      sourceLead: matter.sourceLead,
+      sourceLead: {
+        id: matter.sourceLead.id,
+        businessNo: matter.sourceLead.businessNo,
+      },
       selectedProducts: productSnapshot,
       selectedMaterials: versionSnapshot.map((id) => {
         const item = matter.selectedMaterials.find(
@@ -518,6 +755,140 @@ export class LeadNotaryService {
         };
       }),
     };
+  }
+
+  private normalizeEvidence(input: RecordNotaryEvidenceDto) {
+    if (
+      typeof input.evidenceAt !== 'string' ||
+      !/^\d{4}-\d{2}-\d{2}$/u.test(input.evidenceAt) ||
+      !Number.isInteger(input.expectedVersion) ||
+      input.expectedVersion < 1 ||
+      !Array.isArray(input.logistics) ||
+      input.logistics.length < 1
+    )
+      throw this.validation();
+    const evidenceDate = new Date(`${input.evidenceAt}T00:00:00.000Z`);
+    if (
+      Number.isNaN(evidenceDate.getTime()) ||
+      evidenceDate.toISOString().slice(0, 10) !== input.evidenceAt
+    )
+      throw this.validation();
+    if (input.sampleFeeState !== 'KNOWN' && input.sampleFeeState !== 'PENDING')
+      throw this.validation();
+    let sampleFeeAmount: string | null;
+    if (input.sampleFeeState === 'KNOWN') {
+      if (
+        typeof input.sampleFeeAmount !== 'string' ||
+        !/^(0|[1-9]\d{0,15})\.\d{2}$/u.test(input.sampleFeeAmount)
+      )
+        throw this.validation();
+      sampleFeeAmount = input.sampleFeeAmount;
+    } else {
+      if (input.sampleFeeAmount !== null && input.sampleFeeAmount !== undefined)
+        throw this.validation();
+      sampleFeeAmount = null;
+    }
+    const field = (
+      state: unknown,
+      value: unknown,
+      maxLength: number,
+    ): { state: 'PRESENT' | 'NONE'; value: string | null } => {
+      if (state === 'NONE') {
+        if (value !== null && value !== undefined) throw this.validation();
+        return { state, value: null };
+      }
+      if (state !== 'PRESENT' || typeof value !== 'string')
+        throw this.validation();
+      const trimmed = value.trim();
+      if (trimmed.length < 1 || [...trimmed].length > maxLength)
+        throw this.validation();
+      return { state, value: trimmed };
+    };
+    const logistics = input.logistics.map((row) => {
+      if (row === null || typeof row !== 'object') throw this.validation();
+      const company = field(row.companyState, row.companyValue, 200);
+      const tracking = field(row.trackingState, row.trackingValue, 100);
+      return {
+        companyState: company.state,
+        companyValue: company.value,
+        trackingState: tracking.state,
+        trackingValue: tracking.value,
+      };
+    });
+    return {
+      evidenceAt: input.evidenceAt,
+      evidenceDate,
+      sampleFeeState: input.sampleFeeState,
+      sampleFeeAmount,
+      logistics,
+      fingerprint: {
+        evidenceAt: input.evidenceAt,
+        sampleFeeState: input.sampleFeeState,
+        sampleFeeAmount,
+        logistics,
+        expectedVersion: input.expectedVersion,
+      },
+    };
+  }
+
+  private evidenceReceiptResult(
+    receipt: {
+      requestFingerprint: string;
+      resultMatterId: string;
+      resultMatterVersion: number;
+      resultSnapshot: unknown;
+    },
+    fingerprint: string,
+    matterId: string,
+  ): EvidenceResult {
+    if (
+      receipt.requestFingerprint !== fingerprint ||
+      receipt.resultMatterId !== matterId
+    )
+      throw new ConflictException({
+        code: 'IDEMPOTENCY_CONFLICT',
+        message: '该 Idempotency-Key 已用于不同请求',
+      });
+    const value = receipt.resultSnapshot;
+    if (value === null || typeof value !== 'object' || Array.isArray(value))
+      throw this.corruptReceipt();
+    const result = value as Record<string, unknown>;
+    const evidence = result.evidence;
+    if (
+      result.id !== matterId ||
+      result.stage !== 'WAITING_UNBOX' ||
+      result.version !== receipt.resultMatterVersion ||
+      evidence === null ||
+      typeof evidence !== 'object' ||
+      Array.isArray(evidence)
+    )
+      throw this.corruptReceipt();
+    const record = evidence as Record<string, unknown>;
+    if (
+      typeof record.evidenceAt !== 'string' ||
+      (record.sampleFeeState !== 'KNOWN' &&
+        record.sampleFeeState !== 'PENDING') ||
+      (record.sampleFeeAmount !== null &&
+        typeof record.sampleFeeAmount !== 'string') ||
+      typeof record.recordedAt !== 'string' ||
+      typeof record.recordedByUserId !== 'string' ||
+      !Array.isArray(record.logistics) ||
+      record.logistics.length < 1 ||
+      !record.logistics.every(
+        (item) =>
+          item !== null &&
+          typeof item === 'object' &&
+          typeof item.id === 'string' &&
+          (item.companyState === 'PRESENT' || item.companyState === 'NONE') &&
+          (item.companyValue === null ||
+            typeof item.companyValue === 'string') &&
+          (item.trackingState === 'PRESENT' || item.trackingState === 'NONE') &&
+          (item.trackingValue === null ||
+            typeof item.trackingValue === 'string'),
+      )
+    )
+      throw this.corruptReceipt();
+    return value as EvidenceResult;
   }
 
   private selectedProductSnapshot(
@@ -741,6 +1112,12 @@ export class LeadNotaryService {
     return new ConflictException({
       code: 'VERSION_CONFLICT',
       message: '线索已更新，请重新加载',
+    });
+  }
+  private matterVersionConflict() {
+    return new ConflictException({
+      code: 'VERSION_CONFLICT',
+      message: '公证事项已更新，请重新加载',
     });
   }
   private customerNotAdmitted() {

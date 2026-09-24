@@ -20,6 +20,10 @@ import {
   countNotaryMatters,
   countNotaryHandoffReceipts,
   countNotaryHandoffAudits,
+  countNotaryEvidence,
+  countNotaryLogistics,
+  countNotaryEvidenceReceipts,
+  countNotaryEvidenceAudits,
   countLeadReviewDecisions,
   countLeadWithdrawalApplications,
   countLeadWithdrawalAudits,
@@ -45,6 +49,8 @@ import {
   rejectLeadEvidenceDecisionWrites,
   rejectLeadEvidenceReceiptWrites,
   rejectNotaryHandoffReceiptWrites,
+  rejectNotaryEvidenceWrites,
+  rejectNotaryEvidenceReceiptWrites,
   rejectLeadReviewDecisionWrites,
   rejectClientLeadReviewReceiptWrites,
   rejectWithdrawalApplicationWrites,
@@ -253,6 +259,43 @@ function transferToNotary(
       ...(createNewBatch ? { createNewBatch: true } : {}),
     },
   });
+}
+
+function recordNotaryEvidence(
+  request: APIRequestContext,
+  matterId: string,
+  input: Record<string, unknown>,
+  key = randomUUID(),
+  headers = authorizationA,
+) {
+  return request.post(`/api/v1/notary-matters/${matterId}/evidence`, {
+    headers: { ...headers, 'Idempotency-Key': key },
+    data: input,
+  });
+}
+
+async function createPendingNotaryMatter(
+  request: APIRequestContext,
+  clientCsrf: string,
+): Promise<string> {
+  const officeResponse = await request.post('/api/v1/notary-offices', {
+    headers: authorizationA,
+    data: { name: `取证测试公证处-${randomUUID().slice(0, 8)}` },
+  });
+  expect(officeResponse.status(), await officeResponse.text()).toBe(201);
+  const office: { id: string } = await officeResponse.json();
+  const lead = await createInfringementReviewedLead(request, clientCsrf);
+  const product = (await getLead(lead.id))!.products[0];
+  const transferred = await transferToNotary(
+    request,
+    lead.id,
+    office.id,
+    [product.id],
+    3,
+  );
+  expect(transferred.status(), await transferred.text()).toBe(201);
+  const matter: { id: string } = await transferred.json();
+  return matter.id;
 }
 
 async function loginClient(
@@ -730,7 +773,7 @@ test('real operator and client logins persist infringement review, screenshot an
   ).toContainText(noEvidenceReason);
 });
 
-test('real operator and client logins transfer an infringement-reviewed lead to notary and retain its source', async ({
+test('real operator and client logins transfer a lead and record notary evidence logistics durably', async ({
   page,
   request,
 }) => {
@@ -876,6 +919,32 @@ test('real operator and client logins transfer an infringement-reviewed lead to 
   await expect(
     page.locator('[data-test="notary-matter-materials"]'),
   ).toContainText('notary-source.jpg');
+
+  await page.locator('[data-test="evidence-date"]').fill('2026-09-24');
+  await page.locator('[data-test="sample-fee-state"]').selectOption('KNOWN');
+  await page.locator('[data-test="sample-fee-amount"]').fill('12.00');
+  await page
+    .locator('[data-test="logistics-company-state-0"]')
+    .selectOption('PRESENT');
+  await page
+    .locator('[data-test="logistics-company-value-0"]')
+    .fill('真实快递公司');
+  await page
+    .locator('[data-test="logistics-tracking-state-0"]')
+    .selectOption('NONE');
+  await page.locator('[data-test="record-evidence-submit"]').click();
+  await expect(page.locator('.page-head .pill')).toHaveText('等待开箱');
+  await expect(page.locator('[data-test="saved-evidence"]')).toContainText(
+    '真实快递公司',
+  );
+  await expect(page.locator('[data-test="saved-evidence"]')).toContainText(
+    '快递单号：无',
+  );
+  await page.reload();
+  await expect(page.locator('.page-head .pill')).toHaveText('等待开箱');
+  await expect(page.locator('[data-test="saved-evidence"]')).toContainText(
+    '12.00 元',
+  );
 
   const foreignClient = await createClientAccount(request, {
     customerId: coreLeadFixtures.foreignCustomer,
@@ -1084,6 +1153,200 @@ test('notary handoff serializes competing batches and rolls back when audit or r
     ).toBe(403);
   } finally {
     await setGrant('lead.read', true);
+  }
+});
+
+test('notary evidence registration enforces scope, validation, version, replay and concurrent winner', async ({
+  request,
+}) => {
+  const client = await createClientAccount(request);
+  const csrf = await loginClient(request, client.username, client.password);
+  const matterId = await createPendingNotaryMatter(request, csrf);
+  const input = {
+    evidenceAt: '2026-09-24',
+    sampleFeeState: 'PENDING',
+    logistics: [
+      {
+        companyState: 'NONE',
+        companyValue: null,
+        trackingState: 'NONE',
+        trackingValue: null,
+      },
+    ],
+    expectedVersion: 1,
+  };
+  const before = await request.get(`/api/v1/notary-matters/${matterId}`, {
+    headers: authorizationA,
+  });
+  expect(before.status(), await before.text()).toBe(200);
+  expect(await before.json()).toMatchObject({
+    stage: 'PENDING_EVIDENCE',
+    version: 1,
+    capabilities: { recordEvidence: true },
+    evidence: null,
+  });
+  expect(
+    (
+      await request.post(`/api/v1/notary-matters/${matterId}/evidence`, {
+        headers: { 'X-CSRF-Token': csrf, 'Idempotency-Key': randomUUID() },
+        data: input,
+      })
+    ).status(),
+  ).toBe(403);
+  expect(
+    (
+      await request.post(`/api/v1/notary-matters/${matterId}/evidence`, {
+        headers: authorizationA,
+        data: input,
+      })
+    ).status(),
+  ).toBe(400);
+  expect(
+    (
+      await recordNotaryEvidence(request, matterId, input, randomUUID(), {
+        Authorization: `Bearer ${coreLeadFixtures.tokenB}`,
+      })
+    ).status(),
+  ).toBe(404);
+  await setGrant('notary.evidence.record', false);
+  expect((await recordNotaryEvidence(request, matterId, input)).status()).toBe(
+    403,
+  );
+  await setGrant('notary.evidence.record', true);
+  for (const invalid of [
+    { ...input, evidenceAt: '2026-02-30' },
+    { ...input, sampleFeeState: 'KNOWN' },
+    { ...input, logistics: [] },
+    {
+      ...input,
+      logistics: [
+        {
+          companyState: 'PRESENT',
+          companyValue: '',
+          trackingState: 'NONE',
+          trackingValue: null,
+        },
+      ],
+    },
+  ]) {
+    expect(
+      (await recordNotaryEvidence(request, matterId, invalid)).status(),
+    ).toBe(400);
+  }
+  expect(
+    (
+      await recordNotaryEvidence(request, matterId, {
+        ...input,
+        expectedVersion: 99,
+      })
+    ).status(),
+  ).toBe(409);
+  expect(await countNotaryEvidence(matterId)).toBe(0);
+  const key = randomUUID();
+  const competing = await Promise.all([
+    recordNotaryEvidence(request, matterId, input, key),
+    recordNotaryEvidence(request, matterId, {
+      ...input,
+      evidenceAt: '2026-09-23',
+    }),
+  ]);
+  expect(competing.map((response) => response.status()).sort()).toEqual([
+    201, 409,
+  ]);
+  expect(await countNotaryEvidence(matterId)).toBe(1);
+  expect(await countNotaryLogistics(matterId)).toBe(1);
+  expect(await countNotaryEvidenceReceipts(matterId)).toBe(1);
+  expect(await countNotaryEvidenceAudits(matterId)).toBe(1);
+  const winner = competing.find((response) => response.status() === 201)!;
+  const saved = await winner.json();
+  expect(saved).toMatchObject({
+    id: matterId,
+    stage: 'WAITING_UNBOX',
+    version: 2,
+    evidence: {
+      sampleFeeState: 'PENDING',
+      sampleFeeAmount: null,
+      logistics: [{ companyState: 'NONE', trackingState: 'NONE' }],
+    },
+  });
+  const detail = await request.get(`/api/v1/notary-matters/${matterId}`, {
+    headers: authorizationA,
+  });
+  expect(await detail.json()).toMatchObject({
+    stage: 'WAITING_UNBOX',
+    version: 2,
+    capabilities: { recordEvidence: false },
+    evidence: saved.evidence,
+  });
+  if (saved.evidence.evidenceAt === input.evidenceAt) {
+    const replay = await recordNotaryEvidence(request, matterId, input, key);
+    expect(replay.status()).toBe(201);
+    expect(await replay.json()).toEqual(saved);
+    expect(
+      (
+        await recordNotaryEvidence(
+          request,
+          matterId,
+          { ...input, evidenceAt: '2026-09-22' },
+          key,
+        )
+      ).status(),
+    ).toBe(409);
+  }
+  expect((await recordNotaryEvidence(request, matterId, input)).status()).toBe(
+    409,
+  );
+  await setGrant('notary.evidence.record', false);
+  expect(
+    (await recordNotaryEvidence(request, matterId, input, key)).status(),
+  ).toBe(403);
+});
+
+test('notary evidence audit, fact or receipt failure rolls back every durable change', async ({
+  request,
+}) => {
+  const client = await createClientAccount(request);
+  const csrf = await loginClient(request, client.username, client.password);
+  const input = {
+    evidenceAt: '2026-09-24',
+    sampleFeeState: 'KNOWN',
+    sampleFeeAmount: '10.00',
+    logistics: [
+      {
+        companyState: 'PRESENT',
+        companyValue: '真实快递',
+        trackingState: 'PRESENT',
+        trackingValue: 'REAL-1',
+      },
+    ],
+    expectedVersion: 1,
+  };
+  try {
+    for (const inject of [
+      rejectNotaryEvidenceWrites,
+      () => rejectAuditWrites('notary.evidence_recorded'),
+      rejectNotaryEvidenceReceiptWrites,
+    ]) {
+      const matterId = await createPendingNotaryMatter(request, csrf);
+      await inject();
+      const failed = await recordNotaryEvidence(request, matterId, input);
+      expect(failed.status()).toBeGreaterThanOrEqual(500);
+      const detail = await request.get(`/api/v1/notary-matters/${matterId}`, {
+        headers: authorizationA,
+      });
+      expect(await detail.json()).toMatchObject({
+        stage: 'PENDING_EVIDENCE',
+        version: 1,
+        evidence: null,
+      });
+      expect(await countNotaryEvidence(matterId)).toBe(0);
+      expect(await countNotaryLogistics(matterId)).toBe(0);
+      expect(await countNotaryEvidenceReceipts(matterId)).toBe(0);
+      expect(await countNotaryEvidenceAudits(matterId)).toBe(0);
+      await allowInjectedFailures();
+    }
+  } finally {
+    await allowInjectedFailures();
   }
 });
 

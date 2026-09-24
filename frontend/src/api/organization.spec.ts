@@ -106,6 +106,11 @@ const context = {
       scopes: ['SELF', 'TEAM', 'DEPARTMENT'],
     },
     {
+      action: 'NOTARY_EVIDENCE_RECORD',
+      label: '登记取证与物流',
+      scopes: ['SELF', 'TEAM', 'DEPARTMENT'],
+    },
+    {
       action: 'NOTARY_OFFICE_MANAGE',
       label: '管理公证处',
       scopes: ['DEPARTMENT'],
@@ -167,6 +172,7 @@ describe('organization API', () => {
       'LEAD_PUSH',
       'LEAD_WITHDRAW_APPLY',
       'LEAD_EVIDENCE_DECIDE',
+      'NOTARY_EVIDENCE_RECORD',
       'NOTARY_OFFICE_MANAGE',
       'USER_READ',
       'USER_MANAGE',

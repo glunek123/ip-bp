@@ -345,7 +345,7 @@ describe('OrganizationService management context', () => {
       assignTeamRoles: false,
       manageRoleTemplates: true,
     });
-    expect(result.permissionCatalog).toHaveLength(18);
+    expect(result.permissionCatalog).toHaveLength(19);
     expect(result.permissionCatalog.map(({ action }) => action)).toEqual(
       expect.arrayContaining([
         'CUSTOMER_ADMIT',
@@ -367,6 +367,11 @@ describe('OrganizationService management context', () => {
     expect(result.permissionCatalog).toContainEqual({
       action: 'ROLE_MANAGE',
       label: '管理角色模板',
+      scopes: ['SELF', 'TEAM', 'DEPARTMENT'],
+    });
+    expect(result.permissionCatalog).toContainEqual({
+      action: 'NOTARY_EVIDENCE_RECORD',
+      label: '登记取证与物流',
       scopes: ['SELF', 'TEAM', 'DEPARTMENT'],
     });
     expect(result.permissionCatalog).toContainEqual({

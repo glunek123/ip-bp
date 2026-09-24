@@ -1,4 +1,5 @@
 import { ApiProperty, ApiPropertyOptional } from '@nestjs/swagger';
+import { Type } from 'class-transformer';
 import {
   IsArray,
   ArrayMinSize,
@@ -9,6 +10,7 @@ import {
   IsString,
   IsUUID,
   Min,
+  ValidateNested,
 } from 'class-validator';
 
 export class CreateNotaryOfficeDto {
@@ -56,4 +58,54 @@ export class TransferLeadToNotaryDto {
   @IsOptional()
   @IsBoolean()
   createNewBatch?: boolean;
+}
+
+export class NotaryLogisticsDto {
+  @ApiProperty({ enum: ['PRESENT', 'NONE'] })
+  @IsIn(['PRESENT', 'NONE'])
+  companyState!: 'PRESENT' | 'NONE';
+
+  @ApiPropertyOptional({ nullable: true, maxLength: 200 })
+  @IsOptional()
+  @IsString()
+  companyValue?: string | null;
+
+  @ApiProperty({ enum: ['PRESENT', 'NONE'] })
+  @IsIn(['PRESENT', 'NONE'])
+  trackingState!: 'PRESENT' | 'NONE';
+
+  @ApiPropertyOptional({ nullable: true, maxLength: 100 })
+  @IsOptional()
+  @IsString()
+  trackingValue?: string | null;
+}
+
+export class RecordNotaryEvidenceDto {
+  @ApiProperty({ description: '实际取证日期，YYYY-MM-DD' })
+  @IsString()
+  evidenceAt!: string;
+
+  @ApiProperty({ enum: ['KNOWN', 'PENDING'] })
+  @IsIn(['KNOWN', 'PENDING'])
+  sampleFeeState!: 'KNOWN' | 'PENDING';
+
+  @ApiPropertyOptional({
+    nullable: true,
+    description: '已知时必填，人民币两位小数',
+  })
+  @IsOptional()
+  @IsString()
+  sampleFeeAmount?: string | null;
+
+  @ApiProperty({ type: [NotaryLogisticsDto], minItems: 1 })
+  @IsArray()
+  @ArrayMinSize(1)
+  @ValidateNested({ each: true })
+  @Type(() => NotaryLogisticsDto)
+  logistics!: NotaryLogisticsDto[];
+
+  @ApiProperty({ minimum: 1 })
+  @IsInt()
+  @Min(1)
+  expectedVersion!: number;
 }
