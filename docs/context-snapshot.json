@@ -1,6 +1,6 @@
 {
   "version": 1,
-  "recordedAt": "2026-09-24T02:24:16.986Z",
+  "recordedAt": "2026-09-24T02:29:58.053Z",
   "files": {
     ".cursor/rules/verified-feature-integration.mdc": "deaa0f81681c8ac17f6fd7d7b7db3e9fe2f5b672c62980895b992943fd19b3c0",
     ".env.example": "07211cde5c2b59efc21b619b752d4c9b871f0980d2d64ca3c146ad6151fd27ca",
@@ -460,7 +460,7 @@
     "scripts/test-environment.mjs": "a3fb345df3802a2fea39ddf7e4a00ece535552d6ae524420ad3f12f0845b8a8c",
     "scripts/test-environment.test.mjs": "e2383c383860d256174a7805f4155c4dd45eaedd2f2383287f7871ee13beddf1",
     "scripts/validation-evidence.mjs": "22dcd69ee2f92f87490a1a80343a83c8d6c8b83aa2618b7fd5eb73e870ecfa03",
-    "scripts/validation-evidence.test.mjs": "d5b417c2037a5b2c79bd5ecfcf95816bbd24725fa4e503aaeeb96a5b4d65ada3",
+    "scripts/validation-evidence.test.mjs": "919dd359f739ce64385bbd0b11cdb5d8d7823241c3150c2b6f4cddedbc0551ed",
     "scripts/validation-gates.test.mjs": "8552b76842a4f3d08f666ca1aef3ecde4f581976ca758baf5f0414a12eea9811",
     "scripts/validation-scopes.mjs": "c1189587a511d65393e7a0c9d127d139e7d971d4a4a3a4a5be2d3c72a8d7b954",
     "tests/e2e/auth.spec.ts": "032d03276c1ac6a29b97b73352d1b83591ca4d99c21cf074c37943366af7bcc6",

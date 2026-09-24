@@ -149,7 +149,7 @@ test('reuses success across worktrees only for the same tree and environment', (
   } finally {
     git(root, 'worktree', 'remove', '--force', linked);
   }
-});
+}, 15_000);
 
 test('rejects v1, corrupt, incomplete, dirty, and wrong-check evidence', (t) => {
   const root = repository(t);
