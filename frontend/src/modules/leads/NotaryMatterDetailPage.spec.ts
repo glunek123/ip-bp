@@ -560,7 +560,7 @@ describe('NotaryMatterDetailPage', () => {
     await wrapper.get('[data-test="refresh-matter"]').trigger('click');
     await flushPromises();
     expect(
-      wrapper.get('[data-test="opening-staged-row-restored-v1"]').exists(),
+      wrapper.find('[data-test="opening-staged-row-restored-v1"]').exists(),
     ).toBe(true);
     expect(
       (
@@ -626,7 +626,7 @@ describe('NotaryMatterDetailPage', () => {
     rejectDelete?.(new Error('delete rejected'));
     await flushPromises();
     expect(
-      wrapper.get('[data-test="opening-staged-row-photo-v1"]').exists(),
+      wrapper.find('[data-test="opening-staged-row-photo-v1"]').exists(),
     ).toBe(true);
     expect(
       wrapper.get('[data-test="opening-delete-error-photo-1"]').text(),

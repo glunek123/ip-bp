@@ -988,9 +988,9 @@ test('real operator and client logins transfer a lead and record notary evidence
     mimeType: 'image/jpeg',
     buffer: jpegBytes,
   });
-  await expect(page.locator('[data-test="opening-form"]')).toContainText(
-    '已上传',
-  );
+  await expect(
+    page.locator('[data-test^="select-opening-photo-"]').first(),
+  ).toBeChecked();
   await page.locator('[data-test="opening-sender-name"]').fill('真实寄件人');
   await page.locator('[data-test="opening-sender-phone"]').fill('13800000000');
   await page.locator('[data-test="record-opening-submit"]').click();
@@ -1049,6 +1049,84 @@ test('real operator and client logins transfer a lead and record notary evidence
   await page.reload();
   await expect(page.getByText('公证移交商品')).toBeVisible();
   await expect(page.getByText('notary-source.jpg')).toBeVisible();
+});
+
+test('operator corrects a full 50-photo opening queue after refresh without manual API calls', async ({
+  page,
+  request,
+}) => {
+  test.setTimeout(120_000);
+  const client = await createClientAccount(request);
+  const csrf = await loginClient(request, client.username, client.password);
+  const matterId = await createWaitingUnboxMatter(request, csrf);
+  let mistaken: Uploaded | undefined;
+  for (let index = 0; index < 50; index += 1) {
+    const uploaded = await upload(request, {
+      ownerType: 'NOTARY_MATTER',
+      ownerId: matterId,
+      purpose: 'NOTARY_OPENING_PHOTO',
+      name: `开箱照片-${index + 1}.jpg`,
+      mime: 'image/jpeg',
+      bytes: jpegBytes,
+    });
+    if (index === 0) mistaken = uploaded;
+  }
+  expect(mistaken).toBeDefined();
+
+  await page.goto(`/notary-matters/${matterId}`);
+  await expect(page).toHaveURL(/\/login\?returnTo=/u);
+  await page.getByLabel('用户名').fill(coreLeadFixtures.operatorUsername);
+  await page.getByLabel('密码').fill(coreLeadFixtures.operatorPassword);
+  await page.getByRole('button', { name: '登录', exact: true }).click();
+  await expect(
+    page.locator(
+      '[data-test="opening-staged-row-' + mistaken!.contentVersionId + '"]',
+    ),
+  ).toBeVisible();
+  await expect(page.locator('[data-test^="opening-staged-row-"]')).toHaveCount(
+    50,
+  );
+  await page.reload();
+  await expect(page.locator('[data-test^="opening-staged-row-"]')).toHaveCount(
+    50,
+  );
+  await expect(
+    page.locator('[data-test^="select-opening-photo-"]').first(),
+  ).not.toBeChecked();
+
+  await page
+    .locator(`[data-test="delete-opening-photo-${mistaken!.materialId}"]`)
+    .click();
+  await expect(
+    page.locator(
+      `[data-test="opening-staged-row-${mistaken!.contentVersionId}"]`,
+    ),
+  ).toHaveCount(0);
+  await expect(page.locator('[data-test^="opening-staged-row-"]')).toHaveCount(
+    49,
+  );
+  await page.locator('[data-test="opening-photo-files"]').setInputFiles({
+    name: '补传正确照片.jpg',
+    mimeType: 'image/jpeg',
+    buffer: jpegBytes,
+  });
+  await expect(page.locator('[data-test^="opening-staged-row-"]')).toHaveCount(
+    50,
+  );
+  const selected = page.locator('[data-test^="select-opening-photo-"]:checked');
+  await expect(selected).toHaveCount(1);
+  await page.locator('[data-test="record-opening-submit"]').click();
+  await expect(page.locator('.page-head .pill')).toHaveText('开箱审核中');
+  await expect(page.locator('[data-test="saved-opening"]')).toContainText(
+    '补传正确照片.jpg',
+  );
+  await expect(page.locator('[data-test="saved-opening"]')).not.toContainText(
+    '开箱照片-1.jpg',
+  );
+  await page.reload();
+  await expect(page.locator('[data-test="saved-opening"]')).toContainText(
+    '补传正确照片.jpg',
+  );
 });
 
 test('notary handoff serializes competing batches and rolls back when audit or receipt cannot persist', async ({

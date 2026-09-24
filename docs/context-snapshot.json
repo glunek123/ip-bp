@@ -1,6 +1,6 @@
 {
   "version": 1,
-  "recordedAt": "2026-09-24T07:49:31.504Z",
+  "recordedAt": "2026-09-24T08:11:53.711Z",
   "files": {
     ".cursor/rules/verified-feature-integration.mdc": "ffd2306612ba6f09749629c5adb9e645f7f37aa6ee27ff1bc1c3d8b14efeca38",
     ".env.example": "07211cde5c2b59efc21b619b752d4c9b871f0980d2d64ca3c146ad6151fd27ca",
@@ -434,8 +434,8 @@
     "frontend/src/modules/leads/LeadListPage.vue": "c4d1dbb952639b8c1278f98b53b65bc2f68121275c7fa078dc68080c5e37d321",
     "frontend/src/modules/leads/LeadNewPage.spec.ts": "f28f8dd7b446ef4047d4446ab2b00ac817788f967fcc11d82e121e52d8da40b3",
     "frontend/src/modules/leads/LeadNewPage.vue": "8777c0f35fda48170ed545ace10947499c6f9999f91ba9f0bd16fe85ca8d5ca3",
-    "frontend/src/modules/leads/NotaryMatterDetailPage.spec.ts": "4608195a9e51ea026bea752895a8f4c9067c830d3169e74dfd1f8a2652fdd97e",
-    "frontend/src/modules/leads/NotaryMatterDetailPage.vue": "2ef1319b58fb47862803df6742578a025c611f90cf9a1fa4f620ce2a3dc54757",
+    "frontend/src/modules/leads/NotaryMatterDetailPage.spec.ts": "534227537f605a7c965b902f9b76e1c59a60d3fb86b23da247b92d0d349f686f",
+    "frontend/src/modules/leads/NotaryMatterDetailPage.vue": "49cd2681200f61b5eddf380584d2cf400fd4b013da4de383e0cea72bf3cd801a",
     "frontend/src/modules/leads/NotaryOfficesPage.spec.ts": "f79f67b5e084362ff23e2c3c443b0d064c39914fdb21a58204e8c641b1305f6d",
     "frontend/src/modules/leads/NotaryOfficesPage.vue": "98a9a8764ce6d1c38360e3bc8ed5cc13e5010890c8e7271bae4a424752d2cf74",
     "frontend/src/modules/leads/lead-options.ts": "c329809fc94a2a1ad708a0939e51ab6688d9065a76e7bd50659634ae7a7f99db",
@@ -487,7 +487,7 @@
     "scripts/validation-scopes.mjs": "c1189587a511d65393e7a0c9d127d139e7d971d4a4a3a4a5be2d3c72a8d7b954",
     "tests/e2e/auth.spec.ts": "032d03276c1ac6a29b97b73352d1b83591ca4d99c21cf074c37943366af7bcc6",
     "tests/e2e/components.spec.ts": "8d94b3b044d9ddc24c323536aba04edc08e216271ff3082705a21c1ac2796742",
-    "tests/e2e/core-leads.spec.ts": "cc4d473c9f56f916d101213438f6fae8516efff971e2d3fd40f24b99ec422bde",
+    "tests/e2e/core-leads.spec.ts": "f1a5903665a13d41c3b5cabca289bc18ac36fb606c5f5de4cf16094c1c1b9194",
     "tests/e2e/customers.spec.ts": "2f09fe2f42afd8d9c5d0c935ca10ac96d9befd9773384bcc62a687f53b0ed1db",
     "tests/e2e/health.spec.ts": "e6de0eadada2040386f75830134425231a279f51f17f083975340211d6d0b5da",
     "tests/e2e/personnel-access.spec.ts": "d45f3ed245e8801bfe7bf767b53790a216b0ae5cf37e55ebe2793df9e24c41c8",
