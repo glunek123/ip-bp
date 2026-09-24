@@ -2,6 +2,7 @@ import { createRequire } from 'node:module';
 import { readFile, readdir } from 'node:fs/promises';
 import { resolve } from 'node:path';
 import { randomUUID } from 'node:crypto';
+import { validateIsolatedTestDatabaseUrl } from '../../scripts/test-environment.mjs';
 
 const requireFromBackend = createRequire(
   resolve(process.cwd(), 'backend/package.json'),
@@ -41,17 +42,12 @@ const databaseUrl = process.env.DATABASE_URL;
 if (databaseUrl === undefined) {
   throw new Error('DATABASE_URL is required for customer E2E setup');
 }
-const testTarget = new URL(databaseUrl);
-if (
-  process.env.NODE_ENV !== 'test' ||
-  testTarget.hostname !== '127.0.0.1' ||
-  testTarget.port !== '55433' ||
-  testTarget.pathname !== '/dev_cor_test'
-) {
+if (process.env.NODE_ENV !== 'test') {
   throw new Error(
-    'Customer fixtures require the fixed isolated E2E database environment',
+    'Customer fixtures require the isolated E2E database environment',
   );
 }
+validateIsolatedTestDatabaseUrl(databaseUrl, { allowRandomPort: true });
 
 const database = new PrismaClient({
   adapter: new PrismaPg({ connectionString: databaseUrl, max: 2 }),
