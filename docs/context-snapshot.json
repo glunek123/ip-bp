@@ -1,6 +1,6 @@
 {
   "version": 1,
-  "recordedAt": "2026-09-24T01:54:07.900Z",
+  "recordedAt": "2026-09-24T02:02:42.563Z",
   "files": {
     ".cursor/rules/verified-feature-integration.mdc": "deaa0f81681c8ac17f6fd7d7b7db3e9fe2f5b672c62980895b992943fd19b3c0",
     ".env.example": "07211cde5c2b59efc21b619b752d4c9b871f0980d2d64ca3c146ad6151fd27ca",
@@ -363,8 +363,8 @@
     "frontend/src/api/leads.ts": "58e6e0205d3a0c58f3f525be765c088e44312823a11b9fd9210a2e6ce9189657",
     "frontend/src/api/materials.spec.ts": "b7d8b8a573c0651adfdaa88cdd5303a0759cd070ae6a33c75048b424749bfdb8",
     "frontend/src/api/materials.ts": "ff7f74cd04c27959425cdb10da00ab21608588bd4a8ba36f01ddce2d2f788b02",
-    "frontend/src/api/organization.spec.ts": "316a3995b04f21e105fa400907c2c8467a3a981e21aeba3d6dc69d30bd18b633",
-    "frontend/src/api/organization.ts": "b9ac39f4394f8775b199c565257be32bce20b8a220d2d6c939f354c7831e2ba6",
+    "frontend/src/api/organization.spec.ts": "ab5e99665d8f6872e4cf4d9149c009cf380927a0ec097998187f7184582cc202",
+    "frontend/src/api/organization.ts": "3a13bdaf998a4ca11c203c2d1b6e1b544e2d22f8388d969280bee497eaaceffb",
     "frontend/src/api/rights-holders.spec.ts": "8efdb89b8ceb5092f0d1e45dc3d309502bf0465a7a00fafa518ddc49e20c7898",
     "frontend/src/api/rights-holders.ts": "7f7d636dd65e9f2849b15b32e5e7f341ee26121ce071bb7bf91f96a5c3f22b0b",
     "frontend/src/app/App.spec.ts": "1bd12c86e515d7c12f4c1b2e977e4051a7e6f268acd14a11e853209c377ee646",
@@ -465,7 +465,7 @@
     "scripts/validation-scopes.mjs": "c1189587a511d65393e7a0c9d127d139e7d971d4a4a3a4a5be2d3c72a8d7b954",
     "tests/e2e/auth.spec.ts": "032d03276c1ac6a29b97b73352d1b83591ca4d99c21cf074c37943366af7bcc6",
     "tests/e2e/components.spec.ts": "8d94b3b044d9ddc24c323536aba04edc08e216271ff3082705a21c1ac2796742",
-    "tests/e2e/core-leads.spec.ts": "96b8f1fce4584b5cdc0d5c712b809982319fee417e5029ebc1d73d98593d7799",
+    "tests/e2e/core-leads.spec.ts": "50edfdad28887843769aba931fe9e48b20fa1869a1aed1763ad2c1c1009ea3b0",
     "tests/e2e/customers.spec.ts": "2f09fe2f42afd8d9c5d0c935ca10ac96d9befd9773384bcc62a687f53b0ed1db",
     "tests/e2e/health.spec.ts": "e6de0eadada2040386f75830134425231a279f51f17f083975340211d6d0b5da",
     "tests/e2e/personnel-access.spec.ts": "d45f3ed245e8801bfe7bf767b53790a216b0ae5cf37e55ebe2793df9e24c41c8",

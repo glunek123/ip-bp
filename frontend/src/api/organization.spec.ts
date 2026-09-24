@@ -101,6 +101,11 @@ const context = {
       scopes: ['SELF', 'TEAM', 'DEPARTMENT'],
     },
     {
+      action: 'LEAD_EVIDENCE_DECIDE',
+      label: '决定不取证归档',
+      scopes: ['SELF', 'TEAM', 'DEPARTMENT'],
+    },
+    {
       action: 'USER_READ',
       label: '查看人员',
       scopes: ['SELF', 'TEAM', 'DEPARTMENT'],
@@ -139,7 +144,7 @@ const context = {
 };
 
 describe('organization API', () => {
-  it('decodes the exact 16-action backend permission catalog', async () => {
+  it('decodes the exact 17-action backend permission catalog', async () => {
     vi.stubGlobal(
       'fetch',
       vi.fn().mockResolvedValue(new Response(JSON.stringify(context))),
@@ -156,6 +161,7 @@ describe('organization API', () => {
       'LEAD_EDIT',
       'LEAD_PUSH',
       'LEAD_WITHDRAW_APPLY',
+      'LEAD_EVIDENCE_DECIDE',
       'USER_READ',
       'USER_MANAGE',
       'TEAM_READ',
@@ -219,6 +225,12 @@ describe('organization API', () => {
         ...context.permissionCatalog,
         context.permissionCatalog[0],
       ],
+    },
+    {
+      ...context,
+      permissionCatalog: context.permissionCatalog.filter(
+        (item) => item.action !== 'LEAD_EVIDENCE_DECIDE',
+      ),
     },
     {
       ...context,
