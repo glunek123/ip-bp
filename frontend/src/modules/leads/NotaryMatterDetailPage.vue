@@ -5,9 +5,11 @@ import { ElButton } from 'element-plus/es/components/button/index.mjs';
 import { ApiError } from '../../api/http';
 import RequiredFieldMark from '../../app/RequiredFieldMark.vue';
 import {
+  deleteMaterial,
   downloadMaterialVersion,
+  listOwnerMaterials,
   uploadMaterialFile,
-  type UploadedMaterial,
+  type OwnerMaterial,
 } from '../../api/materials';
 import {
   getNotaryMatter,
@@ -35,23 +37,33 @@ const submittingEvidence = ref(false);
 const openingSenderName = ref('');
 const openingSenderPhone = ref('');
 const openingSenderAddress = ref('');
-const openingPhotos = ref<
-  Array<{
-    file: InstanceType<typeof globalThis.File>;
-    uploaded?: UploadedMaterial;
-    error?: string;
-  }>
->([]);
+type OpeningPhotoDraft = {
+  localId: number;
+  materialId?: string;
+  contentVersionId?: string;
+  originalFilename: string;
+  mimeType: string;
+  version: number | null;
+  selected: boolean;
+  file?: InstanceType<typeof globalThis.File>;
+  uploading: boolean;
+  error?: string;
+};
+const openingPhotos = ref<OpeningPhotoDraft[]>([]);
 const openingUploadError = ref('');
+const openingMaterialsError = ref('');
 const openingError = ref('');
 const openingSuccess = ref('');
 const uploadingOpeningPhotos = ref(false);
 const submittingOpening = ref(false);
+const deletingOpeningMaterialId = ref<string | null>(null);
+const refreshingOpeningPhotos = ref(false);
 let evidenceIdempotencyKey = '';
 let evidenceSubmissionFingerprint = '';
 let openingIdempotencyKey = '';
 let openingSubmissionFingerprint = '';
 let request: AbortController | undefined;
+let nextOpeningPhotoLocalId = 1;
 
 function formatTime(value: string): string {
   return new Date(value).toLocaleString('zh-CN', {
@@ -82,6 +94,12 @@ async function load(): Promise<boolean> {
     if (controller.signal.aborted) return false;
     matter.value = current;
     state.value = 'ready';
+    if (current.stage === 'WAITING_UNBOX') {
+      await refreshOpeningPhotos(current.id);
+    } else {
+      openingPhotos.value = [];
+      openingMaterialsError.value = '';
+    }
     return true;
   } catch (error) {
     if (controller.signal.aborted) return false;
@@ -100,9 +118,76 @@ const allowedOpeningPhotoTypes = new Set([
 ]);
 const maxOpeningPhotoSize = 20 * 1024 * 1024;
 
+function openingPhotoDraftsFromMaterials(
+  items: OwnerMaterial[],
+  selectedContentVersionIds: ReadonlySet<string>,
+): OpeningPhotoDraft[] {
+  return items.flatMap((material) => {
+    if (
+      material.ownerType !== 'NOTARY_MATTER' ||
+      material.ownerId !== matter.value?.id ||
+      material.category !== 'NOTARY_OPENING_PHOTO' ||
+      material.purpose !== 'NOTARY_OPENING_PHOTO' ||
+      material.status !== 'ACTIVE' ||
+      material.currentVersionId === null
+    ) {
+      return [];
+    }
+    const content = material.contentVersions.find(
+      (version) => version.id === material.currentVersionId,
+    );
+    if (!content) return [];
+    return [
+      {
+        localId: nextOpeningPhotoLocalId++,
+        materialId: material.id,
+        contentVersionId: content.id,
+        originalFilename: content.originalFilename,
+        mimeType: content.mimeType,
+        version: material.version,
+        selected: selectedContentVersionIds.has(content.id),
+        uploading: false,
+      },
+    ];
+  });
+}
+
+async function refreshOpeningPhotos(matterId: string): Promise<void> {
+  if (refreshingOpeningPhotos.value) return;
+  refreshingOpeningPhotos.value = true;
+  openingMaterialsError.value = '';
+  const selectedIds = new Set(
+    openingPhotos.value
+      .filter((photo) => photo.selected && photo.contentVersionId)
+      .map((photo) => photo.contentVersionId as string),
+  );
+  try {
+    const result = await listOwnerMaterials('NOTARY_MATTER', matterId);
+    const serverPhotos = openingPhotoDraftsFromMaterials(
+      result.items,
+      selectedIds,
+    );
+    const localPhotos = openingPhotos.value.filter(
+      (photo) => !photo.materialId,
+    );
+    openingPhotos.value = [...serverPhotos, ...localPhotos];
+  } catch {
+    openingMaterialsError.value = '开箱照片列表读取失败，请刷新重试';
+  } finally {
+    refreshingOpeningPhotos.value = false;
+  }
+}
+
 async function uploadOpeningFiles(
   event: InstanceType<typeof globalThis.Event>,
 ): Promise<void> {
+  if (
+    uploadingOpeningPhotos.value ||
+    deletingOpeningMaterialId.value !== null ||
+    refreshingOpeningPhotos.value
+  ) {
+    return;
+  }
   const input = event.target;
   if (!(input instanceof globalThis.HTMLInputElement)) return;
   const files = Array.from(input.files ?? []);
@@ -112,11 +197,7 @@ async function uploadOpeningFiles(
     openingUploadError.value = '开箱照片最多上传 50 张';
     return;
   }
-  const accepted: Array<{
-    file: InstanceType<typeof globalThis.File>;
-    uploaded?: UploadedMaterial;
-    error?: string;
-  }> = [];
+  const accepted: OpeningPhotoDraft[] = [];
   for (const file of files) {
     if (!allowedOpeningPhotoTypes.has(file.type)) {
       openingUploadError.value = '仅支持 JPEG、PNG 或 WEBP 格式的开箱照片';
@@ -126,46 +207,97 @@ async function uploadOpeningFiles(
       openingUploadError.value = '单张开箱照片不能超过 20 MB';
       continue;
     }
-    accepted.push({ file });
+    accepted.push({
+      localId: nextOpeningPhotoLocalId++,
+      originalFilename: file.name,
+      mimeType: file.type,
+      version: null,
+      selected: false,
+      file,
+      uploading: false,
+    });
   }
   openingPhotos.value.push(...accepted);
   if (accepted.length === 0) return;
   uploadingOpeningPhotos.value = true;
   try {
-    for (const photo of accepted) {
-      try {
-        photo.uploaded = await uploadMaterialFile({
-          ownerType: 'NOTARY_MATTER',
-          ownerId: matter.value?.id ?? String(route.params.id),
-          category: 'NOTARY_OPENING_PHOTO',
-          purpose: 'NOTARY_OPENING_PHOTO',
-          file: photo.file,
-        });
-      } catch {
-        photo.error = '上传失败，可重试';
-      }
-    }
+    for (const photo of accepted) await uploadOpeningPhoto(photo);
   } finally {
     uploadingOpeningPhotos.value = false;
   }
 }
 
-async function retryOpeningPhoto(photo: {
-  file: InstanceType<typeof globalThis.File>;
-  uploaded?: UploadedMaterial;
-  error?: string;
-}): Promise<void> {
+async function uploadOpeningPhoto(photo: OpeningPhotoDraft): Promise<void> {
+  if (!photo.file) return;
   photo.error = undefined;
+  photo.uploading = true;
   try {
-    photo.uploaded = await uploadMaterialFile({
+    const uploaded = await uploadMaterialFile({
       ownerType: 'NOTARY_MATTER',
       ownerId: matter.value?.id ?? String(route.params.id),
       category: 'NOTARY_OPENING_PHOTO',
       purpose: 'NOTARY_OPENING_PHOTO',
       file: photo.file,
     });
+    photo.materialId = uploaded.materialId;
+    photo.contentVersionId = uploaded.contentVersionId;
+    photo.originalFilename = uploaded.originalFilename;
+    photo.mimeType = uploaded.mimeType;
+    photo.selected = true;
+    await refreshOpeningPhotos(matter.value?.id ?? String(route.params.id));
   } catch {
-    photo.error = '上传失败，可重试';
+    photo.error = '上传失败，可移除后重试';
+  } finally {
+    photo.uploading = false;
+  }
+}
+
+async function retryOpeningPhoto(photo: OpeningPhotoDraft): Promise<void> {
+  if (!photo.file) return;
+  uploadingOpeningPhotos.value = true;
+  try {
+    await uploadOpeningPhoto(photo);
+  } finally {
+    uploadingOpeningPhotos.value = false;
+  }
+}
+
+function removeLocalOpeningPhoto(localId: number): void {
+  if (
+    uploadingOpeningPhotos.value ||
+    deletingOpeningMaterialId.value !== null ||
+    refreshingOpeningPhotos.value
+  ) {
+    return;
+  }
+  openingPhotos.value = openingPhotos.value.filter(
+    (photo) => photo.localId !== localId,
+  );
+}
+
+async function deleteOpeningPhoto(photo: OpeningPhotoDraft): Promise<void> {
+  if (
+    !photo.materialId ||
+    photo.version === null ||
+    uploadingOpeningPhotos.value ||
+    deletingOpeningMaterialId.value !== null ||
+    refreshingOpeningPhotos.value ||
+    matter.value?.stage !== 'WAITING_UNBOX' ||
+    !matter.value.capabilities.recordOpening
+  ) {
+    return;
+  }
+  deletingOpeningMaterialId.value = photo.materialId;
+  photo.error = undefined;
+  try {
+    await deleteMaterial(photo.materialId, photo.version);
+    openingPhotos.value = openingPhotos.value.filter(
+      (candidate) => candidate.materialId !== photo.materialId,
+    );
+  } catch {
+    photo.error = '删除失败，材料仍保留在待提交列表中';
+  } finally {
+    deletingOpeningMaterialId.value = null;
   }
 }
 
@@ -177,22 +309,29 @@ async function submitOpening(): Promise<void> {
   if (
     !current?.capabilities.recordOpening ||
     current.stage !== 'WAITING_UNBOX' ||
-    openingPhotos.value.length < 1 ||
-    openingPhotos.value.some((photo) => !photo.uploaded) ||
+    !openingPhotos.value.some((photo) => photo.selected) ||
+    openingPhotos.value.some(
+      (photo) => photo.selected && (photo.uploading || !photo.contentVersionId),
+    ) ||
     uploadingOpeningPhotos.value ||
+    deletingOpeningMaterialId.value !== null ||
     submittingOpening.value
   ) {
-    if (openingPhotos.value.length < 1)
+    if (!openingPhotos.value.some((photo) => photo.selected))
       openingUploadError.value = '至少上传一张开箱照片';
-    else if (openingPhotos.value.some((photo) => !photo.uploaded))
-      openingUploadError.value = '请先完成所有照片上传';
+    else if (
+      openingPhotos.value.some(
+        (photo) => photo.selected && !photo.contentVersionId,
+      )
+    )
+      openingUploadError.value = '请先完成所选照片上传';
     return;
   }
   const input: RecordNotaryOpeningInput = {
     expectedVersion: current.version,
-    contentVersionIds: openingPhotos.value.map(
-      (photo) => photo.uploaded!.contentVersionId,
-    ),
+    contentVersionIds: openingPhotos.value
+      .filter((photo) => photo.selected && photo.contentVersionId)
+      .map((photo) => photo.contentVersionId as string),
     ...(openingSenderName.value.trim()
       ? { senderName: openingSenderName.value.trim() }
       : {}),
@@ -372,7 +511,13 @@ onBeforeUnmount(() => request?.abort());
             }}</span>
             <h1>{{ matter.businessNo }}</h1>
           </div>
-          <ElButton data-test="refresh-matter" text @click="load"
+          <ElButton
+            data-test="refresh-matter"
+            text
+            :disabled="
+              deletingOpeningMaterialId !== null || refreshingOpeningPhotos
+            "
+            @click="load"
             >刷新</ElButton
           >
         </div>
@@ -411,57 +556,131 @@ onBeforeUnmount(() => request?.abort());
           </dl>
         </section>
         <section
-          v-if="
-            matter.stage === 'WAITING_UNBOX' &&
-            matter.capabilities.recordOpening
-          "
+          v-if="matter.stage === 'WAITING_UNBOX'"
           class="demo-card demo-card--pad"
           data-test="opening-form"
         >
           <h2 class="form-section-title">登记开箱材料</h2>
           <p>提交后事项将进入开箱审核。</p>
           <form data-test="record-opening" @submit.prevent="submitOpening">
-            <label
+            <label v-if="matter.capabilities.recordOpening"
               >开箱照片（JPEG、PNG、WEBP；单张不超过 20 MB，最多 50
               张）<RequiredFieldMark />
               <input
+                v-if="matter.capabilities.recordOpening"
                 data-test="opening-photo-files"
                 type="file"
                 accept="image/jpeg,image/png,image/webp"
                 multiple
+                :disabled="
+                  uploadingOpeningPhotos ||
+                  deletingOpeningMaterialId !== null ||
+                  refreshingOpeningPhotos
+                "
                 @change="uploadOpeningFiles"
               />
             </label>
-            <ul v-if="openingPhotos.length">
-              <li
-                v-for="(photo, index) in openingPhotos"
-                :key="`${photo.file.name}-${index}`"
-              >
-                {{ photo.file.name }} —
-                {{ photo.uploaded ? '已上传' : photo.error || '等待上传' }}
-                <button
-                  v-if="photo.error"
-                  type="button"
-                  :disabled="uploadingOpeningPhotos"
-                  @click="retryOpeningPhoto(photo)"
+            <p v-if="matter.capabilities.recordOpening" class="muted-copy">
+              删除会释放材料配额，并从本次待提交选择中移除。
+            </p>
+            <p v-if="openingMaterialsError" class="field-error" role="alert">
+              {{ openingMaterialsError }}
+            </p>
+            <div data-test="opening-staged-materials">
+              <p v-if="openingPhotos.length === 0">暂无待提交开箱照片。</p>
+              <ul v-else>
+                <li
+                  v-for="photo in openingPhotos"
+                  :key="photo.contentVersionId || `local-${photo.localId}`"
+                  :data-test="
+                    photo.contentVersionId
+                      ? `opening-staged-row-${photo.contentVersionId}`
+                      : undefined
+                  "
                 >
-                  重试上传
-                </button>
-              </li>
-            </ul>
-            <label
+                  <label v-if="photo.contentVersionId">
+                    <input
+                      v-if="matter.capabilities.recordOpening"
+                      v-model="photo.selected"
+                      type="checkbox"
+                      :data-test="`select-opening-photo-${photo.contentVersionId}`"
+                      :disabled="
+                        uploadingOpeningPhotos ||
+                        deletingOpeningMaterialId !== null ||
+                        refreshingOpeningPhotos
+                      "
+                    />
+                    {{ photo.originalFilename }}（{{ photo.mimeType }}）
+                  </label>
+                  <span v-else>
+                    {{ photo.originalFilename }} —
+                    {{ photo.uploading ? '正在上传' : photo.error || '待上传' }}
+                  </span>
+                  <ElButton
+                    v-if="
+                      photo.materialId &&
+                      photo.version !== null &&
+                      matter.capabilities.recordOpening
+                    "
+                    text
+                    :data-test="`delete-opening-photo-${photo.materialId}`"
+                    :disabled="
+                      deletingOpeningMaterialId !== null ||
+                      uploadingOpeningPhotos ||
+                      refreshingOpeningPhotos
+                    "
+                    @click="deleteOpeningPhoto(photo)"
+                    >删除并释放配额</ElButton
+                  >
+                  <p
+                    v-if="photo.error && photo.materialId"
+                    :data-test="`opening-delete-error-${photo.materialId}`"
+                    class="field-error"
+                    role="alert"
+                  >
+                    {{ photo.error }}
+                  </p>
+                  <button
+                    v-if="photo.error && !photo.materialId && photo.file"
+                    type="button"
+                    :disabled="
+                      uploadingOpeningPhotos ||
+                      deletingOpeningMaterialId !== null ||
+                      refreshingOpeningPhotos
+                    "
+                    @click="retryOpeningPhoto(photo)"
+                  >
+                    重试上传
+                  </button>
+                  <button
+                    v-if="!photo.materialId && !photo.uploading"
+                    type="button"
+                    :disabled="
+                      uploadingOpeningPhotos ||
+                      deletingOpeningMaterialId !== null ||
+                      refreshingOpeningPhotos
+                    "
+                    :data-test="`remove-local-opening-photo-${photo.localId}`"
+                    @click="removeLocalOpeningPhoto(photo.localId)"
+                  >
+                    移除此照片
+                  </button>
+                </li>
+              </ul>
+            </div>
+            <label v-if="matter.capabilities.recordOpening"
               >寄件人姓名<input
                 v-model="openingSenderName"
                 data-test="opening-sender-name"
                 maxlength="120"
             /></label>
-            <label
+            <label v-if="matter.capabilities.recordOpening"
               >寄件人电话<input
                 v-model="openingSenderPhone"
                 data-test="opening-sender-phone"
                 maxlength="50"
             /></label>
-            <label
+            <label v-if="matter.capabilities.recordOpening"
               >寄件人地址<input
                 v-model="openingSenderAddress"
                 data-test="opening-sender-address"
@@ -475,10 +694,16 @@ onBeforeUnmount(() => request?.abort());
             </p>
             <p v-if="openingSuccess" role="status">{{ openingSuccess }}</p>
             <ElButton
+              v-if="matter.capabilities.recordOpening"
               data-test="record-opening-submit"
               native-type="submit"
               :loading="submittingOpening"
-              :disabled="submittingOpening || uploadingOpeningPhotos"
+              :disabled="
+                submittingOpening ||
+                uploadingOpeningPhotos ||
+                deletingOpeningMaterialId !== null ||
+                refreshingOpeningPhotos
+              "
               >登记开箱并进入审核</ElButton
             >
           </form>

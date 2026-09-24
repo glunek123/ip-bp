@@ -12,6 +12,8 @@ const api = vi.hoisted(() => ({
 const materials = vi.hoisted(() => ({
   downloadMaterialVersion: vi.fn(),
   uploadMaterialFile: vi.fn(),
+  listOwnerMaterials: vi.fn(),
+  deleteMaterial: vi.fn(),
 }));
 vi.mock('../../api/notary', () => api);
 vi.mock('../../api/materials', () => materials);
@@ -56,6 +58,77 @@ const matter = {
   ],
 };
 
+const firstEvidence = {
+  evidenceAt: '2026-09-24',
+  sampleFeeState: 'PENDING',
+  sampleFeeAmount: null,
+  recordedAt: '2026-09-24T01:00:00.000Z',
+  recordedByUserId: 'user-1',
+  logistics: [
+    {
+      id: 'logistics-1',
+      companyState: 'NONE',
+      companyValue: null,
+      trackingState: 'NONE',
+      trackingValue: null,
+    },
+  ],
+};
+
+function openingMaterial(id: string, versionId: string, filename: string) {
+  return {
+    id,
+    ownerType: 'NOTARY_MATTER',
+    ownerId: 'matter-1',
+    category: 'NOTARY_OPENING_PHOTO',
+    purpose: 'NOTARY_OPENING_PHOTO',
+    currentVersionId: versionId,
+    status: 'ACTIVE',
+    version: 4,
+    deletedAt: null,
+    createdAt: '2026-09-24T00:00:00.000Z',
+    updatedAt: '2026-09-24T00:00:00.000Z',
+    contentVersions: [
+      {
+        id: versionId,
+        materialId: id,
+        originalFilename: filename,
+        mimeType: 'image/jpeg',
+        sizeBytes: 5,
+        sha256: 'a'.repeat(64),
+        status: 'AVAILABLE',
+        createdAt: '2026-09-24T00:00:00.000Z',
+      },
+    ],
+  };
+}
+
+function uploadedOpeningPhoto(id: string, versionId: string, filename: string) {
+  return {
+    materialId: id,
+    contentVersionId: versionId,
+    originalFilename: filename,
+    purpose: 'NOTARY_OPENING_PHOTO',
+    mimeType: 'image/jpeg',
+    sizeBytes: 5,
+    sha256: 'a'.repeat(64),
+  };
+}
+
+async function selectOpeningFile(
+  wrapper: Awaited<ReturnType<typeof mountPage>>,
+  filename: string,
+) {
+  const file = new File(['photo'], filename, { type: 'image/jpeg' });
+  Object.defineProperty(
+    wrapper.get('[data-test="opening-photo-files"]').element,
+    'files',
+    { configurable: true, value: [file] },
+  );
+  await wrapper.get('[data-test="opening-photo-files"]').trigger('change');
+  await flushPromises();
+}
+
 async function mountPage() {
   const router = createRouter({
     history: createMemoryHistory(),
@@ -79,6 +152,12 @@ beforeEach(() => {
   api.recordNotaryEvidence.mockResolvedValue({});
   api.recordNotaryOpening.mockResolvedValue({});
   materials.downloadMaterialVersion.mockResolvedValue(undefined);
+  materials.listOwnerMaterials.mockResolvedValue({ items: [], total: 0 });
+  materials.deleteMaterial.mockResolvedValue({
+    id: 'photo-1',
+    status: 'DELETED',
+    version: 2,
+  });
   materials.uploadMaterialFile.mockResolvedValue({
     materialId: 'photo-1',
     contentVersionId: 'photo-v1',
@@ -284,6 +363,10 @@ describe('NotaryMatterDetailPage', () => {
       },
     });
     const wrapper = await mountPage();
+    materials.listOwnerMaterials.mockResolvedValueOnce({
+      items: [openingMaterial('photo-1', 'photo-v1', '开箱.jpg')],
+      total: 1,
+    });
     const file = new File(['photo'], '开箱.jpg', { type: 'image/jpeg' });
     Object.defineProperty(
       wrapper.get('[data-test="opening-photo-files"]').element,
@@ -366,6 +449,212 @@ describe('NotaryMatterDetailPage', () => {
     );
   });
 
+  it('deletes an uploaded mistake before selecting a replacement and submits only the retained version', async () => {
+    api.getNotaryMatter.mockResolvedValueOnce({
+      ...matter,
+      stage: 'WAITING_UNBOX',
+      capabilities: { recordEvidence: false, recordOpening: true },
+      evidence: {
+        evidenceAt: '2026-09-24',
+        sampleFeeState: 'PENDING',
+        sampleFeeAmount: null,
+        recordedAt: '2026-09-24T01:00:00.000Z',
+        recordedByUserId: 'user-1',
+        logistics: [
+          {
+            id: 'logistics-1',
+            companyState: 'NONE',
+            companyValue: null,
+            trackingState: 'NONE',
+            trackingValue: null,
+          },
+        ],
+      },
+    });
+    const first = openingMaterial('photo-1', 'photo-v1', '误传.jpg');
+    const second = openingMaterial('photo-2', 'photo-v2', '正确.jpg');
+    materials.listOwnerMaterials.mockResolvedValueOnce({ items: [], total: 0 });
+    materials.uploadMaterialFile
+      .mockResolvedValueOnce(
+        uploadedOpeningPhoto('photo-1', 'photo-v1', '误传.jpg'),
+      )
+      .mockResolvedValueOnce(
+        uploadedOpeningPhoto('photo-2', 'photo-v2', '正确.jpg'),
+      );
+    materials.listOwnerMaterials
+      .mockResolvedValueOnce({ items: [first], total: 1 })
+      .mockResolvedValueOnce({ items: [second], total: 1 });
+    const wrapper = await mountPage();
+    await selectOpeningFile(wrapper, '误传.jpg');
+    expect(
+      wrapper.get('[data-test="opening-staged-row-photo-v1"]').text(),
+    ).toContain('误传.jpg');
+    await wrapper
+      .get('[data-test="delete-opening-photo-photo-1"]')
+      .trigger('click');
+    await flushPromises();
+    expect(materials.deleteMaterial).toHaveBeenCalledWith('photo-1', 4);
+    expect(
+      wrapper.find('[data-test="opening-staged-row-photo-v1"]').exists(),
+    ).toBe(false);
+
+    await selectOpeningFile(wrapper, '正确.jpg');
+    api.getNotaryMatter.mockResolvedValueOnce({
+      ...matter,
+      stage: 'UNBOX_REVIEW',
+      version: 4,
+      capabilities: { recordEvidence: false, recordOpening: false },
+      evidence: firstEvidence,
+      opening: {
+        senderName: null,
+        senderPhone: null,
+        senderAddress: null,
+        recordedAt: '2026-09-24T02:00:00.000Z',
+        recordedByUserId: 'user-1',
+        photos: [{ ...second.contentVersions[0], materialId: 'photo-2' }],
+      },
+    });
+    await wrapper.get('[data-test="record-opening"]').trigger('submit');
+    await flushPromises();
+    expect(
+      api.recordNotaryOpening.mock.calls[0]?.[1].contentVersionIds,
+    ).toEqual(['photo-v2']);
+  });
+
+  it('restores active photos on refresh without selecting them and permits deletion and a new upload', async () => {
+    api.getNotaryMatter.mockResolvedValueOnce({
+      ...matter,
+      stage: 'WAITING_UNBOX',
+      capabilities: { recordEvidence: false, recordOpening: true },
+      evidence: firstEvidence,
+    });
+    const restored = openingMaterial(
+      'restored-1',
+      'restored-v1',
+      '刷新恢复.jpg',
+    );
+    materials.listOwnerMaterials.mockResolvedValueOnce({
+      items: [restored],
+      total: 1,
+    });
+    const wrapper = await mountPage();
+    expect(
+      wrapper.get('[data-test="opening-staged-row-restored-v1"]').text(),
+    ).toContain('刷新恢复.jpg');
+    expect(
+      (
+        wrapper.get('[data-test="select-opening-photo-restored-v1"]')
+          .element as HTMLInputElement
+      ).checked,
+    ).toBe(false);
+    api.getNotaryMatter.mockResolvedValueOnce({
+      ...matter,
+      stage: 'WAITING_UNBOX',
+      capabilities: { recordEvidence: false, recordOpening: true },
+      evidence: firstEvidence,
+    });
+    materials.listOwnerMaterials.mockResolvedValueOnce({
+      items: [restored],
+      total: 1,
+    });
+    await wrapper.get('[data-test="refresh-matter"]').trigger('click');
+    await flushPromises();
+    expect(
+      wrapper.get('[data-test="opening-staged-row-restored-v1"]').exists(),
+    ).toBe(true);
+    expect(
+      (
+        wrapper.get('[data-test="select-opening-photo-restored-v1"]')
+          .element as HTMLInputElement
+      ).checked,
+    ).toBe(false);
+    await wrapper
+      .get('[data-test="delete-opening-photo-restored-1"]')
+      .trigger('click');
+    await flushPromises();
+    expect(materials.deleteMaterial).toHaveBeenCalledWith('restored-1', 4);
+    expect(
+      wrapper.find('[data-test="opening-staged-row-restored-v1"]').exists(),
+    ).toBe(false);
+    materials.uploadMaterialFile.mockResolvedValueOnce(
+      uploadedOpeningPhoto('new-1', 'new-v1', '补传.jpg'),
+    );
+    materials.listOwnerMaterials.mockResolvedValueOnce({
+      items: [openingMaterial('new-1', 'new-v1', '补传.jpg')],
+      total: 1,
+    });
+    await selectOpeningFile(wrapper, '补传.jpg');
+    expect(
+      wrapper.get('[data-test="opening-staged-row-new-v1"]').text(),
+    ).toContain('补传.jpg');
+  });
+
+  it('keeps a failed-delete row and disables delete, selection and upload while deletion is pending', async () => {
+    api.getNotaryMatter.mockResolvedValueOnce({
+      ...matter,
+      stage: 'WAITING_UNBOX',
+      capabilities: { recordEvidence: false, recordOpening: true },
+      evidence: firstEvidence,
+    });
+    materials.listOwnerMaterials.mockResolvedValueOnce({
+      items: [openingMaterial('photo-1', 'photo-v1', '待删.jpg')],
+      total: 1,
+    });
+    let rejectDelete: ((error: Error) => void) | undefined;
+    materials.deleteMaterial.mockReturnValueOnce(
+      new Promise((_, reject) => {
+        rejectDelete = reject;
+      }),
+    );
+    const wrapper = await mountPage();
+    await wrapper
+      .get('[data-test="delete-opening-photo-photo-1"]')
+      .trigger('click');
+    expect(
+      wrapper
+        .get('[data-test="delete-opening-photo-photo-1"]')
+        .attributes('disabled'),
+    ).toBeDefined();
+    expect(
+      wrapper
+        .get('[data-test="select-opening-photo-photo-v1"]')
+        .attributes('disabled'),
+    ).toBeDefined();
+    expect(
+      wrapper.get('[data-test="opening-photo-files"]').attributes('disabled'),
+    ).toBeDefined();
+    rejectDelete?.(new Error('delete rejected'));
+    await flushPromises();
+    expect(
+      wrapper.get('[data-test="opening-staged-row-photo-v1"]').exists(),
+    ).toBe(true);
+    expect(
+      wrapper.get('[data-test="opening-delete-error-photo-1"]').text(),
+    ).toContain('删除失败');
+  });
+
+  it('allows an unuploaded failed row to be removed locally', async () => {
+    api.getNotaryMatter.mockResolvedValueOnce({
+      ...matter,
+      stage: 'WAITING_UNBOX',
+      capabilities: { recordEvidence: false, recordOpening: true },
+      evidence: firstEvidence,
+    });
+    materials.uploadMaterialFile.mockRejectedValueOnce(
+      new Error('upload failed'),
+    );
+    const wrapper = await mountPage();
+    await selectOpeningFile(wrapper, '失败照片.jpg');
+    const removeButton = wrapper.find(
+      '[data-test^="remove-local-opening-photo-"]',
+    );
+    expect(removeButton.exists()).toBe(true);
+    await removeButton.trigger('click');
+    expect(
+      wrapper.get('[data-test="opening-staged-materials"]').text(),
+    ).toContain('暂无待提交开箱照片');
+  });
+
   it('rejects opening photos outside supported MIME types and the 20 MB and 50 file limits', async () => {
     api.getNotaryMatter.mockResolvedValueOnce({
       ...matter,
@@ -429,6 +718,10 @@ describe('NotaryMatterDetailPage', () => {
       },
     });
     const wrapper = await mountPage();
+    materials.listOwnerMaterials.mockResolvedValueOnce({
+      items: [openingMaterial('photo-1', 'photo-v1', '开箱.jpg')],
+      total: 1,
+    });
     const file = new File(['photo'], '开箱.jpg', { type: 'image/jpeg' });
     Object.defineProperty(
       wrapper.get('[data-test="opening-photo-files"]').element,
