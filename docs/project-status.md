@@ -8,7 +8,7 @@
 
 ## 当前任务
 
-**CORE-LD-005｜运营不取证归档（路线图唯一Current）**：在`codex/core-ld-005-no-evidence-archive`实施中。新增运营决定Command、前向迁移、授权和运营／客户端页面；聚焦单元测试、35份迁移空库链及旧Schema升级已通过，代码候选的完整PostgreSQL／Chromium验收89/89通过。集成测试发现的共享材料授权及权限目录契约缺口均已修复；独立Final Review为`ACCEPTED`，未关闭Critical／Important／Minor为0／0／0。最终Level 3完整门禁和状态收口尚未完成，不能标记Slice完成。按SD-40及路线图，CORE-LD-006仍为唯一Next。
+**CORE-LD-006｜运营确认取证并移交（路线图唯一Current）**：CORE-LD-005已完成并通过完整Level 3门禁、89项数据库型浏览器验收及独立Final Review；固定代码候选和证据见[验证记录](spec/v0.1/VALIDATION.md)。下一步按已确认主线设计CORE-LD-006，CORE-NT-001为唯一Next；本次未实施006。
 
 ## 已实现
 
@@ -16,7 +16,7 @@
 - `ROLE-TEMPLATE-001`代码候选`d542c31`、tree`cae336d`已通过完整Level 3门禁、数据库型浏览器验收和独立终审；其可配置Grant底座供核心业务Action复用。
 - `CORE-LD-001`已实现`customer.admit`与`lead.read/create/edit`、ADMITTED准入约束、材料／内容版本／冻结引用、线索／商品／侵权类型／日编号／幂等回执，以及正式运营端页面。详细证据见[验证记录](spec/v0.1/VALIDATION.md)。
 - `CORE-LD-002`已实现真实企业客户账号绑定、密码会话、`WAITING_PUSH → WAITING_REVIEW`原子推送、`lead.push`内部授权、客户固定企业范围、幂等／版本／审计，以及运营推送和客户端只读列表／详情／附件页面。详细证据见[验证记录](spec/v0.1/VALIDATION.md)。
-- 登录后共享壳层及运营／客户端页面已按Demo共享视觉层级对齐；客户确认侵权、CORE-LD-004不侵权归档及CORE-LD-007撤回纠错已有真实API与正式页面，并通过相应门禁；CORE-LD-005代码候选正待正式门禁，CORE-LD-006确认取证及移交尚未实现。
+- 登录后共享壳层及运营／客户端页面已按Demo共享视觉层级对齐；客户确认侵权、CORE-LD-004不侵权归档、CORE-LD-007撤回纠错及CORE-LD-005运营不取证归档已有真实API与正式页面，并通过相应门禁；CORE-LD-006确认取证及移交尚未实现。
 
 ## 未决与限制
 
@@ -27,6 +27,7 @@
 
 ## 最近验证
 
+- CORE-LD-005固定代码候选`b9add2c9e016043ad645454e2033ce59c6cecf7b`、tree`5ea88857728ec7ef1d631352a55cd155f624e8f8`通过独立Final Review（未关闭Critical／Important／Minor为0／0／0）、完整`pnpm verify`（工具71、后端666、前端328及双端构建）和完整独立PostgreSQL／Chromium验收89/89；35份前向迁移的空库链及上一支持Schema升级／回滚专项通过。详细边界和重验原因见[验证记录](spec/v0.1/VALIDATION.md)。
 - CORE-LD-007最终已验证候选`95b59274ad3e5b17827d78d6599e3b2ba24a9676`、tree`349b96d6ae86f32f1c61c335a31911cba29bf768`已通过独立Final Review、完整`pnpm verify`及完整数据库型浏览器验收；细节见[验证记录](spec/v0.1/VALIDATION.md)。
 - Node v24.21.0、pnpm 11.27.0与项目锁定环境一致；使用锁定PostgreSQL 17.11镜像、随机本地端口和显式隔离测试DSN，不降级到开发库。
 - `CORE-LD-001`最终全分支总审结论为`APPROVED`，Critical 0／Important 0／Minor 0；其材料并发边界和事务修复结论保持有效。
@@ -38,4 +39,4 @@
 
 ## 下一步
 
-下一步完成CORE-LD-005固定候选的完整Level 3门禁及数据库型浏览器验收；通过后才推进CORE-LD-006为Current。CORE-LD-007已完成运营申请→原客户企业确认→重新审核闭环的验证，但整个客户审核及纠错范围仅按该切片边界完成。未上线，未执行生产迁移。
+下一步是CORE-LD-006运营确认取证并移交（路线图唯一Current），CORE-NT-001取证物流为Next。CORE-LD-007已完成运营申请→原客户企业确认→重新审核闭环的验证，但整个客户审核及纠错范围仅按该切片边界完成。未上线，未执行生产迁移。
