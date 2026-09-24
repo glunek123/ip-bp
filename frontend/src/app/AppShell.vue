@@ -5,6 +5,7 @@ import { ElButton } from 'element-plus/es/components/button/index.mjs';
 import { ApiError } from '../api/http';
 import { listLeads, type LeadStatus } from '../api/leads';
 import { getOrganizationManagementContext } from '../api/organization';
+import { listNotaryOffices } from '../api/notary';
 import { leadStatusCards } from '../modules/leads/lead-options';
 import { useAuthStore } from '../stores/auth';
 
@@ -13,6 +14,7 @@ const route = useRoute();
 const router = useRouter();
 const drawerOpen = ref(false);
 const canViewPeople = ref(false);
+const canViewNotaryOffices = ref(false);
 const leadCounts = ref<Record<LeadStatus, number> | null>(null);
 const loggingOut = ref(false);
 const logoutError = ref('');
@@ -68,6 +70,28 @@ watch(
       }
     } catch {
       if (current) canViewPeople.value = false;
+    }
+  },
+  { immediate: true },
+);
+
+watch(
+  identity,
+  async (currentIdentity, _previousIdentity, onCleanup) => {
+    canViewNotaryOffices.value = false;
+    if (currentIdentity === null || isClient.value) return;
+    const controller = new AbortController();
+    let current = true;
+    onCleanup(() => {
+      current = false;
+      controller.abort();
+    });
+    try {
+      await listNotaryOffices({ signal: controller.signal });
+      if (current && identity.value === currentIdentity)
+        canViewNotaryOffices.value = true;
+    } catch {
+      if (current) canViewNotaryOffices.value = false;
     }
   },
   { immediate: true },
@@ -209,9 +233,25 @@ async function logout(): Promise<void> {
           <span>线索审核</span>
         </RouterLink>
 
-        <template v-if="!isClient && canViewPeople">
+        <template v-if="!isClient && (canViewPeople || canViewNotaryOffices)">
           <p class="app-nav__label app-nav__label--spaced">系统</p>
           <RouterLink
+            v-if="canViewNotaryOffices"
+            class="app-nav__item"
+            :class="{ active: route.path === '/notary-offices' }"
+            data-test="notary-offices-nav"
+            to="/notary-offices"
+            @click="closeDrawer"
+          >
+            <svg class="app-nav__icon" viewBox="0 0 20 20" aria-hidden="true">
+              <path
+                d="M3 5h14M5 5v11m10-11v11M2 16h16M7 8h2m2 0h2m-6 3h2m2 0h2"
+              />
+            </svg>
+            <span>公证处</span>
+          </RouterLink>
+          <RouterLink
+            v-if="canViewPeople"
             class="app-nav__item"
             :class="{ active: route.path === '/settings/people-access' }"
             data-test="people-access-nav"

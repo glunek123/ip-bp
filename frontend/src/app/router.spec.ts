@@ -54,6 +54,17 @@ describe('authentication routing', () => {
     );
   });
 
+  it('protects the notary office settings route for internal accounts', async () => {
+    await router.push('/notary-offices');
+    expect(router.currentRoute.value.fullPath).toBe(
+      '/login?returnTo=/notary-offices',
+    );
+
+    auth.session = { principalType: 'CLIENT', user: { id: 'client-user' } };
+    await router.push('/notary-offices');
+    expect(router.currentRoute.value.path).toBe('/client/leads');
+  });
+
   it.each([
     '/leads',
     '/leads/new',

@@ -45,19 +45,19 @@ export class LeadNotaryService {
 
   async listOffices(actor: ActorContext) {
     await this.assertInternal(actor);
-    try {
-      await this.access.buildLeadScope(actor, 'lead.evidence.decide');
-    } catch (error) {
-      throw this.mapAuthorization(error);
+    const create = await this.canManageOffices(actor);
+    if (!create) {
+      try {
+        await this.access.buildLeadScope(actor, 'lead.evidence.decide');
+      } catch (error) {
+        throw this.mapAuthorization(error);
+      }
     }
-    const [offices, create] = await Promise.all([
-      this.database.notaryOffice.findMany({
-        where: { departmentId: actor.departmentId, status: 'ACTIVE' },
-        orderBy: [{ name: 'asc' }, { id: 'asc' }],
-        select: { id: true, name: true, status: true },
-      }),
-      this.canManageOffices(actor),
-    ]);
+    const offices = await this.database.notaryOffice.findMany({
+      where: { departmentId: actor.departmentId, status: 'ACTIVE' },
+      orderBy: [{ name: 'asc' }, { id: 'asc' }],
+      select: { id: true, name: true, status: true },
+    });
     return { items: offices, capabilities: { create } };
   }
 

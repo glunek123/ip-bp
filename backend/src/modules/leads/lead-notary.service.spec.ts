@@ -69,6 +69,7 @@ function fixture(status = 'WAITING_EVIDENCE_DECISION') {
       findFirst: jest
         .fn()
         .mockResolvedValue({ id: officeId, name: '公证处', status: 'ACTIVE' }),
+      create: jest.fn(),
     },
     leadCommandReceipt: {
       findUnique: jest.fn().mockResolvedValue(null),
@@ -92,8 +93,26 @@ function fixture(status = 'WAITING_EVIDENCE_DECISION') {
     $transaction: jest.fn(async (callback: (tx: unknown) => unknown) =>
       callback(tx),
     ),
+    userAccount: {
+      findUnique: jest
+        .fn()
+        .mockResolvedValue({ accountType: 'INTERNAL', active: true }),
+    },
+    notaryOffice: {
+      findMany: jest
+        .fn()
+        .mockResolvedValue([
+          { id: officeId, name: '公证处', status: 'ACTIVE' },
+        ]),
+    },
   };
-  const access = { authorizeLead: jest.fn().mockResolvedValue(undefined) };
+  const access = {
+    authorizeLead: jest.fn().mockResolvedValue(undefined),
+    authorizeDepartmentAction: jest.fn().mockResolvedValue(undefined),
+    buildLeadScope: jest
+      .fn()
+      .mockResolvedValue({ departmentId: actor.departmentId }),
+  };
   const materials = {
     listCurrentReferenceVersionIds: jest.fn().mockResolvedValue([]),
     assertAvailableVersions: jest.fn().mockResolvedValue([]),
@@ -270,5 +289,76 @@ describe('LeadNotaryService transfer', () => {
       f.service.transfer(actor, leadId, 'key', command),
     ).rejects.toThrow('audit write failed');
     expect(f.tx.leadCommandReceipt.create).not.toHaveBeenCalled();
+  });
+});
+
+describe('LeadNotaryService office permissions', () => {
+  it('lets a current internal office manager list only current-department active offices without a lead grant', async () => {
+    const f = fixture();
+    f.access.buildLeadScope.mockRejectedValue(new ForbiddenException());
+    await expect(f.service.listOffices(actor)).resolves.toEqual({
+      items: [{ id: officeId, name: '公证处', status: 'ACTIVE' }],
+      capabilities: { create: true },
+    });
+    expect(f.access.buildLeadScope).not.toHaveBeenCalled();
+    expect(f.access.authorizeDepartmentAction).toHaveBeenCalledWith(
+      actor,
+      'notary.office.manage',
+    );
+    expect(f.database.notaryOffice.findMany).toHaveBeenCalledWith(
+      expect.objectContaining({
+        where: { departmentId: actor.departmentId, status: 'ACTIVE' },
+      }),
+    );
+  });
+
+  it('lets an evidence decider list but not create offices', async () => {
+    const f = fixture();
+    f.access.authorizeDepartmentAction.mockRejectedValue(
+      new ForbiddenException(),
+    );
+    await expect(f.service.listOffices(actor)).resolves.toMatchObject({
+      capabilities: { create: false },
+    });
+    expect(f.access.buildLeadScope).toHaveBeenCalledWith(
+      actor,
+      'lead.evidence.decide',
+    );
+    await expect(
+      f.service.createOffice(actor, { name: '新公证处' }),
+    ).rejects.toMatchObject({
+      response: { code: 'ACTION_FORBIDDEN' },
+    });
+    expect(f.tx.notaryOffice.create).not.toHaveBeenCalled();
+  });
+
+  it('denies clients, revoked internal accounts and internal actors without either grant before listing', async () => {
+    const f = fixture();
+    f.database.userAccount.findUnique.mockResolvedValue({
+      accountType: 'CLIENT',
+      active: true,
+    });
+    await expect(f.service.listOffices(actor)).rejects.toMatchObject({
+      response: { code: 'ACTION_FORBIDDEN' },
+    });
+    f.database.userAccount.findUnique.mockResolvedValue({
+      accountType: 'INTERNAL',
+      active: false,
+    });
+    await expect(f.service.listOffices(actor)).rejects.toMatchObject({
+      response: { code: 'ACTION_FORBIDDEN' },
+    });
+    f.database.userAccount.findUnique.mockResolvedValue({
+      accountType: 'INTERNAL',
+      active: true,
+    });
+    f.access.authorizeDepartmentAction.mockRejectedValue(
+      new ForbiddenException(),
+    );
+    f.access.buildLeadScope.mockRejectedValue(new ForbiddenException());
+    await expect(f.service.listOffices(actor)).rejects.toMatchObject({
+      response: { code: 'ACTION_FORBIDDEN' },
+    });
+    expect(f.database.notaryOffice.findMany).not.toHaveBeenCalled();
   });
 });

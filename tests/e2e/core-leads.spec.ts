@@ -731,6 +731,7 @@ test('real operator and client logins persist infringement review, screenshot an
 
 test('real operator and client logins transfer an infringement-reviewed lead to notary and retain its source', async ({
   page,
+  request,
 }) => {
   const clientUsername = `notary-client-${randomUUID().slice(0, 8)}`;
   const clientPassword = 'notary client password 2026';
@@ -752,6 +753,16 @@ test('real operator and client logins transfer an infringement-reviewed lead to 
   await page.getByLabel('初始密码').fill(clientPassword);
   await page.locator('[data-test="create-client-account"]').click();
   await expect(page.getByText('账号已创建并绑定')).toBeVisible();
+
+  await page.goto('/notary-offices');
+  await expect(
+    page.locator('[data-test="notary-office-create-form"]'),
+  ).toBeVisible();
+  await page.locator('[data-test="new-notary-office-name"]').fill(officeName);
+  await page.locator('[data-test="create-notary-office"]').click();
+  await expect(page.locator('[data-test="notary-offices-list"]')).toContainText(
+    officeName,
+  );
 
   await page.locator('[data-test="lead-nav"]').click();
   await page.locator('[data-test="create-lead"]').click();
@@ -825,8 +836,6 @@ test('real operator and client logins transfer an infringement-reviewed lead to 
   const evidence = page.locator('[data-test^="select-evidence-"]').first();
   await expect(evidence).toBeVisible();
   await evidence.check();
-  await page.locator('[data-test="new-notary-office-name"]').fill(officeName);
-  await page.locator('[data-test="create-notary-office"]').click();
   await expect(page.locator('[data-test="notary-office"]')).toContainText(
     officeName,
   );
@@ -866,6 +875,22 @@ test('real operator and client logins transfer an infringement-reviewed lead to 
   await expect(
     page.locator('[data-test="notary-matter-materials"]'),
   ).toContainText('notary-source.jpg');
+
+  const foreignClient = await createClientAccount(request, {
+    customerId: coreLeadFixtures.foreignCustomer,
+    headers: { Authorization: `Bearer ${coreLeadFixtures.tokenB}` },
+  });
+  await loginClient(request, foreignClient.username, foreignClient.password);
+  expect((await request.get(`/api/v1/client/leads/${leadId}`)).status()).toBe(
+    404,
+  );
+  expect(
+    (
+      await request.get(
+        `/api/v1/notary-matters/${matterHref!.split('/').at(-1)}`,
+      )
+    ).status(),
+  ).toBe(403);
 
   await page.getByRole('button', { name: '退出登录' }).click();
   await page.getByLabel('用户名').fill(clientUsername);

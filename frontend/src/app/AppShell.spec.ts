@@ -9,12 +9,14 @@ import AppShell from './AppShell.vue';
 const api = vi.hoisted(() => ({
   getOrganizationManagementContext: vi.fn(),
   listLeads: vi.fn(),
+  listNotaryOffices: vi.fn(),
 }));
 
 vi.mock('../api/organization', () => ({
   getOrganizationManagementContext: api.getOrganizationManagementContext,
 }));
 vi.mock('../api/leads', () => ({ listLeads: api.listLeads }));
+vi.mock('../api/notary', () => ({ listNotaryOffices: api.listNotaryOffices }));
 
 const session = {
   principalType: 'INTERNAL' as const,
@@ -30,6 +32,10 @@ const session = {
 beforeEach(() => {
   vi.resetAllMocks();
   api.getOrganizationManagementContext.mockResolvedValue({});
+  api.listNotaryOffices.mockResolvedValue({
+    items: [],
+    capabilities: { create: false },
+  });
   api.listLeads.mockResolvedValue({
     items: [],
     total: 13,
@@ -73,6 +79,11 @@ async function mountShell(
         component: { template: '<div />' },
         meta: { section: '设置', breadcrumbs: ['设置', '人员与权限'] },
       },
+      {
+        path: '/notary-offices',
+        component: { template: '<div />' },
+        meta: { section: '设置', breadcrumbs: ['设置', '公证处'] },
+      },
     ],
   });
   await router.push(path);
@@ -93,7 +104,16 @@ describe('AppShell', () => {
     expect(wrapper.get('[data-test="lead-nav"]').classes()).toContain('active');
     expect(wrapper.get('[data-test="breadcrumbs"]').text()).toContain('线索');
     expect(wrapper.get('[data-test="people-access-nav"]')).toBeDefined();
+    expect(wrapper.get('[data-test="notary-offices-nav"]')).toBeDefined();
     expect(wrapper.get('[data-test="page-content"]').text()).toBe('页面内容');
+  });
+
+  it('shows the notary office entry only when the office list is authorized', async () => {
+    api.listNotaryOffices.mockRejectedValueOnce(new Error('forbidden'));
+    const { wrapper } = await mountShell();
+    expect(wrapper.find('[data-test="notary-offices-nav"]').exists()).toBe(
+      false,
+    );
   });
 
   it('uses real lead counts and route-backed status links', async () => {

@@ -245,6 +245,21 @@
   flex: 1 1 220px;
 }
 
+.notary-offices-list {
+  margin: 0;
+  padding: 0;
+  list-style: none;
+}
+
+.notary-offices-list li {
+  display: flex;
+  min-height: 44px;
+  align-items: center;
+  justify-content: space-between;
+  gap: var(--s-3);
+  border-top: 1px solid var(--color-hairline);
+}
+
 .demo-form-actions {
   display: flex;
   align-items: center;
