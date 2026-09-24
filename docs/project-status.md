@@ -8,7 +8,7 @@
 
 ## 当前任务
 
-**CORE-NT-002｜开箱材料（路线图唯一Current，开发中）**：已从本地`main@eb7df60`创建`codex/core-nt-002-unboxing-materials`并核对开箱字段、附件和身份范围；CORE-NT-003仍为唯一Next。本次只办理开箱材料，不把NT-001的完成扩大为开箱审核或后续公证阶段。
+**CORE-NT-003｜开箱审核（路线图唯一Current，待领取）**：CORE-NT-002已在`codex/core-nt-002-unboxing-materials`固定候选完成单事项开箱材料真实闭环；CORE-NT-004为唯一Next。NT-003尚未开始设计或实现，不把照片登记等同于审核结论。
 
 ## 已实现
 
@@ -16,7 +16,7 @@
 - `ROLE-TEMPLATE-001`代码候选`d542c31`、tree`cae336d`已通过完整Level 3门禁、数据库型浏览器验收和独立终审；其可配置Grant底座供核心业务Action复用。
 - `CORE-LD-001`已实现`customer.admit`与`lead.read/create/edit`、ADMITTED准入约束、材料／内容版本／冻结引用、线索／商品／侵权类型／日编号／幂等回执，以及正式运营端页面。详细证据见[验证记录](spec/v0.1/VALIDATION.md)。
 - `CORE-LD-002`已实现真实企业客户账号绑定、密码会话、`WAITING_PUSH → WAITING_REVIEW`原子推送、`lead.push`内部授权、客户固定企业范围、幂等／版本／审计，以及运营推送和客户端只读列表／详情／附件页面。详细证据见[验证记录](spec/v0.1/VALIDATION.md)。
-- 登录后共享壳层及运营／客户端页面已按Demo共享视觉层级对齐；客户审核与归档纠错、运营两分支取证决定、CORE-NT-001线上取证物流已有真实API与正式页面，并通过相应门禁；后续公证办理从CORE-NT-002开始。
+- 登录后共享壳层及运营／客户端页面已按Demo共享视觉层级对齐；客户审核与归档纠错、运营两分支取证决定、CORE-NT-001线上取证物流和CORE-NT-002开箱材料已有真实API与正式页面，并通过相应门禁；后续公证办理从CORE-NT-003开始。
 
 ## 未决与限制
 
@@ -27,6 +27,7 @@
 
 ## 最近验证
 
+- CORE-NT-002固定代码候选`f7bca9b9d4eec4d8bce6c8ce3615545cdc5db3d2`、tree`c54221c265b71609b4e4c5dff0c5a30352446e66`通过独立Final Review、完整`pnpm verify`（工具71、后端693、前端365）和隔离PostgreSQL／Chromium完整E2E 96/96；空库41份迁移、上一支持Schema升级、故障回滚与测试库账本校验通过。证据边界见[验证记录](spec/v0.1/VALIDATION.md)；并非后续开箱审核或生产发布。
 - CORE-NT-001固定代码候选`0597388d5dcc9731407de2b432c9c4da12573e71`、tree`744c6978fb066ab25e914394484f7835bc2326f6`通过独立Final Review、完整`pnpm verify`（工具71、后端686、前端355）和独立PostgreSQL／Chromium完整E2E 93/93；空库40份迁移链、上一支持Schema升级、故障回滚重试及测试库账本校验通过。证据边界见[验证记录](spec/v0.1/VALIDATION.md)；这不是生产发布或后续开箱完成声明。
 - CORE-LD-006固定代码候选`eafd131c61c37e9e7759a3430c489f95d8e714d3`、tree`9f2a7c67f95ba7e6fa55677699013523f1460a09`已通过独立Final Review、完整`pnpm verify`和完整数据库型浏览器验收91/91；本次仅做非执行性状态收口，证据边界见[验证记录](spec/v0.1/VALIDATION.md)。
 - CORE-LD-005固定代码候选及随后状态收口候选的Review、完整门禁、独立数据库／浏览器验收和两份tree的证据边界见[验证记录](spec/v0.1/VALIDATION.md)；本文件不复制各次结果。
@@ -41,4 +42,4 @@
 
 ## 下一步
 
-下一步是CORE-NT-002开箱材料（路线图唯一Current），CORE-NT-003开箱审核为Next。CORE-NT-001已将有稳定来源的线上公证事项推进至待开箱；后续开箱与审核尚未实现。未上线，未执行生产迁移。
+下一步是CORE-NT-003开箱审核（路线图唯一Current，待领取），CORE-NT-004出证选择为Next。CORE-NT-002已将有稳定来源的线上公证事项推进至开箱审核中；审核、出证与转案尚未实现。未上线，未执行生产迁移。
