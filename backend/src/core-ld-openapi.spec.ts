@@ -172,7 +172,13 @@ describe('CORE-LD-002 OpenAPI contract', () => {
     });
     expect(schemas?.ClientLeadReviewResultDto).toMatchObject({
       properties: {
-        status: { enum: ['WAITING_EVIDENCE_DECISION', 'ARCHIVED'] },
+        status: {
+          enum: [
+            'WAITING_EVIDENCE_DECISION',
+            'TRANSFERRED_TO_NOTARY',
+            'ARCHIVED',
+          ],
+        },
       },
     });
     expect(schemas?.ClientLeadReviewDecisionResponseDto).toMatchObject({

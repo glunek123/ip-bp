@@ -175,6 +175,60 @@ describe('LeadService', () => {
     });
   });
 
+  it('projects immutable notary handoff records on a transferred lead', async () => {
+    const fixture = createCreateFixture();
+    const matter = {
+      id: '77777777-7777-4777-8777-777777777777',
+      businessNo: 'NT-20260924-001',
+      stage: 'PENDING_EVIDENCE',
+      notaryOffice: { name: '南方公证处' },
+      batchPurpose: '对所选商品办理线上购买取证',
+      createdAt: new Date('2026-09-24T03:00:00.000Z'),
+    };
+    const record = {
+      ...fixture.createdLead,
+      status: 'TRANSFERRED_TO_NOTARY',
+      activeReviewDecisionId: '55555555-5555-4555-8555-555555555555',
+      reviewDecision: {
+        result: 'INFRINGEMENT',
+        reviewerDisplayNameSnapshot: '企业审核员',
+        decidedAt: new Date('2026-09-24T01:00:00Z'),
+      },
+      notaryMatters: [matter],
+    };
+    const service = new LeadService(
+      {
+        lead: { findFirst: jest.fn().mockResolvedValue(record) },
+        userAccount: {
+          findUnique: jest.fn().mockResolvedValue({ accountType: 'INTERNAL' }),
+        },
+      } as unknown as DatabaseService,
+      {
+        buildLeadScope: jest
+          .fn()
+          .mockResolvedValue({ departmentId: actor.departmentId }),
+        authorizeLead: jest.fn().mockResolvedValue(undefined),
+      } as unknown as AccessControlService,
+      {
+        listCurrentReferenceVersionIds: jest.fn().mockResolvedValue([]),
+      } as unknown as MaterialService,
+    );
+
+    const result = await service.get(actor, record.id);
+
+    expect(result.notaryMatters).toEqual([
+      {
+        id: matter.id,
+        businessNo: matter.businessNo,
+        stage: matter.stage,
+        notaryOfficeName: '南方公证处',
+        batchPurpose: matter.batchPurpose,
+        createdAt: '2026-09-24T03:00:00.000Z',
+      },
+    ]);
+    expect(result.capabilities.transferToNotary).toBe(false);
+  });
+
   it('projects the immutable no-infringement archive facts for scoped operations detail', async () => {
     const fixture = createCreateFixture();
     const service = new LeadService(
@@ -1689,6 +1743,7 @@ function createCreateFixture() {
     ],
     infringements: [{ type: 'TRADEMARK' }],
     reviewDecision: null,
+    notaryMatters: [],
   };
   const tx = {
     $queryRawUnsafe: jest

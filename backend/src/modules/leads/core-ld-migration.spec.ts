@@ -39,6 +39,12 @@ describe('CORE-LD migrations', () => {
   const evidenceSchemaMigration = '20260924011000_add_lead_evidence_decision';
   const evidenceGrantMigration =
     '20260924012000_backfill_lead_evidence_bootstrap_grant';
+  const notaryActionMigration = '20260924013000_add_notary_actions';
+  const notaryHandoffMigration = '20260924014000_add_notary_handoff';
+  const notaryOfficeGrantMigration =
+    '20260924015000_backfill_notary_office_admin_grant';
+  const notaryMaterialIdentityMigration =
+    '20260924016000_harden_notary_material_identity';
 
   function readMigration(name: string): string {
     return readFileSync(resolve(migrationRoot, name, 'migration.sql'), 'utf8');
@@ -292,7 +298,8 @@ describe('CORE-LD migrations', () => {
   });
 
   it('commits evidence action and archive enum before the immutable fact and scoped grant', () => {
-    expect(migrations.slice(-3)).toEqual([
+    const evidenceIndex = migrations.indexOf(evidenceActionMigration);
+    expect(migrations.slice(evidenceIndex, evidenceIndex + 3)).toEqual([
       evidenceActionMigration,
       evidenceSchemaMigration,
       evidenceGrantMigration,
@@ -311,6 +318,35 @@ describe('CORE-LD migrations', () => {
     expect(facts).not.toMatch(/DROP TABLE|DROP COLUMN|DELETE FROM/);
     expect(grants).toContain('shared_assignment');
     expect(grants).toContain('authorization_revision');
+  });
+
+  it('adds notary actions before the handoff schema and preserves its forward constraints', () => {
+    const notaryIndex = migrations.indexOf(notaryActionMigration);
+    expect(notaryIndex).toBeGreaterThanOrEqual(0);
+    expect(migrations.slice(notaryIndex, notaryIndex + 4)).toEqual([
+      notaryActionMigration,
+      notaryHandoffMigration,
+      notaryOfficeGrantMigration,
+      notaryMaterialIdentityMigration,
+    ]);
+    const actions = readMigration(notaryActionMigration);
+    const schema = readMigration(notaryHandoffMigration);
+    const grant = readMigration(notaryOfficeGrantMigration);
+    const materialIdentity = readMigration(notaryMaterialIdentityMigration);
+    expect(actions).toContain("ADD VALUE 'notary.office.manage'");
+    expect(actions).toContain("ADD VALUE 'TRANSFERRED_TO_NOTARY'");
+    expect(schema).toContain('CREATE TABLE "notary_offices"');
+    expect(schema).toContain('CREATE TABLE "notary_matters"');
+    expect(schema).toContain('CREATE TABLE "notary_matter_products"');
+    expect(schema).toContain('CREATE TABLE "notary_matter_materials"');
+    expect(schema).toContain('notary_matters_lead_identity_fkey');
+    expect(schema).toContain('reject_notary_matter_selection_mutation');
+    expect(grant).toContain('\'notary.office.manage\'::"permission_action"');
+    expect(materialIdentity).toContain(
+      'notary_matter_materials_matter_department_fkey',
+    );
+    for (const sql of [schema, materialIdentity])
+      expect(sql).not.toMatch(/DROP TABLE|DROP COLUMN|DELETE FROM/);
   });
 
   it('backfills an exact current decision pointer while preserving all review history', () => {
