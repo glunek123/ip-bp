@@ -78,9 +78,18 @@ export class ClientLeadResponseDto {
   @ApiProperty({ format: 'uuid' }) id!: string;
   @ApiProperty() businessNo!: string;
   @ApiProperty({
-    enum: ['WAITING_REVIEW', 'WAITING_EVIDENCE_DECISION', 'ARCHIVED'],
+    enum: [
+      'WAITING_REVIEW',
+      'WAITING_EVIDENCE_DECISION',
+      'TRANSFERRED_TO_NOTARY',
+      'ARCHIVED',
+    ],
   })
-  status!: 'WAITING_REVIEW' | 'WAITING_EVIDENCE_DECISION' | 'ARCHIVED';
+  status!:
+    | 'WAITING_REVIEW'
+    | 'WAITING_EVIDENCE_DECISION'
+    | 'TRANSFERRED_TO_NOTARY'
+    | 'ARCHIVED';
   @ApiProperty({ minimum: 1 }) version!: number;
   @ApiProperty() caseType!: string;
   @ApiProperty({ type: [String] }) infringementTypes!: string[];
@@ -127,8 +136,10 @@ export class ClientLeadListResponseDto {
 export class ClientLeadReviewResultDto {
   @ApiProperty({ format: 'uuid' }) id!: string;
   @ApiProperty() businessNo!: string;
-  @ApiProperty({ enum: ['WAITING_EVIDENCE_DECISION', 'ARCHIVED'] })
-  status!: 'WAITING_EVIDENCE_DECISION' | 'ARCHIVED';
+  @ApiProperty({
+    enum: ['WAITING_EVIDENCE_DECISION', 'TRANSFERRED_TO_NOTARY', 'ARCHIVED'],
+  })
+  status!: 'WAITING_EVIDENCE_DECISION' | 'TRANSFERRED_TO_NOTARY' | 'ARCHIVED';
   @ApiProperty({ minimum: 1 }) version!: number;
   @ApiProperty({ type: () => ClientLeadReviewDecisionResponseDto })
   reviewDecision!: ClientLeadReviewDecisionResponseDto;

@@ -76,6 +76,7 @@ const allActions = [
   'LEAD_EDIT',
   'LEAD_PUSH',
   'LEAD_EVIDENCE_DECIDE',
+  'NOTARY_OFFICE_MANAGE',
   'LEAD_WITHDRAW_APPLY',
 ];
 const actionNames = Object.freeze({
@@ -86,6 +87,7 @@ const actionNames = Object.freeze({
   'lead.edit': 'LEAD_EDIT',
   'lead.push': 'LEAD_PUSH',
   'lead.evidence.decide': 'LEAD_EVIDENCE_DECIDE',
+  'notary.office.manage': 'NOTARY_OFFICE_MANAGE',
   'lead.withdraw.apply': 'LEAD_WITHDRAW_APPLY',
 });
 
@@ -255,52 +257,59 @@ async function clearDatabase() {
     coreLeadFixtures.departmentB,
   ];
   await dropFaults();
-  for (const table of [
+  const immutableTables = [
     'client_lead_review_receipts',
     'lead_review_decisions',
     'lead_withdrawal_applications',
     'lead_withdrawal_confirmations',
     'lead_evidence_decisions',
-  ]) {
-    await database.$executeRawUnsafe(
-      `ALTER TABLE "${table}" DISABLE TRIGGER USER`,
-    );
-  }
-  try {
-    await database.$transaction(async (transaction) => {
-      await transaction.lead.updateMany({
-        where: { departmentId: { in: departmentIds } },
-        data: { activeReviewDecisionId: null },
-      });
-      await transaction.leadWithdrawalConfirmation.deleteMany({
-        where: { departmentId: { in: departmentIds } },
-      });
-      await transaction.leadWithdrawalApplication.deleteMany({
-        where: { departmentId: { in: departmentIds } },
-      });
-      await transaction.leadEvidenceDecision.deleteMany({
-        where: { departmentId: { in: departmentIds } },
-      });
-      await transaction.clientLeadReviewReceipt.deleteMany({
-        where: { departmentId: { in: departmentIds } },
-      });
-      await transaction.leadReviewDecision.deleteMany({
-        where: { departmentId: { in: departmentIds } },
-      });
+    'notary_matters',
+    'notary_matter_products',
+    'notary_matter_materials',
+  ];
+  await database.$transaction(async (transaction) => {
+    for (const table of immutableTables) {
+      await transaction.$executeRawUnsafe(
+        `ALTER TABLE "${table}" DISABLE TRIGGER USER`,
+      );
+    }
+    await transaction.notaryMatterProduct.deleteMany({
+      where: { matter: { departmentId: { in: departmentIds } } },
     });
-  } finally {
-    for (const table of [
-      'lead_withdrawal_confirmations',
-      'lead_withdrawal_applications',
-      'lead_evidence_decisions',
-      'lead_review_decisions',
-      'client_lead_review_receipts',
-    ]) {
-      await database.$executeRawUnsafe(
+    await transaction.notaryMatterMaterial.deleteMany({
+      where: { matter: { departmentId: { in: departmentIds } } },
+    });
+    await transaction.notaryMatter.deleteMany({
+      where: { departmentId: { in: departmentIds } },
+    });
+    await transaction.notaryOffice.deleteMany({
+      where: { departmentId: { in: departmentIds } },
+    });
+    await transaction.lead.updateMany({
+      where: { departmentId: { in: departmentIds } },
+      data: { activeReviewDecisionId: null },
+    });
+    await transaction.leadWithdrawalConfirmation.deleteMany({
+      where: { departmentId: { in: departmentIds } },
+    });
+    await transaction.leadWithdrawalApplication.deleteMany({
+      where: { departmentId: { in: departmentIds } },
+    });
+    await transaction.leadEvidenceDecision.deleteMany({
+      where: { departmentId: { in: departmentIds } },
+    });
+    await transaction.clientLeadReviewReceipt.deleteMany({
+      where: { departmentId: { in: departmentIds } },
+    });
+    await transaction.leadReviewDecision.deleteMany({
+      where: { departmentId: { in: departmentIds } },
+    });
+    for (const table of [...immutableTables].reverse()) {
+      await transaction.$executeRawUnsafe(
         `ALTER TABLE "${table}" ENABLE TRIGGER USER`,
       );
     }
-  }
+  });
   const userIds = [
     coreLeadFixtures.userA,
     coreLeadFixtures.userB,
@@ -396,6 +405,7 @@ async function clearDatabase() {
     where: { id: { in: departmentIds } },
   });
   await database.leadNumberCounter.deleteMany({});
+  await database.notaryMatterNumberCounter.deleteMany({});
 }
 
 function admittedCustomer(id, departmentId, userId, teamId, name, identity) {
@@ -507,11 +517,18 @@ export async function resetCoreLeadE2eData() {
   });
   await database.roleGrant.createMany({
     data: [
-      ...allActions.map((action) => ({
+      ...allActions
+        .filter((action) => action !== 'NOTARY_OFFICE_MANAGE')
+        .map((action) => ({
+          roleTemplateId: coreLeadFixtures.roleA,
+          action,
+          scope: 'TEAM',
+        })),
+      {
         roleTemplateId: coreLeadFixtures.roleA,
-        action,
-        scope: 'TEAM',
-      })),
+        action: 'NOTARY_OFFICE_MANAGE',
+        scope: 'DEPARTMENT',
+      },
       {
         roleTemplateId: coreLeadFixtures.roleA,
         action: 'USER_MANAGE',
@@ -527,11 +544,13 @@ export async function resetCoreLeadE2eData() {
         action: 'USER_MANAGE',
         scope: 'DEPARTMENT',
       },
-      ...allActions.map((action) => ({
-        roleTemplateId: coreLeadFixtures.roleSelf,
-        action,
-        scope: 'SELF',
-      })),
+      ...allActions
+        .filter((action) => action !== 'NOTARY_OFFICE_MANAGE')
+        .map((action) => ({
+          roleTemplateId: coreLeadFixtures.roleSelf,
+          action,
+          scope: 'SELF',
+        })),
     ],
   });
   await database.roleAssignment.createMany({
@@ -740,6 +759,28 @@ export function countLeadEvidenceReceipts(leadId) {
   });
 }
 
+export function countNotaryMatters(leadId) {
+  return database.notaryMatter.count({ where: { sourceLeadId: leadId } });
+}
+
+export function countNotaryHandoffReceipts(leadId) {
+  return database.leadCommandReceipt.count({
+    where: { resultLeadId: leadId, action: 'notary_handoff' },
+  });
+}
+
+export function countNotaryHandoffAudits(leadId) {
+  return database.auditEvent.count({
+    where: {
+      resourceType: 'lead',
+      resourceId: leadId,
+      action: {
+        in: ['lead.transferred_to_notary', 'lead.evidence_batch_created'],
+      },
+    },
+  });
+}
+
 export function countLeadEvidenceAudits(leadId) {
   return database.auditEvent.count({
     where: {
@@ -904,6 +945,13 @@ export async function rejectLeadEvidenceReceiptWrites() {
   await dropFaults();
   await database.$executeRawUnsafe(
     `ALTER TABLE "lead_command_receipts" ADD CONSTRAINT "core_ld_reject_push_receipt" CHECK ("action" <> 'evidence_decide') NOT VALID`,
+  );
+}
+
+export async function rejectNotaryHandoffReceiptWrites() {
+  await dropFaults();
+  await database.$executeRawUnsafe(
+    `ALTER TABLE "lead_command_receipts" ADD CONSTRAINT "core_ld_reject_push_receipt" CHECK ("action" <> 'notary_handoff') NOT VALID`,
   );
 }
 

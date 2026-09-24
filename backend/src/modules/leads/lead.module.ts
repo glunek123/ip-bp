@@ -7,11 +7,21 @@ import { LeadController } from './lead.controller';
 import { LeadService } from './lead.service';
 import { ClientLeadController } from './client-lead.controller';
 import { ClientLeadService } from './client-lead.service';
+import {
+  LeadNotaryController,
+  NotaryOfficeController,
+} from './lead-notary.controller';
+import { LeadNotaryService } from './lead-notary.service';
 
 @Module({
   imports: [AccessControlModule, AuthModule, DatabaseModule, MaterialModule],
-  controllers: [LeadController, ClientLeadController],
-  providers: [LeadService, ClientLeadService],
-  exports: [LeadService, ClientLeadService],
+  controllers: [
+    LeadController,
+    ClientLeadController,
+    LeadNotaryController,
+    NotaryOfficeController,
+  ],
+  providers: [LeadService, ClientLeadService, LeadNotaryService],
+  exports: [LeadService, ClientLeadService, LeadNotaryService],
 })
 export class LeadModule {}

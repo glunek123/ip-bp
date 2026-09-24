@@ -37,7 +37,11 @@ export type LeadPlatform =
   | 'MAP'
   | 'OTHER';
 export type LeadStatus =
-  'WAITING_PUSH' | 'WAITING_REVIEW' | 'WAITING_EVIDENCE_DECISION' | 'ARCHIVED';
+  | 'WAITING_PUSH'
+  | 'WAITING_REVIEW'
+  | 'WAITING_EVIDENCE_DECISION'
+  | 'TRANSFERRED_TO_NOTARY'
+  | 'ARCHIVED';
 
 export type LeadOption<T extends string = string> = {
   value: T;
@@ -158,10 +162,21 @@ export type LeadDetail = Lead & {
     push: boolean;
     withdrawApply: boolean;
     evidenceDecide: boolean;
+    transferToNotary: boolean;
+    createEvidenceBatch: boolean;
   };
   evidenceDecision: LeadEvidenceDecision | null;
   pendingWithdrawalApplication: LeadWithdrawalApplication | null;
   history: LeadHistory[];
+  notaryMatters: NotaryMatterSummary[];
+};
+export type NotaryMatterSummary = {
+  id: string;
+  businessNo: string;
+  stage: 'PENDING_EVIDENCE';
+  notaryOfficeName: string;
+  batchPurpose: string;
+  createdAt: string;
 };
 export type LeadWithdrawalApplication = {
   id: string;
@@ -273,6 +288,7 @@ const statuses: readonly LeadStatus[] = [
   'WAITING_PUSH',
   'WAITING_REVIEW',
   'WAITING_EVIDENCE_DECISION',
+  'TRANSFERRED_TO_NOTARY',
   'ARCHIVED',
 ];
 const moneyPattern = /^(0|[1-9]\d{0,15})(\.\d{1,2})?$/u;
@@ -564,8 +580,11 @@ export async function getLead(
     typeof capabilities.push !== 'boolean' ||
     typeof capabilities.withdrawApply !== 'boolean' ||
     typeof capabilities.evidenceDecide !== 'boolean' ||
+    typeof capabilities.transferToNotary !== 'boolean' ||
+    typeof capabilities.createEvidenceBatch !== 'boolean' ||
     (detail.evidenceDecision !== null &&
       !isEvidenceDecision(detail.evidenceDecision)) ||
+    !isNotaryMatterSummaries(detail.notaryMatters) ||
     !isLeadHistory(history) ||
     !isPendingWithdrawalApplication(pendingWithdrawalApplication)
   )
@@ -580,8 +599,29 @@ export async function getLead(
       push: capabilities.push,
       withdrawApply: capabilities.withdrawApply,
       evidenceDecide: capabilities.evidenceDecide,
+      transferToNotary: capabilities.transferToNotary,
+      createEvidenceBatch: capabilities.createEvidenceBatch,
     },
+    notaryMatters: detail.notaryMatters,
   };
+}
+
+function isNotaryMatterSummaries(
+  value: unknown,
+): value is NotaryMatterSummary[] {
+  return (
+    Array.isArray(value) &&
+    value.every(
+      (item) =>
+        isRecord(item) &&
+        typeof item.id === 'string' &&
+        typeof item.businessNo === 'string' &&
+        item.stage === 'PENDING_EVIDENCE' &&
+        typeof item.notaryOfficeName === 'string' &&
+        typeof item.batchPurpose === 'string' &&
+        isDateTime(item.createdAt),
+    )
+  );
 }
 
 function isPendingWithdrawalApplication(

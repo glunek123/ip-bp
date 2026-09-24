@@ -16,10 +16,16 @@ const materialApi = vi.hoisted(() => ({
   listOwnerMaterials: vi.fn(),
   downloadMaterialVersion: vi.fn(),
 }));
+const notaryApi = vi.hoisted(() => ({
+  listNotaryOffices: vi.fn(),
+  createNotaryOffice: vi.fn(),
+  createNotaryMatter: vi.fn(),
+}));
 vi.mock('../../api/leads', () => leadApi);
 vi.mock('../../api/customers', () => customerApi);
 vi.mock('../../api/rights-holders', () => holderApi);
 vi.mock('../../api/materials', () => materialApi);
+vi.mock('../../api/notary', () => notaryApi);
 
 const lead = {
   id: 'lead-1',
@@ -56,7 +62,15 @@ const lead = {
   reviewDecision: null,
   createdAt: '2026-09-21T04:00:00Z',
   updatedAt: '2026-09-21T04:00:00Z',
-  capabilities: { edit: true, push: true, withdrawApply: false },
+  capabilities: {
+    edit: true,
+    push: true,
+    withdrawApply: false,
+    evidenceDecide: false,
+    transferToNotary: false,
+    createEvidenceBatch: false,
+  },
+  notaryMatters: [],
   pendingWithdrawalApplication: null,
   history: [],
   departmentId: 'd',
@@ -85,6 +99,24 @@ async function mountPage() {
 beforeEach(() => {
   vi.resetAllMocks();
   leadApi.getLead.mockResolvedValue(lead);
+  notaryApi.listNotaryOffices.mockResolvedValue({
+    items: [{ id: 'office-1', name: '广州市南方公证处', status: 'ACTIVE' }],
+    capabilities: { create: false },
+  });
+  notaryApi.createNotaryMatter.mockResolvedValue({
+    id: 'matter-1',
+    businessNo: 'NT-20260924-001',
+    leadId: 'lead-1',
+    leadStatus: 'TRANSFERRED_TO_NOTARY',
+    leadVersion: 4,
+    stage: 'PENDING_EVIDENCE',
+    notaryOffice: { id: 'office-1', name: '广州市南方公证处' },
+    selectedProductIds: ['p'],
+    selectedContentVersionIds: ['version-1'],
+    evidenceMode: 'ONLINE_PURCHASE',
+    batchPurpose: '首批线上取证',
+    createdAt: '2026-09-24T01:00:00.000Z',
+  });
   customerApi.getCustomer.mockResolvedValue({
     id: 'customer-1',
     name: '客户甲',
@@ -119,6 +151,173 @@ beforeEach(() => {
 });
 
 describe('LeadDetailPage', () => {
+  it('creates the first notary matter from explicit goods, material, office and purpose selections', async () => {
+    const confirm = vi.spyOn(window, 'confirm').mockReturnValue(true);
+    leadApi.getLead.mockResolvedValue({
+      ...lead,
+      status: 'WAITING_EVIDENCE_DECISION',
+      version: 3,
+      capabilities: {
+        ...lead.capabilities,
+        edit: false,
+        push: false,
+        evidenceDecide: true,
+        transferToNotary: true,
+      },
+      reviewDecision: {
+        result: 'INFRINGEMENT',
+        reviewerDisplayName: '企业审核员',
+        decidedAt: '2026-09-22T03:00:00Z',
+      },
+    });
+    const transferred = {
+      ...lead,
+      status: 'TRANSFERRED_TO_NOTARY',
+      version: 4,
+      capabilities: { ...lead.capabilities, transferToNotary: false },
+      notaryMatters: [
+        {
+          id: 'matter-1',
+          businessNo: 'NT-20260924-001',
+          stage: 'PENDING_EVIDENCE',
+          notaryOfficeName: '广州市南方公证处',
+          batchPurpose: '首批线上取证',
+          createdAt: '2026-09-24T01:00:00.000Z',
+        },
+      ],
+    };
+    leadApi.getLead
+      .mockReset()
+      .mockResolvedValueOnce({
+        ...lead,
+        status: 'WAITING_EVIDENCE_DECISION',
+        version: 3,
+        capabilities: {
+          ...lead.capabilities,
+          edit: false,
+          push: false,
+          evidenceDecide: true,
+          transferToNotary: true,
+        },
+        reviewDecision: {
+          result: 'INFRINGEMENT',
+          reviewerDisplayName: '企业审核员',
+          decidedAt: '2026-09-22T03:00:00Z',
+        },
+      })
+      .mockResolvedValueOnce(transferred);
+    const wrapper = await mountPage();
+    expect(wrapper.text()).toContain(
+      '确认侵权后，选择本次交给公证处的商品和截图',
+    );
+    await wrapper.get('[data-test="select-product-p"]').setValue(true);
+    await wrapper.get('[data-test="select-evidence-version-1"]').setValue(true);
+    await wrapper.get('[data-test="notary-office"]').setValue('office-1');
+    await wrapper.get('[data-test="batch-purpose"]').setValue('首批线上取证');
+    await wrapper.get('[data-test="transfer-to-notary"]').trigger('click');
+    await flushPromises();
+    expect(confirm).toHaveBeenCalled();
+    expect(notaryApi.createNotaryMatter).toHaveBeenCalledWith(
+      'lead-1',
+      {
+        selectedProductIds: ['p'],
+        selectedContentVersionIds: ['version-1'],
+        notaryOfficeId: 'office-1',
+        evidenceMode: 'ONLINE_PURCHASE',
+        batchPurpose: '首批线上取证',
+        expectedVersion: 3,
+      },
+      expect.any(String),
+    );
+    expect(wrapper.text()).toContain('已移交公证');
+    expect(
+      wrapper.get('[data-test="matter-link-matter-1"]').attributes('href'),
+    ).toBe('/notary-matters/matter-1');
+    confirm.mockRestore();
+  });
+
+  it('lets a department office manager add and select a notary office in the workflow', async () => {
+    leadApi.getLead.mockResolvedValue({
+      ...lead,
+      status: 'WAITING_EVIDENCE_DECISION',
+      capabilities: {
+        ...lead.capabilities,
+        edit: false,
+        push: false,
+        evidenceDecide: true,
+        transferToNotary: true,
+      },
+      reviewDecision: {
+        result: 'INFRINGEMENT',
+        reviewerDisplayName: '企业审核员',
+        decidedAt: '2026-09-22T03:00:00Z',
+      },
+    });
+    notaryApi.listNotaryOffices.mockResolvedValue({
+      items: [],
+      capabilities: { create: true },
+    });
+    notaryApi.createNotaryOffice.mockResolvedValue({
+      id: 'office-new',
+      name: '新公证处',
+      status: 'ACTIVE',
+    });
+    const wrapper = await mountPage();
+    await wrapper
+      .get('[data-test="new-notary-office-name"]')
+      .setValue(' 新公证处 ');
+    await wrapper.get('[data-test="create-notary-office"]').trigger('click');
+    await flushPromises();
+    expect(notaryApi.createNotaryOffice).toHaveBeenCalledWith('新公证处');
+    expect(
+      (wrapper.get('[data-test="notary-office"]').element as HTMLSelectElement)
+        .value,
+    ).toBe('office-new');
+  });
+
+  it('freezes the full request and idempotency key after an uncertain failure', async () => {
+    vi.spyOn(window, 'confirm').mockReturnValue(true);
+    const eligible = {
+      ...lead,
+      status: 'WAITING_EVIDENCE_DECISION',
+      version: 3,
+      capabilities: {
+        ...lead.capabilities,
+        edit: false,
+        push: false,
+        evidenceDecide: true,
+        transferToNotary: true,
+      },
+      reviewDecision: {
+        result: 'INFRINGEMENT',
+        reviewerDisplayName: '企业审核员',
+        decidedAt: '2026-09-22T03:00:00Z',
+      },
+    };
+    leadApi.getLead.mockResolvedValue(eligible);
+    notaryApi.createNotaryMatter
+      .mockRejectedValueOnce(
+        new ApiError('server error', 500, 'INTERNAL_SERVER_ERROR'),
+      )
+      .mockResolvedValueOnce({ id: 'matter-1' });
+    const wrapper = await mountPage();
+    await wrapper.get('[data-test="select-product-p"]').setValue(true);
+    await wrapper.get('[data-test="notary-office"]').setValue('office-1');
+    await wrapper.get('[data-test="batch-purpose"]').setValue('首批线上取证');
+    await wrapper.get('[data-test="transfer-to-notary"]').trigger('click');
+    await flushPromises();
+    expect(wrapper.text()).toContain('选择和请求键已锁定');
+    expect(
+      wrapper.get('[data-test="batch-purpose"]').attributes('disabled'),
+    ).toBeDefined();
+    await wrapper.get('[data-test="transfer-to-notary"]').trigger('click');
+    await flushPromises();
+    expect(notaryApi.createNotaryMatter).toHaveBeenCalledTimes(2);
+    const first = notaryApi.createNotaryMatter.mock.calls[0];
+    const second = notaryApi.createNotaryMatter.mock.calls[1];
+    expect(second).toEqual(first);
+  });
+
   it('archives a waiting evidence decision with a required reason and shows its immutable record', async () => {
     const confirm = vi.spyOn(window, 'confirm').mockReturnValue(true);
     const waiting = {

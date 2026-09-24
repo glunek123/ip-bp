@@ -5,6 +5,13 @@ import { ElButton } from 'element-plus/es/components/button/index.mjs';
 import RequiredFieldMark from '../../app/RequiredFieldMark.vue';
 import { ApiError } from '../../api/http';
 import {
+  createNotaryMatter,
+  createNotaryOffice,
+  listNotaryOffices,
+  type CreateNotaryMatterInput,
+  type NotaryOffice,
+} from '../../api/notary';
+import {
   applyLeadWithdrawal,
   decideLeadNoEvidence,
   getLead,
@@ -41,6 +48,22 @@ const evidenceSubmitting = ref(false);
 const evidenceError = ref('');
 const evidenceSuccess = ref('');
 const evidenceRetryLocked = ref(false);
+const notaryOffices = ref<NotaryOffice[]>([]);
+const notaryOfficeCanCreate = ref(false);
+const notaryOfficeLoadError = ref('');
+const notaryOfficeName = ref('');
+const notaryOfficeCreating = ref(false);
+const notaryOfficeError = ref('');
+const selectedProductIds = ref<string[]>([]);
+const selectedContentVersionIds = ref<string[]>([]);
+const notaryOfficeId = ref('');
+const batchPurpose = ref('');
+const transferSubmitting = ref(false);
+const transferRetryLocked = ref(false);
+const transferError = ref('');
+const transferSuccess = ref('');
+let transferKey: string | undefined;
+let frozenTransferInput: CreateNotaryMatterInput | undefined;
 const normalizedEvidenceReason = computed(() => evidenceReason.value.trim());
 const evidenceReasonLength = computed(
   () => [...normalizedEvidenceReason.value].length,
@@ -118,7 +141,7 @@ async function load(): Promise<void> {
     });
     if (controller.signal.aborted) return;
     lead.value = current;
-    const [customer, holder, materials] = await Promise.all([
+    const [customer, holder, materials, officeResponse] = await Promise.all([
       getCustomer(current.customerId, { signal: controller.signal }).catch(
         () => null,
       ),
@@ -128,7 +151,30 @@ async function load(): Promise<void> {
       listOwnerMaterials('LEAD', current.id, {
         signal: controller.signal,
       }).catch(() => null),
+      current.capabilities.transferToNotary ||
+      current.capabilities.createEvidenceBatch
+        ? listNotaryOffices({ signal: controller.signal }).catch(() => null)
+        : Promise.resolve(null),
     ]);
+    if (controller.signal.aborted) return;
+    notaryOffices.value = officeResponse?.items ?? [];
+    notaryOfficeCanCreate.value = officeResponse?.capabilities.create ?? false;
+    notaryOfficeLoadError.value =
+      (current.capabilities.transferToNotary ||
+        current.capabilities.createEvidenceBatch) &&
+      officeResponse === null
+        ? '公证处列表暂时无法读取，请刷新后重试'
+        : '';
+    if (
+      !notaryOfficeId.value ||
+      !notaryOffices.value.some((office) => office.id === notaryOfficeId.value)
+    ) {
+      notaryOfficeId.value =
+        notaryOffices.value.length === 1 ? notaryOffices.value[0]!.id : '';
+    }
+    selectedProductIds.value = selectedProductIds.value.filter((id) =>
+      current.products.some((product) => product.id === id),
+    );
     customerName.value = customer?.name ?? current.customerId;
     holderName.value = holder?.name ?? current.rightsHolderId;
     const available = new Map(
@@ -157,6 +203,10 @@ async function load(): Promise<void> {
         const screenshot = available.get(versionId);
         return screenshot === undefined ? [] : [screenshot];
       },
+    );
+    selectedContentVersionIds.value = selectedContentVersionIds.value.filter(
+      (id) =>
+        screenshots.value.some((screenshot) => screenshot.versionId === id),
     );
     if (!controller.signal.aborted) state.value = 'ready';
   } catch (error) {
@@ -233,6 +283,141 @@ function makeEvidenceKey(): string {
     globalThis.crypto?.randomUUID?.() ??
     `lead-evidence-${Date.now()}-${Math.random().toString(16).slice(2)}`
   );
+}
+function makeTransferKey(): string {
+  return (
+    globalThis.crypto?.randomUUID?.() ??
+    `lead-notary-${Date.now()}-${Math.random().toString(16).slice(2)}`
+  );
+}
+const transferAvailable = computed(
+  () =>
+    lead.value !== undefined &&
+    (lead.value.capabilities.transferToNotary ||
+      lead.value.capabilities.createEvidenceBatch),
+);
+const normalizedBatchPurpose = computed(() => batchPurpose.value.trim());
+const transferFormValid = computed(
+  () =>
+    selectedProductIds.value.length > 0 &&
+    notaryOfficeId.value.length > 0 &&
+    normalizedBatchPurpose.value.length > 0 &&
+    [...normalizedBatchPurpose.value].length <= 500,
+);
+function toggleSelection(
+  values: string[],
+  value: string,
+  selected: boolean,
+): string[] {
+  if (selected) return values.includes(value) ? values : [...values, value];
+  return values.filter((item) => item !== value);
+}
+function transferErrorMessage(error: unknown): string {
+  if (!(error instanceof ApiError))
+    return '移交结果暂时未知，请使用相同内容安全重试';
+  if (
+    error.code === 'OFFICE_UNAVAILABLE' ||
+    error.code === 'INVALID_SELECTION' ||
+    error.code === 'CUSTOMER_NOT_ADMITTED'
+  ) {
+    transferKey = undefined;
+    frozenTransferInput = undefined;
+    transferRetryLocked.value = false;
+    if (error.code === 'OFFICE_UNAVAILABLE')
+      return '所选公证处已不可用，请刷新后重新选择';
+    if (error.code === 'INVALID_SELECTION')
+      return '所选商品或截图已变化，请刷新后重新选择';
+    return '客户当前状态不允许移交，请联系管理员确认客户准入状态';
+  }
+  if (error.code === 'VERSION_CONFLICT' || error.code === 'INVALID_STATE') {
+    transferKey = undefined;
+    frozenTransferInput = undefined;
+    transferRetryLocked.value = false;
+    return '线索状态已变化，请刷新后查看最新结果';
+  }
+  if (error.code === 'ACTION_FORBIDDEN' || error.code === 'RESOURCE_NOT_FOUND')
+    return '当前账号无权移交此线索，或线索当前不可访问';
+  if (error.code === 'IDEMPOTENCY_CONFLICT') {
+    transferKey = undefined;
+    frozenTransferInput = undefined;
+    transferRetryLocked.value = false;
+    return '本次移交请求与先前请求不同，请刷新线索后重新操作';
+  }
+  if (error.code === 'NETWORK_ERROR' || error.code === 'TIMEOUT')
+    return '提交结果暂时未知；已锁定本次选择和请求键，可安全重试或刷新查看';
+  return '移交公证失败；已保留本次选择，可安全重试';
+}
+async function addNotaryOffice(): Promise<void> {
+  if (!notaryOfficeCanCreate.value || notaryOfficeCreating.value) return;
+  const name = notaryOfficeName.value.trim();
+  if (!name) return;
+  notaryOfficeCreating.value = true;
+  notaryOfficeError.value = '';
+  try {
+    const office = await createNotaryOffice(name);
+    notaryOffices.value = [...notaryOffices.value, office];
+    notaryOfficeId.value = office.id;
+    notaryOfficeName.value = '';
+  } catch (error) {
+    notaryOfficeError.value =
+      error instanceof ApiError && error.code === 'ACTION_FORBIDDEN'
+        ? '当前账号没有维护公证处的权限'
+        : '新增公证处失败，请检查名称后重试';
+  } finally {
+    notaryOfficeCreating.value = false;
+  }
+}
+async function transferToNotary(): Promise<void> {
+  if (!lead.value || !transferAvailable.value || transferSubmitting.value)
+    return;
+  if (!transferRetryLocked.value && !transferFormValid.value) return;
+  const input = frozenTransferInput ?? {
+    selectedProductIds: [...selectedProductIds.value],
+    selectedContentVersionIds: [...selectedContentVersionIds.value],
+    notaryOfficeId: notaryOfficeId.value,
+    evidenceMode: 'ONLINE_PURCHASE' as const,
+    batchPurpose: normalizedBatchPurpose.value,
+    expectedVersion: lead.value.version,
+    ...(lead.value.capabilities.createEvidenceBatch
+      ? { createNewBatch: true }
+      : {}),
+  };
+  const isNewBatch = input.createNewBatch === true;
+  const confirmed = globalThis.window.confirm(
+    isNewBatch
+      ? `确认新建${lead.value.notaryMatters.length + 1}号取证批次？系统会保留已有批次，并将所选商品、截图和用途作为本批次记录。`
+      : `确认将线索 ${lead.value.businessNo} 移交给“${notaryOffices.value.find((item) => item.id === input.notaryOfficeId)?.name ?? '所选公证处'}”？提交后线索将转为“已移交公证”，原线索只读；商品、截图版本和用途会作为取证批次快照保存。`,
+  );
+  if (!confirmed) return;
+  frozenTransferInput ??= input;
+  selectedProductIds.value = [...frozenTransferInput.selectedProductIds];
+  selectedContentVersionIds.value = [
+    ...frozenTransferInput.selectedContentVersionIds,
+  ];
+  notaryOfficeId.value = frozenTransferInput.notaryOfficeId;
+  batchPurpose.value = frozenTransferInput.batchPurpose;
+  transferRetryLocked.value = true;
+  transferKey ??= makeTransferKey();
+  transferError.value = '';
+  transferSuccess.value = '';
+  transferSubmitting.value = true;
+  try {
+    await createNotaryMatter(lead.value.id, frozenTransferInput, transferKey);
+    transferKey = undefined;
+    frozenTransferInput = undefined;
+    transferRetryLocked.value = false;
+    transferSuccess.value = isNewBatch
+      ? '新取证批次已创建，原有批次记录保持不变'
+      : '已移交公证，线索已转为只读';
+    batchPurpose.value = '';
+    selectedProductIds.value = [];
+    selectedContentVersionIds.value = [];
+    await load();
+  } catch (error) {
+    transferError.value = transferErrorMessage(error);
+  } finally {
+    transferSubmitting.value = false;
+  }
 }
 async function archiveNoEvidence(): Promise<void> {
   if (
@@ -444,6 +629,12 @@ onBeforeUnmount(() => request?.abort());
         <p v-if="evidenceError" class="submit-error" role="alert">
           {{ evidenceError }}
         </p>
+        <p v-if="transferSuccess" class="submit-success" role="status">
+          {{ transferSuccess }}
+        </p>
+        <p v-if="transferError" class="submit-error" role="alert">
+          {{ transferError }}
+        </p>
         <section class="demo-card demo-card--pad">
           <dl class="demo-detail-grid" data-test="lead-facts">
             <div>
@@ -607,6 +798,209 @@ onBeforeUnmount(() => request?.abort());
           <p>决定时间：{{ formatTime(lead.evidenceDecision.decidedAt) }}</p>
           <p>原因：{{ lead.evidenceDecision.reason }}</p>
           <p>归档时间：{{ formatTime(lead.evidenceDecision.archivedAt) }}</p>
+        </section>
+        <section
+          v-if="lead.notaryMatters.length"
+          class="demo-card demo-card--pad"
+          data-test="notary-matters"
+        >
+          <h2 class="form-section-title">公证取证批次</h2>
+          <p>本线索已进入公证流程；新增批次会保留原有批次记录。</p>
+          <ul>
+            <li v-for="matter in lead.notaryMatters" :key="matter.id">
+              <RouterLink
+                :data-test="`matter-link-${matter.id}`"
+                :to="`/notary-matters/${matter.id}`"
+                >{{ matter.businessNo }}</RouterLink
+              >
+              · {{ matter.notaryOfficeName }} · {{ matter.batchPurpose }} ·
+              {{ formatTime(matter.createdAt) }}
+            </li>
+          </ul>
+        </section>
+        <section
+          v-if="transferAvailable"
+          class="demo-card demo-card--pad"
+          data-test="notary-transfer-form"
+        >
+          <h2 class="form-section-title">
+            {{
+              lead.capabilities.createEvidenceBatch
+                ? '新建取证批次'
+                : '移交公证'
+            }}
+          </h2>
+          <p v-if="lead.capabilities.createEvidenceBatch">
+            为新的取证安排单独选择商品、截图、公证处和用途。已有批次不会被覆盖或重复推进线索状态。
+          </p>
+          <p v-else>
+            确认侵权后，选择本次交给公证处的商品和截图，补充用途并选择公证处。提交后线索将转为只读，所选内容会保存为取证批次记录。
+          </p>
+          <p v-if="notaryOfficeLoadError" class="field-error" role="alert">
+            {{ notaryOfficeLoadError }}
+          </p>
+          <fieldset
+            class="notary-choice-group"
+            :disabled="transferRetryLocked || transferSubmitting"
+          >
+            <legend>本次取证商品<RequiredFieldMark /></legend>
+            <label
+              v-for="product in lead.products"
+              :key="product.id"
+              class="notary-choice"
+            >
+              <input
+                type="checkbox"
+                :data-test="`select-product-${product.id}`"
+                :checked="selectedProductIds.includes(product.id)"
+                @change="
+                  selectedProductIds = toggleSelection(
+                    selectedProductIds,
+                    product.id,
+                    ($event.target as HTMLInputElement).checked,
+                  )
+                "
+              />
+              <span>{{ product.title || product.url || '未命名商品' }}</span>
+            </label>
+          </fieldset>
+          <fieldset
+            v-if="screenshots.length"
+            class="notary-choice-group"
+            :disabled="transferRetryLocked || transferSubmitting"
+          >
+            <legend>本次提供的截图（可选）</legend>
+            <label
+              v-for="screenshot in screenshots"
+              :key="screenshot.versionId"
+              class="notary-choice"
+            >
+              <input
+                type="checkbox"
+                :data-test="`select-evidence-${screenshot.versionId}`"
+                :checked="
+                  selectedContentVersionIds.includes(screenshot.versionId)
+                "
+                @change="
+                  selectedContentVersionIds = toggleSelection(
+                    selectedContentVersionIds,
+                    screenshot.versionId,
+                    ($event.target as HTMLInputElement).checked,
+                  )
+                "
+              />
+              <span>{{ screenshot.filename }}</span>
+              <ElButton
+                text
+                :data-test="`download-transfer-evidence-${screenshot.versionId}`"
+                @click.prevent="
+                  downloadScreenshot(
+                    screenshot.materialId,
+                    screenshot.versionId,
+                  )
+                "
+                >查看附件</ElButton
+              >
+            </label>
+          </fieldset>
+          <label class="field-label field-label--spaced" for="notary-office">
+            公证处<RequiredFieldMark />
+          </label>
+          <select
+            id="notary-office"
+            v-model="notaryOfficeId"
+            class="text-input"
+            data-test="notary-office"
+            aria-required="true"
+            :disabled="transferRetryLocked || transferSubmitting"
+          >
+            <option value="">请选择公证处</option>
+            <option
+              v-for="office in notaryOffices"
+              :key="office.id"
+              :value="office.id"
+            >
+              {{ office.name }}
+            </option>
+          </select>
+          <p
+            v-if="
+              notaryOffices.length === 0 &&
+              !notaryOfficeCanCreate &&
+              !notaryOfficeLoadError
+            "
+            class="field-help"
+          >
+            当前部门还没有可选公证处，请联系管理员维护后再移交。
+          </p>
+          <div v-if="notaryOfficeCanCreate" class="notary-office-create">
+            <label
+              class="field-label field-label--spaced"
+              for="new-notary-office-name"
+            >
+              {{ notaryOffices.length ? '需要时可新增公证处' : '新增公证处' }}
+            </label>
+            <div class="notary-office-create__row">
+              <input
+                id="new-notary-office-name"
+                v-model="notaryOfficeName"
+                class="text-input"
+                data-test="new-notary-office-name"
+                maxlength="200"
+                placeholder="填写公证处名称"
+                :disabled="notaryOfficeCreating || transferRetryLocked"
+              />
+              <ElButton
+                data-test="create-notary-office"
+                :loading="notaryOfficeCreating"
+                :disabled="
+                  !notaryOfficeName.trim() ||
+                  notaryOfficeCreating ||
+                  transferRetryLocked
+                "
+                @click="addNotaryOffice"
+                >新增并选择</ElButton
+              >
+            </div>
+            <p v-if="notaryOfficeError" class="field-error" role="alert">
+              {{ notaryOfficeError }}
+            </p>
+          </div>
+          <label class="field-label field-label--spaced" for="batch-purpose">
+            本批次用途<RequiredFieldMark />
+          </label>
+          <textarea
+            id="batch-purpose"
+            v-model="batchPurpose"
+            class="text-area"
+            data-test="batch-purpose"
+            aria-required="true"
+            maxlength="500"
+            :disabled="transferRetryLocked || transferSubmitting"
+            placeholder="例如：对目标店铺商品进行线上购买取证"
+          />
+          <p class="field-help">
+            取证方式：线上购买（当前已启用方式）。用途最多 500 个字符。
+          </p>
+          <p v-if="transferRetryLocked" class="field-help">
+            提交结果未确认，选择和请求键已锁定；可使用相同请求安全重试，或刷新查看服务端结果。
+          </p>
+          <ElButton
+            type="primary"
+            data-test="transfer-to-notary"
+            :loading="transferSubmitting"
+            :disabled="
+              transferSubmitting ||
+              !transferFormValid ||
+              Boolean(notaryOfficeLoadError)
+            "
+            @click="transferToNotary"
+            >{{
+              lead.capabilities.createEvidenceBatch
+                ? '新建取证批次'
+                : '移交公证'
+            }}</ElButton
+          >
         </section>
         <section
           v-if="

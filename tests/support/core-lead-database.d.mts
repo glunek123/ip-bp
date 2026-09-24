@@ -32,7 +32,10 @@ export function getCustomer(id: string): Promise<{
 export function getLead(id: string): Promise<{
   version: number;
   shopName: string;
-  products: Array<{ estimatedAmount: { toFixed(scale: number): string } }>;
+  products: Array<{
+    id: string;
+    estimatedAmount: { toFixed(scale: number): string };
+  }>;
 } | null>;
 export function countLeads(): Promise<number>;
 export function countAdmissionReceipts(): Promise<number>;
@@ -53,6 +56,9 @@ export function getLeadEvidenceDecision(leadId: string): Promise<{
 export function countLeadEvidenceDecisions(leadId: string): Promise<number>;
 export function countLeadEvidenceReceipts(leadId: string): Promise<number>;
 export function countLeadEvidenceAudits(leadId: string): Promise<number>;
+export function countNotaryMatters(leadId: string): Promise<number>;
+export function countNotaryHandoffReceipts(leadId: string): Promise<number>;
+export function countNotaryHandoffAudits(leadId: string): Promise<number>;
 export function getLeadReviewDecision(leadId: string): Promise<{
   id: string;
   leadId: string;
@@ -140,6 +146,7 @@ export function rejectAuditWrites(action: string): Promise<void>;
 export function rejectLeadPushReceiptWrites(): Promise<void>;
 export function rejectLeadEvidenceDecisionWrites(): Promise<void>;
 export function rejectLeadEvidenceReceiptWrites(): Promise<void>;
+export function rejectNotaryHandoffReceiptWrites(): Promise<void>;
 export function rejectLeadReviewDecisionWrites(): Promise<void>;
 export function rejectClientLeadReviewReceiptWrites(): Promise<void>;
 export function rejectWithdrawalApplicationWrites(): Promise<void>;

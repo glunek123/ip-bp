@@ -61,6 +61,11 @@ const processedLead = {
   },
   capabilities: { review: false, confirmWithdrawal: false },
 };
+const transferredLead = {
+  ...processedLead,
+  status: 'TRANSFERRED_TO_NOTARY',
+  version: 4,
+};
 const archivedLead = {
   ...lead,
   status: 'ARCHIVED',
@@ -144,6 +149,17 @@ beforeEach(() => {
 });
 
 describe('ClientLeadDetailPage', () => {
+  it('shows transferred status to the client without exposing internal notary details', async () => {
+    leadApi.getClientLead.mockResolvedValue(transferredLead);
+    const wrapper = await mountPage();
+    expect(wrapper.text()).toContain('已进入公证流程');
+    expect(wrapper.text()).toContain('运营已将线索移交公证流程');
+    expect(wrapper.text()).not.toContain('广州市南方公证处');
+    expect(wrapper.find('[data-test="client-notary-matter"]').exists()).toBe(
+      false,
+    );
+  });
+
   it('shows the safe no-evidence archive outcome to the client without operator-only data', async () => {
     leadApi.getClientLead.mockResolvedValue(noEvidenceLead);
     const wrapper = await mountPage();

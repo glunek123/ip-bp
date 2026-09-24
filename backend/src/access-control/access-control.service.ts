@@ -15,6 +15,7 @@ export type PermissionAction =
   | 'lead.push'
   | 'lead.withdraw.apply'
   | 'lead.evidence.decide'
+  | 'notary.office.manage'
   | 'client.lead.read'
   | 'client.lead.review'
   | 'client.lead.withdraw.confirm'
@@ -87,6 +88,20 @@ export class AccessControlService {
     @Inject(ACCESS_CONTROL_STORE)
     private readonly store: AccessControlStore,
   ) {}
+
+  async authorizeDepartmentAction(
+    actor: ActorContext,
+    action: PermissionAction,
+    reader?: AccessControlSnapshotReader,
+  ): Promise<void> {
+    const snapshot = await this.loadCurrentSnapshot(actor, reader);
+    if (
+      !snapshot.grants.some(
+        (grant) => grant.action === action && grant.scope === 'department',
+      )
+    )
+      throw this.forbidden();
+  }
 
   async authorizeCustomer(
     actor: ActorContext,

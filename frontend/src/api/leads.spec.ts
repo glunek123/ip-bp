@@ -81,6 +81,15 @@ const lead = {
   evidenceDecision: null,
   pendingWithdrawalApplication: null,
   history: [],
+  notaryMatters: [],
+  capabilities: {
+    edit: true,
+    push: true,
+    withdrawApply: false,
+    evidenceDecide: false,
+    transferToNotary: false,
+    createEvidenceBatch: false,
+  },
   createdAt: '2026-09-21T04:00:00.000Z',
   updatedAt: '2026-09-21T04:00:00.000Z',
 };
@@ -139,6 +148,7 @@ describe('Lead API', () => {
         WAITING_PUSH: 1,
         WAITING_REVIEW: 2,
         WAITING_EVIDENCE_DECISION: 3,
+        TRANSFERRED_TO_NOTARY: 0,
         ARCHIVED: 4,
       },
       capabilities: { create: true },
@@ -150,6 +160,7 @@ describe('Lead API', () => {
       'WAITING_PUSH',
       'WAITING_REVIEW',
       'WAITING_EVIDENCE_DECISION',
+      'TRANSFERRED_TO_NOTARY',
       'ARCHIVED',
     ]);
 
@@ -172,6 +183,7 @@ describe('Lead API', () => {
         WAITING_PUSH: 21,
         WAITING_REVIEW: 0,
         WAITING_EVIDENCE_DECISION: 0,
+        TRANSFERRED_TO_NOTARY: 0,
         ARCHIVED: 0,
       },
       capabilities: { create: true },
@@ -187,6 +199,7 @@ describe('Lead API', () => {
     http.getJson.mockResolvedValue({
       ...lead,
       capabilities: {
+        ...lead.capabilities,
         edit: false,
         push: true,
         withdrawApply: false,
@@ -196,7 +209,15 @@ describe('Lead API', () => {
     await expect(getLead('lead-1')).resolves.toMatchObject({
       capabilities: { edit: false, push: true },
     });
-    http.getJson.mockResolvedValueOnce(lead);
+    http.getJson.mockResolvedValueOnce({
+      ...lead,
+      capabilities: {
+        edit: true,
+        push: true,
+        withdrawApply: false,
+        evidenceDecide: false,
+      },
+    });
     await expect(getLead('lead-1')).rejects.toMatchObject({
       code: 'INVALID_RESPONSE',
     });
@@ -216,6 +237,7 @@ describe('Lead API', () => {
         archivedAt: '2026-09-22T03:00:00.000Z',
       },
       capabilities: {
+        ...lead.capabilities,
         edit: false,
         push: false,
         withdrawApply: true,
@@ -266,6 +288,7 @@ describe('Lead API', () => {
         decidedAt: '2026-09-22T03:00:00.000Z',
       },
       capabilities: {
+        ...lead.capabilities,
         edit: false,
         push: false,
         withdrawApply: false,
@@ -301,6 +324,7 @@ describe('Lead API', () => {
         archivedAt: '2026-09-22T03:00:00.000Z',
       },
       capabilities: {
+        ...lead.capabilities,
         edit: false,
         push: false,
         withdrawApply: false,
@@ -347,6 +371,7 @@ describe('Lead API', () => {
       },
       history: [evidenceHistory],
       capabilities: {
+        ...lead.capabilities,
         edit: false,
         push: false,
         withdrawApply: false,

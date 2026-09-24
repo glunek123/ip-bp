@@ -125,6 +125,10 @@ describe('MaterialService', () => {
             reviewDecision: { is: { result: 'INFRINGEMENT' } },
           },
           {
+            status: 'TRANSFERRED_TO_NOTARY',
+            reviewDecision: { is: { result: 'INFRINGEMENT' } },
+          },
+          {
             status: 'ARCHIVED',
             evidenceDecision: { is: { result: 'NO_EVIDENCE' } },
           },
@@ -1690,6 +1694,63 @@ describe('MaterialService', () => {
       orderBy: { contentVersionId: 'asc' },
       select: { contentVersionId: true },
     });
+  });
+
+  it('uses the already granted evidence decision action for a handoff material selection', async () => {
+    const fixture = createFixture();
+    const transaction = createMaterialTransaction();
+    const leadId = '55555555-5555-4555-8555-555555555555';
+    fixture.access.buildLeadScope.mockImplementation((_actor, action) => {
+      if (action !== 'lead.evidence.decide')
+        throw new Error('unexpected read grant');
+      return Promise.resolve({ departmentId: actor.departmentId });
+    });
+    transaction.lead.findFirst.mockResolvedValue({
+      departmentId: actor.departmentId,
+      responsibleUserId: actor.userId,
+      teamId: null,
+    });
+    transaction.materialReference.findMany.mockResolvedValue([
+      { contentVersionId: 'version-a' },
+    ]);
+    transaction.material.findMany.mockResolvedValue([
+      availableMaterial(
+        'material-a',
+        'version-a',
+        'LEAD_SCREENSHOT',
+        'LEAD',
+        leadId,
+        'LEAD_SCREENSHOT',
+      ),
+    ]);
+    const reader = asTransactionClient(transaction);
+    await expect(
+      fixture.service.listCurrentReferenceVersionIds(
+        reader,
+        actor,
+        {
+          resourceType: 'lead',
+          resourceId: leadId,
+          purpose: 'LEAD_SCREENSHOT',
+        },
+        'lead.evidence.decide',
+      ),
+    ).resolves.toEqual(['version-a']);
+    await expect(
+      fixture.service.assertAvailableVersions(reader, actor, {
+        ownerType: 'LEAD',
+        ownerId: leadId,
+        category: 'LEAD_SCREENSHOT',
+        contentVersionIds: ['version-a'],
+        leadAction: 'lead.evidence.decide',
+      }),
+    ).resolves.toHaveLength(1);
+    expect(fixture.access.buildLeadScope).toHaveBeenCalledTimes(2);
+    expect(fixture.access.buildLeadScope).toHaveBeenCalledWith(
+      actor,
+      'lead.evidence.decide',
+      reader,
+    );
   });
 
   it.each([

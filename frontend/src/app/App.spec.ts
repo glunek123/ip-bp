@@ -57,6 +57,7 @@ beforeEach(() => {
       WAITING_PUSH: 0,
       WAITING_REVIEW: 0,
       WAITING_EVIDENCE_DECISION: 0,
+      TRANSFERRED_TO_NOTARY: 0,
       ARCHIVED: 0,
     },
     capabilities: { create: false },

@@ -15,6 +15,7 @@ const result = {
     WAITING_PUSH: 7,
     WAITING_REVIEW: 3,
     WAITING_EVIDENCE_DECISION: 2,
+    TRANSFERRED_TO_NOTARY: 0,
     ARCHIVED: 1,
   },
   capabilities: { create: true },

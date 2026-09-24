@@ -9,6 +9,7 @@ import LeadListPage from '../modules/leads/LeadListPage.vue';
 import LeadNewPage from '../modules/leads/LeadNewPage.vue';
 import LeadDetailPage from '../modules/leads/LeadDetailPage.vue';
 import LeadEditPage from '../modules/leads/LeadEditPage.vue';
+import NotaryMatterDetailPage from '../modules/leads/NotaryMatterDetailPage.vue';
 import LoginPage from '../modules/auth/LoginPage.vue';
 import PeopleAccessPage from '../modules/organization/PeopleAccessPage.vue';
 import ClientLeadListPage from '../modules/client/ClientLeadListPage.vue';
@@ -93,6 +94,15 @@ export const router = createRouter({
         audience: 'INTERNAL',
         section: '线索',
         breadcrumbs: ['线索', '线索详情'],
+      },
+    },
+    {
+      path: '/notary-matters/:id',
+      component: NotaryMatterDetailPage,
+      meta: {
+        audience: 'INTERNAL',
+        section: '线索',
+        breadcrumbs: ['线索', '取证批次'],
       },
     },
     {

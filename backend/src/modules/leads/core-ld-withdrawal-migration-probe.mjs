@@ -70,9 +70,40 @@ async function run() {
     );
     await assertUpgrade();
     await applyMigrations(
-      migrations.filter((name) => name >= '20260924010000'),
+      migrations.filter(
+        (name) => name >= '20260924010000' && name <= '20260924012000',
+      ),
+    );
+    await applyMigrations(
+      migrations.filter((name) => name === '20260924013000_add_notary_actions'),
+    );
+    await client.query('CREATE TABLE notary_offices (probe integer)');
+    let notaryFailureObserved = false;
+    try {
+      await applyMigrations(
+        migrations.filter(
+          (name) => name === '20260924014000_add_notary_handoff',
+        ),
+      );
+    } catch (error) {
+      if (!error.message.includes('already exists')) throw error;
+      notaryFailureObserved = true;
+      await client.query('ROLLBACK');
+    }
+    if (!notaryFailureObserved)
+      throw new Error('notary migration rollback probe did not fail');
+    const partialNotary = await client.query(
+      `SELECT count(*)::int AS count FROM information_schema.tables WHERE table_schema=$1 AND table_name='notary_matters'`,
+      [upgradeSchema],
+    );
+    if (partialNotary.rows[0].count !== 0)
+      throw new Error('failed notary migration left a partial matter table');
+    await client.query('DROP TABLE notary_offices');
+    await applyMigrations(
+      migrations.filter((name) => name >= '20260924014000'),
     );
     await assertEvidenceUpgrade();
+    await assertNotaryUpgrade();
     console.log('previous-schema upgrade and constraints passed');
   } finally {
     await client.query('SET search_path TO public');
@@ -535,6 +566,88 @@ async function assertEvidenceUpgrade() {
       archive.rows[0]?.archive_type !== 'NO_EVIDENCE'
     )
       throw new Error('evidence archive facts were not preserved');
+    await client.query('ROLLBACK');
+  } catch (error) {
+    await client.query('ROLLBACK');
+    throw error;
+  }
+}
+
+async function assertNotaryUpgrade() {
+  const oldFacts = await client.query(
+    `SELECT (SELECT count(*)::int FROM lead_review_decisions) AS decisions,
+            (SELECT count(*)::int FROM client_lead_review_receipts) AS receipts,
+            (SELECT count(*)::int FROM lead_withdrawal_applications) AS applications`,
+  );
+  if (
+    oldFacts.rows[0].decisions !== 3 ||
+    oldFacts.rows[0].receipts !== 2 ||
+    oldFacts.rows[0].applications !== 1
+  )
+    throw new Error('notary upgrade changed historical lead facts');
+  await client.query('BEGIN');
+  try {
+    const office = '14141414-1414-4414-8414-141414141414';
+    const matter = '15151515-1515-4515-8515-151515151515';
+    const product = '16161616-1616-4616-8616-161616161616';
+    const otherProduct = '17171717-1717-4717-8717-171717171717';
+    await client.query(
+      `INSERT INTO notary_offices(id,department_id,name,created_by_user_id) VALUES ($1,$2,'Probe Notary',$3)`,
+      [office, ids.department, ids.operator],
+    );
+    await client.query(
+      `INSERT INTO lead_products(id,lead_id,position,title,quantity,unit_price,comment_count,estimated_amount) VALUES ($1,$2,1,'Probe A',1,10,0,10),($3,$4,1,'Probe B',1,10,0,10)`,
+      [product, ids.leadA, otherProduct, ids.leadB],
+    );
+    const insert = `INSERT INTO notary_matters(id,business_no,department_id,source_lead_id,customer_id,rights_holder_id,responsible_user_id,notary_office_id,evidence_mode,batch_purpose,source_snapshot,created_by_user_id,from_lead_version,to_lead_version)
+      VALUES ($1,'NT-20260924-001',$2,$3,$4,$5,$6,$7,'ONLINE_PURCHASE','Probe batch','{}',$6,6,7)`;
+    await rejects(
+      insert,
+      [
+        matter,
+        ids.department,
+        ids.leadA,
+        ids.customerB,
+        ids.rights,
+        ids.operator,
+        office,
+      ],
+      '23503',
+    );
+    await client.query(insert, [
+      matter,
+      ids.department,
+      ids.leadA,
+      ids.customerA,
+      ids.rights,
+      ids.operator,
+      office,
+    ]);
+    await rejects(
+      `INSERT INTO notary_matter_products(notary_matter_id,source_lead_id,lead_product_id) VALUES ($1,$2,$3)`,
+      [matter, ids.leadA, otherProduct],
+      '23503',
+    );
+    await client.query(
+      `INSERT INTO notary_matter_products(notary_matter_id,source_lead_id,lead_product_id) VALUES ($1,$2,$3)`,
+      [matter, ids.leadA, product],
+    );
+    await rejects(
+      `UPDATE notary_matters SET batch_purpose='Changed' WHERE id=$1`,
+      [matter],
+      '55000',
+    );
+    await rejects(
+      `DELETE FROM notary_matter_products WHERE notary_matter_id=$1`,
+      [matter],
+      '55000',
+    );
+    const facts = await client.query(
+      `SELECT count(*)::int AS count FROM notary_matters WHERE source_lead_id=$1 AND customer_id=$2`,
+      [ids.leadA, ids.customerA],
+    );
+    if (facts.rows[0].count !== 1)
+      throw new Error('notary handoff source link missing');
     await client.query('ROLLBACK');
   } catch (error) {
     await client.query('ROLLBACK');

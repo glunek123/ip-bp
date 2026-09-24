@@ -54,16 +54,17 @@ describe('authentication routing', () => {
     );
   });
 
-  it.each(['/leads', '/leads/new', '/leads/lead-1', '/leads/lead-1/edit'])(
-    'protects the lead route %s',
-    async (path) => {
-      await router.push(path);
+  it.each([
+    '/leads',
+    '/leads/new',
+    '/leads/lead-1',
+    '/leads/lead-1/edit',
+    '/notary-matters/matter-1',
+  ])('protects the lead route %s', async (path) => {
+    await router.push(path);
 
-      expect(router.currentRoute.value.fullPath).toBe(
-        `/login?returnTo=${path}`,
-      );
-    },
-  );
+    expect(router.currentRoute.value.fullPath).toBe(`/login?returnTo=${path}`);
+  });
 
   it('keeps client and internal routes separated by principal type', async () => {
     auth.session = {

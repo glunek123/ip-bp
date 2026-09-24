@@ -66,6 +66,17 @@ const leadInclude = {
 
 const leadDetailInclude = {
   ...leadInclude,
+  notaryMatters: {
+    orderBy: [{ createdAt: 'asc' as const }, { id: 'asc' as const }],
+    select: {
+      id: true,
+      businessNo: true,
+      stage: true,
+      batchPurpose: true,
+      createdAt: true,
+      notaryOffice: { select: { name: true } },
+    },
+  },
   reviewDecisions: {
     select: {
       id: true,
@@ -392,14 +403,21 @@ export class LeadService {
       include: leadDetailInclude,
     });
     if (lead === null) throw this.notFound();
-    const [screenshotIds, edit, push, withdrawApply, evidenceDecide] =
-      await Promise.all([
-        this.currentScreenshotIds(actor, [lead.id]),
-        this.canEdit(actor, lead),
-        this.canPush(actor, lead),
-        this.canApplyWithdrawal(actor, lead),
-        this.canDecideEvidence(actor, lead),
-      ]);
+    const [
+      screenshotIds,
+      edit,
+      push,
+      withdrawApply,
+      evidenceDecide,
+      createEvidenceBatch,
+    ] = await Promise.all([
+      this.currentScreenshotIds(actor, [lead.id]),
+      this.canEdit(actor, lead),
+      this.canPush(actor, lead),
+      this.canApplyWithdrawal(actor, lead),
+      this.canDecideEvidence(actor, lead),
+      this.canCreateEvidenceBatch(actor, lead),
+    ]);
     const applications = lead.withdrawalApplications ?? [];
     const pending = applications.find(
       (application) =>
@@ -467,7 +485,22 @@ export class LeadService {
     );
     return {
       ...this.view(lead, screenshotIds.get(lead.id) ?? []),
-      capabilities: { edit, push, withdrawApply, evidenceDecide },
+      capabilities: {
+        edit,
+        push,
+        withdrawApply,
+        evidenceDecide,
+        transferToNotary: evidenceDecide,
+        createEvidenceBatch,
+      },
+      notaryMatters: lead.notaryMatters.map((matter) => ({
+        id: matter.id,
+        businessNo: matter.businessNo,
+        stage: matter.stage,
+        notaryOfficeName: matter.notaryOffice.name,
+        batchPurpose: matter.batchPurpose,
+        createdAt: matter.createdAt.toISOString(),
+      })),
       pendingWithdrawalApplication:
         pending === undefined
           ? null
@@ -532,6 +565,36 @@ export class LeadService {
       lead.activeReviewDecisionId === null ||
       lead.reviewDecision?.result !== 'INFRINGEMENT' ||
       lead.evidenceDecision !== null
+    )
+      return false;
+    const account = await this.database.userAccount.findUnique({
+      where: { id: actor.userId },
+      select: { accountType: true },
+    });
+    if (account?.accountType !== 'INTERNAL') return false;
+    try {
+      await this.access.authorizeLead(actor, 'lead.evidence.decide', {
+        departmentId: lead.departmentId,
+        responsibleUserId: lead.responsibleUserId,
+        ...(lead.teamId === null ? {} : { teamId: lead.teamId }),
+      });
+      return true;
+    } catch (error) {
+      if (error instanceof ForbiddenException) return false;
+      throw error;
+    }
+  }
+
+  private async canCreateEvidenceBatch(
+    actor: ActorContext,
+    lead: LeadDetailRecord,
+  ): Promise<boolean> {
+    if (
+      lead.status !== 'TRANSFERRED_TO_NOTARY' ||
+      lead.activeReviewDecisionId === null ||
+      lead.reviewDecision?.result !== 'INFRINGEMENT' ||
+      lead.evidenceDecision !== null ||
+      lead.notaryMatters.length === 0
     )
       return false;
     const account = await this.database.userAccount.findUnique({

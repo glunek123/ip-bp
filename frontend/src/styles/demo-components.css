@@ -206,6 +206,45 @@
   max-width: 100%;
 }
 
+.notary-choice-group {
+  display: grid;
+  gap: var(--s-2);
+  margin: var(--s-4) 0;
+  padding: var(--s-3) var(--s-4);
+  border: 1px solid var(--color-hairline);
+  border-radius: 7px;
+}
+
+.notary-choice-group legend {
+  padding: 0 var(--s-1);
+  color: var(--color-ink-muted);
+  font-size: 12px;
+  font-weight: 600;
+}
+
+.notary-choice {
+  display: flex;
+  min-height: 34px;
+  align-items: center;
+  gap: var(--s-2);
+  color: var(--color-ink);
+  font-size: 13px;
+}
+
+.notary-office-create {
+  margin-top: var(--s-4);
+}
+
+.notary-office-create__row {
+  display: flex;
+  flex-wrap: wrap;
+  gap: var(--s-2);
+}
+
+.notary-office-create__row .text-input {
+  flex: 1 1 220px;
+}
+
 .demo-form-actions {
   display: flex;
   align-items: center;

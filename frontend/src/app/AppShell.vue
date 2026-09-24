@@ -35,7 +35,10 @@ const breadcrumbs = computed(() =>
 );
 const isCustomerRoute = computed(() => route.path.startsWith('/customers'));
 const isLeadRoute = computed(
-  () => route.path === '/leads' || route.path.startsWith('/leads/'),
+  () =>
+    route.path === '/leads' ||
+    route.path.startsWith('/leads/') ||
+    route.path.startsWith('/notary-matters/'),
 );
 const isClientLeadRoute = computed(() =>
   route.path.startsWith('/client/leads'),

@@ -19,6 +19,7 @@ enum PermissionAction {
   LEAD_PUSH                    @map("lead.push")
   LEAD_WITHDRAW_APPLY          @map("lead.withdraw.apply")
   LEAD_EVIDENCE_DECIDE         @map("lead.evidence.decide")
+  NOTARY_OFFICE_MANAGE         @map("notary.office.manage")
   CLIENT_LEAD_READ             @map("client.lead.read")
   CLIENT_LEAD_REVIEW           @map("client.lead.review")
   CLIENT_LEAD_WITHDRAW_CONFIRM @map("client.lead.withdraw.confirm")
@@ -105,9 +106,35 @@ enum LeadStatus {
   WAITING_PUSH
   WAITING_REVIEW
   WAITING_EVIDENCE_DECISION
+  TRANSFERRED_TO_NOTARY
   ARCHIVED
 
   @@map("lead_status")
+}
+
+enum NotaryOfficeStatus {
+  ACTIVE
+  INACTIVE
+
+  @@map("notary_office_status")
+}
+
+enum NotaryMatterStage {
+  PENDING_EVIDENCE
+
+  @@map("notary_matter_stage")
+}
+
+enum NotaryEvidenceMode {
+  ONLINE_PURCHASE
+
+  @@map("notary_evidence_mode")
+}
+
+enum NotarySourceType {
+  LEAD
+
+  @@map("notary_source_type")
 }
 
 enum LeadReviewResult {
@@ -219,6 +246,8 @@ model Department {
   materialReferences          MaterialReference[]
   customerAdmissionReceipts   CustomerAdmissionReceipt[]
   leads                       Lead[]
+  notaryOffices               NotaryOffice[]
+  notaryMatters               NotaryMatter[]
   leadCommandReceipts         LeadCommandReceipt[]
   clientAccountBindings       CustomerAccountBinding[]
   leadReviewDecisions         LeadReviewDecision[]
@@ -263,6 +292,8 @@ model UserAccount {
   pushedLeads           Lead[]                    @relation("LeadPushedBy")
   reviewedLeadDecisions LeadReviewDecision[]      @relation("LeadReviewDecisionReviewer")
   evidenceDecisions     LeadEvidenceDecision[]    @relation("LeadEvidenceDecisionActor")
+  createdNotaryOffices  NotaryOffice[]             @relation("NotaryOfficeCreator")
+  createdNotaryMatters  NotaryMatter[]             @relation("NotaryMatterCreator")
   clientReviewReceipts  ClientLeadReviewReceipt[] @relation("ClientLeadReviewReceiptActor")
   createdAt             DateTime                  @default(now()) @map("created_at") @db.Timestamptz(3)
   updatedAt             DateTime                  @updatedAt @map("updated_at") @db.Timestamptz(3)
@@ -556,6 +587,7 @@ model Material {
   currentVersion   ContentVersion?     @relation("MaterialCurrentVersion", fields: [id, currentVersionId], references: [materialId, id], onDelete: Restrict, map: "materials_current_version_fkey")
   contentVersions  ContentVersion[]    @relation("MaterialContentVersions")
   references       MaterialReference[]
+  notarySelections NotaryMatterMaterial[]
   createdAt        DateTime            @default(now()) @map("created_at") @db.Timestamptz(3)
   updatedAt        DateTime            @updatedAt @map("updated_at") @db.Timestamptz(3)
 
@@ -581,6 +613,7 @@ model ContentVersion {
   derivedFromVersion   ContentVersion?      @relation("DerivedContentVersions", fields: [derivedFromVersionId], references: [id], onDelete: Restrict)
   derivedVersions      ContentVersion[]     @relation("DerivedContentVersions")
   materialReferences   MaterialReference[]
+  notarySelections     NotaryMatterMaterial[]
   createdAt            DateTime             @default(now()) @map("created_at") @db.Timestamptz(3)
 
   @@unique([materialId, id])
@@ -665,6 +698,7 @@ model Lead {
   reviewDecisions        LeadReviewDecision[]        @relation("LeadReviewHistory")
   withdrawalApplications LeadWithdrawalApplication[]
   evidenceDecision       LeadEvidenceDecision?
+  notaryMatters          NotaryMatter[]
   clientReviewReceipts   ClientLeadReviewReceipt[]
   createdAt              DateTime                    @default(now()) @map("created_at") @db.Timestamptz(3)
   updatedAt              DateTime                    @updatedAt @map("updated_at") @db.Timestamptz(3)
@@ -826,9 +860,93 @@ model LeadProduct {
   commentCount    Int     @default(0) @map("comment_count")
   estimatedAmount Decimal @map("estimated_amount") @db.Decimal(18, 2)
   lead            Lead    @relation(fields: [leadId], references: [id], onDelete: Cascade)
+  notarySelections NotaryMatterProduct[]
 
+  @@unique([id, leadId], map: "lead_products_id_lead_id_key")
   @@unique([leadId, position])
   @@map("lead_products")
+}
+
+model NotaryOffice {
+  id              String             @id @default(uuid()) @db.Uuid
+  departmentId    String             @map("department_id") @db.Uuid
+  name            String             @db.VarChar(200)
+  status          NotaryOfficeStatus @default(ACTIVE)
+  createdByUserId String             @map("created_by_user_id") @db.Uuid
+  department      Department         @relation(fields: [departmentId], references: [id], onDelete: Restrict)
+  createdBy       UserAccount        @relation("NotaryOfficeCreator", fields: [createdByUserId], references: [id], onDelete: Restrict)
+  matters         NotaryMatter[]
+  createdAt       DateTime           @default(now()) @map("created_at") @db.Timestamptz(3)
+  updatedAt       DateTime           @updatedAt @map("updated_at") @db.Timestamptz(3)
+
+  @@unique([departmentId, name], map: "notary_offices_department_name_key")
+  @@unique([id, departmentId], map: "notary_offices_id_department_key")
+  @@index([departmentId, status, name])
+  @@map("notary_offices")
+}
+
+model NotaryMatter {
+  id                    String                @id @default(uuid()) @db.Uuid
+  businessNo            String                @unique @map("business_no") @db.VarChar(100)
+  departmentId          String                @map("department_id") @db.Uuid
+  sourceType            NotarySourceType      @default(LEAD) @map("source_type")
+  sourceLeadId          String                @map("source_lead_id") @db.Uuid
+  customerId            String                @map("customer_id") @db.Uuid
+  rightsHolderId        String                @map("rights_holder_id") @db.Uuid
+  responsibleUserId     String                @map("responsible_user_id") @db.Uuid
+  notaryOfficeId        String                @map("notary_office_id") @db.Uuid
+  stage                 NotaryMatterStage     @default(PENDING_EVIDENCE)
+  version               Int                   @default(1)
+  evidenceMode          NotaryEvidenceMode    @map("evidence_mode")
+  batchPurpose          String                @map("batch_purpose") @db.VarChar(500)
+  sourceSnapshot        Json                  @map("source_snapshot")
+  createdByUserId       String                @map("created_by_user_id") @db.Uuid
+  fromLeadVersion       Int                   @map("from_lead_version")
+  toLeadVersion         Int                   @map("to_lead_version")
+  department            Department            @relation(fields: [departmentId], references: [id], onDelete: Restrict)
+  sourceLead            Lead                  @relation(fields: [sourceLeadId, customerId, departmentId], references: [id, customerId, departmentId], onDelete: Restrict, onUpdate: Restrict, map: "notary_matters_lead_identity_fkey")
+  notaryOffice          NotaryOffice          @relation(fields: [notaryOfficeId, departmentId], references: [id, departmentId], onDelete: Restrict, onUpdate: Restrict, map: "notary_matters_office_department_fkey")
+  createdBy             UserAccount           @relation("NotaryMatterCreator", fields: [createdByUserId], references: [id], onDelete: Restrict)
+  selectedProducts      NotaryMatterProduct[]
+  selectedMaterials     NotaryMatterMaterial[]
+  createdAt             DateTime              @default(now()) @map("created_at") @db.Timestamptz(3)
+
+  @@unique([id, sourceLeadId], map: "notary_matters_id_lead_key")
+  @@unique([id, departmentId], map: "notary_matters_id_department_key")
+  @@index([departmentId, sourceLeadId, createdAt])
+  @@map("notary_matters")
+}
+
+model NotaryMatterProduct {
+  notaryMatterId String       @map("notary_matter_id") @db.Uuid
+  sourceLeadId   String       @map("source_lead_id") @db.Uuid
+  leadProductId  String       @map("lead_product_id") @db.Uuid
+  matter         NotaryMatter @relation(fields: [notaryMatterId, sourceLeadId], references: [id, sourceLeadId], onDelete: Restrict, onUpdate: Restrict, map: "notary_matter_products_matter_lead_fkey")
+  product        LeadProduct  @relation(fields: [leadProductId, sourceLeadId], references: [id, leadId], onDelete: Restrict, onUpdate: Restrict, map: "notary_matter_products_product_lead_fkey")
+
+  @@id([notaryMatterId, leadProductId])
+  @@map("notary_matter_products")
+}
+
+model NotaryMatterMaterial {
+  notaryMatterId  String         @map("notary_matter_id") @db.Uuid
+  departmentId    String         @map("department_id") @db.Uuid
+  materialId      String         @map("material_id") @db.Uuid
+  contentVersionId String        @map("content_version_id") @db.Uuid
+  matter          NotaryMatter   @relation(fields: [notaryMatterId, departmentId], references: [id, departmentId], onDelete: Restrict, onUpdate: Restrict, map: "notary_matter_materials_matter_department_fkey")
+  material        Material       @relation(fields: [materialId, departmentId], references: [id, departmentId], onDelete: Restrict, onUpdate: Restrict, map: "notary_matter_materials_material_department_fkey")
+  contentVersion  ContentVersion @relation(fields: [materialId, contentVersionId], references: [materialId, id], onDelete: Restrict, onUpdate: Restrict, map: "notary_matter_materials_content_version_fkey")
+
+  @@id([notaryMatterId, contentVersionId])
+  @@map("notary_matter_materials")
+}
+
+model NotaryMatterNumberCounter {
+  businessDate DateTime @id @map("business_date") @db.Date
+  lastValue    Int      @default(0) @map("last_value")
+  updatedAt    DateTime @updatedAt @map("updated_at") @db.Timestamptz(3)
+
+  @@map("notary_matter_number_counters")
 }
 
 model LeadInfringement {

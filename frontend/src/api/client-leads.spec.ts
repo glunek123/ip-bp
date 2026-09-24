@@ -91,6 +91,13 @@ const noEvidenceLead = {
   },
   capabilities: { review: false, confirmWithdrawal: false },
 };
+const transferredLead = {
+  ...lead,
+  status: 'TRANSFERRED_TO_NOTARY',
+  version: 4,
+  reviewDecision: reviewedLead.reviewDecision,
+  capabilities: { review: false, confirmWithdrawal: false },
+};
 
 beforeEach(() => vi.resetAllMocks());
 
@@ -113,6 +120,31 @@ describe('client lead API', () => {
     http.getJson.mockResolvedValue(lead);
     await expect(getClientLead('lead/1')).resolves.toEqual(lead);
     expect(http.getJson).toHaveBeenLastCalledWith('/client/leads/lead%2F1', {});
+  });
+
+  it('keeps transferred leads in the processed client view without internal matter fields', async () => {
+    http.getJson.mockResolvedValue({
+      items: [transferredLead],
+      total: 1,
+      page: 1,
+      pageSize: 20,
+    });
+    await expect(listClientLeads('PROCESSED')).resolves.toMatchObject({
+      items: [{ status: 'TRANSFERRED_TO_NOTARY' }],
+    });
+    expect(http.getJson).toHaveBeenCalledWith(
+      '/client/leads?view=PROCESSED&page=1&pageSize=20',
+      {},
+    );
+    http.getJson.mockResolvedValueOnce({
+      items: [{ ...transferredLead, notaryMatters: [] }],
+      total: 1,
+      page: 1,
+      pageSize: 20,
+    });
+    await expect(listClientLeads('PROCESSED')).rejects.toMatchObject({
+      code: 'INVALID_RESPONSE',
+    });
   });
 
   it('decodes pending withdrawal and submits confirmation with version and key', async () => {

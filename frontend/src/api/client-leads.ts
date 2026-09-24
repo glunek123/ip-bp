@@ -39,7 +39,11 @@ export type ClientLeadProduct = {
 export type ClientLead = {
   id: string;
   businessNo: string;
-  status: 'WAITING_REVIEW' | 'WAITING_EVIDENCE_DECISION' | 'ARCHIVED';
+  status:
+    | 'WAITING_REVIEW'
+    | 'WAITING_EVIDENCE_DECISION'
+    | 'TRANSFERRED_TO_NOTARY'
+    | 'ARCHIVED';
   version: number;
   caseType: string;
   infringementTypes: string[];
@@ -330,6 +334,7 @@ function isClientLead(value: unknown): value is ClientLead {
     typeof value.businessNo === 'string' &&
     (value.status === 'WAITING_REVIEW' ||
       value.status === 'WAITING_EVIDENCE_DECISION' ||
+      value.status === 'TRANSFERRED_TO_NOTARY' ||
       value.status === 'ARCHIVED') &&
     Number.isInteger(value.version) &&
     (value.version as number) >= 1 &&
@@ -367,6 +372,15 @@ function isClientLead(value: unknown): value is ClientLead {
       (value.status === 'WAITING_EVIDENCE_DECISION' &&
         isClientReviewDecision(value.reviewDecision) &&
         value.reviewDecision.result === 'INFRINGEMENT' &&
+        value.pendingWithdrawalApplication === null &&
+        isRecord(value.capabilities) &&
+        hasExactKeys(value.capabilities, ['review', 'confirmWithdrawal']) &&
+        value.capabilities.review === false &&
+        value.capabilities.confirmWithdrawal === false) ||
+      (value.status === 'TRANSFERRED_TO_NOTARY' &&
+        isClientReviewDecision(value.reviewDecision) &&
+        value.reviewDecision.result === 'INFRINGEMENT' &&
+        value.evidenceDecision === null &&
         value.pendingWithdrawalApplication === null &&
         isRecord(value.capabilities) &&
         hasExactKeys(value.capabilities, ['review', 'confirmWithdrawal']) &&
@@ -440,6 +454,7 @@ export async function listClientLeads(
             (item.status === 'ARCHIVED' &&
               item.pendingWithdrawalApplication !== null)
           : item.status === 'WAITING_EVIDENCE_DECISION' ||
+            item.status === 'TRANSFERRED_TO_NOTARY' ||
             (item.status === 'ARCHIVED' &&
               item.pendingWithdrawalApplication === null)),
     ) ||

@@ -172,9 +172,11 @@ onBeforeUnmount(() => request?.abort());
                       ? '待确认撤回'
                       : currentView !== 'processed'
                         ? '线索待审核'
-                        : lead.reviewDecision?.result === 'NO_INFRINGEMENT'
-                          ? '已判定不侵权并归档'
-                          : '已确认侵权'
+                        : lead.status === 'TRANSFERRED_TO_NOTARY'
+                          ? '已进入公证流程'
+                          : lead.reviewDecision?.result === 'NO_INFRINGEMENT'
+                            ? '已判定不侵权并归档'
+                            : '已确认侵权'
                   }}</span>
                 </td>
                 <td>{{ lead.rightsHolderName }}</td>

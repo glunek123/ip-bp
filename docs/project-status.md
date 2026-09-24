@@ -8,7 +8,7 @@
 
 ## 当前任务
 
-**CORE-LD-006｜运营确认取证并移交（路线图唯一Current）**：CORE-LD-005已完成，候选、Review及门禁结果见[验证记录](spec/v0.1/VALIDATION.md)。下一步按已确认主线设计CORE-LD-006，CORE-NT-001为唯一Next；本次未实施006。
+**CORE-LD-006｜运营确认取证并移交（路线图唯一Current，实施中）**：CORE-LD-005已完成，候选、Review及门禁结果见[验证记录](spec/v0.1/VALIDATION.md)。本轮在独立开发分支实施006并验证；完成前不推进Current／Next。CORE-NT-001仍为唯一Next。
 
 ## 已实现
 

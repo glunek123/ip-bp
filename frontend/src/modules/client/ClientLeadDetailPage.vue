@@ -374,7 +374,9 @@ onBeforeUnmount(() => request?.abort());
                 ? '线索待审核'
                 : lead.status === 'WAITING_EVIDENCE_DECISION'
                   ? '线索待确认'
-                  : '线索已归档'
+                  : lead.status === 'TRANSFERRED_TO_NOTARY'
+                    ? '已进入公证流程'
+                    : '线索已归档'
             }}</span>
             <h1>{{ lead.businessNo }}</h1>
             <p>推送于 {{ formatTime(lead.pushedAt) }}</p>
@@ -536,6 +538,14 @@ onBeforeUnmount(() => request?.abort());
                 "
               >
                 下一步：等待运营确认是否取证
+              </p>
+              <p
+                v-if="
+                  lead.reviewDecision.result === 'INFRINGEMENT' &&
+                  lead.status === 'TRANSFERRED_TO_NOTARY'
+                "
+              >
+                运营已将线索移交公证流程；此页面仍只展示本企业线索信息。
               </p>
               <p v-if="lead.reviewDecision.result === 'NO_INFRINGEMENT'">
                 归档时间：{{ formatTime(lead.reviewDecision.archivedAt) }}

@@ -186,6 +186,10 @@ export class ClientLeadService {
                 reviewDecision: { is: { result: 'INFRINGEMENT' as const } },
               },
               {
+                status: 'TRANSFERRED_TO_NOTARY' as const,
+                reviewDecision: { is: { result: 'INFRINGEMENT' as const } },
+              },
+              {
                 status: 'ARCHIVED' as const,
                 evidenceDecision: { is: { result: 'NO_EVIDENCE' as const } },
               },
@@ -236,6 +240,10 @@ export class ClientLeadService {
           { status: 'WAITING_REVIEW', activeReviewDecisionId: null },
           {
             status: 'WAITING_EVIDENCE_DECISION',
+            reviewDecision: { is: { result: 'INFRINGEMENT' } },
+          },
+          {
+            status: 'TRANSFERRED_TO_NOTARY',
             reviewDecision: { is: { result: 'INFRINGEMENT' } },
           },
           {

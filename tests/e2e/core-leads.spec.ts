@@ -17,6 +17,9 @@ import {
   countLeadEvidenceDecisions,
   countLeadEvidenceReceipts,
   countLeadEvidenceAudits,
+  countNotaryMatters,
+  countNotaryHandoffReceipts,
+  countNotaryHandoffAudits,
   countLeadReviewDecisions,
   countLeadWithdrawalApplications,
   countLeadWithdrawalAudits,
@@ -41,6 +44,7 @@ import {
   rejectLeadPushReceiptWrites,
   rejectLeadEvidenceDecisionWrites,
   rejectLeadEvidenceReceiptWrites,
+  rejectNotaryHandoffReceiptWrites,
   rejectLeadReviewDecisionWrites,
   rejectClientLeadReviewReceiptWrites,
   rejectWithdrawalApplicationWrites,
@@ -225,6 +229,29 @@ function decideNoEvidence(
   return request.post(`/api/v1/leads/${leadId}/evidence-decisions`, {
     headers: { ...headers, 'Idempotency-Key': key },
     data: { result: 'NO_EVIDENCE', reason, expectedVersion },
+  });
+}
+
+function transferToNotary(
+  request: APIRequestContext,
+  leadId: string,
+  officeId: string,
+  selectedProductIds: string[],
+  expectedVersion: number,
+  key = randomUUID(),
+  createNewBatch = false,
+) {
+  return request.post(`/api/v1/leads/${leadId}/notary-matters`, {
+    headers: { ...authorizationA, 'Idempotency-Key': key },
+    data: {
+      selectedProductIds,
+      selectedContentVersionIds: [],
+      notaryOfficeId: officeId,
+      evidenceMode: 'ONLINE_PURCHASE',
+      batchPurpose: createNewBatch ? '第二批购买取证' : '第一批购买取证',
+      expectedVersion,
+      ...(createNewBatch ? { createNewBatch: true } : {}),
+    },
   });
 }
 
@@ -700,6 +727,338 @@ test('real operator and client logins persist infringement review, screenshot an
   await expect(
     page.locator('[data-test="client-evidence-decision-record"]'),
   ).toContainText(noEvidenceReason);
+});
+
+test('real operator and client logins transfer an infringement-reviewed lead to notary and retain its source', async ({
+  page,
+}) => {
+  const clientUsername = `notary-client-${randomUUID().slice(0, 8)}`;
+  const clientPassword = 'notary client password 2026';
+  const officeName = `浏览器公证处-${randomUUID().slice(0, 8)}`;
+
+  await page.goto('/customers');
+  await expect(page).toHaveURL(/\/login\?returnTo=/u);
+  await page.getByLabel('用户名').fill(coreLeadFixtures.operatorUsername);
+  await page.getByLabel('密码').fill(coreLeadFixtures.operatorPassword);
+  await page.getByRole('button', { name: '登录', exact: true }).click();
+  await expect(page).toHaveURL(/\/customers$/u);
+
+  await page.getByRole('link', { name: '已准入客户' }).click();
+  await expect(
+    page.locator('[data-test="client-account-panel"]'),
+  ).toBeVisible();
+  await page.getByLabel('客户侧使用人姓名').fill('公证闭环审核员');
+  await page.getByLabel('用户名').fill(clientUsername);
+  await page.getByLabel('初始密码').fill(clientPassword);
+  await page.locator('[data-test="create-client-account"]').click();
+  await expect(page.getByText('账号已创建并绑定')).toBeVisible();
+
+  await page.locator('[data-test="lead-nav"]').click();
+  await page.locator('[data-test="create-lead"]').click();
+  await page
+    .locator('select[name="customerId"]')
+    .selectOption(coreLeadFixtures.admittedCustomer);
+  await page.getByLabel('拟办理业务类型').selectOption('CIVIL');
+  await page.getByLabel('发现时间').fill('2026-09-24T10:30');
+  await page.getByLabel('线索来源').selectOption('ONLINE');
+  await page.getByLabel('发现平台').selectOption('TAOBAO');
+  await page.getByLabel('店铺名称').fill('公证移交闭环店铺');
+  await page.getByLabel('商标权').check();
+  await page.locator('input[name="productTitle-0"]').fill('公证移交商品');
+  await page.locator('input[name="quantity-0"]').fill('2');
+  await page.locator('input[name="unitPrice-0"]').fill('8.00');
+  await page.locator('input[name="commentCount-0"]').fill('0');
+  await page.locator('input[name="screenshots"]').setInputFiles({
+    name: 'notary-source.jpg',
+    mimeType: 'image/jpeg',
+    buffer: jpegBytes,
+  });
+  await page.getByRole('button', { name: '创建线索' }).click();
+  await expect(page.getByRole('heading', { name: /^LD-/u })).toBeVisible();
+  const leadId = page.url().split('/').at(-1)!;
+
+  page.once('dialog', (dialog) => dialog.accept());
+  await page.locator('[data-test="push-lead"]').click();
+  await expect(page.locator('[data-test="push-success"]')).toContainText(
+    '已推送给客户审核',
+  );
+  await page.getByRole('button', { name: '退出登录' }).click();
+  await expect(page).toHaveURL(/\/login$/u);
+  await page.getByLabel('用户名').fill(clientUsername);
+  await page.getByLabel('密码').fill(clientPassword);
+  await page.getByRole('button', { name: '登录', exact: true }).click();
+  await expect(page).toHaveURL(/\/client\/leads$/u);
+  const clientRow = page.locator('[data-test="client-lead-row"]');
+  await expect(clientRow).toContainText('公证移交闭环店铺');
+  await clientRow.getByRole('link').click();
+  await expect(page).toHaveURL(
+    new RegExp(`/client/leads/${leadId}(\\?|$)`, 'u'),
+  );
+  await expect(page.getByText('notary-source.jpg')).toBeVisible();
+  page.once('dialog', (dialog) => dialog.accept());
+  await page.locator('[data-test="confirm-infringement"]').click();
+  await expect(page.locator('.page-head .pill')).toHaveText('线索待确认');
+  await expect(
+    page.locator('[data-test="client-review-record"]'),
+  ).toContainText('确认侵权');
+
+  await page.getByRole('button', { name: '退出登录' }).click();
+  await expect(page).toHaveURL(/\/login$/u);
+  await page.getByLabel('用户名').fill(coreLeadFixtures.operatorUsername);
+  await page.getByLabel('密码').fill(coreLeadFixtures.operatorPassword);
+  await page.getByRole('button', { name: '登录', exact: true }).click();
+  await expect(page).toHaveURL(/\/customers$/u);
+  await page.goto('/leads?status=WAITING_EVIDENCE_DECISION');
+  const operatorRow = page
+    .locator('[data-test="lead-row"]')
+    .filter({ hasText: '公证移交闭环店铺' });
+  await expect(operatorRow).toContainText('线索待确认');
+  await operatorRow.getByRole('link').click();
+  await expect(
+    page.locator('[data-test="client-review-record"]'),
+  ).toContainText('确认侵权');
+
+  await expect(
+    page.locator('[data-test^="select-product-"]').first(),
+  ).toBeVisible();
+  await page.locator('[data-test^="select-product-"]').first().check();
+  const evidence = page.locator('[data-test^="select-evidence-"]').first();
+  await expect(evidence).toBeVisible();
+  await evidence.check();
+  await page.locator('[data-test="new-notary-office-name"]').fill(officeName);
+  await page.locator('[data-test="create-notary-office"]').click();
+  await expect(page.locator('[data-test="notary-office"]')).toContainText(
+    officeName,
+  );
+  await page.locator('[data-test="batch-purpose"]').fill('首次线上购买取证');
+  page.once('dialog', (dialog) => {
+    expect(dialog.message()).toContain('已移交公证');
+    dialog.accept();
+  });
+  await page.locator('[data-test="transfer-to-notary"]').click();
+  await expect(page.locator('.page-head .pill')).toHaveText('已移交公证');
+  await expect(
+    page.locator('[data-test="lead-products-table"]').getByText('公证移交商品'),
+  ).toBeVisible();
+  const matterLink = page.locator('[data-test^="matter-link-"]').first();
+  await expect(matterLink).toBeVisible();
+  await expect(matterLink.locator('..')).toContainText(officeName);
+  const matterHref = await matterLink.getAttribute('href');
+  expect(matterHref).toMatch(/^\/notary-matters\/[0-9a-f-]+$/iu);
+  await matterLink.click();
+  await expect(page).toHaveURL(new RegExp(`${matterHref}(\\?|$)`, 'u'));
+  const matterDetail = page.locator('[data-test="notary-matter-detail"]');
+  await expect(page.locator('.page-head .pill')).toHaveText('待公证处取证');
+  await expect(matterDetail).toContainText(officeName);
+  await expect(
+    page.locator('[data-test="notary-matter-products"]'),
+  ).toContainText('公证移交商品');
+  await expect(
+    page.locator('[data-test="notary-matter-materials"]'),
+  ).toContainText('notary-source.jpg');
+  const matterDownload = page.waitForEvent('download');
+  await page.locator('[data-test^="download-matter-material-"]').click();
+  expect(await readFile(await (await matterDownload).path())).toEqual(
+    jpegBytes,
+  );
+  await page.reload();
+  await expect(matterDetail).toContainText('首次线上购买取证');
+  await expect(
+    page.locator('[data-test="notary-matter-materials"]'),
+  ).toContainText('notary-source.jpg');
+
+  await page.getByRole('button', { name: '退出登录' }).click();
+  await page.getByLabel('用户名').fill(clientUsername);
+  await page.getByLabel('密码').fill(clientPassword);
+  await page.getByRole('button', { name: '登录', exact: true }).click();
+  await page.locator('[data-test="client-view-processed"]').click();
+  const processedRow = page
+    .locator('[data-test="client-lead-row"]')
+    .filter({ hasText: '公证移交闭环店铺' });
+  await expect(processedRow).toBeVisible();
+  await processedRow.getByRole('link').click();
+  await expect(page).toHaveURL(
+    new RegExp(`/client/leads/${leadId}(\\?|$)`, 'u'),
+  );
+  await expect(page.getByText('公证移交商品')).toBeVisible();
+  await expect(page.getByText('notary-source.jpg')).toBeVisible();
+  await expect(page.getByText(/运营已将线索移交公证流程/u)).toBeVisible();
+  const download = page.waitForEvent('download');
+  await page.locator('[data-test^="download-screenshot-"]').click();
+  const originalDownload = await download;
+  await expect(originalDownload.suggestedFilename()).toBe('notary-source.jpg');
+  expect(await readFile(await originalDownload.path())).toEqual(jpegBytes);
+  await page.reload();
+  await expect(page.getByText('公证移交商品')).toBeVisible();
+  await expect(page.getByText('notary-source.jpg')).toBeVisible();
+});
+
+test('notary handoff serializes competing batches and rolls back when audit or receipt cannot persist', async ({
+  request,
+}) => {
+  const client = await createClientAccount(request);
+  const csrf = await loginClient(request, client.username, client.password);
+  const officeResponse = await request.post('/api/v1/notary-offices', {
+    headers: authorizationA,
+    data: { name: `并发测试公证处-${randomUUID().slice(0, 8)}` },
+  });
+  expect(officeResponse.status(), await officeResponse.text()).toBe(201);
+  const office: { id: string } = await officeResponse.json();
+  const created = await createLead(
+    request,
+    leadInput({
+      products: [
+        {
+          title: '取证商品甲',
+          quantity: 1,
+          unitPrice: '10.00',
+          commentCount: 0,
+        },
+        {
+          title: '取证商品乙',
+          quantity: 1,
+          unitPrice: '20.00',
+          commentCount: 0,
+        },
+      ],
+    }),
+  );
+  expect(created.status(), await created.text()).toBe(201);
+  const lead: { id: string } = await created.json();
+  expect((await pushLead(request, lead.id, 1)).status()).toBe(201);
+  expect((await reviewLead(request, lead.id, 2, csrf)).status()).toBe(201);
+  const products = (await getLead(lead.id))!.products;
+  const firstKey = randomUUID();
+  const first = transferToNotary(
+    request,
+    lead.id,
+    office.id,
+    [products[0].id],
+    3,
+    firstKey,
+  );
+  const competitor = transferToNotary(
+    request,
+    lead.id,
+    office.id,
+    [products[1].id],
+    3,
+  );
+  const outcomes = await Promise.all([first, competitor]);
+  expect(outcomes.map((response) => response.status()).sort()).toEqual([
+    201, 409,
+  ]);
+  expect(await getLead(lead.id)).toMatchObject({
+    status: 'TRANSFERRED_TO_NOTARY',
+    version: 4,
+  });
+  expect(await countNotaryMatters(lead.id)).toBe(1);
+  expect(await countNotaryHandoffReceipts(lead.id)).toBe(1);
+  expect(await countNotaryHandoffAudits(lead.id)).toBe(1);
+  const winning = outcomes.find((response) => response.status() === 201)!;
+  const winningResult = await winning.json();
+  const winningProduct = winningResult.selectedProductIds[0] as string;
+  const winningKey = winningProduct === products[0].id ? firstKey : null;
+  if (winningKey !== null) {
+    const replay = await transferToNotary(
+      request,
+      lead.id,
+      office.id,
+      [products[0].id],
+      3,
+      firstKey,
+    );
+    expect(replay.status()).toBe(201);
+    expect(await replay.json()).toEqual(winningResult);
+  }
+  const nextProduct = products.find(
+    (product) => product.id !== winningProduct,
+  )!;
+  const second = await transferToNotary(
+    request,
+    lead.id,
+    office.id,
+    [nextProduct.id],
+    4,
+    randomUUID(),
+    true,
+  );
+  expect(second.status(), await second.text()).toBe(201);
+  const secondResult = await second.json();
+  expect(secondResult).toMatchObject({
+    leadId: lead.id,
+    leadVersion: 5,
+    selectedProductIds: [nextProduct.id],
+  });
+  expect(await countNotaryMatters(lead.id)).toBe(2);
+  expect(await countNotaryHandoffReceipts(lead.id)).toBe(2);
+  expect(await countNotaryHandoffAudits(lead.id)).toBe(2);
+  const sourceDetail = await request.get(
+    `/api/v1/notary-matters/${secondResult.id}`,
+    { headers: authorizationA },
+  );
+  expect(sourceDetail.status(), await sourceDetail.text()).toBe(200);
+  expect(await sourceDetail.json()).toMatchObject({
+    sourceLead: { id: lead.id },
+    selectedProductIds: [nextProduct.id],
+  });
+
+  try {
+    for (const reject of [
+      () => rejectAuditWrites('lead.transferred_to_notary'),
+      () => rejectNotaryHandoffReceiptWrites(),
+    ]) {
+      const candidate = await createInfringementReviewedLead(request, csrf);
+      const candidateProduct = (await getLead(candidate.id))!.products[0].id;
+      await reject();
+      const failed = await transferToNotary(
+        request,
+        candidate.id,
+        office.id,
+        [candidateProduct],
+        3,
+      );
+      expect(failed.status()).toBeGreaterThanOrEqual(500);
+      expect(await getLead(candidate.id)).toMatchObject({
+        status: 'WAITING_EVIDENCE_DECISION',
+        version: 3,
+      });
+      expect(await countNotaryMatters(candidate.id)).toBe(0);
+      expect(await countNotaryHandoffReceipts(candidate.id)).toBe(0);
+      expect(await countNotaryHandoffAudits(candidate.id)).toBe(0);
+    }
+  } finally {
+    await allowInjectedFailures();
+  }
+
+  const decideOnlyCandidate = await createInfringementReviewedLead(
+    request,
+    csrf,
+  );
+  const decideOnlyProduct = (await getLead(decideOnlyCandidate.id))!.products[0]
+    .id;
+  await setGrant('lead.read', false);
+  try {
+    const transferred = await transferToNotary(
+      request,
+      decideOnlyCandidate.id,
+      office.id,
+      [decideOnlyProduct],
+      3,
+    );
+    expect(transferred.status(), await transferred.text()).toBe(201);
+    expect(await countNotaryMatters(decideOnlyCandidate.id)).toBe(1);
+    const matter = await transferred.json();
+    expect(
+      (
+        await request.get(`/api/v1/notary-matters/${matter.id}`, {
+          headers: authorizationA,
+        })
+      ).status(),
+    ).toBe(403);
+  } finally {
+    await setGrant('lead.read', true);
+  }
 });
 
 test('real operator and client logins archive a no-infringement review and preserve it across refresh and processed view', async ({

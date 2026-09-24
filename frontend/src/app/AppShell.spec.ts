@@ -39,6 +39,7 @@ beforeEach(() => {
       WAITING_PUSH: 7,
       WAITING_REVIEW: 3,
       WAITING_EVIDENCE_DECISION: 2,
+      TRANSFERRED_TO_NOTARY: 0,
       ARCHIVED: 1,
     },
     capabilities: { create: true },
@@ -99,11 +100,12 @@ describe('AppShell', () => {
     const { wrapper } = await mountShell();
     const counters = wrapper.findAll('[data-test="lead-counter"]');
 
-    expect(counters).toHaveLength(4);
+    expect(counters).toHaveLength(5);
     expect(counters.map((item) => item.text())).toEqual([
       '待推送7',
       '线索待审核3',
       '线索待确认2',
+      '已移交公证0',
       '线索已归档1',
     ]);
     expect(counters[0]!.attributes('href')).toContain('status=WAITING_PUSH');

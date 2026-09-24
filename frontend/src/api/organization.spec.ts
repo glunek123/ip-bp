@@ -102,8 +102,13 @@ const context = {
     },
     {
       action: 'LEAD_EVIDENCE_DECIDE',
-      label: '决定不取证归档',
+      label: '确认取证或不取证',
       scopes: ['SELF', 'TEAM', 'DEPARTMENT'],
+    },
+    {
+      action: 'NOTARY_OFFICE_MANAGE',
+      label: '管理公证处',
+      scopes: ['DEPARTMENT'],
     },
     {
       action: 'USER_READ',
@@ -144,7 +149,7 @@ const context = {
 };
 
 describe('organization API', () => {
-  it('decodes the exact 17-action backend permission catalog', async () => {
+  it('decodes the exact 18-action backend permission catalog', async () => {
     vi.stubGlobal(
       'fetch',
       vi.fn().mockResolvedValue(new Response(JSON.stringify(context))),
@@ -162,6 +167,7 @@ describe('organization API', () => {
       'LEAD_PUSH',
       'LEAD_WITHDRAW_APPLY',
       'LEAD_EVIDENCE_DECIDE',
+      'NOTARY_OFFICE_MANAGE',
       'USER_READ',
       'USER_MANAGE',
       'TEAM_READ',

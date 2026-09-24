@@ -46,7 +46,10 @@ export type AssertAvailableVersionsInput = Readonly<{
   contentVersionIds: readonly string[];
   minCount?: number;
   maxCount?: number;
-  leadAction?: Extract<LeadAction, 'lead.read' | 'lead.edit'>;
+  leadAction?: Extract<
+    LeadAction,
+    'lead.read' | 'lead.edit' | 'lead.evidence.decide'
+  >;
 }>;
 
 type CanonicalMaterialVersionFact = Readonly<{
@@ -425,7 +428,9 @@ export class MaterialService {
     if (
       input.leadAction !== undefined &&
       (input.ownerType !== 'LEAD' ||
-        (input.leadAction !== 'lead.read' && input.leadAction !== 'lead.edit'))
+        !['lead.read', 'lead.edit', 'lead.evidence.decide'].includes(
+          input.leadAction,
+        ))
     ) {
       throw this.invalidVersion();
     }
@@ -561,6 +566,10 @@ export class MaterialService {
     reader: MaterialReferenceReader,
     actor: ActorContext,
     input: CurrentLeadReferenceInput,
+    leadAction: Extract<
+      LeadAction,
+      'lead.read' | 'lead.edit' | 'lead.evidence.decide'
+    > = 'lead.read',
   ): Promise<readonly string[]> {
     this.assertCurrentLeadReferenceInput(input);
     await this.authorizeOwner(
@@ -570,7 +579,7 @@ export class MaterialService {
       'read',
       reader,
       reader,
-      'lead.read',
+      leadAction,
     );
     return this.readCurrentReferenceVersionIds(reader, actor, input);
   }
@@ -1105,7 +1114,10 @@ export class MaterialService {
     operation: 'read' | 'write',
     reader: MaterialAuthorizationReader = this.database,
     snapshotReader?: AccessControlSnapshotReader,
-    leadAction?: Extract<LeadAction, 'lead.read' | 'lead.edit'>,
+    leadAction?: Extract<
+      LeadAction,
+      'lead.read' | 'lead.edit' | 'lead.evidence.decide'
+    >,
   ): Promise<void> {
     if (actor.clientCustomerId !== undefined) {
       if (operation !== 'read' || ownerType !== 'LEAD') throw this.forbidden();
@@ -1120,6 +1132,10 @@ export class MaterialService {
             { status: 'WAITING_REVIEW', activeReviewDecisionId: null },
             {
               status: 'WAITING_EVIDENCE_DECISION',
+              reviewDecision: { is: { result: 'INFRINGEMENT' } },
+            },
+            {
+              status: 'TRANSFERRED_TO_NOTARY',
               reviewDecision: { is: { result: 'INFRINGEMENT' } },
             },
             {

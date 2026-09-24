@@ -332,6 +332,10 @@ describe('ClientLeadService', () => {
               reviewDecision: { is: { result: 'INFRINGEMENT' } },
             },
             {
+              status: 'TRANSFERRED_TO_NOTARY',
+              reviewDecision: { is: { result: 'INFRINGEMENT' } },
+            },
+            {
               status: 'ARCHIVED',
               evidenceDecision: { is: { result: 'NO_EVIDENCE' } },
             },
@@ -439,6 +443,10 @@ describe('ClientLeadService', () => {
             { status: 'WAITING_REVIEW', activeReviewDecisionId: null },
             {
               status: 'WAITING_EVIDENCE_DECISION',
+              reviewDecision: { is: { result: 'INFRINGEMENT' } },
+            },
+            {
+              status: 'TRANSFERRED_TO_NOTARY',
               reviewDecision: { is: { result: 'INFRINGEMENT' } },
             },
             {

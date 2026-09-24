@@ -26,6 +26,15 @@ const archivedLead = {
     archivedAt: '2026-09-22T03:00:00.000Z',
   },
 };
+const transferredLead = {
+  ...lead,
+  status: 'TRANSFERRED_TO_NOTARY',
+  reviewDecision: {
+    result: 'INFRINGEMENT',
+    reviewerDisplayName: '企业审核员',
+    decidedAt: '2026-09-22T03:00:00.000Z',
+  },
+};
 
 async function mountPage(path = '/client/leads') {
   const router = createRouter({
@@ -53,6 +62,20 @@ beforeEach(() => {
 });
 
 describe('ClientLeadListPage', () => {
+  it('labels a transferred infringement decision in the processed queue without matter data', async () => {
+    api.listClientLeads.mockResolvedValueOnce({
+      items: [transferredLead],
+      total: 1,
+      page: 1,
+      pageSize: 20,
+    });
+    const { wrapper } = await mountPage('/client/leads?view=processed');
+    const row = wrapper.get('[data-test="client-lead-row"]');
+    expect(row.text()).toContain('已进入公证流程');
+    expect(row.text()).not.toContain('公证处');
+    expect(wrapper.text()).not.toContain('NT-');
+  });
+
   it('renders only the enterprise review queue projection', async () => {
     const { wrapper } = await mountPage();
     expect(api.listClientLeads).toHaveBeenCalledWith(
