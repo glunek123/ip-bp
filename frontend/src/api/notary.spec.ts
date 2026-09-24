@@ -13,6 +13,7 @@ import {
   createNotaryOffice,
   getNotaryMatter,
   listNotaryOffices,
+  listNotaryMatters,
   recordNotaryOpening,
   recordNotaryEvidence,
 } from './notary';
@@ -39,6 +40,39 @@ const matter = {
 beforeEach(() => vi.resetAllMocks());
 
 describe('notary API', () => {
+  it('validates a scoped matter list and its stage counts', async () => {
+    const result = {
+      items: [
+        {
+          id: 'matter-1',
+          businessNo: 'NT-001',
+          stage: 'PENDING_EVIDENCE',
+          createdAt: '2026-09-24T01:00:00.000Z',
+          sourceLead: { id: 'lead-1', businessNo: 'LD-001' },
+          notaryOffice: { id: 'office-1', name: '测试公证处' },
+        },
+      ],
+      total: 1,
+      page: 2,
+      pageSize: 20,
+      counts: { PENDING_EVIDENCE: 2, WAITING_UNBOX: 1, UNBOX_REVIEW: 0 },
+    };
+    http.getJson.mockResolvedValue(result);
+    await expect(
+      listNotaryMatters(2, 20, {}, 'PENDING_EVIDENCE'),
+    ).resolves.toEqual(result);
+    expect(http.getJson).toHaveBeenCalledWith(
+      '/notary-matters?page=2&pageSize=20&stage=PENDING_EVIDENCE',
+      {},
+    );
+    http.getJson.mockResolvedValueOnce({
+      ...result,
+      counts: { PENDING_EVIDENCE: 2 },
+    });
+    await expect(listNotaryMatters()).rejects.toMatchObject({
+      code: 'INVALID_RESPONSE',
+    });
+  });
   it('lists only validated active notary offices with create capability', async () => {
     const result = {
       items: [{ id: 'office-1', name: '广州市南方公证处', status: 'ACTIVE' }],

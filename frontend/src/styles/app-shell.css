@@ -104,6 +104,37 @@
   font-size: 13px;
 }
 
+.app-nav__group {
+  display: flex;
+  align-items: center;
+}
+
+.app-nav__group .app-nav__item {
+  min-width: 0;
+  flex: 1;
+}
+
+.app-nav__expand {
+  width: 24px;
+  height: 28px;
+  flex: 0 0 auto;
+  border: 0;
+  background: transparent;
+  color: var(--color-ink-subtle);
+  cursor: pointer;
+}
+
+.app-nav__settings {
+  border: 0;
+  background: transparent;
+  cursor: pointer;
+  text-align: left;
+}
+
+.app-nav__item .app-nav__badge {
+  margin-left: auto;
+}
+
 .app-nav__item:hover,
 .app-subnav__item:hover {
   background: var(--color-surface-1);

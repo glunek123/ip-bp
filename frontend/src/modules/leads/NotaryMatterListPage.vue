@@ -2,28 +2,32 @@
 import { computed, onBeforeUnmount, ref, watch } from 'vue';
 import { RouterLink, useRoute, useRouter } from 'vue-router';
 import { ElButton } from 'element-plus/es/components/button/index.mjs';
-import { listLeads, type Lead, type LeadStatus } from '../../api/leads';
 import {
-  labelLeadPlatform,
-  leadStatusCards,
-  leadStatusLabels,
-} from './lead-options';
+  listNotaryMatters,
+  notaryListStages,
+  type NotaryListStage,
+  type NotaryMatterListItem,
+} from '../../api/notary';
 
+const stageLabels: Record<NotaryListStage, string> = {
+  PENDING_EVIDENCE: '待取证',
+  WAITING_UNBOX: '待取件开箱',
+  UNBOX_REVIEW: '开箱待审核',
+};
 const route = useRoute();
 const router = useRouter();
 const state = ref<'loading' | 'ready' | 'failed'>('loading');
-const items = ref<Lead[]>([]);
+const items = ref<NotaryMatterListItem[]>([]);
 const total = ref(0);
 const currentPage = ref(1);
 const pageSize = ref(20);
-const canCreate = ref(false);
 let request: AbortController | undefined;
 
-const selectedStatus = computed<LeadStatus | undefined>(() => {
-  const value = route.query.status;
+const selectedStage = computed<NotaryListStage | undefined>(() => {
+  const value = route.query.stage;
   return typeof value === 'string' &&
-    leadStatusCards.some((card) => card.status === value)
-    ? (value as LeadStatus)
+    notaryListStages.some((stage) => stage === value)
+    ? (value as NotaryListStage)
     : undefined;
 });
 const requestedPage = computed(() => {
@@ -42,22 +46,18 @@ async function load(): Promise<void> {
   const controller = new AbortController();
   request = controller;
   state.value = 'loading';
-  const page = requestedPage.value;
-  const status = selectedStatus.value;
   try {
-    const result = await listLeads(
-      page,
+    const result = await listNotaryMatters(
+      requestedPage.value,
       20,
       { signal: controller.signal },
-      status,
-      'LIBRARY',
+      selectedStage.value,
     );
     if (controller.signal.aborted) return;
     items.value = result.items;
     total.value = result.total;
     currentPage.value = result.page;
     pageSize.value = result.pageSize;
-    canCreate.value = result.capabilities.create;
     state.value = 'ready';
   } catch {
     if (!controller.signal.aborted) state.value = 'failed';
@@ -75,7 +75,7 @@ function formatTime(value: string): string {
   });
 }
 watch(
-  () => [route.query.page, route.query.status],
+  () => [route.query.page, route.query.stage],
   () => void load(),
   { immediate: true },
 );
@@ -87,62 +87,76 @@ onBeforeUnmount(() => request?.abort());
     <main>
       <div class="page-head">
         <div>
-          <h1>线索库</h1>
-          <p>记录当前账号有权查看、尚未移交公证的线索。</p>
+          <h1>公证阶段</h1>
+          <p>逐个办理当前账号有权查看的公证事项。</p>
         </div>
-        <RouterLink
-          v-if="state === 'ready' && canCreate"
-          to="/leads/new"
-          data-test="create-lead"
-          ><ElButton type="primary">新建线索</ElButton></RouterLink
-        >
       </div>
+      <nav class="lead-list-filters" aria-label="公证阶段筛选">
+        <RouterLink
+          :to="{ path: '/notary-matters' }"
+          :class="{ active: selectedStage === undefined }"
+          >全部</RouterLink
+        >
+        <RouterLink
+          v-for="stage in notaryListStages"
+          :key="stage"
+          :to="{ path: '/notary-matters', query: { stage } }"
+          :class="{ active: selectedStage === stage }"
+          >{{ stageLabels[stage] }}</RouterLink
+        >
+      </nav>
       <section class="demo-card" aria-live="polite">
         <div v-if="state === 'loading'" class="state-panel">
           <span class="state-index">读取中</span>
-          <h2>正在读取线索</h2>
+          <h2>正在读取公证事项</h2>
         </div>
         <div v-else-if="state === 'failed'" class="state-panel">
           <span class="state-index">连接失败</span>
-          <h2>线索列表暂时无法加载</h2>
+          <h2>公证事项列表暂时无法加载</h2>
           <p>错误不会被当作空列表，可以直接重试。</p>
           <ElButton data-test="retry" @click="load">重新加载</ElButton>
         </div>
         <div v-else-if="items.length === 0" class="state-panel">
           <span class="state-index">0 条记录</span>
-          <h2>还没有线索记录</h2>
-          <p>有创建权限时，可从右上角新建待推送线索。</p>
+          <h2>当前没有公证事项</h2>
+          <p>线索确认取证并移交后，事项会在这里出现。</p>
         </div>
         <div v-else class="demo-table-wrap">
           <table class="demo-table">
             <thead>
               <tr>
-                <th>操作／线索编号</th>
-                <th>状态</th>
-                <th>平台</th>
-                <th>店铺</th>
-                <th class="num">商品数</th>
-                <th>发现时间</th>
-                <th>最近更新</th>
+                <th>公证事项编号</th>
+                <th>阶段</th>
+                <th>来源线索</th>
+                <th>公证处</th>
+                <th>创建时间</th>
               </tr>
             </thead>
             <tbody>
-              <tr v-for="lead in items" :key="lead.id" data-test="lead-row">
+              <tr
+                v-for="matter in items"
+                :key="matter.id"
+                data-test="matter-row"
+              >
                 <td>
-                  <RouterLink :to="`/leads/${lead.id}`">
-                    {{ lead.businessNo }}
-                  </RouterLink>
+                  <RouterLink
+                    data-test="matter-link"
+                    :to="`/notary-matters/${matter.id}`"
+                    >{{ matter.businessNo }}</RouterLink
+                  >
                 </td>
                 <td>
-                  <span class="pill">{{ leadStatusLabels[lead.status] }}</span>
+                  <span class="pill">{{ stageLabels[matter.stage] }}</span>
                 </td>
-                <td>{{ labelLeadPlatform(lead.platform) }}</td>
-                <td>{{ lead.shopName }}</td>
-                <td class="num mono" data-test="lead-product-count">
-                  {{ lead.products.length }}
+                <td>
+                  <RouterLink
+                    data-test="source-lead-link"
+                    :to="`/leads/${matter.sourceLead.id}`"
+                    >{{ matter.sourceLead.businessNo }}</RouterLink
+                  >
                 </td>
-                <td class="mono">{{ formatTime(lead.foundAt) }}</td>
-                <td class="mono">{{ formatTime(lead.updatedAt) }}</td>
+                <td>{{ matter.notaryOffice.name }}</td>
+                <td class="mono">{{ formatTime(matter.createdAt) }}</td>
               </tr>
             </tbody>
           </table>
@@ -150,7 +164,7 @@ onBeforeUnmount(() => request?.abort());
         <nav
           v-if="state === 'ready' && totalPages > 1"
           class="lead-pagination"
-          aria-label="线索列表分页"
+          aria-label="公证事项列表分页"
         >
           <ElButton
             data-test="previous-page"

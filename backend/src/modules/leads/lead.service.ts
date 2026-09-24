@@ -284,14 +284,25 @@ export class LeadService {
     page: number,
     pageSize: number,
     status?: LeadStatus,
+    view?: 'LIBRARY',
   ) {
+    if (view === 'LIBRARY' && status === 'TRANSFERRED_TO_NOTARY')
+      throw new BadRequestException({
+        code: 'VALIDATION_ERROR',
+        message: '已移交线索不属于线索库',
+      });
     let scope;
     try {
       scope = await this.access.buildLeadScope(actor, 'lead.read');
     } catch (error) {
       throw this.mapAuthorization(error);
     }
-    const itemScope = status === undefined ? scope : { ...scope, status };
+    const visibleScope =
+      view === 'LIBRARY'
+        ? { ...scope, status: { not: 'TRANSFERRED_TO_NOTARY' as const } }
+        : scope;
+    const itemScope =
+      status === undefined ? visibleScope : { ...visibleScope, status };
     const [items, total, groups, create] = await Promise.all([
       this.database.lead.findMany({
         where: itemScope,
@@ -303,7 +314,7 @@ export class LeadService {
       this.database.lead.count({ where: itemScope }),
       this.database.lead.groupBy({
         by: ['status'],
-        where: scope,
+        where: visibleScope,
         orderBy: { status: 'asc' },
         _count: { _all: true },
       }),

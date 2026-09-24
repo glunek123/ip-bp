@@ -7,13 +7,16 @@ export const leadStatusCards: ReadonlyArray<{
   { status: 'WAITING_PUSH', label: '待推送' },
   { status: 'WAITING_REVIEW', label: '线索待审核' },
   { status: 'WAITING_EVIDENCE_DECISION', label: '线索待确认' },
-  { status: 'TRANSFERRED_TO_NOTARY', label: '已移交公证' },
   { status: 'ARCHIVED', label: '线索已归档' },
 ];
 
-export const leadStatusLabels: Record<LeadStatus, string> = Object.fromEntries(
-  leadStatusCards.map(({ status, label }) => [status, label]),
-) as Record<LeadStatus, string>;
+export const leadStatusLabels: Record<LeadStatus, string> = {
+  WAITING_PUSH: '待推送',
+  WAITING_REVIEW: '线索待审核',
+  WAITING_EVIDENCE_DECISION: '线索待确认',
+  TRANSFERRED_TO_NOTARY: '已移交公证',
+  ARCHIVED: '线索已归档',
+};
 
 export const leadPlatformLabels: Record<LeadPlatform, string> = {
   TAOBAO: '淘宝',

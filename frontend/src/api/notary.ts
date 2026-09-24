@@ -12,6 +12,28 @@ export type NotaryOfficeList = {
   capabilities: { create: boolean };
 };
 
+export const notaryListStages = [
+  'PENDING_EVIDENCE',
+  'WAITING_UNBOX',
+  'UNBOX_REVIEW',
+] as const;
+export type NotaryListStage = (typeof notaryListStages)[number];
+export type NotaryMatterListItem = {
+  id: string;
+  businessNo: string;
+  stage: NotaryListStage;
+  createdAt: string;
+  sourceLead: { id: string; businessNo: string };
+  notaryOffice: { id: string; name: string };
+};
+export type NotaryMatterList = {
+  items: NotaryMatterListItem[];
+  total: number;
+  page: number;
+  pageSize: number;
+  counts: Record<NotaryListStage, number>;
+};
+
 export type CreateNotaryMatterInput = {
   selectedProductIds: string[];
   selectedContentVersionIds: string[];
@@ -410,6 +432,57 @@ export async function listNotaryOffices(
   )
     throw invalidResponse();
   return data as NotaryOfficeList;
+}
+
+export async function listNotaryMatters(
+  page = 1,
+  pageSize = 20,
+  options: RequestOptions = {},
+  stage?: NotaryListStage,
+): Promise<NotaryMatterList> {
+  const query = new URLSearchParams({
+    page: String(page),
+    pageSize: String(pageSize),
+  });
+  if (stage !== undefined) query.set('stage', stage);
+  const data = await getJson(`/notary-matters?${query.toString()}`, options);
+  const counts = isRecord(data) ? data.counts : undefined;
+  if (
+    !isRecord(data) ||
+    !Array.isArray(data.items) ||
+    !data.items.every(
+      (item) =>
+        isRecord(item) &&
+        typeof item.id === 'string' &&
+        item.id.length > 0 &&
+        typeof item.businessNo === 'string' &&
+        item.businessNo.length > 0 &&
+        notaryListStages.some((stage) => stage === item.stage) &&
+        typeof item.createdAt === 'string' &&
+        !Number.isNaN(Date.parse(item.createdAt)) &&
+        isRecord(item.sourceLead) &&
+        typeof item.sourceLead.id === 'string' &&
+        typeof item.sourceLead.businessNo === 'string' &&
+        isRecord(item.notaryOffice) &&
+        typeof item.notaryOffice.id === 'string' &&
+        typeof item.notaryOffice.name === 'string',
+    ) ||
+    !Number.isInteger(data.total) ||
+    (data.total as number) < 0 ||
+    !Number.isInteger(data.page) ||
+    (data.page as number) < 1 ||
+    !Number.isInteger(data.pageSize) ||
+    (data.pageSize as number) < 1 ||
+    (data.pageSize as number) > 100 ||
+    !isRecord(counts) ||
+    Object.keys(counts).length !== notaryListStages.length ||
+    !notaryListStages.every(
+      (stage) =>
+        Number.isInteger(counts[stage]) && (counts[stage] as number) >= 0,
+    )
+  )
+    throw invalidResponse();
+  return data as NotaryMatterList;
 }
 
 export async function getNotaryMatter(

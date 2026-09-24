@@ -4,6 +4,7 @@ import { RouterLink, useRoute } from 'vue-router';
 import { ElButton } from 'element-plus/es/components/button/index.mjs';
 import { ApiError } from '../../api/http';
 import RequiredFieldMark from '../../app/RequiredFieldMark.vue';
+import { notifyWorkflowChanged } from '../../app/workflow-events';
 import {
   deleteMaterial,
   downloadMaterialVersion,
@@ -350,6 +351,7 @@ async function submitOpening(): Promise<void> {
   submittingOpening.value = true;
   try {
     await recordNotaryOpening(current.id, input, openingIdempotencyKey);
+    notifyWorkflowChanged();
     await load();
     if (hasSavedOpening(matter.value)) {
       openingPhotos.value = [];
@@ -455,6 +457,7 @@ async function submitEvidence(): Promise<void> {
   }
   try {
     await recordNotaryEvidence(current.id, input, evidenceIdempotencyKey);
+    notifyWorkflowChanged();
     evidenceIdempotencyKey = '';
     evidenceSubmissionFingerprint = '';
     const loaded = await load();
@@ -483,11 +486,14 @@ onBeforeUnmount(() => request?.abort());
 <template>
   <div class="page-view page-view--narrow">
     <main>
+      <RouterLink class="back-link" to="/notary-matters"
+        >← 返回公证阶段</RouterLink
+      >
       <RouterLink
         v-if="matter"
         class="back-link"
         :to="`/leads/${matter.sourceLead.id}`"
-        >← 返回来源线索</RouterLink
+        >查看来源线索</RouterLink
       >
       <section v-if="state === 'loading'" class="state-panel ledger-panel">
         <h1>正在读取取证批次</h1>

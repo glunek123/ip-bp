@@ -3,6 +3,7 @@ import { computed, onBeforeUnmount, onMounted, ref } from 'vue';
 import { RouterLink, useRoute } from 'vue-router';
 import { ElButton } from 'element-plus/es/components/button/index.mjs';
 import RequiredFieldMark from '../../app/RequiredFieldMark.vue';
+import { notifyWorkflowChanged } from '../../app/workflow-events';
 import { ApiError } from '../../api/http';
 import {
   createNotaryMatter,
@@ -403,6 +404,7 @@ async function transferToNotary(): Promise<void> {
   transferSubmitting.value = true;
   try {
     await createNotaryMatter(lead.value.id, frozenTransferInput, transferKey);
+    notifyWorkflowChanged();
     transferKey = undefined;
     frozenTransferInput = undefined;
     transferRetryLocked.value = false;
@@ -452,6 +454,7 @@ async function archiveNoEvidence(): Promise<void> {
       frozenEvidenceVersion,
       evidenceKey,
     );
+    notifyWorkflowChanged();
     evidenceKey = undefined;
     frozenEvidenceReason = undefined;
     frozenEvidenceVersion = undefined;
@@ -545,6 +548,7 @@ async function push(): Promise<void> {
   pushKey ??= makePushKey();
   try {
     await pushLead(lead.value.id, lead.value.version, pushKey);
+    notifyWorkflowChanged();
     pushKey = undefined;
     pushSuccess.value = '已推送给客户审核，客户下次读取立即可见';
     await load();

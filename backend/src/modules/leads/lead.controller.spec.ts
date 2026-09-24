@@ -189,6 +189,18 @@ describe('LeadController', () => {
         { type: 'query', metatype: LeadListQueryDto },
       ),
     ).rejects.toBeInstanceOf(BadRequestException);
+    await expect(
+      pipe.transform(
+        { view: 'LIBRARY' },
+        { type: 'query', metatype: LeadListQueryDto },
+      ),
+    ).resolves.toMatchObject({ view: 'LIBRARY' });
+    await expect(
+      pipe.transform(
+        { view: 'UNKNOWN' },
+        { type: 'query', metatype: LeadListQueryDto },
+      ),
+    ).rejects.toBeInstanceOf(BadRequestException);
   });
 
   it.each([

@@ -123,6 +123,7 @@ describe('LeadListPage', () => {
       20,
       expect.objectContaining({ signal: expect.any(AbortSignal) }),
       'WAITING_PUSH',
+      'LIBRARY',
     );
     expect(wrapper.text()).toContain('第 2 / 3 页');
     await wrapper.get('[data-test="next-page"]').trigger('click');
@@ -136,6 +137,7 @@ describe('LeadListPage', () => {
       20,
       expect.any(Object),
       'WAITING_PUSH',
+      'LIBRARY',
     );
   });
 
@@ -159,6 +161,7 @@ describe('LeadListPage', () => {
       20,
       expect.objectContaining({ signal: expect.any(AbortSignal) }),
       undefined,
+      'LIBRARY',
     );
     expect(wrapper.text()).toContain('第 2 / 2 页');
   });

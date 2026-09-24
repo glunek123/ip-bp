@@ -530,12 +530,14 @@ export async function listLeads(
   pageSize = 20,
   options: RequestOptions = {},
   status?: LeadStatus,
+  view?: 'LIBRARY',
 ): Promise<LeadList> {
   const query = new URLSearchParams({
     page: String(page),
     pageSize: String(pageSize),
   });
   if (status !== undefined) query.set('status', status);
+  if (view !== undefined) query.set('view', view);
   const data = await getJson(`/leads?${query.toString()}`, options);
   const counts = isRecord(data) ? data.counts : undefined;
   const capabilities = isRecord(data) ? data.capabilities : undefined;
