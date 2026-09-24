@@ -1253,6 +1253,56 @@ describe('LeadService', () => {
     );
   });
 
+  it('keeps transferred sources out of the library list and all counters', async () => {
+    const scope = { departmentId: actor.departmentId };
+    const leadRepo = {
+      findMany: jest.fn().mockResolvedValue([]),
+      count: jest.fn().mockResolvedValue(0),
+      groupBy: jest
+        .fn()
+        .mockResolvedValue([{ status: 'WAITING_PUSH', _count: { _all: 2 } }]),
+    };
+    const service = new LeadService(
+      { lead: leadRepo } as unknown as DatabaseService,
+      {
+        buildLeadScope: jest.fn().mockResolvedValue(scope),
+        canAuthorizeNewLead: jest.fn().mockResolvedValue(false),
+      } as unknown as AccessControlService,
+      {
+        listCurrentReferenceVersionIds: jest.fn(),
+      } as unknown as MaterialService,
+    );
+
+    const result = await service.list(actor, 1, 20, undefined, 'LIBRARY');
+
+    const visibleScope = {
+      departmentId: actor.departmentId,
+      status: { not: 'TRANSFERRED_TO_NOTARY' },
+    };
+    expect(leadRepo.findMany).toHaveBeenCalledWith(
+      expect.objectContaining({ where: visibleScope }),
+    );
+    expect(leadRepo.count).toHaveBeenCalledWith({ where: visibleScope });
+    expect(leadRepo.groupBy).toHaveBeenCalledWith(
+      expect.objectContaining({ where: visibleScope }),
+    );
+    expect(result.counts).toMatchObject({
+      WAITING_PUSH: 2,
+      TRANSFERRED_TO_NOTARY: 0,
+    });
+  });
+
+  it('rejects a transferred status filter in the library view', async () => {
+    const service = new LeadService(
+      {} as DatabaseService,
+      {} as AccessControlService,
+      {} as MaterialService,
+    );
+    await expect(
+      service.list(actor, 1, 20, 'TRANSFERRED_TO_NOTARY', 'LIBRARY'),
+    ).rejects.toMatchObject({ response: { code: 'VALIDATION_ERROR' } });
+  });
+
   it('returns RESOURCE_NOT_FOUND when a scoped detail query cannot see the Lead', async () => {
     const database = {
       lead: { findFirst: jest.fn().mockResolvedValue(null) },

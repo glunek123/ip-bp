@@ -4,6 +4,8 @@
 
 依据：[固定事实](../../../demo-reverse/v158/modules/M03-notary.md)、[候选](../../../demo-reverse/v158/modules/M03-notary-candidates.md)、[决定](../../../demo-reverse/v158/DECISIONS.md)和[纠偏](../../../demo-reverse/v158/CORRECTIONS.md)。字段只在[领域模型](../DOMAIN.md)维护；B/T/E编号见[缺口](../GAPS.md)，通用技术设计见[TD-BASE-05／TD-TRACE-UX-01](../TECHNICAL-DESIGN.md)。CORE-LD-006提供来源线索移交、待取证事项及公证处主数据；CORE-NT-001仅登记线上取证日期、样品费用状态及逐字段明确的物流，原子推进待取证到待开箱。CORE-NT-002仅处理明确选择的单个待开箱事项：有权内部人员上传1～50张真实JPEG／PNG／WEBP照片（单张不超过20 MB），可填写有来源的寄件人信息，提交时校验版本及照片归属并原子保存不可变开箱事实、冻结附件引用、审计与幂等回执，事项进入开箱审核；详情及下载按来源线索权限过滤。识别匹配、批量核对和客户开箱审核仍属后续动作，下列未覆盖AC不能据此认定已验收。
 
+正式侧栏“公证阶段”以公证事项为计数对象，不用已移交线索数替代批次数。`GET /api/v1/notary-matters` 提供分页、已实现阶段 `PENDING_EVIDENCE`／`WAITING_UNBOX`／`UNBOX_REVIEW` 筛选及同一可见范围的分阶段计数；`items`、`total`、`counts` 均限当前部门及 `lead.read` 对来源线索的授权范围，排序为创建时间降序、ID 升序。每项只含事项编号、阶段、创建时间、公证处及来源线索的 ID／编号；未知阶段返回 400。尚未实现的 Demo 公证节点和“我的案件”不作为正式可点击入口。
+
 ## REQ-NT-001 来源与取证记录
 
 - 状态：部分确认（SD-14）＋纠偏约束。来源：N-C01 N-C02 FIX-12 FIX-14。字段组：NT01/NT02/NT03/NT06。

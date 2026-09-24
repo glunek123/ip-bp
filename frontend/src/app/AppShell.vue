@@ -1,13 +1,18 @@
 <script setup lang="ts">
-import { computed, ref, watch } from 'vue';
+import { computed, onBeforeUnmount, onMounted, ref, watch } from 'vue';
 import { RouterLink, useRoute, useRouter } from 'vue-router';
 import { ElButton } from 'element-plus/es/components/button/index.mjs';
 import { ApiError } from '../api/http';
 import { listLeads, type LeadStatus } from '../api/leads';
 import { getOrganizationManagementContext } from '../api/organization';
-import { listNotaryOffices } from '../api/notary';
+import {
+  listNotaryMatters,
+  listNotaryOffices,
+  type NotaryListStage,
+} from '../api/notary';
 import { leadStatusCards } from '../modules/leads/lead-options';
 import { useAuthStore } from '../stores/auth';
+import { workflowChangedEvent } from './workflow-events';
 
 const auth = useAuthStore();
 const route = useRoute();
@@ -15,7 +20,19 @@ const router = useRouter();
 const drawerOpen = ref(false);
 const canViewPeople = ref(false);
 const canViewNotaryOffices = ref(false);
+const canViewNotaryMatters = ref(false);
 const leadCounts = ref<Record<LeadStatus, number> | null>(null);
+const notaryCounts = ref<Record<NotaryListStage, number> | null>(null);
+const countRevision = ref(0);
+const expandedGroup = ref<'leads' | 'notary' | 'settings' | null>(null);
+const notaryStageCards: ReadonlyArray<{
+  stage: NotaryListStage;
+  label: string;
+}> = [
+  { stage: 'PENDING_EVIDENCE', label: '待取证' },
+  { stage: 'WAITING_UNBOX', label: '待取件开箱' },
+  { stage: 'UNBOX_REVIEW', label: '开箱待审核' },
+];
 const loggingOut = ref(false);
 const logoutError = ref('');
 const isClient = computed(() => auth.session?.principalType === 'CLIENT');
@@ -37,10 +54,11 @@ const breadcrumbs = computed(() =>
 );
 const isCustomerRoute = computed(() => route.path.startsWith('/customers'));
 const isLeadRoute = computed(
-  () =>
-    route.path === '/leads' ||
-    route.path.startsWith('/leads/') ||
-    route.path.startsWith('/notary-matters/'),
+  () => route.path === '/leads' || route.path.startsWith('/leads/'),
+);
+const isNotaryRoute = computed(() => route.path.startsWith('/notary-matters'));
+const isSettingsRoute = computed(
+  () => route.path === '/notary-offices' || route.path.startsWith('/settings/'),
 );
 const isClientLeadRoute = computed(() =>
   route.path.startsWith('/client/leads'),
@@ -48,8 +66,38 @@ const isClientLeadRoute = computed(() =>
 const selectedLeadStatus = computed(() =>
   typeof route.query.status === 'string' ? route.query.status : undefined,
 );
+const selectedNotaryStage = computed(() =>
+  typeof route.query.stage === 'string' ? route.query.stage : undefined,
+);
+const leadTotal = computed(() =>
+  leadCounts.value === null
+    ? null
+    : leadStatusCards.reduce(
+        (total, card) => total + leadCounts.value![card.status],
+        0,
+      ),
+);
+const notaryTotal = computed(() =>
+  notaryCounts.value === null
+    ? null
+    : notaryStageCards.reduce(
+        (total, card) => total + notaryCounts.value![card.stage],
+        0,
+      ),
+);
 const userInitial = computed(
   () => auth.session?.user.displayName.trim().slice(0, 1) || '用',
+);
+
+watch(
+  () => route.path,
+  (path) => {
+    if (path.startsWith('/notary-matters')) expandedGroup.value = 'notary';
+    else if (path.startsWith('/leads')) expandedGroup.value = 'leads';
+    else if (path === '/notary-offices' || path.startsWith('/settings/'))
+      expandedGroup.value = 'settings';
+  },
+  { immediate: true },
 );
 
 watch(
@@ -98,11 +146,14 @@ watch(
 );
 
 watch(
-  [identity, () => route.fullPath],
-  async ([currentIdentity], _previous, onCleanup) => {
-    leadCounts.value = null;
-    if (currentIdentity === null || isClient.value || !isLeadRoute.value)
-      return;
+  [identity, () => route.fullPath, countRevision],
+  async ([currentIdentity], previous, onCleanup) => {
+    if (currentIdentity !== previous?.[0]) {
+      leadCounts.value = null;
+      notaryCounts.value = null;
+      canViewNotaryMatters.value = false;
+    }
+    if (currentIdentity === null || isClient.value) return;
     const controller = new AbortController();
     let current = true;
     onCleanup(() => {
@@ -110,15 +161,39 @@ watch(
       controller.abort();
     });
     try {
-      const result = await listLeads(1, 1, { signal: controller.signal });
-      if (current && identity.value === currentIdentity && isLeadRoute.value) {
-        leadCounts.value = result.counts;
+      const [leadResult, notaryResult] = await Promise.allSettled([
+        listLeads(1, 1, { signal: controller.signal }, undefined, 'LIBRARY'),
+        listNotaryMatters(1, 1, { signal: controller.signal }),
+      ]);
+      if (!current || identity.value !== currentIdentity) return;
+      if (leadResult.status === 'fulfilled')
+        leadCounts.value = leadResult.value.counts;
+      else leadCounts.value = null;
+      if (notaryResult.status === 'fulfilled') {
+        notaryCounts.value = notaryResult.value.counts;
+        canViewNotaryMatters.value = true;
+      } else {
+        notaryCounts.value = null;
+        canViewNotaryMatters.value = false;
       }
     } catch {
-      if (current) leadCounts.value = null;
+      if (current) {
+        leadCounts.value = null;
+        notaryCounts.value = null;
+      }
     }
   },
   { immediate: true },
+);
+
+function refreshCounters(): void {
+  countRevision.value += 1;
+}
+onMounted(() =>
+  globalThis.window.addEventListener(workflowChangedEvent, refreshCounters),
+);
+onBeforeUnmount(() =>
+  globalThis.window.removeEventListener(workflowChangedEvent, refreshCounters),
 );
 
 function closeDrawer(): void {
@@ -163,35 +238,36 @@ async function logout(): Promise<void> {
 
       <nav class="app-nav" aria-label="主要导航">
         <p class="app-nav__label">工作台</p>
-        <RouterLink
-          v-if="!isClient"
-          class="app-nav__item"
-          :class="{ active: isCustomerRoute }"
-          data-test="customer-nav"
-          to="/customers"
-          @click="closeDrawer"
-        >
-          <svg class="app-nav__icon" viewBox="0 0 20 20" aria-hidden="true">
-            <path d="M4 4.5h12v11H4zM7 2.5h6v4H7z" />
-          </svg>
-          <span>客户</span>
-        </RouterLink>
-        <RouterLink
-          v-if="!isClient"
-          class="app-nav__item"
-          :class="{ active: isLeadRoute }"
-          data-test="lead-nav"
-          to="/leads"
-          @click="closeDrawer"
-        >
-          <svg class="app-nav__icon" viewBox="0 0 20 20" aria-hidden="true">
-            <path d="M3 3.5h14v13H3zM6 7h8M6 10h8M6 13h5" />
-          </svg>
-          <span>线索</span>
-        </RouterLink>
+        <div v-if="!isClient" class="app-nav__group">
+          <RouterLink
+            class="app-nav__item"
+            :class="{ active: isLeadRoute }"
+            data-test="lead-nav"
+            to="/leads"
+            @click="closeDrawer"
+          >
+            <svg class="app-nav__icon" viewBox="0 0 20 20" aria-hidden="true">
+              <path d="M3 3.5h14v13H3zM6 7h8M6 10h8M6 13h5" />
+            </svg>
+            <span>线索库</span>
+            <span v-if="leadTotal !== null" class="app-nav__badge">{{
+              leadTotal
+            }}</span>
+          </RouterLink>
+          <button
+            class="app-nav__expand"
+            type="button"
+            data-test="lead-expand"
+            :aria-expanded="expandedGroup === 'leads'"
+            aria-label="展开或收起线索库"
+            @click="expandedGroup = expandedGroup === 'leads' ? null : 'leads'"
+          >
+            {{ expandedGroup === 'leads' ? '⌄' : '›' }}
+          </button>
+        </div>
 
         <div
-          v-if="!isClient && isLeadRoute"
+          v-if="!isClient && expandedGroup === 'leads'"
           class="app-subnav"
           aria-label="线索状态"
         >
@@ -202,6 +278,9 @@ async function logout(): Promise<void> {
             @click="closeDrawer"
           >
             <span>全部</span>
+            <span v-if="leadTotal !== null" class="app-nav__badge">{{
+              leadTotal
+            }}</span>
           </RouterLink>
           <RouterLink
             v-for="card in leadStatusCards"
@@ -215,6 +294,71 @@ async function logout(): Promise<void> {
             <span>{{ card.label }}</span>
             <span v-if="leadCounts" class="app-nav__badge">{{
               leadCounts[card.status]
+            }}</span>
+          </RouterLink>
+        </div>
+
+        <div v-if="!isClient && canViewNotaryMatters" class="app-nav__group">
+          <RouterLink
+            class="app-nav__item"
+            :class="{ active: isNotaryRoute }"
+            data-test="notary-nav"
+            to="/notary-matters"
+            @click="closeDrawer"
+          >
+            <svg class="app-nav__icon" viewBox="0 0 20 20" aria-hidden="true">
+              <path d="M5 2.5h8l3 3v12H5zM8 9h5M8 12h5M8 15h4" />
+            </svg>
+            <span>公证阶段</span>
+            <span v-if="notaryTotal !== null" class="app-nav__badge">{{
+              notaryTotal
+            }}</span>
+          </RouterLink>
+          <button
+            class="app-nav__expand"
+            type="button"
+            data-test="notary-expand"
+            :aria-expanded="expandedGroup === 'notary'"
+            aria-label="展开或收起公证阶段"
+            @click="
+              expandedGroup = expandedGroup === 'notary' ? null : 'notary'
+            "
+          >
+            {{ expandedGroup === 'notary' ? '⌄' : '›' }}
+          </button>
+        </div>
+        <div
+          v-if="!isClient && canViewNotaryMatters && expandedGroup === 'notary'"
+          class="app-subnav"
+          aria-label="公证阶段状态"
+        >
+          <RouterLink
+            class="app-subnav__item"
+            :class="{
+              active: isNotaryRoute && selectedNotaryStage === undefined,
+            }"
+            to="/notary-matters"
+            @click="closeDrawer"
+          >
+            <span>全部</span
+            ><span v-if="notaryTotal !== null" class="app-nav__badge">{{
+              notaryTotal
+            }}</span>
+          </RouterLink>
+          <RouterLink
+            v-for="card in notaryStageCards"
+            :key="card.stage"
+            class="app-subnav__item"
+            :class="{
+              active: isNotaryRoute && selectedNotaryStage === card.stage,
+            }"
+            data-test="notary-counter"
+            :to="{ path: '/notary-matters', query: { stage: card.stage } }"
+            @click="closeDrawer"
+          >
+            <span>{{ card.label }}</span
+            ><span v-if="notaryCounts" class="app-nav__badge">{{
+              notaryCounts[card.stage]
             }}</span>
           </RouterLink>
         </div>
@@ -233,39 +377,64 @@ async function logout(): Promise<void> {
           <span>线索审核</span>
         </RouterLink>
 
+        <template v-if="!isClient">
+          <p class="app-nav__label app-nav__label--spaced">工具栏</p>
+          <RouterLink
+            class="app-nav__item"
+            :class="{ active: isCustomerRoute }"
+            data-test="customer-nav"
+            to="/customers"
+            @click="closeDrawer"
+          >
+            <svg class="app-nav__icon" viewBox="0 0 20 20" aria-hidden="true">
+              <path d="M4 4.5h12v11H4zM7 2.5h6v4H7z" />
+            </svg>
+            <span>客户管理</span>
+          </RouterLink>
+        </template>
+
         <template v-if="!isClient && (canViewPeople || canViewNotaryOffices)">
           <p class="app-nav__label app-nav__label--spaced">系统</p>
-          <RouterLink
-            v-if="canViewNotaryOffices"
-            class="app-nav__item"
-            :class="{ active: route.path === '/notary-offices' }"
-            data-test="notary-offices-nav"
-            to="/notary-offices"
-            @click="closeDrawer"
+          <button
+            class="app-nav__item app-nav__settings"
+            type="button"
+            data-test="settings-expand"
+            :class="{ active: isSettingsRoute }"
+            :aria-expanded="expandedGroup === 'settings'"
+            @click="
+              expandedGroup = expandedGroup === 'settings' ? null : 'settings'
+            "
           >
             <svg class="app-nav__icon" viewBox="0 0 20 20" aria-hidden="true">
+              <circle cx="10" cy="10" r="3" />
               <path
-                d="M3 5h14M5 5v11m10-11v11M2 16h16M7 8h2m2 0h2m-6 3h2m2 0h2"
+                d="M10 1.5v2M10 16.5v2M1.5 10h2M16.5 10h2M4 4l1.5 1.5M14.5 14.5 16 16M16 4l-1.5 1.5M5.5 14.5 4 16"
               />
             </svg>
-            <span>公证处</span>
-          </RouterLink>
-          <RouterLink
-            v-if="canViewPeople"
-            class="app-nav__item"
-            :class="{ active: route.path === '/settings/people-access' }"
-            data-test="people-access-nav"
-            to="/settings/people-access"
-            @click="closeDrawer"
-          >
-            <svg class="app-nav__icon" viewBox="0 0 20 20" aria-hidden="true">
-              <circle cx="7" cy="7" r="3" />
-              <path
-                d="M2.5 16c.5-3 2-4.5 4.5-4.5s4 1.5 4.5 4.5M13 6h4M15 4v4M13 12.5h4M13 15.5h4"
-              />
-            </svg>
-            <span>人员与权限</span>
-          </RouterLink>
+            <span>设置</span>
+          </button>
+          <div v-if="expandedGroup === 'settings'" class="app-subnav">
+            <RouterLink
+              v-if="canViewNotaryOffices"
+              class="app-subnav__item"
+              :class="{ active: route.path === '/notary-offices' }"
+              data-test="notary-offices-nav"
+              to="/notary-offices"
+              @click="closeDrawer"
+            >
+              <span>公证处</span>
+            </RouterLink>
+            <RouterLink
+              v-if="canViewPeople"
+              class="app-subnav__item"
+              :class="{ active: route.path === '/settings/people-access' }"
+              data-test="people-access-nav"
+              to="/settings/people-access"
+              @click="closeDrawer"
+            >
+              <span>人员与权限</span>
+            </RouterLink>
+          </div>
         </template>
       </nav>
 

@@ -71,6 +71,7 @@ describe('authentication routing', () => {
     '/leads/lead-1',
     '/leads/lead-1/edit',
     '/notary-matters/matter-1',
+    '/notary-matters',
   ])('protects the lead route %s', async (path) => {
     await router.push(path);
 

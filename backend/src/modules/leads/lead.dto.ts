@@ -192,6 +192,10 @@ export class LeadListQueryDto {
   @IsIn(LEAD_STATUSES)
   @IsOptional()
   status?: LeadStatus;
+  @ApiPropertyOptional({ enum: ['LIBRARY'] })
+  @IsIn(['LIBRARY'])
+  @IsOptional()
+  view?: 'LIBRARY';
 }
 
 export type CreateLeadCommand = CreateLeadDto;

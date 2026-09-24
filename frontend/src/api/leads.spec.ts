@@ -195,6 +195,28 @@ describe('Lead API', () => {
     );
   });
 
+  it('requests the library projection without changing the default list', async () => {
+    http.getJson.mockResolvedValue({
+      items: [],
+      total: 0,
+      page: 1,
+      pageSize: 1,
+      counts: {
+        WAITING_PUSH: 0,
+        WAITING_REVIEW: 0,
+        WAITING_EVIDENCE_DECISION: 0,
+        TRANSFERRED_TO_NOTARY: 0,
+        ARCHIVED: 0,
+      },
+      capabilities: { create: false },
+    });
+    await listLeads(1, 1, {}, undefined, 'LIBRARY');
+    expect(http.getJson).toHaveBeenCalledWith(
+      '/leads?page=1&pageSize=1&view=LIBRARY',
+      {},
+    );
+  });
+
   it('requires a server edit capability on details', async () => {
     http.getJson.mockResolvedValue({
       ...lead,

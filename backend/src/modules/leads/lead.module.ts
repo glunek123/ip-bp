@@ -13,6 +13,8 @@ import {
 } from './lead-notary.controller';
 import { LeadNotaryService } from './lead-notary.service';
 import { NotaryOpeningService } from './notary-opening.service';
+import { NotaryListController } from './notary-list.controller';
+import { NotaryListService } from './notary-list.service';
 
 @Module({
   imports: [AccessControlModule, AuthModule, DatabaseModule, MaterialModule],
@@ -20,6 +22,7 @@ import { NotaryOpeningService } from './notary-opening.service';
     LeadController,
     ClientLeadController,
     LeadNotaryController,
+    NotaryListController,
     NotaryOfficeController,
   ],
   providers: [
@@ -27,6 +30,7 @@ import { NotaryOpeningService } from './notary-opening.service';
     ClientLeadService,
     LeadNotaryService,
     NotaryOpeningService,
+    NotaryListService,
   ],
   exports: [LeadService, ClientLeadService, LeadNotaryService],
 })

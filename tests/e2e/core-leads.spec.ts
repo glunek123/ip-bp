@@ -1131,6 +1131,7 @@ test('operator corrects a full 50-photo opening queue after refresh without manu
 
 test('notary handoff serializes competing batches and rolls back when audit or receipt cannot persist', async ({
   request,
+  page,
 }) => {
   const client = await createClientAccount(request);
   const csrf = await loginClient(request, client.username, client.password);
@@ -1239,6 +1240,66 @@ test('notary handoff serializes competing batches and rolls back when audit or r
     selectedProductIds: [nextProduct.id],
   });
 
+  const library = await request.get('/api/v1/leads?view=LIBRARY', {
+    headers: authorizationA,
+  });
+  expect(library.status(), await library.text()).toBe(200);
+  const libraryBody = await library.json();
+  expect(
+    libraryBody.items.some((item: { id: string }) => item.id === lead.id),
+  ).toBe(false);
+  expect(libraryBody.counts.TRANSFERRED_TO_NOTARY).toBe(0);
+  expect(
+    (
+      await request.get(
+        '/api/v1/leads?view=LIBRARY&status=TRANSFERRED_TO_NOTARY',
+        {
+          headers: authorizationA,
+        },
+      )
+    ).status(),
+  ).toBe(400);
+
+  const matterList = await request.get(
+    '/api/v1/notary-matters?stage=PENDING_EVIDENCE',
+    {
+      headers: authorizationA,
+    },
+  );
+  expect(matterList.status(), await matterList.text()).toBe(200);
+  const matterListBody = await matterList.json();
+  expect(matterListBody.items.map((item: { id: string }) => item.id)).toEqual(
+    expect.arrayContaining([winningResult.id, secondResult.id]),
+  );
+  expect(matterListBody.counts.PENDING_EVIDENCE).toBe(2);
+  expect(
+    (
+      await request.get('/api/v1/notary-matters?stage=ARCHIVED', {
+        headers: authorizationA,
+      })
+    ).status(),
+  ).toBe(400);
+  const selfList = await request.get('/api/v1/notary-matters', {
+    headers: authorizationSelf,
+  });
+  expect(selfList.status(), await selfList.text()).toBe(200);
+  expect((await selfList.json()).items).toEqual([]);
+  const otherDepartmentList = await request.get('/api/v1/notary-matters', {
+    headers: { Authorization: `Bearer ${coreLeadFixtures.tokenB}` },
+  });
+  expect(otherDepartmentList.status(), await otherDepartmentList.text()).toBe(
+    200,
+  );
+  expect((await otherDepartmentList.json()).items).toEqual([]);
+  expect((await request.get('/api/v1/notary-matters')).status()).toBe(403);
+
+  await configureBrowser(page);
+  await page.goto('/notary-matters');
+  await expect(page.locator('[data-test="notary-nav"]')).toHaveClass(/active/u);
+  await expect(page.locator('[data-test="matter-row"]')).toHaveCount(2);
+  await page.goto('/leads');
+  await expect(page.locator('[data-test="lead-row"]')).toHaveCount(0);
+
   try {
     for (const reject of [
       () => rejectAuditWrites('lead.transferred_to_notary'),
@@ -1275,6 +1336,13 @@ test('notary handoff serializes competing batches and rolls back when audit or r
     .id;
   await setGrant('lead.read', false);
   try {
+    expect(
+      (
+        await request.get('/api/v1/notary-matters', {
+          headers: authorizationA,
+        })
+      ).status(),
+    ).toBe(403);
     const transferred = await transferToNotary(
       request,
       decideOnlyCandidate.id,
@@ -1418,6 +1486,17 @@ test('notary evidence registration enforces scope, validation, version, replay a
     version: 2,
     capabilities: { recordEvidence: false },
     evidence: saved.evidence,
+  });
+  const waitingList = await request.get(
+    '/api/v1/notary-matters?stage=WAITING_UNBOX',
+    {
+      headers: authorizationA,
+    },
+  );
+  expect(waitingList.status(), await waitingList.text()).toBe(200);
+  expect(await waitingList.json()).toMatchObject({
+    total: 1,
+    counts: { PENDING_EVIDENCE: 0, WAITING_UNBOX: 1, UNBOX_REVIEW: 0 },
   });
   if (saved.evidence.evidenceAt === input.evidenceAt) {
     const replay = await recordNotaryEvidence(request, matterId, input, key);
@@ -1611,6 +1690,17 @@ test('notary opening enforces scope, photo ownership, state, version, replay and
     version: 3,
     opening: { photos: [{ originalFilename: 'opening.jpg' }] },
     capabilities: { recordOpening: false },
+  });
+  const reviewList = await request.get(
+    '/api/v1/notary-matters?stage=UNBOX_REVIEW',
+    {
+      headers: authorizationA,
+    },
+  );
+  expect(reviewList.status(), await reviewList.text()).toBe(200);
+  expect(await reviewList.json()).toMatchObject({
+    total: 1,
+    counts: { PENDING_EVIDENCE: 1, WAITING_UNBOX: 1, UNBOX_REVIEW: 1 },
   });
   const stored = await getMaterialByVersion(photo.contentVersionId);
   expect(stored).not.toBeNull();
