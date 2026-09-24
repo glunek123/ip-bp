@@ -1,5 +1,13 @@
 # SPEC-001 文档验证
 
+## 线索库／公证阶段导航归属修复（2026-09-24）
+
+固定业务候选为 `codex/sidebar-business-ownership@6b2881211f140effa7ea6a1ce6de0707eb4e2cfd`，tree `30587c57f650e4470aa5fd196e7b4167aed90c04`，基于 `main@459b78e`。运营侧栏将未移交线索与公证事项分成两个工作队列；`view=LIBRARY` 在原 `lead.read` 范围内排除已移交来源线索，旧列表默认语义保留；新增事项列表、已实现阶段筛选、同范围计数和来源追溯。未修改 schema、授权 Action、移交／取证／开箱写路径，也未展示尚未实现的案件与公证节点。
+
+该候选的 `pnpm check:fast`、`pnpm spec:check`、受影响文件 Prettier 检查、双端 `pnpm build:prepared` 均退出 0；聚焦 Jest 215/215、Vitest 87/87 通过。隔离 PostgreSQL 17.11（测试容器映射端口 56233，经 `DEV_COR_TEST_DATABASE_URL` 仅覆盖固定测试 DSN 端口）与 Chromium 的 `core-leads.spec.ts` 三条定向 E2E 3/3 通过：一条来源线索生成两个事项后的列表／计数与页面归属、SELF／跨部门／客户端读取边界、未知阶段拒绝、取证和开箱后阶段计数。故障注入产生的两次 500 属既有回滚反例，测试断言通过。未运行全量 `pnpm verify` 或完整 E2E；本修复按 Level 2 单独验收，不冒充当前 `CORE-NT-003` 已集成或生产发布。
+
+后续将本分支与主线切片合并时，须核对 `NotaryMatterStage` 是否新增已交付阶段，并在新的集成 tree 上重跑受影响门禁；当前预览服务仍基于原 `main`，不代表本候选已部署。
+
 ## CORE-NT-002 开箱材料（2026-09-24）
 
 实际通过业务门禁的固定代码候选为`f7bca9b9d4eec4d8bce6c8ce3615545cdc5db3d2`，tree为`c54221c265b71609b4e4c5dff0c5a30352446e66`。本Slice只办理内部有权运营对明确选择的`WAITING_UNBOX`事项上传真实照片、纠正误传并提交开箱记录；后端重新校验当前身份、`NOTARY_UNBOX_RECORD`与来源线索范围、事项状态／版本、1～50个同事项可用照片内容版本。在Serializable事务中原子推进到`UNBOX_REVIEW`、写不可变开箱事实与服务端操作者／时间、冻结照片引用、成功审计及幂等回执。客户端及别的部门不得读取内部开箱照片；运营刷新后仍可查看和下载已提交附件。开箱审核结论、识别匹配、出证和案件均未实现。
