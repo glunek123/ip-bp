@@ -1,8 +1,8 @@
 {
   "version": 1,
-  "recordedAt": "2026-09-24T06:38:45.916Z",
+  "recordedAt": "2026-09-24T06:56:25.574Z",
   "files": {
-    ".cursor/rules/verified-feature-integration.mdc": "6dde3da092b3821be27360036be657318b6d5ff04ba2db9cd6f1aaaff56234f4",
+    ".cursor/rules/verified-feature-integration.mdc": "ffd2306612ba6f09749629c5adb9e645f7f37aa6ee27ff1bc1c3d8b14efeca38",
     ".env.example": "07211cde5c2b59efc21b619b752d4c9b871f0980d2d64ca3c146ad6151fd27ca",
     ".gitattributes": "b4cebf3dd35dc75e5c469f4326cd59238b86334aeed5d99b8e3d91c139a321dd",
     ".gitignore": "ba9bc8399767569e5412f23f4783afc64e7dc21b38b61242b42fe6104eaed074",
@@ -315,7 +315,7 @@
     "docs/spec/v0.1/READINESS.md": "44a951cdecdef6044f0c9be88f318f068cbf1b46a7b9c6127cc2da341a2c4c39",
     "docs/spec/v0.1/README.md": "684a70449d291ba0a8fe43eb30f7872241651d4ded55848f695aa8bf947b7aa1",
     "docs/spec/v0.1/TECHNICAL-DESIGN.md": "7965c1c61601ff70f1bd6ccb5566cfc59290e01e9b776bd5c5decdb930e821a9",
-    "docs/spec/v0.1/VALIDATION.md": "a70fa997d72d61b474f69025336a3038b50c6b19bad4825e897e492e2f3893d1",
+    "docs/spec/v0.1/VALIDATION.md": "a73393856d274c2ff2621d3cad8568d0d22ad356ec7a30aaff503200ac46570e",
     "docs/spec/v0.1/modules/calendar.md": "ca604f89e11e797c49c186286335064f051a9115819b468ab281735f84fb5daa",
     "docs/spec/v0.1/modules/cases.md": "acdca2f58983cb2e583a8870845785844bac1e7f8cd41e2639af7c3469b6e554",
     "docs/spec/v0.1/modules/customers.md": "4fd47e577a6c7fd9494e3758bac6c150391532735bf2fb156cd69b43b73d55d6",
