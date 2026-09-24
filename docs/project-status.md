@@ -8,7 +8,7 @@
 
 ## 当前任务
 
-**CORE-NT-003｜开箱审核（路线图唯一Current，待领取）**：CORE-NT-002已在`codex/core-nt-002-unboxing-materials`固定候选完成单事项开箱材料真实闭环；CORE-NT-004为唯一Next。NT-003尚未开始设计或实现，不把照片登记等同于审核结论。
+**CORE-NT-003｜开箱审核（路线图唯一Current，已领取／设计核对中）**：从已合并的本地`main@459b78e`创建`codex/core-nt-003-opening-review`；CORE-NT-004仍为唯一Next。当前只核对审核主体、结论与归档边界，尚未实现审核Command；不把NT-002照片登记等同于审核结论。
 
 ## 已实现
 
