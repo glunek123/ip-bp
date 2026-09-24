@@ -111,6 +111,11 @@ const context = {
       scopes: ['SELF', 'TEAM', 'DEPARTMENT'],
     },
     {
+      action: 'NOTARY_UNBOX_RECORD',
+      label: '登记开箱材料',
+      scopes: ['SELF', 'TEAM', 'DEPARTMENT'],
+    },
+    {
       action: 'NOTARY_OFFICE_MANAGE',
       label: '管理公证处',
       scopes: ['DEPARTMENT'],
@@ -154,7 +159,7 @@ const context = {
 };
 
 describe('organization API', () => {
-  it('decodes the exact 18-action backend permission catalog', async () => {
+  it('decodes the exact backend permission catalog including notary opening', async () => {
     vi.stubGlobal(
       'fetch',
       vi.fn().mockResolvedValue(new Response(JSON.stringify(context))),
@@ -173,6 +178,7 @@ describe('organization API', () => {
       'LEAD_WITHDRAW_APPLY',
       'LEAD_EVIDENCE_DECIDE',
       'NOTARY_EVIDENCE_RECORD',
+      'NOTARY_UNBOX_RECORD',
       'NOTARY_OFFICE_MANAGE',
       'USER_READ',
       'USER_MANAGE',

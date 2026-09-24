@@ -181,6 +181,54 @@ describe('materials API', () => {
     ).resolves.toMatchObject({ reservedOwnerId: 'reserved-lead-1' });
   });
 
+  it('uploads an opening photo as a real notary matter material', async () => {
+    const file = new File(['photo'], '开箱.jpg', { type: 'image/jpeg' });
+    const result = {
+      ...uploaded,
+      originalFilename: file.name,
+      purpose: 'NOTARY_OPENING_PHOTO',
+      mimeType: file.type,
+      sizeBytes: file.size,
+    };
+    const fetch = vi
+      .fn()
+      .mockResolvedValueOnce(
+        new Response(
+          JSON.stringify({
+            id: 'draft-1',
+            ownerType: 'NOTARY_MATTER',
+            ownerId: 'matter-1',
+            category: 'NOTARY_OPENING',
+            purpose: 'NOTARY_OPENING_PHOTO',
+            originalFilename: file.name,
+            declaredMimeType: file.type,
+            expiresAt: '2026-09-24T00:00:00.000Z',
+          }),
+        ),
+      )
+      .mockResolvedValueOnce(new Response(JSON.stringify(result)));
+    vi.stubGlobal('fetch', fetch);
+
+    await expect(
+      uploadMaterialFile({
+        ownerType: 'NOTARY_MATTER',
+        ownerId: 'matter-1',
+        category: 'NOTARY_OPENING',
+        purpose: 'NOTARY_OPENING_PHOTO',
+        file,
+      }),
+    ).resolves.toEqual(result);
+    expect(JSON.parse(String(fetch.mock.calls[0]?.[1]?.body))).toMatchObject({
+      ownerType: 'NOTARY_MATTER',
+      ownerId: 'matter-1',
+      category: 'NOTARY_OPENING',
+      purpose: 'NOTARY_OPENING_PHOTO',
+    });
+    expect(fetch.mock.calls[1]?.[1]).toEqual(
+      expect.objectContaining({ body: file }),
+    );
+  });
+
   it('rejects malformed upload and list responses', async () => {
     const file = new File(['real-file-content'], '营业执照.pdf', {
       type: 'application/pdf',

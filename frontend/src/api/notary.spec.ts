@@ -13,6 +13,7 @@ import {
   createNotaryOffice,
   getNotaryMatter,
   listNotaryOffices,
+  recordNotaryOpening,
   recordNotaryEvidence,
 } from './notary';
 
@@ -24,8 +25,9 @@ const matter = {
   leadVersion: 4,
   stage: 'PENDING_EVIDENCE',
   version: 2,
-  capabilities: { recordEvidence: true },
+  capabilities: { recordEvidence: true, recordOpening: false },
   evidence: null,
+  opening: null,
   notaryOffice: { id: 'office-1', name: '广州市南方公证处' },
   selectedProductIds: ['product-1'],
   selectedContentVersionIds: ['content-1'],
@@ -166,8 +168,9 @@ describe('notary API', () => {
     http.getJson.mockResolvedValue({
       ...matter,
       version: 2,
-      capabilities: { recordEvidence: true },
+      capabilities: { recordEvidence: true, recordOpening: false },
       evidence: null,
+      opening: null,
       sourceLead: { id: 'lead-1', businessNo: 'LD-20260921-001' },
       selectedProducts: [
         {
@@ -192,14 +195,14 @@ describe('notary API', () => {
     });
     await expect(getNotaryMatter('matter-1')).resolves.toMatchObject({
       version: 2,
-      capabilities: { recordEvidence: true },
+      capabilities: { recordEvidence: true, recordOpening: false },
       evidence: null,
     });
     http.getJson.mockResolvedValueOnce({
       ...matter,
       version: 3,
       stage: 'WAITING_UNBOX',
-      capabilities: { recordEvidence: false },
+      capabilities: { recordEvidence: false, recordOpening: false },
       evidence: {
         evidenceAt: '2026-09-24',
         sampleFeeState: 'PENDING',
@@ -208,6 +211,7 @@ describe('notary API', () => {
         recordedByUserId: 'user-1',
         logistics,
       },
+      opening: null,
       sourceLead: { id: 'lead-1', businessNo: 'LD-20260921-001' },
       selectedProducts: [
         {
@@ -234,6 +238,119 @@ describe('notary API', () => {
       stage: 'WAITING_UNBOX',
       evidence: { logistics },
     });
+  });
+
+  it('strictly decodes persisted opening photos and the review stage', async () => {
+    const opening = {
+      senderName: '寄件人甲',
+      senderPhone: null,
+      senderAddress: '广州市',
+      recordedAt: '2026-09-24T02:00:00.000Z',
+      recordedByUserId: 'user-1',
+      photos: [
+        {
+          materialId: 'photo-1',
+          contentVersionId: 'photo-v1',
+          originalFilename: '开箱.jpg',
+          mimeType: 'image/jpeg',
+        },
+      ],
+    };
+    http.getJson.mockResolvedValue({
+      ...matter,
+      stage: 'UNBOX_REVIEW',
+      version: 4,
+      capabilities: { recordEvidence: false, recordOpening: false },
+      evidence: {
+        evidenceAt: '2026-09-24',
+        sampleFeeState: 'PENDING',
+        sampleFeeAmount: null,
+        recordedAt: '2026-09-24T01:00:00.000Z',
+        recordedByUserId: 'user-1',
+        logistics: [
+          {
+            id: 'logistics-1',
+            companyState: 'NONE',
+            companyValue: null,
+            trackingState: 'NONE',
+            trackingValue: null,
+          },
+        ],
+      },
+      opening,
+      sourceLead: { id: 'lead-1', businessNo: 'LD-20260921-001' },
+      selectedProducts: [
+        {
+          id: 'product-1',
+          position: 1,
+          url: null,
+          title: '商品甲',
+          quantity: 1,
+          unitPrice: '9.00',
+          commentCount: 1,
+          estimatedAmount: '9.00',
+        },
+      ],
+      selectedMaterials: [
+        {
+          materialId: 'material-1',
+          contentVersionId: 'content-1',
+          originalFilename: '截图.png',
+          mimeType: 'image/png',
+        },
+      ],
+    });
+    await expect(getNotaryMatter('matter-1')).resolves.toMatchObject({
+      stage: 'UNBOX_REVIEW',
+      capabilities: { recordOpening: false },
+      opening,
+    });
+    http.getJson.mockResolvedValueOnce({
+      ...matter,
+      stage: 'UNBOX_REVIEW',
+      capabilities: { recordEvidence: false, recordOpening: false },
+      opening: { ...opening, photos: [{ ...opening.photos[0], mimeType: 42 }] },
+      sourceLead: { id: 'lead-1', businessNo: 'LD-20260921-001' },
+      selectedProducts: [],
+      selectedMaterials: [],
+    });
+    await expect(getNotaryMatter('matter-1')).rejects.toMatchObject({
+      code: 'INVALID_RESPONSE',
+    });
+  });
+
+  it('records opening content version ids with idempotency and checks the transition', async () => {
+    const input = {
+      expectedVersion: 3,
+      contentVersionIds: ['photo-v1'],
+      senderName: '寄件人甲',
+    };
+    const opening = {
+      senderName: '寄件人甲',
+      senderPhone: null,
+      senderAddress: null,
+      recordedAt: '2026-09-24T02:00:00.000Z',
+      recordedByUserId: 'user-1',
+      photos: [{ materialId: 'photo-1', contentVersionId: 'photo-v1' }],
+    };
+    const result = {
+      id: 'matter-1',
+      stage: 'UNBOX_REVIEW',
+      version: 4,
+      opening,
+    };
+    http.requestJson.mockResolvedValue(result);
+    await expect(
+      recordNotaryOpening('matter-1', input, 'opening-key'),
+    ).resolves.toEqual(result);
+    expect(http.requestJson).toHaveBeenCalledWith(
+      '/notary-matters/matter-1/opening',
+      {
+        method: 'POST',
+        headers: { 'Idempotency-Key': 'opening-key' },
+        body: input,
+      },
+    );
   });
 
   it('records evidence with the idempotency key and validates the transition response', async () => {

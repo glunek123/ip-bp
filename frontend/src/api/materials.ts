@@ -7,10 +7,16 @@ import {
   type RequestOptions,
 } from './http';
 
-export type MaterialOwnerType = 'CUSTOMER' | 'LEAD_DRAFT' | 'LEAD';
-export type MaterialCategory = 'CUSTOMER_IDENTITY' | 'LEAD_SCREENSHOT';
+export type MaterialOwnerType =
+  'CUSTOMER' | 'LEAD_DRAFT' | 'LEAD' | 'NOTARY_MATTER';
+export type MaterialCategory =
+  'CUSTOMER_IDENTITY' | 'LEAD_SCREENSHOT' | 'NOTARY_OPENING';
 export type MaterialPurpose =
-  'IDENTITY_FULL' | 'IDENTITY_FRONT' | 'IDENTITY_BACK' | 'LEAD_SCREENSHOT';
+  | 'IDENTITY_FULL'
+  | 'IDENTITY_FRONT'
+  | 'IDENTITY_BACK'
+  | 'LEAD_SCREENSHOT'
+  | 'NOTARY_OPENING_PHOTO';
 
 export type UploadedMaterial = {
   materialId: string;
@@ -50,7 +56,10 @@ export type OwnerMaterial = {
 };
 
 export type UploadMaterialFileInput = {
-  ownerType: Extract<MaterialOwnerType, 'CUSTOMER' | 'LEAD_DRAFT'>;
+  ownerType: Extract<
+    MaterialOwnerType,
+    'CUSTOMER' | 'LEAD_DRAFT' | 'NOTARY_MATTER'
+  >;
   ownerId?: string;
   category: MaterialCategory;
   purpose: MaterialPurpose;
@@ -59,7 +68,10 @@ export type UploadMaterialFileInput = {
 
 type UploadDraftResponse = {
   id: string;
-  ownerType: Extract<MaterialOwnerType, 'CUSTOMER' | 'LEAD_DRAFT'>;
+  ownerType: Extract<
+    MaterialOwnerType,
+    'CUSTOMER' | 'LEAD_DRAFT' | 'NOTARY_MATTER'
+  >;
   ownerId: string;
   reservedOwnerId?: string;
   category: MaterialCategory;
@@ -74,11 +86,20 @@ function isRecord(value: unknown): value is Record<string, unknown> {
 }
 
 function isOwnerType(value: unknown): value is MaterialOwnerType {
-  return value === 'CUSTOMER' || value === 'LEAD_DRAFT' || value === 'LEAD';
+  return (
+    value === 'CUSTOMER' ||
+    value === 'LEAD_DRAFT' ||
+    value === 'LEAD' ||
+    value === 'NOTARY_MATTER'
+  );
 }
 
 function isCategory(value: unknown): value is MaterialCategory {
-  return value === 'CUSTOMER_IDENTITY' || value === 'LEAD_SCREENSHOT';
+  return (
+    value === 'CUSTOMER_IDENTITY' ||
+    value === 'LEAD_SCREENSHOT' ||
+    value === 'NOTARY_OPENING'
+  );
 }
 
 function isPurpose(value: unknown): value is MaterialPurpose {
@@ -86,7 +107,8 @@ function isPurpose(value: unknown): value is MaterialPurpose {
     value === 'IDENTITY_FULL' ||
     value === 'IDENTITY_FRONT' ||
     value === 'IDENTITY_BACK' ||
-    value === 'LEAD_SCREENSHOT'
+    value === 'LEAD_SCREENSHOT' ||
+    value === 'NOTARY_OPENING_PHOTO'
   );
 }
 
@@ -98,7 +120,9 @@ function isUploadDraft(value: unknown): value is UploadDraftResponse {
   return (
     isRecord(value) &&
     typeof value.id === 'string' &&
-    (value.ownerType === 'CUSTOMER' || value.ownerType === 'LEAD_DRAFT') &&
+    (value.ownerType === 'CUSTOMER' ||
+      value.ownerType === 'LEAD_DRAFT' ||
+      value.ownerType === 'NOTARY_MATTER') &&
     typeof value.ownerId === 'string' &&
     isCategory(value.category) &&
     isPurpose(value.purpose) &&

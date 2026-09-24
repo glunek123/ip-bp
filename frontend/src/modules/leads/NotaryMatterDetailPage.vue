@@ -4,12 +4,18 @@ import { RouterLink, useRoute } from 'vue-router';
 import { ElButton } from 'element-plus/es/components/button/index.mjs';
 import { ApiError } from '../../api/http';
 import RequiredFieldMark from '../../app/RequiredFieldMark.vue';
-import { downloadMaterialVersion } from '../../api/materials';
+import {
+  downloadMaterialVersion,
+  uploadMaterialFile,
+  type UploadedMaterial,
+} from '../../api/materials';
 import {
   getNotaryMatter,
   recordNotaryEvidence,
+  recordNotaryOpening,
   type NotaryMatterDetail,
   type RecordNotaryEvidenceInput,
+  type RecordNotaryOpeningInput,
 } from '../../api/notary';
 
 const route = useRoute();
@@ -26,8 +32,21 @@ const evidenceErrors = ref<string[]>([]);
 const evidenceError = ref('');
 const evidenceSuccess = ref('');
 const submittingEvidence = ref(false);
+const openingSenderName = ref('');
+const openingSenderPhone = ref('');
+const openingSenderAddress = ref('');
+const openingPhotos = ref<
+  Array<{ file: File; uploaded?: UploadedMaterial; error?: string }>
+>([]);
+const openingUploadError = ref('');
+const openingError = ref('');
+const openingSuccess = ref('');
+const uploadingOpeningPhotos = ref(false);
+const submittingOpening = ref(false);
 let evidenceIdempotencyKey = '';
 let evidenceSubmissionFingerprint = '';
+let openingIdempotencyKey = '';
+let openingSubmissionFingerprint = '';
 let request: AbortController | undefined;
 
 function formatTime(value: string): string {
@@ -37,7 +56,15 @@ function formatTime(value: string): string {
   });
 }
 
-async function load(): Promise<void> {
+function hasSavedEvidence(value: NotaryMatterDetail | undefined): boolean {
+  return value?.stage === 'WAITING_UNBOX' && value.evidence !== null;
+}
+
+function hasSavedOpening(value: NotaryMatterDetail | undefined): boolean {
+  return value?.stage === 'UNBOX_REVIEW' && value.opening !== null;
+}
+
+async function load(): Promise<boolean> {
   evidenceIdempotencyKey = '';
   evidenceSubmissionFingerprint = '';
   request?.abort();
@@ -48,15 +75,155 @@ async function load(): Promise<void> {
     const current = await getNotaryMatter(String(route.params.id), {
       signal: controller.signal,
     });
-    if (controller.signal.aborted) return;
+    if (controller.signal.aborted) return false;
     matter.value = current;
     state.value = 'ready';
+    return true;
   } catch (error) {
-    if (controller.signal.aborted) return;
+    if (controller.signal.aborted) return false;
     state.value =
       error instanceof ApiError && error.code === 'RESOURCE_NOT_FOUND'
         ? 'missing'
         : 'failed';
+    return false;
+  }
+}
+
+const allowedOpeningPhotoTypes = new Set([
+  'image/jpeg',
+  'image/png',
+  'image/webp',
+]);
+const maxOpeningPhotoSize = 20 * 1024 * 1024;
+
+async function uploadOpeningFiles(event: Event): Promise<void> {
+  const input = event.target;
+  if (!(input instanceof HTMLInputElement)) return;
+  const files = Array.from(input.files ?? []);
+  input.value = '';
+  openingUploadError.value = '';
+  if (openingPhotos.value.length + files.length > 50) {
+    openingUploadError.value = '开箱照片最多上传 50 张';
+    return;
+  }
+  const accepted: Array<{
+    file: File;
+    uploaded?: UploadedMaterial;
+    error?: string;
+  }> = [];
+  for (const file of files) {
+    if (!allowedOpeningPhotoTypes.has(file.type)) {
+      openingUploadError.value = '仅支持 JPEG、PNG 或 WEBP 格式的开箱照片';
+      continue;
+    }
+    if (file.size > maxOpeningPhotoSize) {
+      openingUploadError.value = '单张开箱照片不能超过 20 MB';
+      continue;
+    }
+    accepted.push({ file });
+  }
+  openingPhotos.value.push(...accepted);
+  if (accepted.length === 0) return;
+  uploadingOpeningPhotos.value = true;
+  try {
+    for (const photo of accepted) {
+      try {
+        photo.uploaded = await uploadMaterialFile({
+          ownerType: 'NOTARY_MATTER',
+          ownerId: matter.value?.id ?? String(route.params.id),
+          category: 'NOTARY_OPENING',
+          purpose: 'NOTARY_OPENING_PHOTO',
+          file: photo.file,
+        });
+      } catch {
+        photo.error = '上传失败，可重试';
+      }
+    }
+  } finally {
+    uploadingOpeningPhotos.value = false;
+  }
+}
+
+async function retryOpeningPhoto(photo: {
+  file: File;
+  uploaded?: UploadedMaterial;
+  error?: string;
+}): Promise<void> {
+  photo.error = undefined;
+  try {
+    photo.uploaded = await uploadMaterialFile({
+      ownerType: 'NOTARY_MATTER',
+      ownerId: matter.value?.id ?? String(route.params.id),
+      category: 'NOTARY_OPENING',
+      purpose: 'NOTARY_OPENING_PHOTO',
+      file: photo.file,
+    });
+  } catch {
+    photo.error = '上传失败，可重试';
+  }
+}
+
+async function submitOpening(): Promise<void> {
+  openingError.value = '';
+  openingSuccess.value = '';
+  openingUploadError.value = '';
+  const current = matter.value;
+  if (
+    !current?.capabilities.recordOpening ||
+    current.stage !== 'WAITING_UNBOX' ||
+    openingPhotos.value.length < 1 ||
+    openingPhotos.value.some((photo) => !photo.uploaded) ||
+    uploadingOpeningPhotos.value ||
+    submittingOpening.value
+  ) {
+    if (openingPhotos.value.length < 1)
+      openingUploadError.value = '至少上传一张开箱照片';
+    else if (openingPhotos.value.some((photo) => !photo.uploaded))
+      openingUploadError.value = '请先完成所有照片上传';
+    return;
+  }
+  const input: RecordNotaryOpeningInput = {
+    expectedVersion: current.version,
+    contentVersionIds: openingPhotos.value.map(
+      (photo) => photo.uploaded!.contentVersionId,
+    ),
+    ...(openingSenderName.value.trim()
+      ? { senderName: openingSenderName.value.trim() }
+      : {}),
+    ...(openingSenderPhone.value.trim()
+      ? { senderPhone: openingSenderPhone.value.trim() }
+      : {}),
+    ...(openingSenderAddress.value.trim()
+      ? { senderAddress: openingSenderAddress.value.trim() }
+      : {}),
+  };
+  const fingerprint = JSON.stringify(input);
+  if (fingerprint !== openingSubmissionFingerprint) {
+    openingIdempotencyKey = globalThis.crypto.randomUUID();
+    openingSubmissionFingerprint = fingerprint;
+  }
+  submittingOpening.value = true;
+  try {
+    await recordNotaryOpening(current.id, input, openingIdempotencyKey);
+    await load();
+    if (hasSavedOpening(matter.value)) {
+      openingPhotos.value = [];
+      openingIdempotencyKey = '';
+      openingSubmissionFingerprint = '';
+      openingSuccess.value = '开箱记录已保存，事项已进入开箱审核。';
+    } else {
+      openingError.value = '提交已受理，但暂时无法读取保存结果，请刷新确认。';
+    }
+  } catch (error) {
+    openingError.value =
+      error instanceof ApiError &&
+      ['VERSION_CONFLICT', 'IDEMPOTENCY_CONFLICT', 'INVALID_STATE'].includes(
+        error.code,
+      )
+        ? '事项状态或提交内容已变化，请刷新后再试。'
+        : '开箱记录提交失败，请检查网络后重试。';
+  } finally {
+    submittingOpening.value = false;
   }
 }
 
@@ -142,21 +309,15 @@ async function submitEvidence(): Promise<void> {
     evidenceSubmissionFingerprint = fingerprint;
   }
   try {
-    const saved = await recordNotaryEvidence(
-      current.id,
-      input,
-      evidenceIdempotencyKey,
-    );
-    matter.value = {
-      ...current,
-      stage: saved.stage,
-      version: saved.version,
-      capabilities: { recordEvidence: false },
-      evidence: saved.evidence,
-    };
+    await recordNotaryEvidence(current.id, input, evidenceIdempotencyKey);
     evidenceIdempotencyKey = '';
     evidenceSubmissionFingerprint = '';
-    evidenceSuccess.value = '取证物流已登记，事项已进入待开箱。';
+    const loaded = await load();
+    if (loaded && hasSavedEvidence(matter.value)) {
+      evidenceSuccess.value = '取证物流已登记，事项已进入待开箱。';
+    } else {
+      evidenceError.value = '取证已提交，但暂时无法读取保存结果，请刷新确认。';
+    }
   } catch (error) {
     evidenceError.value =
       error instanceof ApiError &&
@@ -197,7 +358,11 @@ onBeforeUnmount(() => request?.abort());
         <div class="page-head">
           <div>
             <span class="pill">{{
-              matter.stage === 'WAITING_UNBOX' ? '等待开箱' : '待公证处取证'
+              matter.stage === 'UNBOX_REVIEW'
+                ? '开箱审核中'
+                : matter.stage === 'WAITING_UNBOX'
+                  ? '等待开箱'
+                  : '待公证处取证'
             }}</span>
             <h1>{{ matter.businessNo }}</h1>
           </div>
@@ -238,6 +403,109 @@ onBeforeUnmount(() => request?.abort());
               <dd>{{ matter.batchPurpose }}</dd>
             </div>
           </dl>
+        </section>
+        <section
+          v-if="
+            matter.stage === 'WAITING_UNBOX' &&
+            matter.capabilities.recordOpening
+          "
+          class="demo-card demo-card--pad"
+          data-test="opening-form"
+        >
+          <h2 class="form-section-title">登记开箱材料</h2>
+          <p>提交后事项将进入开箱审核。</p>
+          <form data-test="record-opening" @submit.prevent="submitOpening">
+            <label
+              >开箱照片（JPEG、PNG、WEBP；单张不超过 20 MB，最多 50
+              张）<RequiredFieldMark />
+              <input
+                data-test="opening-photo-files"
+                type="file"
+                accept="image/jpeg,image/png,image/webp"
+                multiple
+                @change="uploadOpeningFiles"
+              />
+            </label>
+            <ul v-if="openingPhotos.length">
+              <li
+                v-for="(photo, index) in openingPhotos"
+                :key="`${photo.file.name}-${index}`"
+              >
+                {{ photo.file.name }} —
+                {{ photo.uploaded ? '已上传' : photo.error || '等待上传' }}
+                <button
+                  v-if="photo.error"
+                  type="button"
+                  :disabled="uploadingOpeningPhotos"
+                  @click="retryOpeningPhoto(photo)"
+                >
+                  重试上传
+                </button>
+              </li>
+            </ul>
+            <label
+              >寄件人姓名<input
+                v-model="openingSenderName"
+                data-test="opening-sender-name"
+                maxlength="120"
+            /></label>
+            <label
+              >寄件人电话<input
+                v-model="openingSenderPhone"
+                data-test="opening-sender-phone"
+                maxlength="50"
+            /></label>
+            <label
+              >寄件人地址<input
+                v-model="openingSenderAddress"
+                data-test="opening-sender-address"
+                maxlength="500"
+            /></label>
+            <p v-if="openingUploadError" class="field-error" role="alert">
+              {{ openingUploadError }}
+            </p>
+            <p v-if="openingError" class="field-error" role="alert">
+              {{ openingError }}
+            </p>
+            <p v-if="openingSuccess" role="status">{{ openingSuccess }}</p>
+            <ElButton
+              data-test="record-opening-submit"
+              native-type="submit"
+              :loading="submittingOpening"
+              :disabled="submittingOpening || uploadingOpeningPhotos"
+              >登记开箱并进入审核</ElButton
+            >
+          </form>
+        </section>
+        <section
+          v-else-if="matter.opening"
+          class="demo-card demo-card--pad"
+          data-test="saved-opening"
+        >
+          <h2 class="form-section-title">开箱记录</h2>
+          <p>寄件人：{{ matter.opening.senderName || '未登记' }}</p>
+          <p>电话：{{ matter.opening.senderPhone || '未登记' }}</p>
+          <p>地址：{{ matter.opening.senderAddress || '未登记' }}</p>
+          <p>登记时间：{{ formatTime(matter.opening.recordedAt) }}</p>
+          <ul>
+            <li
+              v-for="photo in matter.opening.photos"
+              :key="photo.contentVersionId"
+            >
+              {{ photo.originalFilename }}
+              <ElButton
+                text
+                :data-test="`download-opening-photo-${photo.contentVersionId}`"
+                @click="
+                  downloadMaterial(photo.materialId, photo.contentVersionId)
+                "
+                >下载照片</ElButton
+              >
+            </li>
+          </ul>
+          <p v-if="downloadError" class="field-error" role="alert">
+            {{ downloadError }}
+          </p>
         </section>
         <section
           v-if="

@@ -54,6 +54,46 @@ export type NotaryEvidence = {
   logistics: NotaryEvidenceLogistics[];
 };
 
+export type NotaryOpeningPhoto = {
+  materialId: string;
+  contentVersionId: string;
+  originalFilename: string;
+  mimeType: string;
+};
+
+export type NotaryOpening = {
+  senderName: string | null;
+  senderPhone: string | null;
+  senderAddress: string | null;
+  recordedAt: string;
+  recordedByUserId: string;
+  photos: NotaryOpeningPhoto[];
+};
+
+export type RecordNotaryOpeningInput = {
+  expectedVersion: number;
+  contentVersionIds: string[];
+  senderName?: string;
+  senderPhone?: string;
+  senderAddress?: string;
+};
+
+export type RecordNotaryOpeningResult = {
+  id: string;
+  stage: 'UNBOX_REVIEW';
+  version: number;
+  opening: Pick<
+    NotaryOpening,
+    | 'senderName'
+    | 'senderPhone'
+    | 'senderAddress'
+    | 'recordedAt'
+    | 'recordedByUserId'
+  > & {
+    photos: Array<Pick<NotaryOpeningPhoto, 'materialId' | 'contentVersionId'>>;
+  };
+};
+
 type RecordNotaryEvidenceBaseInput = {
   evidenceAt: string;
   logistics: Array<Omit<NotaryEvidenceLogistics, 'id'>>;
@@ -74,10 +114,11 @@ export type RecordNotaryEvidenceResult = {
 };
 
 export type NotaryMatterDetail = Omit<NotaryMatterResult, 'stage'> & {
-  stage: 'PENDING_EVIDENCE' | 'WAITING_UNBOX';
+  stage: 'PENDING_EVIDENCE' | 'WAITING_UNBOX' | 'UNBOX_REVIEW';
   version: number;
-  capabilities: { recordEvidence: boolean };
+  capabilities: { recordEvidence: boolean; recordOpening: boolean };
   evidence: NotaryEvidence | null;
+  opening: NotaryOpening | null;
   sourceLead: { id: string; businessNo: string };
   selectedProducts: LeadProduct[];
   selectedMaterials: Array<{
@@ -122,6 +163,36 @@ function isEvidence(value: unknown): value is NotaryEvidence {
     Array.isArray(value.logistics) &&
     value.logistics.length > 0 &&
     value.logistics.every(isLogistics)
+  );
+}
+
+function isOpeningPhoto(value: unknown): value is NotaryOpeningPhoto {
+  return (
+    isRecord(value) &&
+    typeof value.materialId === 'string' &&
+    value.materialId.length > 0 &&
+    typeof value.contentVersionId === 'string' &&
+    value.contentVersionId.length > 0 &&
+    typeof value.originalFilename === 'string' &&
+    value.originalFilename.length > 0 &&
+    typeof value.mimeType === 'string' &&
+    ['image/jpeg', 'image/png', 'image/webp'].includes(value.mimeType)
+  );
+}
+
+function isOpening(value: unknown): value is NotaryOpening {
+  return (
+    isRecord(value) &&
+    (value.senderName === null || typeof value.senderName === 'string') &&
+    (value.senderPhone === null || typeof value.senderPhone === 'string') &&
+    (value.senderAddress === null || typeof value.senderAddress === 'string') &&
+    typeof value.recordedAt === 'string' &&
+    !Number.isNaN(Date.parse(value.recordedAt)) &&
+    typeof value.recordedByUserId === 'string' &&
+    value.recordedByUserId.length > 0 &&
+    Array.isArray(value.photos) &&
+    value.photos.length > 0 &&
+    value.photos.every(isOpeningPhoto)
   );
 }
 
@@ -229,14 +300,23 @@ function isMatterDetail(value: unknown): value is NotaryMatterDetail {
   return (
     Number.isInteger(detail.version) &&
     (detail.version as number) >= 1 &&
-    (detail.stage === 'PENDING_EVIDENCE' || detail.stage === 'WAITING_UNBOX') &&
+    (detail.stage === 'PENDING_EVIDENCE' ||
+      detail.stage === 'WAITING_UNBOX' ||
+      detail.stage === 'UNBOX_REVIEW') &&
     isRecord(detail.capabilities) &&
     typeof detail.capabilities.recordEvidence === 'boolean' &&
+    typeof detail.capabilities.recordOpening === 'boolean' &&
     (detail.evidence === null || isEvidence(detail.evidence)) &&
+    (detail.opening === null || isOpening(detail.opening)) &&
     (detail.stage === 'PENDING_EVIDENCE'
-      ? detail.evidence === null
+      ? detail.evidence === null && detail.opening === null
       : detail.evidence !== null &&
         detail.capabilities.recordEvidence === false) &&
+    (detail.stage === 'UNBOX_REVIEW'
+      ? detail.opening !== null && detail.capabilities.recordOpening === false
+      : detail.opening === null) &&
+    (detail.stage !== 'PENDING_EVIDENCE' ||
+      detail.capabilities.recordOpening === false) &&
     isRecord(sourceLead) &&
     typeof sourceLead.id === 'string' &&
     typeof sourceLead.businessNo === 'string' &&
@@ -265,6 +345,40 @@ function isMatterDetail(value: unknown): value is NotaryMatterDetail {
       (selectedMaterials as Array<Record<string, unknown>>).some(
         (material) => material.contentVersionId === id,
       ),
+    )
+  );
+}
+
+function isRecordOpeningResult(
+  value: unknown,
+): value is RecordNotaryOpeningResult {
+  return (
+    isRecord(value) &&
+    typeof value.id === 'string' &&
+    value.id.length > 0 &&
+    value.stage === 'UNBOX_REVIEW' &&
+    Number.isInteger(value.version) &&
+    (value.version as number) >= 2 &&
+    isRecord(value.opening) &&
+    (value.opening.senderName === null ||
+      typeof value.opening.senderName === 'string') &&
+    (value.opening.senderPhone === null ||
+      typeof value.opening.senderPhone === 'string') &&
+    (value.opening.senderAddress === null ||
+      typeof value.opening.senderAddress === 'string') &&
+    typeof value.opening.recordedAt === 'string' &&
+    !Number.isNaN(Date.parse(value.opening.recordedAt)) &&
+    typeof value.opening.recordedByUserId === 'string' &&
+    value.opening.recordedByUserId.length > 0 &&
+    Array.isArray(value.opening.photos) &&
+    value.opening.photos.length > 0 &&
+    value.opening.photos.every(
+      (photo) =>
+        isRecord(photo) &&
+        typeof photo.materialId === 'string' &&
+        photo.materialId.length > 0 &&
+        typeof photo.contentVersionId === 'string' &&
+        photo.contentVersionId.length > 0,
     )
   );
 }
@@ -350,6 +464,46 @@ export async function recordNotaryEvidence(
         row.trackingValue !== submitted.trackingValue
       );
     })
+  )
+    throw invalidResponse();
+  return data;
+}
+
+export async function recordNotaryOpening(
+  id: string,
+  input: RecordNotaryOpeningInput,
+  idempotencyKey: string,
+): Promise<RecordNotaryOpeningResult> {
+  if (
+    !Number.isInteger(input.expectedVersion) ||
+    input.expectedVersion < 1 ||
+    input.contentVersionIds.length < 1 ||
+    input.contentVersionIds.length > 50 ||
+    input.contentVersionIds.some(
+      (id) => typeof id !== 'string' || id.length === 0,
+    ) ||
+    new Set(input.contentVersionIds).size !== input.contentVersionIds.length
+  )
+    throw new ApiError('开箱照片信息无效', 400, 'VALIDATION_ERROR');
+  const data = await requestJson(
+    `/notary-matters/${encodeURIComponent(id)}/opening`,
+    {
+      method: 'POST',
+      headers: { 'Idempotency-Key': idempotencyKey },
+      body: { ...input, contentVersionIds: [...input.contentVersionIds] },
+    },
+  );
+  if (
+    !isRecordOpeningResult(data) ||
+    data.id !== id ||
+    data.version !== input.expectedVersion + 1 ||
+    !sameIds(
+      data.opening.photos.map((photo) => photo.contentVersionId),
+      input.contentVersionIds,
+    ) ||
+    data.opening.senderName !== (input.senderName?.trim() || null) ||
+    data.opening.senderPhone !== (input.senderPhone?.trim() || null) ||
+    data.opening.senderAddress !== (input.senderAddress?.trim() || null)
   )
     throw invalidResponse();
   return data;

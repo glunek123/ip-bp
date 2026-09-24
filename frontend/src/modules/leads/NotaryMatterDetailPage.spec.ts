@@ -7,8 +7,12 @@ import NotaryMatterDetailPage from './NotaryMatterDetailPage.vue';
 const api = vi.hoisted(() => ({
   getNotaryMatter: vi.fn(),
   recordNotaryEvidence: vi.fn(),
+  recordNotaryOpening: vi.fn(),
 }));
-const materials = vi.hoisted(() => ({ downloadMaterialVersion: vi.fn() }));
+const materials = vi.hoisted(() => ({
+  downloadMaterialVersion: vi.fn(),
+  uploadMaterialFile: vi.fn(),
+}));
 vi.mock('../../api/notary', () => api);
 vi.mock('../../api/materials', () => materials);
 
@@ -20,8 +24,9 @@ const matter = {
   leadVersion: 4,
   stage: 'PENDING_EVIDENCE',
   version: 2,
-  capabilities: { recordEvidence: true },
+  capabilities: { recordEvidence: true, recordOpening: false },
   evidence: null,
+  opening: null,
   notaryOffice: { id: 'office-1', name: '广州市南方公证处' },
   selectedProductIds: ['product-1'],
   selectedContentVersionIds: ['content-1'],
@@ -72,7 +77,17 @@ beforeEach(() => {
   vi.resetAllMocks();
   api.getNotaryMatter.mockResolvedValue(matter);
   api.recordNotaryEvidence.mockResolvedValue({});
+  api.recordNotaryOpening.mockResolvedValue({});
   materials.downloadMaterialVersion.mockResolvedValue(undefined);
+  materials.uploadMaterialFile.mockResolvedValue({
+    materialId: 'photo-1',
+    contentVersionId: 'photo-v1',
+    originalFilename: '开箱.jpg',
+    purpose: 'NOTARY_OPENING_PHOTO',
+    mimeType: 'image/jpeg',
+    sizeBytes: 5,
+    sha256: 'a'.repeat(64),
+  });
 });
 
 describe('NotaryMatterDetailPage', () => {
@@ -142,6 +157,13 @@ describe('NotaryMatterDetailPage', () => {
       version: 3,
       evidence: savedEvidence,
     });
+    api.getNotaryMatter.mockResolvedValueOnce({
+      ...matter,
+      stage: 'WAITING_UNBOX',
+      version: 3,
+      capabilities: { recordEvidence: false, recordOpening: true },
+      evidence: savedEvidence,
+    });
     await wrapper.get('[data-test="record-evidence"]').trigger('submit');
     await flushPromises();
     expect(api.recordNotaryEvidence).toHaveBeenCalledWith(
@@ -170,7 +192,7 @@ describe('NotaryMatterDetailPage', () => {
       ...matter,
       stage: 'WAITING_UNBOX',
       version: 3,
-      capabilities: { recordEvidence: false },
+      capabilities: { recordEvidence: false, recordOpening: false },
       evidence: savedEvidence,
     });
     await wrapper.get('[data-test="refresh-matter"]').trigger('click');
@@ -237,6 +259,198 @@ describe('NotaryMatterDetailPage', () => {
     const keys = api.recordNotaryEvidence.mock.calls.map((call) => call[2]);
     expect(keys[0]).toBe(keys[1]);
     expect(keys[2]).not.toBe(keys[1]);
+  });
+
+  it('uploads real opening photos, submits stable content ids and reloads persisted downloads', async () => {
+    api.getNotaryMatter.mockResolvedValueOnce({
+      ...matter,
+      stage: 'WAITING_UNBOX',
+      capabilities: { recordEvidence: false, recordOpening: true },
+      evidence: {
+        evidenceAt: '2026-09-24',
+        sampleFeeState: 'PENDING',
+        sampleFeeAmount: null,
+        recordedAt: '2026-09-24T01:00:00.000Z',
+        recordedByUserId: 'user-1',
+        logistics: [
+          {
+            id: 'logistics-1',
+            companyState: 'NONE',
+            companyValue: null,
+            trackingState: 'NONE',
+            trackingValue: null,
+          },
+        ],
+      },
+    });
+    const wrapper = await mountPage();
+    const file = new File(['photo'], '开箱.jpg', { type: 'image/jpeg' });
+    Object.defineProperty(
+      wrapper.get('[data-test="opening-photo-files"]').element,
+      'files',
+      { value: [file] },
+    );
+    await wrapper.get('[data-test="opening-photo-files"]').trigger('change');
+    await flushPromises();
+    expect(materials.uploadMaterialFile).toHaveBeenCalledWith({
+      ownerType: 'NOTARY_MATTER',
+      ownerId: 'matter-1',
+      category: 'NOTARY_OPENING',
+      purpose: 'NOTARY_OPENING_PHOTO',
+      file,
+    });
+    await wrapper.get('[data-test="opening-sender-name"]').setValue('寄件人甲');
+    api.recordNotaryOpening.mockResolvedValueOnce({
+      id: 'matter-1',
+      stage: 'UNBOX_REVIEW',
+      version: 4,
+      opening: {},
+    });
+    api.getNotaryMatter.mockResolvedValueOnce({
+      ...matter,
+      stage: 'UNBOX_REVIEW',
+      version: 4,
+      capabilities: { recordEvidence: false, recordOpening: false },
+      evidence: {
+        evidenceAt: '2026-09-24',
+        sampleFeeState: 'PENDING',
+        sampleFeeAmount: null,
+        recordedAt: '2026-09-24T01:00:00.000Z',
+        recordedByUserId: 'user-1',
+        logistics: [
+          {
+            id: 'logistics-1',
+            companyState: 'NONE',
+            companyValue: null,
+            trackingState: 'NONE',
+            trackingValue: null,
+          },
+        ],
+      },
+      opening: {
+        senderName: '寄件人甲',
+        senderPhone: null,
+        senderAddress: null,
+        recordedAt: '2026-09-24T02:00:00.000Z',
+        recordedByUserId: 'user-1',
+        photos: [
+          {
+            materialId: 'photo-1',
+            contentVersionId: 'photo-v1',
+            originalFilename: '开箱.jpg',
+            mimeType: 'image/jpeg',
+          },
+        ],
+      },
+    });
+    await wrapper.get('[data-test="record-opening"]').trigger('submit');
+    await flushPromises();
+    expect(api.recordNotaryOpening).toHaveBeenCalledWith(
+      'matter-1',
+      {
+        expectedVersion: 2,
+        contentVersionIds: ['photo-v1'],
+        senderName: '寄件人甲',
+      },
+      expect.any(String),
+    );
+    expect(wrapper.get('[data-test="saved-opening"]').text()).toContain(
+      '开箱.jpg',
+    );
+    await wrapper
+      .get('[data-test="download-opening-photo-photo-v1"]')
+      .trigger('click');
+    expect(materials.downloadMaterialVersion).toHaveBeenCalledWith(
+      'photo-1',
+      'photo-v1',
+    );
+  });
+
+  it('rejects opening photos outside supported MIME types and the 20 MB and 50 file limits', async () => {
+    api.getNotaryMatter.mockResolvedValueOnce({
+      ...matter,
+      stage: 'WAITING_UNBOX',
+      capabilities: { recordEvidence: false, recordOpening: true },
+      evidence: {},
+    });
+    const wrapper = await mountPage();
+    const invalid = new File(['text'], 'note.txt', { type: 'text/plain' });
+    Object.defineProperty(
+      wrapper.get('[data-test="opening-photo-files"]').element,
+      'files',
+      { configurable: true, value: [invalid] },
+    );
+    await wrapper.get('[data-test="opening-photo-files"]').trigger('change');
+    await flushPromises();
+    expect(materials.uploadMaterialFile).not.toHaveBeenCalled();
+    expect(wrapper.text()).toContain('仅支持 JPEG、PNG 或 WEBP');
+
+    const oversized = new File(['photo'], 'large.png', { type: 'image/png' });
+    Object.defineProperty(oversized, 'size', { value: 20 * 1024 * 1024 + 1 });
+    Object.defineProperty(
+      wrapper.get('[data-test="opening-photo-files"]').element,
+      'files',
+      { value: [oversized] },
+    );
+    await wrapper.get('[data-test="opening-photo-files"]').trigger('change');
+    expect(wrapper.text()).toContain('单张开箱照片不能超过 20 MB');
+
+    const valid = new File(['photo'], 'valid.png', { type: 'image/png' });
+    Object.defineProperty(
+      wrapper.get('[data-test="opening-photo-files"]').element,
+      'files',
+      { value: Array(51).fill(valid) },
+    );
+    await wrapper.get('[data-test="opening-photo-files"]').trigger('change');
+    expect(wrapper.text()).toContain('开箱照片最多上传 50 张');
+    expect(materials.uploadMaterialFile).not.toHaveBeenCalled();
+  });
+
+  it('keeps uploaded content ids and reuses the opening idempotency key after a failed submit', async () => {
+    api.getNotaryMatter.mockResolvedValueOnce({
+      ...matter,
+      stage: 'WAITING_UNBOX',
+      capabilities: { recordEvidence: false, recordOpening: true },
+      evidence: {
+        evidenceAt: '2026-09-24',
+        sampleFeeState: 'PENDING',
+        sampleFeeAmount: null,
+        recordedAt: '2026-09-24T01:00:00.000Z',
+        recordedByUserId: 'user-1',
+        logistics: [
+          {
+            id: 'logistics-1',
+            companyState: 'NONE',
+            companyValue: null,
+            trackingState: 'NONE',
+            trackingValue: null,
+          },
+        ],
+      },
+    });
+    const wrapper = await mountPage();
+    const file = new File(['photo'], '开箱.jpg', { type: 'image/jpeg' });
+    Object.defineProperty(
+      wrapper.get('[data-test="opening-photo-files"]').element,
+      'files',
+      { value: [file] },
+    );
+    await wrapper.get('[data-test="opening-photo-files"]').trigger('change');
+    await flushPromises();
+    api.recordNotaryOpening.mockRejectedValueOnce(
+      new Error('temporary failure'),
+    );
+    const submit = wrapper
+      .get('[data-test="record-opening"]')
+      .trigger('submit');
+    await submit;
+    await flushPromises();
+    await wrapper.get('[data-test="record-opening"]').trigger('submit');
+    await flushPromises();
+    const calls = api.recordNotaryOpening.mock.calls;
+    expect(calls[0]?.[1].contentVersionIds).toEqual(['photo-v1']);
+    expect(calls[1]?.[1].contentVersionIds).toEqual(['photo-v1']);
+    expect(calls[1]?.[2]).toBe(calls[0]?.[2]);
   });
 
   it.each(['IDEMPOTENCY_CONFLICT', 'INVALID_STATE'])(
