@@ -1,6 +1,6 @@
 {
   "version": 1,
-  "recordedAt": "2026-09-24T04:21:37.879Z",
+  "recordedAt": "2026-09-24T04:27:36.593Z",
   "files": {
     ".cursor/rules/verified-feature-integration.mdc": "0b9688e6b952bf917034badbcc812493ea7c9f2fe9de2beffb38efab27143250",
     ".env.example": "07211cde5c2b59efc21b619b752d4c9b871f0980d2d64ca3c146ad6151fd27ca",
@@ -480,7 +480,7 @@
     "scripts/validation-scopes.mjs": "c1189587a511d65393e7a0c9d127d139e7d971d4a4a3a4a5be2d3c72a8d7b954",
     "tests/e2e/auth.spec.ts": "032d03276c1ac6a29b97b73352d1b83591ca4d99c21cf074c37943366af7bcc6",
     "tests/e2e/components.spec.ts": "8d94b3b044d9ddc24c323536aba04edc08e216271ff3082705a21c1ac2796742",
-    "tests/e2e/core-leads.spec.ts": "b875413d8e7b379df9c64b6332042fd454bbc153adc118a0082b05d792a37a2a",
+    "tests/e2e/core-leads.spec.ts": "b6b947957161f2bef7e2c74cb52969936b9b200e06ea542a528fca403e36d241",
     "tests/e2e/customers.spec.ts": "2f09fe2f42afd8d9c5d0c935ca10ac96d9befd9773384bcc62a687f53b0ed1db",
     "tests/e2e/health.spec.ts": "e6de0eadada2040386f75830134425231a279f51f17f083975340211d6d0b5da",
     "tests/e2e/personnel-access.spec.ts": "d45f3ed245e8801bfe7bf767b53790a216b0ae5cf37e55ebe2793df9e24c41c8",

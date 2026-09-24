@@ -460,11 +460,12 @@ test('operator creates, refreshes, views, and edits a waiting-push lead', async 
   await configureBrowser(page);
   await page.goto('/leads');
   const counters = page.locator('[data-test="lead-counter"]');
-  await expect(counters).toHaveCount(4);
+  await expect(counters).toHaveCount(5);
   await expect(counters).toHaveText([
     '待推送0',
     '线索待审核1',
     '线索待确认1',
+    '已移交公证0',
     '线索已归档1',
   ]);
   await page.locator('[data-test="create-lead"]').click();
