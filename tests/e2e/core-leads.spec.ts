@@ -5770,6 +5770,10 @@ test('real operator decision and notary browser archive a frozen certificate int
 
   const form = page.locator('[data-test="certificate-form"]');
   await expect(form).toBeVisible();
+  await expect(
+    form.locator('[data-test="disclosure-toggle"]'),
+  ).not.toBeChecked();
+  await expect(form.locator('[data-test="disclosure-toggle"]')).toBeDisabled();
   await form
     .locator('[data-test="certificate-number"]')
     .fill('（2026）浙证字005号');
