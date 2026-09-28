@@ -9,6 +9,30 @@ import { NotaryOpeningService } from './notary-opening.service';
 import { NotaryPortalController } from './notary-portal.controller';
 import { NotaryPortalService } from './notary-portal.service';
 import { NotaryCertificateService } from './notary-certificate.service';
+import { plainToInstance } from 'class-transformer';
+import { validateSync } from 'class-validator';
+import { IssueNotaryCertificateDto } from './notary-certificate.dto';
+
+describe('notary certificate request validation', () => {
+  it('accepts known amounts and explicitly pending null amounts', () => {
+    const input = plainToInstance(IssueNotaryCertificateDto, {
+      expectedVersion: 5,
+      certificateNo: '（2026）浙证字005号',
+      certificateDate: '2026-09-28',
+      contentVersionIds: ['11111111-1111-4111-8111-111111111111'],
+      needDisclose: false,
+      disclosureContentVersionIds: [],
+      fees: {
+        notary: { state: 'KNOWN', amount: '120.00' },
+        investigation: { state: 'PENDING', amount: null },
+        disclosure: { state: 'KNOWN', amount: '0.00' },
+      },
+    });
+    expect(
+      validateSync(input, { whitelist: true, forbidNonWhitelisted: true }),
+    ).toEqual([]);
+  });
+});
 
 describe('notary portal OpenAPI contract', () => {
   it('declares minimal list, detail and opening response schemas', async () => {

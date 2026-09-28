@@ -12,6 +12,7 @@ import {
   Max,
   MaxLength,
   Min,
+  ValidateIf,
   ValidateNested,
 } from 'class-validator';
 import { Type } from 'class-transformer';
@@ -20,7 +21,10 @@ export class CertificateFeeDto {
   @ApiProperty({ enum: ['KNOWN', 'PENDING'] })
   @IsIn(['KNOWN', 'PENDING'])
   state!: 'KNOWN' | 'PENDING';
-  @ApiProperty({ type: String, nullable: true }) amount!: string | null;
+  @ApiProperty({ type: String, nullable: true })
+  @ValidateIf((_, amount: unknown) => amount !== null)
+  @IsString()
+  amount!: string | null;
 }
 export class CertificateFeesDto {
   @ApiProperty({ type: CertificateFeeDto })
