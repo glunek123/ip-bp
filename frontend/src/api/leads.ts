@@ -1,4 +1,5 @@
 import { ApiError, getJson, requestJson, type RequestOptions } from './http';
+import { notaryListStages, type NotaryListStage } from './notary';
 
 export type LeadCaseType =
   | 'CIVIL'
@@ -173,7 +174,7 @@ export type LeadDetail = Lead & {
 export type NotaryMatterSummary = {
   id: string;
   businessNo: string;
-  stage: 'PENDING_EVIDENCE';
+  stage: NotaryListStage;
   notaryOfficeName: string;
   batchPurpose: string;
   createdAt: string;
@@ -618,7 +619,7 @@ function isNotaryMatterSummaries(
         isRecord(item) &&
         typeof item.id === 'string' &&
         typeof item.businessNo === 'string' &&
-        item.stage === 'PENDING_EVIDENCE' &&
+        member(notaryListStages, item.stage) &&
         typeof item.notaryOfficeName === 'string' &&
         typeof item.batchPurpose === 'string' &&
         isDateTime(item.createdAt),

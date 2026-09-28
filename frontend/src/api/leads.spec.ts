@@ -245,6 +245,35 @@ describe('Lead API', () => {
     });
   });
 
+  it('decodes lead notary summaries for every supported matter stage', async () => {
+    const stages = [
+      'PENDING_EVIDENCE',
+      'WAITING_UNBOX',
+      'UNBOX_REVIEW',
+      'ISSUANCE_DECISION',
+      'ARCHIVED',
+    ] as const;
+    const notaryMatters = stages.map((stage, index) => ({
+      id: `notary-${index + 1}`,
+      businessNo: `NT-20260928-${String(index + 1).padStart(3, '0')}`,
+      stage,
+      notaryOfficeName: '测试公证处',
+      batchPurpose: '批次用途',
+      createdAt: '2026-09-21T04:00:00.000Z',
+    }));
+
+    http.getJson.mockResolvedValueOnce({ ...lead, notaryMatters });
+    await expect(getLead('lead-1')).resolves.toMatchObject({ notaryMatters });
+
+    http.getJson.mockResolvedValueOnce({
+      ...lead,
+      notaryMatters: [{ ...notaryMatters[0], stage: 'UNKNOWN_STAGE' }],
+    });
+    await expect(getLead('lead-1')).rejects.toMatchObject({
+      code: 'INVALID_RESPONSE',
+    });
+  });
+
   it('decodes withdrawal state and sends an idempotent application request', async () => {
     const detail = {
       ...lead,
