@@ -1,3 +1,4 @@
+// Database migration specialty: run with node --test, not the Vitest tools suite.
 import { test } from 'node:test';
 import assert from 'node:assert/strict';
 import { randomUUID } from 'node:crypto';
