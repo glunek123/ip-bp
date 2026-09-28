@@ -101,6 +101,7 @@ export class NotaryPortalService {
         stage: true,
         version: true,
         createdAt: true,
+        sourceLead: { select: { needDisclose: true } },
         evidence: {
           select: {
             evidenceAt: true,
@@ -230,6 +231,7 @@ export class NotaryPortalService {
       stage: matter.stage,
       version: matter.version,
       createdAt: matter.createdAt.toISOString(),
+      disclosureRequired: matter.sourceLead.needDisclose,
       evidence:
         matter.stage === 'ARCHIVED' || matter.evidence === null
           ? null

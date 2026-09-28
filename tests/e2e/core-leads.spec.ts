@@ -356,11 +356,13 @@ async function createOpenedNotaryMatter(
   sampleFee: { state: 'KNOWN'; amount: string } | { state: 'PENDING' } = {
     state: 'PENDING',
   },
+  needDisclose = false,
 ) {
   const matterId = await createWaitingUnboxMatter(
     request,
     clientCsrf,
     sampleFee,
+    needDisclose,
   );
   const photo = await upload(request, {
     ownerType: 'NOTARY_MATTER',
@@ -384,11 +386,13 @@ async function createIssuanceReadyMatter(
   sampleFee: { state: 'KNOWN'; amount: string } | { state: 'PENDING' } = {
     state: 'PENDING',
   },
+  needDisclose = false,
 ) {
   const matterId = await createOpenedNotaryMatter(
     request,
     clientCsrf,
     sampleFee,
+    needDisclose,
   );
   const reviewed = await reviewNotaryOpening(request, matterId, {
     result: 'INFRINGEMENT',
@@ -401,8 +405,14 @@ async function createIssuanceReadyMatter(
 async function createCertificateReadyMatter(
   request: APIRequestContext,
   clientCsrf: string,
+  needDisclose = false,
 ) {
-  const matterId = await createIssuanceReadyMatter(request, clientCsrf);
+  const matterId = await createIssuanceReadyMatter(
+    request,
+    clientCsrf,
+    { state: 'PENDING' },
+    needDisclose,
+  );
   const decision = await decideNotaryIssuance(request, matterId, 'ISSUE');
   expect(decision.status(), await decision.text()).toBe(201);
   expect(await getNotaryOpeningReviewMatter(matterId)).toEqual({
@@ -430,8 +440,13 @@ async function createWaitingUnboxMatter(
   sampleFee: { state: 'KNOWN'; amount: string } | { state: 'PENDING' } = {
     state: 'PENDING',
   },
+  needDisclose = false,
 ) {
-  const matterId = await createPendingNotaryMatter(request, clientCsrf);
+  const matterId = await createPendingNotaryMatter(
+    request,
+    clientCsrf,
+    needDisclose,
+  );
   const evidence = await recordNotaryEvidence(request, matterId, {
     evidenceAt: '2026-09-24',
     sampleFeeState: sampleFee.state,
@@ -448,6 +463,7 @@ async function createWaitingUnboxMatter(
 async function createPendingNotaryMatter(
   request: APIRequestContext,
   clientCsrf: string,
+  needDisclose = false,
 ): Promise<string> {
   const officeResponse = await request.post('/api/v1/notary-offices', {
     headers: authorizationA,
@@ -455,7 +471,11 @@ async function createPendingNotaryMatter(
   });
   expect(officeResponse.status(), await officeResponse.text()).toBe(201);
   const office: { id: string } = await officeResponse.json();
-  const lead = await createInfringementReviewedLead(request, clientCsrf);
+  const lead = await createInfringementReviewedLead(
+    request,
+    clientCsrf,
+    needDisclose,
+  );
   const product = (await getLead(lead.id))!.products[0];
   const transferred = await transferToNotary(
     request,
@@ -630,8 +650,9 @@ async function archiveLeadForWithdrawal(
 async function createInfringementReviewedLead(
   request: APIRequestContext,
   csrfToken: string,
+  needDisclose = false,
 ) {
-  const created = await createLead(request);
+  const created = await createLead(request, leadInput({ needDisclose }));
   expect(created.status(), await created.text()).toBe(201);
   const lead: { id: string } = await created.json();
   expect((await pushLead(request, lead.id, 1)).status()).toBe(201);
@@ -5948,6 +5969,74 @@ test('real operator decision and notary browser archive a frozen certificate int
   expect((await request.get(`/api/v1/cases/${caseSummary.id}`)).status()).toBe(
     403,
   );
+});
+
+test('disclosure-required lead makes notary submit a real disclosure file before archival', async ({
+  page,
+  request,
+}) => {
+  test.setTimeout(120_000);
+  const client = await createClientAccount(request);
+  const clientCsrf = await loginClient(
+    request,
+    client.username,
+    client.password,
+  );
+  const matterId = await createCertificateReadyMatter(
+    request,
+    clientCsrf,
+    true,
+  );
+  const notary = await createNotaryAccountForMatter(request, matterId);
+
+  await page.goto(`/notary-portal/matters/${matterId}`);
+  await expect(page).toHaveURL(/\/login\?returnTo=/u);
+  await page.getByLabel('用户名').fill(notary.username);
+  await page.getByLabel('密码').fill(notary.password);
+  await page.getByRole('button', { name: '登录', exact: true }).click();
+  await expect(page).toHaveURL(
+    new RegExp(`/notary-portal/matters/${matterId}$`, 'u'),
+  );
+  const form = page.locator('[data-test="certificate-form"]');
+  await expect(form.locator('[data-test="disclosure-toggle"]')).toBeChecked();
+  await expect(form.locator('[data-test="disclosure-toggle"]')).toBeDisabled();
+  await form
+    .locator('[data-test="certificate-number"]')
+    .fill('（2026）披露证字001号');
+  await form.locator('[data-test="certificate-date"]').fill('2026-09-28');
+  await form.locator('[data-test="certificate-file-input"]').setInputFiles({
+    name: '真实公证书.pdf',
+    mimeType: 'application/pdf',
+    buffer: pdfBytes,
+  });
+  await expect(form.locator('[data-test="certificate-submit"]')).toBeDisabled();
+  await form.locator('[data-test="disclosure-file-input"]').setInputFiles({
+    name: '真实披露材料.pdf',
+    mimeType: 'application/pdf',
+    buffer: pdfBytes,
+  });
+  await expect(form.locator('[data-test="certificate-submit"]')).toBeEnabled();
+  await form.locator('[data-test="certificate-submit"]').click();
+  await expect(page.locator('[data-test="certificate-record"]')).toContainText(
+    '（2026）披露证字001号',
+  );
+  await page.reload();
+  await expect(page.locator('[data-test="certificate-record"]')).toBeVisible();
+  const detail = await request.get(`/api/v1/notary-portal/matters/${matterId}`);
+  expect(detail.status(), await detail.text()).toBe(200);
+  expect(await detail.json()).toMatchObject({
+    stage: 'ARCHIVED',
+    disclosureRequired: true,
+    certificate: {
+      needDisclose: true,
+      files: [expect.objectContaining({ originalFilename: '真实公证书.pdf' })],
+      disclosureFiles: [
+        expect.objectContaining({ originalFilename: '真实披露材料.pdf' }),
+      ],
+    },
+  });
+  expect(await countNotaryCertificates(matterId)).toBe(1);
+  expect(await countCasesForMatter(matterId)).toBe(1);
 });
 
 test('certificate submission rejects another office and an inactive binding', async ({

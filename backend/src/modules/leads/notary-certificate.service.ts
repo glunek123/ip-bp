@@ -158,7 +158,7 @@ export class NotaryCertificateService {
                 category: 'NOTARY_CERTIFICATE',
                 contentVersionIds: normalized.contentVersionIds,
                 minCount: 1,
-                maxCount: 20,
+                maxCount: 10,
               });
             const disclosureFacts = normalized.needDisclose
               ? await this.materials.assertAvailableVersions(tx, actor, {
@@ -167,7 +167,7 @@ export class NotaryCertificateService {
                   category: 'NOTARY_DISCLOSURE',
                   contentVersionIds: normalized.disclosureContentVersionIds,
                   minCount: 1,
-                  maxCount: 20,
+                  maxCount: 10,
                 })
               : [];
             const metadata = await tx.contentVersion.findMany({
@@ -349,7 +349,7 @@ export class NotaryCertificateService {
     const validIds = (values: unknown, min: number) =>
       Array.isArray(values) &&
       values.length >= min &&
-      values.length <= 20 &&
+      values.length <= 10 &&
       values.every((id) => typeof id === 'string' && UUID_V4.test(id)) &&
       new Set(values).size === values.length;
     const validFee = (fee: FeeInput | undefined) =>

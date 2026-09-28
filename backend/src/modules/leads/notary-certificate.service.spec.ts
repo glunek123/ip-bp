@@ -2,6 +2,7 @@ import {
   CertificateInput,
   NotaryCertificateService,
 } from './notary-certificate.service';
+import { randomUUID } from 'node:crypto';
 
 const actor = {
   userId: '11111111-1111-4111-8111-111111111111',
@@ -264,6 +265,17 @@ describe('NotaryCertificateService', () => {
     const f = fixture();
     for (const invalid of [
       { ...input, contentVersionIds: [] },
+      {
+        ...input,
+        contentVersionIds: Array.from({ length: 11 }, () => randomUUID()),
+      },
+      {
+        ...input,
+        needDisclose: true,
+        disclosureContentVersionIds: Array.from({ length: 11 }, () =>
+          randomUUID(),
+        ),
+      },
       {
         ...input,
         fees: { ...input.fees, notary: { state: 'KNOWN', amount: '-1.00' } },

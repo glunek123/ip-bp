@@ -84,6 +84,7 @@ export class NotaryPortalDetailResponseDto {
   stage!: 'WAITING_UNBOX' | 'UNBOX_REVIEW' | 'WAITING_CERTIFICATE' | 'ARCHIVED';
   @ApiProperty({ minimum: 1 }) version!: number;
   @ApiProperty({ format: 'date-time' }) createdAt!: string;
+  @ApiProperty() disclosureRequired!: boolean;
   @ApiProperty({ type: NotaryPortalEvidenceDto, nullable: true })
   evidence!: NotaryPortalEvidenceDto | null;
   @ApiProperty({ type: NotaryPortalOpeningDto, nullable: true })

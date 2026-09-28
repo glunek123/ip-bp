@@ -46,6 +46,7 @@ describe('NotaryPortalService', () => {
       stage: 'ARCHIVED',
       version: 6,
       createdAt: new Date('2026-09-28T01:00:00.000Z'),
+      sourceLead: { needDisclose: false },
       evidence: {
         evidenceAt: new Date('2026-09-27T00:00:00.000Z'),
         sampleFeeState: 'KNOWN',
@@ -100,6 +101,7 @@ describe('NotaryPortalService', () => {
       files: [{ materialId: 'material-1', contentVersionId: 'version-1' }],
     });
     expect(result).toMatchObject({
+      disclosureRequired: false,
       evidence: null,
       opening: null,
       issuanceDecision: null,
@@ -156,6 +158,7 @@ describe('NotaryPortalService', () => {
       stage: 'UNBOX_REVIEW',
       version: 3,
       createdAt: new Date('2026-09-28T01:00:00.000Z'),
+      sourceLead: { needDisclose: true },
       evidence: {
         evidenceAt: new Date('2026-09-27T00:00:00.000Z'),
         sampleFeeState: 'KNOWN',
@@ -197,6 +200,7 @@ describe('NotaryPortalService', () => {
       stage: 'UNBOX_REVIEW',
       version: 3,
       createdAt: '2026-09-28T01:00:00.000Z',
+      disclosureRequired: true,
       evidence: {
         evidenceAt: '2026-09-27',
         sampleFeeState: 'KNOWN',

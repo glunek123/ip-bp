@@ -47,16 +47,16 @@ export class IssueNotaryCertificateDto {
   @MaxLength(200)
   certificateNo!: string;
   @ApiProperty({ format: 'date' }) @IsString() certificateDate!: string;
-  @ApiProperty({ type: [String], format: 'uuid', minItems: 1, maxItems: 20 })
+  @ApiProperty({ type: [String], format: 'uuid', minItems: 1, maxItems: 10 })
   @IsArray()
   @ArrayMinSize(1)
-  @ArrayMaxSize(20)
+  @ArrayMaxSize(10)
   @IsUUID('4', { each: true })
   contentVersionIds!: string[];
   @ApiProperty() @IsBoolean() needDisclose!: boolean;
-  @ApiProperty({ type: [String], format: 'uuid', maxItems: 20 })
+  @ApiProperty({ type: [String], format: 'uuid', maxItems: 10 })
   @IsArray()
-  @ArrayMaxSize(20)
+  @ArrayMaxSize(10)
   @IsUUID('4', { each: true })
   disclosureContentVersionIds!: string[];
   @ApiProperty({ type: CertificateFeesDto })

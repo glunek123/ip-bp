@@ -12,6 +12,7 @@ import { NotaryCertificateService } from './notary-certificate.service';
 import { plainToInstance } from 'class-transformer';
 import { validateSync } from 'class-validator';
 import { IssueNotaryCertificateDto } from './notary-certificate.dto';
+import { randomUUID } from 'node:crypto';
 
 describe('notary certificate request validation', () => {
   it('accepts known amounts and explicitly pending null amounts', () => {
@@ -31,6 +32,10 @@ describe('notary certificate request validation', () => {
     expect(
       validateSync(input, { whitelist: true, forbidNonWhitelisted: true }),
     ).toEqual([]);
+    input.contentVersionIds = Array.from({ length: 11 }, () => randomUUID());
+    expect(
+      validateSync(input, { whitelist: true, forbidNonWhitelisted: true }),
+    ).not.toEqual([]);
   });
 });
 
@@ -103,6 +108,7 @@ describe('notary portal OpenAPI contract', () => {
         document.components?.schemas?.NotaryPortalDetailResponseDto,
       ).toMatchObject({
         properties: {
+          disclosureRequired: { type: 'boolean' },
           opening: {
             allOf: [{ $ref: '#/components/schemas/NotaryPortalOpeningDto' }],
             nullable: true,
