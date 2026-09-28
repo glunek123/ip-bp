@@ -66,6 +66,7 @@ export class NotaryIssuanceDecisionService {
       )
       .digest('hex');
     for (let attempt = 1; attempt <= 3; attempt += 1) {
+      let receiptUniqueCollision = false;
       try {
         return await this.database.$transaction(
           async (tx) => {
@@ -194,19 +195,24 @@ export class NotaryIssuanceDecisionService {
                 occurredAt: decidedAt,
               },
             });
-            await tx.notaryMatterCommandReceipt.create({
-              data: {
-                departmentId: matter.departmentId,
-                actorUserId: actor.userId,
-                internalActorUserId: actor.userId,
-                action: ACTION,
-                idempotencyKey,
-                requestFingerprint: fingerprint,
-                resultMatterId: matterId,
-                resultMatterVersion: result.version,
-                resultSnapshot: result,
-              },
-            });
+            try {
+              await tx.notaryMatterCommandReceipt.create({
+                data: {
+                  departmentId: matter.departmentId,
+                  actorUserId: actor.userId,
+                  internalActorUserId: actor.userId,
+                  action: ACTION,
+                  idempotencyKey,
+                  requestFingerprint: fingerprint,
+                  resultMatterId: matterId,
+                  resultMatterVersion: result.version,
+                  resultSnapshot: result,
+                },
+              });
+            } catch (error) {
+              receiptUniqueCollision = this.isUnique(error);
+              throw error;
+            }
             return result;
           },
           { isolationLevel: 'Serializable' },
@@ -216,7 +222,13 @@ export class NotaryIssuanceDecisionService {
           if (attempt < 3) continue;
           throw this.versionConflict();
         }
-        if (this.isUnique(error)) throw this.versionConflict();
+        if (this.isUnique(error)) {
+          if (receiptUniqueCollision) {
+            if (attempt < 3) continue;
+            throw error;
+          }
+          throw this.versionConflict();
+        }
         throw error;
       }
     }

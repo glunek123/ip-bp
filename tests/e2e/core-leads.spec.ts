@@ -31,6 +31,9 @@ import {
   countNotaryOpeningReviewDecisions,
   countNotaryOpeningReviewAudits,
   countNotaryOpeningReviewReceipts,
+  countNotaryIssuanceDecisions,
+  countNotaryIssuanceAudits,
+  countNotaryIssuanceReceipts,
   countLeadReviewDecisions,
   countLeadWithdrawalApplications,
   countLeadWithdrawalAudits,
@@ -67,6 +70,7 @@ import {
   rejectNotaryOpeningReviewDecisionWrites,
   rejectNotaryOpeningReviewAuditWrites,
   rejectNotaryOpeningReviewReceiptWrites,
+  rejectNotaryIssuanceAuditWrites,
   rejectLeadReviewDecisionWrites,
   rejectClientLeadReviewReceiptWrites,
   rejectWithdrawalApplicationWrites,
@@ -351,6 +355,31 @@ async function createOpenedNotaryMatter(
   });
   expect(opening.status(), await opening.text()).toBe(201);
   return matterId;
+}
+
+async function createIssuanceReadyMatter(
+  request: APIRequestContext,
+  clientCsrf: string,
+) {
+  const matterId = await createOpenedNotaryMatter(request, clientCsrf);
+  const reviewed = await reviewNotaryOpening(request, matterId, {
+    result: 'INFRINGEMENT',
+    expectedVersion: 3,
+  });
+  expect(reviewed.status(), await reviewed.text()).toBe(201);
+  return matterId;
+}
+
+function decideNotaryIssuance(
+  request: APIRequestContext,
+  matterId: string,
+  decision: 'ISSUE' | 'NO_ISSUE',
+  key = randomUUID(),
+) {
+  return request.post(`/api/v1/notary-matters/${matterId}/issuance-decision`, {
+    headers: { ...authorizationA, 'Idempotency-Key': key },
+    data: { decision, expectedVersion: 4 },
+  });
 }
 
 async function createWaitingUnboxMatter(
@@ -3187,6 +3216,93 @@ test('opening review decision, audit and receipt failures roll back the real Pos
       expect(await countNotaryOpeningReviewAudits(matterId)).toBe(0);
       expect(await countNotaryOpeningReviewReceipts(matterId)).toBe(0);
       await allowInjectedFailures();
+    }
+  } finally {
+    await allowInjectedFailures();
+  }
+});
+
+test('issuance choices contend once per matter and a shared key rejects the other matter', async ({
+  request,
+}) => {
+  const account = await createClientAccount(request);
+  const csrf = await loginClient(request, account.username, account.password);
+  const matterId = await createIssuanceReadyMatter(request, csrf);
+  const sameMatter = await Promise.all([
+    decideNotaryIssuance(request, matterId, 'ISSUE'),
+    decideNotaryIssuance(request, matterId, 'NO_ISSUE'),
+  ]);
+  expect(sameMatter.map((response) => response.status()).sort()).toEqual([
+    201, 409,
+  ]);
+  expect(await countNotaryIssuanceDecisions(matterId)).toBe(1);
+  expect(await countNotaryIssuanceAudits(matterId)).toBe(1);
+  expect(await countNotaryIssuanceReceipts(matterId)).toBe(1);
+
+  const firstMatter = await createIssuanceReadyMatter(request, csrf);
+  const secondMatter = await createIssuanceReadyMatter(request, csrf);
+  const sharedKey = randomUUID();
+  const acrossMatters = await Promise.all([
+    decideNotaryIssuance(request, firstMatter, 'ISSUE', sharedKey),
+    decideNotaryIssuance(request, secondMatter, 'NO_ISSUE', sharedKey),
+  ]);
+  expect(acrossMatters.map((response) => response.status()).sort()).toEqual([
+    201, 409,
+  ]);
+  const loser = acrossMatters.find((response) => response.status() === 409)!;
+  expect(await loser.json()).toMatchObject({ code: 'IDEMPOTENCY_CONFLICT' });
+  expect(
+    (await countNotaryIssuanceDecisions(firstMatter)) +
+      (await countNotaryIssuanceDecisions(secondMatter)),
+  ).toBe(1);
+  expect(
+    (await countNotaryIssuanceAudits(firstMatter)) +
+      (await countNotaryIssuanceAudits(secondMatter)),
+  ).toBe(1);
+  expect(
+    (await countNotaryIssuanceReceipts(firstMatter)) +
+      (await countNotaryIssuanceReceipts(secondMatter)),
+  ).toBe(1);
+});
+
+test('issuance audit and receipt failures roll back the real PostgreSQL transaction', async ({
+  request,
+}) => {
+  const account = await createClientAccount(request);
+  const csrf = await loginClient(request, account.username, account.password);
+  try {
+    for (const inject of [
+      rejectNotaryIssuanceAuditWrites,
+      rejectNotaryEvidenceReceiptWrites,
+    ]) {
+      const matterId = await createIssuanceReadyMatter(request, csrf);
+      const key = randomUUID();
+      await inject();
+      const failed = await decideNotaryIssuance(
+        request,
+        matterId,
+        'ISSUE',
+        key,
+      );
+      expect(failed.status(), await failed.text()).toBeGreaterThanOrEqual(500);
+      expect(await getNotaryOpeningReviewMatter(matterId)).toEqual({
+        stage: 'ISSUANCE_DECISION',
+        version: 4,
+      });
+      expect(await countNotaryIssuanceDecisions(matterId)).toBe(0);
+      expect(await countNotaryIssuanceAudits(matterId)).toBe(0);
+      expect(await countNotaryIssuanceReceipts(matterId)).toBe(0);
+      await allowInjectedFailures();
+      const retried = await decideNotaryIssuance(
+        request,
+        matterId,
+        'ISSUE',
+        key,
+      );
+      expect(retried.status(), await retried.text()).toBe(201);
+      expect(await countNotaryIssuanceDecisions(matterId)).toBe(1);
+      expect(await countNotaryIssuanceAudits(matterId)).toBe(1);
+      expect(await countNotaryIssuanceReceipts(matterId)).toBe(1);
     }
   } finally {
     await allowInjectedFailures();

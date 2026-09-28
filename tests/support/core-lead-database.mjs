@@ -129,6 +129,7 @@ async function dropFaults() {
     ['notary_opening_review_decisions', 'core_nt_reject_review_decision'],
     ['notary_opening_review_audit_events', 'core_nt_reject_review_audit'],
     ['notary_opening_review_receipts', 'core_nt_reject_review_receipt'],
+    ['notary_issuance_decision_audit_events', 'core_nt_reject_issuance_audit'],
   ]) {
     await database.$executeRawUnsafe(
       `ALTER TABLE "${table}" DROP CONSTRAINT IF EXISTS "${constraint}"`,
@@ -976,6 +977,22 @@ export function countNotaryOpeningReviewReceipts(matterId) {
   });
 }
 
+export function countNotaryIssuanceDecisions(matterId) {
+  return database.notaryIssuanceDecision.count({ where: { matterId } });
+}
+
+export function countNotaryIssuanceAudits(matterId) {
+  return database.notaryIssuanceDecisionAuditEvent.count({
+    where: { matterId },
+  });
+}
+
+export function countNotaryIssuanceReceipts(matterId) {
+  return database.notaryMatterCommandReceipt.count({
+    where: { resultMatterId: matterId, action: 'notary.issuance.decide' },
+  });
+}
+
 export function getNotaryOpeningReviewMatter(matterId) {
   return database.notaryMatter.findUnique({
     where: { id: matterId },
@@ -1248,6 +1265,13 @@ export async function rejectNotaryOpeningReviewReceiptWrites() {
   await dropFaults();
   await database.$executeRawUnsafe(
     'ALTER TABLE "notary_opening_review_receipts" ADD CONSTRAINT "core_nt_reject_review_receipt" CHECK (false) NOT VALID',
+  );
+}
+
+export async function rejectNotaryIssuanceAuditWrites() {
+  await dropFaults();
+  await database.$executeRawUnsafe(
+    'ALTER TABLE "notary_issuance_decision_audit_events" ADD CONSTRAINT "core_nt_reject_issuance_audit" CHECK (false) NOT VALID',
   );
 }
 

@@ -514,9 +514,8 @@ function isMatterDetail(value: unknown): value is NotaryMatterDetail {
       : true) &&
     (detail.stage === 'UNBOX_REVIEW' ||
       detail.capabilities.reviewOpening === false) &&
-    (detail.stage === 'ISSUANCE_DECISION'
-      ? detail.capabilities.decideIssuance === true
-      : detail.capabilities.decideIssuance === false) &&
+    (detail.stage === 'ISSUANCE_DECISION' ||
+      detail.capabilities.decideIssuance === false) &&
     (detail.stage !== 'PENDING_EVIDENCE' ||
       detail.capabilities.recordOpening === false) &&
     isRecord(sourceLead) &&

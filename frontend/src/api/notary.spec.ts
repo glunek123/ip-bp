@@ -178,6 +178,15 @@ describe('notary API', () => {
 
     http.getJson.mockResolvedValueOnce({
       ...reviewed,
+      capabilities: { ...reviewed.capabilities, decideIssuance: false },
+    });
+    await expect(getNotaryMatter('matter-1')).resolves.toMatchObject({
+      stage: 'ISSUANCE_DECISION',
+      capabilities: { decideIssuance: false },
+    });
+
+    http.getJson.mockResolvedValueOnce({
+      ...reviewed,
       reviewDecision: { ...reviewed.reviewDecision, result: 'UNKNOWN' },
     });
     await expect(getNotaryMatter('matter-1')).rejects.toMatchObject({

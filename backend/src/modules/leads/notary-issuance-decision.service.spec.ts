@@ -210,6 +210,41 @@ describe('NotaryIssuanceDecisionService', () => {
     expect(f.tx.notaryIssuanceDecision.create).toHaveBeenCalledTimes(1);
   });
 
+  it('returns idempotency conflict when another matter wins the receipt key race', async () => {
+    const f = fixture();
+    f.tx.notaryMatterCommandReceipt.findUnique
+      .mockResolvedValueOnce(null)
+      .mockResolvedValueOnce({
+        departmentId: actor.departmentId,
+        actorUserId: actor.userId,
+        requestFingerprint: 'different-request',
+        resultMatterId: '66666666-6666-4666-8666-666666666666',
+      });
+    f.tx.notaryMatterCommandReceipt.create.mockRejectedValueOnce({
+      code: 'P2002',
+    });
+
+    await expect(
+      f.service.decide(actor, matterId, 'shared-key', {
+        decision: 'ISSUE',
+        expectedVersion: 4,
+      }),
+    ).rejects.toMatchObject({ response: { code: 'IDEMPOTENCY_CONFLICT' } });
+    expect(f.database.$transaction).toHaveBeenCalledTimes(2);
+  });
+
+  it('keeps a non-receipt unique failure as a version conflict', async () => {
+    const f = fixture();
+    f.tx.notaryIssuanceDecision.create.mockRejectedValueOnce({ code: 'P2002' });
+    await expect(
+      f.service.decide(actor, matterId, 'key', {
+        decision: 'ISSUE',
+        expectedVersion: 4,
+      }),
+    ).rejects.toMatchObject({ response: { code: 'VERSION_CONFLICT' } });
+    expect(f.database.$transaction).toHaveBeenCalledTimes(1);
+  });
+
   it('fails the transaction when audit or receipt fails', async () => {
     for (const failing of [
       'notaryIssuanceDecisionAuditEvent',
