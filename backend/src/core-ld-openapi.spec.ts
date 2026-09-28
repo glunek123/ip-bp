@@ -17,6 +17,8 @@ import { ClientNotaryController } from './modules/leads/client-notary.controller
 import { ClientNotaryService } from './modules/leads/client-notary.service';
 import { LeadController } from './modules/leads/lead.controller';
 import { LeadService } from './modules/leads/lead.service';
+import { NotaryListController } from './modules/leads/notary-list.controller';
+import { NotaryListService } from './modules/leads/notary-list.service';
 
 describe('CORE-LD-002 OpenAPI contract', () => {
   let app: INestApplication;
@@ -29,6 +31,7 @@ describe('CORE-LD-002 OpenAPI contract', () => {
         LeadController,
         ClientLeadController,
         ClientNotaryController,
+        NotaryListController,
       ],
       providers: [
         { provide: AuthService, useValue: {} },
@@ -38,6 +41,7 @@ describe('CORE-LD-002 OpenAPI contract', () => {
         { provide: LeadService, useValue: {} },
         { provide: ClientLeadService, useValue: {} },
         { provide: ClientNotaryService, useValue: {} },
+        { provide: NotaryListService, useValue: {} },
       ],
     })
       .overrideGuard(ActorContextGuard)
@@ -81,6 +85,7 @@ describe('CORE-LD-002 OpenAPI contract', () => {
       'LeadWithdrawalApplicationResponseDto',
     ],
     ['get', '/api/v1/client/leads', '200', 'ClientLeadListResponseDto'],
+    ['get', '/api/v1/notary-matters', '200', 'NotaryListResponseDto'],
     ['get', '/api/v1/client/leads/{id}', '200', 'ClientLeadResponseDto'],
     [
       'get',
@@ -137,6 +142,38 @@ describe('CORE-LD-002 OpenAPI contract', () => {
       properties: {
         pushedByDisplayName: { type: 'string' },
       },
+    });
+  });
+
+  it('documents notary list stage counts and page fields', () => {
+    const document = SwaggerModule.createDocument(
+      app,
+      new DocumentBuilder().setTitle('test').setVersion('1').build(),
+    );
+    expect(document.components?.schemas?.NotaryListResponseDto).toMatchObject({
+      required: expect.arrayContaining([
+        'items',
+        'total',
+        'page',
+        'pageSize',
+        'counts',
+      ]),
+      properties: {
+        items: expect.any(Object),
+        total: expect.any(Object),
+        page: expect.any(Object),
+        pageSize: expect.any(Object),
+        counts: expect.any(Object),
+      },
+    });
+    expect(document.components?.schemas?.NotaryListCountsDto).toMatchObject({
+      required: [
+        'PENDING_EVIDENCE',
+        'WAITING_UNBOX',
+        'UNBOX_REVIEW',
+        'ISSUANCE_DECISION',
+        'ARCHIVED',
+      ],
     });
   });
 

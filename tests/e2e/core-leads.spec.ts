@@ -2002,6 +2002,55 @@ test('opening review uses real operator and client identities, independent grant
   ).toBe(404);
 });
 
+test('opening review rejects a forged reference when its committed photo is unavailable', async ({
+  request,
+}) => {
+  const account = await createClientAccount(request);
+  const csrf = await loginClient(request, account.username, account.password);
+  const matterId = await createWaitingUnboxMatter(request, csrf);
+  const committedPhoto = await upload(request, {
+    ownerType: 'NOTARY_MATTER',
+    ownerId: matterId,
+    purpose: 'NOTARY_OPENING_PHOTO',
+    name: 'committed-review.jpg',
+    mime: 'image/jpeg',
+    bytes: jpegBytes,
+  });
+  const unsubmitted = await upload(request, {
+    ownerType: 'NOTARY_MATTER',
+    ownerId: matterId,
+    purpose: 'NOTARY_OPENING_PHOTO',
+    name: 'unsubmitted-review.jpg',
+    mime: 'image/jpeg',
+    bytes: jpegBytes,
+  });
+  const opening = await recordNotaryOpening(request, matterId, {
+    expectedVersion: 2,
+    contentVersionIds: [committedPhoto.contentVersionId],
+  });
+  expect(opening.status(), await opening.text()).toBe(201);
+  await forgeSameMatterOpeningPhotoReference(
+    matterId,
+    unsubmitted.materialId,
+    unsubmitted.contentVersionId,
+  );
+  await markContentVersion(committedPhoto.contentVersionId, 'DELETED');
+
+  const review = await reviewNotaryOpening(request, matterId, {
+    result: 'INFRINGEMENT',
+    expectedVersion: 3,
+  });
+  expect(review.status(), await review.text()).toBe(409);
+  expect((await review.json()).code).toBe('OPENING_PHOTO_REQUIRED');
+  expect(await getNotaryOpeningReviewMatter(matterId)).toEqual({
+    stage: 'UNBOX_REVIEW',
+    version: 3,
+  });
+  expect(await countNotaryOpeningReviewDecisions(matterId)).toBe(0);
+  expect(await countNotaryOpeningReviewAudits(matterId)).toBe(0);
+  expect(await countNotaryOpeningReviewReceipts(matterId)).toBe(0);
+});
+
 test('client notary reads and photo bytes stay within enterprise, exact batch and live binding', async ({
   request,
 }) => {

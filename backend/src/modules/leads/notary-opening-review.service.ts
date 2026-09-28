@@ -11,6 +11,7 @@ import { AccessControlService } from '../../access-control/access-control.servic
 import { ActorContext } from '../../access-control/actor-context';
 import { DatabaseService } from '../../database/database.service';
 import { Prisma } from '../../generated/prisma/client';
+import { isFrozenOpeningPhotoVersion } from '../materials';
 import { ReviewNotaryOpeningDto } from './lead-notary.dto';
 
 type ReviewResult = {
@@ -143,7 +144,7 @@ export class NotaryOpeningReviewService {
               });
             if (matter.version !== request.expectedVersion)
               throw this.versionConflict();
-            const frozenPhotos = await tx.materialReference.count({
+            const frozenPhotos = await tx.materialReference.findMany({
               where: {
                 departmentId: matter.departmentId,
                 resourceType: 'notary_matter',
@@ -161,10 +162,23 @@ export class NotaryOpeningReviewService {
                   ownerId: matterId,
                   category: 'NOTARY_OPENING_PHOTO',
                   departmentId: matter.departmentId,
+                  status: 'ACTIVE',
                 },
+                contentVersion: { status: 'AVAILABLE' },
+              },
+              select: {
+                contentVersionId: true,
+                actionEvent: { select: { details: true } },
               },
             });
-            if (frozenPhotos < 1)
+            if (
+              !frozenPhotos.some((photo) =>
+                isFrozenOpeningPhotoVersion(
+                  photo.actionEvent?.details,
+                  photo.contentVersionId,
+                ),
+              )
+            )
               throw new ConflictException({
                 code: 'OPENING_PHOTO_REQUIRED',
                 message: '尚无已冻结的开箱照片',

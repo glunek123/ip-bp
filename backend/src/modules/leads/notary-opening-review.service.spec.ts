@@ -11,6 +11,7 @@ const client = {
   clientCustomerId: '33333333-3333-4333-8333-333333333333',
 };
 const matterId = 'aaaaaaaa-aaaa-4aaa-8aaa-aaaaaaaaaaaa';
+const photoVersionId = 'bbbbbbbb-bbbb-4bbb-8bbb-bbbbbbbbbbbb';
 const input = { result: 'INFRINGEMENT' as const, expectedVersion: 3 };
 
 function fixture() {
@@ -48,7 +49,14 @@ function fixture() {
         user: { displayName: '客户' },
       }),
     },
-    materialReference: { count: jest.fn().mockResolvedValue(1) },
+    materialReference: {
+      findMany: jest.fn().mockResolvedValue([
+        {
+          contentVersionId: photoVersionId,
+          actionEvent: { details: { contentVersionIds: [photoVersionId] } },
+        },
+      ]),
+    },
     notaryOpeningReviewReceipt: {
       findUnique: jest.fn().mockResolvedValue(null),
       create: jest.fn().mockResolvedValue({}),
@@ -104,6 +112,26 @@ describe('NotaryOpeningReviewService', () => {
       expect.anything(),
       f.tx,
     );
+    expect(f.tx.materialReference.findMany).toHaveBeenCalledWith({
+      where: expect.objectContaining({
+        departmentId: internal.departmentId,
+        resourceId: matterId,
+        purpose: 'NOTARY_OPENING_PHOTO',
+        actionEvent: expect.objectContaining({
+          action: 'notary.opening_recorded',
+          resourceId: matterId,
+        }),
+        material: expect.objectContaining({
+          ownerId: matterId,
+          status: 'ACTIVE',
+        }),
+        contentVersion: { status: 'AVAILABLE' },
+      }),
+      select: {
+        contentVersionId: true,
+        actionEvent: { select: { details: true } },
+      },
+    });
     expect(f.tx.notaryOpeningReviewDecision.create).toHaveBeenCalled();
     expect(f.tx.notaryOpeningReviewAuditEvent.create).toHaveBeenCalled();
     expect(f.tx.notaryOpeningReviewReceipt.create).toHaveBeenCalled();
@@ -172,7 +200,7 @@ describe('NotaryOpeningReviewService', () => {
       ).rejects.toMatchObject({ response: { code: 'INVALID_STATE' } });
     }
     const noPhoto = fixture();
-    noPhoto.tx.materialReference.count.mockResolvedValue(0);
+    noPhoto.tx.materialReference.findMany.mockResolvedValue([]);
     await expect(
       noPhoto.service.review(internal, matterId, 'key', input),
     ).rejects.toMatchObject({ response: { code: 'OPENING_PHOTO_REQUIRED' } });
@@ -183,6 +211,25 @@ describe('NotaryOpeningReviewService', () => {
         expectedVersion: 2,
       }),
     ).rejects.toMatchObject({ response: { code: 'VERSION_CONFLICT' } });
+  });
+
+  it('rejects a material reference absent from the committed opening photo versions', async () => {
+    const f = fixture();
+    f.tx.materialReference.findMany.mockResolvedValue([
+      {
+        contentVersionId: photoVersionId,
+        actionEvent: {
+          details: {
+            contentVersionIds: ['cccccccc-cccc-4ccc-8ccc-cccccccccccc'],
+          },
+        },
+      },
+    ]);
+    await expect(
+      f.service.review(internal, matterId, 'key', input),
+    ).rejects.toMatchObject({ response: { code: 'OPENING_PHOTO_REQUIRED' } });
+    expect(f.tx.notaryMatter.updateMany).not.toHaveBeenCalled();
+    expect(f.tx.notaryOpeningReviewDecision.create).not.toHaveBeenCalled();
   });
 
   it('replays the same request without new writes and rejects a changed payload', async () => {
