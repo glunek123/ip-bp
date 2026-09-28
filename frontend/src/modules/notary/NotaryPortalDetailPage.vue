@@ -59,10 +59,16 @@ const canSubmitCertificate = computed(
     certificateFiles.value.some((file) =>
       selectedCertificateIds.value.has(file.contentVersionId),
     ) &&
+    certificateFiles.value.filter((file) =>
+      selectedCertificateIds.value.has(file.contentVersionId),
+    ).length <= 10 &&
     (!needDisclose.value ||
-      disclosureFiles.value.some((file) =>
+      (disclosureFiles.value.some((file) =>
         selectedDisclosureIds.value.has(file.contentVersionId),
-      )) &&
+      ) &&
+        disclosureFiles.value.filter((file) =>
+          selectedDisclosureIds.value.has(file.contentVersionId),
+        ).length <= 10)) &&
     feeCategories.every(
       ({ key }) =>
         feeStates.value[key] === 'PENDING' ||
@@ -155,6 +161,7 @@ async function load(): Promise<void> {
     });
     if (controller.signal.aborted) return;
     matter.value = result;
+    needDisclose.value = result.disclosureRequired;
     state.value = 'ready';
     if (
       result.stage === 'WAITING_UNBOX' ||
@@ -185,9 +192,9 @@ async function uploadCertificateFiles(
       (category === 'NOTARY_CERTIFICATE'
         ? certificateFiles.value.length
         : disclosureFiles.value.length) >
-    50
+    10
   ) {
-    uploadError.value = '每类出证材料最多 50 个文件';
+    uploadError.value = '每类出证材料最多 10 个文件';
     return;
   }
   uploading.value = true;
@@ -197,8 +204,8 @@ async function uploadCertificateFiles(
         uploadError.value = '公证书和披露材料仅支持 PDF、JPEG 或 PNG';
         continue;
       }
-      if (file.size > 20 * 1024 * 1024) {
-        uploadError.value = '单个文件不能超过 20 MB';
+      if (file.size > 50 * 1024 * 1024) {
+        uploadError.value = '单个出证材料不能超过 50 MB';
         continue;
       }
       const uploaded = await uploadMaterialFile({
@@ -263,14 +270,15 @@ async function submitCertificate(): Promise<void> {
           selectedCertificateIds.value.has(file.contentVersionId),
         )
         .map((file) => file.contentVersionId),
-      needDisclose: needDisclose.value,
-      disclosureContentVersionIds: needDisclose.value
-        ? disclosureFiles.value
-            .filter((file) =>
-              selectedDisclosureIds.value.has(file.contentVersionId),
-            )
-            .map((file) => file.contentVersionId)
-        : [],
+      needDisclose: matter.value.disclosureRequired || needDisclose.value,
+      disclosureContentVersionIds:
+        matter.value.disclosureRequired || needDisclose.value
+          ? disclosureFiles.value
+              .filter((file) =>
+                selectedDisclosureIds.value.has(file.contentVersionId),
+              )
+              .map((file) => file.contentVersionId)
+          : [],
       fees: {
         notary: {
           state: feeStates.value.notary,
@@ -624,7 +632,7 @@ onBeforeUnmount(() => request?.abort());
             :disabled="submitting || uploading"
           />
           <label
-            >公证书文件（PDF、JPEG、PNG；单个不超过 20 MB，最多 50
+            >公证书文件（PDF、JPEG、PNG；单个不超过 50 MB，最多 10
             个）<RequiredFieldMark /><input
               data-test="certificate-file-input"
               type="file"
@@ -666,13 +674,18 @@ onBeforeUnmount(() => request?.abort());
               v-model="needDisclose"
               data-test="disclosure-toggle"
               type="checkbox"
-              :disabled="submitting || uploading"
+              :disabled="matter.disclosureRequired || submitting || uploading"
             />
-            需要披露材料</label
+            {{
+              matter.disclosureRequired ? '必须披露材料' : '需要披露材料'
+            }}</label
           >
+          <p v-if="matter.disclosureRequired" class="field-help">
+            来源线索要求披露材料，至少选择一份披露文件后才能出证。
+          </p>
           <template v-if="needDisclose">
             <label class="field-label field-label--spaced"
-              >披露文件（PDF、JPEG、PNG；单个不超过 20 MB，最多 50
+              >披露文件（PDF、JPEG、PNG；单个不超过 50 MB，最多 10
               个）<RequiredFieldMark /><input
                 data-test="disclosure-file-input"
                 type="file"

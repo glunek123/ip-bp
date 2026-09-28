@@ -17,6 +17,7 @@ const matter = {
   opening: null,
   issuanceDecision: null,
   certificate: null,
+  disclosureRequired: false,
   capabilities: { recordOpening: true, issueCertificate: false },
 };
 
@@ -76,6 +77,18 @@ describe('notary portal API', () => {
       items: [{ id: 'matter-1' }],
     });
   });
+  it('rejects a matter detail that omits the disclosure requirement flag', async () => {
+    const incompleteMatter: Record<string, unknown> = { ...matter };
+    delete incompleteMatter.disclosureRequired;
+    vi.stubGlobal(
+      'fetch',
+      vi.fn().mockResolvedValue(new Response(JSON.stringify(incompleteMatter))),
+    );
+
+    await expect(getNotaryPortalMatter('matter-1')).rejects.toMatchObject({
+      code: 'INVALID_RESPONSE',
+    });
+  });
   it('rejects a DTO containing customer or fee information', async () => {
     vi.stubGlobal(
       'fetch',
@@ -110,6 +123,7 @@ describe('notary portal API', () => {
               decidedAt: '2026-09-28T00:00:00.000Z',
             },
             certificate: null,
+            disclosureRequired: true,
             capabilities: { recordOpening: false, issueCertificate: true },
           }),
         ),
@@ -117,6 +131,7 @@ describe('notary portal API', () => {
     );
     await expect(getNotaryPortalMatter('matter-1')).resolves.toMatchObject({
       stage: 'WAITING_CERTIFICATE',
+      disclosureRequired: true,
       capabilities: { issueCertificate: true },
     });
   });
@@ -151,6 +166,7 @@ describe('notary portal API', () => {
               caseId: 'case-1',
               caseBusinessNo: 'CA-1',
             },
+            disclosureRequired: false,
             capabilities: { recordOpening: false, issueCertificate: false },
           }),
         ),
@@ -201,6 +217,7 @@ describe('notary portal API', () => {
               caseId: 'case-1',
               caseBusinessNo: 'CA-1',
             },
+            disclosureRequired: false,
             capabilities: { recordOpening: false, issueCertificate: false },
           }),
         ),
@@ -265,6 +282,46 @@ describe('notary portal API', () => {
       }),
     );
   });
+  it('rejects more than ten certificate or disclosure files before sending', async () => {
+    const fetch = vi.fn();
+    vi.stubGlobal('fetch', fetch);
+    const input = {
+      expectedVersion: 5,
+      certificateNo: 'Z-100',
+      certificateDate: '2026-09-28',
+      contentVersionIds: Array.from(
+        { length: 11 },
+        (_, index) => `cert-${index}`,
+      ),
+      needDisclose: false,
+      disclosureContentVersionIds: [],
+      fees: {
+        notary: { state: 'PENDING' as const, amount: null },
+        investigation: { state: 'PENDING' as const, amount: null },
+        disclosure: { state: 'PENDING' as const, amount: null },
+      },
+    };
+
+    await expect(
+      recordNotaryPortalCertificate('matter-1', input, 'idempotency-1'),
+    ).rejects.toMatchObject({ code: 'VALIDATION_ERROR' });
+    await expect(
+      recordNotaryPortalCertificate(
+        'matter-1',
+        {
+          ...input,
+          contentVersionIds: ['cert-1'],
+          needDisclose: true,
+          disclosureContentVersionIds: Array.from(
+            { length: 11 },
+            (_, index) => `disclosure-${index}`,
+          ),
+        },
+        'idempotency-2',
+      ),
+    ).rejects.toMatchObject({ code: 'VALIDATION_ERROR' });
+    expect(fetch).not.toHaveBeenCalled();
+  });
   it('decodes a saved UNBOX_REVIEW detail with its frozen opening photos', async () => {
     vi.stubGlobal(
       'fetch',
@@ -298,6 +355,7 @@ describe('notary portal API', () => {
             },
             issuanceDecision: null,
             certificate: null,
+            disclosureRequired: false,
             capabilities: { recordOpening: false, issueCertificate: false },
           }),
         ),

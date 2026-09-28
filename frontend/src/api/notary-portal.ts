@@ -60,6 +60,7 @@ export type NotaryPortalMatter = Omit<NotaryPortalMatterSummary, 'stage'> & {
     caseId: string | null;
     caseBusinessNo: string | null;
   } | null;
+  disclosureRequired: boolean;
   capabilities: { recordOpening: boolean; issueCertificate: boolean };
 };
 export type NotaryPortalFile = {
@@ -240,8 +241,10 @@ function validCertificate(value: unknown): boolean {
     dateTime(value.issuedAt) &&
     Array.isArray(value.files) &&
     value.files.length > 0 &&
+    value.files.length <= 10 &&
     value.files.every(validFile) &&
     Array.isArray(value.disclosureFiles) &&
+    value.disclosureFiles.length <= 10 &&
     value.disclosureFiles.every(validFile) &&
     typeof value.needDisclose === 'boolean' &&
     (value.caseId === null || typeof value.caseId === 'string') &&
@@ -306,6 +309,7 @@ export async function getNotaryPortalMatter(
       'opening',
       'issuanceDecision',
       'certificate',
+      'disclosureRequired',
       'capabilities',
     ]) ||
     typeof response.id !== 'string' ||
@@ -330,6 +334,7 @@ export async function getNotaryPortalMatter(
     !(
       response.certificate === null || validCertificate(response.certificate)
     ) ||
+    typeof response.disclosureRequired !== 'boolean' ||
     !record(response.capabilities) ||
     !exact(response.capabilities, ['recordOpening', 'issueCertificate']) ||
     typeof response.capabilities.recordOpening !== 'boolean' ||
@@ -371,10 +376,10 @@ export async function recordNotaryPortalCertificate(
     !input.certificateNo.trim() ||
     !/^\d{4}-\d{2}-\d{2}$/u.test(input.certificateDate) ||
     input.contentVersionIds.length < 1 ||
-    input.contentVersionIds.length > 50 ||
+    input.contentVersionIds.length > 10 ||
     new Set(input.contentVersionIds).size !== input.contentVersionIds.length ||
     input.contentVersionIds.some((item) => !item) ||
-    input.disclosureContentVersionIds.length > 50 ||
+    input.disclosureContentVersionIds.length > 10 ||
     new Set(input.disclosureContentVersionIds).size !==
       input.disclosureContentVersionIds.length ||
     input.disclosureContentVersionIds.some((item) => !item) ||

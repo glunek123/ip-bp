@@ -62,6 +62,7 @@ beforeEach(() => {
         },
       ],
     },
+    disclosureRequired: false,
     capabilities: { recordOpening: false },
   });
   api.listOwnerMaterials.mockResolvedValue({ items: [], total: 0 });
@@ -159,6 +160,7 @@ describe('notary portal pages', () => {
         decidedAt: '2026-09-28T00:00:00Z',
       },
       certificate: null,
+      disclosureRequired: false,
       capabilities: { recordOpening: false, issueCertificate: true },
     };
     const archived = {
@@ -253,6 +255,77 @@ describe('notary portal pages', () => {
     expect(wrapper.text()).not.toContain('/cases/case-1');
     expect(wrapper.text()).not.toContain('审核员');
     expect(wrapper.text()).not.toContain('¥ 12.00');
+  });
+
+  it('requires disclosure when the source lead requires it and rejects an eleventh file', async () => {
+    api.getNotaryPortalMatter.mockResolvedValueOnce({
+      id: 'matter-1',
+      businessNo: 'NZ-001',
+      stage: 'WAITING_CERTIFICATE',
+      version: 5,
+      createdAt: '2026-09-28T00:00:00Z',
+      evidence: null,
+      opening: null,
+      issuanceDecision: {
+        decision: 'ISSUE',
+        actorDisplayName: '审核员',
+        decidedAt: '2026-09-28T00:00:00Z',
+      },
+      certificate: null,
+      disclosureRequired: true,
+      capabilities: { recordOpening: false, issueCertificate: true },
+    });
+    const materials = Array.from({ length: 10 }, (_, index) => ({
+      id: `disclosure-material-${index}`,
+      ownerType: 'NOTARY_MATTER',
+      ownerId: 'matter-1',
+      category: 'NOTARY_DISCLOSURE',
+      purpose: 'NOTARY_DISCLOSURE',
+      currentVersionId: `disclosure-version-${index}`,
+      status: 'ACTIVE',
+      contentVersions: [
+        {
+          id: `disclosure-version-${index}`,
+          originalFilename: `disclosure-${index}.pdf`,
+          mimeType: 'application/pdf',
+          sizeBytes: 8,
+          sha256: 'a'.repeat(64),
+          status: 'AVAILABLE',
+          createdAt: '2026-09-28T00:00:00Z',
+        },
+      ],
+    }));
+    api.listOwnerMaterials.mockResolvedValueOnce({
+      items: materials,
+      total: 10,
+    });
+
+    const wrapper = await mountRoute(
+      '/notary-portal/matters/matter-1',
+      NotaryPortalDetailPage,
+    );
+    const toggle = wrapper.get('[data-test="disclosure-toggle"]');
+    expect((toggle.element as HTMLInputElement).checked).toBe(true);
+    expect(toggle.attributes('disabled')).toBeDefined();
+    expect(wrapper.text()).toContain('来源线索要求披露材料');
+    expect(
+      wrapper.get('[data-test="certificate-submit"]').attributes('disabled'),
+    ).toBeDefined();
+
+    const input = wrapper.get('[data-test="disclosure-file-input"]')
+      .element as HTMLInputElement;
+    Object.defineProperty(input, 'files', {
+      configurable: true,
+      value: [
+        new File(['new disclosure'], 'eleventh.pdf', {
+          type: 'application/pdf',
+        }),
+      ],
+    });
+    await wrapper.get('[data-test="disclosure-file-input"]').trigger('change');
+
+    expect(api.uploadMaterialFile).not.toHaveBeenCalled();
+    expect(wrapper.get('[role="alert"]').text()).toContain('最多 10 个文件');
   });
 
   it('submits only selected pending photos and prevents an empty selection', async () => {
