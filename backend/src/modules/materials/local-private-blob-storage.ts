@@ -19,7 +19,8 @@ import {
   PrivateBlobStorage,
 } from './private-blob-storage';
 
-const MAX_FILE_BYTES = 20 * 1024 * 1024;
+const DEFAULT_MAX_FILE_BYTES = 20 * 1024 * 1024;
+const ABSOLUTE_MAX_FILE_BYTES = 50 * 1024 * 1024;
 const SIGNATURE_BYTES = 12;
 const PDF_TOKEN_OVERLAP = 7;
 
@@ -40,11 +41,19 @@ export class LocalPrivateBlobStorage implements PrivateBlobStorage {
   async put(
     storageKey: string,
     source: NodeJS.ReadableStream,
+    maxBytes = DEFAULT_MAX_FILE_BYTES,
   ): Promise<{
     sizeBytes: number;
     sha256: string;
     detectedMimeType: string;
   }> {
+    if (
+      !Number.isSafeInteger(maxBytes) ||
+      maxBytes < 1 ||
+      maxBytes > ABSOLUTE_MAX_FILE_BYTES
+    ) {
+      throw new BlobValidationError('Invalid file size limit');
+    }
     const target = this.resolveStorageKey(storageKey);
     const temporaryDirectory = resolve(this.root, '.tmp');
     const temporaryPath = resolve(
@@ -66,8 +75,12 @@ export class LocalPrivateBlobStorage implements PrivateBlobStorage {
           ? chunk
           : Buffer.from(chunk, encoding);
         sizeBytes += bytes.length;
-        if (sizeBytes > MAX_FILE_BYTES) {
-          callback(new BlobValidationError('File exceeds the 20MB limit'));
+        if (sizeBytes > maxBytes) {
+          callback(
+            new BlobValidationError(
+              `File exceeds the ${maxBytes / (1024 * 1024)}MB limit`,
+            ),
+          );
           return;
         }
         hash.update(bytes);

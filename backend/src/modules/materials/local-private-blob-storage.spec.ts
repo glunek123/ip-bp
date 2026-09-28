@@ -1,6 +1,6 @@
 import { createHash } from 'node:crypto';
 import * as fileSystem from 'node:fs/promises';
-import { mkdtemp, readFile, rm } from 'node:fs/promises';
+import { mkdtemp, readFile, readdir, rm } from 'node:fs/promises';
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
 import { PassThrough, Readable } from 'node:stream';
@@ -213,6 +213,36 @@ describe('LocalPrivateBlobStorage', () => {
       ),
     ).rejects.toThrow('20MB');
     await expect(storage.open('too-large')).rejects.toThrow('not found');
+  });
+
+  it('accepts a 25MB stream when a 50MB limit is supplied', async () => {
+    const chunk = Buffer.alloc(1024 * 1024, 0);
+    chunk.set(png);
+    const result = await storage.put(
+      'large-certificate',
+      Readable.from(Array.from({ length: 25 }, () => chunk)),
+      50 * 1024 * 1024,
+    );
+    expect(result.sizeBytes).toBe(25 * 1024 * 1024);
+    expect((await readFile(join(root, 'large-certificate'))).length).toBe(
+      25 * 1024 * 1024,
+    );
+  });
+
+  it('rejects a stream above its 50MB limit and removes temporary bytes', async () => {
+    const chunk = Buffer.alloc(1024 * 1024, 0);
+    chunk.set(png);
+    await expect(
+      storage.put(
+        'oversized-certificate',
+        Readable.from(Array.from({ length: 51 }, () => chunk)),
+        50 * 1024 * 1024,
+      ),
+    ).rejects.toThrow('50MB');
+    await expect(storage.open('oversized-certificate')).rejects.toThrow(
+      'not found',
+    );
+    expect(await readdir(join(root, '.tmp'))).toEqual([]);
   });
 
   it('reports ready only when its private root is usable', async () => {

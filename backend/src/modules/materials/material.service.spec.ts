@@ -1156,6 +1156,7 @@ describe('MaterialService', () => {
         new RegExp(`^${actor.departmentId}/[0-9a-f-]{36}/[0-9a-f-]{36}$`),
       ),
       expect.any(Readable),
+      20 * 1024 * 1024,
     );
     expect(fixture.db.uploadDraft.updateMany).toHaveBeenCalledWith({
       where: expect.objectContaining({
@@ -1463,6 +1464,58 @@ describe('MaterialService', () => {
     expect(fixture.transaction.material.create).not.toHaveBeenCalled();
     expect(fixture.storage.delete).toHaveBeenCalledTimes(1);
   });
+
+  it.each(['NOTARY_CERTIFICATE', 'NOTARY_DISCLOSURE'] as const)(
+    'rejects the eleventh active %s material and cleans up its blob',
+    async (category) => {
+      const fixture = createFixture();
+      const notaryActor = { ...actor, notaryOfficeId: 'office-1' };
+      fixture.db.uploadDraft.findUnique.mockResolvedValue(
+        openDraft({
+          ownerType: 'NOTARY_MATTER',
+          ownerId: 'matter-1',
+          category,
+          purpose: category,
+          notaryOfficeAccountBindingId: 'binding-1',
+        }),
+      );
+      fixture.db.notaryOfficeAccountBinding.findFirst.mockResolvedValue({
+        id: 'binding-1',
+      });
+      fixture.transaction.notaryOfficeAccountBinding.findFirst.mockResolvedValue(
+        {
+          id: 'binding-1',
+        },
+      );
+      fixture.db.notaryMatter.findFirst.mockResolvedValue({
+        id: 'matter-1',
+        departmentId: actor.departmentId,
+        stage: 'WAITING_CERTIFICATE',
+        sourceLead: { responsibleUserId: actor.userId, teamId: null },
+      });
+      fixture.storage.put.mockResolvedValue({
+        sizeBytes: 10,
+        sha256: 'e'.repeat(64),
+        detectedMimeType: 'image/png',
+      });
+      fixture.transaction.material.count.mockResolvedValue(10);
+
+      await expect(
+        fixture.service.finalizeUpload(
+          notaryActor,
+          openDraft().id,
+          Readable.from(Buffer.from('bytes')),
+        ),
+      ).rejects.toMatchObject({ response: { code: 'VALIDATION_ERROR' } });
+      expect(fixture.storage.put).toHaveBeenCalledWith(
+        expect.any(String),
+        expect.any(Readable),
+        50 * 1024 * 1024,
+      );
+      expect(fixture.transaction.material.create).not.toHaveBeenCalled();
+      expect(fixture.storage.delete).toHaveBeenCalledTimes(1);
+    },
+  );
 
   it('serializes concurrent finalizes so only one crosses the remaining owner quota', async () => {
     const fixture = createFixture();

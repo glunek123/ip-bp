@@ -363,7 +363,11 @@ export class MaterialService {
         });
         if (claimed.count !== 1) throw this.versionConflict();
         pendingClaimed = true;
-        const blob = await this.storage.put(storageKey, source);
+        const blob = await this.storage.put(
+          storageKey,
+          source,
+          materialFileLimit(draft.category),
+        );
         if (
           blob.detectedMimeType !== declaredMimeType ||
           !isMimeAllowedForPurpose(
@@ -1866,7 +1870,15 @@ function materialLimit(category: keyof typeof allowedMimeTypes): number {
     ? 10
     : category === 'NOTARY_OPENING_PHOTO'
       ? 50
-      : 20;
+      : category === 'NOTARY_CERTIFICATE' || category === 'NOTARY_DISCLOSURE'
+        ? 10
+        : 20;
+}
+
+function materialFileLimit(category: keyof typeof allowedMimeTypes): number {
+  return category === 'NOTARY_CERTIFICATE' || category === 'NOTARY_DISCLOSURE'
+    ? 50 * 1024 * 1024
+    : 20 * 1024 * 1024;
 }
 
 function ownerQuotaKey(input: {

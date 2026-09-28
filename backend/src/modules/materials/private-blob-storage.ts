@@ -4,6 +4,7 @@ export interface PrivateBlobStorage {
   put(
     storageKey: string,
     source: NodeJS.ReadableStream,
+    maxBytes?: number,
   ): Promise<{
     sizeBytes: number;
     sha256: string;
