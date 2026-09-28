@@ -1,6 +1,6 @@
 {
   "version": 1,
-  "recordedAt": "2026-09-28T06:06:22.922Z",
+  "recordedAt": "2026-09-28T06:23:33.111Z",
   "files": {
     ".cursor/rules/verified-feature-integration.mdc": "ffd2306612ba6f09749629c5adb9e645f7f37aa6ee27ff1bc1c3d8b14efeca38",
     ".env.example": "07211cde5c2b59efc21b619b752d4c9b871f0980d2d64ca3c146ad6151fd27ca",
@@ -508,7 +508,7 @@
     "scripts/context-memory.test.mjs": "cd22bfb916990cfd54890f3dff072a33080492570a461dc6d49ded612d2b731a",
     "scripts/local-lock.mjs": "6f5001af92692a4cf2493fc86f435454c56e842da69a45a485f33206a1fbc59c",
     "scripts/local-lock.test.mjs": "b115529a8cc6c1b533f4f8bfa26bb23574d3f3aafb42abdc8b0bb29d0779e283",
-    "scripts/notary-opening-review-migration.test.mjs": "744fb257718e6cbc46deff5723ff30b4290370fb165249ba79f4ddf8f256d80f",
+    "scripts/notary-opening-review-migration.node-test.mjs": "af8b9efb70e2fa3e7142a8809449860b6f34c84cb68464e360a84fe85d7dfccf",
     "scripts/prisma-model-owners.mjs": "90349df747f38003a077e5afc3036c5226926bc79ec05344942f91737c659a27",
     "scripts/run-e2e.mjs": "bbf4615f9a3851721cf04ed2f8559a4b64b10a4879424e78960d8aa2e8d3cfc4",
     "scripts/run-e2e.test.mjs": "06d12bca364dd6e1a61d917ae3d5583c0130113fa6d70439b8f9fbeb5ce79ddc",
