@@ -78,6 +78,7 @@ const allActions = [
   'LEAD_EVIDENCE_DECIDE',
   'NOTARY_EVIDENCE_RECORD',
   'NOTARY_UNBOX_RECORD',
+  'NOTARY_OPENING_REVIEW',
   'NOTARY_OFFICE_MANAGE',
   'LEAD_WITHDRAW_APPLY',
 ];
@@ -91,6 +92,7 @@ const actionNames = Object.freeze({
   'lead.evidence.decide': 'LEAD_EVIDENCE_DECIDE',
   'notary.evidence.record': 'NOTARY_EVIDENCE_RECORD',
   'notary.unbox.record': 'NOTARY_UNBOX_RECORD',
+  'notary.opening.review': 'NOTARY_OPENING_REVIEW',
   'notary.office.manage': 'NOTARY_OFFICE_MANAGE',
   'lead.withdraw.apply': 'LEAD_WITHDRAW_APPLY',
 });
@@ -116,6 +118,9 @@ async function dropFaults() {
     ['notary_matter_opening', 'core_nt_reject_opening'],
     ['material_references', 'core_nt_reject_opening_ref'],
     ['notary_matter_command_receipts', 'core_nt_reject_receipt'],
+    ['notary_opening_review_decisions', 'core_nt_reject_review_decision'],
+    ['notary_opening_review_audit_events', 'core_nt_reject_review_audit'],
+    ['notary_opening_review_receipts', 'core_nt_reject_review_receipt'],
   ]) {
     await database.$executeRawUnsafe(
       `ALTER TABLE "${table}" DROP CONSTRAINT IF EXISTS "${constraint}"`,
@@ -277,6 +282,9 @@ async function clearDatabase() {
     'notary_matter_evidence',
     'notary_matter_opening',
     'notary_matter_logistics',
+    'notary_opening_review_decisions',
+    'notary_opening_review_audit_events',
+    'notary_opening_review_receipts',
   ];
   await database.$transaction(async (transaction) => {
     for (const table of immutableTables) {
@@ -284,6 +292,15 @@ async function clearDatabase() {
         `ALTER TABLE "${table}" DISABLE TRIGGER USER`,
       );
     }
+    await transaction.notaryOpeningReviewReceipt.deleteMany({
+      where: { departmentId: { in: departmentIds } },
+    });
+    await transaction.notaryOpeningReviewAuditEvent.deleteMany({
+      where: { departmentId: { in: departmentIds } },
+    });
+    await transaction.notaryOpeningReviewDecision.deleteMany({
+      where: { departmentId: { in: departmentIds } },
+    });
     await transaction.notaryMatterCommandReceipt.deleteMany({
       where: { departmentId: { in: departmentIds } },
     });
@@ -854,6 +871,37 @@ export function countNotaryOpeningReferences(matterId) {
   });
 }
 
+export function countNotaryOpeningReviewDecisions(matterId) {
+  return database.notaryOpeningReviewDecision.count({ where: { matterId } });
+}
+
+export function countNotaryOpeningReviewAudits(matterId) {
+  return database.notaryOpeningReviewAuditEvent.count({ where: { matterId } });
+}
+
+export function countNotaryOpeningReviewReceipts(matterId) {
+  return database.notaryOpeningReviewReceipt.count({
+    where: { resultMatterId: matterId },
+  });
+}
+
+export function getNotaryOpeningReviewMatter(matterId) {
+  return database.notaryMatter.findUnique({
+    where: { id: matterId },
+    select: { stage: true, version: true },
+  });
+}
+
+export function removeNotaryOpeningReviewPhotoReferences(matterId) {
+  return database.materialReference.deleteMany({
+    where: {
+      resourceType: 'notary_matter',
+      resourceId: matterId,
+      purpose: 'NOTARY_OPENING_PHOTO',
+    },
+  });
+}
+
 export function countLeadEvidenceAudits(leadId) {
   return database.auditEvent.count({
     where: {
@@ -1053,6 +1101,27 @@ export async function rejectNotaryOpeningReferenceWrites() {
   await dropFaults();
   await database.$executeRawUnsafe(
     'ALTER TABLE "material_references" ADD CONSTRAINT "core_nt_reject_opening_ref" CHECK (false) NOT VALID',
+  );
+}
+
+export async function rejectNotaryOpeningReviewDecisionWrites() {
+  await dropFaults();
+  await database.$executeRawUnsafe(
+    'ALTER TABLE "notary_opening_review_decisions" ADD CONSTRAINT "core_nt_reject_review_decision" CHECK (false) NOT VALID',
+  );
+}
+
+export async function rejectNotaryOpeningReviewAuditWrites() {
+  await dropFaults();
+  await database.$executeRawUnsafe(
+    'ALTER TABLE "notary_opening_review_audit_events" ADD CONSTRAINT "core_nt_reject_review_audit" CHECK (false) NOT VALID',
+  );
+}
+
+export async function rejectNotaryOpeningReviewReceiptWrites() {
+  await dropFaults();
+  await database.$executeRawUnsafe(
+    'ALTER TABLE "notary_opening_review_receipts" ADD CONSTRAINT "core_nt_reject_review_receipt" CHECK (false) NOT VALID',
   );
 }
 

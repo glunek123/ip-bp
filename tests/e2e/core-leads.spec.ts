@@ -28,6 +28,9 @@ import {
   countNotaryOpeningReceipts,
   countNotaryOpeningAudits,
   countNotaryOpeningReferences,
+  countNotaryOpeningReviewDecisions,
+  countNotaryOpeningReviewAudits,
+  countNotaryOpeningReviewReceipts,
   countLeadReviewDecisions,
   countLeadWithdrawalApplications,
   countLeadWithdrawalAudits,
@@ -39,6 +42,8 @@ import {
   disconnectCoreLeadTestDatabase,
   getCustomer,
   getLead,
+  getNotaryOpeningReviewMatter,
+  removeNotaryOpeningReviewPhotoReferences,
   getLeadEvidenceDecision,
   getLeadReviewDecision,
   getLeadReviewDecisions,
@@ -57,6 +62,9 @@ import {
   rejectNotaryEvidenceReceiptWrites,
   rejectNotaryOpeningWrites,
   rejectNotaryOpeningReferenceWrites,
+  rejectNotaryOpeningReviewDecisionWrites,
+  rejectNotaryOpeningReviewAuditWrites,
+  rejectNotaryOpeningReviewReceiptWrites,
   rejectLeadReviewDecisionWrites,
   rejectClientLeadReviewReceiptWrites,
   rejectWithdrawalApplicationWrites,
@@ -293,6 +301,46 @@ function recordNotaryOpening(
     headers: { ...headers, 'Idempotency-Key': key },
     data: input,
   });
+}
+
+function reviewNotaryOpening(
+  request: APIRequestContext,
+  matterId: string,
+  input: Record<string, unknown>,
+  key = randomUUID(),
+  clientCsrf?: string,
+) {
+  const client = clientCsrf !== undefined;
+  return request.post(
+    `/api/v1/${client ? 'client/' : ''}notary-matters/${matterId}/opening-review`,
+    {
+      headers: client
+        ? { 'Idempotency-Key': key, 'X-CSRF-Token': clientCsrf }
+        : { ...authorizationA, 'Idempotency-Key': key },
+      data: input,
+    },
+  );
+}
+
+async function createOpenedNotaryMatter(
+  request: APIRequestContext,
+  clientCsrf: string,
+) {
+  const matterId = await createWaitingUnboxMatter(request, clientCsrf);
+  const photo = await upload(request, {
+    ownerType: 'NOTARY_MATTER',
+    ownerId: matterId,
+    purpose: 'NOTARY_OPENING_PHOTO',
+    name: 'review-opening.jpg',
+    mime: 'image/jpeg',
+    bytes: jpegBytes,
+  });
+  const opening = await recordNotaryOpening(request, matterId, {
+    expectedVersion: 2,
+    contentVersionIds: [photo.contentVersionId],
+  });
+  expect(opening.status(), await opening.text()).toBe(201);
+  return matterId;
 }
 
 async function createWaitingUnboxMatter(
@@ -1797,6 +1845,209 @@ test('notary opening fact, audit or receipt failure rolls back stage, photos and
       expect(await countNotaryOpeningAudits(matterId)).toBe(0);
       expect(await countNotaryOpeningReceipts(matterId)).toBe(0);
       expect(await countNotaryOpeningReferences(matterId)).toBe(0);
+      await allowInjectedFailures();
+    }
+  } finally {
+    await allowInjectedFailures();
+  }
+});
+
+test('opening review uses real operator and client identities, independent grant and durable replay', async ({
+  request,
+}) => {
+  const account = await createClientAccount(request);
+  const csrf = await loginClient(request, account.username, account.password);
+  const internalMatter = await createOpenedNotaryMatter(request, csrf);
+  const clientMatter = await createOpenedNotaryMatter(request, csrf);
+  const noPhotoMatter = await createOpenedNotaryMatter(request, csrf);
+  await removeNotaryOpeningReviewPhotoReferences(noPhotoMatter);
+  const pendingMatter = await createWaitingUnboxMatter(request, csrf);
+  const requestBody = { result: 'INFRINGEMENT', expectedVersion: 3 };
+  expect(
+    (
+      await reviewNotaryOpening(request, pendingMatter, {
+        ...requestBody,
+        expectedVersion: 2,
+      })
+    ).status(),
+  ).toBe(409);
+  expect(
+    (await reviewNotaryOpening(request, noPhotoMatter, requestBody)).status(),
+  ).toBe(409);
+  expect(
+    (
+      await reviewNotaryOpening(request, internalMatter, {
+        ...requestBody,
+        expectedVersion: 2,
+      })
+    ).status(),
+  ).toBe(409);
+  expect(
+    (
+      await request.post(
+        `/api/v1/notary-matters/${internalMatter}/opening-review`,
+        {
+          headers: {
+            Authorization: `Bearer ${coreLeadFixtures.tokenB}`,
+            'Idempotency-Key': randomUUID(),
+          },
+          data: requestBody,
+        },
+      )
+    ).status(),
+  ).toBe(404);
+  expect(
+    (
+      await request.post(
+        `/api/v1/notary-matters/${internalMatter}/opening-review`,
+        {
+          headers: { ...authorizationSelf, 'Idempotency-Key': randomUUID() },
+          data: requestBody,
+        },
+      )
+    ).status(),
+  ).toBe(403);
+  await setGrant('notary.opening.review', false);
+  expect(
+    (await reviewNotaryOpening(request, internalMatter, requestBody)).status(),
+  ).toBe(403);
+  await setGrant('notary.opening.review', true);
+  const key = randomUUID();
+  const first = await reviewNotaryOpening(
+    request,
+    internalMatter,
+    requestBody,
+    key,
+  );
+  expect(first.status(), await first.text()).toBe(201);
+  expect(await first.json()).toMatchObject({
+    id: internalMatter,
+    stage: 'ISSUANCE_DECISION',
+    version: 4,
+    reviewDecision: { actorKind: 'INTERNAL' },
+  });
+  const replay = await reviewNotaryOpening(
+    request,
+    internalMatter,
+    requestBody,
+    key,
+  );
+  expect(replay.status()).toBe(201);
+  expect(await replay.json()).toEqual(await first.json());
+  expect(
+    (
+      await reviewNotaryOpening(
+        request,
+        internalMatter,
+        { ...requestBody, expectedVersion: 4 },
+        key,
+      )
+    ).status(),
+  ).toBe(409);
+  expect(await countNotaryOpeningReviewDecisions(internalMatter)).toBe(1);
+  expect(await countNotaryOpeningReviewAudits(internalMatter)).toBe(1);
+  expect(await countNotaryOpeningReviewReceipts(internalMatter)).toBe(1);
+  const clientFirst = await reviewNotaryOpening(
+    request,
+    clientMatter,
+    { result: 'NO_INFRINGEMENT', reason: '  未见侵权  ', expectedVersion: 3 },
+    randomUUID(),
+    csrf,
+  );
+  expect(clientFirst.status(), await clientFirst.text()).toBe(201);
+  expect(await clientFirst.json()).toMatchObject({
+    stage: 'ARCHIVED',
+    version: 4,
+    reviewDecision: { actorKind: 'CLIENT', reason: '未见侵权' },
+  });
+  expect(await countNotaryOpeningReviewAudits(clientMatter)).toBe(1);
+  await setClientBindingActive(coreLeadFixtures.admittedCustomer, false);
+  expect(
+    (
+      await reviewNotaryOpening(
+        request,
+        clientMatter,
+        { result: 'NO_INFRINGEMENT', reason: '未见侵权', expectedVersion: 3 },
+        randomUUID(),
+        csrf,
+      )
+    ).status(),
+  ).toBe(401);
+  const foreign = await createClientAccount(request, {
+    customerId: coreLeadFixtures.foreignCustomer,
+    headers: { Authorization: `Bearer ${coreLeadFixtures.tokenB}` },
+  });
+  const foreignCsrf = await loginClient(
+    request,
+    foreign.username,
+    foreign.password,
+  );
+  expect(
+    (
+      await reviewNotaryOpening(
+        request,
+        internalMatter,
+        requestBody,
+        randomUUID(),
+        foreignCsrf,
+      )
+    ).status(),
+  ).toBe(404);
+});
+
+test('operator and client race on one opening review and only one PostgreSQL decision commits', async ({
+  request,
+}) => {
+  const account = await createClientAccount(request);
+  const csrf = await loginClient(request, account.username, account.password);
+  const matterId = await createOpenedNotaryMatter(request, csrf);
+  const responses = await Promise.all([
+    reviewNotaryOpening(request, matterId, {
+      result: 'INFRINGEMENT',
+      expectedVersion: 3,
+    }),
+    reviewNotaryOpening(
+      request,
+      matterId,
+      { result: 'NO_INFRINGEMENT', reason: '无侵权', expectedVersion: 3 },
+      randomUUID(),
+      csrf,
+    ),
+  ]);
+  expect(responses.map((response) => response.status()).sort()).toEqual([
+    201, 409,
+  ]);
+  expect(await countNotaryOpeningReviewDecisions(matterId)).toBe(1);
+  expect(await countNotaryOpeningReviewAudits(matterId)).toBe(1);
+  expect(await countNotaryOpeningReviewReceipts(matterId)).toBe(1);
+});
+
+test('opening review decision, audit and receipt failures roll back the real PostgreSQL transaction', async ({
+  request,
+}) => {
+  const account = await createClientAccount(request);
+  const csrf = await loginClient(request, account.username, account.password);
+  try {
+    for (const inject of [
+      rejectNotaryOpeningReviewDecisionWrites,
+      rejectNotaryOpeningReviewAuditWrites,
+      rejectNotaryOpeningReviewReceiptWrites,
+    ]) {
+      const matterId = await createOpenedNotaryMatter(request, csrf);
+      await inject();
+      const failed = await reviewNotaryOpening(request, matterId, {
+        result: 'NO_INFRINGEMENT',
+        reason: '无侵权',
+        expectedVersion: 3,
+      });
+      expect(failed.status(), await failed.text()).toBeGreaterThanOrEqual(500);
+      expect(await getNotaryOpeningReviewMatter(matterId)).toEqual({
+        stage: 'UNBOX_REVIEW',
+        version: 3,
+      });
+      expect(await countNotaryOpeningReviewDecisions(matterId)).toBe(0);
+      expect(await countNotaryOpeningReviewAudits(matterId)).toBe(0);
+      expect(await countNotaryOpeningReviewReceipts(matterId)).toBe(0);
       await allowInjectedFailures();
     }
   } finally {

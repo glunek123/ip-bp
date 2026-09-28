@@ -5,7 +5,10 @@ import { DatabaseModule } from '../../database/database.module';
 import { MaterialModule } from '../materials';
 import { LeadController } from './lead.controller';
 import { LeadService } from './lead.service';
-import { ClientLeadController } from './client-lead.controller';
+import {
+  ClientLeadController,
+  ClientNotaryOpeningReviewController,
+} from './client-lead.controller';
 import { ClientLeadService } from './client-lead.service';
 import {
   LeadNotaryController,
@@ -13,6 +16,7 @@ import {
 } from './lead-notary.controller';
 import { LeadNotaryService } from './lead-notary.service';
 import { NotaryOpeningService } from './notary-opening.service';
+import { NotaryOpeningReviewService } from './notary-opening-review.service';
 import { NotaryListController } from './notary-list.controller';
 import { NotaryListService } from './notary-list.service';
 
@@ -21,6 +25,7 @@ import { NotaryListService } from './notary-list.service';
   controllers: [
     LeadController,
     ClientLeadController,
+    ClientNotaryOpeningReviewController,
     LeadNotaryController,
     NotaryListController,
     NotaryOfficeController,
@@ -30,6 +35,7 @@ import { NotaryListService } from './notary-list.service';
     ClientLeadService,
     LeadNotaryService,
     NotaryOpeningService,
+    NotaryOpeningReviewService,
     NotaryListService,
   ],
   exports: [LeadService, ClientLeadService, LeadNotaryService],

@@ -10,7 +10,12 @@ import {
   Post,
   UseGuards,
 } from '@nestjs/common';
-import { ApiBearerAuth, ApiHeader, ApiTags } from '@nestjs/swagger';
+import {
+  ApiBearerAuth,
+  ApiCreatedResponse,
+  ApiHeader,
+  ApiTags,
+} from '@nestjs/swagger';
 import { ActorContext } from '../../access-control/actor-context';
 import { CurrentActor } from '../../access-control/actor-context.decorator';
 import { ActorContextGuard } from '../../access-control/actor-context.guard';
@@ -19,11 +24,14 @@ import {
   CreateNotaryOfficeDto,
   RecordNotaryEvidenceDto,
   RecordNotaryOpeningDto,
+  ReviewNotaryOpeningDto,
+  NotaryOpeningReviewResponseDto,
   SetNotaryOfficeStatusDto,
   TransferLeadToNotaryDto,
 } from './lead-notary.dto';
 import { LeadNotaryService } from './lead-notary.service';
 import { NotaryOpeningService } from './notary-opening.service';
+import { NotaryOpeningReviewService } from './notary-opening-review.service';
 
 @ApiTags('notary-offices')
 @ApiBearerAuth()
@@ -63,6 +71,7 @@ export class LeadNotaryController {
   constructor(
     private readonly notary: LeadNotaryService,
     private readonly opening: NotaryOpeningService,
+    private readonly openingReview: NotaryOpeningReviewService,
   ) {}
 
   @Post('leads/:id/notary-matters')
@@ -122,5 +131,23 @@ export class LeadNotaryController {
         message: 'Idempotency-Key 必须为 1 至 128 个字符',
       });
     return this.opening.record(actor, id, key, input);
+  }
+
+  @Post('notary-matters/:id/opening-review')
+  @ApiHeader({ name: 'Idempotency-Key', required: true })
+  @ApiCreatedResponse({ type: NotaryOpeningReviewResponseDto })
+  reviewOpening(
+    @CurrentActor() actor: ActorContext,
+    @Param('id', new ParseUUIDPipe()) id: string,
+    @Headers('idempotency-key') idempotencyKey: string | undefined,
+    @Body() input: ReviewNotaryOpeningDto,
+  ) {
+    const key = idempotencyKey?.trim();
+    if (key === undefined || key.length < 1 || key.length > 128)
+      throw new BadRequestException({
+        code: 'VALIDATION_ERROR',
+        message: 'Idempotency-Key 必须为 1 至 128 个字符',
+      });
+    return this.openingReview.review(actor, id, key, input);
   }
 }

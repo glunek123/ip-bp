@@ -143,3 +143,57 @@ export class RecordNotaryOpeningDto {
   @Min(1)
   expectedVersion!: number;
 }
+
+export class ReviewNotaryOpeningDto {
+  @ApiProperty({ enum: ['INFRINGEMENT', 'NO_INFRINGEMENT'] })
+  @IsIn(['INFRINGEMENT', 'NO_INFRINGEMENT'])
+  result!: 'INFRINGEMENT' | 'NO_INFRINGEMENT';
+
+  @ApiPropertyOptional({
+    description: '不侵权时必填，1 至 2000 字符',
+    maxLength: 2000,
+  })
+  @IsOptional()
+  @IsString()
+  @MaxLength(2000)
+  reason?: string | null;
+
+  @ApiProperty({ minimum: 1 })
+  @IsInt()
+  @Min(1)
+  expectedVersion!: number;
+}
+
+export class NotaryOpeningReviewDecisionResponseDto {
+  @ApiProperty({ enum: ['INFRINGEMENT', 'NO_INFRINGEMENT'] })
+  result!: 'INFRINGEMENT' | 'NO_INFRINGEMENT';
+
+  @ApiProperty({ nullable: true })
+  reason!: string | null;
+
+  @ApiProperty({ enum: ['INTERNAL', 'CLIENT'] })
+  actorKind!: 'INTERNAL' | 'CLIENT';
+
+  @ApiProperty()
+  actorDisplayName!: string;
+
+  @ApiProperty({ format: 'date-time' })
+  decidedAt!: string;
+
+  @ApiProperty({ nullable: true, format: 'date-time' })
+  archivedAt!: string | null;
+}
+
+export class NotaryOpeningReviewResponseDto {
+  @ApiProperty({ format: 'uuid' })
+  id!: string;
+
+  @ApiProperty({ enum: ['ISSUANCE_DECISION', 'ARCHIVED'] })
+  stage!: 'ISSUANCE_DECISION' | 'ARCHIVED';
+
+  @ApiProperty()
+  version!: number;
+
+  @ApiProperty({ type: NotaryOpeningReviewDecisionResponseDto })
+  reviewDecision!: NotaryOpeningReviewDecisionResponseDto;
+}

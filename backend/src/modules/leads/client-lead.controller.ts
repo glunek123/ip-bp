@@ -28,6 +28,11 @@ import {
 } from './client-lead-review.dto';
 import { ClientLeadService } from './client-lead.service';
 import {
+  NotaryOpeningReviewResponseDto,
+  ReviewNotaryOpeningDto,
+} from './lead-notary.dto';
+import { NotaryOpeningReviewService } from './notary-opening-review.service';
+import {
   ClientLeadListResponseDto,
   ClientLeadResponseDto,
   ClientLeadReviewResultDto,
@@ -93,5 +98,31 @@ export class ClientLeadController {
         message: 'Idempotency-Key 必须为 1 至 128 个字符',
       });
     return this.leads.confirmWithdrawal(actor, id, key, input);
+  }
+}
+
+@ApiTags('client-notary-matters')
+@ApiBearerAuth()
+@Controller('client/notary-matters')
+@UseGuards(ActorContextGuard, CsrfGuard)
+export class ClientNotaryOpeningReviewController {
+  constructor(private readonly openingReview: NotaryOpeningReviewService) {}
+
+  @Post(':id/opening-review')
+  @ApiHeader({ name: 'Idempotency-Key', required: true })
+  @ApiCreatedResponse({ type: NotaryOpeningReviewResponseDto })
+  reviewNotaryOpening(
+    @CurrentActor() actor: ActorContext,
+    @Param('id', new ParseUUIDPipe()) id: string,
+    @Headers('idempotency-key') idempotencyKey: string | undefined,
+    @Body() input: ReviewNotaryOpeningDto,
+  ) {
+    const key = idempotencyKey?.trim();
+    if (key === undefined || key.length < 1 || key.length > 128)
+      throw new BadRequestException({
+        code: 'VALIDATION_ERROR',
+        message: 'Idempotency-Key 必须为 1 至 128 个字符',
+      });
+    return this.openingReview.review(actor, id, key, input);
   }
 }
