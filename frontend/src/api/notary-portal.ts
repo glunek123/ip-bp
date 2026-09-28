@@ -351,7 +351,10 @@ export async function getNotaryPortalMatter(
     (response.stage === 'WAITING_CERTIFICATE' &&
       (response.issuanceDecision === null || response.certificate !== null)) ||
     (response.stage === 'ARCHIVED' &&
-      (response.issuanceDecision === null || response.certificate === null))
+      (response.evidence !== null ||
+        response.opening !== null ||
+        response.issuanceDecision !== null ||
+        response.certificate === null))
   )
     throw invalidResponse();
   return response as unknown as NotaryPortalMatter;

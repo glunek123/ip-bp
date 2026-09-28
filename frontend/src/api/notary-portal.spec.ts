@@ -120,6 +120,97 @@ describe('notary portal API', () => {
       capabilities: { issueCertificate: true },
     });
   });
+  it('decodes the archived portal projection with operational fields removed', async () => {
+    vi.stubGlobal(
+      'fetch',
+      vi.fn().mockResolvedValue(
+        new Response(
+          JSON.stringify({
+            id: 'matter-1',
+            businessNo: 'NZ-1',
+            stage: 'ARCHIVED',
+            version: 6,
+            createdAt: '2026-09-28T00:00:00.000Z',
+            evidence: null,
+            opening: null,
+            issuanceDecision: null,
+            certificate: {
+              certificateNo: 'Z-100',
+              certificateDate: '2026-09-28',
+              issuedAt: '2026-09-28T00:00:00.000Z',
+              files: [
+                {
+                  materialId: 'certificate-1',
+                  contentVersionId: 'version-1',
+                  originalFilename: 'certificate.pdf',
+                  mimeType: 'application/pdf',
+                },
+              ],
+              disclosureFiles: [],
+              needDisclose: false,
+              caseId: 'case-1',
+              caseBusinessNo: 'CA-1',
+            },
+            capabilities: { recordOpening: false, issueCertificate: false },
+          }),
+        ),
+      ),
+    );
+
+    await expect(getNotaryPortalMatter('matter-1')).resolves.toMatchObject({
+      stage: 'ARCHIVED',
+      evidence: null,
+      opening: null,
+      issuanceDecision: null,
+      certificate: { caseBusinessNo: 'CA-1' },
+    });
+  });
+  it('rejects an archived projection that still contains evidence operations', async () => {
+    vi.stubGlobal(
+      'fetch',
+      vi.fn().mockResolvedValue(
+        new Response(
+          JSON.stringify({
+            id: 'matter-1',
+            businessNo: 'NZ-1',
+            stage: 'ARCHIVED',
+            version: 6,
+            createdAt: '2026-09-28T00:00:00.000Z',
+            evidence: {
+              evidenceAt: '2026-09-27',
+              sampleFeeState: 'KNOWN',
+              sampleFeeAmount: '12.00',
+              logistics: [],
+            },
+            opening: null,
+            issuanceDecision: null,
+            certificate: {
+              certificateNo: 'Z-100',
+              certificateDate: '2026-09-28',
+              issuedAt: '2026-09-28T00:00:00.000Z',
+              files: [
+                {
+                  materialId: 'certificate-1',
+                  contentVersionId: 'version-1',
+                  originalFilename: 'certificate.pdf',
+                  mimeType: 'application/pdf',
+                },
+              ],
+              disclosureFiles: [],
+              needDisclose: false,
+              caseId: 'case-1',
+              caseBusinessNo: 'CA-1',
+            },
+            capabilities: { recordOpening: false, issueCertificate: false },
+          }),
+        ),
+      ),
+    );
+
+    await expect(getNotaryPortalMatter('matter-1')).rejects.toMatchObject({
+      code: 'INVALID_RESPONSE',
+    });
+  });
   it('posts an idempotent certificate command with only editable costs', async () => {
     const file = {
       materialId: 'material-1',

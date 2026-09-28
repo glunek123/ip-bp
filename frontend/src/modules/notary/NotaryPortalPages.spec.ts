@@ -165,6 +165,9 @@ describe('notary portal pages', () => {
       ...waitingCertificate,
       stage: 'ARCHIVED',
       version: 6,
+      evidence: null,
+      opening: null,
+      issuanceDecision: null,
       certificate: {
         certificateNo: 'Z-100',
         certificateDate: '2026-09-28',
@@ -248,6 +251,8 @@ describe('notary portal pages', () => {
     );
     expect(wrapper.find('[data-test="certificate-form"]').exists()).toBe(false);
     expect(wrapper.text()).not.toContain('/cases/case-1');
+    expect(wrapper.text()).not.toContain('审核员');
+    expect(wrapper.text()).not.toContain('¥ 12.00');
   });
 
   it('submits only selected pending photos and prevents an empty selection', async () => {
