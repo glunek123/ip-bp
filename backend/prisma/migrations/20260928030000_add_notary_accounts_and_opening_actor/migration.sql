@@ -105,7 +105,12 @@ ALTER TABLE "notary_matter_command_receipts" ADD COLUMN "internal_actor_user_id"
 ALTER TABLE "audit_events" ADD COLUMN "internal_actor_user_id" UUID, ADD COLUMN "notary_office_account_binding_id" UUID;
 
 UPDATE "upload_drafts" SET "internal_actor_user_id" = "actor_user_id";
+-- The existing opening fact is immutable to ordinary updates. This migration
+-- only adds the equivalent historical actor FK; both trigger changes and the
+-- backfill are transactional, so a failure restores the original trigger.
+ALTER TABLE "notary_matter_opening" DISABLE TRIGGER reject_notary_opening_update_delete;
 UPDATE "notary_matter_opening" SET "internal_actor_user_id" = "recorded_by_user_id";
+ALTER TABLE "notary_matter_opening" ENABLE TRIGGER reject_notary_opening_update_delete;
 UPDATE "notary_matter_command_receipts" SET "internal_actor_user_id" = "actor_user_id";
 UPDATE "audit_events" SET "internal_actor_user_id" = "actor_user_id";
 

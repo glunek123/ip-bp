@@ -43,4 +43,23 @@ describe('notary account migration', () => {
       'REFERENCES notary_office_account_bindings(id, user_id, department_id)',
     );
   });
+
+  it('temporarily lifts the immutable-opening trigger only around historical actor backfill', () => {
+    const disable = migration.indexOf(
+      'DISABLE TRIGGER reject_notary_opening_update_delete',
+    );
+    const backfill = migration.indexOf(
+      'UPDATE "notary_matter_opening" SET "internal_actor_user_id"',
+    );
+    const enable = migration.indexOf(
+      'ENABLE TRIGGER reject_notary_opening_update_delete',
+    );
+    expect(disable).toBeGreaterThan(migration.indexOf('BEGIN;'));
+    expect(backfill).toBeGreaterThan(disable);
+    expect(enable).toBeGreaterThan(backfill);
+    expect(enable).toBeLessThan(
+      migration.indexOf('CREATE FUNCTION enforce_dual_actor_path'),
+    );
+    expect(enable).toBeLessThan(migration.lastIndexOf('COMMIT;'));
+  });
 });
