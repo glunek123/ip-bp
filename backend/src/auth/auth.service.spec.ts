@@ -536,18 +536,36 @@ describe('AuthService', () => {
     const database = createDatabase();
     const officeId = '50000000-0000-4000-8000-000000000001';
     database.authSession.findUnique.mockResolvedValue({
-      id: '30000000-0000-4000-8000-000000000001', userId,
-      departmentId: department.id, csrfDigest: 'a'.repeat(64), revokedAt: null,
+      id: '30000000-0000-4000-8000-000000000001',
+      userId,
+      departmentId: department.id,
+      csrfDigest: 'a'.repeat(64),
+      revokedAt: null,
       expiresAt: new Date(Date.now() + 10_000),
       user: { active: true, accountType: 'NOTARY', authorizationRevision: 3 },
     });
     database.notaryOfficeAccountBinding.findUnique.mockResolvedValue({
-      userId, departmentId: department.id, notaryOfficeId: officeId, active: true,
-      notaryOffice: { id: officeId, departmentId: department.id, status: 'ACTIVE' },
+      userId,
+      departmentId: department.id,
+      notaryOfficeId: officeId,
+      active: true,
+      notaryOffice: {
+        id: officeId,
+        departmentId: department.id,
+        status: 'ACTIVE',
+      },
     });
-    const auth = new AuthService(database as never, { getOrThrow: () => 'a'.repeat(64) } as unknown as ConfigService);
+    const auth = new AuthService(
+      database as never,
+      { getOrThrow: () => 'a'.repeat(64) } as unknown as ConfigService,
+    );
     await expect(auth.resolveSession('token')).resolves.toMatchObject({
-      actor: { userId, departmentId: department.id, authorizationRevision: 3, notaryOfficeId: officeId },
+      actor: {
+        userId,
+        departmentId: department.id,
+        authorizationRevision: 3,
+        notaryOfficeId: officeId,
+      },
     });
     expect(database.departmentMembership.findUnique).not.toHaveBeenCalled();
   });

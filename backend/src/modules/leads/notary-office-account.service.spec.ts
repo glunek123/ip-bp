@@ -14,20 +14,16 @@ function fixture() {
       findUnique: jest
         .fn()
         .mockResolvedValue({ accountType: 'INTERNAL', active: true }),
-      create: jest
-        .fn()
-        .mockResolvedValue({
-          id: accountId,
-          displayName: '公证员',
-          active: true,
-        }),
-      update: jest
-        .fn()
-        .mockResolvedValue({
-          id: accountId,
-          displayName: '公证员',
-          active: false,
-        }),
+      create: jest.fn().mockResolvedValue({
+        id: accountId,
+        displayName: '公证员',
+        active: true,
+      }),
+      update: jest.fn().mockResolvedValue({
+        id: accountId,
+        displayName: '公证员',
+        active: false,
+      }),
     },
     notaryOffice: {
       findFirst: jest
@@ -38,13 +34,11 @@ function fixture() {
     notaryOfficeAccountBinding: {
       findMany: jest.fn().mockResolvedValue([]),
       findFirst: jest.fn(),
-      create: jest
-        .fn()
-        .mockResolvedValue({
-          id: '50000000-0000-4000-8000-000000000001',
-          active: true,
-          version: 1,
-        }),
+      create: jest.fn().mockResolvedValue({
+        id: '50000000-0000-4000-8000-000000000001',
+        active: true,
+        version: 1,
+      }),
       update: jest.fn().mockResolvedValue({ active: false, version: 2 }),
     },
     authSession: { updateMany: jest.fn() },

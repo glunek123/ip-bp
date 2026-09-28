@@ -1,6 +1,6 @@
 {
   "version": 1,
-  "recordedAt": "2026-09-28T09:12:14.790Z",
+  "recordedAt": "2026-09-28T09:14:29.853Z",
   "files": {
     ".cursor/rules/verified-feature-integration.mdc": "ffd2306612ba6f09749629c5adb9e645f7f37aa6ee27ff1bc1c3d8b14efeca38",
     ".env.example": "07211cde5c2b59efc21b619b752d4c9b871f0980d2d64ca3c146ad6151fd27ca",
@@ -97,7 +97,7 @@
     "backend/src/auth/auth.controller.ts": "784038a18b61901112ecde1d62165abae01a09b05dd1113fe430a4d3d5c89514",
     "backend/src/auth/auth.dto.ts": "9fa600b50b7ca8be27e5a3922d3b6180fc66115ce404c5b63f9609d4c33bbacb",
     "backend/src/auth/auth.module.ts": "f4de1f8244aa2f5a1db21f235731f19480b2ccd8b15e8acd53d20d654a9982a3",
-    "backend/src/auth/auth.service.spec.ts": "b51fa3d480a7a9b4478d7e35b3a684b0571f505a9dea7050bae0b77c151ebfa2",
+    "backend/src/auth/auth.service.spec.ts": "e44856ed540576732205a20f8c92cfb6850b0ea548dde0182aae914108c34ca7",
     "backend/src/auth/auth.service.ts": "65c8e51d923d506d3d2ecf2decbaab91099eb3147c25a085a12c6f172b443e95",
     "backend/src/auth/authenticated-session.ts": "bd09b3731c583c19b7fd60705e340e6289573c2c7787fbe5ee7a05ceb9641d2c",
     "backend/src/auth/bootstrap-local-account-migration.spec.ts": "6a29b8b3633b3c5612e3078278fe6bb274216225a82e065cb24ee4250c70ec27",
@@ -183,7 +183,7 @@
     "backend/src/modules/leads/notary-list.service.ts": "4b36252000314597f68a7e68cc9630810aa31e533bfa02eb88e192a8286bf654",
     "backend/src/modules/leads/notary-office-account-response.dto.ts": "40b4698480c20b69fe33908d80600ddbfc6a5eff0f49975c0f2d9ea7ef23b23e",
     "backend/src/modules/leads/notary-office-account.dto.ts": "b31b0129afb092fc5d3d1ec4627642ca00f2dc1b3cedbc516719fa18bc2e550c",
-    "backend/src/modules/leads/notary-office-account.service.spec.ts": "48005db719f598e960aaa6b9d3f7da94df5a950b46965873c60999b60a504d2c",
+    "backend/src/modules/leads/notary-office-account.service.spec.ts": "223b6be90e60970a424c381a057afd46bc34493ba31adf356a65ead19ce11b06",
     "backend/src/modules/leads/notary-office-account.service.ts": "6b8cec51e0edb0896411b7d7bbf80dc87b5fc528a0fc5aa142d30a7188f1c722",
     "backend/src/modules/leads/notary-opening-review-read.ts": "8af2bfb9c8a21325e2beb45b9133bf2cd7c93dc91c70d13682c333032432a45f",
     "backend/src/modules/leads/notary-opening-review.controller.spec.ts": "b4c1babbcb10d949c1906bee262abac4ee11902830d4ae97d4fa7a274055add4",
