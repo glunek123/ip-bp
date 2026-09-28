@@ -112,6 +112,7 @@ describe('application session controls', () => {
   it('shows personnel navigation only when management context is readable', async () => {
     const allowed = await mountApp();
     await flushPromises();
+    await allowed.wrapper.get('[data-test="settings-expand"]').trigger('click');
     expect(
       allowed.wrapper.find('[data-test="people-access-nav"]').exists(),
     ).toBe(true);
@@ -121,6 +122,9 @@ describe('application session controls', () => {
     );
     const denied = await mountApp();
     await flushPromises();
+    if (denied.wrapper.find('[data-test="settings-expand"]').exists()) {
+      await denied.wrapper.get('[data-test="settings-expand"]').trigger('click');
+    }
     expect(
       denied.wrapper.find('[data-test="people-access-nav"]').exists(),
     ).toBe(false);
