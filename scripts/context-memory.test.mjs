@@ -209,6 +209,47 @@ test('generated files and secrets do not enter the checkpoint', (t) => {
   assert.ok(!snapshot.includes('secret'));
 });
 
+test('local agent handoffs are excluded while official plans remain tracked', (t) => {
+  const root = fixture(t);
+  mkdirSync(join(root, '.superpowers/sdd'), { recursive: true });
+  mkdirSync(join(root, 'docs/superpowers/plans'), { recursive: true });
+  writeFileSync(join(root, '.superpowers/sdd/task-report.md'), 'local report');
+  writeFileSync(join(root, 'docs/superpowers/plans/plan.md'), '# Plan');
+
+  recordContext(root);
+  const snapshot = readFileSync(
+    join(root, 'docs/context-snapshot.json'),
+    'utf8',
+  );
+  assert.ok(!snapshot.includes('.superpowers/sdd/task-report.md'));
+  assert.ok(snapshot.includes('docs/superpowers/plans/plan.md'));
+
+  writeFileSync(
+    join(root, '.superpowers/sdd/task-report.md'),
+    'updated report',
+  );
+  assert.doesNotThrow(() => checkContext(root, { strict: true }));
+
+  writeFileSync(join(root, 'docs/superpowers/plans/plan.md'), '# Updated Plan');
+  assert.throws(
+    () => checkContext(root, { strict: true }),
+    /docs\/superpowers\/plans\/plan\.md/,
+  );
+});
+
+test('only the root local agent directory is excluded', (t) => {
+  const root = fixture(t);
+  mkdirSync(join(root, 'docs/.superpowers'), { recursive: true });
+  writeFileSync(join(root, 'docs/.superpowers/decision.md'), '# Decision');
+
+  recordContext(root);
+  const snapshot = readFileSync(
+    join(root, 'docs/context-snapshot.json'),
+    'utf8',
+  );
+  assert.ok(snapshot.includes('docs/.superpowers/decision.md'));
+});
+
 test('broken local document links prevent recording', (t) => {
   const root = fixture(t);
   writeFileSync(

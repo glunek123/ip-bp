@@ -1,6 +1,6 @@
 # 正式系统业务 Spec v0.1
 
-版本：v0.1-draft.7；日期：2026-09-23；任务：SPEC-001／BR-007／TD-AUTHZ-001／TD-TRACE-UX-001／CUST-FND-001～004。状态：业务回件、开发依赖、低负担回溯、案件读取／办理范围及不侵权归档撤回决定已回填；实际实现与生产准入分别以路线图和对应发布条件为准。
+版本：v0.1-draft.8；日期：2026-09-28；任务：SPEC-001／BR-007／TD-AUTHZ-001／TD-TRACE-UX-001／CUST-FND-001～004。状态：业务回件、开发依赖、低负担回溯、案件读取／办理范围、不侵权归档撤回及公证开箱双身份决定已回填；实际实现与生产准入分别以路线图和对应发布条件为准。
 
 ## 使用顺序与权威边界
 
@@ -14,7 +14,7 @@
 
 当前实现状态与开发顺序只见[功能开发路线图](../../feature-roadmap.md)，当前活动任务只见[项目状态](../../project-status.md)。
 
-固定输入：[反向证据指纹](EVIDENCE.md)、[v158事实](../../demo-reverse/v158/AS-IS.md)、[12项用户决定](../../demo-reverse/v158/DECISIONS.md)、[纠偏](../../demo-reverse/v158/CORRECTIONS.md)及[INPUT-001](../../deferred-design.md)。新增决定见[SD-01～40](DECISIONS.md)；BR-03原始回件及指纹也登记在EVIDENCE，后续确认依据登记为INPUT-010～015。目标条款与Demo或原建议不同可能是有意纠偏；不得用源码反向覆盖用户决定。
+固定输入：[反向证据指纹](EVIDENCE.md)、[v158事实](../../demo-reverse/v158/AS-IS.md)、[12项用户决定](../../demo-reverse/v158/DECISIONS.md)、[纠偏](../../demo-reverse/v158/CORRECTIONS.md)及[INPUT-001](../../deferred-design.md)。新增决定见[DECISIONS](DECISIONS.md)；BR-03原始回件及指纹也登记在EVIDENCE，后续确认依据登记为INPUT-010～015。目标条款与Demo或原建议不同可能是有意纠偏；不得用源码反向覆盖用户决定。
 
 ## 文档导航：按用途读取
 

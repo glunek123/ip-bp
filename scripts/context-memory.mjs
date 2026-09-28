@@ -131,6 +131,7 @@ function collectFiles(root, directory = '') {
     if (entry.name.startsWith('.env') && !exampleEnv) continue;
     if (
       ignoredDirectories.has(entry.name) ||
+      relative === '.superpowers' ||
       relative === 'backend/src/generated' ||
       relative === snapshotPath
     )
