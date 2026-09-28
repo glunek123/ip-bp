@@ -84,7 +84,7 @@
 
 **CORE-NT-005｜公证处出证转案。**
 
-正常出证路径由公证处真实账号办理出证并原子生成案件；尚未领取或实现，不把NT-004选择当作已出证。
+已从本地集成 NT-004 的 `main` 领取，按[小粒度设计](superpowers/specs/2026-09-28-core-nt-005-certificate-to-case-design.md)与[实施计划](superpowers/plans/2026-09-28-core-nt-005-certificate-to-case.md)开发。正常出证路径由公证处真实账号办理出证并原子生成案件；尚未实现和验收，不把NT-004选择当作已出证。
 
 ### Next Slice
 

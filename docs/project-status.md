@@ -8,7 +8,7 @@
 
 ## 当前任务
 
-**CORE-NT-005｜公证处出证转案（路线图唯一Current，待领取）**：CORE-NT-004已在`codex/core-nt-004-issuance-decision`完成运营出证／不出证选择，固定代码候选`7882a9e`的独立Review、Level 2切片门禁、隔离数据库／Chromium 50项验收及迁移专项见[验证记录](spec/v0.1/VALIDATION.md)。CORE-NT-006为Next。NT-004尚未推送或合并`main`；NT-005尚未实施，不能把选择当作已出证或已转案。
+**CORE-NT-005｜公证处出证转案（路线图唯一Current，开发中）**：CORE-NT-004已快进并入本地`main@86de860`，未推送远端；固定代码候选`7882a9e`的独立Review、Level 2切片门禁、隔离数据库／Chromium 50项验收及迁移专项见[验证记录](spec/v0.1/VALIDATION.md)。NT-005分支`codex/core-nt-005-certificate-to-case`已领取，单本且必传真实公证书的边界见[小粒度设计](superpowers/specs/2026-09-28-core-nt-005-certificate-to-case-design.md)；尚未实施和验收。CORE-NT-006为Next。
 
 线索库／公证阶段导航归属修复已按用户要求并入NT-003开发分支（合并提交`379b9d2`），连同NT-003新增阶段在NT-007固定候选通过完整组合验证，现已随该分支进入`main`。详见[验证记录](spec/v0.1/VALIDATION.md)。
 
@@ -47,4 +47,4 @@
 
 ## 下一步
 
-待从已集成的`main`领取CORE-NT-005公证处出证转案；不出证退货分支为CORE-NT-006。NT-004目前只在本地开发分支完成，未推送、未合并、未上线，未执行生产迁移。
+继续实施CORE-NT-005公证处出证转案并完成真实数据库／浏览器验收；不出证退货分支为CORE-NT-006。NT-004仅本地合并，未推送、未上线，未执行生产迁移。

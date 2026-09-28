@@ -124,22 +124,22 @@ health() -> ready | unavailable
 
 ## 4. 文件类别和默认限制
 
-| 类别                                                    | 允许格式                      | 单文件／单动作上限 | 首次使用Slice       | 是否推进必需                                             |
-| ------------------------------------------------------- | ----------------------------- | ------------------ | ------------------- | -------------------------------------------------------- |
-| `CUSTOMER_IDENTITY`                                     | PDF、JPG/JPEG、PNG            | 20MB／10个         | CORE-LD-001支撑子集 | 客户准入至少1个有效版本                                  |
-| `LEAD_SCREENSHOT`                                       | JPG/JPEG、PNG、WEBP、PDF      | 20MB／20个         | CORE-LD-001         | 创建线索可选；移交时冻结本批选择版本                     |
-| `NOTARY_OPENING_PHOTO`                                  | JPG/JPEG、PNG、WEBP           | 20MB／50个         | CORE-NT-002         | 至少1个                                                  |
-| `NOTARY_DISCLOSURE`                                     | PDF、JPG/JPEG、PNG            | 50MB／10个         | CORE-NT-005         | `needDisclose=true`时至少1个，或填写获准的结构化披露信息 |
-| `NOTARY_CERTIFICATE`                                    | PDF、JPG/JPEG、PNG            | 50MB／10个         | CORE-NT-005         | `BLOCKED_BY B10/B21`确定是否必须及多本规则               |
-| `COMPLAINT`、`AUTHORIZATION`                            | PDF、DOC、DOCX                | 50MB／各10个       | CORE-CA-002         | 推进到诉状待确认前必须有获准的起诉状和授权材料           |
-| `MAIL_RECEIPT`                                          | PDF、JPG/JPEG、PNG            | 20MB／10个         | CORE-CA-004／013    | 客户邮寄动作至少1个                                      |
-| `FILING_EVIDENCE`                                       | PDF、DOC、DOCX、JPG/JPEG、PNG | 50MB／50个         | CORE-CA-005         | 至少1个起诉及证据材料版本集合                            |
-| `FILING_SCREENSHOT`                                     | JPG/JPEG、PNG、PDF            | 20MB／10个         | CORE-CA-005         | 可选；不能代替法院、日期和起诉证据                       |
-| `PAYMENT_LIST`、`ACCEPTANCE_NOTICE`、`SERVICE_DOCUMENT` | PDF、JPG/JPEG、PNG            | 50MB／各10个       | CORE-CA-006         | 受理推进只强制实际受理日期和法院案号；其余可随后补充     |
-| `JUDGMENT`、`APPEAL_DOCUMENT`                           | PDF、JPG/JPEG、PNG            | 50MB／各10个       | CORE-CA-008／010    | 结果确认至少1个对应裁判文书                              |
-| `EXECUTION_APPLICATION`                                 | PDF、DOC、DOCX                | 50MB／10个         | CORE-CA-011         | 至少1个                                                  |
-| `EXECUTION_FILING_PROOF`、`EXECUTION_DOCUMENT`          | PDF、JPG/JPEG、PNG            | 50MB／各10个       | CORE-CA-014／015    | 申请执行推进至少1个立案材料；执行更新材料可追加          |
-| `CLOSURE_DOCUMENT`、`PAYMENT_PROOF`                     | PDF、JPG/JPEG、PNG            | 50MB／各10个       | CORE-CA-016         | 结案文书至少1个；付款凭证仅随真实付款记录                |
+| 类别                                                    | 允许格式                      | 单文件／单动作上限 | 首次使用Slice       | 是否推进必需                                                   |
+| ------------------------------------------------------- | ----------------------------- | ------------------ | ------------------- | -------------------------------------------------------------- |
+| `CUSTOMER_IDENTITY`                                     | PDF、JPG/JPEG、PNG            | 20MB／10个         | CORE-LD-001支撑子集 | 客户准入至少1个有效版本                                        |
+| `LEAD_SCREENSHOT`                                       | JPG/JPEG、PNG、WEBP、PDF      | 20MB／20个         | CORE-LD-001         | 创建线索可选；移交时冻结本批选择版本                           |
+| `NOTARY_OPENING_PHOTO`                                  | JPG/JPEG、PNG、WEBP           | 20MB／50个         | CORE-NT-002         | 至少1个                                                        |
+| `NOTARY_DISCLOSURE`                                     | PDF、JPG/JPEG、PNG            | 50MB／10个         | CORE-NT-005         | `needDisclose=true`时至少1个，或填写获准的结构化披露信息       |
+| `NOTARY_CERTIFICATE`                                    | PDF、JPG/JPEG、PNG            | 50MB／10个         | CORE-NT-005         | 本切片单本必传至少1份真实文件；多本及出证后更正仍按B10/B21后置 |
+| `COMPLAINT`、`AUTHORIZATION`                            | PDF、DOC、DOCX                | 50MB／各10个       | CORE-CA-002         | 推进到诉状待确认前必须有获准的起诉状和授权材料                 |
+| `MAIL_RECEIPT`                                          | PDF、JPG/JPEG、PNG            | 20MB／10个         | CORE-CA-004／013    | 客户邮寄动作至少1个                                            |
+| `FILING_EVIDENCE`                                       | PDF、DOC、DOCX、JPG/JPEG、PNG | 50MB／50个         | CORE-CA-005         | 至少1个起诉及证据材料版本集合                                  |
+| `FILING_SCREENSHOT`                                     | JPG/JPEG、PNG、PDF            | 20MB／10个         | CORE-CA-005         | 可选；不能代替法院、日期和起诉证据                             |
+| `PAYMENT_LIST`、`ACCEPTANCE_NOTICE`、`SERVICE_DOCUMENT` | PDF、JPG/JPEG、PNG            | 50MB／各10个       | CORE-CA-006         | 受理推进只强制实际受理日期和法院案号；其余可随后补充           |
+| `JUDGMENT`、`APPEAL_DOCUMENT`                           | PDF、JPG/JPEG、PNG            | 50MB／各10个       | CORE-CA-008／010    | 结果确认至少1个对应裁判文书                                    |
+| `EXECUTION_APPLICATION`                                 | PDF、DOC、DOCX                | 50MB／10个         | CORE-CA-011         | 至少1个                                                        |
+| `EXECUTION_FILING_PROOF`、`EXECUTION_DOCUMENT`          | PDF、JPG/JPEG、PNG            | 50MB／各10个       | CORE-CA-014／015    | 申请执行推进至少1个立案材料；执行更新材料可追加                |
+| `CLOSURE_DOCUMENT`、`PAYMENT_PROOF`                     | PDF、JPG/JPEG、PNG            | 50MB／各10个       | CORE-CA-016         | 结案文书至少1个；付款凭证仅随真实付款记录                      |
 
 所有格式以服务端检测的真实MIME为准，不只看扩展名；拒绝加密PDF、压缩包、可执行文件和未知格式。批量ZIP、视频和超出上表限制的专门能力不属于核心Slice，必须另立设计。
 
@@ -194,14 +194,14 @@ health() -> ready | unavailable
 
 公证事项固定保存：`id/businessNo/departmentId/sourceType/sourceLeadId/customerId/rightsHolderId/responsibleUserId/notaryOfficeId/stage/version`；来源选择的商品和材料以关系及精确内容版本保存，不复制成无关联字符串。
 
-| Slice／动作    | 必填结构化字段                                                                                                                                     | 必填附件                           | 结果／阻塞                                                                                                                   |
-| -------------- | -------------------------------------------------------------------------------------------------------------------------------------------------- | ---------------------------------- | ---------------------------------------------------------------------------------------------------------------------------- |
-| NT-001取证物流 | `evidenceAt`；`sampleFeeState(KNOWN/PENDING)`及条件金额；至少1条物流，每条`companyState/value?`与`trackingState/value?`必须分别为`PRESENT`或`NONE` | 无                                 | `PENDING_EVIDENCE→WAITING_UNBOX`；`NONE`不参与匹配；公司／单号不能一个未表态                                                 |
-| NT-002开箱材料 | `senderName?`、`senderPhone?`、`senderAddress?`；人工修改识别单号时保存原值、改后值、原因                                                          | `NOTARY_OPENING_PHOTO`至少1个      | `WAITING_UNBOX→UNBOX_REVIEW`；未知字段保持空，不生成模拟发货人                                                               |
-| NT-003开箱审核 | `result=INFRINGEMENT/NO_INFRINGEMENT`；不侵权时`reason`必填                                                                                        | 无                                 | 侵权：`UNBOX_REVIEW→ISSUANCE_DECISION`；不侵权：同事务归档并记录原因；归档后的撤销／重开`BLOCKED_BY BQ-03`，普通入口不得提供 |
-| NT-004出证选择 | `decision=ISSUE/NO_ISSUE`、`decidedAt`                                                                                                             | 无                                 | ISSUE→`WAITING_CERTIFICATE`；NO_ISSUE→`WAITING_RETURN`；保存草稿不推进                                                       |
-| NT-005出证转案 | `certificateNo`、`certificateDate`、公证／样品／调查／披露各费用的`KNOWN/PENDING`及条件金额；需披露时有结构化信息或披露材料                        | `NOTARY_CERTIFICATE`和条件披露材料 | 多本、真实材料门槛和更正规则`BLOCKED_BY B10/B21`；关闭后同事务归档事项、生成案件待匹配、保留全部原费用身份                   |
-| NT-006退货归档 | `returnChoice(RETURN/KEEP/REFUND_ONLY)`、退款和运费金额状态、归档类型／原因／日期                                                                  | 条件凭证                           | 归档准入、累计退款口径、收付方、分步和原子边界`BLOCKED_BY B08/B11/B18`                                                       |
+| Slice／动作    | 必填结构化字段                                                                                                                                     | 必填附件                                                    | 结果／阻塞                                                                                                                   |
+| -------------- | -------------------------------------------------------------------------------------------------------------------------------------------------- | ----------------------------------------------------------- | ---------------------------------------------------------------------------------------------------------------------------- |
+| NT-001取证物流 | `evidenceAt`；`sampleFeeState(KNOWN/PENDING)`及条件金额；至少1条物流，每条`companyState/value?`与`trackingState/value?`必须分别为`PRESENT`或`NONE` | 无                                                          | `PENDING_EVIDENCE→WAITING_UNBOX`；`NONE`不参与匹配；公司／单号不能一个未表态                                                 |
+| NT-002开箱材料 | `senderName?`、`senderPhone?`、`senderAddress?`；人工修改识别单号时保存原值、改后值、原因                                                          | `NOTARY_OPENING_PHOTO`至少1个                               | `WAITING_UNBOX→UNBOX_REVIEW`；未知字段保持空，不生成模拟发货人                                                               |
+| NT-003开箱审核 | `result=INFRINGEMENT/NO_INFRINGEMENT`；不侵权时`reason`必填                                                                                        | 无                                                          | 侵权：`UNBOX_REVIEW→ISSUANCE_DECISION`；不侵权：同事务归档并记录原因；归档后的撤销／重开`BLOCKED_BY BQ-03`，普通入口不得提供 |
+| NT-004出证选择 | `decision=ISSUE/NO_ISSUE`、`decidedAt`                                                                                                             | 无                                                          | ISSUE→`WAITING_CERTIFICATE`；NO_ISSUE→`WAITING_RETURN`；保存草稿不推进                                                       |
+| NT-005出证转案 | `certificateNo`、`certificateDate`、公证／样品／调查／披露各费用的`KNOWN/PENDING`及条件金额；需披露时有结构化信息或披露材料                        | 单本至少1份真实`NOTARY_CERTIFICATE`；需披露时有真实披露材料 | 已确认本切片单本与材料门槛；同事务归档事项、生成案件待匹配、保留全部原费用身份。多本和出证后更正仍`BLOCKED_BY B10/B21`       |
+| NT-006退货归档 | `returnChoice(RETURN/KEEP/REFUND_ONLY)`、退款和运费金额状态、归档类型／原因／日期                                                                  | 条件凭证                                                    | 归档准入、累计退款口径、收付方、分步和原子边界`BLOCKED_BY B08/B11/B18`                                                       |
 
 ## 7. CORE-CA字段与动作契约
 
