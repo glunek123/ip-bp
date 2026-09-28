@@ -23,3 +23,12 @@
 自审检查了授权早于回执、客户不借内部 Grant、专用成功审计唯一关联决定、回滚及 E2E 夹具按回执→审计→决定清理。测试故障注入产生的预期 500 日志已由对应回滚断言覆盖。
 
 本任务尚未经独立高风险 Review，也未运行全量 Level 3 门禁或完整双端浏览器主链。请 Sol Review 重点复查事务内身份重验、冻结照片与开箱审计关联、序列化冲突重试和回执快照校验；发现问题后在后续集成阶段修复。Task 5 负责完整浏览器主链。
+
+## 独立 Review 后修复（2026-09-28）
+
+独立 Review 对原提交给出 Critical 0／Important 1／Minor 0、REJECTED：回执重放仅检查顶层 id/version/stage 与决定为对象，可能把缺字段或与持久化决定矛盾的 JSON 以 201 返回。修复限定在 `notary-opening-review.service.ts` 与直接测试。
+
+- RED：先增加缺少 `reviewDecision` 字段、伪造归档状态/结论/审核身份/决定时间的用例；`pnpm --filter @dev-cor/backend exec jest --runInBand notary-opening-review.service.spec.ts -t "rejects a replay snapshot|rejects replay fields"` 为 2 failed，实际收到 201 原样快照。
+- GREEN：回执重放现在要求顶层和决定层准确字段集合、各字段类型、ISO 时间、结论与状态/原因/归档组合一致；按 `reviewDecisionId` 读取不可变决定并核对事项、部门、客户、操作者、身份、结果、原因、审核人名称、时间及版本。任一缺失或矛盾抛 `RECEIPT_CORRUPT`。同键异参仍优先返回 `IDEMPOTENCY_CONFLICT`。
+- 最终改动验证：聚焦 Jest 2 suites／13 tests 通过；`pnpm --filter @dev-cor/backend typecheck:prepared` 通过；`pnpm --filter @dev-cor/backend build` 通过；隔离测试库 `pnpm test:e2e:core-ld --grep "opening review uses real operator"` 1/1 通过，确认真实 PostgreSQL 正常重放仍返回原结果。
+- 未改 schema、读取接口、UI；未重复运行全量门禁。独立 Reviewer 需复审此修复后再标 Task 2 ACCEPTED。

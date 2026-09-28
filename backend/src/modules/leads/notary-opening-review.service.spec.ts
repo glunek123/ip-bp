@@ -35,22 +35,18 @@ function fixture() {
       updateMany: jest.fn().mockResolvedValue({ count: 1 }),
     },
     userAccount: {
-      findUnique: jest
-        .fn()
-        .mockResolvedValue({
-          accountType: 'INTERNAL',
-          active: true,
-          displayName: '运营',
-        }),
+      findUnique: jest.fn().mockResolvedValue({
+        accountType: 'INTERNAL',
+        active: true,
+        displayName: '运营',
+      }),
     },
     customerAccountBinding: {
-      findFirst: jest
-        .fn()
-        .mockResolvedValue({
-          id: '44444444-4444-4444-8444-444444444444',
-          customerId: client.clientCustomerId,
-          user: { displayName: '客户' },
-        }),
+      findFirst: jest.fn().mockResolvedValue({
+        id: '44444444-4444-4444-8444-444444444444',
+        customerId: client.clientCustomerId,
+        user: { displayName: '客户' },
+      }),
     },
     materialReference: { count: jest.fn().mockResolvedValue(1) },
     notaryOpeningReviewReceipt: {
@@ -58,12 +54,11 @@ function fixture() {
       create: jest.fn().mockResolvedValue({}),
     },
     notaryOpeningReviewDecision: {
-      create: jest
-        .fn()
-        .mockImplementation(async ({ data }) => ({
-          id: '55555555-5555-4555-8555-555555555555',
-          decidedAt: data.decidedAt,
-        })),
+      findUnique: jest.fn(),
+      create: jest.fn().mockImplementation(async ({ data }) => ({
+        id: '55555555-5555-4555-8555-555555555555',
+        decidedAt: data.decidedAt,
+      })),
     },
     notaryOpeningReviewAuditEvent: { create: jest.fn().mockResolvedValue({}) },
   };
@@ -78,6 +73,20 @@ function fixture() {
     access as never,
   );
   return { service, tx, access, matter };
+}
+
+async function committedReplayFixture() {
+  const f = fixture();
+  const result = await f.service.review(internal, matterId, 'key', input);
+  const stored = f.tx.notaryOpeningReviewReceipt.create.mock.calls[0][0].data;
+  const decision =
+    f.tx.notaryOpeningReviewDecision.create.mock.calls[0][0].data;
+  f.tx.notaryOpeningReviewReceipt.findUnique.mockResolvedValue(stored);
+  f.tx.notaryOpeningReviewDecision.findUnique.mockResolvedValue({
+    ...decision,
+    id: stored.reviewDecisionId,
+  });
+  return { ...f, result, stored, decision };
 }
 
 describe('NotaryOpeningReviewService', () => {
@@ -177,15 +186,12 @@ describe('NotaryOpeningReviewService', () => {
   });
 
   it('replays the same request without new writes and rejects a changed payload', async () => {
-    const f = fixture();
-    const first = await f.service.review(internal, matterId, 'key', input);
-    const stored = f.tx.notaryOpeningReviewReceipt.create.mock.calls[0][0].data;
-    f.tx.notaryOpeningReviewReceipt.findUnique.mockResolvedValue(stored);
+    const f = await committedReplayFixture();
     f.tx.notaryOpeningReviewDecision.create.mockClear();
     f.tx.notaryOpeningReviewAuditEvent.create.mockClear();
     await expect(
       f.service.review(internal, matterId, 'key', input),
-    ).resolves.toEqual(first);
+    ).resolves.toEqual(f.result);
     await expect(
       f.service.review(internal, matterId, 'key', {
         ...input,
@@ -194,6 +200,71 @@ describe('NotaryOpeningReviewService', () => {
     ).rejects.toMatchObject({ response: { code: 'IDEMPOTENCY_CONFLICT' } });
     expect(f.tx.notaryOpeningReviewDecision.create).not.toHaveBeenCalled();
     expect(f.tx.notaryOpeningReviewAuditEvent.create).not.toHaveBeenCalled();
+  });
+
+  it('rejects a replay snapshot with missing decision fields', async () => {
+    const f = await committedReplayFixture();
+    f.tx.notaryOpeningReviewReceipt.findUnique.mockResolvedValue({
+      ...f.stored,
+      resultSnapshot: {
+        id: matterId,
+        version: 4,
+        stage: 'ARCHIVED',
+        reviewDecision: {},
+      },
+    });
+    await expect(
+      f.service.review(internal, matterId, 'key', input),
+    ).rejects.toMatchObject({
+      response: { code: 'RECEIPT_CORRUPT' },
+    });
+  });
+
+  it('rejects replay fields contradicted by the immutable decision', async () => {
+    const f = await committedReplayFixture();
+    for (const snapshot of [
+      { ...f.result, stage: 'ARCHIVED' },
+      {
+        ...f.result,
+        stage: 'ARCHIVED',
+        reviewDecision: {
+          ...f.result.reviewDecision,
+          result: 'NO_INFRINGEMENT',
+          reason: '伪造原因',
+          archivedAt: f.result.reviewDecision.decidedAt,
+        },
+      },
+      {
+        ...f.result,
+        reviewDecision: { ...f.result.reviewDecision, actorKind: 'CLIENT' },
+      },
+      {
+        ...f.result,
+        reviewDecision: {
+          ...f.result.reviewDecision,
+          decidedAt: '2000-01-01T00:00:00.000Z',
+        },
+      },
+      {
+        ...f.result,
+        reviewDecision: { ...f.result.reviewDecision, actorDisplayName: '' },
+      },
+      { ...f.result, untrusted: 'extra' },
+      {
+        ...f.result,
+        reviewDecision: { ...f.result.reviewDecision, untrusted: 'extra' },
+      },
+    ]) {
+      f.tx.notaryOpeningReviewReceipt.findUnique.mockResolvedValue({
+        ...f.stored,
+        resultSnapshot: snapshot,
+      });
+      await expect(
+        f.service.review(internal, matterId, 'key', input),
+      ).rejects.toMatchObject({
+        response: { code: 'RECEIPT_CORRUPT' },
+      });
+    }
   });
 
   it('validates reason and key before starting a transaction', async () => {

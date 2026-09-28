@@ -135,7 +135,7 @@ export class NotaryOpeningReviewService {
               },
             });
             if (prior !== null)
-              return this.replay(prior, matterId, fingerprint);
+              return this.replay(tx, prior, matterId, fingerprint);
             if (matter.stage !== 'UNBOX_REVIEW' || matter.opening === null)
               throw new ConflictException({
                 code: 'INVALID_STATE',
@@ -300,8 +300,14 @@ export class NotaryOpeningReviewService {
     };
   }
 
-  private replay(
+  private async replay(
+    tx: Pick<Prisma.TransactionClient, 'notaryOpeningReviewDecision'>,
     receipt: {
+      reviewDecisionId: string;
+      departmentId: string;
+      customerId: string;
+      actorUserId: string;
+      actorKind: string;
       requestFingerprint: string;
       resultMatterId: string;
       resultMatterVersion: number;
@@ -309,7 +315,7 @@ export class NotaryOpeningReviewService {
     },
     matterId: string,
     fingerprint: string,
-  ): ReviewResult {
+  ): Promise<ReviewResult> {
     if (
       receipt.requestFingerprint !== fingerprint ||
       receipt.resultMatterId !== matterId
@@ -326,13 +332,103 @@ export class NotaryOpeningReviewService {
     if (
       result.id !== matterId ||
       result.version !== receipt.resultMatterVersion ||
-      !['ISSUANCE_DECISION', 'ARCHIVED'].includes(String(result.stage)) ||
+      !this.hasExactKeys(result, [
+        'id',
+        'stage',
+        'version',
+        'reviewDecision',
+      ]) ||
       decision === null ||
       typeof decision !== 'object' ||
       Array.isArray(decision)
     )
       throw this.corruptReceipt();
+    const snapshot = decision as Record<string, unknown>;
+    if (
+      !this.hasExactKeys(snapshot, [
+        'result',
+        'reason',
+        'actorKind',
+        'actorDisplayName',
+        'decidedAt',
+        'archivedAt',
+      ]) ||
+      !['ISSUANCE_DECISION', 'ARCHIVED'].includes(String(result.stage)) ||
+      !['INFRINGEMENT', 'NO_INFRINGEMENT'].includes(String(snapshot.result)) ||
+      !['INTERNAL', 'CLIENT'].includes(String(snapshot.actorKind)) ||
+      typeof snapshot.actorDisplayName !== 'string' ||
+      snapshot.actorDisplayName.trim() !== snapshot.actorDisplayName ||
+      snapshot.actorDisplayName.length < 1 ||
+      snapshot.actorDisplayName.length > 200 ||
+      typeof snapshot.decidedAt !== 'string' ||
+      !this.isIsoDate(snapshot.decidedAt) ||
+      (snapshot.reason !== null && typeof snapshot.reason !== 'string') ||
+      (snapshot.archivedAt !== null &&
+        (typeof snapshot.archivedAt !== 'string' ||
+          !this.isIsoDate(snapshot.archivedAt))) ||
+      (snapshot.result === 'INFRINGEMENT' &&
+        (result.stage !== 'ISSUANCE_DECISION' ||
+          snapshot.reason !== null ||
+          snapshot.archivedAt !== null)) ||
+      (snapshot.result === 'NO_INFRINGEMENT' &&
+        (result.stage !== 'ARCHIVED' ||
+          typeof snapshot.reason !== 'string' ||
+          snapshot.reason.trim() !== snapshot.reason ||
+          snapshot.reason.length < 1 ||
+          snapshot.reason.length > 2000 ||
+          typeof snapshot.archivedAt !== 'string' ||
+          snapshot.archivedAt !== snapshot.decidedAt))
+    )
+      throw this.corruptReceipt();
+    const stored = await tx.notaryOpeningReviewDecision.findUnique({
+      where: { id: receipt.reviewDecisionId },
+      select: {
+        matterId: true,
+        departmentId: true,
+        customerId: true,
+        actorUserId: true,
+        actorKind: true,
+        actorDisplayNameSnapshot: true,
+        result: true,
+        reason: true,
+        archivedAt: true,
+        decidedAt: true,
+        toVersion: true,
+      },
+    });
+    if (
+      stored === null ||
+      stored.matterId !== matterId ||
+      stored.departmentId !== receipt.departmentId ||
+      stored.customerId !== receipt.customerId ||
+      stored.actorUserId !== receipt.actorUserId ||
+      stored.actorKind !== receipt.actorKind ||
+      stored.toVersion !== receipt.resultMatterVersion ||
+      stored.result !== snapshot.result ||
+      stored.reason !== snapshot.reason ||
+      stored.actorKind !== snapshot.actorKind ||
+      stored.actorDisplayNameSnapshot !== snapshot.actorDisplayName ||
+      stored.decidedAt.toISOString() !== snapshot.decidedAt ||
+      (stored.archivedAt?.toISOString() ?? null) !== snapshot.archivedAt
+    )
+      throw this.corruptReceipt();
     return value as ReviewResult;
+  }
+
+  private isIsoDate(value: string): boolean {
+    const parsed = new Date(value);
+    return !Number.isNaN(parsed.getTime()) && parsed.toISOString() === value;
+  }
+
+  private hasExactKeys(
+    value: Record<string, unknown>,
+    keys: string[],
+  ): boolean {
+    const actual = Object.keys(value);
+    return (
+      actual.length === keys.length &&
+      keys.every((key) => Object.hasOwn(value, key))
+    );
   }
 
   private validation() {
