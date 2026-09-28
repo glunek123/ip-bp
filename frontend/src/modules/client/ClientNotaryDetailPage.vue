@@ -22,6 +22,7 @@ const reviewSuccess = ref('');
 const downloadError = ref('');
 const submitting = ref(false);
 const retryLocked = ref(false);
+const retryAvailable = ref(false);
 let idempotencyKey = '';
 let submissionFingerprint = '';
 let request: AbortController | undefined;
@@ -119,6 +120,7 @@ async function submitReview(): Promise<void> {
     submissionFingerprint = fingerprint;
     idempotencyKey = makeKey();
   }
+  retryAvailable.value = false;
   submitting.value = true;
   try {
     await reviewClientNotaryOpening(current.id, input, idempotencyKey);
@@ -133,6 +135,7 @@ async function submitReview(): Promise<void> {
       idempotencyKey = '';
       submissionFingerprint = '';
       retryLocked.value = false;
+      retryAvailable.value = false;
     } else {
       retryLocked.value = true;
       reviewError.value = '审核已提交，但暂时无法读取保存结果，请刷新确认。';
@@ -143,6 +146,7 @@ async function submitReview(): Promise<void> {
       idempotencyKey = '';
       submissionFingerprint = '';
       retryLocked.value = false;
+      retryAvailable.value = false;
       reviewError.value = '事项状态或版本已变化，请刷新查看最新结论。';
     } else if (code === 'IDEMPOTENCY_CONFLICT') {
       idempotencyKey = '';
@@ -157,6 +161,7 @@ async function submitReview(): Promise<void> {
       reviewError.value = '事项不存在或当前企业不可访问，请返回列表。';
     } else if (code === 'NETWORK_ERROR' || code === 'TIMEOUT') {
       retryLocked.value = true;
+      retryAvailable.value = true;
       reviewError.value =
         '提交结果暂时未知；结论、原因和请求键已锁定，可安全重试或刷新查看结果。';
     } else {
@@ -320,8 +325,10 @@ onBeforeUnmount(() => request?.abort());
               data-test="client-opening-review-submit"
               native-type="submit"
               :loading="submitting"
-              :disabled="submitting || retryLocked"
-              >提交审核结论</ElButton
+              :disabled="submitting || (retryLocked && !retryAvailable)"
+              >{{
+                retryAvailable ? '使用相同请求键重试' : '提交审核结论'
+              }}</ElButton
             >
           </form>
         </section>

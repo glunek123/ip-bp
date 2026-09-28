@@ -403,6 +403,15 @@ describe('NotaryMatterDetailPage', () => {
     await flushPromises();
     expect(wrapper.text()).toContain('提交结果暂时未知');
     expect(
+      wrapper.get('[data-test="opening-review-result"]').attributes('disabled'),
+    ).toBeDefined();
+    expect(
+      wrapper.get('[data-test="opening-review-submit"]').attributes('disabled'),
+    ).toBeUndefined();
+    expect(wrapper.get('[data-test="opening-review-submit"]').text()).toContain(
+      '使用相同请求键重试',
+    );
+    expect(
       wrapper.findAll('[data-test^="opening-review-result"]:checked'),
     ).toHaveLength(1);
     await wrapper.get('[data-test="opening-review-form"]').trigger('submit');

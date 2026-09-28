@@ -245,6 +245,17 @@ describe('client notary pages', () => {
       .trigger('submit');
     await flushPromises();
     expect(wrapper.text()).toContain('提交结果暂时未知');
+    expect(
+      wrapper.get('[data-test="client-review-result"]').attributes('disabled'),
+    ).toBeDefined();
+    expect(
+      wrapper
+        .get('[data-test="client-opening-review-submit"]')
+        .attributes('disabled'),
+    ).toBeUndefined();
+    expect(
+      wrapper.get('[data-test="client-opening-review-submit"]').text(),
+    ).toContain('使用相同请求键重试');
     await wrapper
       .get('[data-test="client-opening-review-form"]')
       .trigger('submit');

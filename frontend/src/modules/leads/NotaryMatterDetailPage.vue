@@ -64,6 +64,7 @@ const reviewError = ref('');
 const reviewSuccess = ref('');
 const submittingReview = ref(false);
 const reviewRetryLocked = ref(false);
+const reviewRetryAvailable = ref(false);
 const deletingOpeningMaterialId = ref<string | null>(null);
 const refreshingOpeningPhotos = ref(false);
 let evidenceIdempotencyKey = '';
@@ -442,6 +443,7 @@ async function submitOpeningReview(): Promise<void> {
     reviewSubmissionFingerprint = fingerprint;
     reviewIdempotencyKey = makeReviewKey();
   }
+  reviewRetryAvailable.value = false;
   submittingReview.value = true;
   try {
     await reviewNotaryOpening(current.id, input, reviewIdempotencyKey);
@@ -456,6 +458,7 @@ async function submitOpeningReview(): Promise<void> {
       reviewIdempotencyKey = '';
       reviewSubmissionFingerprint = '';
       reviewRetryLocked.value = false;
+      reviewRetryAvailable.value = false;
     } else {
       reviewRetryLocked.value = true;
       reviewError.value = '审核已提交，但暂时无法读取保存结果，请刷新确认。';
@@ -466,6 +469,7 @@ async function submitOpeningReview(): Promise<void> {
       reviewIdempotencyKey = '';
       reviewSubmissionFingerprint = '';
       reviewRetryLocked.value = false;
+      reviewRetryAvailable.value = false;
       reviewError.value = '事项状态或版本已变化，请刷新查看最新结论。';
     } else if (code === 'IDEMPOTENCY_CONFLICT') {
       reviewIdempotencyKey = '';
@@ -480,6 +484,7 @@ async function submitOpeningReview(): Promise<void> {
       reviewError.value = '事项不存在或当前不可访问，请刷新列表。';
     } else if (code === 'NETWORK_ERROR' || code === 'TIMEOUT') {
       reviewRetryLocked.value = true;
+      reviewRetryAvailable.value = true;
       reviewError.value =
         '提交结果暂时未知；选择、原因和请求键已锁定，可安全重试或刷新查看结果。';
     } else {
@@ -913,8 +918,12 @@ onBeforeUnmount(() => request?.abort());
               data-test="opening-review-submit"
               native-type="submit"
               :loading="submittingReview"
-              :disabled="submittingReview || reviewRetryLocked"
-              >提交审核结论</ElButton
+              :disabled="
+                submittingReview || (reviewRetryLocked && !reviewRetryAvailable)
+              "
+              >{{
+                reviewRetryAvailable ? '使用相同请求键重试' : '提交审核结论'
+              }}</ElButton
             >
           </form>
         </section>
