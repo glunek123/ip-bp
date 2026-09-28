@@ -204,6 +204,16 @@ async function assertUpgrade() {
   await client.query('BEGIN');
   try {
     await rejects(
+      `UPDATE notary_matter_opening SET sender_name='Changed' WHERE matter_id=$1`,
+      [id.matter],
+      '55000',
+    );
+    await rejects(
+      `DELETE FROM notary_matter_opening WHERE matter_id=$1`,
+      [id.matter],
+      '55000',
+    );
+    await rejects(
       `INSERT INTO notary_office_account_bindings(id,user_id,department_id,notary_office_id,updated_at) VALUES ($1,$2,$3,$4,now())`,
       [id.binding, id.operator, id.department, id.office],
       '23514',
