@@ -96,6 +96,12 @@ const pdfBytes = Buffer.from(
 const jpegBytes = Buffer.from([
   0xff, 0xd8, 0xff, 0xe0, 0, 16, 0x4a, 0x46, 0x49, 0x46,
 ]);
+const secondOpeningPhotoBytes = Buffer.concat([
+  jpegBytes,
+  Buffer.from([
+    0x43, 0x4f, 0x52, 0x45, 0x2d, 0x4e, 0x54, 0x2d, 0x30, 0x30, 0x33,
+  ]),
+]);
 
 async function configureBrowser(page: Page) {
   await page.context().setExtraHTTPHeaders(authorizationA);
@@ -2191,6 +2197,305 @@ test('client notary reads and photo bytes stay within enterprise, exact batch an
       )
     ).status(),
   ).toBe(401);
+});
+
+test('real operator and client browser reviews preserve batch history, isolate photos, and show loading and permission states', async ({
+  page,
+  request,
+}) => {
+  test.setTimeout(120_000);
+  const client = await createClientAccount(request);
+  const clientCsrf = await loginClient(
+    request,
+    client.username,
+    client.password,
+  );
+  const operatorMatterId = await createOpenedNotaryMatter(request, clientCsrf);
+  const operatorFactResponse = await request.get(
+    `/api/v1/notary-matters/${operatorMatterId}`,
+    { headers: authorizationA },
+  );
+  expect(operatorFactResponse.status(), await operatorFactResponse.text()).toBe(
+    200,
+  );
+  const operatorFact = await operatorFactResponse.json();
+  const lead = await getLead(operatorFact.leadId);
+  expect(lead).not.toBeNull();
+
+  const secondBatchResponse = await transferToNotary(
+    request,
+    operatorFact.leadId,
+    operatorFact.notaryOffice.id,
+    [lead!.products[0].id],
+    lead!.version,
+    randomUUID(),
+    true,
+  );
+  expect(secondBatchResponse.status(), await secondBatchResponse.text()).toBe(
+    201,
+  );
+  const secondBatch = await secondBatchResponse.json();
+  const secondEvidence = await recordNotaryEvidence(request, secondBatch.id, {
+    evidenceAt: '2026-09-24',
+    sampleFeeState: 'KNOWN',
+    sampleFeeAmount: '99.99',
+    logistics: [
+      {
+        companyState: 'PRESENT',
+        companyValue: '内部专用快递名称',
+        trackingState: 'PRESENT',
+        trackingValue: 'INTERNAL-TRACKING-NT003',
+      },
+    ],
+    expectedVersion: 1,
+  });
+  expect(secondEvidence.status(), await secondEvidence.text()).toBe(201);
+  const clientPhoto = await upload(request, {
+    ownerType: 'NOTARY_MATTER',
+    ownerId: secondBatch.id,
+    purpose: 'NOTARY_OPENING_PHOTO',
+    name: 'client-opening-nt003.jpg',
+    mime: 'image/jpeg',
+    bytes: secondOpeningPhotoBytes,
+  });
+  const secondOpening = await recordNotaryOpening(request, secondBatch.id, {
+    expectedVersion: 2,
+    contentVersionIds: [clientPhoto.contentVersionId],
+    senderName: '内部专用寄件人-NT003',
+    senderPhone: '13800000009',
+  });
+  expect(secondOpening.status(), await secondOpening.text()).toBe(201);
+
+  const readOnlyMatterId = await createOpenedNotaryMatter(request, clientCsrf);
+
+  await page.goto('/customers');
+  await expect(page).toHaveURL(/\/login\?returnTo=/u);
+  await page.getByLabel('用户名').fill(coreLeadFixtures.operatorUsername);
+  await page.getByLabel('密码').fill(coreLeadFixtures.operatorPassword);
+  await page.getByRole('button', { name: '登录', exact: true }).click();
+  await expect(page).toHaveURL(/\/customers$/u);
+  await expect(page.locator('[data-test="app-shell"]')).toBeVisible();
+  const internalListStatus = await page.evaluate(
+    async () =>
+      (
+        await fetch('/api/v1/notary-matters?page=1&pageSize=1', {
+          credentials: 'same-origin',
+        })
+      ).status,
+  );
+  expect(internalListStatus).toBe(200);
+  await expect(page.locator('[data-test="notary-nav"]')).toBeVisible();
+  await page.locator('[data-test="notary-nav"]').click();
+  const operatorMatterRow = page
+    .locator('[data-test="matter-row"]')
+    .filter({ hasText: operatorFact.businessNo });
+  await expect(operatorMatterRow).toBeVisible();
+  await operatorMatterRow.locator('[data-test="matter-link"]').click();
+  await expect(page).toHaveURL(
+    new RegExp(`/notary-matters/${operatorMatterId}(\\?|$)`, 'u'),
+  );
+  await expect(
+    page.locator('[data-test="notary-matter-detail"]'),
+  ).toBeVisible();
+  await expect(page.locator('[data-test="opening-review-form"]')).toBeVisible();
+
+  let releaseReviewRequest = () => {};
+  let markRequestIntercepted = () => {};
+  const requestIntercepted = new Promise<void>((resolve) => {
+    markRequestIntercepted = resolve;
+  });
+  const continueReviewRequest = new Promise<void>((resolve) => {
+    releaseReviewRequest = resolve;
+  });
+  const reviewRoute = `**/api/v1/notary-matters/${operatorMatterId}/opening-review`;
+  await page.route(reviewRoute, async (route) => {
+    markRequestIntercepted();
+    await continueReviewRequest;
+    await route.continue();
+  });
+  await page.locator('[data-test="opening-review-result"]').check();
+  const operatorSubmit = page.locator('[data-test="opening-review-submit"]');
+  await operatorSubmit.click();
+  await requestIntercepted;
+  await expect(operatorSubmit).toBeDisabled();
+  releaseReviewRequest();
+  await expect(page.getByRole('status')).toHaveText('审核结论已保存。');
+  await page.unroute(reviewRoute);
+  await expect(
+    page.locator('[data-test="opening-review-record"]'),
+  ).toContainText('确认侵权');
+  await expect(getNotaryOpeningReviewMatter(operatorMatterId)).resolves.toEqual(
+    {
+      stage: 'ISSUANCE_DECISION',
+      version: 4,
+    },
+  );
+  expect(await countNotaryOpeningReviewDecisions(operatorMatterId)).toBe(1);
+
+  await page.getByRole('button', { name: '退出登录' }).click();
+  await expect(page).toHaveURL(/\/login$/u);
+  await page.getByLabel('用户名').fill(client.username);
+  await page.getByLabel('密码').fill(client.password);
+  await page.getByRole('button', { name: '登录', exact: true }).click();
+  await expect(page).toHaveURL(/\/client\/leads$/u);
+  await page.goto(`/client/leads/${operatorFact.leadId}`);
+  await page.locator('[data-test="client-notary-batches"]').click();
+  await expect(page).toHaveURL(
+    new RegExp(
+      `/client/notary-matters\\?sourceLeadId=${operatorFact.leadId}`,
+      'u',
+    ),
+  );
+  const ownBatchRows = page.locator('[data-test="client-notary-row"]');
+  await expect(ownBatchRows).toHaveCount(2);
+  const reviewedBatchRow = ownBatchRows.filter({
+    hasText: operatorFact.businessNo,
+  });
+  await expect(reviewedBatchRow).toContainText('开箱待确认');
+  const clientBatchRow = ownBatchRows.filter({
+    hasText: secondBatch.businessNo,
+  });
+  await clientBatchRow.locator('[data-test="client-notary-link"]').click();
+  await expect(
+    page.locator('[data-test="client-opening-review-section"]'),
+  ).toBeVisible();
+  await expect(page.getByText('client-opening-nt003.jpg')).toBeVisible();
+  const clientDetailText = await page.locator('main').innerText();
+  expect(clientDetailText).not.toContain('99.99');
+  expect(clientDetailText).not.toContain('内部专用快递名称');
+  expect(clientDetailText).not.toContain('INTERNAL-TRACKING-NT003');
+  expect(clientDetailText).not.toContain('内部专用寄件人-NT003');
+  const photoDownload = page.waitForEvent('download');
+  await page
+    .locator(
+      `[data-test="download-client-opening-photo-${clientPhoto.contentVersionId}"]`,
+    )
+    .click();
+  expect(await readFile(await (await photoDownload).path())).toEqual(
+    secondOpeningPhotoBytes,
+  );
+
+  await page
+    .locator('[data-test="client-review-result-no-infringement"]')
+    .check();
+  const reason = '浏览器确认该批次照片未见侵权标识';
+  await page.locator('[data-test="client-opening-review-reason"]').fill(reason);
+  try {
+    await rejectNotaryOpeningReviewDecisionWrites();
+    await page.locator('[data-test="client-opening-review-submit"]').click();
+    await expect(page.getByRole('alert')).toHaveText(
+      '开箱审核失败，请稍后重试。',
+    );
+    expect(await countNotaryOpeningReviewDecisions(secondBatch.id)).toBe(0);
+  } finally {
+    await allowInjectedFailures();
+  }
+  await page.reload();
+  await expect(
+    page.locator('[data-test="client-opening-review-section"]'),
+  ).toBeVisible();
+  await page
+    .locator('[data-test="client-review-result-no-infringement"]')
+    .check();
+  await page.locator('[data-test="client-opening-review-reason"]').fill(reason);
+  await page.locator('[data-test="client-opening-review-submit"]').click();
+  await expect(page.getByRole('status')).toHaveText('审核结论已保存。');
+  await expect(
+    page.locator('[data-test="client-review-record"]'),
+  ).toContainText('判定不侵权');
+  await expect(
+    page.locator('[data-test="client-review-record"]'),
+  ).toContainText(reason);
+  await expect(getNotaryOpeningReviewMatter(secondBatch.id)).resolves.toEqual({
+    stage: 'ARCHIVED',
+    version: 4,
+  });
+  expect(await countNotaryOpeningReviewDecisions(secondBatch.id)).toBe(1);
+  await page.reload();
+  await expect(
+    page.locator('[data-test="client-review-record"]'),
+  ).toContainText(reason);
+  await page.getByRole('link', { name: '← 返回公证审核' }).click();
+  await expect(ownBatchRows).toHaveCount(2);
+  await expect(
+    ownBatchRows.filter({ hasText: secondBatch.businessNo }),
+  ).toContainText('已归档');
+  await expect(
+    ownBatchRows.filter({ hasText: operatorFact.businessNo }),
+  ).toContainText('开箱待确认');
+
+  const foreignClient = await createClientAccount(request, {
+    customerId: coreLeadFixtures.foreignCustomer,
+    headers: { Authorization: `Bearer ${coreLeadFixtures.tokenB}` },
+  });
+  await page.getByRole('button', { name: '退出登录' }).click();
+  await expect(page).toHaveURL(/\/login$/u);
+  await page.getByLabel('用户名').fill(foreignClient.username);
+  await page.getByLabel('密码').fill(foreignClient.password);
+  await page.getByRole('button', { name: '登录', exact: true }).click();
+  await expect(page).toHaveURL(/\/client\/leads$/u);
+  await page.goto(`/client/notary-matters?sourceLeadId=${operatorFact.leadId}`);
+  await expect(page.getByText('当前没有待审核公证事项')).toBeVisible();
+  await page.goto(`/client/notary-matters/${operatorMatterId}`);
+  await expect(
+    page.getByRole('heading', { name: '公证事项不存在或当前企业不可访问' }),
+  ).toBeVisible();
+  const deniedPhotoStatus = await page.evaluate(
+    async ({ materialId, contentVersionId }) =>
+      (
+        await fetch(
+          `/api/v1/materials/${materialId}/versions/${contentVersionId}/content`,
+        )
+      ).status,
+    {
+      materialId: clientPhoto.materialId,
+      contentVersionId: clientPhoto.contentVersionId,
+    },
+  );
+  expect(deniedPhotoStatus).toBe(404);
+
+  await setGrant('notary.opening.review', false);
+  try {
+    await page.getByRole('button', { name: '退出登录' }).click();
+    await expect(page).toHaveURL(/\/login$/u);
+    await page.getByLabel('用户名').fill(coreLeadFixtures.operatorUsername);
+    await page.getByLabel('密码').fill(coreLeadFixtures.operatorPassword);
+    await page.getByRole('button', { name: '登录', exact: true }).click();
+    await expect(page).toHaveURL(/\/customers$/u);
+    await expect(page.locator('[data-test="app-shell"]')).toBeVisible();
+    await expect(page.locator('[data-test="notary-nav"]')).toBeHidden();
+    await page.goto(`/notary-matters/${readOnlyMatterId}`);
+    await expect(
+      page.locator('[data-test="notary-matter-detail"]'),
+    ).toBeVisible();
+    await expect(page.locator('[data-test="saved-opening"]')).toBeVisible();
+    await expect(
+      page.locator('[data-test="opening-review-section"]'),
+    ).toHaveCount(0);
+  } finally {
+    await setGrant('notary.opening.review', true);
+  }
+
+  await page.locator('[data-test="notary-nav"]').click();
+  const finalOperatorMatterRow = page
+    .locator('[data-test="matter-row"]')
+    .filter({ hasText: operatorFact.businessNo });
+  await expect(finalOperatorMatterRow).toBeVisible();
+  await finalOperatorMatterRow.locator('[data-test="matter-link"]').click();
+  await expect(
+    page.locator('[data-test="opening-review-record"]'),
+  ).toContainText('确认侵权');
+  await expect(page.locator('[data-test="saved-opening"]')).toBeVisible();
+  await page.locator('[data-test="notary-nav"]').click();
+  const clientReviewedMatterRow = page
+    .locator('[data-test="matter-row"]')
+    .filter({ hasText: secondBatch.businessNo });
+  await expect(clientReviewedMatterRow).toBeVisible();
+  await clientReviewedMatterRow.locator('[data-test="matter-link"]').click();
+  await expect(
+    page.locator('[data-test="opening-review-record"]'),
+  ).toContainText(reason);
+  await expect(page.locator('[data-test="saved-opening"]')).toBeVisible();
 });
 
 test('operator and client race on one opening review and only one PostgreSQL decision commits', async ({
