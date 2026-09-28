@@ -79,6 +79,32 @@ export function countNotaryOpeningReviewReceipts(
 export function countNotaryIssuanceDecisions(matterId: string): Promise<number>;
 export function countNotaryIssuanceAudits(matterId: string): Promise<number>;
 export function countNotaryIssuanceReceipts(matterId: string): Promise<number>;
+export function countNotaryCertificates(matterId: string): Promise<number>;
+export function countNotaryCertificateAudits(matterId: string): Promise<number>;
+export function countNotaryCertificateReceipts(
+  matterId: string,
+): Promise<number>;
+export function countCasesForMatter(matterId: string): Promise<number>;
+export function countCertificateMaterialReferences(
+  matterId: string,
+): Promise<number>;
+export function getNotaryCertificate(matterId: string): Promise<{
+  id: string;
+  certificateNo: string;
+  fees: Array<{
+    category: string;
+    state: string;
+    amount: { toString(): string } | null;
+  }>;
+} | null>;
+export function getNotaryCase(caseId: string): Promise<{
+  id: string;
+  businessNo: string;
+  stage: string;
+  courtCaseNo: string | null;
+  sourceNotaryMatterId: string;
+  certificateId: string;
+} | null>;
 export function getNotaryOpeningReviewMatter(matterId: string): Promise<{
   stage: string;
   version: number;
@@ -191,6 +217,8 @@ export function rejectNotaryOpeningReviewDecisionWrites(): Promise<void>;
 export function rejectNotaryOpeningReviewAuditWrites(): Promise<void>;
 export function rejectNotaryOpeningReviewReceiptWrites(): Promise<void>;
 export function rejectNotaryIssuanceAuditWrites(): Promise<void>;
+export function rejectNotaryCertificateCaseWrites(): Promise<void>;
+export function rejectNotaryCertificateReceiptWrites(): Promise<void>;
 export function rejectLeadReviewDecisionWrites(): Promise<void>;
 export function rejectClientLeadReviewReceiptWrites(): Promise<void>;
 export function rejectWithdrawalApplicationWrites(): Promise<void>;

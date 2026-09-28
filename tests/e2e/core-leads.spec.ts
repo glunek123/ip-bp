@@ -34,6 +34,15 @@ import {
   countNotaryIssuanceDecisions,
   countNotaryIssuanceAudits,
   countNotaryIssuanceReceipts,
+  countNotaryCertificates,
+  countNotaryCertificateAudits,
+  countNotaryCertificateReceipts,
+  countCasesForMatter,
+  countCertificateMaterialReferences,
+  getNotaryCertificate,
+  getNotaryCase,
+  rejectNotaryCertificateCaseWrites,
+  rejectNotaryCertificateReceiptWrites,
   countLeadReviewDecisions,
   countLeadWithdrawalApplications,
   countLeadWithdrawalAudits,
@@ -147,7 +156,12 @@ async function upload(
   input: {
     ownerType: 'CUSTOMER' | 'LEAD_DRAFT' | 'NOTARY_MATTER';
     ownerId?: string;
-    purpose: 'IDENTITY_FULL' | 'LEAD_SCREENSHOT' | 'NOTARY_OPENING_PHOTO';
+    purpose:
+      | 'IDENTITY_FULL'
+      | 'LEAD_SCREENSHOT'
+      | 'NOTARY_OPENING_PHOTO'
+      | 'NOTARY_CERTIFICATE'
+      | 'NOTARY_DISCLOSURE';
     name: string;
     mime: string;
     bytes: Buffer;
@@ -163,7 +177,7 @@ async function upload(
         input.ownerType === 'CUSTOMER'
           ? 'CUSTOMER_IDENTITY'
           : input.ownerType === 'NOTARY_MATTER'
-            ? 'NOTARY_OPENING_PHOTO'
+            ? input.purpose
             : 'LEAD_SCREENSHOT',
       purpose: input.purpose,
       originalFilename: input.name,
@@ -339,8 +353,15 @@ function reviewNotaryOpening(
 async function createOpenedNotaryMatter(
   request: APIRequestContext,
   clientCsrf: string,
+  sampleFee: { state: 'KNOWN'; amount: string } | { state: 'PENDING' } = {
+    state: 'PENDING',
+  },
 ) {
-  const matterId = await createWaitingUnboxMatter(request, clientCsrf);
+  const matterId = await createWaitingUnboxMatter(
+    request,
+    clientCsrf,
+    sampleFee,
+  );
   const photo = await upload(request, {
     ownerType: 'NOTARY_MATTER',
     ownerId: matterId,
@@ -360,13 +381,34 @@ async function createOpenedNotaryMatter(
 async function createIssuanceReadyMatter(
   request: APIRequestContext,
   clientCsrf: string,
+  sampleFee: { state: 'KNOWN'; amount: string } | { state: 'PENDING' } = {
+    state: 'PENDING',
+  },
 ) {
-  const matterId = await createOpenedNotaryMatter(request, clientCsrf);
+  const matterId = await createOpenedNotaryMatter(
+    request,
+    clientCsrf,
+    sampleFee,
+  );
   const reviewed = await reviewNotaryOpening(request, matterId, {
     result: 'INFRINGEMENT',
     expectedVersion: 3,
   });
   expect(reviewed.status(), await reviewed.text()).toBe(201);
+  return matterId;
+}
+
+async function createCertificateReadyMatter(
+  request: APIRequestContext,
+  clientCsrf: string,
+) {
+  const matterId = await createIssuanceReadyMatter(request, clientCsrf);
+  const decision = await decideNotaryIssuance(request, matterId, 'ISSUE');
+  expect(decision.status(), await decision.text()).toBe(201);
+  expect(await getNotaryOpeningReviewMatter(matterId)).toEqual({
+    stage: 'WAITING_CERTIFICATE',
+    version: 5,
+  });
   return matterId;
 }
 
@@ -385,11 +427,17 @@ function decideNotaryIssuance(
 async function createWaitingUnboxMatter(
   request: APIRequestContext,
   clientCsrf: string,
+  sampleFee: { state: 'KNOWN'; amount: string } | { state: 'PENDING' } = {
+    state: 'PENDING',
+  },
 ) {
   const matterId = await createPendingNotaryMatter(request, clientCsrf);
   const evidence = await recordNotaryEvidence(request, matterId, {
     evidenceAt: '2026-09-24',
-    sampleFeeState: 'PENDING',
+    sampleFeeState: sampleFee.state,
+    ...(sampleFee.state === 'KNOWN'
+      ? { sampleFeeAmount: sampleFee.amount }
+      : {}),
     logistics: [{ companyState: 'NONE', trackingState: 'NONE' }],
     expectedVersion: 1,
   });
@@ -473,6 +521,55 @@ async function createNotaryAccountForMatter(
     password,
     csrfToken: session.csrfToken,
   };
+}
+
+function issueNotaryCertificate(
+  request: APIRequestContext,
+  matterId: string,
+  csrfToken: string,
+  input: Record<string, unknown>,
+  key = randomUUID(),
+) {
+  return request.post(`/api/v1/notary-portal/matters/${matterId}/certificate`, {
+    headers: { 'X-CSRF-Token': csrfToken, 'Idempotency-Key': key },
+    data: input,
+  });
+}
+
+function certificateInput(contentVersionId: string, expectedVersion = 5) {
+  return {
+    expectedVersion,
+    certificateNo: '（2026）测证字001号',
+    certificateDate: '2026-09-28',
+    contentVersionIds: [contentVersionId],
+    needDisclose: false,
+    disclosureContentVersionIds: [],
+    fees: {
+      notary: { state: 'KNOWN', amount: '120.00' },
+      investigation: { state: 'PENDING', amount: null },
+      disclosure: { state: 'KNOWN', amount: '0.00' },
+    },
+  };
+}
+
+async function uploadCertificateForNotary(
+  request: APIRequestContext,
+  matterId: string,
+  csrfToken: string,
+  name = '真实公证书.pdf',
+) {
+  return upload(
+    request,
+    {
+      ownerType: 'NOTARY_MATTER',
+      ownerId: matterId,
+      purpose: 'NOTARY_CERTIFICATE',
+      name,
+      mime: 'application/pdf',
+      bytes: pdfBytes,
+    },
+    { 'X-CSRF-Token': csrfToken },
+  );
 }
 
 function recordNotaryPortalOpening(
@@ -5602,4 +5699,463 @@ test('core lead migrations preserve legacy facts and roll back failed phases', a
     grantInsertAttempts: 4,
     revisionUpdateAttempts: 1,
   });
+});
+
+test('real operator decision and notary browser archive a frozen certificate into one internal pending-match case', async ({
+  page,
+  request,
+}) => {
+  test.setTimeout(120_000);
+  const client = await createClientAccount(request);
+  const clientCsrf = await loginClient(
+    request,
+    client.username,
+    client.password,
+  );
+  const matterId = await createIssuanceReadyMatter(request, clientCsrf, {
+    state: 'KNOWN',
+    amount: '23.45',
+  });
+  const notary = await createNotaryAccountForMatter(request, matterId);
+
+  await page.goto(`/notary-matters/${matterId}`);
+  await expect(page).toHaveURL(/\/login\?returnTo=/u);
+  await page.getByLabel('用户名').fill(coreLeadFixtures.operatorUsername);
+  await page.getByLabel('密码').fill(coreLeadFixtures.operatorPassword);
+  await page.getByRole('button', { name: '登录', exact: true }).click();
+  await expect(page).toHaveURL(new RegExp(`/notary-matters/${matterId}$`, 'u'));
+  await expect(
+    page.locator('[data-test="issuance-decision-section"]'),
+  ).toBeVisible();
+  await page.locator('[data-test="issuance-decision-issue"]').check();
+  await page.locator('[data-test="issuance-decision-submit"]').click();
+  await expect(
+    page.locator('[data-test="issuance-decision-record"]'),
+  ).toContainText('待出证');
+  expect(await getNotaryOpeningReviewMatter(matterId)).toEqual({
+    stage: 'WAITING_CERTIFICATE',
+    version: 5,
+  });
+
+  await page.getByRole('button', { name: '退出登录' }).click();
+  await page.goto(`/notary-portal/matters/${matterId}`);
+  await expect(page).toHaveURL(/\/login\?returnTo=/u);
+  await page.getByLabel('用户名').fill(notary.username);
+  await page.getByLabel('密码').fill(notary.password);
+  await page.getByRole('button', { name: '登录', exact: true }).click();
+  await expect(page).toHaveURL(
+    new RegExp(`/notary-portal/matters/${matterId}$`, 'u'),
+  );
+
+  const form = page.locator('[data-test="certificate-form"]');
+  await expect(form).toBeVisible();
+  await form
+    .locator('[data-test="certificate-number"]')
+    .fill('（2026）浙证字005号');
+  await form.locator('[data-test="certificate-date"]').fill('2026-09-28');
+  await form.locator('[data-test="certificate-file-input"]').setInputFiles({
+    name: '已出具公证书.pdf',
+    mimeType: 'application/pdf',
+    buffer: pdfBytes,
+  });
+  const selectedCertificate = form.locator(
+    '[data-test^="certificate-select-"]',
+  );
+  await expect(selectedCertificate).toHaveCount(1);
+  await expect(selectedCertificate).toBeChecked();
+  await form.locator('[data-test="fee-notary-state"]').selectOption('KNOWN');
+  await form.locator('[data-test="fee-notary-amount"]').fill('120.00');
+  await form
+    .locator('[data-test="fee-investigation-state"]')
+    .selectOption('PENDING');
+  await form
+    .locator('[data-test="fee-disclosure-state"]')
+    .selectOption('KNOWN');
+  await form.locator('[data-test="fee-disclosure-amount"]').fill('0.00');
+  await form.locator('[data-test="certificate-submit"]').click();
+
+  const record = page.locator('[data-test="certificate-record"]');
+  await expect(record).toBeVisible();
+  await expect(record).toContainText('（2026）浙证字005号');
+  await expect(page.locator('[data-test="certificate-success"]')).toContainText(
+    'CA-',
+  );
+  await page.reload();
+  await expect(record).toContainText('（2026）浙证字005号');
+
+  const portalDetail = await request.get(
+    `/api/v1/notary-portal/matters/${matterId}`,
+    { headers: { 'X-CSRF-Token': notary.csrfToken } },
+  );
+  expect(portalDetail.status(), await portalDetail.text()).toBe(200);
+  const portalResult = await portalDetail.json();
+  expect(portalResult).toMatchObject({
+    id: matterId,
+    stage: 'ARCHIVED',
+    version: 6,
+    certificate: {
+      certificateNo: '（2026）浙证字005号',
+      files: [
+        {
+          originalFilename: '已出具公证书.pdf',
+          mimeType: 'application/pdf',
+        },
+      ],
+      needDisclose: false,
+      disclosureFiles: [],
+    },
+  });
+  const frozenFile = portalResult.certificate.files[0] as {
+    materialId: string;
+    contentVersionId: string;
+  };
+  const certificateDownload = page.waitForEvent('download');
+  await page
+    .locator(
+      `[data-test="download-certificate-${frozenFile.contentVersionId}"]`,
+    )
+    .click();
+  expect(await readFile(await (await certificateDownload).path())).toEqual(
+    pdfBytes,
+  );
+
+  const caseSummary = portalResult.case as {
+    id: string;
+    businessNo: string;
+    stage: string;
+  };
+  expect(caseSummary.stage).toBe('PENDING_MATCH');
+  expect(await getNotaryOpeningReviewMatter(matterId)).toEqual({
+    stage: 'ARCHIVED',
+    version: 6,
+  });
+  expect(await countNotaryCertificates(matterId)).toBe(1);
+  expect(await countNotaryCertificateAudits(matterId)).toBe(1);
+  expect(await countNotaryCertificateReceipts(matterId)).toBe(1);
+  expect(await countCasesForMatter(matterId)).toBe(1);
+  expect(await countCertificateMaterialReferences(matterId)).toBe(1);
+  expect(await getNotaryCertificate(matterId)).toMatchObject({
+    certificateNo: '（2026）浙证字005号',
+    fees: expect.arrayContaining([
+      { category: 'NOTARY', state: 'KNOWN' },
+      { category: 'INVESTIGATION', state: 'PENDING' },
+      { category: 'DISCLOSURE', state: 'KNOWN' },
+    ]),
+  });
+  expect(await getNotaryCase(caseSummary.id)).toMatchObject({
+    id: caseSummary.id,
+    businessNo: caseSummary.businessNo,
+    stage: 'PENDING_MATCH',
+    courtCaseNo: null,
+    sourceNotaryMatterId: matterId,
+  });
+
+  expect(
+    (
+      await request.get(`/api/v1/cases/${caseSummary.id}`, {
+        headers: { 'X-CSRF-Token': notary.csrfToken },
+      })
+    ).status(),
+  ).toBe(404);
+  const internalList = await request.get('/api/v1/cases', {
+    headers: authorizationA,
+  });
+  expect(internalList.status(), await internalList.text()).toBe(200);
+  expect((await internalList.json()).items).toEqual(
+    expect.arrayContaining([
+      expect.objectContaining({ id: caseSummary.id, stage: 'PENDING_MATCH' }),
+    ]),
+  );
+  const internalDetail = await request.get(`/api/v1/cases/${caseSummary.id}`, {
+    headers: authorizationA,
+  });
+  expect(internalDetail.status(), await internalDetail.text()).toBe(200);
+  const caseDetail = await internalDetail.json();
+  expect(caseDetail).toMatchObject({
+    id: caseSummary.id,
+    courtCaseNo: null,
+    certificate: {
+      certificateNo: '（2026）浙证字005号',
+      files: [
+        {
+          contentVersionId: frozenFile.contentVersionId,
+          originalFilename: '已出具公证书.pdf',
+        },
+      ],
+    },
+  });
+  expect(caseDetail.fees).toHaveLength(4);
+  expect(caseDetail.fees).toEqual(
+    expect.arrayContaining([
+      expect.objectContaining({
+        category: 'NOTARY',
+        state: 'KNOWN',
+        amount: '120.00',
+        sourceType: 'NOTARY_CERTIFICATE_FEE',
+        sourceId: expect.any(String),
+      }),
+      expect.objectContaining({
+        category: 'SAMPLE',
+        state: 'KNOWN',
+        amount: '23.45',
+        sourceType: 'NOTARY_MATTER_EVIDENCE',
+        sourceId: matterId,
+      }),
+      expect.objectContaining({
+        category: 'INVESTIGATION',
+        state: 'PENDING',
+        amount: null,
+        sourceType: 'NOTARY_CERTIFICATE_FEE',
+      }),
+      expect.objectContaining({
+        category: 'DISCLOSURE',
+        state: 'KNOWN',
+        amount: '0.00',
+        sourceType: 'NOTARY_CERTIFICATE_FEE',
+      }),
+    ]),
+  );
+
+  await page.getByRole('button', { name: '退出登录' }).click();
+  await page.getByLabel('用户名').fill(notary.username);
+  await page.getByLabel('密码').fill(notary.password);
+  await page.getByRole('button', { name: '登录', exact: true }).click();
+  await page.goto('/notary-portal/matters');
+  await page.locator('[data-test="notary-segment-archived"]').click();
+  await expect(page.locator('[data-test="notary-portal-row"]')).toHaveCount(1);
+
+  await loginClient(request, client.username, client.password);
+  expect((await request.get('/api/v1/cases')).status()).toBe(403);
+  expect((await request.get(`/api/v1/cases/${caseSummary.id}`)).status()).toBe(
+    403,
+  );
+});
+
+test('certificate submission rejects another office and an inactive binding', async ({
+  request,
+}) => {
+  const client = await createClientAccount(request);
+  const clientCsrf = await loginClient(
+    request,
+    client.username,
+    client.password,
+  );
+  const ownMatterId = await createCertificateReadyMatter(request, clientCsrf);
+  const otherMatterId = await createCertificateReadyMatter(request, clientCsrf);
+  const otherNotary = await createNotaryAccountForMatter(
+    request,
+    otherMatterId,
+  );
+
+  expect(
+    (
+      await request.get(`/api/v1/notary-portal/matters/${ownMatterId}`, {
+        headers: { 'X-CSRF-Token': otherNotary.csrfToken },
+      })
+    ).status(),
+  ).toBe(403);
+  const ownDetail = await request.get(
+    `/api/v1/notary-portal/matters/${otherMatterId}`,
+    { headers: { 'X-CSRF-Token': otherNotary.csrfToken } },
+  );
+  expect(ownDetail.status(), await ownDetail.text()).toBe(200);
+  const uploaded = await uploadCertificateForNotary(
+    request,
+    otherMatterId,
+    otherNotary.csrfToken,
+  );
+  const input = certificateInput(uploaded.contentVersionId);
+  await setNotaryBindingActive(otherNotary.accountId, false);
+  try {
+    const revoked = await issueNotaryCertificate(
+      request,
+      otherMatterId,
+      otherNotary.csrfToken,
+      input,
+    );
+    expect(revoked.status(), await revoked.text()).toBe(403);
+    expect(await getNotaryOpeningReviewMatter(otherMatterId)).toEqual({
+      stage: 'WAITING_CERTIFICATE',
+      version: 5,
+    });
+    expect(await countNotaryCertificates(otherMatterId)).toBe(0);
+  } finally {
+    await setNotaryBindingActive(otherNotary.accountId, true);
+  }
+});
+
+test('certificate command enforces old versions, idempotency and one concurrent winner', async ({
+  request,
+}) => {
+  test.setTimeout(120_000);
+  const client = await createClientAccount(request);
+  const clientCsrf = await loginClient(
+    request,
+    client.username,
+    client.password,
+  );
+  const matterId = await createCertificateReadyMatter(request, clientCsrf);
+  const notary = await createNotaryAccountForMatter(request, matterId);
+  const uploaded = await uploadCertificateForNotary(
+    request,
+    matterId,
+    notary.csrfToken,
+  );
+  const input = certificateInput(uploaded.contentVersionId);
+
+  const stale = await issueNotaryCertificate(
+    request,
+    matterId,
+    notary.csrfToken,
+    { ...input, expectedVersion: 4 },
+  );
+  expect(stale.status(), await stale.text()).toBe(409);
+  expect((await stale.json()).code).toBe('VERSION_CONFLICT');
+  expect(await getNotaryOpeningReviewMatter(matterId)).toEqual({
+    stage: 'WAITING_CERTIFICATE',
+    version: 5,
+  });
+
+  const key = randomUUID();
+  const first = await issueNotaryCertificate(
+    request,
+    matterId,
+    notary.csrfToken,
+    input,
+    key,
+  );
+  expect(first.status(), await first.text()).toBe(201);
+  const firstResult = await first.json();
+  const replay = await issueNotaryCertificate(
+    request,
+    matterId,
+    notary.csrfToken,
+    input,
+    key,
+  );
+  expect(replay.status(), await replay.text()).toBe(201);
+  expect(await replay.json()).toEqual(firstResult);
+  const changedReplay = await issueNotaryCertificate(
+    request,
+    matterId,
+    notary.csrfToken,
+    { ...input, certificateNo: '（2026）异参证字001号' },
+    key,
+  );
+  expect(changedReplay.status(), await changedReplay.text()).toBe(409);
+  expect((await changedReplay.json()).code).toBe('IDEMPOTENCY_CONFLICT');
+  expect(await countNotaryCertificates(matterId)).toBe(1);
+  expect(await countCasesForMatter(matterId)).toBe(1);
+  expect(await countNotaryCertificateReceipts(matterId)).toBe(1);
+
+  const concurrentMatterId = await createCertificateReadyMatter(
+    request,
+    clientCsrf,
+  );
+  const concurrentNotary = await createNotaryAccountForMatter(
+    request,
+    concurrentMatterId,
+  );
+  const concurrentFile = await uploadCertificateForNotary(
+    request,
+    concurrentMatterId,
+    concurrentNotary.csrfToken,
+    '并发出证.pdf',
+  );
+  const concurrentInput = certificateInput(concurrentFile.contentVersionId);
+  const outcomes = await Promise.all([
+    issueNotaryCertificate(
+      request,
+      concurrentMatterId,
+      concurrentNotary.csrfToken,
+      concurrentInput,
+    ),
+    issueNotaryCertificate(
+      request,
+      concurrentMatterId,
+      concurrentNotary.csrfToken,
+      concurrentInput,
+    ),
+  ]);
+  expect(outcomes.map((response) => response.status()).sort()).toEqual([
+    201, 409,
+  ]);
+  expect(await getNotaryOpeningReviewMatter(concurrentMatterId)).toEqual({
+    stage: 'ARCHIVED',
+    version: 6,
+  });
+  expect(await countNotaryCertificates(concurrentMatterId)).toBe(1);
+  expect(await countNotaryCertificateAudits(concurrentMatterId)).toBe(1);
+  expect(await countNotaryCertificateReceipts(concurrentMatterId)).toBe(1);
+  expect(await countCasesForMatter(concurrentMatterId)).toBe(1);
+});
+
+test('certificate audit, receipt and case failures roll back the full archive transaction', async ({
+  request,
+}) => {
+  test.setTimeout(120_000);
+  const client = await createClientAccount(request);
+  const clientCsrf = await loginClient(
+    request,
+    client.username,
+    client.password,
+  );
+  try {
+    for (const inject of [
+      () => rejectAuditWrites('notary.certificate_issued'),
+      rejectNotaryCertificateReceiptWrites,
+      rejectNotaryCertificateCaseWrites,
+    ]) {
+      const matterId = await createCertificateReadyMatter(request, clientCsrf);
+      const notary = await createNotaryAccountForMatter(request, matterId);
+      const uploaded = await uploadCertificateForNotary(
+        request,
+        matterId,
+        notary.csrfToken,
+      );
+      const input = certificateInput(uploaded.contentVersionId);
+      const key = randomUUID();
+      await inject();
+      const failed = await issueNotaryCertificate(
+        request,
+        matterId,
+        notary.csrfToken,
+        input,
+        key,
+      );
+      expect(failed.status(), await failed.text()).toBeGreaterThanOrEqual(500);
+      expect(await getNotaryOpeningReviewMatter(matterId)).toEqual({
+        stage: 'WAITING_CERTIFICATE',
+        version: 5,
+      });
+      expect(await countNotaryCertificates(matterId)).toBe(0);
+      expect(await countNotaryCertificateAudits(matterId)).toBe(0);
+      expect(await countNotaryCertificateReceipts(matterId)).toBe(0);
+      expect(await countCasesForMatter(matterId)).toBe(0);
+      expect(await countCertificateMaterialReferences(matterId)).toBe(0);
+      expect(await getNotaryCertificate(matterId)).toBeNull();
+      expect(
+        (
+          await request.get('/api/v1/cases', { headers: authorizationA })
+        ).status(),
+      ).toBe(200);
+
+      await allowInjectedFailures();
+      const retry = await issueNotaryCertificate(
+        request,
+        matterId,
+        notary.csrfToken,
+        input,
+        key,
+      );
+      expect(retry.status(), await retry.text()).toBe(201);
+      expect(await countNotaryCertificates(matterId)).toBe(1);
+      expect(await countNotaryCertificateAudits(matterId)).toBe(1);
+      expect(await countNotaryCertificateReceipts(matterId)).toBe(1);
+      expect(await countCasesForMatter(matterId)).toBe(1);
+      expect(await countCertificateMaterialReferences(matterId)).toBe(1);
+    }
+  } finally {
+    await allowInjectedFailures();
+  }
 });

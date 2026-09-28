@@ -80,6 +80,7 @@ const allActions = [
   'NOTARY_UNBOX_RECORD',
   'NOTARY_OPENING_REVIEW',
   'NOTARY_ISSUANCE_DECIDE',
+  'CASE_READ',
   'NOTARY_OFFICE_MANAGE',
   'LEAD_WITHDRAW_APPLY',
 ];
@@ -95,6 +96,7 @@ const actionNames = Object.freeze({
   'notary.unbox.record': 'NOTARY_UNBOX_RECORD',
   'notary.opening.review': 'NOTARY_OPENING_REVIEW',
   'notary.issuance.decide': 'NOTARY_ISSUANCE_DECIDE',
+  'case.read': 'CASE_READ',
   'notary.office.manage': 'NOTARY_OFFICE_MANAGE',
   'lead.withdraw.apply': 'LEAD_WITHDRAW_APPLY',
 });
@@ -130,6 +132,8 @@ async function dropFaults() {
     ['notary_opening_review_audit_events', 'core_nt_reject_review_audit'],
     ['notary_opening_review_receipts', 'core_nt_reject_review_receipt'],
     ['notary_issuance_decision_audit_events', 'core_nt_reject_issuance_audit'],
+    ['cases', 'core_nt_reject_certificate_case'],
+    ['notary_matter_command_receipts', 'core_nt_reject_certificate_receipt'],
   ]) {
     await database.$executeRawUnsafe(
       `ALTER TABLE "${table}" DROP CONSTRAINT IF EXISTS "${constraint}"`,
@@ -360,6 +364,9 @@ async function clearDatabase() {
     'notary_opening_review_receipts',
     'notary_issuance_decisions',
     'notary_issuance_decision_audit_events',
+    'cases',
+    'notary_certificate_fees',
+    'notary_certificates',
   ];
   await database.$transaction(async (transaction) => {
     for (const table of immutableTables) {
@@ -371,6 +378,15 @@ async function clearDatabase() {
       where: { departmentId: { in: departmentIds } },
     });
     await transaction.notaryIssuanceDecisionAuditEvent.deleteMany({
+      where: { departmentId: { in: departmentIds } },
+    });
+    await transaction.case.deleteMany({
+      where: { departmentId: { in: departmentIds } },
+    });
+    await transaction.notaryCertificateFee.deleteMany({
+      where: { certificate: { departmentId: { in: departmentIds } } },
+    });
+    await transaction.notaryCertificate.deleteMany({
       where: { departmentId: { in: departmentIds } },
     });
     await transaction.notaryIssuanceDecision.deleteMany({
@@ -403,6 +419,7 @@ async function clearDatabase() {
     await transaction.notaryMatter.deleteMany({
       where: { departmentId: { in: departmentIds } },
     });
+    await transaction.caseNumberCounter.deleteMany({});
     await transaction.lead.updateMany({
       where: { departmentId: { in: departmentIds } },
       data: { activeReviewDecisionId: null },
@@ -993,6 +1010,64 @@ export function countNotaryIssuanceReceipts(matterId) {
   });
 }
 
+export function countNotaryCertificates(matterId) {
+  return database.notaryCertificate.count({ where: { matterId } });
+}
+
+export function countNotaryCertificateAudits(matterId) {
+  return database.auditEvent.count({
+    where: {
+      resourceType: 'notary_matter',
+      resourceId: matterId,
+      action: 'notary.certificate_issued',
+    },
+  });
+}
+
+export function countNotaryCertificateReceipts(matterId) {
+  return database.notaryMatterCommandReceipt.count({
+    where: {
+      resultMatterId: matterId,
+      action: 'notary.certificate.issue',
+    },
+  });
+}
+
+export function countCasesForMatter(matterId) {
+  return database.case.count({ where: { sourceNotaryMatterId: matterId } });
+}
+
+export function countCertificateMaterialReferences(matterId) {
+  return database.materialReference.count({
+    where: {
+      resourceType: 'notary_matter',
+      resourceId: matterId,
+      purpose: { in: ['NOTARY_CERTIFICATE', 'NOTARY_DISCLOSURE'] },
+    },
+  });
+}
+
+export function getNotaryCertificate(matterId) {
+  return database.notaryCertificate.findUnique({
+    where: { matterId },
+    include: { fees: true },
+  });
+}
+
+export function getNotaryCase(caseId) {
+  return database.case.findUnique({
+    where: { id: caseId },
+    select: {
+      id: true,
+      businessNo: true,
+      stage: true,
+      courtCaseNo: true,
+      sourceNotaryMatterId: true,
+      certificateId: true,
+    },
+  });
+}
+
 export function getNotaryOpeningReviewMatter(matterId) {
   return database.notaryMatter.findUnique({
     where: { id: matterId },
@@ -1272,6 +1347,20 @@ export async function rejectNotaryIssuanceAuditWrites() {
   await dropFaults();
   await database.$executeRawUnsafe(
     'ALTER TABLE "notary_issuance_decision_audit_events" ADD CONSTRAINT "core_nt_reject_issuance_audit" CHECK (false) NOT VALID',
+  );
+}
+
+export async function rejectNotaryCertificateCaseWrites() {
+  await dropFaults();
+  await database.$executeRawUnsafe(
+    'ALTER TABLE "cases" ADD CONSTRAINT "core_nt_reject_certificate_case" CHECK (false) NOT VALID',
+  );
+}
+
+export async function rejectNotaryCertificateReceiptWrites() {
+  await dropFaults();
+  await database.$executeRawUnsafe(
+    `ALTER TABLE "notary_matter_command_receipts" ADD CONSTRAINT "core_nt_reject_certificate_receipt" CHECK ("action" <> 'notary.certificate.issue') NOT VALID`,
   );
 }
 
