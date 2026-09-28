@@ -66,6 +66,11 @@ const context = {
       label: '查看客户',
       scopes: ['SELF', 'TEAM', 'DEPARTMENT'],
     },
+    {
+      action: 'CASE_READ',
+      label: '查看案件',
+      scopes: ['DEPARTMENT'],
+    },
   ],
 };
 
@@ -129,6 +134,12 @@ describe('PeopleAccessPage', () => {
     expect(wrapper.text()).toContain('运营甲');
     expect(wrapper.text()).toContain('商标组');
     expect(wrapper.text()).toContain('客户经办');
+    expect(wrapper.get('.role-template-card').text()).toContain('查看客户');
+    await wrapper.get('[data-test="edit-role-role-1"]').trigger('click');
+    expect(wrapper.find('[data-test="grant-CASE_READ"]').exists()).toBe(true);
+    expect(
+      wrapper.get('[data-test="scope-CASE_READ"]').findAll('option'),
+    ).toHaveLength(1);
     expect(wrapper.find('.workspace-header').exists()).toBe(false);
     expect(wrapper.find('.workspace-shell').exists()).toBe(false);
     expect(wrapper.find('.page-view').exists()).toBe(true);

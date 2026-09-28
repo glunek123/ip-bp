@@ -31,6 +31,11 @@ const permissionCatalog = [
     label: '管理角色模板',
     scopes: ['SELF', 'TEAM', 'DEPARTMENT'] as const,
   },
+  {
+    action: 'CASE_READ' as const,
+    label: '查看案件',
+    scopes: ['DEPARTMENT'] as const,
+  },
 ].map((item) => ({ ...item, scopes: [...item.scopes] }));
 
 afterEach(() => vi.clearAllMocks());
@@ -130,5 +135,30 @@ describe('RoleTemplateEditor', () => {
 
     expect(wrapper.get('[role="alert"]').text()).toContain('至少选择一项权限');
     expect(api.copyRoleTemplate).not.toHaveBeenCalled();
+  });
+
+  it('offers case reading only at department scope and saves the grant', async () => {
+    api.updateRoleTemplate.mockResolvedValue(role);
+    const wrapper = mount(RoleTemplateEditor, {
+      props: { mode: 'edit', role, permissionCatalog },
+    });
+    await flushPromises();
+
+    expect(wrapper.text()).toContain('查看案件');
+    expect(
+      wrapper.get('[data-test="scope-CASE_READ"]').findAll('option'),
+    ).toHaveLength(1);
+    await wrapper.get('[data-test="grant-CASE_READ"]').setValue(true);
+    await wrapper.get('[data-test="role-template-save"]').trigger('click');
+    await flushPromises();
+
+    expect(api.updateRoleTemplate).toHaveBeenCalledWith(role.id, {
+      name: role.name,
+      expectedVersion: role.version,
+      grants: [
+        { action: 'CUSTOMER_READ', scope: 'DEPARTMENT' },
+        { action: 'CASE_READ', scope: 'DEPARTMENT' },
+      ],
+    });
   });
 });

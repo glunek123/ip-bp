@@ -126,6 +126,11 @@ const context = {
       scopes: ['SELF', 'TEAM', 'DEPARTMENT'],
     },
     {
+      action: 'CASE_READ',
+      label: '查看案件',
+      scopes: ['DEPARTMENT'],
+    },
+    {
       action: 'NOTARY_OFFICE_MANAGE',
       label: '管理公证处',
       scopes: ['DEPARTMENT'],
@@ -191,6 +196,7 @@ describe('organization API', () => {
       'NOTARY_UNBOX_RECORD',
       'NOTARY_OPENING_REVIEW',
       'NOTARY_ISSUANCE_DECIDE',
+      'CASE_READ',
       'NOTARY_OFFICE_MANAGE',
       'USER_READ',
       'USER_MANAGE',
@@ -209,6 +215,35 @@ describe('organization API', () => {
     );
 
     await expect(getOrganizationManagementContext()).resolves.toEqual(context);
+  });
+
+  it('accepts a department-scoped CASE_READ role grant', async () => {
+    const body = {
+      ...context,
+      roles: [
+        {
+          ...context.roles[0],
+          grants: [
+            ...context.roles[0].grants,
+            { action: 'CASE_READ', scope: 'DEPARTMENT' },
+          ],
+        },
+      ],
+    };
+    vi.stubGlobal(
+      'fetch',
+      vi.fn().mockResolvedValue(new Response(JSON.stringify(body))),
+    );
+
+    await expect(getOrganizationManagementContext()).resolves.toMatchObject({
+      roles: [
+        {
+          grants: expect.arrayContaining([
+            { action: 'CASE_READ', scope: 'DEPARTMENT' },
+          ]),
+        },
+      ],
+    });
   });
 
   it('rejects malformed management data', async () => {
@@ -272,6 +307,14 @@ describe('organization API', () => {
       ...context,
       permissionCatalog: context.permissionCatalog.map((item, index) =>
         index === 0 ? { ...item, action: 'CLIENT_LEAD_READ' } : item,
+      ),
+    },
+    {
+      ...context,
+      permissionCatalog: context.permissionCatalog.map((item) =>
+        item.action === 'CASE_READ'
+          ? { ...item, scopes: ['SELF', 'TEAM', 'DEPARTMENT'] }
+          : item,
       ),
     },
   ])('rejects sensitive or invalid management shapes %#', async (body) => {

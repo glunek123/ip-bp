@@ -43,6 +43,7 @@ export const permissionActionValues = [
   'NOTARY_UNBOX_RECORD',
   'NOTARY_OPENING_REVIEW',
   'NOTARY_ISSUANCE_DECIDE',
+  'CASE_READ',
   'NOTARY_OFFICE_MANAGE',
   'USER_READ',
   'USER_MANAGE',
@@ -248,7 +249,9 @@ function isPermissionCatalog(
       !item.scopes.every(
         (scope) => typeof scope === 'string' && permissionScopes.has(scope),
       ) ||
-      new Set(item.scopes).size !== item.scopes.length
+      new Set(item.scopes).size !== item.scopes.length ||
+      (item.action === 'CASE_READ' &&
+        (item.scopes.length !== 1 || item.scopes[0] !== 'DEPARTMENT'))
     ) {
       return false;
     }
