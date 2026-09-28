@@ -12,6 +12,7 @@ const requireBackend = createRequire(resolve(root, 'backend/package.json'));
 const { Client } = requireBackend('pg');
 const migrationRoot = resolve(root, 'backend/prisma/migrations');
 const target = '20260928010000_add_notary_opening_review';
+const auditTarget = '20260928020000_add_notary_opening_review_audit';
 
 async function testClient() {
   const values = parseEnv(
@@ -39,7 +40,7 @@ test('opening review migration upgrades the prior schema without rewriting openi
     const migrations = (await readdir(migrationRoot))
       .filter((name) => /^\d+_/.test(name))
       .sort();
-    assert.equal(migrations.at(-1), target);
+    assert.equal(migrations.at(-1), auditTarget);
     for (const name of migrations.filter((name) => name < target)) {
       await client.query(
         await readFile(resolve(migrationRoot, name, 'migration.sql'), 'utf8'),
@@ -66,6 +67,12 @@ test('opening review migration upgrades the prior schema without rewriting openi
     await client.query(
       await readFile(resolve(migrationRoot, target, 'migration.sql'), 'utf8'),
     );
+    await client.query(
+      await readFile(
+        resolve(migrationRoot, auditTarget, 'migration.sql'),
+        'utf8',
+      ),
+    );
     const after = await client.query(
       'SELECT id,user_id,department_id FROM department_memberships WHERE user_id=$1',
       [userId],
@@ -80,10 +87,10 @@ test('opening review migration upgrades the prior schema without rewriting openi
     );
     assert.ok(enumRows.rows.some(({ enumlabel }) => enumlabel === 'ARCHIVED'));
     const tables = await client.query(
-      `SELECT table_name FROM information_schema.tables WHERE table_schema=$1 AND table_name IN ('notary_opening_review_decisions','notary_opening_review_receipts')`,
+      `SELECT table_name FROM information_schema.tables WHERE table_schema=$1 AND table_name IN ('notary_opening_review_decisions','notary_opening_review_receipts','notary_opening_review_audit_events')`,
       [schema],
     );
-    assert.equal(tables.rowCount, 2);
+    assert.equal(tables.rowCount, 3);
   } finally {
     await client.query('ROLLBACK');
     await client.query('SET search_path TO public');
@@ -127,6 +134,9 @@ test('decisions and receipts enforce outcomes, actor identity, immutability, and
   const receiptSql = `INSERT INTO notary_opening_review_receipts
     (id,department_id,customer_id,actor_user_id,actor_kind,internal_actor_user_id,customer_account_binding_id,idempotency_key,request_fingerprint,result_matter_id,result_matter_version,review_decision_id,result_snapshot)
     VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9,$10,4,$11,'{}'::jsonb)`;
+  const auditSql = `INSERT INTO notary_opening_review_audit_events
+    (id,review_decision_id,matter_id,department_id,customer_id,actor_user_id,actor_kind,result,matter_version,action)
+    VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9,'notary.opening.review.succeeded')`;
   try {
     await client.query(`CREATE SCHEMA "${schema}"`);
     await client.query(`SET search_path TO "${schema}"`);
@@ -194,6 +204,29 @@ test('decisions and receipts enforce outcomes, actor identity, immutability, and
       [ids.matter1],
     );
     assert.deepEqual(upgradedOpening.rows, legacyOpening.rows);
+    const auditMigration = await readFile(
+      resolve(migrationRoot, auditTarget, 'migration.sql'),
+      'utf8',
+    );
+    await client.query(
+      'CREATE TABLE notary_opening_review_audit_events(id uuid)',
+    );
+    await assert.rejects(
+      client.query(auditMigration),
+      (error) => error.code === '42P07',
+    );
+    await client.query('ROLLBACK');
+    const auditKeyRollback = await client.query(
+      `SELECT 1 FROM pg_constraint WHERE conrelid='notary_opening_review_decisions'::regclass AND conname='notary_opening_review_decisions_audit_identity_key'`,
+    );
+    assert.equal(auditKeyRollback.rowCount, 0);
+    await client.query('DROP TABLE notary_opening_review_audit_events');
+    await client.query(auditMigration);
+    const preservedOpening = await client.query(
+      'SELECT * FROM notary_matter_opening WHERE matter_id=$1',
+      [ids.matter1],
+    );
+    assert.deepEqual(preservedOpening.rows, legacyOpening.rows);
     await client.query('BEGIN');
     for (const user of [ids.internal, ids.client, ids.otherClient])
       await client.query('INSERT INTO user_accounts VALUES ($1)', [user]);
@@ -346,6 +379,66 @@ test('decisions and receipts enforce outcomes, actor identity, immutability, and
     );
     await client.query(receiptSql, internalReceipt);
     await client.query(receiptSql, clientReceipt);
+    const internalAudit = [
+      randomUUID(),
+      ids.decision1,
+      ids.matter1,
+      ids.dept,
+      ids.customer,
+      ids.internal,
+      'INTERNAL',
+      'INFRINGEMENT',
+      4,
+    ];
+    const clientAudit = [
+      randomUUID(),
+      ids.decision2,
+      ids.matter2,
+      ids.dept,
+      ids.customer,
+      ids.client,
+      'CLIENT',
+      'NO_INFRINGEMENT',
+      4,
+    ];
+    for (const [index, wrong] of [
+      [2, ids.matter1],
+      [3, randomUUID()],
+      [4, randomUUID()],
+      [5, ids.otherClient],
+      [6, 'INTERNAL'],
+      [7, 'INFRINGEMENT'],
+      [8, 5],
+    ]) {
+      const mismatch = [...clientAudit];
+      mismatch[0] = randomUUID();
+      mismatch[index] = wrong;
+      await rejected(auditSql, mismatch, '23503');
+    }
+    await rejected(
+      auditSql.replace('notary.opening.review.succeeded', 'unexpected'),
+      clientAudit,
+      '23514',
+    );
+    await client.query(auditSql, internalAudit);
+    await client.query(auditSql, clientAudit);
+    const clientEvent = await client.query(
+      'SELECT occurred_at, action FROM notary_opening_review_audit_events WHERE id=$1',
+      [clientAudit[0]],
+    );
+    assert.ok(clientEvent.rows[0].occurred_at instanceof Date);
+    assert.equal(clientEvent.rows[0].action, 'notary.opening.review.succeeded');
+    await rejected(auditSql, [randomUUID(), ...clientAudit.slice(1)], '23505');
+    await rejected(
+      'UPDATE notary_opening_review_audit_events SET action=$1 WHERE id=$2',
+      ['tampered', clientAudit[0]],
+      '55000',
+    );
+    await rejected(
+      'DELETE FROM notary_opening_review_audit_events WHERE id=$1',
+      [clientAudit[0]],
+      '55000',
+    );
     await rejected(
       receiptSql,
       [
