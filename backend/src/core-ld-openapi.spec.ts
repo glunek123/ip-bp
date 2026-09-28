@@ -172,6 +172,8 @@ describe('CORE-LD-002 OpenAPI contract', () => {
         'WAITING_UNBOX',
         'UNBOX_REVIEW',
         'ISSUANCE_DECISION',
+        'WAITING_CERTIFICATE',
+        'WAITING_RETURN',
         'ARCHIVED',
       ],
     });
