@@ -32,7 +32,6 @@ export type NotaryPortalOpening = {
   senderPhone: string | null;
   senderAddress: string | null;
   recordedAt: string;
-  recordedByUserId: string;
   photos: Array<{
     materialId: string;
     contentVersionId: string;
@@ -105,14 +104,12 @@ function validOpening(value: unknown): value is NotaryPortalOpening {
       'senderPhone',
       'senderAddress',
       'recordedAt',
-      'recordedByUserId',
       'photos',
     ]) &&
     (value.senderName === null || typeof value.senderName === 'string') &&
     (value.senderPhone === null || typeof value.senderPhone === 'string') &&
     (value.senderAddress === null || typeof value.senderAddress === 'string') &&
     dateTime(value.recordedAt) &&
-    typeof value.recordedByUserId === 'string' &&
     Array.isArray(value.photos) &&
     value.photos.length > 0 &&
     value.photos.every(

@@ -77,7 +77,6 @@ describe('notary portal API', () => {
               senderPhone: null,
               senderAddress: null,
               recordedAt: '2026-09-28T00:00:00.000Z',
-              recordedByUserId: 'notary-user',
               photos: [
                 {
                   materialId: 'material-1',
