@@ -17,6 +17,7 @@ export type PermissionAction =
   | 'lead.evidence.decide'
   | 'notary.evidence.record'
   | 'notary.unbox.record'
+  | 'notary.opening.review'
   | 'notary.office.manage'
   | 'client.lead.read'
   | 'client.lead.review'
@@ -34,7 +35,8 @@ export type CustomerScope = PermissionScope;
 export type LeadAction =
   | Extract<PermissionAction, `lead.${string}`>
   | 'notary.evidence.record'
-  | 'notary.unbox.record';
+  | 'notary.unbox.record'
+  | 'notary.opening.review';
 
 export type CustomerResourceFacts = {
   departmentId: string;

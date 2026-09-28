@@ -7,6 +7,7 @@ import { PrismaAccessControlStore } from './prisma-access-control.store';
 
 const snapshotRecord = {
   active: true,
+  accountType: 'INTERNAL',
   authorizationRevision: 4,
   memberships: [
     {
@@ -27,6 +28,24 @@ const snapshotRecord = {
 };
 
 describe('PrismaAccessControlStore', () => {
+  it('never treats a client account with a stale internal membership and role as an internal grant', async () => {
+    const findUnique = jest
+      .fn()
+      .mockResolvedValue({ ...snapshotRecord, accountType: 'CLIENT' });
+    const store = new PrismaAccessControlStore({
+      userAccount: { findUnique },
+    } as unknown as DatabaseService);
+
+    await expect(
+      store.loadSnapshot('client-a', 'department-a'),
+    ).resolves.toBeNull();
+    expect(findUnique).toHaveBeenCalledWith(
+      expect.objectContaining({
+        select: expect.objectContaining({ accountType: true }),
+      }),
+    );
+  });
+
   it('loads the user, role assignments and grants through the caller reader', async () => {
     const defaultFindUnique = jest.fn();
     const transactionFindUnique = jest.fn().mockResolvedValue(snapshotRecord);

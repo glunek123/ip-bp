@@ -116,6 +116,11 @@ const context = {
       scopes: ['SELF', 'TEAM', 'DEPARTMENT'],
     },
     {
+      action: 'NOTARY_OPENING_REVIEW',
+      label: '审核开箱侵权',
+      scopes: ['SELF', 'TEAM', 'DEPARTMENT'],
+    },
+    {
       action: 'NOTARY_OFFICE_MANAGE',
       label: '管理公证处',
       scopes: ['DEPARTMENT'],
@@ -179,6 +184,7 @@ describe('organization API', () => {
       'LEAD_EVIDENCE_DECIDE',
       'NOTARY_EVIDENCE_RECORD',
       'NOTARY_UNBOX_RECORD',
+      'NOTARY_OPENING_REVIEW',
       'NOTARY_OFFICE_MANAGE',
       'USER_READ',
       'USER_MANAGE',

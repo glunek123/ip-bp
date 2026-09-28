@@ -65,7 +65,12 @@ export class NotaryListService {
     const counts = Object.fromEntries(
       NOTARY_LIST_STAGES.map((key) => [key, 0]),
     ) as Record<NotaryListStage, number>;
-    for (const group of groups) counts[group.stage] = group._count._all;
+    for (const group of groups) {
+      const listedStage = NOTARY_LIST_STAGES.find(
+        (stage) => stage === group.stage,
+      );
+      if (listedStage !== undefined) counts[listedStage] = group._count._all;
+    }
     return {
       items: items.map((item) => ({
         ...item,

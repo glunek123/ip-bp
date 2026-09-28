@@ -22,6 +22,38 @@ function createStore(
 }
 
 describe('AccessControlService', () => {
+  it('authorizes opening review only through its live independent grant and source lead scope', async () => {
+    const store = createStore({
+      active: true,
+      authorizationRevision: 4,
+      grants: [
+        { action: 'lead.read', scope: 'department' },
+        { action: 'notary.unbox.record', scope: 'department' },
+        { action: 'notary.opening.review', scope: 'self' },
+      ],
+    });
+    const service = new AccessControlService(store);
+
+    await expect(
+      service.authorizeLead(actor, 'notary.opening.review', {
+        departmentId: 'department-a',
+        responsibleUserId: 'user-a',
+      }),
+    ).resolves.toBeUndefined();
+    await expect(
+      service.authorizeLead(actor, 'notary.opening.review', {
+        departmentId: 'department-a',
+        responsibleUserId: 'user-b',
+      }),
+    ).rejects.toBeInstanceOf(ForbiddenException);
+    await expect(
+      service.authorizeLead(actor, 'notary.opening.review', {
+        departmentId: 'department-b',
+        responsibleUserId: 'user-a',
+      }),
+    ).rejects.toBeInstanceOf(ForbiddenException);
+  });
+
   it('passes an explicit snapshot reader through without changing the scope algorithm', async () => {
     const store = createStore({
       active: true,
