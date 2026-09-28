@@ -14,6 +14,9 @@ const materialApi = vi.hoisted(() => ({
   listOwnerMaterials: vi.fn(),
   downloadMaterialVersion: vi.fn(),
 }));
+vi.mock('../../api/client-notary', () => ({
+  listClientNotaryMatters: vi.fn(),
+}));
 vi.mock('../../api/client-leads', () => leadApi);
 vi.mock('../../api/materials', () => materialApi);
 
@@ -104,6 +107,7 @@ async function mountPage(path = '/client/leads/lead-1') {
     routes: [
       { path: '/client/leads/:id', component: ClientLeadDetailPage },
       { path: '/client/leads', component: { template: '<div />' } },
+      { path: '/client/notary-matters', component: { template: '<div />' } },
     ],
   });
   await router.push(path);
@@ -149,6 +153,13 @@ beforeEach(() => {
 });
 
 describe('ClientLeadDetailPage', () => {
+  it('links the source lead to all its notary batches, including processed ones', async () => {
+    leadApi.getClientLead.mockResolvedValue(transferredLead);
+    const wrapper = await mountPage();
+    expect(
+      wrapper.get('[data-test="client-notary-batches"]').attributes('href'),
+    ).toBe('/client/notary-matters?sourceLeadId=lead-1');
+  });
   it('shows transferred status to the client without exposing internal notary details', async () => {
     leadApi.getClientLead.mockResolvedValue(transferredLead);
     const wrapper = await mountPage();

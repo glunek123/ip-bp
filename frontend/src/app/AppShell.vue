@@ -32,6 +32,8 @@ const notaryStageCards: ReadonlyArray<{
   { stage: 'PENDING_EVIDENCE', label: '待取证' },
   { stage: 'WAITING_UNBOX', label: '待取件开箱' },
   { stage: 'UNBOX_REVIEW', label: '开箱待审核' },
+  { stage: 'ISSUANCE_DECISION', label: '开箱待确认' },
+  { stage: 'ARCHIVED', label: '已归档' },
 ];
 const loggingOut = ref(false);
 const logoutError = ref('');
@@ -62,6 +64,9 @@ const isSettingsRoute = computed(
 );
 const isClientLeadRoute = computed(() =>
   route.path.startsWith('/client/leads'),
+);
+const isClientNotaryRoute = computed(() =>
+  route.path.startsWith('/client/notary-matters'),
 );
 const selectedLeadStatus = computed(() =>
   typeof route.query.status === 'string' ? route.query.status : undefined,
@@ -375,6 +380,19 @@ async function logout(): Promise<void> {
             <path d="M3 3.5h14v13H3zM6 7h8M6 10h8M6 13h5" />
           </svg>
           <span>线索审核</span>
+        </RouterLink>
+        <RouterLink
+          v-if="isClient"
+          class="app-nav__item"
+          :class="{ active: isClientNotaryRoute }"
+          data-test="client-notary-nav"
+          to="/client/notary-matters"
+          @click="closeDrawer"
+        >
+          <svg class="app-nav__icon" viewBox="0 0 20 20" aria-hidden="true">
+            <path d="M5 2.5h8l3 3v12H5zM8 9h5M8 12h5M8 15h4" />
+          </svg>
+          <span>公证审核</span>
         </RouterLink>
 
         <template v-if="!isClient">

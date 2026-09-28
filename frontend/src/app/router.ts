@@ -16,6 +16,8 @@ import LoginPage from '../modules/auth/LoginPage.vue';
 import PeopleAccessPage from '../modules/organization/PeopleAccessPage.vue';
 import ClientLeadListPage from '../modules/client/ClientLeadListPage.vue';
 import ClientLeadDetailPage from '../modules/client/ClientLeadDetailPage.vue';
+import ClientNotaryListPage from '../modules/client/ClientNotaryListPage.vue';
+import ClientNotaryDetailPage from '../modules/client/ClientNotaryDetailPage.vue';
 import { useAuthStore } from '../stores/auth';
 import { pinia } from './pinia';
 
@@ -150,6 +152,24 @@ export const router = createRouter({
         audience: 'CLIENT',
         section: '待审核线索',
         breadcrumbs: ['待审核线索', '线索详情'],
+      },
+    },
+    {
+      path: '/client/notary-matters',
+      component: ClientNotaryListPage,
+      meta: {
+        audience: 'CLIENT',
+        section: '公证审核',
+        breadcrumbs: ['公证审核'],
+      },
+    },
+    {
+      path: '/client/notary-matters/:id',
+      component: ClientNotaryDetailPage,
+      meta: {
+        audience: 'CLIENT',
+        section: '公证审核',
+        breadcrumbs: ['公证审核', '公证事项'],
       },
     },
   ],

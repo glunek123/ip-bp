@@ -46,7 +46,13 @@ beforeEach(() => {
     total: 4,
     page: 1,
     pageSize: 1,
-    counts: { PENDING_EVIDENCE: 2, WAITING_UNBOX: 1, UNBOX_REVIEW: 1 },
+    counts: {
+      PENDING_EVIDENCE: 2,
+      WAITING_UNBOX: 1,
+      UNBOX_REVIEW: 1,
+      ISSUANCE_DECISION: 1,
+      ARCHIVED: 0,
+    },
   });
   api.listLeads.mockResolvedValue({
     items: [],
@@ -179,7 +185,13 @@ describe('AppShell', () => {
       wrapper
         .findAll('[data-test="notary-counter"]')
         .map((item) => item.text()),
-    ).toEqual(['待取证2', '待取件开箱1', '开箱待审核1']);
+    ).toEqual([
+      '待取证2',
+      '待取件开箱1',
+      '开箱待审核1',
+      '开箱待确认1',
+      '已归档0',
+    ]);
     expect(wrapper.find('[data-test="lead-counter"]').exists()).toBe(false);
   });
 
@@ -191,13 +203,19 @@ describe('AppShell', () => {
 
   it('refreshes workflow counters after an in-place stage change', async () => {
     const { wrapper } = await mountShell('/notary-matters/matter-1');
-    expect(wrapper.get('[data-test="notary-nav"]').text()).toContain('4');
+    expect(wrapper.get('[data-test="notary-nav"]').text()).toContain('5');
     api.listNotaryMatters.mockResolvedValueOnce({
       items: [],
       total: 3,
       page: 1,
       pageSize: 1,
-      counts: { PENDING_EVIDENCE: 1, WAITING_UNBOX: 1, UNBOX_REVIEW: 1 },
+      counts: {
+        PENDING_EVIDENCE: 1,
+        WAITING_UNBOX: 1,
+        UNBOX_REVIEW: 1,
+        ISSUANCE_DECISION: 0,
+        ARCHIVED: 0,
+      },
     });
     window.dispatchEvent(new Event('dev-cor:workflow-changed'));
     await flushPromises();
@@ -229,7 +247,7 @@ describe('AppShell', () => {
     await wrapper.get('[data-test="notary-expand"]').trigger('click');
     expect(wrapper.find('[data-test="notary-counter"]').exists()).toBe(false);
     await wrapper.get('[data-test="notary-expand"]').trigger('click');
-    expect(wrapper.findAll('[data-test="notary-counter"]')).toHaveLength(3);
+    expect(wrapper.findAll('[data-test="notary-counter"]')).toHaveLength(5);
   });
 
   it('labels the client navigation for both review queues', async () => {
@@ -245,6 +263,12 @@ describe('AppShell', () => {
     expect(wrapper.get('[data-test="client-lead-nav"]').text()).toContain(
       '线索审核',
     );
+    expect(wrapper.get('[data-test="client-notary-nav"]').text()).toContain(
+      '公证审核',
+    );
+    expect(
+      wrapper.get('[data-test="client-notary-nav"]').attributes('href'),
+    ).toBe('/client/notary-matters');
     expect(wrapper.text()).not.toContain('待审核线索');
     expect(wrapper.find('[data-test="lead-nav"]').exists()).toBe(false);
     expect(wrapper.find('[data-test="customer-nav"]').exists()).toBe(false);

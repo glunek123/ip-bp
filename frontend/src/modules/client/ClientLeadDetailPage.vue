@@ -626,6 +626,16 @@ onBeforeUnmount(() => request?.abort());
               >
             </template>
           </template>
+          <RouterLink
+            v-if="lead.status === 'TRANSFERRED_TO_NOTARY'"
+            class="action-link"
+            data-test="client-notary-batches"
+            :to="{
+              path: '/client/notary-matters',
+              query: { sourceLeadId: lead.id },
+            }"
+            >查看该线索的公证批次</RouterLink
+          >
           <p v-if="reviewError" class="field-error" role="alert">
             {{ reviewError }}
           </p>

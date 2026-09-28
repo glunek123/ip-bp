@@ -8,6 +8,7 @@ const api = vi.hoisted(() => ({
   getNotaryMatter: vi.fn(),
   recordNotaryEvidence: vi.fn(),
   recordNotaryOpening: vi.fn(),
+  reviewNotaryOpening: vi.fn(),
 }));
 const materials = vi.hoisted(() => ({
   downloadMaterialVersion: vi.fn(),
@@ -151,6 +152,7 @@ beforeEach(() => {
   api.getNotaryMatter.mockResolvedValue(matter);
   api.recordNotaryEvidence.mockResolvedValue({});
   api.recordNotaryOpening.mockResolvedValue({});
+  api.reviewNotaryOpening.mockResolvedValue({});
   materials.downloadMaterialVersion.mockResolvedValue(undefined);
   materials.listOwnerMaterials.mockResolvedValue({ items: [], total: 0 });
   materials.deleteMaterial.mockResolvedValue({
@@ -170,6 +172,296 @@ beforeEach(() => {
 });
 
 describe('NotaryMatterDetailPage', () => {
+  it('offers no default opening result and requires a reason for no infringement', async () => {
+    api.getNotaryMatter.mockResolvedValue({
+      ...matter,
+      stage: 'UNBOX_REVIEW',
+      version: 4,
+      capabilities: {
+        recordEvidence: false,
+        recordOpening: false,
+        reviewOpening: true,
+      },
+      evidence: firstEvidence,
+      opening: {
+        senderName: null,
+        senderPhone: null,
+        senderAddress: null,
+        recordedAt: '2026-09-24T02:00:00.000Z',
+        recordedByUserId: 'user-1',
+        photos: [
+          {
+            materialId: 'photo-1',
+            contentVersionId: 'photo-v1',
+            originalFilename: '开箱.jpg',
+            mimeType: 'image/jpeg',
+          },
+        ],
+      },
+      reviewDecision: null,
+    });
+    const wrapper = await mountPage();
+    expect(
+      wrapper.findAll('[data-test^="opening-review-result"]:checked'),
+    ).toHaveLength(0);
+    expect(wrapper.get('[data-test="opening-review-form"]').text()).toContain(
+      '侵权后进入开箱待确认，由运营决定是否出证',
+    );
+    expect(wrapper.get('[data-test="opening-review-form"]').text()).toContain(
+      '不侵权将立即归档，普通入口不能撤回',
+    );
+    await wrapper
+      .get('[data-test="opening-review-result-no-infringement"]')
+      .setValue(true);
+    await wrapper.get('[data-test="opening-review-form"]').trigger('submit');
+    expect(
+      wrapper.get('[data-test="opening-review-reason-error"]').text(),
+    ).toContain('请填写不侵权原因');
+    expect(api.reviewNotaryOpening).not.toHaveBeenCalled();
+  });
+
+  it('locks an uncertain submission key and reloads the persisted decision after success', async () => {
+    const pending = {
+      ...matter,
+      stage: 'UNBOX_REVIEW',
+      version: 4,
+      capabilities: {
+        recordEvidence: false,
+        recordOpening: false,
+        reviewOpening: true,
+      },
+      evidence: firstEvidence,
+      opening: {
+        senderName: null,
+        senderPhone: null,
+        senderAddress: null,
+        recordedAt: '2026-09-24T02:00:00.000Z',
+        recordedByUserId: 'user-1',
+        photos: [
+          {
+            materialId: 'photo-1',
+            contentVersionId: 'photo-v1',
+            originalFilename: '开箱.jpg',
+            mimeType: 'image/jpeg',
+          },
+        ],
+      },
+      reviewDecision: null,
+    };
+    const saved = {
+      ...pending,
+      stage: 'ARCHIVED',
+      version: 5,
+      capabilities: { ...pending.capabilities, reviewOpening: false },
+      reviewDecision: {
+        result: 'NO_INFRINGEMENT',
+        reason: '经核对未发现侵权',
+        actorKind: 'INTERNAL',
+        actorDisplayName: '运营甲',
+        decidedAt: '2026-09-24T03:00:00.000Z',
+        archivedAt: '2026-09-24T03:00:00.000Z',
+      },
+    };
+    api.getNotaryMatter
+      .mockResolvedValueOnce(pending)
+      .mockResolvedValueOnce(saved);
+    let resolveReview!: (value: unknown) => void;
+    api.reviewNotaryOpening.mockReturnValueOnce(
+      new Promise((resolve) => {
+        resolveReview = resolve;
+      }),
+    );
+    const wrapper = await mountPage();
+    await wrapper
+      .get('[data-test="opening-review-result-no-infringement"]')
+      .setValue(true);
+    await wrapper
+      .get('[data-test="opening-review-reason"]')
+      .setValue('经核对未发现侵权');
+    await wrapper.get('[data-test="opening-review-form"]').trigger('submit');
+    expect(
+      wrapper.get('[data-test="opening-review-submit"]').attributes('disabled'),
+    ).toBeDefined();
+    resolveReview({});
+    await flushPromises();
+    expect(api.reviewNotaryOpening).toHaveBeenCalledWith(
+      'matter-1',
+      {
+        result: 'NO_INFRINGEMENT',
+        reason: '经核对未发现侵权',
+        expectedVersion: 4,
+      },
+      expect.any(String),
+    );
+    expect(api.getNotaryMatter).toHaveBeenCalledTimes(2);
+    expect(wrapper.get('[data-test="opening-review-record"]').text()).toContain(
+      '经核对未发现侵权',
+    );
+  });
+
+  it('keeps the opening decision read only without review capability', async () => {
+    api.getNotaryMatter.mockResolvedValue({
+      ...matter,
+      stage: 'ISSUANCE_DECISION',
+      capabilities: {
+        recordEvidence: false,
+        recordOpening: false,
+        reviewOpening: false,
+      },
+      evidence: firstEvidence,
+      opening: {
+        senderName: null,
+        senderPhone: null,
+        senderAddress: null,
+        recordedAt: '2026-09-24T02:00:00.000Z',
+        recordedByUserId: 'user-1',
+        photos: [
+          {
+            materialId: 'photo-1',
+            contentVersionId: 'photo-v1',
+            originalFilename: '开箱.jpg',
+            mimeType: 'image/jpeg',
+          },
+        ],
+      },
+      reviewDecision: {
+        result: 'INFRINGEMENT',
+        reason: null,
+        actorKind: 'CLIENT',
+        actorDisplayName: '客户审核员',
+        decidedAt: '2026-09-24T03:00:00.000Z',
+        archivedAt: null,
+      },
+    });
+    const wrapper = await mountPage();
+    expect(wrapper.find('[data-test="opening-review-form"]').exists()).toBe(
+      false,
+    );
+    expect(wrapper.get('[data-test="opening-review-record"]').text()).toContain(
+      '客户审核员',
+    );
+    await wrapper
+      .get('[data-test="download-opening-photo-photo-v1"]')
+      .trigger('click');
+    expect(materials.downloadMaterialVersion).toHaveBeenCalledWith(
+      'photo-1',
+      'photo-v1',
+    );
+  });
+
+  it('reuses the same idempotency key after a network-uncertain retry', async () => {
+    const pending = {
+      ...matter,
+      stage: 'UNBOX_REVIEW',
+      version: 4,
+      capabilities: {
+        recordEvidence: false,
+        recordOpening: false,
+        reviewOpening: true,
+      },
+      evidence: firstEvidence,
+      opening: {
+        senderName: null,
+        senderPhone: null,
+        senderAddress: null,
+        recordedAt: '2026-09-24T02:00:00.000Z',
+        recordedByUserId: 'user-1',
+        photos: [
+          {
+            materialId: 'photo-1',
+            contentVersionId: 'photo-v1',
+            originalFilename: '开箱.jpg',
+            mimeType: 'image/jpeg',
+          },
+        ],
+      },
+      reviewDecision: null,
+    };
+    const saved = {
+      ...pending,
+      stage: 'ISSUANCE_DECISION',
+      version: 5,
+      capabilities: { ...pending.capabilities, reviewOpening: false },
+      reviewDecision: {
+        result: 'INFRINGEMENT',
+        reason: null,
+        actorKind: 'INTERNAL',
+        actorDisplayName: '运营甲',
+        decidedAt: '2026-09-24T03:00:00.000Z',
+        archivedAt: null,
+      },
+    };
+    api.getNotaryMatter
+      .mockResolvedValueOnce(pending)
+      .mockResolvedValueOnce(saved);
+    api.reviewNotaryOpening
+      .mockRejectedValueOnce(new ApiError('offline', 0, 'NETWORK_ERROR'))
+      .mockResolvedValueOnce({});
+    const wrapper = await mountPage();
+    await wrapper.get('[data-test="opening-review-result"]').setValue(true);
+    await wrapper.get('[data-test="opening-review-form"]').trigger('submit');
+    await flushPromises();
+    expect(wrapper.text()).toContain('提交结果暂时未知');
+    expect(
+      wrapper.findAll('[data-test^="opening-review-result"]:checked'),
+    ).toHaveLength(1);
+    await wrapper.get('[data-test="opening-review-form"]').trigger('submit');
+    await flushPromises();
+    expect(api.reviewNotaryOpening.mock.calls[1]?.[2]).toBe(
+      api.reviewNotaryOpening.mock.calls[0]?.[2],
+    );
+    expect(wrapper.get('[data-test="opening-review-record"]').text()).toContain(
+      '确认侵权',
+    );
+  });
+
+  it.each([
+    ['VERSION_CONFLICT', '事项状态或版本已变化'],
+    ['INVALID_STATE', '事项状态或版本已变化'],
+    ['IDEMPOTENCY_CONFLICT', '审核请求与已提交内容冲突'],
+    ['ACTION_FORBIDDEN', '当前账号无权审核此事项'],
+    ['RESOURCE_NOT_FOUND', '事项不存在或当前不可访问'],
+    ['TIMEOUT', '提交结果暂时未知'],
+  ])(
+    'maps opening review error %s to stable feedback',
+    async (code, message) => {
+      const pending = {
+        ...matter,
+        stage: 'UNBOX_REVIEW',
+        version: 4,
+        capabilities: {
+          recordEvidence: false,
+          recordOpening: false,
+          reviewOpening: true,
+        },
+        evidence: firstEvidence,
+        opening: {
+          senderName: null,
+          senderPhone: null,
+          senderAddress: null,
+          recordedAt: '2026-09-24T02:00:00.000Z',
+          recordedByUserId: 'user-1',
+          photos: [
+            {
+              materialId: 'photo-1',
+              contentVersionId: 'photo-v1',
+              originalFilename: '开箱.jpg',
+              mimeType: 'image/jpeg',
+            },
+          ],
+        },
+        reviewDecision: null,
+      };
+      api.getNotaryMatter.mockResolvedValue(pending);
+      api.reviewNotaryOpening.mockRejectedValue(new ApiError('raw', 409, code));
+      const wrapper = await mountPage();
+      await wrapper.get('[data-test="opening-review-result"]').setValue(true);
+      await wrapper.get('[data-test="opening-review-form"]').trigger('submit');
+      await flushPromises();
+      expect(wrapper.text()).toContain(message);
+    },
+  );
+
   it('marks every initially required evidence choice before submission', async () => {
     const wrapper = await mountPage();
     expect(wrapper.findAll('.required-mark')).toHaveLength(4);

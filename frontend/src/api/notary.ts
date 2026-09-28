@@ -16,6 +16,8 @@ export const notaryListStages = [
   'PENDING_EVIDENCE',
   'WAITING_UNBOX',
   'UNBOX_REVIEW',
+  'ISSUANCE_DECISION',
+  'ARCHIVED',
 ] as const;
 export type NotaryListStage = (typeof notaryListStages)[number];
 export type NotaryMatterListItem = {
@@ -116,6 +118,27 @@ export type RecordNotaryOpeningResult = {
   };
 };
 
+export type OpeningReviewResult = 'INFRINGEMENT' | 'NO_INFRINGEMENT';
+export type NotaryOpeningReviewDecision = {
+  result: OpeningReviewResult;
+  reason: string | null;
+  actorKind: 'INTERNAL' | 'CLIENT';
+  actorDisplayName: string;
+  decidedAt: string;
+  archivedAt: string | null;
+};
+export type ReviewNotaryOpeningInput = {
+  result: OpeningReviewResult;
+  reason?: string;
+  expectedVersion: number;
+};
+export type ReviewNotaryOpeningResponse = {
+  id: string;
+  stage: 'ISSUANCE_DECISION' | 'ARCHIVED';
+  version: number;
+  reviewDecision: NotaryOpeningReviewDecision;
+};
+
 type RecordNotaryEvidenceBaseInput = {
   evidenceAt: string;
   logistics: Array<Omit<NotaryEvidenceLogistics, 'id'>>;
@@ -136,11 +159,21 @@ export type RecordNotaryEvidenceResult = {
 };
 
 export type NotaryMatterDetail = Omit<NotaryMatterResult, 'stage'> & {
-  stage: 'PENDING_EVIDENCE' | 'WAITING_UNBOX' | 'UNBOX_REVIEW';
+  stage:
+    | 'PENDING_EVIDENCE'
+    | 'WAITING_UNBOX'
+    | 'UNBOX_REVIEW'
+    | 'ISSUANCE_DECISION'
+    | 'ARCHIVED';
   version: number;
-  capabilities: { recordEvidence: boolean; recordOpening: boolean };
+  capabilities: {
+    recordEvidence: boolean;
+    recordOpening: boolean;
+    reviewOpening: boolean;
+  };
   evidence: NotaryEvidence | null;
   opening: NotaryOpening | null;
+  reviewDecision: NotaryOpeningReviewDecision | null;
   sourceLead: { id: string; businessNo: string };
   selectedProducts: LeadProduct[];
   selectedMaterials: Array<{
@@ -228,6 +261,63 @@ function isCalendarDate(value: string): boolean {
 
 function isRecord(value: unknown): value is Record<string, unknown> {
   return typeof value === 'object' && value !== null && !Array.isArray(value);
+}
+
+function exactKeys(
+  value: Record<string, unknown>,
+  keys: readonly string[],
+): boolean {
+  return (
+    Object.keys(value).length === keys.length &&
+    keys.every((key) => key in value)
+  );
+}
+
+function isReviewDecision(
+  value: unknown,
+): value is NotaryOpeningReviewDecision {
+  return (
+    isRecord(value) &&
+    exactKeys(value, [
+      'result',
+      'reason',
+      'actorKind',
+      'actorDisplayName',
+      'decidedAt',
+      'archivedAt',
+    ]) &&
+    (value.result === 'INFRINGEMENT' || value.result === 'NO_INFRINGEMENT') &&
+    (value.reason === null ||
+      (typeof value.reason === 'string' && value.reason.trim().length > 0)) &&
+    (value.actorKind === 'INTERNAL' || value.actorKind === 'CLIENT') &&
+    typeof value.actorDisplayName === 'string' &&
+    value.actorDisplayName.trim().length > 0 &&
+    typeof value.decidedAt === 'string' &&
+    !Number.isNaN(Date.parse(value.decidedAt)) &&
+    (value.archivedAt === null ||
+      (typeof value.archivedAt === 'string' &&
+        !Number.isNaN(Date.parse(value.archivedAt))))
+  );
+}
+
+function decisionMatchesStage(
+  stage: unknown,
+  decision: NotaryOpeningReviewDecision | null,
+): boolean {
+  if (stage === 'UNBOX_REVIEW') return decision === null;
+  if (stage === 'ISSUANCE_DECISION')
+    return (
+      decision?.result === 'INFRINGEMENT' &&
+      decision.reason === null &&
+      decision.archivedAt === null
+    );
+  if (stage === 'ARCHIVED')
+    return (
+      decision?.result === 'NO_INFRINGEMENT' &&
+      decision.reason !== null &&
+      decision.archivedAt === decision.decidedAt
+    );
+  return decision === null;
 }
 
 function invalidResponse(): ApiError {
@@ -324,19 +414,44 @@ function isMatterDetail(value: unknown): value is NotaryMatterDetail {
     (detail.version as number) >= 1 &&
     (detail.stage === 'PENDING_EVIDENCE' ||
       detail.stage === 'WAITING_UNBOX' ||
-      detail.stage === 'UNBOX_REVIEW') &&
+      detail.stage === 'UNBOX_REVIEW' ||
+      detail.stage === 'ISSUANCE_DECISION' ||
+      detail.stage === 'ARCHIVED') &&
     isRecord(detail.capabilities) &&
+    exactKeys(detail.capabilities, [
+      'recordEvidence',
+      'recordOpening',
+      'reviewOpening',
+    ]) &&
     typeof detail.capabilities.recordEvidence === 'boolean' &&
     typeof detail.capabilities.recordOpening === 'boolean' &&
+    typeof detail.capabilities.reviewOpening === 'boolean' &&
     (detail.evidence === null || isEvidence(detail.evidence)) &&
     (detail.opening === null || isOpening(detail.opening)) &&
+    (detail.reviewDecision === null ||
+      isReviewDecision(detail.reviewDecision)) &&
+    decisionMatchesStage(
+      detail.stage,
+      detail.reviewDecision as NotaryOpeningReviewDecision | null,
+    ) &&
     (detail.stage === 'PENDING_EVIDENCE'
       ? detail.evidence === null && detail.opening === null
       : detail.evidence !== null &&
         detail.capabilities.recordEvidence === false) &&
+    (detail.stage === 'PENDING_EVIDENCE' || detail.stage === 'WAITING_UNBOX'
+      ? detail.opening === null
+      : detail.opening !== null) &&
     (detail.stage === 'UNBOX_REVIEW'
-      ? detail.opening !== null && detail.capabilities.recordOpening === false
-      : detail.opening === null) &&
+      ? detail.capabilities.recordOpening === false
+      : true) &&
+    (detail.stage === 'ISSUANCE_DECISION' || detail.stage === 'ARCHIVED'
+      ? detail.opening !== null &&
+        detail.capabilities.reviewOpening === false &&
+        detail.capabilities.recordOpening === false &&
+        detail.capabilities.recordEvidence === false
+      : true) &&
+    (detail.stage === 'UNBOX_REVIEW' ||
+      detail.capabilities.reviewOpening === false) &&
     (detail.stage !== 'PENDING_EVIDENCE' ||
       detail.capabilities.recordOpening === false) &&
     isRecord(sourceLead) &&
@@ -419,6 +534,36 @@ function isRecordEvidenceResult(
   );
 }
 
+function isReviewResponse(
+  value: unknown,
+  id: string,
+  input: ReviewNotaryOpeningInput,
+): value is ReviewNotaryOpeningResponse {
+  if (
+    !isRecord(value) ||
+    !exactKeys(value, ['id', 'stage', 'version', 'reviewDecision']) ||
+    value.id !== id ||
+    (value.stage !== 'ISSUANCE_DECISION' && value.stage !== 'ARCHIVED') ||
+    !Number.isInteger(value.version) ||
+    value.version !== input.expectedVersion + 1 ||
+    !isReviewDecision(value.reviewDecision)
+  )
+    return false;
+  const decision = value.reviewDecision;
+  const reason =
+    input.result === 'NO_INFRINGEMENT' ? (input.reason?.trim() ?? '') : null;
+  return (
+    decision.actorKind === 'INTERNAL' &&
+    decision.actorKind === 'INTERNAL' &&
+    decision.result === input.result &&
+    decision.reason === reason &&
+    (value.stage === 'ISSUANCE_DECISION'
+      ? input.result === 'INFRINGEMENT' && decision.archivedAt === null
+      : input.result === 'NO_INFRINGEMENT' &&
+        decision.archivedAt === decision.decidedAt)
+  );
+}
+
 export async function listNotaryOffices(
   options: RequestOptions = {},
 ): Promise<NotaryOfficeList> {
@@ -494,6 +639,34 @@ export async function getNotaryMatter(
     options,
   );
   if (!isMatterDetail(data)) throw invalidResponse();
+  return data;
+}
+
+export async function reviewNotaryOpening(
+  id: string,
+  input: ReviewNotaryOpeningInput,
+  idempotencyKey: string,
+): Promise<ReviewNotaryOpeningResponse> {
+  const reason = input.reason?.trim();
+  if (
+    !Number.isInteger(input.expectedVersion) ||
+    input.expectedVersion < 1 ||
+    (input.result !== 'INFRINGEMENT' && input.result !== 'NO_INFRINGEMENT') ||
+    (input.result === 'NO_INFRINGEMENT' && (!reason || reason.length > 2000)) ||
+    idempotencyKey.trim().length === 0
+  )
+    throw new ApiError('开箱审核信息无效', 400, 'VALIDATION_ERROR');
+  const body = {
+    result: input.result,
+    ...(input.result === 'NO_INFRINGEMENT' ? { reason } : {}),
+    expectedVersion: input.expectedVersion,
+  };
+  const data = await requestJson(
+    `/notary-matters/${encodeURIComponent(id)}/opening-review`,
+    { method: 'POST', headers: { 'Idempotency-Key': idempotencyKey }, body },
+  );
+  if (!isReviewResponse(data, id, { ...input, ...(reason ? { reason } : {}) }))
+    throw invalidResponse();
   return data;
 }
 

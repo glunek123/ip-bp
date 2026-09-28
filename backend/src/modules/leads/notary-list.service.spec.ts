@@ -29,6 +29,8 @@ function fixture() {
     groupBy: jest.fn().mockResolvedValue([
       { stage: 'PENDING_EVIDENCE', _count: { _all: 2 } },
       { stage: 'WAITING_UNBOX', _count: { _all: 1 } },
+      { stage: 'ISSUANCE_DECISION', _count: { _all: 3 } },
+      { stage: 'ARCHIVED', _count: { _all: 4 } },
     ]),
   };
   const access = {
@@ -73,7 +75,13 @@ describe('NotaryListService', () => {
       total: 1,
       page: 2,
       pageSize: 20,
-      counts: { PENDING_EVIDENCE: 2, WAITING_UNBOX: 1, UNBOX_REVIEW: 0 },
+      counts: {
+        PENDING_EVIDENCE: 2,
+        WAITING_UNBOX: 1,
+        UNBOX_REVIEW: 0,
+        ISSUANCE_DECISION: 3,
+        ARCHIVED: 4,
+      },
     });
   });
 

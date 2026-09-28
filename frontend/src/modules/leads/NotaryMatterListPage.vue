@@ -13,6 +13,8 @@ const stageLabels: Record<NotaryListStage, string> = {
   PENDING_EVIDENCE: '待取证',
   WAITING_UNBOX: '待取件开箱',
   UNBOX_REVIEW: '开箱待审核',
+  ISSUANCE_DECISION: '开箱待确认',
+  ARCHIVED: '已归档',
 };
 const route = useRoute();
 const router = useRouter();

@@ -16,6 +16,7 @@ import {
   listNotaryMatters,
   recordNotaryOpening,
   recordNotaryEvidence,
+  reviewNotaryOpening,
 } from './notary';
 
 const matter = {
@@ -26,9 +27,14 @@ const matter = {
   leadVersion: 4,
   stage: 'PENDING_EVIDENCE',
   version: 2,
-  capabilities: { recordEvidence: true, recordOpening: false },
+  capabilities: {
+    recordEvidence: true,
+    recordOpening: false,
+    reviewOpening: false,
+  },
   evidence: null,
   opening: null,
+  reviewDecision: null,
   notaryOffice: { id: 'office-1', name: '广州市南方公证处' },
   selectedProductIds: ['product-1'],
   selectedContentVersionIds: ['content-1'],
@@ -55,7 +61,13 @@ describe('notary API', () => {
       total: 1,
       page: 2,
       pageSize: 20,
-      counts: { PENDING_EVIDENCE: 2, WAITING_UNBOX: 1, UNBOX_REVIEW: 0 },
+      counts: {
+        PENDING_EVIDENCE: 2,
+        WAITING_UNBOX: 1,
+        UNBOX_REVIEW: 0,
+        ISSUANCE_DECISION: 0,
+        ARCHIVED: 0,
+      },
     };
     http.getJson.mockResolvedValue(result);
     await expect(
@@ -72,6 +84,163 @@ describe('notary API', () => {
     await expect(listNotaryMatters()).rejects.toMatchObject({
       code: 'INVALID_RESPONSE',
     });
+  });
+
+  it('decodes persisted opening decisions and the new workflow stages strictly', async () => {
+    const reviewed = {
+      ...matter,
+      stage: 'ISSUANCE_DECISION',
+      version: 5,
+      capabilities: {
+        recordEvidence: false,
+        recordOpening: false,
+        reviewOpening: false,
+      },
+      evidence: {
+        evidenceAt: '2026-09-24',
+        sampleFeeState: 'PENDING',
+        sampleFeeAmount: null,
+        recordedAt: '2026-09-24T01:00:00.000Z',
+        recordedByUserId: 'user-1',
+        logistics: [
+          {
+            id: 'logistics-1',
+            companyState: 'NONE',
+            companyValue: null,
+            trackingState: 'NONE',
+            trackingValue: null,
+          },
+        ],
+      },
+      opening: {
+        senderName: null,
+        senderPhone: null,
+        senderAddress: null,
+        recordedAt: '2026-09-24T02:00:00.000Z',
+        recordedByUserId: 'user-1',
+        photos: [
+          {
+            materialId: 'photo-1',
+            contentVersionId: 'photo-v1',
+            originalFilename: '开箱.jpg',
+            mimeType: 'image/jpeg',
+          },
+        ],
+      },
+      reviewDecision: {
+        result: 'INFRINGEMENT',
+        reason: null,
+        actorKind: 'INTERNAL',
+        actorDisplayName: '运营甲',
+        decidedAt: '2026-09-24T03:00:00.000Z',
+        archivedAt: null,
+      },
+      sourceLead: { id: 'lead-1', businessNo: 'LD-001' },
+      selectedProducts: [
+        {
+          id: 'product-1',
+          position: 1,
+          url: null,
+          title: '商品甲',
+          quantity: 1,
+          unitPrice: '9.00',
+          commentCount: 0,
+          estimatedAmount: '9.00',
+        },
+      ],
+      selectedMaterials: [
+        {
+          materialId: 'material-1',
+          contentVersionId: 'content-1',
+          originalFilename: '截图.png',
+          mimeType: 'image/png',
+        },
+      ],
+    };
+    http.getJson.mockResolvedValue(reviewed);
+    await expect(getNotaryMatter('matter-1')).resolves.toMatchObject({
+      stage: 'ISSUANCE_DECISION',
+      reviewDecision: { result: 'INFRINGEMENT' },
+    });
+
+    http.getJson.mockResolvedValueOnce({
+      ...reviewed,
+      reviewDecision: { ...reviewed.reviewDecision, result: 'UNKNOWN' },
+    });
+    await expect(getNotaryMatter('matter-1')).rejects.toMatchObject({
+      code: 'INVALID_RESPONSE',
+    });
+    http.getJson.mockResolvedValueOnce({
+      ...reviewed,
+      stage: 'ARCHIVED',
+      reviewDecision: {
+        ...reviewed.reviewDecision,
+        result: 'NO_INFRINGEMENT',
+        reason: null,
+        archivedAt: '2026-09-24T03:00:00.000Z',
+      },
+    });
+    await expect(getNotaryMatter('matter-1')).rejects.toMatchObject({
+      code: 'INVALID_RESPONSE',
+    });
+  });
+
+  it('submits an explicit opening result with expected version and idempotency key', async () => {
+    const result = {
+      id: 'matter-1',
+      stage: 'ARCHIVED',
+      version: 6,
+      reviewDecision: {
+        result: 'NO_INFRINGEMENT',
+        reason: '未发现侵权',
+        actorKind: 'INTERNAL',
+        actorDisplayName: '运营甲',
+        decidedAt: '2026-09-24T03:00:00.000Z',
+        archivedAt: '2026-09-24T03:00:00.000Z',
+      },
+    };
+    http.requestJson.mockResolvedValue(result);
+    await expect(
+      reviewNotaryOpening(
+        'matter-1',
+        {
+          result: 'NO_INFRINGEMENT',
+          reason: ' 未发现侵权 ',
+          expectedVersion: 5,
+        },
+        'key-1',
+      ),
+    ).resolves.toEqual(result);
+    expect(http.requestJson).toHaveBeenCalledWith(
+      '/notary-matters/matter-1/opening-review',
+      {
+        method: 'POST',
+        headers: { 'Idempotency-Key': 'key-1' },
+        body: {
+          result: 'NO_INFRINGEMENT',
+          reason: '未发现侵权',
+          expectedVersion: 5,
+        },
+      },
+    );
+    await expect(
+      reviewNotaryOpening(
+        'matter-1',
+        { result: 'NO_INFRINGEMENT', reason: ' ', expectedVersion: 5 },
+        'key-2',
+      ),
+    ).rejects.toMatchObject({ code: 'VALIDATION_ERROR' });
+    http.requestJson.mockResolvedValueOnce({
+      ...result,
+      reviewDecision: { ...result.reviewDecision, actorKind: 'CLIENT' },
+    });
+    await expect(
+      reviewNotaryOpening(
+        'matter-1',
+        { result: 'NO_INFRINGEMENT', reason: '未发现侵权', expectedVersion: 5 },
+        'key-2',
+      ),
+    ).rejects.toMatchObject({ code: 'INVALID_RESPONSE' });
   });
   it('lists only validated active notary offices with create capability', async () => {
     const result = {
@@ -202,7 +371,12 @@ describe('notary API', () => {
     http.getJson.mockResolvedValue({
       ...matter,
       version: 2,
-      capabilities: { recordEvidence: true, recordOpening: false },
+      capabilities: {
+        recordEvidence: true,
+        recordOpening: false,
+        reviewOpening: false,
+      },
+      reviewDecision: null,
       evidence: null,
       opening: null,
       sourceLead: { id: 'lead-1', businessNo: 'LD-20260921-001' },
@@ -229,14 +403,24 @@ describe('notary API', () => {
     });
     await expect(getNotaryMatter('matter-1')).resolves.toMatchObject({
       version: 2,
-      capabilities: { recordEvidence: true, recordOpening: false },
+      capabilities: {
+        recordEvidence: true,
+        recordOpening: false,
+        reviewOpening: false,
+      },
+      reviewDecision: null,
       evidence: null,
     });
     http.getJson.mockResolvedValueOnce({
       ...matter,
       version: 3,
       stage: 'WAITING_UNBOX',
-      capabilities: { recordEvidence: false, recordOpening: false },
+      capabilities: {
+        recordEvidence: false,
+        recordOpening: false,
+        reviewOpening: false,
+      },
+      reviewDecision: null,
       evidence: {
         evidenceAt: '2026-09-24',
         sampleFeeState: 'PENDING',
@@ -294,7 +478,12 @@ describe('notary API', () => {
       ...matter,
       stage: 'UNBOX_REVIEW',
       version: 4,
-      capabilities: { recordEvidence: false, recordOpening: false },
+      capabilities: {
+        recordEvidence: false,
+        recordOpening: false,
+        reviewOpening: false,
+      },
+      reviewDecision: null,
       evidence: {
         evidenceAt: '2026-09-24',
         sampleFeeState: 'PENDING',
@@ -342,7 +531,12 @@ describe('notary API', () => {
     http.getJson.mockResolvedValueOnce({
       ...matter,
       stage: 'UNBOX_REVIEW',
-      capabilities: { recordEvidence: false, recordOpening: false },
+      capabilities: {
+        recordEvidence: false,
+        recordOpening: false,
+        reviewOpening: false,
+      },
+      reviewDecision: null,
       opening: { ...opening, photos: [{ ...opening.photos[0], mimeType: 42 }] },
       sourceLead: { id: 'lead-1', businessNo: 'LD-20260921-001' },
       selectedProducts: [],

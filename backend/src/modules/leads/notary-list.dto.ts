@@ -6,6 +6,8 @@ export const NOTARY_LIST_STAGES = [
   'PENDING_EVIDENCE',
   'WAITING_UNBOX',
   'UNBOX_REVIEW',
+  'ISSUANCE_DECISION',
+  'ARCHIVED',
 ] as const;
 export type NotaryListStage = (typeof NOTARY_LIST_STAGES)[number];
 

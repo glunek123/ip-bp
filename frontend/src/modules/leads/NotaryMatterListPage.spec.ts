@@ -23,7 +23,13 @@ const result = {
   total: 1,
   page: 1,
   pageSize: 20,
-  counts: { PENDING_EVIDENCE: 1, WAITING_UNBOX: 0, UNBOX_REVIEW: 0 },
+  counts: {
+    PENDING_EVIDENCE: 1,
+    WAITING_UNBOX: 0,
+    UNBOX_REVIEW: 0,
+    ISSUANCE_DECISION: 0,
+    ARCHIVED: 0,
+  },
 };
 
 async function mountPage(path: string) {
@@ -95,5 +101,21 @@ describe('NotaryMatterListPage', () => {
       expect.any(Object),
       'PENDING_EVIDENCE',
     );
+  });
+
+  it('filters and labels the newly added archived stage', async () => {
+    api.listNotaryMatters.mockResolvedValue({
+      ...result,
+      items: [{ ...result.items[0], stage: 'ARCHIVED' }],
+      counts: { ...result.counts, ARCHIVED: 1 },
+    });
+    const { wrapper } = await mountPage('/notary-matters?stage=ARCHIVED');
+    expect(api.listNotaryMatters).toHaveBeenCalledWith(
+      1,
+      20,
+      expect.objectContaining({ signal: expect.any(AbortSignal) }),
+      'ARCHIVED',
+    );
+    expect(wrapper.get('[data-test="matter-row"]').text()).toContain('已归档');
   });
 });

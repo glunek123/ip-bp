@@ -16,6 +16,7 @@ import {
   getNotaryMatter,
   recordNotaryEvidence,
   recordNotaryOpening,
+  reviewNotaryOpening,
   type NotaryMatterDetail,
   type RecordNotaryEvidenceInput,
   type RecordNotaryOpeningInput,
@@ -57,12 +58,20 @@ const openingError = ref('');
 const openingSuccess = ref('');
 const uploadingOpeningPhotos = ref(false);
 const submittingOpening = ref(false);
+const reviewResult = ref<'' | 'INFRINGEMENT' | 'NO_INFRINGEMENT'>('');
+const reviewReason = ref('');
+const reviewError = ref('');
+const reviewSuccess = ref('');
+const submittingReview = ref(false);
+const reviewRetryLocked = ref(false);
 const deletingOpeningMaterialId = ref<string | null>(null);
 const refreshingOpeningPhotos = ref(false);
 let evidenceIdempotencyKey = '';
 let evidenceSubmissionFingerprint = '';
 let openingIdempotencyKey = '';
 let openingSubmissionFingerprint = '';
+let reviewIdempotencyKey = '';
+let reviewSubmissionFingerprint = '';
 let request: AbortController | undefined;
 let nextOpeningPhotoLocalId = 1;
 
@@ -79,6 +88,13 @@ function hasSavedEvidence(value: NotaryMatterDetail | undefined): boolean {
 
 function hasSavedOpening(value: NotaryMatterDetail | undefined): boolean {
   return value?.stage === 'UNBOX_REVIEW' && value.opening !== null;
+}
+
+function isReviewed(value: NotaryMatterDetail | undefined): boolean {
+  return (
+    (value?.stage === 'ISSUANCE_DECISION' || value?.stage === 'ARCHIVED') &&
+    value.reviewDecision !== null
+  );
 }
 
 async function load(): Promise<boolean> {
@@ -386,6 +402,95 @@ async function downloadMaterial(
   }
 }
 
+function makeReviewKey(): string {
+  return (
+    globalThis.crypto?.randomUUID?.() ??
+    `notary-review-${Date.now()}-${Math.random().toString(16).slice(2)}`
+  );
+}
+
+async function submitOpeningReview(): Promise<void> {
+  reviewError.value = '';
+  reviewSuccess.value = '';
+  const current = matter.value;
+  const reason = reviewReason.value.trim();
+  if (
+    !current?.capabilities.reviewOpening ||
+    current.stage !== 'UNBOX_REVIEW' ||
+    submittingReview.value
+  )
+    return;
+  if (!reviewResult.value) {
+    reviewError.value = '请选择审核结论';
+    return;
+  }
+  if (reviewResult.value === 'NO_INFRINGEMENT' && !reason) {
+    reviewError.value = '请填写不侵权原因';
+    return;
+  }
+  if ((reviewResult.value === 'NO_INFRINGEMENT' ? reason : '').length > 2000) {
+    reviewError.value = '不侵权原因不能超过 2000 字';
+    return;
+  }
+  const input = {
+    result: reviewResult.value,
+    ...(reviewResult.value === 'NO_INFRINGEMENT' ? { reason } : {}),
+    expectedVersion: current.version,
+  } as const;
+  const fingerprint = JSON.stringify(input);
+  if (fingerprint !== reviewSubmissionFingerprint) {
+    reviewSubmissionFingerprint = fingerprint;
+    reviewIdempotencyKey = makeReviewKey();
+  }
+  submittingReview.value = true;
+  try {
+    await reviewNotaryOpening(current.id, input, reviewIdempotencyKey);
+    notifyWorkflowChanged();
+    const loaded = await load();
+    if (
+      loaded &&
+      isReviewed(matter.value) &&
+      matter.value?.reviewDecision?.result === input.result
+    ) {
+      reviewSuccess.value = '审核结论已保存。';
+      reviewIdempotencyKey = '';
+      reviewSubmissionFingerprint = '';
+      reviewRetryLocked.value = false;
+    } else {
+      reviewRetryLocked.value = true;
+      reviewError.value = '审核已提交，但暂时无法读取保存结果，请刷新确认。';
+    }
+  } catch (error) {
+    const code = error instanceof ApiError ? error.code : '';
+    if (code === 'VERSION_CONFLICT' || code === 'INVALID_STATE') {
+      reviewIdempotencyKey = '';
+      reviewSubmissionFingerprint = '';
+      reviewRetryLocked.value = false;
+      reviewError.value = '事项状态或版本已变化，请刷新查看最新结论。';
+    } else if (code === 'IDEMPOTENCY_CONFLICT') {
+      reviewIdempotencyKey = '';
+      reviewSubmissionFingerprint = '';
+      reviewRetryLocked.value = false;
+      reviewError.value = '本次审核请求与已提交内容冲突，请刷新后重新审核。';
+    } else if (code === 'ACTION_FORBIDDEN' || code === 'FORBIDDEN') {
+      reviewRetryLocked.value = true;
+      reviewError.value = '当前账号无权审核此事项，请刷新权限后重试。';
+    } else if (code === 'RESOURCE_NOT_FOUND' || code === 'NOT_FOUND') {
+      reviewRetryLocked.value = true;
+      reviewError.value = '事项不存在或当前不可访问，请刷新列表。';
+    } else if (code === 'NETWORK_ERROR' || code === 'TIMEOUT') {
+      reviewRetryLocked.value = true;
+      reviewError.value =
+        '提交结果暂时未知；选择、原因和请求键已锁定，可安全重试或刷新查看结果。';
+    } else {
+      reviewRetryLocked.value = true;
+      reviewError.value = '开箱审核失败，请稍后重试或刷新查看结果。';
+    }
+  } finally {
+    submittingReview.value = false;
+  }
+}
+
 function addLogisticsRow(): void {
   logisticsRows.value.push({
     companyState: '',
@@ -511,9 +616,13 @@ onBeforeUnmount(() => request?.abort());
             <span class="pill">{{
               matter.stage === 'UNBOX_REVIEW'
                 ? '开箱审核中'
-                : matter.stage === 'WAITING_UNBOX'
-                  ? '等待开箱'
-                  : '待公证处取证'
+                : matter.stage === 'ISSUANCE_DECISION'
+                  ? '开箱待确认'
+                  : matter.stage === 'ARCHIVED'
+                    ? '已归档'
+                    : matter.stage === 'WAITING_UNBOX'
+                      ? '等待开箱'
+                      : '待公证处取证'
             }}</span>
             <h1>{{ matter.businessNo }}</h1>
           </div>
@@ -743,6 +852,94 @@ onBeforeUnmount(() => request?.abort());
           <p v-if="downloadError" class="field-error" role="alert">
             {{ downloadError }}
           </p>
+        </section>
+        <section
+          v-if="
+            matter.capabilities.reviewOpening && matter.stage === 'UNBOX_REVIEW'
+          "
+          class="demo-card demo-card--pad"
+          data-test="opening-review-section"
+        >
+          <h2 class="form-section-title">开箱审核</h2>
+          <p>请选择本批次的审核结论。</p>
+          <form
+            data-test="opening-review-form"
+            @submit.prevent="submitOpeningReview"
+          >
+            <p>确认侵权后进入开箱待确认，由运营决定是否出证。</p>
+            <p>不侵权将立即归档，普通入口不能撤回。</p>
+            <label>
+              <input
+                v-model="reviewResult"
+                data-test="opening-review-result"
+                type="radio"
+                name="opening-review-result"
+                value="INFRINGEMENT"
+                :disabled="submittingReview || reviewRetryLocked"
+              />
+              确认侵权
+            </label>
+            <label>
+              <input
+                v-model="reviewResult"
+                data-test="opening-review-result-no-infringement"
+                type="radio"
+                name="opening-review-result"
+                value="NO_INFRINGEMENT"
+                :disabled="submittingReview || reviewRetryLocked"
+              />
+              判定不侵权
+            </label>
+            <label v-if="reviewResult === 'NO_INFRINGEMENT'">
+              不侵权原因<RequiredFieldMark />
+              <textarea
+                v-model="reviewReason"
+                data-test="opening-review-reason"
+                maxlength="2000"
+                required
+                :disabled="submittingReview || reviewRetryLocked"
+              />
+            </label>
+            <p
+              v-if="reviewError"
+              class="field-error"
+              role="alert"
+              data-test="opening-review-reason-error"
+            >
+              {{ reviewError }}
+            </p>
+            <p v-if="reviewSuccess" role="status">{{ reviewSuccess }}</p>
+            <ElButton
+              data-test="opening-review-submit"
+              native-type="submit"
+              :loading="submittingReview"
+              :disabled="submittingReview || reviewRetryLocked"
+              >提交审核结论</ElButton
+            >
+          </form>
+        </section>
+        <section
+          v-if="isReviewed(matter) && matter.reviewDecision"
+          class="demo-card demo-card--pad"
+          data-test="opening-review-record"
+        >
+          <h2 class="form-section-title">开箱审核记录</h2>
+          <p>
+            审核结论：{{
+              matter.reviewDecision.result === 'INFRINGEMENT'
+                ? '确认侵权'
+                : '判定不侵权'
+            }}
+          </p>
+          <p>审核人：{{ matter.reviewDecision.actorDisplayName }}</p>
+          <p>审核时间：{{ formatTime(matter.reviewDecision.decidedAt) }}</p>
+          <p v-if="matter.reviewDecision.reason">
+            原因：{{ matter.reviewDecision.reason }}
+          </p>
+          <p v-if="matter.stage === 'ISSUANCE_DECISION'">
+            下一步：由运营决定是否出证。
+          </p>
+          <p v-else>该事项已归档，普通入口不能撤回。</p>
         </section>
         <section
           v-if="
