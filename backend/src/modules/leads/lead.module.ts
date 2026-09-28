@@ -21,6 +21,7 @@ import { NotaryOpeningService } from './notary-opening.service';
 import { NotaryOpeningReviewService } from './notary-opening-review.service';
 import { NotaryListController } from './notary-list.controller';
 import { NotaryListService } from './notary-list.service';
+import { NotaryOfficeAccountService } from './notary-office-account.service';
 
 @Module({
   imports: [AccessControlModule, AuthModule, DatabaseModule, MaterialModule],
@@ -41,6 +42,7 @@ import { NotaryListService } from './notary-list.service';
     NotaryOpeningService,
     NotaryOpeningReviewService,
     NotaryListService,
+    NotaryOfficeAccountService,
   ],
   exports: [LeadService, ClientLeadService, LeadNotaryService],
 })

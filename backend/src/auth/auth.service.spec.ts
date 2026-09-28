@@ -28,6 +28,7 @@ function createDatabase() {
     },
     departmentMembership: { findUnique: jest.fn() },
     customerAccountBinding: { findUnique: jest.fn() },
+    notaryOfficeAccountBinding: { findUnique: jest.fn() },
     $transaction: jest.fn(
       async (callback: (value: typeof transaction) => unknown) =>
         callback(transaction),
@@ -453,5 +454,101 @@ describe('AuthService', () => {
     );
 
     await expect(auth.resolveSession('token')).resolves.toBeNull();
+  });
+
+  it('logs a bound notary into an external-only session', async () => {
+    const database = createDatabase();
+    const office = {
+      id: '50000000-0000-4000-8000-000000000001',
+      name: '甲公证处',
+      departmentId: department.id,
+      status: 'ACTIVE',
+    };
+    database.transaction.localCredential.findUnique.mockResolvedValue({
+      userId,
+      username: 'notary.a',
+      passwordHash: await hashPassword('correct horse battery staple'),
+      user: {
+        id: userId,
+        displayName: '公证员',
+        active: true,
+        accountType: 'NOTARY',
+        authorizationRevision: 2,
+        memberships: [],
+        clientBinding: null,
+        notaryBinding: {
+          active: true,
+          departmentId: department.id,
+          notaryOffice: office,
+        },
+      },
+    });
+    const auth = new AuthService(
+      database as never,
+      { getOrThrow: () => 'a'.repeat(64) } as unknown as ConfigService,
+    );
+    const result = await auth.login(
+      { username: 'notary.a', password: 'correct horse battery staple' },
+      '127.0.0.1',
+    );
+    expect(result.view).toMatchObject({
+      principalType: 'NOTARY',
+      department: null,
+      departments: [],
+      customer: null,
+      notaryOffice: { id: office.id, name: office.name },
+    });
+    expect(database.transaction.authSession.create).toHaveBeenCalledWith({
+      data: expect.objectContaining({ departmentId: department.id }),
+    });
+  });
+
+  it('rejects a notary session when its office is deactivated', async () => {
+    const database = createDatabase();
+    database.authSession.findUnique.mockResolvedValue({
+      id: '30000000-0000-4000-8000-000000000001',
+      userId,
+      departmentId: department.id,
+      csrfDigest: 'a'.repeat(64),
+      revokedAt: null,
+      expiresAt: new Date(Date.now() + 10_000),
+      user: { active: true, accountType: 'NOTARY', authorizationRevision: 1 },
+    });
+    database.notaryOfficeAccountBinding.findUnique.mockResolvedValue({
+      userId,
+      departmentId: department.id,
+      active: true,
+      notaryOffice: {
+        id: '50000000-0000-4000-8000-000000000001',
+        departmentId: department.id,
+        status: 'INACTIVE',
+      },
+    });
+    const auth = new AuthService(
+      database as never,
+      { getOrThrow: () => 'a'.repeat(64) } as unknown as ConfigService,
+    );
+    await expect(auth.resolveSession('token')).resolves.toBeNull();
+    expect(database.departmentMembership.findUnique).not.toHaveBeenCalled();
+  });
+
+  it('re-reads the active notary binding on every request', async () => {
+    const database = createDatabase();
+    const officeId = '50000000-0000-4000-8000-000000000001';
+    database.authSession.findUnique.mockResolvedValue({
+      id: '30000000-0000-4000-8000-000000000001', userId,
+      departmentId: department.id, csrfDigest: 'a'.repeat(64), revokedAt: null,
+      expiresAt: new Date(Date.now() + 10_000),
+      user: { active: true, accountType: 'NOTARY', authorizationRevision: 3 },
+    });
+    database.notaryOfficeAccountBinding.findUnique.mockResolvedValue({
+      userId, departmentId: department.id, notaryOfficeId: officeId, active: true,
+      notaryOffice: { id: officeId, departmentId: department.id, status: 'ACTIVE' },
+    });
+    const auth = new AuthService(database as never, { getOrThrow: () => 'a'.repeat(64) } as unknown as ConfigService);
+    await expect(auth.resolveSession('token')).resolves.toMatchObject({
+      actor: { userId, departmentId: department.id, authorizationRevision: 3, notaryOfficeId: officeId },
+    });
+    expect(database.departmentMembership.findUnique).not.toHaveBeenCalled();
   });
 });

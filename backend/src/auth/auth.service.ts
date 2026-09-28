@@ -31,10 +31,11 @@ const DUMMY_PASSWORD_HASH =
 
 export type AuthSessionView = {
   user: { id: string; displayName: string; username: string };
-  principalType: 'INTERNAL' | 'CLIENT';
+  principalType: 'INTERNAL' | 'CLIENT' | 'NOTARY';
   department: { id: string; name: string } | null;
   departments: Array<{ id: string; name: string }>;
   customer: { id: string; name: string } | null;
+  notaryOffice: { id: string; name: string } | null;
   authorizationRevision: number;
   expiresAt: string;
   csrfToken: string;
@@ -108,6 +109,7 @@ export class AuthService {
                   orderBy: { department: { name: 'asc' } },
                 },
                 clientBinding: { include: { customer: true } },
+                notaryBinding: { include: { notaryOffice: true } },
               },
             },
           },
@@ -129,6 +131,61 @@ export class AuthService {
           id: department.id,
           name: department.name,
         }));
+        if (credential.user.accountType === 'NOTARY') {
+          const binding = credential.user.notaryBinding;
+          if (
+            input.departmentId !== undefined ||
+            memberships.length !== 0 ||
+            credential.user.clientBinding != null ||
+            binding === null ||
+            !binding.active ||
+            binding.notaryOffice.status !== 'ACTIVE' ||
+            binding.notaryOffice.departmentId !== binding.departmentId
+          ) {
+            await this.recordFailure(transaction, usernameDigest, sourceDigest);
+            return { kind: 'failed' };
+          }
+          const sessionToken = createOpaqueToken();
+          const csrfToken = createOpaqueToken();
+          const expiresAt = new Date(Date.now() + SESSION_MS);
+          await transaction.authThrottle.deleteMany({
+            where: { kind: 'USERNAME', identifierDigest: usernameDigest },
+          });
+          await transaction.authSession.create({
+            data: {
+              tokenDigest: digestToken(sessionToken),
+              csrfDigest: digestToken(csrfToken),
+              userId: credential.userId,
+              departmentId: binding.departmentId,
+              authorizationRevision: credential.user.authorizationRevision,
+              expiresAt,
+            },
+          });
+          return {
+            kind: 'success',
+            result: {
+              sessionToken,
+              view: {
+                user: {
+                  id: credential.user.id,
+                  displayName: credential.user.displayName,
+                  username: credential.username,
+                },
+                principalType: 'NOTARY',
+                department: null,
+                departments: [],
+                customer: null,
+                notaryOffice: {
+                  id: binding.notaryOffice.id,
+                  name: binding.notaryOffice.name,
+                },
+                authorizationRevision: credential.user.authorizationRevision,
+                expiresAt: expiresAt.toISOString(),
+                csrfToken,
+              },
+            },
+          };
+        }
         if (credential.user.accountType === 'CLIENT') {
           const binding = credential.user.clientBinding;
           if (
@@ -173,6 +230,7 @@ export class AuthService {
                   id: binding.customer.id,
                   name: binding.customer.name,
                 },
+                notaryOffice: null,
                 authorizationRevision: credential.user.authorizationRevision,
                 expiresAt: expiresAt.toISOString(),
                 csrfToken,
@@ -226,6 +284,7 @@ export class AuthService {
               principalType: 'INTERNAL',
               departments,
               customer: null,
+              notaryOffice: null,
               authorizationRevision: credential.user.authorizationRevision,
               expiresAt: expiresAt.toISOString(),
               csrfToken,
@@ -276,6 +335,7 @@ export class AuthService {
     )
       return null;
     let clientCustomerId: string | undefined;
+    let notaryOfficeId: string | undefined;
     if (session.user.accountType === 'CLIENT') {
       const binding = await this.database.customerAccountBinding.findUnique({
         where: { userId: session.userId },
@@ -289,6 +349,22 @@ export class AuthService {
       )
         return null;
       clientCustomerId = binding.customer.id;
+    } else if (session.user.accountType === 'NOTARY') {
+      const binding = await this.database.notaryOfficeAccountBinding.findUnique(
+        {
+          where: { userId: session.userId },
+          include: { notaryOffice: true },
+        },
+      );
+      if (
+        binding === null ||
+        !binding.active ||
+        binding.departmentId !== session.departmentId ||
+        binding.notaryOffice.departmentId !== session.departmentId ||
+        binding.notaryOffice.status !== 'ACTIVE'
+      )
+        return null;
+      notaryOfficeId = binding.notaryOfficeId;
     } else {
       const membership = await this.database.departmentMembership.findUnique({
         where: {
@@ -313,6 +389,7 @@ export class AuthService {
         departmentId: session.departmentId,
         authorizationRevision: session.user.authorizationRevision,
         ...(clientCustomerId === undefined ? {} : { clientCustomerId }),
+        ...(notaryOfficeId === undefined ? {} : { notaryOfficeId }),
       },
       authentication: {
         kind: 'session',
@@ -342,6 +419,7 @@ export class AuthService {
               orderBy: { department: { name: 'asc' } },
             },
             clientBinding: { include: { customer: true } },
+            notaryBinding: { include: { notaryOffice: true } },
           },
         },
         department: true,
@@ -367,6 +445,36 @@ export class AuthService {
         department: null,
         departments: [],
         customer: { id: binding.customer.id, name: binding.customer.name },
+        notaryOffice: null,
+        authorizationRevision: session.user.authorizationRevision,
+        expiresAt: session.expiresAt.toISOString(),
+        csrfToken,
+      };
+    }
+    if (session.user.accountType === 'NOTARY') {
+      const binding = session.user.notaryBinding;
+      if (
+        binding === null ||
+        !binding.active ||
+        binding.departmentId !== session.departmentId ||
+        binding.notaryOffice.status !== 'ACTIVE' ||
+        binding.notaryOffice.departmentId !== session.departmentId
+      )
+        this.unauthorized();
+      return {
+        user: {
+          id: session.user.id,
+          displayName: session.user.displayName,
+          username: session.user.localCredential.username,
+        },
+        principalType: 'NOTARY',
+        department: null,
+        departments: [],
+        customer: null,
+        notaryOffice: {
+          id: binding.notaryOffice.id,
+          name: binding.notaryOffice.name,
+        },
         authorizationRevision: session.user.authorizationRevision,
         expiresAt: session.expiresAt.toISOString(),
         csrfToken,
@@ -385,6 +493,7 @@ export class AuthService {
         name: department.name,
       })),
       customer: null,
+      notaryOffice: null,
       authorizationRevision: session.user.authorizationRevision,
       expiresAt: session.expiresAt.toISOString(),
       csrfToken,

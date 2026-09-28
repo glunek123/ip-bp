@@ -16,12 +16,17 @@ class AuthCustomerResponseDto {
   @ApiProperty() name!: string;
 }
 
+class AuthNotaryOfficeResponseDto {
+  @ApiProperty({ format: 'uuid' }) id!: string;
+  @ApiProperty() name!: string;
+}
+
 export class AuthSessionResponseDto {
   @ApiProperty({ type: () => AuthUserResponseDto })
   user!: AuthUserResponseDto;
 
-  @ApiProperty({ enum: ['INTERNAL', 'CLIENT'] })
-  principalType!: 'INTERNAL' | 'CLIENT';
+  @ApiProperty({ enum: ['INTERNAL', 'CLIENT', 'NOTARY'] })
+  principalType!: 'INTERNAL' | 'CLIENT' | 'NOTARY';
 
   @ApiProperty({
     type: () => AuthDepartmentResponseDto,
@@ -34,6 +39,9 @@ export class AuthSessionResponseDto {
 
   @ApiProperty({ type: () => AuthCustomerResponseDto, nullable: true })
   customer!: AuthCustomerResponseDto | null;
+
+  @ApiProperty({ type: () => AuthNotaryOfficeResponseDto, nullable: true })
+  notaryOffice!: AuthNotaryOfficeResponseDto | null;
 
   @ApiProperty({ minimum: 1 }) authorizationRevision!: number;
   @ApiProperty({ format: 'date-time' }) expiresAt!: string;

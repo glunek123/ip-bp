@@ -32,13 +32,56 @@ import {
 import { LeadNotaryService } from './lead-notary.service';
 import { NotaryOpeningService } from './notary-opening.service';
 import { NotaryOpeningReviewService } from './notary-opening-review.service';
+import { NotaryOfficeAccountService } from './notary-office-account.service';
+import {
+  CreateNotaryOfficeAccountDto,
+  SetNotaryOfficeAccountStatusDto,
+} from './notary-office-account.dto';
+import {
+  NotaryOfficeAccountListResponseDto,
+  NotaryOfficeAccountResponseDto,
+} from './notary-office-account-response.dto';
+import { ApiOkResponse } from '@nestjs/swagger';
 
 @ApiTags('notary-offices')
 @ApiBearerAuth()
 @Controller('notary-offices')
 @UseGuards(ActorContextGuard, CsrfGuard)
 export class NotaryOfficeController {
-  constructor(private readonly notary: LeadNotaryService) {}
+  constructor(
+    private readonly notary: LeadNotaryService,
+    private readonly accounts: NotaryOfficeAccountService,
+  ) {}
+
+  @Get(':id/accounts')
+  @ApiOkResponse({ type: NotaryOfficeAccountListResponseDto })
+  listAccounts(
+    @CurrentActor() actor: ActorContext,
+    @Param('id', new ParseUUIDPipe()) id: string,
+  ) {
+    return this.accounts.list(actor, id);
+  }
+
+  @Post(':id/accounts')
+  @ApiCreatedResponse({ type: NotaryOfficeAccountResponseDto })
+  createAccount(
+    @CurrentActor() actor: ActorContext,
+    @Param('id', new ParseUUIDPipe()) id: string,
+    @Body() input: CreateNotaryOfficeAccountDto,
+  ) {
+    return this.accounts.create(actor, id, input);
+  }
+
+  @Patch(':id/accounts/:userId/status')
+  @ApiOkResponse({ type: NotaryOfficeAccountResponseDto })
+  setAccountStatus(
+    @CurrentActor() actor: ActorContext,
+    @Param('id', new ParseUUIDPipe()) id: string,
+    @Param('userId', new ParseUUIDPipe()) userId: string,
+    @Body() input: SetNotaryOfficeAccountStatusDto,
+  ) {
+    return this.accounts.setStatus(actor, id, userId, input.active);
+  }
 
   @Get()
   list(@CurrentActor() actor: ActorContext) {
