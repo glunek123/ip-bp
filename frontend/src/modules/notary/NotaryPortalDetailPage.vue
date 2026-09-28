@@ -21,6 +21,7 @@ const route = useRoute();
 const state = ref<'loading' | 'ready' | 'missing' | 'failed'>('loading');
 const matter = ref<NotaryPortalMatter>();
 const materials = ref<OwnerMaterial[]>([]);
+const excludedPhotoIds = ref<Set<string>>(new Set());
 const senderName = ref('');
 const senderPhone = ref('');
 const senderAddress = ref('');
@@ -57,6 +58,11 @@ const openingPhotos = computed(() =>
         ]
       : [];
   }),
+);
+const selectedOpeningPhotos = computed(() =>
+  openingPhotos.value.filter(
+    (photo) => !excludedPhotoIds.value.has(photo.contentVersionId),
+  ),
 );
 
 async function refreshMaterials(): Promise<void> {
@@ -125,13 +131,24 @@ async function uploadFiles(
     uploading.value = false;
   }
 }
+function updatePhotoSelection(
+  contentVersionId: string,
+  event: InstanceType<typeof globalThis.Event>,
+): void {
+  const input = event.target;
+  if (!(input instanceof globalThis.HTMLInputElement)) return;
+  const excluded = new Set(excludedPhotoIds.value);
+  if (input.checked) excluded.delete(contentVersionId);
+  else excluded.add(contentVersionId);
+  excludedPhotoIds.value = excluded;
+}
 async function submitOpening(): Promise<void> {
   if (
     !matter.value ||
     !matter.value.capabilities.recordOpening ||
     submitting.value ||
     uploading.value ||
-    openingPhotos.value.length === 0
+    selectedOpeningPhotos.value.length === 0
   )
     return;
   submitting.value = true;
@@ -140,7 +157,7 @@ async function submitOpening(): Promise<void> {
   try {
     const input: RecordNotaryOpeningInput = {
       expectedVersion: matter.value.version,
-      contentVersionIds: openingPhotos.value.map(
+      contentVersionIds: selectedOpeningPhotos.value.map(
         (photo) => photo.contentVersionId,
       ),
       ...(senderName.value.trim()
@@ -250,12 +267,26 @@ onBeforeUnmount(() => request?.abort());
               :disabled="uploading || submitting"
               @change="uploadFiles"
           /></label>
+          <p class="field-help">
+            默认勾选全部已上传照片。提交后仅勾选照片会被冻结在开箱记录中；未勾选照片不属于该记录。
+          </p>
           <p v-if="openingPhotos.length === 0" class="field-help">
             暂无已上传开箱照片。
           </p>
           <ul v-else>
             <li v-for="photo in openingPhotos" :key="photo.contentVersionId">
-              {{ photo.originalFilename }}（{{ photo.mimeType }}）
+              <label>
+                <input
+                  :data-test="`notary-opening-photo-select-${photo.contentVersionId}`"
+                  type="checkbox"
+                  :checked="!excludedPhotoIds.has(photo.contentVersionId)"
+                  :disabled="uploading || submitting"
+                  @change="updatePhotoSelection(photo.contentVersionId, $event)"
+                />
+                纳入开箱记录：{{ photo.originalFilename }}（{{
+                  photo.mimeType
+                }}）
+              </label>
             </li>
           </ul>
           <p v-if="uploadError" class="submit-error" role="alert">
@@ -296,7 +327,9 @@ onBeforeUnmount(() => request?.abort());
             type="primary"
             data-test="notary-opening-submit"
             :loading="submitting"
-            :disabled="submitting || uploading || openingPhotos.length === 0"
+            :disabled="
+              submitting || uploading || selectedOpeningPhotos.length === 0
+            "
             @click="submitOpening"
             >登记开箱并进入审核</ElButton
           >

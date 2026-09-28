@@ -1,6 +1,6 @@
 import { flushPromises, mount } from '@vue/test-utils';
 import { createMemoryHistory, createRouter } from 'vue-router';
-import { beforeEach, describe, expect, it, vi } from 'vitest';
+import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 import NotaryPortalListPage from './NotaryPortalListPage.vue';
 import NotaryPortalDetailPage from './NotaryPortalDetailPage.vue';
 
@@ -64,6 +64,7 @@ beforeEach(() => {
   });
   api.listOwnerMaterials.mockResolvedValue({ items: [], total: 0 });
 });
+afterEach(() => vi.unstubAllGlobals());
 
 async function mountRoute(
   path: string,
@@ -117,5 +118,83 @@ describe('notary portal pages', () => {
       'matter-1',
       expect.any(Object),
     );
+  });
+
+  it('submits only selected pending photos and prevents an empty selection', async () => {
+    const pendingMatter = {
+      id: 'matter-1',
+      businessNo: 'NZ-001',
+      stage: 'WAITING_UNBOX',
+      version: 2,
+      createdAt: '2026-09-28T00:00:00Z',
+      evidence: { evidenceAt: '2026-09-27', logistics: [] },
+      opening: null,
+      capabilities: { recordOpening: true },
+    };
+    api.getNotaryPortalMatter.mockResolvedValueOnce(pendingMatter);
+    api.listOwnerMaterials.mockResolvedValue({
+      items: ['version-1', 'version-2'].map((versionId, index) => ({
+        id: `material-${index + 1}`,
+        ownerType: 'NOTARY_MATTER',
+        ownerId: 'matter-1',
+        category: 'NOTARY_OPENING_PHOTO',
+        purpose: 'NOTARY_OPENING_PHOTO',
+        currentVersionId: versionId,
+        status: 'ACTIVE',
+        contentVersions: [
+          {
+            id: versionId,
+            originalFilename: `photo-${index + 1}.jpg`,
+            mimeType: 'image/jpeg',
+          },
+        ],
+      })),
+      total: 2,
+    });
+    api.recordNotaryPortalOpening.mockResolvedValue({});
+    vi.stubGlobal('crypto', { randomUUID: () => 'idempotency-key' });
+
+    const wrapper = await mountRoute(
+      '/notary-portal/matters/matter-1',
+      NotaryPortalDetailPage,
+    );
+    const firstPhoto = wrapper.get(
+      '[data-test="notary-opening-photo-select-version-1"]',
+    );
+    const secondPhoto = wrapper.get(
+      '[data-test="notary-opening-photo-select-version-2"]',
+    );
+    expect((firstPhoto.element as HTMLInputElement).checked).toBe(true);
+    expect((secondPhoto.element as HTMLInputElement).checked).toBe(true);
+    expect(wrapper.text()).toContain('未勾选照片不属于该记录');
+
+    await firstPhoto.setValue(false);
+    expect(
+      wrapper.get('[data-test="notary-opening-submit"]').attributes('disabled'),
+    ).toBeUndefined();
+    await wrapper.get('[data-test="notary-opening-submit"]').trigger('click');
+    await flushPromises();
+    expect(api.recordNotaryPortalOpening).toHaveBeenCalledWith(
+      'matter-1',
+      expect.objectContaining({ contentVersionIds: ['version-2'] }),
+      'idempotency-key',
+    );
+
+    api.getNotaryPortalMatter.mockResolvedValueOnce(pendingMatter);
+    const emptySelection = await mountRoute(
+      '/notary-portal/matters/matter-1',
+      NotaryPortalDetailPage,
+    );
+    await emptySelection
+      .get('[data-test="notary-opening-photo-select-version-1"]')
+      .setValue(false);
+    await emptySelection
+      .get('[data-test="notary-opening-photo-select-version-2"]')
+      .setValue(false);
+    expect(
+      emptySelection
+        .get('[data-test="notary-opening-submit"]')
+        .attributes('disabled'),
+    ).toBeDefined();
   });
 });
