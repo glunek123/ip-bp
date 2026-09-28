@@ -10,7 +10,13 @@ import {
   Query,
   UseGuards,
 } from '@nestjs/common';
-import { ApiBearerAuth, ApiHeader, ApiTags } from '@nestjs/swagger';
+import {
+  ApiBearerAuth,
+  ApiCreatedResponse,
+  ApiHeader,
+  ApiOkResponse,
+  ApiTags,
+} from '@nestjs/swagger';
 import { ActorContext } from '../../access-control/actor-context';
 import { CurrentActor } from '../../access-control/actor-context.decorator';
 import { ActorContextGuard } from '../../access-control/actor-context.guard';
@@ -19,6 +25,11 @@ import { RecordNotaryOpeningDto } from './lead-notary.dto';
 import { NotaryOpeningService } from './notary-opening.service';
 import { NotaryListQueryDto } from './notary-list.dto';
 import { NotaryPortalService } from './notary-portal.service';
+import {
+  NotaryPortalDetailResponseDto,
+  NotaryPortalListResponseDto,
+  NotaryPortalOpeningResultDto,
+} from './notary-portal-response.dto';
 
 @ApiTags('notary-portal')
 @ApiBearerAuth()
@@ -31,6 +42,7 @@ export class NotaryPortalController {
   ) {}
 
   @Get()
+  @ApiOkResponse({ type: NotaryPortalListResponseDto })
   list(
     @CurrentActor() actor: ActorContext,
     @Query() query: NotaryListQueryDto,
@@ -44,6 +56,7 @@ export class NotaryPortalController {
   }
 
   @Get(':id')
+  @ApiOkResponse({ type: NotaryPortalDetailResponseDto })
   get(
     @CurrentActor() actor: ActorContext,
     @Param('id', new ParseUUIDPipe()) id: string,
@@ -53,6 +66,7 @@ export class NotaryPortalController {
 
   @Post(':id/opening')
   @ApiHeader({ name: 'Idempotency-Key', required: true })
+  @ApiCreatedResponse({ type: NotaryPortalOpeningResultDto })
   async record(
     @CurrentActor() actor: ActorContext,
     @Param('id', new ParseUUIDPipe()) id: string,
