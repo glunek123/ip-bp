@@ -328,6 +328,39 @@ describe('notary portal pages', () => {
     expect(wrapper.get('[role="alert"]').text()).toContain('最多 10 个文件');
   });
 
+  it('keeps disclosure disabled and hides its upload control when the source lead does not require it', async () => {
+    api.getNotaryPortalMatter.mockResolvedValueOnce({
+      id: 'matter-1',
+      businessNo: 'NZ-001',
+      stage: 'WAITING_CERTIFICATE',
+      version: 5,
+      createdAt: '2026-09-28T00:00:00Z',
+      evidence: null,
+      opening: null,
+      issuanceDecision: {
+        decision: 'ISSUE',
+        actorDisplayName: '审核员',
+        decidedAt: '2026-09-28T00:00:00Z',
+      },
+      certificate: null,
+      disclosureRequired: false,
+      capabilities: { recordOpening: false, issueCertificate: true },
+    });
+
+    const wrapper = await mountRoute(
+      '/notary-portal/matters/matter-1',
+      NotaryPortalDetailPage,
+    );
+    const toggle = wrapper.get('[data-test="disclosure-toggle"]');
+
+    expect((toggle.element as HTMLInputElement).checked).toBe(false);
+    expect(toggle.attributes('disabled')).toBeDefined();
+    expect(wrapper.text()).toContain('来源线索不要求披露材料');
+    expect(wrapper.find('[data-test="disclosure-file-input"]').exists()).toBe(
+      false,
+    );
+  });
+
   it('submits only selected pending photos and prevents an empty selection', async () => {
     const pendingMatter = {
       id: 'matter-1',

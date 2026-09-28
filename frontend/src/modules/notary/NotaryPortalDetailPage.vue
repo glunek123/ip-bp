@@ -36,7 +36,6 @@ const success = ref('');
 const downloadError = ref('');
 const certificateNo = ref('');
 const certificateDate = ref('');
-const needDisclose = ref(false);
 const selectedCertificateIds = ref<Set<string>>(new Set());
 const selectedDisclosureIds = ref<Set<string>>(new Set());
 const feeStates = ref({
@@ -62,7 +61,7 @@ const canSubmitCertificate = computed(
     certificateFiles.value.filter((file) =>
       selectedCertificateIds.value.has(file.contentVersionId),
     ).length <= 10 &&
-    (!needDisclose.value ||
+    (!matter.value?.disclosureRequired ||
       (disclosureFiles.value.some((file) =>
         selectedDisclosureIds.value.has(file.contentVersionId),
       ) &&
@@ -161,7 +160,6 @@ async function load(): Promise<void> {
     });
     if (controller.signal.aborted) return;
     matter.value = result;
-    needDisclose.value = result.disclosureRequired;
     state.value = 'ready';
     if (
       result.stage === 'WAITING_UNBOX' ||
@@ -270,15 +268,14 @@ async function submitCertificate(): Promise<void> {
           selectedCertificateIds.value.has(file.contentVersionId),
         )
         .map((file) => file.contentVersionId),
-      needDisclose: matter.value.disclosureRequired || needDisclose.value,
-      disclosureContentVersionIds:
-        matter.value.disclosureRequired || needDisclose.value
-          ? disclosureFiles.value
-              .filter((file) =>
-                selectedDisclosureIds.value.has(file.contentVersionId),
-              )
-              .map((file) => file.contentVersionId)
-          : [],
+      needDisclose: matter.value.disclosureRequired,
+      disclosureContentVersionIds: matter.value.disclosureRequired
+        ? disclosureFiles.value
+            .filter((file) =>
+              selectedDisclosureIds.value.has(file.contentVersionId),
+            )
+            .map((file) => file.contentVersionId)
+        : [],
       fees: {
         notary: {
           state: feeStates.value.notary,
@@ -671,19 +668,21 @@ onBeforeUnmount(() => request?.abort());
           </ul>
           <label
             ><input
-              v-model="needDisclose"
+              :checked="matter.disclosureRequired"
               data-test="disclosure-toggle"
               type="checkbox"
-              :disabled="matter.disclosureRequired || submitting || uploading"
+              disabled
             />
             {{
-              matter.disclosureRequired ? '必须披露材料' : '需要披露材料'
+              matter.disclosureRequired
+                ? '来源线索要求披露材料'
+                : '来源线索不要求披露材料'
             }}</label
           >
           <p v-if="matter.disclosureRequired" class="field-help">
             来源线索要求披露材料，至少选择一份披露文件后才能出证。
           </p>
-          <template v-if="needDisclose">
+          <template v-if="matter.disclosureRequired">
             <label class="field-label field-label--spaced"
               >披露文件（PDF、JPEG、PNG；单个不超过 50 MB，最多 10
               个）<RequiredFieldMark /><input
