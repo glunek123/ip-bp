@@ -164,14 +164,22 @@ export class CaseReadService {
         ...record.certificate.fees.map((fee) => ({
           category: fee.category,
           state: fee.state,
-          amount: fee.amount?.toString() ?? null,
+          amount:
+            fee.amount === null
+              ? null
+              : new Prisma.Decimal(fee.amount.toString()).toFixed(2),
           sourceType: 'NOTARY_CERTIFICATE_FEE' as const,
           sourceId: record.certificate.id,
         })),
         {
           category: 'SAMPLE' as const,
           state: sample?.sampleFeeState ?? 'PENDING',
-          amount: sample?.sampleFeeAmount?.toString() ?? null,
+          amount:
+            sample?.sampleFeeAmount === null || sample === null
+              ? null
+              : new Prisma.Decimal(sample.sampleFeeAmount.toString()).toFixed(
+                  2,
+                ),
           sourceType: 'NOTARY_MATTER_EVIDENCE' as const,
           sourceId: record.sourceNotaryMatter.id,
         },

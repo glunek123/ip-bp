@@ -276,4 +276,27 @@ describe('NotaryCertificateService', () => {
     }
     expect(f.database.$transaction).not.toHaveBeenCalled();
   });
+
+  it('retries a PostgreSQL serialization conflict surfaced through Prisma P2010', async () => {
+    const f = fixture();
+    const serialization = {
+      code: 'P2010',
+      meta: { driverAdapterError: { cause: { originalCode: '40001' } } },
+    };
+    f.database.$transaction.mockRejectedValueOnce(serialization);
+    await expect(
+      f.service.issue(actor, matterId, 'retry-1', input),
+    ).resolves.toMatchObject({
+      stage: 'ARCHIVED',
+      version: 6,
+    });
+    expect(f.database.$transaction).toHaveBeenCalledTimes(2);
+
+    const exhausted = fixture();
+    exhausted.database.$transaction.mockRejectedValue(serialization);
+    await expect(
+      exhausted.service.issue(actor, matterId, 'retry-2', input),
+    ).rejects.toMatchObject({ response: { code: 'VERSION_CONFLICT' } });
+    expect(exhausted.database.$transaction).toHaveBeenCalledTimes(3);
+  });
 });

@@ -5819,12 +5819,22 @@ test('real operator decision and notary browser archive a frozen certificate int
     pdfBytes,
   );
 
-  const caseSummary = portalResult.case as {
+  const portalCertificate = portalResult.certificate as {
+    caseId: string;
+    caseBusinessNo: string;
+  };
+  expect(portalCertificate.caseId).toEqual(expect.any(String));
+  expect(portalCertificate.caseBusinessNo).toMatch(/^CA-/u);
+  const caseSummary = (await getNotaryCase(portalCertificate.caseId)) as {
     id: string;
     businessNo: string;
     stage: string;
   };
-  expect(caseSummary.stage).toBe('PENDING_MATCH');
+  expect(caseSummary).toMatchObject({
+    id: portalCertificate.caseId,
+    businessNo: portalCertificate.caseBusinessNo,
+    stage: 'PENDING_MATCH',
+  });
   expect(await getNotaryOpeningReviewMatter(matterId)).toEqual({
     stage: 'ARCHIVED',
     version: 6,
@@ -5834,14 +5844,23 @@ test('real operator decision and notary browser archive a frozen certificate int
   expect(await countNotaryCertificateReceipts(matterId)).toBe(1);
   expect(await countCasesForMatter(matterId)).toBe(1);
   expect(await countCertificateMaterialReferences(matterId)).toBe(1);
-  expect(await getNotaryCertificate(matterId)).toMatchObject({
+  const storedCertificate = await getNotaryCertificate(matterId);
+  expect(storedCertificate).toMatchObject({
     certificateNo: '（2026）浙证字005号',
-    fees: expect.arrayContaining([
-      { category: 'NOTARY', state: 'KNOWN' },
-      { category: 'INVESTIGATION', state: 'PENDING' },
-      { category: 'DISCLOSURE', state: 'KNOWN' },
-    ]),
   });
+  expect(
+    storedCertificate?.fees.map((fee) => ({
+      category: fee.category,
+      state: fee.state,
+      amount: fee.amount?.toString() ?? null,
+    })),
+  ).toEqual(
+    expect.arrayContaining([
+      { category: 'NOTARY', state: 'KNOWN', amount: '120' },
+      { category: 'INVESTIGATION', state: 'PENDING', amount: null },
+      { category: 'DISCLOSURE', state: 'KNOWN', amount: '0' },
+    ]),
+  );
   expect(await getNotaryCase(caseSummary.id)).toMatchObject({
     id: caseSummary.id,
     businessNo: caseSummary.businessNo,
@@ -5856,7 +5875,7 @@ test('real operator decision and notary browser archive a frozen certificate int
         headers: { 'X-CSRF-Token': notary.csrfToken },
       })
     ).status(),
-  ).toBe(404);
+  ).toBe(403);
   const internalList = await request.get('/api/v1/cases', {
     headers: authorizationA,
   });
@@ -5920,7 +5939,7 @@ test('real operator decision and notary browser archive a frozen certificate int
   await page.getByLabel('用户名').fill(notary.username);
   await page.getByLabel('密码').fill(notary.password);
   await page.getByRole('button', { name: '登录', exact: true }).click();
-  await page.goto('/notary-portal/matters');
+  await expect(page).toHaveURL(/\/notary-portal\/matters$/u);
   await page.locator('[data-test="notary-segment-archived"]').click();
   await expect(page.locator('[data-test="notary-portal-row"]')).toHaveCount(1);
 
@@ -5953,7 +5972,7 @@ test('certificate submission rejects another office and an inactive binding', as
         headers: { 'X-CSRF-Token': otherNotary.csrfToken },
       })
     ).status(),
-  ).toBe(403);
+  ).toBe(404);
   const ownDetail = await request.get(
     `/api/v1/notary-portal/matters/${otherMatterId}`,
     { headers: { 'X-CSRF-Token': otherNotary.csrfToken } },
@@ -5973,7 +5992,9 @@ test('certificate submission rejects another office and an inactive binding', as
       otherNotary.csrfToken,
       input,
     );
-    expect(revoked.status(), await revoked.text()).toBe(403);
+    const revokedResult = await revoked.json();
+    expect(revoked.status()).toBe(401);
+    expect(revokedResult).toMatchObject({ code: 'UNAUTHORIZED' });
     expect(await getNotaryOpeningReviewMatter(otherMatterId)).toEqual({
       stage: 'WAITING_CERTIFICATE',
       version: 5,
@@ -6048,9 +6069,14 @@ test('certificate command enforces old versions, idempotency and one concurrent 
   expect(await countCasesForMatter(matterId)).toBe(1);
   expect(await countNotaryCertificateReceipts(matterId)).toBe(1);
 
+  const concurrentClientCsrf = await loginClient(
+    request,
+    client.username,
+    client.password,
+  );
   const concurrentMatterId = await createCertificateReadyMatter(
     request,
-    clientCsrf,
+    concurrentClientCsrf,
   );
   const concurrentNotary = await createNotaryAccountForMatter(
     request,
@@ -6095,18 +6121,21 @@ test('certificate audit, receipt and case failures roll back the full archive tr
 }) => {
   test.setTimeout(120_000);
   const client = await createClientAccount(request);
-  const clientCsrf = await loginClient(
-    request,
-    client.username,
-    client.password,
-  );
   try {
     for (const inject of [
       () => rejectAuditWrites('notary.certificate_issued'),
       rejectNotaryCertificateReceiptWrites,
       rejectNotaryCertificateCaseWrites,
     ]) {
-      const matterId = await createCertificateReadyMatter(request, clientCsrf);
+      const activeClientCsrf = await loginClient(
+        request,
+        client.username,
+        client.password,
+      );
+      const matterId = await createCertificateReadyMatter(
+        request,
+        activeClientCsrf,
+      );
       const notary = await createNotaryAccountForMatter(request, matterId);
       const uploaded = await uploadCertificateForNotary(
         request,

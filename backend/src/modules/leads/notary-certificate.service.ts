@@ -473,9 +473,23 @@ export class NotaryCertificateService {
     return snapshot as CertificateResult;
   }
   private isRetryable(error: unknown): boolean {
+    if (error === null || typeof error !== 'object') return false;
+    const record = error as {
+      code?: unknown;
+      cause?: unknown;
+      meta?: {
+        driverAdapterError?: {
+          cause?: { originalCode?: unknown; sqlState?: unknown };
+        };
+      };
+    };
     return (
-      error instanceof Prisma.PrismaClientKnownRequestError &&
-      (error.code === 'P2034' || error.code === 'P2002')
+      record.code === 'P2034' ||
+      record.code === 'P2002' ||
+      record.code === '40001' ||
+      record.meta?.driverAdapterError?.cause?.originalCode === '40001' ||
+      record.meta?.driverAdapterError?.cause?.sqlState === '40001' ||
+      this.isRetryable(record.cause)
     );
   }
   private validation() {

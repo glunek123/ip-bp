@@ -98,7 +98,7 @@ describe('CaseReadService', () => {
         evidence: {
           matterId: 'matter-1',
           sampleFeeState: 'KNOWN',
-          sampleFeeAmount: { toString: () => '200.00' },
+          sampleFeeAmount: { toString: () => '200' },
         },
       },
       certificate: {
@@ -111,13 +111,13 @@ describe('CaseReadService', () => {
           {
             category: 'NOTARY',
             state: 'KNOWN',
-            amount: { toString: () => '100.00' },
+            amount: { toString: () => '100' },
           },
           { category: 'INVESTIGATION', state: 'PENDING', amount: null },
           {
             category: 'DISCLOSURE',
             state: 'KNOWN',
-            amount: { toString: () => '0.00' },
+            amount: { toString: () => '0' },
           },
         ],
       },
