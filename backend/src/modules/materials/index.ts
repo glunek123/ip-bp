@@ -1,5 +1,6 @@
 export { MaterialModule } from './material.module';
 export { MaterialService } from './material.service';
+export { isFrozenOpeningPhotoVersion } from './frozen-opening-photo';
 export type { ValidatedMaterialVersionFact } from './material.service';
 export type { AdoptLeadDraftVersionsInput } from './material.service';
 export type {

@@ -6,6 +6,8 @@ import {
 import { ActorContext } from '../../access-control/actor-context';
 import { DatabaseService } from '../../database/database.service';
 import { Prisma } from '../../generated/prisma/client';
+import { isFrozenOpeningPhotoVersion } from '../materials';
+import { openingReviewMatchesStage } from './notary-opening-review-read';
 
 const clientMatterInclude = {
   sourceLead: {
@@ -37,12 +39,24 @@ type ClientMatter = Prisma.NotaryMatterGetPayload<{
 export class ClientNotaryService {
   constructor(private readonly database: DatabaseService) {}
 
-  async list(actor: ActorContext, page: number, pageSize: number) {
+  async list(
+    actor: ActorContext,
+    page: number,
+    pageSize: number,
+    sourceLeadId?: string,
+  ) {
     const customerId = await this.assertClient(actor);
     const where: Prisma.NotaryMatterWhereInput = {
       departmentId: actor.departmentId,
       customerId,
-      stage: 'UNBOX_REVIEW',
+      ...(sourceLeadId === undefined
+        ? { stage: 'UNBOX_REVIEW' as const }
+        : {
+            sourceLeadId,
+            stage: {
+              in: ['UNBOX_REVIEW', 'ISSUANCE_DECISION', 'ARCHIVED'] as const,
+            },
+          }),
       opening: { isNot: null },
       sourceLead: { pushedAt: { not: null }, pushedByUserId: { not: null } },
     };
@@ -59,10 +73,25 @@ export class ClientNotaryService {
           version: true,
           createdAt: true,
           sourceLead: { select: { businessNo: true } },
+          openingReviewDecision: {
+            select: {
+              result: true,
+              reason: true,
+              decidedAt: true,
+              archivedAt: true,
+            },
+          },
         },
       }),
       this.database.notaryMatter.count({ where }),
     ]);
+    if (
+      items.some(
+        (item) =>
+          !openingReviewMatchesStage(item.stage, item.openingReviewDecision),
+      )
+    )
+      throw this.notFound();
     return {
       items: items.map((item) => ({
         id: item.id,
@@ -92,7 +121,7 @@ export class ClientNotaryService {
       include: clientMatterInclude,
     });
     if (matter === null) throw this.notFound();
-    const photos = await this.database.materialReference.findMany({
+    const photoReferences = await this.database.materialReference.findMany({
       where: {
         departmentId: actor.departmentId,
         resourceType: 'notary_matter',
@@ -119,8 +148,15 @@ export class ClientNotaryService {
         materialId: true,
         contentVersionId: true,
         contentVersion: { select: { originalFilename: true, mimeType: true } },
+        actionEvent: { select: { details: true } },
       },
     });
+    const photos = photoReferences.filter((reference) =>
+      isFrozenOpeningPhotoVersion(
+        reference.actionEvent?.details,
+        reference.contentVersionId,
+      ),
+    );
     if (photos.length === 0) throw this.notFound();
     return this.project(matter, photos);
   }
@@ -173,10 +209,7 @@ export class ClientNotaryService {
     });
     if (ids.size !== 0) throw this.notFound();
     const decision = matter.openingReviewDecision;
-    if (
-      (matter.stage === 'UNBOX_REVIEW' && decision !== null) ||
-      (matter.stage !== 'UNBOX_REVIEW' && decision === null)
-    )
+    if (!openingReviewMatchesStage(matter.stage, decision))
       throw this.notFound();
     return {
       id: matter.id,

@@ -11,7 +11,8 @@ import { AccessControlService } from '../../access-control/access-control.servic
 import { ActorContext } from '../../access-control/actor-context';
 import { DatabaseService } from '../../database/database.service';
 import { Prisma } from '../../generated/prisma/client';
-import { MaterialService } from '../materials';
+import { isFrozenOpeningPhotoVersion, MaterialService } from '../materials';
+import { openingReviewMatchesStage } from './notary-opening-review-read';
 import {
   CreateNotaryOfficeDto,
   RecordNotaryEvidenceDto,
@@ -739,14 +740,9 @@ export class LeadNotaryService {
       throw this.corruptReceipt();
     if (matter.stage === 'UNBOX_REVIEW' && matter.opening === null)
       throw this.corruptReceipt();
-    if (
-      (matter.stage === 'UNBOX_REVIEW' &&
-        matter.openingReviewDecision !== null) ||
-      ((matter.stage === 'ISSUANCE_DECISION' || matter.stage === 'ARCHIVED') &&
-        matter.openingReviewDecision === null)
-    )
+    if (!openingReviewMatchesStage(matter.stage, matter.openingReviewDecision))
       throw this.corruptReceipt();
-    const openingReferences =
+    const openingReferenceRows =
       matter.opening === null
         ? []
         : await this.database.materialReference.findMany({
@@ -778,8 +774,15 @@ export class LeadNotaryService {
               contentVersion: {
                 select: { originalFilename: true, mimeType: true },
               },
+              actionEvent: { select: { details: true } },
             },
           });
+    const openingReferences = openingReferenceRows.filter((reference) =>
+      isFrozenOpeningPhotoVersion(
+        reference.actionEvent?.details,
+        reference.contentVersionId,
+      ),
+    );
     if (matter.opening !== null && openingReferences.length < 1)
       throw this.corruptReceipt();
     const productSnapshot = this.selectedProductSnapshot(

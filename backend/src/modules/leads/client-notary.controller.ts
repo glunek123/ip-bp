@@ -6,9 +6,14 @@ import {
   Query,
   UseGuards,
 } from '@nestjs/common';
-import { ApiBearerAuth, ApiOkResponse, ApiTags } from '@nestjs/swagger';
+import {
+  ApiBearerAuth,
+  ApiOkResponse,
+  ApiPropertyOptional,
+  ApiTags,
+} from '@nestjs/swagger';
 import { Type } from 'class-transformer';
-import { IsInt, Max, Min } from 'class-validator';
+import { IsInt, IsOptional, IsUUID, Max, Min } from 'class-validator';
 import { ActorContext } from '../../access-control/actor-context';
 import { CurrentActor } from '../../access-control/actor-context.decorator';
 import { ActorContextGuard } from '../../access-control/actor-context.guard';
@@ -20,6 +25,14 @@ import {
 } from './client-notary-response.dto';
 
 class ClientNotaryListQueryDto {
+  @ApiPropertyOptional({
+    format: 'uuid',
+    description: '指定线索的已开箱批次，含审核后状态',
+  })
+  @IsOptional()
+  @IsUUID('4')
+  sourceLeadId?: string;
+
   @Type(() => Number)
   @IsInt()
   @Min(1)
@@ -45,7 +58,12 @@ export class ClientNotaryController {
     @CurrentActor() actor: ActorContext,
     @Query() query: ClientNotaryListQueryDto,
   ) {
-    return this.notary.list(actor, query.page, query.pageSize);
+    return this.notary.list(
+      actor,
+      query.page,
+      query.pageSize,
+      query.sourceLeadId,
+    );
   }
 
   @Get(':id')

@@ -3,7 +3,8 @@ import { ApiProperty } from '@nestjs/swagger';
 class ClientNotaryListItemDto {
   @ApiProperty({ format: 'uuid' }) id!: string;
   @ApiProperty() businessNo!: string;
-  @ApiProperty({ enum: ['UNBOX_REVIEW'] }) stage!: string;
+  @ApiProperty({ enum: ['UNBOX_REVIEW', 'ISSUANCE_DECISION', 'ARCHIVED'] })
+  stage!: string;
   @ApiProperty() version!: number;
   @ApiProperty({ format: 'date-time' }) createdAt!: string;
   @ApiProperty() sourceLeadBusinessNo!: string;

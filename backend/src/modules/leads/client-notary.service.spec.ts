@@ -50,12 +50,10 @@ const matter = {
 function fixture() {
   const database = {
     customerAccountBinding: {
-      findFirst: jest
-        .fn()
-        .mockResolvedValue({
-          id: 'binding-1',
-          customerId: actor.clientCustomerId,
-        }),
+      findFirst: jest.fn().mockResolvedValue({
+        id: 'binding-1',
+        customerId: actor.clientCustomerId,
+      }),
     },
     notaryMatter: {
       findMany: jest.fn().mockResolvedValue([matter]),
@@ -63,24 +61,125 @@ function fixture() {
       findFirst: jest.fn().mockResolvedValue(matter),
     },
     materialReference: {
-      findMany: jest
-        .fn()
-        .mockResolvedValue([
-          {
-            materialId: 'photo-1',
-            contentVersionId: 'frozen-1',
-            contentVersion: {
-              originalFilename: 'opening.png',
-              mimeType: 'image/png',
-            },
+      findMany: jest.fn().mockResolvedValue([
+        {
+          materialId: 'photo-1',
+          contentVersionId: 'frozen-1',
+          contentVersion: {
+            originalFilename: 'opening.png',
+            mimeType: 'image/png',
           },
-        ]),
+          actionEvent: { details: { contentVersionIds: ['frozen-1'] } },
+        },
+      ]),
     },
   };
   return { database, service: new ClientNotaryService(database as never) };
 }
 
 describe('ClientNotaryService', () => {
+  it('lists opened batches for one pushed source lead including a reviewed batch', async () => {
+    const { service, database } = fixture();
+    database.notaryMatter.findMany.mockResolvedValue([
+      {
+        ...matter,
+        stage: 'ARCHIVED',
+        openingReviewDecision: {
+          result: 'NO_INFRINGEMENT',
+          reason: '不侵权',
+          decidedAt: new Date('2026-09-28T01:00:00Z'),
+          archivedAt: new Date('2026-09-28T01:00:00Z'),
+        },
+      },
+      matter,
+    ]);
+    database.notaryMatter.count.mockResolvedValue(2);
+    const result = await service.list(actor, 1, 20, 'lead-1');
+    expect(database.notaryMatter.findMany.mock.calls[0][0].where).toMatchObject(
+      {
+        sourceLeadId: 'lead-1',
+        departmentId: actor.departmentId,
+        customerId: actor.clientCustomerId,
+        stage: { in: ['UNBOX_REVIEW', 'ISSUANCE_DECISION', 'ARCHIVED'] },
+        sourceLead: { pushedAt: { not: null }, pushedByUserId: { not: null } },
+      },
+    );
+    expect(result.items.map((item: { stage: string }) => item.stage)).toEqual([
+      'ARCHIVED',
+      'UNBOX_REVIEW',
+    ]);
+    expect(JSON.stringify(result)).not.toMatch(
+      /secret|sender|logistics|fee|teamId|responsibleUserId|sourceSnapshot/u,
+    );
+  });
+  it('hides a same-matter reference whose opening audit did not freeze its version', async () => {
+    const { service, database } = fixture();
+    database.materialReference.findMany.mockResolvedValue([
+      {
+        materialId: 'unsubmitted-photo',
+        contentVersionId: 'unsubmitted-version',
+        contentVersion: {
+          originalFilename: 'unsubmitted.png',
+          mimeType: 'image/png',
+        },
+        actionEvent: { details: { contentVersionIds: ['frozen-1'] } },
+      },
+    ]);
+    await expect(service.get(actor, matterId)).rejects.toMatchObject({
+      response: { code: 'RESOURCE_NOT_FOUND' },
+    });
+  });
+
+  it.each([
+    [
+      'infringement stage with no-infringement decision',
+      'ISSUANCE_DECISION',
+      'NO_INFRINGEMENT',
+      '不侵权',
+      null,
+    ],
+    [
+      'archive stage with infringement decision',
+      'ARCHIVED',
+      'INFRINGEMENT',
+      null,
+      null,
+    ],
+    [
+      'archive without archive time',
+      'ARCHIVED',
+      'NO_INFRINGEMENT',
+      '不侵权',
+      null,
+    ],
+    [
+      'archive without reason',
+      'ARCHIVED',
+      'NO_INFRINGEMENT',
+      null,
+      new Date('2026-09-28T01:00:00Z'),
+    ],
+  ])(
+    'hides inconsistent %s',
+    async (_name, stage, result, reason, archivedAt) => {
+      const { service, database } = fixture();
+      database.notaryMatter.findFirst.mockResolvedValue({
+        ...matter,
+        stage,
+        openingReviewDecision: {
+          result,
+          reason,
+          archivedAt,
+          actorKind: 'CLIENT',
+          actorDisplayNameSnapshot: '客户甲',
+          decidedAt: new Date('2026-09-28T01:00:00Z'),
+        },
+      });
+      await expect(service.get(actor, matterId)).rejects.toMatchObject({
+        response: { code: 'RESOURCE_NOT_FOUND' },
+      });
+    },
+  );
   it('scopes the pending list to the live enterprise, department, pushed lead and opening', async () => {
     const { service, database } = fixture();
     const result = await service.list(actor, 1, 20);

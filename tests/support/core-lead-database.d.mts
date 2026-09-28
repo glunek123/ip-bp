@@ -67,14 +67,27 @@ export function countNotaryOpenings(matterId: string): Promise<number>;
 export function countNotaryOpeningReceipts(matterId: string): Promise<number>;
 export function countNotaryOpeningAudits(matterId: string): Promise<number>;
 export function countNotaryOpeningReferences(matterId: string): Promise<number>;
-export function countNotaryOpeningReviewDecisions(matterId: string): Promise<number>;
-export function countNotaryOpeningReviewAudits(matterId: string): Promise<number>;
-export function countNotaryOpeningReviewReceipts(matterId: string): Promise<number>;
+export function countNotaryOpeningReviewDecisions(
+  matterId: string,
+): Promise<number>;
+export function countNotaryOpeningReviewAudits(
+  matterId: string,
+): Promise<number>;
+export function countNotaryOpeningReviewReceipts(
+  matterId: string,
+): Promise<number>;
 export function getNotaryOpeningReviewMatter(matterId: string): Promise<{
   stage: string;
   version: number;
 } | null>;
-export function removeNotaryOpeningReviewPhotoReferences(matterId: string): Promise<unknown>;
+export function removeNotaryOpeningReviewPhotoReferences(
+  matterId: string,
+): Promise<unknown>;
+export function forgeSameMatterOpeningPhotoReference(
+  matterId: string,
+  materialId: string,
+  contentVersionId: string,
+): Promise<unknown>;
 export function getLeadReviewDecision(leadId: string): Promise<{
   id: string;
   leadId: string;

@@ -54,6 +54,7 @@ describe('MaterialService', () => {
     });
     fixture.db.materialReference.findFirst.mockResolvedValue({
       id: 'frozen-reference',
+      actionEvent: { details: { contentVersionIds: ['frozen-1'] } },
     });
     fixture.storage.open.mockResolvedValue(Readable.from(Buffer.from('data')));
 
@@ -74,9 +75,17 @@ describe('MaterialService', () => {
         contentVersionId: 'frozen-1',
         actionEventId: { not: null },
       }),
-      select: { id: true },
+      select: { id: true, actionEvent: { select: { details: true } } },
     });
     fixture.db.materialReference.findFirst.mockResolvedValue(null);
+    await expect(
+      fixture.service.openVersion(clientActor, 'photo-1', 'frozen-1'),
+    ).rejects.toMatchObject({ response: { code: 'RESOURCE_NOT_FOUND' } });
+    expect(fixture.storage.open).toHaveBeenCalledTimes(1);
+    fixture.db.materialReference.findFirst.mockResolvedValue({
+      id: 'forged-same-matter-reference',
+      actionEvent: { details: { contentVersionIds: ['another-version'] } },
+    });
     await expect(
       fixture.service.openVersion(clientActor, 'photo-1', 'frozen-1'),
     ).rejects.toMatchObject({ response: { code: 'RESOURCE_NOT_FOUND' } });
@@ -398,7 +407,7 @@ describe('MaterialService', () => {
         contentVersionId: 'version-a',
         actionEventId: null,
       },
-      select: { id: true },
+      select: { id: true, actionEvent: { select: { details: true } } },
     });
   });
   it.each([

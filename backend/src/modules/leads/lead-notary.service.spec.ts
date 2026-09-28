@@ -50,18 +50,17 @@ describe('LeadNotaryService opening review read projection', () => {
       },
       notaryMatter: { findFirst: jest.fn().mockResolvedValue(record) },
       materialReference: {
-        findMany: jest
-          .fn()
-          .mockResolvedValue([
-            {
-              materialId: 'photo-1',
-              contentVersionId: 'version-1',
-              contentVersion: {
-                originalFilename: 'opening.png',
-                mimeType: 'image/png',
-              },
+        findMany: jest.fn().mockResolvedValue([
+          {
+            materialId: 'photo-1',
+            contentVersionId: 'version-1',
+            contentVersion: {
+              originalFilename: 'opening.png',
+              mimeType: 'image/png',
             },
-          ]),
+            actionEvent: { details: { contentVersionIds: ['version-1'] } },
+          },
+        ]),
       },
     };
     const access = {
@@ -101,6 +100,51 @@ describe('LeadNotaryService opening review read projection', () => {
       'notary.opening.review',
       expect.objectContaining({ departmentId: actor.departmentId }),
     );
+    database.materialReference.findMany.mockResolvedValue([
+      {
+        materialId: 'unsubmitted-photo',
+        contentVersionId: 'unsubmitted-version',
+        contentVersion: {
+          originalFilename: 'unsubmitted.png',
+          mimeType: 'image/png',
+        },
+        actionEvent: { details: { contentVersionIds: ['version-1'] } },
+      },
+    ]);
+    await expect(service.getMatter(actor, matterId)).rejects.toMatchObject({
+      response: { code: 'INTERNAL_ERROR' },
+    });
+    database.materialReference.findMany.mockResolvedValue([
+      {
+        materialId: 'photo-1',
+        contentVersionId: 'version-1',
+        contentVersion: {
+          originalFilename: 'opening.png',
+          mimeType: 'image/png',
+        },
+        actionEvent: { details: { contentVersionIds: ['version-1'] } },
+      },
+    ]);
+    for (const [stage, result, reason, archivedAt] of [
+      ['ISSUANCE_DECISION', 'NO_INFRINGEMENT', '不侵权', null],
+      ['ARCHIVED', 'INFRINGEMENT', null, null],
+      ['ARCHIVED', 'NO_INFRINGEMENT', '不侵权', null],
+      ['ARCHIVED', 'NO_INFRINGEMENT', null, new Date('2026-09-28T01:00:00Z')],
+    ] as const) {
+      database.notaryMatter.findFirst.mockResolvedValue({
+        ...record,
+        stage,
+        openingReviewDecision: {
+          ...record.openingReviewDecision,
+          result,
+          reason,
+          archivedAt,
+        },
+      });
+      await expect(service.getMatter(actor, matterId)).rejects.toMatchObject({
+        response: { code: 'INTERNAL_ERROR' },
+      });
+    }
   });
 });
 

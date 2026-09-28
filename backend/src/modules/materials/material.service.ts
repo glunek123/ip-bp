@@ -31,6 +31,7 @@ import {
   PrivateBlobStorage,
 } from './private-blob-storage';
 import { MaterialStorageKeyCoordinator } from './material-storage-key-coordinator';
+import { isFrozenOpeningPhotoVersion } from './frozen-opening-photo';
 
 const DAY_MS = 24 * 60 * 60 * 1000;
 const RETENTION_MS = 90 * DAY_MS;
@@ -774,13 +775,28 @@ export class MaterialService {
                   }
                 : {}),
             },
-            select: { materialId: true, contentVersionId: true },
+            select: {
+              materialId: true,
+              contentVersionId: true,
+              ...(ownerType === 'NOTARY_MATTER'
+                ? { actionEvent: { select: { details: true } } }
+                : {}),
+            },
           });
-    if (clientReferences?.length === 0) return { items: [], total: 0 };
-    const clientMaterialIds = clientReferences?.map(
+    const allowedClientReferences = clientReferences?.filter(
+      (reference) =>
+        ownerType !== 'NOTARY_MATTER' ||
+        ('actionEvent' in reference &&
+          isFrozenOpeningPhotoVersion(
+            reference.actionEvent?.details,
+            reference.contentVersionId,
+          )),
+    );
+    if (allowedClientReferences?.length === 0) return { items: [], total: 0 };
+    const clientMaterialIds = allowedClientReferences?.map(
       ({ materialId }) => materialId,
     );
-    const clientVersionIds = clientReferences?.map(
+    const clientVersionIds = allowedClientReferences?.map(
       ({ contentVersionId }) => contentVersionId,
     );
     const items = await this.database.material.findMany({
@@ -911,9 +927,17 @@ export class MaterialService {
               }
             : {}),
         },
-        select: { id: true },
+        select: { id: true, actionEvent: { select: { details: true } } },
       });
-      if (reference === null) throw this.notFound();
+      if (
+        reference === null ||
+        (material.ownerType === 'NOTARY_MATTER' &&
+          !isFrozenOpeningPhotoVersion(
+            reference.actionEvent?.details,
+            versionId,
+          ))
+      )
+        throw this.notFound();
     }
     if (
       material.ownerType === 'LEAD_DRAFT' &&

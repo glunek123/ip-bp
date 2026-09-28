@@ -902,6 +902,34 @@ export function removeNotaryOpeningReviewPhotoReferences(matterId) {
   });
 }
 
+export async function forgeSameMatterOpeningPhotoReference(
+  matterId,
+  materialId,
+  contentVersionId,
+) {
+  const frozen = await database.materialReference.findFirstOrThrow({
+    where: {
+      resourceType: 'notary_matter',
+      resourceId: matterId,
+      purpose: 'NOTARY_OPENING_PHOTO',
+    },
+    select: { departmentId: true, actionEventId: true },
+  });
+  if (frozen.actionEventId === null)
+    throw new Error('Opening audit is missing');
+  return database.materialReference.create({
+    data: {
+      departmentId: frozen.departmentId,
+      resourceType: 'notary_matter',
+      resourceId: matterId,
+      purpose: 'NOTARY_OPENING_PHOTO',
+      materialId,
+      contentVersionId,
+      actionEventId: frozen.actionEventId,
+    },
+  });
+}
+
 export function countLeadEvidenceAudits(leadId) {
   return database.auditEvent.count({
     where: {

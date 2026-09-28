@@ -43,6 +43,7 @@ import {
   getCustomer,
   getLead,
   getNotaryOpeningReviewMatter,
+  forgeSameMatterOpeningPhotoReference,
   removeNotaryOpeningReviewPhotoReferences,
   getLeadEvidenceDecision,
   getLeadReviewDecision,
@@ -2052,6 +2053,11 @@ test('client notary reads and photo bytes stay within enterprise, exact batch an
       })
     ).status(),
   ).toBe(201);
+  await forgeSameMatterOpeningPhotoReference(
+    secondId,
+    unsubmittedPhoto.materialId,
+    unsubmittedPhoto.contentVersionId,
+  );
 
   const list = await request.get('/api/v1/client/notary-matters');
   expect(list.status(), await list.text()).toBe(200);
@@ -2079,6 +2085,32 @@ test('client notary reads and photo bytes stay within enterprise, exact batch an
     path(secondPhoto.materialId, secondPhoto.contentVersionId),
   );
   expect(otherBatch.status()).toBe(200);
+  const secondDetail = await request.get(
+    `/api/v1/client/notary-matters/${secondId}`,
+  );
+  expect(secondDetail.status(), await secondDetail.text()).toBe(200);
+  expect(
+    (await secondDetail.json()).opening.photos.map(
+      (photo: { contentVersionId: string }) => photo.contentVersionId,
+    ),
+  ).toEqual([secondPhoto.contentVersionId]);
+  const secondOperator = await request.get(
+    `/api/v1/notary-matters/${secondId}`,
+    { headers: authorizationA },
+  );
+  expect(secondOperator.status(), await secondOperator.text()).toBe(200);
+  expect(
+    (await secondOperator.json()).opening.photos.map(
+      (photo: { contentVersionId: string }) => photo.contentVersionId,
+    ),
+  ).toEqual([secondPhoto.contentVersionId]);
+  const materials = await request.get(
+    `/api/v1/materials?ownerType=NOTARY_MATTER&ownerId=${secondId}`,
+  );
+  expect(materials.status(), await materials.text()).toBe(200);
+  expect(
+    (await materials.json()).items.map((item: { id: string }) => item.id),
+  ).toEqual([secondPhoto.materialId]);
   expect(
     (
       await request.get(
@@ -2091,11 +2123,52 @@ test('client notary reads and photo bytes stay within enterprise, exact batch an
   );
   expect(wrongVersion.status()).toBe(404);
 
+  const reviewed = await reviewNotaryOpening(
+    request,
+    firstId,
+    { result: 'NO_INFRINGEMENT', reason: '无侵权', expectedVersion: 3 },
+    randomUUID(),
+    csrf,
+  );
+  expect(reviewed.status(), await reviewed.text()).toBe(201);
+  const pendingAfterReview = await request.get('/api/v1/client/notary-matters');
+  expect(
+    (await pendingAfterReview.json()).items.map(
+      (item: { id: string }) => item.id,
+    ),
+  ).not.toContain(firstId);
+  const batches = await request.get(
+    `/api/v1/client/notary-matters?sourceLeadId=${firstFact.leadId}`,
+  );
+  expect(batches.status(), await batches.text()).toBe(200);
+  expect(
+    (await batches.json()).items.map((item: { id: string; stage: string }) => [
+      item.id,
+      item.stage,
+    ]),
+  ).toEqual(
+    expect.arrayContaining([
+      [firstId, 'ARCHIVED'],
+      [secondId, 'UNBOX_REVIEW'],
+    ]),
+  );
+  const archivedDetail = await request.get(
+    `/api/v1/client/notary-matters/${firstId}`,
+  );
+  expect((await archivedDetail.json()).reviewDecision).toMatchObject({
+    result: 'NO_INFRINGEMENT',
+    reason: '无侵权',
+  });
+
   const foreign = await createClientAccount(request, {
     customerId: coreLeadFixtures.foreignCustomer,
     headers: { Authorization: `Bearer ${coreLeadFixtures.tokenB}` },
   });
   await loginClient(request, foreign.username, foreign.password);
+  const foreignBatches = await request.get(
+    `/api/v1/client/notary-matters?sourceLeadId=${firstFact.leadId}`,
+  );
+  expect((await foreignBatches.json()).items).toEqual([]);
   expect(
     (await request.get(`/api/v1/client/notary-matters/${firstId}`)).status(),
   ).toBe(404);
