@@ -355,6 +355,15 @@ export class MaterialService {
         }
         await this.database.$transaction(async (transaction) => {
           if (actor.notaryOfficeId !== undefined) {
+            const locked = await transaction.$queryRawUnsafe<
+              Array<{ id: string }>
+            >(
+              'SELECT "id" FROM "notary_matters" WHERE "id" = $1::uuid AND "department_id" = $2::uuid AND "notary_office_id" = $3::uuid FOR UPDATE',
+              draft.ownerId,
+              actor.departmentId,
+              actor.notaryOfficeId,
+            );
+            if (locked.length !== 1) throw this.notFound();
             await this.authorizeOwner(
               actor,
               draft.ownerType,

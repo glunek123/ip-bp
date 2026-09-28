@@ -107,7 +107,6 @@ export class NotaryPortalService {
             senderPhone: true,
             senderAddress: true,
             recordedAt: true,
-            recordedByUserId: true,
           },
         },
       },
@@ -163,7 +162,9 @@ export class NotaryPortalService {
         matter.opening === null
           ? null
           : {
-              ...matter.opening,
+              senderName: matter.opening.senderName,
+              senderPhone: matter.opening.senderPhone,
+              senderAddress: matter.opening.senderAddress,
               recordedAt: matter.opening.recordedAt.toISOString(),
               photos: refs
                 .filter((ref) =>

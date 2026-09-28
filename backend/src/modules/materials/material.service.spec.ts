@@ -106,6 +106,115 @@ describe('MaterialService', () => {
     ).rejects.toMatchObject({ response: { code: 'RESOURCE_NOT_FOUND' } });
     expect(fixture.storage.open).not.toHaveBeenCalled();
   });
+
+  it('locks an assigned matter before finalizing a notary photo', async () => {
+    const fixture = createFixture();
+    const notaryActor = {
+      ...actor,
+      notaryOfficeId: '33333333-3333-4333-8333-333333333333',
+    };
+    const matterId = '44444444-4444-4444-8444-444444444444';
+    fixture.db.uploadDraft.findUnique.mockResolvedValue(
+      openDraft({
+        ownerType: 'NOTARY_MATTER',
+        ownerId: matterId,
+        category: 'NOTARY_OPENING_PHOTO',
+        purpose: 'NOTARY_OPENING_PHOTO',
+        notaryOfficeAccountBindingId: 'binding-1',
+        originalFilename: 'opening.png',
+        declaredMimeType: 'image/png',
+      }),
+    );
+    fixture.db.notaryOfficeAccountBinding.findFirst.mockResolvedValue({
+      id: 'binding-1',
+    });
+    fixture.transaction.notaryOfficeAccountBinding.findFirst.mockResolvedValue({
+      id: 'binding-1',
+    });
+    fixture.db.notaryMatter.findFirst.mockResolvedValue({
+      id: matterId,
+      stage: 'WAITING_UNBOX',
+    });
+    fixture.transaction.notaryMatter.findFirst.mockResolvedValue({
+      id: matterId,
+      stage: 'WAITING_UNBOX',
+    });
+    fixture.storage.put.mockResolvedValue({
+      sizeBytes: 4,
+      sha256: 'a'.repeat(64),
+      detectedMimeType: 'image/png',
+    });
+    fixture.transaction.$queryRawUnsafe.mockResolvedValueOnce([]);
+    await expect(
+      fixture.service.finalizeUpload(
+        notaryActor,
+        matterId,
+        Readable.from(Buffer.from('photo')),
+      ),
+    ).rejects.toMatchObject({ response: { code: 'RESOURCE_NOT_FOUND' } });
+    expect(fixture.transaction.$queryRawUnsafe).toHaveBeenCalledWith(
+      expect.stringContaining('FOR UPDATE'),
+      matterId,
+      actor.departmentId,
+      notaryActor.notaryOfficeId,
+    );
+    expect(fixture.transaction.material.create).not.toHaveBeenCalled();
+  });
+
+  it('rejects a notary photo when opening commits before its matter lock', async () => {
+    const fixture = createFixture();
+    const notaryActor = {
+      ...actor,
+      notaryOfficeId: '33333333-3333-4333-8333-333333333333',
+    };
+    const matterId = '44444444-4444-4444-8444-444444444444';
+    fixture.db.uploadDraft.findUnique.mockResolvedValue(
+      openDraft({
+        ownerType: 'NOTARY_MATTER',
+        ownerId: matterId,
+        category: 'NOTARY_OPENING_PHOTO',
+        purpose: 'NOTARY_OPENING_PHOTO',
+        notaryOfficeAccountBindingId: 'binding-1',
+        originalFilename: 'opening.png',
+        declaredMimeType: 'image/png',
+      }),
+    );
+    fixture.db.notaryOfficeAccountBinding.findFirst.mockResolvedValue({
+      id: 'binding-1',
+    });
+    fixture.transaction.notaryOfficeAccountBinding.findFirst.mockResolvedValue({
+      id: 'binding-1',
+    });
+    fixture.db.notaryMatter.findFirst
+      .mockResolvedValueOnce({ id: matterId, stage: 'WAITING_UNBOX' })
+      .mockResolvedValue(null);
+    fixture.storage.put.mockResolvedValue({
+      sizeBytes: 4,
+      sha256: 'a'.repeat(64),
+      detectedMimeType: 'image/png',
+    });
+    await expect(
+      fixture.service.finalizeUpload(
+        notaryActor,
+        matterId,
+        Readable.from(Buffer.from('photo')),
+      ),
+    ).rejects.toMatchObject({ response: { code: 'RESOURCE_NOT_FOUND' } });
+    expect(fixture.transaction.$queryRawUnsafe).toHaveBeenCalledWith(
+      expect.stringContaining('FOR UPDATE'),
+      matterId,
+      actor.departmentId,
+      notaryActor.notaryOfficeId,
+    );
+    expect(
+      fixture.transaction.$queryRawUnsafe.mock.invocationCallOrder[0],
+    ).toBeLessThan(
+      fixture.transaction.notaryMatter.findFirst.mock.invocationCallOrder.at(
+        -1,
+      )!,
+    );
+    expect(fixture.transaction.material.create).not.toHaveBeenCalled();
+  });
   it('opens only the exact frozen opening photo for a currently bound client', async () => {
     const fixture = createFixture();
     const clientActor = { ...actor, clientCustomerId: customerId };
