@@ -76,6 +76,9 @@ export function countNotaryOpeningReviewAudits(
 export function countNotaryOpeningReviewReceipts(
   matterId: string,
 ): Promise<number>;
+export function countNotaryIssuanceDecisions(matterId: string): Promise<number>;
+export function countNotaryIssuanceAudits(matterId: string): Promise<number>;
+export function countNotaryIssuanceReceipts(matterId: string): Promise<number>;
 export function getNotaryOpeningReviewMatter(matterId: string): Promise<{
   stage: string;
   version: number;
@@ -187,6 +190,7 @@ export function rejectNotaryOpeningReferenceWrites(): Promise<void>;
 export function rejectNotaryOpeningReviewDecisionWrites(): Promise<void>;
 export function rejectNotaryOpeningReviewAuditWrites(): Promise<void>;
 export function rejectNotaryOpeningReviewReceiptWrites(): Promise<void>;
+export function rejectNotaryIssuanceAuditWrites(): Promise<void>;
 export function rejectLeadReviewDecisionWrites(): Promise<void>;
 export function rejectClientLeadReviewReceiptWrites(): Promise<void>;
 export function rejectWithdrawalApplicationWrites(): Promise<void>;
