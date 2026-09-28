@@ -40,7 +40,7 @@ export type NotaryPortalOpening = {
     mimeType: string;
   }>;
 };
-export type NotaryPortalMatter = NotaryPortalMatterSummary & {
+export type NotaryPortalMatter = Omit<NotaryPortalMatterSummary, 'stage'> & {
   stage: 'WAITING_UNBOX' | 'UNBOX_REVIEW';
   evidence: NotaryPortalEvidence | null;
   opening: NotaryPortalOpening | null;

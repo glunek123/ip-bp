@@ -60,6 +60,47 @@ describe('notary portal API', () => {
       code: 'INVALID_RESPONSE',
     });
   });
+  it('decodes a saved UNBOX_REVIEW detail with its frozen opening photos', async () => {
+    vi.stubGlobal(
+      'fetch',
+      vi.fn().mockResolvedValue(
+        new Response(
+          JSON.stringify({
+            id: 'matter-1',
+            businessNo: 'NZ-1',
+            stage: 'UNBOX_REVIEW',
+            version: 4,
+            createdAt: '2026-09-28T00:00:00.000Z',
+            evidence: { evidenceAt: '2026-09-27', logistics: [] },
+            opening: {
+              senderName: null,
+              senderPhone: null,
+              senderAddress: null,
+              recordedAt: '2026-09-28T00:00:00.000Z',
+              recordedByUserId: 'notary-user',
+              photos: [
+                {
+                  materialId: 'material-1',
+                  contentVersionId: 'content-1',
+                  originalFilename: 'box.jpg',
+                  mimeType: 'image/jpeg',
+                },
+              ],
+            },
+            capabilities: { recordOpening: false },
+          }),
+        ),
+      ),
+    );
+
+    const detail = await getNotaryPortalMatter('matter-1');
+    expect(detail.stage).toBe('UNBOX_REVIEW');
+    if (detail.stage === 'UNBOX_REVIEW') {
+      expect(detail.opening?.photos[0]?.originalFilename).toBe('box.jpg');
+    } else {
+      throw new Error('Expected a saved opening detail');
+    }
+  });
   it('posts the existing opening input through the notary portal endpoint', async () => {
     const fetch = vi.fn().mockResolvedValue(
       new Response(
