@@ -650,6 +650,13 @@ test('bound notary account opens only its assigned matter through real browser a
     buffer: jpegBytes,
   });
   await expect(page.getByText('公证处真实开箱.jpg')).toBeVisible();
+  await page.locator('[data-test="notary-opening-photo-files"]').setInputFiles({
+    name: '误传照片.jpg',
+    mimeType: 'image/jpeg',
+    buffer: jpegBytes,
+  });
+  await expect(page.getByText('误传照片.jpg')).toBeVisible();
+  await page.getByRole('checkbox', { name: /误传照片/u }).uncheck();
   await page.getByLabel('寄件人姓名').fill('实际寄件人');
   await page.locator('[data-test="notary-opening-submit"]').click();
   await expect(
@@ -659,12 +666,16 @@ test('bound notary account opens only its assigned matter through real browser a
   await expect(
     page.locator('[data-test="notary-saved-opening"]'),
   ).toContainText('公证处真实开箱.jpg');
+  await expect(
+    page.locator('[data-test="notary-saved-opening"]'),
+  ).not.toContainText('误传照片.jpg');
   const download = page.waitForEvent('download');
   await page.locator('[data-test="notary-opening-photo-download"]').click();
   expect(await readFile(await (await download).path())).toEqual(jpegBytes);
   expect(await countNotaryOpenings(ownMatterId)).toBe(1);
   expect(await countNotaryOpeningAudits(ownMatterId)).toBe(1);
   expect(await countNotaryOpeningReceipts(ownMatterId)).toBe(1);
+  expect(await countNotaryOpeningReferences(ownMatterId)).toBe(1);
 
   await page.getByRole('button', { name: '退出登录' }).click();
   await page.getByLabel('用户名').fill(username);
