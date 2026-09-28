@@ -7,6 +7,8 @@ export const NOTARY_LIST_STAGES = [
   'WAITING_UNBOX',
   'UNBOX_REVIEW',
   'ISSUANCE_DECISION',
+  'WAITING_CERTIFICATE',
+  'WAITING_RETURN',
   'ARCHIVED',
 ] as const;
 export type NotaryListStage = (typeof NOTARY_LIST_STAGES)[number];
@@ -36,6 +38,8 @@ export class NotaryListCountsDto {
   @ApiProperty({ minimum: 0 }) WAITING_UNBOX!: number;
   @ApiProperty({ minimum: 0 }) UNBOX_REVIEW!: number;
   @ApiProperty({ minimum: 0 }) ISSUANCE_DECISION!: number;
+  @ApiProperty({ minimum: 0 }) WAITING_CERTIFICATE!: number;
+  @ApiProperty({ minimum: 0 }) WAITING_RETURN!: number;
   @ApiProperty({ minimum: 0 }) ARCHIVED!: number;
 }
 

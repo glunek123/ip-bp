@@ -30,6 +30,8 @@ function fixture() {
       { stage: 'PENDING_EVIDENCE', _count: { _all: 2 } },
       { stage: 'WAITING_UNBOX', _count: { _all: 1 } },
       { stage: 'ISSUANCE_DECISION', _count: { _all: 3 } },
+      { stage: 'WAITING_CERTIFICATE', _count: { _all: 5 } },
+      { stage: 'WAITING_RETURN', _count: { _all: 6 } },
       { stage: 'ARCHIVED', _count: { _all: 4 } },
     ]),
   };
@@ -80,6 +82,8 @@ describe('NotaryListService', () => {
         WAITING_UNBOX: 1,
         UNBOX_REVIEW: 0,
         ISSUANCE_DECISION: 3,
+        WAITING_CERTIFICATE: 5,
+        WAITING_RETURN: 6,
         ARCHIVED: 4,
       },
     });

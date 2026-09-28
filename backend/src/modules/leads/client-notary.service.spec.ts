@@ -78,6 +78,75 @@ function fixture() {
 }
 
 describe('ClientNotaryService', () => {
+  it.each([
+    ['WAITING_CERTIFICATE', 'ISSUE'],
+    ['WAITING_RETURN', 'NO_ISSUE'],
+  ] as const)(
+    'retains own historical %s decision without internal fields',
+    async (stage, decision) => {
+      const { service, database } = fixture();
+      const decidedAt = new Date('2026-09-28T02:00:00.000Z');
+      const reviewed = {
+        result: 'INFRINGEMENT',
+        reason: null,
+        actorKind: 'INTERNAL',
+        actorDisplayNameSnapshot: '运营',
+        decidedAt,
+        archivedAt: null,
+      };
+      database.notaryMatter.findFirst.mockResolvedValue({
+        ...matter,
+        stage,
+        openingReviewDecision: reviewed,
+        issuanceDecision: {
+          decision,
+          actorDisplayNameSnapshot: '运营',
+          actorUserId: 'internal-secret',
+          decidedAt,
+        },
+      });
+      database.notaryMatter.findMany.mockResolvedValue([
+        {
+          ...matter,
+          stage,
+          openingReviewDecision: reviewed,
+          issuanceDecision: { decision, decidedAt },
+        },
+      ]);
+      const detail = await service.get(actor, matterId);
+      const list = await service.list(actor, 1, 20, 'lead-1');
+      expect(detail).toMatchObject({
+        stage,
+        reviewDecision: { result: 'INFRINGEMENT' },
+        issuanceDecision: { decision, decidedAt: decidedAt.toISOString() },
+      });
+      expect(list.items[0].stage).toBe(stage);
+      expect(JSON.stringify(detail)).not.toMatch(
+        /internal-secret|actorUserId|senderPhone|teamId|responsibleUserId/u,
+      );
+    },
+  );
+
+  it('rejects a waiting stage whose immutable issuance fact names the opposite choice', async () => {
+    const { service, database } = fixture();
+    database.notaryMatter.findFirst.mockResolvedValue({
+      ...matter,
+      stage: 'WAITING_CERTIFICATE',
+      openingReviewDecision: {
+        result: 'INFRINGEMENT',
+        reason: null,
+        actorKind: 'INTERNAL',
+        actorDisplayNameSnapshot: '运营',
+        decidedAt: new Date(),
+        archivedAt: null,
+      },
+      issuanceDecision: { decision: 'NO_ISSUE', decidedAt: new Date() },
+    });
+    await expect(service.get(actor, matterId)).rejects.toMatchObject({
+      response: { code: 'RESOURCE_NOT_FOUND' },
+    });
+  });
+
   it('lists opened batches for one pushed source lead including a reviewed batch', async () => {
     const { service, database } = fixture();
     database.notaryMatter.findMany.mockResolvedValue([
@@ -100,7 +169,15 @@ describe('ClientNotaryService', () => {
         sourceLeadId: 'lead-1',
         departmentId: actor.departmentId,
         customerId: actor.clientCustomerId,
-        stage: { in: ['UNBOX_REVIEW', 'ISSUANCE_DECISION', 'ARCHIVED'] },
+        stage: {
+          in: [
+            'UNBOX_REVIEW',
+            'ISSUANCE_DECISION',
+            'WAITING_CERTIFICATE',
+            'WAITING_RETURN',
+            'ARCHIVED',
+          ],
+        },
         sourceLead: { pushedAt: { not: null }, pushedByUserId: { not: null } },
       },
     );

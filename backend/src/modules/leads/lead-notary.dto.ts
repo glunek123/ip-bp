@@ -197,3 +197,29 @@ export class NotaryOpeningReviewResponseDto {
   @ApiProperty({ type: NotaryOpeningReviewDecisionResponseDto })
   reviewDecision!: NotaryOpeningReviewDecisionResponseDto;
 }
+
+export class DecideNotaryIssuanceDto {
+  @ApiProperty({ enum: ['ISSUE', 'NO_ISSUE'] })
+  @IsIn(['ISSUE', 'NO_ISSUE'])
+  decision!: 'ISSUE' | 'NO_ISSUE';
+
+  @ApiProperty({ minimum: 1 })
+  @IsInt()
+  @Min(1)
+  expectedVersion!: number;
+}
+
+export class NotaryIssuanceDecisionSummaryDto {
+  @ApiProperty({ enum: ['ISSUE', 'NO_ISSUE'] }) decision!: 'ISSUE' | 'NO_ISSUE';
+  @ApiProperty() actorDisplayName!: string;
+  @ApiProperty({ format: 'date-time' }) decidedAt!: string;
+}
+
+export class NotaryIssuanceDecisionResponseDto {
+  @ApiProperty({ format: 'uuid' }) id!: string;
+  @ApiProperty({ enum: ['WAITING_CERTIFICATE', 'WAITING_RETURN'] })
+  stage!: 'WAITING_CERTIFICATE' | 'WAITING_RETURN';
+  @ApiProperty() version!: number;
+  @ApiProperty({ type: NotaryIssuanceDecisionSummaryDto })
+  issuanceDecision!: NotaryIssuanceDecisionSummaryDto;
+}

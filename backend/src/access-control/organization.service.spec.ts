@@ -345,7 +345,7 @@ describe('OrganizationService management context', () => {
       assignTeamRoles: false,
       manageRoleTemplates: true,
     });
-    expect(result.permissionCatalog).toHaveLength(21);
+    expect(result.permissionCatalog).toHaveLength(22);
     expect(result.permissionCatalog.map(({ action }) => action)).toEqual(
       expect.arrayContaining([
         'CUSTOMER_ADMIT',
@@ -357,6 +357,7 @@ describe('OrganizationService management context', () => {
         'LEAD_EVIDENCE_DECIDE',
         'NOTARY_UNBOX_RECORD',
         'NOTARY_OPENING_REVIEW',
+        'NOTARY_ISSUANCE_DECIDE',
       ]),
     );
     expect(result.permissionCatalog.map(({ action }) => action)).toEqual(

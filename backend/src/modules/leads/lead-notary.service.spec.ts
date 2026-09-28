@@ -77,6 +77,7 @@ describe('LeadNotaryService opening review read projection', () => {
       recordEvidence: false,
       recordOpening: false,
       reviewOpening: false,
+      decideIssuance: false,
     });
     expect(result.reviewDecision).toEqual({
       result: 'NO_INFRINGEMENT',
@@ -87,6 +88,33 @@ describe('LeadNotaryService opening review read projection', () => {
       archivedAt: '2026-09-28T01:00:00.000Z',
     });
     expect(JSON.stringify(result)).not.toContain('secret-user');
+    database.notaryMatter.findFirst.mockResolvedValue({
+      ...record,
+      stage: 'WAITING_CERTIFICATE',
+      openingReviewDecision: {
+        ...record.openingReviewDecision,
+        result: 'INFRINGEMENT',
+        reason: null,
+        archivedAt: null,
+      },
+      issuanceDecision: {
+        decision: 'ISSUE',
+        actorDisplayNameSnapshot: '运营',
+        decidedAt: new Date('2026-09-28T02:00:00Z'),
+        actorUserId: 'internal-secret',
+      },
+    });
+    const issuance = await service.getMatter(actor, matterId);
+    expect(issuance).toMatchObject({
+      stage: 'WAITING_CERTIFICATE',
+      issuanceDecision: {
+        decision: 'ISSUE',
+        actorDisplayName: '运营',
+        decidedAt: '2026-09-28T02:00:00.000Z',
+      },
+      capabilities: { decideIssuance: false },
+    });
+    expect(JSON.stringify(issuance)).not.toContain('internal-secret');
     database.notaryMatter.findFirst.mockResolvedValue({
       ...record,
       stage: 'UNBOX_REVIEW',

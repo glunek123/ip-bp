@@ -19,6 +19,7 @@ import {
 import { LeadNotaryService } from './lead-notary.service';
 import { NotaryOpeningService } from './notary-opening.service';
 import { NotaryOpeningReviewService } from './notary-opening-review.service';
+import { NotaryIssuanceDecisionService } from './notary-issuance-decision.service';
 import { NotaryListController } from './notary-list.controller';
 import { NotaryListService } from './notary-list.service';
 import { NotaryOfficeAccountService } from './notary-office-account.service';
@@ -44,6 +45,7 @@ import { NotaryPortalService } from './notary-portal.service';
     LeadNotaryService,
     NotaryOpeningService,
     NotaryOpeningReviewService,
+    NotaryIssuanceDecisionService,
     NotaryListService,
     NotaryOfficeAccountService,
     NotaryPortalService,

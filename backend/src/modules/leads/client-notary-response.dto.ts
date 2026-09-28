@@ -3,7 +3,15 @@ import { ApiProperty } from '@nestjs/swagger';
 class ClientNotaryListItemDto {
   @ApiProperty({ format: 'uuid' }) id!: string;
   @ApiProperty() businessNo!: string;
-  @ApiProperty({ enum: ['UNBOX_REVIEW', 'ISSUANCE_DECISION', 'ARCHIVED'] })
+  @ApiProperty({
+    enum: [
+      'UNBOX_REVIEW',
+      'ISSUANCE_DECISION',
+      'WAITING_CERTIFICATE',
+      'WAITING_RETURN',
+      'ARCHIVED',
+    ],
+  })
   stage!: string;
   @ApiProperty() version!: number;
   @ApiProperty({ format: 'date-time' }) createdAt!: string;
@@ -57,6 +65,11 @@ class ClientNotaryDecisionDto {
     string | null;
 }
 
+class ClientNotaryIssuanceDecisionDto {
+  @ApiProperty({ enum: ['ISSUE', 'NO_ISSUE'] }) decision!: string;
+  @ApiProperty({ format: 'date-time' }) decidedAt!: string;
+}
+
 class ClientNotaryCapabilitiesDto {
   @ApiProperty() reviewOpening!: boolean;
 }
@@ -64,7 +77,15 @@ class ClientNotaryCapabilitiesDto {
 export class ClientNotaryDetailResponseDto {
   @ApiProperty({ format: 'uuid' }) id!: string;
   @ApiProperty() businessNo!: string;
-  @ApiProperty({ enum: ['UNBOX_REVIEW', 'ISSUANCE_DECISION', 'ARCHIVED'] })
+  @ApiProperty({
+    enum: [
+      'UNBOX_REVIEW',
+      'ISSUANCE_DECISION',
+      'WAITING_CERTIFICATE',
+      'WAITING_RETURN',
+      'ARCHIVED',
+    ],
+  })
   stage!: string;
   @ApiProperty() version!: number;
   @ApiProperty({ format: 'date-time' }) createdAt!: string;
@@ -75,6 +96,8 @@ export class ClientNotaryDetailResponseDto {
   opening!: ClientNotaryOpeningDto;
   @ApiProperty({ type: ClientNotaryDecisionDto, nullable: true })
   reviewDecision!: ClientNotaryDecisionDto | null;
+  @ApiProperty({ type: ClientNotaryIssuanceDecisionDto, nullable: true })
+  issuanceDecision!: ClientNotaryIssuanceDecisionDto | null;
   @ApiProperty({ type: ClientNotaryCapabilitiesDto })
   capabilities!: ClientNotaryCapabilitiesDto;
 }

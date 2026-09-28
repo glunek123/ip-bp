@@ -22,6 +22,7 @@ enum PermissionAction {
   NOTARY_EVIDENCE_RECORD       @map("notary.evidence.record")
   NOTARY_UNBOX_RECORD          @map("notary.unbox.record")
   NOTARY_OPENING_REVIEW        @map("notary.opening.review")
+  NOTARY_ISSUANCE_DECIDE       @map("notary.issuance.decide")
   NOTARY_OFFICE_MANAGE         @map("notary.office.manage")
   CLIENT_LEAD_READ             @map("client.lead.read")
   CLIENT_LEAD_REVIEW           @map("client.lead.review")
@@ -130,6 +131,8 @@ enum NotaryMatterStage {
   WAITING_UNBOX
   UNBOX_REVIEW
   ISSUANCE_DECISION
+  WAITING_CERTIFICATE
+  WAITING_RETURN
   ARCHIVED
 
   @@map("notary_matter_stage")
@@ -140,6 +143,13 @@ enum NotaryOpeningReviewResult {
   NO_INFRINGEMENT
 
   @@map("notary_opening_review_result")
+}
+
+enum NotaryIssuanceChoice {
+  ISSUE
+  NO_ISSUE
+
+  @@map("notary_issuance_choice")
 }
 
 enum NotarySampleFeeState {
@@ -335,6 +345,7 @@ model UserAccount {
   recordedNotaryEvidence       NotaryMatterEvidence[]        @relation("NotaryEvidenceRecorder")
   clientReviewReceipts         ClientLeadReviewReceipt[]     @relation("ClientLeadReviewReceiptActor")
   notaryOpeningReviewDecisions NotaryOpeningReviewDecision[] @relation("NotaryOpeningReviewDecisionActor")
+  notaryIssuanceDecisions      NotaryIssuanceDecision[]      @relation("NotaryIssuanceDecisionActor")
   notaryOpeningReviewReceipts  NotaryOpeningReviewReceipt[]  @relation("NotaryOpeningReviewReceiptActor")
   createdAt                    DateTime                      @default(now()) @map("created_at") @db.Timestamptz(3)
   updatedAt                    DateTime                      @updatedAt @map("updated_at") @db.Timestamptz(3)
@@ -403,6 +414,7 @@ model DepartmentMembership {
   responsibleLeads             Lead[]                        @relation("LeadResponsibleMembership")
   leadCommandReceipts          LeadCommandReceipt[]          @relation("LeadCommandReceiptActor")
   notaryOpeningReviewDecisions NotaryOpeningReviewDecision[] @relation("NotaryOpeningReviewDecisionInternalActor")
+  notaryIssuanceDecisions      NotaryIssuanceDecision[]      @relation("NotaryIssuanceDecisionInternalActor")
   notaryOpeningReviewReceipts  NotaryOpeningReviewReceipt[]  @relation("NotaryOpeningReviewReceiptInternalActor")
   notaryUploadDrafts           UploadDraft[]                 @relation("UploadDraftInternalActor")
   notaryOpeningRecords         NotaryMatterOpening[]         @relation("NotaryOpeningInternalActor")
@@ -986,6 +998,7 @@ model NotaryMatter {
   evidence              NotaryMatterEvidence?
   opening               NotaryMatterOpening?
   openingReviewDecision NotaryOpeningReviewDecision?
+  issuanceDecision      NotaryIssuanceDecision?
   openingReviewReceipts NotaryOpeningReviewReceipt[]
   commandReceipts       NotaryMatterCommandReceipt[]
   createdAt             DateTime                     @default(now()) @map("created_at") @db.Timestamptz(3)
@@ -1056,11 +1069,13 @@ model NotaryOpeningReviewDecision {
   clientActor              CustomerAccountBinding?        @relation("NotaryOpeningReviewDecisionClientActor", fields: [customerAccountBindingId, actorUserId, customerId, departmentId], references: [id, userId, customerId, departmentId], onDelete: Restrict, onUpdate: Restrict, map: "notary_opening_review_decisions_client_actor_fkey")
   receipts                 NotaryOpeningReviewReceipt[]
   auditEvent               NotaryOpeningReviewAuditEvent?
+  issuanceDecision         NotaryIssuanceDecision?
 
   @@unique([id, matterId, departmentId, customerId, actorUserId, actorKind, toVersion], map: "notary_opening_review_decisions_receipt_identity_key")
   @@unique([id, matterId, departmentId, customerId, actorUserId, actorKind, result, toVersion], map: "notary_opening_review_decisions_audit_identity_key")
   @@unique([matterId, customerId, departmentId], map: "notary_opening_review_decisions_matter_identity_key")
   @@unique([matterId, departmentId], map: "notary_opening_review_decisions_opening_identity_key")
+  @@unique([id, matterId, departmentId, result], map: "notary_opening_review_decisions_issuance_identity_key")
   @@index([departmentId, customerId, decidedAt])
   @@map("notary_opening_review_decisions")
 }
@@ -1108,6 +1123,48 @@ model NotaryOpeningReviewAuditEvent {
   @@unique([reviewDecisionId, matterId, departmentId, customerId, actorUserId, actorKind, result, matterVersion], map: "notary_opening_review_audit_events_decision_identity_key")
   @@index([matterId, departmentId, occurredAt])
   @@map("notary_opening_review_audit_events")
+}
+
+model NotaryIssuanceDecision {
+  id                       String                            @id @default(uuid()) @db.Uuid
+  matterId                 String                            @unique @map("matter_id") @db.Uuid
+  departmentId             String                            @map("department_id") @db.Uuid
+  openingReviewDecisionId  String                            @unique @map("opening_review_decision_id") @db.Uuid
+  openingReviewResult      NotaryOpeningReviewResult         @default(INFRINGEMENT) @map("opening_review_result")
+  actorUserId              String                            @map("actor_user_id") @db.Uuid
+  actorDisplayNameSnapshot String                            @map("actor_display_name_snapshot") @db.VarChar(200)
+  decision                 NotaryIssuanceChoice
+  decidedAt                DateTime                          @default(now()) @map("decided_at") @db.Timestamptz(3)
+  fromVersion              Int                               @map("from_version")
+  toVersion                Int                               @map("to_version")
+  matter                   NotaryMatter                      @relation(fields: [matterId, departmentId], references: [id, departmentId], onDelete: Restrict, onUpdate: Restrict)
+  openingReviewDecision    NotaryOpeningReviewDecision      @relation(fields: [openingReviewDecisionId, matterId, departmentId, openingReviewResult], references: [id, matterId, departmentId, result], onDelete: Restrict, onUpdate: Restrict)
+  actor                    UserAccount                       @relation("NotaryIssuanceDecisionActor", fields: [actorUserId], references: [id], onDelete: Restrict)
+  internalActor            DepartmentMembership             @relation("NotaryIssuanceDecisionInternalActor", fields: [actorUserId, departmentId], references: [userId, departmentId], onDelete: Restrict, onUpdate: Restrict)
+  auditEvent               NotaryIssuanceDecisionAuditEvent?
+
+  @@unique([id, matterId, departmentId, actorUserId, decision, toVersion], map: "notary_issuance_decisions_audit_identity_key")
+  @@unique([matterId, departmentId], map: "notary_issuance_decisions_matter_department_key")
+  @@unique([openingReviewDecisionId, matterId, departmentId, openingReviewResult], map: "notary_issuance_decisions_review_identity_key")
+  @@index([departmentId, decidedAt])
+  @@map("notary_issuance_decisions")
+}
+
+model NotaryIssuanceDecisionAuditEvent {
+  id                 String                   @id @default(uuid()) @db.Uuid
+  issuanceDecisionId String                   @unique @map("issuance_decision_id") @db.Uuid
+  matterId           String                   @map("matter_id") @db.Uuid
+  departmentId       String                   @map("department_id") @db.Uuid
+  actorUserId        String                   @map("actor_user_id") @db.Uuid
+  decision           NotaryIssuanceChoice
+  matterVersion      Int                      @map("matter_version")
+  action             String                   @db.VarChar(100)
+  occurredAt         DateTime                 @default(now()) @map("occurred_at") @db.Timestamptz(3)
+  issuanceDecision   NotaryIssuanceDecision @relation(fields: [issuanceDecisionId, matterId, departmentId, actorUserId, decision, matterVersion], references: [id, matterId, departmentId, actorUserId, decision, toVersion], onDelete: Restrict, onUpdate: Restrict)
+
+  @@unique([issuanceDecisionId, matterId, departmentId, actorUserId, decision, matterVersion], map: "notary_issuance_decision_audit_events_identity_key")
+  @@index([matterId, departmentId, occurredAt])
+  @@map("notary_issuance_decision_audit_events")
 }
 
 model NotaryMatterLogistics {

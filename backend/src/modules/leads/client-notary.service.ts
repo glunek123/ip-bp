@@ -29,6 +29,7 @@ const clientMatterInclude = {
       archivedAt: true,
     },
   },
+  issuanceDecision: { select: { decision: true, decidedAt: true } },
   selectedProducts: { select: { leadProductId: true } },
 } satisfies Prisma.NotaryMatterInclude;
 type ClientMatter = Prisma.NotaryMatterGetPayload<{
@@ -54,7 +55,13 @@ export class ClientNotaryService {
         : {
             sourceLeadId,
             stage: {
-              in: ['UNBOX_REVIEW', 'ISSUANCE_DECISION', 'ARCHIVED'] as const,
+              in: [
+                'UNBOX_REVIEW',
+                'ISSUANCE_DECISION',
+                'WAITING_CERTIFICATE',
+                'WAITING_RETURN',
+                'ARCHIVED',
+              ] as const,
             },
           }),
       opening: { isNot: null },
@@ -81,6 +88,7 @@ export class ClientNotaryService {
               archivedAt: true,
             },
           },
+          issuanceDecision: { select: { decision: true, decidedAt: true } },
         },
       }),
       this.database.notaryMatter.count({ where }),
@@ -88,7 +96,8 @@ export class ClientNotaryService {
     if (
       items.some(
         (item) =>
-          !openingReviewMatchesStage(item.stage, item.openingReviewDecision),
+          !openingReviewMatchesStage(item.stage, item.openingReviewDecision) ||
+          !this.issuanceMatchesStage(item.stage, item.issuanceDecision),
       )
     )
       throw this.notFound();
@@ -114,7 +123,15 @@ export class ClientNotaryService {
         id,
         departmentId: actor.departmentId,
         customerId,
-        stage: { in: ['UNBOX_REVIEW', 'ISSUANCE_DECISION', 'ARCHIVED'] },
+        stage: {
+          in: [
+            'UNBOX_REVIEW',
+            'ISSUANCE_DECISION',
+            'WAITING_CERTIFICATE',
+            'WAITING_RETURN',
+            'ARCHIVED',
+          ],
+        },
         opening: { isNot: null },
         sourceLead: { pushedAt: { not: null }, pushedByUserId: { not: null } },
       },
@@ -211,6 +228,8 @@ export class ClientNotaryService {
     const decision = matter.openingReviewDecision;
     if (!openingReviewMatchesStage(matter.stage, decision))
       throw this.notFound();
+    if (!this.issuanceMatchesStage(matter.stage, matter.issuanceDecision))
+      throw this.notFound();
     return {
       id: matter.id,
       businessNo: matter.businessNo,
@@ -242,8 +261,24 @@ export class ClientNotaryService {
               decidedAt: decision.decidedAt.toISOString(),
               archivedAt: decision.archivedAt?.toISOString() ?? null,
             },
+      issuanceDecision:
+        matter.issuanceDecision == null
+          ? null
+          : {
+              decision: matter.issuanceDecision.decision,
+              decidedAt: matter.issuanceDecision.decidedAt.toISOString(),
+            },
       capabilities: { reviewOpening: matter.stage === 'UNBOX_REVIEW' },
     };
+  }
+
+  private issuanceMatchesStage(
+    stage: string,
+    decision: { decision: 'ISSUE' | 'NO_ISSUE'; decidedAt: Date } | null,
+  ): boolean {
+    if (stage === 'WAITING_CERTIFICATE') return decision?.decision === 'ISSUE';
+    if (stage === 'WAITING_RETURN') return decision?.decision === 'NO_ISSUE';
+    return decision == null;
   }
 
   private async assertClient(actor: ActorContext): Promise<string> {

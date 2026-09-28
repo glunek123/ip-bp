@@ -679,6 +679,13 @@ export class LeadNotaryService {
             archivedAt: true,
           },
         },
+        issuanceDecision: {
+          select: {
+            decision: true,
+            actorDisplayNameSnapshot: true,
+            decidedAt: true,
+          },
+        },
         selectedProducts: { orderBy: { leadProductId: 'asc' } },
         selectedMaterials: {
           include: {
@@ -694,6 +701,7 @@ export class LeadNotaryService {
     let recordEvidence = false;
     let recordOpening = false;
     let reviewOpening = false;
+    let decideIssuance = false;
     if (matter.stage === 'PENDING_EVIDENCE') {
       try {
         await this.access.authorizeLead(actor, 'notary.evidence.record', {
@@ -736,11 +744,35 @@ export class LeadNotaryService {
         if (!(error instanceof ForbiddenException)) throw error;
       }
     }
+    if (matter.stage === 'ISSUANCE_DECISION') {
+      try {
+        await this.access.authorizeLead(actor, 'notary.issuance.decide', {
+          departmentId: matter.departmentId,
+          responsibleUserId: matter.sourceLead.responsibleUserId,
+          ...(matter.sourceLead.teamId === null
+            ? {}
+            : { teamId: matter.sourceLead.teamId }),
+        });
+        decideIssuance = true;
+      } catch (error) {
+        if (!(error instanceof ForbiddenException)) throw error;
+      }
+    }
     if (matter.stage === 'WAITING_UNBOX' && matter.evidence === null)
       throw this.corruptReceipt();
     if (matter.stage === 'UNBOX_REVIEW' && matter.opening === null)
       throw this.corruptReceipt();
     if (!openingReviewMatchesStage(matter.stage, matter.openingReviewDecision))
+      throw this.corruptReceipt();
+    if (
+      (matter.stage === 'WAITING_CERTIFICATE' &&
+        matter.issuanceDecision?.decision !== 'ISSUE') ||
+      (matter.stage === 'WAITING_RETURN' &&
+        matter.issuanceDecision?.decision !== 'NO_ISSUE') ||
+      (matter.stage !== 'WAITING_CERTIFICATE' &&
+        matter.stage !== 'WAITING_RETURN' &&
+        matter.issuanceDecision != null)
+    )
       throw this.corruptReceipt();
     const openingReferenceRows =
       matter.opening === null
@@ -801,7 +833,21 @@ export class LeadNotaryService {
       leadVersion: matter.toLeadVersion,
       stage: matter.stage,
       version: matter.version,
-      capabilities: { recordEvidence, recordOpening, reviewOpening },
+      capabilities: {
+        recordEvidence,
+        recordOpening,
+        reviewOpening,
+        decideIssuance,
+      },
+      issuanceDecision:
+        matter.issuanceDecision == null
+          ? null
+          : {
+              decision: matter.issuanceDecision.decision,
+              actorDisplayName:
+                matter.issuanceDecision.actorDisplayNameSnapshot,
+              decidedAt: matter.issuanceDecision.decidedAt.toISOString(),
+            },
       reviewDecision:
         matter.openingReviewDecision === null
           ? null

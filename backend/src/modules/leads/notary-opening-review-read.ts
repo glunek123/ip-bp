@@ -21,7 +21,11 @@ export function openingReviewMatchesStage(
   )
     return decision === null;
   if (decision === null) return false;
-  if (stage === 'ISSUANCE_DECISION')
+  if (
+    stage === 'ISSUANCE_DECISION' ||
+    stage === 'WAITING_CERTIFICATE' ||
+    stage === 'WAITING_RETURN'
+  )
     return (
       decision.result === 'INFRINGEMENT' &&
       decision.reason === null &&
