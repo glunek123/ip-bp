@@ -79,6 +79,7 @@ const allActions = [
   'NOTARY_EVIDENCE_RECORD',
   'NOTARY_UNBOX_RECORD',
   'NOTARY_OPENING_REVIEW',
+  'NOTARY_ISSUANCE_DECIDE',
   'NOTARY_OFFICE_MANAGE',
   'LEAD_WITHDRAW_APPLY',
 ];
@@ -93,6 +94,7 @@ const actionNames = Object.freeze({
   'notary.evidence.record': 'NOTARY_EVIDENCE_RECORD',
   'notary.unbox.record': 'NOTARY_UNBOX_RECORD',
   'notary.opening.review': 'NOTARY_OPENING_REVIEW',
+  'notary.issuance.decide': 'NOTARY_ISSUANCE_DECIDE',
   'notary.office.manage': 'NOTARY_OFFICE_MANAGE',
   'lead.withdraw.apply': 'LEAD_WITHDRAW_APPLY',
 });

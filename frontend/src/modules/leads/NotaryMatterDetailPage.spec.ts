@@ -9,6 +9,7 @@ const api = vi.hoisted(() => ({
   recordNotaryEvidence: vi.fn(),
   recordNotaryOpening: vi.fn(),
   reviewNotaryOpening: vi.fn(),
+  decideNotaryIssuance: vi.fn(),
 }));
 const materials = vi.hoisted(() => ({
   downloadMaterialVersion: vi.fn(),
@@ -172,6 +173,83 @@ beforeEach(() => {
 });
 
 describe('NotaryMatterDetailPage', () => {
+  it('offers explicit issuance choices only when permitted and displays the persisted result', async () => {
+    const pending = {
+      ...matter,
+      stage: 'ISSUANCE_DECISION',
+      version: 5,
+      capabilities: {
+        recordEvidence: false,
+        recordOpening: false,
+        reviewOpening: false,
+        decideIssuance: true,
+      },
+      evidence: firstEvidence,
+      opening: {
+        senderName: null,
+        senderPhone: null,
+        senderAddress: null,
+        recordedAt: '2026-09-24T02:00:00.000Z',
+        recordedByUserId: 'user-1',
+        photos: [
+          {
+            materialId: 'photo-1',
+            contentVersionId: 'photo-v1',
+            originalFilename: '开箱.jpg',
+            mimeType: 'image/jpeg',
+          },
+        ],
+      },
+      reviewDecision: {
+        result: 'INFRINGEMENT',
+        reason: null,
+        actorKind: 'CLIENT',
+        actorDisplayName: '客户审核员',
+        decidedAt: '2026-09-24T03:00:00.000Z',
+        archivedAt: null,
+      },
+      issuanceDecision: null,
+    };
+    const saved = {
+      ...pending,
+      stage: 'WAITING_CERTIFICATE',
+      version: 6,
+      capabilities: { ...pending.capabilities, decideIssuance: false },
+      issuanceDecision: {
+        decision: 'ISSUE',
+        actorDisplayName: '运营甲',
+        decidedAt: '2026-09-24T04:00:00.000Z',
+      },
+    };
+    api.getNotaryMatter
+      .mockResolvedValueOnce(pending)
+      .mockResolvedValueOnce(saved);
+    api.decideNotaryIssuance.mockResolvedValue({});
+    const wrapper = await mountPage();
+    expect(
+      wrapper.get('[data-test="issuance-decision-section"]').text(),
+    ).toContain('ISSUE → 待出证');
+    expect(
+      wrapper.get('[data-test="issuance-decision-section"]').text(),
+    ).toContain('NO_ISSUE → 待退货');
+    await wrapper.get('[data-test="issuance-decision-issue"]').setValue();
+    await wrapper
+      .get('[data-test="issuance-decision-section"] form')
+      .trigger('submit');
+    await flushPromises();
+    expect(api.decideNotaryIssuance).toHaveBeenCalledWith(
+      'matter-1',
+      { decision: 'ISSUE', expectedVersion: 5 },
+      expect.any(String),
+    );
+    expect(
+      wrapper.get('[data-test="issuance-decision-record"]').text(),
+    ).toContain('运营甲');
+    expect(
+      wrapper.get('[data-test="issuance-decision-record"]').text(),
+    ).toContain('待出证');
+  });
+
   it('offers no default opening result and requires a reason for no infringement', async () => {
     api.getNotaryMatter.mockResolvedValue({
       ...matter,

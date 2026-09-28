@@ -52,6 +52,8 @@ beforeEach(() => {
       WAITING_UNBOX: 1,
       UNBOX_REVIEW: 1,
       ISSUANCE_DECISION: 1,
+      WAITING_CERTIFICATE: 0,
+      WAITING_RETURN: 0,
       ARCHIVED: 0,
     },
   });
@@ -218,6 +220,8 @@ describe('AppShell', () => {
       '待取件开箱1',
       '开箱待审核1',
       '开箱待确认1',
+      '待出证0',
+      '待退货0',
       '已归档0',
     ]);
     expect(wrapper.find('[data-test="lead-counter"]').exists()).toBe(false);
@@ -242,6 +246,8 @@ describe('AppShell', () => {
         WAITING_UNBOX: 1,
         UNBOX_REVIEW: 1,
         ISSUANCE_DECISION: 0,
+        WAITING_CERTIFICATE: 0,
+        WAITING_RETURN: 0,
         ARCHIVED: 0,
       },
     });
@@ -275,7 +281,7 @@ describe('AppShell', () => {
     await wrapper.get('[data-test="notary-expand"]').trigger('click');
     expect(wrapper.find('[data-test="notary-counter"]').exists()).toBe(false);
     await wrapper.get('[data-test="notary-expand"]').trigger('click');
-    expect(wrapper.findAll('[data-test="notary-counter"]')).toHaveLength(5);
+    expect(wrapper.findAll('[data-test="notary-counter"]')).toHaveLength(7);
   });
 
   it('labels the client navigation for both review queues', async () => {

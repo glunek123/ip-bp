@@ -41,7 +41,10 @@ function formatTime(value: string): string {
 }
 function isReviewed(value: ClientNotaryMatterDetail | undefined): boolean {
   return (
-    (value?.stage === 'ISSUANCE_DECISION' || value?.stage === 'ARCHIVED') &&
+    (value?.stage === 'ISSUANCE_DECISION' ||
+      value?.stage === 'WAITING_CERTIFICATE' ||
+      value?.stage === 'WAITING_RETURN' ||
+      value?.stage === 'ARCHIVED') &&
     value.reviewDecision !== null
   );
 }
@@ -50,7 +53,11 @@ function stageLabel(stage: ClientNotaryMatterDetail['stage']): string {
     ? '开箱待审核'
     : stage === 'ISSUANCE_DECISION'
       ? '开箱待确认'
-      : '已归档';
+      : stage === 'WAITING_CERTIFICATE'
+        ? '待出证'
+        : stage === 'WAITING_RETURN'
+          ? '待退货'
+          : '已归档';
 }
 async function load(): Promise<boolean> {
   request?.abort();
@@ -353,7 +360,23 @@ onBeforeUnmount(() => request?.abort());
           <p v-if="matter.stage === 'ISSUANCE_DECISION'">
             下一步：由运营决定是否出证。
           </p>
-          <p v-else>该事项已归档，普通入口不能撤回。</p>
+          <p v-else-if="matter.stage === 'ARCHIVED'">
+            该事项已归档，普通入口不能撤回。
+          </p>
+        </section>
+        <section
+          v-if="matter.issuanceDecision"
+          class="demo-card demo-card--pad"
+          data-test="client-issuance-decision-record"
+        >
+          <h2 class="form-section-title">出证决定记录</h2>
+          <p>
+            决定：{{ matter.issuanceDecision.decision }} →
+            {{
+              matter.issuanceDecision.decision === 'ISSUE' ? '待出证' : '待退货'
+            }}
+          </p>
+          <p>决定时间：{{ formatTime(matter.issuanceDecision.decidedAt) }}</p>
         </section>
       </template>
     </main>

@@ -121,6 +121,11 @@ const context = {
       scopes: ['SELF', 'TEAM', 'DEPARTMENT'],
     },
     {
+      action: 'NOTARY_ISSUANCE_DECIDE',
+      label: '决定是否出证',
+      scopes: ['SELF', 'TEAM', 'DEPARTMENT'],
+    },
+    {
       action: 'NOTARY_OFFICE_MANAGE',
       label: '管理公证处',
       scopes: ['DEPARTMENT'],
@@ -185,6 +190,7 @@ describe('organization API', () => {
       'NOTARY_EVIDENCE_RECORD',
       'NOTARY_UNBOX_RECORD',
       'NOTARY_OPENING_REVIEW',
+      'NOTARY_ISSUANCE_DECIDE',
       'NOTARY_OFFICE_MANAGE',
       'USER_READ',
       'USER_MANAGE',

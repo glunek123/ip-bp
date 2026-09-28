@@ -17,6 +17,7 @@ import {
   recordNotaryEvidence,
   recordNotaryOpening,
   reviewNotaryOpening,
+  decideNotaryIssuance,
   type NotaryMatterDetail,
   type RecordNotaryEvidenceInput,
   type RecordNotaryOpeningInput,
@@ -65,6 +66,12 @@ const reviewSuccess = ref('');
 const submittingReview = ref(false);
 const reviewRetryLocked = ref(false);
 const reviewRetryAvailable = ref(false);
+const issuanceChoice = ref<'' | 'ISSUE' | 'NO_ISSUE'>('');
+const issuanceError = ref('');
+const issuanceSuccess = ref('');
+const submittingIssuance = ref(false);
+const issuanceRetryLocked = ref(false);
+const issuanceRetryAvailable = ref(false);
 const deletingOpeningMaterialId = ref<string | null>(null);
 const refreshingOpeningPhotos = ref(false);
 let evidenceIdempotencyKey = '';
@@ -73,6 +80,8 @@ let openingIdempotencyKey = '';
 let openingSubmissionFingerprint = '';
 let reviewIdempotencyKey = '';
 let reviewSubmissionFingerprint = '';
+let issuanceIdempotencyKey = '';
+let issuanceSubmissionFingerprint = '';
 let request: AbortController | undefined;
 let nextOpeningPhotoLocalId = 1;
 
@@ -93,7 +102,10 @@ function hasSavedOpening(value: NotaryMatterDetail | undefined): boolean {
 
 function isReviewed(value: NotaryMatterDetail | undefined): boolean {
   return (
-    (value?.stage === 'ISSUANCE_DECISION' || value?.stage === 'ARCHIVED') &&
+    (value?.stage === 'ISSUANCE_DECISION' ||
+      value?.stage === 'WAITING_CERTIFICATE' ||
+      value?.stage === 'WAITING_RETURN' ||
+      value?.stage === 'ARCHIVED') &&
     value.reviewDecision !== null
   );
 }
@@ -410,6 +422,83 @@ function makeReviewKey(): string {
   );
 }
 
+async function submitIssuanceDecision(): Promise<void> {
+  issuanceError.value = '';
+  issuanceSuccess.value = '';
+  const current = matter.value;
+  if (
+    !current?.capabilities.decideIssuance ||
+    current.stage !== 'ISSUANCE_DECISION' ||
+    submittingIssuance.value
+  )
+    return;
+  if (!issuanceChoice.value) {
+    issuanceError.value = '请选择是否出证';
+    return;
+  }
+  const input = {
+    decision: issuanceChoice.value,
+    expectedVersion: current.version,
+  } as const;
+  const fingerprint = JSON.stringify(input);
+  if (fingerprint !== issuanceSubmissionFingerprint) {
+    issuanceSubmissionFingerprint = fingerprint;
+    issuanceIdempotencyKey = makeReviewKey();
+  }
+  issuanceRetryAvailable.value = false;
+  submittingIssuance.value = true;
+  try {
+    await decideNotaryIssuance(current.id, input, issuanceIdempotencyKey);
+    notifyWorkflowChanged();
+    const loaded = await load();
+    const decision = matter.value?.issuanceDecision;
+    if (loaded && decision?.decision === input.decision) {
+      issuanceSuccess.value = `决定已保存：${input.decision === 'ISSUE' ? '待出证' : '待退货'}。`;
+      issuanceIdempotencyKey = '';
+      issuanceSubmissionFingerprint = '';
+      issuanceRetryLocked.value = false;
+      issuanceRetryAvailable.value = false;
+    } else {
+      issuanceRetryLocked.value = true;
+      issuanceRetryAvailable.value = true;
+      issuanceError.value =
+        '决定已提交，但暂时无法读取保存结果；可使用相同请求键安全重试或刷新确认。';
+    }
+  } catch (error) {
+    const code = error instanceof ApiError ? error.code : '';
+    if (code === 'VERSION_CONFLICT' || code === 'INVALID_STATE') {
+      issuanceIdempotencyKey = '';
+      issuanceSubmissionFingerprint = '';
+      issuanceRetryLocked.value = false;
+      issuanceRetryAvailable.value = false;
+      issuanceError.value = '事项状态或版本已变化，请刷新查看最新阶段。';
+    } else if (code === 'IDEMPOTENCY_CONFLICT') {
+      issuanceIdempotencyKey = '';
+      issuanceSubmissionFingerprint = '';
+      issuanceRetryLocked.value = false;
+      issuanceError.value = '本次请求与已提交内容冲突，请刷新后重新选择。';
+    } else if (code === 'ACTION_FORBIDDEN' || code === 'FORBIDDEN') {
+      issuanceRetryLocked.value = true;
+      issuanceError.value = '当前账号无权决定是否出证，请刷新权限后重试。';
+    } else if (code === 'RESOURCE_NOT_FOUND' || code === 'NOT_FOUND') {
+      issuanceRetryLocked.value = true;
+      issuanceError.value = '事项不存在或当前不可访问，请刷新列表。';
+    } else if (code === 'NETWORK_ERROR' || code === 'TIMEOUT') {
+      issuanceRetryLocked.value = true;
+      issuanceRetryAvailable.value = true;
+      issuanceError.value =
+        '提交结果暂时未知；决定和请求键已锁定，可安全重试或刷新查看结果。';
+    } else {
+      issuanceRetryLocked.value = true;
+      issuanceRetryAvailable.value = true;
+      issuanceError.value =
+        '出证决定失败；可使用相同请求键重试或刷新查看结果。';
+    }
+  } finally {
+    submittingIssuance.value = false;
+  }
+}
+
 async function submitOpeningReview(): Promise<void> {
   reviewError.value = '';
   reviewSuccess.value = '';
@@ -623,11 +712,15 @@ onBeforeUnmount(() => request?.abort());
                 ? '开箱审核中'
                 : matter.stage === 'ISSUANCE_DECISION'
                   ? '开箱待确认'
-                  : matter.stage === 'ARCHIVED'
-                    ? '已归档'
-                    : matter.stage === 'WAITING_UNBOX'
-                      ? '等待开箱'
-                      : '待公证处取证'
+                  : matter.stage === 'WAITING_CERTIFICATE'
+                    ? '待出证'
+                    : matter.stage === 'WAITING_RETURN'
+                      ? '待退货'
+                      : matter.stage === 'ARCHIVED'
+                        ? '已归档'
+                        : matter.stage === 'WAITING_UNBOX'
+                          ? '等待开箱'
+                          : '待公证处取证'
             }}</span>
             <h1>{{ matter.businessNo }}</h1>
           </div>
@@ -948,7 +1041,73 @@ onBeforeUnmount(() => request?.abort());
           <p v-if="matter.stage === 'ISSUANCE_DECISION'">
             下一步：由运营决定是否出证。
           </p>
-          <p v-else>该事项已归档，普通入口不能撤回。</p>
+          <p v-else-if="matter.stage === 'ARCHIVED'">
+            该事项已归档，普通入口不能撤回。
+          </p>
+        </section>
+        <section
+          v-if="
+            matter.capabilities.decideIssuance &&
+            matter.stage === 'ISSUANCE_DECISION'
+          "
+          class="demo-card demo-card--pad"
+          data-test="issuance-decision-section"
+        >
+          <h2 class="form-section-title">是否出证</h2>
+          <p>选择 ISSUE → 待出证，或 NO_ISSUE → 待退货。决定保存后不可修改。</p>
+          <form @submit.prevent="submitIssuanceDecision">
+            <label
+              ><input
+                v-model="issuanceChoice"
+                data-test="issuance-decision-issue"
+                type="radio"
+                name="issuance-decision"
+                value="ISSUE"
+                :disabled="submittingIssuance || issuanceRetryLocked"
+              />ISSUE → 待出证</label
+            >
+            <label
+              ><input
+                v-model="issuanceChoice"
+                data-test="issuance-decision-no-issue"
+                type="radio"
+                name="issuance-decision"
+                value="NO_ISSUE"
+                :disabled="submittingIssuance || issuanceRetryLocked"
+              />NO_ISSUE → 待退货</label
+            >
+            <p v-if="issuanceError" class="field-error" role="alert">
+              {{ issuanceError }}
+            </p>
+            <p v-if="issuanceSuccess" role="status">{{ issuanceSuccess }}</p>
+            <ElButton
+              data-test="issuance-decision-submit"
+              native-type="submit"
+              :loading="submittingIssuance"
+              :disabled="
+                submittingIssuance ||
+                (issuanceRetryLocked && !issuanceRetryAvailable)
+              "
+              >{{
+                issuanceRetryAvailable ? '使用相同请求键重试' : '确认决定'
+              }}</ElButton
+            >
+          </form>
+        </section>
+        <section
+          v-if="matter.issuanceDecision"
+          class="demo-card demo-card--pad"
+          data-test="issuance-decision-record"
+        >
+          <h2 class="form-section-title">出证决定记录</h2>
+          <p>
+            决定：{{ matter.issuanceDecision.decision }} →
+            {{
+              matter.issuanceDecision.decision === 'ISSUE' ? '待出证' : '待退货'
+            }}
+          </p>
+          <p>决定人：{{ matter.issuanceDecision.actorDisplayName }}</p>
+          <p>决定时间：{{ formatTime(matter.issuanceDecision.decidedAt) }}</p>
         </section>
         <section
           v-if="

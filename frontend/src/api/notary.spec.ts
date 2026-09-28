@@ -17,6 +17,7 @@ import {
   recordNotaryOpening,
   recordNotaryEvidence,
   reviewNotaryOpening,
+  decideNotaryIssuance,
 } from './notary';
 
 const matter = {
@@ -31,10 +32,12 @@ const matter = {
     recordEvidence: true,
     recordOpening: false,
     reviewOpening: false,
+    decideIssuance: false,
   },
   evidence: null,
   opening: null,
   reviewDecision: null,
+  issuanceDecision: null,
   notaryOffice: { id: 'office-1', name: '广州市南方公证处' },
   selectedProductIds: ['product-1'],
   selectedContentVersionIds: ['content-1'],
@@ -66,6 +69,8 @@ describe('notary API', () => {
         WAITING_UNBOX: 1,
         UNBOX_REVIEW: 0,
         ISSUANCE_DECISION: 0,
+        WAITING_CERTIFICATE: 0,
+        WAITING_RETURN: 0,
         ARCHIVED: 0,
       },
     };
@@ -95,6 +100,7 @@ describe('notary API', () => {
         recordEvidence: false,
         recordOpening: false,
         reviewOpening: false,
+        decideIssuance: true,
       },
       evidence: {
         evidenceAt: '2026-09-24',
@@ -160,6 +166,13 @@ describe('notary API', () => {
     http.getJson.mockResolvedValue(reviewed);
     await expect(getNotaryMatter('matter-1')).resolves.toMatchObject({
       stage: 'ISSUANCE_DECISION',
+      capabilities: {
+        recordEvidence: false,
+        recordOpening: false,
+        reviewOpening: false,
+        decideIssuance: true,
+      },
+      issuanceDecision: null,
       reviewDecision: { result: 'INFRINGEMENT' },
     });
 
@@ -241,6 +254,35 @@ describe('notary API', () => {
         'key-2',
       ),
     ).rejects.toMatchObject({ code: 'INVALID_RESPONSE' });
+  });
+
+  it('submits an issuance choice with version and idempotency key', async () => {
+    const result = {
+      id: 'matter-1',
+      stage: 'WAITING_CERTIFICATE',
+      version: 6,
+      issuanceDecision: {
+        decision: 'ISSUE',
+        actorDisplayName: '运营甲',
+        decidedAt: '2026-09-24T04:00:00.000Z',
+      },
+    };
+    http.requestJson.mockResolvedValue(result);
+    await expect(
+      decideNotaryIssuance(
+        'matter-1',
+        { decision: 'ISSUE', expectedVersion: 5 },
+        'key-issue',
+      ),
+    ).resolves.toEqual(result);
+    expect(http.requestJson).toHaveBeenCalledWith(
+      '/notary-matters/matter-1/issuance-decision',
+      {
+        method: 'POST',
+        headers: { 'Idempotency-Key': 'key-issue' },
+        body: { decision: 'ISSUE', expectedVersion: 5 },
+      },
+    );
   });
   it('lists only validated active notary offices with create capability', async () => {
     const result = {
@@ -375,6 +417,7 @@ describe('notary API', () => {
         recordEvidence: true,
         recordOpening: false,
         reviewOpening: false,
+        decideIssuance: false,
       },
       reviewDecision: null,
       evidence: null,
@@ -407,6 +450,7 @@ describe('notary API', () => {
         recordEvidence: true,
         recordOpening: false,
         reviewOpening: false,
+        decideIssuance: false,
       },
       reviewDecision: null,
       evidence: null,
@@ -419,6 +463,7 @@ describe('notary API', () => {
         recordEvidence: false,
         recordOpening: false,
         reviewOpening: false,
+        decideIssuance: false,
       },
       reviewDecision: null,
       evidence: {
@@ -482,6 +527,7 @@ describe('notary API', () => {
         recordEvidence: false,
         recordOpening: false,
         reviewOpening: false,
+        decideIssuance: false,
       },
       reviewDecision: null,
       evidence: {
@@ -535,6 +581,7 @@ describe('notary API', () => {
         recordEvidence: false,
         recordOpening: false,
         reviewOpening: false,
+        decideIssuance: false,
       },
       reviewDecision: null,
       opening: { ...opening, photos: [{ ...opening.photos[0], mimeType: 42 }] },

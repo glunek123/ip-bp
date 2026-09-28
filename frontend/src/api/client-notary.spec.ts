@@ -53,6 +53,7 @@ const detail = {
     ],
   },
   reviewDecision: decision,
+  issuanceDecision: null,
   capabilities: { reviewOpening: false },
 };
 
@@ -110,6 +111,49 @@ describe('client notary API', () => {
     });
     await expect(getClientNotaryMatter('matter-1')).rejects.toMatchObject({
       code: 'INVALID_RESPONSE',
+    });
+  });
+
+  it('decodes client safe issuance summary and certificate/return stages strictly', async () => {
+    const issued = {
+      ...detail,
+      stage: 'WAITING_CERTIFICATE',
+      version: 4,
+      reviewDecision: {
+        ...decision,
+        result: 'INFRINGEMENT',
+        reason: null,
+        archivedAt: null,
+      },
+      issuanceDecision: {
+        decision: 'ISSUE',
+        decidedAt: '2026-09-25T04:00:00.000Z',
+      },
+    };
+    http.getJson.mockResolvedValue(issued);
+    await expect(getClientNotaryMatter('matter-1')).resolves.toMatchObject({
+      issuanceDecision: { decision: 'ISSUE' },
+    });
+    http.getJson.mockResolvedValueOnce({
+      ...issued,
+      issuanceDecision: {
+        ...issued.issuanceDecision,
+        actorDisplayName: '泄漏字段',
+      },
+    });
+    await expect(getClientNotaryMatter('matter-1')).rejects.toMatchObject({
+      code: 'INVALID_RESPONSE',
+    });
+    http.getJson.mockResolvedValueOnce({
+      ...issued,
+      stage: 'WAITING_RETURN',
+      issuanceDecision: {
+        decision: 'NO_ISSUE',
+        decidedAt: '2026-09-25T04:00:00.000Z',
+      },
+    });
+    await expect(getClientNotaryMatter('matter-1')).resolves.toMatchObject({
+      stage: 'WAITING_RETURN',
     });
   });
 

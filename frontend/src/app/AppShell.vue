@@ -33,6 +33,8 @@ const notaryStageCards: ReadonlyArray<{
   { stage: 'WAITING_UNBOX', label: '待取件开箱' },
   { stage: 'UNBOX_REVIEW', label: '开箱待审核' },
   { stage: 'ISSUANCE_DECISION', label: '开箱待确认' },
+  { stage: 'WAITING_CERTIFICATE', label: '待出证' },
+  { stage: 'WAITING_RETURN', label: '待退货' },
   { stage: 'ARCHIVED', label: '已归档' },
 ];
 const loggingOut = ref(false);

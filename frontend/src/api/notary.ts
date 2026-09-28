@@ -17,6 +17,8 @@ export const notaryListStages = [
   'WAITING_UNBOX',
   'UNBOX_REVIEW',
   'ISSUANCE_DECISION',
+  'WAITING_CERTIFICATE',
+  'WAITING_RETURN',
   'ARCHIVED',
 ] as const;
 export type NotaryListStage = (typeof notaryListStages)[number];
@@ -127,6 +129,21 @@ export type NotaryOpeningReviewDecision = {
   decidedAt: string;
   archivedAt: string | null;
 };
+export type NotaryIssuanceDecision = {
+  decision: 'ISSUE' | 'NO_ISSUE';
+  actorDisplayName: string;
+  decidedAt: string;
+};
+export type DecideNotaryIssuanceInput = {
+  decision: 'ISSUE' | 'NO_ISSUE';
+  expectedVersion: number;
+};
+export type DecideNotaryIssuanceResponse = {
+  id: string;
+  stage: 'WAITING_CERTIFICATE' | 'WAITING_RETURN';
+  version: number;
+  issuanceDecision: NotaryIssuanceDecision;
+};
 export type ReviewNotaryOpeningInput = {
   result: OpeningReviewResult;
   reason?: string;
@@ -164,16 +181,20 @@ export type NotaryMatterDetail = Omit<NotaryMatterResult, 'stage'> & {
     | 'WAITING_UNBOX'
     | 'UNBOX_REVIEW'
     | 'ISSUANCE_DECISION'
+    | 'WAITING_CERTIFICATE'
+    | 'WAITING_RETURN'
     | 'ARCHIVED';
   version: number;
   capabilities: {
     recordEvidence: boolean;
     recordOpening: boolean;
     reviewOpening: boolean;
+    decideIssuance: boolean;
   };
   evidence: NotaryEvidence | null;
   opening: NotaryOpening | null;
   reviewDecision: NotaryOpeningReviewDecision | null;
+  issuanceDecision: NotaryIssuanceDecision | null;
   sourceLead: { id: string; businessNo: string };
   selectedProducts: LeadProduct[];
   selectedMaterials: Array<{
@@ -300,12 +321,40 @@ function isReviewDecision(
   );
 }
 
+function isIssuanceDecision(value: unknown): value is NotaryIssuanceDecision {
+  return (
+    isRecord(value) &&
+    exactKeys(value, ['decision', 'actorDisplayName', 'decidedAt']) &&
+    (value.decision === 'ISSUE' || value.decision === 'NO_ISSUE') &&
+    typeof value.actorDisplayName === 'string' &&
+    value.actorDisplayName.trim().length > 0 &&
+    typeof value.decidedAt === 'string' &&
+    !Number.isNaN(Date.parse(value.decidedAt))
+  );
+}
+
+function issuanceDecisionMatchesStage(
+  stage: unknown,
+  decision: NotaryIssuanceDecision | null,
+): boolean {
+  if (stage === 'ISSUANCE_DECISION') return decision === null;
+  if (stage === 'WAITING_CERTIFICATE') return decision?.decision === 'ISSUE';
+  if (stage === 'WAITING_RETURN') return decision?.decision === 'NO_ISSUE';
+  return decision === null;
+}
+
 function decisionMatchesStage(
   stage: unknown,
   decision: NotaryOpeningReviewDecision | null,
 ): boolean {
   if (stage === 'UNBOX_REVIEW') return decision === null;
   if (stage === 'ISSUANCE_DECISION')
+    return (
+      decision?.result === 'INFRINGEMENT' &&
+      decision.reason === null &&
+      decision.archivedAt === null
+    );
+  if (stage === 'WAITING_CERTIFICATE' || stage === 'WAITING_RETURN')
     return (
       decision?.result === 'INFRINGEMENT' &&
       decision.reason === null &&
@@ -416,23 +465,33 @@ function isMatterDetail(value: unknown): value is NotaryMatterDetail {
       detail.stage === 'WAITING_UNBOX' ||
       detail.stage === 'UNBOX_REVIEW' ||
       detail.stage === 'ISSUANCE_DECISION' ||
+      detail.stage === 'WAITING_CERTIFICATE' ||
+      detail.stage === 'WAITING_RETURN' ||
       detail.stage === 'ARCHIVED') &&
     isRecord(detail.capabilities) &&
     exactKeys(detail.capabilities, [
       'recordEvidence',
       'recordOpening',
       'reviewOpening',
+      'decideIssuance',
     ]) &&
     typeof detail.capabilities.recordEvidence === 'boolean' &&
     typeof detail.capabilities.recordOpening === 'boolean' &&
     typeof detail.capabilities.reviewOpening === 'boolean' &&
+    typeof detail.capabilities.decideIssuance === 'boolean' &&
     (detail.evidence === null || isEvidence(detail.evidence)) &&
     (detail.opening === null || isOpening(detail.opening)) &&
     (detail.reviewDecision === null ||
       isReviewDecision(detail.reviewDecision)) &&
+    (detail.issuanceDecision === null ||
+      isIssuanceDecision(detail.issuanceDecision)) &&
     decisionMatchesStage(
       detail.stage,
       detail.reviewDecision as NotaryOpeningReviewDecision | null,
+    ) &&
+    issuanceDecisionMatchesStage(
+      detail.stage,
+      detail.issuanceDecision as NotaryIssuanceDecision | null,
     ) &&
     (detail.stage === 'PENDING_EVIDENCE'
       ? detail.evidence === null && detail.opening === null
@@ -444,7 +503,10 @@ function isMatterDetail(value: unknown): value is NotaryMatterDetail {
     (detail.stage === 'UNBOX_REVIEW'
       ? detail.capabilities.recordOpening === false
       : true) &&
-    (detail.stage === 'ISSUANCE_DECISION' || detail.stage === 'ARCHIVED'
+    (detail.stage === 'ISSUANCE_DECISION' ||
+    detail.stage === 'ARCHIVED' ||
+    detail.stage === 'WAITING_CERTIFICATE' ||
+    detail.stage === 'WAITING_RETURN'
       ? detail.opening !== null &&
         detail.capabilities.reviewOpening === false &&
         detail.capabilities.recordOpening === false &&
@@ -452,6 +514,9 @@ function isMatterDetail(value: unknown): value is NotaryMatterDetail {
       : true) &&
     (detail.stage === 'UNBOX_REVIEW' ||
       detail.capabilities.reviewOpening === false) &&
+    (detail.stage === 'ISSUANCE_DECISION'
+      ? detail.capabilities.decideIssuance === true
+      : detail.capabilities.decideIssuance === false) &&
     (detail.stage !== 'PENDING_EVIDENCE' ||
       detail.capabilities.recordOpening === false) &&
     isRecord(sourceLead) &&
@@ -667,6 +732,47 @@ export async function reviewNotaryOpening(
   );
   if (!isReviewResponse(data, id, { ...input, ...(reason ? { reason } : {}) }))
     throw invalidResponse();
+  return data;
+}
+
+function isDecideNotaryIssuanceResponse(
+  value: unknown,
+  id: string,
+  input: DecideNotaryIssuanceInput,
+): value is DecideNotaryIssuanceResponse {
+  return (
+    isRecord(value) &&
+    exactKeys(value, ['id', 'stage', 'version', 'issuanceDecision']) &&
+    value.id === id &&
+    value.stage ===
+      (input.decision === 'ISSUE' ? 'WAITING_CERTIFICATE' : 'WAITING_RETURN') &&
+    value.version === input.expectedVersion + 1 &&
+    isIssuanceDecision(value.issuanceDecision) &&
+    value.issuanceDecision.decision === input.decision
+  );
+}
+
+export async function decideNotaryIssuance(
+  id: string,
+  input: DecideNotaryIssuanceInput,
+  idempotencyKey: string,
+): Promise<DecideNotaryIssuanceResponse> {
+  if (
+    !Number.isInteger(input.expectedVersion) ||
+    input.expectedVersion < 1 ||
+    (input.decision !== 'ISSUE' && input.decision !== 'NO_ISSUE') ||
+    idempotencyKey.trim().length === 0
+  )
+    throw new ApiError('出证决定信息无效', 400, 'VALIDATION_ERROR');
+  const data = await requestJson(
+    `/notary-matters/${encodeURIComponent(id)}/issuance-decision`,
+    {
+      method: 'POST',
+      headers: { 'Idempotency-Key': idempotencyKey },
+      body: input,
+    },
+  );
+  if (!isDecideNotaryIssuanceResponse(data, id, input)) throw invalidResponse();
   return data;
 }
 
