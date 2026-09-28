@@ -22,4 +22,14 @@
 
 - 自审核对所有客户端查询均使用真实绑定、企业、部门和推送事实；照片详情与材料字节各自验证开箱审计事件与精确引用；运营 capability 独立授权。`GET` 投影显式枚举输出字段，未散播原始 Prisma 记录或 JSON 快照。
 - 待独立高风险 Sol Review：重点核对客户跨部门／跨企业、真实会话撤权、精确照片引用及字节下载、运营详情决定和 capability 语义。现有 E2E 用未提交照片和错误材料／版本组合验证拒绝；若 Reviewer 要求伪造跨事项引用或更多数据库畸形数据专项，应在集成前补测。
-- Task 4 可以调用上述两个客户端 GET 和原运营详情 GET；列表只含待审核，详情允许 `UNBOX_REVIEW`、`ISSUANCE_DECISION`、`ARCHIVED` 用于提交后重读。
+- Task 4 可以调用上述两个客户端 GET 和原运营详情 GET；默认列表只含待审核，详情允许 `UNBOX_REVIEW`、`ISSUANCE_DECISION`、`ARCHIVED` 用于提交后重读。
+
+## 独立 Review finding 修复（2026-09-28）
+
+- Review 原结论：`REJECTED`，Critical 0／Important 2／Minor 0。修复代码提交 `3e8e45d`；当前补丁待原 Reviewer 确认关闭，不能把本报告写成已获 `ACCEPTED`。
+- Important 1：三处读取现在取关联开箱审计的 `details.contentVersionIds` 并逐版本校验；畸形、空、重复清单以及清单未包含精确版本都 fail-closed。仅有同事项 `MaterialReference.actionEventId` 不再足以列出或下载照片。真实测试库在同一事项、同一开箱审计下插入指向未提交照片的伪造引用后，客户／运营详情与客户材料列表均只显示原冻结照片，未提交照片字节 GET 返回 404。
+- Important 2：客户及运营详情共用阶段／决定一致性检查。`ISSUANCE_DECISION` 只接受 `INFRINGEMENT` 且无原因／归档时间；`ARCHIVED` 只接受有非空原因、归档时间等于决定时间的 `NO_INFRINGEMENT`。不一致时客户返回 404，运营返回现有 `INTERNAL_ERROR`，均不投影矛盾事实。
+- 设计契约补齐：`GET /api/v1/client/notary-matters?sourceLeadId=<uuid>` 枚举当前企业、同部门、已推送来源线索的已开箱批次，含 `UNBOX_REVIEW`、`ISSUANCE_DECISION`、`ARCHIVED`。无参数仍只列待审核；详情可重新打开审核后事项。此最小查询供 Task 4 从客户端线索详情发现多批次使用，无新写能力。
+- RED：新增同事项伪造引用与阶段／决定矛盾用例先得到照片／决定或材料流，聚焦 Jest 7 个失败；新增按线索批次用例先因服务方法没有第 4 个参数而编译失败。GREEN：`pnpm --filter @dev-cor/backend test -- --runTestsByPath src/modules/leads/client-notary.service.spec.ts src/modules/materials/material.service.spec.ts src/modules/leads/lead-notary.service.spec.ts src/core-ld-openapi.spec.ts`，4 suites／117 tests 通过；`pnpm --filter @dev-cor/backend typecheck` 与 `build:prepared` 通过；`pnpm check:fast` 通过；改动文件 Prettier `--check` 与 `git diff --check` 通过。
+- 数据库命令：`pnpm test:e2e:core-ld --grep 'client notary reads and photo bytes|opening review uses real operator'`，独立 `backend/.env.test` PostgreSQL／Chromium 2/2 通过。静态检查开发循环曾发现模块跨目录导入护栏及测试支持声明缺失，已分别改为 `materials/index.ts` 导出并补 `.d.mts`；最终检查成功。未执行完整 `pnpm verify`，留给 Level 3 固定集成候选。
+- Sol attention：请复审两项 Important 的关闭与新增 `sourceLeadId` 范围；无 schema、Command、上传、内部权限或 UI 变动。建议 Task 4 只使用列表中的事项 ID 打开对应详情，仍由服务端逐请求决定可见性。
