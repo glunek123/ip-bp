@@ -111,6 +111,139 @@ describe('MaterialService', () => {
     ).resolves.toMatchObject({ originalFilename: 'certificate.pdf' });
     expect(fixture.storage.open).toHaveBeenCalledTimes(1);
   });
+
+  it.each(['NOTARY_CERTIFICATE', 'NOTARY_DISCLOSURE'] as const)(
+    'does not expose %s draft metadata through internal lead.read material listing',
+    async (category) => {
+      const fixture = createFixture();
+      fixture.access.buildLeadScope.mockResolvedValue({
+        departmentId: actor.departmentId,
+      });
+      fixture.db.notaryMatter.findFirst.mockResolvedValue({
+        id: 'matter-1',
+        departmentId: actor.departmentId,
+        stage: 'WAITING_CERTIFICATE',
+        sourceLead: { responsibleUserId: actor.userId, teamId: null },
+      });
+      fixture.db.material.findMany.mockImplementation(
+        ({ where }: { where: { category?: { notIn?: string[] } } }) =>
+          Promise.resolve(
+            where.category?.notIn?.includes(category)
+              ? []
+              : [
+                  {
+                    id: 'draft-1',
+                    ownerType: 'NOTARY_MATTER',
+                    ownerId: 'matter-1',
+                    category,
+                    purpose: category,
+                    currentVersionId: 'version-1',
+                    version: 1,
+                    deletedAt: null,
+                    createdAt: now,
+                    updatedAt: now,
+                    contentVersions: [
+                      {
+                        id: 'version-1',
+                        materialId: 'draft-1',
+                        originalFilename: 'private-draft.pdf',
+                        mimeType: 'application/pdf',
+                        sizeBytes: 4n,
+                        sha256: 'a'.repeat(64),
+                        createdAt: now,
+                      },
+                    ],
+                  },
+                ],
+          ),
+      );
+
+      const result = await fixture.service.listOwnerMaterials(
+        actor,
+        'NOTARY_MATTER',
+        'matter-1',
+      );
+      expect(result).toEqual({ items: [], total: 0 });
+      expect(fixture.access.buildLeadScope).toHaveBeenCalledWith(
+        actor,
+        'lead.read',
+        undefined,
+      );
+    },
+  );
+
+  it('requires case.read before internal certificate download', async () => {
+    const fixture = createFixture();
+    fixture.db.material.findFirst.mockResolvedValue({
+      id: 'certificate-1',
+      departmentId: actor.departmentId,
+      ownerType: 'NOTARY_MATTER',
+      ownerId: 'matter-1',
+      category: 'NOTARY_CERTIFICATE',
+      status: 'ACTIVE',
+      contentVersions: [{ id: 'version-1', status: 'AVAILABLE' }],
+    });
+    fixture.access.buildLeadScope.mockRejectedValue(
+      new ForbiddenException('case.read revoked'),
+    );
+
+    await expect(
+      fixture.service.openVersion(actor, 'certificate-1', 'version-1'),
+    ).rejects.toMatchObject({ response: { code: 'ACTION_FORBIDDEN' } });
+    expect(fixture.access.buildLeadScope).toHaveBeenCalledWith(
+      actor,
+      'case.read',
+      undefined,
+    );
+    expect(fixture.storage.open).not.toHaveBeenCalled();
+  });
+
+  it('downloads a frozen certificate for an internal case.read actor', async () => {
+    const fixture = createFixture();
+    fixture.access.buildLeadScope.mockResolvedValue({
+      departmentId: actor.departmentId,
+    });
+    fixture.db.notaryMatter.findFirst.mockResolvedValue({
+      id: 'matter-1',
+      departmentId: actor.departmentId,
+      stage: 'ARCHIVED',
+      sourceLead: { responsibleUserId: 'other-user', teamId: null },
+    });
+    fixture.db.material.findFirst.mockResolvedValue({
+      id: 'certificate-1',
+      departmentId: actor.departmentId,
+      ownerType: 'NOTARY_MATTER',
+      ownerId: 'matter-1',
+      category: 'NOTARY_CERTIFICATE',
+      status: 'ACTIVE',
+      contentVersions: [
+        {
+          id: 'version-1',
+          status: 'AVAILABLE',
+          storageKey: 'private-certificate',
+          originalFilename: 'certificate.pdf',
+          mimeType: 'application/pdf',
+          sizeBytes: 4n,
+          sha256: 'a'.repeat(64),
+        },
+      ],
+    });
+    fixture.db.materialReference.findFirst.mockResolvedValue({
+      id: 'reference-1',
+      actionEvent: { details: { contentVersionIds: ['version-1'] } },
+    });
+    fixture.storage.open.mockResolvedValue(Readable.from(Buffer.from('pdf')));
+
+    await expect(
+      fixture.service.openVersion(actor, 'certificate-1', 'version-1'),
+    ).resolves.toMatchObject({ originalFilename: 'certificate.pdf' });
+    expect(fixture.access.buildLeadScope).toHaveBeenCalledWith(
+      actor,
+      'case.read',
+      undefined,
+    );
+    expect(fixture.storage.open).toHaveBeenCalledWith('private-certificate');
+  });
   it('allows only live assigned notary accounts to draft opening photos', async () => {
     const fixture = createFixture();
     const notaryActor = { ...actor, notaryOfficeId: 'office-1' };

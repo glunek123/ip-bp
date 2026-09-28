@@ -146,7 +146,7 @@ export class NotaryPortalService {
     });
     if (matter === null) throw this.notFound();
     const refs =
-      matter.opening === null
+      matter.stage === 'ARCHIVED' || matter.opening === null
         ? []
         : await this.database.materialReference.findMany({
             where: {
@@ -231,7 +231,7 @@ export class NotaryPortalService {
       version: matter.version,
       createdAt: matter.createdAt.toISOString(),
       evidence:
-        matter.evidence === null
+        matter.stage === 'ARCHIVED' || matter.evidence === null
           ? null
           : {
               evidenceAt: matter.evidence.evidenceAt.toISOString().slice(0, 10),
@@ -241,7 +241,7 @@ export class NotaryPortalService {
               logistics: matter.evidence.logistics,
             },
       opening:
-        matter.opening === null
+        matter.stage === 'ARCHIVED' || matter.opening === null
           ? null
           : {
               senderName: matter.opening.senderName,
@@ -263,6 +263,7 @@ export class NotaryPortalService {
                 })),
             },
       issuanceDecision:
+        matter.stage === 'ARCHIVED' ||
         matter.issuanceDecision === null ||
         matter.issuanceDecision === undefined
           ? null

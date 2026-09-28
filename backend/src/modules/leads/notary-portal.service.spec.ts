@@ -46,8 +46,18 @@ describe('NotaryPortalService', () => {
       stage: 'ARCHIVED',
       version: 6,
       createdAt: new Date('2026-09-28T01:00:00.000Z'),
-      evidence: null,
-      opening: null,
+      evidence: {
+        evidenceAt: new Date('2026-09-27T00:00:00.000Z'),
+        sampleFeeState: 'KNOWN',
+        sampleFeeAmount: { toString: () => '200.00' },
+        logistics: [{ id: 'logistics-1', trackingValue: 'private-tracking' }],
+      },
+      opening: {
+        senderName: 'private-sender',
+        senderPhone: 'private-phone',
+        senderAddress: 'private-address',
+        recordedAt: new Date('2026-09-28T02:00:00.000Z'),
+      },
       issuanceDecision: {
         decision: 'ISSUE',
         actorDisplayNameSnapshot: '运营',
@@ -89,6 +99,14 @@ describe('NotaryPortalService', () => {
       caseBusinessNo: 'CA-1',
       files: [{ materialId: 'material-1', contentVersionId: 'version-1' }],
     });
+    expect(result).toMatchObject({
+      evidence: null,
+      opening: null,
+      issuanceDecision: null,
+    });
+    expect(JSON.stringify(result)).not.toMatch(
+      /private-tracking|private-sender|private-phone|private-address|运营/u,
+    );
     expect(result.capabilities.issueCertificate).toBe(false);
     expect(f.db.notaryMatter.findFirst).toHaveBeenCalledWith(
       expect.objectContaining({

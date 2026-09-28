@@ -927,6 +927,15 @@ export class MaterialService {
         ownerType,
         ownerId,
         status: 'ACTIVE',
+        ...(ownerType === 'NOTARY_MATTER' &&
+        actor.notaryOfficeId === undefined &&
+        actor.clientCustomerId === undefined
+          ? {
+              category: {
+                notIn: ['NOTARY_CERTIFICATE', 'NOTARY_DISCLOSURE'] as const,
+              },
+            }
+          : {}),
         ...((actor.clientCustomerId !== undefined ||
           actor.notaryOfficeId !== undefined) &&
         ownerType === 'NOTARY_MATTER'
