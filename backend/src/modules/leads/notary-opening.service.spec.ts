@@ -16,6 +16,10 @@ const command = {
   senderPhone: undefined,
   senderAddress: undefined,
 };
+const notaryActor = {
+  ...actor,
+  notaryOfficeId: 'eeeeeeee-eeee-4eee-8eee-eeeeeeeeeeee',
+};
 
 function fixture() {
   const matter = {
@@ -24,6 +28,7 @@ function fixture() {
     stage: 'WAITING_UNBOX',
     version: 2,
     sourceLead: { responsibleUserId: actor.userId, teamId: null },
+    notaryOfficeId: notaryActor.notaryOfficeId,
   };
   const fact = {
     materialId,
@@ -40,6 +45,11 @@ function fixture() {
       findUnique: jest
         .fn()
         .mockResolvedValue({ accountType: 'INTERNAL', active: true }),
+    },
+    notaryOfficeAccountBinding: {
+      findFirst: jest
+        .fn()
+        .mockResolvedValue({ id: 'ffffffff-ffff-4fff-8fff-ffffffffffff' }),
     },
     notaryMatter: {
       findFirst: jest.fn().mockResolvedValue(matter),
@@ -186,5 +196,48 @@ describe('NotaryOpeningService record', () => {
       f.service.record(actor, matterId, 'fail', command),
     ).rejects.toThrow('audit failed');
     expect(f.tx.notaryMatterCommandReceipt.create).not.toHaveBeenCalled();
+  });
+
+  it('records a live assigned notary actor on opening, audit and receipt', async () => {
+    const f = fixture();
+    f.tx.userAccount.findUnique.mockResolvedValue({
+      accountType: 'NOTARY',
+      active: true,
+    });
+    await f.service.record(notaryActor, matterId, 'notary-1', command);
+    const bindingId = 'ffffffff-ffff-4fff-8fff-ffffffffffff';
+    expect(f.access.authorizeLead).not.toHaveBeenCalled();
+    expect(f.tx.notaryMatterOpening.create).toHaveBeenCalledWith({
+      data: expect.objectContaining({
+        notaryOfficeAccountBindingId: bindingId,
+        recordedByUserId: actor.userId,
+      }),
+    });
+    expect(f.tx.auditEvent.create).toHaveBeenCalledWith({
+      data: expect.objectContaining({
+        notaryOfficeAccountBindingId: bindingId,
+      }),
+    });
+    expect(f.tx.notaryMatterCommandReceipt.create).toHaveBeenCalledWith({
+      data: expect.objectContaining({
+        notaryOfficeAccountBindingId: bindingId,
+      }),
+    });
+  });
+
+  it('rejects a cross-office notary before replaying a receipt', async () => {
+    const f = fixture();
+    f.tx.userAccount.findUnique.mockResolvedValue({
+      accountType: 'NOTARY',
+      active: true,
+    });
+    f.tx.notaryMatter.findFirst.mockResolvedValue({
+      ...f.matter,
+      notaryOfficeId: '99999999-9999-4999-8999-999999999999',
+    });
+    await expect(
+      f.service.record(notaryActor, matterId, 'same', command),
+    ).rejects.toMatchObject({ response: { code: 'ACTION_FORBIDDEN' } });
+    expect(f.tx.notaryMatterCommandReceipt.findUnique).not.toHaveBeenCalled();
   });
 });

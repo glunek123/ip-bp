@@ -26,6 +26,86 @@ const customerId = '33333333-3333-4333-8333-333333333333';
 const now = new Date('2026-09-21T04:00:00.000Z');
 
 describe('MaterialService', () => {
+  it('allows only live assigned notary accounts to draft opening photos', async () => {
+    const fixture = createFixture();
+    const notaryActor = { ...actor, notaryOfficeId: 'office-1' };
+    fixture.db.userAccount.findUnique.mockResolvedValue({
+      accountType: 'NOTARY',
+      active: true,
+    });
+    fixture.db.notaryOfficeAccountBinding.findFirst.mockResolvedValue({
+      id: 'binding-1',
+    });
+    fixture.db.notaryMatter.findFirst.mockResolvedValue({
+      id: 'matter-1',
+      stage: 'WAITING_UNBOX',
+    });
+    const input = {
+      ownerType: 'NOTARY_MATTER' as const,
+      ownerId: 'matter-1',
+      category: 'NOTARY_OPENING_PHOTO' as const,
+      purpose: 'NOTARY_OPENING_PHOTO' as const,
+      originalFilename: 'photo.png',
+      declaredMimeType: 'image/png',
+    };
+    await fixture.service.createUploadDraft(notaryActor, input);
+    expect(fixture.db.uploadDraft.create).toHaveBeenCalledWith({
+      data: expect.objectContaining({
+        notaryOfficeAccountBindingId: 'binding-1',
+      }),
+    });
+    fixture.db.notaryOfficeAccountBinding.findFirst.mockResolvedValue(null);
+    await expect(
+      fixture.service.createUploadDraft(notaryActor, input),
+    ).rejects.toMatchObject({ response: { code: 'ACTION_FORBIDDEN' } });
+  });
+
+  it('blocks notary material delete even for an assigned matter', async () => {
+    const fixture = createFixture();
+    await expect(
+      fixture.service.softDelete(
+        { ...actor, notaryOfficeId: 'office-1' },
+        'photo-1',
+        1,
+      ),
+    ).rejects.toMatchObject({ response: { code: 'ACTION_FORBIDDEN' } });
+    expect(fixture.db.$transaction).not.toHaveBeenCalled();
+  });
+
+  it('refuses a notary download if assignment disappears between checks', async () => {
+    const fixture = createFixture();
+    const notaryActor = { ...actor, notaryOfficeId: 'office-1' };
+    fixture.db.notaryOfficeAccountBinding.findFirst.mockResolvedValue({
+      id: 'binding-1',
+    });
+    fixture.db.notaryMatter.findFirst
+      .mockResolvedValueOnce({ id: 'matter-1' })
+      .mockResolvedValueOnce(null);
+    fixture.db.material.findFirst.mockResolvedValue({
+      id: 'photo-1',
+      departmentId: actor.departmentId,
+      ownerType: 'NOTARY_MATTER',
+      ownerId: 'matter-1',
+      category: 'NOTARY_OPENING_PHOTO',
+      status: 'ACTIVE',
+      contentVersions: [
+        {
+          id: 'version-1',
+          uploadedBy: actor.userId,
+          storageKey: 'private-photo',
+          originalFilename: 'opening.png',
+          mimeType: 'image/png',
+          sizeBytes: 4n,
+          sha256: 'a'.repeat(64),
+          status: 'AVAILABLE',
+        },
+      ],
+    });
+    await expect(
+      fixture.service.openVersion(notaryActor, 'photo-1', 'version-1'),
+    ).rejects.toMatchObject({ response: { code: 'RESOURCE_NOT_FOUND' } });
+    expect(fixture.storage.open).not.toHaveBeenCalled();
+  });
   it('opens only the exact frozen opening photo for a currently bound client', async () => {
     const fixture = createFixture();
     const clientActor = { ...actor, clientCustomerId: customerId };
@@ -2236,6 +2316,8 @@ function createFixture() {
     customer: { findFirst: customerFindFirst },
     lead: { findFirst: leadFindFirst },
     notaryMatter: { findFirst: notaryMatterFindFirst },
+    userAccount: { findUnique: jest.fn() },
+    notaryOfficeAccountBinding: { findFirst: jest.fn() },
     material: {
       findFirst: materialFindFirst,
       create: jest.fn(async ({ data }) => data),
@@ -2257,6 +2339,8 @@ function createFixture() {
     auditEvent: { create: jest.fn(async ({ data }) => data) },
   };
   const db = {
+    userAccount: { findUnique: jest.fn() },
+    notaryOfficeAccountBinding: { findFirst: jest.fn() },
     customerAccountBinding: { findFirst: jest.fn() },
     customer: { findFirst: customerFindFirst },
     uploadDraft: {

@@ -22,6 +22,8 @@ import { NotaryOpeningReviewService } from './notary-opening-review.service';
 import { NotaryListController } from './notary-list.controller';
 import { NotaryListService } from './notary-list.service';
 import { NotaryOfficeAccountService } from './notary-office-account.service';
+import { NotaryPortalController } from './notary-portal.controller';
+import { NotaryPortalService } from './notary-portal.service';
 
 @Module({
   imports: [AccessControlModule, AuthModule, DatabaseModule, MaterialModule],
@@ -33,6 +35,7 @@ import { NotaryOfficeAccountService } from './notary-office-account.service';
     LeadNotaryController,
     NotaryListController,
     NotaryOfficeController,
+    NotaryPortalController,
   ],
   providers: [
     LeadService,
@@ -43,6 +46,7 @@ import { NotaryOfficeAccountService } from './notary-office-account.service';
     NotaryOpeningReviewService,
     NotaryListService,
     NotaryOfficeAccountService,
+    NotaryPortalService,
   ],
   exports: [LeadService, ClientLeadService, LeadNotaryService],
 })

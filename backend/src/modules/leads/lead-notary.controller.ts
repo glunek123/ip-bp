@@ -2,6 +2,7 @@ import {
   BadRequestException,
   Body,
   Controller,
+  ForbiddenException,
   Get,
   Headers,
   Param,
@@ -167,6 +168,11 @@ export class LeadNotaryController {
     @Headers('idempotency-key') idempotencyKey: string | undefined,
     @Body() input: RecordNotaryOpeningDto,
   ) {
+    if (actor.notaryOfficeId !== undefined)
+      throw new ForbiddenException({
+        code: 'ACTION_FORBIDDEN',
+        message: '请使用公证处开箱入口',
+      });
     const key = idempotencyKey?.trim();
     if (key === undefined || key.length < 1 || key.length > 128)
       throw new BadRequestException({

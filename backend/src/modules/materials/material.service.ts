@@ -106,6 +106,8 @@ type MaterialAuthorizationReader = Pick<
   | 'lead'
   | 'notaryMatter'
   | 'customerAccountBinding'
+  | 'notaryOfficeAccountBinding'
+  | 'userAccount'
 >;
 type MaterialMutationReader = MaterialAuthorizationReader &
   Pick<MaterialTransactionClient, 'material'>;
@@ -159,6 +161,7 @@ export class MaterialService {
     const now = this.clock();
     let expiresAt = new Date(now.getTime() + DAY_MS);
     let ownerId: string;
+    let notaryOfficeAccountBindingId: string | undefined;
     if (input.ownerType === 'CUSTOMER') {
       if (input.ownerId === undefined) throw this.validationError();
       const scope = await this.withMaterialAuthorization(() =>
@@ -185,6 +188,22 @@ export class MaterialService {
     } else if (input.ownerType === 'NOTARY_MATTER') {
       if (input.ownerId === undefined) throw this.validationError();
       await this.authorizeOwner(actor, 'NOTARY_MATTER', input.ownerId, 'write');
+      if (actor.notaryOfficeId !== undefined) {
+        const binding =
+          await this.database.notaryOfficeAccountBinding.findFirst({
+            where: {
+              userId: actor.userId,
+              departmentId: actor.departmentId,
+              notaryOfficeId: actor.notaryOfficeId,
+              active: true,
+              notaryOffice: { status: 'ACTIVE' },
+              user: { active: true, accountType: 'NOTARY' },
+            },
+            select: { id: true },
+          });
+        if (binding === null) throw this.forbidden();
+        notaryOfficeAccountBindingId = binding.id;
+      }
       ownerId = input.ownerId;
     } else {
       if (!(await this.accessControl.canAuthorizeNewLead(actor))) {
@@ -214,6 +233,9 @@ export class MaterialService {
       data: {
         departmentId: actor.departmentId,
         actorUserId: actor.userId,
+        ...(notaryOfficeAccountBindingId === undefined
+          ? {}
+          : { notaryOfficeAccountBindingId }),
         ownerType: input.ownerType,
         ownerId,
         category: input.category,
@@ -257,6 +279,11 @@ export class MaterialService {
       throw this.versionConflict();
     }
     this.assertCategoryPurposeMatrix(draft);
+    if (
+      actor.notaryOfficeId !== undefined &&
+      draft.notaryOfficeAccountBindingId === null
+    )
+      throw this.forbidden();
     if (draft.ownerType === 'CUSTOMER') {
       const scope = await this.withMaterialAuthorization(() =>
         this.accessControl.buildCustomerScope(actor, 'customer.read'),
@@ -327,6 +354,30 @@ export class MaterialService {
           throw this.invalidVersion();
         }
         await this.database.$transaction(async (transaction) => {
+          if (actor.notaryOfficeId !== undefined) {
+            await this.authorizeOwner(
+              actor,
+              draft.ownerType,
+              draft.ownerId,
+              'write',
+              transaction,
+              transaction,
+            );
+            const binding =
+              await transaction.notaryOfficeAccountBinding.findFirst({
+                where: {
+                  id: draft.notaryOfficeAccountBindingId ?? undefined,
+                  userId: actor.userId,
+                  departmentId: actor.departmentId,
+                  notaryOfficeId: actor.notaryOfficeId,
+                  active: true,
+                  notaryOffice: { status: 'ACTIVE' },
+                  user: { active: true, accountType: 'NOTARY' },
+                },
+                select: { id: true },
+              });
+            if (binding === null) throw this.forbidden();
+          }
           await transaction.$executeRawUnsafe(
             'SELECT pg_advisory_xact_lock(hashtextextended($1, 0))',
             ownerQuotaKey(draft),
@@ -479,7 +530,7 @@ export class MaterialService {
             id: { in: contentVersionIds },
             status: 'AVAILABLE',
           },
-          select: { id: true, mimeType: true, status: true },
+          select: { id: true, mimeType: true, status: true, uploadedBy: true },
         },
       },
     });
@@ -498,6 +549,8 @@ export class MaterialService {
       for (const version of material.contentVersions) {
         if (
           version.status !== 'AVAILABLE' ||
+          (actor.notaryOfficeId !== undefined &&
+            version.uploadedBy !== actor.userId) ||
           facts.has(version.id) ||
           !contentVersionIds.includes(version.id)
         ) {
@@ -743,8 +796,23 @@ export class MaterialService {
     ownerId: string,
   ): Promise<OwnerMaterialListDto> {
     await this.authorizeOwner(actor, ownerType, ownerId, 'read');
+    const notaryMatter =
+      actor.notaryOfficeId === undefined
+        ? null
+        : await this.database.notaryMatter.findFirst({
+            where: {
+              id: ownerId,
+              departmentId: actor.departmentId,
+              notaryOfficeId: actor.notaryOfficeId,
+            },
+            select: { stage: true },
+          });
+    const notaryCommitted =
+      notaryMatter !== null && notaryMatter.stage !== 'WAITING_UNBOX';
+    if (actor.notaryOfficeId !== undefined && notaryMatter === null)
+      throw this.notFound();
     const clientReferences =
-      actor.clientCustomerId === undefined
+      actor.clientCustomerId === undefined && !notaryCommitted
         ? null
         : await this.database.materialReference.findMany({
             where: {
@@ -805,12 +873,19 @@ export class MaterialService {
         ownerType,
         ownerId,
         status: 'ACTIVE',
-        ...(actor.clientCustomerId !== undefined &&
+        ...((actor.clientCustomerId !== undefined ||
+          actor.notaryOfficeId !== undefined) &&
         ownerType === 'NOTARY_MATTER'
           ? { category: 'NOTARY_OPENING_PHOTO' as const }
           : {}),
         ...(clientMaterialIds === undefined
-          ? {}
+          ? actor.notaryOfficeId !== undefined
+            ? {
+                contentVersions: {
+                  some: { uploadedBy: actor.userId, status: 'AVAILABLE' },
+                },
+              }
+            : {}
           : { id: { in: clientMaterialIds } }),
       },
       orderBy: [{ createdAt: 'desc' }, { id: 'asc' }],
@@ -830,7 +905,9 @@ export class MaterialService {
           where: {
             status: 'AVAILABLE',
             ...(clientVersionIds === undefined
-              ? {}
+              ? actor.notaryOfficeId !== undefined
+                ? { uploadedBy: actor.userId }
+                : {}
               : { id: { in: clientVersionIds } }),
           },
           orderBy: { createdAt: 'desc' },
@@ -889,7 +966,8 @@ export class MaterialService {
     const version = material?.contentVersions[0];
     if (material === null || version === undefined) throw this.notFound();
     if (
-      actor.clientCustomerId !== undefined &&
+      (actor.clientCustomerId !== undefined ||
+        actor.notaryOfficeId !== undefined) &&
       material.ownerType === 'NOTARY_MATTER' &&
       (material.category !== 'NOTARY_OPENING_PHOTO' ||
         material.status !== 'ACTIVE')
@@ -901,7 +979,23 @@ export class MaterialService {
       material.ownerId,
       'read',
     );
-    if (actor.clientCustomerId !== undefined) {
+    const notaryMatter =
+      actor.notaryOfficeId === undefined
+        ? null
+        : await this.database.notaryMatter.findFirst({
+            where: {
+              id: material.ownerId,
+              departmentId: actor.departmentId,
+              notaryOfficeId: actor.notaryOfficeId,
+            },
+            select: { stage: true },
+          });
+    if (actor.notaryOfficeId !== undefined && notaryMatter === null)
+      throw this.notFound();
+    if (
+      actor.clientCustomerId !== undefined ||
+      (notaryMatter !== null && notaryMatter.stage !== 'WAITING_UNBOX')
+    ) {
       const reference = await this.database.materialReference.findFirst({
         where: {
           departmentId: actor.departmentId,
@@ -940,6 +1034,12 @@ export class MaterialService {
         throw this.notFound();
     }
     if (
+      actor.notaryOfficeId !== undefined &&
+      notaryMatter?.stage === 'WAITING_UNBOX' &&
+      version.uploadedBy !== actor.userId
+    )
+      throw this.notFound();
+    if (
       material.ownerType === 'LEAD_DRAFT' &&
       version.uploadedBy !== actor.userId
     ) {
@@ -967,6 +1067,7 @@ export class MaterialService {
     materialId: string,
     expectedVersion: number,
   ) {
+    if (actor.notaryOfficeId !== undefined) throw this.forbidden();
     await this.withSerializableMaterialMutation(async (transaction) => {
       await this.lockMaterialAndCurrentVersion(
         transaction,
@@ -1027,6 +1128,7 @@ export class MaterialService {
     materialId: string,
     expectedVersion: number,
   ) {
+    if (actor.notaryOfficeId !== undefined) throw this.forbidden();
     await this.withSerializableMaterialMutation(async (transaction) => {
       await this.lockMaterialAndCurrentVersion(
         transaction,
@@ -1203,6 +1305,36 @@ export class MaterialService {
       'lead.read' | 'lead.edit' | 'lead.evidence.decide' | 'notary.unbox.record'
     >,
   ): Promise<void> {
+    if (actor.notaryOfficeId !== undefined) {
+      if (actor.clientCustomerId !== undefined || ownerType !== 'NOTARY_MATTER')
+        throw this.forbidden();
+      const binding = await reader.notaryOfficeAccountBinding.findFirst({
+        where: {
+          userId: actor.userId,
+          departmentId: actor.departmentId,
+          notaryOfficeId: actor.notaryOfficeId,
+          active: true,
+          notaryOffice: { status: 'ACTIVE' },
+          user: { active: true, accountType: 'NOTARY' },
+        },
+        select: { id: true },
+      });
+      if (binding === null) throw this.forbidden();
+      const matter = await reader.notaryMatter.findFirst({
+        where: {
+          id: ownerId,
+          departmentId: actor.departmentId,
+          notaryOfficeId: actor.notaryOfficeId,
+          stage:
+            operation === 'write'
+              ? 'WAITING_UNBOX'
+              : { in: ['WAITING_UNBOX', 'UNBOX_REVIEW'] },
+        },
+        select: { id: true },
+      });
+      if (matter === null) throw this.notFound();
+      return;
+    }
     if (actor.clientCustomerId !== undefined) {
       if (operation !== 'read') throw this.forbidden();
       if (ownerType === 'NOTARY_MATTER') {

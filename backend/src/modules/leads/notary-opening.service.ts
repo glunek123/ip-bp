@@ -63,6 +63,7 @@ export class NotaryOpeningService {
                 stage: true,
                 version: true,
                 departmentId: true,
+                notaryOfficeId: true,
                 sourceLead: {
                   select: { responsibleUserId: true, teamId: true },
                 },
@@ -73,24 +74,50 @@ export class NotaryOpeningService {
               where: { id: actor.userId },
               select: { accountType: true, active: true },
             });
-            if (account?.accountType !== 'INTERNAL' || !account.active)
-              throw this.forbidden();
-            try {
-              await this.access.authorizeLead(
-                actor,
-                'notary.unbox.record',
-                {
-                  departmentId: matter.departmentId,
-                  responsibleUserId: matter.sourceLead.responsibleUserId,
-                  ...(matter.sourceLead.teamId === null
-                    ? {}
-                    : { teamId: matter.sourceLead.teamId }),
+            if (!account?.active) throw this.forbidden();
+            let notaryOfficeAccountBindingId: string | undefined;
+            if (actor.notaryOfficeId !== undefined) {
+              if (
+                account.accountType !== 'NOTARY' ||
+                matter.notaryOfficeId !== actor.notaryOfficeId ||
+                actor.clientCustomerId !== undefined
+              )
+                throw this.forbidden();
+              const binding = await tx.notaryOfficeAccountBinding.findFirst({
+                where: {
+                  userId: actor.userId,
+                  departmentId: actor.departmentId,
+                  notaryOfficeId: actor.notaryOfficeId,
+                  active: true,
+                  notaryOffice: { status: 'ACTIVE' },
                 },
-                tx,
-              );
-            } catch (error) {
-              if (error instanceof ForbiddenException) throw this.forbidden();
-              throw error;
+                select: { id: true },
+              });
+              if (binding === null) throw this.forbidden();
+              notaryOfficeAccountBindingId = binding.id;
+            } else {
+              if (
+                account.accountType !== 'INTERNAL' ||
+                actor.clientCustomerId !== undefined
+              )
+                throw this.forbidden();
+              try {
+                await this.access.authorizeLead(
+                  actor,
+                  'notary.unbox.record',
+                  {
+                    departmentId: matter.departmentId,
+                    responsibleUserId: matter.sourceLead.responsibleUserId,
+                    ...(matter.sourceLead.teamId === null
+                      ? {}
+                      : { teamId: matter.sourceLead.teamId }),
+                  },
+                  tx,
+                );
+              } catch (error) {
+                if (error instanceof ForbiddenException) throw this.forbidden();
+                throw error;
+              }
             }
             const prior = await tx.notaryMatterCommandReceipt.findUnique({
               where: {
@@ -146,6 +173,9 @@ export class NotaryOpeningService {
                 senderPhone: normalized.senderPhone,
                 senderAddress: normalized.senderAddress,
                 recordedByUserId: actor.userId,
+                ...(notaryOfficeAccountBindingId === undefined
+                  ? {}
+                  : { notaryOfficeAccountBindingId }),
                 recordedAt,
               },
             });
@@ -170,6 +200,9 @@ export class NotaryOpeningService {
               data: {
                 departmentId: actor.departmentId,
                 actorUserId: actor.userId,
+                ...(notaryOfficeAccountBindingId === undefined
+                  ? {}
+                  : { notaryOfficeAccountBindingId }),
                 resourceType: 'notary_matter',
                 resourceId: matterId,
                 action: 'notary.opening_recorded',
@@ -193,6 +226,9 @@ export class NotaryOpeningService {
               data: {
                 departmentId: actor.departmentId,
                 actorUserId: actor.userId,
+                ...(notaryOfficeAccountBindingId === undefined
+                  ? {}
+                  : { notaryOfficeAccountBindingId }),
                 action: 'opening.record',
                 idempotencyKey,
                 requestFingerprint: fingerprint,
