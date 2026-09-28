@@ -2,6 +2,7 @@ import { afterEach, describe, expect, it, vi } from 'vitest';
 import {
   getNotaryPortalMatter,
   listNotaryPortalMatters,
+  recordNotaryPortalCertificate,
   recordNotaryPortalOpening,
 } from './notary-portal';
 
@@ -14,10 +15,40 @@ const matter = {
   createdAt: '2026-09-28T00:00:00.000Z',
   evidence: null,
   opening: null,
-  capabilities: { recordOpening: true },
+  issuanceDecision: null,
+  certificate: null,
+  capabilities: { recordOpening: true, issueCertificate: false },
 };
 
 describe('notary portal API', () => {
+  it('requests the waiting-certificate segment and decodes both visible stages', async () => {
+    const fetch = vi.fn().mockResolvedValue(
+      new Response(
+        JSON.stringify({
+          items: [
+            {
+              id: 'matter-2',
+              businessNo: 'NZ-2',
+              stage: 'WAITING_CERTIFICATE',
+              version: 5,
+              createdAt: '2026-09-28T00:00:00.000Z',
+            },
+          ],
+          total: 1,
+          page: 1,
+          pageSize: 20,
+        }),
+      ),
+    );
+    vi.stubGlobal('fetch', fetch);
+
+    await expect(
+      listNotaryPortalMatters(1, 20, { stage: 'WAITING_CERTIFICATE' }),
+    ).resolves.toMatchObject({ items: [{ stage: 'WAITING_CERTIFICATE' }] });
+    expect(String(fetch.mock.calls[0]?.[0])).toContain(
+      'stage=WAITING_CERTIFICATE',
+    );
+  });
   it('decodes only the minimal notary matter list', async () => {
     vi.stubGlobal(
       'fetch',
@@ -60,6 +91,89 @@ describe('notary portal API', () => {
       code: 'INVALID_RESPONSE',
     });
   });
+  it('decodes the waiting certificate detail without exposing internal fields', async () => {
+    vi.stubGlobal(
+      'fetch',
+      vi.fn().mockResolvedValue(
+        new Response(
+          JSON.stringify({
+            id: 'matter-1',
+            businessNo: 'NZ-1',
+            stage: 'WAITING_CERTIFICATE',
+            version: 5,
+            createdAt: '2026-09-28T00:00:00.000Z',
+            evidence: null,
+            opening: null,
+            issuanceDecision: {
+              decision: 'ISSUE',
+              actorDisplayName: '审核员',
+              decidedAt: '2026-09-28T00:00:00.000Z',
+            },
+            certificate: null,
+            capabilities: { recordOpening: false, issueCertificate: true },
+          }),
+        ),
+      ),
+    );
+    await expect(getNotaryPortalMatter('matter-1')).resolves.toMatchObject({
+      stage: 'WAITING_CERTIFICATE',
+      capabilities: { issueCertificate: true },
+    });
+  });
+  it('posts an idempotent certificate command with only editable costs', async () => {
+    const file = {
+      materialId: 'material-1',
+      contentVersionId: 'content-1',
+      originalFilename: 'certificate.pdf',
+      mimeType: 'application/pdf',
+    };
+    const fetch = vi.fn().mockResolvedValue(
+      new Response(
+        JSON.stringify({
+          id: 'matter-1',
+          stage: 'ARCHIVED',
+          version: 6,
+          certificate: {
+            certificateNo: 'Z-100',
+            certificateDate: '2026-09-28',
+            issuedAt: '2026-09-28T00:00:00.000Z',
+            files: [file],
+            needDisclose: false,
+            disclosureFiles: [],
+          },
+          case: { id: 'case-1', businessNo: 'CA-1', stage: 'PENDING_MATCH' },
+        }),
+      ),
+    );
+    vi.stubGlobal('fetch', fetch);
+    const input = {
+      expectedVersion: 5,
+      certificateNo: 'Z-100',
+      certificateDate: '2026-09-28',
+      contentVersionIds: ['content-1'],
+      needDisclose: false,
+      disclosureContentVersionIds: [],
+      fees: {
+        notary: { state: 'KNOWN' as const, amount: '20.00' },
+        investigation: { state: 'PENDING' as const, amount: null },
+        disclosure: { state: 'KNOWN' as const, amount: '0.00' },
+      },
+    };
+    await expect(
+      recordNotaryPortalCertificate('matter-1', input, 'idempotency-1'),
+    ).resolves.toMatchObject({ case: { id: 'case-1' }, stage: 'ARCHIVED' });
+    expect(fetch.mock.calls[0]?.[0]).toContain(
+      '/notary-portal/matters/matter-1/certificate',
+    );
+    expect(fetch.mock.calls[0]?.[1]).toEqual(
+      expect.objectContaining({
+        headers: expect.objectContaining({
+          'Idempotency-Key': 'idempotency-1',
+        }),
+        body: JSON.stringify(input),
+      }),
+    );
+  });
   it('decodes a saved UNBOX_REVIEW detail with its frozen opening photos', async () => {
     vi.stubGlobal(
       'fetch',
@@ -71,7 +185,12 @@ describe('notary portal API', () => {
             stage: 'UNBOX_REVIEW',
             version: 4,
             createdAt: '2026-09-28T00:00:00.000Z',
-            evidence: { evidenceAt: '2026-09-27', logistics: [] },
+            evidence: {
+              evidenceAt: '2026-09-27',
+              sampleFeeState: 'KNOWN',
+              sampleFeeAmount: '12.00',
+              logistics: [],
+            },
             opening: {
               senderName: null,
               senderPhone: null,
@@ -86,7 +205,9 @@ describe('notary portal API', () => {
                 },
               ],
             },
-            capabilities: { recordOpening: false },
+            issuanceDecision: null,
+            certificate: null,
+            capabilities: { recordOpening: false, issueCertificate: false },
           }),
         ),
       ),

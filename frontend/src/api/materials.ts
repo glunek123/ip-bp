@@ -10,13 +10,19 @@ import {
 export type MaterialOwnerType =
   'CUSTOMER' | 'LEAD_DRAFT' | 'LEAD' | 'NOTARY_MATTER';
 export type MaterialCategory =
-  'CUSTOMER_IDENTITY' | 'LEAD_SCREENSHOT' | 'NOTARY_OPENING_PHOTO';
+  | 'CUSTOMER_IDENTITY'
+  | 'LEAD_SCREENSHOT'
+  | 'NOTARY_OPENING_PHOTO'
+  | 'NOTARY_CERTIFICATE'
+  | 'NOTARY_DISCLOSURE';
 export type MaterialPurpose =
   | 'IDENTITY_FULL'
   | 'IDENTITY_FRONT'
   | 'IDENTITY_BACK'
   | 'LEAD_SCREENSHOT'
-  | 'NOTARY_OPENING_PHOTO';
+  | 'NOTARY_OPENING_PHOTO'
+  | 'NOTARY_CERTIFICATE'
+  | 'NOTARY_DISCLOSURE';
 
 export type UploadedMaterial = {
   materialId: string;
@@ -98,7 +104,9 @@ function isCategory(value: unknown): value is MaterialCategory {
   return (
     value === 'CUSTOMER_IDENTITY' ||
     value === 'LEAD_SCREENSHOT' ||
-    value === 'NOTARY_OPENING_PHOTO'
+    value === 'NOTARY_OPENING_PHOTO' ||
+    value === 'NOTARY_CERTIFICATE' ||
+    value === 'NOTARY_DISCLOSURE'
   );
 }
 
@@ -108,7 +116,9 @@ function isPurpose(value: unknown): value is MaterialPurpose {
     value === 'IDENTITY_FRONT' ||
     value === 'IDENTITY_BACK' ||
     value === 'LEAD_SCREENSHOT' ||
-    value === 'NOTARY_OPENING_PHOTO'
+    value === 'NOTARY_OPENING_PHOTO' ||
+    value === 'NOTARY_CERTIFICATE' ||
+    value === 'NOTARY_DISCLOSURE'
   );
 }
 

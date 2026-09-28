@@ -258,11 +258,23 @@ async function logout(): Promise<void> {
           to="/notary-portal/matters"
           @click="closeDrawer"
         >
-          <span>待开箱事项</span>
+          <span>公证事项</span>
         </RouterLink>
       </nav>
       <nav v-else class="app-nav" aria-label="主要导航">
         <p class="app-nav__label">工作台</p>
+        <RouterLink
+          v-if="!isClient"
+          class="app-nav__item"
+          :class="{
+            active: route.path === '/cases' || route.path.startsWith('/cases/'),
+          }"
+          data-test="case-nav"
+          to="/cases"
+          @click="closeDrawer"
+        >
+          <span>案件</span>
+        </RouterLink>
         <div v-if="!isClient" class="app-nav__group">
           <RouterLink
             class="app-nav__item"

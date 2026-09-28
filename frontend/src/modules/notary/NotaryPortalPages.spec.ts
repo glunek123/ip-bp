@@ -8,6 +8,7 @@ const api = vi.hoisted(() => ({
   listNotaryPortalMatters: vi.fn(),
   getNotaryPortalMatter: vi.fn(),
   recordNotaryPortalOpening: vi.fn(),
+  recordNotaryPortalCertificate: vi.fn(),
   listOwnerMaterials: vi.fn(),
   uploadMaterialFile: vi.fn(),
   downloadMaterialVersion: vi.fn(),
@@ -16,6 +17,7 @@ vi.mock('../../api/notary-portal', () => ({
   listNotaryPortalMatters: api.listNotaryPortalMatters,
   getNotaryPortalMatter: api.getNotaryPortalMatter,
   recordNotaryPortalOpening: api.recordNotaryPortalOpening,
+  recordNotaryPortalCertificate: api.recordNotaryPortalCertificate,
 }));
 vi.mock('../../api/materials', () => ({
   listOwnerMaterials: api.listOwnerMaterials,
@@ -99,6 +101,23 @@ describe('notary portal pages', () => {
     ).toBe('/notary-portal/matters/matter-1');
   });
 
+  it('switches the portal queue to waiting certificate without exposing cases', async () => {
+    const wrapper = await mountRoute(
+      '/notary-portal/matters',
+      NotaryPortalListPage,
+    );
+    await wrapper
+      .get('[data-test="notary-segment-waiting_certificate"]')
+      .trigger('click');
+    await flushPromises();
+    expect(api.listNotaryPortalMatters).toHaveBeenLastCalledWith(
+      1,
+      20,
+      expect.objectContaining({ stage: 'WAITING_CERTIFICATE' }),
+    );
+    expect(wrapper.text()).not.toContain('案件管理');
+  });
+
   it('shows the saved opening after reload without internal or future actions', async () => {
     const wrapper = await mountRoute(
       '/notary-portal/matters/matter-1',
@@ -118,6 +137,117 @@ describe('notary portal pages', () => {
       'matter-1',
       expect.any(Object),
     );
+  });
+
+  it('submits one selected certificate, keeps sample fee out of the command, and shows the archived result', async () => {
+    const waitingCertificate = {
+      id: 'matter-1',
+      businessNo: 'NZ-001',
+      stage: 'WAITING_CERTIFICATE',
+      version: 5,
+      createdAt: '2026-09-28T00:00:00Z',
+      evidence: {
+        evidenceAt: '2026-09-27',
+        sampleFeeState: 'KNOWN',
+        sampleFeeAmount: '12.00',
+        logistics: [],
+      },
+      opening: null,
+      issuanceDecision: {
+        decision: 'ISSUE',
+        actorDisplayName: '审核员',
+        decidedAt: '2026-09-28T00:00:00Z',
+      },
+      certificate: null,
+      capabilities: { recordOpening: false, issueCertificate: true },
+    };
+    const archived = {
+      ...waitingCertificate,
+      stage: 'ARCHIVED',
+      version: 6,
+      certificate: {
+        certificateNo: 'Z-100',
+        certificateDate: '2026-09-28',
+        issuedAt: '2026-09-28T00:00:00Z',
+        needDisclose: false,
+        files: [
+          {
+            materialId: 'certificate-material',
+            contentVersionId: 'certificate-version',
+            originalFilename: 'certificate.pdf',
+            mimeType: 'application/pdf',
+          },
+        ],
+        disclosureFiles: [],
+        caseId: 'case-1',
+        caseBusinessNo: 'CA-1',
+      },
+      capabilities: { recordOpening: false, issueCertificate: false },
+    };
+    api.getNotaryPortalMatter
+      .mockResolvedValueOnce(waitingCertificate)
+      .mockResolvedValueOnce(archived);
+    api.listOwnerMaterials.mockResolvedValue({
+      items: [
+        {
+          id: 'certificate-material',
+          ownerType: 'NOTARY_MATTER',
+          ownerId: 'matter-1',
+          category: 'NOTARY_CERTIFICATE',
+          purpose: 'NOTARY_CERTIFICATE',
+          currentVersionId: 'certificate-version',
+          status: 'ACTIVE',
+          contentVersions: [
+            {
+              id: 'certificate-version',
+              materialId: 'certificate-material',
+              originalFilename: 'certificate.pdf',
+              mimeType: 'application/pdf',
+              sizeBytes: 8,
+              sha256: 'a'.repeat(64),
+              status: 'AVAILABLE',
+              createdAt: '2026-09-28T00:00:00Z',
+            },
+          ],
+        },
+      ],
+      total: 1,
+    });
+    api.recordNotaryPortalCertificate.mockResolvedValue({
+      case: { businessNo: 'CA-1' },
+    });
+    vi.stubGlobal('crypto', {
+      randomUUID: () => 'certificate-idempotency-key',
+    });
+
+    const wrapper = await mountRoute(
+      '/notary-portal/matters/matter-1',
+      NotaryPortalDetailPage,
+    );
+    expect(wrapper.get('[data-test="certificate-form"]').text()).toContain(
+      '样品费',
+    );
+    expect(wrapper.get('[data-test="certificate-form"]').text()).toContain(
+      '¥ 12.00',
+    );
+    await wrapper.get('[data-test="certificate-number"]').setValue('Z-100');
+    await wrapper.get('[data-test="certificate-date"]').setValue('2026-09-28');
+    await wrapper.get('[data-test="certificate-submit"]').trigger('click');
+    await flushPromises();
+
+    expect(api.recordNotaryPortalCertificate).toHaveBeenCalledWith(
+      'matter-1',
+      expect.objectContaining({
+        contentVersionIds: ['certificate-version'],
+        fees: expect.not.objectContaining({ sample: expect.anything() }),
+      }),
+      'certificate-idempotency-key',
+    );
+    expect(wrapper.get('[data-test="certificate-record"]').text()).toContain(
+      'CA-1',
+    );
+    expect(wrapper.find('[data-test="certificate-form"]').exists()).toBe(false);
+    expect(wrapper.text()).not.toContain('/cases/case-1');
   });
 
   it('submits only selected pending photos and prevents an empty selection', async () => {

@@ -20,6 +20,8 @@ import ClientNotaryListPage from '../modules/client/ClientNotaryListPage.vue';
 import ClientNotaryDetailPage from '../modules/client/ClientNotaryDetailPage.vue';
 import NotaryPortalListPage from '../modules/notary/NotaryPortalListPage.vue';
 import NotaryPortalDetailPage from '../modules/notary/NotaryPortalDetailPage.vue';
+import CaseListPage from '../modules/cases/CaseListPage.vue';
+import CaseDetailPage from '../modules/cases/CaseDetailPage.vue';
 import { useAuthStore } from '../stores/auth';
 import { pinia } from './pinia';
 
@@ -40,7 +42,21 @@ export const router = createRouter({
       meta: {
         audience: 'NOTARY',
         section: '待开箱',
-        breadcrumbs: ['待开箱', '开箱登记'],
+        breadcrumbs: ['公证事项', '事项详情'],
+      },
+    },
+    {
+      path: '/cases',
+      component: CaseListPage,
+      meta: { audience: 'INTERNAL', section: '案件', breadcrumbs: ['案件'] },
+    },
+    {
+      path: '/cases/:id',
+      component: CaseDetailPage,
+      meta: {
+        audience: 'INTERNAL',
+        section: '案件',
+        breadcrumbs: ['案件', '案件详情'],
       },
     },
     {

@@ -94,6 +94,16 @@ async function mountShell(
         meta: { section: '客户', breadcrumbs: ['客户'] },
       },
       {
+        path: '/cases',
+        component: { template: '<div />' },
+        meta: { section: '案件', breadcrumbs: ['案件'] },
+      },
+      {
+        path: '/cases/:id',
+        component: { template: '<div />' },
+        meta: { section: '案件', breadcrumbs: ['案件', '案件详情'] },
+      },
+      {
         path: '/leads',
         component: { template: '<div />' },
         meta: { section: '线索', breadcrumbs: ['线索'] },
@@ -150,11 +160,12 @@ describe('AppShell', () => {
       notarySession,
     );
     expect(wrapper.get('[data-test="notary-portal-nav"]').text()).toContain(
-      '待开箱事项',
+      '公证事项',
     );
     expect(wrapper.find('[data-test="lead-nav"]').exists()).toBe(false);
     expect(wrapper.find('[data-test="notary-nav"]').exists()).toBe(false);
     expect(wrapper.find('[data-test="customer-nav"]').exists()).toBe(false);
+    expect(wrapper.find('[data-test="case-nav"]').exists()).toBe(false);
     expect(wrapper.find('[data-test="settings-expand"]').exists()).toBe(false);
     expect(wrapper.text()).toContain('南方公证处');
   });
@@ -178,6 +189,24 @@ describe('AppShell', () => {
       expect.any(Object),
       undefined,
       'LIBRARY',
+    );
+  });
+
+  it('shows the internal case entry without exposing it to clients', async () => {
+    const { wrapper } = await mountShell();
+    expect(wrapper.get('[data-test="case-nav"]').attributes('href')).toBe(
+      '/cases',
+    );
+    const client = {
+      ...session,
+      principalType: 'CLIENT' as const,
+      customer: { id: 'customer-1', name: '客户甲' },
+      department: null,
+      departments: [],
+    };
+    const clientShell = await mountShell('/client/leads', client);
+    expect(clientShell.wrapper.find('[data-test="case-nav"]').exists()).toBe(
+      false,
     );
   });
 

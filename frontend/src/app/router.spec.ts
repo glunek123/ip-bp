@@ -54,6 +54,18 @@ describe('authentication routing', () => {
     );
   });
 
+  it('keeps internal case routes inaccessible to client and notary principals', async () => {
+    auth.session = { principalType: 'CLIENT', user: { id: 'client-user' } };
+    await router.push('/cases/case-1');
+    expect(router.currentRoute.value.path).toBe('/client/leads');
+    auth.session = { principalType: 'NOTARY', user: { id: 'notary-user' } };
+    await router.push('/cases');
+    expect(router.currentRoute.value.path).toBe('/notary-portal/matters');
+    auth.session = { principalType: 'INTERNAL', user: { id: 'operator-user' } };
+    await router.push('/cases/case-1');
+    expect(router.currentRoute.value.path).toBe('/cases/case-1');
+  });
+
   it('protects the notary office settings route for internal accounts', async () => {
     await router.push('/notary-offices');
     expect(router.currentRoute.value.fullPath).toBe(

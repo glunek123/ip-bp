@@ -229,6 +229,47 @@ describe('materials API', () => {
     );
   });
 
+  it('uploads a certificate PDF as a real notary matter material', async () => {
+    const file = new File(['certificate'], '公证书.pdf', {
+      type: 'application/pdf',
+    });
+    const result = {
+      ...uploaded,
+      originalFilename: file.name,
+      purpose: 'NOTARY_CERTIFICATE',
+      mimeType: file.type,
+      sizeBytes: file.size,
+    };
+    const fetch = vi
+      .fn()
+      .mockResolvedValueOnce(
+        new Response(
+          JSON.stringify({
+            id: 'draft-2',
+            ownerType: 'NOTARY_MATTER',
+            ownerId: 'matter-1',
+            category: 'NOTARY_CERTIFICATE',
+            purpose: 'NOTARY_CERTIFICATE',
+            originalFilename: file.name,
+            declaredMimeType: file.type,
+            expiresAt: '2026-09-28T00:00:00.000Z',
+          }),
+        ),
+      )
+      .mockResolvedValueOnce(new Response(JSON.stringify(result)));
+    vi.stubGlobal('fetch', fetch);
+
+    await expect(
+      uploadMaterialFile({
+        ownerType: 'NOTARY_MATTER',
+        ownerId: 'matter-1',
+        category: 'NOTARY_CERTIFICATE',
+        purpose: 'NOTARY_CERTIFICATE',
+        file,
+      }),
+    ).resolves.toEqual(result);
+  });
+
   it('rejects malformed upload and list responses', async () => {
     const file = new File(['real-file-content'], '营业执照.pdf', {
       type: 'application/pdf',
