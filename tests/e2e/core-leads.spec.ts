@@ -594,12 +594,11 @@ test('operator creates, refreshes, views, and edits a waiting-push lead', async 
   await configureBrowser(page);
   await page.goto('/leads');
   const counters = page.locator('[data-test="lead-counter"]');
-  await expect(counters).toHaveCount(5);
+  await expect(counters).toHaveCount(4);
   await expect(counters).toHaveText([
     '待推送0',
     '线索待审核1',
     '线索待确认1',
-    '已移交公证0',
     '线索已归档1',
   ]);
   await page.locator('[data-test="create-lead"]').click();
@@ -1327,9 +1326,15 @@ test('notary handoff serializes competing batches and rolls back when audit or r
     expect.arrayContaining([winningResult.id, secondResult.id]),
   );
   expect(matterListBody.counts.PENDING_EVIDENCE).toBe(2);
+  const archivedList = await request.get(
+    '/api/v1/notary-matters?stage=ARCHIVED',
+    { headers: authorizationA },
+  );
+  expect(archivedList.status(), await archivedList.text()).toBe(200);
+  expect((await archivedList.json()).items).toEqual([]);
   expect(
     (
-      await request.get('/api/v1/notary-matters?stage=ARCHIVED', {
+      await request.get('/api/v1/notary-matters?stage=UNKNOWN_STAGE', {
         headers: authorizationA,
       })
     ).status(),
@@ -1765,14 +1770,12 @@ test('notary opening enforces scope, photo ownership, state, version, replay and
   );
   expect(download.status()).toBe(200);
   expect(await download.body()).toEqual(jpegBytes);
-  expect(
-    (
-      await request.get(
-        `/api/v1/materials/${stored!.materialId}/versions/${photo.contentVersionId}/content`,
-        { headers: { 'X-CSRF-Token': csrf } },
-      )
-    ).status(),
-  ).toBe(403);
+  const clientDownload = await request.get(
+    `/api/v1/materials/${stored!.materialId}/versions/${photo.contentVersionId}/content`,
+    { headers: { 'X-CSRF-Token': csrf } },
+  );
+  expect(clientDownload.status(), await clientDownload.text()).toBe(200);
+  expect(await clientDownload.body()).toEqual(jpegBytes);
   expect(
     (
       await request.get(
