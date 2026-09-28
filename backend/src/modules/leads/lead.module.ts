@@ -10,6 +10,8 @@ import {
   ClientNotaryOpeningReviewController,
 } from './client-lead.controller';
 import { ClientLeadService } from './client-lead.service';
+import { ClientNotaryController } from './client-notary.controller';
+import { ClientNotaryService } from './client-notary.service';
 import {
   LeadNotaryController,
   NotaryOfficeController,
@@ -26,6 +28,7 @@ import { NotaryListService } from './notary-list.service';
     LeadController,
     ClientLeadController,
     ClientNotaryOpeningReviewController,
+    ClientNotaryController,
     LeadNotaryController,
     NotaryListController,
     NotaryOfficeController,
@@ -33,6 +36,7 @@ import { NotaryListService } from './notary-list.service';
   providers: [
     LeadService,
     ClientLeadService,
+    ClientNotaryService,
     LeadNotaryService,
     NotaryOpeningService,
     NotaryOpeningReviewService,

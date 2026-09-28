@@ -1995,6 +1995,131 @@ test('opening review uses real operator and client identities, independent grant
   ).toBe(404);
 });
 
+test('client notary reads and photo bytes stay within enterprise, exact batch and live binding', async ({
+  request,
+}) => {
+  const own = await createClientAccount(request);
+  const csrf = await loginClient(request, own.username, own.password);
+  const firstId = await createOpenedNotaryMatter(request, csrf);
+  const firstOperator = await request.get(`/api/v1/notary-matters/${firstId}`, {
+    headers: authorizationA,
+  });
+  expect(firstOperator.status()).toBe(200);
+  const firstFact = await firstOperator.json();
+  const lead = await getLead(firstFact.leadId);
+  const second = await transferToNotary(
+    request,
+    firstFact.leadId,
+    firstFact.notaryOffice.id,
+    [lead!.products[0].id],
+    4,
+    randomUUID(),
+    true,
+  );
+  expect(second.status(), await second.text()).toBe(201);
+  const secondId = (await second.json()).id as string;
+  expect(
+    (
+      await recordNotaryEvidence(request, secondId, {
+        evidenceAt: '2026-09-24',
+        sampleFeeState: 'PENDING',
+        logistics: [{ companyState: 'NONE', trackingState: 'NONE' }],
+        expectedVersion: 1,
+      })
+    ).status(),
+  ).toBe(201);
+  const secondPhoto = await upload(request, {
+    ownerType: 'NOTARY_MATTER',
+    ownerId: secondId,
+    purpose: 'NOTARY_OPENING_PHOTO',
+    name: 'second.jpg',
+    mime: 'image/jpeg',
+    bytes: jpegBytes,
+  });
+  const unsubmittedPhoto = await upload(request, {
+    ownerType: 'NOTARY_MATTER',
+    ownerId: secondId,
+    purpose: 'NOTARY_OPENING_PHOTO',
+    name: 'unsubmitted.jpg',
+    mime: 'image/jpeg',
+    bytes: jpegBytes,
+  });
+  expect(
+    (
+      await recordNotaryOpening(request, secondId, {
+        expectedVersion: 2,
+        contentVersionIds: [secondPhoto.contentVersionId],
+      })
+    ).status(),
+  ).toBe(201);
+
+  const list = await request.get('/api/v1/client/notary-matters');
+  expect(list.status(), await list.text()).toBe(200);
+  const listed = await list.json();
+  expect(listed.items.map((item: { id: string }) => item.id)).toEqual(
+    expect.arrayContaining([firstId, secondId]),
+  );
+  const detail = await request.get(`/api/v1/client/notary-matters/${firstId}`);
+  expect(detail.status(), await detail.text()).toBe(200);
+  const body = await detail.json();
+  expect(body.opening.photos).toHaveLength(1);
+  expect(body.capabilities.reviewOpening).toBe(true);
+  expect(JSON.stringify(body)).not.toMatch(
+    /sender|logistics|sampleFee|responsibleUserId|teamId|sourceSnapshot|actorUserId/u,
+  );
+  const firstPhoto = body.opening.photos[0];
+  const path = (materialId: string, versionId: string) =>
+    `/api/v1/materials/${materialId}/versions/${versionId}/content`;
+  const bytes = await request.get(
+    path(firstPhoto.materialId, firstPhoto.contentVersionId),
+  );
+  expect(bytes.status()).toBe(200);
+  expect(await bytes.body()).toEqual(jpegBytes);
+  const otherBatch = await request.get(
+    path(secondPhoto.materialId, secondPhoto.contentVersionId),
+  );
+  expect(otherBatch.status()).toBe(200);
+  expect(
+    (
+      await request.get(
+        path(unsubmittedPhoto.materialId, unsubmittedPhoto.contentVersionId),
+      )
+    ).status(),
+  ).toBe(404);
+  const wrongVersion = await request.get(
+    path(firstPhoto.materialId, secondPhoto.contentVersionId),
+  );
+  expect(wrongVersion.status()).toBe(404);
+
+  const foreign = await createClientAccount(request, {
+    customerId: coreLeadFixtures.foreignCustomer,
+    headers: { Authorization: `Bearer ${coreLeadFixtures.tokenB}` },
+  });
+  await loginClient(request, foreign.username, foreign.password);
+  expect(
+    (await request.get(`/api/v1/client/notary-matters/${firstId}`)).status(),
+  ).toBe(404);
+  expect(
+    (
+      await request.get(
+        path(firstPhoto.materialId, firstPhoto.contentVersionId),
+      )
+    ).status(),
+  ).toBe(404);
+  await loginClient(request, own.username, own.password);
+  await setClientBindingActive(coreLeadFixtures.admittedCustomer, false);
+  expect(
+    (await request.get(`/api/v1/client/notary-matters/${firstId}`)).status(),
+  ).toBe(401);
+  expect(
+    (
+      await request.get(
+        path(firstPhoto.materialId, firstPhoto.contentVersionId),
+      )
+    ).status(),
+  ).toBe(401);
+});
+
 test('operator and client race on one opening review and only one PostgreSQL decision commits', async ({
   request,
 }) => {

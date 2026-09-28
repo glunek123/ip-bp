@@ -26,6 +26,62 @@ const customerId = '33333333-3333-4333-8333-333333333333';
 const now = new Date('2026-09-21T04:00:00.000Z');
 
 describe('MaterialService', () => {
+  it('opens only the exact frozen opening photo for a currently bound client', async () => {
+    const fixture = createFixture();
+    const clientActor = { ...actor, clientCustomerId: customerId };
+    fixture.db.customerAccountBinding.findFirst.mockResolvedValue({
+      id: 'binding-1',
+    });
+    fixture.db.notaryMatter.findFirst.mockResolvedValue({ id: 'matter-1' });
+    fixture.db.material.findFirst.mockResolvedValue({
+      id: 'photo-1',
+      departmentId: actor.departmentId,
+      ownerType: 'NOTARY_MATTER',
+      ownerId: 'matter-1',
+      category: 'NOTARY_OPENING_PHOTO',
+      status: 'ACTIVE',
+      contentVersions: [
+        {
+          id: 'frozen-1',
+          storageKey: 'private-photo',
+          originalFilename: 'opening.png',
+          mimeType: 'image/png',
+          sizeBytes: 4n,
+          sha256: 'a'.repeat(64),
+          status: 'AVAILABLE',
+        },
+      ],
+    });
+    fixture.db.materialReference.findFirst.mockResolvedValue({
+      id: 'frozen-reference',
+    });
+    fixture.storage.open.mockResolvedValue(Readable.from(Buffer.from('data')));
+
+    const opened = await fixture.service.openVersion(
+      clientActor,
+      'photo-1',
+      'frozen-1',
+    );
+    const chunks: Buffer[] = [];
+    for await (const chunk of opened.stream) chunks.push(Buffer.from(chunk));
+    expect(Buffer.concat(chunks)).toEqual(Buffer.from('data'));
+    expect(fixture.db.materialReference.findFirst).toHaveBeenCalledWith({
+      where: expect.objectContaining({
+        resourceType: 'notary_matter',
+        resourceId: 'matter-1',
+        purpose: 'NOTARY_OPENING_PHOTO',
+        materialId: 'photo-1',
+        contentVersionId: 'frozen-1',
+        actionEventId: { not: null },
+      }),
+      select: { id: true },
+    });
+    fixture.db.materialReference.findFirst.mockResolvedValue(null);
+    await expect(
+      fixture.service.openVersion(clientActor, 'photo-1', 'frozen-1'),
+    ).rejects.toMatchObject({ response: { code: 'RESOURCE_NOT_FOUND' } });
+    expect(fixture.storage.open).toHaveBeenCalledTimes(1);
+  });
   it('reads current screenshots for this enterprise archived with a no-evidence fact', async () => {
     const fixture = createFixture();
     const clientActor = { ...actor, clientCustomerId: customerId };
@@ -2192,6 +2248,7 @@ function createFixture() {
     auditEvent: { create: jest.fn(async ({ data }) => data) },
   };
   const db = {
+    customerAccountBinding: { findFirst: jest.fn() },
     customer: { findFirst: customerFindFirst },
     uploadDraft: {
       create: jest.fn(async ({ data }) => ({ id: 'draft-1', ...data })),

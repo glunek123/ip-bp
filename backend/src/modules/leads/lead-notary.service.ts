@@ -668,6 +668,16 @@ export class LeadNotaryService {
           include: { logistics: { orderBy: { position: 'asc' } } },
         },
         opening: true,
+        openingReviewDecision: {
+          select: {
+            result: true,
+            reason: true,
+            actorKind: true,
+            actorDisplayNameSnapshot: true,
+            decidedAt: true,
+            archivedAt: true,
+          },
+        },
         selectedProducts: { orderBy: { leadProductId: 'asc' } },
         selectedMaterials: {
           include: {
@@ -682,6 +692,7 @@ export class LeadNotaryService {
     if (matter === null) throw this.notFound();
     let recordEvidence = false;
     let recordOpening = false;
+    let reviewOpening = false;
     if (matter.stage === 'PENDING_EVIDENCE') {
       try {
         await this.access.authorizeLead(actor, 'notary.evidence.record', {
@@ -710,9 +721,30 @@ export class LeadNotaryService {
         if (!(error instanceof ForbiddenException)) throw error;
       }
     }
+    if (matter.stage === 'UNBOX_REVIEW') {
+      try {
+        await this.access.authorizeLead(actor, 'notary.opening.review', {
+          departmentId: matter.departmentId,
+          responsibleUserId: matter.sourceLead.responsibleUserId,
+          ...(matter.sourceLead.teamId === null
+            ? {}
+            : { teamId: matter.sourceLead.teamId }),
+        });
+        reviewOpening = true;
+      } catch (error) {
+        if (!(error instanceof ForbiddenException)) throw error;
+      }
+    }
     if (matter.stage === 'WAITING_UNBOX' && matter.evidence === null)
       throw this.corruptReceipt();
     if (matter.stage === 'UNBOX_REVIEW' && matter.opening === null)
+      throw this.corruptReceipt();
+    if (
+      (matter.stage === 'UNBOX_REVIEW' &&
+        matter.openingReviewDecision !== null) ||
+      ((matter.stage === 'ISSUANCE_DECISION' || matter.stage === 'ARCHIVED') &&
+        matter.openingReviewDecision === null)
+    )
       throw this.corruptReceipt();
     const openingReferences =
       matter.opening === null
@@ -724,12 +756,20 @@ export class LeadNotaryService {
               resourceId: id,
               purpose: 'NOTARY_OPENING_PHOTO',
               actionEventId: { not: null },
+              actionEvent: {
+                action: 'notary.opening_recorded',
+                resourceType: 'notary_matter',
+                resourceId: id,
+                departmentId: actor.departmentId,
+              },
               material: {
+                departmentId: actor.departmentId,
                 ownerType: 'NOTARY_MATTER',
                 ownerId: id,
                 category: 'NOTARY_OPENING_PHOTO',
                 status: 'ACTIVE',
               },
+              contentVersion: { status: 'AVAILABLE' },
             },
             orderBy: { createdAt: 'asc' },
             select: {
@@ -758,7 +798,20 @@ export class LeadNotaryService {
       leadVersion: matter.toLeadVersion,
       stage: matter.stage,
       version: matter.version,
-      capabilities: { recordEvidence, recordOpening },
+      capabilities: { recordEvidence, recordOpening, reviewOpening },
+      reviewDecision:
+        matter.openingReviewDecision === null
+          ? null
+          : {
+              result: matter.openingReviewDecision.result,
+              reason: matter.openingReviewDecision.reason,
+              actorKind: matter.openingReviewDecision.actorKind,
+              actorDisplayName:
+                matter.openingReviewDecision.actorDisplayNameSnapshot,
+              decidedAt: matter.openingReviewDecision.decidedAt.toISOString(),
+              archivedAt:
+                matter.openingReviewDecision.archivedAt?.toISOString() ?? null,
+            },
       opening:
         matter.opening === null
           ? null

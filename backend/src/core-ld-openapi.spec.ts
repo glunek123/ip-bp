@@ -13,6 +13,8 @@ import { CustomerController } from './modules/customers/customer.controller';
 import { CustomerService } from './modules/customers/customer.service';
 import { ClientLeadController } from './modules/leads/client-lead.controller';
 import { ClientLeadService } from './modules/leads/client-lead.service';
+import { ClientNotaryController } from './modules/leads/client-notary.controller';
+import { ClientNotaryService } from './modules/leads/client-notary.service';
 import { LeadController } from './modules/leads/lead.controller';
 import { LeadService } from './modules/leads/lead.service';
 
@@ -26,6 +28,7 @@ describe('CORE-LD-002 OpenAPI contract', () => {
         CustomerController,
         LeadController,
         ClientLeadController,
+        ClientNotaryController,
       ],
       providers: [
         { provide: AuthService, useValue: {} },
@@ -34,6 +37,7 @@ describe('CORE-LD-002 OpenAPI contract', () => {
         { provide: CustomerAccountService, useValue: {} },
         { provide: LeadService, useValue: {} },
         { provide: ClientLeadService, useValue: {} },
+        { provide: ClientNotaryService, useValue: {} },
       ],
     })
       .overrideGuard(ActorContextGuard)
@@ -78,6 +82,18 @@ describe('CORE-LD-002 OpenAPI contract', () => {
     ],
     ['get', '/api/v1/client/leads', '200', 'ClientLeadListResponseDto'],
     ['get', '/api/v1/client/leads/{id}', '200', 'ClientLeadResponseDto'],
+    [
+      'get',
+      '/api/v1/client/notary-matters',
+      '200',
+      'ClientNotaryListResponseDto',
+    ],
+    [
+      'get',
+      '/api/v1/client/notary-matters/{id}',
+      '200',
+      'ClientNotaryDetailResponseDto',
+    ],
     [
       'post',
       '/api/v1/client/leads/{id}/reviews',

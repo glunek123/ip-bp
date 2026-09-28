@@ -1,6 +1,109 @@
 import { ForbiddenException } from '@nestjs/common';
 import { LeadNotaryService } from './lead-notary.service';
 
+describe('LeadNotaryService opening review read projection', () => {
+  it('shows a separate review capability and persisted decision facts', async () => {
+    const record = {
+      id: matterId,
+      businessNo: 'NT-1',
+      departmentId: actor.departmentId,
+      sourceLeadId: leadId,
+      toLeadVersion: 4,
+      stage: 'ARCHIVED',
+      version: 4,
+      sourceSnapshot: { selectedProducts: [], selectedContentVersionIds: [] },
+      sourceLead: {
+        id: leadId,
+        businessNo: 'LD-1',
+        responsibleUserId: actor.userId,
+        teamId: null,
+      },
+      notaryOffice: { id: officeId, name: '公证处' },
+      evidence: null,
+      opening: {
+        senderName: null,
+        senderPhone: null,
+        senderAddress: null,
+        recordedAt: new Date(),
+        recordedByUserId: actor.userId,
+      },
+      selectedProducts: [],
+      selectedMaterials: [],
+      evidenceMode: 'ONLINE_PURCHASE',
+      batchPurpose: '取证',
+      createdAt: new Date(),
+      openingReviewDecision: {
+        result: 'NO_INFRINGEMENT',
+        reason: '不侵权',
+        actorKind: 'CLIENT',
+        actorDisplayNameSnapshot: '客户甲',
+        decidedAt: new Date('2026-09-28T01:00:00Z'),
+        archivedAt: new Date('2026-09-28T01:00:00Z'),
+        actorUserId: 'secret-user',
+      },
+    };
+    const database = {
+      userAccount: {
+        findUnique: jest
+          .fn()
+          .mockResolvedValue({ accountType: 'INTERNAL', active: true }),
+      },
+      notaryMatter: { findFirst: jest.fn().mockResolvedValue(record) },
+      materialReference: {
+        findMany: jest
+          .fn()
+          .mockResolvedValue([
+            {
+              materialId: 'photo-1',
+              contentVersionId: 'version-1',
+              contentVersion: {
+                originalFilename: 'opening.png',
+                mimeType: 'image/png',
+              },
+            },
+          ]),
+      },
+    };
+    const access = {
+      buildLeadScope: jest.fn().mockResolvedValue({}),
+      authorizeLead: jest.fn().mockRejectedValue(new ForbiddenException()),
+    };
+    const service = new LeadNotaryService(
+      database as never,
+      access as never,
+      {} as never,
+    );
+    const result = await service.getMatter(actor, matterId);
+    expect(result.capabilities).toEqual({
+      recordEvidence: false,
+      recordOpening: false,
+      reviewOpening: false,
+    });
+    expect(result.reviewDecision).toEqual({
+      result: 'NO_INFRINGEMENT',
+      reason: '不侵权',
+      actorKind: 'CLIENT',
+      actorDisplayName: '客户甲',
+      decidedAt: '2026-09-28T01:00:00.000Z',
+      archivedAt: '2026-09-28T01:00:00.000Z',
+    });
+    expect(JSON.stringify(result)).not.toContain('secret-user');
+    database.notaryMatter.findFirst.mockResolvedValue({
+      ...record,
+      stage: 'UNBOX_REVIEW',
+      openingReviewDecision: null,
+    });
+    access.authorizeLead.mockResolvedValue(undefined);
+    const pending = await service.getMatter(actor, matterId);
+    expect(pending.capabilities.reviewOpening).toBe(true);
+    expect(access.authorizeLead).toHaveBeenCalledWith(
+      actor,
+      'notary.opening.review',
+      expect.objectContaining({ departmentId: actor.departmentId }),
+    );
+  });
+});
+
 const actor = {
   userId: '11111111-1111-4111-8111-111111111111',
   departmentId: '22222222-2222-4222-8222-222222222222',

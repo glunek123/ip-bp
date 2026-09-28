@@ -100,7 +100,11 @@ export type ReplaceCurrentReferencesResult = Readonly<{
 
 type MaterialAuthorizationReader = Pick<
   MaterialTransactionClient,
-  'customer' | 'uploadDraft' | 'lead' | 'notaryMatter'
+  | 'customer'
+  | 'uploadDraft'
+  | 'lead'
+  | 'notaryMatter'
+  | 'customerAccountBinding'
 >;
 type MaterialMutationReader = MaterialAuthorizationReader &
   Pick<MaterialTransactionClient, 'material'>;
@@ -744,10 +748,31 @@ export class MaterialService {
         : await this.database.materialReference.findMany({
             where: {
               departmentId: actor.departmentId,
-              resourceType: 'lead',
+              resourceType:
+                ownerType === 'NOTARY_MATTER' ? 'notary_matter' : 'lead',
               resourceId: ownerId,
-              purpose: 'LEAD_SCREENSHOT',
-              actionEventId: null,
+              purpose:
+                ownerType === 'NOTARY_MATTER'
+                  ? 'NOTARY_OPENING_PHOTO'
+                  : 'LEAD_SCREENSHOT',
+              actionEventId:
+                ownerType === 'NOTARY_MATTER' ? { not: null } : null,
+              ...(ownerType === 'NOTARY_MATTER'
+                ? {
+                    actionEvent: {
+                      action: 'notary.opening_recorded',
+                      resourceType: 'notary_matter',
+                      resourceId: ownerId,
+                      departmentId: actor.departmentId,
+                    },
+                    material: {
+                      ownerType: 'NOTARY_MATTER',
+                      ownerId,
+                      category: 'NOTARY_OPENING_PHOTO',
+                      departmentId: actor.departmentId,
+                    },
+                  }
+                : {}),
             },
             select: { materialId: true, contentVersionId: true },
           });
@@ -764,6 +789,10 @@ export class MaterialService {
         ownerType,
         ownerId,
         status: 'ACTIVE',
+        ...(actor.clientCustomerId !== undefined &&
+        ownerType === 'NOTARY_MATTER'
+          ? { category: 'NOTARY_OPENING_PHOTO' as const }
+          : {}),
         ...(clientMaterialIds === undefined
           ? {}
           : { id: { in: clientMaterialIds } }),
@@ -843,6 +872,13 @@ export class MaterialService {
     });
     const version = material?.contentVersions[0];
     if (material === null || version === undefined) throw this.notFound();
+    if (
+      actor.clientCustomerId !== undefined &&
+      material.ownerType === 'NOTARY_MATTER' &&
+      (material.category !== 'NOTARY_OPENING_PHOTO' ||
+        material.status !== 'ACTIVE')
+    )
+      throw this.notFound();
     await this.authorizeOwner(
       actor,
       material.ownerType,
@@ -853,12 +889,27 @@ export class MaterialService {
       const reference = await this.database.materialReference.findFirst({
         where: {
           departmentId: actor.departmentId,
-          resourceType: 'lead',
+          resourceType:
+            material.ownerType === 'NOTARY_MATTER' ? 'notary_matter' : 'lead',
           resourceId: material.ownerId,
-          purpose: 'LEAD_SCREENSHOT',
+          purpose:
+            material.ownerType === 'NOTARY_MATTER'
+              ? 'NOTARY_OPENING_PHOTO'
+              : 'LEAD_SCREENSHOT',
           materialId,
           contentVersionId: versionId,
-          actionEventId: null,
+          actionEventId:
+            material.ownerType === 'NOTARY_MATTER' ? { not: null } : null,
+          ...(material.ownerType === 'NOTARY_MATTER'
+            ? {
+                actionEvent: {
+                  action: 'notary.opening_recorded',
+                  resourceType: 'notary_matter',
+                  resourceId: material.ownerId,
+                  departmentId: actor.departmentId,
+                },
+              }
+            : {}),
         },
         select: { id: true },
       });
@@ -1129,7 +1180,38 @@ export class MaterialService {
     >,
   ): Promise<void> {
     if (actor.clientCustomerId !== undefined) {
-      if (operation !== 'read' || ownerType !== 'LEAD') throw this.forbidden();
+      if (operation !== 'read') throw this.forbidden();
+      if (ownerType === 'NOTARY_MATTER') {
+        const binding = await reader.customerAccountBinding.findFirst({
+          where: {
+            userId: actor.userId,
+            customerId: actor.clientCustomerId,
+            departmentId: actor.departmentId,
+            active: true,
+            user: { active: true, accountType: 'CLIENT' },
+            customer: { profileStatus: 'ADMITTED' },
+          },
+          select: { id: true },
+        });
+        if (binding === null) throw this.forbidden();
+        const matter = await reader.notaryMatter.findFirst({
+          where: {
+            id: ownerId,
+            departmentId: actor.departmentId,
+            customerId: actor.clientCustomerId,
+            opening: { isNot: null },
+            stage: { in: ['UNBOX_REVIEW', 'ISSUANCE_DECISION', 'ARCHIVED'] },
+            sourceLead: {
+              pushedAt: { not: null },
+              pushedByUserId: { not: null },
+            },
+          },
+          select: { id: true },
+        });
+        if (matter === null) throw this.notFound();
+        return;
+      }
+      if (ownerType !== 'LEAD') throw this.forbidden();
       const lead = await reader.lead.findFirst({
         where: {
           id: ownerId,
