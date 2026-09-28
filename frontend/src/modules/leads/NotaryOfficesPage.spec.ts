@@ -8,7 +8,13 @@ const api = vi.hoisted(() => ({
   listNotaryOffices: vi.fn(),
   createNotaryOffice: vi.fn(),
 }));
+const accountsApi = vi.hoisted(() => ({
+  listNotaryOfficeAccounts: vi.fn(),
+  createNotaryOfficeAccount: vi.fn(),
+  setNotaryOfficeAccountActive: vi.fn(),
+}));
 vi.mock('../../api/notary', () => api);
+vi.mock('../../api/notary-office-accounts', () => accountsApi);
 
 async function mountPage() {
   const router = createRouter({
@@ -35,6 +41,23 @@ beforeEach(() => {
     id: 'office-3',
     name: '东莞市东莞公证处',
     status: 'ACTIVE',
+  });
+  accountsApi.listNotaryOfficeAccounts.mockResolvedValue([]);
+  accountsApi.createNotaryOfficeAccount.mockResolvedValue({
+    id: 'user-1',
+    displayName: '办理员',
+    username: 'office.user',
+    accountActive: true,
+    bindingActive: true,
+    bindingVersion: 1,
+  });
+  accountsApi.setNotaryOfficeAccountActive.mockResolvedValue({
+    id: 'user-1',
+    displayName: '办理员',
+    username: 'office.user',
+    accountActive: false,
+    bindingActive: true,
+    bindingVersion: 2,
   });
 });
 
@@ -100,5 +123,45 @@ describe('NotaryOfficesPage', () => {
     await wrapper.get('[data-test="create-notary-office"]').trigger('click');
     await flushPromises();
     expect(wrapper.text()).toContain('该公证处已存在，请检查名称或联系管理员');
+  });
+
+  it('creates a bound account and lets administrators disable it', async () => {
+    const wrapper = await mountPage();
+    await wrapper
+      .get('[data-test="office-accounts-office-1"]')
+      .trigger('click');
+    await flushPromises();
+    await wrapper
+      .get('[data-test="notary-account-display-name"]')
+      .setValue('办理员');
+    await wrapper
+      .get('[data-test="notary-account-username"]')
+      .setValue('office.user');
+    await wrapper
+      .get('[data-test="notary-account-password"]')
+      .setValue('correct horse battery staple');
+    await wrapper
+      .get('[data-test="notary-office-account-create"]')
+      .trigger('submit');
+    await flushPromises();
+    expect(accountsApi.createNotaryOfficeAccount).toHaveBeenCalledWith(
+      'office-1',
+      {
+        displayName: '办理员',
+        username: 'office.user',
+        password: 'correct horse battery staple',
+      },
+    );
+    expect(wrapper.text()).toContain('公证处账号已创建');
+    await wrapper
+      .find('[data-test="notary-account-row"] button')
+      .trigger('click');
+    await flushPromises();
+    expect(accountsApi.setNotaryOfficeAccountActive).toHaveBeenCalledWith(
+      'office-1',
+      'user-1',
+      false,
+    );
+    expect(wrapper.text()).toContain('账号已停用');
   });
 });

@@ -18,6 +18,8 @@ import ClientLeadListPage from '../modules/client/ClientLeadListPage.vue';
 import ClientLeadDetailPage from '../modules/client/ClientLeadDetailPage.vue';
 import ClientNotaryListPage from '../modules/client/ClientNotaryListPage.vue';
 import ClientNotaryDetailPage from '../modules/client/ClientNotaryDetailPage.vue';
+import NotaryPortalListPage from '../modules/notary/NotaryPortalListPage.vue';
+import NotaryPortalDetailPage from '../modules/notary/NotaryPortalDetailPage.vue';
 import { useAuthStore } from '../stores/auth';
 import { pinia } from './pinia';
 
@@ -25,8 +27,22 @@ export const router = createRouter({
   history: createWebHistory(),
   routes: [
     { path: '/login', component: LoginPage, meta: { public: true } },
-    { path: '/', redirect: '/customers' },
     { path: '/health', component: HealthPage, meta: { public: true } },
+    { path: '/', redirect: '/customers' },
+    {
+      path: '/notary-portal/matters',
+      component: NotaryPortalListPage,
+      meta: { audience: 'NOTARY', section: '待开箱', breadcrumbs: ['待开箱'] },
+    },
+    {
+      path: '/notary-portal/matters/:id',
+      component: NotaryPortalDetailPage,
+      meta: {
+        audience: 'NOTARY',
+        section: '待开箱',
+        breadcrumbs: ['待开箱', '开箱登记'],
+      },
+    },
     {
       path: '/customers',
       component: CustomerListPage,
@@ -190,7 +206,9 @@ router.beforeEach(async (to) => {
   if (auth.session !== null) {
     const audience = to.meta.audience;
     if (
-      (audience === 'INTERNAL' || audience === 'CLIENT') &&
+      (audience === 'INTERNAL' ||
+        audience === 'CLIENT' ||
+        audience === 'NOTARY') &&
       audience !== auth.session.principalType
     )
       return homeFor(auth.session.principalType);
@@ -203,6 +221,8 @@ router.beforeEach(async (to) => {
   return { path: '/login', query: { returnTo } };
 });
 
-function homeFor(principalType: 'INTERNAL' | 'CLIENT'): string {
-  return principalType === 'CLIENT' ? '/client/leads' : '/customers';
+function homeFor(principalType: 'INTERNAL' | 'CLIENT' | 'NOTARY'): string {
+  if (principalType === 'CLIENT') return '/client/leads';
+  if (principalType === 'NOTARY') return '/notary-portal/matters';
+  return '/customers';
 }

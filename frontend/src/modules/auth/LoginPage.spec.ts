@@ -24,6 +24,11 @@ async function mountPage(returnTo = '/customers') {
       { path: '/customers/:id', component: { template: '<div />' } },
       { path: '/client/leads', component: { template: '<div />' } },
       { path: '/client/leads/:id', component: { template: '<div />' } },
+      { path: '/notary-portal/matters', component: { template: '<div />' } },
+      {
+        path: '/notary-portal/matters/:id',
+        component: { template: '<div />' },
+      },
     ],
   });
   await router.push({ path: '/login', query: { returnTo } });
@@ -116,6 +121,33 @@ describe('LoginPage', () => {
       '/client/leads/lead-1',
     );
   });
+
+  it('returns a notary principal only to the notary portal', async () => {
+    const notarySession = {
+      ...internalSession(),
+      principalType: 'NOTARY' as const,
+      department: null,
+      departments: [],
+      customer: null,
+      notaryOffice: { id: 'office-1', name: '南方公证处' },
+    };
+    api.login.mockResolvedValue(notarySession);
+    const accepted = await mountPage('/notary-portal/matters/matter-1');
+    await fillCredentials(accepted.wrapper);
+    await accepted.wrapper.get('form').trigger('submit');
+    await flushPromises();
+    expect(accepted.router.currentRoute.value.fullPath).toBe(
+      '/notary-portal/matters/matter-1',
+    );
+
+    const rejected = await mountPage('/customers/customer-1');
+    await fillCredentials(rejected.wrapper);
+    await rejected.wrapper.get('form').trigger('submit');
+    await flushPromises();
+    expect(rejected.router.currentRoute.value.fullPath).toBe(
+      '/notary-portal/matters',
+    );
+  });
 });
 
 function internalSession() {
@@ -125,6 +157,7 @@ function internalSession() {
     department: { id: 'department-1', name: '知产部' },
     departments: [{ id: 'department-1', name: '知产部' }],
     customer: null,
+    notaryOffice: null,
     authorizationRevision: 1,
     expiresAt: '2026-09-18T00:00:00.000Z',
     csrfToken: 'csrf-token',
@@ -138,6 +171,7 @@ function clientSession() {
     department: null,
     departments: [],
     customer: { id: 'customer-1', name: '甲公司' },
+    notaryOffice: null,
     authorizationRevision: 1,
     expiresAt: '2026-09-18T00:00:00.000Z',
     csrfToken: 'csrf-token',

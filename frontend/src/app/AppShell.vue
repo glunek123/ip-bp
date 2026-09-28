@@ -38,8 +38,13 @@ const notaryStageCards: ReadonlyArray<{
 const loggingOut = ref(false);
 const logoutError = ref('');
 const isClient = computed(() => auth.session?.principalType === 'CLIENT');
+const isNotary = computed(() => auth.session?.principalType === 'NOTARY');
 const homePath = computed(() =>
-  isClient.value ? '/client/leads' : '/customers',
+  isClient.value
+    ? '/client/leads'
+    : isNotary.value
+      ? '/notary-portal/matters'
+      : '/customers',
 );
 
 const identity = computed(() =>
@@ -109,7 +114,7 @@ watch(
   identity,
   async (currentIdentity, _previousIdentity, onCleanup) => {
     canViewPeople.value = false;
-    if (currentIdentity === null || isClient.value) return;
+    if (currentIdentity === null || isClient.value || isNotary.value) return;
     const controller = new AbortController();
     let current = true;
     onCleanup(() => {
@@ -132,7 +137,7 @@ watch(
   identity,
   async (currentIdentity, _previousIdentity, onCleanup) => {
     canViewNotaryOffices.value = false;
-    if (currentIdentity === null || isClient.value) return;
+    if (currentIdentity === null || isClient.value || isNotary.value) return;
     const controller = new AbortController();
     let current = true;
     onCleanup(() => {
@@ -158,7 +163,7 @@ watch(
       notaryCounts.value = null;
       canViewNotaryMatters.value = false;
     }
-    if (currentIdentity === null || isClient.value) return;
+    if (currentIdentity === null || isClient.value || isNotary.value) return;
     const controller = new AbortController();
     let current = true;
     onCleanup(() => {
@@ -237,11 +242,24 @@ async function logout(): Promise<void> {
         <span class="app-brand__mark" aria-hidden="true">品</span>
         <span>
           <strong>品维·知产</strong>
-          <small>{{ isClient ? '企业审核端' : '业务管理系统' }}</small>
+          <small>{{
+            isClient ? '企业审核端' : isNotary ? '公证处办理端' : '业务管理系统'
+          }}</small>
         </span>
       </RouterLink>
 
-      <nav class="app-nav" aria-label="主要导航">
+      <nav v-if="isNotary" class="app-nav" aria-label="公证处导航">
+        <p class="app-nav__label">公证处工作台</p>
+        <RouterLink
+          class="app-nav__item"
+          data-test="notary-portal-nav"
+          to="/notary-portal/matters"
+          @click="closeDrawer"
+        >
+          <span>待开箱事项</span>
+        </RouterLink>
+      </nav>
+      <nav v-else class="app-nav" aria-label="主要导航">
         <p class="app-nav__label">工作台</p>
         <div v-if="!isClient" class="app-nav__group">
           <RouterLink
@@ -463,7 +481,9 @@ async function logout(): Promise<void> {
         <span class="app-user__identity">
           <strong>{{ auth.session.user.displayName }}</strong>
           <small>{{
-            auth.session.customer?.name ?? auth.session.department?.name
+            auth.session.customer?.name ??
+            auth.session.department?.name ??
+            auth.session.notaryOffice?.name
           }}</small>
         </span>
         <ElButton

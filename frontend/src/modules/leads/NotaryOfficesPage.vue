@@ -8,6 +8,12 @@ import {
   listNotaryOffices,
   type NotaryOffice,
 } from '../../api/notary';
+import {
+  createNotaryOfficeAccount,
+  listNotaryOfficeAccounts,
+  setNotaryOfficeAccountActive,
+  type NotaryOfficeAccount,
+} from '../../api/notary-office-accounts';
 
 const state = ref<'loading' | 'ready' | 'forbidden' | 'failed'>('loading');
 const offices = ref<NotaryOffice[]>([]);
@@ -17,6 +23,87 @@ const creating = ref(false);
 const createError = ref('');
 const createSuccess = ref('');
 let request: AbortController | undefined;
+const selectedOfficeId = ref<string | null>(null);
+const officeAccounts = ref<NotaryOfficeAccount[]>([]);
+const accountLoading = ref(false);
+const canManageAccounts = ref(false);
+const accountError = ref('');
+const accountSuccess = ref('');
+const accountName = ref('');
+const accountUsername = ref('');
+const accountPassword = ref('');
+const creatingAccount = ref(false);
+const changingAccountId = ref<string | null>(null);
+
+async function toggleAccounts(office: NotaryOffice): Promise<void> {
+  if (selectedOfficeId.value === office.id) {
+    selectedOfficeId.value = null;
+    return;
+  }
+  selectedOfficeId.value = office.id;
+  accountLoading.value = true;
+  accountError.value = '';
+  accountSuccess.value = '';
+  try {
+    officeAccounts.value = await listNotaryOfficeAccounts(office.id);
+    canManageAccounts.value = true;
+  } catch (error) {
+    canManageAccounts.value = false;
+    accountError.value =
+      error instanceof ApiError && error.status === 403
+        ? '当前账号没有维护该公证处账号的权限'
+        : '账号列表暂时无法加载，请重试';
+  } finally {
+    accountLoading.value = false;
+  }
+}
+
+async function addAccount(officeId: string): Promise<void> {
+  if (creatingAccount.value || accountPassword.value.length < 12) return;
+  creatingAccount.value = true;
+  accountError.value = '';
+  accountSuccess.value = '';
+  try {
+    const account = await createNotaryOfficeAccount(officeId, {
+      displayName: accountName.value,
+      username: accountUsername.value,
+      password: accountPassword.value,
+    });
+    officeAccounts.value = [...officeAccounts.value, account];
+    accountName.value = '';
+    accountUsername.value = '';
+    accountPassword.value = '';
+    accountSuccess.value = '公证处账号已创建';
+  } catch (error) {
+    accountError.value =
+      error instanceof ApiError && error.status === 403
+        ? '当前账号没有创建公证处账号的权限'
+        : '创建账号失败，请核对信息后重试';
+  } finally {
+    creatingAccount.value = false;
+  }
+}
+
+async function toggleAccount(account: NotaryOfficeAccount): Promise<void> {
+  if (!selectedOfficeId.value || changingAccountId.value) return;
+  changingAccountId.value = account.id;
+  accountError.value = '';
+  try {
+    const updated = await setNotaryOfficeAccountActive(
+      selectedOfficeId.value,
+      account.id,
+      !account.accountActive,
+    );
+    officeAccounts.value = officeAccounts.value.map((item) =>
+      item.id === updated.id ? updated : item,
+    );
+    accountSuccess.value = updated.accountActive ? '账号已启用' : '账号已停用';
+  } catch {
+    accountError.value = '账号状态更新失败，请刷新列表确认';
+  } finally {
+    changingAccountId.value = null;
+  }
+}
 
 async function load(): Promise<void> {
   request?.abort();
@@ -135,8 +222,112 @@ onBeforeUnmount(() => request?.abort());
             <li v-for="office in offices" :key="office.id">
               <span>{{ office.name }}</span>
               <span class="pill">可用</span>
+              <ElButton
+                text
+                :data-test="`office-accounts-${office.id}`"
+                @click="toggleAccounts(office)"
+                >账号管理</ElButton
+              >
             </li>
           </ul>
+        </section>
+        <section
+          v-if="selectedOfficeId"
+          class="demo-card demo-card--pad"
+          data-test="notary-office-accounts"
+        >
+          <h2 class="form-section-title">公证处账号</h2>
+          <p>账号固定绑定此公证处；停用后该账号的后续请求将失效。</p>
+          <p v-if="accountLoading">正在读取账号</p>
+          <p v-if="accountError" class="submit-error" role="alert">
+            {{ accountError }}
+          </p>
+          <p v-if="accountSuccess" class="submit-success" role="status">
+            {{ accountSuccess }}
+          </p>
+          <ul v-if="!accountLoading && officeAccounts.length">
+            <li
+              v-for="account in officeAccounts"
+              :key="account.id"
+              data-test="notary-account-row"
+            >
+              {{ account.displayName }}（{{ account.username }}）
+              <span>{{
+                account.accountActive && account.bindingActive ? '启用' : '停用'
+              }}</span>
+              <ElButton
+                text
+                :loading="changingAccountId === account.id"
+                :disabled="changingAccountId !== null"
+                @click="toggleAccount(account)"
+                >{{ account.accountActive ? '停用' : '启用' }}</ElButton
+              >
+            </li>
+          </ul>
+          <p v-else-if="!accountLoading && !accountError">暂无账号</p>
+          <form
+            v-if="canManageAccounts"
+            data-test="notary-office-account-create"
+            @submit.prevent="addAccount(selectedOfficeId!)"
+          >
+            <label class="field-label" for="notary-account-name"
+              >姓名<RequiredFieldMark
+            /></label>
+            <input
+              id="notary-account-name"
+              v-model="accountName"
+              data-test="notary-account-display-name"
+              class="text-input"
+              required
+              maxlength="100"
+            />
+            <label
+              class="field-label field-label--spaced"
+              for="notary-account-username"
+              >用户名<RequiredFieldMark
+            /></label>
+            <input
+              id="notary-account-username"
+              v-model="accountUsername"
+              data-test="notary-account-username"
+              class="text-input"
+              required
+              minlength="3"
+              maxlength="64"
+            />
+            <label
+              class="field-label field-label--spaced"
+              for="notary-account-password"
+              >初始密码<RequiredFieldMark
+            /></label>
+            <input
+              id="notary-account-password"
+              v-model="accountPassword"
+              data-test="notary-account-password"
+              class="text-input"
+              type="password"
+              autocomplete="new-password"
+              required
+              minlength="12"
+              maxlength="128"
+            />
+            <p class="field-help">
+              密码仅在创建请求中提交，不会在列表中显示。创建后请由管理员通过安全渠道告知账号使用者。
+            </p>
+            <ElButton
+              type="primary"
+              native-type="submit"
+              data-test="create-notary-account"
+              :loading="creatingAccount"
+              :disabled="
+                creatingAccount ||
+                !accountName.trim() ||
+                !accountUsername.trim() ||
+                accountPassword.length < 12
+              "
+              >创建账号</ElButton
+            >
+          </form>
         </section>
         <section
           v-if="canCreate"

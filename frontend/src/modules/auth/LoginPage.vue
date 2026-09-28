@@ -19,7 +19,9 @@ const canSubmit = computed(
   () => username.value.trim().length >= 3 && password.value.length >= 12,
 );
 
-function safeReturnPath(principalType: 'INTERNAL' | 'CLIENT'): string {
+function safeReturnPath(
+  principalType: 'INTERNAL' | 'CLIENT' | 'NOTARY',
+): string {
   const value = route.query.returnTo;
   const safe =
     typeof value === 'string' &&
@@ -30,8 +32,13 @@ function safeReturnPath(principalType: 'INTERNAL' | 'CLIENT'): string {
       : null;
   const clientPath =
     safe === '/client/leads' || safe?.startsWith('/client/leads/');
+  const notaryPath =
+    safe === '/notary-portal/matters' ||
+    safe?.startsWith('/notary-portal/matters/');
   if (principalType === 'CLIENT') return clientPath ? safe! : '/client/leads';
-  return safe !== null && !clientPath ? safe : '/customers';
+  if (principalType === 'NOTARY')
+    return notaryPath ? safe! : '/notary-portal/matters';
+  return safe !== null && !clientPath && !notaryPath ? safe : '/customers';
 }
 
 async function submit(): Promise<void> {
@@ -77,7 +84,7 @@ async function submit(): Promise<void> {
       <p class="section-kicker">Secure access</p>
       <h1>登录品维·知产业务管理</h1>
       <p class="login-intro">
-        使用管理员为你创建的内部账号或企业客户账号登录。
+        使用管理员为你创建的内部、公证处或企业客户账号登录。
       </p>
       <form @submit.prevent="submit">
         <label class="field-label" for="username">用户名</label>

@@ -7,12 +7,14 @@ import {
 } from './http';
 
 export type DepartmentChoice = { id: string; name: string };
+export type NotaryOfficeChoice = { id: string; name: string };
 export type AuthSession = {
-  principalType: 'INTERNAL' | 'CLIENT';
+  principalType: 'INTERNAL' | 'CLIENT' | 'NOTARY';
   user: { id: string; displayName: string; username: string };
   department: DepartmentChoice | null;
   departments: DepartmentChoice[];
   customer: { id: string; name: string } | null;
+  notaryOffice: NotaryOfficeChoice | null;
   authorizationRevision: number;
   expiresAt: string;
   csrfToken: string;
@@ -36,9 +38,15 @@ function parseSession(value: unknown): AuthSession {
     (isRecord(session.customer) &&
       typeof session.customer.id === 'string' &&
       typeof session.customer.name === 'string');
+  const validNotaryOffice =
+    session.notaryOffice === null ||
+    (isRecord(session.notaryOffice) &&
+      typeof session.notaryOffice.id === 'string' &&
+      typeof session.notaryOffice.name === 'string');
   if (
     (session.principalType !== 'INTERNAL' &&
-      session.principalType !== 'CLIENT') ||
+      session.principalType !== 'CLIENT' &&
+      session.principalType !== 'NOTARY') ||
     typeof session.user.id !== 'string' ||
     typeof session.user.displayName !== 'string' ||
     typeof session.user.username !== 'string' ||
@@ -53,10 +61,18 @@ function parseSession(value: unknown): AuthSession {
     typeof session.expiresAt !== 'string' ||
     typeof session.csrfToken !== 'string' ||
     !validCustomer ||
+    !validNotaryOffice ||
     (session.principalType === 'INTERNAL' &&
       (session.department === null || session.customer !== null)) ||
     (session.principalType === 'CLIENT' &&
-      (session.department !== null || session.customer === null))
+      (session.department !== null ||
+        session.customer === null ||
+        session.notaryOffice !== null)) ||
+    (session.principalType === 'NOTARY' &&
+      (session.department !== null ||
+        session.departments.length !== 0 ||
+        session.customer !== null ||
+        session.notaryOffice === null))
   )
     throw new ApiError('服务返回了无效的登录信息', 200, 'INVALID_RESPONSE');
   setCsrfToken(session.csrfToken);

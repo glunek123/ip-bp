@@ -9,6 +9,7 @@ const session = {
   department: { id: 'department-1', name: '知产部' },
   departments: [{ id: 'department-1', name: '知产部' }],
   customer: null,
+  notaryOffice: null,
   authorizationRevision: 1,
   expiresAt: '2026-09-18T00:00:00.000Z',
   csrfToken: 'csrf-token',
@@ -44,6 +45,39 @@ describe('auth API', () => {
     await expect(
       login('client.a', 'correct horse battery staple'),
     ).resolves.toEqual(clientSession);
+  });
+
+  it('accepts a strictly isolated notary session', async () => {
+    const notarySession = {
+      ...session,
+      principalType: 'NOTARY',
+      department: null,
+      departments: [],
+      customer: null,
+      notaryOffice: { id: 'office-1', name: '南方公证处' },
+    };
+    vi.stubGlobal(
+      'fetch',
+      vi.fn().mockResolvedValue(new Response(JSON.stringify(notarySession))),
+    );
+    await expect(
+      login('notary.user', 'correct horse battery staple'),
+    ).resolves.toEqual(notarySession);
+  });
+
+  it('rejects a notary session with an internal department', async () => {
+    const invalid = {
+      ...session,
+      principalType: 'NOTARY',
+      notaryOffice: { id: 'office-1', name: '南方公证处' },
+    };
+    vi.stubGlobal(
+      'fetch',
+      vi.fn().mockResolvedValue(new Response(JSON.stringify(invalid))),
+    );
+    await expect(getSession()).rejects.toMatchObject({
+      code: 'INVALID_RESPONSE',
+    });
   });
 
   it('sends logout with the CSRF token established by login', async () => {

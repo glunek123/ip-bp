@@ -22,6 +22,7 @@ const session = {
   department: { id: 'department-1', name: '知产部' },
   departments: [{ id: 'department-1', name: '知产部' }],
   customer: null,
+  notaryOffice: null,
   authorizationRevision: 1,
   expiresAt: '2026-09-18T00:00:00.000Z',
   csrfToken: 'csrf-token',

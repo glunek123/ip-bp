@@ -3,7 +3,7 @@ import { beforeEach, describe, expect, it, vi } from 'vitest';
 
 const auth = vi.hoisted(() => ({
   session: null as null | {
-    principalType: 'INTERNAL' | 'CLIENT';
+    principalType: 'INTERNAL' | 'CLIENT' | 'NOTARY';
     user: { id: string };
   },
   restore: vi.fn(),
@@ -104,5 +104,21 @@ describe('authentication routing', () => {
     };
     await router.push('/login');
     expect(router.currentRoute.value.path).toBe('/client/leads');
+  });
+
+  it('isolates notary routes and opens the notary work queue after login', async () => {
+    await router.push('/notary-portal/matters/matter-1');
+    expect(router.currentRoute.value.fullPath).toBe(
+      '/login?returnTo=/notary-portal/matters/matter-1',
+    );
+    auth.session = { principalType: 'NOTARY', user: { id: 'notary-user' } };
+    await router.push('/notary-portal/matters/matter-1');
+    expect(router.currentRoute.value.path).toBe(
+      '/notary-portal/matters/matter-1',
+    );
+    await router.push('/customers');
+    expect(router.currentRoute.value.path).toBe('/notary-portal/matters');
+    await router.push('/login');
+    expect(router.currentRoute.value.path).toBe('/notary-portal/matters');
   });
 });

@@ -29,6 +29,7 @@ const session = {
   department: { id: 'department-1', name: '知产部' },
   departments: [{ id: 'department-1', name: '知产部' }],
   customer: null,
+  notaryOffice: null,
   authorizationRevision: 1,
   expiresAt: '2026-09-18T00:00:00.000Z',
   csrfToken: 'csrf-token',
@@ -106,6 +107,11 @@ async function mountShell(
         meta: { section: '公证阶段', breadcrumbs: ['公证阶段', '事项详情'] },
       },
       {
+        path: '/notary-portal/matters',
+        component: { template: '<div />' },
+        meta: { section: '待开箱', breadcrumbs: ['待开箱'] },
+      },
+      {
         path: '/settings/people-access',
         component: { template: '<div />' },
         meta: { section: '设置', breadcrumbs: ['设置', '人员与权限'] },
@@ -129,6 +135,28 @@ async function mountShell(
 }
 
 describe('AppShell', () => {
+  it('renders a minimal, distinct navigation for notary accounts', async () => {
+    const notarySession: AuthSession = {
+      ...session,
+      principalType: 'NOTARY',
+      department: null,
+      departments: [],
+      notaryOffice: { id: 'office-1', name: '南方公证处' },
+    };
+    const { wrapper } = await mountShell(
+      '/notary-portal/matters',
+      notarySession,
+    );
+    expect(wrapper.get('[data-test="notary-portal-nav"]').text()).toContain(
+      '待开箱事项',
+    );
+    expect(wrapper.find('[data-test="lead-nav"]').exists()).toBe(false);
+    expect(wrapper.find('[data-test="notary-nav"]').exists()).toBe(false);
+    expect(wrapper.find('[data-test="customer-nav"]').exists()).toBe(false);
+    expect(wrapper.find('[data-test="settings-expand"]').exists()).toBe(false);
+    expect(wrapper.text()).toContain('南方公证处');
+  });
+
   it('renders authorized navigation and route breadcrumbs', async () => {
     const { wrapper } = await mountShell();
 
