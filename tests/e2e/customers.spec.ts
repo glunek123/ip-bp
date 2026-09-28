@@ -75,6 +75,7 @@ async function configureBearerBrowser(page: import('@playwright/test').Page) {
         department: { id: e2eFixtures.departmentA, name: 'E2E 知产部' },
         departments: [{ id: e2eFixtures.departmentA, name: 'E2E 知产部' }],
         customer: null,
+        notaryOffice: null,
         authorizationRevision: 1,
         expiresAt: '2099-01-01T00:00:00.000Z',
         csrfToken: '',

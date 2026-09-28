@@ -104,6 +104,12 @@ async function dropFaults() {
   await database.$executeRawUnsafe(
     'DROP FUNCTION IF EXISTS core_ld_material_barrier()',
   );
+  await database.$executeRawUnsafe(
+    'DROP TRIGGER IF EXISTS "core_nt_upload_barrier" ON "materials"',
+  );
+  await database.$executeRawUnsafe(
+    'DROP FUNCTION IF EXISTS core_nt_upload_barrier()',
+  );
   for (const [table, constraint] of [
     ['audit_events', 'core_ld_reject_audit'],
     ['lead_products', 'core_ld_reject_product'],
@@ -129,6 +135,70 @@ async function dropFaults() {
 }
 
 const materialBarrierKey = 918273645;
+const notaryUploadBarrierKey = 918273646;
+
+export async function installNotaryUploadInsertBarrier(matterId) {
+  if (!/^[0-9a-f-]{36}$/iu.test(matterId)) {
+    throw new Error('Invalid notary matter barrier id');
+  }
+  const blocker = new Client({ connectionString: databaseUrl });
+  await blocker.connect();
+  await blocker.query('SELECT pg_advisory_lock($1)', [notaryUploadBarrierKey]);
+  await database.$executeRawUnsafe(
+    `CREATE FUNCTION core_nt_upload_barrier() RETURNS trigger
+     LANGUAGE plpgsql AS $$
+     BEGIN
+       IF NEW."owner_type" = 'NOTARY_MATTER' AND NEW."owner_id" = '${matterId}'::uuid THEN
+         PERFORM pg_advisory_xact_lock(${notaryUploadBarrierKey});
+       END IF;
+       RETURN NEW;
+     END
+     $$`,
+  );
+  await database.$executeRawUnsafe(
+    `CREATE TRIGGER "core_nt_upload_barrier"
+     BEFORE INSERT ON "materials"
+     FOR EACH ROW EXECUTE FUNCTION core_nt_upload_barrier()`,
+  );
+  return {
+    async wait() {
+      const deadline = Date.now() + 10_000;
+      while (Date.now() < deadline) {
+        const waiting = await database.$queryRawUnsafe(
+          `SELECT EXISTS (
+             SELECT 1 FROM pg_locks
+             WHERE locktype = 'advisory' AND granted = false
+           ) AS waiting`,
+        );
+        if (waiting[0]?.waiting === true) return;
+        await waitForImmediate();
+      }
+      throw new Error('Notary upload did not reach the insert barrier');
+    },
+    async waitForOpeningLock() {
+      const deadline = Date.now() + 10_000;
+      while (Date.now() < deadline) {
+        const waiting = await database.$queryRawUnsafe(
+          `SELECT EXISTS (
+             SELECT 1 FROM pg_stat_activity
+             WHERE datname = current_database()
+               AND wait_event_type = 'Lock'
+               AND query LIKE '%FROM "notary_matters"%FOR UPDATE%'
+           ) AS waiting`,
+        );
+        if (waiting[0]?.waiting === true) return;
+        await waitForImmediate();
+      }
+      throw new Error('Opening did not wait for the uploading matter lock');
+    },
+    async release() {
+      await blocker.query('SELECT pg_advisory_unlock($1)', [
+        notaryUploadBarrierKey,
+      ]);
+      await blocker.end();
+    },
+  };
+}
 
 export async function installMaterialStatusBarrier(materialId, status) {
   if (!/^[0-9a-f-]{36}$/iu.test(materialId)) {
@@ -322,9 +392,6 @@ async function clearDatabase() {
     await transaction.notaryMatter.deleteMany({
       where: { departmentId: { in: departmentIds } },
     });
-    await transaction.notaryOffice.deleteMany({
-      where: { departmentId: { in: departmentIds } },
-    });
     await transaction.lead.updateMany({
       where: { departmentId: { in: departmentIds } },
       data: { activeReviewDecisionId: null },
@@ -359,9 +426,14 @@ async function clearDatabase() {
     where: { departmentId: { in: departmentIds } },
     select: { userId: true },
   });
+  const notaryBindings = await database.notaryOfficeAccountBinding.findMany({
+    where: { departmentId: { in: departmentIds } },
+    select: { userId: true },
+  });
   const allUserIds = [
     ...userIds,
     ...clientBindings.map(({ userId }) => userId),
+    ...notaryBindings.map(({ userId }) => userId),
   ];
   await database.materialReference.deleteMany({
     where: { departmentId: { in: departmentIds } },
@@ -410,6 +482,15 @@ async function clearDatabase() {
     await transaction.userAccount.deleteMany({
       where: { id: { in: clientBindings.map(({ userId }) => userId) } },
     });
+    await transaction.notaryOfficeAccountBinding.deleteMany({
+      where: { departmentId: { in: departmentIds } },
+    });
+    await transaction.userAccount.deleteMany({
+      where: { id: { in: notaryBindings.map(({ userId }) => userId) } },
+    });
+  });
+  await database.notaryOffice.deleteMany({
+    where: { departmentId: { in: departmentIds } },
   });
   await database.rightsHolder.deleteMany({
     where: { departmentId: { in: departmentIds } },
@@ -994,6 +1075,13 @@ export function countClientLeadReviewReceipts(leadId) {
 export function setClientBindingActive(customerId, active) {
   return database.customerAccountBinding.updateMany({
     where: { customerId },
+    data: { active, version: { increment: 1 } },
+  });
+}
+
+export function setNotaryBindingActive(userId, active) {
+  return database.notaryOfficeAccountBinding.updateMany({
+    where: { userId },
     data: { active, version: { increment: 1 } },
   });
 }

@@ -27,6 +27,7 @@ export const prismaModelOwners = Object.freeze({
   LeadReviewDecision: 'leads',
   LeadEvidenceDecision: 'leads',
   NotaryOffice: 'leads',
+  NotaryOfficeAccountBinding: 'leads',
   NotaryMatter: 'leads',
   NotaryMatterEvidence: 'leads',
   NotaryMatterOpening: 'leads',

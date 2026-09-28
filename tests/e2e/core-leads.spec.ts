@@ -53,6 +53,7 @@ import {
   getMaterialLifecycle,
   getMaterialByVersion,
   installMaterialStatusBarrier,
+  installNotaryUploadInsertBarrier,
   markContentVersion,
   rejectAuditWrites,
   rejectLeadPushReceiptWrites,
@@ -77,6 +78,7 @@ import {
   setClientAccountActive,
   setClientBindingActive,
   setClientUserActive,
+  setNotaryBindingActive,
   setCustomerStatus,
   setGrant,
   setTeamActive,
@@ -121,6 +123,7 @@ async function configureBrowser(page: Page) {
           { id: coreLeadFixtures.departmentA, name: 'CORE 知产部' },
         ],
         customer: null,
+        notaryOffice: null,
         authorizationRevision: 1,
         expiresAt: '2099-01-01T00:00:00.000Z',
         csrfToken: '',
@@ -145,7 +148,7 @@ async function upload(
     mime: string;
     bytes: Buffer;
   },
-  headers = authorizationA,
+  headers: Record<string, string> = authorizationA,
 ): Promise<Uploaded> {
   const draft = await request.post('/api/v1/materials/upload-drafts', {
     headers,
@@ -405,6 +408,57 @@ async function loginClient(
   return session.csrfToken;
 }
 
+async function createNotaryAccountForMatter(
+  request: APIRequestContext,
+  matterId: string,
+) {
+  const detail = await request.get(`/api/v1/notary-matters/${matterId}`, {
+    headers: authorizationA,
+  });
+  expect(detail.status(), await detail.text()).toBe(200);
+  const officeId = ((await detail.json()) as { notaryOffice: { id: string } })
+    .notaryOffice.id;
+  const username = `notary-${randomUUID().slice(0, 8)}`;
+  const password = 'notary correct horse battery';
+  const created = await request.post(
+    `/api/v1/notary-offices/${officeId}/accounts`,
+    {
+      headers: authorizationA,
+      data: { displayName: '公证处办理员', username, password },
+    },
+  );
+  expect(created.status(), await created.text()).toBe(201);
+  const accountId = ((await created.json()) as { id: string }).id;
+  const login = await request.post('/api/v1/auth/login', {
+    headers: { Origin: 'http://127.0.0.1:5174' },
+    data: { username, password },
+  });
+  expect(login.status(), await login.text()).toBe(200);
+  const session: { principalType: string; csrfToken: string } =
+    await login.json();
+  expect(session.principalType).toBe('NOTARY');
+  return {
+    accountId,
+    officeId,
+    username,
+    password,
+    csrfToken: session.csrfToken,
+  };
+}
+
+function recordNotaryPortalOpening(
+  request: APIRequestContext,
+  matterId: string,
+  input: Record<string, unknown>,
+  csrfToken: string,
+  key = randomUUID(),
+) {
+  return request.post(`/api/v1/notary-portal/matters/${matterId}/opening`, {
+    headers: { 'X-CSRF-Token': csrfToken, 'Idempotency-Key': key },
+    data: input,
+  });
+}
+
 function reviewLead(
   request: APIRequestContext,
   leadId: string,
@@ -511,6 +565,178 @@ test.beforeEach(async () => {
 
 test.afterAll(async () => {
   await disconnectCoreLeadTestDatabase();
+});
+
+test('bound notary account opens only its assigned matter through real browser and remains revoked immediately', async ({
+  page,
+  request,
+}) => {
+  test.setTimeout(120_000);
+  const client = await createClientAccount(request);
+  const clientCsrf = await loginClient(
+    request,
+    client.username,
+    client.password,
+  );
+  const ownMatterId = await createWaitingUnboxMatter(request, clientCsrf);
+  const otherMatterId = await createWaitingUnboxMatter(request, clientCsrf);
+  const otherPhoto = await upload(request, {
+    ownerType: 'NOTARY_MATTER',
+    ownerId: otherMatterId,
+    purpose: 'NOTARY_OPENING_PHOTO',
+    name: 'other-office-opening.jpg',
+    mime: 'image/jpeg',
+    bytes: jpegBytes,
+  });
+  const ownOperatorDetail = await request.get(
+    `/api/v1/notary-matters/${ownMatterId}`,
+    { headers: authorizationA },
+  );
+  expect(ownOperatorDetail.status()).toBe(200);
+  const ownMatter: {
+    businessNo: string;
+    notaryOffice: { id: string };
+  } = await ownOperatorDetail.json();
+  const otherOperatorDetail = await request.get(
+    `/api/v1/notary-matters/${otherMatterId}`,
+    { headers: authorizationA },
+  );
+  expect(otherOperatorDetail.status()).toBe(200);
+  const otherMatter: { businessNo: string } = await otherOperatorDetail.json();
+  const username = `notary-${randomUUID().slice(0, 8)}`;
+  const password = 'notary correct horse battery';
+
+  await page.goto('/notary-offices');
+  await expect(page).toHaveURL(/\/login\?returnTo=/u);
+  await page.getByLabel('用户名').fill(coreLeadFixtures.operatorUsername);
+  await page.getByLabel('密码').fill(coreLeadFixtures.operatorPassword);
+  await page.getByRole('button', { name: '登录', exact: true }).click();
+  await expect(page).toHaveURL(/\/notary-offices$/u);
+  await page
+    .locator(`[data-test="office-accounts-${ownMatter.notaryOffice.id}"]`)
+    .click();
+  await expect(
+    page.locator('[data-test="notary-office-account-create"]'),
+  ).toBeVisible();
+  await page
+    .locator('[data-test="notary-account-display-name"]')
+    .fill('公证处办理员');
+  await page.locator('[data-test="notary-account-username"]').fill(username);
+  await page.locator('[data-test="notary-account-password"]').fill(password);
+  await page.locator('[data-test="create-notary-account"]').click();
+  await expect(
+    page
+      .locator('[data-test="notary-account-row"]')
+      .filter({ hasText: username }),
+  ).toBeVisible();
+
+  await page.getByRole('button', { name: '退出登录' }).click();
+  await page.getByLabel('用户名').fill(username);
+  await page.getByLabel('密码').fill(password);
+  await page.getByRole('button', { name: '登录', exact: true }).click();
+  await expect(page).toHaveURL(/\/notary-portal\/matters$/u);
+  await expect(page.locator('[data-test="notary-portal-nav"]')).toBeVisible();
+  const ownRow = page.locator('[data-test="notary-portal-row"]');
+  await expect(ownRow).toHaveCount(1);
+  await expect(ownRow).toContainText(ownMatter.businessNo);
+  await expect(page.getByText(otherMatter.businessNo)).toHaveCount(0);
+  await page.goto(`/notary-portal/matters/${otherMatterId}`);
+  await expect(page.getByText('事项不存在或已不可访问')).toBeVisible();
+  await page.goto(`/notary-portal/matters/${ownMatterId}`);
+  await expect(page.locator('[data-test="notary-opening-form"]')).toBeVisible();
+  await page.locator('[data-test="notary-opening-photo-files"]').setInputFiles({
+    name: '公证处真实开箱.jpg',
+    mimeType: 'image/jpeg',
+    buffer: jpegBytes,
+  });
+  await expect(page.getByText('公证处真实开箱.jpg')).toBeVisible();
+  await page.getByLabel('寄件人姓名').fill('实际寄件人');
+  await page.locator('[data-test="notary-opening-submit"]').click();
+  await expect(
+    page.locator('[data-test="notary-saved-opening"]'),
+  ).toContainText('实际寄件人');
+  await page.reload();
+  await expect(
+    page.locator('[data-test="notary-saved-opening"]'),
+  ).toContainText('公证处真实开箱.jpg');
+  const download = page.waitForEvent('download');
+  await page.locator('[data-test="notary-opening-photo-download"]').click();
+  expect(await readFile(await (await download).path())).toEqual(jpegBytes);
+  expect(await countNotaryOpenings(ownMatterId)).toBe(1);
+  expect(await countNotaryOpeningAudits(ownMatterId)).toBe(1);
+  expect(await countNotaryOpeningReceipts(ownMatterId)).toBe(1);
+
+  await page.getByRole('button', { name: '退出登录' }).click();
+  await page.getByLabel('用户名').fill(username);
+  await page.getByLabel('密码').fill(password);
+  await page.getByRole('button', { name: '登录', exact: true }).click();
+  await expect(page).toHaveURL(/\/notary-portal\/matters$/u);
+  await page.goto(`/notary-portal/matters/${ownMatterId}`);
+  await expect(
+    page.locator('[data-test="notary-saved-opening"]'),
+  ).toContainText('实际寄件人');
+
+  const notaryLogin = await request.post('/api/v1/auth/login', {
+    headers: { Origin: 'http://127.0.0.1:5174' },
+    data: { username, password },
+  });
+  expect(notaryLogin.status(), await notaryLogin.text()).toBe(200);
+  expect((await notaryLogin.json()).principalType).toBe('NOTARY');
+  expect((await request.get('/api/v1/notary-matters')).status()).toBe(403);
+  expect(
+    (
+      await request.get(`/api/v1/notary-portal/matters/${otherMatterId}`)
+    ).status(),
+  ).toBe(404);
+  expect(
+    (
+      await request.get(
+        `/api/v1/materials/${otherPhoto.materialId}/versions/${otherPhoto.contentVersionId}/content`,
+      )
+    ).status(),
+  ).toBe(404);
+  const accounts = await request.get(
+    `/api/v1/notary-offices/${ownMatter.notaryOffice.id}/accounts`,
+    { headers: authorizationA },
+  );
+  expect(accounts.status()).toBe(200);
+  const account: { id: string } = (await accounts.json()).items.find(
+    (item: { username: string }) => item.username === username,
+  );
+  expect(account?.id).toBeTruthy();
+  const stopped = await request.patch(
+    `/api/v1/notary-offices/${ownMatter.notaryOffice.id}/accounts/${account.id}/status`,
+    { headers: authorizationA, data: { active: false } },
+  );
+  expect(stopped.status(), await stopped.text()).toBe(200);
+  expect((await request.get('/api/v1/notary-portal/matters')).status()).toBe(
+    401,
+  );
+});
+
+test('revoked notary office binding invalidates the next request and login', async ({
+  request,
+}) => {
+  const client = await createClientAccount(request);
+  const clientCsrf = await loginClient(
+    request,
+    client.username,
+    client.password,
+  );
+  const matterId = await createWaitingUnboxMatter(request, clientCsrf);
+  const notary = await createNotaryAccountForMatter(request, matterId);
+  expect((await request.get('/api/v1/notary-portal/matters')).status()).toBe(
+    200,
+  );
+  await setNotaryBindingActive(notary.accountId, false);
+  expect((await request.get('/api/v1/notary-portal/matters')).status()).toBe(
+    401,
+  );
+  const login = await request.post('/api/v1/auth/login', {
+    headers: { Origin: 'http://127.0.0.1:5174' },
+    data: { username: notary.username, password: notary.password },
+  });
+  expect(login.status()).toBe(401);
 });
 
 test('authorized supervisor admits a customer with real PDF and JPEG bytes', async ({
@@ -1860,6 +2086,222 @@ test('notary opening fact, audit or receipt failure rolls back stage, photos and
   } finally {
     await allowInjectedFailures();
   }
+});
+
+test('notary portal opening rolls back, replays once and races the operator safely', async ({
+  request,
+}) => {
+  const client = await createClientAccount(request);
+  const clientCsrf = await loginClient(
+    request,
+    client.username,
+    client.password,
+  );
+  const matterId = await createWaitingUnboxMatter(request, clientCsrf);
+  const racingMatterId = await createWaitingUnboxMatter(request, clientCsrf);
+  const notary = await createNotaryAccountForMatter(request, matterId);
+  const photo = await upload(
+    request,
+    {
+      ownerType: 'NOTARY_MATTER',
+      ownerId: matterId,
+      purpose: 'NOTARY_OPENING_PHOTO',
+      name: 'notary-rollback.jpg',
+      mime: 'image/jpeg',
+      bytes: jpegBytes,
+    },
+    { 'X-CSRF-Token': notary.csrfToken },
+  );
+  const input = {
+    expectedVersion: 2,
+    contentVersionIds: [photo.contentVersionId],
+    senderName: '外部公证处',
+  };
+  const key = randomUUID();
+  try {
+    await rejectAuditWrites('notary.opening_recorded');
+    const failed = await recordNotaryPortalOpening(
+      request,
+      matterId,
+      input,
+      notary.csrfToken,
+      key,
+    );
+    expect(failed.status()).toBeGreaterThanOrEqual(500);
+    const unchanged = await request.get(`/api/v1/notary-matters/${matterId}`, {
+      headers: authorizationA,
+    });
+    expect(await unchanged.json()).toMatchObject({
+      stage: 'WAITING_UNBOX',
+      version: 2,
+      opening: null,
+    });
+    expect(await countNotaryOpenings(matterId)).toBe(0);
+    expect(await countNotaryOpeningAudits(matterId)).toBe(0);
+    expect(await countNotaryOpeningReceipts(matterId)).toBe(0);
+    expect(await countNotaryOpeningReferences(matterId)).toBe(0);
+  } finally {
+    await allowInjectedFailures();
+  }
+  const first = await recordNotaryPortalOpening(
+    request,
+    matterId,
+    input,
+    notary.csrfToken,
+    key,
+  );
+  expect(first.status(), await first.text()).toBe(201);
+  const result = await first.json();
+  const replay = await recordNotaryPortalOpening(
+    request,
+    matterId,
+    input,
+    notary.csrfToken,
+    key,
+  );
+  expect(replay.status()).toBe(201);
+  expect(await replay.json()).toEqual(result);
+  expect(
+    (
+      await recordNotaryPortalOpening(
+        request,
+        matterId,
+        { ...input, senderName: 'changed' },
+        notary.csrfToken,
+        key,
+      )
+    ).status(),
+  ).toBe(409);
+  expect(
+    (
+      await recordNotaryPortalOpening(
+        request,
+        matterId,
+        input,
+        notary.csrfToken,
+      )
+    ).status(),
+  ).toBe(409);
+  expect(await countNotaryOpenings(matterId)).toBe(1);
+  expect(await countNotaryOpeningAudits(matterId)).toBe(1);
+  expect(await countNotaryOpeningReceipts(matterId)).toBe(1);
+
+  const racingNotary = await createNotaryAccountForMatter(
+    request,
+    racingMatterId,
+  );
+  const racingPhoto = await upload(
+    request,
+    {
+      ownerType: 'NOTARY_MATTER',
+      ownerId: racingMatterId,
+      purpose: 'NOTARY_OPENING_PHOTO',
+      name: 'notary-race.jpg',
+      mime: 'image/jpeg',
+      bytes: jpegBytes,
+    },
+    { 'X-CSRF-Token': racingNotary.csrfToken },
+  );
+  const racingInput = {
+    expectedVersion: 2,
+    contentVersionIds: [racingPhoto.contentVersionId],
+  };
+  const outcomes = await Promise.all([
+    recordNotaryPortalOpening(
+      request,
+      racingMatterId,
+      racingInput,
+      racingNotary.csrfToken,
+    ),
+    recordNotaryOpening(request, racingMatterId, racingInput),
+  ]);
+  expect(outcomes.map((response) => response.status()).sort()).toEqual([
+    201, 409,
+  ]);
+  expect(await countNotaryOpenings(racingMatterId)).toBe(1);
+  expect(await countNotaryOpeningAudits(racingMatterId)).toBe(1);
+  expect(await countNotaryOpeningReceipts(racingMatterId)).toBe(1);
+  expect(await countNotaryOpeningReferences(racingMatterId)).toBe(1);
+});
+
+test('notary photo upload and opening serialize on the same matter row', async ({
+  request,
+}) => {
+  test.setTimeout(60_000);
+  const client = await createClientAccount(request);
+  const clientCsrf = await loginClient(
+    request,
+    client.username,
+    client.password,
+  );
+  const matterId = await createWaitingUnboxMatter(request, clientCsrf);
+  const notary = await createNotaryAccountForMatter(request, matterId);
+  const firstPhoto = await upload(
+    request,
+    {
+      ownerType: 'NOTARY_MATTER',
+      ownerId: matterId,
+      purpose: 'NOTARY_OPENING_PHOTO',
+      name: 'first-opening.jpg',
+      mime: 'image/jpeg',
+      bytes: jpegBytes,
+    },
+    { 'X-CSRF-Token': notary.csrfToken },
+  );
+  const draft = await request.post('/api/v1/materials/upload-drafts', {
+    headers: { 'X-CSRF-Token': notary.csrfToken },
+    data: {
+      ownerType: 'NOTARY_MATTER',
+      ownerId: matterId,
+      category: 'NOTARY_OPENING_PHOTO',
+      purpose: 'NOTARY_OPENING_PHOTO',
+      originalFilename: 'racing-opening.jpg',
+      declaredMimeType: 'image/jpeg',
+    },
+  });
+  expect(draft.status(), await draft.text()).toBe(201);
+  const draftId = ((await draft.json()) as { id: string }).id;
+  const barrier = await installNotaryUploadInsertBarrier(matterId);
+  let released = false;
+  try {
+    const finalizing = request.put(
+      `/api/v1/materials/upload-drafts/${draftId}/content`,
+      {
+        headers: {
+          'X-CSRF-Token': notary.csrfToken,
+          'Content-Type': 'application/octet-stream',
+        },
+        data: jpegBytes,
+      },
+    );
+    await barrier.wait();
+    const opening = recordNotaryPortalOpening(
+      request,
+      matterId,
+      { expectedVersion: 2, contentVersionIds: [firstPhoto.contentVersionId] },
+      notary.csrfToken,
+    );
+    await barrier.waitForOpeningLock();
+    await barrier.release();
+    released = true;
+    const [uploaded, opened] = await Promise.all([finalizing, opening]);
+    expect(uploaded.status(), await uploaded.text()).toBe(200);
+    expect(opened.status(), await opened.text()).toBe(201);
+  } finally {
+    if (!released) await barrier.release();
+  }
+  expect(await countNotaryOpenings(matterId)).toBe(1);
+  expect(await countNotaryOpeningReferences(matterId)).toBe(1);
+  const operatorDetail = await request.get(
+    `/api/v1/notary-matters/${matterId}`,
+    {
+      headers: authorizationA,
+    },
+  );
+  expect(await operatorDetail.json()).toMatchObject({
+    stage: 'UNBOX_REVIEW',
+    version: 3,
+  });
 });
 
 test('opening review uses real operator and client identities, independent grant and durable replay', async ({

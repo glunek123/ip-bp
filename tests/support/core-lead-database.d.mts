@@ -149,6 +149,10 @@ export function setClientBindingActive(
   customerId: string,
   active: boolean,
 ): Promise<unknown>;
+export function setNotaryBindingActive(
+  userId: string,
+  active: boolean,
+): Promise<unknown>;
 export function setClientUserActive(
   customerId: string,
   active: boolean,
@@ -208,6 +212,11 @@ export function installMaterialStatusBarrier(
   materialId: string,
   status: 'ACTIVE' | 'DELETED',
 ): Promise<{ wait(): Promise<void>; release(): Promise<void> }>;
+export function installNotaryUploadInsertBarrier(matterId: string): Promise<{
+  wait(): Promise<void>;
+  waitForOpeningLock(): Promise<void>;
+  release(): Promise<void>;
+}>;
 export function setMaterialDeletedAt(
   materialId: string,
   deletedAt: Date,
