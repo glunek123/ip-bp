@@ -330,7 +330,10 @@ async function run() {
     try {
       await apply([target]);
     } catch (error) {
-      if (!error.message.includes('enforce_dual_actor_path() already exists'))
+      if (
+        !error.message.includes('enforce_dual_actor_path') ||
+        !error.message.includes('already exists')
+      )
         throw error;
       failed = true;
       await client.query('ROLLBACK');
