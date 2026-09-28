@@ -1,6 +1,6 @@
 {
   "version": 1,
-  "recordedAt": "2026-09-28T14:45:42.103Z",
+  "recordedAt": "2026-09-28T14:57:45.301Z",
   "files": {
     ".cursor/rules/verified-feature-integration.mdc": "ffd2306612ba6f09749629c5adb9e645f7f37aa6ee27ff1bc1c3d8b14efeca38",
     ".env.example": "07211cde5c2b59efc21b619b752d4c9b871f0980d2d64ca3c146ad6151fd27ca",
@@ -515,7 +515,7 @@
     "tests/e2e/personnel-access.spec.ts": "d45f3ed245e8801bfe7bf767b53790a216b0ae5cf37e55ebe2793df9e24c41c8",
     "tests/e2e/role-template-management.spec.ts": "8e94b16b9004716aa87197e05717dd4c4c6524413587be91465f1b86b8a8127b",
     "tests/support/core-lead-database.mjs": "7ebb4a4ad754d059db419be90eeaa8e580025649ac4abc1c71f655e0fc507986",
-    "tests/support/customer-database.mjs": "cc66e2e896be814f81f46721ee7d6a5b2786b49ba1e05f58a16cad33d3c3365e",
+    "tests/support/customer-database.mjs": "46f2457deb03868c8a5cfbfcc9311b787e7b43c028503a31a4c10d5a979afd40",
     "tools/project-runtime/pnpm.cmd": "ac586525b47f64eaf5e540676428c50fc78fd8fa0f8faa04f730c70f04a968b9",
     "tsconfig.json": "5808a45c690a3f2b628d77202bb9f0f25b418dd15ddaeeccf39cd9af3305fcf1",
     "vitest.tools.config.mjs": "3585c9415a36d82da5f44b1cba30b499573b2d49e752df2f014f3d44b9509ec7"

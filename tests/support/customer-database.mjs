@@ -261,14 +261,121 @@ async function verifyLocalAuthMigration() {
 async function resetCustomerE2eData() {
   const departmentIds = [e2eFixtures.departmentA, e2eFixtures.departmentB];
   const userIds = [e2eFixtures.userA, e2eFixtures.userB, e2eFixtures.userSelf];
+  const actualDatabase = await database.$queryRawUnsafe(
+    'SELECT current_database() AS name',
+  );
+  if (actualDatabase[0]?.name !== 'dev_cor_test') {
+    throw new Error('Refusing to reset an unexpected database');
+  }
   const clientBindings = await database.customerAccountBinding.findMany({
     where: { departmentId: { in: departmentIds } },
     select: { userId: true },
   });
   const clientUserIds = clientBindings.map(({ userId }) => userId);
-  const allUserIds = [...userIds, ...clientUserIds];
+  const notaryBindings = await database.notaryOfficeAccountBinding.findMany({
+    where: { departmentId: { in: departmentIds } },
+    select: { userId: true },
+  });
+  const notaryUserIds = notaryBindings.map(({ userId }) => userId);
+  const allUserIds = [...userIds, ...clientUserIds, ...notaryUserIds];
+
+  const immutableTables = [
+    'client_lead_review_receipts',
+    'lead_review_decisions',
+    'lead_withdrawal_applications',
+    'lead_withdrawal_confirmations',
+    'lead_evidence_decisions',
+    'notary_matters',
+    'notary_matter_products',
+    'notary_matter_materials',
+    'notary_matter_evidence',
+    'notary_matter_opening',
+    'notary_matter_logistics',
+    'notary_opening_review_decisions',
+    'notary_opening_review_audit_events',
+    'notary_opening_review_receipts',
+    'notary_issuance_decisions',
+    'notary_issuance_decision_audit_events',
+    'cases',
+    'notary_certificate_fees',
+    'notary_certificates',
+  ];
 
   await database.$transaction(async (transaction) => {
+    for (const table of immutableTables) {
+      await transaction.$executeRawUnsafe(
+        `ALTER TABLE "${table}" DISABLE TRIGGER USER`,
+      );
+    }
+    await transaction.notaryOpeningReviewReceipt.deleteMany({
+      where: { departmentId: { in: departmentIds } },
+    });
+    await transaction.notaryIssuanceDecisionAuditEvent.deleteMany({
+      where: { departmentId: { in: departmentIds } },
+    });
+    await transaction.case.deleteMany({
+      where: { departmentId: { in: departmentIds } },
+    });
+    await transaction.notaryCertificateFee.deleteMany({
+      where: { certificate: { departmentId: { in: departmentIds } } },
+    });
+    await transaction.notaryCertificate.deleteMany({
+      where: { departmentId: { in: departmentIds } },
+    });
+    await transaction.notaryIssuanceDecision.deleteMany({
+      where: { departmentId: { in: departmentIds } },
+    });
+    await transaction.notaryOpeningReviewAuditEvent.deleteMany({
+      where: { departmentId: { in: departmentIds } },
+    });
+    await transaction.notaryOpeningReviewDecision.deleteMany({
+      where: { departmentId: { in: departmentIds } },
+    });
+    await transaction.notaryMatterCommandReceipt.deleteMany({
+      where: { departmentId: { in: departmentIds } },
+    });
+    await transaction.notaryMatterLogistics.deleteMany({
+      where: { evidence: { departmentId: { in: departmentIds } } },
+    });
+    await transaction.notaryMatterEvidence.deleteMany({
+      where: { departmentId: { in: departmentIds } },
+    });
+    await transaction.notaryMatterOpening.deleteMany({
+      where: { departmentId: { in: departmentIds } },
+    });
+    await transaction.notaryMatterProduct.deleteMany({
+      where: { matter: { departmentId: { in: departmentIds } } },
+    });
+    await transaction.notaryMatterMaterial.deleteMany({
+      where: { matter: { departmentId: { in: departmentIds } } },
+    });
+    await transaction.notaryMatter.deleteMany({
+      where: { departmentId: { in: departmentIds } },
+    });
+    await transaction.lead.updateMany({
+      where: { departmentId: { in: departmentIds } },
+      data: { activeReviewDecisionId: null },
+    });
+    await transaction.leadWithdrawalConfirmation.deleteMany({
+      where: { departmentId: { in: departmentIds } },
+    });
+    await transaction.leadWithdrawalApplication.deleteMany({
+      where: { departmentId: { in: departmentIds } },
+    });
+    await transaction.leadEvidenceDecision.deleteMany({
+      where: { departmentId: { in: departmentIds } },
+    });
+    await transaction.clientLeadReviewReceipt.deleteMany({
+      where: { departmentId: { in: departmentIds } },
+    });
+    await transaction.leadReviewDecision.deleteMany({
+      where: { departmentId: { in: departmentIds } },
+    });
+    for (const table of [...immutableTables].reverse()) {
+      await transaction.$executeRawUnsafe(
+        `ALTER TABLE "${table}" ENABLE TRIGGER USER`,
+      );
+    }
     await transaction.materialReference.deleteMany({
       where: { departmentId: { in: departmentIds } },
     });
@@ -314,6 +421,15 @@ async function resetCustomerE2eData() {
     });
     await transaction.userAccount.deleteMany({
       where: { id: { in: clientUserIds } },
+    });
+    await transaction.notaryOfficeAccountBinding.deleteMany({
+      where: { departmentId: { in: departmentIds } },
+    });
+    await transaction.userAccount.deleteMany({
+      where: { id: { in: notaryUserIds } },
+    });
+    await transaction.notaryOffice.deleteMany({
+      where: { departmentId: { in: departmentIds } },
     });
     await transaction.rightsHolder.deleteMany({
       where: { departmentId: { in: departmentIds } },
