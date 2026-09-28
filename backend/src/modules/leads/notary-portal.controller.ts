@@ -23,8 +23,13 @@ import { ActorContextGuard } from '../../access-control/actor-context.guard';
 import { CsrfGuard } from '../../auth/csrf.guard';
 import { RecordNotaryOpeningDto } from './lead-notary.dto';
 import { NotaryOpeningService } from './notary-opening.service';
-import { NotaryListQueryDto } from './notary-list.dto';
 import { NotaryPortalService } from './notary-portal.service';
+import { NotaryCertificateService } from './notary-certificate.service';
+import {
+  IssueNotaryCertificateDto,
+  IssueNotaryCertificateResponseDto,
+  NotaryPortalQueryDto,
+} from './notary-certificate.dto';
 import {
   NotaryPortalDetailResponseDto,
   NotaryPortalListResponseDto,
@@ -39,20 +44,16 @@ export class NotaryPortalController {
   constructor(
     private readonly portal: NotaryPortalService,
     private readonly opening: NotaryOpeningService,
+    private readonly certificates: NotaryCertificateService,
   ) {}
 
   @Get()
   @ApiOkResponse({ type: NotaryPortalListResponseDto })
   list(
     @CurrentActor() actor: ActorContext,
-    @Query() query: NotaryListQueryDto,
+    @Query() query: NotaryPortalQueryDto,
   ) {
-    if (query.stage !== undefined)
-      throw new BadRequestException({
-        code: 'VALIDATION_ERROR',
-        message: '不支持阶段筛选',
-      });
-    return this.portal.list(actor, query.page, query.pageSize);
+    return this.portal.list(actor, query.page, query.pageSize, query.stage);
   }
 
   @Get(':id')
@@ -85,5 +86,27 @@ export class NotaryPortalController {
       });
     await this.portal.assertActor(actor);
     return this.opening.record(actor, id, normalized, input);
+  }
+
+  @Post(':id/certificate')
+  @ApiHeader({ name: 'Idempotency-Key', required: true })
+  @ApiCreatedResponse({ type: IssueNotaryCertificateResponseDto })
+  issueCertificate(
+    @CurrentActor() actor: ActorContext,
+    @Param('id', new ParseUUIDPipe()) id: string,
+    @Headers('idempotency-key') key: string | undefined,
+    @Body() input: IssueNotaryCertificateDto,
+  ) {
+    const normalized = key?.trim();
+    if (
+      normalized === undefined ||
+      normalized.length < 1 ||
+      normalized.length > 128
+    )
+      throw new BadRequestException({
+        code: 'VALIDATION_ERROR',
+        message: 'Idempotency-Key 必须为 1 至 128 个字符',
+      });
+    return this.certificates.issue(actor, id, normalized, input);
   }
 }

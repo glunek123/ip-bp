@@ -8,6 +8,7 @@ import { configureApp } from '../../common/configure-app';
 import { NotaryOpeningService } from './notary-opening.service';
 import { NotaryPortalController } from './notary-portal.controller';
 import { NotaryPortalService } from './notary-portal.service';
+import { NotaryCertificateService } from './notary-certificate.service';
 
 describe('notary portal OpenAPI contract', () => {
   it('declares minimal list, detail and opening response schemas', async () => {
@@ -16,6 +17,7 @@ describe('notary portal OpenAPI contract', () => {
       providers: [
         { provide: NotaryPortalService, useValue: {} },
         { provide: NotaryOpeningService, useValue: {} },
+        { provide: NotaryCertificateService, useValue: {} },
       ],
     })
       .overrideGuard(ActorContextGuard)
@@ -35,6 +37,8 @@ describe('notary portal OpenAPI contract', () => {
       const member = document.paths['/api/v1/notary-portal/matters/{id}'];
       const opening =
         document.paths['/api/v1/notary-portal/matters/{id}/opening'];
+      const certificate =
+        document.paths['/api/v1/notary-portal/matters/{id}/certificate'];
       expect(collection?.get?.responses['200']).toMatchObject({
         content: {
           'application/json': {
@@ -58,6 +62,15 @@ describe('notary portal OpenAPI contract', () => {
           'application/json': {
             schema: {
               $ref: '#/components/schemas/NotaryPortalOpeningResultDto',
+            },
+          },
+        },
+      });
+      expect(certificate?.post?.responses['201']).toMatchObject({
+        content: {
+          'application/json': {
+            schema: {
+              $ref: '#/components/schemas/IssueNotaryCertificateResponseDto',
             },
           },
         },

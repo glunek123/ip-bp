@@ -159,6 +159,24 @@ describe('RoleTemplateService copy', () => {
     grants: [{ action: 'CUSTOMER_READ' as const, scope: 'TEAM' as const }],
   };
 
+  it('allows a covered department case-read grant on a copied template', async () => {
+    const fixture = createFixture({
+      actorGrants: [
+        { action: 'ROLE_MANAGE', scope: 'DEPARTMENT', teamId: null },
+        { action: 'CASE_READ', scope: 'DEPARTMENT', teamId: null },
+      ],
+    });
+
+    await expect(
+      fixture.service.copy(actor, {
+        ...input,
+        grants: [{ action: 'CASE_READ', scope: 'DEPARTMENT' }],
+      }),
+    ).resolves.toMatchObject({
+      grants: [{ action: 'CASE_READ', scope: 'DEPARTMENT' }],
+    });
+  });
+
   it('creates the complete copied template and audit atomically', async () => {
     const fixture = createFixture();
 

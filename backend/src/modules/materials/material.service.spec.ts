@@ -26,6 +26,91 @@ const customerId = '33333333-3333-4333-8333-333333333333';
 const now = new Date('2026-09-21T04:00:00.000Z');
 
 describe('MaterialService', () => {
+  it('accepts PDF certificate drafts only for the assigned waiting office', async () => {
+    const fixture = createFixture();
+    const notaryActor = { ...actor, notaryOfficeId: 'office-1' };
+    fixture.db.notaryOfficeAccountBinding.findFirst.mockResolvedValue({
+      id: 'binding-1',
+    });
+    fixture.db.notaryMatter.findFirst.mockResolvedValue({
+      id: 'matter-1',
+      stage: 'WAITING_CERTIFICATE',
+    });
+    const input = {
+      ownerType: 'NOTARY_MATTER' as const,
+      ownerId: 'matter-1',
+      category: 'NOTARY_CERTIFICATE' as const,
+      purpose: 'NOTARY_CERTIFICATE' as const,
+      originalFilename: 'certificate.pdf',
+      declaredMimeType: 'application/pdf',
+    };
+    await fixture.service.createUploadDraft(notaryActor, input);
+    expect(fixture.db.uploadDraft.create).toHaveBeenCalled();
+    expect(fixture.db.notaryMatter.findFirst).toHaveBeenCalledWith(
+      expect.objectContaining({
+        where: expect.objectContaining({ stage: 'WAITING_CERTIFICATE' }),
+      }),
+    );
+    await expect(
+      fixture.service.createUploadDraft(notaryActor, {
+        ...input,
+        declaredMimeType: 'application/msword',
+      }),
+    ).rejects.toMatchObject({ response: { code: 'VALIDATION_ERROR' } });
+    fixture.db.notaryMatter.findFirst.mockResolvedValue(null);
+    await expect(
+      fixture.service.createUploadDraft(notaryActor, input),
+    ).rejects.toMatchObject({ response: { code: 'RESOURCE_NOT_FOUND' } });
+  });
+
+  it('downloads only an exact frozen certificate version after archive', async () => {
+    const fixture = createFixture();
+    const notaryActor = { ...actor, notaryOfficeId: 'office-1' };
+    fixture.db.notaryOfficeAccountBinding.findFirst.mockResolvedValue({
+      id: 'binding-1',
+    });
+    fixture.db.notaryMatter.findFirst.mockResolvedValue({
+      id: 'matter-1',
+      stage: 'ARCHIVED',
+    });
+    fixture.db.material.findFirst.mockResolvedValue({
+      id: 'certificate-1',
+      departmentId: actor.departmentId,
+      ownerType: 'NOTARY_MATTER',
+      ownerId: 'matter-1',
+      category: 'NOTARY_CERTIFICATE',
+      status: 'ACTIVE',
+      contentVersions: [
+        {
+          id: 'version-1',
+          uploadedBy: 'other-notary',
+          storageKey: 'private-certificate',
+          originalFilename: 'certificate.pdf',
+          mimeType: 'application/pdf',
+          sizeBytes: 100n,
+          sha256: 'a'.repeat(64),
+          status: 'AVAILABLE',
+        },
+      ],
+    });
+    fixture.db.materialReference.findFirst.mockResolvedValue({
+      id: 'ref-1',
+      actionEvent: { details: { contentVersionIds: ['another-version'] } },
+    });
+    await expect(
+      fixture.service.openVersion(notaryActor, 'certificate-1', 'version-1'),
+    ).rejects.toMatchObject({ response: { code: 'RESOURCE_NOT_FOUND' } });
+    expect(fixture.storage.open).not.toHaveBeenCalled();
+    fixture.db.materialReference.findFirst.mockResolvedValue({
+      id: 'ref-1',
+      actionEvent: { details: { contentVersionIds: ['version-1'] } },
+    });
+    fixture.storage.open.mockResolvedValue(Readable.from(Buffer.from('pdf')));
+    await expect(
+      fixture.service.openVersion(notaryActor, 'certificate-1', 'version-1'),
+    ).resolves.toMatchObject({ originalFilename: 'certificate.pdf' });
+    expect(fixture.storage.open).toHaveBeenCalledTimes(1);
+  });
   it('allows only live assigned notary accounts to draft opening photos', async () => {
     const fixture = createFixture();
     const notaryActor = { ...actor, notaryOfficeId: 'office-1' };

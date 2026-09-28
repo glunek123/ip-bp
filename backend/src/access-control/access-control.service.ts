@@ -19,6 +19,7 @@ export type PermissionAction =
   | 'notary.unbox.record'
   | 'notary.opening.review'
   | 'notary.issuance.decide'
+  | 'case.read'
   | 'notary.office.manage'
   | 'client.lead.read'
   | 'client.lead.review'
@@ -38,7 +39,8 @@ export type LeadAction =
   | 'notary.evidence.record'
   | 'notary.unbox.record'
   | 'notary.opening.review'
-  | 'notary.issuance.decide';
+  | 'notary.issuance.decide'
+  | 'case.read';
 
 export type CustomerResourceFacts = {
   departmentId: string;

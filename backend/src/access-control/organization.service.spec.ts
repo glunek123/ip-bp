@@ -345,7 +345,12 @@ describe('OrganizationService management context', () => {
       assignTeamRoles: false,
       manageRoleTemplates: true,
     });
-    expect(result.permissionCatalog).toHaveLength(22);
+    expect(result.permissionCatalog).toHaveLength(23);
+    expect(result.permissionCatalog).toContainEqual({
+      action: 'CASE_READ',
+      label: '查看案件',
+      scopes: ['DEPARTMENT'],
+    });
     expect(result.permissionCatalog.map(({ action }) => action)).toEqual(
       expect.arrayContaining([
         'CUSTOMER_ADMIT',

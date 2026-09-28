@@ -7,6 +7,7 @@ import { CustomerModule } from './modules/customers/customer.module';
 import { AuthModule } from './auth/auth.module';
 import { MaterialModule } from './modules/materials/material.module';
 import { LeadModule } from './modules/leads/lead.module';
+import { CaseModule } from './modules/cases/case.module';
 
 @Module({
   imports: [
@@ -20,6 +21,7 @@ import { LeadModule } from './modules/leads/lead.module';
     CustomerModule,
     MaterialModule,
     LeadModule,
+    CaseModule,
     HealthModule,
   ],
 })

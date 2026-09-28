@@ -3,6 +3,7 @@ import { AccessControlModule } from '../../access-control/access-control.module'
 import { AuthModule } from '../../auth/auth.module';
 import { DatabaseModule } from '../../database/database.module';
 import { MaterialModule } from '../materials';
+import { CaseModule } from '../cases';
 import { LeadController } from './lead.controller';
 import { LeadService } from './lead.service';
 import {
@@ -25,9 +26,16 @@ import { NotaryListService } from './notary-list.service';
 import { NotaryOfficeAccountService } from './notary-office-account.service';
 import { NotaryPortalController } from './notary-portal.controller';
 import { NotaryPortalService } from './notary-portal.service';
+import { NotaryCertificateService } from './notary-certificate.service';
 
 @Module({
-  imports: [AccessControlModule, AuthModule, DatabaseModule, MaterialModule],
+  imports: [
+    AccessControlModule,
+    AuthModule,
+    DatabaseModule,
+    MaterialModule,
+    CaseModule,
+  ],
   controllers: [
     LeadController,
     ClientLeadController,
@@ -49,6 +57,7 @@ import { NotaryPortalService } from './notary-portal.service';
     NotaryListService,
     NotaryOfficeAccountService,
     NotaryPortalService,
+    NotaryCertificateService,
   ],
   exports: [LeadService, ClientLeadService, LeadNotaryService],
 })

@@ -23,6 +23,7 @@ enum PermissionAction {
   NOTARY_UNBOX_RECORD          @map("notary.unbox.record")
   NOTARY_OPENING_REVIEW        @map("notary.opening.review")
   NOTARY_ISSUANCE_DECIDE       @map("notary.issuance.decide")
+  CASE_READ                    @map("case.read")
   NOTARY_OFFICE_MANAGE         @map("notary.office.manage")
   CLIENT_LEAD_READ             @map("client.lead.read")
   CLIENT_LEAD_REVIEW           @map("client.lead.review")
@@ -90,6 +91,8 @@ enum MaterialCategory {
   CUSTOMER_IDENTITY
   LEAD_SCREENSHOT
   NOTARY_OPENING_PHOTO
+  NOTARY_CERTIFICATE
+  NOTARY_DISCLOSURE
 
   @@map("material_category")
 }
@@ -157,6 +160,20 @@ enum NotarySampleFeeState {
   PENDING
 
   @@map("notary_sample_fee_state")
+}
+
+enum CaseStage {
+  PENDING_MATCH
+
+  @@map("case_stage")
+}
+
+enum CertificateFeeCategory {
+  NOTARY
+  INVESTIGATION
+  DISCLOSURE
+
+  @@map("certificate_fee_category")
 }
 
 enum NotaryLogisticsFieldState {
@@ -289,6 +306,7 @@ model Department {
   leads                       Lead[]
   notaryOffices               NotaryOffice[]
   notaryMatters               NotaryMatter[]
+  cases                       Case[]
   notaryMatterCommandReceipts NotaryMatterCommandReceipt[]
   leadCommandReceipts         LeadCommandReceipt[]
   clientAccountBindings       CustomerAccountBinding[]
@@ -347,6 +365,7 @@ model UserAccount {
   notaryOpeningReviewDecisions NotaryOpeningReviewDecision[] @relation("NotaryOpeningReviewDecisionActor")
   notaryIssuanceDecisions      NotaryIssuanceDecision[]      @relation("NotaryIssuanceDecisionActor")
   notaryOpeningReviewReceipts  NotaryOpeningReviewReceipt[]  @relation("NotaryOpeningReviewReceiptActor")
+  ownedCases                   Case[]                        @relation("CaseOwner")
   createdAt                    DateTime                      @default(now()) @map("created_at") @db.Timestamptz(3)
   updatedAt                    DateTime                      @updatedAt @map("updated_at") @db.Timestamptz(3)
 
@@ -412,6 +431,7 @@ model DepartmentMembership {
   rightsHolderCommandReceipts  RightsHolderCommandReceipt[]  @relation("RightsHolderReceiptActor")
   customerAdmissionReceipts    CustomerAdmissionReceipt[]    @relation("CustomerAdmissionReceiptActor")
   responsibleLeads             Lead[]                        @relation("LeadResponsibleMembership")
+  responsibleCases             Case[]                        @relation("CaseResponsibleMembership")
   leadCommandReceipts          LeadCommandReceipt[]          @relation("LeadCommandReceiptActor")
   notaryOpeningReviewDecisions NotaryOpeningReviewDecision[] @relation("NotaryOpeningReviewDecisionInternalActor")
   notaryIssuanceDecisions      NotaryIssuanceDecision[]      @relation("NotaryIssuanceDecisionInternalActor")
@@ -509,6 +529,7 @@ model Customer {
   rightsHolderReceipts     RightsHolderCommandReceipt[] @relation("RightsHolderReceiptCustomer")
   admissionReceipts        CustomerAdmissionReceipt[]
   leads                    Lead[]
+  cases                    Case[]
   clientAccountBindings    CustomerAccountBinding[]
   leadReviewDecisions      LeadReviewDecision[]
   createdAt                DateTime                     @default(now()) @map("created_at") @db.Timestamptz(3)
@@ -560,6 +581,7 @@ model NotaryOfficeAccountBinding {
   recordedOpenings NotaryMatterOpening[]
   auditEvents      AuditEvent[]
   commandReceipts  NotaryMatterCommandReceipt[]
+  certificates     NotaryCertificate[]
   createdAt        DateTime                     @default(now()) @map("created_at") @db.Timestamptz(3)
   updatedAt        DateTime                     @updatedAt @map("updated_at") @db.Timestamptz(3)
 
@@ -581,6 +603,7 @@ model RightsHolder {
   links               CustomerRightsHolderLink[]
   commandReceipts     RightsHolderCommandReceipt[] @relation("RightsHolderReceiptHolder")
   leads               Lead[]
+  cases               Case[]
   createdAt           DateTime                     @default(now()) @map("created_at") @db.Timestamptz(3)
   updatedAt           DateTime                     @updatedAt @map("updated_at") @db.Timestamptz(3)
 
@@ -784,6 +807,7 @@ model Lead {
   withdrawalApplications LeadWithdrawalApplication[]
   evidenceDecision       LeadEvidenceDecision?
   notaryMatters          NotaryMatter[]
+  cases                  Case[]
   clientReviewReceipts   ClientLeadReviewReceipt[]
   createdAt              DateTime                    @default(now()) @map("created_at") @db.Timestamptz(3)
   updatedAt              DateTime                    @updatedAt @map("updated_at") @db.Timestamptz(3)
@@ -999,15 +1023,94 @@ model NotaryMatter {
   opening               NotaryMatterOpening?
   openingReviewDecision NotaryOpeningReviewDecision?
   issuanceDecision      NotaryIssuanceDecision?
+  certificate           NotaryCertificate?
+  case                  Case?
   openingReviewReceipts NotaryOpeningReviewReceipt[]
   commandReceipts       NotaryMatterCommandReceipt[]
   createdAt             DateTime                     @default(now()) @map("created_at") @db.Timestamptz(3)
 
   @@unique([id, sourceLeadId], map: "notary_matters_id_lead_key")
+  @@unique([id, sourceLeadId, customerId, rightsHolderId, departmentId], map: "notary_matters_case_source_identity_key")
   @@unique([id, departmentId], map: "notary_matters_id_department_key")
   @@unique([id, customerId, departmentId], map: "notary_matters_review_identity_key")
   @@index([departmentId, sourceLeadId, createdAt])
   @@map("notary_matters")
+}
+
+model NotaryCertificate {
+  id                           String                     @id @default(uuid()) @db.Uuid
+  matterId                     String                     @unique @map("matter_id") @db.Uuid
+  departmentId                 String                     @map("department_id") @db.Uuid
+  issuanceDecisionId           String                     @unique @map("issuance_decision_id") @db.Uuid
+  issuanceDecisionChoice       NotaryIssuanceChoice       @default(ISSUE) @map("issuance_decision_choice")
+  notaryOfficeAccountBindingId String                     @map("notary_office_account_binding_id") @db.Uuid
+  actorUserId                  String                     @map("actor_user_id") @db.Uuid
+  certificateNo                String                     @map("certificate_no") @db.VarChar(200)
+  certificateDate              DateTime                   @map("certificate_date") @db.Date
+  needDisclose                 Boolean                    @map("need_disclose")
+  issuedAt                     DateTime                   @default(now()) @map("issued_at") @db.Timestamptz(3)
+  fromVersion                  Int                        @map("from_version")
+  toVersion                    Int                        @map("to_version")
+  matter                       NotaryMatter               @relation(fields: [matterId, departmentId], references: [id, departmentId], onDelete: Restrict, onUpdate: Restrict)
+  issuanceDecision             NotaryIssuanceDecision     @relation(fields: [issuanceDecisionId, matterId, departmentId, issuanceDecisionChoice], references: [id, matterId, departmentId, decision], onDelete: Restrict, onUpdate: Restrict)
+  notaryOfficeAccountBinding   NotaryOfficeAccountBinding @relation(fields: [notaryOfficeAccountBindingId, actorUserId, departmentId], references: [id, userId, departmentId], onDelete: Restrict, onUpdate: Restrict)
+  fees                         NotaryCertificateFee[]
+  case                         Case?
+
+  @@unique([id, matterId, departmentId])
+  @@unique([issuanceDecisionId, matterId, departmentId, issuanceDecisionChoice])
+  @@unique([matterId, departmentId])
+  @@index([departmentId, issuedAt])
+  @@map("notary_certificates")
+}
+
+model NotaryCertificateFee {
+  certificateId String                 @map("certificate_id") @db.Uuid
+  category      CertificateFeeCategory
+  state         NotarySampleFeeState
+  amount        Decimal?               @db.Decimal(18, 2)
+  certificate   NotaryCertificate      @relation(fields: [certificateId], references: [id], onDelete: Restrict, onUpdate: Restrict)
+
+  @@id([certificateId, category])
+  @@map("notary_certificate_fees")
+}
+
+model Case {
+  id                   String            @id @default(uuid()) @db.Uuid
+  businessNo           String            @unique @map("business_no") @db.VarChar(100)
+  departmentId         String            @map("department_id") @db.Uuid
+  sourceLeadId         String            @map("source_lead_id") @db.Uuid
+  sourceNotaryMatterId String            @unique @map("source_notary_matter_id") @db.Uuid
+  certificateId        String            @unique @map("certificate_id") @db.Uuid
+  customerId           String            @map("customer_id") @db.Uuid
+  rightsHolderId       String            @map("rights_holder_id") @db.Uuid
+  responsibleUserId    String            @map("responsible_user_id") @db.Uuid
+  stage                CaseStage         @default(PENDING_MATCH)
+  courtCaseNo          String?           @map("court_case_no") @db.VarChar(100)
+  department           Department        @relation(fields: [departmentId], references: [id], onDelete: Restrict)
+  sourceLead           Lead              @relation(fields: [sourceLeadId, customerId, departmentId], references: [id, customerId, departmentId], onDelete: Restrict, onUpdate: Restrict)
+  customer             Customer          @relation(fields: [customerId, departmentId], references: [id, departmentId], onDelete: Restrict, onUpdate: Restrict)
+  rightsHolder         RightsHolder      @relation(fields: [rightsHolderId, departmentId], references: [id, departmentId], onDelete: Restrict, onUpdate: Restrict)
+  sourceNotaryMatter   NotaryMatter      @relation(fields: [sourceNotaryMatterId, sourceLeadId, customerId, rightsHolderId, departmentId], references: [id, sourceLeadId, customerId, rightsHolderId, departmentId], onDelete: Restrict, onUpdate: Restrict)
+  owner                UserAccount       @relation("CaseOwner", fields: [responsibleUserId], references: [id], onDelete: Restrict, onUpdate: Restrict)
+  responsibleMembership DepartmentMembership @relation("CaseResponsibleMembership", fields: [responsibleUserId, departmentId], references: [userId, departmentId], onDelete: Restrict, onUpdate: Restrict)
+  certificate          NotaryCertificate @relation(fields: [certificateId, sourceNotaryMatterId, departmentId], references: [id, matterId, departmentId], onDelete: Restrict, onUpdate: Restrict)
+  createdAt            DateTime          @default(now()) @map("created_at") @db.Timestamptz(3)
+
+  @@unique([id, departmentId])
+  @@unique([sourceNotaryMatterId, departmentId])
+  @@unique([sourceNotaryMatterId, sourceLeadId, customerId, rightsHolderId, departmentId])
+  @@unique([certificateId, sourceNotaryMatterId, departmentId])
+  @@index([departmentId, createdAt, id])
+  @@map("cases")
+}
+
+model CaseNumberCounter {
+  businessDate DateTime @id @map("business_date") @db.Date
+  lastValue    Int      @default(0) @map("last_value")
+  updatedAt    DateTime @updatedAt @map("updated_at") @db.Timestamptz(3)
+
+  @@map("case_number_counters")
 }
 
 model NotaryMatterEvidence {
@@ -1142,8 +1245,10 @@ model NotaryIssuanceDecision {
   actor                    UserAccount                       @relation("NotaryIssuanceDecisionActor", fields: [actorUserId], references: [id], onDelete: Restrict)
   internalActor            DepartmentMembership             @relation("NotaryIssuanceDecisionInternalActor", fields: [actorUserId, departmentId], references: [userId, departmentId], onDelete: Restrict, onUpdate: Restrict)
   auditEvent               NotaryIssuanceDecisionAuditEvent?
+  certificate              NotaryCertificate?
 
   @@unique([id, matterId, departmentId, actorUserId, decision, toVersion], map: "notary_issuance_decisions_audit_identity_key")
+  @@unique([id, matterId, departmentId, decision], map: "notary_issuance_decisions_certificate_identity_key")
   @@unique([matterId, departmentId], map: "notary_issuance_decisions_matter_department_key")
   @@unique([openingReviewDecisionId, matterId, departmentId, openingReviewResult], map: "notary_issuance_decisions_review_identity_key")
   @@index([departmentId, decidedAt])

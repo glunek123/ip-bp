@@ -25,6 +25,8 @@ export const materialCategories = [
   'CUSTOMER_IDENTITY',
   'LEAD_SCREENSHOT',
   'NOTARY_OPENING_PHOTO',
+  'NOTARY_CERTIFICATE',
+  'NOTARY_DISCLOSURE',
 ] as const;
 export type MaterialCategoryValue = (typeof materialCategories)[number];
 export const materialPurposes = [
@@ -33,6 +35,8 @@ export const materialPurposes = [
   'IDENTITY_BACK',
   'LEAD_SCREENSHOT',
   'NOTARY_OPENING_PHOTO',
+  'NOTARY_CERTIFICATE',
+  'NOTARY_DISCLOSURE',
 ] as const;
 export type MaterialPurposeValue = (typeof materialPurposes)[number];
 

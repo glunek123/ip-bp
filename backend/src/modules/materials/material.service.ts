@@ -32,6 +32,7 @@ import {
 } from './private-blob-storage';
 import { MaterialStorageKeyCoordinator } from './material-storage-key-coordinator';
 import { isFrozenOpeningPhotoVersion } from './frozen-opening-photo';
+import { isFrozenCertificateVersion } from './frozen-certificate';
 
 const DAY_MS = 24 * 60 * 60 * 1000;
 const RETENTION_MS = 90 * DAY_MS;
@@ -123,6 +124,8 @@ const allowedMimeTypes = {
     'image/webp',
   ]),
   NOTARY_OPENING_PHOTO: new Set(['image/jpeg', 'image/png', 'image/webp']),
+  NOTARY_CERTIFICATE: new Set(['application/pdf', 'image/jpeg', 'image/png']),
+  NOTARY_DISCLOSURE: new Set(['application/pdf', 'image/jpeg', 'image/png']),
 } as const;
 
 @Injectable()
@@ -187,7 +190,16 @@ export class MaterialService {
       ownerId = customer.id;
     } else if (input.ownerType === 'NOTARY_MATTER') {
       if (input.ownerId === undefined) throw this.validationError();
-      await this.authorizeOwner(actor, 'NOTARY_MATTER', input.ownerId, 'write');
+      await this.authorizeOwner(
+        actor,
+        'NOTARY_MATTER',
+        input.ownerId,
+        'write',
+        this.database,
+        undefined,
+        undefined,
+        input.category,
+      );
       if (actor.notaryOfficeId !== undefined) {
         const binding =
           await this.database.notaryOfficeAccountBinding.findFirst({
@@ -305,7 +317,16 @@ export class MaterialService {
         }),
       );
     } else if (draft.ownerType === 'NOTARY_MATTER') {
-      await this.authorizeOwner(actor, 'NOTARY_MATTER', draft.ownerId, 'write');
+      await this.authorizeOwner(
+        actor,
+        'NOTARY_MATTER',
+        draft.ownerId,
+        'write',
+        this.database,
+        undefined,
+        undefined,
+        draft.category,
+      );
     } else if (
       draft.ownerType !== 'LEAD_DRAFT' ||
       !(await this.accessControl.canAuthorizeNewLead(actor))
@@ -371,6 +392,8 @@ export class MaterialService {
               'write',
               transaction,
               transaction,
+              undefined,
+              draft.category,
             );
             const binding =
               await transaction.notaryOfficeAccountBinding.findFirst({
@@ -517,6 +540,7 @@ export class MaterialService {
       transaction,
       transaction,
       input.leadAction,
+      input.category,
     );
     const materials = await transaction.material.findMany({
       where: {
@@ -559,6 +583,7 @@ export class MaterialService {
         if (
           version.status !== 'AVAILABLE' ||
           (actor.notaryOfficeId !== undefined &&
+            input.category === 'NOTARY_OPENING_PHOTO' &&
             version.uploadedBy !== actor.userId) ||
           facts.has(version.id) ||
           !contentVersionIds.includes(version.id)
@@ -817,7 +842,8 @@ export class MaterialService {
             select: { stage: true },
           });
     const notaryCommitted =
-      notaryMatter !== null && notaryMatter.stage !== 'WAITING_UNBOX';
+      notaryMatter !== null &&
+      !['WAITING_UNBOX', 'WAITING_CERTIFICATE'].includes(notaryMatter.stage);
     if (actor.notaryOfficeId !== undefined && notaryMatter === null)
       throw this.notFound();
     const clientReferences =
@@ -831,14 +857,21 @@ export class MaterialService {
               resourceId: ownerId,
               purpose:
                 ownerType === 'NOTARY_MATTER'
-                  ? 'NOTARY_OPENING_PHOTO'
+                  ? actor.notaryOfficeId !== undefined &&
+                    notaryMatter?.stage === 'ARCHIVED'
+                    ? { in: ['NOTARY_CERTIFICATE', 'NOTARY_DISCLOSURE'] }
+                    : 'NOTARY_OPENING_PHOTO'
                   : 'LEAD_SCREENSHOT',
               actionEventId:
                 ownerType === 'NOTARY_MATTER' ? { not: null } : null,
               ...(ownerType === 'NOTARY_MATTER'
                 ? {
                     actionEvent: {
-                      action: 'notary.opening_recorded',
+                      action:
+                        actor.notaryOfficeId !== undefined &&
+                        notaryMatter?.stage === 'ARCHIVED'
+                          ? 'notary.certificate_issued'
+                          : 'notary.opening_recorded',
                       resourceType: 'notary_matter',
                       resourceId: ownerId,
                       departmentId: actor.departmentId,
@@ -846,7 +879,11 @@ export class MaterialService {
                     material: {
                       ownerType: 'NOTARY_MATTER',
                       ownerId,
-                      category: 'NOTARY_OPENING_PHOTO',
+                      category:
+                        actor.notaryOfficeId !== undefined &&
+                        notaryMatter?.stage === 'ARCHIVED'
+                          ? { in: ['NOTARY_CERTIFICATE', 'NOTARY_DISCLOSURE'] }
+                          : 'NOTARY_OPENING_PHOTO',
                       departmentId: actor.departmentId,
                     },
                   }
@@ -855,6 +892,7 @@ export class MaterialService {
             select: {
               materialId: true,
               contentVersionId: true,
+              purpose: true,
               ...(ownerType === 'NOTARY_MATTER'
                 ? { actionEvent: { select: { details: true } } }
                 : {}),
@@ -864,10 +902,17 @@ export class MaterialService {
       (reference) =>
         ownerType !== 'NOTARY_MATTER' ||
         ('actionEvent' in reference &&
-          isFrozenOpeningPhotoVersion(
-            reference.actionEvent?.details,
-            reference.contentVersionId,
-          )),
+          (actor.notaryOfficeId !== undefined &&
+          notaryMatter?.stage === 'ARCHIVED'
+            ? isFrozenCertificateVersion(
+                reference.actionEvent?.details,
+                reference.purpose,
+                reference.contentVersionId,
+              )
+            : isFrozenOpeningPhotoVersion(
+                reference.actionEvent?.details,
+                reference.contentVersionId,
+              ))),
     );
     if (allowedClientReferences?.length === 0) return { items: [], total: 0 };
     const clientMaterialIds = allowedClientReferences?.map(
@@ -885,10 +930,25 @@ export class MaterialService {
         ...((actor.clientCustomerId !== undefined ||
           actor.notaryOfficeId !== undefined) &&
         ownerType === 'NOTARY_MATTER'
-          ? { category: 'NOTARY_OPENING_PHOTO' as const }
+          ? actor.notaryOfficeId !== undefined &&
+            notaryMatter?.stage === 'WAITING_CERTIFICATE'
+            ? {
+                category: {
+                  in: ['NOTARY_CERTIFICATE', 'NOTARY_DISCLOSURE'] as const,
+                },
+              }
+            : actor.notaryOfficeId !== undefined &&
+                notaryMatter?.stage === 'ARCHIVED'
+              ? {
+                  category: {
+                    in: ['NOTARY_CERTIFICATE', 'NOTARY_DISCLOSURE'] as const,
+                  },
+                }
+              : { category: 'NOTARY_OPENING_PHOTO' as const }
           : {}),
         ...(clientMaterialIds === undefined
-          ? actor.notaryOfficeId !== undefined
+          ? actor.notaryOfficeId !== undefined &&
+            notaryMatter?.stage !== 'WAITING_CERTIFICATE'
             ? {
                 contentVersions: {
                   some: { uploadedBy: actor.userId, status: 'AVAILABLE' },
@@ -914,7 +974,8 @@ export class MaterialService {
           where: {
             status: 'AVAILABLE',
             ...(clientVersionIds === undefined
-              ? actor.notaryOfficeId !== undefined
+              ? actor.notaryOfficeId !== undefined &&
+                notaryMatter?.stage !== 'WAITING_CERTIFICATE'
                 ? { uploadedBy: actor.userId }
                 : {}
               : { id: { in: clientVersionIds } }),
@@ -978,7 +1039,14 @@ export class MaterialService {
       (actor.clientCustomerId !== undefined ||
         actor.notaryOfficeId !== undefined) &&
       material.ownerType === 'NOTARY_MATTER' &&
-      (material.category !== 'NOTARY_OPENING_PHOTO' ||
+      ((actor.clientCustomerId !== undefined &&
+        material.category !== 'NOTARY_OPENING_PHOTO') ||
+        (actor.notaryOfficeId !== undefined &&
+          ![
+            'NOTARY_OPENING_PHOTO',
+            'NOTARY_CERTIFICATE',
+            'NOTARY_DISCLOSURE',
+          ].includes(material.category)) ||
         material.status !== 'ACTIVE')
     )
       throw this.notFound();
@@ -987,6 +1055,10 @@ export class MaterialService {
       material.ownerType,
       material.ownerId,
       'read',
+      this.database,
+      undefined,
+      undefined,
+      material.category,
     );
     const notaryMatter =
       actor.notaryOfficeId === undefined
@@ -1002,8 +1074,28 @@ export class MaterialService {
     if (actor.notaryOfficeId !== undefined && notaryMatter === null)
       throw this.notFound();
     if (
+      actor.notaryOfficeId !== undefined &&
+      ((notaryMatter?.stage === 'WAITING_UNBOX' &&
+        material.category !== 'NOTARY_OPENING_PHOTO') ||
+        (notaryMatter?.stage === 'WAITING_CERTIFICATE' &&
+          !['NOTARY_CERTIFICATE', 'NOTARY_DISCLOSURE'].includes(
+            material.category,
+          )) ||
+        (notaryMatter?.stage === 'ARCHIVED' &&
+          !['NOTARY_CERTIFICATE', 'NOTARY_DISCLOSURE'].includes(
+            material.category,
+          )))
+    )
+      throw this.notFound();
+    if (
       actor.clientCustomerId !== undefined ||
-      (notaryMatter !== null && notaryMatter.stage !== 'WAITING_UNBOX')
+      (notaryMatter !== null &&
+        !['WAITING_UNBOX', 'WAITING_CERTIFICATE'].includes(
+          notaryMatter.stage,
+        )) ||
+      (actor.clientCustomerId === undefined &&
+        actor.notaryOfficeId === undefined &&
+        ['NOTARY_CERTIFICATE', 'NOTARY_DISCLOSURE'].includes(material.category))
     ) {
       const reference = await this.database.materialReference.findFirst({
         where: {
@@ -1013,7 +1105,7 @@ export class MaterialService {
           resourceId: material.ownerId,
           purpose:
             material.ownerType === 'NOTARY_MATTER'
-              ? 'NOTARY_OPENING_PHOTO'
+              ? material.category
               : 'LEAD_SCREENSHOT',
           materialId,
           contentVersionId: versionId,
@@ -1022,7 +1114,10 @@ export class MaterialService {
           ...(material.ownerType === 'NOTARY_MATTER'
             ? {
                 actionEvent: {
-                  action: 'notary.opening_recorded',
+                  action:
+                    material.category === 'NOTARY_OPENING_PHOTO'
+                      ? 'notary.opening_recorded'
+                      : 'notary.certificate_issued',
                   resourceType: 'notary_matter',
                   resourceId: material.ownerId,
                   departmentId: actor.departmentId,
@@ -1035,10 +1130,16 @@ export class MaterialService {
       if (
         reference === null ||
         (material.ownerType === 'NOTARY_MATTER' &&
-          !isFrozenOpeningPhotoVersion(
-            reference.actionEvent?.details,
-            versionId,
-          ))
+          !(material.category === 'NOTARY_OPENING_PHOTO'
+            ? isFrozenOpeningPhotoVersion(
+                reference.actionEvent?.details,
+                versionId,
+              )
+            : isFrozenCertificateVersion(
+                reference.actionEvent?.details,
+                material.category,
+                versionId,
+              )))
       )
         throw this.notFound();
     }
@@ -1302,6 +1403,67 @@ export class MaterialService {
     return this.isSerializationConflict(record.cause);
   }
 
+  async listFrozenCertificateFiles(
+    actor: ActorContext,
+    matterId: string,
+    certificateId: string,
+  ) {
+    await this.authorizeOwner(
+      actor,
+      'NOTARY_MATTER',
+      matterId,
+      'read',
+      this.database,
+      undefined,
+      undefined,
+      'NOTARY_CERTIFICATE',
+    );
+    const refs = await this.database.materialReference.findMany({
+      where: {
+        departmentId: actor.departmentId,
+        resourceType: 'notary_matter',
+        resourceId: matterId,
+        purpose: { in: ['NOTARY_CERTIFICATE', 'NOTARY_DISCLOSURE'] },
+        actionEventId: { not: null },
+        actionEvent: {
+          action: 'notary.certificate_issued',
+          departmentId: actor.departmentId,
+          resourceType: 'notary_matter',
+          resourceId: matterId,
+          details: { path: ['certificateId'], equals: certificateId },
+        },
+        material: {
+          departmentId: actor.departmentId,
+          ownerType: 'NOTARY_MATTER',
+          ownerId: matterId,
+          status: 'ACTIVE',
+        },
+      },
+      select: {
+        purpose: true,
+        materialId: true,
+        contentVersionId: true,
+        actionEvent: { select: { details: true } },
+        contentVersion: { select: { originalFilename: true, mimeType: true } },
+      },
+    });
+    return refs
+      .filter((ref) =>
+        isFrozenCertificateVersion(
+          ref.actionEvent?.details,
+          ref.purpose,
+          ref.contentVersionId,
+        ),
+      )
+      .map((ref) => ({
+        purpose: ref.purpose,
+        materialId: ref.materialId,
+        contentVersionId: ref.contentVersionId,
+        originalFilename: ref.contentVersion.originalFilename,
+        mimeType: ref.contentVersion.mimeType,
+      }));
+  }
+
   private async authorizeOwner(
     actor: ActorContext,
     ownerType: MaterialOwnerTypeValue,
@@ -1313,6 +1475,7 @@ export class MaterialService {
       LeadAction,
       'lead.read' | 'lead.edit' | 'lead.evidence.decide' | 'notary.unbox.record'
     >,
+    notaryCategory?: MaterialCategoryValue,
   ): Promise<void> {
     if (actor.notaryOfficeId !== undefined) {
       if (actor.clientCustomerId !== undefined || ownerType !== 'NOTARY_MATTER')
@@ -1336,8 +1499,26 @@ export class MaterialService {
           notaryOfficeId: actor.notaryOfficeId,
           stage:
             operation === 'write'
-              ? 'WAITING_UNBOX'
-              : { in: ['WAITING_UNBOX', 'UNBOX_REVIEW'] },
+              ? notaryCategory === 'NOTARY_CERTIFICATE' ||
+                notaryCategory === 'NOTARY_DISCLOSURE'
+                ? 'WAITING_CERTIFICATE'
+                : 'WAITING_UNBOX'
+              : {
+                  in: [
+                    'WAITING_UNBOX',
+                    'UNBOX_REVIEW',
+                    'WAITING_CERTIFICATE',
+                    'ARCHIVED',
+                  ],
+                },
+          ...(operation === 'read'
+            ? {
+                OR: [
+                  { stage: { not: 'ARCHIVED' as const } },
+                  { certificate: { isNot: null } },
+                ],
+              }
+            : {}),
         },
         select: { id: true },
       });
@@ -1416,10 +1597,16 @@ export class MaterialService {
       return;
     }
     if (ownerType === 'NOTARY_MATTER') {
+      const caseCertificateRead =
+        operation === 'read' &&
+        (notaryCategory === 'NOTARY_CERTIFICATE' ||
+          notaryCategory === 'NOTARY_DISCLOSURE');
       const action =
         operation === 'write'
           ? 'notary.unbox.record'
-          : (leadAction ?? 'lead.read');
+          : caseCertificateRead
+            ? 'case.read'
+            : (leadAction ?? 'lead.read');
       const scope = await this.withMaterialAuthorization(() =>
         this.accessControl.buildLeadScope(actor, action, snapshotReader),
       );
@@ -1428,6 +1615,7 @@ export class MaterialService {
           id: ownerId,
           departmentId: actor.departmentId,
           sourceLead: scope,
+          ...(caseCertificateRead ? { certificate: { isNot: null } } : {}),
         },
         select: {
           stage: true,
@@ -1555,7 +1743,11 @@ export class MaterialService {
         input.purpose === 'LEAD_SCREENSHOT') ||
       (input.ownerType === 'NOTARY_MATTER' &&
         input.category === 'NOTARY_OPENING_PHOTO' &&
-        input.purpose === 'NOTARY_OPENING_PHOTO');
+        input.purpose === 'NOTARY_OPENING_PHOTO') ||
+      (input.ownerType === 'NOTARY_MATTER' &&
+        (input.category === 'NOTARY_CERTIFICATE' ||
+          input.category === 'NOTARY_DISCLOSURE') &&
+        input.purpose === input.category);
     if (!valid) throw this.validationError();
   }
 
@@ -1651,7 +1843,9 @@ function toMaterialPurpose(value: string) {
     value === 'IDENTITY_FRONT' ||
     value === 'IDENTITY_BACK' ||
     value === 'LEAD_SCREENSHOT' ||
-    value === 'NOTARY_OPENING_PHOTO'
+    value === 'NOTARY_OPENING_PHOTO' ||
+    value === 'NOTARY_CERTIFICATE' ||
+    value === 'NOTARY_DISCLOSURE'
   ) {
     return value;
   }

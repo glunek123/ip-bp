@@ -6,6 +6,7 @@ import {
 import { ActorContext } from '../../access-control/actor-context';
 import { DatabaseService } from '../../database/database.service';
 import { isFrozenOpeningPhotoVersion } from '../materials';
+import { isFrozenCertificateVersion } from '../materials';
 
 @Injectable()
 export class NotaryPortalService {
@@ -36,12 +37,19 @@ export class NotaryPortalService {
     await this.authorize(actor);
   }
 
-  async list(actor: ActorContext, page: number, pageSize: number) {
+  async list(
+    actor: ActorContext,
+    page: number,
+    pageSize: number,
+    stage:
+      'WAITING_UNBOX' | 'WAITING_CERTIFICATE' | 'ARCHIVED' = 'WAITING_UNBOX',
+  ) {
     const officeId = await this.authorize(actor);
     const where = {
       departmentId: actor.departmentId,
       notaryOfficeId: officeId,
-      stage: 'WAITING_UNBOX' as const,
+      stage,
+      ...(stage === 'ARCHIVED' ? { certificate: { isNot: null } } : {}),
     };
     const [matters, total] = await Promise.all([
       this.database.notaryMatter.findMany({
@@ -62,7 +70,7 @@ export class NotaryPortalService {
     return {
       items: matters.map((matter) => ({
         ...matter,
-        stage: 'WAITING_UNBOX' as const,
+        stage: matter.stage,
         createdAt: matter.createdAt.toISOString(),
       })),
       total,
@@ -78,7 +86,14 @@ export class NotaryPortalService {
         id,
         departmentId: actor.departmentId,
         notaryOfficeId: officeId,
-        stage: { in: ['WAITING_UNBOX', 'UNBOX_REVIEW'] },
+        OR: [
+          {
+            stage: {
+              in: ['WAITING_UNBOX', 'UNBOX_REVIEW', 'WAITING_CERTIFICATE'],
+            },
+          },
+          { stage: 'ARCHIVED', certificate: { isNot: null } },
+        ],
       },
       select: {
         id: true,
@@ -89,6 +104,8 @@ export class NotaryPortalService {
         evidence: {
           select: {
             evidenceAt: true,
+            sampleFeeState: true,
+            sampleFeeAmount: true,
             logistics: {
               orderBy: [{ position: 'asc' }, { id: 'asc' }],
               select: {
@@ -107,6 +124,22 @@ export class NotaryPortalService {
             senderPhone: true,
             senderAddress: true,
             recordedAt: true,
+          },
+        },
+        issuanceDecision: {
+          select: {
+            decision: true,
+            actorDisplayNameSnapshot: true,
+            decidedAt: true,
+          },
+        },
+        certificate: {
+          select: {
+            certificateNo: true,
+            certificateDate: true,
+            issuedAt: true,
+            needDisclose: true,
+            case: { select: { id: true, businessNo: true } },
           },
         },
       },
@@ -145,6 +178,52 @@ export class NotaryPortalService {
               },
             },
           });
+    const certificateRefs =
+      matter.certificate === null || matter.certificate === undefined
+        ? []
+        : await this.database.materialReference.findMany({
+            where: {
+              departmentId: actor.departmentId,
+              resourceType: 'notary_matter',
+              resourceId: id,
+              purpose: { in: ['NOTARY_CERTIFICATE', 'NOTARY_DISCLOSURE'] },
+              actionEventId: { not: null },
+              actionEvent: {
+                action: 'notary.certificate_issued',
+                resourceType: 'notary_matter',
+                resourceId: id,
+                departmentId: actor.departmentId,
+              },
+              material: {
+                departmentId: actor.departmentId,
+                ownerType: 'NOTARY_MATTER',
+                ownerId: id,
+                status: 'ACTIVE',
+              },
+            },
+            select: {
+              purpose: true,
+              materialId: true,
+              contentVersionId: true,
+              actionEvent: { select: { details: true } },
+              contentVersion: {
+                select: { originalFilename: true, mimeType: true },
+              },
+            },
+          });
+    const frozen = certificateRefs.filter((ref) =>
+      isFrozenCertificateVersion(
+        ref.actionEvent?.details,
+        ref.purpose,
+        ref.contentVersionId,
+      ),
+    );
+    const file = (ref: (typeof frozen)[number]) => ({
+      materialId: ref.materialId,
+      contentVersionId: ref.contentVersionId,
+      originalFilename: ref.contentVersion.originalFilename,
+      mimeType: ref.contentVersion.mimeType,
+    });
     return {
       id: matter.id,
       businessNo: matter.businessNo,
@@ -156,6 +235,9 @@ export class NotaryPortalService {
           ? null
           : {
               evidenceAt: matter.evidence.evidenceAt.toISOString().slice(0, 10),
+              sampleFeeState: matter.evidence.sampleFeeState,
+              sampleFeeAmount:
+                matter.evidence.sampleFeeAmount?.toString() ?? null,
               logistics: matter.evidence.logistics,
             },
       opening:
@@ -180,7 +262,39 @@ export class NotaryPortalService {
                   mimeType: ref.contentVersion.mimeType,
                 })),
             },
-      capabilities: { recordOpening: matter.stage === 'WAITING_UNBOX' },
+      issuanceDecision:
+        matter.issuanceDecision === null ||
+        matter.issuanceDecision === undefined
+          ? null
+          : {
+              decision: matter.issuanceDecision.decision,
+              actorDisplayName:
+                matter.issuanceDecision.actorDisplayNameSnapshot,
+              decidedAt: matter.issuanceDecision.decidedAt.toISOString(),
+            },
+      certificate:
+        matter.certificate === null || matter.certificate === undefined
+          ? null
+          : {
+              certificateNo: matter.certificate.certificateNo,
+              certificateDate: matter.certificate.certificateDate
+                .toISOString()
+                .slice(0, 10),
+              issuedAt: matter.certificate.issuedAt.toISOString(),
+              needDisclose: matter.certificate.needDisclose,
+              files: frozen
+                .filter((ref) => ref.purpose === 'NOTARY_CERTIFICATE')
+                .map(file),
+              disclosureFiles: frozen
+                .filter((ref) => ref.purpose === 'NOTARY_DISCLOSURE')
+                .map(file),
+              caseId: matter.certificate.case?.id ?? null,
+              caseBusinessNo: matter.certificate.case?.businessNo ?? null,
+            },
+      capabilities: {
+        recordOpening: matter.stage === 'WAITING_UNBOX',
+        issueCertificate: matter.stage === 'WAITING_CERTIFICATE',
+      },
     };
   }
 
