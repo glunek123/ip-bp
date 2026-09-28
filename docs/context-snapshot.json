@@ -1,6 +1,6 @@
 {
   "version": 1,
-  "recordedAt": "2026-09-28T07:58:09.643Z",
+  "recordedAt": "2026-09-28T08:10:21.755Z",
   "files": {
     ".cursor/rules/verified-feature-integration.mdc": "ffd2306612ba6f09749629c5adb9e645f7f37aa6ee27ff1bc1c3d8b14efeca38",
     ".env.example": "07211cde5c2b59efc21b619b752d4c9b871f0980d2d64ca3c146ad6151fd27ca",
@@ -259,7 +259,7 @@
     "docs/environment.md": "2c07c5c2ccecb30055e318b6670c8c910d4474e691d7fd1d645016a2d657debf",
     "docs/feature-roadmap.md": "ca599cd747357c570974859c93503e5a243bc27f4f6db5ef9a11d77aaab87eda",
     "docs/project-status-history-through-2026-09-18.md": "c7c858eb4b2a935ce78a85c75e5d3227691382186101d6ff6911249e38729208",
-    "docs/project-status.md": "faf40514e213b303a7095579444ee635178f4dc7b061ad93e4f94dc408bf6b5b",
+    "docs/project-status.md": "4afeb26984cab830df9fac2ededd319a9bc2f48d8b58e3530b7b337a5f70ba67",
     "docs/security/customer-foundation-q2-review.md": "f5745450cb85aedde92892646c6c824bc9670b8c9bf6f0d9761fe5e46cc6d109",
     "docs/security/local-account-auth-q2-review.md": "4e7b38d73b2597e483340490c788aa034ef6f465baccc12240be7ad2c6ec61f1",
     "docs/spec/v0.1/BUSINESS-REVIEW.md": "950c73ac72470d2e3556fd416701b4486944c1e3ef21c84be11132cbe617c24e",
@@ -305,6 +305,7 @@
     "docs/superpowers/plans/2026-09-24-core-nt-002-unboxing-materials.md": "0b5f5d5b8cceb8d2a53e01fe5b1121446100851c13eb4201b67e851ce816c7f3",
     "docs/superpowers/plans/2026-09-24-sidebar-business-ownership.md": "62c98535da35ad508ce1afd4d1667d10578c827fa144cc8b2d941ae1502f57e5",
     "docs/superpowers/plans/2026-09-28-core-nt-003-opening-review.md": "cb1d6e12c230b067b72199f4bfe4f7ee9c5c6bff4d4dd863351df0d5b90b7717",
+    "docs/superpowers/plans/2026-09-28-core-nt-007-notary-account-opening.md": "1ddb69bafcb247300550edbd4803bd3fc6ee16bfaa345838134739746ae70213",
     "docs/superpowers/specs/2026-09-17-local-account-auth-design.md": "90318fbebae983c71e9558138cbd40b30ef02afce332a0e52f70797601a23d6f",
     "docs/superpowers/specs/2026-09-20-personnel-access-management-design.md": "bfeaf41d0356417c57a5030fd6dc9de0cfafa37d5404bb20cd3f7cff76ee5bda",
     "docs/superpowers/specs/2026-09-20-role-template-management-design.md": "51c18905b48e4b2b3ca835446b59dcb4e489eb8813b4922255fd403161b90dd8",
@@ -320,6 +321,7 @@
     "docs/superpowers/specs/2026-09-24-core-nt-002-unboxing-materials-design.md": "fb4d78b2e03dc7d5ed2521674aa83d29f17f76b490449a5e08153a85a80e946d",
     "docs/superpowers/specs/2026-09-24-sidebar-business-ownership-design.md": "0c2fb2d51afb00133645ad7d2750b1b564b6cc1c3c9f3cb0dab149febebbcb20",
     "docs/superpowers/specs/2026-09-28-core-nt-003-opening-review-design.md": "dbf996393a317dd238970c222194a485cf42ba625d8fbb04fef5ee1eeb2895ed",
+    "docs/superpowers/specs/2026-09-28-core-nt-007-notary-account-opening-design.md": "03fcb848d3d97bf5879cf0ffec130737eefe21b3b45a598b7c5f7f2f2a14a708",
     "eslint.config.mjs": "daf2a32e995b6fe0ec4648d5e116ddb6e028a2dfa04df23914b3bef88e3fc3d2",
     "frontend/index.html": "d39846e0c586d9b779c4eab746d32f690b878c293128e824cfee6170623b14d8",
     "frontend/package.json": "11be5d17686715dce6637d942b3fa994380b34de28216c4134935f040f40b44b",

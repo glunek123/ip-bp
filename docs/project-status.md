@@ -8,7 +8,7 @@
 
 ## 当前任务
 
-**CORE-NT-007｜公证处身份与开箱入口补齐（路线图唯一Current，已领取，待小粒度设计与实施）**：从本地`main@1e3e348`、tree`70af12ec`创建`codex/core-nt-007-notary-account-opening`；该`main`已快进集成经独立Review和完整`pnpm verify`通过的流程修复，组合tree与其固定候选一致，远端`origin/main`仍为`e9359b8`，本轮未推送。按SD-41只补明确绑定事项公证处的真实账号、最小待开箱读取及复用NT-002开箱入口，不将运营代办冒称公证处闭环；NT-004出证选择保持Next，不提前实现。
+**CORE-NT-007｜公证处身份与开箱入口补齐（路线图唯一Current，已领取，进入实施）**：从`main@1e3e348`、tree`70af12ec`创建`codex/core-nt-007-notary-account-opening`；该`main`已快进集成经独立Review和完整`pnpm verify`通过的流程修复，组合tree与其固定候选一致，并已推送至`origin/main`。本切片的[小粒度设计](superpowers/specs/2026-09-28-core-nt-007-notary-account-opening-design.md)和[实施计划](superpowers/plans/2026-09-28-core-nt-007-notary-account-opening.md)按SD-41只补明确绑定事项公证处的真实账号、最小待开箱读取及复用NT-002开箱入口，不将运营代办冒称公证处闭环；NT-004出证选择保持Next，不提前实现。
 
 线索库／公证阶段导航归属修复已按用户要求并入NT-003开发分支（合并提交`379b9d2`），连同NT-003新增阶段在上述固定候选通过完整组合验证，现已随该分支进入`main`。详见[验证记录](spec/v0.1/VALIDATION.md)。
 
