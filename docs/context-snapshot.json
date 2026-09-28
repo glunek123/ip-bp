@@ -1,6 +1,6 @@
 {
   "version": 1,
-  "recordedAt": "2026-09-28T01:42:19.358Z",
+  "recordedAt": "2026-09-28T02:04:54.491Z",
   "files": {
     ".cursor/rules/verified-feature-integration.mdc": "ffd2306612ba6f09749629c5adb9e645f7f37aa6ee27ff1bc1c3d8b14efeca38",
     ".env.example": "07211cde5c2b59efc21b619b752d4c9b871f0980d2d64ca3c146ad6151fd27ca",
@@ -353,6 +353,7 @@
     "docs/superpowers/plans/2026-09-24-core-nt-001-evidence-logistics.md": "2aae21a80a39d8a305e94b6c7fd266c5bdf55ef774a0f740c3449c95aa42cc47",
     "docs/superpowers/plans/2026-09-24-core-nt-002-unboxing-materials.md": "0b5f5d5b8cceb8d2a53e01fe5b1121446100851c13eb4201b67e851ce816c7f3",
     "docs/superpowers/plans/2026-09-24-sidebar-business-ownership.md": "62c98535da35ad508ce1afd4d1667d10578c827fa144cc8b2d941ae1502f57e5",
+    "docs/superpowers/plans/2026-09-28-core-nt-003-opening-review.md": "cb1d6e12c230b067b72199f4bfe4f7ee9c5c6bff4d4dd863351df0d5b90b7717",
     "docs/superpowers/specs/2026-09-17-local-account-auth-design.md": "90318fbebae983c71e9558138cbd40b30ef02afce332a0e52f70797601a23d6f",
     "docs/superpowers/specs/2026-09-20-personnel-access-management-design.md": "bfeaf41d0356417c57a5030fd6dc9de0cfafa37d5404bb20cd3f7cff76ee5bda",
     "docs/superpowers/specs/2026-09-20-role-template-management-design.md": "51c18905b48e4b2b3ca835446b59dcb4e489eb8813b4922255fd403161b90dd8",
