@@ -8,9 +8,9 @@
 
 ## 当前任务
 
-**CORE-NT-004｜运营出证选择（路线图唯一Current，开发中）**：经用户授权，CORE-NT-007已本地快进集成到`main@2abe6d3`，合并tree与已验收收口tree`0870491`一致；固定代码候选`84380cf`的Review、完整门禁及106项隔离数据库／Chromium验收见[验证记录](spec/v0.1/VALIDATION.md)。NT-004在`codex/core-nt-004-issuance-decision`按[小粒度设计](superpowers/specs/2026-09-28-core-nt-004-issuance-decision-design.md)实施；CORE-NT-005为Next，不提前扩展出证转案。未推送、未发布。
+**CORE-NT-005｜公证处出证转案（路线图唯一Current，待领取）**：CORE-NT-004已在`codex/core-nt-004-issuance-decision`完成运营出证／不出证选择，固定代码候选`7882a9e`的独立Review、Level 2切片门禁、隔离数据库／Chromium 50项验收及迁移专项见[验证记录](spec/v0.1/VALIDATION.md)。CORE-NT-006为Next。NT-004尚未推送或合并`main`；NT-005尚未实施，不能把选择当作已出证或已转案。
 
-线索库／公证阶段导航归属修复已按用户要求并入NT-003开发分支（合并提交`379b9d2`），连同NT-003新增阶段在上述固定候选通过完整组合验证，现已随该分支进入`main`。详见[验证记录](spec/v0.1/VALIDATION.md)。
+线索库／公证阶段导航归属修复已按用户要求并入NT-003开发分支（合并提交`379b9d2`），连同NT-003新增阶段在NT-007固定候选通过完整组合验证，现已随该分支进入`main`。详见[验证记录](spec/v0.1/VALIDATION.md)。
 
 ## 已实现
 
@@ -18,7 +18,7 @@
 - `ROLE-TEMPLATE-001`代码候选`d542c31`、tree`cae336d`已通过完整Level 3门禁、数据库型浏览器验收和独立终审；其可配置Grant底座供核心业务Action复用。
 - `CORE-LD-001`已实现`customer.admit`与`lead.read/create/edit`、ADMITTED准入约束、材料／内容版本／冻结引用、线索／商品／侵权类型／日编号／幂等回执，以及正式运营端页面。详细证据见[验证记录](spec/v0.1/VALIDATION.md)。
 - `CORE-LD-002`已实现真实企业客户账号绑定、密码会话、`WAITING_PUSH → WAITING_REVIEW`原子推送、`lead.push`内部授权、客户固定企业范围、幂等／版本／审计，以及运营推送和客户端只读列表／详情／附件页面。详细证据见[验证记录](spec/v0.1/VALIDATION.md)。
-- 登录后共享壳层及运营／客户端页面已按Demo共享视觉层级对齐；客户审核与归档纠错、运营两分支取证决定、CORE-NT-001线上取证物流、CORE-NT-002开箱材料、CORE-NT-003双身份审核及CORE-NT-007真实公证处开箱已有正式API与页面，并通过相应门禁；出证、退货与转案仍待后续切片。
+- 登录后共享壳层及运营／客户端页面已按Demo共享视觉层级对齐；客户审核与归档纠错、运营两分支取证决定、CORE-NT-001线上取证物流、CORE-NT-002开箱材料、CORE-NT-003双身份审核、CORE-NT-007真实公证处开箱及CORE-NT-004运营出证选择已有正式API与页面，并通过相应门禁；实际出证、退货与转案仍待后续切片。
 
 ## 未决与限制
 
@@ -29,6 +29,7 @@
 
 ## 最近验证
 
+- CORE-NT-004固定代码候选`7882a9e61013266961f29e3e27bf94b8c7e1ee7b`、tree`d6c1c76e04ff8ac7c85302d0208eb5b6dacd35cb`通过独立Final Review（未关闭Critical／Important／Minor均为0）、Level 2定向门禁（后端776、前端418）及隔离PostgreSQL／Chromium公证主链50/50；空库45份迁移与上一支持schema升级、并发和故障回滚验证通过。结果边界见[验证记录](spec/v0.1/VALIDATION.md)，不表示实际出证、退货、转案或生产发布。
 - CORE-NT-007固定代码候选`84380cf80d80822f1afe857a2d71967eb55fe244`、tree`bf3a80d86a5116a249f2f54162d8ba71a459eecb`通过独立Final Review、完整`pnpm verify`（工具73、后端759、前端413）及隔离PostgreSQL／Chromium完整E2E 106/106；迁移专项验证空库44份及上一支持schema升级。证据边界见[验证记录](spec/v0.1/VALIDATION.md)，不表示NT-004～006或生产发布已完成。
 - CORE-NT-003固定代码候选`56a0ed687dc148fa0a26cac21a2aa5aab6350f0d`、tree`9b775440dfa0cf5b136ecd5ec5b364361c46ac89`通过独立Final Review、完整`pnpm verify`（工具71、后端738、前端398）及隔离PostgreSQL／Chromium完整E2E 102/102；迁移专项从空库与上一支持Schema升级通过。证据边界见[验证记录](spec/v0.1/VALIDATION.md)，不表示NT-007、出证、转案或生产发布已完成。
 - CORE-NT-002固定代码候选`f7bca9b9d4eec4d8bce6c8ce3615545cdc5db3d2`、tree`c54221c265b71609b4e4c5dff0c5a30352446e66`通过独立Final Review、完整`pnpm verify`（工具71、后端693、前端365）和隔离PostgreSQL／Chromium完整E2E 96/96；空库41份迁移、上一支持Schema升级、故障回滚与测试库账本校验通过。证据边界见[验证记录](spec/v0.1/VALIDATION.md)；并非后续开箱审核或生产发布。
@@ -46,4 +47,4 @@
 
 ## 下一步
 
-当前实施CORE-NT-004运营出证选择；其后正常出证路径为CORE-NT-005，退货分支为CORE-NT-006。未上线，未执行生产迁移。
+待从已集成的`main`领取CORE-NT-005公证处出证转案；不出证退货分支为CORE-NT-006。NT-004目前只在本地开发分支完成，未推送、未合并、未上线，未执行生产迁移。

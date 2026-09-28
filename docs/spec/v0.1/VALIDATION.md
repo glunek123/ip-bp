@@ -1,5 +1,15 @@
 # SPEC-001 文档验证
 
+## CORE-NT-004 运营出证选择（2026-09-28）
+
+实际通过Level 2业务切片门禁的固定代码候选为`7882a9e61013266961f29e3e27bf94b8c7e1ee7b`，tree`d6c1c76e04ff8ac7c85302d0208eb5b6dacd35cb`。仅允许当前有效、具备`notary.issuance.decide`且覆盖来源线索的内部运营账号，对开箱审核已确认侵权的单事项选择`ISSUE`或`NO_ISSUE`，分别进入`WAITING_CERTIFICATE`或`WAITING_RETURN`；决定、版本、成功审计和幂等回执同事务持久化。运营页面提供两种选择及影响提示；客户仅按绑定企业查看允许的历史摘要。此证据不表示已实际出证、退货、转案或归档。
+
+独立Sol高风险Task审查通过；集成Final Review首轮发现只读运营详情解码过严和跨事项同键并发冲突码错误（Critical 0／Important 2／Minor 0），修复及真实数据库反例补测后由原Reviewer复核`ACCEPTED`，未关闭Critical／Important／Minor均为0。固定候选的后端全套Jest 776/776、前端全套Vitest 418/418、`pnpm check:fast`、`pnpm format:check`、`pnpm spec:check`及`pnpm build:prepared`退出0。曾因旧OpenAPI阶段数组和新增E2E helper类型声明未同步导致开发期检查失败，分别修正后在固定候选重取相应通过结果；未删除测试、放宽断言或忽略失败。本切片按风险规则为Level 2，没有运行也不宣称完整`pnpm verify`通过。
+
+独立`backend/.env.test` PostgreSQL 17.11从空库部署45份前向迁移；`core-nt-004-migration-probe.mjs`在随机临时schema通过完整空库链与上一支持schema升级，并验证约束和失败回滚。固定候选的`pnpm test:e2e:core-ld`在隔离PostgreSQL／Chromium为50/50通过，包含运营两种选择、刷新／重新登录后的持久化、客户最小只读摘要、企业隔离、同事项并发单胜、跨事项同键异参冲突，以及审计／回执故障注入后的整笔回滚和同键重试。故障注入出现的预期500由测试断言核对；本地浏览器报告位于`playwright-report/index.html`。全仓完整E2E未运行，本轮使用受影响的公证／线索50项套件作为Level 2浏览器门禁。
+
+从固定代码候选到完成态的累计差异经Git状态与diff核对，仅为路线图完成状态和唯一Current／Next、项目恢复摘要、本验证记录、开发计划实施勾选及对应已解释的上下文快照；不改变业务契约、权限、状态转换、验收要求、代码、测试输入、构建或运行配置。受影响文档Prettier和`spec:check`通过；原业务结果只归属于`7882a9e`，不冒称收口HEAD实跑，目标分支变化或远端必需检查仍按集成规则处理。
+
 ## CORE-NT-007 公证处身份与开箱入口（2026-09-28）
 
 实际通过完整业务门禁的固定代码候选为`84380cf80d80822f1afe857a2d71967eb55fe244`，tree`bf3a80d86a5116a249f2f54162d8ba71a459eecb`。本Slice以真实`NOTARY`密码账号固定绑定单一公证处，不建立内部部门成员或角色；管理员可正式创建、停用账号。公证处只能读取本公证处待开箱事项的最小事实和本人待提交照片，勾选照片后复用NT-002开箱Command，将单事项`WAITING_UNBOX → UNBOX_REVIEW`；提交后仅可读取冻结照片。运营原入口保留，出证、退货、转案及完整公证门户未纳入本Slice。

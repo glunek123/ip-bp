@@ -21,29 +21,29 @@
 
 **Interface:** `decide(actor, matterId, idempotencyKey, { decision: 'ISSUE' | 'NO_ISSUE', expectedVersion: number })` returns `{ id, stage, version, issuanceDecision: { decision, actorDisplayName, decidedAt } }`.
 
-- [ ] Write RED tests for both choices, each refusal, replay/conflict, concurrency and rollback; verify expected RED with focused Jest.
-- [ ] Add forward migration and matching Prisma schema: stages, Action, one-per-matter immutable decision with actor/department/review linkage. Reuse existing notary receipt and audit records.
-- [ ] Implement row-locked, serializable Command with authorize-before-replay, conditional version update, transactionally bound fact/audit/receipt; verify focused GREEN and database failure-injection behavior.
-- [ ] Review migration from empty and previous supported schema, including old rows and constraints; independently review high-risk task before integration.
+- [x] Write RED tests for both choices, each refusal, replay/conflict, concurrency and rollback; verify expected RED with focused Jest.
+- [x] Add forward migration and matching Prisma schema: stages, Action, one-per-matter immutable decision with actor/department/review linkage. Reuse existing notary receipt and audit records.
+- [x] Implement row-locked, serializable Command with authorize-before-replay, conditional version update, transactionally bound fact/audit/receipt; verify focused GREEN and database failure-injection behavior.
+- [x] Review migration from empty and previous supported schema, including old rows and constraints; independently review high-risk task before integration.
 
 ## Task 2: API and read projections
 
 **Files:** `backend/src/modules/leads/lead-notary.controller.ts`, `lead-notary.dto.ts`, `lead-notary.service.ts`, `notary-list.dto.ts`, `notary-list.service.ts`, `notary-opening-review-read.ts`, `client-notary.service.ts`, `lead.module.ts`, direct contract/read specs.
 
-- [ ] Write RED API and read tests for decision response, stage/detail consistency, stage counts and constrained client historical visibility.
-- [ ] Add `POST /api/v1/notary-matters/:id/issuance-decision`, strict DTO/OpenAPI and existing key validation; extend read-only projections and stage invariants.
-- [ ] Verify focused backend tests and permission catalog compatibility; no action routes for pending certificate/return.
+- [x] Write RED API and read tests for decision response, stage/detail consistency, stage counts and constrained client historical visibility.
+- [x] Add `POST /api/v1/notary-matters/:id/issuance-decision`, strict DTO/OpenAPI and existing key validation; extend read-only projections and stage invariants.
+- [x] Verify focused backend tests and permission catalog compatibility; no action routes for pending certificate/return.
 
 ## Task 3: Real operator UI and browser chain
 
 **Files:** `frontend/src/api/notary.ts`, `frontend/src/modules/leads/NotaryMatterDetailPage.vue`, `NotaryMatterListPage.vue`, `frontend/src/app/AppShell.vue`, related specs, `tests/e2e/core-leads.spec.ts`, support fixture only as needed.
 
-- [ ] Write RED decoder/component tests for the two stages, capability, immutable decision display and submit errors.
-- [ ] Implement two-choice confirmation with consequences, loading and stable error feedback; update stage navigation/counts and read-only historical display.
-- [ ] Run focused frontend tests, typecheck, `pnpm check:fast`, migration probe and isolated database/browser chain. Verify refresh/re-login and no premature NT-005/006 entry.
+- [x] Write RED decoder/component tests for the two stages, capability, immutable decision display and submit errors.
+- [x] Implement two-choice confirmation with consequences, loading and stable error feedback; update stage navigation/counts and read-only historical display.
+- [x] Run focused frontend tests, typecheck, `pnpm check:fast`, migration probe and isolated database/browser chain. Verify refresh/re-login and no premature NT-005/006 entry.
 
 ## Candidate and closure
 
-- [ ] Integrate task changes, independent final Review, close findings, synchronize changed contract and freeze candidate.
-- [ ] Run applicable official gate and isolated PostgreSQL/Chromium E2E; record candidate commit/tree and actual evidence in `VALIDATION.md`.
-- [ ] Only after full UI/API/DB/permission/browser acceptance, mark NT-004 complete, advance unique Current/Next, explain any context drift, run `context:record` and `context:check:strict`. Do not push, merge or deploy without fresh authorization.
+- [x] Integrate task changes, independent final Review, close findings, synchronize changed contract and freeze candidate.
+- [x] Run applicable official gate and isolated PostgreSQL/Chromium E2E; record candidate commit/tree and actual evidence in `VALIDATION.md`.
+- [x] Only after full UI/API/DB/permission/browser acceptance, mark NT-004 complete, advance unique Current/Next, explain any context drift, run `context:record` and `context:check:strict`. Do not push, merge or deploy without fresh authorization.
