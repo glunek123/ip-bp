@@ -8,7 +8,7 @@
 
 ## 当前任务
 
-**CORE-NT-004｜运营出证选择（路线图唯一Current，待领取）**：CORE-NT-007已在本地分支`codex/core-nt-007-notary-account-opening`完成其明确边界，固定代码候选`84380cf`的独立Final Review、完整门禁及106项隔离数据库／Chromium验收通过，详见[验证记录](spec/v0.1/VALIDATION.md)。尚未推送、合并或发布；领取NT-004前须先按授权集成并核对组合tree。CORE-NT-005为路线图Next，不提前扩展出证转案。
+**CORE-NT-004｜运营出证选择（路线图唯一Current，开发中）**：经用户授权，CORE-NT-007已本地快进集成到`main@2abe6d3`，合并tree与已验收收口tree`0870491`一致；固定代码候选`84380cf`的Review、完整门禁及106项隔离数据库／Chromium验收见[验证记录](spec/v0.1/VALIDATION.md)。NT-004在`codex/core-nt-004-issuance-decision`按[小粒度设计](superpowers/specs/2026-09-28-core-nt-004-issuance-decision-design.md)实施；CORE-NT-005为Next，不提前扩展出证转案。未推送、未发布。
 
 线索库／公证阶段导航归属修复已按用户要求并入NT-003开发分支（合并提交`379b9d2`），连同NT-003新增阶段在上述固定候选通过完整组合验证，现已随该分支进入`main`。详见[验证记录](spec/v0.1/VALIDATION.md)。
 
@@ -46,4 +46,4 @@
 
 ## 下一步
 
-下一步按授权先集成已验收的CORE-NT-007并核对组合tree，再领取CORE-NT-004运营出证选择（路线图唯一Current，尚未开工）；其后正常出证路径为CORE-NT-005，退货分支为CORE-NT-006。未上线，未执行生产迁移。
+当前实施CORE-NT-004运营出证选择；其后正常出证路径为CORE-NT-005，退货分支为CORE-NT-006。未上线，未执行生产迁移。
