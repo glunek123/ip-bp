@@ -6009,12 +6009,21 @@ test('disclosure-required lead makes notary submit a real disclosure file before
     mimeType: 'application/pdf',
     buffer: pdfBytes,
   });
+  await expect(form.locator('[data-test^="certificate-select-"]')).toHaveCount(
+    1,
+  );
   await expect(form.locator('[data-test="certificate-submit"]')).toBeDisabled();
+  await expect(
+    form.locator('[data-test="disclosure-file-input"]'),
+  ).toBeEnabled();
   await form.locator('[data-test="disclosure-file-input"]').setInputFiles({
     name: '真实披露材料.pdf',
     mimeType: 'application/pdf',
     buffer: pdfBytes,
   });
+  await expect(form.locator('[data-test^="disclosure-select-"]')).toHaveCount(
+    1,
+  );
   await expect(form.locator('[data-test="certificate-submit"]')).toBeEnabled();
   await form.locator('[data-test="certificate-submit"]').click();
   await expect(page.locator('[data-test="certificate-record"]')).toContainText(
