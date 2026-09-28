@@ -1,6 +1,6 @@
 {
   "version": 1,
-  "recordedAt": "2026-09-28T06:36:50.613Z",
+  "recordedAt": "2026-09-28T06:42:35.298Z",
   "files": {
     ".cursor/rules/verified-feature-integration.mdc": "ffd2306612ba6f09749629c5adb9e645f7f37aa6ee27ff1bc1c3d8b14efeca38",
     ".env.example": "07211cde5c2b59efc21b619b752d4c9b871f0980d2d64ca3c146ad6151fd27ca",
@@ -244,7 +244,7 @@
     "backend/src/modules/leads/lead.module.ts": "eec06da2fe8056d25ecd6eb40f2e2533f12bd47d9c4ef3ccbec4d7b9e65c107e",
     "backend/src/modules/leads/lead.service.spec.ts": "9036eec66afa0bfe27a663bc20dbc924b5e244ab5ae804c6ae5e125b4f7b7677",
     "backend/src/modules/leads/lead.service.ts": "93d009b26bd5aeeba90d849ef7a67001fbfcc99ffa4d9256f117a250ea335da3",
-    "backend/src/modules/leads/notary-list.controller.spec.ts": "ca12ee5b8ae215a1a5d1e2c0dc61e60299df6483b292096a703eabee00320ff2",
+    "backend/src/modules/leads/notary-list.controller.spec.ts": "42e7c19a187bd56b758ad9e9fa1fa3a345e15885d6ff47d65caa3abf45ad5212",
     "backend/src/modules/leads/notary-list.controller.ts": "455020e403d89d54a66283ffad1c66aaffe26dcabea54d66c3e16ee19bd3d6cc",
     "backend/src/modules/leads/notary-list.dto.ts": "06e4e1122cc1c963a976fe878765f59d23317f78bb4c4b7e123947801b238a43",
     "backend/src/modules/leads/notary-list.service.spec.ts": "c68ffc9cd592415acb24b658b6667e9ad175867e93aeaf5e3d2bfd24daf03ed2",
