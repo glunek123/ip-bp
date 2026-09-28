@@ -357,6 +357,8 @@ async function clearDatabase() {
     'notary_opening_review_decisions',
     'notary_opening_review_audit_events',
     'notary_opening_review_receipts',
+    'notary_issuance_decisions',
+    'notary_issuance_decision_audit_events',
   ];
   await database.$transaction(async (transaction) => {
     for (const table of immutableTables) {
@@ -365,6 +367,12 @@ async function clearDatabase() {
       );
     }
     await transaction.notaryOpeningReviewReceipt.deleteMany({
+      where: { departmentId: { in: departmentIds } },
+    });
+    await transaction.notaryIssuanceDecisionAuditEvent.deleteMany({
+      where: { departmentId: { in: departmentIds } },
+    });
+    await transaction.notaryIssuanceDecision.deleteMany({
       where: { departmentId: { in: departmentIds } },
     });
     await transaction.notaryOpeningReviewAuditEvent.deleteMany({

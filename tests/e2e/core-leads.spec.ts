@@ -2897,6 +2897,7 @@ test('real operator and client browser reviews preserve batch history, isolate p
   await page.getByLabel('用户名').fill(coreLeadFixtures.operatorUsername);
   await page.getByLabel('密码').fill(coreLeadFixtures.operatorPassword);
   await page.getByRole('button', { name: '登录', exact: true }).click();
+  await expect(page).toHaveURL(/\/customers$/u);
   await page.goto(`/notary-matters/${operatorMatterId}`);
   await expect(
     page.locator('[data-test="issuance-decision-record"]'),
@@ -2914,7 +2915,13 @@ test('real operator and client browser reviews preserve batch history, isolate p
   await expect(page).toHaveURL(/\/client\/leads$/u);
   await page.goto('/client/notary-matters');
   const pendingReviewRows = page.locator('[data-test="client-notary-row"]');
-  await expect(pendingReviewRows).toHaveCount(3);
+  await expect(pendingReviewRows).toHaveCount(2);
+  await expect(
+    pendingReviewRows.filter({ hasText: operatorFact.businessNo }),
+  ).toHaveCount(0);
+  await expect(
+    pendingReviewRows.filter({ hasText: returnFact.businessNo }),
+  ).toHaveCount(0);
   await expect(
     pendingReviewRows.filter({ hasText: pendingEvidenceBusinessNo }),
   ).toHaveCount(0);
@@ -3011,7 +3018,7 @@ test('real operator and client browser reviews preserve batch history, isolate p
   ).toContainText('已归档');
   await expect(
     ownBatchRows.filter({ hasText: operatorFact.businessNo }),
-  ).toContainText('开箱待确认');
+  ).toContainText('待出证');
 
   const foreignClient = await createClientAccount(request, {
     customerId: coreLeadFixtures.foreignCustomer,
