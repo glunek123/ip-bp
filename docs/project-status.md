@@ -8,7 +8,7 @@
 
 ## 当前任务
 
-**CORE-CA-001｜案件匹配与承办（路线图唯一Current，尚未领取开发）**：前置CORE-NT-006已在`codex/core-nt-006-return-archive`的固定候选`3cba594`通过完整门禁、118项隔离数据库／Chromium验收与独立Final Review；本次仅完成NT-006状态和证据收口，未合并、推送或启动CA-001。CORE-CA-002为Next。详细边界见[验证记录](spec/v0.1/VALIDATION.md)。
+**CORE-CA-001｜案件匹配与承办（路线图唯一Current，尚未领取开发）**：前置CORE-NT-006已快进集成到本地`main@a6ef5f1`，该组合tree重新通过完整门禁及118项隔离数据库／Chromium验收；本次未启动CA-001。CORE-CA-002为Next。原业务候选与集成证据边界见[验证记录](spec/v0.1/VALIDATION.md)。
 
 线索库／公证阶段导航归属修复已按用户要求并入NT-003开发分支（合并提交`379b9d2`），连同NT-003新增阶段在NT-007固定候选通过完整组合验证，现已随该分支进入`main`。详见[验证记录](spec/v0.1/VALIDATION.md)。
 
@@ -29,7 +29,7 @@
 
 ## 最近验证
 
-- CORE-NT-006固定代码候选`3cba594efc18bb58b9148f60cb40e23c82785076`、tree`b33e63d84dc5c2de0db1eebab805f3f05276e40e`通过独立Final Review与补审（未关闭Critical／Important／Minor均为0）、完整`pnpm verify`（工具73、后端846、前端446）及隔离PostgreSQL／Chromium完整E2E 118/118；空库与上一支持schema迁移专项通过。证据边界见[验证记录](spec/v0.1/VALIDATION.md)，不表示案件后续或生产发布完成。
+- CORE-NT-006原固定业务候选`3cba594`通过独立Final Review与补审（未关闭Critical／Important／Minor均为0）及迁移专项；本地`main@a6ef5f1`组合tree重新通过完整`pnpm verify`（工具73、后端846、前端446）及隔离PostgreSQL／Chromium完整E2E 118/118（3.6分钟）。证据边界见[验证记录](spec/v0.1/VALIDATION.md)，不表示案件后续或生产发布完成。
 - CORE-NT-005固定代码候选`debe747b1d95c9e25d1813d3c96118147eb506d7`、tree`ed6042a551f0e9082330dd52f6e3e307b9f8ffab`通过独立Final Review与补审（未关闭Critical／Important／Minor均为0）、完整`pnpm verify`（工具73、后端803、前端440）及隔离PostgreSQL／Chromium完整E2E 113/113；空库与上一支持schema迁移专项通过。证据边界见[验证记录](spec/v0.1/VALIDATION.md)，不表示退货、案件后续或生产发布完成。
 - CORE-NT-004固定代码候选`7882a9e61013266961f29e3e27bf94b8c7e1ee7b`、tree`d6c1c76e04ff8ac7c85302d0208eb5b6dacd35cb`通过独立Final Review（未关闭Critical／Important／Minor均为0）、Level 2定向门禁（后端776、前端418）及隔离PostgreSQL／Chromium公证主链50/50；空库45份迁移与上一支持schema升级、并发和故障回滚验证通过。结果边界见[验证记录](spec/v0.1/VALIDATION.md)，不表示实际出证、退货、转案或生产发布。
 - CORE-NT-007固定代码候选`84380cf80d80822f1afe857a2d71967eb55fe244`、tree`bf3a80d86a5116a249f2f54162d8ba71a459eecb`通过独立Final Review、完整`pnpm verify`（工具73、后端759、前端413）及隔离PostgreSQL／Chromium完整E2E 106/106；迁移专项验证空库44份及上一支持schema升级。证据边界见[验证记录](spec/v0.1/VALIDATION.md)，不表示NT-004～006或生产发布已完成。
@@ -49,4 +49,4 @@
 
 ## 下一步
 
-CORE-NT-006开发分支待按授权进行远端集成；目标分支变化时先核对组合tree并遵守实际门禁。随后从已核实的`main`正式领取CORE-CA-001，当前不实施CA-001。未上线，未执行生产迁移。
+CORE-NT-006已在本地`main`完成组合验证；远端若有新变化，按集成规则重新核对实际组合tree。下一步从已核实的`main`正式领取CORE-CA-001，当前不实施CA-001。未上线，未执行生产迁移。

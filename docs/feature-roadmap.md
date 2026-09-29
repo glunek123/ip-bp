@@ -1,6 +1,6 @@
 # 功能开发路线图
 
-更新日期：2026-09-29。当前已验证业务候选：`CORE-NT-006@3cba594efc18bb58b9148f60cb40e23c82785076`，tree `b33e63d84dc5c2de0db1eebab805f3f05276e40e`；CORE-NT-006已通过独立Final Review、Level 3完整门禁及118项数据库型浏览器验收，证据边界见[验证记录](spec/v0.1/VALIDATION.md)。CORE-CA-001为唯一Current，CORE-CA-002为Next；本次只完成NT-006收口，不开始案件切片。
+更新日期：2026-09-29。当前已验证的本地`main`集成候选：`a6ef5f16addd3d51b152e6b3009714d69c43e99e`，tree `cc6e5a7f1926480d3f4a2a9fe604a7d0128f21b0`；CORE-NT-006已通过独立Final Review，该集成候选通过Level 3完整门禁及118项数据库型浏览器验收，证据边界见[验证记录](spec/v0.1/VALIDATION.md)。CORE-CA-001为唯一Current，CORE-CA-002为Next；本次不开始案件切片。
 
 本文只回答“已经做到哪里、下一步做什么、之后按什么依赖顺序做”。详细业务规则仍以 [`docs/spec/`](spec/) 为准，核心主线的编码级字段、附件与存储边界以[核心业务字段、附件与存储契约](superpowers/specs/2026-09-21-core-flow-field-material-contract.md)为准，技术方案以设计文档为准，当前切片的技术任务以实施计划为准，实际验证结果以 [`docs/spec/v0.1/VALIDATION.md`](spec/v0.1/VALIDATION.md) 为准；[`docs/project-status.md`](project-status.md)仅保留当前恢复摘要。
 
