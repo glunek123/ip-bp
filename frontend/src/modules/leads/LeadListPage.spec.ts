@@ -70,6 +70,16 @@ describe('LeadListPage', () => {
     expect(wrapper.text()).toContain('还没有线索记录');
   });
 
+  it('explains a filtered empty state without suggesting a new lead belongs there', async () => {
+    api.listLeads.mockResolvedValue(result);
+    const { wrapper } = await mountWithRoute('/leads?status=ARCHIVED');
+    expect(wrapper.text()).toContain('「线索已归档」暂无记录');
+    expect(wrapper.text()).toContain('可在侧栏切换其他状态');
+    expect(wrapper.text()).not.toContain(
+      '有创建权限时，可从右上角新建待推送线索',
+    );
+  });
+
   it('renders the compact lead table with platform and product count', async () => {
     api.listLeads.mockResolvedValue({ ...result, items: [summary], total: 1 });
     const { wrapper } = await mountWithRoute('/leads');

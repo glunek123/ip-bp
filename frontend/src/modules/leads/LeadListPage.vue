@@ -110,8 +110,12 @@ onBeforeUnmount(() => request?.abort());
         </div>
         <div v-else-if="items.length === 0" class="state-panel">
           <span class="state-index">0 条记录</span>
-          <h2>还没有线索记录</h2>
-          <p>有创建权限时，可从右上角新建待推送线索。</p>
+          <h2 v-if="selectedStatus">
+            「{{ leadStatusLabels[selectedStatus] }}」暂无记录
+          </h2>
+          <h2 v-else>还没有线索记录</h2>
+          <p v-if="selectedStatus">可在侧栏切换其他状态查看线索。</p>
+          <p v-else>有创建权限时，可从右上角新建待推送线索。</p>
         </div>
         <div v-else class="demo-table-wrap">
           <table class="demo-table">

@@ -108,8 +108,12 @@ onBeforeUnmount(() => request?.abort());
         </div>
         <div v-else-if="items.length === 0" class="state-panel">
           <span class="state-index">0 条记录</span>
-          <h2>当前没有公证事项</h2>
-          <p>线索确认取证并移交后，事项会在这里出现。</p>
+          <h2 v-if="selectedStage">
+            「{{ stageLabels[selectedStage] }}」暂无记录
+          </h2>
+          <h2 v-else>当前没有公证事项</h2>
+          <p v-if="selectedStage">可在侧栏切换其他阶段查看公证事项。</p>
+          <p v-else>线索确认取证并移交后，事项会在这里出现。</p>
         </div>
         <div v-else class="demo-table-wrap">
           <table class="demo-table">

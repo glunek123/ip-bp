@@ -53,6 +53,21 @@ async function mountPage(path: string) {
 afterEach(() => vi.resetAllMocks());
 
 describe('NotaryMatterListPage', () => {
+  it('keeps the transfer hint when no stage is selected', async () => {
+    api.listNotaryMatters.mockResolvedValue({ ...result, items: [], total: 0 });
+    const { wrapper } = await mountPage('/notary-matters');
+    expect(wrapper.text()).toContain('当前没有公证事项');
+    expect(wrapper.text()).toContain('线索确认取证并移交后');
+  });
+
+  it('explains the selected empty stage without repeating the transfer hint', async () => {
+    api.listNotaryMatters.mockResolvedValue({ ...result, items: [], total: 0 });
+    const { wrapper } = await mountPage('/notary-matters?stage=WAITING_RETURN');
+    expect(wrapper.text()).toContain('「待退货」暂无记录');
+    expect(wrapper.text()).toContain('可在侧栏切换其他阶段');
+    expect(wrapper.text()).not.toContain('线索确认取证并移交后');
+  });
+
   it('uses the sidebar stage filter without repeating it above the list', async () => {
     api.listNotaryMatters.mockResolvedValue(result);
     const { wrapper } = await mountPage(
