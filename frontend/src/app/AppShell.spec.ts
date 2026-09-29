@@ -256,6 +256,27 @@ describe('AppShell', () => {
     expect(wrapper.find('[data-test="lead-counter"]').exists()).toBe(false);
   });
 
+  it('keeps the sidebar notary stages as route-backed filters', async () => {
+    const { wrapper, router } = await mountShell(
+      '/notary-matters?stage=ISSUANCE_DECISION',
+    );
+    const stages = wrapper.findAll('[data-test="notary-counter"]');
+    const selected = stages.find((item) =>
+      item.text().startsWith('开箱待确认'),
+    );
+    const waitingReturn = stages.find((item) =>
+      item.text().startsWith('待退货'),
+    );
+
+    expect(selected?.classes()).toContain('active');
+    expect(selected?.attributes('href')).toBe(
+      '/notary-matters?stage=ISSUANCE_DECISION',
+    );
+    await waitingReturn!.trigger('click');
+    await flushPromises();
+    expect(router.currentRoute.value.query.stage).toBe('WAITING_RETURN');
+  });
+
   it('does not show the matter group when its scoped list is forbidden', async () => {
     api.listNotaryMatters.mockRejectedValueOnce(new Error('forbidden'));
     const { wrapper } = await mountShell();

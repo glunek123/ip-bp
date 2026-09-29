@@ -53,6 +53,22 @@ async function mountPage(path: string) {
 afterEach(() => vi.resetAllMocks());
 
 describe('NotaryMatterListPage', () => {
+  it('uses the sidebar stage filter without repeating it above the list', async () => {
+    api.listNotaryMatters.mockResolvedValue(result);
+    const { wrapper } = await mountPage(
+      '/notary-matters?stage=PENDING_EVIDENCE',
+    );
+
+    expect(wrapper.find('nav[aria-label="公证阶段筛选"]').exists()).toBe(false);
+    expect(api.listNotaryMatters).toHaveBeenCalledWith(
+      1,
+      20,
+      expect.objectContaining({ signal: expect.any(AbortSignal) }),
+      'PENDING_EVIDENCE',
+    );
+    expect(wrapper.get('[data-test="matter-row"]').text()).toContain('待取证');
+  });
+
   it('shows each matter separately and preserves its source lead link', async () => {
     api.listNotaryMatters.mockResolvedValue(result);
     const { wrapper } = await mountPage(

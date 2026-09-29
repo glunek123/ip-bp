@@ -823,23 +823,6 @@ button {
   justify-content: flex-end;
   margin-bottom: 12px;
 }
-.lead-list-filters {
-  display: flex;
-  flex-wrap: wrap;
-  gap: 8px;
-  margin: 0 0 14px;
-}
-.lead-list-filters a {
-  padding: 6px 10px;
-  border-radius: 6px;
-  color: var(--color-ink-muted);
-  text-decoration: none;
-}
-.lead-list-filters a.active,
-.lead-list-filters a:hover {
-  background: var(--color-primary-subtle);
-  color: var(--color-primary);
-}
 .lead-pagination {
   display: flex;
   align-items: center;

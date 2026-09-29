@@ -95,20 +95,6 @@ onBeforeUnmount(() => request?.abort());
           <p>逐个办理当前账号有权查看的公证事项。</p>
         </div>
       </div>
-      <nav class="lead-list-filters" aria-label="公证阶段筛选">
-        <RouterLink
-          :to="{ path: '/notary-matters' }"
-          :class="{ active: selectedStage === undefined }"
-          >全部</RouterLink
-        >
-        <RouterLink
-          v-for="stage in notaryListStages"
-          :key="stage"
-          :to="{ path: '/notary-matters', query: { stage } }"
-          :class="{ active: selectedStage === stage }"
-          >{{ stageLabels[stage] }}</RouterLink
-        >
-      </nav>
       <section class="demo-card" aria-live="polite">
         <div v-if="state === 'loading'" class="state-panel">
           <span class="state-index">读取中</span>
