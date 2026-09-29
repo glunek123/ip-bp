@@ -10,6 +10,7 @@ import {
   IsString,
   MaxLength,
   Min,
+  MinLength,
   ValidateNested,
 } from 'class-validator';
 
@@ -17,7 +18,11 @@ export class CaseMatchDefendantDto {
   @ApiProperty({ enum: ['PERSON', 'ORGANIZATION'] })
   @IsIn(['PERSON', 'ORGANIZATION'])
   kind!: 'PERSON' | 'ORGANIZATION';
-  @ApiProperty({ maxLength: 200 }) @IsString() @MaxLength(200) name!: string;
+  @ApiProperty({ minLength: 1, maxLength: 200 })
+  @IsString()
+  @MinLength(1)
+  @MaxLength(200)
+  name!: string;
   @ApiPropertyOptional({ maxLength: 100 })
   @IsOptional()
   @IsString()
@@ -36,11 +41,16 @@ export class CaseMatchDefendantDto {
 }
 
 export class CaseMatchLawyerDto {
-  @ApiProperty({ maxLength: 200 })
+  @ApiProperty({ minLength: 1, maxLength: 200 })
   @IsString()
+  @MinLength(1)
   @MaxLength(200)
   fullName!: string;
-  @ApiProperty({ maxLength: 200 }) @IsString() @MaxLength(200) lawFirm!: string;
+  @ApiProperty({ minLength: 1, maxLength: 200 })
+  @IsString()
+  @MinLength(1)
+  @MaxLength(200)
+  lawFirm!: string;
   @ApiPropertyOptional({ maxLength: 100 })
   @IsOptional()
   @IsString()
@@ -50,8 +60,9 @@ export class CaseMatchLawyerDto {
 
 export class MatchCaseDto {
   @ApiProperty({ minimum: 1 }) @IsInt() @Min(1) expectedVersion!: number;
-  @ApiProperty({ maxLength: 128 })
+  @ApiProperty({ minLength: 1, maxLength: 128 })
   @IsString()
+  @MinLength(1)
   @MaxLength(128)
   idempotencyKey!: string;
   @ApiProperty({ type: [CaseMatchDefendantDto], minItems: 1, maxItems: 20 })

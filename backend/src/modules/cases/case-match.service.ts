@@ -284,7 +284,7 @@ export class CaseMatchService {
   }
   private idempotencyConflict() {
     return new ConflictException({
-      code: 'IDEMPOTENCY_KEY_REUSED',
+      code: 'IDEMPOTENCY_CONFLICT',
       message: '幂等键已用于不同案件匹配请求',
     });
   }

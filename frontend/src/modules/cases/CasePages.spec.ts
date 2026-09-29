@@ -3,6 +3,7 @@ import { createMemoryHistory, createRouter } from 'vue-router';
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 import CaseListPage from './CaseListPage.vue';
 import CaseDetailPage from './CaseDetailPage.vue';
+import { workflowChangedEvent } from '../../app/workflow-events';
 
 const api = vi.hoisted(() => ({
   listCases: vi.fn(),
@@ -73,7 +74,10 @@ beforeEach(() => {
     matchedAt: null,
   });
 });
-afterEach(() => vi.unstubAllGlobals());
+afterEach(() => {
+  vi.unstubAllGlobals();
+  vi.restoreAllMocks();
+});
 
 async function mountRoute(
   path: string,
@@ -131,6 +135,7 @@ describe('case pages', () => {
   it('saves defendants and lawyer, reloads detail, and confirms the real transition', async () => {
     api.matchCase.mockResolvedValue(undefined);
     const wrapper = await mountRoute('/cases/case-1', CaseDetailPage);
+    const eventSpy = vi.spyOn(window, 'dispatchEvent');
     api.getCase.mockResolvedValueOnce({
       id: 'case-1',
       businessNo: 'CA-1',
@@ -191,6 +196,28 @@ describe('case pages', () => {
     expect(api.getCase).toHaveBeenCalledTimes(2);
     expect(wrapper.text()).toContain('案件匹配已完成');
     expect(wrapper.find('[data-test="case-match-form"]').exists()).toBe(false);
+    expect(eventSpy).toHaveBeenCalledWith(
+      expect.objectContaining({ type: workflowChangedEvent }),
+    );
+  });
+
+  it('explains read-only access after matching as well as while awaiting matching', async () => {
+    const pending = await api.getCase();
+    api.getCase.mockResolvedValueOnce({
+      ...pending,
+      stage: 'WAITING_COMPLAINT',
+      canMatch: false,
+      matchedAt: '2026-09-29T01:00:00Z',
+    });
+    const wrapper = await mountRoute('/cases/case-1', CaseDetailPage);
+    expect(wrapper.find('[data-test="case-match-form"]').exists()).toBe(false);
+    expect(wrapper.find('[data-test="case-read-only"]').exists()).toBe(true);
+    expect(wrapper.get('[data-test="case-read-only"]').text()).toContain(
+      '查看案件和下载获准材料',
+    );
+    expect(wrapper.get('[data-test="case-read-only"]').text()).toContain(
+      '匹配已完成',
+    );
   });
 
   it('does not expose matching controls when the case is not actionable', async () => {
@@ -224,5 +251,8 @@ describe('case pages', () => {
     const wrapper = await mountRoute('/cases/case-1', CaseDetailPage);
     expect(wrapper.find('[data-test="case-match-form"]').exists()).toBe(false);
     expect(wrapper.find('[data-test="case-read-only"]').exists()).toBe(true);
+    expect(wrapper.get('[data-test="case-read-only"]').text()).toContain(
+      '当前账号不能办理此案',
+    );
   });
 });

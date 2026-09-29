@@ -10,6 +10,7 @@ import {
   type MatchCaseInput,
 } from '../../api/cases';
 import { downloadMaterialVersion } from '../../api/materials';
+import { notifyWorkflowChanged } from '../../app/workflow-events';
 
 const route = useRoute();
 const id = computed(() => String(route.params.id));
@@ -124,6 +125,7 @@ async function submitMatch() {
       matchSuccess.value = '案件匹配已完成，当前阶段为待写诉状。';
       submissionFingerprint = '';
       idempotencyKey = '';
+      notifyWorkflowChanged();
     } else {
       matchError.value =
         '请求已提交，但尚未能从案件详情确认匹配结果；请刷新核实。';
@@ -318,12 +320,18 @@ onBeforeUnmount(() => request?.abort());
           >
         </section>
         <section
-          v-else-if="item.stage === 'PENDING_MATCH'"
+          v-else
           class="demo-card demo-card--pad"
           data-test="case-read-only"
         >
           <h2 class="form-section-title">案件只读</h2>
-          <p>你可以查看案件和下载获准材料；当前账号不能办理此案。</p>
+          <p>
+            你可以查看案件和下载获准材料；{{
+              item.stage === 'PENDING_MATCH'
+                ? '当前账号不能办理此案。'
+                : '匹配已完成，当前阶段没有可办理的匹配动作。'
+            }}
+          </p>
         </section>
         <section class="demo-card demo-card--pad">
           <h2 class="form-section-title">来源与归属</h2>

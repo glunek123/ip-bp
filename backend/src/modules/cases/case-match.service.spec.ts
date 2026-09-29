@@ -1,4 +1,7 @@
 import { CaseMatchService } from './case-match.service';
+import { plainToInstance } from 'class-transformer';
+import { validateSync } from 'class-validator';
+import { MatchCaseDto } from './case-match.dto';
 
 const actor = {
   userId: '11111111-1111-4111-8111-111111111111',
@@ -138,5 +141,32 @@ describe('CaseMatchService', () => {
       response: { code: 'ACTION_FORBIDDEN' },
     });
     expect(f.tx.caseMatchReceipt.findUnique).not.toHaveBeenCalled();
+  });
+
+  it('uses the documented conflict code when a key is reused for different matching facts', async () => {
+    const f = fixture();
+    f.tx.caseMatchReceipt.findUnique.mockResolvedValue({
+      caseId,
+      requestFingerprint: 'different-request',
+    });
+    await expect(f.service.match(actor, caseId, input)).rejects.toMatchObject({
+      response: { code: 'IDEMPOTENCY_CONFLICT' },
+    });
+    expect(f.tx.case.updateMany).not.toHaveBeenCalled();
+  });
+});
+
+describe('MatchCaseDto', () => {
+  it.each([
+    ['idempotencyKey', { ...input, idempotencyKey: '' }],
+    [
+      'defendant name',
+      { ...input, defendants: [{ kind: 'ORGANIZATION', name: '' }] },
+    ],
+    ['lawyer name', { ...input, lawyer: { ...input.lawyer, fullName: '' } }],
+    ['law firm', { ...input, lawyer: { ...input.lawyer, lawFirm: '' } }],
+  ])('declares %s as a nonempty required field', (_field, body) => {
+    const errors = validateSync(plainToInstance(MatchCaseDto, body));
+    expect(JSON.stringify(errors)).toContain('minLength');
   });
 });
