@@ -80,6 +80,7 @@ const allActions = [
   'NOTARY_UNBOX_RECORD',
   'NOTARY_OPENING_REVIEW',
   'NOTARY_ISSUANCE_DECIDE',
+  'NOTARY_RETURN_ARCHIVE',
   'CASE_READ',
   'NOTARY_OFFICE_MANAGE',
   'LEAD_WITHDRAW_APPLY',
@@ -96,6 +97,7 @@ const actionNames = Object.freeze({
   'notary.unbox.record': 'NOTARY_UNBOX_RECORD',
   'notary.opening.review': 'NOTARY_OPENING_REVIEW',
   'notary.issuance.decide': 'NOTARY_ISSUANCE_DECIDE',
+  'notary.return.archive': 'NOTARY_RETURN_ARCHIVE',
   'case.read': 'CASE_READ',
   'notary.office.manage': 'NOTARY_OFFICE_MANAGE',
   'lead.withdraw.apply': 'LEAD_WITHDRAW_APPLY',
@@ -132,6 +134,10 @@ async function dropFaults() {
     ['notary_opening_review_audit_events', 'core_nt_reject_review_audit'],
     ['notary_opening_review_receipts', 'core_nt_reject_review_receipt'],
     ['notary_issuance_decision_audit_events', 'core_nt_reject_issuance_audit'],
+    ['notary_return_archives', 'core_nt_reject_return_archive'],
+    ['notary_return_amounts', 'core_nt_reject_return_amount'],
+    ['audit_events', 'core_nt_reject_return_audit'],
+    ['notary_matter_command_receipts', 'core_nt_reject_return_receipt'],
     ['cases', 'core_nt_reject_certificate_case'],
     ['notary_matter_command_receipts', 'core_nt_reject_certificate_receipt'],
   ]) {
@@ -364,6 +370,9 @@ async function clearDatabase() {
     'notary_opening_review_receipts',
     'notary_issuance_decisions',
     'notary_issuance_decision_audit_events',
+    'notary_return_archives',
+    'notary_return_amounts',
+    'notary_matter_command_receipts',
     'cases',
     'notary_certificate_fees',
     'notary_certificates',
@@ -387,6 +396,15 @@ async function clearDatabase() {
       where: { certificate: { departmentId: { in: departmentIds } } },
     });
     await transaction.notaryCertificate.deleteMany({
+      where: { departmentId: { in: departmentIds } },
+    });
+    await transaction.notaryReturnAmount.deleteMany({
+      where: { departmentId: { in: departmentIds } },
+    });
+    await transaction.notaryReturnArchive.deleteMany({
+      where: { departmentId: { in: departmentIds } },
+    });
+    await transaction.notaryMatterCommandReceipt.deleteMany({
       where: { departmentId: { in: departmentIds } },
     });
     await transaction.notaryIssuanceDecision.deleteMany({
@@ -1010,6 +1028,44 @@ export function countNotaryIssuanceReceipts(matterId) {
   });
 }
 
+export function countNotaryReturnArchives(matterId) {
+  return database.notaryReturnArchive.count({ where: { matterId } });
+}
+
+export function countNotaryReturnAmounts(matterId) {
+  return database.notaryReturnAmount.count({ where: { matterId } });
+}
+
+export function getNotaryReturnAmounts(matterId) {
+  return database.notaryReturnAmount.findMany({
+    where: { matterId },
+    orderBy: { kind: 'asc' },
+  });
+}
+
+export function getNotarySampleFee(matterId) {
+  return database.notaryMatterEvidence.findUnique({
+    where: { matterId },
+    select: { sampleFeeState: true, sampleFeeAmount: true },
+  });
+}
+
+export function countNotaryReturnAudits(matterId) {
+  return database.auditEvent.count({
+    where: {
+      resourceType: 'notary_matter',
+      resourceId: matterId,
+      action: 'notary.return.archive.succeeded',
+    },
+  });
+}
+
+export function countNotaryReturnReceipts(matterId) {
+  return database.notaryMatterCommandReceipt.count({
+    where: { resultMatterId: matterId, action: 'notary.return.archive' },
+  });
+}
+
 export function countNotaryCertificates(matterId) {
   return database.notaryCertificate.count({ where: { matterId } });
 }
@@ -1232,16 +1288,26 @@ export function setGrant(action, enabled) {
   const prismaAction = actionNames[action];
   if (prismaAction === undefined) throw new Error('Unsupported fixture action');
   if (enabled) {
-    return database.roleGrant.create({
-      data: {
-        roleTemplateId: coreLeadFixtures.roleA,
-        action: prismaAction,
-        scope: 'TEAM',
-      },
+    return database.roleGrant.createMany({
+      data: [
+        {
+          roleTemplateId: coreLeadFixtures.roleA,
+          action: prismaAction,
+          scope: 'TEAM',
+        },
+      ],
+      skipDuplicates: true,
     });
   }
   return database.roleGrant.deleteMany({
     where: { roleTemplateId: coreLeadFixtures.roleA, action: prismaAction },
+  });
+}
+
+export function setInternalAccountActive(userId, active) {
+  return database.userAccount.update({
+    where: { id: userId },
+    data: { active, authorizationRevision: { increment: 1 } },
   });
 }
 
@@ -1347,6 +1413,34 @@ export async function rejectNotaryIssuanceAuditWrites() {
   await dropFaults();
   await database.$executeRawUnsafe(
     'ALTER TABLE "notary_issuance_decision_audit_events" ADD CONSTRAINT "core_nt_reject_issuance_audit" CHECK (false) NOT VALID',
+  );
+}
+
+export async function rejectNotaryReturnArchiveWrites() {
+  await dropFaults();
+  await database.$executeRawUnsafe(
+    'ALTER TABLE "notary_return_archives" ADD CONSTRAINT "core_nt_reject_return_archive" CHECK (false) NOT VALID',
+  );
+}
+
+export async function rejectNotaryReturnAmountWrites() {
+  await dropFaults();
+  await database.$executeRawUnsafe(
+    'ALTER TABLE "notary_return_amounts" ADD CONSTRAINT "core_nt_reject_return_amount" CHECK (false) NOT VALID',
+  );
+}
+
+export async function rejectNotaryReturnAuditWrites() {
+  await dropFaults();
+  await database.$executeRawUnsafe(
+    `ALTER TABLE "audit_events" ADD CONSTRAINT "core_nt_reject_return_audit" CHECK ("action" <> 'notary.return.archive.succeeded') NOT VALID`,
+  );
+}
+
+export async function rejectNotaryReturnReceiptWrites() {
+  await dropFaults();
+  await database.$executeRawUnsafe(
+    `ALTER TABLE "notary_matter_command_receipts" ADD CONSTRAINT "core_nt_reject_return_receipt" CHECK ("action" <> 'notary.return.archive') NOT VALID`,
   );
 }
 

@@ -34,6 +34,12 @@ import {
   countNotaryIssuanceDecisions,
   countNotaryIssuanceAudits,
   countNotaryIssuanceReceipts,
+  countNotaryReturnArchives,
+  countNotaryReturnAmounts,
+  countNotaryReturnAudits,
+  countNotaryReturnReceipts,
+  getNotaryReturnAmounts,
+  getNotarySampleFee,
   countNotaryCertificates,
   countNotaryCertificateAudits,
   countNotaryCertificateReceipts,
@@ -80,6 +86,10 @@ import {
   rejectNotaryOpeningReviewAuditWrites,
   rejectNotaryOpeningReviewReceiptWrites,
   rejectNotaryIssuanceAuditWrites,
+  rejectNotaryReturnArchiveWrites,
+  rejectNotaryReturnAmountWrites,
+  rejectNotaryReturnAuditWrites,
+  rejectNotaryReturnReceiptWrites,
   rejectLeadReviewDecisionWrites,
   rejectClientLeadReviewReceiptWrites,
   rejectWithdrawalApplicationWrites,
@@ -94,6 +104,7 @@ import {
   setNotaryBindingActive,
   setCustomerStatus,
   setGrant,
+  setInternalAccountActive,
   setTeamActive,
   setLeadCounter,
   setMaterialDeletedAt,
@@ -102,6 +113,7 @@ import {
 } from '../support/core-lead-database.mjs';
 
 const authorizationA = { Authorization: `Bearer ${coreLeadFixtures.tokenA}` };
+const authorizationB = { Authorization: `Bearer ${coreLeadFixtures.tokenB}` };
 const authorizationSelf = {
   Authorization: `Bearer ${coreLeadFixtures.tokenSelf}`,
 };
@@ -432,6 +444,38 @@ function decideNotaryIssuance(
     headers: { ...authorizationA, 'Idempotency-Key': key },
     data: { decision, expectedVersion: 4 },
   });
+}
+
+function archiveNotaryReturn(
+  request: APIRequestContext,
+  matterId: string,
+  input: Record<string, unknown>,
+  key = randomUUID(),
+  headers = authorizationA,
+) {
+  return request.post(`/api/v1/notary-matters/${matterId}/return-archive`, {
+    headers: { ...headers, 'Idempotency-Key': key },
+    data: input,
+  });
+}
+
+async function createWaitingReturnMatter(
+  request: APIRequestContext,
+  sampleFee: { state: 'KNOWN'; amount: string } | { state: 'PENDING' } = {
+    state: 'KNOWN',
+    amount: '100.00',
+  },
+) {
+  const client = await createClientAccount(request);
+  const csrf = await loginClient(request, client.username, client.password);
+  const matterId = await createIssuanceReadyMatter(request, csrf, sampleFee);
+  const decision = await decideNotaryIssuance(request, matterId, 'NO_ISSUE');
+  expect(decision.status(), await decision.text()).toBe(201);
+  expect(await getNotaryOpeningReviewMatter(matterId)).toEqual({
+    stage: 'WAITING_RETURN',
+    version: 5,
+  });
+  return { matterId, client };
 }
 
 async function createWaitingUnboxMatter(
@@ -2851,7 +2895,7 @@ test('client notary reads and photo bytes stay within enterprise, exact batch an
   ).toBe(401);
 });
 
-test('real operator and client browser reviews preserve batch history, isolate photos, and show loading and permission states', async ({
+test('real operator and client browser reviews preserve batch history, isolate photos, and show loading and permission states for return archive', async ({
   page,
   request,
 }) => {
@@ -3038,7 +3082,7 @@ test('real operator and client browser reviews preserve batch history, isolate p
     page.locator('[data-test="issuance-decision-record"]'),
   ).toContainText('NO_ISSUE');
   await expect(page.getByRole('button', { name: '完成出证' })).toHaveCount(0);
-  await expect(page.getByRole('button', { name: '办理退货' })).toHaveCount(0);
+  await expect(page.locator('[data-test="return-archive-form"]')).toBeVisible();
   await expect(page.getByRole('button', { name: '转案' })).toHaveCount(0);
   await page.getByRole('button', { name: '退出登录' }).click();
   await page.getByLabel('用户名').fill(coreLeadFixtures.operatorUsername);
@@ -3425,6 +3469,413 @@ test('issuance audit and receipt failures roll back the real PostgreSQL transact
   } finally {
     await allowInjectedFailures();
   }
+});
+
+test('return archive records RETURN, KEEP, and REFUND_ONLY facts without changing sample spend', async ({
+  request,
+}) => {
+  test.setTimeout(120_000);
+  const returned = await createWaitingReturnMatter(request, {
+    state: 'KNOWN',
+    amount: '100.00',
+  });
+  const returnInput = {
+    returnChoice: 'RETURN',
+    refund: {
+      state: 'KNOWN',
+      amount: '60.25',
+      partyKind: 'MERCHANT',
+    },
+    freight: {
+      state: 'KNOWN',
+      amount: '12.00',
+      partyKind: 'OTHER',
+      partyName: '快递公司',
+    },
+    archiveReason: '按客户要求退货',
+    expectedVersion: 5,
+  };
+  const returnResult = await archiveNotaryReturn(
+    request,
+    returned.matterId,
+    returnInput,
+  );
+  expect(returnResult.status(), await returnResult.text()).toBe(201);
+  expect((await returnResult.json()).returnArchive).toMatchObject({
+    returnChoice: 'RETURN',
+    refund: { amount: '60.25', partyKind: 'MERCHANT' },
+    freight: { amount: '12.00', partyKind: 'OTHER', partyName: '快递公司' },
+  });
+  const sourceFee = await getNotarySampleFee(returned.matterId);
+  expect(sourceFee?.sampleFeeState).toBe('KNOWN');
+  expect(sourceFee?.sampleFeeAmount?.toString()).toBe('100');
+  const returnAmounts = await getNotaryReturnAmounts(returned.matterId);
+  expect(returnAmounts).toHaveLength(2);
+  expect(
+    returnAmounts.find((amount) => amount.kind === 'REFUND'),
+  ).toMatchObject({ sourceEvidenceMatterId: returned.matterId });
+  expect(
+    returnAmounts.find((amount) => amount.kind === 'FREIGHT'),
+  ).toMatchObject({ sourceEvidenceMatterId: null });
+
+  const kept = await createWaitingReturnMatter(request);
+  const keepResult = await archiveNotaryReturn(request, kept.matterId, {
+    returnChoice: 'KEEP',
+    archiveReason: '客户决定保留商品',
+    expectedVersion: 5,
+  });
+  expect(keepResult.status(), await keepResult.text()).toBe(201);
+  expect((await keepResult.json()).returnArchive).toMatchObject({
+    returnChoice: 'KEEP',
+    refund: null,
+    freight: null,
+  });
+  expect(await countNotaryReturnAmounts(kept.matterId)).toBe(0);
+
+  const pending = await createWaitingReturnMatter(request);
+  const pendingResult = await archiveNotaryReturn(request, pending.matterId, {
+    returnChoice: 'REFUND_ONLY',
+    refund: { state: 'PENDING' },
+    archiveReason: '退款金额尚待平台确认',
+    expectedVersion: 5,
+  });
+  expect(pendingResult.status(), await pendingResult.text()).toBe(201);
+  expect((await pendingResult.json()).returnArchive.refund).toMatchObject({
+    state: 'PENDING',
+    amount: null,
+  });
+  expect(await countNotaryReturnAmounts(pending.matterId)).toBe(1);
+
+  const zero = await createWaitingReturnMatter(request);
+  const zeroResult = await archiveNotaryReturn(request, zero.matterId, {
+    returnChoice: 'REFUND_ONLY',
+    refund: { state: 'KNOWN', amount: '0.00' },
+    archiveReason: '核实后没有退款金额',
+    expectedVersion: 5,
+  });
+  expect(zeroResult.status(), await zeroResult.text()).toBe(201);
+  expect((await zeroResult.json()).returnArchive.refund).toMatchObject({
+    state: 'KNOWN',
+    amount: '0.00',
+    partyKind: null,
+  });
+  expect(await countNotaryReturnAmounts(zero.matterId)).toBe(1);
+});
+
+test('return archive enforces amount bounds, state, version, grants, enterprise scope and live actor authorization', async ({
+  request,
+}) => {
+  test.setTimeout(120_000);
+  const known = await createWaitingReturnMatter(request);
+  const stale = await archiveNotaryReturn(request, known.matterId, {
+    returnChoice: 'KEEP',
+    archiveReason: '旧版本',
+    expectedVersion: 4,
+  });
+  expect(stale.status()).toBe(409);
+  expect(await countNotaryReturnArchives(known.matterId)).toBe(0);
+
+  const tooMuch = await archiveNotaryReturn(request, known.matterId, {
+    returnChoice: 'REFUND_ONLY',
+    refund: { state: 'KNOWN', amount: '100.01', partyKind: 'FIRM' },
+    archiveReason: '超过原样品支出',
+    expectedVersion: 5,
+  });
+  expect(tooMuch.status()).toBe(409);
+  expect(await countNotaryReturnArchives(known.matterId)).toBe(0);
+
+  const unknown = await createWaitingReturnMatter(request, {
+    state: 'PENDING',
+  });
+  const positiveWithoutOriginal = await archiveNotaryReturn(
+    request,
+    unknown.matterId,
+    {
+      returnChoice: 'REFUND_ONLY',
+      refund: { state: 'KNOWN', amount: '0.01', partyKind: 'FIRM' },
+      archiveReason: '原样品金额待定',
+      expectedVersion: 5,
+    },
+  );
+  expect(positiveWithoutOriginal.status()).toBe(409);
+  expect(await countNotaryReturnArchives(unknown.matterId)).toBe(0);
+
+  const issueMatter = await createIssuanceReadyMatter(
+    request,
+    await loginClient(request, known.client.username, known.client.password),
+  );
+  expect(
+    (await decideNotaryIssuance(request, issueMatter, 'ISSUE')).status(),
+  ).toBe(201);
+  const wrongStage = await archiveNotaryReturn(request, issueMatter, {
+    returnChoice: 'KEEP',
+    archiveReason: '出证事项不能退货归档',
+    expectedVersion: 5,
+  });
+  expect(wrongStage.status()).toBe(409);
+  expect(await countNotaryReturnArchives(issueMatter)).toBe(0);
+
+  const wrongDepartment = await archiveNotaryReturn(
+    request,
+    known.matterId,
+    {
+      returnChoice: 'KEEP',
+      archiveReason: '外部门',
+      expectedVersion: 5,
+    },
+    randomUUID(),
+    authorizationB,
+  );
+  expect([403, 404]).toContain(wrongDepartment.status());
+  const selfScope = await archiveNotaryReturn(
+    request,
+    known.matterId,
+    {
+      returnChoice: 'KEEP',
+      archiveReason: '本人权限范围外',
+      expectedVersion: 5,
+    },
+    randomUUID(),
+    authorizationSelf,
+  );
+  expect(selfScope.status()).toBe(403);
+
+  const notary = await createNotaryAccountForMatter(request, known.matterId);
+  const external = await archiveNotaryReturn(
+    request,
+    known.matterId,
+    {
+      returnChoice: 'KEEP',
+      archiveReason: '外部账号',
+      expectedVersion: 5,
+    },
+    randomUUID(),
+    { 'X-CSRF-Token': notary.csrfToken },
+  );
+  expect(external.status()).toBe(403);
+
+  try {
+    await setGrant('notary.return.archive', false);
+    const noGrant = await archiveNotaryReturn(request, known.matterId, {
+      returnChoice: 'KEEP',
+      archiveReason: '缺少权限Grant',
+      expectedVersion: 5,
+    });
+    expect(noGrant.status()).toBe(403);
+    await setGrant('notary.return.archive', true);
+
+    await setInternalAccountActive(coreLeadFixtures.userA, false);
+    const inactive = await archiveNotaryReturn(request, known.matterId, {
+      returnChoice: 'KEEP',
+      archiveReason: '账号已停用',
+      expectedVersion: 5,
+    });
+    expect(inactive.status()).toBe(403);
+  } finally {
+    await setInternalAccountActive(coreLeadFixtures.userA, true);
+    await setGrant('notary.return.archive', true);
+  }
+  expect(await countNotaryReturnArchives(known.matterId)).toBe(0);
+});
+
+test('return archive replay, changed body and competing keys preserve one committed fact set', async ({
+  request,
+}) => {
+  test.setTimeout(120_000);
+  const { matterId } = await createWaitingReturnMatter(request);
+  const key = randomUUID();
+  const input = {
+    returnChoice: 'KEEP',
+    archiveReason: '同键重放',
+    expectedVersion: 5,
+  };
+  const first = await archiveNotaryReturn(request, matterId, input, key);
+  expect(first.status(), await first.text()).toBe(201);
+  const original = await first.json();
+  const replay = await archiveNotaryReturn(request, matterId, input, key);
+  expect(replay.status(), await replay.text()).toBe(201);
+  expect(await replay.json()).toEqual(original);
+  const changed = await archiveNotaryReturn(
+    request,
+    matterId,
+    { ...input, archiveReason: '同键不同内容' },
+    key,
+  );
+  expect(changed.status()).toBe(409);
+  expect(await countNotaryReturnArchives(matterId)).toBe(1);
+  expect(await countNotaryReturnAudits(matterId)).toBe(1);
+  expect(await countNotaryReturnReceipts(matterId)).toBe(1);
+
+  const competing = await createWaitingReturnMatter(request);
+  const results = await Promise.all([
+    archiveNotaryReturn(request, competing.matterId, input, randomUUID()),
+    archiveNotaryReturn(request, competing.matterId, input, randomUUID()),
+  ]);
+  expect(results.map((response) => response.status()).sort()).toEqual([
+    201, 409,
+  ]);
+  expect(await countNotaryReturnArchives(competing.matterId)).toBe(1);
+  expect(await countNotaryReturnAmounts(competing.matterId)).toBe(0);
+  expect(await countNotaryReturnAudits(competing.matterId)).toBe(1);
+  expect(await countNotaryReturnReceipts(competing.matterId)).toBe(1);
+});
+
+test('return archive fact, amount, audit and receipt failures roll back the PostgreSQL transition', async ({
+  request,
+}) => {
+  test.setTimeout(120_000);
+  try {
+    for (const [inject, withAmount] of [
+      [rejectNotaryReturnArchiveWrites, false],
+      [rejectNotaryReturnAmountWrites, true],
+      [rejectNotaryReturnAuditWrites, false],
+      [rejectNotaryReturnReceiptWrites, false],
+    ] as const) {
+      const { matterId } = await createWaitingReturnMatter(request);
+      await inject();
+      const failed = await archiveNotaryReturn(request, matterId, {
+        returnChoice: withAmount ? 'REFUND_ONLY' : 'KEEP',
+        ...(withAmount
+          ? { refund: { state: 'KNOWN', amount: '10.00', partyKind: 'FIRM' } }
+          : {}),
+        archiveReason: '注入写入失败',
+        expectedVersion: 5,
+      });
+      expect(failed.status(), await failed.text()).toBeGreaterThanOrEqual(500);
+      expect(await getNotaryOpeningReviewMatter(matterId)).toEqual({
+        stage: 'WAITING_RETURN',
+        version: 5,
+      });
+      expect(await countNotaryReturnArchives(matterId)).toBe(0);
+      expect(await countNotaryReturnAmounts(matterId)).toBe(0);
+      expect(await countNotaryReturnAudits(matterId)).toBe(0);
+      expect(await countNotaryReturnReceipts(matterId)).toBe(0);
+      await allowInjectedFailures();
+    }
+  } finally {
+    await allowInjectedFailures();
+  }
+});
+
+test('return archive persists through real operator and customer password sessions with enterprise isolation', async ({
+  page,
+  request,
+}) => {
+  test.setTimeout(120_000);
+  const client = await createClientAccount(request);
+  const foreignClient = await createClientAccount(request, {
+    customerId: coreLeadFixtures.foreignCustomer,
+    headers: authorizationB,
+  });
+  const csrf = await loginClient(request, client.username, client.password);
+  const matterId = await createIssuanceReadyMatter(request, csrf, {
+    state: 'KNOWN',
+    amount: '100.00',
+  });
+
+  await page.goto('/login');
+  await page.getByLabel('用户名').fill(coreLeadFixtures.operatorUsername);
+  await page.getByLabel('密码').fill(coreLeadFixtures.operatorPassword);
+  await page.getByRole('button', { name: '登录', exact: true }).click();
+  await expect(page).toHaveURL(/\/customers$/u);
+  await page.goto(`/notary-matters/${matterId}`);
+  await expect(
+    page.locator('[data-test="issuance-decision-section"]'),
+  ).toBeVisible();
+  await page.locator('[data-test="issuance-decision-no-issue"]').check();
+  await page.locator('[data-test="issuance-decision-submit"]').click();
+  await expect(
+    page.locator('[data-test="issuance-decision-record"]'),
+  ).toContainText('NO_ISSUE');
+  await expect(page.locator('[data-test="return-archive-form"]')).toBeVisible();
+  await page.locator('[data-test="return-archive-return"]').check();
+  await page.locator('[data-test="return-refund-state"]').selectOption('KNOWN');
+  await page.locator('[data-test="return-refund-amount"]').fill('40.00');
+  await page.locator('[data-test="return-refund-party"]').selectOption('FIRM');
+  await page
+    .locator('[data-test="return-freight-state"]')
+    .selectOption('KNOWN');
+  await page.locator('[data-test="return-freight-amount"]').fill('8.50');
+  await page
+    .locator('[data-test="return-freight-party"]')
+    .selectOption('OTHER');
+  await page
+    .locator('[data-test="return-freight-party-name"]')
+    .fill('指定承运方');
+  await page
+    .locator('[data-test="return-archive-reason"]')
+    .fill('客户确认收到商品，按要求办理退货');
+  await page.locator('[data-test="return-archive-submit"]').click();
+  const archived = page.locator('[data-test="return-archive-record"]');
+  await expect(archived).toContainText('退货并退款');
+  await expect(archived).toContainText('40.00 元；我方');
+  await expect(archived).toContainText('8.50 元；指定承运方');
+  await expect(page.locator('[data-test="return-archive-form"]')).toHaveCount(
+    0,
+  );
+  const sourceFee = await getNotarySampleFee(matterId);
+  expect(sourceFee?.sampleFeeState).toBe('KNOWN');
+  expect(sourceFee?.sampleFeeAmount?.toString()).toBe('100');
+  expect(await countNotaryReturnArchives(matterId)).toBe(1);
+  expect(await countNotaryReturnAmounts(matterId)).toBe(2);
+  expect(await countNotaryReturnAudits(matterId)).toBe(1);
+  expect(await countNotaryReturnReceipts(matterId)).toBe(1);
+
+  await page.reload();
+  await expect(archived).toContainText('客户确认收到商品');
+  await page.getByRole('button', { name: '退出登录' }).click();
+  await expect(page).toHaveURL(/\/login$/u);
+  await page.getByLabel('用户名').fill(coreLeadFixtures.operatorUsername);
+  await page.getByLabel('密码').fill(coreLeadFixtures.operatorPassword);
+  await expect(
+    page.getByRole('button', { name: '登录', exact: true }),
+  ).toBeEnabled();
+  await page.getByRole('button', { name: '登录', exact: true }).click();
+  await expect(page).toHaveURL(/\/customers$/u);
+  await page.goto(`/notary-matters/${matterId}`);
+  await expect(archived).toContainText('指定承运方');
+
+  await page.getByRole('button', { name: '退出登录' }).click();
+  await expect(page).toHaveURL(/\/login$/u);
+  await page.getByLabel('用户名').fill(client.username);
+  await page.getByLabel('密码').fill(client.password);
+  await expect(
+    page.getByRole('button', { name: '登录', exact: true }),
+  ).toBeEnabled();
+  await page.getByRole('button', { name: '登录', exact: true }).click();
+  await expect(page).toHaveURL(/\/client\/leads$/u);
+  await page.goto(`/client/notary-matters/${matterId}`);
+  const clientArchive = page.locator(
+    '[data-test="client-return-archive-record"]',
+  );
+  await expect(clientArchive).toBeVisible();
+  const clientText = await page.locator('main').last().innerText();
+  expect(clientText).toContain('退货并退款');
+  expect(clientText).toContain('客户确认收到商品');
+  await expect(page.getByText('review-opening.jpg')).toBeVisible();
+  const photoDownload = page.waitForEvent('download');
+  await page.locator('[data-test^="download-client-opening-photo-"]').click();
+  const downloadedPhoto = await photoDownload;
+  expect(downloadedPhoto.suggestedFilename()).toBe('review-opening.jpg');
+  expect(await readFile(await downloadedPhoto.path())).toEqual(jpegBytes);
+  expect(clientText).not.toContain('40.00');
+  expect(clientText).not.toContain('8.50');
+  expect(clientText).not.toContain('指定承运方');
+  await page.reload();
+  await expect(clientArchive).toContainText('退货并退款');
+  await page.getByRole('button', { name: '退出登录' }).click();
+  await expect(page).toHaveURL(/\/login$/u);
+  await page.getByLabel('用户名').fill(foreignClient.username);
+  await page.getByLabel('密码').fill(foreignClient.password);
+  await expect(
+    page.getByRole('button', { name: '登录', exact: true }),
+  ).toBeEnabled();
+  await page.getByRole('button', { name: '登录', exact: true }).click();
+  await expect(page).toHaveURL(/\/client\/leads$/u);
+  await page.goto(`/client/notary-matters/${matterId}`);
+  await expect(
+    page.getByText('公证事项不存在或当前企业不可访问'),
+  ).toBeVisible();
 });
 
 test('real operator and client logins archive a no-infringement review and preserve it across refresh and processed view', async ({
