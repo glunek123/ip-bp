@@ -303,6 +303,26 @@ describe('NotaryReturnArchiveService', () => {
     expect(result.returnArchive.refund?.partyName).toBe('平台');
   });
 
+  it('accepts a Unicode OTHER party name within the database 200-character bound', async () => {
+    const f = fixture();
+    const partyName = '😀'.repeat(101);
+    await expect(
+      f.service.archive(actor, matterId, 'key', {
+        returnChoice: 'REFUND_ONLY',
+        refund: {
+          state: 'KNOWN',
+          amount: '1.00',
+          partyKind: 'OTHER',
+          partyName,
+        },
+        archiveReason: '仅退款',
+        expectedVersion: 5,
+      }),
+    ).resolves.toMatchObject({
+      returnArchive: { refund: { partyName } },
+    });
+  });
+
   it('accepts a reason within the database 5000-character bound', async () => {
     const f = fixture();
     const archiveReason = '归'.repeat(501);

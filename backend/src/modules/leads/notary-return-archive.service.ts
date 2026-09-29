@@ -386,7 +386,10 @@ export class NotaryReturnArchiveService {
       throw this.validation();
     const partyName =
       input.partyKind === 'OTHER' ? input.partyName?.trim() : null;
-    if (input.partyKind === 'OTHER' && (!partyName || partyName.length > 200))
+    if (
+      input.partyKind === 'OTHER' &&
+      (!partyName || Array.from(partyName).length > 200)
+    )
       throw this.validation();
     if (input.partyKind !== 'OTHER' && input.partyName !== undefined)
       throw this.validation();
