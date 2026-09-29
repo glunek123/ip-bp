@@ -8,7 +8,7 @@
 
 ## 当前任务
 
-**CORE-NT-006｜不出证退货（路线图唯一Current，已领取）**：从已同步的`main@7432082`建立`codex/core-nt-006-return-archive`。本切片一次提交、只记费用事实的边界已获确认并写入[设计](superpowers/specs/2026-09-29-core-nt-006-return-archive-design.md)，尚未实现或验收；CORE-CA-001为Next。NT-005固定候选与远端集成证据见[验证记录](spec/v0.1/VALIDATION.md)。
+**CORE-NT-006｜不出证退货（路线图唯一Current，待正式门禁）**：从已同步的`main@7432082`建立`codex/core-nt-006-return-archive`。一次提交、只记费用事实的边界已获确认并写入[设计](superpowers/specs/2026-09-29-core-nt-006-return-archive-design.md)；正式实现、聚焦PostgreSQL／Chromium验收和独立Final Review已完成，完整门禁与全量E2E尚未执行，不标记切片完成。CORE-CA-001为Next。NT-005固定候选与远端集成证据见[验证记录](spec/v0.1/VALIDATION.md)。
 
 线索库／公证阶段导航归属修复已按用户要求并入NT-003开发分支（合并提交`379b9d2`），连同NT-003新增阶段在NT-007固定候选通过完整组合验证，现已随该分支进入`main`。详见[验证记录](spec/v0.1/VALIDATION.md)。
 
@@ -48,4 +48,4 @@
 
 ## 下一步
 
-在`codex/core-nt-006-return-archive`实施CORE-NT-006不出证退货；CORE-CA-001为后续Next。NT-005未上线，未执行生产迁移。
+在`codex/core-nt-006-return-archive`固定CORE-NT-006候选并执行完整门禁及隔离数据库／浏览器验收；通过后再更新路线图完成状态。CORE-CA-001为后续Next。NT-005未上线，未执行生产迁移。
