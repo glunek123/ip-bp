@@ -134,6 +134,43 @@ export type NotaryIssuanceDecision = {
   actorDisplayName: string;
   decidedAt: string;
 };
+export type NotaryReturnChoice = 'RETURN' | 'KEEP' | 'REFUND_ONLY';
+export type NotaryReturnPartyKind = 'CUSTOMER' | 'FIRM' | 'MERCHANT' | 'OTHER';
+export type NotaryReturnAmountInput =
+  | {
+      state: 'KNOWN';
+      amount: string;
+      partyKind?: NotaryReturnPartyKind;
+      partyName?: string;
+    }
+  | { state: 'PENDING' };
+export type NotaryReturnAmountSummary = {
+  state: 'KNOWN' | 'PENDING';
+  amount: string | null;
+  partyKind: NotaryReturnPartyKind | null;
+  partyName: string | null;
+};
+export type NotaryReturnArchiveSummary = {
+  returnChoice: NotaryReturnChoice;
+  archiveReason: string;
+  archivedAt: string;
+  actorDisplayName: string;
+  refund: NotaryReturnAmountSummary | null;
+  freight: NotaryReturnAmountSummary | null;
+};
+export type ArchiveNotaryReturnInput = {
+  returnChoice: NotaryReturnChoice;
+  refund?: NotaryReturnAmountInput;
+  freight?: NotaryReturnAmountInput;
+  archiveReason: string;
+  expectedVersion: number;
+};
+export type ArchiveNotaryReturnResponse = {
+  id: string;
+  stage: 'ARCHIVED';
+  version: number;
+  returnArchive: NotaryReturnArchiveSummary;
+};
 export type DecideNotaryIssuanceInput = {
   decision: 'ISSUE' | 'NO_ISSUE';
   expectedVersion: number;
@@ -155,6 +192,7 @@ export type ReviewNotaryOpeningResponse = {
   version: number;
   reviewDecision: NotaryOpeningReviewDecision;
 };
+export type NotaryReturnArchiveResponse = ArchiveNotaryReturnResponse;
 
 type RecordNotaryEvidenceBaseInput = {
   evidenceAt: string;
@@ -190,11 +228,13 @@ export type NotaryMatterDetail = Omit<NotaryMatterResult, 'stage'> & {
     recordOpening: boolean;
     reviewOpening: boolean;
     decideIssuance: boolean;
+    archiveReturn: boolean;
   };
   evidence: NotaryEvidence | null;
   opening: NotaryOpening | null;
   reviewDecision: NotaryOpeningReviewDecision | null;
   issuanceDecision: NotaryIssuanceDecision | null;
+  returnArchive: NotaryReturnArchiveSummary | null;
   sourceLead: { id: string; businessNo: string };
   selectedProducts: LeadProduct[];
   selectedMaterials: Array<{
@@ -333,19 +373,116 @@ function isIssuanceDecision(value: unknown): value is NotaryIssuanceDecision {
   );
 }
 
+function isReturnAmountSummary(
+  value: unknown,
+): value is NotaryReturnAmountSummary {
+  if (
+    !isRecord(value) ||
+    !exactKeys(value, ['state', 'amount', 'partyKind', 'partyName']) ||
+    (value.state !== 'KNOWN' && value.state !== 'PENDING') ||
+    (value.amount !== null && !isMoney(value.amount)) ||
+    (value.partyKind !== null &&
+      !['CUSTOMER', 'FIRM', 'MERCHANT', 'OTHER'].includes(
+        value.partyKind as string,
+      )) ||
+    (value.partyName !== null &&
+      (typeof value.partyName !== 'string' || !value.partyName.trim()))
+  )
+    return false;
+  if (value.state === 'PENDING')
+    return (
+      value.amount === null &&
+      value.partyKind === null &&
+      value.partyName === null
+    );
+  if (value.amount === null) return false;
+  const positive = Number(value.amount) > 0;
+  return positive
+    ? value.partyKind !== null &&
+        (value.partyKind === 'OTHER'
+          ? value.partyName !== null
+          : value.partyName === null)
+    : value.partyKind === null && value.partyName === null;
+}
+
+function isReturnArchiveSummary(
+  value: unknown,
+): value is NotaryReturnArchiveSummary {
+  return (
+    isRecord(value) &&
+    exactKeys(value, [
+      'returnChoice',
+      'archiveReason',
+      'archivedAt',
+      'actorDisplayName',
+      'refund',
+      'freight',
+    ]) &&
+    ['RETURN', 'KEEP', 'REFUND_ONLY'].includes(value.returnChoice as string) &&
+    typeof value.archiveReason === 'string' &&
+    value.archiveReason.trim().length > 0 &&
+    typeof value.archivedAt === 'string' &&
+    !Number.isNaN(Date.parse(value.archivedAt)) &&
+    typeof value.actorDisplayName === 'string' &&
+    value.actorDisplayName.trim().length > 0 &&
+    (value.refund === null || isReturnAmountSummary(value.refund)) &&
+    (value.freight === null || isReturnAmountSummary(value.freight)) &&
+    (value.returnChoice === 'RETURN'
+      ? value.refund !== null && value.freight !== null
+      : value.returnChoice === 'REFUND_ONLY'
+        ? value.refund !== null && value.freight === null
+        : value.refund === null && value.freight === null)
+  );
+}
+
+function validReturnAmountInput(value: NotaryReturnAmountInput): boolean {
+  if (!value || typeof value !== 'object') return false;
+  if (value.state === 'PENDING')
+    return exactKeys(value as unknown as Record<string, unknown>, ['state']);
+  if (
+    value.state !== 'KNOWN' ||
+    !isMoney(value.amount) ||
+    !exactKeys(
+      value as unknown as Record<string, unknown>,
+      value.partyName !== undefined
+        ? ['state', 'amount', 'partyKind', 'partyName']
+        : value.partyKind !== undefined
+          ? ['state', 'amount', 'partyKind']
+          : ['state', 'amount'],
+    )
+  )
+    return false;
+  if (Number(value.amount) === 0)
+    return value.partyKind === undefined && value.partyName === undefined;
+  return (
+    value.partyKind !== undefined &&
+    ['CUSTOMER', 'FIRM', 'MERCHANT', 'OTHER'].includes(value.partyKind) &&
+    (value.partyKind === 'OTHER'
+      ? typeof value.partyName === 'string' && !!value.partyName.trim()
+      : value.partyName === undefined)
+  );
+}
+
 function issuanceDecisionMatchesStage(
   stage: unknown,
   decision: NotaryIssuanceDecision | null,
+  returnArchive: NotaryReturnArchiveSummary | null = null,
 ): boolean {
   if (stage === 'ISSUANCE_DECISION') return decision === null;
   if (stage === 'WAITING_CERTIFICATE') return decision?.decision === 'ISSUE';
   if (stage === 'WAITING_RETURN') return decision?.decision === 'NO_ISSUE';
+  if (stage === 'ARCHIVED' && returnArchive)
+    return decision?.decision === 'NO_ISSUE';
+  if (stage === 'ARCHIVED')
+    return decision === null || decision.decision === 'ISSUE';
   return decision === null;
 }
 
 function decisionMatchesStage(
   stage: unknown,
   decision: NotaryOpeningReviewDecision | null,
+  returnArchive: NotaryReturnArchiveSummary | null = null,
+  issuanceDecision: NotaryIssuanceDecision | null = null,
 ): boolean {
   if (stage === 'UNBOX_REVIEW') return decision === null;
   if (stage === 'ISSUANCE_DECISION')
@@ -360,12 +497,20 @@ function decisionMatchesStage(
       decision.reason === null &&
       decision.archivedAt === null
     );
-  if (stage === 'ARCHIVED')
+  if (stage === 'ARCHIVED' && returnArchive)
     return (
-      decision?.result === 'NO_INFRINGEMENT' &&
-      decision.reason !== null &&
-      decision.archivedAt === decision.decidedAt
+      decision?.result === 'INFRINGEMENT' &&
+      decision.reason === null &&
+      decision.archivedAt === null
     );
+  if (stage === 'ARCHIVED')
+    return issuanceDecision?.decision === 'ISSUE'
+      ? decision?.result === 'INFRINGEMENT' &&
+          decision.reason === null &&
+          decision.archivedAt === null
+      : decision?.result === 'NO_INFRINGEMENT' &&
+          decision.reason !== null &&
+          decision.archivedAt === decision.decidedAt;
   return decision === null;
 }
 
@@ -474,25 +619,41 @@ function isMatterDetail(value: unknown): value is NotaryMatterDetail {
       'recordOpening',
       'reviewOpening',
       'decideIssuance',
+      'archiveReturn',
     ]) &&
     typeof detail.capabilities.recordEvidence === 'boolean' &&
     typeof detail.capabilities.recordOpening === 'boolean' &&
     typeof detail.capabilities.reviewOpening === 'boolean' &&
     typeof detail.capabilities.decideIssuance === 'boolean' &&
+    typeof detail.capabilities.archiveReturn === 'boolean' &&
     (detail.evidence === null || isEvidence(detail.evidence)) &&
     (detail.opening === null || isOpening(detail.opening)) &&
     (detail.reviewDecision === null ||
       isReviewDecision(detail.reviewDecision)) &&
     (detail.issuanceDecision === null ||
       isIssuanceDecision(detail.issuanceDecision)) &&
+    (detail.returnArchive === null ||
+      isReturnArchiveSummary(detail.returnArchive)) &&
     decisionMatchesStage(
       detail.stage,
       detail.reviewDecision as NotaryOpeningReviewDecision | null,
+      detail.returnArchive as NotaryReturnArchiveSummary | null,
+      detail.issuanceDecision as NotaryIssuanceDecision | null,
     ) &&
     issuanceDecisionMatchesStage(
       detail.stage,
       detail.issuanceDecision as NotaryIssuanceDecision | null,
+      detail.returnArchive as NotaryReturnArchiveSummary | null,
     ) &&
+    (detail.stage === 'WAITING_RETURN'
+      ? detail.returnArchive === null
+      : detail.capabilities.archiveReturn === false) &&
+    (detail.stage === 'ARCHIVED'
+      ? detail.returnArchive === null ||
+        (detail.returnArchive !== null &&
+          detail.issuanceDecision !== null &&
+          detail.reviewDecision !== null)
+      : detail.returnArchive === null) &&
     (detail.stage === 'PENDING_EVIDENCE'
       ? detail.evidence === null && detail.opening === null
       : detail.evidence !== null &&
@@ -773,6 +934,58 @@ export async function decideNotaryIssuance(
   );
   if (!isDecideNotaryIssuanceResponse(data, id, input)) throw invalidResponse();
   return data;
+}
+
+export async function archiveNotaryReturn(
+  id: string,
+  input: ArchiveNotaryReturnInput,
+  idempotencyKey: string,
+): Promise<ArchiveNotaryReturnResponse> {
+  const archiveReason = input.archiveReason.trim();
+  const validChoice =
+    (input.returnChoice === 'RETURN' &&
+      input.refund !== undefined &&
+      input.freight !== undefined) ||
+    (input.returnChoice === 'REFUND_ONLY' &&
+      input.refund !== undefined &&
+      input.freight === undefined) ||
+    (input.returnChoice === 'KEEP' &&
+      input.refund === undefined &&
+      input.freight === undefined);
+  if (
+    !Number.isInteger(input.expectedVersion) ||
+    input.expectedVersion < 1 ||
+    !validChoice ||
+    !archiveReason ||
+    [...archiveReason].length > 5000 ||
+    (input.refund !== undefined && !validReturnAmountInput(input.refund)) ||
+    (input.freight !== undefined && !validReturnAmountInput(input.freight)) ||
+    idempotencyKey.trim().length === 0
+  )
+    throw new ApiError('退货归档信息无效', 400, 'VALIDATION_ERROR');
+  const body = {
+    returnChoice: input.returnChoice,
+    ...(input.refund ? { refund: { ...input.refund } } : {}),
+    ...(input.freight ? { freight: { ...input.freight } } : {}),
+    archiveReason,
+    expectedVersion: input.expectedVersion,
+  };
+  const data = await requestJson(
+    `/notary-matters/${encodeURIComponent(id)}/return-archive`,
+    { method: 'POST', headers: { 'Idempotency-Key': idempotencyKey }, body },
+  );
+  if (
+    !isRecord(data) ||
+    !exactKeys(data, ['id', 'stage', 'version', 'returnArchive']) ||
+    data.id !== id ||
+    data.stage !== 'ARCHIVED' ||
+    data.version !== input.expectedVersion + 1 ||
+    !isReturnArchiveSummary(data.returnArchive) ||
+    data.returnArchive.returnChoice !== input.returnChoice ||
+    data.returnArchive.archiveReason !== archiveReason
+  )
+    throw invalidResponse();
+  return data as ArchiveNotaryReturnResponse;
 }
 
 export async function recordNotaryEvidence(

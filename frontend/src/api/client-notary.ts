@@ -16,6 +16,11 @@ export type ClientNotaryIssuanceDecision = {
   decision: 'ISSUE' | 'NO_ISSUE';
   decidedAt: string;
 };
+export type ClientNotaryReturnArchive = {
+  returnChoice: 'RETURN' | 'KEEP' | 'REFUND_ONLY';
+  archiveReason: string;
+  archivedAt: string;
+};
 export type ClientNotaryListItem = {
   id: string;
   businessNo: string;
@@ -58,6 +63,7 @@ export type ClientNotaryMatterDetail = {
   };
   reviewDecision: NotaryOpeningReviewDecision | null;
   issuanceDecision: ClientNotaryIssuanceDecision | null;
+  returnArchive: ClientNotaryReturnArchive | null;
   capabilities: { reviewOpening: boolean };
 };
 
@@ -117,6 +123,8 @@ function isDecision(value: unknown): value is NotaryOpeningReviewDecision {
 function decisionMatchesStage(
   stage: ClientNotaryStage,
   decision: NotaryOpeningReviewDecision | null,
+  returnArchive: ClientNotaryReturnArchive | null,
+  issuanceDecision: ClientNotaryIssuanceDecision | null,
 ): boolean {
   if (stage === 'UNBOX_REVIEW') return decision === null;
   if (stage === 'ISSUANCE_DECISION')
@@ -131,6 +139,19 @@ function decisionMatchesStage(
       decision.reason === null &&
       decision.archivedAt === null
     );
+  if (returnArchive)
+    return (
+      stage === 'ARCHIVED' &&
+      decision?.result === 'INFRINGEMENT' &&
+      decision.reason === null &&
+      decision.archivedAt === null
+    );
+  if (stage === 'ARCHIVED' && issuanceDecision?.decision === 'ISSUE')
+    return (
+      decision?.result === 'INFRINGEMENT' &&
+      decision.reason === null &&
+      decision.archivedAt === null
+    );
   return (
     decision?.result === 'NO_INFRINGEMENT' &&
     decision.reason !== null &&
@@ -140,10 +161,28 @@ function decisionMatchesStage(
 function issuanceDecisionMatchesStage(
   stage: ClientNotaryStage,
   decision: ClientNotaryIssuanceDecision | null,
+  returnArchive: ClientNotaryReturnArchive | null,
 ): boolean {
   if (stage === 'WAITING_CERTIFICATE') return decision?.decision === 'ISSUE';
   if (stage === 'WAITING_RETURN') return decision?.decision === 'NO_ISSUE';
+  if (stage === 'ARCHIVED' && returnArchive)
+    return decision?.decision === 'NO_ISSUE';
+  if (stage === 'ARCHIVED')
+    return decision === null || decision.decision === 'ISSUE';
   return decision === null;
+}
+
+function isClientReturnArchive(
+  value: unknown,
+): value is ClientNotaryReturnArchive {
+  return (
+    isRecord(value) &&
+    exactKeys(value, ['returnChoice', 'archiveReason', 'archivedAt']) &&
+    ['RETURN', 'KEEP', 'REFUND_ONLY'].includes(value.returnChoice as string) &&
+    typeof value.archiveReason === 'string' &&
+    value.archiveReason.trim().length > 0 &&
+    isTime(value.archivedAt)
+  );
 }
 function invalidResponse(): ApiError {
   return new ApiError('服务返回了无效的公证审核数据', 200, 'INVALID_RESPONSE');
@@ -185,6 +224,7 @@ function isClientDetail(value: unknown): value is ClientNotaryMatterDetail {
       'opening',
       'reviewDecision',
       'issuanceDecision',
+      'returnArchive',
       'capabilities',
     ])
   )
@@ -192,12 +232,15 @@ function isClientDetail(value: unknown): value is ClientNotaryMatterDetail {
   const stage = value.stage;
   const decision = value.reviewDecision;
   const issuanceDecision = value.issuanceDecision;
+  const returnArchive = value.returnArchive;
   if (
     !isStage(stage) ||
     !(decision === null || isDecision(decision)) ||
     !(issuanceDecision === null || isIssuanceDecision(issuanceDecision)) ||
-    !decisionMatchesStage(stage, decision) ||
-    !issuanceDecisionMatchesStage(stage, issuanceDecision)
+    !(returnArchive === null || isClientReturnArchive(returnArchive)) ||
+    !decisionMatchesStage(stage, decision, returnArchive, issuanceDecision) ||
+    !issuanceDecisionMatchesStage(stage, issuanceDecision, returnArchive) ||
+    (returnArchive !== null && stage !== 'ARCHIVED')
   )
     return false;
   return (

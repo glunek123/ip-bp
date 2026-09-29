@@ -18,6 +18,7 @@ import {
   recordNotaryEvidence,
   reviewNotaryOpening,
   decideNotaryIssuance,
+  archiveNotaryReturn,
 } from './notary';
 
 const matter = {
@@ -33,11 +34,13 @@ const matter = {
     recordOpening: false,
     reviewOpening: false,
     decideIssuance: false,
+    archiveReturn: false,
   },
   evidence: null,
   opening: null,
   reviewDecision: null,
   issuanceDecision: null,
+  returnArchive: null,
   notaryOffice: { id: 'office-1', name: '广州市南方公证处' },
   selectedProductIds: ['product-1'],
   selectedContentVersionIds: ['content-1'],
@@ -101,6 +104,7 @@ describe('notary API', () => {
         recordOpening: false,
         reviewOpening: false,
         decideIssuance: true,
+        archiveReturn: false,
       },
       evidence: {
         evidenceAt: '2026-09-24',
@@ -205,6 +209,66 @@ describe('notary API', () => {
     await expect(getNotaryMatter('matter-1')).rejects.toMatchObject({
       code: 'INVALID_RESPONSE',
     });
+
+    http.getJson.mockResolvedValueOnce({
+      ...reviewed,
+      stage: 'ARCHIVED',
+      version: 6,
+      capabilities: { ...reviewed.capabilities, decideIssuance: false },
+      reviewDecision: {
+        ...reviewed.reviewDecision,
+        result: 'NO_INFRINGEMENT',
+        reason: '未发现侵权',
+        archivedAt: reviewed.reviewDecision.decidedAt,
+      },
+    });
+    await expect(getNotaryMatter('matter-1')).resolves.toMatchObject({
+      stage: 'ARCHIVED',
+      reviewDecision: { result: 'NO_INFRINGEMENT' },
+      returnArchive: null,
+    });
+
+    http.getJson.mockResolvedValueOnce({
+      ...reviewed,
+      stage: 'ARCHIVED',
+      version: 6,
+      capabilities: { ...reviewed.capabilities, decideIssuance: false },
+      issuanceDecision: {
+        decision: 'ISSUE',
+        actorDisplayName: '运营甲',
+        decidedAt: '2026-09-24T04:00:00.000Z',
+      },
+    });
+    await expect(getNotaryMatter('matter-1')).resolves.toMatchObject({
+      stage: 'ARCHIVED',
+      issuanceDecision: { decision: 'ISSUE' },
+      returnArchive: null,
+    });
+
+    http.getJson.mockResolvedValueOnce({
+      ...reviewed,
+      stage: 'ARCHIVED',
+      version: 6,
+      capabilities: { ...reviewed.capabilities, decideIssuance: false },
+      issuanceDecision: {
+        decision: 'NO_ISSUE',
+        actorDisplayName: '运营甲',
+        decidedAt: '2026-09-24T04:00:00.000Z',
+      },
+      returnArchive: {
+        returnChoice: 'KEEP',
+        archiveReason: '客户保留商品',
+        archivedAt: '2026-09-24T05:00:00.000Z',
+        actorDisplayName: '运营甲',
+        refund: null,
+        freight: null,
+      },
+    });
+    await expect(getNotaryMatter('matter-1')).resolves.toMatchObject({
+      stage: 'ARCHIVED',
+      issuanceDecision: { decision: 'NO_ISSUE' },
+      returnArchive: { returnChoice: 'KEEP', refund: null, freight: null },
+    });
   });
 
   it('submits an explicit opening result with expected version and idempotency key', async () => {
@@ -292,6 +356,76 @@ describe('notary API', () => {
         body: { decision: 'ISSUE', expectedVersion: 5 },
       },
     );
+  });
+
+  it('submits a conditional return archive command with an idempotency key', async () => {
+    const result = {
+      id: 'matter-1',
+      stage: 'ARCHIVED',
+      version: 6,
+      returnArchive: {
+        returnChoice: 'RETURN',
+        archiveReason: '客户确认退货',
+        archivedAt: '2026-09-29T03:00:00.000Z',
+        actorDisplayName: '运营甲',
+        refund: {
+          state: 'KNOWN',
+          amount: '10.00',
+          partyKind: 'CUSTOMER',
+          partyName: null,
+        },
+        freight: {
+          state: 'PENDING',
+          amount: null,
+          partyKind: null,
+          partyName: null,
+        },
+      },
+    };
+    http.requestJson.mockResolvedValue(result);
+    await expect(
+      archiveNotaryReturn(
+        'matter-1',
+        {
+          returnChoice: 'RETURN',
+          refund: {
+            state: 'KNOWN',
+            amount: '10.00',
+            partyKind: 'CUSTOMER',
+          },
+          freight: { state: 'PENDING' },
+          archiveReason: ' 客户确认退货 ',
+          expectedVersion: 5,
+        },
+        'return-key',
+      ),
+    ).resolves.toEqual(result);
+    expect(http.requestJson).toHaveBeenCalledWith(
+      '/notary-matters/matter-1/return-archive',
+      {
+        method: 'POST',
+        headers: { 'Idempotency-Key': 'return-key' },
+        body: {
+          returnChoice: 'RETURN',
+          refund: { state: 'KNOWN', amount: '10.00', partyKind: 'CUSTOMER' },
+          freight: { state: 'PENDING' },
+          archiveReason: '客户确认退货',
+          expectedVersion: 5,
+        },
+      },
+    );
+    await expect(
+      archiveNotaryReturn(
+        'matter-1',
+        {
+          returnChoice: 'KEEP',
+          refund: { state: 'PENDING' },
+          archiveReason: '完成',
+          expectedVersion: 5,
+        },
+        'keep-key',
+      ),
+    ).rejects.toMatchObject({ code: 'VALIDATION_ERROR' });
   });
   it('lists only validated active notary offices with create capability', async () => {
     const result = {
@@ -427,6 +561,7 @@ describe('notary API', () => {
         recordOpening: false,
         reviewOpening: false,
         decideIssuance: false,
+        archiveReturn: false,
       },
       reviewDecision: null,
       evidence: null,
@@ -460,6 +595,7 @@ describe('notary API', () => {
         recordOpening: false,
         reviewOpening: false,
         decideIssuance: false,
+        archiveReturn: false,
       },
       reviewDecision: null,
       evidence: null,
@@ -473,6 +609,7 @@ describe('notary API', () => {
         recordOpening: false,
         reviewOpening: false,
         decideIssuance: false,
+        archiveReturn: false,
       },
       reviewDecision: null,
       evidence: {
@@ -537,6 +674,7 @@ describe('notary API', () => {
         recordOpening: false,
         reviewOpening: false,
         decideIssuance: false,
+        archiveReturn: false,
       },
       reviewDecision: null,
       evidence: {
@@ -591,6 +729,7 @@ describe('notary API', () => {
         recordOpening: false,
         reviewOpening: false,
         decideIssuance: false,
+        archiveReturn: false,
       },
       reviewDecision: null,
       opening: { ...opening, photos: [{ ...opening.photos[0], mimeType: 42 }] },

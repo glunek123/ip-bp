@@ -18,7 +18,11 @@ import {
   recordNotaryOpening,
   reviewNotaryOpening,
   decideNotaryIssuance,
+  archiveNotaryReturn,
   type NotaryMatterDetail,
+  type NotaryReturnAmountInput,
+  type NotaryReturnAmountSummary,
+  type NotaryReturnChoice,
   type RecordNotaryEvidenceInput,
   type RecordNotaryOpeningInput,
 } from '../../api/notary';
@@ -72,6 +76,21 @@ const issuanceSuccess = ref('');
 const submittingIssuance = ref(false);
 const issuanceRetryLocked = ref(false);
 const issuanceRetryAvailable = ref(false);
+const returnChoice = ref<'' | NotaryReturnChoice>('');
+const returnReason = ref('');
+const refundState = ref<'' | 'KNOWN' | 'PENDING'>('');
+const refundAmount = ref('');
+const refundPartyKind = ref('');
+const refundPartyName = ref('');
+const freightState = ref<'' | 'KNOWN' | 'PENDING'>('');
+const freightAmount = ref('');
+const freightPartyKind = ref('');
+const freightPartyName = ref('');
+const returnArchiveError = ref('');
+const returnArchiveSuccess = ref('');
+const submittingReturnArchive = ref(false);
+const returnArchiveRetryLocked = ref(false);
+const returnArchiveRetryAvailable = ref(false);
 const deletingOpeningMaterialId = ref<string | null>(null);
 const refreshingOpeningPhotos = ref(false);
 let evidenceIdempotencyKey = '';
@@ -82,6 +101,8 @@ let reviewIdempotencyKey = '';
 let reviewSubmissionFingerprint = '';
 let issuanceIdempotencyKey = '';
 let issuanceSubmissionFingerprint = '';
+let returnArchiveIdempotencyKey = '';
+let returnArchiveSubmissionFingerprint = '';
 let request: AbortController | undefined;
 let nextOpeningPhotoLocalId = 1;
 
@@ -420,6 +441,184 @@ function makeReviewKey(): string {
     globalThis.crypto?.randomUUID?.() ??
     `notary-review-${Date.now()}-${Math.random().toString(16).slice(2)}`
   );
+}
+
+function returnChoiceLabel(choice: NotaryReturnChoice): string {
+  return choice === 'RETURN'
+    ? '退货并退款'
+    : choice === 'KEEP'
+      ? '保留商品，不退款'
+      : '不寄回商品，只退款';
+}
+
+function returnPartyLabel(kind: string | null): string {
+  return kind === 'CUSTOMER'
+    ? '客户'
+    : kind === 'FIRM'
+      ? '我方'
+      : kind === 'MERCHANT'
+        ? '商家／平台'
+        : kind === 'OTHER'
+          ? '其他'
+          : '';
+}
+
+function returnAmountLabel(
+  label: string,
+  amount: NotaryReturnAmountSummary | null,
+): string {
+  if (!amount) return `${label}：不适用`;
+  if (amount.state === 'PENDING') return `${label}：待定`;
+  const party = amount.partyKind
+    ? `；${amount.partyKind === 'OTHER' ? amount.partyName : returnPartyLabel(amount.partyKind)}`
+    : '';
+  return `${label}：${amount.amount} 元${party}`;
+}
+
+function readReturnAmount(
+  label: string,
+  state: '' | 'KNOWN' | 'PENDING',
+  amount: string,
+  partyKind: string,
+  partyName: string,
+): NotaryReturnAmountInput | null {
+  if (!state) {
+    returnArchiveError.value = `请选择${label}状态`;
+    return null;
+  }
+  if (state === 'PENDING') return { state: 'PENDING' };
+  if (!/^(0|[1-9]\d{0,15})\.\d{2}$/u.test(amount)) {
+    returnArchiveError.value = `${label}金额请输入非负且保留两位小数的金额`;
+    return null;
+  }
+  if (Number(amount) > 0) {
+    if (!partyKind) {
+      returnArchiveError.value = `请选择${label}${label === '退款' ? '收款方' : '承担方'}`;
+      return null;
+    }
+    if (partyKind === 'OTHER' && !partyName.trim()) {
+      returnArchiveError.value = `请填写${label}${label === '退款' ? '收款方' : '承担方'}名称`;
+      return null;
+    }
+    return {
+      state: 'KNOWN',
+      amount,
+      partyKind: partyKind as 'CUSTOMER' | 'FIRM' | 'MERCHANT' | 'OTHER',
+      ...(partyKind === 'OTHER' ? { partyName: partyName.trim() } : {}),
+    };
+  }
+  return { state: 'KNOWN', amount };
+}
+
+async function submitReturnArchive(): Promise<void> {
+  returnArchiveError.value = '';
+  returnArchiveSuccess.value = '';
+  const current = matter.value;
+  if (
+    !current?.capabilities.archiveReturn ||
+    current.stage !== 'WAITING_RETURN' ||
+    submittingReturnArchive.value
+  )
+    return;
+  if (!returnChoice.value) {
+    returnArchiveError.value = '请选择办理方式';
+    return;
+  }
+  const normalizedReason = returnReason.value.trim();
+  if (!normalizedReason) {
+    returnArchiveError.value = '请填写归档原因';
+    return;
+  }
+  if ([...normalizedReason].length > 5000) {
+    returnArchiveError.value = '归档原因不能超过 5000 字';
+    return;
+  }
+  let refund: NotaryReturnAmountInput | undefined;
+  let freight: NotaryReturnAmountInput | undefined;
+  if (returnChoice.value === 'RETURN' || returnChoice.value === 'REFUND_ONLY') {
+    const parsed = readReturnAmount(
+      '退款',
+      refundState.value,
+      refundAmount.value,
+      refundPartyKind.value,
+      refundPartyName.value,
+    );
+    if (!parsed) return;
+    refund = parsed;
+  }
+  if (returnChoice.value === 'RETURN') {
+    const parsed = readReturnAmount(
+      '退货运费',
+      freightState.value,
+      freightAmount.value,
+      freightPartyKind.value,
+      freightPartyName.value,
+    );
+    if (!parsed) return;
+    freight = parsed;
+  }
+  const input = {
+    returnChoice: returnChoice.value,
+    ...(refund ? { refund } : {}),
+    ...(freight ? { freight } : {}),
+    archiveReason: normalizedReason,
+    expectedVersion: current.version,
+  } as const;
+  const fingerprint = JSON.stringify(input);
+  if (fingerprint !== returnArchiveSubmissionFingerprint) {
+    returnArchiveSubmissionFingerprint = fingerprint;
+    returnArchiveIdempotencyKey = makeReviewKey();
+  }
+  returnArchiveRetryAvailable.value = false;
+  submittingReturnArchive.value = true;
+  try {
+    await archiveNotaryReturn(current.id, input, returnArchiveIdempotencyKey);
+    notifyWorkflowChanged();
+    const loaded = await load();
+    if (
+      loaded &&
+      matter.value?.returnArchive?.returnChoice === input.returnChoice
+    ) {
+      returnArchiveSuccess.value = '退货归档已保存。';
+      returnArchiveIdempotencyKey = '';
+      returnArchiveSubmissionFingerprint = '';
+      returnArchiveRetryLocked.value = false;
+      returnArchiveRetryAvailable.value = false;
+    } else {
+      returnArchiveRetryLocked.value = true;
+      returnArchiveRetryAvailable.value = true;
+      returnArchiveError.value =
+        '归档已提交，但暂时无法读取保存结果；可使用相同请求键重试或刷新确认。';
+    }
+  } catch (error) {
+    const code = error instanceof ApiError ? error.code : '';
+    if (code === 'VERSION_CONFLICT' || code === 'INVALID_STATE') {
+      returnArchiveIdempotencyKey = '';
+      returnArchiveSubmissionFingerprint = '';
+      returnArchiveRetryLocked.value = false;
+      returnArchiveRetryAvailable.value = false;
+      returnArchiveError.value = '事项状态或版本已变化，请刷新查看最新阶段。';
+    } else if (code === 'IDEMPOTENCY_CONFLICT') {
+      returnArchiveIdempotencyKey = '';
+      returnArchiveSubmissionFingerprint = '';
+      returnArchiveRetryLocked.value = false;
+      returnArchiveRetryAvailable.value = false;
+      returnArchiveError.value = '本次请求与已提交内容冲突，请刷新后重新填写。';
+    } else if (code === 'ACTION_FORBIDDEN' || code === 'FORBIDDEN') {
+      returnArchiveRetryLocked.value = true;
+      returnArchiveError.value = '当前账号无权办理退货归档，请刷新权限后重试。';
+    } else if (code === 'RESOURCE_NOT_FOUND' || code === 'NOT_FOUND') {
+      returnArchiveRetryLocked.value = true;
+      returnArchiveError.value = '事项不存在或当前不可访问，请刷新列表。';
+    } else {
+      returnArchiveRetryLocked.value = true;
+      returnArchiveRetryAvailable.value = true;
+      returnArchiveError.value =
+        '退货归档失败；可使用相同请求键重试或刷新查看结果。';
+    }
+  } finally {
+    submittingReturnArchive.value = false;
+  }
 }
 
 async function submitIssuanceDecision(): Promise<void> {
@@ -1108,6 +1307,248 @@ onBeforeUnmount(() => request?.abort());
           </p>
           <p>决定人：{{ matter.issuanceDecision.actorDisplayName }}</p>
           <p>决定时间：{{ formatTime(matter.issuanceDecision.decidedAt) }}</p>
+        </section>
+        <section
+          v-if="
+            matter.capabilities.archiveReturn &&
+            matter.stage === 'WAITING_RETURN'
+          "
+          class="demo-card demo-card--pad"
+          data-test="return-archive-form"
+        >
+          <h2 class="form-section-title">办理退货归档</h2>
+          <p>提交后事项将不可逆地归档；本操作不会发起付款。</p>
+          <form @submit.prevent="submitReturnArchive">
+            <fieldset>
+              <legend>选择办理方式<RequiredFieldMark /></legend>
+              <label>
+                <input
+                  v-model="returnChoice"
+                  data-test="return-archive-return"
+                  type="radio"
+                  name="return-choice"
+                  value="RETURN"
+                  :disabled="
+                    submittingReturnArchive || returnArchiveRetryLocked
+                  "
+                />
+                收到货后办理退货和退款
+              </label>
+              <label>
+                <input
+                  v-model="returnChoice"
+                  data-test="return-archive-keep"
+                  type="radio"
+                  name="return-choice"
+                  value="KEEP"
+                  :disabled="
+                    submittingReturnArchive || returnArchiveRetryLocked
+                  "
+                />
+                收到货后保留商品，不退款
+              </label>
+              <label>
+                <input
+                  v-model="returnChoice"
+                  data-test="return-archive-refund-only"
+                  type="radio"
+                  name="return-choice"
+                  value="REFUND_ONLY"
+                  :disabled="
+                    submittingReturnArchive || returnArchiveRetryLocked
+                  "
+                />
+                不寄回商品，只办理退款
+              </label>
+            </fieldset>
+            <template
+              v-if="returnChoice === 'RETURN' || returnChoice === 'REFUND_ONLY'"
+            >
+              <fieldset data-test="return-refund-fields">
+                <legend>退款金额<RequiredFieldMark /></legend>
+                <label
+                  >退款状态<RequiredFieldMark />
+                  <select
+                    v-model="refundState"
+                    data-test="return-refund-state"
+                    required
+                    :disabled="
+                      submittingReturnArchive || returnArchiveRetryLocked
+                    "
+                  >
+                    <option value="">请选择</option>
+                    <option value="KNOWN">已知</option>
+                    <option value="PENDING">待定</option>
+                  </select>
+                </label>
+                <label v-if="refundState === 'KNOWN'"
+                  >退款金额（元）<RequiredFieldMark />
+                  <input
+                    v-model="refundAmount"
+                    data-test="return-refund-amount"
+                    inputmode="decimal"
+                    placeholder="0.00"
+                    required
+                    :disabled="
+                      submittingReturnArchive || returnArchiveRetryLocked
+                    "
+                  />
+                </label>
+                <p>金额为 0.00 时无需选择收款方；待定不会记为 0 元。</p>
+                <template
+                  v-if="refundState === 'KNOWN' && Number(refundAmount) > 0"
+                >
+                  <label
+                    >退款收款方<RequiredFieldMark />
+                    <select
+                      v-model="refundPartyKind"
+                      data-test="return-refund-party"
+                      required
+                      :disabled="
+                        submittingReturnArchive || returnArchiveRetryLocked
+                      "
+                    >
+                      <option value="">请选择</option>
+                      <option value="CUSTOMER">客户企业</option>
+                      <option value="FIRM">我方</option>
+                      <option value="MERCHANT">商家／平台</option>
+                      <option value="OTHER">其他</option>
+                    </select>
+                  </label>
+                  <label v-if="refundPartyKind === 'OTHER'"
+                    >收款方名称<RequiredFieldMark />
+                    <input
+                      v-model="refundPartyName"
+                      data-test="return-refund-party-name"
+                      required
+                      :disabled="
+                        submittingReturnArchive || returnArchiveRetryLocked
+                      "
+                    />
+                  </label>
+                </template>
+              </fieldset>
+            </template>
+            <fieldset
+              v-if="returnChoice === 'RETURN'"
+              data-test="return-freight-fields"
+            >
+              <legend>退货运费<RequiredFieldMark /></legend>
+              <label
+                >运费状态<RequiredFieldMark />
+                <select
+                  v-model="freightState"
+                  data-test="return-freight-state"
+                  required
+                  :disabled="
+                    submittingReturnArchive || returnArchiveRetryLocked
+                  "
+                >
+                  <option value="">请选择</option>
+                  <option value="KNOWN">已知</option>
+                  <option value="PENDING">待定</option>
+                </select>
+              </label>
+              <label v-if="freightState === 'KNOWN'"
+                >运费金额（元）<RequiredFieldMark />
+                <input
+                  v-model="freightAmount"
+                  data-test="return-freight-amount"
+                  inputmode="decimal"
+                  placeholder="0.00"
+                  required
+                  :disabled="
+                    submittingReturnArchive || returnArchiveRetryLocked
+                  "
+                />
+              </label>
+              <p>金额为 0.00 时无需选择承担方；待定不会记为 0 元。</p>
+              <template
+                v-if="freightState === 'KNOWN' && Number(freightAmount) > 0"
+              >
+                <label
+                  >运费承担方<RequiredFieldMark />
+                  <select
+                    v-model="freightPartyKind"
+                    data-test="return-freight-party"
+                    required
+                    :disabled="
+                      submittingReturnArchive || returnArchiveRetryLocked
+                    "
+                  >
+                    <option value="">请选择</option>
+                    <option value="CUSTOMER">客户企业</option>
+                    <option value="FIRM">我方</option>
+                    <option value="MERCHANT">商家／平台</option>
+                    <option value="OTHER">其他</option>
+                  </select>
+                </label>
+                <label v-if="freightPartyKind === 'OTHER'"
+                  >承担方名称<RequiredFieldMark />
+                  <input
+                    v-model="freightPartyName"
+                    data-test="return-freight-party-name"
+                    required
+                    :disabled="
+                      submittingReturnArchive || returnArchiveRetryLocked
+                    "
+                  />
+                </label>
+              </template>
+            </fieldset>
+            <label
+              >归档原因<RequiredFieldMark />
+              <textarea
+                v-model="returnReason"
+                data-test="return-archive-reason"
+                maxlength="5000"
+                required
+                :disabled="submittingReturnArchive || returnArchiveRetryLocked"
+              />
+            </label>
+            <p
+              v-if="returnArchiveError"
+              class="field-error"
+              role="alert"
+              data-test="return-archive-error"
+            >
+              {{ returnArchiveError }}
+            </p>
+            <p v-if="returnArchiveSuccess" role="status">
+              {{ returnArchiveSuccess }}
+            </p>
+            <ElButton
+              data-test="return-archive-submit"
+              native-type="submit"
+              :loading="submittingReturnArchive"
+              :disabled="
+                submittingReturnArchive ||
+                (returnArchiveRetryLocked && !returnArchiveRetryAvailable)
+              "
+              >{{
+                returnArchiveRetryAvailable
+                  ? '使用相同请求键重试'
+                  : '确认并归档'
+              }}</ElButton
+            >
+          </form>
+        </section>
+        <section
+          v-if="matter.returnArchive"
+          class="demo-card demo-card--pad"
+          data-test="return-archive-record"
+        >
+          <h2 class="form-section-title">退货归档记录</h2>
+          <p>
+            办理方式：{{ returnChoiceLabel(matter.returnArchive.returnChoice) }}
+          </p>
+          <p>归档原因：{{ matter.returnArchive.archiveReason }}</p>
+          <p>归档人：{{ matter.returnArchive.actorDisplayName }}</p>
+          <p>归档时间：{{ formatTime(matter.returnArchive.archivedAt) }}</p>
+          <p>{{ returnAmountLabel('退款', matter.returnArchive.refund) }}</p>
+          <p>
+            {{ returnAmountLabel('退货运费', matter.returnArchive.freight) }}
+          </p>
         </section>
         <section
           v-if="

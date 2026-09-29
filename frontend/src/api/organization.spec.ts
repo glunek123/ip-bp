@@ -126,6 +126,11 @@ const context = {
       scopes: ['SELF', 'TEAM', 'DEPARTMENT'],
     },
     {
+      action: 'NOTARY_RETURN_ARCHIVE',
+      label: '办理退货归档',
+      scopes: ['SELF', 'TEAM', 'DEPARTMENT'],
+    },
+    {
       action: 'CASE_READ',
       label: '查看案件',
       scopes: ['DEPARTMENT'],
@@ -196,6 +201,7 @@ describe('organization API', () => {
       'NOTARY_UNBOX_RECORD',
       'NOTARY_OPENING_REVIEW',
       'NOTARY_ISSUANCE_DECIDE',
+      'NOTARY_RETURN_ARCHIVE',
       'CASE_READ',
       'NOTARY_OFFICE_MANAGE',
       'USER_READ',

@@ -24,6 +24,57 @@ async function mountPage() {
 }
 
 describe('ClientNotaryDetailPage issuance history', () => {
+  it('shows the minimal return archive summary without internal amount fields', async () => {
+    api.getClientNotaryMatter.mockResolvedValue({
+      id: 'matter-1',
+      businessNo: 'NT-001',
+      stage: 'ARCHIVED',
+      version: 6,
+      createdAt: '2026-09-24T01:00:00.000Z',
+      sourceLead: { id: 'lead-1', businessNo: 'LD-001' },
+      selectedProducts: [],
+      opening: {
+        recordedAt: '2026-09-24T02:00:00.000Z',
+        photos: [
+          {
+            materialId: 'photo-1',
+            contentVersionId: 'photo-v1',
+            originalFilename: '开箱.jpg',
+            mimeType: 'image/jpeg',
+          },
+        ],
+      },
+      reviewDecision: {
+        result: 'INFRINGEMENT',
+        reason: null,
+        actorKind: 'CLIENT',
+        actorDisplayName: '客户审核员',
+        decidedAt: '2026-09-24T03:00:00.000Z',
+        archivedAt: null,
+      },
+      issuanceDecision: {
+        decision: 'NO_ISSUE',
+        decidedAt: '2026-09-25T04:00:00.000Z',
+      },
+      returnArchive: {
+        returnChoice: 'REFUND_ONLY',
+        archiveReason: '商家同意退款，无需寄回',
+        archivedAt: '2026-09-25T05:00:00.000Z',
+      },
+      capabilities: { reviewOpening: false },
+    });
+    const wrapper = await mountPage();
+    const record = wrapper.get('[data-test="client-return-archive-record"]');
+    expect(record.text()).toContain('不寄回商品，只退款');
+    expect(record.text()).toContain('商家同意退款，无需寄回');
+    expect(record.text()).toContain('归档时间');
+    expect(record.text()).not.toContain('收款方');
+    expect(record.text()).not.toContain('金额');
+    expect(wrapper.find('[data-test="return-archive-submit"]').exists()).toBe(
+      false,
+    );
+  });
+
   it('shows only the safe historical issuance summary without offering issuance actions', async () => {
     api.getClientNotaryMatter.mockResolvedValue({
       id: 'matter-1',

@@ -54,6 +54,7 @@ const detail = {
   },
   reviewDecision: decision,
   issuanceDecision: null,
+  returnArchive: null,
   capabilities: { reviewOpening: false },
 };
 
@@ -154,6 +155,46 @@ describe('client notary API', () => {
     });
     await expect(getClientNotaryMatter('matter-1')).resolves.toMatchObject({
       stage: 'WAITING_RETURN',
+    });
+  });
+
+  it('decodes only the minimal return archive summary for clients', async () => {
+    const archived = {
+      ...detail,
+      reviewDecision: {
+        ...decision,
+        result: 'INFRINGEMENT',
+        reason: null,
+        archivedAt: null,
+      },
+      issuanceDecision: {
+        decision: 'NO_ISSUE',
+        decidedAt: '2026-09-25T04:00:00.000Z',
+      },
+      returnArchive: {
+        returnChoice: 'REFUND_ONLY',
+        archiveReason: '商家确认无需寄回',
+        archivedAt: '2026-09-25T05:00:00.000Z',
+      },
+    };
+    http.getJson.mockResolvedValue(archived);
+    await expect(getClientNotaryMatter('matter-1')).resolves.toMatchObject({
+      stage: 'ARCHIVED',
+      returnArchive: {
+        returnChoice: 'REFUND_ONLY',
+        archiveReason: '商家确认无需寄回',
+      },
+    });
+
+    http.getJson.mockResolvedValueOnce({
+      ...archived,
+      returnArchive: {
+        ...archived.returnArchive,
+        refund: { amount: '100.00', partyName: '内部收款方' },
+      },
+    });
+    await expect(getClientNotaryMatter('matter-1')).rejects.toMatchObject({
+      code: 'INVALID_RESPONSE',
     });
   });
 

@@ -10,6 +10,7 @@ const api = vi.hoisted(() => ({
   recordNotaryOpening: vi.fn(),
   reviewNotaryOpening: vi.fn(),
   decideNotaryIssuance: vi.fn(),
+  archiveNotaryReturn: vi.fn(),
 }));
 const materials = vi.hoisted(() => ({
   downloadMaterialVersion: vi.fn(),
@@ -173,6 +174,150 @@ beforeEach(() => {
 });
 
 describe('NotaryMatterDetailPage', () => {
+  it('does not show the return form when the server capability is false', async () => {
+    api.getNotaryMatter.mockResolvedValueOnce({
+      ...matter,
+      stage: 'WAITING_RETURN',
+      capabilities: {
+        recordEvidence: false,
+        recordOpening: false,
+        reviewOpening: false,
+        decideIssuance: false,
+        archiveReturn: false,
+      },
+    });
+    const wrapper = await mountPage();
+    expect(wrapper.find('[data-test="return-archive-form"]').exists()).toBe(
+      false,
+    );
+    expect(api.archiveNotaryReturn).not.toHaveBeenCalled();
+  });
+
+  it('shows the server-authorized return archive form and reloads the saved record', async () => {
+    const waitingReturn = {
+      ...matter,
+      stage: 'WAITING_RETURN',
+      version: 5,
+      capabilities: {
+        recordEvidence: false,
+        recordOpening: false,
+        reviewOpening: false,
+        decideIssuance: false,
+        archiveReturn: true,
+      },
+      evidence: firstEvidence,
+      opening: {
+        senderName: null,
+        senderPhone: null,
+        senderAddress: null,
+        recordedAt: '2026-09-24T02:00:00.000Z',
+        recordedByUserId: 'user-1',
+        photos: [],
+      },
+      reviewDecision: {
+        result: 'INFRINGEMENT',
+        reason: null,
+        actorKind: 'CLIENT',
+        actorDisplayName: '客户审核员',
+        decidedAt: '2026-09-24T03:00:00.000Z',
+        archivedAt: null,
+      },
+      issuanceDecision: {
+        decision: 'NO_ISSUE',
+        actorDisplayName: '运营甲',
+        decidedAt: '2026-09-24T04:00:00.000Z',
+      },
+    };
+    const archived = {
+      ...waitingReturn,
+      stage: 'ARCHIVED',
+      version: 6,
+      capabilities: { ...waitingReturn.capabilities, archiveReturn: false },
+      returnArchive: {
+        returnChoice: 'KEEP',
+        archiveReason: '客户自行保留商品',
+        archivedAt: '2026-09-29T03:00:00.000Z',
+        actorDisplayName: '运营甲',
+        refund: {
+          state: 'PENDING',
+          amount: null,
+          partyKind: null,
+          partyName: null,
+        },
+        freight: {
+          state: 'PENDING',
+          amount: null,
+          partyKind: null,
+          partyName: null,
+        },
+      },
+    };
+    api.getNotaryMatter
+      .mockResolvedValueOnce(waitingReturn)
+      .mockResolvedValueOnce(archived);
+    api.archiveNotaryReturn
+      .mockRejectedValueOnce(new ApiError('temporary', 500, 'NETWORK_ERROR'))
+      .mockResolvedValueOnce({});
+    const wrapper = await mountPage();
+    expect(wrapper.get('[data-test="return-archive-form"]').text()).toContain(
+      '提交后事项将不可逆地归档；本操作不会发起付款。',
+    );
+    expect(
+      wrapper.find('[data-test="return-archive-refund-amount"]').exists(),
+    ).toBe(false);
+    await wrapper.get('[data-test="return-archive-return"]').setValue('RETURN');
+    expect(wrapper.find('[data-test="return-refund-fields"]').exists()).toBe(
+      true,
+    );
+    expect(wrapper.find('[data-test="return-freight-fields"]').exists()).toBe(
+      true,
+    );
+    await wrapper
+      .get('[data-test="return-archive-refund-only"]')
+      .setValue('REFUND_ONLY');
+    expect(wrapper.find('[data-test="return-refund-fields"]').exists()).toBe(
+      true,
+    );
+    expect(wrapper.find('[data-test="return-freight-fields"]').exists()).toBe(
+      false,
+    );
+    await wrapper.get('[data-test="return-archive-keep"]').setValue('KEEP');
+    expect(wrapper.find('[data-test="return-refund-fields"]').exists()).toBe(
+      false,
+    );
+    expect(wrapper.find('[data-test="return-freight-fields"]').exists()).toBe(
+      false,
+    );
+    await wrapper
+      .get('[data-test="return-archive-reason"]')
+      .setValue('客户自行保留商品');
+    await wrapper
+      .get('[data-test="return-archive-form"] form')
+      .trigger('submit');
+    await flushPromises();
+    expect(wrapper.text()).toContain('使用相同请求键重试');
+    await wrapper
+      .get('[data-test="return-archive-form"] form')
+      .trigger('submit');
+    await flushPromises();
+    expect(api.archiveNotaryReturn).toHaveBeenCalledWith(
+      'matter-1',
+      {
+        returnChoice: 'KEEP',
+        archiveReason: '客户自行保留商品',
+        expectedVersion: 5,
+      },
+      expect.any(String),
+    );
+    expect(api.archiveNotaryReturn.mock.calls[1]?.[2]).toBe(
+      api.archiveNotaryReturn.mock.calls[0]?.[2],
+    );
+    expect(wrapper.get('[data-test="return-archive-record"]').text()).toContain(
+      '待定',
+    );
+    expect(api.getNotaryMatter).toHaveBeenCalledTimes(2);
+  });
+
   it('offers explicit issuance choices only when permitted and displays the persisted result', async () => {
     const pending = {
       ...matter,

@@ -378,6 +378,25 @@ onBeforeUnmount(() => request?.abort());
           </p>
           <p>决定时间：{{ formatTime(matter.issuanceDecision.decidedAt) }}</p>
         </section>
+        <section
+          v-if="matter.returnArchive"
+          class="demo-card demo-card--pad"
+          data-test="client-return-archive-record"
+        >
+          <h2 class="form-section-title">退货办理结果</h2>
+          <p>结论：事项已归档</p>
+          <p>
+            办理方式：{{
+              matter.returnArchive.returnChoice === 'RETURN'
+                ? '退货并退款'
+                : matter.returnArchive.returnChoice === 'KEEP'
+                  ? '保留商品，不退款'
+                  : '不寄回商品，只退款'
+            }}
+          </p>
+          <p>原因：{{ matter.returnArchive.archiveReason }}</p>
+          <p>归档时间：{{ formatTime(matter.returnArchive.archivedAt) }}</p>
+        </section>
       </template>
     </main>
   </div>
