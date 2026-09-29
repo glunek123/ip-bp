@@ -822,6 +822,7 @@ test('bound notary account opens only its assigned matter through real browser a
   ).toBeVisible();
 
   await page.getByRole('button', { name: '退出登录' }).click();
+  await expect(page).toHaveURL(/\/login$/u);
   await page.getByLabel('用户名').fill(username);
   await page.getByLabel('密码').fill(password);
   await page.getByRole('button', { name: '登录', exact: true }).click();
@@ -869,6 +870,7 @@ test('bound notary account opens only its assigned matter through real browser a
   expect(await countNotaryOpeningReferences(ownMatterId)).toBe(1);
 
   await page.getByRole('button', { name: '退出登录' }).click();
+  await expect(page).toHaveURL(/\/login$/u);
   await page.getByLabel('用户名').fill(username);
   await page.getByLabel('密码').fill(password);
   await page.getByRole('button', { name: '登录', exact: true }).click();
