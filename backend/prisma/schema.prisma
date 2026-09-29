@@ -1286,22 +1286,23 @@ model NotaryIssuanceDecision {
 }
 
 model NotaryReturnArchive {
-  id                     String                 @id @default(uuid()) @db.Uuid
-  matterId               String                 @unique @map("matter_id") @db.Uuid
-  departmentId           String                 @map("department_id") @db.Uuid
-  issuanceDecisionId     String                 @unique @map("issuance_decision_id") @db.Uuid
-  issuanceDecisionChoice NotaryIssuanceChoice   @default(NO_ISSUE) @map("issuance_decision_choice")
-  actorUserId            String                 @map("actor_user_id") @db.Uuid
-  returnChoice           NotaryReturnChoice     @map("return_choice")
-  archiveReason          String                 @map("archive_reason") @db.Text
-  archivedAt             DateTime               @default(now()) @map("archived_at") @db.Timestamptz(3)
-  fromVersion            Int                    @map("from_version")
-  toVersion              Int                    @map("to_version")
-  matter                 NotaryMatter           @relation(fields: [matterId, departmentId], references: [id, departmentId], onDelete: Restrict, onUpdate: Restrict, map: "notary_return_archives_matter_fkey")
-  issuanceDecision       NotaryIssuanceDecision @relation(fields: [issuanceDecisionId, matterId, departmentId, issuanceDecisionChoice], references: [id, matterId, departmentId, decision], onDelete: Restrict, onUpdate: Restrict, map: "notary_return_archives_decision_fkey")
-  actor                  UserAccount            @relation("NotaryReturnArchiveActor", fields: [actorUserId], references: [id], onDelete: Restrict, onUpdate: Restrict, map: "notary_return_archives_actor_fkey")
-  internalActor          DepartmentMembership   @relation("NotaryReturnArchiveInternalActor", fields: [actorUserId, departmentId], references: [userId, departmentId], onDelete: Restrict, onUpdate: Restrict, map: "notary_return_archives_internal_actor_fkey")
-  amounts                NotaryReturnAmount[]
+  id                       String                 @id @default(uuid()) @db.Uuid
+  matterId                 String                 @unique @map("matter_id") @db.Uuid
+  departmentId             String                 @map("department_id") @db.Uuid
+  issuanceDecisionId       String                 @unique @map("issuance_decision_id") @db.Uuid
+  issuanceDecisionChoice   NotaryIssuanceChoice   @default(NO_ISSUE) @map("issuance_decision_choice")
+  actorUserId              String                 @map("actor_user_id") @db.Uuid
+  actorDisplayNameSnapshot String                 @map("actor_display_name_snapshot") @db.VarChar(200)
+  returnChoice             NotaryReturnChoice     @map("return_choice")
+  archiveReason            String                 @map("archive_reason") @db.Text
+  archivedAt               DateTime               @default(now()) @map("archived_at") @db.Timestamptz(3)
+  fromVersion              Int                    @map("from_version")
+  toVersion                Int                    @map("to_version")
+  matter                   NotaryMatter           @relation(fields: [matterId, departmentId], references: [id, departmentId], onDelete: Restrict, onUpdate: Restrict, map: "notary_return_archives_matter_fkey")
+  issuanceDecision         NotaryIssuanceDecision @relation(fields: [issuanceDecisionId, matterId, departmentId, issuanceDecisionChoice], references: [id, matterId, departmentId, decision], onDelete: Restrict, onUpdate: Restrict, map: "notary_return_archives_decision_fkey")
+  actor                    UserAccount            @relation("NotaryReturnArchiveActor", fields: [actorUserId], references: [id], onDelete: Restrict, onUpdate: Restrict, map: "notary_return_archives_actor_fkey")
+  internalActor            DepartmentMembership   @relation("NotaryReturnArchiveInternalActor", fields: [actorUserId, departmentId], references: [userId, departmentId], onDelete: Restrict, onUpdate: Restrict, map: "notary_return_archives_internal_actor_fkey")
+  amounts                  NotaryReturnAmount[]
 
   @@unique([id, matterId, departmentId, returnChoice], map: "notary_return_archives_amount_identity_key")
   @@unique([matterId, departmentId], map: "notary_return_archives_matter_department_key")

@@ -12,10 +12,11 @@ const environment = captureTestEnvironment(root, { pnpmVersion: '11.27.0' });
 const migrationRoot = resolve(root, 'backend/prisma/migrations');
 const target = '20260929010000_add_notary_return_archive';
 const whitespaceFix = '20260929011000_harden_notary_return_whitespace';
+const snapshotFix = '20260929012000_add_notary_return_actor_snapshot';
 const migrations = readdirSync(migrationRoot)
   .filter((name) => /^\d{14}_/.test(name))
   .sort();
-assert.deepEqual(migrations.slice(-2), [target, whitespaceFix]);
+assert.deepEqual(migrations.slice(-3), [target, whitespaceFix, snapshotFix]);
 
 async function expectRejected(client, sql, params, code, constraint) {
   const savepoint = `negative_${randomBytes(4).toString('hex')}`;
@@ -51,7 +52,7 @@ async function seedMatter(client, label, { evidence = true } = {}) {
   );
   await client.query(
     'INSERT INTO user_accounts(id,external_subject,display_name,updated_at) VALUES ($1,$2,$3,now())',
-    [ids.user, `${label}:${ids.user}`, label],
+    [ids.user, `${label}:${ids.user}`, 'Probe actor'],
   );
   await client.query(
     'INSERT INTO department_memberships(id,user_id,department_id,updated_at) VALUES ($1,$2,$3,now())',
@@ -127,7 +128,7 @@ try {
     (await client.query('SELECT current_database() AS name')).rows[0].name,
     'dev_cor_test',
   );
-  for (const mode of ['empty', 'upgrade']) {
+  for (const mode of ['empty', 'upgrade', 'guard']) {
     const schema = `nt006_${mode}_${randomBytes(8).toString('hex')}`;
     await client.query(`CREATE SCHEMA "${schema}"`);
     try {
@@ -137,7 +138,7 @@ try {
           readFileSync(resolve(migrationRoot, name, 'migration.sql'), 'utf8'),
         );
       const legacy =
-        mode === 'upgrade'
+        mode !== 'empty'
           ? await seedMatter(client, `NT006 legacy ${schema}`)
           : null;
       const migration = readFileSync(
@@ -190,6 +191,46 @@ try {
           'utf8',
         ),
       );
+      const snapshotMigration = readFileSync(
+        resolve(migrationRoot, snapshotFix, 'migration.sql'),
+        'utf8',
+      );
+      if (mode === 'guard') {
+        await client.query(
+          `INSERT INTO notary_return_archives(id,matter_id,department_id,issuance_decision_id,issuance_decision_choice,actor_user_id,return_choice,archive_reason,from_version,to_version)
+          VALUES ($1,$2,$3,$4,'NO_ISSUE',$5,'KEEP','Legacy reason',5,6)`,
+          [
+            randomUUID(),
+            legacy.matter,
+            legacy.department,
+            legacy.decision,
+            legacy.user,
+          ],
+        );
+        await assert.rejects(
+          client.query(snapshotMigration),
+          (error) => error.code === '55000',
+        );
+        await client.query('ROLLBACK');
+        const historical = await client.query(
+          'SELECT archive_reason FROM notary_return_archives WHERE matter_id=$1',
+          [legacy.matter],
+        );
+        assert.equal(historical.rows[0].archive_reason, 'Legacy reason');
+        const absentSnapshot = await client.query(
+          `SELECT column_name FROM information_schema.columns WHERE table_schema=$1 AND table_name='notary_return_archives' AND column_name='actor_display_name_snapshot'`,
+          [schema],
+        );
+        assert.equal(absentSnapshot.rowCount, 0);
+        console.log('NT006 historical archive guard probe passed');
+        continue;
+      }
+      await client.query(snapshotMigration);
+      const snapshotColumn = await client.query(
+        `SELECT column_name FROM information_schema.columns WHERE table_schema=$1 AND table_name='notary_return_archives' AND column_name='actor_display_name_snapshot'`,
+        [schema],
+      );
+      assert.equal(snapshotColumn.rowCount, 1);
       const enumValue = await client.query(
         `SELECT 1 FROM pg_enum e JOIN pg_type t ON t.oid=e.enumtypid JOIN pg_namespace n ON n.oid=t.typnamespace WHERE n.nspname=$1 AND t.typname='permission_action' AND e.enumlabel='notary.return.archive'`,
         [schema],
@@ -198,10 +239,15 @@ try {
       const ids = legacy ?? (await seedMatter(client, `NT006 empty ${schema}`));
       const archive = randomUUID();
       await client.query(
-        `INSERT INTO notary_return_archives(id,matter_id,department_id,issuance_decision_id,issuance_decision_choice,actor_user_id,return_choice,archive_reason,from_version,to_version)
-        VALUES ($1,$2,$3,$4,'NO_ISSUE',$5,'RETURN','Returned after review',5,6)`,
+        `INSERT INTO notary_return_archives(id,matter_id,department_id,issuance_decision_id,issuance_decision_choice,actor_user_id,actor_display_name_snapshot,return_choice,archive_reason,from_version,to_version)
+        VALUES ($1,$2,$3,$4,'NO_ISSUE',$5,'Probe actor','RETURN','Returned after review',5,6)`,
         [archive, ids.matter, ids.department, ids.decision, ids.user],
       );
+      const snapshot = await client.query(
+        'SELECT actor_display_name_snapshot FROM notary_return_archives WHERE id=$1',
+        [archive],
+      );
+      assert.equal(snapshot.rows[0].actor_display_name_snapshot, 'Probe actor');
       const insertAmount = `INSERT INTO notary_return_amounts(id,archive_id,matter_id,department_id,return_choice,kind,state,amount,party_kind,party_name,source_evidence_matter_id)
         VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9,$10,$11)`;
       const base = [archive, ids.matter, ids.department, 'RETURN'];
@@ -232,8 +278,8 @@ try {
       );
       const noEvidenceArchive = randomUUID();
       await client.query(
-        `INSERT INTO notary_return_archives(id,matter_id,department_id,issuance_decision_id,issuance_decision_choice,actor_user_id,return_choice,archive_reason,from_version,to_version)
-        VALUES ($1,$2,$3,$4,'NO_ISSUE',$5,'RETURN','No original expense',5,6)`,
+        `INSERT INTO notary_return_archives(id,matter_id,department_id,issuance_decision_id,issuance_decision_choice,actor_user_id,actor_display_name_snapshot,return_choice,archive_reason,from_version,to_version)
+        VALUES ($1,$2,$3,$4,'NO_ISSUE',$5,'Probe actor','RETURN','No original expense',5,6)`,
         [
           noEvidenceArchive,
           noEvidence.matter,
@@ -264,8 +310,8 @@ try {
       );
       const refundOnlyArchive = randomUUID();
       await client.query(
-        `INSERT INTO notary_return_archives(id,matter_id,department_id,issuance_decision_id,issuance_decision_choice,actor_user_id,return_choice,archive_reason,from_version,to_version)
-        VALUES ($1,$2,$3,$4,'NO_ISSUE',$5,'REFUND_ONLY','Refund without return',5,6)`,
+        `INSERT INTO notary_return_archives(id,matter_id,department_id,issuance_decision_id,issuance_decision_choice,actor_user_id,actor_display_name_snapshot,return_choice,archive_reason,from_version,to_version)
+        VALUES ($1,$2,$3,$4,'NO_ISSUE',$5,'Probe actor','REFUND_ONLY','Refund without return',5,6)`,
         [
           refundOnlyArchive,
           refundOnly.matter,
@@ -459,8 +505,8 @@ try {
         );
         await expectRejected(
           client,
-          `INSERT INTO notary_return_archives(id,matter_id,department_id,issuance_decision_id,actor_user_id,return_choice,archive_reason,from_version,to_version)
-          VALUES ($1,$2,$3,$4,$5,'RETURN',' Another archive ',5,6)`,
+          `INSERT INTO notary_return_archives(id,matter_id,department_id,issuance_decision_id,actor_user_id,actor_display_name_snapshot,return_choice,archive_reason,from_version,to_version)
+          VALUES ($1,$2,$3,$4,$5,'Probe actor','RETURN',' Another archive ',5,6)`,
           [randomUUID(), ids.matter, ids.department, ids.decision, ids.user],
           '23514',
           'notary_return_archives_reason_check',
@@ -468,7 +514,44 @@ try {
         await expectRejected(
           client,
           `INSERT INTO notary_return_archives(id,matter_id,department_id,issuance_decision_id,actor_user_id,return_choice,archive_reason,from_version,to_version)
-          VALUES ($1,$2,$3,$4,$5,'RETURN',$6,5,6)`,
+          VALUES ($1,$2,$3,$4,$5,'RETURN','Valid reason',5,6)`,
+          [randomUUID(), ids.matter, ids.department, ids.decision, ids.user],
+          '23502',
+        );
+        await expectRejected(
+          client,
+          `INSERT INTO notary_return_archives(id,matter_id,department_id,issuance_decision_id,actor_user_id,actor_display_name_snapshot,return_choice,archive_reason,from_version,to_version)
+          VALUES ($1,$2,$3,$4,$5,$6,'RETURN','Valid reason',5,6)`,
+          [
+            randomUUID(),
+            ids.matter,
+            ids.department,
+            ids.decision,
+            ids.user,
+            '\t\n',
+          ],
+          '23514',
+          'notary_return_archives_actor_name_check',
+        );
+        await expectRejected(
+          client,
+          `INSERT INTO notary_return_archives(id,matter_id,department_id,issuance_decision_id,actor_user_id,actor_display_name_snapshot,return_choice,archive_reason,from_version,to_version)
+          VALUES ($1,$2,$3,$4,$5,$6,'RETURN','Valid reason',5,6)`,
+          [
+            randomUUID(),
+            ids.matter,
+            ids.department,
+            ids.decision,
+            ids.user,
+            ' Probe actor',
+          ],
+          '23514',
+          'notary_return_archives_actor_name_check',
+        );
+        await expectRejected(
+          client,
+          `INSERT INTO notary_return_archives(id,matter_id,department_id,issuance_decision_id,actor_user_id,actor_display_name_snapshot,return_choice,archive_reason,from_version,to_version)
+          VALUES ($1,$2,$3,$4,$5,'Probe actor','RETURN',$6,5,6)`,
           [
             randomUUID(),
             ids.matter,
@@ -482,8 +565,8 @@ try {
         );
         await expectRejected(
           client,
-          `INSERT INTO notary_return_archives(id,matter_id,department_id,issuance_decision_id,actor_user_id,return_choice,archive_reason,from_version,to_version)
-          VALUES ($1,$2,$3,$4,$5,'RETURN',$6,5,6)`,
+          `INSERT INTO notary_return_archives(id,matter_id,department_id,issuance_decision_id,actor_user_id,actor_display_name_snapshot,return_choice,archive_reason,from_version,to_version)
+          VALUES ($1,$2,$3,$4,$5,'Probe actor','RETURN',$6,5,6)`,
           [
             randomUUID(),
             ids.matter,
