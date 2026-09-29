@@ -176,6 +176,33 @@ describe('LeadNotaryService opening review read projection', () => {
         partyName: null,
       },
     });
+    const codePointReason = '😀'.repeat(2501);
+    database.notaryMatter.findFirst.mockResolvedValue({
+      ...record,
+      stage: 'ARCHIVED',
+      openingReviewDecision: {
+        ...record.openingReviewDecision,
+        result: 'INFRINGEMENT',
+        reason: null,
+        archivedAt: null,
+      },
+      issuanceDecision: {
+        decision: 'NO_ISSUE',
+        decidedAt: new Date('2026-09-28T02:00:00Z'),
+      },
+      returnArchive: {
+        returnChoice: 'KEEP',
+        archiveReason: codePointReason,
+        archivedAt: new Date('2026-09-28T03:00:00Z'),
+        actorDisplayNameSnapshot: '原运营',
+        fromVersion: 3,
+        toVersion: 4,
+        amounts: [],
+      },
+    });
+    expect(
+      (await service.getMatter(actor, matterId)).returnArchive?.archiveReason,
+    ).toBe(codePointReason);
     database.notaryMatter.findFirst.mockResolvedValue({
       ...record,
       stage: 'ARCHIVED',

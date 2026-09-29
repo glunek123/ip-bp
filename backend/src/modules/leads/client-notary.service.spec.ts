@@ -140,6 +140,7 @@ describe('ClientNotaryService', () => {
         decidedAt: new Date(),
         archivedAt: null,
       };
+      const codePointReason = '😀'.repeat(2501);
       const archived = {
         ...matter,
         stage: 'ARCHIVED',
@@ -150,10 +151,12 @@ describe('ClientNotaryService', () => {
           choice === 'NO_ISSUE'
             ? {
                 returnChoice: 'KEEP',
-                archiveReason: '保留商品',
+                archiveReason: codePointReason,
                 archivedAt: new Date('2026-09-28T03:00:00Z'),
                 actorUserId: 'private-actor',
-                amounts: [{ amount: '500.00' }],
+                fromVersion: 2,
+                toVersion: 3,
+                amounts: [],
               }
             : null,
       };
@@ -167,7 +170,7 @@ describe('ClientNotaryService', () => {
         choice === 'NO_ISSUE'
           ? {
               returnChoice: 'KEEP',
-              archiveReason: '保留商品',
+              archiveReason: codePointReason,
               archivedAt: '2026-09-28T03:00:00.000Z',
             }
           : null,
@@ -175,11 +178,11 @@ describe('ClientNotaryService', () => {
       expect(JSON.stringify(detail)).not.toMatch(
         /private-actor|500\.00|amounts|actorUserId|archiveReturn/u,
       );
-      expect(
-        database.notaryMatter.findFirst.mock.calls[0][0].include.returnArchive,
-      ).toEqual({
-        select: { returnChoice: true, archiveReason: true, archivedAt: true },
-      });
+      if (choice === 'NO_ISSUE')
+        expect(
+          database.notaryMatter.findFirst.mock.calls[0][0].include.returnArchive
+            .select.amounts,
+        ).toBeDefined();
     },
   );
 
@@ -207,6 +210,136 @@ describe('ClientNotaryService', () => {
     await expect(service.get(actor, matterId)).rejects.toMatchObject({
       response: { code: 'RESOURCE_NOT_FOUND' },
     });
+  });
+
+  it.each([
+    [
+      'missing freight',
+      [
+        {
+          kind: 'REFUND',
+          state: 'KNOWN',
+          amount: { toNumber: (): number => 9 },
+          partyKind: 'CUSTOMER',
+          partyName: null,
+          sourceEvidenceMatterId: matterId,
+        },
+      ],
+    ],
+    [
+      'malformed freight',
+      [
+        {
+          kind: 'REFUND',
+          state: 'KNOWN',
+          amount: { toNumber: (): number => 9 },
+          partyKind: 'CUSTOMER',
+          partyName: null,
+          sourceEvidenceMatterId: matterId,
+        },
+        {
+          kind: 'FREIGHT',
+          state: 'PENDING',
+          amount: { toNumber: (): number => 2 },
+          partyKind: null,
+          partyName: null,
+          sourceEvidenceMatterId: null,
+        },
+      ],
+    ],
+  ] as const)(
+    'hides RETURN archive with %s facts in detail and list',
+    async (_case, amounts) => {
+      const { service, database } = fixture();
+      const archived = {
+        ...matter,
+        stage: 'ARCHIVED',
+        openingReviewDecision: {
+          result: 'INFRINGEMENT',
+          reason: null,
+          archivedAt: null,
+          decidedAt: new Date(),
+          actorKind: 'INTERNAL',
+          actorDisplayNameSnapshot: '运营',
+        },
+        issuanceDecision: { decision: 'NO_ISSUE', decidedAt: new Date() },
+        certificate: null,
+        returnArchive: {
+          returnChoice: 'RETURN',
+          archiveReason: '退货',
+          archivedAt: new Date(),
+          fromVersion: 2,
+          toVersion: 3,
+          amounts,
+        },
+      };
+      database.notaryMatter.findFirst.mockResolvedValue(archived);
+      database.notaryMatter.findMany.mockResolvedValue([archived]);
+      await expect(service.get(actor, matterId)).rejects.toMatchObject({
+        response: { code: 'RESOURCE_NOT_FOUND' },
+      });
+      await expect(service.list(actor, 1, 20, 'lead-1')).rejects.toMatchObject({
+        response: { code: 'RESOURCE_NOT_FOUND' },
+      });
+    },
+  );
+
+  it('reads complete RETURN facts without exposing amounts or parties', async () => {
+    const { service, database } = fixture();
+    const archived = {
+      ...matter,
+      stage: 'ARCHIVED',
+      openingReviewDecision: {
+        result: 'INFRINGEMENT',
+        reason: null,
+        archivedAt: null,
+        decidedAt: new Date(),
+        actorKind: 'INTERNAL',
+        actorDisplayNameSnapshot: '运营',
+      },
+      issuanceDecision: { decision: 'NO_ISSUE', decidedAt: new Date() },
+      certificate: null,
+      returnArchive: {
+        returnChoice: 'RETURN',
+        archiveReason: '退货',
+        archivedAt: new Date('2026-09-28T03:00:00Z'),
+        fromVersion: 2,
+        toVersion: 3,
+        amounts: [
+          {
+            kind: 'REFUND',
+            state: 'KNOWN',
+            amount: { toNumber: (): number => 9 },
+            partyKind: 'CUSTOMER',
+            partyName: null,
+            sourceEvidenceMatterId: matterId,
+          },
+          {
+            kind: 'FREIGHT',
+            state: 'PENDING',
+            amount: null,
+            partyKind: null,
+            partyName: null,
+            sourceEvidenceMatterId: null,
+          },
+        ],
+      },
+    };
+    database.notaryMatter.findFirst.mockResolvedValue(archived);
+    database.notaryMatter.findMany.mockResolvedValue([archived]);
+    expect((await service.get(actor, matterId)).returnArchive).toEqual({
+      returnChoice: 'RETURN',
+      archiveReason: '退货',
+      archivedAt: '2026-09-28T03:00:00.000Z',
+    });
+    expect((await service.list(actor, 1, 20, 'lead-1')).items[0].stage).toBe(
+      'ARCHIVED',
+    );
+    expect(
+      Object.keys(
+        (await service.get(actor, matterId)).returnArchive ?? {},
+      ).sort(),
+    ).toEqual(['archiveReason', 'archivedAt', 'returnChoice']);
   });
 
   it('rejects a waiting stage whose immutable issuance fact names the opposite choice', async () => {

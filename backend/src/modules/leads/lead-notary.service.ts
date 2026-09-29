@@ -855,7 +855,7 @@ export class LeadNotaryService {
         !['RETURN', 'KEEP', 'REFUND_ONLY'].includes(archive.returnChoice) ||
         !archive.archiveReason.trim() ||
         archive.archiveReason.trim() !== archive.archiveReason ||
-        archive.archiveReason.length > 5000 ||
+        Array.from(archive.archiveReason).length > 5000 ||
         !archive.actorDisplayNameSnapshot.trim() ||
         archive.toVersion !== matter.version ||
         archive.fromVersion !== matter.version - 1

@@ -32,7 +32,23 @@ const clientMatterInclude = {
   issuanceDecision: { select: { decision: true, decidedAt: true } },
   certificate: { select: { id: true } },
   returnArchive: {
-    select: { returnChoice: true, archiveReason: true, archivedAt: true },
+    select: {
+      returnChoice: true,
+      archiveReason: true,
+      archivedAt: true,
+      fromVersion: true,
+      toVersion: true,
+      amounts: {
+        select: {
+          kind: true,
+          state: true,
+          amount: true,
+          partyKind: true,
+          partyName: true,
+          sourceEvidenceMatterId: true,
+        },
+      },
+    },
   },
   selectedProducts: { select: { leadProductId: true } },
 } satisfies Prisma.NotaryMatterInclude;
@@ -99,6 +115,18 @@ export class ClientNotaryService {
               returnChoice: true,
               archiveReason: true,
               archivedAt: true,
+              fromVersion: true,
+              toVersion: true,
+              amounts: {
+                select: {
+                  kind: true,
+                  state: true,
+                  amount: true,
+                  partyKind: true,
+                  partyName: true,
+                  sourceEvidenceMatterId: true,
+                },
+              },
             },
           },
         },
@@ -121,6 +149,8 @@ export class ClientNotaryService {
             item.openingReviewDecision,
             item.certificate,
             item.returnArchive,
+            item.id,
+            item.version,
           ),
       )
     )
@@ -267,6 +297,8 @@ export class ClientNotaryService {
         decision,
         matter.certificate,
         matter.returnArchive,
+        matter.id,
+        matter.version,
       )
     )
       throw this.notFound();
@@ -325,10 +357,9 @@ export class ClientNotaryService {
     decision: { decision: 'ISSUE' | 'NO_ISSUE'; decidedAt: Date } | null,
     review: { result: 'INFRINGEMENT' | 'NO_INFRINGEMENT' } | null,
     certificate: { id: string } | null | undefined,
-    archive:
-      | { returnChoice: string; archiveReason: string; archivedAt: Date }
-      | null
-      | undefined,
+    archive: ClientMatter['returnArchive'] | undefined,
+    matterId: string,
+    version: number,
   ): boolean {
     if (stage === 'WAITING_CERTIFICATE')
       return (
@@ -351,12 +382,50 @@ export class ClientNotaryService {
         archive != null &&
         ['RETURN', 'KEEP', 'REFUND_ONLY'].includes(archive.returnChoice) &&
         archive.archiveReason.trim() === archive.archiveReason &&
-        archive.archiveReason.length > 0 &&
-        archive.archiveReason.length <= 5000 &&
-        archive.archivedAt instanceof Date
+        Array.from(archive.archiveReason).length > 0 &&
+        Array.from(archive.archiveReason).length <= 5000 &&
+        archive.archivedAt instanceof Date &&
+        archive.fromVersion === version - 1 &&
+        archive.toVersion === version &&
+        this.returnAmountsMatchArchive(archive, matterId)
       );
     }
     return decision == null && archive == null && certificate == null;
+  }
+
+  private returnAmountsMatchArchive(
+    archive: NonNullable<ClientMatter['returnArchive']>,
+    matterId: string,
+  ): boolean {
+    const seen = new Set<string>();
+    for (const row of archive.amounts) {
+      if (
+        seen.has(row.kind) ||
+        !['REFUND', 'FREIGHT'].includes(row.kind) ||
+        !['KNOWN', 'PENDING'].includes(row.state) ||
+        (row.kind === 'REFUND' && row.sourceEvidenceMatterId !== matterId) ||
+        (row.kind === 'FREIGHT' && row.sourceEvidenceMatterId !== null) ||
+        (row.state === 'KNOWN' && row.amount === null) ||
+        (row.state === 'PENDING' && row.amount !== null) ||
+        (row.amount !== null && row.amount.toNumber() < 0) ||
+        (row.partyKind !== null &&
+          !['CUSTOMER', 'FIRM', 'MERCHANT', 'OTHER'].includes(row.partyKind)) ||
+        (row.amount !== null &&
+          row.amount.toNumber() > 0 &&
+          row.partyKind === null) ||
+        (row.amount === null || row.amount.toNumber() === 0
+          ? row.partyKind !== null || row.partyName !== null
+          : row.partyKind === 'OTHER'
+            ? !row.partyName?.trim()
+            : row.partyName !== null)
+      )
+        return false;
+      seen.add(row.kind);
+    }
+    if (archive.returnChoice === 'KEEP') return seen.size === 0;
+    if (archive.returnChoice === 'REFUND_ONLY')
+      return seen.has('REFUND') && !seen.has('FREIGHT');
+    return seen.has('REFUND') && seen.has('FREIGHT');
   }
 
   private async assertClient(actor: ActorContext): Promise<string> {
