@@ -36,6 +36,11 @@ const permissionCatalog = [
     label: '查看案件',
     scopes: ['DEPARTMENT'] as const,
   },
+  {
+    action: 'CASE_MATCH' as const,
+    label: '匹配案件',
+    scopes: ['SELF', 'TEAM', 'DEPARTMENT'] as const,
+  },
 ].map((item) => ({ ...item, scopes: [...item.scopes] }));
 
 afterEach(() => vi.clearAllMocks());
@@ -160,5 +165,28 @@ describe('RoleTemplateEditor', () => {
         { action: 'CASE_READ', scope: 'DEPARTMENT' },
       ],
     });
+  });
+
+  it('offers the backend case matching scope choices', async () => {
+    api.updateRoleTemplate.mockResolvedValue(role);
+    const wrapper = mount(RoleTemplateEditor, {
+      props: { mode: 'edit', role, permissionCatalog },
+    });
+    await flushPromises();
+    expect(wrapper.text()).toContain('匹配案件');
+    expect(
+      wrapper.get('[data-test="scope-CASE_MATCH"]').findAll('option'),
+    ).toHaveLength(3);
+    await wrapper.get('[data-test="grant-CASE_MATCH"]').setValue(true);
+    await wrapper.get('[data-test="role-template-save"]').trigger('click');
+    await flushPromises();
+    expect(api.updateRoleTemplate).toHaveBeenCalledWith(
+      role.id,
+      expect.objectContaining({
+        grants: expect.arrayContaining([
+          { action: 'CASE_MATCH', scope: 'SELF' },
+        ]),
+      }),
+    );
   });
 });

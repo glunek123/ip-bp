@@ -4,10 +4,15 @@ import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 import CaseListPage from './CaseListPage.vue';
 import CaseDetailPage from './CaseDetailPage.vue';
 
-const api = vi.hoisted(() => ({ listCases: vi.fn(), getCase: vi.fn() }));
+const api = vi.hoisted(() => ({
+  listCases: vi.fn(),
+  getCase: vi.fn(),
+  matchCase: vi.fn(),
+}));
 vi.mock('../../api/cases', () => ({
   listCases: api.listCases,
   getCase: api.getCase,
+  matchCase: api.matchCase,
 }));
 vi.mock('../../api/materials', () => ({ downloadMaterialVersion: vi.fn() }));
 
@@ -20,6 +25,9 @@ beforeEach(() => {
         businessNo: 'CA-1',
         stage: 'PENDING_MATCH',
         createdAt: '2026-09-28T00:00:00Z',
+        version: 1,
+        owner: { id: 'user-1', displayName: '负责人' },
+        canMatch: true,
         sourceLead: { id: 'lead-1', businessNo: 'LD-1' },
         sourceNotaryMatter: { id: 'matter-1', businessNo: 'NZ-1' },
       },
@@ -27,12 +35,15 @@ beforeEach(() => {
     total: 1,
     page: 1,
     pageSize: 20,
+    counts: { PENDING_MATCH: 1, WAITING_COMPLAINT: 0 },
   });
   api.getCase.mockResolvedValue({
     id: 'case-1',
     businessNo: 'CA-1',
     stage: 'PENDING_MATCH',
     createdAt: '2026-09-28T00:00:00Z',
+    version: 1,
+    canMatch: true,
     courtCaseNo: null,
     department: { id: 'department-1', name: '知产部' },
     customer: { id: 'customer-1', name: '客户甲' },
@@ -57,6 +68,9 @@ beforeEach(() => {
         sourceId: 'evidence-1',
       },
     ],
+    defendants: [],
+    lawyers: [],
+    matchedAt: null,
   });
 });
 afterEach(() => vi.unstubAllGlobals());
@@ -87,6 +101,24 @@ describe('case pages', () => {
     expect(wrapper.get('a[href="/cases/case-1"]').text()).toBe('CA-1');
   });
 
+  it('uses sidebar scope and stage query and preserves them when opening a case', async () => {
+    const wrapper = await mountRoute(
+      '/cases?view=department&stage=WAITING_COMPLAINT',
+      CaseListPage,
+    );
+    expect(api.listCases).toHaveBeenCalledWith(
+      1,
+      20,
+      expect.objectContaining({
+        view: 'department',
+        stage: 'WAITING_COMPLAINT',
+      }),
+    );
+    expect(wrapper.get('a').attributes('href')).toBe(
+      '/cases/case-1?view=department&stage=WAITING_COMPLAINT',
+    );
+  });
+
   it('shows source, ownership, fee provenance and no invented court number', async () => {
     const wrapper = await mountRoute('/cases/case-1', CaseDetailPage);
     expect(wrapper.text()).toContain('客户甲');
@@ -94,5 +126,103 @@ describe('case pages', () => {
     expect(wrapper.text()).toContain('来自公证事项取证记录');
     expect(wrapper.text()).toContain('法院案号：未登记');
     expect(wrapper.text()).not.toContain('/notary-portal/matters/');
+  });
+
+  it('saves defendants and lawyer, reloads detail, and confirms the real transition', async () => {
+    api.matchCase.mockResolvedValue(undefined);
+    const wrapper = await mountRoute('/cases/case-1', CaseDetailPage);
+    api.getCase.mockResolvedValueOnce({
+      id: 'case-1',
+      businessNo: 'CA-1',
+      stage: 'WAITING_COMPLAINT',
+      createdAt: '2026-09-28T00:00:00Z',
+      version: 2,
+      canMatch: false,
+      owner: { id: 'user-1', displayName: '负责人' },
+      courtCaseNo: null,
+      department: { id: 'department-1', name: '知产部' },
+      customer: { id: 'customer-1', name: '客户甲' },
+      rightsHolder: { id: 'holder-1', name: '权利人甲' },
+      sourceLead: { id: 'lead-1', businessNo: 'LD-1' },
+      sourceNotaryMatter: { id: 'matter-1', businessNo: 'NZ-1' },
+      certificate: {
+        certificateNo: 'Z-100',
+        certificateDate: '2026-09-28',
+        issuedAt: '2026-09-28T00:00:00Z',
+        needDisclose: false,
+        files: [],
+        disclosureFiles: [],
+      },
+      fees: [],
+      defendants: [
+        {
+          id: 'defendant-1',
+          kind: 'PERSON',
+          name: '被告甲',
+          idNo: null,
+          phone: null,
+          address: null,
+        },
+      ],
+      lawyers: [],
+      matchedAt: '2026-09-29T01:00:00Z',
+    });
+    const inputs = wrapper.findAll('input');
+    await inputs[0]!.setValue('被告甲');
+    await inputs[4]!.setValue('律师甲');
+    await inputs[5]!.setValue('律所甲');
+    await wrapper
+      .findAll('[data-test="case-match-form"] button')
+      .find((button) => button.text().includes('确认匹配'))!
+      .trigger('click');
+    await flushPromises();
+    expect(api.matchCase).toHaveBeenCalledWith(
+      'case-1',
+      expect.objectContaining({
+        defendants: [
+          expect.objectContaining({ name: '被告甲', kind: 'PERSON' }),
+        ],
+        lawyer: expect.objectContaining({
+          fullName: '律师甲',
+          lawFirm: '律所甲',
+        }),
+      }),
+    );
+    expect(api.getCase).toHaveBeenCalledTimes(2);
+    expect(wrapper.text()).toContain('案件匹配已完成');
+    expect(wrapper.find('[data-test="case-match-form"]').exists()).toBe(false);
+  });
+
+  it('does not expose matching controls when the case is not actionable', async () => {
+    api.getCase.mockResolvedValueOnce({
+      id: 'case-1',
+      businessNo: 'CA-1',
+      stage: 'PENDING_MATCH',
+      createdAt: '2026-09-28T00:00:00Z',
+      version: 1,
+      canMatch: false,
+      owner: { id: 'user-1', displayName: '同部门负责人' },
+      courtCaseNo: null,
+      department: { id: 'department-1', name: '知产部' },
+      customer: { id: 'customer-1', name: '客户甲' },
+      rightsHolder: { id: 'holder-1', name: '权利人甲' },
+      sourceLead: { id: 'lead-1', businessNo: 'LD-1' },
+      sourceNotaryMatter: { id: 'matter-1', businessNo: 'NZ-1' },
+      certificate: {
+        certificateNo: 'Z-100',
+        certificateDate: '2026-09-28',
+        issuedAt: '2026-09-28T00:00:00Z',
+        needDisclose: false,
+        files: [],
+        disclosureFiles: [],
+      },
+      fees: [],
+      defendants: [],
+      lawyers: [],
+      matchedAt: null,
+    });
+    const wrapper = await mountRoute('/cases/case-1', CaseDetailPage);
+    expect(wrapper.find('[data-test="case-match-form"]').exists()).toBe(false);
+    expect(wrapper.find('[data-test="case-read-only"]').exists()).toBe(true);
   });
 });

@@ -177,6 +177,24 @@ describe('RoleTemplateService copy', () => {
     });
   });
 
+  it('allows a covered case-match self grant on a copied template', async () => {
+    const fixture = createFixture({
+      actorGrants: [
+        { action: 'ROLE_MANAGE', scope: 'DEPARTMENT', teamId: null },
+        { action: 'CASE_MATCH', scope: 'DEPARTMENT', teamId: null },
+        { action: 'CUSTOMER_READ', scope: 'DEPARTMENT', teamId: null },
+      ],
+    });
+    await expect(
+      fixture.service.copy(actor, {
+        ...input,
+        grants: [{ action: 'CASE_MATCH', scope: 'SELF' }],
+      }),
+    ).resolves.toMatchObject({
+      grants: [{ action: 'CASE_MATCH', scope: 'SELF' }],
+    });
+  });
+
   it('creates the complete copied template and audit atomically', async () => {
     const fixture = createFixture();
 

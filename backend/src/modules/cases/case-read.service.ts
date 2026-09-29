@@ -17,7 +17,7 @@ export class CaseReadService {
     private readonly materials: MaterialService,
   ) {}
 
-  private async scope(actor: ActorContext): Promise<Prisma.LeadWhereInput> {
+  private async scope(actor: ActorContext): Promise<void> {
     if (
       actor.notaryOfficeId !== undefined ||
       actor.clientCustomerId !== undefined
@@ -30,20 +30,30 @@ export class CaseReadService {
     if (account?.accountType !== 'INTERNAL' || !account.active)
       throw this.forbidden();
     try {
-      return await this.access.buildLeadScope(actor, 'case.read');
+      await this.access.authorizeDepartmentAction(actor, 'case.read');
     } catch (error) {
       if (error instanceof ForbiddenException) throw this.forbidden();
       throw error;
     }
   }
 
-  async list(actor: ActorContext, page: number, pageSize: number) {
-    const sourceLead = await this.scope(actor);
-    const where: Prisma.CaseWhereInput = {
+  async list(
+    actor: ActorContext,
+    page: number,
+    pageSize: number,
+    view: 'mine' | 'department' = 'department',
+    stage?: 'PENDING_MATCH' | 'WAITING_COMPLAINT',
+  ) {
+    await this.scope(actor);
+    const baseWhere: Prisma.CaseWhereInput = {
       departmentId: actor.departmentId,
-      sourceLead,
+      ...(view === 'mine' ? { responsibleUserId: actor.userId } : {}),
     };
-    const [items, total] = await Promise.all([
+    const where: Prisma.CaseWhereInput = {
+      ...baseWhere,
+      ...(stage ? { stage } : {}),
+    };
+    const [items, total, grouped] = await Promise.all([
       this.database.case.findMany({
         where,
         orderBy: [{ createdAt: 'desc' }, { id: 'asc' }],
@@ -53,33 +63,94 @@ export class CaseReadService {
           id: true,
           businessNo: true,
           stage: true,
+          version: true,
           createdAt: true,
+          responsibleUserId: true,
+          owner: { select: { id: true, displayName: true } },
+          responsibleMembership: { select: { teamId: true } },
           sourceLead: { select: { id: true, businessNo: true } },
           sourceNotaryMatter: { select: { id: true, businessNo: true } },
         },
       }),
       this.database.case.count({ where }),
+      this.database.case.groupBy({
+        by: ['stage'],
+        where: baseWhere,
+        _count: { _all: true },
+      }),
     ]);
     return {
-      items: items.map((item) => ({
-        ...item,
-        createdAt: item.createdAt.toISOString(),
-      })),
+      items: await Promise.all(
+        items.map(async (item) => ({
+          id: item.id,
+          businessNo: item.businessNo,
+          stage: item.stage,
+          version: item.version,
+          owner: item.owner,
+          sourceLead: item.sourceLead,
+          sourceNotaryMatter: item.sourceNotaryMatter,
+          canMatch:
+            item.stage === 'PENDING_MATCH' &&
+            (await this.access.canAuthorizeCase(actor, 'case.match', {
+              departmentId: actor.departmentId,
+              responsibleUserId: item.responsibleUserId,
+              ...(item.responsibleMembership.teamId
+                ? { teamId: item.responsibleMembership.teamId }
+                : {}),
+            })),
+          createdAt: item.createdAt.toISOString(),
+        })),
+      ),
       total,
       page,
       pageSize,
+      counts: {
+        PENDING_MATCH:
+          grouped.find((row) => row.stage === 'PENDING_MATCH')?._count._all ??
+          0,
+        WAITING_COMPLAINT:
+          grouped.find((row) => row.stage === 'WAITING_COMPLAINT')?._count
+            ._all ?? 0,
+      },
     };
   }
 
   async get(actor: ActorContext, id: string) {
-    const sourceLead = await this.scope(actor);
+    await this.scope(actor);
     const record = await this.database.case.findFirst({
-      where: { id, departmentId: actor.departmentId, sourceLead },
+      where: { id, departmentId: actor.departmentId },
       select: {
         id: true,
         businessNo: true,
         stage: true,
+        version: true,
+        matchedAt: true,
         createdAt: true,
+        responsibleUserId: true,
+        responsibleMembership: { select: { teamId: true } },
+        defendants: {
+          orderBy: { createdAt: 'asc' },
+          select: {
+            id: true,
+            kind: true,
+            name: true,
+            idNo: true,
+            phone: true,
+            address: true,
+          },
+        },
+        lawyers: {
+          orderBy: { startedAt: 'asc' },
+          select: {
+            id: true,
+            role: true,
+            startedAt: true,
+            endedAt: true,
+            lawyer: {
+              select: { id: true, fullName: true, lawFirm: true, phone: true },
+            },
+          },
+        },
         courtCaseNo: true,
         owner: { select: { id: true, displayName: true } },
         department: { select: { id: true, name: true } },
@@ -132,6 +203,26 @@ export class CaseReadService {
       id: record.id,
       businessNo: record.businessNo,
       stage: record.stage,
+      version: record.version,
+      matchedAt: record.matchedAt?.toISOString() ?? null,
+      defendants: record.defendants,
+      lawyers: record.lawyers.map((assignment) => ({
+        id: assignment.lawyer.id,
+        fullName: assignment.lawyer.fullName,
+        lawFirm: assignment.lawyer.lawFirm,
+        phone: assignment.lawyer.phone,
+        role: assignment.role,
+        assignedAt: assignment.startedAt.toISOString(),
+      })),
+      canMatch:
+        record.stage === 'PENDING_MATCH' &&
+        (await this.access.canAuthorizeCase(actor, 'case.match', {
+          departmentId: actor.departmentId,
+          responsibleUserId: record.responsibleUserId,
+          ...(record.responsibleMembership.teamId
+            ? { teamId: record.responsibleMembership.teamId }
+            : {}),
+        })),
       createdAt: record.createdAt.toISOString(),
       courtCaseNo: record.courtCaseNo,
       department: record.department,

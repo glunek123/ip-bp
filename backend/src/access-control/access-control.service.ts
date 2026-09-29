@@ -21,6 +21,7 @@ export type PermissionAction =
   | 'notary.issuance.decide'
   | 'notary.return.archive'
   | 'case.read'
+  | 'case.match'
   | 'notary.office.manage'
   | 'client.lead.read'
   | 'client.lead.review'
@@ -62,6 +63,8 @@ export type LeadResourceFacts = {
   responsibleUserId?: string;
   teamId?: string;
 };
+
+export type CaseResourceFacts = LeadResourceFacts;
 
 export type LeadScopePredicate = {
   departmentId: string;
@@ -267,6 +270,38 @@ export class AccessControlService {
     }
   }
 
+  async authorizeCase(
+    actor: ActorContext,
+    action: 'case.match',
+    facts: CaseResourceFacts,
+    reader?: AccessControlSnapshotReader,
+  ): Promise<void> {
+    if (facts.departmentId !== actor.departmentId) throw this.caseForbidden();
+    const snapshot = await this.loadCurrentSnapshot(actor, reader);
+    if (
+      !snapshot.grants.some(
+        (grant) =>
+          grant.action === action && this.scopeCovers(grant, actor, facts),
+      )
+    )
+      throw this.caseForbidden();
+  }
+
+  async canAuthorizeCase(
+    actor: ActorContext,
+    action: 'case.match',
+    facts: CaseResourceFacts,
+    reader?: AccessControlSnapshotReader,
+  ): Promise<boolean> {
+    try {
+      await this.authorizeCase(actor, action, facts, reader);
+      return true;
+    } catch (error) {
+      if (error instanceof ForbiddenException) return false;
+      throw error;
+    }
+  }
+
   async buildLeadScope(
     actor: ActorContext,
     action: LeadAction,
@@ -368,6 +403,13 @@ export class AccessControlService {
     return new ForbiddenException({
       code: 'LEAD_ACTION_FORBIDDEN',
       message: '无权执行此线索操作',
+    });
+  }
+
+  private caseForbidden(): ForbiddenException {
+    return new ForbiddenException({
+      code: 'CASE_ACTION_FORBIDDEN',
+      message: '无权执行此案件操作',
     });
   }
 

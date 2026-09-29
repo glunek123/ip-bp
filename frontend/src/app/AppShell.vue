@@ -3,6 +3,7 @@ import { computed, onBeforeUnmount, onMounted, ref, watch } from 'vue';
 import { RouterLink, useRoute, useRouter } from 'vue-router';
 import { ElButton } from 'element-plus/es/components/button/index.mjs';
 import { ApiError } from '../api/http';
+import { listCases, type CaseStage } from '../api/cases';
 import { listLeads, type LeadStatus } from '../api/leads';
 import { getOrganizationManagementContext } from '../api/organization';
 import {
@@ -23,8 +24,15 @@ const canViewNotaryOffices = ref(false);
 const canViewNotaryMatters = ref(false);
 const leadCounts = ref<Record<LeadStatus, number> | null>(null);
 const notaryCounts = ref<Record<NotaryListStage, number> | null>(null);
+const caseCounts = ref<Record<CaseStage, number> | null>(null);
 const countRevision = ref(0);
-const expandedGroup = ref<'leads' | 'notary' | 'settings' | null>(null);
+const expandedGroup = ref<'cases' | 'leads' | 'notary' | 'settings' | null>(
+  null,
+);
+const caseStageCards: ReadonlyArray<{ stage: CaseStage; label: string }> = [
+  { stage: 'PENDING_MATCH', label: '案件待匹配' },
+  { stage: 'WAITING_COMPLAINT', label: '待写诉状' },
+];
 const notaryStageCards: ReadonlyArray<{
   stage: NotaryListStage;
   label: string;
@@ -62,6 +70,13 @@ const breadcrumbs = computed(() =>
     : [],
 );
 const isCustomerRoute = computed(() => route.path.startsWith('/customers'));
+const isCaseRoute = computed(() => route.path.startsWith('/cases'));
+const selectedCaseView = computed(() =>
+  route.query.view === 'department' ? 'department' : 'mine',
+);
+const selectedCaseStage = computed(() =>
+  typeof route.query.stage === 'string' ? route.query.stage : undefined,
+);
 const isLeadRoute = computed(
   () => route.path === '/leads' || route.path.startsWith('/leads/'),
 );
@@ -97,6 +112,14 @@ const notaryTotal = computed(() =>
         0,
       ),
 );
+const caseTotal = computed(() =>
+  caseCounts.value === null
+    ? null
+    : caseStageCards.reduce(
+        (total, card) => total + caseCounts.value![card.stage],
+        0,
+      ),
+);
 const userInitial = computed(
   () => auth.session?.user.displayName.trim().slice(0, 1) || '用',
 );
@@ -104,7 +127,8 @@ const userInitial = computed(
 watch(
   () => route.path,
   (path) => {
-    if (path.startsWith('/notary-matters')) expandedGroup.value = 'notary';
+    if (path.startsWith('/cases')) expandedGroup.value = 'cases';
+    else if (path.startsWith('/notary-matters')) expandedGroup.value = 'notary';
     else if (path.startsWith('/leads')) expandedGroup.value = 'leads';
     else if (path === '/notary-offices' || path.startsWith('/settings/'))
       expandedGroup.value = 'settings';
@@ -163,6 +187,7 @@ watch(
     if (currentIdentity !== previous?.[0]) {
       leadCounts.value = null;
       notaryCounts.value = null;
+      caseCounts.value = null;
       canViewNotaryMatters.value = false;
     }
     if (currentIdentity === null || isClient.value || isNotary.value) return;
@@ -173,9 +198,13 @@ watch(
       controller.abort();
     });
     try {
-      const [leadResult, notaryResult] = await Promise.allSettled([
+      const [leadResult, notaryResult, caseResult] = await Promise.allSettled([
         listLeads(1, 1, { signal: controller.signal }, undefined, 'LIBRARY'),
         listNotaryMatters(1, 1, { signal: controller.signal }),
+        listCases(1, 1, {
+          signal: controller.signal,
+          view: selectedCaseView.value,
+        }),
       ]);
       if (!current || identity.value !== currentIdentity) return;
       if (leadResult.status === 'fulfilled')
@@ -188,10 +217,13 @@ watch(
         notaryCounts.value = null;
         canViewNotaryMatters.value = false;
       }
+      caseCounts.value =
+        caseResult.status === 'fulfilled' ? caseResult.value.counts : null;
     } catch {
       if (current) {
         leadCounts.value = null;
         notaryCounts.value = null;
+        caseCounts.value = null;
       }
     }
   },
@@ -263,18 +295,88 @@ async function logout(): Promise<void> {
       </nav>
       <nav v-else class="app-nav" aria-label="主要导航">
         <p class="app-nav__label">工作台</p>
-        <RouterLink
-          v-if="!isClient"
-          class="app-nav__item"
-          :class="{
-            active: route.path === '/cases' || route.path.startsWith('/cases/'),
-          }"
-          data-test="case-nav"
-          to="/cases"
-          @click="closeDrawer"
+        <div v-if="!isClient" class="app-nav__group">
+          <RouterLink
+            class="app-nav__item"
+            :class="{ active: isCaseRoute }"
+            data-test="case-nav"
+            to="/cases"
+            @click="closeDrawer"
+          >
+            <span>案件</span>
+            <span v-if="caseTotal !== null" class="app-nav__badge">{{
+              caseTotal
+            }}</span>
+          </RouterLink>
+          <button
+            class="app-nav__expand"
+            type="button"
+            data-test="case-expand"
+            :aria-expanded="expandedGroup === 'cases'"
+            aria-label="展开或收起案件"
+            @click="expandedGroup = expandedGroup === 'cases' ? null : 'cases'"
+          >
+            {{ expandedGroup === 'cases' ? '⌄' : '›' }}
+          </button>
+        </div>
+        <div
+          v-if="!isClient && expandedGroup === 'cases'"
+          class="app-subnav"
+          aria-label="案件范围与阶段"
         >
-          <span>案件</span>
-        </RouterLink>
+          <RouterLink
+            class="app-subnav__item"
+            :class="{ active: isCaseRoute && selectedCaseView === 'mine' }"
+            data-test="case-view-mine"
+            :to="{
+              path: '/cases',
+              query: { view: 'mine', stage: selectedCaseStage },
+            }"
+            @click="closeDrawer"
+            >我负责</RouterLink
+          >
+          <RouterLink
+            class="app-subnav__item"
+            :class="{
+              active: isCaseRoute && selectedCaseView === 'department',
+            }"
+            data-test="case-view-department"
+            :to="{
+              path: '/cases',
+              query: { view: 'department', stage: selectedCaseStage },
+            }"
+            @click="closeDrawer"
+            >本部门全部</RouterLink
+          >
+          <RouterLink
+            class="app-subnav__item"
+            :class="{ active: isCaseRoute && selectedCaseStage === undefined }"
+            :to="{ path: '/cases', query: { view: selectedCaseView } }"
+            @click="closeDrawer"
+          >
+            <span>全部阶段</span>
+            <span v-if="caseTotal !== null" class="app-nav__badge">{{
+              caseTotal
+            }}</span>
+          </RouterLink>
+          <RouterLink
+            v-for="card in caseStageCards"
+            :key="card.stage"
+            class="app-subnav__item"
+            :class="{ active: isCaseRoute && selectedCaseStage === card.stage }"
+            data-test="case-stage"
+            :to="{
+              path: '/cases',
+              query: { view: selectedCaseView, stage: card.stage },
+            }"
+            @click="closeDrawer"
+          >
+            <span>{{ card.label }}</span>
+            <span v-if="caseCounts" class="app-nav__badge">{{
+              caseCounts[card.stage]
+            }}</span>
+          </RouterLink>
+        </div>
         <div v-if="!isClient" class="app-nav__group">
           <RouterLink
             class="app-nav__item"

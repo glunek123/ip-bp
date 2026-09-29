@@ -1,6 +1,6 @@
 import { ApiProperty, ApiPropertyOptional } from '@nestjs/swagger';
 import { Type } from 'class-transformer';
-import { IsInt, Max, Min } from 'class-validator';
+import { IsIn, IsInt, IsOptional, Max, Min } from 'class-validator';
 
 class CaseCertificateFileDto {
   @ApiProperty({ format: 'uuid' }) materialId!: string;
@@ -20,6 +20,14 @@ class CaseCertificateSummaryDto {
 }
 
 export class CasePageQueryDto {
+  @ApiPropertyOptional({ enum: ['mine', 'department'], default: 'department' })
+  @IsOptional()
+  @IsIn(['mine', 'department'])
+  view: 'mine' | 'department' = 'department';
+  @ApiPropertyOptional({ enum: ['PENDING_MATCH', 'WAITING_COMPLAINT'] })
+  @IsOptional()
+  @IsIn(['PENDING_MATCH', 'WAITING_COMPLAINT'])
+  stage?: 'PENDING_MATCH' | 'WAITING_COMPLAINT';
   @ApiPropertyOptional({ minimum: 1, default: 1 })
   @Type(() => Number)
   @IsInt()
@@ -47,7 +55,11 @@ class CaseOwnerDto {
 class CaseListItemDto {
   @ApiProperty({ format: 'uuid' }) id!: string;
   @ApiProperty() businessNo!: string;
-  @ApiProperty({ enum: ['PENDING_MATCH'] }) stage!: 'PENDING_MATCH';
+  @ApiProperty({ enum: ['PENDING_MATCH', 'WAITING_COMPLAINT'] }) stage!:
+    'PENDING_MATCH' | 'WAITING_COMPLAINT';
+  @ApiProperty() version!: number;
+  @ApiProperty() canMatch!: boolean;
+  @ApiProperty({ type: CaseOwnerDto }) owner!: CaseOwnerDto;
   @ApiProperty({ format: 'date-time' }) createdAt!: string;
   @ApiProperty({ type: CaseSourceDto }) sourceLead!: CaseSourceDto;
   @ApiProperty({ type: CaseSourceDto }) sourceNotaryMatter!: CaseSourceDto;
@@ -57,6 +69,24 @@ export class CaseListResponseDto {
   @ApiProperty() total!: number;
   @ApiProperty() page!: number;
   @ApiProperty() pageSize!: number;
+  @ApiProperty() counts!: { PENDING_MATCH: number; WAITING_COMPLAINT: number };
+}
+class CaseDefendantDto {
+  @ApiProperty({ format: 'uuid' }) id!: string;
+  @ApiProperty({ enum: ['PERSON', 'ORGANIZATION'] }) kind!:
+    'PERSON' | 'ORGANIZATION';
+  @ApiProperty() name!: string;
+  @ApiProperty({ type: String, nullable: true }) idNo!: string | null;
+  @ApiProperty({ type: String, nullable: true }) phone!: string | null;
+  @ApiProperty({ type: String, nullable: true }) address!: string | null;
+}
+class CaseLawyerDto {
+  @ApiProperty({ format: 'uuid' }) id!: string;
+  @ApiProperty() fullName!: string;
+  @ApiProperty() lawFirm!: string;
+  @ApiProperty({ type: String, nullable: true }) phone!: string | null;
+  @ApiProperty({ enum: ['PRIMARY'] }) role!: 'PRIMARY';
+  @ApiProperty({ format: 'date-time' }) assignedAt!: string;
 }
 class CaseFeeDto {
   @ApiProperty({ enum: ['NOTARY', 'SAMPLE', 'INVESTIGATION', 'DISCLOSURE'] })
@@ -68,12 +98,15 @@ class CaseFeeDto {
   @ApiProperty({ format: 'uuid' }) sourceId!: string;
 }
 export class CaseDetailResponseDto extends CaseListItemDto {
+  @ApiProperty({ type: String, nullable: true, format: 'date-time' })
+  matchedAt!: string | null;
   @ApiProperty({ type: String, nullable: true }) courtCaseNo!: string | null;
   @ApiProperty({ type: CaseNamedDto }) department!: CaseNamedDto;
   @ApiProperty({ type: CaseNamedDto }) customer!: CaseNamedDto;
   @ApiProperty({ type: CaseNamedDto }) rightsHolder!: CaseNamedDto;
-  @ApiProperty({ type: CaseOwnerDto }) owner!: CaseOwnerDto;
   @ApiProperty({ type: CaseCertificateSummaryDto })
   certificate!: CaseCertificateSummaryDto;
   @ApiProperty({ type: [CaseFeeDto] }) fees!: CaseFeeDto[];
+  @ApiProperty({ type: [CaseDefendantDto] }) defendants!: CaseDefendantDto[];
+  @ApiProperty({ type: [CaseLawyerDto] }) lawyers!: CaseLawyerDto[];
 }

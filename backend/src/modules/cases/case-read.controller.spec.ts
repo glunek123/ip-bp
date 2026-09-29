@@ -7,12 +7,16 @@ import { CsrfGuard } from '../../auth/csrf.guard';
 import { configureApp } from '../../common/configure-app';
 import { CaseReadController } from './case-read.controller';
 import { CaseReadService } from './case-read.service';
+import { CaseMatchService } from './case-match.service';
 
 describe('case read OpenAPI contract', () => {
   it('declares minimal list and detail response with source fee identities', async () => {
     const module = await Test.createTestingModule({
       controllers: [CaseReadController],
-      providers: [{ provide: CaseReadService, useValue: {} }],
+      providers: [
+        { provide: CaseReadService, useValue: {} },
+        { provide: CaseMatchService, useValue: {} },
+      ],
     })
       .overrideGuard(ActorContextGuard)
       .useValue({ canActivate: () => true })
@@ -56,6 +60,7 @@ describe('case read OpenAPI contract', () => {
           },
         },
       );
+      expect(document.paths['/api/v1/cases/{id}/match']?.post).toBeDefined();
       expect(document.components?.schemas?.CaseFeeDto).toMatchObject({
         properties: {
           sourceType: expect.any(Object),

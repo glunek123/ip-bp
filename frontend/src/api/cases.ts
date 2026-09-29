@@ -1,10 +1,16 @@
-import { ApiError, getJson, type RequestOptions } from './http';
+import { ApiError, getJson, requestJson, type RequestOptions } from './http';
 
+export type CaseStage = 'PENDING_MATCH' | 'WAITING_COMPLAINT';
+export type CaseView = 'mine' | 'department';
+export type CaseStageFilter = CaseStage | 'all';
 export type CaseSummary = {
   id: string;
   businessNo: string;
-  stage: 'PENDING_MATCH';
+  stage: CaseStage;
   createdAt: string;
+  version: number;
+  owner: { id: string; displayName: string };
+  canMatch: boolean;
   sourceLead: { id: string; businessNo: string };
   sourceNotaryMatter: { id: string; businessNo: string };
 };
@@ -13,13 +19,29 @@ export type CaseList = {
   total: number;
   page: number;
   pageSize: number;
+  counts: Record<CaseStage, number>;
+};
+export type CaseDefendant = {
+  id: string;
+  kind: 'PERSON' | 'ORGANIZATION';
+  name: string;
+  idNo: string | null;
+  phone: string | null;
+  address: string | null;
+};
+export type CaseLawyer = {
+  id: string;
+  fullName: string;
+  lawFirm: string;
+  phone: string | null;
+  role: 'PRIMARY';
+  assignedAt: string;
 };
 export type CaseDetail = CaseSummary & {
   courtCaseNo: null;
   department: { id: string; name: string };
   customer: { id: string; name: string };
   rightsHolder: { id: string; name: string };
-  owner: { id: string; displayName: string };
   certificate: {
     certificateNo: string;
     certificateDate: string;
@@ -35,12 +57,27 @@ export type CaseDetail = CaseSummary & {
     sourceType: 'NOTARY_CERTIFICATE_FEE' | 'NOTARY_MATTER_EVIDENCE';
     sourceId: string;
   }>;
+  defendants: CaseDefendant[];
+  lawyers: CaseLawyer[];
+  matchedAt: string | null;
 };
 export type CaseFile = {
   materialId: string;
   contentVersionId: string;
   originalFilename: string;
   mimeType: string;
+};
+export type MatchCaseInput = {
+  expectedVersion: number;
+  idempotencyKey: string;
+  defendants: Array<{
+    kind: 'PERSON' | 'ORGANIZATION';
+    name: string;
+    idNo?: string;
+    phone?: string;
+    address?: string;
+  }>;
+  lawyer: { fullName: string; lawFirm: string; phone?: string };
 };
 
 function record(value: unknown): value is Record<string, unknown> {
@@ -52,14 +89,26 @@ function exact(value: Record<string, unknown>, keys: string[]): boolean {
     keys.every((key) => key in value)
   );
 }
+function nonempty(value: unknown): value is string {
+  return typeof value === 'string' && value.trim().length > 0;
+}
+function validStage(value: unknown): value is CaseStage {
+  return value === 'PENDING_MATCH' || value === 'WAITING_COMPLAINT';
+}
 function source(value: unknown): value is { id: string; businessNo: string } {
   return (
     record(value) &&
     exact(value, ['id', 'businessNo']) &&
-    typeof value.id === 'string' &&
-    value.id.length > 0 &&
-    typeof value.businessNo === 'string' &&
-    value.businessNo.length > 0
+    nonempty(value.id) &&
+    nonempty(value.businessNo)
+  );
+}
+function named(value: unknown, lastKey: 'name' | 'displayName'): boolean {
+  return (
+    record(value) &&
+    exact(value, ['id', lastKey]) &&
+    nonempty(value.id) &&
+    nonempty(value[lastKey])
   );
 }
 function summary(value: unknown): value is CaseSummary {
@@ -70,28 +119,23 @@ function summary(value: unknown): value is CaseSummary {
       'businessNo',
       'stage',
       'createdAt',
+      'version',
+      'owner',
+      'canMatch',
       'sourceLead',
       'sourceNotaryMatter',
     ]) &&
-    typeof value.id === 'string' &&
-    value.id.length > 0 &&
-    typeof value.businessNo === 'string' &&
-    value.businessNo.length > 0 &&
-    value.stage === 'PENDING_MATCH' &&
+    nonempty(value.id) &&
+    nonempty(value.businessNo) &&
+    validStage(value.stage) &&
     typeof value.createdAt === 'string' &&
     !Number.isNaN(Date.parse(value.createdAt)) &&
+    Number.isInteger(value.version) &&
+    (value.version as number) >= 1 &&
+    named(value.owner, 'displayName') &&
+    typeof value.canMatch === 'boolean' &&
     source(value.sourceLead) &&
     source(value.sourceNotaryMatter)
-  );
-}
-function named(value: unknown, lastKey: 'name' | 'displayName'): boolean {
-  return (
-    record(value) &&
-    exact(value, ['id', lastKey]) &&
-    typeof value.id === 'string' &&
-    value.id.length > 0 &&
-    typeof value[lastKey] === 'string' &&
-    value[lastKey].length > 0
   );
 }
 function caseFile(value: unknown): value is CaseFile {
@@ -104,9 +148,40 @@ function caseFile(value: unknown): value is CaseFile {
       'mimeType',
     ]) &&
     ['materialId', 'contentVersionId', 'originalFilename', 'mimeType'].every(
-      (key) =>
-        typeof value[key] === 'string' && (value[key] as string).length > 0,
+      (key) => nonempty(value[key]),
     )
+  );
+}
+function defendant(value: unknown): value is CaseDefendant {
+  return (
+    record(value) &&
+    exact(value, ['id', 'kind', 'name', 'idNo', 'phone', 'address']) &&
+    nonempty(value.id) &&
+    (value.kind === 'PERSON' || value.kind === 'ORGANIZATION') &&
+    nonempty(value.name) &&
+    [value.idNo, value.phone, value.address].every(
+      (field) => field === null || typeof field === 'string',
+    )
+  );
+}
+function lawyer(value: unknown): value is CaseLawyer {
+  return (
+    record(value) &&
+    exact(value, [
+      'id',
+      'fullName',
+      'lawFirm',
+      'phone',
+      'role',
+      'assignedAt',
+    ]) &&
+    nonempty(value.id) &&
+    nonempty(value.fullName) &&
+    nonempty(value.lawFirm) &&
+    (value.phone === null || typeof value.phone === 'string') &&
+    value.role === 'PRIMARY' &&
+    typeof value.assignedAt === 'string' &&
+    !Number.isNaN(Date.parse(value.assignedAt))
   );
 }
 function validCaseDetail(value: unknown, id: string): value is CaseDetail {
@@ -117,15 +192,20 @@ function validCaseDetail(value: unknown, id: string): value is CaseDetail {
       'businessNo',
       'stage',
       'createdAt',
+      'version',
+      'owner',
+      'canMatch',
       'sourceLead',
       'sourceNotaryMatter',
       'courtCaseNo',
       'department',
       'customer',
       'rightsHolder',
-      'owner',
       'certificate',
       'fees',
+      'defendants',
+      'lawyers',
+      'matchedAt',
     ]) &&
     value.id === id &&
     summary({
@@ -133,6 +213,9 @@ function validCaseDetail(value: unknown, id: string): value is CaseDetail {
       businessNo: value.businessNo,
       stage: value.stage,
       createdAt: value.createdAt,
+      version: value.version,
+      owner: value.owner,
+      canMatch: value.canMatch,
       sourceLead: value.sourceLead,
       sourceNotaryMatter: value.sourceNotaryMatter,
     }) &&
@@ -140,7 +223,6 @@ function validCaseDetail(value: unknown, id: string): value is CaseDetail {
     named(value.department, 'name') &&
     named(value.customer, 'name') &&
     named(value.rightsHolder, 'name') &&
-    named(value.owner, 'displayName') &&
     record(value.certificate) &&
     exact(value.certificate, [
       'certificateNo',
@@ -150,8 +232,7 @@ function validCaseDetail(value: unknown, id: string): value is CaseDetail {
       'files',
       'disclosureFiles',
     ]) &&
-    typeof value.certificate.certificateNo === 'string' &&
-    value.certificate.certificateNo.length > 0 &&
+    nonempty(value.certificate.certificateNo) &&
     typeof value.certificate.certificateDate === 'string' &&
     /^\d{4}-\d{2}-\d{2}$/u.test(value.certificate.certificateDate) &&
     typeof value.certificate.issuedAt === 'string' &&
@@ -180,9 +261,15 @@ function validCaseDetail(value: unknown, id: string): value is CaseDetail {
         ['NOTARY_CERTIFICATE_FEE', 'NOTARY_MATTER_EVIDENCE'].includes(
           String(fee.sourceType),
         ) &&
-        typeof fee.sourceId === 'string' &&
-        fee.sourceId.length > 0,
-    )
+        nonempty(fee.sourceId),
+    ) &&
+    Array.isArray(value.defendants) &&
+    value.defendants.every(defendant) &&
+    Array.isArray(value.lawyers) &&
+    value.lawyers.every(lawyer) &&
+    (value.matchedAt === null ||
+      (typeof value.matchedAt === 'string' &&
+        !Number.isNaN(Date.parse(value.matchedAt))))
   );
 }
 function invalidResponse(): ApiError {
@@ -192,22 +279,31 @@ function invalidResponse(): ApiError {
 export async function listCases(
   page = 1,
   pageSize = 20,
-  options: RequestOptions = {},
+  options: RequestOptions & { view?: CaseView; stage?: CaseStageFilter } = {},
 ): Promise<CaseList> {
   const query = new URLSearchParams({
     page: String(page),
     pageSize: String(pageSize),
+    view: options.view ?? 'mine',
   });
+  if (options.stage && options.stage !== 'all')
+    query.set('stage', options.stage);
   const response = await getJson(`/cases?${query}`, options);
   if (
     !record(response) ||
-    !exact(response, ['items', 'total', 'page', 'pageSize']) ||
+    !exact(response, ['items', 'total', 'page', 'pageSize', 'counts']) ||
     !Array.isArray(response.items) ||
     !response.items.every(summary) ||
     !Number.isInteger(response.total) ||
     (response.total as number) < 0 ||
     response.page !== page ||
-    response.pageSize !== pageSize
+    response.pageSize !== pageSize ||
+    !record(response.counts) ||
+    !exact(response.counts, ['PENDING_MATCH', 'WAITING_COMPLAINT']) ||
+    !Number.isInteger(response.counts.PENDING_MATCH) ||
+    (response.counts.PENDING_MATCH as number) < 0 ||
+    !Number.isInteger(response.counts.WAITING_COMPLAINT) ||
+    (response.counts.WAITING_COMPLAINT as number) < 0
   )
     throw invalidResponse();
   return response as unknown as CaseList;
@@ -220,4 +316,56 @@ export async function getCase(
   const response = await getJson(`/cases/${encodeURIComponent(id)}`, options);
   if (!validCaseDetail(response, id)) throw invalidResponse();
   return response;
+}
+
+export async function matchCase(
+  id: string,
+  input: MatchCaseInput,
+): Promise<void> {
+  const body = {
+    expectedVersion: input.expectedVersion,
+    idempotencyKey: input.idempotencyKey,
+    defendants: input.defendants.map(
+      ({ kind, name, idNo, phone, address }) => ({
+        kind,
+        name: name.trim(),
+        ...(idNo?.trim() ? { idNo: idNo.trim() } : {}),
+        ...(phone?.trim() ? { phone: phone.trim() } : {}),
+        ...(address?.trim() ? { address: address.trim() } : {}),
+      }),
+    ),
+    lawyer: {
+      fullName: input.lawyer.fullName.trim(),
+      lawFirm: input.lawyer.lawFirm.trim(),
+      ...(input.lawyer.phone?.trim()
+        ? { phone: input.lawyer.phone.trim() }
+        : {}),
+    },
+  };
+  if (
+    !Number.isInteger(input.expectedVersion) ||
+    input.expectedVersion < 1 ||
+    !input.idempotencyKey.trim() ||
+    body.defendants.length === 0 ||
+    body.defendants.length > 20 ||
+    body.defendants.some((entry) => !entry.name) ||
+    !body.lawyer.fullName ||
+    !body.lawyer.lawFirm
+  )
+    throw new ApiError('匹配信息无效', 400, 'VALIDATION_ERROR');
+  const result = await requestJson(`/cases/${encodeURIComponent(id)}/match`, {
+    method: 'POST',
+    headers: { 'Idempotency-Key': input.idempotencyKey },
+    body,
+  });
+  if (
+    !record(result) ||
+    !exact(result, ['id', 'stage', 'version', 'matchedAt']) ||
+    result.id !== id ||
+    result.stage !== 'WAITING_COMPLAINT' ||
+    result.version !== input.expectedVersion + 1 ||
+    typeof result.matchedAt !== 'string' ||
+    Number.isNaN(Date.parse(result.matchedAt))
+  )
+    throw invalidResponse();
 }

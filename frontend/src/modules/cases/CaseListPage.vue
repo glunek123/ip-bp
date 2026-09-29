@@ -1,10 +1,26 @@
 <script setup lang="ts">
-import { onBeforeUnmount, onMounted, ref } from 'vue';
-import { RouterLink } from 'vue-router';
+import { computed, onBeforeUnmount, onMounted, ref, watch } from 'vue';
+import { RouterLink, useRoute, useRouter } from 'vue-router';
 import { ElButton } from 'element-plus/es/components/button/index.mjs';
 import { ApiError } from '../../api/http';
-import { listCases, type CaseSummary } from '../../api/cases';
+import {
+  listCases,
+  type CaseStageFilter,
+  type CaseSummary,
+  type CaseView,
+} from '../../api/cases';
 
+const route = useRoute();
+const router = useRouter();
+const view = computed<CaseView>(() =>
+  route.query.view === 'department' ? 'department' : 'mine',
+);
+const stage = computed<CaseStageFilter>(() =>
+  route.query.stage === 'PENDING_MATCH' ||
+  route.query.stage === 'WAITING_COMPLAINT'
+    ? route.query.stage
+    : 'all',
+);
 const state = ref<'loading' | 'ready' | 'failed'>('loading');
 const items = ref<CaseSummary[]>([]);
 const total = ref(0);
@@ -17,7 +33,11 @@ async function load() {
   state.value = 'loading';
   error.value = '';
   try {
-    const result = await listCases(1, 20, { signal: controller.signal });
+    const result = await listCases(1, 20, {
+      signal: controller.signal,
+      view: view.value,
+      stage: stage.value,
+    });
     if (controller.signal.aborted) return;
     items.value = result.items;
     total.value = result.total;
@@ -31,6 +51,13 @@ async function load() {
     state.value = 'failed';
   }
 }
+function setView(next: CaseView) {
+  void router.push({ query: { ...route.query, view: next } });
+}
+watch(
+  () => [route.query.view, route.query.stage],
+  () => void load(),
+);
 onMounted(() => void load());
 onBeforeUnmount(() => request?.abort());
 </script>
@@ -42,10 +69,31 @@ onBeforeUnmount(() => request?.abort());
         <div>
           <p class="eyebrow">业务管理系统</p>
           <h1>案件</h1>
-          <p>案件来源及当前待匹配状态。</p>
+          <p>
+            {{ view === 'mine' ? '我负责的案件' : '本部门全部案件' }} ·
+            {{
+              stage === 'all'
+                ? '全部阶段'
+                : stage === 'PENDING_MATCH'
+                  ? '待匹配'
+                  : '待写诉状'
+            }}
+          </p>
         </div>
         <ElButton text :loading="state === 'loading'" @click="load"
           >刷新</ElButton
+        >
+      </div>
+      <div class="segmented-control" role="group" aria-label="案件范围">
+        <ElButton
+          :type="view === 'mine' ? 'primary' : 'default'"
+          @click="setView('mine')"
+          >我负责</ElButton
+        >
+        <ElButton
+          :type="view === 'department' ? 'primary' : 'default'"
+          @click="setView('department')"
+          >本部门全部</ElButton
         >
       </div>
       <section v-if="state === 'loading'" class="state-panel ledger-panel">
@@ -60,10 +108,17 @@ onBeforeUnmount(() => request?.abort());
         <p v-if="items.length === 0" class="field-help">当前没有案件。</p>
         <ul v-else class="notary-offices-list">
           <li v-for="item in items" :key="item.id">
-            <RouterLink :to="`/cases/${encodeURIComponent(item.id)}`">{{
-              item.businessNo
-            }}</RouterLink
-            ><span class="pill">待匹配</span
+            <RouterLink
+              :to="{
+                path: `/cases/${encodeURIComponent(item.id)}`,
+                query: route.query,
+              }"
+              >{{ item.businessNo }}</RouterLink
+            ><span class="pill">{{
+              item.stage === 'PENDING_MATCH' ? '待匹配' : '待写诉状'
+            }}</span>
+            <span class="field-help">负责人：{{ item.owner.displayName }}</span>
+            <span class="pill">{{ item.canMatch ? '办理' : '只读' }}</span
             ><span
               >来源线索 {{ item.sourceLead.businessNo }} · 公证事项
               {{ item.sourceNotaryMatter.businessNo }}</span

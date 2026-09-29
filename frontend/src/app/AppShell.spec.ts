@@ -11,6 +11,7 @@ const api = vi.hoisted(() => ({
   listLeads: vi.fn(),
   listNotaryOffices: vi.fn(),
   listNotaryMatters: vi.fn(),
+  listCases: vi.fn(),
 }));
 const mountedShells: Array<ReturnType<typeof mount>> = [];
 
@@ -22,6 +23,7 @@ vi.mock('../api/notary', () => ({
   listNotaryOffices: api.listNotaryOffices,
   listNotaryMatters: api.listNotaryMatters,
 }));
+vi.mock('../api/cases', () => ({ listCases: api.listCases }));
 
 const session = {
   principalType: 'INTERNAL' as const,
@@ -70,6 +72,13 @@ beforeEach(() => {
       ARCHIVED: 1,
     },
     capabilities: { create: true },
+  });
+  api.listCases.mockResolvedValue({
+    items: [],
+    total: 5,
+    page: 1,
+    pageSize: 1,
+    counts: { PENDING_MATCH: 3, WAITING_COMPLAINT: 2 },
   });
 });
 afterEach(() => {
@@ -208,6 +217,28 @@ describe('AppShell', () => {
     expect(clientShell.wrapper.find('[data-test="case-nav"]').exists()).toBe(
       false,
     );
+  });
+
+  it('offers one case stage directory under the selected personal or department view', async () => {
+    const { wrapper, router } = await mountShell('/cases?view=department');
+    expect(
+      wrapper.get('[data-test="case-view-department"]').classes(),
+    ).toContain('active');
+    expect(
+      wrapper.get('[data-test="case-view-mine"]').attributes('href'),
+    ).toContain('view=mine');
+    expect(wrapper.findAll('[data-test="case-stage"]')).toHaveLength(2);
+    expect(wrapper.get('[data-test="case-nav"]').text()).toContain('5');
+    expect(api.listCases).toHaveBeenCalledWith(1, 1, {
+      signal: expect.any(AbortSignal),
+      view: 'department',
+    });
+    await router.push('/cases?view=mine&stage=WAITING_COMPLAINT');
+    await flushPromises();
+    expect(wrapper.get('[data-test="case-view-mine"]').classes()).toContain(
+      'active',
+    );
+    expect(wrapper.findAll('[data-test="case-stage"].active')).toHaveLength(1);
   });
 
   it('shows the notary office entry only when the office list is authorized', async () => {

@@ -25,6 +25,7 @@ export const internalAssignablePermissionActions = [
   'NOTARY_ISSUANCE_DECIDE',
   'NOTARY_RETURN_ARCHIVE',
   'CASE_READ',
+  'CASE_MATCH',
   'NOTARY_OFFICE_MANAGE',
   'USER_READ',
   'USER_MANAGE',
@@ -97,6 +98,7 @@ const catalog: PermissionCatalogItem[] = [
     scopes: allScopes,
   },
   { action: 'CASE_READ', label: '查看案件', scopes: ['DEPARTMENT'] },
+  { action: 'CASE_MATCH', label: '匹配案件承办', scopes: allScopes },
   {
     action: 'NOTARY_OFFICE_MANAGE',
     label: '管理公证处',

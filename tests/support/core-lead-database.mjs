@@ -82,6 +82,7 @@ const allActions = [
   'NOTARY_ISSUANCE_DECIDE',
   'NOTARY_RETURN_ARCHIVE',
   'CASE_READ',
+  'CASE_MATCH',
   'NOTARY_OFFICE_MANAGE',
   'LEAD_WITHDRAW_APPLY',
 ];
@@ -99,6 +100,7 @@ const actionNames = Object.freeze({
   'notary.issuance.decide': 'NOTARY_ISSUANCE_DECIDE',
   'notary.return.archive': 'NOTARY_RETURN_ARCHIVE',
   'case.read': 'CASE_READ',
+  'case.match': 'CASE_MATCH',
   'notary.office.manage': 'NOTARY_OFFICE_MANAGE',
   'lead.withdraw.apply': 'LEAD_WITHDRAW_APPLY',
 });
@@ -140,6 +142,7 @@ async function dropFaults() {
     ['notary_matter_command_receipts', 'core_nt_reject_return_receipt'],
     ['cases', 'core_nt_reject_certificate_case'],
     ['notary_matter_command_receipts', 'core_nt_reject_certificate_receipt'],
+    ['case_match_receipts', 'core_ca_reject_match_receipt'],
   ]) {
     await database.$executeRawUnsafe(
       `ALTER TABLE "${table}" DROP CONSTRAINT IF EXISTS "${constraint}"`,
@@ -376,6 +379,9 @@ async function clearDatabase() {
     'cases',
     'notary_certificate_fees',
     'notary_certificates',
+    'case_defendants',
+    'case_lawyer_assignments',
+    'case_match_receipts',
   ];
   await database.$transaction(async (transaction) => {
     for (const table of immutableTables) {
@@ -389,9 +395,19 @@ async function clearDatabase() {
     await transaction.notaryIssuanceDecisionAuditEvent.deleteMany({
       where: { departmentId: { in: departmentIds } },
     });
+    await transaction.caseMatchReceipt.deleteMany({
+      where: { departmentId: { in: departmentIds } },
+    });
+    await transaction.caseLawyerAssignment.deleteMany({
+      where: { departmentId: { in: departmentIds } },
+    });
+    await transaction.caseDefendant.deleteMany({
+      where: { departmentId: { in: departmentIds } },
+    });
     await transaction.case.deleteMany({
       where: { departmentId: { in: departmentIds } },
     });
+    await transaction.lawyerProfile.deleteMany({});
     await transaction.notaryCertificateFee.deleteMany({
       where: { certificate: { departmentId: { in: departmentIds } } },
     });
@@ -1304,6 +1320,35 @@ export function setGrant(action, enabled) {
   });
 }
 
+export async function setRoleGrant(
+  roleTemplateId,
+  action,
+  scope,
+  enabled = true,
+) {
+  const prismaAction = actionNames[action];
+  if (prismaAction === undefined) throw new Error('Unsupported fixture action');
+  if (!['SELF', 'TEAM', 'DEPARTMENT'].includes(scope)) {
+    throw new Error('Unsupported fixture scope');
+  }
+  if (enabled) {
+    return database.roleGrant.upsert({
+      where: {
+        roleTemplateId_action_scope: {
+          roleTemplateId,
+          action: prismaAction,
+          scope,
+        },
+      },
+      create: { roleTemplateId, action: prismaAction, scope },
+      update: {},
+    });
+  }
+  return database.roleGrant.deleteMany({
+    where: { roleTemplateId, action: prismaAction, scope },
+  });
+}
+
 export function setInternalAccountActive(userId, active) {
   return database.userAccount.update({
     where: { id: userId },
@@ -1455,6 +1500,13 @@ export async function rejectNotaryCertificateReceiptWrites() {
   await dropFaults();
   await database.$executeRawUnsafe(
     `ALTER TABLE "notary_matter_command_receipts" ADD CONSTRAINT "core_nt_reject_certificate_receipt" CHECK ("action" <> 'notary.certificate.issue') NOT VALID`,
+  );
+}
+
+export async function rejectCaseMatchReceiptWrites() {
+  await dropFaults();
+  await database.$executeRawUnsafe(
+    'ALTER TABLE "case_match_receipts" ADD CONSTRAINT "core_ca_reject_match_receipt" CHECK (false) NOT VALID',
   );
 }
 

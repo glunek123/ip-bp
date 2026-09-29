@@ -8,7 +8,7 @@
 
 ## 当前任务
 
-**CORE-CA-001｜案件匹配与承办（路线图唯一Current，尚未领取开发）**：前置CORE-NT-006已快进集成到本地`main@a6ef5f1`，该组合tree重新通过完整门禁及118项隔离数据库／Chromium验收；本次未启动CA-001。CORE-CA-002为Next。原业务候选与集成证据边界见[验证记录](spec/v0.1/VALIDATION.md)。
+**CORE-CA-001｜案件匹配与承办（路线图唯一Current，开发中）**：已从与远端一致的`main@93d8bcb`建立`codex/core-ca-001-case-matching`并领取。案件匹配、部门读取、前端办理与迁移已形成开发候选，定向数据库／Chromium 5/5通过；独立后端审查发现默认部门级授权过宽，正在以补充前向迁移关闭finding，故尚未完成正式门禁与验收。前置CORE-NT-006的原业务候选与集成证据边界见[验证记录](spec/v0.1/VALIDATION.md)。CORE-CA-002保持Next。
 
 线索库／公证阶段导航归属修复已按用户要求并入NT-003开发分支（合并提交`379b9d2`），连同NT-003新增阶段在NT-007固定候选通过完整组合验证，现已随该分支进入`main`。详见[验证记录](spec/v0.1/VALIDATION.md)。
 

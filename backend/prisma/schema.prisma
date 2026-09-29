@@ -25,6 +25,7 @@ enum PermissionAction {
   NOTARY_ISSUANCE_DECIDE       @map("notary.issuance.decide")
   NOTARY_RETURN_ARCHIVE        @map("notary.return.archive")
   CASE_READ                    @map("case.read")
+  CASE_MATCH                   @map("case.match")
   NOTARY_OFFICE_MANAGE         @map("notary.office.manage")
   CLIENT_LEAD_READ             @map("client.lead.read")
   CLIENT_LEAD_REVIEW           @map("client.lead.review")
@@ -189,8 +190,16 @@ enum NotaryReturnPartyKind {
 
 enum CaseStage {
   PENDING_MATCH
+  WAITING_COMPLAINT
 
   @@map("case_stage")
+}
+
+enum CasePartyKind {
+  PERSON
+  ORGANIZATION
+
+  @@map("case_party_kind")
 }
 
 enum CertificateFeeCategory {
@@ -332,6 +341,7 @@ model Department {
   notaryOffices               NotaryOffice[]
   notaryMatters               NotaryMatter[]
   cases                       Case[]
+  lawyerProfiles              LawyerProfile[]
   notaryMatterCommandReceipts NotaryMatterCommandReceipt[]
   leadCommandReceipts         LeadCommandReceipt[]
   clientAccountBindings       CustomerAccountBinding[]
@@ -1114,6 +1124,11 @@ model Case {
   rightsHolderId       String            @map("rights_holder_id") @db.Uuid
   responsibleUserId    String            @map("responsible_user_id") @db.Uuid
   stage                CaseStage         @default(PENDING_MATCH)
+  version              Int               @default(1)
+  matchedAt            DateTime?         @map("matched_at") @db.Timestamptz(3)
+  defendants           CaseDefendant[]
+  lawyers              CaseLawyerAssignment[]
+  matchReceipts        CaseMatchReceipt[]
   courtCaseNo          String?           @map("court_case_no") @db.VarChar(100)
   department           Department        @relation(fields: [departmentId], references: [id], onDelete: Restrict)
   sourceLead           Lead              @relation(fields: [sourceLeadId, customerId, departmentId], references: [id, customerId, departmentId], onDelete: Restrict, onUpdate: Restrict)
@@ -1131,6 +1146,66 @@ model Case {
   @@unique([certificateId, sourceNotaryMatterId, departmentId])
   @@index([departmentId, createdAt, id])
   @@map("cases")
+}
+
+model CaseDefendant {
+  id           String        @id @default(uuid()) @db.Uuid
+  caseId       String        @map("case_id") @db.Uuid
+  departmentId String        @map("department_id") @db.Uuid
+  kind         CasePartyKind
+  name         String        @db.VarChar(200)
+  idNo         String?       @map("id_no") @db.VarChar(100)
+  phone        String?       @db.VarChar(100)
+  address      String?       @db.VarChar(500)
+  createdAt    DateTime      @default(now()) @map("created_at") @db.Timestamptz(3)
+  case         Case          @relation(fields: [caseId, departmentId], references: [id, departmentId], onDelete: Restrict, onUpdate: Restrict)
+
+  @@index([caseId, departmentId])
+  @@map("case_defendants")
+}
+
+model LawyerProfile {
+  id          String                 @id @default(uuid()) @db.Uuid
+  departmentId String               @map("department_id") @db.Uuid
+  fullName    String                 @map("full_name") @db.VarChar(200)
+  lawFirm     String                 @map("law_firm") @db.VarChar(200)
+  phone       String?                @db.VarChar(100)
+  assignments CaseLawyerAssignment[]
+  department  Department             @relation(fields: [departmentId], references: [id], onDelete: Restrict, onUpdate: Restrict)
+  createdAt   DateTime               @default(now()) @map("created_at") @db.Timestamptz(3)
+
+  @@unique([id, departmentId])
+  @@map("lawyer_profiles")
+}
+
+model CaseLawyerAssignment {
+  id           String        @id @default(uuid()) @db.Uuid
+  caseId       String        @map("case_id") @db.Uuid
+  departmentId String        @map("department_id") @db.Uuid
+  lawyerId     String        @map("lawyer_id") @db.Uuid
+  role         String        @db.VarChar(30)
+  startedAt    DateTime      @map("started_at") @db.Timestamptz(3)
+  endedAt      DateTime?     @map("ended_at") @db.Timestamptz(3)
+  case         Case          @relation(fields: [caseId, departmentId], references: [id, departmentId], onDelete: Restrict, onUpdate: Restrict)
+  lawyer       LawyerProfile @relation(fields: [lawyerId, departmentId], references: [id, departmentId], onDelete: Restrict, onUpdate: Restrict)
+
+  @@index([caseId, departmentId])
+  @@map("case_lawyer_assignments")
+}
+
+model CaseMatchReceipt {
+  id                 String   @id @default(uuid()) @db.Uuid
+  departmentId       String   @map("department_id") @db.Uuid
+  actorUserId        String   @map("actor_user_id") @db.Uuid
+  caseId             String   @map("case_id") @db.Uuid
+  idempotencyKey     String   @map("idempotency_key") @db.VarChar(128)
+  requestFingerprint String   @map("request_fingerprint") @db.Char(64)
+  resultSnapshot     Json     @map("result_snapshot")
+  createdAt          DateTime @default(now()) @map("created_at") @db.Timestamptz(3)
+  case               Case     @relation(fields: [caseId, departmentId], references: [id, departmentId], onDelete: Restrict, onUpdate: Restrict)
+
+  @@unique([departmentId, actorUserId, idempotencyKey])
+  @@map("case_match_receipts")
 }
 
 model CaseNumberCounter {

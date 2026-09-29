@@ -105,6 +105,7 @@ type MaterialAuthorizationReader = Pick<
   | 'customer'
   | 'uploadDraft'
   | 'lead'
+  | 'case'
   | 'notaryMatter'
   | 'customerAccountBinding'
   | 'notaryOfficeAccountBinding'
@@ -1614,12 +1615,28 @@ export class MaterialService {
         operation === 'read' &&
         (notaryCategory === 'NOTARY_CERTIFICATE' ||
           notaryCategory === 'NOTARY_DISCLOSURE');
+      if (caseCertificateRead) {
+        await this.withMaterialAuthorization(() =>
+          this.accessControl.authorizeDepartmentAction(
+            actor,
+            'case.read',
+            snapshotReader,
+          ),
+        );
+        const relatedCase = await reader.case.findFirst({
+          where: {
+            sourceNotaryMatterId: ownerId,
+            departmentId: actor.departmentId,
+          },
+          select: { id: true },
+        });
+        if (relatedCase === null) throw this.notFound();
+        return;
+      }
       const action =
         operation === 'write'
           ? 'notary.unbox.record'
-          : caseCertificateRead
-            ? 'case.read'
-            : (leadAction ?? 'lead.read');
+          : (leadAction ?? 'lead.read');
       const scope = await this.withMaterialAuthorization(() =>
         this.accessControl.buildLeadScope(actor, action, snapshotReader),
       );
@@ -1628,7 +1645,6 @@ export class MaterialService {
           id: ownerId,
           departmentId: actor.departmentId,
           sourceLead: scope,
-          ...(caseCertificateRead ? { certificate: { isNot: null } } : {}),
         },
         select: {
           stage: true,

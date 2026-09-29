@@ -6,11 +6,12 @@ import { MaterialModule } from '../materials';
 import { CaseCreationService } from './case-creation.service';
 import { CaseReadController } from './case-read.controller';
 import { CaseReadService } from './case-read.service';
+import { CaseMatchService } from './case-match.service';
 
 @Module({
   imports: [AccessControlModule, AuthModule, DatabaseModule, MaterialModule],
   controllers: [CaseReadController],
-  providers: [CaseReadService, CaseCreationService],
+  providers: [CaseReadService, CaseCreationService, CaseMatchService],
   exports: [CaseCreationService],
 })
 export class CaseModule {}

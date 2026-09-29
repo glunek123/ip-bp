@@ -136,6 +136,11 @@ const context = {
       scopes: ['DEPARTMENT'],
     },
     {
+      action: 'CASE_MATCH',
+      label: '匹配案件',
+      scopes: ['SELF', 'TEAM', 'DEPARTMENT'],
+    },
+    {
       action: 'NOTARY_OFFICE_MANAGE',
       label: '管理公证处',
       scopes: ['DEPARTMENT'],
@@ -203,6 +208,7 @@ describe('organization API', () => {
       'NOTARY_ISSUANCE_DECIDE',
       'NOTARY_RETURN_ARCHIVE',
       'CASE_READ',
+      'CASE_MATCH',
       'NOTARY_OFFICE_MANAGE',
       'USER_READ',
       'USER_MANAGE',
@@ -249,6 +255,25 @@ describe('organization API', () => {
           ]),
         },
       ],
+    });
+  });
+
+  it('accepts a self-scoped CASE_MATCH role grant', async () => {
+    const body = {
+      ...context,
+      roles: [
+        {
+          ...context.roles[0]!,
+          grants: [{ action: 'CASE_MATCH', scope: 'SELF' }],
+        },
+      ],
+    };
+    vi.stubGlobal(
+      'fetch',
+      vi.fn().mockResolvedValue(new Response(JSON.stringify(body))),
+    );
+    await expect(getOrganizationManagementContext()).resolves.toMatchObject({
+      roles: [{ grants: [{ action: 'CASE_MATCH', scope: 'SELF' }] }],
     });
   });
 
@@ -320,7 +345,9 @@ describe('organization API', () => {
       permissionCatalog: context.permissionCatalog.map((item) =>
         item.action === 'CASE_READ'
           ? { ...item, scopes: ['SELF', 'TEAM', 'DEPARTMENT'] }
-          : item,
+          : item.action === 'CASE_MATCH'
+            ? { ...item, scopes: ['SELF'] }
+            : item,
       ),
     },
   ])('rejects sensitive or invalid management shapes %#', async (body) => {

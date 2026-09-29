@@ -29,6 +29,7 @@ const actionMap = {
   NOTARY_ISSUANCE_DECIDE: 'notary.issuance.decide',
   NOTARY_RETURN_ARCHIVE: 'notary.return.archive',
   CASE_READ: 'case.read',
+  CASE_MATCH: 'case.match',
   NOTARY_OFFICE_MANAGE: 'notary.office.manage',
   CLIENT_LEAD_READ: 'client.lead.read',
   CLIENT_LEAD_REVIEW: 'client.lead.review',

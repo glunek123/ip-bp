@@ -210,6 +210,12 @@ export function setClientUserActive(
   active: boolean,
 ): Promise<unknown>;
 export function setGrant(action: string, enabled: boolean): Promise<unknown>;
+export function setRoleGrant(
+  roleTemplateId: string,
+  action: string,
+  scope: 'SELF' | 'TEAM' | 'DEPARTMENT',
+  enabled?: boolean,
+): Promise<unknown>;
 export function setInternalAccountActive(
   userId: string,
   active: boolean,
@@ -250,6 +256,7 @@ export function rejectNotaryReturnAuditWrites(): Promise<void>;
 export function rejectNotaryReturnReceiptWrites(): Promise<void>;
 export function rejectNotaryCertificateCaseWrites(): Promise<void>;
 export function rejectNotaryCertificateReceiptWrites(): Promise<void>;
+export function rejectCaseMatchReceiptWrites(): Promise<void>;
 export function rejectLeadReviewDecisionWrites(): Promise<void>;
 export function rejectClientLeadReviewReceiptWrites(): Promise<void>;
 export function rejectWithdrawalApplicationWrites(): Promise<void>;

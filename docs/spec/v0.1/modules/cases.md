@@ -2,7 +2,7 @@
 
 案件办理阶段、审理结果、材料、资金和归档是不同维度。SD-23整体采用本页16阶段门槛；SD-39把普通组员的案件读取与办理范围拆开；仍不得仅按数组next生成正式工作流。
 
-依据：[固定事实](../../../demo-reverse/v158/modules/M02-cases.md)、[候选](../../../demo-reverse/v158/modules/M02-cases-candidates.md)、[决定](../../../demo-reverse/v158/DECISIONS.md)和[纠偏](../../../demo-reverse/v158/CORRECTIONS.md)。字段只在[领域模型](../DOMAIN.md)维护；B/T/E编号见[缺口](../GAPS.md)，通用技术设计见[TD-BASE-05／TD-AUTHZ-01／TD-TRACE-UX-01](../TECHNICAL-DESIGN.md)。本模块TD-SLICE、接口、实现及正式测试未产生。下列AC均为目标场景，未执行。
+依据：[固定事实](../../../demo-reverse/v158/modules/M02-cases.md)、[候选](../../../demo-reverse/v158/modules/M02-cases-candidates.md)、[决定](../../../demo-reverse/v158/DECISIONS.md)和[纠偏](../../../demo-reverse/v158/CORRECTIONS.md)。字段只在[领域模型](../DOMAIN.md)维护；B/T/E编号见[缺口](../GAPS.md)，通用技术设计见[TD-BASE-05／TD-AUTHZ-01／TD-TRACE-UX-01](../TECHNICAL-DESIGN.md)。本页AC描述业务目标，实际切片完成状态与验证证据分别以[路线图](../../../feature-roadmap.md)和[验证记录](../VALIDATION.md)为准。
 
 ## 阶段动作表（正常门槛已确认）
 

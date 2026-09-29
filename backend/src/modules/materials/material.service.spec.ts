@@ -183,14 +183,14 @@ describe('MaterialService', () => {
       status: 'ACTIVE',
       contentVersions: [{ id: 'version-1', status: 'AVAILABLE' }],
     });
-    fixture.access.buildLeadScope.mockRejectedValue(
+    fixture.access.authorizeDepartmentAction.mockRejectedValue(
       new ForbiddenException('case.read revoked'),
     );
 
     await expect(
       fixture.service.openVersion(actor, 'certificate-1', 'version-1'),
     ).rejects.toMatchObject({ response: { code: 'ACTION_FORBIDDEN' } });
-    expect(fixture.access.buildLeadScope).toHaveBeenCalledWith(
+    expect(fixture.access.authorizeDepartmentAction).toHaveBeenCalledWith(
       actor,
       'case.read',
       undefined,
@@ -200,15 +200,7 @@ describe('MaterialService', () => {
 
   it('downloads a frozen certificate for an internal case.read actor', async () => {
     const fixture = createFixture();
-    fixture.access.buildLeadScope.mockResolvedValue({
-      departmentId: actor.departmentId,
-    });
-    fixture.db.notaryMatter.findFirst.mockResolvedValue({
-      id: 'matter-1',
-      departmentId: actor.departmentId,
-      stage: 'ARCHIVED',
-      sourceLead: { responsibleUserId: 'other-user', teamId: null },
-    });
+    fixture.db.case.findFirst.mockResolvedValue({ id: 'case-1' });
     fixture.db.material.findFirst.mockResolvedValue({
       id: 'certificate-1',
       departmentId: actor.departmentId,
@@ -237,12 +229,25 @@ describe('MaterialService', () => {
     await expect(
       fixture.service.openVersion(actor, 'certificate-1', 'version-1'),
     ).resolves.toMatchObject({ originalFilename: 'certificate.pdf' });
-    expect(fixture.access.buildLeadScope).toHaveBeenCalledWith(
+    expect(fixture.access.authorizeDepartmentAction).toHaveBeenCalledWith(
       actor,
       'case.read',
       undefined,
     );
+    expect(fixture.db.case.findFirst).toHaveBeenCalledWith({
+      where: {
+        sourceNotaryMatterId: 'matter-1',
+        departmentId: actor.departmentId,
+      },
+      select: { id: true },
+    });
     expect(fixture.storage.open).toHaveBeenCalledWith('private-certificate');
+    fixture.db.case.findFirst.mockResolvedValue(null);
+    fixture.storage.open.mockClear();
+    await expect(
+      fixture.service.openVersion(actor, 'certificate-1', 'version-1'),
+    ).rejects.toMatchObject({ response: { code: 'RESOURCE_NOT_FOUND' } });
+    expect(fixture.storage.open).not.toHaveBeenCalled();
   });
   it('allows only live assigned notary accounts to draft opening photos', async () => {
     const fixture = createFixture();
@@ -2695,6 +2700,7 @@ function createFixture() {
     $queryRawUnsafe: jest.fn(async () => [{ id: 'material-1' }]),
     customer: { findFirst: customerFindFirst },
     lead: { findFirst: leadFindFirst },
+    case: { findFirst: jest.fn() },
     notaryMatter: { findFirst: notaryMatterFindFirst },
     userAccount: { findUnique: jest.fn() },
     notaryOfficeAccountBinding: { findFirst: jest.fn() },
@@ -2740,6 +2746,7 @@ function createFixture() {
       findFirst: jest.fn(),
     },
     lead: { findFirst: leadFindFirst },
+    case: { findFirst: jest.fn() },
     notaryMatter: { findFirst: notaryMatterFindFirst },
     $transaction: jest.fn(
       async (callback: (value: typeof transaction) => Promise<unknown>) =>
@@ -2750,6 +2757,7 @@ function createFixture() {
     buildCustomerScope: jest.fn(),
     authorizeCustomer: jest.fn(),
     buildLeadScope: jest.fn(),
+    authorizeDepartmentAction: jest.fn(),
     authorizeLead: jest.fn(),
     canAuthorizeNewLead: jest.fn(async () => true),
   };

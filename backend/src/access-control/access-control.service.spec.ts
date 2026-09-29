@@ -22,6 +22,89 @@ function createStore(
 }
 
 describe('AccessControlService', () => {
+  it('keeps department case read and self case match as independent live grants', async () => {
+    const store = createStore({
+      active: true,
+      authorizationRevision: 4,
+      grants: [
+        { action: 'case.read', scope: 'department' },
+        { action: 'case.match', scope: 'self' },
+      ],
+    });
+    const service = new AccessControlService(store);
+    await expect(
+      service.authorizeDepartmentAction(actor, 'case.read'),
+    ).resolves.toBeUndefined();
+    await expect(
+      service.canAuthorizeCase(actor, 'case.match', {
+        departmentId: actor.departmentId,
+        responsibleUserId: actor.userId,
+      }),
+    ).resolves.toBe(true);
+    await expect(
+      service.canAuthorizeCase(actor, 'case.match', {
+        departmentId: actor.departmentId,
+        responsibleUserId: 'other-user',
+      }),
+    ).resolves.toBe(false);
+    await expect(
+      service.canAuthorizeCase(actor, 'case.match', {
+        departmentId: 'other-department',
+        responsibleUserId: actor.userId,
+      }),
+    ).resolves.toBe(false);
+    await expect(
+      service.authorizeCase(actor, 'case.match', {
+        departmentId: actor.departmentId,
+        responsibleUserId: 'other-user',
+      }),
+    ).rejects.toMatchObject({ response: { code: 'CASE_ACTION_FORBIDDEN' } });
+  });
+  it('applies one CASE_MATCH TEAM or DEPARTMENT grant to the case owner scope without combining grants', async () => {
+    const teamOnly = new AccessControlService(
+      createStore({
+        active: true,
+        authorizationRevision: actor.authorizationRevision,
+        grants: [
+          { action: 'case.read', scope: 'department' },
+          { action: 'case.match', scope: 'team', teamId: 'team-a' },
+        ],
+      }),
+    );
+    await expect(
+      teamOnly.canAuthorizeCase(actor, 'case.match', {
+        departmentId: actor.departmentId,
+        responsibleUserId: 'another-user',
+        teamId: 'team-a',
+      }),
+    ).resolves.toBe(true);
+    await expect(
+      teamOnly.canAuthorizeCase(actor, 'case.match', {
+        departmentId: actor.departmentId,
+        responsibleUserId: 'another-user',
+        teamId: 'team-b',
+      }),
+    ).resolves.toBe(false);
+    const departmentOnly = new AccessControlService(
+      createStore({
+        active: true,
+        authorizationRevision: actor.authorizationRevision,
+        grants: [{ action: 'case.match', scope: 'department' }],
+      }),
+    );
+    await expect(
+      departmentOnly.canAuthorizeCase(actor, 'case.match', {
+        departmentId: actor.departmentId,
+        responsibleUserId: 'another-user',
+      }),
+    ).resolves.toBe(true);
+    await expect(
+      departmentOnly.canAuthorizeCase(actor, 'case.match', {
+        departmentId: 'other-department',
+        responsibleUserId: 'another-user',
+      }),
+    ).resolves.toBe(false);
+  });
   it('authorizes opening review only through its live independent grant and source lead scope', async () => {
     const store = createStore({
       active: true,
