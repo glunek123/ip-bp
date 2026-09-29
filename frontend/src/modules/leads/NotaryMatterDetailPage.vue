@@ -1501,7 +1501,6 @@ onBeforeUnmount(() => request?.abort());
               <textarea
                 v-model="returnReason"
                 data-test="return-archive-reason"
-                maxlength="5000"
                 required
                 :disabled="submittingReturnArchive || returnArchiveRetryLocked"
               />

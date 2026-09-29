@@ -318,6 +318,94 @@ describe('NotaryMatterDetailPage', () => {
     expect(api.getNotaryMatter).toHaveBeenCalledTimes(2);
   });
 
+  it('preserves 2501 emoji in the 5000-codepoint reason and rejects longer reasons explicitly', async () => {
+    const waitingReturn = {
+      ...matter,
+      stage: 'WAITING_RETURN',
+      version: 5,
+      capabilities: {
+        recordEvidence: false,
+        recordOpening: false,
+        reviewOpening: false,
+        decideIssuance: false,
+        archiveReturn: true,
+      },
+      evidence: firstEvidence,
+      opening: {
+        senderName: null,
+        senderPhone: null,
+        senderAddress: null,
+        recordedAt: '2026-09-24T02:00:00.000Z',
+        recordedByUserId: 'user-1',
+        photos: [],
+      },
+      reviewDecision: {
+        result: 'INFRINGEMENT',
+        reason: null,
+        actorKind: 'CLIENT',
+        actorDisplayName: '客户审核员',
+        decidedAt: '2026-09-24T03:00:00.000Z',
+        archivedAt: null,
+      },
+      issuanceDecision: {
+        decision: 'NO_ISSUE',
+        actorDisplayName: '运营甲',
+        decidedAt: '2026-09-24T04:00:00.000Z',
+      },
+    };
+    const archived = {
+      ...waitingReturn,
+      stage: 'ARCHIVED',
+      version: 6,
+      capabilities: { ...waitingReturn.capabilities, archiveReturn: false },
+      returnArchive: {
+        returnChoice: 'KEEP',
+        archiveReason: '😀'.repeat(2501),
+        archivedAt: '2026-09-29T03:00:00.000Z',
+        actorDisplayName: '运营甲',
+        refund: null,
+        freight: null,
+      },
+    };
+    api.getNotaryMatter
+      .mockResolvedValueOnce(waitingReturn)
+      .mockResolvedValueOnce(archived)
+      .mockResolvedValueOnce(waitingReturn);
+    api.archiveNotaryReturn.mockResolvedValue({});
+
+    const wrapper = await mountPage();
+    const reason = '😀'.repeat(2501);
+    const textarea = wrapper.get('[data-test="return-archive-reason"]');
+    expect(textarea.attributes('maxlength')).toBeUndefined();
+    await wrapper.get('[data-test="return-archive-keep"]').setValue('KEEP');
+    await textarea.setValue(reason);
+    await wrapper
+      .get('[data-test="return-archive-form"] form')
+      .trigger('submit');
+    await flushPromises();
+
+    expect(api.archiveNotaryReturn).toHaveBeenCalledWith(
+      'matter-1',
+      { returnChoice: 'KEEP', archiveReason: reason, expectedVersion: 5 },
+      expect.any(String),
+    );
+
+    const tooLongReason = '😀'.repeat(5001);
+    const tooLongPage = await mountPage();
+    await tooLongPage.get('[data-test="return-archive-keep"]').setValue('KEEP');
+    await tooLongPage
+      .get('[data-test="return-archive-reason"]')
+      .setValue(tooLongReason);
+    await tooLongPage
+      .get('[data-test="return-archive-form"] form')
+      .trigger('submit');
+    await flushPromises();
+    expect(tooLongPage.get('[data-test="return-archive-error"]').text()).toBe(
+      '归档原因不能超过 5000 字',
+    );
+    expect(api.archiveNotaryReturn).toHaveBeenCalledTimes(1);
+  });
+
   it('offers explicit issuance choices only when permitted and displays the persisted result', async () => {
     const pending = {
       ...matter,
