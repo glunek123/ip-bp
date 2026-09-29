@@ -11,10 +11,11 @@ const { Client } = requireBackend('pg');
 const environment = captureTestEnvironment(root, { pnpmVersion: '11.27.0' });
 const migrationRoot = resolve(root, 'backend/prisma/migrations');
 const target = '20260929010000_add_notary_return_archive';
+const whitespaceFix = '20260929011000_harden_notary_return_whitespace';
 const migrations = readdirSync(migrationRoot)
   .filter((name) => /^\d{14}_/.test(name))
   .sort();
-assert.equal(migrations.at(-1), target);
+assert.deepEqual(migrations.slice(-2), [target, whitespaceFix]);
 
 async function expectRejected(client, sql, params, code, constraint) {
   const savepoint = `negative_${randomBytes(4).toString('hex')}`;
@@ -139,8 +140,55 @@ try {
         mode === 'upgrade'
           ? await seedMatter(client, `NT006 legacy ${schema}`)
           : null;
+      const migration = readFileSync(
+        resolve(migrationRoot, target, 'migration.sql'),
+        'utf8',
+      );
+      if (mode === 'upgrade') {
+        await client.query(
+          'CREATE TABLE notary_return_archives(probe integer)',
+        );
+        await assert.rejects(
+          client.query(migration),
+          (error) => error.code === '42P07',
+        );
+        await client.query('ROLLBACK');
+        const afterFailure = await client.query(
+          `SELECT table_name FROM information_schema.tables WHERE table_schema=$1 AND table_name='notary_return_amounts'`,
+          [schema],
+        );
+        assert.equal(afterFailure.rowCount, 0);
+        const probeTable = await client.query(
+          `SELECT column_name FROM information_schema.columns WHERE table_schema=$1 AND table_name='notary_return_archives'`,
+          [schema],
+        );
+        assert.deepEqual(
+          probeTable.rows.map((row) => row.column_name),
+          ['probe'],
+        );
+        const rolledBackTypes = await client.query(
+          `SELECT t.typname FROM pg_type t JOIN pg_namespace n ON n.oid=t.typnamespace WHERE n.nspname=$1 AND t.typname IN ('notary_return_choice','notary_return_amount_kind','notary_return_party_kind')`,
+          [schema],
+        );
+        assert.equal(rolledBackTypes.rowCount, 0);
+        const rolledBackAction = await client.query(
+          `SELECT 1 FROM pg_enum e JOIN pg_type t ON t.oid=e.enumtypid JOIN pg_namespace n ON n.oid=t.typnamespace WHERE n.nspname=$1 AND t.typname='permission_action' AND e.enumlabel='notary.return.archive'`,
+          [schema],
+        );
+        assert.equal(rolledBackAction.rowCount, 0);
+        const rolledBackFunction = await client.query(
+          `SELECT 1 FROM pg_proc p JOIN pg_namespace n ON n.oid=p.pronamespace WHERE n.nspname=$1 AND p.proname='reject_notary_return_mutation'`,
+          [schema],
+        );
+        assert.equal(rolledBackFunction.rowCount, 0);
+        await client.query('DROP TABLE notary_return_archives');
+      }
+      await client.query(migration);
       await client.query(
-        readFileSync(resolve(migrationRoot, target, 'migration.sql'), 'utf8'),
+        readFileSync(
+          resolve(migrationRoot, whitespaceFix, 'migration.sql'),
+          'utf8',
+        ),
       );
       const enumValue = await client.query(
         `SELECT 1 FROM pg_enum e JOIN pg_type t ON t.oid=e.enumtypid JOIN pg_namespace n ON n.oid=t.typnamespace WHERE n.nspname=$1 AND t.typname='permission_action' AND e.enumlabel='notary.return.archive'`,
@@ -366,6 +414,38 @@ try {
           insertAmount,
           [
             randomUUID(),
+            ...base,
+            'FREIGHT',
+            'KNOWN',
+            '5.00',
+            'OTHER',
+            '\tVendor',
+            null,
+          ],
+          '23514',
+          'notary_return_amounts_party_check',
+        );
+        await expectRejected(
+          client,
+          insertAmount,
+          [
+            randomUUID(),
+            ...base,
+            'FREIGHT',
+            'KNOWN',
+            '5.00',
+            'OTHER',
+            '\t\n',
+            null,
+          ],
+          '23514',
+          'notary_return_amounts_party_check',
+        );
+        await expectRejected(
+          client,
+          insertAmount,
+          [
+            randomUUID(),
             ...refundOnlyBase,
             'FREIGHT',
             'PENDING',
@@ -382,6 +462,36 @@ try {
           `INSERT INTO notary_return_archives(id,matter_id,department_id,issuance_decision_id,actor_user_id,return_choice,archive_reason,from_version,to_version)
           VALUES ($1,$2,$3,$4,$5,'RETURN',' Another archive ',5,6)`,
           [randomUUID(), ids.matter, ids.department, ids.decision, ids.user],
+          '23514',
+          'notary_return_archives_reason_check',
+        );
+        await expectRejected(
+          client,
+          `INSERT INTO notary_return_archives(id,matter_id,department_id,issuance_decision_id,actor_user_id,return_choice,archive_reason,from_version,to_version)
+          VALUES ($1,$2,$3,$4,$5,'RETURN',$6,5,6)`,
+          [
+            randomUUID(),
+            ids.matter,
+            ids.department,
+            ids.decision,
+            ids.user,
+            '\t\n',
+          ],
+          '23514',
+          'notary_return_archives_reason_check',
+        );
+        await expectRejected(
+          client,
+          `INSERT INTO notary_return_archives(id,matter_id,department_id,issuance_decision_id,actor_user_id,return_choice,archive_reason,from_version,to_version)
+          VALUES ($1,$2,$3,$4,$5,'RETURN',$6,5,6)`,
+          [
+            randomUUID(),
+            ids.matter,
+            ids.department,
+            ids.decision,
+            ids.user,
+            'Reason\n',
+          ],
           '23514',
           'notary_return_archives_reason_check',
         );
