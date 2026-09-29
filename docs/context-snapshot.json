@@ -1,6 +1,6 @@
 {
   "version": 1,
-  "recordedAt": "2026-09-29T03:33:56.185Z",
+  "recordedAt": "2026-09-29T04:02:03.402Z",
   "files": {
     ".cursor/rules/verified-feature-integration.mdc": "ffd2306612ba6f09749629c5adb9e645f7f37aa6ee27ff1bc1c3d8b14efeca38",
     ".env.example": "07211cde5c2b59efc21b619b752d4c9b871f0980d2d64ca3c146ad6151fd27ca",
@@ -313,9 +313,9 @@
     "docs/spec/v0.1/DOMAIN.md": "cd203a9a73e08773befc2e970ea3563015382897c3a2954b14e6bf22f8f08135",
     "docs/spec/v0.1/EVIDENCE.md": "48355303a82f36dba02f407153c92c5e08e1ea9e61197628952aa4c89a086f9c",
     "docs/spec/v0.1/GAPS.md": "1a5d6e3f23bfb8b7ec3801bf2e7fa8bfc27ff169db011c663b96b727e6e754e2",
-    "docs/spec/v0.1/READINESS.md": "7af1ff6da4d311640251143073f2ae87844c478aebd78de7ef48364c267be2c6",
-    "docs/spec/v0.1/README.md": "e0b9ff015842438f3baf847e80622c84cf3ec6b6d82a6954ef1ef01c464daaf2",
-    "docs/spec/v0.1/TECHNICAL-DESIGN.md": "db314b52b1972ebd62a745a4b2d5c3d3551c72bf8f8d140417348755683a254c",
+    "docs/spec/v0.1/READINESS.md": "dfdf59f4f4b8c0ddae894ea5069bd42e90ec6a223a327edb487e12d6e2ae24c1",
+    "docs/spec/v0.1/README.md": "5e78250a01575c9c9e116e360d9009882cfcfeccce85c7c63daeb72e856e6d3d",
+    "docs/spec/v0.1/TECHNICAL-DESIGN.md": "90f86c667991d99d8f0e47650b3ed8171b6b87838e7718a5747416a565cf2275",
     "docs/spec/v0.1/VALIDATION.md": "28b80f6b2ef226f3f64e6b74c161d2119c97722455c0f9e01b9be9a5fe9404da",
     "docs/spec/v0.1/modules/calendar.md": "ca604f89e11e797c49c186286335064f051a9115819b468ab281735f84fb5daa",
     "docs/spec/v0.1/modules/cases.md": "acdca2f58983cb2e583a8870845785844bac1e7f8cd41e2639af7c3469b6e554",
