@@ -2,6 +2,7 @@ import { CaseMatchService } from './case-match.service';
 import { plainToInstance } from 'class-transformer';
 import { validateSync } from 'class-validator';
 import { MatchCaseDto } from './case-match.dto';
+import { createHash } from 'node:crypto';
 
 const actor = {
   userId: '11111111-1111-4111-8111-111111111111',
@@ -16,6 +17,14 @@ const input = {
   defendants: [{ kind: 'ORGANIZATION' as const, name: '被告公司' }],
   lawyer: { fullName: '张律师', lawFirm: '真实律所' },
 };
+
+function withoutMatchDate<T extends { matchedOn: string }>(
+  value: T,
+): Omit<T, 'matchedOn'> {
+  const copy = { ...value };
+  Reflect.deleteProperty(copy, 'matchedOn');
+  return copy;
+}
 
 describe('CaseMatchService', () => {
   function fixture() {
@@ -198,6 +207,54 @@ describe('CaseMatchService', () => {
     });
     expect(f.tx.case.updateMany).not.toHaveBeenCalled();
   });
+
+  it('replays an authorized pre-upgrade success receipt without inventing an actual match date', async () => {
+    const f = fixture();
+    const legacyInput = withoutMatchDate(input);
+    const fingerprint = createHash('sha256')
+      .update(
+        JSON.stringify({
+          caseId,
+          ...legacyInput,
+          idempotencyKey: undefined,
+        }),
+      )
+      .digest('hex');
+    f.tx.caseMatchReceipt.findUnique.mockResolvedValue({
+      caseId,
+      requestFingerprint: fingerprint,
+      resultSnapshot: {
+        id: caseId,
+        stage: 'WAITING_COMPLAINT',
+        version: 2,
+        matchedAt: '2026-09-28T10:00:00.000Z',
+      },
+    });
+    await expect(f.service.match(actor, caseId, legacyInput)).resolves.toEqual({
+      id: caseId,
+      stage: 'WAITING_COMPLAINT',
+      version: 2,
+      matchedAt: '2026-09-28T10:00:00.000Z',
+      matchedOn: null,
+    });
+    expect(f.access.authorizeCase).toHaveBeenCalledTimes(1);
+    expect(f.tx.case.updateMany).not.toHaveBeenCalled();
+    expect(f.tx.auditEvent.create).not.toHaveBeenCalled();
+    expect(f.tx.caseMatchReceipt.create).not.toHaveBeenCalled();
+
+    await expect(f.service.match(actor, caseId, input)).rejects.toMatchObject({
+      response: { code: 'IDEMPOTENCY_CONFLICT' },
+    });
+  });
+
+  it('requires an actual match date for every new write even when an old-format request passes DTO validation', async () => {
+    const f = fixture();
+    const missingDate = withoutMatchDate(input);
+    await expect(
+      f.service.match(actor, caseId, missingDate),
+    ).rejects.toMatchObject({ response: { code: 'VALIDATION_ERROR' } });
+    expect(f.tx.case.updateMany).not.toHaveBeenCalled();
+  });
 });
 
 describe('MatchCaseDto', () => {
@@ -223,5 +280,12 @@ describe('MatchCaseDto', () => {
         }),
       ),
     ).toEqual([]);
+  });
+
+  it('allows an omitted date at DTO level only for service-controlled legacy receipt replay', () => {
+    const missingDate = withoutMatchDate(input);
+    expect(validateSync(plainToInstance(MatchCaseDto, missingDate))).toEqual(
+      [],
+    );
   });
 });

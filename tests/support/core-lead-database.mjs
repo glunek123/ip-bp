@@ -1109,6 +1109,50 @@ export function countCasesForMatter(matterId) {
   return database.case.count({ where: { sourceNotaryMatterId: matterId } });
 }
 
+export async function emulatePreDateCaseMatch(caseId, legacyFingerprint) {
+  await database.$transaction(async (tx) => {
+    const receipt = await tx.caseMatchReceipt.findFirst({
+      where: {
+        caseId,
+        departmentId: coreLeadFixtures.departmentA,
+        actorUserId: coreLeadFixtures.userA,
+      },
+    });
+    if (receipt === null) throw new Error('Expected a successful case match');
+    const snapshot = receipt.resultSnapshot;
+    if (
+      snapshot === null ||
+      typeof snapshot !== 'object' ||
+      Array.isArray(snapshot) ||
+      typeof snapshot.matchedOn !== 'string'
+    )
+      throw new Error('Expected a date-bearing case match receipt');
+    const legacySnapshot = { ...snapshot };
+    delete legacySnapshot.matchedOn;
+    await tx.case.update({
+      where: { id: caseId },
+      data: { matchedOn: null },
+    });
+    await tx.caseMatchReceipt.update({
+      where: { id: receipt.id },
+      data: {
+        requestFingerprint: legacyFingerprint,
+        resultSnapshot: legacySnapshot,
+      },
+    });
+  });
+}
+
+export function countCaseMatchAudits(caseId) {
+  return database.auditEvent.count({
+    where: {
+      resourceType: 'CASE',
+      resourceId: caseId,
+      action: 'case.match.succeeded',
+    },
+  });
+}
+
 export function countCertificateMaterialReferences(matterId) {
   return database.materialReference.count({
     where: {

@@ -67,12 +67,17 @@ export class MatchCaseDto {
   @MinLength(1)
   @MaxLength(128)
   idempotencyKey!: string;
-  @ApiProperty({ format: 'date', example: '2026-09-28' })
+  @ApiPropertyOptional({
+    format: 'date',
+    example: '2026-09-28',
+    description: '新匹配必填；仅旧版成功回执的原样重放可省略',
+  })
+  @IsOptional()
   @IsString()
   @MinLength(10)
   @MaxLength(10)
   @Matches(/^\d{4}-\d{2}-\d{2}$/u)
-  matchedOn!: string;
+  matchedOn?: string;
   @ApiProperty({ type: [CaseMatchDefendantDto], minItems: 1, maxItems: 20 })
   @IsArray()
   @ArrayMinSize(1)
@@ -91,5 +96,5 @@ export class MatchCaseResponseDto {
   @ApiProperty({ enum: ['WAITING_COMPLAINT'] }) stage!: 'WAITING_COMPLAINT';
   @ApiProperty() version!: number;
   @ApiProperty({ format: 'date-time' }) matchedAt!: string;
-  @ApiProperty({ format: 'date' }) matchedOn!: string;
+  @ApiProperty({ format: 'date', nullable: true }) matchedOn!: string | null;
 }

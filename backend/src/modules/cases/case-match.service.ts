@@ -102,11 +102,19 @@ export class CaseMatchService {
                 snapshot.stage !== 'WAITING_COMPLAINT' ||
                 !Number.isInteger(snapshot.version) ||
                 typeof snapshot.matchedAt !== 'string' ||
-                typeof snapshot.matchedOn !== 'string'
+                (typeof snapshot.matchedOn !== 'string' &&
+                  !(
+                    snapshot.matchedOn === undefined &&
+                    normalized.matchedOn === undefined
+                  ))
               )
                 throw this.corruptReceipt();
-              return snapshot as MatchCaseResponseDto;
+              return {
+                ...snapshot,
+                matchedOn: snapshot.matchedOn ?? null,
+              } as MatchCaseResponseDto;
             }
+            if (normalized.matchedOn === undefined) throw this.validation();
             if (record.stage !== 'PENDING_MATCH') throw this.invalidState();
             if (record.version !== normalized.expectedVersion)
               throw this.versionConflict();
@@ -234,15 +242,17 @@ export class CaseMatchService {
     )
       throw this.validation();
     const idempotencyKey = clean(input.idempotencyKey, 128, true)!;
-    const matchedOn = clean(input.matchedOn, 10, true)!;
-    const parsedDate = new Date(`${matchedOn}T00:00:00.000Z`);
-    if (
-      !/^\d{4}-\d{2}-\d{2}$/u.test(matchedOn) ||
-      Number.isNaN(parsedDate.getTime()) ||
-      parsedDate.toISOString().slice(0, 10) !== matchedOn ||
-      matchedOn > this.todayShanghai()
-    )
-      throw this.validation();
+    const matchedOn = clean(input.matchedOn, 10, false);
+    if (matchedOn !== undefined) {
+      const parsedDate = new Date(`${matchedOn}T00:00:00.000Z`);
+      if (
+        !/^\d{4}-\d{2}-\d{2}$/u.test(matchedOn) ||
+        Number.isNaN(parsedDate.getTime()) ||
+        parsedDate.toISOString().slice(0, 10) !== matchedOn ||
+        matchedOn > this.todayShanghai()
+      )
+        throw this.validation();
+    }
     const defendants = input.defendants.map((party) => {
       if (
         party === null ||

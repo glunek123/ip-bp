@@ -1,4 +1,4 @@
-import { randomUUID } from 'node:crypto';
+import { createHash, randomUUID } from 'node:crypto';
 import { readFile } from 'node:fs/promises';
 import {
   expect,
@@ -10,6 +10,8 @@ import {
   allowInjectedFailures,
   coreLeadFixtures,
   countCasesForMatter,
+  countCaseMatchAudits,
+  emulatePreDateCaseMatch,
   getLead,
   getNotaryCase,
   rejectCaseMatchReceiptWrites,
@@ -529,6 +531,77 @@ test('case match rejects stale writes, serializes concurrent writes, and preserv
     defendants: [{ kind: 'ORGANIZATION', name: '幂等键冲突公司' }],
   });
   expect(conflict.status(), await conflict.text()).toBe(409);
+});
+
+test('pre-date matched case and success receipt remain readable and exactly replayable after upgrade', async ({
+  request,
+}) => {
+  test.setTimeout(120_000);
+  const { caseId } = await createPendingMatchCase(request);
+  const original: MatchInput = {
+    expectedVersion: 1,
+    idempotencyKey: randomUUID(),
+    matchedOn: '2026-09-28',
+    defendants: [{ kind: 'PERSON', name: '升级前当事人' }],
+    lawyer: { fullName: '升级前律师', lawFirm: '旧律所' },
+  };
+  const created = await matchCase(request, caseId, original);
+  expect(created.status(), await created.text()).toBe(201);
+  const { matchedOn: originalDate, ...legacyRequest } = original;
+  expect(originalDate).toBe('2026-09-28');
+  const legacyFingerprint = createHash('sha256')
+    .update(
+      JSON.stringify({
+        caseId,
+        ...legacyRequest,
+        idempotencyKey: undefined,
+      }),
+    )
+    .digest('hex');
+  await emulatePreDateCaseMatch(caseId, legacyFingerprint);
+
+  const detail = await request.get(`/api/v1/cases/${caseId}`, {
+    headers: authorizationA,
+  });
+  expect(detail.status(), await detail.text()).toBe(200);
+  expect(await detail.json()).toMatchObject({
+    id: caseId,
+    stage: 'WAITING_COMPLAINT',
+    version: 2,
+    matchedOn: null,
+  });
+  const replay = await request.post(`/api/v1/cases/${caseId}/match`, {
+    headers: {
+      ...authorizationA,
+      'Idempotency-Key': legacyRequest.idempotencyKey,
+    },
+    data: legacyRequest,
+  });
+  expect(replay.status(), await replay.text()).toBe(201);
+  expect(await replay.json()).toMatchObject({
+    id: caseId,
+    stage: 'WAITING_COMPLAINT',
+    version: 2,
+    matchedOn: null,
+  });
+  expect(await countCaseMatchAudits(caseId)).toBe(1);
+
+  const modified = await matchCase(request, caseId, original);
+  expect(modified.status(), await modified.text()).toBe(409);
+  expect(await modified.json()).toMatchObject({ code: 'IDEMPOTENCY_CONFLICT' });
+  const newKey = randomUUID();
+  const missingDateNewKey = await request.post(
+    `/api/v1/cases/${caseId}/match`,
+    {
+      headers: { ...authorizationA, 'Idempotency-Key': newKey },
+      data: { ...legacyRequest, idempotencyKey: newKey },
+    },
+  );
+  expect(missingDateNewKey.status(), await missingDateNewKey.text()).toBe(400);
+  expect(await missingDateNewKey.json()).toMatchObject({
+    code: 'VALIDATION_ERROR',
+  });
+  expect(await countCaseMatchAudits(caseId)).toBe(1);
 });
 
 test('revoking the operator account takes effect on the next match request', async ({

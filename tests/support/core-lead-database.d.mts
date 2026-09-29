@@ -108,6 +108,11 @@ export function countNotaryCertificateReceipts(
   matterId: string,
 ): Promise<number>;
 export function countCasesForMatter(matterId: string): Promise<number>;
+export function emulatePreDateCaseMatch(
+  caseId: string,
+  legacyFingerprint: string,
+): Promise<void>;
+export function countCaseMatchAudits(caseId: string): Promise<number>;
 export function countCertificateMaterialReferences(
   matterId: string,
 ): Promise<number>;
