@@ -23,6 +23,7 @@ enum PermissionAction {
   NOTARY_UNBOX_RECORD          @map("notary.unbox.record")
   NOTARY_OPENING_REVIEW        @map("notary.opening.review")
   NOTARY_ISSUANCE_DECIDE       @map("notary.issuance.decide")
+  NOTARY_RETURN_ARCHIVE        @map("notary.return.archive")
   CASE_READ                    @map("case.read")
   NOTARY_OFFICE_MANAGE         @map("notary.office.manage")
   CLIENT_LEAD_READ             @map("client.lead.read")
@@ -160,6 +161,30 @@ enum NotarySampleFeeState {
   PENDING
 
   @@map("notary_sample_fee_state")
+}
+
+enum NotaryReturnChoice {
+  RETURN
+  KEEP
+  REFUND_ONLY
+
+  @@map("notary_return_choice")
+}
+
+enum NotaryReturnAmountKind {
+  REFUND
+  FREIGHT
+
+  @@map("notary_return_amount_kind")
+}
+
+enum NotaryReturnPartyKind {
+  CUSTOMER
+  FIRM
+  MERCHANT
+  OTHER
+
+  @@map("notary_return_party_kind")
 }
 
 enum CaseStage {
@@ -364,6 +389,7 @@ model UserAccount {
   clientReviewReceipts         ClientLeadReviewReceipt[]     @relation("ClientLeadReviewReceiptActor")
   notaryOpeningReviewDecisions NotaryOpeningReviewDecision[] @relation("NotaryOpeningReviewDecisionActor")
   notaryIssuanceDecisions      NotaryIssuanceDecision[]      @relation("NotaryIssuanceDecisionActor")
+  notaryReturnArchives         NotaryReturnArchive[]         @relation("NotaryReturnArchiveActor")
   notaryOpeningReviewReceipts  NotaryOpeningReviewReceipt[]  @relation("NotaryOpeningReviewReceiptActor")
   ownedCases                   Case[]                        @relation("CaseOwner")
   createdAt                    DateTime                      @default(now()) @map("created_at") @db.Timestamptz(3)
@@ -435,6 +461,7 @@ model DepartmentMembership {
   leadCommandReceipts          LeadCommandReceipt[]          @relation("LeadCommandReceiptActor")
   notaryOpeningReviewDecisions NotaryOpeningReviewDecision[] @relation("NotaryOpeningReviewDecisionInternalActor")
   notaryIssuanceDecisions      NotaryIssuanceDecision[]      @relation("NotaryIssuanceDecisionInternalActor")
+  notaryReturnArchives         NotaryReturnArchive[]         @relation("NotaryReturnArchiveInternalActor")
   notaryOpeningReviewReceipts  NotaryOpeningReviewReceipt[]  @relation("NotaryOpeningReviewReceiptInternalActor")
   notaryUploadDrafts           UploadDraft[]                 @relation("UploadDraftInternalActor")
   notaryOpeningRecords         NotaryMatterOpening[]         @relation("NotaryOpeningInternalActor")
@@ -1023,6 +1050,7 @@ model NotaryMatter {
   opening               NotaryMatterOpening?
   openingReviewDecision NotaryOpeningReviewDecision?
   issuanceDecision      NotaryIssuanceDecision?
+  returnArchive          NotaryReturnArchive?
   certificate           NotaryCertificate?
   case                  Case?
   openingReviewReceipts NotaryOpeningReviewReceipt[]
@@ -1124,6 +1152,7 @@ model NotaryMatterEvidence {
   matter           NotaryMatter            @relation(fields: [matterId, departmentId], references: [id, departmentId], onDelete: Restrict, onUpdate: Restrict, map: "notary_matter_evidence_matter_department_fkey")
   recordedBy       UserAccount             @relation("NotaryEvidenceRecorder", fields: [recordedByUserId], references: [id], onDelete: Restrict)
   logistics        NotaryMatterLogistics[]
+  returnRefunds    NotaryReturnAmount[]
 
   @@unique([matterId, departmentId], map: "notary_matter_evidence_matter_department_key")
   @@map("notary_matter_evidence")
@@ -1246,6 +1275,7 @@ model NotaryIssuanceDecision {
   internalActor            DepartmentMembership             @relation("NotaryIssuanceDecisionInternalActor", fields: [actorUserId, departmentId], references: [userId, departmentId], onDelete: Restrict, onUpdate: Restrict)
   auditEvent               NotaryIssuanceDecisionAuditEvent?
   certificate              NotaryCertificate?
+  returnArchive            NotaryReturnArchive?
 
   @@unique([id, matterId, departmentId, actorUserId, decision, toVersion], map: "notary_issuance_decisions_audit_identity_key")
   @@unique([id, matterId, departmentId, decision], map: "notary_issuance_decisions_certificate_identity_key")
@@ -1253,6 +1283,51 @@ model NotaryIssuanceDecision {
   @@unique([openingReviewDecisionId, matterId, departmentId, openingReviewResult], map: "notary_issuance_decisions_review_identity_key")
   @@index([departmentId, decidedAt])
   @@map("notary_issuance_decisions")
+}
+
+model NotaryReturnArchive {
+  id                     String                 @id @default(uuid()) @db.Uuid
+  matterId               String                 @unique @map("matter_id") @db.Uuid
+  departmentId           String                 @map("department_id") @db.Uuid
+  issuanceDecisionId     String                 @unique @map("issuance_decision_id") @db.Uuid
+  issuanceDecisionChoice NotaryIssuanceChoice   @default(NO_ISSUE) @map("issuance_decision_choice")
+  actorUserId            String                 @map("actor_user_id") @db.Uuid
+  returnChoice           NotaryReturnChoice     @map("return_choice")
+  archiveReason          String                 @map("archive_reason") @db.Text
+  archivedAt             DateTime               @default(now()) @map("archived_at") @db.Timestamptz(3)
+  fromVersion            Int                    @map("from_version")
+  toVersion              Int                    @map("to_version")
+  matter                 NotaryMatter           @relation(fields: [matterId, departmentId], references: [id, departmentId], onDelete: Restrict, onUpdate: Restrict, map: "notary_return_archives_matter_fkey")
+  issuanceDecision       NotaryIssuanceDecision @relation(fields: [issuanceDecisionId, matterId, departmentId, issuanceDecisionChoice], references: [id, matterId, departmentId, decision], onDelete: Restrict, onUpdate: Restrict, map: "notary_return_archives_decision_fkey")
+  actor                  UserAccount            @relation("NotaryReturnArchiveActor", fields: [actorUserId], references: [id], onDelete: Restrict, onUpdate: Restrict, map: "notary_return_archives_actor_fkey")
+  internalActor          DepartmentMembership   @relation("NotaryReturnArchiveInternalActor", fields: [actorUserId, departmentId], references: [userId, departmentId], onDelete: Restrict, onUpdate: Restrict, map: "notary_return_archives_internal_actor_fkey")
+  amounts                NotaryReturnAmount[]
+
+  @@unique([id, matterId, departmentId, returnChoice], map: "notary_return_archives_amount_identity_key")
+  @@unique([matterId, departmentId], map: "notary_return_archives_matter_department_key")
+  @@unique([issuanceDecisionId, matterId, departmentId, issuanceDecisionChoice], map: "notary_return_archives_decision_identity_key")
+  @@index([departmentId, archivedAt], map: "notary_return_archives_department_archived_at_idx")
+  @@map("notary_return_archives")
+}
+
+model NotaryReturnAmount {
+  id                     String                  @id @default(uuid()) @db.Uuid
+  archiveId              String                  @map("archive_id") @db.Uuid
+  matterId               String                  @map("matter_id") @db.Uuid
+  departmentId           String                  @map("department_id") @db.Uuid
+  returnChoice           NotaryReturnChoice      @map("return_choice")
+  kind                   NotaryReturnAmountKind
+  state                  NotarySampleFeeState
+  amount                 Decimal?                @db.Decimal(18, 2)
+  partyKind              NotaryReturnPartyKind?  @map("party_kind")
+  partyName              String?                 @map("party_name") @db.VarChar(200)
+  sourceEvidenceMatterId String?                 @map("source_evidence_matter_id") @db.Uuid
+  archive                NotaryReturnArchive     @relation(fields: [archiveId, matterId, departmentId, returnChoice], references: [id, matterId, departmentId, returnChoice], onDelete: Restrict, onUpdate: Restrict, map: "notary_return_amounts_archive_fkey")
+  sourceEvidence         NotaryMatterEvidence?   @relation(fields: [sourceEvidenceMatterId, departmentId], references: [matterId, departmentId], onDelete: Restrict, onUpdate: Restrict, map: "notary_return_amounts_source_fkey")
+
+  @@unique([archiveId, kind], map: "notary_return_amounts_archive_kind_key")
+  @@index([sourceEvidenceMatterId, departmentId], map: "notary_return_amounts_source_idx")
+  @@map("notary_return_amounts")
 }
 
 model NotaryIssuanceDecisionAuditEvent {
