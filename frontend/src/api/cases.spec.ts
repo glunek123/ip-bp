@@ -65,6 +65,7 @@ const detail = {
     },
   ],
   matchedAt: null,
+  matchedOn: null,
 };
 function mockJson(payload: unknown) {
   const fetchMock = vi
@@ -126,6 +127,21 @@ describe('cases API', () => {
       fees: [{ category: 'SAMPLE', amount: '12.00' }],
       defendants: [{ name: '被告甲' }],
       matchedAt: null,
+      matchedOn: null,
+    });
+  });
+
+  it('keeps an older matched case date unknown and accepts an unknown law firm', async () => {
+    mockJson({
+      ...detail,
+      stage: 'WAITING_COMPLAINT',
+      matchedAt: '2026-09-29T01:00:00Z',
+      matchedOn: null,
+      lawyers: [{ ...detail.lawyers[0], lawFirm: null }],
+    });
+    await expect(getCase('case-1')).resolves.toMatchObject({
+      matchedOn: null,
+      lawyers: [{ lawFirm: null }],
     });
   });
 
@@ -135,10 +151,12 @@ describe('cases API', () => {
       stage: 'WAITING_COMPLAINT',
       version: 4,
       matchedAt: '2026-09-29T01:00:00Z',
+      matchedOn: '2026-09-28',
     });
     await matchCase('case-1', {
       expectedVersion: 3,
       idempotencyKey: 'key-1',
+      matchedOn: '2026-09-28',
       defendants: [{ kind: 'PERSON', name: ' 被告甲 ', idNo: ' ID-1 ' }],
       lawyer: { fullName: ' 律师甲 ', lawFirm: ' 律所甲 ' },
     });
@@ -148,8 +166,44 @@ describe('cases API', () => {
     expect(JSON.parse(String(init.body))).toEqual({
       expectedVersion: 3,
       idempotencyKey: 'key-1',
+      matchedOn: '2026-09-28',
       defendants: [{ kind: 'PERSON', name: '被告甲', idNo: 'ID-1' }],
       lawyer: { fullName: '律师甲', lawFirm: '律所甲' },
     });
+  });
+
+  it('omits an unknown law firm without replacing it with a placeholder', async () => {
+    const fetchMock = mockJson({
+      id: 'case-1',
+      stage: 'WAITING_COMPLAINT',
+      version: 4,
+      matchedAt: '2026-09-29T01:00:00Z',
+      matchedOn: '2026-09-28',
+    });
+    await matchCase('case-1', {
+      expectedVersion: 3,
+      idempotencyKey: 'key-no-firm',
+      matchedOn: '2026-09-28',
+      defendants: [{ kind: 'PERSON', name: '被告甲' }],
+      lawyer: { fullName: '律师甲' },
+    });
+    const [, init] = fetchMock.mock.calls[0] as [string, RequestInit];
+    expect(JSON.parse(String(init.body)).lawyer).toEqual({
+      fullName: '律师甲',
+    });
+  });
+
+  it('rejects an invalid actual match date before sending a command', async () => {
+    const fetchMock = mockJson({});
+    await expect(
+      matchCase('case-1', {
+        expectedVersion: 3,
+        idempotencyKey: 'bad-date',
+        matchedOn: '2026-02-30',
+        defendants: [{ kind: 'PERSON', name: '被告甲' }],
+        lawyer: { fullName: '律师甲' },
+      }),
+    ).rejects.toMatchObject({ code: 'VALIDATION_ERROR' });
+    expect(fetchMock).not.toHaveBeenCalled();
   });
 });

@@ -12,10 +12,11 @@ const environment = captureTestEnvironment(root, { pnpmVersion: '11.27.0' });
 const migrationRoot = resolve(root, 'backend/prisma/migrations');
 const target = '20260929020000_add_case_matching';
 const correction = '20260929021000_reconcile_case_match_grants';
+const factsCorrection = '20260929022000_correct_case_match_facts';
 const migrations = readdirSync(migrationRoot)
   .filter((name) => /^\d{14}_/.test(name))
   .sort();
-assert.deepEqual(migrations.slice(-2), [target, correction]);
+assert.deepEqual(migrations.slice(-3), [target, correction, factsCorrection]);
 const client = new Client({
   connectionString: environment.childEnvironment.DATABASE_URL,
 });
@@ -122,6 +123,74 @@ try {
           'utf8',
         ),
       );
+      const factsMigration = readFileSync(
+        resolve(migrationRoot, factsCorrection, 'migration.sql'),
+        'utf8',
+      );
+      let knownLawyerId;
+      if (mode === 'upgrade') {
+        knownLawyerId = randomUUID();
+        await client.query(
+          'INSERT INTO lawyer_profiles(id,department_id,full_name,law_firm) VALUES ($1,$2,$3,$4)',
+          [knownLawyerId, legacyDepartment, '已有律师', '已有律所'],
+        );
+        await client.query('ALTER TABLE cases ADD COLUMN matched_on DATE');
+        await assert.rejects(
+          client.query(factsMigration),
+          (error) => error.code === '42701',
+        );
+        await client.query('ROLLBACK');
+        assert.equal(
+          (
+            await client.query(
+              `SELECT is_nullable FROM information_schema.columns WHERE table_schema=$1 AND table_name='lawyer_profiles' AND column_name='law_firm'`,
+              [schema],
+            )
+          ).rows[0].is_nullable,
+          'NO',
+        );
+        await client.query('ALTER TABLE cases DROP COLUMN matched_on');
+      }
+      await client.query(factsMigration);
+      const matchedOnColumn = await client.query(
+        `SELECT data_type,is_nullable FROM information_schema.columns WHERE table_schema=$1 AND table_name='cases' AND column_name='matched_on'`,
+        [schema],
+      );
+      assert.deepEqual(matchedOnColumn.rows[0], {
+        data_type: 'date',
+        is_nullable: 'YES',
+      });
+      if (mode === 'upgrade') {
+        const known = await client.query(
+          'SELECT full_name,law_firm FROM lawyer_profiles WHERE id=$1',
+          [knownLawyerId],
+        );
+        assert.deepEqual(known.rows[0], {
+          full_name: '已有律师',
+          law_firm: '已有律所',
+        });
+        const blank = randomUUID();
+        await client.query(
+          'INSERT INTO lawyer_profiles(id,department_id,full_name,law_firm) VALUES ($1,$2,$3,NULL)',
+          [blank, legacyDepartment, '律所未知律师'],
+        );
+        assert.equal(
+          (
+            await client.query(
+              'SELECT law_firm FROM lawyer_profiles WHERE id=$1',
+              [blank],
+            )
+          ).rows[0].law_firm,
+          null,
+        );
+        await assert.rejects(
+          client.query(
+            'INSERT INTO lawyer_profiles(id,department_id,full_name,law_firm) VALUES ($1,$2,$3,$4)',
+            [randomUUID(), legacyDepartment, '非法律所', '  '],
+          ),
+          (error) => error.code === '23514',
+        );
+      }
       const tables = await client.query(
         `SELECT table_name FROM information_schema.tables WHERE table_schema=$1 AND table_name IN ('case_defendants','lawyer_profiles','case_lawyer_assignments','case_match_receipts')`,
         [schema],

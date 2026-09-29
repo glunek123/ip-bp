@@ -14,6 +14,7 @@ vi.mock('../../api/cases', () => ({
   listCases: api.listCases,
   getCase: api.getCase,
   matchCase: api.matchCase,
+  todayShanghai: () => '2026-09-29',
 }));
 vi.mock('../../api/materials', () => ({ downloadMaterialVersion: vi.fn() }));
 
@@ -72,6 +73,7 @@ beforeEach(() => {
     defendants: [],
     lawyers: [],
     matchedAt: null,
+    matchedOn: null,
   });
 });
 afterEach(() => {
@@ -171,11 +173,21 @@ describe('case pages', () => {
       ],
       lawyers: [],
       matchedAt: '2026-09-29T01:00:00Z',
+      matchedOn: '2026-09-28',
     });
-    const inputs = wrapper.findAll('input');
-    await inputs[0]!.setValue('被告甲');
-    await inputs[4]!.setValue('律师甲');
-    await inputs[5]!.setValue('律所甲');
+    const form = wrapper.get('[data-test="case-match-form"]');
+    expect(
+      form
+        .findAll('label')
+        .find((label) => label.text().includes('律师事务所'))
+        ?.text(),
+    ).toBe('律师事务所（选填）');
+    expect(
+      (form.get('input[type="date"]').element as HTMLInputElement).value,
+    ).toBe('2026-09-29');
+    await form.get('input[type="date"]').setValue('2026-09-28');
+    await form.findAll('input')[1]!.setValue('被告甲');
+    await form.findAll('input')[5]!.setValue('律师甲');
     await wrapper
       .findAll('[data-test="case-match-form"] button')
       .find((button) => button.text().includes('确认匹配'))!
@@ -189,8 +201,9 @@ describe('case pages', () => {
         ],
         lawyer: expect.objectContaining({
           fullName: '律师甲',
-          lawFirm: '律所甲',
+          lawFirm: '',
         }),
+        matchedOn: '2026-09-28',
       }),
     );
     expect(api.getCase).toHaveBeenCalledTimes(2);
@@ -208,6 +221,7 @@ describe('case pages', () => {
       stage: 'WAITING_COMPLAINT',
       canMatch: false,
       matchedAt: '2026-09-29T01:00:00Z',
+      matchedOn: null,
     });
     const wrapper = await mountRoute('/cases/case-1', CaseDetailPage);
     expect(wrapper.find('[data-test="case-match-form"]').exists()).toBe(false);
@@ -218,6 +232,8 @@ describe('case pages', () => {
     expect(wrapper.get('[data-test="case-read-only"]').text()).toContain(
       '匹配已完成',
     );
+    expect(wrapper.text()).toContain('实际匹配日期：未记录');
+    expect(wrapper.text()).toContain('系统登记时间');
   });
 
   it('does not expose matching controls when the case is not actionable', async () => {
@@ -247,6 +263,7 @@ describe('case pages', () => {
       defendants: [],
       lawyers: [],
       matchedAt: null,
+      matchedOn: null,
     });
     const wrapper = await mountRoute('/cases/case-1', CaseDetailPage);
     expect(wrapper.find('[data-test="case-match-form"]').exists()).toBe(false);

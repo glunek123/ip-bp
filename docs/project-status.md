@@ -10,6 +10,8 @@
 
 **CORE-CA-002｜起诉材料（路线图唯一Current，待领取）**：前置CORE-CA-001在本地`codex/core-ca-001-case-matching@0f2a222`完成独立终审、完整`pnpm verify`和隔离数据库／Chromium 123/123验收，尚未推送或集成`main`；业务证据与边界见[验证记录](spec/v0.1/VALIDATION.md)。领取CA-002前先核对实际集成tree；按已确认排期，CORE-NT-008为Next。
 
+CA-001匹配事实口径正在本分支做后续修正：实际匹配日期与系统登记时间分离、律所可空。旧候选的验证只对旧tree有效，本次新代码尚待独立Review和正式门禁；本段不改变Current／Next。
+
 线索库／公证阶段导航归属修复已按用户要求并入NT-003开发分支（合并提交`379b9d2`），连同NT-003新增阶段在NT-007固定候选通过完整组合验证，现已随该分支进入`main`。详见[验证记录](spec/v0.1/VALIDATION.md)。
 
 ## 已实现

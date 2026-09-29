@@ -32,7 +32,7 @@ export type CaseDefendant = {
 export type CaseLawyer = {
   id: string;
   fullName: string;
-  lawFirm: string;
+  lawFirm: string | null;
   phone: string | null;
   role: 'PRIMARY';
   assignedAt: string;
@@ -60,6 +60,7 @@ export type CaseDetail = CaseSummary & {
   defendants: CaseDefendant[];
   lawyers: CaseLawyer[];
   matchedAt: string | null;
+  matchedOn: string | null;
 };
 export type CaseFile = {
   materialId: string;
@@ -70,6 +71,7 @@ export type CaseFile = {
 export type MatchCaseInput = {
   expectedVersion: number;
   idempotencyKey: string;
+  matchedOn: string;
   defendants: Array<{
     kind: 'PERSON' | 'ORGANIZATION';
     name: string;
@@ -77,7 +79,7 @@ export type MatchCaseInput = {
     phone?: string;
     address?: string;
   }>;
-  lawyer: { fullName: string; lawFirm: string; phone?: string };
+  lawyer: { fullName: string; lawFirm?: string; phone?: string };
 };
 
 function record(value: unknown): value is Record<string, unknown> {
@@ -91,6 +93,26 @@ function exact(value: Record<string, unknown>, keys: string[]): boolean {
 }
 function nonempty(value: unknown): value is string {
   return typeof value === 'string' && value.trim().length > 0;
+}
+function businessDate(value: unknown): value is string {
+  if (typeof value !== 'string' || !/^\d{4}-\d{2}-\d{2}$/u.test(value))
+    return false;
+  const parsed = new Date(`${value}T00:00:00.000Z`);
+  return (
+    !Number.isNaN(parsed.getTime()) &&
+    parsed.toISOString().slice(0, 10) === value
+  );
+}
+export function todayShanghai(): string {
+  const parts = new Intl.DateTimeFormat('en-US', {
+    timeZone: 'Asia/Shanghai',
+    year: 'numeric',
+    month: '2-digit',
+    day: '2-digit',
+  }).formatToParts(new Date());
+  const part = (type: string) =>
+    parts.find((item) => item.type === type)!.value;
+  return `${part('year')}-${part('month')}-${part('day')}`;
 }
 function validStage(value: unknown): value is CaseStage {
   return value === 'PENDING_MATCH' || value === 'WAITING_COMPLAINT';
@@ -177,7 +199,7 @@ function lawyer(value: unknown): value is CaseLawyer {
     ]) &&
     nonempty(value.id) &&
     nonempty(value.fullName) &&
-    nonempty(value.lawFirm) &&
+    (value.lawFirm === null || nonempty(value.lawFirm)) &&
     (value.phone === null || typeof value.phone === 'string') &&
     value.role === 'PRIMARY' &&
     typeof value.assignedAt === 'string' &&
@@ -206,6 +228,7 @@ function validCaseDetail(value: unknown, id: string): value is CaseDetail {
       'defendants',
       'lawyers',
       'matchedAt',
+      'matchedOn',
     ]) &&
     value.id === id &&
     summary({
@@ -269,7 +292,8 @@ function validCaseDetail(value: unknown, id: string): value is CaseDetail {
     value.lawyers.every(lawyer) &&
     (value.matchedAt === null ||
       (typeof value.matchedAt === 'string' &&
-        !Number.isNaN(Date.parse(value.matchedAt))))
+        !Number.isNaN(Date.parse(value.matchedAt)))) &&
+    (value.matchedOn === null || businessDate(value.matchedOn))
   );
 }
 function invalidResponse(): ApiError {
@@ -325,6 +349,7 @@ export async function matchCase(
   const body = {
     expectedVersion: input.expectedVersion,
     idempotencyKey: input.idempotencyKey,
+    matchedOn: input.matchedOn,
     defendants: input.defendants.map(
       ({ kind, name, idNo, phone, address }) => ({
         kind,
@@ -336,7 +361,9 @@ export async function matchCase(
     ),
     lawyer: {
       fullName: input.lawyer.fullName.trim(),
-      lawFirm: input.lawyer.lawFirm.trim(),
+      ...(input.lawyer.lawFirm?.trim()
+        ? { lawFirm: input.lawyer.lawFirm.trim() }
+        : {}),
       ...(input.lawyer.phone?.trim()
         ? { phone: input.lawyer.phone.trim() }
         : {}),
@@ -346,11 +373,12 @@ export async function matchCase(
     !Number.isInteger(input.expectedVersion) ||
     input.expectedVersion < 1 ||
     !input.idempotencyKey.trim() ||
+    !businessDate(input.matchedOn) ||
+    input.matchedOn > todayShanghai() ||
     body.defendants.length === 0 ||
     body.defendants.length > 20 ||
     body.defendants.some((entry) => !entry.name) ||
-    !body.lawyer.fullName ||
-    !body.lawyer.lawFirm
+    !body.lawyer.fullName
   )
     throw new ApiError('匹配信息无效', 400, 'VALIDATION_ERROR');
   const result = await requestJson(`/cases/${encodeURIComponent(id)}/match`, {
@@ -360,12 +388,13 @@ export async function matchCase(
   });
   if (
     !record(result) ||
-    !exact(result, ['id', 'stage', 'version', 'matchedAt']) ||
+    !exact(result, ['id', 'stage', 'version', 'matchedAt', 'matchedOn']) ||
     result.id !== id ||
     result.stage !== 'WAITING_COMPLAINT' ||
     result.version !== input.expectedVersion + 1 ||
     typeof result.matchedAt !== 'string' ||
-    Number.isNaN(Date.parse(result.matchedAt))
+    Number.isNaN(Date.parse(result.matchedAt)) ||
+    result.matchedOn !== input.matchedOn
   )
     throw invalidResponse();
 }

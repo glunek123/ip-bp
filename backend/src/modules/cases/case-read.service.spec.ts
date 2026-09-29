@@ -93,12 +93,13 @@ describe('CaseReadService', () => {
 
   it('reads four fees by original source without inventing a court case number', async () => {
     const f = fixture();
-    f.db.case.findFirst.mockResolvedValue({
+    const record = {
       id: 'case-1',
       businessNo: 'CA-1',
       stage: 'PENDING_MATCH',
       version: 1,
       matchedAt: null,
+      matchedOn: null,
       responsibleUserId: actor.userId,
       responsibleMembership: { teamId: null },
       defendants: [],
@@ -142,7 +143,8 @@ describe('CaseReadService', () => {
           },
         ],
       },
-    });
+    };
+    f.db.case.findFirst.mockResolvedValue(record);
     const result = await f.service.get(actor, 'case-1');
     expect(result).toMatchObject({
       courtCaseNo: null,
@@ -180,6 +182,31 @@ describe('CaseReadService', () => {
         where: { id: 'case-1', departmentId: actor.departmentId },
       }),
     );
+    f.db.case.findFirst.mockResolvedValue({
+      ...record,
+      stage: 'WAITING_COMPLAINT',
+      matchedAt: new Date('2026-09-29T09:00:00.000Z'),
+      matchedOn: new Date('2026-09-28T00:00:00.000Z'),
+      lawyers: [
+        {
+          id: 'assignment-1',
+          role: 'PRIMARY',
+          startedAt: new Date('2026-09-29T09:00:00.000Z'),
+          endedAt: null,
+          lawyer: {
+            id: 'lawyer-1',
+            fullName: '张律师',
+            lawFirm: null,
+            phone: null,
+          },
+        },
+      ],
+    });
+    await expect(f.service.get(actor, 'case-1')).resolves.toMatchObject({
+      matchedOn: '2026-09-28',
+      matchedAt: '2026-09-29T09:00:00.000Z',
+      lawyers: [{ fullName: '张律师', lawFirm: null }],
+    });
   });
   it('scopes mine by case ownership and keeps stage counts independent of filter', async () => {
     const f = fixture();

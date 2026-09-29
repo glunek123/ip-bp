@@ -6,6 +6,7 @@ import { ApiError } from '../../api/http';
 import {
   getCase,
   matchCase,
+  todayShanghai,
   type CaseDetail,
   type MatchCaseInput,
 } from '../../api/cases';
@@ -33,6 +34,7 @@ const defendants = ref<DefendantDraft[]>([
   { kind: 'PERSON', name: '', idNo: '', phone: '', address: '' },
 ]);
 const lawyer = ref({ fullName: '', lawFirm: '', phone: '' });
+const matchedOn = ref(todayShanghai());
 let submissionFingerprint = '';
 let idempotencyKey = '';
 let request: AbortController | undefined;
@@ -92,13 +94,18 @@ async function submitMatch() {
     matchError.value = '请填写每位被告的名称。';
     return;
   }
-  if (!lawyer.value.fullName.trim() || !lawyer.value.lawFirm.trim()) {
-    matchError.value = '请填写主办律师姓名和律师事务所。';
+  if (!lawyer.value.fullName.trim()) {
+    matchError.value = '请填写主办律师姓名。';
+    return;
+  }
+  if (!matchedOn.value || matchedOn.value > todayShanghai()) {
+    matchError.value = '请选择真实的实际匹配日期，不能晚于今天。';
     return;
   }
   const input: MatchCaseInput = {
     expectedVersion: current.version,
     idempotencyKey: '',
+    matchedOn: matchedOn.value,
     defendants: defendants.value.map(
       ({ kind, name, idNo, phone, address }) => ({
         kind,
@@ -121,7 +128,11 @@ async function submitMatch() {
     await matchCase(current.id, input);
     const fresh = await getCase(current.id);
     item.value = fresh;
-    if (fresh.stage === 'WAITING_COMPLAINT' && fresh.matchedAt !== null) {
+    if (
+      fresh.stage === 'WAITING_COMPLAINT' &&
+      fresh.matchedAt !== null &&
+      fresh.matchedOn === matchedOn.value
+    ) {
       matchSuccess.value = '案件匹配已完成，当前阶段为待写诉状。';
       submissionFingerprint = '';
       idempotencyKey = '';
@@ -167,7 +178,7 @@ async function submitMatch() {
       reason instanceof ApiError &&
       reason.code === 'VALIDATION_ERROR'
     ) {
-      matchError.value = '匹配信息未通过校验，请检查必填项和字段长度。';
+      matchError.value = '匹配信息未通过校验，请检查日期、必填项和字段长度。';
     } else if (
       reason instanceof ApiError &&
       (reason.code === 'NETWORK_ERROR' || reason.code === 'TIMEOUT')
@@ -239,6 +250,21 @@ onBeforeUnmount(() => request?.abort());
           <p class="field-help">
             提交后将保存全部被告和主办律师，并把案件推进到“待写诉状”。上述信息与阶段变更会一并保存。
           </p>
+          <div class="demo-form-grid">
+            <label
+              >实际匹配日期 <span aria-hidden="true">*</span
+              ><input
+                v-model="matchedOn"
+                type="date"
+                class="text-input"
+                :max="todayShanghai()"
+                required
+                :aria-required="true"
+            /></label>
+            <p class="field-help">
+              默认今天；补录时可改为真实的过去日期。系统会另记本次登记时间。
+            </p>
+          </div>
           <div
             v-for="(defendant, index) in defendants"
             :key="index"
@@ -297,12 +323,9 @@ onBeforeUnmount(() => request?.abort());
                 :aria-required="true"
             /></label>
             <label
-              >律师事务所 <span aria-hidden="true">*</span
-              ><input
+              >律师事务所（选填）<input
                 v-model="lawyer.lawFirm"
                 class="text-input"
-                required
-                :aria-required="true"
             /></label>
             <label
               >电话（选填）<input v-model="lawyer.phone" class="text-input"
@@ -365,15 +388,13 @@ onBeforeUnmount(() => request?.abort());
           </p>
           <ul v-else>
             <li v-for="entry in item.lawyers" :key="entry.id">
-              {{ entry.fullName }}（{{ entry.lawFirm }}）<span
-                v-if="entry.phone"
-              >
-                · 电话 {{ entry.phone }}</span
-              >
+              {{ entry.fullName
+              }}<span v-if="entry.lawFirm">（{{ entry.lawFirm }}）</span
+              ><span v-if="entry.phone"> · 电话 {{ entry.phone }}</span>
             </li>
           </ul>
           <p v-if="item.matchedAt" class="field-help">
-            匹配时间：{{
+            实际匹配日期：{{ item.matchedOn ?? '未记录' }} · 系统登记时间：{{
               new Date(item.matchedAt).toLocaleString('zh-CN', {
                 timeZone: 'Asia/Shanghai',
                 hour12: false,

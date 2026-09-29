@@ -83,7 +83,7 @@ class CaseDefendantDto {
 class CaseLawyerDto {
   @ApiProperty({ format: 'uuid' }) id!: string;
   @ApiProperty() fullName!: string;
-  @ApiProperty() lawFirm!: string;
+  @ApiProperty({ type: String, nullable: true }) lawFirm!: string | null;
   @ApiProperty({ type: String, nullable: true }) phone!: string | null;
   @ApiProperty({ enum: ['PRIMARY'] }) role!: 'PRIMARY';
   @ApiProperty({ format: 'date-time' }) assignedAt!: string;
@@ -100,6 +100,8 @@ class CaseFeeDto {
 export class CaseDetailResponseDto extends CaseListItemDto {
   @ApiProperty({ type: String, nullable: true, format: 'date-time' })
   matchedAt!: string | null;
+  @ApiProperty({ type: String, nullable: true, format: 'date' })
+  matchedOn!: string | null;
   @ApiProperty({ type: String, nullable: true }) courtCaseNo!: string | null;
   @ApiProperty({ type: CaseNamedDto }) department!: CaseNamedDto;
   @ApiProperty({ type: CaseNamedDto }) customer!: CaseNamedDto;

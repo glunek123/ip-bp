@@ -12,6 +12,7 @@ const caseId = '33333333-3333-4333-8333-333333333333';
 const input = {
   expectedVersion: 1,
   idempotencyKey: 'match-1',
+  matchedOn: '2026-09-28',
   defendants: [{ kind: 'ORGANIZATION' as const, name: '被告公司' }],
   lawyer: { fullName: '张律师', lawFirm: '真实律所' },
 };
@@ -69,6 +70,7 @@ describe('CaseMatchService', () => {
       stage: 'WAITING_COMPLAINT',
       version: 2,
       matchedAt: expect.any(String),
+      matchedOn: '2026-09-28',
     });
     expect(f.access.authorizeCase).toHaveBeenCalledWith(
       actor,
@@ -79,7 +81,10 @@ describe('CaseMatchService', () => {
     expect(f.tx.case.updateMany).toHaveBeenCalledWith(
       expect.objectContaining({
         where: expect.objectContaining({ stage: 'PENDING_MATCH', version: 1 }),
-        data: expect.objectContaining({ stage: 'WAITING_COMPLAINT' }),
+        data: expect.objectContaining({
+          stage: 'WAITING_COMPLAINT',
+          matchedOn: new Date('2026-09-28T00:00:00.000Z'),
+        }),
       }),
     );
     expect(f.tx.caseDefendant.createMany).toHaveBeenCalledWith({
@@ -110,8 +115,47 @@ describe('CaseMatchService', () => {
       }),
     );
     expect(f.tx.auditEvent.create).toHaveBeenCalledTimes(1);
+    expect(f.tx.auditEvent.create).toHaveBeenCalledWith({
+      data: expect.objectContaining({
+        details: expect.objectContaining({ matchedOn: '2026-09-28' }),
+      }),
+    });
     expect(f.tx.caseMatchReceipt.create).toHaveBeenCalledTimes(1);
+    expect(f.tx.caseMatchReceipt.create).toHaveBeenCalledWith({
+      data: expect.objectContaining({
+        resultSnapshot: expect.objectContaining({ matchedOn: '2026-09-28' }),
+      }),
+    });
   });
+
+  it('matches with no known law firm and never stores a fictitious placeholder', async () => {
+    const f = fixture();
+    const result = await f.service.match(actor, caseId, {
+      ...input,
+      lawyer: { fullName: '张律师' },
+    } as unknown as MatchCaseDto);
+    expect(result).toHaveProperty('matchedOn', '2026-09-28');
+    expect(f.tx.lawyerProfile.create).toHaveBeenCalledWith({
+      data: {
+        fullName: '张律师',
+        lawFirm: null,
+        phone: undefined,
+        departmentId: actor.departmentId,
+      },
+      select: { id: true },
+    });
+  });
+
+  it.each(['', '2026-02-30', '2026-09-28T00:00:00Z', '2999-01-01'])(
+    'rejects invalid or future actual match date %s before writes',
+    async (matchedOn) => {
+      const f = fixture();
+      await expect(
+        f.service.match(actor, caseId, { ...input, matchedOn } as MatchCaseDto),
+      ).rejects.toMatchObject({ response: { code: 'VALIDATION_ERROR' } });
+      expect(f.db.$transaction).not.toHaveBeenCalled();
+    },
+  );
 
   it('rejects a stale version before writing any matching facts', async () => {
     const f = fixture();
@@ -164,9 +208,20 @@ describe('MatchCaseDto', () => {
       { ...input, defendants: [{ kind: 'ORGANIZATION', name: '' }] },
     ],
     ['lawyer name', { ...input, lawyer: { ...input.lawyer, fullName: '' } }],
-    ['law firm', { ...input, lawyer: { ...input.lawyer, lawFirm: '' } }],
+    ['matchedOn', { ...input, matchedOn: '' }],
   ])('declares %s as a nonempty required field', (_field, body) => {
     const errors = validateSync(plainToInstance(MatchCaseDto, body));
     expect(JSON.stringify(errors)).toContain('minLength');
+  });
+
+  it('allows an omitted law firm while still requiring the lawyer name', () => {
+    expect(
+      validateSync(
+        plainToInstance(MatchCaseDto, {
+          ...input,
+          lawyer: { fullName: '张律师' },
+        }),
+      ),
+    ).toEqual([]);
   });
 });

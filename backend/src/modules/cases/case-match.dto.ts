@@ -8,6 +8,7 @@ import {
   IsInt,
   IsOptional,
   IsString,
+  Matches,
   MaxLength,
   Min,
   MinLength,
@@ -46,11 +47,12 @@ export class CaseMatchLawyerDto {
   @MinLength(1)
   @MaxLength(200)
   fullName!: string;
-  @ApiProperty({ minLength: 1, maxLength: 200 })
+  @ApiPropertyOptional({ minLength: 1, maxLength: 200 })
+  @IsOptional()
   @IsString()
   @MinLength(1)
   @MaxLength(200)
-  lawFirm!: string;
+  lawFirm?: string;
   @ApiPropertyOptional({ maxLength: 100 })
   @IsOptional()
   @IsString()
@@ -65,6 +67,12 @@ export class MatchCaseDto {
   @MinLength(1)
   @MaxLength(128)
   idempotencyKey!: string;
+  @ApiProperty({ format: 'date', example: '2026-09-28' })
+  @IsString()
+  @MinLength(10)
+  @MaxLength(10)
+  @Matches(/^\d{4}-\d{2}-\d{2}$/u)
+  matchedOn!: string;
   @ApiProperty({ type: [CaseMatchDefendantDto], minItems: 1, maxItems: 20 })
   @IsArray()
   @ArrayMinSize(1)
@@ -83,4 +91,5 @@ export class MatchCaseResponseDto {
   @ApiProperty({ enum: ['WAITING_COMPLAINT'] }) stage!: 'WAITING_COMPLAINT';
   @ApiProperty() version!: number;
   @ApiProperty({ format: 'date-time' }) matchedAt!: string;
+  @ApiProperty({ format: 'date' }) matchedOn!: string;
 }

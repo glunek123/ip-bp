@@ -101,7 +101,8 @@ export class CaseMatchService {
                 snapshot.id !== caseId ||
                 snapshot.stage !== 'WAITING_COMPLAINT' ||
                 !Number.isInteger(snapshot.version) ||
-                typeof snapshot.matchedAt !== 'string'
+                typeof snapshot.matchedAt !== 'string' ||
+                typeof snapshot.matchedOn !== 'string'
               )
                 throw this.corruptReceipt();
               return snapshot as MatchCaseResponseDto;
@@ -121,6 +122,7 @@ export class CaseMatchService {
                 stage: 'WAITING_COMPLAINT',
                 version: { increment: 1 },
                 matchedAt,
+                matchedOn: new Date(`${normalized.matchedOn}T00:00:00.000Z`),
               },
             });
             if (changed.count !== 1) throw this.versionConflict();
@@ -132,7 +134,11 @@ export class CaseMatchService {
               })),
             });
             const lawyer = await tx.lawyerProfile.create({
-              data: { ...normalized.lawyer, departmentId: actor.departmentId },
+              data: {
+                ...normalized.lawyer,
+                lawFirm: normalized.lawyer.lawFirm ?? null,
+                departmentId: actor.departmentId,
+              },
               select: { id: true },
             });
             await tx.caseLawyerAssignment.create({
@@ -149,6 +155,7 @@ export class CaseMatchService {
               stage: 'WAITING_COMPLAINT',
               version: normalized.expectedVersion + 1,
               matchedAt: matchedAt.toISOString(),
+              matchedOn: normalized.matchedOn,
             };
             await tx.auditEvent.create({
               data: {
@@ -163,6 +170,7 @@ export class CaseMatchService {
                   toVersion: result.version,
                   defendantCount: normalized.defendants.length,
                   lawyerProfileId: lawyer.id,
+                  matchedOn: normalized.matchedOn,
                 },
               },
             });
@@ -178,6 +186,7 @@ export class CaseMatchService {
                   stage: result.stage,
                   version: result.version,
                   matchedAt: result.matchedAt,
+                  matchedOn: result.matchedOn,
                 },
               },
             });
@@ -225,6 +234,15 @@ export class CaseMatchService {
     )
       throw this.validation();
     const idempotencyKey = clean(input.idempotencyKey, 128, true)!;
+    const matchedOn = clean(input.matchedOn, 10, true)!;
+    const parsedDate = new Date(`${matchedOn}T00:00:00.000Z`);
+    if (
+      !/^\d{4}-\d{2}-\d{2}$/u.test(matchedOn) ||
+      Number.isNaN(parsedDate.getTime()) ||
+      parsedDate.toISOString().slice(0, 10) !== matchedOn ||
+      matchedOn > this.todayShanghai()
+    )
+      throw this.validation();
     const defendants = input.defendants.map((party) => {
       if (
         party === null ||
@@ -242,15 +260,27 @@ export class CaseMatchService {
     });
     const lawyer = {
       fullName: clean(input.lawyer.fullName, 200, true)!,
-      lawFirm: clean(input.lawyer.lawFirm, 200, true)!,
+      lawFirm: clean(input.lawyer.lawFirm, 200, false),
       phone: clean(input.lawyer.phone, 100, false),
     };
     return {
       expectedVersion: input.expectedVersion,
       idempotencyKey,
+      matchedOn,
       defendants,
       lawyer,
     };
+  }
+  private todayShanghai(): string {
+    const parts = new Intl.DateTimeFormat('en-US', {
+      timeZone: 'Asia/Shanghai',
+      year: 'numeric',
+      month: '2-digit',
+      day: '2-digit',
+    }).formatToParts(new Date());
+    const value = (type: string) =>
+      parts.find((part) => part.type === type)!.value;
+    return `${value('year')}-${value('month')}-${value('day')}`;
   }
   private validation() {
     return new BadRequestException({

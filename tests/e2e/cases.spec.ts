@@ -33,6 +33,7 @@ const jpegBytes = Buffer.from([
 type MatchInput = {
   expectedVersion: number;
   idempotencyKey: string;
+  matchedOn: string;
   defendants: Array<{
     kind: 'PERSON' | 'ORGANIZATION';
     name: string;
@@ -40,7 +41,7 @@ type MatchInput = {
     phone?: string;
     address?: string;
   }>;
-  lawyer: { fullName: string; lawFirm: string; phone?: string };
+  lawyer: { fullName: string; lawFirm?: string; phone?: string };
 };
 
 async function configureBrowser(page: Page, authorization = authorizationA) {
@@ -370,7 +371,8 @@ test('an operator matches a real notary case and the result survives refresh', a
   await form.getByLabel('电话（选填）').first().fill('05710000000');
   await form.getByLabel('地址（选填）').fill('浙江省杭州市');
   await form.getByLabel('律师姓名').fill('张律师');
-  await form.getByLabel('律师事务所').fill('杭州测试律师事务所');
+  await expect(form.getByLabel('实际匹配日期')).not.toHaveValue('');
+  await form.getByLabel('实际匹配日期').fill('2026-09-28');
   await form.getByLabel('电话（选填）').last().fill('05719999999');
   await page.getByRole('button', { name: '确认匹配并进入待写诉状' }).click();
   await expect(page.getByRole('status')).toContainText('待写诉状');
@@ -380,7 +382,9 @@ test('an operator matches a real notary case and the result survives refresh', a
     page.getByRole('heading', { name: '当事人与承办律师' }),
   ).toBeVisible();
   await expect(page.getByText(/杭州真实匹配测试公司/u)).toBeVisible();
-  await expect(page.getByText(/张律师（杭州测试律师事务所）/u)).toBeVisible();
+  await expect(page.getByText(/张律师/u)).toBeVisible();
+  await expect(page.getByText(/实际匹配日期：2026-09-28/u)).toBeVisible();
+  await expect(page.getByText(/系统登记时间/u)).toBeVisible();
   const detail = await request.get(`/api/v1/cases/${caseId}`, {
     headers: authorizationA,
   });
@@ -396,9 +400,9 @@ test('an operator matches a real notary case and the result survives refresh', a
         idNo: '91330000MATCH001',
       },
     ],
-    lawyers: [
-      { fullName: '张律师', lawFirm: '杭州测试律师事务所', role: 'PRIMARY' },
-    ],
+    lawyers: [{ fullName: '张律师', lawFirm: null, role: 'PRIMARY' }],
+    matchedOn: '2026-09-28',
+    matchedAt: expect.any(String),
   });
   const waitingComplaint = await request.get(
     '/api/v1/cases?view=mine&stage=WAITING_COMPLAINT',
@@ -450,6 +454,7 @@ test('same-department reader can download but cannot write; another department g
     {
       expectedVersion: 1,
       idempotencyKey: randomUUID(),
+      matchedOn: '2026-09-28',
       defendants: [{ kind: 'PERSON', name: '不应写入' }],
       lawyer: { fullName: '无权律师', lawFirm: '无权事务所' },
     },
@@ -475,6 +480,7 @@ test('case match rejects stale writes, serializes concurrent writes, and preserv
   const firstInput: MatchInput = {
     expectedVersion: 1,
     idempotencyKey: randomUUID(),
+    matchedOn: '2026-09-28',
     defendants: [{ kind: 'PERSON', name: '王某', idNo: '330100199001010011' }],
     lawyer: {
       fullName: '李律师',
@@ -482,6 +488,12 @@ test('case match rejects stale writes, serializes concurrent writes, and preserv
       phone: '05718888888',
     },
   };
+  const future = await matchCase(request, caseId, {
+    ...firstInput,
+    matchedOn: '2999-01-01',
+  });
+  expect(future.status(), await future.text()).toBe(400);
+  expect(await future.json()).toMatchObject({ code: 'VALIDATION_ERROR' });
   const stale = await matchCase(request, caseId, {
     ...firstInput,
     expectedVersion: 99,
@@ -503,6 +515,15 @@ test('case match rejects stale writes, serializes concurrent writes, and preserv
   const winner = concurrent[0].status() === 201 ? firstInput : secondInput;
   const replay = await matchCase(request, caseId, winner);
   expect(replay.status(), await replay.text()).toBe(201);
+  expect(await replay.json()).toMatchObject({ matchedOn: winner.matchedOn });
+  const changedDate = await matchCase(request, caseId, {
+    ...winner,
+    matchedOn: '2026-09-27',
+  });
+  expect(changedDate.status(), await changedDate.text()).toBe(409);
+  expect(await changedDate.json()).toMatchObject({
+    code: 'IDEMPOTENCY_CONFLICT',
+  });
   const conflict = await matchCase(request, caseId, {
     ...winner,
     defendants: [{ kind: 'ORGANIZATION', name: '幂等键冲突公司' }],
@@ -520,6 +541,7 @@ test('revoking the operator account takes effect on the next match request', asy
     const revoked = await matchCase(request, caseId, {
       expectedVersion: 1,
       idempotencyKey: randomUUID(),
+      matchedOn: '2026-09-28',
       defendants: [{ kind: 'PERSON', name: '无权写入' }],
       lawyer: { fullName: '无权律师', lawFirm: '无权律师事务所' },
     });
@@ -542,6 +564,7 @@ test('audit and receipt failures roll back the match and permit retry after reco
     const input: MatchInput = {
       expectedVersion: 1,
       idempotencyKey: randomUUID(),
+      matchedOn: '2026-09-28',
       defendants: [{ kind: 'PERSON', name: '赵某' }],
       lawyer: { fullName: '周律师', lawFirm: '滨江律师事务所' },
     };
@@ -555,6 +578,7 @@ test('audit and receipt failures roll back the match and permit retry after reco
       id: caseId,
       stage: 'PENDING_MATCH',
       version: 1,
+      matchedOn: null,
       defendants: [],
       lawyers: [],
     });

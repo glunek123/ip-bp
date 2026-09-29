@@ -1126,6 +1126,7 @@ model Case {
   stage                CaseStage         @default(PENDING_MATCH)
   version              Int               @default(1)
   matchedAt            DateTime?         @map("matched_at") @db.Timestamptz(3)
+  matchedOn            DateTime?         @map("matched_on") @db.Date
   defendants           CaseDefendant[]
   lawyers              CaseLawyerAssignment[]
   matchReceipts        CaseMatchReceipt[]
@@ -1168,7 +1169,7 @@ model LawyerProfile {
   id          String                 @id @default(uuid()) @db.Uuid
   departmentId String               @map("department_id") @db.Uuid
   fullName    String                 @map("full_name") @db.VarChar(200)
-  lawFirm     String                 @map("law_firm") @db.VarChar(200)
+  lawFirm     String?                @map("law_firm") @db.VarChar(200)
   phone       String?                @db.VarChar(100)
   assignments CaseLawyerAssignment[]
   department  Department             @relation(fields: [departmentId], references: [id], onDelete: Restrict, onUpdate: Restrict)

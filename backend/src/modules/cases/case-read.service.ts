@@ -125,6 +125,7 @@ export class CaseReadService {
         stage: true,
         version: true,
         matchedAt: true,
+        matchedOn: true,
         createdAt: true,
         responsibleUserId: true,
         responsibleMembership: { select: { teamId: true } },
@@ -205,6 +206,7 @@ export class CaseReadService {
       stage: record.stage,
       version: record.version,
       matchedAt: record.matchedAt?.toISOString() ?? null,
+      matchedOn: record.matchedOn?.toISOString().slice(0, 10) ?? null,
       defendants: record.defendants,
       lawyers: record.lawyers.map((assignment) => ({
         id: assignment.lawyer.id,
