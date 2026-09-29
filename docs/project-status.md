@@ -8,7 +8,7 @@
 
 ## 当前任务
 
-**CORE-CA-002｜起诉材料（路线图唯一Current，待领取）**：前置CORE-CA-001匹配事实修正候选在本地`codex/core-ca-001-case-matching@1279b1d`完成独立审查、完整`pnpm verify`和隔离数据库／Chromium 124/124验收，尚未推送或集成`main`；业务证据与边界见[验证记录](spec/v0.1/VALIDATION.md)。领取CA-002前先核对实际集成tree；按已确认排期，CORE-NT-008为Next。
+**CORE-CA-002｜起诉材料（路线图唯一Current，待领取）**：前置CORE-CA-001匹配事实修正候选`1279b1d`完成独立审查、完整`pnpm verify`和隔离数据库／Chromium 124/124验收，收口态`b6d3489`已快进合并并推送至`main`；业务证据与边界见[验证记录](spec/v0.1/VALIDATION.md)。领取CA-002前核对当前`main`；按已确认排期，CORE-NT-008为Next。
 
 CA-001匹配事实口径已在本分支修正并验收：实际匹配日期与系统登记时间分离、律所可空，旧成功回执仍可原样重放。旧候选的验证只对旧tree有效；本段不改变Current／Next。
 
@@ -31,7 +31,7 @@ CA-001匹配事实口径已在本分支修正并验收：实际匹配日期与�
 
 ## 最近验证
 
-- CORE-CA-001匹配事实修正候选`1279b1d62a79d00116ab93b8e642743fe5ee196d`、tree`4c8952b03bdfa24bdafa3ab0e6046abb06f22bf5`通过独立Review及补审（未关闭Critical／Important／Minor均为0）、完整`pnpm verify`（工具73、后端871、前端462）和隔离PostgreSQL／Chromium完整E2E 124/124；迁移空库／上一支持schema与失败回滚专项通过。原候选`0f2a222`证据仅属历史。尚未合入`main`，详细证据见[验证记录](spec/v0.1/VALIDATION.md)。
+- CORE-CA-001匹配事实修正候选`1279b1d62a79d00116ab93b8e642743fe5ee196d`、tree`4c8952b03bdfa24bdafa3ab0e6046abb06f22bf5`通过独立Review及补审（未关闭Critical／Important／Minor均为0）、完整`pnpm verify`（工具73、后端871、前端462）和隔离PostgreSQL／Chromium完整E2E 124/124；迁移空库／上一支持schema与失败回滚专项通过。收口态`b6d3489`已集成`main`；原候选`0f2a222`证据仅属历史，详细边界见[验证记录](spec/v0.1/VALIDATION.md)。
 - CORE-NT-006原固定业务候选`3cba594`通过独立Final Review与补审（未关闭Critical／Important／Minor均为0）及迁移专项；本地`main@a6ef5f1`组合tree重新通过完整`pnpm verify`（工具73、后端846、前端446）及隔离PostgreSQL／Chromium完整E2E 118/118（3.6分钟）。证据边界见[验证记录](spec/v0.1/VALIDATION.md)，不表示案件后续或生产发布完成。
 - CORE-NT-005固定代码候选`debe747b1d95c9e25d1813d3c96118147eb506d7`、tree`ed6042a551f0e9082330dd52f6e3e307b9f8ffab`通过独立Final Review与补审（未关闭Critical／Important／Minor均为0）、完整`pnpm verify`（工具73、后端803、前端440）及隔离PostgreSQL／Chromium完整E2E 113/113；空库与上一支持schema迁移专项通过。证据边界见[验证记录](spec/v0.1/VALIDATION.md)，不表示退货、案件后续或生产发布完成。
 - CORE-NT-004固定代码候选`7882a9e61013266961f29e3e27bf94b8c7e1ee7b`、tree`d6c1c76e04ff8ac7c85302d0208eb5b6dacd35cb`通过独立Final Review（未关闭Critical／Important／Minor均为0）、Level 2定向门禁（后端776、前端418）及隔离PostgreSQL／Chromium公证主链50/50；空库45份迁移与上一支持schema升级、并发和故障回滚验证通过。结果边界见[验证记录](spec/v0.1/VALIDATION.md)，不表示实际出证、退货、转案或生产发布。
@@ -52,4 +52,4 @@ CA-001匹配事实口径已在本分支修正并验收：实际匹配日期与�
 
 ## 下一步
 
-CORE-CA-001修正后的本地候选已验收但未集成`main`；后续若获授权集成，按规则核对并验证实际组合tree，再从更新后的`main`领取CORE-CA-002。本轮不启动下一切片；未上线，未执行生产迁移。
+CORE-CA-001修正后的候选已验收并集成`main`；下一步可从当前`main`领取CORE-CA-002。本轮不启动下一切片；未上线，未执行生产迁移。
