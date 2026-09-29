@@ -195,12 +195,14 @@ export class NotaryReturnArchiveService {
             });
             if (changed.count !== 1) throw this.versionConflict();
             const archivedAt = new Date();
+            const actorDisplayName = account.displayName.trim();
             const archive = await tx.notaryReturnArchive.create({
               data: {
                 matterId,
                 departmentId: matter.departmentId,
                 issuanceDecisionId: matter.issuanceDecision.id,
                 actorUserId: actor.userId,
+                actorDisplayNameSnapshot: actorDisplayName,
                 returnChoice: normalized.returnChoice,
                 archiveReason: normalized.archiveReason,
                 archivedAt,
@@ -237,7 +239,7 @@ export class NotaryReturnArchiveService {
                 returnChoice: normalized.returnChoice,
                 archiveReason: normalized.archiveReason,
                 archivedAt: archive.archivedAt.toISOString(),
-                actorDisplayName: account.displayName.trim(),
+                actorDisplayName,
                 refund: normalized.refund,
                 freight: normalized.freight,
               },
@@ -451,6 +453,7 @@ export class NotaryReturnArchiveService {
       select: {
         departmentId: true,
         actorUserId: true,
+        actorDisplayNameSnapshot: true,
         returnChoice: true,
         archiveReason: true,
         archivedAt: true,
@@ -472,6 +475,7 @@ export class NotaryReturnArchiveService {
       stored === null ||
       stored.departmentId !== receipt.departmentId ||
       stored.actorUserId !== receipt.actorUserId ||
+      stored.actorDisplayNameSnapshot !== detail.actorDisplayName ||
       stored.returnChoice !== detail.returnChoice ||
       stored.archiveReason !== detail.archiveReason ||
       stored.archivedAt.toISOString() !== detail.archivedAt ||

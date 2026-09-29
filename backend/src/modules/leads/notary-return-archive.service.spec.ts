@@ -131,6 +131,7 @@ describe('NotaryReturnArchiveService', () => {
       expect(f.tx.notaryReturnArchive.create).toHaveBeenCalledWith({
         data: expect.objectContaining({
           issuanceDecisionId: f.matter.issuanceDecision.id,
+          actorDisplayNameSnapshot: '运营',
           fromVersion: 5,
           toVersion: 6,
         }),
@@ -427,6 +428,11 @@ describe('NotaryReturnArchiveService', () => {
         },
       ],
     });
+    f.tx.userAccount.findUnique.mockResolvedValue({
+      accountType: 'INTERNAL',
+      active: true,
+      displayName: '已更名的运营',
+    });
     await expect(
       f.service.archive(actor, matterId, 'key', input),
     ).resolves.toEqual(result);
@@ -443,6 +449,32 @@ describe('NotaryReturnArchiveService', () => {
     });
     await expect(
       f.service.archive(actor, matterId, 'key', input),
+    ).rejects.toMatchObject({ response: { code: 'RECEIPT_CORRUPT' } });
+  });
+
+  it('rejects a receipt whose actor display name differs from the immutable archive snapshot', async () => {
+    const f = fixture();
+    const result = await f.service.archive(actor, matterId, 'key', keep);
+    const receipt =
+      f.tx.notaryMatterCommandReceipt.create.mock.calls[0][0].data;
+    f.tx.notaryMatterCommandReceipt.findUnique.mockResolvedValue({
+      ...receipt,
+      resultSnapshot: {
+        ...result,
+        returnArchive: {
+          ...result.returnArchive,
+          actorDisplayName: '伪造操作者',
+        },
+      },
+    });
+    f.tx.notaryReturnArchive.findUnique.mockResolvedValue({
+      ...f.tx.notaryReturnArchive.create.mock.calls[0][0].data,
+      actorDisplayNameSnapshot: '运营',
+      archivedAt,
+      amounts: [],
+    });
+    await expect(
+      f.service.archive(actor, matterId, 'key', keep),
     ).rejects.toMatchObject({ response: { code: 'RECEIPT_CORRUPT' } });
   });
 
