@@ -8,7 +8,7 @@
 
 ## 当前任务
 
-**CORE-NT-006｜不出证退货（路线图唯一Current，尚未领取）**：NT-005固定代码候选`debe747`、tree`ed6042a551f0e9082330dd52f6e3e307b9f8ffab`已通过独立Final Review、完整`pnpm verify`、隔离数据库／Chromium 113项全量验收及迁移专项，证据见[验证记录](spec/v0.1/VALIDATION.md)。NT-005分支与本地`main`已快进集成到`403653b`、tree`3f0d511`，该同一tree重新通过完整`pnpm verify`；远端两分支均确认包含`403653b`。CORE-CA-001为Next。
+**CORE-NT-006｜不出证退货（路线图唯一Current，已领取）**：从已同步的`main@7432082`建立`codex/core-nt-006-return-archive`。本切片一次提交、只记费用事实的边界已获确认并写入[设计](superpowers/specs/2026-09-29-core-nt-006-return-archive-design.md)，尚未实现或验收；CORE-CA-001为Next。NT-005固定候选与远端集成证据见[验证记录](spec/v0.1/VALIDATION.md)。
 
 线索库／公证阶段导航归属修复已按用户要求并入NT-003开发分支（合并提交`379b9d2`），连同NT-003新增阶段在NT-007固定候选通过完整组合验证，现已随该分支进入`main`。详见[验证记录](spec/v0.1/VALIDATION.md)。
 
@@ -48,4 +48,4 @@
 
 ## 下一步
 
-从已集成的`main`领取CORE-NT-006不出证退货；CORE-CA-001为后续Next。NT-005未上线，未执行生产迁移。
+在`codex/core-nt-006-return-archive`实施CORE-NT-006不出证退货；CORE-CA-001为后续Next。NT-005未上线，未执行生产迁移。
