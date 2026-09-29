@@ -686,6 +686,27 @@ export class LeadNotaryService {
             decidedAt: true,
           },
         },
+        certificate: { select: { id: true } },
+        returnArchive: {
+          select: {
+            returnChoice: true,
+            archiveReason: true,
+            archivedAt: true,
+            actorDisplayNameSnapshot: true,
+            fromVersion: true,
+            toVersion: true,
+            amounts: {
+              select: {
+                kind: true,
+                state: true,
+                amount: true,
+                partyKind: true,
+                partyName: true,
+                sourceEvidenceMatterId: true,
+              },
+            },
+          },
+        },
         selectedProducts: { orderBy: { leadProductId: 'asc' } },
         selectedMaterials: {
           include: {
@@ -702,6 +723,7 @@ export class LeadNotaryService {
     let recordOpening = false;
     let reviewOpening = false;
     let decideIssuance = false;
+    let archiveReturn = false;
     if (matter.stage === 'PENDING_EVIDENCE') {
       try {
         await this.access.authorizeLead(actor, 'notary.evidence.record', {
@@ -758,12 +780,47 @@ export class LeadNotaryService {
         if (!(error instanceof ForbiddenException)) throw error;
       }
     }
+    if (matter.stage === 'WAITING_RETURN') {
+      try {
+        await this.access.authorizeLead(actor, 'notary.return.archive', {
+          departmentId: matter.departmentId,
+          responsibleUserId: matter.sourceLead.responsibleUserId,
+          ...(matter.sourceLead.teamId === null
+            ? {}
+            : { teamId: matter.sourceLead.teamId }),
+        });
+        archiveReturn = true;
+      } catch (error) {
+        if (!(error instanceof ForbiddenException)) throw error;
+      }
+    }
     if (matter.stage === 'WAITING_UNBOX' && matter.evidence === null)
       throw this.corruptReceipt();
-    if (matter.stage === 'UNBOX_REVIEW' && matter.opening === null)
+    if (
+      matter.stage !== 'PENDING_EVIDENCE' &&
+      matter.stage !== 'WAITING_UNBOX' &&
+      matter.opening === null
+    )
       throw this.corruptReceipt();
-    if (!openingReviewMatchesStage(matter.stage, matter.openingReviewDecision))
+    if (
+      !openingReviewMatchesStage(matter.stage, matter.openingReviewDecision) &&
+      !(
+        matter.stage === 'ARCHIVED' &&
+        matter.openingReviewDecision?.result === 'INFRINGEMENT' &&
+        matter.openingReviewDecision.reason === null &&
+        matter.openingReviewDecision.archivedAt === null
+      )
+    )
       throw this.corruptReceipt();
+    const isOpeningArchive =
+      matter.stage === 'ARCHIVED' &&
+      matter.openingReviewDecision?.result === 'NO_INFRINGEMENT';
+    const isIssuedArchive =
+      matter.stage === 'ARCHIVED' &&
+      matter.issuanceDecision?.decision === 'ISSUE';
+    const isReturnArchive =
+      matter.stage === 'ARCHIVED' &&
+      matter.issuanceDecision?.decision === 'NO_ISSUE';
     if (
       (matter.stage === 'WAITING_CERTIFICATE' &&
         matter.issuanceDecision?.decision !== 'ISSUE') ||
@@ -771,9 +828,83 @@ export class LeadNotaryService {
         matter.issuanceDecision?.decision !== 'NO_ISSUE') ||
       (matter.stage !== 'WAITING_CERTIFICATE' &&
         matter.stage !== 'WAITING_RETURN' &&
-        matter.issuanceDecision != null)
+        matter.stage !== 'ARCHIVED' &&
+        matter.issuanceDecision != null) ||
+      (matter.stage === 'ARCHIVED' &&
+        !isOpeningArchive &&
+        !isIssuedArchive &&
+        !isReturnArchive) ||
+      (isOpeningArchive &&
+        ((matter.issuanceDecision !== null &&
+          matter.issuanceDecision !== undefined) ||
+          matter.certificate != null ||
+          matter.returnArchive != null)) ||
+      (isIssuedArchive &&
+        (matter.certificate == null || matter.returnArchive != null)) ||
+      (isReturnArchive &&
+        (matter.certificate != null || matter.returnArchive == null)) ||
+      (matter.stage !== 'ARCHIVED' && matter.returnArchive != null) ||
+      (matter.stage !== 'ARCHIVED' && matter.certificate != null)
     )
       throw this.corruptReceipt();
+    const archive = matter.returnArchive;
+    let refund = null;
+    let freight = null;
+    if (isReturnArchive && archive != null) {
+      if (
+        !['RETURN', 'KEEP', 'REFUND_ONLY'].includes(archive.returnChoice) ||
+        !archive.archiveReason.trim() ||
+        archive.archiveReason.trim() !== archive.archiveReason ||
+        archive.archiveReason.length > 5000 ||
+        !archive.actorDisplayNameSnapshot.trim() ||
+        archive.toVersion !== matter.version ||
+        archive.fromVersion !== matter.version - 1
+      )
+        throw this.corruptReceipt();
+      for (const row of archive.amounts) {
+        if (
+          !['REFUND', 'FREIGHT'].includes(row.kind) ||
+          (row.kind === 'REFUND' && refund !== null) ||
+          (row.kind === 'FREIGHT' && freight !== null) ||
+          (row.kind === 'REFUND' && row.sourceEvidenceMatterId !== matter.id) ||
+          (row.kind === 'FREIGHT' && row.sourceEvidenceMatterId !== null) ||
+          !['KNOWN', 'PENDING'].includes(row.state) ||
+          (row.state === 'KNOWN' && row.amount === null) ||
+          (row.state === 'PENDING' && row.amount !== null) ||
+          (row.amount !== null && row.amount.toNumber() < 0) ||
+          (row.partyKind !== null &&
+            !['CUSTOMER', 'FIRM', 'MERCHANT', 'OTHER'].includes(
+              row.partyKind,
+            )) ||
+          (row.amount !== null &&
+            row.amount.toNumber() > 0 &&
+            row.partyKind === null) ||
+          (row.amount === null || row.amount.toNumber() === 0
+            ? row.partyKind !== null || row.partyName !== null
+            : row.partyKind === 'OTHER'
+              ? !row.partyName?.trim()
+              : row.partyName !== null)
+        )
+          throw this.corruptReceipt();
+        const summary = {
+          state: row.state,
+          amount: row.amount?.toFixed(2) ?? null,
+          partyKind: row.partyKind,
+          partyName: row.partyName,
+        };
+        if (row.kind === 'REFUND') refund = summary;
+        else freight = summary;
+      }
+      if (
+        (archive.returnChoice === 'KEEP' &&
+          (refund !== null || freight !== null)) ||
+        (archive.returnChoice === 'REFUND_ONLY' &&
+          (refund === null || freight !== null)) ||
+        (archive.returnChoice === 'RETURN' &&
+          (refund === null || freight === null))
+      )
+        throw this.corruptReceipt();
+    }
     const openingReferenceRows =
       matter.opening === null
         ? []
@@ -838,7 +969,19 @@ export class LeadNotaryService {
         recordOpening,
         reviewOpening,
         decideIssuance,
+        archiveReturn,
       },
+      returnArchive:
+        archive === null || archive === undefined
+          ? null
+          : {
+              returnChoice: archive.returnChoice,
+              archiveReason: archive.archiveReason,
+              archivedAt: archive.archivedAt.toISOString(),
+              actorDisplayName: archive.actorDisplayNameSnapshot,
+              refund,
+              freight,
+            },
       issuanceDecision:
         matter.issuanceDecision == null
           ? null

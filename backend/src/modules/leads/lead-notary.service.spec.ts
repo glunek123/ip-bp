@@ -78,7 +78,9 @@ describe('LeadNotaryService opening review read projection', () => {
       recordOpening: false,
       reviewOpening: false,
       decideIssuance: false,
+      archiveReturn: false,
     });
+    expect(result).toHaveProperty('returnArchive', null);
     expect(result.reviewDecision).toEqual({
       result: 'NO_INFRINGEMENT',
       reason: '不侵权',
@@ -115,6 +117,145 @@ describe('LeadNotaryService opening review read projection', () => {
       capabilities: { decideIssuance: false },
     });
     expect(JSON.stringify(issuance)).not.toContain('internal-secret');
+    database.notaryMatter.findFirst.mockResolvedValue({
+      ...record,
+      stage: 'ARCHIVED',
+      openingReviewDecision: {
+        ...record.openingReviewDecision,
+        result: 'INFRINGEMENT',
+        reason: null,
+        archivedAt: null,
+      },
+      issuanceDecision: {
+        decision: 'NO_ISSUE',
+        decidedAt: new Date('2026-09-28T02:00:00Z'),
+      },
+      returnArchive: {
+        returnChoice: 'RETURN',
+        archiveReason: '退货完成',
+        archivedAt: new Date('2026-09-28T03:00:00Z'),
+        actorDisplayNameSnapshot: '原运营',
+        fromVersion: 3,
+        toVersion: 4,
+        amounts: [
+          {
+            kind: 'REFUND',
+            state: 'KNOWN',
+            amount: { toFixed: () => '9.00', toNumber: () => 9 },
+            partyKind: 'CUSTOMER',
+            partyName: null,
+            sourceEvidenceMatterId: matterId,
+          },
+          {
+            kind: 'FREIGHT',
+            state: 'PENDING',
+            amount: null,
+            partyKind: null,
+            partyName: null,
+            sourceEvidenceMatterId: null,
+          },
+        ],
+      },
+    });
+    const archived = await service.getMatter(actor, matterId);
+    expect(archived).toHaveProperty('returnArchive', {
+      returnChoice: 'RETURN',
+      archiveReason: '退货完成',
+      archivedAt: '2026-09-28T03:00:00.000Z',
+      actorDisplayName: '原运营',
+      refund: {
+        state: 'KNOWN',
+        amount: '9.00',
+        partyKind: 'CUSTOMER',
+        partyName: null,
+      },
+      freight: {
+        state: 'PENDING',
+        amount: null,
+        partyKind: null,
+        partyName: null,
+      },
+    });
+    database.notaryMatter.findFirst.mockResolvedValue({
+      ...record,
+      stage: 'ARCHIVED',
+      openingReviewDecision: {
+        ...record.openingReviewDecision,
+        result: 'INFRINGEMENT',
+        reason: null,
+        archivedAt: null,
+      },
+      issuanceDecision: {
+        decision: 'ISSUE',
+        decidedAt: new Date('2026-09-28T02:00:00Z'),
+      },
+      certificate: { id: 'certificate-1' },
+      returnArchive: null,
+    });
+    expect((await service.getMatter(actor, matterId)).returnArchive).toBeNull();
+    database.notaryMatter.findFirst.mockResolvedValue({
+      ...record,
+      stage: 'ARCHIVED',
+      openingReviewDecision: {
+        ...record.openingReviewDecision,
+        result: 'INFRINGEMENT',
+        reason: null,
+        archivedAt: null,
+      },
+      issuanceDecision: {
+        decision: 'NO_ISSUE',
+        decidedAt: new Date('2026-09-28T02:00:00Z'),
+      },
+      certificate: { id: 'unexpected' },
+      returnArchive: { returnChoice: 'KEEP' },
+    });
+    await expect(service.getMatter(actor, matterId)).rejects.toMatchObject({
+      response: { code: 'INTERNAL_ERROR' },
+    });
+    database.notaryMatter.findFirst.mockResolvedValue({
+      ...record,
+      stage: 'WAITING_RETURN',
+      version: 3,
+      openingReviewDecision: {
+        ...record.openingReviewDecision,
+        result: 'INFRINGEMENT',
+        reason: null,
+        archivedAt: null,
+      },
+      issuanceDecision: {
+        decision: 'NO_ISSUE',
+        decidedAt: new Date('2026-09-28T02:00:00Z'),
+      },
+      returnArchive: null,
+    });
+    access.authorizeLead.mockResolvedValue(undefined);
+    expect(
+      (await service.getMatter(actor, matterId)).capabilities,
+    ).toHaveProperty('archiveReturn', true);
+    expect(access.authorizeLead).toHaveBeenCalledWith(
+      actor,
+      'notary.return.archive',
+      expect.objectContaining({ departmentId: actor.departmentId }),
+    );
+    access.authorizeLead.mockRejectedValue(new ForbiddenException());
+    expect(
+      (await service.getMatter(actor, matterId)).capabilities,
+    ).toHaveProperty('archiveReturn', false);
+    database.notaryMatter.findFirst.mockResolvedValue({
+      ...record,
+      stage: 'WAITING_RETURN',
+      returnArchive: { returnChoice: 'KEEP' },
+      issuanceDecision: { decision: 'NO_ISSUE' },
+      openingReviewDecision: {
+        ...record.openingReviewDecision,
+        result: 'INFRINGEMENT',
+        reason: null,
+        archivedAt: null,
+      },
+    });
+    await expect(service.getMatter(actor, matterId)).rejects.toMatchObject({
+      response: { code: 'INTERNAL_ERROR' },
+    });
     database.notaryMatter.findFirst.mockResolvedValue({
       ...record,
       stage: 'UNBOX_REVIEW',

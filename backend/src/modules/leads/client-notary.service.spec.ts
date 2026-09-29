@@ -120,12 +120,94 @@ describe('ClientNotaryService', () => {
         reviewDecision: { result: 'INFRINGEMENT' },
         issuanceDecision: { decision, decidedAt: decidedAt.toISOString() },
       });
+      expect(detail).toHaveProperty('returnArchive', null);
       expect(list.items[0].stage).toBe(stage);
       expect(JSON.stringify(detail)).not.toMatch(
         /internal-secret|actorUserId|senderPhone|teamId|responsibleUserId/u,
       );
     },
   );
+
+  it.each(['NO_ISSUE', 'ISSUE'] as const)(
+    'reads own %s archived source without private return facts',
+    async (choice) => {
+      const { service, database } = fixture();
+      const reviewed = {
+        result: 'INFRINGEMENT',
+        reason: null,
+        actorKind: 'INTERNAL',
+        actorDisplayNameSnapshot: '运营',
+        decidedAt: new Date(),
+        archivedAt: null,
+      };
+      const archived = {
+        ...matter,
+        stage: 'ARCHIVED',
+        openingReviewDecision: reviewed,
+        issuanceDecision: { decision: choice, decidedAt: new Date() },
+        certificate: choice === 'ISSUE' ? { id: 'certificate-1' } : null,
+        returnArchive:
+          choice === 'NO_ISSUE'
+            ? {
+                returnChoice: 'KEEP',
+                archiveReason: '保留商品',
+                archivedAt: new Date('2026-09-28T03:00:00Z'),
+                actorUserId: 'private-actor',
+                amounts: [{ amount: '500.00' }],
+              }
+            : null,
+      };
+      database.notaryMatter.findFirst.mockResolvedValue(archived);
+      database.notaryMatter.findMany.mockResolvedValue([archived]);
+      const detail = await service.get(actor, matterId);
+      const list = await service.list(actor, 1, 20, 'lead-1');
+      expect(list.items[0].stage).toBe('ARCHIVED');
+      expect(detail).toHaveProperty(
+        'returnArchive',
+        choice === 'NO_ISSUE'
+          ? {
+              returnChoice: 'KEEP',
+              archiveReason: '保留商品',
+              archivedAt: '2026-09-28T03:00:00.000Z',
+            }
+          : null,
+      );
+      expect(JSON.stringify(detail)).not.toMatch(
+        /private-actor|500\.00|amounts|actorUserId|archiveReturn/u,
+      );
+      expect(
+        database.notaryMatter.findFirst.mock.calls[0][0].include.returnArchive,
+      ).toEqual({
+        select: { returnChoice: true, archiveReason: true, archivedAt: true },
+      });
+    },
+  );
+
+  it('hides a conflicting certificate on a return archive', async () => {
+    const { service, database } = fixture();
+    database.notaryMatter.findFirst.mockResolvedValue({
+      ...matter,
+      stage: 'ARCHIVED',
+      openingReviewDecision: {
+        result: 'INFRINGEMENT',
+        reason: null,
+        archivedAt: null,
+        decidedAt: new Date(),
+        actorKind: 'INTERNAL',
+        actorDisplayNameSnapshot: '运营',
+      },
+      issuanceDecision: { decision: 'NO_ISSUE', decidedAt: new Date() },
+      certificate: { id: 'invalid' },
+      returnArchive: {
+        returnChoice: 'KEEP',
+        archiveReason: '保留',
+        archivedAt: new Date(),
+      },
+    });
+    await expect(service.get(actor, matterId)).rejects.toMatchObject({
+      response: { code: 'RESOURCE_NOT_FOUND' },
+    });
+  });
 
   it('rejects a waiting stage whose immutable issuance fact names the opposite choice', async () => {
     const { service, database } = fixture();

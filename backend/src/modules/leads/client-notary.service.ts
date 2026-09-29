@@ -30,6 +30,10 @@ const clientMatterInclude = {
     },
   },
   issuanceDecision: { select: { decision: true, decidedAt: true } },
+  certificate: { select: { id: true } },
+  returnArchive: {
+    select: { returnChoice: true, archiveReason: true, archivedAt: true },
+  },
   selectedProducts: { select: { leadProductId: true } },
 } satisfies Prisma.NotaryMatterInclude;
 type ClientMatter = Prisma.NotaryMatterGetPayload<{
@@ -89,6 +93,14 @@ export class ClientNotaryService {
             },
           },
           issuanceDecision: { select: { decision: true, decidedAt: true } },
+          certificate: { select: { id: true } },
+          returnArchive: {
+            select: {
+              returnChoice: true,
+              archiveReason: true,
+              archivedAt: true,
+            },
+          },
         },
       }),
       this.database.notaryMatter.count({ where }),
@@ -96,8 +108,20 @@ export class ClientNotaryService {
     if (
       items.some(
         (item) =>
-          !openingReviewMatchesStage(item.stage, item.openingReviewDecision) ||
-          !this.issuanceMatchesStage(item.stage, item.issuanceDecision),
+          (!openingReviewMatchesStage(item.stage, item.openingReviewDecision) &&
+            !(
+              item.stage === 'ARCHIVED' &&
+              item.openingReviewDecision?.result === 'INFRINGEMENT' &&
+              item.openingReviewDecision.reason === null &&
+              item.openingReviewDecision.archivedAt === null
+            )) ||
+          !this.issuanceMatchesStage(
+            item.stage,
+            item.issuanceDecision,
+            item.openingReviewDecision,
+            item.certificate,
+            item.returnArchive,
+          ),
       )
     )
       throw this.notFound();
@@ -226,9 +250,25 @@ export class ClientNotaryService {
     });
     if (ids.size !== 0) throw this.notFound();
     const decision = matter.openingReviewDecision;
-    if (!openingReviewMatchesStage(matter.stage, decision))
+    if (
+      !openingReviewMatchesStage(matter.stage, decision) &&
+      !(
+        matter.stage === 'ARCHIVED' &&
+        decision?.result === 'INFRINGEMENT' &&
+        decision.reason === null &&
+        decision.archivedAt === null
+      )
+    )
       throw this.notFound();
-    if (!this.issuanceMatchesStage(matter.stage, matter.issuanceDecision))
+    if (
+      !this.issuanceMatchesStage(
+        matter.stage,
+        matter.issuanceDecision,
+        decision,
+        matter.certificate,
+        matter.returnArchive,
+      )
+    )
       throw this.notFound();
     return {
       id: matter.id,
@@ -268,6 +308,14 @@ export class ClientNotaryService {
               decision: matter.issuanceDecision.decision,
               decidedAt: matter.issuanceDecision.decidedAt.toISOString(),
             },
+      returnArchive:
+        matter.returnArchive == null
+          ? null
+          : {
+              returnChoice: matter.returnArchive.returnChoice,
+              archiveReason: matter.returnArchive.archiveReason,
+              archivedAt: matter.returnArchive.archivedAt.toISOString(),
+            },
       capabilities: { reviewOpening: matter.stage === 'UNBOX_REVIEW' },
     };
   }
@@ -275,10 +323,40 @@ export class ClientNotaryService {
   private issuanceMatchesStage(
     stage: string,
     decision: { decision: 'ISSUE' | 'NO_ISSUE'; decidedAt: Date } | null,
+    review: { result: 'INFRINGEMENT' | 'NO_INFRINGEMENT' } | null,
+    certificate: { id: string } | null | undefined,
+    archive:
+      | { returnChoice: string; archiveReason: string; archivedAt: Date }
+      | null
+      | undefined,
   ): boolean {
-    if (stage === 'WAITING_CERTIFICATE') return decision?.decision === 'ISSUE';
-    if (stage === 'WAITING_RETURN') return decision?.decision === 'NO_ISSUE';
-    return decision == null;
+    if (stage === 'WAITING_CERTIFICATE')
+      return (
+        decision?.decision === 'ISSUE' && archive == null && certificate == null
+      );
+    if (stage === 'WAITING_RETURN')
+      return (
+        decision?.decision === 'NO_ISSUE' &&
+        archive == null &&
+        certificate == null
+      );
+    if (stage === 'ARCHIVED') {
+      if (review?.result === 'NO_INFRINGEMENT')
+        return decision == null && certificate == null && archive == null;
+      if (decision?.decision === 'ISSUE')
+        return certificate != null && archive == null;
+      return (
+        decision?.decision === 'NO_ISSUE' &&
+        certificate == null &&
+        archive != null &&
+        ['RETURN', 'KEEP', 'REFUND_ONLY'].includes(archive.returnChoice) &&
+        archive.archiveReason.trim() === archive.archiveReason &&
+        archive.archiveReason.length > 0 &&
+        archive.archiveReason.length <= 5000 &&
+        archive.archivedAt instanceof Date
+      );
+    }
+    return decision == null && archive == null && certificate == null;
   }
 
   private async assertClient(actor: ActorContext): Promise<string> {

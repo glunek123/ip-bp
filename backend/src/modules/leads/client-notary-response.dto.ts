@@ -70,6 +70,13 @@ class ClientNotaryIssuanceDecisionDto {
   @ApiProperty({ format: 'date-time' }) decidedAt!: string;
 }
 
+class ClientNotaryReturnArchiveDto {
+  @ApiProperty({ enum: ['RETURN', 'KEEP', 'REFUND_ONLY'] })
+  returnChoice!: string;
+  @ApiProperty() archiveReason!: string;
+  @ApiProperty({ format: 'date-time' }) archivedAt!: string;
+}
+
 class ClientNotaryCapabilitiesDto {
   @ApiProperty() reviewOpening!: boolean;
 }
@@ -98,6 +105,8 @@ export class ClientNotaryDetailResponseDto {
   reviewDecision!: ClientNotaryDecisionDto | null;
   @ApiProperty({ type: ClientNotaryIssuanceDecisionDto, nullable: true })
   issuanceDecision!: ClientNotaryIssuanceDecisionDto | null;
+  @ApiProperty({ type: ClientNotaryReturnArchiveDto, nullable: true })
+  returnArchive!: ClientNotaryReturnArchiveDto | null;
   @ApiProperty({ type: ClientNotaryCapabilitiesDto })
   capabilities!: ClientNotaryCapabilitiesDto;
 }
