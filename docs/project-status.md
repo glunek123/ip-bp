@@ -1,6 +1,6 @@
 # 当前开发状态
 
-更新日期：2026-09-28。本文件只保留恢复当前工作的最小事实；截至2026-09-18的流水见[历史状态](project-status-history-through-2026-09-18.md)，各候选的详细历史证据见[验证记录](spec/v0.1/VALIDATION.md)。两者均按需读取，不是新任务默认上下文。
+更新日期：2026-09-29。本文件只保留恢复当前工作的最小事实；截至2026-09-18的流水见[历史状态](project-status-history-through-2026-09-18.md)，各候选的详细历史证据见[验证记录](spec/v0.1/VALIDATION.md)。两者均按需读取，不是新任务默认上下文。
 
 ## 当前阶段
 
@@ -8,7 +8,7 @@
 
 ## 当前任务
 
-**CORE-NT-006｜不出证退货（路线图唯一Current，尚未领取）**：NT-005固定代码候选`debe747`、tree`ed6042a551f0e9082330dd52f6e3e307b9f8ffab`已通过独立Final Review、完整`pnpm verify`、隔离数据库／Chromium 113项全量验收及迁移专项，证据见[验证记录](spec/v0.1/VALIDATION.md)。该分支`codex/core-nt-005-certificate-to-case`仅在本地完成，尚未推送或合并；NT-006须从获准的集成基线领取。CORE-CA-001为Next。
+**CORE-NT-006｜不出证退货（路线图唯一Current，尚未领取）**：NT-005固定代码候选`debe747`、tree`ed6042a551f0e9082330dd52f6e3e307b9f8ffab`已通过独立Final Review、完整`pnpm verify`、隔离数据库／Chromium 113项全量验收及迁移专项，证据见[验证记录](spec/v0.1/VALIDATION.md)。NT-005分支与本地`main`已快进集成到`403653b`、tree`3f0d511`，该同一tree重新通过完整`pnpm verify`；远端两分支均确认包含`403653b`。CORE-CA-001为Next。
 
 线索库／公证阶段导航归属修复已按用户要求并入NT-003开发分支（合并提交`379b9d2`），连同NT-003新增阶段在NT-007固定候选通过完整组合验证，现已随该分支进入`main`。详见[验证记录](spec/v0.1/VALIDATION.md)。
 
@@ -48,4 +48,4 @@
 
 ## 下一步
 
-待NT-005按授权集成并核对组合tree后，从更新基线领取CORE-NT-006不出证退货；CORE-CA-001为后续Next。当前分支未推送、未上线，未执行生产迁移。
+从已集成的`main`领取CORE-NT-006不出证退货；CORE-CA-001为后续Next。NT-005未上线，未执行生产迁移。
