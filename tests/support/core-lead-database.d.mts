@@ -79,6 +79,29 @@ export function countNotaryOpeningReviewReceipts(
 export function countNotaryIssuanceDecisions(matterId: string): Promise<number>;
 export function countNotaryIssuanceAudits(matterId: string): Promise<number>;
 export function countNotaryIssuanceReceipts(matterId: string): Promise<number>;
+export function countNotaryReturnArchives(matterId: string): Promise<number>;
+export function countNotaryReturnAmounts(matterId: string): Promise<number>;
+export function getNotaryReturnAmounts(matterId: string): Promise<
+  Array<{
+    id: string;
+    archiveId: string;
+    matterId: string;
+    departmentId: string;
+    returnChoice: 'RETURN' | 'KEEP' | 'REFUND_ONLY';
+    kind: 'REFUND' | 'FREIGHT';
+    state: 'KNOWN' | 'PENDING';
+    amount: { toString(): string } | null;
+    partyKind: 'CUSTOMER' | 'FIRM' | 'MERCHANT' | 'OTHER' | null;
+    partyName: string | null;
+    sourceEvidenceMatterId: string | null;
+  }>
+>;
+export function getNotarySampleFee(matterId: string): Promise<{
+  sampleFeeState: 'KNOWN' | 'PENDING';
+  sampleFeeAmount: { toString(): string } | null;
+} | null>;
+export function countNotaryReturnAudits(matterId: string): Promise<number>;
+export function countNotaryReturnReceipts(matterId: string): Promise<number>;
 export function countNotaryCertificates(matterId: string): Promise<number>;
 export function countNotaryCertificateAudits(matterId: string): Promise<number>;
 export function countNotaryCertificateReceipts(
@@ -187,6 +210,10 @@ export function setClientUserActive(
   active: boolean,
 ): Promise<unknown>;
 export function setGrant(action: string, enabled: boolean): Promise<unknown>;
+export function setInternalAccountActive(
+  userId: string,
+  active: boolean,
+): Promise<unknown>;
 export function setTeamActive(
   teamId: string,
   active: boolean,
@@ -217,6 +244,10 @@ export function rejectNotaryOpeningReviewDecisionWrites(): Promise<void>;
 export function rejectNotaryOpeningReviewAuditWrites(): Promise<void>;
 export function rejectNotaryOpeningReviewReceiptWrites(): Promise<void>;
 export function rejectNotaryIssuanceAuditWrites(): Promise<void>;
+export function rejectNotaryReturnArchiveWrites(): Promise<void>;
+export function rejectNotaryReturnAmountWrites(): Promise<void>;
+export function rejectNotaryReturnAuditWrites(): Promise<void>;
+export function rejectNotaryReturnReceiptWrites(): Promise<void>;
 export function rejectNotaryCertificateCaseWrites(): Promise<void>;
 export function rejectNotaryCertificateReceiptWrites(): Promise<void>;
 export function rejectLeadReviewDecisionWrites(): Promise<void>;

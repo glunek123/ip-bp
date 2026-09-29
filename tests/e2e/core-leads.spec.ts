@@ -451,7 +451,7 @@ function archiveNotaryReturn(
   matterId: string,
   input: Record<string, unknown>,
   key = randomUUID(),
-  headers = authorizationA,
+  headers: Record<string, string> = authorizationA,
 ) {
   return request.post(`/api/v1/notary-matters/${matterId}/return-archive`, {
     headers: { ...headers, 'Idempotency-Key': key },
