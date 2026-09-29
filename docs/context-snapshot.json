@@ -1,6 +1,6 @@
 {
   "version": 1,
-  "recordedAt": "2026-09-29T08:23:15.889Z",
+  "recordedAt": "2026-09-29T08:27:39.969Z",
   "files": {
     ".cursor/rules/verified-feature-integration.mdc": "ffd2306612ba6f09749629c5adb9e645f7f37aa6ee27ff1bc1c3d8b14efeca38",
     ".env.example": "07211cde5c2b59efc21b619b752d4c9b871f0980d2d64ca3c146ad6151fd27ca",
@@ -182,7 +182,7 @@
     "backend/src/modules/leads/core-ld-withdrawal-migration-probe.mjs": "26293783566a1f42265ef48a13d752c2880ee16a0193943737767756eb6fb070",
     "backend/src/modules/leads/core-nt-004-migration-probe.mjs": "b063e54da27df01a69550ab5f9d6058863001bd6eda561c295379b8e0499a2a0",
     "backend/src/modules/leads/core-nt-005-migration-probe.mjs": "d6bdb7182ab37a10c9ada8997c43aad7346fd392793ca9e123b7001d59713987",
-    "backend/src/modules/leads/core-nt-006-migration-probe.mjs": "220ef03e768f382e999aea573c3a94827cba4cc0a0bcd1f78c830376c9fa9b7f",
+    "backend/src/modules/leads/core-nt-006-migration-probe.mjs": "6e2c4eeaa43fbd72dd5b8d2a0d02a2ae8075593885ca0b1990ee6ad075471586",
     "backend/src/modules/leads/core-nt-006-migration.spec.ts": "f20247269c49d990ac5dfcc24c105d4ed0e0503a44f32e3b13488efb16aaddaa",
     "backend/src/modules/leads/core-nt-007-migration-probe.mjs": "f1fd4b8727b9f43e63739df78c0b368671325af9ae1a3f5c8bab2b43973b3932",
     "backend/src/modules/leads/lead-evidence-decision-response.dto.ts": "eef514534cd3df9ba091b28328371ffd26c193db8083cfd021f426a4d96dc943",

@@ -16,7 +16,13 @@ const snapshotFix = '20260929012000_add_notary_return_actor_snapshot';
 const migrations = readdirSync(migrationRoot)
   .filter((name) => /^\d{14}_/.test(name))
   .sort();
-assert.deepEqual(migrations.slice(-3), [target, whitespaceFix, snapshotFix]);
+const targetIndex = migrations.indexOf(target);
+assert.notEqual(targetIndex, -1);
+assert.deepEqual(migrations.slice(targetIndex, targetIndex + 3), [
+  target,
+  whitespaceFix,
+  snapshotFix,
+]);
 
 async function expectRejected(client, sql, params, code, constraint) {
   const savepoint = `negative_${randomBytes(4).toString('hex')}`;
