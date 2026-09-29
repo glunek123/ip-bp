@@ -19,6 +19,7 @@ export type PermissionAction =
   | 'notary.unbox.record'
   | 'notary.opening.review'
   | 'notary.issuance.decide'
+  | 'notary.return.archive'
   | 'case.read'
   | 'notary.office.manage'
   | 'client.lead.read'
@@ -40,6 +41,7 @@ export type LeadAction =
   | 'notary.unbox.record'
   | 'notary.opening.review'
   | 'notary.issuance.decide'
+  | 'notary.return.archive'
   | 'case.read';
 
 export type CustomerResourceFacts = {

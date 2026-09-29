@@ -345,7 +345,7 @@ describe('OrganizationService management context', () => {
       assignTeamRoles: false,
       manageRoleTemplates: true,
     });
-    expect(result.permissionCatalog).toHaveLength(23);
+    expect(result.permissionCatalog).toHaveLength(24);
     expect(result.permissionCatalog).toContainEqual({
       action: 'CASE_READ',
       label: '查看案件',
@@ -363,6 +363,7 @@ describe('OrganizationService management context', () => {
         'NOTARY_UNBOX_RECORD',
         'NOTARY_OPENING_REVIEW',
         'NOTARY_ISSUANCE_DECIDE',
+        'NOTARY_RETURN_ARCHIVE',
       ]),
     );
     expect(result.permissionCatalog.map(({ action }) => action)).toEqual(

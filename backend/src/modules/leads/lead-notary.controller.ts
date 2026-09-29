@@ -36,6 +36,11 @@ import { LeadNotaryService } from './lead-notary.service';
 import { NotaryOpeningService } from './notary-opening.service';
 import { NotaryOpeningReviewService } from './notary-opening-review.service';
 import { NotaryIssuanceDecisionService } from './notary-issuance-decision.service';
+import { NotaryReturnArchiveService } from './notary-return-archive.service';
+import {
+  ArchiveNotaryReturnDto,
+  NotaryReturnArchiveResponseDto,
+} from './notary-return-archive.dto';
 import { NotaryOfficeAccountService } from './notary-office-account.service';
 import {
   CreateNotaryOfficeAccountDto,
@@ -120,6 +125,7 @@ export class LeadNotaryController {
     private readonly opening: NotaryOpeningService,
     private readonly openingReview: NotaryOpeningReviewService,
     private readonly issuanceDecision: NotaryIssuanceDecisionService,
+    private readonly returnArchive: NotaryReturnArchiveService,
   ) {}
 
   @Post('leads/:id/notary-matters')
@@ -220,5 +226,23 @@ export class LeadNotaryController {
         message: 'Idempotency-Key 必须为 1 至 128 个字符',
       });
     return this.issuanceDecision.decide(actor, id, key, input);
+  }
+
+  @Post('notary-matters/:id/return-archive')
+  @ApiHeader({ name: 'Idempotency-Key', required: true })
+  @ApiCreatedResponse({ type: NotaryReturnArchiveResponseDto })
+  archiveReturn(
+    @CurrentActor() actor: ActorContext,
+    @Param('id', new ParseUUIDPipe()) id: string,
+    @Headers('idempotency-key') idempotencyKey: string | undefined,
+    @Body() input: ArchiveNotaryReturnDto,
+  ) {
+    const key = idempotencyKey?.trim();
+    if (key === undefined || key.length < 1 || key.length > 128)
+      throw new BadRequestException({
+        code: 'VALIDATION_ERROR',
+        message: 'Idempotency-Key 必须为 1 至 128 个字符',
+      });
+    return this.returnArchive.archive(actor, id, key, input);
   }
 }

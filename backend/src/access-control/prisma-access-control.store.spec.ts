@@ -28,6 +28,28 @@ const snapshotRecord = {
 };
 
 describe('PrismaAccessControlStore', () => {
+  it('maps the return archive grant to its internal action', async () => {
+    const record = {
+      ...snapshotRecord,
+      roleAssignments: [
+        {
+          ...snapshotRecord.roleAssignments[0],
+          roleTemplate: {
+            active: true,
+            grants: [{ action: 'NOTARY_RETURN_ARCHIVE', scope: 'SELF' }],
+          },
+        },
+      ],
+    };
+    const store = new PrismaAccessControlStore({
+      userAccount: { findUnique: jest.fn().mockResolvedValue(record) },
+    } as unknown as DatabaseService);
+    await expect(
+      store.loadSnapshot('user-a', 'department-a'),
+    ).resolves.toMatchObject({
+      grants: [{ action: 'notary.return.archive', scope: 'self' }],
+    });
+  });
   it('never treats a client account with a stale internal membership and role as an internal grant', async () => {
     const findUnique = jest
       .fn()

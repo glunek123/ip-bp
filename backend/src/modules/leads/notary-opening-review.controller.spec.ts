@@ -16,6 +16,7 @@ import { LeadNotaryService } from './lead-notary.service';
 import { NotaryOpeningService } from './notary-opening.service';
 import { NotaryOpeningReviewService } from './notary-opening-review.service';
 import { NotaryIssuanceDecisionService } from './notary-issuance-decision.service';
+import { NotaryReturnArchiveService } from './notary-return-archive.service';
 
 describe('notary opening review HTTP contract', () => {
   const review = { review: jest.fn().mockResolvedValue({ id: 'matter' }) };
@@ -52,6 +53,7 @@ describe('notary opening review HTTP contract', () => {
       {} as NotaryOpeningService,
       review as unknown as NotaryOpeningReviewService,
       {} as NotaryIssuanceDecisionService,
+      {} as NotaryReturnArchiveService,
     );
     const client = new ClientNotaryOpeningReviewController(
       review as unknown as NotaryOpeningReviewService,
@@ -92,6 +94,7 @@ describe('notary opening review HTTP contract', () => {
         { provide: NotaryOpeningService, useValue: {} },
         { provide: NotaryOpeningReviewService, useValue: review },
         { provide: NotaryIssuanceDecisionService, useValue: {} },
+        { provide: NotaryReturnArchiveService, useValue: {} },
       ],
     })
       .overrideGuard(ActorContextGuard)

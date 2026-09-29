@@ -27,6 +27,7 @@ const actionMap = {
   NOTARY_UNBOX_RECORD: 'notary.unbox.record',
   NOTARY_OPENING_REVIEW: 'notary.opening.review',
   NOTARY_ISSUANCE_DECIDE: 'notary.issuance.decide',
+  NOTARY_RETURN_ARCHIVE: 'notary.return.archive',
   CASE_READ: 'case.read',
   NOTARY_OFFICE_MANAGE: 'notary.office.manage',
   CLIENT_LEAD_READ: 'client.lead.read',

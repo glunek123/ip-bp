@@ -23,6 +23,7 @@ export const internalAssignablePermissionActions = [
   'NOTARY_UNBOX_RECORD',
   'NOTARY_OPENING_REVIEW',
   'NOTARY_ISSUANCE_DECIDE',
+  'NOTARY_RETURN_ARCHIVE',
   'CASE_READ',
   'NOTARY_OFFICE_MANAGE',
   'USER_READ',
@@ -88,6 +89,11 @@ const catalog: PermissionCatalogItem[] = [
   {
     action: 'NOTARY_ISSUANCE_DECIDE',
     label: '决定出证或不出证',
+    scopes: allScopes,
+  },
+  {
+    action: 'NOTARY_RETURN_ARCHIVE',
+    label: '办理不出证退货归档',
     scopes: allScopes,
   },
   { action: 'CASE_READ', label: '查看案件', scopes: ['DEPARTMENT'] },
