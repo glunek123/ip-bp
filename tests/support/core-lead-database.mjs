@@ -705,7 +705,7 @@ export async function resetCoreLeadE2eData() {
         .map((action) => ({
           roleTemplateId: coreLeadFixtures.roleA,
           action,
-          scope: 'TEAM',
+          scope: action === 'CASE_READ' ? 'DEPARTMENT' : 'TEAM',
         })),
       {
         roleTemplateId: coreLeadFixtures.roleA,
@@ -732,7 +732,7 @@ export async function resetCoreLeadE2eData() {
         .map((action) => ({
           roleTemplateId: coreLeadFixtures.roleSelf,
           action,
-          scope: 'SELF',
+          scope: action === 'CASE_READ' ? 'DEPARTMENT' : 'SELF',
         })),
     ],
   });
