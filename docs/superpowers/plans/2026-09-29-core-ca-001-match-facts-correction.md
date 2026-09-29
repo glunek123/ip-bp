@@ -52,6 +52,6 @@
 **Files:** 本计划涉及的Spec、`docs/spec/v0.1/VALIDATION.md`、必要上下文快照。
 
 - [x] 独立Review迁移、日期语义及Command影响；关闭finding。
-- [ ] 固定候选。
-- [ ] 运行`pnpm spec:check`、`pnpm check:fast`、受影响格式、迁移专项、完整`pnpm verify`和隔离数据库／Chromium E2E；记录真实候选与结果，不预写通过。
-- [ ] 核对diff、解释上下文漂移并记录快照；仅提交本任务文件，不推送／合并。
+- [x] 固定候选。
+- [x] 运行`pnpm spec:check`、`pnpm check:fast`、受影响格式、迁移专项、完整`pnpm verify`和隔离数据库／Chromium E2E；记录真实候选与结果，不预写通过。
+- [x] 核对diff、解释上下文漂移并记录快照；仅提交本任务文件，不推送／合并。
