@@ -24,6 +24,7 @@ import { NotaryIssuanceDecisionService } from './notary-issuance-decision.servic
 import { NotaryReturnArchiveService } from './notary-return-archive.service';
 import { NotaryListController } from './notary-list.controller';
 import { NotaryListService } from './notary-list.service';
+import { NotaryListPreferenceService } from './notary-list-preference.service';
 import { NotaryOfficeAccountService } from './notary-office-account.service';
 import { NotaryPortalController } from './notary-portal.controller';
 import { NotaryPortalService } from './notary-portal.service';
@@ -57,6 +58,7 @@ import { NotaryCertificateService } from './notary-certificate.service';
     NotaryIssuanceDecisionService,
     NotaryReturnArchiveService,
     NotaryListService,
+    NotaryListPreferenceService,
     NotaryOfficeAccountService,
     NotaryPortalService,
     NotaryCertificateService,

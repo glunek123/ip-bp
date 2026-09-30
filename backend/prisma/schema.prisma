@@ -401,6 +401,7 @@ model UserAccount {
   uploadDrafts                 UploadDraft[]
   recordedNotaryOpenings       NotaryMatterOpening[]
   notaryMatterCommandReceipts  NotaryMatterCommandReceipt[]
+  notaryListPreference         NotaryListPreference?
   auditEvents                  AuditEvent[]
   pushedLeads                  Lead[]                        @relation("LeadPushedBy")
   reviewedLeadDecisions        LeadReviewDecision[]          @relation("LeadReviewDecisionReviewer")
@@ -432,6 +433,16 @@ model LocalCredential {
   updatedAt         DateTime    @updatedAt @map("updated_at") @db.Timestamptz(3)
 
   @@map("local_credentials")
+}
+
+model NotaryListPreference {
+  userId        String      @id @map("user_id") @db.Uuid
+  columnOrder   String[]    @map("column_order")
+  hiddenColumns String[]    @map("hidden_columns")
+  updatedAt     DateTime    @updatedAt @map("updated_at") @db.Timestamptz(3)
+  user          UserAccount @relation(fields: [userId], references: [id], onDelete: Restrict)
+
+  @@map("notary_list_preferences")
 }
 
 model AuthSession {

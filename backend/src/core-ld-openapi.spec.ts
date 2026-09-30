@@ -19,6 +19,7 @@ import { LeadController } from './modules/leads/lead.controller';
 import { LeadService } from './modules/leads/lead.service';
 import { NotaryListController } from './modules/leads/notary-list.controller';
 import { NotaryListService } from './modules/leads/notary-list.service';
+import { NotaryListPreferenceService } from './modules/leads/notary-list-preference.service';
 
 describe('CORE-LD-002 OpenAPI contract', () => {
   let app: INestApplication;
@@ -42,6 +43,7 @@ describe('CORE-LD-002 OpenAPI contract', () => {
         { provide: ClientLeadService, useValue: {} },
         { provide: ClientNotaryService, useValue: {} },
         { provide: NotaryListService, useValue: {} },
+        { provide: NotaryListPreferenceService, useValue: {} },
       ],
     })
       .overrideGuard(ActorContextGuard)
@@ -86,6 +88,18 @@ describe('CORE-LD-002 OpenAPI contract', () => {
     ],
     ['get', '/api/v1/client/leads', '200', 'ClientLeadListResponseDto'],
     ['get', '/api/v1/notary-matters', '200', 'NotaryListResponseDto'],
+    [
+      'get',
+      '/api/v1/notary-matters/list-preference',
+      '200',
+      'NotaryListPreferenceDto',
+    ],
+    [
+      'put',
+      '/api/v1/notary-matters/list-preference',
+      '200',
+      'NotaryListPreferenceDto',
+    ],
     ['get', '/api/v1/client/leads/{id}', '200', 'ClientLeadResponseDto'],
     [
       'get',
@@ -177,6 +191,32 @@ describe('CORE-LD-002 OpenAPI contract', () => {
         'ARCHIVED',
       ],
     });
+  });
+
+  it('documents the full replacement list preference request', () => {
+    const document = SwaggerModule.createDocument(
+      app,
+      new DocumentBuilder().setTitle('test').setVersion('1').build(),
+    );
+    const operation =
+      document.paths['/api/v1/notary-matters/list-preference']?.put;
+    expect(operation?.requestBody).toMatchObject({
+      required: true,
+      content: {
+        'application/json': {
+          schema: { $ref: '#/components/schemas/NotaryListPreferenceDto' },
+        },
+      },
+    });
+    expect(document.components?.schemas?.NotaryListPreferenceDto).toMatchObject(
+      {
+        required: ['order', 'hidden'],
+        properties: {
+          order: { type: 'array' },
+          hidden: { type: 'array' },
+        },
+      },
+    );
   });
 
   it('documents the withdrawal application request and durable result', () => {
