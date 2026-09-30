@@ -20,6 +20,8 @@ import { LeadService } from './modules/leads/lead.service';
 import { NotaryListController } from './modules/leads/notary-list.controller';
 import { NotaryListService } from './modules/leads/notary-list.service';
 import { NotaryListPreferenceService } from './modules/leads/notary-list-preference.service';
+import { NotaryListExportController } from './modules/leads/notary-list-export.controller';
+import { NotaryListExportService } from './modules/leads/notary-list-export.service';
 
 describe('CORE-LD-002 OpenAPI contract', () => {
   let app: INestApplication;
@@ -33,6 +35,7 @@ describe('CORE-LD-002 OpenAPI contract', () => {
         ClientLeadController,
         ClientNotaryController,
         NotaryListController,
+        NotaryListExportController,
       ],
       providers: [
         { provide: AuthService, useValue: {} },
@@ -44,6 +47,7 @@ describe('CORE-LD-002 OpenAPI contract', () => {
         { provide: ClientNotaryService, useValue: {} },
         { provide: NotaryListService, useValue: {} },
         { provide: NotaryListPreferenceService, useValue: {} },
+        { provide: NotaryListExportService, useValue: {} },
       ],
     })
       .overrideGuard(ActorContextGuard)
@@ -230,6 +234,45 @@ describe('CORE-LD-002 OpenAPI contract', () => {
         },
       },
     );
+  });
+
+  it('documents preview and bounded CSV export requests', () => {
+    const document = SwaggerModule.createDocument(
+      app,
+      new DocumentBuilder().setTitle('test').setVersion('1').build(),
+    );
+    const preview =
+      document.paths['/api/v1/notary-matters/exports/preview']?.post;
+    const generate = document.paths['/api/v1/notary-matters/exports']?.post;
+    expect(preview?.requestBody).toMatchObject({
+      content: {
+        'application/json': {
+          schema: { $ref: '#/components/schemas/PreviewNotaryListExportDto' },
+        },
+      },
+    });
+    expect(preview?.responses['200']).toMatchObject({
+      content: {
+        'application/json': {
+          schema: {
+            $ref: '#/components/schemas/NotaryListExportPreviewResponseDto',
+          },
+        },
+      },
+    });
+    expect(generate?.requestBody).toMatchObject({
+      content: {
+        'application/json': {
+          schema: { $ref: '#/components/schemas/GenerateNotaryListExportDto' },
+        },
+      },
+    });
+    expect(
+      document.components?.schemas?.GenerateNotaryListExportDto,
+    ).toMatchObject({
+      required: expect.arrayContaining(['mode', 'expectedCount']),
+      properties: { expectedCount: { minimum: 1, maximum: 1000 } },
+    });
   });
 
   it('documents the withdrawal application request and durable result', () => {

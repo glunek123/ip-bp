@@ -131,6 +131,11 @@ const context = {
       scopes: ['SELF', 'TEAM', 'DEPARTMENT'],
     },
     {
+      action: 'NOTARY_LIST_EXPORT',
+      label: '导出公证办理清单',
+      scopes: ['SELF', 'TEAM', 'DEPARTMENT'],
+    },
+    {
       action: 'CASE_READ',
       label: '查看案件',
       scopes: ['DEPARTMENT'],
@@ -212,6 +217,7 @@ describe('organization API', () => {
       'NOTARY_OPENING_REVIEW',
       'NOTARY_ISSUANCE_DECIDE',
       'NOTARY_RETURN_ARCHIVE',
+      'NOTARY_LIST_EXPORT',
       'CASE_READ',
       'CASE_MATCH',
       'CASE_COMPLAINT_SUBMIT',
@@ -258,6 +264,34 @@ describe('organization API', () => {
         {
           grants: expect.arrayContaining([
             { action: 'CASE_READ', scope: 'DEPARTMENT' },
+          ]),
+        },
+      ],
+    });
+  });
+
+  it('decodes a formally assigned notary list export grant', async () => {
+    const body = {
+      ...context,
+      roles: [
+        {
+          ...context.roles[0],
+          grants: [
+            ...context.roles[0].grants,
+            { action: 'NOTARY_LIST_EXPORT', scope: 'DEPARTMENT' },
+          ],
+        },
+      ],
+    };
+    vi.stubGlobal(
+      'fetch',
+      vi.fn().mockResolvedValue(new Response(JSON.stringify(body))),
+    );
+    await expect(getOrganizationManagementContext()).resolves.toMatchObject({
+      roles: [
+        {
+          grants: expect.arrayContaining([
+            { action: 'NOTARY_LIST_EXPORT', scope: 'DEPARTMENT' },
           ]),
         },
       ],

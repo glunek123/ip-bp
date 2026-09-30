@@ -20,6 +20,7 @@ export type PermissionAction =
   | 'notary.opening.review'
   | 'notary.issuance.decide'
   | 'notary.return.archive'
+  | 'notary.list.export'
   | 'case.read'
   | 'case.match'
   | 'case.complaint.submit'
@@ -44,6 +45,7 @@ export type LeadAction =
   | 'notary.opening.review'
   | 'notary.issuance.decide'
   | 'notary.return.archive'
+  | 'notary.list.export'
   | 'case.read';
 
 export type CustomerResourceFacts = {

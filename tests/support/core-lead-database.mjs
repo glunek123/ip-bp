@@ -2612,6 +2612,7 @@ export async function verifyCoreLeadMigration() {
     const grantCounts = {};
     const pushGrantCounts = {};
     const complaintGrantCounts = {};
+    const notaryExportGrantCounts = {};
     for (const [name, roleId] of [
       ['bootstrap', upgradeIds.bootstrapRole],
       ['shared', upgradeIds.sharedRole],
@@ -2641,6 +2642,16 @@ export async function verifyCoreLeadMigration() {
           await client.query(
             `SELECT COUNT(*) FROM role_grants
              WHERE role_template_id=$1 AND action='case.complaint.submit'`,
+            [roleId],
+          )
+        ).rows[0].count,
+      );
+      notaryExportGrantCounts[name] = Number(
+        (
+          await client.query(
+            `SELECT COUNT(*) FROM role_grants
+             WHERE role_template_id=$1 AND action='notary.list.export'
+               AND scope='DEPARTMENT'`,
             [roleId],
           )
         ).rows[0].count,
@@ -2967,6 +2978,7 @@ export async function verifyCoreLeadMigration() {
         grantCounts,
         pushGrantCounts,
         complaintGrantCounts,
+        notaryExportGrantCounts,
         revisions,
         identityIsolation: {
           unboundClientCode,

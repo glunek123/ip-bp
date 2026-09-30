@@ -24,6 +24,7 @@ enum PermissionAction {
   NOTARY_OPENING_REVIEW        @map("notary.opening.review")
   NOTARY_ISSUANCE_DECIDE       @map("notary.issuance.decide")
   NOTARY_RETURN_ARCHIVE        @map("notary.return.archive")
+  NOTARY_LIST_EXPORT           @map("notary.list.export")
   CASE_READ                    @map("case.read")
   CASE_MATCH                   @map("case.match")
   CASE_COMPLAINT_SUBMIT        @map("case.complaint.submit")

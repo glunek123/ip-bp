@@ -345,7 +345,12 @@ describe('OrganizationService management context', () => {
       assignTeamRoles: false,
       manageRoleTemplates: true,
     });
-    expect(result.permissionCatalog).toHaveLength(26);
+    expect(result.permissionCatalog).toHaveLength(27);
+    expect(result.permissionCatalog).toContainEqual({
+      action: 'NOTARY_LIST_EXPORT',
+      label: '导出公证办理清单',
+      scopes: ['SELF', 'TEAM', 'DEPARTMENT'],
+    });
     expect(result.permissionCatalog).toContainEqual({
       action: 'CASE_READ',
       label: '查看案件',
@@ -374,6 +379,7 @@ describe('OrganizationService management context', () => {
         'NOTARY_OPENING_REVIEW',
         'NOTARY_ISSUANCE_DECIDE',
         'NOTARY_RETURN_ARCHIVE',
+        'NOTARY_LIST_EXPORT',
       ]),
     );
     expect(result.permissionCatalog.map(({ action }) => action)).toEqual(

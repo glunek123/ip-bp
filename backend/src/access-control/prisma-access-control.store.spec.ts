@@ -28,6 +28,28 @@ const snapshotRecord = {
 };
 
 describe('PrismaAccessControlStore', () => {
+  it('maps the list export grant to its internal action', async () => {
+    const record = {
+      ...snapshotRecord,
+      roleAssignments: [
+        {
+          ...snapshotRecord.roleAssignments[0],
+          roleTemplate: {
+            active: true,
+            grants: [{ action: 'NOTARY_LIST_EXPORT', scope: 'TEAM' }],
+          },
+        },
+      ],
+    };
+    const store = new PrismaAccessControlStore({
+      userAccount: { findUnique: jest.fn().mockResolvedValue(record) },
+    } as unknown as DatabaseService);
+    await expect(
+      store.loadSnapshot('user-a', 'department-a'),
+    ).resolves.toMatchObject({
+      grants: [{ action: 'notary.list.export', scope: 'team' }],
+    });
+  });
   it('maps the return archive grant to its internal action', async () => {
     const record = {
       ...snapshotRecord,

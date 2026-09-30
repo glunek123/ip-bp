@@ -25,6 +25,8 @@ import { NotaryReturnArchiveService } from './notary-return-archive.service';
 import { NotaryListController } from './notary-list.controller';
 import { NotaryListService } from './notary-list.service';
 import { NotaryListPreferenceService } from './notary-list-preference.service';
+import { NotaryListExportController } from './notary-list-export.controller';
+import { NotaryListExportService } from './notary-list-export.service';
 import { NotaryOfficeAccountService } from './notary-office-account.service';
 import { NotaryPortalController } from './notary-portal.controller';
 import { NotaryPortalService } from './notary-portal.service';
@@ -44,6 +46,7 @@ import { NotaryCertificateService } from './notary-certificate.service';
     ClientNotaryOpeningReviewController,
     ClientNotaryController,
     NotaryListController,
+    NotaryListExportController,
     LeadNotaryController,
     NotaryOfficeController,
     NotaryPortalController,
@@ -59,6 +62,7 @@ import { NotaryCertificateService } from './notary-certificate.service';
     NotaryReturnArchiveService,
     NotaryListService,
     NotaryListPreferenceService,
+    NotaryListExportService,
     NotaryOfficeAccountService,
     NotaryPortalService,
     NotaryCertificateService,
