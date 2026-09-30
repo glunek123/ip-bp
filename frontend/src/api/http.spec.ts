@@ -2,6 +2,7 @@ import { afterEach, describe, expect, it, vi } from 'vitest';
 import {
   getBlob,
   getJson,
+  postBlob,
   requestBinary,
   requestJson,
   setCsrfToken,
@@ -118,6 +119,37 @@ describe('HTTP boundary', () => {
       filename: '营业执照.pdf',
       mimeType: 'application/pdf',
     });
+  });
+
+  it('posts JSON through the shared boundary and does not retry a CSRF failure', async () => {
+    const fetch = vi
+      .fn()
+      .mockResolvedValue(
+        new Response(JSON.stringify({ code: 'CSRF_INVALID' }), { status: 403 }),
+      );
+    vi.stubGlobal('fetch', fetch);
+    setCsrfToken('stale-token');
+
+    await expect(
+      postBlob(
+        '/notary-matters/exports',
+        { mode: 'SELECTED' },
+        { retryOnCsrfInvalid: true },
+      ),
+    ).rejects.toMatchObject({ status: 403, code: 'CSRF_INVALID' });
+    expect(fetch).toHaveBeenCalledExactlyOnceWith(
+      '/api/v1/notary-matters/exports',
+      expect.objectContaining({
+        method: 'POST',
+        credentials: 'same-origin',
+        body: JSON.stringify({ mode: 'SELECTED' }),
+        headers: expect.objectContaining({
+          Accept: 'application/octet-stream',
+          'Content-Type': 'application/json',
+          'X-CSRF-Token': 'stale-token',
+        }),
+      }),
+    );
   });
 
   it.each(['timeout', 'cancel'] as const)(

@@ -196,6 +196,48 @@ export function getBlob(
   );
 }
 
+export function postBlob(
+  path: string,
+  body: JsonValue,
+  options: RequestOptions = {},
+): Promise<{ blob: Blob; filename: string; mimeType: string }> {
+  return executeRequest(
+    path,
+    {
+      ...options,
+      method: 'POST',
+      body: JSON.stringify(body),
+      retryOnCsrfInvalid: false,
+      headers: {
+        Accept: 'application/octet-stream',
+        'Content-Type': 'application/json',
+        ...options.headers,
+      },
+    },
+    async (response, signal) => {
+      if (response.status === 204)
+        throw new ApiError(
+          '服务返回了无效的文件数据',
+          response.status,
+          'INVALID_RESPONSE',
+        );
+      const blob = await response.blob();
+      if (signal.aborted) signal.throwIfAborted();
+      const mimeType =
+        response.headers.get('Content-Type')?.split(';', 1)[0]?.trim() ||
+        blob.type ||
+        'application/octet-stream';
+      return {
+        blob,
+        filename: parseDownloadFilename(
+          response.headers.get('Content-Disposition'),
+        ),
+        mimeType,
+      };
+    },
+  );
+}
+
 async function executeRequest<T>(
   path: string,
   options: RequestExecutorOptions,

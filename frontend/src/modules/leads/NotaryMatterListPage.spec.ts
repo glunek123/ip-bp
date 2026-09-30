@@ -3,9 +3,11 @@ import { createMemoryHistory, createRouter } from 'vue-router';
 import { afterEach, describe, expect, it, vi } from 'vitest';
 import { createPinia, setActivePinia } from 'pinia';
 import { useAuthStore } from '../../stores/auth';
+import { ApiError } from '../../api/http';
 import NotaryMatterListPage from './NotaryMatterListPage.vue';
 
 const api = vi.hoisted(() => ({ listNotaryMatters: vi.fn() }));
+const exportApi = vi.hoisted(() => ({ preview: vi.fn(), download: vi.fn() }));
 const preferenceApi = vi.hoisted(() => ({ get: vi.fn(), save: vi.fn() }));
 vi.mock('../../api/notary', async (importOriginal) => ({
   ...(await importOriginal<typeof import('../../api/notary')>()),
@@ -17,6 +19,10 @@ vi.mock('../../api/notary-list-preference', async (importOriginal) => ({
   >()),
   getNotaryListPreference: preferenceApi.get,
   saveNotaryListPreference: preferenceApi.save,
+}));
+vi.mock('../../api/notary-list-export', () => ({
+  previewNotaryListExport: exportApi.preview,
+  exportNotaryList: exportApi.download,
 }));
 
 const result = {
@@ -188,6 +194,7 @@ describe('NotaryMatterListPage', () => {
     await wrapper.get('[data-test="column-settings-toggle"]').trigger('click');
     expect(wrapper.text()).toContain('始终显示');
     expect(wrapper.findAll('thead th').map((cell) => cell.text())).toEqual([
+      '选择',
       '公证事项编号',
       '阶段',
       '来源线索',
@@ -205,6 +212,7 @@ describe('NotaryMatterListPage', () => {
     await wrapper.get('[aria-label="上移公证处"]').trigger('click');
 
     expect(wrapper.findAll('thead th').map((cell) => cell.text())).toEqual([
+      '选择',
       '公证事项编号',
       '阶段',
       '来源线索',
@@ -228,6 +236,7 @@ describe('NotaryMatterListPage', () => {
       expect.objectContaining({ signal: expect.any(AbortSignal) }),
     );
     expect(wrapper.findAll('thead th').map((cell) => cell.text())).toEqual([
+      '选择',
       '公证事项编号',
       '阶段',
       '公证处',
@@ -243,7 +252,7 @@ describe('NotaryMatterListPage', () => {
     await wrapper.get('[data-test="cancel-columns"]').trigger('click');
 
     expect(preferenceApi.save).not.toHaveBeenCalled();
-    expect(wrapper.findAll('thead th')).toHaveLength(5);
+    expect(wrapper.findAll('thead th')).toHaveLength(6);
   });
 
   it('keeps the saved columns and draft after a save failure', async () => {
@@ -255,7 +264,7 @@ describe('NotaryMatterListPage', () => {
     await wrapper.get('[data-test="save-columns"]').trigger('click');
     await flushPromises();
 
-    expect(wrapper.findAll('thead th')).toHaveLength(5);
+    expect(wrapper.findAll('thead th')).toHaveLength(6);
     expect(wrapper.get('[data-column-key="createdAt"]').element).toMatchObject({
       checked: false,
     });
@@ -289,6 +298,7 @@ describe('NotaryMatterListPage', () => {
       expect.objectContaining({ signal: expect.any(AbortSignal) }),
     );
     expect(wrapper.findAll('thead th').map((cell) => cell.text())).toEqual([
+      '选择',
       '公证事项编号',
       '阶段',
       '来源线索',
@@ -303,7 +313,7 @@ describe('NotaryMatterListPage', () => {
     const { wrapper } = await mountPage('/notary-matters');
 
     expect(wrapper.findAll('[data-test="matter-row"]')).toHaveLength(1);
-    expect(wrapper.findAll('thead th')).toHaveLength(5);
+    expect(wrapper.findAll('thead th')).toHaveLength(6);
     expect(
       wrapper
         .get('[data-test="column-settings-toggle"]')
@@ -359,6 +369,7 @@ describe('NotaryMatterListPage', () => {
     await flushPromises();
 
     expect(wrapper.findAll('thead th').map((cell) => cell.text())).toEqual([
+      '选择',
       '公证事项编号',
       '阶段',
       '创建时间',
@@ -402,6 +413,7 @@ describe('NotaryMatterListPage', () => {
 
     expect(saveOptions?.signal.aborted).toBe(true);
     expect(wrapper.findAll('thead th').map((cell) => cell.text())).toEqual([
+      '选择',
       '公证事项编号',
       '阶段',
       '创建时间',
@@ -410,5 +422,188 @@ describe('NotaryMatterListPage', () => {
     expect(
       wrapper.get('[data-test="column-preference-status"]').text(),
     ).toContain('个人列设置已加载');
+  });
+
+  it('requires an explicit scope and a successful preview before download', async () => {
+    api.listNotaryMatters.mockResolvedValue(result);
+    exportApi.preview.mockResolvedValue({ count: 1, maxRows: 1000 });
+    exportApi.download.mockResolvedValue({
+      blob: new Blob(['csv']),
+      filename: 'list.csv',
+      mimeType: 'text/csv',
+    });
+    const createUrl = vi.fn(() => 'blob:export');
+    const revokeUrl = vi.fn();
+    vi.stubGlobal('URL', {
+      ...URL,
+      createObjectURL: createUrl,
+      revokeObjectURL: revokeUrl,
+    });
+    const { wrapper } = await mountPage(
+      '/notary-matters?stage=PENDING_EVIDENCE',
+    );
+
+    expect(wrapper.findAll('thead th').map((cell) => cell.text())[0]).toContain(
+      '选择',
+    );
+    await wrapper.get('[data-test="select-matter"]').setValue(true);
+    await wrapper.get('[data-test="export-open"]').trigger('click');
+    expect(wrapper.find('[data-test="export-confirm"]').exists()).toBe(false);
+    await wrapper.get('[data-test="export-mode-selected"]').setValue(true);
+    await wrapper.get('[data-test="export-preview"]').trigger('click');
+    await flushPromises();
+    expect(exportApi.preview).toHaveBeenCalledWith(
+      { mode: 'SELECTED', matterIds: ['matter-1'] },
+      expect.objectContaining({ signal: expect.any(AbortSignal) }),
+    );
+    expect(wrapper.text()).toContain('1 条');
+    await wrapper.get('[data-test="export-confirm"]').trigger('click');
+    await flushPromises();
+    expect(exportApi.download).toHaveBeenCalledWith(
+      { mode: 'SELECTED', matterIds: ['matter-1'] },
+      1,
+      expect.objectContaining({ signal: expect.any(AbortSignal) }),
+    );
+    expect(createUrl).toHaveBeenCalledOnce();
+    expect(revokeUrl).toHaveBeenCalledWith('blob:export');
+  });
+
+  it('keeps selected IDs across pages and clears them when the stage changes', async () => {
+    api.listNotaryMatters.mockImplementation((page: number) =>
+      Promise.resolve({
+        ...result,
+        items: [{ ...result.items[0], id: `matter-${page}` }],
+        total: 21,
+        page,
+      }),
+    );
+    const { wrapper, router } = await mountPage(
+      '/notary-matters?stage=PENDING_EVIDENCE',
+    );
+    await wrapper.get('[data-test="select-matter"]').setValue(true);
+    await wrapper.get('[data-test="next-page"]').trigger('click');
+    await flushPromises();
+    await wrapper.get('[data-test="select-matter"]').setValue(true);
+    expect(wrapper.text()).toContain('已选择 2 项');
+    await router.push({ query: { stage: 'WAITING_RETURN' } });
+    await flushPromises();
+    expect(wrapper.text()).toContain('已选择 0 项');
+  });
+
+  it('ignores a delayed export response after the account changes', async () => {
+    api.listNotaryMatters.mockResolvedValue(result);
+    exportApi.preview.mockResolvedValue({ count: 1, maxRows: 1000 });
+    let resolveDownload: ((value: unknown) => void) | undefined;
+    exportApi.download.mockImplementationOnce(
+      () =>
+        new Promise((resolve) => {
+          resolveDownload = resolve;
+        }),
+    );
+    const createUrl = vi.fn(() => 'blob:stale');
+    vi.stubGlobal('URL', {
+      ...URL,
+      createObjectURL: createUrl,
+      revokeObjectURL: vi.fn(),
+    });
+    const { wrapper, auth } = await mountPage('/notary-matters');
+    await wrapper.get('[data-test="select-matter"]').setValue(true);
+    await wrapper.get('[data-test="export-open"]').trigger('click');
+    await wrapper.get('[data-test="export-mode-selected"]').setValue(true);
+    await wrapper.get('[data-test="export-preview"]').trigger('click');
+    await flushPromises();
+    await wrapper.get('[data-test="export-confirm"]').trigger('click');
+    await flushPromises();
+    auth.session = {
+      ...auth.session!,
+      user: { ...auth.session!.user, id: 'user-2' },
+    };
+    await flushPromises();
+    resolveDownload?.({
+      blob: new Blob(['stale']),
+      filename: 'stale.csv',
+      mimeType: 'text/csv',
+    });
+    await flushPromises();
+    expect(createUrl).not.toHaveBeenCalled();
+  });
+
+  it('shows authorization and limit errors without presenting a download action', async () => {
+    api.listNotaryMatters.mockResolvedValue(result);
+    exportApi.preview.mockRejectedValueOnce(
+      new ApiError('当前账号无权导出', 403, 'FORBIDDEN'),
+    );
+    const { wrapper } = await mountPage('/notary-matters');
+    await wrapper.get('[data-test="select-matter"]').setValue(true);
+    await wrapper.get('[data-test="export-open"]').trigger('click');
+    await wrapper.get('[data-test="export-mode-selected"]').setValue(true);
+    await wrapper.get('[data-test="export-preview"]').trigger('click');
+    await flushPromises();
+    expect(wrapper.get('[data-test="export-status"]').text()).toContain(
+      '当前账号无权导出',
+    );
+    expect(wrapper.find('[data-test="export-confirm"]').exists()).toBe(false);
+
+    exportApi.preview.mockRejectedValueOnce(
+      new ApiError('超出上限', 400, 'EXPORT_LIMIT_EXCEEDED'),
+    );
+    await wrapper.get('[data-test="export-preview"]').trigger('click');
+    await flushPromises();
+    expect(wrapper.get('[data-test="export-status"]').text()).toContain(
+      '超过 1000 条',
+    );
+    expect(wrapper.find('[data-test="export-confirm"]').exists()).toBe(false);
+  });
+
+  it('prevents duplicate previews and cancels an in-flight request', async () => {
+    api.listNotaryMatters.mockResolvedValue(result);
+    let resolvePreview: ((value: unknown) => void) | undefined;
+    exportApi.preview.mockImplementationOnce(
+      () =>
+        new Promise((resolve) => {
+          resolvePreview = resolve;
+        }),
+    );
+    const { wrapper } = await mountPage('/notary-matters');
+    await wrapper.get('[data-test="select-matter"]').setValue(true);
+    await wrapper.get('[data-test="export-open"]').trigger('click');
+    await wrapper.get('[data-test="export-mode-selected"]').setValue(true);
+    await wrapper.get('[data-test="export-preview"]').trigger('click');
+    await wrapper.get('[data-test="export-preview"]').trigger('click');
+    expect(exportApi.preview).toHaveBeenCalledOnce();
+    const options = exportApi.preview.mock.calls[0]?.[1] as
+      { signal: AbortSignal } | undefined;
+    await wrapper.get('[data-test="export-cancel"]').trigger('click');
+    expect(options?.signal.aborted).toBe(true);
+    resolvePreview?.({ count: 1, maxRows: 1000 });
+    await flushPromises();
+    expect(wrapper.find('[data-test="export-confirm"]').exists()).toBe(false);
+    expect(wrapper.get('[data-test="selected-count"]').text()).toContain(
+      '已选择 1 项',
+    );
+    await wrapper.get('[data-test="clear-selection"]').trigger('click');
+    expect(wrapper.get('[data-test="selected-count"]').text()).toContain(
+      '已选择 0 项',
+    );
+  });
+
+  it('requires another preview after the server reports a changed row count', async () => {
+    api.listNotaryMatters.mockResolvedValue(result);
+    exportApi.preview.mockResolvedValue({ count: 1, maxRows: 1000 });
+    exportApi.download.mockRejectedValue(
+      new ApiError('事项数量已变化，请重新预览', 409, 'EXPORT_SCOPE_CHANGED'),
+    );
+    const { wrapper } = await mountPage('/notary-matters');
+    await wrapper.get('[data-test="select-matter"]').setValue(true);
+    await wrapper.get('[data-test="export-open"]').trigger('click');
+    await wrapper.get('[data-test="export-mode-selected"]').setValue(true);
+    await wrapper.get('[data-test="export-preview"]').trigger('click');
+    await flushPromises();
+    await wrapper.get('[data-test="export-confirm"]').trigger('click');
+    await flushPromises();
+    expect(wrapper.get('[data-test="export-status"]').text()).toContain(
+      '事项数量已变化，请重新预览后下载。',
+    );
+    expect(wrapper.find('[data-test="export-confirm"]').exists()).toBe(false);
   });
 });

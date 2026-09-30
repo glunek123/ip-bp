@@ -108,6 +108,7 @@ const actionNames = Object.freeze({
   'case.complaint.submit': 'CASE_COMPLAINT_SUBMIT',
   'notary.office.manage': 'NOTARY_OFFICE_MANAGE',
   'lead.withdraw.apply': 'LEAD_WITHDRAW_APPLY',
+  'notary.list.export': 'NOTARY_LIST_EXPORT',
 });
 
 async function dropFaults() {
@@ -897,6 +898,269 @@ export async function resetCoreLeadE2eData() {
       },
     });
   }
+}
+
+export async function seedNotaryListExportData() {
+  await database.roleGrant.upsert({
+    where: {
+      roleTemplateId_action_scope: {
+        roleTemplateId: coreLeadFixtures.roleA,
+        action: 'NOTARY_LIST_EXPORT',
+        scope: 'TEAM',
+      },
+    },
+    create: {
+      roleTemplateId: coreLeadFixtures.roleA,
+      action: 'NOTARY_LIST_EXPORT',
+      scope: 'TEAM',
+    },
+    update: {},
+  });
+  await database.roleGrant.upsert({
+    where: {
+      roleTemplateId_action_scope: {
+        roleTemplateId: coreLeadFixtures.roleSelf,
+        action: 'NOTARY_LIST_EXPORT',
+        scope: 'SELF',
+      },
+    },
+    create: {
+      roleTemplateId: coreLeadFixtures.roleSelf,
+      action: 'NOTARY_LIST_EXPORT',
+      scope: 'SELF',
+    },
+    update: {},
+  });
+  const officeA = await database.notaryOffice.create({
+    data: {
+      id: randomUUID(),
+      departmentId: coreLeadFixtures.departmentA,
+      name: '=HYPERLINK("https://example.invalid")',
+      createdByUserId: coreLeadFixtures.userA,
+    },
+  });
+  const officeB = await database.notaryOffice.create({
+    data: {
+      id: randomUUID(),
+      departmentId: coreLeadFixtures.departmentB,
+      name: '外部门公证处',
+      createdByUserId: coreLeadFixtures.userB,
+    },
+  });
+  const sourceLead = await database.lead.findUniqueOrThrow({
+    where: { id: '70000000-0000-4000-8000-000000000001' },
+  });
+  const foreignLeadId = randomUUID();
+  await database.lead.create({
+    data: {
+      id: foreignLeadId,
+      departmentId: coreLeadFixtures.departmentB,
+      businessNo: `CORE-EXPORT-FOREIGN-${foreignLeadId.slice(0, 8)}`,
+      customerId: coreLeadFixtures.foreignCustomer,
+      rightsHolderId: coreLeadFixtures.foreignHolder,
+      responsibleUserId: coreLeadFixtures.userB,
+      status: 'TRANSFERRED_TO_NOTARY',
+      caseType: 'CIVIL',
+      source: 'ONLINE',
+      platform: 'TAOBAO',
+      foundAt: new Date('2026-09-21T00:00:00.000Z'),
+      shopName: '外部门导出隔离样例',
+      needDisclose: false,
+      products: {
+        create: {
+          position: 1,
+          title: '外部测试商品',
+          quantity: 1,
+          unitPrice: '1.00',
+          commentCount: 0,
+          estimatedAmount: '1.00',
+        },
+      },
+      infringements: { create: { type: 'TRADEMARK' } },
+    },
+  });
+  const selfLeadId = randomUUID();
+  const selfLead = await database.lead.create({
+    data: {
+      id: selfLeadId,
+      departmentId: coreLeadFixtures.departmentA,
+      businessNo: `CORE-EXPORT-SELF-${selfLeadId.slice(0, 8)}`,
+      customerId: coreLeadFixtures.selfCustomer,
+      rightsHolderId: coreLeadFixtures.selfHolder,
+      responsibleUserId: coreLeadFixtures.userSelf,
+      teamId: coreLeadFixtures.teamSelf,
+      status: 'TRANSFERRED_TO_NOTARY',
+      caseType: 'CIVIL',
+      source: 'ONLINE',
+      platform: 'TAOBAO',
+      foundAt: new Date('2026-09-21T00:00:00.000Z'),
+      shopName: '本人范围导出样例',
+      needDisclose: false,
+      products: {
+        create: {
+          position: 1,
+          title: '本人范围测试商品',
+          quantity: 1,
+          unitPrice: '1.00',
+          commentCount: 0,
+          estimatedAmount: '1.00',
+        },
+      },
+      infringements: { create: { type: 'TRADEMARK' } },
+    },
+  });
+  const matters = [];
+  for (let index = 0; index < 22; index += 1) {
+    matters.push({
+      id: randomUUID(),
+      businessNo: `NT-EXPORT-${String(index + 1).padStart(3, '0')}`,
+      departmentId: coreLeadFixtures.departmentA,
+      sourceType: 'LEAD',
+      sourceLeadId: sourceLead.id,
+      customerId: sourceLead.customerId,
+      rightsHolderId: sourceLead.rightsHolderId,
+      responsibleUserId: sourceLead.responsibleUserId,
+      notaryOfficeId: officeA.id,
+      stage: 'PENDING_EVIDENCE',
+      version: 1,
+      evidenceMode: 'ONLINE_PURCHASE',
+      batchPurpose: '公证处数据库导出测试',
+      sourceSnapshot: {
+        sourceLeadId: sourceLead.id,
+        sourceLeadBusinessNo: sourceLead.businessNo,
+        selectedProducts: [],
+        selectedContentVersionIds: [],
+      },
+      createdByUserId: coreLeadFixtures.userA,
+      fromLeadVersion: sourceLead.version,
+      toLeadVersion: sourceLead.version + 1,
+    });
+  }
+  matters.push({
+    id: randomUUID(),
+    businessNo: 'NT-EXPORT-OTHER-STAGE',
+    departmentId: coreLeadFixtures.departmentA,
+    sourceType: 'LEAD',
+    sourceLeadId: sourceLead.id,
+    customerId: sourceLead.customerId,
+    rightsHolderId: sourceLead.rightsHolderId,
+    responsibleUserId: sourceLead.responsibleUserId,
+    notaryOfficeId: officeA.id,
+    stage: 'WAITING_UNBOX',
+    version: 1,
+    evidenceMode: 'ONLINE_PURCHASE',
+    batchPurpose: '阶段隔离样例',
+    sourceSnapshot: {
+      sourceLeadId: sourceLead.id,
+      selectedProducts: [],
+      selectedContentVersionIds: [],
+    },
+    createdByUserId: coreLeadFixtures.userA,
+    fromLeadVersion: sourceLead.version,
+    toLeadVersion: sourceLead.version + 1,
+  });
+  matters.push({
+    id: randomUUID(),
+    businessNo: 'NT-EXPORT-SELF',
+    departmentId: coreLeadFixtures.departmentA,
+    sourceType: 'LEAD',
+    sourceLeadId: selfLead.id,
+    customerId: selfLead.customerId,
+    rightsHolderId: selfLead.rightsHolderId,
+    responsibleUserId: selfLead.responsibleUserId,
+    notaryOfficeId: officeA.id,
+    stage: 'PENDING_EVIDENCE',
+    version: 1,
+    evidenceMode: 'ONLINE_PURCHASE',
+    batchPurpose: '本人范围导出样例',
+    sourceSnapshot: {
+      sourceLeadId: selfLead.id,
+      sourceLeadBusinessNo: selfLead.businessNo,
+      selectedProducts: [],
+      selectedContentVersionIds: [],
+    },
+    createdByUserId: coreLeadFixtures.userSelf,
+    fromLeadVersion: selfLead.version,
+    toLeadVersion: selfLead.version + 1,
+  });
+  matters.push({
+    id: randomUUID(),
+    businessNo: 'NT-EXPORT-FOREIGN',
+    departmentId: coreLeadFixtures.departmentB,
+    sourceType: 'LEAD',
+    sourceLeadId: foreignLeadId,
+    customerId: coreLeadFixtures.foreignCustomer,
+    rightsHolderId: coreLeadFixtures.foreignHolder,
+    responsibleUserId: coreLeadFixtures.userB,
+    notaryOfficeId: officeB.id,
+    stage: 'PENDING_EVIDENCE',
+    version: 1,
+    evidenceMode: 'ONLINE_PURCHASE',
+    batchPurpose: '跨部门隔离样例',
+    sourceSnapshot: {
+      sourceLeadId: foreignLeadId,
+      selectedProducts: [],
+      selectedContentVersionIds: [],
+    },
+    createdByUserId: coreLeadFixtures.userB,
+    fromLeadVersion: 1,
+    toLeadVersion: 2,
+  });
+  await database.notaryMatter.createMany({ data: matters });
+  return matters.map(({ id, businessNo, stage, departmentId }) => ({
+    id,
+    businessNo,
+    stage,
+    departmentId,
+    notaryOfficeId:
+      departmentId === coreLeadFixtures.departmentB ? officeB.id : officeA.id,
+    scopeKind:
+      businessNo === 'NT-EXPORT-SELF'
+        ? 'SELF'
+        : departmentId === coreLeadFixtures.departmentB
+          ? 'DEPARTMENT'
+          : 'TEAM',
+  }));
+}
+
+export async function seedNotaryListExportOverLimitData() {
+  await seedNotaryListExportData();
+  const template = await database.notaryMatter.findFirstOrThrow({
+    where: {
+      departmentId: coreLeadFixtures.departmentA,
+      stage: 'PENDING_EVIDENCE',
+      responsibleUserId: coreLeadFixtures.userA,
+    },
+  });
+  const { id: _id, businessNo: _businessNo, ...matter } = template;
+  await database.notaryMatter.createMany({
+    data: Array.from({ length: 979 }, (_, index) => ({
+      ...matter,
+      id: randomUUID(),
+      businessNo: `NT-EXPORT-LIMIT-${String(index + 1).padStart(4, '0')}`,
+    })),
+  });
+}
+
+export function getNotaryListExportAudits() {
+  return database.auditEvent.findMany({
+    where: {
+      departmentId: coreLeadFixtures.departmentA,
+      action: 'notary.list.export.generated',
+    },
+    orderBy: { createdAt: 'asc' },
+    select: { actorUserId: true, details: true },
+  });
+}
+
+export function moveNotaryListExportMatterToOtherStage(matterId) {
+  if (!/^[0-9a-f]{8}-[0-9a-f-]{27}$/iu.test(matterId)) {
+    throw new Error('Invalid test matter ID');
+  }
+  return database.notaryMatter.updateMany({
+    where: { id: matterId, businessNo: { startsWith: 'NT-EXPORT-' } },
+    data: { stage: 'WAITING_UNBOX' },
+  });
 }
 
 export function getCustomer(id) {

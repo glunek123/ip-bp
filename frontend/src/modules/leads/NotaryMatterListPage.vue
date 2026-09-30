@@ -3,6 +3,11 @@ import { computed, onBeforeUnmount, ref, watch } from 'vue';
 import { RouterLink, useRoute, useRouter } from 'vue-router';
 import { ElButton } from 'element-plus/es/components/button/index.mjs';
 import {
+  exportNotaryList,
+  previewNotaryListExport,
+  type NotaryListExportScope,
+} from '../../api/notary-list-export';
+import {
   listNotaryMatters,
   notaryListStages,
   type NotaryListStage,
@@ -46,12 +51,22 @@ const draftHidden = ref<NotaryListPreference['hidden']>([]);
 const settingsOpen = ref(false);
 const preferenceMessage = ref('正在读取个人列设置。');
 const saving = ref(false);
+const selectedIds = ref<string[]>([]);
+const exportOpen = ref(false);
+const exportMode = ref<'SELECTED' | 'FILTERED' | null>(null);
+const exportPreview = ref<{ count: number; maxRows: 1000 } | null>(null);
+const exportMessage = ref('');
+const exportLoading = ref(false);
 let listRequest: AbortController | undefined;
 let preferenceRequest: AbortController | undefined;
 let saveRequest: AbortController | undefined;
 let preferenceGeneration = 0;
 let saveGeneration = 0;
 let currentListScope = '';
+let exportPreviewRequest: AbortController | undefined;
+let exportRequest: AbortController | undefined;
+let exportGeneration = 0;
+let currentExportScopeKey = '';
 
 const selectedStage = computed<NotaryListStage | undefined>(() => {
   const value = route.query.stage;
@@ -87,6 +102,190 @@ const visibleColumns = computed(() =>
       !savedPreference.value.hidden.includes(column),
   ),
 );
+const exportScopeKey = computed(() =>
+  JSON.stringify({
+    userId: auth.session?.user.id ?? '',
+    departmentId: auth.session?.department?.id ?? '',
+    stage: selectedStage.value ?? null,
+    mode: exportMode.value,
+    matterIds:
+      exportMode.value === 'SELECTED' ? [...selectedIds.value].sort() : [],
+  }),
+);
+const canConfirmExport = computed(
+  () =>
+    exportPreview.value !== null &&
+    currentExportScopeKey === exportScopeKey.value,
+);
+
+function buildExportScope(): NotaryListExportScope | null {
+  if (exportMode.value === 'SELECTED') {
+    if (selectedIds.value.length === 0 || selectedIds.value.length > 1000)
+      return null;
+    return { mode: 'SELECTED', matterIds: [...selectedIds.value] };
+  }
+  if (exportMode.value === 'FILTERED') {
+    return selectedStage.value
+      ? { mode: 'FILTERED', stage: selectedStage.value }
+      : { mode: 'FILTERED' };
+  }
+  return null;
+}
+
+function invalidateExport(): void {
+  exportGeneration += 1;
+  exportPreviewRequest?.abort();
+  exportRequest?.abort();
+  exportPreviewRequest = undefined;
+  exportRequest = undefined;
+  exportPreview.value = null;
+  currentExportScopeKey = '';
+  exportLoading.value = false;
+}
+
+function toggleMatter(id: string, checked: boolean): void {
+  if (checked) {
+    if (selectedIds.value.length >= 1000) {
+      exportMessage.value = '最多可选择 1000 项，请缩小范围。';
+      return;
+    }
+    if (!selectedIds.value.includes(id))
+      selectedIds.value = [...selectedIds.value, id];
+  } else {
+    selectedIds.value = selectedIds.value.filter(
+      (selectedId) => selectedId !== id,
+    );
+  }
+  invalidateExport();
+  exportMessage.value = '';
+}
+
+function toggleCurrentPage(checked: boolean): void {
+  const pageIds = items.value.map((item) => item.id);
+  if (checked) {
+    const next = [...new Set([...selectedIds.value, ...pageIds])];
+    if (next.length > 1000) {
+      exportMessage.value = '最多可选择 1000 项，请缩小范围。';
+      return;
+    }
+    selectedIds.value = next;
+  } else {
+    selectedIds.value = selectedIds.value.filter((id) => !pageIds.includes(id));
+  }
+  invalidateExport();
+  exportMessage.value = '';
+}
+
+function clearSelection(): void {
+  selectedIds.value = [];
+  invalidateExport();
+  exportMessage.value = '';
+}
+
+async function requestExportPreview(): Promise<void> {
+  if (exportLoading.value) return;
+  const scope = buildExportScope();
+  if (!scope) {
+    exportMessage.value = '请先明确选择导出范围；已勾选事项至少需要选择 1 项。';
+    return;
+  }
+  invalidateExport();
+  const generation = exportGeneration;
+  const scopeKey = exportScopeKey.value;
+  const userId = auth.session?.user.id;
+  const departmentId = auth.session?.department?.id;
+  const controller = new AbortController();
+  exportPreviewRequest = controller;
+  exportLoading.value = true;
+  exportMessage.value = '正在核对导出范围与数量。';
+  try {
+    const result = await previewNotaryListExport(scope, {
+      signal: controller.signal,
+    });
+    if (
+      controller.signal.aborted ||
+      generation !== exportGeneration ||
+      auth.session?.user.id !== userId ||
+      auth.session?.department?.id !== departmentId ||
+      scopeKey !== exportScopeKey.value
+    )
+      return;
+    exportPreview.value = result;
+    currentExportScopeKey = scopeKey;
+    exportMessage.value = `后端核对完成，共 ${result.count} 条。请确认后下载。`;
+  } catch (error) {
+    if (controller.signal.aborted || generation !== exportGeneration) return;
+    exportMessage.value =
+      error instanceof Error ? error.message : '预览失败，请重试。';
+    if ((error as { code?: string })?.code === 'EXPORT_LIMIT_EXCEEDED')
+      exportMessage.value = '导出范围超过 1000 条，请缩小范围后重新预览。';
+  } finally {
+    if (generation === exportGeneration) exportLoading.value = false;
+  }
+}
+
+async function confirmExport(): Promise<void> {
+  if (exportLoading.value || !canConfirmExport.value || !exportPreview.value)
+    return;
+  const scope = buildExportScope();
+  if (!scope) return;
+  const expectedCount = exportPreview.value.count;
+  const generation = exportGeneration;
+  const scopeKey = exportScopeKey.value;
+  const userId = auth.session?.user.id;
+  const departmentId = auth.session?.department?.id;
+  const controller = new AbortController();
+  exportRequest = controller;
+  exportLoading.value = true;
+  exportMessage.value = '正在生成下载文件。';
+  try {
+    const file = await exportNotaryList(scope, expectedCount, {
+      signal: controller.signal,
+    });
+    if (
+      controller.signal.aborted ||
+      generation !== exportGeneration ||
+      auth.session?.user.id !== userId ||
+      auth.session?.department?.id !== departmentId ||
+      scopeKey !== exportScopeKey.value
+    )
+      return;
+    const url = URL.createObjectURL(file.blob);
+    try {
+      const anchor = document.createElement('a');
+      anchor.href = url;
+      anchor.download = file.filename;
+      anchor.click();
+    } finally {
+      URL.revokeObjectURL(url);
+    }
+    exportMessage.value = '文件已生成并交由浏览器下载。';
+    exportPreview.value = null;
+    currentExportScopeKey = '';
+  } catch (error) {
+    if (controller.signal.aborted || generation !== exportGeneration) return;
+    const code = (error as { code?: string })?.code;
+    exportMessage.value =
+      code === 'EXPORT_SCOPE_CHANGED'
+        ? '事项数量已变化，请重新预览后下载。'
+        : code === 'EXPORT_LIMIT_EXCEEDED'
+          ? '导出范围超过 1000 条，请缩小范围后重新预览。'
+          : error instanceof Error
+            ? error.message
+            : '下载失败，请重试。';
+    exportPreview.value = null;
+    currentExportScopeKey = '';
+  } finally {
+    if (generation === exportGeneration) exportLoading.value = false;
+  }
+}
+
+function closeExport(): void {
+  invalidateExport();
+  exportOpen.value = false;
+  exportMode.value = null;
+  exportMessage.value = '已取消导出。';
+}
 
 function isOptionalColumn(
   column: NotaryListPreferenceColumn,
@@ -292,6 +491,23 @@ watch(
   { immediate: true },
 );
 watch(
+  () => [
+    auth.session?.user.id,
+    auth.session?.department?.id,
+    selectedStage.value,
+  ],
+  () => {
+    selectedIds.value = [];
+    invalidateExport();
+    exportOpen.value = false;
+    exportMode.value = null;
+  },
+);
+watch(exportScopeKey, () => {
+  if (exportPreview.value && currentExportScopeKey !== exportScopeKey.value)
+    invalidateExport();
+});
+watch(
   () => auth.session?.user.id,
   (userId) => void loadPreference(userId),
   { immediate: true },
@@ -300,6 +516,7 @@ onBeforeUnmount(() => {
   listRequest?.abort();
   preferenceRequest?.abort();
   saveRequest?.abort();
+  invalidateExport();
 });
 </script>
 
@@ -318,6 +535,94 @@ onBeforeUnmount(() => {
           >列设置</ElButton
         >
       </div>
+      <section class="export-panel demo-card" aria-label="公证事项清单导出">
+        <div class="export-actions">
+          <span data-test="selected-count"
+            >已选择 {{ selectedIds.length }} 项</span
+          >
+          <ElButton
+            data-test="clear-selection"
+            :disabled="selectedIds.length === 0"
+            @click="clearSelection"
+            >清空选择</ElButton
+          >
+          <ElButton
+            data-test="export-open"
+            @click="
+              exportOpen = true;
+              exportMessage = '';
+            "
+            >批量导出</ElButton
+          >
+        </div>
+        <div v-if="exportOpen" class="export-options">
+          <strong>请明确选择导出范围</strong>
+          <label>
+            <input
+              type="radio"
+              name="notary-export-scope"
+              data-test="export-mode-selected"
+              value="SELECTED"
+              :checked="exportMode === 'SELECTED'"
+              @change="
+                exportMode = 'SELECTED';
+                exportMessage = '';
+              "
+            />
+            已勾选事项（{{ selectedIds.length }} 项）
+          </label>
+          <label>
+            <input
+              type="radio"
+              name="notary-export-scope"
+              data-test="export-mode-filtered"
+              value="FILTERED"
+              :checked="exportMode === 'FILTERED'"
+              @change="
+                exportMode = 'FILTERED';
+                exportMessage = '';
+              "
+            />
+            当前阶段筛选结果（{{
+              selectedStage ? stageLabels[selectedStage] : '全部可见事项'
+            }}）
+          </label>
+          <p>
+            仅导出事项编号、阶段、来源线索编号、公证处、创建时间五列；不含附件和内部费用。
+          </p>
+          <p v-if="exportPreview" data-test="export-preview-count">
+            预览范围：{{
+              exportMode === 'SELECTED' ? '已勾选事项' : '当前阶段筛选结果'
+            }}；共 {{ exportPreview.count }} 条（上限
+            {{ exportPreview.maxRows }} 条）。
+          </p>
+          <p v-if="exportMessage" role="status" data-test="export-status">
+            {{ exportMessage }}
+          </p>
+          <div class="export-actions">
+            <ElButton
+              data-test="export-preview"
+              :disabled="
+                exportLoading ||
+                !exportMode ||
+                (exportMode === 'SELECTED' && selectedIds.length === 0)
+              "
+              @click="requestExportPreview"
+              >{{ exportLoading ? '处理中' : '预览数量' }}</ElButton
+            >
+            <ElButton
+              v-if="canConfirmExport"
+              data-test="export-confirm"
+              :disabled="exportLoading"
+              @click="confirmExport"
+              >确认下载 {{ exportPreview?.count }} 条</ElButton
+            >
+            <ElButton data-test="export-cancel" @click="closeExport"
+              >取消</ElButton
+            >
+          </div>
+        </div>
+      </section>
       <section
         v-if="settingsOpen"
         class="column-settings demo-card"
@@ -430,6 +735,23 @@ onBeforeUnmount(() => {
           <table class="demo-table">
             <thead>
               <tr>
+                <th class="selection-column">
+                  <input
+                    type="checkbox"
+                    aria-label="全选本页"
+                    data-test="select-page"
+                    :checked="
+                      items.length > 0 &&
+                      items.every((matter) => selectedIds.includes(matter.id))
+                    "
+                    :disabled="items.length === 0"
+                    @change="
+                      toggleCurrentPage(
+                        ($event.target as HTMLInputElement).checked,
+                      )
+                    "
+                  />选择
+                </th>
                 <th v-for="column in visibleColumns" :key="column">
                   {{ columnLabels[column] }}
                 </th>
@@ -441,6 +763,20 @@ onBeforeUnmount(() => {
                 :key="matter.id"
                 data-test="matter-row"
               >
+                <td class="selection-column">
+                  <input
+                    type="checkbox"
+                    :aria-label="`选择${matter.businessNo}`"
+                    data-test="select-matter"
+                    :checked="selectedIds.includes(matter.id)"
+                    @change="
+                      toggleMatter(
+                        matter.id,
+                        ($event.target as HTMLInputElement).checked,
+                      )
+                    "
+                  />
+                </td>
                 <td v-for="column in visibleColumns" :key="column">
                   <template v-if="column === 'businessNo'">
                     <RouterLink
@@ -497,6 +833,30 @@ onBeforeUnmount(() => {
 <style scoped>
 .column-settings {
   margin-bottom: 1rem;
+}
+
+.export-panel {
+  margin-bottom: 1rem;
+  padding: 1rem;
+}
+
+.export-actions,
+.export-options {
+  align-items: center;
+  display: flex;
+  flex-wrap: wrap;
+  gap: 0.75rem;
+}
+
+.export-options {
+  align-items: flex-start;
+  flex-direction: column;
+  margin-top: 1rem;
+}
+
+.selection-column {
+  white-space: nowrap;
+  width: 5rem;
 }
 
 .column-settings-fixed,

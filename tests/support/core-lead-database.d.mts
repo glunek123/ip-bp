@@ -27,6 +27,23 @@ export const coreLeadFixtures: Readonly<{
 }>;
 
 export function resetCoreLeadE2eData(): Promise<void>;
+export function seedNotaryListExportData(): Promise<
+  Array<{
+    id: string;
+    businessNo: string;
+    stage: string;
+    departmentId: string;
+    notaryOfficeId: string;
+    scopeKind: 'SELF' | 'TEAM' | 'DEPARTMENT';
+  }>
+>;
+export function seedNotaryListExportOverLimitData(): Promise<void>;
+export function getNotaryListExportAudits(): Promise<
+  Array<{ actorUserId: string; details: unknown }>
+>;
+export function moveNotaryListExportMatterToOtherStage(
+  matterId: string,
+): Promise<{ count: number }>;
 export function getCustomer(id: string): Promise<{
   profileStatus: string;
   version: number;
