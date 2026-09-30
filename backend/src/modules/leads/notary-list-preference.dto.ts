@@ -1,4 +1,4 @@
-import { ApiProperty } from '@nestjs/swagger';
+import { ApiProperty, ApiSchema } from '@nestjs/swagger';
 import { ValidateBy } from 'class-validator';
 
 export const NOTARY_LIST_COLUMN_ORDER = [
@@ -53,15 +53,35 @@ export function isValidHidden(
   );
 }
 
+@ApiSchema({
+  description:
+    '本人公证列表列设置。PUT 必须完整提交 order 和 hidden；不接受额外字段。',
+})
 export class NotaryListPreferenceDto {
-  @ApiProperty({ enum: NOTARY_LIST_COLUMN_ORDER, isArray: true })
+  @ApiProperty({
+    enum: NOTARY_LIST_COLUMN_ORDER,
+    isArray: true,
+    minItems: 5,
+    maxItems: 5,
+    uniqueItems: true,
+    description:
+      '前两项必须依次为 businessNo、stage；后三项为 sourceLead、notaryOffice、createdAt 的无重复排列。',
+  })
   @ValidateBy({
     name: 'notaryListColumnOrder',
     validator: { validate: isValidOrder },
   })
   order!: NotaryListColumn[];
 
-  @ApiProperty({ enum: NOTARY_LIST_OPTIONAL_COLUMNS, isArray: true })
+  @ApiProperty({
+    enum: NOTARY_LIST_OPTIONAL_COLUMNS,
+    isArray: true,
+    minItems: 0,
+    maxItems: 3,
+    uniqueItems: true,
+    description:
+      '仅可隐藏 sourceLead、notaryOffice、createdAt；固定列不可隐藏。',
+  })
   @ValidateBy({
     name: 'notaryListHiddenColumns',
     validator: { validate: isValidHidden },

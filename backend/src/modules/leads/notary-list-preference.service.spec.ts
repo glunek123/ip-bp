@@ -35,13 +35,16 @@ function fixture() {
       ({
         where,
         create,
+        update,
       }: {
         where: { userId: string };
         create: { columnOrder: string[]; hiddenColumns: string[] };
+        update: { columnOrder: string[]; hiddenColumns: string[] };
       }) => {
+        const input = rows.has(where.userId) ? update : create;
         const row = {
-          columnOrder: [...create.columnOrder],
-          hiddenColumns: [...create.hiddenColumns],
+          columnOrder: [...input.columnOrder],
+          hiddenColumns: [...input.hiddenColumns],
         };
         rows.set(where.userId, row);
         return Promise.resolve(row);
@@ -73,7 +76,7 @@ describe('NotaryListPreferenceService', () => {
   });
 
   it('saves a full replacement for one actor and restores only that actor', async () => {
-    const { service, rows } = fixture();
+    const { service, rows, preferences } = fixture();
     const changed = {
       order: ['businessNo', 'stage', 'createdAt', 'sourceLead', 'notaryOffice'],
       hidden: ['notaryOffice'],
@@ -82,6 +85,24 @@ describe('NotaryListPreferenceService', () => {
     await expect(service.get(actorB)).resolves.toEqual(defaults);
     await expect(service.get(actorA)).resolves.toEqual(changed);
     await expect(service.put(actorA, defaults)).resolves.toEqual(defaults);
+    expect(preferences.upsert).toHaveBeenNthCalledWith(
+      1,
+      expect.objectContaining({
+        where: { userId: actorA.userId },
+        create: {
+          userId: actorA.userId,
+          columnOrder: changed.order,
+          hiddenColumns: changed.hidden,
+        },
+      }),
+    );
+    expect(preferences.upsert).toHaveBeenNthCalledWith(
+      2,
+      expect.objectContaining({
+        where: { userId: actorA.userId },
+        update: { columnOrder: defaults.order, hiddenColumns: [] },
+      }),
+    );
     expect(rows.get(actorA.userId)).toEqual({
       columnOrder: defaults.order,
       hiddenColumns: [],

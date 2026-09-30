@@ -541,6 +541,9 @@ async function clearDatabase() {
   await database.customerRightsHolderLink.deleteMany({
     where: { departmentId: { in: departmentIds } },
   });
+  await database.notaryListPreference.deleteMany({
+    where: { userId: { in: allUserIds } },
+  });
   await database.authSession.deleteMany({
     where: { userId: { in: allUserIds } },
   });

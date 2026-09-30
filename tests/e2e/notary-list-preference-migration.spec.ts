@@ -9,6 +9,11 @@ test('notary list preference migration keeps old accounts and enforces FK atomic
     foreignKeyCode: '23503',
     restrictCode: '23503',
     failureCode: '42809',
+    failedDeployStatus: 1,
+    failedDeployTransactionAborted: true,
+    failedLedgerUnfinished: true,
     failedMigrationAtomic: true,
+    resolvedAndRetried: true,
+    failurePriorAccountPreserved: true,
   });
 });

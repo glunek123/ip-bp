@@ -1,3 +1,5 @@
+BEGIN;
+
 CREATE TABLE "notary_list_preferences" (
     "user_id" UUID NOT NULL,
     "column_order" TEXT[] NOT NULL,
@@ -8,3 +10,5 @@ CREATE TABLE "notary_list_preferences" (
 );
 
 ALTER TABLE "notary_list_preferences" ADD CONSTRAINT "notary_list_preferences_user_id_fkey" FOREIGN KEY ("user_id") REFERENCES "user_accounts"("id") ON DELETE RESTRICT ON UPDATE CASCADE;
+
+COMMIT;

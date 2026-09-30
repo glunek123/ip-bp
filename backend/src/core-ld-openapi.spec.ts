@@ -211,9 +211,22 @@ describe('CORE-LD-002 OpenAPI contract', () => {
     expect(document.components?.schemas?.NotaryListPreferenceDto).toMatchObject(
       {
         required: ['order', 'hidden'],
+        description: expect.stringContaining('不接受额外字段'),
         properties: {
-          order: { type: 'array' },
-          hidden: { type: 'array' },
+          order: {
+            type: 'array',
+            minItems: 5,
+            maxItems: 5,
+            uniqueItems: true,
+            description: expect.stringContaining('前两项必须依次'),
+          },
+          hidden: {
+            type: 'array',
+            minItems: 0,
+            maxItems: 3,
+            uniqueItems: true,
+            description: expect.stringContaining('固定列不可隐藏'),
+          },
         },
       },
     );
