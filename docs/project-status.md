@@ -8,7 +8,7 @@
 
 ## 当前任务
 
-**CORE-NT-009｜公证事项办理清单导出（路线图唯一Current，开发中）**：已从干净且与远端一致的`main@346d531`建立`codex/core-nt-009-list-export`，开工上下文无漂移。本次只实现内部受权五列CSV导出、明确选择／预览数量与导出审计，复用实时授权、部门范围、事务和请求层；普通增量按Level 2门禁，权限／迁移Task独立Sol审查，集成后另做Final Review。Next保持CORE-NT-010。范围见[公证Spec](spec/v0.1/modules/notary.md#core-nt-009-受权批量导出办理清单)，执行见[实施计划](superpowers/plans/2026-09-30-core-nt-009-list-export.md)。尚未验收，不推送、合并或部署。
+**CORE-NT-010｜公证事项合法批量归档（路线图唯一Current，待领取）**：NT-009固定候选`c303858`已完成独立Sol终审及补审、Level 2门禁和隔离数据库／浏览器6项组合验收；详细结果只见[验证记录](spec/v0.1/VALIDATION.md)。现场仍为`codex/core-nt-009-list-export`，NT-009仅本地收口，未推送或合并；先集成并核对组合tree，再从更新后的main领取NT-010。Next为CORE-CA-003。本轮没有实施NT-010，开发／生产库迁移未执行；范围见[公证Spec](spec/v0.1/modules/notary.md#core-nt-010-合法批量归档)。
 
 CA-001匹配事实口径已在本分支修正并验收：实际匹配日期与系统登记时间分离、律所可空，旧成功回执仍可原样重放。旧候选的验证只对旧tree有效；本段不改变Current／Next。
 
@@ -31,6 +31,7 @@ CA-001匹配事实口径已在本分支修正并验收：实际匹配日期与�
 
 ## 最近验证
 
+- CORE-NT-009固定候选`c303858`通过独立Sol终审及补审、Level 2门禁和隔离PostgreSQL／Chromium 6项组合验收；前一候选的2项失败已修复并保留记录，实际证据及后续文档收口边界只见[验证记录](spec/v0.1/VALIDATION.md)。
 - CORE-NT-008列设置固定候选`6d2c884`经独立Final Review、Level 2门禁及隔离数据库／浏览器组合验收通过；真实持久化、本人偏好隔离和读取范围已验证，详细结果及文档收口边界只见[验证记录](spec/v0.1/VALIDATION.md)。
 - CORE-CA-001匹配事实修正候选`1279b1d62a79d00116ab93b8e642743fe5ee196d`、tree`4c8952b03bdfa24bdafa3ab0e6046abb06f22bf5`通过独立Review及补审（未关闭Critical／Important／Minor均为0）、完整`pnpm verify`（工具73、后端871、前端462）和隔离PostgreSQL／Chromium完整E2E 124/124；迁移空库／上一支持schema与失败回滚专项通过。收口态`b6d3489`已集成`main`；原候选`0f2a222`证据仅属历史，详细边界见[验证记录](spec/v0.1/VALIDATION.md)。
 - CORE-NT-006原固定业务候选`3cba594`通过独立Final Review与补审（未关闭Critical／Important／Minor均为0）及迁移专项；本地`main@a6ef5f1`组合tree重新通过完整`pnpm verify`（工具73、后端846、前端446）及隔离PostgreSQL／Chromium完整E2E 118/118（3.6分钟）。证据边界见[验证记录](spec/v0.1/VALIDATION.md)，不表示案件后续或生产发布完成。
@@ -53,4 +54,4 @@ CA-001匹配事实口径已在本分支修正并验收：实际匹配日期与�
 
 ## 下一步
 
-按已确认NT-009契约完成后端、独立高风险审查、界面与数据库／浏览器验证，再固定候选及收口；不实施NT-010，不执行开发／生产迁移。
+NT-009待按授权推送、集成并核对实际组合tree；其后从更新后的main领取NT-010。本轮不推送、合并、实施下一切片或执行开发／生产迁移。

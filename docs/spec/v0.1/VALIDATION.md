@@ -1,5 +1,19 @@
 # SPEC-001 文档验证
 
+## CORE-NT-009 公证事项办理清单导出（2026-09-30）
+
+实际通过正式Level 2门禁的固定候选为`c3038582e9f1678d9d58ee1072bc886fa2e43874`，tree`4fbfb1cda8328f43513cde5c0fb0ff4b19bc5c6e`，分支`codex/core-nt-009-list-export`，基于`main@346d531`；尚未推送或合并。内部有效账号通过真实页面跨页勾选事项或明确选择当前阶段，后端预览数量后下载最多1000条、固定五列的CSV。新增`notary.list.export` Action与`lead.read`实时范围取交集，客户／公证处拒绝；选中未知或越权ID整批拒绝，预览到下载数量变化409。CSV防公式注入、审计成功提交后才返回文件；个人列偏好不改变导出字段或可见范围。不包含附件打包、内部费用、详细取证表或批量归档。
+
+前向迁移`20260930030000_add_notary_list_export_action`与`20260930031000_add_notary_list_export_admin_grants`分别提交枚举与既有部门角色管理员Grant；实际变化模板增版、活跃受影响账号授权修订号递增，普通读取角色不自动获权。仅`backend/.env.test`独立测试库部署本切片迁移；随机临时schema验证56份空库全链、上一支持schema旧数据保留、精确补权／修订号、真实Prisma部署失败原子回滚及解决后重试。未改已执行迁移或重置开发／生产库、持久化卷。
+
+高风险后端Task独立Sol审查及集成Final Review、各次修复补审均已关闭finding，最终候选结论`ACCEPTED`，未关闭Critical／Important／Minor为0。审查记录在`.local/nt009/task-1-review.md`与`.local/nt009/final-review.md`；开发期发现大小写等价UUID重复校验与切换范围时待处理预览未取消，均保留RED并修复。正式候选`bb092b4`曾因5项Lint失败；`44b8175`正式E2E为4/6，不是通过证据。后者两项失败分别为枚举目录查询未限定schema、旧列偏好E2E精确表头遗漏固定“选择”列；仅限定随机schema且保留exact-one、补齐五处精确表头，未弱化断言或改迁移SQL。原失败日志与定向修复记录保留在`.local/logs/nt009-*`、`.local/nt009/probe-fix-report.md`；后者明确为工具输出转录，不冒充原始机器日志。
+
+固定候选各项检查退出0：后端聚焦Jest150/150（11套件）、前端API／列表及人员角色兼容Vitest94/94（7文件），`pnpm check:fast`、`pnpm spec:check`、受影响Prettier、`pnpm context:check:strict`及双端`pnpm build:prepared`通过。原始日志为`.local/logs/nt009-final-{backend-unit,frontend-unit,check-fast,docs-format,build}-c303858.log`，包含实际命令、固定commit／tree与退出状态。环境指纹在门禁前后均为`5eda1feed3489f2cf83c4228cd79afbc395b83c9d5ef9a96cc7c99b3e56130f1`；Node v24.21.0／pnpm 11.27.0与环境锁一致。
+
+同一候选的隔离PostgreSQL／Chromium串行组合6/6通过（39.2秒）：真实密码登录、跨页选择／阶段导出及CSV字节、公式转义、成功审计与实际行匹配、SELF／TEAM／部门范围和跨部门拒绝、外部账号／无Grant／撤权／停用下一请求、伪造ID、空／超限／数量变化、审计失败无文件且无成功审计；真实1001条授权事项边界；新迁移全链／升级／失败重试；列偏好刷新／重登／换浏览器与账号隔离；既有公证移交并发、审计／回执回滚和旧迁移回归。命令为`pnpm test:e2e:full tests/e2e/notary-list-export.spec.ts tests/e2e/notary-list-export-migration.spec.ts tests/e2e/notary-list-preference.spec.ts tests/e2e/core-leads.spec.ts --grep "real operator selects across pages|real authorized filtered scope above 1000|notary list export migrations|personal notary columns|notary handoff serializes|core lead migrations"`；原始日志`.local/logs/nt009-final-e2e-c303858.log`，浏览器报告`playwright-report/index.html`。故障注入产生的预期500对应通过的回滚断言；Vite大chunk、既有pg弃用及jsdom导航提示不是门禁失败。
+
+本切片复用既有授权／范围／事务基础设施及普通非破坏增量迁移，按已核定Level 2执行；没有NT-009 scope，不冒称Evidence v2，也未运行完整`pnpm verify`或未过滤全量E2E。上述业务结果只归属于`c303858`及其tree。此后的累计收口仅补路线图完成态与唯一Current／Next、项目恢复摘要、本证据引用及对应已解释快照；不改变业务契约、权限、AC、代码、迁移、测试输入、依赖、构建／运行配置、验证逻辑或环境。受影响文档格式、Spec、严格上下文及累计Git差异专项结果记录于`.local/logs/nt009-closeout-doc-check.log`；原业务证据不标成收口HEAD实跑结果。集成结果变化或远端必需检查仍按现行规则执行；开发／生产库迁移尚未执行，未发布，未验证Excel等第三方软件的CSV导入兼容性。
+
 ## CORE-NT-008 公证事项列表列设置（2026-09-30）
 
 实际通过正式Level 2门禁的固定候选为`6d2c884de27abb457c8694124110b6423d114843`，tree`bab0f0a2b81ab1e699df3e0ebdbd5a4c758e9c06`，分支`codex/core-nt-008-list-columns`，基于`main@4d362dd`；后续集成边界见本节末段。内部有效账号通过正式页面调整本人列显示与顺序，`GET`／`PUT /api/v1/notary-matters/list-preference`只按Actor保存本人偏好，实时复用`lead.read`。编号／详情及阶段固定可见，其余三列可隐藏换序；严格请求和响应、历史键容错、刷新／重登／换浏览器恢复及恢复默认均已实现。不扩展事项读取投影，不包含导出、批量归档或新的业务字段。
