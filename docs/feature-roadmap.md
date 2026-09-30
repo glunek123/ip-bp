@@ -1,6 +1,6 @@
 # 功能开发路线图
 
-更新日期：2026-09-30。CORE-NT-008列设置候选`6d2c884`通过独立终审、Level 2门禁及3项隔离数据库型浏览器验收，收口提交`a650f31`已快进合入`main`并核对相同tree；证据边界见[验证记录](spec/v0.1/VALIDATION.md)。唯一Current为CORE-NT-009办理清单导出，待领取；CORE-NT-010为Next。前一案件切片CA-002已验收并集成`main`。
+更新日期：2026-09-30。CORE-NT-008已验收并集成`main`，证据边界见[验证记录](spec/v0.1/VALIDATION.md)。唯一Current为CORE-NT-009办理清单导出，已从`main@346d531`领取开发，尚未验收；CORE-NT-010为Next。前一案件切片CA-002已验收并集成`main`。
 
 本文只回答“已经做到哪里、下一步做什么、之后按什么依赖顺序做”。详细业务规则仍以 [`docs/spec/`](spec/) 为准，核心主线的编码级字段、附件与存储边界以[核心业务字段、附件与存储契约](superpowers/specs/2026-09-21-core-flow-field-material-contract.md)为准，技术方案以设计文档为准，当前切片的技术任务以实施计划为准，实际验证结果以 [`docs/spec/v0.1/VALIDATION.md`](spec/v0.1/VALIDATION.md) 为准；[`docs/project-status.md`](project-status.md)仅保留当前恢复摘要。
 
@@ -108,7 +108,7 @@
 
 **CORE-NT-009｜公证事项办理清单导出。**
 
-NT-008已集成并核对实际tree，可从更新的`main`领取；尚未实现。仅导出正式已记录且有权查看的办理清单，不包含附件或尚无同口径正式数据的取证表字段。详见[公证Spec](spec/v0.1/modules/notary.md#core-nt-009-受权批量导出办理清单)。
+已从`main@346d531`领取至`codex/core-nt-009-list-export`，尚未验收。仅导出正式已记录且有权查看的办理清单，不包含附件或尚无同口径正式数据的取证表字段。详见[公证Spec](spec/v0.1/modules/notary.md#core-nt-009-受权批量导出办理清单)及[实施计划](superpowers/plans/2026-09-30-core-nt-009-list-export.md)。
 
 ### Next Slice
 
