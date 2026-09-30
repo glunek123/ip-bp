@@ -49,6 +49,8 @@ await expect(
 
 **Consumes：** Task 1的两个POST路径及Spec严格范围。新增HTTP公开函数`postBlob(path: string, body: JsonValue, options?: RequestOptions): Promise<{ blob: Blob; filename: string; mimeType: string }>`，使用JSON正文、同源Cookie、CSRF、既有超时／错误解析，GET getBlob保持兼容，下载不自动重试；API封装校验JSON预览与CSV MIME，不用fetch绕开请求层。
 
+**已核实的最小扩围：** 固定首列“选择”属于本切片的列表契约；允许同步`tests/e2e/notary-list-preference.spec.ts`五处精确表头期望，保留偏好持久化、顺序、隐藏、账号隔离与撤权断言，不过滤选择列或放宽数组匹配。
+
 执行参数：Vitest文件过滤直接跟在`test`后，不插入`--`；`postBlob`使用现有`retryOnCsrfInvalid: false`避免下载自动重试，不修改GET兼容行为。
 
 **UI：** 保留列设置；新增固定选择列（不能被偏好隐藏／换序）、本页全选与逐项勾选、选中数量／清空选择、批量导出入口。同一账号／部门／阶段翻页保留稳定ID，切阶段／身份清空。导出面板有明确“已勾选事项”／“当前阶段筛选结果”选择，不将未勾选默认为全库；说明只导出五列、不含附件和内部费用。调用后端preview展示范围和count，确认下载时传expectedCount；加载禁重复、取消、成功、权限／数量变化／超限错误提示完整。范围变化使旧预览无效；身份变化及卸载取消请求，旧响应不得触发文件下载。Object URL用后及时revoke。
