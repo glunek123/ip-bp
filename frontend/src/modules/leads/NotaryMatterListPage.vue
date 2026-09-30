@@ -250,14 +250,14 @@ async function confirmExport(): Promise<void> {
       scopeKey !== exportScopeKey.value
     )
       return;
-    const url = URL.createObjectURL(file.blob);
+    const url = globalThis.URL.createObjectURL(file.blob);
     try {
-      const anchor = document.createElement('a');
+      const anchor = globalThis.document.createElement('a');
       anchor.href = url;
       anchor.download = file.filename;
       anchor.click();
     } finally {
-      URL.revokeObjectURL(url);
+      globalThis.URL.revokeObjectURL(url);
     }
     exportMessage.value = '文件已生成并交由浏览器下载。';
     exportPreview.value = null;

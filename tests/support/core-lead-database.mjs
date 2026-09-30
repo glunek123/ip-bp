@@ -1132,10 +1132,9 @@ export async function seedNotaryListExportOverLimitData() {
       responsibleUserId: coreLeadFixtures.userA,
     },
   });
-  const { id: _id, businessNo: _businessNo, ...matter } = template;
   await database.notaryMatter.createMany({
     data: Array.from({ length: 979 }, (_, index) => ({
-      ...matter,
+      ...template,
       id: randomUUID(),
       businessNo: `NT-EXPORT-LIMIT-${String(index + 1).padStart(4, '0')}`,
     })),
