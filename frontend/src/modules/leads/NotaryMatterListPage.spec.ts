@@ -1,12 +1,22 @@
 import { flushPromises, mount } from '@vue/test-utils';
 import { createMemoryHistory, createRouter } from 'vue-router';
 import { afterEach, describe, expect, it, vi } from 'vitest';
+import { createPinia, setActivePinia } from 'pinia';
+import { useAuthStore } from '../../stores/auth';
 import NotaryMatterListPage from './NotaryMatterListPage.vue';
 
 const api = vi.hoisted(() => ({ listNotaryMatters: vi.fn() }));
+const preferenceApi = vi.hoisted(() => ({ get: vi.fn(), save: vi.fn() }));
 vi.mock('../../api/notary', async (importOriginal) => ({
   ...(await importOriginal<typeof import('../../api/notary')>()),
   listNotaryMatters: api.listNotaryMatters,
+}));
+vi.mock('../../api/notary-list-preference', async (importOriginal) => ({
+  ...(await importOriginal<
+    typeof import('../../api/notary-list-preference')
+  >()),
+  getNotaryListPreference: preferenceApi.get,
+  saveNotaryListPreference: preferenceApi.save,
 }));
 
 const result = {
@@ -33,6 +43,27 @@ const result = {
 };
 
 async function mountPage(path: string) {
+  setActivePinia(createPinia());
+  const auth = useAuthStore();
+  auth.session = {
+    principalType: 'INTERNAL',
+    user: { id: 'user-1', displayName: '运营', username: 'operator' },
+    department: { id: 'department-1', name: '知产部' },
+    departments: [{ id: 'department-1', name: '知产部' }],
+    customer: null,
+    notaryOffice: null,
+    authorizationRevision: 1,
+    expiresAt: '2099-01-01T00:00:00.000Z',
+    csrfToken: 'csrf-token',
+  };
+  auth.restored = true;
+  preferenceApi.get.mockResolvedValue({
+    order: ['businessNo', 'stage', 'sourceLead', 'notaryOffice', 'createdAt'],
+    hidden: [],
+  });
+  preferenceApi.save.mockImplementation((preference) =>
+    Promise.resolve(preference),
+  );
   const router = createRouter({
     history: createMemoryHistory(),
     routes: [
@@ -47,7 +78,7 @@ async function mountPage(path: string) {
     global: { plugins: [router] },
   });
   await flushPromises();
-  return { wrapper, router };
+  return { wrapper, router, auth };
 }
 
 afterEach(() => vi.resetAllMocks());
@@ -148,5 +179,236 @@ describe('NotaryMatterListPage', () => {
       'ARCHIVED',
     );
     expect(wrapper.get('[data-test="matter-row"]').text()).toContain('已归档');
+  });
+
+  it('opens the personal column settings while keeping the two fixed columns visible', async () => {
+    api.listNotaryMatters.mockResolvedValue(result);
+    const { wrapper } = await mountPage('/notary-matters');
+
+    await wrapper.get('[data-test="column-settings-toggle"]').trigger('click');
+    expect(wrapper.text()).toContain('始终显示');
+    expect(wrapper.findAll('thead th').map((cell) => cell.text())).toEqual([
+      '公证事项编号',
+      '阶段',
+      '来源线索',
+      '公证处',
+      '创建时间',
+    ]);
+    expect(wrapper.findAll('[data-test="column-option"]')).toHaveLength(3);
+  });
+
+  it('applies a reordered and hidden column only after saving', async () => {
+    api.listNotaryMatters.mockResolvedValue(result);
+    const { wrapper } = await mountPage('/notary-matters');
+    await wrapper.get('[data-test="column-settings-toggle"]').trigger('click');
+    await wrapper.get('[data-column-key="sourceLead"]').setValue(false);
+    await wrapper.get('[aria-label="上移公证处"]').trigger('click');
+
+    expect(wrapper.findAll('thead th').map((cell) => cell.text())).toEqual([
+      '公证事项编号',
+      '阶段',
+      '来源线索',
+      '公证处',
+      '创建时间',
+    ]);
+    await wrapper.get('[data-test="save-columns"]').trigger('click');
+    await flushPromises();
+
+    expect(preferenceApi.save).toHaveBeenCalledWith(
+      {
+        order: [
+          'businessNo',
+          'stage',
+          'notaryOffice',
+          'sourceLead',
+          'createdAt',
+        ],
+        hidden: ['sourceLead'],
+      },
+      expect.objectContaining({ signal: expect.any(AbortSignal) }),
+    );
+    expect(wrapper.findAll('thead th').map((cell) => cell.text())).toEqual([
+      '公证事项编号',
+      '阶段',
+      '公证处',
+      '创建时间',
+    ]);
+  });
+
+  it('cancels a draft without making a preference request', async () => {
+    api.listNotaryMatters.mockResolvedValue(result);
+    const { wrapper } = await mountPage('/notary-matters');
+    await wrapper.get('[data-test="column-settings-toggle"]').trigger('click');
+    await wrapper.get('[data-column-key="createdAt"]').setValue(false);
+    await wrapper.get('[data-test="cancel-columns"]').trigger('click');
+
+    expect(preferenceApi.save).not.toHaveBeenCalled();
+    expect(wrapper.findAll('thead th')).toHaveLength(5);
+  });
+
+  it('keeps the saved columns and draft after a save failure', async () => {
+    api.listNotaryMatters.mockResolvedValue(result);
+    preferenceApi.save.mockRejectedValueOnce(new Error('offline'));
+    const { wrapper } = await mountPage('/notary-matters');
+    await wrapper.get('[data-test="column-settings-toggle"]').trigger('click');
+    await wrapper.get('[data-column-key="createdAt"]').setValue(false);
+    await wrapper.get('[data-test="save-columns"]').trigger('click');
+    await flushPromises();
+
+    expect(wrapper.findAll('thead th')).toHaveLength(5);
+    expect(wrapper.get('[data-column-key="createdAt"]').element).toMatchObject({
+      checked: false,
+    });
+    expect(
+      wrapper.get('[data-test="column-preference-status"]').text(),
+    ).toContain('草稿仍保留');
+  });
+
+  it('persists restore-defaults through the preference API', async () => {
+    api.listNotaryMatters.mockResolvedValue(result);
+    preferenceApi.get.mockResolvedValue({
+      order: ['businessNo', 'stage', 'createdAt', 'notaryOffice', 'sourceLead'],
+      hidden: ['sourceLead'],
+    });
+    const { wrapper } = await mountPage('/notary-matters');
+    await wrapper.get('[data-test="column-settings-toggle"]').trigger('click');
+    await wrapper.get('[data-test="reset-columns"]').trigger('click');
+    await flushPromises();
+
+    expect(preferenceApi.save).toHaveBeenCalledWith(
+      {
+        order: [
+          'businessNo',
+          'stage',
+          'sourceLead',
+          'notaryOffice',
+          'createdAt',
+        ],
+        hidden: [],
+      },
+      expect.objectContaining({ signal: expect.any(AbortSignal) }),
+    );
+    expect(wrapper.findAll('thead th').map((cell) => cell.text())).toEqual([
+      '公证事项编号',
+      '阶段',
+      '来源线索',
+      '公证处',
+      '创建时间',
+    ]);
+  });
+
+  it('keeps the default list usable and locks editing when preference loading fails', async () => {
+    api.listNotaryMatters.mockResolvedValue(result);
+    preferenceApi.get.mockRejectedValueOnce(new Error('offline'));
+    const { wrapper } = await mountPage('/notary-matters');
+
+    expect(wrapper.findAll('[data-test="matter-row"]')).toHaveLength(1);
+    expect(wrapper.findAll('thead th')).toHaveLength(5);
+    expect(
+      wrapper
+        .get('[data-test="column-settings-toggle"]')
+        .attributes('disabled'),
+    ).toBeDefined();
+    expect(
+      wrapper.get('[data-test="column-preference-status"]').text(),
+    ).toContain('读取失败');
+
+    preferenceApi.get.mockResolvedValueOnce({
+      order: ['businessNo', 'stage', 'sourceLead', 'notaryOffice', 'createdAt'],
+      hidden: [],
+    });
+    await wrapper.get('[data-test="retry-preference"]').trigger('click');
+    await flushPromises();
+    expect(
+      wrapper
+        .get('[data-test="column-settings-toggle"]')
+        .attributes('disabled'),
+    ).toBeUndefined();
+  });
+
+  it('ignores a delayed preference response from the previous account', async () => {
+    api.listNotaryMatters.mockResolvedValue(result);
+    let resolveFirst: ((value: unknown) => void) | undefined;
+    preferenceApi.get
+      .mockImplementationOnce(
+        () =>
+          new Promise((resolve) => {
+            resolveFirst = resolve;
+          }),
+      )
+      .mockResolvedValueOnce({
+        order: [
+          'businessNo',
+          'stage',
+          'createdAt',
+          'notaryOffice',
+          'sourceLead',
+        ],
+        hidden: ['sourceLead'],
+      });
+    const { wrapper, auth } = await mountPage('/notary-matters');
+    auth.session = {
+      ...auth.session!,
+      user: { ...auth.session!.user, id: 'user-2' },
+    };
+    await flushPromises();
+    resolveFirst?.({
+      order: ['businessNo', 'stage', 'sourceLead', 'createdAt', 'notaryOffice'],
+      hidden: ['notaryOffice'],
+    });
+    await flushPromises();
+
+    expect(wrapper.findAll('thead th').map((cell) => cell.text())).toEqual([
+      '公证事项编号',
+      '阶段',
+      '创建时间',
+      '公证处',
+    ]);
+    expect(api.listNotaryMatters).toHaveBeenCalledTimes(2);
+  });
+
+  it('aborts and ignores a save response after the signed-in account changes', async () => {
+    api.listNotaryMatters.mockResolvedValue(result);
+    const { wrapper, auth } = await mountPage('/notary-matters');
+    let resolveSave: ((value: unknown) => void) | undefined;
+    preferenceApi.save.mockImplementationOnce(
+      () =>
+        new Promise((resolve) => {
+          resolveSave = resolve;
+        }),
+    );
+    preferenceApi.get.mockResolvedValueOnce({
+      order: ['businessNo', 'stage', 'createdAt', 'sourceLead', 'notaryOffice'],
+      hidden: ['sourceLead'],
+    });
+
+    await wrapper.get('[data-test="column-settings-toggle"]').trigger('click');
+    await wrapper.get('[data-column-key="createdAt"]').setValue(false);
+    await wrapper.get('[data-test="save-columns"]').trigger('click');
+    await flushPromises();
+    const saveOptions = preferenceApi.save.mock.calls[0]?.[1] as
+      { signal: AbortSignal } | undefined;
+
+    auth.session = {
+      ...auth.session!,
+      user: { ...auth.session!.user, id: 'user-2' },
+    };
+    await flushPromises();
+    resolveSave?.({
+      order: ['businessNo', 'stage', 'sourceLead', 'notaryOffice', 'createdAt'],
+      hidden: ['createdAt'],
+    });
+    await flushPromises();
+
+    expect(saveOptions?.signal.aborted).toBe(true);
+    expect(wrapper.findAll('thead th').map((cell) => cell.text())).toEqual([
+      '公证事项编号',
+      '阶段',
+      '创建时间',
+      '公证处',
+    ]);
+    expect(
+      wrapper.get('[data-test="column-preference-status"]').text(),
+    ).toContain('个人列设置已加载');
   });
 });

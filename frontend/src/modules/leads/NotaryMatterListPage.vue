@@ -8,6 +8,14 @@ import {
   type NotaryListStage,
   type NotaryMatterListItem,
 } from '../../api/notary';
+import {
+  defaultNotaryListPreference,
+  getNotaryListPreference,
+  saveNotaryListPreference,
+  type NotaryListPreference,
+  type NotaryListPreferenceColumn,
+} from '../../api/notary-list-preference';
+import { useAuthStore } from '../../stores/auth';
 
 const stageLabels: Record<NotaryListStage, string> = {
   PENDING_EVIDENCE: '待取证',
@@ -20,12 +28,30 @@ const stageLabels: Record<NotaryListStage, string> = {
 };
 const route = useRoute();
 const router = useRouter();
+const auth = useAuthStore();
 const state = ref<'loading' | 'ready' | 'failed'>('loading');
 const items = ref<NotaryMatterListItem[]>([]);
 const total = ref(0);
 const currentPage = ref(1);
 const pageSize = ref(20);
-let request: AbortController | undefined;
+const preferenceState = ref<'loading' | 'ready' | 'failed'>('loading');
+const savedPreference = ref<NotaryListPreference>({
+  order: [...defaultNotaryListPreference.order],
+  hidden: [],
+});
+const draftOrder = ref<NotaryListPreferenceColumn[]>([
+  ...defaultNotaryListPreference.order,
+]);
+const draftHidden = ref<NotaryListPreference['hidden']>([]);
+const settingsOpen = ref(false);
+const preferenceMessage = ref('正在读取个人列设置。');
+const saving = ref(false);
+let listRequest: AbortController | undefined;
+let preferenceRequest: AbortController | undefined;
+let saveRequest: AbortController | undefined;
+let preferenceGeneration = 0;
+let saveGeneration = 0;
+let currentListScope = '';
 
 const selectedStage = computed<NotaryListStage | undefined>(() => {
   const value = route.query.stage;
@@ -44,11 +70,183 @@ const requestedPage = computed(() => {
 const totalPages = computed(() =>
   Math.max(1, Math.ceil(total.value / pageSize.value)),
 );
+const columnLabels: Record<NotaryListPreferenceColumn, string> = {
+  businessNo: '公证事项编号',
+  stage: '阶段',
+  sourceLead: '来源线索',
+  notaryOffice: '公证处',
+  createdAt: '创建时间',
+};
+const optionalColumns = computed(() =>
+  draftOrder.value.filter(isOptionalColumn),
+);
+const visibleColumns = computed(() =>
+  savedPreference.value.order.filter(
+    (column) =>
+      !isOptionalColumn(column) ||
+      !savedPreference.value.hidden.includes(column),
+  ),
+);
+
+function isOptionalColumn(
+  column: NotaryListPreferenceColumn,
+): column is Exclude<NotaryListPreferenceColumn, 'businessNo' | 'stage'> {
+  return column !== 'businessNo' && column !== 'stage';
+}
+
+function copyPreference(
+  preference: NotaryListPreference,
+): NotaryListPreference {
+  return { order: [...preference.order], hidden: [...preference.hidden] };
+}
+
+function setDraft(preference: NotaryListPreference): void {
+  draftOrder.value = [...preference.order];
+  draftHidden.value = [...preference.hidden];
+}
+
+async function loadPreference(userId: string | undefined): Promise<void> {
+  preferenceRequest?.abort();
+  saveRequest?.abort();
+  preferenceGeneration += 1;
+  saveGeneration += 1;
+  const generation = preferenceGeneration;
+  saving.value = false;
+  settingsOpen.value = false;
+  savedPreference.value = copyPreference(defaultNotaryListPreference);
+  setDraft(defaultNotaryListPreference);
+  if (!userId) {
+    preferenceState.value = 'failed';
+    preferenceMessage.value = '当前账号信息不可用，无法读取个人列设置。';
+    return;
+  }
+
+  const controller = new AbortController();
+  preferenceRequest = controller;
+  preferenceState.value = 'loading';
+  preferenceMessage.value = '正在读取个人列设置。';
+  try {
+    const preference = await getNotaryListPreference({
+      signal: controller.signal,
+    });
+    if (
+      controller.signal.aborted ||
+      generation !== preferenceGeneration ||
+      auth.session?.user.id !== userId
+    )
+      return;
+    savedPreference.value = copyPreference(preference);
+    setDraft(preference);
+    preferenceState.value = 'ready';
+    preferenceMessage.value = '个人列设置已加载。';
+  } catch {
+    if (
+      controller.signal.aborted ||
+      generation !== preferenceGeneration ||
+      auth.session?.user.id !== userId
+    )
+      return;
+    preferenceState.value = 'failed';
+    preferenceMessage.value =
+      '个人列设置读取失败。列表仍可使用默认列，请重试读取。';
+  }
+}
+
+function moveDraftColumn(
+  column: NotaryListPreferenceColumn,
+  direction: -1 | 1,
+) {
+  if (!isOptionalColumn(column)) return;
+  const optional = optionalColumns.value;
+  const index = optional.indexOf(column);
+  const target = index + direction;
+  if (index < 0 || target < 0 || target >= optional.length) return;
+  const next = [...optional];
+  [next[index], next[target]] = [next[target], next[index]];
+  draftOrder.value = ['businessNo', 'stage', ...next];
+}
+
+function toggleDraftColumn(
+  column: NotaryListPreferenceColumn,
+  hidden: boolean,
+): void {
+  if (column === 'businessNo' || column === 'stage') return;
+  draftHidden.value = hidden
+    ? [...new Set([...draftHidden.value, column])]
+    : draftHidden.value.filter((item) => item !== column);
+}
+
+async function savePreference(preference: NotaryListPreference): Promise<void> {
+  const userId = auth.session?.user.id;
+  if (preferenceState.value !== 'ready' || !userId || saving.value) return;
+  saveRequest?.abort();
+  const controller = new AbortController();
+  saveRequest = controller;
+  const generation = ++saveGeneration;
+  saving.value = true;
+  preferenceMessage.value = '正在保存个人列设置。';
+  try {
+    const saved = await saveNotaryListPreference(preference, {
+      signal: controller.signal,
+    });
+    if (
+      controller.signal.aborted ||
+      generation !== saveGeneration ||
+      auth.session?.user.id !== userId
+    )
+      return;
+    savedPreference.value = copyPreference(saved);
+    setDraft(saved);
+    preferenceMessage.value = '个人列设置已保存。';
+  } catch {
+    if (
+      controller.signal.aborted ||
+      generation !== saveGeneration ||
+      auth.session?.user.id !== userId
+    )
+      return;
+    preferenceMessage.value = '保存失败，草稿仍保留，可以重试。';
+  } finally {
+    if (generation === saveGeneration) saving.value = false;
+  }
+}
+
+function saveDraft(): Promise<void> {
+  return savePreference({
+    order: [...draftOrder.value],
+    hidden: [...draftHidden.value],
+  });
+}
+
+function cancelDraft(): void {
+  setDraft(savedPreference.value);
+  settingsOpen.value = false;
+  preferenceMessage.value = '已取消未保存的列设置。';
+}
+
+function resetDraft(): Promise<void> {
+  setDraft(defaultNotaryListPreference);
+  return savePreference(copyPreference(defaultNotaryListPreference));
+}
 
 async function load(): Promise<void> {
-  request?.abort();
+  listRequest?.abort();
+  const userId = auth.session?.user.id;
+  const departmentId = auth.session?.department?.id;
+  const scope = `${userId ?? ''}:${departmentId ?? ''}`;
+  if (currentListScope && currentListScope !== scope) {
+    items.value = [];
+    total.value = 0;
+  }
+  currentListScope = scope;
+  if (!userId) {
+    items.value = [];
+    total.value = 0;
+    state.value = 'ready';
+    return;
+  }
   const controller = new AbortController();
-  request = controller;
+  listRequest = controller;
   state.value = 'loading';
   try {
     const result = await listNotaryMatters(
@@ -57,7 +255,12 @@ async function load(): Promise<void> {
       { signal: controller.signal },
       selectedStage.value,
     );
-    if (controller.signal.aborted) return;
+    if (
+      controller.signal.aborted ||
+      auth.session?.user.id !== userId ||
+      auth.session?.department?.id !== departmentId
+    )
+      return;
     items.value = result.items;
     total.value = result.total;
     currentPage.value = result.page;
@@ -79,11 +282,25 @@ function formatTime(value: string): string {
   });
 }
 watch(
-  () => [route.query.page, route.query.stage],
+  () => [
+    route.query.page,
+    route.query.stage,
+    auth.session?.user.id,
+    auth.session?.department?.id,
+  ],
   () => void load(),
   { immediate: true },
 );
-onBeforeUnmount(() => request?.abort());
+watch(
+  () => auth.session?.user.id,
+  (userId) => void loadPreference(userId),
+  { immediate: true },
+);
+onBeforeUnmount(() => {
+  listRequest?.abort();
+  preferenceRequest?.abort();
+  saveRequest?.abort();
+});
 </script>
 
 <template>
@@ -94,7 +311,101 @@ onBeforeUnmount(() => request?.abort());
           <h1>公证阶段</h1>
           <p>逐个办理当前账号有权查看的公证事项。</p>
         </div>
+        <ElButton
+          data-test="column-settings-toggle"
+          :disabled="preferenceState !== 'ready' || saving"
+          @click="settingsOpen = !settingsOpen"
+          >列设置</ElButton
+        >
       </div>
+      <section
+        v-if="settingsOpen"
+        class="column-settings demo-card"
+        aria-label="公证事项列设置"
+      >
+        <div class="column-settings-fixed">
+          <strong>始终显示</strong>
+          <span>公证事项编号、阶段</span>
+        </div>
+        <div class="column-settings-options">
+          <div
+            v-for="(column, index) in optionalColumns"
+            :key="column"
+            class="column-setting-row"
+            data-test="column-option"
+          >
+            <label>
+              <input
+                type="checkbox"
+                :checked="
+                  !draftHidden.includes(
+                    column as Exclude<
+                      NotaryListPreferenceColumn,
+                      'businessNo' | 'stage'
+                    >,
+                  )
+                "
+                :data-column-key="column"
+                @change="
+                  toggleDraftColumn(
+                    column,
+                    !($event.target as HTMLInputElement).checked,
+                  )
+                "
+              />
+              {{ columnLabels[column] }}
+            </label>
+            <ElButton
+              :disabled="saving || index === 0"
+              :aria-label="`上移${columnLabels[column]}`"
+              @click="moveDraftColumn(column, -1)"
+              >上移</ElButton
+            >
+            <ElButton
+              :disabled="saving || index === optionalColumns.length - 1"
+              :aria-label="`下移${columnLabels[column]}`"
+              @click="moveDraftColumn(column, 1)"
+              >下移</ElButton
+            >
+          </div>
+        </div>
+        <div class="column-settings-actions">
+          <ElButton
+            data-test="save-columns"
+            :disabled="saving"
+            @click="saveDraft"
+          >
+            {{ saving ? '保存中' : '保存' }}
+          </ElButton>
+          <ElButton
+            data-test="cancel-columns"
+            :disabled="saving"
+            @click="cancelDraft"
+          >
+            取消
+          </ElButton>
+          <ElButton
+            data-test="reset-columns"
+            :disabled="saving"
+            @click="resetDraft"
+          >
+            恢复默认
+          </ElButton>
+        </div>
+      </section>
+      <p
+        class="column-preference-message"
+        role="status"
+        data-test="column-preference-status"
+      >
+        {{ preferenceMessage }}
+        <ElButton
+          v-if="preferenceState === 'failed'"
+          data-test="retry-preference"
+          @click="loadPreference(auth.session?.user.id)"
+          >重试读取</ElButton
+        >
+      </p>
       <section class="demo-card" aria-live="polite">
         <div v-if="state === 'loading'" class="state-panel">
           <span class="state-index">读取中</span>
@@ -119,11 +430,9 @@ onBeforeUnmount(() => request?.abort());
           <table class="demo-table">
             <thead>
               <tr>
-                <th>公证事项编号</th>
-                <th>阶段</th>
-                <th>来源线索</th>
-                <th>公证处</th>
-                <th>创建时间</th>
+                <th v-for="column in visibleColumns" :key="column">
+                  {{ columnLabels[column] }}
+                </th>
               </tr>
             </thead>
             <tbody>
@@ -132,25 +441,31 @@ onBeforeUnmount(() => request?.abort());
                 :key="matter.id"
                 data-test="matter-row"
               >
-                <td>
-                  <RouterLink
-                    data-test="matter-link"
-                    :to="`/notary-matters/${matter.id}`"
-                    >{{ matter.businessNo }}</RouterLink
-                  >
+                <td v-for="column in visibleColumns" :key="column">
+                  <template v-if="column === 'businessNo'">
+                    <RouterLink
+                      data-test="matter-link"
+                      :to="`/notary-matters/${matter.id}`"
+                      >{{ matter.businessNo }}</RouterLink
+                    >
+                  </template>
+                  <template v-else-if="column === 'stage'">
+                    <span class="pill">{{ stageLabels[matter.stage] }}</span>
+                  </template>
+                  <template v-else-if="column === 'sourceLead'">
+                    <RouterLink
+                      data-test="source-lead-link"
+                      :to="`/leads/${matter.sourceLead.id}`"
+                      >{{ matter.sourceLead.businessNo }}</RouterLink
+                    >
+                  </template>
+                  <template v-else-if="column === 'notaryOffice'">
+                    {{ matter.notaryOffice.name }}
+                  </template>
+                  <template v-else>
+                    <span class="mono">{{ formatTime(matter.createdAt) }}</span>
+                  </template>
                 </td>
-                <td>
-                  <span class="pill">{{ stageLabels[matter.stage] }}</span>
-                </td>
-                <td>
-                  <RouterLink
-                    data-test="source-lead-link"
-                    :to="`/leads/${matter.sourceLead.id}`"
-                    >{{ matter.sourceLead.businessNo }}</RouterLink
-                  >
-                </td>
-                <td>{{ matter.notaryOffice.name }}</td>
-                <td class="mono">{{ formatTime(matter.createdAt) }}</td>
               </tr>
             </tbody>
           </table>
@@ -178,3 +493,43 @@ onBeforeUnmount(() => request?.abort());
     </main>
   </div>
 </template>
+
+<style scoped>
+.column-settings {
+  margin-bottom: 1rem;
+}
+
+.column-settings-fixed,
+.column-setting-row,
+.column-settings-actions {
+  align-items: center;
+  display: flex;
+  flex-wrap: wrap;
+  gap: 0.75rem;
+}
+
+.column-settings-options {
+  display: grid;
+  gap: 0.5rem;
+  margin-top: 0.75rem;
+}
+
+.column-setting-row label {
+  align-items: center;
+  display: inline-flex;
+  flex: 1;
+  gap: 0.5rem;
+}
+
+.column-settings-actions {
+  margin-top: 1rem;
+}
+
+.column-preference-message {
+  align-items: center;
+  display: flex;
+  flex-wrap: wrap;
+  gap: 0.5rem;
+  margin: 0 0 0.75rem;
+}
+</style>
