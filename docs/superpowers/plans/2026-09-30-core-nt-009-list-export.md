@@ -45,7 +45,7 @@ await expect(
 
 ## Task 2: 前端明确选择、预览下载及数据库浏览器验收（Luna）
 
-**Allowed files：** frontend/src/api/http.ts及http.spec.ts（仅按既定契约新增postBlob复用executeRequest与文件解析，不重构请求层）；frontend/src/api/notary-list-export.{ts,spec.ts}；frontend/src/modules/leads/NotaryMatterListPage.{vue,spec.ts}；tests/e2e/notary-list-export.spec.ts及tests/support/core-lead-database.mjs（仅增量fixture）。不得改schema、权限计算、backend业务实现或公共契约；遇到冲突立即升级主Agent。
+**Allowed files：** frontend/src/api/http.ts及http.spec.ts（仅按既定契约新增postBlob复用executeRequest与文件解析，不重构请求层）；frontend/src/api/notary-list-export.{ts,spec.ts}；frontend/src/modules/leads/NotaryMatterListPage.{vue,spec.ts}；tests/e2e/notary-list-export.spec.ts及tests/support/core-lead-database.{mjs,d.mts}（仅增量fixture及其类型）。不得改schema、权限计算、backend业务实现或公共契约；遇到冲突立即升级主Agent。
 
 **Consumes：** Task 1的两个POST路径及Spec严格范围。新增HTTP公开函数`postBlob(path: string, body: JsonValue, options?: RequestOptions): Promise<{ blob: Blob; filename: string; mimeType: string }>`，使用JSON正文、同源Cookie、CSRF、既有超时／错误解析，GET getBlob保持兼容，下载不自动重试；API封装校验JSON预览与CSV MIME，不用fetch绕开请求层。
 
