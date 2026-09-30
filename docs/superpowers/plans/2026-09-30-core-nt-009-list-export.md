@@ -21,6 +21,8 @@
 
 **Contract：** 严格执行公证Spec NT-009实施契约。Action为NOTARY_LIST_EXPORT／notary.list.export；两个POST路径为`/notary-matters/exports/preview`与`/notary-matters/exports`，前者返回count／maxRows，后者返回CSV附件，expectedCount必填。最大1000条；输入只包含SELECTED唯一UUID列表或FILTERED可选stage；选中不存在／越权ID整批拒绝。CSV固定五列，审计使用现有AuditEvent，action=`notary.list.export.generated`，resourceType=`notary-list-export`、resourceId为服务端UUID，details保存mode、stage／选中范围、actualIds、count，不保存CSV全文。
 
+**已核实的最小扩围：** 新Grant影响旧升级夹具中两个部门角色管理员；允许仅同步`tests/support/core-lead-database.mjs`旧迁移探针及`tests/e2e/core-leads.spec.ts`对应断言，新增导出Grant精确计数并更新真实授权修订号，不放宽断言。迁移同步递增实际变化模板的version，防止旧角色编辑表单覆盖新Grant；普通模板不变，失败回滚及重试不得重复增版。
+
 **Implementation：** 在transaction内校验活跃INTERNAL账号并通过当前reader读取两种scope；notaryMatter的departmentId及sourceLead的两scope同时限制。预览无审计；最终一次稳定查询最多1001行、核对expectedCount、构造CSV并写审计，事务失败不发送。Controller在事务完成后设置text/csv;charset=utf-8及附件文件名，不接受前端字段值。新增静态Controller必须先于`:id`详情路由；不改变现有偏好／列表契约。管理员新Grant按已有角色管理边界迁移模式，只补DEPARTMENT role.manage角色，不为普通lead.read角色补；更新实际受影响账号revision，不依赖用户名／角色名特判。当前bootstrap若枚举固定Actions须同步最小增量并补直接测试。
 
 - [ ] 先建立RED：无导出Grant403、交集范围、外部主体拒绝、未知／重复／混合输入400、空／超限、阶段筛选、expectedCount过期409、稳定顺序／五列／BOM、公式及引号换行转义、审计失败不返回。
@@ -46,6 +48,8 @@ await expect(
 **Allowed files：** frontend/src/api/http.ts及http.spec.ts（仅按既定契约新增postBlob复用executeRequest与文件解析，不重构请求层）；frontend/src/api/notary-list-export.{ts,spec.ts}；frontend/src/modules/leads/NotaryMatterListPage.{vue,spec.ts}；tests/e2e/notary-list-export.spec.ts及tests/support/core-lead-database.mjs（仅增量fixture）。不得改schema、权限计算、backend业务实现或公共契约；遇到冲突立即升级主Agent。
 
 **Consumes：** Task 1的两个POST路径及Spec严格范围。新增HTTP公开函数`postBlob(path: string, body: JsonValue, options?: RequestOptions): Promise<{ blob: Blob; filename: string; mimeType: string }>`，使用JSON正文、同源Cookie、CSRF、既有超时／错误解析，GET getBlob保持兼容，下载不自动重试；API封装校验JSON预览与CSV MIME，不用fetch绕开请求层。
+
+执行参数：Vitest文件过滤直接跟在`test`后，不插入`--`；`postBlob`使用现有`retryOnCsrfInvalid: false`避免下载自动重试，不修改GET兼容行为。
 
 **UI：** 保留列设置；新增固定选择列（不能被偏好隐藏／换序）、本页全选与逐项勾选、选中数量／清空选择、批量导出入口。同一账号／部门／阶段翻页保留稳定ID，切阶段／身份清空。导出面板有明确“已勾选事项”／“当前阶段筛选结果”选择，不将未勾选默认为全库；说明只导出五列、不含附件和内部费用。调用后端preview展示范围和count，确认下载时传expectedCount；加载禁重复、取消、成功、权限／数量变化／超限错误提示完整。范围变化使旧预览无效；身份变化及卸载取消请求，旧响应不得触发文件下载。Object URL用后及时revoke。
 
