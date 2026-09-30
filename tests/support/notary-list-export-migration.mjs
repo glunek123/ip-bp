@@ -231,9 +231,13 @@ export async function verifyNotaryListExportMigration() {
 
     await selectSchema(schemas.empty);
     await apply(migrations);
-    const enumExists =
-      await client.query(`SELECT 1 FROM pg_enum e JOIN pg_type t ON t.oid=e.enumtypid
-      WHERE t.typname='permission_action' AND e.enumlabel='notary.list.export'`);
+    const enumExists = await client.query(
+      `SELECT 1 FROM pg_enum e JOIN pg_type t ON t.oid=e.enumtypid
+      JOIN pg_namespace n ON n.oid=t.typnamespace
+      WHERE n.nspname=$1 AND t.typname='permission_action'
+      AND e.enumlabel='notary.list.export'`,
+      [schemas.empty],
+    );
     if (enumExists.rowCount !== 1)
       throw new Error('Empty migration chain omitted export action');
 
