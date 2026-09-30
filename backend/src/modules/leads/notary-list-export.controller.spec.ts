@@ -18,6 +18,7 @@ const actor = {
   authorizationRevision: 1,
 };
 const matterId = '33333333-3333-4333-8333-333333333333';
+const mixedCaseId = 'a3333333-3333-4333-8333-333333333333';
 
 describe('notary list export HTTP contract', () => {
   const pipe = new ValidationPipe({
@@ -128,6 +129,33 @@ describe('notary list export HTTP contract', () => {
       matterIds: [matterId],
       expectedCount: 1,
     });
+  });
+
+  it('rejects case-equivalent duplicate selected IDs on both POST routes while accepting one uppercase ID', async () => {
+    const duplicate = [mixedCaseId, mixedCaseId.toUpperCase()];
+    await request(app.getHttpServer())
+      .post('/api/v1/notary-matters/exports/preview')
+      .send({ mode: 'SELECTED', matterIds: duplicate })
+      .expect(400);
+    await request(app.getHttpServer())
+      .post('/api/v1/notary-matters/exports')
+      .send({ mode: 'SELECTED', matterIds: duplicate, expectedCount: 2 })
+      .expect(400);
+    expect(preview).not.toHaveBeenCalled();
+    expect(generate).not.toHaveBeenCalled();
+
+    await request(app.getHttpServer())
+      .post('/api/v1/notary-matters/exports/preview')
+      .send({ mode: 'SELECTED', matterIds: [mixedCaseId.toUpperCase()] })
+      .expect(200);
+    await request(app.getHttpServer())
+      .post('/api/v1/notary-matters/exports')
+      .send({
+        mode: 'SELECTED',
+        matterIds: [mixedCaseId.toUpperCase()],
+        expectedCount: 1,
+      })
+      .expect(200);
   });
 
   it('does not send an attachment if the service transaction fails', async () => {

@@ -36,7 +36,8 @@ export function isValidExportScope(
       input.matterIds.length >= 1 &&
       input.matterIds.length <= NOTARY_LIST_EXPORT_MAX_ROWS &&
       input.matterIds.every((id) => typeof id === 'string' && uuid.test(id)) &&
-      new Set(input.matterIds).size === input.matterIds.length
+      new Set(input.matterIds.map((id: string) => id.toLowerCase())).size ===
+        input.matterIds.length
     );
   }
   if (input.mode === 'FILTERED') {

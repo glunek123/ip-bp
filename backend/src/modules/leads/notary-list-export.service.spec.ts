@@ -11,6 +11,7 @@ const actor: ActorContext = {
 };
 const matterId = '33333333-3333-4333-8333-333333333333';
 const otherId = '44444444-4444-4444-8444-444444444444';
+const mixedCaseId = 'a3333333-3333-4333-8333-333333333333';
 const readScope = {
   departmentId: actor.departmentId,
   responsibleUserId: actor.userId,
@@ -117,6 +118,22 @@ describe('NotaryListExportService', () => {
       }),
     ).rejects.toMatchObject({ response: { code: 'ACTION_FORBIDDEN' } });
     expect(tx.auditEvent.create).not.toHaveBeenCalled();
+  });
+
+  it('rejects case-equivalent duplicate IDs at the service boundary without querying', async () => {
+    const { service, database } = fixture();
+    const matterIds = [mixedCaseId, mixedCaseId.toUpperCase()];
+    await expect(
+      service.preview(actor, { mode: 'SELECTED', matterIds }),
+    ).rejects.toMatchObject({
+      response: { code: 'VALIDATION_ERROR' },
+    });
+    await expect(
+      service.export(actor, { mode: 'SELECTED', matterIds, expectedCount: 2 }),
+    ).rejects.toMatchObject({
+      response: { code: 'VALIDATION_ERROR' },
+    });
+    expect(database.$transaction).not.toHaveBeenCalled();
   });
 
   it('rejects empty and over-limit results and filters by stage', async () => {
