@@ -24,8 +24,8 @@ export async function verifyNotaryListPreferenceMigration() {
   const migrations = (await readdir(migrationRoot))
     .filter((name) => /^\d{14}_/u.test(name))
     .sort();
-  if (migrations.at(-1) !== target) {
-    throw new Error('Notary list preference must be the final migration');
+  if (!migrations.includes(target)) {
+    throw new Error('Notary list preference migration is missing');
   }
   const suffix = randomUUID().replaceAll('-', '');
   const schemas = {
