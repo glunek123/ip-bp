@@ -8,7 +8,7 @@
 
 ## 当前任务
 
-**CORE-NT-008｜公证事项列表列设置（路线图唯一Current，待领取）**：Next为CORE-NT-009；本轮没有实施NT-008。前一切片CORE-CA-002的固定业务候选`cf75372`／tree`2735244`通过独立审查、完整`pnpm verify`及隔离数据库／Chromium 127项E2E；收口提交`fb992a3`已快进合入并推送至`main`与`origin/main`，证据见[验证记录](spec/v0.1/VALIDATION.md)。CA-002仅办理待写诉状的真实起诉材料及确认提交，不含后续确认诉状。
+**CORE-NT-008｜公证事项列表列设置（路线图唯一Current，开发中）**：已核对`main@4d362dd`与`origin/main`一致、工作区干净且上下文无漂移，从此基线创建`codex/core-nt-008-list-columns`。按已批准的[公证Spec](spec/v0.1/modules/notary.md#core-nt-008-列设置)实施本人列显示／顺序持久化，实施边界见[计划](superpowers/plans/2026-09-30-core-nt-008-list-columns.md)，尚未验收；Next为CORE-NT-009。前一切片CA-002已验收并集成，证据见[验证记录](spec/v0.1/VALIDATION.md)。
 
 CA-001匹配事实口径已在本分支修正并验收：实际匹配日期与系统登记时间分离、律所可空，旧成功回执仍可原样重放。旧候选的验证只对旧tree有效；本段不改变Current／Next。
 
@@ -52,4 +52,4 @@ CA-001匹配事实口径已在本分支修正并验收：实际匹配日期与�
 
 ## 下一步
 
-CA-002已完成验收与main集成；下一开发切片按路线图为CORE-NT-008，尚未领取或实施。未上线，未执行生产迁移。
+继续CORE-NT-008实现、审查与真实数据库／浏览器验收，完成前不推进Current／Next。未上线，未执行生产迁移。
