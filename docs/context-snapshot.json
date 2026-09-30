@@ -1,6 +1,6 @@
 {
   "version": 1,
-  "recordedAt": "2026-09-30T03:07:30.704Z",
+  "recordedAt": "2026-09-30T03:17:51.769Z",
   "files": {
     ".cursor/rules/verified-feature-integration.mdc": "ffd2306612ba6f09749629c5adb9e645f7f37aa6ee27ff1bc1c3d8b14efeca38",
     ".env.example": "07211cde5c2b59efc21b619b752d4c9b871f0980d2d64ca3c146ad6151fd27ca",
@@ -537,12 +537,12 @@
     "tests/e2e/auth.spec.ts": "032d03276c1ac6a29b97b73352d1b83591ca4d99c21cf074c37943366af7bcc6",
     "tests/e2e/cases.spec.ts": "bf6a3f34f471f6ecede5157d6dca7c256cbdc9420c390c18be3f51413e4a37f6",
     "tests/e2e/components.spec.ts": "8d94b3b044d9ddc24c323536aba04edc08e216271ff3082705a21c1ac2796742",
-    "tests/e2e/core-leads.spec.ts": "bc550f844dd7edc0f5d682bc8f1697f311aa440ee1dc340c5dc70e073b6b325c",
+    "tests/e2e/core-leads.spec.ts": "ffd85e11efcb1a50ed7a9f09918a8075ca6e01fdda6ff648cafcbba96fffc713",
     "tests/e2e/customers.spec.ts": "f6000339d4025dc98cf74498a7586b9aadf6091599e96c626ac2c05cb4a9436c",
     "tests/e2e/health.spec.ts": "e6de0eadada2040386f75830134425231a279f51f17f083975340211d6d0b5da",
     "tests/e2e/personnel-access.spec.ts": "d45f3ed245e8801bfe7bf767b53790a216b0ae5cf37e55ebe2793df9e24c41c8",
     "tests/e2e/role-template-management.spec.ts": "8e94b16b9004716aa87197e05717dd4c4c6524413587be91465f1b86b8a8127b",
-    "tests/support/core-lead-database.mjs": "19444c5b04642e48b4ced0ca9ffa8faaa332f50f39a421b71f31e8def68d1fb4",
+    "tests/support/core-lead-database.mjs": "6e394c462b36384b4972217348c06ae895de11a4537d5b5367f872675dfb5d4b",
     "tests/support/customer-database.mjs": "46f2457deb03868c8a5cfbfcc9311b787e7b43c028503a31a4c10d5a979afd40",
     "tools/project-runtime/pnpm.cmd": "ac586525b47f64eaf5e540676428c50fc78fd8fa0f8faa04f730c70f04a968b9",
     "tsconfig.json": "5808a45c690a3f2b628d77202bb9f0f25b418dd15ddaeeccf39cd9af3305fcf1",

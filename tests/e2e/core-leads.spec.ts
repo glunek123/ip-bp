@@ -6141,7 +6141,8 @@ test('core lead migrations preserve legacy facts and roll back failed phases', a
     compatibleAdmittedStatus: 'ADMITTED',
     grantCounts: { bootstrap: 4, shared: 0, incomplete: 0 },
     pushGrantCounts: { bootstrap: 1, shared: 0, incomplete: 0 },
-    revisions: { bootstrap: 7, shared: 3, incomplete: 1 },
+    complaintGrantCounts: { bootstrap: 1, shared: 0, incomplete: 0 },
+    revisions: { bootstrap: 8, shared: 3, incomplete: 1 },
     identityIsolation: {
       unboundClientCode: '23514',
       clientMembershipCode: '23514',

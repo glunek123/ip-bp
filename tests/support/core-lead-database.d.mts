@@ -392,6 +392,7 @@ export function verifyCoreLeadMigration(): Promise<{
     compatibleAdmittedStatus: string | null;
     grantCounts: Record<string, number>;
     pushGrantCounts: Record<string, number>;
+    complaintGrantCounts: Record<string, number>;
     revisions: Record<string, number>;
     identityIsolation: {
       unboundClientCode: string | null;

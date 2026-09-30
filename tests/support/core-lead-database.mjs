@@ -2608,6 +2608,7 @@ export async function verifyCoreLeadMigration() {
     ).rows[0]?.profile_status;
     const grantCounts = {};
     const pushGrantCounts = {};
+    const complaintGrantCounts = {};
     for (const [name, roleId] of [
       ['bootstrap', upgradeIds.bootstrapRole],
       ['shared', upgradeIds.sharedRole],
@@ -2628,6 +2629,15 @@ export async function verifyCoreLeadMigration() {
           await client.query(
             `SELECT COUNT(*) FROM role_grants
              WHERE role_template_id=$1 AND action='lead.push'`,
+            [roleId],
+          )
+        ).rows[0].count,
+      );
+      complaintGrantCounts[name] = Number(
+        (
+          await client.query(
+            `SELECT COUNT(*) FROM role_grants
+             WHERE role_template_id=$1 AND action='case.complaint.submit'`,
             [roleId],
           )
         ).rows[0].count,
@@ -2953,6 +2963,7 @@ export async function verifyCoreLeadMigration() {
         compatibleAdmittedStatus,
         grantCounts,
         pushGrantCounts,
+        complaintGrantCounts,
         revisions,
         identityIsolation: {
           unboundClientCode,
