@@ -587,6 +587,45 @@ describe('NotaryMatterListPage', () => {
     );
   });
 
+  it('aborts a pending preview when its scope changes and ignores its late response', async () => {
+    api.listNotaryMatters.mockResolvedValue(result);
+    let resolveOldPreview: ((value: unknown) => void) | undefined;
+    exportApi.preview.mockImplementationOnce(
+      () =>
+        new Promise((resolve) => {
+          resolveOldPreview = resolve;
+        }),
+    );
+    const { wrapper } = await mountPage('/notary-matters');
+    await wrapper.get('[data-test="select-matter"]').setValue(true);
+    await wrapper.get('[data-test="export-open"]').trigger('click');
+    await wrapper.get('[data-test="export-mode-selected"]').setValue(true);
+    await wrapper.get('[data-test="export-preview"]').trigger('click');
+
+    const oldOptions = exportApi.preview.mock.calls[0]?.[1] as
+      { signal: AbortSignal } | undefined;
+    await wrapper.get('[data-test="export-mode-filtered"]').setValue(true);
+    await flushPromises();
+    expect(oldOptions?.signal.aborted).toBe(true);
+
+    exportApi.preview.mockResolvedValueOnce({ count: 2, maxRows: 1000 });
+    await wrapper.get('[data-test="export-preview"]').trigger('click');
+    await flushPromises();
+    expect(exportApi.preview).toHaveBeenCalledTimes(2);
+    expect(wrapper.get('[data-test="export-preview-count"]').text()).toContain(
+      '共 2 条',
+    );
+
+    resolveOldPreview?.({ count: 1, maxRows: 1000 });
+    await flushPromises();
+    expect(wrapper.get('[data-test="export-preview-count"]').text()).toContain(
+      '共 2 条',
+    );
+    expect(wrapper.get('[data-test="export-confirm"]').text()).toContain(
+      '确认下载 2 条',
+    );
+  });
+
   it('requires another preview after the server reports a changed row count', async () => {
     api.listNotaryMatters.mockResolvedValue(result);
     exportApi.preview.mockResolvedValue({ count: 1, maxRows: 1000 });

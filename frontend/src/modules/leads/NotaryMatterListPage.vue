@@ -504,7 +504,10 @@ watch(
   },
 );
 watch(exportScopeKey, () => {
-  if (exportPreview.value && currentExportScopeKey !== exportScopeKey.value)
+  if (
+    currentExportScopeKey !== exportScopeKey.value &&
+    (exportPreview.value || exportPreviewRequest || exportRequest)
+  )
     invalidateExport();
 });
 watch(
