@@ -2,7 +2,7 @@
 
 ## CORE-NT-008 公证事项列表列设置（2026-09-30）
 
-实际通过正式Level 2门禁的固定候选为`6d2c884de27abb457c8694124110b6423d114843`，tree`bab0f0a2b81ab1e699df3e0ebdbd5a4c758e9c06`，分支`codex/core-nt-008-list-columns`，基于`main@4d362dd`；尚未推送或合并。内部有效账号通过正式页面调整本人列显示与顺序，`GET`／`PUT /api/v1/notary-matters/list-preference`只按Actor保存本人偏好，实时复用`lead.read`。编号／详情及阶段固定可见，其余三列可隐藏换序；严格请求和响应、历史键容错、刷新／重登／换浏览器恢复及恢复默认均已实现。不扩展事项读取投影，不包含导出、批量归档或新的业务字段。
+实际通过正式Level 2门禁的固定候选为`6d2c884de27abb457c8694124110b6423d114843`，tree`bab0f0a2b81ab1e699df3e0ebdbd5a4c758e9c06`，分支`codex/core-nt-008-list-columns`，基于`main@4d362dd`；后续集成边界见本节末段。内部有效账号通过正式页面调整本人列显示与顺序，`GET`／`PUT /api/v1/notary-matters/list-preference`只按Actor保存本人偏好，实时复用`lead.read`。编号／详情及阶段固定可见，其余三列可隐藏换序；严格请求和响应、历史键容错、刷新／重登／换浏览器恢复及恢复默认均已实现。不扩展事项读取投影，不包含导出、批量归档或新的业务字段。
 
 增量模型`NotaryListPreference`由leads主责，以账号主键／Restrict外键保存列顺序、隐藏列和更新时间；前向迁移`20260930020000_add_notary_list_preference`在独立测试库随机schema验证54份空库迁移链、上一schema旧账号保留、外键／Restrict拒绝及真实Prisma部署故障与重试。独审发现原故障探针额外包事务，真实部署复现失败残表，修订尚未交付的本切片迁移草稿为显式事务后，部署失败无残表、失败账本未完成，`resolve --rolled-back`、排除故障并重试成功且保留旧账号；PG注入点42809和CLI的transaction-aborted分开断言。该草稿仅曾部署独立测试库：核对`dev_cor_test`、偏好表0行及唯一已完成目标账本旧hash精确匹配后，事务CAS只更新该条checksum，status／deploy通过，不重置或删除测试schema／旧数据，不操作开发库、生产库或持久化卷。脱敏证据位于`.local/logs/nt008-backend-migration-prisma-repair-probe.log`和`nt008-backend-migration-test-ledger-cas.log`。
 
@@ -11,6 +11,8 @@
 固定候选正式检查均退出0：后端聚焦Jest46/46、前端API／组件Vitest25/25，`pnpm check:fast`（架构58模型、前后端及根类型、ESLint）、`spec:check`、受影响Prettier、严格上下文和双端`build:prepared`通过。完整日志为`.local/logs/nt008-final-{backend-unit,frontend-unit,check-fast,docs-format,build}-6d2c884.log`。同一候选以现有`test:e2e:full`入口显式选择三文件及名称过滤，在隔离PostgreSQL／Chromium串行3/3通过（22.2秒）：新设置真实密码登录／保存／刷新／重登／第二浏览器及第二账号独立设置，非法键／主体ID400、外部客户403、撤权下一请求403；迁移真实失败回滚／重试；既有移交并发、失败回滚及列表／阶段范围回归。命令为`pnpm test:e2e:full tests/e2e/notary-list-preference.spec.ts tests/e2e/notary-list-preference-migration.spec.ts tests/e2e/core-leads.spec.ts --grep "personal notary columns|notary list preference migration|notary handoff serializes"`，日志`.local/logs/nt008-final-e2e-6d2c884.log`，报告`playwright-report/index.html`。故障注入的预期500对应通过的回滚断言；Vite大chunk及既有pg客户端弃用提示不是门禁失败。
 
 本切片是复用既有授权的普通偏好与非破坏增量迁移，按Level 2处理；未配置NT-008 scope，未冒称Evidence v2，也未运行完整`pnpm verify`或未过滤全量E2E。上述结果只归属于`6d2c884`／tree`bab0f0a`。此后累计收口差异只补路线图完成态与唯一Current／Next、恢复摘要、本验证记录及对应已解释快照；无业务契约、代码、迁移、测试输入、配置或环境变化。受影响文档格式、Spec、严格上下文及累计Git差异检查通过，保留原候选业务证据，不把收口HEAD称为重新实跑业务门禁。集成结果变化或远端必需检查仍按现行规则执行；未发布，开发／生产库迁移尚未执行。
+
+2026-09-30按授权集成：获取远端后确认`main`与`origin/main`同为`4d362dd`，功能分支推送后本地`main`快进至`a650f3103fad6f47947f6b8f1b3d17401fd87cc3`，tree`457480880c516dbbf7c01c451d8b2051193dff27`与合并前分支完全相同，未引入其他变化。合并前重新执行原四文件后端46/46及两文件前端25/25，均退出0，日志为`.local/logs/nt008-merge-{backend-unit,frontend-unit}-a650f31.log`。从实际业务候选到该tree及本轮工作区的累计diff均仅为上述四份非执行性收口文件，后续只补集成状态、证据引用及其快照；按现行例外保留原业务／数据库证据，不重复完整`verify`或E2E，不称最终HEAD实跑了旧候选门禁。文档专项使用现有Prettier、`spec:check`、`context:check:strict`及累计Git差异检查，实际结果保存在`.local/logs/nt008-merge-doc-check.log`；不要求记录自身提交哈希。未部署或执行开发／生产迁移。
 
 ## CORE-CA-002 起诉材料（2026-09-30）
 
