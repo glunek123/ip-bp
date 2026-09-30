@@ -1,6 +1,6 @@
 {
   "version": 1,
-  "recordedAt": "2026-09-30T08:58:05.567Z",
+  "recordedAt": "2026-09-30T09:12:26.438Z",
   "files": {
     ".cursor/rules/verified-feature-integration.mdc": "ffd2306612ba6f09749629c5adb9e645f7f37aa6ee27ff1bc1c3d8b14efeca38",
     ".env.example": "07211cde5c2b59efc21b619b752d4c9b871f0980d2d64ca3c146ad6151fd27ca",
@@ -498,7 +498,7 @@
     "frontend/src/modules/leads/NotaryMatterDetailPage.spec.ts": "6e412589572f52b3c443bdbe1742d2e441810a306f61cbbf07c6d482ae950001",
     "frontend/src/modules/leads/NotaryMatterDetailPage.vue": "d80f1e2610329f05ec2514ee103c9b416ad6ac249efdd48dd233e07087d79328",
     "frontend/src/modules/leads/NotaryMatterListPage.spec.ts": "4f72cf1d4935b1755d4c7b56a8d953c5f50d6c66e5824bc0d4078b62f9a1e0b0",
-    "frontend/src/modules/leads/NotaryMatterListPage.vue": "6e86ca7830d0737caade90dd92428ec06ba9c5afbc4a8b65642796ac248ee9b2",
+    "frontend/src/modules/leads/NotaryMatterListPage.vue": "5e9a8a8df426e3af4a9d6086d487d80e64dfdf19d7af453e764b2c33d2c46b42",
     "frontend/src/modules/leads/NotaryOfficesPage.spec.ts": "6146e9532cedf43cc237d4422206b3b2fc0f254ce3d63542aca7c1726b2f4d0f",
     "frontend/src/modules/leads/NotaryOfficesPage.vue": "c790e6b1ca9db96b397e3880cb49c7219f7f8563aba242aa2be237a589a77fc6",
     "frontend/src/modules/leads/lead-options.ts": "af8f2576cb731cc89441416bcf74cbd50756c0a97ca2051f57b9243d4231b571",
@@ -564,7 +564,7 @@
     "tests/e2e/notary-list-preference.spec.ts": "a49df5eeeb5757ad422a8257ac66b98042ba35d590d01ba6a3e9c46451910874",
     "tests/e2e/personnel-access.spec.ts": "d45f3ed245e8801bfe7bf767b53790a216b0ae5cf37e55ebe2793df9e24c41c8",
     "tests/e2e/role-template-management.spec.ts": "8e94b16b9004716aa87197e05717dd4c4c6524413587be91465f1b86b8a8127b",
-    "tests/support/core-lead-database.mjs": "b836bef54b04a1b7ca1a9d2c15aa551cff68adf61e529da35218e4227294ed5b",
+    "tests/support/core-lead-database.mjs": "fea452355c3a3cef0bb0c014d2f035d2f1ad8cc8daf4c0745fd049c39edfcc5b",
     "tests/support/customer-database.mjs": "46f2457deb03868c8a5cfbfcc9311b787e7b43c028503a31a4c10d5a979afd40",
     "tests/support/notary-list-export-migration.mjs": "0810017e7139a26ce50a3832aa38dc6cb99e899e14c0ea1622f22df34dca0418",
     "tests/support/notary-list-preference-migration.mjs": "8aed27b9fbb00a1cf0bd603c07074d3b7a09d6f91931ecda4eb8b0de6b0fc4c2",
