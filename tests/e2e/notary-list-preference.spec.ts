@@ -172,6 +172,7 @@ test('real internal accounts persist personal notary columns across refresh, re-
     page.locator('[data-test="column-preference-status"]'),
   ).toContainText('已保存');
   await expect(page.locator('thead th')).toHaveText([
+    '选择',
     '公证事项编号',
     '阶段',
     '公证处',
@@ -179,6 +180,7 @@ test('real internal accounts persist personal notary columns across refresh, re-
   ]);
   await page.reload();
   await expect(page.locator('thead th')).toHaveText([
+    '选择',
     '公证事项编号',
     '阶段',
     '公证处',
@@ -197,6 +199,7 @@ test('real internal accounts persist personal notary columns across refresh, re-
     coreLeadFixtures.operatorPassword,
   );
   await expect(page.locator('thead th')).toHaveText([
+    '选择',
     '公证事项编号',
     '阶段',
     '公证处',
@@ -214,6 +217,7 @@ test('real internal accounts persist personal notary columns across refresh, re-
       coreLeadFixtures.operatorPassword,
     );
     await expect(otherPage.locator('thead th')).toHaveText([
+      '选择',
       '公证事项编号',
       '阶段',
       '公证处',
@@ -262,6 +266,7 @@ test('real internal accounts persist personal notary columns across refresh, re-
     coreLeadFixtures.operatorPassword,
   );
   await expect(page.locator('thead th')).toHaveText([
+    '选择',
     '公证事项编号',
     '阶段',
     '公证处',
