@@ -127,6 +127,16 @@ const allowedMimeTypes = {
   NOTARY_OPENING_PHOTO: new Set(['image/jpeg', 'image/png', 'image/webp']),
   NOTARY_CERTIFICATE: new Set(['application/pdf', 'image/jpeg', 'image/png']),
   NOTARY_DISCLOSURE: new Set(['application/pdf', 'image/jpeg', 'image/png']),
+  COMPLAINT: new Set([
+    'application/pdf',
+    'application/msword',
+    'application/vnd.openxmlformats-officedocument.wordprocessingml.document',
+  ]),
+  AUTHORIZATION: new Set([
+    'application/pdf',
+    'application/msword',
+    'application/vnd.openxmlformats-officedocument.wordprocessingml.document',
+  ]),
 } as const;
 
 @Injectable()
@@ -189,6 +199,19 @@ export class MaterialService {
         }),
       );
       ownerId = customer.id;
+    } else if (input.ownerType === 'CASE') {
+      if (input.ownerId === undefined) throw this.validationError();
+      await this.authorizeOwner(
+        actor,
+        'CASE',
+        input.ownerId,
+        'write',
+        this.database,
+        undefined,
+        undefined,
+        input.category,
+      );
+      ownerId = input.ownerId;
     } else if (input.ownerType === 'NOTARY_MATTER') {
       if (input.ownerId === undefined) throw this.validationError();
       await this.authorizeOwner(
@@ -317,6 +340,17 @@ export class MaterialService {
           ...(customer.teamId === null ? {} : { teamId: customer.teamId }),
         }),
       );
+    } else if (draft.ownerType === 'CASE') {
+      await this.authorizeOwner(
+        actor,
+        'CASE',
+        draft.ownerId,
+        'write',
+        this.database,
+        undefined,
+        undefined,
+        draft.category,
+      );
     } else if (draft.ownerType === 'NOTARY_MATTER') {
       await this.authorizeOwner(
         actor,
@@ -380,6 +414,26 @@ export class MaterialService {
           throw this.invalidVersion();
         }
         await this.database.$transaction(async (transaction) => {
+          if (draft.ownerType === 'CASE') {
+            const locked = await transaction.$queryRawUnsafe<
+              Array<{ id: string }>
+            >(
+              'SELECT "id" FROM "cases" WHERE "id" = $1::uuid AND "department_id" = $2::uuid FOR UPDATE',
+              draft.ownerId,
+              actor.departmentId,
+            );
+            if (locked.length !== 1) throw this.notFound();
+            await this.authorizeOwner(
+              actor,
+              'CASE',
+              draft.ownerId,
+              'write',
+              transaction,
+              transaction,
+              undefined,
+              draft.category,
+            );
+          }
           if (actor.notaryOfficeId !== undefined) {
             const locked = await transaction.$queryRawUnsafe<
               Array<{ id: string }>
@@ -562,6 +616,7 @@ export class MaterialService {
         ownerId: true,
         category: true,
         purpose: true,
+        currentVersionId: true,
         status: true,
         contentVersions: {
           where: {
@@ -591,7 +646,9 @@ export class MaterialService {
             input.category === 'NOTARY_OPENING_PHOTO' &&
             version.uploadedBy !== actor.userId) ||
           facts.has(version.id) ||
-          !contentVersionIds.includes(version.id)
+          !contentVersionIds.includes(version.id) ||
+          (input.ownerType === 'CASE' &&
+            material.currentVersionId !== version.id)
         ) {
           throw this.invalidVersion();
         }
@@ -1049,6 +1106,8 @@ export class MaterialService {
     });
     const version = material?.contentVersions[0];
     if (material === null || version === undefined) throw this.notFound();
+    if (material.ownerType === 'CASE' && material.status !== 'ACTIVE')
+      throw this.notFound();
     if (
       (actor.clientCustomerId !== undefined ||
         actor.notaryOfficeId !== undefined) &&
@@ -1478,6 +1537,44 @@ export class MaterialService {
       }));
   }
 
+  async listFrozenCaseComplaintFiles(actor: ActorContext, caseId: string) {
+    await this.authorizeOwner(actor, 'CASE', caseId, 'read');
+    const refs = await this.database.materialReference.findMany({
+      where: {
+        departmentId: actor.departmentId,
+        resourceType: 'case',
+        resourceId: caseId,
+        purpose: { in: ['COMPLAINT', 'AUTHORIZATION'] },
+        actionEvent: {
+          action: 'case.complaint.submitted',
+          resourceType: 'CASE',
+          resourceId: caseId,
+          departmentId: actor.departmentId,
+        },
+        material: {
+          ownerType: 'CASE',
+          ownerId: caseId,
+          departmentId: actor.departmentId,
+          status: 'ACTIVE',
+        },
+      },
+      orderBy: { createdAt: 'asc' },
+      select: {
+        purpose: true,
+        materialId: true,
+        contentVersionId: true,
+        contentVersion: { select: { originalFilename: true, mimeType: true } },
+      },
+    });
+    return refs.map((ref) => ({
+      purpose: ref.purpose,
+      materialId: ref.materialId,
+      contentVersionId: ref.contentVersionId,
+      originalFilename: ref.contentVersion.originalFilename,
+      mimeType: ref.contentVersion.mimeType,
+    }));
+  }
+
   private async authorizeOwner(
     actor: ActorContext,
     ownerType: MaterialOwnerTypeValue,
@@ -1491,6 +1588,48 @@ export class MaterialService {
     >,
     notaryCategory?: MaterialCategoryValue,
   ): Promise<void> {
+    if (ownerType === 'CASE') {
+      if (
+        actor.clientCustomerId !== undefined ||
+        actor.notaryOfficeId !== undefined
+      )
+        throw this.forbidden();
+      await this.withMaterialAuthorization(() =>
+        this.accessControl.authorizeDepartmentAction(
+          actor,
+          'case.read',
+          snapshotReader,
+        ),
+      );
+      const record = await reader.case.findFirst({
+        where: { id: ownerId, departmentId: actor.departmentId },
+        select: {
+          departmentId: true,
+          stage: true,
+          responsibleUserId: true,
+          responsibleMembership: { select: { teamId: true } },
+        },
+      });
+      if (record === null) throw this.notFound();
+      if (operation === 'write') {
+        if (record.stage !== 'WAITING_COMPLAINT') throw this.versionConflict();
+        await this.withMaterialAuthorization(() =>
+          this.accessControl.authorizeCase(
+            actor,
+            'case.complaint.submit',
+            {
+              departmentId: record.departmentId,
+              responsibleUserId: record.responsibleUserId,
+              ...(record.responsibleMembership.teamId
+                ? { teamId: record.responsibleMembership.teamId }
+                : {}),
+            },
+            snapshotReader,
+          ),
+        );
+      }
+      return;
+    }
     if (actor.notaryOfficeId !== undefined) {
       if (actor.clientCustomerId !== undefined || ownerType !== 'NOTARY_MATTER')
         throw this.forbidden();
@@ -1770,6 +1909,10 @@ export class MaterialService {
       (input.ownerType === 'LEAD_DRAFT' &&
         input.category === 'LEAD_SCREENSHOT' &&
         input.purpose === 'LEAD_SCREENSHOT') ||
+      (input.ownerType === 'CASE' &&
+        (input.category === 'COMPLAINT' ||
+          input.category === 'AUTHORIZATION') &&
+        input.purpose === input.category) ||
       (input.ownerType === 'NOTARY_MATTER' &&
         input.category === 'NOTARY_OPENING_PHOTO' &&
         input.purpose === 'NOTARY_OPENING_PHOTO') ||
@@ -1874,7 +2017,9 @@ function toMaterialPurpose(value: string) {
     value === 'LEAD_SCREENSHOT' ||
     value === 'NOTARY_OPENING_PHOTO' ||
     value === 'NOTARY_CERTIFICATE' ||
-    value === 'NOTARY_DISCLOSURE'
+    value === 'NOTARY_DISCLOSURE' ||
+    value === 'COMPLAINT' ||
+    value === 'AUTHORIZATION'
   ) {
     return value;
   }
@@ -1886,13 +2031,19 @@ function materialLimit(category: keyof typeof allowedMimeTypes): number {
     ? 10
     : category === 'NOTARY_OPENING_PHOTO'
       ? 50
-      : category === 'NOTARY_CERTIFICATE' || category === 'NOTARY_DISCLOSURE'
+      : category === 'NOTARY_CERTIFICATE' ||
+          category === 'NOTARY_DISCLOSURE' ||
+          category === 'COMPLAINT' ||
+          category === 'AUTHORIZATION'
         ? 10
         : 20;
 }
 
 function materialFileLimit(category: keyof typeof allowedMimeTypes): number {
-  return category === 'NOTARY_CERTIFICATE' || category === 'NOTARY_DISCLOSURE'
+  return category === 'NOTARY_CERTIFICATE' ||
+    category === 'NOTARY_DISCLOSURE' ||
+    category === 'COMPLAINT' ||
+    category === 'AUTHORIZATION'
     ? 50 * 1024 * 1024
     : 20 * 1024 * 1024;
 }

@@ -6,11 +6,18 @@ import { ApiError } from '../../api/http';
 import {
   getCase,
   matchCase,
+  submitComplaint,
   todayShanghai,
+  type CaseFile,
   type CaseDetail,
   type MatchCaseInput,
 } from '../../api/cases';
-import { downloadMaterialVersion } from '../../api/materials';
+import {
+  downloadMaterialVersion,
+  listOwnerMaterials,
+  uploadMaterialFile,
+  type MaterialCategory,
+} from '../../api/materials';
 import { notifyWorkflowChanged } from '../../app/workflow-events';
 
 const route = useRoute();
@@ -23,6 +30,18 @@ const downloadError = ref('');
 const matchError = ref('');
 const matchSuccess = ref('');
 const submitting = ref(false);
+const complaintUploads = ref<CaseFile[]>([]);
+const authorizationUploads = ref<CaseFile[]>([]);
+const amountState = ref<'KNOWN' | 'PENDING'>('KNOWN');
+const amount = ref('');
+const pendingReason = ref('');
+const uploadErrors = ref<Record<string, string>>({});
+const uploadLoading = ref<Record<string, boolean>>({});
+const complaintError = ref('');
+const complaintSuccess = ref('');
+const complaintSubmitting = ref(false);
+let complaintFingerprint = '';
+let complaintIdempotencyKey = '';
 type DefendantDraft = {
   kind: 'PERSON' | 'ORGANIZATION';
   name: string;
@@ -48,6 +67,54 @@ async function load() {
     const result = await getCase(id.value, { signal: controller.signal });
     if (controller.signal.aborted) return;
     item.value = result;
+    if (result.stage === 'WAITING_COMPLAINT' && result.canSubmitComplaint) {
+      const materials = await listOwnerMaterials('CASE', result.id, {
+        signal: controller.signal,
+      });
+      if (controller.signal.aborted) return;
+      complaintUploads.value = materials.items
+        .filter(
+          (material) =>
+            material.status === 'ACTIVE' &&
+            material.currentVersionId !== null &&
+            material.category === 'COMPLAINT',
+        )
+        .flatMap((material) => {
+          const version = material.contentVersions.find(
+            (entry) => entry.id === material.currentVersionId,
+          );
+          if (!version) return [];
+          const file = {
+            materialId: material.id,
+            contentVersionId: version.id,
+            originalFilename: version.originalFilename,
+            mimeType: version.mimeType,
+          };
+          return material.category === 'COMPLAINT' ? [file] : [];
+        });
+      authorizationUploads.value = materials.items
+        .filter(
+          (material) =>
+            material.status === 'ACTIVE' &&
+            material.currentVersionId !== null &&
+            material.category === 'AUTHORIZATION',
+        )
+        .flatMap((material) => {
+          const version = material.contentVersions.find(
+            (entry) => entry.id === material.currentVersionId,
+          );
+          return version
+            ? [
+                {
+                  materialId: material.id,
+                  contentVersionId: version.id,
+                  originalFilename: version.originalFilename,
+                  mimeType: version.mimeType,
+                },
+              ]
+            : [];
+        });
+    }
     state.value = 'ready';
   } catch (reason) {
     if (controller.signal.aborted) return;
@@ -71,6 +138,11 @@ function addDefendant() {
     address: '',
   });
 }
+function stageLabel(stage: CaseDetail['stage']): string {
+  if (stage === 'PENDING_MATCH') return '待匹配';
+  if (stage === 'WAITING_COMPLAINT') return '待写诉状';
+  return '诉状待确认';
+}
 function removeDefendant(index: number) {
   if (defendants.value.length > 1) defendants.value.splice(index, 1);
 }
@@ -78,6 +150,164 @@ function makeKey(): string {
   return typeof globalThis.crypto?.randomUUID === 'function'
     ? globalThis.crypto.randomUUID()
     : `${Date.now()}-${Math.random().toString(16).slice(2)}`;
+}
+async function uploadComplaintFiles(
+  category: Extract<MaterialCategory, 'COMPLAINT' | 'AUTHORIZATION'>,
+  event: unknown,
+) {
+  if (
+    typeof event !== 'object' ||
+    event === null ||
+    !('target' in event) ||
+    !(event.target instanceof globalThis.HTMLInputElement)
+  ) {
+    return;
+  }
+  const input = event.target;
+  const files = Array.from(input.files ?? []);
+  input.value = '';
+  const uploads =
+    category === 'COMPLAINT' ? complaintUploads : authorizationUploads;
+  const label = category === 'COMPLAINT' ? '起诉状' : '授权材料';
+  uploadErrors.value = { ...uploadErrors.value, [category]: '' };
+  complaintError.value = '';
+  if (uploads.value.length + files.length > 10) {
+    uploadErrors.value[category] = `${label}最多上传 10 份。`;
+    return;
+  }
+  uploadLoading.value = { ...uploadLoading.value, [category]: true };
+  for (const file of files) {
+    try {
+      const result = await uploadMaterialFile({
+        ownerType: 'CASE',
+        ownerId: id.value,
+        category,
+        purpose: category,
+        file,
+      });
+      uploads.value.push({
+        materialId: result.materialId,
+        contentVersionId: result.contentVersionId,
+        originalFilename: result.originalFilename,
+        mimeType: result.mimeType,
+      });
+      complaintFingerprint = '';
+    } catch (reason) {
+      uploadErrors.value[category] =
+        reason instanceof ApiError && reason.code === 'VALIDATION_ERROR'
+          ? `${label}格式不支持或超过 50MB。`
+          : `${label}上传未完成，请检查连接后重试。`;
+      break;
+    }
+  }
+  uploadLoading.value = { ...uploadLoading.value, [category]: false };
+}
+function complaintErrorMessage(reason: unknown): string {
+  if (
+    reason instanceof ApiError &&
+    (reason.code === 'VERSION_CONFLICT' || reason.code === 'INVALID_STATE')
+  ) {
+    return '案件阶段或版本已变化，正在读取最新信息。';
+  }
+  if (
+    reason instanceof ApiError &&
+    (reason.code === 'NETWORK_ERROR' || reason.code === 'TIMEOUT')
+  ) {
+    return '提交结果暂时未知；表单和请求键已保留，可安全重试或刷新核实。';
+  }
+  if (reason instanceof ApiError && reason.code === 'IDEMPOTENCY_CONFLICT') {
+    complaintIdempotencyKey = '';
+    complaintFingerprint = '';
+    return '请求键已用于不同的起诉材料，请刷新案件后重新提交。';
+  }
+  if (reason instanceof ApiError && reason.status === 403) {
+    return '当前账号无权办理此案件。';
+  }
+  return '起诉材料提交未能完成，请检查信息后重试。';
+}
+async function submitComplaintMaterials() {
+  const current = item.value;
+  if (
+    !current ||
+    current.stage !== 'WAITING_COMPLAINT' ||
+    !current.canSubmitComplaint ||
+    complaintSubmitting.value
+  )
+    return;
+  complaintError.value = '';
+  complaintSuccess.value = '';
+  if (
+    complaintUploads.value.length < 1 ||
+    authorizationUploads.value.length < 1
+  ) {
+    complaintError.value = '请至少上传 1 份起诉状和 1 份授权材料。';
+    return;
+  }
+  const trimmedAmount = amount.value.trim();
+  const trimmedReason = pendingReason.value.trim();
+  if (
+    amountState.value === 'KNOWN'
+      ? !/^\d+(\.\d+)?$/u.test(trimmedAmount)
+      : !trimmedReason
+  ) {
+    complaintError.value =
+      amountState.value === 'KNOWN'
+        ? '请输入非负精确金额。'
+        : '请填写待确认原因。';
+    return;
+  }
+  const input = {
+    expectedVersion: current.version,
+    idempotencyKey: '',
+    amountState: amountState.value,
+    amount: amountState.value === 'KNOWN' ? trimmedAmount : null,
+    pendingReason: amountState.value === 'PENDING' ? trimmedReason : null,
+    complaintContentVersionIds: complaintUploads.value.map(
+      (file) => file.contentVersionId,
+    ),
+    authorizationContentVersionIds: authorizationUploads.value.map(
+      (file) => file.contentVersionId,
+    ),
+  } as const;
+  const fingerprint = JSON.stringify({ ...input, idempotencyKey: undefined });
+  if (fingerprint !== complaintFingerprint) {
+    complaintFingerprint = fingerprint;
+    complaintIdempotencyKey = makeKey();
+  }
+  complaintSubmitting.value = true;
+  try {
+    await submitComplaint(current.id, {
+      ...input,
+      idempotencyKey: complaintIdempotencyKey,
+    });
+    const fresh = await getCase(current.id);
+    item.value = fresh;
+    if (fresh.stage === 'WAITING_COMPLAINT_CONFIRMATION' && fresh.complaint) {
+      complaintSuccess.value = '起诉材料已确认提交，当前阶段为诉状待确认。';
+      complaintFingerprint = '';
+      complaintIdempotencyKey = '';
+      notifyWorkflowChanged();
+    } else {
+      complaintError.value =
+        '请求已提交，但尚未能从案件详情确认结果；请刷新核实。';
+    }
+  } catch (reason) {
+    complaintError.value = complaintErrorMessage(reason);
+    if (
+      reason instanceof ApiError &&
+      (reason.code === 'VERSION_CONFLICT' || reason.code === 'INVALID_STATE')
+    ) {
+      try {
+        item.value = await getCase(current.id);
+      } catch {
+        /* retain the last confirmed detail */
+      }
+      complaintFingerprint = '';
+      complaintIdempotencyKey = '';
+    }
+  } finally {
+    complaintSubmitting.value = false;
+  }
 }
 async function submitMatch() {
   const current = item.value;
@@ -226,9 +456,7 @@ onBeforeUnmount(() => request?.abort());
             <p class="eyebrow">案件详情</p>
             <h1>{{ item.businessNo }}</h1>
             <p>
-              <span class="pill">{{
-                item.stage === 'PENDING_MATCH' ? '待匹配' : '待写诉状'
-              }}</span>
+              <span class="pill">{{ stageLabel(item.stage) }}</span>
               · 创建于
               {{
                 new Date(item.createdAt).toLocaleString('zh-CN', {
@@ -241,6 +469,7 @@ onBeforeUnmount(() => request?.abort());
           <ElButton text @click="load">刷新</ElButton>
         </div>
         <p v-if="matchSuccess" role="status">{{ matchSuccess }}</p>
+        <p v-if="complaintSuccess" role="status">{{ complaintSuccess }}</p>
         <section
           v-if="item.stage === 'PENDING_MATCH' && item.canMatch"
           class="demo-card demo-card--pad"
@@ -343,7 +572,9 @@ onBeforeUnmount(() => request?.abort());
           >
         </section>
         <section
-          v-else
+          v-else-if="
+            item.stage !== 'WAITING_COMPLAINT' || !item.canSubmitComplaint
+          "
           class="demo-card demo-card--pad"
           data-test="case-read-only"
         >
@@ -352,9 +583,193 @@ onBeforeUnmount(() => request?.abort());
             你可以查看案件和下载获准材料；{{
               item.stage === 'PENDING_MATCH'
                 ? '当前账号不能办理此案。'
-                : '匹配已完成，当前阶段没有可办理的匹配动作。'
+                : item.stage === 'WAITING_COMPLAINT'
+                  ? '匹配已完成；当前账号不能提交此案的起诉材料，可查看案件和下载获准附件。'
+                  : '当前阶段为诉状待确认；本切片不提供后续确认办理。'
             }}
           </p>
+        </section>
+        <section
+          v-if="item.stage === 'WAITING_COMPLAINT' && item.canSubmitComplaint"
+          class="demo-card demo-card--pad"
+          data-test="complaint-submit-form"
+        >
+          <h2 class="form-section-title">提交起诉材料</h2>
+          <p class="field-help">
+            上传材料与确认提交是两个独立动作。上传不会推进案件；确认后将固定本次选择的文件版本并进入“诉状待确认”。
+          </p>
+          <div class="demo-form-grid">
+            <label>
+              起诉状 <span aria-hidden="true">*</span>
+              <input
+                type="file"
+                class="text-input"
+                accept=".pdf,.doc,.docx,application/pdf,application/msword,application/vnd.openxmlformats-officedocument.wordprocessingml.document"
+                multiple
+                :disabled="
+                  uploadLoading.COMPLAINT || complaintUploads.length >= 10
+                "
+                @change="uploadComplaintFiles('COMPLAINT', $event)"
+              />
+            </label>
+            <p class="field-help">
+              PDF、DOC 或 DOCX，单份不超过 50MB；1～10 份。
+            </p>
+            <p v-if="uploadLoading.COMPLAINT" role="status">正在上传起诉状…</p>
+            <p v-if="uploadErrors.COMPLAINT" class="submit-error" role="alert">
+              {{ uploadErrors.COMPLAINT }}
+            </p>
+            <ul>
+              <li
+                v-for="(file, index) in complaintUploads"
+                :key="file.contentVersionId"
+              >
+                {{ file.originalFilename }}（{{ file.mimeType }}）
+                <ElButton
+                  text
+                  @click="download(file.materialId, file.contentVersionId)"
+                  >下载</ElButton
+                >
+                <ElButton text @click="complaintUploads.splice(index, 1)"
+                  >从本次提交移除</ElButton
+                >
+              </li>
+            </ul>
+          </div>
+          <div class="demo-form-grid">
+            <label>
+              授权材料 <span aria-hidden="true">*</span>
+              <input
+                type="file"
+                class="text-input"
+                accept=".pdf,.doc,.docx,application/pdf,application/msword,application/vnd.openxmlformats-officedocument.wordprocessingml.document"
+                multiple
+                :disabled="
+                  uploadLoading.AUTHORIZATION ||
+                  authorizationUploads.length >= 10
+                "
+                @change="uploadComplaintFiles('AUTHORIZATION', $event)"
+              />
+            </label>
+            <p class="field-help">
+              PDF、DOC 或 DOCX，单份不超过 50MB；1～10 份。
+            </p>
+            <p v-if="uploadLoading.AUTHORIZATION" role="status">
+              正在上传授权材料…
+            </p>
+            <p
+              v-if="uploadErrors.AUTHORIZATION"
+              class="submit-error"
+              role="alert"
+            >
+              {{ uploadErrors.AUTHORIZATION }}
+            </p>
+            <ul>
+              <li
+                v-for="(file, index) in authorizationUploads"
+                :key="file.contentVersionId"
+              >
+                {{ file.originalFilename }}（{{ file.mimeType }}）
+                <ElButton
+                  text
+                  @click="download(file.materialId, file.contentVersionId)"
+                  >下载</ElButton
+                >
+                <ElButton text @click="authorizationUploads.splice(index, 1)"
+                  >从本次提交移除</ElButton
+                >
+              </li>
+            </ul>
+          </div>
+          <fieldset class="demo-form-grid">
+            <legend>标的额 <span aria-hidden="true">*</span></legend>
+            <label>
+              <input v-model="amountState" type="radio" value="KNOWN" />
+              已知金额
+            </label>
+            <label>
+              <input v-model="amountState" type="radio" value="PENDING" />
+              待确认金额
+            </label>
+            <label v-if="amountState === 'KNOWN'">
+              金额（非负精确金额）<span aria-hidden="true">*</span>
+              <input
+                v-model="amount"
+                inputmode="decimal"
+                class="text-input"
+                required
+              />
+            </label>
+            <label v-else>
+              待确认原因 <span aria-hidden="true">*</span>
+              <textarea v-model="pendingReason" class="text-input" required />
+            </label>
+          </fieldset>
+          <p v-if="complaintError" class="submit-error" role="alert">
+            {{ complaintError }}
+          </p>
+          <ElButton
+            type="primary"
+            :loading="complaintSubmitting"
+            :disabled="
+              complaintSubmitting ||
+              uploadLoading.COMPLAINT ||
+              uploadLoading.AUTHORIZATION
+            "
+            data-test="submit-complaint"
+            @click="submitComplaintMaterials"
+            >确认提交起诉材料</ElButton
+          >
+        </section>
+        <section
+          v-if="item.complaint"
+          class="demo-card demo-card--pad"
+          data-test="complaint-read-only"
+        >
+          <h2 class="form-section-title">已提交的起诉材料</h2>
+          <p>
+            标的额：{{
+              item.complaint.amountState === 'PENDING'
+                ? `待确认（${item.complaint.pendingReason}）`
+                : `¥ ${item.complaint.amount}`
+            }}
+          </p>
+          <p>
+            提交时间：{{
+              new Date(item.complaint.submittedAt).toLocaleString('zh-CN', {
+                timeZone: 'Asia/Shanghai',
+                hour12: false,
+              })
+            }}
+          </p>
+          <h3>起诉状</h3>
+          <ul>
+            <li
+              v-for="file in item.complaint.complaintFiles"
+              :key="file.contentVersionId"
+            >
+              {{ file.originalFilename }}（{{ file.mimeType }}）
+              <ElButton
+                text
+                @click="download(file.materialId, file.contentVersionId)"
+                >下载</ElButton
+              >
+            </li>
+          </ul>
+          <h3>授权材料</h3>
+          <ul>
+            <li
+              v-for="file in item.complaint.authorizationFiles"
+              :key="file.contentVersionId"
+            >
+              {{ file.originalFilename }}（{{ file.mimeType }}）
+              <ElButton
+                text
+                @click="download(file.materialId, file.contentVersionId)"
+                >下载</ElButton
+              >
+            </li>
+          </ul>
         </section>
         <section class="demo-card demo-card--pad">
           <h2 class="form-section-title">来源与归属</h2>

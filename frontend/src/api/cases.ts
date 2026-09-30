@@ -1,6 +1,7 @@
 import { ApiError, getJson, requestJson, type RequestOptions } from './http';
 
-export type CaseStage = 'PENDING_MATCH' | 'WAITING_COMPLAINT';
+export type CaseStage =
+  'PENDING_MATCH' | 'WAITING_COMPLAINT' | 'WAITING_COMPLAINT_CONFIRMATION';
 export type CaseView = 'mine' | 'department';
 export type CaseStageFilter = CaseStage | 'all';
 export type CaseSummary = {
@@ -11,6 +12,7 @@ export type CaseSummary = {
   version: number;
   owner: { id: string; displayName: string };
   canMatch: boolean;
+  canSubmitComplaint: boolean;
   sourceLead: { id: string; businessNo: string };
   sourceNotaryMatter: { id: string; businessNo: string };
 };
@@ -61,6 +63,16 @@ export type CaseDetail = CaseSummary & {
   lawyers: CaseLawyer[];
   matchedAt: string | null;
   matchedOn: string | null;
+  complaint: ComplaintSubmission | null;
+};
+export type ComplaintSubmission = {
+  amountState: 'KNOWN' | 'PENDING';
+  amount: string | null;
+  pendingReason: string | null;
+  submittedAt: string;
+  submittedByUserId: string;
+  complaintFiles: CaseFile[];
+  authorizationFiles: CaseFile[];
 };
 export type CaseFile = {
   materialId: string;
@@ -80,6 +92,15 @@ export type MatchCaseInput = {
     address?: string;
   }>;
   lawyer: { fullName: string; lawFirm?: string; phone?: string };
+};
+export type SubmitComplaintInput = {
+  expectedVersion: number;
+  idempotencyKey: string;
+  amountState: 'KNOWN' | 'PENDING';
+  amount: string | null;
+  pendingReason: string | null;
+  complaintContentVersionIds: string[];
+  authorizationContentVersionIds: string[];
 };
 
 function record(value: unknown): value is Record<string, unknown> {
@@ -115,7 +136,11 @@ export function todayShanghai(): string {
   return `${part('year')}-${part('month')}-${part('day')}`;
 }
 function validStage(value: unknown): value is CaseStage {
-  return value === 'PENDING_MATCH' || value === 'WAITING_COMPLAINT';
+  return (
+    value === 'PENDING_MATCH' ||
+    value === 'WAITING_COMPLAINT' ||
+    value === 'WAITING_COMPLAINT_CONFIRMATION'
+  );
 }
 function source(value: unknown): value is { id: string; businessNo: string } {
   return (
@@ -144,6 +169,7 @@ function summary(value: unknown): value is CaseSummary {
       'version',
       'owner',
       'canMatch',
+      'canSubmitComplaint',
       'sourceLead',
       'sourceNotaryMatter',
     ]) &&
@@ -156,6 +182,7 @@ function summary(value: unknown): value is CaseSummary {
     (value.version as number) >= 1 &&
     named(value.owner, 'displayName') &&
     typeof value.canMatch === 'boolean' &&
+    typeof value.canSubmitComplaint === 'boolean' &&
     source(value.sourceLead) &&
     source(value.sourceNotaryMatter)
   );
@@ -229,6 +256,8 @@ function validCaseDetail(value: unknown, id: string): value is CaseDetail {
       'lawyers',
       'matchedAt',
       'matchedOn',
+      'canSubmitComplaint',
+      'complaint',
     ]) &&
     value.id === id &&
     summary({
@@ -239,6 +268,7 @@ function validCaseDetail(value: unknown, id: string): value is CaseDetail {
       version: value.version,
       owner: value.owner,
       canMatch: value.canMatch,
+      canSubmitComplaint: value.canSubmitComplaint,
       sourceLead: value.sourceLead,
       sourceNotaryMatter: value.sourceNotaryMatter,
     }) &&
@@ -293,7 +323,37 @@ function validCaseDetail(value: unknown, id: string): value is CaseDetail {
     (value.matchedAt === null ||
       (typeof value.matchedAt === 'string' &&
         !Number.isNaN(Date.parse(value.matchedAt)))) &&
-    (value.matchedOn === null || businessDate(value.matchedOn))
+    (value.matchedOn === null || businessDate(value.matchedOn)) &&
+    typeof value.canSubmitComplaint === 'boolean' &&
+    (value.complaint === null || validComplaint(value.complaint))
+  );
+}
+function validComplaint(value: unknown): value is ComplaintSubmission {
+  return (
+    record(value) &&
+    exact(value, [
+      'amountState',
+      'amount',
+      'pendingReason',
+      'submittedAt',
+      'submittedByUserId',
+      'complaintFiles',
+      'authorizationFiles',
+    ]) &&
+    (value.amountState === 'KNOWN' || value.amountState === 'PENDING') &&
+    (value.amount === null ||
+      (typeof value.amount === 'string' &&
+        /^\d+(\.\d+)?$/u.test(value.amount))) &&
+    (value.amountState === 'KNOWN'
+      ? value.amount !== null && value.pendingReason === null
+      : value.amount === null && nonempty(value.pendingReason)) &&
+    typeof value.submittedAt === 'string' &&
+    !Number.isNaN(Date.parse(value.submittedAt)) &&
+    nonempty(value.submittedByUserId) &&
+    Array.isArray(value.complaintFiles) &&
+    value.complaintFiles.every(caseFile) &&
+    Array.isArray(value.authorizationFiles) &&
+    value.authorizationFiles.every(caseFile)
   );
 }
 function invalidResponse(): ApiError {
@@ -323,11 +383,17 @@ export async function listCases(
     response.page !== page ||
     response.pageSize !== pageSize ||
     !record(response.counts) ||
-    !exact(response.counts, ['PENDING_MATCH', 'WAITING_COMPLAINT']) ||
+    !exact(response.counts, [
+      'PENDING_MATCH',
+      'WAITING_COMPLAINT',
+      'WAITING_COMPLAINT_CONFIRMATION',
+    ]) ||
     !Number.isInteger(response.counts.PENDING_MATCH) ||
     (response.counts.PENDING_MATCH as number) < 0 ||
     !Number.isInteger(response.counts.WAITING_COMPLAINT) ||
-    (response.counts.WAITING_COMPLAINT as number) < 0
+    (response.counts.WAITING_COMPLAINT as number) < 0 ||
+    !Number.isInteger(response.counts.WAITING_COMPLAINT_CONFIRMATION) ||
+    (response.counts.WAITING_COMPLAINT_CONFIRMATION as number) < 0
   )
     throw invalidResponse();
   return response as unknown as CaseList;
@@ -397,4 +463,52 @@ export async function matchCase(
     result.matchedOn !== input.matchedOn
   )
     throw invalidResponse();
+}
+
+export async function submitComplaint(
+  id: string,
+  input: SubmitComplaintInput,
+): Promise<{
+  id: string;
+  stage: 'WAITING_COMPLAINT_CONFIRMATION';
+  version: number;
+  submittedAt: string;
+}> {
+  const idsValid = (ids: string[]) =>
+    ids.length >= 1 && ids.length <= 10 && ids.every(nonempty);
+  if (
+    !Number.isInteger(input.expectedVersion) ||
+    input.expectedVersion < 1 ||
+    !input.idempotencyKey.trim() ||
+    !idsValid(input.complaintContentVersionIds) ||
+    !idsValid(input.authorizationContentVersionIds) ||
+    (input.amountState === 'KNOWN'
+      ? input.amount === null ||
+        !/^\d+(\.\d+)?$/u.test(input.amount) ||
+        input.pendingReason !== null
+      : input.amount !== null || !input.pendingReason?.trim())
+  ) {
+    throw new ApiError('起诉材料信息无效', 400, 'VALIDATION_ERROR');
+  }
+  const response = await requestJson(
+    `/cases/${encodeURIComponent(id)}/complaint-submit`,
+    { method: 'POST', body: input },
+  );
+  if (
+    !record(response) ||
+    !exact(response, ['id', 'stage', 'version', 'submittedAt']) ||
+    response.id !== id ||
+    response.stage !== 'WAITING_COMPLAINT_CONFIRMATION' ||
+    response.version !== input.expectedVersion + 1 ||
+    typeof response.submittedAt !== 'string' ||
+    Number.isNaN(Date.parse(response.submittedAt))
+  ) {
+    throw invalidResponse();
+  }
+  return response as unknown as {
+    id: string;
+    stage: 'WAITING_COMPLAINT_CONFIRMATION';
+    version: number;
+    submittedAt: string;
+  };
 }

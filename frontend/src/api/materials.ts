@@ -8,13 +8,15 @@ import {
 } from './http';
 
 export type MaterialOwnerType =
-  'CUSTOMER' | 'LEAD_DRAFT' | 'LEAD' | 'NOTARY_MATTER';
+  'CUSTOMER' | 'LEAD_DRAFT' | 'LEAD' | 'NOTARY_MATTER' | 'CASE';
 export type MaterialCategory =
   | 'CUSTOMER_IDENTITY'
   | 'LEAD_SCREENSHOT'
   | 'NOTARY_OPENING_PHOTO'
   | 'NOTARY_CERTIFICATE'
-  | 'NOTARY_DISCLOSURE';
+  | 'NOTARY_DISCLOSURE'
+  | 'COMPLAINT'
+  | 'AUTHORIZATION';
 export type MaterialPurpose =
   | 'IDENTITY_FULL'
   | 'IDENTITY_FRONT'
@@ -22,7 +24,9 @@ export type MaterialPurpose =
   | 'LEAD_SCREENSHOT'
   | 'NOTARY_OPENING_PHOTO'
   | 'NOTARY_CERTIFICATE'
-  | 'NOTARY_DISCLOSURE';
+  | 'NOTARY_DISCLOSURE'
+  | 'COMPLAINT'
+  | 'AUTHORIZATION';
 
 export type UploadedMaterial = {
   materialId: string;
@@ -64,7 +68,7 @@ export type OwnerMaterial = {
 export type UploadMaterialFileInput = {
   ownerType: Extract<
     MaterialOwnerType,
-    'CUSTOMER' | 'LEAD_DRAFT' | 'NOTARY_MATTER'
+    'CUSTOMER' | 'LEAD_DRAFT' | 'NOTARY_MATTER' | 'CASE'
   >;
   ownerId?: string;
   category: MaterialCategory;
@@ -76,7 +80,7 @@ type UploadDraftResponse = {
   id: string;
   ownerType: Extract<
     MaterialOwnerType,
-    'CUSTOMER' | 'LEAD_DRAFT' | 'NOTARY_MATTER'
+    'CUSTOMER' | 'LEAD_DRAFT' | 'NOTARY_MATTER' | 'CASE'
   >;
   ownerId: string;
   reservedOwnerId?: string;
@@ -96,7 +100,8 @@ function isOwnerType(value: unknown): value is MaterialOwnerType {
     value === 'CUSTOMER' ||
     value === 'LEAD_DRAFT' ||
     value === 'LEAD' ||
-    value === 'NOTARY_MATTER'
+    value === 'NOTARY_MATTER' ||
+    value === 'CASE'
   );
 }
 
@@ -106,7 +111,9 @@ function isCategory(value: unknown): value is MaterialCategory {
     value === 'LEAD_SCREENSHOT' ||
     value === 'NOTARY_OPENING_PHOTO' ||
     value === 'NOTARY_CERTIFICATE' ||
-    value === 'NOTARY_DISCLOSURE'
+    value === 'NOTARY_DISCLOSURE' ||
+    value === 'COMPLAINT' ||
+    value === 'AUTHORIZATION'
   );
 }
 
@@ -118,7 +125,9 @@ function isPurpose(value: unknown): value is MaterialPurpose {
     value === 'LEAD_SCREENSHOT' ||
     value === 'NOTARY_OPENING_PHOTO' ||
     value === 'NOTARY_CERTIFICATE' ||
-    value === 'NOTARY_DISCLOSURE'
+    value === 'NOTARY_DISCLOSURE' ||
+    value === 'COMPLAINT' ||
+    value === 'AUTHORIZATION'
   );
 }
 
@@ -132,7 +141,8 @@ function isUploadDraft(value: unknown): value is UploadDraftResponse {
     typeof value.id === 'string' &&
     (value.ownerType === 'CUSTOMER' ||
       value.ownerType === 'LEAD_DRAFT' ||
-      value.ownerType === 'NOTARY_MATTER') &&
+      value.ownerType === 'NOTARY_MATTER' ||
+      value.ownerType === 'CASE') &&
     typeof value.ownerId === 'string' &&
     isCategory(value.category) &&
     isPurpose(value.purpose) &&
@@ -222,6 +232,35 @@ export async function uploadMaterialFile(
   const originalFilename = input.file.name.trim();
   if (originalFilename.length === 0) {
     throw new ApiError('文件名不能为空', 400, 'VALIDATION_ERROR');
+  }
+  if (input.ownerType === 'CASE') {
+    const allowed = new Map([
+      ['.pdf', 'application/pdf'],
+      ['.doc', 'application/msword'],
+      [
+        '.docx',
+        'application/vnd.openxmlformats-officedocument.wordprocessingml.document',
+      ],
+    ]);
+    const extension = originalFilename.toLowerCase().match(/\.[^.]+$/u)?.[0];
+    if (
+      extension === undefined ||
+      allowed.get(extension) !== input.file.type ||
+      input.file.size > 50 * 1024 * 1024
+    ) {
+      throw new ApiError(
+        '起诉材料仅支持不超过 50MB 的 PDF、DOC 或 DOCX 文件',
+        400,
+        'VALIDATION_ERROR',
+      );
+    }
+    if (
+      (input.category !== 'COMPLAINT' && input.category !== 'AUTHORIZATION') ||
+      input.purpose !== input.category ||
+      !input.ownerId
+    ) {
+      throw new ApiError('起诉材料归属信息无效', 400, 'VALIDATION_ERROR');
+    }
   }
   const draft = await requestJson('/materials/upload-drafts', {
     method: 'POST',

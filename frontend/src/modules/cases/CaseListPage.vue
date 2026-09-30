@@ -17,10 +17,16 @@ const view = computed<CaseView>(() =>
 );
 const stage = computed<CaseStageFilter>(() =>
   route.query.stage === 'PENDING_MATCH' ||
-  route.query.stage === 'WAITING_COMPLAINT'
+  route.query.stage === 'WAITING_COMPLAINT' ||
+  route.query.stage === 'WAITING_COMPLAINT_CONFIRMATION'
     ? route.query.stage
     : 'all',
 );
+function stageLabel(value: CaseSummary['stage']): string {
+  if (value === 'PENDING_MATCH') return '待匹配';
+  if (value === 'WAITING_COMPLAINT') return '待写诉状';
+  return '诉状待确认';
+}
 const state = ref<'loading' | 'ready' | 'failed'>('loading');
 const items = ref<CaseSummary[]>([]);
 const total = ref(0);
@@ -71,13 +77,7 @@ onBeforeUnmount(() => request?.abort());
           <h1>案件</h1>
           <p>
             {{ view === 'mine' ? '我负责的案件' : '本部门全部案件' }} ·
-            {{
-              stage === 'all'
-                ? '全部阶段'
-                : stage === 'PENDING_MATCH'
-                  ? '待匹配'
-                  : '待写诉状'
-            }}
+            {{ stage === 'all' ? '全部阶段' : stageLabel(stage) }}
           </p>
         </div>
         <ElButton text :loading="state === 'loading'" @click="load"
@@ -114,11 +114,11 @@ onBeforeUnmount(() => request?.abort());
                 query: route.query,
               }"
               >{{ item.businessNo }}</RouterLink
-            ><span class="pill">{{
-              item.stage === 'PENDING_MATCH' ? '待匹配' : '待写诉状'
-            }}</span>
+            ><span class="pill">{{ stageLabel(item.stage) }}</span>
             <span class="field-help">负责人：{{ item.owner.displayName }}</span>
-            <span class="pill">{{ item.canMatch ? '办理' : '只读' }}</span
+            <span class="pill">{{
+              item.canMatch || item.canSubmitComplaint ? '办理' : '只读'
+            }}</span
             ><span
               >来源线索 {{ item.sourceLead.businessNo }} · 公证事项
               {{ item.sourceNotaryMatter.businessNo }}</span

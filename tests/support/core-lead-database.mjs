@@ -64,9 +64,12 @@ export const coreLeadFixtures = Object.freeze({
   tokenSelf: 'e2e-department-a-self',
   operatorUsername: 'core-lead-operator',
   operatorPassword: 'correct horse battery staple',
+  selfUsername: 'core-lead-self',
+  selfPassword: 'correct horse battery staple self',
 });
 
 const operatorPasswordHash = hashPassword(coreLeadFixtures.operatorPassword);
+const selfPasswordHash = hashPassword(coreLeadFixtures.selfPassword);
 
 const allActions = [
   'CUSTOMER_READ',
@@ -83,6 +86,7 @@ const allActions = [
   'NOTARY_RETURN_ARCHIVE',
   'CASE_READ',
   'CASE_MATCH',
+  'CASE_COMPLAINT_SUBMIT',
   'NOTARY_OFFICE_MANAGE',
   'LEAD_WITHDRAW_APPLY',
 ];
@@ -101,6 +105,7 @@ const actionNames = Object.freeze({
   'notary.return.archive': 'NOTARY_RETURN_ARCHIVE',
   'case.read': 'CASE_READ',
   'case.match': 'CASE_MATCH',
+  'case.complaint.submit': 'CASE_COMPLAINT_SUBMIT',
   'notary.office.manage': 'NOTARY_OFFICE_MANAGE',
   'lead.withdraw.apply': 'LEAD_WITHDRAW_APPLY',
 });
@@ -143,6 +148,7 @@ async function dropFaults() {
     ['cases', 'core_nt_reject_certificate_case'],
     ['notary_matter_command_receipts', 'core_nt_reject_certificate_receipt'],
     ['case_match_receipts', 'core_ca_reject_match_receipt'],
+    ['case_complaint_receipts', 'core_ca_reject_complaint_receipt'],
   ]) {
     await database.$executeRawUnsafe(
       `ALTER TABLE "${table}" DROP CONSTRAINT IF EXISTS "${constraint}"`,
@@ -382,6 +388,7 @@ async function clearDatabase() {
     'case_defendants',
     'case_lawyer_assignments',
     'case_match_receipts',
+    'case_complaint_receipts',
   ];
   await database.$transaction(async (transaction) => {
     for (const table of immutableTables) {
@@ -396,6 +403,9 @@ async function clearDatabase() {
       where: { departmentId: { in: departmentIds } },
     });
     await transaction.caseMatchReceipt.deleteMany({
+      where: { departmentId: { in: departmentIds } },
+    });
+    await transaction.caseComplaintReceipt.deleteMany({
       where: { departmentId: { in: departmentIds } },
     });
     await transaction.caseLawyerAssignment.deleteMany({
@@ -613,6 +623,7 @@ function admittedCustomer(id, departmentId, userId, teamId, name, identity) {
 
 export async function resetCoreLeadE2eData() {
   const resolvedOperatorPasswordHash = await operatorPasswordHash;
+  const resolvedSelfPasswordHash = await selfPasswordHash;
   await clearDatabase();
   await clearPrivateBytes();
   await database.department.createMany({
@@ -645,6 +656,13 @@ export async function resetCoreLeadE2eData() {
       userId: coreLeadFixtures.userA,
       username: coreLeadFixtures.operatorUsername,
       passwordHash: resolvedOperatorPasswordHash,
+    },
+  });
+  await database.localCredential.create({
+    data: {
+      userId: coreLeadFixtures.userSelf,
+      username: coreLeadFixtures.selfUsername,
+      passwordHash: resolvedSelfPasswordHash,
     },
   });
   await database.team.createMany({
@@ -1552,6 +1570,30 @@ export async function rejectCaseMatchReceiptWrites() {
   await database.$executeRawUnsafe(
     'ALTER TABLE "case_match_receipts" ADD CONSTRAINT "core_ca_reject_match_receipt" CHECK (false) NOT VALID',
   );
+}
+
+export async function rejectCaseComplaintReceiptWrites() {
+  await dropFaults();
+  await database.$executeRawUnsafe(
+    'ALTER TABLE "case_complaint_receipts" ADD CONSTRAINT "core_ca_reject_complaint_receipt" CHECK (false) NOT VALID',
+  );
+}
+
+export async function countCaseComplaintEffects(caseId) {
+  const [receipts, audits, references] = await database.$transaction([
+    database.caseComplaintReceipt.count({ where: { caseId } }),
+    database.auditEvent.count({
+      where: {
+        resourceType: 'CASE',
+        resourceId: caseId,
+        action: 'case.complaint.submitted',
+      },
+    }),
+    database.materialReference.count({
+      where: { resourceType: 'case', resourceId: caseId },
+    }),
+  ]);
+  return { receipts, audits, references };
 }
 
 export async function rejectLeadReviewDecisionWrites() {
@@ -2955,4 +2997,87 @@ export async function verifyCoreLeadMigration() {
 export async function disconnectCoreLeadTestDatabase() {
   await dropFaults().catch(() => undefined);
   await database.$disconnect();
+}
+
+export async function verifyCaseComplaintMigration() {
+  const migrationRoot = resolve(process.cwd(), 'backend/prisma/migrations');
+  const target = '20260930010000_add_case_complaint_submission';
+  const migrations = (await readdir(migrationRoot))
+    .filter((name) => /^\d{14}_/u.test(name))
+    .sort();
+  if (!migrations.includes(target)) {
+    throw new Error('CA-002 migration is missing');
+  }
+  const suffix = randomUUID().replaceAll('-', '');
+  const schemas = {
+    empty: `case_complaint_empty_${suffix}`,
+    upgrade: `case_complaint_upgrade_${suffix}`,
+  };
+  const client = new Client({ connectionString: databaseUrl });
+
+  async function apply(names) {
+    for (const name of names) {
+      const sql = await readFile(
+        resolve(migrationRoot, name, 'migration.sql'),
+        'utf8',
+      );
+      await client.query(sql);
+    }
+  }
+
+  async function inspect(schema) {
+    const columns = await client.query(
+      `SELECT column_name FROM information_schema.columns
+       WHERE table_schema=$1 AND table_name='cases'
+         AND column_name LIKE 'complaint_%' ORDER BY column_name`,
+      [schema],
+    );
+    const receipt = await client.query(
+      `SELECT 1 FROM information_schema.tables
+       WHERE table_schema=$1 AND table_name='case_complaint_receipts'`,
+      [schema],
+    );
+    const stage = await client.query(
+      `SELECT 1 FROM pg_enum e
+       JOIN pg_type t ON t.oid=e.enumtypid
+       JOIN pg_namespace n ON n.oid=t.typnamespace
+       WHERE n.nspname=$1 AND t.typname='case_stage'
+         AND e.enumlabel='WAITING_COMPLAINT_CONFIRMATION'`,
+      [schema],
+    );
+    return {
+      columns: columns.rows.map((row) => row.column_name),
+      receiptExists: receipt.rowCount === 1,
+      stageExists: stage.rowCount === 1,
+    };
+  }
+
+  await client.connect();
+  try {
+    const actual = await client.query('SELECT current_database() AS database');
+    if (actual.rows[0]?.database !== 'dev_cor_test') {
+      throw new Error('Unexpected migration database');
+    }
+    for (const schema of Object.values(schemas)) {
+      await client.query(`CREATE SCHEMA "${schema}"`);
+    }
+    await client.query(`SET search_path TO "${schemas.empty}"`);
+    await apply(migrations.filter((name) => name <= target));
+    const empty = await inspect(schemas.empty);
+
+    await client.query(`SET search_path TO "${schemas.upgrade}"`);
+    await apply(migrations.filter((name) => name < target));
+    const previous = await inspect(schemas.upgrade);
+    await apply([target]);
+    const upgrade = await inspect(schemas.upgrade);
+    return { empty, previous, upgrade };
+  } finally {
+    await client.query('RESET search_path').catch(() => undefined);
+    for (const schema of Object.values(schemas)) {
+      await client
+        .query(`DROP SCHEMA IF EXISTS "${schema}" CASCADE`)
+        .catch(() => undefined);
+    }
+    await client.end();
+  }
 }

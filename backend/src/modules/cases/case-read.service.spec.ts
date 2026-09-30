@@ -32,6 +32,7 @@ describe('CaseReadService', () => {
     };
     const materials = {
       listFrozenCertificateFiles: jest.fn().mockResolvedValue([]),
+      listFrozenCaseComplaintFiles: jest.fn().mockResolvedValue([]),
     };
     return {
       db,
@@ -58,7 +59,11 @@ describe('CaseReadService', () => {
       total: 0,
       page: 1,
       pageSize: 20,
-      counts: { PENDING_MATCH: 0, WAITING_COMPLAINT: 0 },
+      counts: {
+        PENDING_MATCH: 0,
+        WAITING_COMPLAINT: 0,
+        WAITING_COMPLAINT_CONFIRMATION: 0,
+      },
     });
     expect(f.access.authorizeDepartmentAction).toHaveBeenCalledWith(
       actor,
@@ -206,6 +211,36 @@ describe('CaseReadService', () => {
       matchedOn: '2026-09-28',
       matchedAt: '2026-09-29T09:00:00.000Z',
       lawyers: [{ fullName: '张律师', lawFirm: null }],
+      canSubmitComplaint: true,
+      complaint: null,
+    });
+    f.db.case.findFirst.mockResolvedValue({
+      ...record,
+      stage: 'WAITING_COMPLAINT_CONFIRMATION',
+      matchedAt: new Date('2026-09-29T09:00:00.000Z'),
+      complaintAmountState: 'KNOWN',
+      complaintAmount: '12.34',
+      complaintPendingReason: null,
+      complaintSubmittedAt: new Date('2026-09-30T09:00:00.000Z'),
+      complaintSubmittedByUserId: actor.userId,
+    });
+    f.materials.listFrozenCaseComplaintFiles.mockResolvedValue([
+      {
+        purpose: 'COMPLAINT',
+        materialId: 'material-1',
+        contentVersionId: 'version-1',
+        originalFilename: '诉状.pdf',
+        mimeType: 'application/pdf',
+      },
+    ]);
+    await expect(f.service.get(actor, 'case-1')).resolves.toMatchObject({
+      canSubmitComplaint: false,
+      complaint: {
+        amountState: 'KNOWN',
+        amount: '12.34',
+        complaintFiles: [{ contentVersionId: 'version-1' }],
+        authorizationFiles: [],
+      },
     });
   });
   it('scopes mine by case ownership and keeps stage counts independent of filter', async () => {
@@ -217,7 +252,11 @@ describe('CaseReadService', () => {
       f.service.list as (...args: unknown[]) => Promise<unknown>
     )(actor, 1, 20, 'mine', 'WAITING_COMPLAINT');
     expect(result).toMatchObject({
-      counts: { PENDING_MATCH: 2, WAITING_COMPLAINT: 0 },
+      counts: {
+        PENDING_MATCH: 2,
+        WAITING_COMPLAINT: 0,
+        WAITING_COMPLAINT_CONFIRMATION: 0,
+      },
     });
     expect(f.db.case.findMany).toHaveBeenCalledWith(
       expect.objectContaining({

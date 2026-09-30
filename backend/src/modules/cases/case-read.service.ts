@@ -42,7 +42,8 @@ export class CaseReadService {
     page: number,
     pageSize: number,
     view: 'mine' | 'department' = 'department',
-    stage?: 'PENDING_MATCH' | 'WAITING_COMPLAINT',
+    stage?:
+      'PENDING_MATCH' | 'WAITING_COMPLAINT' | 'WAITING_COMPLAINT_CONFIRMATION',
   ) {
     await this.scope(actor);
     const baseWhere: Prisma.CaseWhereInput = {
@@ -98,6 +99,19 @@ export class CaseReadService {
                 ? { teamId: item.responsibleMembership.teamId }
                 : {}),
             })),
+          canSubmitComplaint:
+            item.stage === 'WAITING_COMPLAINT' &&
+            (await this.access.canAuthorizeCase(
+              actor,
+              'case.complaint.submit',
+              {
+                departmentId: actor.departmentId,
+                responsibleUserId: item.responsibleUserId,
+                ...(item.responsibleMembership.teamId
+                  ? { teamId: item.responsibleMembership.teamId }
+                  : {}),
+              },
+            )),
           createdAt: item.createdAt.toISOString(),
         })),
       ),
@@ -111,6 +125,9 @@ export class CaseReadService {
         WAITING_COMPLAINT:
           grouped.find((row) => row.stage === 'WAITING_COMPLAINT')?._count
             ._all ?? 0,
+        WAITING_COMPLAINT_CONFIRMATION:
+          grouped.find((row) => row.stage === 'WAITING_COMPLAINT_CONFIRMATION')
+            ?._count._all ?? 0,
       },
     };
   }
@@ -126,6 +143,11 @@ export class CaseReadService {
         version: true,
         matchedAt: true,
         matchedOn: true,
+        complaintAmountState: true,
+        complaintAmount: true,
+        complaintPendingReason: true,
+        complaintSubmittedAt: true,
+        complaintSubmittedByUserId: true,
         createdAt: true,
         responsibleUserId: true,
         responsibleMembership: { select: { teamId: true } },
@@ -193,6 +215,9 @@ export class CaseReadService {
       record.sourceNotaryMatter.id,
       record.certificate.id,
     );
+    const complaintFiles = record.complaintSubmittedAt
+      ? await this.materials.listFrozenCaseComplaintFiles(actor, id)
+      : [];
     const file = (ref: (typeof frozen)[number]) => ({
       materialId: ref.materialId,
       contentVersionId: ref.contentVersionId,
@@ -225,6 +250,36 @@ export class CaseReadService {
             ? { teamId: record.responsibleMembership.teamId }
             : {}),
         })),
+      canSubmitComplaint:
+        record.stage === 'WAITING_COMPLAINT' &&
+        (await this.access.canAuthorizeCase(actor, 'case.complaint.submit', {
+          departmentId: actor.departmentId,
+          responsibleUserId: record.responsibleUserId,
+          ...(record.responsibleMembership.teamId
+            ? { teamId: record.responsibleMembership.teamId }
+            : {}),
+        })),
+      complaint:
+        record.complaintSubmittedAt == null
+          ? null
+          : {
+              amountState: record.complaintAmountState!,
+              amount:
+                record.complaintAmount === null
+                  ? null
+                  : new Prisma.Decimal(
+                      record.complaintAmount.toString(),
+                    ).toFixed(2),
+              pendingReason: record.complaintPendingReason,
+              submittedAt: record.complaintSubmittedAt.toISOString(),
+              submittedByUserId: record.complaintSubmittedByUserId!,
+              complaintFiles: complaintFiles
+                .filter((ref) => ref.purpose === 'COMPLAINT')
+                .map(file),
+              authorizationFiles: complaintFiles
+                .filter((ref) => ref.purpose === 'AUTHORIZATION')
+                .map(file),
+            },
       createdAt: record.createdAt.toISOString(),
       courtCaseNo: record.courtCaseNo,
       department: record.department,

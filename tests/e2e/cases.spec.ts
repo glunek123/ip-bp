@@ -1,13 +1,17 @@
 import { createHash, randomUUID } from 'node:crypto';
+import { createRequire } from 'node:module';
+import { resolve } from 'node:path';
 import { readFile } from 'node:fs/promises';
 import {
   expect,
+  request as playwrightRequest,
   test,
   type APIRequestContext,
   type Page,
 } from '@playwright/test';
 import {
   allowInjectedFailures,
+  countCaseComplaintEffects,
   coreLeadFixtures,
   countCasesForMatter,
   countCaseMatchAudits,
@@ -15,10 +19,12 @@ import {
   getLead,
   getNotaryCase,
   rejectCaseMatchReceiptWrites,
+  rejectCaseComplaintReceiptWrites,
   rejectAuditWrites,
   resetCoreLeadE2eData,
   setInternalAccountActive,
   setRoleGrant,
+  verifyCaseComplaintMigration,
 } from '../support/core-lead-database.mjs';
 
 const authorizationA = { Authorization: `Bearer ${coreLeadFixtures.tokenA}` };
@@ -32,6 +38,48 @@ const pdfBytes = Buffer.from(
 const jpegBytes = Buffer.from([
   0xff, 0xd8, 0xff, 0xe0, 0, 16, 0x4a, 0x46, 0x49, 0x46,
 ]);
+const requireBackend = createRequire(
+  resolve(process.cwd(), 'backend/package.json'),
+);
+const cfb = requireBackend('cfb') as {
+  utils: {
+    cfb_new(): unknown;
+    cfb_add(file: unknown, path: string, data: Buffer): void;
+  };
+  write(file: unknown, options: { type: 'buffer' }): Uint8Array;
+};
+const { zipSync } = requireBackend('fflate') as {
+  zipSync(
+    files: Record<string, Uint8Array>,
+    options: { level: number },
+  ): Uint8Array;
+};
+const wordStream = Buffer.alloc(4096);
+wordStream.writeUInt16LE(0xa5ec, 0);
+wordStream.writeUInt16LE(0x00d9, 2);
+wordStream.writeUInt32LE(512, 24);
+wordStream.writeUInt32LE(1024, 28);
+const compound = cfb.utils.cfb_new();
+cfb.utils.cfb_add(compound, 'WordDocument', wordStream);
+cfb.utils.cfb_add(compound, '0Table', Buffer.alloc(4096, 1));
+const docBytes = Buffer.from(cfb.write(compound, { type: 'buffer' }));
+
+const docxBytes = Buffer.from(
+  zipSync(
+    {
+      '[Content_Types].xml': Buffer.from(
+        '<?xml version="1.0"?><Types xmlns="http://schemas.openxmlformats.org/package/2006/content-types"><Override PartName="/word/document.xml" ContentType="application/vnd.openxmlformats-officedocument.wordprocessingml.document.main+xml"/></Types>',
+      ),
+      '_rels/.rels': Buffer.from(
+        '<?xml version="1.0"?><Relationships xmlns="http://schemas.openxmlformats.org/package/2006/relationships"><Relationship Id="rId1" Type="http://schemas.openxmlformats.org/officeDocument/2006/relationships/officeDocument" Target="word/document.xml"/></Relationships>',
+      ),
+      'word/document.xml': Buffer.from(
+        '<?xml version="1.0"?><w:document xmlns:w="http://schemas.openxmlformats.org/wordprocessingml/2006/main"><w:body><w:p/></w:body></w:document>',
+      ),
+    },
+    { level: 0 },
+  ),
+);
 type MatchInput = {
   expectedVersion: number;
   idempotencyKey: string;
@@ -77,12 +125,50 @@ async function configureBrowser(page: Page, authorization = authorizationA) {
   );
 }
 
+async function loginOperator(page: Page) {
+  await page.goto('/cases');
+  await expect(page).toHaveURL(/\/login\?returnTo=/u);
+  await page.getByLabel('用户名').fill(coreLeadFixtures.operatorUsername);
+  await page.getByLabel('密码').fill(coreLeadFixtures.operatorPassword);
+  await page.getByRole('button', { name: '登录', exact: true }).click();
+  await expectCaseListSession(page);
+}
+
+async function expectCaseListSession(page: Page) {
+  await expect.poll(() => new URL(page.url()).pathname).toBe('/cases');
+  await expect(
+    page.getByRole('button', { name: '退出登录', exact: true }),
+  ).toBeVisible();
+}
+
+async function matchCaseThroughBrowser(page: Page, caseId: string) {
+  const caseLink = page.locator(
+    `[data-test="case-list"] a[href="/cases/${caseId}"]`,
+  );
+  await expect(caseLink).toBeVisible();
+  await caseLink.click();
+  const form = page.locator('[data-test="case-match-form"]');
+  await expect(form).toBeVisible();
+  await form.getByLabel('主体类型').selectOption('ORGANIZATION');
+  await form.getByLabel('名称').fill('杭州起诉材料验收公司');
+  await form.getByLabel('律师姓名').fill('起诉材料验收律师');
+  await page.getByRole('button', { name: '确认匹配并进入待写诉状' }).click();
+  await expect(page.getByRole('status')).toContainText('待写诉状');
+  await expect(
+    page.locator('[data-test="complaint-submit-form"]'),
+  ).toBeVisible();
+}
+
 async function upload(
   request: APIRequestContext,
   input: {
-    ownerType: 'NOTARY_MATTER';
+    ownerType: 'NOTARY_MATTER' | 'CASE';
     ownerId: string;
-    purpose: 'NOTARY_OPENING_PHOTO' | 'NOTARY_CERTIFICATE';
+    purpose:
+      | 'NOTARY_OPENING_PHOTO'
+      | 'NOTARY_CERTIFICATE'
+      | 'COMPLAINT'
+      | 'AUTHORIZATION';
     name: string;
     mime: string;
     bytes: Buffer;
@@ -250,6 +336,7 @@ async function createPendingMatchCase(request: APIRequestContext) {
   expect(issuance.status(), await issuance.text()).toBe(201);
 
   const notaryUsername = `case-notary-${randomUUID().slice(0, 8)}`;
+  const notaryPassword = 'notary correct horse battery';
   const notaryAccount = await request.post(
     `/api/v1/notary-offices/${office.id}/accounts`,
     {
@@ -257,7 +344,7 @@ async function createPendingMatchCase(request: APIRequestContext) {
       data: {
         displayName: '案件验收公证员',
         username: notaryUsername,
-        password: 'notary correct horse battery',
+        password: notaryPassword,
       },
     },
   );
@@ -266,7 +353,7 @@ async function createPendingMatchCase(request: APIRequestContext) {
     headers: { Origin: 'http://127.0.0.1:5174' },
     data: {
       username: notaryUsername,
-      password: 'notary correct horse battery',
+      password: notaryPassword,
     },
   });
   expect(notaryLogin.status(), await notaryLogin.text()).toBe(200);
@@ -314,7 +401,15 @@ async function createPendingMatchCase(request: APIRequestContext) {
     stage: 'PENDING_MATCH',
   });
   expect(await countCasesForMatter(matter.id)).toBe(1);
-  return { caseId, matterId: matter.id, certificateFile };
+  return {
+    caseId,
+    matterId: matter.id,
+    certificateFile,
+    clientUsername: username,
+    clientPassword: password,
+    notaryUsername,
+    notaryPassword,
+  };
 }
 
 function matchCase(
@@ -329,6 +424,66 @@ function matchCase(
   });
 }
 
+type ComplaintSubmitInput = {
+  expectedVersion: number;
+  idempotencyKey: string;
+  amountState: 'KNOWN' | 'PENDING';
+  amount: string | null;
+  pendingReason: string | null;
+  complaintContentVersionIds: string[];
+  authorizationContentVersionIds: string[];
+};
+
+function submitComplaint(
+  request: APIRequestContext,
+  caseId: string,
+  input: ComplaintSubmitInput,
+  headers = authorizationA,
+) {
+  return request.post(`/api/v1/cases/${caseId}/complaint-submit`, {
+    headers: { ...headers, 'Idempotency-Key': input.idempotencyKey },
+    data: input,
+  });
+}
+
+async function createReadyComplaintCase(request: APIRequestContext) {
+  const { caseId } = await createPendingMatchCase(request);
+  const matched = await matchCase(request, caseId, {
+    expectedVersion: 1,
+    idempotencyKey: randomUUID(),
+    matchedOn: '2026-09-28',
+    defendants: [{ kind: 'ORGANIZATION', name: '起诉材料并发验收公司' }],
+    lawyer: { fullName: '起诉材料验收律师' },
+  });
+  expect(matched.status(), await matched.text()).toBe(201);
+  const complaint = await upload(request, {
+    ownerType: 'CASE',
+    ownerId: caseId,
+    purpose: 'COMPLAINT',
+    name: '并发验收起诉状.pdf',
+    mime: 'application/pdf',
+    bytes: pdfBytes,
+  });
+  const authorization = await upload(request, {
+    ownerType: 'CASE',
+    ownerId: caseId,
+    purpose: 'AUTHORIZATION',
+    name: '并发验收授权材料.pdf',
+    mime: 'application/pdf',
+    bytes: pdfBytes,
+  });
+  const input: ComplaintSubmitInput = {
+    expectedVersion: 2,
+    idempotencyKey: randomUUID(),
+    amountState: 'PENDING',
+    amount: null,
+    pendingReason: '金额待与客户核定',
+    complaintContentVersionIds: [complaint.contentVersionId],
+    authorizationContentVersionIds: [authorization.contentVersionId],
+  };
+  return { caseId, input };
+}
+
 test.beforeEach(async () => {
   await resetCoreLeadE2eData();
   await setRoleGrant(coreLeadFixtures.roleA, 'case.read', 'DEPARTMENT');
@@ -337,6 +492,90 @@ test.beforeEach(async () => {
 
 test.afterEach(async () => {
   await allowInjectedFailures();
+});
+
+test('CA-002 migration works from an empty and the previous supported schema', async () => {
+  test.setTimeout(120_000);
+  const result = await verifyCaseComplaintMigration();
+  const expectedColumns = [
+    'complaint_amount',
+    'complaint_amount_state',
+    'complaint_pending_reason',
+    'complaint_submitted_at',
+    'complaint_submitted_by_user_id',
+  ];
+  expect(result.previous).toEqual({
+    columns: [],
+    receiptExists: false,
+    stageExists: false,
+  });
+  for (const state of [result.empty, result.upgrade]) {
+    expect(state).toEqual({
+      columns: expectedColumns,
+      receiptExists: true,
+      stageExists: true,
+    });
+  }
+});
+
+test('complaint submit rolls back failed audit and receipt, then serializes competing commands', async ({
+  request,
+}) => {
+  test.setTimeout(180_000);
+  const { caseId, input } = await createReadyComplaintCase(request);
+  for (const injectFailure of [
+    () => rejectAuditWrites('case.complaint.submitted'),
+    () => rejectCaseComplaintReceiptWrites(),
+  ]) {
+    await injectFailure();
+    const failed = await submitComplaint(request, caseId, input);
+    expect(failed.status()).toBeGreaterThanOrEqual(500);
+    expect(await countCaseComplaintEffects(caseId)).toEqual({
+      receipts: 0,
+      audits: 0,
+      references: 0,
+    });
+    const unchanged = await request.get(`/api/v1/cases/${caseId}`, {
+      headers: authorizationA,
+    });
+    expect(await unchanged.json()).toMatchObject({
+      stage: 'WAITING_COMPLAINT',
+      version: 2,
+    });
+    await allowInjectedFailures();
+  }
+
+  const competitor: ComplaintSubmitInput = {
+    ...input,
+    idempotencyKey: randomUUID(),
+    pendingReason: '并发提交的另一笔金额说明',
+  };
+  const results = await Promise.all([
+    submitComplaint(request, caseId, input),
+    submitComplaint(request, caseId, competitor),
+  ]);
+  expect(results.map((response) => response.status()).sort()).toEqual([
+    201, 409,
+  ]);
+  const winner = results[0].status() === 201 ? input : competitor;
+  const original = await results[results[0].status() === 201 ? 0 : 1].json();
+  const replay = await submitComplaint(request, caseId, winner);
+  expect(replay.status(), await replay.text()).toBe(201);
+  expect(await replay.json()).toEqual(original);
+  const changed = await submitComplaint(request, caseId, {
+    ...winner,
+    pendingReason: '同一幂等键的不同请求',
+  });
+  expect(changed.status(), await changed.text()).toBe(409);
+  expect(await changed.json()).toMatchObject({ code: 'IDEMPOTENCY_CONFLICT' });
+  expect(await countCaseComplaintEffects(caseId)).toEqual({
+    receipts: 1,
+    audits: 1,
+    references: 2,
+  });
+  await setInternalAccountActive(coreLeadFixtures.userA, false);
+  const revokedReplay = await submitComplaint(request, caseId, winner);
+  expect([401, 403]).toContain(revokedReplay.status());
 });
 
 test('an operator matches a real notary case and the result survives refresh', async ({
@@ -353,7 +592,11 @@ test('an operator matches a real notary case and the result survives refresh', a
   expect(await mineBefore.json()).toMatchObject({
     items: [expect.objectContaining({ id: caseId, stage: 'PENDING_MATCH' })],
     total: 1,
-    counts: { PENDING_MATCH: 1, WAITING_COMPLAINT: 0 },
+    counts: {
+      PENDING_MATCH: 1,
+      WAITING_COMPLAINT: 0,
+      WAITING_COMPLAINT_CONFIRMATION: 0,
+    },
   });
   const departmentBefore = await request.get(
     '/api/v1/cases?view=department&stage=PENDING_MATCH',
@@ -414,7 +657,11 @@ test('an operator matches a real notary case and the result survives refresh', a
     items: [
       expect.objectContaining({ id: caseId, stage: 'WAITING_COMPLAINT' }),
     ],
-    counts: { PENDING_MATCH: 0, WAITING_COMPLAINT: 1 },
+    counts: {
+      PENDING_MATCH: 0,
+      WAITING_COMPLAINT: 1,
+      WAITING_COMPLAINT_CONFIRMATION: 0,
+    },
   });
 });
 
@@ -431,7 +678,11 @@ test('same-department reader can download but cannot write; another department g
   expect(await mine.json()).toMatchObject({
     items: [],
     total: 0,
-    counts: { PENDING_MATCH: 0, WAITING_COMPLAINT: 0 },
+    counts: {
+      PENDING_MATCH: 0,
+      WAITING_COMPLAINT: 0,
+      WAITING_COMPLAINT_CONFIRMATION: 0,
+    },
   });
   const department = await request.get(
     '/api/v1/cases?view=department&stage=PENDING_MATCH',
@@ -441,7 +692,11 @@ test('same-department reader can download but cannot write; another department g
   expect(await department.json()).toMatchObject({
     items: [expect.objectContaining({ id: caseId, canMatch: false })],
     total: 1,
-    counts: { PENDING_MATCH: 1, WAITING_COMPLAINT: 0 },
+    counts: {
+      PENDING_MATCH: 1,
+      WAITING_COMPLAINT: 0,
+      WAITING_COMPLAINT_CONFIRMATION: 0,
+    },
   });
   await configureBrowser(page, authorizationSelf);
   await page.goto(`/cases/${caseId}`);
@@ -658,5 +913,292 @@ test('audit and receipt failures roll back the match and permit retry after reco
     await allowInjectedFailures();
     const retry = await matchCase(request, caseId, input);
     expect(retry.status(), await retry.text()).toBe(201);
+  }
+});
+
+test('an authenticated operator matches, uploads and submits complaint materials; read scopes survive refresh', async ({
+  browser,
+  page,
+  request,
+}) => {
+  test.setTimeout(240_000);
+  const {
+    caseId,
+    clientUsername,
+    clientPassword,
+    notaryUsername,
+    notaryPassword,
+  } = await createPendingMatchCase(request);
+  const fakeVersion = randomUUID();
+  const invalidStage = await submitComplaint(request, caseId, {
+    expectedVersion: 1,
+    idempotencyKey: randomUUID(),
+    amountState: 'KNOWN',
+    amount: '123.45',
+    pendingReason: null,
+    complaintContentVersionIds: [fakeVersion],
+    authorizationContentVersionIds: [randomUUID()],
+  });
+  expect(invalidStage.status(), await invalidStage.text()).toBe(409);
+  expect(await invalidStage.json()).toMatchObject({ code: 'INVALID_STATE' });
+
+  await loginOperator(page);
+  await matchCaseThroughBrowser(page, caseId);
+  await page.goto('/cases');
+  const actionableRow = page
+    .locator('[data-test="case-list"] li')
+    .filter({ has: page.locator(`a[href="/cases/${caseId}"]`) });
+  await expect(actionableRow).toContainText('办理');
+  await actionableRow.getByRole('link').click();
+  const form = page.locator('[data-test="complaint-submit-form"]');
+  await form
+    .locator('input[type="file"]')
+    .nth(0)
+    .setInputFiles([
+      {
+        name: '真实起诉状验收.pdf',
+        mimeType: 'application/pdf',
+        buffer: pdfBytes,
+      },
+      {
+        name: '真实起诉状验收.doc',
+        mimeType: 'application/msword',
+        buffer: docBytes,
+      },
+    ]);
+  await expect(form.getByText('真实起诉状验收.pdf')).toBeVisible();
+  await expect(form.getByText('真实起诉状验收.doc')).toBeVisible();
+  await form.locator('input[type="file"]').nth(1).setInputFiles({
+    name: '真实授权材料验收.docx',
+    mimeType:
+      'application/vnd.openxmlformats-officedocument.wordprocessingml.document',
+    buffer: docxBytes,
+  });
+  await expect(form.getByText('真实授权材料验收.docx')).toBeVisible();
+
+  const uploads = await request.get(
+    `/api/v1/materials?ownerType=CASE&ownerId=${encodeURIComponent(caseId)}`,
+    { headers: authorizationA },
+  );
+  expect(uploads.status(), await uploads.text()).toBe(200);
+  const uploadList: {
+    items: Array<{
+      id: string;
+      category: string;
+      currentVersionId: string | null;
+      contentVersions: Array<{ id: string; originalFilename: string }>;
+    }>;
+  } = await uploads.json();
+  const complaintMaterial = uploadList.items.find(
+    (item) =>
+      item.category === 'COMPLAINT' &&
+      item.contentVersions.some(
+        (version) => version.originalFilename === '真实起诉状验收.pdf',
+      ),
+  );
+  const authorizationMaterial = uploadList.items.find(
+    (item) =>
+      item.category === 'AUTHORIZATION' &&
+      item.contentVersions.some(
+        (version) => version.originalFilename === '真实授权材料验收.docx',
+      ),
+  );
+  expect(complaintMaterial?.currentVersionId).toEqual(expect.any(String));
+  expect(authorizationMaterial?.currentVersionId).toEqual(expect.any(String));
+  const complaintVersionId = complaintMaterial!.currentVersionId!;
+  const authorizationVersionId = authorizationMaterial!.currentVersionId!;
+  const uploadedCase = await request.get(`/api/v1/cases/${caseId}`, {
+    headers: authorizationA,
+  });
+  expect(await uploadedCase.json()).toMatchObject({
+    id: caseId,
+    stage: 'WAITING_COMPLAINT',
+    version: 2,
+  });
+
+  const stale = await submitComplaint(request, caseId, {
+    expectedVersion: 99,
+    idempotencyKey: randomUUID(),
+    amountState: 'KNOWN',
+    amount: '123.45',
+    pendingReason: null,
+    complaintContentVersionIds: [complaintVersionId],
+    authorizationContentVersionIds: [authorizationVersionId],
+  });
+  expect(stale.status(), await stale.text()).toBe(409);
+  expect(await stale.json()).toMatchObject({ code: 'VERSION_CONFLICT' });
+
+  const readOnlyWrite = await submitComplaint(
+    request,
+    caseId,
+    {
+      expectedVersion: 2,
+      idempotencyKey: randomUUID(),
+      amountState: 'KNOWN',
+      amount: '123.45',
+      pendingReason: null,
+      complaintContentVersionIds: [complaintVersionId],
+      authorizationContentVersionIds: [authorizationVersionId],
+    },
+    authorizationSelf,
+  );
+  expect(readOnlyWrite.status(), await readOnlyWrite.text()).toBe(403);
+  const readOnlyDownload = await request.get(
+    `/api/v1/materials/${complaintMaterial!.id}/versions/${complaintVersionId}/content`,
+    { headers: authorizationSelf },
+  );
+  expect(readOnlyDownload.status(), await readOnlyDownload.text()).toBe(200);
+  expect(await readOnlyDownload.body()).toEqual(pdfBytes);
+
+  const foreignCase = await request.get(`/api/v1/cases/${caseId}`, {
+    headers: authorizationB,
+  });
+  expect(foreignCase.status()).toBe(404);
+  const foreignDownload = await request.get(
+    `/api/v1/materials/${complaintMaterial!.id}/versions/${complaintVersionId}/content`,
+    { headers: authorizationB },
+  );
+  expect(foreignDownload.status()).toBe(404);
+
+  await form.getByLabel('金额（非负精确金额）').fill('123.45');
+  await form.locator('[data-test="submit-complaint"]').click();
+  await expect(
+    page.getByText('起诉材料已确认提交，当前阶段为诉状待确认。', {
+      exact: true,
+    }),
+  ).toBeVisible();
+  await expect(page.locator('[data-test="complaint-submit-form"]')).toHaveCount(
+    0,
+  );
+  await expect(page.locator('[data-test="complaint-read-only"]')).toContainText(
+    '¥ 123.45',
+  );
+  const submitted = await request.get(`/api/v1/cases/${caseId}`, {
+    headers: authorizationA,
+  });
+  expect(await submitted.json()).toMatchObject({
+    id: caseId,
+    stage: 'WAITING_COMPLAINT_CONFIRMATION',
+    version: 3,
+    complaint: {
+      amountState: 'KNOWN',
+      amount: '123.45',
+      pendingReason: null,
+      submittedAt: expect.any(String),
+      complaintFiles: [
+        expect.objectContaining({
+          contentVersionId: complaintVersionId,
+          originalFilename: '真实起诉状验收.pdf',
+        }),
+        expect.objectContaining({
+          originalFilename: '真实起诉状验收.doc',
+          mimeType: 'application/msword',
+        }),
+      ],
+      authorizationFiles: [
+        expect.objectContaining({
+          contentVersionId: authorizationVersionId,
+          originalFilename: '真实授权材料验收.docx',
+          mimeType:
+            'application/vnd.openxmlformats-officedocument.wordprocessingml.document',
+        }),
+      ],
+    },
+  });
+  const confirmationList = await request.get(
+    '/api/v1/cases?view=department&stage=WAITING_COMPLAINT_CONFIRMATION',
+    { headers: authorizationA },
+  );
+  expect(await confirmationList.json()).toMatchObject({
+    items: [expect.objectContaining({ id: caseId })],
+    counts: {
+      PENDING_MATCH: 0,
+      WAITING_COMPLAINT: 0,
+      WAITING_COMPLAINT_CONFIRMATION: 1,
+    },
+  });
+
+  await page.reload();
+  await expect(page.getByText('诉状待确认', { exact: true })).toBeVisible();
+  await expect(page.locator('[data-test="complaint-read-only"]')).toContainText(
+    '真实起诉状验收.pdf',
+  );
+  const operatorDownload = page.waitForEvent('download');
+  await page
+    .locator('[data-test="complaint-read-only"]')
+    .getByRole('button', { name: '下载' })
+    .first()
+    .click();
+  expect(await readFile(await (await operatorDownload).path())).toEqual(
+    pdfBytes,
+  );
+
+  await page.getByRole('button', { name: '退出登录' }).click();
+  await expect(page).toHaveURL(/\/login$/u);
+  await loginOperator(page);
+  await page.goto(`/cases/${caseId}`);
+  await expect(page.getByText('诉状待确认', { exact: true })).toBeVisible();
+  await expect(page.locator('[data-test="complaint-read-only"]')).toContainText(
+    '真实授权材料验收.docx',
+  );
+
+  const readOnlyContext = await browser.newContext({
+    baseURL: new URL(page.url()).origin,
+  });
+  try {
+    const readOnlyPage = await readOnlyContext.newPage();
+    await readOnlyPage.goto('/cases');
+    await expect(readOnlyPage).toHaveURL(/\/login\?returnTo=/u);
+    await readOnlyPage.getByLabel('用户名').fill(coreLeadFixtures.selfUsername);
+    await readOnlyPage.getByLabel('密码').fill(coreLeadFixtures.selfPassword);
+    await readOnlyPage
+      .getByRole('button', { name: '登录', exact: true })
+      .click();
+    await expectCaseListSession(readOnlyPage);
+    await readOnlyPage.goto(`/cases/${caseId}`);
+    await expect(
+      readOnlyPage.locator('[data-test="case-read-only"]'),
+    ).toBeVisible();
+    await expect(
+      readOnlyPage.locator('[data-test="complaint-submit-form"]'),
+    ).toHaveCount(0);
+    const sameDepartmentDownload = readOnlyPage.waitForEvent('download');
+    await readOnlyPage
+      .locator('[data-test="complaint-read-only"]')
+      .getByRole('button', { name: '下载' })
+      .first()
+      .click();
+    expect(await readFile(await (await sameDepartmentDownload).path())).toEqual(
+      pdfBytes,
+    );
+  } finally {
+    await readOnlyContext.close();
+  }
+
+  const origin = new URL(page.url()).origin;
+  for (const account of [
+    {
+      username: clientUsername,
+      password: clientPassword,
+    },
+    {
+      username: notaryUsername,
+      password: notaryPassword,
+    },
+  ]) {
+    const externalContext = await playwrightRequest.newContext({
+      baseURL: origin,
+    });
+    try {
+      const login = await externalContext.post('/api/v1/auth/login', {
+        headers: { Origin: origin },
+        data: account,
+      });
+      expect(login.status(), await login.text()).toBe(200);
+      const inaccessible = await externalContext.get(`/api/v1/cases/${caseId}`);
+      expect([403, 404]).toContain(inaccessible.status());
+    } finally {
+      await externalContext.dispose();
+    }
   }
 });

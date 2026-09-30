@@ -345,7 +345,7 @@ describe('OrganizationService management context', () => {
       assignTeamRoles: false,
       manageRoleTemplates: true,
     });
-    expect(result.permissionCatalog).toHaveLength(25);
+    expect(result.permissionCatalog).toHaveLength(26);
     expect(result.permissionCatalog).toContainEqual({
       action: 'CASE_READ',
       label: '查看案件',
@@ -354,6 +354,11 @@ describe('OrganizationService management context', () => {
     expect(result.permissionCatalog).toContainEqual({
       action: 'CASE_MATCH',
       label: '匹配案件承办',
+      scopes: ['SELF', 'TEAM', 'DEPARTMENT'],
+    });
+    expect(result.permissionCatalog).toContainEqual({
+      action: 'CASE_COMPLAINT_SUBMIT',
+      label: '提交起诉材料',
       scopes: ['SELF', 'TEAM', 'DEPARTMENT'],
     });
     expect(result.permissionCatalog.map(({ action }) => action)).toEqual(

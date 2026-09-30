@@ -4,6 +4,7 @@ import {
   link,
   mkdir,
   open as openFile,
+  readFile,
   stat,
   unlink,
 } from 'node:fs/promises';
@@ -105,7 +106,18 @@ export class LocalPrivateBlobStorage implements PrivateBlobStorage {
         inspector,
         createWriteStream(temporaryPath, { flags: 'r+', mode: 0o600 }),
       );
-      const detectedMimeType = detectMimeType(prefix);
+      const officeContainer =
+        prefix.length >= 8 &&
+        (prefix.readUInt32LE(0) === 0x04034b50 ||
+          prefix
+            .subarray(0, 8)
+            .equals(
+              Buffer.from([0xd0, 0xcf, 0x11, 0xe0, 0xa1, 0xb1, 0x1a, 0xe1]),
+            ));
+      const detectedMimeType = detectMimeType(
+        prefix,
+        officeContainer ? await readFile(temporaryPath) : undefined,
+      );
       if (detectedMimeType === 'application/pdf' && encryptedPdf) {
         throw new BlobValidationError('encrypted PDF files are not accepted');
       }

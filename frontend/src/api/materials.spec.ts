@@ -23,6 +23,72 @@ const uploaded = {
 };
 
 describe('materials API', () => {
+  it('uploads complaint files as real CASE-owned materials', async () => {
+    const file = new File(['pdf-content'], '起诉状.pdf', {
+      type: 'application/pdf',
+    });
+    const result = {
+      ...uploaded,
+      originalFilename: file.name,
+      purpose: 'COMPLAINT',
+      mimeType: file.type,
+      sizeBytes: file.size,
+    };
+    const fetch = vi
+      .fn()
+      .mockResolvedValueOnce(
+        new Response(
+          JSON.stringify({
+            id: 'draft-case',
+            ownerType: 'CASE',
+            ownerId: 'case-1',
+            category: 'COMPLAINT',
+            purpose: 'COMPLAINT',
+            originalFilename: file.name,
+            declaredMimeType: file.type,
+            expiresAt: '2026-09-30T00:00:00.000Z',
+          }),
+        ),
+      )
+      .mockResolvedValueOnce(new Response(JSON.stringify(result)));
+    vi.stubGlobal('fetch', fetch);
+    await expect(
+      uploadMaterialFile({
+        ownerType: 'CASE',
+        ownerId: 'case-1',
+        category: 'COMPLAINT',
+        purpose: 'COMPLAINT',
+        file,
+      }),
+    ).resolves.toEqual(result);
+    expect(JSON.parse(String(fetch.mock.calls[0]?.[1]?.body))).toMatchObject({
+      ownerType: 'CASE',
+      ownerId: 'case-1',
+      category: 'COMPLAINT',
+      purpose: 'COMPLAINT',
+    });
+    expect(fetch.mock.calls[1]?.[1]).toEqual(
+      expect.objectContaining({ body: file, method: 'PUT' }),
+    );
+  });
+
+  it('validates complaint uploads before creating a server draft', async () => {
+    const fetch = vi.fn();
+    vi.stubGlobal('fetch', fetch);
+    await expect(
+      uploadMaterialFile({
+        ownerType: 'CASE',
+        ownerId: 'case-1',
+        category: 'COMPLAINT',
+        purpose: 'COMPLAINT',
+        file: new File(['data'], '诉状.exe', {
+          type: 'application/octet-stream',
+        }),
+      }),
+    ).rejects.toMatchObject({ code: 'VALIDATION_ERROR' });
+    expect(fetch).not.toHaveBeenCalled();
+  });
+
   it('creates upload metadata then sends the original File as a raw body', async () => {
     const file = new File(['real-file-content'], '营业执照.pdf', {
       type: 'application/pdf',

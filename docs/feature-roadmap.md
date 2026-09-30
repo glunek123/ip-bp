@@ -1,6 +1,6 @@
 # 功能开发路线图
 
-更新日期：2026-09-29。CORE-CA-001匹配事实修正候选`1279b1d`、tree`4c8952b`通过独立审查、完整`pnpm verify`及124项数据库型浏览器验收，收口提交`b6d3489`已快进合并并推送至`main`与`origin/main`，证据边界见[验证记录](spec/v0.1/VALIDATION.md)。CORE-CA-002为唯一Current（待领取），CORE-NT-008为Next；本次不开始下一切片。
+更新日期：2026-09-30。CORE-CA-001匹配事实修正候选`1279b1d`、tree`4c8952b`通过独立审查、完整`pnpm verify`及124项数据库型浏览器验收，收口提交`b6d3489`已快进合并并推送至`main`与`origin/main`，证据边界见[验证记录](spec/v0.1/VALIDATION.md)。CORE-CA-002为唯一Current（已从`main@1d41525`领取开发，尚未验收），CORE-NT-008为Next。
 
 本文只回答“已经做到哪里、下一步做什么、之后按什么依赖顺序做”。详细业务规则仍以 [`docs/spec/`](spec/) 为准，核心主线的编码级字段、附件与存储边界以[核心业务字段、附件与存储契约](superpowers/specs/2026-09-21-core-flow-field-material-contract.md)为准，技术方案以设计文档为准，当前切片的技术任务以实施计划为准，实际验证结果以 [`docs/spec/v0.1/VALIDATION.md`](spec/v0.1/VALIDATION.md) 为准；[`docs/project-status.md`](project-status.md)仅保留当前恢复摘要。
 
@@ -100,7 +100,7 @@
 
 **CORE-CA-002｜起诉材料。**
 
-承接已集成的CA-001，待领取；领取前核对当前`main`及对应Spec，不提前实施。
+承接已集成的CA-001，已从`main@1d41525`领取至`codex/core-ca-002-complaint-materials`；按已确认的材料及阶段门槛实施，尚未验收。
 
 ### Next Slice
 

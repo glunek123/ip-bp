@@ -32,6 +32,7 @@ const expandedGroup = ref<'cases' | 'leads' | 'notary' | 'settings' | null>(
 const caseStageCards: ReadonlyArray<{ stage: CaseStage; label: string }> = [
   { stage: 'PENDING_MATCH', label: '案件待匹配' },
   { stage: 'WAITING_COMPLAINT', label: '待写诉状' },
+  { stage: 'WAITING_COMPLAINT_CONFIRMATION', label: '诉状待确认' },
 ];
 const notaryStageCards: ReadonlyArray<{
   stage: NotaryListStage;

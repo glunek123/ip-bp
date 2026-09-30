@@ -19,6 +19,7 @@ export const materialOwnerTypes = [
   'LEAD_DRAFT',
   'LEAD',
   'NOTARY_MATTER',
+  'CASE',
 ] as const;
 export type MaterialOwnerTypeValue = (typeof materialOwnerTypes)[number];
 export const materialCategories = [
@@ -27,6 +28,8 @@ export const materialCategories = [
   'NOTARY_OPENING_PHOTO',
   'NOTARY_CERTIFICATE',
   'NOTARY_DISCLOSURE',
+  'COMPLAINT',
+  'AUTHORIZATION',
 ] as const;
 export type MaterialCategoryValue = (typeof materialCategories)[number];
 export const materialPurposes = [
@@ -37,15 +40,17 @@ export const materialPurposes = [
   'NOTARY_OPENING_PHOTO',
   'NOTARY_CERTIFICATE',
   'NOTARY_DISCLOSURE',
+  'COMPLAINT',
+  'AUTHORIZATION',
 ] as const;
 export type MaterialPurposeValue = (typeof materialPurposes)[number];
 
 export class CreateUploadDraftDto {
-  @ApiProperty({ enum: ['CUSTOMER', 'LEAD_DRAFT', 'NOTARY_MATTER'] })
-  @IsIn(['CUSTOMER', 'LEAD_DRAFT', 'NOTARY_MATTER'])
+  @ApiProperty({ enum: ['CUSTOMER', 'LEAD_DRAFT', 'NOTARY_MATTER', 'CASE'] })
+  @IsIn(['CUSTOMER', 'LEAD_DRAFT', 'NOTARY_MATTER', 'CASE'])
   ownerType!: Extract<
     MaterialOwnerTypeValue,
-    'CUSTOMER' | 'LEAD_DRAFT' | 'NOTARY_MATTER'
+    'CUSTOMER' | 'LEAD_DRAFT' | 'NOTARY_MATTER' | 'CASE'
   >;
 
   @ApiPropertyOptional({ format: 'uuid' })

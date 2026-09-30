@@ -46,6 +46,7 @@ export const permissionActionValues = [
   'NOTARY_RETURN_ARCHIVE',
   'CASE_READ',
   'CASE_MATCH',
+  'CASE_COMPLAINT_SUBMIT',
   'NOTARY_OFFICE_MANAGE',
   'USER_READ',
   'USER_MANAGE',
@@ -254,7 +255,8 @@ function isPermissionCatalog(
       new Set(item.scopes).size !== item.scopes.length ||
       (item.action === 'CASE_READ' &&
         (item.scopes.length !== 1 || item.scopes[0] !== 'DEPARTMENT')) ||
-      (item.action === 'CASE_MATCH' &&
+      ((item.action === 'CASE_MATCH' ||
+        item.action === 'CASE_COMPLAINT_SUBMIT') &&
         (item.scopes.length !== 3 ||
           item.scopes[0] !== 'SELF' ||
           item.scopes[1] !== 'TEAM' ||

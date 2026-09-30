@@ -21,6 +21,11 @@ import {
 import { CaseReadService } from './case-read.service';
 import { CaseMatchService } from './case-match.service';
 import { MatchCaseDto, MatchCaseResponseDto } from './case-match.dto';
+import { CaseComplaintService } from './case-complaint.service';
+import {
+  SubmitCaseComplaintDto,
+  SubmitCaseComplaintResponseDto,
+} from './case-complaint.dto';
 
 @ApiTags('cases')
 @ApiBearerAuth()
@@ -30,6 +35,7 @@ export class CaseReadController {
   constructor(
     private readonly cases: CaseReadService,
     private readonly matching: CaseMatchService,
+    private readonly complaint: CaseComplaintService,
   ) {}
 
   @Get()
@@ -61,5 +67,15 @@ export class CaseReadController {
     @Body() body: MatchCaseDto,
   ) {
     return this.matching.match(actor, id, body);
+  }
+
+  @Post(':id/complaint-submit')
+  @ApiOkResponse({ type: SubmitCaseComplaintResponseDto })
+  submitComplaint(
+    @CurrentActor() actor: ActorContext,
+    @Param('id', new ParseUUIDPipe()) id: string,
+    @Body() body: SubmitCaseComplaintDto,
+  ) {
+    return this.complaint.submit(actor, id, body);
   }
 }

@@ -8,6 +8,7 @@ import { configureApp } from '../../common/configure-app';
 import { CaseReadController } from './case-read.controller';
 import { CaseReadService } from './case-read.service';
 import { CaseMatchService } from './case-match.service';
+import { CaseComplaintService } from './case-complaint.service';
 
 describe('case read OpenAPI contract', () => {
   it('declares minimal list and detail response with source fee identities', async () => {
@@ -16,6 +17,7 @@ describe('case read OpenAPI contract', () => {
       providers: [
         { provide: CaseReadService, useValue: {} },
         { provide: CaseMatchService, useValue: {} },
+        { provide: CaseComplaintService, useValue: {} },
       ],
     })
       .overrideGuard(ActorContextGuard)

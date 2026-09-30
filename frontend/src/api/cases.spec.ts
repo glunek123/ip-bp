@@ -1,5 +1,5 @@
 import { afterEach, describe, expect, it, vi } from 'vitest';
-import { getCase, listCases, matchCase } from './cases';
+import { getCase, listCases, matchCase, submitComplaint } from './cases';
 
 afterEach(() => vi.unstubAllGlobals());
 
@@ -11,6 +11,7 @@ const summary = {
   version: 3,
   owner: { id: 'user-1', displayName: '负责人' },
   canMatch: true,
+  canSubmitComplaint: false,
   sourceLead: { id: 'lead-1', businessNo: 'LD-1' },
   sourceNotaryMatter: { id: 'matter-1', businessNo: 'NZ-1' },
 };
@@ -66,6 +67,8 @@ const detail = {
   ],
   matchedAt: null,
   matchedOn: null,
+  canSubmitComplaint: false,
+  complaint: null,
 };
 function mockJson(payload: unknown) {
   const fetchMock = vi
@@ -82,17 +85,51 @@ describe('cases API', () => {
       total: 1,
       page: 1,
       pageSize: 20,
-      counts: { PENDING_MATCH: 2, WAITING_COMPLAINT: 1 },
+      counts: {
+        PENDING_MATCH: 2,
+        WAITING_COMPLAINT: 1,
+        WAITING_COMPLAINT_CONFIRMATION: 0,
+      },
     });
     await expect(
       listCases(1, 20, { view: 'department', stage: 'PENDING_MATCH' }),
     ).resolves.toMatchObject({
       items: [{ businessNo: 'CA-1', canMatch: true }],
-      counts: { PENDING_MATCH: 2 },
+      counts: {
+        PENDING_MATCH: 2,
+        WAITING_COMPLAINT: 1,
+        WAITING_COMPLAINT_CONFIRMATION: 0,
+      },
     });
     expect(fetchMock.mock.calls[0]?.[0]).toBe(
       '/api/v1/cases?page=1&pageSize=20&view=department&stage=PENDING_MATCH',
     );
+  });
+
+  it('keeps complaint submit capability on a nonempty real list response', async () => {
+    mockJson({
+      items: [
+        {
+          ...summary,
+          stage: 'WAITING_COMPLAINT',
+          canMatch: false,
+          canSubmitComplaint: true,
+        },
+      ],
+      total: 1,
+      page: 1,
+      pageSize: 20,
+      counts: {
+        PENDING_MATCH: 0,
+        WAITING_COMPLAINT: 1,
+        WAITING_COMPLAINT_CONFIRMATION: 0,
+      },
+    });
+    await expect(
+      listCases(1, 20, { view: 'department' }),
+    ).resolves.toMatchObject({
+      items: [{ canMatch: false, canSubmitComplaint: true }],
+    });
   });
 
   it('omits the stage parameter for all-stage lists and rejects invalid summaries', async () => {
@@ -101,7 +138,11 @@ describe('cases API', () => {
       total: 1,
       page: 1,
       pageSize: 20,
-      counts: { PENDING_MATCH: 2, WAITING_COMPLAINT: 1 },
+      counts: {
+        PENDING_MATCH: 2,
+        WAITING_COMPLAINT: 1,
+        WAITING_COMPLAINT_CONFIRMATION: 0,
+      },
     });
     await listCases(1, 20, { stage: 'all' });
     expect(fetchMock.mock.calls[0]?.[0]).toBe(
@@ -112,7 +153,11 @@ describe('cases API', () => {
       total: 1,
       page: 1,
       pageSize: 20,
-      counts: { PENDING_MATCH: 1, WAITING_COMPLAINT: 0 },
+      counts: {
+        PENDING_MATCH: 1,
+        WAITING_COMPLAINT: 0,
+        WAITING_COMPLAINT_CONFIRMATION: 0,
+      },
     });
     await expect(listCases()).rejects.toMatchObject({
       code: 'INVALID_RESPONSE',
@@ -142,6 +187,50 @@ describe('cases API', () => {
     await expect(getCase('case-1')).resolves.toMatchObject({
       matchedOn: null,
       lawyers: [{ lawFirm: null }],
+    });
+  });
+
+  it('decodes complaint state and its versioned attachments on case detail', async () => {
+    mockJson({
+      ...detail,
+      stage: 'WAITING_COMPLAINT',
+      canSubmitComplaint: true,
+      complaint: null,
+    });
+    await expect(getCase('case-1')).resolves.toMatchObject({
+      canSubmitComplaint: true,
+      complaint: null,
+    });
+  });
+
+  it('submits a complaint with exact version ids and validates the transition', async () => {
+    const fetchMock = mockJson({
+      id: 'case-1',
+      stage: 'WAITING_COMPLAINT_CONFIRMATION',
+      version: 4,
+      submittedAt: '2026-09-30T01:00:00Z',
+    });
+    await submitComplaint('case-1', {
+      expectedVersion: 3,
+      idempotencyKey: 'complaint-key',
+      amountState: 'PENDING',
+      amount: null,
+      pendingReason: '尚待客户提供',
+      complaintContentVersionIds: ['complaint-v1'],
+      authorizationContentVersionIds: ['authorization-v1'],
+    });
+    const [, init] = fetchMock.mock.calls[0] as [string, RequestInit];
+    expect(fetchMock.mock.calls[0]?.[0]).toBe(
+      '/api/v1/cases/case-1/complaint-submit',
+    );
+    expect(JSON.parse(String(init.body))).toEqual({
+      expectedVersion: 3,
+      idempotencyKey: 'complaint-key',
+      amountState: 'PENDING',
+      amount: null,
+      pendingReason: '尚待客户提供',
+      complaintContentVersionIds: ['complaint-v1'],
+      authorizationContentVersionIds: ['authorization-v1'],
     });
   });
 

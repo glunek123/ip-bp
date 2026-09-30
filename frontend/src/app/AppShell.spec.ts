@@ -78,7 +78,11 @@ beforeEach(() => {
     total: 5,
     page: 1,
     pageSize: 1,
-    counts: { PENDING_MATCH: 3, WAITING_COMPLAINT: 2 },
+    counts: {
+      PENDING_MATCH: 3,
+      WAITING_COMPLAINT: 2,
+      WAITING_COMPLAINT_CONFIRMATION: 1,
+    },
   });
 });
 afterEach(() => {
@@ -227,8 +231,8 @@ describe('AppShell', () => {
     expect(
       wrapper.get('[data-test="case-view-mine"]').attributes('href'),
     ).toContain('view=mine');
-    expect(wrapper.findAll('[data-test="case-stage"]')).toHaveLength(2);
-    expect(wrapper.get('[data-test="case-nav"]').text()).toContain('5');
+    expect(wrapper.findAll('[data-test="case-stage"]')).toHaveLength(3);
+    expect(wrapper.get('[data-test="case-nav"]').text()).toContain('6');
     expect(api.listCases).toHaveBeenCalledWith(1, 1, {
       signal: expect.any(AbortSignal),
       view: 'department',

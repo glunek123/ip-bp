@@ -22,6 +22,8 @@ export const coreLeadFixtures: Readonly<{
   tokenSelf: string;
   operatorUsername: string;
   operatorPassword: string;
+  selfUsername: string;
+  selfPassword: string;
 }>;
 
 export function resetCoreLeadE2eData(): Promise<void>;
@@ -262,6 +264,12 @@ export function rejectNotaryReturnReceiptWrites(): Promise<void>;
 export function rejectNotaryCertificateCaseWrites(): Promise<void>;
 export function rejectNotaryCertificateReceiptWrites(): Promise<void>;
 export function rejectCaseMatchReceiptWrites(): Promise<void>;
+export function rejectCaseComplaintReceiptWrites(): Promise<void>;
+export function countCaseComplaintEffects(caseId: string): Promise<{
+  receipts: number;
+  audits: number;
+  references: number;
+}>;
 export function rejectLeadReviewDecisionWrites(): Promise<void>;
 export function rejectClientLeadReviewReceiptWrites(): Promise<void>;
 export function rejectWithdrawalApplicationWrites(): Promise<void>;
@@ -418,3 +426,8 @@ export function verifyCoreLeadMigration(): Promise<{
   };
 }>;
 export function disconnectCoreLeadTestDatabase(): Promise<void>;
+export function verifyCaseComplaintMigration(): Promise<{
+  empty: { columns: string[]; receiptExists: boolean; stageExists: boolean };
+  previous: { columns: string[]; receiptExists: boolean; stageExists: boolean };
+  upgrade: { columns: string[]; receiptExists: boolean; stageExists: boolean };
+}>;
