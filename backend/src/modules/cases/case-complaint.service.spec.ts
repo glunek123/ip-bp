@@ -23,16 +23,14 @@ describe('CaseComplaintService', () => {
     const tx = {
       $queryRawUnsafe: jest.fn().mockResolvedValue([{ id: caseId }]),
       case: {
-        findFirst: jest
-          .fn()
-          .mockResolvedValue({
-            id: caseId,
-            departmentId: actor.departmentId,
-            stage: 'WAITING_COMPLAINT',
-            version: 2,
-            responsibleUserId: actor.userId,
-            responsibleMembership: { teamId: null },
-          }),
+        findFirst: jest.fn().mockResolvedValue({
+          id: caseId,
+          departmentId: actor.departmentId,
+          stage: 'WAITING_COMPLAINT',
+          version: 2,
+          responsibleUserId: actor.userId,
+          responsibleMembership: { teamId: null },
+        }),
         updateMany: jest.fn().mockResolvedValue({ count: 1 }),
       },
       userAccount: {

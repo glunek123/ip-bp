@@ -1,6 +1,6 @@
 {
   "version": 1,
-  "recordedAt": "2026-09-30T03:05:11.463Z",
+  "recordedAt": "2026-09-30T03:07:30.704Z",
   "files": {
     ".cursor/rules/verified-feature-integration.mdc": "ffd2306612ba6f09749629c5adb9e645f7f37aa6ee27ff1bc1c3d8b14efeca38",
     ".env.example": "07211cde5c2b59efc21b619b752d4c9b871f0980d2d64ca3c146ad6151fd27ca",
@@ -138,7 +138,7 @@
     "backend/src/main.ts": "38fa1f6260c195b74bfcf7d4d8585925f5d16d4584a29b317efe0c068d77ea1e",
     "backend/src/modules/cases/case-complaint-migration.spec.ts": "bc644e0a2639640ce6d8c18ef138903992b38a545e087d49f10a56641bfd98e4",
     "backend/src/modules/cases/case-complaint.dto.ts": "932f461260986a55979c4e5de5528d4f3b669c28104e7255f5f1d27a700307e4",
-    "backend/src/modules/cases/case-complaint.service.spec.ts": "f4816b06d36be9ff61dc96329f2e742c93a1d64e7f5b120102897bcaa48a2472",
+    "backend/src/modules/cases/case-complaint.service.spec.ts": "902f05673f186541a8e13224c39900a7170e4acee93f392068204184ac1e5ab1",
     "backend/src/modules/cases/case-complaint.service.ts": "75827827cf1e429fb4a020baaf5c2fc3c961b9babf67fcad46ef0219ef143b53",
     "backend/src/modules/cases/case-creation.service.spec.ts": "e9996f05df825920060b9e4e1a824bca386175baccfd6cb63cb0ac47acacd4e2",
     "backend/src/modules/cases/case-creation.service.ts": "99573e25890cb1d62df72182cdd1ae3b122f6a81e45d84c7f5c5afa8a5eaf1aa",
