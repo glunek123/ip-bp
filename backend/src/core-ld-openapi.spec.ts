@@ -22,6 +22,8 @@ import { NotaryListService } from './modules/leads/notary-list.service';
 import { NotaryListPreferenceService } from './modules/leads/notary-list-preference.service';
 import { NotaryListExportController } from './modules/leads/notary-list-export.controller';
 import { NotaryListExportService } from './modules/leads/notary-list-export.service';
+import { NotaryReturnArchiveBatchController } from './modules/leads/notary-return-archive-batch.controller';
+import { NotaryReturnArchiveBatchService } from './modules/leads/notary-return-archive-batch.service';
 
 describe('CORE-LD-002 OpenAPI contract', () => {
   let app: INestApplication;
@@ -36,6 +38,7 @@ describe('CORE-LD-002 OpenAPI contract', () => {
         ClientNotaryController,
         NotaryListController,
         NotaryListExportController,
+        NotaryReturnArchiveBatchController,
       ],
       providers: [
         { provide: AuthService, useValue: {} },
@@ -48,6 +51,7 @@ describe('CORE-LD-002 OpenAPI contract', () => {
         { provide: NotaryListService, useValue: {} },
         { provide: NotaryListPreferenceService, useValue: {} },
         { provide: NotaryListExportService, useValue: {} },
+        { provide: NotaryReturnArchiveBatchService, useValue: {} },
       ],
     })
       .overrideGuard(ActorContextGuard)
@@ -92,6 +96,12 @@ describe('CORE-LD-002 OpenAPI contract', () => {
     ],
     ['get', '/api/v1/client/leads', '200', 'ClientLeadListResponseDto'],
     ['get', '/api/v1/notary-matters', '200', 'NotaryListResponseDto'],
+    [
+      'post',
+      '/api/v1/notary-matters/return-archive-batches',
+      '201',
+      'NotaryReturnArchiveBatchResponseDto',
+    ],
     [
       'get',
       '/api/v1/notary-matters/list-preference',

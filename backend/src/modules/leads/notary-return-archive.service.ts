@@ -85,26 +85,8 @@ export class NotaryReturnArchiveService {
               where: { id: matterId, departmentId: actor.departmentId },
               select: {
                 departmentId: true,
-                stage: true,
-                version: true,
                 sourceLead: {
                   select: { responsibleUserId: true, teamId: true },
-                },
-                openingReviewDecision: {
-                  select: {
-                    id: true,
-                    result: true,
-                    reason: true,
-                    archivedAt: true,
-                  },
-                },
-                issuanceDecision: { select: { id: true, decision: true } },
-                evidence: {
-                  select: {
-                    matterId: true,
-                    sampleFeeState: true,
-                    sampleFeeAmount: true,
-                  },
                 },
               },
             });
@@ -144,122 +126,13 @@ export class NotaryReturnArchiveService {
             });
             if (prior !== null)
               return this.replay(tx, prior, matterId, fingerprint);
-            if (
-              matter.stage !== 'WAITING_RETURN' ||
-              matter.openingReviewDecision?.result !== 'INFRINGEMENT' ||
-              matter.openingReviewDecision.reason !== null ||
-              matter.openingReviewDecision.archivedAt !== null ||
-              matter.issuanceDecision?.decision !== 'NO_ISSUE' ||
-              matter.evidence === null
-            )
-              throw this.invalidState();
-            if (matter.version !== normalized.expectedVersion)
-              throw this.versionConflict();
-            if (
-              normalized.refund?.amount !== null &&
-              normalized.refund !== null &&
-              new Prisma.Decimal(normalized.refund.amount).gt(0)
-            ) {
-              if (
-                matter.evidence.sampleFeeState !== 'KNOWN' ||
-                matter.evidence.sampleFeeAmount === null
-              )
-                throw this.originalAmountUnknown();
-              const previous = await tx.notaryReturnAmount.findMany({
-                where: {
-                  sourceEvidenceMatterId: matter.evidence.matterId,
-                  departmentId: matter.departmentId,
-                  kind: 'REFUND',
-                  state: 'KNOWN',
-                },
-                select: { amount: true },
-              });
-              const total = previous.reduce(
-                (sum, row) => sum.plus(row.amount ?? 0),
-                new Prisma.Decimal(normalized.refund.amount),
-              );
-              if (total.gt(matter.evidence.sampleFeeAmount))
-                throw this.refundExceeded();
-            }
-            const changed = await tx.notaryMatter.updateMany({
-              where: {
-                id: matterId,
-                departmentId: matter.departmentId,
-                stage: 'WAITING_RETURN',
-                version: normalized.expectedVersion,
-              },
-              data: {
-                stage: 'ARCHIVED',
-                version: normalized.expectedVersion + 1,
-              },
-            });
-            if (changed.count !== 1) throw this.versionConflict();
-            const archivedAt = new Date();
-            const actorDisplayName = account.displayName.trim();
-            const archive = await tx.notaryReturnArchive.create({
-              data: {
-                matterId,
-                departmentId: matter.departmentId,
-                issuanceDecisionId: matter.issuanceDecision.id,
-                actorUserId: actor.userId,
-                actorDisplayNameSnapshot: actorDisplayName,
-                returnChoice: normalized.returnChoice,
-                archiveReason: normalized.archiveReason,
-                archivedAt,
-                fromVersion: normalized.expectedVersion,
-                toVersion: normalized.expectedVersion + 1,
-              },
-            });
-            for (const [kind, amount] of [
-              ['REFUND', normalized.refund],
-              ['FREIGHT', normalized.freight],
-            ] as const) {
-              if (amount === null) continue;
-              await tx.notaryReturnAmount.create({
-                data: {
-                  archiveId: archive.id,
-                  matterId,
-                  departmentId: matter.departmentId,
-                  returnChoice: normalized.returnChoice,
-                  kind,
-                  state: amount.state,
-                  amount: amount.amount,
-                  partyKind: amount.partyKind,
-                  partyName: amount.partyName,
-                  sourceEvidenceMatterId:
-                    kind === 'REFUND' ? matter.evidence.matterId : null,
-                },
-              });
-            }
-            const result: ReturnArchiveResult = {
-              id: matterId,
-              stage: 'ARCHIVED',
-              version: normalized.expectedVersion + 1,
-              returnArchive: {
-                returnChoice: normalized.returnChoice,
-                archiveReason: normalized.archiveReason,
-                archivedAt: archive.archivedAt.toISOString(),
-                actorDisplayName,
-                refund: normalized.refund,
-                freight: normalized.freight,
-              },
-            };
-            await tx.auditEvent.create({
-              data: {
-                departmentId: matter.departmentId,
-                actorUserId: actor.userId,
-                internalActorUserId: actor.userId,
-                resourceType: 'notary_matter',
-                resourceId: matterId,
-                action: 'notary.return.archive.succeeded',
-                details: {
-                  archiveId: archive.id,
-                  returnChoice: normalized.returnChoice,
-                  fromVersion: normalized.expectedVersion,
-                  toVersion: result.version,
-                },
-              },
-            });
+            const result = await this.archiveLocked(
+              tx,
+              actor,
+              matterId,
+              normalized,
+              account.displayName.trim(),
+            );
             try {
               await tx.notaryMatterCommandReceipt.create({
                 data: {
@@ -297,7 +170,180 @@ export class NotaryReturnArchiveService {
     throw this.versionConflict();
   }
 
-  private normalize(input: ArchiveNotaryReturnDto): Normalized {
+  async authorizeLocked(
+    tx: Prisma.TransactionClient,
+    actor: ActorContext,
+    matterId: string,
+  ): Promise<void> {
+    const matter = await tx.notaryMatter.findFirst({
+      where: { id: matterId, departmentId: actor.departmentId },
+      select: {
+        departmentId: true,
+        sourceLead: { select: { responsibleUserId: true, teamId: true } },
+      },
+    });
+    if (matter === null) throw this.notFound();
+    try {
+      await this.access.authorizeLead(
+        actor,
+        ACTION,
+        {
+          departmentId: matter.departmentId,
+          responsibleUserId: matter.sourceLead.responsibleUserId,
+          ...(matter.sourceLead.teamId === null
+            ? {}
+            : { teamId: matter.sourceLead.teamId }),
+        },
+        tx,
+      );
+    } catch (error) {
+      if (error instanceof ForbiddenException) throw this.forbidden();
+      throw error;
+    }
+  }
+
+  async archiveLocked(
+    tx: Prisma.TransactionClient,
+    actor: ActorContext,
+    matterId: string,
+    normalized: Normalized,
+    actorDisplayName: string,
+  ): Promise<ReturnArchiveResult> {
+    const matter = await tx.notaryMatter.findFirst({
+      where: { id: matterId, departmentId: actor.departmentId },
+      select: {
+        departmentId: true,
+        stage: true,
+        version: true,
+        openingReviewDecision: {
+          select: { result: true, reason: true, archivedAt: true },
+        },
+        issuanceDecision: { select: { id: true, decision: true } },
+        evidence: {
+          select: {
+            matterId: true,
+            sampleFeeState: true,
+            sampleFeeAmount: true,
+          },
+        },
+      },
+    });
+    if (matter === null) throw this.notFound();
+    if (
+      matter.stage !== 'WAITING_RETURN' ||
+      matter.openingReviewDecision?.result !== 'INFRINGEMENT' ||
+      matter.openingReviewDecision.reason !== null ||
+      matter.openingReviewDecision.archivedAt !== null ||
+      matter.issuanceDecision?.decision !== 'NO_ISSUE' ||
+      matter.evidence === null
+    )
+      throw this.invalidState();
+    if (matter.version !== normalized.expectedVersion)
+      throw this.versionConflict();
+    if (
+      normalized.refund !== null &&
+      normalized.refund.amount !== null &&
+      new Prisma.Decimal(normalized.refund.amount).gt(0)
+    ) {
+      if (
+        matter.evidence.sampleFeeState !== 'KNOWN' ||
+        matter.evidence.sampleFeeAmount === null
+      )
+        throw this.originalAmountUnknown();
+      const previous = await tx.notaryReturnAmount.findMany({
+        where: {
+          sourceEvidenceMatterId: matter.evidence.matterId,
+          departmentId: matter.departmentId,
+          kind: 'REFUND',
+          state: 'KNOWN',
+        },
+        select: { amount: true },
+      });
+      const total = previous.reduce(
+        (sum, row) => sum.plus(row.amount ?? 0),
+        new Prisma.Decimal(normalized.refund.amount),
+      );
+      if (total.gt(matter.evidence.sampleFeeAmount))
+        throw this.refundExceeded();
+    }
+    const changed = await tx.notaryMatter.updateMany({
+      where: {
+        id: matterId,
+        departmentId: matter.departmentId,
+        stage: 'WAITING_RETURN',
+        version: normalized.expectedVersion,
+      },
+      data: { stage: 'ARCHIVED', version: normalized.expectedVersion + 1 },
+    });
+    if (changed.count !== 1) throw this.versionConflict();
+    const archive = await tx.notaryReturnArchive.create({
+      data: {
+        matterId,
+        departmentId: matter.departmentId,
+        issuanceDecisionId: matter.issuanceDecision.id,
+        actorUserId: actor.userId,
+        actorDisplayNameSnapshot: actorDisplayName,
+        returnChoice: normalized.returnChoice,
+        archiveReason: normalized.archiveReason,
+        archivedAt: new Date(),
+        fromVersion: normalized.expectedVersion,
+        toVersion: normalized.expectedVersion + 1,
+      },
+    });
+    for (const [kind, amount] of [
+      ['REFUND', normalized.refund],
+      ['FREIGHT', normalized.freight],
+    ] as const) {
+      if (amount === null) continue;
+      await tx.notaryReturnAmount.create({
+        data: {
+          archiveId: archive.id,
+          matterId,
+          departmentId: matter.departmentId,
+          returnChoice: normalized.returnChoice,
+          kind,
+          state: amount.state,
+          amount: amount.amount,
+          partyKind: amount.partyKind,
+          partyName: amount.partyName,
+          sourceEvidenceMatterId:
+            kind === 'REFUND' ? matter.evidence.matterId : null,
+        },
+      });
+    }
+    const result: ReturnArchiveResult = {
+      id: matterId,
+      stage: 'ARCHIVED',
+      version: normalized.expectedVersion + 1,
+      returnArchive: {
+        returnChoice: normalized.returnChoice,
+        archiveReason: normalized.archiveReason,
+        archivedAt: archive.archivedAt.toISOString(),
+        actorDisplayName,
+        refund: normalized.refund,
+        freight: normalized.freight,
+      },
+    };
+    await tx.auditEvent.create({
+      data: {
+        departmentId: matter.departmentId,
+        actorUserId: actor.userId,
+        internalActorUserId: actor.userId,
+        resourceType: 'notary_matter',
+        resourceId: matterId,
+        action: 'notary.return.archive.succeeded',
+        details: {
+          archiveId: archive.id,
+          returnChoice: normalized.returnChoice,
+          fromVersion: normalized.expectedVersion,
+          toVersion: result.version,
+        },
+      },
+    });
+    return result;
+  }
+
+  normalize(input: ArchiveNotaryReturnDto): Normalized {
     if (
       input === null ||
       typeof input !== 'object' ||
@@ -401,7 +447,7 @@ export class NotaryReturnArchiveService {
     };
   }
 
-  private async replay(
+  async replay(
     tx: Pick<Prisma.TransactionClient, 'notaryReturnArchive'>,
     receipt: {
       departmentId: string;
@@ -542,55 +588,55 @@ export class NotaryReturnArchiveService {
     const date = new Date(value);
     return !Number.isNaN(date.getTime()) && date.toISOString() === value;
   }
-  private validation() {
+  validation() {
     return new BadRequestException({
       code: 'VALIDATION_ERROR',
       message: '退货归档参数无效',
     });
   }
-  private forbidden() {
+  forbidden() {
     return new ForbiddenException({
       code: 'ACTION_FORBIDDEN',
       message: '无权办理退货归档',
     });
   }
-  private notFound() {
+  notFound() {
     return new NotFoundException({
       code: 'RESOURCE_NOT_FOUND',
       message: '公证事项不存在或不可访问',
     });
   }
-  private invalidState() {
+  invalidState() {
     return new ConflictException({
       code: 'INVALID_STATE',
       message: '该公证事项当前不能退货归档',
     });
   }
-  private versionConflict() {
+  versionConflict() {
     return new ConflictException({
       code: 'VERSION_CONFLICT',
       message: '公证事项状态或版本已变化',
     });
   }
-  private originalAmountUnknown() {
+  originalAmountUnknown() {
     return new ConflictException({
       code: 'ORIGINAL_AMOUNT_UNKNOWN',
       message: '原样品费用待定，不能登记已知正退款',
     });
   }
-  private refundExceeded() {
+  refundExceeded() {
     return new ConflictException({
       code: 'REFUND_EXCEEDS_ORIGINAL',
       message: '退款累计金额超过原样品费用',
     });
   }
-  private corruptReceipt() {
+  corruptReceipt() {
     return new InternalServerErrorException({
       code: 'RECEIPT_CORRUPT',
       message: '退货归档回执不可用',
     });
   }
-  private isUnique(error: unknown): boolean {
+  isUnique(error: unknown): boolean {
     return (
       error !== null &&
       typeof error === 'object' &&
@@ -598,7 +644,7 @@ export class NotaryReturnArchiveService {
         this.isUnique((error as { cause?: unknown }).cause))
     );
   }
-  private isSerializationConflict(error: unknown): boolean {
+  isSerializationConflict(error: unknown): boolean {
     if (error === null || typeof error !== 'object') return false;
     const e = error as {
       code?: unknown;

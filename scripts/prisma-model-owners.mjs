@@ -39,6 +39,7 @@ export const prismaModelOwners = Object.freeze({
   NotaryIssuanceDecisionAuditEvent: 'leads',
   NotaryReturnArchive: 'leads',
   NotaryReturnAmount: 'leads',
+  NotaryReturnArchiveBatchReceipt: 'leads',
   NotaryCertificate: 'leads',
   NotaryCertificateFee: 'leads',
   Case: 'cases',

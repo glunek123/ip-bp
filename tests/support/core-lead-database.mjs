@@ -382,6 +382,7 @@ async function clearDatabase() {
     'notary_issuance_decision_audit_events',
     'notary_return_archives',
     'notary_return_amounts',
+    'notary_return_archive_batch_receipts',
     'notary_matter_command_receipts',
     'cases',
     'notary_certificate_fees',
@@ -429,6 +430,9 @@ async function clearDatabase() {
       where: { departmentId: { in: departmentIds } },
     });
     await transaction.notaryReturnArchive.deleteMany({
+      where: { departmentId: { in: departmentIds } },
+    });
+    await transaction.notaryReturnArchiveBatchReceipt.deleteMany({
       where: { departmentId: { in: departmentIds } },
     });
     await transaction.notaryMatterCommandReceipt.deleteMany({

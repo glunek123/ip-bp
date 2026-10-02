@@ -22,6 +22,8 @@ import { NotaryOpeningService } from './notary-opening.service';
 import { NotaryOpeningReviewService } from './notary-opening-review.service';
 import { NotaryIssuanceDecisionService } from './notary-issuance-decision.service';
 import { NotaryReturnArchiveService } from './notary-return-archive.service';
+import { NotaryReturnArchiveBatchController } from './notary-return-archive-batch.controller';
+import { NotaryReturnArchiveBatchService } from './notary-return-archive-batch.service';
 import { NotaryListController } from './notary-list.controller';
 import { NotaryListService } from './notary-list.service';
 import { NotaryListPreferenceService } from './notary-list-preference.service';
@@ -47,6 +49,7 @@ import { NotaryCertificateService } from './notary-certificate.service';
     ClientNotaryController,
     NotaryListController,
     NotaryListExportController,
+    NotaryReturnArchiveBatchController,
     LeadNotaryController,
     NotaryOfficeController,
     NotaryPortalController,
@@ -60,6 +63,7 @@ import { NotaryCertificateService } from './notary-certificate.service';
     NotaryOpeningReviewService,
     NotaryIssuanceDecisionService,
     NotaryReturnArchiveService,
+    NotaryReturnArchiveBatchService,
     NotaryListService,
     NotaryListPreferenceService,
     NotaryListExportService,
