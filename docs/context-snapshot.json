@@ -1,6 +1,6 @@
 {
   "version": 1,
-  "recordedAt": "2026-10-02T05:53:10.618Z",
+  "recordedAt": "2026-10-02T05:59:02.081Z",
   "files": {
     ".cursor/rules/verified-feature-integration.mdc": "ffd2306612ba6f09749629c5adb9e645f7f37aa6ee27ff1bc1c3d8b14efeca38",
     ".env.example": "07211cde5c2b59efc21b619b752d4c9b871f0980d2d64ca3c146ad6151fd27ca",
@@ -250,7 +250,7 @@
     "backend/src/modules/leads/notary-return-archive-batch.controller.spec.ts": "6786f2e7c889b727814a98164e26ea414ee72042ffb95e0eb14c2849f66f7336",
     "backend/src/modules/leads/notary-return-archive-batch.controller.ts": "9b21b36f93491bbd781cc7ecbb26e9f1ea39d219ad443b1acb353cbd26fee882",
     "backend/src/modules/leads/notary-return-archive-batch.dto.ts": "1cb91db8badf950ee76be15af539f67c8041c4557e96ac9bfd62cf5eb587c821",
-    "backend/src/modules/leads/notary-return-archive-batch.service.spec.ts": "f69b3c016264c135146911779d01ab5f9e8f7151824cddedcfe263f0f8278c1b",
+    "backend/src/modules/leads/notary-return-archive-batch.service.spec.ts": "2c200425180532f7ce8d265bc69e7a7025b45a1ed227f3c583284209a416f5e8",
     "backend/src/modules/leads/notary-return-archive-batch.service.ts": "f4a651b42977a30e025dd283e79a25ed345e70fa47b1de41d5f164085fc3e9bf",
     "backend/src/modules/leads/notary-return-archive.controller.spec.ts": "c10d9de640c4265e708fc4ed17d50600260af0db6507142b262d1bf030562e46",
     "backend/src/modules/leads/notary-return-archive.dto.ts": "2e885d998fc9b1b2d51d9492c0faff63da112125163c27d7748b96b10171abd0",
@@ -573,9 +573,9 @@
     "tests/e2e/notary-list-export.spec.ts": "3737e001b1f2b613b7cce9959a97cea289d94335b42bdbf8cc94eebfa2ba8248",
     "tests/e2e/notary-list-preference-migration.spec.ts": "677897865018d8e6ff16c18ae97fb742501485f20e6f8031ae4b851a34b749b4",
     "tests/e2e/notary-list-preference.spec.ts": "269fdd38860c1242f011fd9fa11f4f497725f74920242b450b8e13c64a1d63ca",
-    "tests/e2e/notary-return-archive-batch-database.spec.ts": "195273624db99eed6941aff2bf2ff67191eb02a8f005d30914b8d6b655f6bea5",
+    "tests/e2e/notary-return-archive-batch-database.spec.ts": "42742b24d1354d9223ec7dc280f2b4d1669b35dc5fe5b4034d5d7bcd4139c03d",
     "tests/e2e/notary-return-archive-batch-migration.spec.ts": "4fe743f309402aa2de90bbe7bab3227b5e95497063b332167a4844b03cb568b5",
-    "tests/e2e/notary-return-archive-batch.spec.ts": "fa1a3883a725f35515ab5ed52a857f5b37c08a15b7fdaedea384d6955afdbc6d",
+    "tests/e2e/notary-return-archive-batch.spec.ts": "7cd8a5ef907437df88540ba21669bebbe235bac7cfd0489bb324191bd1d71605",
     "tests/e2e/personnel-access.spec.ts": "d45f3ed245e8801bfe7bf767b53790a216b0ae5cf37e55ebe2793df9e24c41c8",
     "tests/e2e/role-template-management.spec.ts": "8e94b16b9004716aa87197e05717dd4c4c6524413587be91465f1b86b8a8127b",
     "tests/support/core-lead-database.mjs": "1d29f78e0117b451c0491a6c6efa4f1b3551e5afd267f38c796a0ed4a8712e96",
