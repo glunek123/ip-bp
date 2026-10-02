@@ -204,11 +204,7 @@ watch(
   { immediate: true, flush: 'sync' },
 );
 
-function selectedFile(versionId: string): ComplaintVersion | undefined {
-  return versions.value.find((entry) => entry.contentVersionId === versionId);
-}
-
-async function uploadRevisions(event: Event): Promise<void> {
+async function uploadRevisions(event: globalThis.Event): Promise<void> {
   if (
     !canConfirm.value ||
     unknownRequest.value ||
@@ -217,7 +213,7 @@ async function uploadRevisions(event: Event): Promise<void> {
   )
     return;
   const input = event.target;
-  if (!(input instanceof HTMLInputElement)) return;
+  if (!(input instanceof globalThis.HTMLInputElement)) return;
   const files = Array.from(input.files ?? []);
   input.value = '';
   uploadError.value = '';
