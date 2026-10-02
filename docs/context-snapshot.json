@@ -1,6 +1,6 @@
 {
   "version": 1,
-  "recordedAt": "2026-10-02T05:33:54.313Z",
+  "recordedAt": "2026-10-02T05:53:10.618Z",
   "files": {
     ".cursor/rules/verified-feature-integration.mdc": "ffd2306612ba6f09749629c5adb9e645f7f37aa6ee27ff1bc1c3d8b14efeca38",
     ".env.example": "07211cde5c2b59efc21b619b752d4c9b871f0980d2d64ca3c146ad6151fd27ca",
@@ -506,12 +506,12 @@
     "frontend/src/modules/leads/LeadNewPage.vue": "8777c0f35fda48170ed545ace10947499c6f9999f91ba9f0bd16fe85ca8d5ca3",
     "frontend/src/modules/leads/NotaryMatterDetailPage.spec.ts": "6e412589572f52b3c443bdbe1742d2e441810a306f61cbbf07c6d482ae950001",
     "frontend/src/modules/leads/NotaryMatterDetailPage.vue": "d80f1e2610329f05ec2514ee103c9b416ad6ac249efdd48dd233e07087d79328",
-    "frontend/src/modules/leads/NotaryMatterListPage.spec.ts": "d16d73dfae99bfe2ce6a194db4ade5e3fd6af3b12e093ade0cbd5679042f89fc",
-    "frontend/src/modules/leads/NotaryMatterListPage.vue": "79411d7fb05d62cd63cd8bb7070c78c1a2901cc6228090d8b194e52d3d601bf8",
+    "frontend/src/modules/leads/NotaryMatterListPage.spec.ts": "55b5b984f7c656562f595ae1b2322bb43c44ac455fd1a7f8c0b2a6c0260f519c",
+    "frontend/src/modules/leads/NotaryMatterListPage.vue": "a7508e14e681f3bc4df6e9172861a87229c713b22e001506843553380affd330",
     "frontend/src/modules/leads/NotaryOfficesPage.spec.ts": "6146e9532cedf43cc237d4422206b3b2fc0f254ce3d63542aca7c1726b2f4d0f",
     "frontend/src/modules/leads/NotaryOfficesPage.vue": "c790e6b1ca9db96b397e3880cb49c7219f7f8563aba242aa2be237a589a77fc6",
     "frontend/src/modules/leads/NotaryReturnArchiveBatchPanel.spec.ts": "ff7293ac180e095b340c60becbe0e791bec97c5d48e21d6c8e9044ed349520cb",
-    "frontend/src/modules/leads/NotaryReturnArchiveBatchPanel.vue": "428ebda0773ff5f392ebe28b5f18b8f5cf66a9df020afe64a88ffe10803edbc4",
+    "frontend/src/modules/leads/NotaryReturnArchiveBatchPanel.vue": "e0ee16eae5699f87a976c6c1309a22e95ce04d54ab7ce25a3c1c2cfb3c5c7ac1",
     "frontend/src/modules/leads/lead-options.ts": "af8f2576cb731cc89441416bcf74cbd50756c0a97ca2051f57b9243d4231b571",
     "frontend/src/modules/notary/NotaryPortalDetailPage.vue": "4229b2d4ab498302d5085b16f9196891efd24235dab9d3030f43d7dc18106bba",
     "frontend/src/modules/notary/NotaryPortalListPage.vue": "6ffdc96b801dc39b8e1f4a7e22cd543fbb933181c6f1362366b06874b0a7ba38",
