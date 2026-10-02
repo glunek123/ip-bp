@@ -19,6 +19,7 @@ import {
   type MaterialCategory,
 } from '../../api/materials';
 import { notifyWorkflowChanged } from '../../app/workflow-events';
+import CaseComplaintConfirmationPanel from './CaseComplaintConfirmationPanel.vue';
 
 const route = useRoute();
 const id = computed(() => String(route.params.id));
@@ -141,7 +142,8 @@ function addDefendant() {
 function stageLabel(stage: CaseDetail['stage']): string {
   if (stage === 'PENDING_MATCH') return '待匹配';
   if (stage === 'WAITING_COMPLAINT') return '待写诉状';
-  return '诉状待确认';
+  if (stage === 'WAITING_COMPLAINT_CONFIRMATION') return '诉状待确认';
+  return '诉状待盖章';
 }
 function removeDefendant(index: number) {
   if (defendants.value.length > 1) defendants.value.splice(index, 1);
@@ -470,6 +472,15 @@ onBeforeUnmount(() => request?.abort());
         </div>
         <p v-if="matchSuccess" role="status">{{ matchSuccess }}</p>
         <p v-if="complaintSuccess" role="status">{{ complaintSuccess }}</p>
+        <CaseComplaintConfirmationPanel
+          v-if="
+            item.stage === 'WAITING_COMPLAINT_CONFIRMATION' ||
+            item.stage === 'WAITING_COMPLAINT_STAMP'
+          "
+          :item="item"
+          @changed="load"
+          @refresh="load"
+        />
         <section
           v-if="item.stage === 'PENDING_MATCH' && item.canMatch"
           class="demo-card demo-card--pad"
@@ -573,7 +584,8 @@ onBeforeUnmount(() => request?.abort());
         </section>
         <section
           v-else-if="
-            item.stage !== 'WAITING_COMPLAINT' || !item.canSubmitComplaint
+            item.stage === 'PENDING_MATCH' ||
+            (item.stage === 'WAITING_COMPLAINT' && !item.canSubmitComplaint)
           "
           class="demo-card demo-card--pad"
           data-test="case-read-only"
@@ -585,7 +597,7 @@ onBeforeUnmount(() => request?.abort());
                 ? '当前账号不能办理此案。'
                 : item.stage === 'WAITING_COMPLAINT'
                   ? '匹配已完成；当前账号不能提交此案的起诉材料，可查看案件和下载获准附件。'
-                  : '当前阶段为诉状待确认；本切片不提供后续确认办理。'
+                  : '当前阶段为诉状待盖章；本切片只展示已保存事实。'
             }}
           </p>
         </section>

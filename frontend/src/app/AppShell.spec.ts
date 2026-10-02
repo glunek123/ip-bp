@@ -82,6 +82,7 @@ beforeEach(() => {
       PENDING_MATCH: 3,
       WAITING_COMPLAINT: 2,
       WAITING_COMPLAINT_CONFIRMATION: 1,
+      WAITING_COMPLAINT_STAMP: 1,
     },
   });
 });
@@ -231,8 +232,8 @@ describe('AppShell', () => {
     expect(
       wrapper.get('[data-test="case-view-mine"]').attributes('href'),
     ).toContain('view=mine');
-    expect(wrapper.findAll('[data-test="case-stage"]')).toHaveLength(3);
-    expect(wrapper.get('[data-test="case-nav"]').text()).toContain('6');
+    expect(wrapper.findAll('[data-test="case-stage"]')).toHaveLength(4);
+    expect(wrapper.get('[data-test="case-nav"]').text()).toContain('7');
     expect(api.listCases).toHaveBeenCalledWith(1, 1, {
       signal: expect.any(AbortSignal),
       view: 'department',
@@ -243,6 +244,17 @@ describe('AppShell', () => {
       'active',
     );
     expect(wrapper.findAll('[data-test="case-stage"].active')).toHaveLength(1);
+    expect(
+      wrapper
+        .findAll('[data-test="case-stage"]')
+        .some(
+          (item) =>
+            item.text().includes('诉状待盖章1') &&
+            (item.attributes('href') ?? '').includes(
+              'stage=WAITING_COMPLAINT_STAMP',
+            ),
+        ),
+    ).toBe(true);
   });
 
   it('shows the notary office entry only when the office list is authorized', async () => {

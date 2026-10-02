@@ -48,6 +48,7 @@ export const permissionActionValues = [
   'CASE_READ',
   'CASE_MATCH',
   'CASE_COMPLAINT_SUBMIT',
+  'CASE_COMPLAINT_CONFIRM',
   'NOTARY_OFFICE_MANAGE',
   'USER_READ',
   'USER_MANAGE',
@@ -257,7 +258,8 @@ function isPermissionCatalog(
       (item.action === 'CASE_READ' &&
         (item.scopes.length !== 1 || item.scopes[0] !== 'DEPARTMENT')) ||
       ((item.action === 'CASE_MATCH' ||
-        item.action === 'CASE_COMPLAINT_SUBMIT') &&
+        item.action === 'CASE_COMPLAINT_SUBMIT' ||
+        item.action === 'CASE_COMPLAINT_CONFIRM') &&
         (item.scopes.length !== 3 ||
           item.scopes[0] !== 'SELF' ||
           item.scopes[1] !== 'TEAM' ||

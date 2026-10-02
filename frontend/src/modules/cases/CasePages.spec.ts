@@ -1,4 +1,5 @@
 import { flushPromises, mount } from '@vue/test-utils';
+import { createPinia, setActivePinia } from 'pinia';
 import { createMemoryHistory, createRouter } from 'vue-router';
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 import CaseListPage from './CaseListPage.vue';
@@ -10,6 +11,7 @@ const api = vi.hoisted(() => ({
   getCase: vi.fn(),
   matchCase: vi.fn(),
   submitComplaint: vi.fn(),
+  confirmCaseComplaint: vi.fn(),
   uploadMaterialFile: vi.fn(),
   listOwnerMaterials: vi.fn(),
 }));
@@ -18,6 +20,7 @@ vi.mock('../../api/cases', () => ({
   getCase: api.getCase,
   matchCase: api.matchCase,
   submitComplaint: api.submitComplaint,
+  confirmCaseComplaint: api.confirmCaseComplaint,
   todayShanghai: () => '2026-09-29',
 }));
 vi.mock('../../api/materials', () => ({
@@ -50,6 +53,7 @@ beforeEach(() => {
       PENDING_MATCH: 1,
       WAITING_COMPLAINT: 0,
       WAITING_COMPLAINT_CONFIRMATION: 0,
+      WAITING_COMPLAINT_STAMP: 0,
     },
   });
   api.getCase.mockResolvedValue({
@@ -88,7 +92,9 @@ beforeEach(() => {
     matchedAt: null,
     matchedOn: null,
     canSubmitComplaint: false,
+    canConfirmComplaint: false,
     complaint: null,
+    complaintConfirmation: null,
   });
   api.listOwnerMaterials.mockResolvedValue({ items: [], total: 0 });
 });
@@ -101,6 +107,8 @@ async function mountRoute(
   path: string,
   component: typeof CaseListPage | typeof CaseDetailPage,
 ) {
+  const pinia = createPinia();
+  setActivePinia(pinia);
   const router = createRouter({
     history: createMemoryHistory(),
     routes: [
@@ -110,7 +118,7 @@ async function mountRoute(
   });
   await router.push(path);
   await router.isReady();
-  const wrapper = mount(component, { global: { plugins: [router] } });
+  const wrapper = mount(component, { global: { plugins: [pinia, router] } });
   await flushPromises();
   return wrapper;
 }

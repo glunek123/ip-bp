@@ -1,5 +1,11 @@
 import { afterEach, describe, expect, it, vi } from 'vitest';
-import { getCase, listCases, matchCase, submitComplaint } from './cases';
+import {
+  confirmCaseComplaint,
+  getCase,
+  listCases,
+  matchCase,
+  submitComplaint,
+} from './cases';
 
 afterEach(() => vi.unstubAllGlobals());
 
@@ -12,6 +18,7 @@ const summary = {
   owner: { id: 'user-1', displayName: '负责人' },
   canMatch: true,
   canSubmitComplaint: false,
+  canConfirmComplaint: false,
   sourceLead: { id: 'lead-1', businessNo: 'LD-1' },
   sourceNotaryMatter: { id: 'matter-1', businessNo: 'NZ-1' },
 };
@@ -69,6 +76,7 @@ const detail = {
   matchedOn: null,
   canSubmitComplaint: false,
   complaint: null,
+  complaintConfirmation: null,
 };
 function mockJson(payload: unknown) {
   const fetchMock = vi
@@ -89,6 +97,7 @@ describe('cases API', () => {
         PENDING_MATCH: 2,
         WAITING_COMPLAINT: 1,
         WAITING_COMPLAINT_CONFIRMATION: 0,
+        WAITING_COMPLAINT_STAMP: 0,
       },
     });
     await expect(
@@ -99,6 +108,7 @@ describe('cases API', () => {
         PENDING_MATCH: 2,
         WAITING_COMPLAINT: 1,
         WAITING_COMPLAINT_CONFIRMATION: 0,
+        WAITING_COMPLAINT_STAMP: 0,
       },
     });
     expect(fetchMock.mock.calls[0]?.[0]).toBe(
@@ -123,6 +133,7 @@ describe('cases API', () => {
         PENDING_MATCH: 0,
         WAITING_COMPLAINT: 1,
         WAITING_COMPLAINT_CONFIRMATION: 0,
+        WAITING_COMPLAINT_STAMP: 0,
       },
     });
     await expect(
@@ -142,6 +153,7 @@ describe('cases API', () => {
         PENDING_MATCH: 2,
         WAITING_COMPLAINT: 1,
         WAITING_COMPLAINT_CONFIRMATION: 0,
+        WAITING_COMPLAINT_STAMP: 0,
       },
     });
     await listCases(1, 20, { stage: 'all' });
@@ -195,10 +207,12 @@ describe('cases API', () => {
       ...detail,
       stage: 'WAITING_COMPLAINT',
       canSubmitComplaint: true,
+      canConfirmComplaint: false,
       complaint: null,
     });
     await expect(getCase('case-1')).resolves.toMatchObject({
       canSubmitComplaint: true,
+      canConfirmComplaint: false,
       complaint: null,
     });
   });
@@ -232,6 +246,117 @@ describe('cases API', () => {
       complaintContentVersionIds: ['complaint-v1'],
       authorizationContentVersionIds: ['authorization-v1'],
     });
+  });
+
+  it('strictly decodes the stamp stage and nullable confirmed complaint file', async () => {
+    mockJson({
+      ...detail,
+      stage: 'WAITING_COMPLAINT_STAMP',
+      canMatch: false,
+      canSubmitComplaint: false,
+      complaintConfirmation: {
+        confirmedComplaintContentVersionId: 'complaint-v2',
+        amountState: 'KNOWN',
+        amount: '123.45',
+        pendingReason: null,
+        changeNote: '按客户补充版本确认',
+        confirmDisclose: true,
+        confirmedAt: '2026-10-02T02:00:00Z',
+        confirmedByUserId: 'user-1',
+        complaintFile: null,
+      },
+    });
+    await expect(getCase('case-1')).resolves.toMatchObject({
+      stage: 'WAITING_COMPLAINT_STAMP',
+      complaintConfirmation: {
+        confirmedComplaintContentVersionId: 'complaint-v2',
+        complaintFile: null,
+      },
+    });
+  });
+
+  it('rejects confirmation summaries with malformed nullable files', async () => {
+    mockJson({
+      ...detail,
+      stage: 'WAITING_COMPLAINT_STAMP',
+      complaintConfirmation: {
+        confirmedComplaintContentVersionId: 'complaint-v2',
+        amountState: 'KNOWN',
+        amount: '123.45',
+        pendingReason: null,
+        changeNote: null,
+        confirmDisclose: false,
+        confirmedAt: '2026-10-02T02:00:00Z',
+        confirmedByUserId: 'user-1',
+        complaintFile: { materialId: 'material-1' },
+      },
+    });
+    await expect(getCase('case-1')).rejects.toMatchObject({
+      code: 'INVALID_RESPONSE',
+    });
+  });
+
+  it('posts complaint confirmation with the stable idempotency key and exact body', async () => {
+    const fetchMock = mockJson({
+      id: 'case-1',
+      stage: 'WAITING_COMPLAINT_STAMP',
+      version: 4,
+      confirmedAt: '2026-10-02T02:00:00Z',
+    });
+    const input = {
+      expectedVersion: 3,
+      idempotencyKey: 'confirmation-key',
+      confirmedComplaintContentVersionId:
+        '70000000-0000-4000-8000-000000000001',
+      amountState: 'PENDING' as const,
+      amount: null,
+      pendingReason: '待客户补交金额凭证',
+      confirmDisclose: false,
+    };
+    await expect(confirmCaseComplaint('case-1', input)).resolves.toMatchObject({
+      stage: 'WAITING_COMPLAINT_STAMP',
+      version: 4,
+    });
+    const [, init] = fetchMock.mock.calls[0] as [string, RequestInit];
+    expect(fetchMock.mock.calls[0]?.[0]).toBe(
+      '/api/v1/cases/case-1/complaint-confirm',
+    );
+    expect(new Headers(init.headers).get('Idempotency-Key')).toBe(
+      'confirmation-key',
+    );
+    expect(JSON.parse(String(init.body))).toEqual(input);
+  });
+
+  it.each([
+    {
+      label: 'requires a UUID v4 material version',
+      changes: { confirmedComplaintContentVersionId: 'complaint-v1' },
+    },
+    {
+      label: 'rejects padded idempotency keys',
+      changes: { idempotencyKey: ' key ' },
+    },
+    {
+      label: 'uses the submitted amount decimal limits',
+      changes: { amount: '01.000' },
+    },
+  ])('validates confirmation input: $label', async ({ changes }) => {
+    const fetchMock = mockJson({});
+    const input = {
+      expectedVersion: 3,
+      idempotencyKey: 'confirmation-key',
+      confirmedComplaintContentVersionId:
+        '70000000-0000-4000-8000-000000000001',
+      amountState: 'KNOWN' as const,
+      amount: '123.45',
+      pendingReason: null,
+      confirmDisclose: true,
+      ...changes,
+    };
+    await expect(
+      confirmCaseComplaint('case-1', input as never),
+    ).rejects.toMatchObject({ code: 'VALIDATION_ERROR' });
+    expect(fetchMock).not.toHaveBeenCalled();
   });
 
   it('posts match data with idempotency header and validates the transition response', async () => {

@@ -1,7 +1,10 @@
 import { ApiError, getJson, requestJson, type RequestOptions } from './http';
 
 export type CaseStage =
-  'PENDING_MATCH' | 'WAITING_COMPLAINT' | 'WAITING_COMPLAINT_CONFIRMATION';
+  | 'PENDING_MATCH'
+  | 'WAITING_COMPLAINT'
+  | 'WAITING_COMPLAINT_CONFIRMATION'
+  | 'WAITING_COMPLAINT_STAMP';
 export type CaseView = 'mine' | 'department';
 export type CaseStageFilter = CaseStage | 'all';
 export type CaseSummary = {
@@ -13,6 +16,7 @@ export type CaseSummary = {
   owner: { id: string; displayName: string };
   canMatch: boolean;
   canSubmitComplaint: boolean;
+  canConfirmComplaint: boolean;
   sourceLead: { id: string; businessNo: string };
   sourceNotaryMatter: { id: string; businessNo: string };
 };
@@ -64,6 +68,7 @@ export type CaseDetail = CaseSummary & {
   matchedAt: string | null;
   matchedOn: string | null;
   complaint: ComplaintSubmission | null;
+  complaintConfirmation: ComplaintConfirmation | null;
 };
 export type ComplaintSubmission = {
   amountState: 'KNOWN' | 'PENDING';
@@ -73,6 +78,17 @@ export type ComplaintSubmission = {
   submittedByUserId: string;
   complaintFiles: CaseFile[];
   authorizationFiles: CaseFile[];
+};
+export type ComplaintConfirmation = {
+  confirmedComplaintContentVersionId: string;
+  amountState: 'KNOWN' | 'PENDING';
+  amount: string | null;
+  pendingReason: string | null;
+  changeNote: string | null;
+  confirmDisclose: boolean;
+  confirmedAt: string;
+  confirmedByUserId: string;
+  complaintFile: CaseFile | null;
 };
 export type CaseFile = {
   materialId: string;
@@ -101,6 +117,16 @@ export type SubmitComplaintInput = {
   pendingReason: string | null;
   complaintContentVersionIds: string[];
   authorizationContentVersionIds: string[];
+};
+export type ConfirmCaseComplaintInput = {
+  expectedVersion: number;
+  idempotencyKey: string;
+  confirmedComplaintContentVersionId: string;
+  amountState: 'KNOWN' | 'PENDING';
+  amount: string | null;
+  pendingReason: string | null;
+  changeNote?: string;
+  confirmDisclose: boolean;
 };
 
 function record(value: unknown): value is Record<string, unknown> {
@@ -139,7 +165,8 @@ function validStage(value: unknown): value is CaseStage {
   return (
     value === 'PENDING_MATCH' ||
     value === 'WAITING_COMPLAINT' ||
-    value === 'WAITING_COMPLAINT_CONFIRMATION'
+    value === 'WAITING_COMPLAINT_CONFIRMATION' ||
+    value === 'WAITING_COMPLAINT_STAMP'
   );
 }
 function source(value: unknown): value is { id: string; businessNo: string } {
@@ -170,6 +197,7 @@ function summary(value: unknown): value is CaseSummary {
       'owner',
       'canMatch',
       'canSubmitComplaint',
+      'canConfirmComplaint',
       'sourceLead',
       'sourceNotaryMatter',
     ]) &&
@@ -183,6 +211,7 @@ function summary(value: unknown): value is CaseSummary {
     named(value.owner, 'displayName') &&
     typeof value.canMatch === 'boolean' &&
     typeof value.canSubmitComplaint === 'boolean' &&
+    typeof value.canConfirmComplaint === 'boolean' &&
     source(value.sourceLead) &&
     source(value.sourceNotaryMatter)
   );
@@ -258,6 +287,8 @@ function validCaseDetail(value: unknown, id: string): value is CaseDetail {
       'matchedOn',
       'canSubmitComplaint',
       'complaint',
+      'canConfirmComplaint',
+      'complaintConfirmation',
     ]) &&
     value.id === id &&
     summary({
@@ -269,6 +300,7 @@ function validCaseDetail(value: unknown, id: string): value is CaseDetail {
       owner: value.owner,
       canMatch: value.canMatch,
       canSubmitComplaint: value.canSubmitComplaint,
+      canConfirmComplaint: value.canConfirmComplaint,
       sourceLead: value.sourceLead,
       sourceNotaryMatter: value.sourceNotaryMatter,
     }) &&
@@ -325,7 +357,10 @@ function validCaseDetail(value: unknown, id: string): value is CaseDetail {
         !Number.isNaN(Date.parse(value.matchedAt)))) &&
     (value.matchedOn === null || businessDate(value.matchedOn)) &&
     typeof value.canSubmitComplaint === 'boolean' &&
-    (value.complaint === null || validComplaint(value.complaint))
+    typeof value.canConfirmComplaint === 'boolean' &&
+    (value.complaint === null || validComplaint(value.complaint)) &&
+    (value.complaintConfirmation === null ||
+      validComplaintConfirmation(value.complaintConfirmation))
   );
 }
 function validComplaint(value: unknown): value is ComplaintSubmission {
@@ -354,6 +389,41 @@ function validComplaint(value: unknown): value is ComplaintSubmission {
     value.complaintFiles.every(caseFile) &&
     Array.isArray(value.authorizationFiles) &&
     value.authorizationFiles.every(caseFile)
+  );
+}
+function validComplaintConfirmation(
+  value: unknown,
+): value is ComplaintConfirmation {
+  return (
+    record(value) &&
+    exact(value, [
+      'confirmedComplaintContentVersionId',
+      'amountState',
+      'amount',
+      'pendingReason',
+      'changeNote',
+      'confirmDisclose',
+      'confirmedAt',
+      'confirmedByUserId',
+      'complaintFile',
+    ]) &&
+    nonempty(value.confirmedComplaintContentVersionId) &&
+    (value.amountState === 'KNOWN' || value.amountState === 'PENDING') &&
+    (value.amount === null ||
+      (typeof value.amount === 'string' &&
+        /^(0|[1-9]\d{0,13})(\.\d{1,2})?$/u.test(value.amount))) &&
+    (value.amountState === 'KNOWN'
+      ? value.amount !== null && value.pendingReason === null
+      : value.amount === null && nonempty(value.pendingReason)) &&
+    (value.changeNote === null ||
+      (typeof value.changeNote === 'string' &&
+        value.changeNote.trim().length >= 1 &&
+        value.changeNote.length <= 500)) &&
+    typeof value.confirmDisclose === 'boolean' &&
+    typeof value.confirmedAt === 'string' &&
+    !Number.isNaN(Date.parse(value.confirmedAt)) &&
+    nonempty(value.confirmedByUserId) &&
+    (value.complaintFile === null || caseFile(value.complaintFile))
   );
 }
 function invalidResponse(): ApiError {
@@ -387,13 +457,16 @@ export async function listCases(
       'PENDING_MATCH',
       'WAITING_COMPLAINT',
       'WAITING_COMPLAINT_CONFIRMATION',
+      'WAITING_COMPLAINT_STAMP',
     ]) ||
     !Number.isInteger(response.counts.PENDING_MATCH) ||
     (response.counts.PENDING_MATCH as number) < 0 ||
     !Number.isInteger(response.counts.WAITING_COMPLAINT) ||
     (response.counts.WAITING_COMPLAINT as number) < 0 ||
     !Number.isInteger(response.counts.WAITING_COMPLAINT_CONFIRMATION) ||
-    (response.counts.WAITING_COMPLAINT_CONFIRMATION as number) < 0
+    (response.counts.WAITING_COMPLAINT_CONFIRMATION as number) < 0 ||
+    !Number.isInteger(response.counts.WAITING_COMPLAINT_STAMP) ||
+    (response.counts.WAITING_COMPLAINT_STAMP as number) < 0
   )
     throw invalidResponse();
   return response as unknown as CaseList;
@@ -510,5 +583,67 @@ export async function submitComplaint(
     stage: 'WAITING_COMPLAINT_CONFIRMATION';
     version: number;
     submittedAt: string;
+  };
+}
+
+export async function confirmCaseComplaint(
+  id: string,
+  input: ConfirmCaseComplaintInput,
+): Promise<{
+  id: string;
+  stage: 'WAITING_COMPLAINT_STAMP';
+  version: number;
+  confirmedAt: string;
+}> {
+  if (
+    !Number.isInteger(input.expectedVersion) ||
+    input.expectedVersion < 1 ||
+    !input.idempotencyKey ||
+    input.idempotencyKey.trim() !== input.idempotencyKey ||
+    input.idempotencyKey.length > 128 ||
+    !/^[0-9a-f]{8}-[0-9a-f]{4}-4[0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$/iu.test(
+      input.confirmedComplaintContentVersionId,
+    ) ||
+    typeof input.confirmDisclose !== 'boolean' ||
+    (input.amountState === 'KNOWN'
+      ? input.amount === null ||
+        !/^(0|[1-9]\d{0,13})(\.\d{1,2})?$/u.test(input.amount) ||
+        input.pendingReason !== null
+      : input.amount !== null ||
+        typeof input.pendingReason !== 'string' ||
+        !input.pendingReason ||
+        input.pendingReason.trim() !== input.pendingReason ||
+        input.pendingReason.length > 500) ||
+    (input.changeNote !== undefined &&
+      (!input.changeNote ||
+        input.changeNote.trim() !== input.changeNote ||
+        input.changeNote.length > 500))
+  ) {
+    throw new ApiError('诉状确认信息无效', 400, 'VALIDATION_ERROR');
+  }
+  const response = await requestJson(
+    `/cases/${encodeURIComponent(id)}/complaint-confirm`,
+    {
+      method: 'POST',
+      headers: { 'Idempotency-Key': input.idempotencyKey },
+      body: input,
+    },
+  );
+  if (
+    !record(response) ||
+    !exact(response, ['id', 'stage', 'version', 'confirmedAt']) ||
+    response.id !== id ||
+    response.stage !== 'WAITING_COMPLAINT_STAMP' ||
+    response.version !== input.expectedVersion + 1 ||
+    typeof response.confirmedAt !== 'string' ||
+    Number.isNaN(Date.parse(response.confirmedAt))
+  ) {
+    throw invalidResponse();
+  }
+  return response as {
+    id: string;
+    stage: 'WAITING_COMPLAINT_STAMP';
+    version: number;
+    confirmedAt: string;
   };
 }
