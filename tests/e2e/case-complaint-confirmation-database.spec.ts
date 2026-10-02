@@ -5,12 +5,14 @@ import {
   coreLeadFixtures,
   countCaseComplaintConfirmationEffects,
   probeCaseComplaintConfirmationImmutability,
+  reassignCaseToOtherFixtureTeam,
   rejectAuditWrites,
   rejectCaseComplaintConfirmationFactWrites,
   rejectCaseComplaintConfirmationReferenceWrites,
   rejectCaseComplaintConfirmationReceiptWrites,
   resetCoreLeadE2eData,
   setInternalAccountActive,
+  setRoleGrant,
 } from '../support/core-lead-database.mjs';
 import {
   createSubmittedCaseThroughApi,
@@ -267,6 +269,45 @@ test('revision upload requires confirm scope and change note; stale, other-stage
     audits: 1,
     references: 1,
   });
+});
+
+test('revoking the confirm grant refuses an identical successful replay without changing its effects', async ({
+  request,
+}) => {
+  test.setTimeout(180_000);
+  const { caseId, complaint } = await createSubmittedCaseThroughApi(request);
+  const input = inputFor(complaint.contentVersionId);
+  const initial = await confirm(request, caseId, input);
+  expect(initial.status(), await initial.text()).toBe(201);
+  const before = await countCaseComplaintConfirmationEffects(caseId);
+  expect(before).toEqual({ facts: 1, receipts: 1, audits: 1, references: 1 });
+
+  await setRoleGrant(
+    coreLeadFixtures.roleA,
+    'case.complaint.confirm',
+    'TEAM',
+    false,
+  );
+  const replay = await confirm(request, caseId, input);
+  expect(replay.status()).toBe(403);
+  expect(await countCaseComplaintConfirmationEffects(caseId)).toEqual(before);
+});
+
+test('reassigning the case to another team refuses an identical successful replay without changing its effects', async ({
+  request,
+}) => {
+  test.setTimeout(180_000);
+  const { caseId, complaint } = await createSubmittedCaseThroughApi(request);
+  const input = inputFor(complaint.contentVersionId);
+  const initial = await confirm(request, caseId, input);
+  expect(initial.status(), await initial.text()).toBe(201);
+  const before = await countCaseComplaintConfirmationEffects(caseId);
+  expect(before).toEqual({ facts: 1, receipts: 1, audits: 1, references: 1 });
+
+  await reassignCaseToOtherFixtureTeam(caseId);
+  const replay = await confirm(request, caseId, input);
+  expect(replay.status()).toBe(403);
+  expect(await countCaseComplaintConfirmationEffects(caseId)).toEqual(before);
 });
 
 test('audit, fact, freeze and receipt failures roll back all confirmation effects before retry', async ({

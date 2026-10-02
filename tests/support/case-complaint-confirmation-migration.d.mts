@@ -1,6 +1,7 @@
 export function verifyCaseComplaintConfirmationMigration(): Promise<{
   empty: {
     migrationCount: number;
+    previousMigrationCount: number;
     stage: number;
     factTable: number;
     receiptTable: number;
@@ -22,9 +23,27 @@ export function verifyCaseComplaintConfirmationMigration(): Promise<{
     badStageCode: string | null;
   };
   failure: {
-    failedCode: string | null;
-    noPartialStageCheck: number;
-    noReceipt: number;
-    recovered: number;
+    enum: {
+      failedCode: string | null;
+      noPartialAction: number;
+      noPartialStage: number;
+      recoveredAction: number;
+      recoveredStage: number;
+    };
+    facts: {
+      failedCode: string | null;
+      noPartialStageCheck: number;
+      noReceipt: number;
+      recovered: number;
+    };
+    grants: {
+      failedCode: string | null;
+      noPartialGrant: number;
+      unchangedTemplateVersion: number;
+      unchangedAccountRevision: number;
+      recoveredGrant: number;
+      recoveredTemplateVersion: number;
+      recoveredAccountRevision: number;
+    };
   };
 }>;

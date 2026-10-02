@@ -14,12 +14,17 @@ validateIsolatedTestDatabaseUrl(databaseUrl, { allowRandomPort: true });
 
 export async function verifyCaseComplaintConfirmationMigration() {
   const migrationRoot = resolve(root, 'backend/prisma/migrations');
-  const schemaTarget = '20261002020000_add_case_complaint_confirmation';
+  const enumTarget = '20261002020000_add_case_complaint_confirmation';
+  const factsTarget = '20261002020500_add_case_complaint_confirmation_facts';
   const grantTarget = '20261002021000_add_case_complaint_confirmation_grants';
   const migrations = (await readdir(migrationRoot))
     .filter((name) => /^\d{14}_/u.test(name))
     .sort();
-  if (migrations.at(-2) !== schemaTarget || migrations.at(-1) !== grantTarget)
+  if (
+    migrations.at(-3) !== enumTarget ||
+    migrations.at(-2) !== factsTarget ||
+    migrations.at(-1) !== grantTarget
+  )
     throw new Error('Unexpected migration order');
   const suffix = randomUUID().replaceAll('-', '');
   const schemas = {
@@ -61,6 +66,8 @@ export async function verifyCaseComplaintConfirmationMigration() {
     await apply(migrations);
     const empty = {
       migrationCount: migrations.length,
+      previousMigrationCount: migrations.filter((name) => name < enumTarget)
+        .length,
       stage: await count(
         "SELECT COUNT(*) AS n FROM pg_enum e JOIN pg_type t ON t.oid=e.enumtypid JOIN pg_namespace p ON p.oid=t.typnamespace WHERE p.nspname=$1 AND t.typname='case_stage' AND e.enumlabel='WAITING_COMPLAINT_STAMP'",
         [schemas.empty],
@@ -76,7 +83,7 @@ export async function verifyCaseComplaintConfirmationMigration() {
     };
 
     await use(schemas.upgrade);
-    await apply(migrations.filter((name) => name < schemaTarget));
+    await apply(migrations.filter((name) => name < enumTarget));
     const departmentId = randomUUID();
     const actorId = randomUUID();
     const inactiveId = randomUUID();
@@ -154,7 +161,7 @@ export async function verifyCaseComplaintConfirmationMigration() {
     } finally {
       await client.query('SET session_replication_role = origin');
     }
-    await apply([schemaTarget, grantTarget]);
+    await apply([enumTarget, factsTarget, grantTarget]);
     const preserved = (
       await client.query(
         'SELECT stage,version,complaint_amount_state,complaint_amount,complaint_submitted_at FROM cases WHERE id=$1',
@@ -193,13 +200,39 @@ export async function verifyCaseComplaintConfirmationMigration() {
     );
 
     await use(schemas.failure);
-    await apply(migrations.filter((name) => name < schemaTarget));
+    await apply(migrations.filter((name) => name < enumTarget));
+    await client.query('ALTER TYPE case_stage RENAME TO case_stage_held');
+    const enumFailedCode = await sqlCode(
+      await readFile(
+        resolve(migrationRoot, enumTarget, 'migration.sql'),
+        'utf8',
+      ),
+    );
+    await client.query('ROLLBACK');
+    const enumNoPartialAction = await count(
+      "SELECT COUNT(*) AS n FROM pg_enum e JOIN pg_type t ON t.oid=e.enumtypid JOIN pg_namespace p ON p.oid=t.typnamespace WHERE p.nspname=$1 AND t.typname='permission_action' AND e.enumlabel='case.complaint.confirm'",
+      [schemas.failure],
+    );
+    const enumNoPartialStage = await count(
+      "SELECT COUNT(*) AS n FROM pg_enum e JOIN pg_type t ON t.oid=e.enumtypid JOIN pg_namespace p ON p.oid=t.typnamespace WHERE p.nspname=$1 AND t.typname='case_stage_held' AND e.enumlabel='WAITING_COMPLAINT_STAMP'",
+      [schemas.failure],
+    );
+    await client.query('ALTER TYPE case_stage_held RENAME TO case_stage');
+    await apply([enumTarget]);
+    const enumRecoveredAction = await count(
+      "SELECT COUNT(*) AS n FROM pg_enum e JOIN pg_type t ON t.oid=e.enumtypid JOIN pg_namespace p ON p.oid=t.typnamespace WHERE p.nspname=$1 AND t.typname='permission_action' AND e.enumlabel='case.complaint.confirm'",
+      [schemas.failure],
+    );
+    const enumRecoveredStage = await count(
+      "SELECT COUNT(*) AS n FROM pg_enum e JOIN pg_type t ON t.oid=e.enumtypid JOIN pg_namespace p ON p.oid=t.typnamespace WHERE p.nspname=$1 AND t.typname='case_stage' AND e.enumlabel='WAITING_COMPLAINT_STAMP'",
+      [schemas.failure],
+    );
     await client.query(
       'CREATE TABLE case_complaint_confirmations (collision integer)',
     );
-    const failedCode = await sqlCode(
+    const factsFailedCode = await sqlCode(
       await readFile(
-        resolve(migrationRoot, schemaTarget, 'migration.sql'),
+        resolve(migrationRoot, factsTarget, 'migration.sql'),
         'utf8',
       ),
     );
@@ -213,11 +246,72 @@ export async function verifyCaseComplaintConfirmationMigration() {
       [schemas.failure],
     );
     await client.query('DROP TABLE case_complaint_confirmations');
-    await apply([schemaTarget, grantTarget]);
-    const recovered = await count(
+    await apply([factsTarget]);
+    const factsRecovered = await count(
       "SELECT COUNT(*) AS n FROM information_schema.tables WHERE table_schema=$1 AND table_name='case_complaint_confirmation_receipts'",
       [schemas.failure],
     );
+    const failedDepartmentId = randomUUID();
+    const failedUserId = randomUUID();
+    const failedRoleId = randomUUID();
+    await client.query(
+      'INSERT INTO departments(id,name,updated_at) VALUES ($1,$2,now())',
+      [failedDepartmentId, 'CA003 grant rollback department'],
+    );
+    await client.query(
+      'INSERT INTO user_accounts(id,external_subject,display_name,updated_at) VALUES ($1,$2,$3,now())',
+      [failedUserId, `ca003-${failedUserId}`, 'CA003 grant rollback user'],
+    );
+    await client.query(
+      'INSERT INTO role_templates(id,department_id,name,updated_at) VALUES ($1,$2,$3,now())',
+      [failedRoleId, failedDepartmentId, 'grant rollback role'],
+    );
+    await client.query(
+      "INSERT INTO role_grants(id,role_template_id,action,scope) VALUES ($1,$2,'case.complaint.submit','TEAM')",
+      [randomUUID(), failedRoleId],
+    );
+    await client.query(
+      'INSERT INTO department_memberships(id,user_id,department_id,updated_at) VALUES ($1,$2,$3,now())',
+      [randomUUID(), failedUserId, failedDepartmentId],
+    );
+    await client.query(
+      'INSERT INTO role_assignments(id,user_id,department_id,role_template_id,active,updated_at) VALUES ($1,$2,$3,$4,true,now())',
+      [randomUUID(), failedUserId, failedDepartmentId, failedRoleId],
+    );
+    await client.query(
+      'ALTER TABLE user_accounts ADD CONSTRAINT ca003_reject_revision CHECK (authorization_revision = 1)',
+    );
+    const grantsFailedCode = await sqlCode(
+      await readFile(
+        resolve(migrationRoot, grantTarget, 'migration.sql'),
+        'utf8',
+      ),
+    );
+    await client.query('ROLLBACK');
+    const grantCount = () =>
+      count(
+        "SELECT COUNT(*) AS n FROM role_grants WHERE role_template_id=$1 AND action='case.complaint.confirm'",
+        [failedRoleId],
+      );
+    const roleVersion = () =>
+      count('SELECT version AS n FROM role_templates WHERE id=$1', [
+        failedRoleId,
+      ]);
+    const accountRevision = () =>
+      count(
+        'SELECT authorization_revision AS n FROM user_accounts WHERE id=$1',
+        [failedUserId],
+      );
+    const noPartialGrant = await grantCount();
+    const unchangedTemplateVersion = await roleVersion();
+    const unchangedAccountRevision = await accountRevision();
+    await client.query(
+      'ALTER TABLE user_accounts DROP CONSTRAINT ca003_reject_revision',
+    );
+    await apply([grantTarget]);
+    const recoveredGrant = await grantCount();
+    const recoveredTemplateVersion = await roleVersion();
+    const recoveredAccountRevision = await accountRevision();
     return {
       empty,
       upgrade: {
@@ -230,7 +324,30 @@ export async function verifyCaseComplaintConfirmationMigration() {
         badAmountCode,
         badStageCode,
       },
-      failure: { failedCode, noPartialStageCheck, noReceipt, recovered },
+      failure: {
+        enum: {
+          failedCode: enumFailedCode,
+          noPartialAction: enumNoPartialAction,
+          noPartialStage: enumNoPartialStage,
+          recoveredAction: enumRecoveredAction,
+          recoveredStage: enumRecoveredStage,
+        },
+        facts: {
+          failedCode: factsFailedCode,
+          noPartialStageCheck,
+          noReceipt,
+          recovered: factsRecovered,
+        },
+        grants: {
+          failedCode: grantsFailedCode,
+          noPartialGrant,
+          unchangedTemplateVersion,
+          unchangedAccountRevision,
+          recoveredGrant,
+          recoveredTemplateVersion,
+          recoveredAccountRevision,
+        },
+      },
     };
   } finally {
     await client.query('RESET search_path').catch(() => undefined);

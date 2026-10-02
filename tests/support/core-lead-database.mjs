@@ -1704,6 +1704,13 @@ export function setInternalAccountActive(userId, active) {
   });
 }
 
+export function reassignCaseToOtherFixtureTeam(caseId) {
+  return database.case.update({
+    where: { id: caseId, departmentId: coreLeadFixtures.departmentA },
+    data: { responsibleUserId: coreLeadFixtures.userSelf },
+  });
+}
+
 export function setTeamActive(teamId, active) {
   return database.team.update({
     where: { id: teamId },

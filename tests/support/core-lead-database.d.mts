@@ -27,6 +27,9 @@ export const coreLeadFixtures: Readonly<{
 }>;
 
 export function resetCoreLeadE2eData(): Promise<void>;
+export function reassignCaseToOtherFixtureTeam(
+  caseId: string,
+): Promise<unknown>;
 export function seedNotaryListExportData(): Promise<
   Array<{
     id: string;
