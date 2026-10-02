@@ -10,7 +10,7 @@
 
 **CORE-CA-003｜确认诉状（路线图唯一Current，开发中）**：从已核实的`main@eef05ec`建立`codex/core-ca-003-complaint-confirmation`并正式领取。依据[案件Spec](spec/v0.1/modules/cases.md#core-ca-003-确认诉状契约)和[实施计划](superpowers/plans/2026-10-02-core-ca-003-complaint-confirmation.md)，完成运营确认精确诉状版本与金额、留存原提交事实，并仅推进至诉状待盖章。使用既有授权／部门范围／材料冻结与事务机制，按Level 2验收；schema、Command及材料写入阶段扩展由Sol实施和独立审查，普通UI由Luna承接。未验收，不实施CA-004；开发／生产库迁移未执行。
 
-恢复点：Task 1实现提交`ee386df`，独立Sol Review尚未通过（迁移事务边界、撤权／转派重放两项Important）。修复中的新三段迁移临时schema专项已通过，尚待主测试schema同步、真实API复验及原Reviewer补审；前端Task未启动。`prisma migrate reset --force`被Prisma显式人类授权门禁拒绝并退出1，未删除数据。需取得本次明确授权才可清空并重建`backend/.env.test`核对到的本地独立测试库`127.0.0.1:55433/dev_cor_test`（public）；不涉及开发／生产库或数据卷。当前未提交修复均保留；不能将旧业务证据沿用于改变后的迁移。详细恢复材料在`.local/ca003/task-1-report.md`及`task-1-fix-brief.md`。
+恢复点：Task 1实现`ee386df`、修复`d2a7e43`经原独立Sol Reviewer补审接受，迁移事务边界和撤权／转派重放两项Important已关闭。用户在明确危险操作与目标后授权，已仅清空并重建`backend/.env.test`核对到的本地独立测试库`127.0.0.1:55433/dev_cor_test`（public），应用60份迁移；旧测试行不可恢复，开发／生产库及数据卷未触碰。修复后的迁移和真实API专项通过，旧迁移输入证据作废。下一步实施前端Task，尚未完成整体CA-003；详细报告和审查在`.local/ca003/task-1-report.md`、`task-1-review.md`，不重复启动已有效的Task检查。
 
 CA-001匹配事实口径已在本分支修正并验收：实际匹配日期与系统登记时间分离、律所可空，旧成功回执仍可原样重放。旧候选的验证只对旧tree有效；本段不改变Current／Next。
 
@@ -57,4 +57,4 @@ CA-001匹配事实口径已在本分支修正并验收：实际匹配日期与�
 
 ## 下一步
 
-先取得上述独立测试库重建的显式授权，完成Task 1修复、真实数据库复验和补审；通过后继续前端和浏览器闭环→集成终审→固定候选正式门禁。完成之前不推进Current／Next，不发布或执行开发／生产迁移。
+Task 1已接受；继续前端和真实密码浏览器闭环→集成终审→固定候选正式门禁。完成之前不推进Current／Next，不发布或执行开发／生产迁移。
