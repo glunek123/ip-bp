@@ -131,6 +131,26 @@ beforeEach(() => {
 });
 
 describe('CaseComplaintConfirmationPanel', () => {
+  it('marks non-confirmers read-only without confirmation or upload controls', async () => {
+    const readOnlyCase = {
+      ...detail,
+      canConfirmComplaint: false,
+    } as CaseDetail;
+    const { wrapper } = await mountPanel(readOnlyCase);
+
+    expect(wrapper.get('[data-test="case-read-only"]').text()).toContain(
+      '当前账号对此案只读',
+    );
+    expect(wrapper.find('[data-test="confirmation-review"]').exists()).toBe(
+      false,
+    );
+    expect(
+      wrapper.find('[data-test="complaint-revision-upload"]').exists(),
+    ).toBe(false);
+    expect(api.confirmCaseComplaint).not.toHaveBeenCalled();
+    expect(api.uploadMaterialFile).not.toHaveBeenCalled();
+  });
+
   it('auto-selects one exact version and starts from the submitted amount', async () => {
     const { wrapper } = await mountPanel();
     expect(

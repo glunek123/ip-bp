@@ -1160,6 +1160,15 @@ test('an authenticated operator matches, uploads and submits complaint materials
       readOnlyPage.locator('[data-test="case-read-only"]'),
     ).toBeVisible();
     await expect(
+      readOnlyPage.locator('[data-test="confirmation-review"]'),
+    ).toHaveCount(0);
+    await expect(
+      readOnlyPage.locator('[data-test="confirmation-submit"]'),
+    ).toHaveCount(0);
+    await expect(
+      readOnlyPage.locator('[data-test="complaint-revision-upload"]'),
+    ).toHaveCount(0);
+    await expect(
       readOnlyPage.locator('[data-test="complaint-submit-form"]'),
     ).toHaveCount(0);
     const sameDepartmentDownload = readOnlyPage.waitForEvent('download');

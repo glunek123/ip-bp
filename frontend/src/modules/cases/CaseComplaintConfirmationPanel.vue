@@ -420,7 +420,7 @@ onBeforeUnmount(() => {
           >刷新核对详情</ElButton
         >
       </div>
-      <p v-else-if="!canConfirm" class="field-help">
+      <p v-else-if="!canConfirm" data-test="case-read-only" class="field-help">
         当前账号对此案只读，可以查看和逐件下载材料，不能确认或上传诉状。
       </p>
       <div
