@@ -37,6 +37,7 @@ const downloadError = ref('');
 const confirmationError = ref('');
 const confirmationSuccess = ref('');
 const confirmationSubmitting = ref(false);
+const confirmationPostSucceeded = ref(false);
 const reviewVisible = ref(false);
 const unknownRequest = ref<ConfirmCaseComplaintInput | null>(null);
 const contextRevision = ref(0);
@@ -92,6 +93,7 @@ const readyToReview = computed(
     confirmDisclose.value !== null &&
     !versionsLoading.value &&
     !confirmationSubmitting.value &&
+    !confirmationPostSucceeded.value &&
     unknownRequest.value === null,
 );
 
@@ -136,6 +138,7 @@ function resetDraft(): void {
   unknownRequest.value = null;
   confirmationError.value = '';
   confirmationSuccess.value = '';
+  confirmationPostSucceeded.value = false;
   downloadError.value = '';
 }
 
@@ -186,10 +189,12 @@ watch(
       previousScope === scope &&
       unknownRequest.value !== null &&
       props.item.stage === 'WAITING_COMPLAINT_CONFIRMATION';
+    const preserveSuccessfulPost =
+      previousScope === scope && confirmationPostSucceeded.value;
     contextRevision.value += 1;
-    if (preserveUnknownRequest) {
+    if (preserveUnknownRequest || preserveSuccessfulPost) {
       confirmationError.value = '';
-      confirmationSuccess.value = '';
+      if (preserveUnknownRequest) confirmationSuccess.value = '';
       downloadError.value = '';
     } else {
       resetDraft();
@@ -204,7 +209,12 @@ function selectedFile(versionId: string): ComplaintVersion | undefined {
 }
 
 async function uploadRevisions(event: Event): Promise<void> {
-  if (!canConfirm.value || unknownRequest.value || confirmationSubmitting.value)
+  if (
+    !canConfirm.value ||
+    unknownRequest.value ||
+    confirmationSubmitting.value ||
+    confirmationPostSucceeded.value
+  )
     return;
   const input = event.target;
   if (!(input instanceof HTMLInputElement)) return;
@@ -320,6 +330,7 @@ async function sendConfirmation(
 ): Promise<void> {
   if (
     confirmationSubmitting.value ||
+    confirmationPostSucceeded.value ||
     props.item.stage !== 'WAITING_COMPLAINT_CONFIRMATION' ||
     !props.item.canConfirmComplaint
   )
@@ -339,8 +350,9 @@ async function sendConfirmation(
     if (!isCurrent()) return;
     unknownRequest.value = null;
     reviewVisible.value = false;
+    confirmationPostSucceeded.value = true;
     confirmationSuccess.value =
-      '诉状已确认，案件进入诉状待盖章。原提交记录仍保留。';
+      '确认已成功，正在同步案件详情；暂不可再次确认。';
     notifyWorkflowChanged();
     emit('changed');
   } catch (reason) {
@@ -399,11 +411,24 @@ onBeforeUnmount(() => {
       <p class="field-help">
         当前流程：诉状待确认→诉状待盖章。确认后案件只推进到“诉状待盖章”；本次诉状版本和金额事实另行留存，原提交版本、金额和回执不会覆盖。请逐件使用下载入口核对文件。
       </p>
-      <p v-if="!canConfirm" class="field-help">
+      <div
+        v-if="confirmationPostSucceeded"
+        class="confirmation-unknown"
+        data-test="confirmation-success-pending"
+      >
+        <p role="status">{{ confirmationSuccess }}</p>
+        <ElButton
+          text
+          data-test="confirmation-success-check"
+          @click="checkUnknownResult"
+          >刷新核对详情</ElButton
+        >
+      </div>
+      <p v-else-if="!canConfirm" class="field-help">
         当前账号对此案只读，可以查看和逐件下载材料，不能确认或上传诉状。
       </p>
       <div
-        v-if="canConfirm"
+        v-if="canConfirm && !confirmationPostSucceeded"
         class="demo-form-grid"
         data-test="confirmation-form"
       >
@@ -570,9 +595,6 @@ onBeforeUnmount(() => {
 
         <p v-if="confirmationError" class="submit-error" role="alert">
           {{ confirmationError }}
-        </p>
-        <p v-if="confirmationSuccess" role="status">
-          {{ confirmationSuccess }}
         </p>
         <div v-if="unknownRequest" class="confirmation-unknown">
           <ElButton

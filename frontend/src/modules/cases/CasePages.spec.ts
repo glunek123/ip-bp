@@ -574,6 +574,92 @@ describe('case pages', () => {
     expect(api.confirmCaseComplaint.mock.calls[1]).toEqual(originalRequest);
   });
 
+  it('locks confirmation after success while the same-case detail refresh is pending', async () => {
+    let resolveRefresh!: (value: ReturnType<typeof confirmationDetail>) => void;
+    api.getCase
+      .mockResolvedValueOnce(confirmationDetail('case-a'))
+      .mockReturnValueOnce(
+        new Promise((resolve) => (resolveRefresh = resolve)) as ReturnType<
+          typeof api.getCase
+        >,
+      );
+    api.confirmCaseComplaint.mockResolvedValueOnce({
+      id: 'case-a',
+      stage: 'WAITING_COMPLAINT_STAMP',
+      version: 4,
+      confirmedAt: '2026-10-02T02:00:00Z',
+    });
+    const { wrapper } = await mountRoutedDetail('/cases/case-a');
+
+    await wrapper.get('[data-test="confirm-disclose-false"]').setValue(true);
+    await wrapper.get('[data-test="confirmation-review"]').trigger('click');
+    await wrapper.get('[data-test="confirmation-submit"]').trigger('click');
+    await flushPromises();
+
+    expect(wrapper.text()).toContain(
+      '确认已成功，正在同步案件详情；暂不可再次确认。',
+    );
+    expect(wrapper.find('[data-test="confirmation-review"]').exists()).toBe(
+      false,
+    );
+    expect(wrapper.find('[data-test="confirmation-form"]').exists()).toBe(
+      false,
+    );
+    expect(api.confirmCaseComplaint).toHaveBeenCalledTimes(1);
+    resolveRefresh(confirmationDetail('case-a'));
+    await flushPromises();
+    expect(wrapper.find('[data-test="confirmation-review"]').exists()).toBe(
+      false,
+    );
+    expect(api.confirmCaseComplaint).toHaveBeenCalledTimes(1);
+  });
+
+  it('keeps successful confirmation locked after a transient detail failure until facts arrive', async () => {
+    api.getCase
+      .mockResolvedValueOnce(confirmationDetail('case-a'))
+      .mockRejectedValueOnce(
+        new ApiError('unavailable', 503, 'SERVICE_UNAVAILABLE'),
+      )
+      .mockResolvedValueOnce(
+        confirmationDetail('case-a', 'WAITING_COMPLAINT_STAMP', 4),
+      );
+    api.confirmCaseComplaint.mockResolvedValueOnce({
+      id: 'case-a',
+      stage: 'WAITING_COMPLAINT_STAMP',
+      version: 4,
+      confirmedAt: '2026-10-02T02:00:00Z',
+    });
+    const { wrapper } = await mountRoutedDetail('/cases/case-a');
+
+    await wrapper.get('[data-test="confirm-disclose-false"]').setValue(true);
+    await wrapper.get('[data-test="confirmation-review"]').trigger('click');
+    await wrapper.get('[data-test="confirmation-submit"]').trigger('click');
+    await flushPromises();
+
+    expect(wrapper.text()).toContain(
+      '确认已成功，正在同步案件详情；暂不可再次确认。',
+    );
+    expect(wrapper.text()).toContain('详情读取失败');
+    expect(wrapper.find('[data-test="confirmation-review"]').exists()).toBe(
+      false,
+    );
+    expect(api.confirmCaseComplaint).toHaveBeenCalledTimes(1);
+
+    await wrapper
+      .get('[data-test="confirmation-success-check"]')
+      .trigger('click');
+    await flushPromises();
+
+    expect(wrapper.text()).toContain('诉状确认记录');
+    expect(
+      wrapper.find('[data-test="confirmed-complaint-record"]').exists(),
+    ).toBe(true);
+    expect(wrapper.find('[data-test="confirmation-review"]').exists()).toBe(
+      false,
+    );
+    expect(api.confirmCaseComplaint).toHaveBeenCalledTimes(1);
+  });
+
   it('clears retry state when refresh observes the confirmed server fact', async () => {
     const pending = confirmationDetail('case-a');
     const confirmed = confirmationDetail(
