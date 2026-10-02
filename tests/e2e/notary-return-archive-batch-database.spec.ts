@@ -408,10 +408,8 @@ test('the maximum 50-item batch completes within the transaction budget', async 
   expect(result.items).toHaveLength(50);
   expect(await batchReceiptCount()).toBe(1);
   expect(await batchAuditCount()).toBe(1);
-  test
-    .info()
-    .annotations.push({
-      type: 'batch50ElapsedMs',
-      description: String(Date.now() - started),
-    });
+  test.info().annotations.push({
+    type: 'batch50ElapsedMs',
+    description: String(Date.now() - started),
+  });
 });

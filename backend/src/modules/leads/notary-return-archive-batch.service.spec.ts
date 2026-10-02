@@ -51,13 +51,11 @@ function fixture() {
       matters.has(id) ? [{ id }] : [],
     ),
     userAccount: {
-      findUnique: jest
-        .fn()
-        .mockResolvedValue({
-          accountType: 'INTERNAL',
-          active: true,
-          displayName: '运营',
-        }),
+      findUnique: jest.fn().mockResolvedValue({
+        accountType: 'INTERNAL',
+        active: true,
+        displayName: '运营',
+      }),
     },
     notaryMatter: {
       findFirst: jest.fn(

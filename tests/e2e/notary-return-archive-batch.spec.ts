@@ -3,7 +3,6 @@ import {
   expect,
   test,
   type APIRequestContext,
-  type Browser,
   type Page,
 } from '@playwright/test';
 import {
