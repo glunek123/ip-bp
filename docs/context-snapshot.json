@@ -1,6 +1,6 @@
 {
   "version": 1,
-  "recordedAt": "2026-10-02T09:23:04.267Z",
+  "recordedAt": "2026-10-02T15:13:54.618Z",
   "files": {
     ".cursor/rules/verified-feature-integration.mdc": "ffd2306612ba6f09749629c5adb9e645f7f37aa6ee27ff1bc1c3d8b14efeca38",
     ".env.example": "07211cde5c2b59efc21b619b752d4c9b871f0980d2d64ca3c146ad6151fd27ca",
@@ -471,8 +471,8 @@
     "frontend/src/main.ts": "6b133c73fd295989270e8a72634c630685dff261895791e31ab92889d34535ee",
     "frontend/src/modules/auth/LoginPage.spec.ts": "d8918e8fc9fbeb93a0d8240f483853f6edeb0831e37f78ae32940d2781c827fc",
     "frontend/src/modules/auth/LoginPage.vue": "b8f86b08c517e38de7cec5f232d1fc162f6a5f9023e1d221c3b0593c452191f6",
-    "frontend/src/modules/cases/CaseComplaintConfirmationPanel.spec.ts": "ed9a4dba49b9bda2ceeceed3d6f0de103eb5ddf7122cd9e2bca6838a6465c1c7",
-    "frontend/src/modules/cases/CaseComplaintConfirmationPanel.vue": "41f33dff879ae8472d7fd3c95a3f8584a7c6df0a488d11454b90894c65489d8f",
+    "frontend/src/modules/cases/CaseComplaintConfirmationPanel.spec.ts": "7c9cb06be55ce401a259535f75f151de80a7e7af43e44fbc854a6292ada6de71",
+    "frontend/src/modules/cases/CaseComplaintConfirmationPanel.vue": "dfb9c27f0b977d546e7eebb1ee2b5da22216e4904c15c709dda71da77aff40b3",
     "frontend/src/modules/cases/CaseDetailPage.vue": "c98f4ebd4766d066b282674e4dd1032e19a4276208244935753cc22095319593",
     "frontend/src/modules/cases/CaseListPage.vue": "bd583c3c0409e8dd76fa658bc0b28e3682c5bbb69d79993117f7cba6ad45decd",
     "frontend/src/modules/cases/CasePages.spec.ts": "41307e6d088e439badfa1cf5b53f519870f2203f0f2b4dee755eca7bd0dc18b7",
@@ -577,7 +577,7 @@
     "tests/e2e/case-complaint-confirmation-database.spec.ts": "09d37771dca17566650970cfa592d4c93785069b29d1bf13ce8f9db11f4e8c76",
     "tests/e2e/case-complaint-confirmation-migration.spec.ts": "ac7d6c302102a9fe0047c265556dec82cd6b17cdb1d0f6f2a9bb362a69788934",
     "tests/e2e/case-complaint-confirmation.spec.ts": "839d25f51f7c8d6c5bf4252815da8823223d2799b702940f96bdc6a45f391f3c",
-    "tests/e2e/cases.spec.ts": "bf6a3f34f471f6ecede5157d6dca7c256cbdc9420c390c18be3f51413e4a37f6",
+    "tests/e2e/cases.spec.ts": "001c1984c16edc62c0d64eb19b362a0678b5fcb9c9fd1e881f560f486675c9a9",
     "tests/e2e/components.spec.ts": "8d94b3b044d9ddc24c323536aba04edc08e216271ff3082705a21c1ac2796742",
     "tests/e2e/core-leads.spec.ts": "5372ca5aeed2ec50fe26af1fa71470696c22a936dacfeb0597aec239ece3e51d",
     "tests/e2e/customers.spec.ts": "f6000339d4025dc98cf74498a7586b9aadf6091599e96c626ac2c05cb4a9436c",
