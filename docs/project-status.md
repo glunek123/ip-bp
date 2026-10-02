@@ -8,9 +8,9 @@
 
 ## 当前任务
 
-**CORE-CA-003｜确认诉状（路线图唯一Current，开发中）**：从已核实的`main@eef05ec`建立`codex/core-ca-003-complaint-confirmation`并正式领取。依据[案件Spec](spec/v0.1/modules/cases.md#core-ca-003-确认诉状契约)和[实施计划](superpowers/plans/2026-10-02-core-ca-003-complaint-confirmation.md)，完成运营确认精确诉状版本与金额、留存原提交事实，并仅推进至诉状待盖章。使用既有授权／部门范围／材料冻结与事务机制，按Level 2验收；schema、Command及材料写入阶段扩展由Sol实施和独立审查，普通UI由Luna承接。未验收，不实施CA-004；开发／生产库迁移未执行。
+**CORE-CA-004｜客户盖章邮寄（路线图唯一Current，待领取并暂停）**：本工作区仍是`codex/core-ca-003-complaint-confirmation`的CA-003非执行性完成状态与证据收口。CA-003固定候选已完成本地Level 2验收，尚未集成；详细结果与局限见[验证记录](spec/v0.1/VALIDATION.md)。后续切片按用户要求暂停，本轮不领取或开发CA-004。
 
-恢复点：后端Task已通过独立Sol补审，前端及集成修复已提交至`ed44d68`；全分支Final Review接受，未关闭Critical／Important／Minor均为0。已修复未知结果刷新丢失原请求、同路由切案保留旧上下文、下载错误无提示及已成功后仍可再次确认的问题；尚待固定候选的正式Level 2门禁，不声明整体验收通过。此前用户明确授权后仅重建本地独立测试库`127.0.0.1:55433/dev_cor_test`（public），应用60份迁移，旧测试行不可恢复；开发／生产库及数据卷未触碰，旧草稿迁移证据作废。实际Task报告和审查见`.local/ca003/`，不重复已有效的开发期检查。
+恢复点：CA-003业务候选为`6acdc65472c19971e672c5a815df799056dba6d5`／tree`bb8eb53af58c57757b0674c120386dd6775c71e6`；正式Level 2门禁、PostgreSQL／Chromium四文件17/17及独立Task／Final Review已完成。候选仅部署到独立测试库；此前明确授权的一次测试库reset已执行，不再重置。开发／生产库、持久化卷和发布未触碰。详细门禁、审查、失败史及旧schema探针边界只见VALIDATION。
 
 CA-001匹配事实口径已在本分支修正并验收：实际匹配日期与系统登记时间分离、律所可空，旧成功回执仍可原样重放。旧候选的验证只对旧tree有效；本段不改变Current／Next。
 
@@ -57,4 +57,4 @@ CA-001匹配事实口径已在本分支修正并验收：实际匹配日期与�
 
 ## 下一步
 
-固定干净候选并执行正式Level 2门禁，保存实际证据后补记完成状态和文档专项检查。通过之前不推进Current／Next，不发布或执行开发／生产迁移。
+后续切片按用户要求暂停；本轮仅完成CA-003状态／证据文档收口。路线图Current为待领取并暂停的CA-004、Next为CA-005；本工作区仍保留CA-003分支，未集成。

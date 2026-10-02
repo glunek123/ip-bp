@@ -1,5 +1,17 @@
 # SPEC-001 文档验证
 
+## CORE-CA-003 确认诉状（2026-10-02）
+
+通过正式Level 2逐项门禁的固定业务候选为`6acdc65472c19971e672c5a815df799056dba6d5`、tree`bb8eb53af58c57757b0674c120386dd6775c71e6`，分支`codex/core-ca-003-complaint-confirmation`。范围是有权运营为单案确认精确诉状版本与金额，保留原提交事实并进入`WAITING_COMPLAINT_STAMP`。新增`POST /api/v1/cases/:id/complaint-confirm`、`CaseComplaintConfirmation`与`CaseComplaintConfirmationReceipt`；独立`case.complaint.confirm`授权、企业／部门隔离、当前撤权检查、版本幂等并发、冻结文件、成功审计与回执在同一事务边界内验证。三份独立前向迁移为`20261002020000_add_case_complaint_confirmation`、`20261002020500_add_case_complaint_confirmation_facts`、`20261002021000_add_case_complaint_confirmation_grants`，仅部署到独立测试库。空库60迁移、上一支持57份schema、旧列／回执保留、失败原子回滚与修复重试专项通过；上一schema合成旧提交／回执探针只证明DDL保留，不代表完整合法旧来源业务链；新的完整来源链由API／PostgreSQL验收。
+
+固定候选逐项正式门禁均退出0：后端20套件278/278、前端6文件90/90，以及`prepare:prisma`、`check:fast:prepared`、`spec:check`、受影响Prettier（含`.d.mts`）、`context:check:strict`和`build:prepared`。PostgreSQL／Chromium四文件组合17/17，于2026-10-02 23:16退出0，命令总耗时55.57秒（Playwright 54.2秒）。Node v24.21.0、pnpm 11.27.0；测试环境fingerprint为`5eda1feed3489f2cf83c4228cd79afbc395b83c9d5ef9a96cc7c99b3e56130f1`。各实际命令及结果见`.local/logs/ca003-final-{prepare,backend-unit,frontend-unit,check-fast,spec,format,context,build,e2e}-6acdc65.log`首尾；浏览器报告保存在`.local/ca003/6acdc65-playwright-report/index.html`。Task 1与Final独立Sol Review均为`ACCEPTED`，C／I／M均为0，报告`.local/ca003/task-1-review.md`、`.local/ca003/final-review.md`。Final补审针对最新`f285450`；相对固定`6acdc65`的变化仅有已解释快照，不声称在`6acdc65`重新完整Review。
+
+组合验收的实际命令为`pnpm test:e2e tests/e2e/case-complaint-confirmation-migration.spec.ts tests/e2e/case-complaint-confirmation-database.spec.ts tests/e2e/case-complaint-confirmation.spec.ts tests/e2e/cases.spec.ts`，由现有受控入口在隔离测试库串行执行。覆盖正常来源链、精确修订与变更说明、只读下载及跨身份隔离、撤权／转派后的同键拒绝、旧版本与错误状态、并发单胜、审计／事实／冻结／回执故障整笔回滚、迁移和刷新／重登。日志中故障注入的预期500属于通过的回滚断言，不作为隐藏失败；Vite大chunk提示为已知非阻断警告。
+
+失败历史仅作诊断记录：`e24571a`首次静态检查发现4项lint错误，`101c149`机械修复；`afd63f5`组合17项中16项通过，失败因旧cases只读定位缺少标记，`f285450`恢复原条件标记并补充无写入／上传控件断言，未删除旧测试、权限或真实附件字节断言。失败报告保留于`.local/ca003/afd63f5-failed-playwright-report`及`.local/ca003/afd63f5-failed-test-results`。早期worker日志曾同名覆写，且误传参数导致前端全557项而非聚焦项；已披露，不将该阶段结果冒用为最终候选证据，独立RED／GREEN记录保留。
+
+此前仅按明确授权重建独立测试库并执行迁移，旧测试行已删除；未触碰开发／生产库或持久化卷，不再执行reset。CA-004／Word跨工具兼容／生产Provider不属于本切片，本地验收不代表集成、生产准入或MVP上线。按Level 2处理；本Slice暂无正式scope，因此逐项记录正式门禁，不伪称Evidence v2，未运行完整`pnpm verify`或未过滤全量E2E（未修改共享认证／RBAC／scoped机制）。业务结果只归属于上述固定候选。其后的累计收口差异仅为`docs/feature-roadmap.md`完成态与唯一Current／Next、`docs/project-status.md`恢复摘要、本验证记录及对应解释快照；不改变契约、代码、迁移、测试／构建输入或环境，原业务证据仍适用，不把收口HEAD称作旧候选实跑结果，也不要求记录自身提交hash。收口检查使用现有受影响Prettier、`spec:check`、`context:check:strict`及累计Git差异核对；实际命令、退出状态和结果见`.local/logs/ca003-closeout-doc-check.log`。CA-003完成后按用户要求暂停后续切片，CA-004未领取；集成结果或远端必需检查仍须另按现行规则确认。
+
 ## CORE-NT-010 公证事项合法批量归档（2026-10-02）
 
 实际通过正式Level 2门禁的固定候选为`f5fb604435dae4bbb7847c934441c67d839b8c72`，tree`0a5672ba9027ab3a9e6272cf47987262885b1b1f`，分支`codex/core-nt-010-batch-return-archive`，基于已集成NT-009的`main@85b5bc5`；尚未推送／合并本切片。有权内部运营从正式列表选择1～50项`WAITING_RETURN`且已有`NO_ISSUE`决定的事项，分别确认退货／不退货／仅退款、实际金额或待定、适用收付方和原因，一次原子归档。复用既有`notary.return.archive`和逐项来源线索范围、当前身份、版本、费用不变量与审计；不预设假零、不付款、不改原费用，不将其他阶段终止视为归档。
