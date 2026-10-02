@@ -143,6 +143,25 @@ describe('CaseComplaintConfirmationPanel', () => {
     expect(wrapper.text()).toContain('原提交版本、金额和回执不会覆盖');
   });
 
+  it('shows a pending-stage download failure and clears it after a successful retry', async () => {
+    api.downloadMaterialVersion
+      .mockRejectedValueOnce(new Error('download failed'))
+      .mockResolvedValueOnce(undefined);
+    const { wrapper } = await mountPanel();
+
+    await wrapper.get('.confirmation-version button').trigger('click');
+    await flushPromises();
+    expect(
+      wrapper.get('[data-test="confirmation-download-error"]').text(),
+    ).toContain('附件下载失败');
+
+    await wrapper.get('.confirmation-version button').trigger('click');
+    await flushPromises();
+    expect(
+      wrapper.find('[data-test="confirmation-download-error"]').exists(),
+    ).toBe(false);
+  });
+
   it('requires an explicit version when more than one exact version is available', async () => {
     api.listOwnerMaterials.mockResolvedValueOnce({
       items: [

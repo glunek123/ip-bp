@@ -2,6 +2,8 @@ import { flushPromises, mount } from '@vue/test-utils';
 import { createPinia, setActivePinia } from 'pinia';
 import { createMemoryHistory, createRouter } from 'vue-router';
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
+import { ApiError } from '../../api/http';
+import { useAuthStore } from '../../stores/auth';
 import CaseListPage from './CaseListPage.vue';
 import CaseDetailPage from './CaseDetailPage.vue';
 import { workflowChangedEvent } from '../../app/workflow-events';
@@ -14,6 +16,7 @@ const api = vi.hoisted(() => ({
   confirmCaseComplaint: vi.fn(),
   uploadMaterialFile: vi.fn(),
   listOwnerMaterials: vi.fn(),
+  downloadMaterialVersion: vi.fn(),
 }));
 vi.mock('../../api/cases', () => ({
   listCases: api.listCases,
@@ -24,7 +27,7 @@ vi.mock('../../api/cases', () => ({
   todayShanghai: () => '2026-09-29',
 }));
 vi.mock('../../api/materials', () => ({
-  downloadMaterialVersion: vi.fn(),
+  downloadMaterialVersion: api.downloadMaterialVersion,
   uploadMaterialFile: api.uploadMaterialFile,
   listOwnerMaterials: api.listOwnerMaterials,
 }));
@@ -121,6 +124,123 @@ async function mountRoute(
   const wrapper = mount(component, { global: { plugins: [pinia, router] } });
   await flushPromises();
   return wrapper;
+}
+
+function confirmationDetail(
+  id: string,
+  stage:
+    | 'WAITING_COMPLAINT_CONFIRMATION'
+    | 'WAITING_COMPLAINT_STAMP' = 'WAITING_COMPLAINT_CONFIRMATION',
+  version = 3,
+) {
+  return {
+    id,
+    businessNo: `CA-${id}`,
+    stage,
+    createdAt: '2026-10-01T00:00:00Z',
+    version,
+    canMatch: false,
+    canSubmitComplaint: false,
+    canConfirmComplaint: stage === 'WAITING_COMPLAINT_CONFIRMATION',
+    courtCaseNo: null,
+    department: { id: 'department-1', name: '知产部' },
+    customer: { id: 'customer-1', name: '客户甲' },
+    rightsHolder: { id: 'holder-1', name: '权利人甲' },
+    owner: { id: 'user-1', displayName: '负责人' },
+    sourceLead: { id: 'lead-1', businessNo: 'LD-1' },
+    sourceNotaryMatter: { id: 'matter-1', businessNo: 'NZ-1' },
+    certificate: {
+      certificateNo: 'Z-100',
+      certificateDate: '2026-10-01',
+      issuedAt: '2026-10-01T00:00:00Z',
+      needDisclose: false,
+      files: [],
+      disclosureFiles: [],
+    },
+    fees: [],
+    defendants: [],
+    lawyers: [],
+    matchedAt: null,
+    matchedOn: null,
+    complaint: {
+      amountState: 'KNOWN',
+      amount: '123.45',
+      pendingReason: null,
+      submittedAt: '2026-10-01T01:00:00Z',
+      submittedByUserId: 'user-1',
+      complaintFiles: [
+        {
+          materialId: `material-${id}`,
+          contentVersionId: `version-${id}`,
+          originalFilename: `${id}-诉状.pdf`,
+          mimeType: 'application/pdf',
+        },
+      ],
+      authorizationFiles: [],
+    },
+    complaintConfirmation:
+      stage === 'WAITING_COMPLAINT_STAMP'
+        ? {
+            confirmedComplaintContentVersionId: `version-${id}`,
+            complaintFile: {
+              materialId: `material-${id}`,
+              contentVersionId: `version-${id}`,
+              originalFilename: `${id}-诉状.pdf`,
+              mimeType: 'application/pdf',
+            },
+            amountState: 'KNOWN',
+            amount: '123.45',
+            pendingReason: null,
+            confirmDisclose: false,
+            changeNote: null,
+            confirmedAt: '2026-10-02T02:00:00Z',
+            confirmedByUserId: 'user-1',
+          }
+        : null,
+  };
+}
+
+async function mountRoutedDetail(path: string) {
+  const pinia = createPinia();
+  setActivePinia(pinia);
+  const auth = useAuthStore(pinia);
+  auth.session = {
+    principalType: 'INTERNAL',
+    user: { id: 'user-1', displayName: '负责人', username: 'owner' },
+    department: { id: 'department-1', name: '知产部' },
+    departments: [{ id: 'department-1', name: '知产部' }],
+    customer: null,
+    notaryOffice: null,
+    authorizationRevision: 1,
+    expiresAt: '2099-01-01T00:00:00Z',
+    csrfToken: 'csrf',
+  };
+  auth.restored = true;
+  const router = createRouter({
+    history: createMemoryHistory(),
+    routes: [
+      { path: '/cases', component: CaseListPage },
+      { path: '/cases/:id', component: CaseDetailPage },
+    ],
+  });
+  await router.push(path);
+  await router.isReady();
+  const wrapper = mount(
+    { template: '<RouterView />' },
+    {
+      global: { plugins: [pinia, router] },
+    },
+  );
+  await flushPromises();
+  return { wrapper, router, auth };
+}
+
+async function createUnknownConfirmation(wrapper: ReturnType<typeof mount>) {
+  await wrapper.get('[data-test="confirm-disclose-false"]').setValue(true);
+  await wrapper.get('[data-test="confirmation-review"]').trigger('click');
+  await wrapper.get('[data-test="confirmation-submit"]').trigger('click');
+  await flushPromises();
+  return api.confirmCaseComplaint.mock.calls[0];
 }
 
 describe('case pages', () => {
@@ -392,5 +512,321 @@ describe('case pages', () => {
     expect(wrapper.get('[data-test="case-read-only"]').text()).toContain(
       '当前账号不能办理此案',
     );
+  });
+
+  it('keeps the original confirmation body and key when refresh remains pending', async () => {
+    const pending = confirmationDetail('case-a');
+    const refreshed = confirmationDetail(
+      'case-a',
+      'WAITING_COMPLAINT_CONFIRMATION',
+      4,
+    );
+    api.getCase.mockResolvedValueOnce(pending).mockResolvedValueOnce(refreshed);
+    api.confirmCaseComplaint
+      .mockRejectedValueOnce(new ApiError('timeout', 0, 'NETWORK_ERROR'))
+      .mockResolvedValueOnce({
+        id: 'case-a',
+        stage: 'WAITING_COMPLAINT_STAMP',
+        version: 4,
+        confirmedAt: '2026-10-02T02:00:00Z',
+      });
+    const { wrapper } = await mountRoutedDetail('/cases/case-a');
+
+    const originalRequest = await createUnknownConfirmation(wrapper);
+    await wrapper.get('[data-test="confirmation-check"]').trigger('click');
+    await flushPromises();
+    expect(
+      wrapper.find('[data-test="complaint-confirmation-panel"]').exists(),
+    ).toBe(true);
+    await wrapper.get('[data-test="confirmation-retry"]').trigger('click');
+    await flushPromises();
+
+    expect(api.confirmCaseComplaint.mock.calls[1]).toEqual(originalRequest);
+  });
+
+  it('keeps the original confirmation body and key after a transient refresh failure', async () => {
+    const pending = confirmationDetail('case-a');
+    api.getCase
+      .mockResolvedValueOnce(pending)
+      .mockRejectedValueOnce(
+        new ApiError('unavailable', 503, 'SERVICE_UNAVAILABLE'),
+      );
+    api.confirmCaseComplaint
+      .mockRejectedValueOnce(new ApiError('timeout', 0, 'NETWORK_ERROR'))
+      .mockResolvedValueOnce({
+        id: 'case-a',
+        stage: 'WAITING_COMPLAINT_STAMP',
+        version: 4,
+        confirmedAt: '2026-10-02T02:00:00Z',
+      });
+    const { wrapper } = await mountRoutedDetail('/cases/case-a');
+
+    const originalRequest = await createUnknownConfirmation(wrapper);
+    await wrapper.get('[data-test="confirmation-check"]').trigger('click');
+    await flushPromises();
+    expect(
+      wrapper.find('[data-test="complaint-confirmation-panel"]').exists(),
+    ).toBe(true);
+    expect(wrapper.text()).toContain('详情读取失败');
+    await wrapper.get('[data-test="confirmation-retry"]').trigger('click');
+    await flushPromises();
+
+    expect(api.confirmCaseComplaint.mock.calls[1]).toEqual(originalRequest);
+  });
+
+  it('clears retry state when refresh observes the confirmed server fact', async () => {
+    const pending = confirmationDetail('case-a');
+    const confirmed = confirmationDetail(
+      'case-a',
+      'WAITING_COMPLAINT_STAMP',
+      4,
+    );
+    api.getCase.mockResolvedValueOnce(pending).mockResolvedValueOnce(confirmed);
+    api.confirmCaseComplaint.mockRejectedValueOnce(
+      new ApiError('timeout', 0, 'NETWORK_ERROR'),
+    );
+    const { wrapper } = await mountRoutedDetail('/cases/case-a');
+
+    await createUnknownConfirmation(wrapper);
+    await wrapper.get('[data-test="confirmation-check"]').trigger('click');
+    await flushPromises();
+
+    expect(wrapper.text()).toContain('CA-case-a');
+    expect(wrapper.text()).toContain('诉状确认记录');
+    expect(
+      wrapper.find('[data-test="confirmed-complaint-record"]').exists(),
+    ).toBe(true);
+    expect(wrapper.find('[data-test="confirmation-retry"]').exists()).toBe(
+      false,
+    );
+  });
+
+  it.each([403, 404])(
+    'clears the previous case detail when refresh returns %i',
+    async (status) => {
+      api.getCase
+        .mockResolvedValueOnce(confirmationDetail('case-a'))
+        .mockRejectedValueOnce(
+          new ApiError(
+            'not accessible',
+            status,
+            status === 403 ? 'FORBIDDEN' : 'NOT_FOUND',
+          ),
+        );
+      const { wrapper } = await mountRoutedDetail('/cases/case-a');
+
+      await wrapper
+        .findAll('button')
+        .find((button) => button.text() === '刷新')!
+        .trigger('click');
+      await flushPromises();
+
+      expect(wrapper.text()).not.toContain('CA-case-a');
+      expect(
+        wrapper.find('[data-test="complaint-confirmation-panel"]').exists(),
+      ).toBe(false);
+    },
+  );
+
+  it('loads route B in the reused RouterView and ignores a late detail response for A', async () => {
+    let resolveA!: (value: ReturnType<typeof confirmationDetail>) => void;
+    api.getCase
+      .mockReturnValueOnce(
+        new Promise((resolve) => (resolveA = resolve)) as ReturnType<
+          typeof api.getCase
+        >,
+      )
+      .mockResolvedValueOnce(confirmationDetail('case-b'));
+    const { wrapper, router } = await mountRoutedDetail('/cases/case-a');
+
+    await router.push('/cases/case-b');
+    await flushPromises();
+    expect(wrapper.text()).toContain('CA-case-b');
+    resolveA(confirmationDetail('case-a'));
+    await flushPromises();
+
+    expect(router.currentRoute.value.params.id).toBe('case-b');
+    expect(wrapper.text()).toContain('CA-case-b');
+    expect(wrapper.text()).not.toContain('CA-case-a');
+  });
+
+  it('does not let a late confirmation POST for route A update route B', async () => {
+    let resolvePost!: (value: unknown) => void;
+    api.getCase
+      .mockResolvedValueOnce(confirmationDetail('case-a'))
+      .mockResolvedValueOnce(confirmationDetail('case-b'));
+    api.confirmCaseComplaint.mockReturnValueOnce(
+      new Promise((resolve) => (resolvePost = resolve)),
+    );
+    const { wrapper, router } = await mountRoutedDetail('/cases/case-a');
+
+    await createUnknownConfirmation(wrapper);
+    await router.push('/cases/case-b');
+    await flushPromises();
+    expect(wrapper.text()).toContain('CA-case-b');
+    expect(wrapper.text()).not.toContain('CA-case-a');
+    resolvePost({
+      id: 'case-a',
+      stage: 'WAITING_COMPLAINT_STAMP',
+      version: 4,
+      confirmedAt: '2026-10-02T02:00:00Z',
+    });
+    await flushPromises();
+
+    expect(wrapper.text()).toContain('CA-case-b');
+    expect(wrapper.text()).not.toContain('CA-case-a');
+    expect(
+      wrapper.find('[data-test="confirmed-complaint-record"]').exists(),
+    ).toBe(false);
+  });
+
+  it('reloads and ignores a late detail response when authorization revision changes', async () => {
+    let resolveOld!: (value: ReturnType<typeof confirmationDetail>) => void;
+    const stale = confirmationDetail('case-a');
+    stale.businessNo = 'CA-stale';
+    const current = confirmationDetail('case-a');
+    current.businessNo = 'CA-current';
+    api.getCase
+      .mockReturnValueOnce(
+        new Promise((resolve) => (resolveOld = resolve)) as ReturnType<
+          typeof api.getCase
+        >,
+      )
+      .mockResolvedValueOnce(current);
+    const { wrapper, auth } = await mountRoutedDetail('/cases/case-a');
+
+    auth.session!.authorizationRevision = 2;
+    await flushPromises();
+    expect(wrapper.text()).toContain('CA-current');
+    resolveOld(stale);
+    await flushPromises();
+
+    expect(wrapper.text()).toContain('CA-current');
+    expect(wrapper.text()).not.toContain('CA-stale');
+  });
+
+  it('reloads and ignores a late detail response when the signed-in user changes', async () => {
+    let resolveOld!: (value: ReturnType<typeof confirmationDetail>) => void;
+    const stale = confirmationDetail('case-a');
+    stale.businessNo = 'CA-stale-user';
+    const current = confirmationDetail('case-a');
+    current.businessNo = 'CA-current-user';
+    api.getCase
+      .mockReturnValueOnce(
+        new Promise((resolve) => (resolveOld = resolve)) as ReturnType<
+          typeof api.getCase
+        >,
+      )
+      .mockResolvedValueOnce(current);
+    const { wrapper, auth } = await mountRoutedDetail('/cases/case-a');
+
+    auth.session!.user.id = 'user-2';
+    await flushPromises();
+    expect(wrapper.text()).toContain('CA-current-user');
+    resolveOld(stale);
+    await flushPromises();
+
+    expect(wrapper.text()).toContain('CA-current-user');
+    expect(wrapper.text()).not.toContain('CA-stale-user');
+  });
+
+  it('does not apply a late complaint upload from route A to route B', async () => {
+    let resolveUpload!: (value: {
+      materialId: string;
+      contentVersionId: string;
+      originalFilename: string;
+      mimeType: string;
+    }) => void;
+    const caseA = {
+      ...confirmationDetail('case-a'),
+      stage: 'WAITING_COMPLAINT' as const,
+      canSubmitComplaint: true,
+      canConfirmComplaint: false,
+      complaint: null,
+    };
+    const caseB = { ...caseA, id: 'case-b', businessNo: 'CA-case-b' };
+    api.getCase.mockResolvedValueOnce(caseA).mockResolvedValueOnce(caseB);
+    api.uploadMaterialFile.mockReturnValueOnce(
+      new Promise((resolve) => (resolveUpload = resolve)),
+    );
+    const { wrapper, router } = await mountRoutedDetail('/cases/case-a');
+    const input = wrapper.get(
+      '[data-test="complaint-submit-form"] input[type="file"]',
+    );
+    Object.defineProperty(input.element, 'files', {
+      configurable: true,
+      value: [new File(['late'], 'late-A.pdf', { type: 'application/pdf' })],
+    });
+
+    await input.trigger('change');
+    await router.push('/cases/case-b');
+    await flushPromises();
+    resolveUpload({
+      materialId: 'material-a',
+      contentVersionId: 'version-a-late',
+      originalFilename: 'late-A.pdf',
+      mimeType: 'application/pdf',
+    });
+    await flushPromises();
+
+    expect(wrapper.text()).toContain('CA-case-b');
+    expect(wrapper.text()).not.toContain('late-A.pdf');
+  });
+
+  it('does not apply a late matching response from route A to route B', async () => {
+    let resolveMatch!: (value: undefined) => void;
+    const caseA = {
+      ...confirmationDetail('case-a'),
+      stage: 'PENDING_MATCH' as const,
+      canMatch: true,
+    };
+    const caseB = {
+      ...confirmationDetail('case-b'),
+      stage: 'PENDING_MATCH' as const,
+      canMatch: true,
+    };
+    api.getCase.mockResolvedValueOnce(caseA).mockResolvedValueOnce(caseB);
+    api.matchCase.mockReturnValueOnce(
+      new Promise((resolve) => (resolveMatch = resolve)),
+    );
+    const { wrapper, router } = await mountRoutedDetail('/cases/case-a');
+    const form = wrapper.get('[data-test="case-match-form"]');
+    await form.findAll('input')[1]!.setValue('被告甲');
+    await form.findAll('input')[5]!.setValue('律师甲');
+    await form
+      .findAll('button')
+      .find((button) => button.text().includes('确认匹配并进入待写诉状'))!
+      .trigger('click');
+
+    await router.push('/cases/case-b');
+    await flushPromises();
+    resolveMatch(undefined);
+    await flushPromises();
+
+    expect(wrapper.text()).toContain('CA-case-b');
+    expect(wrapper.text()).not.toContain('案件匹配已完成');
+  });
+
+  it('does not expose a late download failure from A in reused route B', async () => {
+    let rejectDownload!: (reason: Error) => void;
+    const caseA = confirmationDetail('case-a');
+    const caseB = confirmationDetail('case-b');
+    api.getCase.mockResolvedValueOnce(caseA).mockResolvedValueOnce(caseB);
+    api.downloadMaterialVersion.mockReturnValueOnce(
+      new Promise((_, reject) => (rejectDownload = reject)),
+    );
+    const { wrapper, router } = await mountRoutedDetail('/cases/case-a');
+
+    await wrapper
+      .findAll('button')
+      .find((button) => button.text() === '下载')!
+      .trigger('click');
+    await router.push('/cases/case-b');
+    await flushPromises();
+    rejectDownload(new Error('download failed'));
+    await flushPromises();
+
+    expect(wrapper.text()).toContain('CA-case-b');
+    expect(wrapper.find('[role="alert"]').exists()).toBe(false);
   });
 });

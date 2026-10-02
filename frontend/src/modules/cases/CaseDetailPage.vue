@@ -1,5 +1,5 @@
 <script setup lang="ts">
-import { computed, onBeforeUnmount, onMounted, ref } from 'vue';
+import { computed, onBeforeUnmount, onMounted, ref, watch } from 'vue';
 import { RouterLink, useRoute } from 'vue-router';
 import { ElButton } from 'element-plus/es/components/button/index.mjs';
 import { ApiError } from '../../api/http';
@@ -19,12 +19,21 @@ import {
   type MaterialCategory,
 } from '../../api/materials';
 import { notifyWorkflowChanged } from '../../app/workflow-events';
+import { useAuthStore } from '../../stores/auth';
 import CaseComplaintConfirmationPanel from './CaseComplaintConfirmationPanel.vue';
 
 const route = useRoute();
+const auth = useAuthStore();
 const id = computed(() => String(route.params.id));
+const identity = computed(() =>
+  auth.session === null
+    ? ''
+    : `${auth.session.principalType}:${auth.session.user.id}:${auth.session.authorizationRevision}`,
+);
 const backTo = computed(() => ({ path: '/cases', query: route.query }));
 const state = ref<'loading' | 'ready' | 'missing' | 'failed'>('loading');
+const refreshing = ref(false);
+const refreshError = ref('');
 const item = ref<CaseDetail>();
 const error = ref('');
 const downloadError = ref('');
@@ -58,21 +67,64 @@ const matchedOn = ref(todayShanghai());
 let submissionFingerprint = '';
 let idempotencyKey = '';
 let request: AbortController | undefined;
+let contextRevision = 0;
+let readRevision = 0;
+
+type OperationContext = {
+  caseId: string;
+  identity: string;
+  revision: number;
+};
+
+function operationContext(): OperationContext {
+  return {
+    caseId: id.value,
+    identity: identity.value,
+    revision: contextRevision,
+  };
+}
+
+function isCurrentOperation(context: OperationContext): boolean {
+  return (
+    context.revision === contextRevision &&
+    context.caseId === id.value &&
+    context.identity === identity.value
+  );
+}
+
 async function load() {
   request?.abort();
   const controller = new AbortController();
   request = controller;
-  state.value = 'loading';
-  error.value = '';
+  const targetId = id.value;
+  const targetIdentity = identity.value;
+  const targetContextRevision = contextRevision;
+  const thisReadRevision = ++readRevision;
+  const preserveCurrent =
+    state.value === 'ready' && item.value?.id === targetId;
+  const isCurrentRead = () =>
+    !controller.signal.aborted &&
+    thisReadRevision === readRevision &&
+    targetContextRevision === contextRevision &&
+    targetId === id.value &&
+    targetIdentity === identity.value;
+  if (preserveCurrent) {
+    refreshing.value = true;
+    refreshError.value = '';
+  } else {
+    state.value = 'loading';
+    error.value = '';
+    refreshError.value = '';
+  }
   try {
-    const result = await getCase(id.value, { signal: controller.signal });
-    if (controller.signal.aborted) return;
+    const result = await getCase(targetId, { signal: controller.signal });
+    if (!isCurrentRead()) return;
     item.value = result;
     if (result.stage === 'WAITING_COMPLAINT' && result.canSubmitComplaint) {
       const materials = await listOwnerMaterials('CASE', result.id, {
         signal: controller.signal,
       });
-      if (controller.signal.aborted) return;
+      if (!isCurrentRead()) return;
       complaintUploads.value = materials.items
         .filter(
           (material) =>
@@ -117,8 +169,30 @@ async function load() {
         });
     }
     state.value = 'ready';
+    refreshError.value = '';
   } catch (reason) {
-    if (controller.signal.aborted) return;
+    if (!isCurrentRead()) return;
+    if (
+      reason instanceof ApiError &&
+      (reason.status === 403 || reason.status === 404)
+    ) {
+      contextRevision += 1;
+      readRevision += 1;
+      request?.abort();
+      request = undefined;
+      clearContext();
+      state.value = reason.status === 404 ? 'missing' : 'failed';
+      error.value =
+        reason.status === 403
+          ? '当前账号无权读取该案件。'
+          : '案件不存在或已不可访问。';
+      return;
+    }
+    if (preserveCurrent && item.value?.id === targetId) {
+      state.value = 'ready';
+      refreshError.value = '详情读取失败，已保留当前案件与待核对请求；请重试。';
+      return;
+    }
     state.value =
       reason instanceof ApiError && reason.status === 404
         ? 'missing'
@@ -127,8 +201,57 @@ async function load() {
       reason instanceof ApiError && reason.status === 403
         ? '当前账号无权读取该案件。'
         : '案件暂时无法读取，请刷新重试。';
+  } finally {
+    if (isCurrentRead()) {
+      refreshing.value = false;
+      request = undefined;
+    }
   }
 }
+
+function clearContext(): void {
+  item.value = undefined;
+  state.value = 'loading';
+  refreshing.value = false;
+  refreshError.value = '';
+  error.value = '';
+  downloadError.value = '';
+  matchError.value = '';
+  matchSuccess.value = '';
+  submitting.value = false;
+  complaintUploads.value = [];
+  authorizationUploads.value = [];
+  amountState.value = 'KNOWN';
+  amount.value = '';
+  pendingReason.value = '';
+  uploadErrors.value = {};
+  uploadLoading.value = {};
+  complaintError.value = '';
+  complaintSuccess.value = '';
+  complaintSubmitting.value = false;
+  complaintFingerprint = '';
+  complaintIdempotencyKey = '';
+  defendants.value = [
+    { kind: 'PERSON', name: '', idNo: '', phone: '', address: '' },
+  ];
+  lawyer.value = { fullName: '', lawFirm: '', phone: '' };
+  matchedOn.value = todayShanghai();
+  submissionFingerprint = '';
+  idempotencyKey = '';
+}
+
+watch(
+  [id, identity],
+  () => {
+    contextRevision += 1;
+    readRevision += 1;
+    request?.abort();
+    request = undefined;
+    clearContext();
+    void load();
+  },
+  { flush: 'sync' },
+);
 function addDefendant() {
   if (defendants.value.length >= 20) return;
   defendants.value.push({
@@ -178,15 +301,17 @@ async function uploadComplaintFiles(
     return;
   }
   uploadLoading.value = { ...uploadLoading.value, [category]: true };
+  const context = operationContext();
   for (const file of files) {
     try {
       const result = await uploadMaterialFile({
         ownerType: 'CASE',
-        ownerId: id.value,
+        ownerId: context.caseId,
         category,
         purpose: category,
         file,
       });
+      if (!isCurrentOperation(context)) return;
       uploads.value.push({
         materialId: result.materialId,
         contentVersionId: result.contentVersionId,
@@ -195,6 +320,7 @@ async function uploadComplaintFiles(
       });
       complaintFingerprint = '';
     } catch (reason) {
+      if (!isCurrentOperation(context)) return;
       uploadErrors.value[category] =
         reason instanceof ApiError && reason.code === 'VALIDATION_ERROR'
           ? `${label}格式不支持或超过 50MB。`
@@ -202,7 +328,8 @@ async function uploadComplaintFiles(
       break;
     }
   }
-  uploadLoading.value = { ...uploadLoading.value, [category]: false };
+  if (isCurrentOperation(context))
+    uploadLoading.value = { ...uploadLoading.value, [category]: false };
 }
 function complaintErrorMessage(reason: unknown): string {
   if (
@@ -277,12 +404,15 @@ async function submitComplaintMaterials() {
     complaintIdempotencyKey = makeKey();
   }
   complaintSubmitting.value = true;
+  const context = operationContext();
   try {
     await submitComplaint(current.id, {
       ...input,
       idempotencyKey: complaintIdempotencyKey,
     });
+    if (!isCurrentOperation(context)) return;
     const fresh = await getCase(current.id);
+    if (!isCurrentOperation(context)) return;
     item.value = fresh;
     if (fresh.stage === 'WAITING_COMPLAINT_CONFIRMATION' && fresh.complaint) {
       complaintSuccess.value = '起诉材料已确认提交，当前阶段为诉状待确认。';
@@ -294,13 +424,15 @@ async function submitComplaintMaterials() {
         '请求已提交，但尚未能从案件详情确认结果；请刷新核实。';
     }
   } catch (reason) {
+    if (!isCurrentOperation(context)) return;
     complaintError.value = complaintErrorMessage(reason);
     if (
       reason instanceof ApiError &&
       (reason.code === 'VERSION_CONFLICT' || reason.code === 'INVALID_STATE')
     ) {
       try {
-        item.value = await getCase(current.id);
+        const fresh = await getCase(current.id);
+        if (isCurrentOperation(context)) item.value = fresh;
       } catch {
         /* retain the last confirmed detail */
       }
@@ -308,7 +440,7 @@ async function submitComplaintMaterials() {
       complaintIdempotencyKey = '';
     }
   } finally {
-    complaintSubmitting.value = false;
+    if (isCurrentOperation(context)) complaintSubmitting.value = false;
   }
 }
 async function submitMatch() {
@@ -356,9 +488,12 @@ async function submitMatch() {
   }
   input.idempotencyKey = idempotencyKey;
   submitting.value = true;
+  const context = operationContext();
   try {
     await matchCase(current.id, input);
+    if (!isCurrentOperation(context)) return;
     const fresh = await getCase(current.id);
+    if (!isCurrentOperation(context)) return;
     item.value = fresh;
     if (
       fresh.stage === 'WAITING_COMPLAINT' &&
@@ -374,13 +509,15 @@ async function submitMatch() {
         '请求已提交，但尚未能从案件详情确认匹配结果；请刷新核实。';
     }
   } catch (reason) {
+    if (!isCurrentOperation(context)) return;
     if (
       reason instanceof ApiError &&
       (reason.code === 'VERSION_CONFLICT' || reason.code === 'INVALID_STATE')
     ) {
       matchError.value = '案件状态或版本已变化，正在读取最新信息。';
       try {
-        item.value = await getCase(current.id);
+        const fresh = await getCase(current.id);
+        if (isCurrentOperation(context)) item.value = fresh;
       } catch {
         /* Keep the confirmed prior detail visible. */
       }
@@ -421,15 +558,17 @@ async function submitMatch() {
       matchError.value = '案件匹配未能完成，请检查信息后重试。';
     }
   } finally {
-    submitting.value = false;
+    if (isCurrentOperation(context)) submitting.value = false;
   }
 }
 async function download(materialId: string, versionId: string) {
+  const context = operationContext();
   downloadError.value = '';
   try {
     await downloadMaterialVersion(materialId, versionId);
   } catch {
-    downloadError.value = '文件下载失败，请稍后重试。';
+    if (isCurrentOperation(context))
+      downloadError.value = '文件下载失败，请稍后重试。';
   }
 }
 onMounted(() => void load());
@@ -468,8 +607,18 @@ onBeforeUnmount(() => request?.abort());
               }}
             </p>
           </div>
-          <ElButton text @click="load">刷新</ElButton>
+          <ElButton
+            text
+            data-test="case-refresh"
+            :loading="refreshing"
+            @click="load"
+            >刷新</ElButton
+          >
         </div>
+        <p v-if="refreshing" role="status">正在刷新案件详情…</p>
+        <p v-if="refreshError" class="submit-error" role="alert">
+          {{ refreshError }}
+        </p>
         <p v-if="matchSuccess" role="status">{{ matchSuccess }}</p>
         <p v-if="complaintSuccess" role="status">{{ complaintSuccess }}</p>
         <CaseComplaintConfirmationPanel

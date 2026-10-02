@@ -48,10 +48,8 @@ const identity = computed(() =>
     ? ''
     : `${auth.session.user.id}:${auth.session.authorizationRevision}`,
 );
-const contextKey = computed(
-  () =>
-    `${props.item.id}:${props.item.version}:${props.item.stage}:${identity.value}`,
-);
+const requestScopeKey = computed(() => `${props.item.id}:${identity.value}`);
+const factsKey = computed(() => `${props.item.version}:${props.item.stage}`);
 const canConfirm = computed(
   () =>
     props.item.stage === 'WAITING_COMPLAINT_CONFIRMATION' &&
@@ -138,6 +136,7 @@ function resetDraft(): void {
   unknownRequest.value = null;
   confirmationError.value = '';
   confirmationSuccess.value = '';
+  downloadError.value = '';
 }
 
 async function loadVersions(revision: number): Promise<void> {
@@ -181,10 +180,20 @@ async function loadVersions(revision: number): Promise<void> {
 }
 
 watch(
-  contextKey,
-  () => {
+  [requestScopeKey, factsKey],
+  ([scope], [previousScope]) => {
+    const preserveUnknownRequest =
+      previousScope === scope &&
+      unknownRequest.value !== null &&
+      props.item.stage === 'WAITING_COMPLAINT_CONFIRMATION';
     contextRevision.value += 1;
-    resetDraft();
+    if (preserveUnknownRequest) {
+      confirmationError.value = '';
+      confirmationSuccess.value = '';
+      downloadError.value = '';
+    } else {
+      resetDraft();
+    }
     void loadVersions(contextRevision.value);
   },
   { immediate: true, flush: 'sync' },
@@ -260,11 +269,19 @@ async function uploadRevisions(event: Event): Promise<void> {
 }
 
 async function download(file: CaseFile): Promise<void> {
+  const revision = contextRevision.value;
+  const caseId = props.item.id;
+  const currentIdentity = identity.value;
+  const isCurrent = () =>
+    mounted &&
+    revision === contextRevision.value &&
+    props.item.id === caseId &&
+    identity.value === currentIdentity;
   downloadError.value = '';
   try {
     await downloadMaterialVersion(file.materialId, file.contentVersionId);
   } catch {
-    downloadError.value = '附件下载失败，请稍后重试。';
+    if (isCurrent()) downloadError.value = '附件下载失败，请稍后重试。';
   }
 }
 
@@ -434,6 +451,14 @@ onBeforeUnmount(() => {
           </label>
           <p v-if="versionsError" class="submit-error" role="alert">
             {{ versionsError }}
+          </p>
+          <p
+            v-if="downloadError"
+            data-test="confirmation-download-error"
+            class="submit-error"
+            role="alert"
+          >
+            {{ downloadError }}
           </p>
           <label v-if="canConfirm" class="confirmation-upload">
             上传修订诉状
