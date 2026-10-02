@@ -7,6 +7,7 @@ import {
   previewNotaryListExport,
   type NotaryListExportScope,
 } from '../../api/notary-list-export';
+import type { ArchiveNotaryReturnBatchInput } from '../../api/notary-return-archive-batch';
 import {
   listNotaryMatters,
   notaryListStages,
@@ -54,6 +55,13 @@ const preferenceMessage = ref('正在读取个人列设置。');
 const saving = ref(false);
 const selectedIds = ref<string[]>([]);
 const batchOpen = ref(false);
+type PendingBatch = {
+  items: ArchiveNotaryReturnBatchInput[];
+  key: string;
+  scopeKey: string;
+};
+const pendingBatches = ref<Record<string, PendingBatch>>({});
+const activeBatchRequest = ref<PendingBatch | null>(null);
 const exportOpen = ref(false);
 const exportMode = ref<'SELECTED' | 'FILTERED' | null>(null);
 const exportPreview = ref<{ count: number; maxRows: 1000 } | null>(null);
@@ -117,6 +125,9 @@ const exportScopeKey = computed(() =>
 const batchScopeKey = computed(
   () =>
     `${auth.session?.user.id ?? ''}:${auth.session?.department?.id ?? ''}:${selectedStage.value ?? ''}`,
+);
+const pendingBatchForScope = computed(
+  () => pendingBatches.value[batchScopeKey.value] ?? null,
 );
 const canConfirmExport = computed(
   () =>
@@ -191,7 +202,28 @@ function clearSelection(): void {
 function completeBatch(): void {
   clearSelection();
   batchOpen.value = false;
+  activeBatchRequest.value = null;
   void load();
+}
+
+function holdBatch(request: PendingBatch): void {
+  pendingBatches.value[request.scopeKey] = request;
+}
+
+function resolveBatch(request: PendingBatch): void {
+  if (pendingBatches.value[request.scopeKey]?.key === request.key)
+    delete pendingBatches.value[request.scopeKey];
+}
+
+function closeBatch(): void {
+  batchOpen.value = false;
+  activeBatchRequest.value = null;
+}
+
+function resumeBatch(): void {
+  if (!pendingBatchForScope.value) return;
+  activeBatchRequest.value = pendingBatchForScope.value;
+  batchOpen.value = true;
 }
 
 async function requestExportPreview(): Promise<void> {
@@ -510,6 +542,7 @@ watch(
   ],
   () => {
     selectedIds.value = [];
+    closeBatch();
     invalidateExport();
     exportOpen.value = false;
     exportMode.value = null;
@@ -563,10 +596,24 @@ onBeforeUnmount(() => {
           >
           <ElButton
             data-test="batch-archive-open"
-            :disabled="selectedIds.length === 0 || batchOpen"
-            @click="batchOpen = true"
+            :disabled="
+              selectedIds.length === 0 || batchOpen || !!pendingBatchForScope
+            "
+            @click="
+              activeBatchRequest = null;
+              batchOpen = true;
+            "
             >批量归档</ElButton
           >
+          <ElButton
+            v-if="pendingBatchForScope && !batchOpen"
+            data-test="batch-resume"
+            @click="resumeBatch"
+            >恢复未确认的批量归档</ElButton
+          >
+          <span v-if="pendingBatchForScope" role="status">
+            原请求仅保留在当前列表页内存中；离开本页或刷新后无法恢复。关闭面板不表示撤销提交。
+          </span>
           <ElButton
             data-test="export-open"
             @click="
@@ -646,9 +693,16 @@ onBeforeUnmount(() => {
       </section>
       <NotaryReturnArchiveBatchPanel
         v-if="batchOpen"
-        :matter-ids="selectedIds"
+        :matter-ids="
+          activeBatchRequest
+            ? activeBatchRequest.items.map((item) => item.matterId)
+            : selectedIds
+        "
         :scope-key="batchScopeKey"
-        @close="batchOpen = false"
+        :pending-request="activeBatchRequest"
+        @close="closeBatch"
+        @frozen="holdBatch"
+        @resolved="resolveBatch"
         @completed="completeBatch"
       />
       <section
@@ -772,7 +826,9 @@ onBeforeUnmount(() => {
                       items.length > 0 &&
                       items.every((matter) => selectedIds.includes(matter.id))
                     "
-                    :disabled="items.length === 0 || batchOpen"
+                    :disabled="
+                      items.length === 0 || batchOpen || !!pendingBatchForScope
+                    "
                     @change="
                       toggleCurrentPage(
                         ($event.target as HTMLInputElement).checked,
@@ -797,7 +853,7 @@ onBeforeUnmount(() => {
                     :aria-label="`选择${matter.businessNo}`"
                     data-test="select-matter"
                     :checked="selectedIds.includes(matter.id)"
-                    :disabled="batchOpen"
+                    :disabled="batchOpen || !!pendingBatchForScope"
                     @change="
                       toggleMatter(
                         matter.id,

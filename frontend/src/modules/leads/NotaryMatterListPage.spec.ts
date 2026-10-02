@@ -190,6 +190,182 @@ describe('NotaryMatterListPage', () => {
     expect(workflow.notify).toHaveBeenCalledTimes(1);
   });
 
+  it.each(['identity', 'department', 'stage'])(
+    'preserves an unknown batch across %s change and restores only its original request',
+    async (change) => {
+      const waiting = {
+        ...result,
+        items: [{ ...result.items[0], stage: 'WAITING_RETURN' }],
+        counts: { ...result.counts, WAITING_RETURN: 1 },
+      };
+      api.listNotaryMatters.mockResolvedValue(waiting);
+      api.getNotaryMatter.mockResolvedValue({
+        id: 'matter-1',
+        businessNo: 'NT-001',
+        stage: 'WAITING_RETURN',
+        version: 5,
+        capabilities: { archiveReturn: true },
+        evidence: { sampleFeeState: 'KNOWN', sampleFeeAmount: '10.00' },
+        issuanceDecision: { decision: 'NO_ISSUE' },
+      });
+      batchApi.archive
+        .mockRejectedValueOnce(new TypeError('network disconnected'))
+        .mockResolvedValueOnce({ batchId: 'batch-1', items: [] });
+      const { wrapper, router, auth } = await mountPage(
+        '/notary-matters?stage=WAITING_RETURN',
+      );
+      await wrapper.get('[data-test="select-matter"]').setValue(true);
+      await wrapper.get('[data-test="batch-archive-open"]').trigger('click');
+      await flushPromises();
+      await wrapper.get('[data-test="choice-matter-1"]').setValue('KEEP');
+      await wrapper.get('[data-test="reason-matter-1"]').setValue('原请求原因');
+      await wrapper.get('form').trigger('submit');
+      await flushPromises();
+      const originalCall = batchApi.archive.mock.calls[0];
+      expect(
+        wrapper.get('[data-test="batch-archive-open"]').attributes('disabled'),
+      ).toBeDefined();
+
+      if (change === 'stage')
+        await router.push({ query: { stage: 'ARCHIVED' } });
+      else
+        auth.session = {
+          ...auth.session!,
+          ...(change === 'identity'
+            ? { user: { ...auth.session!.user, id: 'user-2' } }
+            : { department: { id: 'department-2', name: '另一部门' } }),
+        };
+      await flushPromises();
+      expect(wrapper.find('[data-test="batch-message"]').exists()).toBe(false);
+      expect(wrapper.text()).not.toContain('原请求原因');
+      expect(wrapper.find('[data-test="batch-resume"]').exists()).toBe(false);
+      expect(
+        wrapper.get('[data-test="batch-archive-open"]').attributes('disabled'),
+      ).toBeDefined();
+
+      if (change === 'stage')
+        await router.push({ query: { stage: 'WAITING_RETURN' } });
+      else
+        auth.session = {
+          ...auth.session!,
+          ...(change === 'identity'
+            ? { user: { ...auth.session!.user, id: 'user-1' } }
+            : { department: { id: 'department-1', name: '知产部' } }),
+        };
+      await flushPromises();
+      expect(wrapper.find('[data-test="batch-resume"]').exists()).toBe(true);
+      expect(batchApi.archive).toHaveBeenCalledTimes(1);
+      await wrapper.get('[data-test="batch-resume"]').trigger('click');
+      expect(batchApi.archive).toHaveBeenCalledTimes(1);
+      await wrapper.get('.return-archive-batch header button').trigger('click');
+      expect(wrapper.find('[data-test="batch-resume"]').exists()).toBe(true);
+      await wrapper.get('[data-test="batch-resume"]').trigger('click');
+      await wrapper.get('[data-test="batch-retry"]').trigger('click');
+      await flushPromises();
+      expect(batchApi.archive.mock.calls[1]).toEqual(originalCall);
+      expect(workflow.notify).toHaveBeenCalledTimes(1);
+      expect(wrapper.find('[data-test="batch-resume"]').exists()).toBe(false);
+    },
+  );
+
+  it('keeps a changed-scope in-flight result unresolved and allows a new scoped batch', async () => {
+    const waiting = {
+      ...result,
+      items: [{ ...result.items[0], stage: 'WAITING_RETURN' }],
+      counts: { ...result.counts, WAITING_RETURN: 1 },
+    };
+    api.listNotaryMatters.mockResolvedValue(waiting);
+    api.getNotaryMatter.mockResolvedValue({
+      id: 'matter-1',
+      businessNo: 'NT-001',
+      stage: 'WAITING_RETURN',
+      version: 5,
+      capabilities: { archiveReturn: true },
+      evidence: { sampleFeeState: 'KNOWN', sampleFeeAmount: '10.00' },
+      issuanceDecision: { decision: 'NO_ISSUE' },
+    });
+    let resolveFirst!: (value: { batchId: string; items: [] }) => void;
+    batchApi.archive
+      .mockImplementationOnce(
+        () => new Promise((resolve) => (resolveFirst = resolve)),
+      )
+      .mockRejectedValueOnce(new TypeError('new scope unknown'));
+    const { wrapper, auth } = await mountPage(
+      '/notary-matters?stage=WAITING_RETURN',
+    );
+    await wrapper.get('[data-test="select-matter"]').setValue(true);
+    await wrapper.get('[data-test="batch-archive-open"]').trigger('click');
+    await flushPromises();
+    await wrapper.get('[data-test="choice-matter-1"]').setValue('KEEP');
+    await wrapper.get('[data-test="reason-matter-1"]').setValue('原账号事实');
+    await wrapper.get('form').trigger('submit');
+    const originalCall = batchApi.archive.mock.calls[0];
+    auth.session = {
+      ...auth.session!,
+      user: { ...auth.session!.user, id: 'user-2' },
+    };
+    await flushPromises();
+    resolveFirst({ batchId: 'batch-1', items: [] });
+    await flushPromises();
+    expect(workflow.notify).not.toHaveBeenCalled();
+    expect(wrapper.text()).not.toContain('原账号事实');
+    await wrapper.get('[data-test="select-matter"]').setValue(true);
+    await wrapper.get('[data-test="batch-archive-open"]').trigger('click');
+    await flushPromises();
+    await wrapper.get('[data-test="choice-matter-1"]').setValue('KEEP');
+    await wrapper.get('[data-test="reason-matter-1"]').setValue('新账号事实');
+    await wrapper.get('form').trigger('submit');
+    await flushPromises();
+    expect(batchApi.archive.mock.calls[1]).not.toEqual(originalCall);
+    expect(wrapper.text()).not.toContain('原账号事实');
+    await wrapper.get('header button').trigger('click');
+    auth.session = {
+      ...auth.session!,
+      user: { ...auth.session!.user, id: 'user-1' },
+    };
+    await flushPromises();
+    expect(wrapper.find('[data-test="batch-resume"]').exists()).toBe(true);
+  });
+
+  it('clears a restored request after a deterministic rejection so facts can be reloaded', async () => {
+    const waiting = {
+      ...result,
+      items: [{ ...result.items[0], stage: 'WAITING_RETURN' }],
+      counts: { ...result.counts, WAITING_RETURN: 1 },
+    };
+    api.listNotaryMatters.mockResolvedValue(waiting);
+    api.getNotaryMatter.mockResolvedValue({
+      id: 'matter-1',
+      businessNo: 'NT-001',
+      stage: 'WAITING_RETURN',
+      version: 5,
+      capabilities: { archiveReturn: true },
+      evidence: { sampleFeeState: 'KNOWN', sampleFeeAmount: '10.00' },
+      issuanceDecision: { decision: 'NO_ISSUE' },
+    });
+    batchApi.archive
+      .mockRejectedValueOnce(new TypeError('network disconnected'))
+      .mockRejectedValueOnce(new ApiError('版本冲突', 409, 'VERSION_CONFLICT'));
+    const { wrapper } = await mountPage('/notary-matters?stage=WAITING_RETURN');
+    await wrapper.get('[data-test="select-matter"]').setValue(true);
+    await wrapper.get('[data-test="batch-archive-open"]').trigger('click');
+    await flushPromises();
+    await wrapper.get('[data-test="choice-matter-1"]').setValue('KEEP');
+    await wrapper.get('[data-test="reason-matter-1"]').setValue('原请求原因');
+    await wrapper.get('form').trigger('submit');
+    await flushPromises();
+    await wrapper.get('.return-archive-batch header button').trigger('click');
+    await wrapper.get('[data-test="batch-resume"]').trigger('click');
+    await wrapper.get('[data-test="batch-retry"]').trigger('click');
+    await flushPromises();
+    expect(wrapper.text()).toContain('请重新读取事项后再提交');
+    expect(wrapper.find('[data-test="batch-resume"]').exists()).toBe(false);
+    await wrapper.get('.return-archive-batch header button').trigger('click');
+    expect(
+      wrapper.get('[data-test="batch-archive-open"]').attributes('disabled'),
+    ).toBeUndefined();
+  });
+
   it('does not disguise a failed query as an empty list', async () => {
     api.listNotaryMatters
       .mockRejectedValueOnce(new Error('offline'))

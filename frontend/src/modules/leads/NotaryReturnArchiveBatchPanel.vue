@@ -30,20 +30,43 @@ type MatterDraft = {
   refund: AmountDraft;
   freight: AmountDraft;
 };
+type FrozenBatch = {
+  items: ArchiveNotaryReturnBatchInput[];
+  key: string;
+  scopeKey: string;
+};
 
-const props = defineProps<{ matterIds: string[]; scopeKey: string }>();
-const emit = defineEmits<{ close: []; completed: [] }>();
+const props = defineProps<{
+  matterIds: string[];
+  scopeKey: string;
+  pendingRequest?: FrozenBatch | null;
+}>();
+const emit = defineEmits<{
+  close: [];
+  completed: [];
+  frozen: [request: FrozenBatch];
+  resolved: [request: FrozenBatch];
+}>();
 
-const state = ref<'loading' | 'ready' | 'failed'>('loading');
+const state = ref<'loading' | 'ready' | 'failed'>(
+  props.pendingRequest ? 'failed' : 'loading',
+);
 const drafts = ref<MatterDraft[]>([]);
-const message = ref('正在读取已选择事项及当前归档能力。');
+const message = ref(
+  props.pendingRequest
+    ? '原提交结果尚未确认。请在原账号、部门和阶段下显式重试原请求。离开本列表页或刷新会丢失此内存中的请求。'
+    : '正在读取已选择事项及当前归档能力。',
+);
 const readBusy = ref(false);
 const submitBusy = ref(false);
-const frozenItems = ref<ArchiveNotaryReturnBatchInput[] | null>(null);
-const frozenKey = ref('');
-const frozenScope = ref('');
+const frozenItems = ref<ArchiveNotaryReturnBatchInput[] | null>(
+  props.pendingRequest?.items ?? null,
+);
+const frozenKey = ref(props.pendingRequest?.key ?? '');
+const frozenScope = ref(props.pendingRequest?.scopeKey ?? '');
 let readController: AbortController | undefined;
 let readGeneration = 0;
+let disposed = false;
 
 const locked = computed(() => frozenItems.value !== null);
 const retryAllowed = computed(
@@ -192,6 +215,11 @@ function freezeRequest(): void {
   frozenItems.value = drafts.value.map(buildItem);
   frozenKey.value = globalThis.crypto.randomUUID();
   frozenScope.value = props.scopeKey;
+  emit('frozen', {
+    items: frozenItems.value,
+    key: frozenKey.value,
+    scopeKey: frozenScope.value,
+  });
   message.value = `正在提交 ${frozenItems.value.length} 项。整批一起归档或一起失败；只记录费用事实，不会付款。`;
   void submitFrozen();
 }
@@ -199,22 +227,25 @@ function freezeRequest(): void {
 async function submitFrozen(): Promise<void> {
   const items = frozenItems.value;
   if (!items || submitBusy.value || !retryAllowed.value) return;
+  const request = { items, key: frozenKey.value, scopeKey: frozenScope.value };
   submitBusy.value = true;
   try {
-    await archiveNotaryReturnBatch(items, frozenKey.value);
-    if (props.scopeKey !== frozenScope.value) return;
+    await archiveNotaryReturnBatch(items, request.key);
+    if (disposed || props.scopeKey !== request.scopeKey) return;
     notifyWorkflowChanged();
+    emit('resolved', request);
     frozenItems.value = null;
     frozenKey.value = '';
     frozenScope.value = '';
     message.value = '所选事项已全部归档。';
     emit('completed');
   } catch (error) {
-    if (props.scopeKey !== frozenScope.value) return;
+    if (disposed || props.scopeKey !== request.scopeKey) return;
     if (
       error instanceof ApiError &&
       [400, 403, 404, 409].includes(error.status)
     ) {
+      emit('resolved', request);
       frozenItems.value = null;
       frozenKey.value = '';
       frozenScope.value = '';
@@ -239,7 +270,7 @@ function reloadAfterRejection(): void {
 }
 
 watch(
-  () => [props.matterIds.join(','), props.scopeKey],
+  () => JSON.stringify([props.matterIds, props.scopeKey]),
   () => {
     readController?.abort();
     readGeneration += 1;
@@ -255,6 +286,7 @@ watch(
 );
 
 onBeforeUnmount(() => {
+  disposed = true;
   readController?.abort();
   readGeneration += 1;
 });
@@ -267,20 +299,25 @@ onBeforeUnmount(() => {
         <h2>批量退货归档</h2>
         <p>逐项记录本次实际处理。原样品费用仅作参考，不会被改动。</p>
       </div>
-      <button
-        type="button"
-        :disabled="locked || submitBusy"
-        @click="emit('close')"
-      >
-        返回列表
-      </button>
+      <button type="button" @click="emit('close')">返回列表</button>
     </header>
     <p role="status" data-test="batch-message">{{ message }}</p>
-    <p v-if="props.matterIds.length > 50" role="alert">
+    <p v-if="locked && !retryAllowed" role="alert">
+      当前账号、部门或阶段已变化。原请求仍未确认，请返回列表；只能回到原上下文后显式重试。
+    </p>
+    <p v-else-if="props.matterIds.length > 50" role="alert">
       最多归档50项；请减少已选择事项。
     </p>
-    <div v-if="state === 'loading'" aria-live="polite">正在读取事项详情。</div>
-    <div v-else-if="state === 'failed'" class="state-panel">
+    <div
+      v-if="state === 'loading' && (!locked || retryAllowed)"
+      aria-live="polite"
+    >
+      正在读取事项详情。
+    </div>
+    <div
+      v-else-if="state === 'failed' && (!locked || retryAllowed)"
+      class="state-panel"
+    >
       <button
         type="button"
         data-test="batch-reload"
@@ -290,7 +327,11 @@ onBeforeUnmount(() => {
         重新读取事项
       </button>
     </div>
-    <form v-else class="batch-matter-list" @submit.prevent="freezeRequest">
+    <form
+      v-else-if="!locked || retryAllowed"
+      class="batch-matter-list"
+      @submit.prevent="freezeRequest"
+    >
       <fieldset
         v-for="(draft, index) in drafts"
         :key="draft.id"
