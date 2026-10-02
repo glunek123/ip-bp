@@ -28,6 +28,7 @@ export const internalAssignablePermissionActions = [
   'CASE_READ',
   'CASE_MATCH',
   'CASE_COMPLAINT_SUBMIT',
+  'CASE_COMPLAINT_CONFIRM',
   'NOTARY_OFFICE_MANAGE',
   'USER_READ',
   'USER_MANAGE',
@@ -107,6 +108,7 @@ const catalog: PermissionCatalogItem[] = [
   { action: 'CASE_READ', label: '查看案件', scopes: ['DEPARTMENT'] },
   { action: 'CASE_MATCH', label: '匹配案件承办', scopes: allScopes },
   { action: 'CASE_COMPLAINT_SUBMIT', label: '提交起诉材料', scopes: allScopes },
+  { action: 'CASE_COMPLAINT_CONFIRM', label: '确认诉状', scopes: allScopes },
   {
     action: 'NOTARY_OFFICE_MANAGE',
     label: '管理公证处',

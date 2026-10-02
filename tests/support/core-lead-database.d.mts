@@ -287,6 +287,21 @@ export function countCaseComplaintEffects(caseId: string): Promise<{
   audits: number;
   references: number;
 }>;
+export function rejectCaseComplaintConfirmationFactWrites(): Promise<void>;
+export function rejectCaseComplaintConfirmationReferenceWrites(): Promise<void>;
+export function rejectCaseComplaintConfirmationReceiptWrites(): Promise<void>;
+export function countCaseComplaintConfirmationEffects(caseId: string): Promise<{
+  facts: number;
+  receipts: number;
+  audits: number;
+  references: number;
+}>;
+export function probeCaseComplaintConfirmationImmutability(
+  caseId: string,
+): Promise<{
+  updateCode: string | null;
+  deleteCode: string | null;
+}>;
 export function rejectLeadReviewDecisionWrites(): Promise<void>;
 export function rejectClientLeadReviewReceiptWrites(): Promise<void>;
 export function rejectWithdrawalApplicationWrites(): Promise<void>;

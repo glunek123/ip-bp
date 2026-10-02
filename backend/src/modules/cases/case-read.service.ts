@@ -43,7 +43,10 @@ export class CaseReadService {
     pageSize: number,
     view: 'mine' | 'department' = 'department',
     stage?:
-      'PENDING_MATCH' | 'WAITING_COMPLAINT' | 'WAITING_COMPLAINT_CONFIRMATION',
+      | 'PENDING_MATCH'
+      | 'WAITING_COMPLAINT'
+      | 'WAITING_COMPLAINT_CONFIRMATION'
+      | 'WAITING_COMPLAINT_STAMP',
   ) {
     await this.scope(actor);
     const baseWhere: Prisma.CaseWhereInput = {
@@ -112,6 +115,19 @@ export class CaseReadService {
                   : {}),
               },
             )),
+          canConfirmComplaint:
+            item.stage === 'WAITING_COMPLAINT_CONFIRMATION' &&
+            (await this.access.canAuthorizeCase(
+              actor,
+              'case.complaint.confirm',
+              {
+                departmentId: actor.departmentId,
+                responsibleUserId: item.responsibleUserId,
+                ...(item.responsibleMembership.teamId
+                  ? { teamId: item.responsibleMembership.teamId }
+                  : {}),
+              },
+            )),
           createdAt: item.createdAt.toISOString(),
         })),
       ),
@@ -128,6 +144,9 @@ export class CaseReadService {
         WAITING_COMPLAINT_CONFIRMATION:
           grouped.find((row) => row.stage === 'WAITING_COMPLAINT_CONFIRMATION')
             ?._count._all ?? 0,
+        WAITING_COMPLAINT_STAMP:
+          grouped.find((row) => row.stage === 'WAITING_COMPLAINT_STAMP')?._count
+            ._all ?? 0,
       },
     };
   }
@@ -148,6 +167,18 @@ export class CaseReadService {
         complaintPendingReason: true,
         complaintSubmittedAt: true,
         complaintSubmittedByUserId: true,
+        complaintConfirmation: {
+          select: {
+            confirmedComplaintContentVersionId: true,
+            amountState: true,
+            amount: true,
+            pendingReason: true,
+            changeNote: true,
+            confirmDisclose: true,
+            confirmedAt: true,
+            confirmedByUserId: true,
+          },
+        },
         createdAt: true,
         responsibleUserId: true,
         responsibleMembership: { select: { teamId: true } },
@@ -218,6 +249,14 @@ export class CaseReadService {
     const complaintFiles = record.complaintSubmittedAt
       ? await this.materials.listFrozenCaseComplaintFiles(actor, id)
       : [];
+    const confirmationFile =
+      record.complaintConfirmation === null ||
+      record.complaintConfirmation === undefined
+        ? null
+        : await this.materials.listFrozenCaseComplaintConfirmationFile(
+            actor,
+            id,
+          );
     const file = (ref: (typeof frozen)[number]) => ({
       materialId: ref.materialId,
       contentVersionId: ref.contentVersionId,
@@ -259,6 +298,15 @@ export class CaseReadService {
             ? { teamId: record.responsibleMembership.teamId }
             : {}),
         })),
+      canConfirmComplaint:
+        record.stage === 'WAITING_COMPLAINT_CONFIRMATION' &&
+        (await this.access.canAuthorizeCase(actor, 'case.complaint.confirm', {
+          departmentId: actor.departmentId,
+          responsibleUserId: record.responsibleUserId,
+          ...(record.responsibleMembership.teamId
+            ? { teamId: record.responsibleMembership.teamId }
+            : {}),
+        })),
       complaint:
         record.complaintSubmittedAt == null
           ? null
@@ -279,6 +327,27 @@ export class CaseReadService {
               authorizationFiles: complaintFiles
                 .filter((ref) => ref.purpose === 'AUTHORIZATION')
                 .map(file),
+            },
+      complaintConfirmation:
+        record.complaintConfirmation == null
+          ? null
+          : {
+              confirmedComplaintContentVersionId:
+                record.complaintConfirmation.confirmedComplaintContentVersionId,
+              amountState: record.complaintConfirmation.amountState,
+              amount:
+                record.complaintConfirmation.amount === null
+                  ? null
+                  : new Prisma.Decimal(
+                      record.complaintConfirmation.amount.toString(),
+                    ).toFixed(2),
+              pendingReason: record.complaintConfirmation.pendingReason,
+              changeNote: record.complaintConfirmation.changeNote,
+              confirmDisclose: record.complaintConfirmation.confirmDisclose,
+              confirmedAt:
+                record.complaintConfirmation.confirmedAt.toISOString(),
+              confirmedByUserId: record.complaintConfirmation.confirmedByUserId,
+              complaintFile: confirmationFile,
             },
       createdAt: record.createdAt.toISOString(),
       courtCaseNo: record.courtCaseNo,

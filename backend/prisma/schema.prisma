@@ -28,6 +28,7 @@ enum PermissionAction {
   CASE_READ                    @map("case.read")
   CASE_MATCH                   @map("case.match")
   CASE_COMPLAINT_SUBMIT        @map("case.complaint.submit")
+  CASE_COMPLAINT_CONFIRM       @map("case.complaint.confirm")
   NOTARY_OFFICE_MANAGE         @map("notary.office.manage")
   CLIENT_LEAD_READ             @map("client.lead.read")
   CLIENT_LEAD_REVIEW           @map("client.lead.review")
@@ -204,6 +205,7 @@ enum CaseStage {
   PENDING_MATCH
   WAITING_COMPLAINT
   WAITING_COMPLAINT_CONFIRMATION
+  WAITING_COMPLAINT_STAMP
 
   @@map("case_stage")
 }
@@ -419,6 +421,7 @@ model UserAccount {
   notaryOpeningReviewReceipts      NotaryOpeningReviewReceipt[]      @relation("NotaryOpeningReviewReceiptActor")
   ownedCases                       Case[]                            @relation("CaseOwner")
   complaintSubmittedCases          Case[]                            @relation("CaseComplaintSubmitter")
+  complaintConfirmations           CaseComplaintConfirmation[]       @relation("CaseComplaintConfirmer")
   createdAt                        DateTime                          @default(now()) @map("created_at") @db.Timestamptz(3)
   updatedAt                        DateTime                          @updatedAt @map("updated_at") @db.Timestamptz(3)
 
@@ -770,24 +773,25 @@ model Material {
 }
 
 model ContentVersion {
-  id                   String                 @id @default(uuid()) @db.Uuid
-  materialId           String                 @map("material_id") @db.Uuid
-  storageKey           String                 @unique @map("storage_key") @db.VarChar(500)
-  originalFilename     String                 @map("original_filename") @db.VarChar(200)
-  mimeType             String                 @map("mime_type") @db.VarChar(100)
-  sizeBytes            BigInt                 @map("size_bytes")
-  sha256               String                 @db.Char(64)
-  uploadedBy           String                 @map("uploaded_by") @db.Uuid
-  derivedFromVersionId String?                @map("derived_from_version_id") @db.Uuid
-  status               ContentVersionStatus   @default(AVAILABLE)
-  material             Material               @relation("MaterialContentVersions", fields: [materialId], references: [id], onDelete: Restrict)
-  currentForMaterials  Material[]             @relation("MaterialCurrentVersion")
-  uploader             UserAccount            @relation(fields: [uploadedBy], references: [id], onDelete: Restrict)
-  derivedFromVersion   ContentVersion?        @relation("DerivedContentVersions", fields: [derivedFromVersionId], references: [id], onDelete: Restrict)
-  derivedVersions      ContentVersion[]       @relation("DerivedContentVersions")
-  materialReferences   MaterialReference[]
-  notarySelections     NotaryMatterMaterial[]
-  createdAt            DateTime               @default(now()) @map("created_at") @db.Timestamptz(3)
+  id                         String                      @id @default(uuid()) @db.Uuid
+  materialId                 String                      @map("material_id") @db.Uuid
+  storageKey                 String                      @unique @map("storage_key") @db.VarChar(500)
+  originalFilename           String                      @map("original_filename") @db.VarChar(200)
+  mimeType                   String                      @map("mime_type") @db.VarChar(100)
+  sizeBytes                  BigInt                      @map("size_bytes")
+  sha256                     String                      @db.Char(64)
+  uploadedBy                 String                      @map("uploaded_by") @db.Uuid
+  derivedFromVersionId       String?                     @map("derived_from_version_id") @db.Uuid
+  status                     ContentVersionStatus        @default(AVAILABLE)
+  material                   Material                    @relation("MaterialContentVersions", fields: [materialId], references: [id], onDelete: Restrict)
+  currentForMaterials        Material[]                  @relation("MaterialCurrentVersion")
+  uploader                   UserAccount                 @relation(fields: [uploadedBy], references: [id], onDelete: Restrict)
+  derivedFromVersion         ContentVersion?             @relation("DerivedContentVersions", fields: [derivedFromVersionId], references: [id], onDelete: Restrict)
+  derivedVersions            ContentVersion[]            @relation("DerivedContentVersions")
+  materialReferences         MaterialReference[]
+  caseComplaintConfirmations CaseComplaintConfirmation[]
+  notarySelections           NotaryMatterMaterial[]
+  createdAt                  DateTime                    @default(now()) @map("created_at") @db.Timestamptz(3)
 
   @@unique([materialId, id])
   @@index([materialId, status, createdAt])
@@ -1142,39 +1146,41 @@ model NotaryCertificateFee {
 }
 
 model Case {
-  id                         String                    @id @default(uuid()) @db.Uuid
-  businessNo                 String                    @unique @map("business_no") @db.VarChar(100)
-  departmentId               String                    @map("department_id") @db.Uuid
-  sourceLeadId               String                    @map("source_lead_id") @db.Uuid
-  sourceNotaryMatterId       String                    @unique @map("source_notary_matter_id") @db.Uuid
-  certificateId              String                    @unique @map("certificate_id") @db.Uuid
-  customerId                 String                    @map("customer_id") @db.Uuid
-  rightsHolderId             String                    @map("rights_holder_id") @db.Uuid
-  responsibleUserId          String                    @map("responsible_user_id") @db.Uuid
-  stage                      CaseStage                 @default(PENDING_MATCH)
-  version                    Int                       @default(1)
-  matchedAt                  DateTime?                 @map("matched_at") @db.Timestamptz(3)
-  matchedOn                  DateTime?                 @map("matched_on") @db.Date
-  defendants                 CaseDefendant[]
-  lawyers                    CaseLawyerAssignment[]
-  matchReceipts              CaseMatchReceipt[]
-  complaintReceipts          CaseComplaintReceipt[]
-  complaintAmountState       CaseComplaintAmountState? @map("complaint_amount_state")
-  complaintAmount            Decimal?                  @map("complaint_amount") @db.Decimal(16, 2)
-  complaintPendingReason     String?                   @map("complaint_pending_reason") @db.VarChar(500)
-  complaintSubmittedAt       DateTime?                 @map("complaint_submitted_at") @db.Timestamptz(3)
-  complaintSubmittedByUserId String?                   @map("complaint_submitted_by_user_id") @db.Uuid
-  complaintSubmittedBy       UserAccount?              @relation("CaseComplaintSubmitter", fields: [complaintSubmittedByUserId], references: [id], onDelete: Restrict, onUpdate: Restrict)
-  courtCaseNo                String?                   @map("court_case_no") @db.VarChar(100)
-  department                 Department                @relation(fields: [departmentId], references: [id], onDelete: Restrict)
-  sourceLead                 Lead                      @relation(fields: [sourceLeadId, customerId, departmentId], references: [id, customerId, departmentId], onDelete: Restrict, onUpdate: Restrict)
-  customer                   Customer                  @relation(fields: [customerId, departmentId], references: [id, departmentId], onDelete: Restrict, onUpdate: Restrict)
-  rightsHolder               RightsHolder              @relation(fields: [rightsHolderId, departmentId], references: [id, departmentId], onDelete: Restrict, onUpdate: Restrict)
-  sourceNotaryMatter         NotaryMatter              @relation(fields: [sourceNotaryMatterId, sourceLeadId, customerId, rightsHolderId, departmentId], references: [id, sourceLeadId, customerId, rightsHolderId, departmentId], onDelete: Restrict, onUpdate: Restrict)
-  owner                      UserAccount               @relation("CaseOwner", fields: [responsibleUserId], references: [id], onDelete: Restrict, onUpdate: Restrict)
-  responsibleMembership      DepartmentMembership      @relation("CaseResponsibleMembership", fields: [responsibleUserId, departmentId], references: [userId, departmentId], onDelete: Restrict, onUpdate: Restrict)
-  certificate                NotaryCertificate         @relation(fields: [certificateId, sourceNotaryMatterId, departmentId], references: [id, matterId, departmentId], onDelete: Restrict, onUpdate: Restrict)
-  createdAt                  DateTime                  @default(now()) @map("created_at") @db.Timestamptz(3)
+  id                            String                             @id @default(uuid()) @db.Uuid
+  businessNo                    String                             @unique @map("business_no") @db.VarChar(100)
+  departmentId                  String                             @map("department_id") @db.Uuid
+  sourceLeadId                  String                             @map("source_lead_id") @db.Uuid
+  sourceNotaryMatterId          String                             @unique @map("source_notary_matter_id") @db.Uuid
+  certificateId                 String                             @unique @map("certificate_id") @db.Uuid
+  customerId                    String                             @map("customer_id") @db.Uuid
+  rightsHolderId                String                             @map("rights_holder_id") @db.Uuid
+  responsibleUserId             String                             @map("responsible_user_id") @db.Uuid
+  stage                         CaseStage                          @default(PENDING_MATCH)
+  version                       Int                                @default(1)
+  matchedAt                     DateTime?                          @map("matched_at") @db.Timestamptz(3)
+  matchedOn                     DateTime?                          @map("matched_on") @db.Date
+  defendants                    CaseDefendant[]
+  lawyers                       CaseLawyerAssignment[]
+  matchReceipts                 CaseMatchReceipt[]
+  complaintReceipts             CaseComplaintReceipt[]
+  complaintConfirmation         CaseComplaintConfirmation?
+  complaintConfirmationReceipts CaseComplaintConfirmationReceipt[]
+  complaintAmountState          CaseComplaintAmountState?          @map("complaint_amount_state")
+  complaintAmount               Decimal?                           @map("complaint_amount") @db.Decimal(16, 2)
+  complaintPendingReason        String?                            @map("complaint_pending_reason") @db.VarChar(500)
+  complaintSubmittedAt          DateTime?                          @map("complaint_submitted_at") @db.Timestamptz(3)
+  complaintSubmittedByUserId    String?                            @map("complaint_submitted_by_user_id") @db.Uuid
+  complaintSubmittedBy          UserAccount?                       @relation("CaseComplaintSubmitter", fields: [complaintSubmittedByUserId], references: [id], onDelete: Restrict, onUpdate: Restrict)
+  courtCaseNo                   String?                            @map("court_case_no") @db.VarChar(100)
+  department                    Department                         @relation(fields: [departmentId], references: [id], onDelete: Restrict)
+  sourceLead                    Lead                               @relation(fields: [sourceLeadId, customerId, departmentId], references: [id, customerId, departmentId], onDelete: Restrict, onUpdate: Restrict)
+  customer                      Customer                           @relation(fields: [customerId, departmentId], references: [id, departmentId], onDelete: Restrict, onUpdate: Restrict)
+  rightsHolder                  RightsHolder                       @relation(fields: [rightsHolderId, departmentId], references: [id, departmentId], onDelete: Restrict, onUpdate: Restrict)
+  sourceNotaryMatter            NotaryMatter                       @relation(fields: [sourceNotaryMatterId, sourceLeadId, customerId, rightsHolderId, departmentId], references: [id, sourceLeadId, customerId, rightsHolderId, departmentId], onDelete: Restrict, onUpdate: Restrict)
+  owner                         UserAccount                        @relation("CaseOwner", fields: [responsibleUserId], references: [id], onDelete: Restrict, onUpdate: Restrict)
+  responsibleMembership         DepartmentMembership               @relation("CaseResponsibleMembership", fields: [responsibleUserId, departmentId], references: [userId, departmentId], onDelete: Restrict, onUpdate: Restrict)
+  certificate                   NotaryCertificate                  @relation(fields: [certificateId, sourceNotaryMatterId, departmentId], references: [id, matterId, departmentId], onDelete: Restrict, onUpdate: Restrict)
+  createdAt                     DateTime                           @default(now()) @map("created_at") @db.Timestamptz(3)
 
   @@unique([id, departmentId])
   @@unique([sourceNotaryMatterId, departmentId])
@@ -1257,6 +1263,43 @@ model CaseComplaintReceipt {
 
   @@unique([departmentId, actorUserId, idempotencyKey])
   @@map("case_complaint_receipts")
+}
+
+model CaseComplaintConfirmation {
+  id                                 String                   @id @default(uuid()) @db.Uuid
+  departmentId                       String                   @map("department_id") @db.Uuid
+  caseId                             String                   @unique @map("case_id") @db.Uuid
+  confirmedComplaintContentVersionId String                   @map("confirmed_complaint_content_version_id") @db.Uuid
+  amountState                        CaseComplaintAmountState @map("amount_state")
+  amount                             Decimal?                 @db.Decimal(16, 2)
+  pendingReason                      String?                  @map("pending_reason") @db.VarChar(500)
+  changeNote                         String?                  @map("change_note") @db.VarChar(500)
+  confirmDisclose                    Boolean                  @map("confirm_disclose")
+  confirmedByUserId                  String                   @map("confirmed_by_user_id") @db.Uuid
+  confirmedAt                        DateTime                 @map("confirmed_at") @db.Timestamptz(3)
+  auditEventId                       String                   @unique @map("audit_event_id") @db.Uuid
+  case                               Case                     @relation(fields: [caseId, departmentId], references: [id, departmentId], onDelete: Restrict, onUpdate: Restrict)
+  confirmedComplaintContentVersion   ContentVersion           @relation(fields: [confirmedComplaintContentVersionId], references: [id], onDelete: Restrict, onUpdate: Restrict)
+  confirmedBy                        UserAccount              @relation("CaseComplaintConfirmer", fields: [confirmedByUserId], references: [id], onDelete: Restrict, onUpdate: Restrict)
+  auditEvent                         AuditEvent               @relation(fields: [auditEventId], references: [id], onDelete: Restrict, onUpdate: Restrict)
+
+  @@unique([caseId, departmentId])
+  @@map("case_complaint_confirmations")
+}
+
+model CaseComplaintConfirmationReceipt {
+  id                 String   @id @default(uuid()) @db.Uuid
+  departmentId       String   @map("department_id") @db.Uuid
+  actorUserId        String   @map("actor_user_id") @db.Uuid
+  caseId             String   @map("case_id") @db.Uuid
+  idempotencyKey     String   @map("idempotency_key") @db.VarChar(128)
+  requestFingerprint String   @map("request_fingerprint") @db.Char(64)
+  resultSnapshot     Json     @map("result_snapshot")
+  createdAt          DateTime @default(now()) @map("created_at") @db.Timestamptz(3)
+  case               Case     @relation(fields: [caseId, departmentId], references: [id, departmentId], onDelete: Restrict, onUpdate: Restrict)
+
+  @@unique([departmentId, actorUserId, idempotencyKey])
+  @@map("case_complaint_confirmation_receipts")
 }
 
 model CaseNumberCounter {
@@ -1614,6 +1657,7 @@ model AuditEvent {
   internalActorMembership      DepartmentMembership?       @relation("AuditInternalActor", fields: [internalActorUserId, departmentId], references: [userId, departmentId], onDelete: Restrict, onUpdate: Restrict)
   notaryOfficeAccountBinding   NotaryOfficeAccountBinding? @relation(fields: [notaryOfficeAccountBindingId, actorUserId, departmentId], references: [id, userId, departmentId], onDelete: Restrict, onUpdate: Restrict)
   materialReferences           MaterialReference[]
+  caseComplaintConfirmations   CaseComplaintConfirmation[]
   createdAt                    DateTime                    @default(now()) @map("created_at") @db.Timestamptz(3)
 
   @@index([departmentId, resourceType, resourceId, createdAt])

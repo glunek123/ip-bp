@@ -30,6 +30,19 @@ class CaseComplaintSummaryDto {
   @ApiProperty({ type: [CaseCertificateFileDto] })
   authorizationFiles!: CaseCertificateFileDto[];
 }
+class CaseComplaintConfirmationSummaryDto {
+  @ApiProperty({ format: 'uuid' }) confirmedComplaintContentVersionId!: string;
+  @ApiProperty({ enum: ['KNOWN', 'PENDING'] }) amountState!:
+    'KNOWN' | 'PENDING';
+  @ApiProperty({ type: String, nullable: true }) amount!: string | null;
+  @ApiProperty({ type: String, nullable: true }) pendingReason!: string | null;
+  @ApiProperty({ type: String, nullable: true }) changeNote!: string | null;
+  @ApiProperty() confirmDisclose!: boolean;
+  @ApiProperty({ format: 'date-time' }) confirmedAt!: string;
+  @ApiProperty({ format: 'uuid' }) confirmedByUserId!: string;
+  @ApiProperty({ type: CaseCertificateFileDto, nullable: true })
+  complaintFile!: CaseCertificateFileDto | null;
+}
 
 export class CasePageQueryDto {
   @ApiPropertyOptional({ enum: ['mine', 'department'], default: 'department' })
@@ -41,6 +54,7 @@ export class CasePageQueryDto {
       'PENDING_MATCH',
       'WAITING_COMPLAINT',
       'WAITING_COMPLAINT_CONFIRMATION',
+      'WAITING_COMPLAINT_STAMP',
     ],
   })
   @IsOptional()
@@ -48,9 +62,13 @@ export class CasePageQueryDto {
     'PENDING_MATCH',
     'WAITING_COMPLAINT',
     'WAITING_COMPLAINT_CONFIRMATION',
+    'WAITING_COMPLAINT_STAMP',
   ])
   stage?:
-    'PENDING_MATCH' | 'WAITING_COMPLAINT' | 'WAITING_COMPLAINT_CONFIRMATION';
+    | 'PENDING_MATCH'
+    | 'WAITING_COMPLAINT'
+    | 'WAITING_COMPLAINT_CONFIRMATION'
+    | 'WAITING_COMPLAINT_STAMP';
   @ApiPropertyOptional({ minimum: 1, default: 1 })
   @Type(() => Number)
   @IsInt()
@@ -83,13 +101,18 @@ class CaseListItemDto {
       'PENDING_MATCH',
       'WAITING_COMPLAINT',
       'WAITING_COMPLAINT_CONFIRMATION',
+      'WAITING_COMPLAINT_STAMP',
     ],
   })
   stage!:
-    'PENDING_MATCH' | 'WAITING_COMPLAINT' | 'WAITING_COMPLAINT_CONFIRMATION';
+    | 'PENDING_MATCH'
+    | 'WAITING_COMPLAINT'
+    | 'WAITING_COMPLAINT_CONFIRMATION'
+    | 'WAITING_COMPLAINT_STAMP';
   @ApiProperty() version!: number;
   @ApiProperty() canMatch!: boolean;
   @ApiProperty() canSubmitComplaint!: boolean;
+  @ApiProperty() canConfirmComplaint!: boolean;
   @ApiProperty({ type: CaseOwnerDto }) owner!: CaseOwnerDto;
   @ApiProperty({ format: 'date-time' }) createdAt!: string;
   @ApiProperty({ type: CaseSourceDto }) sourceLead!: CaseSourceDto;
@@ -104,6 +127,7 @@ export class CaseListResponseDto {
     PENDING_MATCH: number;
     WAITING_COMPLAINT: number;
     WAITING_COMPLAINT_CONFIRMATION: number;
+    WAITING_COMPLAINT_STAMP: number;
   };
 }
 class CaseDefendantDto {
@@ -135,6 +159,8 @@ class CaseFeeDto {
 export class CaseDetailResponseDto extends CaseListItemDto {
   @ApiProperty({ type: CaseComplaintSummaryDto, nullable: true })
   complaint!: CaseComplaintSummaryDto | null;
+  @ApiProperty({ type: CaseComplaintConfirmationSummaryDto, nullable: true })
+  complaintConfirmation!: CaseComplaintConfirmationSummaryDto | null;
   @ApiProperty({ type: String, nullable: true, format: 'date-time' })
   matchedAt!: string | null;
   @ApiProperty({ type: String, nullable: true, format: 'date' })

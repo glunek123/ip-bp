@@ -26,6 +26,46 @@ const customerId = '33333333-3333-4333-8333-333333333333';
 const now = new Date('2026-09-21T04:00:00.000Z');
 
 describe('MaterialService', () => {
+  it('allows only COMPLAINT drafts at the confirmation stage with live confirm scope', async () => {
+    const fixture = createFixture();
+    fixture.db.case.findFirst.mockResolvedValue({
+      departmentId: actor.departmentId,
+      stage: 'WAITING_COMPLAINT_CONFIRMATION',
+      responsibleUserId: actor.userId,
+      responsibleMembership: { teamId: null },
+    });
+    const base = {
+      ownerType: 'CASE' as const,
+      ownerId: customerId,
+      category: 'COMPLAINT' as const,
+      purpose: 'COMPLAINT' as const,
+      originalFilename: '修订诉状.pdf',
+      declaredMimeType: 'application/pdf',
+    };
+    await fixture.service.createUploadDraft(actor, base);
+    expect(fixture.access.authorizeCase).toHaveBeenCalledWith(
+      actor,
+      'case.complaint.confirm',
+      expect.objectContaining({ responsibleUserId: actor.userId }),
+      undefined,
+    );
+    await expect(
+      fixture.service.createUploadDraft(actor, {
+        ...base,
+        category: 'AUTHORIZATION',
+        purpose: 'AUTHORIZATION',
+      }),
+    ).rejects.toMatchObject({ response: { code: 'VERSION_CONFLICT' } });
+    fixture.db.case.findFirst.mockResolvedValue({
+      departmentId: actor.departmentId,
+      stage: 'WAITING_COMPLAINT_STAMP',
+      responsibleUserId: actor.userId,
+      responsibleMembership: { teamId: null },
+    });
+    await expect(
+      fixture.service.createUploadDraft(actor, base),
+    ).rejects.toMatchObject({ response: { code: 'VERSION_CONFLICT' } });
+  });
   it('allows CASE complaint drafts only for internal case readers with live write scope', async () => {
     const fixture = createFixture();
     fixture.db.case.findFirst.mockResolvedValue({

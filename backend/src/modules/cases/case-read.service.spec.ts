@@ -33,6 +33,9 @@ describe('CaseReadService', () => {
     const materials = {
       listFrozenCertificateFiles: jest.fn().mockResolvedValue([]),
       listFrozenCaseComplaintFiles: jest.fn().mockResolvedValue([]),
+      listFrozenCaseComplaintConfirmationFile: jest
+        .fn()
+        .mockResolvedValue(null),
     };
     return {
       db,
@@ -63,6 +66,7 @@ describe('CaseReadService', () => {
         PENDING_MATCH: 0,
         WAITING_COMPLAINT: 0,
         WAITING_COMPLAINT_CONFIRMATION: 0,
+        WAITING_COMPLAINT_STAMP: 0,
       },
     });
     expect(f.access.authorizeDepartmentAction).toHaveBeenCalledWith(
@@ -235,11 +239,54 @@ describe('CaseReadService', () => {
     ]);
     await expect(f.service.get(actor, 'case-1')).resolves.toMatchObject({
       canSubmitComplaint: false,
+      canConfirmComplaint: true,
       complaint: {
         amountState: 'KNOWN',
         amount: '12.34',
         complaintFiles: [{ contentVersionId: 'version-1' }],
         authorizationFiles: [],
+      },
+    });
+    f.db.case.findFirst.mockResolvedValue({
+      ...record,
+      stage: 'WAITING_COMPLAINT_STAMP',
+      matchedAt: new Date('2026-09-29T09:00:00.000Z'),
+      complaintAmountState: 'KNOWN',
+      complaintAmount: '12.34',
+      complaintPendingReason: null,
+      complaintSubmittedAt: new Date('2026-09-30T09:00:00.000Z'),
+      complaintSubmittedByUserId: actor.userId,
+      complaintConfirmation: {
+        confirmedComplaintContentVersionId: 'version-2',
+        amountState: 'PENDING',
+        amount: null,
+        pendingReason: '待核实',
+        changeNote: '金额待核实',
+        confirmDisclose: true,
+        confirmedByUserId: actor.userId,
+        confirmedAt: new Date('2026-10-02T09:00:00.000Z'),
+      },
+    });
+    f.materials.listFrozenCaseComplaintConfirmationFile.mockResolvedValue({
+      materialId: 'material-2',
+      contentVersionId: 'version-2',
+      originalFilename: '修订诉状.pdf',
+      mimeType: 'application/pdf',
+    });
+    await expect(f.service.get(actor, 'case-1')).resolves.toMatchObject({
+      canConfirmComplaint: false,
+      complaint: {
+        amount: '12.34',
+        complaintFiles: [{ contentVersionId: 'version-1' }],
+      },
+      complaintConfirmation: {
+        confirmedComplaintContentVersionId: 'version-2',
+        amountState: 'PENDING',
+        amount: null,
+        pendingReason: '待核实',
+        changeNote: '金额待核实',
+        confirmDisclose: true,
+        complaintFile: { contentVersionId: 'version-2' },
       },
     });
   });
@@ -256,6 +303,7 @@ describe('CaseReadService', () => {
         PENDING_MATCH: 2,
         WAITING_COMPLAINT: 0,
         WAITING_COMPLAINT_CONFIRMATION: 0,
+        WAITING_COMPLAINT_STAMP: 0,
       },
     });
     expect(f.db.case.findMany).toHaveBeenCalledWith(

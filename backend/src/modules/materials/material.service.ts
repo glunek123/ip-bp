@@ -1575,6 +1575,102 @@ export class MaterialService {
     }));
   }
 
+  async listSubmittedCaseComplaintVersionIds(
+    transaction: MaterialTransactionClient,
+    actor: ActorContext,
+    caseId: string,
+  ): Promise<readonly string[]> {
+    await this.authorizeOwner(
+      actor,
+      'CASE',
+      caseId,
+      'read',
+      transaction,
+      transaction,
+    );
+    const references = await transaction.materialReference.findMany({
+      where: {
+        departmentId: actor.departmentId,
+        resourceType: 'case',
+        resourceId: caseId,
+        purpose: 'COMPLAINT',
+        actionEvent: {
+          action: 'case.complaint.submitted',
+          resourceType: 'CASE',
+          resourceId: caseId,
+          departmentId: actor.departmentId,
+        },
+      },
+      select: { contentVersionId: true },
+    });
+    return references.map((reference) => reference.contentVersionId);
+  }
+
+  async freezeCaseComplaintConfirmationReference(
+    transaction: MaterialTransactionClient,
+    actor: ActorContext,
+    caseId: string,
+    fact: ValidatedMaterialVersionFact,
+    actionEventId: string,
+  ) {
+    const validation = this.validatedVersionFacts.get(fact);
+    if (
+      validation === undefined ||
+      validation.transaction !== transaction ||
+      validation.canonicalFact.departmentId !== actor.departmentId ||
+      validation.canonicalFact.ownerType !== 'CASE' ||
+      validation.canonicalFact.ownerId !== caseId ||
+      validation.canonicalFact.category !== 'COMPLAINT' ||
+      validation.canonicalFact.purpose !== 'COMPLAINT'
+    )
+      throw this.invalidVersion();
+    return transaction.materialReference.create({
+      data: {
+        departmentId: actor.departmentId,
+        resourceType: 'case',
+        resourceId: caseId,
+        purpose: 'COMPLAINT_CONFIRMATION',
+        materialId: validation.canonicalFact.materialId,
+        contentVersionId: validation.canonicalFact.contentVersionId,
+        actionEventId,
+      },
+    });
+  }
+
+  async listFrozenCaseComplaintConfirmationFile(
+    actor: ActorContext,
+    caseId: string,
+  ) {
+    await this.authorizeOwner(actor, 'CASE', caseId, 'read');
+    const ref = await this.database.materialReference.findFirst({
+      where: {
+        departmentId: actor.departmentId,
+        resourceType: 'case',
+        resourceId: caseId,
+        purpose: 'COMPLAINT_CONFIRMATION',
+        actionEvent: {
+          action: 'case.complaint.confirmed',
+          resourceType: 'CASE',
+          resourceId: caseId,
+          departmentId: actor.departmentId,
+        },
+      },
+      select: {
+        materialId: true,
+        contentVersionId: true,
+        contentVersion: { select: { originalFilename: true, mimeType: true } },
+      },
+    });
+    return ref === null
+      ? null
+      : {
+          materialId: ref.materialId,
+          contentVersionId: ref.contentVersionId,
+          originalFilename: ref.contentVersion.originalFilename,
+          mimeType: ref.contentVersion.mimeType,
+        };
+  }
+
   private async authorizeOwner(
     actor: ActorContext,
     ownerType: MaterialOwnerTypeValue,
@@ -1612,11 +1708,20 @@ export class MaterialService {
       });
       if (record === null) throw this.notFound();
       if (operation === 'write') {
-        if (record.stage !== 'WAITING_COMPLAINT') throw this.versionConflict();
+        if (
+          record.stage !== 'WAITING_COMPLAINT' &&
+          !(
+            record.stage === 'WAITING_COMPLAINT_CONFIRMATION' &&
+            notaryCategory === 'COMPLAINT'
+          )
+        )
+          throw this.versionConflict();
         await this.withMaterialAuthorization(() =>
           this.accessControl.authorizeCase(
             actor,
-            'case.complaint.submit',
+            record.stage === 'WAITING_COMPLAINT'
+              ? 'case.complaint.submit'
+              : 'case.complaint.confirm',
             {
               departmentId: record.departmentId,
               responsibleUserId: record.responsibleUserId,

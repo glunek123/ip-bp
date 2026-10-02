@@ -87,6 +87,7 @@ const allActions = [
   'CASE_READ',
   'CASE_MATCH',
   'CASE_COMPLAINT_SUBMIT',
+  'CASE_COMPLAINT_CONFIRM',
   'NOTARY_OFFICE_MANAGE',
   'LEAD_WITHDRAW_APPLY',
 ];
@@ -106,6 +107,7 @@ const actionNames = Object.freeze({
   'case.read': 'CASE_READ',
   'case.match': 'CASE_MATCH',
   'case.complaint.submit': 'CASE_COMPLAINT_SUBMIT',
+  'case.complaint.confirm': 'CASE_COMPLAINT_CONFIRM',
   'notary.office.manage': 'NOTARY_OFFICE_MANAGE',
   'lead.withdraw.apply': 'LEAD_WITHDRAW_APPLY',
   'notary.list.export': 'NOTARY_LIST_EXPORT',
@@ -150,6 +152,12 @@ async function dropFaults() {
     ['notary_matter_command_receipts', 'core_nt_reject_certificate_receipt'],
     ['case_match_receipts', 'core_ca_reject_match_receipt'],
     ['case_complaint_receipts', 'core_ca_reject_complaint_receipt'],
+    ['case_complaint_confirmations', 'core_ca_reject_confirmation_fact'],
+    [
+      'case_complaint_confirmation_receipts',
+      'core_ca_reject_confirmation_receipt',
+    ],
+    ['material_references', 'core_ca_reject_confirmation_ref'],
   ]) {
     await database.$executeRawUnsafe(
       `ALTER TABLE "${table}" DROP CONSTRAINT IF EXISTS "${constraint}"`,
@@ -391,6 +399,8 @@ async function clearDatabase() {
     'case_lawyer_assignments',
     'case_match_receipts',
     'case_complaint_receipts',
+    'case_complaint_confirmations',
+    'case_complaint_confirmation_receipts',
   ];
   await database.$transaction(async (transaction) => {
     for (const table of immutableTables) {
@@ -408,6 +418,12 @@ async function clearDatabase() {
       where: { departmentId: { in: departmentIds } },
     });
     await transaction.caseComplaintReceipt.deleteMany({
+      where: { departmentId: { in: departmentIds } },
+    });
+    await transaction.caseComplaintConfirmationReceipt.deleteMany({
+      where: { departmentId: { in: departmentIds } },
+    });
+    await transaction.caseComplaintConfirmation.deleteMany({
       where: { departmentId: { in: departmentIds } },
     });
     await transaction.caseLawyerAssignment.deleteMany({
@@ -1864,6 +1880,74 @@ export async function countCaseComplaintEffects(caseId) {
     }),
   ]);
   return { receipts, audits, references };
+}
+
+export async function rejectCaseComplaintConfirmationFactWrites() {
+  await dropFaults();
+  await database.$executeRawUnsafe(
+    'ALTER TABLE "case_complaint_confirmations" ADD CONSTRAINT "core_ca_reject_confirmation_fact" CHECK (false) NOT VALID',
+  );
+}
+
+export async function rejectCaseComplaintConfirmationReferenceWrites() {
+  await dropFaults();
+  await database.$executeRawUnsafe(
+    'ALTER TABLE "material_references" ADD CONSTRAINT "core_ca_reject_confirmation_ref" CHECK ("purpose" <> \'COMPLAINT_CONFIRMATION\') NOT VALID',
+  );
+}
+
+export async function rejectCaseComplaintConfirmationReceiptWrites() {
+  await dropFaults();
+  await database.$executeRawUnsafe(
+    'ALTER TABLE "case_complaint_confirmation_receipts" ADD CONSTRAINT "core_ca_reject_confirmation_receipt" CHECK (false) NOT VALID',
+  );
+}
+
+export async function countCaseComplaintConfirmationEffects(caseId) {
+  const [facts, receipts, audits, references] = await database.$transaction([
+    database.caseComplaintConfirmation.count({ where: { caseId } }),
+    database.caseComplaintConfirmationReceipt.count({ where: { caseId } }),
+    database.auditEvent.count({
+      where: {
+        resourceType: 'CASE',
+        resourceId: caseId,
+        action: 'case.complaint.confirmed',
+      },
+    }),
+    database.materialReference.count({
+      where: {
+        resourceType: 'case',
+        resourceId: caseId,
+        purpose: 'COMPLAINT_CONFIRMATION',
+      },
+    }),
+  ]);
+  return { facts, receipts, audits, references };
+}
+
+export async function probeCaseComplaintConfirmationImmutability(caseId) {
+  const client = new Client({ connectionString: databaseUrl });
+  await client.connect();
+  try {
+    const attempt = async (sql) => {
+      try {
+        await client.query(sql, [caseId]);
+        return null;
+      } catch (error) {
+        return error.code ?? null;
+      }
+    };
+    return {
+      updateCode: await attempt(
+        "UPDATE case_complaint_confirmations SET change_note = 'tampered' WHERE case_id=$1",
+      ),
+      deleteCode: await attempt(
+        'DELETE FROM case_complaint_confirmations WHERE case_id=$1',
+      ),
+    };
+  } finally {
+    await client.end();
+  }
 }
 
 export async function rejectLeadReviewDecisionWrites() {

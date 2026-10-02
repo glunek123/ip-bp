@@ -24,6 +24,7 @@ export type PermissionAction =
   | 'case.read'
   | 'case.match'
   | 'case.complaint.submit'
+  | 'case.complaint.confirm'
   | 'notary.office.manage'
   | 'client.lead.read'
   | 'client.lead.review'
@@ -275,7 +276,7 @@ export class AccessControlService {
 
   async authorizeCase(
     actor: ActorContext,
-    action: 'case.match' | 'case.complaint.submit',
+    action: 'case.match' | 'case.complaint.submit' | 'case.complaint.confirm',
     facts: CaseResourceFacts,
     reader?: AccessControlSnapshotReader,
   ): Promise<void> {
@@ -292,7 +293,7 @@ export class AccessControlService {
 
   async canAuthorizeCase(
     actor: ActorContext,
-    action: 'case.match' | 'case.complaint.submit',
+    action: 'case.match' | 'case.complaint.submit' | 'case.complaint.confirm',
     facts: CaseResourceFacts,
     reader?: AccessControlSnapshotReader,
   ): Promise<boolean> {

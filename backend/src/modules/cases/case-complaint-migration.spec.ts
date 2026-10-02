@@ -26,8 +26,8 @@ describe('CA-002 complaint migration integrity', () => {
     expect(check).toMatch(
       /"complaint_amount_state" = 'PENDING' AND "complaint_amount" IS NULL AND "complaint_pending_reason" IS NOT NULL/u,
     );
-    expect(schema).toContain(
-      'complaintAmountState       CaseComplaintAmountState?',
+    expect(schema).toMatch(
+      /complaintAmountState\s+CaseComplaintAmountState\?/u,
     );
   });
 });
