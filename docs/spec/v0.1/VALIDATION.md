@@ -14,6 +14,8 @@
 
 本切片复用既有授权／范围／事务基础设施及普通非破坏增量迁移，按已核定Level 2执行；没有NT-009 scope，不冒称Evidence v2，也未运行完整`pnpm verify`或未过滤全量E2E。上述业务结果只归属于`c303858`及其tree。此后的累计收口仅补路线图完成态与唯一Current／Next、项目恢复摘要、本证据引用及对应已解释快照；不改变业务契约、权限、AC、代码、迁移、测试输入、依赖、构建／运行配置、验证逻辑或环境。受影响文档格式、Spec、严格上下文及累计Git差异专项结果记录于`.local/logs/nt009-closeout-doc-check.log`；原业务证据不标成收口HEAD实跑结果。集成结果变化或远端必需检查仍按现行规则执行；开发／生产库迁移尚未执行，未发布，未验证Excel等第三方软件的CSV导入兼容性。
 
+2026-10-02按授权集成：fetch后本地main与origin/main同为`346d531`，工作区干净且上下文无漂移。推送NT-009分支后main快进至收口提交`d54fb2c7a876661941aee2c88e5fff29064f8379`，tree`5ad689a676a4c053e99449a693d929fddf969cce`与原分支一致；远端main与任务分支均已核实包含该提交。集成前相关后端13/13、前端26/26及严格上下文、Spec、受影响文档格式和累计diff检查退出0，日志为`.local/logs/nt009-merge-{backend,frontend,doc-check}-d54fb2c.log`；合并态严格上下文亦退出0，见`nt009-merge-post-context.log`。相对业务候选仅有已核对的非执行性收口，无新组合代码；保留原候选6项数据库证据，不称合并tree实跑完整verify或旧E2E。后续仅补本集成事实、恢复摘要及对应快照，文档专项结果保存于`.local/logs/nt009-merge-main-doc-check.log`。未部署或执行开发／生产迁移。
+
 ## CORE-NT-008 公证事项列表列设置（2026-09-30）
 
 实际通过正式Level 2门禁的固定候选为`6d2c884de27abb457c8694124110b6423d114843`，tree`bab0f0a2b81ab1e699df3e0ebdbd5a4c758e9c06`，分支`codex/core-nt-008-list-columns`，基于`main@4d362dd`；后续集成边界见本节末段。内部有效账号通过正式页面调整本人列显示与顺序，`GET`／`PUT /api/v1/notary-matters/list-preference`只按Actor保存本人偏好，实时复用`lead.read`。编号／详情及阶段固定可见，其余三列可隐藏换序；严格请求和响应、历史键容错、刷新／重登／换浏览器恢复及恢复默认均已实现。不扩展事项读取投影，不包含导出、批量归档或新的业务字段。
