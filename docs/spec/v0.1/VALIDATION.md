@@ -1,5 +1,21 @@
 # SPEC-001 文档验证
 
+## CORE-NT-010 公证事项合法批量归档（2026-10-02）
+
+实际通过正式Level 2门禁的固定候选为`f5fb604435dae4bbb7847c934441c67d839b8c72`，tree`0a5672ba9027ab3a9e6272cf47987262885b1b1f`，分支`codex/core-nt-010-batch-return-archive`，基于已集成NT-009的`main@85b5bc5`；尚未推送／合并本切片。有权内部运营从正式列表选择1～50项`WAITING_RETURN`且已有`NO_ISSUE`决定的事项，分别确认退货／不退货／仅退款、实际金额或待定、适用收付方和原因，一次原子归档。复用既有`notary.return.archive`和逐项来源线索范围、当前身份、版本、费用不变量与审计；不预设假零、不付款、不改原费用，不将其他阶段终止视为归档。
+
+新增正式`POST /api/v1/notary-matters/return-archive-batches`，强制逐项`expectedVersion`和请求`Idempotency-Key`；唯一ID规范排序后稳定加锁，单个Serializable事务内复用单项归档路径。每项不可变事实与成功审计、一次批次成功审计及`NotaryReturnArchiveBatchReceipt`同时写入，任一失败整批回滚。回执保存原结果，重放仍重查当前身份与每项授权；倒序等价请求原样重放，同键异参冲突。前向迁移`20261002010000_add_notary_return_archive_batch_receipt`只新增回执与唯一／FK／不可改删约束；仅在`backend/.env.test`独立测试库部署，未操作开发／生产数据库或持久化卷。
+
+后端高风险Task独立Sol审查`ACCEPTED`；集成终审首轮在`8305880`指出未知结果后切换账号／部门／阶段会锁住面板（Important 1）。`8fb90a3`保留页面内原请求／键，原范围显式恢复，新范围不显示旧明细并可操作，迟到回调不假成功或清除新请求；新增4项先失败再通过的用例，原Reviewer补审关闭finding。`e7de29e`首次正式静态门禁因两份测试格式及未使用类型导入失败，未启动数据库E2E；`b8afe65`仅修正三处机械差异，补审确认不改事实／断言。最终未关闭Critical／Important／Minor均为0，报告`.local/nt010/task-1-review.md`、`.local/nt010/final-review.md`，失败与修复日志保留，不作为最终通过证据。
+
+固定候选`f5fb604`各项检查退出0：后端Jest138/138（13套件）、前端API／组件及相关页面Vitest123/123（11文件），`pnpm prepare:prisma`、`pnpm check:fast:prepared`、`pnpm spec:check`、本切片累计受影响Prettier（含两份`.d.mts`声明）、`pnpm context:check:strict`及双端`pnpm build:prepared`全部通过。机器日志`.local/logs/nt010-final-{prepare,backend-unit,frontend-unit,check-fast,spec,format,format-types,context,build}-f5fb604.log`包含实际候选、命令与退出结果。门禁前后commit／tree、干净工作区和环境指纹均核对，指纹为`5eda1feed3489f2cf83c4228cd79afbc395b83c9d5ef9a96cc7c99b3e56130f1`，Node v24.21.0／pnpm11.27.0与环境锁一致。
+
+同一候选的隔离PostgreSQL／Chromium串行组合13/13通过（命令耗时43.61秒）：`pnpm test:e2e:full tests/e2e/notary-return-archive-batch-migration.spec.ts tests/e2e/notary-return-archive-batch-database.spec.ts tests/e2e/notary-return-archive-batch.spec.ts tests/e2e/notary-list-preference.spec.ts tests/e2e/notary-list-export.spec.ts`。覆盖真实运营密码登录、正式API构造起点与真实开箱照片、不同事项费用事实、列表整批归档、客户密码登录后仅见本企业允许结论／无内部费用、刷新与重登、非法混选拒绝且数据库不变；越权／跨部门／外部身份、停用与撤权后重放、错误阶段、旧版本、退款上限、最大50项、同键／不同键／单项与批次并发单胜、审计及回执故障整笔回滚。迁移专项验证空库57份全链、上一56份schema旧归档／金额／单项回执保留、绕过DTO约束、真实Prisma失败原子性及解决后重试；列偏好／导出既有浏览器能力回归通过。原始日志`.local/logs/nt010-final-e2e-f5fb604.log`，保存浏览器报告`.local/nt010/f5fb604-batch-playwright-report/index.html`。
+
+随后同一候选`pnpm test:e2e:full tests/e2e/core-leads.spec.ts --grep "return archive"`通过6/6（38.39秒），验证原单项归档身份与企业隔离、费用历史、幂等／版本、并发、真实账号刷新持久化及失败回滚；日志`.local/logs/nt010-final-single-e2e-f5fb604.log`，报告`.local/nt010/f5fb604-single-playwright-report/index.html`。本轮正式数据库／浏览器合计19/19；故障注入产生的预期500对应通过的回滚断言。历史开发期浏览器选择器／夹具／无序金额断言失败见`.local/nt010/task-2-report.md`与原日志，不冒充正式通过记录。
+
+本切片使用而未改共享授权、隔离、事务或财务核心不变量，普通增量迁移保持Level 2；暂无NT-010正式scope，按现行规则在固定候选逐项门禁，不伪称Evidence v2，未运行完整`pnpm verify`或全仓E2E。上述结果只归属于`f5fb604`／tree`0a5672b`。此后累计差异仅为路线图完成态及唯一Current／Next、恢复摘要、本验证记录与对应已解释快照；无业务契约、代码、迁移、测试／构建输入或运行环境变化。收口执行受影响文档Prettier、`spec:check`、`context:check:strict`和Git累计差异检查，实际专项结果保存于`.local/logs/nt010-closeout-doc-check.log`；原业务证据保留，不将文档收口HEAD称为实跑上述门禁。目标分支变化、组合tree及远端必需检查仍按实际集成要求执行。未知请求恢复仅限当前挂载列表页的内存，界面明确离页／刷新会丢失该恢复入口；不宣称生产迁移、发布、其他阶段终止／撤销或CA-003已实现。
+
 ## CORE-NT-009 公证事项办理清单导出（2026-09-30）
 
 实际通过正式Level 2门禁的固定候选为`c3038582e9f1678d9d58ee1072bc886fa2e43874`，tree`4fbfb1cda8328f43513cde5c0fb0ff4b19bc5c6e`，分支`codex/core-nt-009-list-export`，基于`main@346d531`；尚未推送或合并。内部有效账号通过真实页面跨页勾选事项或明确选择当前阶段，后端预览数量后下载最多1000条、固定五列的CSV。新增`notary.list.export` Action与`lead.read`实时范围取交集，客户／公证处拒绝；选中未知或越权ID整批拒绝，预览到下载数量变化409。CSV防公式注入、审计成功提交后才返回文件；个人列偏好不改变导出字段或可见范围。不包含附件打包、内部费用、详细取证表或批量归档。

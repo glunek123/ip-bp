@@ -8,7 +8,7 @@
 
 ## 当前任务
 
-**CORE-NT-010｜公证事项合法批量归档（路线图唯一Current，开发中）**：从`main@85b5bc5`建立`codex/core-nt-010-batch-return-archive`，后端Task `662b187`已通过独立Sol审查，前端Task `52e062c`完成自审与聚焦／浏览器测试；现进行组合候选独立终审及Level 2正式门禁，尚未完成验收。复用单项归档、授权、费用事实和事务底座；实施任务见[计划](superpowers/plans/2026-10-02-core-nt-010-batch-return-archive.md)，契约见[公证Spec](spec/v0.1/modules/notary.md#core-nt-010-合法批量归档)。Next仍为CORE-CA-003；开发／生产库迁移未执行。
+**CORE-CA-003｜确认诉状（路线图唯一Current，待领取）**：NT-010固定候选`f5fb604`已完成独立终审、修复补审及正式Level 2门禁；当前工作分支为`codex/core-nt-010-batch-return-archive`，未推送／合并。先集成并核对实际组合tree，再从更新main领取CA-003；Next为CORE-CA-004。详细证据只见[验证记录](spec/v0.1/VALIDATION.md)，不重复维护验收台账；开发／生产库迁移未执行。
 
 CA-001匹配事实口径已在本分支修正并验收：实际匹配日期与系统登记时间分离、律所可空，旧成功回执仍可原样重放。旧候选的验证只对旧tree有效；本段不改变Current／Next。
 
@@ -31,6 +31,7 @@ CA-001匹配事实口径已在本分支修正并验收：实际匹配日期与�
 
 ## 最近验证
 
+- CORE-NT-010固定候选`f5fb604`经独立Sol终审及补审，Level 2定向门禁、空库／上一支持schema迁移和隔离PostgreSQL／Chromium组合验收通过；实际结果、失败历史及文档收口边界见[验证记录](spec/v0.1/VALIDATION.md)。
 - CORE-NT-009固定候选`c303858`通过独立Sol终审及补审、Level 2门禁和隔离PostgreSQL／Chromium 6项组合验收；前一候选的2项失败已修复并保留记录，实际证据及后续文档收口边界只见[验证记录](spec/v0.1/VALIDATION.md)。
 - CORE-NT-008列设置固定候选`6d2c884`经独立Final Review、Level 2门禁及隔离数据库／浏览器组合验收通过；真实持久化、本人偏好隔离和读取范围已验证，详细结果及文档收口边界只见[验证记录](spec/v0.1/VALIDATION.md)。
 - CORE-CA-001匹配事实修正候选`1279b1d62a79d00116ab93b8e642743fe5ee196d`、tree`4c8952b03bdfa24bdafa3ab0e6046abb06f22bf5`通过独立Review及补审（未关闭Critical／Important／Minor均为0）、完整`pnpm verify`（工具73、后端871、前端462）和隔离PostgreSQL／Chromium完整E2E 124/124；迁移空库／上一支持schema与失败回滚专项通过。收口态`b6d3489`已集成`main`；原候选`0f2a222`证据仅属历史，详细边界见[验证记录](spec/v0.1/VALIDATION.md)。
@@ -54,4 +55,4 @@ CA-001匹配事实口径已在本分支修正并验收：实际匹配日期与�
 
 ## 下一步
 
-完成NT-010组合候选终审、修复补审和正式定向门禁，实际通过后再记录验收与完成状态；不提前开发CA-003，不发布或执行开发／生产迁移。
+取得授权后集成已验收NT-010，核对组合tree，再领取CA-003；本轮不继续扩展业务、不发布或执行开发／生产迁移。
