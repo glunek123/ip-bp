@@ -8,7 +8,7 @@
 
 ## 当前任务
 
-**CORE-NT-010｜公证事项合法批量归档（路线图唯一Current，开发中）**：NT-009已推送并集成；本轮从`main@85b5bc5`建立`codex/core-nt-010-batch-return-archive`，按已批准范围实施。复用现有单项归档、授权、费用事实和事务底座，按Level 2定向门禁执行；Command／迁移Task独立Sol审查，全部集成后独立Sol终审。实施任务见[计划](superpowers/plans/2026-10-02-core-nt-010-batch-return-archive.md)，契约见[公证Spec](spec/v0.1/modules/notary.md#core-nt-010-合法批量归档)；Next仍为CORE-CA-003。开发／生产库迁移未执行，尚无NT-010验收结果。
+**CORE-NT-010｜公证事项合法批量归档（路线图唯一Current，开发中）**：从`main@85b5bc5`建立`codex/core-nt-010-batch-return-archive`，后端Task `662b187`已通过独立Sol审查，前端Task `52e062c`完成自审与聚焦／浏览器测试；现进行组合候选独立终审及Level 2正式门禁，尚未完成验收。复用单项归档、授权、费用事实和事务底座；实施任务见[计划](superpowers/plans/2026-10-02-core-nt-010-batch-return-archive.md)，契约见[公证Spec](spec/v0.1/modules/notary.md#core-nt-010-合法批量归档)。Next仍为CORE-CA-003；开发／生产库迁移未执行。
 
 CA-001匹配事实口径已在本分支修正并验收：实际匹配日期与系统登记时间分离、律所可空，旧成功回执仍可原样重放。旧候选的验证只对旧tree有效；本段不改变Current／Next。
 
@@ -54,4 +54,4 @@ CA-001匹配事实口径已在本分支修正并验收：实际匹配日期与�
 
 ## 下一步
 
-实施NT-010后端原子批次及前向迁移，独审通过后接入列表逐项表单并验证真实数据库／浏览器；不提前开发CA-003，不发布或执行开发／生产迁移。
+完成NT-010组合候选终审、修复补审和正式定向门禁，实际通过后再记录验收与完成状态；不提前开发CA-003，不发布或执行开发／生产迁移。
