@@ -405,7 +405,7 @@ function isReturnAmountSummary(
     : value.partyKind === null && value.partyName === null;
 }
 
-function isReturnArchiveSummary(
+export function isNotaryReturnArchiveSummary(
   value: unknown,
 ): value is NotaryReturnArchiveSummary {
   return (
@@ -435,7 +435,9 @@ function isReturnArchiveSummary(
   );
 }
 
-function validReturnAmountInput(value: NotaryReturnAmountInput): boolean {
+export function isValidNotaryReturnAmountInput(
+  value: NotaryReturnAmountInput,
+): boolean {
   if (!value || typeof value !== 'object') return false;
   if (value.state === 'PENDING')
     return exactKeys(value as unknown as Record<string, unknown>, ['state']);
@@ -633,7 +635,7 @@ function isMatterDetail(value: unknown): value is NotaryMatterDetail {
     (detail.issuanceDecision === null ||
       isIssuanceDecision(detail.issuanceDecision)) &&
     (detail.returnArchive === null ||
-      isReturnArchiveSummary(detail.returnArchive)) &&
+      isNotaryReturnArchiveSummary(detail.returnArchive)) &&
     decisionMatchesStage(
       detail.stage,
       detail.reviewDecision as NotaryOpeningReviewDecision | null,
@@ -958,8 +960,10 @@ export async function archiveNotaryReturn(
     !validChoice ||
     !archiveReason ||
     [...archiveReason].length > 5000 ||
-    (input.refund !== undefined && !validReturnAmountInput(input.refund)) ||
-    (input.freight !== undefined && !validReturnAmountInput(input.freight)) ||
+    (input.refund !== undefined &&
+      !isValidNotaryReturnAmountInput(input.refund)) ||
+    (input.freight !== undefined &&
+      !isValidNotaryReturnAmountInput(input.freight)) ||
     idempotencyKey.trim().length === 0
   )
     throw new ApiError('退货归档信息无效', 400, 'VALIDATION_ERROR');
@@ -980,7 +984,7 @@ export async function archiveNotaryReturn(
     data.id !== id ||
     data.stage !== 'ARCHIVED' ||
     data.version !== input.expectedVersion + 1 ||
-    !isReturnArchiveSummary(data.returnArchive) ||
+    !isNotaryReturnArchiveSummary(data.returnArchive) ||
     data.returnArchive.returnChoice !== input.returnChoice ||
     data.returnArchive.archiveReason !== archiveReason
   )

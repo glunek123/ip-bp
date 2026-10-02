@@ -6,12 +6,24 @@ import { useAuthStore } from '../../stores/auth';
 import { ApiError } from '../../api/http';
 import NotaryMatterListPage from './NotaryMatterListPage.vue';
 
-const api = vi.hoisted(() => ({ listNotaryMatters: vi.fn() }));
+const api = vi.hoisted(() => ({
+  listNotaryMatters: vi.fn(),
+  getNotaryMatter: vi.fn(),
+}));
+const batchApi = vi.hoisted(() => ({ archive: vi.fn() }));
+const workflow = vi.hoisted(() => ({ notify: vi.fn() }));
 const exportApi = vi.hoisted(() => ({ preview: vi.fn(), download: vi.fn() }));
 const preferenceApi = vi.hoisted(() => ({ get: vi.fn(), save: vi.fn() }));
 vi.mock('../../api/notary', async (importOriginal) => ({
   ...(await importOriginal<typeof import('../../api/notary')>()),
   listNotaryMatters: api.listNotaryMatters,
+  getNotaryMatter: api.getNotaryMatter,
+}));
+vi.mock('../../api/notary-return-archive-batch', () => ({
+  archiveNotaryReturnBatch: batchApi.archive,
+}));
+vi.mock('../../app/workflow-events', () => ({
+  notifyWorkflowChanged: workflow.notify,
 }));
 vi.mock('../../api/notary-list-preference', async (importOriginal) => ({
   ...(await importOriginal<
@@ -139,6 +151,43 @@ describe('NotaryMatterListPage', () => {
     expect(
       wrapper.get('[data-test="source-lead-link"]').attributes('href'),
     ).toBe('/leads/lead-1');
+  });
+
+  it('opens the batch form for selected matters and refreshes the list after success', async () => {
+    const waiting = {
+      ...result,
+      items: [{ ...result.items[0], stage: 'WAITING_RETURN' }],
+      counts: { ...result.counts, WAITING_RETURN: 1 },
+    };
+    api.listNotaryMatters.mockResolvedValue(waiting);
+    api.getNotaryMatter.mockResolvedValue({
+      id: 'matter-1',
+      businessNo: 'NT-001',
+      stage: 'WAITING_RETURN',
+      version: 5,
+      capabilities: { archiveReturn: true },
+      evidence: { sampleFeeState: 'KNOWN', sampleFeeAmount: '10.00' },
+      issuanceDecision: { decision: 'NO_ISSUE' },
+    });
+    batchApi.archive.mockResolvedValue({ batchId: 'batch-1', items: [] });
+    const { wrapper } = await mountPage('/notary-matters?stage=WAITING_RETURN');
+
+    await wrapper.get('[data-test="select-matter"]').setValue(true);
+    await wrapper.get('[data-test="batch-archive-open"]').trigger('click');
+    await flushPromises();
+    expect(wrapper.text()).toContain('样品费事实：10.00 元');
+
+    await wrapper.get('[data-test="choice-matter-1"]').setValue('KEEP');
+    await wrapper.get('[data-test="reason-matter-1"]').setValue('完成退货处理');
+    await wrapper.get('form').trigger('submit');
+    await flushPromises();
+
+    expect(batchApi.archive).toHaveBeenCalledTimes(1);
+    expect(api.listNotaryMatters).toHaveBeenCalledTimes(2);
+    expect(wrapper.get('[data-test="selected-count"]').text()).toContain(
+      '0 项',
+    );
+    expect(workflow.notify).toHaveBeenCalledTimes(1);
   });
 
   it('does not disguise a failed query as an empty list', async () => {

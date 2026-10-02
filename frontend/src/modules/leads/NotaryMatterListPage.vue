@@ -21,6 +21,7 @@ import {
   type NotaryListPreferenceColumn,
 } from '../../api/notary-list-preference';
 import { useAuthStore } from '../../stores/auth';
+import NotaryReturnArchiveBatchPanel from './NotaryReturnArchiveBatchPanel.vue';
 
 const stageLabels: Record<NotaryListStage, string> = {
   PENDING_EVIDENCE: '待取证',
@@ -52,6 +53,7 @@ const settingsOpen = ref(false);
 const preferenceMessage = ref('正在读取个人列设置。');
 const saving = ref(false);
 const selectedIds = ref<string[]>([]);
+const batchOpen = ref(false);
 const exportOpen = ref(false);
 const exportMode = ref<'SELECTED' | 'FILTERED' | null>(null);
 const exportPreview = ref<{ count: number; maxRows: 1000 } | null>(null);
@@ -111,6 +113,10 @@ const exportScopeKey = computed(() =>
     matterIds:
       exportMode.value === 'SELECTED' ? [...selectedIds.value].sort() : [],
   }),
+);
+const batchScopeKey = computed(
+  () =>
+    `${auth.session?.user.id ?? ''}:${auth.session?.department?.id ?? ''}:${selectedStage.value ?? ''}`,
 );
 const canConfirmExport = computed(
   () =>
@@ -180,6 +186,12 @@ function clearSelection(): void {
   selectedIds.value = [];
   invalidateExport();
   exportMessage.value = '';
+}
+
+function completeBatch(): void {
+  clearSelection();
+  batchOpen.value = false;
+  void load();
 }
 
 async function requestExportPreview(): Promise<void> {
@@ -545,9 +557,15 @@ onBeforeUnmount(() => {
           >
           <ElButton
             data-test="clear-selection"
-            :disabled="selectedIds.length === 0"
+            :disabled="selectedIds.length === 0 || batchOpen"
             @click="clearSelection"
             >清空选择</ElButton
+          >
+          <ElButton
+            data-test="batch-archive-open"
+            :disabled="selectedIds.length === 0 || batchOpen"
+            @click="batchOpen = true"
+            >批量归档</ElButton
           >
           <ElButton
             data-test="export-open"
@@ -626,6 +644,13 @@ onBeforeUnmount(() => {
           </div>
         </div>
       </section>
+      <NotaryReturnArchiveBatchPanel
+        v-if="batchOpen"
+        :matter-ids="selectedIds"
+        :scope-key="batchScopeKey"
+        @close="batchOpen = false"
+        @completed="completeBatch"
+      />
       <section
         v-if="settingsOpen"
         class="column-settings demo-card"
@@ -747,7 +772,7 @@ onBeforeUnmount(() => {
                       items.length > 0 &&
                       items.every((matter) => selectedIds.includes(matter.id))
                     "
-                    :disabled="items.length === 0"
+                    :disabled="items.length === 0 || batchOpen"
                     @change="
                       toggleCurrentPage(
                         ($event.target as HTMLInputElement).checked,
@@ -772,6 +797,7 @@ onBeforeUnmount(() => {
                     :aria-label="`选择${matter.businessNo}`"
                     data-test="select-matter"
                     :checked="selectedIds.includes(matter.id)"
+                    :disabled="batchOpen"
                     @change="
                       toggleMatter(
                         matter.id,
