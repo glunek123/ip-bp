@@ -22,7 +22,7 @@
 
 **Goal:** 实现Spec中确认接口、读能力和不可变事实，交付可独立验证的API闭环。
 
-**Allowed files:** `backend/prisma/schema.prisma`；新迁移`20261002020000_add_case_complaint_confirmation`及必要的独立Grant迁移`20261002021000_add_case_complaint_confirmation_grants`；`backend/src/modules/cases/`中的新`case-complaint-confirmation.{dto,service}.ts`、直接spec、migration probe及既有read DTO／service／controller／module／index与直接spec；`backend/src/access-control/{access-control.service,permission-catalog,prisma-access-control.store}.ts`及直接spec；`backend/src/modules/materials/material.service.ts`及直接spec；`backend/src/core-ld-openapi.spec.ts`；`scripts/prisma-model-owners.mjs`；`tests/support/core-lead-database.{mjs,d.mts}`和最小新增`case-complaint-confirmation-{database,migration}.{mjs,d.mts}`；`tests/e2e/case-complaint-confirmation-{database,migration}.spec.ts`。仅必要兼容调整既有`tests/e2e/cases.spec.ts`清理／断言，不重构全套夹具。
+**Allowed files:** `backend/prisma/schema.prisma`；新迁移`20261002020000_add_case_complaint_confirmation`（枚举）、`20261002020500_add_case_complaint_confirmation_facts`（事实及约束）、`20261002021000_add_case_complaint_confirmation_grants`（Grant）；`backend/src/modules/cases/`中的新`case-complaint-confirmation.{dto,service}.ts`、直接spec、migration probe及既有read DTO／service／controller／module／index与直接spec；`backend/src/access-control/{access-control.service,permission-catalog,prisma-access-control.store}.ts`及直接spec；`backend/src/modules/materials/material.service.ts`及直接spec；`backend/src/core-ld-openapi.spec.ts`；`scripts/prisma-model-owners.mjs`；`tests/support/core-lead-database.{mjs,d.mts}`和最小新增`case-complaint-confirmation-{database,migration}.{mjs,d.mts}`；`tests/e2e/case-complaint-confirmation-{database,migration}.spec.ts`。仅必要兼容调整既有`tests/e2e/cases.spec.ts`清理／断言，不重构全套夹具。
 
 **Relevant interfaces:** 参考`CaseComplaintService.submit`与`CaseReadController`现有`complaint-submit`路由；请求新路由`complaint-confirm`，字段和返回严格按Spec。Action目录新增`CASE_COMPLAINT_CONFIRM`映射`case.complaint.confirm`，授权仍用既有`authorizeCase`。新事实建议`CaseComplaintConfirmation`，新回执`CaseComplaintConfirmationReceipt`，均归cases模块；确认事实保存原始提交对比所需字段和独立审计关联、部门组合约束，精确材料引用由MaterialsService执行。读DTO增加`canConfirmComplaint`、`complaintConfirmation`及第四阶段计数。固定确认文件通过材料模块返回，不由cases跨模块直接操作材料表。
 
@@ -30,6 +30,7 @@
 
 - [ ] RED：先补失败的确认Command、材料阶段权限及迁移契约测试，保留预期失败输出。
 - [ ] GREEN：实现最小前向迁移和独立确认事实；严格归一化／指纹／锁／CAS／回执、审计／冻结，保留所有旧事实。
+- [ ] PostgreSQL新枚举使用必须跨提交：枚举、业务结构及Grant分别用独立迁移事务，验证各自失败原子性和前向续跑；不得将文件内前段已提交、后段回滚称作整份迁移原子回滚。本切片尚未发布、仅独立本地测试schema执行的新迁移草稿可在合入前修订并完整复验；共享环境已执行的迁移保持不变。原证据输入改变即失效，先临时schema专项，再以已核对的受控测试库入口同步，不掩盖checksum漂移。
 - [ ] 运行`pnpm --filter @dev-cor/backend test src/modules/cases src/modules/materials/material.service.spec.ts src/access-control src/core-ld-openapi.spec.ts`及必要类型／构建；先完成临时schema迁移专项，再部署独立测试schema，串行运行`pnpm test:e2e tests/e2e/case-complaint-confirmation-migration.spec.ts tests/e2e/case-complaint-confirmation-database.spec.ts`。验证实际匹配非0项。
 - [ ] 自审、只提交Allowed文件，完整报告写`.local/ca003/task-1-report.md`，含RED／GREEN、命令／结果／证据、changed files、公共契约、风险及Requires Sol attention；对话返回简报。主Agent生成base..head完整Review包，独立Sol Task Review通过才交给Task 2。
 
