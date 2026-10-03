@@ -27,6 +27,8 @@
 
 **Forbidden:** 共享机制改造、复制新权限平台、客户法院提交／内部材料泄露、假数据库状态、修改旧迁移、删断言／增加重试、全量E2E／verify机械重复。范围冲突先升级。
 
+执行中仅追加允许修改`backend/src/modules/cases/case-complaint-mailing.service.spec.ts`的未来日期测试：原固定日期跨日后不再是未来，按实际复现改为Asia/Shanghai动态明日，保留拒绝及事务前校验断言；不改生产规则或测试配置。
+
 **Report:** .local/ca005/task-1-report.md，Task／Model／Commit／Changed files／Tests executed及真实退出结果／Contract changes／Self-review findings／Known risks／Requires Sol attention；报告RED／GREEN及迁移真实结果。只提交Allowed文件。独立Sol Task Review查固定基线到HEAD累计diff，finding关闭后交接。
 
 ### Task 2：真实提交表单、阶段导航、严格API与浏览器（Luna）
