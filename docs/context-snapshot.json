@@ -1,6 +1,6 @@
 {
   "version": 1,
-  "recordedAt": "2026-10-03T07:19:24.419Z",
+  "recordedAt": "2026-10-03T15:01:46.895Z",
   "files": {
     ".cursor/rules/verified-feature-integration.mdc": "ffd2306612ba6f09749629c5adb9e645f7f37aa6ee27ff1bc1c3d8b14efeca38",
     ".env.example": "07211cde5c2b59efc21b619b752d4c9b871f0980d2d64ca3c146ad6151fd27ca",
@@ -352,7 +352,7 @@
     "docs/environment.md": "2c07c5c2ccecb30055e318b6670c8c910d4474e691d7fd1d645016a2d657debf",
     "docs/feature-roadmap.md": "ae481497c3cd7ce98d08a681aece7458d5531c9654015acf8c19d43238f617df",
     "docs/project-status-history-through-2026-09-18.md": "c7c858eb4b2a935ce78a85c75e5d3227691382186101d6ff6911249e38729208",
-    "docs/project-status.md": "cd0dcc6eda9699dfc15bcba7de6d4bf5da75f127bcd42b53a734dd14b5a62c6f",
+    "docs/project-status.md": "e4f7cdd6253681d7f02c8e4bac07aea31fb86719462fcf25e8c17d79e72d4e7d",
     "docs/security/customer-foundation-q2-review.md": "f5745450cb85aedde92892646c6c824bc9670b8c9bf6f0d9761fe5e46cc6d109",
     "docs/security/local-account-auth-q2-review.md": "4e7b38d73b2597e483340490c788aa034ef6f465baccc12240be7ad2c6ec61f1",
     "docs/spec/v0.1/BUSINESS-REVIEW.md": "950c73ac72470d2e3556fd416701b4486944c1e3ef21c84be11132cbe617c24e",
@@ -619,12 +619,12 @@
     "tests/support/case-complaint-confirmation-migration.mjs": "ce652bfa5836dc782c4b92b6205acc05be7ab1e5cf1252f7b4be4d5388007439",
     "tests/support/case-complaint-mailing-database.mjs": "a7a06e209ca54ddb35d19849c4498241a49668a8fd0c4926e025185a11cfcc24",
     "tests/support/case-complaint-mailing-migration.mjs": "d498c20f1f1980e64480428b137d64833d3c18a8eae68fb485165d4c74c77a70",
-    "tests/support/core-lead-database.mjs": "a022e35d14561a297296cd81993d19bd85d6658b033e3fc91a8134f396656ea8",
+    "tests/support/core-lead-database.mjs": "3129323755c2dd52706bd6aadc0b18787e71f86ce9b405b8ff654771ef150f4a",
     "tests/support/customer-database.mjs": "46f2457deb03868c8a5cfbfcc9311b787e7b43c028503a31a4c10d5a979afd40",
     "tests/support/notary-list-export-migration.mjs": "9e5f3ff5bcc8385efee2a852787bfaf1f63d9c837962c7c72c8f037e313eaa26",
     "tests/support/notary-list-preference-migration.mjs": "8aed27b9fbb00a1cf0bd603c07074d3b7a09d6f91931ecda4eb8b0de6b0fc4c2",
     "tests/support/notary-return-archive-batch-database.mjs": "c7fc38da20d6c88f7ab3274a425937fd25affe33be18d60b9788fa1f1531fdde",
-    "tests/support/notary-return-archive-batch-migration.mjs": "0872969fb5ff4671c6e9a5162e1e7cef561c3ae972516e352a21c5b4e0a5810b",
+    "tests/support/notary-return-archive-batch-migration.mjs": "1caf945ce0fe1c89108dcc4c2a47e3c44073aca920a188d0d949e42cc6398d69",
     "tools/project-runtime/pnpm.cmd": "ac586525b47f64eaf5e540676428c50fc78fd8fa0f8faa04f730c70f04a968b9",
     "tsconfig.json": "5808a45c690a3f2b628d77202bb9f0f25b418dd15ddaeeccf39cd9af3305fcf1",
     "vitest.tools.config.mjs": "3585c9415a36d82da5f44b1cba30b499573b2d49e752df2f014f3d44b9509ec7"
