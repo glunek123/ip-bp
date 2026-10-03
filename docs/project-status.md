@@ -8,9 +8,9 @@ CORE-CA-004已通过Level 3验收并推送／快进合入main；业务能力状�
 
 ## 当前任务
 
-当前工作区已回到`main`。CA-004收口提交`8bcd03e45dd53167b85cf0c1d6dd88880bf7549d`已按授权快进合入main，远端main和任务分支首次核实均包含该提交；此后仅补集成状态／证据及对应快照。唯一Current为**CORE-CA-005｜提交法院（待领取）**，Next为CORE-CA-006正式受理，本轮未开发后续切片。
+已核对干净的本地／远端main基线`b28e0f35fa8de21f752145e43177b7defe450341`并创建`codex/core-ca-005-court-filing`。唯一Current为**CORE-CA-005｜提交法院（开发中）**，Next为CORE-CA-006正式受理；本轮只实现提交法院，不开始正式受理。
 
-范围和业务规则仍见[CA-004契约](spec/v0.1/modules/cases.md#core-ca-004-客户盖章邮寄契约)及[实施计划](superpowers/plans/2026-10-03-core-ca-004-complaint-mailing.md)。Task、Final独立Sol Review及两轮helper补审均已接受，未关闭C／I／M均为0；正式候选与完整结果见[验证记录](spec/v0.1/VALIDATION.md)，不在Spec或计划重复维护验收台账。
+本轮范围见[CA-005契约](spec/v0.1/modules/cases.md#core-ca-005-提交法院契约)及[实施计划](superpowers/plans/2026-10-03-core-ca-005-court-filing.md)。复用既有身份／数据范围／材料／审计机制，按Level 2；核心Command和普通前向迁移仍按Sol Task独立审查，多Agent集成后一次Final Review。不得把旧CA-004结果写成本轮已验收。
 
 ## 已实现
 
@@ -18,7 +18,7 @@ CORE-CA-004已通过Level 3验收并推送／快进合入main；业务能力状�
 
 ## 未决与限制
 
-无本Slice未关闭finding或验收阻塞。失效锁已按用户授权清理；测试容器tmpfs重启后需按README先启动再部署迁移，本轮恢复遗漏已补齐，失败与旧探针修复记录均保留于VALIDATION。未操作开发／生产库、持久化卷或发布；生产存储及MVP后续能力仍按原边界，不因本地验收冒称生产可用。
+CA-005尚未完成实施和验收。法院目录补最小部门内真实录入入口，不预置Demo法院或要求人工改库；提交动作不改已确认金额，不提前填写正式法院案号。本轮不默认推送、合并或部署；只操作独立测试库，不操作开发／生产库或持久化卷。
 
 ## 最近验证
 
@@ -26,4 +26,4 @@ CORE-CA-004已通过Level 3验收并推送／快进合入main；业务能力状�
 
 ## 下一步
 
-CA-004已集成，实际tree与原验收候选之间仅有已解释的非执行性收口差异，保留原业务证据并执行文档专项检查。待后续授权从更新后的main领取CA-005，本轮不开始下一切片，不部署或操作数据库。
+完成CA-005后端Command／查询／前向迁移及独立Task Review，再接前端和浏览器闭环；固定候选执行Level 2定向门禁、真实数据库与迁移专项，全部通过才补完成状态。Next仍为CA-006，未授权启动。
