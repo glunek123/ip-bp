@@ -9,7 +9,12 @@ import {
   Query,
   UseGuards,
 } from '@nestjs/common';
-import { ApiBearerAuth, ApiOkResponse, ApiTags } from '@nestjs/swagger';
+import {
+  ApiBearerAuth,
+  ApiCreatedResponse,
+  ApiOkResponse,
+  ApiTags,
+} from '@nestjs/swagger';
 import { ActorContext } from '../../access-control/actor-context';
 import { CurrentActor } from '../../access-control/actor-context.decorator';
 import { ActorContextGuard } from '../../access-control/actor-context.guard';
@@ -141,7 +146,7 @@ export class CaseReadController {
   }
 
   @Post(':id/filing-courts')
-  @ApiOkResponse({ type: FilingCourtDto })
+  @ApiCreatedResponse({ type: FilingCourtDto })
   createFilingCourt(
     @CurrentActor() actor: ActorContext,
     @Param('id', new ParseUUIDPipe()) id: string,
@@ -151,7 +156,7 @@ export class CaseReadController {
   }
 
   @Post(':id/filing-submit')
-  @ApiOkResponse({ type: SubmitCaseFilingResponseDto })
+  @ApiCreatedResponse({ type: SubmitCaseFilingResponseDto })
   submitFiling(
     @CurrentActor() actor: ActorContext,
     @Param('id', new ParseUUIDPipe()) id: string,

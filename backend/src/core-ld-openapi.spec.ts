@@ -24,6 +24,14 @@ import { NotaryListExportController } from './modules/leads/notary-list-export.c
 import { NotaryListExportService } from './modules/leads/notary-list-export.service';
 import { NotaryReturnArchiveBatchController } from './modules/leads/notary-return-archive-batch.controller';
 import { NotaryReturnArchiveBatchService } from './modules/leads/notary-return-archive-batch.service';
+import { CaseReadController } from './modules/cases/case-read.controller';
+import { CaseReadService } from './modules/cases/case-read.service';
+import { CaseMatchService } from './modules/cases/case-match.service';
+import { CaseComplaintService } from './modules/cases/case-complaint.service';
+import { CaseComplaintConfirmationService } from './modules/cases/case-complaint-confirmation.service';
+import { CaseComplaintMailingService } from './modules/cases/case-complaint-mailing.service';
+import { CaseFilingService } from './modules/cases/case-filing.service';
+import { FilingCourtService } from './modules/cases/filing-court.service';
 
 describe('CORE-LD-002 OpenAPI contract', () => {
   let app: INestApplication;
@@ -39,6 +47,7 @@ describe('CORE-LD-002 OpenAPI contract', () => {
         NotaryListController,
         NotaryListExportController,
         NotaryReturnArchiveBatchController,
+        CaseReadController,
       ],
       providers: [
         { provide: AuthService, useValue: {} },
@@ -52,6 +61,13 @@ describe('CORE-LD-002 OpenAPI contract', () => {
         { provide: NotaryListPreferenceService, useValue: {} },
         { provide: NotaryListExportService, useValue: {} },
         { provide: NotaryReturnArchiveBatchService, useValue: {} },
+        { provide: CaseReadService, useValue: {} },
+        { provide: CaseMatchService, useValue: {} },
+        { provide: CaseComplaintService, useValue: {} },
+        { provide: CaseComplaintConfirmationService, useValue: {} },
+        { provide: CaseComplaintMailingService, useValue: {} },
+        { provide: CaseFilingService, useValue: {} },
+        { provide: FilingCourtService, useValue: {} },
       ],
     })
       .overrideGuard(ActorContextGuard)
@@ -138,6 +154,13 @@ describe('CORE-LD-002 OpenAPI contract', () => {
       '/api/v1/client/leads/{id}/withdrawal-confirmations',
       '201',
       'ClientLeadWithdrawalConfirmationResultDto',
+    ],
+    ['post', '/api/v1/cases/{id}/filing-courts', '201', 'FilingCourtDto'],
+    [
+      'post',
+      '/api/v1/cases/{id}/filing-submit',
+      '201',
+      'SubmitCaseFilingResponseDto',
     ],
   ] as const)(
     'documents %s %s response %s',
