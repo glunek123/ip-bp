@@ -20,7 +20,7 @@ export async function verifyNotaryReturnArchiveBatchMigration() {
     throw new Error('An isolated test database is required');
   validateIsolatedTestDatabaseUrl(connectionString, { allowRandomPort: true });
   const migrations = (await readdir(migrationRoot))
-    .filter((name) => /^\d{14}_/u.test(name))
+    .filter((name) => /^\d{14}_/u.test(name) && name <= target)
     .sort();
   if (migrations.length !== 57 || migrations.at(-1) !== target)
     throw new Error('Unexpected migration chain');

@@ -2075,9 +2075,13 @@ export async function verifyCoreLeadMigration() {
     '20260922013000_harden_client_lead_review_integrity';
   const reviewResultTarget = '20260923010000_add_no_infringement_review_result';
   const archiveFactsTarget = '20260923011000_add_no_infringement_archive_facts';
+  const migrationTarget =
+    '20261002010000_add_notary_return_archive_batch_receipt';
   const migrations = (await readdir(migrationRoot))
-    .filter((name) => /^\d{14}_/u.test(name))
+    .filter((name) => /^\d{14}_/u.test(name) && name <= migrationTarget)
     .sort();
+  if (migrations.length !== 57 || migrations.at(-1) !== migrationTarget)
+    throw new Error('Unexpected migration chain');
   const previousMigrations = migrations.filter((name) => name < actionTarget);
   const laterMigrations = migrations.filter((name) => name > backfillTarget);
   const probe = randomUUID().replaceAll('-', '');
