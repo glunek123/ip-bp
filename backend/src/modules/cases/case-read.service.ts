@@ -158,7 +158,8 @@ export class CaseReadService {
           grouped.find((row) => row.stage === 'WAITING_COMPLAINT_STAMP')?._count
             ._all ?? 0,
         WAITING_FILING:
-          grouped.find((row) => row.stage === 'WAITING_FILING')?._count._all ?? 0,
+          grouped.find((row) => row.stage === 'WAITING_FILING')?._count._all ??
+          0,
       },
     };
   }
@@ -192,8 +193,12 @@ export class CaseReadService {
           },
         },
         complaintMailing: {
-          select: { mailedAt: true, recordedAt: true,
-            recordedByUserId: true, actorType: true },
+          select: {
+            mailedAt: true,
+            recordedAt: true,
+            recordedByUserId: true,
+            actorType: true,
+          },
         },
         createdAt: true,
         responsibleUserId: true,
@@ -273,9 +278,10 @@ export class CaseReadService {
             actor,
             id,
           );
-    const receiptFiles = record.complaintMailing == null
-      ? []
-      : await this.materials.listFrozenCaseComplaintMailingFiles(actor, id);
+    const receiptFiles =
+      record.complaintMailing == null
+        ? []
+        : await this.materials.listFrozenCaseComplaintMailingFiles(actor, id);
     const file = (ref: (typeof frozen)[number]) => ({
       materialId: ref.materialId,
       contentVersionId: ref.contentVersionId,
@@ -377,16 +383,23 @@ export class CaseReadService {
               confirmedByUserId: record.complaintConfirmation.confirmedByUserId,
               complaintFile: confirmationFile,
             },
-      complaintMailing: record.complaintMailing == null ? null : {
-        mailedAt: record.complaintMailing.mailedAt.toISOString().slice(0, 10),
-        recordedAt: record.complaintMailing.recordedAt.toISOString(),
-        recordedByUserId: record.complaintMailing.recordedByUserId,
-        actorType: record.complaintMailing.actorType,
-        receiptFiles: receiptFiles.map((ref) => ({
-          materialId: ref.materialId, contentVersionId: ref.contentVersionId,
-          originalFilename: ref.originalFilename, mimeType: ref.mimeType,
-        })),
-      },
+      complaintMailing:
+        record.complaintMailing == null
+          ? null
+          : {
+              mailedAt: record.complaintMailing.mailedAt
+                .toISOString()
+                .slice(0, 10),
+              recordedAt: record.complaintMailing.recordedAt.toISOString(),
+              recordedByUserId: record.complaintMailing.recordedByUserId,
+              actorType: record.complaintMailing.actorType,
+              receiptFiles: receiptFiles.map((ref) => ({
+                materialId: ref.materialId,
+                contentVersionId: ref.contentVersionId,
+                originalFilename: ref.originalFilename,
+                mimeType: ref.mimeType,
+              })),
+            },
       createdAt: record.createdAt.toISOString(),
       courtCaseNo: record.courtCaseNo,
       department: record.department,

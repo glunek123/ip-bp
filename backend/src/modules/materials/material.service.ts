@@ -216,10 +216,14 @@ export class MaterialService {
       );
       if (actor.clientCustomerId !== undefined) {
         const binding = await this.database.customerAccountBinding.findFirst({
-          where: { userId: actor.userId, customerId: actor.clientCustomerId,
-            departmentId: actor.departmentId, active: true,
+          where: {
+            userId: actor.userId,
+            customerId: actor.clientCustomerId,
+            departmentId: actor.departmentId,
+            active: true,
             user: { active: true, accountType: 'CLIENT' },
-            customer: { profileStatus: 'ADMITTED' } },
+            customer: { profileStatus: 'ADMITTED' },
+          },
           select: { id: true },
         });
         if (binding === null) throw this.forbidden();
@@ -338,13 +342,22 @@ export class MaterialService {
     )
       throw this.forbidden();
     if (actor.clientCustomerId !== undefined) {
-      if (draft.ownerType !== 'CASE' || draft.category !== 'MAIL_RECEIPT' ||
-        draft.customerAccountBindingId == null) throw this.forbidden();
+      if (
+        draft.ownerType !== 'CASE' ||
+        draft.category !== 'MAIL_RECEIPT' ||
+        draft.customerAccountBindingId == null
+      )
+        throw this.forbidden();
       const binding = await this.database.customerAccountBinding.findFirst({
-        where: { id: draft.customerAccountBindingId, userId: actor.userId,
-          customerId: actor.clientCustomerId, departmentId: actor.departmentId,
-          active: true, user: { active: true, accountType: 'CLIENT' },
-          customer: { profileStatus: 'ADMITTED' } },
+        where: {
+          id: draft.customerAccountBindingId,
+          userId: actor.userId,
+          customerId: actor.clientCustomerId,
+          departmentId: actor.departmentId,
+          active: true,
+          user: { active: true, accountType: 'CLIENT' },
+          customer: { profileStatus: 'ADMITTED' },
+        },
         select: { id: true },
       });
       if (binding === null) throw this.forbidden();
@@ -680,8 +693,10 @@ export class MaterialService {
           !contentVersionIds.includes(version.id) ||
           (input.ownerType === 'CASE' &&
             material.currentVersionId !== version.id) ||
-          (input.ownerType === 'CASE' && input.category === 'MAIL_RECEIPT' &&
-            actor.clientCustomerId !== undefined && version.uploadedBy !== actor.userId)
+          (input.ownerType === 'CASE' &&
+            input.category === 'MAIL_RECEIPT' &&
+            actor.clientCustomerId !== undefined &&
+            version.uploadedBy !== actor.userId)
         ) {
           throw this.invalidVersion();
         }
@@ -929,35 +944,75 @@ export class MaterialService {
       const allowed = await this.clientCaseVersionWhitelist(actor, ownerId);
       if (allowed.size === 0) return { items: [], total: 0 };
       const allowedMaterialIds = [...allowed.keys()];
-      const allowedVersionIds = [...new Set([...allowed.values()].flatMap((ids) => [...ids]))];
+      const allowedVersionIds = [
+        ...new Set([...allowed.values()].flatMap((ids) => [...ids])),
+      ];
       const materials = await this.database.material.findMany({
-        where: { departmentId: actor.departmentId, ownerType: 'CASE', ownerId,
-          status: 'ACTIVE', id: { in: allowedMaterialIds } },
+        where: {
+          departmentId: actor.departmentId,
+          ownerType: 'CASE',
+          ownerId,
+          status: 'ACTIVE',
+          id: { in: allowedMaterialIds },
+        },
         orderBy: [{ createdAt: 'desc' }, { id: 'asc' }],
-        select: { id: true, ownerType: true, ownerId: true, category: true,
-          purpose: true, status: true, version: true, deletedAt: true,
-          createdAt: true, updatedAt: true,
-          contentVersions: { where: { id: { in: allowedVersionIds }, status: 'AVAILABLE' },
+        select: {
+          id: true,
+          ownerType: true,
+          ownerId: true,
+          category: true,
+          purpose: true,
+          status: true,
+          version: true,
+          deletedAt: true,
+          createdAt: true,
+          updatedAt: true,
+          contentVersions: {
+            where: { id: { in: allowedVersionIds }, status: 'AVAILABLE' },
             orderBy: { createdAt: 'desc' },
-            select: { id: true, materialId: true, originalFilename: true,
-              mimeType: true, sizeBytes: true, sha256: true, status: true, createdAt: true } } },
+            select: {
+              id: true,
+              materialId: true,
+              originalFilename: true,
+              mimeType: true,
+              sizeBytes: true,
+              sha256: true,
+              status: true,
+              createdAt: true,
+            },
+          },
+        },
       });
       const items = materials.flatMap((material) => {
         const versions = material.contentVersions.filter((version) =>
-          allowed.get(material.id)?.has(version.id));
+          allowed.get(material.id)?.has(version.id),
+        );
         if (versions.length === 0) return [];
-        return [{ id: material.id, ownerType: material.ownerType,
-          ownerId: material.ownerId, category: material.category,
-          purpose: toMaterialPurpose(material.purpose), currentVersionId: null,
-          status: 'ACTIVE' as const, version: material.version,
-          deletedAt: material.deletedAt, createdAt: material.createdAt,
-          updatedAt: material.updatedAt,
-          contentVersions: versions.map((version) => ({
-            id: version.id, materialId: version.materialId,
-            originalFilename: version.originalFilename, mimeType: version.mimeType,
-            sizeBytes: Number(version.sizeBytes), sha256: version.sha256,
-            status: 'AVAILABLE' as const, createdAt: version.createdAt,
-          })) }];
+        return [
+          {
+            id: material.id,
+            ownerType: material.ownerType,
+            ownerId: material.ownerId,
+            category: material.category,
+            purpose: toMaterialPurpose(material.purpose),
+            currentVersionId: null,
+            status: 'ACTIVE' as const,
+            version: material.version,
+            deletedAt: material.deletedAt,
+            createdAt: material.createdAt,
+            updatedAt: material.updatedAt,
+            contentVersions: versions.map((version) => ({
+              id: version.id,
+              materialId: version.materialId,
+              originalFilename: version.originalFilename,
+              mimeType: version.mimeType,
+              sizeBytes: Number(version.sizeBytes),
+              sha256: version.sha256,
+              status: 'AVAILABLE' as const,
+              createdAt: version.createdAt,
+            })),
+          },
+        ];
       });
       return { items, total: items.length };
     }
@@ -1179,7 +1234,10 @@ export class MaterialService {
       throw this.notFound();
     if (material.ownerType === 'CASE' && actor.clientCustomerId !== undefined) {
       await this.authorizeOwner(actor, 'CASE', material.ownerId, 'read');
-      const allowed = await this.clientCaseVersionWhitelist(actor, material.ownerId);
+      const allowed = await this.clientCaseVersionWhitelist(
+        actor,
+        material.ownerId,
+      );
       if (!allowed.get(materialId)?.has(versionId)) throw this.notFound();
     }
     if (
@@ -1721,23 +1779,35 @@ export class MaterialService {
   ): Promise<void> {
     for (const fact of facts) {
       const validation = this.validatedVersionFacts.get(fact);
-      if (validation === undefined || validation.transaction !== transaction ||
+      if (
+        validation === undefined ||
+        validation.transaction !== transaction ||
         validation.canonicalFact.departmentId !== actor.departmentId ||
         validation.canonicalFact.ownerType !== 'CASE' ||
         validation.canonicalFact.ownerId !== caseId ||
         validation.canonicalFact.category !== 'MAIL_RECEIPT' ||
-        validation.canonicalFact.purpose !== 'MAIL_RECEIPT') throw this.invalidVersion();
+        validation.canonicalFact.purpose !== 'MAIL_RECEIPT'
+      )
+        throw this.invalidVersion();
       await transaction.caseComplaintMailingVersion.create({
-        data: { mailingId, caseId, departmentId: actor.departmentId,
-          materialId: validation.canonicalFact.materialId,
-          contentVersionId: validation.canonicalFact.contentVersionId },
-      });
-      await transaction.materialReference.create({
-        data: { departmentId: actor.departmentId, resourceType: 'case',
-          resourceId: caseId, purpose: 'MAIL_RECEIPT',
+        data: {
+          mailingId,
+          caseId,
+          departmentId: actor.departmentId,
           materialId: validation.canonicalFact.materialId,
           contentVersionId: validation.canonicalFact.contentVersionId,
-          actionEventId },
+        },
+      });
+      await transaction.materialReference.create({
+        data: {
+          departmentId: actor.departmentId,
+          resourceType: 'case',
+          resourceId: caseId,
+          purpose: 'MAIL_RECEIPT',
+          materialId: validation.canonicalFact.materialId,
+          contentVersionId: validation.canonicalFact.contentVersionId,
+          actionEventId,
+        },
       });
     }
   }
@@ -1776,21 +1846,37 @@ export class MaterialService {
         };
   }
 
-  async listFrozenCaseComplaintMailingFiles(actor: ActorContext, caseId: string) {
+  async listFrozenCaseComplaintMailingFiles(
+    actor: ActorContext,
+    caseId: string,
+  ) {
     await this.authorizeOwner(actor, 'CASE', caseId, 'read');
     const references = await this.database.materialReference.findMany({
-      where: { departmentId: actor.departmentId, resourceType: 'case',
-        resourceId: caseId, purpose: 'MAIL_RECEIPT',
-        actionEvent: { action: 'case.complaint.mailed', resourceType: 'CASE',
-          resourceId: caseId, departmentId: actor.departmentId } },
+      where: {
+        departmentId: actor.departmentId,
+        resourceType: 'case',
+        resourceId: caseId,
+        purpose: 'MAIL_RECEIPT',
+        actionEvent: {
+          action: 'case.complaint.mailed',
+          resourceType: 'CASE',
+          resourceId: caseId,
+          departmentId: actor.departmentId,
+        },
+      },
       orderBy: { createdAt: 'asc' },
-      select: { materialId: true, contentVersionId: true,
-        contentVersion: { select: { originalFilename: true, mimeType: true } } },
+      select: {
+        materialId: true,
+        contentVersionId: true,
+        contentVersion: { select: { originalFilename: true, mimeType: true } },
+      },
     });
-    return references.map((reference) => ({ materialId: reference.materialId,
+    return references.map((reference) => ({
+      materialId: reference.materialId,
       contentVersionId: reference.contentVersionId,
       originalFilename: reference.contentVersion.originalFilename,
-      mimeType: reference.contentVersion.mimeType }));
+      mimeType: reference.contentVersion.mimeType,
+    }));
   }
 
   private async authorizeOwner(
@@ -1810,23 +1896,33 @@ export class MaterialService {
       if (actor.notaryOfficeId !== undefined) throw this.forbidden();
       if (actor.clientCustomerId !== undefined) {
         const binding = await reader.customerAccountBinding.findFirst({
-          where: { userId: actor.userId, customerId: actor.clientCustomerId,
-            departmentId: actor.departmentId, active: true,
+          where: {
+            userId: actor.userId,
+            customerId: actor.clientCustomerId,
+            departmentId: actor.departmentId,
+            active: true,
             user: { active: true, accountType: 'CLIENT' },
-            customer: { profileStatus: 'ADMITTED' } },
+            customer: { profileStatus: 'ADMITTED' },
+          },
           select: { id: true },
         });
         if (binding == null) throw this.forbidden();
         const clientCase = await reader.case.findFirst({
-          where: { id: ownerId, departmentId: actor.departmentId,
+          where: {
+            id: ownerId,
+            departmentId: actor.departmentId,
             customerId: actor.clientCustomerId,
-            complaintConfirmation: { isNot: null } },
+            complaintConfirmation: { isNot: null },
+          },
           select: { stage: true },
         });
         if (clientCase === null) throw this.notFound();
-        if (operation === 'write' &&
+        if (
+          operation === 'write' &&
           (clientCase.stage !== 'WAITING_COMPLAINT_STAMP' ||
-            notaryCategory !== 'MAIL_RECEIPT')) throw this.versionConflict();
+            notaryCategory !== 'MAIL_RECEIPT')
+        )
+          throw this.versionConflict();
         return;
       }
       await this.withMaterialAuthorization(() =>
@@ -1852,8 +1948,11 @@ export class MaterialService {
           !(
             record.stage === 'WAITING_COMPLAINT_CONFIRMATION' &&
             notaryCategory === 'COMPLAINT'
-          ) && !(record.stage === 'WAITING_COMPLAINT_STAMP' &&
-            notaryCategory === 'MAIL_RECEIPT')
+          ) &&
+          !(
+            record.stage === 'WAITING_COMPLAINT_STAMP' &&
+            notaryCategory === 'MAIL_RECEIPT'
+          )
         )
           throw this.versionConflict();
         await this.withMaterialAuthorization(() =>
@@ -2147,33 +2246,75 @@ export class MaterialService {
     caseId: string,
   ): Promise<Map<string, Set<string>>> {
     const record = await this.database.case.findFirst({
-      where: { id: caseId, departmentId: actor.departmentId,
+      where: {
+        id: caseId,
+        departmentId: actor.departmentId,
         customerId: actor.clientCustomerId,
-        complaintConfirmation: { isNot: null } },
-      select: { stage: true,
-        complaintConfirmation: { select: { confirmedComplaintContentVersionId: true } } },
+        complaintConfirmation: { isNot: null },
+      },
+      select: {
+        stage: true,
+        complaintConfirmation: {
+          select: { confirmedComplaintContentVersionId: true },
+        },
+      },
     });
     if (record?.complaintConfirmation == null) throw this.notFound();
     const references = await this.database.materialReference.findMany({
-      where: { departmentId: actor.departmentId, resourceType: 'case', resourceId: caseId,
+      where: {
+        departmentId: actor.departmentId,
+        resourceType: 'case',
+        resourceId: caseId,
         OR: [
-          { purpose: 'COMPLAINT_CONFIRMATION',
-            contentVersionId: record.complaintConfirmation.confirmedComplaintContentVersionId,
-            material: { ownerType: 'CASE', ownerId: caseId,
-              departmentId: actor.departmentId, category: 'COMPLAINT' },
-            actionEvent: { action: 'case.complaint.confirmed', resourceType: 'CASE',
-              resourceId: caseId, departmentId: actor.departmentId } },
-          { purpose: 'AUTHORIZATION',
-            material: { ownerType: 'CASE', ownerId: caseId,
-              departmentId: actor.departmentId, category: 'AUTHORIZATION' },
-            actionEvent: { action: 'case.complaint.submitted', resourceType: 'CASE',
-              resourceId: caseId, departmentId: actor.departmentId } },
-          { purpose: 'MAIL_RECEIPT',
-            material: { ownerType: 'CASE', ownerId: caseId,
-              departmentId: actor.departmentId, category: 'MAIL_RECEIPT' },
-            actionEvent: { action: 'case.complaint.mailed', resourceType: 'CASE',
-              resourceId: caseId, departmentId: actor.departmentId } },
-        ] },
+          {
+            purpose: 'COMPLAINT_CONFIRMATION',
+            contentVersionId:
+              record.complaintConfirmation.confirmedComplaintContentVersionId,
+            material: {
+              ownerType: 'CASE',
+              ownerId: caseId,
+              departmentId: actor.departmentId,
+              category: 'COMPLAINT',
+            },
+            actionEvent: {
+              action: 'case.complaint.confirmed',
+              resourceType: 'CASE',
+              resourceId: caseId,
+              departmentId: actor.departmentId,
+            },
+          },
+          {
+            purpose: 'AUTHORIZATION',
+            material: {
+              ownerType: 'CASE',
+              ownerId: caseId,
+              departmentId: actor.departmentId,
+              category: 'AUTHORIZATION',
+            },
+            actionEvent: {
+              action: 'case.complaint.submitted',
+              resourceType: 'CASE',
+              resourceId: caseId,
+              departmentId: actor.departmentId,
+            },
+          },
+          {
+            purpose: 'MAIL_RECEIPT',
+            material: {
+              ownerType: 'CASE',
+              ownerId: caseId,
+              departmentId: actor.departmentId,
+              category: 'MAIL_RECEIPT',
+            },
+            actionEvent: {
+              action: 'case.complaint.mailed',
+              resourceType: 'CASE',
+              resourceId: caseId,
+              departmentId: actor.departmentId,
+            },
+          },
+        ],
+      },
       select: { materialId: true, contentVersionId: true, purpose: true },
     });
     const allowed = new Map<string, Set<string>>();
@@ -2183,23 +2324,47 @@ export class MaterialService {
       allowed.set(materialId, versions);
     };
     for (const ref of references) {
-      if (ref.purpose === 'COMPLAINT_CONFIRMATION' &&
-        ref.contentVersionId !== record.complaintConfirmation.confirmedComplaintContentVersionId)
+      if (
+        ref.purpose === 'COMPLAINT_CONFIRMATION' &&
+        ref.contentVersionId !==
+          record.complaintConfirmation.confirmedComplaintContentVersionId
+      )
         continue;
       add(ref.materialId, ref.contentVersionId);
     }
     if (record.stage === 'WAITING_COMPLAINT_STAMP') {
       const drafts = await this.database.material.findMany({
-        where: { departmentId: actor.departmentId, ownerType: 'CASE', ownerId: caseId,
-          category: 'MAIL_RECEIPT', status: 'ACTIVE',
-          contentVersions: { some: { uploadedBy: actor.userId, status: 'AVAILABLE' } } },
-        select: { id: true, category: true, currentVersionId: true,
-          contentVersions: { where: { uploadedBy: actor.userId, status: 'AVAILABLE' },
-            select: { id: true } } },
+        where: {
+          departmentId: actor.departmentId,
+          ownerType: 'CASE',
+          ownerId: caseId,
+          category: 'MAIL_RECEIPT',
+          status: 'ACTIVE',
+          contentVersions: {
+            some: { uploadedBy: actor.userId, status: 'AVAILABLE' },
+          },
+        },
+        select: {
+          id: true,
+          category: true,
+          currentVersionId: true,
+          contentVersions: {
+            where: { uploadedBy: actor.userId, status: 'AVAILABLE' },
+            select: { id: true },
+          },
+        },
       });
       for (const draft of drafts) {
-        if (draft.category !== 'MAIL_RECEIPT' || draft.currentVersionId === null) continue;
-        if (draft.contentVersions.some((version) => version.id === draft.currentVersionId))
+        if (
+          draft.category !== 'MAIL_RECEIPT' ||
+          draft.currentVersionId === null
+        )
+          continue;
+        if (
+          draft.contentVersions.some(
+            (version) => version.id === draft.currentVersionId,
+          )
+        )
           add(draft.id, draft.currentVersionId);
       }
     }
@@ -2331,8 +2496,8 @@ function toMaterialPurpose(value: string): MaterialPurposeValue {
     value === 'NOTARY_CERTIFICATE' ||
     value === 'NOTARY_DISCLOSURE' ||
     value === 'COMPLAINT' ||
-    value === 'AUTHORIZATION'
-    || value === 'MAIL_RECEIPT'
+    value === 'AUTHORIZATION' ||
+    value === 'MAIL_RECEIPT'
   ) {
     return value;
   }
@@ -2347,8 +2512,8 @@ function materialLimit(category: keyof typeof allowedMimeTypes): number {
       : category === 'NOTARY_CERTIFICATE' ||
           category === 'NOTARY_DISCLOSURE' ||
           category === 'COMPLAINT' ||
-          category === 'AUTHORIZATION'
-          || category === 'MAIL_RECEIPT'
+          category === 'AUTHORIZATION' ||
+          category === 'MAIL_RECEIPT'
         ? 10
         : 20;
 }

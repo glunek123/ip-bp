@@ -34,7 +34,9 @@ describe('CaseComplaintMailingService', () => {
         updateMany: jest.fn().mockResolvedValue({ count: 1 }),
       },
       userAccount: {
-        findUnique: jest.fn().mockResolvedValue({ accountType: 'INTERNAL', active: true }),
+        findUnique: jest
+          .fn()
+          .mockResolvedValue({ accountType: 'INTERNAL', active: true }),
       },
       customerAccountBinding: {
         findFirst: jest.fn().mockResolvedValue({ id: 'binding-1' }),
@@ -45,18 +47,26 @@ describe('CaseComplaintMailingService', () => {
       },
       caseComplaintMailing: { create: jest.fn().mockResolvedValue({}) },
       auditEvent: {
-        create: jest.fn().mockResolvedValue({ id: '66666666-6666-4666-8666-666666666666' }),
+        create: jest
+          .fn()
+          .mockResolvedValue({ id: '66666666-6666-4666-8666-666666666666' }),
       },
     };
     const database = {
-      $transaction: jest.fn(async (fn: (client: typeof tx) => unknown) => fn(tx)),
+      $transaction: jest.fn(async (fn: (client: typeof tx) => unknown) =>
+        fn(tx),
+      ),
     };
     const access = { authorizeCase: jest.fn().mockResolvedValue(undefined) };
     const materials = {
-      assertAvailableVersions: jest.fn().mockResolvedValue([
-        { contentVersionId: receiptId, purpose: 'MAIL_RECEIPT' },
-      ]),
-      freezeCaseComplaintMailingReferences: jest.fn().mockResolvedValue(undefined),
+      assertAvailableVersions: jest
+        .fn()
+        .mockResolvedValue([
+          { contentVersionId: receiptId, purpose: 'MAIL_RECEIPT' },
+        ]),
+      freezeCaseComplaintMailingReferences: jest
+        .fn()
+        .mockResolvedValue(undefined),
     };
     return {
       tx,
@@ -88,12 +98,17 @@ describe('CaseComplaintMailingService', () => {
       f.tx,
     );
     expect(f.tx.case.updateMany).toHaveBeenCalledWith({
-      where: expect.objectContaining({ stage: 'WAITING_COMPLAINT_STAMP', version: 4 }),
+      where: expect.objectContaining({
+        stage: 'WAITING_COMPLAINT_STAMP',
+        version: 4,
+      }),
       data: { stage: 'WAITING_FILING', version: { increment: 1 } },
     });
     expect(f.tx.caseComplaintMailing.create).toHaveBeenCalledTimes(1);
     expect(f.tx.auditEvent.create).toHaveBeenCalledTimes(1);
-    expect(f.materials.freezeCaseComplaintMailingReferences).toHaveBeenCalledTimes(1);
+    expect(
+      f.materials.freezeCaseComplaintMailingReferences,
+    ).toHaveBeenCalledTimes(1);
     expect(f.tx.caseComplaintMailingReceipt.create).toHaveBeenCalledTimes(1);
   });
 
@@ -101,10 +116,15 @@ describe('CaseComplaintMailingService', () => {
     const f = fixture();
     const client = { ...actor, clientCustomerId: customerId };
     const result = await f.service.mail(client, caseId, input);
-    expect(f.tx.auditEvent.create).toHaveBeenCalledWith(expect.objectContaining({
-      data: expect.objectContaining({ customerAccountBindingId: 'binding-1' }),
-    }));
-    const receipt = f.tx.caseComplaintMailingReceipt.create.mock.calls[0][0].data;
+    expect(f.tx.auditEvent.create).toHaveBeenCalledWith(
+      expect.objectContaining({
+        data: expect.objectContaining({
+          customerAccountBindingId: 'binding-1',
+        }),
+      }),
+    );
+    const receipt =
+      f.tx.caseComplaintMailingReceipt.create.mock.calls[0][0].data;
     f.tx.caseComplaintMailingReceipt.findUnique.mockResolvedValue({
       caseId,
       requestFingerprint: receipt.requestFingerprint,
@@ -116,9 +136,12 @@ describe('CaseComplaintMailingService', () => {
     await expect(f.service.mail(client, caseId, input)).rejects.toMatchObject({
       response: { code: 'ACTION_FORBIDDEN' },
     });
-    f.tx.customerAccountBinding.findFirst.mockResolvedValue({ id: 'binding-1' });
+    f.tx.customerAccountBinding.findFirst.mockResolvedValue({
+      id: 'binding-1',
+    });
     f.tx.case.findFirst.mockResolvedValue({
-      ...(await f.tx.case.findFirst()), customerId: 'other-customer',
+      ...(await f.tx.case.findFirst()),
+      customerId: 'other-customer',
     });
     await expect(f.service.mail(client, caseId, input)).rejects.toMatchObject({
       response: { code: 'RESOURCE_NOT_FOUND' },
@@ -128,19 +151,24 @@ describe('CaseComplaintMailingService', () => {
   it('replays the same semantic request with a different JSON property order', async () => {
     const f = fixture();
     const first = await f.service.mail(actor, caseId, input);
-    const receipt = f.tx.caseComplaintMailingReceipt.create.mock.calls[0][0].data;
+    const receipt =
+      f.tx.caseComplaintMailingReceipt.create.mock.calls[0][0].data;
     f.tx.caseComplaintMailingReceipt.findUnique.mockResolvedValue({
-      caseId, requestFingerprint: receipt.requestFingerprint,
+      caseId,
+      requestFingerprint: receipt.requestFingerprint,
       resultSnapshot: receipt.resultSnapshot,
     });
     const reordered = {
-      mailReceiptContentVersionIds: [receiptId], mailedAt: '2026-10-02',
-      idempotencyKey: 'mail-1', expectedVersion: 4,
+      mailReceiptContentVersionIds: [receiptId],
+      mailedAt: '2026-10-02',
+      idempotencyKey: 'mail-1',
+      expectedVersion: 4,
     };
     expect(await f.service.mail(actor, caseId, reordered)).toEqual(first);
     expect(f.tx.auditEvent.create).toHaveBeenCalledTimes(1);
-    await expect(f.service.mail(actor, caseId,
-      { ...reordered, mailedAt: '2026-10-01' })).rejects.toMatchObject({
+    await expect(
+      f.service.mail(actor, caseId, { ...reordered, mailedAt: '2026-10-01' }),
+    ).rejects.toMatchObject({
       response: { code: 'IDEMPOTENCY_CONFLICT' },
     });
   });

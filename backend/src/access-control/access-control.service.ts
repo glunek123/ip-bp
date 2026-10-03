@@ -279,7 +279,11 @@ export class AccessControlService {
 
   async authorizeCase(
     actor: ActorContext,
-    action: 'case.match' | 'case.complaint.submit' | 'case.complaint.confirm' | 'case.complaint.mail',
+    action:
+      | 'case.match'
+      | 'case.complaint.submit'
+      | 'case.complaint.confirm'
+      | 'case.complaint.mail',
     facts: CaseResourceFacts,
     reader?: AccessControlSnapshotReader,
   ): Promise<void> {
@@ -296,7 +300,11 @@ export class AccessControlService {
 
   async canAuthorizeCase(
     actor: ActorContext,
-    action: 'case.match' | 'case.complaint.submit' | 'case.complaint.confirm' | 'case.complaint.mail',
+    action:
+      | 'case.match'
+      | 'case.complaint.submit'
+      | 'case.complaint.confirm'
+      | 'case.complaint.mail',
     facts: CaseResourceFacts,
     reader?: AccessControlSnapshotReader,
   ): Promise<boolean> {

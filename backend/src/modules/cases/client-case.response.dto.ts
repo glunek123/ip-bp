@@ -4,11 +4,19 @@ import { IsIn, IsInt, Max, Min } from 'class-validator';
 
 export class ClientCasePageQueryDto {
   @ApiPropertyOptional({ enum: ['PENDING', 'RECORDED'], default: 'PENDING' })
-  @IsIn(['PENDING', 'RECORDED']) view: 'PENDING' | 'RECORDED' = 'PENDING';
+  @IsIn(['PENDING', 'RECORDED'])
+  view: 'PENDING' | 'RECORDED' = 'PENDING';
   @ApiPropertyOptional({ minimum: 1, default: 1 })
-  @Type(() => Number) @IsInt() @Min(1) page = 1;
+  @Type(() => Number)
+  @IsInt()
+  @Min(1)
+  page = 1;
   @ApiPropertyOptional({ minimum: 1, maximum: 100, default: 20 })
-  @Type(() => Number) @IsInt() @Min(1) @Max(100) pageSize = 20;
+  @Type(() => Number)
+  @IsInt()
+  @Min(1)
+  @Max(100)
+  pageSize = 20;
 }
 
 export class ClientCaseFileDto {
@@ -30,7 +38,8 @@ export class ClientCaseListItemDto {
 }
 
 export class ClientCaseListResponseDto {
-  @ApiProperty({ type: [ClientCaseListItemDto] }) items!: ClientCaseListItemDto[];
+  @ApiProperty({ type: [ClientCaseListItemDto] })
+  items!: ClientCaseListItemDto[];
   @ApiProperty() total!: number;
   @ApiProperty() page!: number;
   @ApiProperty() pageSize!: number;
@@ -39,15 +48,22 @@ export class ClientCaseListResponseDto {
 export class ClientCaseMailingDto {
   @ApiProperty({ format: 'date' }) mailedAt!: string;
   @ApiProperty({ format: 'date-time' }) recordedAt!: string;
-  @ApiProperty({ type: [ClientCaseFileDto] }) receiptFiles!: ClientCaseFileDto[];
+  @ApiProperty({ type: [ClientCaseFileDto] })
+  receiptFiles!: ClientCaseFileDto[];
 }
 
 export class ClientCaseDetailResponseDto extends ClientCaseListItemDto {
-  @ApiProperty({ enum: ['KNOWN', 'PENDING'] }) confirmedAmountState!: 'KNOWN' | 'PENDING';
-  @ApiProperty({ type: String, nullable: true }) confirmedAmount!: string | null;
+  @ApiProperty({ enum: ['KNOWN', 'PENDING'] }) confirmedAmountState!:
+    'KNOWN' | 'PENDING';
+  @ApiProperty({ type: String, nullable: true }) confirmedAmount!:
+    string | null;
   @ApiProperty({ format: 'date-time' }) confirmedAt!: string;
-  @ApiProperty({ type: ClientCaseFileDto, nullable: true }) complaintFile!: ClientCaseFileDto | null;
-  @ApiProperty({ type: [ClientCaseFileDto] }) authorizationFiles!: ClientCaseFileDto[];
-  @ApiProperty({ type: [ClientCaseFileDto] }) pendingReceiptFiles!: ClientCaseFileDto[];
-  @ApiProperty({ type: ClientCaseMailingDto, nullable: true }) complaintMailing!: ClientCaseMailingDto | null;
+  @ApiProperty({ type: ClientCaseFileDto, nullable: true })
+  complaintFile!: ClientCaseFileDto | null;
+  @ApiProperty({ type: [ClientCaseFileDto] })
+  authorizationFiles!: ClientCaseFileDto[];
+  @ApiProperty({ type: [ClientCaseFileDto] })
+  pendingReceiptFiles!: ClientCaseFileDto[];
+  @ApiProperty({ type: ClientCaseMailingDto, nullable: true })
+  complaintMailing!: ClientCaseMailingDto | null;
 }

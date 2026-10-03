@@ -25,7 +25,10 @@ import { MatchCaseDto, MatchCaseResponseDto } from './case-match.dto';
 import { CaseComplaintService } from './case-complaint.service';
 import { CaseComplaintConfirmationService } from './case-complaint-confirmation.service';
 import { CaseComplaintMailingService } from './case-complaint-mailing.service';
-import { MailCaseComplaintDto, MailCaseComplaintResponseDto } from './case-complaint-mailing.dto';
+import {
+  MailCaseComplaintDto,
+  MailCaseComplaintResponseDto,
+} from './case-complaint-mailing.dto';
 import {
   ConfirmCaseComplaintDto,
   ConfirmCaseComplaintResponseDto,
@@ -106,8 +109,14 @@ export class CaseReadController {
     @Param('id', new ParseUUIDPipe()) id: string,
     @Body() body: MailCaseComplaintDto,
   ) {
-    if (actor.clientCustomerId !== undefined || actor.notaryOfficeId !== undefined)
-      throw new ForbiddenException({ code: 'ACTION_FORBIDDEN', message: '无权登记邮寄' });
+    if (
+      actor.clientCustomerId !== undefined ||
+      actor.notaryOfficeId !== undefined
+    )
+      throw new ForbiddenException({
+        code: 'ACTION_FORBIDDEN',
+        message: '无权登记邮寄',
+      });
     return this.mailing.mail(actor, id, body);
   }
 }

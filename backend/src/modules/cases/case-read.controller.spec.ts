@@ -13,25 +13,43 @@ import { CaseComplaintConfirmationService } from './case-complaint-confirmation.
 import { CaseComplaintMailingService } from './case-complaint-mailing.service';
 
 const routeCaseId = '33333333-3333-4333-8333-333333333333';
-const routeMailInput = { expectedVersion: 4, idempotencyKey: 'route-identity',
-  mailedAt: '2026-10-02', mailReceiptContentVersionIds: [
-    '55555555-5555-4555-8555-555555555555',
-  ] };
+const routeMailInput = {
+  expectedVersion: 4,
+  idempotencyKey: 'route-identity',
+  mailedAt: '2026-10-02',
+  mailReceiptContentVersionIds: ['55555555-5555-4555-8555-555555555555'],
+};
 
 describe('internal complaint mailing route identity', () => {
   it.each([
-    { userId: 'client', departmentId: 'department', authorizationRevision: 1,
-      clientCustomerId: 'customer' },
-    { userId: 'notary', departmentId: 'department', authorizationRevision: 1,
-      notaryOfficeId: 'office' },
+    {
+      userId: 'client',
+      departmentId: 'department',
+      authorizationRevision: 1,
+      clientCustomerId: 'customer',
+    },
+    {
+      userId: 'notary',
+      departmentId: 'department',
+      authorizationRevision: 1,
+      notaryOfficeId: 'office',
+    },
   ])('rejects external actors before the shared command', (externalActor) => {
     const mailing = { mail: jest.fn() };
-    const controller = new CaseReadController({} as never, {} as never,
-      {} as never, {} as never, mailing as never);
-    expect(() => controller.mailComplaint(externalActor, routeCaseId,
-      routeMailInput)).toThrow(expect.objectContaining({
-      response: expect.objectContaining({ code: 'ACTION_FORBIDDEN' }),
-    }));
+    const controller = new CaseReadController(
+      {} as never,
+      {} as never,
+      {} as never,
+      {} as never,
+      mailing as never,
+    );
+    expect(() =>
+      controller.mailComplaint(externalActor, routeCaseId, routeMailInput),
+    ).toThrow(
+      expect.objectContaining({
+        response: expect.objectContaining({ code: 'ACTION_FORBIDDEN' }),
+      }),
+    );
     expect(mailing.mail).not.toHaveBeenCalled();
   });
 });

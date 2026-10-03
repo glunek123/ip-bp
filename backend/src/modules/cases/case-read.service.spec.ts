@@ -295,22 +295,39 @@ describe('CaseReadService', () => {
       },
     });
     f.db.case.findFirst.mockResolvedValue({
-      ...record, stage: 'WAITING_FILING',
-      complaintConfirmation: { confirmedComplaintContentVersionId: 'version-2',
-        amountState: 'PENDING', amount: null, pendingReason: '待核实',
-        changeNote: '金额待核实', confirmDisclose: true,
+      ...record,
+      stage: 'WAITING_FILING',
+      complaintConfirmation: {
+        confirmedComplaintContentVersionId: 'version-2',
+        amountState: 'PENDING',
+        amount: null,
+        pendingReason: '待核实',
+        changeNote: '金额待核实',
+        confirmDisclose: true,
         confirmedByUserId: actor.userId,
-        confirmedAt: new Date('2026-10-02T09:00:00.000Z') },
-      complaintMailing: { mailedAt: new Date('2026-10-02T00:00:00.000Z'),
+        confirmedAt: new Date('2026-10-02T09:00:00.000Z'),
+      },
+      complaintMailing: {
+        mailedAt: new Date('2026-10-02T00:00:00.000Z'),
         recordedAt: new Date('2026-10-03T03:00:00.000Z'),
-        recordedByUserId: actor.userId, actorType: 'INTERNAL' },
+        recordedByUserId: actor.userId,
+        actorType: 'INTERNAL',
+      },
     });
-    f.materials.listFrozenCaseComplaintMailingFiles.mockResolvedValue([{ materialId: 'receipt',
-      contentVersionId: 'receipt-version', originalFilename: '凭证.pdf',
-      mimeType: 'application/pdf' }]);
+    f.materials.listFrozenCaseComplaintMailingFiles.mockResolvedValue([
+      {
+        materialId: 'receipt',
+        contentVersionId: 'receipt-version',
+        originalFilename: '凭证.pdf',
+        mimeType: 'application/pdf',
+      },
+    ]);
     await expect(f.service.get(actor, 'case-1')).resolves.toMatchObject({
       canMailComplaint: false,
-      complaintMailing: { mailedAt: '2026-10-02', receiptFiles: [{ contentVersionId: 'receipt-version' }] },
+      complaintMailing: {
+        mailedAt: '2026-10-02',
+        receiptFiles: [{ contentVersionId: 'receipt-version' }],
+      },
     });
   });
   it('scopes mine by case ownership and keeps stage counts independent of filter', async () => {
