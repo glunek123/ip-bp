@@ -1,6 +1,7 @@
 import {
   Controller,
   Body,
+  ForbiddenException,
   Get,
   Post,
   Param,
@@ -105,6 +106,8 @@ export class CaseReadController {
     @Param('id', new ParseUUIDPipe()) id: string,
     @Body() body: MailCaseComplaintDto,
   ) {
+    if (actor.clientCustomerId !== undefined || actor.notaryOfficeId !== undefined)
+      throw new ForbiddenException({ code: 'ACTION_FORBIDDEN', message: '无权登记邮寄' });
     return this.mailing.mail(actor, id, body);
   }
 }

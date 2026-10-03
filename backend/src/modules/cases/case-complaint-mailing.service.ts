@@ -22,7 +22,9 @@ export class CaseComplaintMailingService {
     const normalized = this.normalize(input);
     if (actor.notaryOfficeId !== undefined) throw this.forbidden();
     const fingerprint = createHash('sha256')
-      .update(JSON.stringify({ caseId, ...normalized, idempotencyKey: undefined }))
+      .update(JSON.stringify({ caseId, expectedVersion: normalized.expectedVersion,
+        mailedAt: normalized.mailedAt,
+        mailReceiptContentVersionIds: normalized.mailReceiptContentVersionIds }))
       .digest('hex');
     for (let attempt = 0; attempt < 3; attempt += 1) {
       try {

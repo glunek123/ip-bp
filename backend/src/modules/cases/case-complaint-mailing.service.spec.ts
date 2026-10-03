@@ -125,6 +125,26 @@ describe('CaseComplaintMailingService', () => {
     });
   });
 
+  it('replays the same semantic request with a different JSON property order', async () => {
+    const f = fixture();
+    const first = await f.service.mail(actor, caseId, input);
+    const receipt = f.tx.caseComplaintMailingReceipt.create.mock.calls[0][0].data;
+    f.tx.caseComplaintMailingReceipt.findUnique.mockResolvedValue({
+      caseId, requestFingerprint: receipt.requestFingerprint,
+      resultSnapshot: receipt.resultSnapshot,
+    });
+    const reordered = {
+      mailReceiptContentVersionIds: [receiptId], mailedAt: '2026-10-02',
+      idempotencyKey: 'mail-1', expectedVersion: 4,
+    };
+    expect(await f.service.mail(actor, caseId, reordered)).toEqual(first);
+    expect(f.tx.auditEvent.create).toHaveBeenCalledTimes(1);
+    await expect(f.service.mail(actor, caseId,
+      { ...reordered, mailedAt: '2026-10-01' })).rejects.toMatchObject({
+      response: { code: 'IDEMPOTENCY_CONFLICT' },
+    });
+  });
+
   it.each([
     { ...input, mailedAt: '2026-10-04' },
     { ...input, mailedAt: '2026-02-30' },

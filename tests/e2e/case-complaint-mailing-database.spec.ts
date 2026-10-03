@@ -124,10 +124,26 @@ test('real client session reads exact confirmed files and mails one case without
   const pending = await json<ApiCaseDetail>(await request.get(`/api/v1/client/cases/${caseId}`), 200);
   expect(pending.pendingReceiptFiles).toMatchObject([{ contentVersionId: receipt.contentVersionId }]);
   const key = randomUUID();
+  const requestBody = { expectedVersion: 4, idempotencyKey: key,
+    mailedAt: '2026-10-02', mailReceiptContentVersionIds: [receipt.contentVersionId] };
+  expect((await json<{ code: string }>(await request.post(`/api/v1/cases/${caseId}/complaint-mail`, {
+    headers: clientHeaders, data: requestBody,
+  }), 403)).code).toBe('ACTION_FORBIDDEN');
+  expect((await json<{ code: string }>(await request.post(`/api/v1/client/cases/${caseId}/complaint-mail`, {
+    headers: auth, data: requestBody,
+  }), 403)).code).toBe('ACTION_FORBIDDEN');
+  expect(await countCaseComplaintMailingEffects(caseId)).toMatchObject({
+    stage: 'WAITING_COMPLAINT_STAMP', version: 4,
+    facts: 0, versions: 0, references: 0, receipts: 0, audits: 0,
+  });
   const created = await json<ApiMailResult>(await mail(request, caseId, receipt.contentVersionId, clientHeaders, key), 201);
   expect(created).toMatchObject({ id: caseId, stage: 'WAITING_FILING', version: 5,
     mailedAt: '2026-10-02', recordedAt: expect.any(String) });
-  expect(await json(await mail(request, caseId, receipt.contentVersionId, clientHeaders, key), 201))
+  expect(await json(await request.post(`/api/v1/client/cases/${caseId}/complaint-mail`, {
+    headers: clientHeaders,
+    data: { mailReceiptContentVersionIds: [receipt.contentVersionId],
+      mailedAt: '2026-10-02', idempotencyKey: key, expectedVersion: 4 },
+  }), 201))
     .toEqual(created);
   expect((await mail(request, caseId, receipt.contentVersionId, clientHeaders, key, '2026-10-01')).status()).toBe(409);
   const recorded = await json<ApiCaseList>(await request.get('/api/v1/client/cases?view=RECORDED'), 200);

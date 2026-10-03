@@ -9,6 +9,27 @@ import { ClientCaseController } from './client-case.controller';
 import { ClientCaseService } from './client-case.service';
 import { CaseComplaintMailingService } from './case-complaint-mailing.service';
 
+describe('client complaint mailing route identity', () => {
+  it.each([
+    { userId: 'internal', departmentId: 'department', authorizationRevision: 1 },
+    { userId: 'notary', departmentId: 'department', authorizationRevision: 1,
+      notaryOfficeId: 'office' },
+  ])('rejects non-client actors before the shared command', (nonClientActor) => {
+    const mailing = { mail: jest.fn() };
+    const controller = new ClientCaseController({} as never, mailing as never);
+    expect(() => controller.mailComplaint(nonClientActor,
+      '33333333-3333-4333-8333-333333333333', {
+        expectedVersion: 4, idempotencyKey: 'route-identity',
+        mailedAt: '2026-10-02', mailReceiptContentVersionIds: [
+          '55555555-5555-4555-8555-555555555555',
+        ],
+      })).toThrow(expect.objectContaining({
+      response: expect.objectContaining({ code: 'ACTION_FORBIDDEN' }),
+    }));
+    expect(mailing.mail).not.toHaveBeenCalled();
+  });
+});
+
 describe('client case OpenAPI contract', () => {
   it('publishes separate client read and same mailing request contract', async () => {
     const module = await Test.createTestingModule({

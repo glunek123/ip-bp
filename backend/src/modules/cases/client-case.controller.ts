@@ -1,4 +1,4 @@
-import { Body, Controller, Get, Param, ParseUUIDPipe, Post, Query, UseGuards } from '@nestjs/common';
+import { Body, Controller, ForbiddenException, Get, Param, ParseUUIDPipe, Post, Query, UseGuards } from '@nestjs/common';
 import { ApiBearerAuth, ApiOkResponse, ApiTags } from '@nestjs/swagger';
 import { ActorContext } from '../../access-control/actor-context';
 import { CurrentActor } from '../../access-control/actor-context.decorator';
@@ -35,6 +35,8 @@ export class ClientCaseController {
   mailComplaint(@CurrentActor() actor: ActorContext,
     @Param('id', new ParseUUIDPipe()) id: string,
     @Body() body: MailCaseComplaintDto) {
+    if (actor.clientCustomerId === undefined || actor.notaryOfficeId !== undefined)
+      throw new ForbiddenException({ code: 'ACTION_FORBIDDEN', message: '无权登记邮寄' });
     return this.mailing.mail(actor, id, body);
   }
 }
