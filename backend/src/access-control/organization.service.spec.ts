@@ -345,7 +345,12 @@ describe('OrganizationService management context', () => {
       assignTeamRoles: false,
       manageRoleTemplates: true,
     });
-    expect(result.permissionCatalog).toHaveLength(29);
+    expect(result.permissionCatalog).toHaveLength(30);
+    expect(result.permissionCatalog).toContainEqual({
+      action: 'CASE_FILING_SUBMIT',
+      label: '提交法院',
+      scopes: ['SELF', 'TEAM', 'DEPARTMENT'],
+    });
     expect(result.permissionCatalog).toContainEqual({
       action: 'NOTARY_LIST_EXPORT',
       label: '导出公证办理清单',

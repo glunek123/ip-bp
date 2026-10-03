@@ -47,7 +47,8 @@ export class CaseReadService {
       | 'WAITING_COMPLAINT'
       | 'WAITING_COMPLAINT_CONFIRMATION'
       | 'WAITING_COMPLAINT_STAMP'
-      | 'WAITING_FILING',
+      | 'WAITING_FILING'
+      | 'WAITING_FORMAL_ACCEPTANCE',
   ) {
     await this.scope(actor);
     const baseWhere: Prisma.CaseWhereInput = {
@@ -138,6 +139,15 @@ export class CaseReadService {
                 ? { teamId: item.responsibleMembership.teamId }
                 : {}),
             })),
+          canSubmitFiling:
+            item.stage === 'WAITING_FILING' &&
+            (await this.access.canAuthorizeCase(actor, 'case.filing.submit', {
+              departmentId: actor.departmentId,
+              responsibleUserId: item.responsibleUserId,
+              ...(item.responsibleMembership.teamId
+                ? { teamId: item.responsibleMembership.teamId }
+                : {}),
+            })),
           createdAt: item.createdAt.toISOString(),
         })),
       ),
@@ -160,6 +170,9 @@ export class CaseReadService {
         WAITING_FILING:
           grouped.find((row) => row.stage === 'WAITING_FILING')?._count._all ??
           0,
+        WAITING_FORMAL_ACCEPTANCE:
+          grouped.find((row) => row.stage === 'WAITING_FORMAL_ACCEPTANCE')
+            ?._count._all ?? 0,
       },
     };
   }
@@ -198,6 +211,16 @@ export class CaseReadService {
             recordedAt: true,
             recordedByUserId: true,
             actorType: true,
+          },
+        },
+        filingSubmission: {
+          select: {
+            courtId: true,
+            courtName: true,
+            submittedAt: true,
+            recordedAt: true,
+            recordedByUserId: true,
+            mediationNo: true,
           },
         },
         createdAt: true,
@@ -282,6 +305,10 @@ export class CaseReadService {
       record.complaintMailing == null
         ? []
         : await this.materials.listFrozenCaseComplaintMailingFiles(actor, id);
+    const filingFiles =
+      record.filingSubmission == null
+        ? []
+        : await this.materials.listFrozenCaseFilingFiles(actor, id);
     const file = (ref: (typeof frozen)[number]) => ({
       materialId: ref.materialId,
       contentVersionId: ref.contentVersionId,
@@ -335,6 +362,15 @@ export class CaseReadService {
       canMailComplaint:
         record.stage === 'WAITING_COMPLAINT_STAMP' &&
         (await this.access.canAuthorizeCase(actor, 'case.complaint.mail', {
+          departmentId: actor.departmentId,
+          responsibleUserId: record.responsibleUserId,
+          ...(record.responsibleMembership.teamId
+            ? { teamId: record.responsibleMembership.teamId }
+            : {}),
+        })),
+      canSubmitFiling:
+        record.stage === 'WAITING_FILING' &&
+        (await this.access.canAuthorizeCase(actor, 'case.filing.submit', {
           departmentId: actor.departmentId,
           responsibleUserId: record.responsibleUserId,
           ...(record.responsibleMembership.teamId
@@ -399,6 +435,27 @@ export class CaseReadService {
                 originalFilename: ref.originalFilename,
                 mimeType: ref.mimeType,
               })),
+            },
+      filingSubmission:
+        record.filingSubmission == null
+          ? null
+          : {
+              court: {
+                id: record.filingSubmission.courtId,
+                name: record.filingSubmission.courtName,
+              },
+              submittedAt: record.filingSubmission.submittedAt
+                .toISOString()
+                .slice(0, 10),
+              recordedAt: record.filingSubmission.recordedAt.toISOString(),
+              recordedByUserId: record.filingSubmission.recordedByUserId,
+              mediationNo: record.filingSubmission.mediationNo,
+              evidenceFiles: filingFiles
+                .filter((ref) => ref.purpose === 'FILING_EVIDENCE')
+                .map(file),
+              screenshotFiles: filingFiles
+                .filter((ref) => ref.purpose === 'FILING_SCREENSHOT')
+                .map(file),
             },
       createdAt: record.createdAt.toISOString(),
       courtCaseNo: record.courtCaseNo,

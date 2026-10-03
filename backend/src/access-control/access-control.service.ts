@@ -26,6 +26,7 @@ export type PermissionAction =
   | 'case.complaint.submit'
   | 'case.complaint.confirm'
   | 'case.complaint.mail'
+  | 'case.filing.submit'
   | 'client.case.read'
   | 'client.case.complaint.mail'
   | 'notary.office.manage'
@@ -283,7 +284,8 @@ export class AccessControlService {
       | 'case.match'
       | 'case.complaint.submit'
       | 'case.complaint.confirm'
-      | 'case.complaint.mail',
+      | 'case.complaint.mail'
+      | 'case.filing.submit',
     facts: CaseResourceFacts,
     reader?: AccessControlSnapshotReader,
   ): Promise<void> {
@@ -304,7 +306,8 @@ export class AccessControlService {
       | 'case.match'
       | 'case.complaint.submit'
       | 'case.complaint.confirm'
-      | 'case.complaint.mail',
+      | 'case.complaint.mail'
+      | 'case.filing.submit',
     facts: CaseResourceFacts,
     reader?: AccessControlSnapshotReader,
   ): Promise<boolean> {

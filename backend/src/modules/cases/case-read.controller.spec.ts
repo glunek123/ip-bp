@@ -11,6 +11,8 @@ import { CaseMatchService } from './case-match.service';
 import { CaseComplaintService } from './case-complaint.service';
 import { CaseComplaintConfirmationService } from './case-complaint-confirmation.service';
 import { CaseComplaintMailingService } from './case-complaint-mailing.service';
+import { CaseFilingService } from './case-filing.service';
+import { FilingCourtService } from './filing-court.service';
 
 const routeCaseId = '33333333-3333-4333-8333-333333333333';
 const routeMailInput = {
@@ -42,6 +44,8 @@ describe('internal complaint mailing route identity', () => {
       {} as never,
       {} as never,
       mailing as never,
+      {} as CaseFilingService,
+      {} as FilingCourtService,
     );
     expect(() =>
       controller.mailComplaint(externalActor, routeCaseId, routeMailInput),
@@ -64,6 +68,8 @@ describe('case read OpenAPI contract', () => {
         { provide: CaseComplaintService, useValue: {} },
         { provide: CaseComplaintConfirmationService, useValue: {} },
         { provide: CaseComplaintMailingService, useValue: {} },
+        { provide: CaseFilingService, useValue: {} },
+        { provide: FilingCourtService, useValue: {} },
       ],
     })
       .overrideGuard(ActorContextGuard)
@@ -114,6 +120,15 @@ describe('case read OpenAPI contract', () => {
       ).toBeDefined();
       expect(
         document.paths['/api/v1/cases/{id}/complaint-mail']?.post,
+      ).toBeDefined();
+      expect(
+        document.paths['/api/v1/cases/{id}/filing-courts']?.get,
+      ).toBeDefined();
+      expect(
+        document.paths['/api/v1/cases/{id}/filing-courts']?.post,
+      ).toBeDefined();
+      expect(
+        document.paths['/api/v1/cases/{id}/filing-submit']?.post,
       ).toBeDefined();
       expect(document.components?.schemas?.CaseFeeDto).toMatchObject({
         properties: {

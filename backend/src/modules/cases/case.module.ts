@@ -10,6 +10,8 @@ import { CaseMatchService } from './case-match.service';
 import { CaseComplaintService } from './case-complaint.service';
 import { CaseComplaintConfirmationService } from './case-complaint-confirmation.service';
 import { CaseComplaintMailingService } from './case-complaint-mailing.service';
+import { CaseFilingService } from './case-filing.service';
+import { FilingCourtService } from './filing-court.service';
 import { ClientCaseController } from './client-case.controller';
 import { ClientCaseService } from './client-case.service';
 
@@ -23,6 +25,8 @@ import { ClientCaseService } from './client-case.service';
     CaseComplaintService,
     CaseComplaintConfirmationService,
     CaseComplaintMailingService,
+    CaseFilingService,
+    FilingCourtService,
     ClientCaseService,
   ],
   exports: [CaseCreationService],

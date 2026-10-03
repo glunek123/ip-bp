@@ -161,6 +161,11 @@ const context = {
       scopes: ['SELF', 'TEAM', 'DEPARTMENT'],
     },
     {
+      action: 'CASE_FILING_SUBMIT',
+      label: '提交法院',
+      scopes: ['SELF', 'TEAM', 'DEPARTMENT'],
+    },
+    {
       action: 'NOTARY_OFFICE_MANAGE',
       label: '管理公证处',
       scopes: ['DEPARTMENT'],
@@ -233,6 +238,7 @@ describe('organization API', () => {
       'CASE_COMPLAINT_SUBMIT',
       'CASE_COMPLAINT_CONFIRM',
       'CASE_COMPLAINT_MAIL',
+      'CASE_FILING_SUBMIT',
       'NOTARY_OFFICE_MANAGE',
       'USER_READ',
       'USER_MANAGE',
@@ -464,7 +470,9 @@ describe('organization API', () => {
                 ? { ...item, scopes: ['TEAM', 'DEPARTMENT'] }
                 : item.action === 'CASE_COMPLAINT_MAIL'
                   ? { ...item, scopes: ['TEAM', 'DEPARTMENT'] }
-                  : item,
+                  : item.action === 'CASE_FILING_SUBMIT'
+                    ? { ...item, scopes: ['TEAM', 'DEPARTMENT'] }
+                    : item,
       ),
     },
   ])('rejects sensitive or invalid management shapes %#', async (body) => {

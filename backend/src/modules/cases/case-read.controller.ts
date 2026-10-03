@@ -25,6 +25,15 @@ import { MatchCaseDto, MatchCaseResponseDto } from './case-match.dto';
 import { CaseComplaintService } from './case-complaint.service';
 import { CaseComplaintConfirmationService } from './case-complaint-confirmation.service';
 import { CaseComplaintMailingService } from './case-complaint-mailing.service';
+import { CaseFilingService } from './case-filing.service';
+import { FilingCourtService } from './filing-court.service';
+import {
+  CreateFilingCourtDto,
+  FilingCourtDto,
+  FilingCourtListDto,
+  SubmitCaseFilingDto,
+  SubmitCaseFilingResponseDto,
+} from './case-filing.dto';
 import {
   MailCaseComplaintDto,
   MailCaseComplaintResponseDto,
@@ -49,6 +58,8 @@ export class CaseReadController {
     private readonly complaint: CaseComplaintService,
     private readonly confirmation: CaseComplaintConfirmationService,
     private readonly mailing: CaseComplaintMailingService,
+    private readonly filing: CaseFilingService,
+    private readonly courts: FilingCourtService,
   ) {}
 
   @Get()
@@ -118,5 +129,34 @@ export class CaseReadController {
         message: '无权登记邮寄',
       });
     return this.mailing.mail(actor, id, body);
+  }
+
+  @Get(':id/filing-courts')
+  @ApiOkResponse({ type: FilingCourtListDto })
+  filingCourts(
+    @CurrentActor() actor: ActorContext,
+    @Param('id', new ParseUUIDPipe()) id: string,
+  ) {
+    return this.courts.list(actor, id);
+  }
+
+  @Post(':id/filing-courts')
+  @ApiOkResponse({ type: FilingCourtDto })
+  createFilingCourt(
+    @CurrentActor() actor: ActorContext,
+    @Param('id', new ParseUUIDPipe()) id: string,
+    @Body() body: CreateFilingCourtDto,
+  ) {
+    return this.courts.create(actor, id, body);
+  }
+
+  @Post(':id/filing-submit')
+  @ApiOkResponse({ type: SubmitCaseFilingResponseDto })
+  submitFiling(
+    @CurrentActor() actor: ActorContext,
+    @Param('id', new ParseUUIDPipe()) id: string,
+    @Body() body: SubmitCaseFilingDto,
+  ) {
+    return this.filing.submit(actor, id, body);
   }
 }

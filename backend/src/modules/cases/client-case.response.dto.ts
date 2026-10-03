@@ -29,8 +29,15 @@ export class ClientCaseFileDto {
 export class ClientCaseListItemDto {
   @ApiProperty({ format: 'uuid' }) id!: string;
   @ApiProperty() businessNo!: string;
-  @ApiProperty({ enum: ['WAITING_COMPLAINT_STAMP', 'WAITING_FILING'] })
-  stage!: 'WAITING_COMPLAINT_STAMP' | 'WAITING_FILING';
+  @ApiProperty({
+    enum: [
+      'WAITING_COMPLAINT_STAMP',
+      'WAITING_FILING',
+      'WAITING_FORMAL_ACCEPTANCE',
+    ],
+  })
+  stage!:
+    'WAITING_COMPLAINT_STAMP' | 'WAITING_FILING' | 'WAITING_FORMAL_ACCEPTANCE';
   @ApiProperty() version!: number;
   @ApiProperty() canMailComplaint!: boolean;
   @ApiProperty() rightsHolderName!: string;

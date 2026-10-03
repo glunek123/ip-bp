@@ -30,6 +30,7 @@ export const internalAssignablePermissionActions = [
   'CASE_COMPLAINT_SUBMIT',
   'CASE_COMPLAINT_CONFIRM',
   'CASE_COMPLAINT_MAIL',
+  'CASE_FILING_SUBMIT',
   'NOTARY_OFFICE_MANAGE',
   'USER_READ',
   'USER_MANAGE',
@@ -111,6 +112,7 @@ const catalog: PermissionCatalogItem[] = [
   { action: 'CASE_COMPLAINT_SUBMIT', label: '提交起诉材料', scopes: allScopes },
   { action: 'CASE_COMPLAINT_CONFIRM', label: '确认诉状', scopes: allScopes },
   { action: 'CASE_COMPLAINT_MAIL', label: '登记诉状邮寄', scopes: allScopes },
+  { action: 'CASE_FILING_SUBMIT', label: '提交法院', scopes: allScopes },
   {
     action: 'NOTARY_OFFICE_MANAGE',
     label: '管理公证处',

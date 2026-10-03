@@ -53,7 +53,12 @@ export class ClientCaseService {
       stage:
         view === 'PENDING'
           ? ('WAITING_COMPLAINT_STAMP' as const)
-          : ('WAITING_FILING' as const),
+          : {
+              in: [
+                'WAITING_FILING' as const,
+                'WAITING_FORMAL_ACCEPTANCE' as const,
+              ],
+            },
     };
     const [items, total] = await Promise.all([
       this.database.case.findMany({
@@ -76,7 +81,10 @@ export class ClientCaseService {
       items: items.map((item) => ({
         id: item.id,
         businessNo: item.businessNo,
-        stage: item.stage as 'WAITING_COMPLAINT_STAMP' | 'WAITING_FILING',
+        stage: item.stage as
+          | 'WAITING_COMPLAINT_STAMP'
+          | 'WAITING_FILING'
+          | 'WAITING_FORMAL_ACCEPTANCE',
         version: item.version,
         canMailComplaint: item.stage === 'WAITING_COMPLAINT_STAMP',
         rightsHolderName: item.rightsHolder.name,
@@ -151,7 +159,10 @@ export class ClientCaseService {
     return {
       id: record.id,
       businessNo: record.businessNo,
-      stage: record.stage as 'WAITING_COMPLAINT_STAMP' | 'WAITING_FILING',
+      stage: record.stage as
+        | 'WAITING_COMPLAINT_STAMP'
+        | 'WAITING_FILING'
+        | 'WAITING_FORMAL_ACCEPTANCE',
       version: record.version,
       canMailComplaint: record.stage === 'WAITING_COMPLAINT_STAMP',
       rightsHolderName: record.rightsHolder.name,

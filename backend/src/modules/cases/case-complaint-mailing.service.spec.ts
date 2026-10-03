@@ -15,6 +15,13 @@ const input = {
   mailedAt: '2026-10-02',
   mailReceiptContentVersionIds: [receiptId],
 };
+const tomorrowInShanghai = () =>
+  new Intl.DateTimeFormat('en-CA', {
+    timeZone: 'Asia/Shanghai',
+    year: 'numeric',
+    month: '2-digit',
+    day: '2-digit',
+  }).format(new Date(Date.now() + 48 * 60 * 60 * 1000));
 
 describe('CaseComplaintMailingService', () => {
   function fixture() {
@@ -174,7 +181,7 @@ describe('CaseComplaintMailingService', () => {
   });
 
   it.each([
-    { ...input, mailedAt: '2026-10-04' },
+    { ...input, mailedAt: tomorrowInShanghai() },
     { ...input, mailedAt: '2026-02-30' },
     { ...input, mailReceiptContentVersionIds: [] },
     { ...input, mailReceiptContentVersionIds: [receiptId, receiptId] },
