@@ -56,7 +56,9 @@ function select(next: ClientCaseView) {
   void router.push({ query: { ...route.query, view: next } });
 }
 function stageLabel(stage: ClientCase['stage']) {
-  return stage === 'WAITING_COMPLAINT_STAMP' ? '诉状待盖章' : '待提交立案';
+  if (stage === 'WAITING_COMPLAINT_STAMP') return '诉状待盖章';
+  if (stage === 'WAITING_FILING') return '待提交立案';
+  return '待正式立案';
 }
 load();
 onBeforeUnmount(() => request?.abort());

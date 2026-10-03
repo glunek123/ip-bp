@@ -84,6 +84,7 @@ beforeEach(() => {
       WAITING_COMPLAINT_CONFIRMATION: 1,
       WAITING_COMPLAINT_STAMP: 1,
       WAITING_FILING: 1,
+      WAITING_FORMAL_ACCEPTANCE: 2,
     },
   });
 });
@@ -162,6 +163,14 @@ async function mountShell(
 }
 
 describe('AppShell', () => {
+  it('adds one formal acceptance stage link with its current count', async () => {
+    const { wrapper } = await mountShell();
+    await wrapper.get('[data-test="case-expand"]').trigger('click');
+    const stages = wrapper.findAll('[data-test="case-stage"]');
+    expect(stages.map((link) => link.text())).toContain('待正式立案2');
+    expect(stages).toHaveLength(6);
+  });
+
   it('renders a minimal, distinct navigation for notary accounts', async () => {
     const notarySession: AuthSession = {
       ...session,
@@ -238,8 +247,8 @@ describe('AppShell', () => {
     expect(
       wrapper.get('[data-test="case-view-mine"]').attributes('href'),
     ).toContain('view=mine');
-    expect(wrapper.findAll('[data-test="case-stage"]')).toHaveLength(5);
-    expect(wrapper.get('[data-test="case-nav"]').text()).toContain('8');
+    expect(wrapper.findAll('[data-test="case-stage"]')).toHaveLength(6);
+    expect(wrapper.get('[data-test="case-nav"]').text()).toContain('10');
     expect(api.listCases).toHaveBeenCalledWith(1, 1, {
       signal: expect.any(AbortSignal),
       view: 'department',

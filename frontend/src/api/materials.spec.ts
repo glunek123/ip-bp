@@ -89,6 +89,141 @@ describe('materials API', () => {
     expect(fetch).not.toHaveBeenCalled();
   });
 
+  it('uploads filing evidence and screenshots with their exact CASE categories', async () => {
+    const evidence = new File(['evidence'], '起诉证据.docx', {
+      type: 'application/vnd.openxmlformats-officedocument.wordprocessingml.document',
+    });
+    const screenshot = new File(['image'], '立案截图.jpg', {
+      type: 'image/jpeg',
+    });
+    let currentCategory = '';
+    const fetch = vi
+      .fn()
+      .mockImplementation(
+        async (url: string | URL | Request, init?: RequestInit) => {
+          if (String(url).endsWith('/content')) {
+            return new Response(
+              JSON.stringify({
+                ...uploaded,
+                originalFilename:
+                  currentCategory === 'FILING_EVIDENCE'
+                    ? evidence.name
+                    : screenshot.name,
+                purpose: currentCategory,
+                mimeType:
+                  currentCategory === 'FILING_EVIDENCE'
+                    ? evidence.type
+                    : screenshot.type,
+                sizeBytes:
+                  currentCategory === 'FILING_EVIDENCE'
+                    ? evidence.size
+                    : screenshot.size,
+              }),
+            );
+          }
+          const body = JSON.parse(String(init?.body)) as {
+            category: string;
+            originalFilename: string;
+          };
+          currentCategory = body.category;
+          const id =
+            body.category === 'FILING_EVIDENCE'
+              ? 'evidence-draft'
+              : 'screenshot-draft';
+          return new Response(
+            JSON.stringify({
+              id,
+              ownerType: 'CASE',
+              ownerId: 'case-1',
+              category: body.category,
+              purpose: body.category,
+              originalFilename: body.originalFilename,
+              declaredMimeType:
+                body.category === 'FILING_EVIDENCE'
+                  ? evidence.type
+                  : screenshot.type,
+              expiresAt: '2026-10-04T00:00:00.000Z',
+            }),
+          );
+        },
+      );
+    vi.stubGlobal('fetch', fetch);
+
+    await expect(
+      uploadMaterialFile({
+        ownerType: 'CASE',
+        ownerId: 'case-1',
+        category: 'FILING_EVIDENCE',
+        purpose: 'FILING_EVIDENCE',
+        file: evidence,
+      }),
+    ).resolves.toMatchObject({ purpose: 'FILING_EVIDENCE' });
+    await expect(
+      uploadMaterialFile({
+        ownerType: 'CASE',
+        ownerId: 'case-1',
+        category: 'FILING_SCREENSHOT',
+        purpose: 'FILING_SCREENSHOT',
+        file: screenshot,
+      }),
+    ).resolves.toMatchObject({ purpose: 'FILING_SCREENSHOT' });
+    expect(JSON.parse(String(fetch.mock.calls[0]?.[1]?.body))).toMatchObject({
+      category: 'FILING_EVIDENCE',
+      purpose: 'FILING_EVIDENCE',
+      originalFilename: evidence.name,
+    });
+    expect(JSON.parse(String(fetch.mock.calls[2]?.[1]?.body))).toMatchObject({
+      category: 'FILING_SCREENSHOT',
+      purpose: 'FILING_SCREENSHOT',
+      originalFilename: screenshot.name,
+    });
+    expect(fetch.mock.calls[1]?.[1]).toEqual(
+      expect.objectContaining({ body: evidence, method: 'PUT' }),
+    );
+    expect(fetch.mock.calls[3]?.[1]).toEqual(
+      expect.objectContaining({ body: screenshot, method: 'PUT' }),
+    );
+  });
+
+  it('enforces the distinct evidence and screenshot file type/size limits', async () => {
+    const fetch = vi.fn();
+    vi.stubGlobal('fetch', fetch);
+    const invalidUploads = [
+      {
+        category: 'FILING_EVIDENCE' as const,
+        purpose: 'FILING_EVIDENCE' as const,
+        file: new File(['bad'], '证据.gif', { type: 'image/gif' }),
+      },
+      {
+        category: 'FILING_SCREENSHOT' as const,
+        purpose: 'FILING_SCREENSHOT' as const,
+        file: new File(['bad'], '截图.docx', {
+          type: 'application/vnd.openxmlformats-officedocument.wordprocessingml.document',
+        }),
+      },
+      {
+        category: 'FILING_EVIDENCE' as const,
+        purpose: 'FILING_EVIDENCE' as const,
+        file: new File([new Uint8Array(50 * 1024 * 1024 + 1)], '超大证据.pdf', {
+          type: 'application/pdf',
+        }),
+      },
+      {
+        category: 'FILING_SCREENSHOT' as const,
+        purpose: 'FILING_SCREENSHOT' as const,
+        file: new File([new Uint8Array(20 * 1024 * 1024 + 1)], '超大截图.png', {
+          type: 'image/png',
+        }),
+      },
+    ];
+    for (const upload of invalidUploads) {
+      await expect(
+        uploadMaterialFile({ ownerType: 'CASE', ownerId: 'case-1', ...upload }),
+      ).rejects.toMatchObject({ code: 'VALIDATION_ERROR' });
+    }
+    expect(fetch).not.toHaveBeenCalled();
+  });
+
   it('creates upload metadata then sends the original File as a raw body', async () => {
     const file = new File(['real-file-content'], '营业执照.pdf', {
       type: 'application/pdf',

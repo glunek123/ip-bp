@@ -37,6 +37,7 @@ const detail = {
   owner: { id: 'user-1', displayName: '负责人' },
   canMatch: false,
   canSubmitComplaint: false,
+  canSubmitFiling: false,
   canConfirmComplaint: true,
   canMailComplaint: false,
   sourceLead: { id: 'lead-1', businessNo: 'LD-1' },
@@ -69,6 +70,7 @@ const detail = {
   },
   complaintConfirmation: null,
   complaintMailing: null,
+  filingSubmission: null,
 } as CaseDetail;
 
 function material(contentVersions = [file]) {

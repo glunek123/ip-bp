@@ -7,6 +7,7 @@ import {
   matchCase,
   submitComplaint,
 } from './cases';
+import * as casesApi from './cases';
 
 afterEach(() => vi.unstubAllGlobals());
 
@@ -21,6 +22,7 @@ const summary = {
   canSubmitComplaint: false,
   canConfirmComplaint: false,
   canMailComplaint: false,
+  canSubmitFiling: false,
   sourceLead: { id: 'lead-1', businessNo: 'LD-1' },
   sourceNotaryMatter: { id: 'matter-1', businessNo: 'NZ-1' },
 };
@@ -80,6 +82,7 @@ const detail = {
   complaint: null,
   complaintConfirmation: null,
   complaintMailing: null,
+  filingSubmission: null,
 };
 function mockJson(payload: unknown) {
   const fetchMock = vi
@@ -90,6 +93,83 @@ function mockJson(payload: unknown) {
 }
 
 describe('cases API', () => {
+  it('reads the formal court choices from the case-scoped API', async () => {
+    const fetchMock = mockJson({
+      items: [
+        {
+          id: '70000000-0000-4000-8000-000000000021',
+          name: '甲市中级人民法院',
+        },
+      ],
+    });
+    const read = Reflect.get(casesApi, 'listFilingCourts') as
+      ((id: string) => Promise<unknown>) | undefined;
+    expect(typeof read).toBe('function');
+    if (!read) return;
+    await expect(read('case-1')).resolves.toEqual([
+      {
+        id: '70000000-0000-4000-8000-000000000021',
+        name: '甲市中级人民法院',
+      },
+    ]);
+    expect(fetchMock.mock.calls[0]?.[0]).toBe(
+      '/api/v1/cases/case-1/filing-courts',
+    );
+  });
+
+  it('creates a real filing court through the case-scoped API', async () => {
+    const fetchMock = mockJson({
+      id: '70000000-0000-4000-8000-000000000022',
+      name: '甲市中级人民法院',
+    });
+    const create = Reflect.get(casesApi, 'createFilingCourt') as
+      ((id: string, input: { name: string }) => Promise<unknown>) | undefined;
+    expect(typeof create).toBe('function');
+    if (!create) return;
+    await expect(
+      create('case-1', { name: '甲市中级人民法院' }),
+    ).resolves.toEqual({
+      id: '70000000-0000-4000-8000-000000000022',
+      name: '甲市中级人民法院',
+    });
+    const [, init] = fetchMock.mock.calls[0] as [string, RequestInit];
+    expect(init.method).toBe('POST');
+    expect(JSON.parse(String(init.body))).toEqual({
+      name: '甲市中级人民法院',
+    });
+  });
+
+  it('submits the exact filing command and validates its durable response', async () => {
+    const fetchMock = mockJson({
+      id: 'case-1',
+      stage: 'WAITING_FORMAL_ACCEPTANCE',
+      version: 6,
+      submittedAt: '2026-10-03',
+      recordedAt: '2026-10-03T03:00:00Z',
+    });
+    const submit = Reflect.get(casesApi, 'submitCaseFiling') as
+      | ((id: string, input: Record<string, unknown>) => Promise<unknown>)
+      | undefined;
+    expect(typeof submit).toBe('function');
+    if (!submit) return;
+    const input = {
+      expectedVersion: 5,
+      idempotencyKey: 'filing-key',
+      courtId: '70000000-0000-4000-8000-000000000023',
+      submittedAt: '2026-10-03',
+      filingEvidenceContentVersionIds: ['70000000-0000-4000-8000-000000000024'],
+      filingScreenshotContentVersionIds: [],
+      mediationNo: '诉调-1',
+    };
+    await expect(submit('case-1', input)).resolves.toMatchObject({
+      stage: 'WAITING_FORMAL_ACCEPTANCE',
+      version: 6,
+    });
+    const [, init] = fetchMock.mock.calls[0] as [string, RequestInit];
+    expect(new Headers(init.headers).get('Idempotency-Key')).toBe('filing-key');
+    expect(JSON.parse(String(init.body))).toEqual(input);
+  });
+
   it('posts the exact internal mailing command and rejects invalid dates locally', async () => {
     const fetchMock = mockJson({
       id: 'case-1',
@@ -132,6 +212,7 @@ describe('cases API', () => {
         WAITING_COMPLAINT_CONFIRMATION: 0,
         WAITING_COMPLAINT_STAMP: 0,
         WAITING_FILING: 0,
+        WAITING_FORMAL_ACCEPTANCE: 0,
       },
     });
     await expect(
@@ -144,6 +225,7 @@ describe('cases API', () => {
         WAITING_COMPLAINT_CONFIRMATION: 0,
         WAITING_COMPLAINT_STAMP: 0,
         WAITING_FILING: 0,
+        WAITING_FORMAL_ACCEPTANCE: 0,
       },
     });
     expect(fetchMock.mock.calls[0]?.[0]).toBe(
@@ -170,6 +252,7 @@ describe('cases API', () => {
         WAITING_COMPLAINT_CONFIRMATION: 0,
         WAITING_COMPLAINT_STAMP: 0,
         WAITING_FILING: 0,
+        WAITING_FORMAL_ACCEPTANCE: 0,
       },
     });
     await expect(
@@ -191,6 +274,7 @@ describe('cases API', () => {
         WAITING_COMPLAINT_CONFIRMATION: 0,
         WAITING_COMPLAINT_STAMP: 0,
         WAITING_FILING: 0,
+        WAITING_FORMAL_ACCEPTANCE: 0,
       },
     });
     await listCases(1, 20, { stage: 'all' });
@@ -222,6 +306,41 @@ describe('cases API', () => {
       defendants: [{ name: '被告甲' }],
       matchedAt: null,
       matchedOn: null,
+    });
+  });
+
+  it('strictly decodes the formal acceptance stage and internal filing facts', async () => {
+    mockJson({
+      ...detail,
+      stage: 'WAITING_FORMAL_ACCEPTANCE',
+      canSubmitFiling: false,
+      filingSubmission: {
+        court: {
+          id: '70000000-0000-4000-8000-000000000011',
+          name: '甲市中级人民法院',
+        },
+        submittedAt: '2026-10-03',
+        recordedAt: '2026-10-03T03:00:00Z',
+        recordedByUserId: '70000000-0000-4000-8000-000000000012',
+        mediationNo: null,
+        evidenceFiles: [
+          {
+            materialId: '70000000-0000-4000-8000-000000000013',
+            contentVersionId: '70000000-0000-4000-8000-000000000014',
+            originalFilename: '起诉状.pdf',
+            mimeType: 'application/pdf',
+          },
+        ],
+        screenshotFiles: [],
+      },
+    });
+    await expect(getCase('case-1')).resolves.toMatchObject({
+      stage: 'WAITING_FORMAL_ACCEPTANCE',
+      filingSubmission: {
+        court: { name: '甲市中级人民法院' },
+        submittedAt: '2026-10-03',
+        evidenceFiles: [{ originalFilename: '起诉状.pdf' }],
+      },
     });
   });
 

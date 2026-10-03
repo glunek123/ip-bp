@@ -20,7 +20,8 @@ const stage = computed<CaseStageFilter>(() =>
   route.query.stage === 'WAITING_COMPLAINT' ||
   route.query.stage === 'WAITING_COMPLAINT_CONFIRMATION' ||
   route.query.stage === 'WAITING_COMPLAINT_STAMP' ||
-  route.query.stage === 'WAITING_FILING'
+  route.query.stage === 'WAITING_FILING' ||
+  route.query.stage === 'WAITING_FORMAL_ACCEPTANCE'
     ? route.query.stage
     : 'all',
 );
@@ -29,7 +30,8 @@ function stageLabel(value: CaseSummary['stage']): string {
   if (value === 'WAITING_COMPLAINT') return '待写诉状';
   if (value === 'WAITING_COMPLAINT_CONFIRMATION') return '诉状待确认';
   if (value === 'WAITING_COMPLAINT_STAMP') return '诉状待盖章';
-  return '待提交立案';
+  if (value === 'WAITING_FILING') return '待提交立案';
+  return '待正式立案';
 }
 const state = ref<'loading' | 'ready' | 'failed'>('loading');
 const items = ref<CaseSummary[]>([]);
@@ -124,7 +126,8 @@ onBeforeUnmount(() => request?.abort());
               item.canMatch ||
               item.canSubmitComplaint ||
               item.canConfirmComplaint ||
-              item.canMailComplaint
+              item.canMailComplaint ||
+              item.canSubmitFiling
                 ? '办理'
                 : '只读'
             }}</span

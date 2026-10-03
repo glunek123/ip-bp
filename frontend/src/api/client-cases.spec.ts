@@ -58,6 +58,18 @@ describe('client cases API', () => {
       complaintFile: file,
     });
   });
+
+  it('decodes the new stage in the existing client projection only', async () => {
+    mock({
+      items: [{ ...item, stage: 'WAITING_FORMAL_ACCEPTANCE' }],
+      total: 1,
+      page: 1,
+      pageSize: 20,
+    });
+    await expect(listClientCases()).resolves.toMatchObject({
+      items: [{ stage: 'WAITING_FORMAL_ACCEPTANCE' }],
+    });
+  });
   it('posts the exact client command and validates the transition', async () => {
     const fetch = mock({
       id: 'case-1',

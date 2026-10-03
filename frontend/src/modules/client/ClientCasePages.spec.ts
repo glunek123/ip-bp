@@ -105,6 +105,23 @@ describe('client case pages', () => {
     expect(wrapper.text()).not.toContain('负责人');
     expect(wrapper.find('[data-test="mailing-submit"]').exists()).toBe(false);
   });
+  it('shows the new stage label while keeping internal filing facts out of the client page', async () => {
+    api.listClientCases.mockResolvedValueOnce({
+      ...list,
+      items: [{ ...list.items[0], stage: 'WAITING_FORMAL_ACCEPTANCE' }],
+    });
+    const listPage = await mountPage('/client/cases');
+    expect(listPage.wrapper.text()).toContain('待正式立案');
+
+    api.getClientCase.mockResolvedValueOnce({
+      ...detail,
+      stage: 'WAITING_FORMAL_ACCEPTANCE',
+    });
+    const detailPage = await mountPage('/client/cases/case-1');
+    expect(detailPage.wrapper.text()).toContain('待正式立案');
+    expect(detailPage.wrapper.text()).not.toContain('提交立案记录');
+    expect(detailPage.wrapper.text()).not.toContain('甲市中级人民法院');
+  });
   it('ignores a late detail response after changing cases and reloads after an authorization revision change', async () => {
     let finish!: (value: typeof detail) => void;
     api.getClientCase.mockImplementation((id: string) =>

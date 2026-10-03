@@ -5,7 +5,8 @@ export type CaseStage =
   | 'WAITING_COMPLAINT'
   | 'WAITING_COMPLAINT_CONFIRMATION'
   | 'WAITING_COMPLAINT_STAMP'
-  | 'WAITING_FILING';
+  | 'WAITING_FILING'
+  | 'WAITING_FORMAL_ACCEPTANCE';
 export type CaseView = 'mine' | 'department';
 export type CaseStageFilter = CaseStage | 'all';
 export type CaseSummary = {
@@ -19,6 +20,7 @@ export type CaseSummary = {
   canSubmitComplaint: boolean;
   canConfirmComplaint: boolean;
   canMailComplaint: boolean;
+  canSubmitFiling: boolean;
   sourceLead: { id: string; businessNo: string };
   sourceNotaryMatter: { id: string; businessNo: string };
 };
@@ -72,6 +74,17 @@ export type CaseDetail = CaseSummary & {
   complaint: ComplaintSubmission | null;
   complaintConfirmation: ComplaintConfirmation | null;
   complaintMailing: CaseComplaintMailing | null;
+  filingSubmission: CaseFilingSubmission | null;
+};
+export type FilingCourt = { id: string; name: string };
+export type CaseFilingSubmission = {
+  court: FilingCourt;
+  submittedAt: string;
+  recordedAt: string;
+  recordedByUserId: string;
+  mediationNo: string | null;
+  evidenceFiles: CaseFile[];
+  screenshotFiles: CaseFile[];
 };
 export type CaseComplaintMailing = {
   mailedAt: string;
@@ -183,7 +196,8 @@ function validStage(value: unknown): value is CaseStage {
     value === 'WAITING_COMPLAINT' ||
     value === 'WAITING_COMPLAINT_CONFIRMATION' ||
     value === 'WAITING_COMPLAINT_STAMP' ||
-    value === 'WAITING_FILING'
+    value === 'WAITING_FILING' ||
+    value === 'WAITING_FORMAL_ACCEPTANCE'
   );
 }
 function source(value: unknown): value is { id: string; businessNo: string } {
@@ -216,6 +230,7 @@ function summary(value: unknown): value is CaseSummary {
       'canSubmitComplaint',
       'canConfirmComplaint',
       'canMailComplaint',
+      'canSubmitFiling',
       'sourceLead',
       'sourceNotaryMatter',
     ]) &&
@@ -231,6 +246,7 @@ function summary(value: unknown): value is CaseSummary {
     typeof value.canSubmitComplaint === 'boolean' &&
     typeof value.canConfirmComplaint === 'boolean' &&
     typeof value.canMailComplaint === 'boolean' &&
+    typeof value.canSubmitFiling === 'boolean' &&
     source(value.sourceLead) &&
     source(value.sourceNotaryMatter)
   );
@@ -308,8 +324,10 @@ function validCaseDetail(value: unknown, id: string): value is CaseDetail {
       'complaint',
       'canConfirmComplaint',
       'canMailComplaint',
+      'canSubmitFiling',
       'complaintConfirmation',
       'complaintMailing',
+      'filingSubmission',
     ]) &&
     value.id === id &&
     summary({
@@ -323,6 +341,7 @@ function validCaseDetail(value: unknown, id: string): value is CaseDetail {
       canSubmitComplaint: value.canSubmitComplaint,
       canConfirmComplaint: value.canConfirmComplaint,
       canMailComplaint: value.canMailComplaint,
+      canSubmitFiling: value.canSubmitFiling,
       sourceLead: value.sourceLead,
       sourceNotaryMatter: value.sourceNotaryMatter,
     }) &&
@@ -381,11 +400,60 @@ function validCaseDetail(value: unknown, id: string): value is CaseDetail {
     typeof value.canSubmitComplaint === 'boolean' &&
     typeof value.canConfirmComplaint === 'boolean' &&
     typeof value.canMailComplaint === 'boolean' &&
+    typeof value.canSubmitFiling === 'boolean' &&
     (value.complaint === null || validComplaint(value.complaint)) &&
     (value.complaintConfirmation === null ||
       validComplaintConfirmation(value.complaintConfirmation)) &&
     (value.complaintMailing === null ||
-      validCaseComplaintMailing(value.complaintMailing))
+      validCaseComplaintMailing(value.complaintMailing)) &&
+    (value.filingSubmission === null ||
+      validCaseFilingSubmission(value.filingSubmission))
+  );
+}
+function validFilingCourt(value: unknown): value is FilingCourt {
+  return (
+    record(value) &&
+    exact(value, ['id', 'name']) &&
+    typeof value.id === 'string' &&
+    /^[0-9a-f]{8}-[0-9a-f]{4}-4[0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$/iu.test(
+      value.id,
+    ) &&
+    nonempty(value.name) &&
+    value.name.trim() === value.name &&
+    value.name.length <= 200
+  );
+}
+function validCaseFilingSubmission(
+  value: unknown,
+): value is CaseFilingSubmission {
+  return (
+    record(value) &&
+    exact(value, [
+      'court',
+      'submittedAt',
+      'recordedAt',
+      'recordedByUserId',
+      'mediationNo',
+      'evidenceFiles',
+      'screenshotFiles',
+    ]) &&
+    validFilingCourt(value.court) &&
+    businessDate(value.submittedAt) &&
+    typeof value.recordedAt === 'string' &&
+    !Number.isNaN(Date.parse(value.recordedAt)) &&
+    typeof value.recordedByUserId === 'string' &&
+    value.recordedByUserId.length > 0 &&
+    (value.mediationNo === null ||
+      (typeof value.mediationNo === 'string' &&
+        value.mediationNo.length >= 1 &&
+        value.mediationNo.length <= 100)) &&
+    Array.isArray(value.evidenceFiles) &&
+    value.evidenceFiles.length >= 1 &&
+    value.evidenceFiles.length <= 50 &&
+    value.evidenceFiles.every(caseFile) &&
+    Array.isArray(value.screenshotFiles) &&
+    value.screenshotFiles.length <= 10 &&
+    value.screenshotFiles.every(caseFile)
   );
 }
 function validCaseComplaintMailing(
@@ -506,6 +574,7 @@ export async function listCases(
       'WAITING_COMPLAINT_CONFIRMATION',
       'WAITING_COMPLAINT_STAMP',
       'WAITING_FILING',
+      'WAITING_FORMAL_ACCEPTANCE',
     ]) ||
     !Number.isInteger(response.counts.PENDING_MATCH) ||
     (response.counts.PENDING_MATCH as number) < 0 ||
@@ -516,10 +585,134 @@ export async function listCases(
     !Number.isInteger(response.counts.WAITING_COMPLAINT_STAMP) ||
     (response.counts.WAITING_COMPLAINT_STAMP as number) < 0 ||
     !Number.isInteger(response.counts.WAITING_FILING) ||
-    (response.counts.WAITING_FILING as number) < 0
+    (response.counts.WAITING_FILING as number) < 0 ||
+    !Number.isInteger(response.counts.WAITING_FORMAL_ACCEPTANCE) ||
+    (response.counts.WAITING_FORMAL_ACCEPTANCE as number) < 0
   )
     throw invalidResponse();
   return response as unknown as CaseList;
+}
+
+export type SubmitCaseFilingInput = {
+  expectedVersion: number;
+  idempotencyKey: string;
+  courtId: string;
+  submittedAt: string;
+  filingEvidenceContentVersionIds: string[];
+  filingScreenshotContentVersionIds?: string[];
+  mediationNo?: string;
+};
+export type SubmitCaseFilingResult = {
+  id: string;
+  stage: 'WAITING_FORMAL_ACCEPTANCE';
+  version: number;
+  submittedAt: string;
+  recordedAt: string;
+};
+function uuidV4(value: unknown): value is string {
+  return (
+    typeof value === 'string' &&
+    /^[0-9a-f]{8}-[0-9a-f]{4}-4[0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$/iu.test(
+      value,
+    )
+  );
+}
+function uniqueVersions(values: string[], minimum: number, maximum: number) {
+  return (
+    values.length >= minimum &&
+    values.length <= maximum &&
+    new Set(values).size === values.length &&
+    values.every(uuidV4)
+  );
+}
+export async function listFilingCourts(id: string): Promise<FilingCourt[]> {
+  const response = await getJson(
+    `/cases/${encodeURIComponent(id)}/filing-courts`,
+  );
+  if (
+    !record(response) ||
+    !exact(response, ['items']) ||
+    !Array.isArray(response.items) ||
+    !response.items.every(validFilingCourt)
+  )
+    throw invalidResponse();
+  return response.items;
+}
+export async function createFilingCourt(
+  id: string,
+  input: { name: string },
+): Promise<FilingCourt> {
+  const name = input.name.trim();
+  if (!name || name.length > 200)
+    throw new ApiError(
+      '请输入真实法院名称（1～200 个字符）。',
+      400,
+      'VALIDATION_ERROR',
+    );
+  const response = await requestJson(
+    `/cases/${encodeURIComponent(id)}/filing-courts`,
+    { method: 'POST', body: { name } },
+  );
+  if (!validFilingCourt(response) || response.name !== name)
+    throw invalidResponse();
+  return response;
+}
+export async function submitCaseFiling(
+  id: string,
+  input: SubmitCaseFilingInput,
+): Promise<SubmitCaseFilingResult> {
+  const screenshots = input.filingScreenshotContentVersionIds ?? [];
+  const mediationNo = input.mediationNo?.trim();
+  if (
+    !Number.isInteger(input.expectedVersion) ||
+    input.expectedVersion < 1 ||
+    !input.idempotencyKey ||
+    input.idempotencyKey !== input.idempotencyKey.trim() ||
+    input.idempotencyKey.length > 128 ||
+    !uuidV4(input.courtId) ||
+    !businessDate(input.submittedAt) ||
+    input.submittedAt > todayShanghai() ||
+    !uniqueVersions(input.filingEvidenceContentVersionIds, 1, 50) ||
+    !uniqueVersions(screenshots, 0, 10) ||
+    (input.mediationNo !== undefined &&
+      (!mediationNo || mediationNo.length > 100))
+  )
+    throw new ApiError(
+      '提交立案信息无效，请检查日期、法院和材料。',
+      400,
+      'VALIDATION_ERROR',
+    );
+  const body = {
+    expectedVersion: input.expectedVersion,
+    idempotencyKey: input.idempotencyKey,
+    courtId: input.courtId,
+    submittedAt: input.submittedAt,
+    filingEvidenceContentVersionIds: input.filingEvidenceContentVersionIds,
+    ...(input.filingScreenshotContentVersionIds === undefined
+      ? {}
+      : { filingScreenshotContentVersionIds: screenshots }),
+    ...(mediationNo === undefined ? {} : { mediationNo }),
+  };
+  const response = await requestJson(
+    `/cases/${encodeURIComponent(id)}/filing-submit`,
+    {
+      method: 'POST',
+      headers: { 'Idempotency-Key': input.idempotencyKey },
+      body,
+    },
+  );
+  if (
+    !record(response) ||
+    !exact(response, ['id', 'stage', 'version', 'submittedAt', 'recordedAt']) ||
+    response.id !== id ||
+    response.stage !== 'WAITING_FORMAL_ACCEPTANCE' ||
+    response.version !== input.expectedVersion + 1 ||
+    response.submittedAt !== input.submittedAt ||
+    typeof response.recordedAt !== 'string' ||
+    Number.isNaN(Date.parse(response.recordedAt))
+  )
+    throw invalidResponse();
+  return response as SubmitCaseFilingResult;
 }
 
 export async function mailCaseComplaint(

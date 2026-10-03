@@ -17,6 +17,9 @@ const api = vi.hoisted(() => ({
   uploadMaterialFile: vi.fn(),
   listOwnerMaterials: vi.fn(),
   downloadMaterialVersion: vi.fn(),
+  listFilingCourts: vi.fn(),
+  createFilingCourt: vi.fn(),
+  submitCaseFiling: vi.fn(),
 }));
 vi.mock('../../api/cases', () => ({
   listCases: api.listCases,
@@ -24,6 +27,9 @@ vi.mock('../../api/cases', () => ({
   matchCase: api.matchCase,
   submitComplaint: api.submitComplaint,
   confirmCaseComplaint: api.confirmCaseComplaint,
+  listFilingCourts: api.listFilingCourts,
+  createFilingCourt: api.createFilingCourt,
+  submitCaseFiling: api.submitCaseFiling,
   todayShanghai: () => '2026-09-29',
 }));
 vi.mock('../../api/materials', () => ({
@@ -45,6 +51,7 @@ beforeEach(() => {
         owner: { id: 'user-1', displayName: '负责人' },
         canMatch: true,
         canSubmitComplaint: false,
+        canSubmitFiling: false,
         sourceLead: { id: 'lead-1', businessNo: 'LD-1' },
         sourceNotaryMatter: { id: 'matter-1', businessNo: 'NZ-1' },
       },
@@ -96,10 +103,16 @@ beforeEach(() => {
     matchedOn: null,
     canSubmitComplaint: false,
     canConfirmComplaint: false,
+    canSubmitFiling: false,
     complaint: null,
     complaintConfirmation: null,
+    complaintMailing: null,
+    filingSubmission: null,
   });
   api.listOwnerMaterials.mockResolvedValue({ items: [], total: 0 });
+  api.listFilingCourts.mockResolvedValue([]);
+  api.createFilingCourt.mockResolvedValue({ id: 'court-1', name: '真实法院' });
+  api.submitCaseFiling.mockResolvedValue({});
 });
 afterEach(() => {
   vi.unstubAllGlobals();
@@ -142,6 +155,7 @@ function confirmationDetail(
     canMatch: false,
     canSubmitComplaint: false,
     canConfirmComplaint: stage === 'WAITING_COMPLAINT_CONFIRMATION',
+    canSubmitFiling: false,
     courtCaseNo: null,
     department: { id: 'department-1', name: '知产部' },
     customer: { id: 'customer-1', name: '客户甲' },
@@ -197,6 +211,8 @@ function confirmationDetail(
             confirmedByUserId: 'user-1',
           }
         : null,
+    complaintMailing: null,
+    filingSubmission: null,
   };
 }
 
@@ -267,6 +283,66 @@ describe('case pages', () => {
     const wrapper = await mountRoute('/cases', CaseListPage);
     expect(wrapper.get('[data-test="case-list"]').text()).toContain('办理');
     expect(wrapper.get('[data-test="case-list"]').text()).not.toContain('只读');
+  });
+
+  it('shows one new case stage in the list using the formal acceptance label', async () => {
+    const base = await api.listCases();
+    api.listCases.mockResolvedValueOnce({
+      ...base,
+      items: [
+        {
+          ...base.items[0],
+          stage: 'WAITING_FORMAL_ACCEPTANCE',
+          canSubmitFiling: false,
+        },
+      ],
+    });
+    const wrapper = await mountRoute(
+      '/cases?stage=WAITING_FORMAL_ACCEPTANCE',
+      CaseListPage,
+    );
+    expect(wrapper.get('.page-head').text()).toContain('待正式立案');
+    expect(wrapper.get('[data-test="case-list"]').text()).toContain(
+      '待正式立案',
+    );
+  });
+
+  it('shows the filing form only for an authorized case awaiting filing', async () => {
+    api.getCase.mockResolvedValueOnce({
+      ...confirmationDetail('case-1', 'WAITING_COMPLAINT_STAMP', 5),
+      stage: 'WAITING_FILING',
+      canSubmitFiling: true,
+      complaintMailing: null,
+      filingSubmission: null,
+    });
+    const wrapper = await mountRoute('/cases/case-1', CaseDetailPage);
+    expect(wrapper.find('[data-test="case-filing-panel"]').exists()).toBe(true);
+    expect(api.listFilingCourts).toHaveBeenCalledWith('case-1');
+  });
+
+  it('shows the saved filing fact and confirmed amount read-only after submission', async () => {
+    api.getCase.mockResolvedValueOnce({
+      ...confirmationDetail('case-1', 'WAITING_COMPLAINT_STAMP', 6),
+      stage: 'WAITING_FORMAL_ACCEPTANCE',
+      canSubmitFiling: false,
+      complaintMailing: null,
+      filingSubmission: {
+        court: { id: 'court-1', name: '甲市中级人民法院' },
+        submittedAt: '2026-10-03',
+        recordedAt: '2026-10-03T03:00:00Z',
+        recordedByUserId: 'user-1',
+        mediationNo: '诉调-001',
+        evidenceFiles: [],
+        screenshotFiles: [],
+      },
+    });
+    const wrapper = await mountRoute('/cases/case-1', CaseDetailPage);
+    expect(wrapper.text()).toContain('待正式立案');
+    expect(wrapper.text()).toContain('甲市中级人民法院');
+    expect(wrapper.text()).toContain('¥ 123.45');
+    expect(wrapper.find('[data-test="case-filing-panel"]').exists()).toBe(
+      false,
+    );
   });
 
   it('uses sidebar scope and stage query and preserves them when opening a case', async () => {

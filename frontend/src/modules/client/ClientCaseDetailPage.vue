@@ -80,7 +80,9 @@ onBeforeUnmount(() => request?.abort());
               <span class="pill">{{
                 item.stage === 'WAITING_COMPLAINT_STAMP'
                   ? '诉状待盖章'
-                  : '待提交立案'
+                  : item.stage === 'WAITING_FILING'
+                    ? '待提交立案'
+                    : '待正式立案'
               }}</span>
               · 权利主体：{{ item.rightsHolderName }}
             </p>

@@ -22,6 +22,7 @@ import { notifyWorkflowChanged } from '../../app/workflow-events';
 import { useAuthStore } from '../../stores/auth';
 import CaseComplaintConfirmationPanel from './CaseComplaintConfirmationPanel.vue';
 import CaseComplaintMailingPanel from './CaseComplaintMailingPanel.vue';
+import CaseFilingPanel from './CaseFilingPanel.vue';
 
 const route = useRoute();
 const auth = useAuthStore();
@@ -268,7 +269,8 @@ function stageLabel(stage: CaseDetail['stage']): string {
   if (stage === 'WAITING_COMPLAINT') return '待写诉状';
   if (stage === 'WAITING_COMPLAINT_CONFIRMATION') return '诉状待确认';
   if (stage === 'WAITING_COMPLAINT_STAMP') return '诉状待盖章';
-  return '待提交立案';
+  if (stage === 'WAITING_FILING') return '待提交立案';
+  return '待正式立案';
 }
 function removeDefendant(index: number) {
   if (defendants.value.length > 1) defendants.value.splice(index, 1);
@@ -641,6 +643,66 @@ onBeforeUnmount(() => request?.abort());
           @changed="load"
           @refresh="load"
         />
+        <CaseFilingPanel
+          v-if="item.stage === 'WAITING_FILING'"
+          :item="item"
+          :context-key="identity"
+          @changed="load"
+          @refresh="load"
+        />
+        <section
+          v-if="item.filingSubmission"
+          class="demo-card demo-card--pad"
+          data-test="case-filing-record"
+        >
+          <h2 class="form-section-title">法院提交立案记录</h2>
+          <p>法院：{{ item.filingSubmission.court.name }}</p>
+          <p>实际提交日期：{{ item.filingSubmission.submittedAt }}</p>
+          <p>诉调号：{{ item.filingSubmission.mediationNo ?? '未填写' }}</p>
+          <p>
+            系统登记时间：{{
+              new Date(item.filingSubmission.recordedAt).toLocaleString(
+                'zh-CN',
+                { timeZone: 'Asia/Shanghai', hour12: false },
+              )
+            }}
+          </p>
+          <p>
+            已确认金额：{{
+              item.complaintConfirmation?.amountState === 'KNOWN'
+                ? `¥ ${item.complaintConfirmation.amount}`
+                : '待确认'
+            }}（只读）
+          </p>
+          <h3>冻结的起诉及证据材料</h3>
+          <ul>
+            <li
+              v-for="file in item.filingSubmission.evidenceFiles"
+              :key="file.contentVersionId"
+            >
+              {{ file.originalFilename }}（{{ file.mimeType }}）
+              <ElButton
+                text
+                @click="download(file.materialId, file.contentVersionId)"
+                >下载</ElButton
+              >
+            </li>
+          </ul>
+          <h3>冻结的立案截图</h3>
+          <ul>
+            <li
+              v-for="file in item.filingSubmission.screenshotFiles"
+              :key="file.contentVersionId"
+            >
+              {{ file.originalFilename }}（{{ file.mimeType }}）
+              <ElButton
+                text
+                @click="download(file.materialId, file.contentVersionId)"
+                >下载</ElButton
+              >
+            </li>
+          </ul>
+        </section>
         <section
           v-if="item.stage === 'PENDING_MATCH' && item.canMatch"
           class="demo-card demo-card--pad"

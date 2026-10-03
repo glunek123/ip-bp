@@ -17,7 +17,9 @@ export type MaterialCategory =
   | 'NOTARY_DISCLOSURE'
   | 'COMPLAINT'
   | 'AUTHORIZATION'
-  | 'MAIL_RECEIPT';
+  | 'MAIL_RECEIPT'
+  | 'FILING_EVIDENCE'
+  | 'FILING_SCREENSHOT';
 export type MaterialPurpose =
   | 'IDENTITY_FULL'
   | 'IDENTITY_FRONT'
@@ -28,7 +30,9 @@ export type MaterialPurpose =
   | 'NOTARY_DISCLOSURE'
   | 'COMPLAINT'
   | 'AUTHORIZATION'
-  | 'MAIL_RECEIPT';
+  | 'MAIL_RECEIPT'
+  | 'FILING_EVIDENCE'
+  | 'FILING_SCREENSHOT';
 
 export type UploadedMaterial = {
   materialId: string;
@@ -116,7 +120,9 @@ function isCategory(value: unknown): value is MaterialCategory {
     value === 'NOTARY_DISCLOSURE' ||
     value === 'COMPLAINT' ||
     value === 'AUTHORIZATION' ||
-    value === 'MAIL_RECEIPT'
+    value === 'MAIL_RECEIPT' ||
+    value === 'FILING_EVIDENCE' ||
+    value === 'FILING_SCREENSHOT'
   );
 }
 
@@ -131,7 +137,9 @@ function isPurpose(value: unknown): value is MaterialPurpose {
     value === 'NOTARY_DISCLOSURE' ||
     value === 'COMPLAINT' ||
     value === 'AUTHORIZATION' ||
-    value === 'MAIL_RECEIPT'
+    value === 'MAIL_RECEIPT' ||
+    value === 'FILING_EVIDENCE' ||
+    value === 'FILING_SCREENSHOT'
   );
 }
 
@@ -238,7 +246,7 @@ export async function uploadMaterialFile(
     throw new ApiError('文件名不能为空', 400, 'VALIDATION_ERROR');
   }
   if (input.ownerType === 'CASE') {
-    const allowed = new Map([
+    const complaintTypes = new Map([
       ['.pdf', 'application/pdf'],
       ['.doc', 'application/msword'],
       [
@@ -246,7 +254,10 @@ export async function uploadMaterialFile(
         'application/vnd.openxmlformats-officedocument.wordprocessingml.document',
       ],
     ]);
-    if (input.category === 'MAIL_RECEIPT') {
+    if (
+      input.category === 'MAIL_RECEIPT' ||
+      input.category === 'FILING_SCREENSHOT'
+    ) {
       const receiptTypes = new Map([
         ['.pdf', 'application/pdf'],
         ['.jpg', 'image/jpeg'],
@@ -257,31 +268,40 @@ export async function uploadMaterialFile(
       if (
         receiptTypes.get(extension ?? '') !== input.file.type ||
         input.file.size > 20 * 1024 * 1024 ||
-        input.purpose !== 'MAIL_RECEIPT' ||
+        input.purpose !== input.category ||
         !input.ownerId
       ) {
         throw new ApiError(
-          '邮寄凭证仅支持不超过 20MB 的 PDF、JPG 或 PNG 文件',
+          '邮寄凭证或立案截图仅支持不超过 20MB 的 PDF、JPG 或 PNG 文件',
           400,
           'VALIDATION_ERROR',
         );
       }
     } else {
       const extension = originalFilename.toLowerCase().match(/\.[^.]+$/u)?.[0];
+      const evidenceTypes = new Map<string, string>([
+        ...complaintTypes.entries(),
+        ['.jpg', 'image/jpeg'],
+        ['.jpeg', 'image/jpeg'],
+        ['.png', 'image/png'],
+      ]);
+      const allowed =
+        input.category === 'FILING_EVIDENCE' ? evidenceTypes : complaintTypes;
       if (
         extension === undefined ||
         allowed.get(extension) !== input.file.type ||
         input.file.size > 50 * 1024 * 1024
       ) {
         throw new ApiError(
-          '起诉材料仅支持不超过 50MB 的 PDF、DOC 或 DOCX 文件',
+          '起诉材料仅支持不超过 50MB 的 PDF、DOC、DOCX、JPG 或 PNG 文件',
           400,
           'VALIDATION_ERROR',
         );
       }
       if (
         (input.category !== 'COMPLAINT' &&
-          input.category !== 'AUTHORIZATION') ||
+          input.category !== 'AUTHORIZATION' &&
+          input.category !== 'FILING_EVIDENCE') ||
         input.purpose !== input.category ||
         !input.ownerId
       ) {
