@@ -21,7 +21,7 @@ export async function verifyCaseComplaintMailingMigration() {
     '20261003013000_add_case_client_mailing_actor_paths',
   ];
   const migrations = (await readdir(migrationRoot))
-    .filter((name) => /^\d{14}_/u.test(name))
+    .filter((name) => /^\d{14}_/u.test(name) && name <= targets.at(-1))
     .sort();
   if (migrations.slice(-4).join('|') !== targets.join('|'))
     throw new Error('Unexpected migration order');

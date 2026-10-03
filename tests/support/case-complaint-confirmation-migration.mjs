@@ -18,7 +18,7 @@ export async function verifyCaseComplaintConfirmationMigration() {
   const factsTarget = '20261002020500_add_case_complaint_confirmation_facts';
   const grantTarget = '20261002021000_add_case_complaint_confirmation_grants';
   const migrations = (await readdir(migrationRoot))
-    .filter((name) => /^\d{14}_/u.test(name))
+    .filter((name) => /^\d{14}_/u.test(name) && name <= grantTarget)
     .sort();
   if (
     migrations.at(-3) !== enumTarget ||
