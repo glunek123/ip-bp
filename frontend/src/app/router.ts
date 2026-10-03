@@ -18,6 +18,8 @@ import ClientLeadListPage from '../modules/client/ClientLeadListPage.vue';
 import ClientLeadDetailPage from '../modules/client/ClientLeadDetailPage.vue';
 import ClientNotaryListPage from '../modules/client/ClientNotaryListPage.vue';
 import ClientNotaryDetailPage from '../modules/client/ClientNotaryDetailPage.vue';
+import ClientCaseListPage from '../modules/client/ClientCaseListPage.vue';
+import ClientCaseDetailPage from '../modules/client/ClientCaseDetailPage.vue';
 import NotaryPortalListPage from '../modules/notary/NotaryPortalListPage.vue';
 import NotaryPortalDetailPage from '../modules/notary/NotaryPortalDetailPage.vue';
 import CaseListPage from '../modules/cases/CaseListPage.vue';
@@ -31,6 +33,20 @@ export const router = createRouter({
     { path: '/login', component: LoginPage, meta: { public: true } },
     { path: '/health', component: HealthPage, meta: { public: true } },
     { path: '/', redirect: '/customers' },
+    {
+      path: '/client/cases',
+      component: ClientCaseListPage,
+      meta: { audience: 'CLIENT', section: '案件', breadcrumbs: ['案件'] },
+    },
+    {
+      path: '/client/cases/:id',
+      component: ClientCaseDetailPage,
+      meta: {
+        audience: 'CLIENT',
+        section: '案件',
+        breadcrumbs: ['案件', '案件详情'],
+      },
+    },
     {
       path: '/notary-portal/matters',
       component: NotaryPortalListPage,

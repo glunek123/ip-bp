@@ -34,6 +34,7 @@ const caseStageCards: ReadonlyArray<{ stage: CaseStage; label: string }> = [
   { stage: 'WAITING_COMPLAINT', label: '待写诉状' },
   { stage: 'WAITING_COMPLAINT_CONFIRMATION', label: '诉状待确认' },
   { stage: 'WAITING_COMPLAINT_STAMP', label: '诉状待盖章' },
+  { stage: 'WAITING_FILING', label: '待提交立案' },
 ];
 const notaryStageCards: ReadonlyArray<{
   stage: NotaryListStage;
@@ -88,6 +89,9 @@ const isSettingsRoute = computed(
 );
 const isClientLeadRoute = computed(() =>
   route.path.startsWith('/client/leads'),
+);
+const isClientCaseRoute = computed(() =>
+  route.path.startsWith('/client/cases'),
 );
 const isClientNotaryRoute = computed(() =>
   route.path.startsWith('/client/notary-matters'),
@@ -517,6 +521,15 @@ async function logout(): Promise<void> {
           </svg>
           <span>线索审核</span>
         </RouterLink>
+        <RouterLink
+          v-if="isClient"
+          class="app-nav__item"
+          :class="{ active: isClientCaseRoute }"
+          data-test="client-case-nav"
+          to="/client/cases"
+          @click="closeDrawer"
+          ><span>案件</span></RouterLink
+        >
         <RouterLink
           v-if="isClient"
           class="app-nav__item"

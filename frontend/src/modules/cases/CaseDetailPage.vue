@@ -21,6 +21,7 @@ import {
 import { notifyWorkflowChanged } from '../../app/workflow-events';
 import { useAuthStore } from '../../stores/auth';
 import CaseComplaintConfirmationPanel from './CaseComplaintConfirmationPanel.vue';
+import CaseComplaintMailingPanel from './CaseComplaintMailingPanel.vue';
 
 const route = useRoute();
 const auth = useAuthStore();
@@ -266,7 +267,8 @@ function stageLabel(stage: CaseDetail['stage']): string {
   if (stage === 'PENDING_MATCH') return '待匹配';
   if (stage === 'WAITING_COMPLAINT') return '待写诉状';
   if (stage === 'WAITING_COMPLAINT_CONFIRMATION') return '诉状待确认';
-  return '诉状待盖章';
+  if (stage === 'WAITING_COMPLAINT_STAMP') return '诉状待盖章';
+  return '待提交立案';
 }
 function removeDefendant(index: number) {
   if (defendants.value.length > 1) defendants.value.splice(index, 1);
@@ -625,6 +627,15 @@ onBeforeUnmount(() => request?.abort());
           v-if="
             item.stage === 'WAITING_COMPLAINT_CONFIRMATION' ||
             item.stage === 'WAITING_COMPLAINT_STAMP'
+          "
+          :item="item"
+          @changed="load"
+          @refresh="load"
+        />
+        <CaseComplaintMailingPanel
+          v-if="
+            item.stage === 'WAITING_COMPLAINT_STAMP' ||
+            item.stage === 'WAITING_FILING'
           "
           :item="item"
           @changed="load"

@@ -27,7 +27,8 @@ function stageLabel(value: CaseSummary['stage']): string {
   if (value === 'PENDING_MATCH') return '待匹配';
   if (value === 'WAITING_COMPLAINT') return '待写诉状';
   if (value === 'WAITING_COMPLAINT_CONFIRMATION') return '诉状待确认';
-  return '诉状待盖章';
+  if (value === 'WAITING_COMPLAINT_STAMP') return '诉状待盖章';
+  return '待提交立案';
 }
 const state = ref<'loading' | 'ready' | 'failed'>('loading');
 const items = ref<CaseSummary[]>([]);
@@ -121,7 +122,8 @@ onBeforeUnmount(() => request?.abort());
             <span class="pill">{{
               item.canMatch ||
               item.canSubmitComplaint ||
-              item.canConfirmComplaint
+              item.canConfirmComplaint ||
+              item.canMailComplaint
                 ? '办理'
                 : '只读'
             }}</span

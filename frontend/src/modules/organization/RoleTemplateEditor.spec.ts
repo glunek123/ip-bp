@@ -51,6 +51,11 @@ const permissionCatalog = [
     label: '确认诉状',
     scopes: ['SELF', 'TEAM', 'DEPARTMENT'] as const,
   },
+  {
+    action: 'CASE_COMPLAINT_MAIL' as const,
+    label: '登记诉状邮寄',
+    scopes: ['SELF', 'TEAM', 'DEPARTMENT'] as const,
+  },
 ].map((item) => ({ ...item, scopes: [...item.scopes] }));
 
 afterEach(() => vi.clearAllMocks());
@@ -252,6 +257,32 @@ describe('RoleTemplateEditor', () => {
       expect.objectContaining({
         grants: expect.arrayContaining([
           { action: 'CASE_COMPLAINT_CONFIRM', scope: 'SELF' },
+        ]),
+      }),
+    );
+  });
+
+  it('offers internal complaint mailing with the backend scope choices', async () => {
+    api.updateRoleTemplate.mockResolvedValue(role);
+    const wrapper = mount(RoleTemplateEditor, {
+      props: { mode: 'edit', role, permissionCatalog },
+    });
+    await flushPromises();
+    expect(wrapper.text()).toContain('登记诉状邮寄');
+    expect(
+      wrapper.get('[data-test="scope-CASE_COMPLAINT_MAIL"]').findAll('option'),
+    ).toHaveLength(3);
+    await wrapper.get('[data-test="grant-CASE_COMPLAINT_MAIL"]').setValue(true);
+    await wrapper
+      .get('[data-test="scope-CASE_COMPLAINT_MAIL"]')
+      .setValue('SELF');
+    await wrapper.get('[data-test="role-template-save"]').trigger('click');
+    await flushPromises();
+    expect(api.updateRoleTemplate).toHaveBeenCalledWith(
+      role.id,
+      expect.objectContaining({
+        grants: expect.arrayContaining([
+          { action: 'CASE_COMPLAINT_MAIL', scope: 'SELF' },
         ]),
       }),
     );

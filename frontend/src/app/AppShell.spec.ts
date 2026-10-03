@@ -83,6 +83,7 @@ beforeEach(() => {
       WAITING_COMPLAINT: 2,
       WAITING_COMPLAINT_CONFIRMATION: 1,
       WAITING_COMPLAINT_STAMP: 1,
+      WAITING_FILING: 1,
     },
   });
 });
@@ -222,6 +223,11 @@ describe('AppShell', () => {
     expect(clientShell.wrapper.find('[data-test="case-nav"]').exists()).toBe(
       false,
     );
+    expect(
+      clientShell.wrapper
+        .get('[data-test="client-case-nav"]')
+        .attributes('href'),
+    ).toBe('/client/cases');
   });
 
   it('offers one case stage directory under the selected personal or department view', async () => {
@@ -232,8 +238,8 @@ describe('AppShell', () => {
     expect(
       wrapper.get('[data-test="case-view-mine"]').attributes('href'),
     ).toContain('view=mine');
-    expect(wrapper.findAll('[data-test="case-stage"]')).toHaveLength(4);
-    expect(wrapper.get('[data-test="case-nav"]').text()).toContain('7');
+    expect(wrapper.findAll('[data-test="case-stage"]')).toHaveLength(5);
+    expect(wrapper.get('[data-test="case-nav"]').text()).toContain('8');
     expect(api.listCases).toHaveBeenCalledWith(1, 1, {
       signal: expect.any(AbortSignal),
       view: 'department',

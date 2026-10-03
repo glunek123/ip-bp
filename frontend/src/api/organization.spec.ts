@@ -156,6 +156,11 @@ const context = {
       scopes: ['SELF', 'TEAM', 'DEPARTMENT'],
     },
     {
+      action: 'CASE_COMPLAINT_MAIL',
+      label: '登记诉状邮寄',
+      scopes: ['SELF', 'TEAM', 'DEPARTMENT'],
+    },
+    {
       action: 'NOTARY_OFFICE_MANAGE',
       label: '管理公证处',
       scopes: ['DEPARTMENT'],
@@ -227,6 +232,7 @@ describe('organization API', () => {
       'CASE_MATCH',
       'CASE_COMPLAINT_SUBMIT',
       'CASE_COMPLAINT_CONFIRM',
+      'CASE_COMPLAINT_MAIL',
       'NOTARY_OFFICE_MANAGE',
       'USER_READ',
       'USER_MANAGE',
@@ -363,6 +369,25 @@ describe('organization API', () => {
     });
   });
 
+  it('accepts a self-scoped CASE_COMPLAINT_MAIL role grant', async () => {
+    const body = {
+      ...context,
+      roles: [
+        {
+          ...context.roles[0]!,
+          grants: [{ action: 'CASE_COMPLAINT_MAIL', scope: 'SELF' }],
+        },
+      ],
+    };
+    vi.stubGlobal(
+      'fetch',
+      vi.fn().mockResolvedValue(new Response(JSON.stringify(body))),
+    );
+    await expect(getOrganizationManagementContext()).resolves.toMatchObject({
+      roles: [{ grants: [{ action: 'CASE_COMPLAINT_MAIL', scope: 'SELF' }] }],
+    });
+  });
+
   it('rejects malformed management data', async () => {
     vi.stubGlobal(
       'fetch',
@@ -437,7 +462,9 @@ describe('organization API', () => {
               ? { ...item, scopes: ['TEAM', 'DEPARTMENT'] }
               : item.action === 'CASE_COMPLAINT_CONFIRM'
                 ? { ...item, scopes: ['TEAM', 'DEPARTMENT'] }
-                : item,
+                : item.action === 'CASE_COMPLAINT_MAIL'
+                  ? { ...item, scopes: ['TEAM', 'DEPARTMENT'] }
+                  : item,
       ),
     },
   ])('rejects sensitive or invalid management shapes %#', async (body) => {

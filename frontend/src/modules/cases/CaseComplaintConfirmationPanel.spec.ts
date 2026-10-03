@@ -38,6 +38,7 @@ const detail = {
   canMatch: false,
   canSubmitComplaint: false,
   canConfirmComplaint: true,
+  canMailComplaint: false,
   sourceLead: { id: 'lead-1', businessNo: 'LD-1' },
   sourceNotaryMatter: { id: 'matter-1', businessNo: 'NZ-1' },
   courtCaseNo: null,
@@ -67,6 +68,7 @@ const detail = {
     authorizationFiles: [],
   },
   complaintConfirmation: null,
+  complaintMailing: null,
 } as CaseDetail;
 
 function material(contentVersions = [file]) {

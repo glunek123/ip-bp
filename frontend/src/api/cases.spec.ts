@@ -3,6 +3,7 @@ import {
   confirmCaseComplaint,
   getCase,
   listCases,
+  mailCaseComplaint,
   matchCase,
   submitComplaint,
 } from './cases';
@@ -19,6 +20,7 @@ const summary = {
   canMatch: true,
   canSubmitComplaint: false,
   canConfirmComplaint: false,
+  canMailComplaint: false,
   sourceLead: { id: 'lead-1', businessNo: 'LD-1' },
   sourceNotaryMatter: { id: 'matter-1', businessNo: 'NZ-1' },
 };
@@ -77,6 +79,7 @@ const detail = {
   canSubmitComplaint: false,
   complaint: null,
   complaintConfirmation: null,
+  complaintMailing: null,
 };
 function mockJson(payload: unknown) {
   const fetchMock = vi
@@ -87,6 +90,36 @@ function mockJson(payload: unknown) {
 }
 
 describe('cases API', () => {
+  it('posts the exact internal mailing command and rejects invalid dates locally', async () => {
+    const fetchMock = mockJson({
+      id: 'case-1',
+      stage: 'WAITING_FILING',
+      version: 5,
+      mailedAt: '2026-10-02',
+      recordedAt: '2026-10-03T01:00:00Z',
+    });
+    const input = {
+      expectedVersion: 4,
+      idempotencyKey: 'mail-key',
+      mailedAt: '2026-10-02',
+      mailReceiptContentVersionIds: ['receipt-v1'],
+    };
+    await expect(mailCaseComplaint('case-1', input)).resolves.toMatchObject({
+      stage: 'WAITING_FILING',
+      version: 5,
+    });
+    expect(fetchMock.mock.calls[0]?.[0]).toBe(
+      '/api/v1/cases/case-1/complaint-mail',
+    );
+    expect(JSON.parse(String(fetchMock.mock.calls[0]?.[1]?.body))).toEqual(
+      input,
+    );
+    const invalidFetch = mockJson({});
+    await expect(
+      mailCaseComplaint('case-1', { ...input, mailedAt: '2026-02-30' }),
+    ).rejects.toMatchObject({ code: 'VALIDATION_ERROR' });
+    expect(invalidFetch).not.toHaveBeenCalled();
+  });
   it('decodes list and sends the selected view and stage filters', async () => {
     const fetchMock = mockJson({
       items: [summary],
@@ -98,6 +131,7 @@ describe('cases API', () => {
         WAITING_COMPLAINT: 1,
         WAITING_COMPLAINT_CONFIRMATION: 0,
         WAITING_COMPLAINT_STAMP: 0,
+        WAITING_FILING: 0,
       },
     });
     await expect(
@@ -109,6 +143,7 @@ describe('cases API', () => {
         WAITING_COMPLAINT: 1,
         WAITING_COMPLAINT_CONFIRMATION: 0,
         WAITING_COMPLAINT_STAMP: 0,
+        WAITING_FILING: 0,
       },
     });
     expect(fetchMock.mock.calls[0]?.[0]).toBe(
@@ -134,6 +169,7 @@ describe('cases API', () => {
         WAITING_COMPLAINT: 1,
         WAITING_COMPLAINT_CONFIRMATION: 0,
         WAITING_COMPLAINT_STAMP: 0,
+        WAITING_FILING: 0,
       },
     });
     await expect(
@@ -154,6 +190,7 @@ describe('cases API', () => {
         WAITING_COMPLAINT: 1,
         WAITING_COMPLAINT_CONFIRMATION: 0,
         WAITING_COMPLAINT_STAMP: 0,
+        WAITING_FILING: 0,
       },
     });
     await listCases(1, 20, { stage: 'all' });

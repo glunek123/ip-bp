@@ -100,6 +100,10 @@ describe('authentication routing', () => {
 
     await router.push('/client/leads/lead-1');
     expect(router.currentRoute.value.path).toBe('/client/leads/lead-1');
+    await router.push('/client/cases');
+    expect(router.currentRoute.value.path).toBe('/client/cases');
+    await router.push('/client/cases/case-1');
+    expect(router.currentRoute.value.path).toBe('/client/cases/case-1');
 
     auth.session = {
       principalType: 'INTERNAL',

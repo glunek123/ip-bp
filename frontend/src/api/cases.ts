@@ -4,7 +4,8 @@ export type CaseStage =
   | 'PENDING_MATCH'
   | 'WAITING_COMPLAINT'
   | 'WAITING_COMPLAINT_CONFIRMATION'
-  | 'WAITING_COMPLAINT_STAMP';
+  | 'WAITING_COMPLAINT_STAMP'
+  | 'WAITING_FILING';
 export type CaseView = 'mine' | 'department';
 export type CaseStageFilter = CaseStage | 'all';
 export type CaseSummary = {
@@ -17,6 +18,7 @@ export type CaseSummary = {
   canMatch: boolean;
   canSubmitComplaint: boolean;
   canConfirmComplaint: boolean;
+  canMailComplaint: boolean;
   sourceLead: { id: string; businessNo: string };
   sourceNotaryMatter: { id: string; businessNo: string };
 };
@@ -69,6 +71,14 @@ export type CaseDetail = CaseSummary & {
   matchedOn: string | null;
   complaint: ComplaintSubmission | null;
   complaintConfirmation: ComplaintConfirmation | null;
+  complaintMailing: CaseComplaintMailing | null;
+};
+export type CaseComplaintMailing = {
+  mailedAt: string;
+  recordedAt: string;
+  recordedByUserId: string;
+  actorType: 'INTERNAL' | 'CLIENT';
+  receiptFiles: CaseFile[];
 };
 export type ComplaintSubmission = {
   amountState: 'KNOWN' | 'PENDING';
@@ -128,6 +138,12 @@ export type ConfirmCaseComplaintInput = {
   changeNote?: string;
   confirmDisclose: boolean;
 };
+export type MailCaseComplaintInput = {
+  expectedVersion: number;
+  idempotencyKey: string;
+  mailedAt: string;
+  mailReceiptContentVersionIds: string[];
+};
 
 function record(value: unknown): value is Record<string, unknown> {
   return typeof value === 'object' && value !== null && !Array.isArray(value);
@@ -166,7 +182,8 @@ function validStage(value: unknown): value is CaseStage {
     value === 'PENDING_MATCH' ||
     value === 'WAITING_COMPLAINT' ||
     value === 'WAITING_COMPLAINT_CONFIRMATION' ||
-    value === 'WAITING_COMPLAINT_STAMP'
+    value === 'WAITING_COMPLAINT_STAMP' ||
+    value === 'WAITING_FILING'
   );
 }
 function source(value: unknown): value is { id: string; businessNo: string } {
@@ -198,6 +215,7 @@ function summary(value: unknown): value is CaseSummary {
       'canMatch',
       'canSubmitComplaint',
       'canConfirmComplaint',
+      'canMailComplaint',
       'sourceLead',
       'sourceNotaryMatter',
     ]) &&
@@ -212,6 +230,7 @@ function summary(value: unknown): value is CaseSummary {
     typeof value.canMatch === 'boolean' &&
     typeof value.canSubmitComplaint === 'boolean' &&
     typeof value.canConfirmComplaint === 'boolean' &&
+    typeof value.canMailComplaint === 'boolean' &&
     source(value.sourceLead) &&
     source(value.sourceNotaryMatter)
   );
@@ -288,7 +307,9 @@ function validCaseDetail(value: unknown, id: string): value is CaseDetail {
       'canSubmitComplaint',
       'complaint',
       'canConfirmComplaint',
+      'canMailComplaint',
       'complaintConfirmation',
+      'complaintMailing',
     ]) &&
     value.id === id &&
     summary({
@@ -301,6 +322,7 @@ function validCaseDetail(value: unknown, id: string): value is CaseDetail {
       canMatch: value.canMatch,
       canSubmitComplaint: value.canSubmitComplaint,
       canConfirmComplaint: value.canConfirmComplaint,
+      canMailComplaint: value.canMailComplaint,
       sourceLead: value.sourceLead,
       sourceNotaryMatter: value.sourceNotaryMatter,
     }) &&
@@ -358,9 +380,34 @@ function validCaseDetail(value: unknown, id: string): value is CaseDetail {
     (value.matchedOn === null || businessDate(value.matchedOn)) &&
     typeof value.canSubmitComplaint === 'boolean' &&
     typeof value.canConfirmComplaint === 'boolean' &&
+    typeof value.canMailComplaint === 'boolean' &&
     (value.complaint === null || validComplaint(value.complaint)) &&
     (value.complaintConfirmation === null ||
-      validComplaintConfirmation(value.complaintConfirmation))
+      validComplaintConfirmation(value.complaintConfirmation)) &&
+    (value.complaintMailing === null ||
+      validCaseComplaintMailing(value.complaintMailing))
+  );
+}
+function validCaseComplaintMailing(
+  value: unknown,
+): value is CaseComplaintMailing {
+  return (
+    record(value) &&
+    exact(value, [
+      'mailedAt',
+      'recordedAt',
+      'recordedByUserId',
+      'actorType',
+      'receiptFiles',
+    ]) &&
+    businessDate(value.mailedAt) &&
+    typeof value.recordedAt === 'string' &&
+    !Number.isNaN(Date.parse(value.recordedAt)) &&
+    nonempty(value.recordedByUserId) &&
+    (value.actorType === 'INTERNAL' || value.actorType === 'CLIENT') &&
+    Array.isArray(value.receiptFiles) &&
+    value.receiptFiles.length > 0 &&
+    value.receiptFiles.every(caseFile)
   );
 }
 function validComplaint(value: unknown): value is ComplaintSubmission {
@@ -458,6 +505,7 @@ export async function listCases(
       'WAITING_COMPLAINT',
       'WAITING_COMPLAINT_CONFIRMATION',
       'WAITING_COMPLAINT_STAMP',
+      'WAITING_FILING',
     ]) ||
     !Number.isInteger(response.counts.PENDING_MATCH) ||
     (response.counts.PENDING_MATCH as number) < 0 ||
@@ -466,10 +514,71 @@ export async function listCases(
     !Number.isInteger(response.counts.WAITING_COMPLAINT_CONFIRMATION) ||
     (response.counts.WAITING_COMPLAINT_CONFIRMATION as number) < 0 ||
     !Number.isInteger(response.counts.WAITING_COMPLAINT_STAMP) ||
-    (response.counts.WAITING_COMPLAINT_STAMP as number) < 0
+    (response.counts.WAITING_COMPLAINT_STAMP as number) < 0 ||
+    !Number.isInteger(response.counts.WAITING_FILING) ||
+    (response.counts.WAITING_FILING as number) < 0
   )
     throw invalidResponse();
   return response as unknown as CaseList;
+}
+
+export async function mailCaseComplaint(
+  id: string,
+  input: MailCaseComplaintInput,
+  audience: 'internal' | 'client' = 'internal',
+): Promise<{
+  id: string;
+  stage: 'WAITING_FILING';
+  version: number;
+  mailedAt: string;
+  recordedAt: string;
+}> {
+  if (
+    !Number.isInteger(input.expectedVersion) ||
+    input.expectedVersion < 1 ||
+    !input.idempotencyKey.trim() ||
+    input.idempotencyKey.length > 128 ||
+    !businessDate(input.mailedAt) ||
+    input.mailedAt > todayShanghai() ||
+    input.mailReceiptContentVersionIds.length < 1 ||
+    input.mailReceiptContentVersionIds.length > 10 ||
+    new Set(input.mailReceiptContentVersionIds).size !==
+      input.mailReceiptContentVersionIds.length ||
+    input.mailReceiptContentVersionIds.some((versionId) => !nonempty(versionId))
+  ) {
+    throw new ApiError(
+      '邮寄信息无效，请检查日期和凭证',
+      400,
+      'VALIDATION_ERROR',
+    );
+  }
+  const path =
+    audience === 'client'
+      ? `/client/cases/${encodeURIComponent(id)}/complaint-mail`
+      : `/cases/${encodeURIComponent(id)}/complaint-mail`;
+  const response = await requestJson(path, {
+    method: 'POST',
+    headers: { 'Idempotency-Key': input.idempotencyKey },
+    body: input,
+  });
+  if (
+    !record(response) ||
+    !exact(response, ['id', 'stage', 'version', 'mailedAt', 'recordedAt']) ||
+    response.id !== id ||
+    response.stage !== 'WAITING_FILING' ||
+    response.version !== input.expectedVersion + 1 ||
+    response.mailedAt !== input.mailedAt ||
+    typeof response.recordedAt !== 'string' ||
+    Number.isNaN(Date.parse(response.recordedAt))
+  )
+    throw invalidResponse();
+  return response as {
+    id: string;
+    stage: 'WAITING_FILING';
+    version: number;
+    mailedAt: string;
+    recordedAt: string;
+  };
 }
 
 export async function getCase(

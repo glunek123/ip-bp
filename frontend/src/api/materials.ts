@@ -16,7 +16,8 @@ export type MaterialCategory =
   | 'NOTARY_CERTIFICATE'
   | 'NOTARY_DISCLOSURE'
   | 'COMPLAINT'
-  | 'AUTHORIZATION';
+  | 'AUTHORIZATION'
+  | 'MAIL_RECEIPT';
 export type MaterialPurpose =
   | 'IDENTITY_FULL'
   | 'IDENTITY_FRONT'
@@ -26,7 +27,8 @@ export type MaterialPurpose =
   | 'NOTARY_CERTIFICATE'
   | 'NOTARY_DISCLOSURE'
   | 'COMPLAINT'
-  | 'AUTHORIZATION';
+  | 'AUTHORIZATION'
+  | 'MAIL_RECEIPT';
 
 export type UploadedMaterial = {
   materialId: string;
@@ -113,7 +115,8 @@ function isCategory(value: unknown): value is MaterialCategory {
     value === 'NOTARY_CERTIFICATE' ||
     value === 'NOTARY_DISCLOSURE' ||
     value === 'COMPLAINT' ||
-    value === 'AUTHORIZATION'
+    value === 'AUTHORIZATION' ||
+    value === 'MAIL_RECEIPT'
   );
 }
 
@@ -127,7 +130,8 @@ function isPurpose(value: unknown): value is MaterialPurpose {
     value === 'NOTARY_CERTIFICATE' ||
     value === 'NOTARY_DISCLOSURE' ||
     value === 'COMPLAINT' ||
-    value === 'AUTHORIZATION'
+    value === 'AUTHORIZATION' ||
+    value === 'MAIL_RECEIPT'
   );
 }
 
@@ -242,24 +246,47 @@ export async function uploadMaterialFile(
         'application/vnd.openxmlformats-officedocument.wordprocessingml.document',
       ],
     ]);
-    const extension = originalFilename.toLowerCase().match(/\.[^.]+$/u)?.[0];
-    if (
-      extension === undefined ||
-      allowed.get(extension) !== input.file.type ||
-      input.file.size > 50 * 1024 * 1024
-    ) {
-      throw new ApiError(
-        '起诉材料仅支持不超过 50MB 的 PDF、DOC 或 DOCX 文件',
-        400,
-        'VALIDATION_ERROR',
-      );
-    }
-    if (
-      (input.category !== 'COMPLAINT' && input.category !== 'AUTHORIZATION') ||
-      input.purpose !== input.category ||
-      !input.ownerId
-    ) {
-      throw new ApiError('起诉材料归属信息无效', 400, 'VALIDATION_ERROR');
+    if (input.category === 'MAIL_RECEIPT') {
+      const receiptTypes = new Map([
+        ['.pdf', 'application/pdf'],
+        ['.jpg', 'image/jpeg'],
+        ['.jpeg', 'image/jpeg'],
+        ['.png', 'image/png'],
+      ]);
+      const extension = originalFilename.toLowerCase().match(/\.[^.]+$/u)?.[0];
+      if (
+        receiptTypes.get(extension ?? '') !== input.file.type ||
+        input.file.size > 20 * 1024 * 1024 ||
+        input.purpose !== 'MAIL_RECEIPT' ||
+        !input.ownerId
+      ) {
+        throw new ApiError(
+          '邮寄凭证仅支持不超过 20MB 的 PDF、JPG 或 PNG 文件',
+          400,
+          'VALIDATION_ERROR',
+        );
+      }
+    } else {
+      const extension = originalFilename.toLowerCase().match(/\.[^.]+$/u)?.[0];
+      if (
+        extension === undefined ||
+        allowed.get(extension) !== input.file.type ||
+        input.file.size > 50 * 1024 * 1024
+      ) {
+        throw new ApiError(
+          '起诉材料仅支持不超过 50MB 的 PDF、DOC 或 DOCX 文件',
+          400,
+          'VALIDATION_ERROR',
+        );
+      }
+      if (
+        (input.category !== 'COMPLAINT' &&
+          input.category !== 'AUTHORIZATION') ||
+        input.purpose !== input.category ||
+        !input.ownerId
+      ) {
+        throw new ApiError('起诉材料归属信息无效', 400, 'VALIDATION_ERROR');
+      }
     }
   }
   const draft = await requestJson('/materials/upload-drafts', {
