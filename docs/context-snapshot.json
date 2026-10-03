@@ -1,6 +1,6 @@
 {
   "version": 1,
-  "recordedAt": "2026-10-03T17:49:30.281Z",
+  "recordedAt": "2026-10-03T18:03:03.291Z",
   "files": {
     ".cursor/rules/verified-feature-integration.mdc": "ffd2306612ba6f09749629c5adb9e645f7f37aa6ee27ff1bc1c3d8b14efeca38",
     ".env.example": "07211cde5c2b59efc21b619b752d4c9b871f0980d2d64ca3c146ad6151fd27ca",
@@ -358,9 +358,9 @@
     "docs/engineering-verification.md": "b7f80f141d4a7da5f28944bf5e3ba6d76d294b326f5d614029964b02f539d122",
     "docs/environment-lock.json": "a994a66b4d2a596aa6d24895f1195f74ad512b44a23927d871c255ed4ae1e00a",
     "docs/environment.md": "2c07c5c2ccecb30055e318b6670c8c910d4474e691d7fd1d645016a2d657debf",
-    "docs/feature-roadmap.md": "a7ed002a2673ed7ae0542be38e974657cf798be708300f845b03adbf768d707c",
+    "docs/feature-roadmap.md": "6126fdb75f70310b34433be76f59d6ecc089a3a3e0f5e5487a87dae9ec51597b",
     "docs/project-status-history-through-2026-09-18.md": "c7c858eb4b2a935ce78a85c75e5d3227691382186101d6ff6911249e38729208",
-    "docs/project-status.md": "372880a64cc580c3988a12a7ed1aec6ebcb11c8467f6a87d038f5b2316af32fb",
+    "docs/project-status.md": "f0cbebaf0154df0beab5a8b6a94986a9cc67fb95c93136d8fd0ce567c4511e6f",
     "docs/security/customer-foundation-q2-review.md": "f5745450cb85aedde92892646c6c824bc9670b8c9bf6f0d9761fe5e46cc6d109",
     "docs/security/local-account-auth-q2-review.md": "4e7b38d73b2597e483340490c788aa034ef6f465baccc12240be7ad2c6ec61f1",
     "docs/spec/v0.1/BUSINESS-REVIEW.md": "950c73ac72470d2e3556fd416701b4486944c1e3ef21c84be11132cbe617c24e",
@@ -375,7 +375,7 @@
     "docs/spec/v0.1/READINESS.md": "dfdf59f4f4b8c0ddae894ea5069bd42e90ec6a223a327edb487e12d6e2ae24c1",
     "docs/spec/v0.1/README.md": "5e78250a01575c9c9e116e360d9009882cfcfeccce85c7c63daeb72e856e6d3d",
     "docs/spec/v0.1/TECHNICAL-DESIGN.md": "90f86c667991d99d8f0e47650b3ed8171b6b87838e7718a5747416a565cf2275",
-    "docs/spec/v0.1/VALIDATION.md": "53639ced5d7d1724aa6eda04e27ecd4ef15f25f9fa1415647ad15f0b2674f46b",
+    "docs/spec/v0.1/VALIDATION.md": "43fa8238d54aa4c7ed5d93c852607bfa1c0486e1d4bf6571c1ac2645a1fd9a58",
     "docs/spec/v0.1/modules/calendar.md": "ca604f89e11e797c49c186286335064f051a9115819b468ab281735f84fb5daa",
     "docs/spec/v0.1/modules/cases.md": "c7fdeadd0ce83e8c45416e379396a20cea01af11cbf526424d2a12c788b794df",
     "docs/spec/v0.1/modules/customers.md": "4fd47e577a6c7fd9494e3758bac6c150391532735bf2fb156cd69b43b73d55d6",

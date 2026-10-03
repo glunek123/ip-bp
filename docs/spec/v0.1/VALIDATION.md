@@ -1,5 +1,32 @@
 # SPEC-001 文档验证
 
+## CORE-CA-005 提交法院（2026-10-04）
+
+实际通过正式Level 2逐项门禁的业务候选为`b33462401fa128742dc2b427c8375682454fe05e`、tree`ea684d26264c064022025617b5d11c7f08eecc43`，分支`codex/core-ca-005-court-filing`，main基线`b28e0f35fa8de21f752145e43177b7defe450341`。有权内部运营按现有Action／负责范围，选择或通过正式入口录入真实部门法院、填写提交日期、可选诉调号并上传精确证据版本，原子从`WAITING_FILING`推进至`WAITING_FORMAL_ACCEPTANCE`。不改已确认金额，不提前实现正式受理；客户新阶段可读，但内部提交事实及立案材料仍不可见。
+
+新增法院列表／录入`GET／POST /api/v1/cases/:id/filing-courts`、提交`POST /api/v1/cases/:id/filing-submit`，两个POST成功码为201。新增cases所属`FilingCourt`、`CaseFilingSubmission`／`CaseFilingVersion`／`CaseFilingReceipt`，独立`case.filing.submit`及CASE材料`FILING_EVIDENCE`／`FILING_SCREENSHOT`。版本、当前账号／范围／阶段／法院／精确文件重新校验，提交事实、冻结引用、成功审计、回执与推进处于同一事务；撤权先于重放检查。运营真实表单、法院唯一选择自动完成／多选、必填提示、操作影响、已知错误／未知结果原请求原键重试与新阶段侧栏均已验证；未复制共享认证、范围或事务机制。
+
+三份新增前向迁移为`20261004010000_add_case_filing_enums`、`20261004011000_add_case_filing_facts`、`20261004012000_add_case_filing_grants`。仅部署到`backend/.env.test`独立测试库，未改旧迁移、操作开发／生产库或重置持久化卷。迁移专项覆盖空库67份全链、上一支持64份schema旧事实／回执／Grant保留、每份失败原子与向前重试及SQL负向。数据库约束保护单行事实和引用，组合业务门槛由正式Command原子保证，不冒称SQL能独立覆盖全部不变量。
+
+| 实际检查                                                     | 结果                              | 实测命令包装耗时 |
+| ------------------------------------------------------------ | --------------------------------- | ---------------- |
+| 后端cases／materials／access-control／OpenAPI定向Jest        | 退出0；25套件316/316              | 16.673秒         |
+| 前端案件／客户投影／材料／权限目录／人员角色／壳层定向Vitest | 退出0；13文件161/161              | 9.247秒          |
+| `pnpm check:fast:prepared`                                   | 退出0；架构、前后端／根类型和Lint | 24.288秒         |
+| 累计受影响文本Prettier                                       | 退出0；非空范围，含`.d.mts`       | 3.613秒          |
+| `pnpm build:prepared`                                        | 退出0；前后端构建                 | 14.177秒         |
+| 七文件隔离PostgreSQL／Chromium组合                           | 退出0；27/27，单worker、无重试    | 105.160秒        |
+
+准确命令、候选及原始日志位置见`.local/ca005/b334624-gate-report.md`与`b334624-{backend-unit,frontend-unit,check-fast,format,build,e2e}.log`。E2E实际命令为`pnpm test:e2e tests/e2e/case-filing-migration.spec.ts tests/e2e/case-filing-database.spec.ts tests/e2e/case-filing.spec.ts tests/e2e/cases.spec.ts tests/e2e/case-complaint-confirmation.spec.ts tests/e2e/case-complaint-mailing.spec.ts tests/e2e/case-complaint-mailing-database.spec.ts --output=.local/ca005/b334624-test-results`；HTML在`b334624-playwright-report/index.html`。真实账号浏览器证明正常来源链、法院录入、上传／提交、刷新／重登、冻结文件字节、同部门只读和客户不披露；数据库证明当前撤权、企业／部门隔离、异参同键、过期版本／错误阶段、并发单胜以及审计／事实／冻结／回执故障整笔回滚。组合同时回归既有匹配、诉状确认与客户／内部邮寄。
+
+固定候选提交前针对相同文件内容的标准`context:record`、`context:check:strict`、`spec:check`及diff检查均退出0，日志`candidate-2-preflight.log`；此前只读检查仅报告已审组件一处漂移。Prisma生成与validate在f9候选退出0，此后仅Vue全局对象引用修复、生成输入不变，prepared门禁复用该生成物且保留全部类型覆盖。Node v24.21.0／pnpm11.27.0，每项正式命令前后可观察HEAD／tree与干净状态一致，环境fingerprint均`5eda1feed3489f2cf83c4228cd79afbc395b83c9d5ef9a96cc7c99b3e56130f1`；指纹不证明数据库内容不变。
+
+独立Sol Task和Final Review及定向补审均ACCEPTED、未关闭C／I／M为0，报告`.local/ca005/task-1-review.md`与`final-review.md`。初始Swagger201、提交未知结果分类及正式首候选3处DOM对象lint错误均已修复并补验。f9正式首候选单测通过但静态门禁退出1，不是通过证据；只改组件对象引用、未放宽lint，聚焦8/8后原主体补审关闭，再固定b334执行上述门禁。开发期浏览器早期4轮失败与后续通过的原始日志／报告均保留，不冒充本轮正式结果；Task1 Command最初是编译失败而非行为RED，部分中间长输出仅留工具记录，不能声称全程test-first或所有中间日志落盘。
+
+本Slice完整verify启动0次、未过滤全量E2E启动0次；正式七文件组合启动1次并通过。按现行Level 2规则，cases暂无正式scope，实际执行定向门禁，不伪称Evidence v2或全仓验收。Vite大chunk、既有pg重叠查询弃用及颜色环境警告为非阻断；故障注入预期500对应通过的回滚断言，未忽略失败或增加重试。Token用量未取得，效果尚未量化。
+
+上述业务结果只归属于固定b334候选及其tree。此后累计收口仅补本验证摘要、路线图完成态／唯一Current与Next、项目恢复摘要及其已解释快照，不修改模块Spec、计划、业务契约／权限／AC或代码、迁移、测试、构建／运行配置／环境。核对从实际证据候选到收口工作区的完整提交链、累计diff、暂存／未暂存和相关未跟踪项，解释漂移后标准记录快照；现有受影响Prettier、Spec、严格上下文、引用／状态一致性和diff专项实际结果保存`.local/ca005/closeout-doc-check.log`。原业务证据仍适用，但不称收口HEAD实跑b334门禁，不要求本记录写入自身提交哈希。CA-005已验收、尚未推送／合并／发布；开发／生产迁移未执行，后续集成tree和远端必需检查仍按规则核对。
+
 ## CORE-CA-004 客户盖章邮寄（2026-10-03）
 
 实际通过Level 3完整门禁的固定业务候选为`e30f708b3d95285ca085451090dc500f0192a899`、tree`9a4c850549a29a22b2336a261939560333334a9e`，分支`codex/core-ca-004-complaint-mailing`，基于已集成CA-003的`main@58e405665ea295890cc949c33854b525d902ba9f`。来源客户企业当前有效有权账号或覆盖目标案件的有权运营，登记真实邮寄日期与1～10份精确邮寄凭证版本，单案原子从`WAITING_COMPLAINT_STAMP`进入`WAITING_FILING`。客户真实密码登录后只见本企业允许案件、已确认诉状、冻结授权材料及邮寄凭证，不可读取内部费用／人员／未确认版本；同部门非办理人只读并可下载获准文件，公证处及跨企业／部门拒绝。
