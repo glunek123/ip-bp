@@ -10,7 +10,7 @@ CORE-CA-004按Level 3开发；业务能力状态及唯一Current／Next以[功�
 
 工作分支：`codex/core-ca-004-complaint-mailing`，基于已更新`main@58e405665ea295890cc949c33854b525d902ba9f`。CA-003确认诉状已集成`main`；唯一Current为**CORE-CA-004｜客户盖章邮寄（开发中）**，Next为CORE-CA-005提交法院。
 
-CA-004按Level 3处理，涉及单案邮寄流程的客户与运营双身份及受限客户上传／审计身份路径。范围和规则见[CA-004契约](spec/v0.1/modules/cases.md#core-ca-004-客户盖章邮寄契约)及[实施计划](superpowers/plans/2026-10-03-core-ca-004-complaint-mailing.md)。后端Task 1固定于`2cdb03d784625af37c032a0a6de42fa752e2d4ea`，独立Review待执行；客户端页面和正式整体验收尚未完成，不推进Next。
+CA-004按Level 3处理，涉及单案邮寄流程的客户与运营双身份及受限客户上传／审计身份路径。范围和规则见[CA-004契约](spec/v0.1/modules/cases.md#core-ca-004-客户盖章邮寄契约)及[实施计划](superpowers/plans/2026-10-03-core-ca-004-complaint-mailing.md)。后端Task 1固定于`108f683c6d373ed3aae7e578120cb00587e57a65`，独立Review已接受且无未关闭finding；客户端页面和正式整体验收尚未完成，不推进Next。
 
 ## 已实现
 
@@ -26,4 +26,4 @@ CA-003集成提交为`58e405665ea295890cc949c33854b525d902ba9f`，tree为`9bb941
 
 ## 下一步
 
-先完成高风险Task 1独立Sol Review并关闭finding，再由Luna接UI，最后Final Review与Level 3完整门禁；独立测试库已前向部署64份迁移，未reset。开发／生产环境不迁移。
+由Luna接已审查通过的后端接口完成UI，随后Final Review与Level 3完整门禁；独立测试库已前向部署64份迁移，未reset。开发／生产环境不迁移。
