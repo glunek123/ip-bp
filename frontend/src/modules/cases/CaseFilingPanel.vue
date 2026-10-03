@@ -160,7 +160,10 @@ function key(): string {
     : `${Date.now()}-${Math.random().toString(16).slice(2)}`;
 }
 type FilingCategory = 'FILING_EVIDENCE' | 'FILING_SCREENSHOT';
-function supported(file: File, category: FilingCategory): boolean {
+function supported(
+  file: InstanceType<typeof globalThis.File>,
+  category: FilingCategory,
+): boolean {
   const extension = file.name.toLowerCase().match(/\.[^.]+$/u)?.[0];
   const types =
     category === 'FILING_EVIDENCE'
@@ -183,9 +186,12 @@ function supported(file: File, category: FilingCategory): boolean {
         ]);
   return extension !== undefined && types.get(extension) === file.type;
 }
-async function uploadFiles(event: Event, category: FilingCategory) {
+async function uploadFiles(
+  event: InstanceType<typeof globalThis.Event>,
+  category: FilingCategory,
+) {
   const input = event.target;
-  if (!(input instanceof HTMLInputElement)) return;
+  if (!(input instanceof globalThis.HTMLInputElement)) return;
   const selected = Array.from(input.files ?? []);
   input.value = '';
   if (!selected.length || locked.value || unknownRequest.value !== null) return;

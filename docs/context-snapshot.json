@@ -1,6 +1,6 @@
 {
   "version": 1,
-  "recordedAt": "2026-10-03T17:40:28.899Z",
+  "recordedAt": "2026-10-03T17:49:30.281Z",
   "files": {
     ".cursor/rules/verified-feature-integration.mdc": "ffd2306612ba6f09749629c5adb9e645f7f37aa6ee27ff1bc1c3d8b14efeca38",
     ".env.example": "07211cde5c2b59efc21b619b752d4c9b871f0980d2d64ca3c146ad6151fd27ca",
@@ -501,7 +501,7 @@
     "frontend/src/modules/cases/CaseComplaintMailingPanel.vue": "b8b441e2d96cc56e42b39b276c39121c9eb8d9737a029170e5fd17b4a5febe61",
     "frontend/src/modules/cases/CaseDetailPage.vue": "5481e6e439391233237b729e9e0f6f3ab559a14761eca80a8c85f3d25eedcd88",
     "frontend/src/modules/cases/CaseFilingPanel.spec.ts": "cbd35d21d200aafe6c7c1ee09b8f1b976ceb953dd1232aa84585a8d899725491",
-    "frontend/src/modules/cases/CaseFilingPanel.vue": "3ab8f88dc5e5b6c5000ca0b87a3338624a61aaa5c31a314684af97960b188491",
+    "frontend/src/modules/cases/CaseFilingPanel.vue": "845e918e8511aa204145d03bb6707be300812916764ac8c96a7683da76b16611",
     "frontend/src/modules/cases/CaseListPage.vue": "51975943dd5f7403516fd797fc95d43699a433c74e906a7a9337784f999b16a1",
     "frontend/src/modules/cases/CasePages.spec.ts": "e6e92f2fc97032da7f3f28c6a5c605600d058e7d843676ed333a9bed98769181",
     "frontend/src/modules/cases/index.ts": "227fdcecf1870a01219622e8328408452d33bb4029175ed8dee998b85acbeb59",
