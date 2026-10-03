@@ -43,6 +43,8 @@
 
 **Forbidden:** 后端／安全／迁移／业务契约变更、Mock冒充验收、无依据样式改造、重复阶段条、先实现正式受理。风险信号立即升级。
 
+执行中仅追加允许修改`CaseComplaintConfirmationPanel.spec.ts`夹具，补严格案件响应新增的`canSubmitFiling:false`与`filingSubmission:null`，不改原断言；客户端阶段标签和`ClientCasePages.spec.ts`同步既有投影，不新增内部字段。
+
 **Report:** .local/ca005/task-2-report.md同Task 1字段；普通Task自审＋聚焦测试，不新增独立Task Reviewer。
 
 ### Task 3：候选Final Review、定向门禁与收口（主Agent／独立Sol）
