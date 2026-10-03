@@ -4,6 +4,7 @@ import { ApiError } from '../../api/http';
 import { createPinia, setActivePinia } from 'pinia';
 import { useAuthStore } from '../../stores/auth';
 import CaseComplaintMailingPanel from './CaseComplaintMailingPanel.vue';
+import { workflowChangedEvent } from '../../app/workflow-events';
 const api = vi.hoisted(() => ({
   mailCaseComplaint: vi.fn(),
   mailClientCaseComplaint: vi.fn(),
@@ -97,6 +98,94 @@ describe('complaint mailing panel', () => {
     await flushPromises();
     expect(api.mailCaseComplaint).toHaveBeenCalledTimes(2);
     expect(api.mailCaseComplaint.mock.calls[1]).toEqual(first);
+  });
+  it('keeps an uploaded reviewed snapshot retryable when same-case lookup finishes late', async () => {
+    let finishLookup!: (value: {
+      items: Array<Record<string, unknown>>;
+      total: number;
+    }) => void;
+    api.listOwnerMaterials.mockReturnValueOnce(
+      new Promise((resolve) => {
+        finishLookup = resolve;
+      }),
+    );
+    api.mailCaseComplaint
+      .mockRejectedValueOnce(new ApiError('timeout', 0, 'TIMEOUT'))
+      .mockResolvedValueOnce({});
+    const wrapper = mountPanel({ item });
+    const input = wrapper.get('input[type="file"]');
+    Object.defineProperty(input.element, 'files', {
+      configurable: true,
+      value: [new File(['pdf'], 'reviewed.pdf', { type: 'application/pdf' })],
+    });
+    await input.trigger('change');
+    await flushPromises();
+    await wrapper
+      .findAll('button')
+      .find((button) => button.text().includes('核对邮寄信息'))!
+      .trigger('click');
+    await wrapper.get('[data-test="mailing-submit"]').trigger('click');
+    await flushPromises();
+    const originalRequest = api.mailCaseComplaint.mock.calls[0];
+
+    finishLookup({ items: [], total: 0 });
+    await flushPromises();
+
+    expect(wrapper.text()).toContain('reviewed.pdf');
+    expect(wrapper.get('[data-test="mailing-submit"]').element).toMatchObject({
+      disabled: false,
+    });
+    await wrapper.get('[data-test="mailing-submit"]').trigger('click');
+    await flushPromises();
+    expect(api.mailCaseComplaint.mock.calls[1]).toEqual(originalRequest);
+  });
+  it('does not replace a receipt selected for review when same-case lookup finishes late', async () => {
+    let finishLookup!: (value: {
+      items: Array<Record<string, unknown>>;
+      total: number;
+    }) => void;
+    api.listOwnerMaterials.mockReturnValueOnce(
+      new Promise((resolve) => {
+        finishLookup = resolve;
+      }),
+    );
+    const wrapper = mountPanel({ item });
+    const input = wrapper.get('input[type="file"]');
+    Object.defineProperty(input.element, 'files', {
+      configurable: true,
+      value: [new File(['pdf'], 'reviewed.pdf', { type: 'application/pdf' })],
+    });
+    await input.trigger('change');
+    await flushPromises();
+    await wrapper
+      .findAll('button')
+      .find((button) => button.text().includes('核对邮寄信息'))!
+      .trigger('click');
+    finishLookup({
+      items: [
+        {
+          id: 'saved-material',
+          category: 'MAIL_RECEIPT',
+          status: 'ACTIVE',
+          contentVersions: [
+            {
+              id: 'saved-version',
+              status: 'AVAILABLE',
+              originalFilename: 'later.pdf',
+              mimeType: 'application/pdf',
+            },
+          ],
+        },
+      ],
+      total: 1,
+    });
+    await flushPromises();
+    await wrapper.get('[data-test="mailing-submit"]').trigger('click');
+    await flushPromises();
+
+    expect(api.mailCaseComplaint.mock.calls[0]?.[1]).toMatchObject({
+      mailReceiptContentVersionIds: ['version-reviewed.pdf'],
+    });
   });
   it('renders completed mailing as read-only facts without an upload control', () => {
     const wrapper = mountPanel({
@@ -235,6 +324,137 @@ describe('complaint mailing panel', () => {
     });
     await flushPromises();
     expect(wrapper.text()).not.toContain('old-upload.pdf');
+  });
+  it('resets upload busy state and ignores an old upload rejection after switching cases', async () => {
+    let rejectUpload!: (reason: Error) => void;
+    api.uploadMaterialFile.mockReturnValueOnce(
+      new Promise((_, reject) => {
+        rejectUpload = reject;
+      }),
+    );
+    const wrapper = mountPanel({ item });
+    const input = wrapper.get('input[type="file"]');
+    Object.defineProperty(input.element, 'files', {
+      configurable: true,
+      value: [new File(['pdf'], 'old-upload.pdf', { type: 'application/pdf' })],
+    });
+    await input.trigger('change');
+    await wrapper.setProps({ item: { ...item, id: 'case-2', version: 1 } });
+    expect(
+      (wrapper.get('input[type="file"]').element as HTMLInputElement).disabled,
+    ).toBe(false);
+    rejectUpload(new Error('old request rejected'));
+    await flushPromises();
+    expect(wrapper.find('[role="alert"]').exists()).toBe(false);
+    expect(wrapper.text()).not.toContain('正在上传凭证');
+  });
+  it('does not start remaining uploads or emit after unmount during a multi-file upload', async () => {
+    let finishFirst!: (value: {
+      materialId: string;
+      contentVersionId: string;
+      originalFilename: string;
+      mimeType: string;
+    }) => void;
+    api.uploadMaterialFile.mockReturnValueOnce(
+      new Promise((resolve) => {
+        finishFirst = resolve;
+      }),
+    );
+    const dispatch = vi.spyOn(window, 'dispatchEvent');
+    const wrapper = mountPanel({ item });
+    const input = wrapper.get('input[type="file"]');
+    Object.defineProperty(input.element, 'files', {
+      configurable: true,
+      value: [
+        new File(['one'], 'one.pdf', { type: 'application/pdf' }),
+        new File(['two'], 'two.pdf', { type: 'application/pdf' }),
+      ],
+    });
+    await input.trigger('change');
+    expect(api.uploadMaterialFile).toHaveBeenCalledTimes(1);
+    wrapper.unmount();
+    finishFirst({
+      materialId: 'm-1',
+      contentVersionId: 'v-1',
+      originalFilename: 'one.pdf',
+      mimeType: 'application/pdf',
+    });
+    await flushPromises();
+    expect(api.uploadMaterialFile).toHaveBeenCalledTimes(1);
+    expect(
+      dispatch.mock.calls.some(
+        ([event]) => event.type === workflowChangedEvent,
+      ),
+    ).toBe(false);
+  });
+  it('does not expose a late download error in the next case context', async () => {
+    let rejectDownload!: (reason: Error) => void;
+    api.downloadMaterialVersion.mockReturnValueOnce(
+      new Promise((_, reject) => {
+        rejectDownload = reject;
+      }),
+    );
+    const wrapper = mountPanel({
+      item: {
+        ...item,
+        complaintMailing: {
+          mailedAt: '2026-10-02',
+          recordedAt: '2026-10-03T01:00:00Z',
+          receiptFiles: [
+            {
+              materialId: 'm-1',
+              contentVersionId: 'v-1',
+              originalFilename: 'receipt.pdf',
+              mimeType: 'application/pdf',
+            },
+          ],
+        },
+      },
+    });
+    await wrapper
+      .findAll('button')
+      .find((button) => button.text() === '下载')!
+      .trigger('click');
+    await wrapper.setProps({ item: { ...item, id: 'case-2', version: 1 } });
+    rejectDownload(new Error('late download rejection'));
+    await flushPromises();
+    expect(wrapper.find('[role="alert"]').exists()).toBe(false);
+  });
+  it('does not notify after a mailing request finishes after unmount', async () => {
+    let finishMailing!: () => void;
+    api.mailClientCaseComplaint.mockReturnValueOnce(
+      new Promise<void>((resolve) => {
+        finishMailing = resolve;
+      }),
+    );
+    const dispatch = vi.spyOn(window, 'dispatchEvent');
+    const wrapper = mountPanel({
+      client: true,
+      item: {
+        ...item,
+        pendingReceiptFiles: [
+          {
+            materialId: 'm-1',
+            contentVersionId: 'v-1',
+            originalFilename: 'receipt.pdf',
+            mimeType: 'application/pdf',
+          },
+        ],
+      },
+    });
+    await wrapper
+      .findAll('button')
+      .find((button) => button.text().includes('核对邮寄信息'))!
+      .trigger('click');
+    await wrapper.get('[data-test="mailing-submit"]').trigger('click');
+    wrapper.unmount();
+    finishMailing();
+    await flushPromises();
+    expect(
+      dispatch.mock.calls.some(
+        ([event]) => event.type === workflowChangedEvent,
+      ),
+    ).toBe(false);
   });
   it('does not show a late mailing result after the authenticated account changes', async () => {
     let finish!: () => void;

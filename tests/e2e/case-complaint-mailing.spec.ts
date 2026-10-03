@@ -110,6 +110,7 @@ test('real password sessions read confirmed files, upload a receipt, mail the ca
   const expectedBytes = Buffer.from(
     '%PDF-1.4\n1 0 obj<</Type/Catalog>>endobj\n%%EOF\n',
   );
+  const receiptBytes = Buffer.from('%PDF-1.4\n邮寄凭证\n%%EOF\n');
   for (const selector of [
     '[data-test="client-complaint-download"]',
     '[data-test="client-authorization-download"]',
@@ -126,7 +127,7 @@ test('real password sessions read confirmed files, upload a receipt, mail the ca
     .setInputFiles({
       name: '真实邮寄凭证.pdf',
       mimeType: 'application/pdf',
-      buffer: Buffer.from('%PDF-1.4\n邮寄凭证\n%%EOF\n'),
+      buffer: receiptBytes,
     });
   await expect(page.locator('[data-test="mailing-submit"]')).toHaveCount(0);
   await page.getByRole('button', { name: '核对邮寄信息' }).click();
@@ -147,6 +148,16 @@ test('real password sessions read confirmed files, upload a receipt, mail the ca
     page.locator('[data-test="complaint-mailing-panel"]'),
   ).toContainText('实际邮寄日');
   await expect(page.locator('[data-test="mailing-submit"]')).toHaveCount(0);
+  const receiptDownload = page
+    .locator('[data-test="complaint-mailing-panel"]')
+    .getByRole('button', { name: '下载' });
+  await expect(receiptDownload).toBeVisible();
+  const receiptReady = page.waitForEvent('download');
+  await receiptDownload.click();
+  const receipt = await receiptReady;
+  const receiptPath = await receipt.path();
+  expect(receiptPath).not.toBeNull();
+  expect(await readFile(receiptPath!)).toEqual(receiptBytes);
 });
 
 test('authorized operator can mail a case, same-department colleague stays read-only, and another enterprise cannot read it', async ({
@@ -177,6 +188,46 @@ test('authorized operator can mail a case, same-department colleague stays read-
   await page.locator('[data-test="confirmation-review"]').click();
   await page.locator('[data-test="confirmation-submit"]').click();
   await expect(page.locator('.page-head .pill')).toHaveText('诉状待盖章');
+
+  await page.getByRole('button', { name: '退出登录', exact: true }).click();
+  await loginWithPassword(
+    page,
+    coreLeadFixtures.selfUsername,
+    coreLeadFixtures.selfPassword,
+    '/cases',
+  );
+  await page.goto(`/cases/${seeded.caseId}`);
+  await expect(
+    page.locator(
+      '[data-test="complaint-mailing-panel"] [data-test="case-read-only"]',
+    ),
+  ).toContainText('可以查看案件和下载获准材料');
+  await expect(
+    page.locator('[data-test="complaint-mailing-panel"] input[type="file"]'),
+  ).toHaveCount(0);
+  await expect(page.locator('[data-test="mailing-submit"]')).toHaveCount(0);
+  const complaintDownload = page
+    .locator('[data-test="complaint-read-only"]')
+    .getByRole('button', { name: '下载' })
+    .first();
+  const complaintReady = page.waitForEvent('download');
+  await complaintDownload.click();
+  const complaint = await complaintReady;
+  const complaintPath = await complaint.path();
+  expect(complaintPath).not.toBeNull();
+  expect(await readFile(complaintPath!)).toEqual(
+    Buffer.from('%PDF-1.4\n1 0 obj<</Type/Catalog>>endobj\n%%EOF\n'),
+  );
+
+  await page.getByRole('button', { name: '退出登录', exact: true }).click();
+  await loginWithPassword(
+    page,
+    coreLeadFixtures.operatorUsername,
+    coreLeadFixtures.operatorPassword,
+    '/cases',
+  );
+  await page.goto(`/cases/${seeded.caseId}`);
+  await expect(page.locator('.page-head .pill')).toHaveText('诉状待盖章');
   await page
     .locator('[data-test="complaint-mailing-panel"] input[type="file"]')
     .setInputFiles({
@@ -187,24 +238,19 @@ test('authorized operator can mail a case, same-department colleague stays read-
   await page.getByRole('button', { name: '核对邮寄信息' }).click();
   await page.locator('[data-test="mailing-submit"]').click();
   await expect(page.locator('.page-head .pill')).toHaveText('待提交立案');
-  await page.getByRole('button', { name: '退出登录', exact: true }).click();
-
-  await loginWithPassword(
-    page,
-    coreLeadFixtures.selfUsername,
-    coreLeadFixtures.selfPassword,
-    '/cases',
+  await page.goto('/cases?view=department');
+  const filingStageLink = page
+    .locator('[data-test="case-stage"]')
+    .filter({ hasText: '待提交立案' });
+  await expect(filingStageLink).toBeVisible();
+  await filingStageLink.click();
+  await expect(page).toHaveURL(
+    /\/cases\?view=department&stage=WAITING_FILING/u,
   );
-  await page.goto(`/cases/${seeded.caseId}`);
+  await expect(page.locator('.page-head')).toContainText('待提交立案');
   await expect(
-    page.locator('[data-test="complaint-mailing-panel"]'),
-  ).toContainText('邮寄登记记录');
-  await expect(page.locator('[data-test="mailing-submit"]')).toHaveCount(0);
-  await expect(
-    page.locator(
-      '[data-test="complaint-mailing-panel"] [data-test="case-read-only"]',
-    ),
-  ).toHaveCount(0);
+    page.locator(`[data-test="case-list"] a[href^="/cases/${seeded.caseId}"]`),
+  ).toHaveCount(1);
   await page.getByRole('button', { name: '退出登录', exact: true }).click();
 
   await loginWithPassword(page, username, password, '/client/leads');

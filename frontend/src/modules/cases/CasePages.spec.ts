@@ -287,6 +287,41 @@ describe('case pages', () => {
     );
   });
 
+  it.each(['mine', 'department'] as const)(
+    'keeps the WAITING_FILING sidebar filter for the %s case list',
+    async (view) => {
+      const base = await api.listCases();
+      api.listCases.mockResolvedValueOnce({
+        ...base,
+        items: [
+          {
+            ...base.items[0],
+            id: `filing-${view}`,
+            businessNo: `CA-FILING-${view}`,
+            stage: 'WAITING_FILING',
+          },
+        ],
+        total: 1,
+        counts: { ...base.counts, WAITING_FILING: 1 },
+      });
+      const wrapper = await mountRoute(
+        `/cases?view=${view}&stage=WAITING_FILING`,
+        CaseListPage,
+      );
+      expect(api.listCases).toHaveBeenLastCalledWith(
+        1,
+        20,
+        expect.objectContaining({ view, stage: 'WAITING_FILING' }),
+      );
+      expect(wrapper.get('.page-head').text()).toContain('待提交立案');
+      expect(wrapper.get('[data-test="case-list"]').text()).toContain(
+        `CA-FILING-${view}`,
+      );
+      expect(wrapper.findAll('li')).toHaveLength(1);
+      wrapper.unmount();
+    },
+  );
+
   it('shows source, ownership, fee provenance and no invented court number', async () => {
     const wrapper = await mountRoute('/cases/case-1', CaseDetailPage);
     expect(wrapper.text()).toContain('客户甲');

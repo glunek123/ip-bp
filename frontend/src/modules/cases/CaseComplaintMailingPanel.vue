@@ -1,5 +1,5 @@
 <script setup lang="ts">
-import { computed, ref, watch } from 'vue';
+import { computed, onBeforeUnmount, ref, watch } from 'vue';
 import { ElButton } from 'element-plus/es/components/button/index.mjs';
 import {
   mailCaseComplaint,
@@ -51,6 +51,28 @@ const review = ref(false);
 const unknownRequest = ref<MailCaseComplaintInput | null>(null);
 const idempotencyKey = ref('');
 let contextRevision = 0;
+let attachmentRevision = 0;
+let active = true;
+type ContextSnapshot = {
+  caseId: string;
+  identity: string;
+  revision: number;
+};
+function captureContext(): ContextSnapshot {
+  return {
+    caseId: props.item.id,
+    identity: identity.value,
+    revision: contextRevision,
+  };
+}
+function isCurrent(context: ContextSnapshot): boolean {
+  return (
+    active &&
+    context.revision === contextRevision &&
+    context.caseId === props.item.id &&
+    context.identity === identity.value
+  );
+}
 const locked = computed(
   () =>
     props.item.stage !== 'WAITING_COMPLAINT_STAMP' ||
@@ -81,16 +103,25 @@ function setAvailable(next: CaseFile[]) {
   files.value = next.length === 1 ? [next[0]!] : [];
 }
 async function loadAvailable() {
-  const requestedId = props.item.id;
-  const revision = contextRevision;
+  const context = captureContext();
+  const attachments = attachmentRevision;
   if (props.client) {
-    if (requestedId === props.item.id && revision === contextRevision)
+    if (isCurrent(context) && attachments === attachmentRevision)
       setAvailable(props.item.pendingReceiptFiles ?? []);
     return;
   }
   try {
-    const result = await listOwnerMaterials('CASE', requestedId);
-    if (requestedId !== props.item.id || revision !== contextRevision) return;
+    const result = await listOwnerMaterials('CASE', context.caseId);
+    if (!isCurrent(context)) return;
+    if (
+      attachments !== attachmentRevision ||
+      files.value.length > 0 ||
+      busyUpload.value ||
+      submitting.value ||
+      review.value ||
+      unknownRequest.value !== null
+    )
+      return;
     const next = result.items
       .filter(
         (material) =>
@@ -108,16 +139,33 @@ async function loadAvailable() {
       );
     setAvailable(next);
   } catch {
-    if (requestedId === props.item.id && revision === contextRevision)
+    if (
+      isCurrent(context) &&
+      attachments === attachmentRevision &&
+      files.value.length === 0 &&
+      !busyUpload.value &&
+      !submitting.value &&
+      !review.value &&
+      unknownRequest.value === null
+    )
       setAvailable([]);
   }
 }
 watch(
-  () => [props.item.id, props.item.version, props.item.stage, identity.value],
+  () => [
+    props.item.id,
+    props.item.version,
+    props.item.stage,
+    props.client,
+    identity.value,
+  ],
   () => {
     contextRevision += 1;
+    attachmentRevision += 1;
     files.value = [];
     availableFiles.value = [];
+    busyUpload.value = false;
+    submitting.value = false;
     success.value = false;
     review.value = false;
     unknownRequest.value = null;
@@ -128,10 +176,29 @@ watch(
   },
   { immediate: true },
 );
-async function upload(event: Event) {
-  const revision = contextRevision;
-  const target = event.target as HTMLInputElement;
-  const selected = [...(target.files ?? [])];
+onBeforeUnmount(() => {
+  active = false;
+  contextRevision += 1;
+  attachmentRevision += 1;
+});
+function isFileInputTarget(value: unknown): value is {
+  files: ArrayLike<Parameters<typeof uploadMaterialFile>[0]['file']> | null;
+  value: string;
+} {
+  return (
+    typeof value === 'object' &&
+    value !== null &&
+    'files' in value &&
+    'value' in value &&
+    typeof value.value === 'string'
+  );
+}
+async function upload(event: { target: unknown }) {
+  if (!isFileInputTarget(event.target)) return;
+  const context = captureContext();
+  attachmentRevision += 1;
+  const target = event.target;
+  const selected = Array.from(target.files ?? []);
   target.value = '';
   if (!selected.length || files.value.length + selected.length > 10) {
     uploadError.value = '最多选择 10 份凭证。';
@@ -141,32 +208,37 @@ async function upload(event: Event) {
   uploadError.value = '';
   try {
     for (const file of selected) {
+      if (!isCurrent(context)) return;
       const result = await uploadMaterialFile({
         ownerType: 'CASE',
-        ownerId: props.item.id,
+        ownerId: context.caseId,
         category: 'MAIL_RECEIPT',
         purpose: 'MAIL_RECEIPT',
         file,
       });
-      if (revision !== contextRevision) return;
+      if (!isCurrent(context)) return;
       const uploaded = {
         materialId: result.materialId,
         contentVersionId: result.contentVersionId,
         originalFilename: result.originalFilename,
         mimeType: result.mimeType,
       };
-      files.value.push(uploaded);
-      availableFiles.value.push(uploaded);
+      files.value = [...files.value, uploaded];
+      availableFiles.value = [...availableFiles.value, uploaded];
     }
   } catch {
-    uploadError.value = '凭证上传失败，请检查文件格式后重试。';
+    if (isCurrent(context))
+      uploadError.value = '凭证上传失败，请检查文件格式后重试。';
   } finally {
-    busyUpload.value = false;
+    if (isCurrent(context)) busyUpload.value = false;
   }
 }
 async function submit() {
-  if (!ready.value) return;
-  const payload = unknownRequest.value ?? {
+  if (submitting.value) return;
+  const existingRequest = unknownRequest.value;
+  if (existingRequest === null && !ready.value) return;
+  const context = captureContext();
+  const payload = existingRequest ?? {
     expectedVersion: props.item.version,
     idempotencyKey:
       idempotencyKey.value ||
@@ -177,21 +249,20 @@ async function submit() {
       (file) => file.contentVersionId,
     ),
   };
-  const revision = contextRevision;
   unknownRequest.value = payload;
   idempotencyKey.value = payload.idempotencyKey;
   submitting.value = true;
   error.value = '';
   try {
-    if (props.client) await mailClientCaseComplaint(props.item.id, payload);
-    else await mailCaseComplaint(props.item.id, payload);
-    if (revision !== contextRevision) return;
+    if (props.client) await mailClientCaseComplaint(context.caseId, payload);
+    else await mailCaseComplaint(context.caseId, payload);
+    if (!isCurrent(context)) return;
     success.value = true;
     unknownRequest.value = null;
     notifyWorkflowChanged();
     emit('changed');
   } catch (reason) {
-    if (revision !== contextRevision) return;
+    if (!isCurrent(context)) return;
     if (
       reason instanceof ApiError &&
       ['VERSION_CONFLICT', 'INVALID_STATE'].includes(reason.code)
@@ -212,22 +283,30 @@ async function submit() {
       error.value = '提交结果暂时未知；已保留原请求，可安全重试或刷新核实。';
     else error.value = '邮寄登记未能完成，请检查信息后重试。';
   } finally {
-    submitting.value = false;
+    if (isCurrent(context)) submitting.value = false;
   }
 }
 async function download(file: CaseFile) {
+  const context = captureContext();
   try {
     await downloadMaterialVersion(file.materialId, file.contentVersionId);
   } catch {
-    error.value = '文件下载失败，请稍后重试。';
+    if (isCurrent(context)) error.value = '文件下载失败，请稍后重试。';
   }
 }
 function toggleAvailable(file: CaseFile, checked: boolean) {
+  attachmentRevision += 1;
   files.value = checked
     ? [...files.value, file]
     : files.value.filter(
         (item) => item.contentVersionId !== file.contentVersionId,
       );
+}
+function removeFile(contentVersionId: string) {
+  attachmentRevision += 1;
+  files.value = files.value.filter(
+    (file) => file.contentVersionId !== contentVersionId,
+  );
 }
 </script>
 
@@ -318,7 +397,7 @@ function toggleAvailable(file: CaseFile, checked: boolean) {
           >
         </fieldset>
         <ul>
-          <li v-for="(file, index) in files" :key="file.contentVersionId">
+          <li v-for="file in files" :key="file.contentVersionId">
             {{ file.originalFilename }}（{{ file.mimeType }}）<ElButton
               text
               @click="download(file)"
@@ -326,7 +405,7 @@ function toggleAvailable(file: CaseFile, checked: boolean) {
             ><ElButton
               v-if="!locked && unknownRequest === null"
               text
-              @click="files.splice(index, 1)"
+              @click="removeFile(file.contentVersionId)"
               >移除</ElButton
             >
           </li>

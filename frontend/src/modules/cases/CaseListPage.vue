@@ -19,7 +19,8 @@ const stage = computed<CaseStageFilter>(() =>
   route.query.stage === 'PENDING_MATCH' ||
   route.query.stage === 'WAITING_COMPLAINT' ||
   route.query.stage === 'WAITING_COMPLAINT_CONFIRMATION' ||
-  route.query.stage === 'WAITING_COMPLAINT_STAMP'
+  route.query.stage === 'WAITING_COMPLAINT_STAMP' ||
+  route.query.stage === 'WAITING_FILING'
     ? route.query.stage
     : 'all',
 );
