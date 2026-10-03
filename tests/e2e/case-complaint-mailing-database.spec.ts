@@ -13,6 +13,9 @@ const auth = { Authorization: `Bearer ${coreLeadFixtures.tokenA}` };
 const authSelf = { Authorization: `Bearer ${coreLeadFixtures.tokenSelf}` };
 const authOther = { Authorization: `Bearer ${coreLeadFixtures.tokenB}` };
 const pdf = Buffer.from('%PDF-1.4\n1 0 obj<</Type/Catalog>>endobj\n%%EOF\n');
+const futureBusinessDate = () => new Intl.DateTimeFormat('en-CA', {
+  timeZone: 'Asia/Shanghai', year: 'numeric', month: '2-digit', day: '2-digit',
+}).format(new Date(Date.now() + 48 * 60 * 60 * 1000));
 type ApiSession = { csrfToken: string; user: { id: string; username: string } };
 type ApiDraft = { id: string };
 type ApiReceipt = { contentVersionId: string };
@@ -175,7 +178,7 @@ test('client and operator compete under one case lock; invalid versions and date
   const operatorReceipt = await uploadReceipt(request, caseId, auth);
   expect((await mail(request, caseId, operatorReceipt.contentVersionId, clientHeaders)).status()).toBe(400);
   expect((await mail(request, caseId, randomUUID(), auth)).status()).toBe(400);
-  expect((await mail(request, caseId, clientReceipt.contentVersionId, clientHeaders, randomUUID(), '2026-10-04')).status()).toBe(400);
+  expect((await mail(request, caseId, clientReceipt.contentVersionId, clientHeaders, randomUUID(), futureBusinessDate())).status()).toBe(400);
   const [clientResult, operatorResult] = await Promise.all([
     mail(request, caseId, clientReceipt.contentVersionId, clientHeaders),
     mail(request, caseId, operatorReceipt.contentVersionId, auth),
