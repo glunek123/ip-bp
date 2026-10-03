@@ -4,26 +4,26 @@
 
 ## 当前阶段
 
-CORE-CA-004按Level 3开发；业务能力状态及唯一Current／Next以[功能开发路线图](feature-roadmap.md)为准。
+CORE-CA-004已通过Level 3验收，待集成；业务能力状态及唯一Current／Next以[功能开发路线图](feature-roadmap.md)为准。
 
 ## 当前任务
 
-工作分支：`codex/core-ca-004-complaint-mailing`，基于已更新`main@58e405665ea295890cc949c33854b525d902ba9f`。CA-003确认诉状已集成`main`；唯一Current为**CORE-CA-004｜客户盖章邮寄（开发中）**，Next为CORE-CA-005提交法院。
+工作分支：`codex/core-ca-004-complaint-mailing`，基于`main@58e405665ea295890cc949c33854b525d902ba9f`。CA-003已集成；CA-004已验收、未推送／合并。唯一Current为**CORE-CA-005｜提交法院（待领取，先集成CA-004）**，Next为CORE-CA-006正式受理，本轮未开发后续切片。
 
-CA-004按Level 3处理，涉及单案邮寄流程的客户与运营双身份及受限客户上传／审计身份路径。范围和规则见[CA-004契约](spec/v0.1/modules/cases.md#core-ca-004-客户盖章邮寄契约)及[实施计划](superpowers/plans/2026-10-03-core-ca-004-complaint-mailing.md)。Task 1与Final独立Sol Review及两轮helper补审均已接受，未关闭C／I／M均为0。恢复测试库后全量E2E为158／160，CA-004真实流程均通过，剩余两处旧迁移探针已由`a2482310dc96930415df852c624b4bdef49b6183`最小修复并通过定向回归；新候选正式验收尚待完成，不推进Next。
+范围和业务规则仍见[CA-004契约](spec/v0.1/modules/cases.md#core-ca-004-客户盖章邮寄契约)及[实施计划](superpowers/plans/2026-10-03-core-ca-004-complaint-mailing.md)。Task、Final独立Sol Review及两轮helper补审均已接受，未关闭C／I／M均为0；正式候选与完整结果见[验证记录](spec/v0.1/VALIDATION.md)，不在Spec或计划重复维护验收台账。
 
 ## 已实现
 
-CA-004双身份Command、最小客户查询、精确版本材料边界、双端页面及四份新前向迁移已实现，真实数据库与客户／运营浏览器路径通过；尚未取得全量绿色门禁，不作完成声明。工作区交接与审查证据在`.local/ca004/`，正式结果待完整门禁后进入VALIDATION。CA-003已集成`main`，历史结果见[验证记录](spec/v0.1/VALIDATION.md)。
+客户／运营真实邮寄、企业受限案件查询与材料上传下载、内部只读边界和四份前向迁移均已验收。唯一状态变化为诉状待盖章到待提交立案；来源、冻结材料、事实、审计、幂等、并发、撤权和刷新／重登持久化均有真实数据库／浏览器证据。
 
 ## 未决与限制
 
-CA-004尚未验收，不推进CA-005。按用户新授权重新核验后，仅清除了owner PID 39172已退出的失效锁。测试容器使用tmpfs，重启后public为空；恢复时漏执行README既有迁移准备步骤导致一轮初始化失败，已用受控入口部署64份前向迁移，未reset。两处旧探针只固定历史57份终点，保留原计数、授权、约束及回滚断言；禁止修改已执行迁移、重置测试库或操作开发／生产库。未发布。
+无本Slice未关闭finding或验收阻塞。失效锁已按用户授权清理；测试容器tmpfs重启后需按README先启动再部署迁移，本轮恢复遗漏已补齐，失败与旧探针修复记录均保留于VALIDATION。未操作开发／生产库、持久化卷或发布；生产存储及MVP后续能力仍按原边界，不因本地验收冒称生产可用。
 
 ## 最近验证
 
-候选`c2846bf8b22a804c4f4b65ebbce36dd9032251f6`、tree`975475c5a9b782cce3cf2e54b8700a71fa9e6c54`的完整verify通过（178.7秒；后端980、前端584、工具73），迁移专项2／2。恢复schema后的全量E2E为158／160，失败仅为CORE-LD与NT-010历史探针；两份新helper修复定向2／2、Lint及格式通过。报告在`.local/ca004/c2846bf-migrated-gate-report.md`与`legacy-probe-fix-report.md`；各失败日志、HTML、context及trace已保全，旧候选结果不冒充新tree正式通过。
+固定候选`e30f708b3d95285ca085451090dc500f0192a899`、tree`9a4c850549a29a22b2336a261939560333334a9e`于2026-10-03通过完整verify（后端980、前端584、工具73）及隔离PostgreSQL／Chromium全量160/160，均退出0。报告`.local/ca004/e30f708-gate-report.md`及独立原始日志／HTML。此后仅补完成状态、证据及对应已解释快照，执行文档专项检查，不称收口HEAD实跑旧候选门禁。
 
 ## 下一步
 
-两处历史探针修复已通过独立补审，解释两份helper与恢复摘要差异后标准记录快照并固定候选，集中执行完整verify和隔离数据库／Chromium全量E2E。全部通过才补记完成状态与文档专项检查；不自动推送／合并CA-004，也不开始CA-005。独立测试库已部署64份迁移，未reset；开发／生产环境不迁移。
+按授权推送／集成CA-004前核对实际组合tree与证据适用性；未获新授权不推送／合并，本轮也不开始CA-005。后续从更新后的main领取CA-005，再做相应小粒度设计与实施。

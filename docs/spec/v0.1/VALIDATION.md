@@ -1,5 +1,28 @@
 # SPEC-001 文档验证
 
+## CORE-CA-004 客户盖章邮寄（2026-10-03）
+
+实际通过Level 3完整门禁的固定业务候选为`e30f708b3d95285ca085451090dc500f0192a899`、tree`9a4c850549a29a22b2336a261939560333334a9e`，分支`codex/core-ca-004-complaint-mailing`，基于已集成CA-003的`main@58e405665ea295890cc949c33854b525d902ba9f`。来源客户企业当前有效有权账号或覆盖目标案件的有权运营，登记真实邮寄日期与1～10份精确邮寄凭证版本，单案原子从`WAITING_COMPLAINT_STAMP`进入`WAITING_FILING`。客户真实密码登录后只见本企业允许案件、已确认诉状、冻结授权材料及邮寄凭证，不可读取内部费用／人员／未确认版本；同部门非办理人只读并可下载获准文件，公证处及跨企业／部门拒绝。
+
+新增内部`POST /api/v1/cases/:id/complaint-mail`、客户`POST /api/v1/client/cases/:id/complaint-mail`以及最小客户案件列表／详情。复用现有Command、材料、事务、审计和会话，新增`case.complaint.mail`及客户固定能力；`expectedVersion`与`idempotencyKey`必传，当前身份／范围先于重放校验。锁与版本竞争、不可变`CaseComplaintMailing`／`CaseComplaintMailingVersion`、冻结引用、成功审计及`CaseComplaintMailingReceipt`同一事务提交；重复请求原结果、异参冲突、故障整笔回滚。客户绑定上传／审计身份仅在本动作的CASE路径开放，未授予内部DepartmentMembership或通用运营权限。共享邮寄面板用于客户与内部详情，真实上传／下载、核对影响、加载／成功／稳定错误和未知结果原请求重试均已验证；第五阶段侧栏、两种内部列表范围及计数一致。
+
+四份新增前向迁移为`20261003010000_add_case_complaint_mailing_enums`、`20261003011000_add_case_complaint_mailing_facts`、`20261003012000_add_case_complaint_mailing_grants`、`20261003013000_add_case_client_mailing_actor_paths`，未修改已执行迁移。真实迁移专项覆盖空库64份全链、上一支持60份schema、旧事实／回执保留、约束及每份失败原子与修复重试。数据库和迁移仅使用`backend/.env.test`独立测试库；正常测试写入、清理及随机schema探针不等于环境不变，指纹也不证明数据库内容相同。开发／生产库与持久化卷未操作。
+
+| 实际命令             | 结果                                                                       | 北京时间起止                          | 命令耗时  |
+| -------------------- | -------------------------------------------------------------------------- | ------------------------------------- | --------- |
+| `pnpm verify`        | 退出0；后端77套件980/980、前端58文件584/584、工具11文件73/73及双端构建通过 | 2026-10-03 23:09:20.293～23:12:45.064 | 204.771秒 |
+| `pnpm test:e2e:full` | 退出0；隔离PostgreSQL／Chromium全量160/160，单worker、无重试               | 2026-10-03 23:13:18.031～23:20:28.503 | 430.472秒 |
+
+完整verify包含严格上下文、Spec、架构、Prisma生成、类型、Lint和格式检查。Node v24.21.0、pnpm11.27.0；两命令前后HEAD／tree、干净状态及环境fingerprint`5eda1feed3489f2cf83c4228cd79afbc395b83c9d5ef9a96cc7c99b3e56130f1`一致。完整报告`.local/ca004/e30f708-gate-report.md`，原始日志`e30f708-verify.log`、`e30f708-e2e-full.log`和浏览器HTML／test-results副本`e30f708-e2e-full-report/`均在同目录保存。完整套件证明双身份真实登录、确认诉状→邮寄→待提交立案、刷新／重登与冻结凭证字节、当前撤权与企业隔离、幂等／旧版本／错误阶段、竞争及失败回滚。故障注入的预期500对应通过的断言，未忽略失败；既有Vite大chunk警告为非阻断建议。
+
+Task 1、Final独立Sol Review及两轮历史helper补审均为`ACCEPTED`，未关闭Critical／Important／Minor均为0；报告`.local/ca004/task-1-review.md`、`final-review.md`、`migration-boundary-review.md`、`legacy-probe-review.md`。Final初审三项问题（第五阶段过滤、异步上下文／凭证快照／未知重试、邮寄前只读和邮寄后凭证字节证据）已由原主体补审关闭；最后两份状态／快照差异适用性在`e30f708`补记。补审只查修复delta，未冒充重新完整Review或重跑数据库。
+
+保留失败和恢复轨迹：①`32f01cd`完整verify通过181.4秒，其全量E2E因CA-003历史探针错误而人为中断，约69.5秒，不当作自然完成结果；上下文／trace在`first-formal-e2e-failure/`。②`c2846bf`完整verify通过178.7秒，CA-003／004迁移定向2/2；经用户授权只清理死owner39172的单个失效锁。测试容器tmpfs重启后public为空，恢复遗漏README既有迁移步骤使一轮全量E2E7/160通过、153项初始化失败（221.021秒）；已查明并用受控`db:test:migrate:deploy`部署64份前向迁移，未reset，日志`c2846bf-public-migrate.log`。③恢复schema后的全量158/160（427.863秒）仅失败CORE-LD预期revision9实际11与NT-010旧57份终点假设；`a248231`仅修复两份历史helper的窗口，保留原授权、约束、计数与回滚断言，定向2/2后独立补审接受。此前CA-003／004窗口修复亦未改变断言或迁移SQL。各轮日志／HTML／context／trace分别保存于`.local/ca004/`，未覆盖或把旧候选结果冒称新候选通过。两项修复定向stdout未单独归档，其2/2为实施者交接；本次全量日志及HTML已独立证明两探针通过。
+
+本Slice正式完整verify共启动3次，全量E2E共启动4次（含1次中断）；复跑分别由测试helper实质修复和测试schema准备失败触发，非纯完成态收口触发。每个有效候选按实际输入验证；没有删除测试、弱化断言或增加重试。Token用量未取得，效果尚未量化，不按耗时差宣称提速比例。
+
+上述业务结果只归属于固定`e30f708`／tree`9a4c850`。此后累计收口差异仅为本验证摘要、`feature-roadmap.md`完成态／唯一Current与Next、`project-status.md`恢复摘要及对应已解释`context-snapshot.json`，不修改模块Spec、计划、业务范围／契约／权限／验收要求或代码、迁移、测试／构建输入和环境；原业务证据仍适用。核对从实际证据候选到收口工作区的完整累计差异、暂存／未暂存及相关未跟踪项，先解释全部漂移再标准记录快照，执行现有受影响Prettier、`spec:check`、`context:check:strict`与Git差异检查；真实专项退出结果保存在`.local/ca004/closeout-doc-check.log`，不称文档收口HEAD实跑上述完整门禁，也不要求记录自身提交哈希。目标分支变化、实际组合tree与远端必需检查仍按规则执行。CA-004已完成但未推送／合并／发布，本轮不开始CA-005，不含法院提交、快递平台、完整客户门户或生产存储准入。
+
 ## CORE-CA-003 确认诉状（2026-10-02）
 
 通过正式Level 2逐项门禁的固定业务候选为`6acdc65472c19971e672c5a815df799056dba6d5`、tree`bb8eb53af58c57757b0674c120386dd6775c71e6`，分支`codex/core-ca-003-complaint-confirmation`。范围是有权运营为单案确认精确诉状版本与金额，保留原提交事实并进入`WAITING_COMPLAINT_STAMP`。新增`POST /api/v1/cases/:id/complaint-confirm`、`CaseComplaintConfirmation`与`CaseComplaintConfirmationReceipt`；独立`case.complaint.confirm`授权、企业／部门隔离、当前撤权检查、版本幂等并发、冻结文件、成功审计与回执在同一事务边界内验证。三份独立前向迁移为`20261002020000_add_case_complaint_confirmation`、`20261002020500_add_case_complaint_confirmation_facts`、`20261002021000_add_case_complaint_confirmation_grants`，仅部署到独立测试库。空库60迁移、上一支持57份schema、旧列／回执保留、失败原子回滚与修复重试专项通过；上一schema合成旧提交／回执探针只证明DDL保留，不代表完整合法旧来源业务链；新的完整来源链由API／PostgreSQL验收。
