@@ -36,6 +36,7 @@ describe('CaseReadService', () => {
       listFrozenCaseComplaintConfirmationFile: jest
         .fn()
         .mockResolvedValue(null),
+      listFrozenCaseComplaintMailingFiles: jest.fn().mockResolvedValue([]),
     };
     return {
       db,
@@ -67,6 +68,7 @@ describe('CaseReadService', () => {
         WAITING_COMPLAINT: 0,
         WAITING_COMPLAINT_CONFIRMATION: 0,
         WAITING_COMPLAINT_STAMP: 0,
+        WAITING_FILING: 0,
       },
     });
     expect(f.access.authorizeDepartmentAction).toHaveBeenCalledWith(
@@ -266,6 +268,7 @@ describe('CaseReadService', () => {
         confirmedByUserId: actor.userId,
         confirmedAt: new Date('2026-10-02T09:00:00.000Z'),
       },
+      complaintMailing: null,
     });
     f.materials.listFrozenCaseComplaintConfirmationFile.mockResolvedValue({
       materialId: 'material-2',
@@ -275,6 +278,8 @@ describe('CaseReadService', () => {
     });
     await expect(f.service.get(actor, 'case-1')).resolves.toMatchObject({
       canConfirmComplaint: false,
+      canMailComplaint: true,
+      complaintMailing: null,
       complaint: {
         amount: '12.34',
         complaintFiles: [{ contentVersionId: 'version-1' }],
@@ -288,6 +293,24 @@ describe('CaseReadService', () => {
         confirmDisclose: true,
         complaintFile: { contentVersionId: 'version-2' },
       },
+    });
+    f.db.case.findFirst.mockResolvedValue({
+      ...record, stage: 'WAITING_FILING',
+      complaintConfirmation: { confirmedComplaintContentVersionId: 'version-2',
+        amountState: 'PENDING', amount: null, pendingReason: '待核实',
+        changeNote: '金额待核实', confirmDisclose: true,
+        confirmedByUserId: actor.userId,
+        confirmedAt: new Date('2026-10-02T09:00:00.000Z') },
+      complaintMailing: { mailedAt: new Date('2026-10-02T00:00:00.000Z'),
+        recordedAt: new Date('2026-10-03T03:00:00.000Z'),
+        recordedByUserId: actor.userId, actorType: 'INTERNAL' },
+    });
+    f.materials.listFrozenCaseComplaintMailingFiles.mockResolvedValue([{ materialId: 'receipt',
+      contentVersionId: 'receipt-version', originalFilename: '凭证.pdf',
+      mimeType: 'application/pdf' }]);
+    await expect(f.service.get(actor, 'case-1')).resolves.toMatchObject({
+      canMailComplaint: false,
+      complaintMailing: { mailedAt: '2026-10-02', receiptFiles: [{ contentVersionId: 'receipt-version' }] },
     });
   });
   it('scopes mine by case ownership and keeps stage counts independent of filter', async () => {
@@ -304,6 +327,7 @@ describe('CaseReadService', () => {
         WAITING_COMPLAINT: 0,
         WAITING_COMPLAINT_CONFIRMATION: 0,
         WAITING_COMPLAINT_STAMP: 0,
+        WAITING_FILING: 0,
       },
     });
     expect(f.db.case.findMany).toHaveBeenCalledWith(

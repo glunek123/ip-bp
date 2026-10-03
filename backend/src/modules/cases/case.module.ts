@@ -9,16 +9,21 @@ import { CaseReadService } from './case-read.service';
 import { CaseMatchService } from './case-match.service';
 import { CaseComplaintService } from './case-complaint.service';
 import { CaseComplaintConfirmationService } from './case-complaint-confirmation.service';
+import { CaseComplaintMailingService } from './case-complaint-mailing.service';
+import { ClientCaseController } from './client-case.controller';
+import { ClientCaseService } from './client-case.service';
 
 @Module({
   imports: [AccessControlModule, AuthModule, DatabaseModule, MaterialModule],
-  controllers: [CaseReadController],
+  controllers: [CaseReadController, ClientCaseController],
   providers: [
     CaseReadService,
     CaseCreationService,
     CaseMatchService,
     CaseComplaintService,
     CaseComplaintConfirmationService,
+    CaseComplaintMailingService,
+    ClientCaseService,
   ],
   exports: [CaseCreationService],
 })

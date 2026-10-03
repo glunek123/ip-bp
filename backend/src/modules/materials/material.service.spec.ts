@@ -26,6 +26,83 @@ const customerId = '33333333-3333-4333-8333-333333333333';
 const now = new Date('2026-09-21T04:00:00.000Z');
 
 describe('MaterialService', () => {
+  it('permits only a bound client to draft a mail receipt for a confirmed stamp-stage case', async () => {
+    const fixture = createFixture();
+    const client = { ...actor, clientCustomerId: customerId };
+    fixture.db.customerAccountBinding.findFirst.mockResolvedValue({ id: 'binding-1' });
+    fixture.db.case.findFirst.mockResolvedValue({
+      departmentId: actor.departmentId,
+      customerId,
+      stage: 'WAITING_COMPLAINT_STAMP',
+      complaintConfirmation: { id: 'confirmation-1' },
+      responsibleUserId: actor.userId,
+      responsibleMembership: { teamId: null },
+    });
+    const receipt = { ownerType: 'CASE' as const, ownerId: customerId,
+      category: 'MAIL_RECEIPT' as const, purpose: 'MAIL_RECEIPT' as const,
+      originalFilename: 'receipt.pdf', declaredMimeType: 'application/pdf' };
+    await expect(fixture.service.createUploadDraft(client, receipt)).resolves.toMatchObject({
+      category: 'MAIL_RECEIPT',
+    });
+    expect(fixture.db.uploadDraft.create).toHaveBeenCalledWith(expect.objectContaining({
+      data: expect.objectContaining({ customerAccountBindingId: 'binding-1' }),
+    }));
+    await expect(fixture.service.createUploadDraft(client, {
+      ...receipt, category: 'COMPLAINT', purpose: 'COMPLAINT',
+    })).rejects.toMatchObject({ response: { code: 'VERSION_CONFLICT' } });
+    fixture.db.customerAccountBinding.findFirst.mockResolvedValue(null);
+    await expect(fixture.service.createUploadDraft(client, receipt)).rejects.toMatchObject({
+      response: { code: 'ACTION_FORBIDDEN' },
+    });
+  });
+  it('enumerates only exact confirmed CASE versions and never reveals a current pointer', async () => {
+    const fixture = createFixture();
+    const client = { ...actor, clientCustomerId: customerId };
+    fixture.db.customerAccountBinding.findFirst.mockResolvedValue({ id: 'binding-1' });
+    fixture.db.case.findFirst.mockResolvedValue({
+      stage: 'WAITING_COMPLAINT_STAMP',
+      complaintConfirmation: { confirmedComplaintContentVersionId: 'confirmed-version' },
+    });
+    fixture.db.materialReference.findMany.mockResolvedValue([
+      { materialId: 'confirmed-material', contentVersionId: 'confirmed-version', purpose: 'COMPLAINT_CONFIRMATION' },
+      { materialId: 'authorization-material', contentVersionId: 'authorization-version', purpose: 'AUTHORIZATION' },
+    ]);
+    fixture.db.material.findMany.mockResolvedValue([
+      { id: 'confirmed-material', ownerType: 'CASE', ownerId: customerId,
+        category: 'COMPLAINT', purpose: 'COMPLAINT', currentVersionId: 'unconfirmed-version',
+        status: 'ACTIVE', version: 2, deletedAt: null, createdAt: now, updatedAt: now,
+        contentVersions: [{ id: 'confirmed-version', materialId: 'confirmed-material',
+          originalFilename: '确认诉状.pdf', mimeType: 'application/pdf', sizeBytes: BigInt(4),
+          sha256: 'a'.repeat(64), status: 'AVAILABLE', createdAt: now }] },
+    ]);
+    const result = await fixture.service.listOwnerMaterials(client, 'CASE', customerId);
+    expect(result.items).toHaveLength(1);
+    expect(result.items[0].currentVersionId).toBeNull();
+    expect(result.items[0].contentVersions.map((version) => version.id)).toEqual(['confirmed-version']);
+    expect(fixture.db.material.findMany).toHaveBeenCalledWith(expect.objectContaining({
+      where: expect.objectContaining({ ownerType: 'CASE', ownerId: customerId,
+        id: { in: expect.arrayContaining(['confirmed-material']) } }),
+    }));
+  });
+  it('denies a client who guesses a CASE material version outside the whitelist', async () => {
+    const fixture = createFixture();
+    const client = { ...actor, clientCustomerId: customerId };
+    fixture.db.customerAccountBinding.findFirst.mockResolvedValue({ id: 'binding-1' });
+    fixture.db.case.findFirst.mockResolvedValue({
+      stage: 'WAITING_COMPLAINT_STAMP',
+      complaintConfirmation: { confirmedComplaintContentVersionId: 'confirmed-version' },
+    });
+    fixture.db.material.findFirst.mockResolvedValue({
+      id: 'other-material', departmentId: actor.departmentId, ownerType: 'CASE',
+      ownerId: customerId, category: 'COMPLAINT', status: 'ACTIVE',
+      contentVersions: [{ id: 'guessed-version', storageKey: 'secret-key' }],
+    });
+    fixture.db.materialReference.findMany.mockResolvedValue([]);
+    fixture.db.material.findMany.mockResolvedValue([]);
+    await expect(fixture.service.openVersion(client, 'other-material', 'guessed-version'))
+      .rejects.toMatchObject({ response: { code: 'RESOURCE_NOT_FOUND' } });
+    expect(fixture.storage.open).not.toHaveBeenCalled();
+  });
   it('allows only COMPLAINT drafts at the confirmation stage with live confirm scope', async () => {
     const fixture = createFixture();
     fixture.db.case.findFirst.mockResolvedValue({
@@ -2890,6 +2967,7 @@ function createFixture() {
     customer: { findFirst: customerFindFirst },
     lead: { findFirst: leadFindFirst },
     case: { findFirst: jest.fn() },
+    customerAccountBinding: { findFirst: jest.fn() },
     notaryMatter: { findFirst: notaryMatterFindFirst },
     userAccount: { findUnique: jest.fn() },
     notaryOfficeAccountBinding: { findFirst: jest.fn() },

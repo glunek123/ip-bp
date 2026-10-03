@@ -30,6 +30,7 @@ export const materialCategories = [
   'NOTARY_DISCLOSURE',
   'COMPLAINT',
   'AUTHORIZATION',
+  'MAIL_RECEIPT',
 ] as const;
 export type MaterialCategoryValue = (typeof materialCategories)[number];
 export const materialPurposes = [
@@ -42,6 +43,7 @@ export const materialPurposes = [
   'NOTARY_DISCLOSURE',
   'COMPLAINT',
   'AUTHORIZATION',
+  'MAIL_RECEIPT',
 ] as const;
 export type MaterialPurposeValue = (typeof materialPurposes)[number];
 

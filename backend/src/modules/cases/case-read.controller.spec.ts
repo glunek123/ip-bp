@@ -10,6 +10,7 @@ import { CaseReadService } from './case-read.service';
 import { CaseMatchService } from './case-match.service';
 import { CaseComplaintService } from './case-complaint.service';
 import { CaseComplaintConfirmationService } from './case-complaint-confirmation.service';
+import { CaseComplaintMailingService } from './case-complaint-mailing.service';
 
 describe('case read OpenAPI contract', () => {
   it('declares minimal list and detail response with source fee identities', async () => {
@@ -20,6 +21,7 @@ describe('case read OpenAPI contract', () => {
         { provide: CaseMatchService, useValue: {} },
         { provide: CaseComplaintService, useValue: {} },
         { provide: CaseComplaintConfirmationService, useValue: {} },
+        { provide: CaseComplaintMailingService, useValue: {} },
       ],
     })
       .overrideGuard(ActorContextGuard)
@@ -67,6 +69,9 @@ describe('case read OpenAPI contract', () => {
       expect(document.paths['/api/v1/cases/{id}/match']?.post).toBeDefined();
       expect(
         document.paths['/api/v1/cases/{id}/complaint-confirm']?.post,
+      ).toBeDefined();
+      expect(
+        document.paths['/api/v1/cases/{id}/complaint-mail']?.post,
       ).toBeDefined();
       expect(document.components?.schemas?.CaseFeeDto).toMatchObject({
         properties: {

@@ -20,6 +20,7 @@ import type { Prisma } from '../../generated/prisma/client';
 import {
   CreateUploadDraftDto,
   MaterialCategoryValue,
+  MaterialPurposeValue,
   OwnerMaterialListDto,
   MaterialOwnerTypeValue,
 } from './material.dto';
@@ -137,6 +138,7 @@ const allowedMimeTypes = {
     'application/msword',
     'application/vnd.openxmlformats-officedocument.wordprocessingml.document',
   ]),
+  MAIL_RECEIPT: new Set(['application/pdf', 'image/jpeg', 'image/png']),
 } as const;
 
 @Injectable()
@@ -176,6 +178,7 @@ export class MaterialService {
     let expiresAt = new Date(now.getTime() + DAY_MS);
     let ownerId: string;
     let notaryOfficeAccountBindingId: string | undefined;
+    let customerAccountBindingId: string | undefined;
     if (input.ownerType === 'CUSTOMER') {
       if (input.ownerId === undefined) throw this.validationError();
       const scope = await this.withMaterialAuthorization(() =>
@@ -211,6 +214,17 @@ export class MaterialService {
         undefined,
         input.category,
       );
+      if (actor.clientCustomerId !== undefined) {
+        const binding = await this.database.customerAccountBinding.findFirst({
+          where: { userId: actor.userId, customerId: actor.clientCustomerId,
+            departmentId: actor.departmentId, active: true,
+            user: { active: true, accountType: 'CLIENT' },
+            customer: { profileStatus: 'ADMITTED' } },
+          select: { id: true },
+        });
+        if (binding === null) throw this.forbidden();
+        customerAccountBindingId = binding.id;
+      }
       ownerId = input.ownerId;
     } else if (input.ownerType === 'NOTARY_MATTER') {
       if (input.ownerId === undefined) throw this.validationError();
@@ -237,7 +251,7 @@ export class MaterialService {
             },
             select: { id: true },
           });
-        if (binding === null) throw this.forbidden();
+        if (binding == null) throw this.forbidden();
         notaryOfficeAccountBindingId = binding.id;
       }
       ownerId = input.ownerId;
@@ -272,6 +286,9 @@ export class MaterialService {
         ...(notaryOfficeAccountBindingId === undefined
           ? {}
           : { notaryOfficeAccountBindingId }),
+        ...(customerAccountBindingId === undefined
+          ? {}
+          : { customerAccountBindingId }),
         ownerType: input.ownerType,
         ownerId,
         category: input.category,
@@ -320,6 +337,20 @@ export class MaterialService {
       draft.notaryOfficeAccountBindingId === null
     )
       throw this.forbidden();
+    if (actor.clientCustomerId !== undefined) {
+      if (draft.ownerType !== 'CASE' || draft.category !== 'MAIL_RECEIPT' ||
+        draft.customerAccountBindingId == null) throw this.forbidden();
+      const binding = await this.database.customerAccountBinding.findFirst({
+        where: { id: draft.customerAccountBindingId, userId: actor.userId,
+          customerId: actor.clientCustomerId, departmentId: actor.departmentId,
+          active: true, user: { active: true, accountType: 'CLIENT' },
+          customer: { profileStatus: 'ADMITTED' } },
+        select: { id: true },
+      });
+      if (binding === null) throw this.forbidden();
+    } else if (draft.customerAccountBindingId != null) {
+      throw this.forbidden();
+    }
     if (draft.ownerType === 'CUSTOMER') {
       const scope = await this.withMaterialAuthorization(() =>
         this.accessControl.buildCustomerScope(actor, 'customer.read'),
@@ -648,7 +679,9 @@ export class MaterialService {
           facts.has(version.id) ||
           !contentVersionIds.includes(version.id) ||
           (input.ownerType === 'CASE' &&
-            material.currentVersionId !== version.id)
+            material.currentVersionId !== version.id) ||
+          (input.ownerType === 'CASE' && input.category === 'MAIL_RECEIPT' &&
+            actor.clientCustomerId !== undefined && version.uploadedBy !== actor.userId)
         ) {
           throw this.invalidVersion();
         }
@@ -892,6 +925,42 @@ export class MaterialService {
     ownerId: string,
   ): Promise<OwnerMaterialListDto> {
     await this.authorizeOwner(actor, ownerType, ownerId, 'read');
+    if (ownerType === 'CASE' && actor.clientCustomerId !== undefined) {
+      const allowed = await this.clientCaseVersionWhitelist(actor, ownerId);
+      if (allowed.size === 0) return { items: [], total: 0 };
+      const allowedMaterialIds = [...allowed.keys()];
+      const allowedVersionIds = [...new Set([...allowed.values()].flatMap((ids) => [...ids]))];
+      const materials = await this.database.material.findMany({
+        where: { departmentId: actor.departmentId, ownerType: 'CASE', ownerId,
+          status: 'ACTIVE', id: { in: allowedMaterialIds } },
+        orderBy: [{ createdAt: 'desc' }, { id: 'asc' }],
+        select: { id: true, ownerType: true, ownerId: true, category: true,
+          purpose: true, status: true, version: true, deletedAt: true,
+          createdAt: true, updatedAt: true,
+          contentVersions: { where: { id: { in: allowedVersionIds }, status: 'AVAILABLE' },
+            orderBy: { createdAt: 'desc' },
+            select: { id: true, materialId: true, originalFilename: true,
+              mimeType: true, sizeBytes: true, sha256: true, status: true, createdAt: true } } },
+      });
+      const items = materials.flatMap((material) => {
+        const versions = material.contentVersions.filter((version) =>
+          allowed.get(material.id)?.has(version.id));
+        if (versions.length === 0) return [];
+        return [{ id: material.id, ownerType: material.ownerType,
+          ownerId: material.ownerId, category: material.category,
+          purpose: toMaterialPurpose(material.purpose), currentVersionId: null,
+          status: 'ACTIVE' as const, version: material.version,
+          deletedAt: material.deletedAt, createdAt: material.createdAt,
+          updatedAt: material.updatedAt,
+          contentVersions: versions.map((version) => ({
+            id: version.id, materialId: version.materialId,
+            originalFilename: version.originalFilename, mimeType: version.mimeType,
+            sizeBytes: Number(version.sizeBytes), sha256: version.sha256,
+            status: 'AVAILABLE' as const, createdAt: version.createdAt,
+          })) }];
+      });
+      return { items, total: items.length };
+    }
     const notaryMatter =
       actor.notaryOfficeId === undefined
         ? null
@@ -1108,6 +1177,11 @@ export class MaterialService {
     if (material === null || version === undefined) throw this.notFound();
     if (material.ownerType === 'CASE' && material.status !== 'ACTIVE')
       throw this.notFound();
+    if (material.ownerType === 'CASE' && actor.clientCustomerId !== undefined) {
+      await this.authorizeOwner(actor, 'CASE', material.ownerId, 'read');
+      const allowed = await this.clientCaseVersionWhitelist(actor, material.ownerId);
+      if (!allowed.get(materialId)?.has(versionId)) throw this.notFound();
+    }
     if (
       (actor.clientCustomerId !== undefined ||
         actor.notaryOfficeId !== undefined) &&
@@ -1161,7 +1235,7 @@ export class MaterialService {
     )
       throw this.notFound();
     if (
-      actor.clientCustomerId !== undefined ||
+      (actor.clientCustomerId !== undefined && material.ownerType !== 'CASE') ||
       (notaryMatter !== null &&
         !['WAITING_UNBOX', 'WAITING_CERTIFICATE'].includes(
           notaryMatter.stage,
@@ -1637,6 +1711,37 @@ export class MaterialService {
     });
   }
 
+  async freezeCaseComplaintMailingReferences(
+    transaction: MaterialTransactionClient,
+    actor: ActorContext,
+    caseId: string,
+    mailingId: string,
+    facts: readonly ValidatedMaterialVersionFact[],
+    actionEventId: string,
+  ): Promise<void> {
+    for (const fact of facts) {
+      const validation = this.validatedVersionFacts.get(fact);
+      if (validation === undefined || validation.transaction !== transaction ||
+        validation.canonicalFact.departmentId !== actor.departmentId ||
+        validation.canonicalFact.ownerType !== 'CASE' ||
+        validation.canonicalFact.ownerId !== caseId ||
+        validation.canonicalFact.category !== 'MAIL_RECEIPT' ||
+        validation.canonicalFact.purpose !== 'MAIL_RECEIPT') throw this.invalidVersion();
+      await transaction.caseComplaintMailingVersion.create({
+        data: { mailingId, caseId, departmentId: actor.departmentId,
+          materialId: validation.canonicalFact.materialId,
+          contentVersionId: validation.canonicalFact.contentVersionId },
+      });
+      await transaction.materialReference.create({
+        data: { departmentId: actor.departmentId, resourceType: 'case',
+          resourceId: caseId, purpose: 'MAIL_RECEIPT',
+          materialId: validation.canonicalFact.materialId,
+          contentVersionId: validation.canonicalFact.contentVersionId,
+          actionEventId },
+      });
+    }
+  }
+
   async listFrozenCaseComplaintConfirmationFile(
     actor: ActorContext,
     caseId: string,
@@ -1671,6 +1776,23 @@ export class MaterialService {
         };
   }
 
+  async listFrozenCaseComplaintMailingFiles(actor: ActorContext, caseId: string) {
+    await this.authorizeOwner(actor, 'CASE', caseId, 'read');
+    const references = await this.database.materialReference.findMany({
+      where: { departmentId: actor.departmentId, resourceType: 'case',
+        resourceId: caseId, purpose: 'MAIL_RECEIPT',
+        actionEvent: { action: 'case.complaint.mailed', resourceType: 'CASE',
+          resourceId: caseId, departmentId: actor.departmentId } },
+      orderBy: { createdAt: 'asc' },
+      select: { materialId: true, contentVersionId: true,
+        contentVersion: { select: { originalFilename: true, mimeType: true } } },
+    });
+    return references.map((reference) => ({ materialId: reference.materialId,
+      contentVersionId: reference.contentVersionId,
+      originalFilename: reference.contentVersion.originalFilename,
+      mimeType: reference.contentVersion.mimeType }));
+  }
+
   private async authorizeOwner(
     actor: ActorContext,
     ownerType: MaterialOwnerTypeValue,
@@ -1685,11 +1807,28 @@ export class MaterialService {
     notaryCategory?: MaterialCategoryValue,
   ): Promise<void> {
     if (ownerType === 'CASE') {
-      if (
-        actor.clientCustomerId !== undefined ||
-        actor.notaryOfficeId !== undefined
-      )
-        throw this.forbidden();
+      if (actor.notaryOfficeId !== undefined) throw this.forbidden();
+      if (actor.clientCustomerId !== undefined) {
+        const binding = await reader.customerAccountBinding.findFirst({
+          where: { userId: actor.userId, customerId: actor.clientCustomerId,
+            departmentId: actor.departmentId, active: true,
+            user: { active: true, accountType: 'CLIENT' },
+            customer: { profileStatus: 'ADMITTED' } },
+          select: { id: true },
+        });
+        if (binding == null) throw this.forbidden();
+        const clientCase = await reader.case.findFirst({
+          where: { id: ownerId, departmentId: actor.departmentId,
+            customerId: actor.clientCustomerId,
+            complaintConfirmation: { isNot: null } },
+          select: { stage: true },
+        });
+        if (clientCase === null) throw this.notFound();
+        if (operation === 'write' &&
+          (clientCase.stage !== 'WAITING_COMPLAINT_STAMP' ||
+            notaryCategory !== 'MAIL_RECEIPT')) throw this.versionConflict();
+        return;
+      }
       await this.withMaterialAuthorization(() =>
         this.accessControl.authorizeDepartmentAction(
           actor,
@@ -1713,7 +1852,8 @@ export class MaterialService {
           !(
             record.stage === 'WAITING_COMPLAINT_CONFIRMATION' &&
             notaryCategory === 'COMPLAINT'
-          )
+          ) && !(record.stage === 'WAITING_COMPLAINT_STAMP' &&
+            notaryCategory === 'MAIL_RECEIPT')
         )
           throw this.versionConflict();
         await this.withMaterialAuthorization(() =>
@@ -1721,7 +1861,9 @@ export class MaterialService {
             actor,
             record.stage === 'WAITING_COMPLAINT'
               ? 'case.complaint.submit'
-              : 'case.complaint.confirm',
+              : record.stage === 'WAITING_COMPLAINT_CONFIRMATION'
+                ? 'case.complaint.confirm'
+                : 'case.complaint.mail',
             {
               departmentId: record.departmentId,
               responsibleUserId: record.responsibleUserId,
@@ -2000,6 +2142,70 @@ export class MaterialService {
     }
   }
 
+  private async clientCaseVersionWhitelist(
+    actor: ActorContext,
+    caseId: string,
+  ): Promise<Map<string, Set<string>>> {
+    const record = await this.database.case.findFirst({
+      where: { id: caseId, departmentId: actor.departmentId,
+        customerId: actor.clientCustomerId,
+        complaintConfirmation: { isNot: null } },
+      select: { stage: true,
+        complaintConfirmation: { select: { confirmedComplaintContentVersionId: true } } },
+    });
+    if (record?.complaintConfirmation == null) throw this.notFound();
+    const references = await this.database.materialReference.findMany({
+      where: { departmentId: actor.departmentId, resourceType: 'case', resourceId: caseId,
+        OR: [
+          { purpose: 'COMPLAINT_CONFIRMATION',
+            contentVersionId: record.complaintConfirmation.confirmedComplaintContentVersionId,
+            material: { ownerType: 'CASE', ownerId: caseId,
+              departmentId: actor.departmentId, category: 'COMPLAINT' },
+            actionEvent: { action: 'case.complaint.confirmed', resourceType: 'CASE',
+              resourceId: caseId, departmentId: actor.departmentId } },
+          { purpose: 'AUTHORIZATION',
+            material: { ownerType: 'CASE', ownerId: caseId,
+              departmentId: actor.departmentId, category: 'AUTHORIZATION' },
+            actionEvent: { action: 'case.complaint.submitted', resourceType: 'CASE',
+              resourceId: caseId, departmentId: actor.departmentId } },
+          { purpose: 'MAIL_RECEIPT',
+            material: { ownerType: 'CASE', ownerId: caseId,
+              departmentId: actor.departmentId, category: 'MAIL_RECEIPT' },
+            actionEvent: { action: 'case.complaint.mailed', resourceType: 'CASE',
+              resourceId: caseId, departmentId: actor.departmentId } },
+        ] },
+      select: { materialId: true, contentVersionId: true, purpose: true },
+    });
+    const allowed = new Map<string, Set<string>>();
+    const add = (materialId: string, versionId: string) => {
+      const versions = allowed.get(materialId) ?? new Set<string>();
+      versions.add(versionId);
+      allowed.set(materialId, versions);
+    };
+    for (const ref of references) {
+      if (ref.purpose === 'COMPLAINT_CONFIRMATION' &&
+        ref.contentVersionId !== record.complaintConfirmation.confirmedComplaintContentVersionId)
+        continue;
+      add(ref.materialId, ref.contentVersionId);
+    }
+    if (record.stage === 'WAITING_COMPLAINT_STAMP') {
+      const drafts = await this.database.material.findMany({
+        where: { departmentId: actor.departmentId, ownerType: 'CASE', ownerId: caseId,
+          category: 'MAIL_RECEIPT', status: 'ACTIVE',
+          contentVersions: { some: { uploadedBy: actor.userId, status: 'AVAILABLE' } } },
+        select: { id: true, category: true, currentVersionId: true,
+          contentVersions: { where: { uploadedBy: actor.userId, status: 'AVAILABLE' },
+            select: { id: true } } },
+      });
+      for (const draft of drafts) {
+        if (draft.category !== 'MAIL_RECEIPT' || draft.currentVersionId === null) continue;
+        if (draft.contentVersions.some((version) => version.id === draft.currentVersionId))
+          add(draft.id, draft.currentVersionId);
+      }
+    }
+    return allowed;
+  }
+
   private assertCategoryPurposeMatrix(input: {
     ownerType: MaterialOwnerTypeValue;
     category: keyof typeof allowedMimeTypes;
@@ -2016,7 +2222,8 @@ export class MaterialService {
         input.purpose === 'LEAD_SCREENSHOT') ||
       (input.ownerType === 'CASE' &&
         (input.category === 'COMPLAINT' ||
-          input.category === 'AUTHORIZATION') &&
+          input.category === 'AUTHORIZATION' ||
+          input.category === 'MAIL_RECEIPT') &&
         input.purpose === input.category) ||
       (input.ownerType === 'NOTARY_MATTER' &&
         input.category === 'NOTARY_OPENING_PHOTO' &&
@@ -2114,7 +2321,7 @@ function normalizeMimeType(value: string): string {
   return normalized === 'image/jpg' ? 'image/jpeg' : normalized;
 }
 
-function toMaterialPurpose(value: string) {
+function toMaterialPurpose(value: string): MaterialPurposeValue {
   if (
     value === 'IDENTITY_FULL' ||
     value === 'IDENTITY_FRONT' ||
@@ -2125,6 +2332,7 @@ function toMaterialPurpose(value: string) {
     value === 'NOTARY_DISCLOSURE' ||
     value === 'COMPLAINT' ||
     value === 'AUTHORIZATION'
+    || value === 'MAIL_RECEIPT'
   ) {
     return value;
   }
@@ -2140,6 +2348,7 @@ function materialLimit(category: keyof typeof allowedMimeTypes): number {
           category === 'NOTARY_DISCLOSURE' ||
           category === 'COMPLAINT' ||
           category === 'AUTHORIZATION'
+          || category === 'MAIL_RECEIPT'
         ? 10
         : 20;
 }

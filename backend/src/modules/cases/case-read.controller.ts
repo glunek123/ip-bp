@@ -23,6 +23,8 @@ import { CaseMatchService } from './case-match.service';
 import { MatchCaseDto, MatchCaseResponseDto } from './case-match.dto';
 import { CaseComplaintService } from './case-complaint.service';
 import { CaseComplaintConfirmationService } from './case-complaint-confirmation.service';
+import { CaseComplaintMailingService } from './case-complaint-mailing.service';
+import { MailCaseComplaintDto, MailCaseComplaintResponseDto } from './case-complaint-mailing.dto';
 import {
   ConfirmCaseComplaintDto,
   ConfirmCaseComplaintResponseDto,
@@ -42,6 +44,7 @@ export class CaseReadController {
     private readonly matching: CaseMatchService,
     private readonly complaint: CaseComplaintService,
     private readonly confirmation: CaseComplaintConfirmationService,
+    private readonly mailing: CaseComplaintMailingService,
   ) {}
 
   @Get()
@@ -93,5 +96,15 @@ export class CaseReadController {
     @Body() body: ConfirmCaseComplaintDto,
   ) {
     return this.confirmation.confirm(actor, id, body);
+  }
+
+  @Post(':id/complaint-mail')
+  @ApiOkResponse({ type: MailCaseComplaintResponseDto })
+  mailComplaint(
+    @CurrentActor() actor: ActorContext,
+    @Param('id', new ParseUUIDPipe()) id: string,
+    @Body() body: MailCaseComplaintDto,
+  ) {
+    return this.mailing.mail(actor, id, body);
   }
 }

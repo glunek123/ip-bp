@@ -46,7 +46,8 @@ export class CaseReadService {
       | 'PENDING_MATCH'
       | 'WAITING_COMPLAINT'
       | 'WAITING_COMPLAINT_CONFIRMATION'
-      | 'WAITING_COMPLAINT_STAMP',
+      | 'WAITING_COMPLAINT_STAMP'
+      | 'WAITING_FILING',
   ) {
     await this.scope(actor);
     const baseWhere: Prisma.CaseWhereInput = {
@@ -128,6 +129,15 @@ export class CaseReadService {
                   : {}),
               },
             )),
+          canMailComplaint:
+            item.stage === 'WAITING_COMPLAINT_STAMP' &&
+            (await this.access.canAuthorizeCase(actor, 'case.complaint.mail', {
+              departmentId: actor.departmentId,
+              responsibleUserId: item.responsibleUserId,
+              ...(item.responsibleMembership.teamId
+                ? { teamId: item.responsibleMembership.teamId }
+                : {}),
+            })),
           createdAt: item.createdAt.toISOString(),
         })),
       ),
@@ -147,6 +157,8 @@ export class CaseReadService {
         WAITING_COMPLAINT_STAMP:
           grouped.find((row) => row.stage === 'WAITING_COMPLAINT_STAMP')?._count
             ._all ?? 0,
+        WAITING_FILING:
+          grouped.find((row) => row.stage === 'WAITING_FILING')?._count._all ?? 0,
       },
     };
   }
@@ -178,6 +190,10 @@ export class CaseReadService {
             confirmedAt: true,
             confirmedByUserId: true,
           },
+        },
+        complaintMailing: {
+          select: { mailedAt: true, recordedAt: true,
+            recordedByUserId: true, actorType: true },
         },
         createdAt: true,
         responsibleUserId: true,
@@ -257,6 +273,9 @@ export class CaseReadService {
             actor,
             id,
           );
+    const receiptFiles = record.complaintMailing == null
+      ? []
+      : await this.materials.listFrozenCaseComplaintMailingFiles(actor, id);
     const file = (ref: (typeof frozen)[number]) => ({
       materialId: ref.materialId,
       contentVersionId: ref.contentVersionId,
@@ -307,6 +326,15 @@ export class CaseReadService {
             ? { teamId: record.responsibleMembership.teamId }
             : {}),
         })),
+      canMailComplaint:
+        record.stage === 'WAITING_COMPLAINT_STAMP' &&
+        (await this.access.canAuthorizeCase(actor, 'case.complaint.mail', {
+          departmentId: actor.departmentId,
+          responsibleUserId: record.responsibleUserId,
+          ...(record.responsibleMembership.teamId
+            ? { teamId: record.responsibleMembership.teamId }
+            : {}),
+        })),
       complaint:
         record.complaintSubmittedAt == null
           ? null
@@ -349,6 +377,16 @@ export class CaseReadService {
               confirmedByUserId: record.complaintConfirmation.confirmedByUserId,
               complaintFile: confirmationFile,
             },
+      complaintMailing: record.complaintMailing == null ? null : {
+        mailedAt: record.complaintMailing.mailedAt.toISOString().slice(0, 10),
+        recordedAt: record.complaintMailing.recordedAt.toISOString(),
+        recordedByUserId: record.complaintMailing.recordedByUserId,
+        actorType: record.complaintMailing.actorType,
+        receiptFiles: receiptFiles.map((ref) => ({
+          materialId: ref.materialId, contentVersionId: ref.contentVersionId,
+          originalFilename: ref.originalFilename, mimeType: ref.mimeType,
+        })),
+      },
       createdAt: record.createdAt.toISOString(),
       courtCaseNo: record.courtCaseNo,
       department: record.department,

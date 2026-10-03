@@ -345,7 +345,7 @@ describe('OrganizationService management context', () => {
       assignTeamRoles: false,
       manageRoleTemplates: true,
     });
-    expect(result.permissionCatalog).toHaveLength(28);
+    expect(result.permissionCatalog).toHaveLength(29);
     expect(result.permissionCatalog).toContainEqual({
       action: 'NOTARY_LIST_EXPORT',
       label: '导出公证办理清单',
@@ -369,6 +369,11 @@ describe('OrganizationService management context', () => {
     expect(result.permissionCatalog).toContainEqual({
       action: 'CASE_COMPLAINT_CONFIRM',
       label: '确认诉状',
+      scopes: ['SELF', 'TEAM', 'DEPARTMENT'],
+    });
+    expect(result.permissionCatalog).toContainEqual({
+      action: 'CASE_COMPLAINT_MAIL',
+      label: '登记诉状邮寄',
       scopes: ['SELF', 'TEAM', 'DEPARTMENT'],
     });
     expect(result.permissionCatalog.map(({ action }) => action)).toEqual(
