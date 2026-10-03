@@ -10,11 +10,11 @@ CORE-CA-004按Level 3开发；业务能力状态及唯一Current／Next以[功�
 
 工作分支：`codex/core-ca-004-complaint-mailing`，基于已更新`main@58e405665ea295890cc949c33854b525d902ba9f`。CA-003确认诉状已集成`main`；唯一Current为**CORE-CA-004｜客户盖章邮寄（开发中）**，Next为CORE-CA-005提交法院。
 
-CA-004按Level 3处理，涉及单案邮寄流程的客户与运营双身份。范围和规则见[CA-004契约](spec/v0.1/modules/cases.md#core-ca-004-客户盖章邮寄契约)及[实施计划](superpowers/plans/2026-10-03-core-ca-004-complaint-mailing.md)。当前尚无CA-004业务实现或验收，不推进Next。
+CA-004按Level 3处理，涉及单案邮寄流程的客户与运营双身份及受限客户上传／审计身份路径。范围和规则见[CA-004契约](spec/v0.1/modules/cases.md#core-ca-004-客户盖章邮寄契约)及[实施计划](superpowers/plans/2026-10-03-core-ca-004-complaint-mailing.md)。后端Task 1固定于`2cdb03d784625af37c032a0a6de42fa752e2d4ea`，独立Review待执行；客户端页面和正式整体验收尚未完成，不推进Next。
 
 ## 已实现
 
-本轮无CA-004业务实现。CA-003确认诉状已集成`main`，历史实现边界与候选验收结果见[验证记录](spec/v0.1/VALIDATION.md)。
+CA-004后端双身份Command、最小客户查询、精确版本材料边界及四份新前向迁移已实现并完成定向验证；只部署独立测试库，未作完整业务验收。Task 1报告在工作区`.local/ca004/task-1-report.md`，最终证据待正式门禁后进入VALIDATION。CA-003已集成`main`，历史结果见[验证记录](spec/v0.1/VALIDATION.md)。
 
 ## 未决与限制
 
@@ -26,4 +26,4 @@ CA-003集成提交为`58e405665ea295890cc949c33854b525d902ba9f`，tree为`9bb941
 
 ## 下一步
 
-按高风险Sol Task 1、独立Review、Luna UI实现、Final Review及完整门禁推进CA-004；CA-004未完成期间，开发／生产环境不迁移。
+先完成高风险Task 1独立Sol Review并关闭finding，再由Luna接UI，最后Final Review与Level 3完整门禁；独立测试库已前向部署64份迁移，未reset。开发／生产环境不迁移。

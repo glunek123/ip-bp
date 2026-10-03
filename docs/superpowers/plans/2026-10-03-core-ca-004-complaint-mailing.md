@@ -22,6 +22,8 @@
 
 **Interfaces:** 生产内部／客户两个POST路由均消费同一DTO：`{ expectedVersion, idempotencyKey, mailedAt, mailReceiptContentVersionIds }`，返回`{ id, stage, version, mailedAt, recordedAt }`。内部详情新增`complaintMailing`与`canMailComplaint`，第五阶段为`WAITING_FILING`；客户`GET /api/v1/client/cases[/:id]`用企业过滤、最小具名DTO，不引用内部响应DTO。客户端材料仅获准精确版本，无未经确认的当前版本或内部元数据。
 
+客户列表`view=PENDING|RECORDED`默认PENDING，列表／详情只加权利主体及被告名称，详情确认金额只读不可变确认事实，不带内部修改说明。数据库上传／审计客户路径按Spec仅扩两表，作为第四份新迁移；额外允许`material-cleanup.service.spec.ts`补撤销后清理回归，不改共享Auth／transaction／audit服务。随机schema验证目标为64份迁移／上一支持60份，已执行迁移不修订，逐份验证失败原子和向前重试。
+
 - [ ] 先写Command合法／非法及企业隔离、Client Query脱敏、材料猜ID／精确版本越权、日期／版本／幂等、权限目录兼容的失败测试，保留实际RED，不改旧断言适配错误实现。
 - [ ] 实现稳定案锁／CAS、当前账号与绑定／Grant、精确凭证、不可变事实／审计／冻结／回执事务；使用已确认schema命名，枚举、业务约束、初始化Grant分别单事务前向迁移，保留旧记录和旧回执。
 - [ ] 聚焦命令：`pnpm --filter @dev-cor/backend test src/modules/cases src/modules/materials/material.service.spec.ts src/access-control src/auth/auth.service.spec.ts src/core-ld-openapi.spec.ts`；有必要才类型／构建，不机械重跑无变化检查。
@@ -34,6 +36,8 @@
 **Files:** `frontend/src/api/{cases,client-cases,materials,organization}.{ts,spec.ts}`（client-cases新建）；`frontend/src/modules/cases/CaseComplaintMailingPanel.{vue,spec.ts}`、既有Detail／List／Pages.spec；`frontend/src/modules/client/ClientCase{List,Detail}Page.{vue,spec.ts}`；应用`App{,Shell}.{vue,spec.ts}`及`router.{ts,spec.ts}`、`frontend/src/modules/organization/RoleTemplateEditor.spec.ts`；新建`tests/e2e/case-complaint-mailing.spec.ts`，仅调用已接受helper。
 
 **Interfaces:** 只用Task 1最终DTO及真实上传／下载；客户端API严格解码最小投影，内部组织页面仅新可分配内部Action，客户固定能力保持与内部目录隔离。
+
+额外允许新建`frontend/src/modules/cases/index.ts`仅公开导出邮寄表单，客户端从公开入口复用，遵守现有模块护栏；不直接跨模块导入内部.vue或复制另一套表单。
 
 - [ ] 先补API／页面失败用例：单／多凭证明确选择、必填标记、非法／未来日期、加载／成功锁、已知冲突、未知请求原键保存、真实父子RouterView切案／账号／授权版本及迟到结果隔离；只读无上传／办理按钮。
 - [ ] 客户壳层增加“案件”入口与本企业待盖章列表、最小详情、真实文件下载和邮寄表单；内部详情复用同一低负担表单，非本人只读，列表及单套阶段侧栏同步第五阶段。提交前说明影响、刷新读服务端事实，不虚构法院提交。
