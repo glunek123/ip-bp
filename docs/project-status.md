@@ -1,60 +1,29 @@
 # 当前开发状态
 
-更新日期：2026-10-02。本文件只保留恢复当前工作的最小事实；截至2026-09-18的流水见[历史状态](project-status-history-through-2026-09-18.md)，各候选的详细历史证据见[验证记录](spec/v0.1/VALIDATION.md)。两者均按需读取，不是新任务默认上下文。
+更新日期：2026-10-03。本文件只保留恢复当前工作的最小事实；历史状态见[历史状态](project-status-history-through-2026-09-18.md)，候选证据与集成事实见[验证记录](spec/v0.1/VALIDATION.md)。
 
 ## 当前阶段
 
-开发流程治理：业务能力范围、完成状态、依赖顺序和唯一Current／Next只由[功能开发路线图](feature-roadmap.md)维护；本文件不再复制业务完成态。
+CORE-CA-004按Level 3开发；业务能力状态及唯一Current／Next以[功能开发路线图](feature-roadmap.md)为准。
 
 ## 当前任务
 
-**CORE-CA-004｜客户盖章邮寄（路线图唯一Current，待领取并暂停）**：本工作区仍是`codex/core-ca-003-complaint-confirmation`的CA-003非执行性完成状态与证据收口。CA-003固定候选已完成本地Level 2验收，尚未集成；详细结果与局限见[验证记录](spec/v0.1/VALIDATION.md)。后续切片按用户要求暂停，本轮不领取或开发CA-004。
+工作分支：`codex/core-ca-004-complaint-mailing`，基于已更新`main@58e405665ea295890cc949c33854b525d902ba9f`。CA-003确认诉状已集成`main`；唯一Current为**CORE-CA-004｜客户盖章邮寄（开发中）**，Next为CORE-CA-005提交法院。
 
-恢复点：CA-003业务候选为`6acdc65472c19971e672c5a815df799056dba6d5`／tree`bb8eb53af58c57757b0674c120386dd6775c71e6`；正式Level 2门禁、PostgreSQL／Chromium四文件17/17及独立Task／Final Review已完成。候选仅部署到独立测试库；此前明确授权的一次测试库reset已执行，不再重置。开发／生产库、持久化卷和发布未触碰。详细门禁、审查、失败史及旧schema探针边界只见VALIDATION。
-
-CA-001匹配事实口径已在本分支修正并验收：实际匹配日期与系统登记时间分离、律所可空，旧成功回执仍可原样重放。旧候选的验证只对旧tree有效；本段不改变Current／Next。
-
-线索库／公证阶段导航归属修复已按用户要求并入NT-003开发分支（合并提交`379b9d2`），连同NT-003新增阶段在NT-007固定候选通过完整组合验证，现已随该分支进入`main`。详见[验证记录](spec/v0.1/VALIDATION.md)。
+CA-004按Level 3处理，涉及单案邮寄流程的客户与运营双身份。范围和规则见[CA-004契约](spec/v0.1/modules/cases.md#core-ca-004-客户盖章邮寄契约)及[实施计划](superpowers/plans/2026-10-03-core-ca-004-complaint-mailing.md)。当前尚无CA-004业务实现或验收，不推进Next。
 
 ## 已实现
 
-- 全部业务实现状态和完成证据索引见[功能开发路线图](feature-roadmap.md)；本节只保留该唯一来源指针，不重复列举能力。
-- `ROLE-TEMPLATE-001`代码候选`d542c31`、tree`cae336d`已通过完整Level 3门禁、数据库型浏览器验收和独立终审；其可配置Grant底座供核心业务Action复用。
-- `CORE-LD-001`已实现`customer.admit`与`lead.read/create/edit`、ADMITTED准入约束、材料／内容版本／冻结引用、线索／商品／侵权类型／日编号／幂等回执，以及正式运营端页面。详细证据见[验证记录](spec/v0.1/VALIDATION.md)。
-- `CORE-LD-002`已实现真实企业客户账号绑定、密码会话、`WAITING_PUSH → WAITING_REVIEW`原子推送、`lead.push`内部授权、客户固定企业范围、幂等／版本／审计，以及运营推送和客户端只读列表／详情／附件页面。详细证据见[验证记录](spec/v0.1/VALIDATION.md)。
-- 登录后共享壳层及运营／客户端页面已按Demo共享视觉层级对齐；客户审核与归档纠错、运营两分支取证决定、CORE-NT-001～007及CORE-CA-001／002已在各自明确边界内完成正式API、页面与门禁；后续案件办理仍待切片。
+本轮无CA-004业务实现。CA-003确认诉状已集成`main`，历史实现边界与候选验收结果见[验证记录](spec/v0.1/VALIDATION.md)。
 
 ## 未决与限制
 
-- SD-22／30正式准入门槛保持有效；客户资料准入不是线索阶段，CORE-LD-001只补正式线索所需的最小准入和本地／测试私有存储Adapter，不冒充生产E02完成。
-- CORE-LD-002已交付最小真实客户端，CORE-LD-003已由真实企业客户完成侵权确认闭环；CORE-LD-004继续使用该客户身份，CORE-LD-005／006由运营以自身真实身份办理，不代录客户结论，也不提前建设完整客户门户。
-- 多联系人、资产协议、线索CSV／批量、完整外部端、费用结算和报表后置；公证列表列设置、办理清单导出和合法批量归档按`CORE-NT-008～010`排期，具体状态与Current／Next只见[路线图](feature-roadmap.md)。OCR与爬虫当前只保留领域Command、幂等和来源追踪缝隙，候选暂存、批次、供应商和协议到对应功能时设计。
-- 历史验证只写入独立测试库和随机临时schema；未授权发布、生产数据库操作或持久化卷删除。契约中标记`BLOCKED_BY`的后段动作必须等待对应业务决定，不得由实施AI补猜。
+CA-004尚未验收，不推进CA-005。测试库禁止重置；CA-003此前按授权执行的测试库reset仅为历史事实，不构成本轮授权。开发／生产环境未迁移，未发布。
 
 ## 最近验证
 
-- CORE-NT-010固定候选`f5fb604`经独立Sol终审及补审，Level 2定向门禁、空库／上一支持schema迁移和隔离PostgreSQL／Chromium组合验收通过；实际结果、失败历史及文档收口边界见[验证记录](spec/v0.1/VALIDATION.md)。
-- CORE-NT-009固定候选`c303858`通过独立Sol终审及补审、Level 2门禁和隔离PostgreSQL／Chromium 6项组合验收；前一候选的2项失败已修复并保留记录，实际证据及后续文档收口边界只见[验证记录](spec/v0.1/VALIDATION.md)。
-- CORE-NT-008列设置固定候选`6d2c884`经独立Final Review、Level 2门禁及隔离数据库／浏览器组合验收通过；真实持久化、本人偏好隔离和读取范围已验证，详细结果及文档收口边界只见[验证记录](spec/v0.1/VALIDATION.md)。
-- CORE-CA-001匹配事实修正候选`1279b1d62a79d00116ab93b8e642743fe5ee196d`、tree`4c8952b03bdfa24bdafa3ab0e6046abb06f22bf5`通过独立Review及补审（未关闭Critical／Important／Minor均为0）、完整`pnpm verify`（工具73、后端871、前端462）和隔离PostgreSQL／Chromium完整E2E 124/124；迁移空库／上一支持schema与失败回滚专项通过。收口态`b6d3489`已集成`main`；原候选`0f2a222`证据仅属历史，详细边界见[验证记录](spec/v0.1/VALIDATION.md)。
-- CORE-NT-006原固定业务候选`3cba594`通过独立Final Review与补审（未关闭Critical／Important／Minor均为0）及迁移专项；本地`main@a6ef5f1`组合tree重新通过完整`pnpm verify`（工具73、后端846、前端446）及隔离PostgreSQL／Chromium完整E2E 118/118（3.6分钟）。证据边界见[验证记录](spec/v0.1/VALIDATION.md)，不表示案件后续或生产发布完成。
-- CORE-NT-005固定代码候选`debe747b1d95c9e25d1813d3c96118147eb506d7`、tree`ed6042a551f0e9082330dd52f6e3e307b9f8ffab`通过独立Final Review与补审（未关闭Critical／Important／Minor均为0）、完整`pnpm verify`（工具73、后端803、前端440）及隔离PostgreSQL／Chromium完整E2E 113/113；空库与上一支持schema迁移专项通过。证据边界见[验证记录](spec/v0.1/VALIDATION.md)，不表示退货、案件后续或生产发布完成。
-- CORE-NT-004固定代码候选`7882a9e61013266961f29e3e27bf94b8c7e1ee7b`、tree`d6c1c76e04ff8ac7c85302d0208eb5b6dacd35cb`通过独立Final Review（未关闭Critical／Important／Minor均为0）、Level 2定向门禁（后端776、前端418）及隔离PostgreSQL／Chromium公证主链50/50；空库45份迁移与上一支持schema升级、并发和故障回滚验证通过。结果边界见[验证记录](spec/v0.1/VALIDATION.md)，不表示实际出证、退货、转案或生产发布。
-- CORE-NT-007固定代码候选`84380cf80d80822f1afe857a2d71967eb55fe244`、tree`bf3a80d86a5116a249f2f54162d8ba71a459eecb`通过独立Final Review、完整`pnpm verify`（工具73、后端759、前端413）及隔离PostgreSQL／Chromium完整E2E 106/106；迁移专项验证空库44份及上一支持schema升级。证据边界见[验证记录](spec/v0.1/VALIDATION.md)，不表示NT-004～006或生产发布已完成。
-- CORE-NT-003固定代码候选`56a0ed687dc148fa0a26cac21a2aa5aab6350f0d`、tree`9b775440dfa0cf5b136ecd5ec5b364361c46ac89`通过独立Final Review、完整`pnpm verify`（工具71、后端738、前端398）及隔离PostgreSQL／Chromium完整E2E 102/102；迁移专项从空库与上一支持Schema升级通过。证据边界见[验证记录](spec/v0.1/VALIDATION.md)，不表示NT-007、出证、转案或生产发布已完成。
-- CORE-NT-002固定代码候选`f7bca9b9d4eec4d8bce6c8ce3615545cdc5db3d2`、tree`c54221c265b71609b4e4c5dff0c5a30352446e66`通过独立Final Review、完整`pnpm verify`（工具71、后端693、前端365）和隔离PostgreSQL／Chromium完整E2E 96/96；空库41份迁移、上一支持Schema升级、故障回滚与测试库账本校验通过。证据边界见[验证记录](spec/v0.1/VALIDATION.md)；并非后续开箱审核或生产发布。
-- CORE-NT-001固定代码候选`0597388d5dcc9731407de2b432c9c4da12573e71`、tree`744c6978fb066ab25e914394484f7835bc2326f6`通过独立Final Review、完整`pnpm verify`（工具71、后端686、前端355）和独立PostgreSQL／Chromium完整E2E 93/93；空库40份迁移链、上一支持Schema升级、故障回滚重试及测试库账本校验通过。证据边界见[验证记录](spec/v0.1/VALIDATION.md)；这不是生产发布或后续开箱完成声明。
-- CORE-LD-006固定代码候选`eafd131c61c37e9e7759a3430c489f95d8e714d3`、tree`9f2a7c67f95ba7e6fa55677699013523f1460a09`已通过独立Final Review、完整`pnpm verify`和完整数据库型浏览器验收91/91；本次仅做非执行性状态收口，证据边界见[验证记录](spec/v0.1/VALIDATION.md)。
-- CORE-LD-005固定代码候选及随后状态收口候选的Review、完整门禁、独立数据库／浏览器验收和两份tree的证据边界见[验证记录](spec/v0.1/VALIDATION.md)；本文件不复制各次结果。
-- CORE-LD-007最终已验证候选`95b59274ad3e5b17827d78d6599e3b2ba24a9676`、tree`349b96d6ae86f32f1c61c335a31911cba29bf768`已通过独立Final Review、完整`pnpm verify`及完整数据库型浏览器验收；细节见[验证记录](spec/v0.1/VALIDATION.md)。
-- Node v24.21.0、pnpm 11.27.0与项目锁定环境一致；使用锁定PostgreSQL 17.11镜像、随机本地端口和显式隔离测试DSN，不降级到开发库。
-- `CORE-LD-001`最终全分支总审结论为`APPROVED`，Critical 0／Important 0／Minor 0；其材料并发边界和事务修复结论保持有效。
-- `CORE-LD-002`固定代码候选`6be15b2`、tree`f71f44e4db09699f310e608e135254204ea3679e`的完整`pnpm verify`通过：工具71项、后端499项、前端253项，以及规范、架构、类型、Lint、格式和生产构建全部成功；完整数据库型Chromium E2E 76/76通过。
-- 同一tree的正式`verify:slice:core-ld` Evidence v2通过：后端308项、前端147项、架构／类型／ESLint、Slice格式、后端构建及真实PostgreSQL／Chromium 18/18均成功。空测试库从零应用24份前向迁移；上一支持schema升级和失败阶段回滚由迁移专项通过。独立终审为`ACCEPTED`，Critical／Important／Minor均为0。证据位于Git common目录`dev-cor-validation-evidence/f71f44e4db09699f310e608e135254204ea3679e.json`。
-- CORE-LD-002快速上手UX硬化代码候选`667da39`、tree`4fe53798ef755ca7cab59ff3b0427f833a60a6fb`的`verify:slice:core-ld`通过：后端309项、前端155项及真实PostgreSQL／Chromium 18/18全部成功；Evidence v2位于`dev-cor-validation-evidence/4fe53798ef755ca7cab59ff3b0427f833a60a6fb.json`。独立UX复审为`ACCEPTED`，Critical／Important／Minor均为0。
-- 记录上述证据后的收口候选`d20675d`、tree`03ac4e412281e1c736973536509b3d5add847887`完整`pnpm verify`通过：工具71项、后端500项、前端268项，以及上下文、规范、架构、类型、Lint、格式和双端生产构建全部成功。
-- CORE-LD-003最终审查与测试修正分别在`ab57a6f`和`dc27c37`获独立`ACCEPTED`，均为Critical／Important／Minor 0。完整`pnpm test:e2e:full`在`8d4742d`／tree`3b24dcd`通过80/80；固定候选`9167b22`／tree`1d3d9813c2c4c449505867937536a121826b7ee6`的`pnpm verify`和同tree `pnpm verify:slice:core-ld`均通过。完整门禁包含工具71项、后端552项、前端296项；Slice门禁包含后端359项、前端183项及PostgreSQL／Chromium 22/22，其Evidence v2位于`dev-cor-validation-evidence/1d3d9813c2c4c449505867937536a121826b7ee6.json`。迁移011000／012000／013000为前向迁移，空库、上一支持Schema升级及失败回滚均已验证。
+CA-003集成提交为`58e405665ea295890cc949c33854b525d902ba9f`，tree为`9bb941e90703a22a73682ccf77f47b0511218857`；集成态文档preflight及严格上下文检查通过，业务证据仍绑定原固定候选，详见[验证记录](spec/v0.1/VALIDATION.md)。
 
 ## 下一步
 
-后续切片按用户要求暂停；本轮仅完成CA-003状态／证据文档收口。路线图Current为待领取并暂停的CA-004、Next为CA-005；本工作区仍保留CA-003分支，未集成。
+按高风险Sol Task 1、独立Review、Luna UI实现、Final Review及完整门禁推进CA-004；CA-004未完成期间，开发／生产环境不迁移。

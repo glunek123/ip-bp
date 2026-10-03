@@ -10,7 +10,9 @@
 
 失败历史仅作诊断记录：`e24571a`首次静态检查发现4项lint错误，`101c149`机械修复；`afd63f5`组合17项中16项通过，失败因旧cases只读定位缺少标记，`f285450`恢复原条件标记并补充无写入／上传控件断言，未删除旧测试、权限或真实附件字节断言。失败报告保留于`.local/ca003/afd63f5-failed-playwright-report`及`.local/ca003/afd63f5-failed-test-results`。早期worker日志曾同名覆写，且误传参数导致前端全557项而非聚焦项；已披露，不将该阶段结果冒用为最终候选证据，独立RED／GREEN记录保留。
 
-此前仅按明确授权重建独立测试库并执行迁移，旧测试行已删除；未触碰开发／生产库或持久化卷，不再执行reset。CA-004／Word跨工具兼容／生产Provider不属于本切片，本地验收不代表集成、生产准入或MVP上线。按Level 2处理；本Slice暂无正式scope，因此逐项记录正式门禁，不伪称Evidence v2，未运行完整`pnpm verify`或未过滤全量E2E（未修改共享认证／RBAC／scoped机制）。业务结果只归属于上述固定候选。其后的累计收口差异仅为`docs/feature-roadmap.md`完成态与唯一Current／Next、`docs/project-status.md`恢复摘要、本验证记录及对应解释快照；不改变契约、代码、迁移、测试／构建输入或环境，原业务证据仍适用，不把收口HEAD称作旧候选实跑结果，也不要求记录自身提交hash。收口检查使用现有受影响Prettier、`spec:check`、`context:check:strict`及累计Git差异核对；实际命令、退出状态和结果见`.local/logs/ca003-closeout-doc-check.log`。CA-003完成后按用户要求暂停后续切片，CA-004未领取；集成结果或远端必需检查仍须另按现行规则确认。
+此前仅按明确授权重建独立测试库并执行迁移，旧测试行已删除；未触碰开发／生产库或持久化卷，不再执行reset。CA-004／Word跨工具兼容／生产Provider不属于本切片，本地验收不代表集成、生产准入或MVP上线。按Level 2处理；本Slice暂无正式scope，因此逐项记录正式门禁，不伪称Evidence v2，未运行完整`pnpm verify`或未过滤全量E2E（未修改共享认证／RBAC／scoped机制）。业务结果只归属于上述固定候选。其后的累计收口差异仅为`docs/feature-roadmap.md`完成态与唯一Current／Next、`docs/project-status.md`恢复摘要、本验证记录及对应解释快照；不改变契约、代码、迁移、测试／构建输入或环境，原业务证据仍适用，不把收口HEAD称作旧候选实跑结果，也不要求记录自身提交hash。收口检查使用现有受影响Prettier、`spec:check`、`context:check:strict`及累计Git差异核对；实际命令、退出状态和结果见`.local/logs/ca003-closeout-doc-check.log`。CA-003完成后曾按用户要求暂停后续切片；2026-10-03新授权解除该暂停并领取CA-004，此记录保留历史事实，不改写此前状态。
+
+2026-10-03集成事实：固定CA-003收口提交完整hash`58e405665ea295890cc949c33854b525d902ba9f`及tree`9bb941e90703a22a73682ccf77f47b0511218857`与原收口一致；`main`、`origin/main`及任务远端分支均已核实指向该提交。相对固定业务候选`6acdc65`累计仅有4份状态证据快照变化。文档专项preflight与合并后`context:check:strict`均为0（preflight日志`.local/logs/ca003-merge-preflight-20261003-115858.log`）；保留原固定候选的17/17业务结果，不声称新集成tree重跑业务测试、完整`pnpm verify`或E2E。未发布，未执行开发／生产迁移。
 
 ## CORE-NT-010 公证事项合法批量归档（2026-10-02）
 
