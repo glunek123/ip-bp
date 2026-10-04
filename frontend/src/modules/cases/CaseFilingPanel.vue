@@ -366,7 +366,7 @@ async function download(file: CaseFile) {
 
 <template>
   <section class="demo-card demo-card--pad" data-test="case-filing-panel">
-    <h2 class="form-section-title">提交法院立案</h2>
+    <h2 class="form-section-title">提交立案</h2>
     <template v-if="item.canSubmitFiling && item.stage === 'WAITING_FILING'">
       <p class="field-help">
         请确认真实法院、实际提交日期和本次材料。确认后案件将进入“待正式立案”，系统会保存法院、日期、诉调号及所选文件版本；已确认金额保持不变。

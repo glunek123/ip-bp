@@ -84,6 +84,7 @@ describe('case filing panel', () => {
   it('automatically selects a single court and requires date and evidence before review', async () => {
     const wrapper = mountPanel();
     await flushPromises();
+    expect(wrapper.get('h2.form-section-title').text()).toBe('提交立案');
     expect(api.listFilingCourts).toHaveBeenCalledWith('case-1');
     expect(
       wrapper.get('[data-test="filing-court-fixed"]').element,

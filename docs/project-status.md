@@ -4,13 +4,13 @@
 
 ## 当前阶段
 
-CORE-CA-005提交法院已通过独立终审及正式Level 2验收，尚未推送／合并。此前CA-001～004已集成main；业务能力状态及唯一Current／Next以[功能开发路线图](feature-roadmap.md)为准。
+CORE-CA-005提交立案已通过独立终审及正式Level 2验收，尚未推送／合并。此前CA-001～004已集成main；业务能力状态及唯一Current／Next以[功能开发路线图](feature-roadmap.md)为准。
 
 ## 当前任务
 
 本轮分支`codex/core-ca-005-court-filing`，基线main为`b28e0f35fa8de21f752145e43177b7defe450341`。唯一Current为**CORE-CA-006｜正式受理（待领取）**，Next为CORE-CA-007开庭后推进；先按授权集成CA-005并核对组合tree，再从更新后的main领取，本轮未开始CA-006。
 
-本轮范围见[CA-005契约](spec/v0.1/modules/cases.md#core-ca-005-提交法院契约)及[实施计划](superpowers/plans/2026-10-03-core-ca-005-court-filing.md)。复用既有身份／数据范围／材料／审计机制，按Level 2；核心Command与迁移Task及集成候选均已独立审查。
+本轮范围见[CA-005契约](spec/v0.1/modules/cases.md#core-ca-005-提交立案契约)及[实施计划](superpowers/plans/2026-10-03-core-ca-005-court-filing.md)。复用既有身份／数据范围／材料／审计机制，按Level 2；核心Command与迁移Task及集成候选均已独立审查。
 
 ## 已实现
 

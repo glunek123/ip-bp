@@ -1,4 +1,4 @@
-# CORE-CA-005 提交法院实施计划
+# CORE-CA-005 提交立案实施计划
 
 > **For agentic workers:** 使用subagent-driven-development执行；Sol／Luna风险路由优先，普通Task自审交接，核心Command／迁移独立Sol Review，全部集成后一次Final Review。本计划不维护动态验收台账。
 
@@ -10,7 +10,7 @@
 
 ## 全局约束
 
-- 基线main `b28e0f35fa8de21f752145e43177b7defe450341`，分支`codex/core-ca-005-court-filing`；[案件Spec CA-005与AC-CA-013](../../spec/v0.1/modules/cases.md#core-ca-005-提交法院契约)是唯一业务边界。
+- 基线main `b28e0f35fa8de21f752145e43177b7defe450341`，分支`codex/core-ca-005-court-filing`；[案件Spec CA-005与AC-CA-013](../../spec/v0.1/modules/cases.md#core-ca-005-提交立案契约)是唯一业务边界。
 - Level 2：复用共享安全机制、普通可失败原子前向迁移；若实际修改身份／隔离／通用事务机制或历史数据语义，立即升级Level 3，不为省验证维持错误分级。
 - 同一工作区只允许一个写入者，Task 1接受后再Task 2；共享数据库／迁移／故障注入串行。每个PowerShell先加载项目runtime并核对版本，数据库仅backend/.env.test，秘密不输出，不reset，不修改已执行迁移。
 - 不做CA-006、批量、历史转入、金额更正或法院管理平台；不改门禁、锁文件、CI及无关业务。只本地提交，默认不push／merge／部署。

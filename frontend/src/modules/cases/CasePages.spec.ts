@@ -338,6 +338,9 @@ describe('case pages', () => {
     });
     const wrapper = await mountRoute('/cases/case-1', CaseDetailPage);
     expect(wrapper.text()).toContain('待正式立案');
+    expect(wrapper.get('[data-test="case-filing-record"] h2').text()).toBe(
+      '提交立案记录',
+    );
     expect(wrapper.text()).toContain('甲市中级人民法院');
     expect(wrapper.text()).toContain('¥ 123.45');
     expect(wrapper.find('[data-test="case-filing-panel"]').exists()).toBe(

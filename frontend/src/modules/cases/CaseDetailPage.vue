@@ -655,7 +655,7 @@ onBeforeUnmount(() => request?.abort());
           class="demo-card demo-card--pad"
           data-test="case-filing-record"
         >
-          <h2 class="form-section-title">法院提交立案记录</h2>
+          <h2 class="form-section-title">提交立案记录</h2>
           <p>法院：{{ item.filingSubmission.court.name }}</p>
           <p>实际提交日期：{{ item.filingSubmission.submittedAt }}</p>
           <p>诉调号：{{ item.filingSubmission.mediationNo ?? '未填写' }}</p>
