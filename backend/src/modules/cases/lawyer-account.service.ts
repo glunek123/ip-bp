@@ -60,6 +60,7 @@ export class LawyerAccountService {
       where: {
         departmentId: actor.departmentId,
         accountBinding: { is: null },
+        boundUserId: null,
         assignments: { some: {} },
         ...(q
           ? {
@@ -225,40 +226,53 @@ export class LawyerAccountService {
     expectedRevision: number,
   ) {
     try {
-      return await this.database.$transaction(
-        async (tx) => {
-          await this.authorize(tx, actor);
-          const user = await this.findManagedUser(tx, actor, userId);
-          if (user.authorizationRevision !== expectedRevision)
-            throw this.versionConflict();
-          const profile = await tx.lawyerProfile.findFirst({
-            where: { id: profileId, departmentId: actor.departmentId },
-            select: { id: true },
-          });
-          if (profile === null) throw this.notFound();
-          const bound = await tx.lawyerAccountBinding.findUnique({
-            where: { profileId },
-            select: { id: true },
-          });
-          if (bound !== null)
-            throw new ConflictException({
-              code: 'LAWYER_PROFILE_BOUND',
-              message: '该律师档案已绑定账号',
+      return await this.withVersionConflict(() =>
+        this.database.$transaction(
+          async (tx) => {
+            await this.authorize(tx, actor);
+            const user = await this.findManagedUser(tx, actor, userId);
+            if (user.authorizationRevision !== expectedRevision)
+              throw this.versionConflict();
+            const profile = await tx.lawyerProfile.findFirst({
+              where: { id: profileId, departmentId: actor.departmentId },
+              select: { id: true, boundUserId: true },
             });
-          await tx.lawyerAccountBinding.create({
-            data: { userId, departmentId: actor.departmentId, profileId },
-          });
-          await tx.userAccount.update({
-            where: { id: userId },
-            data: { authorizationRevision: { increment: 1 } },
-          });
-          await this.revokeSessions(tx, userId);
-          await this.audit(tx, actor, userId, 'lawyer-account.profile-bound', {
-            profileId,
-          });
-          return this.getItem(tx, actor, userId);
-        },
-        { isolationLevel: 'Serializable' },
+            if (profile === null) throw this.notFound();
+            if (profile.boundUserId !== null && profile.boundUserId !== userId)
+              throw new ConflictException({
+                code: 'LAWYER_PROFILE_BOUND',
+                message: '该律师档案已绑定账号',
+              });
+            const bound = await tx.lawyerAccountBinding.findUnique({
+              where: { profileId },
+              select: { id: true },
+            });
+            if (bound !== null)
+              throw new ConflictException({
+                code: 'LAWYER_PROFILE_BOUND',
+                message: '该律师档案已绑定账号',
+              });
+            await tx.lawyerAccountBinding.create({
+              data: { userId, departmentId: actor.departmentId, profileId },
+            });
+            await tx.userAccount.update({
+              where: { id: userId },
+              data: { authorizationRevision: { increment: 1 } },
+            });
+            await this.revokeSessions(tx, userId);
+            await this.audit(
+              tx,
+              actor,
+              userId,
+              'lawyer-account.profile-bound',
+              {
+                profileId,
+              },
+            );
+            return this.getItem(tx, actor, userId);
+          },
+          { isolationLevel: 'Serializable' },
+        ),
       );
     } catch (error) {
       if (this.isUnique(error))
@@ -276,26 +290,34 @@ export class LawyerAccountService {
     active: boolean,
     expectedRevision: number,
   ) {
-    return this.database.$transaction(
-      async (tx) => {
-        await this.authorize(tx, actor);
-        const user = await this.findManagedUser(tx, actor, userId);
-        if (user.authorizationRevision !== expectedRevision)
-          throw this.versionConflict();
-        if (user.active !== active) {
-          await tx.userAccount.update({
-            where: { id: userId },
-            data: { active, authorizationRevision: { increment: 1 } },
-          });
-          await this.revokeSessions(tx, userId);
-          await this.audit(tx, actor, userId, 'lawyer-account.status-changed', {
-            from: user.active,
-            to: active,
-          });
-        }
-        return this.getItem(tx, actor, userId);
-      },
-      { isolationLevel: 'Serializable' },
+    return this.withVersionConflict(() =>
+      this.database.$transaction(
+        async (tx) => {
+          await this.authorize(tx, actor);
+          const user = await this.findManagedUser(tx, actor, userId);
+          if (user.authorizationRevision !== expectedRevision)
+            throw this.versionConflict();
+          if (user.active !== active) {
+            await tx.userAccount.update({
+              where: { id: userId },
+              data: { active, authorizationRevision: { increment: 1 } },
+            });
+            await this.revokeSessions(tx, userId);
+            await this.audit(
+              tx,
+              actor,
+              userId,
+              'lawyer-account.status-changed',
+              {
+                from: user.active,
+                to: active,
+              },
+            );
+          }
+          return this.getItem(tx, actor, userId);
+        },
+        { isolationLevel: 'Serializable' },
+      ),
     );
   }
 
@@ -306,37 +328,39 @@ export class LawyerAccountService {
     active: boolean,
     expectedVersion: number,
   ) {
-    return this.database.$transaction(
-      async (tx) => {
-        await this.authorize(tx, actor);
-        await this.findManagedUser(tx, actor, userId);
-        const binding = await tx.lawyerAccountBinding.findFirst({
-          where: { id: bindingId, userId, departmentId: actor.departmentId },
-          select: { id: true, active: true, version: true },
-        });
-        if (binding === null) throw this.notFound();
-        if (binding.version !== expectedVersion) throw this.versionConflict();
-        if (binding.active !== active) {
-          await tx.lawyerAccountBinding.update({
-            where: { id: bindingId },
-            data: { active, version: { increment: 1 } },
+    return this.withVersionConflict(() =>
+      this.database.$transaction(
+        async (tx) => {
+          await this.authorize(tx, actor);
+          await this.findManagedUser(tx, actor, userId);
+          const binding = await tx.lawyerAccountBinding.findFirst({
+            where: { id: bindingId, userId, departmentId: actor.departmentId },
+            select: { id: true, active: true, version: true },
           });
-          await tx.userAccount.update({
-            where: { id: userId },
-            data: { authorizationRevision: { increment: 1 } },
-          });
-          await this.revokeSessions(tx, userId);
-          await this.audit(
-            tx,
-            actor,
-            userId,
-            'lawyer-account.binding-status-changed',
-            { bindingId, from: binding.active, to: active },
-          );
-        }
-        return this.getItem(tx, actor, userId);
-      },
-      { isolationLevel: 'Serializable' },
+          if (binding === null) throw this.notFound();
+          if (binding.version !== expectedVersion) throw this.versionConflict();
+          if (binding.active !== active) {
+            await tx.lawyerAccountBinding.update({
+              where: { id: bindingId },
+              data: { active, version: { increment: 1 } },
+            });
+            await tx.userAccount.update({
+              where: { id: userId },
+              data: { authorizationRevision: { increment: 1 } },
+            });
+            await this.revokeSessions(tx, userId);
+            await this.audit(
+              tx,
+              actor,
+              userId,
+              'lawyer-account.binding-status-changed',
+              { bindingId, from: binding.active, to: active },
+            );
+          }
+          return this.getItem(tx, actor, userId);
+        },
+        { isolationLevel: 'Serializable' },
+      ),
     );
   }
 
@@ -352,31 +376,33 @@ export class LawyerAccountService {
     } catch (error) {
       throw this.credentialError(error);
     }
-    return this.database.$transaction(
-      async (tx) => {
-        await this.authorize(tx, actor);
-        const user = await this.findManagedUser(tx, actor, userId);
-        if (user.authorizationRevision !== expectedRevision)
-          throw this.versionConflict();
-        await tx.localCredential.update({
-          where: { userId },
-          data: { passwordHash, passwordChangedAt: new Date() },
-        });
-        await tx.userAccount.update({
-          where: { id: userId },
-          data: { authorizationRevision: { increment: 1 } },
-        });
-        await this.revokeSessions(tx, userId);
-        await this.audit(
-          tx,
-          actor,
-          userId,
-          'lawyer-account.password-reset',
-          {},
-        );
-        return this.getItem(tx, actor, userId);
-      },
-      { isolationLevel: 'Serializable' },
+    return this.withVersionConflict(() =>
+      this.database.$transaction(
+        async (tx) => {
+          await this.authorize(tx, actor);
+          const user = await this.findManagedUser(tx, actor, userId);
+          if (user.authorizationRevision !== expectedRevision)
+            throw this.versionConflict();
+          await tx.localCredential.update({
+            where: { userId },
+            data: { passwordHash, passwordChangedAt: new Date() },
+          });
+          await tx.userAccount.update({
+            where: { id: userId },
+            data: { authorizationRevision: { increment: 1 } },
+          });
+          await this.revokeSessions(tx, userId);
+          await this.audit(
+            tx,
+            actor,
+            userId,
+            'lawyer-account.password-reset',
+            {},
+          );
+          return this.getItem(tx, actor, userId);
+        },
+        { isolationLevel: 'Serializable' },
+      ),
     );
   }
 
@@ -569,6 +595,33 @@ export class LawyerAccountService {
       code: 'VERSION_CONFLICT',
       message: '律师账号或绑定版本已变化',
     });
+  }
+  private async withVersionConflict<T>(work: () => Promise<T>): Promise<T> {
+    try {
+      return await work();
+    } catch (error) {
+      if (this.isSerializationConflict(error)) throw this.versionConflict();
+      throw error;
+    }
+  }
+  private isSerializationConflict(error: unknown): boolean {
+    if (error === null || typeof error !== 'object') return false;
+    const value = error as {
+      code?: unknown;
+      cause?: unknown;
+      meta?: {
+        driverAdapterError?: {
+          cause?: { originalCode?: unknown; sqlState?: unknown };
+        };
+      };
+    };
+    return (
+      value.code === 'P2034' ||
+      value.code === '40001' ||
+      value.meta?.driverAdapterError?.cause?.originalCode === '40001' ||
+      value.meta?.driverAdapterError?.cause?.sqlState === '40001' ||
+      this.isSerializationConflict(value.cause)
+    );
   }
   private isUnique(error: unknown) {
     return (
