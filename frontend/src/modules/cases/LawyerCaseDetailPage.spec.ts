@@ -175,6 +175,52 @@ describe('LawyerCaseDetailPage', () => {
     expect(wrapper.text()).toContain('当前账号已不能读取该案件');
   });
 
+  it('shows the mediation number in the filing record', async () => {
+    api.getLawyerCase.mockResolvedValueOnce({
+      ...detail('case-a', 'CA-A'),
+      filingSubmission: {
+        court: { id: 'court-1', name: '杭州法院' },
+        submittedAt: '2026-10-01',
+        recordedAt: '2026-10-01T00:00:00Z',
+        mediationNo: '律所调-20261001',
+        evidenceFiles: [
+          {
+            materialId: 'filing-material',
+            contentVersionId: 'filing-version',
+            originalFilename: '立案材料.pdf',
+            mimeType: 'application/pdf',
+          },
+        ],
+        screenshotFiles: [],
+      },
+    });
+    const { wrapper } = await mountPage();
+    expect(wrapper.text()).toContain('诉调号：律所调-20261001');
+  });
+
+  it('shows the filing record fallback when the mediation number is empty', async () => {
+    api.getLawyerCase.mockResolvedValueOnce({
+      ...detail('case-a', 'CA-A'),
+      filingSubmission: {
+        court: { id: 'court-1', name: '杭州法院' },
+        submittedAt: '2026-10-01',
+        recordedAt: '2026-10-01T00:00:00Z',
+        mediationNo: null,
+        evidenceFiles: [
+          {
+            materialId: 'filing-material',
+            contentVersionId: 'filing-version',
+            originalFilename: '立案材料.pdf',
+            mimeType: 'application/pdf',
+          },
+        ],
+        screenshotFiles: [],
+      },
+    });
+    const { wrapper } = await mountPage();
+    expect(wrapper.text()).toContain('诉调号：未填写');
+  });
+
   it('keeps a successful complaint POST locked when its follow-up GET fails', async () => {
     api.getLawyerCase
       .mockResolvedValueOnce({
