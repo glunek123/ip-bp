@@ -260,6 +260,14 @@ export async function createSubmittedCaseThroughApi(request, options = {}) {
     201,
   );
   const caseId = certificate.case.id;
+  if (options.stopAtPendingMatch) {
+    return {
+      caseId,
+      matterId: matter.id,
+      certificateFile,
+      certificateBytes: pdf,
+    };
+  }
   const lawyer = await createLawyerAccountThroughApi(request, {
     fullName: '诉状确认律师',
   });

@@ -143,7 +143,11 @@ async function expectCaseListSession(page: Page) {
   ).toBeVisible();
 }
 
-async function matchCaseThroughBrowser(page: Page, caseId: string) {
+async function matchCaseThroughBrowser(
+  page: Page,
+  caseId: string,
+  lawyerAccount: Awaited<ReturnType<typeof createLawyerAccountThroughApi>>,
+) {
   const caseLink = page.locator(
     `[data-test="case-list"] a[href="/cases/${caseId}"]`,
   );
@@ -153,7 +157,13 @@ async function matchCaseThroughBrowser(page: Page, caseId: string) {
   await expect(form).toBeVisible();
   await form.getByLabel('主体类型').selectOption('ORGANIZATION');
   await form.getByLabel('名称').fill('杭州起诉材料验收公司');
-  await form.getByLabel('律师姓名').fill('起诉材料验收律师');
+  await form.getByLabel('按姓名或用户名搜索').fill(lawyerAccount.username);
+  await expect(form.getByLabel('账号')).toContainText(
+    `${lawyerAccount.displayName}（${lawyerAccount.username}）`,
+  );
+  await form.getByLabel('账号').selectOption({
+    label: `${lawyerAccount.displayName}（${lawyerAccount.username}）`,
+  });
   await page.getByRole('button', { name: '确认匹配并进入待写诉状' }).click();
   await expect(page.getByRole('status')).toContainText('待写诉状');
   await expect(
@@ -599,6 +609,9 @@ test('an operator matches a real notary case and the result survives refresh', a
 }) => {
   test.setTimeout(120_000);
   const { caseId } = await createPendingMatchCase(request);
+  const lawyerAccount = await createLawyerAccountThroughApi(request, {
+    fullName: '张律师',
+  });
   const mineBefore = await request.get(
     '/api/v1/cases?view=mine&stage=PENDING_MATCH',
     { headers: authorizationA },
@@ -630,7 +643,13 @@ test('an operator matches a real notary case and the result survives refresh', a
   await form.getByLabel('身份证号（选填）').fill('91330000MATCH001');
   await form.getByLabel('电话（选填）').first().fill('05710000000');
   await form.getByLabel('地址（选填）').fill('浙江省杭州市');
-  await form.getByLabel('律师姓名').fill('张律师');
+  await form.getByLabel('按姓名或用户名搜索').fill(lawyerAccount.username);
+  await expect(form.getByLabel('账号')).toContainText(
+    `${lawyerAccount.displayName}（${lawyerAccount.username}）`,
+  );
+  await form.getByLabel('账号').selectOption({
+    label: `${lawyerAccount.displayName}（${lawyerAccount.username}）`,
+  });
   await expect(form.getByLabel('实际匹配日期')).not.toHaveValue('');
   await form.getByLabel('实际匹配日期').fill('2026-09-28');
   await form.getByLabel('电话（选填）').last().fill('05719999999');
@@ -947,6 +966,9 @@ test('an authenticated operator matches, uploads and submits complaint materials
     notaryUsername,
     notaryPassword,
   } = await createPendingMatchCase(request);
+  const lawyerAccount = await createLawyerAccountThroughApi(request, {
+    fullName: '起诉材料验收律师',
+  });
   const fakeVersion = randomUUID();
   const invalidStage = await submitComplaint(request, caseId, {
     expectedVersion: 1,
@@ -961,7 +983,7 @@ test('an authenticated operator matches, uploads and submits complaint materials
   expect(await invalidStage.json()).toMatchObject({ code: 'INVALID_STATE' });
 
   await loginOperator(page);
-  await matchCaseThroughBrowser(page, caseId);
+  await matchCaseThroughBrowser(page, caseId, lawyerAccount);
   await page.goto('/cases');
   const actionableRow = page
     .locator('[data-test="case-list"] li')
@@ -1078,13 +1100,14 @@ test('an authenticated operator matches, uploads and submits complaint materials
   );
   expect(foreignDownload.status()).toBe(404);
 
-  await form.getByLabel('金额（非负精确金额）').fill('123.45');
+  const complaintAmount = form.getByRole('textbox', {
+    name: '金额',
+    exact: true,
+  });
+  await expect(complaintAmount).toBeVisible();
+  await complaintAmount.fill('123.45');
   await form.locator('[data-test="submit-complaint"]').click();
-  await expect(
-    page.getByText('起诉材料已确认提交，当前阶段为诉状待确认。', {
-      exact: true,
-    }),
-  ).toBeVisible();
+  await expect(page.locator('.page-head')).toContainText('诉状待确认');
   await expect(page.locator('[data-test="complaint-submit-form"]')).toHaveCount(
     0,
   );

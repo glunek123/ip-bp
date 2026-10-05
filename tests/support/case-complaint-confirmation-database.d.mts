@@ -1,7 +1,20 @@
 import type { APIRequestContext } from '@playwright/test';
 export function createSubmittedCaseThroughApi(
   request: APIRequestContext,
-  options?: { submitAsLawyer?: boolean },
+  options: { stopAtPendingMatch: true },
+): Promise<{
+  caseId: string;
+  matterId: string;
+  certificateFile: {
+    materialId: string;
+    contentVersionId: string;
+    originalFilename: string;
+  };
+  certificateBytes: Buffer;
+}>;
+export function createSubmittedCaseThroughApi(
+  request: APIRequestContext,
+  options?: { submitAsLawyer?: boolean; stopAtPendingMatch?: false },
 ): Promise<{
   caseId: string;
   lawyer: {

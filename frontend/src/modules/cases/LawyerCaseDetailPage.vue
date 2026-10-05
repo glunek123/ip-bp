@@ -484,6 +484,7 @@ onBeforeUnmount(() => {
             {{ item.filingSubmission.court.name }} ·
             {{ item.filingSubmission.submittedAt }}
           </p>
+          <p>诉调号：{{ item.filingSubmission.mediationNo ?? '未填写' }}</p>
           <ul>
             <li
               v-for="file in [
