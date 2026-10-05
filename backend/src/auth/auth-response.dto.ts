@@ -25,8 +25,8 @@ export class AuthSessionResponseDto {
   @ApiProperty({ type: () => AuthUserResponseDto })
   user!: AuthUserResponseDto;
 
-  @ApiProperty({ enum: ['INTERNAL', 'CLIENT', 'NOTARY'] })
-  principalType!: 'INTERNAL' | 'CLIENT' | 'NOTARY';
+  @ApiProperty({ enum: ['INTERNAL', 'CLIENT', 'NOTARY', 'LAWYER'] })
+  principalType!: 'INTERNAL' | 'CLIENT' | 'NOTARY' | 'LAWYER';
 
   @ApiProperty({
     type: () => AuthDepartmentResponseDto,

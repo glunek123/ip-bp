@@ -54,6 +54,7 @@ export const permissionActionValues = [
   'NOTARY_OFFICE_MANAGE',
   'USER_READ',
   'USER_MANAGE',
+  'LAWYER_ACCOUNT_MANAGE',
   'TEAM_READ',
   'TEAM_MANAGE',
   'ROLE_READ',

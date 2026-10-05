@@ -35,6 +35,7 @@ export type PermissionAction =
   | 'client.lead.withdraw.confirm'
   | 'user.read'
   | 'user.manage'
+  | 'lawyer.account.manage'
   | 'team.read'
   | 'team.manage'
   | 'role.read'

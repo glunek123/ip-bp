@@ -14,10 +14,22 @@ import { CaseFilingService } from './case-filing.service';
 import { FilingCourtService } from './filing-court.service';
 import { ClientCaseController } from './client-case.controller';
 import { ClientCaseService } from './client-case.service';
+import { LawyerAccountService } from './lawyer-account.service';
+import {
+  LawyerAccountController,
+  CaseLawyerCandidatesController,
+} from './lawyer-account.controller';
+import { LawyerCaseController } from './lawyer-case.controller';
 
 @Module({
   imports: [AccessControlModule, AuthModule, DatabaseModule, MaterialModule],
-  controllers: [CaseReadController, ClientCaseController],
+  controllers: [
+    CaseReadController,
+    ClientCaseController,
+    LawyerAccountController,
+    CaseLawyerCandidatesController,
+    LawyerCaseController,
+  ],
   providers: [
     CaseReadService,
     CaseCreationService,
@@ -28,6 +40,7 @@ import { ClientCaseService } from './client-case.service';
     CaseFilingService,
     FilingCourtService,
     ClientCaseService,
+    LawyerAccountService,
   ],
   exports: [CaseCreationService],
 })

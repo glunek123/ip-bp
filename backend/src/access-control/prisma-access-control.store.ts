@@ -43,6 +43,7 @@ const actionMap = {
   CLIENT_LEAD_WITHDRAW_CONFIRM: 'client.lead.withdraw.confirm',
   USER_READ: 'user.read',
   USER_MANAGE: 'user.manage',
+  LAWYER_ACCOUNT_MANAGE: 'lawyer.account.manage',
   TEAM_READ: 'team.read',
   TEAM_MANAGE: 'team.manage',
   ROLE_READ: 'role.read',

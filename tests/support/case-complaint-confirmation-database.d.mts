@@ -1,8 +1,16 @@
 import type { APIRequestContext } from '@playwright/test';
 export function createSubmittedCaseThroughApi(
   request: APIRequestContext,
+  options?: { submitAsLawyer?: boolean },
 ): Promise<{
   caseId: string;
+  lawyer: {
+    id: string;
+    username: string;
+    password: string;
+    profiles: Array<{ bindingId: string; profileId: string }>;
+  };
+  lawyerSession: { csrfToken: string; principalType: string } | null;
   complaint: { materialId: string; contentVersionId: string };
   authorization: { materialId: string; contentVersionId: string };
   submitted: {
@@ -20,8 +28,8 @@ export function createSubmittedCaseThroughApi(
     complaintContentVersionIds: string[];
     authorizationContentVersionIds: string[];
   };
-  clientSession: { csrfToken: string };
-  notarySession: { csrfToken: string };
+  clientSession: { csrfToken: string; user: { username: string } };
+  notarySession: { csrfToken: string; user: { username: string } };
 }>;
 export function uploadCaseConfirmationFile(
   request: APIRequestContext,

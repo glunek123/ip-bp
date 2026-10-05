@@ -14,6 +14,9 @@ describe('CaseReadService', () => {
           .fn()
           .mockResolvedValue({ accountType: 'INTERNAL', active: true }),
       },
+      lawyerAccountBinding: {
+        findFirst: jest.fn().mockResolvedValue({ id: 'binding-1' }),
+      },
       case: {
         findMany: jest.fn().mockResolvedValue([]),
         count: jest.fn().mockResolvedValue(0),
@@ -101,6 +104,30 @@ describe('CaseReadService', () => {
       ),
     ).rejects.toMatchObject({ response: { code: 'ACTION_FORBIDDEN' } });
     expect(f.db.case.findMany).not.toHaveBeenCalled();
+  });
+
+  it('lists only current primary assignments for a lawyer account', async () => {
+    const f = fixture();
+    const lawyer = { ...actor, lawyerAccountId: actor.userId };
+    f.db.userAccount.findUnique.mockResolvedValue({
+      accountType: 'LAWYER',
+      active: true,
+    });
+    await f.service.list(lawyer, 1, 20);
+    expect(f.access.authorizeDepartmentAction).not.toHaveBeenCalled();
+    expect(f.db.case.findMany).toHaveBeenCalledWith(
+      expect.objectContaining({
+        where: expect.objectContaining({
+          departmentId: actor.departmentId,
+          lawyers: {
+            some: expect.objectContaining({
+              role: 'PRIMARY',
+              endedAt: null,
+            }),
+          },
+        }),
+      }),
+    );
   });
 
   it('reads four fees by original source without inventing a court case number', async () => {

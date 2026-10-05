@@ -9,6 +9,7 @@ import {
 import { createHash } from 'node:crypto';
 import { AccessControlService } from '../../access-control/access-control.service';
 import { ActorContext } from '../../access-control/actor-context';
+import { currentLawyerBindingId } from '../../access-control/lawyer-case-access';
 import { DatabaseService } from '../../database/database.service';
 import { MaterialService } from '../materials';
 import {
@@ -66,6 +67,7 @@ export class CaseComplaintMailingService {
             });
             if (record === null) throw this.notFound();
             let bindingId: string | null = null;
+            let lawyerBindingId: string | undefined;
             if (actor.clientCustomerId !== undefined) {
               if (record.customerId !== actor.clientCustomerId)
                 throw this.notFound();
@@ -87,25 +89,37 @@ export class CaseComplaintMailingService {
                 where: { id: actor.userId },
                 select: { accountType: true, active: true },
               });
-              if (account?.accountType !== 'INTERNAL' || !account.active)
-                throw this.forbidden();
-              try {
-                await this.access.authorizeCase(
-                  actor,
-                  'case.complaint.mail',
-                  {
-                    departmentId: record.departmentId,
-                    responsibleUserId: record.responsibleUserId,
-                    ...(record.responsibleMembership.teamId
-                      ? { teamId: record.responsibleMembership.teamId }
-                      : {}),
-                  },
+              if (!account?.active) throw this.forbidden();
+              if (account.accountType === 'LAWYER') {
+                lawyerBindingId = await currentLawyerBindingId(
                   tx,
+                  actor,
+                  caseId,
+                  true,
                 );
-              } catch (error) {
-                if (error instanceof ForbiddenException) throw this.forbidden();
-                throw error;
-              }
+              } else if (
+                account.accountType === 'INTERNAL' &&
+                actor.lawyerAccountId === undefined
+              )
+                try {
+                  await this.access.authorizeCase(
+                    actor,
+                    'case.complaint.mail',
+                    {
+                      departmentId: record.departmentId,
+                      responsibleUserId: record.responsibleUserId,
+                      ...(record.responsibleMembership.teamId
+                        ? { teamId: record.responsibleMembership.teamId }
+                        : {}),
+                    },
+                    tx,
+                  );
+                } catch (error) {
+                  if (error instanceof ForbiddenException)
+                    throw this.forbidden();
+                  throw error;
+                }
+              else throw this.forbidden();
             }
             const prior = await tx.caseComplaintMailingReceipt.findUnique({
               where: {
@@ -177,12 +191,15 @@ export class CaseComplaintMailingService {
               data: {
                 departmentId: actor.departmentId,
                 actorUserId: actor.userId,
-                ...(bindingId === null
+                ...(bindingId === null && lawyerBindingId === undefined
                   ? { internalActorUserId: actor.userId }
                   : {}),
                 ...(bindingId === null
                   ? {}
                   : { customerAccountBindingId: bindingId }),
+                ...(lawyerBindingId === undefined
+                  ? {}
+                  : { lawyerAccountBindingId: lawyerBindingId }),
                 resourceType: 'CASE',
                 resourceId: caseId,
                 action: 'case.complaint.mailed',
@@ -192,7 +209,12 @@ export class CaseComplaintMailingService {
                   mailedAt: normalized.mailedAt,
                   mailReceiptContentVersionIds:
                     normalized.mailReceiptContentVersionIds,
-                  actorType: bindingId === null ? 'INTERNAL' : 'CLIENT',
+                  actorType:
+                    lawyerBindingId !== undefined
+                      ? 'LAWYER'
+                      : bindingId === null
+                        ? 'INTERNAL'
+                        : 'CLIENT',
                 },
               },
               select: { id: true },
@@ -204,8 +226,14 @@ export class CaseComplaintMailingService {
                 mailedAt: new Date(`${normalized.mailedAt}T00:00:00.000Z`),
                 recordedAt,
                 recordedByUserId: actor.userId,
-                actorType: bindingId === null ? 'INTERNAL' : 'CLIENT',
+                actorType:
+                  lawyerBindingId !== undefined
+                    ? 'LAWYER'
+                    : bindingId === null
+                      ? 'INTERNAL'
+                      : 'CLIENT',
                 customerAccountBindingId: bindingId,
+                lawyerAccountBindingId: lawyerBindingId,
                 auditEventId: audit.id,
               },
               select: { id: true },

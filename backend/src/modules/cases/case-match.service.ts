@@ -115,9 +115,30 @@ export class CaseMatchService {
               } as MatchCaseResponseDto;
             }
             if (normalized.matchedOn === undefined) throw this.validation();
+            if (normalized.lawyerAccountId === undefined)
+              throw this.validation();
             if (record.stage !== 'PENDING_MATCH') throw this.invalidState();
             if (record.version !== normalized.expectedVersion)
               throw this.versionConflict();
+            const candidates = await tx.lawyerAccountBinding.findMany({
+              where: {
+                userId: normalized.lawyerAccountId,
+                departmentId: actor.departmentId,
+                active: true,
+                ...(normalized.lawyerProfileId
+                  ? { profileId: normalized.lawyerProfileId }
+                  : {}),
+                user: {
+                  accountType: 'LAWYER',
+                  active: true,
+                  localCredential: { isNot: null },
+                },
+              },
+              select: { profileId: true },
+              orderBy: [{ createdAt: 'asc' }, { id: 'asc' }],
+              take: 1,
+            });
+            if (candidates.length === 0) throw this.forbidden();
             const matchedAt = new Date();
             const changed = await tx.case.updateMany({
               where: {
@@ -141,14 +162,7 @@ export class CaseMatchService {
                 ...party,
               })),
             });
-            const lawyer = await tx.lawyerProfile.create({
-              data: {
-                ...normalized.lawyer,
-                lawFirm: normalized.lawyer.lawFirm ?? null,
-                departmentId: actor.departmentId,
-              },
-              select: { id: true },
-            });
+            const lawyer = { id: candidates[0].profileId };
             await tx.caseLawyerAssignment.create({
               data: {
                 caseId,
@@ -236,9 +250,7 @@ export class CaseMatchService {
       input.expectedVersion < 1 ||
       !Array.isArray(input.defendants) ||
       input.defendants.length < 1 ||
-      input.defendants.length > 20 ||
-      input.lawyer === null ||
-      typeof input.lawyer !== 'object'
+      input.defendants.length > 20
     )
       throw this.validation();
     const idempotencyKey = clean(input.idempotencyKey, 128, true)!;
@@ -268,17 +280,35 @@ export class CaseMatchService {
         address: clean(party.address, 500, false),
       };
     });
-    const lawyer = {
-      fullName: clean(input.lawyer.fullName, 200, true)!,
-      lawFirm: clean(input.lawyer.lawFirm, 200, false),
-      phone: clean(input.lawyer.phone, 100, false),
-    };
+    if (
+      input.lawyerAccountId !== undefined &&
+      (input.lawyer !== undefined ||
+        !/^[0-9a-f]{8}-[0-9a-f]{4}-[1-8][0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$/iu.test(
+          input.lawyerAccountId,
+        ))
+    )
+      throw this.validation();
+    if (
+      input.lawyerProfileId !== undefined &&
+      input.lawyerAccountId === undefined
+    )
+      throw this.validation();
+    const lawyer =
+      input.lawyer === undefined
+        ? undefined
+        : {
+            fullName: clean(input.lawyer.fullName, 200, true)!,
+            lawFirm: clean(input.lawyer.lawFirm, 200, false),
+            phone: clean(input.lawyer.phone, 100, false),
+          };
     return {
       expectedVersion: input.expectedVersion,
       idempotencyKey,
       matchedOn,
       defendants,
       lawyer,
+      lawyerAccountId: input.lawyerAccountId,
+      lawyerProfileId: input.lawyerProfileId,
     };
   }
   private todayShanghai(): string {

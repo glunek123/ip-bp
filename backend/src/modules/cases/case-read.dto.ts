@@ -47,8 +47,8 @@ class CaseComplaintMailingSummaryDto {
   @ApiProperty({ format: 'date' }) mailedAt!: string;
   @ApiProperty({ format: 'date-time' }) recordedAt!: string;
   @ApiProperty({ format: 'uuid' }) recordedByUserId!: string;
-  @ApiProperty({ enum: ['INTERNAL', 'CLIENT'] }) actorType!:
-    'INTERNAL' | 'CLIENT';
+  @ApiProperty({ enum: ['INTERNAL', 'CLIENT', 'LAWYER'] }) actorType!:
+    'INTERNAL' | 'CLIENT' | 'LAWYER';
   @ApiProperty({ type: [CaseCertificateFileDto] })
   receiptFiles!: CaseCertificateFileDto[];
 }

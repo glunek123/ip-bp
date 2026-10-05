@@ -181,6 +181,11 @@ const context = {
       scopes: ['SELF', 'TEAM', 'DEPARTMENT'],
     },
     {
+      action: 'LAWYER_ACCOUNT_MANAGE',
+      label: '管理律师账号',
+      scopes: ['DEPARTMENT'],
+    },
+    {
       action: 'TEAM_READ',
       label: '查看团队',
       scopes: ['SELF', 'TEAM', 'DEPARTMENT'],
@@ -242,6 +247,7 @@ describe('organization API', () => {
       'NOTARY_OFFICE_MANAGE',
       'USER_READ',
       'USER_MANAGE',
+      'LAWYER_ACCOUNT_MANAGE',
       'TEAM_READ',
       'TEAM_MANAGE',
       'ROLE_READ',

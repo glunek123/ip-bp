@@ -1,5 +1,6 @@
 import { randomUUID } from 'node:crypto';
 import { coreLeadFixtures, getLead } from './core-lead-database.mjs';
+import { createLawyerAccountThroughApi } from './case-lawyer-account.mjs';
 
 const auth = { Authorization: `Bearer ${coreLeadFixtures.tokenA}` };
 const pdf = Buffer.from('%PDF-1.4\n1 0 obj<</Type/Catalog>>endobj\n%%EOF\n');
@@ -75,7 +76,7 @@ async function uploadNotary(
   );
 }
 
-export async function createSubmittedCaseThroughApi(request) {
+export async function createSubmittedCaseThroughApi(request, options = {}) {
   const clientUsername = `ca003-client-${randomUUID().slice(0, 8)}`;
   const clientPassword = 'client correct horse battery';
   await body(
@@ -259,6 +260,9 @@ export async function createSubmittedCaseThroughApi(request) {
     201,
   );
   const caseId = certificate.case.id;
+  const lawyer = await createLawyerAccountThroughApi(request, {
+    fullName: '诉状确认律师',
+  });
   const matchKey = randomUUID();
   await body(
     await request.post(`/api/v1/cases/${caseId}/match`, {
@@ -268,16 +272,33 @@ export async function createSubmittedCaseThroughApi(request) {
         idempotencyKey: matchKey,
         matchedOn: '2026-09-28',
         defendants: [{ kind: 'ORGANIZATION', name: '诉状确认被告公司' }],
-        lawyer: { fullName: '诉状确认律师' },
+        lawyerAccountId: lawyer.id,
       },
     }),
     201,
   );
-  const complaint = await uploadCaseConfirmationFile(request, caseId);
+  const lawyerSession = options.submitAsLawyer
+    ? await body(
+        await request.post('/api/v1/auth/login', {
+          headers: { Origin: 'http://127.0.0.1:5174' },
+          data: { username: lawyer.username, password: lawyer.password },
+        }),
+        200,
+      )
+    : null;
+  const submitHeaders =
+    lawyerSession === null ? auth : { 'X-CSRF-Token': lawyerSession.csrfToken };
+  const complaint = await uploadCaseConfirmationFile(
+    request,
+    caseId,
+    'COMPLAINT',
+    submitHeaders,
+  );
   const authorization = await uploadCaseConfirmationFile(
     request,
     caseId,
     'AUTHORIZATION',
+    submitHeaders,
   );
   const submitInput = {
     expectedVersion: 2,
@@ -289,14 +310,22 @@ export async function createSubmittedCaseThroughApi(request) {
     authorizationContentVersionIds: [authorization.contentVersionId],
   };
   const submitted = await body(
-    await request.post(`/api/v1/cases/${caseId}/complaint-submit`, {
-      headers: { ...auth, 'Idempotency-Key': submitInput.idempotencyKey },
-      data: submitInput,
-    }),
+    await request.post(
+      `/api/v1/${options.submitAsLawyer ? 'lawyer/' : ''}cases/${caseId}/complaint-submit`,
+      {
+        headers: {
+          ...submitHeaders,
+          'Idempotency-Key': submitInput.idempotencyKey,
+        },
+        data: submitInput,
+      },
+    ),
     201,
   );
   return {
     caseId,
+    lawyer,
+    lawyerSession,
     complaint,
     authorization,
     submitted,

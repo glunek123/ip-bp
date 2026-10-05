@@ -9,6 +9,7 @@ import {
 import { createHash } from 'node:crypto';
 import { AccessControlService } from '../../access-control/access-control.service';
 import { ActorContext } from '../../access-control/actor-context';
+import { currentLawyerBindingId } from '../../access-control/lawyer-case-access';
 import { DatabaseService } from '../../database/database.service';
 import { Prisma } from '../../generated/prisma/client';
 import { MaterialService } from '../materials';
@@ -67,25 +68,37 @@ export class CaseComplaintService {
               where: { id: actor.userId },
               select: { accountType: true, active: true },
             });
-            if (account?.accountType !== 'INTERNAL' || !account.active)
-              throw this.forbidden();
-            try {
-              await this.access.authorizeCase(
-                actor,
-                'case.complaint.submit',
-                {
-                  departmentId: record.departmentId,
-                  responsibleUserId: record.responsibleUserId,
-                  ...(record.responsibleMembership.teamId
-                    ? { teamId: record.responsibleMembership.teamId }
-                    : {}),
-                },
+            if (!account?.active) throw this.forbidden();
+            let lawyerBindingId: string | undefined;
+            if (account.accountType === 'LAWYER') {
+              lawyerBindingId = await currentLawyerBindingId(
                 tx,
+                actor,
+                caseId,
+                true,
               );
-            } catch (error) {
-              if (error instanceof ForbiddenException) throw this.forbidden();
-              throw error;
-            }
+            } else if (
+              account.accountType === 'INTERNAL' &&
+              actor.lawyerAccountId === undefined
+            )
+              try {
+                await this.access.authorizeCase(
+                  actor,
+                  'case.complaint.submit',
+                  {
+                    departmentId: record.departmentId,
+                    responsibleUserId: record.responsibleUserId,
+                    ...(record.responsibleMembership.teamId
+                      ? { teamId: record.responsibleMembership.teamId }
+                      : {}),
+                  },
+                  tx,
+                );
+              } catch (error) {
+                if (error instanceof ForbiddenException) throw this.forbidden();
+                throw error;
+              }
+            else throw this.forbidden();
             const prior = await tx.caseComplaintReceipt.findUnique({
               where: {
                 departmentId_actorUserId_idempotencyKey: {
@@ -162,7 +175,9 @@ export class CaseComplaintService {
               data: {
                 departmentId: actor.departmentId,
                 actorUserId: actor.userId,
-                internalActorUserId: actor.userId,
+                ...(lawyerBindingId === undefined
+                  ? { internalActorUserId: actor.userId }
+                  : { lawyerAccountBindingId: lawyerBindingId }),
                 resourceType: 'CASE',
                 resourceId: caseId,
                 action: 'case.complaint.submitted',

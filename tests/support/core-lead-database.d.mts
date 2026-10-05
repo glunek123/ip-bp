@@ -27,6 +27,17 @@ export const coreLeadFixtures: Readonly<{
 }>;
 
 export function resetCoreLeadE2eData(): Promise<void>;
+export function createHistoricalUnboundLawyerProfile(caseId: string): Promise<{
+  id: string;
+  fullName: string;
+  lawFirm: string | null;
+  phone: string | null;
+}>;
+export function endCurrentLawyerAssignment(
+  caseId: string,
+  profileId: string,
+): Promise<void>;
+export function getUploadDraftStatus(id: string): Promise<string | null>;
 export function reassignCaseToOtherFixtureTeam(
   caseId: string,
 ): Promise<unknown>;

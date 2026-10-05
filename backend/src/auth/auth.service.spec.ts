@@ -38,6 +38,48 @@ function createDatabase() {
 }
 
 describe('AuthService', () => {
+  it('logs a bound lawyer into the external principal without an internal membership', async () => {
+    const database = createDatabase();
+    database.transaction.localCredential.findUnique.mockResolvedValue({
+      userId,
+      username: 'lawyer.zhang',
+      passwordHash: await hashPassword('correct horse battery staple'),
+      user: {
+        id: userId,
+        displayName: '张律师',
+        active: true,
+        accountType: 'LAWYER',
+        authorizationRevision: 1,
+        memberships: [],
+        clientBinding: null,
+        notaryBinding: null,
+        lawyerBindings: [{ active: true, departmentId: department.id }],
+      },
+    });
+    const auth = new AuthService(
+      database as never,
+      { getOrThrow: () => 'a'.repeat(64) } as unknown as ConfigService,
+    );
+
+    const result = await auth.login(
+      { username: 'lawyer.zhang', password: 'correct horse battery staple' },
+      '127.0.0.1',
+    );
+
+    expect(result.view).toMatchObject({
+      principalType: 'LAWYER',
+      department: null,
+      departments: [],
+      customer: null,
+      notaryOffice: null,
+    });
+    expect(database.transaction.authSession.create).toHaveBeenCalledWith({
+      data: expect.objectContaining({
+        userId,
+        departmentId: department.id,
+      }),
+    });
+  });
   it('records a structured security event for every login outcome', async () => {
     const logSpy = jest.spyOn(Logger.prototype, 'log').mockImplementation();
     const warnSpy = jest.spyOn(Logger.prototype, 'warn').mockImplementation();

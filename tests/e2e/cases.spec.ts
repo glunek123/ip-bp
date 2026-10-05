@@ -26,6 +26,7 @@ import {
   setRoleGrant,
   verifyCaseComplaintMigration,
 } from '../support/core-lead-database.mjs';
+import { createLawyerAccountThroughApi } from '../support/case-lawyer-account.mjs';
 
 const authorizationA = { Authorization: `Bearer ${coreLeadFixtures.tokenA}` };
 const authorizationB = { Authorization: `Bearer ${coreLeadFixtures.tokenB}` };
@@ -91,7 +92,8 @@ type MatchInput = {
     phone?: string;
     address?: string;
   }>;
-  lawyer: { fullName: string; lawFirm?: string; phone?: string };
+  lawyer?: { fullName: string; lawFirm?: string; phone?: string };
+  lawyerAccountId?: string;
 };
 
 async function configureBrowser(page: Page, authorization = authorizationA) {
@@ -412,15 +414,28 @@ async function createPendingMatchCase(request: APIRequestContext) {
   };
 }
 
-function matchCase(
+const lawyerAccountsByCase = new Map<string, Promise<string>>();
+
+async function matchCase(
   request: APIRequestContext,
   caseId: string,
   input: MatchInput,
   headers = authorizationA,
 ) {
+  let data: MatchInput = input;
+  if (input.lawyer && headers.Authorization === authorizationA.Authorization) {
+    let account = lawyerAccountsByCase.get(caseId);
+    if (!account) {
+      account = createLawyerAccountThroughApi(request, input.lawyer).then(
+        (created) => created.id,
+      );
+      lawyerAccountsByCase.set(caseId, account);
+    }
+    data = { ...input, lawyer: undefined, lawyerAccountId: await account };
+  }
   return request.post(`/api/v1/cases/${caseId}/match`, {
     headers: { ...headers, 'Idempotency-Key': input.idempotencyKey },
-    data: input,
+    data,
   });
 }
 
@@ -864,6 +879,9 @@ test('revoking the operator account takes effect on the next match request', asy
 }) => {
   test.setTimeout(120_000);
   const { caseId } = await createPendingMatchCase(request);
+  const lawyerAccount = await createLawyerAccountThroughApi(request, {
+    fullName: '无权律师',
+  });
   await setInternalAccountActive(coreLeadFixtures.userA, false);
   try {
     const revoked = await matchCase(request, caseId, {
@@ -871,7 +889,7 @@ test('revoking the operator account takes effect on the next match request', asy
       idempotencyKey: randomUUID(),
       matchedOn: '2026-09-28',
       defendants: [{ kind: 'PERSON', name: '无权写入' }],
-      lawyer: { fullName: '无权律师', lawFirm: '无权律师事务所' },
+      lawyerAccountId: lawyerAccount.id,
     });
     expect(revoked.status(), await revoked.text()).toBe(403);
     expect(await revoked.json()).toMatchObject({ code: 'ACTION_FORBIDDEN' });

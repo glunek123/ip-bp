@@ -39,6 +39,7 @@ enum PermissionAction {
   CLIENT_CASE_COMPLAINT_MAIL   @map("client.case.complaint.mail")
   USER_READ                    @map("user.read")
   USER_MANAGE                  @map("user.manage")
+  LAWYER_ACCOUNT_MANAGE        @map("lawyer.account.manage")
   TEAM_READ                    @map("team.read")
   TEAM_MANAGE                  @map("team.manage")
   ROLE_READ                    @map("role.read")
@@ -52,6 +53,7 @@ enum UserAccountType {
   INTERNAL
   CLIENT
   NOTARY
+  LAWYER
 
   @@map("user_account_type")
 }
@@ -372,6 +374,7 @@ model Department {
   leadCommandReceipts              LeadCommandReceipt[]
   clientAccountBindings            CustomerAccountBinding[]
   notaryOfficeAccountBindings      NotaryOfficeAccountBinding[]
+  lawyerAccountBindings            LawyerAccountBinding[]
   leadReviewDecisions              LeadReviewDecision[]
   clientLeadReviewReceipts         ClientLeadReviewReceipt[]
   createdAt                        DateTime                          @default(now()) @map("created_at") @db.Timestamptz(3)
@@ -412,6 +415,7 @@ model UserAccount {
   uploadedContent                  ContentVersion[]
   clientBinding                    CustomerAccountBinding?
   notaryBinding                    NotaryOfficeAccountBinding?
+  lawyerBindings                   LawyerAccountBinding[]
   uploadDrafts                     UploadDraft[]
   recordedNotaryOpenings           NotaryMatterOpening[]
   notaryMatterCommandReceipts      NotaryMatterCommandReceipt[]
@@ -674,6 +678,28 @@ model NotaryOfficeAccountBinding {
   @@map("notary_office_account_bindings")
 }
 
+model LawyerAccountBinding {
+  id           String        @id @default(uuid()) @db.Uuid
+  userId       String        @map("user_id") @db.Uuid
+  departmentId String        @map("department_id") @db.Uuid
+  profileId    String        @unique @map("profile_id") @db.Uuid
+  active       Boolean       @default(true)
+  version      Int           @default(1)
+  user         UserAccount   @relation(fields: [userId], references: [id], onDelete: Restrict, onUpdate: Restrict)
+  department   Department   @relation(fields: [departmentId], references: [id], onDelete: Restrict, onUpdate: Restrict)
+  profile      LawyerProfile @relation(fields: [profileId, departmentId], references: [id, departmentId], onDelete: Restrict, onUpdate: Restrict)
+  uploadDrafts UploadDraft[]
+  auditEvents  AuditEvent[]
+  caseComplaintMailings CaseComplaintMailing[]
+  createdAt    DateTime      @default(now()) @map("created_at") @db.Timestamptz(3)
+  updatedAt    DateTime      @updatedAt @map("updated_at") @db.Timestamptz(3)
+
+  @@unique([id, userId, departmentId])
+  @@unique([profileId, departmentId])
+  @@index([userId, departmentId, active])
+  @@map("lawyer_account_bindings")
+}
+
 model RightsHolder {
   id                  String                       @id @default(uuid()) @db.Uuid
   /// SQL CHECK rights_holders_name_nonblank_check uses ECMAScript trim whitespace (20260917080000).
@@ -744,6 +770,7 @@ model UploadDraft {
   internalActorUserId          String?                     @map("internal_actor_user_id") @db.Uuid
   notaryOfficeAccountBindingId String?                     @map("notary_office_account_binding_id") @db.Uuid
   customerAccountBindingId     String?                     @map("customer_account_binding_id") @db.Uuid
+  lawyerAccountBindingId       String?                     @map("lawyer_account_binding_id") @db.Uuid
   ownerType                    MaterialOwnerType           @map("owner_type")
   ownerId                      String                      @map("owner_id") @db.Uuid
   category                     MaterialCategory
@@ -758,6 +785,7 @@ model UploadDraft {
   internalActorMembership      DepartmentMembership?       @relation("UploadDraftInternalActor", fields: [internalActorUserId, departmentId], references: [userId, departmentId], onDelete: Restrict, onUpdate: Restrict)
   notaryOfficeAccountBinding   NotaryOfficeAccountBinding? @relation(fields: [notaryOfficeAccountBindingId, actorUserId, departmentId], references: [id, userId, departmentId], onDelete: Restrict, onUpdate: Restrict)
   customerAccountBinding       CustomerAccountBinding?     @relation(fields: [customerAccountBindingId, actorUserId, departmentId], references: [id, userId, departmentId], onDelete: Restrict, onUpdate: Restrict)
+  lawyerAccountBinding         LawyerAccountBinding?       @relation(fields: [lawyerAccountBindingId, actorUserId, departmentId], references: [id, userId, departmentId], onDelete: Restrict, onUpdate: Restrict)
   createdAt                    DateTime                    @default(now()) @map("created_at") @db.Timestamptz(3)
   updatedAt                    DateTime                    @updatedAt @map("updated_at") @db.Timestamptz(3)
 
@@ -1237,6 +1265,7 @@ model LawyerProfile {
   lawFirm      String?                @map("law_firm") @db.VarChar(200)
   phone        String?                @db.VarChar(100)
   assignments  CaseLawyerAssignment[]
+  accountBinding LawyerAccountBinding?
   department   Department             @relation(fields: [departmentId], references: [id], onDelete: Restrict, onUpdate: Restrict)
   createdAt    DateTime               @default(now()) @map("created_at") @db.Timestamptz(3)
 
@@ -1335,10 +1364,12 @@ model CaseComplaintMailing {
   recordedByUserId         String                        @map("recorded_by_user_id") @db.Uuid
   actorType                UserAccountType               @map("actor_type")
   customerAccountBindingId String?                       @map("customer_account_binding_id") @db.Uuid
+  lawyerAccountBindingId   String?                       @map("lawyer_account_binding_id") @db.Uuid
   auditEventId             String                        @unique @map("audit_event_id") @db.Uuid
   case                     Case                          @relation(fields: [caseId, departmentId], references: [id, departmentId], onDelete: Restrict, onUpdate: Restrict)
   recordedBy               UserAccount                   @relation("CaseComplaintMailer", fields: [recordedByUserId], references: [id], onDelete: Restrict, onUpdate: Restrict)
   customerAccountBinding   CustomerAccountBinding?       @relation(fields: [customerAccountBindingId, recordedByUserId, departmentId], references: [id, userId, departmentId], onDelete: Restrict, onUpdate: Restrict)
+  lawyerAccountBinding     LawyerAccountBinding?         @relation(fields: [lawyerAccountBindingId, recordedByUserId, departmentId], references: [id, userId, departmentId], onDelete: Restrict, onUpdate: Restrict)
   auditEvent               AuditEvent                    @relation(fields: [auditEventId], references: [id], onDelete: Restrict, onUpdate: Restrict)
   versions                 CaseComplaintMailingVersion[]
 
@@ -1786,6 +1817,7 @@ model AuditEvent {
   internalActorUserId          String?                     @map("internal_actor_user_id") @db.Uuid
   notaryOfficeAccountBindingId String?                     @map("notary_office_account_binding_id") @db.Uuid
   customerAccountBindingId     String?                     @map("customer_account_binding_id") @db.Uuid
+  lawyerAccountBindingId       String?                     @map("lawyer_account_binding_id") @db.Uuid
   resourceType                 String                      @map("resource_type")
   resourceId                   String                      @map("resource_id") @db.Uuid
   action                       String
@@ -1795,6 +1827,7 @@ model AuditEvent {
   internalActorMembership      DepartmentMembership?       @relation("AuditInternalActor", fields: [internalActorUserId, departmentId], references: [userId, departmentId], onDelete: Restrict, onUpdate: Restrict)
   notaryOfficeAccountBinding   NotaryOfficeAccountBinding? @relation(fields: [notaryOfficeAccountBindingId, actorUserId, departmentId], references: [id, userId, departmentId], onDelete: Restrict, onUpdate: Restrict)
   customerAccountBinding       CustomerAccountBinding?     @relation(fields: [customerAccountBindingId, actorUserId, departmentId], references: [id, userId, departmentId], onDelete: Restrict, onUpdate: Restrict)
+  lawyerAccountBinding         LawyerAccountBinding?       @relation(fields: [lawyerAccountBindingId, actorUserId, departmentId], references: [id, userId, departmentId], onDelete: Restrict, onUpdate: Restrict)
   materialReferences           MaterialReference[]
   caseComplaintConfirmations   CaseComplaintConfirmation[]
   caseComplaintMailings        CaseComplaintMailing[]

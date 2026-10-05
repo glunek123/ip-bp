@@ -4,4 +4,5 @@ export type ActorContext = {
   authorizationRevision: number;
   clientCustomerId?: string;
   notaryOfficeId?: string;
+  lawyerAccountId?: string;
 };

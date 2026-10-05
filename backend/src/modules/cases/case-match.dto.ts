@@ -85,10 +85,34 @@ export class MatchCaseDto {
   @ValidateNested({ each: true })
   @Type(() => CaseMatchDefendantDto)
   defendants!: CaseMatchDefendantDto[];
-  @ApiProperty({ type: CaseMatchLawyerDto })
+  @ApiPropertyOptional({
+    format: 'uuid',
+    description: '新匹配必填的真实律师账号',
+  })
+  @IsOptional()
+  @IsString()
+  @Matches(
+    /^[0-9a-f]{8}-[0-9a-f]{4}-[1-8][0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$/iu,
+  )
+  lawyerAccountId?: string;
+  @ApiPropertyOptional({
+    format: 'uuid',
+    description: '同账号有多条档案时明确选择',
+  })
+  @IsOptional()
+  @IsString()
+  @Matches(
+    /^[0-9a-f]{8}-[0-9a-f]{4}-[1-8][0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$/iu,
+  )
+  lawyerProfileId?: string;
+  @ApiPropertyOptional({
+    type: CaseMatchLawyerDto,
+    description: '仅旧成功回执原样重放',
+  })
+  @IsOptional()
   @ValidateNested()
   @Type(() => CaseMatchLawyerDto)
-  lawyer!: CaseMatchLawyerDto;
+  lawyer?: CaseMatchLawyerDto;
 }
 
 export class MatchCaseResponseDto {

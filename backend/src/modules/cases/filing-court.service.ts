@@ -7,7 +7,9 @@ import {
 } from '@nestjs/common';
 import { AccessControlService } from '../../access-control/access-control.service';
 import { ActorContext } from '../../access-control/actor-context';
+import { currentLawyerBindingId } from '../../access-control/lawyer-case-access';
 import { DatabaseService } from '../../database/database.service';
+import type { Prisma } from '../../generated/prisma/client';
 
 @Injectable()
 export class FilingCourtService {
@@ -42,12 +44,17 @@ export class FilingCourtService {
         code: 'VALIDATION_ERROR',
         message: '法院名称无效',
       });
-    await this.caseFor(actor, caseId, true);
     try {
-      return await this.database.filingCourt.create({
-        data: { departmentId: actor.departmentId, name },
-        select: { id: true, name: true },
-      });
+      return await this.database.$transaction(
+        async (tx) => {
+          await this.caseFor(actor, caseId, true, tx);
+          return tx.filingCourt.create({
+            data: { departmentId: actor.departmentId, name },
+            select: { id: true, name: true },
+          });
+        },
+        { isolationLevel: 'Serializable' },
+      );
     } catch (error) {
       if (
         error !== null &&
@@ -63,7 +70,12 @@ export class FilingCourtService {
     }
   }
 
-  private async caseFor(actor: ActorContext, caseId: string, submit: boolean) {
+  private async caseFor(
+    actor: ActorContext,
+    caseId: string,
+    submit: boolean,
+    reader: Prisma.TransactionClient | DatabaseService = this.database,
+  ) {
     if (
       actor.clientCustomerId !== undefined ||
       actor.notaryOfficeId !== undefined
@@ -72,16 +84,33 @@ export class FilingCourtService {
         code: 'ACTION_FORBIDDEN',
         message: '无权访问法院目录',
       });
-    const account = await this.database.userAccount.findUnique({
+    if (submit) {
+      const locked = await (reader as Prisma.TransactionClient).$queryRawUnsafe<
+        Array<{ id: string }>
+      >(
+        'SELECT "id" FROM "cases" WHERE "id" = $1::uuid AND "department_id" = $2::uuid FOR UPDATE',
+        caseId,
+        actor.departmentId,
+      );
+      if (locked.length !== 1)
+        throw new NotFoundException({
+          code: 'RESOURCE_NOT_FOUND',
+          message: '案件不存在或不可访问',
+        });
+    }
+    const account = await reader.userAccount.findUnique({
       where: { id: actor.userId },
       select: { active: true, accountType: true },
     });
-    if (account?.active !== true || account.accountType !== 'INTERNAL')
+    if (
+      account?.active !== true ||
+      !['INTERNAL', 'LAWYER'].includes(account.accountType)
+    )
       throw new ForbiddenException({
         code: 'ACTION_FORBIDDEN',
         message: '无权访问法院目录',
       });
-    const record = await this.database.case.findFirst({
+    const record = await reader.case.findFirst({
       where: { id: caseId, departmentId: actor.departmentId },
       select: {
         stage: true,
@@ -100,15 +129,29 @@ export class FilingCourtService {
         code: 'INVALID_STATE',
         message: '案件当前不能登记法院',
       });
+    if (account.accountType === 'LAWYER') {
+      await currentLawyerBindingId(reader, actor, caseId, submit);
+      return;
+    }
+    if (actor.lawyerAccountId !== undefined)
+      throw new ForbiddenException({
+        code: 'ACTION_FORBIDDEN',
+        message: '无权访问法院目录',
+      });
     try {
       if (submit)
-        await this.access.authorizeCase(actor, 'case.filing.submit', {
-          departmentId: record.departmentId,
-          responsibleUserId: record.responsibleUserId,
-          ...(record.responsibleMembership.teamId
-            ? { teamId: record.responsibleMembership.teamId }
-            : {}),
-        });
+        await this.access.authorizeCase(
+          actor,
+          'case.filing.submit',
+          {
+            departmentId: record.departmentId,
+            responsibleUserId: record.responsibleUserId,
+            ...(record.responsibleMembership.teamId
+              ? { teamId: record.responsibleMembership.teamId }
+              : {}),
+          },
+          reader as Prisma.TransactionClient,
+        );
       else await this.access.authorizeDepartmentAction(actor, 'case.read');
     } catch (error) {
       if (error instanceof ForbiddenException)

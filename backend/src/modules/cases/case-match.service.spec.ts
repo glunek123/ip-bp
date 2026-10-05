@@ -10,12 +10,14 @@ const actor = {
   authorizationRevision: 1,
 };
 const caseId = '33333333-3333-4333-8333-333333333333';
+const lawyerAccountId = '44444444-4444-4444-8444-444444444444';
+const lawyerProfileId = '55555555-5555-4555-8555-555555555555';
 const input = {
   expectedVersion: 1,
   idempotencyKey: 'match-1',
   matchedOn: '2026-09-28',
   defendants: [{ kind: 'ORGANIZATION' as const, name: '被告公司' }],
-  lawyer: { fullName: '张律师', lawFirm: '真实律所' },
+  lawyerAccountId,
 };
 
 function withoutMatchDate<T extends { matchedOn: string }>(
@@ -51,8 +53,8 @@ describe('CaseMatchService', () => {
         create: jest.fn().mockResolvedValue({}),
       },
       caseDefendant: { createMany: jest.fn().mockResolvedValue({ count: 1 }) },
-      lawyerProfile: {
-        create: jest.fn().mockResolvedValue({ id: 'lawyer-1' }),
+      lawyerAccountBinding: {
+        findMany: jest.fn().mockResolvedValue([{ profileId: lawyerProfileId }]),
       },
       caseLawyerAssignment: { create: jest.fn().mockResolvedValue({}) },
       auditEvent: { create: jest.fn().mockResolvedValue({}) },
@@ -70,6 +72,20 @@ describe('CaseMatchService', () => {
       service: new CaseMatchService(db as never, access as never),
     };
   }
+
+  it('rejects a new match that supplies only a lawyer name', async () => {
+    const f = fixture();
+    await expect(
+      f.service.match(actor, caseId, {
+        ...input,
+        lawyerAccountId: undefined,
+        lawyer: { fullName: '张律师' },
+      } as unknown as MatchCaseDto),
+    ).rejects.toMatchObject({
+      response: { code: 'VALIDATION_ERROR' },
+    });
+    expect(f.tx.case.updateMany).not.toHaveBeenCalled();
+  });
 
   it('atomically advances version and persists a defendant, real lawyer profile, assignment, audit and receipt', async () => {
     const f = fixture();
@@ -106,19 +122,20 @@ describe('CaseMatchService', () => {
         },
       ],
     });
-    expect(f.tx.lawyerProfile.create).toHaveBeenCalledWith({
-      data: {
-        fullName: '张律师',
-        lawFirm: '真实律所',
+    expect(f.tx.lawyerAccountBinding.findMany).toHaveBeenCalledWith({
+      where: expect.objectContaining({
+        userId: lawyerAccountId,
         departmentId: actor.departmentId,
-        phone: undefined,
-      },
-      select: { id: true },
+        active: true,
+      }),
+      select: { profileId: true },
+      orderBy: [{ createdAt: 'asc' }, { id: 'asc' }],
+      take: 1,
     });
     expect(f.tx.caseLawyerAssignment.create).toHaveBeenCalledWith(
       expect.objectContaining({
         data: expect.objectContaining({
-          lawyerId: 'lawyer-1',
+          lawyerId: lawyerProfileId,
           role: 'PRIMARY',
         }),
       }),
@@ -137,22 +154,26 @@ describe('CaseMatchService', () => {
     });
   });
 
-  it('matches with no known law firm and never stores a fictitious placeholder', async () => {
+  it('chooses the first stable active binding for an account with multiple profiles', async () => {
     const f = fixture();
-    const result = await f.service.match(actor, caseId, {
-      ...input,
-      lawyer: { fullName: '张律师' },
-    } as unknown as MatchCaseDto);
-    expect(result).toHaveProperty('matchedOn', '2026-09-28');
-    expect(f.tx.lawyerProfile.create).toHaveBeenCalledWith({
-      data: {
-        fullName: '张律师',
-        lawFirm: null,
-        phone: undefined,
-        departmentId: actor.departmentId,
-      },
-      select: { id: true },
+    f.tx.lawyerAccountBinding.findMany.mockResolvedValue([
+      { profileId: lawyerProfileId },
+      { profileId: '66666666-6666-4666-8666-666666666666' },
+    ]);
+    await expect(f.service.match(actor, caseId, input)).resolves.toMatchObject({
+      stage: 'WAITING_COMPLAINT',
     });
+    expect(f.tx.lawyerAccountBinding.findMany).toHaveBeenCalledWith(
+      expect.objectContaining({
+        orderBy: [{ createdAt: 'asc' }, { id: 'asc' }],
+        take: 1,
+      }),
+    );
+    expect(f.tx.caseLawyerAssignment.create).toHaveBeenCalledWith(
+      expect.objectContaining({
+        data: expect.objectContaining({ lawyerId: lawyerProfileId }),
+      }),
+    );
   });
 
   it.each(['', '2026-02-30', '2026-09-28T00:00:00Z', '2999-01-01'])(
@@ -172,7 +193,7 @@ describe('CaseMatchService', () => {
       f.service.match(actor, caseId, { ...input, expectedVersion: 2 }),
     ).rejects.toMatchObject({ response: { code: 'VERSION_CONFLICT' } });
     expect(f.tx.case.updateMany).not.toHaveBeenCalled();
-    expect(f.tx.lawyerProfile.create).not.toHaveBeenCalled();
+    expect(f.tx.caseLawyerAssignment.create).not.toHaveBeenCalled();
   });
 
   it('returns 404 for another department before authorization or write', async () => {
@@ -210,7 +231,11 @@ describe('CaseMatchService', () => {
 
   it('replays an authorized pre-upgrade success receipt without inventing an actual match date', async () => {
     const f = fixture();
-    const legacyInput = withoutMatchDate(input);
+    const legacyInput = withoutMatchDate({
+      ...input,
+      lawyerAccountId: undefined,
+      lawyer: { fullName: '张律师', lawFirm: '真实律所' },
+    });
     const fingerprint = createHash('sha256')
       .update(
         JSON.stringify({
@@ -264,22 +289,18 @@ describe('MatchCaseDto', () => {
       'defendant name',
       { ...input, defendants: [{ kind: 'ORGANIZATION', name: '' }] },
     ],
-    ['lawyer name', { ...input, lawyer: { ...input.lawyer, fullName: '' } }],
+    [
+      'lawyer name',
+      { ...input, lawyerAccountId: undefined, lawyer: { fullName: '' } },
+    ],
     ['matchedOn', { ...input, matchedOn: '' }],
   ])('declares %s as a nonempty required field', (_field, body) => {
     const errors = validateSync(plainToInstance(MatchCaseDto, body));
     expect(JSON.stringify(errors)).toContain('minLength');
   });
 
-  it('allows an omitted law firm while still requiring the lawyer name', () => {
-    expect(
-      validateSync(
-        plainToInstance(MatchCaseDto, {
-          ...input,
-          lawyer: { fullName: '张律师' },
-        }),
-      ),
-    ).toEqual([]);
+  it('allows a selected lawyer account without a name payload', () => {
+    expect(validateSync(plainToInstance(MatchCaseDto, input))).toEqual([]);
   });
 
   it('allows an omitted date at DTO level only for service-controlled legacy receipt replay', () => {

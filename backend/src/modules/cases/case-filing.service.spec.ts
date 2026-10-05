@@ -27,7 +27,15 @@ const futureDateInShanghai = () =>
 describe('CaseFilingService', () => {
   function fixture() {
     const tx = {
-      $queryRawUnsafe: jest.fn().mockResolvedValue([{ id: caseId }]),
+      $queryRawUnsafe: jest.fn().mockImplementation((sql: string) =>
+        Promise.resolve([
+          {
+            id: sql.includes('lawyer_account_bindings')
+              ? 'lawyer-binding'
+              : caseId,
+          },
+        ]),
+      ),
       case: {
         findFirst: jest.fn().mockResolvedValue({
           id: caseId,
@@ -44,6 +52,11 @@ describe('CaseFilingService', () => {
         findUnique: jest
           .fn()
           .mockResolvedValue({ accountType: 'INTERNAL', active: true }),
+      },
+      caseLawyerAssignment: {
+        findFirst: jest.fn().mockResolvedValue({
+          lawyer: { accountBinding: { id: 'lawyer-binding' } },
+        }),
       },
       filingCourt: {
         findFirst: jest
@@ -89,6 +102,26 @@ describe('CaseFilingService', () => {
       ),
     };
   }
+
+  it('lets the current lawyer submit filing with a real lawyer audit actor', async () => {
+    const f = fixture();
+    f.tx.userAccount.findUnique.mockResolvedValue({
+      accountType: 'LAWYER',
+      active: true,
+    });
+    await f.service.submit(
+      { ...actor, lawyerAccountId: actor.userId },
+      caseId,
+      input,
+    );
+    expect(f.access.authorizeCase).not.toHaveBeenCalled();
+    expect(f.tx.auditEvent.create).toHaveBeenCalledWith({
+      data: expect.objectContaining({
+        lawyerAccountBindingId: 'lawyer-binding',
+      }),
+      select: { id: true },
+    });
+  });
 
   it('atomically advances a mailed case using a departmental court and exact evidence', async () => {
     const f = fixture();

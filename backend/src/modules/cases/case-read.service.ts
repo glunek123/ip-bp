@@ -17,7 +17,7 @@ export class CaseReadService {
     private readonly materials: MaterialService,
   ) {}
 
-  private async scope(actor: ActorContext): Promise<void> {
+  private async scope(actor: ActorContext): Promise<'INTERNAL' | 'LAWYER'> {
     if (
       actor.notaryOfficeId !== undefined ||
       actor.clientCustomerId !== undefined
@@ -27,7 +27,24 @@ export class CaseReadService {
       where: { id: actor.userId },
       select: { accountType: true, active: true },
     });
-    if (account?.accountType !== 'INTERNAL' || !account.active)
+    if (!account?.active) throw this.forbidden();
+    if (account.accountType === 'LAWYER') {
+      if (actor.lawyerAccountId !== actor.userId) throw this.forbidden();
+      const binding = await this.database.lawyerAccountBinding.findFirst({
+        where: {
+          userId: actor.userId,
+          departmentId: actor.departmentId,
+          active: true,
+        },
+        select: { id: true },
+      });
+      if (binding === null) throw this.forbidden();
+      return 'LAWYER';
+    }
+    if (
+      account.accountType !== 'INTERNAL' ||
+      actor.lawyerAccountId !== undefined
+    )
       throw this.forbidden();
     try {
       await this.access.authorizeDepartmentAction(actor, 'case.read');
@@ -35,6 +52,28 @@ export class CaseReadService {
       if (error instanceof ForbiddenException) throw this.forbidden();
       throw error;
     }
+    return 'INTERNAL';
+  }
+
+  private lawyerWhere(actor: ActorContext): Prisma.CaseWhereInput {
+    return {
+      lawyers: {
+        some: {
+          role: 'PRIMARY',
+          endedAt: null,
+          lawyer: {
+            accountBinding: {
+              is: {
+                userId: actor.userId,
+                departmentId: actor.departmentId,
+                active: true,
+                user: { active: true, accountType: 'LAWYER' },
+              },
+            },
+          },
+        },
+      },
+    };
   }
 
   async list(
@@ -50,10 +89,14 @@ export class CaseReadService {
       | 'WAITING_FILING'
       | 'WAITING_FORMAL_ACCEPTANCE',
   ) {
-    await this.scope(actor);
+    const principal = await this.scope(actor);
     const baseWhere: Prisma.CaseWhereInput = {
       departmentId: actor.departmentId,
-      ...(view === 'mine' ? { responsibleUserId: actor.userId } : {}),
+      ...(principal === 'LAWYER'
+        ? this.lawyerWhere(actor)
+        : view === 'mine'
+          ? { responsibleUserId: actor.userId }
+          : {}),
     };
     const where: Prisma.CaseWhereInput = {
       ...baseWhere,
@@ -92,10 +135,15 @@ export class CaseReadService {
           businessNo: item.businessNo,
           stage: item.stage,
           version: item.version,
-          owner: item.owner,
-          sourceLead: item.sourceLead,
-          sourceNotaryMatter: item.sourceNotaryMatter,
+          ...(principal === 'LAWYER'
+            ? {}
+            : {
+                owner: item.owner,
+                sourceLead: item.sourceLead,
+                sourceNotaryMatter: item.sourceNotaryMatter,
+              }),
           canMatch:
+            principal === 'INTERNAL' &&
             item.stage === 'PENDING_MATCH' &&
             (await this.access.canAuthorizeCase(actor, 'case.match', {
               departmentId: actor.departmentId,
@@ -106,48 +154,56 @@ export class CaseReadService {
             })),
           canSubmitComplaint:
             item.stage === 'WAITING_COMPLAINT' &&
-            (await this.access.canAuthorizeCase(
-              actor,
-              'case.complaint.submit',
-              {
-                departmentId: actor.departmentId,
-                responsibleUserId: item.responsibleUserId,
-                ...(item.responsibleMembership.teamId
-                  ? { teamId: item.responsibleMembership.teamId }
-                  : {}),
-              },
-            )),
+            (principal === 'LAWYER' ||
+              (await this.access.canAuthorizeCase(
+                actor,
+                'case.complaint.submit',
+                {
+                  departmentId: actor.departmentId,
+                  responsibleUserId: item.responsibleUserId,
+                  ...(item.responsibleMembership.teamId
+                    ? { teamId: item.responsibleMembership.teamId }
+                    : {}),
+                },
+              ))),
           canConfirmComplaint:
             item.stage === 'WAITING_COMPLAINT_CONFIRMATION' &&
-            (await this.access.canAuthorizeCase(
-              actor,
-              'case.complaint.confirm',
-              {
+            (principal === 'LAWYER' ||
+              (await this.access.canAuthorizeCase(
+                actor,
+                'case.complaint.confirm',
+                {
+                  departmentId: actor.departmentId,
+                  responsibleUserId: item.responsibleUserId,
+                  ...(item.responsibleMembership.teamId
+                    ? { teamId: item.responsibleMembership.teamId }
+                    : {}),
+                },
+              ))),
+          canMailComplaint:
+            item.stage === 'WAITING_COMPLAINT_STAMP' &&
+            (principal === 'LAWYER' ||
+              (await this.access.canAuthorizeCase(
+                actor,
+                'case.complaint.mail',
+                {
+                  departmentId: actor.departmentId,
+                  responsibleUserId: item.responsibleUserId,
+                  ...(item.responsibleMembership.teamId
+                    ? { teamId: item.responsibleMembership.teamId }
+                    : {}),
+                },
+              ))),
+          canSubmitFiling:
+            item.stage === 'WAITING_FILING' &&
+            (principal === 'LAWYER' ||
+              (await this.access.canAuthorizeCase(actor, 'case.filing.submit', {
                 departmentId: actor.departmentId,
                 responsibleUserId: item.responsibleUserId,
                 ...(item.responsibleMembership.teamId
                   ? { teamId: item.responsibleMembership.teamId }
                   : {}),
-              },
-            )),
-          canMailComplaint:
-            item.stage === 'WAITING_COMPLAINT_STAMP' &&
-            (await this.access.canAuthorizeCase(actor, 'case.complaint.mail', {
-              departmentId: actor.departmentId,
-              responsibleUserId: item.responsibleUserId,
-              ...(item.responsibleMembership.teamId
-                ? { teamId: item.responsibleMembership.teamId }
-                : {}),
-            })),
-          canSubmitFiling:
-            item.stage === 'WAITING_FILING' &&
-            (await this.access.canAuthorizeCase(actor, 'case.filing.submit', {
-              departmentId: actor.departmentId,
-              responsibleUserId: item.responsibleUserId,
-              ...(item.responsibleMembership.teamId
-                ? { teamId: item.responsibleMembership.teamId }
-                : {}),
-            })),
+              }))),
           createdAt: item.createdAt.toISOString(),
         })),
       ),
@@ -178,9 +234,13 @@ export class CaseReadService {
   }
 
   async get(actor: ActorContext, id: string) {
-    await this.scope(actor);
+    const principal = await this.scope(actor);
     const record = await this.database.case.findFirst({
-      where: { id, departmentId: actor.departmentId },
+      where: {
+        id,
+        departmentId: actor.departmentId,
+        ...(principal === 'LAWYER' ? this.lawyerWhere(actor) : {}),
+      },
       select: {
         id: true,
         businessNo: true,
@@ -316,7 +376,7 @@ export class CaseReadService {
       mimeType: ref.mimeType,
     });
     const sample = record.sourceNotaryMatter.evidence;
-    return {
+    const detail = {
       id: record.id,
       businessNo: record.businessNo,
       stage: record.stage,
@@ -333,6 +393,7 @@ export class CaseReadService {
         assignedAt: assignment.startedAt.toISOString(),
       })),
       canMatch:
+        principal === 'INTERNAL' &&
         record.stage === 'PENDING_MATCH' &&
         (await this.access.canAuthorizeCase(actor, 'case.match', {
           departmentId: actor.departmentId,
@@ -343,40 +404,44 @@ export class CaseReadService {
         })),
       canSubmitComplaint:
         record.stage === 'WAITING_COMPLAINT' &&
-        (await this.access.canAuthorizeCase(actor, 'case.complaint.submit', {
-          departmentId: actor.departmentId,
-          responsibleUserId: record.responsibleUserId,
-          ...(record.responsibleMembership.teamId
-            ? { teamId: record.responsibleMembership.teamId }
-            : {}),
-        })),
+        (principal === 'LAWYER' ||
+          (await this.access.canAuthorizeCase(actor, 'case.complaint.submit', {
+            departmentId: actor.departmentId,
+            responsibleUserId: record.responsibleUserId,
+            ...(record.responsibleMembership.teamId
+              ? { teamId: record.responsibleMembership.teamId }
+              : {}),
+          }))),
       canConfirmComplaint:
         record.stage === 'WAITING_COMPLAINT_CONFIRMATION' &&
-        (await this.access.canAuthorizeCase(actor, 'case.complaint.confirm', {
-          departmentId: actor.departmentId,
-          responsibleUserId: record.responsibleUserId,
-          ...(record.responsibleMembership.teamId
-            ? { teamId: record.responsibleMembership.teamId }
-            : {}),
-        })),
+        (principal === 'LAWYER' ||
+          (await this.access.canAuthorizeCase(actor, 'case.complaint.confirm', {
+            departmentId: actor.departmentId,
+            responsibleUserId: record.responsibleUserId,
+            ...(record.responsibleMembership.teamId
+              ? { teamId: record.responsibleMembership.teamId }
+              : {}),
+          }))),
       canMailComplaint:
         record.stage === 'WAITING_COMPLAINT_STAMP' &&
-        (await this.access.canAuthorizeCase(actor, 'case.complaint.mail', {
-          departmentId: actor.departmentId,
-          responsibleUserId: record.responsibleUserId,
-          ...(record.responsibleMembership.teamId
-            ? { teamId: record.responsibleMembership.teamId }
-            : {}),
-        })),
+        (principal === 'LAWYER' ||
+          (await this.access.canAuthorizeCase(actor, 'case.complaint.mail', {
+            departmentId: actor.departmentId,
+            responsibleUserId: record.responsibleUserId,
+            ...(record.responsibleMembership.teamId
+              ? { teamId: record.responsibleMembership.teamId }
+              : {}),
+          }))),
       canSubmitFiling:
         record.stage === 'WAITING_FILING' &&
-        (await this.access.canAuthorizeCase(actor, 'case.filing.submit', {
-          departmentId: actor.departmentId,
-          responsibleUserId: record.responsibleUserId,
-          ...(record.responsibleMembership.teamId
-            ? { teamId: record.responsibleMembership.teamId }
-            : {}),
-        })),
+        (principal === 'LAWYER' ||
+          (await this.access.canAuthorizeCase(actor, 'case.filing.submit', {
+            departmentId: actor.departmentId,
+            responsibleUserId: record.responsibleUserId,
+            ...(record.responsibleMembership.teamId
+              ? { teamId: record.responsibleMembership.teamId }
+              : {}),
+          }))),
       complaint:
         record.complaintSubmittedAt == null
           ? null
@@ -518,6 +583,75 @@ export class CaseReadService {
           ),
       ),
     };
+    if (principal === 'LAWYER') {
+      return {
+        id: detail.id,
+        businessNo: detail.businessNo,
+        stage: detail.stage,
+        version: detail.version,
+        matchedAt: detail.matchedAt,
+        matchedOn: detail.matchedOn,
+        defendants: detail.defendants,
+        lawyers: detail.lawyers.filter((lawyer) => lawyer.role === 'PRIMARY'),
+        canMatch: false,
+        canSubmitComplaint: detail.canSubmitComplaint,
+        canConfirmComplaint: detail.canConfirmComplaint,
+        canMailComplaint: detail.canMailComplaint,
+        canSubmitFiling: detail.canSubmitFiling,
+        complaint:
+          detail.complaint === null
+            ? null
+            : {
+                amountState: detail.complaint.amountState,
+                amount: detail.complaint.amount,
+                pendingReason: detail.complaint.pendingReason,
+                submittedAt: detail.complaint.submittedAt,
+                complaintFiles: detail.complaint.complaintFiles,
+                authorizationFiles: detail.complaint.authorizationFiles,
+              },
+        complaintConfirmation:
+          detail.complaintConfirmation === null
+            ? null
+            : {
+                confirmedComplaintContentVersionId:
+                  detail.complaintConfirmation
+                    .confirmedComplaintContentVersionId,
+                amountState: detail.complaintConfirmation.amountState,
+                amount: detail.complaintConfirmation.amount,
+                pendingReason: detail.complaintConfirmation.pendingReason,
+                changeNote: detail.complaintConfirmation.changeNote,
+                confirmDisclose: detail.complaintConfirmation.confirmDisclose,
+                confirmedAt: detail.complaintConfirmation.confirmedAt,
+                complaintFile: detail.complaintConfirmation.complaintFile,
+              },
+        complaintMailing:
+          detail.complaintMailing === null
+            ? null
+            : {
+                mailedAt: detail.complaintMailing.mailedAt,
+                recordedAt: detail.complaintMailing.recordedAt,
+                actorType: detail.complaintMailing.actorType,
+                receiptFiles: detail.complaintMailing.receiptFiles,
+              },
+        filingSubmission:
+          detail.filingSubmission === null
+            ? null
+            : {
+                court: detail.filingSubmission.court,
+                submittedAt: detail.filingSubmission.submittedAt,
+                recordedAt: detail.filingSubmission.recordedAt,
+                mediationNo: detail.filingSubmission.mediationNo,
+                evidenceFiles: detail.filingSubmission.evidenceFiles,
+                screenshotFiles: detail.filingSubmission.screenshotFiles,
+              },
+        courtCaseNo: detail.courtCaseNo,
+        customer: detail.customer,
+        rightsHolder: detail.rightsHolder,
+        certificate: detail.certificate,
+        createdAt: detail.createdAt,
+      };
+    }
+    return detail;
   }
 
   private forbidden() {

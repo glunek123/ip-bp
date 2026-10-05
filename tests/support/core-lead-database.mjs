@@ -401,6 +401,12 @@ async function clearDatabase() {
     'case_complaint_receipts',
     'case_complaint_confirmations',
     'case_complaint_confirmation_receipts',
+    'case_complaint_mailings',
+    'case_complaint_mailing_versions',
+    'case_complaint_mailing_receipts',
+    'case_filing_submissions',
+    'case_filing_versions',
+    'case_filing_receipts',
   ];
   await database.$transaction(async (transaction) => {
     for (const table of immutableTables) {
@@ -426,6 +432,24 @@ async function clearDatabase() {
     await transaction.caseComplaintConfirmation.deleteMany({
       where: { departmentId: { in: departmentIds } },
     });
+    await transaction.caseFilingVersion.deleteMany({
+      where: { departmentId: { in: departmentIds } },
+    });
+    await transaction.caseFilingReceipt.deleteMany({
+      where: { departmentId: { in: departmentIds } },
+    });
+    await transaction.caseFilingSubmission.deleteMany({
+      where: { departmentId: { in: departmentIds } },
+    });
+    await transaction.caseComplaintMailingVersion.deleteMany({
+      where: { departmentId: { in: departmentIds } },
+    });
+    await transaction.caseComplaintMailingReceipt.deleteMany({
+      where: { departmentId: { in: departmentIds } },
+    });
+    await transaction.caseComplaintMailing.deleteMany({
+      where: { departmentId: { in: departmentIds } },
+    });
     await transaction.caseLawyerAssignment.deleteMany({
       where: { departmentId: { in: departmentIds } },
     });
@@ -435,7 +459,9 @@ async function clearDatabase() {
     await transaction.case.deleteMany({
       where: { departmentId: { in: departmentIds } },
     });
-    await transaction.lawyerProfile.deleteMany({});
+    await transaction.filingCourt.deleteMany({
+      where: { departmentId: { in: departmentIds } },
+    });
     await transaction.notaryCertificateFee.deleteMany({
       where: { certificate: { departmentId: { in: departmentIds } } },
     });
@@ -523,10 +549,15 @@ async function clearDatabase() {
     where: { departmentId: { in: departmentIds } },
     select: { userId: true },
   });
+  const lawyerBindings = await database.lawyerAccountBinding.findMany({
+    where: { departmentId: { in: departmentIds } },
+    select: { userId: true },
+  });
   const allUserIds = [
     ...userIds,
     ...clientBindings.map(({ userId }) => userId),
     ...notaryBindings.map(({ userId }) => userId),
+    ...lawyerBindings.map(({ userId }) => userId),
   ];
   await database.materialReference.deleteMany({
     where: { departmentId: { in: departmentIds } },
@@ -583,6 +614,15 @@ async function clearDatabase() {
     });
     await transaction.userAccount.deleteMany({
       where: { id: { in: notaryBindings.map(({ userId }) => userId) } },
+    });
+    await transaction.lawyerAccountBinding.deleteMany({
+      where: { departmentId: { in: departmentIds } },
+    });
+    await transaction.lawyerProfile.deleteMany({
+      where: { departmentId: { in: departmentIds } },
+    });
+    await transaction.userAccount.deleteMany({
+      where: { id: { in: lawyerBindings.map(({ userId }) => userId) } },
     });
   });
   await database.notaryOffice.deleteMany({
@@ -759,6 +799,11 @@ export async function resetCoreLeadE2eData() {
         action: 'USER_MANAGE',
         scope: 'DEPARTMENT',
       },
+      {
+        roleTemplateId: coreLeadFixtures.roleA,
+        action: 'LAWYER_ACCOUNT_MANAGE',
+        scope: 'DEPARTMENT',
+      },
       ...allActions.map((action) => ({
         roleTemplateId: coreLeadFixtures.roleB,
         action,
@@ -767,6 +812,11 @@ export async function resetCoreLeadE2eData() {
       {
         roleTemplateId: coreLeadFixtures.roleB,
         action: 'USER_MANAGE',
+        scope: 'DEPARTMENT',
+      },
+      {
+        roleTemplateId: coreLeadFixtures.roleB,
+        action: 'LAWYER_ACCOUNT_MANAGE',
         scope: 'DEPARTMENT',
       },
       ...allActions
@@ -918,6 +968,46 @@ export async function resetCoreLeadE2eData() {
       },
     });
   }
+}
+
+export async function createHistoricalUnboundLawyerProfile(caseId) {
+  const profile = await database.lawyerProfile.create({
+    data: {
+      departmentId: coreLeadFixtures.departmentA,
+      fullName: '诉状确认律师',
+      lawFirm: '历史律所',
+      phone: '05710000001',
+    },
+  });
+  const endedAt = new Date('2026-09-29T00:00:00.000Z');
+  await database.caseLawyerAssignment.create({
+    data: {
+      caseId,
+      departmentId: coreLeadFixtures.departmentA,
+      lawyerId: profile.id,
+      role: 'PRIMARY',
+      startedAt: endedAt,
+      endedAt,
+    },
+  });
+  return profile;
+}
+
+export async function endCurrentLawyerAssignment(caseId, profileId) {
+  const result = await database.caseLawyerAssignment.updateMany({
+    where: { caseId, lawyerId: profileId, role: 'PRIMARY', endedAt: null },
+    data: { endedAt: new Date() },
+  });
+  if (result.count !== 1)
+    throw new Error('Expected one current lawyer assignment');
+}
+
+export async function getUploadDraftStatus(id) {
+  const draft = await database.uploadDraft.findUnique({
+    where: { id },
+    select: { status: true },
+  });
+  return draft?.status ?? null;
 }
 
 export async function seedNotaryListExportData() {

@@ -15,6 +15,7 @@ import {
   LeadAction,
 } from '../../access-control/access-control.service';
 import { ActorContext } from '../../access-control/actor-context';
+import { currentLawyerBindingId } from '../../access-control/lawyer-case-access';
 import { DatabaseService } from '../../database/database.service';
 import type { Prisma } from '../../generated/prisma/client';
 import {
@@ -112,6 +113,8 @@ type MaterialAuthorizationReader = Pick<
   | 'customerAccountBinding'
   | 'notaryOfficeAccountBinding'
   | 'userAccount'
+  | 'caseLawyerAssignment'
+  | '$queryRawUnsafe'
 >;
 type MaterialMutationReader = MaterialAuthorizationReader &
   Pick<MaterialTransactionClient, 'material'>;
@@ -188,6 +191,7 @@ export class MaterialService {
     let ownerId: string;
     let notaryOfficeAccountBindingId: string | undefined;
     let customerAccountBindingId: string | undefined;
+    let lawyerAccountBindingId: string | undefined;
     if (input.ownerType === 'CUSTOMER') {
       if (input.ownerId === undefined) throw this.validationError();
       const scope = await this.withMaterialAuthorization(() =>
@@ -237,6 +241,13 @@ export class MaterialService {
         });
         if (binding === null) throw this.forbidden();
         customerAccountBindingId = binding.id;
+      }
+      if (actor.lawyerAccountId !== undefined) {
+        lawyerAccountBindingId = await currentLawyerBindingId(
+          this.database,
+          actor,
+          input.ownerId,
+        );
       }
       ownerId = input.ownerId;
     } else if (input.ownerType === 'NOTARY_MATTER') {
@@ -302,6 +313,9 @@ export class MaterialService {
         ...(customerAccountBindingId === undefined
           ? {}
           : { customerAccountBindingId }),
+        ...(lawyerAccountBindingId === undefined
+          ? {}
+          : { lawyerAccountBindingId }),
         ownerType: input.ownerType,
         ownerId,
         category: input.category,
@@ -371,6 +385,18 @@ export class MaterialService {
       });
       if (binding === null) throw this.forbidden();
     } else if (draft.customerAccountBindingId != null) {
+      throw this.forbidden();
+    }
+    if (actor.lawyerAccountId !== undefined) {
+      if (draft.ownerType !== 'CASE' || draft.lawyerAccountBindingId === null)
+        throw this.forbidden();
+      const bindingId = await currentLawyerBindingId(
+        this.database,
+        actor,
+        draft.ownerId,
+      );
+      if (bindingId !== draft.lawyerAccountBindingId) throw this.forbidden();
+    } else if (draft.lawyerAccountBindingId !== null) {
       throw this.forbidden();
     }
     if (draft.ownerType === 'CUSTOMER') {
@@ -486,6 +512,16 @@ export class MaterialService {
               undefined,
               draft.category,
             );
+            if (actor.lawyerAccountId !== undefined) {
+              const bindingId = await currentLawyerBindingId(
+                transaction,
+                actor,
+                draft.ownerId,
+                true,
+              );
+              if (bindingId !== draft.lawyerAccountBindingId)
+                throw this.forbidden();
+            }
           }
           if (actor.notaryOfficeId !== undefined) {
             const locked = await transaction.$queryRawUnsafe<
@@ -956,8 +992,15 @@ export class MaterialService {
     ownerId: string,
   ): Promise<OwnerMaterialListDto> {
     await this.authorizeOwner(actor, ownerType, ownerId, 'read');
-    if (ownerType === 'CASE' && actor.clientCustomerId !== undefined) {
-      const allowed = await this.clientCaseVersionWhitelist(actor, ownerId);
+    if (
+      ownerType === 'CASE' &&
+      (actor.clientCustomerId !== undefined ||
+        actor.lawyerAccountId !== undefined)
+    ) {
+      const allowed =
+        actor.lawyerAccountId !== undefined
+          ? await this.lawyerCaseVersionWhitelist(actor, ownerId)
+          : await this.clientCaseVersionWhitelist(actor, ownerId);
       if (allowed.size === 0) return { items: [], total: 0 };
       const allowedMaterialIds = [...allowed.keys()];
       const allowedVersionIds = [
@@ -1256,6 +1299,50 @@ export class MaterialService {
       );
       if (!allowed.get(materialId)?.has(versionId)) throw this.notFound();
     }
+    if (actor.lawyerAccountId !== undefined) {
+      if (material.ownerType === 'CASE') {
+        await this.authorizeOwner(actor, 'CASE', material.ownerId, 'read');
+        const current = material.currentVersionId === versionId;
+        const frozen = await this.database.materialReference.findFirst({
+          where: {
+            departmentId: actor.departmentId,
+            resourceType: 'case',
+            resourceId: material.ownerId,
+            materialId,
+            contentVersionId: versionId,
+            actionEventId: { not: null },
+          },
+          select: { id: true },
+        });
+        if (!current && frozen === null) throw this.notFound();
+      } else if (
+        material.ownerType === 'NOTARY_MATTER' &&
+        material.status === 'ACTIVE' &&
+        ['NOTARY_CERTIFICATE', 'NOTARY_DISCLOSURE'].includes(material.category)
+      ) {
+        const sourceCase = await this.database.case.findFirst({
+          where: {
+            departmentId: actor.departmentId,
+            sourceNotaryMatterId: material.ownerId,
+          },
+          select: { id: true, certificateId: true },
+        });
+        if (sourceCase === null) throw this.notFound();
+        const frozen = await this.listFrozenCertificateFiles(
+          actor,
+          material.ownerId,
+          sourceCase.certificateId,
+        );
+        if (
+          !frozen.some(
+            (ref) =>
+              ref.materialId === materialId &&
+              ref.contentVersionId === versionId,
+          )
+        )
+          throw this.notFound();
+      } else throw this.notFound();
+    }
     if (
       (actor.clientCustomerId !== undefined ||
         actor.notaryOfficeId !== undefined) &&
@@ -1271,16 +1358,20 @@ export class MaterialService {
         material.status !== 'ACTIVE')
     )
       throw this.notFound();
-    await this.authorizeOwner(
-      actor,
-      material.ownerType,
-      material.ownerId,
-      'read',
-      this.database,
-      undefined,
-      undefined,
-      material.category,
-    );
+    if (!(
+      actor.lawyerAccountId !== undefined &&
+      material.ownerType === 'NOTARY_MATTER'
+    ))
+      await this.authorizeOwner(
+        actor,
+        material.ownerType,
+        material.ownerId,
+        'read',
+        this.database,
+        undefined,
+        undefined,
+        material.category,
+      );
     const notaryMatter =
       actor.notaryOfficeId === undefined
         ? null
@@ -1433,10 +1524,22 @@ export class MaterialService {
         },
       });
       if (changed.count !== 1) throw this.versionConflict();
+      const lawyerBindingId =
+        actor.lawyerAccountId === undefined
+          ? undefined
+          : await currentLawyerBindingId(
+              transaction,
+              actor,
+              material.ownerId,
+              true,
+            );
       await transaction.auditEvent.create({
         data: {
           departmentId: actor.departmentId,
           actorUserId: actor.userId,
+          ...(lawyerBindingId === undefined
+            ? {}
+            : { lawyerAccountBindingId: lawyerBindingId }),
           resourceType: 'material',
           resourceId: materialId,
           action: 'material.deleted',
@@ -1508,10 +1611,22 @@ export class MaterialService {
         },
       });
       if (changed.count !== 1) throw this.versionConflict();
+      const lawyerBindingId =
+        actor.lawyerAccountId === undefined
+          ? undefined
+          : await currentLawyerBindingId(
+              transaction,
+              actor,
+              material.ownerId,
+              true,
+            );
       await transaction.auditEvent.create({
         data: {
           departmentId: actor.departmentId,
           actorUserId: actor.userId,
+          ...(lawyerBindingId === undefined
+            ? {}
+            : { lawyerAccountBindingId: lawyerBindingId }),
           resourceType: 'material',
           resourceId: materialId,
           action: 'material.restored',
@@ -1551,7 +1666,19 @@ export class MaterialService {
       'write',
       reader,
       snapshotReader,
+      undefined,
+      material.category,
     );
+    if (
+      actor.lawyerAccountId !== undefined &&
+      (material.ownerType !== 'CASE' ||
+        !material.contentVersions.some(
+          (version) =>
+            version.id === material.currentVersionId &&
+            version.uploadedBy === actor.userId,
+        ))
+    )
+      throw this.forbidden();
     if (
       material.ownerType === 'LEAD_DRAFT' &&
       !material.contentVersions.some(
@@ -1629,16 +1756,29 @@ export class MaterialService {
     matterId: string,
     certificateId: string,
   ) {
-    await this.authorizeOwner(
-      actor,
-      'NOTARY_MATTER',
-      matterId,
-      'read',
-      this.database,
-      undefined,
-      undefined,
-      'NOTARY_CERTIFICATE',
-    );
+    if (actor.lawyerAccountId !== undefined) {
+      const sourceCase = await this.database.case.findFirst({
+        where: {
+          departmentId: actor.departmentId,
+          sourceNotaryMatterId: matterId,
+          certificateId,
+        },
+        select: { id: true },
+      });
+      if (sourceCase === null) throw this.notFound();
+      await currentLawyerBindingId(this.database, actor, sourceCase.id);
+    } else {
+      await this.authorizeOwner(
+        actor,
+        'NOTARY_MATTER',
+        matterId,
+        'read',
+        this.database,
+        undefined,
+        undefined,
+        'NOTARY_CERTIFICATE',
+      );
+    }
     const refs = await this.database.materialReference.findMany({
       where: {
         departmentId: actor.departmentId,
@@ -1988,8 +2128,35 @@ export class MaterialService {
     >,
     notaryCategory?: MaterialCategoryValue,
   ): Promise<void> {
+    if (actor.lawyerAccountId !== undefined && ownerType !== 'CASE')
+      throw this.forbidden();
     if (ownerType === 'CASE') {
       if (actor.notaryOfficeId !== undefined) throw this.forbidden();
+      if (actor.lawyerAccountId !== undefined) {
+        await currentLawyerBindingId(reader, actor, ownerId);
+        const lawyerCase = await reader.case.findFirst({
+          where: { id: ownerId, departmentId: actor.departmentId },
+          select: { stage: true },
+        });
+        if (lawyerCase === null) throw this.notFound();
+        if (
+          operation === 'write' &&
+          !(
+            (lawyerCase.stage === 'WAITING_COMPLAINT' &&
+              ['COMPLAINT', 'AUTHORIZATION'].includes(notaryCategory ?? '')) ||
+            (lawyerCase.stage === 'WAITING_COMPLAINT_CONFIRMATION' &&
+              notaryCategory === 'COMPLAINT') ||
+            (lawyerCase.stage === 'WAITING_COMPLAINT_STAMP' &&
+              notaryCategory === 'MAIL_RECEIPT') ||
+            (lawyerCase.stage === 'WAITING_FILING' &&
+              ['FILING_EVIDENCE', 'FILING_SCREENSHOT'].includes(
+                notaryCategory ?? '',
+              ))
+          )
+        )
+          throw this.versionConflict();
+        return;
+      }
       if (actor.clientCustomerId !== undefined) {
         const binding = await reader.customerAccountBinding.findFirst({
           where: {
@@ -2342,6 +2509,58 @@ export class MaterialService {
         ),
       );
     }
+  }
+
+  private async lawyerCaseVersionWhitelist(
+    actor: ActorContext,
+    caseId: string,
+  ): Promise<Map<string, Set<string>>> {
+    await currentLawyerBindingId(this.database, actor, caseId);
+    const [materials, references] = await Promise.all([
+      this.database.material.findMany({
+        where: {
+          departmentId: actor.departmentId,
+          ownerType: 'CASE',
+          ownerId: caseId,
+          status: 'ACTIVE',
+          category: {
+            in: [
+              'COMPLAINT',
+              'AUTHORIZATION',
+              'MAIL_RECEIPT',
+              'FILING_EVIDENCE',
+              'FILING_SCREENSHOT',
+            ],
+          },
+        },
+        select: { id: true, currentVersionId: true },
+      }),
+      this.database.materialReference.findMany({
+        where: {
+          departmentId: actor.departmentId,
+          resourceType: 'case',
+          resourceId: caseId,
+          actionEventId: { not: null },
+          material: {
+            departmentId: actor.departmentId,
+            ownerType: 'CASE',
+            ownerId: caseId,
+            status: 'ACTIVE',
+          },
+        },
+        select: { materialId: true, contentVersionId: true },
+      }),
+    ]);
+    const allowed = new Map<string, Set<string>>();
+    for (const material of materials) {
+      if (material.currentVersionId !== null)
+        allowed.set(material.id, new Set([material.currentVersionId]));
+    }
+    for (const reference of references) {
+      const versions = allowed.get(reference.materialId);
+      if (versions !== undefined) versions.add(reference.contentVersionId);
+    }
+    return allowed;
   }
 
   private async clientCaseVersionWhitelist(

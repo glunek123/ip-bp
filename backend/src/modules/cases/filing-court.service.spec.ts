@@ -23,11 +23,27 @@ describe('FilingCourtService', () => {
           responsibleMembership: { teamId: null },
         }),
       },
+      caseLawyerAssignment: {
+        findFirst: jest
+          .fn()
+          .mockResolvedValue({ lawyer: { accountBinding: { id: 'binding' } } }),
+      },
       filingCourt: {
         findMany: jest.fn().mockResolvedValue([]),
         create: jest.fn().mockResolvedValue({ id: 'court', name: '人民法院' }),
       },
+      $queryRawUnsafe: jest.fn().mockImplementation((sql: string) =>
+        Promise.resolve([
+          {
+            id: sql.includes('lawyer_account_bindings') ? 'binding' : caseId,
+          },
+        ]),
+      ),
+      $transaction: jest.fn(),
     };
+    db.$transaction.mockImplementation(
+      async (fn: (client: typeof db) => unknown) => fn(db),
+    );
     const access = {
       authorizeDepartmentAction: jest.fn().mockResolvedValue(undefined),
       authorizeCase: jest.fn().mockResolvedValue(undefined),
@@ -59,7 +75,21 @@ describe('FilingCourtService', () => {
         departmentId: actor.departmentId,
         responsibleUserId: actor.userId,
       }),
+      f.db,
     );
+  });
+  it('lets the current lawyer list and create a court for this filing case', async () => {
+    const f = fixture();
+    const lawyer = { ...actor, lawyerAccountId: actor.userId };
+    f.db.userAccount.findUnique.mockResolvedValue({
+      active: true,
+      accountType: 'LAWYER',
+    });
+    await f.service.list(lawyer, caseId);
+    await f.service.create(lawyer, caseId, { name: '人民法院' });
+    expect(f.access.authorizeCase).not.toHaveBeenCalled();
+    expect(f.db.caseLawyerAssignment.findFirst).toHaveBeenCalledTimes(1);
+    expect(f.db.$queryRawUnsafe).toHaveBeenCalled();
   });
   it('rejects a duplicate within the department and does not advance a case', async () => {
     const f = fixture();

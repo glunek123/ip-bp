@@ -26,7 +26,15 @@ const tomorrowInShanghai = () =>
 describe('CaseComplaintMailingService', () => {
   function fixture() {
     const tx = {
-      $queryRawUnsafe: jest.fn().mockResolvedValue([{ id: caseId }]),
+      $queryRawUnsafe: jest.fn().mockImplementation((sql: string) =>
+        Promise.resolve([
+          {
+            id: sql.includes('lawyer_account_bindings')
+              ? 'lawyer-binding'
+              : caseId,
+          },
+        ]),
+      ),
       case: {
         findFirst: jest.fn().mockResolvedValue({
           id: caseId,
@@ -47,6 +55,11 @@ describe('CaseComplaintMailingService', () => {
       },
       customerAccountBinding: {
         findFirst: jest.fn().mockResolvedValue({ id: 'binding-1' }),
+      },
+      caseLawyerAssignment: {
+        findFirst: jest.fn().mockResolvedValue({
+          lawyer: { accountBinding: { id: 'lawyer-binding' } },
+        }),
       },
       caseComplaintMailingReceipt: {
         findUnique: jest.fn().mockResolvedValue(null),
@@ -87,6 +100,29 @@ describe('CaseComplaintMailingService', () => {
       ),
     };
   }
+
+  it('lets the current lawyer mail with a real lawyer actor fact', async () => {
+    const f = fixture();
+    f.tx.userAccount.findUnique.mockResolvedValue({
+      accountType: 'LAWYER',
+      active: true,
+    });
+    await f.service.mail(
+      { ...actor, lawyerAccountId: actor.userId },
+      caseId,
+      input,
+    );
+    expect(f.tx.caseComplaintMailing.create).toHaveBeenCalledWith({
+      data: expect.objectContaining({ actorType: 'LAWYER' }),
+      select: { id: true },
+    });
+    expect(f.tx.auditEvent.create).toHaveBeenCalledWith({
+      data: expect.objectContaining({
+        lawyerAccountBindingId: 'lawyer-binding',
+      }),
+      select: { id: true },
+    });
+  });
 
   it('uses one transaction for internal mailing, fact, audit, freeze and receipt', async () => {
     const f = fixture();

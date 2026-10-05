@@ -2930,6 +2930,7 @@ describe('notary opening material authorization', () => {
 function openDraft(overrides: Record<string, unknown> = {}) {
   return {
     id: '44444444-4444-4444-8444-444444444444',
+    lawyerAccountBindingId: null,
     departmentId: actor.departmentId,
     actorUserId: actor.userId,
     ownerType: 'LEAD_DRAFT',
