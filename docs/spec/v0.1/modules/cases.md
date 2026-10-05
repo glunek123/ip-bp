@@ -10,7 +10,7 @@
 
 - 复用`UserAccount`、真实用户名／密码、会话、停用和密码管理；新增独立`LAWYER`身份和最小律师档案绑定，不创建内部`DepartmentMembership`或运营角色。账号管理采用独立`LAWYER_ACCOUNT_MANAGE`，仅部门范围；初始仅从现有`USER_MANAGE`的`DEPARTMENT`授权复制，保留授权版本失效和授予上限。律师固定案件能力不进入内部可分配目录。
 - 正式内部入口可创建律师账号、显式绑定既有档案、停用／启用及重置密码。创建时录入真实姓名、用户名和密码，律所／电话可选。一个账号可显式关联同部门多条既有律师档案；一条档案只锚定一个稳定账号，不按同名自动合并，不允许解绑后静默换成另一人。旧案未经人工核对绑定，保持原事实且不自动授予访问；原成功回执仍可原样重放，新匹配必须选择有效真实账号。
-- 运营在待匹配表单按“姓名（用户名）”搜索和选择律师，服务端重新核验账号、绑定及目标部门，保存稳定账号所关联的档案和当前`PRIMARY`承办记录。唯一明确候选自动选择，多候选不按姓名默选。原姓名／律所／电话事实及匹配日期历史不改写，账号停用不得阻断运营读取原历史。
+- 运营在待匹配表单按“姓名（用户名）”搜索和选择律师，候选按账号去重。同一账号关联的多条历史记录不要求运营重复选律师；服务端提供明确、稳定的有效档案标识，重新核验账号、绑定及目标部门，保存该档案和当前`PRIMARY`承办记录。唯一明确账号候选自动选择，多账号不按姓名默选。管理员关联旧记录仍逐条明确选择；原姓名／律所／电话事实及匹配日期历史不改写，账号停用不得阻断运营读取原历史。
 - 律师每次请求按有效绑定与目标案件当前`PRIMARY`承办关系求交集；不使用内部`SELF`／`TEAM`／`DEPARTMENT`拼出更大范围。列表、详情、阶段计数、材料枚举／版本下载、上传草稿／完成及Command均执行相同范围校验。账号停用／绑定撤销或承办关系结束后，下次请求不得继续办理或读当前资料。换人后的参与期历史投影按SD-25后续实现，本轮不提供换人入口或声称已完成历史投影。
 - 最小律师入口复用共享视觉、阶段导航和案件表单。只显示本人承办案件及本案必要当事人、金额、办理事实和获准材料，不返回内部费用、内部人员账号／联系方式、内部审计正文、存储键或其他企业资料。公证书下载仅限该案来源已冻结的精确版本，不授予公证事项通用读取。案件节点名与Demo一致，无内部“本部门全部”切换。
 - 律师与有权运营共用既有起诉提交、诉状确认、邮寄、提交立案及法院目录处理，不新建平行业务事务。律师可执行CA-002～005全部正常动作，客户原邮寄能力保留；不获得匹配／改派、撤销／终止、重开、合并、付款或系统授权。所有阶段、精确材料、日期／金额、`expectedVersion`、`idempotencyKey`、并发、冻结、审计和回滚规则保持。
@@ -76,7 +76,7 @@ AC-CA-010（条件性、未执行）：按SD-23已批准的正常阶段前置数
 
 本动作细化SD-23、SD-25／26／39及[字段与材料契约§7](../../../superpowers/specs/2026-09-21-core-flow-field-material-contract.md#7-core-ca字段与动作契约)，不改变正常流程方向。
 
-- 单案`WAITING_COMPLAINT_CONFIRMATION → WAITING_COMPLAINT_STAMP`，页面显示“诉状待确认→诉状待盖章”。只有当前有效内部账号具备`case.complaint.confirm`并覆盖目标案才能办理；同部门非负责组员仍只读可下载，客户／公证处不能确认。新增Action复用既有授权计算，不拼接读取范围提权。初始Grant从原`case.complaint.submit`同范围复制，保留既有SELF／TEAM／DEPARTMENT边界，并使受影响授权版本失效。
+- 单案`WAITING_COMPLAINT_CONFIRMATION → WAITING_COMPLAINT_STAMP`，页面显示“诉状待确认→诉状待盖章”。当前有效内部账号具备`case.complaint.confirm`并覆盖目标案，或有效律师账号按SD-44当前承办本案时可办理；同部门非负责组员仍只读可下载，客户／公证处不能确认。内部Action复用既有授权计算，不拼接读取范围提权；律师采用独立承办范围，不取得内部Grant。初始内部Grant从原`case.complaint.submit`同范围复制，保留既有SELF／TEAM／DEPARTMENT边界，并使受影响授权版本失效。
 - `POST /api/v1/cases/:id/complaint-confirm`请求包含`expectedVersion`、`idempotencyKey`、`confirmedComplaintContentVersionId`、`amountState`、条件`amount/pendingReason`、`changeNote?`和明确的`confirmDisclose: boolean`。成功返回`id/stage/version/confirmedAt`；幂等键1～128字符，金额与CA-002同一人民币Decimal口径，不接受浮点、负数或用假0代替未知。`KNOWN`须非负金额且无待定说明；`PENDING`须1～500字符说明且无金额。
 - 确认一个明确的本案有效`COMPLAINT`内容版本。复用CA-002材料格式、50MB上限和真实文件校验；可选原已提交的有效版本，也可先上传修订诉状后选择。唯一版本自动选择，多版本用文件名和版本信息明示，不能默选首项。待确认时仅有确认权限的人员可上传本案诉状；不因此开放授权书更换或其他阶段写入。原提交冻结引用继续保留、可读且不可删除。
 - 以原CA-002提交事实对比所选版本及金额状态／金额／待定说明；选用未在原提交中出现的版本或改变金额事实时，`changeNote`必填（1～500字符）。原诉状提交金额、版本、提交回执及历史不覆盖；本次确认另存不可改删事实、操作者和服务端时间，冻结所选精确版本。
@@ -90,7 +90,7 @@ AC-CA-011：真实账号经正常来源转案、匹配、上传诉状／授权�
 
 本动作细化已确认的SD-13／23／25／28／33／39和[字段与材料契约§7](../../../superpowers/specs/2026-09-21-core-flow-field-material-contract.md#7-core-ca字段与动作契约)。只完成单案`WAITING_COMPLAINT_STAMP → WAITING_FILING`，页面显示“诉状待盖章→待提交立案”，不含法院提交、批量邮寄、快递接入或完整客户门户。
 
-- 有效内部账号拥有独立`case.complaint.mail`且覆盖目标案时可登记；同部门他人仍只读可下载。初始内部Grant从`case.complaint.confirm`按原范围复制，仅失效实际受影响的授权版本。企业客户复用现有真实密码会话与有效`CustomerAccountBinding`，用`client.case.read`／`client.case.complaint.mail`固定企业能力；每次请求重新核验账号、绑定、部门和客户准入状态，不使用内部Membership／SELF／TEAM／DEPARTMENT推导客户范围，不把外部Action加入内部可分配目录。公证处不得办理。
+- 有效内部账号拥有独立`case.complaint.mail`且覆盖目标案时可登记；同部门他人仍只读可下载。初始内部Grant从`case.complaint.confirm`按原范围复制，仅失效实际受影响的授权版本。企业客户复用现有真实密码会话与有效`CustomerAccountBinding`，用`client.case.read`／`client.case.complaint.mail`固定企业能力；每次请求重新核验账号、绑定、部门和客户准入状态，不使用内部Membership／SELF／TEAM／DEPARTMENT推导客户范围，不把外部Action加入内部可分配目录。有效律师账号按SD-44限当前承办案登记，不复用客户或内部身份路径。公证处不得办理。
 - 运营`POST /api/v1/cases/:id/complaint-mail`与客户`POST /api/v1/client/cases/:id/complaint-mail`调用同一Command。严格请求字段为`expectedVersion`、`idempotencyKey`、`mailedAt`及`mailReceiptContentVersionIds`。`mailedAt`为真实业务日期（`YYYY-MM-DD`／数据库date），不得晚于Asia/Shanghai当日；系统登记时间`recordedAt`、操作者及身份由服务端写入，不接受客户端指定。幂等键1～128字符，精确凭证版本1～10项且无重复；客户不得以请求里的企业或部门值换范围。
 - 至少一份本案有效且真实可用的`MAIL_RECEIPT`，PDF／JPG／JPEG／PNG，单件20MB、最多10件，复用已有上传、存储、精确版本和文件校验。只有待盖章且具备对应办理资格时可上传该类别；不开放客户上传或替换诉状、授权书、公证书。上传保存与确认推进分开，未确认不产生邮寄事实。客户仅可选择自己可读取的待提交凭证版本；内部人员按本案办理权限读取并选择凭证。不另加盖章扫描件必传门槛，不用文件名冒充真实文件。
 - 最小客户端入口为本企业案件列表与详情。`GET /api/v1/client/cases`的`view=PENDING|RECORDED`默认待盖章待办，另可查看已登记记录；`GET /api/v1/client/cases/:id`读取详情，刷新／重登可读。只投影已完成诉状确认的案件，以及该确认版本、原已提交的授权书和邮寄记录／凭证；未确认案件不显示。列表／详情用权利主体名称与被告名称帮助识别案件，不返回证件号或联系方式；详情的`confirmedAmountState`及`confirmedAmount`只来自不可变诉状确认事实，已知金额用Decimal字符串、待定为null。客户端不返回内部费用、原金额变更说明、内部负责人／律师联系方式、内部审计正文、存储键或未确认材料。内部`/cases`端点继续拒绝客户；客户端不能借资料下载获得内部详情。
@@ -105,9 +105,9 @@ AC-CA-012：正常来源链经CA-001／002／003后，真实企业客户登录�
 
 本动作细化SD-23／25／39及[字段与材料契约§7](../../../superpowers/specs/2026-09-21-core-flow-field-material-contract.md#7-core-ca字段与动作契约)。只办理正常来源单案提交，历史转入、批量提交及正式受理另作后续。
 
-- 单案`WAITING_FILING → WAITING_FORMAL_ACCEPTANCE`，显示“待提交立案→待正式立案”。当前有效内部账号具有`case.filing.submit`且覆盖目标案件才可办理；复用现有SELF／TEAM／DEPARTMENT授权，不以全部门读取范围扩大办理范围。客户与公证处不能提交。初始Grant从`case.complaint.mail`同范围复制，只处理内部授权并使受影响授权版本失效。
+- 单案`WAITING_FILING → WAITING_FORMAL_ACCEPTANCE`，显示“待提交立案→待正式立案”。当前有效内部账号具有`case.filing.submit`且覆盖目标案件，或有效律师账号按SD-44当前承办本案时可办理；内部复用现有SELF／TEAM／DEPARTMENT授权，不以全部门读取范围扩大办理范围。律师采用独立承办范围，不取得内部Grant。客户与公证处不能提交。初始内部Grant从`case.complaint.mail`同范围复制，只处理内部授权并使受影响授权版本失效。
 - `POST /api/v1/cases/:id/filing-submit`严格输入`expectedVersion`、`idempotencyKey`、`courtId`、`submittedAt`、`filingEvidenceContentVersionIds`、可选`filingScreenshotContentVersionIds`及`mediationNo`。真实提交日期为`YYYY-MM-DD`、数据库date，不晚于Asia/Shanghai当日；系统登记时间和操作者由服务端生成。诉调号／立案编号1～100字符可选，与业务号及后续法院案号分开；不拿占位编号代填。已确认诉状金额只读，不隐式覆盖确认历史。
-- 法院使用cases所属的最小部门内具名目录，稳定ID与真实法院名称分开；不写死Demo列表、不预置虚构法院。`GET /api/v1/cases/:id/filing-courts`按案件读取资格列出本部门法院，`POST`同路径由当前有本案提交资格的内部人员登记真实法院名称并返回稳定ID；名称1～200字符，部门内去重。无选项提示录入；只有一个有效选项自动选择，存在多个才要求选择。法院登记本身不推进案件。提交时重新确认courtId属于目标部门，事实冻结当时法院名称。
+- 法院使用cases所属的最小部门内具名目录，稳定ID与真实法院名称分开；不写死Demo列表、不预置虚构法院。内部`GET /api/v1/cases/:id/filing-courts`按案件读取资格列出本部门法院，`POST`同路径由当前有本案提交资格的内部人员登记真实法院名称并返回稳定ID；律师通过独立入口以当前承办资格调用同一目录服务。名称1～200字符，部门内去重。无选项提示录入；只有一个有效选项自动选择，存在多个才要求选择。法院登记本身不推进案件。提交时重新确认courtId属于目标部门，事实冻结当时法院名称。
 - 起诉／证据材料`FILING_EVIDENCE`至少1份、最多50份，每份不超过50MB，PDF／DOC／DOCX／JPG／JPEG／PNG；`FILING_SCREENSHOT`可选、最多10份，每份20MB，PDF／JPG／JPEG／PNG。复用真实文件、MIME及内容版本校验，不以截图替代必需材料。只在待提交阶段且具备办理资格时上传这两类本案材料；客户不能借此读取内部立案材料。上传与推进分开，精确版本无重复，其他案件／不可用／不可读版本拒绝。
 - 不可改删的提交事实分别记录实际提交日、系统登记时刻、法院ID及名称快照、可选诉调号、操作者和所有精确材料引用。稳定案锁／版本CAS下，阶段推进、事实、成功审计`case.filing.submitted`、冻结版本与幂等回执原子完成；原诉状提交／确认／邮寄历史不覆盖。重放先检查当前身份／范围，同键同请求返回原结果且不重复审计，同键异参、旧版本、错误阶段及并发竞争稳定拒绝；任一步失败整体回滚。
 - 详情操作前说明字段、材料和提交后影响，必填星号、加载、成功记录和稳定错误反馈沿用既有组件。未知结果保留原请求／幂等键，核对或原样重试；切案／账号／授权变化隔离迟到响应。侧栏新增“待正式立案”单一节点，计数／筛选／列表一致，不再增加重复阶段条；客户仅沿用既有已登记案件投影，不返回法院提交内部事实或新材料，不提供受理按钮。
