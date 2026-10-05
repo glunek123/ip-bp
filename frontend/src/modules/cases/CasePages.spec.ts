@@ -577,7 +577,7 @@ describe('case pages', () => {
       .findAll('option')
       .find((option) => option.text().includes('律师甲（lawyer.a）'))!;
     expect(lawyerOption).toBeDefined();
-    await lawyerOption.setSelected();
+    await lawyerOption.setValue();
     await wrapper
       .findAll('[data-test="case-match-form"] button')
       .find((button) => button.text().includes('确认匹配'))!
