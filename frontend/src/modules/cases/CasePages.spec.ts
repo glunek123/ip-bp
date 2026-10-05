@@ -12,6 +12,7 @@ const api = vi.hoisted(() => ({
   listCases: vi.fn(),
   getCase: vi.fn(),
   matchCase: vi.fn(),
+  listLawyerMatchCandidates: vi.fn(),
   submitComplaint: vi.fn(),
   confirmCaseComplaint: vi.fn(),
   uploadMaterialFile: vi.fn(),
@@ -25,6 +26,7 @@ vi.mock('../../api/cases', () => ({
   listCases: api.listCases,
   getCase: api.getCase,
   matchCase: api.matchCase,
+  listLawyerMatchCandidates: api.listLawyerMatchCandidates,
   submitComplaint: api.submitComplaint,
   confirmCaseComplaint: api.confirmCaseComplaint,
   listFilingCourts: api.listFilingCourts,
@@ -66,6 +68,7 @@ beforeEach(() => {
       WAITING_COMPLAINT_STAMP: 0,
     },
   });
+  api.listLawyerMatchCandidates.mockResolvedValue([]);
   api.getCase.mockResolvedValue({
     id: 'case-1',
     businessNo: 'CA-1',
@@ -429,8 +432,22 @@ describe('case pages', () => {
         pendingReason: null,
         submittedAt: '2026-09-30T01:00:00Z',
         submittedByUserId: 'user-1',
-        complaintFiles: [],
-        authorizationFiles: [],
+        complaintFiles: [
+          {
+            materialId: 'complaint-material',
+            contentVersionId: 'complaint-v1',
+            originalFilename: '诉状.pdf',
+            mimeType: 'application/pdf',
+          },
+        ],
+        authorizationFiles: [
+          {
+            materialId: 'authorization-material',
+            contentVersionId: 'authorization-v1',
+            originalFilename: '授权书.pdf',
+            mimeType: 'application/pdf',
+          },
+        ],
       },
     };
     api.getCase.mockReset();
@@ -483,13 +500,24 @@ describe('case pages', () => {
         authorizationContentVersionIds: ['authorization-v1'],
       }),
     );
-    expect(wrapper.text()).toContain('当前阶段为诉状待确认');
+    expect(wrapper.get('.page-head').text()).toContain('诉状待确认');
+    const submitted = wrapper.get('[data-test="complaint-read-only"]');
+    expect(submitted.text()).toContain('标的额：¥ 0');
+    expect(submitted.text()).toContain('诉状.pdf');
+    expect(submitted.text()).toContain('授权书.pdf');
     expect(wrapper.find('[data-test="complaint-submit-form"]').exists()).toBe(
       false,
     );
   });
 
   it('saves defendants and lawyer, reloads detail, and confirms the real transition', async () => {
+    const candidate = {
+      lawyerAccountId: 'lawyer-account-1',
+      username: 'lawyer.a',
+      displayName: '律师甲',
+      lawyerProfileId: 'lawyer-profile-1',
+    };
+    api.listLawyerMatchCandidates.mockResolvedValue([candidate]);
     api.matchCase.mockResolvedValue(undefined);
     const wrapper = await mountRoute('/cases/case-1', CaseDetailPage);
     const eventSpy = vi.spyOn(window, 'dispatchEvent');
@@ -526,23 +554,30 @@ describe('case pages', () => {
           address: null,
         },
       ],
-      lawyers: [],
+      lawyers: [
+        {
+          id: 'case-lawyer-1',
+          fullName: '律师甲',
+          lawFirm: '甲律所',
+          phone: '13900000000',
+          role: 'PRIMARY',
+          assignedAt: '2026-09-29T01:00:00Z',
+        },
+      ],
       matchedAt: '2026-09-29T01:00:00Z',
       matchedOn: '2026-09-28',
     });
     const form = wrapper.get('[data-test="case-match-form"]');
     expect(
-      form
-        .findAll('label')
-        .find((label) => label.text().includes('律师事务所'))
-        ?.text(),
-    ).toBe('律师事务所（选填）');
-    expect(
       (form.get('input[type="date"]').element as HTMLInputElement).value,
     ).toBe('2026-09-29');
     await form.get('input[type="date"]').setValue('2026-09-28');
     await form.findAll('input')[1]!.setValue('被告甲');
-    await form.findAll('input')[5]!.setValue('律师甲');
+    const lawyerOption = form
+      .findAll('option')
+      .find((option) => option.text().includes('律师甲（lawyer.a）'))!;
+    expect(lawyerOption).toBeDefined();
+    await lawyerOption.setSelected();
     await wrapper
       .findAll('[data-test="case-match-form"] button')
       .find((button) => button.text().includes('确认匹配'))!
@@ -551,18 +586,23 @@ describe('case pages', () => {
     expect(api.matchCase).toHaveBeenCalledWith(
       'case-1',
       expect.objectContaining({
+        expectedVersion: 1,
         defendants: [
           expect.objectContaining({ name: '被告甲', kind: 'PERSON' }),
         ],
-        lawyer: expect.objectContaining({
-          fullName: '律师甲',
-          lawFirm: '',
-        }),
+        lawyerAccountId: candidate.lawyerAccountId,
+        lawyerProfileId: candidate.lawyerProfileId,
         matchedOn: '2026-09-28',
       }),
     );
+    expect(api.listLawyerMatchCandidates).toHaveBeenCalledWith('case-1', '', {
+      signal: expect.any(AbortSignal),
+    });
     expect(api.getCase).toHaveBeenCalledTimes(2);
     expect(wrapper.text()).toContain('案件匹配已完成');
+    expect(wrapper.get('.page-head').text()).toContain('待写诉状');
+    expect(wrapper.text()).toContain('律师甲（甲律所）');
+    expect(wrapper.text()).toContain('实际匹配日期：2026-09-28');
     expect(wrapper.find('[data-test="case-match-form"]').exists()).toBe(false);
     expect(eventSpy).toHaveBeenCalledWith(
       expect.objectContaining({ type: workflowChangedEvent }),
