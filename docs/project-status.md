@@ -1,6 +1,6 @@
 # 当前开发状态
 
-更新日期：2026-10-05。本文件只保留恢复当前工作的最小事实；历史状态见[历史状态](project-status-history-through-2026-09-18.md)，候选证据与集成事实见[验证记录](spec/v0.1/VALIDATION.md)。
+更新日期：2026-10-06。本文件只保留恢复当前工作的最小事实；历史状态见[历史状态](project-status-history-through-2026-09-18.md)，候选证据与集成事实见[验证记录](spec/v0.1/VALIDATION.md)。
 
 ## 当前阶段
 
@@ -10,9 +10,9 @@ CORE-CA-005提交立案已通过独立终审及正式Level 2验收，尚未推�
 
 本轮分支`codex/core-ca-005-court-filing`，基线main为`b28e0f35fa8de21f752145e43177b7defe450341`。唯一Current为**CORE-CA-006｜正式受理（待领取）**，Next为CORE-CA-007开庭后推进；先按授权集成CA-005并核对组合tree，再从更新后的main领取，本轮未开始CA-006。
 
-当前执行用户确认的[SD-44律师身份前置补齐](spec/v0.1/modules/cases.md#律师账号与承办办理补齐sd-44)，计划见[律师账号与承办办理实施计划](superpowers/plans/2026-10-04-case-lawyer-access.md)。运营按真实律师用户名分派；律师可办理本人承办案件全部已实现正常动作，异常管理仍由有权运营办理。该补齐修改外部身份与数据范围，按Level 3；独立Task／Final Review、完整verify及正式数据库／浏览器验收尚未完成，不沿用CA-005原候选门禁宣称新组合已通过。复用现有任务分支，不自动合并、推送或开发CA-006。
+当前执行用户确认的[SD-44律师身份前置补齐](spec/v0.1/modules/cases.md#律师账号与承办办理补齐sd-44)，计划见[律师账号与承办办理实施计划](superpowers/plans/2026-10-04-case-lawyer-access.md)。运营按真实律师用户名分派；律师可办理本人承办案件全部已实现正常动作，异常管理仍由有权运营办理。该补齐修改外部身份与数据范围，按Level 3；高风险Task Review已通过，Final Review、完整verify及全量数据库／浏览器验收仍待完成，不沿用CA-005原候选门禁宣称新组合已通过。复用现有任务分支，不自动合并、推送或开发CA-006。
 
-2026-10-05中断恢复：Task 1修复候选`be10534d3772fd4ad706bbde21922fafd0ea2fdc`已获独立高风险审查ACCEPTED，未关闭finding为0/0/0；原四项问题及定向修复证据见`.local/case-lawyer/task-1-review.md`与`task-1-report.md`。72份迁移、旧案／回执升级与重放、真实并发和律师数据库聚焦7/7等已通过。接下来实施账号管理／用户名分派／律师前端入口，再固定集成候选执行Final Review与Level 3门禁；这些后端结果不等于完整浏览器业务闭环已验收。
+2026-10-06恢复检查点：Task 1修复候选`be10534d3772fd4ad706bbde21922fafd0ea2fdc`已获独立高风险审查ACCEPTED，未关闭finding为0/0/0；72份迁移、旧案／回执升级与重放、真实并发和律师数据库聚焦7/7等已通过。Task 2前端提交`b88d828`和Task 3浏览器／诉调号展示提交`388a17f`、`434760b`已交接；真实账号创建、用户名分派、律师四个正常动作、精确附件字节、刷新／重登及停用的两文件浏览器组合10/10通过，详情页5/5。详细命令、失败轨迹与证据边界见`.local/case-lawyer/task-{1,2,3}-report.md`。下一步固定组合候选、独立Final Review与Level 3门禁；聚焦结果不等于整体验收完成。
 
 ## 已实现
 

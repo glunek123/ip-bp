@@ -33,7 +33,9 @@ pnpm auth:bootstrap-local --department "知产部" --username admin --display-na
 pnpm dev
 ```
 
-初始化命令会在终端中安全读取密码，不接受密码参数，也不会显示密码。命令要求操作者显式填写预期数据库的 host、port 和 database；程序会将三项逐一与实际 `DATABASE_URL` 比对，并且只允许 `development`／`test` 模式下的本机 PostgreSQL。任一项不符都会在读取密码或写库前终止。它只允许在没有任何本地账号或部分初始化痕迹时运行一次；后续人员账号管理属于下一切片。完成后打开[登录页](http://127.0.0.1:5173/login)。本地后端为 `http://127.0.0.1:3000`；健康接口为 `/api/v1/health`，OpenAPI 为 `/api/docs`（JSON 为 `/api/docs-json`）。前端开发代理转发 `/api`。
+初始化命令会在终端中安全读取密码，不接受密码参数，也不会显示密码。命令要求操作者显式填写预期数据库的 host、port 和 database；程序会将三项逐一与实际 `DATABASE_URL` 比对，并且只允许 `development`／`test` 模式下的本机 PostgreSQL。任一项不符都会在读取密码或写库前终止。它只允许在没有任何本地账号或部分初始化痕迹时运行一次；后续内部人员与权限通过“设置→人员与权限”管理，不重复初始化。完成后打开[登录页](http://127.0.0.1:5173/login)。本地后端为 `http://127.0.0.1:3000`；健康接口为 `/api/v1/health`，OpenAPI 为 `/api/docs`（JSON 为 `/api/docs-json`）。前端开发代理转发 `/api`。
+
+律师使用同一登录页，不创建内部人员角色。具备本部门`LAWYER_ACCOUNT_MANAGE`权限的内部人员在“设置→律师账号”（`/settings/lawyer-accounts`）创建真实账号，或经核对显式绑定旧律师档案；运营在待匹配案件选择“姓名（用户名）”。律师密码登录后进入本人案件（`/lawyer/cases`），只办理当前承办案件已实现的正常流程。停用账号／绑定或结束承办后，下次请求失效；旧历史不删除。当前实现范围与验收结果以[路线图](docs/feature-roadmap.md)和[验证记录](docs/spec/v0.1/VALIDATION.md)为准，不用预置阶段或人工改库代替正式录入。
 
 若页面显示“无法连接服务”，先确认 Docker Desktop 已启动，再依次运行 `pnpm db:up`、`pnpm db:migrate:deploy` 和 `pnpm dev`。未登录访问客户页面会转到登录页，不再把 HTTP 401 显示为连接失败；只有浏览器确实连不到后端时才显示连接错误。
 
