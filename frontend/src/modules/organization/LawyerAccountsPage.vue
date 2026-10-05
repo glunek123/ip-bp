@@ -1,5 +1,5 @@
 <script setup lang="ts">
-import { computed, onMounted, ref } from 'vue';
+import { computed, onBeforeUnmount, onMounted, ref, watch } from 'vue';
 import { ElButton } from 'element-plus/es/components/button/index.mjs';
 import { ApiError } from '../../api/http';
 import {
@@ -13,12 +13,16 @@ import {
   type LawyerAccount,
   type UnboundLawyerProfile,
 } from '../../api/lawyer-accounts';
+import { useAuthStore } from '../../stores/auth';
 
+const auth = useAuthStore();
 const accounts = ref<LawyerAccount[]>([]);
 const profiles = ref<UnboundLawyerProfile[]>([]);
 const loading = ref(false);
+const profileSearchLoading = ref(false);
 const saving = ref(false);
 const error = ref('');
+const profileSearchError = ref('');
 const notice = ref('');
 const fullName = ref('');
 const username = ref('');
@@ -30,6 +34,25 @@ const selectedProfileId = ref('');
 const selectedAccountId = ref('');
 const resetPasswords = ref<Record<string, string>>({});
 const forbidden = ref(false);
+const accountPage = ref(1);
+const accountPageSize = 20;
+const accountTotal = ref(0);
+let accountRequest: AbortController | undefined;
+let accountRevision = 0;
+let profileRequest: AbortController | undefined;
+let profileRevision = 0;
+let mounted = false;
+const identity = computed(() => {
+  const session = auth.session;
+  return session
+    ? `${session.principalType}:${session.user.id}:${session.authorizationRevision}:${session.department?.id ?? ''}`
+    : '';
+});
+const successfulProfileSearch = ref<{
+  query: string;
+  identity: string;
+  accountId: string;
+} | null>(null);
 const canCreate = computed(
   () =>
     !!fullName.value.trim() &&
@@ -53,36 +76,104 @@ function explain(errorValue: unknown): string {
 }
 
 async function refresh(): Promise<void> {
+  accountRequest?.abort();
+  const controller = new AbortController();
+  accountRequest = controller;
+  const currentRevision = ++accountRevision;
+  const currentIdentity = identity.value;
   loading.value = true;
   error.value = '';
   forbidden.value = false;
   try {
-    const page = await listLawyerAccounts();
+    const page = await listLawyerAccounts(accountPage.value, accountPageSize, {
+      signal: controller.signal,
+    });
+    if (
+      controller.signal.aborted ||
+      currentRevision !== accountRevision ||
+      currentIdentity !== identity.value
+    )
+      return;
     accounts.value = page.items;
+    accountTotal.value = page.total;
   } catch (reason) {
+    if (
+      controller.signal.aborted ||
+      currentRevision !== accountRevision ||
+      currentIdentity !== identity.value
+    )
+      return;
     accounts.value = [];
+    accountTotal.value = 0;
     error.value = explain(reason);
     forbidden.value =
       reason instanceof ApiError &&
       (reason.status === 403 || reason.code === 'ACTION_FORBIDDEN');
   } finally {
-    loading.value = false;
+    if (currentRevision === accountRevision) loading.value = false;
   }
 }
 
 async function searchProfiles(): Promise<void> {
+  profileRequest?.abort();
+  const controller = new AbortController();
+  profileRequest = controller;
+  const currentRevision = ++profileRevision;
+  const currentQuery = query.value.trim();
+  const currentIdentity = identity.value;
+  const currentAccountId = selectedAccountId.value;
+  selectedProfileId.value = '';
+  successfulProfileSearch.value = null;
+  profiles.value = [];
+  profileSearchError.value = '';
+  profileSearchLoading.value = true;
   try {
-    profiles.value = await listUnboundLawyerProfiles(query.value);
+    const result = await listUnboundLawyerProfiles(currentQuery, {
+      signal: controller.signal,
+    });
     if (
-      !profiles.value.some(
-        (profile) => profile.profileId === selectedProfileId.value,
-      )
+      controller.signal.aborted ||
+      currentRevision !== profileRevision ||
+      currentQuery !== query.value.trim() ||
+      currentIdentity !== identity.value ||
+      currentAccountId !== selectedAccountId.value
     )
-      selectedProfileId.value = '';
+      return;
+    profiles.value = result;
+    successfulProfileSearch.value = {
+      query: currentQuery,
+      identity: currentIdentity,
+      accountId: currentAccountId,
+    };
   } catch (reason) {
-    error.value = explain(reason);
-    profiles.value = [];
+    if (
+      controller.signal.aborted ||
+      currentRevision !== profileRevision ||
+      currentQuery !== query.value.trim() ||
+      currentIdentity !== identity.value ||
+      currentAccountId !== selectedAccountId.value
+    )
+      return;
+    profileSearchError.value = explain(reason);
+  } finally {
+    if (currentRevision === profileRevision) profileSearchLoading.value = false;
   }
+}
+
+function canBindProfile(): boolean {
+  const currentSearch = successfulProfileSearch.value;
+  return !!(
+    currentSearch &&
+    currentSearch.query === query.value.trim() &&
+    currentSearch.identity === identity.value &&
+    currentSearch.accountId === selectedAccountId.value &&
+    !profileSearchLoading.value &&
+    !profileSearchError.value &&
+    selectedAccountId.value &&
+    profiles.value.some(
+      (profile) => profile.profileId === selectedProfileId.value,
+    )
+  );
 }
 
 async function create(): Promise<void> {
@@ -116,7 +207,7 @@ async function bind(): Promise<void> {
   const account = accounts.value.find(
     (item) => item.id === selectedAccountId.value,
   );
-  if (!account || !selectedProfileId.value || saving.value) return;
+  if (!account || !canBindProfile() || saving.value) return;
   saving.value = true;
   error.value = '';
   notice.value = '';
@@ -197,8 +288,31 @@ async function reset(account: LawyerAccount): Promise<void> {
   }
 }
 
+watch(accountPage, () => void refresh());
+watch(selectedAccountId, (next, previous) => {
+  if (!mounted || next === previous) return;
+  void searchProfiles();
+});
+watch(identity, (next, previous) => {
+  if (!mounted || next === previous) return;
+  selectedProfileId.value = '';
+  query.value = '';
+  profiles.value = [];
+  successfulProfileSearch.value = null;
+  if (accountPage.value === 1) void refresh();
+  else accountPage.value = 1;
+  void searchProfiles();
+});
 onMounted(() => {
+  mounted = true;
   void Promise.all([refresh(), searchProfiles()]);
+});
+onBeforeUnmount(() => {
+  mounted = false;
+  accountRevision += 1;
+  profileRevision += 1;
+  accountRequest?.abort();
+  profileRequest?.abort();
 });
 </script>
 
@@ -280,6 +394,7 @@ onMounted(() => {
                 :value="profile.profileId"
               >
                 {{ profile.fullName }} · {{ profile.lawFirm ?? '律所未填写' }} ·
+                {{ profile.phone ?? '电话未填写' }} ·
                 {{ profile.caseBusinessNos.join('、') }} ·
                 {{ profile.historicalAssignmentCount }} 条历史记录（{{
                   profile.profileId.slice(-6)
@@ -300,11 +415,15 @@ onMounted(() => {
             </select></label
           >
         </div>
+        <p v-if="profileSearchLoading" class="field-help">正在搜索历史档案</p>
+        <p v-if="profileSearchError" class="submit-error" role="alert">
+          {{ profileSearchError }}
+        </p>
         <p v-if="profiles.length === 0" class="field-help">
-          没有可绑定的历史档案。
+          {{ profileSearchError ? '' : '没有可绑定的历史档案。' }}
         </p>
         <ElButton
-          :disabled="!selectedProfileId || !selectedAccountId || saving"
+          :disabled="!canBindProfile() || saving"
           :loading="saving"
           @click="bind"
           >确认绑定</ElButton
@@ -376,6 +495,27 @@ onMounted(() => {
             </div>
           </li>
         </ul>
+        <div v-if="accountTotal > accountPageSize" class="page-head">
+          <ElButton
+            text
+            :disabled="loading || accountPage <= 1"
+            @click="accountPage -= 1"
+            >上一页</ElButton
+          >
+          <span
+            >第 {{ accountPage }} /
+            {{ Math.ceil(accountTotal / accountPageSize) }} 页</span
+          >
+          <ElButton
+            text
+            :disabled="
+              loading ||
+              accountPage >= Math.ceil(accountTotal / accountPageSize)
+            "
+            @click="accountPage += 1"
+            >下一页</ElButton
+          >
+        </div>
       </section>
     </main>
   </div>

@@ -23,6 +23,8 @@ const stages: Array<{ value: CaseStage; label: string }> = [
 const state = ref<'loading' | 'ready' | 'failed'>('loading');
 const items = ref<LawyerCaseSummary[]>([]);
 const total = ref(0);
+const page = ref(1);
+const pageSize = 20;
 const error = ref('');
 let request: AbortController | undefined;
 let revision = 0;
@@ -42,11 +44,13 @@ async function load(): Promise<void> {
   request = controller;
   const currentRevision = ++revision;
   const currentIdentity = identity.value;
+  const currentPage = page.value;
+  const currentStage = stage.value;
   items.value = [];
   state.value = 'loading';
   error.value = '';
   try {
-    const result = await listLawyerCases(1, 20, stage.value, {
+    const result = await listLawyerCases(currentPage, pageSize, currentStage, {
       signal: controller.signal,
     });
     if (
@@ -81,8 +85,12 @@ function stageLabel(value: CaseStage): string {
 }
 watch(
   () => [route.query.stage, identity.value],
-  () => void load(),
+  () => {
+    if (page.value === 1) void load();
+    else page.value = 1;
+  },
 );
+watch(page, () => void load());
 onMounted(() => void load());
 onBeforeUnmount(() => {
   revision += 1;
@@ -140,6 +148,18 @@ onBeforeUnmount(() => {
         <p v-if="items.length && total > items.length" class="field-help">
           当前显示 {{ items.length }} / {{ total }} 项
         </p>
+        <div v-if="total > pageSize" class="page-head">
+          <ElButton text :disabled="page <= 1" @click="page -= 1"
+            >上一页</ElButton
+          >
+          <span>第 {{ page }} / {{ Math.ceil(total / pageSize) }} 页</span>
+          <ElButton
+            text
+            :disabled="page >= Math.ceil(total / pageSize)"
+            @click="page += 1"
+            >下一页</ElButton
+          >
+        </div>
       </section>
       <span class="sr-only" aria-hidden="true">{{
         counts

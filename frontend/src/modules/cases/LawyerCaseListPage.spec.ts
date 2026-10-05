@@ -79,4 +79,115 @@ describe('LawyerCaseListPage', () => {
     expect(wrapper.text()).not.toContain('本部门全部');
     expect(wrapper.get('a').attributes('href')).toBe('/lawyer/cases/case-1');
   });
+
+  it('requests and displays the second server page and disables boundary controls', async () => {
+    const firstPageItems = Array.from({ length: 20 }, (_, index) => ({
+      ...emptyResult.items[0],
+      id: `case-${index + 1}`,
+      businessNo: `CA-${index + 1}`,
+    }));
+    const case21 = {
+      ...emptyResult.items[0],
+      id: 'case-21',
+      businessNo: 'CA-21',
+    };
+    api.listLawyerCases
+      .mockResolvedValueOnce({
+        ...emptyResult,
+        items: firstPageItems,
+        total: 21,
+        page: 1,
+        pageSize: 20,
+      })
+      .mockResolvedValueOnce({
+        ...emptyResult,
+        items: [case21],
+        total: 21,
+        page: 2,
+        pageSize: 20,
+      });
+    const { wrapper } = await mountPage();
+    const previous = wrapper
+      .findAll('button')
+      .find((button) => button.text() === '上一页')!;
+    const next = wrapper
+      .findAll('button')
+      .find((button) => button.text() === '下一页')!;
+    expect(previous).toBeDefined();
+    expect(next).toBeDefined();
+    expect(previous.attributes('disabled')).toBeDefined();
+    await next.trigger('click');
+    await flushPromises();
+    expect(api.listLawyerCases).toHaveBeenLastCalledWith(2, 20, undefined, {
+      signal: expect.any(AbortSignal),
+    });
+    expect(wrapper.text()).toContain('CA-21');
+    const pageButtons = wrapper.findAll('button');
+    expect(
+      pageButtons
+        .find((button) => button.text() === '上一页')
+        ?.attributes('disabled'),
+    ).toBeUndefined();
+    expect(
+      pageButtons
+        .find((button) => button.text() === '下一页')
+        ?.attributes('disabled'),
+    ).toBeDefined();
+  });
+
+  it('resets to page one on stage change and ignores a late page response', async () => {
+    let resolveOldPage!: (result: typeof emptyResult) => void;
+    const oldPageRequest = new Promise<typeof emptyResult>((resolve) => {
+      resolveOldPage = resolve;
+    });
+    const firstPage = {
+      ...emptyResult,
+      total: 21,
+      page: 1,
+      pageSize: 20,
+    };
+    const currentStage = {
+      ...emptyResult,
+      items: [
+        {
+          ...emptyResult.items[0],
+          id: 'case-current',
+          businessNo: 'CA-current',
+        },
+      ],
+      total: 1,
+      page: 1,
+      pageSize: 20,
+    };
+    api.listLawyerCases.mockImplementation(
+      (page: number, _pageSize: number, stage?: string) => {
+        if (page === 2) return oldPageRequest;
+        if (stage === 'WAITING_FILING') return Promise.resolve(currentStage);
+        return Promise.resolve(firstPage);
+      },
+    );
+    const { wrapper, router } = await mountPage();
+    const next = wrapper
+      .findAll('button')
+      .find((button) => button.text() === '下一页')!;
+    expect(next).toBeDefined();
+    await next.trigger('click');
+    await flushPromises();
+    await router.push('/lawyer/cases?stage=WAITING_FILING');
+    await flushPromises();
+    expect(api.listLawyerCases).toHaveBeenLastCalledWith(
+      1,
+      20,
+      'WAITING_FILING',
+      { signal: expect.any(AbortSignal) },
+    );
+    expect(wrapper.text()).toContain('CA-current');
+    resolveOldPage({
+      ...emptyResult,
+      items: [{ ...emptyResult.items[0], id: 'late', businessNo: 'CA-late' }],
+    });
+    await flushPromises();
+    expect(wrapper.text()).toContain('CA-current');
+    expect(wrapper.text()).not.toContain('CA-late');
+  });
 });
