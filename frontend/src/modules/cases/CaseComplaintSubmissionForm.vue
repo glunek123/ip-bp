@@ -19,7 +19,10 @@ defineProps<{
 }>();
 
 const emit = defineEmits<{
-  upload: [category: UploadCategory, event: Event];
+  upload: [
+    category: UploadCategory,
+    event: InstanceType<typeof globalThis.Event>,
+  ];
   download: [file: CaseFile];
   remove: [category: UploadCategory, index: number];
   submit: [];
