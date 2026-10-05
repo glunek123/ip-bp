@@ -1,5 +1,29 @@
 # SPEC-001 文档验证
 
+## SD-44 律师身份与案件正常办理前置补齐（2026-10-06）
+
+实际通过Level 3完整门禁的CA-005＋SD-44组合候选为`03c407013fb48efd6dfc72b7ae14e847abc32bb8`、tree`8e1f98e8b18d91200102c192b68d72549650de5c`，分支`codex/core-ca-005-court-filing`，main基线`b28e0f35fa8de21f752145e43177b7defe450341`。本轮补齐已确认的真实律师身份与已实现正常动作，不开发CA-006，不推送／合并／部署。
+
+独立`LAWYER`复用真实账号密码及会话，不加入内部DepartmentMembership／Role；`LawyerAccountBinding`和`LawyerProfile.boundUserId`永久账号锚防止旧档案换人接管。新增内部部门级`LAWYER_ACCOUNT_MANAGE`，正式律师账号页面可建号、显式绑定历史未绑定档案、停用账号／绑定及重置密码；运营按用户名选择真实账号，后端按账号去重并稳定选择有效Profile，不按姓名认领旧案。律师工作台只读取本人当前PRIMARY承办案件，复用CA-002～005起诉材料提交、诉状确认、客户邮寄、提交立案；内部异常管理、跨案／跨部门、通用公证列表和内部费用仍不可见。法院与精确附件仅按本案必要投影提供，源公证书只下载案件已冻结版本。
+
+主要接口为`/api/v1/lawyer-accounts`管理及历史档案候选、`/api/v1/cases/:id/lawyer-accounts`匹配候选、`/api/v1/lawyer/cases`本人列表／详情／四Command，复用现有CASE材料入口及窄公证书下载授权。前端交付律师账号管理、用户名匹配、独立律师导航／分页列表／详情和共享办理表单。每次读取、写入、上传终结、下载及幂等重放均重新校验当前身份／绑定／承办；前端迟到搜索、分页和Blob返回也不会覆盖或下载到已切换上下文。
+
+五份前向迁移为`20261004020000_add_lawyer_identity_enums`、`20261004021000_add_lawyer_accounts_and_actor_paths`、`20261004022000_fix_lawyer_actor_case_variable`、`20261004023000_reject_lawyer_internal_membership`、`20261004024000_anchor_lawyer_profile_and_cleanup_drafts`；未修改已执行迁移，仅向`backend/.env.test`独立测试库部署，未reset或操作开发／生产库。Task 1专项在临时schema实跑72份空库链、上一支持67份真实旧案／PRIMARY／被告／审计／回执原样升级及当前正式CaseMatchService重放、71→72锚回填、第68～72份失败原子与向前重试、SQL越权及账号锚攻击负向。撤权后的过期草稿只允许既存行无内容变化的清理；证据验证真实SQL更新，不冒称完整`MaterialCleanupService.runOnce()`已执行。管理Serializable冲突映射409经14项单元及真实setStatus竞态验证，不冒称另外三个管理操作均跑过数据库竞态。
+
+| 正式检查                         | 实际结果                                                                                             | 命令包装耗时 |
+| -------------------------------- | ---------------------------------------------------------------------------------------------------- | ------------ |
+| `pnpm verify`                    | 退出0；上下文／Spec／架构／Prisma／类型／Lint／格式，工具73/73、后端1021/1021、前端643/643及双端构建 | 155.436秒    |
+| `pnpm test:e2e:full`             | 退出0；隔离PostgreSQL／Chromium176/176，1 worker、无重试                                             | 463.865秒    |
+| 独立高风险Task及Final Review补审 | ACCEPTED；未关闭Critical／Important／Minor均0                                                        | 未统一计时   |
+
+完整verify于UTC`2026-10-05T18:30:18.0816586Z`开始、`18:32:53.5228437Z`结束；全量E2E于`18:35:14.6772252Z`开始、`18:42:58.5464604Z`结束。两项命令前后固定HEAD／tree、干净状态及环境指纹均一致，Node v24.21.0／pnpm11.27.0；非秘密fingerprint为`5eda1feed3489f2cf83c4228cd79afbc395b83c9d5ef9a96cc7c99b3e56130f1`，不证明数据库数据相同。完整日志在`.local/case-lawyer/03c4070-{verify,e2e-full}.log`，环境摘要为相应`*-environment-{before,after}.json`；HTML已独立保存至`03c4070-e2e-full-report/index.html`。完整运行摘要见`acceptance-gate-report.md`，Task 1迁移证据见`task-1-evidence.md`，Review轨迹见`task-1-review.md`与`final-review.md`。
+
+176项包含新增律师数据库7项和真实浏览器主链：管理员真实登录建律师账号→运营真实用户名分派→律师密码登录→本人案件的四个正常动作及5类获准文件逐件字节核对→刷新／重登→停用下一请求拒绝，并回归既有认证、线索、公证与案件。企业／部门／本人隔离、撤权先于重放、异参同键、旧版本／错误阶段、运营与律师并发单胜、上传后解绑及审计／冻结／回执失败整笔回滚均通过；聚焦组件反例另证明第21项可达、搜索乱序和切案／切账号后的迟到下载中止，详见Task／修复报告。
+
+初次Task Review的1项Critical／3项Important及Final Review的3项Important均已修复并由原独立主体关闭。本轮完整verify实际启动3次：`6f46d17`在50.776秒因共享表单Event/no-undef退出1，`19e5f3f`在23.157秒因旧测试调用私有setSelected API退出2；两次均未完成完整单测／构建，不能复用为通过证据。修复生产类型及测试接线后补审、定向复验，在03c4070第三次通过。未过滤全量E2E启动1次并通过；Worker聚焦失败轨迹另保留，未删除断言、放宽超时或增加重试。预期SQL23514/P0001／HTTP500属于通过的故障回滚测试；Vite大chunk、pg重叠query弃用及颜色环境警告为非阻断。Token用量未取得，效果尚未量化；本轮没有仅因完成态文档启动完整复验。
+
+以上业务门禁只归属于03c4070及其tree。此后累计收口只补本实际验证摘要、路线图完成态、项目恢复摘要及对应已解释快照；不改业务Spec／计划、契约／权限／AC或代码、测试／输入、迁移、依赖、构建／运行配置、验证逻辑及环境。核对从该候选到收口工作区的全部提交链、累计diff、暂存／未暂存和相关未跟踪项，再标准记录快照；受影响格式、Spec、严格上下文（含本地文档引用／Current与Next一致性）及Git差异专项实际结果保存`.local/case-lawyer/closeout-doc-check.log`。原业务证据仍适用，不把收口HEAD写成实跑旧候选完整门禁，不要求记录包含自身提交哈希。CA-006／Next保持原指针；后续集成组合和远端必需检查照常执行。开发／生产迁移及生产发布未验证。
+
 ## CORE-CA-005 提交立案（2026-10-04）
 
 实际通过正式Level 2逐项门禁的业务候选为`b33462401fa128742dc2b427c8375682454fe05e`、tree`ea684d26264c064022025617b5d11c7f08eecc43`，分支`codex/core-ca-005-court-filing`，main基线`b28e0f35fa8de21f752145e43177b7defe450341`。有权内部运营按现有Action／负责范围，选择或通过正式入口录入真实部门法院、填写提交日期、可选诉调号并上传精确证据版本，原子从`WAITING_FILING`推进至`WAITING_FORMAL_ACCEPTANCE`。不改已确认金额，不提前实现正式受理；客户新阶段可读，但内部提交事实及立案材料仍不可见。
