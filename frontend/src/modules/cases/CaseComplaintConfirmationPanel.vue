@@ -42,7 +42,13 @@ const reviewVisible = ref(false);
 const unknownRequest = ref<ConfirmCaseComplaintInput | null>(null);
 const contextRevision = ref(0);
 let versionsRequest: AbortController | undefined;
+const downloads = new Set<AbortController>();
 let mounted = true;
+
+function abortDownloads(): void {
+  for (const controller of downloads) controller.abort();
+  downloads.clear();
+}
 
 const identity = computed(() =>
   auth.session === null
@@ -185,6 +191,7 @@ async function loadVersions(revision: number): Promise<void> {
 watch(
   [requestScopeKey, factsKey],
   ([scope], [previousScope]) => {
+    if (scope !== previousScope) abortDownloads();
     const preserveUnknownRequest =
       previousScope === scope &&
       unknownRequest.value !== null &&
@@ -284,10 +291,19 @@ async function download(file: CaseFile): Promise<void> {
     props.item.id === caseId &&
     identity.value === currentIdentity;
   downloadError.value = '';
+  const controller = new AbortController();
+  downloads.add(controller);
   try {
-    await downloadMaterialVersion(file.materialId, file.contentVersionId);
+    await downloadMaterialVersion(
+      file.materialId,
+      file.contentVersionId,
+      controller.signal,
+    );
   } catch {
-    if (isCurrent()) downloadError.value = '附件下载失败，请稍后重试。';
+    if (!controller.signal.aborted && isCurrent())
+      downloadError.value = '附件下载失败，请稍后重试。';
+  } finally {
+    downloads.delete(controller);
   }
 }
 
@@ -390,6 +406,7 @@ onBeforeUnmount(() => {
   mounted = false;
   contextRevision.value += 1;
   versionsRequest?.abort();
+  abortDownloads();
 });
 </script>
 

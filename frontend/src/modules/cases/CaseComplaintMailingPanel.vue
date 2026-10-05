@@ -54,6 +54,13 @@ const idempotencyKey = ref('');
 let contextRevision = 0;
 let attachmentRevision = 0;
 let active = true;
+const downloads = new Set<AbortController>();
+
+function abortDownloads(): void {
+  for (const controller of downloads) controller.abort();
+  downloads.clear();
+}
+
 type ContextSnapshot = {
   caseId: string;
   identity: string;
@@ -74,6 +81,9 @@ function isCurrent(context: ContextSnapshot): boolean {
     context.identity === identity.value
   );
 }
+watch(() => [props.item.id, props.client, identity.value], abortDownloads, {
+  flush: 'sync',
+});
 const locked = computed(
   () =>
     props.item.stage !== 'WAITING_COMPLAINT_STAMP' ||
@@ -181,6 +191,7 @@ onBeforeUnmount(() => {
   active = false;
   contextRevision += 1;
   attachmentRevision += 1;
+  abortDownloads();
 });
 function isFileInputTarget(value: unknown): value is {
   files: ArrayLike<Parameters<typeof uploadMaterialFile>[0]['file']> | null;
@@ -291,10 +302,19 @@ async function submit() {
 }
 async function download(file: CaseFile) {
   const context = captureContext();
+  const controller = new AbortController();
+  downloads.add(controller);
   try {
-    await downloadMaterialVersion(file.materialId, file.contentVersionId);
+    await downloadMaterialVersion(
+      file.materialId,
+      file.contentVersionId,
+      controller.signal,
+    );
   } catch {
-    if (isCurrent(context)) error.value = '文件下载失败，请稍后重试。';
+    if (!controller.signal.aborted && isCurrent(context))
+      error.value = '文件下载失败，请稍后重试。';
+  } finally {
+    downloads.delete(controller);
   }
 }
 function toggleAvailable(file: CaseFile, checked: boolean) {

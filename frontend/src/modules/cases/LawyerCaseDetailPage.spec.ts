@@ -137,6 +137,103 @@ beforeEach(() => {
 });
 
 describe('LawyerCaseDetailPage', () => {
+  it('aborts pending attachment downloads when another lawyer signs in', async () => {
+    const file = {
+      materialId: 'certificate-material',
+      contentVersionId: 'certificate-version',
+      originalFilename: '证书.pdf',
+      mimeType: 'application/pdf',
+    };
+    const caseDetail = detail('case-a', 'CA-A');
+    api.getLawyerCase.mockResolvedValue({
+      ...caseDetail,
+      certificate: { ...caseDetail.certificate, files: [file] },
+    });
+    let finishDownload!: () => void;
+    api.downloadMaterialVersion.mockReturnValueOnce(
+      new Promise<void>((resolve) => {
+        finishDownload = resolve;
+      }),
+    );
+    const { wrapper, auth } = await mountPage();
+
+    await wrapper
+      .findAll('button')
+      .find((button) => button.text() === '下载')!
+      .trigger('click');
+    const oldSignal = api.downloadMaterialVersion.mock
+      .calls[0]?.[2] as AbortSignal;
+    expect(oldSignal).toBeInstanceOf(AbortSignal);
+    expect(oldSignal.aborted).toBe(false);
+    auth.session = {
+      ...auth.session!,
+      user: { ...auth.session!.user, id: 'lawyer-2' },
+      authorizationRevision: 2,
+    };
+    await flushPromises();
+    expect(oldSignal.aborted).toBe(true);
+    finishDownload();
+    await flushPromises();
+    expect(wrapper.text()).not.toContain('附件下载失败');
+
+    await wrapper
+      .findAll('button')
+      .find((button) => button.text() === '下载')!
+      .trigger('click');
+    expect(
+      (api.downloadMaterialVersion.mock.calls[1]?.[2] as AbortSignal).aborted,
+    ).toBe(false);
+  });
+
+  it('keeps parallel current downloads independent until the page unmounts', async () => {
+    const caseDetail = detail('case-a', 'CA-A');
+    api.getLawyerCase.mockResolvedValue({
+      ...caseDetail,
+      certificate: {
+        ...caseDetail.certificate,
+        files: [
+          {
+            materialId: 'm-1',
+            contentVersionId: 'v-1',
+            originalFilename: '甲.pdf',
+            mimeType: 'application/pdf',
+          },
+          {
+            materialId: 'm-2',
+            contentVersionId: 'v-2',
+            originalFilename: '乙.pdf',
+            mimeType: 'application/pdf',
+          },
+        ],
+      },
+    });
+    let finishFirst!: () => void;
+    api.downloadMaterialVersion
+      .mockReturnValueOnce(
+        new Promise<void>((resolve) => {
+          finishFirst = resolve;
+        }),
+      )
+      .mockReturnValueOnce(new Promise<void>(() => {}));
+    const { wrapper } = await mountPage();
+    const buttons = wrapper
+      .findAll('button')
+      .filter((button) => button.text() === '下载');
+    await buttons[0]!.trigger('click');
+    await buttons[1]!.trigger('click');
+    const first = api.downloadMaterialVersion.mock.calls[0]?.[2] as AbortSignal;
+    const second = api.downloadMaterialVersion.mock
+      .calls[1]?.[2] as AbortSignal;
+    expect(first).toBeInstanceOf(AbortSignal);
+    expect(second).toBeInstanceOf(AbortSignal);
+    expect(first).not.toBe(second);
+    finishFirst();
+    await flushPromises();
+    expect(second.aborted).toBe(false);
+    wrapper.unmount();
+    expect(second.aborted).toBe(true);
+  });
+
   it('clears case A when switching to case B and when the account identity changes', async () => {
     api.getLawyerCase
       .mockResolvedValueOnce(detail('case-a', 'CA-A'))

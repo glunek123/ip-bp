@@ -647,4 +647,82 @@ describe('materials API', () => {
     expect(remove).toHaveBeenCalledOnce();
     expect(revokeObjectURL).toHaveBeenCalledExactlyOnceWith('blob:download-1');
   });
+
+  it('cancels a late blob before it creates a browser link', async () => {
+    const controller = new AbortController();
+    const click = vi.fn();
+    const createObjectURL = vi.fn().mockReturnValue('blob:late-download');
+    vi.spyOn(document, 'createElement').mockReturnValue({
+      href: '',
+      download: '',
+      click,
+      remove: vi.fn(),
+    } as unknown as HTMLAnchorElement);
+    Object.defineProperty(URL, 'createObjectURL', {
+      configurable: true,
+      value: createObjectURL,
+    });
+    let finishBlob!: (blob: Blob) => void;
+    const response = new Response(new Blob(['original-file']));
+    const readBlob = vi.spyOn(response, 'blob').mockReturnValue(
+      new Promise<Blob>((resolve) => {
+        finishBlob = resolve;
+      }),
+    );
+    const fetch = vi.fn().mockResolvedValue(response);
+    vi.stubGlobal('fetch', fetch);
+
+    const download = downloadMaterialVersion(
+      'material-1',
+      'version-1',
+      controller.signal,
+    );
+    await vi.waitFor(() => expect(readBlob).toHaveBeenCalledOnce());
+    controller.abort();
+    finishBlob(new Blob(['late-file']));
+
+    await expect(download).rejects.toMatchObject({ name: 'AbortError' });
+    expect((fetch.mock.calls[0]?.[1] as RequestInit).signal?.aborted).toBe(
+      true,
+    );
+    expect(createObjectURL).not.toHaveBeenCalled();
+    expect(click).not.toHaveBeenCalled();
+  });
+
+  it('does not click if cancellation happens while preparing the link and releases its URL', async () => {
+    const controller = new AbortController();
+    const click = vi.fn();
+    const createObjectURL = vi.fn(() => {
+      controller.abort();
+      return 'blob:cancel-during-link';
+    });
+    const revokeObjectURL = vi.fn();
+    vi.spyOn(document, 'createElement').mockReturnValue({
+      href: '',
+      download: '',
+      click,
+      remove: vi.fn(),
+    } as unknown as HTMLAnchorElement);
+    Object.defineProperty(URL, 'createObjectURL', {
+      configurable: true,
+      value: createObjectURL,
+    });
+    Object.defineProperty(URL, 'revokeObjectURL', {
+      configurable: true,
+      value: revokeObjectURL,
+    });
+    vi.stubGlobal(
+      'fetch',
+      vi.fn().mockResolvedValue(new Response(new Blob(['file']))),
+    );
+
+    await expect(
+      downloadMaterialVersion('material-1', 'version-1', controller.signal),
+    ).rejects.toMatchObject({ name: 'AbortError' });
+    expect(createObjectURL).toHaveBeenCalledOnce();
+    expect(click).not.toHaveBeenCalled();
+    expect(revokeObjectURL).toHaveBeenCalledExactlyOnceWith(
+      'blob:cancel-during-link',
+    );
+  });
 });

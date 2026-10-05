@@ -60,6 +60,44 @@ function mountPanel(
   });
 }
 describe('complaint mailing panel', () => {
+  it('aborts a client download when its shared panel unmounts', async () => {
+    const receipt = {
+      materialId: 'receipt-material',
+      contentVersionId: 'receipt-version',
+      originalFilename: '回执.pdf',
+      mimeType: 'application/pdf',
+    };
+    let finishDownload!: () => void;
+    api.downloadMaterialVersion.mockReturnValueOnce(
+      new Promise<void>((resolve) => {
+        finishDownload = resolve;
+      }),
+    );
+    const wrapper = mountPanel({
+      client: true,
+      item: {
+        ...item,
+        complaintMailing: {
+          mailedAt: '2026-10-02',
+          recordedAt: '2026-10-03T01:00:00Z',
+          receiptFiles: [receipt],
+        },
+      },
+    });
+    await wrapper
+      .findAll('button')
+      .find((button) => button.text() === '下载')!
+      .trigger('click');
+    const signal = api.downloadMaterialVersion.mock
+      .calls[0]?.[2] as AbortSignal;
+    expect(signal).toBeInstanceOf(AbortSignal);
+    expect(signal.aborted).toBe(false);
+    wrapper.unmount();
+    expect(signal.aborted).toBe(true);
+    finishDownload();
+    await flushPromises();
+  });
+
   it('requires an explicitly uploaded receipt and valid non-future date before review', async () => {
     const wrapper = mountPanel({ item });
     const review = wrapper.get('button');

@@ -45,6 +45,12 @@ let requestFingerprint = '';
 let requestKey = '';
 let revision = 0;
 let active = true;
+const downloads = new Set<AbortController>();
+
+function abortDownloads(): void {
+  for (const controller of downloads) controller.abort();
+  downloads.clear();
+}
 
 type Context = { caseId: string; contextKey: string; revision: number };
 function captureContext(): Context {
@@ -62,6 +68,9 @@ function isCurrent(context: Context): boolean {
     context.contextKey === props.contextKey
   );
 }
+watch(() => [props.item.id, props.contextKey], abortDownloads, {
+  flush: 'sync',
+});
 function clearContext() {
   courts.value = [];
   courtName.value = '';
@@ -120,6 +129,7 @@ watch(
 onBeforeUnmount(() => {
   active = false;
   revision += 1;
+  abortDownloads();
 });
 
 const locked = computed(
@@ -364,10 +374,19 @@ async function submit() {
 }
 async function download(file: CaseFile) {
   const context = captureContext();
+  const controller = new AbortController();
+  downloads.add(controller);
   try {
-    await downloadMaterialVersion(file.materialId, file.contentVersionId);
+    await downloadMaterialVersion(
+      file.materialId,
+      file.contentVersionId,
+      controller.signal,
+    );
   } catch {
-    if (isCurrent(context)) error.value = '文件下载失败，请稍后重试。';
+    if (!controller.signal.aborted && isCurrent(context))
+      error.value = '文件下载失败，请稍后重试。';
+  } finally {
+    downloads.delete(controller);
   }
 }
 </script>

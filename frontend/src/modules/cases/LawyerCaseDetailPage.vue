@@ -6,7 +6,6 @@ import { ApiError } from '../../api/http';
 import {
   getLawyerCase,
   submitComplaint,
-  todayShanghai,
   type CaseFile,
   type LawyerCaseDetail,
   type SubmitComplaintInput,
@@ -46,11 +45,17 @@ const amountState = ref<'KNOWN' | 'PENDING'>('KNOWN');
 const amount = ref('');
 const pendingReason = ref('');
 let request: AbortController | undefined;
+const downloads = new Set<AbortController>();
 let contextRevision = 0;
 let readRevision = 0;
 let fingerprint = '';
 let idempotencyKey = '';
 let postSucceeded = false;
+
+function abortDownloads(): void {
+  for (const controller of downloads) controller.abort();
+  downloads.clear();
+}
 
 function clearContext(): void {
   item.value = undefined;
@@ -143,6 +148,7 @@ async function load(): Promise<void> {
       readRevision += 1;
       request?.abort();
       request = undefined;
+      abortDownloads();
       clearContext();
       state.value = reason.status === 404 ? 'missing' : 'failed';
       error.value =
@@ -170,6 +176,7 @@ watch(
     readRevision += 1;
     request?.abort();
     request = undefined;
+    abortDownloads();
     clearContext();
     void load();
   },
@@ -178,9 +185,9 @@ watch(
 
 async function upload(
   category: 'COMPLAINT' | 'AUTHORIZATION',
-  event: Event,
+  event: globalThis.Event,
 ): Promise<void> {
-  const input = event.target as HTMLInputElement;
+  const input = event.target as globalThis.HTMLInputElement;
   const file = input.files?.[0];
   input.value = '';
   if (!file || !item.value || uploadBusy.value) return;
@@ -311,10 +318,27 @@ async function submit(): Promise<void> {
 }
 
 async function download(file: CaseFile): Promise<void> {
+  const controller = new AbortController();
+  downloads.add(controller);
+  const targetId = id.value;
+  const targetIdentity = identity.value;
+  const targetContext = contextRevision;
   try {
-    await downloadMaterialVersion(file.materialId, file.contentVersionId);
+    await downloadMaterialVersion(
+      file.materialId,
+      file.contentVersionId,
+      controller.signal,
+    );
   } catch {
-    refreshError.value = '附件下载失败，请稍后重试。';
+    if (
+      !controller.signal.aborted &&
+      targetContext === contextRevision &&
+      targetId === id.value &&
+      targetIdentity === identity.value
+    )
+      refreshError.value = '附件下载失败，请稍后重试。';
+  } finally {
+    downloads.delete(controller);
   }
 }
 function stageLabel(stage: string): string {
@@ -334,6 +358,7 @@ function stageLabel(stage: string): string {
 onMounted(() => void load());
 onBeforeUnmount(() => {
   request?.abort();
+  abortDownloads();
 });
 </script>
 

@@ -135,6 +135,36 @@ beforeEach(() => {
 });
 
 describe('CaseComplaintConfirmationPanel', () => {
+  it('aborts a pending download on an account change while preserving the current case download', async () => {
+    let finishDownload!: () => void;
+    api.downloadMaterialVersion.mockReturnValueOnce(
+      new Promise<void>((resolve) => {
+        finishDownload = resolve;
+      }),
+    );
+    const { wrapper, auth } = await mountPanel();
+    await wrapper.get('.confirmation-version button').trigger('click');
+    const oldSignal = api.downloadMaterialVersion.mock
+      .calls[0]?.[2] as AbortSignal;
+    expect(oldSignal).toBeInstanceOf(AbortSignal);
+    expect(oldSignal.aborted).toBe(false);
+
+    await wrapper.setProps({ item: { ...detail, version: 4 } });
+    expect(oldSignal.aborted).toBe(false);
+    auth.session = {
+      ...auth.session!,
+      user: { ...auth.session!.user, id: 'user-2' },
+      authorizationRevision: 2,
+    };
+    await flushPromises();
+    expect(oldSignal.aborted).toBe(true);
+    finishDownload();
+    await flushPromises();
+    expect(
+      wrapper.find('[data-test="confirmation-download-error"]').exists(),
+    ).toBe(false);
+  });
+
   it('marks non-confirmers read-only without confirmation or upload controls', async () => {
     const readOnlyCase = {
       ...detail,

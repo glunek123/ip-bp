@@ -369,15 +369,19 @@ export async function listOwnerMaterials(
 export async function downloadMaterialVersion(
   materialId: string,
   contentVersionId: string,
+  signal?: AbortSignal,
 ): Promise<void> {
   const download = await getBlob(
     `/materials/${encodeURIComponent(materialId)}/versions/${encodeURIComponent(contentVersionId)}/content`,
+    { signal },
   );
+  signal?.throwIfAborted();
   const objectUrl = URL.createObjectURL(download.blob);
   try {
     const anchor = document.createElement('a');
     anchor.href = objectUrl;
     anchor.download = download.filename;
+    signal?.throwIfAborted();
     anchor.click();
     anchor.remove();
   } finally {

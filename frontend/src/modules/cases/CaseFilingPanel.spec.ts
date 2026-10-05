@@ -81,6 +81,35 @@ async function chooseFile(
 }
 
 describe('case filing panel', () => {
+  it('aborts a pending evidence download when the case changes', async () => {
+    let finishDownload!: () => void;
+    api.downloadMaterialVersion.mockReturnValueOnce(
+      new Promise<void>((resolve) => {
+        finishDownload = resolve;
+      }),
+    );
+    const wrapper = mountPanel();
+    await flushPromises();
+    await chooseFile(
+      wrapper,
+      '[data-test="filing-evidence-input"]',
+      new File(['evidence'], '证据.pdf', { type: 'application/pdf' }),
+    );
+    await wrapper
+      .findAll('button')
+      .find((button) => button.text() === '下载')!
+      .trigger('click');
+    const signal = api.downloadMaterialVersion.mock
+      .calls[0]?.[2] as AbortSignal;
+    expect(signal).toBeInstanceOf(AbortSignal);
+    expect(signal.aborted).toBe(false);
+    await wrapper.setProps({ item: { ...baseItem, id: 'case-2' } });
+    expect(signal.aborted).toBe(true);
+    finishDownload();
+    await flushPromises();
+    expect(wrapper.text()).not.toContain('文件下载失败');
+  });
+
   it('automatically selects a single court and requires date and evidence before review', async () => {
     const wrapper = mountPanel();
     await flushPromises();
