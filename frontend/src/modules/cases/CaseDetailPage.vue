@@ -6,11 +6,13 @@ import { ApiError } from '../../api/http';
 import {
   getCase,
   matchCase,
+  listLawyerMatchCandidates,
   submitComplaint,
   todayShanghai,
   type CaseFile,
   type CaseDetail,
   type MatchCaseInput,
+  type LawyerMatchCandidate,
 } from '../../api/cases';
 import {
   downloadMaterialVersion,
@@ -22,6 +24,7 @@ import { notifyWorkflowChanged } from '../../app/workflow-events';
 import { useAuthStore } from '../../stores/auth';
 import CaseComplaintConfirmationPanel from './CaseComplaintConfirmationPanel.vue';
 import CaseComplaintMailingPanel from './CaseComplaintMailingPanel.vue';
+import CaseComplaintSubmissionForm from './CaseComplaintSubmissionForm.vue';
 import CaseFilingPanel from './CaseFilingPanel.vue';
 
 const route = useRoute();
@@ -64,13 +67,18 @@ type DefendantDraft = {
 const defendants = ref<DefendantDraft[]>([
   { kind: 'PERSON', name: '', idNo: '', phone: '', address: '' },
 ]);
-const lawyer = ref({ fullName: '', lawFirm: '', phone: '' });
+const lawyerQuery = ref('');
+const lawyerCandidates = ref<LawyerMatchCandidate[]>([]);
+const selectedLawyer = ref<LawyerMatchCandidate>();
+const lawyerCandidatesLoading = ref(false);
+const lawyerCandidatesError = ref('');
 const matchedOn = ref(todayShanghai());
 let submissionFingerprint = '';
 let idempotencyKey = '';
 let request: AbortController | undefined;
 let contextRevision = 0;
 let readRevision = 0;
+let candidateRequest: AbortController | undefined;
 
 type OperationContext = {
   caseId: string;
@@ -236,7 +244,10 @@ function clearContext(): void {
   defendants.value = [
     { kind: 'PERSON', name: '', idNo: '', phone: '', address: '' },
   ];
-  lawyer.value = { fullName: '', lawFirm: '', phone: '' };
+  lawyerQuery.value = '';
+  lawyerCandidates.value = [];
+  selectedLawyer.value = undefined;
+  lawyerCandidatesError.value = '';
   matchedOn.value = todayShanghai();
   submissionFingerprint = '';
   idempotencyKey = '';
@@ -253,6 +264,49 @@ watch(
     void load();
   },
   { flush: 'sync' },
+);
+
+watch(
+  [id, lawyerQuery, () => item.value?.stage, () => item.value?.canMatch],
+  async ([caseId], _previous, onCleanup) => {
+    candidateRequest?.abort();
+    const controller = new AbortController();
+    candidateRequest = controller;
+    let current = true;
+    onCleanup(() => {
+      current = false;
+      controller.abort();
+    });
+    lawyerCandidates.value = [];
+    selectedLawyer.value = undefined;
+    lawyerCandidatesError.value = '';
+    if (
+      !caseId ||
+      item.value?.stage !== 'PENDING_MATCH' ||
+      !item.value.canMatch
+    )
+      return;
+    lawyerCandidatesLoading.value = true;
+    try {
+      const candidates = await listLawyerMatchCandidates(
+        caseId,
+        lawyerQuery.value,
+        { signal: controller.signal },
+      );
+      if (!current || controller.signal.aborted) return;
+      lawyerCandidates.value = candidates;
+      if (candidates.length === 1) selectedLawyer.value = candidates[0];
+    } catch (reason) {
+      if (current && !controller.signal.aborted)
+        lawyerCandidatesError.value =
+          reason instanceof ApiError && reason.status === 403
+            ? '当前账号无权读取该案的律师账号。'
+            : '律师账号候选暂时无法加载。';
+    } finally {
+      if (current) lawyerCandidatesLoading.value = false;
+    }
+  },
+  { flush: 'post' },
 );
 function addDefendant() {
   if (defendants.value.length >= 20) return;
@@ -334,6 +388,19 @@ async function uploadComplaintFiles(
   }
   if (isCurrentOperation(context))
     uploadLoading.value = { ...uploadLoading.value, [category]: false };
+}
+function downloadComplaintFile(file: CaseFile): void {
+  void download(file.materialId, file.contentVersionId);
+}
+function removeComplaintUpload(
+  category: 'COMPLAINT' | 'AUTHORIZATION',
+  index: number,
+): void {
+  const uploads =
+    category === 'COMPLAINT' ? complaintUploads : authorizationUploads;
+  uploads.value.splice(index, 1);
+  complaintFingerprint = '';
+  complaintIdempotencyKey = '';
 }
 function complaintErrorMessage(reason: unknown): string {
   if (
@@ -462,8 +529,9 @@ async function submitMatch() {
     matchError.value = '请填写每位被告的名称。';
     return;
   }
-  if (!lawyer.value.fullName.trim()) {
-    matchError.value = '请填写主办律师姓名。';
+  if (!selectedLawyer.value) {
+    matchError.value =
+      '请选择已创建的律师账号；没有候选时请联系有权限的管理员创建账号。';
     return;
   }
   if (!matchedOn.value || matchedOn.value > todayShanghai()) {
@@ -483,7 +551,8 @@ async function submitMatch() {
         address,
       }),
     ),
-    lawyer: { ...lawyer.value },
+    lawyerAccountId: selectedLawyer.value.lawyerAccountId,
+    lawyerProfileId: selectedLawyer.value.lawyerProfileId,
   };
   const fingerprint = JSON.stringify({ ...input, idempotencyKey: undefined });
   if (fingerprint !== submissionFingerprint) {
@@ -624,7 +693,6 @@ onBeforeUnmount(() => request?.abort());
           {{ refreshError }}
         </p>
         <p v-if="matchSuccess" role="status">{{ matchSuccess }}</p>
-        <p v-if="complaintSuccess" role="status">{{ complaintSuccess }}</p>
         <CaseComplaintConfirmationPanel
           v-if="
             item.stage === 'WAITING_COMPLAINT_CONFIRMATION' ||
@@ -775,23 +843,52 @@ onBeforeUnmount(() => request?.abort());
             >添加被告（最多 20 位）</ElButton
           >
           <div class="demo-form-grid">
-            <h3>主办律师</h3>
+            <h3>主办律师账号</h3>
             <label
-              >律师姓名 <span aria-hidden="true">*</span
-              ><input
-                v-model="lawyer.fullName"
+              >按姓名或用户名搜索<input
+                v-model="lawyerQuery"
                 class="text-input"
-                required
-                :aria-required="true"
+                autocomplete="off"
             /></label>
             <label
-              >律师事务所（选填）<input
-                v-model="lawyer.lawFirm"
+              >账号 <span aria-hidden="true">*</span
+              ><select
+                v-model="selectedLawyer"
                 class="text-input"
-            /></label>
-            <label
-              >电话（选填）<input v-model="lawyer.phone" class="text-input"
-            /></label>
+                :disabled="
+                  lawyerCandidatesLoading || lawyerCandidates.length === 0
+                "
+              >
+                <option :value="undefined">
+                  {{
+                    lawyerCandidatesLoading
+                      ? '正在读取律师账号'
+                      : '请选择姓名（用户名）'
+                  }}
+                </option>
+                <option
+                  v-for="candidate in lawyerCandidates"
+                  :key="candidate.lawyerAccountId"
+                  :value="candidate"
+                >
+                  {{ candidate.displayName }}（{{ candidate.username }}）
+                </option>
+              </select></label
+            >
+            <p v-if="lawyerCandidatesError" class="submit-error" role="alert">
+              {{ lawyerCandidatesError }}
+            </p>
+            <p
+              v-else-if="
+                !lawyerCandidatesLoading && lawyerCandidates.length === 0
+              "
+              class="field-help"
+            >
+              没有有效律师账号候选。请联系有权限的管理员先创建律师账号。
+            </p>
+            <p v-else-if="lawyerCandidates.length === 1" class="field-help">
+              已自动选择唯一候选账号。
+            </p>
           </div>
           <p v-if="matchError" class="submit-error" role="alert">
             {{ matchError }}
@@ -823,138 +920,24 @@ onBeforeUnmount(() => request?.abort());
             }}
           </p>
         </section>
-        <section
+        <CaseComplaintSubmissionForm
           v-if="item.stage === 'WAITING_COMPLAINT' && item.canSubmitComplaint"
-          class="demo-card demo-card--pad"
-          data-test="complaint-submit-form"
-        >
-          <h2 class="form-section-title">提交起诉材料</h2>
-          <p class="field-help">
-            上传材料与确认提交是两个独立动作。上传不会推进案件；确认后将固定本次选择的文件版本并进入“诉状待确认”。
-          </p>
-          <div class="demo-form-grid">
-            <label>
-              起诉状 <span aria-hidden="true">*</span>
-              <input
-                type="file"
-                class="text-input"
-                accept=".pdf,.doc,.docx,application/pdf,application/msword,application/vnd.openxmlformats-officedocument.wordprocessingml.document"
-                multiple
-                :disabled="
-                  uploadLoading.COMPLAINT || complaintUploads.length >= 10
-                "
-                @change="uploadComplaintFiles('COMPLAINT', $event)"
-              />
-            </label>
-            <p class="field-help">
-              PDF、DOC 或 DOCX，单份不超过 50MB；1～10 份。
-            </p>
-            <p v-if="uploadLoading.COMPLAINT" role="status">正在上传起诉状…</p>
-            <p v-if="uploadErrors.COMPLAINT" class="submit-error" role="alert">
-              {{ uploadErrors.COMPLAINT }}
-            </p>
-            <ul>
-              <li
-                v-for="(file, index) in complaintUploads"
-                :key="file.contentVersionId"
-              >
-                {{ file.originalFilename }}（{{ file.mimeType }}）
-                <ElButton
-                  text
-                  @click="download(file.materialId, file.contentVersionId)"
-                  >下载</ElButton
-                >
-                <ElButton text @click="complaintUploads.splice(index, 1)"
-                  >从本次提交移除</ElButton
-                >
-              </li>
-            </ul>
-          </div>
-          <div class="demo-form-grid">
-            <label>
-              授权材料 <span aria-hidden="true">*</span>
-              <input
-                type="file"
-                class="text-input"
-                accept=".pdf,.doc,.docx,application/pdf,application/msword,application/vnd.openxmlformats-officedocument.wordprocessingml.document"
-                multiple
-                :disabled="
-                  uploadLoading.AUTHORIZATION ||
-                  authorizationUploads.length >= 10
-                "
-                @change="uploadComplaintFiles('AUTHORIZATION', $event)"
-              />
-            </label>
-            <p class="field-help">
-              PDF、DOC 或 DOCX，单份不超过 50MB；1～10 份。
-            </p>
-            <p v-if="uploadLoading.AUTHORIZATION" role="status">
-              正在上传授权材料…
-            </p>
-            <p
-              v-if="uploadErrors.AUTHORIZATION"
-              class="submit-error"
-              role="alert"
-            >
-              {{ uploadErrors.AUTHORIZATION }}
-            </p>
-            <ul>
-              <li
-                v-for="(file, index) in authorizationUploads"
-                :key="file.contentVersionId"
-              >
-                {{ file.originalFilename }}（{{ file.mimeType }}）
-                <ElButton
-                  text
-                  @click="download(file.materialId, file.contentVersionId)"
-                  >下载</ElButton
-                >
-                <ElButton text @click="authorizationUploads.splice(index, 1)"
-                  >从本次提交移除</ElButton
-                >
-              </li>
-            </ul>
-          </div>
-          <fieldset class="demo-form-grid">
-            <legend>标的额 <span aria-hidden="true">*</span></legend>
-            <label>
-              <input v-model="amountState" type="radio" value="KNOWN" />
-              已知金额
-            </label>
-            <label>
-              <input v-model="amountState" type="radio" value="PENDING" />
-              待确认金额
-            </label>
-            <label v-if="amountState === 'KNOWN'">
-              金额（非负精确金额）<span aria-hidden="true">*</span>
-              <input
-                v-model="amount"
-                inputmode="decimal"
-                class="text-input"
-                required
-              />
-            </label>
-            <label v-else>
-              待确认原因 <span aria-hidden="true">*</span>
-              <textarea v-model="pendingReason" class="text-input" required />
-            </label>
-          </fieldset>
-          <p v-if="complaintError" class="submit-error" role="alert">
-            {{ complaintError }}
-          </p>
-          <ElButton
-            type="primary"
-            :loading="complaintSubmitting"
-            :disabled="
-              complaintSubmitting ||
-              uploadLoading.COMPLAINT ||
-              uploadLoading.AUTHORIZATION
-            "
-            data-test="submit-complaint"
-            @click="submitComplaintMaterials"
-            >确认提交起诉材料</ElButton
-          >
-        </section>
+          :complaint-files="complaintUploads"
+          :authorization-files="authorizationUploads"
+          v-model:amount-state="amountState"
+          v-model:amount="amount"
+          v-model:pending-reason="pendingReason"
+          :upload-loading="uploadLoading"
+          :upload-errors="uploadErrors"
+          :error="complaintError"
+          :success="complaintSuccess"
+          :submitting="complaintSubmitting"
+          :locked="uploadLoading.COMPLAINT || uploadLoading.AUTHORIZATION"
+          @upload="uploadComplaintFiles"
+          @download="downloadComplaintFile"
+          @remove="removeComplaintUpload"
+          @submit="submitComplaintMaterials"
+        />
         <section
           v-if="item.complaint"
           class="demo-card demo-card--pad"

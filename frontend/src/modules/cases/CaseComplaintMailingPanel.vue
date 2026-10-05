@@ -31,6 +31,7 @@ const props = defineProps<{
     pendingReceiptFiles?: CaseFile[];
   };
   client?: boolean;
+  lawyer?: boolean;
 }>();
 const emit = defineEmits<{ changed: []; refresh: [] }>();
 const auth = useAuthStore();
@@ -255,6 +256,8 @@ async function submit() {
   error.value = '';
   try {
     if (props.client) await mailClientCaseComplaint(context.caseId, payload);
+    else if (props.lawyer)
+      await mailCaseComplaint(context.caseId, payload, 'lawyer');
     else await mailCaseComplaint(context.caseId, payload);
     if (!isCurrent(context)) return;
     success.value = true;

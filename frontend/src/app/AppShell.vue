@@ -4,8 +4,10 @@ import { RouterLink, useRoute, useRouter } from 'vue-router';
 import { ElButton } from 'element-plus/es/components/button/index.mjs';
 import { ApiError } from '../api/http';
 import { listCases, type CaseStage } from '../api/cases';
+import { listLawyerCases } from '../api/cases';
 import { listLeads, type LeadStatus } from '../api/leads';
 import { getOrganizationManagementContext } from '../api/organization';
+import { listLawyerAccounts } from '../api/lawyer-accounts';
 import {
   listNotaryMatters,
   listNotaryOffices,
@@ -21,6 +23,7 @@ const router = useRouter();
 const drawerOpen = ref(false);
 const canViewPeople = ref(false);
 const canViewNotaryOffices = ref(false);
+const canManageLawyerAccounts = ref(false);
 const canViewNotaryMatters = ref(false);
 const leadCounts = ref<Record<LeadStatus, number> | null>(null);
 const notaryCounts = ref<Record<NotaryListStage, number> | null>(null);
@@ -53,12 +56,15 @@ const loggingOut = ref(false);
 const logoutError = ref('');
 const isClient = computed(() => auth.session?.principalType === 'CLIENT');
 const isNotary = computed(() => auth.session?.principalType === 'NOTARY');
+const isLawyer = computed(() => auth.session?.principalType === 'LAWYER');
 const homePath = computed(() =>
   isClient.value
     ? '/client/leads'
     : isNotary.value
       ? '/notary-portal/matters'
-      : '/customers',
+      : isLawyer.value
+        ? '/lawyer/cases'
+        : '/customers',
 );
 
 const identity = computed(() =>
@@ -147,7 +153,14 @@ watch(
   identity,
   async (currentIdentity, _previousIdentity, onCleanup) => {
     canViewPeople.value = false;
-    if (currentIdentity === null || isClient.value || isNotary.value) return;
+    canManageLawyerAccounts.value = false;
+    if (
+      currentIdentity === null ||
+      isClient.value ||
+      isNotary.value ||
+      isLawyer.value
+    )
+      return;
     const controller = new AbortController();
     let current = true;
     onCleanup(() => {
@@ -168,9 +181,43 @@ watch(
 
 watch(
   identity,
+  async (currentIdentity, _previous, onCleanup) => {
+    canManageLawyerAccounts.value = false;
+    if (
+      currentIdentity === null ||
+      isClient.value ||
+      isNotary.value ||
+      isLawyer.value
+    )
+      return;
+    const controller = new AbortController();
+    let current = true;
+    onCleanup(() => {
+      current = false;
+      controller.abort();
+    });
+    try {
+      await listLawyerAccounts(1, 1, { signal: controller.signal });
+      if (current && identity.value === currentIdentity)
+        canManageLawyerAccounts.value = true;
+    } catch {
+      if (current) canManageLawyerAccounts.value = false;
+    }
+  },
+  { immediate: true },
+);
+
+watch(
+  identity,
   async (currentIdentity, _previousIdentity, onCleanup) => {
     canViewNotaryOffices.value = false;
-    if (currentIdentity === null || isClient.value || isNotary.value) return;
+    if (
+      currentIdentity === null ||
+      isClient.value ||
+      isNotary.value ||
+      isLawyer.value
+    )
+      return;
     const controller = new AbortController();
     let current = true;
     onCleanup(() => {
@@ -197,7 +244,13 @@ watch(
       caseCounts.value = null;
       canViewNotaryMatters.value = false;
     }
-    if (currentIdentity === null || isClient.value || isNotary.value) return;
+    if (
+      currentIdentity === null ||
+      isClient.value ||
+      isNotary.value ||
+      isLawyer.value
+    )
+      return;
     const controller = new AbortController();
     let current = true;
     onCleanup(() => {
@@ -232,6 +285,30 @@ watch(
         notaryCounts.value = null;
         caseCounts.value = null;
       }
+    }
+  },
+  { immediate: true },
+);
+
+watch(
+  [identity, () => route.fullPath, countRevision],
+  async ([currentIdentity], _previous, onCleanup) => {
+    if (currentIdentity === null || !isLawyer.value) return;
+    const controller = new AbortController();
+    let current = true;
+    onCleanup(() => {
+      current = false;
+      controller.abort();
+    });
+    try {
+      const result = await listLawyerCases(1, 1, undefined, {
+        signal: controller.signal,
+      });
+      if (current && identity.value === currentIdentity)
+        caseCounts.value = result.counts;
+    } catch {
+      if (current && identity.value === currentIdentity)
+        caseCounts.value = null;
     }
   },
   { immediate: true },
@@ -284,7 +361,13 @@ async function logout(): Promise<void> {
         <span>
           <strong>品维·知产</strong>
           <small>{{
-            isClient ? '企业审核端' : isNotary ? '公证处办理端' : '业务管理系统'
+            isClient
+              ? '企业审核端'
+              : isNotary
+                ? '公证处办理端'
+                : isLawyer
+                  ? '律师办理端'
+                  : '业务管理系统'
           }}</small>
         </span>
       </RouterLink>
@@ -299,6 +382,53 @@ async function logout(): Promise<void> {
         >
           <span>公证事项</span>
         </RouterLink>
+      </nav>
+      <nav v-else-if="isLawyer" class="app-nav" aria-label="律师导航">
+        <p class="app-nav__label">律师工作台</p>
+        <RouterLink
+          class="app-nav__item"
+          :class="{ active: route.path.startsWith('/lawyer/cases') }"
+          data-test="lawyer-case-nav"
+          to="/lawyer/cases"
+          @click="closeDrawer"
+        >
+          <span>本人案件</span
+          ><span v-if="caseTotal !== null" class="app-nav__badge">{{
+            caseTotal
+          }}</span>
+        </RouterLink>
+        <div class="app-subnav" aria-label="本人案件阶段">
+          <RouterLink
+            class="app-subnav__item"
+            :class="{
+              active:
+                route.path === '/lawyer/cases' &&
+                selectedCaseStage === undefined,
+            }"
+            to="/lawyer/cases"
+            @click="closeDrawer"
+            ><span>全部阶段</span
+            ><span v-if="caseTotal !== null" class="app-nav__badge">{{
+              caseTotal
+            }}</span></RouterLink
+          >
+          <RouterLink
+            v-for="card in caseStageCards"
+            :key="card.stage"
+            class="app-subnav__item"
+            :class="{
+              active:
+                route.path === '/lawyer/cases' &&
+                selectedCaseStage === card.stage,
+            }"
+            :to="{ path: '/lawyer/cases', query: { stage: card.stage } }"
+            @click="closeDrawer"
+            ><span>{{ card.label }}</span
+            ><span v-if="caseCounts" class="app-nav__badge">{{
+              caseCounts[card.stage]
+            }}</span></RouterLink
+          >
+        </div>
       </nav>
       <nav v-else class="app-nav" aria-label="主要导航">
         <p class="app-nav__label">工作台</p>
@@ -561,7 +691,12 @@ async function logout(): Promise<void> {
           </RouterLink>
         </template>
 
-        <template v-if="!isClient && (canViewPeople || canViewNotaryOffices)">
+        <template
+          v-if="
+            !isClient &&
+            (canViewPeople || canViewNotaryOffices || canManageLawyerAccounts)
+          "
+        >
           <p class="app-nav__label app-nav__label--spaced">系统</p>
           <button
             class="app-nav__item app-nav__settings"
@@ -602,6 +737,15 @@ async function logout(): Promise<void> {
             >
               <span>人员与权限</span>
             </RouterLink>
+            <RouterLink
+              v-if="canManageLawyerAccounts"
+              class="app-subnav__item"
+              :class="{ active: route.path === '/settings/lawyer-accounts' }"
+              data-test="lawyer-accounts-nav"
+              to="/settings/lawyer-accounts"
+              @click="closeDrawer"
+              ><span>律师账号</span></RouterLink
+            >
           </div>
         </template>
       </nav>
@@ -615,7 +759,8 @@ async function logout(): Promise<void> {
           <small>{{
             auth.session.customer?.name ??
             auth.session.department?.name ??
-            auth.session.notaryOffice?.name
+            auth.session.notaryOffice?.name ??
+            (isLawyer ? '律师工作台' : '')
           }}</small>
         </span>
         <ElButton

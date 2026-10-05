@@ -8,6 +8,7 @@ import {
   updateRoleTemplate,
   updateOrganizationMembership,
 } from './organization';
+import * as organizationApi from './organization';
 
 afterEach(() => vi.unstubAllGlobals());
 
@@ -650,5 +651,141 @@ describe('organization API', () => {
         body: JSON.stringify({ teamId: 'team-1' }),
       }),
     );
+  });
+
+  it('creates and binds lawyer accounts using stable revisions', async () => {
+    const lawyerAccount = {
+      id: 'lawyer-account-1',
+      displayName: '律师甲',
+      username: 'lawyer.a',
+      active: true,
+      authorizationRevision: 3,
+      profiles: [],
+    };
+    const fetch = vi
+      .fn()
+      .mockResolvedValueOnce(new Response(JSON.stringify(lawyerAccount)))
+      .mockResolvedValueOnce(new Response(JSON.stringify(lawyerAccount)));
+    vi.stubGlobal('fetch', fetch);
+    const create = Reflect.get(organizationApi, 'createLawyerAccount') as
+      ((input: Record<string, unknown>) => Promise<unknown>) | undefined;
+    const bind = Reflect.get(organizationApi, 'bindLawyerProfile') as
+      | ((id: string, input: Record<string, unknown>) => Promise<unknown>)
+      | undefined;
+    expect(create).toBeTypeOf('function');
+    expect(bind).toBeTypeOf('function');
+    if (!create || !bind) return;
+    await create({
+      fullName: '律师甲',
+      username: 'lawyer.a',
+      password: 'LongPassword123',
+      lawFirm: '甲律所',
+      phone: '13800000000',
+    });
+    expect(fetch.mock.calls[0]?.[0]).toBe('/api/v1/lawyer-accounts');
+    expect(JSON.parse(String(fetch.mock.calls[0]?.[1]?.body))).toEqual({
+      fullName: '律师甲',
+      username: 'lawyer.a',
+      password: 'LongPassword123',
+      lawFirm: '甲律所',
+      phone: '13800000000',
+    });
+    await bind('lawyer-account-1', {
+      profileId: 'profile-1',
+      expectedAuthorizationRevision: 3,
+    });
+    expect(fetch.mock.calls[1]?.[0]).toBe(
+      '/api/v1/lawyer-accounts/lawyer-account-1/bindings',
+    );
+  });
+
+  it('loads the explicit unbound historical profile list', async () => {
+    const fetch = vi.fn().mockResolvedValue(
+      new Response(
+        JSON.stringify({
+          items: [
+            {
+              profileId: 'profile-1',
+              fullName: '律师乙',
+              lawFirm: '乙律所',
+              phone: null,
+              caseBusinessNos: ['CA-44'],
+              historicalAssignmentCount: 2,
+            },
+          ],
+        }),
+      ),
+    );
+    vi.stubGlobal('fetch', fetch);
+    const list = Reflect.get(organizationApi, 'listUnboundLawyerProfiles') as
+      ((q: string) => Promise<unknown[]>) | undefined;
+    expect(list).toBeTypeOf('function');
+    if (!list) return;
+    await expect(list('律师乙')).resolves.toHaveLength(1);
+    expect(fetch.mock.calls[0]?.[0]).toBe(
+      '/api/v1/lawyer-accounts/unbound-profiles?q=%E5%BE%8B%E5%B8%88%E4%B9%99',
+    );
+  });
+
+  it('uses revision tokens for enable, disable and password reset without reading a password back', async () => {
+    const result = {
+      id: 'account-1',
+      displayName: '律师甲',
+      username: 'lawyer.a',
+      active: false,
+      authorizationRevision: 4,
+      profiles: [],
+    };
+    const fetch = vi
+      .fn()
+      .mockResolvedValueOnce(new Response(JSON.stringify(result)))
+      .mockResolvedValueOnce(new Response(JSON.stringify(result)))
+      .mockResolvedValueOnce(new Response(JSON.stringify(result)));
+    vi.stubGlobal('fetch', fetch);
+    const setStatus = Reflect.get(organizationApi, 'setLawyerAccountStatus') as
+      | ((id: string, active: boolean, revision: number) => Promise<unknown>)
+      | undefined;
+    const setBinding = Reflect.get(
+      organizationApi,
+      'setLawyerBindingStatus',
+    ) as
+      | ((
+          id: string,
+          bindingId: string,
+          active: boolean,
+          version: number,
+        ) => Promise<unknown>)
+      | undefined;
+    const reset = Reflect.get(organizationApi, 'resetLawyerPassword') as
+      | ((id: string, password: string, revision: number) => Promise<unknown>)
+      | undefined;
+    expect(setStatus).toBeTypeOf('function');
+    expect(setBinding).toBeTypeOf('function');
+    expect(reset).toBeTypeOf('function');
+    if (!setStatus || !setBinding || !reset) return;
+    await setStatus('account-1', false, 3);
+    await setBinding('account-1', 'binding-1', false, 2);
+    await reset('account-1', 'correct horse battery staple', 3);
+    expect(JSON.parse(String(fetch.mock.calls[0]?.[1]?.body))).toEqual({
+      active: false,
+      expectedAuthorizationRevision: 3,
+    });
+    expect(JSON.parse(String(fetch.mock.calls[1]?.[1]?.body))).toEqual({
+      active: false,
+      expectedVersion: 2,
+    });
+    expect(JSON.parse(String(fetch.mock.calls[2]?.[1]?.body))).toEqual({
+      newPassword: 'correct horse battery staple',
+      expectedAuthorizationRevision: 3,
+    });
+
+    fetch.mockResolvedValueOnce(
+      new Response(
+        JSON.stringify({ ...result, password: 'must-not-be-returned' }),
+      ),
+    );
+    await expect(setStatus('account-1', true, 4)).rejects.toMatchObject({
+      code: 'INVALID_RESPONSE',
+    });
   });
 });

@@ -65,6 +65,44 @@ describe('auth API', () => {
     ).resolves.toEqual(notarySession);
   });
 
+  it('accepts a strictly isolated lawyer session', async () => {
+    const lawyerSession = {
+      ...session,
+      principalType: 'LAWYER',
+      department: null,
+      departments: [],
+      customer: null,
+      notaryOffice: null,
+    };
+    vi.stubGlobal(
+      'fetch',
+      vi.fn().mockResolvedValue(new Response(JSON.stringify(lawyerSession))),
+    );
+
+    await expect(
+      login('lawyer.user', 'correct horse battery staple'),
+    ).resolves.toEqual(lawyerSession);
+  });
+
+  it('rejects a lawyer session that contains a client identity', async () => {
+    const invalid = {
+      ...session,
+      principalType: 'LAWYER',
+      department: null,
+      departments: [],
+      customer: { id: 'customer-1', name: '甲方企业' },
+      notaryOffice: null,
+    };
+    vi.stubGlobal(
+      'fetch',
+      vi.fn().mockResolvedValue(new Response(JSON.stringify(invalid))),
+    );
+
+    await expect(getSession()).rejects.toMatchObject({
+      code: 'INVALID_RESPONSE',
+    });
+  });
+
   it('rejects a notary session with an internal department', async () => {
     const invalid = {
       ...session,

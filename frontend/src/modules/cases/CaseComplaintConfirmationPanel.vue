@@ -3,7 +3,7 @@ import { computed, onBeforeUnmount, ref, watch } from 'vue';
 import { ElButton } from 'element-plus/es/components/button/index.mjs';
 import {
   confirmCaseComplaint,
-  type CaseDetail,
+  type CaseWorkflowItem,
   type CaseFile,
   type ConfirmCaseComplaintInput,
 } from '../../api/cases';
@@ -17,7 +17,7 @@ import {
 import { useAuthStore } from '../../stores/auth';
 import { notifyWorkflowChanged } from '../../app/workflow-events';
 
-const props = defineProps<{ item: CaseDetail }>();
+const props = defineProps<{ item: CaseWorkflowItem; lawyer?: boolean }>();
 const emit = defineEmits<{ changed: []; refresh: [] }>();
 type ComplaintVersion = CaseFile & { createdAt: string };
 
@@ -342,7 +342,8 @@ async function sendConfirmation(
     props.item.id === caseId &&
     identity.value === currentIdentity;
   try {
-    await confirmCaseComplaint(caseId, body);
+    if (props.lawyer) await confirmCaseComplaint(caseId, body, 'lawyer');
+    else await confirmCaseComplaint(caseId, body);
     if (!isCurrent()) return;
     unknownRequest.value = null;
     reviewVisible.value = false;

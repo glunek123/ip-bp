@@ -22,6 +22,8 @@ async function mountPage(returnTo = '/customers') {
       { path: '/login', component: LoginPage },
       { path: '/customers', component: { template: '<div />' } },
       { path: '/customers/:id', component: { template: '<div />' } },
+      { path: '/lawyer/cases', component: { template: '<div />' } },
+      { path: '/lawyer/cases/:id', component: { template: '<div />' } },
       { path: '/client/leads', component: { template: '<div />' } },
       { path: '/client/leads/:id', component: { template: '<div />' } },
       { path: '/notary-portal/matters', component: { template: '<div />' } },
@@ -148,6 +150,24 @@ describe('LoginPage', () => {
       '/notary-portal/matters',
     );
   });
+
+  it('returns a lawyer only to the lawyer case route', async () => {
+    api.login.mockResolvedValue(lawyerSession());
+    const accepted = await mountPage('/lawyer/cases/case-1');
+    await fillCredentials(accepted.wrapper);
+    await accepted.wrapper.get('form').trigger('submit');
+    await flushPromises();
+    expect(accepted.router.currentRoute.value.fullPath).toBe(
+      '/lawyer/cases/case-1',
+    );
+
+    api.login.mockResolvedValue(lawyerSession());
+    const rejected = await mountPage('/cases?view=department');
+    await fillCredentials(rejected.wrapper);
+    await rejected.wrapper.get('form').trigger('submit');
+    await flushPromises();
+    expect(rejected.router.currentRoute.value.fullPath).toBe('/lawyer/cases');
+  });
 });
 
 function internalSession() {
@@ -175,5 +195,19 @@ function clientSession() {
     authorizationRevision: 1,
     expiresAt: '2026-09-18T00:00:00.000Z',
     csrfToken: 'csrf-token',
+  };
+}
+
+function lawyerSession() {
+  return {
+    principalType: 'LAWYER' as const,
+    user: { id: 'lawyer-1', displayName: '律师甲', username: 'lawyer.a' },
+    department: null,
+    departments: [],
+    customer: null,
+    notaryOffice: null,
+    authorizationRevision: 2,
+    expiresAt: '2026-10-06T00:00:00.000Z',
+    csrfToken: 'csrf-lawyer',
   };
 }

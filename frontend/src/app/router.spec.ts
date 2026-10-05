@@ -3,7 +3,7 @@ import { beforeEach, describe, expect, it, vi } from 'vitest';
 
 const auth = vi.hoisted(() => ({
   session: null as null | {
-    principalType: 'INTERNAL' | 'CLIENT' | 'NOTARY';
+    principalType: 'INTERNAL' | 'CLIENT' | 'NOTARY' | 'LAWYER';
     user: { id: string };
   },
   restore: vi.fn(),
@@ -136,5 +136,18 @@ describe('authentication routing', () => {
     expect(router.currentRoute.value.path).toBe('/notary-portal/matters');
     await router.push('/login');
     expect(router.currentRoute.value.path).toBe('/notary-portal/matters');
+  });
+
+  it('opens the lawyer case queue and rejects other audience routes', async () => {
+    auth.session = { principalType: 'LAWYER', user: { id: 'lawyer-1' } };
+    await router.push('/login');
+    expect(router.currentRoute.value.path).toBe('/lawyer/cases');
+
+    await router.push('/lawyer/cases/case-1');
+    expect(router.currentRoute.value.path).toBe('/lawyer/cases/case-1');
+    await router.push('/cases?view=department');
+    expect(router.currentRoute.value.path).toBe('/lawyer/cases');
+    await router.push('/settings/lawyer-accounts');
+    expect(router.currentRoute.value.path).toBe('/lawyer/cases');
   });
 });

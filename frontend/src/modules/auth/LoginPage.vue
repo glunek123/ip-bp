@@ -20,7 +20,7 @@ const canSubmit = computed(
 );
 
 function safeReturnPath(
-  principalType: 'INTERNAL' | 'CLIENT' | 'NOTARY',
+  principalType: 'INTERNAL' | 'CLIENT' | 'NOTARY' | 'LAWYER',
 ): string {
   const value = route.query.returnTo;
   const safe =
@@ -35,9 +35,13 @@ function safeReturnPath(
   const notaryPath =
     safe === '/notary-portal/matters' ||
     safe?.startsWith('/notary-portal/matters/');
+  const lawyerPath =
+    safe === '/lawyer/cases' || safe?.startsWith('/lawyer/cases/');
   if (principalType === 'CLIENT') return clientPath ? safe! : '/client/leads';
   if (principalType === 'NOTARY')
     return notaryPath ? safe! : '/notary-portal/matters';
+  if (principalType === 'LAWYER') return lawyerPath ? safe! : '/lawyer/cases';
+  if (lawyerPath) return '/customers';
   return safe !== null && !clientPath && !notaryPath ? safe : '/customers';
 }
 

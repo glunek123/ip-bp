@@ -6,7 +6,7 @@ import {
   listFilingCourts,
   submitCaseFiling,
   todayShanghai,
-  type CaseDetail,
+  type CaseWorkflowItem,
   type CaseFile,
   type FilingCourt,
   type SubmitCaseFilingInput,
@@ -19,8 +19,9 @@ import {
 import { notifyWorkflowChanged } from '../../app/workflow-events';
 
 const props = defineProps<{
-  item: CaseDetail;
+  item: CaseWorkflowItem;
   contextKey: string;
+  lawyer?: boolean;
 }>();
 const emit = defineEmits<{ changed: []; refresh: [] }>();
 
@@ -86,7 +87,9 @@ async function loadCourts() {
   courtsLoading.value = true;
   courtsError.value = '';
   try {
-    const result = await listFilingCourts(context.caseId);
+    const result = props.lawyer
+      ? await listFilingCourts(context.caseId, 'lawyer')
+      : await listFilingCourts(context.caseId);
     if (!isCurrent(context)) return;
     courts.value = result;
     if (result.length === 1) courtId.value = result[0]!.id;
@@ -252,9 +255,13 @@ async function addCourt() {
   courtsError.value = '';
   editing();
   try {
-    const created = await createFilingCourt(context.caseId, {
-      name: courtName.value,
-    });
+    const created = props.lawyer
+      ? await createFilingCourt(
+          context.caseId,
+          { name: courtName.value },
+          'lawyer',
+        )
+      : await createFilingCourt(context.caseId, { name: courtName.value });
     if (!isCurrent(context)) return;
     courts.value = [...courts.value, created];
     courtId.value = created.id;
@@ -322,7 +329,8 @@ async function submit() {
   submitting.value = true;
   error.value = '';
   try {
-    await submitCaseFiling(context.caseId, input);
+    if (props.lawyer) await submitCaseFiling(context.caseId, input, 'lawyer');
+    else await submitCaseFiling(context.caseId, input);
     if (!isCurrent(context)) return;
     success.value = true;
     unknownRequest.value = null;

@@ -9,7 +9,7 @@ import {
 export type DepartmentChoice = { id: string; name: string };
 export type NotaryOfficeChoice = { id: string; name: string };
 export type AuthSession = {
-  principalType: 'INTERNAL' | 'CLIENT' | 'NOTARY';
+  principalType: 'INTERNAL' | 'CLIENT' | 'NOTARY' | 'LAWYER';
   user: { id: string; displayName: string; username: string };
   department: DepartmentChoice | null;
   departments: DepartmentChoice[];
@@ -46,7 +46,8 @@ function parseSession(value: unknown): AuthSession {
   if (
     (session.principalType !== 'INTERNAL' &&
       session.principalType !== 'CLIENT' &&
-      session.principalType !== 'NOTARY') ||
+      session.principalType !== 'NOTARY' &&
+      session.principalType !== 'LAWYER') ||
     typeof session.user.id !== 'string' ||
     typeof session.user.displayName !== 'string' ||
     typeof session.user.username !== 'string' ||
@@ -72,7 +73,12 @@ function parseSession(value: unknown): AuthSession {
       (session.department !== null ||
         session.departments.length !== 0 ||
         session.customer !== null ||
-        session.notaryOffice === null))
+        session.notaryOffice === null)) ||
+    (session.principalType === 'LAWYER' &&
+      (session.department !== null ||
+        session.departments.length !== 0 ||
+        session.customer !== null ||
+        session.notaryOffice !== null))
   )
     throw new ApiError('服务返回了无效的登录信息', 200, 'INVALID_RESPONSE');
   setCsrfToken(session.csrfToken);

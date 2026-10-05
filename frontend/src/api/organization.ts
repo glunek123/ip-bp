@@ -1,4 +1,13 @@
 import { ApiError, getJson, requestJson, type RequestOptions } from './http';
+export {
+  bindLawyerProfile,
+  createLawyerAccount,
+  listLawyerAccounts,
+  listUnboundLawyerProfiles,
+  resetLawyerPassword,
+  setLawyerAccountStatus,
+  setLawyerBindingStatus,
+} from './lawyer-accounts';
 
 export type OrganizationCapabilities = {
   createUser: boolean;

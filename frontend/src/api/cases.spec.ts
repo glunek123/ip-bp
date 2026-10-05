@@ -1,10 +1,14 @@
 import { afterEach, describe, expect, it, vi } from 'vitest';
 import {
   confirmCaseComplaint,
+  createFilingCourt,
   getCase,
+  listFilingCourts,
   listCases,
+  listLawyerMatchCandidates,
   mailCaseComplaint,
   matchCase,
+  submitCaseFiling,
   submitComplaint,
 } from './cases';
 import * as casesApi from './cases';
@@ -373,6 +377,31 @@ describe('cases API', () => {
     });
   });
 
+  it('accepts a lawyer as the actor in an internal case mailing record', async () => {
+    mockJson({
+      ...detail,
+      stage: 'WAITING_FILING',
+      complaintMailing: {
+        mailedAt: '2026-10-04',
+        recordedAt: '2026-10-04T02:00:00Z',
+        recordedByUserId: 'lawyer-user-1',
+        actorType: 'LAWYER',
+        receiptFiles: [
+          {
+            materialId: 'material-1',
+            contentVersionId: 'mail-v1',
+            originalFilename: '邮寄凭证.pdf',
+            mimeType: 'application/pdf',
+          },
+        ],
+      },
+    });
+
+    await expect(getCase('case-1')).resolves.toMatchObject({
+      complaintMailing: { actorType: 'LAWYER' },
+    });
+  });
+
   it('submits a complaint with exact version ids and validates the transition', async () => {
     const fetchMock = mockJson({
       id: 'case-1',
@@ -528,7 +557,8 @@ describe('cases API', () => {
       idempotencyKey: 'key-1',
       matchedOn: '2026-09-28',
       defendants: [{ kind: 'PERSON', name: ' 被告甲 ', idNo: ' ID-1 ' }],
-      lawyer: { fullName: ' 律师甲 ', lawFirm: ' 律所甲 ' },
+      lawyerAccountId: 'lawyer-account-1',
+      lawyerProfileId: 'lawyer-profile-1',
     });
     const [, init] = fetchMock.mock.calls[0] as [string, RequestInit];
     expect(init.method).toBe('POST');
@@ -538,11 +568,35 @@ describe('cases API', () => {
       idempotencyKey: 'key-1',
       matchedOn: '2026-09-28',
       defendants: [{ kind: 'PERSON', name: '被告甲', idNo: 'ID-1' }],
-      lawyer: { fullName: '律师甲', lawFirm: '律所甲' },
+      lawyerAccountId: 'lawyer-account-1',
+      lawyerProfileId: 'lawyer-profile-1',
     });
   });
 
-  it('omits an unknown law firm without replacing it with a placeholder', async () => {
+  it('matches a case to a lawyer account and forwards the selected profile id', async () => {
+    const fetchMock = mockJson({
+      id: 'case-1',
+      stage: 'WAITING_COMPLAINT',
+      version: 4,
+      matchedAt: '2026-09-29T01:00:00Z',
+      matchedOn: '2026-09-28',
+    });
+    const input = {
+      expectedVersion: 3,
+      idempotencyKey: 'key-account-match',
+      matchedOn: '2026-09-28',
+      defendants: [{ kind: 'PERSON' as const, name: '被告甲' }],
+      lawyerAccountId: 'lawyer-account-1',
+      lawyerProfileId: 'lawyer-profile-1',
+    };
+
+    await matchCase('case-1', input);
+
+    const [, init] = fetchMock.mock.calls[0] as [string, RequestInit];
+    expect(JSON.parse(String(init.body))).toEqual(input);
+  });
+
+  it('matches an account without adding a profile unless the candidate supplied it', async () => {
     const fetchMock = mockJson({
       id: 'case-1',
       stage: 'WAITING_COMPLAINT',
@@ -555,12 +609,178 @@ describe('cases API', () => {
       idempotencyKey: 'key-no-firm',
       matchedOn: '2026-09-28',
       defendants: [{ kind: 'PERSON', name: '被告甲' }],
-      lawyer: { fullName: '律师甲' },
+      lawyerAccountId: 'lawyer-account-2',
     });
     const [, init] = fetchMock.mock.calls[0] as [string, RequestInit];
-    expect(JSON.parse(String(init.body)).lawyer).toEqual({
-      fullName: '律师甲',
+    expect(JSON.parse(String(init.body))).toMatchObject({
+      lawyerAccountId: 'lawyer-account-2',
     });
+    expect(JSON.parse(String(init.body))).not.toHaveProperty('lawyerProfileId');
+  });
+
+  it('strictly decodes the narrow lawyer projection without internal fields', async () => {
+    const lawyerDetail = {
+      id: 'case-1',
+      businessNo: 'CA-1',
+      stage: 'WAITING_COMPLAINT',
+      version: 4,
+      canMatch: false,
+      canSubmitComplaint: true,
+      canConfirmComplaint: false,
+      canMailComplaint: false,
+      canSubmitFiling: false,
+      createdAt: '2026-09-28T00:00:00.000Z',
+      matchedAt: '2026-09-29T01:00:00Z',
+      matchedOn: '2026-09-28',
+      defendants: detail.defendants,
+      lawyers: detail.lawyers,
+      customer: { id: 'customer-1', name: '客户甲' },
+      rightsHolder: { id: 'holder-1', name: '权利人甲' },
+      certificate: detail.certificate,
+      complaint: null,
+      complaintConfirmation: null,
+      complaintMailing: null,
+      filingSubmission: null,
+      courtCaseNo: null,
+    };
+    const read = Reflect.get(casesApi, 'getLawyerCase') as
+      ((id: string) => Promise<Record<string, unknown>>) | undefined;
+    expect(read).toBeTypeOf('function');
+    if (!read) return;
+    mockJson(lawyerDetail);
+    await expect(read('case-1')).resolves.toMatchObject({
+      canMatch: false,
+      customer: { name: '客户甲' },
+    });
+    mockJson({ ...lawyerDetail, fees: detail.fees });
+    await expect(read('case-1')).rejects.toMatchObject({
+      code: 'INVALID_RESPONSE',
+    });
+  });
+
+  it('posts the existing complaint command through the lawyer route', async () => {
+    const fetchMock = mockJson({
+      id: 'case-1',
+      stage: 'WAITING_COMPLAINT_CONFIRMATION',
+      version: 4,
+      submittedAt: '2026-10-06T01:00:00Z',
+    });
+    await submitComplaint(
+      'case-1',
+      {
+        expectedVersion: 3,
+        idempotencyKey: 'lawyer-submit-key',
+        amountState: 'PENDING',
+        amount: null,
+        pendingReason: '待补',
+        complaintContentVersionIds: ['complaint-v1'],
+        authorizationContentVersionIds: ['authorization-v1'],
+      },
+      'lawyer',
+    );
+    expect(fetchMock.mock.calls[0]?.[0]).toBe(
+      '/api/v1/lawyer/cases/case-1/complaint-submit',
+    );
+    expect(
+      new Headers(fetchMock.mock.calls[0]?.[1]?.headers).get('Idempotency-Key'),
+    ).toBe('lawyer-submit-key');
+  });
+
+  it('routes the shared confirmation, mailing, and filing commands through the lawyer API', async () => {
+    const versionId = '70000000-0000-4000-8000-000000000001';
+    const courtId = '70000000-0000-4000-8000-000000000021';
+    const evidenceVersionId = '70000000-0000-4000-8000-000000000024';
+
+    const confirmationFetch = mockJson({
+      id: 'case-1',
+      stage: 'WAITING_COMPLAINT_STAMP',
+      version: 4,
+      confirmedAt: '2026-10-02T02:00:00Z',
+    });
+    await confirmCaseComplaint(
+      'case-1',
+      {
+        expectedVersion: 3,
+        idempotencyKey: 'lawyer-confirm-key',
+        confirmedComplaintContentVersionId: versionId,
+        amountState: 'PENDING',
+        amount: null,
+        pendingReason: '待客户补交金额凭证',
+        confirmDisclose: false,
+      },
+      'lawyer',
+    );
+    expect(confirmationFetch.mock.calls[0]?.[0]).toBe(
+      '/api/v1/lawyer/cases/case-1/complaint-confirm',
+    );
+
+    const mailingFetch = mockJson({
+      id: 'case-1',
+      stage: 'WAITING_FILING',
+      version: 5,
+      mailedAt: '2026-10-02',
+      recordedAt: '2026-10-03T01:00:00Z',
+    });
+    await mailCaseComplaint(
+      'case-1',
+      {
+        expectedVersion: 4,
+        idempotencyKey: 'lawyer-mail-key',
+        mailedAt: '2026-10-02',
+        mailReceiptContentVersionIds: [versionId],
+      },
+      'lawyer',
+    );
+    expect(mailingFetch.mock.calls[0]?.[0]).toBe(
+      '/api/v1/lawyer/cases/case-1/complaint-mail',
+    );
+
+    const courtsFetch = mockJson({
+      items: [{ id: courtId, name: '甲市中级人民法院' }],
+    });
+    await expect(listFilingCourts('case-1', 'lawyer')).resolves.toEqual([
+      { id: courtId, name: '甲市中级人民法院' },
+    ]);
+    expect(courtsFetch.mock.calls[0]?.[0]).toBe(
+      '/api/v1/lawyer/cases/case-1/filing-courts',
+    );
+
+    const createCourtFetch = mockJson({
+      id: courtId,
+      name: '乙市中级人民法院',
+    });
+    await createFilingCourt('case-1', { name: '乙市中级人民法院' }, 'lawyer');
+    expect(createCourtFetch.mock.calls[0]?.[0]).toBe(
+      '/api/v1/lawyer/cases/case-1/filing-courts',
+    );
+
+    const filingFetch = mockJson({
+      id: 'case-1',
+      stage: 'WAITING_FORMAL_ACCEPTANCE',
+      version: 6,
+      submittedAt: '2026-10-03',
+      recordedAt: '2026-10-03T03:00:00Z',
+    });
+    await submitCaseFiling(
+      'case-1',
+      {
+        expectedVersion: 5,
+        idempotencyKey: 'lawyer-filing-key',
+        courtId,
+        submittedAt: '2026-10-03',
+        filingEvidenceContentVersionIds: [evidenceVersionId],
+        filingScreenshotContentVersionIds: [],
+      },
+      'lawyer',
+    );
+    expect(filingFetch.mock.calls[0]?.[0]).toBe(
+      '/api/v1/lawyer/cases/case-1/filing-submit',
+    );
+    expect(
+      new Headers(filingFetch.mock.calls[0]?.[1]?.headers).get(
+        'Idempotency-Key',
+      ),
+    ).toBe('lawyer-filing-key');
   });
 
   it('rejects an invalid actual match date before sending a command', async () => {
@@ -571,9 +791,61 @@ describe('cases API', () => {
         idempotencyKey: 'bad-date',
         matchedOn: '2026-02-30',
         defendants: [{ kind: 'PERSON', name: '被告甲' }],
-        lawyer: { fullName: '律师甲' },
+        lawyerAccountId: 'lawyer-account-1',
       }),
     ).rejects.toMatchObject({ code: 'VALIDATION_ERROR' });
     expect(fetchMock).not.toHaveBeenCalled();
+  });
+
+  it('loads account-deduplicated match candidates by username query', async () => {
+    const fetchMock = mockJson({
+      items: [
+        {
+          lawyerAccountId: 'account-1',
+          username: 'lawyer.a',
+          displayName: '律师甲',
+          lawyerProfileId: 'profile-1',
+        },
+      ],
+    });
+    await expect(
+      listLawyerMatchCandidates('case-1', 'lawyer.a'),
+    ).resolves.toEqual([
+      {
+        lawyerAccountId: 'account-1',
+        username: 'lawyer.a',
+        displayName: '律师甲',
+        lawyerProfileId: 'profile-1',
+      },
+    ]);
+    expect(fetchMock.mock.calls[0]?.[0]).toBe(
+      '/api/v1/cases/case-1/lawyer-accounts?q=lawyer.a',
+    );
+  });
+
+  it('lists only the signed-in lawyer queue using its own route', async () => {
+    const fetchMock = mockJson({
+      items: [],
+      total: 0,
+      page: 1,
+      pageSize: 20,
+      counts: {
+        PENDING_MATCH: 0,
+        WAITING_COMPLAINT: 0,
+        WAITING_COMPLAINT_CONFIRMATION: 0,
+        WAITING_COMPLAINT_STAMP: 0,
+        WAITING_FILING: 0,
+        WAITING_FORMAL_ACCEPTANCE: 0,
+      },
+    });
+    const read = Reflect.get(casesApi, 'listLawyerCases') as
+      | ((page: number, pageSize: number, stage?: string) => Promise<unknown>)
+      | undefined;
+    expect(read).toBeTypeOf('function');
+    if (!read) return;
+    await read(1, 20, 'WAITING_FILING');
+    expect(fetchMock.mock.calls[0]?.[0]).toBe(
+      '/api/v1/lawyer/cases?page=1&pageSize=20&stage=WAITING_FILING',
+    );
   });
 });

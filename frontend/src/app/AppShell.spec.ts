@@ -12,18 +12,26 @@ const api = vi.hoisted(() => ({
   listNotaryOffices: vi.fn(),
   listNotaryMatters: vi.fn(),
   listCases: vi.fn(),
+  listLawyerAccounts: vi.fn(),
+  listLawyerCases: vi.fn(),
 }));
 const mountedShells: Array<ReturnType<typeof mount>> = [];
 
 vi.mock('../api/organization', () => ({
   getOrganizationManagementContext: api.getOrganizationManagementContext,
 }));
+vi.mock('../api/lawyer-accounts', () => ({
+  listLawyerAccounts: api.listLawyerAccounts,
+}));
 vi.mock('../api/leads', () => ({ listLeads: api.listLeads }));
 vi.mock('../api/notary', () => ({
   listNotaryOffices: api.listNotaryOffices,
   listNotaryMatters: api.listNotaryMatters,
 }));
-vi.mock('../api/cases', () => ({ listCases: api.listCases }));
+vi.mock('../api/cases', () => ({
+  listCases: api.listCases,
+  listLawyerCases: api.listLawyerCases,
+}));
 
 const session = {
   principalType: 'INTERNAL' as const,
@@ -40,6 +48,21 @@ const session = {
 beforeEach(() => {
   vi.resetAllMocks();
   api.getOrganizationManagementContext.mockResolvedValue({});
+  api.listLawyerAccounts.mockRejectedValue({ status: 403 });
+  api.listLawyerCases.mockResolvedValue({
+    items: [],
+    total: 0,
+    page: 1,
+    pageSize: 1,
+    counts: {
+      PENDING_MATCH: 0,
+      WAITING_COMPLAINT: 0,
+      WAITING_COMPLAINT_CONFIRMATION: 0,
+      WAITING_COMPLAINT_STAMP: 0,
+      WAITING_FILING: 0,
+      WAITING_FORMAL_ACCEPTANCE: 0,
+    },
+  });
   api.listNotaryOffices.mockResolvedValue({
     items: [],
     capabilities: { create: false },
@@ -120,6 +143,11 @@ async function mountShell(
         meta: { section: '案件', breadcrumbs: ['案件', '案件详情'] },
       },
       {
+        path: '/lawyer/cases',
+        component: { template: '<div />' },
+        meta: { section: '案件', breadcrumbs: ['案件'] },
+      },
+      {
         path: '/leads',
         component: { template: '<div />' },
         meta: { section: '线索', breadcrumbs: ['线索'] },
@@ -192,6 +220,29 @@ describe('AppShell', () => {
     expect(wrapper.find('[data-test="case-nav"]').exists()).toBe(false);
     expect(wrapper.find('[data-test="settings-expand"]').exists()).toBe(false);
     expect(wrapper.text()).toContain('南方公证处');
+  });
+
+  it('keeps the lawyer shell on本人案件 and never requests internal lists', async () => {
+    const lawyerSession: AuthSession = {
+      ...session,
+      principalType: 'LAWYER',
+      department: null,
+      departments: [],
+      customer: null,
+      notaryOffice: null,
+    };
+    const { wrapper } = await mountShell('/lawyer/cases', lawyerSession);
+    expect(wrapper.get('[data-test="lawyer-case-nav"]').text()).toContain(
+      '本人案件',
+    );
+    expect(wrapper.find('[data-test="case-nav"]').exists()).toBe(false);
+    expect(wrapper.find('[data-test="lead-nav"]').exists()).toBe(false);
+    expect(wrapper.find('[data-test="customer-nav"]').exists()).toBe(false);
+    expect(wrapper.find('[data-test="settings-expand"]').exists()).toBe(false);
+    expect(api.listLawyerCases).toHaveBeenCalled();
+    expect(api.listCases).not.toHaveBeenCalled();
+    expect(api.listLeads).not.toHaveBeenCalled();
+    expect(api.listNotaryMatters).not.toHaveBeenCalled();
   });
 
   it('renders authorized navigation and route breadcrumbs', async () => {

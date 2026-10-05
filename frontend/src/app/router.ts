@@ -24,6 +24,9 @@ import NotaryPortalListPage from '../modules/notary/NotaryPortalListPage.vue';
 import NotaryPortalDetailPage from '../modules/notary/NotaryPortalDetailPage.vue';
 import CaseListPage from '../modules/cases/CaseListPage.vue';
 import CaseDetailPage from '../modules/cases/CaseDetailPage.vue';
+import LawyerAccountsPage from '../modules/organization/LawyerAccountsPage.vue';
+import LawyerCaseListPage from '../modules/cases/LawyerCaseListPage.vue';
+import LawyerCaseDetailPage from '../modules/cases/LawyerCaseDetailPage.vue';
 import { useAuthStore } from '../stores/auth';
 import { pinia } from './pinia';
 
@@ -33,6 +36,20 @@ export const router = createRouter({
     { path: '/login', component: LoginPage, meta: { public: true } },
     { path: '/health', component: HealthPage, meta: { public: true } },
     { path: '/', redirect: '/customers' },
+    {
+      path: '/lawyer/cases',
+      component: LawyerCaseListPage,
+      meta: { audience: 'LAWYER', section: '案件', breadcrumbs: ['案件'] },
+    },
+    {
+      path: '/lawyer/cases/:id',
+      component: LawyerCaseDetailPage,
+      meta: {
+        audience: 'LAWYER',
+        section: '案件',
+        breadcrumbs: ['案件', '案件详情'],
+      },
+    },
     {
       path: '/client/cases',
       component: ClientCaseListPage,
@@ -185,6 +202,15 @@ export const router = createRouter({
       },
     },
     {
+      path: '/settings/lawyer-accounts',
+      component: LawyerAccountsPage,
+      meta: {
+        audience: 'INTERNAL',
+        section: '设置',
+        breadcrumbs: ['设置', '律师账号'],
+      },
+    },
+    {
       path: '/client/leads',
       component: ClientLeadListPage,
       meta: {
@@ -240,7 +266,8 @@ router.beforeEach(async (to) => {
     if (
       (audience === 'INTERNAL' ||
         audience === 'CLIENT' ||
-        audience === 'NOTARY') &&
+        audience === 'NOTARY' ||
+        audience === 'LAWYER') &&
       audience !== auth.session.principalType
     )
       return homeFor(auth.session.principalType);
@@ -253,8 +280,11 @@ router.beforeEach(async (to) => {
   return { path: '/login', query: { returnTo } };
 });
 
-function homeFor(principalType: 'INTERNAL' | 'CLIENT' | 'NOTARY'): string {
+function homeFor(
+  principalType: 'INTERNAL' | 'CLIENT' | 'NOTARY' | 'LAWYER',
+): string {
   if (principalType === 'CLIENT') return '/client/leads';
   if (principalType === 'NOTARY') return '/notary-portal/matters';
+  if (principalType === 'LAWYER') return '/lawyer/cases';
   return '/customers';
 }

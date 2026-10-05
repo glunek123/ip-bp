@@ -90,7 +90,7 @@ export type CaseComplaintMailing = {
   mailedAt: string;
   recordedAt: string;
   recordedByUserId: string;
-  actorType: 'INTERNAL' | 'CLIENT';
+  actorType: 'INTERNAL' | 'CLIENT' | 'LAWYER';
   receiptFiles: CaseFile[];
 };
 export type ComplaintSubmission = {
@@ -130,8 +130,90 @@ export type MatchCaseInput = {
     phone?: string;
     address?: string;
   }>;
-  lawyer: { fullName: string; lawFirm?: string; phone?: string };
+  lawyerAccountId: string;
+  lawyerProfileId?: string;
 };
+export type CaseWorkflowItem = {
+  id: string;
+  stage: CaseStage;
+  version: number;
+  canSubmitComplaint: boolean;
+  canConfirmComplaint: boolean;
+  canMailComplaint: boolean;
+  canSubmitFiling: boolean;
+  complaint: {
+    amountState: 'KNOWN' | 'PENDING';
+    amount: string | null;
+    pendingReason: string | null;
+    submittedAt: string;
+    complaintFiles: CaseFile[];
+    authorizationFiles: CaseFile[];
+  } | null;
+  complaintConfirmation: {
+    confirmedComplaintContentVersionId: string;
+    amountState: 'KNOWN' | 'PENDING';
+    amount: string | null;
+    pendingReason: string | null;
+    changeNote: string | null;
+    confirmDisclose: boolean;
+    confirmedAt: string;
+    complaintFile: CaseFile | null;
+  } | null;
+  complaintMailing: {
+    mailedAt: string;
+    recordedAt: string;
+    receiptFiles: CaseFile[];
+  } | null;
+  pendingReceiptFiles?: CaseFile[];
+};
+export type LawyerCaseSummary = {
+  id: string;
+  businessNo: string;
+  stage: CaseStage;
+  version: number;
+  canMatch: false;
+  canSubmitComplaint: boolean;
+  canConfirmComplaint: boolean;
+  canMailComplaint: boolean;
+  canSubmitFiling: boolean;
+  createdAt: string;
+};
+export type LawyerCaseList = {
+  items: LawyerCaseSummary[];
+  total: number;
+  page: number;
+  pageSize: number;
+  counts: Record<CaseStage, number>;
+};
+export type LawyerMatchCandidate = {
+  lawyerAccountId: string;
+  username: string;
+  displayName: string;
+  lawyerProfileId: string;
+};
+export type LawyerCaseDetail = CaseWorkflowItem &
+  LawyerCaseSummary & {
+    matchedAt: string | null;
+    matchedOn: string | null;
+    defendants: CaseDefendant[];
+    lawyers: CaseLawyer[];
+    customer: { id: string; name: string };
+    rightsHolder: { id: string; name: string };
+    certificate: CaseDetail['certificate'];
+    complaint: Omit<ComplaintSubmission, 'submittedByUserId'> | null;
+    complaintConfirmation: Omit<
+      ComplaintConfirmation,
+      'confirmedByUserId'
+    > | null;
+    complaintMailing: {
+      mailedAt: string;
+      recordedAt: string;
+      actorType: 'INTERNAL' | 'CLIENT' | 'LAWYER';
+      receiptFiles: CaseFile[];
+    } | null;
+    filingSubmission: Omit<CaseFilingSubmission, 'recordedByUserId'> | null;
+    courtCaseNo: string | null;
+  };
 export type SubmitComplaintInput = {
   expectedVersion: number;
   idempotencyKey: string;
@@ -472,7 +554,9 @@ function validCaseComplaintMailing(
     typeof value.recordedAt === 'string' &&
     !Number.isNaN(Date.parse(value.recordedAt)) &&
     nonempty(value.recordedByUserId) &&
-    (value.actorType === 'INTERNAL' || value.actorType === 'CLIENT') &&
+    (value.actorType === 'INTERNAL' ||
+      value.actorType === 'CLIENT' ||
+      value.actorType === 'LAWYER') &&
     Array.isArray(value.receiptFiles) &&
     value.receiptFiles.length > 0 &&
     value.receiptFiles.every(caseFile)
@@ -543,6 +627,310 @@ function validComplaintConfirmation(
 }
 function invalidResponse(): ApiError {
   return new ApiError('服务返回了无效的案件数据', 200, 'INVALID_RESPONSE');
+}
+
+const caseStages: CaseStage[] = [
+  'PENDING_MATCH',
+  'WAITING_COMPLAINT',
+  'WAITING_COMPLAINT_CONFIRMATION',
+  'WAITING_COMPLAINT_STAMP',
+  'WAITING_FILING',
+  'WAITING_FORMAL_ACCEPTANCE',
+];
+function validLawyerSummary(value: unknown): value is LawyerCaseSummary {
+  return (
+    record(value) &&
+    exact(value, [
+      'id',
+      'businessNo',
+      'stage',
+      'version',
+      'canMatch',
+      'canSubmitComplaint',
+      'canConfirmComplaint',
+      'canMailComplaint',
+      'canSubmitFiling',
+      'createdAt',
+    ]) &&
+    nonempty(value.id) &&
+    nonempty(value.businessNo) &&
+    caseStages.includes(value.stage as CaseStage) &&
+    Number.isInteger(value.version) &&
+    Number(value.version) > 0 &&
+    value.canMatch === false &&
+    typeof value.canSubmitComplaint === 'boolean' &&
+    typeof value.canConfirmComplaint === 'boolean' &&
+    typeof value.canMailComplaint === 'boolean' &&
+    typeof value.canSubmitFiling === 'boolean' &&
+    typeof value.createdAt === 'string' &&
+    !Number.isNaN(Date.parse(value.createdAt))
+  );
+}
+function lawyerCounts(value: unknown): value is Record<CaseStage, number> {
+  return (
+    record(value) &&
+    exact(value, caseStages) &&
+    caseStages.every(
+      (stage) => Number.isInteger(value[stage]) && Number(value[stage]) >= 0,
+    )
+  );
+}
+function lawyerComplaint(value: unknown): boolean {
+  return (
+    record(value) &&
+    exact(value, [
+      'amountState',
+      'amount',
+      'pendingReason',
+      'submittedAt',
+      'complaintFiles',
+      'authorizationFiles',
+    ]) &&
+    (value.amountState === 'KNOWN' || value.amountState === 'PENDING') &&
+    (value.amount === null ||
+      (typeof value.amount === 'string' &&
+        /^\d+(\.\d+)?$/u.test(value.amount))) &&
+    (value.amountState === 'KNOWN'
+      ? value.amount !== null && value.pendingReason === null
+      : value.amount === null && nonempty(value.pendingReason)) &&
+    typeof value.submittedAt === 'string' &&
+    !Number.isNaN(Date.parse(value.submittedAt)) &&
+    Array.isArray(value.complaintFiles) &&
+    value.complaintFiles.every(caseFile) &&
+    Array.isArray(value.authorizationFiles) &&
+    value.authorizationFiles.every(caseFile)
+  );
+}
+function lawyerComplaintConfirmation(value: unknown): boolean {
+  return (
+    record(value) &&
+    exact(value, [
+      'confirmedComplaintContentVersionId',
+      'amountState',
+      'amount',
+      'pendingReason',
+      'changeNote',
+      'confirmDisclose',
+      'confirmedAt',
+      'complaintFile',
+    ]) &&
+    nonempty(value.confirmedComplaintContentVersionId) &&
+    (value.amountState === 'KNOWN' || value.amountState === 'PENDING') &&
+    (value.amount === null ||
+      (typeof value.amount === 'string' &&
+        /^(0|[1-9]\d{0,13})(\.\d{1,2})?$/u.test(value.amount))) &&
+    (value.amountState === 'KNOWN'
+      ? value.amount !== null && value.pendingReason === null
+      : value.amount === null && nonempty(value.pendingReason)) &&
+    (value.changeNote === null ||
+      (typeof value.changeNote === 'string' &&
+        value.changeNote.trim().length > 0 &&
+        value.changeNote.length <= 500)) &&
+    typeof value.confirmDisclose === 'boolean' &&
+    typeof value.confirmedAt === 'string' &&
+    !Number.isNaN(Date.parse(value.confirmedAt)) &&
+    (value.complaintFile === null || caseFile(value.complaintFile))
+  );
+}
+function lawyerMailing(value: unknown): boolean {
+  return (
+    record(value) &&
+    exact(value, ['mailedAt', 'recordedAt', 'actorType', 'receiptFiles']) &&
+    businessDate(value.mailedAt) &&
+    typeof value.recordedAt === 'string' &&
+    !Number.isNaN(Date.parse(value.recordedAt)) &&
+    (value.actorType === 'INTERNAL' ||
+      value.actorType === 'CLIENT' ||
+      value.actorType === 'LAWYER') &&
+    Array.isArray(value.receiptFiles) &&
+    value.receiptFiles.length > 0 &&
+    value.receiptFiles.every(caseFile)
+  );
+}
+function lawyerFiling(value: unknown): boolean {
+  return (
+    record(value) &&
+    exact(value, [
+      'court',
+      'submittedAt',
+      'recordedAt',
+      'mediationNo',
+      'evidenceFiles',
+      'screenshotFiles',
+    ]) &&
+    validFilingCourt(value.court) &&
+    businessDate(value.submittedAt) &&
+    typeof value.recordedAt === 'string' &&
+    !Number.isNaN(Date.parse(value.recordedAt)) &&
+    (value.mediationNo === null ||
+      (typeof value.mediationNo === 'string' &&
+        value.mediationNo.length > 0 &&
+        value.mediationNo.length <= 100)) &&
+    Array.isArray(value.evidenceFiles) &&
+    value.evidenceFiles.length > 0 &&
+    value.evidenceFiles.every(caseFile) &&
+    Array.isArray(value.screenshotFiles) &&
+    value.screenshotFiles.every(caseFile)
+  );
+}
+function lawyerCertificate(value: unknown): boolean {
+  return (
+    record(value) &&
+    exact(value, [
+      'certificateNo',
+      'certificateDate',
+      'issuedAt',
+      'needDisclose',
+      'files',
+      'disclosureFiles',
+    ]) &&
+    nonempty(value.certificateNo) &&
+    businessDate(value.certificateDate) &&
+    typeof value.issuedAt === 'string' &&
+    !Number.isNaN(Date.parse(value.issuedAt)) &&
+    typeof value.needDisclose === 'boolean' &&
+    Array.isArray(value.files) &&
+    value.files.length > 0 &&
+    value.files.every(caseFile) &&
+    Array.isArray(value.disclosureFiles) &&
+    value.disclosureFiles.every(caseFile) &&
+    (!value.needDisclose || value.disclosureFiles.length > 0)
+  );
+}
+
+export async function listLawyerCases(
+  page = 1,
+  pageSize = 20,
+  stage?: CaseStage,
+  options: RequestOptions = {},
+): Promise<LawyerCaseList> {
+  const query = new URLSearchParams({
+    page: String(page),
+    pageSize: String(pageSize),
+  });
+  if (stage) query.set('stage', stage);
+  const result = await getJson(`/lawyer/cases?${query}`, options);
+  if (
+    !record(result) ||
+    !exact(result, ['items', 'total', 'page', 'pageSize', 'counts']) ||
+    !Array.isArray(result.items) ||
+    !result.items.every(validLawyerSummary) ||
+    !Number.isInteger(result.total) ||
+    Number(result.total) < 0 ||
+    result.page !== page ||
+    result.pageSize !== pageSize ||
+    !lawyerCounts(result.counts)
+  )
+    throw invalidResponse();
+  return result as LawyerCaseList;
+}
+
+export async function getLawyerCase(
+  id: string,
+  options: RequestOptions = {},
+): Promise<LawyerCaseDetail> {
+  const result = await getJson(
+    `/lawyer/cases/${encodeURIComponent(id)}`,
+    options,
+  );
+  if (
+    !record(result) ||
+    !exact(result, [
+      'id',
+      'businessNo',
+      'stage',
+      'version',
+      'canMatch',
+      'canSubmitComplaint',
+      'canConfirmComplaint',
+      'canMailComplaint',
+      'canSubmitFiling',
+      'createdAt',
+      'matchedAt',
+      'matchedOn',
+      'defendants',
+      'lawyers',
+      'customer',
+      'rightsHolder',
+      'certificate',
+      'complaint',
+      'complaintConfirmation',
+      'complaintMailing',
+      'filingSubmission',
+      'courtCaseNo',
+    ]) ||
+    result.id !== id ||
+    !validLawyerSummary({
+      id: result.id,
+      businessNo: result.businessNo,
+      stage: result.stage,
+      version: result.version,
+      canMatch: result.canMatch,
+      canSubmitComplaint: result.canSubmitComplaint,
+      canConfirmComplaint: result.canConfirmComplaint,
+      canMailComplaint: result.canMailComplaint,
+      canSubmitFiling: result.canSubmitFiling,
+      createdAt: result.createdAt,
+    }) ||
+    (result.matchedAt !== null &&
+      (typeof result.matchedAt !== 'string' ||
+        Number.isNaN(Date.parse(result.matchedAt)))) ||
+    (result.matchedOn !== null && !businessDate(result.matchedOn)) ||
+    !Array.isArray(result.defendants) ||
+    !result.defendants.every(defendant) ||
+    !Array.isArray(result.lawyers) ||
+    !result.lawyers.every(lawyer) ||
+    !named(result.customer, 'name') ||
+    !named(result.rightsHolder, 'name') ||
+    !lawyerCertificate(result.certificate) ||
+    (result.complaint !== null && !lawyerComplaint(result.complaint)) ||
+    (result.complaintConfirmation !== null &&
+      !lawyerComplaintConfirmation(result.complaintConfirmation)) ||
+    (result.complaintMailing !== null &&
+      !lawyerMailing(result.complaintMailing)) ||
+    (result.filingSubmission !== null &&
+      !lawyerFiling(result.filingSubmission)) ||
+    (result.courtCaseNo !== null && typeof result.courtCaseNo !== 'string')
+  )
+    throw invalidResponse();
+  return result as unknown as LawyerCaseDetail;
+}
+
+export async function listLawyerMatchCandidates(
+  id: string,
+  q = '',
+  options: RequestOptions = {},
+): Promise<LawyerMatchCandidate[]> {
+  const result = await getJson(
+    `/cases/${encodeURIComponent(id)}/lawyer-accounts?q=${encodeURIComponent(q.trim())}`,
+    options,
+  );
+  if (
+    !record(result) ||
+    !exact(result, ['items']) ||
+    !Array.isArray(result.items) ||
+    result.items.length > 50 ||
+    !result.items.every(
+      (item) =>
+        record(item) &&
+        exact(item, [
+          'lawyerAccountId',
+          'username',
+          'displayName',
+          'lawyerProfileId',
+        ]) &&
+        nonempty(item.lawyerAccountId) &&
+        nonempty(item.username) &&
+        nonempty(item.displayName) &&
+        nonempty(item.lawyerProfileId),
+    )
+  )
+    throw invalidResponse();
+  const ids = result.items.map(
+    (item) => (item as LawyerMatchCandidate).lawyerAccountId,
+  );
+  if (new Set(ids).size !== ids.length) throw invalidResponse();
+  return result.items as LawyerMatchCandidate[];
 }
 
 export async function listCases(
@@ -625,9 +1013,12 @@ function uniqueVersions(values: string[], minimum: number, maximum: number) {
     values.every(uuidV4)
   );
 }
-export async function listFilingCourts(id: string): Promise<FilingCourt[]> {
+export async function listFilingCourts(
+  id: string,
+  audience: 'internal' | 'lawyer' = 'internal',
+): Promise<FilingCourt[]> {
   const response = await getJson(
-    `/cases/${encodeURIComponent(id)}/filing-courts`,
+    `/${audience === 'lawyer' ? 'lawyer/cases' : 'cases'}/${encodeURIComponent(id)}/filing-courts`,
   );
   if (
     !record(response) ||
@@ -641,6 +1032,7 @@ export async function listFilingCourts(id: string): Promise<FilingCourt[]> {
 export async function createFilingCourt(
   id: string,
   input: { name: string },
+  audience: 'internal' | 'lawyer' = 'internal',
 ): Promise<FilingCourt> {
   const name = input.name.trim();
   if (!name || name.length > 200)
@@ -650,7 +1042,7 @@ export async function createFilingCourt(
       'VALIDATION_ERROR',
     );
   const response = await requestJson(
-    `/cases/${encodeURIComponent(id)}/filing-courts`,
+    `/${audience === 'lawyer' ? 'lawyer/cases' : 'cases'}/${encodeURIComponent(id)}/filing-courts`,
     { method: 'POST', body: { name } },
   );
   if (!validFilingCourt(response) || response.name !== name)
@@ -660,6 +1052,7 @@ export async function createFilingCourt(
 export async function submitCaseFiling(
   id: string,
   input: SubmitCaseFilingInput,
+  audience: 'internal' | 'lawyer' = 'internal',
 ): Promise<SubmitCaseFilingResult> {
   const screenshots = input.filingScreenshotContentVersionIds ?? [];
   const mediationNo = input.mediationNo?.trim();
@@ -694,7 +1087,7 @@ export async function submitCaseFiling(
     ...(mediationNo === undefined ? {} : { mediationNo }),
   };
   const response = await requestJson(
-    `/cases/${encodeURIComponent(id)}/filing-submit`,
+    `/${audience === 'lawyer' ? 'lawyer/cases' : 'cases'}/${encodeURIComponent(id)}/filing-submit`,
     {
       method: 'POST',
       headers: { 'Idempotency-Key': input.idempotencyKey },
@@ -718,7 +1111,7 @@ export async function submitCaseFiling(
 export async function mailCaseComplaint(
   id: string,
   input: MailCaseComplaintInput,
-  audience: 'internal' | 'client' = 'internal',
+  audience: 'internal' | 'client' | 'lawyer' = 'internal',
 ): Promise<{
   id: string;
   stage: 'WAITING_FILING';
@@ -748,7 +1141,7 @@ export async function mailCaseComplaint(
   const path =
     audience === 'client'
       ? `/client/cases/${encodeURIComponent(id)}/complaint-mail`
-      : `/cases/${encodeURIComponent(id)}/complaint-mail`;
+      : `/${audience === 'lawyer' ? 'lawyer/cases' : 'cases'}/${encodeURIComponent(id)}/complaint-mail`;
   const response = await requestJson(path, {
     method: 'POST',
     headers: { 'Idempotency-Key': input.idempotencyKey },
@@ -800,15 +1193,10 @@ export async function matchCase(
         ...(address?.trim() ? { address: address.trim() } : {}),
       }),
     ),
-    lawyer: {
-      fullName: input.lawyer.fullName.trim(),
-      ...(input.lawyer.lawFirm?.trim()
-        ? { lawFirm: input.lawyer.lawFirm.trim() }
-        : {}),
-      ...(input.lawyer.phone?.trim()
-        ? { phone: input.lawyer.phone.trim() }
-        : {}),
-    },
+    lawyerAccountId: input.lawyerAccountId.trim(),
+    ...(input.lawyerProfileId
+      ? { lawyerProfileId: input.lawyerProfileId }
+      : {}),
   };
   if (
     !Number.isInteger(input.expectedVersion) ||
@@ -819,7 +1207,7 @@ export async function matchCase(
     body.defendants.length === 0 ||
     body.defendants.length > 20 ||
     body.defendants.some((entry) => !entry.name) ||
-    !body.lawyer.fullName
+    !body.lawyerAccountId
   )
     throw new ApiError('匹配信息无效', 400, 'VALIDATION_ERROR');
   const result = await requestJson(`/cases/${encodeURIComponent(id)}/match`, {
@@ -843,6 +1231,7 @@ export async function matchCase(
 export async function submitComplaint(
   id: string,
   input: SubmitComplaintInput,
+  audience: 'internal' | 'lawyer' = 'internal',
 ): Promise<{
   id: string;
   stage: 'WAITING_COMPLAINT_CONFIRMATION';
@@ -866,8 +1255,12 @@ export async function submitComplaint(
     throw new ApiError('起诉材料信息无效', 400, 'VALIDATION_ERROR');
   }
   const response = await requestJson(
-    `/cases/${encodeURIComponent(id)}/complaint-submit`,
-    { method: 'POST', body: input },
+    `/${audience === 'lawyer' ? 'lawyer/cases' : 'cases'}/${encodeURIComponent(id)}/complaint-submit`,
+    {
+      method: 'POST',
+      headers: { 'Idempotency-Key': input.idempotencyKey },
+      body: input,
+    },
   );
   if (
     !record(response) ||
@@ -891,6 +1284,7 @@ export async function submitComplaint(
 export async function confirmCaseComplaint(
   id: string,
   input: ConfirmCaseComplaintInput,
+  audience: 'internal' | 'lawyer' = 'internal',
 ): Promise<{
   id: string;
   stage: 'WAITING_COMPLAINT_STAMP';
@@ -924,7 +1318,7 @@ export async function confirmCaseComplaint(
     throw new ApiError('诉状确认信息无效', 400, 'VALIDATION_ERROR');
   }
   const response = await requestJson(
-    `/cases/${encodeURIComponent(id)}/complaint-confirm`,
+    `/${audience === 'lawyer' ? 'lawyer/cases' : 'cases'}/${encodeURIComponent(id)}/complaint-confirm`,
     {
       method: 'POST',
       headers: { 'Idempotency-Key': input.idempotencyKey },
