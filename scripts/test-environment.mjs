@@ -139,7 +139,7 @@ export function validateIsolatedTestDatabaseUrl(
     !Number.isInteger(port) ||
     port < 1 ||
     port > 65535 ||
-    (!allowRandomPort && port !== 55433)
+    (!allowRandomPort && port !== 15433)
   ) {
     throw new Error('The URL must target the isolated local test database');
   }

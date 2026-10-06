@@ -6,6 +6,9 @@ import { fileURLToPath, pathToFileURL } from 'node:url';
 import { acquireLocalLock } from './local-lock.mjs';
 import { captureTestEnvironment } from './test-environment.mjs';
 
+// Keep this legacy lock key stable across checkouts, even when the database port
+// changes: old and new candidates still share the application ports below.
+// The database connection comes from captureTestEnvironment, not this key.
 const e2eResourceIdentity = [
   'postgresql://127.0.0.1:55433/dev_cor_test',
   'http://127.0.0.1:3101',

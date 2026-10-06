@@ -20,7 +20,7 @@ if (!baseUrl) throw new Error('DATABASE_URL is required');
 const url = new URL(baseUrl);
 if (
   url.hostname !== '127.0.0.1' ||
-  url.port !== '55433' ||
+  url.port !== '15433' ||
   url.pathname !== '/dev_cor_test' ||
   url.username !== 'dev_cor_test' ||
   url.search

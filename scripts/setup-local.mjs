@@ -50,7 +50,7 @@ const configs = [
     'test',
     3101,
     'dev_cor_test',
-    55433,
+    15433,
     values.POSTGRES_TEST_PASSWORD,
   ],
 ];

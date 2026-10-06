@@ -15,7 +15,21 @@ import * as testEnvironment from './test-environment.mjs';
 
 const secret = 'a'.repeat(64);
 const databaseUrl =
-  'postgresql://dev_cor_test:local-test-password@127.0.0.1:55433/dev_cor_test';
+  'postgresql://dev_cor_test:local-test-password@127.0.0.1:15433/dev_cor_test';
+
+test('requires the fixed isolated test port, not the old or development port', () => {
+  assert.equal(
+    testEnvironment.validateIsolatedTestDatabaseUrl(databaseUrl).port,
+    15433,
+  );
+  for (const port of [55433, 55432]) {
+    assert.throws(() =>
+      testEnvironment.validateIsolatedTestDatabaseUrl(
+        databaseUrl.replace(':15433/', `:${port}/`),
+      ),
+    );
+  }
+});
 
 function git(root, ...args) {
   return execFileSync('git', ['-C', root, ...args], {
@@ -110,7 +124,7 @@ test('builds one validated effective environment without exposing secrets', (t) 
 test('rejects inherited application overrides before execution', (t) => {
   const root = repository(t);
   const conflictingUrl =
-    'postgresql://other:other@127.0.0.1:55433/dev_cor_test';
+    'postgresql://other:other@127.0.0.1:15433/dev_cor_test';
 
   assert.throws(
     () => capture(root, { DATABASE_URL: conflictingUrl }),
