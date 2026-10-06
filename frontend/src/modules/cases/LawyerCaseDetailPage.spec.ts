@@ -39,6 +39,8 @@ function detail(
     canConfirmComplaint: false,
     canMailComplaint: false,
     canSubmitFiling: false,
+    canRegisterAcceptance: false,
+    canUploadAcceptanceMaterials: false,
     createdAt: '2026-10-01T00:00:00Z',
     matchedAt: '2026-10-01T00:00:00Z',
     matchedOn: '2026-10-01',
@@ -59,6 +61,12 @@ function detail(
     complaintMailing: null,
     filingSubmission: null,
     courtCaseNo: null,
+    acceptance: null,
+    acceptanceMaterials: {
+      ACCEPTANCE_NOTICE: { available: [], frozen: [], later: [] },
+      PAYMENT_LIST: { available: [], frozen: [], later: [] },
+      SERVICE_DOCUMENT: { available: [], frozen: [], later: [] },
+    },
   };
 }
 function materials() {

@@ -82,7 +82,9 @@ onBeforeUnmount(() => request?.abort());
                   ? '诉状待盖章'
                   : item.stage === 'WAITING_FILING'
                     ? '待提交立案'
-                    : '待正式立案'
+                    : item.stage === 'WAITING_FORMAL_ACCEPTANCE'
+                      ? '待正式立案'
+                      : '待开庭'
               }}</span>
               · 权利主体：{{ item.rightsHolderName }}
             </p>

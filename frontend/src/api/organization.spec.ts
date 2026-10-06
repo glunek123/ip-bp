@@ -167,6 +167,11 @@ const context = {
       scopes: ['SELF', 'TEAM', 'DEPARTMENT'],
     },
     {
+      action: 'CASE_ACCEPTANCE_REGISTER',
+      label: '登记正式立案',
+      scopes: ['SELF', 'TEAM', 'DEPARTMENT'],
+    },
+    {
       action: 'NOTARY_OFFICE_MANAGE',
       label: '管理公证处',
       scopes: ['DEPARTMENT'],
@@ -245,6 +250,7 @@ describe('organization API', () => {
       'CASE_COMPLAINT_CONFIRM',
       'CASE_COMPLAINT_MAIL',
       'CASE_FILING_SUBMIT',
+      'CASE_ACCEPTANCE_REGISTER',
       'NOTARY_OFFICE_MANAGE',
       'USER_READ',
       'USER_MANAGE',

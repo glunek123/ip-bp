@@ -38,6 +38,8 @@ const detail = {
   canMatch: false,
   canSubmitComplaint: false,
   canSubmitFiling: false,
+  canRegisterAcceptance: false,
+  canUploadAcceptanceMaterials: false,
   canConfirmComplaint: true,
   canMailComplaint: false,
   sourceLead: { id: 'lead-1', businessNo: 'LD-1' },
@@ -71,6 +73,12 @@ const detail = {
   complaintConfirmation: null,
   complaintMailing: null,
   filingSubmission: null,
+  acceptance: null,
+  acceptanceMaterials: {
+    ACCEPTANCE_NOTICE: { available: [], frozen: [], later: [] },
+    PAYMENT_LIST: { available: [], frozen: [], later: [] },
+    SERVICE_DOCUMENT: { available: [], frozen: [], later: [] },
+  },
 } as CaseDetail;
 
 function material(contentVersions = [file]) {

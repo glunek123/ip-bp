@@ -19,6 +19,7 @@ const stages: Array<{ value: CaseStage; label: string }> = [
   { value: 'WAITING_COMPLAINT_STAMP', label: '诉状待盖章' },
   { value: 'WAITING_FILING', label: '待提交立案' },
   { value: 'WAITING_FORMAL_ACCEPTANCE', label: '待正式立案' },
+  { value: 'WAITING_HEARING', label: '待开庭' },
 ];
 const state = ref<'loading' | 'ready' | 'failed'>('loading');
 const items = ref<LawyerCaseSummary[]>([]);
@@ -139,7 +140,9 @@ onBeforeUnmount(() => {
               item.canSubmitComplaint ||
               item.canConfirmComplaint ||
               item.canMailComplaint ||
-              item.canSubmitFiling
+              item.canSubmitFiling ||
+              item.canRegisterAcceptance ||
+              item.canUploadAcceptanceMaterials
                 ? '可办理'
                 : '只读'
             }}</span>

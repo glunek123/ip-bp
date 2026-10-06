@@ -18,6 +18,28 @@ const permissionCatalog = [
 ];
 
 describe('RoleTemplatePanel', () => {
+  it('shows the backend label for a formal acceptance grant', () => {
+    const wrapper = mount(RoleTemplatePanel, {
+      props: {
+        roles: [
+          {
+            ...role,
+            grants: [{ action: 'CASE_ACCEPTANCE_REGISTER', scope: 'TEAM' }],
+          },
+        ],
+        permissionCatalog: [
+          {
+            action: 'CASE_ACCEPTANCE_REGISTER',
+            label: '登记正式立案',
+            scopes: ['SELF', 'TEAM', 'DEPARTMENT'],
+          },
+        ],
+        canManage: false,
+      },
+    });
+    expect(wrapper.text()).toContain('登记正式立案 · 团队');
+  });
+
   it('shows concise template facts and opens the shared editor', async () => {
     const wrapper = mount(RoleTemplatePanel, {
       props: { roles: [role], permissionCatalog, canManage: true },

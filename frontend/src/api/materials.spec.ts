@@ -185,6 +185,50 @@ describe('materials API', () => {
     );
   });
 
+  it('uploads each formal acceptance category as a real CASE-owned PDF, JPEG, or PNG file', async () => {
+    const file = new File(['notice'], '受理通知书.png', { type: 'image/png' });
+    const result = {
+      ...uploaded,
+      originalFilename: file.name,
+      purpose: 'ACCEPTANCE_NOTICE',
+      mimeType: file.type,
+      sizeBytes: file.size,
+    };
+    const fetch = vi
+      .fn()
+      .mockResolvedValueOnce(
+        new Response(
+          JSON.stringify({
+            id: 'draft-acceptance',
+            ownerType: 'CASE',
+            ownerId: 'case-1',
+            category: 'ACCEPTANCE_NOTICE',
+            purpose: 'ACCEPTANCE_NOTICE',
+            originalFilename: file.name,
+            declaredMimeType: file.type,
+            expiresAt: '2026-10-06T00:00:00.000Z',
+          }),
+        ),
+      )
+      .mockResolvedValueOnce(new Response(JSON.stringify(result)));
+    vi.stubGlobal('fetch', fetch);
+    await expect(
+      uploadMaterialFile({
+        ownerType: 'CASE',
+        ownerId: 'case-1',
+        category: 'ACCEPTANCE_NOTICE',
+        purpose: 'ACCEPTANCE_NOTICE',
+        file,
+      }),
+    ).resolves.toEqual(result);
+    expect(JSON.parse(String(fetch.mock.calls[0]?.[1]?.body))).toMatchObject({
+      ownerType: 'CASE',
+      ownerId: 'case-1',
+      category: 'ACCEPTANCE_NOTICE',
+      purpose: 'ACCEPTANCE_NOTICE',
+    });
+  });
+
   it('enforces the distinct evidence and screenshot file type/size limits', async () => {
     const fetch = vi.fn();
     vi.stubGlobal('fetch', fetch);

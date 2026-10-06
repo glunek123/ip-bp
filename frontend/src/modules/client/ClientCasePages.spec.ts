@@ -122,6 +122,22 @@ describe('client case pages', () => {
     expect(detailPage.wrapper.text()).not.toContain('提交立案记录');
     expect(detailPage.wrapper.text()).not.toContain('甲市中级人民法院');
   });
+  it('shows WAITING_HEARING in the existing client projection only', async () => {
+    api.listClientCases.mockResolvedValueOnce({
+      ...list,
+      items: [{ ...list.items[0], stage: 'WAITING_HEARING' }],
+    });
+    const listPage = await mountPage('/client/cases');
+    expect(listPage.wrapper.text()).toContain('待开庭');
+    api.getClientCase.mockResolvedValueOnce({
+      ...detail,
+      stage: 'WAITING_HEARING',
+    });
+    const detailPage = await mountPage('/client/cases/case-1');
+    expect(detailPage.wrapper.text()).toContain('待开庭');
+    expect(detailPage.wrapper.text()).not.toContain('正式立案登记');
+    expect(detailPage.wrapper.text()).not.toContain('法院案号');
+  });
   it('ignores a late detail response after changing cases and reloads after an authorization revision change', async () => {
     let finish!: (value: typeof detail) => void;
     api.getClientCase.mockImplementation((id: string) =>

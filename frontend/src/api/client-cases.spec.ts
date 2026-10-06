@@ -70,6 +70,32 @@ describe('client cases API', () => {
       items: [{ stage: 'WAITING_FORMAL_ACCEPTANCE' }],
     });
   });
+  it('decodes WAITING_HEARING without exposing internal acceptance fields', async () => {
+    mock({
+      items: [{ ...item, stage: 'WAITING_HEARING' }],
+      total: 1,
+      page: 1,
+      pageSize: 20,
+    });
+    await expect(listClientCases()).resolves.toMatchObject({
+      items: [{ stage: 'WAITING_HEARING' }],
+    });
+    mock({
+      ...item,
+      stage: 'WAITING_HEARING',
+      confirmedAmountState: 'KNOWN',
+      confirmedAmount: '123.45',
+      confirmedAt: '2026-10-01T00:00:00Z',
+      complaintFile: file,
+      authorizationFiles: [],
+      pendingReceiptFiles: [],
+      complaintMailing: null,
+      acceptance: { acceptedAt: '2026-10-01', courtCaseNo: 'private' },
+    });
+    await expect(getClientCase('case-1')).rejects.toMatchObject({
+      code: 'INVALID_RESPONSE',
+    });
+  });
   it('posts the exact client command and validates the transition', async () => {
     const fetch = mock({
       id: 'case-1',

@@ -6,7 +6,8 @@ export type CaseStage =
   | 'WAITING_COMPLAINT_CONFIRMATION'
   | 'WAITING_COMPLAINT_STAMP'
   | 'WAITING_FILING'
-  | 'WAITING_FORMAL_ACCEPTANCE';
+  | 'WAITING_FORMAL_ACCEPTANCE'
+  | 'WAITING_HEARING';
 export type CaseView = 'mine' | 'department';
 export type CaseStageFilter = CaseStage | 'all';
 export type CaseSummary = {
@@ -21,6 +22,8 @@ export type CaseSummary = {
   canConfirmComplaint: boolean;
   canMailComplaint: boolean;
   canSubmitFiling: boolean;
+  canRegisterAcceptance: boolean;
+  canUploadAcceptanceMaterials: boolean;
   sourceLead: { id: string; businessNo: string };
   sourceNotaryMatter: { id: string; businessNo: string };
 };
@@ -48,7 +51,7 @@ export type CaseLawyer = {
   assignedAt: string;
 };
 export type CaseDetail = CaseSummary & {
-  courtCaseNo: null;
+  courtCaseNo: string | null;
   department: { id: string; name: string };
   customer: { id: string; name: string };
   rightsHolder: { id: string; name: string };
@@ -75,6 +78,8 @@ export type CaseDetail = CaseSummary & {
   complaintConfirmation: ComplaintConfirmation | null;
   complaintMailing: CaseComplaintMailing | null;
   filingSubmission: CaseFilingSubmission | null;
+  acceptance: CaseAcceptance | null;
+  acceptanceMaterials: AcceptanceMaterials;
 };
 export type FilingCourt = { id: string; name: string };
 export type CaseFilingSubmission = {
@@ -119,6 +124,22 @@ export type CaseFile = {
   originalFilename: string;
   mimeType: string;
 };
+export type AcceptanceMaterialGroup = {
+  available: CaseFile[];
+  frozen: CaseFile[];
+  later: CaseFile[];
+};
+export type CaseAcceptance = {
+  acceptedAt: string;
+  courtCaseNo: string;
+  recordedAt: string;
+  recordedByUserId?: string;
+};
+export type AcceptanceMaterials = {
+  ACCEPTANCE_NOTICE: AcceptanceMaterialGroup;
+  PAYMENT_LIST: AcceptanceMaterialGroup;
+  SERVICE_DOCUMENT: AcceptanceMaterialGroup;
+};
 export type MatchCaseInput = {
   expectedVersion: number;
   idempotencyKey: string;
@@ -141,6 +162,10 @@ export type CaseWorkflowItem = {
   canConfirmComplaint: boolean;
   canMailComplaint: boolean;
   canSubmitFiling: boolean;
+  canRegisterAcceptance: boolean;
+  canUploadAcceptanceMaterials: boolean;
+  acceptance: Omit<CaseAcceptance, 'recordedByUserId'> | null;
+  acceptanceMaterials: AcceptanceMaterials;
   complaint: {
     amountState: 'KNOWN' | 'PENDING';
     amount: string | null;
@@ -176,6 +201,8 @@ export type LawyerCaseSummary = {
   canConfirmComplaint: boolean;
   canMailComplaint: boolean;
   canSubmitFiling: boolean;
+  canRegisterAcceptance: boolean;
+  canUploadAcceptanceMaterials: boolean;
   createdAt: string;
 };
 export type LawyerCaseList = {
@@ -213,6 +240,8 @@ export type LawyerCaseDetail = CaseWorkflowItem &
     } | null;
     filingSubmission: Omit<CaseFilingSubmission, 'recordedByUserId'> | null;
     courtCaseNo: string | null;
+    acceptance: Omit<CaseAcceptance, 'recordedByUserId'> | null;
+    acceptanceMaterials: AcceptanceMaterials;
   };
 export type SubmitComplaintInput = {
   expectedVersion: number;
@@ -279,7 +308,8 @@ function validStage(value: unknown): value is CaseStage {
     value === 'WAITING_COMPLAINT_CONFIRMATION' ||
     value === 'WAITING_COMPLAINT_STAMP' ||
     value === 'WAITING_FILING' ||
-    value === 'WAITING_FORMAL_ACCEPTANCE'
+    value === 'WAITING_FORMAL_ACCEPTANCE' ||
+    value === 'WAITING_HEARING'
   );
 }
 function source(value: unknown): value is { id: string; businessNo: string } {
@@ -313,6 +343,8 @@ function summary(value: unknown): value is CaseSummary {
       'canConfirmComplaint',
       'canMailComplaint',
       'canSubmitFiling',
+      'canRegisterAcceptance',
+      'canUploadAcceptanceMaterials',
       'sourceLead',
       'sourceNotaryMatter',
     ]) &&
@@ -329,6 +361,8 @@ function summary(value: unknown): value is CaseSummary {
     typeof value.canConfirmComplaint === 'boolean' &&
     typeof value.canMailComplaint === 'boolean' &&
     typeof value.canSubmitFiling === 'boolean' &&
+    typeof value.canRegisterAcceptance === 'boolean' &&
+    typeof value.canUploadAcceptanceMaterials === 'boolean' &&
     source(value.sourceLead) &&
     source(value.sourceNotaryMatter)
   );
@@ -346,6 +380,62 @@ function caseFile(value: unknown): value is CaseFile {
       (key) => nonempty(value[key]),
     )
   );
+}
+function validAcceptance(value: unknown, internal: boolean): boolean {
+  if (value === null) return true;
+  if (!record(value)) return false;
+  const keys = ['acceptedAt', 'courtCaseNo', 'recordedAt'];
+  if (internal) keys.push('recordedByUserId');
+  return (
+    exact(value, keys) &&
+    businessDate(value.acceptedAt) &&
+    nonempty(value.courtCaseNo) &&
+    value.courtCaseNo.trim() === value.courtCaseNo &&
+    value.courtCaseNo.length <= 100 &&
+    typeof value.recordedAt === 'string' &&
+    !Number.isNaN(Date.parse(value.recordedAt)) &&
+    (!internal || nonempty(value.recordedByUserId))
+  );
+}
+function courtCaseNoMatchesAcceptance(
+  courtCaseNo: unknown,
+  acceptance: unknown,
+): boolean {
+  if (acceptance === null) return courtCaseNo === null;
+  return record(acceptance) && courtCaseNo === acceptance.courtCaseNo;
+}
+function validAcceptanceMaterials(
+  value: unknown,
+): value is AcceptanceMaterials {
+  if (
+    !record(value) ||
+    !exact(value, ['ACCEPTANCE_NOTICE', 'PAYMENT_LIST', 'SERVICE_DOCUMENT'])
+  )
+    return false;
+  const seen = new Set<string>();
+  for (const category of [
+    'ACCEPTANCE_NOTICE',
+    'PAYMENT_LIST',
+    'SERVICE_DOCUMENT',
+  ]) {
+    const group = value[category];
+    if (
+      !record(group) ||
+      !exact(group, ['available', 'frozen', 'later']) ||
+      !Array.isArray(group.available) ||
+      !Array.isArray(group.frozen) ||
+      !Array.isArray(group.later)
+    )
+      return false;
+    for (const files of [group.available, group.frozen, group.later]) {
+      if (!files.every(caseFile)) return false;
+      for (const file of files) {
+        if (seen.has(file.contentVersionId)) return false;
+        seen.add(file.contentVersionId);
+      }
+    }
+  }
+  return true;
 }
 function defendant(value: unknown): value is CaseDefendant {
   return (
@@ -407,9 +497,13 @@ function validCaseDetail(value: unknown, id: string): value is CaseDetail {
       'canConfirmComplaint',
       'canMailComplaint',
       'canSubmitFiling',
+      'canRegisterAcceptance',
+      'canUploadAcceptanceMaterials',
       'complaintConfirmation',
       'complaintMailing',
       'filingSubmission',
+      'acceptance',
+      'acceptanceMaterials',
     ]) &&
     value.id === id &&
     summary({
@@ -424,10 +518,12 @@ function validCaseDetail(value: unknown, id: string): value is CaseDetail {
       canConfirmComplaint: value.canConfirmComplaint,
       canMailComplaint: value.canMailComplaint,
       canSubmitFiling: value.canSubmitFiling,
+      canRegisterAcceptance: value.canRegisterAcceptance,
+      canUploadAcceptanceMaterials: value.canUploadAcceptanceMaterials,
       sourceLead: value.sourceLead,
       sourceNotaryMatter: value.sourceNotaryMatter,
     }) &&
-    value.courtCaseNo === null &&
+    courtCaseNoMatchesAcceptance(value.courtCaseNo, value.acceptance) &&
     named(value.department, 'name') &&
     named(value.customer, 'name') &&
     named(value.rightsHolder, 'name') &&
@@ -483,13 +579,17 @@ function validCaseDetail(value: unknown, id: string): value is CaseDetail {
     typeof value.canConfirmComplaint === 'boolean' &&
     typeof value.canMailComplaint === 'boolean' &&
     typeof value.canSubmitFiling === 'boolean' &&
+    typeof value.canRegisterAcceptance === 'boolean' &&
+    typeof value.canUploadAcceptanceMaterials === 'boolean' &&
     (value.complaint === null || validComplaint(value.complaint)) &&
     (value.complaintConfirmation === null ||
       validComplaintConfirmation(value.complaintConfirmation)) &&
     (value.complaintMailing === null ||
       validCaseComplaintMailing(value.complaintMailing)) &&
     (value.filingSubmission === null ||
-      validCaseFilingSubmission(value.filingSubmission))
+      validCaseFilingSubmission(value.filingSubmission)) &&
+    validAcceptance(value.acceptance, true) &&
+    validAcceptanceMaterials(value.acceptanceMaterials)
   );
 }
 function validFilingCourt(value: unknown): value is FilingCourt {
@@ -636,6 +736,7 @@ const caseStages: CaseStage[] = [
   'WAITING_COMPLAINT_STAMP',
   'WAITING_FILING',
   'WAITING_FORMAL_ACCEPTANCE',
+  'WAITING_HEARING',
 ];
 function validLawyerSummary(value: unknown): value is LawyerCaseSummary {
   return (
@@ -650,6 +751,8 @@ function validLawyerSummary(value: unknown): value is LawyerCaseSummary {
       'canConfirmComplaint',
       'canMailComplaint',
       'canSubmitFiling',
+      'canRegisterAcceptance',
+      'canUploadAcceptanceMaterials',
       'createdAt',
     ]) &&
     nonempty(value.id) &&
@@ -662,6 +765,8 @@ function validLawyerSummary(value: unknown): value is LawyerCaseSummary {
     typeof value.canConfirmComplaint === 'boolean' &&
     typeof value.canMailComplaint === 'boolean' &&
     typeof value.canSubmitFiling === 'boolean' &&
+    typeof value.canRegisterAcceptance === 'boolean' &&
+    typeof value.canUploadAcceptanceMaterials === 'boolean' &&
     typeof value.createdAt === 'string' &&
     !Number.isNaN(Date.parse(value.createdAt))
   );
@@ -845,6 +950,8 @@ export async function getLawyerCase(
       'canConfirmComplaint',
       'canMailComplaint',
       'canSubmitFiling',
+      'canRegisterAcceptance',
+      'canUploadAcceptanceMaterials',
       'createdAt',
       'matchedAt',
       'matchedOn',
@@ -858,6 +965,8 @@ export async function getLawyerCase(
       'complaintMailing',
       'filingSubmission',
       'courtCaseNo',
+      'acceptance',
+      'acceptanceMaterials',
     ]) ||
     result.id !== id ||
     !validLawyerSummary({
@@ -870,6 +979,8 @@ export async function getLawyerCase(
       canConfirmComplaint: result.canConfirmComplaint,
       canMailComplaint: result.canMailComplaint,
       canSubmitFiling: result.canSubmitFiling,
+      canRegisterAcceptance: result.canRegisterAcceptance,
+      canUploadAcceptanceMaterials: result.canUploadAcceptanceMaterials,
       createdAt: result.createdAt,
     }) ||
     (result.matchedAt !== null &&
@@ -890,7 +1001,9 @@ export async function getLawyerCase(
       !lawyerMailing(result.complaintMailing)) ||
     (result.filingSubmission !== null &&
       !lawyerFiling(result.filingSubmission)) ||
-    (result.courtCaseNo !== null && typeof result.courtCaseNo !== 'string')
+    !courtCaseNoMatchesAcceptance(result.courtCaseNo, result.acceptance) ||
+    !validAcceptance(result.acceptance, false) ||
+    !validAcceptanceMaterials(result.acceptanceMaterials)
   )
     throw invalidResponse();
   return result as unknown as LawyerCaseDetail;
@@ -963,6 +1076,7 @@ export async function listCases(
       'WAITING_COMPLAINT_STAMP',
       'WAITING_FILING',
       'WAITING_FORMAL_ACCEPTANCE',
+      'WAITING_HEARING',
     ]) ||
     !Number.isInteger(response.counts.PENDING_MATCH) ||
     (response.counts.PENDING_MATCH as number) < 0 ||
@@ -975,7 +1089,9 @@ export async function listCases(
     !Number.isInteger(response.counts.WAITING_FILING) ||
     (response.counts.WAITING_FILING as number) < 0 ||
     !Number.isInteger(response.counts.WAITING_FORMAL_ACCEPTANCE) ||
-    (response.counts.WAITING_FORMAL_ACCEPTANCE as number) < 0
+    (response.counts.WAITING_FORMAL_ACCEPTANCE as number) < 0 ||
+    !Number.isInteger(response.counts.WAITING_HEARING) ||
+    (response.counts.WAITING_HEARING as number) < 0
   )
     throw invalidResponse();
   return response as unknown as CaseList;
@@ -995,6 +1111,23 @@ export type SubmitCaseFilingResult = {
   stage: 'WAITING_FORMAL_ACCEPTANCE';
   version: number;
   submittedAt: string;
+  recordedAt: string;
+};
+export type RegisterCaseAcceptanceInput = {
+  expectedVersion: number;
+  idempotencyKey: string;
+  acceptedAt: string;
+  courtCaseNo: string;
+  acceptanceNoticeContentVersionIds?: string[];
+  paymentListContentVersionIds?: string[];
+  serviceDocumentContentVersionIds?: string[];
+};
+export type RegisterCaseAcceptanceResult = {
+  id: string;
+  stage: 'WAITING_HEARING';
+  version: number;
+  acceptedAt: string;
+  courtCaseNo: string;
   recordedAt: string;
 };
 function uuidV4(value: unknown): value is string {
@@ -1106,6 +1239,82 @@ export async function submitCaseFiling(
   )
     throw invalidResponse();
   return response as SubmitCaseFilingResult;
+}
+
+export async function registerCaseAcceptance(
+  id: string,
+  input: RegisterCaseAcceptanceInput,
+  audience: 'internal' | 'lawyer' = 'internal',
+): Promise<RegisterCaseAcceptanceResult> {
+  const categoryIds = [
+    input.acceptanceNoticeContentVersionIds ?? [],
+    input.paymentListContentVersionIds ?? [],
+    input.serviceDocumentContentVersionIds ?? [],
+  ];
+  const selectedIds = categoryIds.flat();
+  const courtCaseNo = input.courtCaseNo.trim();
+  if (
+    !Number.isInteger(input.expectedVersion) ||
+    input.expectedVersion < 1 ||
+    !input.idempotencyKey ||
+    input.idempotencyKey !== input.idempotencyKey.trim() ||
+    input.idempotencyKey.length > 128 ||
+    !businessDate(input.acceptedAt) ||
+    input.acceptedAt > todayShanghai() ||
+    courtCaseNo.length < 1 ||
+    courtCaseNo.length > 100 ||
+    categoryIds.some((ids) => !uniqueVersions(ids, 0, 10)) ||
+    new Set(selectedIds).size !== selectedIds.length
+  ) {
+    throw new ApiError(
+      '正式立案信息无效，请检查日期、法院案号和所选材料。',
+      400,
+      'VALIDATION_ERROR',
+    );
+  }
+  const body = {
+    expectedVersion: input.expectedVersion,
+    idempotencyKey: input.idempotencyKey,
+    acceptedAt: input.acceptedAt,
+    courtCaseNo,
+    ...(input.acceptanceNoticeContentVersionIds === undefined
+      ? {}
+      : { acceptanceNoticeContentVersionIds: categoryIds[0] }),
+    ...(input.paymentListContentVersionIds === undefined
+      ? {}
+      : { paymentListContentVersionIds: categoryIds[1] }),
+    ...(input.serviceDocumentContentVersionIds === undefined
+      ? {}
+      : { serviceDocumentContentVersionIds: categoryIds[2] }),
+  };
+  const response = await requestJson(
+    `/${audience === 'lawyer' ? 'lawyer/cases' : 'cases'}/${encodeURIComponent(id)}/acceptance-register`,
+    {
+      method: 'POST',
+      headers: { 'Idempotency-Key': input.idempotencyKey },
+      body,
+    },
+  );
+  if (
+    !record(response) ||
+    !exact(response, [
+      'id',
+      'stage',
+      'version',
+      'acceptedAt',
+      'courtCaseNo',
+      'recordedAt',
+    ]) ||
+    response.id !== id ||
+    response.stage !== 'WAITING_HEARING' ||
+    response.version !== input.expectedVersion + 1 ||
+    response.acceptedAt !== input.acceptedAt ||
+    response.courtCaseNo !== courtCaseNo ||
+    typeof response.recordedAt !== 'string' ||
+    Number.isNaN(Date.parse(response.recordedAt))
+  )
+    throw invalidResponse();
+  return response as RegisterCaseAcceptanceResult;
 }
 
 export async function mailCaseComplaint(

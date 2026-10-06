@@ -20,6 +20,8 @@ const emptyResult = {
       canConfirmComplaint: false,
       canMailComplaint: false,
       canSubmitFiling: true,
+      canRegisterAcceptance: false,
+      canUploadAcceptanceMaterials: false,
       createdAt: '2026-10-01T00:00:00Z',
     },
   ],
@@ -33,6 +35,7 @@ const emptyResult = {
     WAITING_COMPLAINT_STAMP: 0,
     WAITING_FILING: 1,
     WAITING_FORMAL_ACCEPTANCE: 0,
+    WAITING_HEARING: 0,
   },
 };
 
@@ -133,6 +136,19 @@ describe('LawyerCaseListPage', () => {
         .find((button) => button.text() === '下一页')
         ?.attributes('disabled'),
     ).toBeDefined();
+  });
+
+  it('supports the single WAITING_HEARING filter and label', async () => {
+    const { wrapper, router } = await mountPage();
+    await router.push('/lawyer/cases?stage=WAITING_HEARING');
+    await flushPromises();
+    expect(api.listLawyerCases).toHaveBeenLastCalledWith(
+      1,
+      20,
+      'WAITING_HEARING',
+      { signal: expect.any(AbortSignal) },
+    );
+    expect(wrapper.text()).toContain('待开庭');
   });
 
   it('resets to page one on stage change and ignores a late page response', async () => {

@@ -57,7 +57,10 @@ const context = {
       version: 2,
       activeAssignmentCount: 1,
       assignable: true,
-      grants: [{ action: 'CUSTOMER_READ', scope: 'DEPARTMENT' }],
+      grants: [
+        { action: 'CUSTOMER_READ', scope: 'DEPARTMENT' },
+        { action: 'CASE_ACCEPTANCE_REGISTER', scope: 'DEPARTMENT' },
+      ],
     },
   ],
   permissionCatalog: [
@@ -70,6 +73,11 @@ const context = {
       action: 'CASE_READ',
       label: '查看案件',
       scopes: ['DEPARTMENT'],
+    },
+    {
+      action: 'CASE_ACCEPTANCE_REGISTER',
+      label: '登记正式立案',
+      scopes: ['SELF', 'TEAM', 'DEPARTMENT'],
     },
   ],
 };
@@ -135,8 +143,14 @@ describe('PeopleAccessPage', () => {
     expect(wrapper.text()).toContain('商标组');
     expect(wrapper.text()).toContain('客户经办');
     expect(wrapper.get('.role-template-card').text()).toContain('查看客户');
+    expect(wrapper.get('.role-template-card').text()).toContain(
+      '登记正式立案 · 部门',
+    );
     await wrapper.get('[data-test="edit-role-role-1"]').trigger('click');
     expect(wrapper.find('[data-test="grant-CASE_READ"]').exists()).toBe(true);
+    expect(
+      wrapper.find('[data-test="grant-CASE_ACCEPTANCE_REGISTER"]').exists(),
+    ).toBe(true);
     expect(
       wrapper.get('[data-test="scope-CASE_READ"]').findAll('option'),
     ).toHaveLength(1);

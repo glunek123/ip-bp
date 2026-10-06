@@ -6,6 +6,7 @@ import {
   listFilingCourts,
   listCases,
   listLawyerMatchCandidates,
+  registerCaseAcceptance,
   mailCaseComplaint,
   matchCase,
   submitCaseFiling,
@@ -27,6 +28,8 @@ const summary = {
   canConfirmComplaint: false,
   canMailComplaint: false,
   canSubmitFiling: false,
+  canRegisterAcceptance: false,
+  canUploadAcceptanceMaterials: false,
   sourceLead: { id: 'lead-1', businessNo: 'LD-1' },
   sourceNotaryMatter: { id: 'matter-1', businessNo: 'NZ-1' },
 };
@@ -87,6 +90,12 @@ const detail = {
   complaintConfirmation: null,
   complaintMailing: null,
   filingSubmission: null,
+  acceptance: null,
+  acceptanceMaterials: {
+    ACCEPTANCE_NOTICE: { available: [], frozen: [], later: [] },
+    PAYMENT_LIST: { available: [], frozen: [], later: [] },
+    SERVICE_DOCUMENT: { available: [], frozen: [], later: [] },
+  },
 };
 function mockJson(payload: unknown) {
   const fetchMock = vi
@@ -97,6 +106,61 @@ function mockJson(payload: unknown) {
 }
 
 describe('cases API', () => {
+  it('decodes formal acceptance facts and the three separated material groups', async () => {
+    const file = {
+      materialId: 'material-notice',
+      contentVersionId: 'version-notice',
+      originalFilename: '受理通知书.pdf',
+      mimeType: 'application/pdf',
+    };
+    mockJson({
+      ...detail,
+      stage: 'WAITING_HEARING',
+      version: 6,
+      courtCaseNo: '（2026）甲0101民初1号',
+      canRegisterAcceptance: false,
+      canUploadAcceptanceMaterials: true,
+      acceptance: {
+        acceptedAt: '2026-10-05',
+        courtCaseNo: '（2026）甲0101民初1号',
+        recordedAt: '2026-10-05T01:00:00.000Z',
+        recordedByUserId: 'operator-1',
+      },
+      acceptanceMaterials: {
+        ACCEPTANCE_NOTICE: { available: [], frozen: [file], later: [] },
+        PAYMENT_LIST: { available: [], frozen: [], later: [] },
+        SERVICE_DOCUMENT: { available: [], frozen: [], later: [] },
+      },
+    });
+    await expect(getCase('case-1')).resolves.toMatchObject({
+      stage: 'WAITING_HEARING',
+      acceptance: { courtCaseNo: '（2026）甲0101民初1号' },
+      acceptanceMaterials: {
+        ACCEPTANCE_NOTICE: { frozen: [file] },
+      },
+    });
+  });
+  it('requires the top-level court case number to match the accepted fact', async () => {
+    const accepted = {
+      ...detail,
+      stage: 'WAITING_HEARING',
+      version: 6,
+      canRegisterAcceptance: false,
+      canUploadAcceptanceMaterials: true,
+      acceptance: {
+        acceptedAt: '2026-10-05',
+        courtCaseNo: '（2026）甲0101民初1号',
+        recordedAt: '2026-10-05T01:00:00.000Z',
+        recordedByUserId: 'operator-1',
+      },
+    };
+    for (const courtCaseNo of [null, '（2026）甲0101民初2号']) {
+      mockJson({ ...accepted, courtCaseNo });
+      await expect(getCase('case-1')).rejects.toMatchObject({
+        code: 'INVALID_RESPONSE',
+      });
+    }
+  });
   it('reads the formal court choices from the case-scoped API', async () => {
     const fetchMock = mockJson({
       items: [
@@ -217,6 +281,7 @@ describe('cases API', () => {
         WAITING_COMPLAINT_STAMP: 0,
         WAITING_FILING: 0,
         WAITING_FORMAL_ACCEPTANCE: 0,
+        WAITING_HEARING: 0,
       },
     });
     await expect(
@@ -230,6 +295,7 @@ describe('cases API', () => {
         WAITING_COMPLAINT_STAMP: 0,
         WAITING_FILING: 0,
         WAITING_FORMAL_ACCEPTANCE: 0,
+        WAITING_HEARING: 0,
       },
     });
     expect(fetchMock.mock.calls[0]?.[0]).toBe(
@@ -257,6 +323,7 @@ describe('cases API', () => {
         WAITING_COMPLAINT_STAMP: 0,
         WAITING_FILING: 0,
         WAITING_FORMAL_ACCEPTANCE: 0,
+        WAITING_HEARING: 0,
       },
     });
     await expect(
@@ -279,6 +346,7 @@ describe('cases API', () => {
         WAITING_COMPLAINT_STAMP: 0,
         WAITING_FILING: 0,
         WAITING_FORMAL_ACCEPTANCE: 0,
+        WAITING_HEARING: 0,
       },
     });
     await listCases(1, 20, { stage: 'all' });
@@ -318,6 +386,8 @@ describe('cases API', () => {
       ...detail,
       stage: 'WAITING_FORMAL_ACCEPTANCE',
       canSubmitFiling: false,
+      canRegisterAcceptance: false,
+      canUploadAcceptanceMaterials: false,
       filingSubmission: {
         court: {
           id: '70000000-0000-4000-8000-000000000011',
@@ -629,6 +699,8 @@ describe('cases API', () => {
       canConfirmComplaint: false,
       canMailComplaint: false,
       canSubmitFiling: false,
+      canRegisterAcceptance: false,
+      canUploadAcceptanceMaterials: false,
       createdAt: '2026-09-28T00:00:00.000Z',
       matchedAt: '2026-09-29T01:00:00Z',
       matchedOn: '2026-09-28',
@@ -642,6 +714,8 @@ describe('cases API', () => {
       complaintMailing: null,
       filingSubmission: null,
       courtCaseNo: null,
+      acceptance: null,
+      acceptanceMaterials: detail.acceptanceMaterials,
     };
     const read = Reflect.get(casesApi, 'getLawyerCase') as
       ((id: string) => Promise<Record<string, unknown>>) | undefined;
@@ -652,6 +726,31 @@ describe('cases API', () => {
       canMatch: false,
       customer: { name: '客户甲' },
     });
+    const acceptedLawyerDetail = {
+      ...lawyerDetail,
+      stage: 'WAITING_HEARING',
+      version: 6,
+      canRegisterAcceptance: false,
+      canUploadAcceptanceMaterials: true,
+      courtCaseNo: '（2026）甲0101民初1号',
+      acceptance: {
+        acceptedAt: '2026-10-05',
+        courtCaseNo: '（2026）甲0101民初1号',
+        recordedAt: '2026-10-05T01:00:00.000Z',
+      },
+    };
+    mockJson(acceptedLawyerDetail);
+    await expect(read('case-1')).resolves.toMatchObject({
+      stage: 'WAITING_HEARING',
+      courtCaseNo: '（2026）甲0101民初1号',
+      acceptance: { courtCaseNo: '（2026）甲0101民初1号' },
+    });
+    for (const courtCaseNo of [null, '（2026）甲0101民初2号']) {
+      mockJson({ ...acceptedLawyerDetail, courtCaseNo });
+      await expect(read('case-1')).rejects.toMatchObject({
+        code: 'INVALID_RESPONSE',
+      });
+    }
     mockJson({ ...lawyerDetail, fees: detail.fees });
     await expect(read('case-1')).rejects.toMatchObject({
       code: 'INVALID_RESPONSE',
@@ -783,6 +882,43 @@ describe('cases API', () => {
     ).toBe('lawyer-filing-key');
   });
 
+  it('registers acceptance through the lawyer route with the frozen DTO', async () => {
+    const fetchMock = mockJson({
+      id: 'case-1',
+      stage: 'WAITING_HEARING',
+      version: 7,
+      acceptedAt: '2026-10-05',
+      courtCaseNo: '甲0101民初1号',
+      recordedAt: '2026-10-06T01:00:00.000Z',
+    });
+    const selected = '70000000-0000-4000-8000-000000000001';
+    await registerCaseAcceptance(
+      'case-1',
+      {
+        expectedVersion: 6,
+        idempotencyKey: 'acceptance-key',
+        acceptedAt: '2026-10-05',
+        courtCaseNo: ' 甲0101民初1号 ',
+        acceptanceNoticeContentVersionIds: [selected],
+        paymentListContentVersionIds: [],
+        serviceDocumentContentVersionIds: [],
+      },
+      'lawyer',
+    );
+    expect(fetchMock.mock.calls[0]?.[0]).toBe(
+      '/api/v1/lawyer/cases/case-1/acceptance-register',
+    );
+    expect(JSON.parse(String(fetchMock.mock.calls[0]?.[1]?.body))).toEqual({
+      expectedVersion: 6,
+      idempotencyKey: 'acceptance-key',
+      acceptedAt: '2026-10-05',
+      courtCaseNo: '甲0101民初1号',
+      acceptanceNoticeContentVersionIds: [selected],
+      paymentListContentVersionIds: [],
+      serviceDocumentContentVersionIds: [],
+    });
+  });
+
   it('rejects an invalid actual match date before sending a command', async () => {
     const fetchMock = mockJson({});
     await expect(
@@ -836,6 +972,7 @@ describe('cases API', () => {
         WAITING_COMPLAINT_STAMP: 0,
         WAITING_FILING: 0,
         WAITING_FORMAL_ACCEPTANCE: 0,
+        WAITING_HEARING: 0,
       },
     });
     const read = Reflect.get(casesApi, 'listLawyerCases') as

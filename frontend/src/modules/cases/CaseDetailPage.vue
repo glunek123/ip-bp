@@ -26,6 +26,7 @@ import CaseComplaintConfirmationPanel from './CaseComplaintConfirmationPanel.vue
 import CaseComplaintMailingPanel from './CaseComplaintMailingPanel.vue';
 import CaseComplaintSubmissionForm from './CaseComplaintSubmissionForm.vue';
 import CaseFilingPanel from './CaseFilingPanel.vue';
+import CaseAcceptancePanel from './CaseAcceptancePanel.vue';
 
 const route = useRoute();
 const auth = useAuthStore();
@@ -324,7 +325,8 @@ function stageLabel(stage: CaseDetail['stage']): string {
   if (stage === 'WAITING_COMPLAINT_CONFIRMATION') return '诉状待确认';
   if (stage === 'WAITING_COMPLAINT_STAMP') return '诉状待盖章';
   if (stage === 'WAITING_FILING') return '待提交立案';
-  return '待正式立案';
+  if (stage === 'WAITING_FORMAL_ACCEPTANCE') return '待正式立案';
+  return '待开庭';
 }
 function removeDefendant(index: number) {
   if (defendants.value.length > 1) defendants.value.splice(index, 1);
@@ -713,6 +715,16 @@ onBeforeUnmount(() => request?.abort());
         />
         <CaseFilingPanel
           v-if="item.stage === 'WAITING_FILING'"
+          :item="item"
+          :context-key="identity"
+          @changed="load"
+          @refresh="load"
+        />
+        <CaseAcceptancePanel
+          v-if="
+            item.stage === 'WAITING_FORMAL_ACCEPTANCE' ||
+            item.stage === 'WAITING_HEARING'
+          "
           :item="item"
           :context-key="identity"
           @changed="load"

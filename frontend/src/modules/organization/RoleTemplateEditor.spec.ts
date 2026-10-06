@@ -56,6 +56,11 @@ const permissionCatalog = [
     label: '登记诉状邮寄',
     scopes: ['SELF', 'TEAM', 'DEPARTMENT'] as const,
   },
+  {
+    action: 'CASE_ACCEPTANCE_REGISTER' as const,
+    label: '登记正式立案',
+    scopes: ['SELF', 'TEAM', 'DEPARTMENT'] as const,
+  },
 ].map((item) => ({ ...item, scopes: [...item.scopes] }));
 
 afterEach(() => vi.clearAllMocks());
@@ -283,6 +288,36 @@ describe('RoleTemplateEditor', () => {
       expect.objectContaining({
         grants: expect.arrayContaining([
           { action: 'CASE_COMPLAINT_MAIL', scope: 'SELF' },
+        ]),
+      }),
+    );
+  });
+
+  it('offers formal acceptance registration with all backend case scopes', async () => {
+    api.updateRoleTemplate.mockResolvedValue(role);
+    const wrapper = mount(RoleTemplateEditor, {
+      props: { mode: 'edit', role, permissionCatalog },
+    });
+    await flushPromises();
+    expect(wrapper.text()).toContain('登记正式立案');
+    expect(
+      wrapper
+        .get('[data-test="scope-CASE_ACCEPTANCE_REGISTER"]')
+        .findAll('option'),
+    ).toHaveLength(3);
+    await wrapper
+      .get('[data-test="grant-CASE_ACCEPTANCE_REGISTER"]')
+      .setValue(true);
+    await wrapper
+      .get('[data-test="scope-CASE_ACCEPTANCE_REGISTER"]')
+      .setValue('TEAM');
+    await wrapper.get('[data-test="role-template-save"]').trigger('click');
+    await flushPromises();
+    expect(api.updateRoleTemplate).toHaveBeenCalledWith(
+      role.id,
+      expect.objectContaining({
+        grants: expect.arrayContaining([
+          { action: 'CASE_ACCEPTANCE_REGISTER', scope: 'TEAM' },
         ]),
       }),
     );

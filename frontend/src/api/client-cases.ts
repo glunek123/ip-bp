@@ -6,7 +6,10 @@ import {
 } from './cases';
 
 export type ClientCaseStage =
-  'WAITING_COMPLAINT_STAMP' | 'WAITING_FILING' | 'WAITING_FORMAL_ACCEPTANCE';
+  | 'WAITING_COMPLAINT_STAMP'
+  | 'WAITING_FILING'
+  | 'WAITING_FORMAL_ACCEPTANCE'
+  | 'WAITING_HEARING';
 export type ClientCase = {
   id: string;
   businessNo: string;
@@ -71,7 +74,8 @@ function validCase(value: unknown): value is ClientCase {
     value.businessNo.length > 0 &&
     (value.stage === 'WAITING_COMPLAINT_STAMP' ||
       value.stage === 'WAITING_FILING' ||
-      value.stage === 'WAITING_FORMAL_ACCEPTANCE') &&
+      value.stage === 'WAITING_FORMAL_ACCEPTANCE' ||
+      value.stage === 'WAITING_HEARING') &&
     Number.isInteger(value.version) &&
     typeof value.canMailComplaint === 'boolean' &&
     typeof value.rightsHolderName === 'string' &&

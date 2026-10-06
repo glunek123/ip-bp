@@ -54,6 +54,8 @@ beforeEach(() => {
         canMatch: true,
         canSubmitComplaint: false,
         canSubmitFiling: false,
+        canRegisterAcceptance: false,
+        canUploadAcceptanceMaterials: false,
         sourceLead: { id: 'lead-1', businessNo: 'LD-1' },
         sourceNotaryMatter: { id: 'matter-1', businessNo: 'NZ-1' },
       },
@@ -66,6 +68,9 @@ beforeEach(() => {
       WAITING_COMPLAINT: 0,
       WAITING_COMPLAINT_CONFIRMATION: 0,
       WAITING_COMPLAINT_STAMP: 0,
+      WAITING_FILING: 0,
+      WAITING_FORMAL_ACCEPTANCE: 0,
+      WAITING_HEARING: 0,
     },
   });
   api.listLawyerMatchCandidates.mockResolvedValue([]);
@@ -107,10 +112,18 @@ beforeEach(() => {
     canSubmitComplaint: false,
     canConfirmComplaint: false,
     canSubmitFiling: false,
+    canRegisterAcceptance: false,
+    canUploadAcceptanceMaterials: false,
     complaint: null,
     complaintConfirmation: null,
     complaintMailing: null,
     filingSubmission: null,
+    acceptance: null,
+    acceptanceMaterials: {
+      ACCEPTANCE_NOTICE: { available: [], frozen: [], later: [] },
+      PAYMENT_LIST: { available: [], frozen: [], later: [] },
+      SERVICE_DOCUMENT: { available: [], frozen: [], later: [] },
+    },
   });
   api.listOwnerMaterials.mockResolvedValue({ items: [], total: 0 });
   api.listFilingCourts.mockResolvedValue([]);
@@ -159,6 +172,8 @@ function confirmationDetail(
     canSubmitComplaint: false,
     canConfirmComplaint: stage === 'WAITING_COMPLAINT_CONFIRMATION',
     canSubmitFiling: false,
+    canRegisterAcceptance: false,
+    canUploadAcceptanceMaterials: false,
     courtCaseNo: null,
     department: { id: 'department-1', name: '知产部' },
     customer: { id: 'customer-1', name: '客户甲' },
@@ -216,6 +231,12 @@ function confirmationDetail(
         : null,
     complaintMailing: null,
     filingSubmission: null,
+    acceptance: null,
+    acceptanceMaterials: {
+      ACCEPTANCE_NOTICE: { available: [], frozen: [], later: [] },
+      PAYMENT_LIST: { available: [], frozen: [], later: [] },
+      SERVICE_DOCUMENT: { available: [], frozen: [], later: [] },
+    },
   };
 }
 
