@@ -1,5 +1,36 @@
 # SPEC-001 文档验证
 
+## CORE-CA-006 正式受理／登记正式立案（2026-10-06）
+
+实际通过正式Level 2逐项门禁的业务候选为`d3836fcffa5a5d3e2e9af92d0943e407293f3e22`、tree`6e911e6a96029a5d83ca98f242c633a168a70da6`；分支`codex/core-ca-006-formal-acceptance`，main基线`7cd6525a77e04b52f5352c9702f2392e69b46ac0`。用户授权的此前待同步内容已推送并快进集成该main；本轮只实施CA-006，新业务代码未推送／合并，不开发CA-007。
+
+有权运营或当前PRIMARY承办律师登记实际受理日期和法院案号，原子从`WAITING_FORMAL_ACCEPTANCE`进入`WAITING_HEARING`。复用当前身份、范围、事务、锁及材料能力；当前授权先于幂等重放，受理事实、精确冻结版本、成功审计、回执和阶段同事务提交。受理通知、缴费清单、送达文件均可选，可在待开庭补传但不改原冻结事实；客户只增加新阶段识别，不获取内部受理事实、案号、材料或Command。未知POST结果保留原请求／键，通过原样重放裁决，详情GET不冒充本次成功。
+
+新增`CaseAcceptance`／`CaseAcceptanceVersion`／`CaseAcceptanceReceipt`，沿用`Case.courtCaseNo`；内部和律师`POST /api/v1/{cases,lawyer/cases}/:id/acceptance-register`成功返回201。正式运营／律师共享登记表单、详情记录、精确文件下载、待开庭列表和侧栏均已接通真实API。四份前向迁移为`20261006010000_add_case_acceptance_enums`、`20261006011000_add_case_acceptance_facts`、`20261006012000_add_case_acceptance_grants`、`20261006013000_seal_case_acceptance_versions`；未修改旧迁移，仅部署独立测试库。迁移专项覆盖76份空链、上一支持72份schema及75→76旧事实／回执保留、精确冻结封闭、直接SQL负向、每份失败原子及向前重试，不操作开发／生产数据库或持久化卷。
+
+独立`gpt-6-sol / high`后端Task Review在5911bde接受；整合Final Review及d3836fc补审为`SpecCompliance = ACCEPTED`、`CodeQuality = Approved`，未关闭Critical／Important／Minor均0。报告在`.local/case-acceptance/{task-1-review,final-review}.md`；Task报告与开发期完整证据保留，不冒称Reviewer重复执行Worker检查。
+
+| 固定候选正式检查                                             | 实际结果                              | 命令包装耗时   |
+| ------------------------------------------------------------ | ------------------------------------- | -------------- |
+| `pnpm prepare:prisma`                                        | 退出0；本轮统一生成一次               | 3.916秒        |
+| 后端cases／materials／access-control／OpenAPI定向Jest        | 退出0；32套件394/394                  | 36.467秒       |
+| 前端案件／客户投影／材料／权限目录／人员角色／壳层定向Vitest | 退出0；17文件213/213                  | 8.702秒        |
+| `pnpm check:fast:prepared`                                   | 退出0；架构、双端／根类型和Lint       | 26.176秒       |
+| `pnpm spec:check`／`pnpm context:check:strict`               | 分别退出0；Spec和严格快照／文档一致性 | 0.807／2.841秒 |
+| 累计受影响文本Prettier                                       | 退出0；58项非空范围，含`.d.mts`       | 3.622秒        |
+| `pnpm build:prepared`                                        | 退出0；前后端构建                     | 15.508秒       |
+| 九文件隔离PostgreSQL／Chromium组合                           | 退出0；31/31，单worker、无重试        | 165.156秒      |
+
+单元准确命令为`pnpm --filter @dev-cor/backend test src/modules/cases src/modules/materials src/access-control src/core-ld-openapi.spec.ts`与`pnpm --filter @dev-cor/frontend test src/api/cases.spec.ts src/api/client-cases.spec.ts src/api/materials.spec.ts src/api/organization.spec.ts src/modules/cases src/modules/client/ClientCasePages.spec.ts src/modules/organization src/app/AppShell.spec.ts`。数据库／浏览器命令为`pnpm test:e2e tests/e2e/case-acceptance.spec.ts tests/e2e/case-acceptance-database.spec.ts tests/e2e/case-acceptance-migration.spec.ts tests/e2e/case-lawyer.spec.ts tests/e2e/case-lawyer-database.spec.ts tests/e2e/case-filing.spec.ts tests/e2e/case-filing-database.spec.ts tests/e2e/personnel-access.spec.ts tests/e2e/role-template-management.spec.ts`。没有已配置case scope，按现行Level 2逐项执行，不伪称Evidence v2或完整`pnpm verify`／全仓E2E通过；未改变共享权限、身份、事务机制或历史含义，无Level 3升级依据。
+
+正式检查于UTC`2026-10-06T09:12:23.7303283Z`开始；E2E于`09:14:25.1617877Z`开始、`09:17:10.3193255Z`结束。每项命令前后HEAD／tree、干净工作区及环境指纹一致；Node v24.21.0、pnpm11.27.0，fingerprint为`8cebe60684ba5641d54f9c5c32e7c85b7b62c8fd8d55d4583e40330b5f5e9337`，不证明数据库数据相同。完整日志、准确命令／退出状态／耗时机器结果及非秘密摘要保存于`.local/case-acceptance/final-{prepare,backend-unit,frontend-unit,fast,spec,context,format,build,e2e}{.log,-result.json,-environment-before.json,-environment-after.json}`；HTML为`final-e2e-report/index.html`。
+
+31项包含CA-006真实数据库4项、迁移1项与真实密码浏览器主链1项，以及原法院提交、律师身份／办理和人员／角色目录兼容回归。运营登记→刷新／重登→精确文件字节下载，当前承办律师登记另一案件→待开庭后补→刷新下载且不推进，客户仅看本企业原允许投影均通过。错误阶段／日期／版本、同键重放／异参冲突、越权／跨企业／撤权、并发单胜，以及审计／事实／冻结／回执故障整笔回滚已验证；预期HTTP500和SQL23514／P0001为故障注入用例，不隐藏失败。冻结后不得追加新版本集合或改写新动作成功审计；既有其他审计含义不变。
+
+失败轨迹保留：后端Task Review发现冻结集合可追加，新增第76份迁移封闭并取得SQL RED→GREEN；前端开发期刷新草稿、案号解码及浏览器测试接线问题均修复。首轮Final Review的0／1／2 finding（未知结果误判、计数漏更新、重复GET）由原Reviewer关闭，组件取得行为RED4失败／4通过→GREEN8/8。首个正式候选5c1da54的单元／Spec／格式／构建虽通过，`pnpm check:fast:prepared`因两处DOM类型`no-undef`退出1，不算整体验收；修复类型并补审后，d3836fc重新完成上述整套定向门禁。旧`formal-*`日志仍保留，不冒称它们属于新候选。本切片完整verify与未过滤full E2E均未启动；当前实际定向E2E正式启动1次并通过。原有大chunk、pg弃用警告为非阻断，未删测试、弱化断言、放宽超时或增加重试。
+
+此后收口仅补本实际结果、路线图完成态、恢复摘要及对应已解释快照，模块Spec／计划不重复写动态验收台账。核对d3836fc到拟收口状态的提交链、累计diff、暂存／未暂存及相关未跟踪项；差异不含业务范围／契约／AC、代码、测试／输入、迁移、依赖、生成物、配置、验证逻辑或环境变化。受影响格式、Spec、严格上下文（含本地引用和Current／Next一致性）与Git差异专项结果保存`.local/case-acceptance/closeout-doc-check.log`，通过后方可提交。原候选业务证据仍适用，不称收口HEAD实跑其门禁，不要求本记录包含自身提交哈希；集成结果及远端必需检查仍须按授权核实。CA-006已完成待集成、CA-007仍Next，生产部署及开发／生产迁移未验证。
+
 ## 测试端口修复与集成前新候选复验（2026-10-06）
 
 用户授权避开Windows保留的55426～55525，将独立测试库固定端口从55433改为15433；开发库55432、凭据、业务代码和迁移均未改变。Compose、setup默认、统一测试目标及律师迁移专项守卫已同步，保留127.0.0.1、测试用户／库名、无连接查询参数、固定镜像／健康容器校验，以及跨checkout共享应用端口的原E2E锁。仅打印非秘密摘要。
