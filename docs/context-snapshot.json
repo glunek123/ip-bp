@@ -1,6 +1,6 @@
 {
   "version": 1,
-  "recordedAt": "2026-10-06T08:45:18.246Z",
+  "recordedAt": "2026-10-06T09:00:59.133Z",
   "files": {
     ".cursor/rules/verified-feature-integration.mdc": "ffd2306612ba6f09749629c5adb9e645f7f37aa6ee27ff1bc1c3d8b14efeca38",
     ".env.example": "07211cde5c2b59efc21b619b752d4c9b871f0980d2d64ca3c146ad6151fd27ca",
@@ -378,7 +378,7 @@
     "docs/environment.md": "2c07c5c2ccecb30055e318b6670c8c910d4474e691d7fd1d645016a2d657debf",
     "docs/feature-roadmap.md": "7bc081a868413398383589b92ab2f47c3e5316e0b369cdf3f2b59fd0ebe715f5",
     "docs/project-status-history-through-2026-09-18.md": "c7c858eb4b2a935ce78a85c75e5d3227691382186101d6ff6911249e38729208",
-    "docs/project-status.md": "9db0e54cee0a839d931bfca8c5693d6240fa9ae3647f54470a3f2ec06bd90ed9",
+    "docs/project-status.md": "7cbc9b8149a9f7aa04215f4cc1ac33f3647a3956782d875b6785223cccd3ccf2",
     "docs/security/customer-foundation-q2-review.md": "f5745450cb85aedde92892646c6c824bc9670b8c9bf6f0d9761fe5e46cc6d109",
     "docs/security/local-account-auth-q2-review.md": "4e7b38d73b2597e483340490c788aa034ef6f465baccc12240be7ad2c6ec61f1",
     "docs/spec/v0.1/BUSINESS-REVIEW.md": "950c73ac72470d2e3556fd416701b4486944c1e3ef21c84be11132cbe617c24e",
@@ -516,8 +516,8 @@
     "frontend/src/main.ts": "6b133c73fd295989270e8a72634c630685dff261895791e31ab92889d34535ee",
     "frontend/src/modules/auth/LoginPage.spec.ts": "995300cf86ceaecb4b89f0ec3870bfeb3f9636cc99fc799caa95480d8ed3b0d6",
     "frontend/src/modules/auth/LoginPage.vue": "6d1b5127ee4ba62d8ab1e8ec94e2902008b86175af04e90b034d53923360b4a4",
-    "frontend/src/modules/cases/CaseAcceptancePanel.spec.ts": "f2314c9656051d2a16b0a3b402d0eb4f6af2458a8a9a7bf3bbbf3dd94a88348d",
-    "frontend/src/modules/cases/CaseAcceptancePanel.vue": "d9109778cca6f0942b3031e5d5c57e4525a0bd276c264045d66dd60ac7d0ca8e",
+    "frontend/src/modules/cases/CaseAcceptancePanel.spec.ts": "6e13f6750d8df5fc960b708366ccad4c23d87ba5fc623f513acdb2c9b384f4c1",
+    "frontend/src/modules/cases/CaseAcceptancePanel.vue": "6e3e38b96bc61b1641a89768cbfd703d1cfd4aa321b1e160bbe868972fa074ae",
     "frontend/src/modules/cases/CaseComplaintConfirmationPanel.spec.ts": "48e44a717000a29d8ecda50935ef3c06fe13739c3e1e28d58104f7c4b4815a25",
     "frontend/src/modules/cases/CaseComplaintConfirmationPanel.vue": "c779f3a7b8d7a8768530f341b918d15b086a863f8a17e3168af7ff9a778c1130",
     "frontend/src/modules/cases/CaseComplaintMailingPanel.spec.ts": "a53ac95122041a7a843a725935e5977536c22f67d8e198d31fad233ceb6ecc60",

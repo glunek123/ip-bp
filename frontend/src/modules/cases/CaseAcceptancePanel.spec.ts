@@ -1,7 +1,8 @@
 import { flushPromises, mount } from '@vue/test-utils';
-import { beforeEach, describe, expect, it, vi } from 'vitest';
+import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 import { ApiError } from '../../api/http';
-import type { CaseDetail } from '../../api/cases';
+import type { CaseWorkflowItem } from '../../api/cases';
+import { workflowChangedEvent } from '../../app/workflow-events';
 import CaseAcceptancePanel from './CaseAcceptancePanel.vue';
 
 const api = vi.hoisted(() => ({
@@ -21,10 +22,17 @@ vi.mock('../../api/materials', async (importOriginal) => ({
   downloadMaterialVersion: api.downloadMaterialVersion,
 }));
 
-const baseItem = {
+type TestItem = CaseWorkflowItem & {
+  filingSubmission: { submittedAt: string } | null;
+};
+const baseItem: TestItem = {
   id: 'case-1',
   stage: 'WAITING_FORMAL_ACCEPTANCE',
   version: 6,
+  canSubmitComplaint: false,
+  canConfirmComplaint: false,
+  canMailComplaint: false,
+  canSubmitFiling: false,
   canRegisterAcceptance: true,
   canUploadAcceptanceMaterials: true,
   acceptance: null,
@@ -36,9 +44,19 @@ const baseItem = {
   filingSubmission: {
     submittedAt: '2026-10-01',
   },
-} as unknown as CaseDetail;
+  complaint: null,
+  complaintConfirmation: null,
+  complaintMailing: null,
+};
+
+let workflowRefreshCount = 0;
+function recordWorkflowRefresh(): void {
+  workflowRefreshCount += 1;
+}
 
 beforeEach(() => {
+  workflowRefreshCount = 0;
+  window.addEventListener(workflowChangedEvent, recordWorkflowRefresh);
   vi.resetAllMocks();
   api.todayShanghai.mockReturnValue('2026-10-06');
   api.registerCaseAcceptance.mockResolvedValue({
@@ -56,6 +74,9 @@ beforeEach(() => {
     mimeType: file.type,
     purpose: category,
   }));
+});
+afterEach(() => {
+  window.removeEventListener(workflowChangedEvent, recordWorkflowRefresh);
 });
 
 function mountPanel(item = baseItem, contextKey = 'INTERNAL:user-1:1') {
@@ -116,7 +137,8 @@ describe('case acceptance panel', () => {
     );
     expect(wrapper.text()).toContain('正式立案登记已完成');
     expect(wrapper.emitted('changed')).toHaveLength(1);
-    expect(wrapper.emitted('refresh')).toHaveLength(1);
+    expect(wrapper.emitted('refresh')).toBeUndefined();
+    expect(workflowRefreshCount).toBe(1);
   });
 
   it('keeps the same idempotent request after an unknown result and retries it unchanged', async () => {
@@ -152,6 +174,123 @@ describe('case acceptance panel', () => {
     await flushPromises();
     expect(api.registerCaseAcceptance).toHaveBeenCalledTimes(2);
     expect(api.registerCaseAcceptance.mock.calls[1]).toEqual(original);
+  });
+
+  it.each(['version-selected', 'version-other'])(
+    'keeps an unknown request after a same-value registration with frozen %s is observed',
+    async (frozenVersionId) => {
+      api.registerCaseAcceptance
+        .mockRejectedValueOnce(new ApiError('timeout', 0, 'TIMEOUT'))
+        .mockRejectedValueOnce(
+          new ApiError('changed', 409, 'VERSION_CONFLICT'),
+        );
+      const selectedFile = {
+        materialId: 'material-selected',
+        contentVersionId: 'version-selected',
+        originalFilename: '本次选择.pdf',
+        mimeType: 'application/pdf',
+      };
+      const item: TestItem = {
+        ...baseItem,
+        acceptanceMaterials: {
+          ...baseItem.acceptanceMaterials,
+          ACCEPTANCE_NOTICE: {
+            available: [selectedFile],
+            frozen: [],
+            later: [],
+          },
+        },
+      };
+      const wrapper = mountPanel(item);
+      await wrapper
+        .get('[data-test="acceptance-accepted-at"]')
+        .setValue('2026-10-05');
+      await wrapper
+        .get('[data-test="acceptance-court-case-no"]')
+        .setValue('甲0101民初1号');
+      await wrapper.get('input[type="checkbox"]').setValue(true);
+      await wrapper.get('[data-test="acceptance-register"]').trigger('click');
+      await flushPromises();
+      const originalRequest = api.registerCaseAcceptance.mock.calls[0];
+      expect(originalRequest?.[1].acceptanceNoticeContentVersionIds).toEqual([
+        'version-selected',
+      ]);
+
+      const observed: TestItem = {
+        ...item,
+        stage: 'WAITING_HEARING',
+        version: 7,
+        canRegisterAcceptance: false,
+        acceptance: {
+          acceptedAt: '2026-10-05',
+          courtCaseNo: '甲0101民初1号',
+          recordedAt: '2026-10-06T01:00:00.000Z',
+        },
+        acceptanceMaterials: {
+          ...item.acceptanceMaterials,
+          ACCEPTANCE_NOTICE: {
+            available: [],
+            frozen: [{ ...selectedFile, contentVersionId: frozenVersionId }],
+            later: [],
+          },
+        },
+      };
+      await wrapper.setProps({ item: observed });
+      expect(wrapper.text()).toContain('本次提交结果尚未确认');
+      expect(wrapper.text()).not.toContain('正式立案登记已完成');
+      expect(wrapper.find('[data-test="acceptance-retry"]').exists()).toBe(
+        true,
+      );
+      expect(wrapper.emitted('changed')).toBeUndefined();
+      expect(workflowRefreshCount).toBe(1);
+      await wrapper.setProps({ item: { ...observed } });
+      expect(workflowRefreshCount).toBe(1);
+
+      await wrapper.get('[data-test="acceptance-retry"]').trigger('click');
+      await flushPromises();
+      expect(api.registerCaseAcceptance.mock.calls[1]).toEqual(originalRequest);
+      expect(wrapper.text()).toContain('案件阶段或版本已变化');
+      expect(wrapper.text()).not.toContain('正式立案登记已完成');
+      wrapper.unmount();
+    },
+  );
+
+  it('refreshes workflow counts when a hearing record is observed before the POST becomes unknown', async () => {
+    let rejectRegistration!: () => void;
+    api.registerCaseAcceptance.mockReturnValueOnce(
+      new Promise((_resolve, reject) => {
+        rejectRegistration = () =>
+          reject(new ApiError('timeout', 0, 'TIMEOUT'));
+      }),
+    );
+    const wrapper = mountPanel();
+    await wrapper
+      .get('[data-test="acceptance-accepted-at"]')
+      .setValue('2026-10-05');
+    await wrapper
+      .get('[data-test="acceptance-court-case-no"]')
+      .setValue('甲0101民初1号');
+    await wrapper.get('[data-test="acceptance-register"]').trigger('click');
+    await wrapper.setProps({
+      item: {
+        ...baseItem,
+        stage: 'WAITING_HEARING',
+        version: 7,
+        canRegisterAcceptance: false,
+        acceptance: {
+          acceptedAt: '2026-10-05',
+          courtCaseNo: '甲0101民初1号',
+          recordedAt: '2026-10-06T01:00:00.000Z',
+        },
+      },
+    });
+    rejectRegistration();
+    await flushPromises();
+    expect(workflowRefreshCount).toBe(1);
+    expect(wrapper.find('[data-test="acceptance-retry"]').exists()).toBe(true);
+    expect(wrapper.text()).toContain('本次提交结果尚未确认');
+    expect(wrapper.emitted('changed')).toBeUndefined();
+    wrapper.unmount();
   });
 
   it('ignores a material upload that completes after the active account changes', async () => {
@@ -203,7 +342,6 @@ describe('case acceptance panel', () => {
           acceptedAt: '2026-10-05',
           courtCaseNo: '甲0101民初1号',
           recordedAt: '2026-10-06T01:00:00.000Z',
-          recordedByUserId: 'user-1',
         },
         acceptanceMaterials: {
           ...baseItem.acceptanceMaterials,
@@ -213,7 +351,7 @@ describe('case acceptance panel', () => {
             later: [laterFile],
           },
         },
-      } as unknown as CaseDetail,
+      },
     });
 
     const later = wrapper
@@ -247,7 +385,7 @@ describe('case acceptance panel', () => {
           later: [],
         },
       },
-    } as unknown as CaseDetail;
+    } satisfies TestItem;
     const wrapper = mountPanel(item);
     await wrapper
       .get('[data-test="acceptance-accepted-at"]')
@@ -268,7 +406,7 @@ describe('case acceptance panel', () => {
             later: [],
           },
         },
-      } as unknown as CaseDetail,
+      },
     });
 
     expect(

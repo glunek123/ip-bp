@@ -105,20 +105,14 @@ watch(
   { immediate: true, flush: 'sync' },
 );
 watch(
-  [() => props.item.acceptance, () => props.item.stage] as const,
-  ([acceptance]) => {
-    const request = unknownRequest.value;
+  [() => props.item.stage, () => unknownRequest.value !== null] as const,
+  ([stage, hasUnknownRequest], [previousStage, previouslyUnknown]) => {
     if (
-      request &&
-      acceptance &&
-      acceptance.acceptedAt === request.acceptedAt &&
-      acceptance.courtCaseNo === request.courtCaseNo.trim()
+      hasUnknownRequest &&
+      stage === 'WAITING_HEARING' &&
+      (previousStage !== stage || !previouslyUnknown)
     ) {
-      unknownRequest.value = null;
-      success.value = '正式立案登记已完成，案件当前阶段为待开庭。';
-      requestFingerprint = '';
-      requestKey = '';
-      emit('changed');
+      notifyWorkflowChanged();
     }
   },
   { flush: 'sync' },
@@ -260,7 +254,6 @@ async function register(input: RegisterCaseAcceptanceInput): Promise<void> {
     requestKey = '';
     notifyWorkflowChanged();
     emit('changed');
-    emit('refresh');
   } catch (reason) {
     if (!isCurrent(context)) return;
     error.value = failureMessage(reason);
@@ -434,6 +427,9 @@ async function download(file: CaseFile): Promise<void> {
 
     <p v-if="success" role="status">{{ success }}</p>
     <p v-if="error" class="submit-error" role="alert">{{ error }}</p>
+    <p v-if="unknownRequest && item.acceptance" class="field-help">
+      案件已有正式立案记录，本次提交结果尚未确认；请使用相同请求重试核对。
+    </p>
     <ElButton
       v-if="unknownRequest"
       type="primary"
