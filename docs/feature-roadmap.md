@@ -1,6 +1,6 @@
 # 功能开发路线图
 
-更新日期：2026-10-06。CORE-CA-005提交立案及用户确认的SD-44律师身份前置补齐均已验收，尚未推送／合并；此前NT-008～010与CA-001～004均已集成`main`。SD-44的真实律师账号、用户名分派与已实现正常动作授权，在组合候选`03c4070`通过独立Sol终审、Level 3完整verify及隔离PostgreSQL／Chromium176/176；证据与集成边界见[验证记录](spec/v0.1/VALIDATION.md)。唯一Current仍为CORE-CA-006正式受理（待领取），CORE-CA-007开庭后推进为Next；须先按授权集成并核对组合tree，本轮不实现CA-006。
+更新日期：2026-10-06。CORE-CA-005提交立案及用户确认的SD-44律师身份前置补齐均已验收，任务分支已推送、尚未合并；此前NT-008～010与CA-001～004均已集成`main`。SD-44的真实律师账号、用户名分派与已实现正常动作授权，在组合候选`03c4070`通过独立Sol终审、Level 3完整verify及隔离PostgreSQL／Chromium176/176；证据与集成边界见[验证记录](spec/v0.1/VALIDATION.md)。唯一Current仍为CORE-CA-006正式受理（待领取），CORE-CA-007开庭后推进为Next；合并前测试环境核对因Windows保留55433端口而受阻，解除后按已获授权核对组合tree并领取，本轮不先行开发CA-006。
 
 本文只回答“已经做到哪里、下一步做什么、之后按什么依赖顺序做”。详细业务规则仍以 [`docs/spec/`](spec/) 为准，核心主线的编码级字段、附件与存储边界以[核心业务字段、附件与存储契约](superpowers/specs/2026-09-21-core-flow-field-material-contract.md)为准，技术方案以设计文档为准，当前切片的技术任务以实施计划为准，实际验证结果以 [`docs/spec/v0.1/VALIDATION.md`](spec/v0.1/VALIDATION.md) 为准；[`docs/project-status.md`](project-status.md)仅保留当前恢复摘要。
 
@@ -122,7 +122,7 @@
 
 **CORE-CA-005｜提交立案（已完成，待集成）。**
 
-固定候选`b33462401fa128742dc2b427c8375682454fe05e`、tree`ea684d26264c064022025617b5d11c7f08eecc43`通过独立Sol Task／Final Review、Level 2逐项门禁及隔离PostgreSQL／Chromium27/27，证据见[验证记录](spec/v0.1/VALIDATION.md)。有权运营从真实法院目录选择或录入法院，填写提交日期并上传精确证据版本，单案原子从`WAITING_FILING`进入`WAITING_FORMAL_ACCEPTANCE`；事实、冻结材料、审计与幂等回执持久化。客户新阶段可读但不可获取内部提交事实／文件，不包含正式受理；尚未推送／合并。
+固定候选`b33462401fa128742dc2b427c8375682454fe05e`、tree`ea684d26264c064022025617b5d11c7f08eecc43`通过独立Sol Task／Final Review、Level 2逐项门禁及隔离PostgreSQL／Chromium27/27，证据见[验证记录](spec/v0.1/VALIDATION.md)。有权运营从真实法院目录选择或录入法院，填写提交日期并上传精确证据版本，单案原子从`WAITING_FILING`进入`WAITING_FORMAL_ACCEPTANCE`；事实、冻结材料、审计与幂等回执持久化。客户新阶段可读但不可获取内部提交事实／文件，不包含正式受理；包含SD-44的任务分支已推送，尚未合并。
 
 ### Current Slice
 
