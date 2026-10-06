@@ -11,6 +11,7 @@ import { CaseComplaintService } from './case-complaint.service';
 import { CaseComplaintConfirmationService } from './case-complaint-confirmation.service';
 import { CaseComplaintMailingService } from './case-complaint-mailing.service';
 import { CaseFilingService } from './case-filing.service';
+import { CaseAcceptanceService } from './case-acceptance.service';
 import { FilingCourtService } from './filing-court.service';
 import { ClientCaseController } from './client-case.controller';
 import { ClientCaseService } from './client-case.service';
@@ -38,6 +39,7 @@ import { LawyerCaseController } from './lawyer-case.controller';
     CaseComplaintConfirmationService,
     CaseComplaintMailingService,
     CaseFilingService,
+    CaseAcceptanceService,
     FilingCourtService,
     ClientCaseService,
     LawyerAccountService,

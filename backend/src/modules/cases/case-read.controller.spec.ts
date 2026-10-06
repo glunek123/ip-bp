@@ -12,6 +12,7 @@ import { CaseComplaintService } from './case-complaint.service';
 import { CaseComplaintConfirmationService } from './case-complaint-confirmation.service';
 import { CaseComplaintMailingService } from './case-complaint-mailing.service';
 import { CaseFilingService } from './case-filing.service';
+import { CaseAcceptanceService } from './case-acceptance.service';
 import { FilingCourtService } from './filing-court.service';
 
 const routeCaseId = '33333333-3333-4333-8333-333333333333';
@@ -45,6 +46,7 @@ describe('internal complaint mailing route identity', () => {
       {} as never,
       mailing as never,
       {} as CaseFilingService,
+      {} as CaseAcceptanceService,
       {} as FilingCourtService,
     );
     expect(() =>
@@ -69,6 +71,7 @@ describe('case read OpenAPI contract', () => {
         { provide: CaseComplaintConfirmationService, useValue: {} },
         { provide: CaseComplaintMailingService, useValue: {} },
         { provide: CaseFilingService, useValue: {} },
+        { provide: CaseAcceptanceService, useValue: {} },
         { provide: FilingCourtService, useValue: {} },
       ],
     })
@@ -129,6 +132,9 @@ describe('case read OpenAPI contract', () => {
       ).toBeDefined();
       expect(
         document.paths['/api/v1/cases/{id}/filing-submit']?.post,
+      ).toBeDefined();
+      expect(
+        document.paths['/api/v1/cases/{id}/acceptance-register']?.post,
       ).toBeDefined();
       expect(document.components?.schemas?.CaseFeeDto).toMatchObject({
         properties: {

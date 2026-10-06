@@ -33,6 +33,9 @@ export const materialCategories = [
   'MAIL_RECEIPT',
   'FILING_EVIDENCE',
   'FILING_SCREENSHOT',
+  'ACCEPTANCE_NOTICE',
+  'PAYMENT_LIST',
+  'SERVICE_DOCUMENT',
 ] as const;
 export type MaterialCategoryValue = (typeof materialCategories)[number];
 export const materialPurposes = [
@@ -48,6 +51,9 @@ export const materialPurposes = [
   'MAIL_RECEIPT',
   'FILING_EVIDENCE',
   'FILING_SCREENSHOT',
+  'ACCEPTANCE_NOTICE',
+  'PAYMENT_LIST',
+  'SERVICE_DOCUMENT',
 ] as const;
 export type MaterialPurposeValue = (typeof materialPurposes)[number];
 

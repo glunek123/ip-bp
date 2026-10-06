@@ -31,6 +31,7 @@ import { CaseComplaintService } from './modules/cases/case-complaint.service';
 import { CaseComplaintConfirmationService } from './modules/cases/case-complaint-confirmation.service';
 import { CaseComplaintMailingService } from './modules/cases/case-complaint-mailing.service';
 import { CaseFilingService } from './modules/cases/case-filing.service';
+import { CaseAcceptanceService } from './modules/cases/case-acceptance.service';
 import { FilingCourtService } from './modules/cases/filing-court.service';
 
 describe('CORE-LD-002 OpenAPI contract', () => {
@@ -67,6 +68,7 @@ describe('CORE-LD-002 OpenAPI contract', () => {
         { provide: CaseComplaintConfirmationService, useValue: {} },
         { provide: CaseComplaintMailingService, useValue: {} },
         { provide: CaseFilingService, useValue: {} },
+        { provide: CaseAcceptanceService, useValue: {} },
         { provide: FilingCourtService, useValue: {} },
       ],
     })
@@ -161,6 +163,12 @@ describe('CORE-LD-002 OpenAPI contract', () => {
       '/api/v1/cases/{id}/filing-submit',
       '201',
       'SubmitCaseFilingResponseDto',
+    ],
+    [
+      'post',
+      '/api/v1/cases/{id}/acceptance-register',
+      '201',
+      'RegisterCaseAcceptanceResponseDto',
     ],
   ] as const)(
     'documents %s %s response %s',

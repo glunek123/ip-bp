@@ -151,6 +151,9 @@ const allowedMimeTypes = {
     'image/png',
   ]),
   FILING_SCREENSHOT: new Set(['application/pdf', 'image/jpeg', 'image/png']),
+  ACCEPTANCE_NOTICE: new Set(['application/pdf', 'image/jpeg', 'image/png']),
+  PAYMENT_LIST: new Set(['application/pdf', 'image/jpeg', 'image/png']),
+  SERVICE_DOCUMENT: new Set(['application/pdf', 'image/jpeg', 'image/png']),
 } as const;
 
 @Injectable()
@@ -2082,6 +2085,88 @@ export class MaterialService {
     }));
   }
 
+  async freezeCaseAcceptanceReferences(
+    transaction: MaterialTransactionClient,
+    actor: ActorContext,
+    caseId: string,
+    acceptanceId: string,
+    facts: readonly ValidatedMaterialVersionFact[],
+    actionEventId: string,
+  ): Promise<void> {
+    for (const fact of facts) {
+      const validation = this.validatedVersionFacts.get(fact);
+      const canonical = validation?.canonicalFact;
+      if (
+        validation?.transaction !== transaction ||
+        canonical?.departmentId !== actor.departmentId ||
+        canonical.ownerType !== 'CASE' ||
+        canonical.ownerId !== caseId ||
+        !['ACCEPTANCE_NOTICE', 'PAYMENT_LIST', 'SERVICE_DOCUMENT'].includes(
+          canonical.category,
+        ) ||
+        canonical.purpose !== canonical.category ||
+        !allowedMimeTypes[canonical.category].has(canonical.mimeType) ||
+        canonical.sizeBytes > BigInt(materialFileLimit(canonical.category))
+      )
+        throw this.invalidVersion();
+      await transaction.caseAcceptanceVersion.create({
+        data: {
+          acceptanceId,
+          caseId,
+          departmentId: actor.departmentId,
+          materialId: canonical.materialId,
+          contentVersionId: canonical.contentVersionId,
+          category: canonical.category,
+        },
+      });
+      await transaction.materialReference.create({
+        data: {
+          departmentId: actor.departmentId,
+          resourceType: 'case',
+          resourceId: caseId,
+          purpose: canonical.category,
+          materialId: canonical.materialId,
+          contentVersionId: canonical.contentVersionId,
+          actionEventId,
+        },
+      });
+    }
+  }
+
+  async listFrozenCaseAcceptanceFiles(actor: ActorContext, caseId: string) {
+    await this.authorizeOwner(actor, 'CASE', caseId, 'read');
+    const references = await this.database.materialReference.findMany({
+      where: {
+        departmentId: actor.departmentId,
+        resourceType: 'case',
+        resourceId: caseId,
+        purpose: {
+          in: ['ACCEPTANCE_NOTICE', 'PAYMENT_LIST', 'SERVICE_DOCUMENT'],
+        },
+        actionEvent: {
+          action: 'case.acceptance.registered',
+          resourceType: 'CASE',
+          resourceId: caseId,
+          departmentId: actor.departmentId,
+        },
+      },
+      orderBy: { createdAt: 'asc' },
+      select: {
+        purpose: true,
+        materialId: true,
+        contentVersionId: true,
+        contentVersion: { select: { originalFilename: true, mimeType: true } },
+      },
+    });
+    return references.map((reference) => ({
+      purpose: reference.purpose,
+      materialId: reference.materialId,
+      contentVersionId: reference.contentVersionId,
+      originalFilename: reference.contentVersion.originalFilename,
+      mimeType: reference.contentVersion.mimeType,
+    }));
+  }
+
   async listFrozenCaseComplaintMailingFiles(
     actor: ActorContext,
     caseId: string,
@@ -2151,7 +2236,15 @@ export class MaterialService {
             (lawyerCase.stage === 'WAITING_FILING' &&
               ['FILING_EVIDENCE', 'FILING_SCREENSHOT'].includes(
                 notaryCategory ?? '',
-              ))
+              )) ||
+            (['WAITING_FORMAL_ACCEPTANCE', 'WAITING_HEARING'].includes(
+              lawyerCase.stage,
+            ) &&
+              [
+                'ACCEPTANCE_NOTICE',
+                'PAYMENT_LIST',
+                'SERVICE_DOCUMENT',
+              ].includes(notaryCategory ?? ''))
           )
         )
           throw this.versionConflict();
@@ -2220,6 +2313,13 @@ export class MaterialService {
             record.stage === 'WAITING_FILING' &&
             (notaryCategory === 'FILING_EVIDENCE' ||
               notaryCategory === 'FILING_SCREENSHOT')
+          ) &&
+          !(
+            (record.stage === 'WAITING_FORMAL_ACCEPTANCE' ||
+              record.stage === 'WAITING_HEARING') &&
+            (notaryCategory === 'ACCEPTANCE_NOTICE' ||
+              notaryCategory === 'PAYMENT_LIST' ||
+              notaryCategory === 'SERVICE_DOCUMENT')
           )
         )
           throw this.versionConflict();
@@ -2232,7 +2332,10 @@ export class MaterialService {
                 ? 'case.complaint.confirm'
                 : record.stage === 'WAITING_FILING'
                   ? 'case.filing.submit'
-                  : 'case.complaint.mail',
+                  : record.stage === 'WAITING_FORMAL_ACCEPTANCE' ||
+                      record.stage === 'WAITING_HEARING'
+                    ? 'case.acceptance.register'
+                    : 'case.complaint.mail',
             {
               departmentId: record.departmentId,
               responsibleUserId: record.responsibleUserId,
@@ -2530,6 +2633,9 @@ export class MaterialService {
               'MAIL_RECEIPT',
               'FILING_EVIDENCE',
               'FILING_SCREENSHOT',
+              'ACCEPTANCE_NOTICE',
+              'PAYMENT_LIST',
+              'SERVICE_DOCUMENT',
             ],
           },
         },
@@ -2714,6 +2820,11 @@ export class MaterialService {
           input.category === 'FILING_EVIDENCE' ||
           input.category === 'FILING_SCREENSHOT') &&
         input.purpose === input.category) ||
+      (input.ownerType === 'CASE' &&
+        (input.category === 'ACCEPTANCE_NOTICE' ||
+          input.category === 'PAYMENT_LIST' ||
+          input.category === 'SERVICE_DOCUMENT') &&
+        input.purpose === input.category) ||
       (input.ownerType === 'NOTARY_MATTER' &&
         input.category === 'NOTARY_OPENING_PHOTO' &&
         input.purpose === 'NOTARY_OPENING_PHOTO') ||
@@ -2823,7 +2934,10 @@ function toMaterialPurpose(value: string): MaterialPurposeValue {
     value === 'AUTHORIZATION' ||
     value === 'MAIL_RECEIPT' ||
     value === 'FILING_EVIDENCE' ||
-    value === 'FILING_SCREENSHOT'
+    value === 'FILING_SCREENSHOT' ||
+    value === 'ACCEPTANCE_NOTICE' ||
+    value === 'PAYMENT_LIST' ||
+    value === 'SERVICE_DOCUMENT'
   ) {
     return value;
   }
@@ -2842,7 +2956,10 @@ function materialLimit(category: keyof typeof allowedMimeTypes): number {
             category === 'COMPLAINT' ||
             category === 'AUTHORIZATION' ||
             category === 'MAIL_RECEIPT' ||
-            category === 'FILING_SCREENSHOT'
+            category === 'FILING_SCREENSHOT' ||
+            category === 'ACCEPTANCE_NOTICE' ||
+            category === 'PAYMENT_LIST' ||
+            category === 'SERVICE_DOCUMENT'
           ? 10
           : 20;
 }
@@ -2852,7 +2969,10 @@ function materialFileLimit(category: keyof typeof allowedMimeTypes): number {
     category === 'NOTARY_DISCLOSURE' ||
     category === 'COMPLAINT' ||
     category === 'AUTHORIZATION' ||
-    category === 'FILING_EVIDENCE'
+    category === 'FILING_EVIDENCE' ||
+    category === 'ACCEPTANCE_NOTICE' ||
+    category === 'PAYMENT_LIST' ||
+    category === 'SERVICE_DOCUMENT'
     ? 50 * 1024 * 1024
     : 20 * 1024 * 1024;
 }

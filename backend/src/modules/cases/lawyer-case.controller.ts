@@ -20,6 +20,8 @@ import { CaseComplaintService } from './case-complaint.service';
 import { CaseComplaintConfirmationService } from './case-complaint-confirmation.service';
 import { CaseComplaintMailingService } from './case-complaint-mailing.service';
 import { CaseFilingService } from './case-filing.service';
+import { CaseAcceptanceService } from './case-acceptance.service';
+import { RegisterCaseAcceptanceDto } from './case-acceptance.dto';
 import { FilingCourtService } from './filing-court.service';
 import { SubmitCaseComplaintDto } from './case-complaint.dto';
 import { ConfirmCaseComplaintDto } from './case-complaint-confirmation.dto';
@@ -37,6 +39,7 @@ export class LawyerCaseController {
     private readonly confirmation: CaseComplaintConfirmationService,
     private readonly mailing: CaseComplaintMailingService,
     private readonly filing: CaseFilingService,
+    private readonly acceptance: CaseAcceptanceService,
     private readonly courts: FilingCourtService,
   ) {}
 
@@ -131,5 +134,15 @@ export class LawyerCaseController {
   ) {
     this.lawyer(actor);
     return this.filing.submit(actor, id, body);
+  }
+
+  @Post(':id/acceptance-register')
+  registerAcceptance(
+    @CurrentActor() actor: ActorContext,
+    @Param('id', new ParseUUIDPipe()) id: string,
+    @Body() body: RegisterCaseAcceptanceDto,
+  ) {
+    this.lawyer(actor);
+    return this.acceptance.register(actor, id, body);
   }
 }

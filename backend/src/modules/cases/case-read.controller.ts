@@ -31,6 +31,11 @@ import { CaseComplaintService } from './case-complaint.service';
 import { CaseComplaintConfirmationService } from './case-complaint-confirmation.service';
 import { CaseComplaintMailingService } from './case-complaint-mailing.service';
 import { CaseFilingService } from './case-filing.service';
+import { CaseAcceptanceService } from './case-acceptance.service';
+import {
+  RegisterCaseAcceptanceDto,
+  RegisterCaseAcceptanceResponseDto,
+} from './case-acceptance.dto';
 import { FilingCourtService } from './filing-court.service';
 import {
   CreateFilingCourtDto,
@@ -64,6 +69,7 @@ export class CaseReadController {
     private readonly confirmation: CaseComplaintConfirmationService,
     private readonly mailing: CaseComplaintMailingService,
     private readonly filing: CaseFilingService,
+    private readonly acceptance: CaseAcceptanceService,
     private readonly courts: FilingCourtService,
   ) {}
 
@@ -163,5 +169,15 @@ export class CaseReadController {
     @Body() body: SubmitCaseFilingDto,
   ) {
     return this.filing.submit(actor, id, body);
+  }
+
+  @Post(':id/acceptance-register')
+  @ApiCreatedResponse({ type: RegisterCaseAcceptanceResponseDto })
+  registerAcceptance(
+    @CurrentActor() actor: ActorContext,
+    @Param('id', new ParseUUIDPipe()) id: string,
+    @Body() body: RegisterCaseAcceptanceDto,
+  ) {
+    return this.acceptance.register(actor, id, body);
   }
 }

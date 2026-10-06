@@ -87,7 +87,8 @@ export class CaseReadService {
       | 'WAITING_COMPLAINT_CONFIRMATION'
       | 'WAITING_COMPLAINT_STAMP'
       | 'WAITING_FILING'
-      | 'WAITING_FORMAL_ACCEPTANCE',
+      | 'WAITING_FORMAL_ACCEPTANCE'
+      | 'WAITING_HEARING',
   ) {
     const principal = await this.scope(actor);
     const baseWhere: Prisma.CaseWhereInput = {
@@ -204,6 +205,35 @@ export class CaseReadService {
                   ? { teamId: item.responsibleMembership.teamId }
                   : {}),
               }))),
+          canRegisterAcceptance:
+            item.stage === 'WAITING_FORMAL_ACCEPTANCE' &&
+            (principal === 'LAWYER' ||
+              (await this.access.canAuthorizeCase(
+                actor,
+                'case.acceptance.register',
+                {
+                  departmentId: actor.departmentId,
+                  responsibleUserId: item.responsibleUserId,
+                  ...(item.responsibleMembership.teamId
+                    ? { teamId: item.responsibleMembership.teamId }
+                    : {}),
+                },
+              ))),
+          canUploadAcceptanceMaterials:
+            (item.stage === 'WAITING_FORMAL_ACCEPTANCE' ||
+              item.stage === 'WAITING_HEARING') &&
+            (principal === 'LAWYER' ||
+              (await this.access.canAuthorizeCase(
+                actor,
+                'case.acceptance.register',
+                {
+                  departmentId: actor.departmentId,
+                  responsibleUserId: item.responsibleUserId,
+                  ...(item.responsibleMembership.teamId
+                    ? { teamId: item.responsibleMembership.teamId }
+                    : {}),
+                },
+              ))),
           createdAt: item.createdAt.toISOString(),
         })),
       ),
@@ -229,6 +259,9 @@ export class CaseReadService {
         WAITING_FORMAL_ACCEPTANCE:
           grouped.find((row) => row.stage === 'WAITING_FORMAL_ACCEPTANCE')
             ?._count._all ?? 0,
+        WAITING_HEARING:
+          grouped.find((row) => row.stage === 'WAITING_HEARING')?._count._all ??
+          0,
       },
     };
   }
@@ -281,6 +314,14 @@ export class CaseReadService {
             recordedAt: true,
             recordedByUserId: true,
             mediationNo: true,
+          },
+        },
+        acceptance: {
+          select: {
+            acceptedAt: true,
+            courtCaseNo: true,
+            recordedAt: true,
+            recordedByUserId: true,
           },
         },
         createdAt: true,
@@ -369,6 +410,17 @@ export class CaseReadService {
       record.filingSubmission == null
         ? []
         : await this.materials.listFrozenCaseFilingFiles(actor, id);
+    const acceptanceFrozen =
+      record.acceptance == null
+        ? []
+        : await this.materials.listFrozenCaseAcceptanceFiles(actor, id);
+    const acceptanceOwned =
+      record.stage === 'WAITING_FORMAL_ACCEPTANCE' || record.acceptance != null
+        ? await this.materials.listOwnerMaterials(actor, 'CASE', id)
+        : { items: [] };
+    const acceptanceFrozenIds = new Set(
+      acceptanceFrozen.map((reference) => reference.contentVersionId),
+    );
     const file = (ref: (typeof frozen)[number]) => ({
       materialId: ref.materialId,
       contentVersionId: ref.contentVersionId,
@@ -442,6 +494,35 @@ export class CaseReadService {
               ? { teamId: record.responsibleMembership.teamId }
               : {}),
           }))),
+      canRegisterAcceptance:
+        record.stage === 'WAITING_FORMAL_ACCEPTANCE' &&
+        (principal === 'LAWYER' ||
+          (await this.access.canAuthorizeCase(
+            actor,
+            'case.acceptance.register',
+            {
+              departmentId: actor.departmentId,
+              responsibleUserId: record.responsibleUserId,
+              ...(record.responsibleMembership.teamId
+                ? { teamId: record.responsibleMembership.teamId }
+                : {}),
+            },
+          ))),
+      canUploadAcceptanceMaterials:
+        (record.stage === 'WAITING_FORMAL_ACCEPTANCE' ||
+          record.stage === 'WAITING_HEARING') &&
+        (principal === 'LAWYER' ||
+          (await this.access.canAuthorizeCase(
+            actor,
+            'case.acceptance.register',
+            {
+              departmentId: actor.departmentId,
+              responsibleUserId: record.responsibleUserId,
+              ...(record.responsibleMembership.teamId
+                ? { teamId: record.responsibleMembership.teamId }
+                : {}),
+            },
+          ))),
       complaint:
         record.complaintSubmittedAt == null
           ? null
@@ -522,6 +603,64 @@ export class CaseReadService {
                 .filter((ref) => ref.purpose === 'FILING_SCREENSHOT')
                 .map(file),
             },
+      acceptance:
+        record.acceptance == null
+          ? null
+          : {
+              acceptedAt: record.acceptance.acceptedAt
+                .toISOString()
+                .slice(0, 10),
+              courtCaseNo: record.acceptance.courtCaseNo,
+              recordedAt: record.acceptance.recordedAt.toISOString(),
+              recordedByUserId: record.acceptance.recordedByUserId,
+            },
+      acceptanceMaterials: Object.fromEntries(
+        (
+          ['ACCEPTANCE_NOTICE', 'PAYMENT_LIST', 'SERVICE_DOCUMENT'] as const
+        ).map((category) => [
+          category,
+          {
+            available: acceptanceOwned.items
+              .filter((material) => material.category === category)
+              .flatMap((material) =>
+                material.contentVersions
+                  .filter(
+                    (version) =>
+                      (record.acceptance == null ||
+                        version.createdAt <= record.acceptance.recordedAt) &&
+                      !acceptanceFrozenIds.has(version.id),
+                  )
+                  .map((version) => ({
+                    materialId: material.id,
+                    contentVersionId: version.id,
+                    originalFilename: version.originalFilename,
+                    mimeType: version.mimeType,
+                  })),
+              ),
+            frozen: acceptanceFrozen
+              .filter((ref) => ref.purpose === category)
+              .map(file),
+            later:
+              record.acceptance == null
+                ? []
+                : acceptanceOwned.items
+                    .filter((material) => material.category === category)
+                    .flatMap((material) =>
+                      material.contentVersions
+                        .filter(
+                          (version) =>
+                            version.createdAt > record.acceptance!.recordedAt,
+                        )
+                        .map((version) => ({
+                          materialId: material.id,
+                          contentVersionId: version.id,
+                          originalFilename: version.originalFilename,
+                          mimeType: version.mimeType,
+                        })),
+                    ),
+          },
+        ]),
+      ),
       createdAt: record.createdAt.toISOString(),
       courtCaseNo: record.courtCaseNo,
       department: record.department,
@@ -598,6 +737,8 @@ export class CaseReadService {
         canConfirmComplaint: detail.canConfirmComplaint,
         canMailComplaint: detail.canMailComplaint,
         canSubmitFiling: detail.canSubmitFiling,
+        canRegisterAcceptance: detail.canRegisterAcceptance,
+        canUploadAcceptanceMaterials: detail.canUploadAcceptanceMaterials,
         complaint:
           detail.complaint === null
             ? null
@@ -644,6 +785,15 @@ export class CaseReadService {
                 evidenceFiles: detail.filingSubmission.evidenceFiles,
                 screenshotFiles: detail.filingSubmission.screenshotFiles,
               },
+        acceptance:
+          detail.acceptance === null
+            ? null
+            : {
+                acceptedAt: detail.acceptance.acceptedAt,
+                courtCaseNo: detail.acceptance.courtCaseNo,
+                recordedAt: detail.acceptance.recordedAt,
+              },
+        acceptanceMaterials: detail.acceptanceMaterials,
         courtCaseNo: detail.courtCaseNo,
         customer: detail.customer,
         rightsHolder: detail.rightsHolder,

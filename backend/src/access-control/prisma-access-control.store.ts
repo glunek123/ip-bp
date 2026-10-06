@@ -35,6 +35,7 @@ const actionMap = {
   CASE_COMPLAINT_CONFIRM: 'case.complaint.confirm',
   CASE_COMPLAINT_MAIL: 'case.complaint.mail',
   CASE_FILING_SUBMIT: 'case.filing.submit',
+  CASE_ACCEPTANCE_REGISTER: 'case.acceptance.register',
   CLIENT_CASE_READ: 'client.case.read',
   CLIENT_CASE_COMPLAINT_MAIL: 'client.case.complaint.mail',
   NOTARY_OFFICE_MANAGE: 'notary.office.manage',
