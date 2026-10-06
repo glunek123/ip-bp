@@ -18,6 +18,7 @@ export async function verifyCaseAcceptanceMigration() {
     '20261006010000_add_case_acceptance_enums',
     '20261006011000_add_case_acceptance_facts',
     '20261006012000_add_case_acceptance_grants',
+    '20261006013000_seal_case_acceptance_versions',
   ];
   const previous = (await readdir(migrationRoot))
     .filter((name) => /^\d{14}_/u.test(name) && name < targets[0])
@@ -152,7 +153,7 @@ export async function verifyCaseAcceptanceMigration() {
     } finally {
       await client.query('SET session_replication_role = origin');
     }
-    await apply(targets);
+    await apply(targets.slice(0, 3));
     const upgrade = {
       oldFiling: await count(
         'SELECT COUNT(*) AS n FROM case_filing_submissions WHERE id=$1',
@@ -176,9 +177,38 @@ export async function verifyCaseAcceptanceMigration() {
       [caseId],
     );
     const auditId = randomUUID();
+    const selectedMaterialId = randomUUID();
+    const selectedVersionId = randomUUID();
+    const laterMaterialId = randomUUID();
+    const laterVersionId = randomUUID();
+    const seedNotice = async (materialId, versionId) => {
+      await client.query(
+        "INSERT INTO materials(id,department_id,owner_type,owner_id,category,purpose,updated_at) VALUES ($1,$2,'CASE',$3,'ACCEPTANCE_NOTICE','ACCEPTANCE_NOTICE',now())",
+        [materialId, departmentId, caseId],
+      );
+      await client.query(
+        "INSERT INTO content_versions(id,material_id,storage_key,original_filename,mime_type,size_bytes,sha256,uploaded_by) VALUES ($1,$2,$3,'受理通知.pdf','application/pdf',4,$4,$5)",
+        [versionId, materialId, `ca006/${versionId}`, 'a'.repeat(64), actorId],
+      );
+      await client.query(
+        'UPDATE materials SET current_version_id=$1 WHERE id=$2',
+        [versionId, materialId],
+      );
+    };
+    await seedNotice(selectedMaterialId, selectedVersionId);
     await client.query(
-      "INSERT INTO audit_events(id,department_id,actor_user_id,internal_actor_user_id,resource_type,resource_id,action) VALUES ($1,$2,$3,$3,'CASE',$4,'case.acceptance.registered')",
-      [auditId, departmentId, actorId, caseId],
+      "INSERT INTO audit_events(id,department_id,actor_user_id,internal_actor_user_id,resource_type,resource_id,action,details) VALUES ($1,$2,$3,$3,'CASE',$4,'case.acceptance.registered',$5::jsonb)",
+      [
+        auditId,
+        departmentId,
+        actorId,
+        caseId,
+        JSON.stringify({
+          acceptanceNoticeContentVersionIds: [selectedVersionId],
+          paymentListContentVersionIds: [],
+          serviceDocumentContentVersionIds: [],
+        }),
+      ],
     );
     const insertFact =
       'INSERT INTO case_acceptances(id,department_id,case_id,accepted_at,court_case_no,recorded_by_user_id,audit_event_id) VALUES ($1,$2,$3,$4,$5,$6,$7)';
@@ -219,6 +249,101 @@ export async function verifyCaseAcceptanceMigration() {
       randomUUID(),
     ]);
     await client.query(insertFact, params);
+    await client.query(
+      "INSERT INTO case_acceptance_versions(acceptance_id,case_id,department_id,material_id,content_version_id,category) VALUES ($1,$2,$3,$4,$5,'ACCEPTANCE_NOTICE')",
+      [params[0], caseId, departmentId, selectedMaterialId, selectedVersionId],
+    );
+    await client.query(
+      "INSERT INTO material_references(id,department_id,resource_type,resource_id,purpose,material_id,content_version_id,action_event_id) VALUES ($1,$2,'case',$3,'ACCEPTANCE_NOTICE',$4,$5,$6)",
+      [
+        randomUUID(),
+        departmentId,
+        caseId,
+        selectedMaterialId,
+        selectedVersionId,
+        auditId,
+      ],
+    );
+    const oldAcceptanceReceiptId = randomUUID();
+    await client.query(
+      'INSERT INTO case_acceptance_receipts(id,department_id,actor_user_id,case_id,idempotency_key,request_fingerprint,result_snapshot) VALUES ($1,$2,$3,$4,$5,$6,$7::jsonb)',
+      [
+        oldAcceptanceReceiptId,
+        departmentId,
+        actorId,
+        caseId,
+        'accepted-before-guard',
+        'b'.repeat(64),
+        JSON.stringify({ id: caseId, courtCaseNo: 'CA006-Court-No' }),
+      ],
+    );
+    await seedNotice(laterMaterialId, laterVersionId);
+    await apply(targets.slice(3));
+    Object.assign(upgrade, {
+      oldAcceptanceFact: await count(
+        'SELECT COUNT(*) AS n FROM case_acceptances WHERE id=$1 AND court_case_no=$2',
+        [params[0], 'CA006-Court-No'],
+      ),
+      oldAcceptanceReceipt: await count(
+        "SELECT COUNT(*) AS n FROM case_acceptance_receipts WHERE id=$1 AND result_snapshot->>'courtCaseNo'=$2",
+        [oldAcceptanceReceiptId, 'CA006-Court-No'],
+      ),
+      oldAcceptanceFrozen: await count(
+        'SELECT COUNT(*) AS n FROM case_acceptance_versions WHERE acceptance_id=$1 AND content_version_id=$2',
+        [params[0], selectedVersionId],
+      ),
+      oldAcceptanceAudit: await count(
+        "SELECT COUNT(*) AS n FROM audit_events WHERE id=$1 AND details->'acceptanceNoticeContentVersionIds' ? $2",
+        [auditId, selectedVersionId],
+      ),
+    });
+    const postRegistrationAppend = await sqlCode(
+      "INSERT INTO case_acceptance_versions(acceptance_id,case_id,department_id,material_id,content_version_id,category) VALUES ($1,$2,$3,$4,$5,'ACCEPTANCE_NOTICE')",
+      [params[0], caseId, departmentId, laterMaterialId, laterVersionId],
+    );
+    const parallelVersionIds = [randomUUID(), randomUUID()];
+    const parallelMaterialIds = [randomUUID(), randomUUID()];
+    for (let index = 0; index < 2; index++)
+      await seedNotice(parallelMaterialIds[index], parallelVersionIds[index]);
+    const secondClient = new Client({ connectionString: databaseUrl });
+    await secondClient.connect();
+    let parallelPostRegistrationAppends;
+    try {
+      await secondClient.query(`SET search_path TO "${schemas.upgrade}"`);
+      const insertion =
+        "INSERT INTO case_acceptance_versions(acceptance_id,case_id,department_id,material_id,content_version_id,category) VALUES ($1,$2,$3,$4,$5,'ACCEPTANCE_NOTICE')";
+      parallelPostRegistrationAppends = await Promise.all([
+        sqlCode(insertion, [
+          params[0],
+          caseId,
+          departmentId,
+          parallelMaterialIds[0],
+          parallelVersionIds[0],
+        ]),
+        secondClient
+          .query(insertion, [
+            params[0],
+            caseId,
+            departmentId,
+            parallelMaterialIds[1],
+            parallelVersionIds[1],
+          ])
+          .then(
+            () => null,
+            (error) => error.code ?? null,
+          ),
+      ]);
+    } finally {
+      await secondClient.end();
+    }
+    const frozenAfterRejected = await count(
+      'SELECT COUNT(*) AS n FROM case_acceptance_versions WHERE acceptance_id=$1',
+      [params[0]],
+    );
+    const originalFactReceiptAfterRejected = await count(
+      "SELECT COUNT(*) AS n FROM case_acceptances ca JOIN case_acceptance_receipts r ON r.case_id=ca.case_id AND r.department_id=ca.department_id JOIN audit_events a ON a.id=ca.audit_event_id WHERE ca.id=$1 AND r.id=$2 AND a.id=$3 AND ca.court_case_no='CA006-Court-No' AND r.result_snapshot->>'courtCaseNo'='CA006-Court-No' AND a.details->'acceptanceNoticeContentVersionIds' ? $4",
+      [params[0], oldAcceptanceReceiptId, auditId, selectedVersionId],
+    );
     const badVersion = await sqlCode(
       "INSERT INTO case_acceptance_versions(acceptance_id,case_id,department_id,material_id,content_version_id,category) VALUES ($1,$2,$3,$4,$5,'ACCEPTANCE_NOTICE')",
       [params[0], caseId, departmentId, randomUUID(), randomUUID()],
@@ -227,6 +352,26 @@ export async function verifyCaseAcceptanceMigration() {
       'UPDATE case_acceptances SET accepted_at=accepted_at WHERE id=$1',
       [params[0]],
     );
+    const immutableAuditUpdate = await sqlCode(
+      'UPDATE audit_events SET details=details WHERE id=$1',
+      [auditId],
+    );
+    const immutableAuditDelete = await sqlCode(
+      'DELETE FROM audit_events WHERE id=$1',
+      [auditId],
+    );
+    const oldInternalAuditId = randomUUID();
+    await client.query(
+      "INSERT INTO audit_events(id,department_id,actor_user_id,internal_actor_user_id,resource_type,resource_id,action) VALUES ($1,$2,$3,$3,'CASE',$4,'case.filing.submitted')",
+      [oldInternalAuditId, departmentId, actorId, caseId],
+    );
+    const relabelOldAuditToAcceptance = await sqlCode(
+      "UPDATE audit_events SET action='case.acceptance.registered' WHERE id=$1",
+      [oldInternalAuditId],
+    );
+    await client.query('DELETE FROM audit_events WHERE id=$1', [
+      oldInternalAuditId,
+    ]);
     const lawyerId = randomUUID(),
       profileId = randomUUID(),
       bindingId = randomUUID(),
@@ -289,23 +434,94 @@ export async function verifyCaseAcceptanceMigration() {
       "INSERT INTO audit_events(id,department_id,actor_user_id,lawyer_account_binding_id,resource_type,resource_id,action) VALUES ($1,$2,$3,$4,'CASE',$5,'case.acceptance.registered')",
       [randomUUID(), departmentId, lawyerId, bindingId, oldCaseId],
     );
+    const oldActionAuditId = randomUUID();
     await client.query(
       "INSERT INTO audit_events(id,department_id,actor_user_id,lawyer_account_binding_id,resource_type,resource_id,action) VALUES ($1,$2,$3,$4,'CASE',$5,'case.filing.submitted')",
-      [randomUUID(), departmentId, lawyerId, bindingId, oldCaseId],
+      [oldActionAuditId, departmentId, lawyerId, bindingId, oldCaseId],
     );
     const lawyerOldAction = await count(
       "SELECT COUNT(*) AS n FROM audit_events WHERE actor_user_id=$1 AND resource_id=$2 AND action='case.filing.submitted'",
       [lawyerId, oldCaseId],
+    );
+    const oldAuditUpdate = await sqlCode(
+      'UPDATE audit_events SET details=details WHERE id=$1',
+      [oldActionAuditId],
+    );
+    const oldAuditDelete = await sqlCode(
+      'DELETE FROM audit_events WHERE id=$1',
+      [oldActionAuditId],
+    );
+    await client.query('SET session_replication_role = replica');
+    try {
+      await client.query(
+        'INSERT INTO case_filing_submissions(id,department_id,case_id,court_id,court_name,submitted_at,recorded_by_user_id,audit_event_id) VALUES ($1,$2,$3,$4,$5,current_date,$6,$7)',
+        [
+          randomUUID(),
+          departmentId,
+          oldCaseId,
+          randomUUID(),
+          'Second court',
+          actorId,
+          randomUUID(),
+        ],
+      );
+    } finally {
+      await client.query('SET session_replication_role = origin');
+    }
+    await client.query(
+      "UPDATE cases SET stage='WAITING_HEARING',court_case_no='CA006-Second' WHERE id=$1",
+      [oldCaseId],
+    );
+    const incompleteAuditId = randomUUID();
+    await client.query(
+      "INSERT INTO audit_events(id,department_id,actor_user_id,internal_actor_user_id,resource_type,resource_id,action,details) VALUES ($1,$2,$3,$3,'CASE',$4,'case.acceptance.registered',$5::jsonb)",
+      [
+        incompleteAuditId,
+        departmentId,
+        actorId,
+        oldCaseId,
+        JSON.stringify({
+          acceptanceNoticeContentVersionIds: [randomUUID()],
+          paymentListContentVersionIds: [],
+          serviceDocumentContentVersionIds: [],
+        }),
+      ],
+    );
+    await client.query(
+      "INSERT INTO case_acceptances(id,department_id,case_id,accepted_at,court_case_no,recorded_by_user_id,audit_event_id) VALUES ($1,$2,$3,current_date,'CA006-Second',$4,$5)",
+      [randomUUID(), departmentId, oldCaseId, actorId, incompleteAuditId],
+    );
+    const incompleteReceipt = await sqlCode(
+      'INSERT INTO case_acceptance_receipts(id,department_id,actor_user_id,case_id,idempotency_key,request_fingerprint,result_snapshot) VALUES ($1,$2,$3,$4,$5,$6,$7::jsonb)',
+      [
+        randomUUID(),
+        departmentId,
+        actorId,
+        oldCaseId,
+        'missing-selected',
+        'c'.repeat(64),
+        JSON.stringify({ id: oldCaseId }),
+      ],
     );
     const constraints = {
       earlyDate,
       futureDate,
       wrongAudit,
       badVersion,
+      postRegistrationAppend,
+      parallelPostRegistrationAppends,
+      frozenAfterRejected,
+      originalFactReceiptAfterRejected,
       immutableFact,
+      immutableAuditUpdate,
+      immutableAuditDelete,
+      relabelOldAuditToAcceptance,
       lawyerNewAction,
       lawyerWrongStage,
       lawyerOldAction,
+      oldAuditUpdate,
+      oldAuditDelete,
+      incompleteReceipt,
     };
 
     await use(schemas.failure);
@@ -389,6 +605,35 @@ export async function verifyCaseAcceptanceMigration() {
       "SELECT COUNT(*) AS n FROM role_grants WHERE role_template_id=$1 AND action='case.acceptance.register'",
       [fRole],
     );
+    const oldVersionGuard = (
+      await client.query(
+        "SELECT prosrc FROM pg_proc WHERE proname='check_case_acceptance_version' AND pronamespace=current_schema()::regnamespace",
+      )
+    ).rows[0].prosrc;
+    await client.query(
+      'CREATE FUNCTION check_case_acceptance_receipt() RETURNS trigger AS $$ BEGIN RETURN NEW; END; $$ LANGUAGE plpgsql',
+    );
+    const sealFailed = await sqlCode(
+      await readFile(
+        resolve(migrationRoot, targets[3], 'migration.sql'),
+        'utf8',
+      ),
+    );
+    const sealNoPartial = await count(
+      "SELECT COUNT(*) AS n FROM pg_trigger WHERE tgrelid='audit_events'::regclass AND tgname='case_acceptance_audit_immutable'",
+    );
+    const sealGuardUnchanged = Number(
+      (
+        await client.query(
+          "SELECT prosrc FROM pg_proc WHERE proname='check_case_acceptance_version' AND pronamespace=current_schema()::regnamespace",
+        )
+      ).rows[0].prosrc === oldVersionGuard,
+    );
+    await client.query('DROP FUNCTION check_case_acceptance_receipt()');
+    await apply([targets[3]]);
+    const sealRecovered = await count(
+      "SELECT COUNT(*) AS n FROM pg_trigger WHERE tgrelid='audit_events'::regclass AND tgname='case_acceptance_audit_immutable'",
+    );
     const failure = {
       enumFailed,
       enumNoPartial,
@@ -398,6 +643,10 @@ export async function verifyCaseAcceptanceMigration() {
       grantsNoPartial,
       revisionNoPartial,
       recoveredGrant,
+      sealFailed,
+      sealNoPartial,
+      sealGuardUnchanged,
+      sealRecovered,
     };
     return { empty, upgrade, constraints, failure };
   } finally {

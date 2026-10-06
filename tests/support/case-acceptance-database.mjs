@@ -95,6 +95,14 @@ export async function clearCaseAcceptanceFixture() {
   await withClient(async (client) => {
     await client.query('BEGIN');
     try {
+      const departments = [
+        coreLeadFixtures.departmentA,
+        coreLeadFixtures.departmentB,
+      ];
+      await client.query(
+        "DELETE FROM material_references WHERE department_id=ANY($1::uuid[]) AND action_event_id IN (SELECT id FROM audit_events WHERE department_id=ANY($1::uuid[]) AND action='case.acceptance.registered')",
+        [departments],
+      );
       const tables = [
         'case_acceptance_receipts',
         'case_acceptance_versions',
@@ -105,10 +113,25 @@ export async function clearCaseAcceptanceFixture() {
       for (const table of tables)
         await client.query(
           `DELETE FROM "${table}" WHERE department_id = ANY($1::uuid[])`,
-          [[coreLeadFixtures.departmentA, coreLeadFixtures.departmentB]],
+          [departments],
         );
       for (const table of tables)
         await client.query(`ALTER TABLE "${table}" ENABLE TRIGGER USER`);
+      await client.query(
+        'ALTER TABLE audit_events DISABLE TRIGGER "case_acceptance_audit_immutable"',
+      );
+      await client.query(
+        "DELETE FROM audit_events WHERE department_id=ANY($1::uuid[]) AND action='case.acceptance.registered'",
+        [departments],
+      );
+      await client.query(
+        'ALTER TABLE audit_events ENABLE TRIGGER "case_acceptance_audit_immutable"',
+      );
+      const trigger = await client.query(
+        "SELECT tgenabled FROM pg_trigger WHERE tgrelid='audit_events'::regclass AND tgname='case_acceptance_audit_immutable'",
+      );
+      if (trigger.rows[0]?.tgenabled !== 'O')
+        throw new Error('Acceptance audit guard was not restored');
       await client.query('COMMIT');
     } catch (error) {
       await client.query('ROLLBACK');

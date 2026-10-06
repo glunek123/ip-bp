@@ -192,9 +192,17 @@ test('operator registers exact acceptance files and later uploads without client
     expectedVersion: 6,
     idempotencyKey: randomUUID(),
     acceptedAt: today(),
-    courtCaseNo: '  （2026）京01民初123号  ',
+    courtCaseNo: `  ${'案'.repeat(100)}  `,
     acceptanceNoticeContentVersionIds: [notice.contentVersionId],
   };
+  expect(
+    (
+      await request.post(`/api/v1/cases/${source.caseId}/acceptance-register`, {
+        headers: auth,
+        data: { ...body, courtCaseNo: `  ${'案'.repeat(101)}  ` },
+      })
+    ).status(),
+  ).toBe(400);
   const result = await json<ApiResult>(
     await request.post(`/api/v1/cases/${source.caseId}/acceptance-register`, {
       headers: auth,
