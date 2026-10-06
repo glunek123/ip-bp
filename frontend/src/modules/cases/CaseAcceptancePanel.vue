@@ -282,7 +282,7 @@ async function retry(): Promise<void> {
   if (!unknownRequest.value || submitting.value) return;
   await register(unknownRequest.value);
 }
-function supported(file: File): boolean {
+function supported(file: InstanceType<typeof globalThis.File>): boolean {
   const extension = file.name.toLowerCase().match(/\.[^.]+$/u)?.[0];
   const types = new Map([
     ['.pdf', 'application/pdf'],
@@ -292,7 +292,10 @@ function supported(file: File): boolean {
   ]);
   return extension !== undefined && types.get(extension) === file.type;
 }
-async function uploadFiles(event: Event, category: Category): Promise<void> {
+async function uploadFiles(
+  event: InstanceType<typeof globalThis.Event>,
+  category: Category,
+): Promise<void> {
   const input = event.target;
   if (!(input instanceof globalThis.HTMLInputElement)) return;
   const chosen = Array.from(input.files ?? []);
