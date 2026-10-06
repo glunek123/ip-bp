@@ -1,6 +1,6 @@
 # 功能开发路线图
 
-更新日期：2026-10-06。CORE-CA-005提交立案及SD-44律师身份前置补齐均已验收、推送并快进集成`main`；此前NT-008～010与CA-001～004已集成。测试端口修复的新候选`c3d78c9`通过独立Sol审查、完整verify及隔离PostgreSQL／Chromium176/176；集成`1e111e1`与实际业务候选之间仅有已核对的非执行性收口差异，证据边界见[验证记录](spec/v0.1/VALIDATION.md)。已从核实的main`3b5b596`建立CA-006任务分支；唯一Current为CORE-CA-006正式受理（已领取，待小粒度设计），CORE-CA-007开庭后推进为Next。本轮尚未开始CA-006业务实现。
+更新日期：2026-10-06。CORE-CA-005提交立案及SD-44律师身份前置补齐均已验收、推送并快进集成`main`；此前NT-008～010与CA-001～004已集成。测试端口修复的新候选`c3d78c9`通过独立Sol审查、完整verify及隔离PostgreSQL／Chromium176/176；集成`1e111e1`与实际业务候选之间仅有已核对的非执行性收口差异，证据边界见[验证记录](spec/v0.1/VALIDATION.md)。CA-006领取记录已同步main`7cd6525`；当前在其任务分支继续实施，唯一Current为CORE-CA-006正式受理（开发中），CORE-CA-007开庭后推进为Next。本切片尚未验收。
 
 本文只回答“已经做到哪里、下一步做什么、之后按什么依赖顺序做”。详细业务规则仍以 [`docs/spec/`](spec/) 为准，核心主线的编码级字段、附件与存储边界以[核心业务字段、附件与存储契约](superpowers/specs/2026-09-21-core-flow-field-material-contract.md)为准，技术方案以设计文档为准，当前切片的技术任务以实施计划为准，实际验证结果以 [`docs/spec/v0.1/VALIDATION.md`](spec/v0.1/VALIDATION.md) 为准；[`docs/project-status.md`](project-status.md)仅保留当前恢复摘要。
 
@@ -126,9 +126,9 @@
 
 ### Current Slice
 
-**CORE-CA-006｜正式受理（已领取，待小粒度设计）。**
+**CORE-CA-006｜正式受理（开发中）。**
 
-依赖CA-005提交立案；其与SD-44已验收、集成且组合tree已核对。已从main`3b5b59659b2b1d908fcf97ae488c8d3c8d8c4461`建立`codex/core-ca-006-formal-acceptance`正式领取，下一步小粒度设计及实施计划；本轮尚未开始业务实现。
+依赖已集成并核对组合tree的CA-005及SD-44；分支`codex/core-ca-006-formal-acceptance`。按[案件契约](spec/v0.1/modules/cases.md#core-ca-006-正式立案登记契约)与[实施计划](superpowers/plans/2026-10-06-case-formal-acceptance.md)实现“待正式立案→待开庭”；不提前实现开庭后推进，不预写门禁通过。
 
 ### Next Slice
 
