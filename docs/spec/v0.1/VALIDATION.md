@@ -17,6 +17,8 @@ verify于UTC`2026-10-06T05:15:36.0892241Z`开始、`05:20:05.7633042Z`结束；�
 
 其后的收口只补真实结果、完成状态、证据引用及对应已解释快照。已核对从c3d78c9到拟收口状态的累计diff、暂存／未暂存和相关未跟踪项，不混入代码、测试／输入、配置、依赖、迁移、业务契约／AC或环境变化。文档专项结果保存在`.local/case-lawyer/test-port-closeout-doc-check.log`；通过后方可提交集成。不称收口HEAD实跑上述门禁，不要求本记录写入自身提交哈希；目标分支与组合tree仍须核实，未部署或操作开发／生产数据库。
 
+2026-10-06集成事实：收口`1e111e138bbdfcd6fcecf5da57f1828a2db9cf21`、tree`866ac5c9af4550a08f06b97dbe6641d437b63c08`已按授权推送任务分支并从main基线`b28e0f35fa8de21f752145e43177b7defe450341`快进合入main，无新分叉或其他代码组合；`git ls-remote`核实两远端分支均为1e111e1。合并tree与收口分支一致，`c3d78c9..1e111e1`仅VALIDATION、路线图、恢复摘要及对应快照四文件，文档专项及合并后严格上下文均退出0；环境指纹与实跑候选一致，不因该文档收口重跑完整业务门禁。日志为`.local/case-lawyer/test-port-{feature-push,main-merge,main-context,main-push}.log`。随后仅补本集成事实与对应完成态；当前仍未实施CA-006，生产环境未操作。
+
 ## SD-44 律师身份与案件正常办理前置补齐（2026-10-06）
 
 实际通过Level 3完整门禁的CA-005＋SD-44组合候选为`03c407013fb48efd6dfc72b7ae14e847abc32bb8`、tree`8e1f98e8b18d91200102c192b68d72549650de5c`，分支`codex/core-ca-005-court-filing`，main基线`b28e0f35fa8de21f752145e43177b7defe450341`。本轮补齐已确认的真实律师身份与已实现正常动作，不开发CA-006，不推送／合并／部署。
