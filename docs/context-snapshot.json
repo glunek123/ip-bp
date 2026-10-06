@@ -1,6 +1,6 @@
 {
   "version": 1,
-  "recordedAt": "2026-10-06T05:12:34.919Z",
+  "recordedAt": "2026-10-06T05:14:43.161Z",
   "files": {
     ".cursor/rules/verified-feature-integration.mdc": "ffd2306612ba6f09749629c5adb9e645f7f37aa6ee27ff1bc1c3d8b14efeca38",
     ".env.example": "07211cde5c2b59efc21b619b752d4c9b871f0980d2d64ca3c146ad6151fd27ca",
@@ -386,7 +386,7 @@
     "docs/spec/v0.1/READINESS.md": "87614ce45cd618baa5cd45d7c3e376658687c7497504b5fcaac7035910b146df",
     "docs/spec/v0.1/README.md": "21febe0b087e9f3ef4e92724c082da45d524c131dbd1c96f1a5a48c5077b91ae",
     "docs/spec/v0.1/TECHNICAL-DESIGN.md": "a0eebe960a9ef0c5e7f364053cf39444cb919d0f762823e061d3721a690983a2",
-    "docs/spec/v0.1/VALIDATION.md": "b92a39b58b1a292d9278ac570eba4f9a5b120908c59d5b4fe818a21fd0ad366e",
+    "docs/spec/v0.1/VALIDATION.md": "c6f7f28ed423e6f9b5b7776610eeed35cadc292e9322d96e5758bf33c4e35a95",
     "docs/spec/v0.1/modules/calendar.md": "ca604f89e11e797c49c186286335064f051a9115819b468ab281735f84fb5daa",
     "docs/spec/v0.1/modules/cases.md": "63345c21a039a5cde4faed950f7789aab7f0417955b714a798573b7152650518",
     "docs/spec/v0.1/modules/customers.md": "4fd47e577a6c7fd9494e3758bac6c150391532735bf2fb156cd69b43b73d55d6",
