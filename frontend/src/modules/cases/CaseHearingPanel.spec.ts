@@ -188,10 +188,14 @@ describe('case hearing panel', () => {
     const wrapper = mountPanel(item);
     expect(wrapper.find('[data-test="hearing-save"]').exists()).toBe(false);
     expect(wrapper.text()).toContain('已到期的更正仍保持待判决');
-    await wrapper.get('[data-test="hearing-correction-reason"]').setValue('   ');
+    await wrapper
+      .get('[data-test="hearing-correction-reason"]')
+      .setValue('   ');
     expect(
-      (wrapper.get('[data-test="hearing-correct"]').element as HTMLButtonElement)
-        .disabled,
+      (
+        wrapper.get('[data-test="hearing-correct"]')
+          .element as HTMLButtonElement
+      ).disabled,
     ).toBe(true);
     await wrapper
       .get('[data-test="hearing-correction-reason"]')
@@ -228,6 +232,185 @@ describe('case hearing panel', () => {
     expect(wrapper.emitted('changed')).toHaveLength(1);
   });
 
+  it.each([
+    {
+      kind: 'schedule',
+      status: 502,
+      code: 'HTTP_ERROR',
+      hearingAt: '2026-10-05',
+    },
+    {
+      kind: 'schedule',
+      status: 503,
+      code: 'UPSTREAM_UNAVAILABLE',
+      hearingAt: null,
+    },
+    {
+      kind: 'correct',
+      status: 502,
+      code: 'HTTP_ERROR',
+      hearingAt: '2026-10-05',
+    },
+    {
+      kind: 'correct',
+      status: 503,
+      code: 'UPSTREAM_UNAVAILABLE',
+      hearingAt: null,
+    },
+  ] as const)(
+    'preserves an unknown $kind request after HTTP $status/$code and retries its original body',
+    async ({ kind, status, code, hearingAt }) => {
+      const correction = kind === 'correct';
+      const item: CaseDetail = correction
+        ? {
+            ...baseItem,
+            stage: 'WAITING_JUDGMENT',
+            canScheduleHearing: false,
+            canCorrectHearing: true,
+            hearing: {
+              ...baseItem.hearing,
+              currentArrangement: {
+                id: '80000000-0000-4000-8000-000000000011',
+                hearingAt: '2026-10-05',
+                source: 'SCHEDULE',
+                recordedAt: '2026-10-01T00:00:00.000Z',
+              },
+            },
+          }
+        : baseItem;
+      const failedCommand = correction
+        ? api.correctCaseHearing
+        : api.scheduleCaseHearing;
+      failedCommand
+        .mockRejectedValueOnce(new ApiError('proxy response', status, code))
+        .mockResolvedValueOnce(commandResult);
+
+      const wrapper = mountPanel(item);
+      if (hearingAt === null)
+        await wrapper.get('[data-test="hearing-clear-date"]').trigger('click');
+      else await wrapper.get('[data-test="hearing-date"]').setValue(hearingAt);
+      if (correction)
+        await wrapper
+          .get('[data-test="hearing-correction-reason"]')
+          .setValue('法院通知日期尚未确认');
+      await wrapper
+        .get(
+          correction
+            ? '[data-test="hearing-correct"]'
+            : '[data-test="hearing-save"]',
+        )
+        .trigger('click');
+      await flushPromises();
+
+      expect(wrapper.text()).toContain('结果暂时未知');
+      expect(wrapper.emitted('changed')).toBeUndefined();
+      expect(wrapper.emitted('refresh')).toBeUndefined();
+      expect(wrapper.find('[data-test="hearing-retry"]').exists()).toBe(true);
+      expect(
+        (
+          wrapper.get(
+            correction
+              ? '[data-test="hearing-correct"]'
+              : '[data-test="hearing-save"]',
+          ).element as HTMLButtonElement
+        ).disabled,
+      ).toBe(true);
+      expect(
+        (wrapper.get('[data-test="hearing-date"]').element as HTMLInputElement)
+          .disabled,
+      ).toBe(true);
+      if (correction)
+        expect(
+          (
+            wrapper.get('[data-test="hearing-correction-reason"]')
+              .element as HTMLTextAreaElement
+          ).disabled,
+        ).toBe(true);
+      const original = failedCommand.mock.calls[0];
+
+      const refreshedItem: CaseDetail = {
+        ...item,
+        version: 8,
+        hearing: {
+          ...item.hearing,
+          currentArrangement: {
+            id: '80000000-0000-4000-8000-000000000021',
+            hearingAt: '2026-10-30',
+            source: 'SCHEDULE',
+            recordedAt: '2026-10-07T00:00:00.000Z',
+          },
+        },
+      };
+      await wrapper.setProps({ item: refreshedItem });
+      expect(wrapper.find('[data-test="hearing-retry"]').exists()).toBe(true);
+      expect(wrapper.emitted('changed')).toBeUndefined();
+      expect(wrapper.emitted('refresh')).toBeUndefined();
+
+      await wrapper.get('[data-test="hearing-retry"]').trigger('click');
+      await flushPromises();
+      expect(failedCommand.mock.calls[1]).toEqual(original);
+      expect(failedCommand.mock.calls[1][1]).toEqual(
+        expect.objectContaining({
+          expectedVersion: 7,
+          idempotencyKey: expect.any(String),
+          hearingAt,
+          ...(correction ? { reason: '法院通知日期尚未确认' } : {}),
+        }),
+      );
+      expect(
+        correction ? api.scheduleCaseHearing : api.correctCaseHearing,
+      ).not.toHaveBeenCalled();
+      expect(wrapper.emitted('changed')).toHaveLength(1);
+    },
+  );
+
+  it.each(['schedule', 'correct'] as const)(
+    'keeps an explicit forbidden $kind rejection out of the unknown-outcome retry path',
+    async (kind) => {
+      const correction = kind === 'correct';
+      const item: CaseDetail = correction
+        ? {
+            ...baseItem,
+            stage: 'WAITING_JUDGMENT',
+            canScheduleHearing: false,
+            canCorrectHearing: true,
+            hearing: {
+              ...baseItem.hearing,
+              currentArrangement: {
+                id: '80000000-0000-4000-8000-000000000011',
+                hearingAt: '2026-10-05',
+                source: 'SCHEDULE',
+                recordedAt: '2026-10-01T00:00:00.000Z',
+              },
+            },
+          }
+        : baseItem;
+      const rejectedCommand = correction
+        ? api.correctCaseHearing
+        : api.scheduleCaseHearing;
+      rejectedCommand.mockRejectedValueOnce(
+        new ApiError('forbidden', 403, 'ACTION_FORBIDDEN'),
+      );
+      const wrapper = mountPanel(item);
+      await wrapper.get('[data-test="hearing-date"]').setValue('2026-10-05');
+      if (correction)
+        await wrapper
+          .get('[data-test="hearing-correction-reason"]')
+          .setValue('法院通知日期尚未确认');
+      await wrapper
+        .get(
+          correction
+            ? '[data-test="hearing-correct"]'
+            : '[data-test="hearing-save"]',
+        )
+        .trigger('click');
+      await flushPromises();
+      expect(wrapper.text()).toContain('当前账号无权办理此案件');
+      expect(wrapper.find('[data-test="hearing-retry"]').exists()).toBe(false);
+      expect(wrapper.emitted('changed')).toBeUndefined();
+    },
+  );
+
   it('reads latest case after a version race and exposes correction only when authorized', async () => {
     api.scheduleCaseHearing.mockRejectedValueOnce(
       new ApiError('version changed', 409, 'VERSION_CONFLICT'),
@@ -249,7 +432,9 @@ describe('case hearing panel', () => {
       },
     });
     expect(wrapper.find('[data-test="hearing-save"]').exists()).toBe(false);
-    expect(wrapper.find('[data-test="hearing-correction-reason"]').exists()).toBe(true);
+    expect(
+      wrapper.find('[data-test="hearing-correction-reason"]').exists(),
+    ).toBe(true);
   });
 
   it('ignores a late command response after switching to another case', async () => {
@@ -327,6 +512,8 @@ describe('case hearing panel', () => {
     };
     const wrapper = mountPanel(item, true, 'LAWYER:lawyer-1:1');
     expect(wrapper.find('[data-test="hearing-correct"]').exists()).toBe(false);
-    expect(wrapper.find('[data-test="hearing-schedule-form"]').exists()).toBe(false);
+    expect(wrapper.find('[data-test="hearing-schedule-form"]').exists()).toBe(
+      false,
+    );
   });
 });

@@ -136,9 +136,13 @@ function makeInput(): SaveCaseHearingInput {
 function isUnknownOutcome(reason: unknown): boolean {
   return (
     reason instanceof ApiError &&
-    ['NETWORK_ERROR', 'TIMEOUT', 'INTERNAL_ERROR', 'INVALID_RESPONSE'].includes(
-      reason.code,
-    )
+    (reason.status >= 500 ||
+      [
+        'NETWORK_ERROR',
+        'TIMEOUT',
+        'INTERNAL_ERROR',
+        'INVALID_RESPONSE',
+      ].includes(reason.code))
   );
 }
 function failureMessage(reason: unknown): string {
@@ -177,8 +181,7 @@ async function send(
         input,
         props.lawyer ? 'lawyer' : 'internal',
       );
-    else
-      await correctCaseHearing(context.id, input as CorrectCaseHearingInput);
+    else await correctCaseHearing(context.id, input as CorrectCaseHearingInput);
     if (!isCurrent(context)) return;
     unknownRequest.value = null;
     success.value = '开庭命令已受理，正在读取案件当前状态。';
@@ -187,9 +190,10 @@ async function send(
   } catch (reason) {
     if (!isCurrent(context)) return;
     error.value = failureMessage(reason);
-    if (isUnknownOutcome(reason)) unknownRequest.value = { kind, input } as
-      | { kind: 'schedule'; input: SaveCaseHearingInput }
-      | { kind: 'correct'; input: CorrectCaseHearingInput };
+    if (isUnknownOutcome(reason))
+      unknownRequest.value = { kind, input } as
+        | { kind: 'schedule'; input: SaveCaseHearingInput }
+        | { kind: 'correct'; input: CorrectCaseHearingInput };
     else if (
       reason instanceof ApiError &&
       ['VERSION_CONFLICT', 'INVALID_STATE', 'IDEMPOTENCY_CONFLICT'].includes(
@@ -272,7 +276,8 @@ function setDateMode(): void {
       当前阶段：待判决。此阶段仅表示系统已按开庭日期推进，不代表法院已经判决。
     </p>
     <p>
-      系统会在开庭日期次日 00:00（北京时间）自动推进至待判决。登记已到期日期后，服务器会补跑；待判决不代表法院已经判决。
+      系统会在开庭日期次日
+      00:00（北京时间）自动推进至待判决。登记已到期日期后，服务器会补跑；待判决不代表法院已经判决。
     </p>
 
     <form
@@ -331,7 +336,9 @@ function setDateMode(): void {
       <p>
         更正会保留旧安排和系统推进历史。未来日期或清除日期后返回待开庭；已到期的更正仍保持待判决。后续再登记到期日期时，系统会再次推进。
       </p>
-      <label class="field-label" for="hearing-correction-date">更正后的开庭日期</label>
+      <label class="field-label" for="hearing-correction-date"
+        >更正后的开庭日期</label
+      >
       <input
         id="hearing-correction-date"
         v-model="hearingAt"
@@ -358,7 +365,9 @@ function setDateMode(): void {
       >
         改填开庭日期
       </button>
-      <label class="field-label" for="hearing-correction-reason">纠错原因</label>
+      <label class="field-label" for="hearing-correction-reason"
+        >纠错原因</label
+      >
       <textarea
         id="hearing-correction-reason"
         v-model="correctionReason"
