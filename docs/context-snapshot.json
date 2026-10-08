@@ -1,6 +1,6 @@
 {
   "version": 1,
-  "recordedAt": "2026-10-08T03:36:19.700Z",
+  "recordedAt": "2026-10-08T03:39:42.112Z",
   "files": {
     ".cursor/rules/verified-feature-integration.mdc": "ffd2306612ba6f09749629c5adb9e645f7f37aa6ee27ff1bc1c3d8b14efeca38",
     ".env.example": "07211cde5c2b59efc21b619b752d4c9b871f0980d2d64ca3c146ad6151fd27ca",
@@ -542,7 +542,7 @@
     "frontend/src/modules/cases/CaseFilingPanel.spec.ts": "df30ae856dcc7e2c532b10bf424685808b9931ef325c51f0a1d289a62ba291c1",
     "frontend/src/modules/cases/CaseFilingPanel.vue": "1fb9db5731098cf8fca501181bdb395119fd3a32087948788e5e27d14d1e9ab0",
     "frontend/src/modules/cases/CaseHearingPanel.spec.ts": "96bcbb8157ac869ffc2a1e35a482ad1c4cbfcb00e6279f93933c0ffa9f799348",
-    "frontend/src/modules/cases/CaseHearingPanel.vue": "17d3b74ea8b6873cb764abcbeef42aee2ad999d0029b0bb6081c09ad80bc367b",
+    "frontend/src/modules/cases/CaseHearingPanel.vue": "b6dbc0236f1187f860137f8c6b700f8b5bfcace8a03492d3e01f9f8d22eff0c4",
     "frontend/src/modules/cases/CaseListPage.vue": "0f150b899028672382dc7adc3b86c5ee7506dd9454a5f0f4d92d562e14ac884f",
     "frontend/src/modules/cases/CasePages.spec.ts": "266662a9a730819e9dfbd841f65301e3d89372f59e84cb775abce4de366b6461",
     "frontend/src/modules/cases/LawyerCaseDetailPage.spec.ts": "a46ea9c907908c957cd8b72dbe05e084c955cdb6a9630a762bf673f141fbdef5",
