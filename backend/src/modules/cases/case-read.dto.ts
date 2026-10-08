@@ -145,7 +145,7 @@ class CaseJudgmentFactDto {
   @ApiProperty() fromVersion!: number;
   @ApiProperty() toVersion!: number;
   @ApiProperty({ format: 'date-time' }) recordedAt!: string;
-  @ApiPropertyOptional() reason?: string;
+  @ApiPropertyOptional({ type: String, nullable: true }) reason?: string | null;
   @ApiPropertyOptional({ format: 'uuid' }) recordedByUserId?: string;
   @ApiProperty({ type: [CaseCertificateFileDto] })
   files!: CaseCertificateFileDto[];
