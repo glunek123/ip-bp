@@ -42,6 +42,8 @@ const detail = {
   canUploadAcceptanceMaterials: false,
   canScheduleHearing: false,
   canCorrectHearing: false,
+  canRegisterJudgment: false,
+  canCorrectJudgment: false,
   canConfirmComplaint: true,
   canMailComplaint: false,
   sourceLead: { id: 'lead-1', businessNo: 'LD-1' },
@@ -88,6 +90,7 @@ const detail = {
     advances: [],
     corrections: [],
   },
+  judgment: { current: null, history: [], availableFiles: [] },
 } as CaseDetail;
 
 function material(contentVersions = [file]) {

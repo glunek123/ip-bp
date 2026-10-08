@@ -63,6 +63,8 @@ export const permissionActionValues = [
   'CASE_ACCEPTANCE_REGISTER',
   'CASE_HEARING_SCHEDULE',
   'CASE_HEARING_CORRECT',
+  'CASE_JUDGMENT_REGISTER',
+  'CASE_JUDGMENT_CORRECT',
   'NOTARY_OFFICE_MANAGE',
   'USER_READ',
   'USER_MANAGE',
@@ -279,7 +281,9 @@ function isPermissionCatalog(
         item.action === 'CASE_FILING_SUBMIT' ||
         item.action === 'CASE_ACCEPTANCE_REGISTER' ||
         item.action === 'CASE_HEARING_SCHEDULE' ||
-        item.action === 'CASE_HEARING_CORRECT') &&
+        item.action === 'CASE_HEARING_CORRECT' ||
+        item.action === 'CASE_JUDGMENT_REGISTER' ||
+        item.action === 'CASE_JUDGMENT_CORRECT') &&
         (item.scopes.length !== 3 ||
           item.scopes[0] !== 'SELF' ||
           item.scopes[1] !== 'TEAM' ||

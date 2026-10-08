@@ -23,6 +23,8 @@ const api = vi.hoisted(() => ({
   submitCaseFiling: vi.fn(),
   scheduleCaseHearing: vi.fn(),
   correctCaseHearing: vi.fn(),
+  registerCaseJudgment: vi.fn(),
+  correctCaseJudgment: vi.fn(),
 }));
 vi.mock('../../api/cases', () => ({
   listCases: api.listCases,
@@ -36,6 +38,8 @@ vi.mock('../../api/cases', () => ({
   submitCaseFiling: api.submitCaseFiling,
   scheduleCaseHearing: api.scheduleCaseHearing,
   correctCaseHearing: api.correctCaseHearing,
+  registerCaseJudgment: api.registerCaseJudgment,
+  correctCaseJudgment: api.correctCaseJudgment,
   todayShanghai: () => '2026-09-29',
 }));
 vi.mock('../../api/materials', () => ({
@@ -62,6 +66,8 @@ beforeEach(() => {
         canUploadAcceptanceMaterials: false,
         canScheduleHearing: false,
         canCorrectHearing: false,
+        canRegisterJudgment: false,
+        canCorrectJudgment: false,
         sourceLead: { id: 'lead-1', businessNo: 'LD-1' },
         sourceNotaryMatter: { id: 'matter-1', businessNo: 'NZ-1' },
       },
@@ -123,6 +129,8 @@ beforeEach(() => {
     canUploadAcceptanceMaterials: false,
     canScheduleHearing: false,
     canCorrectHearing: false,
+    canRegisterJudgment: false,
+    canCorrectJudgment: false,
     complaint: null,
     complaintConfirmation: null,
     complaintMailing: null,
@@ -140,6 +148,7 @@ beforeEach(() => {
       advances: [],
       corrections: [],
     },
+    judgment: { current: null, history: [], availableFiles: [] },
   });
   api.listOwnerMaterials.mockResolvedValue({ items: [], total: 0 });
   api.listFilingCourts.mockResolvedValue([]);
@@ -154,6 +163,8 @@ beforeEach(() => {
     recordedAt: '2026-10-06T01:00:00.000Z',
   });
   api.correctCaseHearing.mockResolvedValue({});
+  api.registerCaseJudgment.mockResolvedValue({});
+  api.correctCaseJudgment.mockResolvedValue({});
 });
 afterEach(() => {
   vi.unstubAllGlobals();
@@ -202,6 +213,8 @@ function confirmationDetail(
     canUploadAcceptanceMaterials: false,
     canScheduleHearing: false,
     canCorrectHearing: false,
+    canRegisterJudgment: false,
+    canCorrectJudgment: false,
     courtCaseNo: null,
     department: { id: 'department-1', name: '知产部' },
     customer: { id: 'customer-1', name: '客户甲' },
@@ -272,6 +285,7 @@ function confirmationDetail(
       advances: [],
       corrections: [],
     },
+    judgment: { current: null, history: [], availableFiles: [] },
   };
 }
 
@@ -379,6 +393,34 @@ describe('case pages', () => {
     expect(wrapper.get('.page-head').text()).toContain('待判决');
     expect(wrapper.get('[data-test="case-list"]').text()).toContain('待判决');
     expect(wrapper.text()).not.toContain('法院已判决');
+  });
+
+  it('shows judgment registration on the internal detail only when authorized', async () => {
+    const base = await api.getCase();
+    api.getCase.mockResolvedValueOnce({
+      ...base,
+      stage: 'WAITING_JUDGMENT',
+      canScheduleHearing: false,
+      canCorrectHearing: false,
+      canRegisterJudgment: true,
+      canCorrectJudgment: false,
+      acceptance: {
+        acceptedAt: '2026-10-01',
+        courtCaseNo: '甲0101民初1号',
+        recordedAt: '2026-10-01T01:00:00Z',
+        recordedByUserId: 'user-1',
+      },
+      judgment: { current: null, history: [], availableFiles: [] },
+    });
+
+    const wrapper = await mountRoute('/cases/case-1', CaseDetailPage);
+    expect(wrapper.find('[data-test="case-judgment-panel"]').exists()).toBe(
+      true,
+    );
+    expect(wrapper.find('[data-test="judgment-submit"]').exists()).toBe(true);
+    expect(
+      wrapper.find('[data-test="judgment-correction-form"]').exists(),
+    ).toBe(false);
   });
 
   it('reads current case after a successful hearing command instead of trusting its receipt stage', async () => {

@@ -23,6 +23,57 @@ const uploaded = {
 };
 
 describe('materials API', () => {
+  it('uploads real JUDGMENT documents with the court-document limits', async () => {
+    const file = new File(['actual judgment bytes'], '判决书.jpg', {
+      type: 'image/jpeg',
+    });
+    const result = {
+      ...uploaded,
+      materialId: 'material-judgment',
+      contentVersionId: 'judgment-version',
+      originalFilename: file.name,
+      purpose: 'JUDGMENT',
+      mimeType: file.type,
+      sizeBytes: file.size,
+    };
+    const fetch = vi
+      .fn()
+      .mockResolvedValueOnce(
+        new Response(
+          JSON.stringify({
+            id: 'draft-judgment',
+            ownerType: 'CASE',
+            ownerId: 'case-1',
+            category: 'JUDGMENT',
+            purpose: 'JUDGMENT',
+            originalFilename: file.name,
+            declaredMimeType: file.type,
+            expiresAt: '2026-10-07T00:00:00.000Z',
+          }),
+        ),
+      )
+      .mockResolvedValueOnce(new Response(JSON.stringify(result)));
+    vi.stubGlobal('fetch', fetch);
+
+    await expect(
+      uploadMaterialFile({
+        ownerType: 'CASE',
+        ownerId: 'case-1',
+        category: 'JUDGMENT',
+        purpose: 'JUDGMENT',
+        file,
+      }),
+    ).resolves.toEqual(result);
+    expect(JSON.parse(String(fetch.mock.calls[0]?.[1]?.body))).toMatchObject({
+      ownerId: 'case-1',
+      category: 'JUDGMENT',
+      purpose: 'JUDGMENT',
+    });
+    expect(fetch.mock.calls[1]?.[1]).toEqual(
+      expect.objectContaining({ body: file, method: 'PUT' }),
+    );
+  });
+
   it('uploads complaint files as real CASE-owned materials', async () => {
     const file = new File(['pdf-content'], '起诉状.pdf', {
       type: 'application/pdf',

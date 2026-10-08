@@ -28,6 +28,7 @@ import CaseComplaintSubmissionForm from './CaseComplaintSubmissionForm.vue';
 import CaseFilingPanel from './CaseFilingPanel.vue';
 import CaseAcceptancePanel from './CaseAcceptancePanel.vue';
 import CaseHearingPanel from './CaseHearingPanel.vue';
+import CaseJudgmentPanel from './CaseJudgmentPanel.vue';
 
 const route = useRoute();
 const auth = useAuthStore();
@@ -738,6 +739,13 @@ onBeforeUnmount(() => request?.abort());
             (item.stage === 'WAITING_HEARING' ||
               item.stage === 'WAITING_JUDGMENT')
           "
+          :item="item"
+          :context-key="identity"
+          @changed="load"
+          @refresh="load"
+        />
+        <CaseJudgmentPanel
+          v-if="item.stage === 'WAITING_JUDGMENT'"
           :item="item"
           :context-key="identity"
           @changed="load"

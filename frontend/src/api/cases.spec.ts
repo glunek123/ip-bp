@@ -32,6 +32,8 @@ const summary = {
   canUploadAcceptanceMaterials: false,
   canScheduleHearing: false,
   canCorrectHearing: false,
+  canRegisterJudgment: false,
+  canCorrectJudgment: false,
   sourceLead: { id: 'lead-1', businessNo: 'LD-1' },
   sourceNotaryMatter: { id: 'matter-1', businessNo: 'NZ-1' },
 };
@@ -105,6 +107,7 @@ const detail = {
     advances: [],
     corrections: [],
   },
+  judgment: { current: null, history: [], availableFiles: [] },
 };
 function mockJson(payload: unknown) {
   const fetchMock = vi
@@ -115,6 +118,246 @@ function mockJson(payload: unknown) {
 }
 
 describe('cases API', () => {
+  it('decodes judgment facts with explicit pending and known-zero amounts', async () => {
+    const file = {
+      materialId: '70000000-0000-4000-8000-000000000001',
+      contentVersionId: '70000000-0000-4000-8000-000000000002',
+      originalFilename: '判决书.pdf',
+      mimeType: 'application/pdf',
+    };
+    const fact = {
+      id: '70000000-0000-4000-8000-000000000003',
+      kind: 'REGISTER',
+      priorFactId: null,
+      judgmentReceivedAt: '2026-10-07',
+      judgmentAmountState: 'KNOWN',
+      judgmentAmount: '0.00',
+      paidLitigationFeeState: 'PENDING',
+      paidLitigationFee: null,
+      fromVersion: 7,
+      toVersion: 8,
+      recordedAt: '2026-10-07T01:00:00.000Z',
+      reason: null,
+      recordedByUserId: '70000000-0000-4000-8000-000000000004',
+      files: [file],
+    };
+    mockJson({
+      ...detail,
+      stage: 'WAITING_JUDGMENT',
+      canRegisterJudgment: false,
+      canCorrectJudgment: true,
+      judgment: { current: fact, history: [fact], availableFiles: [] },
+    });
+
+    await expect(getCase('case-1')).resolves.toMatchObject({
+      canCorrectJudgment: true,
+      judgment: {
+        current: {
+          judgmentAmountState: 'KNOWN',
+          judgmentAmount: '0.00',
+          paidLitigationFeeState: 'PENDING',
+          paidLitigationFee: null,
+        },
+        history: [
+          {
+            kind: 'REGISTER',
+            files: [{ contentVersionId: file.contentVersionId }],
+          },
+        ],
+      },
+    });
+  });
+
+  it('requires internal correction reasons but accepts redacted lawyer corrections', async () => {
+    const file = detail.certificate.files[0]!;
+    const registered = {
+      id: '70000000-0000-4000-8000-000000000003',
+      kind: 'REGISTER',
+      priorFactId: null,
+      judgmentReceivedAt: '2026-10-07',
+      judgmentAmountState: 'KNOWN',
+      judgmentAmount: '0.00',
+      paidLitigationFeeState: 'PENDING',
+      paidLitigationFee: null,
+      fromVersion: 7,
+      toVersion: 8,
+      recordedAt: '2026-10-07T01:00:00.000Z',
+      reason: null,
+      recordedByUserId: '70000000-0000-4000-8000-000000000004',
+      files: [file],
+    };
+    const internalCorrection = {
+      ...registered,
+      id: '70000000-0000-4000-8000-000000000005',
+      kind: 'CORRECT',
+      priorFactId: registered.id,
+      fromVersion: 8,
+      toVersion: 9,
+      reason: '判决金额按补正文书更正',
+    };
+    const internalResponse = {
+      ...detail,
+      stage: 'WAITING_JUDGMENT',
+      version: 9,
+      judgment: {
+        current: internalCorrection,
+        history: [registered, internalCorrection],
+        availableFiles: [file],
+      },
+    };
+    mockJson(internalResponse);
+    await expect(getCase('case-1')).resolves.toMatchObject({
+      judgment: { current: { reason: '判决金额按补正文书更正' } },
+    });
+
+    mockJson({
+      ...internalResponse,
+      judgment: {
+        ...internalResponse.judgment,
+        current: { ...internalCorrection, reason: null },
+      },
+    });
+    await expect(getCase('case-1')).rejects.toMatchObject({
+      code: 'INVALID_RESPONSE',
+    });
+
+    const lawyerRegistered: Record<string, unknown> = {
+      ...registered,
+    };
+    delete lawyerRegistered.reason;
+    delete lawyerRegistered.recordedByUserId;
+    const lawyerCorrection: Record<string, unknown> = {
+      ...internalCorrection,
+    };
+    delete lawyerCorrection.reason;
+    delete lawyerCorrection.recordedByUserId;
+    const lawyerPayload = {
+      id: 'case-1',
+      businessNo: 'CA-1',
+      stage: 'WAITING_JUDGMENT',
+      version: 9,
+      canMatch: false,
+      canSubmitComplaint: false,
+      canConfirmComplaint: false,
+      canMailComplaint: false,
+      canSubmitFiling: false,
+      canRegisterAcceptance: false,
+      canUploadAcceptanceMaterials: false,
+      canScheduleHearing: false,
+      canCorrectHearing: false,
+      canRegisterJudgment: false,
+      canCorrectJudgment: false,
+      createdAt: '2026-09-28T00:00:00.000Z',
+      matchedAt: null,
+      matchedOn: null,
+      defendants: detail.defendants,
+      lawyers: detail.lawyers,
+      customer: detail.customer,
+      rightsHolder: detail.rightsHolder,
+      certificate: detail.certificate,
+      complaint: null,
+      complaintConfirmation: null,
+      complaintMailing: null,
+      filingSubmission: null,
+      courtCaseNo: null,
+      acceptance: null,
+      acceptanceMaterials: detail.acceptanceMaterials,
+      hearing: detail.hearing,
+      judgment: {
+        current: lawyerCorrection,
+        history: [lawyerRegistered, lawyerCorrection],
+        availableFiles: [file],
+      },
+    };
+    const readLawyer = Reflect.get(casesApi, 'getLawyerCase') as
+      ((id: string) => Promise<Record<string, unknown>>) | undefined;
+    expect(readLawyer).toBeTypeOf('function');
+    if (!readLawyer) return;
+    mockJson(lawyerPayload);
+    await expect(readLawyer('case-1')).resolves.toMatchObject({
+      judgment: { current: { kind: 'CORRECT' } },
+      canCorrectJudgment: false,
+    });
+
+    mockJson({
+      ...lawyerPayload,
+      judgment: {
+        ...lawyerPayload.judgment,
+        history: [
+          lawyerRegistered,
+          { ...lawyerCorrection, reason: '不可泄漏' },
+        ],
+      },
+    });
+    await expect(readLawyer('case-1')).rejects.toMatchObject({
+      code: 'INVALID_RESPONSE',
+    });
+  });
+
+  it('registers or corrects through exact authorized routes and validates receipts', async () => {
+    const result = {
+      id: 'case-1',
+      stage: 'WAITING_JUDGMENT',
+      version: 8,
+      judgmentId: '70000000-0000-4000-8000-000000000003',
+      recordedAt: '2026-10-07T01:00:00.000Z',
+    };
+    const register = Reflect.get(casesApi, 'registerCaseJudgment') as
+      | ((
+          id: string,
+          input: Record<string, unknown>,
+          audience?: string,
+        ) => Promise<unknown>)
+      | undefined;
+    const correct = Reflect.get(casesApi, 'correctCaseJudgment') as
+      | ((id: string, input: Record<string, unknown>) => Promise<unknown>)
+      | undefined;
+    expect(register).toBeTypeOf('function');
+    expect(correct).toBeTypeOf('function');
+    if (!register || !correct) return;
+    const input = {
+      expectedVersion: 7,
+      idempotencyKey: 'judgment-key',
+      judgmentReceivedAt: '2026-10-07',
+      judgmentAmountState: 'KNOWN',
+      judgmentAmount: '0.00',
+      paidLitigationFeeState: 'PENDING',
+      paidLitigationFee: null,
+      judgmentContentVersionIds: ['70000000-0000-4000-8000-000000000002'],
+    };
+
+    const fetchMock = mockJson(result);
+    await expect(register('case-1', input, 'lawyer')).resolves.toEqual(result);
+    expect(fetchMock.mock.calls[0]?.[0]).toBe(
+      '/api/v1/lawyer/cases/case-1/judgment-register',
+    );
+    expect(JSON.parse(String(fetchMock.mock.calls[0]?.[1]?.body))).toEqual(
+      input,
+    );
+    expect(
+      new Headers(fetchMock.mock.calls[0]?.[1]?.headers).get('Idempotency-Key'),
+    ).toBe('judgment-key');
+
+    const correctionFetch = mockJson({ ...result, version: 9 });
+    await correct('case-1', {
+      ...input,
+      expectedVersion: 8,
+      idempotencyKey: 'correct-key',
+      reason: '判决日期录入错误',
+    });
+    expect(correctionFetch.mock.calls[0]?.[0]).toBe(
+      '/api/v1/cases/case-1/judgment-correct',
+    );
+    expect(
+      JSON.parse(String(correctionFetch.mock.calls[0]?.[1]?.body)),
+    ).toEqual({
+      ...input,
+      expectedVersion: 8,
+      idempotencyKey: 'correct-key',
+      reason: '判决日期录入错误',
+    });
+  });
+
   it('strictly decodes waiting judgment and immutable hearing history', async () => {
     mockJson({
       ...detail,
@@ -538,6 +781,8 @@ describe('cases API', () => {
       canUploadAcceptanceMaterials: false,
       canScheduleHearing: true,
       canCorrectHearing: false,
+      canRegisterJudgment: false,
+      canCorrectJudgment: false,
       filingSubmission: {
         court: {
           id: '70000000-0000-4000-8000-000000000011',
@@ -853,6 +1098,8 @@ describe('cases API', () => {
       canUploadAcceptanceMaterials: false,
       canScheduleHearing: true,
       canCorrectHearing: false,
+      canRegisterJudgment: false,
+      canCorrectJudgment: false,
       createdAt: '2026-09-28T00:00:00.000Z',
       matchedAt: '2026-09-29T01:00:00Z',
       matchedOn: '2026-09-28',
@@ -869,6 +1116,7 @@ describe('cases API', () => {
       acceptance: null,
       acceptanceMaterials: detail.acceptanceMaterials,
       hearing: detail.hearing,
+      judgment: detail.judgment,
     };
     const read = Reflect.get(casesApi, 'getLawyerCase') as
       ((id: string) => Promise<Record<string, unknown>>) | undefined;

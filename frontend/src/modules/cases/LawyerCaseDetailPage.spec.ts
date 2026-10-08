@@ -3,6 +3,7 @@ import { createPinia, setActivePinia } from 'pinia';
 import { createMemoryHistory, createRouter } from 'vue-router';
 import { beforeEach, describe, expect, it, vi } from 'vitest';
 import { ApiError } from '../../api/http';
+import type { CaseStage, LawyerCaseDetail } from '../../api/cases';
 import { useAuthStore } from '../../stores/auth';
 import LawyerCaseDetailPage from './LawyerCaseDetailPage.vue';
 
@@ -27,8 +28,8 @@ vi.mock('../../api/materials', () => ({
 function detail(
   id: string,
   businessNo: string,
-  stage: string = 'WAITING_FORMAL_ACCEPTANCE',
-) {
+  stage: CaseStage = 'WAITING_FORMAL_ACCEPTANCE',
+): LawyerCaseDetail {
   return {
     id,
     businessNo,
@@ -41,6 +42,10 @@ function detail(
     canSubmitFiling: false,
     canRegisterAcceptance: false,
     canUploadAcceptanceMaterials: false,
+    canScheduleHearing: false,
+    canCorrectHearing: false,
+    canRegisterJudgment: false,
+    canCorrectJudgment: false,
     createdAt: '2026-10-01T00:00:00Z',
     matchedAt: '2026-10-01T00:00:00Z',
     matchedOn: '2026-10-01',
@@ -67,6 +72,14 @@ function detail(
       PAYMENT_LIST: { available: [], frozen: [], later: [] },
       SERVICE_DOCUMENT: { available: [], frozen: [], later: [] },
     },
+    hearing: {
+      currentArrangement: null,
+      currentAdvance: null,
+      arrangements: [],
+      advances: [],
+      corrections: [],
+    },
+    judgment: { current: null, history: [], availableFiles: [] },
   };
 }
 function materials() {
@@ -145,6 +158,27 @@ beforeEach(() => {
 });
 
 describe('LawyerCaseDetailPage', () => {
+  it('shows authorized lawyer registration and never shows internal correction', async () => {
+    const caseDetail = detail('case-a', 'CA-A', 'WAITING_JUDGMENT');
+    caseDetail.canRegisterJudgment = true;
+    caseDetail.acceptance = {
+      acceptedAt: '2026-10-01',
+      courtCaseNo: '甲0101民初1号',
+      recordedAt: '2026-10-01T01:00:00Z',
+    };
+    api.getLawyerCase.mockResolvedValue(caseDetail);
+    const { wrapper } = await mountPage();
+
+    expect(wrapper.find('[data-test="case-judgment-panel"]').exists()).toBe(
+      true,
+    );
+    expect(wrapper.find('[data-test="judgment-submit"]').exists()).toBe(true);
+    expect(
+      wrapper.find('[data-test="judgment-correction-form"]').exists(),
+    ).toBe(false);
+    expect(wrapper.text()).not.toContain('更正原因');
+  });
+
   it('aborts pending attachment downloads when another lawyer signs in', async () => {
     const file = {
       materialId: 'certificate-material',

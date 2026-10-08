@@ -22,7 +22,8 @@ export type MaterialCategory =
   | 'FILING_SCREENSHOT'
   | 'ACCEPTANCE_NOTICE'
   | 'PAYMENT_LIST'
-  | 'SERVICE_DOCUMENT';
+  | 'SERVICE_DOCUMENT'
+  | 'JUDGMENT';
 
 export type MaterialPurpose =
   | 'IDENTITY_FULL'
@@ -39,7 +40,8 @@ export type MaterialPurpose =
   | 'FILING_SCREENSHOT'
   | 'ACCEPTANCE_NOTICE'
   | 'PAYMENT_LIST'
-  | 'SERVICE_DOCUMENT';
+  | 'SERVICE_DOCUMENT'
+  | 'JUDGMENT';
 
 export type UploadedMaterial = {
   materialId: string;
@@ -132,7 +134,8 @@ function isCategory(value: unknown): value is MaterialCategory {
     value === 'FILING_SCREENSHOT' ||
     value === 'ACCEPTANCE_NOTICE' ||
     value === 'PAYMENT_LIST' ||
-    value === 'SERVICE_DOCUMENT'
+    value === 'SERVICE_DOCUMENT' ||
+    value === 'JUDGMENT'
   );
 }
 
@@ -152,7 +155,8 @@ function isPurpose(value: unknown): value is MaterialPurpose {
     value === 'FILING_SCREENSHOT' ||
     value === 'ACCEPTANCE_NOTICE' ||
     value === 'PAYMENT_LIST' ||
-    value === 'SERVICE_DOCUMENT'
+    value === 'SERVICE_DOCUMENT' ||
+    value === 'JUDGMENT'
   );
 }
 
@@ -262,7 +266,8 @@ export async function uploadMaterialFile(
     if (
       input.category === 'ACCEPTANCE_NOTICE' ||
       input.category === 'PAYMENT_LIST' ||
-      input.category === 'SERVICE_DOCUMENT'
+      input.category === 'SERVICE_DOCUMENT' ||
+      input.category === 'JUDGMENT'
     ) {
       const types = new Map([
         ['.pdf', 'application/pdf'],
@@ -278,7 +283,7 @@ export async function uploadMaterialFile(
         !input.ownerId
       ) {
         throw new ApiError(
-          '正式立案材料仅支持不超过 50MB 的 PDF、JPG 或 PNG 文件',
+          '案件文书仅支持不超过 50MB 的 PDF、JPG 或 PNG 文件',
           400,
           'VALIDATION_ERROR',
         );

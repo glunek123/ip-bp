@@ -182,6 +182,16 @@ const context = {
       scopes: ['SELF', 'TEAM', 'DEPARTMENT'],
     },
     {
+      action: 'CASE_JUDGMENT_REGISTER',
+      label: '登记一审判决',
+      scopes: ['SELF', 'TEAM', 'DEPARTMENT'],
+    },
+    {
+      action: 'CASE_JUDGMENT_CORRECT',
+      label: '更正一审判决',
+      scopes: ['SELF', 'TEAM', 'DEPARTMENT'],
+    },
+    {
       action: 'NOTARY_OFFICE_MANAGE',
       label: '管理公证处',
       scopes: ['DEPARTMENT'],
@@ -230,6 +240,36 @@ const context = {
 };
 
 describe('organization API', () => {
+  it('accepts the two scoped case judgment grants in the permission catalog', async () => {
+    const judgmentActions = [
+      {
+        action: 'CASE_JUDGMENT_REGISTER',
+        label: '登记一审判决',
+        scopes: ['SELF', 'TEAM', 'DEPARTMENT'],
+      },
+      {
+        action: 'CASE_JUDGMENT_CORRECT',
+        label: '更正一审判决',
+        scopes: ['SELF', 'TEAM', 'DEPARTMENT'],
+      },
+    ];
+    vi.stubGlobal(
+      'fetch',
+      vi.fn().mockResolvedValue(
+        new Response(
+          JSON.stringify({
+            ...context,
+            permissionCatalog: context.permissionCatalog,
+          }),
+        ),
+      ),
+    );
+
+    await expect(getOrganizationManagementContext()).resolves.toMatchObject({
+      permissionCatalog: expect.arrayContaining(judgmentActions),
+    });
+  });
+
   it('decodes the exact backend permission catalog including notary opening', async () => {
     vi.stubGlobal(
       'fetch',
@@ -263,6 +303,8 @@ describe('organization API', () => {
       'CASE_ACCEPTANCE_REGISTER',
       'CASE_HEARING_SCHEDULE',
       'CASE_HEARING_CORRECT',
+      'CASE_JUDGMENT_REGISTER',
+      'CASE_JUDGMENT_CORRECT',
       'NOTARY_OFFICE_MANAGE',
       'USER_READ',
       'USER_MANAGE',
