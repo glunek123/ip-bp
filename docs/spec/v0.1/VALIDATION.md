@@ -1,5 +1,32 @@
 # SPEC-001 文档验证
 
+## CORE-CA-008 判决登记与受控更正（2026-10-08）
+
+实际通过Level 3的业务候选为`90924147ccf3c001bf4ffb6f8f17ba3bb13aa247`、tree`ce10e17c7136b8148b786817b5f2d6cd9ad85f0e`；分支`codex/core-ca-008-judgment-registration`，main基线`4bfeab7ae73a6c0b5455c39da326dba57d5ee4e7`。此后收口HEAD不冒称实跑该候选的门禁；本轮未推送、合并、部署或领取CA-009。
+
+交付`CaseJudgmentFact`、`CaseJudgmentVersion`、`CaseJudgmentReceipt`及Case当前判决指针；内部`POST /api/v1/cases/:id/judgment-register`、`judgment-correct`和律师`POST /api/v1/lawyer/cases/:id/judgment-register`，运营／律师详情共享表单、历史和精确文件下载。运营按Action及范围、律师按当前有效PRIMARY承办校验；更正只给独立权限的运营并必填原因。日期不早于正式立案、不晚于北京时间今天，两组金额分别已知／待定且不改原标的或发起支付。登记／更正均保持待判决，任何判决事实阻断开庭纠错及旧键重放；客户／公证处不增加判决事实、费用或文件投影。案锁、CAS、成功审计、精确冻结与幂等回执原子提交，旧回执不拼接后来当前值。
+
+九份新前向迁移为`20261008020000_add_case_judgment_enums`、`20261008021000_add_case_judgment_facts`、`20261008022000_add_case_judgment_grants`、`20261008023000_allow_lawyer_judgment_actor_path`、`20261008024000_align_case_judgment_constraints`、`20261008025000_allow_judgment_version_reuse`、`20261008026000_repair_case_judgment_deployment`、`20261008027000_guard_case_judgment_references`、`20261008028000_guard_case_judgment_reference_inserts`。仅独立测试库public正常升级至91条；不改已执行SQL、成功账本或checksum。临时schema覆盖空链、上一支持82份升级及旧开庭事实、Grant同范围复制、真实Prisma部署11个失败前缀与前向补齐／严格对账／继续升级。240／250的部分DDL失败仍如实保留，不冒称其原子；260／270／280另验证自身事务回滚、重复执行及异常定义／重复数据拒绝。恢复约束见[实施计划](../../superpowers/plans/2026-10-08-case-judgment-registration.md)，不能将测试恢复入口用于不明结构或生产写入。
+
+审查由非实现子Agent分阶段和全集成执行，最终候选`9092414`的SpecCompliance／CodeQuality均ACCEPTED，未关闭C／I／M为0；Task报告及审查为`.local/case-judgment/{task-1-report,task-1-review,task-2-report,final-review}.md`。**同模型隔离审查／独立性不足**；可确认审查为GPT模型家族，精确运行model ID未暴露，不冒称异模型外部审查。外部独立Review为**Pending（本轮未执行）**，与自动测试及工程门禁分别记录；没有证据称外部服务不可用或额度不足。非实现主体按项目当前路由完成本地审查，未复跑Worker相同通过测试；必要根TS检查确实发现I5后才修复。
+
+| 固定候选正式检查                 | 实际结果                                                                                         | 命令包装耗时 |
+| -------------------------------- | ------------------------------------------------------------------------------------------------ | ------------ |
+| `pnpm verify`                    | 退出0；严格上下文／Spec／架构、类型／Lint／格式、工具74/74、后端1078/1078、前端706/706及双端构建 | 156.045秒    |
+| `pnpm test:e2e:full --workers=1` | 退出0；未过滤全量隔离PostgreSQL／Chromium192/192，含新迁移、真实判决主链及既有跨模块回归         | 628.651秒    |
+
+verify于UTC`2026-10-08T08:52:32.7212901Z`开始、`08:55:09.1700915Z`结束；E2E于`08:55:38.8893050Z`开始、`09:06:07.9412125Z`结束。两项前后commit／tree、干净工作区和环境一致，跨门禁fingerprint同为`8cebe60684ba5641d54f9c5c32e7c85b7b62c8fd8d55d4583e40330b5f5e9337`；不证明数据库内容相同。Node v24.21.0、pnpm11.27.0，数据库只用`backend/.env.test`的`dev_cor_test`／15433。测试schema／固定夹具受控清理，未知归属和异常守卫失败关闭；未重置开发／生产库、public schema或持久化卷，不输出凭据。
+
+完整日志、真实退出／时长、候选／环境摘要为`.local/case-judgment/formal-attempt2-verify{.log,-result.json,-environment-before.json,-environment-after.json}`及`formal-attempt1-e2e`同组文件；HTML为`formal-attempt1-e2e-playwright-report/index.html`，机器结果为`formal-attempt1-e2e-test-results/.last-run.json`（status=passed、failedTests=[]）。本地原始证据被忽略，不随Git推送；本记录保留可定位候选、摘要和路径，不伪称远端CI产物。
+
+新增真实PG用例覆盖登记／留原因更正、已知0／待定、精确文件历史、重放／异参、撤权和承办失效、企业／材料隔离、同案并发单胜、判决与开庭纠错互斥、事实／冻结／审计／回执失败整笔回滚及直接SQL守卫。额度反例证明冻结10份后可新上传并更正为9旧＋1新，单次选11份及未冻结池第11份仍拒绝，旧10份字节和审计引用保留。配额锁定顺序经审查，新增额度场景未强制调度并发，不将静态判断冒称该反例实测。清理故障反例的合成构造／拆除仅使用事务局部replica，不用于实际清理、业务Command或真实浏览器闭环，实际守卫与数据回滚、异企业sentinel另有证据。
+
+本候选全量浏览器通过两条真实密码主链：正式角色页授权→运营上传10份判决书并登记→新上传、原因更正为9旧＋1新→两事实各10份历史保留→原件／新件精确下载→刷新／重登及成功反馈→承办律师可读脱敏更正历史；律师本人真实登记另一案，客户仍不获取判决事实／费用／附件，异企业拒绝。上游使用既有受控夹具及真实cookie／CSRF API办理正式立案、真实开庭安排并等待自动推进，不通过直接改库阶段或预置判决事实替代本次动作。
+
+失败历史保留：正式verify启动2次，第1次同候选于格式阶段退出1（64.115秒，ignored `.superpowers/sdd/ca008-task-1-brief.md`不符合Prettier），只格式化该非执行Brief，代码／tree不变；原失败完整证据在`formal-attempt1-verify.*`，第2次才取得完整通过。全量E2E启动1次通过。开发期浏览器确认9次启动：初始6次中的权限前置、异步阶段／清理FK、nullable解码、历史原因断言、折叠下载定位失败后第6次通过；额度修复期1次嵌套定位失败及2次通过。早期共用工件被覆盖的不声称保留，正式成功HTML／机器结果已独立复制。审查原I1～I4及清理补丁、Final的累计额度／冲突草稿／提交上传／nullable类型与I5测试类型均已关闭；未知结果即使GET更新版本仍保留原key／body／expectedVersion，已知409不得静默重基。未删测试、弱化断言、增加重试或放宽超时；大chunk与pg弃用警告为非阻断。未取得实际token用量，提速效果未量化。
+
+此后仅补`feature-roadmap.md`完成状态／受影响余量、`project-status.md`恢复摘要、本验证记录和对应`context-snapshot.json`。从实际候选到拟收口状态的累计diff、未提交／未跟踪差异须确认只有这些非执行性状态与证据变化；模块Spec、计划、代码、测试、迁移、配置和环境不再改变。受影响格式、链接／指针一致性、Spec、上下文及Git差异专项结果保存`.local/case-judgment/closeout-doc-check.log`，以专项真实退出0为提交前提；原候选业务证据仍适用，不称收口HEAD实跑其门禁，不要求本记录包含自身提交哈希。Current为CA-008已完成待集成，CA-009仍Next未领取；实际集成组合及远端必需检查仍须按新授权核对。后续上诉／执行须补更正阻断及阶段数据库守卫，退费、外部补录、生产部署和开发／生产迁移未交付。
+
 ## CORE-CA-007 开庭后推进及受控纠错（2026-10-08）
 
 实际通过Level 3的业务候选为`b4fb37a30571895a5ff881b30c0d49ef06bfab07`、tree`d8f0480c28a61fd8ddb0d0783188763cbbda4f9e`；分支`codex/core-ca-007-hearing-followup`，main基线`6ca3786491e18c0b1253bdee0995df7d59bf06ae`。本轮未推送／合并或开发CA-008；后续状态收口HEAD不冒称实跑过该候选的业务门禁。
