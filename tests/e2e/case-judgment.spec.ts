@@ -582,7 +582,8 @@ test('operator registers, corrects, and downloads immutable judgment facts', asy
     judgment: {
       current: { judgmentAmount: string | null };
       history: Array<{
-        reason?: string;
+        kind: 'REGISTER' | 'CORRECT';
+        reason?: string | null;
         files: Array<{
           contentVersionId: string;
           originalFilename: string;
