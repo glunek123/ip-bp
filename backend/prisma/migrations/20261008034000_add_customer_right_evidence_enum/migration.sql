@@ -1,0 +1,1 @@
+ALTER TYPE "material_category" ADD VALUE 'CUSTOMER_RIGHT_EVIDENCE';

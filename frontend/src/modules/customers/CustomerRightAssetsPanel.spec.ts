@@ -12,9 +12,15 @@ const api = vi.hoisted(() => ({
 }));
 const holders = vi.hoisted(() => ({ listCustomerRightsHolders: vi.fn() }));
 const customers = vi.hoisted(() => ({ getCustomer: vi.fn() }));
+const materials = vi.hoisted(() => ({
+  listOwnerMaterials: vi.fn(),
+  uploadMaterialFile: vi.fn(),
+  downloadMaterialVersion: vi.fn(),
+}));
 vi.mock('../../api/right-assets', () => api);
 vi.mock('../../api/rights-holders', () => holders);
 vi.mock('../../api/customers', () => customers);
+vi.mock('../../api/materials', () => materials);
 
 const holder = { id: 'holder-1', name: '主体甲' };
 const fields = {
@@ -34,6 +40,7 @@ const fields = {
   withdrawReason: null,
   recordedByUserId: 'user-1',
   recordedAt: '2026-10-08T01:00:00.000Z',
+  evidence: [],
 };
 const asset = {
   assetId: 'asset-1',
@@ -53,6 +60,7 @@ function deferred<T>() {
   return { promise, resolve, reject };
 }
 function setup(items = [asset]) {
+  materials.listOwnerMaterials.mockResolvedValue({ items: [], total: 0 });
   customers.getCustomer.mockResolvedValue({
     version: 2,
     capabilities: { editRoutine: true },
@@ -116,6 +124,235 @@ describe('CustomerRightAssetsPanel', () => {
       api.createRightAsset.mock.calls[0][2],
     );
     expect(wrapper.emitted('version-updated')?.[0]).toEqual(['customer-1', 3]);
+  });
+
+  it('keeps an already submitted command locked when retry is temporarily forbidden', async () => {
+    const wrapper = setup();
+    await flushPromises();
+    let serverCommitted = false;
+    api.createRightAsset
+      .mockImplementationOnce(async () => {
+        serverCommitted = true;
+        throw new Error('response lost');
+      })
+      .mockRejectedValueOnce(
+        new ApiError('权限暂不可用', 403, 'ACTION_FORBIDDEN'),
+      )
+      .mockImplementationOnce(async () => {
+        expect(serverCommitted).toBe(true);
+        return { ...asset, customerVersion: 3 };
+      });
+    await wrapper.get('.right-assets-panel__header button').trigger('click');
+    await wrapper.get('input[required]').setValue('已提交商标');
+    await wrapper.findAll('input')[2]!.setValue('商标权');
+    await wrapper.get('select[required]').setValue(holder.id);
+    await wrapper.get('form').trigger('submit');
+    await flushPromises();
+    const retry = () =>
+      wrapper
+        .findAll('button')
+        .find((button) => button.text().includes('原请求重试'))!;
+    await retry().trigger('click');
+    await flushPromises();
+    expect(wrapper.text()).toContain('原请求结果仍未知');
+    expect(
+      wrapper.get('form button[type="submit"]').attributes('disabled'),
+    ).toBeDefined();
+    expect(api.createRightAsset).toHaveBeenCalledTimes(2);
+    await wrapper.get('form').trigger('submit');
+    await flushPromises();
+    expect(api.createRightAsset).toHaveBeenCalledTimes(2);
+    await retry().trigger('click');
+    await flushPromises();
+    expect(api.createRightAsset).toHaveBeenCalledTimes(3);
+    expect(
+      api.createRightAsset.mock.calls.map((call) => [call[1], call[2]]),
+    ).toEqual([
+      [
+        api.createRightAsset.mock.calls[0][1],
+        api.createRightAsset.mock.calls[0][2],
+      ],
+      [
+        api.createRightAsset.mock.calls[0][1],
+        api.createRightAsset.mock.calls[0][2],
+      ],
+      [
+        api.createRightAsset.mock.calls[0][1],
+        api.createRightAsset.mock.calls[0][2],
+      ],
+    ]);
+    expect(wrapper.emitted('version-updated')?.[0]).toEqual(['customer-1', 3]);
+  });
+
+  it('halts later batch rows until an unknown first row resolves after a forbidden retry', async () => {
+    const wrapper = setup([]);
+    await flushPromises();
+    await wrapper
+      .findAll('button')
+      .find((button) => button.text() === '批量上传权属')!
+      .trigger('click');
+    const batch = () => wrapper.get('section[aria-label="批量上传权属"]');
+    await batch()
+      .findAll('button')
+      .find((button) => button.text() === '添加一行')!
+      .trigger('click');
+    const rows = () => batch().findAll('.right-assets-panel__batch-row');
+    for (let index = 0; index < 2; index++) {
+      const row = rows()[index]!;
+      await row.find('input[maxlength="200"]').setValue(`批量资产 ${index}`);
+      await row.findAll('input[maxlength="200"]')[1]!.setValue('商标权');
+      await row.find('select').setValue('TRADEMARK');
+      await row.findAll('select')[1]!.setValue(holder.id);
+      const input = row.get('input[type="file"]');
+      Object.defineProperty(input.element, 'files', {
+        configurable: true,
+        value: [
+          new File(['%PDF-1.4'], `proof-${index}.pdf`, {
+            type: 'application/pdf',
+          }),
+        ],
+      });
+      await input.trigger('change');
+      materials.uploadMaterialFile.mockResolvedValueOnce({
+        materialId: `material-${index}`,
+        contentVersionId: `version-${index}`,
+        originalFilename: `proof-${index}.pdf`,
+        mimeType: 'application/pdf',
+        sizeBytes: 8,
+        sha256: 'a'.repeat(64),
+        purpose: 'CUSTOMER_RIGHT_EVIDENCE',
+      });
+      await row
+        .findAll('button')
+        .find((button) => button.text() === '上传此行证明')!
+        .trigger('click');
+      await flushPromises();
+      await row.get('input[type="checkbox"]').setValue(true);
+    }
+    api.createRightAsset
+      .mockRejectedValueOnce(new Error('response lost'))
+      .mockRejectedValueOnce(
+        new ApiError('权限暂不可用', 403, 'ACTION_FORBIDDEN'),
+      )
+      .mockResolvedValueOnce({ ...asset, customerVersion: 3 })
+      .mockResolvedValueOnce({ ...asset, customerVersion: 4 });
+    await batch()
+      .findAll('button')
+      .find((button) => button.text() === '确认登记')!
+      .trigger('click');
+    await flushPromises();
+    expect(api.createRightAsset).toHaveBeenCalledTimes(1);
+    await batch()
+      .findAll('button')
+      .find((button) => button.text().includes('原内容和幂等键重试'))!
+      .trigger('click');
+    await flushPromises();
+    expect(api.createRightAsset).toHaveBeenCalledTimes(2);
+    expect(batch().text()).toContain('原请求结果仍未知');
+    expect(
+      batch()
+        .findAll('button')
+        .find((button) => button.text() === '确认登记')!
+        .attributes('disabled'),
+    ).toBeDefined();
+    await batch()
+      .findAll('button')
+      .find((button) => button.text().includes('原内容和幂等键重试'))!
+      .trigger('click');
+    await flushPromises();
+    expect(api.createRightAsset).toHaveBeenCalledTimes(4);
+    expect(api.createRightAsset.mock.calls[1].slice(0, 3)).toEqual(
+      api.createRightAsset.mock.calls[0].slice(0, 3),
+    );
+    expect(api.createRightAsset.mock.calls[2].slice(0, 3)).toEqual(
+      api.createRightAsset.mock.calls[0].slice(0, 3),
+    );
+    expect(api.createRightAsset.mock.calls[3][1].expectedCustomerVersion).toBe(
+      3,
+    );
+  });
+
+  it('stops batch on 409 and waits for an explicit refresh before the next row', async () => {
+    const wrapper = setup([]);
+    await flushPromises();
+    await wrapper
+      .findAll('button')
+      .find((button) => button.text() === '批量上传权属')!
+      .trigger('click');
+    const batch = () => wrapper.get('section[aria-label="批量上传权属"]');
+    await batch()
+      .findAll('button')
+      .find((button) => button.text() === '添加一行')!
+      .trigger('click');
+    const rows = () => batch().findAll('.right-assets-panel__batch-row');
+    for (let index = 0; index < 2; index++) {
+      const row = rows()[index]!;
+      await row
+        .findAll('input[maxlength="200"]')[0]!
+        .setValue(`冲突行 ${index}`);
+      await row.findAll('input[maxlength="200"]')[1]!.setValue('商标权');
+      await row.findAll('select')[1]!.setValue(holder.id);
+      const input = row.get('input[type="file"]');
+      Object.defineProperty(input.element, 'files', {
+        configurable: true,
+        value: [
+          new File(['%PDF-1.4'], `proof-${index}.pdf`, {
+            type: 'application/pdf',
+          }),
+        ],
+      });
+      await input.trigger('change');
+      materials.uploadMaterialFile.mockResolvedValueOnce({
+        materialId: `material-${index}`,
+        contentVersionId: `version-${index}`,
+        originalFilename: `proof-${index}.pdf`,
+        mimeType: 'application/pdf',
+        sizeBytes: 8,
+        sha256: 'a'.repeat(64),
+        purpose: 'CUSTOMER_RIGHT_EVIDENCE',
+      });
+      await row
+        .findAll('button')
+        .find((button) => button.text() === '上传此行证明')!
+        .trigger('click');
+      await flushPromises();
+      await row.get('input[type="checkbox"]').setValue(true);
+    }
+    api.createRightAsset.mockRejectedValueOnce(
+      new ApiError('版本冲突', 409, 'CUSTOMER_VERSION_CONFLICT'),
+    );
+    await batch()
+      .findAll('button')
+      .find((button) => button.text() === '确认登记')!
+      .trigger('click');
+    await flushPromises();
+    expect(api.createRightAsset).toHaveBeenCalledTimes(1);
+    expect(batch().text()).toContain('剩余草稿已保留');
+    customers.getCustomer.mockResolvedValueOnce({
+      version: 7,
+      capabilities: { editRoutine: true },
+    });
+    await batch()
+      .findAll('button')
+      .find((button) => button.text().includes('明确刷新版本'))!
+      .trigger('click');
+    await flushPromises();
+    expect(api.createRightAsset).toHaveBeenCalledTimes(1);
+    api.createRightAsset
+      .mockResolvedValueOnce({ ...asset, customerVersion: 8 })
+      .mockResolvedValueOnce({ ...asset, customerVersion: 9 });
+    await batch()
+      .findAll('button')
+      .find((button) => button.text() === '确认登记')!
+      .trigger('click');
+    await flushPromises();
+    expect(api.createRightAsset).toHaveBeenCalledTimes(3);
+    expect(api.createRightAsset.mock.calls[1][1].expectedCustomerVersion).toBe(
+      7,
+    );
+    expect(api.createRightAsset.mock.calls[2][1].expectedCustomerVersion).toBe(
+      8,
+    );
   });
 
   it('keeps a conflict draft until the user explicitly refreshes', async () => {
@@ -390,7 +627,7 @@ describe('CustomerRightAssetsPanel', () => {
     );
   });
 
-  it('holds an unknown withdrawal, then respects a known 403 on the same-key retry', async () => {
+  it('holds an unknown withdrawal even when its same-key retry is forbidden', async () => {
     const wrapper = setup();
     await flushPromises();
     await wrapper.get('.right-assets-panel__list button').trigger('click');
@@ -424,8 +661,9 @@ describe('CustomerRightAssetsPanel', () => {
       wrapper
         .findAll('button')
         .some((button) => button.text().includes('原请求重试')),
-    ).toBe(false);
+    ).toBe(true);
     expect(wrapper.text()).toContain('已撤权');
+    expect(wrapper.text()).toContain('原请求结果仍未知');
   });
 
   it('treats a successful command as committed even if the following read refresh fails', async () => {
@@ -446,6 +684,7 @@ describe('CustomerRightAssetsPanel', () => {
     await flushPromises();
     expect(wrapper.emitted('version-updated')?.[0]).toEqual(['customer-1', 3]);
     expect(api.createRightAsset).toHaveBeenCalledTimes(1);
+    expect(wrapper.text()).toContain('登记已成功，但列表刷新失败');
     expect(
       wrapper
         .findAll('button')

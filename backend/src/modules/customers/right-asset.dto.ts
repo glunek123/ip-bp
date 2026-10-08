@@ -2,6 +2,9 @@ import { ApiProperty, ApiPropertyOptional } from '@nestjs/swagger';
 import { Transform, Type } from 'class-transformer';
 import {
   IsEnum,
+  IsArray,
+  ArrayMaxSize,
+  ArrayUnique,
   IsInt,
   IsString,
   IsUUID,
@@ -91,6 +94,19 @@ export class RightAssetFieldsDto {
 }
 
 export class CreateRightAssetDto extends RightAssetFieldsDto {
+  @ApiPropertyOptional({
+    type: [String],
+    format: 'uuid',
+    maxItems: 10,
+    description: '省略时登记无附件',
+  })
+  @ValidateIf((_object, value) => value !== undefined)
+  @IsArray()
+  @ArrayMaxSize(10)
+  @ArrayUnique()
+  @IsUUID('4', { each: true })
+  contentVersionIds?: string[];
+
   @ApiProperty({ minimum: 1 })
   @IsInt()
   @Min(1)
@@ -98,6 +114,7 @@ export class CreateRightAssetDto extends RightAssetFieldsDto {
 }
 
 export class ReviseRightAssetDto extends CreateRightAssetDto {
+  // 省略时继承当前版本附件；显式 [] 表示本版无附件。
   @ApiProperty({ minimum: 1 })
   @IsInt()
   @Min(1)

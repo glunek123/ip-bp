@@ -7,6 +7,7 @@ import { validateIsolatedTestDatabaseUrl } from '../../scripts/test-environment.
 const root = process.cwd();
 const requireBackend = createRequire(resolve(root, 'backend/package.json'));
 const { Client } = requireBackend('pg');
+const { hashPassword } = requireBackend('./dist/auth/password.js');
 const databaseUrl = process.env.DATABASE_URL;
 if (!databaseUrl || process.env.NODE_ENV !== 'test')
   throw new Error('Isolated test database required');
@@ -285,6 +286,84 @@ export async function setRightAssetRoutineGrant(roleId, enabled) {
   }
 }
 
+export async function setRightAssetReadGrant(roleId, enabled) {
+  const client = publicClient();
+  await client.connect();
+  try {
+    await assertPublic(client);
+    await client.query(
+      "DELETE FROM role_grants WHERE role_template_id=$1 AND action='customer.read'",
+      [roleId],
+    );
+    if (enabled)
+      await client.query(
+        "INSERT INTO role_grants(id,role_template_id,action,scope) VALUES ($1,$2,'customer.read','TEAM')",
+        [randomUUID(), roleId],
+      );
+  } finally {
+    await client.end();
+  }
+}
+
+export async function setRightAssetAdmitGrant(roleId, enabled) {
+  const client = publicClient();
+  await client.connect();
+  try {
+    await assertPublic(client);
+    await client.query(
+      "DELETE FROM role_grants WHERE role_template_id=$1 AND action='customer.admit'",
+      [roleId],
+    );
+    if (enabled)
+      await client.query(
+        "INSERT INTO role_grants(id,role_template_id,action,scope) VALUES ($1,$2,'customer.admit','TEAM')",
+        [randomUUID(), roleId],
+      );
+  } finally {
+    await client.end();
+  }
+}
+
+export async function countRightEvidenceReferences(customerId) {
+  const client = publicClient();
+  await client.connect();
+  try {
+    await assertPublic(client);
+    return Number(
+      (
+        await client.query(
+          'SELECT COUNT(*)::int AS count FROM material_references r JOIN customer_right_asset_versions v ON v.id=r.asset_version_id WHERE v.customer_id=$1',
+          [customerId],
+        )
+      ).rows[0].count,
+    );
+  } finally {
+    await client.end();
+  }
+}
+
+export async function rightAssetReceiptFingerprint(customerId, key) {
+  const client = publicClient();
+  await client.connect();
+  try {
+    await assertPublic(client);
+    const row = (
+      await client.query(
+        "SELECT request_fingerprint FROM customer_right_asset_receipts WHERE customer_id=$1 AND department_id=$2 AND actor_user_id=$3 AND idempotency_key=$4 AND action='CREATE'",
+        [
+          customerId,
+          '10000000-0000-4000-8000-000000000001',
+          '20000000-0000-4000-8000-000000000001',
+          key,
+        ],
+      )
+    ).rows[0];
+    return row?.request_fingerprint ?? null;
+  } finally {
+    await client.end();
+  }
+}
+
 export async function clearCustomerRightAssetFixture(customerId, departmentId) {
   const client = publicClient();
   await client.connect();
@@ -301,7 +380,10 @@ export async function clearCustomerRightAssetFixture(customerId, departmentId) {
       await client.query('ROLLBACK');
       return;
     }
-    if (!customer.name.startsWith('CU002 '))
+    if (
+      !customer.name.startsWith('CU002 ') &&
+      !customer.name.startsWith('CU003 ')
+    )
       throw new Error('Refusing to remove non-CU002 customer');
     const assetIds = (
       await client.query(
@@ -326,6 +408,41 @@ export async function clearCustomerRightAssetFixture(customerId, departmentId) {
     );
     await client.query(
       'ALTER TABLE audit_events DISABLE TRIGGER customer_right_asset_audit_immutable',
+    );
+    await client.query(
+      'ALTER TABLE material_references DISABLE TRIGGER material_references_right_evidence_immutable',
+    );
+    await client.query(
+      'ALTER TABLE content_versions DISABLE TRIGGER content_versions_right_evidence_immutable',
+    );
+    const proofMaterials = (
+      await client.query(
+        "SELECT id FROM materials WHERE department_id=$1 AND owner_type='CUSTOMER' AND owner_id=$2 AND category='CUSTOMER_RIGHT_EVIDENCE'",
+        [departmentId, customerId],
+      )
+    ).rows.map((row) => row.id);
+    await client.query(
+      'DELETE FROM material_references WHERE asset_version_id IN (SELECT id FROM customer_right_asset_versions WHERE customer_id=$1 AND department_id=$2)',
+      [customerId, departmentId],
+    );
+    await client.query(
+      'DELETE FROM material_references WHERE material_id=ANY($1::uuid[])',
+      [proofMaterials],
+    );
+    await client.query(
+      'UPDATE materials SET current_version_id=NULL WHERE id=ANY($1::uuid[])',
+      [proofMaterials],
+    );
+    await client.query(
+      'DELETE FROM content_versions WHERE material_id=ANY($1::uuid[])',
+      [proofMaterials],
+    );
+    await client.query('DELETE FROM materials WHERE id=ANY($1::uuid[])', [
+      proofMaterials,
+    ]);
+    await client.query(
+      "DELETE FROM upload_drafts WHERE department_id=$1 AND owner_type='CUSTOMER' AND owner_id=$2 AND category='CUSTOMER_RIGHT_EVIDENCE'",
+      [departmentId, customerId],
     );
     await client.query(
       'DELETE FROM customer_right_asset_receipts WHERE customer_id=$1 AND department_id=$2',
@@ -366,7 +483,13 @@ export async function clearCustomerRightAssetFixture(customerId, departmentId) {
           [holderIds],
         )
       ).rows;
-      if (holders.some((holder) => !holder.name.startsWith('CU002 ')))
+      if (
+        holders.some(
+          (holder) =>
+            !holder.name.startsWith('CU002 ') &&
+            !holder.name.startsWith('CU003 '),
+        )
+      )
         throw new Error('Refusing to remove non-CU002 holder');
       await client.query(
         'DELETE FROM rights_holders WHERE id=ANY($1::uuid[])',
@@ -393,10 +516,57 @@ export async function clearCustomerRightAssetFixture(customerId, departmentId) {
     await client.query(
       'ALTER TABLE audit_events ENABLE TRIGGER customer_right_asset_audit_immutable',
     );
+    await client.query(
+      'ALTER TABLE material_references ENABLE TRIGGER material_references_right_evidence_immutable',
+    );
+    await client.query(
+      'ALTER TABLE content_versions ENABLE TRIGGER content_versions_right_evidence_immutable',
+    );
     await client.query('COMMIT');
   } catch (error) {
     await client.query('ROLLBACK');
     throw error;
+  } finally {
+    await client.end();
+  }
+}
+
+export async function ensureRightAssetRealLogin() {
+  const client = publicClient();
+  await client.connect();
+  const username = 'cu003.real.operator';
+  const password = 'CU003-Private-Proof-Test-2026';
+  try {
+    await assertPublic(client);
+    const hash = await hashPassword(password);
+    await client.query('DELETE FROM auth_sessions WHERE user_id=$1', [
+      '20000000-0000-4000-8000-000000000001',
+    ]);
+    await client.query('DELETE FROM local_credentials WHERE user_id=$1', [
+      '20000000-0000-4000-8000-000000000001',
+    ]);
+    await client.query(
+      'INSERT INTO local_credentials(id,user_id,username,password_hash,updated_at) VALUES ($1,$2,$3,$4,NOW())',
+      [randomUUID(), '20000000-0000-4000-8000-000000000001', username, hash],
+    );
+    return { username, password };
+  } finally {
+    await client.end();
+  }
+}
+
+export async function clearRightAssetRealLogin() {
+  const client = publicClient();
+  await client.connect();
+  try {
+    await assertPublic(client);
+    await client.query('DELETE FROM auth_sessions WHERE user_id=$1', [
+      '20000000-0000-4000-8000-000000000001',
+    ]);
+    await client.query(
+      "DELETE FROM local_credentials WHERE user_id=$1 AND username='cu003.real.operator'",
+      ['20000000-0000-4000-8000-000000000001'],
+    );
   } finally {
     await client.end();
   }
@@ -466,6 +636,42 @@ export async function rejectRightAssetAuditWrites(enabled) {
     else
       await client.query(
         'ALTER TABLE audit_events DROP CONSTRAINT IF EXISTS cu002_reject_asset_audit',
+      );
+  } finally {
+    await client.end();
+  }
+}
+
+export async function rejectRightEvidenceReferenceWrites(enabled) {
+  const client = publicClient();
+  await client.connect();
+  try {
+    await assertPublic(client);
+    if (enabled)
+      await client.query(
+        "ALTER TABLE material_references ADD CONSTRAINT cu003_reject_evidence_reference CHECK (purpose <> 'CUSTOMER_RIGHT_EVIDENCE') NOT VALID",
+      );
+    else
+      await client.query(
+        'ALTER TABLE material_references DROP CONSTRAINT IF EXISTS cu003_reject_evidence_reference',
+      );
+  } finally {
+    await client.end();
+  }
+}
+
+export async function rejectRightAssetReceiptWrites(enabled) {
+  const client = publicClient();
+  await client.connect();
+  try {
+    await assertPublic(client);
+    if (enabled)
+      await client.query(
+        "ALTER TABLE customer_right_asset_receipts ADD CONSTRAINT cu003_reject_asset_receipt CHECK (action <> 'CREATE') NOT VALID",
+      );
+    else
+      await client.query(
+        'ALTER TABLE customer_right_asset_receipts DROP CONSTRAINT IF EXISTS cu003_reject_asset_receipt',
       );
   } finally {
     await client.end();

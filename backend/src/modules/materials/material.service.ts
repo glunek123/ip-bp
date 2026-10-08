@@ -78,6 +78,7 @@ export type FreezeMaterialReferencesInput = Readonly<{
   resourceId: string;
   facts: readonly ValidatedMaterialVersionFact[];
   actionEventId?: string;
+  assetVersionId?: string;
 }>;
 
 export type AdoptLeadDraftVersionsInput = Readonly<{
@@ -123,6 +124,11 @@ export type MaterialReferenceReader = MaterialAuthorizationReader &
   Pick<MaterialTransactionClient, 'materialReference'>;
 const allowedMimeTypes = {
   CUSTOMER_IDENTITY: new Set(['application/pdf', 'image/jpeg', 'image/png']),
+  CUSTOMER_RIGHT_EVIDENCE: new Set([
+    'application/pdf',
+    'image/jpeg',
+    'image/png',
+  ]),
   LEAD_SCREENSHOT: new Set([
     'application/pdf',
     'image/jpeg',
@@ -198,27 +204,17 @@ export class MaterialService {
     let lawyerAccountBindingId: string | undefined;
     if (input.ownerType === 'CUSTOMER') {
       if (input.ownerId === undefined) throw this.validationError();
-      const scope = await this.withMaterialAuthorization(() =>
-        this.accessControl.buildCustomerScope(actor, 'customer.read'),
+      await this.authorizeOwner(
+        actor,
+        'CUSTOMER',
+        input.ownerId,
+        'write',
+        this.database,
+        undefined,
+        undefined,
+        input.category,
       );
-      const customer = await this.database.customer.findFirst({
-        where: { id: input.ownerId, ...scope },
-        select: {
-          id: true,
-          departmentId: true,
-          responsibleUserId: true,
-          teamId: true,
-        },
-      });
-      if (customer === null) throw this.notFound();
-      await this.withMaterialAuthorization(() =>
-        this.accessControl.authorizeCustomer(actor, 'customer.admit', {
-          departmentId: customer.departmentId,
-          responsibleUserId: customer.responsibleUserId,
-          ...(customer.teamId === null ? {} : { teamId: customer.teamId }),
-        }),
-      );
-      ownerId = customer.id;
+      ownerId = input.ownerId;
     } else if (input.ownerType === 'CASE') {
       if (input.ownerId === undefined) throw this.validationError();
       await this.authorizeOwner(
@@ -307,28 +303,51 @@ export class MaterialService {
       }
     }
 
-    const draft = await this.database.uploadDraft.create({
-      data: {
-        departmentId: actor.departmentId,
-        actorUserId: actor.userId,
-        ...(notaryOfficeAccountBindingId === undefined
-          ? {}
-          : { notaryOfficeAccountBindingId }),
-        ...(customerAccountBindingId === undefined
-          ? {}
-          : { customerAccountBindingId }),
-        ...(lawyerAccountBindingId === undefined
-          ? {}
-          : { lawyerAccountBindingId }),
-        ownerType: input.ownerType,
-        ownerId,
-        category: input.category,
-        purpose: input.purpose,
-        originalFilename,
-        declaredMimeType,
-        expiresAt,
-      },
-    });
+    const draftData = {
+      departmentId: actor.departmentId,
+      actorUserId: actor.userId,
+      ...(notaryOfficeAccountBindingId === undefined
+        ? {}
+        : { notaryOfficeAccountBindingId }),
+      ...(customerAccountBindingId === undefined
+        ? {}
+        : { customerAccountBindingId }),
+      ...(lawyerAccountBindingId === undefined
+        ? {}
+        : { lawyerAccountBindingId }),
+      ownerType: input.ownerType,
+      ownerId,
+      category: input.category,
+      purpose: input.purpose,
+      originalFilename,
+      declaredMimeType,
+      expiresAt,
+    };
+    const draft =
+      input.ownerType === 'CUSTOMER' &&
+      input.category === 'CUSTOMER_RIGHT_EVIDENCE'
+        ? await this.database.$transaction(async (transaction) => {
+            const locked = await transaction.$queryRawUnsafe<
+              Array<{ id: string }>
+            >(
+              'SELECT "id" FROM "customers" WHERE "id" = $1::uuid AND "department_id" = $2::uuid FOR UPDATE',
+              ownerId,
+              actor.departmentId,
+            );
+            if (locked.length !== 1) throw this.notFound();
+            await this.authorizeOwner(
+              actor,
+              'CUSTOMER',
+              ownerId,
+              'write',
+              transaction,
+              transaction,
+              undefined,
+              input.category,
+            );
+            return transaction.uploadDraft.create({ data: draftData });
+          })
+        : await this.database.uploadDraft.create({ data: draftData });
     return {
       id: draft.id,
       ownerType: draft.ownerType,
@@ -404,24 +423,15 @@ export class MaterialService {
       throw this.forbidden();
     }
     if (draft.ownerType === 'CUSTOMER') {
-      const scope = await this.withMaterialAuthorization(() =>
-        this.accessControl.buildCustomerScope(actor, 'customer.read'),
-      );
-      const customer = await this.database.customer.findFirst({
-        where: { id: draft.ownerId, ...scope },
-        select: {
-          departmentId: true,
-          responsibleUserId: true,
-          teamId: true,
-        },
-      });
-      if (customer === null) throw this.notFound();
-      await this.withMaterialAuthorization(() =>
-        this.accessControl.authorizeCustomer(actor, 'customer.admit', {
-          departmentId: customer.departmentId,
-          responsibleUserId: customer.responsibleUserId,
-          ...(customer.teamId === null ? {} : { teamId: customer.teamId }),
-        }),
+      await this.authorizeOwner(
+        actor,
+        'CUSTOMER',
+        draft.ownerId,
+        'write',
+        this.database,
+        undefined,
+        undefined,
+        draft.category,
       );
     } else if (draft.ownerType === 'CASE') {
       await this.authorizeOwner(
@@ -497,6 +507,29 @@ export class MaterialService {
           throw this.invalidVersion();
         }
         await this.database.$transaction(async (transaction) => {
+          if (
+            draft.ownerType === 'CUSTOMER' &&
+            draft.category === 'CUSTOMER_RIGHT_EVIDENCE'
+          ) {
+            const locked = await transaction.$queryRawUnsafe<
+              Array<{ id: string }>
+            >(
+              'SELECT "id" FROM "customers" WHERE "id" = $1::uuid AND "department_id" = $2::uuid FOR UPDATE',
+              draft.ownerId,
+              actor.departmentId,
+            );
+            if (locked.length !== 1) throw this.notFound();
+            await this.authorizeOwner(
+              actor,
+              'CUSTOMER',
+              draft.ownerId,
+              'write',
+              transaction,
+              transaction,
+              undefined,
+              draft.category,
+            );
+          }
           if (draft.ownerType === 'CASE') {
             const locked = await transaction.$queryRawUnsafe<
               Array<{ id: string }>
@@ -579,7 +612,17 @@ export class MaterialService {
                       none: { caseJudgmentVersions: { some: {} } },
                     },
                   }
-                : {}),
+                : draft.category === 'CUSTOMER_RIGHT_EVIDENCE'
+                  ? {
+                      currentVersion: {
+                        is: {
+                          materialReferences: {
+                            none: { assetVersionId: { not: null } },
+                          },
+                        },
+                      },
+                    }
+                  : {}),
             },
           });
           if (activeCount >= materialLimit(draft.category)) {
@@ -819,6 +862,13 @@ export class MaterialService {
     ) {
       throw this.invalidVersion();
     }
+    if (
+      (input.resourceType === 'right_asset_version') !==
+        (input.assetVersionId !== undefined) ||
+      (input.assetVersionId !== undefined &&
+        input.assetVersionId !== input.resourceId)
+    )
+      throw this.invalidVersion();
 
     const canonicalFacts = input.facts.map((fact) => {
       const validation = this.validatedVersionFacts.get(fact);
@@ -843,6 +893,9 @@ export class MaterialService {
         ...(input.actionEventId === undefined
           ? {}
           : { actionEventId: input.actionEventId }),
+        ...(input.assetVersionId === undefined
+          ? {}
+          : { assetVersionId: input.assetVersionId }),
       })),
       skipDuplicates: true,
     });
@@ -1626,7 +1679,17 @@ export class MaterialService {
                   none: { caseJudgmentVersions: { some: {} } },
                 },
               }
-            : {}),
+            : material.category === 'CUSTOMER_RIGHT_EVIDENCE'
+              ? {
+                  currentVersion: {
+                    is: {
+                      materialReferences: {
+                        none: { assetVersionId: { not: null } },
+                      },
+                    },
+                  },
+                }
+              : {}),
         },
       });
       if (activeCount >= materialLimit(material.category)) {
@@ -2285,6 +2348,13 @@ export class MaterialService {
     >,
     notaryCategory?: MaterialCategoryValue,
   ): Promise<void> {
+    if (
+      ownerType === 'CUSTOMER' &&
+      (actor.clientCustomerId !== undefined ||
+        actor.notaryOfficeId !== undefined ||
+        actor.lawyerAccountId !== undefined)
+    )
+      throw this.forbidden();
     if (actor.lawyerAccountId !== undefined && ownerType !== 'CASE')
       throw this.forbidden();
     if (ownerType === 'CASE') {
@@ -2648,15 +2718,32 @@ export class MaterialService {
       return;
     }
     if (ownerType === 'CUSTOMER') {
-      const scope = await this.withMaterialAuthorization(() =>
+      const writeAction =
+        notaryCategory === 'CUSTOMER_RIGHT_EVIDENCE'
+          ? ('customer.edit-routine' as const)
+          : ('customer.admit' as const);
+      const readScope = await this.withMaterialAuthorization(() =>
         this.accessControl.buildCustomerScope(
           actor,
-          operation === 'read' ? 'customer.read' : 'customer.admit',
+          'customer.read',
           snapshotReader,
         ),
       );
+      const writeScope =
+        operation === 'write'
+          ? await this.withMaterialAuthorization(() =>
+              this.accessControl.buildCustomerScope(
+                actor,
+                writeAction,
+                snapshotReader,
+              ),
+            )
+          : null;
       const customer = await reader.customer.findFirst({
-        where: { id: ownerId, ...scope },
+        where: {
+          id: ownerId,
+          AND: writeScope === null ? [readScope] : [readScope, writeScope],
+        },
         select: {
           departmentId: true,
           responsibleUserId: true,
@@ -2668,7 +2755,7 @@ export class MaterialService {
         await this.withMaterialAuthorization(() =>
           this.accessControl.authorizeCustomer(
             actor,
-            'customer.admit',
+            writeAction,
             {
               departmentId: customer.departmentId,
               responsibleUserId: customer.responsibleUserId,
@@ -2907,6 +2994,9 @@ export class MaterialService {
         ['IDENTITY_FULL', 'IDENTITY_FRONT', 'IDENTITY_BACK'].includes(
           input.purpose,
         )) ||
+      (input.ownerType === 'CUSTOMER' &&
+        input.category === 'CUSTOMER_RIGHT_EVIDENCE' &&
+        input.purpose === 'CUSTOMER_RIGHT_EVIDENCE') ||
       (input.ownerType === 'LEAD_DRAFT' &&
         input.category === 'LEAD_SCREENSHOT' &&
         input.purpose === 'LEAD_SCREENSHOT') ||
@@ -3024,6 +3114,7 @@ function toMaterialPurpose(value: string): MaterialPurposeValue {
     value === 'IDENTITY_FULL' ||
     value === 'IDENTITY_FRONT' ||
     value === 'IDENTITY_BACK' ||
+    value === 'CUSTOMER_RIGHT_EVIDENCE' ||
     value === 'LEAD_SCREENSHOT' ||
     value === 'NOTARY_OPENING_PHOTO' ||
     value === 'NOTARY_CERTIFICATE' ||
@@ -3046,22 +3137,24 @@ function toMaterialPurpose(value: string): MaterialPurposeValue {
 function materialLimit(category: keyof typeof allowedMimeTypes): number {
   return category === 'CUSTOMER_IDENTITY'
     ? 10
-    : category === 'NOTARY_OPENING_PHOTO'
-      ? 50
-      : category === 'FILING_EVIDENCE'
+    : category === 'CUSTOMER_RIGHT_EVIDENCE'
+      ? 10
+      : category === 'NOTARY_OPENING_PHOTO'
         ? 50
-        : category === 'NOTARY_CERTIFICATE' ||
-            category === 'NOTARY_DISCLOSURE' ||
-            category === 'COMPLAINT' ||
-            category === 'AUTHORIZATION' ||
-            category === 'MAIL_RECEIPT' ||
-            category === 'FILING_SCREENSHOT' ||
-            category === 'ACCEPTANCE_NOTICE' ||
-            category === 'PAYMENT_LIST' ||
-            category === 'SERVICE_DOCUMENT' ||
-            category === 'JUDGMENT'
-          ? 10
-          : 20;
+        : category === 'FILING_EVIDENCE'
+          ? 50
+          : category === 'NOTARY_CERTIFICATE' ||
+              category === 'NOTARY_DISCLOSURE' ||
+              category === 'COMPLAINT' ||
+              category === 'AUTHORIZATION' ||
+              category === 'MAIL_RECEIPT' ||
+              category === 'FILING_SCREENSHOT' ||
+              category === 'ACCEPTANCE_NOTICE' ||
+              category === 'PAYMENT_LIST' ||
+              category === 'SERVICE_DOCUMENT' ||
+              category === 'JUDGMENT'
+            ? 10
+            : 20;
 }
 
 function materialFileLimit(category: keyof typeof allowedMimeTypes): number {

@@ -3,6 +3,13 @@ import { computed, onBeforeUnmount, ref, watch } from 'vue';
 import { ApiError } from '../../api/http';
 import { getCustomer } from '../../api/customers';
 import {
+  downloadMaterialVersion,
+  listOwnerMaterials,
+  uploadMaterialFile,
+  type UploadedMaterial,
+  type MaterialContentVersion,
+} from '../../api/materials';
+import {
   listCustomerRightsHolders,
   type RightsHolderSummary,
 } from '../../api/rights-holders';
@@ -61,6 +68,37 @@ const page = ref(1);
 const canCreate = ref(false);
 const holders = ref<RightsHolderSummary[]>([]);
 const detail = ref<RightAssetDetail>();
+const availableEvidence = ref<MaterialContentVersion[]>([]);
+const selectedEvidenceIds = ref<string[]>([]);
+const uploadFile = ref<globalThis.File>();
+const uploading = ref(false);
+const uploadMessage = ref('');
+type BatchRow = {
+  id: string;
+  selected: boolean;
+  fields: RightAssetFields;
+  file?: globalThis.File;
+  uploaded?: UploadedMaterial;
+  uploadStatus: 'idle' | 'uploading' | 'uploaded' | 'failed';
+  registrationStatus:
+    'draft' | 'registering' | 'registered' | 'failed' | 'unknown' | 'conflict';
+  error: string;
+  pending?: { body: WriteRightAssetInput; key: string };
+};
+const batchRegistrationLabels: Record<BatchRow['registrationStatus'], string> =
+  {
+    draft: '待确认',
+    registering: '登记中',
+    registered: '已登记',
+    failed: '登记失败',
+    unknown: '结果未知',
+    conflict: '版本冲突',
+  };
+const batchOpen = ref(false);
+const batchRows = ref<BatchRow[]>([]);
+const batchSaving = ref(false);
+const batchHalt = ref<'none' | 'unknown' | 'conflict' | 'permission'>('none');
+const batchCustomerVersion = ref<number>();
 const mode = ref<'closed' | 'create' | 'revise'>('closed');
 const saving = ref(false);
 const errorMessage = ref('');
@@ -96,6 +134,197 @@ function emptyFields(): RightAssetFields {
     validTo: null,
     validityMode: 'UNKNOWN',
   };
+}
+function addBatchRow(): void {
+  if (batchRows.value.length >= 10) return;
+  batchRows.value.push({
+    id: globalThis.crypto.randomUUID(),
+    selected: false,
+    fields: emptyFields(),
+    uploadStatus: 'idle',
+    registrationStatus: 'draft',
+    error: '',
+  });
+}
+function openBatch(): void {
+  if (!canCreate.value || !props.canEdit || writeDenied.value) return;
+  batchOpen.value = true;
+  if (batchRows.value.length === 0) addBatchRow();
+}
+function chooseBatchFile(row: BatchRow, event: globalThis.Event): void {
+  if (row.registrationStatus === 'registered') return;
+  row.file = (event.target as globalThis.HTMLInputElement).files?.[0];
+  row.uploaded = undefined;
+  row.uploadStatus = 'idle';
+  row.pending = undefined;
+  row.registrationStatus = 'draft';
+  row.error = '';
+}
+async function uploadBatchRow(row: BatchRow): Promise<void> {
+  if (
+    !row.file ||
+    row.uploadStatus === 'uploading' ||
+    row.registrationStatus === 'registered'
+  )
+    return;
+  const ownGeneration = generation;
+  row.uploadStatus = 'uploading';
+  row.error = '';
+  try {
+    const uploaded = await uploadMaterialFile({
+      ownerType: 'CUSTOMER',
+      ownerId: props.customerId,
+      category: 'CUSTOMER_RIGHT_EVIDENCE',
+      purpose: 'CUSTOMER_RIGHT_EVIDENCE',
+      file: row.file,
+    });
+    if (ownGeneration !== generation) return;
+    row.uploaded = uploaded;
+    row.uploadStatus = 'uploaded';
+    row.error = '上传成功，尚未登记';
+  } catch (error) {
+    if (ownGeneration !== generation) return;
+    row.uploadStatus = 'failed';
+    row.error = message(error);
+    if (isCode(error, 'ACTION_FORBIDDEN') || isCode(error, 'FORBIDDEN')) {
+      writeDenied.value = true;
+      batchHalt.value = 'permission';
+    }
+  }
+}
+function normalizedBatchFields(row: BatchRow): RightAssetFields {
+  return {
+    ...row.fields,
+    name: row.fields.name.trim(),
+    category: row.fields.category.trim(),
+    number: row.fields.number?.trim() || null,
+    ownerText: row.fields.ownerText?.trim() || null,
+    trademarkClass: row.fields.trademarkClass?.trim() || null,
+    validFrom: row.fields.validFrom || null,
+    validTo:
+      row.fields.validityMode === 'FIXED' ? row.fields.validTo || null : null,
+  };
+}
+async function submitBatch(): Promise<void> {
+  if (batchSaving.value || batchHalt.value !== 'none') return;
+  const selected = batchRows.value
+    .filter((row) => row.selected && row.registrationStatus !== 'registered')
+    .sort(
+      (left, right) =>
+        Number(right.registrationStatus === 'unknown') -
+        Number(left.registrationStatus === 'unknown'),
+    );
+  if (selected.length === 0) return;
+  const ownGeneration = generation;
+  batchSaving.value = true;
+  let nextVersion = batchCustomerVersion.value ?? effectiveCustomerVersion();
+  try {
+    for (const row of selected) {
+      if (ownGeneration !== generation) return;
+      const wasUnknown = row.registrationStatus === 'unknown';
+      const fields = normalizedBatchFields(row);
+      if (
+        !fields.name ||
+        !fields.category ||
+        !fields.holderId ||
+        (fields.validityMode === 'FIXED' && !fields.validTo) ||
+        !row.uploaded
+      ) {
+        row.registrationStatus = 'failed';
+        row.error =
+          '请上传真实证明并填写类型、名称、类别、关联主体及真实期限。';
+        continue;
+      }
+      if (!row.pending)
+        row.pending = {
+          body: {
+            ...fields,
+            expectedCustomerVersion: nextVersion,
+            contentVersionIds: [row.uploaded.contentVersionId],
+          },
+          key: globalThis.crypto.randomUUID(),
+        };
+      row.registrationStatus = 'registering';
+      try {
+        const result = await createRightAsset(
+          props.customerId,
+          row.pending.body,
+          row.pending.key,
+        );
+        if (ownGeneration !== generation) return;
+        row.registrationStatus = 'registered';
+        row.error = '登记成功';
+        row.pending = undefined;
+        row.selected = false;
+        nextVersion = result.customerVersion;
+        batchCustomerVersion.value = nextVersion;
+        emit('version-updated', props.customerId, nextVersion);
+      } catch (error) {
+        if (ownGeneration !== generation) return;
+        row.error = message(error);
+        if (wasUnknown) {
+          row.registrationStatus = 'unknown';
+          row.error = `本次重试被拒绝：${message(error)}；原请求结果仍未知。`;
+          batchHalt.value = 'unknown';
+          break;
+        }
+        if (isUnknownOutcome(error)) {
+          row.registrationStatus = 'unknown';
+          row.error = '结果未知；必须用原内容和幂等键先重试此行。';
+          batchHalt.value = 'unknown';
+          break;
+        }
+        row.pending = undefined;
+        if (error instanceof ApiError && error.status === 409) {
+          row.registrationStatus = 'conflict';
+          batchHalt.value = 'conflict';
+          break;
+        }
+        row.registrationStatus = 'failed';
+        if (error instanceof ApiError && error.status === 403) {
+          batchHalt.value = 'permission';
+          writeDenied.value = true;
+          break;
+        }
+      }
+    }
+    if (ownGeneration === generation && batchHalt.value === 'none')
+      await load(1);
+  } finally {
+    if (ownGeneration === generation) batchSaving.value = false;
+  }
+}
+async function retryBatchUnknown(): Promise<void> {
+  if (batchHalt.value !== 'unknown') return;
+  const row = batchRows.value.find(
+    (candidate) => candidate.registrationStatus === 'unknown',
+  );
+  if (!row?.pending) return;
+  row.selected = true;
+  batchHalt.value = 'none';
+  await submitBatch();
+}
+async function refreshBatchConflict(): Promise<void> {
+  if (batchHalt.value !== 'conflict' || batchSaving.value) return;
+  const ownGeneration = generation;
+  try {
+    const customer = await getCustomer(props.customerId);
+    if (ownGeneration !== generation) return;
+    await load(1);
+    if (state.value !== 'ready' || ownGeneration !== generation) return;
+    batchCustomerVersion.value = customer.version;
+    batchRows.value.forEach((row) => {
+      if (row.registrationStatus === 'conflict') {
+        row.registrationStatus = 'failed';
+        row.pending = undefined;
+        row.error = '已刷新版本；请核对草稿，再次确认登记。';
+      }
+    });
+    batchHalt.value = 'none';
+    emit('refresh-requested', props.customerId);
+  } catch (error) {
+    errorMessage.value = message(error);
+  }
 }
 const form = ref<RightAssetFields>(emptyFields());
 const numberText = computed({
@@ -223,11 +452,14 @@ async function load(nextPage = page.value): Promise<void> {
   const ownGeneration = generation;
   state.value = 'loading';
   try {
-    const [assets, allHolders] = await Promise.all([
+    const [assets, allHolders, materials] = await Promise.all([
       listRightAssets(props.customerId, nextPage, 20, {
         signal: controller.signal,
       }),
       loadHolders(props.customerId, controller.signal),
+      listOwnerMaterials('CUSTOMER', props.customerId, {
+        signal: controller.signal,
+      }),
     ]);
     if (controller.signal.aborted || ownGeneration !== generation) return;
     items.value = assets.items;
@@ -235,6 +467,9 @@ async function load(nextPage = page.value): Promise<void> {
     page.value = assets.page;
     canCreate.value = assets.capabilities.create;
     holders.value = allHolders;
+    availableEvidence.value = materials.items
+      .filter((item) => item.category === 'CUSTOMER_RIGHT_EVIDENCE')
+      .flatMap((item) => item.contentVersions);
     state.value = 'ready';
   } catch (error) {
     if (controller.signal.aborted || ownGeneration !== generation) return;
@@ -303,6 +538,9 @@ function openCreate(): void {
   if (unknownOutcome.value || saving.value) return;
   invalidateDetailRequest();
   form.value = emptyFields();
+  selectedEvidenceIds.value = [];
+  uploadFile.value = undefined;
+  uploadMessage.value = '';
   mode.value = 'create';
   detail.value = undefined;
   withdrawOpen.value = false;
@@ -328,6 +566,11 @@ function openRevise(): void {
     validTo: fields.validTo,
     validityMode: fields.validityMode,
   };
+  selectedEvidenceIds.value = fields.evidence.map(
+    (item) => item.contentVersionId,
+  );
+  uploadFile.value = undefined;
+  uploadMessage.value = '';
   mode.value = 'revise';
   draftOrigin.value = {
     customerVersion: props.customerVersion,
@@ -355,11 +598,68 @@ function cancelDraft(): void {
   if (unknownOutcome.value || saving.value) return;
   invalidateDetailRequest();
   mode.value = 'closed';
+  uploadFile.value = undefined;
   pending = undefined;
   conflict.value = false;
   conflictDetailReady.value = false;
   confirmedCustomerVersion.value = undefined;
   draftOrigin.value = undefined;
+}
+function chooseUpload(event: globalThis.Event): void {
+  uploadFile.value = (event.target as globalThis.HTMLInputElement).files?.[0];
+}
+async function uploadEvidence(): Promise<void> {
+  const file = uploadFile.value;
+  if (!file || mode.value === 'closed' || uploading.value || writeDenied.value)
+    return;
+  const ownGeneration = generation;
+  uploading.value = true;
+  uploadMessage.value = '';
+  try {
+    const uploaded: UploadedMaterial = await uploadMaterialFile({
+      ownerType: 'CUSTOMER',
+      ownerId: props.customerId,
+      category: 'CUSTOMER_RIGHT_EVIDENCE',
+      purpose: 'CUSTOMER_RIGHT_EVIDENCE',
+      file,
+    });
+    if (ownGeneration !== generation) return;
+    availableEvidence.value = [
+      ...availableEvidence.value,
+      {
+        id: uploaded.contentVersionId,
+        materialId: uploaded.materialId,
+        originalFilename: uploaded.originalFilename,
+        mimeType: uploaded.mimeType,
+        sizeBytes: uploaded.sizeBytes,
+        sha256: uploaded.sha256,
+        status: 'AVAILABLE',
+        createdAt: new Date().toISOString(),
+      },
+    ];
+    selectedEvidenceIds.value = [
+      ...new Set([...selectedEvidenceIds.value, uploaded.contentVersionId]),
+    ];
+    uploadMessage.value = '上传成功，尚未登记';
+    uploadFile.value = undefined;
+  } catch (error) {
+    if (ownGeneration !== generation) return;
+    uploadMessage.value = message(error);
+    if (isCode(error, 'ACTION_FORBIDDEN') || isCode(error, 'FORBIDDEN'))
+      writeDenied.value = true;
+  } finally {
+    if (ownGeneration === generation) uploading.value = false;
+  }
+}
+async function downloadEvidence(
+  materialId: string,
+  contentVersionId: string,
+): Promise<void> {
+  try {
+    await downloadMaterialVersion(materialId, contentVersionId);
+  } catch (error) {
+    errorMessage.value = message(error);
+  }
 }
 async function refreshAfterConflict(): Promise<void> {
   if (unknownOutcome.value || saving.value) return;
@@ -465,6 +765,7 @@ async function submit(): Promise<void> {
           body: {
             ...fields,
             expectedCustomerVersion: effectiveCustomerVersion(),
+            contentVersionIds: [...selectedEvidenceIds.value],
           },
           key: globalThis.crypto.randomUUID(),
         }
@@ -476,6 +777,7 @@ async function submit(): Promise<void> {
             ...fields,
             expectedCustomerVersion: effectiveCustomerVersion(),
             expectedAssetVersion: selected!.version,
+            contentVersionIds: [...selectedEvidenceIds.value],
           },
           key: globalThis.crypto.randomUUID(),
         };
@@ -519,6 +821,7 @@ async function retryUnknown(): Promise<void> {
 }
 async function runCommand(command: PendingCommand): Promise<void> {
   const ownGeneration = generation;
+  const wasUnknown = unknownOutcome.value;
   saving.value = true;
   errorMessage.value = '';
   let result;
@@ -541,6 +844,11 @@ async function runCommand(command: PendingCommand): Promise<void> {
             );
   } catch (error) {
     if (ownGeneration !== generation) return;
+    if (wasUnknown) {
+      unknownOutcome.value = true;
+      errorMessage.value = `本次重试被拒绝：${message(error)}；原请求结果仍未知。`;
+      return;
+    }
     if (isUnknownOutcome(error)) {
       unknownOutcome.value = true;
       errorMessage.value = '请求结果未知。请用原请求重试。';
@@ -574,8 +882,17 @@ async function runCommand(command: PendingCommand): Promise<void> {
   confirmedCustomerVersion.value = undefined;
   draftOrigin.value = undefined;
   emit('version-updated', command.customerId, result.customerVersion);
-  await load(command.action === 'CREATE' ? 1 : page.value);
-  await openDetail(result.assetId);
+  try {
+    await load(command.action === 'CREATE' ? 1 : page.value);
+    if (state.value !== 'ready') {
+      errorMessage.value = '登记已成功，但列表刷新失败；请重试读取。';
+      return;
+    }
+    if (!(await openDetail(result.assetId)))
+      errorMessage.value = '登记已成功，但详情刷新失败；请重试读取。';
+  } catch (error) {
+    errorMessage.value = `登记已成功，但刷新失败：${message(error)}`;
+  }
 }
 watch(
   () => props.customerId,
@@ -585,6 +902,14 @@ watch(
     invalidateDetailRequest();
     customerRefreshRequest?.abort();
     items.value = [];
+    availableEvidence.value = [];
+    batchOpen.value = false;
+    batchRows.value = [];
+    batchHalt.value = 'none';
+    batchCustomerVersion.value = undefined;
+    selectedEvidenceIds.value = [];
+    uploadFile.value = undefined;
+    uploadMessage.value = '';
     detail.value = undefined;
     mode.value = 'closed';
     pending = undefined;
@@ -621,6 +946,14 @@ onBeforeUnmount(() => {
         @click="openCreate"
       >
         登记权利资产
+      </button>
+      <button
+        v-if="state === 'ready' && canEdit && canCreate && !writeDenied"
+        type="button"
+        :disabled="batchSaving || unknownOutcome"
+        @click="openBatch"
+      >
+        批量上传权属
       </button>
     </header>
     <p v-if="state === 'loading'">正在读取权利资产…</p>
@@ -710,6 +1043,27 @@ onBeforeUnmount(() => {
           <dd>{{ termLabel(detail.fields) }}</dd>
         </div>
       </dl>
+      <p>识别状态：未识别，请人工填写</p>
+      <section aria-label="当前权属证明">
+        <h4>当前证明</h4>
+        <p v-if="detail.fields.evidence.length === 0">暂无已登记证明</p>
+        <ul v-else>
+          <li
+            v-for="proof in detail.fields.evidence"
+            :key="proof.contentVersionId"
+          >
+            {{ proof.originalFilename }} · {{ proof.createdAt.slice(0, 10) }}
+            <button
+              type="button"
+              @click="
+                downloadEvidence(proof.materialId, proof.contentVersionId)
+              "
+            >
+              下载
+            </button>
+          </li>
+        </ul>
+      </section>
       <button
         v-if="detail.capabilities.revise && canEdit && !writeDenied"
         type="button"
@@ -766,6 +1120,23 @@ onBeforeUnmount(() => {
             <span v-if="version.withdrawReason">
               · 原因：{{ version.withdrawReason }}</span
             >
+            <ul v-if="version.evidence.length">
+              <li
+                v-for="proof in version.evidence"
+                :key="proof.contentVersionId"
+              >
+                {{ proof.originalFilename }} ·
+                {{ proof.createdAt.slice(0, 10) }}
+                <button
+                  type="button"
+                  @click="
+                    downloadEvidence(proof.materialId, proof.contentVersionId)
+                  "
+                >
+                  下载原版
+                </button>
+              </li>
+            </ul>
           </li>
         </ol>
       </details>
@@ -849,6 +1220,38 @@ onBeforeUnmount(() => {
         /></label>
         <p>只填写已知事实；不会根据文件名或空白日期推断有效状态。</p>
       </fieldset>
+      <section aria-label="权属证明上传与选择">
+        <p>未识别，请人工填写。上传文件与确认登记是两个独立步骤。</p>
+        <input
+          type="file"
+          accept=".pdf,.jpg,.jpeg,.png"
+          aria-label="选择权属证明文件"
+          @change="chooseUpload"
+        />
+        <button
+          type="button"
+          :disabled="uploading || saving || unknownOutcome || !uploadFile"
+          @click="uploadEvidence"
+        >
+          {{ uploading ? '上传中…' : '上传证明' }}
+        </button>
+        <p v-if="uploadMessage" role="status">{{ uploadMessage }}</p>
+        <p>本次最多选择 10 份证明；取消勾选仅影响本版，历史版本保持原文件。</p>
+        <label v-for="proof in availableEvidence" :key="proof.id">
+          <input
+            v-model="selectedEvidenceIds"
+            type="checkbox"
+            :value="proof.id"
+            :disabled="
+              saving ||
+              unknownOutcome ||
+              (!selectedEvidenceIds.includes(proof.id) &&
+                selectedEvidenceIds.length >= 10)
+            "
+          />
+          {{ proof.originalFilename }} · {{ proof.createdAt.slice(0, 10) }}
+        </label>
+      </section>
       <button
         type="submit"
         :disabled="
@@ -865,6 +1268,171 @@ onBeforeUnmount(() => {
         取消
       </button>
     </form>
+    <section
+      v-if="batchOpen"
+      aria-label="批量上传权属"
+      class="right-assets-panel__form"
+    >
+      <h3>批量上传权属</h3>
+      <p>
+        最多 10
+        条待登记证明。逐条上传并人工填写；勾选后再确认登记。未识别，请人工填写。
+      </p>
+      <button
+        type="button"
+        :disabled="
+          batchRows.length >= 10 || batchSaving || batchHalt !== 'none'
+        "
+        @click="addBatchRow"
+      >
+        添加一行
+      </button>
+      <div
+        v-for="(row, index) in batchRows"
+        :key="row.id"
+        class="right-assets-panel__batch-row"
+      >
+        <h4>
+          第 {{ index + 1 }} 行 ·
+          {{ row.registrationStatus === 'registered' ? '已登记' : '待登记' }}
+        </h4>
+        <label
+          ><input
+            v-model="row.selected"
+            type="checkbox"
+            :disabled="
+              row.registrationStatus === 'registered' ||
+              batchSaving ||
+              batchHalt === 'unknown'
+            "
+          />选择此行登记</label
+        >
+        <fieldset
+          :disabled="
+            row.registrationStatus === 'registered' ||
+            batchSaving ||
+            batchHalt === 'unknown'
+          "
+        >
+          <label
+            >资产类型<select v-model="row.fields.type">
+              <option
+                v-for="(label, value) in typeLabels"
+                :key="value"
+                :value="value"
+              >
+                {{ label }}
+              </option>
+            </select></label
+          >
+          <label
+            >资产名称<input v-model="row.fields.name" maxlength="200"
+          /></label>
+          <label
+            >资产类别<input v-model="row.fields.category" maxlength="200"
+          /></label>
+          <label
+            >权利主体<select v-model="row.fields.holderId">
+              <option value="">请选择当前客户关联的主体</option>
+              <option
+                v-for="holder in holders"
+                :key="holder.id"
+                :value="holder.id"
+              >
+                {{ holder.name }}
+              </option>
+            </select></label
+          >
+          <label
+            >真实资产号码（可留空）<input
+              v-model="row.fields.number"
+              maxlength="200"
+          /></label>
+          <label
+            >登记权利人文字（可留空）<input
+              v-model="row.fields.ownerText"
+              maxlength="200"
+          /></label>
+          <label
+            >起始日期（可留空）<input
+              v-model="row.fields.validFrom"
+              type="date"
+          /></label>
+          <label
+            >期限模式<select v-model="row.fields.validityMode">
+              <option value="UNKNOWN">未知</option>
+              <option value="LONG_TERM">明确长期</option>
+              <option value="FIXED">固定截止日期</option>
+            </select></label
+          >
+          <label v-if="row.fields.validityMode === 'FIXED'"
+            >真实截止日期<input v-model="row.fields.validTo" type="date"
+          /></label>
+          <input
+            type="file"
+            accept=".pdf,.jpg,.jpeg,.png"
+            :aria-label="`第 ${index + 1} 行证明文件`"
+            @change="chooseBatchFile(row, $event)"
+          />
+          <button
+            type="button"
+            :disabled="
+              !row.file ||
+              row.uploadStatus === 'uploading' ||
+              row.registrationStatus === 'registered'
+            "
+            @click="uploadBatchRow(row)"
+          >
+            上传此行证明
+          </button>
+        </fieldset>
+        <p>
+          文件：{{
+            row.uploadStatus === 'uploaded'
+              ? '上传成功，尚未登记'
+              : row.uploadStatus === 'uploading'
+                ? '上传中'
+                : row.uploadStatus === 'failed'
+                  ? '上传失败'
+                  : '尚未上传'
+          }}；登记：{{ batchRegistrationLabels[row.registrationStatus] }}
+        </p>
+        <p v-if="row.error" role="status">{{ row.error }}</p>
+      </div>
+      <p v-if="batchHalt === 'unknown'">
+        后续行已停止；请先用原请求确认未知结果。
+      </p>
+      <p v-if="batchHalt === 'conflict'">客户版本冲突；剩余草稿已保留。</p>
+      <button
+        v-if="batchHalt === 'unknown'"
+        type="button"
+        :disabled="batchSaving"
+        @click="retryBatchUnknown"
+      >
+        用原内容和幂等键重试
+      </button>
+      <button
+        v-if="batchHalt === 'conflict'"
+        type="button"
+        :disabled="batchSaving"
+        @click="refreshBatchConflict"
+      >
+        明确刷新版本并核对批量草稿
+      </button>
+      <button
+        type="button"
+        :disabled="
+          batchSaving ||
+          batchHalt !== 'none' ||
+          !batchRows.some(
+            (row) => row.selected && row.registrationStatus !== 'registered',
+          )
+        "
+        @click="submitBatch"
+      >
+        确认登记
+      </button>
+    </section>
   </div>
 </template>
 

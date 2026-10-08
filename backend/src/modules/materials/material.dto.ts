@@ -24,6 +24,7 @@ export const materialOwnerTypes = [
 export type MaterialOwnerTypeValue = (typeof materialOwnerTypes)[number];
 export const materialCategories = [
   'CUSTOMER_IDENTITY',
+  'CUSTOMER_RIGHT_EVIDENCE',
   'LEAD_SCREENSHOT',
   'NOTARY_OPENING_PHOTO',
   'NOTARY_CERTIFICATE',
@@ -43,6 +44,7 @@ export const materialPurposes = [
   'IDENTITY_FULL',
   'IDENTITY_FRONT',
   'IDENTITY_BACK',
+  'CUSTOMER_RIGHT_EVIDENCE',
   'LEAD_SCREENSHOT',
   'NOTARY_OPENING_PHOTO',
   'NOTARY_CERTIFICATE',

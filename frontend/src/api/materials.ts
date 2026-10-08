@@ -11,6 +11,7 @@ export type MaterialOwnerType =
   'CUSTOMER' | 'LEAD_DRAFT' | 'LEAD' | 'NOTARY_MATTER' | 'CASE';
 export type MaterialCategory =
   | 'CUSTOMER_IDENTITY'
+  | 'CUSTOMER_RIGHT_EVIDENCE'
   | 'LEAD_SCREENSHOT'
   | 'NOTARY_OPENING_PHOTO'
   | 'NOTARY_CERTIFICATE'
@@ -29,6 +30,7 @@ export type MaterialPurpose =
   | 'IDENTITY_FULL'
   | 'IDENTITY_FRONT'
   | 'IDENTITY_BACK'
+  | 'CUSTOMER_RIGHT_EVIDENCE'
   | 'LEAD_SCREENSHOT'
   | 'NOTARY_OPENING_PHOTO'
   | 'NOTARY_CERTIFICATE'
@@ -123,6 +125,7 @@ function isOwnerType(value: unknown): value is MaterialOwnerType {
 function isCategory(value: unknown): value is MaterialCategory {
   return (
     value === 'CUSTOMER_IDENTITY' ||
+    value === 'CUSTOMER_RIGHT_EVIDENCE' ||
     value === 'LEAD_SCREENSHOT' ||
     value === 'NOTARY_OPENING_PHOTO' ||
     value === 'NOTARY_CERTIFICATE' ||
@@ -144,6 +147,7 @@ function isPurpose(value: unknown): value is MaterialPurpose {
     value === 'IDENTITY_FULL' ||
     value === 'IDENTITY_FRONT' ||
     value === 'IDENTITY_BACK' ||
+    value === 'CUSTOMER_RIGHT_EVIDENCE' ||
     value === 'LEAD_SCREENSHOT' ||
     value === 'NOTARY_OPENING_PHOTO' ||
     value === 'NOTARY_CERTIFICATE' ||
@@ -261,6 +265,29 @@ export async function uploadMaterialFile(
   const originalFilename = input.file.name.trim();
   if (originalFilename.length === 0) {
     throw new ApiError('文件名不能为空', 400, 'VALIDATION_ERROR');
+  }
+  if (
+    input.ownerType === 'CUSTOMER' &&
+    input.category === 'CUSTOMER_RIGHT_EVIDENCE'
+  ) {
+    const types = new Map([
+      ['.pdf', 'application/pdf'],
+      ['.jpg', 'image/jpeg'],
+      ['.jpeg', 'image/jpeg'],
+      ['.png', 'image/png'],
+    ]);
+    const extension = originalFilename.toLowerCase().match(/\.[^.]+$/u)?.[0];
+    if (
+      !input.ownerId ||
+      input.purpose !== 'CUSTOMER_RIGHT_EVIDENCE' ||
+      types.get(extension ?? '') !== input.file.type ||
+      input.file.size > 20 * 1024 * 1024
+    )
+      throw new ApiError(
+        '权属证明仅支持不超过 20MB 的 PDF、JPG 或 PNG 文件',
+        400,
+        'VALIDATION_ERROR',
+      );
   }
   if (input.ownerType === 'CASE') {
     if (

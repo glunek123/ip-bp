@@ -1288,6 +1288,7 @@ describe('MaterialService', () => {
       actor,
       'customer.admit',
       expect.objectContaining({ departmentId: actor.departmentId }),
+      undefined,
     );
     expect(fixture.db.uploadDraft.create).toHaveBeenCalledWith({
       data: expect.objectContaining({
@@ -1304,6 +1305,73 @@ describe('MaterialService', () => {
     });
     expect(result.ownerId).toBe(customerId);
   });
+
+  it('authorizes customer right evidence drafts with routine edit and readable scope', async () => {
+    const fixture = createFixture();
+    fixture.access.buildCustomerScope.mockResolvedValue({
+      departmentId: actor.departmentId,
+    });
+    fixture.db.customer.findFirst.mockResolvedValue({
+      id: customerId,
+      departmentId: actor.departmentId,
+      responsibleUserId: actor.userId,
+      teamId: null,
+    });
+
+    await fixture.service.createUploadDraft(actor, {
+      ownerType: 'CUSTOMER',
+      ownerId: customerId,
+      category: 'CUSTOMER_RIGHT_EVIDENCE',
+      purpose: 'CUSTOMER_RIGHT_EVIDENCE',
+      originalFilename: 'proof.pdf',
+      declaredMimeType: 'application/pdf',
+    } as unknown as Parameters<MaterialService['createUploadDraft']>[1]);
+
+    expect(fixture.access.buildCustomerScope).toHaveBeenCalledWith(
+      actor,
+      'customer.read',
+      undefined,
+    );
+    expect(fixture.access.authorizeCustomer).toHaveBeenCalledWith(
+      actor,
+      'customer.edit-routine',
+      expect.objectContaining({ departmentId: actor.departmentId }),
+      undefined,
+    );
+    expect(fixture.access.authorizeCustomer).not.toHaveBeenCalledWith(
+      actor,
+      'customer.admit',
+      expect.anything(),
+    );
+    expect(fixture.transaction.$queryRawUnsafe).toHaveBeenCalledWith(
+      expect.stringContaining('FOR UPDATE'),
+      customerId,
+      actor.departmentId,
+    );
+    expect(fixture.transaction.uploadDraft.create).toHaveBeenCalledTimes(1);
+    expect(fixture.db.uploadDraft.create).not.toHaveBeenCalled();
+  });
+
+  it.each(['clientCustomerId', 'notaryOfficeId', 'lawyerAccountId'] as const)(
+    'denies %s accounts the internal customer proof library',
+    async (identityField) => {
+      const fixture = createFixture();
+      await expect(
+        fixture.service.createUploadDraft(
+          { ...actor, [identityField]: customerId },
+          {
+            ownerType: 'CUSTOMER',
+            ownerId: customerId,
+            category: 'CUSTOMER_RIGHT_EVIDENCE',
+            purpose: 'CUSTOMER_RIGHT_EVIDENCE',
+            originalFilename: 'proof.pdf',
+            declaredMimeType: 'application/pdf',
+          },
+        ),
+      ).rejects.toMatchObject({ response: { code: 'ACTION_FORBIDDEN' } });
+      expect(fixture.db.uploadDraft.create).not.toHaveBeenCalled();
+    },
+  );
 
   it('returns the same not-found error for missing and invisible customers', async () => {
     const fixture = createFixture();
@@ -1854,6 +1922,56 @@ describe('MaterialService', () => {
         },
       }),
     });
+  });
+
+  it('keeps a customer proof pending when only its old V1 was frozen and current V2 is not', async () => {
+    const fixture = createFixture();
+    fixture.access.buildCustomerScope.mockResolvedValue({
+      departmentId: actor.departmentId,
+    });
+    fixture.db.customer.findFirst.mockResolvedValue({
+      id: customerId,
+      departmentId: actor.departmentId,
+      responsibleUserId: actor.userId,
+      teamId: null,
+    });
+    fixture.db.uploadDraft.findUnique.mockResolvedValue(
+      openDraft({
+        ownerType: 'CUSTOMER',
+        ownerId: customerId,
+        category: 'CUSTOMER_RIGHT_EVIDENCE',
+        purpose: 'CUSTOMER_RIGHT_EVIDENCE',
+        originalFilename: 'new-proof.pdf',
+        declaredMimeType: 'application/pdf',
+      }),
+    );
+    fixture.storage.put.mockResolvedValue({
+      sizeBytes: 10,
+      sha256: 'e'.repeat(64),
+      detectedMimeType: 'application/pdf',
+    });
+    fixture.transaction.material.count.mockResolvedValue(10);
+
+    await expect(
+      fixture.service.finalizeUpload(
+        actor,
+        openDraft().id,
+        Readable.from(Buffer.from('%PDF-1.7')),
+      ),
+    ).rejects.toMatchObject({ response: { code: 'VALIDATION_ERROR' } });
+    expect(fixture.transaction.material.count).toHaveBeenCalledWith({
+      where: expect.objectContaining({
+        ownerType: 'CUSTOMER',
+        ownerId: customerId,
+        category: 'CUSTOMER_RIGHT_EVIDENCE',
+        currentVersion: {
+          is: {
+            materialReferences: { none: { assetVersionId: { not: null } } },
+          },
+        },
+      }),
+    });
+    expect(fixture.transaction.material.create).not.toHaveBeenCalled();
   });
 
   it('still rejects an eleventh unfrozen judgment upload', async () => {
@@ -3206,6 +3324,7 @@ function createFixture() {
     contentVersion: { create: jest.fn(async ({ data }) => data) },
     uploadDraft: {
       findFirst: uploadDraftFindFirst,
+      create: jest.fn(async ({ data }) => ({ id: 'draft-1', ...data })),
       updateMany: jest.fn(async () => ({ count: 1 })),
     },
     materialReference: {

@@ -25,6 +25,7 @@ const version = {
   withdrawReason: null,
   recordedByUserId: 'user-1',
   recordedAt: '2026-10-08T01:00:00.000Z',
+  evidence: [],
 };
 const summary = {
   assetId: 'asset-1',

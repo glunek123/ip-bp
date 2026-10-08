@@ -30,6 +30,14 @@ export type RightAssetVersion = RightAssetFields & {
   withdrawReason: string | null;
   recordedByUserId: string;
   recordedAt: string;
+  evidence: Array<{
+    materialId: string;
+    contentVersionId: string;
+    originalFilename: string;
+    mimeType: string;
+    sizeBytes: number;
+    createdAt: string;
+  }>;
 };
 export type RightAssetSummary = {
   assetId: string;
@@ -55,6 +63,7 @@ export type RightAssetCommandResult = RightAssetSummary & {
 };
 export type WriteRightAssetInput = RightAssetFields & {
   expectedCustomerVersion: number;
+  contentVersionIds?: string[];
 };
 export type ReviseRightAssetInput = WriteRightAssetInput & {
   expectedAssetVersion: number;
@@ -97,6 +106,7 @@ function version(value: unknown): value is RightAssetVersion {
       'validityMode',
       'version',
       'withdrawReason',
+      'evidence',
     ]) &&
     rightAssetTypes.some((type) => type === value.type) &&
     ['FIXED', 'LONG_TERM', 'UNKNOWN'].includes(String(value.validityMode)) &&
@@ -113,7 +123,26 @@ function version(value: unknown): value is RightAssetVersion {
     nullableString(value.trademarkClass) &&
     nullableString(value.validFrom) &&
     nullableString(value.validTo) &&
-    nullableString(value.withdrawReason)
+    nullableString(value.withdrawReason) &&
+    Array.isArray(value.evidence) &&
+    value.evidence.every(
+      (item) =>
+        record(item) &&
+        exactKeys(item, [
+          'materialId',
+          'contentVersionId',
+          'originalFilename',
+          'mimeType',
+          'sizeBytes',
+          'createdAt',
+        ]) &&
+        typeof item.materialId === 'string' &&
+        typeof item.contentVersionId === 'string' &&
+        typeof item.originalFilename === 'string' &&
+        typeof item.mimeType === 'string' &&
+        Number.isInteger(item.sizeBytes) &&
+        typeof item.createdAt === 'string',
+    )
   );
 }
 function summary(value: unknown): value is RightAssetSummary {

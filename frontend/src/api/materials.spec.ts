@@ -23,6 +23,64 @@ const uploaded = {
 };
 
 describe('materials API', () => {
+  it('uses the dedicated customer proof category and rejects a file over 20 MiB before upload', async () => {
+    const file = new File(['%PDF-1.4'], 'proof.pdf', {
+      type: 'application/pdf',
+    });
+    const result = {
+      ...uploaded,
+      originalFilename: file.name,
+      purpose: 'CUSTOMER_RIGHT_EVIDENCE',
+      mimeType: file.type,
+      sizeBytes: file.size,
+    };
+    const fetch = vi
+      .fn()
+      .mockResolvedValueOnce(
+        new Response(
+          JSON.stringify({
+            id: 'draft-proof',
+            ownerType: 'CUSTOMER',
+            ownerId: 'customer-1',
+            category: 'CUSTOMER_RIGHT_EVIDENCE',
+            purpose: 'CUSTOMER_RIGHT_EVIDENCE',
+            originalFilename: file.name,
+            declaredMimeType: file.type,
+            expiresAt: '2026-10-08T00:00:00.000Z',
+          }),
+        ),
+      )
+      .mockResolvedValueOnce(new Response(JSON.stringify(result)));
+    vi.stubGlobal('fetch', fetch);
+    await expect(
+      uploadMaterialFile({
+        ownerType: 'CUSTOMER',
+        ownerId: 'customer-1',
+        category: 'CUSTOMER_RIGHT_EVIDENCE',
+        purpose: 'CUSTOMER_RIGHT_EVIDENCE',
+        file,
+      }),
+    ).resolves.toEqual(result);
+    expect(JSON.parse(String(fetch.mock.calls[0]?.[1]?.body))).toMatchObject({
+      category: 'CUSTOMER_RIGHT_EVIDENCE',
+      purpose: 'CUSTOMER_RIGHT_EVIDENCE',
+    });
+    const tooLarge = new File(
+      [new Uint8Array(20 * 1024 * 1024 + 1)],
+      'large.pdf',
+      { type: 'application/pdf' },
+    );
+    await expect(
+      uploadMaterialFile({
+        ownerType: 'CUSTOMER',
+        ownerId: 'customer-1',
+        category: 'CUSTOMER_RIGHT_EVIDENCE',
+        purpose: 'CUSTOMER_RIGHT_EVIDENCE',
+        file: tooLarge,
+      }),
+    ).rejects.toMatchObject({ code: 'VALIDATION_ERROR' });
+    expect(fetch).toHaveBeenCalledTimes(2);
+  });
   it('uploads real JUDGMENT documents with the court-document limits', async () => {
     const file = new File(['actual judgment bytes'], '判决书.jpg', {
       type: 'image/jpeg',

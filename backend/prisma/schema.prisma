@@ -134,6 +134,7 @@ enum MaterialOwnerType {
 
 enum MaterialCategory {
   CUSTOMER_IDENTITY
+  CUSTOMER_RIGHT_EVIDENCE
   LEAD_SCREENSHOT
   NOTARY_OPENING_PHOTO
   NOTARY_CERTIFICATE
@@ -837,6 +838,7 @@ model CustomerRightAssetVersion {
   recordedByUserId String                              @map("recorded_by_user_id") @db.Uuid
   auditEventId     String                              @unique @map("audit_event_id") @db.Uuid
   recordedAt       DateTime                            @default(now()) @map("recorded_at") @db.Timestamptz(3)
+  evidenceContentVersionIds String[]                   @default([]) @map("evidence_content_version_ids") @db.Uuid
   asset            CustomerRightAsset                 @relation("RightAssetVersions", fields: [assetId, customerId, departmentId], references: [id, customerId, departmentId], onDelete: Restrict, onUpdate: Restrict)
   currentFor       CustomerRightAsset?                @relation("RightAssetCurrentVersion")
   customer         Customer                           @relation(fields: [customerId, departmentId], references: [id, departmentId], onDelete: Restrict, onUpdate: Restrict)
@@ -844,8 +846,10 @@ model CustomerRightAssetVersion {
   actor            UserAccount                        @relation("RightAssetVersionActor", fields: [recordedByUserId], references: [id], onDelete: Restrict, onUpdate: Restrict)
   auditEvent       AuditEvent                          @relation(fields: [auditEventId], references: [id], onDelete: Restrict, onUpdate: Restrict)
   receipts         CustomerRightAssetReceipt[]
+  evidenceReferences MaterialReference[]              @relation("RightAssetEvidenceReferences")
 
   @@unique([id, assetId, customerId, departmentId])
+  @@unique([id, departmentId], map: "customer_right_asset_versions_id_department_key")
   @@unique([assetId, version])
   @@index([customerId, departmentId, assetId, version])
   @@map("customer_right_asset_versions")
@@ -991,10 +995,12 @@ model MaterialReference {
   materialId       String         @map("material_id") @db.Uuid
   contentVersionId String         @map("content_version_id") @db.Uuid
   actionEventId    String?        @map("action_event_id") @db.Uuid
+  assetVersionId   String?        @map("asset_version_id") @db.Uuid
   department       Department     @relation(fields: [departmentId], references: [id], onDelete: Restrict)
   material         Material       @relation(fields: [materialId, departmentId], references: [id, departmentId], onDelete: Restrict, map: "material_references_material_department_fkey")
   contentVersion   ContentVersion @relation(fields: [materialId, contentVersionId], references: [materialId, id], onDelete: Restrict, map: "material_references_content_material_fkey")
   actionEvent      AuditEvent?    @relation(fields: [actionEventId], references: [id], onDelete: Restrict)
+  assetVersion     CustomerRightAssetVersion? @relation("RightAssetEvidenceReferences", fields: [assetVersionId, departmentId], references: [id, departmentId], onDelete: Restrict, onUpdate: Restrict, map: "material_references_asset_version_department_fkey")
   createdAt        DateTime       @default(now()) @map("created_at") @db.Timestamptz(3)
 
   @@unique([resourceType, resourceId, purpose, contentVersionId, actionEventId], map: "material_references_resource_purpose_version_event_key")

@@ -1,6 +1,7 @@
 import {
   BadRequestException,
   ConflictException,
+  ForbiddenException,
   Injectable,
   NotFoundException,
 } from '@nestjs/common';
@@ -12,6 +13,7 @@ import {
 import { ActorContext } from '../../access-control/actor-context';
 import { DatabaseService } from '../../database/database.service';
 import type { Prisma } from '../../generated/prisma/client';
+import { MaterialService } from '../materials/material.service';
 import type {
   CustomerRightAssetAction,
   CustomerRightAssetType,
@@ -49,6 +51,17 @@ type VersionRecord = Fields & {
   withdrawReason: string | null;
   recordedByUserId: string;
   recordedAt: Date;
+  evidenceContentVersionIds: string[];
+  evidenceReferences?: Array<{
+    materialId: string;
+    contentVersionId: string;
+    contentVersion: {
+      originalFilename: string;
+      mimeType: string;
+      sizeBytes: bigint;
+      createdAt: Date;
+    };
+  }>;
 };
 type AssetRecord = {
   id: string;
@@ -74,6 +87,7 @@ export class RightAssetService {
   constructor(
     private readonly database: DatabaseService,
     private readonly accessControl: AccessControlService,
+    private readonly materials: MaterialService,
   ) {}
 
   create(
@@ -111,6 +125,8 @@ export class RightAssetService {
     page: number,
     pageSize: number,
   ) {
+    if (this.isExternal(actor))
+      throw this.notFound('CUSTOMER_NOT_FOUND', '客户不存在或不可访问');
     const readScope = await this.accessControl.buildCustomerScope(
       actor,
       'customer.read',
@@ -135,7 +151,13 @@ export class RightAssetService {
     const [rows, total] = await this.database.$transaction([
       this.database.customerRightAsset.findMany({
         where,
-        include: { currentVersion: true },
+        include: {
+          currentVersion: {
+            include: {
+              evidenceReferences: { include: { contentVersion: true } },
+            },
+          },
+        },
         orderBy: [{ updatedAt: 'desc' }, { id: 'asc' }],
         skip: (page - 1) * pageSize,
         take: pageSize,
@@ -156,6 +178,8 @@ export class RightAssetService {
     customerId: string,
     assetId: string,
   ): Promise<RightAssetDetail> {
+    if (this.isExternal(actor))
+      throw this.notFound('CUSTOMER_NOT_FOUND', '客户不存在或不可访问');
     const readScope = await this.accessControl.buildCustomerScope(
       actor,
       'customer.read',
@@ -174,8 +198,17 @@ export class RightAssetService {
     const asset = await this.database.customerRightAsset.findFirst({
       where: { id: assetId, customerId, departmentId: actor.departmentId },
       include: {
-        currentVersion: true,
-        versions: { orderBy: { version: 'desc' } },
+        currentVersion: {
+          include: {
+            evidenceReferences: { include: { contentVersion: true } },
+          },
+        },
+        versions: {
+          orderBy: { version: 'desc' },
+          include: {
+            evidenceReferences: { include: { contentVersion: true } },
+          },
+        },
       },
     });
     if (!asset)
@@ -215,6 +248,29 @@ export class RightAssetService {
     action: CustomerRightAssetAction,
     input: CommandInput,
   ): Promise<RightAssetCommandResult> {
+    if (this.isExternal(actor))
+      throw new ForbiddenException({
+        code: 'CUSTOMER_ACTION_FORBIDDEN',
+        message: '无权执行此客户操作',
+      });
+    const attachmentCommand =
+      action === 'WITHDRAW'
+        ? { mode: 'PRESERVE' as const }
+        : action === 'CREATE'
+          ? {
+              mode: 'SET' as const,
+              ids: this.normalizeEvidence(
+                (input as CreateRightAssetDto).contentVersionIds ?? [],
+              ),
+            }
+          : (input as ReviseRightAssetDto).contentVersionIds === undefined
+            ? { mode: 'PRESERVE' as const }
+            : {
+                mode: 'SET' as const,
+                ids: this.normalizeEvidence(
+                  (input as ReviseRightAssetDto).contentVersionIds ?? [],
+                ),
+              };
     const normalized =
       action === 'WITHDRAW'
         ? {
@@ -243,6 +299,11 @@ export class RightAssetService {
           action,
           customerId,
           assetId: assetId ?? null,
+          ...(action !== 'WITHDRAW' &&
+          'contentVersionIds' in input &&
+          input.contentVersionIds !== undefined
+            ? { attachmentCommand }
+            : {}),
           ...normalized,
         }),
       )
@@ -331,6 +392,29 @@ export class RightAssetService {
             '权利主体未关联当前客户',
           );
 
+        const selectedEvidenceIds =
+          attachmentCommand.mode === 'SET'
+            ? attachmentCommand.ids
+            : (current?.currentVersion?.evidenceContentVersionIds ?? []);
+        const evidenceFacts = await this.materials.assertAvailableVersions(
+          tx,
+          actor,
+          {
+            ownerType: 'CUSTOMER',
+            ownerId: customerId,
+            category: 'CUSTOMER_RIGHT_EVIDENCE',
+            contentVersionIds: selectedEvidenceIds,
+            minCount: 0,
+            maxCount: 10,
+          },
+        );
+        if (
+          evidenceFacts.some(
+            (fact) => fact.purpose !== 'CUSTOMER_RIGHT_EVIDENCE',
+          )
+        )
+          throw this.validation('权属证明类别无效');
+
         const updatedCustomer = await tx.customer.updateMany({
           where: {
             id: customerId,
@@ -397,7 +481,7 @@ export class RightAssetService {
             },
           },
         });
-        const version = await tx.customerRightAssetVersion.create({
+        await tx.customerRightAssetVersion.create({
           data: {
             id: versionId,
             assetId: resolvedAssetId,
@@ -412,8 +496,24 @@ export class RightAssetService {
                 : null,
             recordedByUserId: actor.userId,
             auditEventId: audit.id,
+            evidenceContentVersionIds: selectedEvidenceIds,
           },
         });
+        if (evidenceFacts.length > 0) {
+          const frozen = await this.materials.freezeReferences(tx, {
+            departmentId: actor.departmentId,
+            resourceType: 'right_asset_version',
+            resourceId: versionId,
+            assetVersionId: versionId,
+            actionEventId: audit.id,
+            facts: evidenceFacts,
+          });
+          if (frozen.count !== evidenceFacts.length)
+            throw this.conflict(
+              'RIGHT_ASSET_EVIDENCE_CONFLICT',
+              '权属证明引用未完整冻结',
+            );
+        }
         await tx.customerRightAsset.update({
           where: { id: resolvedAssetId },
           data: { currentVersionId: versionId },
@@ -431,13 +531,20 @@ export class RightAssetService {
             resultCustomerVersion: input.expectedCustomerVersion + 1,
           },
         });
+        const storedVersion =
+          await tx.customerRightAssetVersion.findUniqueOrThrow({
+            where: { id: versionId },
+            include: {
+              evidenceReferences: { include: { contentVersion: true } },
+            },
+          });
         return {
           assetId: resolvedAssetId,
           customerId,
           departmentId: actor.departmentId,
           version: nextVersion,
           withdrawn: action === 'WITHDRAW',
-          fields: this.version(version),
+          fields: this.version(storedVersion),
           customerVersion: input.expectedCustomerVersion + 1,
         };
       });
@@ -503,6 +610,7 @@ export class RightAssetService {
         customerId,
         departmentId: receipt.departmentId,
       },
+      include: { evidenceReferences: { include: { contentVersion: true } } },
     });
     if (!version)
       throw this.notFound('RIGHT_ASSET_NOT_FOUND', '权利资产不存在或不可访问');
@@ -540,6 +648,31 @@ export class RightAssetService {
     };
   }
 
+  private isExternal(actor: ActorContext): boolean {
+    return (
+      actor.clientCustomerId !== undefined ||
+      actor.notaryOfficeId !== undefined ||
+      actor.lawyerAccountId !== undefined
+    );
+  }
+
+  private normalizeEvidence(ids: string[]): string[] {
+    if (
+      !Array.isArray(ids) ||
+      ids.length > 10 ||
+      ids.some(
+        (id) =>
+          typeof id !== 'string' ||
+          !/^[0-9a-f]{8}-[0-9a-f]{4}-4[0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$/i.test(
+            id,
+          ),
+      ) ||
+      new Set(ids).size !== ids.length
+    )
+      throw this.validation('单次最多选择 10 份不同的真实权属证明');
+    return [...ids].sort();
+  }
+
   private fieldsFromVersion(version: VersionRecord | null | undefined): Fields {
     if (!version)
       throw this.notFound('RIGHT_ASSET_NOT_FOUND', '权利资产不存在或不可访问');
@@ -575,6 +708,18 @@ export class RightAssetService {
       withdrawReason: row.withdrawReason,
       recordedByUserId: row.recordedByUserId,
       recordedAt: row.recordedAt.toISOString(),
+      evidence: (row.evidenceReferences ?? [])
+        .map((reference) => ({
+          materialId: reference.materialId,
+          contentVersionId: reference.contentVersionId,
+          originalFilename: reference.contentVersion.originalFilename,
+          mimeType: reference.contentVersion.mimeType,
+          sizeBytes: Number(reference.contentVersion.sizeBytes),
+          createdAt: reference.contentVersion.createdAt.toISOString(),
+        }))
+        .sort((left, right) =>
+          left.contentVersionId.localeCompare(right.contentVersionId),
+        ),
     };
   }
 

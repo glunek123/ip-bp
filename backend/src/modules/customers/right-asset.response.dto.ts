@@ -21,6 +21,14 @@ export type RightAssetVersionView = {
   withdrawReason: string | null;
   recordedByUserId: string;
   recordedAt: string;
+  evidence: Array<{
+    materialId: string;
+    contentVersionId: string;
+    originalFilename: string;
+    mimeType: string;
+    sizeBytes: number;
+    createdAt: string;
+  }>;
 };
 
 export type RightAssetSummary = {
