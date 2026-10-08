@@ -154,6 +154,7 @@ const allowedMimeTypes = {
   ACCEPTANCE_NOTICE: new Set(['application/pdf', 'image/jpeg', 'image/png']),
   PAYMENT_LIST: new Set(['application/pdf', 'image/jpeg', 'image/png']),
   SERVICE_DOCUMENT: new Set(['application/pdf', 'image/jpeg', 'image/png']),
+  JUDGMENT: new Set(['application/pdf', 'image/jpeg', 'image/png']),
 } as const;
 
 @Injectable()
@@ -746,7 +747,19 @@ export class MaterialService {
           facts.has(version.id) ||
           !contentVersionIds.includes(version.id) ||
           (input.ownerType === 'CASE' &&
-            material.currentVersionId !== version.id) ||
+            material.currentVersionId !== version.id &&
+            !(
+              input.category === 'JUDGMENT' &&
+              (await transaction.caseJudgmentVersion.findFirst({
+                where: {
+                  caseId: input.ownerId,
+                  departmentId: actor.departmentId,
+                  materialId: material.id,
+                  contentVersionId: version.id,
+                },
+                select: { factId: true },
+              }))
+            )) ||
           (input.ownerType === 'CASE' &&
             input.category === 'MAIL_RECEIPT' &&
             actor.clientCustomerId !== undefined &&
@@ -2133,6 +2146,51 @@ export class MaterialService {
     }
   }
 
+  async freezeCaseJudgmentReferences(
+    transaction: MaterialTransactionClient,
+    actor: ActorContext,
+    caseId: string,
+    factId: string,
+    facts: readonly ValidatedMaterialVersionFact[],
+    actionEventId: string,
+  ): Promise<void> {
+    for (const fact of facts) {
+      const validation = this.validatedVersionFacts.get(fact);
+      const canonical = validation?.canonicalFact;
+      if (
+        validation?.transaction !== transaction ||
+        canonical?.departmentId !== actor.departmentId ||
+        canonical.ownerType !== 'CASE' ||
+        canonical.ownerId !== caseId ||
+        canonical.category !== 'JUDGMENT' ||
+        canonical.purpose !== 'JUDGMENT' ||
+        !allowedMimeTypes.JUDGMENT.has(canonical.mimeType) ||
+        canonical.sizeBytes > BigInt(materialFileLimit('JUDGMENT'))
+      )
+        throw this.invalidVersion();
+      await transaction.caseJudgmentVersion.create({
+        data: {
+          factId,
+          caseId,
+          departmentId: actor.departmentId,
+          materialId: canonical.materialId,
+          contentVersionId: canonical.contentVersionId,
+        },
+      });
+      await transaction.materialReference.create({
+        data: {
+          departmentId: actor.departmentId,
+          resourceType: 'case',
+          resourceId: caseId,
+          purpose: 'JUDGMENT',
+          materialId: canonical.materialId,
+          contentVersionId: canonical.contentVersionId,
+          actionEventId,
+        },
+      });
+    }
+  }
+
   async listFrozenCaseAcceptanceFiles(actor: ActorContext, caseId: string) {
     await this.authorizeOwner(actor, 'CASE', caseId, 'read');
     const references = await this.database.materialReference.findMany({
@@ -2244,7 +2302,9 @@ export class MaterialService {
                 'ACCEPTANCE_NOTICE',
                 'PAYMENT_LIST',
                 'SERVICE_DOCUMENT',
-              ].includes(notaryCategory ?? ''))
+              ].includes(notaryCategory ?? '')) ||
+            (lawyerCase.stage === 'WAITING_JUDGMENT' &&
+              notaryCategory === 'JUDGMENT')
           )
         )
           throw this.versionConflict();
@@ -2320,11 +2380,39 @@ export class MaterialService {
             (notaryCategory === 'ACCEPTANCE_NOTICE' ||
               notaryCategory === 'PAYMENT_LIST' ||
               notaryCategory === 'SERVICE_DOCUMENT')
+          ) &&
+          !(
+            record.stage === 'WAITING_JUDGMENT' && notaryCategory === 'JUDGMENT'
           )
         )
           throw this.versionConflict();
-        await this.withMaterialAuthorization(() =>
-          this.accessControl.authorizeCase(
+        await this.withMaterialAuthorization(async () => {
+          const facts = {
+            departmentId: record.departmentId,
+            responsibleUserId: record.responsibleUserId,
+            ...(record.responsibleMembership.teamId
+              ? { teamId: record.responsibleMembership.teamId }
+              : {}),
+          };
+          if (notaryCategory === 'JUDGMENT') {
+            if (
+              !(await this.accessControl.canAuthorizeCase(
+                actor,
+                'case.judgment.register',
+                facts,
+                snapshotReader,
+              )) &&
+              !(await this.accessControl.canAuthorizeCase(
+                actor,
+                'case.judgment.correct',
+                facts,
+                snapshotReader,
+              ))
+            )
+              throw this.forbidden();
+            return;
+          }
+          await this.accessControl.authorizeCase(
             actor,
             record.stage === 'WAITING_COMPLAINT'
               ? 'case.complaint.submit'
@@ -2336,16 +2424,10 @@ export class MaterialService {
                       record.stage === 'WAITING_HEARING'
                     ? 'case.acceptance.register'
                     : 'case.complaint.mail',
-            {
-              departmentId: record.departmentId,
-              responsibleUserId: record.responsibleUserId,
-              ...(record.responsibleMembership.teamId
-                ? { teamId: record.responsibleMembership.teamId }
-                : {}),
-            },
+            facts,
             snapshotReader,
-          ),
-        );
+          );
+        });
       }
       return;
     }
@@ -2636,6 +2718,7 @@ export class MaterialService {
               'ACCEPTANCE_NOTICE',
               'PAYMENT_LIST',
               'SERVICE_DOCUMENT',
+              'JUDGMENT',
             ],
           },
         },
@@ -2823,7 +2906,8 @@ export class MaterialService {
       (input.ownerType === 'CASE' &&
         (input.category === 'ACCEPTANCE_NOTICE' ||
           input.category === 'PAYMENT_LIST' ||
-          input.category === 'SERVICE_DOCUMENT') &&
+          input.category === 'SERVICE_DOCUMENT' ||
+          input.category === 'JUDGMENT') &&
         input.purpose === input.category) ||
       (input.ownerType === 'NOTARY_MATTER' &&
         input.category === 'NOTARY_OPENING_PHOTO' &&
@@ -2937,7 +3021,8 @@ function toMaterialPurpose(value: string): MaterialPurposeValue {
     value === 'FILING_SCREENSHOT' ||
     value === 'ACCEPTANCE_NOTICE' ||
     value === 'PAYMENT_LIST' ||
-    value === 'SERVICE_DOCUMENT'
+    value === 'SERVICE_DOCUMENT' ||
+    value === 'JUDGMENT'
   ) {
     return value;
   }
@@ -2959,7 +3044,8 @@ function materialLimit(category: keyof typeof allowedMimeTypes): number {
             category === 'FILING_SCREENSHOT' ||
             category === 'ACCEPTANCE_NOTICE' ||
             category === 'PAYMENT_LIST' ||
-            category === 'SERVICE_DOCUMENT'
+            category === 'SERVICE_DOCUMENT' ||
+            category === 'JUDGMENT'
           ? 10
           : 20;
 }
@@ -2972,7 +3058,8 @@ function materialFileLimit(category: keyof typeof allowedMimeTypes): number {
     category === 'FILING_EVIDENCE' ||
     category === 'ACCEPTANCE_NOTICE' ||
     category === 'PAYMENT_LIST' ||
-    category === 'SERVICE_DOCUMENT'
+    category === 'SERVICE_DOCUMENT' ||
+    category === 'JUDGMENT'
     ? 50 * 1024 * 1024
     : 20 * 1024 * 1024;
 }

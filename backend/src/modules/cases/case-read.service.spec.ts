@@ -23,6 +23,7 @@ describe('CaseReadService', () => {
         findFirst: jest.fn().mockResolvedValue(null),
         groupBy: jest.fn().mockResolvedValue([]),
       },
+      material: { findMany: jest.fn().mockResolvedValue([]) },
       $transaction: jest.fn(),
     };
     const access = {
@@ -43,7 +44,10 @@ describe('CaseReadService', () => {
       listFrozenCaseComplaintMailingFiles: jest.fn().mockResolvedValue([]),
     };
     db.$transaction.mockImplementation(async (operation) =>
-      operation({ case: { findFirst: db.case.findFirst } }),
+      operation({
+        case: { findFirst: db.case.findFirst },
+        material: db.material,
+      }),
     );
     return {
       db,
@@ -172,6 +176,8 @@ describe('CaseReadService', () => {
       businessNo: 'CA-1',
       stage: 'PENDING_MATCH',
       version: 1,
+      currentJudgmentId: null,
+      judgmentFacts: [],
       currentHearingAdvanceId: 'advance-1',
       currentHearingArrangement: {
         id: 'arrangement-1',

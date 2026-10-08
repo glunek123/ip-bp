@@ -33,6 +33,12 @@ import { CaseComplaintMailingService } from './case-complaint-mailing.service';
 import { CaseFilingService } from './case-filing.service';
 import { CaseAcceptanceService } from './case-acceptance.service';
 import { CaseHearingService } from './case-hearing.service';
+import { CaseJudgmentService } from './case-judgment.service';
+import {
+  CaseJudgmentCommandResultDto,
+  CorrectCaseJudgmentDto,
+  RegisterCaseJudgmentDto,
+} from './case-judgment.dto';
 import {
   CaseHearingCommandResultDto,
   CorrectCaseHearingDto,
@@ -77,6 +83,7 @@ export class CaseReadController {
     private readonly filing: CaseFilingService,
     private readonly acceptance: CaseAcceptanceService,
     private readonly hearing: CaseHearingService,
+    private readonly judgment: CaseJudgmentService,
     private readonly courts: FilingCourtService,
   ) {}
 
@@ -206,5 +213,25 @@ export class CaseReadController {
     @Body() body: CorrectCaseHearingDto,
   ) {
     return this.hearing.correct(actor, id, body);
+  }
+
+  @Post(':id/judgment-register')
+  @ApiCreatedResponse({ type: CaseJudgmentCommandResultDto })
+  registerJudgment(
+    @CurrentActor() actor: ActorContext,
+    @Param('id', new ParseUUIDPipe()) id: string,
+    @Body() body: RegisterCaseJudgmentDto,
+  ) {
+    return this.judgment.register(actor, id, body);
+  }
+
+  @Post(':id/judgment-correct')
+  @ApiCreatedResponse({ type: CaseJudgmentCommandResultDto })
+  correctJudgment(
+    @CurrentActor() actor: ActorContext,
+    @Param('id', new ParseUUIDPipe()) id: string,
+    @Body() body: CorrectCaseJudgmentDto,
+  ) {
+    return this.judgment.correct(actor, id, body);
   }
 }

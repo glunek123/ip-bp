@@ -137,6 +137,7 @@ export class CaseHearingService {
                 acceptance: { select: { acceptedAt: true } },
                 currentHearingArrangementId: true,
                 currentHearingAdvanceId: true,
+                currentJudgmentId: true,
               },
             });
             if (record === null) throw this.notFound();
@@ -198,7 +199,9 @@ export class CaseHearingService {
             if (
               record.acceptance === null ||
               (action === 'SCHEDULE' && record.stage !== 'WAITING_HEARING') ||
-              (action === 'CORRECT' && record.stage !== 'WAITING_JUDGMENT')
+              (action === 'CORRECT' &&
+                (record.stage !== 'WAITING_JUDGMENT' ||
+                  record.currentJudgmentId != null))
             )
               throw this.invalidState();
             if (record.version !== value.expectedVersion)

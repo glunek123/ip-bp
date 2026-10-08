@@ -116,6 +116,7 @@ export class CaseReadService {
           stage: true,
           version: true,
           currentHearingAdvanceId: true,
+          currentJudgmentId: true,
           createdAt: true,
           responsibleUserId: true,
           owner: { select: { id: true, displayName: true } },
@@ -254,6 +255,7 @@ export class CaseReadService {
             principal === 'INTERNAL' &&
             item.stage === 'WAITING_JUDGMENT' &&
             item.currentHearingAdvanceId !== null &&
+            item.currentJudgmentId === null &&
             (await this.access.canAuthorizeCase(actor, 'case.hearing.correct', {
               departmentId: actor.departmentId,
               responsibleUserId: item.responsibleUserId,
@@ -261,6 +263,36 @@ export class CaseReadService {
                 ? { teamId: item.responsibleMembership.teamId }
                 : {}),
             })),
+          canRegisterJudgment:
+            item.stage === 'WAITING_JUDGMENT' &&
+            item.currentJudgmentId === null &&
+            (principal === 'LAWYER' ||
+              (await this.access.canAuthorizeCase(
+                actor,
+                'case.judgment.register',
+                {
+                  departmentId: actor.departmentId,
+                  responsibleUserId: item.responsibleUserId,
+                  ...(item.responsibleMembership.teamId
+                    ? { teamId: item.responsibleMembership.teamId }
+                    : {}),
+                },
+              ))),
+          canCorrectJudgment:
+            principal === 'INTERNAL' &&
+            item.stage === 'WAITING_JUDGMENT' &&
+            item.currentJudgmentId !== null &&
+            (await this.access.canAuthorizeCase(
+              actor,
+              'case.judgment.correct',
+              {
+                departmentId: actor.departmentId,
+                responsibleUserId: item.responsibleUserId,
+                ...(item.responsibleMembership.teamId
+                  ? { teamId: item.responsibleMembership.teamId }
+                  : {}),
+              },
+            )),
           createdAt: item.createdAt.toISOString(),
         })),
       ),
@@ -355,6 +387,34 @@ export class CaseReadService {
           },
         },
         currentHearingAdvanceId: true,
+        currentJudgmentId: true,
+        judgmentFacts: {
+          orderBy: [{ toVersion: 'asc' }, { id: 'asc' }],
+          select: {
+            id: true,
+            kind: true,
+            priorFactId: true,
+            judgmentReceivedAt: true,
+            judgmentAmountState: true,
+            judgmentAmount: true,
+            paidLitigationFeeState: true,
+            paidLitigationFee: true,
+            reason: true,
+            recordedAt: true,
+            recordedByUserId: true,
+            fromVersion: true,
+            toVersion: true,
+            versions: {
+              select: {
+                materialId: true,
+                contentVersionId: true,
+                contentVersion: {
+                  select: { originalFilename: true, mimeType: true },
+                },
+              },
+            },
+          },
+        },
         currentHearingArrangement: {
           select: {
             id: true,
@@ -466,10 +526,38 @@ export class CaseReadService {
         },
       },
     } satisfies Prisma.CaseFindFirstArgs;
-    const record = await this.database.$transaction(
-      (transaction) => transaction.case.findFirst(detailQuery),
+    const snapshot = await this.database.$transaction(
+      async (transaction) => {
+        const record = await transaction.case.findFirst(detailQuery);
+        const judgmentMaterials =
+          record === null
+            ? []
+            : await transaction.material.findMany({
+                where: {
+                  departmentId: actor.departmentId,
+                  ownerType: 'CASE',
+                  ownerId: id,
+                  category: 'JUDGMENT',
+                  status: 'ACTIVE',
+                },
+                select: {
+                  id: true,
+                  currentVersionId: true,
+                  contentVersions: {
+                    where: { status: 'AVAILABLE' },
+                    select: {
+                      id: true,
+                      originalFilename: true,
+                      mimeType: true,
+                    },
+                  },
+                },
+              });
+        return { record, judgmentMaterials };
+      },
       { isolationLevel: 'RepeatableRead' },
     );
+    const { record, judgmentMaterials } = snapshot;
     if (record === null)
       throw new NotFoundException({
         code: 'RESOURCE_NOT_FOUND',
@@ -516,6 +604,53 @@ export class CaseReadService {
       originalFilename: ref.originalFilename,
       mimeType: ref.mimeType,
     });
+    const judgmentHistory = record.judgmentFacts.map((fact) => ({
+      id: fact.id,
+      kind: fact.kind,
+      priorFactId: fact.priorFactId,
+      judgmentReceivedAt: fact.judgmentReceivedAt.toISOString().slice(0, 10),
+      judgmentAmountState: fact.judgmentAmountState,
+      judgmentAmount:
+        fact.judgmentAmount === null
+          ? null
+          : new Prisma.Decimal(fact.judgmentAmount.toString()).toFixed(2),
+      paidLitigationFeeState: fact.paidLitigationFeeState,
+      paidLitigationFee:
+        fact.paidLitigationFee === null
+          ? null
+          : new Prisma.Decimal(fact.paidLitigationFee.toString()).toFixed(2),
+      fromVersion: fact.fromVersion,
+      toVersion: fact.toVersion,
+      recordedAt: fact.recordedAt.toISOString(),
+      ...(principal === 'INTERNAL'
+        ? { reason: fact.reason, recordedByUserId: fact.recordedByUserId }
+        : {}),
+      files: fact.versions.map((version) => ({
+        materialId: version.materialId,
+        contentVersionId: version.contentVersionId,
+        originalFilename: version.contentVersion.originalFilename,
+        mimeType: version.contentVersion.mimeType,
+      })),
+    }));
+    const frozenJudgmentIds = new Set(
+      judgmentHistory.flatMap((fact) =>
+        fact.files.map((version) => version.contentVersionId),
+      ),
+    );
+    const judgmentAvailableFiles = judgmentMaterials.flatMap((material) =>
+      material.contentVersions
+        .filter(
+          (version) =>
+            version.id === material.currentVersionId ||
+            frozenJudgmentIds.has(version.id),
+        )
+        .map((version) => ({
+          materialId: material.id,
+          contentVersionId: version.id,
+          originalFilename: version.originalFilename,
+          mimeType: version.mimeType,
+        })),
+    );
     const sample = record.sourceNotaryMatter.evidence;
     const arrangement = (
       value: (typeof record.hearingArrangements)[number],
@@ -561,6 +696,14 @@ export class CaseReadService {
             ? { reason: value.reason, recordedByUserId: value.recordedByUserId }
             : {}),
         })),
+      },
+      judgment: {
+        current:
+          judgmentHistory.find(
+            (fact) => fact.id === record.currentJudgmentId,
+          ) ?? null,
+        history: judgmentHistory,
+        availableFiles: judgmentAvailableFiles,
       },
       matchedAt: record.matchedAt?.toISOString() ?? null,
       matchedOn: record.matchedOn?.toISOString().slice(0, 10) ?? null,
@@ -666,7 +809,30 @@ export class CaseReadService {
         principal === 'INTERNAL' &&
         record.stage === 'WAITING_JUDGMENT' &&
         record.currentHearingAdvanceId !== null &&
+        record.currentJudgmentId === null &&
         (await this.access.canAuthorizeCase(actor, 'case.hearing.correct', {
+          departmentId: actor.departmentId,
+          responsibleUserId: record.responsibleUserId,
+          ...(record.responsibleMembership.teamId
+            ? { teamId: record.responsibleMembership.teamId }
+            : {}),
+        })),
+      canRegisterJudgment:
+        record.stage === 'WAITING_JUDGMENT' &&
+        record.currentJudgmentId === null &&
+        (principal === 'LAWYER' ||
+          (await this.access.canAuthorizeCase(actor, 'case.judgment.register', {
+            departmentId: actor.departmentId,
+            responsibleUserId: record.responsibleUserId,
+            ...(record.responsibleMembership.teamId
+              ? { teamId: record.responsibleMembership.teamId }
+              : {}),
+          }))),
+      canCorrectJudgment:
+        principal === 'INTERNAL' &&
+        record.stage === 'WAITING_JUDGMENT' &&
+        record.currentJudgmentId !== null &&
+        (await this.access.canAuthorizeCase(actor, 'case.judgment.correct', {
           departmentId: actor.departmentId,
           responsibleUserId: record.responsibleUserId,
           ...(record.responsibleMembership.teamId
@@ -891,7 +1057,10 @@ export class CaseReadService {
         canUploadAcceptanceMaterials: detail.canUploadAcceptanceMaterials,
         canScheduleHearing: detail.canScheduleHearing,
         canCorrectHearing: false,
+        canRegisterJudgment: detail.canRegisterJudgment,
+        canCorrectJudgment: false,
         hearing: detail.hearing,
+        judgment: detail.judgment,
         complaint:
           detail.complaint === null
             ? null

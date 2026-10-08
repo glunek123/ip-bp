@@ -129,6 +129,35 @@ class CaseHearingDto {
   corrections!: CaseHearingCorrectionDto[];
 }
 
+class CaseJudgmentFactDto {
+  @ApiProperty({ format: 'uuid' }) id!: string;
+  @ApiProperty({ enum: ['REGISTER', 'CORRECT'] }) kind!: 'REGISTER' | 'CORRECT';
+  @ApiProperty({ type: String, nullable: true, format: 'uuid' }) priorFactId!:
+    string | null;
+  @ApiProperty({ format: 'date' }) judgmentReceivedAt!: string;
+  @ApiProperty({ enum: ['KNOWN', 'PENDING'] }) judgmentAmountState!:
+    'KNOWN' | 'PENDING';
+  @ApiProperty({ type: String, nullable: true }) judgmentAmount!: string | null;
+  @ApiProperty({ enum: ['KNOWN', 'PENDING'] }) paidLitigationFeeState!:
+    'KNOWN' | 'PENDING';
+  @ApiProperty({ type: String, nullable: true }) paidLitigationFee!:
+    string | null;
+  @ApiProperty() fromVersion!: number;
+  @ApiProperty() toVersion!: number;
+  @ApiProperty({ format: 'date-time' }) recordedAt!: string;
+  @ApiPropertyOptional() reason?: string;
+  @ApiPropertyOptional({ format: 'uuid' }) recordedByUserId?: string;
+  @ApiProperty({ type: [CaseCertificateFileDto] })
+  files!: CaseCertificateFileDto[];
+}
+class CaseJudgmentDto {
+  @ApiProperty({ type: CaseJudgmentFactDto, nullable: true })
+  current!: CaseJudgmentFactDto | null;
+  @ApiProperty({ type: [CaseJudgmentFactDto] }) history!: CaseJudgmentFactDto[];
+  @ApiProperty({ type: [CaseCertificateFileDto] })
+  availableFiles!: CaseCertificateFileDto[];
+}
+
 export class CasePageQueryDto {
   @ApiPropertyOptional({ enum: ['mine', 'department'], default: 'department' })
   @IsOptional()
@@ -224,6 +253,8 @@ class CaseListItemDto {
   @ApiProperty() canUploadAcceptanceMaterials!: boolean;
   @ApiProperty() canScheduleHearing!: boolean;
   @ApiProperty() canCorrectHearing!: boolean;
+  @ApiProperty() canRegisterJudgment!: boolean;
+  @ApiProperty() canCorrectJudgment!: boolean;
   @ApiProperty({ type: CaseOwnerDto }) owner!: CaseOwnerDto;
   @ApiProperty({ format: 'date-time' }) createdAt!: string;
   @ApiProperty({ type: CaseSourceDto }) sourceLead!: CaseSourceDto;
@@ -273,6 +304,7 @@ class CaseFeeDto {
 }
 export class CaseDetailResponseDto extends CaseListItemDto {
   @ApiProperty({ type: CaseHearingDto }) hearing!: CaseHearingDto;
+  @ApiProperty({ type: CaseJudgmentDto }) judgment!: CaseJudgmentDto;
   @ApiProperty({ type: CaseComplaintSummaryDto, nullable: true })
   complaint!: CaseComplaintSummaryDto | null;
   @ApiProperty({ type: CaseComplaintConfirmationSummaryDto, nullable: true })

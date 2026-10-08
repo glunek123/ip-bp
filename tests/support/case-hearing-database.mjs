@@ -677,11 +677,15 @@ export async function verifyCaseHearingDetailSnapshot() {
   const schema = `ca007_detail_snapshot_${randomUUID().replaceAll('-', '')}`;
   const migrations = resolve(root, 'backend/prisma/migrations');
   const names = (await readdir(migrations))
-    .filter((name) => /^\d{14}_/u.test(name))
+    .filter(
+      (name) =>
+        /^\d{14}_/u.test(name) &&
+        name <= '20261008026000_repair_case_judgment_deployment',
+    )
     .sort();
   if (
-    names.length !== 82 ||
-    names.at(-1) !== '20261008015000_require_latest_case_hearing_chain'
+    names.length !== 89 ||
+    names.at(-1) !== '20261008026000_repair_case_judgment_deployment'
   )
     throw new Error('Unexpected hearing migration chain');
   const admin = new Client({ connectionString: databaseUrl });
@@ -902,6 +906,8 @@ export async function verifyCaseHearingDetailSnapshot() {
             complaintMailing: null,
             filingSubmission: null,
             acceptance: null,
+            judgmentFacts: [],
+            currentJudgmentId: null,
             responsibleUserId: userId,
             responsibleMembership: { teamId: null },
             defendants: [],
@@ -943,6 +949,9 @@ export async function verifyCaseHearingDetailSnapshot() {
           (transaction) =>
             operation({
               case: { findFirst: (input) => readCase(transaction, input) },
+              material: {
+                findMany: (input) => transaction.material.findMany(input),
+              },
             }),
           options,
         ),
@@ -1010,11 +1019,15 @@ export async function verifyCaseHearingDatabase() {
   const schema = `ca007_db_${randomUUID().replaceAll('-', '')}`;
   const migrations = resolve(root, 'backend/prisma/migrations');
   const names = (await readdir(migrations))
-    .filter((name) => /^\d{14}_/u.test(name))
+    .filter(
+      (name) =>
+        /^\d{14}_/u.test(name) &&
+        name <= '20261008026000_repair_case_judgment_deployment',
+    )
     .sort();
   if (
-    names.length !== 82 ||
-    names.at(-1) !== '20261008015000_require_latest_case_hearing_chain'
+    names.length !== 89 ||
+    names.at(-1) !== '20261008026000_repair_case_judgment_deployment'
   )
     throw new Error('Unexpected migration chain');
   const admin = new Client({ connectionString: databaseUrl });

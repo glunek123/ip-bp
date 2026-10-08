@@ -22,6 +22,8 @@ import { CaseComplaintMailingService } from './case-complaint-mailing.service';
 import { CaseFilingService } from './case-filing.service';
 import { CaseAcceptanceService } from './case-acceptance.service';
 import { CaseHearingService } from './case-hearing.service';
+import { CaseJudgmentService } from './case-judgment.service';
+import { RegisterCaseJudgmentDto } from './case-judgment.dto';
 import { SaveCaseHearingDto } from './case-hearing.dto';
 import { RegisterCaseAcceptanceDto } from './case-acceptance.dto';
 import { FilingCourtService } from './filing-court.service';
@@ -43,6 +45,7 @@ export class LawyerCaseController {
     private readonly filing: CaseFilingService,
     private readonly acceptance: CaseAcceptanceService,
     private readonly hearing: CaseHearingService,
+    private readonly judgment: CaseJudgmentService,
     private readonly courts: FilingCourtService,
   ) {}
 
@@ -157,5 +160,15 @@ export class LawyerCaseController {
   ) {
     this.lawyer(actor);
     return this.hearing.schedule(actor, id, body);
+  }
+
+  @Post(':id/judgment-register')
+  registerJudgment(
+    @CurrentActor() actor: ActorContext,
+    @Param('id', new ParseUUIDPipe()) id: string,
+    @Body() body: RegisterCaseJudgmentDto,
+  ) {
+    this.lawyer(actor);
+    return this.judgment.register(actor, id, body);
   }
 }

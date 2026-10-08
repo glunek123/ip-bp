@@ -126,6 +126,36 @@ describe('CaseHearingService', () => {
     expect(f.tx.auditEvent.create).not.toHaveBeenCalled();
   });
 
+  it('rejects every hearing correction after a judgment, including a past-date correction', async () => {
+    const f = fixture();
+    f.tx.case.findFirst.mockResolvedValue({
+      id: caseId,
+      departmentId: actor.departmentId,
+      stage: 'WAITING_JUDGMENT',
+      version: 7,
+      responsibleUserId: actor.userId,
+      responsibleMembership: { teamId: null },
+      acceptance: { acceptedAt: new Date('2026-10-01T00:00:00.000Z') },
+      currentHearingArrangementId: arrangementId,
+      currentHearingAdvanceId: advanceId,
+      currentJudgmentId: '77777777-7777-4777-8777-777777777777',
+    });
+    f.tx.caseHearingAdvance.findUnique.mockResolvedValue({
+      id: advanceId,
+      arrangementId,
+      caseId,
+    });
+    await expect(
+      f.service.correct(actor, caseId, {
+        ...request,
+        hearingAt: '2026-10-02',
+        reason: '录入有误',
+      }),
+    ).rejects.toMatchObject({ response: { code: 'INVALID_STATE' } });
+    expect(f.tx.caseHearingCorrection.create).not.toHaveBeenCalled();
+    expect(f.tx.case.updateMany).not.toHaveBeenCalled();
+  });
+
   it('rejects a changed payload reusing the same idempotency key', async () => {
     const f = fixture();
     f.tx.caseHearingReceipt.findUnique.mockResolvedValue({

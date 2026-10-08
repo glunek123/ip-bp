@@ -33,6 +33,7 @@ import { CaseComplaintMailingService } from './modules/cases/case-complaint-mail
 import { CaseFilingService } from './modules/cases/case-filing.service';
 import { CaseAcceptanceService } from './modules/cases/case-acceptance.service';
 import { CaseHearingService } from './modules/cases/case-hearing.service';
+import { CaseJudgmentService } from './modules/cases/case-judgment.service';
 import { FilingCourtService } from './modules/cases/filing-court.service';
 
 describe('CORE-LD-002 OpenAPI contract', () => {
@@ -71,6 +72,7 @@ describe('CORE-LD-002 OpenAPI contract', () => {
         { provide: CaseFilingService, useValue: {} },
         { provide: CaseAcceptanceService, useValue: {} },
         { provide: CaseHearingService, useValue: {} },
+        { provide: CaseJudgmentService, useValue: {} },
         { provide: FilingCourtService, useValue: {} },
       ],
     })

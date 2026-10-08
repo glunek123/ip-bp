@@ -1,0 +1,23 @@
+export function verifyCaseJudgmentDatabase(): Promise<{
+  stage: string;
+  version: number;
+  judgmentFacts: number;
+  hearingAdvances: number;
+  currentMatches: boolean;
+  frozenVersions: number;
+  frozenReferences: number;
+  bytesMatch: boolean;
+  replaySame: boolean;
+  hearingBlocked: string | null;
+  stale: string | null;
+  noFile: string | null;
+  faultRaised: boolean;
+  rollbackFacts: boolean;
+  rollbackCase: boolean;
+  correctedStage: string;
+  correctedVersion: number;
+  historyCount: number;
+  priorMatches: boolean;
+  immutableFact: string | null;
+  reverseStage: string | null;
+}>;

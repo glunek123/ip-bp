@@ -13,6 +13,7 @@ import { CaseComplaintMailingService } from './case-complaint-mailing.service';
 import { CaseFilingService } from './case-filing.service';
 import { CaseAcceptanceService } from './case-acceptance.service';
 import { CaseHearingService } from './case-hearing.service';
+import { CaseJudgmentService } from './case-judgment.service';
 import { CaseHearingSchedulerService } from './case-hearing-scheduler.service';
 import {
   CASE_HEARING_CLOCK,
@@ -48,6 +49,7 @@ import { LawyerCaseController } from './lawyer-case.controller';
     CaseFilingService,
     CaseAcceptanceService,
     CaseHearingService,
+    CaseJudgmentService,
     CaseHearingSchedulerService,
     CaseHearingSignal,
     { provide: CASE_HEARING_CLOCK, useClass: SystemCaseHearingClock },

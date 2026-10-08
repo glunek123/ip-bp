@@ -14,6 +14,7 @@ import { CaseComplaintMailingService } from './case-complaint-mailing.service';
 import { CaseFilingService } from './case-filing.service';
 import { CaseAcceptanceService } from './case-acceptance.service';
 import { CaseHearingService } from './case-hearing.service';
+import { CaseJudgmentService } from './case-judgment.service';
 import { FilingCourtService } from './filing-court.service';
 
 const routeCaseId = '33333333-3333-4333-8333-333333333333';
@@ -49,6 +50,7 @@ describe('internal complaint mailing route identity', () => {
       {} as CaseFilingService,
       {} as CaseAcceptanceService,
       {} as CaseHearingService,
+      {} as never,
       {} as FilingCourtService,
     );
     expect(() =>
@@ -75,6 +77,7 @@ describe('case read OpenAPI contract', () => {
         { provide: CaseFilingService, useValue: {} },
         { provide: CaseAcceptanceService, useValue: {} },
         { provide: CaseHearingService, useValue: {} },
+        { provide: CaseJudgmentService, useValue: {} },
         { provide: FilingCourtService, useValue: {} },
       ],
     })
