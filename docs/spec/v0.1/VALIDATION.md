@@ -766,3 +766,19 @@ Docker由用户打开后恢复，引擎及原人工数据卷保留；原人工51
 迁移专项在同一候选通过既有环境解析和共享测试资源锁，在测试库随机schema执行91条旧迁移到95条完整空库链、合成旧数据升级保留、DDL失败回滚与重试、跨部门及同部门另一客户主体FK负例，全部true且退出0。日志`.local/customer-alignment/task-2-f0ce841-migration.log`；环境指纹`8cebe60684ba5641d54f9c5c32e7c85b7b62c8fd8d55d4583e40330b5f5e9337`。只有隔离测试public升级至95条，未reset／drop public。初次开发数据库E2E触发42703后以第四条前向迁移修复，旧已执行迁移未编辑；原控制台在工具记录中，首次Playwright报告已被覆盖，不冒称仍保留。开发期RED／GREEN及精确文件清单见`.local/customer-alignment/task-2-report.md`。
 
 门禁后仅补记project-status、roadmap及本验证记录中的完成状态／实际证据和对应已解释快照；未改业务契约、代码、测试输入、迁移或环境。收口执行累计diff、文档格式、Spec、严格context专项，并保留实际候选的业务证据，不称文档收口HEAD实跑完整门禁。001～002仍为本地分支成果，没有推送、合并或部署；人工5181/3201/55434保持旧构建与数据，未自动迁移。
+
+## 权属文件与批量人工登记 CORE-CU-003（2026-10-08）
+
+实际通过正式门禁候选`dee738770465465efe30a8b3fa1c77f26ecb8c34`，tree`dff96949cc55819e1f9ba849a259ae146d8c2ca7`；各项前后HEAD／tree和干净工作区一致。PDF/JPEG/PNG真实权属证明与资产不可变版本、精确引用和历史下载接通；逐条人工核对后显式选择登记，上传成功与登记成功分开，不造号码／日期或识别结果。每版最多10份，当前未登记池按当前文件版本计数，历史冻结不占当前池。
+
+非实现Sol初审bf158cb为REJECTED（C0/I2/M0）：完成10行后不能继续下一批、同一行重复上传耗尽配额。59ebc3e修复，面板20/20及前端类型／两文件Lint和格式通过；复审关闭两项，C/I/M为0。未知PUT禁止盲重传，通过当前客户证明池的真实元数据、精确下载和人工选版恢复；未登记结果未知仍保存原body/key，403／404不能证明原写未发生。若池中无可核对版本，则保持未知并由管理员核查。原95版省略附件的指纹和回执兼容；后来增加附件后仍重放首版事实。审查与修复证据见`.local/customer-alignment/task-3-review.md`、`task-3-report.md`及`task-3-fix-report.md`。同模型隔离独立性不足；外部异模型Review Pending，不表述为外部Review通过；八片组合Final Review仍待全部实现后执行。
+
+第一次正式`pnpm verify`在52ebcf6的架构阶段失败两项，测试和构建尚未开始；资产服务与测试直接导入材料内部文件。334f3d7仅改两处导入为既有公开出口，架构、资产Jest9/9、后端类型及定向Lint／格式通过，非实现Sol受影响补审ACCEPTED（C0/I0/M0）。原失败日志保留`.local/customer-alignment/task-3-52ebcf6-verify.log`，导入修复报告为`task-3-import-fix-report.md`。
+
+实际候选dee7387完整`pnpm verify`退出0：严格context／Spec（56 REQ、62 AC、11 BQ、48 SD）、架构（11模块、82模型）、Prisma生成、全局类型／Lint／格式、工具74/74、前端735/735、后端1094/1094及双端构建全部通过。既有JSDOM导航提示、NO_COLOR／FORCE_COLOR及863.92kB大chunk提示为非阻断。日志`.local/customer-alignment/task-3-dee7387-verify.log`。
+
+隔离数据库／Chromium组合`customers.spec.ts`、`customer-right-assets.spec.ts`、`customer-right-evidence.spec.ts`、`core-leads.spec.ts`、`case-judgment.spec.ts`共112/112退出0（3.9分钟），经既有E2E互斥，只使用15433／5174／3101；覆盖客户与主体／资产、真实证明文件与旧字节、运营／客户端／公证处／律师现有材料链路、隔离、撤权、并发及失败原子。003专用5项使用真实密码登录、session cookie及CSRF，未替换`/auth/session`；其他既有用例同时保留fixture身份，不把全部112项称为真实密码登录。真实审计／引用／回执写入失败的500为故障注入预期断言。日志`.local/customer-alignment/task-3-dee7387-customer-material-case-e2e.log`。
+
+临时迁移专项在同候选通过既有环境解析和E2E资源锁，测试库随机schema全97条空链、旧95条合成客户／资产／旧回执／材料升级保留、DDL失败回滚及重试、SQL所有权／引用／不可变守卫，以及同一Material的V1已冻结而当前V2仍占待登记池的反例，全部true并退出0。日志`.local/customer-alignment/task-3-dee7387-migration.log`，环境指纹`8cebe60684ba5641d54f9c5c32e7c85b7b62c8fd8d55d4583e40330b5f5e9337`。仅测试public前向升至97条，无reset／drop public。开发期迁移探针的保护码预期／缺合成回执，以及浏览器fixture漏id／登录等待／重复定位失败均如实留在实现报告；原输出在工具记录中，不伪称被覆盖的旧Playwright报告仍存在。
+
+门禁后收口只补project-status、roadmap、本验证记录的真实完成状态／证据及其快照；不修改业务契约、源码、测试、迁移或环境。按非执行性收口例外核对从实际候选至收口的累计diff并执行文档格式、Spec和严格context检查，复用原业务候选证据，不称文档收口HEAD实跑完整门禁。001～003均为本地成果，无推送、合并或部署；原人工5181／3201／55434仍为旧构建与数据，未自动迁移。
