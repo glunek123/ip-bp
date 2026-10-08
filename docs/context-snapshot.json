@@ -1,6 +1,6 @@
 {
   "version": 1,
-  "recordedAt": "2026-10-08T08:39:19.858Z",
+  "recordedAt": "2026-10-08T08:46:43.035Z",
   "files": {
     ".cursor/rules/verified-feature-integration.mdc": "ffd2306612ba6f09749629c5adb9e645f7f37aa6ee27ff1bc1c3d8b14efeca38",
     ".env.example": "07211cde5c2b59efc21b619b752d4c9b871f0980d2d64ca3c146ad6151fd27ca",
@@ -685,7 +685,7 @@
     "tests/e2e/case-hearing.spec.ts": "fa208a96271db9e90edfc14bac45d1f7888798b262a28f7bbb5a699b76a3ea9d",
     "tests/e2e/case-judgment-database.spec.ts": "13eb890e40cc6f4c6be9b74dd10cad17af08b21c5f37e0997e2e566173aff013",
     "tests/e2e/case-judgment-migration.spec.ts": "7d40217aae13b4237b31d8a5cd7c40250ba0de7f93f2bacdf626220d07f72a3b",
-    "tests/e2e/case-judgment.spec.ts": "e9eb477ec53a5e683d135853101b7a3add40957600a7ad9b091775c964002d4f",
+    "tests/e2e/case-judgment.spec.ts": "5ecf6aeb71914658e4c414f75d13060e87b8bf5d2e2c322a6a1d5a533eeb5f62",
     "tests/e2e/case-lawyer-database.spec.ts": "3be505648fb254b83d02fd367818e6e08fafdbdf45c635be2bb76d8e275b20eb",
     "tests/e2e/case-lawyer.spec.ts": "2eb5e08176796a1beecaf89d9d0949ac3dff1a29d7be94ba48f3f211f4f1835b",
     "tests/e2e/cases.spec.ts": "cf5dcbb65f1a978689d912ab8429327e2a004ecfb95c876901e7ba52f267a689",
