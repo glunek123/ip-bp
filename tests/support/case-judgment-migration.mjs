@@ -107,6 +107,7 @@ export async function verifyCaseJudgmentMigration() {
     '20261008024000_align_case_judgment_constraints',
     '20261008025000_allow_judgment_version_reuse',
     '20261008026000_repair_case_judgment_deployment',
+    '20261008027000_guard_case_judgment_references',
   ];
   const previous = (await readdir(migrations))
     .filter((name) => /^\d{14}_/u.test(name) && name < target[0])
@@ -136,6 +137,8 @@ export async function verifyCaseJudgmentMigration() {
     failure: `ca008_failure_${suffix}`,
     badIndex: `ca008_badindex_${suffix}`,
     badFunction: `ca008_badfunction_${suffix}`,
+    badTrigger: `ca008_badtrigger_${suffix}`,
+    guardFailure: `ca008_guardfailure_${suffix}`,
     badData: `ca008_baddata_${suffix}`,
   };
   for (const [index, recovery] of recoveryCases.entries()) {
@@ -153,6 +156,28 @@ export async function verifyCaseJudgmentMigration() {
   };
   const count = async (sql, params = []) =>
     Number((await client.query(sql, params)).rows[0].n);
+  const assertJudgmentVersionTrigger = async (schema) => {
+    const valid = await count(
+      `SELECT COUNT(*) AS n FROM pg_trigger t
+        JOIN pg_class c ON c.oid=t.tgrelid
+        JOIN pg_namespace n ON n.oid=c.relnamespace
+        JOIN pg_proc p ON p.oid=t.tgfoid
+        JOIN pg_namespace pn ON pn.oid=p.pronamespace
+        WHERE n.nspname=$1 AND pn.nspname=$1
+          AND c.relname='case_judgment_versions'
+          AND t.tgname='case_judgment_versions_guard'
+          AND p.proname='check_case_judgment_version' AND p.pronargs=0
+          AND t.tgtype=7 AND t.tgenabled='O' AND NOT t.tgisinternal
+          AND t.tgparentid=0 AND t.tgqual IS NULL AND t.tgnargs=0
+          AND t.tgargs=''::bytea AND t.tgattr::text=''
+          AND t.tgconstraint=0 AND NOT t.tgdeferrable AND NOT t.tginitdeferred`,
+      [schema],
+    );
+    if (valid !== 1)
+      throw new Error(
+        'Judgment version trigger definition mismatch before resolve',
+      );
+  };
   await client.connect();
   try {
     if (
@@ -473,6 +498,7 @@ export async function verifyCaseJudgmentMigration() {
           throw new Error(
             'Forward repair did not restore 240 judgment version guard',
           );
+        await assertJudgmentVersionTrigger(schema);
         runPrisma(
           schema,
           null,
@@ -513,7 +539,12 @@ export async function verifyCaseJudgmentMigration() {
         (SELECT c.oid::text FROM pg_class c JOIN pg_namespace n ON n.oid=c.relnamespace
           WHERE n.nspname=$1 AND c.relname='material_references_resource_purpose_version_key') AS partial_index_id,
         (SELECT c.oid::text FROM pg_class c JOIN pg_namespace n ON n.oid=c.relnamespace
-          WHERE n.nspname=$1 AND c.relname='material_references_resource_purpose_version_event_key') AS event_index_id
+          WHERE n.nspname=$1 AND c.relname='material_references_resource_purpose_version_event_key') AS event_index_id,
+        (SELECT p.xmin::text FROM pg_proc p JOIN pg_namespace n ON n.oid=p.pronamespace
+          WHERE n.nspname=$1 AND p.proname='check_case_judgment_reference_immutable') AS reference_function_version,
+        (SELECT t.oid::text FROM pg_trigger t JOIN pg_class c ON c.oid=t.tgrelid
+          JOIN pg_namespace n ON n.oid=c.relnamespace WHERE n.nspname=$1
+          AND c.relname='material_references' AND t.tgname='material_references_judgment_immutable_guard') AS reference_trigger_id
     `,
           [schema],
         )
@@ -530,6 +561,22 @@ export async function verifyCaseJudgmentMigration() {
       schemas.upgrade,
       null,
       ['db', 'execute', '--file', repairSql],
+      true,
+    );
+    const guardSql = resolve(
+      migrations,
+      '20261008027000_guard_case_judgment_references/migration.sql',
+    );
+    runPrisma(
+      schemas.upgrade,
+      null,
+      ['db', 'execute', '--file', guardSql],
+      true,
+    );
+    runPrisma(
+      schemas.upgrade,
+      null,
+      ['db', 'execute', '--file', guardSql],
       true,
     );
     runPrisma(
@@ -590,6 +637,84 @@ export async function verifyCaseJudgmentMigration() {
       throw new Error(
         '260 did not fail closed on an incompatible guard function',
       );
+
+    await use(schemas.badTrigger);
+    await apply([...previous, ...target]);
+    await client.query(
+      'DROP TRIGGER case_judgment_versions_guard ON case_judgment_versions',
+    );
+    await client.query(
+      'CREATE TRIGGER case_judgment_versions_guard AFTER UPDATE ON case_judgment_versions FOR EACH ROW EXECUTE FUNCTION check_case_judgment_version()',
+    );
+    runPrisma(
+      schemas.badTrigger,
+      null,
+      ['db', 'execute', '--file', repairSql],
+      true,
+    );
+    let badTriggerPreResolveRejected = false;
+    try {
+      await assertJudgmentVersionTrigger(schemas.badTrigger);
+    } catch (error) {
+      if (!String(error.message).includes('definition mismatch before resolve'))
+        throw error;
+      badTriggerPreResolveRejected = true;
+    }
+    const badTriggerOutput = runPrisma(
+      schemas.badTrigger,
+      null,
+      ['db', 'execute', '--file', guardSql],
+      false,
+    );
+    const badTriggerRejected = badTriggerOutput.includes(
+      'unknown judgment version trigger definition',
+    );
+
+    await use(schemas.guardFailure);
+    await apply([...previous, ...target.slice(0, 7)]);
+    const brokenGuard = join(temporaryRoot, 'guard-fault-before-commit.sql');
+    writeFileSync(
+      brokenGuard,
+      readFileSync(guardSql, 'utf8').replace(
+        /\nCOMMIT;\s*$/u,
+        '\nCREATE TABLE "ca008_guard_rollback_probe" (id integer);\nSELECT 1 / 0;\nCOMMIT;\n',
+      ),
+    );
+    const guardFailureOutput = runPrisma(
+      schemas.guardFailure,
+      null,
+      ['db', 'execute', '--file', brokenGuard],
+      false,
+    );
+    const guardTransactionAtomic =
+      guardFailureOutput.includes('division by zero') &&
+      (await regclass(schemas.guardFailure, 'ca008_guard_rollback_probe')) ===
+        null &&
+      (await count(
+        `SELECT COUNT(*) AS n FROM pg_proc p JOIN pg_namespace n ON n.oid=p.pronamespace
+          WHERE n.nspname=$1 AND p.proname='check_case_judgment_reference_immutable'`,
+        [schemas.guardFailure],
+      )) === 0 &&
+      (await count(
+        `SELECT COUNT(*) AS n FROM pg_trigger t JOIN pg_class c ON c.oid=t.tgrelid
+          JOIN pg_namespace n ON n.oid=c.relnamespace WHERE n.nspname=$1
+          AND c.relname='material_references' AND t.tgname='material_references_judgment_immutable_guard'`,
+        [schemas.guardFailure],
+      )) === 0;
+    if (!guardTransactionAtomic)
+      throw new Error('270 left partial DDL after injected failure');
+    runPrisma(
+      schemas.guardFailure,
+      null,
+      ['db', 'execute', '--file', guardSql],
+      true,
+    );
+    runPrisma(
+      schemas.guardFailure,
+      null,
+      ['db', 'execute', '--file', guardSql],
+      true,
+    );
 
     await use(schemas.badData);
     await apply([...previous, ...target.slice(0, 5)]);
@@ -652,6 +777,9 @@ export async function verifyCaseJudgmentMigration() {
       normalNoRewrite,
       badIndexRejected: true,
       badFunctionRejected: true,
+      badTriggerRejected,
+      badTriggerPreResolveRejected,
+      guardTransactionAtomic,
       duplicatePreserved,
     };
   } finally {

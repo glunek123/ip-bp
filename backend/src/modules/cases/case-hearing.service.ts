@@ -178,6 +178,8 @@ export class CaseHearingService {
                 throw error;
               }
             else throw this.forbidden();
+            if (action === 'CORRECT' && record.currentJudgmentId != null)
+              throw this.invalidState();
             const prior = await tx.caseHearingReceipt.findUnique({
               where: {
                 departmentId_actorUserId_action_idempotencyKey: {

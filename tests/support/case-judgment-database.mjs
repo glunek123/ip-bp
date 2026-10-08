@@ -325,6 +325,11 @@ export async function verifyCaseJudgmentDatabase() {
       randomUUID(),
       ...nonJudgmentArgs,
     ]);
+    const updateOtherPurposeReference = await code(
+      client,
+      "UPDATE material_references SET content_version_id=content_version_id WHERE resource_id=$1 AND purpose='ACCEPTANCE_NOTICE'",
+      [ids.case],
+    );
     const reusedVersionAcrossFacts = await database.materialReference.count({
       where: {
         resourceId: ids.case,
@@ -332,6 +337,26 @@ export async function verifyCaseJudgmentDatabase() {
         contentVersionId: uploaded.contentVersionId,
       },
     });
+    const frozenReference = snapshot.references[0];
+    const changeFrozenReference = await code(
+      client,
+      'UPDATE material_references SET content_version_id=content_version_id WHERE id=$1',
+      [frozenReference.id],
+    );
+    const deleteFrozenReference = await code(
+      client,
+      'DELETE FROM material_references WHERE id=$1',
+      [frozenReference.id],
+    );
+    const deleteOtherPurposeReference = await code(
+      client,
+      "DELETE FROM material_references WHERE resource_id=$1 AND purpose='ACCEPTANCE_NOTICE'",
+      [ids.case],
+    );
+    const preservedFrozenReference =
+      (await database.materialReference.count({
+        where: { id: frozenReference.id },
+      })) === 1;
     const immutableFact = await code(
       client,
       'UPDATE case_judgment_facts SET reason=$2 WHERE id=$1',
@@ -412,7 +437,12 @@ export async function verifyCaseJudgmentDatabase() {
       sameEvent,
       nonJudgmentFirst,
       nonJudgmentDuplicate,
+      updateOtherPurposeReference,
       reusedVersionAcrossFacts,
+      changeFrozenReference,
+      deleteFrozenReference,
+      deleteOtherPurposeReference,
+      preservedFrozenReference,
       immutableFact,
       reverseStage,
       concurrentResults,
