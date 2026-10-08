@@ -1,5 +1,12 @@
 import { expect, test } from '@playwright/test';
-import { verifyCaseJudgmentDatabase } from '../support/case-judgment-database.mjs';
+import {
+  verifyCaseJudgmentDatabase,
+  verifyCoreCaseJudgmentFixtureCleanup,
+} from '../support/case-judgment-database.mjs';
+import {
+  coreLeadFixtures,
+  resetCoreLeadE2eData,
+} from '../support/core-lead-database.mjs';
 
 test('CA-008 real PostgreSQL registration freezes bytes, preserves hearing advance, rolls back failure and appends correction', async () => {
   test.setTimeout(300_000);
@@ -42,5 +49,25 @@ test('CA-008 real PostgreSQL registration freezes bytes, preserves hearing advan
     afterRace: 3,
     revokedReplay: 'ACTION_FORBIDDEN',
     otherDepartment: 'RESOURCE_NOT_FOUND',
+  });
+});
+
+test('CA-008 core-lead fixture cleanup is scoped and restores guards after failure', async () => {
+  test.setTimeout(300_000);
+  expect(
+    await verifyCoreCaseJudgmentFixtureCleanup(
+      coreLeadFixtures,
+      resetCoreLeadE2eData,
+    ),
+  ).toEqual({
+    faultRejected: true,
+    rollbackPreserved: true,
+    guardsRestored: true,
+    targetRemoved: true,
+    otherDepartmentPreserved: true,
+    unknownOwnerRejected: true,
+    unknownOwnerPreserved: true,
+    disabledGuardRejected: true,
+    replicationRoleRestored: true,
   });
 });

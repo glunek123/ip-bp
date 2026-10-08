@@ -41,6 +41,511 @@ const privateRoot = resolve(process.env.PRIVATE_FILE_ROOT ?? '');
 if (privateRoot !== resolve(root, '.local/private-files/test'))
   throw new Error('Isolated test blob root required');
 
+const coreJudgmentOwners = Object.freeze({
+  '10000000-0000-4000-8000-000000000001': [
+    [
+      '20000000-0000-4000-8000-000000000001',
+      '50000000-0000-4000-8000-000000000001',
+    ],
+    [
+      '20000000-0000-4000-8000-000000000001',
+      '50000000-0000-4000-8000-000000000002',
+    ],
+    [
+      '20000000-0000-4000-8000-000000000003',
+      '50000000-0000-4000-8000-000000000004',
+    ],
+  ],
+  '10000000-0000-4000-8000-000000000002': [
+    [
+      '20000000-0000-4000-8000-000000000002',
+      '50000000-0000-4000-8000-000000000003',
+    ],
+  ],
+});
+
+const judgmentCleanupGuards = [
+  ['material_references', 'material_references_judgment_immutable_guard'],
+  ['case_judgment_receipts', 'case_judgment_receipts_immutable'],
+  ['case_judgment_versions', 'case_judgment_versions_immutable'],
+  ['case_judgment_facts', 'case_judgment_facts_immutable'],
+  ['audit_events', 'case_judgment_audit_immutable'],
+];
+
+async function assertJudgmentCleanupGuards(client) {
+  for (const [table, trigger] of judgmentCleanupGuards) {
+    const rows = (
+      await client.query(
+        'SELECT tgenabled FROM pg_trigger WHERE tgrelid=$1::regclass AND tgname=$2 AND NOT tgisinternal',
+        [table, trigger],
+      )
+    ).rows;
+    if (rows.length !== 1 || rows[0].tgenabled !== 'O')
+      throw new Error(`Judgment cleanup guard unavailable: ${trigger}`);
+  }
+}
+
+/** Remove only judgment chains of the fixed core-lead fixture owners. */
+export async function clearCoreCaseJudgmentFixture(departmentIds) {
+  if (
+    !Array.isArray(departmentIds) ||
+    departmentIds.length < 1 ||
+    new Set(departmentIds).size !== departmentIds.length ||
+    departmentIds.some((id) => !Object.hasOwn(coreJudgmentOwners, id))
+  )
+    throw new Error('Unexpected judgment cleanup departments');
+  const client = new Client({ connectionString: databaseUrl });
+  await client.connect();
+  try {
+    const context = (
+      await client.query(
+        'SELECT current_database() AS db, current_schema() AS schema',
+      )
+    ).rows[0];
+    if (context.db !== 'dev_cor_test' || context.schema !== 'public')
+      throw new Error('Judgment cleanup requires isolated public test schema');
+    await client.query('BEGIN');
+    try {
+      await assertJudgmentCleanupGuards(client);
+      const cases = (
+        await client.query(
+          `SELECT c.id,c.department_id,c.responsible_user_id,c.customer_id
+             FROM cases c WHERE c.department_id=ANY($1::uuid[])
+               AND (c.current_judgment_id IS NOT NULL
+                 OR EXISTS (SELECT 1 FROM case_judgment_facts f WHERE f.case_id=c.id)
+                 OR EXISTS (SELECT 1 FROM case_judgment_receipts r WHERE r.case_id=c.id)
+                 OR EXISTS (SELECT 1 FROM material_references m WHERE m.resource_type='case'
+                   AND m.resource_id=c.id AND m.purpose='JUDGMENT')
+                 OR EXISTS (SELECT 1 FROM audit_events a WHERE a.resource_type='CASE'
+                   AND a.resource_id=c.id AND a.action IN ('case.judgment.registered','case.judgment.corrected')))
+             ORDER BY c.id FOR UPDATE OF c`,
+          [departmentIds],
+        )
+      ).rows;
+      for (const row of cases) {
+        const allowed = coreJudgmentOwners[row.department_id].some(
+          ([owner, customer]) =>
+            row.responsible_user_id === owner && row.customer_id === customer,
+        );
+        if (!allowed)
+          throw new Error('Judgment cleanup found a non-fixture case owner');
+      }
+      const caseIds = cases.map((row) => row.id);
+      if (caseIds.length > 0) {
+        const facts = (
+          await client.query(
+            'SELECT id,audit_event_id FROM case_judgment_facts WHERE case_id=ANY($1::uuid[]) ORDER BY to_version DESC',
+            [caseIds],
+          )
+        ).rows;
+        const auditIds = facts.map((row) => row.audit_event_id);
+        const unexpected = (
+          await client.query(
+            `SELECT EXISTS (
+              SELECT 1 FROM case_judgment_facts f
+                JOIN cases c ON c.id=f.case_id
+                LEFT JOIN audit_events a ON a.id=f.audit_event_id
+                WHERE f.case_id=ANY($1::uuid[])
+                  AND (f.department_id<>c.department_id
+                    OR a.id IS NULL OR a.department_id<>f.department_id
+                    OR a.resource_type<>'CASE' OR a.resource_id<>f.case_id
+                    OR a.action<>CASE WHEN f.kind='REGISTER'
+                      THEN 'case.judgment.registered' ELSE 'case.judgment.corrected' END)
+              UNION ALL SELECT 1 FROM material_references m
+                JOIN cases c ON c.id=m.resource_id
+                WHERE m.resource_type='case' AND m.resource_id=ANY($1::uuid[])
+                  AND m.purpose='JUDGMENT'
+                  AND (m.department_id<>c.department_id
+                    OR m.action_event_id IS NULL
+                    OR NOT (m.action_event_id=ANY($2::uuid[])))
+              UNION ALL SELECT 1 FROM audit_events a WHERE a.resource_type='CASE'
+                AND a.resource_id=ANY($1::uuid[])
+                AND a.action IN ('case.judgment.registered','case.judgment.corrected')
+                AND NOT (a.id=ANY($2::uuid[]))
+            ) AS present`,
+            [caseIds, auditIds],
+          )
+        ).rows[0].present;
+        if (unexpected)
+          throw new Error('Judgment cleanup found an unbound judgment event');
+        await client.query(
+          'UPDATE cases SET current_judgment_id=NULL WHERE id=ANY($1::uuid[]) AND current_judgment_id IS NOT NULL',
+          [caseIds],
+        );
+        for (const [table, trigger] of judgmentCleanupGuards)
+          await client.query(
+            `ALTER TABLE "${table}" DISABLE TRIGGER "${trigger}"`,
+          );
+        await client.query(
+          "DELETE FROM material_references WHERE resource_type='case' AND purpose='JUDGMENT' AND resource_id=ANY($1::uuid[]) AND action_event_id=ANY($2::uuid[])",
+          [caseIds, auditIds],
+        );
+        await client.query(
+          'DELETE FROM case_judgment_receipts WHERE case_id=ANY($1::uuid[])',
+          [caseIds],
+        );
+        await client.query(
+          'DELETE FROM case_judgment_versions WHERE case_id=ANY($1::uuid[])',
+          [caseIds],
+        );
+        for (const fact of facts)
+          await client.query('DELETE FROM case_judgment_facts WHERE id=$1', [
+            fact.id,
+          ]);
+        await client.query(
+          'DELETE FROM audit_events WHERE id=ANY($1::uuid[])',
+          [auditIds],
+        );
+        for (const [table, trigger] of [...judgmentCleanupGuards].reverse())
+          await client.query(
+            `ALTER TABLE "${table}" ENABLE TRIGGER "${trigger}"`,
+          );
+      }
+      await assertJudgmentCleanupGuards(client);
+      await client.query('COMMIT');
+    } catch (error) {
+      await client.query('ROLLBACK').catch(() => undefined);
+      throw error;
+    }
+  } finally {
+    await client.end();
+  }
+}
+
+export async function verifyCoreCaseJudgmentFixtureCleanup(
+  coreLeadFixtures,
+  resetCoreLeadE2eData,
+) {
+  const client = new Client({ connectionString: databaseUrl });
+  const target = {
+    case: randomUUID(),
+    fact: randomUUID(),
+    audit: randomUUID(),
+    receipt: randomUUID(),
+    reference: randomUUID(),
+    material: randomUUID(),
+    version: randomUUID(),
+  };
+  const other = {
+    department: randomUUID(),
+    actor: randomUUID(),
+    customer: randomUUID(),
+    holder: randomUUID(),
+    case: randomUUID(),
+    fact: randomUUID(),
+    audit: randomUUID(),
+    receipt: randomUUID(),
+    reference: randomUUID(),
+    material: randomUUID(),
+    version: randomUUID(),
+  };
+  const unknown = {
+    case: randomUUID(),
+    fact: randomUUID(),
+    audit: randomUUID(),
+    receipt: randomUUID(),
+    reference: randomUUID(),
+  };
+  const fault = `ca008_cleanup_fault_${randomUUID().replaceAll('-', '')}`;
+  let faultInstalled = false;
+  await client.connect();
+  const role = async () =>
+    (await client.query('SHOW session_replication_role')).rows[0]
+      .session_replication_role;
+  const counts = async (fixture) => {
+    const result = await client.query(
+      `SELECT
+        (SELECT COUNT(*) FROM cases WHERE id=$1)::int AS cases,
+        (SELECT COUNT(*) FROM case_judgment_facts WHERE id=$2)::int AS facts,
+        (SELECT COUNT(*) FROM case_judgment_versions WHERE fact_id=$2)::int AS versions,
+        (SELECT COUNT(*) FROM case_judgment_receipts WHERE id=$3)::int AS receipts,
+        (SELECT COUNT(*) FROM material_references WHERE id=$4)::int AS refs,
+        (SELECT COUNT(*) FROM audit_events WHERE id=$5)::int AS audits,
+        (SELECT COUNT(*) FROM cases WHERE id=$1 AND current_judgment_id=$2)::int AS pointers`,
+      [
+        fixture.case,
+        fixture.fact,
+        fixture.receipt,
+        fixture.reference,
+        fixture.audit,
+      ],
+    );
+    return result.rows[0];
+  };
+  try {
+    const context = (
+      await client.query(
+        'SELECT current_database() AS db,current_schema() AS schema',
+      )
+    ).rows[0];
+    if (
+      context.db !== 'dev_cor_test' ||
+      context.schema !== 'public' ||
+      (await role()) !== 'origin'
+    )
+      throw new Error(
+        'Cleanup fixture requires isolated public database and origin role',
+      );
+    await resetCoreLeadE2eData();
+    const owner = (
+      await client.query(
+        `SELECT
+          EXISTS(SELECT 1 FROM departments WHERE id=$1) AND
+          EXISTS(SELECT 1 FROM user_accounts WHERE id=$2) AND
+          EXISTS(SELECT 1 FROM customers WHERE id=$3) AND
+          EXISTS(SELECT 1 FROM rights_holders WHERE id=$4) AS present`,
+        [
+          coreLeadFixtures.departmentA,
+          coreLeadFixtures.userA,
+          coreLeadFixtures.admittedCustomer,
+          coreLeadFixtures.holder,
+        ],
+      )
+    ).rows[0].present;
+    if (!owner)
+      throw new Error('Core-lead fixture must be seeded before cleanup test');
+    await client.query('BEGIN');
+    try {
+      await client.query(
+        'INSERT INTO departments(id,name,updated_at) VALUES ($1,$2,now())',
+        [other.department, 'CA008 cleanup other department'],
+      );
+      await client.query(
+        'INSERT INTO user_accounts(id,external_subject,display_name,updated_at) VALUES ($1,$2,$3,now())',
+        [other.actor, `ca008-cleanup-${other.actor}`, 'CA008 other actor'],
+      );
+      await client.query('SET LOCAL session_replication_role = replica');
+      await client.query(
+        'INSERT INTO customers(id,name,normalized_name,department_id,responsible_user_id,updated_at) VALUES ($1,$2,$2,$3,$4,now())',
+        [other.customer, 'CA008 other customer', other.department, other.actor],
+      );
+      await client.query(
+        'INSERT INTO rights_holders(id,name,department_id,updated_at) VALUES ($1,$2,$3,now())',
+        [other.holder, 'CA008 other holder', other.department],
+      );
+      for (const [fixture, department] of [
+        [target, coreLeadFixtures.departmentA],
+        [other, other.department],
+      ]) {
+        const actorId =
+          fixture === other ? other.actor : coreLeadFixtures.userA;
+        const customerId =
+          fixture === other
+            ? other.customer
+            : coreLeadFixtures.admittedCustomer;
+        const holderId =
+          fixture === other ? other.holder : coreLeadFixtures.holder;
+        await client.query(
+          `INSERT INTO cases(id,business_no,department_id,source_lead_id,source_notary_matter_id,certificate_id,customer_id,rights_holder_id,responsible_user_id,stage,version,matched_at,complaint_amount_state,complaint_amount,complaint_submitted_at,complaint_submitted_by_user_id,court_case_no,current_judgment_id)
+           VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9,'WAITING_JUDGMENT',2,now(),'KNOWN',100,now(),$9,'CA008-cleanup',$10)`,
+          [
+            fixture.case,
+            `CA008-cleanup-${fixture.case}`,
+            department,
+            randomUUID(),
+            randomUUID(),
+            randomUUID(),
+            customerId,
+            holderId,
+            actorId,
+            fixture.fact,
+          ],
+        );
+        await client.query(
+          `INSERT INTO audit_events(id,department_id,actor_user_id,internal_actor_user_id,resource_type,resource_id,action,details)
+           VALUES ($1,$2,$3,$3,'CASE',$4,'case.judgment.registered','{}'::jsonb)`,
+          [fixture.audit, department, actorId, fixture.case],
+        );
+        await client.query(
+          `INSERT INTO case_judgment_facts(id,department_id,case_id,kind,judgment_received_at,judgment_amount_state,judgment_amount,paid_litigation_fee_state,recorded_by_user_id,from_version,to_version,audit_event_id)
+           VALUES ($1,$2,$3,'REGISTER','2026-10-08','KNOWN',0,'PENDING',$4,1,2,$5)`,
+          [fixture.fact, department, fixture.case, actorId, fixture.audit],
+        );
+        await client.query(
+          `INSERT INTO case_judgment_versions(fact_id,case_id,department_id,material_id,content_version_id)
+           VALUES ($1,$2,$3,$4,$5)`,
+          [
+            fixture.fact,
+            fixture.case,
+            department,
+            fixture.material,
+            fixture.version,
+          ],
+        );
+        await client.query(
+          `INSERT INTO material_references(id,department_id,resource_type,resource_id,purpose,material_id,content_version_id,action_event_id)
+           VALUES ($1,$2,'case',$3,'JUDGMENT',$4,$5,$6)`,
+          [
+            fixture.reference,
+            department,
+            fixture.case,
+            fixture.material,
+            fixture.version,
+            fixture.audit,
+          ],
+        );
+        await client.query(
+          `INSERT INTO case_judgment_receipts(id,department_id,actor_user_id,case_id,action,idempotency_key,request_fingerprint,result_snapshot)
+           VALUES ($1,$2,$3,$4,'REGISTER',$5,$6,$7::jsonb)`,
+          [
+            fixture.receipt,
+            department,
+            actorId,
+            fixture.case,
+            `cleanup-${fixture.case}`,
+            'a'.repeat(64),
+            JSON.stringify({ judgmentId: fixture.fact }),
+          ],
+        );
+      }
+      await client.query('COMMIT');
+    } catch (error) {
+      await client.query('ROLLBACK').catch(() => undefined);
+      throw error;
+    }
+    if ((await role()) !== 'origin')
+      throw new Error('Synthetic cleanup fixture did not restore origin role');
+    const before = await counts(target);
+    await client.query(
+      `CREATE FUNCTION "${fault}"() RETURNS trigger LANGUAGE plpgsql AS $$ BEGIN RAISE EXCEPTION 'cleanup injected fault' USING ERRCODE='23514'; END $$`,
+    );
+    faultInstalled = true;
+    await client.query(
+      `CREATE TRIGGER "${fault}" BEFORE DELETE ON case_judgment_facts FOR EACH ROW EXECUTE FUNCTION "${fault}"()`,
+    );
+    let faultRejected = false;
+    try {
+      await clearCoreCaseJudgmentFixture([
+        coreLeadFixtures.departmentA,
+        coreLeadFixtures.departmentB,
+      ]);
+    } catch (error) {
+      faultRejected =
+        error.code === '23514' &&
+        error.message.includes('cleanup injected fault');
+    }
+    const rollbackPreserved =
+      JSON.stringify(await counts(target)) === JSON.stringify(before);
+    await assertJudgmentCleanupGuards(client);
+    const guardsRestored = true;
+    await client.query(`DROP TRIGGER "${fault}" ON case_judgment_facts`);
+    await client.query(`DROP FUNCTION "${fault}"()`);
+    faultInstalled = false;
+    await resetCoreLeadE2eData();
+    const after = await counts(target);
+    const sentinel = await counts(other);
+    await client.query('BEGIN');
+    try {
+      await client.query('SET LOCAL session_replication_role = replica');
+      await client.query(
+        `INSERT INTO cases(id,business_no,department_id,source_lead_id,source_notary_matter_id,certificate_id,customer_id,rights_holder_id,responsible_user_id,stage,version,matched_at,complaint_amount_state,complaint_amount,complaint_submitted_at,complaint_submitted_by_user_id,court_case_no,current_judgment_id)
+         VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9,'WAITING_JUDGMENT',2,now(),'KNOWN',100,now(),$9,'CA008-unknown',$10)`,
+        [
+          unknown.case,
+          `CA008-unknown-${unknown.case}`,
+          coreLeadFixtures.departmentA,
+          randomUUID(),
+          randomUUID(),
+          randomUUID(),
+          other.customer,
+          other.holder,
+          other.actor,
+          unknown.fact,
+        ],
+      );
+      await client.query('COMMIT');
+    } catch (error) {
+      await client.query('ROLLBACK').catch(() => undefined);
+      throw error;
+    }
+    let unknownOwnerRejected = false;
+    try {
+      await clearCoreCaseJudgmentFixture([coreLeadFixtures.departmentA]);
+    } catch (error) {
+      unknownOwnerRejected = error.message.includes('non-fixture case owner');
+    }
+    await client.query('BEGIN');
+    let disabledGuardRejected = false;
+    try {
+      await client.query(
+        'ALTER TABLE material_references DISABLE TRIGGER "material_references_judgment_immutable_guard"',
+      );
+      try {
+        await assertJudgmentCleanupGuards(client);
+      } catch (error) {
+        disabledGuardRejected = error.message.includes(
+          'material_references_judgment_immutable_guard',
+        );
+      }
+    } finally {
+      await client.query('ROLLBACK');
+    }
+    await assertJudgmentCleanupGuards(client);
+    return {
+      faultRejected,
+      rollbackPreserved,
+      guardsRestored,
+      targetRemoved: Object.values(after).every((value) => value === 0),
+      otherDepartmentPreserved: Object.values(sentinel).every(
+        (value) => value === 1,
+      ),
+      unknownOwnerRejected,
+      unknownOwnerPreserved: (await counts(unknown)).cases === 1,
+      disabledGuardRejected,
+      replicationRoleRestored: (await role()) === 'origin',
+    };
+  } finally {
+    if (faultInstalled) {
+      await client
+        .query(`DROP TRIGGER IF EXISTS "${fault}" ON case_judgment_facts`)
+        .catch(() => undefined);
+      await client
+        .query(`DROP FUNCTION IF EXISTS "${fault}"()`)
+        .catch(() => undefined);
+    }
+    await client.query('BEGIN').catch(() => undefined);
+    let cleanupCommitted = false;
+    try {
+      await client.query('SET LOCAL session_replication_role = replica');
+      for (const fixture of [target, other, unknown]) {
+        await client.query('DELETE FROM material_references WHERE id=$1', [
+          fixture.reference,
+        ]);
+        await client.query('DELETE FROM case_judgment_receipts WHERE id=$1', [
+          fixture.receipt,
+        ]);
+        await client.query(
+          'DELETE FROM case_judgment_versions WHERE fact_id=$1',
+          [fixture.fact],
+        );
+        await client.query('DELETE FROM case_judgment_facts WHERE id=$1', [
+          fixture.fact,
+        ]);
+        await client.query('DELETE FROM audit_events WHERE id=$1', [
+          fixture.audit,
+        ]);
+        await client.query('DELETE FROM cases WHERE id=$1', [fixture.case]);
+      }
+      await client.query('DELETE FROM customers WHERE id=$1', [other.customer]);
+      await client.query('DELETE FROM rights_holders WHERE id=$1', [
+        other.holder,
+      ]);
+      await client.query('DELETE FROM user_accounts WHERE id=$1', [
+        other.actor,
+      ]);
+      await client.query('DELETE FROM departments WHERE id=$1', [
+        other.department,
+      ]);
+      await client.query('COMMIT');
+      cleanupCommitted = true;
+    } finally {
+      if (!cleanupCommitted)
+        await client.query('ROLLBACK').catch(() => undefined);
+      await client.end();
+    }
+  }
+}
+
 export async function verifyCaseJudgmentDatabase() {
   const client = new Client({ connectionString: databaseUrl });
   const database = new PrismaClient({

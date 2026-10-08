@@ -21,3 +21,27 @@ export function verifyCaseJudgmentDatabase(): Promise<{
   immutableFact: string | null;
   reverseStage: string | null;
 }>;
+
+export function clearCoreCaseJudgmentFixture(
+  departmentIds: string[],
+): Promise<void>;
+export function verifyCoreCaseJudgmentFixtureCleanup(
+  coreLeadFixtures: {
+    departmentA: string;
+    departmentB: string;
+    userA: string;
+    admittedCustomer: string;
+    holder: string;
+  },
+  resetCoreLeadE2eData: () => Promise<unknown>,
+): Promise<{
+  faultRejected: boolean;
+  rollbackPreserved: boolean;
+  guardsRestored: boolean;
+  targetRemoved: boolean;
+  otherDepartmentPreserved: boolean;
+  unknownOwnerRejected: boolean;
+  unknownOwnerPreserved: boolean;
+  disabledGuardRejected: boolean;
+  replicationRoleRestored: boolean;
+}>;
