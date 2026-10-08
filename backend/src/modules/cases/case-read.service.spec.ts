@@ -23,6 +23,7 @@ describe('CaseReadService', () => {
         findFirst: jest.fn().mockResolvedValue(null),
         groupBy: jest.fn().mockResolvedValue([]),
       },
+      $transaction: jest.fn(),
     };
     const access = {
       buildLeadScope: jest.fn(),
@@ -41,6 +42,9 @@ describe('CaseReadService', () => {
         .mockResolvedValue(null),
       listFrozenCaseComplaintMailingFiles: jest.fn().mockResolvedValue([]),
     };
+    db.$transaction.mockImplementation(async (operation) =>
+      operation({ case: { findFirst: db.case.findFirst } }),
+    );
     return {
       db,
       access,
@@ -52,6 +56,35 @@ describe('CaseReadService', () => {
       ),
     };
   }
+  it('authorizes before a repeatable-read detail aggregate for internal and lawyer', async () => {
+    const f = fixture();
+    await expect(f.service.get(actor, 'case-1')).rejects.toMatchObject({
+      response: { code: 'RESOURCE_NOT_FOUND' },
+    });
+    expect(f.db.$transaction).toHaveBeenCalledWith(expect.any(Function), {
+      isolationLevel: 'RepeatableRead',
+    });
+    expect(
+      f.access.authorizeDepartmentAction.mock.invocationCallOrder[0],
+    ).toBeLessThan(f.db.$transaction.mock.invocationCallOrder[0]);
+    f.db.userAccount.findUnique.mockResolvedValue({
+      accountType: 'LAWYER',
+      active: true,
+    });
+    await expect(
+      f.service.get({ ...actor, lawyerAccountId: actor.userId }, 'case-1'),
+    ).rejects.toMatchObject({ response: { code: 'RESOURCE_NOT_FOUND' } });
+    expect(f.db.$transaction).toHaveBeenCalledTimes(2);
+    expect(f.db.lawyerAccountBinding.findFirst).toHaveBeenCalled();
+    expect(
+      f.db.lawyerAccountBinding.findFirst.mock.invocationCallOrder[0],
+    ).toBeLessThan(f.db.$transaction.mock.invocationCallOrder[1]);
+    expect(f.db.case.findFirst).toHaveBeenLastCalledWith(
+      expect.objectContaining({
+        where: expect.objectContaining({ lawyers: expect.any(Object) }),
+      }),
+    );
+  });
   it('lists only currently authorized internal department cases', async () => {
     const f = fixture();
     expect(

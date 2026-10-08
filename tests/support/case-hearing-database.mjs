@@ -2,6 +2,7 @@ import { createHash, randomBytes, randomUUID } from 'node:crypto';
 import { readFile, readdir } from 'node:fs/promises';
 import { createRequire } from 'node:module';
 import { resolve } from 'node:path';
+import { clearTimeout, setTimeout } from 'node:timers';
 import { validateIsolatedTestDatabaseUrl } from '../../scripts/test-environment.mjs';
 
 const root = process.cwd();
@@ -23,6 +24,9 @@ const { CaseHearingSchedulerService } = requireBackend(
 );
 const { CaseHearingSignal } = requireBackend(
   './dist/modules/cases/case-hearing-signal.js',
+);
+const { CaseReadService } = requireBackend(
+  './dist/modules/cases/case-read.service.js',
 );
 const { hashPassword } = requireBackend('./dist/auth/password.js');
 const { internalAssignablePermissionActions } = requireBackend(
@@ -665,6 +669,340 @@ export async function withCoreCaseHearingCleanupFault(operation) {
     } finally {
       await client.end();
     }
+  }
+}
+
+/** Reproduce a case-detail relation query racing a committed auto-advance. */
+export async function verifyCaseHearingDetailSnapshot() {
+  const schema = `ca007_detail_snapshot_${randomUUID().replaceAll('-', '')}`;
+  const migrations = resolve(root, 'backend/prisma/migrations');
+  const names = (await readdir(migrations))
+    .filter((name) => /^\d{14}_/u.test(name))
+    .sort();
+  if (
+    names.length !== 82 ||
+    names.at(-1) !== '20261008015000_require_latest_case_hearing_chain'
+  )
+    throw new Error('Unexpected hearing migration chain');
+  const admin = new Client({ connectionString: databaseUrl });
+  await admin.connect();
+  let schemaCreated = false;
+  let writer;
+  let reader;
+  let releaseRelation = () => undefined;
+  try {
+    const context = (
+      await admin.query(
+        'SELECT current_database() AS db,current_schema() AS schema',
+      )
+    ).rows[0];
+    if (context.db !== 'dev_cor_test' || context.schema !== 'public')
+      throw new Error('Unexpected hearing snapshot database');
+    await admin.query(`CREATE SCHEMA "${schema}"`);
+    schemaCreated = true;
+    await admin.query(`SET search_path TO "${schema}"`);
+    for (const name of names)
+      await admin.query(
+        await readFile(resolve(migrations, name, 'migration.sql'), 'utf8'),
+      );
+    const departmentId = randomUUID();
+    const userId = randomUUID();
+    const caseId = randomUUID();
+    const roleId = randomUUID();
+    const acceptanceAuditId = randomUUID();
+    await admin.query(
+      'INSERT INTO departments(id,name,updated_at) VALUES ($1,$2,now())',
+      [departmentId, 'CA007 detail snapshot'],
+    );
+    await admin.query(
+      'INSERT INTO user_accounts(id,external_subject,display_name,updated_at) VALUES ($1,$2,$3,now())',
+      [userId, `ca007-snapshot-${userId}`, 'CA007 snapshot actor'],
+    );
+    await admin.query(
+      'INSERT INTO department_memberships(id,user_id,department_id,updated_at) VALUES ($1,$2,$3,now())',
+      [randomUUID(), userId, departmentId],
+    );
+    await admin.query(
+      'INSERT INTO role_templates(id,department_id,name,updated_at) VALUES ($1,$2,$3,now())',
+      [roleId, departmentId, 'CA007 snapshot role'],
+    );
+    await admin.query(
+      "INSERT INTO role_grants(id,role_template_id,action,scope) VALUES ($1,$2,'case.hearing.schedule','DEPARTMENT')",
+      [randomUUID(), roleId],
+    );
+    await admin.query(
+      'INSERT INTO role_assignments(id,user_id,department_id,role_template_id,active,updated_at) VALUES ($1,$2,$3,$4,true,now())',
+      [randomUUID(), userId, departmentId, roleId],
+    );
+    await admin.query('SET session_replication_role = replica');
+    try {
+      await admin.query(
+        "INSERT INTO cases(id,business_no,department_id,source_lead_id,source_notary_matter_id,certificate_id,customer_id,rights_holder_id,responsible_user_id,stage,version,matched_at,complaint_amount_state,complaint_amount,complaint_submitted_at,complaint_submitted_by_user_id,court_case_no) VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9,'WAITING_HEARING',7,now(),'KNOWN',123.45,now(),$9,'CA007-snapshot')",
+        [
+          caseId,
+          `CA007-SNAPSHOT-${caseId}`,
+          departmentId,
+          randomUUID(),
+          randomUUID(),
+          randomUUID(),
+          randomUUID(),
+          randomUUID(),
+          userId,
+        ],
+      );
+      await admin.query(
+        "INSERT INTO audit_events(id,department_id,actor_user_id,internal_actor_user_id,resource_type,resource_id,action) VALUES ($1,$2,$3,$3,'CASE',$4,'case.acceptance.registered')",
+        [acceptanceAuditId, departmentId, userId, caseId],
+      );
+      await admin.query(
+        "INSERT INTO case_acceptances(id,department_id,case_id,accepted_at,court_case_no,recorded_by_user_id,audit_event_id) VALUES ($1,$2,$3,'2026-10-01','CA007-snapshot',$4,$5)",
+        [randomUUID(), departmentId, caseId, userId, acceptanceAuditId],
+      );
+    } finally {
+      await admin.query('SET session_replication_role = origin');
+    }
+
+    const scopedUrl = new URL(databaseUrl);
+    scopedUrl.searchParams.set('options', `-c search_path=${schema}`);
+    const adapterOptions = { schema };
+    writer = new PrismaClient({
+      adapter: new PrismaPg(
+        { connectionString: scopedUrl.toString() },
+        adapterOptions,
+      ),
+    });
+    const clock = { now: () => new Date('2026-10-09T10:00:00.000Z') };
+    const hearing = new CaseHearingService(
+      writer,
+      new AccessControlService(new PrismaAccessControlStore(writer)),
+      new CaseHearingSignal(),
+      clock,
+    );
+    const actor = { userId, departmentId, authorizationRevision: 1 };
+    const scheduled = await hearing.schedule(actor, caseId, {
+      expectedVersion: 7,
+      idempotencyKey: 'detail-snapshot-schedule',
+      hearingAt: '2026-10-08',
+    });
+    if (scheduled.stage !== 'WAITING_HEARING' || scheduled.version !== 8)
+      throw new Error('Snapshot fixture did not schedule');
+
+    let relationReached;
+    const atRelation = new Promise((resolveReached) => {
+      relationReached = resolveReached;
+    });
+    const relationReleased = new Promise((resolveReleased) => {
+      releaseRelation = resolveReleased;
+    });
+    let sawBaseCase = false;
+    let paused = false;
+    const wrapDriver = (driver) =>
+      new Proxy(driver, {
+        get(target, property) {
+          if (property === 'queryRaw')
+            return async (query) => {
+              const sql = query.sql ?? query.text ?? '';
+              if (sql.includes('"cases"')) sawBaseCase = true;
+              if (sawBaseCase && sql.includes('case_hearing_')) {
+                if (!paused) {
+                  paused = true;
+                  relationReached();
+                }
+                await relationReleased;
+              }
+              return target.queryRaw(query);
+            };
+          if (property === 'startTransaction')
+            return async (...args) =>
+              wrapDriver(await target.startTransaction(...args));
+          const value = Reflect.get(target, property, target);
+          return typeof value === 'function' ? value.bind(target) : value;
+        },
+      });
+    const factory = new PrismaPg(
+      { connectionString: scopedUrl.toString() },
+      adapterOptions,
+    );
+    const hookedFactory = new Proxy(factory, {
+      get(target, property) {
+        if (property === 'connect')
+          return async () => wrapDriver(await target.connect());
+        const value = Reflect.get(target, property, target);
+        return typeof value === 'function' ? value.bind(target) : value;
+      },
+    });
+    reader = new PrismaClient({ adapter: hookedFactory });
+    const hearingSelect = {
+      id: true,
+      businessNo: true,
+      stage: true,
+      version: true,
+      createdAt: true,
+      currentHearingAdvanceId: true,
+      currentHearingArrangement: {
+        select: {
+          id: true,
+          hearingAt: true,
+          source: true,
+          recordedAt: true,
+          recordedByUserId: true,
+        },
+      },
+      currentHearingAdvance: {
+        select: {
+          id: true,
+          arrangementId: true,
+          dueAt: true,
+          executedAt: true,
+        },
+      },
+      hearingArrangements: {
+        select: {
+          id: true,
+          hearingAt: true,
+          source: true,
+          recordedAt: true,
+          recordedByUserId: true,
+        },
+      },
+      hearingAdvances: {
+        select: {
+          id: true,
+          arrangementId: true,
+          dueAt: true,
+          executedAt: true,
+        },
+      },
+      hearingCorrections: {
+        select: {
+          id: true,
+          priorArrangementId: true,
+          priorAdvanceId: true,
+          newArrangementId: true,
+          resultStage: true,
+          recordedAt: true,
+          recordedByUserId: true,
+          reason: true,
+        },
+      },
+    };
+    const decorate = (record) =>
+      record === null
+        ? null
+        : {
+            ...record,
+            matchedAt: null,
+            matchedOn: null,
+            complaintAmountState: 'KNOWN',
+            complaintAmount: null,
+            complaintPendingReason: null,
+            complaintSubmittedAt: null,
+            complaintSubmittedByUserId: null,
+            complaintConfirmation: null,
+            complaintMailing: null,
+            filingSubmission: null,
+            acceptance: null,
+            responsibleUserId: userId,
+            responsibleMembership: { teamId: null },
+            defendants: [],
+            lawyers: [],
+            courtCaseNo: null,
+            owner: { id: userId, displayName: 'CA007 snapshot actor' },
+            department: { id: departmentId, name: 'CA007 detail snapshot' },
+            customer: { id: randomUUID(), name: 'snapshot customer' },
+            rightsHolder: { id: randomUUID(), name: 'snapshot holder' },
+            sourceLead: { id: randomUUID(), businessNo: 'SNAPSHOT-LEAD' },
+            sourceNotaryMatter: {
+              id: randomUUID(),
+              businessNo: 'SNAPSHOT-NOTARY',
+              evidence: null,
+            },
+            certificate: {
+              id: randomUUID(),
+              certificateNo: 'SNAPSHOT',
+              certificateDate: new Date('2026-10-01T00:00:00.000Z'),
+              issuedAt: new Date('2026-10-01T00:00:00.000Z'),
+              needDisclose: false,
+              fees: [],
+            },
+          };
+    const readCase = async (client, input) =>
+      decorate(
+        await client.case.findFirst({
+          where: input.where,
+          select: hearingSelect,
+        }),
+      );
+    const readDatabase = {
+      userAccount: {
+        findUnique: async () => ({ accountType: 'INTERNAL', active: true }),
+      },
+      case: { findFirst: (input) => readCase(reader, input) },
+      $transaction: (operation, options) =>
+        reader.$transaction(
+          (transaction) =>
+            operation({
+              case: { findFirst: (input) => readCase(transaction, input) },
+            }),
+          options,
+        ),
+    };
+    const materials = new Proxy(
+      {},
+      {
+        get(_target, name) {
+          if (name === 'listOwnerMaterials') return async () => ({ items: [] });
+          return async () => [];
+        },
+      },
+    );
+    const reads = new CaseReadService(
+      readDatabase,
+      {
+        authorizeDepartmentAction: async () => undefined,
+        canAuthorizeCase: async () => true,
+      },
+      materials,
+    );
+    const firstRead = reads.get(actor, caseId);
+    let timeoutId;
+    try {
+      await Promise.race([
+        atRelation,
+        new Promise((_resolve, reject) => {
+          timeoutId = setTimeout(
+            () => reject(new Error('Relation barrier not reached')),
+            15_000,
+          );
+        }),
+      ]);
+    } finally {
+      clearTimeout(timeoutId);
+    }
+    const advancement = await hearing.advanceDue(clock.now());
+    if (advancement.advanced !== 1 || advancement.failed !== 0)
+      throw new Error('Snapshot fixture did not advance');
+    releaseRelation();
+    const raced = await firstRead;
+    const next = await reads.get(actor, caseId);
+    return {
+      racedStage: raced.stage,
+      racedVersion: raced.version,
+      racedCurrentAdvance: raced.hearing.currentAdvance?.id ?? null,
+      racedAdvanceCount: raced.hearing.advances.length,
+      nextStage: next.stage,
+      nextVersion: next.version,
+      nextAdvanceCount: next.hearing.advances.length,
+      nextCurrentAdvanceMatches:
+        next.hearing.currentAdvance?.id === next.hearing.advances[0]?.id,
+    };
+  } finally {
+    releaseRelation();
+    await reader?.$disconnect();
+    await writer?.$disconnect();
+    if (schemaCreated && /^ca007_detail_snapshot_[0-9a-f]{32}$/u.test(schema))
+      await admin.query(`DROP SCHEMA "${schema}" CASCADE`);
+    await admin.end();
   }
 }
 

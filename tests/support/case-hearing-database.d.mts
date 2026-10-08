@@ -37,6 +37,16 @@ export function verifyCaseHearingDatabase(): Promise<{
   staleAdvanceChain: string | null;
   staleJudgmentChain: string | null;
 }>;
+export function verifyCaseHearingDetailSnapshot(): Promise<{
+  racedStage: string;
+  racedVersion: number;
+  racedCurrentAdvance: string | null;
+  racedAdvanceCount: number;
+  nextStage: string;
+  nextVersion: number;
+  nextAdvanceCount: number;
+  nextCurrentAdvanceMatches: boolean;
+}>;
 
 export function seedCoreCaseHearingFixture(
   departmentId: string,

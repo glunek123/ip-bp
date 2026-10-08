@@ -4,6 +4,7 @@ import {
   inspectCoreCaseHearingFixture,
   inspectCoreCaseHearingGuards,
   seedCoreCaseHearingFixture,
+  verifyCaseHearingDetailSnapshot,
   withCoreCaseHearingCleanupFault,
   verifyCaseHearingDatabase,
 } from '../support/case-hearing-database.mjs';
@@ -102,5 +103,19 @@ test('CA-007 hearing arrangement, advance and correction do not block scoped fix
     arrangements: 0,
     advances: 0,
     corrections: 0,
+  });
+});
+
+test('CA-007 detail case stage and hearing history use one committed snapshot', async () => {
+  test.setTimeout(120_000);
+  expect(await verifyCaseHearingDetailSnapshot()).toEqual({
+    racedStage: 'WAITING_HEARING',
+    racedVersion: 8,
+    racedCurrentAdvance: null,
+    racedAdvanceCount: 0,
+    nextStage: 'WAITING_JUDGMENT',
+    nextVersion: 9,
+    nextAdvanceCount: 1,
+    nextCurrentAdvanceMatches: true,
   });
 });

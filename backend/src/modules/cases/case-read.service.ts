@@ -298,7 +298,7 @@ export class CaseReadService {
 
   async get(actor: ActorContext, id: string) {
     const principal = await this.scope(actor);
-    const record = await this.database.case.findFirst({
+    const detailQuery = {
       where: {
         id,
         departmentId: actor.departmentId,
@@ -426,7 +426,12 @@ export class CaseReadService {
             startedAt: true,
             endedAt: true,
             lawyer: {
-              select: { id: true, fullName: true, lawFirm: true, phone: true },
+              select: {
+                id: true,
+                fullName: true,
+                lawFirm: true,
+                phone: true,
+              },
             },
           },
         },
@@ -460,7 +465,11 @@ export class CaseReadService {
           },
         },
       },
-    });
+    } satisfies Prisma.CaseFindFirstArgs;
+    const record = await this.database.$transaction(
+      (transaction) => transaction.case.findFirst(detailQuery),
+      { isolationLevel: 'RepeatableRead' },
+    );
     if (record === null)
       throw new NotFoundException({
         code: 'RESOURCE_NOT_FOUND',
