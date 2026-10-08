@@ -79,7 +79,9 @@ type BatchRow = {
   fields: RightAssetFields;
   file?: globalThis.File;
   uploaded?: UploadedMaterial;
-  uploadStatus: 'idle' | 'uploading' | 'uploaded' | 'failed';
+  uploadStatus: 'idle' | 'uploading' | 'uploaded' | 'failed' | 'unknown';
+  recoveryEvidence?: MaterialContentVersion[];
+  recoveryRefreshing?: boolean;
   registrationStatus:
     'draft' | 'registering' | 'registered' | 'failed' | 'unknown' | 'conflict';
   error: string;
@@ -136,7 +138,16 @@ function emptyFields(): RightAssetFields {
   };
 }
 function addBatchRow(): void {
-  if (batchRows.value.length >= 10) return;
+  if (
+    batchSaving.value ||
+    batchHalt.value !== 'none' ||
+    batchRows.value.filter((row) => row.registrationStatus !== 'registered')
+      .length >= 10
+  )
+    return;
+  batchRows.value = batchRows.value.filter(
+    (row) => row.registrationStatus !== 'registered',
+  );
   batchRows.value.push({
     id: globalThis.crypto.randomUUID(),
     selected: false,
@@ -152,7 +163,7 @@ function openBatch(): void {
   if (batchRows.value.length === 0) addBatchRow();
 }
 function chooseBatchFile(row: BatchRow, event: globalThis.Event): void {
-  if (row.registrationStatus === 'registered') return;
+  if (!canChooseBatchFile(row)) return;
   row.file = (event.target as globalThis.HTMLInputElement).files?.[0];
   row.uploaded = undefined;
   row.uploadStatus = 'idle';
@@ -160,13 +171,23 @@ function chooseBatchFile(row: BatchRow, event: globalThis.Event): void {
   row.registrationStatus = 'draft';
   row.error = '';
 }
+function canChooseBatchFile(row: BatchRow): boolean {
+  return (
+    !batchSaving.value &&
+    batchHalt.value === 'none' &&
+    !writeDenied.value &&
+    !row.uploaded &&
+    !row.pending &&
+    (row.uploadStatus === 'idle' || row.uploadStatus === 'failed') &&
+    (row.registrationStatus === 'draft' || row.registrationStatus === 'failed')
+  );
+}
+function canUploadBatchRow(row: BatchRow): boolean {
+  return !!row.file && canChooseBatchFile(row);
+}
 async function uploadBatchRow(row: BatchRow): Promise<void> {
-  if (
-    !row.file ||
-    row.uploadStatus === 'uploading' ||
-    row.registrationStatus === 'registered'
-  )
-    return;
+  const file = row.file;
+  if (!file || !canUploadBatchRow(row)) return;
   const ownGeneration = generation;
   row.uploadStatus = 'uploading';
   row.error = '';
@@ -176,7 +197,7 @@ async function uploadBatchRow(row: BatchRow): Promise<void> {
       ownerId: props.customerId,
       category: 'CUSTOMER_RIGHT_EVIDENCE',
       purpose: 'CUSTOMER_RIGHT_EVIDENCE',
-      file: row.file,
+      file,
     });
     if (ownGeneration !== generation) return;
     row.uploaded = uploaded;
@@ -184,13 +205,80 @@ async function uploadBatchRow(row: BatchRow): Promise<void> {
     row.error = '上传成功，尚未登记';
   } catch (error) {
     if (ownGeneration !== generation) return;
-    row.uploadStatus = 'failed';
-    row.error = message(error);
+    row.uploadStatus = isUnknownOutcome(error) ? 'unknown' : 'failed';
+    row.error =
+      row.uploadStatus === 'unknown'
+        ? '上传结果未知，可能已占用待登记名额。请刷新证明池、下载核对，并人工选用已存在的证明；不要再次上传。'
+        : message(error);
     if (isCode(error, 'ACTION_FORBIDDEN') || isCode(error, 'FORBIDDEN')) {
       writeDenied.value = true;
       batchHalt.value = 'permission';
     }
   }
+}
+async function refreshBatchEvidence(row: BatchRow): Promise<void> {
+  if (
+    row.uploadStatus !== 'unknown' ||
+    row.pending ||
+    row.recoveryRefreshing ||
+    batchSaving.value ||
+    batchHalt.value !== 'none' ||
+    writeDenied.value
+  )
+    return;
+  const ownGeneration = generation;
+  row.recoveryRefreshing = true;
+  try {
+    const materials = await listOwnerMaterials('CUSTOMER', props.customerId);
+    if (ownGeneration !== generation) return;
+    row.recoveryEvidence = materials.items
+      .filter(
+        (item) =>
+          item.ownerType === 'CUSTOMER' &&
+          item.ownerId === props.customerId &&
+          item.status === 'ACTIVE' &&
+          item.category === 'CUSTOMER_RIGHT_EVIDENCE',
+      )
+      .flatMap((item) => item.contentVersions)
+      .filter((proof) => proof.status === 'AVAILABLE');
+    row.error =
+      row.recoveryEvidence.length > 0
+        ? '请下载核对文件内容，再明确选用对应的证明版本。'
+        : '当前证明池没有可选版本；请联系管理员核对未知上传结果。';
+  } catch (error) {
+    if (ownGeneration === generation) row.error = message(error);
+  } finally {
+    if (ownGeneration === generation) row.recoveryRefreshing = false;
+  }
+}
+function adoptBatchEvidence(
+  row: BatchRow,
+  proof: MaterialContentVersion,
+): void {
+  if (
+    row.uploadStatus !== 'unknown' ||
+    !row.recoveryEvidence?.some((candidate) => candidate.id === proof.id) ||
+    row.pending ||
+    row.registrationStatus === 'registering' ||
+    row.registrationStatus === 'unknown' ||
+    row.registrationStatus === 'registered' ||
+    batchSaving.value ||
+    batchHalt.value !== 'none' ||
+    writeDenied.value
+  )
+    return;
+  row.uploaded = {
+    materialId: proof.materialId,
+    contentVersionId: proof.id,
+    originalFilename: proof.originalFilename,
+    purpose: 'CUSTOMER_RIGHT_EVIDENCE',
+    mimeType: proof.mimeType,
+    sizeBytes: proof.sizeBytes,
+    sha256: proof.sha256,
+  };
+  row.uploadStatus = 'uploaded';
+  row.registrationStatus = 'draft';
+  row.error = `已人工选用证明 ${proof.originalFilename}；尚未登记。`;
 }
 function normalizedBatchFields(row: BatchRow): RightAssetFields {
   return {
@@ -1281,11 +1369,18 @@ onBeforeUnmount(() => {
       <button
         type="button"
         :disabled="
-          batchRows.length >= 10 || batchSaving || batchHalt !== 'none'
+          batchRows.filter((row) => row.registrationStatus !== 'registered')
+            .length >= 10 ||
+          batchSaving ||
+          batchHalt !== 'none'
         "
         @click="addBatchRow"
       >
-        添加一行
+        {{
+          batchRows.some((row) => row.registrationStatus === 'registered')
+            ? '开始下一批（保留未完成行）'
+            : '添加一行'
+        }}
       </button>
       <div
         v-for="(row, index) in batchRows"
@@ -1372,15 +1467,12 @@ onBeforeUnmount(() => {
             type="file"
             accept=".pdf,.jpg,.jpeg,.png"
             :aria-label="`第 ${index + 1} 行证明文件`"
+            :disabled="!canChooseBatchFile(row)"
             @change="chooseBatchFile(row, $event)"
           />
           <button
             type="button"
-            :disabled="
-              !row.file ||
-              row.uploadStatus === 'uploading' ||
-              row.registrationStatus === 'registered'
-            "
+            :disabled="!canUploadBatchRow(row)"
             @click="uploadBatchRow(row)"
           >
             上传此行证明
@@ -1394,10 +1486,52 @@ onBeforeUnmount(() => {
                 ? '上传中'
                 : row.uploadStatus === 'failed'
                   ? '上传失败'
-                  : '尚未上传'
+                  : row.uploadStatus === 'unknown'
+                    ? '上传结果未知'
+                    : '尚未上传'
           }}；登记：{{ batchRegistrationLabels[row.registrationStatus] }}
         </p>
         <p v-if="row.error" role="status">{{ row.error }}</p>
+        <section
+          v-if="row.uploadStatus === 'unknown'"
+          aria-label="人工核对证明池"
+        >
+          <button
+            type="button"
+            :disabled="
+              row.recoveryRefreshing ||
+              batchSaving ||
+              batchHalt !== 'none' ||
+              writeDenied
+            "
+            @click="refreshBatchEvidence(row)"
+          >
+            {{ row.recoveryRefreshing ? '刷新中…' : '刷新证明池' }}
+          </button>
+          <p>请按文件内容人工核对，不会按文件名自动匹配。</p>
+          <div v-for="proof in row.recoveryEvidence ?? []" :key="proof.id">
+            {{ proof.originalFilename }} · {{ proof.createdAt }} ·
+            {{ proof.sizeBytes }} 字节
+            <button
+              type="button"
+              @click="downloadEvidence(proof.materialId, proof.id)"
+            >
+              下载核对
+            </button>
+            <button
+              type="button"
+              :disabled="
+                batchSaving ||
+                batchHalt !== 'none' ||
+                writeDenied ||
+                !!row.pending
+              "
+              @click="adoptBatchEvidence(row, proof)"
+            >
+              选用此证明
+            </button>
+          </div>
+        </section>
       </div>
       <p v-if="batchHalt === 'unknown'">
         后续行已停止；请先用原请求确认未知结果。

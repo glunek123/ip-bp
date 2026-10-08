@@ -90,6 +90,327 @@ function setup(items = [asset]) {
 afterEach(() => vi.resetAllMocks());
 
 describe('CustomerRightAssetsPanel', () => {
+  it('starts an eleventh registration after ten successful rows', async () => {
+    const wrapper = setup([]);
+    await flushPromises();
+    await wrapper
+      .findAll('button')
+      .find((button) => button.text() === '批量上传权属')!
+      .trigger('click');
+    const batch = () => wrapper.get('section[aria-label="批量上传权属"]');
+    const rows = () => batch().findAll('.right-assets-panel__batch-row');
+    materials.uploadMaterialFile.mockImplementation(
+      async ({ file }: { file: File }) => ({
+        materialId: `material-${file.name}`,
+        contentVersionId: `version-${file.name}`,
+        originalFilename: file.name,
+        mimeType: 'application/pdf',
+        sizeBytes: 8,
+        sha256: 'a'.repeat(64),
+        purpose: 'CUSTOMER_RIGHT_EVIDENCE',
+      }),
+    );
+    api.createRightAsset.mockImplementation(
+      async (_id: string, body: { expectedCustomerVersion: number }) => ({
+        ...asset,
+        customerVersion: body.expectedCustomerVersion + 1,
+      }),
+    );
+    for (let index = 1; index < 10; index++)
+      await batch()
+        .findAll('button')
+        .find((button) => button.text() === '添加一行')!
+        .trigger('click');
+    for (let index = 0; index < 10; index++) {
+      const row = rows()[index]!;
+      await row
+        .findAll('input[maxlength="200"]')[0]!
+        .setValue(`成功行 ${index}`);
+      await row.findAll('input[maxlength="200"]')[1]!.setValue('商标权');
+      await row.findAll('select')[1]!.setValue(holder.id);
+      const input = row.get('input[type="file"]');
+      Object.defineProperty(input.element, 'files', {
+        configurable: true,
+        value: [
+          new File(['%PDF-1.4'], `proof-${index}.pdf`, {
+            type: 'application/pdf',
+          }),
+        ],
+      });
+      await input.trigger('change');
+      await row
+        .findAll('button')
+        .find((button) => button.text() === '上传此行证明')!
+        .trigger('click');
+      await flushPromises();
+      await row.get('input[type="checkbox"]').setValue(true);
+      await batch()
+        .findAll('button')
+        .find((button) => button.text() === '确认登记')!
+        .trigger('click');
+      await flushPromises();
+    }
+    await batch()
+      .findAll('button')
+      .find((button) => button.text().includes('下一批'))!
+      .trigger('click');
+    expect(rows().length).toBe(1);
+    const eleventh = rows()[0]!;
+    await eleventh.findAll('input[maxlength="200"]')[0]!.setValue('第十一行');
+    await eleventh.findAll('input[maxlength="200"]')[1]!.setValue('商标权');
+    await eleventh.findAll('select')[1]!.setValue(holder.id);
+    const input = eleventh.get('input[type="file"]');
+    Object.defineProperty(input.element, 'files', {
+      configurable: true,
+      value: [
+        new File(['%PDF-1.4'], 'proof-11.pdf', { type: 'application/pdf' }),
+      ],
+    });
+    await input.trigger('change');
+    await eleventh
+      .findAll('button')
+      .find((button) => button.text() === '上传此行证明')!
+      .trigger('click');
+    await flushPromises();
+    await eleventh.get('input[type="checkbox"]').setValue(true);
+    await batch()
+      .findAll('button')
+      .find((button) => button.text() === '确认登记')!
+      .trigger('click');
+    await flushPromises();
+    expect(api.createRightAsset).toHaveBeenCalledTimes(11);
+    expect(api.createRightAsset.mock.calls[10][1]).toMatchObject({
+      name: '第十一行',
+      expectedCustomerVersion: 12,
+      contentVersionIds: ['version-proof-11.pdf'],
+    });
+  });
+
+  it('keeps a failed draft when starting another batch', async () => {
+    const wrapper = setup([]);
+    await flushPromises();
+    await wrapper
+      .findAll('button')
+      .find((button) => button.text() === '批量上传权属')!
+      .trigger('click');
+    const batch = () => wrapper.get('section[aria-label="批量上传权属"]');
+    await batch()
+      .findAll('button')
+      .find((button) => button.text() === '添加一行')!
+      .trigger('click');
+    const rows = () => batch().findAll('.right-assets-panel__batch-row');
+    const first = rows()[0]!;
+    await first.findAll('input[maxlength="200"]')[0]!.setValue('成功草稿');
+    await first.findAll('input[maxlength="200"]')[1]!.setValue('商标权');
+    await first.findAll('select')[1]!.setValue(holder.id);
+    const input = first.get('input[type="file"]');
+    Object.defineProperty(input.element, 'files', {
+      configurable: true,
+      value: [new File(['proof'], 'proof.pdf', { type: 'application/pdf' })],
+    });
+    await input.trigger('change');
+    materials.uploadMaterialFile.mockResolvedValueOnce({
+      materialId: 'material-1',
+      contentVersionId: 'version-1',
+      originalFilename: 'proof.pdf',
+      mimeType: 'application/pdf',
+      sizeBytes: 5,
+      sha256: 'a'.repeat(64),
+      purpose: 'CUSTOMER_RIGHT_EVIDENCE',
+    });
+    await first
+      .findAll('button')
+      .find((button) => button.text() === '上传此行证明')!
+      .trigger('click');
+    await flushPromises();
+    await first.get('input[type="checkbox"]').setValue(true);
+    const failed = rows()[1]!;
+    await failed.findAll('input[maxlength="200"]')[0]!.setValue('失败草稿');
+    await failed.get('input[type="checkbox"]').setValue(true);
+    api.createRightAsset.mockResolvedValueOnce({
+      ...asset,
+      customerVersion: 3,
+    });
+    await batch()
+      .findAll('button')
+      .find((button) => button.text() === '确认登记')!
+      .trigger('click');
+    await flushPromises();
+    expect(rows()[1]!.text()).toContain('登记失败');
+    await batch()
+      .findAll('button')
+      .find((button) => button.text().includes('下一批'))!
+      .trigger('click');
+    expect(rows().length).toBe(2);
+    expect(
+      (
+        rows()[0]!.findAll('input[maxlength="200"]')[0]!
+          .element as HTMLInputElement
+      ).value,
+    ).toBe('失败草稿');
+    expect(rows()[0]!.text()).toContain('登记失败');
+    expect(api.createRightAsset).toHaveBeenCalledTimes(1);
+  });
+
+  it('keeps an uploaded batch proof through repeat upload and file changes', async () => {
+    const wrapper = setup([]);
+    await flushPromises();
+    await wrapper
+      .findAll('button')
+      .find((button) => button.text() === '批量上传权属')!
+      .trigger('click');
+    const row = wrapper.get('.right-assets-panel__batch-row');
+    const input = row.get('input[type="file"]');
+    Object.defineProperty(input.element, 'files', {
+      configurable: true,
+      value: [new File(['first'], 'first.pdf', { type: 'application/pdf' })],
+    });
+    await input.trigger('change');
+    const inFlight = deferred<unknown>();
+    materials.uploadMaterialFile.mockReturnValueOnce(inFlight.promise);
+    const upload = () =>
+      row.findAll('button').find((button) => button.text() === '上传此行证明')!;
+    await upload().trigger('click');
+    expect(input.attributes('disabled')).toBeDefined();
+    Object.defineProperty(input.element, 'files', {
+      configurable: true,
+      value: [new File(['second'], 'second.pdf', { type: 'application/pdf' })],
+    });
+    await input.trigger('change');
+    inFlight.resolve({
+      materialId: 'material-first',
+      contentVersionId: 'version-first',
+      originalFilename: 'first.pdf',
+      mimeType: 'application/pdf',
+      sizeBytes: 5,
+      sha256: 'a'.repeat(64),
+      purpose: 'CUSTOMER_RIGHT_EVIDENCE',
+    });
+    await flushPromises();
+    expect(input.attributes('disabled')).toBeDefined();
+    await upload().trigger('click');
+    expect(materials.uploadMaterialFile).toHaveBeenCalledTimes(1);
+    Object.defineProperty(input.element, 'files', {
+      configurable: true,
+      value: [new File(['third'], 'third.pdf', { type: 'application/pdf' })],
+    });
+    await input.trigger('change');
+    await row.findAll('input[maxlength="200"]')[0]!.setValue('登记证明');
+    await row.findAll('input[maxlength="200"]')[1]!.setValue('商标权');
+    await row.findAll('select')[1]!.setValue(holder.id);
+    await row.get('input[type="checkbox"]').setValue(true);
+    api.createRightAsset.mockResolvedValueOnce({
+      ...asset,
+      customerVersion: 3,
+    });
+    await wrapper
+      .get('section[aria-label="批量上传权属"]')
+      .findAll('button')
+      .find((button) => button.text() === '确认登记')!
+      .trigger('click');
+    await flushPromises();
+    expect(api.createRightAsset.mock.calls[0][1].contentVersionIds).toEqual([
+      'version-first',
+    ]);
+  });
+
+  it('recovers an unknown upload by explicit pool selection without a second upload', async () => {
+    const wrapper = setup([]);
+    await flushPromises();
+    await wrapper
+      .findAll('button')
+      .find((button) => button.text() === '批量上传权属')!
+      .trigger('click');
+    const row = wrapper.get('.right-assets-panel__batch-row');
+    const input = row.get('input[type="file"]');
+    Object.defineProperty(input.element, 'files', {
+      configurable: true,
+      value: [
+        new File(['proof'], 'uncertain.pdf', { type: 'application/pdf' }),
+      ],
+    });
+    await input.trigger('change');
+    materials.uploadMaterialFile.mockRejectedValueOnce(
+      new Error('response lost'),
+    );
+    await row
+      .findAll('button')
+      .find((button) => button.text() === '上传此行证明')!
+      .trigger('click');
+    await flushPromises();
+    expect(row.text()).toContain('上传结果未知');
+    expect(input.attributes('disabled')).toBeDefined();
+    await row
+      .findAll('button')
+      .find((button) => button.text() === '上传此行证明')!
+      .trigger('click');
+    expect(materials.uploadMaterialFile).toHaveBeenCalledTimes(1);
+    materials.listOwnerMaterials.mockResolvedValueOnce({
+      items: [
+        {
+          id: 'material-recovered',
+          ownerType: 'CUSTOMER',
+          ownerId: 'customer-1',
+          category: 'CUSTOMER_RIGHT_EVIDENCE',
+          purpose: 'CUSTOMER_RIGHT_EVIDENCE',
+          currentVersionId: 'version-recovered',
+          status: 'ACTIVE',
+          version: 1,
+          deletedAt: null,
+          createdAt: '2026-10-08T01:00:00Z',
+          updatedAt: '2026-10-08T01:00:00Z',
+          contentVersions: [
+            {
+              id: 'version-recovered',
+              materialId: 'material-recovered',
+              originalFilename: 'uncertain.pdf',
+              mimeType: 'application/pdf',
+              sizeBytes: 5,
+              sha256: 'a'.repeat(64),
+              status: 'AVAILABLE',
+              createdAt: '2026-10-08T01:00:00Z',
+            },
+          ],
+        },
+      ],
+      total: 1,
+    });
+    await row
+      .findAll('button')
+      .find((button) => button.text().includes('刷新证明池'))!
+      .trigger('click');
+    await flushPromises();
+    await row
+      .findAll('button')
+      .find((button) => button.text().includes('下载核对'))!
+      .trigger('click');
+    expect(materials.downloadMaterialVersion).toHaveBeenCalledWith(
+      'material-recovered',
+      'version-recovered',
+    );
+    await row
+      .findAll('button')
+      .find((button) => button.text().includes('选用此证明'))!
+      .trigger('click');
+    await row.findAll('input[maxlength="200"]')[0]!.setValue('恢复登记');
+    await row.findAll('input[maxlength="200"]')[1]!.setValue('商标权');
+    await row.findAll('select')[1]!.setValue(holder.id);
+    await row.get('input[type="checkbox"]').setValue(true);
+    api.createRightAsset.mockResolvedValueOnce({
+      ...asset,
+      customerVersion: 3,
+    });
+    await wrapper
+      .get('section[aria-label="批量上传权属"]')
+      .findAll('button')
+      .find((button) => button.text() === '确认登记')!
+      .trigger('click');
+    await flushPromises();
+    expect(materials.uploadMaterialFile).toHaveBeenCalledTimes(1);
+    expect(api.createRightAsset.mock.calls[0][1].contentVersionIds).toEqual([
+      'version-recovered',
+    ]);
+  });
   it('shows unknown term without claiming present legal validity and retains history', async () => {
     const wrapper = setup();
     await flushPromises();
@@ -242,6 +563,22 @@ describe('CustomerRightAssetsPanel', () => {
       .trigger('click');
     await flushPromises();
     expect(api.createRightAsset).toHaveBeenCalledTimes(1);
+    const unknownFile = rows()[0]!.get('input[type="file"]');
+    expect(unknownFile.attributes('disabled')).toBeDefined();
+    Object.defineProperty(unknownFile.element, 'files', {
+      configurable: true,
+      value: [
+        new File(['replacement'], 'replacement.pdf', {
+          type: 'application/pdf',
+        }),
+      ],
+    });
+    await unknownFile.trigger('change');
+    await rows()[0]!
+      .findAll('button')
+      .find((button) => button.text() === '上传此行证明')!
+      .trigger('click');
+    expect(materials.uploadMaterialFile).toHaveBeenCalledTimes(2);
     await batch()
       .findAll('button')
       .find((button) => button.text().includes('原内容和幂等键重试'))!
