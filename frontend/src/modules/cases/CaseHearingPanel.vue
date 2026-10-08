@@ -3,7 +3,6 @@ import { computed, onBeforeUnmount, ref, watch } from 'vue';
 import {
   correctCaseHearing,
   scheduleCaseHearing,
-  todayShanghai,
   type CaseDetail,
   type CorrectCaseHearingInput,
   type LawyerCaseDetail,
