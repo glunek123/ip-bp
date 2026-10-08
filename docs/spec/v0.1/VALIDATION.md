@@ -1,5 +1,28 @@
 # SPEC-001 文档验证
 
+## CORE-CA-007 开庭后推进及受控纠错（2026-10-08）
+
+实际通过Level 3的业务候选为`b4fb37a30571895a5ff881b30c0d49ef06bfab07`、tree`d8f0480c28a61fd8ddb0d0783188763cbbda4f9e`；分支`codex/core-ca-007-hearing-followup`，main基线`6ca3786491e18c0b1253bdee0995df7d59bf06ae`。本轮未推送／合并或开发CA-008；后续状态收口HEAD不冒称实跑过该候选的业务门禁。
+
+交付`CaseHearingArrangement`、`CaseHearingAdvance`、`CaseHearingCorrection`、`CaseHearingReceipt`及案件当前安排／推进指针；共享审计增加受限SYSTEM执行者而不放宽真人身份。六份新前向迁移为`20261008010000_add_case_hearing_enums`、`20261008011000_add_case_hearing_facts`、`20261008012000_add_case_hearing_grants`、`20261008013000_allow_lawyer_hearing_schedule_audit`、`20261008014000_bind_case_hearing_correction_audit`、`20261008015000_require_latest_case_hearing_chain`；仅部署独立测试库，旧已执行迁移不改。空链共82份、上一支持76份schema升级、合成旧事实、结构化管理Grant交集／零资格拒绝、失败原子与重试、直接SQL反例均有真实数据库证据。
+
+正常内部／律师`hearing-schedule`和内部`hearing-correct`Command使用原授权／当前承办范围、同案锁、版本及幂等回执；安排、纠错、成功审计与回执原子持久化。真实过去日期不得早于正式立案；按北京时间开庭日次日零点自动推进，保存到期日或服务重启补跑前重查最新阶段／日期。重复扫描不重复推进或审计；自动执行者不伪作安排登记人。有权运营填写原因更正：未来／未定返回待开庭，已到期更正保持待判决；旧安排、推进及连续更正历史保留。当前PRIMARY律师只可正常安排，客户只读本企业原投影及新阶段，不泄露内部原因／身份。“待判决”不表示法院已经判决。真实判决事实及其纠错阻断由CA-008接入时补齐，本次不声称该后续保护已交付。
+
+高风险Task及集成Final Review由独立`gpt-6-sol / high`主体完成，最终`SpecCompliance = ACCEPTED`、`CodeQuality = Approved`，未关闭C／I／M均0。后端Task、测试管理员夹具、详情同快照修复及最终补审报告分别为`.local/case-hearing/{task-1-review,admin-fixture-review,detail-snapshot-review,final-review}.md`；Final Review接受04a8f02及此前全部累计范围，b4fb37a只追加已核对的标准上下文记录。审查主体未重复Worker的相同通过测试。
+
+| 固定候选正式检查                 | 实际结果                                                                                         | 命令包装耗时 |
+| -------------------------------- | ------------------------------------------------------------------------------------------------ | ------------ |
+| `pnpm verify`                    | 退出0；严格上下文／Spec／架构、类型／Lint／格式、工具74/74、后端1057/1057、前端684/684及双端构建 | 152.462秒    |
+| `pnpm test:e2e:full --workers=1` | 退出0；未过滤全量隔离PostgreSQL／Chromium187/187，含新迁移及真实账号主链                         | 515.502秒    |
+
+verify于UTC`2026-10-08T03:50:30.0917892Z`开始、`03:53:02.5534739Z`结束；E2E于`03:53:47.4007198Z`开始、`04:02:22.9025670Z`结束。前后HEAD／tree、干净工作区及环境指纹一致；Node v24.21.0、pnpm11.27.0，fingerprint为`8cebe60684ba5641d54f9c5c32e7c85b7b62c8fd8d55d4583e40330b5f5e9337`，不证明数据库内容相同。数据库只使用`backend/.env.test`对应的`dev_cor_test`／15433；迁移专项随机临时schema和既有固定A／B夹具受控清理，不重置公共schema、开发／生产库或持久化卷。完整输出、退出状态／时长和非秘密环境摘要为`.local/case-hearing/final-{verify,e2e}{.log,-result.json,-environment-before.json,-environment-after.json}`；HTML为`final-e2e-report/index.html`，机器结果为`final-e2e-test-results/.last-run.json`。
+
+新真实数据库用例验证安排／推进／纠错、启动与双实例／并发单胜、旧安排失效、同键重放／异参冲突、撤权／企业与承办隔离、审计／事实／回执故障整笔回滚及当前事实链约束。详情一致性采用真实PG查询屏障先复现“旧阶段＋新历史”，RepeatableRead聚合后通过；仅装饰无关展示字段，不伪造开庭事实。真实密码浏览器经正式角色页授权→运营／律师办理→到期补跑→未来纠错返回待开庭→新安排再次推进→另一案已到期纠错保持待判决→客户仅看本企业阶段及异企业404→刷新／重登持久化通过。预期HTTP500／SQL约束异常属于已通过故障注入，不隐藏失败。
+
+失败与复跑边界保留：正式verify共启动4次，首三次分别在7f1a598（33.258秒，未用导入Lint）、dc36840（51.621秒，六文件格式）及436bbc2（134.043秒，OpenAPI夹具漏CaseHearingService依赖）退出1，不算完整通过；修复后由原Reviewer确认，第4次才取得上述全套结果。失败原始证据为`formal-attempt{1,2,3}-verify.*`。完整E2E启动1次并通过。开发期单文件浏览器共14次，第8次揭示真实详情混合快照，其余具体失败／最终通过在`task-2-test-log.md`；6～14次原始记录仍保留，早期被覆盖产物不声称存在。终审曾发现代理5xx未知提交误判，经组件行为RED→GREEN14/14关闭：登记／纠错均保留原键和原body，GET不代替成功。未删测试、弱化断言、增重试或放宽超时；既有大chunk及pg弃用警告非阻断。未取得实际token用量，流程提速效果未量化。
+
+此后只补本实际证据、路线图完成态、恢复摘要及对应已解释快照；模块Spec／计划不再重复维护“待门禁／已通过”台账。核对b4fb37a至拟收口状态的提交链、累计diff、暂存／未暂存及相关未跟踪项，范围仅`docs/feature-roadmap.md`、`docs/project-status.md`、本VALIDATION及对应快照，不改业务范围／契约／权限／状态转换／AC、代码、测试／输入、迁移、配置、生成物、依赖、验证逻辑或环境。受影响格式、Spec、严格上下文（含引用及Current／Next一致性）和Git差异专项结果保存`.local/case-hearing/closeout-doc-check.log`，通过才提交；原候选业务证据仍适用，不将收口HEAD称为完整实跑，不要求本记录写其自身提交哈希。CA-007已完成待集成，唯一Current仍007、Next008未领取；实际集成结果及远端检查仍须按新的明确授权核实。生产部署与开发／生产迁移未验证。
+
 ## CORE-CA-006 正式受理／登记正式立案（2026-10-06）
 
 实际通过正式Level 2逐项门禁的业务候选为`d3836fcffa5a5d3e2e9af92d0943e407293f3e22`、tree`6e911e6a96029a5d83ca98f242c633a168a70da6`；分支`codex/core-ca-006-formal-acceptance`，main基线`7cd6525a77e04b52f5352c9702f2392e69b46ac0`。用户授权的此前待同步内容已推送并快进集成该main；本轮只实施CA-006，新业务代码未推送／合并，不开发CA-007。
