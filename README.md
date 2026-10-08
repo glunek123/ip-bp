@@ -96,10 +96,31 @@ pnpm test:e2e
 | [NT-004探针](backend/src/modules/leads/core-nt-004-migration-probe.mjs)   | 出证选择的旧数据升级、不可变事实和约束                       |
 | [NT-005探针](backend/src/modules/leads/core-nt-005-migration-probe.mjs)   | 出证转案表、关联与金额约束、失败回滚                         |
 | [NT-007探针](backend/src/modules/leads/core-nt-007-migration-probe.mjs)   | 公证处账号、旧操作者回填、双身份约束及回滚                   |
-| [开箱审核Node测试](scripts/notary-opening-review-migration.node-test.mjs) | 审核事实、幂等回执、审计与旧照片引用保护                     |
+| [开箱审核Node测试](scripts/notary-opening-review-migration.node-test.mjs) | 旧开箱事实保留、审核事实、幂等回执、审计与迁移回滚           |
 | [律师历史迁移脚本](tests/support/case-lawyer-migration.mjs)               | SD-44的67→72迁移、身份锚与撤权草稿清理；仅供对应历史候选复验 |
 
-复验只使用`backend/.env.test`的独立测试库和随机临时schema，并与数据库E2E共用`scripts/run-e2e.mjs`导出的`acquireE2eResourceLock`，串行执行。独立脚本用Node运行，开箱审核文件用`node --test`；执行前按上述运行时规则加载项目Node／pnpm。律师历史脚本仍依赖当时的72份迁移和服务／Prisma Client版本，当前HEAD不能直接使用；历史候选及证据见[VALIDATION](docs/spec/v0.1/VALIDATION.md)。若以后纳入当前门禁，须先升级其测试夹具和限定的Prisma配置，不能只修改迁移总数断言。
+这些脚本**本身不取得数据库互斥锁**，不能直接裸跑或与数据库E2E同时运行。前五份须由外部调用先解析并校验`backend/.env.test`，取得`scripts/run-e2e.mjs`导出的`acquireE2eResourceLock`后串行执行；脚本只创建和清理随机测试schema。下面示例复用现有保护入口，不打印凭据。在项目根目录加载上述运行时后执行；将`target`改为表中前五份之一，开箱审核文件会自动使用`node --test`：
+
+```powershell
+@'
+import { spawnSync } from 'node:child_process';
+import { captureTestEnvironment } from './scripts/test-environment.mjs';
+import { acquireE2eResourceLock } from './scripts/run-e2e.mjs';
+const target = 'backend/src/modules/cases/core-ca-001-migration-probe.mjs';
+const environment = captureTestEnvironment(process.cwd(), { pnpmVersion: '11.27.0' });
+const lock = acquireE2eResourceLock();
+try {
+  const args = target.endsWith('.node-test.mjs') ? ['--test', target] : [target];
+  const result = spawnSync(process.execPath, args, { stdio: 'inherit', env: environment.childEnvironment });
+  if (result.error) throw result.error;
+  process.exitCode = result.status ?? 1;
+} finally {
+  lock.release();
+}
+'@ | node --input-type=module
+```
+
+律师历史脚本还依赖当时的72份迁移和服务／Prisma Client版本，**当前HEAD不能直接使用**；它直接读取`DATABASE_URL`，复验匹配的历史版本时也必须由包装器校验测试库并显式注入环境、取得互斥锁，不能使用开发库或生产库。历史候选及证据见[VALIDATION](docs/spec/v0.1/VALIDATION.md)。若以后纳入当前门禁，须先升级其测试夹具和限定的Prisma配置，不能只修改迁移总数断言。
 
 ## Prisma 与数据
 

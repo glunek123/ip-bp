@@ -1,6 +1,6 @@
 {
   "version": 1,
-  "recordedAt": "2026-10-08T09:55:17.151Z",
+  "recordedAt": "2026-10-08T10:03:12.249Z",
   "files": {
     ".cursor/rules/verified-feature-integration.mdc": "ffd2306612ba6f09749629c5adb9e645f7f37aa6ee27ff1bc1c3d8b14efeca38",
     ".env.example": "07211cde5c2b59efc21b619b752d4c9b871f0980d2d64ca3c146ad6151fd27ca",
@@ -11,7 +11,7 @@
     ".prettierignore": "4310827e455b8e7a0ef9a986c63c3e38edc571dd20a65dad40d51d97d7abea3c",
     ".prettierrc.json": "19a31ee3cb4414de07b4b6d1d04e2d13fca1a5d76806873280466230082fb741",
     "AGENTS.md": "2415221c01d5b01e3208a8ba289a2d412437cd1f66ace4d5b9f107dd2c5c4e40",
-    "README.md": "fbbd5e99b066bf2c5916739c1759c915f9fc03f584e17ccfefb08bc1e4c0472c",
+    "README.md": "a5223d8a6f2dc1cf5f59482e66adc788a46bf6113985636970e264b7d9bb21b0",
     "Use-ProjectRuntime.ps1": "1142dc29cde8acb5d1ceeae54556bfaf073457840dba2bc13766c8f5b03e7369",
     "backend/.env.example": "7c5c0ad7160b1618568a607a82428bf04347ee820d883e628a91e957d5849f72",
     "backend/jest.config.cjs": "5f8c962fe9cc974fd41ab50b98cb92a3cc5b03328f3172d2bb3e703afa33eb91",
