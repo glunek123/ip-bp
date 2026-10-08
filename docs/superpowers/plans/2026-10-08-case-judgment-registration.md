@@ -66,7 +66,7 @@ type CaseJudgmentCommandResult = {
 
 **Interfaces:** Consumes已有授权、案锁、材料验证／冻结与RepeatableRead；produces上节DTO、`CaseJudgmentService`、两内部及一律师路由、详情能力／事实和测试helper。新`CASE_JUDGMENT_REGISTER`从受理登记逐Grant复制，`CASE_JUDGMENT_CORRECT`从开庭纠错逐Grant复制；外部客户／公证处无本Slice权限。
 
-**Acceptance / tests:** Spec的CA-008增量全覆盖，特别是授权前重放、真实冻结字节、撤权、旧版本、并发单胜、登记／更正／开庭纠错互斥、失败原子与直接SQL约束。判决归属Case，不允许内部人员拿外案材料、律师拿其他承办案草稿或未获准旧版本；类别`JUDGMENT`／purpose同名，真实MIME及大小沿用材料契约。已有判决一律阻断开庭纠错并撤去详情纠错能力。
+**Acceptance / tests:** Spec的CA-008增量全覆盖，特别是授权前重放、真实冻结字节、撤权、旧版本、并发单胜、登记／更正／开庭纠错互斥、失败原子与直接SQL约束。判决归属Case，不允许内部人员拿外案材料、律师拿其他承办案草稿或未获准旧版本；类别`JUDGMENT`／purpose同名，真实MIME及大小沿用材料契约。已有判决一律阻断开庭纠错并撤去详情纠错能力。上传／恢复仅对未冻结待选池计10份，历史不占池；覆盖冻结10份后仍可上传更正、单次选择11份及待选池第11份仍拒绝，旧精确集合／字节不变。
 
 - [ ] **Step 1:** 用实际服务及既有认证夹具写登记、金额状态、材料和纠错互斥RED；迁移用随机临时schema，保留82份旧开庭样本。关键断言：
 
@@ -96,7 +96,7 @@ expect(snapshot.currentJudgmentId).toBe(result.judgmentId);
 
 **Interfaces:** ConsumesTask 1已审查DTO／路由／能力／材料；produces`registerCaseJudgment`、`correctCaseJudgment`接口接线及共享面板。调用模式沿用`CaseHearingPanel`的上下文保护、未知结果保留、错误处理及真实材料上传／下载。
 
-**Acceptance / tests:** 运营与律师正常登记仅按服务端能力显示，更正仅有权运营；日期和文件必填显示、金额显式KNOWN/PENDING（不预填0），提交前展示影响。真实文件集合可核对并下载；登记后不假称进入执行，当前及历史精确事实分别展示。网络／代理5xx保留原Command／body／key，403明确拒绝、409刷新，切案／身份变化迟到响应无效，GET不替代POST裁决。
+**Acceptance / tests:** 运营与律师正常登记仅按服务端能力显示，更正仅有权运营；日期和文件必填显示、金额显式KNOWN/PENDING（不预填0），提交前展示影响。真实文件集合可核对并下载；登记后不假称进入执行，当前及历史精确事实分别展示。网络／代理5xx保留原Command／body／key，403明确拒绝、409刷新，切案／身份变化迟到响应无效，GET不替代POST裁决。草稿绑定起始案件版本，已知冲突后须按最新事实重建／明确核对，不把旧草稿静默套用新版本；未知结果仍重试原请求。提交期间拒绝上传，累计历史不阻止新文件更正。
 
 - [ ] **Step 1:** API解码器及面板行为先RED；至少覆盖待定null、KNOWN0、登记／更正、无更正权、代理502／异码503、同key同body重试、旧版本刷新、切案迟到响应。组织／人员权限目录新增两Action兼容性尽早检查。
 - [ ] **Step 2:** 只接线Task 1契约，用共享视觉和现有材料控件实现表单及可折叠历史；用户看“收到判决日期、判决金额、实缴诉讼费、判决书”，不要求理解事实链或UUID。遇公共契约／安全／DB疑点升级Root，不自行扩围。

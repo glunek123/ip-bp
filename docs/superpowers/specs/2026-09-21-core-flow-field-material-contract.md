@@ -141,6 +141,8 @@ health() -> ready | unavailable
 | `EXECUTION_FILING_PROOF`、`EXECUTION_DOCUMENT`          | PDF、JPG/JPEG、PNG            | 50MB／各10个       | CORE-CA-014／015    | 申请执行推进至少1个立案材料；执行更新材料可追加                |
 | `CLOSURE_DOCUMENT`、`PAYMENT_PROOF`                     | PDF、JPG/JPEG、PNG            | 50MB／各10个       | CORE-CA-016         | 结案文书至少1个；付款凭证仅随真实付款记录                      |
 
+CORE-CA-008的`JUDGMENT`按每次登记／更正所选1～10份执行；未冻结待选上传池最多10份，已冻结历史不占该池额度。历史文件和精确版本永久保留，后续更正可上传新文件，不把累计历史数当成单次上限。单文件50MB及其他类别额度不变。
+
 所有格式以服务端检测的真实MIME为准，不只看扩展名；拒绝加密PDF、压缩包、可执行文件和未知格式。批量ZIP、视频和超出上表限制的专门能力不属于核心Slice，必须另立设计。
 
 ## 5. CORE-LD字段与动作契约
