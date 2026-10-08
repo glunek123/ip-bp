@@ -4,6 +4,7 @@ export function verifyCustomerRightAssetMigration(): Promise<{
   upgradePreserved: boolean;
   rollbackRetry: boolean;
   crossDepartmentRejected: boolean;
+  sameCustomerMismatchRejected: boolean;
 }>;
 export function setRightAssetWithdrawGrant(
   roleId: string,
@@ -20,6 +21,13 @@ export function clearCustomerRightAssetFixture(
 export function rightAssetDatabaseSnapshot(
   customerId: string,
 ): Promise<{ customerVersion: number; assets: number }>;
+export function rightAssetEvidenceSnapshot(customerId: string): Promise<{
+  customerVersion: number;
+  assets: number;
+  versions: number;
+  receipts: number;
+  audits: number;
+}>;
 export function rejectRightAssetAuditWrites(enabled: boolean): Promise<void>;
 export function verifyRightAssetDatabaseGuards(
   customerId: string,

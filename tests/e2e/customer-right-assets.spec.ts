@@ -14,6 +14,7 @@ import {
   clearCustomerRightAssetFixture,
   rejectRightAssetAuditWrites,
   rightAssetDatabaseSnapshot,
+  rightAssetEvidenceSnapshot,
   setRightAssetRoutineGrant,
   setRightAssetWithdrawGrant,
   verifyRightAssetDatabaseGuards,
@@ -30,9 +31,12 @@ async function status(
 ) {
   expect(response.status(), await response.text()).toBe(expected);
 }
-async function createCustomerAndHolder(request: APIRequestContext) {
+async function createCustomerAndHolder(
+  request: APIRequestContext,
+  headers = authA,
+) {
   const customer = await request.post('/api/v1/customers', {
-    headers: authA,
+    headers,
     data: { name: `CU002 ${randomUUID()}` },
   });
   await status(customer, 201);
@@ -41,7 +45,7 @@ async function createCustomerAndHolder(request: APIRequestContext) {
   const holder = await request.post(
     `/api/v1/customers/${customerId}/rights-holders`,
     {
-      headers: { ...authA, 'Idempotency-Key': randomUUID() },
+      headers: { ...headers, 'Idempotency-Key': randomUUID() },
       data: { expectedCustomerVersion: 1, name: 'CU002 Holder' },
     },
   );
@@ -258,6 +262,88 @@ test('CU002 scopes, replay, collision, concurrent CAS, revoke and DB guards', as
     auditImmutable: true,
     dateRejected: true,
   });
+  const beforeDistinctKeys = await rightAssetEvidenceSnapshot(customerId);
+  const [differentKeyA, differentKeyB] = await Promise.all([
+    create(
+      request,
+      customerId,
+      holderId,
+      randomUUID(),
+      beforeDistinctKeys.customerVersion,
+    ),
+    create(
+      request,
+      customerId,
+      holderId,
+      randomUUID(),
+      beforeDistinctKeys.customerVersion,
+    ),
+  ]);
+  expect([differentKeyA.status(), differentKeyB.status()].sort()).toEqual([
+    201, 409,
+  ]);
+  const afterDistinctKeys = await rightAssetEvidenceSnapshot(customerId);
+  expect(afterDistinctKeys).toEqual({
+    customerVersion: beforeDistinctKeys.customerVersion + 1,
+    assets: beforeDistinctKeys.assets + 1,
+    versions: beforeDistinctKeys.versions + 1,
+    receipts: beforeDistinctKeys.receipts + 1,
+    audits: beforeDistinctKeys.audits + 1,
+  });
+});
+
+test('CU002 SELF grants allow own-customer create, read and revise while other customer stays hidden', async ({
+  request,
+}) => {
+  const { customerId, holderId } = await createCustomerAndHolder(
+    request,
+    authSelf,
+  );
+  await status(
+    await request.get(`/api/v1/customers/${customerId}/right-assets`, {
+      headers: authSelf,
+    }),
+    200,
+  );
+  const created = await request.post(
+    `/api/v1/customers/${customerId}/right-assets`,
+    {
+      headers: { ...authSelf, 'Idempotency-Key': randomUUID() },
+      data: { ...fields(holderId), expectedCustomerVersion: 2 },
+    },
+  );
+  await status(created, 201);
+  const assetId = (await created.json()).assetId as string;
+  const detail = await request.get(
+    `/api/v1/customers/${customerId}/right-assets/${assetId}`,
+    { headers: authSelf },
+  );
+  await status(detail, 200);
+  const revised = await request.post(
+    `/api/v1/customers/${customerId}/right-assets/${assetId}/revisions`,
+    {
+      headers: { ...authSelf, 'Idempotency-Key': randomUUID() },
+      data: {
+        ...fields(holderId),
+        number: '本人真实登记号',
+        expectedCustomerVersion: 3,
+        expectedAssetVersion: 1,
+      },
+    },
+  );
+  await status(revised, 201);
+  const latest = await request.get(
+    `/api/v1/customers/${customerId}/right-assets/${assetId}`,
+    { headers: authSelf },
+  );
+  await status(latest, 200);
+  expect((await latest.json()).history).toHaveLength(2);
+  await status(
+    await request.get(`/api/v1/customers/${customerId}/right-assets`, {
+      headers: authA,
+    }),
+    404,
+  );
 });
 
 test('CU002 forced audit failure rolls back and identical-key retry commits once', async ({

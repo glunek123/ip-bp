@@ -72,10 +72,13 @@ export async function verifyCustomerRightAssetMigration() {
           membershipB,
           customerA,
           customerB,
+          customerSameDepartment,
           holderA,
           holderB,
+          holderOtherCustomer,
           linkA,
-        ] = Array.from({ length: 10 }, () => randomUUID());
+          linkOtherCustomer,
+        ] = Array.from({ length: 13 }, () => randomUUID());
         await client.query(
           "INSERT INTO departments(id,name,updated_at) VALUES ($1,'CU002 A',now()),($2,'CU002 B',now())",
           [departmentA, departmentB],
@@ -93,12 +96,29 @@ export async function verifyCustomerRightAssetMigration() {
           [customerA, customerB, departmentA, departmentB, user],
         );
         await client.query(
+          "INSERT INTO customers(id,name,normalized_name,department_id,responsible_user_id,updated_at) VALUES ($1,'CU002 Same Dept','cu002 same dept',$2,$3,now())",
+          [customerSameDepartment, departmentA, user],
+        );
+        await client.query(
           "INSERT INTO rights_holders(id,name,department_id,updated_at) VALUES ($1,'Holder A',$3,now()),($2,'Holder B',$4,now())",
           [holderA, holderB, departmentA, departmentB],
         );
         await client.query(
+          "INSERT INTO rights_holders(id,name,department_id,updated_at) VALUES ($1,'Holder Other Customer',$2,now())",
+          [holderOtherCustomer, departmentA],
+        );
+        await client.query(
           'INSERT INTO customer_rights_holder_links(id,customer_id,rights_holder_id,department_id) VALUES ($1,$2,$3,$4)',
           [linkA, customerA, holderA, departmentA],
+        );
+        await client.query(
+          'INSERT INTO customer_rights_holder_links(id,customer_id,rights_holder_id,department_id) VALUES ($1,$2,$3,$4)',
+          [
+            linkOtherCustomer,
+            customerSameDepartment,
+            holderOtherCustomer,
+            departmentA,
+          ],
         );
         const before = (
           await client.query('SELECT id,version FROM customers WHERE id=$1', [
@@ -147,10 +167,40 @@ export async function verifyCustomerRightAssetMigration() {
             [randomUUID(), customerA, departmentA, holderB],
           );
         } catch (error) {
-          crossDepartmentRejected = error.code === '23503';
+          crossDepartmentRejected =
+            error.code === '23503' &&
+            error.constraint === 'customer_right_assets_holder_fkey';
         }
         if (!crossDepartmentRejected)
           throw new Error('Cross-department holder bypass accepted');
+        const validOtherLink = (
+          await client.query(
+            'SELECT id FROM customer_rights_holder_links WHERE id=$1 AND customer_id=$2 AND rights_holder_id=$3 AND department_id=$4',
+            [
+              linkOtherCustomer,
+              customerSameDepartment,
+              holderOtherCustomer,
+              departmentA,
+            ],
+          )
+        ).rows[0];
+        if (!validOtherLink)
+          throw new Error(
+            'Same-department negative lacks a valid other-customer link',
+          );
+        let sameCustomerMismatchRejected = false;
+        try {
+          await client.query(
+            'INSERT INTO customer_right_assets(id,customer_id,department_id,holder_id,version) VALUES ($1,$2,$3,$4,1)',
+            [randomUUID(), customerA, departmentA, holderOtherCustomer],
+          );
+        } catch (error) {
+          sameCustomerMismatchRejected =
+            error.code === '23503' &&
+            error.constraint === 'customer_right_assets_holder_fkey';
+        }
+        if (!sameCustomerMismatchRejected)
+          throw new Error('Other customer linked holder bypass accepted');
       } else {
         await client.query(enumSql);
         await client.query(tableSql);
@@ -171,6 +221,7 @@ export async function verifyCustomerRightAssetMigration() {
       upgradePreserved: true,
       rollbackRetry: true,
       crossDepartmentRejected: true,
+      sameCustomerMismatchRejected: true,
     };
   } finally {
     await client.query('ROLLBACK').catch(() => undefined);
@@ -368,6 +419,36 @@ export async function rightAssetDatabaseSnapshot(customerId) {
       )
     ).rows[0];
     return { customerVersion: customer.version, assets: rows.count };
+  } finally {
+    await client.end();
+  }
+}
+
+export async function rightAssetEvidenceSnapshot(customerId) {
+  const client = publicClient();
+  await client.connect();
+  try {
+    await assertPublic(client);
+    const row = (
+      await client.query(
+        `SELECT c.version AS customer_version,
+          (SELECT COUNT(*)::int FROM customer_right_assets a WHERE a.customer_id=c.id) AS assets,
+          (SELECT COUNT(*)::int FROM customer_right_asset_versions v WHERE v.customer_id=c.id) AS versions,
+          (SELECT COUNT(*)::int FROM customer_right_asset_receipts r WHERE r.customer_id=c.id) AS receipts,
+          (SELECT COUNT(*)::int FROM audit_events e WHERE e.resource_type='right-asset'
+            AND e.details->>'customerId'=c.id::text) AS audits
+         FROM customers c WHERE c.id=$1`,
+        [customerId],
+      )
+    ).rows[0];
+    if (!row) throw new Error('CU002 evidence customer missing');
+    return {
+      customerVersion: row.customer_version,
+      assets: row.assets,
+      versions: row.versions,
+      receipts: row.receipts,
+      audits: row.audits,
+    };
   } finally {
     await client.end();
   }
