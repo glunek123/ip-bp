@@ -1,6 +1,6 @@
 {
   "version": 1,
-  "recordedAt": "2026-10-08T12:37:59.348Z",
+  "recordedAt": "2026-10-08T12:53:52.365Z",
   "files": {
     ".cursor/rules/verified-feature-integration.mdc": "ffd2306612ba6f09749629c5adb9e645f7f37aa6ee27ff1bc1c3d8b14efeca38",
     ".env.example": "07211cde5c2b59efc21b619b752d4c9b871f0980d2d64ca3c146ad6151fd27ca",
@@ -693,7 +693,7 @@
     "tests/e2e/cases.spec.ts": "cf5dcbb65f1a978689d912ab8429327e2a004ecfb95c876901e7ba52f267a689",
     "tests/e2e/components.spec.ts": "8d94b3b044d9ddc24c323536aba04edc08e216271ff3082705a21c1ac2796742",
     "tests/e2e/core-leads.spec.ts": "5372ca5aeed2ec50fe26af1fa71470696c22a936dacfeb0597aec239ece3e51d",
-    "tests/e2e/customers.spec.ts": "353373e9de5f6edc02d39fa0fe3e903e1d6d2b7656bbad15c6b5c9f517ecf940",
+    "tests/e2e/customers.spec.ts": "62e7defbd38f11b1def50270c7c852b3d4ae0cd3243f2dc57b0ca4d96ada1aa7",
     "tests/e2e/health.spec.ts": "e6de0eadada2040386f75830134425231a279f51f17f083975340211d6d0b5da",
     "tests/e2e/notary-list-export-migration.spec.ts": "564b0873946c167cea3668cecea4a7e8584694c715e099da5ae2bfd8c0ab5612",
     "tests/e2e/notary-list-export.spec.ts": "3737e001b1f2b613b7cce9959a97cea289d94335b42bdbf8cc94eebfa2ba8248",

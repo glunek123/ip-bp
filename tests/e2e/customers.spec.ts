@@ -685,7 +685,7 @@ test('operations user creates a persisted draft and sees its audit history', asy
   await expect(page.getByLabel('权利人名称')).toHaveValue('尚未提交的权利主体');
   await expect(page.getByText('创建客户草稿', { exact: true })).toBeVisible();
   await page
-    .getByRole('form', { name: '新建权利人' })
+    .getByRole('dialog', { name: '新建权利人' })
     .getByRole('button', { name: '取消' })
     .click();
 
