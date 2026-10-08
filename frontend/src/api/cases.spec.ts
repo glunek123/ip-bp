@@ -165,7 +165,11 @@ describe('cases API', () => {
 
   it('posts explicit hearing dates or null through only the authorized schedule route', async () => {
     const schedule = Reflect.get(casesApi, 'scheduleCaseHearing') as
-      | ((id: string, input: Record<string, unknown>, audience?: string) => Promise<unknown>)
+      | ((
+          id: string,
+          input: Record<string, unknown>,
+          audience?: string,
+        ) => Promise<unknown>)
       | undefined;
     expect(schedule).toBeTypeOf('function');
     if (!schedule) return;
@@ -179,11 +183,15 @@ describe('cases API', () => {
     };
     const fetchMock = mockJson(response);
     await expect(
-      schedule('case-1', {
-        expectedVersion: 6,
-        idempotencyKey: 'schedule-key',
-        hearingAt: '2020-01-01',
-      }, 'lawyer'),
+      schedule(
+        'case-1',
+        {
+          expectedVersion: 6,
+          idempotencyKey: 'schedule-key',
+          hearingAt: '2020-01-01',
+        },
+        'lawyer',
+      ),
     ).resolves.toEqual(response);
     const [url, init] = fetchMock.mock.calls[0] as [string, RequestInit];
     expect(url).toBe('/api/v1/lawyer/cases/case-1/hearing-schedule');
@@ -260,7 +268,7 @@ describe('cases API', () => {
         acceptedAt: '2026-10-05',
         courtCaseNo: '（2026）甲0101民初1号',
         recordedAt: '2026-10-05T01:00:00.000Z',
-            recordedByUserId: '80000000-0000-4000-8000-000000000006',
+        recordedByUserId: '80000000-0000-4000-8000-000000000006',
       },
       acceptanceMaterials: {
         ACCEPTANCE_NOTICE: { available: [], frozen: [file], later: [] },

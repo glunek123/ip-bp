@@ -529,10 +529,7 @@ function exactWithOptional(
     keys.every((key) => required.includes(key) || optional.includes(key))
   );
 }
-function validHearingArrangement(
-  value: unknown,
-  internal: boolean,
-): boolean {
+function validHearingArrangement(value: unknown, internal: boolean): boolean {
   if (!record(value)) return false;
   const required = ['id', 'hearingAt', 'source', 'recordedAt'];
   const optional = internal ? ['recordedByUserId'] : [];
@@ -1351,8 +1348,7 @@ function validCaseHearingCommandResult(
       'recordedAt',
     ]) &&
     value.id === id &&
-    (value.stage === 'WAITING_HEARING' ||
-      value.stage === 'WAITING_JUDGMENT') &&
+    (value.stage === 'WAITING_HEARING' || value.stage === 'WAITING_JUDGMENT') &&
     Number.isInteger(value.version) &&
     Number(value.version) === expectedVersion + 1 &&
     uuidV4(value.arrangementId) &&
@@ -1367,7 +1363,11 @@ export async function scheduleCaseHearing(
   audience: 'internal' | 'lawyer' = 'internal',
 ): Promise<CaseHearingCommandResult> {
   if (!validCaseHearingInput(input))
-    throw new ApiError('开庭安排无效，请检查日期和请求版本。', 400, 'VALIDATION_ERROR');
+    throw new ApiError(
+      '开庭安排无效，请检查日期和请求版本。',
+      400,
+      'VALIDATION_ERROR',
+    );
   const response = await requestJson(
     `/${audience === 'lawyer' ? 'lawyer/cases' : 'cases'}/${encodeURIComponent(id)}/hearing-schedule`,
     {
@@ -1385,12 +1385,12 @@ export async function correctCaseHearing(
   input: CorrectCaseHearingInput,
 ): Promise<CaseHearingCommandResult> {
   const reason = input.reason.trim();
-  if (
-    !validCaseHearingInput(input) ||
-    reason.length < 1 ||
-    reason.length > 500
-  )
-    throw new ApiError('开庭纠错信息无效，请填写 1～500 个字符的原因。', 400, 'VALIDATION_ERROR');
+  if (!validCaseHearingInput(input) || reason.length < 1 || reason.length > 500)
+    throw new ApiError(
+      '开庭纠错信息无效，请填写 1～500 个字符的原因。',
+      400,
+      'VALIDATION_ERROR',
+    );
   const response = await requestJson(
     `/cases/${encodeURIComponent(id)}/hearing-correct`,
     {

@@ -414,7 +414,9 @@ describe('case pages', () => {
     expect(api.scheduleCaseHearing).toHaveBeenCalledTimes(1);
     expect(api.getCase).toHaveBeenCalledTimes(2);
     expect(wrapper.text()).toContain('待判决');
-    expect(wrapper.find('[data-test="hearing-correction-reason"]').exists()).toBe(true);
+    expect(
+      wrapper.find('[data-test="hearing-correction-reason"]').exists(),
+    ).toBe(true);
   });
 
   it('shows the filing form only for an authorized case awaiting filing', async () => {

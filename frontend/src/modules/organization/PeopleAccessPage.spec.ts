@@ -165,9 +165,15 @@ describe('PeopleAccessPage', () => {
     expect(
       wrapper.find('[data-test="grant-CASE_ACCEPTANCE_REGISTER"]').exists(),
     ).toBe(true);
-    expect(wrapper.find('[data-test="grant-CASE_HEARING_SCHEDULE"]').exists()).toBe(true);
-    expect(wrapper.find('[data-test="grant-CASE_HEARING_CORRECT"]').exists()).toBe(true);
-    expect(wrapper.find('[data-test="grant-CASE_HEARING_AUTO_ADVANCED"]').exists()).toBe(false);
+    expect(
+      wrapper.find('[data-test="grant-CASE_HEARING_SCHEDULE"]').exists(),
+    ).toBe(true);
+    expect(
+      wrapper.find('[data-test="grant-CASE_HEARING_CORRECT"]').exists(),
+    ).toBe(true);
+    expect(
+      wrapper.find('[data-test="grant-CASE_HEARING_AUTO_ADVANCED"]').exists(),
+    ).toBe(false);
     expect(
       wrapper.get('[data-test="scope-CASE_READ"]').findAll('option'),
     ).toHaveLength(1);
