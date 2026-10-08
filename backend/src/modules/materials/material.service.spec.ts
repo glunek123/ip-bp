@@ -1806,6 +1806,157 @@ describe('MaterialService', () => {
     expect(fixture.storage.delete).toHaveBeenCalledTimes(1);
   });
 
+  it('lets a judgment upload use a free pending slot after ten prior files were frozen', async () => {
+    const fixture = createFixture();
+    const caseRecord = {
+      departmentId: actor.departmentId,
+      stage: 'WAITING_JUDGMENT',
+      responsibleUserId: actor.userId,
+      responsibleMembership: { teamId: null },
+    };
+    fixture.db.case.findFirst.mockResolvedValue(caseRecord);
+    fixture.transaction.case.findFirst.mockResolvedValue(caseRecord);
+    fixture.db.uploadDraft.findUnique.mockResolvedValue(
+      openDraft({
+        ownerType: 'CASE',
+        ownerId: customerId,
+        category: 'JUDGMENT',
+        purpose: 'JUDGMENT',
+        originalFilename: 'replacement.pdf',
+        declaredMimeType: 'application/pdf',
+      }),
+    );
+    fixture.storage.put.mockResolvedValue({
+      sizeBytes: 10,
+      sha256: 'e'.repeat(64),
+      detectedMimeType: 'application/pdf',
+    });
+    fixture.transaction.material.count.mockImplementation(async ({ where }) =>
+      'contentVersions' in where ? 0 : 10,
+    );
+
+    await expect(
+      fixture.service.finalizeUpload(
+        actor,
+        openDraft().id,
+        Readable.from(Buffer.from('%PDF-1.7')),
+      ),
+    ).resolves.toMatchObject({ purpose: 'JUDGMENT' });
+    expect(fixture.transaction.material.count).toHaveBeenCalledWith({
+      where: expect.objectContaining({
+        departmentId: actor.departmentId,
+        ownerType: 'CASE',
+        ownerId: customerId,
+        category: 'JUDGMENT',
+        status: 'ACTIVE',
+        contentVersions: {
+          none: { caseJudgmentVersions: { some: {} } },
+        },
+      }),
+    });
+  });
+
+  it('still rejects an eleventh unfrozen judgment upload', async () => {
+    const fixture = createFixture();
+    const caseRecord = {
+      departmentId: actor.departmentId,
+      stage: 'WAITING_JUDGMENT',
+      responsibleUserId: actor.userId,
+      responsibleMembership: { teamId: null },
+    };
+    fixture.db.case.findFirst.mockResolvedValue(caseRecord);
+    fixture.transaction.case.findFirst.mockResolvedValue(caseRecord);
+    fixture.db.uploadDraft.findUnique.mockResolvedValue(
+      openDraft({
+        ownerType: 'CASE',
+        ownerId: customerId,
+        category: 'JUDGMENT',
+        purpose: 'JUDGMENT',
+        declaredMimeType: 'application/pdf',
+      }),
+    );
+    fixture.storage.put.mockResolvedValue({
+      sizeBytes: 10,
+      sha256: 'e'.repeat(64),
+      detectedMimeType: 'application/pdf',
+    });
+    fixture.transaction.material.count.mockResolvedValue(10);
+
+    await expect(
+      fixture.service.finalizeUpload(
+        actor,
+        openDraft().id,
+        Readable.from(Buffer.from('%PDF-1.7')),
+      ),
+    ).rejects.toMatchObject({ response: { code: 'VALIDATION_ERROR' } });
+    expect(fixture.transaction.material.create).not.toHaveBeenCalled();
+    expect(fixture.storage.delete).toHaveBeenCalledTimes(1);
+  });
+
+  it('counts only unfrozen judgment materials when restoring a deleted pending file', async () => {
+    const fixture = createFixture();
+    const caseRecord = {
+      departmentId: actor.departmentId,
+      stage: 'WAITING_JUDGMENT',
+      responsibleUserId: actor.userId,
+      responsibleMembership: { teamId: null },
+    };
+    fixture.transaction.case.findFirst.mockResolvedValue(caseRecord);
+    fixture.db.material.findFirst.mockResolvedValue({
+      ...materialRecord(),
+      ownerType: 'CASE',
+      ownerId: customerId,
+      category: 'JUDGMENT',
+      status: 'DELETED',
+      deletedAt: new Date(now.getTime() - 60_000),
+    });
+    fixture.transaction.material.count.mockImplementation(async ({ where }) =>
+      'contentVersions' in where ? 0 : 10,
+    );
+
+    await expect(
+      fixture.service.restore(actor, 'material-1', 1),
+    ).resolves.toEqual({
+      id: 'material-1',
+      status: 'ACTIVE',
+      version: 2,
+    });
+    expect(fixture.transaction.material.count).toHaveBeenCalledWith({
+      where: expect.objectContaining({
+        category: 'JUDGMENT',
+        status: 'ACTIVE',
+        contentVersions: {
+          none: { caseJudgmentVersions: { some: {} } },
+        },
+      }),
+    });
+  });
+
+  it('does not restore a deleted judgment file into a full pending pool', async () => {
+    const fixture = createFixture();
+    const caseRecord = {
+      departmentId: actor.departmentId,
+      stage: 'WAITING_JUDGMENT',
+      responsibleUserId: actor.userId,
+      responsibleMembership: { teamId: null },
+    };
+    fixture.transaction.case.findFirst.mockResolvedValue(caseRecord);
+    fixture.db.material.findFirst.mockResolvedValue({
+      ...materialRecord(),
+      ownerType: 'CASE',
+      ownerId: customerId,
+      category: 'JUDGMENT',
+      status: 'DELETED',
+      deletedAt: new Date(now.getTime() - 60_000),
+    });
+    fixture.transaction.material.count.mockResolvedValue(10);
+
+    await expect(
+      fixture.service.restore(actor, 'material-1', 1),
+    ).rejects.toMatchObject({ response: { code: 'VALIDATION_ERROR' } });
+    expect(fixture.transaction.material.updateMany).not.toHaveBeenCalled();
+  });
+
   it.each(['NOTARY_CERTIFICATE', 'NOTARY_DISCLOSURE'] as const)(
     'rejects the eleventh active %s material and cleans up its blob',
     async (category) => {
@@ -3048,7 +3199,9 @@ function createFixture() {
       create: jest.fn(async ({ data }) => data),
       update: jest.fn(async ({ data }) => data),
       updateMany: jest.fn(async () => ({ count: 1 })),
-      count: jest.fn(async () => 0),
+      count: jest.fn<Promise<number>, [{ where: Record<string, unknown> }]>(
+        async () => 0,
+      ),
     },
     contentVersion: { create: jest.fn(async ({ data }) => data) },
     uploadDraft: {
@@ -3099,6 +3252,7 @@ function createFixture() {
     authorizeDepartmentAction: jest.fn(),
     authorizeLead: jest.fn(),
     authorizeCase: jest.fn(),
+    canAuthorizeCase: jest.fn(async () => true),
     canAuthorizeNewLead: jest.fn(async () => true),
   };
   const storage: jest.Mocked<PrivateBlobStorage> = {

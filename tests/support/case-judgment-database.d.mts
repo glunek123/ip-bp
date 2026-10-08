@@ -6,6 +6,12 @@ export function verifyCaseJudgmentDatabase(): Promise<{
   currentMatches: boolean;
   frozenVersions: number;
   frozenReferences: number;
+  elevenSelected: string | null;
+  replacementVersion: number;
+  originalReferencesAfterReplacement: number;
+  originalBytesPreserved: boolean;
+  pendingPool: number;
+  pendingExcess: string | null;
   bytesMatch: boolean;
   replaySame: boolean;
   hearingBlocked: string | null;

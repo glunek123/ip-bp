@@ -573,6 +573,13 @@ export class MaterialService {
               ownerId: draft.ownerId,
               category: draft.category,
               status: 'ACTIVE',
+              ...(draft.category === 'JUDGMENT'
+                ? {
+                    contentVersions: {
+                      none: { caseJudgmentVersions: { some: {} } },
+                    },
+                  }
+                : {}),
             },
           });
           if (activeCount >= materialLimit(draft.category)) {
@@ -1613,6 +1620,13 @@ export class MaterialService {
           ownerId: material.ownerId,
           category: material.category,
           status: 'ACTIVE',
+          ...(material.category === 'JUDGMENT'
+            ? {
+                contentVersions: {
+                  none: { caseJudgmentVersions: { some: {} } },
+                },
+              }
+            : {}),
         },
       });
       if (activeCount >= materialLimit(material.category)) {

@@ -678,6 +678,31 @@ export async function verifyCaseJudgmentDatabase() {
       select: { storageKey: true },
     });
     keys.push(storageRow.storageKey);
+    const registeredFiles = [{ ...uploaded, bytes }];
+    for (let index = 1; index < 10; index += 1) {
+      const fileBytes = Buffer.from(
+        `%PDF-1.7\n1 0 obj<</Type/Catalog>>endobj\nCA008 registered file ${index}\n%%EOF\n`,
+      );
+      const fileDraft = await materials.createUploadDraft(actor, {
+        ownerType: 'CASE',
+        ownerId: ids.case,
+        category: 'JUDGMENT',
+        purpose: 'JUDGMENT',
+        originalFilename: `judgment-${index}.pdf`,
+        declaredMimeType: 'application/pdf',
+      });
+      const file = await materials.finalizeUpload(
+        actor,
+        fileDraft.id,
+        Readable.from(fileBytes),
+      );
+      const stored = await database.contentVersion.findUnique({
+        where: { id: file.contentVersionId },
+        select: { storageKey: true },
+      });
+      keys.push(stored.storageKey);
+      registeredFiles.push({ ...file, bytes: fileBytes });
+    }
     const input = {
       expectedVersion: 9,
       idempotencyKey: `register-${ids.case}`,
@@ -686,7 +711,9 @@ export async function verifyCaseJudgmentDatabase() {
       judgmentAmount: '0',
       paidLitigationFeeState: 'PENDING',
       paidLitigationFee: null,
-      judgmentContentVersionIds: [uploaded.contentVersionId],
+      judgmentContentVersionIds: registeredFiles.map(
+        (file) => file.contentVersionId,
+      ),
     };
     const result = await judgment.register(actor, ids.case, input);
     const snapshot = {
@@ -864,7 +891,7 @@ export async function verifyCaseJudgmentDatabase() {
     const originalReferenceSetPreserved =
       (await database.materialReference.count({
         where: { actionEventId: history[0].auditEventId, purpose: 'JUDGMENT' },
-      })) === 1;
+      })) === 10;
     const nonJudgmentArgs = [
       ids.department,
       'case',
@@ -944,6 +971,95 @@ export async function verifyCaseJudgmentDatabase() {
     const afterRace = await database.caseJudgmentFact.count({
       where: { caseId: ids.case },
     });
+    let elevenSelected = null;
+    try {
+      await judgment.correct(actor, ids.case, {
+        ...correction,
+        expectedVersion: 12,
+        idempotencyKey: 'eleven-selected',
+        judgmentContentVersionIds: [
+          ...registeredFiles.map((file) => file.contentVersionId),
+          extraUploaded.contentVersionId,
+        ],
+      });
+    } catch (error) {
+      elevenSelected = error.response?.code ?? null;
+    }
+    const replacement = await judgment.correct(actor, ids.case, {
+      ...correction,
+      expectedVersion: 12,
+      idempotencyKey: 'replace-one-of-ten',
+      judgmentContentVersionIds: [
+        ...registeredFiles.slice(0, 9).map((file) => file.contentVersionId),
+        extraUploaded.contentVersionId,
+      ],
+    });
+    const originalReferencesAfterReplacement =
+      await database.materialReference.count({
+        where: { actionEventId: history[0].auditEventId, purpose: 'JUDGMENT' },
+      });
+    let originalBytesPreserved = true;
+    for (const file of registeredFiles) {
+      const openedOriginal = await materials.openVersion(
+        actor,
+        file.materialId,
+        file.contentVersionId,
+      );
+      const actual = Buffer.concat(
+        await Array.fromAsync(openedOriginal.stream),
+      );
+      originalBytesPreserved &&= actual.equals(file.bytes);
+    }
+    for (let index = 0; index < 10; index += 1) {
+      const pendingDraft = await materials.createUploadDraft(actor, {
+        ownerType: 'CASE',
+        ownerId: ids.case,
+        category: 'JUDGMENT',
+        purpose: 'JUDGMENT',
+        originalFilename: `pending-${index}.pdf`,
+        declaredMimeType: 'application/pdf',
+      });
+      const pending = await materials.finalizeUpload(
+        actor,
+        pendingDraft.id,
+        Readable.from(bytes),
+      );
+      const pendingStorage = await database.contentVersion.findUnique({
+        where: { id: pending.contentVersionId },
+        select: { storageKey: true },
+      });
+      keys.push(pendingStorage.storageKey);
+    }
+    const pendingPool = await database.material.count({
+      where: {
+        departmentId: ids.department,
+        ownerType: 'CASE',
+        ownerId: ids.case,
+        category: 'JUDGMENT',
+        status: 'ACTIVE',
+        contentVersions: {
+          none: { caseJudgmentVersions: { some: {} } },
+        },
+      },
+    });
+    const excessDraft = await materials.createUploadDraft(actor, {
+      ownerType: 'CASE',
+      ownerId: ids.case,
+      category: 'JUDGMENT',
+      purpose: 'JUDGMENT',
+      originalFilename: 'pending-excess.pdf',
+      declaredMimeType: 'application/pdf',
+    });
+    let pendingExcess = null;
+    try {
+      await materials.finalizeUpload(
+        actor,
+        excessDraft.id,
+        Readable.from(bytes),
+      );
+    } catch (error) {
+      pendingExcess = error.response?.code ?? null;
+    }
     await client.query(
       "DELETE FROM role_grants WHERE role_template_id=$1 AND action='case.judgment.register'",
       [ids.role],
@@ -976,6 +1092,12 @@ export async function verifyCaseJudgmentDatabase() {
       currentMatches: snapshot.case.currentJudgmentId === result.judgmentId,
       frozenVersions: snapshot.versions.length,
       frozenReferences: snapshot.references.length,
+      elevenSelected,
+      replacementVersion: replacement.version,
+      originalReferencesAfterReplacement,
+      originalBytesPreserved,
+      pendingPool,
+      pendingExcess,
       bytesMatch: downloaded.equals(bytes),
       replaySame: JSON.stringify(replay) === JSON.stringify(result),
       hearingBlocked,
