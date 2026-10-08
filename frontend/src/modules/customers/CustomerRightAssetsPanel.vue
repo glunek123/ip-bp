@@ -517,20 +517,6 @@ async function retryUnknown(): Promise<void> {
   if (!unknownOutcome.value || !pending || saving.value) return;
   await runCommand(pending);
 }
-function abandonUnknown(): void {
-  if (!unknownOutcome.value || saving.value) return;
-  pending = undefined;
-  unknownOutcome.value = false;
-  mode.value = 'closed';
-  withdrawOpen.value = false;
-  detail.value = undefined;
-  draftOrigin.value = undefined;
-  confirmedCustomerVersion.value = undefined;
-  errorMessage.value =
-    '已放弃原请求重试；原请求仍可能已经成功，请先刷新核对资产。';
-  emit('refresh-requested', props.customerId);
-  void load();
-}
 async function runCommand(command: PendingCommand): Promise<void> {
   const ownGeneration = generation;
   saving.value = true;
@@ -557,8 +543,7 @@ async function runCommand(command: PendingCommand): Promise<void> {
     if (ownGeneration !== generation) return;
     if (isUnknownOutcome(error)) {
       unknownOutcome.value = true;
-      errorMessage.value =
-        '请求结果未知。请用原请求重试，或明确放弃后先刷新核对。';
+      errorMessage.value = '请求结果未知。请用原请求重试。';
       return;
     }
     pending = undefined;
@@ -679,9 +664,6 @@ onBeforeUnmount(() => {
       <p>原请求可能已成功。重试将使用完全相同的内容和幂等键。</p>
       <button type="button" :disabled="saving" @click="retryUnknown">
         用原请求重试
-      </button>
-      <button type="button" :disabled="saving" @click="abandonUnknown">
-        明确放弃原请求
       </button>
     </div>
     <button
