@@ -39,12 +39,12 @@
 
 **Interfaces:** 消费getCustomer/CustomerDetail与现有CustomerRightsHolderPanel、CustomerAdmissionPanel、CustomerAccountPanel。不改变API、数据库或capabilities；输出三个有可访问名称的tab/tab-panel。
 
-- [ ] 先在CustomerDetailPage.spec.ts新增测试：初始“基本信息”有客户资料及原面板；点击“权利资产”只显示尚未交付说明；点击“结算记录”说明未接通且没有数字金额/账单按钮；切回基本信息保留面板状态。
-- [ ] 执行`pnpm --filter @dev-cor/frontend test src/modules/customers/CustomerDetailPage.spec.ts`确认测试能在旧页面失败。
-- [ ] 用原生button role=tab/aria-selected/aria-controls与稳定panel id组织页签；使用v-show保留已有子面板，不能每次切换销毁上传草稿。保持错误/缺失/重试和原capability控制。
-- [ ] 路由客户变化时取消旧请求、重置tab和客户数据，防止旧客户渲染；新增A→B与迟到A返回的测试。页面标题和资产主体称谓准确，不把权利人变成权利资产。
-- [ ] 执行本页及直接相关Vitest、前端typecheck:prepared、改动文件Prettier检查；自审并提交普通UI候选。
-- [ ] 固定候选运行现有客户Level2 scope，真实浏览器创建客户→详情→切换页签→编辑/刷新，必要追加customers.spec.ts过滤用例；记录候选而非声称整个客户完成。
+- [x] 先在CustomerDetailPage.spec.ts新增测试：初始“基本信息”有客户资料及原面板；点击“权利资产”只显示尚未交付说明；点击“结算记录”说明未接通且没有数字金额/账单按钮；切回基本信息保留面板状态。
+- [x] 执行`pnpm --filter @dev-cor/frontend test src/modules/customers/CustomerDetailPage.spec.ts`确认测试能在旧页面失败。
+- [x] 用原生button role=tab/aria-selected/aria-controls与稳定panel id组织页签；使用v-show保留已有子面板，不能每次切换销毁上传草稿。保持错误/缺失/重试和原capability控制。
+- [x] 路由客户变化时取消旧请求、重置tab和客户数据，防止旧客户渲染；新增A→B与迟到A返回的测试。页面标题和资产主体称谓准确，不把权利人变成权利资产。
+- [x] 执行本页及直接相关Vitest、前端typecheck:prepared、改动文件Prettier检查；自审并提交普通UI候选。
+- [x] 固定候选运行现有客户Level2 scope，真实浏览器创建客户→详情→切换页签→编辑/刷新，必要追加customers.spec.ts过滤用例；记录候选而非声称整个客户完成。
 
 ## Task 2 / CORE-CU-002：资产人工登记与版本
 
