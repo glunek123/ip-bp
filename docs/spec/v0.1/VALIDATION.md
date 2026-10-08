@@ -752,3 +752,17 @@ CUST-FND-002先写负向测试并实测RED：授权服务、ActorContext及测�
 失败历史保留：首次在Docker未运行的指纹检查处结束，未执行测试；第二次静态／单元／构建通过，Docker重启后的tmpfs测试public为空，30项E2E均在准备阶段失败；只在独立测试库补齐91条现有迁移，无reset/drop，人工／开发／生产库未迁移。第三次29/30，新增取消按钮定位误用form（实际dialog）导致超时，页签与草稿断言已通过；修正测试定位后第四次正式scope30/30。重复正式门禁分别由数据库准备修复和测试输入修正触发，没有冒用失败候选证据。
 
 Docker由用户打开后恢复，引擎及原人工数据卷保留；原人工5181/3201/55434已恢复、登录页和直连／代理健康均200。旧人工构建副本保持原版本，未自动更新。后续002～008尚未交付，本轮没有推送、合并或部署。
+
+## 人工权利资产 CORE-CU-002（2026-10-08）
+
+实际正式候选`f0ce8417106abdf6e478266f49b5fd92f268fe26`，tree`cee48539db5f773d400984d93c637403d2e8fbc5`；门禁前后HEAD／tree与干净工作区一致。只实现人工资产登记、修订、独立授权撤下、不可变历史、当前客户授权及冻结原请求的幂等恢复。新撤下动作不自动授予旧角色；无证明文件、批量或OCR能力，不扩展为整个客户模块完成。SD-48只保留负责运营，不新增客户经理。
+
+高风险Task由gpt-6-sol实现，另一非实现Sol复核。原候选a5e4c60被判REJECTED（C0/I4/M0）；b466c70、454420c修复409保稿／明确刷新、未知结果原body和键、迟到详情竞争及指定并发／SELF／错主体证据。最终454420c复审ACCEPTED，未关闭C/I/M为0，报告`.local/customer-alignment/task-2-review.md`保留原结论与逐项关闭证据。此为同模型隔离审查，独立性不足；外部异模型Review仍Pending，本轮未执行，不能称外部独立Review通过。
+
+正式完整`pnpm verify`第二次退出0：严格context、Spec（56REQ／62AC／11BQ／48SD）、架构（11模块／82模型）、全局类型、ESLint、格式、工具74/74、前端727/727、后端1085/1085及双端构建通过。日志`.local/customer-alignment/task-2-f0ce841-verify-attempt2.log`。第一次只因Git忽略但被全仓Prettier扫描的`.superpowers/sdd/progress.md`格式失败；仅格式化该树外记录后重试，候选业务tree未变，失败日志`task-2-f0ce841-verify.log`保留。原有前端大chunk提示和JSDOM导航提示未变为测试失败。
+
+同一候选按既有资源互斥入口运行`pnpm test:e2e tests/e2e/customers.spec.ts tests/e2e/customer-right-assets.spec.ts`，真实隔离PostgreSQL／Chromium45/45，退出0，日志`.local/customer-alignment/task-2-f0ce841-customer-assets-e2e.log`。覆盖客户／主体既有路径、同键重放、不同键同版本竞争仅一次提交、SELF正向及越范围拒绝、撤权下一请求失效、数据库历史／指针／日期守卫和注入审计失败后的完整回滚。注入失败的500属于预期断言。资产UI场景使用现有测试身份及session界面桩，业务API和数据库真实；不以该场景声称真实密码登录或私有文件流程已验证，后者属于003。
+
+迁移专项在同一候选通过既有环境解析和共享测试资源锁，在测试库随机schema执行91条旧迁移到95条完整空库链、合成旧数据升级保留、DDL失败回滚与重试、跨部门及同部门另一客户主体FK负例，全部true且退出0。日志`.local/customer-alignment/task-2-f0ce841-migration.log`；环境指纹`8cebe60684ba5641d54f9c5c32e7c85b7b62c8fd8d55d4583e40330b5f5e9337`。只有隔离测试public升级至95条，未reset／drop public。初次开发数据库E2E触发42703后以第四条前向迁移修复，旧已执行迁移未编辑；原控制台在工具记录中，首次Playwright报告已被覆盖，不冒称仍保留。开发期RED／GREEN及精确文件清单见`.local/customer-alignment/task-2-report.md`。
+
+门禁后仅补记project-status、roadmap及本验证记录中的完成状态／实际证据和对应已解释快照；未改业务契约、代码、测试输入、迁移或环境。收口执行累计diff、文档格式、Spec、严格context专项，并保留实际候选的业务证据，不称文档收口HEAD实跑完整门禁。001～002仍为本地分支成果，没有推送、合并或部署；人工5181/3201/55434保持旧构建与数据，未自动迁移。
