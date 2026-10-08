@@ -1,6 +1,6 @@
 {
   "version": 1,
-  "recordedAt": "2026-10-08T03:43:57.362Z",
+  "recordedAt": "2026-10-08T03:50:29.374Z",
   "files": {
     ".cursor/rules/verified-feature-integration.mdc": "ffd2306612ba6f09749629c5adb9e645f7f37aa6ee27ff1bc1c3d8b14efeca38",
     ".env.example": "07211cde5c2b59efc21b619b752d4c9b871f0980d2d64ca3c146ad6151fd27ca",
@@ -158,7 +158,7 @@
     "backend/src/common/http-exception.filter.ts": "3b1db5e0ca9c95526506ee9589d6bfed12cf47d8b58a34c907a6a37b76f9e05c",
     "backend/src/common/request-diagnostics.spec.ts": "1772daf02249c93ee1d0bb765e185d69503cbae4d50fe1d74bd53cc759802362",
     "backend/src/common/request-diagnostics.ts": "4d0e2bafe8ad38919d6c6a28b36c417193acf132b85766ea55884c60d9d7cda6",
-    "backend/src/core-ld-openapi.spec.ts": "550b9805d8e344df57fd62594f190c9a3cf6e59ed4f8cefe9c8eea0885a64413",
+    "backend/src/core-ld-openapi.spec.ts": "739ccd667ea56ecdfb399d5cc360cbe8d15e1a9c6db654c19360c12bf86f8320",
     "backend/src/database/database.module.ts": "fc2035345e69048ca39912d89d564d3ddd586c2cf7f1a5c3992dd0ee285ec75e",
     "backend/src/database/database.service.ts": "0534086a27beb1132a0f6fc849429838db920db734233f16c3a1dc9bfbe7ec44",
     "backend/src/health/health-response.dto.ts": "5786f072df63118349a167feea2e08867595d67eb0a141feddba80b0dda571e0",
