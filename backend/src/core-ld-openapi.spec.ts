@@ -32,6 +32,7 @@ import { CaseComplaintConfirmationService } from './modules/cases/case-complaint
 import { CaseComplaintMailingService } from './modules/cases/case-complaint-mailing.service';
 import { CaseFilingService } from './modules/cases/case-filing.service';
 import { CaseAcceptanceService } from './modules/cases/case-acceptance.service';
+import { CaseHearingService } from './modules/cases/case-hearing.service';
 import { FilingCourtService } from './modules/cases/filing-court.service';
 
 describe('CORE-LD-002 OpenAPI contract', () => {
@@ -69,6 +70,7 @@ describe('CORE-LD-002 OpenAPI contract', () => {
         { provide: CaseComplaintMailingService, useValue: {} },
         { provide: CaseFilingService, useValue: {} },
         { provide: CaseAcceptanceService, useValue: {} },
+        { provide: CaseHearingService, useValue: {} },
         { provide: FilingCourtService, useValue: {} },
       ],
     })
@@ -170,6 +172,18 @@ describe('CORE-LD-002 OpenAPI contract', () => {
       '201',
       'RegisterCaseAcceptanceResponseDto',
     ],
+    [
+      'post',
+      '/api/v1/cases/{id}/hearing-schedule',
+      '201',
+      'CaseHearingCommandResultDto',
+    ],
+    [
+      'post',
+      '/api/v1/cases/{id}/hearing-correct',
+      '201',
+      'CaseHearingCommandResultDto',
+    ],
   ] as const)(
     'documents %s %s response %s',
     (method, path, status, schemaName) => {
@@ -186,6 +200,44 @@ describe('CORE-LD-002 OpenAPI contract', () => {
           $ref: `#/components/schemas/${schemaName}`,
         });
       }
+    },
+  );
+
+  it.each([
+    [
+      '/api/v1/cases/{id}/hearing-schedule',
+      'SaveCaseHearingDto',
+      ['expectedVersion', 'idempotencyKey', 'hearingAt'],
+    ],
+    [
+      '/api/v1/cases/{id}/hearing-correct',
+      'CorrectCaseHearingDto',
+      ['expectedVersion', 'idempotencyKey', 'hearingAt', 'reason'],
+    ],
+  ] as const)(
+    'documents required request metadata for %s',
+    (path, schemaName, requiredFields) => {
+      const document = SwaggerModule.createDocument(
+        app,
+        new DocumentBuilder().setTitle('test').setVersion('1').build(),
+      );
+      const operation = document.paths[path]?.post;
+      expect(operation?.requestBody).toMatchObject({
+        required: true,
+        content: {
+          'application/json': {
+            schema: { $ref: `#/components/schemas/${schemaName}` },
+          },
+        },
+      });
+      expect(operation?.parameters).toEqual(
+        expect.arrayContaining([
+          expect.objectContaining({ name: 'id', in: 'path', required: true }),
+        ]),
+      );
+      expect(document.components?.schemas?.[schemaName]).toMatchObject({
+        required: expect.arrayContaining(requiredFields),
+      });
     },
   );
 
