@@ -8,7 +8,7 @@ CORE-CA-001～006及SD-44律师身份前置补齐均已验收、推送并集成m
 
 ## 当前任务
 
-当前分支`codex/core-ca-007-hearing-followup`，从已核实的本地main／origin/main`6ca3786491e18c0b1253bdee0995df7d59bf06ae`创建，无遗留上一切片代码。唯一Current为**CORE-CA-007｜开庭后推进（设计已确认，待实施）**，Next为CORE-CA-008判决登记。2026-10-08用户确认最小受控纠错纳入本切片，唯一业务契约见[REQ-CA-008](spec/v0.1/modules/cases.md#req-ca-008-开庭次日自动推进)，实施任务见[CA-007计划](superpowers/plans/2026-10-08-case-hearing-followup.md)。设计获准不等于业务实现／验收完成，不提前实现判决／二审。
+当前分支`codex/core-ca-007-hearing-followup`，从已核实的本地main／origin/main`6ca3786491e18c0b1253bdee0995df7d59bf06ae`创建，无遗留上一切片代码。唯一Current为**CORE-CA-007｜开庭后推进（实施中）**，Next为CORE-CA-008判决登记。2026-10-08用户确认最小受控纠错纳入本切片并授权开始开发；启动Git及只读上下文检查通过，实施基线`afd98c4`。唯一业务契约见[REQ-CA-008](spec/v0.1/modules/cases.md#req-ca-008-开庭次日自动推进)，实施任务见[CA-007计划](superpowers/plans/2026-10-08-case-hearing-followup.md)。先执行高风险后端Task及独立审查，再交接正式页面；未验收、不提前实现判决／二审。
 
 用户确认的[SD-44律师身份前置补齐](spec/v0.1/modules/cases.md#律师账号与承办办理补齐sd-44)已完成，计划见[律师账号与承办办理实施计划](superpowers/plans/2026-10-04-case-lawyer-access.md)。运营按真实律师用户名分派；律师可办理本人当前承办案件全部已实现正常动作，异常管理仍由有权运营办理。该补齐修改外部身份与数据范围，按Level 3；高风险Task及独立Final Review均ACCEPTED、未关闭C／I／M为0，实际组合候选已通过完整verify与全量数据库／浏览器验收。现按新授权办理集成与后续领取，不把本机环境阻塞写成已验收代码失败。
 
