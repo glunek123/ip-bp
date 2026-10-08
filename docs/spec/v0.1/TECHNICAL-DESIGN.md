@@ -1,5 +1,7 @@
 # 技术设计基线、低负担回溯、可配置授权与客户切片
 
+2026-10-08追加SD-45～47：客户草稿受控软删除、权属真实人工登记、多联系人及人工结算台账已获切片开发授权。契约见[客户Spec](modules/customers.md)，实现及验证状态见[路线图](../../feature-roadmap.md)；公式、外部支付和生产发布未获本轮授权。
+
 2026-10-04追加SD-44：最小外部LAWYER身份复用UserAccount／密码／会话，以显式同部门档案绑定与当前PRIMARY承办关系授权，不挂内部部门角色。正常案件Command共用，上传／下载与审计使用真实律师路径；实现计划和Level 3验收见[案件律师补齐计划](../../superpowers/plans/2026-10-04-case-lawyer-access.md)。不建设独立权限平台或提前实现后续节点。
 
 版本：TD-BASE-05／TD-SLICE-CU-BASE-01 rev3／TD-SLICE-CU-RH-01 rev1／TD-AUTHZ-01 rev4／TD-TRACE-UX-01／AUTH-LOCAL-001；日期：2026-09-29；任务：CTD-001／BR-005～007／TD-CU-001／TD-AUTHZ-001／TD-TRACE-UX-001／GOV-LIVE-SPEC-001／CUST-FND-001～008／CUST-RH-DESIGN-001／CUST-RH-001／AUTH-LOCAL-001／TEAM-AUTHZ-ARCH-001／PERSONNEL-ACCESS-001／ROLE-TEMPLATE-001／CORE-ROADMAP-001。状态：SD-34低负担回溯、SD-36团队授权、SD-37核心主线优先、SD-38快速上手、SD-39案件读写范围拆分、SD-40不侵权归档后的纠错顺序、SD-41公证节点角色与交付顺序、SD-42单本真实公证书门槛和SD-43单事项退货归档边界保持有效；SD-39的案件Action、查询与迁移及SD-40的撤回申请／确认实现分别随对应Slice落地，SD-41／42／43不得扩大未交付公证入口，不放宽本页既有部门隔离、授权拼接、材料、事务或审计门槛。客户草稿、最小授权、共享审计、运营端直接页面、编辑判重、一位准入联系人及权利主体最小关联已取得PostgreSQL、跨端及独立Q2内部验证；SD-35固定的v0.1系统自有账号、人员账号／当前部门成员／Team／已有角色分配以及当前部门角色模板复制／Grant编辑均已形成正式实现与数据库型Playwright链路；MFA／OIDC、跨部门全局角色和生产迁移仍属后续；E02真实存储单独阻断生产能力，内部MVP只可使用明确标注的测试／本地Adapter验证契约。

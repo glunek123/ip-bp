@@ -4,13 +4,13 @@
 
 **Goal:** 按真实业务动作补齐客户详情、权利资产、真实材料、受控生命周期及合作资料；不复制演示假数据。
 
-**Architecture:** 复用Customer Module、AccessControl、Material与共享审计。客户作为访问与并发锚；资产/协议保存不可变版本；客户删除采用可恢复软删除。结算来源独立，不在客户模块建立第二套财务台账。
+**Architecture:** 复用Customer Module、AccessControl、Material与共享审计。客户作为访问与并发锚；资产/协议保存不可变版本；客户删除采用可恢复软删除。本轮建立客户实际结算事实台账，列表与汇总共用唯一来源；不计算比例公式或生成支付。
 
 **Tech Stack:** 现有Vue3/TypeScript/Element Plus按需组件、NestJS、Prisma/PostgreSQL、Jest/Vitest/Playwright，无新增依赖。
 
 ## Global Constraints
 
-- 依据[设计](../specs/2026-10-08-customer-module-alignment-design.md)及现有Living Spec；删除/识别的推荐规则已由2026-10-08本聊天明确接受。
+- 依据[设计](../specs/2026-10-08-customer-module-alignment-design.md)及现有Living Spec；删除/识别的推荐规则及多联系人、真实人工结算范围已由2026-10-08本聊天明确接受。
 - 每次新PowerShell进程先点加载Use-ProjectRuntime.ps1，核对Node24.21.0/pnpm11.27.0；开工context:check，不盲目刷新快照。
 - 单工作区单写入者；高风险gpt-6-sol及独立Reviewer，普通UI gpt-6-luna；不把模型切换作为授权。源码、公共契约和迁移任务串行集成。
 - 不reset数据库、不改旧迁移、不写开发/人工/生产库；保留5181/3201/55434人工服务，E2E仍只使用5174/3101/15433。
