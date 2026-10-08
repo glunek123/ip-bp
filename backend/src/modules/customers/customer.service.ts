@@ -33,6 +33,7 @@ export type CustomerRecord = {
   identityValidTo: Date | null;
   identityValidityMode: 'FIXED' | 'LONG_TERM' | 'NOT_STATED' | null;
   admittedAt: Date | null;
+  deletedAt: Date | null;
   profileStatus: 'DRAFT' | 'ADMITTED';
   departmentId: string;
   responsibleUserId: string;
@@ -65,7 +66,7 @@ export type CustomerSummary = {
 };
 
 export type CustomerDetail = CustomerSummary & {
-  capabilities: { editRoutine: boolean; admit: boolean };
+  capabilities: { editRoutine: boolean; admit: boolean; deleteDraft: boolean };
   history: Array<{
     action: string;
     actorUserId: string;
@@ -150,7 +151,7 @@ export class CustomerService {
         readScope === null
           ? null
           : await transaction.customer.findFirst({
-              where: { normalizedName, ...readScope },
+              where: { normalizedName, ...readScope, deletedAt: null },
               select: { id: true },
             });
       if (sameName !== null) {
@@ -215,12 +216,12 @@ export class CustomerService {
     ]);
     const [customers, total] = await this.database.$transaction([
       this.database.customer.findMany({
-        where,
+        where: { ...where, deletedAt: null },
         orderBy: [{ updatedAt: 'desc' }, { id: 'asc' }],
         skip: (page - 1) * pageSize,
         take: pageSize,
       }),
-      this.database.customer.count({ where }),
+      this.database.customer.count({ where: { ...where, deletedAt: null } }),
     ]);
 
     return {
@@ -238,7 +239,7 @@ export class CustomerService {
       'customer.read',
     );
     const customer = await this.database.customer.findFirst({
-      where: { id, ...scope },
+      where: { id, ...scope, deletedAt: null },
     });
     if (customer === null) throw this.notFound();
 
@@ -247,7 +248,7 @@ export class CustomerService {
       responsibleUserId: customer.responsibleUserId,
       ...(customer.teamId === null ? {} : { teamId: customer.teamId }),
     };
-    const [history, editRoutine, admit] = await Promise.all([
+    const [history, editRoutine, admit, deleteDraft] = await Promise.all([
       this.database.auditEvent.findMany({
         where: {
           departmentId: actor.departmentId,
@@ -264,10 +265,22 @@ export class CustomerService {
         facts,
       ),
       this.accessControl.canAuthorizeCustomer(actor, 'customer.admit', facts),
+      this.accessControl.canAuthorizeCustomer(
+        actor,
+        'customer.delete-draft',
+        facts,
+      ),
     ]);
     return {
       ...this.toSummary(customer),
-      capabilities: { editRoutine, admit },
+      capabilities: {
+        editRoutine,
+        admit,
+        deleteDraft:
+          deleteDraft &&
+          customer.profileStatus === 'DRAFT' &&
+          !customer.everAdmitted,
+      },
       history: history.map((event) => {
         if (event.actorUserId === null)
           throw new Error('Human customer audit has no actor account');
@@ -328,6 +341,7 @@ export class CustomerService {
               AND: [
                 scope,
                 { identityType, normalizedIdentityNumber },
+                { deletedAt: null },
                 ...exclusion,
               ],
             },
@@ -337,7 +351,9 @@ export class CustomerService {
       normalizedName === null
         ? Promise.resolve([])
         : this.database.customer.findMany({
-            where: { AND: [scope, { normalizedName }, ...exclusion] },
+            where: {
+              AND: [scope, { normalizedName, deletedAt: null }, ...exclusion],
+            },
             orderBy: [{ updatedAt: 'desc' }, { id: 'asc' }],
             take: 20,
           }),
@@ -374,7 +390,7 @@ export class CustomerService {
     try {
       return await this.database.$transaction(async (transaction) => {
         const current = await transaction.customer.findFirst({
-          where: { id, ...scope },
+          where: { id, ...scope, deletedAt: null },
         });
         if (current === null) throw this.notFound();
         if (current.version !== input.expectedVersion) {
@@ -394,13 +410,33 @@ export class CustomerService {
               normalizedIdentityNumber: normalized.normalizedIdentityNumber,
               id: { not: id },
             },
-            select: { id: true },
+            select: { id: true, deletedAt: true },
           });
           if (exactIdentity !== null) {
+            if (exactIdentity.deletedAt !== null && readScope !== null) {
+              const restoreScope =
+                await this.accessControl.tryBuildCustomerScope(
+                  actor,
+                  'customer.restore-draft',
+                  transaction,
+                );
+              if (
+                restoreScope !== null &&
+                (await transaction.customer.findFirst({
+                  where: {
+                    id: exactIdentity.id,
+                    deletedAt: { not: null },
+                    AND: [readScope, restoreScope],
+                  },
+                  select: { id: true },
+                }))
+              )
+                throw this.identityRestoreAvailable(exactIdentity.id);
+            }
             const visible =
               readScope !== null &&
               (await transaction.customer.findFirst({
-                where: { id: exactIdentity.id, ...readScope },
+                where: { id: exactIdentity.id, ...readScope, deletedAt: null },
                 select: { id: true },
               })) !== null;
             if (!visible) throw this.duplicateConflict();
@@ -424,6 +460,7 @@ export class CustomerService {
                   normalizedName: normalized.normalizedName,
                   id: { not: id },
                   ...readScope,
+                  deletedAt: null,
                 },
                 select: { id: true },
               })
@@ -438,7 +475,12 @@ export class CustomerService {
         if (changedFields.length === 0) return this.toSummary(current);
 
         const result = await transaction.customer.updateMany({
-          where: { id, ...scope, version: input.expectedVersion },
+          where: {
+            id,
+            ...scope,
+            deletedAt: null,
+            version: input.expectedVersion,
+          },
           data: { ...normalized, version: { increment: 1 } },
         });
         if (result.count !== 1) throw this.versionConflict();
@@ -493,7 +535,7 @@ export class CustomerService {
     } catch (error) {
       if (this.isUniqueConstraintError(error)) {
         const current = await this.database.customer.findFirst({
-          where: { id, ...scope },
+          where: { id, ...scope, deletedAt: null },
         });
         if (current !== null) {
           const normalized = this.mergeEdit(current, input);
@@ -508,6 +550,7 @@ export class CustomerService {
                 identityType: normalized.identityType,
                 normalizedIdentityNumber: normalized.normalizedIdentityNumber,
                 ...readScope,
+                deletedAt: null,
               },
               select: { id: true },
             });
@@ -737,6 +780,14 @@ export class CustomerService {
     return new ConflictException({
       code: 'CUSTOMER_IDENTITY_DUPLICATE',
       message: '本部门已有相同证件号码的客户',
+    });
+  }
+
+  private identityRestoreAvailable(customerId: string): ConflictException {
+    return new ConflictException({
+      code: 'CUSTOMER_IDENTITY_RESTORE_AVAILABLE',
+      message: '本部门已有相同证件号码的已删除客户草稿，请恢复原客户',
+      details: { customerId },
     });
   }
 

@@ -96,6 +96,7 @@ export class CustomerAccountService {
     try {
       return await this.database.$transaction(
         async (transaction) => {
+          await this.lockCustomer(transaction, actor, customerId);
           const customer = await this.customerForManagement(
             transaction,
             actor,
@@ -181,6 +182,7 @@ export class CustomerAccountService {
   ): Promise<ClientAccountView> {
     return this.database.$transaction(
       async (transaction) => {
+        await this.lockCustomer(transaction, actor, customerId);
         const customer = await this.customerForManagement(
           transaction,
           actor,
@@ -259,7 +261,11 @@ export class CustomerAccountService {
     customerId: string,
   ): Promise<CustomerFacts> {
     const customer = await reader.customer.findFirst({
-      where: { id: customerId, departmentId: actor.departmentId },
+      where: {
+        id: customerId,
+        departmentId: actor.departmentId,
+        deletedAt: null,
+      },
       select: {
         id: true,
         departmentId: true,
@@ -271,6 +277,16 @@ export class CustomerAccountService {
     });
     if (customer === null) throw this.notFound();
     return customer;
+  }
+
+  private async lockCustomer(
+    tx: Prisma.TransactionClient,
+    actor: ActorContext,
+    customerId: string,
+  ): Promise<void> {
+    const rows = await tx.$queryRaw<Array<{ id: string }>>`
+      SELECT id FROM customers WHERE id = ${customerId}::uuid AND department_id = ${actor.departmentId}::uuid FOR UPDATE`;
+    if (rows.length !== 1) throw this.notFound();
   }
 
   private async authorizeManagement(

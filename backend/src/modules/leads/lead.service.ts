@@ -248,7 +248,7 @@ export class LeadService {
         'customer.read',
       );
       const customers = await this.database.customer.findMany({
-        where: { ...customerScope, profileStatus: 'ADMITTED' },
+        where: { ...customerScope, profileStatus: 'ADMITTED', deletedAt: null },
         orderBy: [{ name: 'asc' }, { id: 'asc' }],
         select: {
           id: true,
@@ -373,6 +373,7 @@ export class LeadService {
         id: lead.customerId,
         ...customerScope,
         profileStatus: 'ADMITTED',
+        deletedAt: null,
       },
       select: {
         id: true,
@@ -1561,6 +1562,7 @@ export class LeadService {
       ...customerScope,
       departmentId: actor.departmentId,
       profileStatus: 'ADMITTED' as const,
+      deletedAt: null,
     };
     const visibleCustomer = await transaction.customer.findFirst({
       where: customerWhere,

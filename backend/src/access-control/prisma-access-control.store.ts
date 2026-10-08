@@ -16,6 +16,8 @@ const actionMap = {
   CUSTOMER_READ: 'customer.read',
   CUSTOMER_CREATE_DRAFT: 'customer.create-draft',
   CUSTOMER_EDIT_ROUTINE: 'customer.edit-routine',
+  CUSTOMER_DELETE_DRAFT: 'customer.delete-draft',
+  CUSTOMER_RESTORE_DRAFT: 'customer.restore-draft',
   CUSTOMER_RIGHT_ASSET_WITHDRAW: 'customer.right-asset.withdraw',
   CUSTOMER_ADMIT: 'customer.admit',
   LEAD_READ: 'lead.read',

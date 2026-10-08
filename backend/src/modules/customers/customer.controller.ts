@@ -36,6 +36,8 @@ import {
   SetCustomerAccountStatusDto,
 } from './customer-account.dto';
 import { CustomerAccountService } from './customer-account.service';
+import { CustomerLifecycleService } from './customer-lifecycle.service';
+import { CustomerDraftLifecycleDto } from './customer-lifecycle.dto';
 import {
   CustomerAccountListResponseDto,
   CustomerAccountResponseDto,
@@ -48,6 +50,7 @@ import {
 export class CustomerController {
   constructor(
     private readonly customers: CustomerService,
+    private readonly lifecycle: CustomerLifecycleService,
     private readonly admissions: CustomerAdmissionService,
     private readonly clientAccounts: CustomerAccountService,
   ) {}
@@ -74,6 +77,46 @@ export class CustomerController {
     @Query() query: CustomerDuplicatesQueryDto,
   ) {
     return this.customers.findDuplicates(actor, query);
+  }
+
+  @Get('deleted-drafts')
+  listDeletedDrafts(
+    @CurrentActor() actor: ActorContext,
+    @Query() query: CustomerListQueryDto,
+  ) {
+    return this.lifecycle.listDeleted(actor, query.page, query.pageSize);
+  }
+
+  @Post(':id/delete-draft')
+  @ApiHeader({ name: 'Idempotency-Key', required: true })
+  deleteDraft(
+    @CurrentActor() actor: ActorContext,
+    @Param('id', new ParseUUIDPipe()) id: string,
+    @Headers('idempotency-key') key: string | undefined,
+    @Body() input: CustomerDraftLifecycleDto,
+  ) {
+    return this.lifecycle.deleteDraft(
+      actor,
+      id,
+      this.requireIdempotencyKey(key),
+      input,
+    );
+  }
+
+  @Post(':id/restore-draft')
+  @ApiHeader({ name: 'Idempotency-Key', required: true })
+  restoreDraft(
+    @CurrentActor() actor: ActorContext,
+    @Param('id', new ParseUUIDPipe()) id: string,
+    @Headers('idempotency-key') key: string | undefined,
+    @Body() input: CustomerDraftLifecycleDto,
+  ) {
+    return this.lifecycle.restoreDraft(
+      actor,
+      id,
+      this.requireIdempotencyKey(key),
+      input,
+    );
   }
 
   @Patch(':id')

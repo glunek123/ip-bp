@@ -12,6 +12,8 @@ enum PermissionAction {
   CUSTOMER_READ                @map("customer.read")
   CUSTOMER_CREATE_DRAFT        @map("customer.create-draft")
   CUSTOMER_EDIT_ROUTINE        @map("customer.edit-routine")
+  CUSTOMER_DELETE_DRAFT        @map("customer.delete-draft")
+  CUSTOMER_RESTORE_DRAFT       @map("customer.restore-draft")
   CUSTOMER_RIGHT_ASSET_WITHDRAW @map("customer.right-asset.withdraw")
   CUSTOMER_ADMIT               @map("customer.admit")
   LEAD_READ                    @map("lead.read")
@@ -650,7 +652,11 @@ model Customer {
   identityValidTo          DateTime?                    @map("identity_valid_to") @db.Date
   identityValidityMode     IdentityValidityMode?        @map("identity_validity_mode")
   admittedAt               DateTime?                    @map("admitted_at") @db.Timestamptz(3)
+  everAdmitted             Boolean                      @default(false) @map("ever_admitted")
   profileStatus            CustomerProfileStatus        @default(DRAFT) @map("profile_status")
+  deletedAt                DateTime?                    @map("deleted_at") @db.Timestamptz(3)
+  deletedByUserId          String?                      @map("deleted_by_user_id") @db.Uuid
+  deletionReason           String?                      @map("deletion_reason") @db.VarChar(500)
   departmentId             String                       @map("department_id") @db.Uuid
   responsibleUserId        String                       @map("responsible_user_id") @db.Uuid
   teamId                   String?                      @map("team_id") @db.Uuid
@@ -664,6 +670,8 @@ model Customer {
   rightAssetVersions       CustomerRightAssetVersion[]
   rightAssetReceipts       CustomerRightAssetReceipt[]
   admissionReceipts        CustomerAdmissionReceipt[]
+  lifecycleFacts           CustomerDraftLifecycleFact[]
+  lifecycleReceipts        CustomerDraftLifecycleReceipt[]
   leads                    Lead[]
   cases                    Case[]
   clientAccountBindings    CustomerAccountBinding[]
@@ -678,6 +686,51 @@ model Customer {
   @@index([responsibleUserId])
   @@index([teamId])
   @@map("customers")
+}
+
+enum CustomerDraftLifecycleAction {
+  DELETE
+  RESTORE
+
+  @@map("customer_draft_lifecycle_action")
+}
+
+model CustomerDraftLifecycleFact {
+  id             String                       @id @default(uuid()) @db.Uuid
+  customerId     String                       @map("customer_id") @db.Uuid
+  departmentId   String                       @map("department_id") @db.Uuid
+  action         CustomerDraftLifecycleAction
+  actorUserId    String                       @map("actor_user_id") @db.Uuid
+  fromVersion    Int                          @map("from_version")
+  toVersion      Int                          @map("to_version")
+  reason         String?                      @db.VarChar(500)
+  auditEventId   String                       @unique @map("audit_event_id") @db.Uuid
+  occurredAt     DateTime                     @default(now()) @map("occurred_at") @db.Timestamptz(3)
+  customer       Customer                     @relation(fields: [customerId, departmentId], references: [id, departmentId], onDelete: Restrict)
+  auditEvent     AuditEvent                   @relation(fields: [auditEventId], references: [id], onDelete: Restrict)
+  receipt        CustomerDraftLifecycleReceipt?
+
+  @@unique([customerId, toVersion])
+  @@index([departmentId, customerId, occurredAt])
+  @@map("customer_draft_lifecycle_facts")
+}
+
+model CustomerDraftLifecycleReceipt {
+  id                 String                       @id @default(uuid()) @db.Uuid
+  departmentId       String                       @map("department_id") @db.Uuid
+  actorUserId        String                       @map("actor_user_id") @db.Uuid
+  idempotencyKey     String                       @map("idempotency_key") @db.VarChar(128)
+  requestFingerprint String                       @map("request_fingerprint") @db.Char(64)
+  action             CustomerDraftLifecycleAction
+  customerId         String                       @map("customer_id") @db.Uuid
+  resultSnapshot     Json                         @map("result_snapshot")
+  factId             String                       @unique @map("fact_id") @db.Uuid
+  createdAt          DateTime                     @default(now()) @map("created_at") @db.Timestamptz(3)
+  customer           Customer                     @relation(fields: [customerId, departmentId], references: [id, departmentId], onDelete: Restrict)
+  fact               CustomerDraftLifecycleFact   @relation(fields: [factId], references: [id], onDelete: Restrict)
+
+  @@unique([departmentId, actorUserId, idempotencyKey])
+  @@map("customer_draft_lifecycle_receipts")
 }
 
 model CustomerAccountBinding {
@@ -2212,6 +2265,7 @@ model AuditEvent {
   hearingAdvances              CaseHearingAdvance[]        @relation("HearingAdvanceAudit")
   hearingCorrections           CaseHearingCorrection[]     @relation("HearingCorrectionAudit")
   judgmentFacts                CaseJudgmentFact[]
+  customerDraftLifecycleFact   CustomerDraftLifecycleFact?
   createdAt                    DateTime                    @default(now()) @map("created_at") @db.Timestamptz(3)
 
   @@index([departmentId, resourceType, resourceId, createdAt])

@@ -17,6 +17,7 @@ import { CustomerAdmissionService } from './customer-admission.service';
 import { CustomerService } from './customer.service';
 import { AuthService } from '../../auth/auth.service';
 import { CustomerAccountService } from './customer-account.service';
+import { CustomerLifecycleService } from './customer-lifecycle.service';
 
 const actor = {
   userId: '11111111-1111-4111-8111-111111111111',
@@ -54,6 +55,14 @@ describe('CustomerController', () => {
           useValue: { createDraft, list, get, findDuplicates, updateDraft },
         },
         { provide: CustomerAdmissionService, useValue: { admit } },
+        {
+          provide: CustomerLifecycleService,
+          useValue: {
+            listDeleted: jest.fn(),
+            deleteDraft: jest.fn(),
+            restoreDraft: jest.fn(),
+          },
+        },
         {
           provide: CustomerAccountService,
           useValue: {

@@ -31,7 +31,7 @@ async function expectRejected(client, statement, params, codes) {
   if (!rejected) throw new Error('Expected database guard rejection');
 }
 
-async function seedPreviousSchema(client) {
+export async function seedPreviousSchema(client) {
   const ids = Array.from({ length: 11 }, () => randomUUID());
   const [
     departmentId,

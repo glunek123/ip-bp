@@ -1352,6 +1352,7 @@ describe('LeadService', () => {
           departmentId: actor.departmentId,
           responsibleUserId: actor.userId,
           profileStatus: 'ADMITTED',
+          deletedAt: null,
         },
         select: expect.objectContaining({
           rightsHolderLinks: expect.any(Object),
@@ -1494,6 +1495,7 @@ describe('LeadService', () => {
         id: validCreate().customerId,
         ...customerScope,
         profileStatus: 'ADMITTED',
+        deletedAt: null,
       },
       select: { id: true },
     });

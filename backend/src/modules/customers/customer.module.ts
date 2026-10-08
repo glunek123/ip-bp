@@ -11,6 +11,7 @@ import { CustomerAdmissionService } from './customer-admission.service';
 import { CustomerAccountService } from './customer-account.service';
 import { RightAssetController } from './right-asset.controller';
 import { RightAssetService } from './right-asset.service';
+import { CustomerLifecycleService } from './customer-lifecycle.service';
 
 @Module({
   imports: [AccessControlModule, AuthModule, DatabaseModule, MaterialModule],
@@ -21,6 +22,7 @@ import { RightAssetService } from './right-asset.service';
   ],
   providers: [
     CustomerService,
+    CustomerLifecycleService,
     CustomerAdmissionService,
     CustomerAccountService,
     RightsHolderService,

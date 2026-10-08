@@ -299,6 +299,8 @@ async function resetCustomerE2eData() {
     'cases',
     'notary_certificate_fees',
     'notary_certificates',
+    'customer_draft_lifecycle_facts',
+    'customer_draft_lifecycle_receipts',
   ];
 
   await database.$transaction(async (transaction) => {
@@ -369,6 +371,12 @@ async function resetCustomerE2eData() {
       where: { departmentId: { in: departmentIds } },
     });
     await transaction.leadReviewDecision.deleteMany({
+      where: { departmentId: { in: departmentIds } },
+    });
+    await transaction.customerDraftLifecycleReceipt.deleteMany({
+      where: { departmentId: { in: departmentIds } },
+    });
+    await transaction.customerDraftLifecycleFact.deleteMany({
       where: { departmentId: { in: departmentIds } },
     });
     for (const table of [...immutableTables].reverse()) {
@@ -612,6 +620,91 @@ async function resetCustomerE2eData() {
       },
     ],
   });
+}
+
+async function grantCustomerLifecycle(roleId, scope = 'TEAM') {
+  await database.roleGrant.createMany({
+    data: ['CUSTOMER_DELETE_DRAFT', 'CUSTOMER_RESTORE_DRAFT'].map((action) => ({
+      roleTemplateId: roleId,
+      action,
+      scope,
+    })),
+    skipDuplicates: true,
+  });
+}
+
+async function revokeCustomerLifecycle(roleId, action) {
+  await database.roleGrant.deleteMany({
+    where: { roleTemplateId: roleId, action },
+  });
+}
+
+async function createExpiredCustomerUploadDraft(customerId) {
+  return database.uploadDraft.create({
+    data: {
+      departmentId: e2eFixtures.departmentA,
+      actorUserId: e2eFixtures.userA,
+      internalActorUserId: e2eFixtures.userA,
+      ownerType: 'CUSTOMER',
+      ownerId: customerId,
+      category: 'CUSTOMER_IDENTITY',
+      purpose: 'CUSTOMER_IDENTITY',
+      originalFilename: 'expired.pdf',
+      declaredMimeType: 'application/pdf',
+      status: 'EXPIRED',
+      expiresAt: new Date(0),
+    },
+  });
+}
+
+async function getCustomerLifecycleCounts(customerId) {
+  const [customer, facts, receipts, audits] = await Promise.all([
+    database.customer.findUnique({ where: { id: customerId } }),
+    database.customerDraftLifecycleFact.count({ where: { customerId } }),
+    database.customerDraftLifecycleReceipt.count({ where: { customerId } }),
+    database.auditEvent.count({
+      where: {
+        resourceType: 'customer',
+        resourceId: customerId,
+        action: { in: ['customer.draft-deleted', 'customer.draft-restored'] },
+      },
+    }),
+  ]);
+  return { customer, facts, receipts, audits };
+}
+
+async function rejectCustomerLifecycleStage(stage) {
+  const target = {
+    audit: {
+      table: 'audit_events',
+      condition: "action <> 'customer.draft-deleted'",
+    },
+    fact: {
+      table: 'customer_draft_lifecycle_facts',
+      condition: "action <> 'DELETE'",
+    },
+    receipt: {
+      table: 'customer_draft_lifecycle_receipts',
+      condition: "action <> 'DELETE'",
+    },
+  }[stage];
+  if (!target) throw new Error('Unsupported lifecycle failure stage');
+  await allowCustomerLifecycleStage(stage);
+  await database.$executeRawUnsafe(
+    `ALTER TABLE ${target.table} ADD CONSTRAINT e2e_reject_customer_lifecycle_${stage} CHECK (${target.condition}) NOT VALID`,
+  );
+}
+
+async function allowCustomerLifecycleStage(stage) {
+  const table = {
+    audit: 'audit_events',
+    fact: 'customer_draft_lifecycle_facts',
+    receipt: 'customer_draft_lifecycle_receipts',
+  }[stage];
+  if (!table) throw new Error('Unsupported lifecycle failure stage');
+  await database.$executeRawUnsafe(
+    `ALTER TABLE ${table} DROP CONSTRAINT IF EXISTS e2e_reject_customer_lifecycle_${stage}`,
+  );
 }
 
 async function findCustomerId(departmentId, name) {
@@ -2810,6 +2903,12 @@ export {
   rejectCustomerUpdateAuditWrites,
   rejectNamedCustomerWrites,
   resetCustomerE2eData,
+  grantCustomerLifecycle,
+  revokeCustomerLifecycle,
+  createExpiredCustomerUploadDraft,
+  getCustomerLifecycleCounts,
+  rejectCustomerLifecycleStage,
+  allowCustomerLifecycleStage,
   setTeamStatus,
   moveTeamToDepartment,
   verifyAdmissionContactConstraintRejectsBlankValues,

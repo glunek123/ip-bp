@@ -52,6 +52,11 @@ onBeforeUnmount(() => activeRequest?.abort());
         >
           <ElButton type="primary">新建客户</ElButton>
         </RouterLink>
+        <RouterLink
+          to="/customers/deleted-drafts"
+          data-test="deleted-drafts-link"
+          >已删除草稿</RouterLink
+        >
       </div>
 
       <section class="ledger-panel" aria-live="polite">

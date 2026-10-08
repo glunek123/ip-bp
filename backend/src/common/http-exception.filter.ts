@@ -33,13 +33,21 @@ function safeCode(value: unknown): string | undefined {
     : undefined;
 }
 
-function safeDetails(value: unknown): unknown {
+function safeDetails(value: unknown, code: string): unknown {
   if (
     Array.isArray(value) &&
     value.every((item: unknown) => typeof item === 'string')
   )
     return value;
   const record = asRecord(value);
+  if (
+    code === 'CUSTOMER_IDENTITY_RESTORE_AVAILABLE' &&
+    typeof record.customerId === 'string' &&
+    /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i.test(
+      record.customerId,
+    )
+  )
+    return { customerId: record.customerId };
   const departments = record.departments;
   if (
     Array.isArray(departments) &&
@@ -117,7 +125,7 @@ export class HttpExceptionFilter implements ExceptionFilter {
         : typeof payload.message === 'string'
           ? payload.message
           : '请求未能完成';
-    const details = safeDetails(payload.details);
+    const details = safeDetails(payload.details, code);
     if (status >= 500) {
       this.logger.error({
         event: 'request_failed',

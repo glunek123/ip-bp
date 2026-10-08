@@ -16,6 +16,29 @@ export const e2eFixtures: Readonly<{
 }>;
 
 export function resetCustomerE2eData(): Promise<void>;
+export function grantCustomerLifecycle(
+  roleId: string,
+  scope?: 'SELF' | 'TEAM' | 'DEPARTMENT',
+): Promise<void>;
+export function revokeCustomerLifecycle(
+  roleId: string,
+  action: 'CUSTOMER_DELETE_DRAFT' | 'CUSTOMER_RESTORE_DRAFT',
+): Promise<void>;
+export function rejectCustomerLifecycleStage(
+  stage: 'audit' | 'fact' | 'receipt',
+): Promise<void>;
+export function allowCustomerLifecycleStage(
+  stage: 'audit' | 'fact' | 'receipt',
+): Promise<void>;
+export function createExpiredCustomerUploadDraft(
+  customerId: string,
+): Promise<{ id: string }>;
+export function getCustomerLifecycleCounts(customerId: string): Promise<{
+  customer: { id: string; deletedAt: Date | null; version: number } | null;
+  facts: number;
+  receipts: number;
+  audits: number;
+}>;
 export const personnelFixtures: Readonly<{
   departmentId: string;
   foreignDepartmentId: string;

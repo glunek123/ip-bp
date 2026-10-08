@@ -35,8 +35,20 @@ export type CustomerHistoryEvent = {
 };
 
 export type CustomerDetail = CustomerSummary & {
-  capabilities: { editRoutine: boolean; admit: boolean };
+  capabilities: { editRoutine: boolean; admit: boolean; deleteDraft?: boolean };
   history: CustomerHistoryEvent[];
+};
+
+export type DeletedCustomerDraft = CustomerSummary & {
+  deletedAt: string;
+  deletedByUserId: string;
+  deletionReason: string | null;
+  capabilities: { restoreDraft: true };
+};
+
+export type CustomerDraftLifecycleInput = {
+  expectedVersion: number;
+  reason?: string;
 };
 
 export type CustomerDraftInput = {
@@ -178,6 +190,8 @@ export async function getCustomer(
     !isRecord(capabilities) ||
     typeof capabilities.editRoutine !== 'boolean' ||
     typeof capabilities.admit !== 'boolean' ||
+    (capabilities.deleteDraft !== undefined &&
+      typeof capabilities.deleteDraft !== 'boolean') ||
     !history.every(
       (event: unknown) =>
         isRecord(event) &&
@@ -193,9 +207,93 @@ export async function getCustomer(
     capabilities: {
       editRoutine: capabilities.editRoutine,
       admit: capabilities.admit,
+      deleteDraft: capabilities.deleteDraft === true,
     },
     history: history as CustomerHistoryEvent[],
   };
+}
+
+export async function listDeletedCustomerDrafts(
+  page = 1,
+  pageSize = 20,
+  options: RequestOptions = {},
+): Promise<{
+  items: DeletedCustomerDraft[];
+  total: number;
+  page: number;
+  pageSize: number;
+}> {
+  const data = await getJson(
+    `/customers/deleted-drafts?page=${page}&pageSize=${pageSize}`,
+    options,
+  );
+  const valid = (value: unknown): value is DeletedCustomerDraft => {
+    if (!isRecord(value)) return false;
+    const extra: Record<string, unknown> = value;
+    return (
+      isCustomerSummary(value) &&
+      typeof extra.deletedAt === 'string' &&
+      typeof extra.deletedByUserId === 'string' &&
+      isNullableString(extra.deletionReason) &&
+      isRecord(extra.capabilities) &&
+      extra.capabilities.restoreDraft === true
+    );
+  };
+  if (
+    !isRecord(data) ||
+    !Array.isArray(data.items) ||
+    !data.items.every(valid) ||
+    !Number.isInteger(data.total) ||
+    !Number.isInteger(data.page) ||
+    !Number.isInteger(data.pageSize)
+  )
+    throw invalidResponse();
+  return data as {
+    items: DeletedCustomerDraft[];
+    total: number;
+    page: number;
+    pageSize: number;
+  };
+}
+
+async function lifecycleCommand(
+  id: string,
+  action: 'delete-draft' | 'restore-draft',
+  input: CustomerDraftLifecycleInput,
+  idempotencyKey: string,
+): Promise<CustomerSummary> {
+  const data = await requestJson(
+    `/customers/${encodeURIComponent(id)}/${action}`,
+    {
+      method: 'POST',
+      headers: { 'Idempotency-Key': idempotencyKey },
+      body: input,
+    },
+  );
+  if (
+    !isCustomerSummary(data) ||
+    data.id !== id ||
+    data.version !== input.expectedVersion + 1 ||
+    data.profileStatus !== 'draft'
+  )
+    throw invalidResponse();
+  return data;
+}
+
+export function deleteCustomerDraft(
+  id: string,
+  input: CustomerDraftLifecycleInput,
+  idempotencyKey: string,
+) {
+  return lifecycleCommand(id, 'delete-draft', input, idempotencyKey);
+}
+
+export function restoreCustomerDraft(
+  id: string,
+  input: CustomerDraftLifecycleInput,
+  idempotencyKey: string,
+) {
+  return lifecycleCommand(id, 'restore-draft', input, idempotencyKey);
 }
 
 export async function createCustomerDraft(input: {

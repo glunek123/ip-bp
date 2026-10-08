@@ -214,6 +214,7 @@ describe('RightsHolderService', () => {
         id: customerId,
         departmentId: actor.departmentId,
         version: 1,
+        deletedAt: null,
       },
       data: { version: { increment: 1 } },
     });
@@ -662,7 +663,7 @@ describe('RightsHolderService', () => {
       expect.objectContaining({
         where: {
           departmentId: actor.departmentId,
-          links: { some: { customer: readScope } },
+          links: { some: { customer: { ...readScope, deletedAt: null } } },
           NOT: { links: { some: { customerId } } },
           name: { contains: '主体', mode: 'insensitive' },
         },

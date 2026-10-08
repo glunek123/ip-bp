@@ -268,13 +268,15 @@ describe('CustomerService', () => {
     });
     expect(customerFindMany).toHaveBeenCalledWith(
       expect.objectContaining({
-        where: scope,
+        where: { ...scope, deletedAt: null },
         orderBy: [{ updatedAt: 'desc' }, { id: 'asc' }],
         skip: 0,
         take: 20,
       }),
     );
-    expect(customerCount).toHaveBeenCalledWith({ where: scope });
+    expect(customerCount).toHaveBeenCalledWith({
+      where: { ...scope, deletedAt: null },
+    });
     expect(canAuthorizeNewCustomer).toHaveBeenCalledWith(actor);
   });
 
@@ -286,7 +288,11 @@ describe('CustomerService', () => {
       NotFoundException,
     );
     expect(customerFindFirst).toHaveBeenCalledWith({
-      where: { id: 'missing', departmentId: actor.departmentId },
+      where: {
+        id: 'missing',
+        departmentId: actor.departmentId,
+        deletedAt: null,
+      },
     });
     expect(auditFindMany).not.toHaveBeenCalled();
   });
@@ -584,6 +590,7 @@ describe('CustomerService', () => {
         id: current.id,
         departmentId: actor.departmentId,
         version: 1,
+        deletedAt: null,
       },
       data: expect.objectContaining({
         name: '同名客户',

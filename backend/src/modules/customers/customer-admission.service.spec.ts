@@ -517,7 +517,7 @@ describe('CustomerAdmissionService', () => {
   it('rejects a department identity duplicate before validating materials', async () => {
     customerFindFirst.mockImplementation(({ where }) =>
       typeof where?.id === 'object'
-        ? Promise.resolve({ id: 'another-customer' })
+        ? Promise.resolve({ id: 'another-customer', deletedAt: null })
         : Promise.resolve(current),
     );
     await expect(
@@ -663,6 +663,7 @@ describe('CustomerAdmissionService', () => {
         departmentId: actor.departmentId,
         version: 1,
         profileStatus: 'DRAFT',
+        deletedAt: null,
       },
       data: expect.objectContaining({
         customerType: 'ENTERPRISE',

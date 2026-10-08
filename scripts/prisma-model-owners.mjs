@@ -21,6 +21,8 @@ export const prismaModelOwners = Object.freeze({
   ContentVersion: 'materials',
   MaterialReference: 'materials',
   CustomerAdmissionReceipt: 'customers',
+  CustomerDraftLifecycleFact: 'customers',
+  CustomerDraftLifecycleReceipt: 'customers',
   CustomerAccountBinding: 'customers',
   Lead: 'leads',
   LeadProduct: 'leads',

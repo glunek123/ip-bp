@@ -132,7 +132,7 @@ export class RightAssetService {
       'customer.read',
     );
     const customer = await this.database.customer.findFirst({
-      where: { id: customerId, ...readScope },
+      where: { id: customerId, ...readScope, deletedAt: null },
       select: { id: true },
     });
     if (!customer)
@@ -144,7 +144,7 @@ export class RightAssetService {
     const canCreate =
       editScope !== null &&
       !!(await this.database.customer.findFirst({
-        where: { id: customerId, ...editScope },
+        where: { id: customerId, ...editScope, deletedAt: null },
         select: { id: true },
       }));
     const where = { customerId, departmentId: actor.departmentId };
@@ -185,7 +185,7 @@ export class RightAssetService {
       'customer.read',
     );
     const customer = await this.database.customer.findFirst({
-      where: { id: customerId, ...readScope },
+      where: { id: customerId, ...readScope, deletedAt: null },
       select: {
         id: true,
         departmentId: true,
@@ -323,7 +323,11 @@ export class RightAssetService {
           this.accessControl.buildCustomerScope(actor, requiredAction, tx),
         ]);
         const customer = await tx.customer.findFirst({
-          where: { id: customerId, AND: [readScope, writeScope] },
+          where: {
+            id: customerId,
+            deletedAt: null,
+            AND: [readScope, writeScope],
+          },
           select: { id: true, version: true },
         });
         if (!customer)
@@ -567,7 +571,11 @@ export class RightAssetService {
         this.accessControl.buildCustomerScope(actor, requiredAction),
       ]);
       const customer = await this.database.customer.findFirst({
-        where: { id: customerId, AND: [readScope, writeScope] },
+        where: {
+          id: customerId,
+          deletedAt: null,
+          AND: [readScope, writeScope],
+        },
         select: { id: true },
       });
       if (!customer)

@@ -12,6 +12,8 @@ export const internalAssignablePermissionActions = [
   'CUSTOMER_READ',
   'CUSTOMER_CREATE_DRAFT',
   'CUSTOMER_EDIT_ROUTINE',
+  'CUSTOMER_DELETE_DRAFT',
+  'CUSTOMER_RESTORE_DRAFT',
   'CUSTOMER_RIGHT_ASSET_WITHDRAW',
   'CUSTOMER_ADMIT',
   'LEAD_READ',
@@ -63,6 +65,12 @@ export function isInternalAssignablePermissionAction(
 
 const catalog: PermissionCatalogItem[] = [
   { action: 'CUSTOMER_READ', label: '查看客户', scopes: allScopes },
+  { action: 'CUSTOMER_DELETE_DRAFT', label: '删除客户草稿', scopes: allScopes },
+  {
+    action: 'CUSTOMER_RESTORE_DRAFT',
+    label: '恢复客户草稿',
+    scopes: allScopes,
+  },
   {
     action: 'CUSTOMER_CREATE_DRAFT',
     label: '创建客户草稿',

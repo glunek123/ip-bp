@@ -324,8 +324,7 @@ export class MaterialService {
       expiresAt,
     };
     const draft =
-      input.ownerType === 'CUSTOMER' &&
-      input.category === 'CUSTOMER_RIGHT_EVIDENCE'
+      input.ownerType === 'CUSTOMER'
         ? await this.database.$transaction(async (transaction) => {
             const locked = await transaction.$queryRawUnsafe<
               Array<{ id: string }>
@@ -507,10 +506,7 @@ export class MaterialService {
           throw this.invalidVersion();
         }
         await this.database.$transaction(async (transaction) => {
-          if (
-            draft.ownerType === 'CUSTOMER' &&
-            draft.category === 'CUSTOMER_RIGHT_EVIDENCE'
-          ) {
+          if (draft.ownerType === 'CUSTOMER') {
             const locked = await transaction.$queryRawUnsafe<
               Array<{ id: string }>
             >(
@@ -2742,6 +2738,7 @@ export class MaterialService {
       const customer = await reader.customer.findFirst({
         where: {
           id: ownerId,
+          deletedAt: null,
           AND: writeScope === null ? [readScope] : [readScope, writeScope],
         },
         select: {

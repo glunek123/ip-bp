@@ -16,6 +16,7 @@ const customer = {
 
 function setup() {
   const transaction = {
+    $queryRaw: jest.fn().mockResolvedValue([{ id: customer.id }]),
     customer: { findFirst: jest.fn().mockResolvedValue(customer) },
     userAccount: {
       create: jest.fn().mockResolvedValue({

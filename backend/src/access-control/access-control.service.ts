@@ -8,6 +8,8 @@ export type PermissionAction =
   | 'customer.read'
   | 'customer.create-draft'
   | 'customer.edit-routine'
+  | 'customer.delete-draft'
+  | 'customer.restore-draft'
   | 'customer.right-asset.withdraw'
   | 'customer.admit'
   | 'lead.read'

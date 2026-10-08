@@ -5,6 +5,7 @@ import { ElButton } from 'element-plus/es/components/button/index.mjs';
 import { ApiError } from '../../api/http';
 import {
   getCustomer,
+  deleteCustomerDraft,
   type CustomerDetail,
   type CustomerSummary,
 } from '../../api/customers';
@@ -13,13 +14,105 @@ import CustomerAdmissionPanel from './CustomerAdmissionPanel.vue';
 import CustomerAccountPanel from './CustomerAccountPanel.vue';
 import CustomerRightAssetsPanel from './CustomerRightAssetsPanel.vue';
 import { labelCustomerType, labelIdentityType } from './customer-labels';
+import { useAuthStore } from '../../stores/auth';
+import { pinia } from '../../app/pinia';
+import {
+  clearPendingCustomerDraftCommand,
+  readPendingCustomerDraftCommand,
+  savePendingCustomerDraftCommand,
+  type PendingCustomerDraftCommand,
+} from './customer-lifecycle-pending';
 
 const route = useRoute();
 const router = useRouter();
+const auth = useAuthStore(pinia);
 const state = ref<'loading' | 'ready' | 'missing' | 'failed'>('loading');
 const customer = ref<CustomerDetail>();
 const activeTab = ref<'basic' | 'assets' | 'settlements'>('basic');
 const requests = new Set<AbortController>();
+const deletionReason = ref('');
+const deletePrompt = ref(false);
+const deleteStatus = ref<'idle' | 'submitting' | 'unknown' | 'conflict'>(
+  'idle',
+);
+const frozenDelete = ref<PendingCustomerDraftCommand>();
+
+function pendingIdentity(customerId: string) {
+  const session = auth.session;
+  if (!session?.department) return undefined;
+  return {
+    action: 'delete-draft' as const,
+    userId: session.user.id,
+    departmentId: session.department.id,
+    customerId,
+  };
+}
+
+function restorePending(customerId: string): void {
+  const identity = pendingIdentity(customerId);
+  frozenDelete.value =
+    identity === undefined
+      ? undefined
+      : readPendingCustomerDraftCommand(identity);
+  if (frozenDelete.value) {
+    deletionReason.value = frozenDelete.value.reason ?? '';
+    deleteStatus.value = 'unknown';
+    deletePrompt.value = true;
+  } else {
+    deleteStatus.value = 'idle';
+    deletePrompt.value = false;
+  }
+}
+
+async function submitDelete(): Promise<void> {
+  const current = customer.value;
+  if (deleteStatus.value === 'submitting') return;
+  if (!frozenDelete.value && (!current || !current.capabilities.deleteDraft))
+    return;
+  if (frozenDelete.value === undefined) {
+    const identity = pendingIdentity(current!.id);
+    if (!identity) return;
+    const reason = deletionReason.value.trim();
+    if (reason.length > 500) return;
+    frozenDelete.value = {
+      ...identity,
+      expectedVersion: current!.version,
+      ...(reason.length > 0 ? { reason } : {}),
+      key: globalThis.crypto.randomUUID(),
+    };
+    savePendingCustomerDraftCommand(frozenDelete.value);
+  }
+  const command = frozenDelete.value;
+  deleteStatus.value = 'submitting';
+  try {
+    await deleteCustomerDraft(
+      command.customerId,
+      {
+        expectedVersion: command.expectedVersion,
+        ...(command.reason === undefined ? {} : { reason: command.reason }),
+      },
+      command.key,
+    );
+    clearPendingCustomerDraftCommand(command);
+    frozenDelete.value = undefined;
+    if (String(route.params.id) === command.customerId)
+      await router.push('/customers');
+  } catch (error) {
+    if (String(route.params.id) !== command.customerId) return;
+    deleteStatus.value =
+      error instanceof ApiError && error.status === 409
+        ? 'conflict'
+        : 'unknown';
+  }
+}
+
+async function refreshAfterDeleteConflict(): Promise<void> {
+  if (frozenDelete.value) clearPendingCustomerDraftCommand(frozenDelete.value);
+  frozenDelete.value = undefined;
+  deleteStatus.value = 'idle';
+  deletePrompt.value = false;
+  await load();
+}
 
 function abortRequests(): void {
   for (const controller of requests) controller.abort();
@@ -176,6 +269,7 @@ watch(
   () => String(route.params.id),
   () => {
     abortRequests();
+    restorePending(String(route.params.id));
     customer.value = undefined;
     activeTab.value = 'basic';
     state.value = 'loading';
@@ -198,6 +292,18 @@ onBeforeUnmount(abortRequests);
         <span class="state-index">404</span>
         <h1>客户不存在或当前不可访问</h1>
         <p>请返回列表，从有权查看的客户中重新选择。</p>
+        <div v-if="frozenDelete" data-test="pending-delete-after-404">
+          <p>此前的删除请求结果尚不确定。可用原请求和原幂等键重试。</p>
+          <ElButton
+            v-if="deleteStatus !== 'conflict'"
+            :loading="deleteStatus === 'submitting'"
+            @click="submitDelete"
+            >按原请求重试</ElButton
+          >
+          <ElButton v-else @click="refreshAfterDeleteConflict"
+            >刷新客户资料</ElButton
+          >
+        </div>
       </section>
       <section v-else-if="state === 'failed'" class="state-panel ledger-panel">
         <span class="state-index">连接失败</span>
@@ -211,8 +317,14 @@ onBeforeUnmount(abortRequests);
             <h1>{{ customer.name }}</h1>
           </div>
           <div class="detail-actions">
+            <ElButton
+              v-if="customer.capabilities.deleteDraft && !frozenDelete"
+              data-test="delete-draft-open"
+              @click="deletePrompt = true"
+              >删除草稿</ElButton
+            >
             <RouterLink
-              v-if="customer.capabilities.editRoutine"
+              v-if="customer.capabilities.editRoutine && !frozenDelete"
               data-test="edit-customer"
               :to="`/customers/${customer.id}/edit`"
             >
@@ -223,6 +335,46 @@ onBeforeUnmount(abortRequests);
             }}</span>
           </div>
         </div>
+        <section
+          v-if="
+            deletePrompt && (customer.capabilities.deleteDraft || frozenDelete)
+          "
+          class="ledger-panel detail-card"
+          data-test="delete-draft-confirm"
+        >
+          <h2>删除这份草稿？</h2>
+          <p>删除后将从普通客户列表隐藏。可在已删除草稿中恢复原客户。</p>
+          <label
+            >原因（选填）<input
+              v-model="deletionReason"
+              :disabled="!!frozenDelete"
+              maxlength="500"
+          /></label>
+          <p v-if="deleteStatus === 'unknown'" role="alert">
+            结果尚不确定。重试会使用原请求和同一幂等键。
+          </p>
+          <p v-if="deleteStatus === 'conflict'" role="alert">
+            客户资料已变化。保留当前原因，请明确刷新后再决定。
+          </p>
+          <ElButton
+            data-test="delete-draft-submit"
+            :loading="deleteStatus === 'submitting'"
+            :disabled="deleteStatus === 'conflict'"
+            @click="submitDelete"
+            >{{
+              deleteStatus === 'unknown' ? '按原请求重试' : '确认删除'
+            }}</ElButton
+          >
+          <ElButton
+            v-if="deleteStatus === 'conflict'"
+            data-test="delete-draft-refresh"
+            @click="refreshAfterDeleteConflict"
+            >刷新客户资料</ElButton
+          >
+          <ElButton v-if="deleteStatus === 'idle'" @click="deletePrompt = false"
+            >取消</ElButton
+          >
+        </section>
         <div class="customer-tabs" role="tablist" aria-label="客户详情">
           <button
             id="customer-tab-button-basic"
@@ -340,6 +492,7 @@ onBeforeUnmount(abortRequests);
             </p>
           </section>
           <CustomerRightsHolderPanel
+            v-if="!frozenDelete"
             id="customer-rights-holders"
             :customer-id="customer.id"
             :customer-version="customer.version"
@@ -349,6 +502,7 @@ onBeforeUnmount(abortRequests);
             @customer-not-found="returnToCustomerList"
           />
           <CustomerAdmissionPanel
+            v-if="!frozenDelete"
             id="customer-admission"
             :customer="customer"
             @admitted="acceptAdmission"
@@ -356,6 +510,7 @@ onBeforeUnmount(abortRequests);
             @customer-not-found="returnToCustomerList"
           />
           <CustomerAccountPanel
+            v-if="!frozenDelete"
             id="customer-accounts"
             :customer-id="customer.id"
             :admitted="customer.profileStatus === 'admitted'"
@@ -381,6 +536,7 @@ onBeforeUnmount(abortRequests);
           v-show="activeTab === 'assets'"
         >
           <CustomerRightAssetsPanel
+            v-if="!frozenDelete"
             :customer-id="customer.id"
             :customer-version="customer.version"
             :can-edit="customer.capabilities.editRoutine"

@@ -3,6 +3,7 @@ import HealthPage from './HealthPage.vue';
 import CustomerListPage from '../modules/customers/CustomerListPage.vue';
 import CustomerNewPage from '../modules/customers/CustomerNewPage.vue';
 import CustomerDetailPage from '../modules/customers/CustomerDetailPage.vue';
+import CustomerDeletedDraftsPage from '../modules/customers/CustomerDeletedDraftsPage.vue';
 import CustomerEditPage from '../modules/customers/CustomerEditPage.vue';
 import RightsHolderDetailPage from '../modules/customers/RightsHolderDetailPage.vue';
 import LeadListPage from '../modules/leads/LeadListPage.vue';
@@ -104,6 +105,15 @@ export const router = createRouter({
         audience: 'INTERNAL',
         section: '客户',
         breadcrumbs: ['客户', '新建客户'],
+      },
+    },
+    {
+      path: '/customers/deleted-drafts',
+      component: CustomerDeletedDraftsPage,
+      meta: {
+        audience: 'INTERNAL',
+        section: '客户',
+        breadcrumbs: ['客户', '已删除草稿'],
       },
     },
     {

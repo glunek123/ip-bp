@@ -97,7 +97,7 @@ export class RightsHolderService {
     try {
       return await this.database.$transaction(async (transaction) => {
         const target = await transaction.customer.findFirst({
-          where: { id: customerId, ...editScope },
+          where: { id: customerId, ...editScope, deletedAt: null },
           select: { id: true },
         });
         if (target === null) throw this.customerNotFound();
@@ -217,7 +217,7 @@ export class RightsHolderService {
     try {
       return await this.database.$transaction(async (transaction) => {
         const target = await transaction.customer.findFirst({
-          where: { id: customerId, ...editScope },
+          where: { id: customerId, ...editScope, deletedAt: null },
           select: { id: true },
         });
         if (target === null) throw this.customerNotFound();
@@ -266,6 +266,7 @@ export class RightsHolderService {
             id: customerId,
             departmentId: actor.departmentId,
             version: input.expectedCustomerVersion,
+            deletedAt: null,
           },
           data: { version: { increment: 1 } },
         });
@@ -355,7 +356,7 @@ export class RightsHolderService {
       this.accessControl.tryBuildCustomerScope(actor, 'customer.edit-routine'),
     ]);
     const target = await this.database.customer.findFirst({
-      where: { id: customerId, ...readScope },
+      where: { id: customerId, ...readScope, deletedAt: null },
       select: { id: true },
     });
     if (target === null) throw this.customerNotFound();
@@ -363,7 +364,7 @@ export class RightsHolderService {
     const canEdit =
       editScope !== null &&
       (await this.database.customer.findFirst({
-        where: { id: customerId, ...editScope },
+        where: { id: customerId, ...editScope, deletedAt: null },
         select: { id: true },
       })) !== null;
     const where = {
@@ -399,7 +400,7 @@ export class RightsHolderService {
       'customer.read',
     );
     const target = await this.database.customer.findFirst({
-      where: { id: customerId, ...readScope },
+      where: { id: customerId, ...readScope, deletedAt: null },
       select: { id: true },
     });
     if (target === null) throw this.customerNotFound();
@@ -432,14 +433,14 @@ export class RightsHolderService {
       'customer.read',
     );
     const target = await this.database.customer.findFirst({
-      where: { id: customerId, ...readScope },
+      where: { id: customerId, ...readScope, deletedAt: null },
       select: { id: true },
     });
     if (target === null) throw this.customerNotFound();
     const normalizedQuery = this.optional(query);
     const where = {
       departmentId: actor.departmentId,
-      links: { some: { customer: readScope } },
+      links: { some: { customer: { ...readScope, deletedAt: null } } },
       NOT: { links: { some: { customerId } } },
       ...(normalizedQuery === null
         ? {}
@@ -476,6 +477,7 @@ export class RightsHolderService {
         id: customerId,
         departmentId: actor.departmentId,
         version: expectedVersion,
+        deletedAt: null,
       },
       data: { version: { increment: 1 } },
     });

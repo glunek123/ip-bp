@@ -1290,7 +1290,7 @@ describe('MaterialService', () => {
       expect.objectContaining({ departmentId: actor.departmentId }),
       undefined,
     );
-    expect(fixture.db.uploadDraft.create).toHaveBeenCalledWith({
+    expect(fixture.transaction.uploadDraft.create).toHaveBeenCalledWith({
       data: expect.objectContaining({
         departmentId: actor.departmentId,
         actorUserId: actor.userId,

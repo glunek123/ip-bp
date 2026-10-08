@@ -1,5 +1,6 @@
 <script setup lang="ts">
 import { computed, ref, watch } from 'vue';
+import { RouterLink } from 'vue-router';
 import { ElButton } from 'element-plus/es/components/button/index.mjs';
 import {
   admitCustomer,
@@ -550,6 +551,12 @@ async function submit(): Promise<void> {
         identityNumberInput.value?.focus();
       } else if (
         error instanceof ApiError &&
+        error.code === 'CUSTOMER_IDENTITY_RESTORE_AVAILABLE'
+      ) {
+        formError.value =
+          '本部门已有相同证件号码的已删除草稿。请在已删除草稿中恢复原客户。';
+      } else if (
+        error instanceof ApiError &&
         (error.code === 'CUSTOMER_DOCUMENT_INVALID' ||
           error.code === 'MATERIAL_VERSION_INVALID')
       ) {
@@ -857,6 +864,11 @@ void reloadMaterials();
       </fieldset>
 
       <p v-if="formError" class="submit-error" role="alert">{{ formError }}</p>
+      <RouterLink
+        v-if="formError.includes('已删除草稿')"
+        to="/customers/deleted-drafts"
+        >查看已删除草稿</RouterLink
+      >
       <div v-if="canManageMaterials" class="admission-submit">
         <p>准入后即可用于创建正式线索。</p>
         <ElButton

@@ -95,7 +95,7 @@ export class CustomerAdmissionService {
               transaction,
             );
             const visible = await transaction.customer.findFirst({
-              where: { id: customerId, ...scope },
+              where: { id: customerId, ...scope, deletedAt: null },
             });
             if (visible === null) throw this.notFound();
 
@@ -110,7 +110,7 @@ export class CustomerAdmissionService {
             );
             if (locked.length !== 1) throw this.notFound();
             const current = await transaction.customer.findFirst({
-              where: { id: customerId, ...scope },
+              where: { id: customerId, ...scope, deletedAt: null },
             });
             if (current === null) throw this.notFound();
 
@@ -138,9 +138,39 @@ export class CustomerAdmissionService {
                 normalizedIdentityNumber: normalized.normalizedIdentityNumber,
                 id: { not: customerId },
               },
-              select: { id: true },
+              select: { id: true, deletedAt: true },
             });
-            if (duplicate !== null) throw this.identityDuplicate();
+            if (duplicate !== null) {
+              if (duplicate.deletedAt !== null) {
+                const readScope =
+                  await this.accessControl.tryBuildCustomerScope(
+                    actor,
+                    'customer.read',
+                    transaction,
+                  );
+                const restoreScope =
+                  await this.accessControl.tryBuildCustomerScope(
+                    actor,
+                    'customer.restore-draft',
+                    transaction,
+                  );
+                if (
+                  readScope !== null &&
+                  restoreScope !== null &&
+                  (await transaction.customer.findFirst({
+                    where: {
+                      id: duplicate.id,
+                      deletedAt: { not: null },
+                      AND: [readScope, restoreScope],
+                    },
+                    select: { id: true },
+                  }))
+                )
+                  throw this.identityRestoreAvailable(duplicate.id);
+                throw this.duplicateConflict();
+              }
+              throw this.identityDuplicate();
+            }
 
             const facts = await this.materials.assertAvailableVersions(
               transaction,
@@ -167,6 +197,7 @@ export class CustomerAdmissionService {
               where: {
                 id: customerId,
                 departmentId: actor.departmentId,
+                deletedAt: null,
                 version: normalized.expectedVersion,
                 profileStatus: 'DRAFT',
               },
@@ -602,6 +633,21 @@ export class CustomerAdmissionService {
     return new ConflictException({
       code: 'CUSTOMER_IDENTITY_DUPLICATE',
       message: '本部门已有相同证件号码的客户',
+    });
+  }
+
+  private identityRestoreAvailable(customerId: string): ConflictException {
+    return new ConflictException({
+      code: 'CUSTOMER_IDENTITY_RESTORE_AVAILABLE',
+      message: '本部门已有相同证件号码的已删除客户草稿，请恢复原客户',
+      details: { customerId },
+    });
+  }
+
+  private duplicateConflict(): ConflictException {
+    return new ConflictException({
+      code: 'CUSTOMER_DUPLICATE_CONFLICT',
+      message: '客户信息与现有记录冲突，请核对后再试',
     });
   }
 

@@ -304,6 +304,9 @@ async function submit(): Promise<void> {
           },
           'exactIdentity',
         );
+      } else if (error.code === 'CUSTOMER_IDENTITY_RESTORE_AVAILABLE') {
+        submitError.value =
+          '本部门已有相同证件号码的已删除草稿。请在已删除草稿中恢复原客户。';
       } else if (error.code === 'CUSTOMER_DUPLICATE_CONFLICT') {
         submitError.value = '客户信息与现有记录冲突，请核对后再试';
       } else if (error.code === 'CUSTOMER_VERSION_CONFLICT') {
@@ -554,6 +557,11 @@ onBeforeUnmount(() => activeRequest?.abort());
           <p v-if="submitError" class="submit-error" role="alert">
             {{ submitError }}
           </p>
+          <RouterLink
+            v-if="submitError.includes('已删除草稿')"
+            to="/customers/deleted-drafts"
+            >查看已删除草稿</RouterLink
+          >
           <ul v-if="duplicateMatches.length" class="duplicate-list">
             <li v-for="match in duplicateMatches" :key="match.id">
               <span>
