@@ -13,7 +13,7 @@ import {
 import { ActorContext } from '../../access-control/actor-context';
 import { DatabaseService } from '../../database/database.service';
 import type { Prisma } from '../../generated/prisma/client';
-import { MaterialService } from '../materials/material.service';
+import { MaterialService } from '../materials';
 import type {
   CustomerRightAssetAction,
   CustomerRightAssetType,

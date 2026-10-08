@@ -1,7 +1,7 @@
 import { createHash } from 'node:crypto';
 import { AccessControlService } from '../../access-control/access-control.service';
 import { DatabaseService } from '../../database/database.service';
-import { MaterialService } from '../materials/material.service';
+import { MaterialService } from '../materials';
 import { CreateRightAssetDto } from './right-asset.dto';
 import { RightAssetService } from './right-asset.service';
 
