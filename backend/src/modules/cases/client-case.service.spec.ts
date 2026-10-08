@@ -102,6 +102,30 @@ describe('ClientCaseService', () => {
     );
   });
 
+  it('keeps a judgment-stage case in the client recorded projection without internal hearing facts', async () => {
+    const f = fixture();
+    f.db.case.findMany.mockResolvedValue([
+      {
+        id: caseId,
+        businessNo: 'CA-1',
+        stage: 'WAITING_JUDGMENT',
+        version: 9,
+        rightsHolder: { name: '持权企业' },
+        defendants: [],
+      },
+    ]);
+    const result = await f.service.list(actor, 'RECORDED', 1, 20);
+    expect(result.items[0].stage).toBe('WAITING_JUDGMENT');
+    expect(result.items[0]).not.toHaveProperty('hearing');
+    expect(f.db.case.findMany).toHaveBeenCalledWith(
+      expect.objectContaining({
+        where: expect.objectContaining({
+          stage: { in: expect.arrayContaining(['WAITING_JUDGMENT']) },
+        }),
+      }),
+    );
+  });
+
   it('projects only confirmed file, submitted authorization and safe mailing facts', async () => {
     const f = fixture();
     const detail = await f.service.get(actor, caseId);

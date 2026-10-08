@@ -12,6 +12,13 @@ import { CaseComplaintConfirmationService } from './case-complaint-confirmation.
 import { CaseComplaintMailingService } from './case-complaint-mailing.service';
 import { CaseFilingService } from './case-filing.service';
 import { CaseAcceptanceService } from './case-acceptance.service';
+import { CaseHearingService } from './case-hearing.service';
+import { CaseHearingSchedulerService } from './case-hearing-scheduler.service';
+import {
+  CASE_HEARING_CLOCK,
+  CaseHearingSignal,
+  SystemCaseHearingClock,
+} from './case-hearing-signal';
 import { FilingCourtService } from './filing-court.service';
 import { ClientCaseController } from './client-case.controller';
 import { ClientCaseService } from './client-case.service';
@@ -40,6 +47,10 @@ import { LawyerCaseController } from './lawyer-case.controller';
     CaseComplaintMailingService,
     CaseFilingService,
     CaseAcceptanceService,
+    CaseHearingService,
+    CaseHearingSchedulerService,
+    CaseHearingSignal,
+    { provide: CASE_HEARING_CLOCK, useClass: SystemCaseHearingClock },
     FilingCourtService,
     ClientCaseService,
     LawyerAccountService,

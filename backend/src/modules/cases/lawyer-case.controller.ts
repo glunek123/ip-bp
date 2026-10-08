@@ -21,6 +21,8 @@ import { CaseComplaintConfirmationService } from './case-complaint-confirmation.
 import { CaseComplaintMailingService } from './case-complaint-mailing.service';
 import { CaseFilingService } from './case-filing.service';
 import { CaseAcceptanceService } from './case-acceptance.service';
+import { CaseHearingService } from './case-hearing.service';
+import { SaveCaseHearingDto } from './case-hearing.dto';
 import { RegisterCaseAcceptanceDto } from './case-acceptance.dto';
 import { FilingCourtService } from './filing-court.service';
 import { SubmitCaseComplaintDto } from './case-complaint.dto';
@@ -40,6 +42,7 @@ export class LawyerCaseController {
     private readonly mailing: CaseComplaintMailingService,
     private readonly filing: CaseFilingService,
     private readonly acceptance: CaseAcceptanceService,
+    private readonly hearing: CaseHearingService,
     private readonly courts: FilingCourtService,
   ) {}
 
@@ -144,5 +147,15 @@ export class LawyerCaseController {
   ) {
     this.lawyer(actor);
     return this.acceptance.register(actor, id, body);
+  }
+
+  @Post(':id/hearing-schedule')
+  scheduleHearing(
+    @CurrentActor() actor: ActorContext,
+    @Param('id', new ParseUUIDPipe()) id: string,
+    @Body() body: SaveCaseHearingDto,
+  ) {
+    this.lawyer(actor);
+    return this.hearing.schedule(actor, id, body);
   }
 }

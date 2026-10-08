@@ -1,0 +1,27 @@
+export function verifyCaseHearingMigration(): Promise<{
+  previous: number;
+  total: number;
+  emptyFactTable: number;
+  oldAcceptance: number;
+  oldReceipt: number;
+  uploadHumanPath: number;
+  legacyHumanAudit: number;
+  scheduleGrant: number;
+  correctGrant: number;
+  splitGrant: number;
+  roleOnlyGrant: number;
+  templateVersion: number;
+  accountRevision: number;
+  splitAccountRevision: number;
+  factMigrationFailure: string | null;
+  noPartialAuditColumn: number;
+  retryTable: number;
+  systemWithHuman: string | null;
+  systemWrongAction: string | null;
+  systemWrongResource: string | null;
+  systemWithBinding: string | null;
+  systemCrossDepartment: string | null;
+  systemWithoutFact: string | null;
+  humanWithoutActor: string | null;
+  humanAutoAction: string | null;
+}>;

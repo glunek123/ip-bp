@@ -74,6 +74,7 @@ describe('CaseReadService', () => {
         WAITING_FILING: 0,
         WAITING_FORMAL_ACCEPTANCE: 0,
         WAITING_HEARING: 0,
+        WAITING_JUDGMENT: 0,
       },
     });
     expect(f.access.authorizeDepartmentAction).toHaveBeenCalledWith(
@@ -138,6 +139,49 @@ describe('CaseReadService', () => {
       businessNo: 'CA-1',
       stage: 'PENDING_MATCH',
       version: 1,
+      currentHearingAdvanceId: 'advance-1',
+      currentHearingArrangement: {
+        id: 'arrangement-1',
+        hearingAt: new Date('2026-10-08T00:00:00.000Z'),
+        source: 'SCHEDULE',
+        recordedAt: new Date('2026-10-07T01:00:00.000Z'),
+        recordedByUserId: actor.userId,
+      },
+      currentHearingAdvance: {
+        id: 'advance-1',
+        arrangementId: 'arrangement-1',
+        dueAt: new Date('2026-10-08T16:00:00.000Z'),
+        executedAt: new Date('2026-10-08T16:00:01.000Z'),
+      },
+      hearingArrangements: [
+        {
+          id: 'arrangement-1',
+          hearingAt: new Date('2026-10-08T00:00:00.000Z'),
+          source: 'SCHEDULE',
+          recordedAt: new Date('2026-10-07T01:00:00.000Z'),
+          recordedByUserId: actor.userId,
+        },
+      ],
+      hearingAdvances: [
+        {
+          id: 'advance-1',
+          arrangementId: 'arrangement-1',
+          dueAt: new Date('2026-10-08T16:00:00.000Z'),
+          executedAt: new Date('2026-10-08T16:00:01.000Z'),
+        },
+      ],
+      hearingCorrections: [
+        {
+          id: 'correction-1',
+          priorArrangementId: 'arrangement-1',
+          priorAdvanceId: 'advance-1',
+          newArrangementId: 'arrangement-2',
+          resultStage: 'WAITING_HEARING',
+          recordedAt: new Date('2026-10-09T01:00:00.000Z'),
+          recordedByUserId: actor.userId,
+          reason: '改期',
+        },
+      ],
       matchedAt: null,
       matchedOn: null,
       responsibleUserId: actor.userId,
@@ -186,6 +230,34 @@ describe('CaseReadService', () => {
     };
     f.db.case.findFirst.mockResolvedValue(record);
     const result = await f.service.get(actor, 'case-1');
+    expect(result.hearing.currentArrangement).toMatchObject({
+      hearingAt: '2026-10-08',
+      recordedByUserId: actor.userId,
+    });
+    expect(result.hearing.currentAdvance).toMatchObject({
+      dueAt: '2026-10-08T16:00:00.000Z',
+      executedAt: '2026-10-08T16:00:01.000Z',
+    });
+    expect(result.hearing.corrections[0]).toMatchObject({ reason: '改期' });
+    f.db.userAccount.findUnique.mockResolvedValue({
+      accountType: 'LAWYER',
+      active: true,
+    });
+    const lawyerDetail = await f.service.get(
+      { ...actor, lawyerAccountId: actor.userId },
+      'case-1',
+    );
+    expect(lawyerDetail.hearing.currentArrangement).not.toHaveProperty(
+      'recordedByUserId',
+    );
+    expect(lawyerDetail.hearing.corrections[0]).not.toHaveProperty('reason');
+    expect(lawyerDetail.hearing.corrections[0]).not.toHaveProperty(
+      'recordedByUserId',
+    );
+    f.db.userAccount.findUnique.mockResolvedValue({
+      accountType: 'INTERNAL',
+      active: true,
+    });
     expect(result).toMatchObject({
       courtCaseNo: null,
       fees: [

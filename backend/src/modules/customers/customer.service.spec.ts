@@ -328,6 +328,7 @@ describe('CustomerService', () => {
         departmentId: actor.departmentId,
         resourceType: 'customer',
         resourceId: customer.id,
+        actorKind: 'HUMAN',
       },
       orderBy: [{ createdAt: 'desc' }, { id: 'desc' }],
       select: { action: true, actorUserId: true, createdAt: true },

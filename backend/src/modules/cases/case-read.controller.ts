@@ -32,6 +32,12 @@ import { CaseComplaintConfirmationService } from './case-complaint-confirmation.
 import { CaseComplaintMailingService } from './case-complaint-mailing.service';
 import { CaseFilingService } from './case-filing.service';
 import { CaseAcceptanceService } from './case-acceptance.service';
+import { CaseHearingService } from './case-hearing.service';
+import {
+  CaseHearingCommandResultDto,
+  CorrectCaseHearingDto,
+  SaveCaseHearingDto,
+} from './case-hearing.dto';
 import {
   RegisterCaseAcceptanceDto,
   RegisterCaseAcceptanceResponseDto,
@@ -70,6 +76,7 @@ export class CaseReadController {
     private readonly mailing: CaseComplaintMailingService,
     private readonly filing: CaseFilingService,
     private readonly acceptance: CaseAcceptanceService,
+    private readonly hearing: CaseHearingService,
     private readonly courts: FilingCourtService,
   ) {}
 
@@ -179,5 +186,25 @@ export class CaseReadController {
     @Body() body: RegisterCaseAcceptanceDto,
   ) {
     return this.acceptance.register(actor, id, body);
+  }
+
+  @Post(':id/hearing-schedule')
+  @ApiCreatedResponse({ type: CaseHearingCommandResultDto })
+  scheduleHearing(
+    @CurrentActor() actor: ActorContext,
+    @Param('id', new ParseUUIDPipe()) id: string,
+    @Body() body: SaveCaseHearingDto,
+  ) {
+    return this.hearing.schedule(actor, id, body);
+  }
+
+  @Post(':id/hearing-correct')
+  @ApiCreatedResponse({ type: CaseHearingCommandResultDto })
+  correctHearing(
+    @CurrentActor() actor: ActorContext,
+    @Param('id', new ParseUUIDPipe()) id: string,
+    @Body() body: CorrectCaseHearingDto,
+  ) {
+    return this.hearing.correct(actor, id, body);
   }
 }

@@ -32,6 +32,8 @@ enum PermissionAction {
   CASE_COMPLAINT_MAIL          @map("case.complaint.mail")
   CASE_FILING_SUBMIT           @map("case.filing.submit")
   CASE_ACCEPTANCE_REGISTER     @map("case.acceptance.register")
+  CASE_HEARING_SCHEDULE        @map("case.hearing.schedule")
+  CASE_HEARING_CORRECT         @map("case.hearing.correct")
   NOTARY_OFFICE_MANAGE         @map("notary.office.manage")
   CLIENT_LEAD_READ             @map("client.lead.read")
   CLIENT_LEAD_REVIEW           @map("client.lead.review")
@@ -222,6 +224,7 @@ enum CaseStage {
   WAITING_FILING
   WAITING_FORMAL_ACCEPTANCE
   WAITING_HEARING
+  WAITING_JUDGMENT
 
   @@map("case_stage")
 }
@@ -445,6 +448,9 @@ model UserAccount {
   complaintMailings                CaseComplaintMailing[]            @relation("CaseComplaintMailer")
   filingSubmissions                CaseFilingSubmission[]            @relation("CaseFilingSubmitter")
   caseAcceptances                  CaseAcceptance[]                  @relation("CaseAcceptanceRecorder")
+  hearingArrangements              CaseHearingArrangement[]          @relation("HearingArrangementRecorder")
+  hearingCorrections               CaseHearingCorrection[]           @relation("HearingCorrectionRecorder")
+  hearingReceipts                  CaseHearingReceipt[]              @relation("HearingReceiptActor")
   createdAt                        DateTime                          @default(now()) @map("created_at") @db.Timestamptz(3)
   updatedAt                        DateTime                          @updatedAt @map("updated_at") @db.Timestamptz(3)
 
@@ -1227,6 +1233,14 @@ model Case {
   filingReceipts                CaseFilingReceipt[]
   acceptance                    CaseAcceptance?
   acceptanceReceipts            CaseAcceptanceReceipt[]
+  currentHearingArrangementId   String?                            @map("current_hearing_arrangement_id") @db.Uuid
+  currentHearingAdvanceId       String?                            @map("current_hearing_advance_id") @db.Uuid
+  currentHearingArrangement     CaseHearingArrangement?            @relation("CaseCurrentHearing", fields: [currentHearingArrangementId], references: [id], onDelete: Restrict, onUpdate: Restrict)
+  currentHearingAdvance         CaseHearingAdvance?                @relation("CaseCurrentHearingAdvance", fields: [currentHearingAdvanceId], references: [id], onDelete: Restrict, onUpdate: Restrict)
+  hearingArrangements           CaseHearingArrangement[]           @relation("CaseHearingArrangements")
+  hearingAdvances               CaseHearingAdvance[]               @relation("CaseHearingAdvances")
+  hearingCorrections            CaseHearingCorrection[]
+  hearingReceipts               CaseHearingReceipt[]
   complaintAmountState          CaseComplaintAmountState?          @map("complaint_amount_state")
   complaintAmount               Decimal?                           @map("complaint_amount") @db.Decimal(16, 2)
   complaintPendingReason        String?                            @map("complaint_pending_reason") @db.VarChar(500)
@@ -1528,6 +1542,98 @@ model CaseAcceptanceReceipt {
 
   @@unique([departmentId, actorUserId, idempotencyKey])
   @@map("case_acceptance_receipts")
+}
+
+model CaseHearingArrangement {
+  id                 String                  @id @default(uuid()) @db.Uuid
+  departmentId       String                  @map("department_id") @db.Uuid
+  caseId             String                  @map("case_id") @db.Uuid
+  hearingAt          DateTime?               @map("hearing_at") @db.Date
+  source             CaseHearingSource
+  recordedAt         DateTime                @default(now()) @map("recorded_at") @db.Timestamptz(3)
+  recordedByUserId   String                  @map("recorded_by_user_id") @db.Uuid
+  fromVersion        Int                     @map("from_version")
+  toVersion          Int                     @map("to_version")
+  auditEventId       String                  @unique @map("audit_event_id") @db.Uuid
+  case               Case                    @relation("CaseHearingArrangements", fields: [caseId, departmentId], references: [id, departmentId], onDelete: Restrict, onUpdate: Restrict)
+  currentForCase     Case[]                  @relation("CaseCurrentHearing")
+  auditEvent         AuditEvent              @relation("HearingArrangementAudit", fields: [auditEventId], references: [id], onDelete: Restrict, onUpdate: Restrict)
+  recordedBy         UserAccount             @relation("HearingArrangementRecorder", fields: [recordedByUserId], references: [id], onDelete: Restrict, onUpdate: Restrict)
+  advances           CaseHearingAdvance[]
+  correctionsAsPrior CaseHearingCorrection[] @relation("HearingCorrectionPriorArrangement")
+  correctionAsNew    CaseHearingCorrection?  @relation("HearingCorrectionNewArrangement")
+
+  @@unique([id, caseId, departmentId])
+  @@map("case_hearing_arrangements")
+}
+
+enum CaseHearingSource {
+  SCHEDULE
+  CORRECTION
+
+  @@map("case_hearing_source")
+}
+
+model CaseHearingAdvance {
+  id             String                  @id @default(uuid()) @db.Uuid
+  departmentId   String                  @map("department_id") @db.Uuid
+  caseId         String                  @map("case_id") @db.Uuid
+  arrangementId  String                  @unique @map("arrangement_id") @db.Uuid
+  dueAt          DateTime                @map("due_at") @db.Timestamptz(3)
+  executedAt     DateTime                @map("executed_at") @db.Timestamptz(3)
+  fromVersion    Int                     @map("from_version")
+  toVersion      Int                     @map("to_version")
+  auditEventId   String                  @unique @map("audit_event_id") @db.Uuid
+  case           Case                    @relation("CaseHearingAdvances", fields: [caseId, departmentId], references: [id, departmentId], onDelete: Restrict, onUpdate: Restrict)
+  currentForCase Case[]                  @relation("CaseCurrentHearingAdvance")
+  arrangement    CaseHearingArrangement  @relation(fields: [arrangementId, caseId, departmentId], references: [id, caseId, departmentId], onDelete: Restrict, onUpdate: Restrict)
+  auditEvent     AuditEvent              @relation("HearingAdvanceAudit", fields: [auditEventId], references: [id], onDelete: Restrict, onUpdate: Restrict)
+  corrections    CaseHearingCorrection[]
+
+  @@unique([id, caseId, departmentId])
+  @@map("case_hearing_advances")
+}
+
+model CaseHearingCorrection {
+  id                 String                 @id @default(uuid()) @db.Uuid
+  departmentId       String                 @map("department_id") @db.Uuid
+  caseId             String                 @map("case_id") @db.Uuid
+  priorArrangementId String                 @map("prior_arrangement_id") @db.Uuid
+  priorAdvanceId     String                 @map("prior_advance_id") @db.Uuid
+  newArrangementId   String                 @unique @map("new_arrangement_id") @db.Uuid
+  reason             String                 @db.VarChar(500)
+  recordedAt         DateTime               @default(now()) @map("recorded_at") @db.Timestamptz(3)
+  recordedByUserId   String                 @map("recorded_by_user_id") @db.Uuid
+  fromVersion        Int                    @map("from_version")
+  toVersion          Int                    @map("to_version")
+  resultStage        CaseStage              @map("result_stage")
+  auditEventId       String                 @unique @map("audit_event_id") @db.Uuid
+  case               Case                   @relation(fields: [caseId, departmentId], references: [id, departmentId], onDelete: Restrict, onUpdate: Restrict)
+  priorArrangement   CaseHearingArrangement @relation("HearingCorrectionPriorArrangement", fields: [priorArrangementId, caseId, departmentId], references: [id, caseId, departmentId], onDelete: Restrict, onUpdate: Restrict)
+  priorAdvance       CaseHearingAdvance     @relation(fields: [priorAdvanceId, caseId, departmentId], references: [id, caseId, departmentId], onDelete: Restrict, onUpdate: Restrict)
+  newArrangement     CaseHearingArrangement @relation("HearingCorrectionNewArrangement", fields: [newArrangementId, caseId, departmentId], references: [id, caseId, departmentId], onDelete: Restrict, onUpdate: Restrict)
+  recordedBy         UserAccount            @relation("HearingCorrectionRecorder", fields: [recordedByUserId], references: [id], onDelete: Restrict, onUpdate: Restrict)
+  auditEvent         AuditEvent             @relation("HearingCorrectionAudit", fields: [auditEventId], references: [id], onDelete: Restrict, onUpdate: Restrict)
+
+  @@unique([newArrangementId, caseId, departmentId])
+  @@map("case_hearing_corrections")
+}
+
+model CaseHearingReceipt {
+  id                 String      @id @default(uuid()) @db.Uuid
+  departmentId       String      @map("department_id") @db.Uuid
+  actorUserId        String      @map("actor_user_id") @db.Uuid
+  caseId             String      @map("case_id") @db.Uuid
+  action             String
+  idempotencyKey     String      @map("idempotency_key") @db.VarChar(128)
+  requestFingerprint String      @map("request_fingerprint") @db.Char(64)
+  resultSnapshot     Json        @map("result_snapshot")
+  createdAt          DateTime    @default(now()) @map("created_at") @db.Timestamptz(3)
+  case               Case        @relation(fields: [caseId, departmentId], references: [id, departmentId], onDelete: Restrict, onUpdate: Restrict)
+  actor              UserAccount @relation("HearingReceiptActor", fields: [actorUserId], references: [id], onDelete: Restrict, onUpdate: Restrict)
+
+  @@unique([departmentId, actorUserId, action, idempotencyKey])
+  @@map("case_hearing_receipts")
 }
 
 model CaseNumberCounter {
@@ -1870,10 +1976,18 @@ model LeadCommandReceipt {
   @@map("lead_command_receipts")
 }
 
+enum AuditActorKind {
+  HUMAN
+  SYSTEM
+
+  @@map("audit_actor_kind")
+}
+
 model AuditEvent {
   id                           String                      @id @default(uuid()) @db.Uuid
   departmentId                 String                      @map("department_id") @db.Uuid
-  actorUserId                  String                      @map("actor_user_id") @db.Uuid
+  actorKind                    AuditActorKind              @default(HUMAN) @map("actor_kind")
+  actorUserId                  String?                     @map("actor_user_id") @db.Uuid
   internalActorUserId          String?                     @map("internal_actor_user_id") @db.Uuid
   notaryOfficeAccountBindingId String?                     @map("notary_office_account_binding_id") @db.Uuid
   customerAccountBindingId     String?                     @map("customer_account_binding_id") @db.Uuid
@@ -1883,7 +1997,7 @@ model AuditEvent {
   action                       String
   details                      Json?
   department                   Department                  @relation(fields: [departmentId], references: [id], onDelete: Restrict)
-  actorUser                    UserAccount                 @relation(fields: [actorUserId], references: [id], onDelete: Restrict, onUpdate: Restrict)
+  actorUser                    UserAccount?                @relation(fields: [actorUserId], references: [id], onDelete: Restrict, onUpdate: Restrict)
   internalActorMembership      DepartmentMembership?       @relation("AuditInternalActor", fields: [internalActorUserId, departmentId], references: [userId, departmentId], onDelete: Restrict, onUpdate: Restrict)
   notaryOfficeAccountBinding   NotaryOfficeAccountBinding? @relation(fields: [notaryOfficeAccountBindingId, actorUserId, departmentId], references: [id, userId, departmentId], onDelete: Restrict, onUpdate: Restrict)
   customerAccountBinding       CustomerAccountBinding?     @relation(fields: [customerAccountBindingId, actorUserId, departmentId], references: [id, userId, departmentId], onDelete: Restrict, onUpdate: Restrict)
@@ -1893,6 +2007,9 @@ model AuditEvent {
   caseComplaintMailings        CaseComplaintMailing[]
   caseFilingSubmissions        CaseFilingSubmission[]
   caseAcceptances              CaseAcceptance[]
+  hearingArrangements          CaseHearingArrangement[]    @relation("HearingArrangementAudit")
+  hearingAdvances              CaseHearingAdvance[]        @relation("HearingAdvanceAudit")
+  hearingCorrections           CaseHearingCorrection[]     @relation("HearingCorrectionAudit")
   createdAt                    DateTime                    @default(now()) @map("created_at") @db.Timestamptz(3)
 
   @@index([departmentId, resourceType, resourceId, createdAt])

@@ -253,6 +253,7 @@ export class CustomerService {
           departmentId: actor.departmentId,
           resourceType: 'customer',
           resourceId: customer.id,
+          actorKind: 'HUMAN',
         },
         orderBy: [{ createdAt: 'desc' }, { id: 'desc' }],
         select: { action: true, actorUserId: true, createdAt: true },
@@ -267,11 +268,15 @@ export class CustomerService {
     return {
       ...this.toSummary(customer),
       capabilities: { editRoutine, admit },
-      history: history.map((event) => ({
-        action: event.action,
-        actorUserId: event.actorUserId,
-        occurredAt: event.createdAt.toISOString(),
-      })),
+      history: history.map((event) => {
+        if (event.actorUserId === null)
+          throw new Error('Human customer audit has no actor account');
+        return {
+          action: event.action,
+          actorUserId: event.actorUserId,
+          occurredAt: event.createdAt.toISOString(),
+        };
+      }),
     };
   }
 

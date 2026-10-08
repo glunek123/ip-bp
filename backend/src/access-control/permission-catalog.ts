@@ -32,6 +32,8 @@ export const internalAssignablePermissionActions = [
   'CASE_COMPLAINT_MAIL',
   'CASE_FILING_SUBMIT',
   'CASE_ACCEPTANCE_REGISTER',
+  'CASE_HEARING_SCHEDULE',
+  'CASE_HEARING_CORRECT',
   'NOTARY_OFFICE_MANAGE',
   'USER_READ',
   'USER_MANAGE',
@@ -120,6 +122,8 @@ const catalog: PermissionCatalogItem[] = [
     label: '登记正式立案',
     scopes: allScopes,
   },
+  { action: 'CASE_HEARING_SCHEDULE', label: '登记开庭安排', scopes: allScopes },
+  { action: 'CASE_HEARING_CORRECT', label: '更正开庭安排', scopes: allScopes },
   {
     action: 'NOTARY_OFFICE_MANAGE',
     label: '管理公证处',

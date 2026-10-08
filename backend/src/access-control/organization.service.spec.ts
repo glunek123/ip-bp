@@ -345,7 +345,12 @@ describe('OrganizationService management context', () => {
       assignTeamRoles: false,
       manageRoleTemplates: true,
     });
-    expect(result.permissionCatalog).toHaveLength(32);
+    expect(result.permissionCatalog).toHaveLength(34);
+    expect(result.permissionCatalog).toContainEqual({
+      action: 'CASE_HEARING_CORRECT',
+      label: '更正开庭安排',
+      scopes: ['SELF', 'TEAM', 'DEPARTMENT'],
+    });
     expect(result.permissionCatalog).toContainEqual({
       action: 'LAWYER_ACCOUNT_MANAGE',
       label: '管理律师账号',

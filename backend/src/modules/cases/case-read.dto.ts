@@ -90,6 +90,45 @@ class CaseAcceptanceMaterialsDto {
   SERVICE_DOCUMENT!: CaseAcceptanceMaterialGroupDto;
 }
 
+class CaseHearingArrangementDto {
+  @ApiProperty({ format: 'uuid' }) id!: string;
+  @ApiProperty({ type: String, nullable: true, format: 'date' }) hearingAt!:
+    string | null;
+  @ApiProperty({ enum: ['SCHEDULE', 'CORRECTION'] }) source!:
+    'SCHEDULE' | 'CORRECTION';
+  @ApiProperty({ format: 'date-time' }) recordedAt!: string;
+  @ApiPropertyOptional({ format: 'uuid' }) recordedByUserId?: string;
+}
+class CaseHearingAdvanceDto {
+  @ApiProperty({ format: 'uuid' }) id!: string;
+  @ApiProperty({ format: 'uuid' }) arrangementId!: string;
+  @ApiProperty({ format: 'date-time' }) dueAt!: string;
+  @ApiProperty({ format: 'date-time' }) executedAt!: string;
+}
+class CaseHearingCorrectionDto {
+  @ApiProperty({ format: 'uuid' }) id!: string;
+  @ApiProperty({ format: 'uuid' }) priorArrangementId!: string;
+  @ApiProperty({ format: 'uuid' }) priorAdvanceId!: string;
+  @ApiProperty({ format: 'uuid' }) newArrangementId!: string;
+  @ApiProperty({ enum: ['WAITING_HEARING', 'WAITING_JUDGMENT'] }) resultStage!:
+    'WAITING_HEARING' | 'WAITING_JUDGMENT';
+  @ApiProperty({ format: 'date-time' }) recordedAt!: string;
+  @ApiPropertyOptional() reason?: string;
+  @ApiPropertyOptional({ format: 'uuid' }) recordedByUserId?: string;
+}
+class CaseHearingDto {
+  @ApiProperty({ type: CaseHearingArrangementDto, nullable: true })
+  currentArrangement!: CaseHearingArrangementDto | null;
+  @ApiProperty({ type: CaseHearingAdvanceDto, nullable: true })
+  currentAdvance!: CaseHearingAdvanceDto | null;
+  @ApiProperty({ type: [CaseHearingArrangementDto] })
+  arrangements!: CaseHearingArrangementDto[];
+  @ApiProperty({ type: [CaseHearingAdvanceDto] })
+  advances!: CaseHearingAdvanceDto[];
+  @ApiProperty({ type: [CaseHearingCorrectionDto] })
+  corrections!: CaseHearingCorrectionDto[];
+}
+
 export class CasePageQueryDto {
   @ApiPropertyOptional({ enum: ['mine', 'department'], default: 'department' })
   @IsOptional()
@@ -104,6 +143,7 @@ export class CasePageQueryDto {
       'WAITING_FILING',
       'WAITING_FORMAL_ACCEPTANCE',
       'WAITING_HEARING',
+      'WAITING_JUDGMENT',
     ],
   })
   @IsOptional()
@@ -115,6 +155,7 @@ export class CasePageQueryDto {
     'WAITING_FILING',
     'WAITING_FORMAL_ACCEPTANCE',
     'WAITING_HEARING',
+    'WAITING_JUDGMENT',
   ])
   stage?:
     | 'PENDING_MATCH'
@@ -123,7 +164,8 @@ export class CasePageQueryDto {
     | 'WAITING_COMPLAINT_STAMP'
     | 'WAITING_FILING'
     | 'WAITING_FORMAL_ACCEPTANCE'
-    | 'WAITING_HEARING';
+    | 'WAITING_HEARING'
+    | 'WAITING_JUDGMENT';
   @ApiPropertyOptional({ minimum: 1, default: 1 })
   @Type(() => Number)
   @IsInt()
@@ -160,6 +202,7 @@ class CaseListItemDto {
       'WAITING_FILING',
       'WAITING_FORMAL_ACCEPTANCE',
       'WAITING_HEARING',
+      'WAITING_JUDGMENT',
     ],
   })
   stage!:
@@ -169,7 +212,8 @@ class CaseListItemDto {
     | 'WAITING_COMPLAINT_STAMP'
     | 'WAITING_FILING'
     | 'WAITING_FORMAL_ACCEPTANCE'
-    | 'WAITING_HEARING';
+    | 'WAITING_HEARING'
+    | 'WAITING_JUDGMENT';
   @ApiProperty() version!: number;
   @ApiProperty() canMatch!: boolean;
   @ApiProperty() canSubmitComplaint!: boolean;
@@ -178,6 +222,8 @@ class CaseListItemDto {
   @ApiProperty() canSubmitFiling!: boolean;
   @ApiProperty() canRegisterAcceptance!: boolean;
   @ApiProperty() canUploadAcceptanceMaterials!: boolean;
+  @ApiProperty() canScheduleHearing!: boolean;
+  @ApiProperty() canCorrectHearing!: boolean;
   @ApiProperty({ type: CaseOwnerDto }) owner!: CaseOwnerDto;
   @ApiProperty({ format: 'date-time' }) createdAt!: string;
   @ApiProperty({ type: CaseSourceDto }) sourceLead!: CaseSourceDto;
@@ -196,6 +242,7 @@ export class CaseListResponseDto {
     WAITING_FILING: number;
     WAITING_FORMAL_ACCEPTANCE: number;
     WAITING_HEARING: number;
+    WAITING_JUDGMENT: number;
   };
 }
 class CaseDefendantDto {
@@ -225,6 +272,7 @@ class CaseFeeDto {
   @ApiProperty({ format: 'uuid' }) sourceId!: string;
 }
 export class CaseDetailResponseDto extends CaseListItemDto {
+  @ApiProperty({ type: CaseHearingDto }) hearing!: CaseHearingDto;
   @ApiProperty({ type: CaseComplaintSummaryDto, nullable: true })
   complaint!: CaseComplaintSummaryDto | null;
   @ApiProperty({ type: CaseComplaintConfirmationSummaryDto, nullable: true })

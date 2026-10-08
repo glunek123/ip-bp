@@ -88,7 +88,8 @@ export class CaseReadService {
       | 'WAITING_COMPLAINT_STAMP'
       | 'WAITING_FILING'
       | 'WAITING_FORMAL_ACCEPTANCE'
-      | 'WAITING_HEARING',
+      | 'WAITING_HEARING'
+      | 'WAITING_JUDGMENT',
   ) {
     const principal = await this.scope(actor);
     const baseWhere: Prisma.CaseWhereInput = {
@@ -114,6 +115,7 @@ export class CaseReadService {
           businessNo: true,
           stage: true,
           version: true,
+          currentHearingAdvanceId: true,
           createdAt: true,
           responsibleUserId: true,
           owner: { select: { id: true, displayName: true } },
@@ -234,6 +236,31 @@ export class CaseReadService {
                     : {}),
                 },
               ))),
+          canScheduleHearing:
+            item.stage === 'WAITING_HEARING' &&
+            (principal === 'LAWYER' ||
+              (await this.access.canAuthorizeCase(
+                actor,
+                'case.hearing.schedule',
+                {
+                  departmentId: actor.departmentId,
+                  responsibleUserId: item.responsibleUserId,
+                  ...(item.responsibleMembership.teamId
+                    ? { teamId: item.responsibleMembership.teamId }
+                    : {}),
+                },
+              ))),
+          canCorrectHearing:
+            principal === 'INTERNAL' &&
+            item.stage === 'WAITING_JUDGMENT' &&
+            item.currentHearingAdvanceId !== null &&
+            (await this.access.canAuthorizeCase(actor, 'case.hearing.correct', {
+              departmentId: actor.departmentId,
+              responsibleUserId: item.responsibleUserId,
+              ...(item.responsibleMembership.teamId
+                ? { teamId: item.responsibleMembership.teamId }
+                : {}),
+            })),
           createdAt: item.createdAt.toISOString(),
         })),
       ),
@@ -262,6 +289,9 @@ export class CaseReadService {
         WAITING_HEARING:
           grouped.find((row) => row.stage === 'WAITING_HEARING')?._count._all ??
           0,
+        WAITING_JUDGMENT:
+          grouped.find((row) => row.stage === 'WAITING_JUDGMENT')?._count
+            ._all ?? 0,
       },
     };
   }
@@ -322,6 +352,56 @@ export class CaseReadService {
             courtCaseNo: true,
             recordedAt: true,
             recordedByUserId: true,
+          },
+        },
+        currentHearingAdvanceId: true,
+        currentHearingArrangement: {
+          select: {
+            id: true,
+            hearingAt: true,
+            source: true,
+            recordedAt: true,
+            recordedByUserId: true,
+          },
+        },
+        currentHearingAdvance: {
+          select: {
+            id: true,
+            arrangementId: true,
+            dueAt: true,
+            executedAt: true,
+          },
+        },
+        hearingArrangements: {
+          orderBy: [{ recordedAt: 'asc' }, { id: 'asc' }],
+          select: {
+            id: true,
+            hearingAt: true,
+            source: true,
+            recordedAt: true,
+            recordedByUserId: true,
+          },
+        },
+        hearingAdvances: {
+          orderBy: [{ executedAt: 'asc' }, { id: 'asc' }],
+          select: {
+            id: true,
+            arrangementId: true,
+            dueAt: true,
+            executedAt: true,
+          },
+        },
+        hearingCorrections: {
+          orderBy: [{ recordedAt: 'asc' }, { id: 'asc' }],
+          select: {
+            id: true,
+            priorArrangementId: true,
+            priorAdvanceId: true,
+            newArrangementId: true,
+            resultStage: true,
+            recordedAt: true,
+            recordedByUserId: true,
+            reason: true,
           },
         },
         createdAt: true,
@@ -428,11 +508,51 @@ export class CaseReadService {
       mimeType: ref.mimeType,
     });
     const sample = record.sourceNotaryMatter.evidence;
+    const arrangement = (
+      value: (typeof record.hearingArrangements)[number],
+    ) => ({
+      id: value.id,
+      hearingAt: value.hearingAt?.toISOString().slice(0, 10) ?? null,
+      source: value.source,
+      recordedAt: value.recordedAt.toISOString(),
+      ...(principal === 'INTERNAL'
+        ? { recordedByUserId: value.recordedByUserId }
+        : {}),
+    });
+    const advance = (value: (typeof record.hearingAdvances)[number]) => ({
+      id: value.id,
+      arrangementId: value.arrangementId,
+      dueAt: value.dueAt.toISOString(),
+      executedAt: value.executedAt.toISOString(),
+    });
     const detail = {
       id: record.id,
       businessNo: record.businessNo,
       stage: record.stage,
       version: record.version,
+      hearing: {
+        currentArrangement:
+          record.currentHearingArrangement === null
+            ? null
+            : arrangement(record.currentHearingArrangement),
+        currentAdvance:
+          record.currentHearingAdvance === null
+            ? null
+            : advance(record.currentHearingAdvance),
+        arrangements: record.hearingArrangements.map(arrangement),
+        advances: record.hearingAdvances.map(advance),
+        corrections: record.hearingCorrections.map((value) => ({
+          id: value.id,
+          priorArrangementId: value.priorArrangementId,
+          priorAdvanceId: value.priorAdvanceId,
+          newArrangementId: value.newArrangementId,
+          resultStage: value.resultStage,
+          recordedAt: value.recordedAt.toISOString(),
+          ...(principal === 'INTERNAL'
+            ? { reason: value.reason, recordedByUserId: value.recordedByUserId }
+            : {}),
+        })),
+      },
       matchedAt: record.matchedAt?.toISOString() ?? null,
       matchedOn: record.matchedOn?.toISOString().slice(0, 10) ?? null,
       defendants: record.defendants,
@@ -523,6 +643,27 @@ export class CaseReadService {
                 : {}),
             },
           ))),
+      canScheduleHearing:
+        record.stage === 'WAITING_HEARING' &&
+        (principal === 'LAWYER' ||
+          (await this.access.canAuthorizeCase(actor, 'case.hearing.schedule', {
+            departmentId: actor.departmentId,
+            responsibleUserId: record.responsibleUserId,
+            ...(record.responsibleMembership.teamId
+              ? { teamId: record.responsibleMembership.teamId }
+              : {}),
+          }))),
+      canCorrectHearing:
+        principal === 'INTERNAL' &&
+        record.stage === 'WAITING_JUDGMENT' &&
+        record.currentHearingAdvanceId !== null &&
+        (await this.access.canAuthorizeCase(actor, 'case.hearing.correct', {
+          departmentId: actor.departmentId,
+          responsibleUserId: record.responsibleUserId,
+          ...(record.responsibleMembership.teamId
+            ? { teamId: record.responsibleMembership.teamId }
+            : {}),
+        })),
       complaint:
         record.complaintSubmittedAt == null
           ? null
@@ -739,6 +880,9 @@ export class CaseReadService {
         canSubmitFiling: detail.canSubmitFiling,
         canRegisterAcceptance: detail.canRegisterAcceptance,
         canUploadAcceptanceMaterials: detail.canUploadAcceptanceMaterials,
+        canScheduleHearing: detail.canScheduleHearing,
+        canCorrectHearing: false,
+        hearing: detail.hearing,
         complaint:
           detail.complaint === null
             ? null

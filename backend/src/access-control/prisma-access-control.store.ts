@@ -36,6 +36,8 @@ const actionMap = {
   CASE_COMPLAINT_MAIL: 'case.complaint.mail',
   CASE_FILING_SUBMIT: 'case.filing.submit',
   CASE_ACCEPTANCE_REGISTER: 'case.acceptance.register',
+  CASE_HEARING_SCHEDULE: 'case.hearing.schedule',
+  CASE_HEARING_CORRECT: 'case.hearing.correct',
   CLIENT_CASE_READ: 'client.case.read',
   CLIENT_CASE_COMPLAINT_MAIL: 'client.case.complaint.mail',
   NOTARY_OFFICE_MANAGE: 'notary.office.manage',

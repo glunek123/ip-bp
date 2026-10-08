@@ -35,13 +35,15 @@ export class ClientCaseListItemDto {
       'WAITING_FILING',
       'WAITING_FORMAL_ACCEPTANCE',
       'WAITING_HEARING',
+      'WAITING_JUDGMENT',
     ],
   })
   stage!:
     | 'WAITING_COMPLAINT_STAMP'
     | 'WAITING_FILING'
     | 'WAITING_FORMAL_ACCEPTANCE'
-    | 'WAITING_HEARING';
+    | 'WAITING_HEARING'
+    | 'WAITING_JUDGMENT';
   @ApiProperty() version!: number;
   @ApiProperty() canMailComplaint!: boolean;
   @ApiProperty() rightsHolderName!: string;
