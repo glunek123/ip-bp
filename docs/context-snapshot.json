@@ -1,6 +1,6 @@
 {
   "version": 1,
-  "recordedAt": "2026-10-08T15:05:08.745Z",
+  "recordedAt": "2026-10-08T15:15:06.907Z",
   "files": {
     ".cursor/rules/verified-feature-integration.mdc": "ffd2306612ba6f09749629c5adb9e645f7f37aa6ee27ff1bc1c3d8b14efeca38",
     ".env.example": "07211cde5c2b59efc21b619b752d4c9b871f0980d2d64ca3c146ad6151fd27ca",
@@ -254,8 +254,8 @@
     "backend/src/modules/customers/right-asset.controller.ts": "71f08060d91b1888bd194ae9c7367c234400b4fb023b48fb3fd50f0750a05fc7",
     "backend/src/modules/customers/right-asset.dto.ts": "7d5b504d1ccb23247c75913fe9b77368ec0aa7bd83dea71d8adc20fb5a89baac",
     "backend/src/modules/customers/right-asset.response.dto.ts": "c5effd0061142d31ce639c77e9343d473e7b5b08a09c7b1f87ff41b07114063a",
-    "backend/src/modules/customers/right-asset.service.spec.ts": "02dbed1de2101aa54304b4e54536954060edee4e54d39ad254ef018a4d335a58",
-    "backend/src/modules/customers/right-asset.service.ts": "35b33470e15c8769e160031afd83bdbe8b3a675dc3eab7cb8c795c519e8bcf52",
+    "backend/src/modules/customers/right-asset.service.spec.ts": "820fead23f9ab055a2a34c2d3a154fccb698b95aaa57c687d95952f8cafbe5c8",
+    "backend/src/modules/customers/right-asset.service.ts": "b45a77a53780cfd3c2231df350d13f877a70166e59de7f45747c6d2c3fb4ad89",
     "backend/src/modules/customers/rights-holder.controller.spec.ts": "9e9109ca6c6276ea97ecbfd0bfcb6c08a7d4bd87dbc925fd71f2857a3d27dd4c",
     "backend/src/modules/customers/rights-holder.controller.ts": "dbe00e712059c2bef8811dd50f13605f85f75f446f89c7f4c6fa3813df6e6f84",
     "backend/src/modules/customers/rights-holder.dto.ts": "6274f9dd892eac5a5a39bd887b2bcea4d21db98cffc2c970e38ae61029e93bec",
@@ -416,7 +416,7 @@
     "docs/environment.md": "2c07c5c2ccecb30055e318b6670c8c910d4474e691d7fd1d645016a2d657debf",
     "docs/feature-roadmap.md": "4c7e191e4b436777c834370285d965318ef01f177cd410394f86b8c4eb501a0d",
     "docs/project-status-history-through-2026-09-18.md": "c7c858eb4b2a935ce78a85c75e5d3227691382186101d6ff6911249e38729208",
-    "docs/project-status.md": "4c7dfc9599bd35274158cf10bb3cc7c0ec71bd2c305539ac15753edd35ff1f67",
+    "docs/project-status.md": "c1dc2b27d46bb8f9a00de9b75ab7713e29a54fe37029e7301040733fc1be28a5",
     "docs/security/customer-foundation-q2-review.md": "f5745450cb85aedde92892646c6c824bc9670b8c9bf6f0d9761fe5e46cc6d109",
     "docs/security/local-account-auth-q2-review.md": "4e7b38d73b2597e483340490c788aa034ef6f465baccc12240be7ad2c6ec61f1",
     "docs/spec/v0.1/BUSINESS-REVIEW.md": "950c73ac72470d2e3556fd416701b4486944c1e3ef21c84be11132cbe617c24e",
