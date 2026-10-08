@@ -13,10 +13,10 @@
 - 分支`codex/core-ca-008-judgment-registration`，基线main`4bfeab7ae73a6c0b5455c39da326dba57d5ee4e7`；CA-007已推送并快进集成，原业务候选证据保留。
 - 2026-10-08用户确认受控更正纳入本切片；判决金额和实缴诉讼费只记录已知／待定事实，退费明细及办理状态后置财务，不改原标的、不发起支付。
 - 唯一业务契约为[案件Spec的CA-008](../../spec/v0.1/modules/cases.md#ca-008一审判决登记与受控更正)及[字段材料契约§7](../specs/2026-09-21-core-flow-field-material-contract.md#7-core-ca字段与动作契约)。本计划不重复动态验收台账。
-- 风险暂定Level 2：普通非破坏前向迁移、独立增量Action，复用已有授权／事务／审计／同案锁，不修改其计算机制。schema／核心Command仍由Sol实施并独立Sol审查；改变共享安全／审计机制或历史数据重写则升级Level 3。集成后必须独立Sol Final Review；真实PG隔离／并发／回滚及迁移、真实Chromium操作／刷新不可省略。
+- 风险Level 3：实现需扩展共享审计／上传身份函数，并将JUDGMENT附件引用改为按事实事件唯一；其他材料保持原唯一语义。schema／核心Command由Sol实施并独立Sol审查，集成后必须独立Sol Final Review；稳定候选运行完整`pnpm verify`及适用全量隔离数据库／Chromium验收。真实PG隔离／并发／回滚及迁移、真实操作／刷新不可省略。
 - 日期`YYYY-MM-DD`，业务时区`Asia/Shanghai`；金额十进制字符串，KNOWN非负可为0，PENDING必须null，不用JS浮点累计，不把系统时间当收到日期。
 - 登记／更正均保持`WAITING_JUDGMENT`；不实现CA-009、二审、执行、财务指令或任意阶段编辑。客户／公证处原可见范围不扩展；律师无异常更正权。
-- 新前向迁移，不改82份已执行迁移。先在独立测试库随机临时schema验证空链及82份支持schema升级，再部署测试public；禁止reset、开发／生产迁移、卷清理和凭据输出。
+- 新前向迁移，不改82份历史迁移或本切片已执行的200～250迁移，不手改成功账本／checksum。新增260事务化前向修复并严格核对结构：正常已完成路径仅校验；失败路径停应用写入，使用既有Prisma `db execute`补齐、核对，再对确实补齐的迁移`migrate resolve --applied`并继续deploy。结构异常或重复数据时失败关闭，不自动改数据。先在独立测试库随机临时schema验证空链、82份支持schema升级及实际失败恢复，再部署测试public；禁止reset、开发／生产迁移、卷清理和凭据输出。
 - 每个PowerShell进程先加载`Use-ProjectRuntime.ps1`并核对Node v24.21.0／pnpm11.27.0。一个checkout一个写入者；共享DB、迁移、清理及故障注入串行。
 - 本切片开发不自动推送、合并或部署；CA-007推送授权不被扩大为尚未验收的CA-008集成。
 
@@ -58,6 +58,7 @@ type CaseJudgmentCommandResult = {
 - Modify: `backend/src/access-control/{permission-catalog,access-control.service,prisma-access-control.store,organization.service.spec}.ts`中本动作必要接线，不改共享权限计算。
 - Modify: `backend/src/modules/materials/{material.dto,material.service}.ts`及直接spec、`backend/src/core-ld-openapi.spec.ts`、`scripts/prisma-model-owners.mjs`。
 - Create: `tests/support/case-judgment-{database,migration}.{mjs,d.mts}`、`tests/e2e/case-judgment-{database,migration}.spec.ts`。
+- Create: `backend/prisma/migrations/20261008026000_repair_case_judgment_deployment/migration.sql`，覆盖240索引／函数及250约束／索引各失败前缀；修复整体为一个事务，定义不符、无效索引或重复数据均拒绝，不删除／重写事实。
 - 既有测试helper只因新增Action／category或支持schema边界实际失配时最小修复，不改旧断言／超时／重试。
 
 **Interfaces:** Consumes已有授权、案锁、材料验证／冻结与RepeatableRead；produces上节DTO、`CaseJudgmentService`、两内部及一律师路由、详情能力／事实和测试helper。新`CASE_JUDGMENT_REGISTER`从受理登记逐Grant复制，`CASE_JUDGMENT_CORRECT`从开庭纠错逐Grant复制；外部客户／公证处无本Slice权限。
@@ -76,7 +77,7 @@ expect(snapshot.currentJudgmentId).toBe(result.judgmentId);
 
 - [ ] **Step 2:** 运行`pnpm --filter @dev-cor/backend test src/modules/cases/case-judgment.service.spec.ts src/modules/cases/case-hearing.service.spec.ts`，保存RED真实失败原因；不以缺依赖／语法错误充当行为RED。
 - [ ] **Step 3:** 实现DTO严格输入、服务统一锁顺序、事务新事实／冻结／审计／回执及CASE版本；只新增前向迁移和必要授权目录／材料接线。日期不早于acceptedAt、不晚于北京时间今天，状态值错配、负数及非法格式拒绝，金额规范化复用既有逻辑。
-- [ ] **Step 4:** 先运行临时schema迁移专项`pnpm test:e2e tests/e2e/case-judgment-migration.spec.ts --workers=1`，成功再运行`pnpm db:test:migrate:deploy`及数据库专项`pnpm test:e2e tests/e2e/case-judgment-database.spec.ts tests/e2e/case-hearing-database.spec.ts --workers=1`；保留故障注入退出和正常结果，不并行共享状态。
+- [ ] **Step 4:** 先运行临时schema迁移专项`pnpm test:e2e tests/e2e/case-judgment-migration.spec.ts --workers=1`，成功再运行`pnpm db:test:migrate:deploy`及数据库专项`pnpm test:e2e tests/e2e/case-judgment-database.spec.ts tests/e2e/case-hearing-database.spec.ts --workers=1`。经真实Prisma入口证明240／250中途失败与前向补齐／对账／继续升级；保留原部分DDL失败证据，不伪称旧迁移原子回滚，补测260自身失败原子、重复执行及结构／重复数据反例。保留故障注入退出和正常结果，不并行共享状态。
 - [ ] **Step 5:** 聚焦后端`pnpm --filter @dev-cor/backend test src/modules/cases src/modules/materials src/access-control src/core-ld-openapi.spec.ts`及后端typecheck、受影响格式／Lint；自审、提交本Task文件，报告接口实况和RED/GREEN／PG证据到`.local/case-judgment/task-1-report.md`。不得修改状态Spec或提前标完成。
 - [ ] **Step 6:** Root固定Task累计diff，由独立Sol审查权限、事实链、移植约束、材料生命周期及锁竞争；修复后原主体补审，C／I／M均0、ACCEPTED后才集成Task 2。
 
@@ -103,8 +104,8 @@ expect(snapshot.currentJudgmentId).toBe(result.judgmentId);
 ## 稳定候选与收口（Root）
 
 - [ ] 检查报告／累计diff及真实已实现契约，独立Sol Final Review；补审关闭全部finding，再核对漂移、标准`pnpm context:record`、固定干净commit／tree。
-- [ ] 本Slice暂无正式scope；Level 2按真实package入口逐项运行后端cases／materials／access-control／OpenAPI、前端cases／materials／organization／案件壳层相关聚焦集成测试、`pnpm check:fast`、受影响格式、`pnpm spec:check`／`context:check:strict`、双端构建。
-- [ ] 固定候选串行运行新判决迁移／数据库／浏览器三文件，加已有开庭数据库／浏览器、律师和材料生命周期受影响回归。根据实际影响补充明确文件选择器，记录实际集合；无法证明影响范围或出现共享机制修改时回退完整`pnpm verify`与适用全量数据库／Chromium，不伪造scope。
+- [ ] 本Slice暂无正式scope，不伪造scope。开发循环用聚焦测试和`pnpm check:fast`反馈；Level 3稳定候选直接执行完整`pnpm verify`，不在同tree紧邻重复其已包含的静态、单元、格式或构建检查。
+- [ ] 固定候选串行执行`pnpm test:e2e:full --workers=1`，覆盖新判决迁移／数据库／浏览器，以及既有开庭、律师、身份和材料生命周期。先证明空库、82份支持schema升级、实际Prisma部署失败恢复，再进入正式门禁；不以仅pg整份SQL执行的结果证明Prisma迁移原子性。
 - [ ] 同tree／输入／环境的可信聚焦结果可复用，不为收口重复Worker测试；发现实质变化则补审与复验。正式期间禁止代码／测试／文档写入，不提前标通过。
 - [ ] 原始退出／时长／非秘密环境证据保存在`.local/case-judgment/`；确认UI／API／PG／权限隔离／迁移／真实浏览器和Review全部齐备后，才在roadmap／VALIDATION及必要恢复摘要补实际完成事实，检查累计收口diff并走现有文档专项。
 - [ ] 本轮不领取CA-009，不擅自推送或合并CA-008。MVP余量维持路线图既有口径，外部补录、B13/B15、外围范围及生产条件不被默许删除。
