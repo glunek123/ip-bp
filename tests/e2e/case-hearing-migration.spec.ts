@@ -6,7 +6,7 @@ test('CA-007 empty chain, old facts, scoped grants, failed migration retry, and 
   const result = await verifyCaseHearingMigration();
   expect(result).toEqual({
     previous: 76,
-    total: 80,
+    total: 82,
     emptyFactTable: 1,
     oldAcceptance: 1,
     oldReceipt: 1,

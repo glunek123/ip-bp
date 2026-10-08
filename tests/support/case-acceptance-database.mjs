@@ -3,6 +3,7 @@ import { createRequire } from 'node:module';
 import { resolve } from 'node:path';
 import { validateIsolatedTestDatabaseUrl } from '../../scripts/test-environment.mjs';
 import { coreLeadFixtures } from './core-lead-database.mjs';
+import { clearCoreCaseHearingFixture } from './case-hearing-database.mjs';
 
 const requireBackend = createRequire(
   resolve(process.cwd(), 'backend/package.json'),
@@ -92,6 +93,10 @@ export async function revokeCaseAcceptanceGrant() {
 }
 export async function clearCaseAcceptanceFixture() {
   await clearCaseAcceptanceFault();
+  await clearCoreCaseHearingFixture([
+    coreLeadFixtures.departmentA,
+    coreLeadFixtures.departmentB,
+  ]);
   await withClient(async (client) => {
     await client.query('BEGIN');
     try {

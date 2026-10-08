@@ -29,6 +29,311 @@ if (!databaseUrl || process.env.NODE_ENV !== 'test')
   throw new Error('Isolated test database required');
 validateIsolatedTestDatabaseUrl(databaseUrl, { allowRandomPort: true });
 
+const coreHearingOwners = Object.freeze({
+  '10000000-0000-4000-8000-000000000001': {
+    userId: '20000000-0000-4000-8000-000000000001',
+    roleId: '30000000-0000-4000-8000-000000000001',
+  },
+  '10000000-0000-4000-8000-000000000002': {
+    userId: '20000000-0000-4000-8000-000000000002',
+    roleId: '30000000-0000-4000-8000-000000000002',
+  },
+});
+
+export async function seedCoreCaseHearingFixture(departmentId) {
+  const owner = coreHearingOwners[departmentId];
+  if (!owner)
+    throw new Error(
+      'Only fixed core-lead test departments may own this fixture',
+    );
+  const client = new Client({ connectionString: databaseUrl });
+  await client.connect();
+  const caseId = randomUUID(),
+    acceptanceAuditId = randomUUID();
+  try {
+    const context = (
+      await client.query(
+        'SELECT current_database() AS db, current_schema() AS schema',
+      )
+    ).rows[0];
+    if (context.db !== 'dev_cor_test' || context.schema !== 'public')
+      throw new Error(
+        'Hearing fixture requires the isolated public test schema',
+      );
+    await client.query(
+      "INSERT INTO role_grants(id,role_template_id,action,scope) VALUES ($1,$2,'case.hearing.schedule','DEPARTMENT'),($3,$2,'case.hearing.correct','DEPARTMENT') ON CONFLICT (role_template_id,action,scope) DO NOTHING",
+      [randomUUID(), owner.roleId, randomUUID()],
+    );
+    await client.query('BEGIN');
+    try {
+      await client.query('SET LOCAL session_replication_role = replica');
+      await client.query(
+        "INSERT INTO cases(id,business_no,department_id,source_lead_id,source_notary_matter_id,certificate_id,customer_id,rights_holder_id,responsible_user_id,stage,version,matched_at,complaint_amount_state,complaint_amount,complaint_submitted_at,complaint_submitted_by_user_id,court_case_no) VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9,'WAITING_HEARING',7,now(),'KNOWN',123.45,now(),$9,'CA007-cleanup')",
+        [
+          caseId,
+          `CA007-CLEAN-${caseId}`,
+          departmentId,
+          randomUUID(),
+          randomUUID(),
+          randomUUID(),
+          randomUUID(),
+          randomUUID(),
+          owner.userId,
+        ],
+      );
+      await client.query(
+        "INSERT INTO audit_events(id,department_id,actor_user_id,internal_actor_user_id,resource_type,resource_id,action) VALUES ($1,$2,$3,$3,'CASE',$4,'case.acceptance.registered')",
+        [acceptanceAuditId, departmentId, owner.userId, caseId],
+      );
+      await client.query(
+        "INSERT INTO case_acceptances(id,department_id,case_id,accepted_at,court_case_no,recorded_by_user_id,audit_event_id) VALUES ($1,$2,$3,'2026-10-01','CA007-cleanup',$4,$5)",
+        [randomUUID(), departmentId, caseId, owner.userId, acceptanceAuditId],
+      );
+      await client.query('COMMIT');
+    } catch (error) {
+      await client.query('ROLLBACK').catch(() => undefined);
+      throw error;
+    }
+    if (
+      (await client.query('SHOW session_replication_role')).rows[0]
+        .session_replication_role !== 'origin'
+    )
+      throw new Error('Fixture trigger role was not restored');
+  } finally {
+    await client.end();
+  }
+  const database = new PrismaClient({
+    adapter: new PrismaPg({ connectionString: databaseUrl }),
+  });
+  try {
+    const signal = new CaseHearingSignal();
+    const clock = { now: () => new Date('2026-10-09T00:00:00.000Z') };
+    const access = new AccessControlService(
+      new PrismaAccessControlStore(database),
+    );
+    const hearing = new CaseHearingService(database, access, signal, clock);
+    const actor = {
+      userId: owner.userId,
+      departmentId,
+      authorizationRevision: 1,
+    };
+    await hearing.schedule(actor, caseId, {
+      expectedVersion: 7,
+      idempotencyKey: `cleanup-schedule-${caseId}`,
+      hearingAt: '2026-10-08',
+    });
+    const advanced = await hearing.advanceDue(clock.now());
+    if (advanced.advanced !== 1 || advanced.failed !== 0)
+      throw new Error('Fixture hearing did not advance');
+    await hearing.correct(actor, caseId, {
+      expectedVersion: 9,
+      idempotencyKey: `cleanup-correct-${caseId}`,
+      hearingAt: '2026-10-02',
+      reason: '清理测试保留历史',
+    });
+    return caseId;
+  } finally {
+    await database.$disconnect();
+  }
+}
+
+export async function inspectCoreCaseHearingFixture(caseId) {
+  const client = new Client({ connectionString: databaseUrl });
+  await client.connect();
+  try {
+    const context = (
+      await client.query(
+        'SELECT current_database() AS db, current_schema() AS schema',
+      )
+    ).rows[0];
+    if (context.db !== 'dev_cor_test' || context.schema !== 'public')
+      throw new Error('Unexpected hearing fixture schema');
+    const count = async (table) =>
+      Number(
+        (
+          await client.query(
+            `SELECT COUNT(*) AS n FROM "${table}" WHERE case_id=$1`,
+            [caseId],
+          )
+        ).rows[0].n,
+      );
+    return {
+      arrangements: await count('case_hearing_arrangements'),
+      advances: await count('case_hearing_advances'),
+      corrections: await count('case_hearing_corrections'),
+    };
+  } finally {
+    await client.end();
+  }
+}
+
+/** Remove only CA-007 facts owned by the two fixed core-lead test departments. */
+export async function clearCoreCaseHearingFixture(departmentIds) {
+  if (
+    !Array.isArray(departmentIds) ||
+    departmentIds.length < 1 ||
+    new Set(departmentIds).size !== departmentIds.length ||
+    departmentIds.some((id) => !Object.hasOwn(coreHearingOwners, id))
+  )
+    throw new Error('Unexpected hearing cleanup departments');
+  const client = new Client({ connectionString: databaseUrl });
+  await client.connect();
+  const triggerGuards = [
+    ['case_hearing_receipts', 'case_hearing_receipts_immutable'],
+    ['case_hearing_corrections', 'case_hearing_corrections_immutable'],
+    ['case_hearing_advances', 'case_hearing_advances_immutable'],
+    ['case_hearing_arrangements', 'case_hearing_arrangements_immutable'],
+    ['audit_events', 'case_hearing_audit_immutable'],
+  ];
+  try {
+    const context = (
+      await client.query(
+        'SELECT current_database() AS db, current_schema() AS schema',
+      )
+    ).rows[0];
+    if (context.db !== 'dev_cor_test' || context.schema !== 'public')
+      throw new Error(
+        'Hearing cleanup requires the isolated public test schema',
+      );
+    const present = (
+      await client.query(
+        `SELECT EXISTS (
+      SELECT 1 FROM case_hearing_arrangements WHERE department_id=ANY($1::uuid[])
+      UNION ALL SELECT 1 FROM case_hearing_advances WHERE department_id=ANY($1::uuid[])
+      UNION ALL SELECT 1 FROM case_hearing_corrections WHERE department_id=ANY($1::uuid[])
+      UNION ALL SELECT 1 FROM case_hearing_receipts WHERE department_id=ANY($1::uuid[])
+      UNION ALL SELECT 1 FROM audit_events WHERE department_id=ANY($1::uuid[])
+        AND action IN ('case.hearing.scheduled','case.hearing.corrected','case.hearing.auto_advanced')
+      UNION ALL SELECT 1 FROM cases WHERE department_id=ANY($1::uuid[])
+        AND (current_hearing_arrangement_id IS NOT NULL OR current_hearing_advance_id IS NOT NULL)
+    ) AS present`,
+        [departmentIds],
+      )
+    ).rows[0].present;
+    if (!present) return;
+    await client.query('BEGIN');
+    try {
+      for (const [table, trigger] of triggerGuards) {
+        const state = (
+          await client.query(
+            'SELECT tgenabled FROM pg_trigger WHERE tgrelid=$1::regclass AND tgname=$2',
+            [table, trigger],
+          )
+        ).rows[0]?.tgenabled;
+        if (state !== 'O')
+          throw new Error(`Hearing cleanup guard unavailable: ${trigger}`);
+      }
+      await client.query(
+        'UPDATE cases SET current_hearing_arrangement_id=NULL,current_hearing_advance_id=NULL WHERE department_id=ANY($1::uuid[]) AND (current_hearing_arrangement_id IS NOT NULL OR current_hearing_advance_id IS NOT NULL)',
+        [departmentIds],
+      );
+      for (const [table, trigger] of triggerGuards)
+        await client.query(
+          `ALTER TABLE "${table}" DISABLE TRIGGER "${trigger}"`,
+        );
+      for (const table of [
+        'case_hearing_receipts',
+        'case_hearing_corrections',
+        'case_hearing_advances',
+        'case_hearing_arrangements',
+      ])
+        await client.query(
+          `DELETE FROM "${table}" WHERE department_id=ANY($1::uuid[])`,
+          [departmentIds],
+        );
+      await client.query(
+        "DELETE FROM audit_events WHERE department_id=ANY($1::uuid[]) AND action IN ('case.hearing.scheduled','case.hearing.corrected','case.hearing.auto_advanced')",
+        [departmentIds],
+      );
+      for (const [table, trigger] of [...triggerGuards].reverse())
+        await client.query(
+          `ALTER TABLE "${table}" ENABLE TRIGGER "${trigger}"`,
+        );
+      for (const [table, trigger] of triggerGuards) {
+        const state = (
+          await client.query(
+            'SELECT tgenabled FROM pg_trigger WHERE tgrelid=$1::regclass AND tgname=$2',
+            [table, trigger],
+          )
+        ).rows[0]?.tgenabled;
+        if (state !== 'O')
+          throw new Error(`Hearing cleanup guard not restored: ${trigger}`);
+      }
+      await client.query('COMMIT');
+    } catch (error) {
+      await client.query('ROLLBACK').catch(() => undefined);
+      throw error;
+    }
+  } finally {
+    await client.end();
+  }
+}
+
+export async function inspectCoreCaseHearingGuards() {
+  const client = new Client({ connectionString: databaseUrl });
+  await client.connect();
+  try {
+    const context = (
+      await client.query(
+        'SELECT current_database() AS db, current_schema() AS schema',
+      )
+    ).rows[0];
+    if (context.db !== 'dev_cor_test' || context.schema !== 'public')
+      throw new Error('Unexpected hearing guard inspection target');
+    const rows = await client.query(`SELECT tgname,tgenabled FROM pg_trigger
+      WHERE tgname IN ('case_hearing_receipts_immutable','case_hearing_corrections_immutable',
+        'case_hearing_advances_immutable','case_hearing_arrangements_immutable',
+        'case_hearing_audit_immutable') ORDER BY tgname`);
+    return rows.rows.map(({ tgname, tgenabled }) => ({
+      name: tgname,
+      enabled: tgenabled,
+    }));
+  } finally {
+    await client.end();
+  }
+}
+
+export async function withCoreCaseHearingCleanupFault(operation) {
+  const client = new Client({ connectionString: databaseUrl });
+  const suffix = randomUUID().replaceAll('-', '');
+  const functionName = `ca007_cleanup_reject_${suffix}`;
+  await client.connect();
+  let functionCreated = false;
+  let triggerCreated = false;
+  try {
+    const context = (
+      await client.query(
+        'SELECT current_database() AS db, current_schema() AS schema',
+      )
+    ).rows[0];
+    if (context.db !== 'dev_cor_test' || context.schema !== 'public')
+      throw new Error('Unexpected hearing cleanup fault target');
+    await client.query(`CREATE FUNCTION "${functionName}"() RETURNS trigger LANGUAGE plpgsql AS $$
+      BEGIN
+        IF OLD."department_id" = '10000000-0000-4000-8000-000000000001'::uuid THEN
+          RAISE EXCEPTION 'injected hearing cleanup failure' USING ERRCODE='P0001';
+        END IF;
+        RETURN OLD;
+      END $$`);
+    functionCreated = true;
+    await client.query(`CREATE TRIGGER "${functionName}" BEFORE DELETE ON case_hearing_receipts
+      FOR EACH ROW EXECUTE FUNCTION "${functionName}"()`);
+    triggerCreated = true;
+    return await operation();
+  } finally {
+    try {
+      if (triggerCreated)
+        await client.query(
+          `DROP TRIGGER "${functionName}" ON case_hearing_receipts`,
+        );
+      if (functionCreated)
+        await client.query(`DROP FUNCTION "${functionName}"()`);
+    } finally {
+      await client.end();
+    }
+  }
+}
+
 export async function verifyCaseHearingDatabase() {
   const schema = `ca007_db_${randomUUID().replaceAll('-', '')}`;
   const migrations = resolve(root, 'backend/prisma/migrations');
@@ -36,8 +341,8 @@ export async function verifyCaseHearingDatabase() {
     .filter((name) => /^\d{14}_/u.test(name))
     .sort();
   if (
-    names.length !== 80 ||
-    names.at(-1) !== '20261008013000_allow_lawyer_hearing_schedule_audit'
+    names.length !== 82 ||
+    names.at(-1) !== '20261008015000_require_latest_case_hearing_chain'
   )
     throw new Error('Unexpected migration chain');
   const admin = new Client({ connectionString: databaseUrl });
@@ -191,7 +496,8 @@ export async function verifyCaseHearingDatabase() {
       await admin.query('DROP FUNCTION ca007_reject_write()');
     };
     const signal1 = new CaseHearingSignal();
-    const clock1 = { now: () => new Date('2026-10-08T10:00:00.000Z') };
+    let clock1Time = new Date('2026-10-08T10:00:00.000Z');
+    const clock1 = { now: () => clock1Time };
     const service1 = new CaseHearingService(database, access, signal1, clock1);
     const scheduler1 = new CaseHearingSchedulerService(
       service1,
@@ -285,6 +591,7 @@ export async function verifyCaseHearingDatabase() {
     const beforeDue = (
       await service1.advanceDue(new Date('2026-10-08T15:59:59.999Z'))
     ).advanced;
+    clock1Time = new Date('2026-10-08T16:00:00.000Z');
     await inject('audit_events', "NEW.action = 'case.hearing.auto_advanced'");
     const failedAdvance = await service1.advanceDue(
       new Date('2026-10-08T16:00:00.000Z'),
@@ -379,11 +686,22 @@ export async function verifyCaseHearingDatabase() {
       where: { id: caseId },
       select: { currentHearingAdvanceId: true },
     });
+    const againOverdue = await service2.correct(actor, caseId, {
+      expectedVersion: 10,
+      idempotencyKey: 'correct-overdue-again',
+      hearingAt: '2026-10-03',
+      reason: '法院再次核对旧日期',
+    });
+    const afterAgainOverdue = await database.case.findUnique({
+      where: { id: caseId },
+      select: { currentHearingAdvanceId: true },
+    });
     const signal3 = new CaseHearingSignal();
-    const clock3 = { now: () => new Date('2026-10-08T17:00:00.000Z') };
+    let clock3Time = new Date('2026-10-08T17:00:00.000Z');
+    const clock3 = { now: () => clock3Time };
     const service3 = new CaseHearingService(database, access, signal3, clock3);
     const future = await service3.correct(actor, caseId, {
-      expectedVersion: 10,
+      expectedVersion: 11,
       idempotencyKey: 'correct-future',
       hearingAt: '2026-10-09',
       reason: '法院再次通知改期',
@@ -392,9 +710,8 @@ export async function verifyCaseHearingDatabase() {
       where: { id: caseId },
       select: { currentHearingAdvanceId: true },
     });
-    const secondAdvanced = (
-      await service3.advanceDue(new Date('2026-10-09T16:00:00.000Z'))
-    ).advanced;
+    clock3Time = new Date('2026-10-09T16:00:00.000Z');
+    const secondAdvanced = (await service3.advanceDue(clock3Time)).advanced;
     const finalAdvanceCount = await database.caseHearingAdvance.count({
       where: { caseId },
     });
@@ -438,7 +755,7 @@ export async function verifyCaseHearingDatabase() {
     ]);
     const finalCase = await database.case.findUnique({
       where: { id: caseId },
-      select: { version: true },
+      select: { version: true, currentHearingAdvanceId: true },
     });
     const directArrangement = async (hearingAt, auditAction) => {
       const auditId = randomUUID(),
@@ -493,6 +810,138 @@ export async function verifyCaseHearingDatabase() {
         [randomUUID(), departmentId, caseId, saved.arrangementId, randomUUID()],
       ],
     ]);
+    const probeCorrection = async ({
+      priorAdvanceId,
+      fromVersion,
+      hearingAt,
+      resultStage,
+      auditReason,
+      factReason,
+      priorArrangementId = future.arrangementId,
+      auditOverrides = {},
+    }) => {
+      const auditId = randomUUID(),
+        newArrangementId = randomUUID();
+      const details = {
+        arrangementId: newArrangementId,
+        hearingAt,
+        fromVersion,
+        toVersion: fromVersion + 1,
+        reason: auditReason,
+        priorArrangementId,
+        priorAdvanceId,
+        resultStage,
+        ...auditOverrides,
+      };
+      const steps = [
+        [
+          "INSERT INTO audit_events(id,department_id,actor_user_id,internal_actor_user_id,resource_type,resource_id,action,details) VALUES ($1,$2,$3,$3,'CASE',$4,'case.hearing.corrected',$5)",
+          [auditId, departmentId, userId, caseId, details],
+        ],
+        [
+          "INSERT INTO case_hearing_arrangements(id,department_id,case_id,hearing_at,source,recorded_at,recorded_by_user_id,from_version,to_version,audit_event_id) VALUES ($1,$2,$3,$4,'CORRECTION','2026-10-10T00:00:00Z',$5,$6,$7,$8)",
+          [
+            newArrangementId,
+            departmentId,
+            caseId,
+            hearingAt,
+            userId,
+            fromVersion,
+            fromVersion + 1,
+            auditId,
+          ],
+        ],
+        [
+          "INSERT INTO case_hearing_corrections(id,department_id,case_id,prior_arrangement_id,prior_advance_id,new_arrangement_id,reason,recorded_at,recorded_by_user_id,from_version,to_version,result_stage,audit_event_id) VALUES ($1,$2,$3,$4,$5,$6,$7,'2026-10-10T00:00:00Z',$8,$9,$10,$11,$12)",
+          [
+            randomUUID(),
+            departmentId,
+            caseId,
+            priorArrangementId,
+            priorAdvanceId,
+            newArrangementId,
+            factReason,
+            userId,
+            fromVersion,
+            fromVersion + 1,
+            resultStage,
+            auditId,
+          ],
+        ],
+        [
+          'UPDATE cases SET stage=$1,version=$2,current_hearing_arrangement_id=$3,current_hearing_advance_id=$4 WHERE id=$5',
+          [
+            resultStage,
+            fromVersion + 1,
+            newArrangementId,
+            resultStage === 'WAITING_JUDGMENT' ? priorAdvanceId : null,
+            caseId,
+          ],
+        ],
+      ];
+      try {
+        await admin.query('BEGIN');
+        for (const [sql, params] of steps) await admin.query(sql, params);
+        await admin.query('SET CONSTRAINTS ALL IMMEDIATE');
+        await admin.query('ROLLBACK');
+        return null;
+      } catch (error) {
+        await admin.query('ROLLBACK').catch(() => undefined);
+        return error.code ?? null;
+      }
+    };
+    const auditReasonMismatch = await probeCorrection({
+      priorAdvanceId: finalCase.currentHearingAdvanceId,
+      fromVersion: finalCase.version,
+      hearingAt: '2026-10-02',
+      resultStage: 'WAITING_JUDGMENT',
+      auditReason: '审计错记原因',
+      factReason: '法院核实原因',
+    });
+    const auditPriorArrangementMismatch = await probeCorrection({
+      priorAdvanceId: finalCase.currentHearingAdvanceId,
+      fromVersion: finalCase.version,
+      hearingAt: '2026-10-02',
+      resultStage: 'WAITING_JUDGMENT',
+      auditReason: '法院核实原因',
+      factReason: '法院核实原因',
+      auditOverrides: { priorArrangementId: randomUUID() },
+    });
+    const auditPriorAdvanceMismatch = await probeCorrection({
+      priorAdvanceId: finalCase.currentHearingAdvanceId,
+      fromVersion: finalCase.version,
+      hearingAt: '2026-10-02',
+      resultStage: 'WAITING_JUDGMENT',
+      auditReason: '法院核实原因',
+      factReason: '法院核实原因',
+      auditOverrides: { priorAdvanceId: randomUUID() },
+    });
+    const auditResultStageMismatch = await probeCorrection({
+      priorAdvanceId: finalCase.currentHearingAdvanceId,
+      fromVersion: finalCase.version,
+      hearingAt: '2026-10-02',
+      resultStage: 'WAITING_JUDGMENT',
+      auditReason: '法院核实原因',
+      factReason: '法院核实原因',
+      auditOverrides: { resultStage: 'WAITING_HEARING' },
+    });
+    const staleAdvanceChain = await probeCorrection({
+      priorAdvanceId: afterStartup.currentHearingAdvanceId,
+      fromVersion: finalCase.version - 1,
+      hearingAt: null,
+      resultStage: 'WAITING_HEARING',
+      auditReason: '法院再次通知',
+      factReason: '法院再次通知',
+    });
+    const staleJudgmentChain = await probeCorrection({
+      priorArrangementId: againOverdue.arrangementId,
+      priorAdvanceId: afterStartup.currentHearingAdvanceId,
+      fromVersion: againOverdue.version,
+      hearingAt: null,
+      resultStage: 'WAITING_HEARING',
+      auditReason: '伪造旧纠错链',
+      factReason: '伪造旧纠错链',
+    });
     return {
       initialVersion: saved.version,
       lawyerScheduled,
@@ -514,6 +963,10 @@ export async function verifyCaseHearingDatabase() {
       overdueAdvanceSame:
         afterOverdue?.currentHearingAdvanceId ===
         afterStartup?.currentHearingAdvanceId,
+      againOverdueStage: againOverdue.stage,
+      againAdvanceSame:
+        afterAgainOverdue?.currentHearingAdvanceId ===
+        afterStartup?.currentHearingAdvanceId,
       futureStage: future.stage,
       futureAdvanceNull: afterFuture?.currentHearingAdvanceId === null,
       secondAdvanced,
@@ -527,6 +980,12 @@ export async function verifyCaseHearingDatabase() {
       earlyDateSQL,
       mismatchAuditSQL,
       duplicateAdvance,
+      auditReasonMismatch,
+      auditPriorArrangementMismatch,
+      auditPriorAdvanceMismatch,
+      auditResultStageMismatch,
+      staleAdvanceChain,
+      staleJudgmentChain,
     };
   } finally {
     if (database) await database.$disconnect();

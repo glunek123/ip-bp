@@ -4,6 +4,7 @@ import { createHash, randomUUID } from 'node:crypto';
 import { mkdir, readFile, readdir, rm } from 'node:fs/promises';
 import { setImmediate as waitForImmediate } from 'node:timers/promises';
 import { validateIsolatedTestDatabaseUrl } from '../../scripts/test-environment.mjs';
+import { clearCoreCaseHearingFixture } from './case-hearing-database.mjs';
 
 const requireFromBackend = createRequire(
   resolve(process.cwd(), 'backend/package.json'),
@@ -370,6 +371,7 @@ async function clearDatabase() {
     coreLeadFixtures.departmentA,
     coreLeadFixtures.departmentB,
   ];
+  await clearCoreCaseHearingFixture(departmentIds);
   await dropFaults();
   const immutableTables = [
     'client_lead_review_receipts',

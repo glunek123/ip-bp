@@ -5,6 +5,7 @@ import {
   Inject,
   Injectable,
   InternalServerErrorException,
+  Logger,
   NotFoundException,
 } from '@nestjs/common';
 import { createHash, randomUUID } from 'node:crypto';
@@ -39,6 +40,7 @@ const isoDate = (date: Date | null) => date?.toISOString().slice(0, 10) ?? null;
 
 @Injectable()
 export class CaseHearingService {
+  private readonly logger = new Logger(CaseHearingService.name);
   constructor(
     private readonly database: DatabaseService,
     private readonly access: AccessControlService,
@@ -389,7 +391,6 @@ export class CaseHearingService {
               record?.stage !== 'WAITING_HEARING' ||
               record.currentHearingAdvanceId !== null ||
               arrangement?.hearingAt == null ||
-              !hearingIsDue(isoDate(arrangement.hearingAt), now) ||
               record.version !== arrangement.toVersion
             )
               return false;
@@ -402,7 +403,13 @@ export class CaseHearingService {
               'SELECT (("hearing_at" + 1)::timestamp AT TIME ZONE \'Asia/Shanghai\') AS due_at FROM "case_hearing_arrangements" WHERE "id" = $1::uuid',
               arrangement.id,
             );
-            if (due.length !== 1 || due[0].due_at > now) return false;
+            const executedAt = this.clock.now();
+            if (
+              due.length !== 1 ||
+              due[0].due_at > executedAt ||
+              !hearingIsDue(isoDate(arrangement.hearingAt), executedAt)
+            )
+              return false;
             const advanceId = randomUUID();
             const audit = await tx.auditEvent.create({
               data: {
@@ -415,7 +422,7 @@ export class CaseHearingService {
                   advanceId,
                   arrangementId: arrangement.id,
                   dueAt: due[0].due_at.toISOString(),
-                  executedAt: now.toISOString(),
+                  executedAt: executedAt.toISOString(),
                   fromVersion: record.version,
                   toVersion: record.version + 1,
                 },
@@ -429,7 +436,7 @@ export class CaseHearingService {
                 caseId: candidate.id,
                 arrangementId: arrangement.id,
                 dueAt: due[0].due_at,
-                executedAt: now,
+                executedAt,
                 fromVersion: record.version,
                 toVersion: record.version + 1,
                 auditEventId: audit.id,
@@ -455,8 +462,11 @@ export class CaseHearingService {
           { isolationLevel: 'Serializable' },
         );
         if (changed) advanced++;
-      } catch {
+      } catch (error) {
         failed++;
+        this.logger.error(
+          `Hearing advance failed case=${candidate.id} code=${this.safeErrorCode(error)}`,
+        );
       }
     }
     return { advanced, failed };
@@ -551,5 +561,27 @@ export class CaseHearingService {
       value.meta?.driverAdapterError?.cause?.sqlState === code ||
       this.hasCode(value.cause, code)
     );
+  }
+
+  private safeErrorCode(error: unknown): string {
+    if (error === null || typeof error !== 'object') return 'UNKNOWN';
+    const value = error as {
+      code?: unknown;
+      cause?: unknown;
+      meta?: {
+        driverAdapterError?: {
+          cause?: { originalCode?: unknown; sqlState?: unknown };
+        };
+      };
+    };
+    for (const candidate of [
+      value.code,
+      value.meta?.driverAdapterError?.cause?.originalCode,
+      value.meta?.driverAdapterError?.cause?.sqlState,
+    ]) {
+      if (typeof candidate === 'string' && /^[A-Z0-9_]{1,16}$/u.test(candidate))
+        return candidate;
+    }
+    return this.safeErrorCode(value.cause);
   }
 }

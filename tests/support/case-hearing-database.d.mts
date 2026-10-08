@@ -15,6 +15,8 @@ export function verifyCaseHearingDatabase(): Promise<{
   rollbackCorrectionClean: boolean;
   overdueStage: string;
   overdueAdvanceSame: boolean;
+  againOverdueStage: string;
+  againAdvanceSame: boolean;
   futureStage: string;
   futureAdvanceNull: boolean;
   secondAdvanced: number;
@@ -28,4 +30,28 @@ export function verifyCaseHearingDatabase(): Promise<{
   earlyDateSQL: string | null;
   mismatchAuditSQL: string | null;
   duplicateAdvance: string | null;
+  auditReasonMismatch: string | null;
+  auditPriorArrangementMismatch: string | null;
+  auditPriorAdvanceMismatch: string | null;
+  auditResultStageMismatch: string | null;
+  staleAdvanceChain: string | null;
+  staleJudgmentChain: string | null;
 }>;
+
+export function seedCoreCaseHearingFixture(
+  departmentId: string,
+): Promise<string>;
+export function inspectCoreCaseHearingFixture(caseId: string): Promise<{
+  arrangements: number;
+  advances: number;
+  corrections: number;
+}>;
+export function clearCoreCaseHearingFixture(
+  departmentIds: string[],
+): Promise<void>;
+export function inspectCoreCaseHearingGuards(): Promise<
+  Array<{ name: string; enabled: string }>
+>;
+export function withCoreCaseHearingCleanupFault<T>(
+  operation: () => Promise<T>,
+): Promise<T>;

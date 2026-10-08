@@ -19,6 +19,8 @@ export async function verifyCaseHearingMigration() {
     '20261008011000_add_case_hearing_facts',
     '20261008012000_add_case_hearing_grants',
     '20261008013000_allow_lawyer_hearing_schedule_audit',
+    '20261008014000_bind_case_hearing_correction_audit',
+    '20261008015000_require_latest_case_hearing_chain',
   ];
   const previous = (await readdir(migrations))
     .filter((name) => /^\d{14}_/u.test(name) && name < target[0])
@@ -311,7 +313,7 @@ export async function verifyCaseHearingMigration() {
       [schemas.failure],
     );
     await client.query('DROP TABLE case_hearing_arrangements');
-    await apply([target[1], target[2], target[3]]);
+    await apply([target[1], target[2], target[3], target[4], target[5]]);
     const retryTable = await count(
       "SELECT COUNT(*) AS n FROM information_schema.tables WHERE table_schema=$1 AND table_name='case_hearing_advances'",
       [schemas.failure],

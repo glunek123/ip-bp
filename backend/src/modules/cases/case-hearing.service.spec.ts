@@ -1,4 +1,4 @@
-import { ForbiddenException } from '@nestjs/common';
+import { ForbiddenException, Logger } from '@nestjs/common';
 import { CaseHearingService } from './case-hearing.service';
 
 const actor = {
@@ -199,5 +199,108 @@ describe('CaseHearingService', () => {
         data: expect.objectContaining({ currentHearingAdvanceId: advanceId }),
       }),
     );
+  });
+
+  it('records a fresh execution time for each case after acquiring its lock', async () => {
+    const f = fixture();
+    const secondCaseId = '77777777-7777-4777-8777-777777777777';
+    const secondArrangementId = '88888888-8888-4888-8888-888888888888';
+    f.database.case.findMany.mockResolvedValue([
+      { id: caseId, departmentId: actor.departmentId },
+      { id: secondCaseId, departmentId: actor.departmentId },
+    ]);
+    f.tx.$queryRawUnsafe.mockImplementation((sql: string, id: string) =>
+      sql.includes('FOR UPDATE')
+        ? Promise.resolve([{ id }])
+        : Promise.resolve([{ due_at: new Date('2026-10-08T16:00:00.000Z') }]),
+    );
+    f.tx.case.findFirst.mockImplementation(
+      ({ where }: { where: { id: string } }) =>
+        Promise.resolve({
+          stage: 'WAITING_HEARING',
+          version: 8,
+          currentHearingArrangementId:
+            where.id === caseId ? arrangementId : secondArrangementId,
+          currentHearingAdvanceId: null,
+          currentHearingArrangement: {
+            id: where.id === caseId ? arrangementId : secondArrangementId,
+            hearingAt: new Date('2026-10-08T00:00:00.000Z'),
+            toVersion: 8,
+          },
+        }),
+    );
+    const actualTimes = [
+      new Date('2026-10-08T16:03:00.000Z'),
+      new Date('2026-10-08T16:05:00.000Z'),
+    ];
+    const service = new CaseHearingService(
+      f.database as never,
+      f.access as never,
+      f.signal as never,
+      { now: jest.fn().mockImplementation(() => actualTimes.shift()) } as never,
+    );
+    expect(
+      await service.advanceDue(new Date('2026-10-08T16:00:00.000Z')),
+    ).toEqual({ advanced: 2, failed: 0 });
+    expect(
+      f.tx.caseHearingAdvance.create.mock.calls.map(([arg]) =>
+        arg.data.executedAt.toISOString(),
+      ),
+    ).toEqual(['2026-10-08T16:03:00.000Z', '2026-10-08T16:05:00.000Z']);
+    expect(
+      f.tx.auditEvent.create.mock.calls.map(
+        ([arg]) => arg.data.details.executedAt,
+      ),
+    ).toEqual(['2026-10-08T16:03:00.000Z', '2026-10-08T16:05:00.000Z']);
+  });
+
+  it('logs a failed case and a safe error code while continuing with the next case', async () => {
+    const f = fixture();
+    const secondCaseId = '77777777-7777-4777-8777-777777777777';
+    f.database.case.findMany.mockResolvedValue([
+      { id: caseId, departmentId: actor.departmentId },
+      { id: secondCaseId, departmentId: actor.departmentId },
+    ]);
+    f.tx.$queryRawUnsafe.mockImplementation((sql: string, id: string) =>
+      sql.includes('FOR UPDATE')
+        ? Promise.resolve([{ id }])
+        : Promise.resolve([{ due_at: new Date('2026-10-08T16:00:00.000Z') }]),
+    );
+    f.tx.case.findFirst.mockImplementation(
+      ({ where }: { where: { id: string } }) =>
+        Promise.resolve({
+          stage: 'WAITING_HEARING',
+          version: 8,
+          currentHearingArrangementId: arrangementId,
+          currentHearingAdvanceId: null,
+          currentHearingArrangement: {
+            id: arrangementId,
+            hearingAt: new Date('2026-10-08T00:00:00.000Z'),
+            toVersion: 8,
+          },
+          id: where.id,
+        }),
+    );
+    f.tx.auditEvent.create.mockRejectedValueOnce(
+      Object.assign(new Error('sensitive database text'), { code: '23514' }),
+    );
+    const service = new CaseHearingService(
+      f.database as never,
+      f.access as never,
+      f.signal as never,
+      { now: () => new Date('2026-10-08T16:03:00.000Z') } as never,
+    );
+    const logged = jest.spyOn(Logger.prototype, 'error').mockImplementation();
+    try {
+      expect(
+        await service.advanceDue(new Date('2026-10-08T16:00:00.000Z')),
+      ).toEqual({ advanced: 1, failed: 1 });
+      const output = logged.mock.calls.flat().map(String).join(' ');
+      expect(output).toContain(caseId);
+      expect(output).toContain('23514');
+      expect(output).not.toContain('sensitive database text');
+    } finally {
+      logged.mockRestore();
+    }
   });
 });
