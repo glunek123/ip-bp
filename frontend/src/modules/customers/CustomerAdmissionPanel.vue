@@ -38,7 +38,7 @@ const props = defineProps<{ customer: CustomerDetail }>();
 const emit = defineEmits<{
   admitted: [customer: CustomerSummary];
   'customer-refreshed': [customer: CustomerDetail];
-  'customer-not-found': [];
+  'customer-not-found': [customerId: string];
 }>();
 
 const expectedVersion = ref(props.customer.version);
@@ -161,7 +161,7 @@ async function reloadMaterials(): Promise<void> {
       (error.code === 'RESOURCE_NOT_FOUND' ||
         error.code === 'CUSTOMER_NOT_FOUND')
     ) {
-      emit('customer-not-found');
+      emit('customer-not-found', props.customer.id);
       return;
     }
     materialError.value =
@@ -267,7 +267,7 @@ async function upload(event: { target: unknown }): Promise<void> {
       (error.code === 'RESOURCE_NOT_FOUND' ||
         error.code === 'CUSTOMER_NOT_FOUND')
     ) {
-      emit('customer-not-found');
+      emit('customer-not-found', props.customer.id);
     } else if (
       error instanceof ApiError &&
       (error.code === 'ACTION_FORBIDDEN' ||
@@ -490,7 +490,7 @@ async function refreshAfterConflict(): Promise<void> {
     formError.value = `客户资料已被他人更新，已读取最新版本 ${latest.version}。已保留当前填写内容，请核对后重试。`;
   } catch (error) {
     if (error instanceof ApiError && error.code === 'CUSTOMER_NOT_FOUND') {
-      emit('customer-not-found');
+      emit('customer-not-found', props.customer.id);
       return;
     }
     formError.value = '客户版本已变化，但最新资料读取失败，请稍后重试';
@@ -531,7 +531,7 @@ async function submit(): Promise<void> {
         error.code === 'CUSTOMER_NOT_FOUND')
     ) {
       pendingCommand = undefined;
-      emit('customer-not-found');
+      emit('customer-not-found', props.customer.id);
     } else {
       if (
         error instanceof ApiError &&

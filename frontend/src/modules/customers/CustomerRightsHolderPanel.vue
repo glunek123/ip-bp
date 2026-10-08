@@ -21,9 +21,9 @@ const props = defineProps<{
   canEdit: boolean;
 }>();
 const emit = defineEmits<{
-  'version-updated': [version: number];
-  'refresh-requested': [];
-  'customer-not-found': [];
+  'version-updated': [customerId: string, version: number];
+  'refresh-requested': [customerId: string];
+  'customer-not-found': [customerId: string];
 }>();
 
 const pageSize = 20;
@@ -104,7 +104,7 @@ async function load(page = holdersPage.value): Promise<void> {
   } catch (error) {
     if (controller.signal.aborted) return;
     if (isApiError(error, 'CUSTOMER_NOT_FOUND')) {
-      emit('customer-not-found');
+      emit('customer-not-found', props.customerId);
     } else {
       state.value = 'failed';
     }
@@ -189,7 +189,7 @@ async function submitCreate(): Promise<void> {
     address.value = '';
     legalRepresentative.value = '';
     duty.value = '';
-    emit('version-updated', result.customerVersion);
+    emit('version-updated', props.customerId, result.customerVersion);
     holdersPage.value = 1;
     await load(1);
   } catch (error) {
@@ -198,7 +198,7 @@ async function submitCreate(): Promise<void> {
       denyWrites();
     } else if (isApiError(error, 'CUSTOMER_NOT_FOUND')) {
       createRetry = undefined;
-      emit('customer-not-found');
+      emit('customer-not-found', props.customerId);
     } else {
       createRetry = { signature, key };
     }
@@ -237,7 +237,7 @@ async function loadLinkable(page = 1): Promise<void> {
     if (requestGeneration !== linkableRequestGeneration || !linkOpen.value)
       return;
     if (isApiError(error, 'CUSTOMER_NOT_FOUND')) {
-      emit('customer-not-found');
+      emit('customer-not-found', props.customerId);
     } else {
       linkableState.value = 'failed';
     }
@@ -280,7 +280,7 @@ async function submitLink(): Promise<void> {
     if (!isCurrentFormIntent(intentGeneration, 'link')) return;
     linkRetry = undefined;
     linkOpen.value = false;
-    emit('version-updated', result.customerVersion);
+    emit('version-updated', props.customerId, result.customerVersion);
     holdersPage.value = 1;
     await load(1);
   } catch (error) {
@@ -289,7 +289,7 @@ async function submitLink(): Promise<void> {
       denyWrites();
     } else if (isApiError(error, 'CUSTOMER_NOT_FOUND')) {
       linkRetry = undefined;
-      emit('customer-not-found');
+      emit('customer-not-found', props.customerId);
     } else if (isApiError(error, 'RIGHTS_HOLDER_ALREADY_LINKED')) {
       linkRetry = undefined;
       await Promise.all([load(1), loadLinkable(1)]);
@@ -314,7 +314,7 @@ async function submitLink(): Promise<void> {
 }
 
 function requestRefresh(): void {
-  emit('refresh-requested');
+  emit('refresh-requested', props.customerId);
 }
 
 watch(

@@ -164,7 +164,7 @@ describe('CustomerRightsHolderPanel', () => {
       },
       'uuid-create',
     );
-    expect(wrapper.emitted('version-updated')).toEqual([[2]]);
+    expect(wrapper.emitted('version-updated')).toEqual([['customer-1', 2]]);
     expect(api.listCustomerRightsHolders).toHaveBeenCalledTimes(2);
   });
 

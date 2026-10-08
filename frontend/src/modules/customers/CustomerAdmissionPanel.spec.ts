@@ -557,7 +557,7 @@ describe('CustomerAdmissionPanel', () => {
     await fillEnterpriseAdmission(wrapper);
     await wrapper.get('form').trigger('submit');
     await flushPromises();
-    expect(wrapper.emitted('customer-not-found')).toHaveLength(1);
+    expect(wrapper.emitted('customer-not-found')).toEqual([['customer-1']]);
   });
 
   it('emits customer-not-found when the material owner becomes inaccessible', async () => {
@@ -566,7 +566,7 @@ describe('CustomerAdmissionPanel', () => {
     );
     const wrapper = mount(CustomerAdmissionPanel, { props: { customer } });
     await flushPromises();
-    expect(wrapper.emitted('customer-not-found')).toHaveLength(1);
+    expect(wrapper.emitted('customer-not-found')).toEqual([['customer-1']]);
   });
 
   it('reloads stale data, preserves input, and retries only after review', async () => {
