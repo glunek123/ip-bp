@@ -38,8 +38,9 @@ test('opening review migration upgrades the prior schema without rewriting openi
   try {
     await client.query(`CREATE SCHEMA "${schema}"`);
     await client.query(`SET search_path TO "${schema}"`);
+    // Freeze the historical schema under test; do not apply later migrations here.
     const migrations = (await readdir(migrationRoot))
-      .filter((name) => /^\d+_/.test(name))
+      .filter((name) => /^\d+_/.test(name) && name <= auditTarget)
       .sort();
     assert.equal(migrations.at(-1), auditTarget);
     for (const name of migrations.filter((name) => name < target)) {

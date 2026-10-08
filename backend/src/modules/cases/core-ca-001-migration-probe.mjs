@@ -13,8 +13,9 @@ const migrationRoot = resolve(root, 'backend/prisma/migrations');
 const target = '20260929020000_add_case_matching';
 const correction = '20260929021000_reconcile_case_match_grants';
 const factsCorrection = '20260929022000_correct_case_match_facts';
+// Freeze the historical schema under test; do not apply later migrations here.
 const migrations = readdirSync(migrationRoot)
-  .filter((name) => /^\d{14}_/.test(name))
+  .filter((name) => /^\d{14}_/.test(name) && name <= factsCorrection)
   .sort();
 assert.deepEqual(migrations.slice(-3), [target, correction, factsCorrection]);
 const client = new Client({

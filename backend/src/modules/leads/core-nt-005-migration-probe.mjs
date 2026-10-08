@@ -11,8 +11,9 @@ const { Client } = requireBackend('pg');
 const environment = captureTestEnvironment(root, { pnpmVersion: '11.27.0' });
 const migrationRoot = resolve(root, 'backend/prisma/migrations');
 const target = '20260928050000_add_notary_certificates_and_cases';
+// Freeze the historical schema under test; do not apply later migrations here.
 const migrations = readdirSync(migrationRoot)
-  .filter((name) => /^\d{14}_/.test(name))
+  .filter((name) => /^\d{14}_/.test(name) && name <= target)
   .sort();
 assert.equal(migrations.at(-1), target);
 const client = new Client({

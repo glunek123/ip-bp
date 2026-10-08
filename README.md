@@ -86,6 +86,21 @@ pnpm test:e2e
 
 测试使用后端 3101、前端 5174 和 `backend/.env.test`；统一入口会拒绝与文件冲突的Shell覆盖，并只串行化共享测试库及固定端口，不会复用已经启动的应用。测试包含真实 PostgreSQL 连通性、失败展示及重试恢复。HTML 报告位于 `playwright-report/`，截图和失败追踪位于 `test-results/`。测试库使用临时内存文件系统；可用 `docker compose --profile test stop postgres-test` 停止测试库。应用测试进程由 Playwright 管理。
 
+### 历史 schema 迁移专项
+
+以下手工脚本保留独有的旧数据、约束和失败回滚断言，不是一次性垃圾文件，也不属于普通单测或全量E2E的自动发现入口。前五份只执行到其明确的历史目标；后来新增迁移不应改变该目标，也不能用这些前缀结果替代当前完整迁移链验收。
+
+| 脚本                                                                      | 保留用途                                                     |
+| ------------------------------------------------------------------------- | ------------------------------------------------------------ |
+| [CA-001探针](backend/src/modules/cases/core-ca-001-migration-probe.mjs)   | 案件匹配、授权修订、旧律师事实及失败回滚                     |
+| [NT-004探针](backend/src/modules/leads/core-nt-004-migration-probe.mjs)   | 出证选择的旧数据升级、不可变事实和约束                       |
+| [NT-005探针](backend/src/modules/leads/core-nt-005-migration-probe.mjs)   | 出证转案表、关联与金额约束、失败回滚                         |
+| [NT-007探针](backend/src/modules/leads/core-nt-007-migration-probe.mjs)   | 公证处账号、旧操作者回填、双身份约束及回滚                   |
+| [开箱审核Node测试](scripts/notary-opening-review-migration.node-test.mjs) | 审核事实、幂等回执、审计与旧照片引用保护                     |
+| [律师历史迁移脚本](tests/support/case-lawyer-migration.mjs)               | SD-44的67→72迁移、身份锚与撤权草稿清理；仅供对应历史候选复验 |
+
+复验只使用`backend/.env.test`的独立测试库和随机临时schema，并与数据库E2E共用`scripts/run-e2e.mjs`导出的`acquireE2eResourceLock`，串行执行。独立脚本用Node运行，开箱审核文件用`node --test`；执行前按上述运行时规则加载项目Node／pnpm。律师历史脚本仍依赖当时的72份迁移和服务／Prisma Client版本，当前HEAD不能直接使用；历史候选及证据见[VALIDATION](docs/spec/v0.1/VALIDATION.md)。若以后纳入当前门禁，须先升级其测试夹具和限定的Prisma配置，不能只修改迁移总数断言。
+
 ## Prisma 与数据
 
 ```powershell

@@ -1,3 +1,5 @@
+// Historical SD-44 reproducer: use its matching 67-to-72 schema and service version.
+// Not a current-HEAD gate; see README.md "历史 schema 迁移专项".
 import { spawnSync } from 'node:child_process';
 import { createHash, randomBytes, randomUUID } from 'node:crypto';
 import {

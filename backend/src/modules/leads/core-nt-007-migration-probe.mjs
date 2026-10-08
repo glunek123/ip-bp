@@ -13,8 +13,9 @@ const client = new Client({
 });
 const migrationRoot = resolve(root, 'backend/prisma/migrations');
 const target = '20260928030000_add_notary_accounts_and_opening_actor';
+// Freeze the historical schema under test; do not apply later migrations here.
 const migrations = readdirSync(migrationRoot)
-  .filter((name) => /^\d{14}_/.test(name))
+  .filter((name) => /^\d{14}_/.test(name) && name <= target)
   .sort();
 const emptySchema = `nt007_empty_${randomBytes(8).toString('hex')}`;
 const upgradeSchema = `nt007_upgrade_${randomBytes(8).toString('hex')}`;
