@@ -61,11 +61,44 @@ const permissionCatalog = [
     label: '登记正式立案',
     scopes: ['SELF', 'TEAM', 'DEPARTMENT'] as const,
   },
+  {
+    action: 'CASE_HEARING_SCHEDULE' as const,
+    label: '登记开庭安排',
+    scopes: ['SELF', 'TEAM', 'DEPARTMENT'] as const,
+  },
+  {
+    action: 'CASE_HEARING_CORRECT' as const,
+    label: '更正开庭安排',
+    scopes: ['SELF', 'TEAM', 'DEPARTMENT'] as const,
+  },
 ].map((item) => ({ ...item, scopes: [...item.scopes] }));
 
 afterEach(() => vi.clearAllMocks());
 
 describe('RoleTemplateEditor', () => {
+  it('offers the two explicit hearing actions but not the automatic audit action', async () => {
+    api.getRoleTemplateImpact.mockResolvedValue({
+      roleTemplateId: role.id,
+      version: role.version,
+      activeAssignmentCount: 0,
+      affectedUsers: [],
+    });
+    const wrapper = mount(RoleTemplateEditor, {
+      props: { mode: 'copy', role, permissionCatalog },
+    });
+    await flushPromises();
+
+    expect(
+      wrapper.find('[data-test="grant-CASE_HEARING_SCHEDULE"]').exists(),
+    ).toBe(true);
+    expect(
+      wrapper.find('[data-test="grant-CASE_HEARING_CORRECT"]').exists(),
+    ).toBe(true);
+    expect(
+      wrapper.find('[data-test="grant-CASE_HEARING_AUTO_ADVANCED"]').exists(),
+    ).toBe(false);
+  });
+
   it('prefills edit values and automatically loads the impact preview', async () => {
     api.getRoleTemplateImpact.mockResolvedValue({
       roleTemplateId: role.id,
@@ -100,6 +133,41 @@ describe('RoleTemplateEditor', () => {
     expect(wrapper.text()).not.toContain('CUSTOMER_READ');
     expect(wrapper.find('[data-test="change-reason"]').exists()).toBe(false);
     expect(wrapper.find('[data-test="approval-step"]').exists()).toBe(false);
+  });
+
+  it('saves the widest scope for one action when existing grants overlap', async () => {
+    api.getRoleTemplateImpact.mockResolvedValue({
+      roleTemplateId: role.id,
+      version: role.version,
+      activeAssignmentCount: 1,
+      affectedUsers: [],
+    });
+    api.updateRoleTemplate.mockResolvedValue(role);
+    const roleWithOverlappingGrants = {
+      ...role,
+      grants: [
+        { action: 'CUSTOMER_READ' as const, scope: 'TEAM' as const },
+        { action: 'CUSTOMER_READ' as const, scope: 'DEPARTMENT' as const },
+      ],
+    };
+    const wrapper = mount(RoleTemplateEditor, {
+      props: {
+        mode: 'edit',
+        role: roleWithOverlappingGrants,
+        permissionCatalog,
+      },
+    });
+    await flushPromises();
+
+    await wrapper.get('[data-test="role-template-save"]').trigger('click');
+    await flushPromises();
+
+    expect(api.updateRoleTemplate).toHaveBeenCalledWith(role.id, {
+      name: role.name,
+      expectedVersion: role.version,
+      grants: [{ action: 'CUSTOMER_READ', scope: 'DEPARTMENT' }],
+    });
+    expect(wrapper.emitted('saved')).toHaveLength(1);
   });
 
   it('copies from the same prefilled form with one save', async () => {

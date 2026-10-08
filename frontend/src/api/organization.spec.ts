@@ -172,6 +172,16 @@ const context = {
       scopes: ['SELF', 'TEAM', 'DEPARTMENT'],
     },
     {
+      action: 'CASE_HEARING_SCHEDULE',
+      label: '登记开庭安排',
+      scopes: ['SELF', 'TEAM', 'DEPARTMENT'],
+    },
+    {
+      action: 'CASE_HEARING_CORRECT',
+      label: '更正开庭安排',
+      scopes: ['SELF', 'TEAM', 'DEPARTMENT'],
+    },
+    {
       action: 'NOTARY_OFFICE_MANAGE',
       label: '管理公证处',
       scopes: ['DEPARTMENT'],
@@ -251,6 +261,8 @@ describe('organization API', () => {
       'CASE_COMPLAINT_MAIL',
       'CASE_FILING_SUBMIT',
       'CASE_ACCEPTANCE_REGISTER',
+      'CASE_HEARING_SCHEDULE',
+      'CASE_HEARING_CORRECT',
       'NOTARY_OFFICE_MANAGE',
       'USER_READ',
       'USER_MANAGE',
@@ -489,6 +501,28 @@ describe('organization API', () => {
       ),
     },
   ])('rejects sensitive or invalid management shapes %#', async (body) => {
+    vi.stubGlobal(
+      'fetch',
+      vi.fn().mockResolvedValue(new Response(JSON.stringify(body))),
+    );
+
+    await expect(getOrganizationManagementContext()).rejects.toMatchObject({
+      code: 'INVALID_RESPONSE',
+    });
+  });
+
+  it('does not expose automatic hearing advancement as a grantable permission', async () => {
+    const body = {
+      ...context,
+      permissionCatalog: [
+        ...context.permissionCatalog,
+        {
+          action: 'CASE_HEARING_AUTO_ADVANCED',
+          label: '自动推进开庭后案件',
+          scopes: ['DEPARTMENT'],
+        },
+      ],
+    };
     vi.stubGlobal(
       'fetch',
       vi.fn().mockResolvedValue(new Response(JSON.stringify(body))),

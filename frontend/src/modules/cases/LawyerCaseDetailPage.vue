@@ -22,6 +22,7 @@ import CaseComplaintMailingPanel from './CaseComplaintMailingPanel.vue';
 import CaseComplaintSubmissionForm from './CaseComplaintSubmissionForm.vue';
 import CaseFilingPanel from './CaseFilingPanel.vue';
 import CaseAcceptancePanel from './CaseAcceptancePanel.vue';
+import CaseHearingPanel from './CaseHearingPanel.vue';
 
 const route = useRoute();
 const auth = useAuthStore();
@@ -353,6 +354,7 @@ function stageLabel(stage: string): string {
         WAITING_FILING: '待提交立案',
         WAITING_FORMAL_ACCEPTANCE: '待正式立案',
         WAITING_HEARING: '待开庭',
+        WAITING_JUDGMENT: '待判决',
       } as Record<string, string>
     )[stage] ?? stage
   );
@@ -481,6 +483,18 @@ onBeforeUnmount(() => {
           v-if="
             item.stage === 'WAITING_FORMAL_ACCEPTANCE' ||
             item.stage === 'WAITING_HEARING'
+          "
+          :item="item"
+          :lawyer="true"
+          :context-key="identity"
+          @changed="load"
+          @refresh="load"
+        />
+        <CaseHearingPanel
+          v-if="
+            item.acceptance !== null &&
+            (item.stage === 'WAITING_HEARING' ||
+              item.stage === 'WAITING_JUDGMENT')
           "
           :item="item"
           :lawyer="true"

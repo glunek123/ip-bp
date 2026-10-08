@@ -36,6 +36,7 @@ const emptyResult = {
     WAITING_FILING: 1,
     WAITING_FORMAL_ACCEPTANCE: 0,
     WAITING_HEARING: 0,
+    WAITING_JUDGMENT: 0,
   },
 };
 
@@ -149,6 +150,20 @@ describe('LawyerCaseListPage', () => {
       { signal: expect.any(AbortSignal) },
     );
     expect(wrapper.text()).toContain('待开庭');
+  });
+
+  it('supports the single WAITING_JUDGMENT filter and label', async () => {
+    const { wrapper, router } = await mountPage();
+    await router.push('/lawyer/cases?stage=WAITING_JUDGMENT');
+    await flushPromises();
+
+    expect(api.listLawyerCases).toHaveBeenLastCalledWith(
+      1,
+      20,
+      'WAITING_JUDGMENT',
+      expect.any(Object),
+    );
+    expect(wrapper.text()).toContain('待判决');
   });
 
   it('resets to page one on stage change and ignores a late page response', async () => {

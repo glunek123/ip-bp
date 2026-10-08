@@ -60,6 +60,7 @@ const context = {
       grants: [
         { action: 'CUSTOMER_READ', scope: 'DEPARTMENT' },
         { action: 'CASE_ACCEPTANCE_REGISTER', scope: 'DEPARTMENT' },
+        { action: 'CASE_HEARING_CORRECT', scope: 'DEPARTMENT' },
       ],
     },
   ],
@@ -77,6 +78,16 @@ const context = {
     {
       action: 'CASE_ACCEPTANCE_REGISTER',
       label: '登记正式立案',
+      scopes: ['SELF', 'TEAM', 'DEPARTMENT'],
+    },
+    {
+      action: 'CASE_HEARING_SCHEDULE',
+      label: '登记开庭安排',
+      scopes: ['SELF', 'TEAM', 'DEPARTMENT'],
+    },
+    {
+      action: 'CASE_HEARING_CORRECT',
+      label: '更正开庭安排',
       scopes: ['SELF', 'TEAM', 'DEPARTMENT'],
     },
   ],
@@ -146,11 +157,17 @@ describe('PeopleAccessPage', () => {
     expect(wrapper.get('.role-template-card').text()).toContain(
       '登记正式立案 · 部门',
     );
+    expect(wrapper.get('.role-template-card').text()).toContain(
+      '更正开庭安排 · 部门',
+    );
     await wrapper.get('[data-test="edit-role-role-1"]').trigger('click');
     expect(wrapper.find('[data-test="grant-CASE_READ"]').exists()).toBe(true);
     expect(
       wrapper.find('[data-test="grant-CASE_ACCEPTANCE_REGISTER"]').exists(),
     ).toBe(true);
+    expect(wrapper.find('[data-test="grant-CASE_HEARING_SCHEDULE"]').exists()).toBe(true);
+    expect(wrapper.find('[data-test="grant-CASE_HEARING_CORRECT"]').exists()).toBe(true);
+    expect(wrapper.find('[data-test="grant-CASE_HEARING_AUTO_ADVANCED"]').exists()).toBe(false);
     expect(
       wrapper.get('[data-test="scope-CASE_READ"]').findAll('option'),
     ).toHaveLength(1);

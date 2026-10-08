@@ -40,6 +40,8 @@ const detail = {
   canSubmitFiling: false,
   canRegisterAcceptance: false,
   canUploadAcceptanceMaterials: false,
+  canScheduleHearing: false,
+  canCorrectHearing: false,
   canConfirmComplaint: true,
   canMailComplaint: false,
   sourceLead: { id: 'lead-1', businessNo: 'LD-1' },
@@ -78,6 +80,13 @@ const detail = {
     ACCEPTANCE_NOTICE: { available: [], frozen: [], later: [] },
     PAYMENT_LIST: { available: [], frozen: [], later: [] },
     SERVICE_DOCUMENT: { available: [], frozen: [], later: [] },
+  },
+  hearing: {
+    currentArrangement: null,
+    currentAdvance: null,
+    arrangements: [],
+    advances: [],
+    corrections: [],
   },
 } as CaseDetail;
 

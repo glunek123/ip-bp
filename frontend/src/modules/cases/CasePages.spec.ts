@@ -21,6 +21,8 @@ const api = vi.hoisted(() => ({
   listFilingCourts: vi.fn(),
   createFilingCourt: vi.fn(),
   submitCaseFiling: vi.fn(),
+  scheduleCaseHearing: vi.fn(),
+  correctCaseHearing: vi.fn(),
 }));
 vi.mock('../../api/cases', () => ({
   listCases: api.listCases,
@@ -32,6 +34,8 @@ vi.mock('../../api/cases', () => ({
   listFilingCourts: api.listFilingCourts,
   createFilingCourt: api.createFilingCourt,
   submitCaseFiling: api.submitCaseFiling,
+  scheduleCaseHearing: api.scheduleCaseHearing,
+  correctCaseHearing: api.correctCaseHearing,
   todayShanghai: () => '2026-09-29',
 }));
 vi.mock('../../api/materials', () => ({
@@ -56,6 +60,8 @@ beforeEach(() => {
         canSubmitFiling: false,
         canRegisterAcceptance: false,
         canUploadAcceptanceMaterials: false,
+        canScheduleHearing: false,
+        canCorrectHearing: false,
         sourceLead: { id: 'lead-1', businessNo: 'LD-1' },
         sourceNotaryMatter: { id: 'matter-1', businessNo: 'NZ-1' },
       },
@@ -71,6 +77,7 @@ beforeEach(() => {
       WAITING_FILING: 0,
       WAITING_FORMAL_ACCEPTANCE: 0,
       WAITING_HEARING: 0,
+      WAITING_JUDGMENT: 0,
     },
   });
   api.listLawyerMatchCandidates.mockResolvedValue([]);
@@ -114,6 +121,8 @@ beforeEach(() => {
     canSubmitFiling: false,
     canRegisterAcceptance: false,
     canUploadAcceptanceMaterials: false,
+    canScheduleHearing: false,
+    canCorrectHearing: false,
     complaint: null,
     complaintConfirmation: null,
     complaintMailing: null,
@@ -124,11 +133,27 @@ beforeEach(() => {
       PAYMENT_LIST: { available: [], frozen: [], later: [] },
       SERVICE_DOCUMENT: { available: [], frozen: [], later: [] },
     },
+    hearing: {
+      currentArrangement: null,
+      currentAdvance: null,
+      arrangements: [],
+      advances: [],
+      corrections: [],
+    },
   });
   api.listOwnerMaterials.mockResolvedValue({ items: [], total: 0 });
   api.listFilingCourts.mockResolvedValue([]);
   api.createFilingCourt.mockResolvedValue({ id: 'court-1', name: '真实法院' });
   api.submitCaseFiling.mockResolvedValue({});
+  api.scheduleCaseHearing.mockResolvedValue({
+    id: 'case-1',
+    stage: 'WAITING_HEARING',
+    version: 8,
+    arrangementId: '80000000-0000-4000-8000-000000000001',
+    hearingAt: '2026-10-05',
+    recordedAt: '2026-10-06T01:00:00.000Z',
+  });
+  api.correctCaseHearing.mockResolvedValue({});
 });
 afterEach(() => {
   vi.unstubAllGlobals();
@@ -171,9 +196,12 @@ function confirmationDetail(
     canMatch: false,
     canSubmitComplaint: false,
     canConfirmComplaint: stage === 'WAITING_COMPLAINT_CONFIRMATION',
+    canMailComplaint: false,
     canSubmitFiling: false,
     canRegisterAcceptance: false,
     canUploadAcceptanceMaterials: false,
+    canScheduleHearing: false,
+    canCorrectHearing: false,
     courtCaseNo: null,
     department: { id: 'department-1', name: '知产部' },
     customer: { id: 'customer-1', name: '客户甲' },
@@ -236,6 +264,13 @@ function confirmationDetail(
       ACCEPTANCE_NOTICE: { available: [], frozen: [], later: [] },
       PAYMENT_LIST: { available: [], frozen: [], later: [] },
       SERVICE_DOCUMENT: { available: [], frozen: [], later: [] },
+    },
+    hearing: {
+      currentArrangement: null,
+      currentAdvance: null,
+      arrangements: [],
+      advances: [],
+      corrections: [],
     },
   };
 }
@@ -329,6 +364,57 @@ describe('case pages', () => {
     expect(wrapper.get('[data-test="case-list"]').text()).toContain(
       '待正式立案',
     );
+  });
+
+  it('labels WAITING_JUDGMENT without calling it a court judgment', async () => {
+    const base = await api.listCases();
+    api.listCases.mockResolvedValueOnce({
+      ...base,
+      items: [{ ...base.items[0], stage: 'WAITING_JUDGMENT' }],
+    });
+    const wrapper = await mountRoute(
+      '/cases?stage=WAITING_JUDGMENT',
+      CaseListPage,
+    );
+    expect(wrapper.get('.page-head').text()).toContain('待判决');
+    expect(wrapper.get('[data-test="case-list"]').text()).toContain('待判决');
+    expect(wrapper.text()).not.toContain('法院已判决');
+  });
+
+  it('reads current case after a successful hearing command instead of trusting its receipt stage', async () => {
+    api.getCase
+      .mockResolvedValueOnce({
+        ...confirmationDetail('case-1'),
+        stage: 'WAITING_HEARING',
+        canScheduleHearing: true,
+        canCorrectHearing: false,
+        acceptance: {
+          acceptedAt: '2026-10-05',
+          courtCaseNo: '甲0101民初1号',
+          recordedAt: '2026-10-05T01:00:00.000Z',
+        },
+      })
+      .mockResolvedValueOnce({
+        ...confirmationDetail('case-1'),
+        stage: 'WAITING_JUDGMENT',
+        version: 9,
+        canScheduleHearing: false,
+        canCorrectHearing: true,
+        acceptance: {
+          acceptedAt: '2026-10-05',
+          courtCaseNo: '甲0101民初1号',
+          recordedAt: '2026-10-05T01:00:00.000Z',
+        },
+      });
+    const wrapper = await mountRoute('/cases/case-1', CaseDetailPage);
+    await wrapper.get('[data-test="hearing-date"]').setValue('2026-10-05');
+    await wrapper.get('[data-test="hearing-save"]').trigger('click');
+    await flushPromises();
+
+    expect(api.scheduleCaseHearing).toHaveBeenCalledTimes(1);
+    expect(api.getCase).toHaveBeenCalledTimes(2);
+    expect(wrapper.text()).toContain('待判决');
+    expect(wrapper.find('[data-test="hearing-correction-reason"]').exists()).toBe(true);
   });
 
   it('shows the filing form only for an authorized case awaiting filing', async () => {

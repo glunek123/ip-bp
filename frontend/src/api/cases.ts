@@ -7,7 +7,8 @@ export type CaseStage =
   | 'WAITING_COMPLAINT_STAMP'
   | 'WAITING_FILING'
   | 'WAITING_FORMAL_ACCEPTANCE'
-  | 'WAITING_HEARING';
+  | 'WAITING_HEARING'
+  | 'WAITING_JUDGMENT';
 export type CaseView = 'mine' | 'department';
 export type CaseStageFilter = CaseStage | 'all';
 export type CaseSummary = {
@@ -24,6 +25,8 @@ export type CaseSummary = {
   canSubmitFiling: boolean;
   canRegisterAcceptance: boolean;
   canUploadAcceptanceMaterials: boolean;
+  canScheduleHearing: boolean;
+  canCorrectHearing: boolean;
   sourceLead: { id: string; businessNo: string };
   sourceNotaryMatter: { id: string; businessNo: string };
 };
@@ -80,6 +83,44 @@ export type CaseDetail = CaseSummary & {
   filingSubmission: CaseFilingSubmission | null;
   acceptance: CaseAcceptance | null;
   acceptanceMaterials: AcceptanceMaterials;
+  hearing: CaseHearing;
+};
+export type CaseHearingArrangement = {
+  id: string;
+  hearingAt: string | null;
+  source: 'SCHEDULE' | 'CORRECTION';
+  recordedAt: string;
+  recordedByUserId?: string;
+};
+export type CaseHearingAdvance = {
+  id: string;
+  arrangementId: string;
+  dueAt: string;
+  executedAt: string;
+};
+export type InternalCaseHearingCorrection = {
+  id: string;
+  priorArrangementId: string;
+  priorAdvanceId: string;
+  newArrangementId: string;
+  resultStage: 'WAITING_HEARING' | 'WAITING_JUDGMENT';
+  recordedAt: string;
+  recordedByUserId?: string;
+  reason?: string;
+};
+export type LawyerCaseHearingCorrection = Omit<
+  InternalCaseHearingCorrection,
+  'recordedByUserId' | 'reason'
+>;
+export type CaseHearing = {
+  currentArrangement: CaseHearingArrangement | null;
+  currentAdvance: CaseHearingAdvance | null;
+  arrangements: CaseHearingArrangement[];
+  advances: CaseHearingAdvance[];
+  corrections: InternalCaseHearingCorrection[];
+};
+export type LawyerCaseHearing = Omit<CaseHearing, 'corrections'> & {
+  corrections: LawyerCaseHearingCorrection[];
 };
 export type FilingCourt = { id: string; name: string };
 export type CaseFilingSubmission = {
@@ -203,6 +244,8 @@ export type LawyerCaseSummary = {
   canSubmitFiling: boolean;
   canRegisterAcceptance: boolean;
   canUploadAcceptanceMaterials: boolean;
+  canScheduleHearing: boolean;
+  canCorrectHearing: false;
   createdAt: string;
 };
 export type LawyerCaseList = {
@@ -242,6 +285,7 @@ export type LawyerCaseDetail = CaseWorkflowItem &
     courtCaseNo: string | null;
     acceptance: Omit<CaseAcceptance, 'recordedByUserId'> | null;
     acceptanceMaterials: AcceptanceMaterials;
+    hearing: LawyerCaseHearing;
   };
 export type SubmitComplaintInput = {
   expectedVersion: number;
@@ -309,7 +353,8 @@ function validStage(value: unknown): value is CaseStage {
     value === 'WAITING_COMPLAINT_STAMP' ||
     value === 'WAITING_FILING' ||
     value === 'WAITING_FORMAL_ACCEPTANCE' ||
-    value === 'WAITING_HEARING'
+    value === 'WAITING_HEARING' ||
+    value === 'WAITING_JUDGMENT'
   );
 }
 function source(value: unknown): value is { id: string; businessNo: string } {
@@ -345,6 +390,8 @@ function summary(value: unknown): value is CaseSummary {
       'canSubmitFiling',
       'canRegisterAcceptance',
       'canUploadAcceptanceMaterials',
+      'canScheduleHearing',
+      'canCorrectHearing',
       'sourceLead',
       'sourceNotaryMatter',
     ]) &&
@@ -363,6 +410,8 @@ function summary(value: unknown): value is CaseSummary {
     typeof value.canSubmitFiling === 'boolean' &&
     typeof value.canRegisterAcceptance === 'boolean' &&
     typeof value.canUploadAcceptanceMaterials === 'boolean' &&
+    typeof value.canScheduleHearing === 'boolean' &&
+    typeof value.canCorrectHearing === 'boolean' &&
     source(value.sourceLead) &&
     source(value.sourceNotaryMatter)
   );
@@ -469,6 +518,99 @@ function lawyer(value: unknown): value is CaseLawyer {
     !Number.isNaN(Date.parse(value.assignedAt))
   );
 }
+function exactWithOptional(
+  value: Record<string, unknown>,
+  required: string[],
+  optional: string[],
+): boolean {
+  const keys = Object.keys(value);
+  return (
+    required.every((key) => key in value) &&
+    keys.every((key) => required.includes(key) || optional.includes(key))
+  );
+}
+function validHearingArrangement(
+  value: unknown,
+  internal: boolean,
+): boolean {
+  if (!record(value)) return false;
+  const required = ['id', 'hearingAt', 'source', 'recordedAt'];
+  const optional = internal ? ['recordedByUserId'] : [];
+  return (
+    exactWithOptional(value, required, optional) &&
+    uuidV4(value.id) &&
+    (value.hearingAt === null || businessDate(value.hearingAt)) &&
+    (value.source === 'SCHEDULE' || value.source === 'CORRECTION') &&
+    typeof value.recordedAt === 'string' &&
+    !Number.isNaN(Date.parse(value.recordedAt)) &&
+    (!('recordedByUserId' in value) || uuidV4(value.recordedByUserId))
+  );
+}
+function validHearingAdvance(value: unknown): boolean {
+  return (
+    record(value) &&
+    exact(value, ['id', 'arrangementId', 'dueAt', 'executedAt']) &&
+    uuidV4(value.id) &&
+    uuidV4(value.arrangementId) &&
+    typeof value.dueAt === 'string' &&
+    !Number.isNaN(Date.parse(value.dueAt)) &&
+    typeof value.executedAt === 'string' &&
+    !Number.isNaN(Date.parse(value.executedAt))
+  );
+}
+function validHearingCorrection(value: unknown, internal: boolean): boolean {
+  if (!record(value)) return false;
+  const required = [
+    'id',
+    'priorArrangementId',
+    'priorAdvanceId',
+    'newArrangementId',
+    'resultStage',
+    'recordedAt',
+  ];
+  const optional = internal ? ['recordedByUserId', 'reason'] : [];
+  return (
+    exactWithOptional(value, required, optional) &&
+    uuidV4(value.id) &&
+    uuidV4(value.priorArrangementId) &&
+    uuidV4(value.priorAdvanceId) &&
+    uuidV4(value.newArrangementId) &&
+    (value.resultStage === 'WAITING_HEARING' ||
+      value.resultStage === 'WAITING_JUDGMENT') &&
+    typeof value.recordedAt === 'string' &&
+    !Number.isNaN(Date.parse(value.recordedAt)) &&
+    (!('recordedByUserId' in value) || uuidV4(value.recordedByUserId)) &&
+    (!('reason' in value) ||
+      (typeof value.reason === 'string' &&
+        value.reason.trim() === value.reason &&
+        value.reason.length >= 1 &&
+        value.reason.length <= 500))
+  );
+}
+function validHearing(value: unknown, internal: boolean): boolean {
+  return (
+    record(value) &&
+    exact(value, [
+      'currentArrangement',
+      'currentAdvance',
+      'arrangements',
+      'advances',
+      'corrections',
+    ]) &&
+    (value.currentArrangement === null ||
+      validHearingArrangement(value.currentArrangement, internal)) &&
+    (value.currentAdvance === null ||
+      validHearingAdvance(value.currentAdvance)) &&
+    Array.isArray(value.arrangements) &&
+    value.arrangements.every((item) =>
+      validHearingArrangement(item, internal),
+    ) &&
+    Array.isArray(value.advances) &&
+    value.advances.every(validHearingAdvance) &&
+    Array.isArray(value.corrections) &&
+    value.corrections.every((item) => validHearingCorrection(item, internal))
+  );
+}
 function validCaseDetail(value: unknown, id: string): value is CaseDetail {
   if (!record(value)) return false;
   return (
@@ -499,11 +641,14 @@ function validCaseDetail(value: unknown, id: string): value is CaseDetail {
       'canSubmitFiling',
       'canRegisterAcceptance',
       'canUploadAcceptanceMaterials',
+      'canScheduleHearing',
+      'canCorrectHearing',
       'complaintConfirmation',
       'complaintMailing',
       'filingSubmission',
       'acceptance',
       'acceptanceMaterials',
+      'hearing',
     ]) &&
     value.id === id &&
     summary({
@@ -520,6 +665,8 @@ function validCaseDetail(value: unknown, id: string): value is CaseDetail {
       canSubmitFiling: value.canSubmitFiling,
       canRegisterAcceptance: value.canRegisterAcceptance,
       canUploadAcceptanceMaterials: value.canUploadAcceptanceMaterials,
+      canScheduleHearing: value.canScheduleHearing,
+      canCorrectHearing: value.canCorrectHearing,
       sourceLead: value.sourceLead,
       sourceNotaryMatter: value.sourceNotaryMatter,
     }) &&
@@ -589,7 +736,8 @@ function validCaseDetail(value: unknown, id: string): value is CaseDetail {
     (value.filingSubmission === null ||
       validCaseFilingSubmission(value.filingSubmission)) &&
     validAcceptance(value.acceptance, true) &&
-    validAcceptanceMaterials(value.acceptanceMaterials)
+    validAcceptanceMaterials(value.acceptanceMaterials) &&
+    validHearing(value.hearing, true)
   );
 }
 function validFilingCourt(value: unknown): value is FilingCourt {
@@ -737,6 +885,7 @@ const caseStages: CaseStage[] = [
   'WAITING_FILING',
   'WAITING_FORMAL_ACCEPTANCE',
   'WAITING_HEARING',
+  'WAITING_JUDGMENT',
 ];
 function validLawyerSummary(value: unknown): value is LawyerCaseSummary {
   return (
@@ -753,6 +902,8 @@ function validLawyerSummary(value: unknown): value is LawyerCaseSummary {
       'canSubmitFiling',
       'canRegisterAcceptance',
       'canUploadAcceptanceMaterials',
+      'canScheduleHearing',
+      'canCorrectHearing',
       'createdAt',
     ]) &&
     nonempty(value.id) &&
@@ -767,6 +918,8 @@ function validLawyerSummary(value: unknown): value is LawyerCaseSummary {
     typeof value.canSubmitFiling === 'boolean' &&
     typeof value.canRegisterAcceptance === 'boolean' &&
     typeof value.canUploadAcceptanceMaterials === 'boolean' &&
+    typeof value.canScheduleHearing === 'boolean' &&
+    value.canCorrectHearing === false &&
     typeof value.createdAt === 'string' &&
     !Number.isNaN(Date.parse(value.createdAt))
   );
@@ -952,6 +1105,8 @@ export async function getLawyerCase(
       'canSubmitFiling',
       'canRegisterAcceptance',
       'canUploadAcceptanceMaterials',
+      'canScheduleHearing',
+      'canCorrectHearing',
       'createdAt',
       'matchedAt',
       'matchedOn',
@@ -967,6 +1122,7 @@ export async function getLawyerCase(
       'courtCaseNo',
       'acceptance',
       'acceptanceMaterials',
+      'hearing',
     ]) ||
     result.id !== id ||
     !validLawyerSummary({
@@ -981,6 +1137,8 @@ export async function getLawyerCase(
       canSubmitFiling: result.canSubmitFiling,
       canRegisterAcceptance: result.canRegisterAcceptance,
       canUploadAcceptanceMaterials: result.canUploadAcceptanceMaterials,
+      canScheduleHearing: result.canScheduleHearing,
+      canCorrectHearing: result.canCorrectHearing,
       createdAt: result.createdAt,
     }) ||
     (result.matchedAt !== null &&
@@ -1003,7 +1161,8 @@ export async function getLawyerCase(
       !lawyerFiling(result.filingSubmission)) ||
     !courtCaseNoMatchesAcceptance(result.courtCaseNo, result.acceptance) ||
     !validAcceptance(result.acceptance, false) ||
-    !validAcceptanceMaterials(result.acceptanceMaterials)
+    !validAcceptanceMaterials(result.acceptanceMaterials) ||
+    !validHearing(result.hearing, false)
   )
     throw invalidResponse();
   return result as unknown as LawyerCaseDetail;
@@ -1077,6 +1236,7 @@ export async function listCases(
       'WAITING_FILING',
       'WAITING_FORMAL_ACCEPTANCE',
       'WAITING_HEARING',
+      'WAITING_JUDGMENT',
     ]) ||
     !Number.isInteger(response.counts.PENDING_MATCH) ||
     (response.counts.PENDING_MATCH as number) < 0 ||
@@ -1091,7 +1251,9 @@ export async function listCases(
     !Number.isInteger(response.counts.WAITING_FORMAL_ACCEPTANCE) ||
     (response.counts.WAITING_FORMAL_ACCEPTANCE as number) < 0 ||
     !Number.isInteger(response.counts.WAITING_HEARING) ||
-    (response.counts.WAITING_HEARING as number) < 0
+    (response.counts.WAITING_HEARING as number) < 0 ||
+    !Number.isInteger(response.counts.WAITING_JUDGMENT) ||
+    (response.counts.WAITING_JUDGMENT as number) < 0
   )
     throw invalidResponse();
   return response as unknown as CaseList;
@@ -1130,6 +1292,22 @@ export type RegisterCaseAcceptanceResult = {
   courtCaseNo: string;
   recordedAt: string;
 };
+export type SaveCaseHearingInput = {
+  expectedVersion: number;
+  idempotencyKey: string;
+  hearingAt: string | null;
+};
+export type CorrectCaseHearingInput = SaveCaseHearingInput & {
+  reason: string;
+};
+export type CaseHearingCommandResult = {
+  id: string;
+  stage: 'WAITING_HEARING' | 'WAITING_JUDGMENT';
+  version: number;
+  arrangementId: string;
+  hearingAt: string | null;
+  recordedAt: string;
+};
 function uuidV4(value: unknown): value is string {
   return (
     typeof value === 'string' &&
@@ -1145,6 +1323,85 @@ function uniqueVersions(values: string[], minimum: number, maximum: number) {
     new Set(values).size === values.length &&
     values.every(uuidV4)
   );
+}
+function validCaseHearingInput(input: SaveCaseHearingInput): boolean {
+  return (
+    Number.isInteger(input.expectedVersion) &&
+    input.expectedVersion >= 1 &&
+    typeof input.idempotencyKey === 'string' &&
+    input.idempotencyKey === input.idempotencyKey.trim() &&
+    input.idempotencyKey.length >= 1 &&
+    input.idempotencyKey.length <= 128 &&
+    (input.hearingAt === null || businessDate(input.hearingAt))
+  );
+}
+function validCaseHearingCommandResult(
+  value: unknown,
+  id: string,
+  expectedVersion: number,
+): value is CaseHearingCommandResult {
+  return (
+    record(value) &&
+    exact(value, [
+      'id',
+      'stage',
+      'version',
+      'arrangementId',
+      'hearingAt',
+      'recordedAt',
+    ]) &&
+    value.id === id &&
+    (value.stage === 'WAITING_HEARING' ||
+      value.stage === 'WAITING_JUDGMENT') &&
+    Number.isInteger(value.version) &&
+    Number(value.version) === expectedVersion + 1 &&
+    uuidV4(value.arrangementId) &&
+    (value.hearingAt === null || businessDate(value.hearingAt)) &&
+    typeof value.recordedAt === 'string' &&
+    !Number.isNaN(Date.parse(value.recordedAt))
+  );
+}
+export async function scheduleCaseHearing(
+  id: string,
+  input: SaveCaseHearingInput,
+  audience: 'internal' | 'lawyer' = 'internal',
+): Promise<CaseHearingCommandResult> {
+  if (!validCaseHearingInput(input))
+    throw new ApiError('开庭安排无效，请检查日期和请求版本。', 400, 'VALIDATION_ERROR');
+  const response = await requestJson(
+    `/${audience === 'lawyer' ? 'lawyer/cases' : 'cases'}/${encodeURIComponent(id)}/hearing-schedule`,
+    {
+      method: 'POST',
+      headers: { 'Idempotency-Key': input.idempotencyKey },
+      body: input,
+    },
+  );
+  if (!validCaseHearingCommandResult(response, id, input.expectedVersion))
+    throw invalidResponse();
+  return response;
+}
+export async function correctCaseHearing(
+  id: string,
+  input: CorrectCaseHearingInput,
+): Promise<CaseHearingCommandResult> {
+  const reason = input.reason.trim();
+  if (
+    !validCaseHearingInput(input) ||
+    reason.length < 1 ||
+    reason.length > 500
+  )
+    throw new ApiError('开庭纠错信息无效，请填写 1～500 个字符的原因。', 400, 'VALIDATION_ERROR');
+  const response = await requestJson(
+    `/cases/${encodeURIComponent(id)}/hearing-correct`,
+    {
+      method: 'POST',
+      headers: { 'Idempotency-Key': input.idempotencyKey },
+      body: { ...input, reason },
+    },
+  );
+  if (!validCaseHearingCommandResult(response, id, input.expectedVersion))
+    throw invalidResponse();
+  return response;
 }
 export async function listFilingCourts(
   id: string,

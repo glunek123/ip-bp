@@ -30,6 +30,8 @@ const summary = {
   canSubmitFiling: false,
   canRegisterAcceptance: false,
   canUploadAcceptanceMaterials: false,
+  canScheduleHearing: false,
+  canCorrectHearing: false,
   sourceLead: { id: 'lead-1', businessNo: 'LD-1' },
   sourceNotaryMatter: { id: 'matter-1', businessNo: 'NZ-1' },
 };
@@ -96,6 +98,13 @@ const detail = {
     PAYMENT_LIST: { available: [], frozen: [], later: [] },
     SERVICE_DOCUMENT: { available: [], frozen: [], later: [] },
   },
+  hearing: {
+    currentArrangement: null,
+    currentAdvance: null,
+    arrangements: [],
+    advances: [],
+    corrections: [],
+  },
 };
 function mockJson(payload: unknown) {
   const fetchMock = vi
@@ -106,6 +115,133 @@ function mockJson(payload: unknown) {
 }
 
 describe('cases API', () => {
+  it('strictly decodes waiting judgment and immutable hearing history', async () => {
+    mockJson({
+      ...detail,
+      stage: 'WAITING_JUDGMENT',
+      version: 8,
+      canScheduleHearing: false,
+      canCorrectHearing: true,
+      hearing: {
+        currentArrangement: {
+          id: '80000000-0000-4000-8000-000000000001',
+          hearingAt: '2026-10-05',
+          source: 'CORRECTION',
+          recordedAt: '2026-10-06T01:00:00.000Z',
+          recordedByUserId: '80000000-0000-4000-8000-000000000006',
+        },
+        currentAdvance: {
+          id: '80000000-0000-4000-8000-000000000002',
+          arrangementId: '80000000-0000-4000-8000-000000000001',
+          dueAt: '2026-10-06T00:00:00.000+08:00',
+          executedAt: '2026-10-06T00:00:00.000+08:00',
+        },
+        arrangements: [],
+        advances: [],
+        corrections: [
+          {
+            id: '80000000-0000-4000-8000-000000000003',
+            priorArrangementId: '80000000-0000-4000-8000-000000000004',
+            priorAdvanceId: '80000000-0000-4000-8000-000000000005',
+            newArrangementId: '80000000-0000-4000-8000-000000000001',
+            resultStage: 'WAITING_JUDGMENT',
+            recordedAt: '2026-10-06T01:00:00.000Z',
+            recordedByUserId: '80000000-0000-4000-8000-000000000006',
+            reason: '法院通知日期变化',
+          },
+        ],
+      },
+    });
+
+    await expect(getCase('case-1')).resolves.toMatchObject({
+      stage: 'WAITING_JUDGMENT',
+      canCorrectHearing: true,
+      hearing: {
+        currentArrangement: { hearingAt: '2026-10-05', source: 'CORRECTION' },
+        corrections: [{ reason: '法院通知日期变化' }],
+      },
+    });
+  });
+
+  it('posts explicit hearing dates or null through only the authorized schedule route', async () => {
+    const schedule = Reflect.get(casesApi, 'scheduleCaseHearing') as
+      | ((id: string, input: Record<string, unknown>, audience?: string) => Promise<unknown>)
+      | undefined;
+    expect(schedule).toBeTypeOf('function');
+    if (!schedule) return;
+    const response = {
+      id: 'case-1',
+      stage: 'WAITING_HEARING',
+      version: 7,
+      arrangementId: '80000000-0000-4000-8000-000000000001',
+      hearingAt: '2020-01-01',
+      recordedAt: '2026-10-06T01:00:00.000Z',
+    };
+    const fetchMock = mockJson(response);
+    await expect(
+      schedule('case-1', {
+        expectedVersion: 6,
+        idempotencyKey: 'schedule-key',
+        hearingAt: '2020-01-01',
+      }, 'lawyer'),
+    ).resolves.toEqual(response);
+    const [url, init] = fetchMock.mock.calls[0] as [string, RequestInit];
+    expect(url).toBe('/api/v1/lawyer/cases/case-1/hearing-schedule');
+    expect(JSON.parse(String(init.body))).toEqual({
+      expectedVersion: 6,
+      idempotencyKey: 'schedule-key',
+      hearingAt: '2020-01-01',
+    });
+
+    fetchMock.mockResolvedValueOnce(
+      new Response(JSON.stringify({ ...response, hearingAt: null })),
+    );
+    await schedule('case-1', {
+      expectedVersion: 6,
+      idempotencyKey: 'clear-key',
+      hearingAt: null,
+    });
+    expect(JSON.parse(String(fetchMock.mock.calls[1]?.[1]?.body))).toEqual({
+      expectedVersion: 6,
+      idempotencyKey: 'clear-key',
+      hearingAt: null,
+    });
+  });
+
+  it('posts trimmed correction reasons only to the internal correction route', async () => {
+    const correct = Reflect.get(casesApi, 'correctCaseHearing') as
+      | ((id: string, input: Record<string, unknown>) => Promise<unknown>)
+      | undefined;
+    expect(correct).toBeTypeOf('function');
+    if (!correct) return;
+    const response = {
+      id: 'case-1',
+      stage: 'WAITING_HEARING',
+      version: 9,
+      arrangementId: '80000000-0000-4000-8000-000000000001',
+      hearingAt: null,
+      recordedAt: '2026-10-06T01:00:00.000Z',
+    };
+    const fetchMock = mockJson(response);
+    await expect(
+      correct('case-1', {
+        expectedVersion: 8,
+        idempotencyKey: 'correction-key',
+        hearingAt: null,
+        reason: '  法院尚未确定新日期  ',
+      }),
+    ).resolves.toEqual(response);
+    expect(fetchMock.mock.calls[0]?.[0]).toBe(
+      '/api/v1/cases/case-1/hearing-correct',
+    );
+    expect(JSON.parse(String(fetchMock.mock.calls[0]?.[1]?.body))).toEqual({
+      expectedVersion: 8,
+      idempotencyKey: 'correction-key',
+      hearingAt: null,
+      reason: '法院尚未确定新日期',
+    });
+  });
+
   it('decodes formal acceptance facts and the three separated material groups', async () => {
     const file = {
       materialId: 'material-notice',
@@ -124,7 +260,7 @@ describe('cases API', () => {
         acceptedAt: '2026-10-05',
         courtCaseNo: '（2026）甲0101民初1号',
         recordedAt: '2026-10-05T01:00:00.000Z',
-        recordedByUserId: 'operator-1',
+            recordedByUserId: '80000000-0000-4000-8000-000000000006',
       },
       acceptanceMaterials: {
         ACCEPTANCE_NOTICE: { available: [], frozen: [file], later: [] },
@@ -282,6 +418,7 @@ describe('cases API', () => {
         WAITING_FILING: 0,
         WAITING_FORMAL_ACCEPTANCE: 0,
         WAITING_HEARING: 0,
+        WAITING_JUDGMENT: 0,
       },
     });
     await expect(
@@ -296,6 +433,7 @@ describe('cases API', () => {
         WAITING_FILING: 0,
         WAITING_FORMAL_ACCEPTANCE: 0,
         WAITING_HEARING: 0,
+        WAITING_JUDGMENT: 0,
       },
     });
     expect(fetchMock.mock.calls[0]?.[0]).toBe(
@@ -324,6 +462,7 @@ describe('cases API', () => {
         WAITING_FILING: 0,
         WAITING_FORMAL_ACCEPTANCE: 0,
         WAITING_HEARING: 0,
+        WAITING_JUDGMENT: 0,
       },
     });
     await expect(
@@ -347,6 +486,7 @@ describe('cases API', () => {
         WAITING_FILING: 0,
         WAITING_FORMAL_ACCEPTANCE: 0,
         WAITING_HEARING: 0,
+        WAITING_JUDGMENT: 0,
       },
     });
     await listCases(1, 20, { stage: 'all' });
@@ -388,6 +528,8 @@ describe('cases API', () => {
       canSubmitFiling: false,
       canRegisterAcceptance: false,
       canUploadAcceptanceMaterials: false,
+      canScheduleHearing: true,
+      canCorrectHearing: false,
       filingSubmission: {
         court: {
           id: '70000000-0000-4000-8000-000000000011',
@@ -701,6 +843,8 @@ describe('cases API', () => {
       canSubmitFiling: false,
       canRegisterAcceptance: false,
       canUploadAcceptanceMaterials: false,
+      canScheduleHearing: true,
+      canCorrectHearing: false,
       createdAt: '2026-09-28T00:00:00.000Z',
       matchedAt: '2026-09-29T01:00:00Z',
       matchedOn: '2026-09-28',
@@ -716,6 +860,7 @@ describe('cases API', () => {
       courtCaseNo: null,
       acceptance: null,
       acceptanceMaterials: detail.acceptanceMaterials,
+      hearing: detail.hearing,
     };
     const read = Reflect.get(casesApi, 'getLawyerCase') as
       ((id: string) => Promise<Record<string, unknown>>) | undefined;
@@ -973,6 +1118,7 @@ describe('cases API', () => {
         WAITING_FILING: 0,
         WAITING_FORMAL_ACCEPTANCE: 0,
         WAITING_HEARING: 0,
+        WAITING_JUDGMENT: 0,
       },
     });
     const read = Reflect.get(casesApi, 'listLawyerCases') as
