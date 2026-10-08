@@ -137,7 +137,7 @@ export type CaseJudgmentFact = {
   fromVersion: number;
   toVersion: number;
   recordedAt: string;
-  reason?: string;
+  reason?: string | null;
   recordedByUserId?: string;
   files: CaseFile[];
 };

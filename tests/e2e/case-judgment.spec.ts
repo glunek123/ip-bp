@@ -470,12 +470,24 @@ test('operator registers, corrects, and downloads immutable judgment facts', asy
   const panel = page.locator('[data-test="case-judgment-panel"]');
   await expect(panel).toBeVisible();
   const originalFilename = '一审判决原件.pdf';
-  await panel.locator('[data-test="judgment-file-input"]').setInputFiles({
-    name: originalFilename,
-    mimeType: 'application/pdf',
-    buffer: originalBytes,
-  });
-  await expect(panel.getByText(originalFilename)).toBeVisible();
+  const frozenFilenames = [
+    originalFilename,
+    ...Array.from(
+      { length: 9 },
+      (_, index) => `一审判决历史-${String(index + 2).padStart(2, '0')}.pdf`,
+    ),
+  ];
+  await panel.locator('[data-test="judgment-file-input"]').setInputFiles(
+    frozenFilenames.map((name, index) => ({
+      name,
+      mimeType: 'application/pdf',
+      buffer: index === 0 ? originalBytes : correctionBytes,
+    })),
+  );
+  for (const filename of frozenFilenames)
+    await expect(panel.getByText(filename)).toBeVisible();
+  for (const filename of frozenFilenames)
+    await panel.getByLabel(filename).check();
   await panel.locator('[data-test="judgment-date"]').fill(acceptedAt);
   await panel
     .locator('[data-test="judgment-amount-state"]')
@@ -518,6 +530,7 @@ test('operator registers, corrects, and downloads immutable judgment facts', asy
       };
     })
     .toEqual({ stage: 'WAITING_JUDGMENT', amount: '0.00', fee: null });
+  await expect(panel.getByRole('status')).toContainText('判决命令已受理');
   await page.reload();
   await expect(page.locator('.page-head .pill')).toHaveText('待判决');
   await expect(panel.locator('[data-test="judgment-current"]')).toContainText(
@@ -530,13 +543,17 @@ test('operator registers, corrects, and downloads immutable judgment facts', asy
   expect(await downloadBytes(page, currentOriginal)).toEqual(originalBytes);
 
   const correctionFilename = '一审判决更正版本.pdf';
+  await expect(
+    panel.locator('[data-test="judgment-file-input"]'),
+  ).toBeEnabled();
   await panel.locator('[data-test="judgment-file-input"]').setInputFiles({
     name: correctionFilename,
     mimeType: 'application/pdf',
     buffer: correctionBytes,
   });
   await expect(panel.getByText(correctionFilename)).toBeVisible();
-  await panel.getByLabel(originalFilename).uncheck();
+  for (const filename of frozenFilenames.slice(1))
+    await panel.getByLabel(filename).check();
   await panel.getByLabel(correctionFilename).check();
   await panel
     .locator('[data-test="judgment-correction-reason"]')
@@ -559,19 +576,38 @@ test('operator registers, corrects, and downloads immutable judgment facts', asy
     `/api/v1/cases/${primary.caseId}`,
   );
   await expectStatus(internalDetail, 200);
+  await expect(panel.getByRole('status')).toContainText('判决命令已受理');
   const judgment = (await internalDetail.json()) as {
     stage: string;
     judgment: {
       current: { judgmentAmount: string | null };
       history: Array<{
         reason?: string;
-        files: Array<{ originalFilename: string }>;
+        files: Array<{
+          contentVersionId: string;
+          originalFilename: string;
+        }>;
       }>;
     };
   };
   expect(judgment.stage).toBe('WAITING_JUDGMENT');
   expect(judgment.judgment.current.judgmentAmount).toBe('42.50');
   expect(judgment.judgment.history).toHaveLength(2);
+  const registeredFiles = judgment.judgment.history.find(
+    (entry) => entry.kind === 'REGISTER',
+  )!.files;
+  const correctedFiles = judgment.judgment.history.find(
+    (entry) => entry.kind === 'CORRECT',
+  )!.files;
+  expect(registeredFiles).toHaveLength(10);
+  expect(correctedFiles).toHaveLength(10);
+  expect(correctedFiles.map((entry) => entry.contentVersionId)).toEqual(
+    expect.arrayContaining(
+      registeredFiles
+        .filter((entry) => entry.originalFilename !== originalFilename)
+        .map((entry) => entry.contentVersionId),
+    ),
+  );
   expect(judgment.judgment.history).toEqual(
     expect.arrayContaining([
       expect.objectContaining({
@@ -599,7 +635,7 @@ test('operator registers, corrects, and downloads immutable judgment facts', asy
     correctionFilename,
   );
   const historicalOriginal = panel
-    .locator('[data-test="judgment-history"] li')
+    .locator('[data-test="judgment-history"] ul.notary-offices-list > li')
     .filter({ hasText: originalFilename })
     .getByRole('button', { name: '下载判决书' });
   expect(await downloadBytes(page, historicalOriginal)).toEqual(originalBytes);

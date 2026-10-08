@@ -44,6 +44,22 @@ const fact = {
   recordedByUserId: '70000000-0000-4000-8000-000000000004',
   files: [file],
 };
+const frozenFiles = Array.from({ length: 10 }, (_, index) => ({
+  ...file,
+  contentVersionId: `70000000-0000-4000-8000-${String(index + 20).padStart(12, '0')}`,
+  originalFilename: `历史判决书-${index + 1}.pdf`,
+}));
+const frozenFacts = frozenFiles.map((frozenFile, index) => ({
+  ...fact,
+  id: `70000000-0000-4000-8000-${String(index + 40).padStart(12, '0')}`,
+  priorFactId:
+    index === 0
+      ? null
+      : `70000000-0000-4000-8000-${String(index + 39).padStart(12, '0')}`,
+  fromVersion: index + 7,
+  toVersion: index + 8,
+  files: [frozenFile],
+}));
 const baseItem: CaseDetail = {
   id: 'case-1',
   businessNo: 'CA-1',
@@ -372,6 +388,306 @@ describe('case judgment panel', () => {
           .element as HTMLInputElement
       ).checked,
     ).toBe(false);
+  });
+
+  it('allows a new correction upload after ten historical versions are frozen', async () => {
+    const addedFile = {
+      materialId: '70000000-0000-4000-8000-000000000090',
+      contentVersionId: '70000000-0000-4000-8000-000000000091',
+      originalFilename: '补正文书.pdf',
+      mimeType: 'application/pdf',
+    };
+    api.uploadMaterialFile.mockResolvedValueOnce(addedFile);
+    const correctable = {
+      ...baseItem,
+      canRegisterJudgment: false,
+      canCorrectJudgment: true,
+      judgment: {
+        current: frozenFacts.at(-1)!,
+        history: frozenFacts,
+        availableFiles: frozenFiles,
+      },
+    };
+    const wrapper = mountPanel(correctable);
+    const input = wrapper.get('[data-test="judgment-file-input"]')
+      .element as HTMLInputElement;
+    expect(input.disabled).toBe(false);
+    Object.defineProperty(input, 'files', {
+      configurable: true,
+      value: [
+        new File(['supplement'], addedFile.originalFilename, {
+          type: 'application/pdf',
+        }),
+      ],
+    });
+
+    await wrapper.get('[data-test="judgment-file-input"]').trigger('change');
+    await flushPromises();
+
+    expect(api.uploadMaterialFile).toHaveBeenCalledTimes(1);
+    expect(api.uploadMaterialFile).toHaveBeenCalledWith(
+      expect.objectContaining({ category: 'JUDGMENT', purpose: 'JUDGMENT' }),
+    );
+    expect(
+      wrapper
+        .find(`[data-test="judgment-file-${addedFile.contentVersionId}"]`)
+        .exists(),
+    ).toBe(true);
+    for (const historicalFile of frozenFiles)
+      await wrapper
+        .get(`[data-test="judgment-file-${historicalFile.contentVersionId}"]`)
+        .setValue(true);
+    expect(
+      (
+        wrapper.get(`[data-test="judgment-file-${addedFile.contentVersionId}"]`)
+          .element as HTMLInputElement
+      ).disabled,
+    ).toBe(true);
+  });
+
+  it('preserves a valid draft when an upload refresh keeps the case version', async () => {
+    const addedFile = {
+      materialId: '70000000-0000-4000-8000-000000000095',
+      contentVersionId: '70000000-0000-4000-8000-000000000096',
+      originalFilename: '待选补充判决书.pdf',
+      mimeType: 'application/pdf',
+    };
+    api.uploadMaterialFile.mockResolvedValueOnce(addedFile);
+    const correctable = {
+      ...baseItem,
+      canRegisterJudgment: false,
+      canCorrectJudgment: true,
+      judgment: { current: fact, history: [fact], availableFiles: [file] },
+    };
+    const wrapper = mountPanel(correctable);
+    await wrapper.get('[data-test="judgment-date"]').setValue('2026-10-07');
+    await wrapper
+      .get('[data-test="judgment-correction-reason"]')
+      .setValue('保留仍有效的待提交草稿');
+    const input = wrapper.get('[data-test="judgment-file-input"]');
+    Object.defineProperty(input.element, 'files', {
+      configurable: true,
+      value: [
+        new File(['supplement'], addedFile.originalFilename, {
+          type: 'application/pdf',
+        }),
+      ],
+    });
+
+    await input.trigger('change');
+    await flushPromises();
+    await wrapper.setProps({
+      item: {
+        ...correctable,
+        judgment: {
+          current: fact,
+          history: [fact],
+          availableFiles: [file, addedFile],
+        },
+      },
+    });
+
+    expect(
+      (
+        wrapper.get('[data-test="judgment-correction-reason"]')
+          .element as HTMLTextAreaElement
+      ).value,
+    ).toBe('保留仍有效的待提交草稿');
+    expect(
+      (wrapper.get('[data-test="judgment-date"]').element as HTMLInputElement)
+        .value,
+    ).toBe('2026-10-07');
+    expect(
+      (wrapper.get('[data-test="judgment-amount"]').element as HTMLInputElement)
+        .value,
+    ).toBe('0.00');
+    expect(api.uploadMaterialFile).toHaveBeenCalledTimes(1);
+  });
+
+  it('discards a stale correction draft after a known conflict and newer case read', async () => {
+    api.correctCaseJudgment.mockRejectedValueOnce(
+      new ApiError('Changed', 409, 'VERSION_CONFLICT'),
+    );
+    const before = {
+      ...baseItem,
+      canRegisterJudgment: false,
+      canCorrectJudgment: true,
+      judgment: { current: fact, history: [fact], availableFiles: [file] },
+    };
+    const wrapper = mountPanel(before);
+    await wrapper
+      .get('[data-test="judgment-correction-reason"]')
+      .setValue('旧草稿原因');
+    await wrapper.get('[data-test="judgment-correct"]').trigger('click');
+    await flushPromises();
+
+    const newerFact = {
+      ...fact,
+      kind: 'CORRECT' as const,
+      id: '70000000-0000-4000-8000-000000000092',
+      priorFactId: fact.id,
+      judgmentAmount: '42.50',
+      fromVersion: 8,
+      toVersion: 9,
+      reason: '其他操作者已确认的更正',
+    };
+    await wrapper.setProps({
+      item: {
+        ...before,
+        version: 8,
+        judgment: {
+          current: newerFact,
+          history: [fact, newerFact],
+          availableFiles: [file],
+        },
+      },
+    });
+
+    expect(
+      (
+        wrapper.get('[data-test="judgment-correction-reason"]')
+          .element as HTMLTextAreaElement
+      ).value,
+    ).toBe('');
+    expect(
+      (wrapper.get('[data-test="judgment-amount"]').element as HTMLInputElement)
+        .value,
+    ).toBe('42.50');
+    await wrapper.get('[data-test="judgment-correct"]').trigger('click');
+    await flushPromises();
+    expect(api.correctCaseJudgment).toHaveBeenCalledTimes(1);
+
+    await wrapper
+      .get('[data-test="judgment-correction-reason"]')
+      .setValue('已核对其他操作者的新事实后重新填写');
+    await wrapper.get('[data-test="judgment-correct"]').trigger('click');
+    await flushPromises();
+    expect(api.correctCaseJudgment).toHaveBeenCalledTimes(2);
+    expect(api.correctCaseJudgment.mock.calls[1]?.[1]).toMatchObject({
+      expectedVersion: 8,
+      judgmentAmount: '42.50',
+      reason: '已核对其他操作者的新事实后重新填写',
+    });
+  });
+
+  it('keeps the accepted-command feedback when its refreshed case has a newer version', async () => {
+    const wrapper = mountPanel();
+    await wrapper.get('[data-test="judgment-date"]').setValue('2026-10-07');
+    await wrapper
+      .get('[data-test="judgment-amount-state"]')
+      .setValue('PENDING');
+    await wrapper.get('[data-test="paid-fee-state"]').setValue('PENDING');
+    await wrapper.get('[data-test="judgment-submit"]').trigger('click');
+    await flushPromises();
+    expect(wrapper.get('[role="status"]').text()).toContain('判决命令已受理');
+
+    await wrapper.setProps({
+      item: {
+        ...baseItem,
+        version: 8,
+        canRegisterJudgment: false,
+        canCorrectJudgment: true,
+        judgment: { current: fact, history: [fact], availableFiles: [file] },
+      },
+    });
+
+    expect(wrapper.get('[role="status"]').text()).toContain('判决命令已受理');
+  });
+
+  it('retains the original unknown command when a newer case version is read', async () => {
+    api.correctCaseJudgment
+      .mockRejectedValueOnce(new ApiError('Gateway error', 502, 'BAD_GATEWAY'))
+      .mockResolvedValueOnce({
+        id: 'case-1',
+        stage: 'WAITING_JUDGMENT',
+        version: 9,
+        judgmentId: '70000000-0000-4000-8000-000000000093',
+        recordedAt: '2026-10-08T01:00:00.000Z',
+      });
+    const before = {
+      ...baseItem,
+      canRegisterJudgment: false,
+      canCorrectJudgment: true,
+      judgment: { current: fact, history: [fact], availableFiles: [file] },
+    };
+    const wrapper = mountPanel(before);
+    await wrapper
+      .get('[data-test="judgment-correction-reason"]')
+      .setValue('本次请求的固定原因');
+    await wrapper.get('[data-test="judgment-correct"]').trigger('click');
+    await flushPromises();
+    const originalCall = api.correctCaseJudgment.mock.calls[0];
+
+    const newerFact = {
+      ...fact,
+      kind: 'CORRECT' as const,
+      id: '70000000-0000-4000-8000-000000000094',
+      priorFactId: fact.id,
+      judgmentAmount: '88.00',
+      fromVersion: 8,
+      toVersion: 9,
+      reason: '刷新读取到的新事实',
+    };
+    await wrapper.setProps({
+      item: {
+        ...before,
+        version: 8,
+        judgment: {
+          current: newerFact,
+          history: [fact, newerFact],
+          availableFiles: [file],
+        },
+      },
+    });
+    expect(wrapper.find('[data-test="judgment-retry"]').exists()).toBe(true);
+    await wrapper.get('[data-test="judgment-retry"]').trigger('click');
+    await flushPromises();
+
+    expect(api.correctCaseJudgment).toHaveBeenCalledTimes(2);
+    expect(api.correctCaseJudgment.mock.calls[1]).toEqual(originalCall);
+    expect(originalCall?.[1]).toMatchObject({
+      expectedVersion: 7,
+      reason: '本次请求的固定原因',
+    });
+  });
+
+  it('rejects uploads from both the input and handler while a command is submitting', async () => {
+    let resolveCommand!: (value: unknown) => void;
+    api.registerCaseJudgment.mockReturnValueOnce(
+      new Promise((resolve) => {
+        resolveCommand = resolve;
+      }),
+    );
+    const wrapper = mountPanel();
+    await wrapper.get('[data-test="judgment-date"]').setValue('2026-10-07');
+    await wrapper
+      .get('[data-test="judgment-amount-state"]')
+      .setValue('PENDING');
+    await wrapper.get('[data-test="paid-fee-state"]').setValue('PENDING');
+    await wrapper.get('[data-test="judgment-submit"]').trigger('click');
+    await flushPromises();
+
+    const input = wrapper.get('[data-test="judgment-file-input"]')
+      .element as HTMLInputElement;
+    expect(input.disabled).toBe(true);
+    Object.defineProperty(input, 'files', {
+      configurable: true,
+      value: [
+        new File(['unexpected'], 'extra.pdf', { type: 'application/pdf' }),
+      ],
+    });
+    await wrapper.get('[data-test="judgment-file-input"]').trigger('change');
+    await flushPromises();
+    expect(api.uploadMaterialFile).not.toHaveBeenCalled();
+
+    resolveCommand({
+      id: 'case-1',
+      stage: 'WAITING_JUDGMENT',
+      version: 8,
+      judgmentId: fact.id,
+      recordedAt: fact.recordedAt,
+    });
+    await flushPromises();
   });
 
   it('rejects forbidden commands and refreshes after a version conflict', async () => {

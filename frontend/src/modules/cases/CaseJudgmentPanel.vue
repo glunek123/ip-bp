@@ -84,7 +84,14 @@ function allAvailableFiles(): CaseFile[] {
   }
   return [...unique.values()];
 }
-function resetContext(): void {
+function resetContext(
+  preservePendingState = false,
+  preserveSuccess = false,
+): void {
+  const pendingCommand = unknownRequest.value;
+  const commandSubmitting = submitting.value;
+  const commandUploading = uploading.value;
+  const acceptedFeedback = success.value;
   const current = props.item.judgment.current;
   judgmentReceivedAt.value = current?.judgmentReceivedAt ?? '';
   judgmentAmountState.value = current?.judgmentAmountState ?? '';
@@ -94,11 +101,11 @@ function resetContext(): void {
   correctionReason.value = '';
   uploadedFiles.value = [];
   uploadError.value = '';
-  uploading.value = false;
-  submitting.value = false;
+  uploading.value = preservePendingState && commandUploading;
+  submitting.value = preservePendingState && commandSubmitting;
   error.value = '';
-  success.value = '';
-  unknownRequest.value = null;
+  success.value = preserveSuccess ? acceptedFeedback : '';
+  unknownRequest.value = preservePendingState ? pendingCommand : null;
   selectedFiles.value = new Set();
   const available = allAvailableFiles();
   if (available.length === 1)
@@ -112,6 +119,11 @@ watch(
     resetContext();
   },
   { immediate: true, flush: 'sync' },
+);
+watch(
+  () => props.item.version,
+  () => resetContext(true, true),
+  { flush: 'sync' },
 );
 onBeforeUnmount(() => {
   active = false;
@@ -134,6 +146,19 @@ const canCorrect = computed(
 );
 const canEdit = computed(() => canRegister.value || canCorrect.value);
 const availableFiles = computed(allAvailableFiles);
+const frozenFileIds = computed(
+  () =>
+    new Set(
+      props.item.judgment.history.flatMap((fact) =>
+        fact.files.map((file) => file.contentVersionId),
+      ),
+    ),
+);
+const unfrozenFiles = computed(() =>
+  availableFiles.value.filter(
+    (file) => !frozenFileIds.value.has(file.contentVersionId),
+  ),
+);
 const acceptanceDate = computed(() => props.item.acceptance?.acceptedAt ?? '');
 function validDate(value: string): boolean {
   if (!/^\d{4}-\d{2}-\d{2}$/u.test(value)) return false;
@@ -298,9 +323,15 @@ async function uploadFiles(event: globalThis.Event): Promise<void> {
   const files = Array.from(input.files ?? []);
   input.value = '';
   uploadError.value = '';
-  if (!files.length || !canEdit.value || unknownRequest.value) return;
-  if (availableFiles.value.length + files.length > 10) {
-    uploadError.value = '本案最多选择10份判决书版本。';
+  if (
+    !files.length ||
+    !canEdit.value ||
+    submitting.value ||
+    unknownRequest.value
+  )
+    return;
+  if (unfrozenFiles.value.length + files.length > 10) {
+    uploadError.value = '本案最多保留10份未冻结待选判决书版本。';
     return;
   }
   if (
@@ -499,8 +530,9 @@ function historyLabel(fact: CaseJudgmentFact): string {
             :disabled="
               !canEdit ||
               uploading ||
+              submitting ||
               unknownRequest !== null ||
-              availableFiles.length >= 10
+              unfrozenFiles.length >= 10
             "
             @change="uploadFiles"
           />

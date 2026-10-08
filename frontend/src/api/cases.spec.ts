@@ -1,4 +1,4 @@
-import { afterEach, describe, expect, it, vi } from 'vitest';
+import { afterEach, describe, expect, expectTypeOf, it, vi } from 'vitest';
 import {
   confirmCaseComplaint,
   createFilingCourt,
@@ -13,6 +13,7 @@ import {
   submitComplaint,
 } from './cases';
 import * as casesApi from './cases';
+import type { CaseJudgmentFact } from './cases';
 
 afterEach(() => vi.unstubAllGlobals());
 
@@ -118,6 +119,12 @@ function mockJson(payload: unknown) {
 }
 
 describe('cases API', () => {
+  it('models the nullable internal REGISTER reason exactly', () => {
+    expectTypeOf<CaseJudgmentFact['reason']>().toEqualTypeOf<
+      string | null | undefined
+    >();
+  });
+
   it('decodes judgment facts with explicit pending and known-zero amounts', async () => {
     const file = {
       materialId: '70000000-0000-4000-8000-000000000001',
