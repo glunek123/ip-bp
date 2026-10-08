@@ -288,6 +288,24 @@ export async function verifyCaseJudgmentDatabase() {
       where: { caseId: ids.case },
       orderBy: { toVersion: 'asc' },
     });
+    const extraDraft = await materials.createUploadDraft(actor, {
+      ownerType: 'CASE',
+      ownerId: ids.case,
+      category: 'JUDGMENT',
+      purpose: 'JUDGMENT',
+      originalFilename: 'extra-judgment.pdf',
+      declaredMimeType: 'application/pdf',
+    });
+    const extraUploaded = await materials.finalizeUpload(
+      actor,
+      extraDraft.id,
+      Readable.from(bytes),
+    );
+    const extraStorageRow = await database.contentVersion.findUnique({
+      where: { id: extraUploaded.contentVersionId },
+      select: { storageKey: true },
+    });
+    keys.push(extraStorageRow.storageKey);
     const referenceSql =
       'INSERT INTO material_references(id,department_id,resource_type,resource_id,purpose,material_id,content_version_id,action_event_id) VALUES ($1,$2,$3,$4,$5,$6,$7,$8)';
     const referenceArgs = [
@@ -308,6 +326,40 @@ export async function verifyCaseJudgmentDatabase() {
       ...referenceArgs,
       history[0].auditEventId,
     ]);
+    const extraReferenceArgs = [
+      ids.department,
+      'case',
+      ids.case,
+      'JUDGMENT',
+      extraUploaded.materialId,
+      extraUploaded.contentVersionId,
+    ];
+    const extraSameEvent = await code(client, referenceSql, [
+      randomUUID(),
+      ...extraReferenceArgs,
+      history[0].auditEventId,
+    ]);
+    const fakeEvent = await database.auditEvent.create({
+      data: {
+        departmentId: ids.department,
+        actorUserId: ids.actor,
+        internalActorUserId: ids.actor,
+        resourceType: 'CASE',
+        resourceId: ids.case,
+        action: 'case.judgment.registered',
+        details: {},
+      },
+      select: { id: true },
+    });
+    const unmatchedFactEvent = await code(client, referenceSql, [
+      randomUUID(),
+      ...extraReferenceArgs,
+      fakeEvent.id,
+    ]);
+    const originalReferenceSetPreserved =
+      (await database.materialReference.count({
+        where: { actionEventId: history[0].auditEventId, purpose: 'JUDGMENT' },
+      })) === 1;
     const nonJudgmentArgs = [
       ids.department,
       'case',
@@ -435,6 +487,9 @@ export async function verifyCaseJudgmentDatabase() {
       priorMatches: history[1].priorFactId === history[0].id,
       nullEvent,
       sameEvent,
+      extraSameEvent,
+      unmatchedFactEvent,
+      originalReferenceSetPreserved,
       nonJudgmentFirst,
       nonJudgmentDuplicate,
       updateOtherPurposeReference,

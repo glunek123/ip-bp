@@ -680,12 +680,12 @@ export async function verifyCaseHearingDetailSnapshot() {
     .filter(
       (name) =>
         /^\d{14}_/u.test(name) &&
-        name <= '20261008027000_guard_case_judgment_references',
+        name <= '20261008028000_guard_case_judgment_reference_inserts',
     )
     .sort();
   if (
-    names.length !== 90 ||
-    names.at(-1) !== '20261008027000_guard_case_judgment_references'
+    names.length !== 91 ||
+    names.at(-1) !== '20261008028000_guard_case_judgment_reference_inserts'
   )
     throw new Error('Unexpected hearing migration chain');
   const admin = new Client({ connectionString: databaseUrl });
@@ -1022,12 +1022,12 @@ export async function verifyCaseHearingDatabase() {
     .filter(
       (name) =>
         /^\d{14}_/u.test(name) &&
-        name <= '20261008027000_guard_case_judgment_references',
+        name <= '20261008028000_guard_case_judgment_reference_inserts',
     )
     .sort();
   if (
-    names.length !== 90 ||
-    names.at(-1) !== '20261008027000_guard_case_judgment_references'
+    names.length !== 91 ||
+    names.at(-1) !== '20261008028000_guard_case_judgment_reference_inserts'
   )
     throw new Error('Unexpected migration chain');
   const admin = new Client({ connectionString: databaseUrl });

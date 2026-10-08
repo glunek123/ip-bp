@@ -108,6 +108,7 @@ export async function verifyCaseJudgmentMigration() {
     '20261008025000_allow_judgment_version_reuse',
     '20261008026000_repair_case_judgment_deployment',
     '20261008027000_guard_case_judgment_references',
+    '20261008028000_guard_case_judgment_reference_inserts',
   ];
   const previous = (await readdir(migrations))
     .filter((name) => /^\d{14}_/u.test(name) && name < target[0])
@@ -139,6 +140,7 @@ export async function verifyCaseJudgmentMigration() {
     badFunction: `ca008_badfunction_${suffix}`,
     badTrigger: `ca008_badtrigger_${suffix}`,
     guardFailure: `ca008_guardfailure_${suffix}`,
+    insertFailure: `ca008_insertfailure_${suffix}`,
     badData: `ca008_baddata_${suffix}`,
   };
   for (const [index, recovery] of recoveryCases.entries()) {
@@ -544,7 +546,12 @@ export async function verifyCaseJudgmentMigration() {
           WHERE n.nspname=$1 AND p.proname='check_case_judgment_reference_immutable') AS reference_function_version,
         (SELECT t.oid::text FROM pg_trigger t JOIN pg_class c ON c.oid=t.tgrelid
           JOIN pg_namespace n ON n.oid=c.relnamespace WHERE n.nspname=$1
-          AND c.relname='material_references' AND t.tgname='material_references_judgment_immutable_guard') AS reference_trigger_id
+          AND c.relname='material_references' AND t.tgname='material_references_judgment_immutable_guard') AS reference_trigger_id,
+        (SELECT p.xmin::text FROM pg_proc p JOIN pg_namespace n ON n.oid=p.pronamespace
+          WHERE n.nspname=$1 AND p.proname='check_case_judgment_reference_insert') AS insert_function_version,
+        (SELECT t.oid::text FROM pg_trigger t JOIN pg_class c ON c.oid=t.tgrelid
+          JOIN pg_namespace n ON n.oid=c.relnamespace WHERE n.nspname=$1
+          AND c.relname='material_references' AND t.tgname='material_references_judgment_insert_guard') AS insert_trigger_id
     `,
           [schema],
         )
@@ -571,6 +578,22 @@ export async function verifyCaseJudgmentMigration() {
       schemas.upgrade,
       null,
       ['db', 'execute', '--file', guardSql],
+      true,
+    );
+    const insertSql = resolve(
+      migrations,
+      '20261008028000_guard_case_judgment_reference_inserts/migration.sql',
+    );
+    runPrisma(
+      schemas.upgrade,
+      null,
+      ['db', 'execute', '--file', insertSql],
+      true,
+    );
+    runPrisma(
+      schemas.upgrade,
+      null,
+      ['db', 'execute', '--file', insertSql],
       true,
     );
     runPrisma(
@@ -716,6 +739,52 @@ export async function verifyCaseJudgmentMigration() {
       true,
     );
 
+    await use(schemas.insertFailure);
+    await apply([...previous, ...target.slice(0, 8)]);
+    const brokenInsert = join(temporaryRoot, 'insert-fault-before-commit.sql');
+    writeFileSync(
+      brokenInsert,
+      readFileSync(insertSql, 'utf8').replace(
+        /\nCOMMIT;\s*$/u,
+        '\nCREATE TABLE "ca008_insert_rollback_probe" (id integer);\nSELECT 1 / 0;\nCOMMIT;\n',
+      ),
+    );
+    const insertFailureOutput = runPrisma(
+      schemas.insertFailure,
+      null,
+      ['db', 'execute', '--file', brokenInsert],
+      false,
+    );
+    const insertTransactionAtomic =
+      insertFailureOutput.includes('division by zero') &&
+      (await regclass(schemas.insertFailure, 'ca008_insert_rollback_probe')) ===
+        null &&
+      (await count(
+        `SELECT COUNT(*) AS n FROM pg_proc p JOIN pg_namespace n ON n.oid=p.pronamespace
+          WHERE n.nspname=$1 AND p.proname='check_case_judgment_reference_insert'`,
+        [schemas.insertFailure],
+      )) === 0 &&
+      (await count(
+        `SELECT COUNT(*) AS n FROM pg_trigger t JOIN pg_class c ON c.oid=t.tgrelid
+          JOIN pg_namespace n ON n.oid=c.relnamespace WHERE n.nspname=$1
+          AND c.relname='material_references' AND t.tgname='material_references_judgment_insert_guard'`,
+        [schemas.insertFailure],
+      )) === 0;
+    if (!insertTransactionAtomic)
+      throw new Error('280 left partial DDL after injected failure');
+    runPrisma(
+      schemas.insertFailure,
+      null,
+      ['db', 'execute', '--file', insertSql],
+      true,
+    );
+    runPrisma(
+      schemas.insertFailure,
+      null,
+      ['db', 'execute', '--file', insertSql],
+      true,
+    );
+
     await use(schemas.badData);
     await apply([...previous, ...target.slice(0, 5)]);
     await client.query(
@@ -780,6 +849,7 @@ export async function verifyCaseJudgmentMigration() {
       badTriggerRejected,
       badTriggerPreResolveRejected,
       guardTransactionAtomic,
+      insertTransactionAtomic,
       duplicatePreserved,
     };
   } finally {

@@ -5,7 +5,7 @@ test('CA-008 empty and 82-migration upgrade preserve hearing history and copied 
   test.setTimeout(300_000);
   expect(await verifyCaseJudgmentMigration()).toEqual({
     previous: 82,
-    total: 90,
+    total: 91,
     emptyFacts: 0,
     emptyReceipts: 0,
     oldHearing: 1,
@@ -36,6 +36,7 @@ test('CA-008 empty and 82-migration upgrade preserve hearing history and copied 
     badTriggerRejected: true,
     badTriggerPreResolveRejected: true,
     guardTransactionAtomic: true,
+    insertTransactionAtomic: true,
     duplicatePreserved: 2,
   });
 });
