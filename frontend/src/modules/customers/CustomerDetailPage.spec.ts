@@ -25,6 +25,13 @@ const accountPanel = {
   template:
     '<section data-test="account-panel"><label>账号草稿<input data-test="account-draft" /></label></section>',
 };
+const rightAssetsPanel = {
+  name: 'CustomerRightAssetsPanel',
+  props: ['customerId', 'customerVersion', 'canEdit'],
+  emits: ['version-updated', 'refresh-requested', 'customer-not-found'],
+  template:
+    '<section data-test="right-assets-panel">真实权利资产台账</section>',
+};
 
 afterEach(() => vi.resetAllMocks());
 
@@ -45,6 +52,7 @@ async function mountPage(customerId = 'customer-1') {
         CustomerRightsHolderPanel: rightsHolderPanel,
         CustomerAdmissionPanel: admissionPanel,
         CustomerAccountPanel: accountPanel,
+        CustomerRightAssetsPanel: rightAssetsPanel,
       },
     },
   });
@@ -119,7 +127,7 @@ describe('CustomerDetailPage', () => {
     expect(assetsTab.attributes('aria-selected')).toBe('true');
     expect(
       wrapper.get('[role="tabpanel"][id="customer-tab-assets"]').text(),
-    ).toContain('权利资产功能尚未交付');
+    ).toContain('真实权利资产台账');
     expect(
       wrapper.get('[role="tabpanel"][id="customer-tab-basic"]').isVisible(),
     ).toBe(false);
@@ -182,6 +190,7 @@ describe('CustomerDetailPage', () => {
           CustomerRightsHolderPanel: rightsHolderPanel,
           CustomerAdmissionPanel: admissionPanel,
           CustomerAccountPanel: accountPanel,
+          CustomerRightAssetsPanel: rightAssetsPanel,
         },
       },
     });

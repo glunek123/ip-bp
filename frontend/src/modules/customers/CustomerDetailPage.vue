@@ -11,6 +11,7 @@ import {
 import CustomerRightsHolderPanel from './CustomerRightsHolderPanel.vue';
 import CustomerAdmissionPanel from './CustomerAdmissionPanel.vue';
 import CustomerAccountPanel from './CustomerAccountPanel.vue';
+import CustomerRightAssetsPanel from './CustomerRightAssetsPanel.vue';
 import { labelCustomerType, labelIdentityType } from './customer-labels';
 
 const route = useRoute();
@@ -374,13 +375,19 @@ onBeforeUnmount(abortRequests);
         </section>
         <section
           id="customer-tab-assets"
-          class="customer-tab-panel customer-tab-panel--notice"
+          class="customer-tab-panel"
           role="tabpanel"
           aria-labelledby="customer-tab-button-assets"
           v-show="activeTab === 'assets'"
         >
-          <h2>权利资产</h2>
-          <p>权利资产功能尚未交付。</p>
+          <CustomerRightAssetsPanel
+            :customer-id="customer.id"
+            :customer-version="customer.version"
+            :can-edit="customer.capabilities.editRoutine"
+            @version-updated="updateCustomerVersion"
+            @refresh-requested="refreshCustomerVersion"
+            @customer-not-found="returnToCustomerList"
+          />
         </section>
         <section
           id="customer-tab-settlements"

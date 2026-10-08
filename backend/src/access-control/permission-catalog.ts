@@ -12,6 +12,7 @@ export const internalAssignablePermissionActions = [
   'CUSTOMER_READ',
   'CUSTOMER_CREATE_DRAFT',
   'CUSTOMER_EDIT_ROUTINE',
+  'CUSTOMER_RIGHT_ASSET_WITHDRAW',
   'CUSTOMER_ADMIT',
   'LEAD_READ',
   'LEAD_CREATE',
@@ -70,6 +71,11 @@ const catalog: PermissionCatalogItem[] = [
   {
     action: 'CUSTOMER_EDIT_ROUTINE',
     label: '编辑客户常规信息',
+    scopes: allScopes,
+  },
+  {
+    action: 'CUSTOMER_RIGHT_ASSET_WITHDRAW',
+    label: '撤下权利资产',
     scopes: allScopes,
   },
   { action: 'CUSTOMER_ADMIT', label: '准入客户', scopes: allScopes },

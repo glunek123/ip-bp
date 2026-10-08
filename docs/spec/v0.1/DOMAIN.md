@@ -57,6 +57,8 @@
 | CU07 权利资产   | 资产身份；类别type、商标分类tcls、号码no、名称name、类别cat、权利人owner、起止from/to、证明材料doc；维权授权的委托方、受托方、适用权利、行动范围、有效期及材料版本 | SD-12/34：客户准入不替代具体权利及维权授权；案件／行动引用当时有效的权利与授权材料版本。自动关联只限明确关系，阻断规则仍按对应切片确认 |
 | CU08 客户统计   | 关联案件数、标的额、开票、回款、回款率和待回款；旧cases/amount/recovered/rate                                                                                      | 派生指标，不把种子计数或SETTLEMENTS副本作为权威数据；RP01、B22                                                                         |
 
+CORE-CU-002实际字段：`CustomerRightAsset`保存稳定`assetId/customerId/departmentId/holderId`、当前`version/currentVersionId`及`withdrawn`；不可变`CustomerRightAssetVersion`保存`type`（`TRADEMARK/PATENT/COPYRIGHT/REPUTATION/AUTHORIZATION/OTHER`）、`name`、`number?`、`category`、`holderId`、`ownerText?`、`trademarkClass?`、`validFrom?`、`validTo?`、`validityMode`（`FIXED/LONG_TERM/UNKNOWN`）、动作、撤下原因及录入人／时间。`name/category/holderId`由人工明确填写；`FIXED`必须有真实截止日，另外两种模式截止日为`null`；起止日期须为真实公历日期且按先后顺序。`number/ownerText/trademarkClass`可为`null`，不根据空白字段推断号码、所有人或有效性。证据文件、批量和精确材料内容版本仍属CORE-CU-003；本字段表不表示它们已交付。
+
 来源：[M10字段与规则](../../demo-reverse/v158/modules/M10-customers.md)，CU-C01～06；协议影响ST01，字段词义见CONTEXT。
 
 ## LD：线索与取证决策

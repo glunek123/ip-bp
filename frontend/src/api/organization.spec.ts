@@ -72,6 +72,11 @@ const context = {
       scopes: ['SELF', 'TEAM', 'DEPARTMENT'],
     },
     {
+      action: 'CUSTOMER_RIGHT_ASSET_WITHDRAW',
+      label: '撤下权利资产',
+      scopes: ['SELF', 'TEAM', 'DEPARTMENT'],
+    },
+    {
       action: 'CUSTOMER_ADMIT',
       label: '准入客户',
       scopes: ['SELF', 'TEAM', 'DEPARTMENT'],
@@ -281,6 +286,7 @@ describe('organization API', () => {
       'CUSTOMER_READ',
       'CUSTOMER_CREATE_DRAFT',
       'CUSTOMER_EDIT_ROUTINE',
+      'CUSTOMER_RIGHT_ASSET_WITHDRAW',
       'CUSTOMER_ADMIT',
       'LEAD_READ',
       'LEAD_CREATE',

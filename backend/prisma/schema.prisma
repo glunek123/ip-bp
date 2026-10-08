@@ -12,6 +12,7 @@ enum PermissionAction {
   CUSTOMER_READ                @map("customer.read")
   CUSTOMER_CREATE_DRAFT        @map("customer.create-draft")
   CUSTOMER_EDIT_ROUTINE        @map("customer.edit-routine")
+  CUSTOMER_RIGHT_ASSET_WITHDRAW @map("customer.right-asset.withdraw")
   CUSTOMER_ADMIT               @map("customer.admit")
   LEAD_READ                    @map("lead.read")
   LEAD_CREATE                  @map("lead.create")
@@ -76,6 +77,33 @@ enum CustomerProfileStatus {
   ADMITTED
 
   @@map("customer_profile_status")
+}
+
+enum CustomerRightAssetType {
+  TRADEMARK
+  PATENT
+  COPYRIGHT
+  REPUTATION
+  AUTHORIZATION
+  OTHER
+
+  @@map("customer_right_asset_type")
+}
+
+enum CustomerRightAssetValidityMode {
+  FIXED
+  LONG_TERM
+  UNKNOWN
+
+  @@map("customer_right_asset_validity_mode")
+}
+
+enum CustomerRightAssetAction {
+  CREATE
+  REVISE
+  WITHDRAW
+
+  @@map("customer_right_asset_action")
 }
 
 enum IdentityValidityMode {
@@ -456,6 +484,8 @@ model UserAccount {
   hearingReceipts                  CaseHearingReceipt[]              @relation("HearingReceiptActor")
   judgmentFacts                    CaseJudgmentFact[]                @relation("JudgmentRecorder")
   judgmentReceipts                 CaseJudgmentReceipt[]             @relation("JudgmentReceiptActor")
+  rightAssetVersions              CustomerRightAssetVersion[]       @relation("RightAssetVersionActor")
+  rightAssetReceipts              CustomerRightAssetReceipt[]       @relation("RightAssetReceiptActor")
   createdAt                        DateTime                          @default(now()) @map("created_at") @db.Timestamptz(3)
   updatedAt                        DateTime                          @updatedAt @map("updated_at") @db.Timestamptz(3)
 
@@ -629,6 +659,9 @@ model Customer {
   responsibleMembership    DepartmentMembership         @relation("CustomerResponsibleMembership", fields: [responsibleUserId, departmentId], references: [userId, departmentId], onDelete: Restrict)
   rightsHolderLinks        CustomerRightsHolderLink[]
   rightsHolderReceipts     RightsHolderCommandReceipt[] @relation("RightsHolderReceiptCustomer")
+  rightAssets              CustomerRightAsset[]
+  rightAssetVersions       CustomerRightAssetVersion[]
+  rightAssetReceipts       CustomerRightAssetReceipt[]
   admissionReceipts        CustomerAdmissionReceipt[]
   leads                    Lead[]
   cases                    Case[]
@@ -750,12 +783,94 @@ model CustomerRightsHolderLink {
   rightsHolder    RightsHolder                 @relation(fields: [rightsHolderId, departmentId], references: [id, departmentId], onDelete: Restrict, map: "customer_rights_holder_links_holder_department_fkey")
   department      Department                   @relation(fields: [departmentId], references: [id], onDelete: Restrict)
   commandReceipts RightsHolderCommandReceipt[] @relation("RightsHolderReceiptLink")
+  rightAssets     CustomerRightAsset[]
+  rightAssetVersions CustomerRightAssetVersion[]
   createdAt       DateTime                     @default(now()) @map("created_at") @db.Timestamptz(3)
 
   @@unique([id, departmentId])
+  @@unique([customerId, rightsHolderId, departmentId])
   @@unique([customerId, rightsHolderId], map: "customer_rights_holder_links_customer_holder_key")
   @@index([departmentId, rightsHolderId])
   @@map("customer_rights_holder_links")
+}
+
+model CustomerRightAsset {
+  id               String                       @id @default(uuid()) @db.Uuid
+  customerId       String                       @map("customer_id") @db.Uuid
+  departmentId     String                       @map("department_id") @db.Uuid
+  holderId         String                       @map("holder_id") @db.Uuid
+  version          Int                          @default(1)
+  withdrawn        Boolean                      @default(false)
+  currentVersionId String?                      @map("current_version_id") @db.Uuid
+  createdAt        DateTime                     @default(now()) @map("created_at") @db.Timestamptz(3)
+  updatedAt        DateTime                     @updatedAt @map("updated_at") @db.Timestamptz(3)
+  customer         Customer                     @relation(fields: [customerId, departmentId], references: [id, departmentId], onDelete: Restrict, onUpdate: Restrict)
+  holderLink       CustomerRightsHolderLink     @relation(fields: [customerId, holderId, departmentId], references: [customerId, rightsHolderId, departmentId], onDelete: Restrict, onUpdate: Restrict)
+  currentVersion   CustomerRightAssetVersion?   @relation("RightAssetCurrentVersion", fields: [currentVersionId, id, customerId, departmentId], references: [id, assetId, customerId, departmentId], onDelete: Restrict, onUpdate: Restrict)
+  versions         CustomerRightAssetVersion[]  @relation("RightAssetVersions")
+  receipts         CustomerRightAssetReceipt[]
+
+  @@unique([id, customerId, departmentId])
+  @@unique([currentVersionId, id, customerId, departmentId])
+  @@index([customerId, departmentId, updatedAt, id])
+  @@map("customer_right_assets")
+}
+
+model CustomerRightAssetVersion {
+  id               String                              @id @default(uuid()) @db.Uuid
+  assetId          String                              @map("asset_id") @db.Uuid
+  customerId       String                              @map("customer_id") @db.Uuid
+  departmentId     String                              @map("department_id") @db.Uuid
+  version          Int
+  action           CustomerRightAssetAction
+  type             CustomerRightAssetType
+  name             String                              @db.VarChar(200)
+  number           String?                             @db.VarChar(200)
+  category         String                              @db.VarChar(200)
+  holderId         String                              @map("holder_id") @db.Uuid
+  ownerText        String?                             @map("owner_text") @db.VarChar(200)
+  trademarkClass   String?                             @map("trademark_class") @db.VarChar(100)
+  validFrom        DateTime?                           @map("valid_from") @db.Date
+  validTo          DateTime?                           @map("valid_to") @db.Date
+  validityMode     CustomerRightAssetValidityMode     @map("validity_mode")
+  withdrawReason   String?                             @map("withdraw_reason") @db.VarChar(500)
+  recordedByUserId String                              @map("recorded_by_user_id") @db.Uuid
+  auditEventId     String                              @unique @map("audit_event_id") @db.Uuid
+  recordedAt       DateTime                            @default(now()) @map("recorded_at") @db.Timestamptz(3)
+  asset            CustomerRightAsset                 @relation("RightAssetVersions", fields: [assetId, customerId, departmentId], references: [id, customerId, departmentId], onDelete: Restrict, onUpdate: Restrict)
+  currentFor       CustomerRightAsset?                @relation("RightAssetCurrentVersion")
+  customer         Customer                           @relation(fields: [customerId, departmentId], references: [id, departmentId], onDelete: Restrict, onUpdate: Restrict)
+  holderLink       CustomerRightsHolderLink           @relation(fields: [customerId, holderId, departmentId], references: [customerId, rightsHolderId, departmentId], onDelete: Restrict, onUpdate: Restrict)
+  actor            UserAccount                        @relation("RightAssetVersionActor", fields: [recordedByUserId], references: [id], onDelete: Restrict, onUpdate: Restrict)
+  auditEvent       AuditEvent                          @relation(fields: [auditEventId], references: [id], onDelete: Restrict, onUpdate: Restrict)
+  receipts         CustomerRightAssetReceipt[]
+
+  @@unique([id, assetId, customerId, departmentId])
+  @@unique([assetId, version])
+  @@index([customerId, departmentId, assetId, version])
+  @@map("customer_right_asset_versions")
+}
+
+model CustomerRightAssetReceipt {
+  id                    String                      @id @default(uuid()) @db.Uuid
+  departmentId          String                      @map("department_id") @db.Uuid
+  actorUserId           String                      @map("actor_user_id") @db.Uuid
+  customerId            String                      @map("customer_id") @db.Uuid
+  assetId               String                      @map("asset_id") @db.Uuid
+  resultVersionId       String                      @map("result_version_id") @db.Uuid
+  action                CustomerRightAssetAction
+  idempotencyKey        String                      @map("idempotency_key") @db.VarChar(200)
+  requestFingerprint    String                      @map("request_fingerprint") @db.Char(64)
+  resultCustomerVersion Int                         @map("result_customer_version")
+  createdAt             DateTime                    @default(now()) @map("created_at") @db.Timestamptz(3)
+  customer              Customer                    @relation(fields: [customerId, departmentId], references: [id, departmentId], onDelete: Restrict, onUpdate: Restrict)
+  asset                 CustomerRightAsset          @relation(fields: [assetId, customerId, departmentId], references: [id, customerId, departmentId], onDelete: Restrict, onUpdate: Restrict)
+  resultVersion         CustomerRightAssetVersion   @relation(fields: [resultVersionId, assetId, customerId, departmentId], references: [id, assetId, customerId, departmentId], onDelete: Restrict, onUpdate: Restrict)
+  actor                 UserAccount                 @relation("RightAssetReceiptActor", fields: [actorUserId], references: [id], onDelete: Restrict, onUpdate: Restrict)
+
+  @@unique([departmentId, actorUserId, action, idempotencyKey])
+  @@index([assetId, customerId, departmentId])
+  @@map("customer_right_asset_receipts")
 }
 
 model RightsHolderCommandReceipt {
@@ -2064,6 +2179,7 @@ enum AuditActorKind {
 
 model AuditEvent {
   id                           String                      @id @default(uuid()) @db.Uuid
+  rightAssetVersion            CustomerRightAssetVersion?
   departmentId                 String                      @map("department_id") @db.Uuid
   actorKind                    AuditActorKind              @default(HUMAN) @map("actor_kind")
   actorUserId                  String?                     @map("actor_user_id") @db.Uuid

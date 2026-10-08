@@ -9,15 +9,22 @@ import { AuthModule } from '../../auth/auth.module';
 import { MaterialModule } from '../materials';
 import { CustomerAdmissionService } from './customer-admission.service';
 import { CustomerAccountService } from './customer-account.service';
+import { RightAssetController } from './right-asset.controller';
+import { RightAssetService } from './right-asset.service';
 
 @Module({
   imports: [AccessControlModule, AuthModule, DatabaseModule, MaterialModule],
-  controllers: [CustomerController, RightsHolderController],
+  controllers: [
+    CustomerController,
+    RightsHolderController,
+    RightAssetController,
+  ],
   providers: [
     CustomerService,
     CustomerAdmissionService,
     CustomerAccountService,
     RightsHolderService,
+    RightAssetService,
   ],
   exports: [
     CustomerService,
