@@ -4,11 +4,11 @@
 
 ## 当前阶段
 
-CORE-CA-001～007及SD-44律师身份前置补齐均已验收、推送并集成main；CORE-CA-008已完成本地验收、待集成，测试端口阻塞已解决。业务能力状态及唯一Current／Next以[功能开发路线图](feature-roadmap.md)为准。
+CORE-CA-001～008及SD-44律师身份前置补齐均已验收、推送并集成main，测试端口阻塞已解决。业务能力状态及唯一Current／Next以[功能开发路线图](feature-roadmap.md)为准。
 
 ## 当前任务
 
-当前分支`codex/core-ca-008-judgment-registration`，从已推送main／origin/main`4bfeab7ae73a6c0b5455c39da326dba57d5ee4e7`建立。唯一Current为**CORE-CA-008｜判决登记（已完成待集成）**，Next为CORE-CA-009后续选择。运营／当前承办律师真实登记，有权运营留痕更正；两组金额只记事实，仍待判决并阻断开庭纠错。实际候选`9092414`通过完整verify及全量数据库／Chromium192/192，完整证据及审查局限见[VALIDATION](spec/v0.1/VALIDATION.md)。契约见[CA-008案件Spec](spec/v0.1/modules/cases.md#ca-008一审判决登记与受控更正)，实施见[CA-008计划](superpowers/plans/2026-10-08-case-judgment-registration.md)。本轮不推送／合并或领取009，不提前实现上诉／二审／执行或财务指令。
+当前分支`main`。CA-008任务分支基于`4bfeab7ae73a6c0b5455c39da326dba57d5ee4e7`，收口`dac6b1c`已按授权推送并快进集成，远端main和任务分支均已核实。唯一Current为**CORE-CA-008｜判决登记（已完成已集成）**，Next为CORE-CA-009后续选择。运营／当前承办律师真实登记，有权运营留痕更正；两组金额只记事实，仍待判决并阻断开庭纠错。实际候选`9092414`通过完整verify及全量数据库／Chromium192/192，集成证据及审查局限见[VALIDATION](spec/v0.1/VALIDATION.md)。契约见[CA-008案件Spec](spec/v0.1/modules/cases.md#ca-008一审判决登记与受控更正)，实施见[CA-008计划](superpowers/plans/2026-10-08-case-judgment-registration.md)。本轮不领取009，不提前实现上诉／二审／执行或财务指令。
 
 用户确认的[SD-44律师身份前置补齐](spec/v0.1/modules/cases.md#律师账号与承办办理补齐sd-44)已完成，计划见[律师账号与承办办理实施计划](superpowers/plans/2026-10-04-case-lawyer-access.md)。运营按真实律师用户名分派；律师可办理本人当前承办案件全部已实现正常动作，异常管理仍由有权运营办理。该补齐修改外部身份与数据范围，按Level 3；高风险Task及独立Final Review均ACCEPTED、未关闭C／I／M为0，实际组合候选已通过完整verify与全量数据库／浏览器验收。现按新授权办理集成与后续领取，不把本机环境阻塞写成已验收代码失败。
 
@@ -38,6 +38,8 @@ CA-007已完成并集成，CA-008已补同案锁下的判决／开庭纠错阻�
 
 CA-008实际业务候选`9092414`完成Level 3：完整verify退出0（后端1078/1078、前端706/706、工具74/74），全量隔离PostgreSQL／Chromium192/192退出0；终审finding已全部关闭。候选、环境、失败历史、收口差异及报告位置集中见[VALIDATION](spec/v0.1/VALIDATION.md)，不称文档收口HEAD实跑旧候选门禁。
 
+2026-10-08按授权推送CA-008并快进main至`dac6b1c`，远端两分支已核实；组合tree与收口tree完全一致，累计差异只有状态／证据／对应快照，环境指纹一致。集成专项记录见[VALIDATION](spec/v0.1/VALIDATION.md)，按现行例外保留原业务证据，不声称远端CI或收口HEAD实跑完整门禁。
+
 CA-007固定候选`b4fb37a`完成Level 3：后端1057/1057、前端684/684、工具74/74，完整verify与全量数据库／Chromium187/187均退出0。三轮正式失败（未用导入、格式、OpenAPI夹具漏依赖）已修复并补审；没有删除测试、弱化断言、扩大超时或新增重试。实际结果见[VALIDATION](spec/v0.1/VALIDATION.md)，不将收口HEAD称为旧候选实跑。
 
 2026-10-08按授权推送CA-007分支并快进main至`4bfeab7`，远端main和分支均已核实；集成tree与原收口tree一致。累计差异仅状态／证据／对应快照，环境指纹与原验收一致；本轮格式、Spec、严格上下文及差异检查通过，按非执行性收口例外保留原业务结果，不复跑完整门禁。远端无必需检查／托管CI，不能表述为服务器CI通过。
@@ -48,4 +50,4 @@ CA-006实际候选d3836fc：后端394/394、前端213/213、快速静态／Spec�
 
 ## 下一步
 
-待新授权后集成CA-008并核对实际组合tree，再从更新main领取CA-009并确定相关B13业务分支；本轮不领取，不操作开发／生产库或部署。
+待新开发授权后，从已集成main领取CA-009并确定相关B13业务分支；本轮不领取，不操作开发／生产库或部署。

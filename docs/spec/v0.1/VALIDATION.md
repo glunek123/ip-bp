@@ -2,7 +2,7 @@
 
 ## CORE-CA-008 判决登记与受控更正（2026-10-08）
 
-实际通过Level 3的业务候选为`90924147ccf3c001bf4ffb6f8f17ba3bb13aa247`、tree`ce10e17c7136b8148b786817b5f2d6cd9ad85f0e`；分支`codex/core-ca-008-judgment-registration`，main基线`4bfeab7ae73a6c0b5455c39da326dba57d5ee4e7`。此后收口HEAD不冒称实跑该候选的门禁；本轮未推送、合并、部署或领取CA-009。
+实际通过Level 3的业务候选为`90924147ccf3c001bf4ffb6f8f17ba3bb13aa247`、tree`ce10e17c7136b8148b786817b5f2d6cd9ad85f0e`；分支`codex/core-ca-008-judgment-registration`，main基线`4bfeab7ae73a6c0b5455c39da326dba57d5ee4e7`。此后收口HEAD不冒称实跑该候选的门禁；开发验收轮未推送、合并、部署或领取CA-009，后续授权集成另记如下。
 
 交付`CaseJudgmentFact`、`CaseJudgmentVersion`、`CaseJudgmentReceipt`及Case当前判决指针；内部`POST /api/v1/cases/:id/judgment-register`、`judgment-correct`和律师`POST /api/v1/lawyer/cases/:id/judgment-register`，运营／律师详情共享表单、历史和精确文件下载。运营按Action及范围、律师按当前有效PRIMARY承办校验；更正只给独立权限的运营并必填原因。日期不早于正式立案、不晚于北京时间今天，两组金额分别已知／待定且不改原标的或发起支付。登记／更正均保持待判决，任何判决事实阻断开庭纠错及旧键重放；客户／公证处不增加判决事实、费用或文件投影。案锁、CAS、成功审计、精确冻结与幂等回执原子提交，旧回执不拼接后来当前值。
 
@@ -25,7 +25,13 @@ verify于UTC`2026-10-08T08:52:32.7212901Z`开始、`08:55:09.1700915Z`结束；E
 
 失败历史保留：正式verify启动2次，第1次同候选于格式阶段退出1（64.115秒，ignored `.superpowers/sdd/ca008-task-1-brief.md`不符合Prettier），只格式化该非执行Brief，代码／tree不变；原失败完整证据在`formal-attempt1-verify.*`，第2次才取得完整通过。全量E2E启动1次通过。开发期浏览器确认9次启动：初始6次中的权限前置、异步阶段／清理FK、nullable解码、历史原因断言、折叠下载定位失败后第6次通过；额度修复期1次嵌套定位失败及2次通过。早期共用工件被覆盖的不声称保留，正式成功HTML／机器结果已独立复制。审查原I1～I4及清理补丁、Final的累计额度／冲突草稿／提交上传／nullable类型与I5测试类型均已关闭；未知结果即使GET更新版本仍保留原key／body／expectedVersion，已知409不得静默重基。未删测试、弱化断言、增加重试或放宽超时；大chunk与pg弃用警告为非阻断。未取得实际token用量，提速效果未量化。
 
-此后仅补`feature-roadmap.md`完成状态／受影响余量、`project-status.md`恢复摘要、本验证记录和对应`context-snapshot.json`。从实际候选到拟收口状态的累计diff、未提交／未跟踪差异须确认只有这些非执行性状态与证据变化；模块Spec、计划、代码、测试、迁移、配置和环境不再改变。受影响格式、链接／指针一致性、Spec、上下文及Git差异专项结果保存`.local/case-judgment/closeout-doc-check.log`，以专项真实退出0为提交前提；原候选业务证据仍适用，不称收口HEAD实跑其门禁，不要求本记录包含自身提交哈希。Current为CA-008已完成待集成，CA-009仍Next未领取；实际集成组合及远端必需检查仍须按新授权核对。后续上诉／执行须补更正阻断及阶段数据库守卫，退费、外部补录、生产部署和开发／生产迁移未交付。
+此后仅补`feature-roadmap.md`完成状态／受影响余量、`project-status.md`恢复摘要、本验证记录和对应`context-snapshot.json`。从实际候选到收口`dac6b1c`的累计diff及工作区已核对，只有这些非执行性状态与证据变化；模块Spec、计划、代码、测试、迁移、配置和环境未变。受影响格式、链接／指针一致性、Spec、严格上下文及Git差异专项退出0，结果保存`.local/case-judgment/closeout-doc-check.log`；原候选业务证据仍适用，不称收口HEAD实跑其门禁，不要求本记录包含自身提交哈希。开发验收轮Current为CA-008已完成待集成，CA-009仍Next未领取。后续上诉／执行须补更正阻断及阶段数据库守卫，退费、外部补录、生产部署和开发／生产迁移未交付。
+
+### CA-008授权推送与快进集成（2026-10-08）
+
+用户另行授权“推送合并”。只读context及strict均通过；获取远端后，本地main与origin/main均为`4bfeab7ae73a6c0b5455c39da326dba57d5ee4e7`，它是任务分支的祖先，无分叉或未提交变化。本地main快进至`dac6b1c823f9e96f8edc69266cbae6579c40b68a`，tree`71c500c5f62649333a3812a22f520f17f99a7c14`与原收口完全一致；原子推送main及任务分支后，`git ls-remote`确认两者均为该提交。没有形成未验证的业务组合。GitHub main的protected=false、rulesets为空，check-runs与Actions workflows均0；没有远端必需检查，不表述为服务器CI通过。
+
+集成前重新采集实际环境，fingerprint与原完整E2E一致。从`9092414`至本次最终状态的累计提交／diff、暂存／未暂存和相关未跟踪项，仅涉及上述四份非执行性收口文件；原候选的完整verify及192/192结果继续适用，不将最终HEAD称为实跑旧候选门禁。当前Current为CA-008已完成已集成，Next仍CA-009未领取。集成状态补记的格式、Spec、严格上下文、Git差异及累计范围检查，保存`.local/case-judgment/integration-doc-check.log`，以真实退出0为提交／推送前提；不记录本段自身提交哈希。原同模型审查的独立性局限及外部异模型Review Pending不变，本轮不部署或操作开发／生产数据库。
 
 ## CORE-CA-007 开庭后推进及受控纠错（2026-10-08）
 
