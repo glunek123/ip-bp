@@ -41,6 +41,12 @@ export function verifyCaseHearingDatabase(): Promise<{
 export function seedCoreCaseHearingFixture(
   departmentId: string,
 ): Promise<string>;
+export function prepareCoreCaseHearingAdmin(): Promise<{
+  username: string;
+  password: string;
+}>;
+export function clearCoreCaseHearingAdmin(): Promise<void>;
+export function clearCoreCaseHearingAdminSessions(): Promise<void>;
 export function inspectCoreCaseHearingFixture(caseId: string): Promise<{
   arrangements: number;
   advances: number;

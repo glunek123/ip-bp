@@ -1,4 +1,4 @@
-import { randomUUID } from 'node:crypto';
+import { createHash, randomBytes, randomUUID } from 'node:crypto';
 import { readFile, readdir } from 'node:fs/promises';
 import { createRequire } from 'node:module';
 import { resolve } from 'node:path';
@@ -24,6 +24,10 @@ const { CaseHearingSchedulerService } = requireBackend(
 const { CaseHearingSignal } = requireBackend(
   './dist/modules/cases/case-hearing-signal.js',
 );
+const { hashPassword } = requireBackend('./dist/auth/password.js');
+const { internalAssignablePermissionActions } = requireBackend(
+  './dist/access-control/permission-catalog.js',
+);
 const databaseUrl = process.env.DATABASE_URL;
 if (!databaseUrl || process.env.NODE_ENV !== 'test')
   throw new Error('Isolated test database required');
@@ -39,6 +43,336 @@ const coreHearingOwners = Object.freeze({
     roleId: '30000000-0000-4000-8000-000000000002',
   },
 });
+
+const coreHearingAdmin = Object.freeze({
+  departmentId: '10000000-0000-4000-8000-000000000001',
+  teamId: '40000000-0000-4000-8000-000000000001',
+  operatorUserId: '20000000-0000-4000-8000-000000000001',
+  operatorRoleId: '30000000-0000-4000-8000-000000000001',
+  userId: 'a0070000-0000-4000-8000-000000000001',
+  roleId: 'a0070000-0000-4000-8000-000000000002',
+  membershipId: 'a0070000-0000-4000-8000-000000000003',
+  assignmentId: 'a0070000-0000-4000-8000-000000000004',
+  username: 'ca007.hearing.admin',
+  roleName: 'CA007 TEST ROLE ADMIN',
+  externalSubject: 'local:ca007-hearing-test-admin',
+});
+
+async function withCoreHearingAdminDatabase(operation) {
+  validateIsolatedTestDatabaseUrl(databaseUrl);
+  const database = new PrismaClient({
+    adapter: new PrismaPg({ connectionString: databaseUrl }),
+  });
+  try {
+    const rows = await database.$queryRawUnsafe(
+      'SELECT current_database() AS db,current_schema() AS schema',
+    );
+    if (
+      process.env.NODE_ENV !== 'test' ||
+      rows[0]?.db !== 'dev_cor_test' ||
+      rows[0]?.schema !== 'public'
+    )
+      throw new Error('Hearing admin requires the isolated public test schema');
+    return await operation(database);
+  } finally {
+    await database.$disconnect();
+  }
+}
+
+/** Isolated login identity for exercising the real department-A RoleEditor. */
+export async function prepareCoreCaseHearingAdmin() {
+  const password = randomBytes(24).toString('base64url');
+  const passwordHash = await hashPassword(password);
+  const fixture = coreHearingAdmin;
+  await withCoreHearingAdminDatabase(async (database) => {
+    await database.$transaction(
+      async (transaction) => {
+        const department = await transaction.department.findUnique({
+          where: { id: fixture.departmentId },
+        });
+        const team = await transaction.team.findUnique({
+          where: { id: fixture.teamId },
+        });
+        const operator = await transaction.userAccount.findUnique({
+          where: { id: fixture.operatorUserId },
+        });
+        const operatorRole = await transaction.roleTemplate.findUnique({
+          where: { id: fixture.operatorRoleId },
+        });
+        if (
+          !department ||
+          !team ||
+          team.departmentId !== department.id ||
+          !operator ||
+          !operatorRole ||
+          operatorRole.departmentId !== department.id
+        )
+          throw new Error('Fixed core-lead A fixture is unavailable');
+
+        const user = await transaction.userAccount.findUnique({
+          where: { id: fixture.userId },
+        });
+        const subjectUser = await transaction.userAccount.findUnique({
+          where: { externalSubject: fixture.externalSubject },
+        });
+        const usernameCredential = await transaction.localCredential.findUnique(
+          {
+            where: { username: fixture.username },
+          },
+        );
+        const userCredential = await transaction.localCredential.findUnique({
+          where: { userId: fixture.userId },
+        });
+        const role = await transaction.roleTemplate.findUnique({
+          where: { id: fixture.roleId },
+        });
+        if (
+          (user &&
+            (user.externalSubject !== fixture.externalSubject ||
+              user.accountType !== 'INTERNAL')) ||
+          (subjectUser && subjectUser.id !== fixture.userId) ||
+          (usernameCredential &&
+            usernameCredential.userId !== fixture.userId) ||
+          (userCredential && userCredential.username !== fixture.username) ||
+          (role &&
+            (role.departmentId !== fixture.departmentId ||
+              role.name !== fixture.roleName))
+        )
+          throw new Error('Hearing admin identity collision');
+
+        if (!user)
+          await transaction.userAccount.create({
+            data: {
+              id: fixture.userId,
+              externalSubject: fixture.externalSubject,
+              displayName: 'CA007 测试授权管理员',
+            },
+          });
+        else if (!user.active)
+          await transaction.userAccount.update({
+            where: { id: fixture.userId },
+            data: { active: true },
+          });
+        if (!role)
+          await transaction.roleTemplate.create({
+            data: {
+              id: fixture.roleId,
+              departmentId: fixture.departmentId,
+              name: fixture.roleName,
+            },
+          });
+        else if (!role.active)
+          throw new Error('Hearing admin role is inactive');
+
+        const memberships = await transaction.departmentMembership.findMany({
+          where: { userId: fixture.userId },
+        });
+        if (
+          memberships.length > 1 ||
+          (memberships.length === 1 &&
+            (memberships[0].id !== fixture.membershipId ||
+              memberships[0].departmentId !== fixture.departmentId ||
+              memberships[0].teamId !== fixture.teamId))
+        )
+          throw new Error('Hearing admin membership collision');
+        if (memberships.length === 0)
+          await transaction.departmentMembership.create({
+            data: {
+              id: fixture.membershipId,
+              userId: fixture.userId,
+              departmentId: fixture.departmentId,
+              teamId: fixture.teamId,
+            },
+          });
+        else if (!memberships[0].active)
+          await transaction.departmentMembership.update({
+            where: { id: fixture.membershipId },
+            data: { active: true },
+          });
+
+        const allowedActions = new Set(internalAssignablePermissionActions);
+        const grants = await transaction.roleGrant.findMany({
+          where: { roleTemplateId: fixture.roleId },
+        });
+        if (
+          grants.some(
+            ({ action, scope }) =>
+              !allowedActions.has(action) || scope !== 'DEPARTMENT',
+          )
+        )
+          throw new Error('Hearing admin grant collision');
+        const grantedActions = new Set(grants.map(({ action }) => action));
+        await transaction.roleGrant.createMany({
+          data: internalAssignablePermissionActions
+            .filter((action) => !grantedActions.has(action))
+            .map((action) => ({
+              roleTemplateId: fixture.roleId,
+              action,
+              scope: 'DEPARTMENT',
+            })),
+        });
+
+        const assignments = await transaction.roleAssignment.findMany({
+          where: { userId: fixture.userId },
+        });
+        if (
+          assignments.length > 1 ||
+          (assignments.length === 1 &&
+            (assignments[0].id !== fixture.assignmentId ||
+              assignments[0].departmentId !== fixture.departmentId ||
+              assignments[0].roleTemplateId !== fixture.roleId ||
+              assignments[0].teamId !== null ||
+              !assignments[0].active))
+        )
+          throw new Error('Hearing admin assignment collision');
+        if (assignments.length === 0)
+          await transaction.roleAssignment.create({
+            data: {
+              id: fixture.assignmentId,
+              userId: fixture.userId,
+              departmentId: fixture.departmentId,
+              roleTemplateId: fixture.roleId,
+            },
+          });
+        const roleAssignments = await transaction.roleAssignment.count({
+          where: { roleTemplateId: fixture.roleId },
+        });
+        if (roleAssignments !== 1)
+          throw new Error('Hearing admin role assignment collision');
+
+        await transaction.authSession.deleteMany({
+          where: { userId: fixture.userId },
+        });
+        if (userCredential)
+          await transaction.localCredential.update({
+            where: { userId: fixture.userId },
+            data: { passwordHash, passwordChangedAt: new Date() },
+          });
+        else
+          await transaction.localCredential.create({
+            data: {
+              userId: fixture.userId,
+              username: fixture.username,
+              passwordHash,
+            },
+          });
+      },
+      { isolationLevel: 'Serializable' },
+    );
+  });
+  return { username: fixture.username, password };
+}
+
+/** Call after the existing core-lead business/audit cleanup, never to erase history. */
+export async function clearCoreCaseHearingAdmin() {
+  const fixture = coreHearingAdmin;
+  await withCoreHearingAdminDatabase(async (database) => {
+    await database.$transaction(
+      async (transaction) => {
+        const user = await transaction.userAccount.findUnique({
+          where: { id: fixture.userId },
+        });
+        const role = await transaction.roleTemplate.findUnique({
+          where: { id: fixture.roleId },
+        });
+        const credential = await transaction.localCredential.findUnique({
+          where: { username: fixture.username },
+        });
+        const auditCount = await transaction.auditEvent.count({
+          where: {
+            OR: [
+              { actorUserId: fixture.userId },
+              { internalActorUserId: fixture.userId },
+            ],
+          },
+        });
+        if (
+          (user && user.externalSubject !== fixture.externalSubject) ||
+          (role &&
+            (role.departmentId !== fixture.departmentId ||
+              role.name !== fixture.roleName)) ||
+          (credential && credential.userId !== fixture.userId)
+        )
+          throw new Error('Hearing admin cleanup identity collision');
+        if (auditCount > 0)
+          throw new Error(
+            'Hearing admin audit history must be cleared by existing fixture cleanup first',
+          );
+        const foreignRoleAssignments = await transaction.roleAssignment.count({
+          where: {
+            roleTemplateId: fixture.roleId,
+            NOT: { id: fixture.assignmentId },
+          },
+        });
+        if (foreignRoleAssignments > 0)
+          throw new Error('Hearing admin role has another assignment');
+        await transaction.authSession.deleteMany({
+          where: { userId: fixture.userId },
+        });
+        await transaction.authThrottle.deleteMany({
+          where: {
+            kind: 'USERNAME',
+            identifierDigest: createHash('sha256')
+              .update(fixture.username, 'utf8')
+              .digest('hex'),
+          },
+        });
+        await transaction.localCredential.deleteMany({
+          where: { userId: fixture.userId, username: fixture.username },
+        });
+        await transaction.roleAssignment.deleteMany({
+          where: {
+            id: fixture.assignmentId,
+            userId: fixture.userId,
+            departmentId: fixture.departmentId,
+            roleTemplateId: fixture.roleId,
+          },
+        });
+        await transaction.roleGrant.deleteMany({
+          where: { roleTemplateId: fixture.roleId },
+        });
+        await transaction.roleTemplate.deleteMany({
+          where: {
+            id: fixture.roleId,
+            departmentId: fixture.departmentId,
+            name: fixture.roleName,
+          },
+        });
+        await transaction.departmentMembership.deleteMany({
+          where: {
+            id: fixture.membershipId,
+            userId: fixture.userId,
+            departmentId: fixture.departmentId,
+          },
+        });
+        await transaction.userAccount.deleteMany({
+          where: {
+            id: fixture.userId,
+            externalSubject: fixture.externalSubject,
+          },
+        });
+      },
+      { isolationLevel: 'Serializable' },
+    );
+  });
+}
+
+/** Remove only this test admin's sessions before the core-lead department reset. */
+export async function clearCoreCaseHearingAdminSessions() {
+  const fixture = coreHearingAdmin;
+  await withCoreHearingAdminDatabase(async (database) => {
+    await database.$transaction(async (transaction) => {
+      const user = await transaction.userAccount.findUnique({
+        where: { id: fixture.userId },
+      });
+      if (user && user.externalSubject !== fixture.externalSubject)
+        throw new Error('Hearing admin session cleanup identity collision');
+      await transaction.authSession.deleteMany({
+        where: { userId: fixture.userId },
+      });
+    });
+  });
+}
 
 export async function seedCoreCaseHearingFixture(departmentId) {
   const owner = coreHearingOwners[departmentId];
