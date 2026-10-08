@@ -2,7 +2,7 @@
 
 ## 仓库整理与历史迁移探针修复（2026-10-08）
 
-基线`e15fd4b797abb609b4e8cd39b2b872246271b15a`；本地分支`codex/repository-hygiene`。实际受验候选`c7572c6eb53bf42fd05416d9fb4317134319b062`、tree`1013c61a28ed2878132a6bb904365e98368ad4ed`。本轮不开发业务Slice、不改变Current CA-008／Next CA-009、不推送／合并或部署。
+基线`e15fd4b797abb609b4e8cd39b2b872246271b15a`；本地分支`codex/repository-hygiene`。实际受验候选`c7572c6eb53bf42fd05416d9fb4317134319b062`、tree`1013c61a28ed2878132a6bb904365e98368ad4ed`。整理验收轮不开发业务Slice、不改变Current CA-008／Next CA-009、未推送／合并或部署；后续授权集成另记如下。
 
 检查132份README／docs Markdown、463份代码／测试入口的引用及196份自动发现测试，没有发现可确认安全删除的正式业务孤儿文件或重复测试；静态引用分析不证明全部动态调用均无死代码。删除9份已无当前引用的旧`.superpowers/sdd`Worker报告，独有现行业务契约及验收证据未发现缺失；可从上述基线Git恢复。清理状态页的旧阻塞和重复验收摘要，详细历史仍在本记录；案件Spec／路线图改掉CA-008尚未接入的过期将来时，不改变权限、业务约束或AC。
 
@@ -18,6 +18,14 @@
 非实现Sol子Agent对完整20文件范围及补丁执行Final Review，c7572c6为ACCEPTED、未关闭C／I／M均0；同模型隔离审查，不等同于外部异模型独立审查。首审的README加锁说明不准确及测试用途误述已修复并补审；安全示例另由主Agent实际运行验证。完整输出、RED／GREEN、真实退出、时长及非秘密环境摘要保存在被忽略的`.local/repository-hygiene/`，不冒称远端CI产物。
 
 此后仅补本实际证据、状态页引用及其对应上下文快照，不修改README、安全运行说明、Spec、代码或测试。核对候选至最终收口的累计差异、暂存／未暂存及相关未跟踪项后，执行受影响格式、引用／状态一致性、Spec、严格上下文和Git差异专项；记录为`.local/repository-hygiene/closeout-document-check.log`，通过才提交，不称收口HEAD实跑旧候选检查，不要求本段包含自身提交哈希。没有取得实际token用量，清理及提速效果未量化；律师历史复验限制保留。
+
+### 整理授权推送与快进集成（2026-10-08）
+
+按用户后续授权“推送合并”，只读context及严格检查通过；fetch后本地main与origin/main均为上述e15fd4b基线，无分叉或未提交变化。main快进至收口`df7a7c47240fb89610bc7b5e40e74558354d19f5`，tree`436c38533a092512fd4a7ddbf5c7e3d4f23ddecb`与原收口完全一致；原子推送main及清理分支后，`git ls-remote`核实两者均为该提交。
+
+重新采集的环境fingerprint与上文五份专项一致；从c7572c6至拟最终状态的累计差异、暂存／未暂存及相关未跟踪项，只含本记录、状态摘要和对应已解释快照，未带入业务代码、测试输入、迁移或配置。集成后的格式、Spec、严格上下文及累计差异检查退出0，日志为`.local/repository-hygiene/integration-document-check.log`，候选／环境摘要为`integration-environment.json`。按现行收口／集成规则保留原候选结果，不把本次HEAD称为重新实跑完整verify或全量E2E。GitHub main的protected=false、rulesets为空，check-runs和Actions workflows均0，不称服务器CI通过。
+
+此后只补实际集成状态与对应快照；同类文档专项保存为`.local/repository-hygiene/integration-closeout-document-check.log`，退出0后提交并推送main，不要求本段记录自身提交哈希。保留可复用工作区，不移除其他任务worktree或正在使用的人工测试目录、进程、容器；本轮不部署、不操作开发／生产数据库、不领取CA-009。
 
 ## CORE-CA-008 判决登记与受控更正（2026-10-08）
 
