@@ -669,6 +669,26 @@ test('operations user creates a persisted draft and sees its audit history', asy
   await page.getByText('办理历史 · 1 条').click();
   await expect(page.getByText('创建客户草稿', { exact: true })).toBeVisible();
 
+  await expect(page.getByRole('tab', { name: '基本信息' })).toHaveAttribute(
+    'aria-selected',
+    'true',
+  );
+  await page.getByRole('button', { name: '新建权利人', exact: true }).click();
+  await page.getByLabel('权利人名称').fill('尚未提交的权利主体');
+  await page.getByRole('tab', { name: '权利资产' }).click();
+  await expect(page.getByRole('tabpanel', { name: '权利资产' })).toBeVisible();
+  await expect(page.getByRole('tabpanel', { name: '基本信息' })).toBeHidden();
+  await page.getByRole('tab', { name: '结算记录' }).click();
+  await expect(page.getByRole('tabpanel', { name: '结算记录' })).toBeVisible();
+  await expect(page.getByRole('tabpanel', { name: '权利资产' })).toBeHidden();
+  await page.getByRole('tab', { name: '基本信息' }).click();
+  await expect(page.getByLabel('权利人名称')).toHaveValue('尚未提交的权利主体');
+  await expect(page.getByText('创建客户草稿', { exact: true })).toBeVisible();
+  await page
+    .getByRole('form', { name: '新建权利人' })
+    .getByRole('button', { name: '取消' })
+    .click();
+
   await page.getByRole('link', { name: '编辑资料' }).click();
   await page.getByLabel('客户名称').fill('真实数据库客户（更新）');
   await page.getByLabel('客户组织类型').selectOption('ENTERPRISE');
