@@ -16,7 +16,7 @@
 - 风险Level 3：实现需扩展共享审计／上传身份函数，并将JUDGMENT附件引用改为按事实事件唯一；其他材料保持原唯一语义。schema／核心Command由Sol实施并独立Sol审查，集成后必须独立Sol Final Review；稳定候选运行完整`pnpm verify`及适用全量隔离数据库／Chromium验收。真实PG隔离／并发／回滚及迁移、真实操作／刷新不可省略。
 - 日期`YYYY-MM-DD`，业务时区`Asia/Shanghai`；金额十进制字符串，KNOWN非负可为0，PENDING必须null，不用JS浮点累计，不把系统时间当收到日期。
 - 登记／更正均保持`WAITING_JUDGMENT`；不实现CA-009、二审、执行、财务指令或任意阶段编辑。客户／公证处原可见范围不扩展；律师无异常更正权。
-- 新前向迁移，不改82份历史迁移或本切片已执行的200～260迁移，不手改成功账本／checksum。260事务化补齐240／250部分结构；270保护判决冻结引用并严格核对触发器真实定义。失败路径停应用写入，使用既有Prisma `db execute`补齐、核对，再对确实补齐的迁移`migrate resolve --applied`并继续deploy；对账前须校验触发时机／事件／行级／过滤条件，不仅凭260成功返回判断完成。结构异常或重复数据时失败关闭，不自动改数据。先在独立测试库随机临时schema验证空链、82份支持schema升级及实际失败恢复，再部署测试public；禁止reset、开发／生产迁移、卷清理和凭据输出。
+- 新前向迁移，不改82份历史迁移或本切片已执行的200～270迁移，不手改成功账本／checksum。260事务化补齐240／250部分结构；270保护判决冻结引用删改并严格核对触发器真实定义；280守护引用插入及已提交精确集合。失败路径停应用写入，使用既有Prisma `db execute`补齐、核对，再对确实补齐的迁移`migrate resolve --applied`并继续deploy；对账前须校验触发时机／事件／行级／过滤条件，不仅凭260成功返回判断完成。结构异常或重复数据时失败关闭，不自动改数据。先在独立测试库随机临时schema验证空链、82份支持schema升级及实际失败恢复，再部署测试public；禁止reset、开发／生产迁移、卷清理和凭据输出。
 - 每个PowerShell进程先加载`Use-ProjectRuntime.ps1`并核对Node v24.21.0／pnpm11.27.0。一个checkout一个写入者；共享DB、迁移、清理及故障注入串行。
 - 本切片开发不自动推送、合并或部署；CA-007推送授权不被扩大为尚未验收的CA-008集成。
 
@@ -60,6 +60,7 @@ type CaseJudgmentCommandResult = {
 - Create: `tests/support/case-judgment-{database,migration}.{mjs,d.mts}`、`tests/e2e/case-judgment-{database,migration}.spec.ts`。
 - Create: `backend/prisma/migrations/20261008026000_repair_case_judgment_deployment/migration.sql`，覆盖240索引／函数及250约束／索引各失败前缀；修复整体为一个事务，定义不符、无效索引或重复数据均拒绝，不删除／重写事实。
 - Create: `backend/prisma/migrations/20261008027000_guard_case_judgment_references/migration.sql`，拒绝判决引用的提交后删改及错误版本守卫触发器；恢复对账前严格核对既有触发定义。补测已有判决后的旧键开庭纠错重放拒绝，不改其他材料引用语义。
+- Create: `backend/prisma/migrations/20261008028000_guard_case_judgment_reference_inserts/migration.sql`，插入判决引用必须匹配同案事实及已选精确版本，并与该事实的回执写入互斥；回执提交后不得追加引用，不影响其他材料用途或更正事件重选旧版本。
 - 既有测试helper只因新增Action／category或支持schema边界实际失配时最小修复，不改旧断言／超时／重试。
 
 **Interfaces:** Consumes已有授权、案锁、材料验证／冻结与RepeatableRead；produces上节DTO、`CaseJudgmentService`、两内部及一律师路由、详情能力／事实和测试helper。新`CASE_JUDGMENT_REGISTER`从受理登记逐Grant复制，`CASE_JUDGMENT_CORRECT`从开庭纠错逐Grant复制；外部客户／公证处无本Slice权限。
