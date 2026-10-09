@@ -688,7 +688,9 @@ onBeforeUnmount(abortRequests);
           v-show="activeTab === 'assets'"
         >
           <CustomerRightAssetsPanel
-            v-if="!frozenDelete"
+            v-if="
+              !frozenDelete && !maintenancePending && !currentProjectionStale
+            "
             :customer-id="customer.id"
             :customer-version="customer.version"
             :can-edit="customer.capabilities.editRoutine"

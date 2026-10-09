@@ -146,6 +146,95 @@ describe('CustomerDetailPage', () => {
     wrapper.unmount();
   });
 
+  it('hides all customer write panels while maintenance has an unresolved result', async () => {
+    useAuthStore(pinia).session = {
+      principalType: 'INTERNAL',
+      user: { id: 'user-1', displayName: '运营甲', username: 'operator-a' },
+      department: { id: 'department-1', name: '甲部门' },
+      departments: [{ id: 'department-1', name: '甲部门' }],
+      customer: null,
+      notaryOffice: null,
+      authorizationRevision: 1,
+      expiresAt: '2026-10-09T10:00:00.000Z',
+      csrfToken: 'csrf',
+    };
+    savePendingCustomerMaintenance({
+      action: 'pause',
+      userId: 'user-1',
+      departmentId: 'department-1',
+      customerId: 'customer-1',
+      expectedVersion: 1,
+      body: { expectedVersion: 1, action: 'pause', reason: '原暂停原因' },
+      key: 'original-key',
+    });
+    api.getCustomer.mockResolvedValue(customerRecord('customer-1', '客户甲'));
+    const { wrapper } = await mountPage();
+    await flushPromises();
+    expect(wrapper.find('[data-test="rights-holder-panel"]').exists()).toBe(
+      false,
+    );
+    expect(wrapper.find('[data-test="admission-panel"]').exists()).toBe(false);
+    expect(wrapper.find('[data-test="account-panel"]').exists()).toBe(false);
+    expect(wrapper.find('[data-test="right-assets-panel"]').exists()).toBe(
+      false,
+    );
+    wrapper.unmount();
+  });
+
+  it('keeps right assets frozen after confirmed maintenance until the current detail GET succeeds', async () => {
+    useAuthStore(pinia).session = {
+      principalType: 'INTERNAL',
+      user: { id: 'user-1', displayName: '运营甲', username: 'operator-a' },
+      department: { id: 'department-1', name: '甲部门' },
+      departments: [{ id: 'department-1', name: '甲部门' }],
+      customer: null,
+      notaryOffice: null,
+      authorizationRevision: 1,
+      expiresAt: '2026-10-09T10:00:00.000Z',
+      csrfToken: 'csrf',
+    };
+    const refreshed = { ...customerRecord('customer-1', '客户甲'), version: 2 };
+    api.getCustomer
+      .mockResolvedValueOnce(customerRecord('customer-1', '客户甲'))
+      .mockRejectedValueOnce(new Error('offline'))
+      .mockResolvedValueOnce(refreshed);
+    maintenanceApi.changeCustomerCooperation.mockResolvedValue({
+      customerId: 'customer-1',
+      action: 'pause',
+      resultVersion: 2,
+      occurredAt: '2026-10-09T02:00:00.000Z',
+      canReadAfter: true,
+    });
+    const { wrapper } = await mountPage();
+    await flushPromises();
+    await wrapper.get('[data-test="pause-open"]').trigger('click');
+    await wrapper.get('[data-test="maintenance-reason"]').setValue('暂停原因');
+    await wrapper.get('[data-test="maintenance-submit"]').trigger('submit');
+    await flushPromises();
+    expect(wrapper.text()).toContain('维护已成功，当前资料刷新失败');
+    expect(wrapper.find('[data-test="rights-holder-panel"]').exists()).toBe(
+      false,
+    );
+    expect(wrapper.find('[data-test="admission-panel"]').exists()).toBe(false);
+    expect(wrapper.find('[data-test="account-panel"]').exists()).toBe(false);
+    expect(wrapper.find('[data-test="right-assets-panel"]').exists()).toBe(
+      false,
+    );
+    await wrapper
+      .get('[data-test="maintenance-refresh-readonly"]')
+      .trigger('click');
+    await flushPromises();
+    expect(wrapper.find('[data-test="rights-holder-panel"]').exists()).toBe(
+      true,
+    );
+    expect(wrapper.find('[data-test="admission-panel"]').exists()).toBe(true);
+    expect(wrapper.find('[data-test="account-panel"]').exists()).toBe(true);
+    expect(wrapper.find('[data-test="right-assets-panel"]').exists()).toBe(
+      true,
+    );
+    wrapper.unmount();
+  });
+
   it('organizes customer details into accessible tabs and preserves basic-info drafts', async () => {
     api.getCustomer.mockResolvedValue({
       id: 'customer-1',
