@@ -37,6 +37,8 @@ CU005已在4922f9f完成显式Level2正式门禁，非执行性收口3cc60d1/tre
 | frontend/src/modules/customers/CustomerDetailPage.vue、CustomerAdmissionPanel.vue、CustomerEditPage.vue、CustomerNewPage.vue 及直接 .spec.ts                                                             | 一个编辑入口、准入选人、旧字段仅 API 桥接、刷新/重登和迟到响应处理                                                                                |
 | frontend/src/modules/customers/CustomerDeletedDraftsPage.vue、CustomerDeletedDraftsPage.spec.ts、CustomerDetailPage.spec.ts；后续 B 可拆 customer-contacts-pending.ts、customer-contacts-pending.spec.ts | Task A Review 修复 CU004 删除/恢复的 BUSY 未知结果分类，保留原 key/正文；后续联系人 pending helper 由 B 按独立文件实现，不并入旧生命周期 pending  |
 
+Root在Task B批准CustomerCooperationPanel.spec.ts只补合成CustomerDetail的primaryContactId:null与admissionContactSnapshot:null以适配必有字段，不修改合作组件或业务断言。
+
 如现有实现提供更合适的拆文件边界，改计划并由 root 核对后再实施；不改共享权限/审计/事务基础设施或引入依赖。
 
 ## Task A：后端、迁移与真实 PostgreSQL（高风险，gpt-6-sol）
@@ -65,7 +67,7 @@ CU005已在4922f9f完成显式Level2正式门禁，非执行性收口3cc60d1/tre
 - [ ] 先写 Vitest：详情活动/已结束分页可见、主要取消后显示“未指定”、同名同电话独立；结束唯一联系人后详情旧三字段空但准入历史只读；准入只提交明确选择的 admissionContactId；编辑联系人只走面板一次命令；路由切换清草稿、迟到响应不覆盖新客户、409 保留输入并刷新、未知结果原请求/key 冻结。验证新测试失败。
 - [ ] customers.ts 定义 Contact/版本/分页/命令响应严格 decoder；加入 GET/POST/PATCH/primary/end 函数，写请求使用现有 requestJson 和 Idempotency-Key。扩展 CustomerDetail 的 primaryContactId、admissionContactSnapshot；旧 CustomerSummary 三字段仍必有且可 null，历史 receipt 成功后的当前 GET 不与旧快照混写。
 - [ ] 新建 CustomerContactsPanel：分页活动及结束列表、姓名/电话/邮箱/负责事项编辑、显式设/取消主要、结束（原因可省）、历史只读。仅一位主要/可无主要文案真实呈现，不显示内部 pointer/pending/origin 枚举词；迁入日期显示“系统记录时间”，不称实际交往起始日。写入失败留原正文/key，确认成功后刷新面板和详情版本；成功后 GET 失败冻结写操作仅允许只读刷新。
-- [ ] 按实施契约的页面交叉维护段接线联系人独立pending；联系人未知冻结其他业务入口、其他维护未知冻结新联系人写，原命令恢复入口始终保留。补详情页聚焦反例覆盖联系人未知、合作未知、当前GET失败和成功只读恢复；事件带来源客户ID并丢弃迟到结果，不因同面板pending卸载其恢复入口。操作者/系统迁入来源用自然文案，不在产品直接展示内部枚举或UUID。
+- [ ] 按实施契约的页面交叉维护段接线联系人独立pending；联系人未知冻结其他业务入口、合作/删除未知及当前投影过期冻结新联系人写，原命令恢复入口始终保留。补详情页聚焦反例覆盖联系人未知、合作未知、当前GET失败和成功只读恢复；事件带来源客户ID并丢弃迟到结果，不因同面板pending卸载其恢复入口。操作者/系统迁入来源用自然文案，不在产品直接展示内部枚举或UUID。
 - [ ] Detail 在基本信息嵌入联系人面板并以诚实来源文案显示只读准入快照。EditPage/NewPage 保留旧 API 兼容但正式 UI 联系人编辑统一导航到面板；新客户建档可继续最小联系人三字段并在建档成功后显示为一行真实关系。AdmissionPanel 移除重复的联系人三输入，改为选择活动 Contact；没有活动行时引导先在面板新建，保存回来刷新版本后再准入。切换客户取消迟到请求，草稿/选择不串客户。暂停/终止不禁联系人维护。
 - [ ] 跑对应 Vitest、前端 typecheck/format 受影响检查并自审，报告实际结果、未决 UI 问题及 tree；不额外设逐 Task Reviewer。
 

@@ -826,3 +826,11 @@ Docker由用户打开后恢复，引擎及原人工数据卷保留；原人工51
 原非实现Sol审查875c724为REJECTED 0/3/0；84fc51e修复后原Reviewer复审ACCEPTED，I1/I2/I3全部关闭、未关闭C/I/M0。同模型隔离独立性不足，外部异模型Review Pending。I1真实actor持锁恢复500→六次有界重试/BUSY409及释放后原键成功，完整生命周期事务保留原隔离设置；两个删除/恢复前端叶子将BUSY归unknown且保留原请求。I2自然双客户重叠在修复前已201/409，未复现自然500；原生P2002元数据和精确23505唯一约束注入才是500 RED→稳定409 GREEN，只映射指定receipt模型和约束，其余数据库异常不误认成功。I3实际Swagger把nullable字符串生成为object的RED已修为显式String；响应required和nullable有测试，原请求optional/format装饰器保留。固定修复候选的整文件联系人PG10/10、相关Jest两套54/54、前端两文件18/18、工作区prepared类型/双端构建/改动lint与format通过。报告及原始日志见.local/customer-alignment/task-6-backend-report.md和task-6-backend-review.md。
 
 当前仅Task A完成，Task B正式联系人页面/严格解码、Task C真实密码cookie/CSRF、组合Final Review和Level3完整verify/全量隔离E2E/最终迁移专项尚未执行。001～005原验收不替代本片；Current CU006、Next CU007保持，006～008尚未交付，不推送/合并/部署或自动更新人工环境。
+
+### CU006 Task B 页面及集成修复检查点（2026-10-09，真实登录与组合门禁待验）
+
+Task B原页面提交355c48e4a01cf39099f039ecc967126d90c165d9/tree35fdabee433963d6edcadc17cd1a38a7d2c473dd，13个前端文件：严格联系人/历史/详情解码、独立原请求pending、多联系人面板与分页、准入选活动ID、移除旧编辑页重复联系人录入及详情交叉维护冻结。合作面板spec仅经Root批准补两项合成详情必有空值。原聚焦七文件94/94、类型/lint/格式通过，保留task-6-ui-355c48e-final.log；写成功但联系人GET失败的真实RED/GREEN保留在task-6-ui-readonly-{red,green}.log。原报告的无剩余风险结论不能覆盖随后发现。
+
+Root展开风险源码后发现正常列表读取递增发送上下文代次，使确认成功请求无法收尾；父页在pending清除后未继承联系人资料过期；403/404仍留联系人/历史资料且未完整处理中止卸载。修复d2d57ca52095fc70b65f5e059fc403d1c1924940/treeb9a84805e44d6c8a17d2e9a8f947c927d74f1812仅Panel/Detail及直测四文件，分开身份与读取代次、增加带客户/actor校验的过期事件、保留自恢复、清可见PII但不删未知原请求，并在卸载中止读取；旧源码六项行为RED后两文件35/35 GREEN，最终七文件101/101及类型/lint/格式通过。原始task-6-ui-red.log、task-6-ui-targeted-green.log和task-6-ui-final.log不替代真实浏览器。
+
+最后e2d6ad62f533c1cd85cab7aca30c53a2c663b268/treef2176c8c7bc68aa7bc9d4915546f07f3cc9b0153两文件修复已结束列表第2页只读恢复误取第1页：同一直接行为RED→GREEN，Panel15/15与FE类型/两文件lint/格式通过，task-6-ui-pagination-{red,green,final}.log。其余未变输入沿用此前结果，不称此HEAD实跑101/101。报告.local/customer-alignment/task-6-ui-report.md保留各候选；没有后端/迁移/共享Auth或业务契约改动。尚无本片真实密码cookie/CSRF端到端证据，下一步Task C及Final Review/Level3完整门禁；Current/Next仍CU006/CU007，不将本检查点视作整片验收。
