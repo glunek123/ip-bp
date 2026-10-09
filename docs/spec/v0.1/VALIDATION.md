@@ -782,3 +782,21 @@ Docker由用户打开后恢复，引擎及原人工数据卷保留；原人工51
 临时迁移专项在同候选通过既有环境解析和E2E资源锁，测试库随机schema全97条空链、旧95条合成客户／资产／旧回执／材料升级保留、DDL失败回滚及重试、SQL所有权／引用／不可变守卫，以及同一Material的V1已冻结而当前V2仍占待登记池的反例，全部true并退出0。日志`.local/customer-alignment/task-3-dee7387-migration.log`，环境指纹`8cebe60684ba5641d54f9c5c32e7c85b7b62c8fd8d55d4583e40330b5f5e9337`。仅测试public前向升至97条，无reset／drop public。开发期迁移探针的保护码预期／缺合成回执，以及浏览器fixture漏id／登录等待／重复定位失败均如实留在实现报告；原输出在工具记录中，不伪称被覆盖的旧Playwright报告仍存在。
 
 门禁后收口只补project-status、roadmap、本验证记录的真实完成状态／证据及其快照；不修改业务契约、源码、测试、迁移或环境。按非执行性收口例外核对从实际候选至收口的累计diff并执行文档格式、Spec和严格context检查，复用原业务候选证据，不称文档收口HEAD实跑完整门禁。001～003均为本地成果，无推送、合并或部署；原人工5181／3201／55434仍为旧构建与数据，未自动迁移。
+
+## 客户草稿生命周期 CORE-CU-004（2026-10-09）
+
+最终工程及相关业务回归实际候选`a58ff3a1a546b68381e279ab2259fdb8c42ba2e9`，tree`a03d8f63e4d6df2dab25949222bba36f93bbdf1e`，前后HEAD/tree及tracked工作区稳定。只允许从未准入且没有任何业务关联的DRAFT软删除和独立授权恢复原ID；曾准入永久锁存、身份唯一占用、普通入口tombstone拒绝、事务审计/事实/回执、原键原体的未知结果恢复均实现。三个前向迁移98～100不改写已执行历史，删除/恢复动作不自动授权。
+
+业务初审6bfaf072为REJECTED（C0/I5/M1，含root补充两项）：回收列表分页/身份恢复定位、真实认证和合法SQL反例证据、准入/主体回执父锁及组合FK、曾准入守卫OLD值与触发器顺序，以及准入成功后删除按钮。ecfe0f56修复候选非实现Sol补审ACCEPTED，全部关闭，未关闭C/I/M为0；报告`.local/customer-alignment/task-4-review.md`。同模型隔离独立性不足，外部异模型Review Pending，不称外部Review通过。其后生产代码/迁移不变，普通fixture Task按项目路由自审、聚焦测试及root差异核对；八片最终组合Review仍待全部切片完成。
+
+最终`pnpm verify`退出0：严格context、Spec（56REQ/62AC/11BQ/48SD）、架构（11模块/84模型）、Prisma生成、全仓类型/Lint/格式、工具74/74、前端740/740、后端1094/1094及双端构建。日志`task-4-a58ff3a-verify.log`。已有JSDOM导航、NO_COLOR及876.66kB前端chunk提示非阻断。
+
+同候选通过统一资源互斥执行明确六文件组合：`case-hearing-database.spec.ts`、`case-hearing.spec.ts`、`case-judgment-database.spec.ts`、`case-judgment.spec.ts`、`core-leads.spec.ts`、`customer-lifecycle.spec.ts`，真实隔离PostgreSQL/Chromium79/79，退出0，4.2分钟。日志`task-4-a58ff3a-related-e2e.log`，前后环境文件`task-4-a58ff3a-environment-before.json/-after.json`；HMAC指纹`8cebe60684ba5641d54f9c5c32e7c85b7b62c8fd8d55d4583e40330b5f5e9337`，仅15433/5174/3101。生命周期11项中专门真实密码cookie/CSRF用例覆盖删除已提交响应丢失、刷新/重登、撤权拒绝且保原请求、重授后原键回放、恢复和21项分页；其余底层用例保留fixture身份，不称全部79项为真实密码登录。判决/开庭局部合成样例只证明客户父约束与局部写入，完整运营/企业/公证处/律师流程由独立真实API链路覆盖。
+
+失败历史与修复范围：f9cd4f8完整verify因前端权限目录旧样例9项失败；af2a138只同步两个新动作。06f9420完整verify因OpenAPI缺生命周期service桩及后端目录数量旧断言，后端33项失败；12518b4只修两测试文件。f598a52完整verify成功，但全量E2E为111失败/100通过：110项旧core-lead清理遗漏生命周期fact/receipt，1项旧判决样例使用不存在的客户ID。010b6f4只修清理依赖顺序、合法DRAFT父行及清理回归。22d1f6e完整verify成功、全量E2E为211通过/1失败（14.9分钟），剩余开庭seed仍用随机不存在客户。6566a94仅修改`case-hearing-database.mjs`固定客户映射和seed，origin下核验两部门实际ADMITTED父记录，生产守卫/共享cleanup不变；定向开庭3/3及类型/Lint/格式通过。对应原始日志、报告、trace在`.local/customer-alignment/`，失败产物复制到`task-4-f598a52-failed-e2e-results/report`及`task-4-22d1f6e-failed-e2e-results/report`。不将211/212或旧失败日志冒称最终全量通过；依据最后修复仅局部测试函数且生产输入不变，最终稳定候选执行完整verify和上述直接相关组合，不伪造自动affected范围。
+
+正式迁移专项实际候选`22d1f6e616e3b8c7f8c2652e79204c10f39afa8f`，tree`c756ec44c9cae8b05865a9dc793134405d72424b`，日志`task-4-22d1f6e-migration.log`。helper自行解析测试环境并持有共享E2E资源锁，在随机schema验证100条空链、97→100客户8→8、旧回执整行JSON及CU003证明元数据/当前指针保留、98～100错误DDL整体回滚/重试、合法child INSERT/UPDATE对已删除父行的目标23514、永久曾准入OLD/NEW守卫，退出0，指纹同上。元数据保留不扩大成文件字节验证，真实旧字节由CU003文件E2E独立覆盖。合法case必须先有同客户lead/matter，因此不构造“空草稿合法case”并以FK失败冒充删除竞争。22d1f6e至a58ff3a累计差异只有开庭fixture seed、状态和快照，schema、所有迁移、专项helper和环境输入均未变，保留此实际迁移候选证据，不称a58ff3a重跑了迁移。
+
+本地只将测试public前向升级100条，未reset/drop public或操作开发、生产、人工库。人工数据库使用原持久卷改绑15434，仍91条迁移；退出的服务监督进程仅用原旧构建脚本恢复，登录页/后端/代理200，未重置密码或重复登录，证据`.local/manual-test-20261008/service-recovery-verification.json`。人工5181仍旧CA-008版本，不能用于验收新增CU能力。未推送、合并、部署。
+
+门禁后收口仅project-status、roadmap、本验证记录的真实完成状态/证据与对应已核对快照；从a58ff3a核对提交链和累计diff、暂存/未暂存及未跟踪现场，执行文档格式、Spec和严格context。业务契约/代码/测试/迁移/配置不变，按非执行性收口例外保留原候选证据，不称收口HEAD实跑过旧候选门禁；005计划及契约将另行提交，不混入本例外。
