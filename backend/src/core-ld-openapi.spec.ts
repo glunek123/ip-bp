@@ -9,6 +9,7 @@ import { CsrfGuard } from './auth/csrf.guard';
 import { configureApp } from './common/configure-app';
 import { CustomerAccountService } from './modules/customers/customer-account.service';
 import { CustomerAdmissionService } from './modules/customers/customer-admission.service';
+import { CustomerLifecycleService } from './modules/customers/customer-lifecycle.service';
 import { CustomerController } from './modules/customers/customer.controller';
 import { CustomerService } from './modules/customers/customer.service';
 import { ClientLeadController } from './modules/leads/client-lead.controller';
@@ -55,6 +56,7 @@ describe('CORE-LD-002 OpenAPI contract', () => {
       providers: [
         { provide: AuthService, useValue: {} },
         { provide: CustomerService, useValue: {} },
+        { provide: CustomerLifecycleService, useValue: {} },
         { provide: CustomerAdmissionService, useValue: {} },
         { provide: CustomerAccountService, useValue: {} },
         { provide: LeadService, useValue: {} },

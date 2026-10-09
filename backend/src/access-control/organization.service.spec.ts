@@ -345,7 +345,17 @@ describe('OrganizationService management context', () => {
       assignTeamRoles: false,
       manageRoleTemplates: true,
     });
-    expect(result.permissionCatalog).toHaveLength(37);
+    expect(result.permissionCatalog).toHaveLength(39);
+    expect(result.permissionCatalog).toContainEqual({
+      action: 'CUSTOMER_DELETE_DRAFT',
+      label: '删除客户草稿',
+      scopes: ['SELF', 'TEAM', 'DEPARTMENT'],
+    });
+    expect(result.permissionCatalog).toContainEqual({
+      action: 'CUSTOMER_RESTORE_DRAFT',
+      label: '恢复客户草稿',
+      scopes: ['SELF', 'TEAM', 'DEPARTMENT'],
+    });
     expect(result.permissionCatalog).toContainEqual({
       action: 'CUSTOMER_RIGHT_ASSET_WITHDRAW',
       label: '撤下权利资产',
