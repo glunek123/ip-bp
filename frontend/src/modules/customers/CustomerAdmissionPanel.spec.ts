@@ -65,6 +65,7 @@ const customer = {
     admit: true,
     agreement: { read: false, edit: false },
     invoice: { read: false, edit: false },
+    settlement: { read: false, register: false, correct: false },
   },
   history: [],
 };
@@ -498,6 +499,7 @@ describe('CustomerAdmissionPanel', () => {
         admit: false,
         agreement: { read: false, edit: false },
         invoice: { read: false, edit: false },
+        settlement: { read: false, register: false, correct: false },
       },
     };
     customerApi.admitCustomer.mockResolvedValue(admitted);
@@ -627,6 +629,7 @@ describe('CustomerAdmissionPanel', () => {
             admit: false,
             agreement: { read: false, edit: false },
             invoice: { read: false, edit: false },
+            settlement: { read: false, register: false, correct: false },
           },
         },
       },

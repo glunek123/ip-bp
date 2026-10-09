@@ -127,6 +127,21 @@ const context = {
       scopes: ['SELF', 'TEAM', 'DEPARTMENT'],
     },
     {
+      action: 'CUSTOMER_SETTLEMENT_READ',
+      label: '查看客户结算',
+      scopes: ['SELF', 'TEAM', 'DEPARTMENT'],
+    },
+    {
+      action: 'CUSTOMER_SETTLEMENT_REGISTER',
+      label: '登记客户结算',
+      scopes: ['SELF', 'TEAM', 'DEPARTMENT'],
+    },
+    {
+      action: 'CUSTOMER_SETTLEMENT_CORRECT',
+      label: '更正客户结算',
+      scopes: ['SELF', 'TEAM', 'DEPARTMENT'],
+    },
+    {
       action: 'CUSTOMER_ADMIT',
       label: '准入客户',
       scopes: ['SELF', 'TEAM', 'DEPARTMENT'],
@@ -347,6 +362,9 @@ describe('organization API', () => {
       'CUSTOMER_AGREEMENT_EDIT',
       'CUSTOMER_INVOICE_READ',
       'CUSTOMER_INVOICE_EDIT',
+      'CUSTOMER_SETTLEMENT_READ',
+      'CUSTOMER_SETTLEMENT_REGISTER',
+      'CUSTOMER_SETTLEMENT_CORRECT',
       'CUSTOMER_ADMIT',
       'LEAD_READ',
       'LEAD_CREATE',

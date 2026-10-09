@@ -64,6 +64,7 @@ const customer: CustomerDetail = {
     admit: true,
     agreement: { read: false, edit: false },
     invoice: { read: false, edit: false },
+    settlement: { read: false, register: false, correct: false },
   },
   responsibleOperator: { id: 'user-1', displayName: '运营甲' },
   cooperationCapabilities: {

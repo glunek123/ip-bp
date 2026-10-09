@@ -56,6 +56,7 @@ export type CustomerDetail = CustomerSummary & {
     deleteDraft?: boolean;
     agreement: { read: boolean; edit: boolean };
     invoice: { read: boolean; edit: boolean };
+    settlement: { read: boolean; register: boolean; correct: boolean };
   };
   responsibleOperator: { id: string; displayName: string };
   cooperationCapabilities: {
@@ -473,6 +474,25 @@ export async function getCustomer(
     ) ||
     !Array.isArray(history) ||
     !isRecord(capabilities) ||
+    !Object.keys(capabilities).every((key) =>
+      [
+        'editRoutine',
+        'admit',
+        'deleteDraft',
+        'agreement',
+        'invoice',
+        'settlement',
+      ].includes(key),
+    ) ||
+    [
+      'settlements',
+      'settlementAmount',
+      'invoiceAmount',
+      'receivedAmount',
+      'recordId',
+      'stats',
+      'records',
+    ].some((key) => key in data) ||
     !isRecord(capabilities.agreement) ||
     !hasExactKeys(capabilities.agreement, ['read', 'edit']) ||
     typeof capabilities.agreement.read !== 'boolean' ||
@@ -481,6 +501,11 @@ export async function getCustomer(
     !hasExactKeys(capabilities.invoice, ['read', 'edit']) ||
     typeof capabilities.invoice.read !== 'boolean' ||
     typeof capabilities.invoice.edit !== 'boolean' ||
+    !isRecord(capabilities.settlement) ||
+    !hasExactKeys(capabilities.settlement, ['read', 'register', 'correct']) ||
+    typeof capabilities.settlement.read !== 'boolean' ||
+    typeof capabilities.settlement.register !== 'boolean' ||
+    typeof capabilities.settlement.correct !== 'boolean' ||
     !isRecord(responsibleOperator) ||
     !hasExactKeys(responsibleOperator, ['id', 'displayName']) ||
     typeof responsibleOperator.id !== 'string' ||
@@ -526,6 +551,11 @@ export async function getCustomer(
       invoice: {
         read: capabilities.invoice.read,
         edit: capabilities.invoice.edit,
+      },
+      settlement: {
+        read: capabilities.settlement.read,
+        register: capabilities.settlement.register,
+        correct: capabilities.settlement.correct,
       },
     },
     responsibleOperator: {

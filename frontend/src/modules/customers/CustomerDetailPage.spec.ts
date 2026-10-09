@@ -161,6 +161,7 @@ function customerRecord(id: string, name: string) {
       admit: true,
       agreement: { read: false, edit: false },
       invoice: { read: false, edit: false },
+      settlement: { read: false, register: false, correct: false },
     },
     history: [],
   };
@@ -275,6 +276,7 @@ describe('CustomerDetailPage', () => {
         ...customerRecord('customer-1', '客户甲').capabilities,
         agreement: { read: true, edit: true },
         invoice: { read: true, edit: true },
+        settlement: { read: false, register: false, correct: false },
       },
     });
     const { wrapper } = await mountPage();
@@ -432,6 +434,7 @@ describe('CustomerDetailPage', () => {
           deleteDraft: action === 'delete',
           agreement: { read: false, edit: false },
           invoice: { read: false, edit: false },
+          settlement: { read: false, register: false, correct: false },
         },
       });
       const { wrapper } = await mountPage();
@@ -467,6 +470,7 @@ describe('CustomerDetailPage', () => {
         deleteDraft: true,
         agreement: { read: false, edit: false },
         invoice: { read: false, edit: false },
+        settlement: { read: false, register: false, correct: false },
       },
     });
     api.deleteCustomerDraft
@@ -661,6 +665,7 @@ describe('CustomerDetailPage', () => {
         admit: true,
         agreement: { read: false, edit: false },
         invoice: { read: false, edit: false },
+        settlement: { read: false, register: false, correct: false },
       },
       history: [],
     });
@@ -745,6 +750,7 @@ describe('CustomerDetailPage', () => {
           admit: true,
           agreement: { read: false, edit: false },
           invoice: { read: false, edit: false },
+          settlement: { read: false, register: false, correct: false },
         },
         history: [],
       });
@@ -816,6 +822,7 @@ describe('CustomerDetailPage', () => {
         admit: false,
         agreement: { read: false, edit: false },
         invoice: { read: false, edit: false },
+        settlement: { read: false, register: false, correct: false },
       },
     };
     resolveAdmissionRefresh(admittedCustomer);
@@ -927,6 +934,7 @@ describe('CustomerDetailPage', () => {
         admit: true,
         agreement: { read: false, edit: false },
         invoice: { read: false, edit: false },
+        settlement: { read: false, register: false, correct: false },
       },
       history: [
         {
@@ -998,6 +1006,7 @@ describe('CustomerDetailPage', () => {
         admit: true,
         agreement: { read: false, edit: false },
         invoice: { read: false, edit: false },
+        settlement: { read: false, register: false, correct: false },
       },
       history: [],
     };
@@ -1019,6 +1028,7 @@ describe('CustomerDetailPage', () => {
         admit: false,
         agreement: { read: false, edit: false },
         invoice: { read: false, edit: false },
+        settlement: { read: false, register: false, correct: false },
       },
     });
     const { wrapper } = await mountPage();
@@ -1055,6 +1065,7 @@ describe('CustomerDetailPage', () => {
         deleteDraft: true,
         agreement: { read: false, edit: false },
         invoice: { read: false, edit: false },
+        settlement: { read: false, register: false, correct: false },
       },
     };
     api.getCustomer
@@ -1150,6 +1161,7 @@ describe('CustomerDetailPage', () => {
         admit: false,
         agreement: { read: false, edit: false },
         invoice: { read: false, edit: false },
+        settlement: { read: false, register: false, correct: false },
       },
       history: [],
     });
@@ -1195,6 +1207,7 @@ describe('CustomerDetailPage', () => {
         admit: true,
         agreement: { read: false, edit: false },
         invoice: { read: false, edit: false },
+        settlement: { read: false, register: false, correct: false },
       },
       history: [],
     });
@@ -1237,6 +1250,7 @@ describe('CustomerDetailPage', () => {
           admit: true,
           agreement: { read: false, edit: false },
           invoice: { read: false, edit: false },
+          settlement: { read: false, register: false, correct: false },
         },
         history: [],
       })

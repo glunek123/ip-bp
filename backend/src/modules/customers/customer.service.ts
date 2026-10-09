@@ -94,6 +94,7 @@ export type CustomerDetail = CustomerSummary & {
     deleteDraft: boolean;
     agreement: { read: boolean; edit: boolean };
     invoice: { read: boolean; edit: boolean };
+    settlement: { read: boolean; register: boolean; correct: boolean };
   };
   responsibleOperator: { id: string; displayName: string };
   cooperationCapabilities: {
@@ -327,6 +328,9 @@ export class CustomerService {
       agreementEdit,
       invoiceRead,
       invoiceEdit,
+      settlementRead,
+      settlementRegister,
+      settlementCorrect,
     ] = await Promise.all([
       this.database.auditEvent.findMany({
         where: {
@@ -389,6 +393,21 @@ export class CustomerService {
         'customer.invoice.edit',
         facts,
       ),
+      this.accessControl.canAuthorizeCustomer(
+        actor,
+        'customer.settlement.read',
+        facts,
+      ),
+      this.accessControl.canAuthorizeCustomer(
+        actor,
+        'customer.settlement.register',
+        facts,
+      ),
+      this.accessControl.canAuthorizeCustomer(
+        actor,
+        'customer.settlement.correct',
+        facts,
+      ),
     ]);
     const primaryContact = await this.database.customerContact.findFirst({
       where: {
@@ -433,6 +452,11 @@ export class CustomerService {
           edit: agreementRead && agreementEdit,
         },
         invoice: { read: invoiceRead, edit: invoiceRead && invoiceEdit },
+        settlement: {
+          read: settlementRead,
+          register: settlementRegister,
+          correct: settlementCorrect,
+        },
         deleteDraft:
           deleteDraft &&
           customer.profileStatus === 'DRAFT' &&

@@ -43,6 +43,7 @@ const customer = {
     admit: true,
     agreement: { read: false, edit: false },
     invoice: { read: false, edit: false },
+    settlement: { read: false, register: false, correct: false },
   },
   history: [],
 };
@@ -332,6 +333,7 @@ describe('CustomerEditPage', () => {
         editRoutine: false,
         agreement: { read: false, edit: false },
         invoice: { read: false, edit: false },
+        settlement: { read: false, register: false, correct: false },
       },
     });
     const { wrapper } = await mountPage();

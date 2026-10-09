@@ -303,6 +303,7 @@ describe('customer API', () => {
               admit: true,
               agreement: { read: false, edit: false },
               invoice: { read: false, edit: false },
+              settlement: { read: false, register: false, correct: false },
             },
           }),
         ),
@@ -316,12 +317,13 @@ describe('customer API', () => {
         admit: true,
         agreement: { read: false, edit: false },
         invoice: { read: false, edit: false },
+        settlement: { read: false, register: false, correct: false },
       },
       history: [{ action: 'customer.draft-created' }],
     });
   });
 
-  it('strictly decodes agreement and invoice capability bits on customer detail', async () => {
+  it('strictly decodes document and settlement capability bits on customer detail', async () => {
     const detail = {
       ...summary,
       primaryContactId: null,
@@ -339,6 +341,7 @@ describe('customer API', () => {
         admit: true,
         agreement: { read: true, edit: false },
         invoice: { read: false, edit: false },
+        settlement: { read: false, register: false, correct: false },
       },
     };
     vi.stubGlobal(
@@ -349,6 +352,7 @@ describe('customer API', () => {
       capabilities: {
         agreement: { read: true, edit: false },
         invoice: { read: false, edit: false },
+        settlement: { read: false, register: false, correct: false },
       },
     });
 
@@ -358,18 +362,40 @@ describe('customer API', () => {
         admit: true,
         agreement: { read: true },
         invoice: { read: false, edit: false },
+        settlement: { read: false, register: false, correct: false },
       },
       {
         editRoutine: true,
         admit: true,
         agreement: { read: 'true', edit: false },
         invoice: { read: false, edit: false },
+        settlement: { read: false, register: false, correct: false },
       },
       {
         editRoutine: true,
         admit: true,
         agreement: { read: true, edit: false, taxNo: 'sensitive' },
         invoice: { read: false, edit: false },
+        settlement: { read: false, register: false, correct: false },
+      },
+      {
+        editRoutine: true,
+        admit: true,
+        agreement: { read: true, edit: false },
+        invoice: { read: false, edit: false },
+        settlement: { read: 'false', register: false, correct: false },
+      },
+      {
+        editRoutine: true,
+        admit: true,
+        agreement: { read: true, edit: false },
+        invoice: { read: false, edit: false },
+        settlement: {
+          read: false,
+          register: false,
+          correct: false,
+          settlementAmount: '100.00',
+        },
       },
     ]) {
       vi.stubGlobal(
@@ -384,6 +410,19 @@ describe('customer API', () => {
         code: 'INVALID_RESPONSE',
       });
     }
+    vi.stubGlobal(
+      'fetch',
+      vi
+        .fn()
+        .mockResolvedValue(
+          new Response(
+            JSON.stringify({ ...detail, settlementAmount: '100.00' }),
+          ),
+        ),
+    );
+    await expect(getCustomer('customer-1')).rejects.toMatchObject({
+      code: 'INVALID_RESPONSE',
+    });
   });
 
   it('requires the complete current cooperation projection on detail', async () => {
@@ -401,6 +440,7 @@ describe('customer API', () => {
               admit: true,
               agreement: { read: false, edit: false },
               invoice: { read: false, edit: false },
+              settlement: { read: false, register: false, correct: false },
             },
           }),
         ),
@@ -436,6 +476,7 @@ describe('customer API', () => {
               admit: true,
               agreement: { read: false, edit: false },
               invoice: { read: false, edit: false },
+              settlement: { read: false, register: false, correct: false },
             },
             history: [],
           }),

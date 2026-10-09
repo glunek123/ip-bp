@@ -23,6 +23,9 @@ enum PermissionAction {
   CUSTOMER_AGREEMENT_EDIT       @map("customer.agreement.edit")
   CUSTOMER_INVOICE_READ         @map("customer.invoice.read")
   CUSTOMER_INVOICE_EDIT         @map("customer.invoice.edit")
+  CUSTOMER_SETTLEMENT_READ      @map("customer.settlement.read")
+  CUSTOMER_SETTLEMENT_REGISTER  @map("customer.settlement.register")
+  CUSTOMER_SETTLEMENT_CORRECT   @map("customer.settlement.correct")
   CUSTOMER_ADMIT               @map("customer.admit")
   LEAD_READ                    @map("lead.read")
   LEAD_CREATE                  @map("lead.create")
@@ -712,6 +715,7 @@ model Customer {
   contacts                 CustomerContact[]            @relation("CustomerContacts")
   compatibilityContact     CustomerContact?             @relation("CustomerCompatibilityContact", fields: [compatibilityContactId, id, departmentId], references: [id, customerId, departmentId], onDelete: Restrict, onUpdate: Restrict)
   contactReceipts          CustomerContactCommandReceipt[]
+  settlementRecords        CustomerSettlementRecord[]
   lifecycleFacts           CustomerDraftLifecycleFact[]
   lifecycleReceipts        CustomerDraftLifecycleReceipt[]
   maintenanceFacts         CustomerMaintenanceFact[]
@@ -1310,6 +1314,77 @@ model CustomerAgreementInvoiceReceipt {
   @@unique([departmentId, actorUserId, action, idempotencyKey])
   @@index([customerId, departmentId])
   @@map("customer_agreement_invoice_receipts")
+}
+
+enum CustomerSettlementAction {
+  REGISTER
+  CORRECT
+
+  @@map("customer_settlement_action")
+}
+
+model CustomerSettlementRecord {
+  id               String   @id @default(uuid()) @db.Uuid
+  customerId       String   @map("customer_id") @db.Uuid
+  departmentId     String   @map("department_id") @db.Uuid
+  currentVersionId String?  @map("current_version_id") @db.Uuid
+  version          Int      @default(1)
+  createdAt        DateTime @default(now()) @map("created_at") @db.Timestamptz(3)
+  updatedAt        DateTime @updatedAt @map("updated_at") @db.Timestamptz(3)
+  customer         Customer @relation(fields: [customerId, departmentId], references: [id, departmentId], onDelete: Restrict, onUpdate: Restrict)
+  versions         CustomerSettlementVersion[] @relation("SettlementVersions")
+  currentVersion   CustomerSettlementVersion? @relation("SettlementCurrent", fields: [currentVersionId, id, customerId, departmentId], references: [id, recordId, customerId, departmentId], onDelete: Restrict, onUpdate: Restrict)
+  receipts         CustomerSettlementReceipt[]
+
+  @@unique([id, customerId, departmentId])
+  @@index([customerId, departmentId])
+  @@map("customer_settlement_records")
+}
+
+model CustomerSettlementVersion {
+  id               String @id @default(uuid()) @db.Uuid
+  recordId         String @map("record_id") @db.Uuid
+  customerId       String @map("customer_id") @db.Uuid
+  departmentId     String @map("department_id") @db.Uuid
+  version          Int
+  action           CustomerSettlementAction
+  settlementDate   DateTime @map("settlement_date") @db.Date
+  settlementAmount Decimal @map("settlement_amount") @db.Decimal
+  invoiceAmount    Decimal? @map("invoice_amount") @db.Decimal
+  receivedAmount   Decimal? @map("received_amount") @db.Decimal
+  receivedDate     DateTime? @map("received_date") @db.Date
+  correctionReason String? @map("correction_reason") @db.VarChar(500)
+  recordedByUserId String @map("recorded_by_user_id") @db.Uuid
+  recordedAt       DateTime @default(now()) @map("recorded_at") @db.Timestamptz(3)
+  auditEventId     String @unique @map("audit_event_id") @db.Uuid
+  record           CustomerSettlementRecord @relation("SettlementVersions", fields: [recordId, customerId, departmentId], references: [id, customerId, departmentId], onDelete: Restrict, onUpdate: Restrict)
+  currentOf        CustomerSettlementRecord[] @relation("SettlementCurrent")
+  receipts         CustomerSettlementReceipt[]
+
+  @@unique([recordId, version])
+  @@unique([id, recordId, customerId, departmentId])
+  @@index([customerId, departmentId, settlementDate, recordId])
+  @@map("customer_settlement_versions")
+}
+
+model CustomerSettlementReceipt {
+  id                 String @id @default(uuid()) @db.Uuid
+  departmentId       String @map("department_id") @db.Uuid
+  actorUserId        String @map("actor_user_id") @db.Uuid
+  action             CustomerSettlementAction
+  idempotencyKey     String @map("idempotency_key") @db.VarChar(200)
+  requestFingerprint String @map("request_fingerprint") @db.Char(64)
+  customerId         String @map("customer_id") @db.Uuid
+  recordId           String @map("record_id") @db.Uuid
+  resultVersionId    String @map("result_version_id") @db.Uuid
+  resultCustomerVersion Int @map("result_customer_version")
+  createdAt          DateTime @default(now()) @map("created_at") @db.Timestamptz(3)
+  record             CustomerSettlementRecord @relation(fields: [recordId, customerId, departmentId], references: [id, customerId, departmentId], onDelete: Restrict, onUpdate: Restrict)
+  resultVersion      CustomerSettlementVersion @relation(fields: [resultVersionId, recordId, customerId, departmentId], references: [id, recordId, customerId, departmentId], onDelete: Restrict, onUpdate: Restrict)
+
+  @@unique([departmentId, actorUserId, action, idempotencyKey])
+  @@index([customerId, departmentId])
+  @@map("customer_settlement_receipts")
 }
 
 model CustomerAdmissionReceipt {

@@ -104,6 +104,55 @@ async function clearCustomerDocuments(transaction, departmentIds) {
   }
 }
 
+async function clearCustomerSettlements(transaction, departmentIds) {
+  const tables = [
+    'customer_settlement_receipts',
+    'customer_settlement_versions',
+    'customer_settlement_records',
+  ];
+  for (const table of tables)
+    await transaction.$executeRawUnsafe(
+      `ALTER TABLE "${table}" DISABLE TRIGGER USER`,
+    );
+  try {
+    await transaction.customerSettlementReceipt.deleteMany({
+      where: { departmentId: { in: departmentIds } },
+    });
+    await transaction.customerSettlementRecord.updateMany({
+      where: { departmentId: { in: departmentIds } },
+      data: { currentVersionId: null },
+    });
+    await transaction.customerSettlementVersion.deleteMany({
+      where: { departmentId: { in: departmentIds } },
+    });
+    await transaction.customerSettlementRecord.deleteMany({
+      where: { departmentId: { in: departmentIds } },
+    });
+  } finally {
+    for (const table of [...tables].reverse())
+      await transaction.$executeRawUnsafe(
+        `ALTER TABLE "${table}" ENABLE TRIGGER USER`,
+      );
+  }
+  await transaction.$executeRawUnsafe(
+    'ALTER TABLE "audit_events" DISABLE TRIGGER customer_settlement_audit_seal',
+  );
+  try {
+    await transaction.auditEvent.deleteMany({
+      where: {
+        departmentId: { in: departmentIds },
+        action: {
+          in: ['customer.settlement.register', 'customer.settlement.correct'],
+        },
+      },
+    });
+  } finally {
+    await transaction.$executeRawUnsafe(
+      'ALTER TABLE "audit_events" ENABLE TRIGGER customer_settlement_audit_seal',
+    );
+  }
+}
+
 async function clearCustomerContactData(transaction, departmentIds) {
   await transaction.$executeRawUnsafe(
     'ALTER TABLE "customer_contact_versions" DISABLE TRIGGER USER',
@@ -191,6 +240,7 @@ async function resetLocalAuthE2eData() {
     await transaction.authSession.deleteMany({});
     await transaction.authThrottle.deleteMany({});
     await transaction.localCredential.deleteMany({});
+    await clearCustomerSettlements(transaction, [departmentId]);
     await clearCustomerDocuments(transaction, [departmentId]);
     await transaction.materialReference.deleteMany({ where: { departmentId } });
     await transaction.customerAdmissionReceipt.deleteMany({
@@ -535,6 +585,7 @@ async function resetCustomerE2eData() {
         `ALTER TABLE "${table}" ENABLE TRIGGER USER`,
       );
     }
+    await clearCustomerSettlements(transaction, departmentIds);
     await clearCustomerDocuments(transaction, departmentIds);
     await transaction.materialReference.deleteMany({
       where: { departmentId: { in: departmentIds } },
