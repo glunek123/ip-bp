@@ -18,6 +18,7 @@ import CustomerCooperationPanel from './CustomerCooperationPanel.vue';
 import CustomerContactsPanel from './CustomerContactsPanel.vue';
 import CustomerAgreementPanel from './CustomerAgreementPanel.vue';
 import CustomerInvoiceProfilePanel from './CustomerInvoiceProfilePanel.vue';
+import CustomerSettlementsPanel from './CustomerSettlementsPanel.vue';
 import { labelCustomerType, labelIdentityType } from './customer-labels';
 import { useAuthStore } from '../../stores/auth';
 import { pinia } from '../../app/pinia';
@@ -29,6 +30,14 @@ import {
 } from './customer-lifecycle-pending';
 import { hasPendingCustomerMaintenance } from './customer-maintenance-pending';
 import { listPendingCustomerContacts } from './customer-contacts-pending';
+import { readPendingSettlementCommand } from './customer-settlement-pending';
+import { useCustomerSettlements } from './use-customer-settlements';
+import {
+  formatSettlementAmount,
+  formatSettlementPercent,
+  settlementPendingDisplay,
+  settlementRecoveryBarWidth,
+} from './customer-settlement-money';
 import {
   hasPendingCustomerAgreementInvoice,
   readPendingCustomerAgreementUpload,
@@ -63,6 +72,9 @@ const agreementState = ref({
 });
 const invoiceState = ref({ unknown: false, stale: false });
 const pendingStorageBlocked = ref(false);
+const settlementUnknown = ref(false);
+const settlementStale = ref(false);
+const settlementDetailRefreshNeeded = ref(false);
 const admissionRefreshFailed = ref(false);
 let viewGeneration = 0;
 
@@ -80,6 +92,35 @@ const actorKey = computed(() =>
     ? `${actor.value.userId}:${actor.value.departmentId}:${auth.session?.authorizationRevision ?? 0}`
     : '',
 );
+const settlementCustomerId = computed(() => String(route.params.id));
+const settlementCanRead = computed(
+  () => customer.value?.capabilities.settlement.read ?? false,
+);
+const settlementOwner = useCustomerSettlements(
+  settlementCustomerId,
+  actorKey,
+  settlementCanRead,
+);
+const settlementData = computed(() => settlementOwner.data.value);
+const settlementKpis = computed(() => settlementOwner.kpis.value);
+const settlementPending = computed(
+  () => settlementUnknown.value || settlementStale.value,
+);
+const settlementPendingAmount = computed(() =>
+  settlementPendingDisplay(settlementKpis.value?.pendingAmount ?? null),
+);
+const settlementRateLabel = computed(() => {
+  const value = settlementKpis.value?.recoveryRate;
+  return value === null || value === undefined
+    ? '—'
+    : formatSettlementPercent(value);
+});
+const settlementRateWidth = computed(() =>
+  settlementRecoveryBarWidth(settlementKpis.value?.recoveryRate ?? null),
+);
+const settlementReceivedLabel = computed(() =>
+  settlementKpis.value?.receivedUnknownCount ? '已知回款小计' : '累计回款',
+);
 const contactsWriteBlocked = computed(
   () => contactsPending.value || contactsProjectionStale.value,
 );
@@ -92,7 +133,7 @@ const documentPending = computed(
     invoiceState.value.unknown ||
     invoiceState.value.stale,
 );
-const sharedWriteBlocked = computed(
+const otherMaintenanceBlocked = computed(
   () =>
     !!frozenDelete.value ||
     maintenancePending.value ||
@@ -100,6 +141,9 @@ const sharedWriteBlocked = computed(
     currentProjectionStale.value ||
     assetPending.value ||
     documentPending.value,
+);
+const sharedWriteBlocked = computed(
+  () => otherMaintenanceBlocked.value || settlementPending.value,
 );
 const agreementBlocked = computed(
   () =>
@@ -109,6 +153,7 @@ const agreementBlocked = computed(
     currentProjectionStale.value ||
     assetPending.value ||
     pendingStorageBlocked.value ||
+    settlementPending.value ||
     invoiceState.value.unknown ||
     invoiceState.value.stale,
 );
@@ -120,6 +165,7 @@ const invoiceBlocked = computed(
     currentProjectionStale.value ||
     assetPending.value ||
     pendingStorageBlocked.value ||
+    settlementPending.value ||
     agreementState.value.unknown ||
     agreementState.value.uploadUnknown ||
     agreementState.value.stale,
@@ -131,7 +177,8 @@ const assetsBlocked = computed(
     contactsWriteBlocked.value ||
     currentProjectionStale.value ||
     pendingStorageBlocked.value ||
-    documentPending.value,
+    documentPending.value ||
+    settlementPending.value,
 );
 
 function pendingIdentity(customerId: string) {
@@ -180,6 +227,24 @@ function restorePending(customerId: string): void {
   agreementState.value = { unknown: false, stale: false, uploadUnknown: false };
   invoiceState.value = { unknown: false, stale: false };
   pendingStorageBlocked.value = false;
+  settlementUnknown.value = false;
+  settlementStale.value = false;
+  const currentSession = auth.session;
+  if (
+    currentSession?.principalType === 'INTERNAL' &&
+    currentSession.department
+  ) {
+    try {
+      settlementUnknown.value = !!readPendingSettlementCommand({
+        userId: currentSession.user.id,
+        departmentId: currentSession.department.id,
+        customerId,
+        kind: 'settlement',
+      });
+    } catch {
+      settlementUnknown.value = true;
+    }
+  }
   const session = auth.session;
   if (session?.principalType === 'INTERNAL' && session.department) {
     const base = {
@@ -281,7 +346,8 @@ async function submitDelete(): Promise<void> {
     contactsWriteBlocked.value ||
     currentProjectionStale.value ||
     assetPending.value ||
-    documentPending.value
+    documentPending.value ||
+    settlementPending.value
   )
     return;
   if (!frozenDelete.value && (!current || !current.capabilities.deleteDraft))
@@ -442,6 +508,83 @@ function updateDocumentState(
     invoiceState.value = { ...invoiceState.value, [field]: value };
 }
 
+function updateSettlementState(
+  customerId: string,
+  sourceActorKey: string,
+  field: 'unknown' | 'stale',
+  value: boolean,
+): void {
+  if (
+    customerId !== String(route.params.id) ||
+    sourceActorKey !== actorKey.value ||
+    customer.value?.id !== customerId
+  )
+    return;
+  if (field === 'unknown') settlementUnknown.value = value;
+  else settlementStale.value = value;
+}
+
+function invalidateSettlementRead(
+  customerId: string,
+  sourceActorKey: string,
+): void {
+  if (
+    customerId !== String(route.params.id) ||
+    sourceActorKey !== actorKey.value ||
+    customer.value?.id !== customerId
+  )
+    return;
+  settlementStale.value = true;
+  settlementOwner.invalidate();
+}
+
+async function refreshSettlementList(): Promise<void> {
+  settlementStale.value = true;
+  let detailRefreshed = true;
+  if (settlementDetailRefreshNeeded.value) {
+    detailRefreshed = await refreshCustomerVersion(String(route.params.id));
+    if (detailRefreshed) settlementDetailRefreshNeeded.value = false;
+  }
+  if (!detailRefreshed) return;
+  if (!settlementCanRead.value) {
+    if (!settlementDetailRefreshNeeded.value) settlementStale.value = false;
+    return;
+  }
+  await settlementOwner.refresh();
+  if (
+    settlementOwner.status.value === 'ready' &&
+    !settlementDetailRefreshNeeded.value
+  )
+    settlementStale.value = false;
+}
+
+async function refreshAfterSettlementCommand(
+  customerId: string,
+  sourceActorKey: string,
+): Promise<void> {
+  if (
+    customerId !== String(route.params.id) ||
+    sourceActorKey !== actorKey.value ||
+    customer.value?.id !== customerId
+  )
+    return;
+  settlementStale.value = true;
+  settlementDetailRefreshNeeded.value = true;
+  const detailRefreshed = await refreshCustomerVersion(customerId);
+  if (detailRefreshed) settlementDetailRefreshNeeded.value = false;
+  if (settlementCanRead.value) {
+    await settlementOwner.refresh();
+    if (
+      detailRefreshed &&
+      settlementOwner.status.value === 'ready' &&
+      !settlementDetailRefreshNeeded.value
+    )
+      settlementStale.value = false;
+  } else if (detailRefreshed) {
+    settlementStale.value = false;
+  }
+}
+
 function updateDocumentCustomerVersion(
   customerId: string,
   sourceActorKey: string,
@@ -598,23 +741,28 @@ async function retryCurrentDetail(): Promise<void> {
   }
 }
 
-async function refreshCustomerVersion(customerId: string): Promise<void> {
+async function refreshCustomerVersion(customerId: string): Promise<boolean> {
   if (
     customer.value?.id !== customerId ||
     customerId !== String(route.params.id)
   ) {
-    return;
+    return false;
   }
   const controller = new AbortController();
   requests.add(controller);
   try {
     const latest = await getCustomer(customerId, { signal: controller.signal });
-    if (isCurrentRequest(customerId, controller)) customer.value = latest;
+    if (isCurrentRequest(customerId, controller)) {
+      customer.value = latest;
+      return true;
+    }
+    return false;
   } catch (error) {
     if (isCurrentRequest(customerId, controller) && isCustomerNotFound(error)) {
       returnToCustomerList(customerId);
     }
     // Other failures leave the panel's input and refresh prompt visible.
+    return false;
   } finally {
     requests.delete(controller);
   }
@@ -680,6 +828,13 @@ function refreshAfterMaintenanceAccessFailure(customerId: string): void {
   void load();
 }
 
+watch(settlementOwner.status, (status) => {
+  if (status === 'ready' && !settlementDetailRefreshNeeded.value)
+    settlementStale.value = false;
+  else if (status === 'failed' && settlementCanRead.value)
+    settlementStale.value = true;
+});
+
 watch(
   () => `${String(route.params.id)}:${actorKey.value}`,
   () => {
@@ -696,7 +851,10 @@ watch(
   },
   { immediate: true },
 );
-onBeforeUnmount(abortRequests);
+onBeforeUnmount(() => {
+  abortRequests();
+  settlementOwner.dispose();
+});
 </script>
 
 <template>
@@ -771,6 +929,44 @@ onBeforeUnmount(abortRequests);
             }}</span>
           </div>
         </div>
+        <section
+          v-if="
+            settlementCanRead &&
+            settlementKpis &&
+            settlementOwner.status.value === 'ready' &&
+            !settlementStale
+          "
+          class="settlement-top-kpis"
+          data-test="settlement-top-kpis"
+          aria-label="客户结算统计"
+        >
+          <div data-test="settlement-kpi-settlement">
+            <span>累计结算金额</span>
+            <strong>{{
+              formatSettlementAmount(settlementKpis.totalSettlement)
+            }}</strong>
+          </div>
+          <div data-test="settlement-kpi-received">
+            <span>{{ settlementReceivedLabel }}</span>
+            <strong>{{
+              formatSettlementAmount(settlementKpis.receivedKnownSubtotal)
+            }}</strong>
+            <small v-if="settlementKpis.receivedUnknownCount"
+              >{{ settlementKpis.receivedUnknownCount }} 笔未录入</small
+            >
+          </div>
+          <div data-test="settlement-kpi-pending">
+            <span>{{ settlementPendingAmount.label }}</span>
+            <strong>{{ settlementPendingAmount.amount }}</strong>
+          </div>
+          <div data-test="settlement-kpi-rate">
+            <span>回款率</span>
+            <strong>{{ settlementRateLabel }}</strong>
+            <span class="settlement-top-kpis__bar" aria-hidden="true"
+              ><span :style="{ width: settlementRateWidth }"
+            /></span>
+          </div>
+        </section>
         <p v-if="currentProjectionStale" role="status">
           当前客户资料需要刷新。刷新完成前不能发起新的维护。
         </p>
@@ -789,7 +985,8 @@ onBeforeUnmount(abortRequests);
             contactsWriteBlocked ||
             currentProjectionStale ||
             assetPending ||
-            documentPending
+            documentPending ||
+            settlementPending
           "
           @refreshed="acceptRefreshedCustomer"
           @unreadable="leaveAfterConfirmedMaintenance"
@@ -861,6 +1058,11 @@ onBeforeUnmount(abortRequests);
             权利资产
           </button>
           <button
+            v-if="
+              customer.capabilities.settlement.read ||
+              customer.capabilities.settlement.register ||
+              settlementUnknown
+            "
             id="customer-tab-button-settlements"
             class="customer-tabs__tab"
             type="button"
@@ -963,7 +1165,8 @@ onBeforeUnmount(abortRequests);
               maintenancePending ||
               currentProjectionStale ||
               assetPending ||
-              documentPending
+              documentPending ||
+              settlementPending
             "
             @refreshed="acceptContactRefresh"
             @pending-changed="updateContactsPending"
@@ -1076,14 +1279,47 @@ onBeforeUnmount(abortRequests);
           />
         </section>
         <section
+          v-if="
+            customer.capabilities.settlement.read ||
+            customer.capabilities.settlement.register ||
+            settlementUnknown
+          "
           id="customer-tab-settlements"
-          class="customer-tab-panel customer-tab-panel--notice"
+          class="customer-tab-panel"
           role="tabpanel"
           aria-labelledby="customer-tab-button-settlements"
           v-show="activeTab === 'settlements'"
         >
-          <h2>结算记录</h2>
-          <p>结算记录尚未接通人工台账。</p>
+          <CustomerSettlementsPanel
+            v-if="
+              customer.capabilities.settlement.read ||
+              customer.capabilities.settlement.register ||
+              settlementUnknown
+            "
+            :customer-id="customer.id"
+            :customer-version="customer.version"
+            :actor="
+              actor
+                ? { userId: actor.userId, departmentId: actor.departmentId }
+                : null
+            "
+            :actor-key="actorKey"
+            :can-read="customer.capabilities.settlement.read"
+            :can-register="customer.capabilities.settlement.register"
+            :can-correct="customer.capabilities.settlement.correct"
+            :data="settlementData"
+            :status="settlementOwner.status.value"
+            :stale="settlementStale || settlementOwner.stale.value"
+            :error="settlementOwner.error.value"
+            :page="settlementOwner.page.value"
+            :page-size="settlementOwner.pageSize"
+            :blocked-by-other-maintenance="otherMaintenanceBlocked"
+            @page-change="settlementOwner.setPage"
+            @refresh="refreshSettlementList"
+            @settlement-state="updateSettlementState"
+            @private-read-failed="invalidateSettlementRead"
+            @command-confirmed="refreshAfterSettlementCommand"
+          />
         </section>
       </template>
     </main>
@@ -1096,6 +1332,35 @@ onBeforeUnmount(abortRequests);
   gap: var(--s-2);
   margin: 0 0 var(--s-4);
   border-bottom: 1px solid var(--color-hairline);
+}
+
+.settlement-top-kpis {
+  display: grid;
+  grid-template-columns: repeat(4, minmax(0, 1fr));
+  gap: var(--s-3);
+  margin: 0 0 var(--s-4);
+}
+
+.settlement-top-kpis > div {
+  display: grid;
+  gap: var(--s-1);
+  padding: var(--s-3);
+  border: 1px solid var(--color-hairline);
+  border-radius: var(--radius-card);
+}
+
+.settlement-top-kpis__bar {
+  display: block;
+  height: 0.5rem;
+  overflow: hidden;
+  border-radius: 99px;
+  background: var(--color-hairline);
+}
+
+.settlement-top-kpis__bar > span {
+  display: block;
+  height: 100%;
+  background: var(--color-accent);
 }
 
 .customer-tabs__tab {

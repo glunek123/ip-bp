@@ -14,12 +14,17 @@ const api = vi.hoisted(() => ({
   getCustomer: vi.fn(),
   deleteCustomerDraft: vi.fn(),
 }));
+const settlementApi = vi.hoisted(() => ({ listCustomerSettlements: vi.fn() }));
 const maintenanceApi = vi.hoisted(() => ({
   changeCustomerCooperation: vi.fn(),
   listEligibleOperators: vi.fn(),
   transferCustomerResponsible: vi.fn(),
 }));
 vi.mock('../../api/customers', () => api);
+vi.mock('../../api/customer-settlements', async (importOriginal) => ({
+  ...(await importOriginal<typeof import('../../api/customer-settlements')>()),
+  ...settlementApi,
+}));
 vi.mock('../../api/customer-cooperation', () => maintenanceApi);
 const mountedWrappers = new Set<{ unmount: () => void }>();
 
@@ -92,6 +97,26 @@ const invoicePanel = {
   template:
     '<section data-test="invoice-panel-stub" :data-blocked="blockedByOtherMaintenance"><button data-test="invoice-stale-on" @click="$emit(\'document-state\', \'invoice\', customerId, actorKey, \'stale\', true)">stale</button></section>',
 };
+const settlementsPanel = {
+  props: [
+    'data',
+    'status',
+    'stale',
+    'blockedByOtherMaintenance',
+    'canRead',
+    'canRegister',
+    'canCorrect',
+  ],
+  emits: [
+    'page-change',
+    'refresh',
+    'settlement-state',
+    'private-read-failed',
+    'command-confirmed',
+  ],
+  template:
+    '<section data-test="settlements-panel-stub" :data-blocked="blockedByOtherMaintenance" :data-stale="stale"><span data-test="panel-record-count">{{ data?.stats.recordCount ?? "none" }}</span><button data-test="settlements-lock" @click="$emit(\'settlement-state\', \'customer-1\', \'user-1:department-1:1\', \'unknown\', true)">lock</button><button data-test="settlements-unlock" @click="$emit(\'settlement-state\', \'customer-1\', \'user-1:department-1:1\', \'unknown\', false)">unlock</button><button data-test="settlement-command-confirmed" @click="$emit(\'command-confirmed\', \'customer-1\', \'user-1:department-1:1\', { customerVersion: 2 })">confirmed</button><button data-test="settlement-refresh" @click="$emit(\'refresh\')">refresh</button></section>',
+};
 
 afterEach(() => {
   for (const wrapper of mountedWrappers) wrapper.unmount();
@@ -123,6 +148,7 @@ async function mountPage(customerId = 'customer-1') {
         CustomerRightAssetsPanel: rightAssetsPanel,
         CustomerAgreementPanel: agreementPanel,
         CustomerInvoiceProfilePanel: invoicePanel,
+        CustomerSettlementsPanel: settlementsPanel,
       },
     },
   });
@@ -130,7 +156,25 @@ async function mountPage(customerId = 'customer-1') {
   return { router, wrapper };
 }
 
-function customerRecord(id: string, name: string) {
+function setInternalActor(authorizationRevision = 1): void {
+  useAuthStore(pinia).session = {
+    principalType: 'INTERNAL',
+    user: { id: 'user-1', displayName: '运营甲', username: 'operator-a' },
+    department: { id: 'department-1', name: '甲部门' },
+    departments: [{ id: 'department-1', name: '甲部门' }],
+    customer: null,
+    notaryOffice: null,
+    authorizationRevision,
+    expiresAt: '2026-10-09T10:00:00.000Z',
+    csrfToken: 'csrf',
+  };
+}
+
+function customerRecord(
+  id: string,
+  name: string,
+  settlement = { read: false, register: false, correct: false },
+) {
   return {
     id,
     name,
@@ -161,13 +205,168 @@ function customerRecord(id: string, name: string) {
       admit: true,
       agreement: { read: false, edit: false },
       invoice: { read: false, edit: false },
-      settlement: { read: false, register: false, correct: false },
+      settlement,
     },
     history: [],
   };
 }
 
 describe('CustomerDetailPage', () => {
+  it('uses one settlement list owner for the KPI and panel, without refetching on customer version changes', async () => {
+    setInternalActor();
+    settlementApi.listCustomerSettlements.mockResolvedValue({
+      items: [],
+      total: 0,
+      page: 1,
+      pageSize: 20,
+      stats: {
+        recordCount: 0,
+        totalSettlement: '0.00',
+        invoiceKnownSubtotal: '0.00',
+        invoiceUnknownCount: 0,
+        receivedKnownSubtotal: '0.00',
+        receivedUnknownCount: 0,
+        pendingAmount: '0.00',
+        recoveryRate: null,
+      },
+      capabilities: { read: true, register: true, correct: true },
+      customerVersion: 1,
+    });
+    api.getCustomer.mockResolvedValue(
+      customerRecord('customer-1', '客户甲', {
+        read: true,
+        register: true,
+        correct: true,
+      }),
+    );
+    const { wrapper } = await mountPage();
+    await flushPromises();
+    expect(settlementApi.listCustomerSettlements).toHaveBeenCalledTimes(1);
+    expect(
+      wrapper.get('[data-test="settlement-kpi-settlement"]').text(),
+    ).toContain('¥0.00');
+    expect(wrapper.get('[data-test="panel-record-count"]').text()).toBe('0');
+    await wrapper.get('[data-test="rights-holder-panel"]').trigger('click');
+    await flushPromises();
+    expect(settlementApi.listCustomerSettlements).toHaveBeenCalledTimes(1);
+  });
+
+  it('does not fetch or expose settlement KPIs for register-only access', async () => {
+    setInternalActor();
+    api.getCustomer.mockResolvedValue(
+      customerRecord('customer-1', '客户甲', {
+        read: false,
+        register: true,
+        correct: false,
+      }),
+    );
+    const { wrapper } = await mountPage();
+    await flushPromises();
+    expect(settlementApi.listCustomerSettlements).not.toHaveBeenCalled();
+    expect(
+      wrapper.find('[data-test="settlement-kpi-settlement"]').exists(),
+    ).toBe(false);
+    expect(
+      wrapper
+        .get('[data-test="settlements-panel-stub"]')
+        .attributes('data-blocked'),
+    ).toBe('false');
+  });
+
+  it('keeps settlement writes frozen until both the confirmed customer detail and list refresh succeed', async () => {
+    setInternalActor();
+    settlementApi.listCustomerSettlements.mockResolvedValue({
+      items: [],
+      total: 0,
+      page: 1,
+      pageSize: 20,
+      stats: {
+        recordCount: 0,
+        totalSettlement: '0.00',
+        invoiceKnownSubtotal: '0.00',
+        invoiceUnknownCount: 0,
+        receivedKnownSubtotal: '0.00',
+        receivedUnknownCount: 0,
+        pendingAmount: '0.00',
+        recoveryRate: null,
+      },
+      capabilities: { read: true, register: true, correct: true },
+      customerVersion: 1,
+    });
+    api.getCustomer
+      .mockResolvedValueOnce(
+        customerRecord('customer-1', '客户甲', {
+          read: true,
+          register: true,
+          correct: true,
+        }),
+      )
+      .mockRejectedValueOnce(new Error('detail unavailable'))
+      .mockResolvedValueOnce({
+        ...customerRecord('customer-1', '客户甲', {
+          read: true,
+          register: true,
+          correct: true,
+        }),
+        version: 2,
+      });
+    const { wrapper } = await mountPage();
+    await flushPromises();
+    await wrapper
+      .get('[data-test="settlement-command-confirmed"]')
+      .trigger('click');
+    await flushPromises();
+    expect(
+      wrapper
+        .get('[data-test="settlements-panel-stub"]')
+        .attributes('data-stale'),
+    ).toBe('true');
+
+    await wrapper.get('[data-test="settlement-refresh"]').trigger('click');
+    await flushPromises();
+    expect(api.getCustomer).toHaveBeenCalledTimes(3);
+    expect(settlementApi.listCustomerSettlements).toHaveBeenCalledTimes(3);
+    expect(
+      wrapper
+        .get('[data-test="settlements-panel-stub"]')
+        .attributes('data-stale'),
+    ).toBe('false');
+  });
+
+  it('keeps settlement uncertainty in the shared customer write freeze despite unrelated false events', async () => {
+    setInternalActor();
+    api.getCustomer.mockResolvedValue({
+      ...customerRecord('customer-1', '客户甲', {
+        read: false,
+        register: true,
+        correct: false,
+      }),
+      capabilities: {
+        ...customerRecord('customer-1', '客户甲').capabilities,
+        agreement: { read: true, edit: false },
+        settlement: { read: false, register: true, correct: false },
+      },
+    });
+    const { wrapper } = await mountPage();
+    await flushPromises();
+    await wrapper.get('[data-test="settlements-lock"]').trigger('click');
+    expect(
+      wrapper
+        .get('[data-test="settlements-panel-stub"]')
+        .attributes('data-blocked'),
+    ).toBe('false');
+    expect(
+      wrapper
+        .get('[data-test="right-assets-panel"]')
+        .attributes('data-blocked'),
+    ).toBe('true');
+    await wrapper.get('[data-test="agreement-pending-off"]').trigger('click');
+    expect(
+      wrapper
+        .get('[data-test="right-assets-panel"]')
+        .attributes('data-blocked'),
+    ).toBe('true');
+  });
   it('keeps only the same actor asset command across a detail unmount and drops it on customer change', async () => {
     const auth = useAuthStore(pinia);
     auth.session = {
@@ -276,7 +475,7 @@ describe('CustomerDetailPage', () => {
         ...customerRecord('customer-1', '客户甲').capabilities,
         agreement: { read: true, edit: true },
         invoice: { read: true, edit: true },
-        settlement: { read: false, register: false, correct: false },
+        settlement: { read: true, register: false, correct: false },
       },
     });
     const { wrapper } = await mountPage();
@@ -665,7 +864,7 @@ describe('CustomerDetailPage', () => {
         admit: true,
         agreement: { read: false, edit: false },
         invoice: { read: false, edit: false },
-        settlement: { read: false, register: false, correct: false },
+        settlement: { read: true, register: false, correct: false },
       },
       history: [],
     });
@@ -701,9 +900,13 @@ describe('CustomerDetailPage', () => {
     const settlementPanel = wrapper.get(
       '[role="tabpanel"][id="customer-tab-settlements"]',
     );
-    expect(settlementPanel.text()).toContain('结算记录尚未接通人工台账');
+    expect(
+      settlementPanel.find('[data-test="settlements-panel-stub"]').exists(),
+    ).toBe(true);
     expect(settlementPanel.text()).not.toMatch(/[¥￥]\s*\d|\d+(?:\.\d+)?\s*元/);
-    expect(settlementPanel.find('button').exists()).toBe(false);
+    expect(
+      settlementPanel.find('[data-test="panel-record-count"]').text(),
+    ).toBe('none');
 
     await basicTab.trigger('click');
     expect(
