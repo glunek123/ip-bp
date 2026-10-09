@@ -19,8 +19,11 @@ import {
   type MaterialContentVersion,
 } from '../../api/materials';
 import {
+  beginCustomerAgreementUpload,
   clearPendingCustomerAgreementUpload,
   clearPendingCustomerDocumentCommand,
+  currentCustomerAgreementUpload,
+  hasUnclearedCustomerAgreementUpload,
   readPendingCustomerAgreementUpload,
   readPendingCustomerDocumentCommand,
   savePendingCustomerAgreementUpload,
@@ -115,6 +118,7 @@ const canSubmit = computed(
 const canCancel = computed(
   () =>
     !props.blockedByOtherMaintenance &&
+    !uploadUnknown.value &&
     status.value !== 'unknown' &&
     status.value !== 'refresh-needed' &&
     !submitting.value &&
@@ -197,7 +201,21 @@ function restorePending(): void {
   const uploadKey = uploadIdentity();
   if (key) pending = readPendingCustomerDocumentCommand(key);
   if (uploadKey)
-    uploadUnknown.value = !!readPendingCustomerAgreementUpload(uploadKey);
+    uploadUnknown.value =
+      !!readPendingCustomerAgreementUpload(uploadKey) ||
+      hasUnclearedCustomerAgreementUpload(uploadKey);
+  const inFlight = uploadKey
+    ? currentCustomerAgreementUpload(uploadKey)
+    : undefined;
+  uploading.value = !!inFlight;
+  if (inFlight) {
+    const ownGeneration = generation;
+    const customerId = props.customerId;
+    const actorKey = props.actorKey;
+    void inFlight.then(() => {
+      if (current(ownGeneration, customerId, actorKey)) uploading.value = false;
+    });
+  }
   if (pending) {
     const body = pending.body;
     status.value = 'unknown';
@@ -240,7 +258,7 @@ async function refreshCurrent(): Promise<void> {
     state.value = 'ready';
     if (!pending && status.value !== 'refresh-needed') {
       form.value = formFromVersion(latest.agreement?.currentVersion);
-      editing.value = false;
+      editing.value = uploadUnknown.value;
     }
     if (status.value === 'refresh-needed') {
       form.value = formFromVersion(latest.agreement?.currentVersion);
@@ -482,6 +500,48 @@ async function uploadSelectedFile(event: globalThis.Event): Promise<void> {
   const customerId = props.customerId;
   const actorKey = props.actorKey;
   const ownGeneration = generation;
+  const key = uploadIdentity();
+  if (!key) {
+    uploadUnknown.value = true;
+    setField('uploadUnknown', true);
+    message.value = '无法确认协议上传身份，请停止上传并联系管理员核查。';
+    return;
+  }
+  const previousUpload = currentCustomerAgreementUpload(key);
+  if (previousUpload) {
+    uploadUnknown.value = true;
+    uploading.value = true;
+    setField('uploadUnknown', true);
+    message.value = '协议文件仍在上传，请等待结果后再核对。';
+    void previousUpload.then(() => {
+      if (current(ownGeneration, customerId, actorKey)) uploading.value = false;
+    });
+    return;
+  }
+  try {
+    savePendingCustomerAgreementUpload({
+      ...key,
+      kind: 'agreement-upload',
+      createdAt: new Date().toISOString(),
+    });
+  } catch {
+    uploadUnknown.value = true;
+    setField('uploadUnknown', true);
+    message.value =
+      '无法保存恢复标记，协议文件未上传；请停止重传并联系管理员核查。';
+    return;
+  }
+  let activeUpload: ReturnType<typeof beginCustomerAgreementUpload>;
+  try {
+    activeUpload = beginCustomerAgreementUpload(key);
+  } catch {
+    uploadUnknown.value = true;
+    setField('uploadUnknown', true);
+    message.value = '协议文件仍在上传，请等待结果后再核对。';
+    return;
+  }
+  uploadUnknown.value = true;
+  setField('uploadUnknown', true);
   uploading.value = true;
   message.value = '';
   try {
@@ -493,6 +553,15 @@ async function uploadSelectedFile(event: globalThis.Event): Promise<void> {
       file,
     });
     if (!current(ownGeneration, customerId, actorKey)) return;
+    try {
+      clearPendingCustomerAgreementUpload(key);
+    } catch {
+      message.value =
+        '协议文件已上传，但无法清除恢复标记。请停止重传并人工核对。';
+      return;
+    }
+    uploadUnknown.value = false;
+    setField('uploadUnknown', false);
     form.value.files.push({
       materialId: uploaded.materialId,
       contentVersionId: uploaded.contentVersionId,
@@ -502,43 +571,42 @@ async function uploadSelectedFile(event: globalThis.Event): Promise<void> {
     message.value = '协议文件已上传，尚未绑定到新版本。';
   } catch (error) {
     if (!current(ownGeneration, customerId, actorKey)) return;
-    if (isUnknownUpload(error)) {
-      const key = uploadIdentity();
-      if (key) {
-        try {
-          savePendingCustomerAgreementUpload({
-            ...key,
-            kind: 'agreement-upload',
-            createdAt: new Date().toISOString(),
-          });
-          uploadUnknown.value = true;
-          setField('uploadUnknown', true);
-        } catch {
-          message.value =
-            '协议上传结果未知且无法保存恢复标记，请停止重传并联系管理员核查。';
-          return;
-        }
-      }
-      message.value =
-        '协议上传结果未知。请刷新已有文件、下载核对精确版本后再明确选用；不要再次上传。';
-    } else if (
+    if (
       error instanceof ApiError &&
       (error.status === 403 || error.status === 404)
     ) {
       clearSensitiveProjection();
+      setField('stale', true);
       emit('unavailable', customerId, actorKey);
-      message.value = '当前权限或客户范围已变化。';
-    } else {
+      message.value = '当前权限或客户范围已变化。上传恢复标记已保留。';
+    } else if (isUnknownUpload(error)) {
       message.value =
-        error instanceof ApiError ? error.message : '协议文件上传失败。';
+        '协议上传结果未知。请刷新已有文件、下载核对精确版本后再明确选用；不要再次上传。';
+    } else {
+      try {
+        clearPendingCustomerAgreementUpload(key);
+        uploadUnknown.value = false;
+        setField('uploadUnknown', false);
+        message.value =
+          error instanceof ApiError ? error.message : '协议文件上传失败。';
+      } catch {
+        message.value = '无法清除恢复标记，请停止重传并人工核对。';
+      }
     }
   } finally {
+    activeUpload.finish();
     if (current(ownGeneration, customerId, actorKey)) uploading.value = false;
   }
 }
 
 async function refreshRecoveryFiles(): Promise<void> {
-  if (!uploadUnknown.value || !props.canRead || recoveryLoading.value) return;
+  if (
+    !uploadUnknown.value ||
+    !props.canRead ||
+    recoveryLoading.value ||
+    uploading.value
+  )
+    return;
   const customerId = props.customerId;
   const actorKey = props.actorKey;
   const ownGeneration = generation;
@@ -593,6 +661,7 @@ function recoveryKey(file: RecoveryFile): string {
 }
 
 async function downloadRecoveryFile(file: RecoveryFile): Promise<void> {
+  if (uploading.value) return;
   const ownGeneration = generation;
   const customerId = props.customerId;
   const actorKey = props.actorKey;
@@ -616,20 +685,31 @@ async function downloadRecoveryFile(file: RecoveryFile): Promise<void> {
 }
 
 function adoptRecoveryFile(file: RecoveryFile): void {
-  if (!verifiedRecoveryFiles.value.has(recoveryKey(file)) || !canSubmit.value)
+  if (
+    !verifiedRecoveryFiles.value.has(recoveryKey(file)) ||
+    !canSubmit.value ||
+    uploading.value
+  )
     return;
   if (
     form.value.files.some((item) => item.contentVersionId === file.version.id)
   )
     return;
+  const key = uploadIdentity();
+  if (key) {
+    try {
+      clearPendingCustomerAgreementUpload(key);
+    } catch {
+      message.value = '无法清除恢复标记，请停止重传并联系管理员核查。';
+      return;
+    }
+  }
   form.value.files.push({
     materialId: file.materialId,
     contentVersionId: file.version.id,
     originalFilename: file.version.originalFilename,
     mimeType: file.version.mimeType,
   });
-  const key = uploadIdentity();
-  if (key) clearPendingCustomerAgreementUpload(key);
   uploadUnknown.value = false;
   setField('uploadUnknown', false);
   recoveryFiles.value = [];
@@ -936,7 +1016,7 @@ onBeforeUnmount(() => {
         <button
           type="button"
           data-test="agreement-recovery-refresh"
-          :disabled="recoveryLoading"
+          :disabled="recoveryLoading || uploading"
           @click="refreshRecoveryFiles"
         >
           刷新已有协议文件
@@ -953,6 +1033,7 @@ onBeforeUnmount(() => {
             <button
               type="button"
               :data-test="`recovery-download-${file.version.id}`"
+              :disabled="uploading"
               @click="downloadRecoveryFile(file)"
             >
               下载核对

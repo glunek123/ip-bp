@@ -1,9 +1,12 @@
 import { afterEach, describe, expect, it } from 'vitest';
 import {
+  beginCustomerAgreementUpload,
   clearPendingCustomerDocumentCommand,
+  currentCustomerAgreementUpload,
   hasPendingCustomerAgreementInvoice,
   readPendingCustomerDocumentCommand,
   savePendingCustomerDocumentCommand,
+  savePendingCustomerAgreementUpload,
   type PendingCustomerDocumentCommand,
 } from './customer-agreements-invoice-pending';
 
@@ -16,6 +19,27 @@ const identity = {
 afterEach(() => globalThis.sessionStorage.clear());
 
 describe('customer agreement and invoice pending storage', () => {
+  it('keeps in-flight upload coordination separate by explicit stable identity', async () => {
+    const another = { ...identity, customerId: 'customer-2' };
+    savePendingCustomerAgreementUpload({
+      ...identity,
+      kind: 'agreement-upload',
+      createdAt: '2026-10-09T00:00:00.000Z',
+    });
+    const first = beginCustomerAgreementUpload(identity);
+    const second = beginCustomerAgreementUpload(another);
+    expect(currentCustomerAgreementUpload(identity)).toBe(first.finished);
+    expect(currentCustomerAgreementUpload(another)).toBe(second.finished);
+    first.finish();
+    await first.finished;
+    expect(currentCustomerAgreementUpload(identity)).toBeUndefined();
+    expect(currentCustomerAgreementUpload(another)).toBe(second.finished);
+    expect(globalThis.sessionStorage.length).toBe(1);
+    second.finish();
+    await second.finished;
+    expect(currentCustomerAgreementUpload(another)).toBeUndefined();
+  });
+
   it('round trips explicit identity and original request without authorization revision', () => {
     const command: PendingCustomerDocumentCommand = {
       ...identity,

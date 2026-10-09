@@ -54,7 +54,8 @@ async function commandShape(request: Request) {
 }
 
 test.beforeEach(async () => resetCustomerE2eData());
-test.afterEach(async () => {
+test.afterEach(async ({ page }, info) => {
+  void page;
   if (assetFixtureCustomerId) {
     await clearCustomerRightAssetFixture(
       assetFixtureCustomerId,
@@ -62,8 +63,136 @@ test.afterEach(async () => {
     );
     assetFixtureCustomerId = undefined;
   }
+  if (
+    info.title.startsWith('revoked agreement upload') ||
+    info.title.startsWith('browser storage denial')
+  )
+    await resetLocalAuthE2eData();
 });
 test.afterAll(async () => disconnectCustomerTestDatabase());
+
+test('revoked agreement upload clears old current and historical PII but keeps recovery marker', async ({
+  page,
+}) => {
+  const credentials = await resetLocalAuthE2eData();
+  await grantDocuments();
+  await passwordLogin(page, '/customers', credentials);
+  await page.getByRole('link', { name: '新建客户' }).click();
+  await page.getByLabel('客户名称').fill('撤权上传协议客户');
+  await page.getByRole('button', { name: '保存草稿' }).click();
+  await expect(
+    page.getByRole('heading', { name: '撤权上传协议客户' }),
+  ).toBeVisible();
+  const agreement = page.locator('[data-test="agreement-panel"]');
+  await agreement.locator('[data-test="agreement-edit"]').click();
+  await agreement.getByLabel('协议名称').fill('首版敏感协议');
+  await agreement.locator('input[type="file"]').setInputFiles({
+    name: '首版敏感文件.pdf',
+    mimeType: 'application/pdf',
+    buffer: pdf,
+  });
+  await expect(
+    agreement.getByText('协议文件已上传，尚未绑定到新版本。'),
+  ).toBeVisible();
+  await agreement.locator('[data-test="agreement-submit"]').click();
+  await expect(
+    agreement.locator('[data-test="agreement-version"]'),
+  ).toContainText('第 1 版');
+  await agreement.locator('[data-test="agreement-edit"]').click();
+  await agreement.getByLabel('协议名称').fill('当前敏感协议');
+  await agreement.locator('[data-test="agreement-submit"]').click();
+  await expect(
+    agreement.locator('[data-test="agreement-version"]'),
+  ).toContainText('第 2 版');
+  await agreement.locator('[data-test="agreement-history-toggle"]').click();
+  await expect(agreement.getByText('首版敏感协议')).toBeVisible();
+  await setCustomerDocumentGrant(localRoleId, 'CUSTOMER_AGREEMENT_EDIT', false);
+  await setCustomerDocumentGrant(localRoleId, 'CUSTOMER_AGREEMENT_READ', false);
+  await agreement.locator('[data-test="agreement-edit"]').click();
+  const deniedUpload = page.waitForResponse(
+    (response) =>
+      response.url().endsWith('/api/v1/materials/upload-drafts') &&
+      response.request().method() === 'POST',
+  );
+  await agreement.locator('input[type="file"]').setInputFiles({
+    name: '撤权后文件.pdf',
+    mimeType: 'application/pdf',
+    buffer: pdf,
+  });
+  const denied = await deniedUpload;
+  expect([403, 404]).toContain(denied.status());
+  const deniedHeaders = await denied.request().allHeaders();
+  expect(deniedHeaders.cookie).toBeTruthy();
+  expect(deniedHeaders['x-csrf-token']).toBeTruthy();
+  expect(deniedHeaders.authorization).toBeUndefined();
+  await expect(agreement).toHaveCount(0);
+  await expect(page.getByText('当前敏感协议')).toHaveCount(0);
+  await expect(page.getByText('首版敏感协议')).toHaveCount(0);
+  await expect(page.getByText('首版敏感文件.pdf')).toHaveCount(0);
+  const markerCount = await page.evaluate(
+    () =>
+      Object.keys(sessionStorage).filter((key) =>
+        key.endsWith(':agreement-upload'),
+      ).length,
+  );
+  expect(markerCount).toBe(1);
+  await setCustomerDocumentGrant(
+    localRoleId,
+    'CUSTOMER_AGREEMENT_READ',
+    true,
+    'DEPARTMENT',
+  );
+  await setCustomerDocumentGrant(
+    localRoleId,
+    'CUSTOMER_AGREEMENT_EDIT',
+    true,
+    'DEPARTMENT',
+  );
+  await page.reload();
+  await expect(agreement.getByText('不能再次上传')).toBeVisible();
+});
+
+test('browser storage denial prevents agreement upload before any server request', async ({
+  page,
+}) => {
+  const credentials = await resetLocalAuthE2eData();
+  await grantDocuments();
+  await passwordLogin(page, '/customers', credentials);
+  await page.getByRole('link', { name: '新建客户' }).click();
+  await page.getByLabel('客户名称').fill('存储拒绝协议客户');
+  await page.getByRole('button', { name: '保存草稿' }).click();
+  await expect(
+    page.getByRole('heading', { name: '存储拒绝协议客户' }),
+  ).toBeVisible();
+  const customerId = page.url().split('/').at(-1)!;
+  const agreement = page.locator('[data-test="agreement-panel"]');
+  await agreement.locator('[data-test="agreement-edit"]').click();
+  let uploadRequests = 0;
+  await page.route('**/api/v1/materials/upload-drafts', async (route) => {
+    if (route.request().method() === 'POST') uploadRequests += 1;
+    await route.continue();
+  });
+  await page.evaluate(() => {
+    const original = Storage.prototype.setItem;
+    Storage.prototype.setItem = function (key, value) {
+      if (key.endsWith(':agreement-upload')) throw new Error('storage denied');
+      return original.call(this, key, value);
+    };
+  });
+  await agreement.locator('input[type="file"]').setInputFiles({
+    name: '不可上传.pdf',
+    mimeType: 'application/pdf',
+    buffer: pdf,
+  });
+  await expect(agreement.getByText('无法保存恢复标记')).toBeVisible();
+  expect(uploadRequests).toBe(0);
+  await expect(agreement.locator('fieldset')).toHaveAttribute('disabled', '');
+  const materials = await page.request.get(
+    `/api/v1/materials?ownerType=CUSTOMER&ownerId=${customerId}`,
+  );
+  expect(materials.status()).toBe(200);
+  expect(((await materials.json()) as { total: number }).total).toBe(0);
+});
 
 test('unknown asset command keeps original cookie request across same-page access loss', async ({
   page,
@@ -460,11 +589,14 @@ test('unknown finalized upload recovers only after exact download and explicit a
       '协议上传结果未知。刷新列表后下载核对精确版本，不能再次上传。',
     ),
   ).toBeVisible();
-  expect(intercepted).toBe(true);
+  await expect.poll(() => intercepted).toBe(true);
   await expect(agreement.locator('input[type="file"]')).toBeDisabled();
   await expect(
     agreement.locator('[data-test="agreement-submit"]'),
   ).toBeDisabled();
+  await expect(
+    agreement.locator('[data-test="agreement-recovery-refresh"]'),
+  ).toBeEnabled();
   await agreement.locator('[data-test="agreement-recovery-refresh"]').click();
   const adoption = agreement.locator(
     `[data-test="recovery-adopt-${uploaded!.contentVersionId}"]`,

@@ -283,13 +283,62 @@ export function savePendingCustomerAgreementUpload(
 export function clearPendingCustomerAgreementUpload(
   identity: CustomerAgreementUploadIdentity,
 ): void {
-  globalThis.sessionStorage.removeItem(uploadStorageKey(identity));
+  const key = uploadStorageKey(identity);
+  try {
+    globalThis.sessionStorage.removeItem(key);
+    unclearedAgreementUploads.delete(key);
+  } catch (error) {
+    unclearedAgreementUploads.add(key);
+    throw error;
+  }
+}
+
+type ActiveAgreementUpload = {
+  finished: Promise<void>;
+  finish: () => void;
+};
+const activeAgreementUploads = new Map<string, ActiveAgreementUpload>();
+const unclearedAgreementUploads = new Set<string>();
+
+export function hasUnclearedCustomerAgreementUpload(
+  identity: CustomerAgreementUploadIdentity,
+): boolean {
+  return unclearedAgreementUploads.has(uploadStorageKey(identity));
+}
+
+export function beginCustomerAgreementUpload(
+  identity: CustomerAgreementUploadIdentity,
+): ActiveAgreementUpload {
+  const key = uploadStorageKey(identity);
+  if (activeAgreementUploads.has(key)) throw new Error('协议上传仍在进行');
+  let resolveFinished!: () => void;
+  const finished = new Promise<void>((resolve) => {
+    resolveFinished = resolve;
+  });
+  const active: ActiveAgreementUpload = {
+    finished,
+    finish: () => {
+      if (activeAgreementUploads.get(key) === active)
+        activeAgreementUploads.delete(key);
+      resolveFinished();
+    },
+  };
+  activeAgreementUploads.set(key, active);
+  return active;
+}
+
+export function currentCustomerAgreementUpload(
+  identity: CustomerAgreementUploadIdentity,
+): Promise<void> | undefined {
+  return activeAgreementUploads.get(uploadStorageKey(identity))?.finished;
 }
 
 export function hasPendingCustomerAgreementInvoice(
   actor: Pick<PendingCustomerDocumentCommand, 'userId' | 'departmentId'>,
   customerId: string,
 ): boolean {
+  if (unclearedAgreementUploads.has(uploadStorageKey({ ...actor, customerId })))
+    return true;
   try {
     return (
       globalThis.sessionStorage.getItem(

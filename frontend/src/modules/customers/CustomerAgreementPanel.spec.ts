@@ -1,6 +1,11 @@
 import { flushPromises, mount } from '@vue/test-utils';
 import { afterEach, describe, expect, it, vi } from 'vitest';
+import { ApiError } from '../../api/http';
 import CustomerAgreementPanel from './CustomerAgreementPanel.vue';
+import {
+  clearPendingCustomerAgreementUpload,
+  hasPendingCustomerAgreementInvoice,
+} from './customer-agreements-invoice-pending';
 
 const api = vi.hoisted(() => ({
   createCustomerAgreement: vi.fn(),
@@ -17,7 +22,13 @@ vi.mock('../../api/customer-agreements-invoice', () => api);
 vi.mock('../../api/materials', () => materialApi);
 
 afterEach(() => {
+  vi.restoreAllMocks();
   vi.resetAllMocks();
+  clearPendingCustomerAgreementUpload({
+    userId: 'user-1',
+    departmentId: 'department-1',
+    customerId: 'customer-1',
+  });
   globalThis.sessionStorage.clear();
 });
 
@@ -68,7 +79,250 @@ function mountPanel(overrides: Record<string, unknown> = {}) {
   });
 }
 
+async function chooseFile(wrapper: ReturnType<typeof mountPanel>) {
+  const input = wrapper.get('input[type="file"]');
+  Object.defineProperty(input.element, 'files', {
+    configurable: true,
+    value: [new File(['pdf'], 'unknown.pdf', { type: 'application/pdf' })],
+  });
+  await input.trigger('change');
+}
+
 describe('CustomerAgreementPanel', () => {
+  it.each([403, 404])(
+    'clears current, history and draft PII after upload %i while retaining recovery',
+    async (status) => {
+      api.getCustomerAgreement.mockResolvedValue(currentAgreement);
+      api.listCustomerAgreementVersions.mockResolvedValue({
+        items: [
+          {
+            ...baseVersion,
+            id: 'history-1',
+            title: '历史秘密协议',
+            files: [
+              { ...baseVersion.files[0], originalFilename: '历史秘密文件.pdf' },
+            ],
+          },
+        ],
+        total: 1,
+        page: 1,
+        pageSize: 20,
+      });
+      materialApi.uploadMaterialFile.mockRejectedValue(
+        new ApiError('denied', status, 'ACTION_FORBIDDEN'),
+      );
+      const wrapper = mountPanel();
+      await flushPromises();
+      await wrapper
+        .get('[data-test="agreement-history-toggle"]')
+        .trigger('click');
+      await flushPromises();
+      expect(wrapper.text()).toContain('历史秘密协议');
+      await wrapper.get('[data-test="agreement-edit"]').trigger('click');
+      await chooseFile(wrapper);
+      await flushPromises();
+      expect(wrapper.text()).not.toContain('当前协议第三版');
+      expect(wrapper.text()).not.toContain('当前协议.pdf');
+      expect(wrapper.text()).not.toContain('历史秘密协议');
+      expect(wrapper.text()).not.toContain('历史秘密文件.pdf');
+      expect(globalThis.sessionStorage.length).toBe(1);
+      expect(wrapper.emitted('unavailable')).toContainEqual([
+        'customer-1',
+        'user-1:department-1:8',
+      ]);
+    },
+  );
+
+  it('does not send an upload when the preflight recovery marker cannot be saved', async () => {
+    api.getCustomerAgreement.mockResolvedValue(currentAgreement);
+    const wrapper = mountPanel();
+    await flushPromises();
+    await wrapper.get('[data-test="agreement-edit"]').trigger('click');
+    vi.spyOn(Storage.prototype, 'setItem').mockImplementation(() => {
+      throw new Error('storage denied');
+    });
+    await chooseFile(wrapper);
+    await flushPromises();
+    expect(materialApi.uploadMaterialFile).not.toHaveBeenCalled();
+    expect(wrapper.text()).toContain('无法保存恢复标记');
+    expect(wrapper.get('fieldset').attributes('disabled')).toBeDefined();
+  });
+
+  it('pre-saves the upload marker and keeps it after same-actor revision and remount', async () => {
+    api.getCustomerAgreement.mockResolvedValue(currentAgreement);
+    let finishUpload!: (value: {
+      materialId: string;
+      contentVersionId: string;
+      originalFilename: string;
+      mimeType: string;
+    }) => void;
+    materialApi.uploadMaterialFile.mockImplementation(
+      () =>
+        new Promise((resolve) => {
+          finishUpload = resolve;
+        }),
+    );
+    const wrapper = mountPanel();
+    await flushPromises();
+    await wrapper.get('[data-test="agreement-edit"]').trigger('click');
+    await chooseFile(wrapper);
+    expect(globalThis.sessionStorage.length).toBe(1);
+    expect(materialApi.uploadMaterialFile).toHaveBeenCalledTimes(1);
+    await wrapper.setProps({ actorKey: 'user-1:department-1:9' });
+    await flushPromises();
+    expect(globalThis.sessionStorage.length).toBe(1);
+    expect(wrapper.text()).toContain('不能再次上传');
+    wrapper.unmount();
+    const remounted = mountPanel({ actorKey: 'user-1:department-1:9' });
+    await flushPromises();
+    expect(remounted.text()).toContain('不能再次上传');
+    expect(
+      remounted
+        .get('[data-test="agreement-recovery-refresh"]')
+        .attributes('disabled'),
+    ).toBeDefined();
+    finishUpload({
+      materialId: 'material-late',
+      contentVersionId: 'content-late',
+      originalFilename: 'late.pdf',
+      mimeType: 'application/pdf',
+    });
+    await flushPromises();
+    expect(globalThis.sessionStorage.length).toBe(1);
+    expect(remounted.text()).toContain('不能再次上传');
+    expect(
+      remounted
+        .get('[data-test="agreement-recovery-refresh"]')
+        .attributes('disabled'),
+    ).toBeUndefined();
+  });
+
+  it('clears the preflight marker only after a current known upload succeeds', async () => {
+    api.getCustomerAgreement.mockResolvedValue(currentAgreement);
+    let finishUpload!: (value: {
+      materialId: string;
+      contentVersionId: string;
+      originalFilename: string;
+      mimeType: string;
+    }) => void;
+    materialApi.uploadMaterialFile.mockImplementation(
+      () =>
+        new Promise((resolve) => {
+          finishUpload = resolve;
+        }),
+    );
+    const wrapper = mountPanel();
+    await flushPromises();
+    await wrapper.get('[data-test="agreement-edit"]').trigger('click');
+    await chooseFile(wrapper);
+    expect(globalThis.sessionStorage.length).toBe(1);
+    finishUpload({
+      materialId: 'material-new',
+      contentVersionId: 'content-new',
+      originalFilename: 'new.pdf',
+      mimeType: 'application/pdf',
+    });
+    await flushPromises();
+    expect(globalThis.sessionStorage.length).toBe(0);
+    expect(wrapper.text()).toContain('new.pdf');
+  });
+
+  it('keeps the marker and blocks another upload when successful upload cannot remove storage', async () => {
+    api.getCustomerAgreement.mockResolvedValue(currentAgreement);
+    materialApi.uploadMaterialFile.mockResolvedValue({
+      materialId: 'material-new',
+      contentVersionId: 'content-new',
+      originalFilename: 'new.pdf',
+      mimeType: 'application/pdf',
+    });
+    const wrapper = mountPanel();
+    await flushPromises();
+    await wrapper.get('[data-test="agreement-edit"]').trigger('click');
+    vi.spyOn(Storage.prototype, 'removeItem').mockImplementation(() => {
+      throw new Error('storage denied');
+    });
+    await chooseFile(wrapper);
+    await flushPromises();
+    expect(materialApi.uploadMaterialFile).toHaveBeenCalledTimes(1);
+    expect(globalThis.sessionStorage.length).toBe(1);
+    expect(wrapper.text()).toContain('无法清除恢复标记');
+    expect(wrapper.get('fieldset').attributes('disabled')).toBeDefined();
+  });
+
+  it('keeps an in-memory lock after removal throws even when storage deleted the marker', async () => {
+    api.getCustomerAgreement.mockResolvedValue(currentAgreement);
+    materialApi.uploadMaterialFile.mockResolvedValue({
+      materialId: 'material-new',
+      contentVersionId: 'content-new',
+      originalFilename: 'new.pdf',
+      mimeType: 'application/pdf',
+    });
+    const originalRemove = Storage.prototype.removeItem;
+    const failingRemove = vi
+      .spyOn(Storage.prototype, 'removeItem')
+      .mockImplementation(function (this: Storage, key) {
+        originalRemove.call(this, key);
+        throw new Error('storage failed after delete');
+      });
+    const wrapper = mountPanel();
+    await flushPromises();
+    await wrapper.get('[data-test="agreement-edit"]').trigger('click');
+    await chooseFile(wrapper);
+    await flushPromises();
+    expect(globalThis.sessionStorage.length).toBe(0);
+    expect(
+      hasPendingCustomerAgreementInvoice(
+        { userId: 'user-1', departmentId: 'department-1' },
+        'customer-1',
+      ),
+    ).toBe(true);
+    wrapper.unmount();
+    const remounted = mountPanel();
+    await flushPromises();
+    expect(remounted.text()).toContain('不能再次上传');
+    failingRemove.mockRestore();
+    clearPendingCustomerAgreementUpload({
+      userId: 'user-1',
+      departmentId: 'department-1',
+      customerId: 'customer-1',
+    });
+  });
+
+  it('does not give a different customer the in-flight upload or let a late callback clear its marker', async () => {
+    api.getCustomerAgreement.mockResolvedValue(currentAgreement);
+    let finishUpload!: (value: {
+      materialId: string;
+      contentVersionId: string;
+      originalFilename: string;
+      mimeType: string;
+    }) => void;
+    materialApi.uploadMaterialFile.mockImplementation(
+      () =>
+        new Promise((resolve) => {
+          finishUpload = resolve;
+        }),
+    );
+    const wrapper = mountPanel();
+    await flushPromises();
+    await wrapper.get('[data-test="agreement-edit"]').trigger('click');
+    await chooseFile(wrapper);
+    expect(globalThis.sessionStorage.length).toBe(1);
+    await wrapper.setProps({
+      customerId: 'customer-2',
+      actorKey: 'user-1:department-1:9',
+    });
+    await flushPromises();
+    expect(wrapper.text()).not.toContain('不能再次上传');
+    finishUpload({
+      materialId: 'material-old',
+      contentVersionId: 'content-old',
+      originalFilename: 'old.pdf',
+      mimeType: 'application/pdf',
+    });
+    await flushPromises();
+    expect(globalThis.sessionStorage.length).toBe(1);
+    expect(wrapper.text()).not.toContain('old.pdf');
+  });
   it('does not fetch or render agreement data without the read capability', async () => {
     const wrapper = mountPanel({ canRead: false });
     await flushPromises();
