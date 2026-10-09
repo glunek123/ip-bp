@@ -8,7 +8,7 @@ CORE-CA-001～008及SD-44律师身份前置补齐均已验收、推送并集成m
 
 ## 当前任务
 
-唯一Current为**CORE-CU-007｜协议与开票资料**，Next为CORE-CU-008真实人工结算台账。客户001～006已本地验收，尚未推送或集成main。依据2026-10-08用户批准的客户切片规则及SD-46/47/48继续；只有负责运营，不增加客户经理。正式业务范围见[客户设计](superpowers/specs/2026-10-08-customer-module-alignment-design.md)及[总计划](superpowers/plans/2026-10-08-customer-module-alignment.md)，分支codex/customer-module-alignment，基线8a8fe11。007/008尚未实现。
+唯一Current为**CORE-CU-007｜协议与开票资料**，Next为CORE-CU-008真实人工结算台账。客户001～006已本地验收，尚未推送或集成main。依据2026-10-08用户批准的客户切片规则及SD-46/47/48继续；只有负责运营，不增加客户经理。正式业务范围见[客户设计](superpowers/specs/2026-10-08-customer-module-alignment-design.md)及[总计划](superpowers/plans/2026-10-08-customer-module-alignment.md)，分支codex/customer-module-alignment，基线8a8fe11。007正式[实施契约](superpowers/specs/2026-10-09-customer-agreements-invoice-contract.md)与[计划](superpowers/plans/2026-10-09-customer-agreements-invoice.md)已按75acd3前态复核，下一步Sol Task A；007/008尚未实现。
 
 CU006实际通过候选db33bf6c717e98829ba2728a6a9455cf1d886eaf/tree8eca1b3397b7b6c51da434e78c72d12d67c18795：完整verify退出0（工具74/74、前端802/802、后端1134/1134、双构建）、全库隔离PG/Chromium259/259、空链102/101→102旧资料及回执保留、SQL负例和失败原子重试全部通过。门禁前后HEAD/tree与环境HMAC一致，原非实现Reviewer补审ACCEPTED、C/I/M0/0/0；同模型隔离独立性不足，外部异模型Review Pending。首次eff2acb全库251通过/8失败、两轮Review发现及修复按原候选保留于[验证记录](spec/v0.1/VALIDATION.md)和.local/customer-alignment/，不把旧失败改写为通过。005及更早证据也保留在VALIDATION。
 
