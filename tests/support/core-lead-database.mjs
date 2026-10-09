@@ -411,6 +411,8 @@ async function clearDatabase() {
     'case_filing_submissions',
     'case_filing_versions',
     'case_filing_receipts',
+    'customer_draft_lifecycle_facts',
+    'customer_draft_lifecycle_receipts',
   ];
   await database.$transaction(async (transaction) => {
     for (const table of immutableTables) {
@@ -532,6 +534,12 @@ async function clearDatabase() {
       where: { departmentId: { in: departmentIds } },
     });
     await transaction.leadReviewDecision.deleteMany({
+      where: { departmentId: { in: departmentIds } },
+    });
+    await transaction.customerDraftLifecycleReceipt.deleteMany({
+      where: { departmentId: { in: departmentIds } },
+    });
+    await transaction.customerDraftLifecycleFact.deleteMany({
       where: { departmentId: { in: departmentIds } },
     });
     for (const table of [...immutableTables].reverse()) {
@@ -667,6 +675,21 @@ async function clearDatabase() {
   });
   await database.leadNumberCounter.deleteMany({});
   await database.notaryMatterNumberCounter.deleteMany({});
+}
+
+export async function getCustomerLifecycleGuardState() {
+  const triggers = await database.$queryRawUnsafe(
+    `SELECT tgname, tgenabled::text AS tgenabled
+     FROM pg_trigger
+     WHERE tgrelid IN (
+       'customer_draft_lifecycle_facts'::regclass,
+       'customer_draft_lifecycle_receipts'::regclass
+     )
+       AND tgname IN ('customer_draft_fact_immutable', 'customer_draft_receipt_immutable')`,
+  );
+  return Object.fromEntries(
+    triggers.map(({ tgname, tgenabled }) => [tgname, tgenabled]),
+  );
 }
 
 function admittedCustomer(id, departmentId, userId, teamId, name, identity) {

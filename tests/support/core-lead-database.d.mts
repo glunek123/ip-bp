@@ -27,6 +27,9 @@ export const coreLeadFixtures: Readonly<{
 }>;
 
 export function resetCoreLeadE2eData(): Promise<void>;
+export function getCustomerLifecycleGuardState(): Promise<
+  Record<string, string>
+>;
 export function createHistoricalUnboundLawyerProfile(caseId: string): Promise<{
   id: string;
   fullName: string;

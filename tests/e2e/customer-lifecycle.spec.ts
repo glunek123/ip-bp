@@ -12,8 +12,49 @@ import {
   resetLocalAuthE2eData,
   revokeCustomerLifecycle,
 } from '../support/customer-database.mjs';
+import {
+  getCustomerLifecycleGuardState,
+  resetCoreLeadE2eData,
+} from '../support/core-lead-database.mjs';
 
 const auth = { Authorization: `Bearer ${e2eFixtures.tokenA}` };
+
+test('core-lead fixture reset clears lifecycle evidence and restores its guards', async ({
+  request,
+}) => {
+  const created = await request.post('/api/v1/customers', {
+    headers: auth,
+    data: { name: 'CU004 core reset regression' },
+  });
+  expect(created.status(), await created.text()).toBe(201);
+  const draft: { id: string; version: number } = await created.json();
+  const deleted = await request.post(
+    `/api/v1/customers/${draft.id}/delete-draft`,
+    {
+      headers: { ...auth, 'Idempotency-Key': randomUUID() },
+      data: { expectedVersion: draft.version, reason: 'fixture 清理回归' },
+    },
+  );
+  expect(deleted.status(), await deleted.text()).toBe(201);
+  expect(await getCustomerLifecycleCounts(draft.id)).toMatchObject({
+    facts: 1,
+    receipts: 1,
+    audits: 1,
+  });
+
+  await resetCoreLeadE2eData();
+
+  expect(await getCustomerLifecycleCounts(draft.id)).toEqual({
+    customer: null,
+    facts: 0,
+    receipts: 0,
+    audits: 0,
+  });
+  expect(await getCustomerLifecycleGuardState()).toEqual({
+    customer_draft_fact_immutable: 'O',
+    customer_draft_receipt_immutable: 'O',
+  });
+});
 
 test.beforeEach(async () => {
   await resetCustomerE2eData();

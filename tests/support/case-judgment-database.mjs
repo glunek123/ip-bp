@@ -556,6 +556,7 @@ export async function verifyCaseJudgmentDatabase() {
     department: randomUUID(),
     actor: randomUUID(),
     role: randomUUID(),
+    customer: randomUUID(),
     case: randomUUID(),
     acceptance: randomUUID(),
     arrangement: randomUUID(),
@@ -591,6 +592,16 @@ export async function verifyCaseJudgmentDatabase() {
       [randomUUID(), ids.actor, ids.department],
     );
     await client.query(
+      'INSERT INTO customers(id,name,normalized_name,department_id,responsible_user_id,updated_at) VALUES ($1,$2,$3,$4,$5,now())',
+      [
+        ids.customer,
+        'CA008 judgment test customer',
+        'ca008 judgment test customer',
+        ids.department,
+        ids.actor,
+      ],
+    );
+    await client.query(
       'INSERT INTO role_templates(id,department_id,name,updated_at) VALUES ($1,$2,$3,now())',
       [ids.role, ids.department, 'CA008 test role'],
     );
@@ -619,7 +630,7 @@ export async function verifyCaseJudgmentDatabase() {
           randomUUID(),
           randomUUID(),
           randomUUID(),
-          randomUUID(),
+          ids.customer,
           randomUUID(),
           ids.actor,
           ids.arrangement,
@@ -1181,6 +1192,7 @@ export async function verifyCaseJudgmentDatabase() {
         ['CASE', ids.case],
       );
       await client.query('DELETE FROM cases WHERE id=$1', [ids.case]);
+      await client.query('DELETE FROM customers WHERE id=$1', [ids.customer]);
       await client.query(
         'DELETE FROM role_assignments WHERE role_template_id=$1',
         [ids.role],
