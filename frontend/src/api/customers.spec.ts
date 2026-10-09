@@ -27,6 +27,7 @@ const summary = {
   admissionContactPhone: null,
   admissionContactEmail: null,
   profileStatus: 'draft',
+  cooperationStatus: 'COOPERATING',
   departmentId: 'department-1',
   responsibleUserId: 'user-1',
   version: 1,
@@ -34,6 +35,29 @@ const summary = {
 };
 
 describe('customer API', () => {
+  it.each([undefined, null, 'UNKNOWN'])(
+    'rejects a missing or invalid cooperation status %#',
+    async (cooperationStatus) => {
+      vi.stubGlobal(
+        'fetch',
+        vi.fn().mockResolvedValue(
+          new Response(
+            JSON.stringify({
+              items: [{ ...summary, cooperationStatus }],
+              total: 1,
+              page: 1,
+              pageSize: 20,
+              capabilities: { createDraft: true },
+            }),
+          ),
+        ),
+      );
+      await expect(listCustomers()).rejects.toMatchObject({
+        code: 'INVALID_RESPONSE',
+      });
+    },
+  );
+
   it('decodes a scoped customer list and its allowed actions', async () => {
     vi.stubGlobal(
       'fetch',
@@ -107,6 +131,13 @@ describe('customer API', () => {
         new Response(
           JSON.stringify({
             ...summary,
+            responsibleOperator: { id: 'user-1', displayName: '运营甲' },
+            cooperationCapabilities: {
+              transfer: false,
+              pause: true,
+              terminate: true,
+              resume: false,
+            },
             history: [
               {
                 action: 'customer.draft-created',
@@ -124,6 +155,53 @@ describe('customer API', () => {
       id: 'customer-1',
       capabilities: { editRoutine: true, admit: true },
       history: [{ action: 'customer.draft-created' }],
+    });
+  });
+
+  it('requires the complete current cooperation projection on detail', async () => {
+    vi.stubGlobal(
+      'fetch',
+      vi.fn().mockResolvedValue(
+        new Response(
+          JSON.stringify({
+            ...summary,
+            history: [],
+            capabilities: { editRoutine: true, admit: true },
+          }),
+        ),
+      ),
+    );
+    await expect(getCustomer('customer-1')).rejects.toMatchObject({
+      code: 'INVALID_RESPONSE',
+    });
+  });
+
+  it('rejects extra fields in new detail cooperation projections', async () => {
+    vi.stubGlobal(
+      'fetch',
+      vi.fn().mockResolvedValue(
+        new Response(
+          JSON.stringify({
+            ...summary,
+            responsibleOperator: {
+              id: 'user-1',
+              displayName: '运营甲',
+              username: 'private-field',
+            },
+            cooperationCapabilities: {
+              transfer: false,
+              pause: true,
+              terminate: true,
+              resume: false,
+            },
+            capabilities: { editRoutine: true, admit: true },
+            history: [],
+          }),
+        ),
+      ),
+    );
+    await expect(getCustomer('customer-1')).rejects.toMatchObject({
+      code: 'INVALID_RESPONSE',
     });
   });
 

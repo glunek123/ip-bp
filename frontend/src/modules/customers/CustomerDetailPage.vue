@@ -1,5 +1,5 @@
 <script setup lang="ts">
-import { onBeforeUnmount, ref, watch } from 'vue';
+import { computed, onBeforeUnmount, ref, watch } from 'vue';
 import { RouterLink, useRoute, useRouter } from 'vue-router';
 import { ElButton } from 'element-plus/es/components/button/index.mjs';
 import { ApiError } from '../../api/http';
@@ -13,6 +13,7 @@ import CustomerRightsHolderPanel from './CustomerRightsHolderPanel.vue';
 import CustomerAdmissionPanel from './CustomerAdmissionPanel.vue';
 import CustomerAccountPanel from './CustomerAccountPanel.vue';
 import CustomerRightAssetsPanel from './CustomerRightAssetsPanel.vue';
+import CustomerCooperationPanel from './CustomerCooperationPanel.vue';
 import { labelCustomerType, labelIdentityType } from './customer-labels';
 import { useAuthStore } from '../../stores/auth';
 import { pinia } from '../../app/pinia';
@@ -22,6 +23,7 @@ import {
   savePendingCustomerDraftCommand,
   type PendingCustomerDraftCommand,
 } from './customer-lifecycle-pending';
+import { hasPendingCustomerMaintenance } from './customer-maintenance-pending';
 
 const route = useRoute();
 const router = useRouter();
@@ -36,6 +38,21 @@ const deleteStatus = ref<'idle' | 'submitting' | 'unknown' | 'conflict'>(
   'idle',
 );
 const frozenDelete = ref<PendingCustomerDraftCommand>();
+const maintenancePending = ref(false);
+const currentProjectionStale = ref(false);
+const admissionRefreshFailed = ref(false);
+let viewGeneration = 0;
+
+const actor = computed(() => {
+  const session = auth.session;
+  if (session?.principalType !== 'INTERNAL' || !session.department) return null;
+  return { userId: session.user.id, departmentId: session.department.id };
+});
+const actorKey = computed(() =>
+  actor.value
+    ? `${actor.value.userId}:${actor.value.departmentId}:${auth.session?.authorizationRevision ?? 0}`
+    : '',
+);
 
 function pendingIdentity(customerId: string) {
   const session = auth.session;
@@ -62,11 +79,14 @@ function restorePending(customerId: string): void {
     deleteStatus.value = 'idle';
     deletePrompt.value = false;
   }
+  maintenancePending.value = actor.value
+    ? hasPendingCustomerMaintenance(actor.value, customerId)
+    : false;
 }
 
 async function submitDelete(): Promise<void> {
   const current = customer.value;
-  if (deleteStatus.value === 'submitting') return;
+  if (deleteStatus.value === 'submitting' || maintenancePending.value) return;
   if (!frozenDelete.value && (!current || !current.capabilities.deleteDraft))
     return;
   if (frozenDelete.value === undefined) {
@@ -141,6 +161,10 @@ function actionLabel(action: string): string {
   if (action === 'customer.draft-created') return '创建客户草稿';
   if (action === 'customer.duplicate-name-overridden') return '同名核对后继续';
   if (action === 'customer.admitted') return '客户准入完成';
+  if (action === 'customer.responsible-transferred') return '变更负责运营';
+  if (action === 'customer.cooperation-pause') return '暂停合作';
+  if (action === 'customer.cooperation-terminate') return '终止合作';
+  if (action === 'customer.cooperation-resume') return '恢复合作';
   return '客户资料变更';
 }
 
@@ -150,6 +174,8 @@ function profileLabel(status: CustomerSummary['profileStatus']): string {
 
 async function load(): Promise<void> {
   const customerId = String(route.params.id);
+  const generation = viewGeneration;
+  const identityAtStart = actorKey.value;
   const controller = new AbortController();
   requests.add(controller);
   state.value = 'loading';
@@ -157,13 +183,24 @@ async function load(): Promise<void> {
     const latest = await getCustomer(customerId, {
       signal: controller.signal,
     });
-    if (!controller.signal.aborted && String(route.params.id) === customerId) {
+    if (
+      !controller.signal.aborted &&
+      generation === viewGeneration &&
+      identityAtStart === actorKey.value &&
+      String(route.params.id) === customerId
+    ) {
       customer.value = latest;
       state.value = 'ready';
+      currentProjectionStale.value = false;
     }
   } catch (error) {
     if (controller.signal.aborted) return;
-    if (String(route.params.id) !== customerId) return;
+    if (
+      generation !== viewGeneration ||
+      identityAtStart !== actorKey.value ||
+      String(route.params.id) !== customerId
+    )
+      return;
     state.value =
       error instanceof ApiError && error.code === 'CUSTOMER_NOT_FOUND'
         ? 'missing'
@@ -193,6 +230,7 @@ function acceptRefreshedCustomer(latest: CustomerDetail): void {
     return;
   }
   customer.value = latest;
+  currentProjectionStale.value = false;
 }
 
 async function acceptAdmission(admitted: CustomerSummary): Promise<void> {
@@ -204,23 +242,49 @@ async function acceptAdmission(admitted: CustomerSummary): Promise<void> {
   ) {
     return;
   }
-  customer.value = {
-    ...current,
-    ...admitted,
-    capabilities: { ...current.capabilities, admit: false, deleteDraft: false },
-    history: current.history,
-  };
+  currentProjectionStale.value = true;
+  admissionRefreshFailed.value = false;
   const controller = new AbortController();
   requests.add(controller);
   try {
     const latest = await getCustomer(admitted.id, {
       signal: controller.signal,
     });
-    if (isCurrentRequest(admitted.id, controller)) customer.value = latest;
+    if (isCurrentRequest(admitted.id, controller)) {
+      customer.value = latest;
+      currentProjectionStale.value = false;
+    }
   } catch {
-    // The admitted snapshot is already authoritative; a detail refresh can be retried later.
+    admissionRefreshFailed.value = true;
   } finally {
     requests.delete(controller);
+  }
+}
+
+async function retryCurrentDetail(): Promise<void> {
+  const current = customer.value;
+  if (!current) return;
+  const customerId = current.id;
+  const generation = viewGeneration;
+  const identityAtStart = actorKey.value;
+  try {
+    const latest = await getCustomer(customerId);
+    if (
+      generation !== viewGeneration ||
+      identityAtStart !== actorKey.value ||
+      customerId !== String(route.params.id)
+    )
+      return;
+    customer.value = latest;
+    currentProjectionStale.value = false;
+    admissionRefreshFailed.value = false;
+  } catch {
+    if (
+      generation === viewGeneration &&
+      identityAtStart === actorKey.value &&
+      customerId === String(route.params.id)
+    )
+      admissionRefreshFailed.value = true;
   }
 }
 
@@ -265,12 +329,31 @@ function isCustomerNotFound(error: unknown): boolean {
   );
 }
 
+function updateMaintenancePending(pending: boolean): void {
+  maintenancePending.value = pending;
+}
+
+function refreshAfterMaintenanceAccessFailure(customerId: string): void {
+  if (
+    customerId !== String(route.params.id) ||
+    customer.value?.id !== customerId
+  )
+    return;
+  customer.value = undefined;
+  currentProjectionStale.value = false;
+  state.value = 'loading';
+  void load();
+}
+
 watch(
-  () => String(route.params.id),
+  () => `${String(route.params.id)}:${actorKey.value}`,
   () => {
+    viewGeneration += 1;
     abortRequests();
     restorePending(String(route.params.id));
     customer.value = undefined;
+    currentProjectionStale.value = false;
+    admissionRefreshFailed.value = false;
     activeTab.value = 'basic';
     state.value = 'loading';
     void load();
@@ -304,10 +387,16 @@ onBeforeUnmount(abortRequests);
             >刷新客户资料</ElButton
           >
         </div>
+        <p v-if="maintenancePending" data-test="pending-maintenance-after-404">
+          维护结果尚未确认，原请求已保留。恢复访问后可按原请求重试。
+        </p>
       </section>
       <section v-else-if="state === 'failed'" class="state-panel ledger-panel">
         <span class="state-index">连接失败</span>
         <h1>客户资料暂时无法加载</h1>
+        <p v-if="maintenancePending">
+          维护结果尚未确认，原请求已保留。恢复访问后可按原请求重试。
+        </p>
         <ElButton @click="load">重新加载</ElButton>
       </section>
       <template v-else-if="customer">
@@ -318,13 +407,23 @@ onBeforeUnmount(abortRequests);
           </div>
           <div class="detail-actions">
             <ElButton
-              v-if="customer.capabilities.deleteDraft && !frozenDelete"
+              v-if="
+                customer.capabilities.deleteDraft &&
+                !frozenDelete &&
+                !maintenancePending &&
+                !currentProjectionStale
+              "
               data-test="delete-draft-open"
               @click="deletePrompt = true"
               >删除草稿</ElButton
             >
             <RouterLink
-              v-if="customer.capabilities.editRoutine && !frozenDelete"
+              v-if="
+                customer.capabilities.editRoutine &&
+                !frozenDelete &&
+                !maintenancePending &&
+                !currentProjectionStale
+              "
               data-test="edit-customer"
               :to="`/customers/${customer.id}/edit`"
             >
@@ -335,6 +434,28 @@ onBeforeUnmount(abortRequests);
             }}</span>
           </div>
         </div>
+        <p v-if="currentProjectionStale" role="status">
+          当前客户资料需要刷新。刷新完成前不能发起新的维护。
+        </p>
+        <ElButton
+          v-if="currentProjectionStale && admissionRefreshFailed"
+          data-test="admission-refresh-readonly"
+          @click="retryCurrentDetail"
+          >只读重试刷新</ElButton
+        >
+        <CustomerCooperationPanel
+          v-if="!frozenDelete || maintenancePending"
+          :customer="customer"
+          :actor="actor"
+          :blocked-by-other-maintenance="
+            !!frozenDelete || currentProjectionStale
+          "
+          @refreshed="acceptRefreshedCustomer"
+          @unreadable="returnToCustomerList"
+          @pending-changed="updateMaintenancePending"
+          @refresh-required="currentProjectionStale = $event"
+          @access-uncertain="refreshAfterMaintenanceAccessFailure"
+        />
         <section
           v-if="
             deletePrompt && (customer.capabilities.deleteDraft || frozenDelete)
@@ -492,7 +613,9 @@ onBeforeUnmount(abortRequests);
             </p>
           </section>
           <CustomerRightsHolderPanel
-            v-if="!frozenDelete"
+            v-if="
+              !frozenDelete && !maintenancePending && !currentProjectionStale
+            "
             id="customer-rights-holders"
             :customer-id="customer.id"
             :customer-version="customer.version"
@@ -502,7 +625,9 @@ onBeforeUnmount(abortRequests);
             @customer-not-found="returnToCustomerList"
           />
           <CustomerAdmissionPanel
-            v-if="!frozenDelete"
+            v-if="
+              !frozenDelete && !maintenancePending && !currentProjectionStale
+            "
             id="customer-admission"
             :customer="customer"
             @admitted="acceptAdmission"
@@ -510,7 +635,9 @@ onBeforeUnmount(abortRequests);
             @customer-not-found="returnToCustomerList"
           />
           <CustomerAccountPanel
-            v-if="!frozenDelete"
+            v-if="
+              !frozenDelete && !maintenancePending && !currentProjectionStale
+            "
             id="customer-accounts"
             :customer-id="customer.id"
             :admitted="customer.profileStatus === 'admitted'"

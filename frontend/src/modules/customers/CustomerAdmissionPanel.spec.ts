@@ -33,11 +33,19 @@ const customer = {
   admissionContactName: '张三',
   admissionContactPhone: '13800138000',
   admissionContactEmail: null,
+  cooperationStatus: 'COOPERATING' as const,
   profileStatus: 'draft' as const,
   departmentId: 'department-1',
   responsibleUserId: 'user-1',
   version: 1,
   updatedAt: '2026-09-21T01:00:00.000Z',
+  responsibleOperator: { id: 'user-1', displayName: '运营甲' },
+  cooperationCapabilities: {
+    transfer: false,
+    pause: true,
+    terminate: true,
+    resume: false,
+  },
   capabilities: { editRoutine: true, admit: true },
   history: [],
 };
@@ -286,6 +294,7 @@ describe('CustomerAdmissionPanel', () => {
       )
       .mockResolvedValueOnce({
         ...customer,
+        cooperationStatus: 'COOPERATING' as const,
         profileStatus: 'admitted',
         admittedAt: '2026-09-21T03:00:00.000Z',
         version: 2,
@@ -311,9 +320,17 @@ describe('CustomerAdmissionPanel', () => {
       identityType: 'BUSINESS_LICENSE',
       identityNumber: '91310000ABC123',
       identityValidityMode: 'LONG_TERM' as const,
+      cooperationStatus: 'COOPERATING' as const,
       profileStatus: 'admitted' as const,
       admittedAt: '2026-09-21T03:00:00.000Z',
       version: 2,
+      responsibleOperator: { id: 'user-1', displayName: '运营甲' },
+      cooperationCapabilities: {
+        transfer: false,
+        pause: true,
+        terminate: true,
+        resume: false,
+      },
       capabilities: { editRoutine: true, admit: false },
     };
     customerApi.admitCustomer.mockResolvedValue(admitted);
@@ -428,8 +445,16 @@ describe('CustomerAdmissionPanel', () => {
       props: {
         customer: {
           ...customer,
+          cooperationStatus: 'COOPERATING' as const,
           profileStatus: 'admitted',
           admittedAt: '2026-09-21T03:00:00.000Z',
+          responsibleOperator: { id: 'user-1', displayName: '运营甲' },
+          cooperationCapabilities: {
+            transfer: false,
+            pause: true,
+            terminate: true,
+            resume: false,
+          },
           capabilities: { editRoutine: false, admit: false },
         },
       },
@@ -576,6 +601,7 @@ describe('CustomerAdmissionPanel', () => {
       )
       .mockResolvedValueOnce({
         ...customer,
+        cooperationStatus: 'COOPERATING' as const,
         profileStatus: 'admitted',
         admittedAt: '2026-09-21T03:00:00.000Z',
         version: 3,

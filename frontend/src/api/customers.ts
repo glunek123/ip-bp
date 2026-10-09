@@ -22,6 +22,7 @@ export type CustomerSummary = {
   admissionContactPhone: string | null;
   admissionContactEmail: string | null;
   profileStatus: 'draft' | 'admitted';
+  cooperationStatus: 'COOPERATING' | 'PAUSED' | 'TERMINATED';
   departmentId: string;
   responsibleUserId: string;
   version: number;
@@ -36,6 +37,13 @@ export type CustomerHistoryEvent = {
 
 export type CustomerDetail = CustomerSummary & {
   capabilities: { editRoutine: boolean; admit: boolean; deleteDraft?: boolean };
+  responsibleOperator: { id: string; displayName: string };
+  cooperationCapabilities: {
+    transfer: boolean;
+    pause: boolean;
+    terminate: boolean;
+    resume: boolean;
+  };
   history: CustomerHistoryEvent[];
 };
 
@@ -99,6 +107,18 @@ function isRecord(value: unknown): value is Record<string, unknown> {
   return typeof value === 'object' && value !== null && !Array.isArray(value);
 }
 
+function hasExactKeys(
+  value: Record<string, unknown>,
+  keys: readonly string[],
+): boolean {
+  const actual = Object.keys(value).sort();
+  const expected = [...keys].sort();
+  return (
+    actual.length === expected.length &&
+    actual.every((key, index) => key === expected[index])
+  );
+}
+
 function isNullableString(value: unknown): value is string | null {
   return value === null || typeof value === 'string';
 }
@@ -111,6 +131,14 @@ function isIdentityValidityMode(
     value === 'FIXED' ||
     value === 'LONG_TERM' ||
     value === 'NOT_STATED'
+  );
+}
+
+function isCooperationStatus(
+  value: unknown,
+): value is CustomerSummary['cooperationStatus'] {
+  return (
+    value === 'COOPERATING' || value === 'PAUSED' || value === 'TERMINATED'
   );
 }
 
@@ -133,6 +161,7 @@ function isCustomerSummary(value: unknown): value is CustomerSummary {
     isNullableString(value.admissionContactPhone) &&
     isNullableString(value.admissionContactEmail) &&
     (value.profileStatus === 'draft' || value.profileStatus === 'admitted') &&
+    isCooperationStatus(value.cooperationStatus) &&
     typeof value.departmentId === 'string' &&
     typeof value.responsibleUserId === 'string' &&
     Number.isInteger(value.version) &&
@@ -184,10 +213,27 @@ export async function getCustomer(
   }
   const history = data.history;
   const capabilities = data.capabilities;
+  const responsibleOperator = data.responsibleOperator;
+  const cooperationCapabilities = data.cooperationCapabilities;
   if (
     !isCustomerSummary(data) ||
     !Array.isArray(history) ||
     !isRecord(capabilities) ||
+    !isRecord(responsibleOperator) ||
+    !hasExactKeys(responsibleOperator, ['id', 'displayName']) ||
+    typeof responsibleOperator.id !== 'string' ||
+    typeof responsibleOperator.displayName !== 'string' ||
+    !isRecord(cooperationCapabilities) ||
+    !hasExactKeys(cooperationCapabilities, [
+      'transfer',
+      'pause',
+      'terminate',
+      'resume',
+    ]) ||
+    typeof cooperationCapabilities.transfer !== 'boolean' ||
+    typeof cooperationCapabilities.pause !== 'boolean' ||
+    typeof cooperationCapabilities.terminate !== 'boolean' ||
+    typeof cooperationCapabilities.resume !== 'boolean' ||
     typeof capabilities.editRoutine !== 'boolean' ||
     typeof capabilities.admit !== 'boolean' ||
     (capabilities.deleteDraft !== undefined &&
@@ -208,6 +254,16 @@ export async function getCustomer(
       editRoutine: capabilities.editRoutine,
       admit: capabilities.admit,
       deleteDraft: capabilities.deleteDraft === true,
+    },
+    responsibleOperator: {
+      id: responsibleOperator.id,
+      displayName: responsibleOperator.displayName,
+    },
+    cooperationCapabilities: {
+      transfer: cooperationCapabilities.transfer,
+      pause: cooperationCapabilities.pause,
+      terminate: cooperationCapabilities.terminate,
+      resume: cooperationCapabilities.resume,
     },
     history: history as CustomerHistoryEvent[],
   };

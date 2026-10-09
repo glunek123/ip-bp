@@ -2,9 +2,20 @@ import { flushPromises, mount } from '@vue/test-utils';
 import { createMemoryHistory, createRouter } from 'vue-router';
 import { afterEach, describe, expect, it, vi } from 'vitest';
 import CustomerDetailPage from './CustomerDetailPage.vue';
+import { ApiError } from '../../api/http';
+import { useAuthStore } from '../../stores/auth';
+import { pinia } from '../../app/pinia';
+import { savePendingCustomerMaintenance } from './customer-maintenance-pending';
 
 const api = vi.hoisted(() => ({ getCustomer: vi.fn() }));
+const maintenanceApi = vi.hoisted(() => ({
+  changeCustomerCooperation: vi.fn(),
+  listEligibleOperators: vi.fn(),
+  transferCustomerResponsible: vi.fn(),
+}));
 vi.mock('../../api/customers', () => api);
+vi.mock('../../api/customer-cooperation', () => maintenanceApi);
+const mountedWrappers = new Set<{ unmount: () => void }>();
 
 const rightsHolderPanel = {
   name: 'CustomerRightsHolderPanel',
@@ -33,7 +44,13 @@ const rightAssetsPanel = {
     '<section data-test="right-assets-panel">真实权利资产台账</section>',
 };
 
-afterEach(() => vi.resetAllMocks());
+afterEach(() => {
+  for (const wrapper of mountedWrappers) wrapper.unmount();
+  mountedWrappers.clear();
+  vi.resetAllMocks();
+  useAuthStore(pinia).session = null;
+  globalThis.sessionStorage.clear();
+});
 
 async function mountPage(customerId = 'customer-1') {
   const router = createRouter({
@@ -56,6 +73,7 @@ async function mountPage(customerId = 'customer-1') {
       },
     },
   });
+  mountedWrappers.add(wrapper);
   return { router, wrapper };
 }
 
@@ -72,11 +90,19 @@ function customerRecord(id: string, name: string) {
     admissionContactName: null,
     admissionContactPhone: null,
     admissionContactEmail: null,
+    cooperationStatus: 'COOPERATING',
     profileStatus: 'draft',
     departmentId: 'department-1',
     responsibleUserId: 'user-1',
     version: 1,
     updatedAt: '2026-09-17T01:00:00.000Z',
+    responsibleOperator: { id: 'user-1', displayName: '运营甲' },
+    cooperationCapabilities: {
+      transfer: false,
+      pause: true,
+      terminate: true,
+      resume: false,
+    },
     capabilities: { editRoutine: true, admit: true },
     history: [],
   };
@@ -96,11 +122,19 @@ describe('CustomerDetailPage', () => {
       admissionContactName: '张三',
       admissionContactPhone: null,
       admissionContactEmail: null,
+      cooperationStatus: 'COOPERATING',
       profileStatus: 'draft',
       departmentId: 'department-1',
       responsibleUserId: 'user-1',
       version: 1,
       updatedAt: '2026-09-17T01:00:00.000Z',
+      responsibleOperator: { id: 'user-1', displayName: '运营甲' },
+      cooperationCapabilities: {
+        transfer: false,
+        pause: true,
+        terminate: true,
+        resume: false,
+      },
       capabilities: { editRoutine: true, admit: true },
       history: [],
     });
@@ -167,11 +201,19 @@ describe('CustomerDetailPage', () => {
         admissionContactName: null,
         admissionContactPhone: null,
         admissionContactEmail: null,
+        cooperationStatus: 'COOPERATING',
         profileStatus: 'draft',
         departmentId: 'department-1',
         responsibleUserId: 'user-1',
         version: 1,
         updatedAt: '2026-09-17T01:00:00.000Z',
+        responsibleOperator: { id: 'user-1', displayName: '运营甲' },
+        cooperationCapabilities: {
+          transfer: false,
+          pause: true,
+          terminate: true,
+          resume: false,
+        },
         capabilities: { editRoutine: true, admit: true },
         history: [],
       });
@@ -194,6 +236,7 @@ describe('CustomerDetailPage', () => {
         },
       },
     });
+    mountedWrappers.add(wrapper);
 
     await router.push('/customers/customer-b');
     await flushPromises();
@@ -226,9 +269,17 @@ describe('CustomerDetailPage', () => {
     await flushPromises();
     const admittedCustomer = {
       ...customerRecord('customer-a', '客户甲的迟到准入刷新'),
+      cooperationStatus: 'COOPERATING',
       profileStatus: 'admitted',
       admittedAt: '2026-09-21T03:00:00.000Z',
       version: 2,
+      responsibleOperator: { id: 'user-1', displayName: '运营甲' },
+      cooperationCapabilities: {
+        transfer: false,
+        pause: true,
+        terminate: true,
+        resume: false,
+      },
       capabilities: { editRoutine: true, admit: false },
     };
     resolveAdmissionRefresh(admittedCustomer);
@@ -322,11 +373,19 @@ describe('CustomerDetailPage', () => {
       admissionContactName: '张三',
       admissionContactPhone: '13800138000',
       admissionContactEmail: null,
+      cooperationStatus: 'COOPERATING',
       profileStatus: 'draft',
       departmentId: 'department-1',
       responsibleUserId: 'user-1',
       version: 1,
       updatedAt: '2026-09-17T01:00:00.000Z',
+      responsibleOperator: { id: 'user-1', displayName: '运营甲' },
+      cooperationCapabilities: {
+        transfer: false,
+        pause: true,
+        terminate: true,
+        resume: false,
+      },
       capabilities: { editRoutine: true, admit: true },
       history: [
         {
@@ -340,6 +399,7 @@ describe('CustomerDetailPage', () => {
     await flushPromises();
     expect(wrapper.text()).toContain('客户甲');
     expect(wrapper.text()).toContain('草稿');
+    expect(wrapper.text()).toContain('运营甲');
     expect(wrapper.get('details').attributes('open')).toBeUndefined();
     expect(wrapper.text()).toContain('创建客户草稿');
     expect(wrapper.text()).toContain('准入联系人');
@@ -379,19 +439,35 @@ describe('CustomerDetailPage', () => {
       admissionContactName: '张三',
       admissionContactPhone: '13800138000',
       admissionContactEmail: null,
+      cooperationStatus: 'COOPERATING',
       profileStatus: 'draft',
       departmentId: 'department-1',
       responsibleUserId: 'user-1',
       version: 1,
       updatedAt: '2026-09-17T01:00:00.000Z',
+      responsibleOperator: { id: 'user-1', displayName: '运营甲' },
+      cooperationCapabilities: {
+        transfer: false,
+        pause: true,
+        terminate: true,
+        resume: false,
+      },
       capabilities: { editRoutine: true, admit: true },
       history: [],
     };
     api.getCustomer.mockResolvedValueOnce(draft).mockResolvedValueOnce({
       ...draft,
+      cooperationStatus: 'COOPERATING',
       profileStatus: 'admitted',
       admittedAt: '2026-09-21T03:00:00.000Z',
       version: 2,
+      responsibleOperator: { id: 'user-1', displayName: '运营甲' },
+      cooperationCapabilities: {
+        transfer: false,
+        pause: true,
+        terminate: true,
+        resume: false,
+      },
       capabilities: { editRoutine: true, admit: false },
     });
     const { wrapper } = await mountPage();
@@ -415,6 +491,13 @@ describe('CustomerDetailPage', () => {
   it('hides delete immediately after admission even if detail refresh fails', async () => {
     const draft = {
       ...customerRecord('customer-1', '准入客户'),
+      responsibleOperator: { id: 'user-1', displayName: '运营甲' },
+      cooperationCapabilities: {
+        transfer: false,
+        pause: true,
+        terminate: true,
+        resume: false,
+      },
       capabilities: { editRoutine: true, admit: true, deleteDraft: true },
     };
     api.getCustomer
@@ -425,7 +508,8 @@ describe('CustomerDetailPage', () => {
     expect(wrapper.find('[data-test="delete-draft-open"]').exists()).toBe(true);
     await wrapper.get('[data-test="admitted"]').trigger('click');
     await flushPromises();
-    expect(wrapper.text()).toContain('已准入');
+    expect(wrapper.text()).toContain('当前客户资料需要刷新');
+    expect(wrapper.text()).toContain('草稿');
     expect(wrapper.find('[data-test="delete-draft-open"]').exists()).toBe(
       false,
     );
@@ -436,6 +520,46 @@ describe('CustomerDetailPage', () => {
     const { wrapper } = await mountPage();
     await flushPromises();
     expect(wrapper.text()).toContain('客户不存在或当前不可访问');
+  });
+
+  it('clears cached customer details after a forbidden pending replay and failed current read', async () => {
+    const auth = useAuthStore(pinia);
+    auth.session = {
+      principalType: 'INTERNAL',
+      user: { id: 'user-1', displayName: '运营甲', username: 'operator-a' },
+      department: { id: 'department-1', name: '甲部门' },
+      departments: [{ id: 'department-1', name: '甲部门' }],
+      customer: null,
+      notaryOffice: null,
+      authorizationRevision: 1,
+      expiresAt: '2026-10-09T10:00:00.000Z',
+      csrfToken: 'csrf',
+    };
+    savePendingCustomerMaintenance({
+      action: 'pause',
+      userId: 'user-1',
+      departmentId: 'department-1',
+      customerId: 'customer-1',
+      expectedVersion: 1,
+      body: { expectedVersion: 1, action: 'pause', reason: '原暂停原因' },
+      key: 'original-key',
+    });
+    api.getCustomer
+      .mockResolvedValueOnce(customerRecord('customer-1', '客户甲'))
+      .mockRejectedValueOnce(new ApiError('forbidden', 403, 'FORBIDDEN'));
+    maintenanceApi.changeCustomerCooperation.mockRejectedValue(
+      new ApiError('forbidden', 403, 'FORBIDDEN'),
+    );
+    const { wrapper } = await mountPage();
+    await flushPromises();
+    expect(wrapper.text()).toContain('客户甲');
+    await wrapper.get('[data-test="maintenance-submit"]').trigger('submit');
+    await flushPromises();
+    expect(wrapper.text()).toContain('维护结果尚未确认，原请求已保留');
+    expect(wrapper.text()).not.toContain('客户甲');
+    expect(wrapper.text()).not.toContain('运营甲');
+    expect(globalThis.sessionStorage.length).toBe(1);
+    auth.session = null;
   });
 
   it('does not render the edit action without the server capability', async () => {
@@ -451,11 +575,19 @@ describe('CustomerDetailPage', () => {
       admissionContactName: null,
       admissionContactPhone: null,
       admissionContactEmail: null,
+      cooperationStatus: 'COOPERATING',
       profileStatus: 'draft',
       departmentId: 'department-1',
       responsibleUserId: 'user-1',
       version: 1,
       updatedAt: '2026-09-17T01:00:00.000Z',
+      responsibleOperator: { id: 'user-1', displayName: '运营甲' },
+      cooperationCapabilities: {
+        transfer: false,
+        pause: true,
+        terminate: true,
+        resume: false,
+      },
       capabilities: { editRoutine: false, admit: false },
       history: [],
     });
@@ -483,11 +615,19 @@ describe('CustomerDetailPage', () => {
       admissionContactName: null,
       admissionContactPhone: null,
       admissionContactEmail: null,
+      cooperationStatus: 'COOPERATING',
       profileStatus: 'draft',
       departmentId: 'department-1',
       responsibleUserId: 'user-1',
       version: 1,
       updatedAt: '2026-09-17T01:00:00.000Z',
+      responsibleOperator: { id: 'user-1', displayName: '运营甲' },
+      cooperationCapabilities: {
+        transfer: false,
+        pause: true,
+        terminate: true,
+        resume: false,
+      },
       capabilities: { editRoutine: true, admit: true },
       history: [],
     });
@@ -512,11 +652,19 @@ describe('CustomerDetailPage', () => {
         admissionContactName: null,
         admissionContactPhone: null,
         admissionContactEmail: null,
+        cooperationStatus: 'COOPERATING',
         profileStatus: 'draft',
         departmentId: 'department-1',
         responsibleUserId: 'user-1',
         version: 1,
         updatedAt: '2026-09-17T01:00:00.000Z',
+        responsibleOperator: { id: 'user-1', displayName: '运营甲' },
+        cooperationCapabilities: {
+          transfer: false,
+          pause: true,
+          terminate: true,
+          resume: false,
+        },
         capabilities: { editRoutine: true, admit: true },
         history: [],
       })

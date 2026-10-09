@@ -82,6 +82,26 @@ const context = {
       scopes: ['SELF', 'TEAM', 'DEPARTMENT'],
     },
     {
+      action: 'CUSTOMER_RESPONSIBLE_TRANSFER',
+      label: '转派负责运营',
+      scopes: ['SELF', 'TEAM', 'DEPARTMENT'],
+    },
+    {
+      action: 'CUSTOMER_COOPERATION_PAUSE',
+      label: '暂停合作',
+      scopes: ['SELF', 'TEAM', 'DEPARTMENT'],
+    },
+    {
+      action: 'CUSTOMER_COOPERATION_TERMINATE',
+      label: '终止合作',
+      scopes: ['SELF', 'TEAM', 'DEPARTMENT'],
+    },
+    {
+      action: 'CUSTOMER_COOPERATION_RESUME',
+      label: '恢复合作',
+      scopes: ['SELF', 'TEAM', 'DEPARTMENT'],
+    },
+    {
       action: 'CUSTOMER_RIGHT_ASSET_WITHDRAW',
       label: '撤下权利资产',
       scopes: ['SELF', 'TEAM', 'DEPARTMENT'],
@@ -298,6 +318,10 @@ describe('organization API', () => {
       'CUSTOMER_EDIT_ROUTINE',
       'CUSTOMER_DELETE_DRAFT',
       'CUSTOMER_RESTORE_DRAFT',
+      'CUSTOMER_RESPONSIBLE_TRANSFER',
+      'CUSTOMER_COOPERATION_PAUSE',
+      'CUSTOMER_COOPERATION_TERMINATE',
+      'CUSTOMER_COOPERATION_RESUME',
       'CUSTOMER_RIGHT_ASSET_WITHDRAW',
       'CUSTOMER_ADMIT',
       'LEAD_READ',

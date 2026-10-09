@@ -17,6 +17,7 @@ const summary = {
   category: null,
   region: null,
   profileStatus: 'draft' as const,
+  cooperationStatus: 'COOPERATING' as const,
   departmentId: 'department-1',
   responsibleUserId: 'user-1',
   version: 1,
@@ -94,5 +95,22 @@ describe('CustomerListPage', () => {
     });
     await flushPromises();
     expect(wrapper.get('.status-chip').text()).toBe('已准入');
+  });
+
+  it('shows the current cooperation state from the server', async () => {
+    api.listCustomers.mockResolvedValue({
+      items: [{ ...summary, cooperationStatus: 'PAUSED' }],
+      total: 1,
+      page: 1,
+      pageSize: 20,
+      capabilities: { createDraft: true },
+    });
+    const wrapper = mount(CustomerListPage, {
+      global: { stubs: { RouterLink: { template: '<a><slot /></a>' } } },
+    });
+    await flushPromises();
+    expect(wrapper.get('[data-test="cooperation-status"]').text()).toBe(
+      '已暂停合作',
+    );
   });
 });

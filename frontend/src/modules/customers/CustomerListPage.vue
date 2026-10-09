@@ -78,7 +78,8 @@ onBeforeUnmount(() => activeRequest?.abort());
         </div>
         <div v-else class="customer-list">
           <div class="list-head" aria-hidden="true">
-            <span>客户名称</span><span>资料状态</span><span>最近更新</span>
+            <span>客户名称</span><span>资料 / 合作状态</span
+            ><span>最近更新</span>
           </div>
           <RouterLink
             v-for="customer in items"
@@ -87,9 +88,18 @@ onBeforeUnmount(() => activeRequest?.abort());
             :to="`/customers/${customer.id}`"
           >
             <strong>{{ customer.name }}</strong>
-            <span class="status-chip">{{
-              customer.profileStatus === 'admitted' ? '已准入' : '草稿'
-            }}</span>
+            <span class="customer-statuses">
+              <span class="status-chip">{{
+                customer.profileStatus === 'admitted' ? '已准入' : '草稿'
+              }}</span>
+              <span class="status-chip" data-test="cooperation-status">{{
+                customer.cooperationStatus === 'COOPERATING'
+                  ? '合作中'
+                  : customer.cooperationStatus === 'PAUSED'
+                    ? '已暂停合作'
+                    : '已终止合作'
+              }}</span>
+            </span>
             <time>{{ formatTime(customer.updatedAt) }}</time>
           </RouterLink>
         </div>

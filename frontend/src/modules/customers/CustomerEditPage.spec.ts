@@ -25,6 +25,7 @@ const customer = {
   admissionContactName: '张三',
   admissionContactPhone: '13800138000',
   admissionContactEmail: null,
+  cooperationStatus: 'COOPERATING',
   profileStatus: 'draft',
   departmentId: 'department-1',
   responsibleUserId: 'user-1',
