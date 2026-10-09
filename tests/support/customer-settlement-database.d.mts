@@ -9,13 +9,26 @@ export function setCustomerSettlementGrant(
 ): Promise<void>;
 export function getCustomerSettlementState(customerId: string): Promise<{
   customerVersion: number | undefined;
+  customerDeletedAt: Date | null | undefined;
   records: Array<{
     id: string;
     version: number;
     versions: Array<{ version: number }>;
     receipts: Array<{ action: string }>;
   }>;
+  versionCount: number;
+  receiptCount: number;
   audits: Array<{ id: string; action: string }>;
+}>;
+export function exerciseCustomerSettlementDeletionRace<T>(
+  customerId: string,
+  issueFirst: () => Promise<T>,
+  issueSecond: () => Promise<T>,
+): Promise<{
+  first: T;
+  second: T;
+  firstQueued: boolean;
+  secondQueued: boolean;
 }>;
 export function disconnectCustomerSettlementDatabase(): Promise<void>;
 export function rejectCustomerSettlementAudit(): Promise<void>;

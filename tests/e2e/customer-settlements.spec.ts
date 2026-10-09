@@ -12,6 +12,7 @@ import {
   allowCustomerSettlementAudit,
   cleanupCustomerSettlementExternalActors,
   disconnectCustomerSettlementDatabase,
+  exerciseCustomerSettlementDeletionRace,
   getCustomerSettlementState,
   rejectCustomerSettlementAudit,
   setCustomerSettlementGrant,
@@ -408,6 +409,68 @@ test('different keys contend on the same customer version and zero settlement pr
     },
   );
   expect(deletion.status()).toBe(409);
+});
+
+test('register and draft deletion queue on the same PG customer lock without dangling ledger facts', async ({
+  request,
+}) => {
+  test.setTimeout(60000);
+  await setCustomerSettlementGrant(
+    e2eFixtures.roleA,
+    'CUSTOMER_SETTLEMENT_REGISTER',
+    true,
+  );
+  await grantCustomerLifecycle(e2eFixtures.roleA);
+  for (const firstAction of ['REGISTER', 'DELETE'] as const) {
+    const created = await request.post('/api/v1/customers', {
+      headers: auth,
+      data: { name: `CU008 race ${randomUUID()}` },
+    });
+    expect(created.status(), await created.text()).toBe(201);
+    const customer = (await created.json()) as {
+      id: string;
+      version: number;
+    };
+    const register = () =>
+      request.post(`/api/v1/customers/${customer.id}/settlements`, {
+        headers: { ...auth, 'Idempotency-Key': randomUUID() },
+        data: body(customer.version, '0.00'),
+      });
+    const remove = () =>
+      request.post(`/api/v1/customers/${customer.id}/delete-draft`, {
+        headers: { ...auth, 'Idempotency-Key': randomUUID() },
+        data: { expectedVersion: customer.version, reason: '并发删除检查' },
+      });
+    const race = await exerciseCustomerSettlementDeletionRace(
+      customer.id,
+      firstAction === 'REGISTER' ? register : remove,
+      firstAction === 'REGISTER' ? remove : register,
+    );
+    expect(race.firstQueued).toBe(true);
+    expect(race.secondQueued).toBe(true);
+    const state = await getCustomerSettlementState(customer.id);
+    if (firstAction === 'REGISTER') {
+      expect(race.first.status(), await race.first.text()).toBe(201);
+      expect(race.second.status(), await race.second.text()).toBe(409);
+      expect(state.customerDeletedAt).toBeNull();
+      expect(state.customerVersion).toBe(customer.version + 1);
+      expect(state.records).toHaveLength(1);
+      expect(state.records[0]?.versions).toHaveLength(1);
+      expect(state.records[0]?.receipts).toHaveLength(1);
+      expect(state.versionCount).toBe(1);
+      expect(state.receiptCount).toBe(1);
+      expect(state.audits).toHaveLength(1);
+    } else {
+      expect(race.first.status(), await race.first.text()).toBe(201);
+      expect(race.second.status(), await race.second.text()).toBe(404);
+      expect(state.customerDeletedAt).toBeInstanceOf(Date);
+      expect(state.customerVersion).toBe(customer.version + 1);
+      expect(state.records).toHaveLength(0);
+      expect(state.versionCount).toBe(0);
+      expect(state.receiptCount).toBe(0);
+      expect(state.audits).toHaveLength(0);
+    }
+  }
 });
 
 test('real PG keeps the 21-record percent boundary exact through correction', async ({
