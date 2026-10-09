@@ -8,11 +8,11 @@ CORE-CA-001～008及SD-44律师身份前置补齐均已验收、推送并集成m
 
 ## 当前任务
 
-唯一Current为**CORE-CU-007｜协议与开票资料**，Next为CORE-CU-008真实人工结算台账。客户001～006已本地验收，尚未推送或集成main。依据2026-10-08用户批准的客户切片规则及SD-46/47/48继续；只有负责运营，不增加客户经理。正式业务范围见[客户设计](superpowers/specs/2026-10-08-customer-module-alignment-design.md)及[总计划](superpowers/plans/2026-10-08-customer-module-alignment.md)，分支codex/customer-module-alignment，基线8a8fe11。007正式[实施契约](superpowers/specs/2026-10-09-customer-agreements-invoice-contract.md)与[计划](superpowers/plans/2026-10-09-customer-agreements-invoice.md)已按75acd3前态复核，下一步Sol Task A；007/008尚未实现。
+唯一Current为**CORE-CU-007｜协议与开票资料**，Next为CORE-CU-008真实人工结算台账。客户001～006已本地验收，尚未推送或集成main。依据2026-10-08用户批准的客户切片规则及SD-46/47/48继续；只有负责运营，不增加客户经理。正式业务范围见[客户设计](superpowers/specs/2026-10-08-customer-module-alignment-design.md)及[总计划](superpowers/plans/2026-10-08-customer-module-alignment.md)，分支codex/customer-module-alignment，基线8a8fe11。007正式[实施契约](superpowers/specs/2026-10-09-customer-agreements-invoice-contract.md)与[计划](superpowers/plans/2026-10-09-customer-agreements-invoice.md)已按75acd3前态复核，Task A后端候选c8d33c6已通过非实现Sol补审（Spec compliance/Quality均ACCEPTED，C/I/M0/0/0），下一步Luna Task B页面接线；007整体尚未验收，008仍为Draft。
 
 CU006实际通过候选db33bf6c717e98829ba2728a6a9455cf1d886eaf/tree8eca1b3397b7b6c51da434e78c72d12d67c18795：完整verify退出0（工具74/74、前端802/802、后端1134/1134、双构建）、全库隔离PG/Chromium259/259、空链102/101→102旧资料及回执保留、SQL负例和失败原子重试全部通过。门禁前后HEAD/tree与环境HMAC一致，原非实现Reviewer补审ACCEPTED、C/I/M0/0/0；同模型隔离独立性不足，外部异模型Review Pending。首次eff2acb全库251通过/8失败、两轮Review发现及修复按原候选保留于[验证记录](spec/v0.1/VALIDATION.md)和.local/customer-alignment/，不把旧失败改写为通过。005及更早证据也保留在VALIDATION。
 
-仓库清理CA-001～008及SD-44已集成main，CA-009未领取。独立人工环境5181/3201/15434保持旧CA-008构建和91条迁移，使用原持久卷；未重置或升级，最新前端/后端/代理健康检查均200。E2E只使用backend/.env.test独立测试库15433及5174/3101；仅测试public前向到102，SQL102 checksum与已执行值一致。没有开发/生产迁移、推送、合并或部署。
+仓库清理CA-001～008及SD-44已集成main，CA-009未领取。独立人工环境5181/3201/15434保持旧CA-008构建和91条迁移，使用原持久卷；未重置或升级，最新前端/后端/代理健康检查均200。E2E只使用backend/.env.test独立测试库15433及5174/3101；仅测试public前向到108，SQL102 checksum与已执行值一致。没有开发/生产迁移、推送、合并或部署。
 
 ## 已实现
 
@@ -48,4 +48,4 @@ CA-008实际业务候选`9092414`完成Level 3：完整verify退出0（后端107
 
 ## 下一步
 
-按已批准计划继续007→008，再做八片组合终审和验证。007正式方案须以CU006实际通过候选及收口tree复核，随后Sol高风险后端/迁移及独立审查、明确页面实现和真实会话验收串行执行。保持人工环境隔离；不推送、合并、部署或操作开发/生产库。
+按已批准计划继续007→008，再做八片组合终审和验证。007方案已按CU006实际通过候选及收口tree复核。Task A原6d15cb1审查REJECTED记录保留；c8d33c6补齐审计不可变与当前版本守卫，108下聚焦PG14/14及补充迁移负例通过，非实现Sol补审ACCEPTED。继续Task B页面、Task C真实会话、组合终审及固定Level 3门禁；上述聚焦结果不代表整片验收。保持人工环境隔离；不推送、合并、部署或操作开发/生产库。

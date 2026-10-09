@@ -136,9 +136,9 @@
 
 ### Current Slice
 
-**CORE-CU-007｜协议与开票资料（准备实施）。**
+**CORE-CU-007｜协议与开票资料（实施中）。**
 
-001～006已本地验收。006实际业务候选db33bf6/tree8eca1b通过完整verify（工具74、前端802、后端1134、双构建）、全库隔离PG/Chromium259/259及空链102/101→102迁移与SQL负例/失败原子重试；原非实现Reviewer补审ACCEPTED、C/I/M0/0/0，同模型隔离独立性不足、外部异模型Review Pending。原eff2acb全库251通过/8失败及此前Review失败均保留，详细证据和非执行性收口边界见[验证记录](spec/v0.1/VALIDATION.md)。007将按已批准范围维护真实协议、开票资料与不可变版本，不自动绑定Lead/Case或赋新敏感权限；007尚未实现。
+001～006已本地验收。006实际业务候选db33bf6/tree8eca1b通过完整verify（工具74、前端802、后端1134、双构建）、全库隔离PG/Chromium259/259及空链102/101→102迁移与SQL负例/失败原子重试；原非实现Reviewer补审ACCEPTED、C/I/M0/0/0，同模型隔离独立性不足、外部异模型Review Pending。原eff2acb全库251通过/8失败及此前Review失败均保留，详细证据和非执行性收口边界见[验证记录](spec/v0.1/VALIDATION.md)。007将按已批准范围维护真实协议、开票资料与不可变版本，不自动绑定Lead/Case或赋新敏感权限；007后端Task A候选c8d33c6通过非实现Sol补审，C/I/M0/0/0；页面、真实会话与整片门禁待完成，007尚未验收。
 
 ### Next Slice
 
