@@ -50,7 +50,7 @@ SD-47补充：本轮批准实际人工结算台账，逐笔录入实际结算日
 
 ## REQ-CU-005 客户草稿删除与恢复
 
-- 状态：用户已确认规则（SD-45），尚待切片实现／验证。
+- 状态：用户已确认规则（SD-45）；实现及实际验收证据见[路线图](../../../feature-roadmap.md)与[验证记录](../VALIDATION.md)。
 - 只有从未准入且不存在主体关系、材料及上传草稿、账号绑定、资产、协议、线索、案件等关联的客户草稿可软删除；删除保留ID、证件唯一约束与审计，可由具备独立权限及原客户范围的人员恢复。有关联或曾准入的客户只允许按授权暂停／终止合作，存量继续，历史保留。
 - AC-CU-005：删除与新增关联在同客户锁下竞争，不能产生悬挂关联。普通读取及全部写入口拒绝已删除客户；已删除草稿列表与恢复重查范围。恢复原客户身份，不自动恢复其他资源，不提供物理删除或自动清理。
 - CORE-CU-004命令契约：删除与恢复分别使用独立`customer.delete-draft`、`customer.restore-draft`动作，既有角色不自动获得权限。两者均需当前`customer.read`与本动作范围的交集，提交显式`expectedVersion`和`Idempotency-Key`；原因可省略，填写时去除首尾空白后为1–500字。相同正文／键只在重查当前授权后重放原回执，不同正文复用键冲突。结果未知时保留原正文和键，不因后续普通详情404或已删除列表为空推定未提交；冲突需明确刷新，已确认成功后只刷新当前视图。
@@ -62,3 +62,15 @@ SD-47补充：本轮批准实际人工结算台账，逐笔录入实际结算日
 - 状态：用户已确认规则（SD-46），尚待切片实现／验证。
 - 一个客户可有多位联系人，最多一位主要联系人，允许暂不指定；结束关系保留历史，不删除联系人事实，不自动开账号或授予权限。现有准入联系人必须无损兼容，准入既有最低联系资料门槛继续有效。
 - AC-CU-006：并发主要联系人变更不能产生两位主要联系人；结束主要联系人后可无主要联系人。历史仍可读取，其他客户／部门不能访问或修改；联系人维护不改变企业账号权限。
+
+## REQ-CU-007 负责运营与合作状态维护
+
+- 状态：SD-12/48方向及用户切片开发已确认；本节固定CORE-CU-005范围，实施及验收状态见路线图。
+- 客户仅一位负责运营responsibleUserId，不新增客户经理；转派不改变customer.teamId、子业务负责人、企业账号或角色授权。目标须为同部门有效内部账号和有效部门成员；有团队时团队须有效，但目标团队不必等于客户团队。目标是否能读客户仍取决于自己的当前Grant。
+- 合作状态cooperationStatus与profileStatus独立，为COOPERATING/PAUSED/TERMINATED；旧客户默认COOPERATING，不生成协议日期。COOPERATING可暂停或终止，PAUSED可恢复或终止，TERMINATED可恢复；同态409且无版本/事实/审计变化。pause/terminate及转派原因去空白后必填1～500字；resume可省略，填写时也为1～500字。DRAFT/ADMITTED均可授权维护，已删除客户拒绝；维护历史本身不阻断CU004无关联草稿删除。
+- 独立Action为customer.responsible.transfer及customer.cooperation.pause/terminate/resume，均支持SELF/TEAM/DEPARTMENT；当前customer.read与动作Grant分别覆盖变更前客户，既有角色不自动获权。候选运营查询同样需read与transfer，只返回id/displayName/teamName，分页默认20、上限100，不要求user.read，不暴露账号名、邮箱、角色。
+- HTTP：GET /customers/:id/eligible-operators；POST /customers/:id/responsible-transfer提交expectedVersion/targetUserId/reason；POST /customers/:id/cooperation提交expectedVersion/action/reason?；写请求使用Idempotency-Key且拒绝未知字段。成功仅返回customerId/action/resultVersion/occurredAt/canReadAfter。转派使源SELF失读时仍返回已成功的最小结果，前端提示成功并离开详情。
+- 组织部门锁先于客户行锁，沿用公开OrganizationService.lockDepartment；当前账号/成员/Grant与目标资格在同事务复核，客户CAS、不可变维护事实、审计及回执原子提交。回放先重验当前actor/read/原动作范围，再查原键及指纹；命中只返回旧事实并重算当前canReadAfter，不重新执行旧版本、同态或目标当前资格条件，不重写回执。撤权后拒绝回放；403/404不能证明未知提交未发生，必须保留原正文/键。
+- 暂停/终止只阻止新Lead创建，服务端新建候选与INSERT SQL父锁守卫要求ADMITTED、未删除及COOPERATING。既有Lead编辑/审核、公证转案及Case办理不加合作状态门槛；无customerId的LEAD_DRAFT准备上传维持原流程，真实创建仍受守卫。恢复不绕过准入门槛，不复活历史关系/账号。
+- 非删除客户summary/detail新增真实cooperationStatus；detail另有responsibleOperator:{id,displayName}及cooperationCapabilities:{transfer,pause,terminate,resume}，原capabilities不改名。历史准入/生命周期回执缺新字段时只在后端历史投影补原隐含COOPERATING，旧正文/指纹/版本/时间不变，前端decoder不默认补值；历史回放不能覆盖当前GET的状态/负责人/能力，已确认成功后GET失败只允许只读刷新，不自动用历史版本发下一命令。
+- AC-CU-007：真实密码cookie/CSRF证明SELF源转派成功后失读、目标按实际Grant读；不同团队目标不改客户团队；停用/撤权/转组与转派竞争只产生满足当前条件的结果。pause阻止新线索而存量更新/转案/案件继续，resume仍需准入；不同key同版本单胜，注入事实/审计/回执失败全回滚，同键回放不重复。空库及100条前态升级保留旧事实，错误DDL原子回滚/重试，合法SQLINSERT在非合作/已删除父项下命中目标守卫；不能用合成FK失败代替证明。
