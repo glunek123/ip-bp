@@ -15,6 +15,7 @@ import {
   coreLeadFixtures,
   countCasesForMatter,
   countCaseMatchAudits,
+  disconnectCoreLeadTestDatabase,
   emulatePreDateCaseMatch,
   getLead,
   getNotaryCase,
@@ -27,6 +28,11 @@ import {
   verifyCaseComplaintMigration,
 } from '../support/core-lead-database.mjs';
 import { createLawyerAccountThroughApi } from '../support/case-lawyer-account.mjs';
+import {
+  disconnectCustomerTestDatabase,
+  getCustomerMaintenanceState,
+  grantCustomerCooperation,
+} from '../support/customer-database.mjs';
 
 const authorizationA = { Authorization: `Bearer ${coreLeadFixtures.tokenA}` };
 const authorizationB = { Authorization: `Bearer ${coreLeadFixtures.tokenB}` };
@@ -214,7 +220,13 @@ async function upload(
   }>;
 }
 
-async function createPendingMatchCase(request: APIRequestContext) {
+async function createPendingMatchCase(
+  request: APIRequestContext,
+  afterReviewed?: (
+    leadId: string,
+    leadInput: Record<string, unknown>,
+  ) => Promise<void>,
+) {
   const username = `case-client-${randomUUID().slice(0, 8)}`;
   const password = 'client correct horse battery';
   const createdClient = await request.post(
@@ -232,28 +244,29 @@ async function createPendingMatchCase(request: APIRequestContext) {
   expect(login.status(), await login.text()).toBe(200);
   const clientSession: { csrfToken: string } = await login.json();
 
+  const leadInput = {
+    customerId: coreLeadFixtures.admittedCustomer,
+    rightsHolderId: coreLeadFixtures.holder,
+    caseType: 'CIVIL',
+    infringementTypes: ['TRADEMARK'],
+    source: 'ONLINE',
+    platform: 'TAOBAO',
+    foundAt: '2026-09-21T02:30:00.000Z',
+    shopName: `案件验收店铺-${randomUUID().slice(0, 8)}`,
+    needDisclose: false,
+    products: [
+      {
+        title: '案件验收商品',
+        quantity: 1,
+        unitPrice: '1.00',
+        commentCount: 0,
+      },
+    ],
+    leadScreenshotContentVersionIds: [],
+  };
   const leadResponse = await request.post('/api/v1/leads', {
     headers: { ...authorizationA, 'Idempotency-Key': randomUUID() },
-    data: {
-      customerId: coreLeadFixtures.admittedCustomer,
-      rightsHolderId: coreLeadFixtures.holder,
-      caseType: 'CIVIL',
-      infringementTypes: ['TRADEMARK'],
-      source: 'ONLINE',
-      platform: 'TAOBAO',
-      foundAt: '2026-09-21T02:30:00.000Z',
-      shopName: `案件验收店铺-${randomUUID().slice(0, 8)}`,
-      needDisclose: false,
-      products: [
-        {
-          title: '案件验收商品',
-          quantity: 1,
-          unitPrice: '1.00',
-          commentCount: 0,
-        },
-      ],
-      leadScreenshotContentVersionIds: [],
-    },
+    data: leadInput,
   });
   expect(leadResponse.status(), await leadResponse.text()).toBe(201);
   const lead: { id: string } = await leadResponse.json();
@@ -273,6 +286,7 @@ async function createPendingMatchCase(request: APIRequestContext) {
     },
   );
   expect(reviewed.status(), await reviewed.text()).toBe(201);
+  if (afterReviewed) await afterReviewed(lead.id, leadInput);
 
   const officeResponse = await request.post('/api/v1/notary-offices', {
     headers: authorizationA,
@@ -415,6 +429,7 @@ async function createPendingMatchCase(request: APIRequestContext) {
   expect(await countCasesForMatter(matter.id)).toBe(1);
   return {
     caseId,
+    leadId: lead.id,
     matterId: matter.id,
     certificateFile,
     clientUsername: username,
@@ -518,6 +533,191 @@ test.beforeEach(async () => {
 test.afterEach(async () => {
   await allowInjectedFailures();
 });
+
+test.afterAll(async () => {
+  await disconnectCustomerTestDatabase();
+  await disconnectCoreLeadTestDatabase();
+});
+
+for (const status of ['PAUSED', 'TERMINATED'] as const) {
+  test(`${status} keeps prior Lead-to-notary-to-Case work and resume permits browser Lead creation`, async ({
+    page,
+    request,
+  }) => {
+    test.setTimeout(90_000);
+    await grantCustomerCooperation(coreLeadFixtures.roleA);
+    let editableLeadId = '';
+    const source = await createPendingMatchCase(
+      request,
+      async (reviewedLeadId, leadInput) => {
+        // A reviewed Lead cannot be edited: lead.update is WAITING_PUSH-only.
+        // Both Leads exist before maintenance; the reviewed one follows the
+        // notary chain and the waiting-push one proves existing edit remains open.
+        const editable = await request.post('/api/v1/leads', {
+          headers: { ...authorizationA, 'Idempotency-Key': randomUUID() },
+          data: { ...leadInput, shopName: `存量待推送-${status}` },
+        });
+        expect(editable.status(), await editable.text()).toBe(201);
+        editableLeadId = ((await editable.json()) as { id: string }).id;
+        expect((await getLead(reviewedLeadId))?.status).toBe(
+          'WAITING_EVIDENCE_DECISION',
+        );
+        await loginOperator(page);
+        const customerId = coreLeadFixtures.admittedCustomer;
+        await page.goto(`/customers/${customerId}`);
+        const panel = page.locator('[data-test="cooperation-panel"]');
+        await expect(panel).toContainText('合作中');
+        await panel
+          .locator(
+            `[data-test="${status === 'PAUSED' ? 'pause' : 'terminate'}-open"]`,
+          )
+          .click();
+        await panel
+          .locator('[data-test="maintenance-reason"]')
+          .fill(`${status} 后继续旧业务`);
+        const changed = page.waitForResponse(
+          (response) =>
+            response.url().endsWith(`/customers/${customerId}/cooperation`) &&
+            response.request().method() === 'POST',
+        );
+        await panel.locator('[data-test="maintenance-submit"]').click();
+        const result = await changed;
+        expect(result.status()).toBe(201);
+        const headers = await result.request().allHeaders();
+        expect(headers.cookie).toBeTruthy();
+        expect(headers['x-csrf-token']).toBeTruthy();
+        expect(headers['idempotency-key']).toBeTruthy();
+        expect(headers.authorization).toBeUndefined();
+        expect(await getCustomerMaintenanceState(customerId)).toMatchObject({
+          customer: { cooperationStatus: status },
+          facts: 1,
+          receipts: 1,
+          audits: 1,
+        });
+        await page.goto('/leads/new');
+        await expect(
+          page.locator(
+            `select[name="customerId"] option[value="${customerId}"]`,
+          ),
+        ).toHaveCount(0);
+        const blocked = await request.post('/api/v1/leads', {
+          headers: { ...authorizationA, 'Idempotency-Key': randomUUID() },
+          data: { ...leadInput, shopName: `受阻新建-${status}` },
+        });
+        expect(blocked.status()).toBe(409);
+        expect(await blocked.json()).toMatchObject({
+          code: 'LEAD_CUSTOMER_NOT_COOPERATING',
+        });
+        const editContext = await request.get(
+          `/api/v1/leads/${editableLeadId}/edit-context`,
+          {
+            headers: authorizationA,
+          },
+        );
+        expect(editContext.status(), await editContext.text()).toBe(200);
+        const edited = await request.patch(`/api/v1/leads/${editableLeadId}`, {
+          headers: authorizationA,
+          data: {
+            ...leadInput,
+            customerId: undefined,
+            rightsHolderId: undefined,
+            expectedVersion: 1,
+            shopName: `存量仍可更新-${status}`,
+          },
+        });
+        expect(edited.status(), await edited.text()).toBe(200);
+      },
+    );
+    const persistedCase = await getNotaryCase(source.caseId);
+    expect(persistedCase).toMatchObject({
+      stage: 'PENDING_MATCH',
+      departmentId: coreLeadFixtures.departmentA,
+      customerId: coreLeadFixtures.admittedCustomer,
+      rightsHolderId: coreLeadFixtures.holder,
+      sourceLeadId: source.leadId,
+      sourceNotaryMatterId: source.matterId,
+    });
+    expect(await countCasesForMatter(source.matterId)).toBe(1);
+    const lawyer = await createLawyerAccountThroughApi(request, {
+      fullName: `存量办理律师${status}`,
+    });
+    await page.goto('/cases');
+    await expectCaseListSession(page);
+    await matchCaseThroughBrowser(page, source.caseId, lawyer);
+    await page.reload();
+    await expect(
+      page.locator('[data-test="complaint-submit-form"]'),
+    ).toBeVisible();
+    expect(await getNotaryCase(source.caseId)).toMatchObject({
+      stage: 'WAITING_COMPLAINT',
+    });
+    expect((await getLead(editableLeadId))?.shopName).toBe(
+      `存量仍可更新-${status}`,
+    );
+
+    const customerId = coreLeadFixtures.admittedCustomer;
+    await page.goto(`/customers/${customerId}`);
+    const panel = page.locator('[data-test="cooperation-panel"]');
+    await panel.locator('[data-test="resume-open"]').click();
+    const resumed = page.waitForResponse(
+      (response) =>
+        response.url().endsWith(`/customers/${customerId}/cooperation`) &&
+        response.request().method() === 'POST',
+    );
+    await panel.locator('[data-test="maintenance-submit"]').click();
+    const resumeResult = await resumed;
+    expect(resumeResult.status()).toBe(201);
+    const resumeHeaders = await resumeResult.request().allHeaders();
+    expect(resumeHeaders.cookie).toBeTruthy();
+    expect(resumeHeaders['x-csrf-token']).toBeTruthy();
+    expect(resumeHeaders.authorization).toBeUndefined();
+    await expect(panel).toContainText('合作中');
+    const customer = await request.get(`/api/v1/customers/${customerId}`, {
+      headers: authorizationA,
+    });
+    expect(customer.status(), await customer.text()).toBe(200);
+    expect(await customer.json()).toMatchObject({ profileStatus: 'admitted' });
+
+    await page.goto('/leads/new');
+    await page.locator('select[name="customerId"]').selectOption(customerId);
+    await expect(page.locator('select[name="rightsHolderId"]')).toHaveValue(
+      coreLeadFixtures.holder,
+    );
+    await page.getByLabel('拟办理业务类型').selectOption('CIVIL');
+    await page.getByLabel('发现时间').fill('2026-09-21T10:30');
+    await page.getByLabel('线索来源').selectOption('ONLINE');
+    await page.getByLabel('发现平台').selectOption('TAOBAO');
+    await page.getByLabel('店铺名称').fill(`恢复后浏览器新建-${status}`);
+    await page.getByLabel('商标权').check();
+    await page.locator('input[name="productTitle-0"]').fill('恢复后商品');
+    await page.locator('input[name="quantity-0"]').fill('1');
+    await page.locator('input[name="unitPrice-0"]').fill('2.00');
+    await page.locator('input[name="commentCount-0"]').fill('0');
+    const created = page.waitForResponse(
+      (response) =>
+        response.url().endsWith('/api/v1/leads') &&
+        response.request().method() === 'POST',
+    );
+    await page.getByRole('button', { name: '创建线索' }).click();
+    const newLead = await created;
+    expect(newLead.status()).toBe(201);
+    const createHeaders = await newLead.request().allHeaders();
+    expect(createHeaders.cookie).toBeTruthy();
+    expect(createHeaders['x-csrf-token']).toBeTruthy();
+    expect(createHeaders['idempotency-key']).toBeTruthy();
+    expect(createHeaders.authorization).toBeUndefined();
+    const newLeadId = ((await newLead.json()) as { id: string }).id;
+    await expect(
+      page.getByText(`恢复后浏览器新建-${status}`, { exact: true }),
+    ).toBeVisible();
+    expect(await getLead(newLeadId)).toMatchObject({
+      id: newLeadId,
+      customerId,
+      rightsHolderId: coreLeadFixtures.holder,
+      status: 'WAITING_PUSH',
+    });
+  });
+}
 
 test('CA-002 migration works from an empty and the previous supported schema', async () => {
   test.setTimeout(120_000);

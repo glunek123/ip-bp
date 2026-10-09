@@ -66,6 +66,10 @@ export function getCustomer(id: string): Promise<{
   version: number;
 } | null>;
 export function getLead(id: string): Promise<{
+  id: string;
+  customerId: string;
+  rightsHolderId: string;
+  status: string;
   version: number;
   shopName: string;
   products: Array<{
@@ -166,6 +170,10 @@ export function getNotaryCase(caseId: string): Promise<{
   businessNo: string;
   stage: string;
   courtCaseNo: string | null;
+  departmentId: string;
+  customerId: string;
+  rightsHolderId: string;
+  sourceLeadId: string;
   sourceNotaryMatterId: string;
   certificateId: string;
 } | null>;

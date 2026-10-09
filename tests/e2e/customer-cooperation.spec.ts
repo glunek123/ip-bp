@@ -1,5 +1,10 @@
 import { randomUUID } from 'node:crypto';
-import { expect, test, type APIRequestContext } from '@playwright/test';
+import {
+  expect,
+  test,
+  type APIRequestContext,
+  type Page,
+} from '@playwright/test';
 import {
   allowCustomerMaintenanceStage,
   beginCustomerCooperationBlocker,
@@ -11,6 +16,7 @@ import {
   grantCustomerLifecycle,
   rejectCustomerMaintenanceStage,
   resetCustomerE2eData,
+  resetLocalAuthE2eData,
   revokeCustomerCooperation,
   setCustomerOperatorState,
 } from '../support/customer-database.mjs';
@@ -18,6 +24,7 @@ import {
   coreLeadFixtures,
   disconnectCoreLeadTestDatabase,
   resetCoreLeadE2eData,
+  setRoleGrant,
 } from '../support/core-lead-database.mjs';
 
 const authA = { Authorization: `Bearer ${e2eFixtures.tokenA}` };
@@ -75,6 +82,33 @@ function transfer(
   });
 }
 
+async function passwordLogin(
+  page: Page,
+  returnTo: string,
+  credentials: { username: string; password: string },
+) {
+  await page.goto(returnTo);
+  await expect(page).toHaveURL(/\/login\?returnTo=/u);
+  await page.getByLabel('用户名').fill(credentials.username);
+  await page.getByLabel('密码').fill(credentials.password);
+  await page.getByRole('button', { name: '登录', exact: true }).click();
+  await expect(page).toHaveURL(returnTo);
+}
+
+async function commandHeaders(request: {
+  allHeaders(): Promise<Record<string, string>>;
+  postDataJSON(): unknown;
+}) {
+  const headers = await request.allHeaders();
+  return {
+    key: headers['idempotency-key'],
+    csrf: headers['x-csrf-token'],
+    cookie: headers.cookie,
+    bearer: headers.authorization,
+    body: request.postDataJSON(),
+  };
+}
+
 test.beforeEach(async () => {
   await resetCustomerE2eData();
   await grantCustomerCooperation(e2eFixtures.roleA);
@@ -83,6 +117,229 @@ test.beforeEach(async () => {
 test.afterAll(async () => {
   await disconnectCustomerTestDatabase();
   await disconnectCoreLeadTestDatabase();
+});
+
+test('real SELF browser transfer uses cookie and CSRF, then source loses read', async ({
+  page,
+  request,
+}) => {
+  await resetCoreLeadE2eData();
+  await grantCustomerCooperation(coreLeadFixtures.roleSelf, 'SELF');
+  await grantCustomerCooperation(coreLeadFixtures.roleA, 'DEPARTMENT');
+  const id = coreLeadFixtures.selfCustomer;
+  const url = `/customers/${id}`;
+  const original = await getCustomerMaintenanceState(id);
+  await passwordLogin(page, url, {
+    username: coreLeadFixtures.selfUsername,
+    password: coreLeadFixtures.selfPassword,
+  });
+  const panel = page.locator('[data-test="cooperation-panel"]');
+  await panel.locator('[data-test="transfer-open"]').click();
+  await expect(
+    panel.locator('[data-test="operator-select"] option'),
+  ).toHaveCount(2);
+  await panel
+    .locator('[data-test="operator-select"]')
+    .selectOption(coreLeadFixtures.userA);
+  await panel
+    .locator('[data-test="maintenance-reason"]')
+    .fill('同部门分工调整');
+  const posted = page.waitForResponse(
+    (response) =>
+      response.url().endsWith(`/customers/${id}/responsible-transfer`) &&
+      response.request().method() === 'POST',
+  );
+  await panel.locator('[data-test="maintenance-submit"]').click();
+  const response = await posted;
+  expect(response.status()).toBe(201);
+  const sent = await commandHeaders(response.request());
+  expect(sent.key).toBeTruthy();
+  expect(sent.csrf).toBeTruthy();
+  expect(sent.cookie).toBeTruthy();
+  expect(sent.bearer).toBeUndefined();
+  expect(sent.body).toMatchObject({
+    expectedVersion: original.customer?.version,
+    targetUserId: coreLeadFixtures.userA,
+    reason: '同部门分工调整',
+  });
+  expect(await response.json()).toMatchObject({
+    customerId: id,
+    action: 'responsible-transfer',
+    canReadAfter: false,
+  });
+  await expect(page).toHaveURL(/\/customers$/u);
+  await expect(
+    page.getByText('维护已成功，当前账号已无法继续查看客户资料。'),
+  ).toBeVisible();
+  expect(await getCustomerMaintenanceState(id)).toMatchObject({
+    customer: {
+      responsibleUserId: coreLeadFixtures.userA,
+      teamId: coreLeadFixtures.teamSelf,
+    },
+    facts: 1,
+    receipts: 1,
+    audits: 1,
+  });
+  await page.goto(url);
+  await expect(
+    page.getByRole('heading', {
+      name: '客户不存在或当前不可访问',
+    }),
+  ).toBeVisible();
+  expect(
+    (
+      await request.get(`/api/v1/customers/${id}`, {
+        headers: { Authorization: `Bearer ${coreLeadFixtures.tokenA}` },
+      })
+    ).status(),
+  ).toBe(404);
+  await setRoleGrant(coreLeadFixtures.roleA, 'customer.read', 'DEPARTMENT');
+  await page.getByRole('button', { name: '退出登录' }).click();
+  await passwordLogin(page, url, {
+    username: coreLeadFixtures.operatorUsername,
+    password: coreLeadFixtures.operatorPassword,
+  });
+  await expect(
+    page.getByRole('heading', { name: '本人范围客户' }),
+  ).toBeVisible();
+  await expect(page.locator('[data-test="cooperation-panel"]')).toContainText(
+    '核心主管',
+  );
+});
+
+test('browser preserves unknown committed pause through refresh and relogin', async ({
+  page,
+}) => {
+  const credentials = await resetLocalAuthE2eData();
+  await grantCustomerCooperation(
+    '30000000-0000-4000-8000-000000000010',
+    'DEPARTMENT',
+  );
+  await passwordLogin(page, '/customers', credentials);
+  await page.getByRole('link', { name: '新建客户' }).click();
+  await page.getByLabel('客户名称').fill('浏览器结果未知客户');
+  await page.getByRole('button', { name: '保存草稿' }).click();
+  await expect(
+    page.getByRole('heading', { name: '浏览器结果未知客户' }),
+  ).toBeVisible();
+  const url = page.url();
+  const id = url.split('/').at(-1)!;
+  const panel = page.locator('[data-test="cooperation-panel"]');
+  let first: Awaited<ReturnType<typeof commandHeaders>> | undefined;
+  let intercepted = false;
+  await page.route(`**/api/v1/customers/${id}/cooperation`, async (route) => {
+    if (intercepted) return route.continue();
+    intercepted = true;
+    first = await commandHeaders(route.request());
+    const committed = await route.fetch();
+    expect(committed.status()).toBe(201);
+    await route.abort('failed');
+  });
+  await panel.locator('[data-test="pause-open"]').click();
+  await panel.locator('[data-test="maintenance-reason"]').fill('临时暂停');
+  await panel.locator('[data-test="maintenance-submit"]').click();
+  await expect(panel.getByRole('alert')).toContainText('原请求已保留');
+  expect(first?.key).toBeTruthy();
+  expect(first?.csrf).toBeTruthy();
+  expect(first?.cookie).toBeTruthy();
+  expect(first?.bearer).toBeUndefined();
+  expect(await getCustomerMaintenanceState(id)).toMatchObject({
+    customer: { cooperationStatus: 'PAUSED' },
+    facts: 1,
+    receipts: 1,
+    audits: 1,
+  });
+  await page.reload();
+  await expect(panel.locator('[data-test="maintenance-submit"]')).toHaveText(
+    '按原请求重试',
+  );
+  await expect(page.locator('[data-test="edit-customer"]')).toHaveCount(0);
+  await page.getByRole('button', { name: '退出登录' }).click();
+  await passwordLogin(page, url, credentials);
+  await expect(panel.locator('[data-test="maintenance-submit"]')).toHaveText(
+    '按原请求重试',
+  );
+  const replay = page.waitForResponse(
+    (response) =>
+      response.url().endsWith(`/customers/${id}/cooperation`) &&
+      response.request().method() === 'POST',
+  );
+  await panel.locator('[data-test="maintenance-submit"]').click();
+  const replayed = await replay;
+  expect(replayed.status()).toBe(201);
+  expect(await commandHeaders(replayed.request())).toMatchObject({
+    key: first?.key,
+    body: first?.body,
+  });
+  await expect(panel).toContainText('已暂停合作');
+  expect(await getCustomerMaintenanceState(id)).toMatchObject({
+    facts: 1,
+    receipts: 1,
+    audits: 1,
+  });
+});
+
+test('real PostgreSQL BUSY keeps the browser command body and key for retry', async ({
+  page,
+}) => {
+  const credentials = await resetLocalAuthE2eData();
+  await grantCustomerCooperation(
+    '30000000-0000-4000-8000-000000000010',
+    'DEPARTMENT',
+  );
+  await passwordLogin(page, '/customers', credentials);
+  await page.getByRole('link', { name: '新建客户' }).click();
+  await page.getByLabel('客户名称').fill('浏览器忙碌重试客户');
+  await page.getByRole('button', { name: '保存草稿' }).click();
+  await expect(
+    page.getByRole('heading', { name: '浏览器忙碌重试客户' }),
+  ).toBeVisible();
+  const id = page.url().split('/').at(-1)!;
+  const panel = page.locator('[data-test="cooperation-panel"]');
+  const baseline = await getCustomerMaintenanceState(id);
+  await panel.locator('[data-test="pause-open"]').click();
+  await panel.locator('[data-test="maintenance-reason"]').fill('真实锁等待');
+  const blocker = await beginForeignCustomerAccountBlocker(credentials.userId);
+  let first: Awaited<ReturnType<typeof commandHeaders>> | undefined;
+  try {
+    const busyResponse = page.waitForResponse(
+      (response) =>
+        response.url().endsWith(`/customers/${id}/cooperation`) &&
+        response.request().method() === 'POST',
+    );
+    await panel.locator('[data-test="maintenance-submit"]').click();
+    const busy = await busyResponse;
+    first = await commandHeaders(busy.request());
+    expect(busy.status()).toBe(409);
+    expect(await busy.json()).toMatchObject({
+      code: 'CUSTOMER_MAINTENANCE_BUSY',
+    });
+    expect(await getCustomerMaintenanceState(id)).toEqual(baseline);
+    await expect(panel.locator('[data-test="maintenance-submit"]')).toHaveText(
+      '按原请求重试',
+    );
+    await expect(page.locator('[data-test="edit-customer"]')).toHaveCount(0);
+  } finally {
+    await blocker.rollback();
+  }
+  const replay = page.waitForResponse(
+    (response) =>
+      response.url().endsWith(`/customers/${id}/cooperation`) &&
+      response.request().method() === 'POST',
+  );
+  await panel.locator('[data-test="maintenance-submit"]').click();
+  const succeeded = await replay;
+  expect(succeeded.status()).toBe(201);
+  expect(await commandHeaders(succeeded.request())).toMatchObject({
+    key: first?.key,
+    body: first?.body,
+  });
+  await expect(panel).toContainText('已暂停合作');
+  expect(await getCustomerMaintenanceState(id)).toMatchObject({
+    facts: 1,
+    receipts: 1,
+    audits: 1,
+  });
 });
 
 test('candidate read intersects transfer and SELF source loses read after cross-team transfer', async ({

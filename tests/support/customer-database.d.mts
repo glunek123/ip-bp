@@ -164,6 +164,7 @@ export function verifyRoleManageMigration(): Promise<{
   failure: { code: string | null; grantCount: number; revision: number };
 }>;
 export function resetLocalAuthE2eData(): Promise<{
+  userId: string;
   username: string;
   password: string;
 }>;

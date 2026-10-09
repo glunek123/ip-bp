@@ -148,7 +148,7 @@ async function resetLocalAuthE2eData() {
       data: { userId, departmentId, roleTemplateId: roleId },
     });
   });
-  return { username: 'e2e.local.admin', password };
+  return { userId, username: 'e2e.local.admin', password };
 }
 
 async function verifyLocalAuthMigration() {
