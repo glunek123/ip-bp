@@ -1,4 +1,5 @@
 import { flushPromises, mount } from '@vue/test-utils';
+import { defineComponent, h, ref } from 'vue';
 import { afterEach, describe, expect, it, vi } from 'vitest';
 import type { CustomerDetail, CustomerContact } from '../../api/customers';
 import { ApiError } from '../../api/http';
@@ -83,6 +84,24 @@ function mountPanel() {
   return mount(CustomerContactsPanel, {
     props: { customer, actor, blockedByOtherMaintenance: false },
   });
+}
+function mountPanelWithParentRefresh() {
+  const parent = defineComponent({
+    setup() {
+      const currentCustomer = ref<CustomerDetail>(customer);
+      return () =>
+        h(CustomerContactsPanel, {
+          customer: currentCustomer.value,
+          actor,
+          blockedByOtherMaintenance: false,
+          onRefreshed: (customerId, _actorKey, latest) => {
+            if (customerId === currentCustomer.value.id)
+              currentCustomer.value = { ...latest };
+          },
+        });
+    },
+  });
+  return mount(parent);
 }
 
 afterEach(() => {
@@ -175,11 +194,11 @@ describe('CustomerContactsPanel', () => {
     wrapper.unmount();
   });
 
-  it('allows a new write after a confirmed save and fresh current projection', async () => {
+  it('finishes the pending write when the parent replaces the refreshed customer', async () => {
     api.listCustomerContacts.mockResolvedValue(page([]));
     api.createCustomerContact.mockResolvedValue({});
     api.getCustomer.mockResolvedValue({ ...customer, version: 4 });
-    const wrapper = mountPanel();
+    const wrapper = mountPanelWithParentRefresh();
     await flushPromises();
     const fields = wrapper.findAll('form input');
     await fields[0]!.setValue('联系人甲');
@@ -191,6 +210,9 @@ describe('CustomerContactsPanel', () => {
       wrapper.find('[data-test="contact-refresh-readonly"]').exists(),
     ).toBe(false);
     expect(wrapper.find('form').exists()).toBe(true);
+    expect(
+      wrapper.get('form button[type="submit"]').attributes('disabled'),
+    ).toBe(undefined);
 
     const nextFields = wrapper.findAll('form input');
     await nextFields[0]!.setValue('联系人乙');

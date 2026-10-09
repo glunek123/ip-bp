@@ -540,7 +540,7 @@ async function end(): Promise<void> {
   }
 }
 watch(
-  () => [props.customer.id, actorKey.value],
+  [() => props.customer.id, actorKey],
   () => {
     listController?.abort();
     versionController?.abort();
