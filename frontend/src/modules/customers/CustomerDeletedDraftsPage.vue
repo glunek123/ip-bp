@@ -151,7 +151,9 @@ async function restore(item?: DeletedCustomerDraft): Promise<void> {
     refreshNotice.value = state.value === 'failed';
   } catch (error) {
     commandState.value =
-      error instanceof ApiError && error.status === 409
+      error instanceof ApiError &&
+      error.status === 409 &&
+      error.code !== 'CUSTOMER_CONTACT_BUSY'
         ? 'conflict'
         : 'unknown';
   }

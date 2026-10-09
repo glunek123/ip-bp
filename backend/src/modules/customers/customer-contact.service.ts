@@ -26,6 +26,34 @@ import {
 type ContactAction = 'CREATE' | 'UPDATE' | 'PRIMARY' | 'END';
 type ContactInput =
   CreateContactDto | UpdateContactDto | SetContactPrimaryDto | EndContactDto;
+const CONTACT_RECEIPT_KEY =
+  'customer_contact_command_receipts_department_actor_key';
+
+function isContactReceiptKeyUniqueConflict(error: unknown): boolean {
+  if (error === null || typeof error !== 'object') return false;
+  const value = error as {
+    code?: unknown;
+    cause?: unknown;
+    meta?: {
+      modelName?: unknown;
+      driverAdapterError?: {
+        cause?: {
+          originalCode?: unknown;
+          constraint?: { index?: unknown };
+        };
+      };
+    };
+  };
+  const cause = value.meta?.driverAdapterError?.cause;
+  if (
+    value.code === 'P2002' &&
+    value.meta?.modelName === 'CustomerContactCommandReceipt' &&
+    cause?.originalCode === '23505' &&
+    cause.constraint?.index === CONTACT_RECEIPT_KEY
+  )
+    return true;
+  return isContactReceiptKeyUniqueConflict(value.cause);
+}
 export type ContactSummary = {
   id: string;
   customerId: string;
@@ -482,6 +510,8 @@ export class CustomerContactService {
           { isolationLevel: 'Serializable' },
         );
       } catch (error) {
+        if (isContactReceiptKeyUniqueConflict(error))
+          throw this.conflict('CUSTOMER_CONTACT_IDEMPOTENCY_CONFLICT');
         if (!isCustomerContactRetryable(error)) throw error;
         if (attempt === 6) throw this.conflict('CUSTOMER_CONTACT_BUSY');
         await new Promise((resolve) => setTimeout(resolve, attempt * 15));

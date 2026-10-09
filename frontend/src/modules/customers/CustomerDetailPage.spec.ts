@@ -7,7 +7,10 @@ import { useAuthStore } from '../../stores/auth';
 import { pinia } from '../../app/pinia';
 import { savePendingCustomerMaintenance } from './customer-maintenance-pending';
 
-const api = vi.hoisted(() => ({ getCustomer: vi.fn() }));
+const api = vi.hoisted(() => ({
+  getCustomer: vi.fn(),
+  deleteCustomerDraft: vi.fn(),
+}));
 const maintenanceApi = vi.hoisted(() => ({
   changeCustomerCooperation: vi.fn(),
   listEligibleOperators: vi.fn(),
@@ -109,6 +112,47 @@ function customerRecord(id: string, name: string) {
 }
 
 describe('CustomerDetailPage', () => {
+  it('keeps the exact delete request after CONTACT_BUSY and retries the same key', async () => {
+    useAuthStore(pinia).session = {
+      principalType: 'INTERNAL',
+      user: { id: 'user-1', displayName: '运营甲', username: 'operator-a' },
+      department: { id: 'department-1', name: '甲部门' },
+      departments: [{ id: 'department-1', name: '甲部门' }],
+      customer: null,
+      notaryOffice: null,
+      authorizationRevision: 1,
+      expiresAt: '2026-10-09T10:00:00.000Z',
+      csrfToken: 'csrf',
+    };
+    api.getCustomer.mockResolvedValue({
+      ...customerRecord('customer-1', '客户甲'),
+      capabilities: { editRoutine: true, admit: true, deleteDraft: true },
+    });
+    api.deleteCustomerDraft
+      .mockRejectedValueOnce(new ApiError('busy', 409, 'CUSTOMER_CONTACT_BUSY'))
+      .mockResolvedValueOnce({});
+    const { wrapper, router } = await mountPage();
+    await flushPromises();
+    await wrapper.get('[data-test="delete-draft-open"]').trigger('click');
+    await wrapper
+      .get('[data-test="delete-draft-confirm"] input')
+      .setValue('保留原因');
+    await wrapper.get('[data-test="delete-draft-submit"]').trigger('click');
+    await flushPromises();
+    expect(wrapper.text()).toContain('结果尚不确定');
+    expect(wrapper.get('[data-test="delete-draft-submit"]').text()).toContain(
+      '按原请求重试',
+    );
+    expect(globalThis.sessionStorage.length).toBe(1);
+    await wrapper.get('[data-test="delete-draft-submit"]').trigger('click');
+    await flushPromises();
+    expect(api.deleteCustomerDraft).toHaveBeenCalledTimes(2);
+    expect(api.deleteCustomerDraft.mock.calls[1]).toEqual(
+      api.deleteCustomerDraft.mock.calls[0],
+    );
+    expect(globalThis.sessionStorage.length).toBe(0);
+    expect(router.currentRoute.value.fullPath).toBe('/customers');
+  });
   it('carries a confirmed access-loss success to the list without query data', async () => {
     useAuthStore(pinia).session = {
       principalType: 'INTERNAL',

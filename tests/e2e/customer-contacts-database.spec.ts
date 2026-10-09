@@ -1,4 +1,6 @@
 import { randomUUID } from 'node:crypto';
+import { createRequire } from 'node:module';
+import { resolve } from 'node:path';
 import { expect, test } from '@playwright/test';
 import {
   allowContactReceiptWrites,
@@ -6,6 +8,7 @@ import {
   disconnectCustomerTestDatabase,
   e2eFixtures,
   getContactProvenance,
+  getCustomerLifecycleCounts,
   grantCustomerAdmission,
   grantCustomerLifecycle,
   holdCustomerActorLock,
@@ -16,6 +19,38 @@ import {
 } from '../support/customer-database.mjs';
 
 const auth = { Authorization: `Bearer ${e2eFixtures.tokenA}` };
+type PgProbeClient = {
+  connect(): Promise<void>;
+  query(
+    sql: string,
+    values?: string[],
+  ): Promise<{ rows: Array<Record<string, unknown>>; rowCount: number | null }>;
+  end(): Promise<void>;
+};
+const requireBackend = createRequire(
+  resolve(process.cwd(), 'backend/package.json'),
+);
+const PgClient = (
+  requireBackend('pg') as {
+    Client: new (options: { connectionString: string }) => PgProbeClient;
+  }
+).Client;
+
+async function waitForBlockedQuery(
+  client: PgProbeClient,
+  event: string,
+): Promise<void> {
+  for (let attempt = 0; attempt < 50; attempt += 1) {
+    const result = await client.query(
+      `SELECT count(*)::int AS count FROM pg_stat_activity
+      WHERE datname=current_database() AND pid<>pg_backend_pid() AND wait_event_type='Lock' AND wait_event=$1`,
+      [event],
+    );
+    if (Number(result.rows[0]?.count) > 0) return;
+    await new Promise((resolve) => setTimeout(resolve, 20));
+  }
+  throw new Error(`Expected blocked ${event} wait did not appear`);
+}
 
 test.beforeEach(async () => {
   await resetCustomerE2eData();
@@ -508,4 +543,241 @@ test('actor row NOWAIT exhaustion returns BUSY without consuming the key, then o
   expect(retry.status(), await retry.text()).toBe(201);
   const list = await request.get(url, { headers: auth });
   expect(await list.json()).toMatchObject({ total: 1 });
+});
+
+test('lifecycle delete and legacy restore keep their exact key through actor NOWAIT BUSY with no partial history', async ({
+  request,
+}) => {
+  await grantCustomerLifecycle(e2eFixtures.roleA);
+  const pendingId = await createLegacyPendingDeletedCustomer();
+  const restoreKey = randomUUID();
+  const restoreBody = { expectedVersion: 1 };
+  const releaseRestoreLock = await holdCustomerActorLock(e2eFixtures.userA);
+  try {
+    const busy = await request.post(
+      `/api/v1/customers/${pendingId}/restore-draft`,
+      {
+        headers: { ...auth, 'Idempotency-Key': restoreKey },
+        data: restoreBody,
+      },
+    );
+    expect(busy.status(), await busy.text()).toBe(409);
+    expect((await busy.json()).code).toBe('CUSTOMER_CONTACT_BUSY');
+    expect(await getContactProvenance(pendingId)).toEqual([]);
+    expect(await getCustomerLifecycleCounts(pendingId)).toMatchObject({
+      customer: { version: 1 },
+      facts: 0,
+      receipts: 0,
+      audits: 0,
+    });
+  } finally {
+    await releaseRestoreLock();
+  }
+  const restored = await request.post(
+    `/api/v1/customers/${pendingId}/restore-draft`,
+    {
+      headers: { ...auth, 'Idempotency-Key': restoreKey },
+      data: restoreBody,
+    },
+  );
+  expect(restored.status(), await restored.text()).toBe(201);
+  expect(await getContactProvenance(pendingId)).toMatchObject([
+    {
+      versions: [{ action: 'CREATED', actorUserId: e2eFixtures.userA }],
+    },
+  ]);
+  expect(await getCustomerLifecycleCounts(pendingId)).toMatchObject({
+    facts: 1,
+    receipts: 1,
+    audits: 1,
+  });
+
+  const created = await request.post('/api/v1/customers', {
+    headers: auth,
+    data: { name: 'CU006 empty delete BUSY' },
+  });
+  expect(created.status(), await created.text()).toBe(201);
+  const draft = (await created.json()) as { id: string; version: number };
+  const deleteKey = randomUUID();
+  const deleteBody = { expectedVersion: draft.version };
+  const releaseDeleteLock = await holdCustomerActorLock(e2eFixtures.userA);
+  try {
+    const busy = await request.post(
+      `/api/v1/customers/${draft.id}/delete-draft`,
+      {
+        headers: { ...auth, 'Idempotency-Key': deleteKey },
+        data: deleteBody,
+      },
+    );
+    expect(busy.status(), await busy.text()).toBe(409);
+    expect((await busy.json()).code).toBe('CUSTOMER_CONTACT_BUSY');
+    expect(await getContactProvenance(draft.id)).toEqual([]);
+    expect(await getCustomerLifecycleCounts(draft.id)).toMatchObject({
+      customer: { version: draft.version, deletedAt: null },
+      facts: 0,
+      receipts: 0,
+      audits: 0,
+    });
+  } finally {
+    await releaseDeleteLock();
+  }
+  const deleted = await request.post(
+    `/api/v1/customers/${draft.id}/delete-draft`,
+    {
+      headers: { ...auth, 'Idempotency-Key': deleteKey },
+      data: deleteBody,
+    },
+  );
+  expect(deleted.status(), await deleted.text()).toBe(201);
+  expect(await getCustomerLifecycleCounts(draft.id)).toMatchObject({
+    facts: 1,
+    receipts: 1,
+    audits: 1,
+  });
+});
+
+test('same actor and key across two customers under overlapping transactions commits one and returns safe 409', async ({
+  request,
+}) => {
+  const firstCreate = await request.post('/api/v1/customers', {
+    headers: auth,
+    data: { name: 'CU006 key race A' },
+  });
+  const secondCreate = await request.post('/api/v1/customers', {
+    headers: auth,
+    data: { name: 'CU006 key race B' },
+  });
+  expect(firstCreate.status(), await firstCreate.text()).toBe(201);
+  expect(secondCreate.status(), await secondCreate.text()).toBe(201);
+  const first = (await firstCreate.json()) as { id: string; version: number };
+  const second = (await secondCreate.json()) as { id: string; version: number };
+  const key = randomUUID();
+  const databaseUrl = process.env.DATABASE_URL;
+  if (!databaseUrl) throw new Error('isolated E2E DATABASE_URL missing');
+  const blocker = new PgClient({ connectionString: databaseUrl });
+  await blocker.connect();
+  try {
+    const database = await blocker.query(
+      'SELECT current_database() AS name,current_schema() AS schema',
+    );
+    if (
+      database.rows[0]?.name !== 'dev_cor_test' ||
+      database.rows[0]?.schema !== 'public'
+    )
+      throw new Error('wrong test database');
+    await blocker.query('BEGIN');
+    await blocker.query(
+      'SELECT id FROM customers WHERE id=$1::uuid FOR UPDATE',
+      [first.id],
+    );
+    const firstRequest = request.post(
+      `/api/v1/customers/${first.id}/contacts`,
+      {
+        headers: { ...auth, 'Idempotency-Key': key },
+        data: {
+          expectedCustomerVersion: first.version,
+          name: 'First racer',
+          phone: '13800138000',
+        },
+      },
+    );
+    await waitForBlockedQuery(blocker, 'transactionid');
+    const secondRequest = request.post(
+      `/api/v1/customers/${second.id}/contacts`,
+      {
+        headers: { ...auth, 'Idempotency-Key': key },
+        data: {
+          expectedCustomerVersion: second.version,
+          name: 'Second racer',
+          phone: '13900139000',
+        },
+      },
+    );
+    await waitForBlockedQuery(blocker, 'advisory');
+    await blocker.query('COMMIT');
+    const responses = await Promise.all([firstRequest, secondRequest]);
+    expect(responses.map((response) => response.status()).sort()).toEqual([
+      201, 409,
+    ]);
+    expect((await responses[1].json()).code).toBe(
+      'CUSTOMER_CONTACT_IDEMPOTENCY_CONFLICT',
+    );
+    expect(await getContactProvenance(second.id)).toEqual([]);
+    const residue = await blocker.query(
+      `SELECT
+      (SELECT count(*)::int FROM customer_contact_command_receipts WHERE customer_id=$1::uuid) AS receipts,
+      (SELECT count(*)::int FROM audit_events WHERE resource_type='customer-contact' AND details->>'customerId'=$1::text) AS audits`,
+      [second.id],
+    );
+    expect(residue.rows[0]).toMatchObject({ receipts: 0, audits: 0 });
+  } finally {
+    await blocker.query('ROLLBACK').catch(() => {});
+    await blocker.end();
+  }
+});
+
+test('contact receipt key unique violation maps to safe 409 and rolls back staged contact', async ({
+  request,
+}) => {
+  const created = await request.post('/api/v1/customers', {
+    headers: auth,
+    data: { name: 'CU006 receipt unique fault' },
+  });
+  expect(created.status(), await created.text()).toBe(201);
+  const customer = (await created.json()) as { id: string; version: number };
+  const databaseUrl = process.env.DATABASE_URL;
+  if (!databaseUrl) throw new Error('isolated E2E DATABASE_URL missing');
+  const client = new PgClient({ connectionString: databaseUrl });
+  await client.connect();
+  try {
+    const database = await client.query(
+      'SELECT current_database() AS name,current_schema() AS schema',
+    );
+    if (
+      database.rows[0]?.name !== 'dev_cor_test' ||
+      database.rows[0]?.schema !== 'public'
+    )
+      throw new Error('wrong test database');
+    await client.query(`CREATE FUNCTION cu006_reject_contact_receipt_key() RETURNS trigger LANGUAGE plpgsql AS $$
+      BEGIN IF NEW.idempotency_key='cu006-review-duplicate' THEN
+        RAISE unique_violation USING CONSTRAINT='customer_contact_command_receipts_department_actor_key';
+      END IF; RETURN NEW; END $$`);
+    await client.query(`CREATE TRIGGER cu006_reject_contact_receipt_key BEFORE INSERT ON customer_contact_command_receipts
+      FOR EACH ROW EXECUTE FUNCTION cu006_reject_contact_receipt_key()`);
+    const failed = await request.post(
+      `/api/v1/customers/${customer.id}/contacts`,
+      {
+        headers: { ...auth, 'Idempotency-Key': 'cu006-review-duplicate' },
+        data: {
+          expectedCustomerVersion: customer.version,
+          name: 'Fault unique',
+          phone: '13800138000',
+        },
+      },
+    );
+    expect(failed.status(), await failed.text()).toBe(409);
+    expect((await failed.json()).code).toBe(
+      'CUSTOMER_CONTACT_IDEMPOTENCY_CONFLICT',
+    );
+    expect(await getContactProvenance(customer.id)).toEqual([]);
+    const residue = await client.query(
+      `SELECT count(*)::int AS receipts FROM customer_contact_command_receipts WHERE customer_id=$1::uuid`,
+      [customer.id],
+    );
+    expect(residue.rows[0]).toMatchObject({ receipts: 0 });
+  } finally {
+    try {
+      await client.query(
+        'DROP TRIGGER IF EXISTS cu006_reject_contact_receipt_key ON customer_contact_command_receipts',
+      );
+    } finally {
+      try {
+        await client.query(
+          'DROP FUNCTION IF EXISTS cu006_reject_contact_receipt_key()',
+        );
+      } finally {
+        await client.end();
+      }
+    }
+  }
 });

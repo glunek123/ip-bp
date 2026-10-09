@@ -120,7 +120,9 @@ async function submitDelete(): Promise<void> {
   } catch (error) {
     if (String(route.params.id) !== command.customerId) return;
     deleteStatus.value =
-      error instanceof ApiError && error.status === 409
+      error instanceof ApiError &&
+      error.status === 409 &&
+      error.code !== 'CUSTOMER_CONTACT_BUSY'
         ? 'conflict'
         : 'unknown';
   }

@@ -297,6 +297,57 @@ describe('CORE-LD-002 OpenAPI contract', () => {
 
   it.each([
     [
+      'ContactSummaryResponseDto',
+      ['phone', 'email', 'duty', 'endedAt', 'endReason'],
+    ],
+    ['ContactCommandResultResponseDto', ['primaryContactId']],
+    ['ContactListResponseDto', ['primaryContactId']],
+    [
+      'ContactVersionSnapshotResponseDto',
+      ['phone', 'email', 'duty', 'endedAt', 'endReason'],
+    ],
+    ['ContactVersionActorResponseDto', ['userId']],
+  ] as const)(
+    'documents %s nullable scalar responses as required strings',
+    (name, fields) => {
+      const document = SwaggerModule.createDocument(
+        app,
+        new DocumentBuilder().setTitle('test').setVersion('1').build(),
+      );
+      const schema = document.components?.schemas?.[name] as {
+        properties?: Record<string, unknown>;
+        required?: string[];
+      };
+      for (const field of fields) {
+        expect(schema.required).toContain(field);
+        expect(schema.properties?.[field]).toMatchObject({
+          type: 'string',
+          nullable: true,
+        });
+      }
+    },
+  );
+
+  it.each(['CreateContactDto', 'UpdateContactDto'] as const)(
+    'documents %s nullable request scalars as strings',
+    (name) => {
+      const document = SwaggerModule.createDocument(
+        app,
+        new DocumentBuilder().setTitle('test').setVersion('1').build(),
+      );
+      const schema = document.components?.schemas?.[name] as {
+        properties?: Record<string, unknown>;
+      };
+      for (const field of ['phone', 'email', 'duty'])
+        expect(schema.properties?.[field]).toMatchObject({
+          type: 'string',
+          nullable: true,
+        });
+    },
+  );
+
+  it.each([
+    [
       '/api/v1/cases/{id}/hearing-schedule',
       'SaveCaseHearingDto',
       ['expectedVersion', 'idempotencyKey', 'hearingAt'],

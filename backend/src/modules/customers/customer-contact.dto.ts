@@ -58,20 +58,20 @@ class ContactFieldsDto {
   @MinLength(1)
   @MaxLength(100)
   name?: string;
-  @ApiPropertyOptional({ maxLength: 30, nullable: true })
+  @ApiPropertyOptional({ type: String, maxLength: 30, nullable: true })
   @Transform(trim)
   @ValidateIf((_o, v) => v !== undefined && v !== null)
   @IsString()
   @Matches(phonePattern)
   @MaxLength(30)
   phone?: string | null;
-  @ApiPropertyOptional({ maxLength: 254, nullable: true })
+  @ApiPropertyOptional({ type: String, maxLength: 254, nullable: true })
   @Transform(trim)
   @ValidateIf((_o, v) => v !== undefined && v !== null)
   @IsEmail()
   @MaxLength(254)
   email?: string | null;
-  @ApiPropertyOptional({ maxLength: 500, nullable: true })
+  @ApiPropertyOptional({ type: String, maxLength: 500, nullable: true })
   @Transform(trim)
   @ValidateIf((_o, v) => v !== undefined && v !== null)
   @IsString()
