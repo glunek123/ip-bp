@@ -1,0 +1,48 @@
+# CORE-CU-006 多联系人实施契约
+
+日期：2026-10-09。只读预检草稿；CU005 已通过正式门禁，本文待 root 复核落盘，未写入正式 Spec，未批准额外业务规则，CU006 未实现或验证。依据为 REQ-CU-001/002/005/006/007、SD-46/48、客户总设计及当前 CU004/005 代码。内部字段名不进入产品文案。
+
+## 事实和边界
+
+- 一个客户可有多位联系人；活动关系最多一位主要，也可没有。结束关系留下原 ID、版本和历史，不恢复该 ID，不按姓名或电话合并。联系人不创建账号、不授予权限。
+- 现有 Customer.admissionContactName/Phone/Email 是当前单人平铺字段。现有 POST /customers 和 PATCH /customers/:id 接受它们；现有准入请求必须有姓名和电话/邮箱，CustomerAdmissionReceipt 的 requestFingerprint 和 resultSnapshot 已形成历史契约。CU006 保留旧请求形状、既有回执原 JSON 和旧算法。
+- 内部 Customer.compatibilityContactId 是旧三字段投影的活动行指针，绝不等于主要联系人。产品只称“联系人”；页面只提供一个联系人编辑入口，准入显式选活动联系人。旧客户端仍可提交三字段。
+- ADMITTED 的最低资料改由独立冻结快照维持。结束当前联系人可令旧三字段全空，但客户仍 ADMITTED。原回执是当时返回值，不作为当前关系。旧 key 回放可返回历史响应；UI 回放成功后重新 GET 当前详情。
+- CU004 软删除资格增加全部 customer_contacts 行（活动及结束）的检查；新行的 INSERT/UPDATE 进入现有 SQL 父锁关联守卫。旧三字段本身仍是草稿原资料，不视为已建联系人关系。已删除草稿迁移不建活动联系人；恢复只为从未建过任何关系且仍有完整旧标量的客户创建一行，不复活 ended。
+
+## 存储与权限
+
+新 customer_contacts：id UUID、customer_id UUID、department_id UUID、name VARCHAR(100)、phone VARCHAR(30) 可空、email VARCHAR(254) 可空、duty VARCHAR(500) 可空、is_primary BOOLEAN 默认 false、ended_at TIMESTAMPTZ(3) 可空、ended_by_user_id 可空、end_reason VARCHAR(500) 可空、version INT 从 1 起、origin（LEGACY_BACKFILL/LEGACY_CREATE/ADMISSION_FREEFORM/MANUAL）、origin_key 可空、created_at/by、updated_at/by。created_by_user_id/updated_by_user_id 对 LEGACY_BACKFILL 迁入允许 null，表示迁移系统记录；其余真实创建和变更填实际 actor。约束：姓名非空白且至少一个联系方式；结束行不得主要；同客户活动主要 partial unique index；客户/部门组合外键及唯一键；不对电话、姓名设唯一。结束原因可省略；输入非空时 1–500 字。created_at/ended_at 只记录系统实际动作时刻，迁入 created_at 是迁移时刻并用 origin 标示，不能冒称原交往时间；不能把 Customer.responsibleUserId、旧 admittedAt 或迁移时间假充历史人工创建者/交往时间。
+
+新 customer_contact_versions：id UUID、contact_id/version 唯一；action 为 CREATED/UPDATED/PRIMARY_SET/PRIMARY_UNSET/ENDED；before/after 为当时可见的联系人快照（字段见下节），actor_user_id 可空，source 为 HUMAN 或 LEGACY_MIGRATION，occurred_at 为真实记录时间。HUMAN 必须有实际 actor_user_id，LEGACY_MIGRATION 必须为 null；迁入初始版本 action=CREATED、source=LEGACY_MIGRATION、occurred_at=迁移时间，不虚构人工历史或受限 SYSTEM AuditEvent。CU004 恢复旧标量是在恢复时由实际用户办理的动作，其新 Contact/初始版本记当前 actor 和当前时间；旧 create/PATCH/准入建人同样记实际 actor/实际时间。UPDATE/DELETE 被 SQL 拒绝。新 customer_contact_command_receipts：department_id、actor_user_id、idempotency_key 唯一，加 customer_id、action、request_fingerprint、result_snapshot、result_customer_version；UPDATE/DELETE 被 SQL 拒绝。历史查询重验 customer.read 范围，按 occurred_at DESC,id DESC 分页，默认 20、上限 100。
+
+Customer 加 compatibility_contact_id、legacy_contact_pending、admission_contact_snapshot_name/phone/email/source/frozen_at。旧三字段只能与所指同客户同部门且未结束的行逐字相同；指针为空时旧三字段全空，唯一例外为已删除且 pending 的迁入旧草稿。准入快照在 ADMITTED 必须完整，DRAFT 全空，准入后不可更改；source 是 RECEIPT 或 FALLBACK_CURRENT 或 NEW_ADMISSION。RECEIPT 的 frozen_at 取该 receipt 的真实 created_at，NEW_ADMISSION 取本次准入事件时间，FALLBACK_CURRENT 取迁移时间；来源字段明确区分，迁移时间不能冒称原准入时间。保留现有旧三字段“全空或完整”CHECK；替换 customers_admitted_fields_compatible_check 中对旧三字段的依赖为快照字段。组合 FK 和延后约束触发器在事务末核验投影、指针、快照；普通应用连接不使用 SET/set_config/绕过开关。此处负例针对普通DML；数据库角色及DDL权限沿用现有安全规范，不把拥有超权限角色的DDL能力冒称为已覆盖的应用守卫。
+
+当前读取统一要求 customer.read 与当前数据范围；新写入要求 customer.read 与 customer.edit-routine 的交集。CLIENT/LAWYER 不从联系人身份得到管理权。沿用既有 Grant，不为联系人引入独立账号或新权限。联系人命令和会改联系人关系的旧 PATCH/准入按 CU005 已采用的局部锁序：OrganizationService.lockDepartment → 当前 actor 的账号、部门成员、角色、Grant 及相关 team 行按稳定 ID 顺序 FOR SHARE NOWAIT → 用既有 AccessControl 初核当前 read/edit 或 admit 范围 → 同客户 Customer FOR UPDATE → 用既有 AccessControl 重查当前范围与 deletedAt → 查原 key 的 receipt/指纹 → 只有新写分支才检查 expectedCustomerVersion、expectedContactVersion、活动状态和同态，再写当前行、不可变版本、脱敏 AuditEvent、Customer.version +1、回执。旧 PATCH 无 receipt，在第二次授权后直接进入 CAS；CU004 恢复物化联系人也须在锁父项前取得 actor 相关锁，不能重新引入“先 Customer FOR UPDATE，后 AuditEvent actor 外键锁”的反序。跨部门共享账号撞锁/死锁或可重试序列化冲突按 CU005 的有界重试策略处理：最多 6 次，重试前按 attempt×15ms 短退避，识别 P2034/55P03/40001/40P01 及现有 adapter 嵌套码；次数耗尽返回 409 CUSTOMER_CONTACT_BUSY，并保留原请求体/key 供原样恢复。重放仍须当前授权，已成功的联系人后来结束也不使旧 receipt 回放失效；历史回放不重复检查旧联系人活动状态、旧版本或旧同态。该锁序只复用现有权限计算，不声称跨所有组织写入天然线性化；真实 PG 并发证明边界。任一失败全回滚。CU005 PAUSED/TERMINATED 不阻止联系人维护；CU004 deleted 拒绝普通路径。
+
+## HTTP 请求与结果
+
+- 精确读取形状：ContactSummary={id:string,customerId:string,name:string,phone:string|null,email:string|null,duty:string|null,isPrimary:boolean,endedAt:string|null,endReason:string|null,version:number,origin:'LEGACY_BACKFILL'|'LEGACY_CREATE'|'ADMISSION_FREEFORM'|'MANUAL',createdAt:string,updatedAt:string}。活动行 endedAt/endReason 均为 null；已结束行在获准范围内从该摘要读取结束原因，不从旧 Customer 三字段读。ContactVersion={id:string,contactId:string,version:number,action:'CREATED'|'UPDATED'|'PRIMARY_SET'|'PRIMARY_UNSET'|'ENDED',before:ContactVersionSnapshot|null,after:ContactVersionSnapshot,actor:{kind:'HUMAN',userId:string}|{kind:'LEGACY_MIGRATION',userId:null},occurredAt:string}；ContactVersionSnapshot={name:string,phone:string|null,email:string|null,duty:string|null,isPrimary:boolean,endedAt:string|null,endReason:string|null}。CREATED 的 before=null；ENDED 的 after 保留结束时的原资料/原因，后续不可改。CustomerContactCommandResult={contact:ContactSummary,customerVersion:number,primaryContactId:string|null}。CustomerDetail 只增加 primaryContactId 与 admissionContactSnapshot，原 CustomerSummary 不扩成必须包含 ContactVersion/结束原因的历史对象。
+- GET /customers/:id/contacts?page=1&pageSize=20&status=ACTIVE|ENDED：返回 items、total、page、pageSize、primaryContactId（可 null）；活动与历史分页都只取真实 Contact 行。GET /customers/:id/contacts/:contactId/versions?page=1&pageSize=20 返回不可变历史。customer.read 范围交集；跨部门/不可见 ID 给与现有客户读语义一致的 404。
+- POST /customers/:id/contacts：body {expectedCustomerVersion,name,phone?,email?,duty?,isPrimary?}。isPrimary 缺省 false；显式 true 同事务先取消旧主要再指定新行。成功 201 返回 {contact,customerVersion,primaryContactId}；Nest controller 标注 @ApiCreatedResponse。必填 Idempotency-Key。
+- PATCH /customers/:id/contacts/:contactId：body {expectedCustomerVersion,expectedContactVersion,name?,phone?,email?,duty?}；字段缺席保持，显式 null 只对可空 phone/email/duty 表示清除，最终仍需姓名+至少一联系方式；结束行 409。成功 200 返回同一结构。必填 Idempotency-Key。
+- POST /customers/:id/contacts/:contactId/primary：body {expectedCustomerVersion,expectedContactVersion,primary:boolean}；true 指定、false 取消，仅当前主要可取消；不物理删除。成功 200 返回同一结构；Nest controller 同时标注 @HttpCode(200) 与 @ApiOkResponse，避免默认 201 与 OpenAPI 偏差。必填 Idempotency-Key。
+- POST /customers/:id/contacts/:contactId/end：body {expectedCustomerVersion,expectedContactVersion,reason?}；结束主要时取消主要，若为旧投影指针则清指针及三字段，冻结快照不动。成功 200 返回同一结构；Nest controller 同时标注 @HttpCode(200) 与 @ApiOkResponse。必填 Idempotency-Key。
+- 新命令同一 key/同正文在重新校验当前授权与范围后返回原 result_snapshot，不再重新检查旧版本、已结束关系或当前同态，也不重写历史；同 key 不同正文 409 CUSTOMER_CONTACT_IDEMPOTENCY_CONFLICT。未知结果保存完整请求体、key 和原版本，只重试原请求；403/404/409 CUSTOMER_CONTACT_BUSY 或 GET 失败不能证明原命令未提交。已确认成功后 GET 失败只允许只读刷新，不拿历史版本发新命令。
+- POST /customers 旧三字段保持原 DTO。三字段全空不建关系；完整则同一事务创建 LEGACY_CREATE Contact、设内部指针、保持旧响应形状。旧 PATCH /customers/:id 的三字段保持原省略=不变、单字段合并及格式校验；有活动指针则改同一 ID 并记版本，无指针且从未有关系则完整填写时新建 LEGACY_CREATE；指针已结束或已有其他关系且无指针时，不按平铺输入猜联系人，返回 409 CUSTOMER_CONTACT_SELECTION_REQUIRED，需显式在面板选/新建。旧 PATCH 的非联系人字段仍可独立保存。旧 PATCH 原本无 Idempotency-Key，保留该行为；新增联系人效果靠客户 CAS 保证每版本只应用一次，未知结果须 GET 核实后再决定，不自动换 key/版本重投。
+- POST /customers/:id/admission 保留旧 flat DTO、旧指纹函数及历史 receipt JSON。新增可选 admissionContactId（UUID）；新 UI 只传所选 ID，并保留既有主体/证件/材料字段。若同时传 flat 字段，须与所选活动行相等，否则 409 CUSTOMER_CONTACT_MISMATCH。显式 ID 路径用单独版本化指纹：只序列化规范化后的原请求字段（版本标记、customerId、admissionContactId、明确提交的 flat 字段和其他准入字段），字段顺序固定；不能把当前 Contact 的姓名/电话/邮箱回填进指纹或按当前行重新计算。旧无 ID 路径的 JSON 字段顺序/归一化原样保留。收到原 key 时先校验当前 customer.admit/可见性、查 receipt 并用冻结的原请求规范化结果比较指纹；命中后直接返回原快照，回放前不解析现时选中行。只有新写才读取/校验活动 Contact。这样联系人后续更新或结束不会改变原请求 hash。旧 flat 路径有活动旧指针则更新同一 ID、无活动 Contact 才建 ADMISSION_FREEFORM；无指针但已有活动 Contact 则 409 CUSTOMER_CONTACT_SELECTION_REQUIRED。成功与 Contact、冻结快照、准入、旧投影、原准入回执同一 Serializable 事务。不得因新带 ID 的历史投影去改写旧 receipt。
+- GET /customers/:id 原 summary 字段保持，旧三字段代表当前活动投影；详情新增 contacts 概览/读入口、primaryContactId、admissionContactSnapshot（ADMITTED 才返回）。RECEIPT 可标“准入时登记的联系人资料”；FALLBACK_CURRENT 必须标“迁移时保存的联系人资料，原准入时内容无法确认”。详情不返回 compatibilityContactId/legacyContactPending 作为产品概念。已删除草稿专用查询可显示“删除前保存的联系人资料”，绝不放入活动联系人列表。
+
+统一错误：DTO 400；无权/不可见沿现有 403/404 策略不泄露目标；客户/联系人版本冲突 409 CUSTOMER_VERSION_CONFLICT/CUSTOMER_CONTACT_VERSION_CONFLICT；结束关系 409 CUSTOMER_CONTACT_ENDED；缺选择 409 CUSTOMER_CONTACT_SELECTION_REQUIRED；同态或无效主要动作 409 CUSTOMER_CONTACT_STATE_CONFLICT。数据库唯一、组合 FK、触发器错误应转为稳定业务码或安全 409，不回传 SQL/个人字段。
+
+## 页面未知结果与交叉维护
+
+联系人命令的pending按userId/departmentId/customerId/action（及目标contactId）保存独立原正文、版本和key，发送前存储失败则不POST；身份或客户切换丢弃迟到响应，撤权先清可见资料但不删除未知原请求。未知网络/非法响应/BUSY/403/404不当成未提交证明；只有原命令重试或成功后的只读当前GET恢复，不用历史回执版本自动发新写。
+
+同客户联系人结果未知时冻结普通编辑、准入、主体、账号、资产、合作和删除入口，保留联系人原请求恢复入口；合作或删除结果未知及当前投影过期时冻结新的联系人操作。同一面板自身的原请求重试入口不能被它自己发出的pending标记卸载。已确认成功后GET失败保留成功事实并只允许只读刷新，不重POST。各面板事件含来源客户ID，parent接收前核对路由和当前actor，不把另一客户迟到事件写入当前详情；活动/历史列表、主要标记及客户版本只取同一当前详情/后续授权GET，不把旧三字段猜成主要。
+
+## 迁移与验收要点
+
+单份前向迁移用 BEGIN/COMMIT 包住加表/列、旧值和回执读取、回填、CHECK 替换、守卫安装及逐行断言；实际 Prisma Migrate 路径不得拆成应用可见的半状态。已准入快照优先从同客户最早有效准入 receipt 的 result_snapshot 提取三字段；有效须 JSON 的 profileStatus 精确为 'admitted'、id/departmentId/version 分别等于 receipt 的 result_customer_id/department_id/result_customer_version，且姓名非空并至少有电话或邮箱。按 receipt.created_at、id 稳定选最早合法原始值；后续 receipt 因不同时点/版本而有不同值是正常历史，不视为冲突，也不改其 JSON。若同客户同 result_customer_version 的有效候选相互矛盾，或关联/来源事实无法判定可信，则迁移原子失败，只报异常 ID/数量、不打印 PII；单条无效候选计数并跳过。没有有效 receipt 的 ADMITTED 才用迁移前旧三字段并标 FALLBACK_CURRENT，缺最低值时迁移整体失败并报 ID/数量，不造数据。不得 UPDATE 历史 receipt。未删除且旧三字段完整的客户恰回填一行 LEGACY_BACKFILL、primary=false、固定 origin_key=legacy:<customerId>；已删除客户跳过，旧字节保留并标 pending。恢复事务仅当无任何 Contact 关系且 pending=true 时建固定来源的一行并消 pending，重复恢复不会多建；已有结束关系不得复活。
+
+专项应证明：旧 POST/PATCH/admission flat 与旧回执指纹/JSON 原样；已准入结束最后一人后旧三字段清空、快照/receipt 保持；单项电话或邮箱回填；已删除草稿跳过/恢复恰一次；同名同号不同 ID；同客户并发主要、旧 PATCH/新编辑、删除/新增关系；SQL 直接第二主要、跨部门指针、结束行主要、漂移投影、改快照/历史、deleted 父项关联被拒；撤权后 replay 拒绝且失败全回滚。真实密码 cookie/CSRF 及刷新/重登分别覆盖旧新流程。只在独立测试库临时 schema 做空链和旧链升级/失败原子性，人工 5181/3201/15434 保持原样。
