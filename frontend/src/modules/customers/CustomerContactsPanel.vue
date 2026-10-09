@@ -289,13 +289,17 @@ async function refreshReadonly(): Promise<void> {
     const active = await listCustomerContacts(
       customerId,
       'ACTIVE',
-      page.value,
+      status.value === 'ACTIVE' ? page.value : 1,
       pageSize,
       { signal },
     );
-    const ended = await listCustomerContacts(customerId, 'ENDED', 1, pageSize, {
-      signal,
-    });
+    const ended = await listCustomerContacts(
+      customerId,
+      'ENDED',
+      status.value === 'ENDED' ? page.value : 1,
+      pageSize,
+      { signal },
+    );
     if (!current(context, customerId, who) || request !== refreshGeneration)
       return;
     contacts.value = status.value === 'ACTIVE' ? active.items : ended.items;

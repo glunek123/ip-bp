@@ -488,6 +488,66 @@ describe('CustomerContactsPanel', () => {
     wrapper.unmount();
   });
 
+  it('keeps the selected ended page after read-only recovery', async () => {
+    const endedPage = (requestedPage: number) => ({
+      items: [
+        {
+          ...contact(`ended-${requestedPage}`),
+          name: `已结束联系人第${requestedPage}页`,
+          endedAt: '2026-10-01T00:00:00.000Z',
+        },
+      ],
+      total: 21,
+      page: requestedPage,
+      pageSize: 20,
+      primaryContactId: null,
+    });
+    api.listCustomerContacts.mockImplementation(
+      (_id: string, listStatus: string, requestedPage: number) =>
+        Promise.resolve(
+          listStatus === 'ENDED'
+            ? endedPage(requestedPage)
+            : { ...page([]), page: requestedPage },
+        ),
+    );
+    api.createCustomerContact.mockResolvedValue({});
+    api.getCustomer
+      .mockRejectedValueOnce(new Error('offline'))
+      .mockResolvedValueOnce({ ...customer, version: 4 });
+    const wrapper = mountPanel();
+    await flushPromises();
+    await wrapper.get('button[aria-pressed="false"]').trigger('click');
+    await flushPromises();
+    await wrapper
+      .findAll('button')
+      .find((button) => button.text().includes('下一页'))!
+      .trigger('click');
+    await flushPromises();
+    expect(wrapper.text()).toContain('已结束联系人第2页');
+    expect(wrapper.text()).toContain('2 / 2');
+
+    const fields = wrapper.findAll('form input');
+    await fields[0]!.setValue('新增联系人');
+    await fields[1]!.setValue('13800138000');
+    await wrapper.get('form').trigger('submit');
+    await flushPromises();
+    expect(
+      wrapper.find('[data-test="contact-refresh-readonly"]').exists(),
+    ).toBe(true);
+    await wrapper
+      .get('[data-test="contact-refresh-readonly"]')
+      .trigger('click');
+    await flushPromises();
+    expect(wrapper.text()).toContain('已结束联系人第2页');
+    expect(wrapper.text()).not.toContain('已结束联系人第1页');
+    expect(wrapper.text()).toContain('2 / 2');
+    expect(api.listCustomerContacts.mock.calls.slice(-2)).toEqual([
+      expect.arrayContaining(['customer-1', 'ACTIVE', 1]),
+      expect.arrayContaining(['customer-1', 'ENDED', 2]),
+    ]);
+    wrapper.unmount();
+  });
+
   it('stays read-only when the customer GET succeeds but contacts GET fails', async () => {
     let writeSucceeded = false;
     let customerReads = 0;
