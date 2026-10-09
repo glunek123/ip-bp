@@ -8,7 +8,8 @@ import {
 let credentials: { username: string; password: string };
 
 test.beforeEach(async () => {
-  credentials = await resetLocalAuthE2eData();
+  const seeded = await resetLocalAuthE2eData();
+  credentials = { username: seeded.username, password: seeded.password };
 });
 
 test.afterAll(async () => {

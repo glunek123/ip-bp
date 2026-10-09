@@ -8,6 +8,10 @@ import {
   type Page,
 } from '@playwright/test';
 import {
+  disconnectCustomerTestDatabase,
+  grantCustomerRoutineEdit,
+} from '../support/customer-database.mjs';
+import {
   allowInjectedFailures,
   attemptCustomerAdmissionRevocation,
   coreLeadFixtures,
@@ -778,6 +782,7 @@ test.beforeEach(async () => {
 
 test.afterAll(async () => {
   await disconnectCoreLeadTestDatabase();
+  await disconnectCustomerTestDatabase();
 });
 
 test('bound notary account opens only its assigned matter through real browser and remains revoked immediately', async ({
@@ -969,8 +974,18 @@ test('authorized supervisor admits a customer with real PDF and JPEG bytes', asy
   page,
   request,
 }) => {
+  await grantCustomerRoutineEdit(coreLeadFixtures.roleA, 'TEAM');
   await configureBrowser(page);
   await page.goto(`/customers/${coreLeadFixtures.draftCustomer}`);
+  await expect(page.getByRole('heading', { name: '待准入客户' })).toBeVisible();
+  const contactPanel = page.locator('[data-test="customer-contacts-panel"]');
+  await contactPanel.locator('[data-test="contact-new"]').click();
+  const contactForm = contactPanel.locator('form');
+  await contactForm.getByLabel('姓名').fill('张主管');
+  await contactForm.getByLabel('电话').fill('13800000000');
+  await contactForm.getByRole('button', { name: '保存联系人' }).click();
+  await expect(contactPanel.getByText(/张主管 · 13800000000/u)).toBeVisible();
+  await page.reload();
   await expect(page.getByRole('heading', { name: '待准入客户' })).toBeVisible();
   await page.getByLabel('客户组织类型').selectOption('ENTERPRISE');
   await page.getByLabel('身份证明类型').selectOption('BUSINESS_LICENSE');
@@ -1022,8 +1037,14 @@ test('authorized supervisor admits a customer with real PDF and JPEG bytes', asy
 
   await page.getByLabel('证件号码').fill('CORE-ADMIT-001');
   await page.getByLabel('有效期类型').selectOption('LONG_TERM');
-  await page.getByLabel('联系人姓名').fill('张主管');
-  await page.getByLabel('电话').fill('13800000000');
+  const contactSelect = page.locator('select[name="admissionContactId"]');
+  await page.getByRole('button', { name: '刷新联系人' }).click();
+  const admissionContactId = await contactSelect
+    .locator('option')
+    .filter({ hasText: '张主管 · 13800000000' })
+    .getAttribute('value');
+  expect(admissionContactId).toBeTruthy();
+  await contactSelect.selectOption(admissionContactId!);
   await page.locator('[data-test="admit-submit"]').click();
   await expect(
     page.getByText('客户已完成准入，可用于创建正式线索。'),
@@ -1036,7 +1057,7 @@ test('authorized supervisor admits a customer with real PDF and JPEG bytes', asy
     getCustomer(coreLeadFixtures.draftCustomer),
   ).resolves.toMatchObject({
     profileStatus: 'ADMITTED',
-    version: 2,
+    version: 3,
   });
 });
 
