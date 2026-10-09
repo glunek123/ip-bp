@@ -800,3 +800,19 @@ Docker由用户打开后恢复，引擎及原人工数据卷保留；原人工51
 本地只将测试public前向升级100条，未reset/drop public或操作开发、生产、人工库。人工数据库使用原持久卷改绑15434，仍91条迁移；退出的服务监督进程仅用原旧构建脚本恢复，登录页/后端/代理200，未重置密码或重复登录，证据`.local/manual-test-20261008/service-recovery-verification.json`。人工5181仍旧CA-008版本，不能用于验收新增CU能力。未推送、合并、部署。
 
 门禁后收口仅project-status、roadmap、本验证记录的真实完成状态/证据与对应已核对快照；从a58ff3a核对提交链和累计diff、暂存/未暂存及未跟踪现场，执行文档格式、Spec和严格context。业务契约/代码/测试/迁移/配置不变，按非执行性收口例外保留原候选证据，不称收口HEAD实跑过旧候选门禁；005计划及契约将另行提交，不混入本例外。
+
+## 负责运营与合作状态 CORE-CU-005（2026-10-09）
+
+正式业务门禁实际候选`4922f9f8e56e1e1954fc9f49e171f69cde70ca6f`，tree`7afbc6efbfbfa01b1d20f4a7fac8a4cea7d2855f`。按Level2显式检查，未临时伪造scope，也不称完整verify或全量数据库E2E已执行。只维护负责运营、独立配置的转派/暂停/终止/恢复动作；目标同部门有效内部成员，不自动改团队或Grant。暂停/终止阻止新线索，现有状态机下存量业务继续。当前read/动作范围先于幂等回放，未知/BUSY保原键原体，历史回执不覆盖当前GET。新增迁移101未改旧迁移。
+
+全组合非实现Sol首次在8e2d70c为REJECTED（C0/I1/M0）：合作维护结果未知或已成功但GET失败时资产面板仍可写。b71846f仅修详情页及回归，RED两项失败→GREEN16/16，原Reviewer已关闭I1并接受b71846f，未关闭C/I/M为0；其后4922f9f仅恢复状态及已核对快照，累计源码/测试diff为空。报告`.local/customer-alignment/task-5-final-review.md`。此为同模型隔离审查，独立性不足，外部异模型Review Pending；八片最终组合Review仍待全部完成。
+
+同一4922f9f候选完成全局`check:fast`（架构11模块/86模型、前后端及根类型/ESLint）、`spec:check`（57REQ/63AC/11BQ/48SD）、后端10文件Jest260/260、前端及角色配置15文件Vitest166/166、受支持改动文件Prettier及后端/前端生产构建，全部退出0。构建892.99kB chunk警告为非阻断。日志前缀`.local/customer-alignment/task-5-4922f9f-`，后缀check-fast/spec/backend-unit/frontend-unit/affected-format/build。
+
+同候选经统一隔离入口运行`customer-cooperation.spec.ts`、`customer-cooperation-fixture.spec.ts`、`customer-lifecycle.spec.ts`、`core-leads.spec.ts`、`cases.spec.ts`五文件组合，98/98退出0，5.4分钟，日志`task-5-4922f9f-related-e2e.log`。主链专门用真实密码、cookie/CSRF且无Bearer，覆盖SELF转派201后可见成功及失读/实际目标Grant、已提交丢响应刷新重登原请求恢复、真实PG锁BUSY原键恢复、合作恢复后浏览器新线索201，以及真实运营/公证员发证到Case；其余setup及低层用例保留fixture Bearer，不能称全部98为真实密码流程。暂停/终止每例各有两条不同旧Lead：WAITING_PUSH可编辑，已审核另一条继续公证/Case，不冒称已审核线索可编辑。多数HTTP500来自审计/事实/回执故障注入，目标回滚断言通过；另有一次材料下载ERR_HTTP_HEADERS_SENT，关联断言仍通过，本片未改共享下载实现，后续组合验证保留关注。
+
+同候选迁移专项`task-5-4922f9f-migration.log`退出0：受保护随机schema全101条空链、100→101旧客户/线索/历史回执及合法旧Case来源链保留、DDL失败原子回滚重试、非合作新Lead SQL父守卫及无关联草稿删除。旧Case用正常FK和触发器下的合法SQL合成前态，包含Customer/Holder/已审核Lead/归档Matter/ISSUE/Certificate/费用/审计/冻结引用/回执，前后逐行及关联对照；不等同旧运行时真实签发，也不证明其合成存储键的文件字节。当前真实发证与文件链由组合浏览器用例另证。
+
+各项检查前后HEAD/tree及干净工作区稳定，gate-before.json、format-resume-before.json、gate-after.json记录环境HMAC`8cebe60684ba5641d54f9c5c32e7c85b7b62c8fd8d55d4583e40330b5f5e9337`完全一致；没有暴露凭据或声称数据库当前内容相同。首次受影响格式入口把无Prettier解析器的SQL/Prisma显式传入，退出2，原日志`task-5-4922f9f-affected-format-parser-error.log`保留；只修树外检查命令为ignore-unknown，在同候选/环境复用已成功的静态/单元结果，支持格式退出0后继续构建/E2E/迁移，没有覆盖原失败或变更质量门禁。Task A死锁RED、冷启动超时、缺原Lint日志由root固定补测、UI成功提示RED及Task C合法迁移seed修复/类型格式失败均保留在各Task报告；812cd323的258/12、a8db9f0的124、ff4de3f的23等仍属各自实际输入，不冒称最终候选旧测试数。
+
+本地仅测试public前向至101条，无reset/drop public。人工5181/3201/15434旧CA-008构建和91条迁移保留，登录页/健康及代理200；不推送、合并、部署或操作开发/生产库。门禁后只补project-status、roadmap、本记录的真实完成状态/证据及已核对快照，累计4922f9f至收口仅这四文件，不改业务规则、代码、测试、环境或验证逻辑；执行文档格式/Spec/严格context，按非执行性收口例外保留实际4922f9f证据，不称收口HEAD重跑门禁。CU006正式契约与计划另行提交，不混入该例外。
