@@ -62,3 +62,5 @@
 仅提取现有纯actor事实锁至`access-control/customer-actor-facts-lock.ts`并由原contacts路径兼容重导出，不改变共享scope/组织锁算法。新协议Material写入四入口均按actor/Grant→Customer/Material→当前授权复查，禁止Material→actor反序；详情/历史/下载只读每次重查当前权限。
 
 协议与开票未知请求必须显式选择持久化userId/departmentId/customerId/action及原body/key，不能spread运行时Actor或将authorizationRevision加入持久身份；revision仅用于活跃请求的迟到响应隔离。存储失败不发命令，403/404/BUSY不证明原提交未发生，保留原请求；读取失权先清可见敏感投影。普通数据库调用不设置自定义GUC或replica来跳过守卫；管理员DDL权限不属于应用层守卫可防护的范围，专项不得作更强声明。
+
+同客户跨业务冻结不得丢失旧权利资产的未知请求。父详情页可按稳定userId/departmentId/customerId在内存保留原body/key、原版本和恢复所需最小未知上传草稿；同身份授权代次变化或读取失权卸载子组件时保留该快照，清除可见敏感资料，并拒绝旧代次迟到响应。重新取得当前授权投影后才恢复原请求；真正切换账号、部门或客户时清除临时快照。旧资产跨整页刷新或完整退出的持久化不在本片范围，协议/开票的sessionStorage恢复范围不变。恢复原请求、明确下载核对并选用已有证明可解除各自未知状态，不能用另一业务的false事件解冻。联系人读取失效的旧投影状态，只由重新挂载组件的当前授权读取成功解除，未知命令pending独立保留。打开资产单笔/批量登记时读取当前权利主体，新增主体后无需整页刷新即可选用。

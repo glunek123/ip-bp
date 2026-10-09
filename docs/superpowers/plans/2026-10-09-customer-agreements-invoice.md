@@ -40,3 +40,5 @@ Root批准最小中立公共helper：将现有`customer-contact-locks.ts:lockCus
 当前102已经替换客户删除资格函数并计入所有Contact，生命周期service也已计入；新迁移必须基于102追加全部协议/开票实体、版本、receipt等，不覆盖回101。`lockVisibleCustomerForRoutineEdit`硬编码旧动作，禁止套用。MaterialReference.resourceType和purpose均为String，新协议引用需自身owner/department/版本/audit复合约束和SQL守卫；不能把权证的assetVersionId校验视为自动保护协议。所有102以前已执行SQL不变，103+最少采用新增enum先提交、结构守卫后事务的两段布局。
 
 Task A仅跑聚焦单元/真实PG/迁移和必要类型静态；高风险非实现Sol审查通过后Task B普通UI自审，再Task C真实密码cookie/CSRF集成。最后非实现Sol最终组合审查、finding关闭、Root锁干净固定候选执行Level3完整verify及显式数据库E2E/迁移专项。按实际输入复用证据，不给每个普通UI Task增设Reviewer，不在同tree重复门禁。独立性不足/外部Pending按现行三级规则如实记录。
+
+Task C接线补充：父页持有稳定身份绑定的仅内存资产未知恢复快照，验证同页失权卸载、恢复授权、原body/key重放和未知证明的精确下载后人工选用；不扩展旧资产跨整页刷新/退出持久化。联系人新组件读取成功后同步父级投影状态，未知pending不受影响；单笔/批量登记打开时刷新当前权利主体。纳入组合终审，旧资产/联系人直接回归与真实会话证据分别记录。
