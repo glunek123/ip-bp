@@ -347,6 +347,59 @@ test('lost response retries the exact cookie command once and freezes other cust
   expect(state.receiptCount).toBe(1);
 });
 
+test('sub-yuan overcollection stays visible in the real list and KPI after reload', async ({
+  page,
+}) => {
+  await grant(true, true, true);
+  await login(page, '/customers');
+  const customerId = await createCustomer(page, 'CU008 不足一元超收客户');
+  await page.getByRole('tab', { name: '结算记录' }).click();
+  const panel = page.locator('[data-test="settlement-panel"]');
+  await fillRegister(page, '2026-10-10', '1.00', '1.01');
+  const commandResponse = page.waitForResponse(
+    (response) =>
+      response.url().endsWith(`/customers/${customerId}/settlements`) &&
+      response.request().method() === 'POST',
+  );
+  const listResponse = page.waitForResponse(
+    (response) =>
+      response.url().includes(`/customers/${customerId}/settlements?page=`) &&
+      response.request().method() === 'GET',
+  );
+  await panel.locator('[data-test="settlement-register-submit"]').click();
+  const command = await commandResponse;
+  expect(command.status()).toBe(201);
+  expect((await assertCookieCommand(command.request())).body).toMatchObject({
+    settlementAmount: '1.00',
+    receivedAmount: '1.01',
+  });
+  const list = await listResponse;
+  expect(list.status()).toBe(200);
+  expect(((await list.json()) as { stats: unknown }).stats).toMatchObject({
+    totalSettlement: '1.00',
+    receivedKnownSubtotal: '1.01',
+    pendingAmount: '-0.01',
+    recoveryRate: '101.00',
+  });
+  await expect(panel.locator('[data-test="settlement-record"]')).toHaveCount(1);
+  await expect(
+    page.locator('[data-test="settlement-kpi-pending"]'),
+  ).toContainText('超收');
+  await expect(
+    page.locator('[data-test="settlement-kpi-pending"]'),
+  ).toContainText('¥0.01');
+  await expect(page.locator('[data-test="settlement-kpi-rate"]')).toContainText(
+    '101.00%',
+  );
+  await page.reload();
+  await expect(
+    page.locator('[data-test="settlement-kpi-pending"]'),
+  ).toContainText('¥0.01');
+  await expect(page.locator('[data-test="settlement-kpi-rate"]')).toContainText(
+    '101.00%',
+  );
+});
+
 test('failed version history GET clears the sensitive projection and correction draft', async ({
   page,
 }) => {

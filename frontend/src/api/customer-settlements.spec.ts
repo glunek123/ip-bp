@@ -184,4 +184,31 @@ describe('customer settlement API', () => {
       ApiError,
     );
   });
+
+  it.each(['-0.01', '-0.99'])(
+    'accepts canonical sub-yuan overcollection %s',
+    async (pendingAmount) => {
+      const response = {
+        ...page,
+        stats: { ...stats, pendingAmount, recoveryRate: '101.00' },
+      };
+      http.getJson.mockResolvedValue(response);
+      await expect(listCustomerSettlements('customer-1')).resolves.toEqual(
+        response,
+      );
+    },
+  );
+
+  it.each(['-0.00', '-00.01', '-01.00', '-0.001', '-0.1', '- 0.01'])(
+    'rejects noncanonical negative aggregate %s',
+    async (pendingAmount) => {
+      http.getJson.mockResolvedValue({
+        ...page,
+        stats: { ...stats, pendingAmount },
+      });
+      await expect(listCustomerSettlements('customer-1')).rejects.toMatchObject(
+        { code: 'INVALID_RESPONSE' },
+      );
+    },
+  );
 });

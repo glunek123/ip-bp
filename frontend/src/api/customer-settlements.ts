@@ -177,7 +177,7 @@ function aggregateAmount(value: unknown): value is string {
 function signedAggregate(value: unknown): value is string {
   return (
     aggregateAmount(value) ||
-    (typeof value === 'string' && /^-[1-9]\d*\.\d{2}$/u.test(value))
+    (typeof value === 'string' && /^-(?:0|[1-9]\d*)\.\d{2}$/u.test(value))
   );
 }
 
