@@ -17,7 +17,15 @@ const structure = '20261009051000_customer_agreement_invoice_facts';
 const hardening = '20261009052000_harden_customer_agreement_invoice_guards';
 const setFix = '20261009053000_fix_customer_agreement_reference_set';
 const labelGuard = '20261009054000_close_customer_agreement_label_guards';
-const expected = [enumName, structure, hardening, setFix, labelGuard];
+const auditHeadGuard = '20261009055000_seal_customer_document_audits_and_heads';
+const expected = [
+  enumName,
+  structure,
+  hardening,
+  setFix,
+  labelGuard,
+  auditHeadGuard,
+];
 
 export async function verifyCustomerAgreementMigration() {
   if (process.env.NODE_ENV !== 'test')
@@ -39,6 +47,16 @@ export async function verifyCustomerAgreementMigration() {
       throw new Error(`${label} unexpectedly succeeded`);
     } catch (error) {
       if (error.code !== code) throw error;
+      checks.push(label);
+    } finally {
+      await client.query('ROLLBACK');
+    }
+  }
+  async function accepts(label, query, params) {
+    await client.query('BEGIN');
+    try {
+      await client.query(query, params);
+      await client.query('SET CONSTRAINTS ALL IMMEDIATE');
       checks.push(label);
     } finally {
       await client.query('ROLLBACK');
@@ -66,7 +84,7 @@ export async function verifyCustomerAgreementMigration() {
     checks.push('102 checksum');
     if (
       expected.some((name) => !names.includes(name)) ||
-      names.indexOf(labelGuard) !== names.length - 1
+      names.indexOf(auditHeadGuard) !== names.length - 1
     )
       throw new Error('CU007 migration suffix changed');
     await client.query(`CREATE SCHEMA "${schema}"`);
@@ -272,9 +290,265 @@ export async function verifyCustomerAgreementMigration() {
       '23514',
       true,
     );
+    const actor2 = randomUUID();
+    await client.query(
+      'INSERT INTO user_accounts(id,external_subject,display_name,updated_at) VALUES ($1,$2,$3,now())',
+      [actor2, 'cu007-review-actor', 'CU007 review actor'],
+    );
+    await client.query(
+      'INSERT INTO department_memberships(id,user_id,department_id,updated_at) VALUES ($1,$2,$3,now())',
+      [randomUUID(), actor2, dept],
+    );
+    const agreementV2 = randomUUID(),
+      agreementAudit2 = randomUUID();
+    const invoice = randomUUID(),
+      invoiceV1 = randomUUID(),
+      invoiceV2 = randomUUID();
+    const invoiceAudit1 = randomUUID(),
+      invoiceAudit2 = randomUUID();
+    await client.query('BEGIN');
+    await client.query(
+      `INSERT INTO audit_events(id,department_id,actor_user_id,resource_type,resource_id,action,details,created_at)
+      VALUES ($1,$2,$3,'customer_agreement',$4,'customer.agreement.revised','{}'::jsonb,now())`,
+      [agreementAudit2, dept, actor, agreement],
+    );
+    await client.query(
+      `INSERT INTO customer_agreement_versions(id,agreement_id,customer_id,department_id,version,title,validity_mode,content_version_ids,recorded_by_user_id,audit_event_id)
+      VALUES ($1,$2,$3,$4,2,'协议第二版','UNKNOWN','{}'::uuid[],$5,$6)`,
+      [agreementV2, agreement, customer, dept, actor, agreementAudit2],
+    );
+    await client.query(
+      'UPDATE customer_agreements SET current_version_id=$1,version=2 WHERE id=$2',
+      [agreementV2, agreement],
+    );
+    await client.query(
+      'INSERT INTO customer_invoice_profiles(id,customer_id,department_id) VALUES ($1,$2,$3)',
+      [invoice, customer, dept],
+    );
+    for (const [auditId, versionId, number, action] of [
+      [invoiceAudit1, invoiceV1, 1, 'customer.invoice.created'],
+      [invoiceAudit2, invoiceV2, 2, 'customer.invoice.revised'],
+    ]) {
+      await client.query(
+        `INSERT INTO audit_events(id,department_id,actor_user_id,resource_type,resource_id,action,details,created_at)
+        VALUES ($1,$2,$3,'customer_invoice_profile',$4,$5,'{}'::jsonb,now())`,
+        [auditId, dept, actor, invoice, action],
+      );
+      await client.query(
+        `INSERT INTO customer_invoice_profile_versions(id,profile_id,customer_id,department_id,version,recorded_by_user_id,audit_event_id)
+        VALUES ($1,$2,$3,$4,$5,$6,$7)`,
+        [versionId, invoice, customer, dept, number, actor, auditId],
+      );
+    }
+    await client.query(
+      'UPDATE customer_invoice_profiles SET current_version_id=$1,version=2 WHERE id=$2',
+      [invoiceV2, invoice],
+    );
+    await client.query('COMMIT');
+    checks.push('107 normal v1 to v2');
+    await accepts(
+      'RED linked audit details editable',
+      'UPDATE audit_events SET details=$1::jsonb WHERE id=$2',
+      ['{"tampered":true}', audit],
+    );
+    await accepts(
+      'RED linked audit action editable',
+      "UPDATE audit_events SET action='customer.agreement.revised' WHERE id=$1",
+      [audit],
+    );
+    await accepts(
+      'RED linked audit actor editable',
+      'UPDATE audit_events SET actor_user_id=$1 WHERE id=$2',
+      [actor2, audit],
+    );
+    await accepts(
+      'RED linked audit type editable',
+      "UPDATE audit_events SET resource_type='customer' WHERE id=$1",
+      [invoiceAudit1],
+    );
+    await accepts(
+      'RED agreement current can retreat',
+      'UPDATE customer_agreements SET current_version_id=$1,version=1 WHERE id=$2',
+      [version, agreement],
+    );
+    await accepts(
+      'RED invoice current can retreat',
+      'UPDATE customer_invoice_profiles SET current_version_id=$1,version=1 WHERE id=$2',
+      [invoiceV1, invoice],
+    );
+    const agreementV3 = randomUUID(),
+      agreementAudit3 = randomUUID();
+    const invoiceV3 = randomUUID(),
+      invoiceAudit3 = randomUUID();
+    for (const [auditId, resourceType, resourceId, action] of [
+      [
+        agreementAudit3,
+        'customer_agreement',
+        agreement,
+        'customer.agreement.revised',
+      ],
+      [
+        invoiceAudit3,
+        'customer_invoice_profile',
+        invoice,
+        'customer.invoice.revised',
+      ],
+    ])
+      await client.query(
+        `INSERT INTO audit_events(id,department_id,actor_user_id,resource_type,resource_id,action,details,created_at)
+        VALUES ($1,$2,$3,$4,$5,$6,'{}'::jsonb,now())`,
+        [auditId, dept, actor, resourceType, resourceId, action],
+      );
+    await accepts(
+      'RED orphan agreement append accepted',
+      `INSERT INTO customer_agreement_versions(id,agreement_id,customer_id,department_id,version,title,validity_mode,content_version_ids,recorded_by_user_id,audit_event_id)
+      VALUES ($1,$2,$3,$4,3,'协议第三版','UNKNOWN','{}'::uuid[],$5,$6)`,
+      [agreementV3, agreement, customer, dept, actor, agreementAudit3],
+    );
+    await accepts(
+      'RED orphan invoice append accepted',
+      `INSERT INTO customer_invoice_profile_versions(id,profile_id,customer_id,department_id,version,recorded_by_user_id,audit_event_id)
+      VALUES ($1,$2,$3,$4,3,$5,$6)`,
+      [invoiceV3, invoice, customer, dept, actor, invoiceAudit3],
+    );
+    const unrelatedAudit = randomUUID();
+    await client.query(
+      `INSERT INTO audit_events(id,department_id,actor_user_id,resource_type,resource_id,action,details,created_at)
+      VALUES ($1,$2,$3,'probe',$4,'probe.unrelated','{}'::jsonb,now())`,
+      [unrelatedAudit, dept, actor, customer],
+    );
+    await client.query(
+      "UPDATE audit_events SET action='customer.agreement.revised' WHERE id=$1",
+      [audit],
+    );
+    try {
+      await client.query(sql(auditHeadGuard));
+      throw new Error('108 accepted inconsistent historical audit');
+    } catch (error) {
+      if (error.code !== '23514') throw error;
+      await client.query('ROLLBACK');
+    }
+    if (
+      (
+        await client.query('SELECT action FROM audit_events WHERE id=$1', [
+          audit,
+        ])
+      ).rows[0].action !== 'customer.agreement.revised'
+    )
+      throw new Error(
+        '108 failed migration did not preserve prior audit state',
+      );
+    await client.query(
+      "UPDATE audit_events SET action='customer.agreement.created' WHERE id=$1",
+      [audit],
+    );
+    checks.push('108 inconsistent history fails atomically');
+    await client.query(sql(auditHeadGuard));
+    checks.push('108 applied after RED');
+    await rejects(
+      '108 linked audit details immutable',
+      'UPDATE audit_events SET details=$1::jsonb WHERE id=$2',
+      ['{"tampered":true}', audit],
+      '23514',
+    );
+    await rejects(
+      '108 linked audit action immutable',
+      "UPDATE audit_events SET action='customer.agreement.revised' WHERE id=$1",
+      [audit],
+      '23514',
+    );
+    await rejects(
+      '108 linked audit actor immutable',
+      'UPDATE audit_events SET actor_user_id=$1 WHERE id=$2',
+      [actor2, audit],
+      '23514',
+    );
+    await rejects(
+      '108 linked audit type immutable',
+      "UPDATE audit_events SET resource_type='customer' WHERE id=$1",
+      [invoiceAudit1],
+      '23514',
+    );
+    await rejects(
+      'linked audit delete blocked by existing FK',
+      'DELETE FROM audit_events WHERE id=$1',
+      [audit],
+      '23503',
+    );
+    await rejects(
+      '108 action switch into document immutable',
+      "UPDATE audit_events SET action='customer.agreement.revised' WHERE id=$1",
+      [unrelatedAudit],
+      '23514',
+    );
+    await rejects(
+      '108 type switch into document immutable',
+      "UPDATE audit_events SET resource_type='customer_agreement' WHERE id=$1",
+      [unrelatedAudit],
+      '23514',
+    );
+    await rejects(
+      '108 agreement retreat rejected',
+      'UPDATE customer_agreements SET current_version_id=$1,version=1 WHERE id=$2',
+      [version, agreement],
+      '23514',
+      true,
+    );
+    await rejects(
+      '108 invoice retreat rejected',
+      'UPDATE customer_invoice_profiles SET current_version_id=$1,version=1 WHERE id=$2',
+      [invoiceV1, invoice],
+      '23514',
+      true,
+    );
+    await rejects(
+      '108 orphan agreement append rejected',
+      `INSERT INTO customer_agreement_versions(id,agreement_id,customer_id,department_id,version,title,validity_mode,content_version_ids,recorded_by_user_id,audit_event_id)
+      VALUES ($1,$2,$3,$4,3,'协议第三版','UNKNOWN','{}'::uuid[],$5,$6)`,
+      [agreementV3, agreement, customer, dept, actor, agreementAudit3],
+      '23514',
+      true,
+    );
+    await rejects(
+      '108 orphan invoice append rejected',
+      `INSERT INTO customer_invoice_profile_versions(id,profile_id,customer_id,department_id,version,recorded_by_user_id,audit_event_id)
+      VALUES ($1,$2,$3,$4,3,$5,$6)`,
+      [invoiceV3, invoice, customer, dept, actor, invoiceAudit3],
+      '23514',
+      true,
+    );
+    await client.query('BEGIN');
+    await client.query(
+      `INSERT INTO customer_agreement_versions(id,agreement_id,customer_id,department_id,version,title,validity_mode,content_version_ids,recorded_by_user_id,audit_event_id)
+      VALUES ($1,$2,$3,$4,3,'协议第三版','UNKNOWN','{}'::uuid[],$5,$6)`,
+      [agreementV3, agreement, customer, dept, actor, agreementAudit3],
+    );
+    await client.query(
+      'UPDATE customer_agreements SET current_version_id=$1,version=3 WHERE id=$2',
+      [agreementV3, agreement],
+    );
+    await client.query(
+      `INSERT INTO customer_invoice_profile_versions(id,profile_id,customer_id,department_id,version,recorded_by_user_id,audit_event_id)
+      VALUES ($1,$2,$3,$4,3,$5,$6)`,
+      [invoiceV3, invoice, customer, dept, actor, invoiceAudit3],
+    );
+    await client.query(
+      'UPDATE customer_invoice_profiles SET current_version_id=$1,version=3 WHERE id=$2',
+      [invoiceV3, invoice],
+    );
+    await client.query('COMMIT');
+    const heads = (
+      await client.query(
+        'SELECT (SELECT version FROM customer_agreements WHERE id=$1)::int AS agreement,(SELECT version FROM customer_invoice_profiles WHERE id=$2)::int AS invoice',
+        [agreement, invoice],
+      )
+    ).rows[0];
+    if (heads.agreement !== 3 || heads.invoice !== 3)
+      throw new Error('108 normal v3 pointers failed');
+    checks.push('108 normal v1 to v2 to v3');
     return {
       checks,
-      migrationCount: names.filter((name) => name <= labelGuard).length,
+      migrationCount: names.filter((name) => name <= auditHeadGuard).length,
     };
   } finally {
     if (created) {

@@ -250,15 +250,38 @@ test('CU007 exact agreement files, invoice versions, replay authorization and ma
     },
   );
   expect(invoiceClear.status(), await invoiceClear.text()).toBe(200);
+  const clearedInvoice = (await invoiceClear.json()) as {
+    customerVersion: number;
+    profile: { currentVersion: { taxNo: string | null; bank: string | null } };
+  };
+  expect(clearedInvoice.profile.currentVersion).toMatchObject({
+    taxNo: null,
+    bank: null,
+  });
+  const agreementThird = await request.post(
+    `/api/v1/customers/${c.id}/agreements/${created.agreement.id}/revisions`,
+    {
+      headers: { ...auth, 'Idempotency-Key': randomUUID() },
+      data: {
+        expectedCustomerVersion: clearedInvoice.customerVersion,
+        expectedAgreementVersion: 2,
+        title: '协议第三版',
+      },
+    },
+  );
+  expect(agreementThird.status(), await agreementThird.text()).toBe(200);
   expect(
-    (
-      (await invoiceClear.json()) as {
-        profile: {
-          currentVersion: { taxNo: string | null; bank: string | null };
-        };
-      }
-    ).profile.currentVersion,
-  ).toMatchObject({ taxNo: null, bank: null });
+    (await agreementThird.json()) as { agreement: { version: number } },
+  ).toMatchObject({ agreement: { version: 3 } });
+  const originalAfterLaterVersions = await request.post(
+    `/api/v1/customers/${c.id}/agreements`,
+    { headers: { ...auth, 'Idempotency-Key': key }, data: createBody },
+  );
+  expect(
+    originalAfterLaterVersions.status(),
+    await originalAfterLaterVersions.text(),
+  ).toBe(201);
+  expect(await originalAfterLaterVersions.json()).toEqual(created);
   const foreignRead = await request.get(
     `/api/v1/customers/${c.id}/invoice-profile`,
     { headers: foreign },
