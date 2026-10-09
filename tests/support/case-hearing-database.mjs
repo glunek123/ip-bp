@@ -41,10 +41,12 @@ const coreHearingOwners = Object.freeze({
   '10000000-0000-4000-8000-000000000001': {
     userId: '20000000-0000-4000-8000-000000000001',
     roleId: '30000000-0000-4000-8000-000000000001',
+    customerId: '50000000-0000-4000-8000-000000000002',
   },
   '10000000-0000-4000-8000-000000000002': {
     userId: '20000000-0000-4000-8000-000000000002',
     roleId: '30000000-0000-4000-8000-000000000002',
+    customerId: '50000000-0000-4000-8000-000000000003',
   },
 });
 
@@ -398,6 +400,16 @@ export async function seedCoreCaseHearingFixture(departmentId) {
       throw new Error(
         'Hearing fixture requires the isolated public test schema',
       );
+    const customer = (
+      await client.query(
+        `SELECT id FROM customers
+         WHERE id=$1 AND department_id=$2 AND deleted_at IS NULL
+           AND profile_status='ADMITTED' AND admitted_at IS NOT NULL AND ever_admitted`,
+        [owner.customerId, departmentId],
+      )
+    ).rows[0];
+    if (!customer)
+      throw new Error('Hearing fixture requires its admitted core customer');
     await client.query(
       "INSERT INTO role_grants(id,role_template_id,action,scope) VALUES ($1,$2,'case.hearing.schedule','DEPARTMENT'),($3,$2,'case.hearing.correct','DEPARTMENT') ON CONFLICT (role_template_id,action,scope) DO NOTHING",
       [randomUUID(), owner.roleId, randomUUID()],
@@ -414,7 +426,7 @@ export async function seedCoreCaseHearingFixture(departmentId) {
           randomUUID(),
           randomUUID(),
           randomUUID(),
-          randomUUID(),
+          owner.customerId,
           randomUUID(),
           owner.userId,
         ],
