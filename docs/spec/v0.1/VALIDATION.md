@@ -816,3 +816,13 @@ Docker由用户打开后恢复，引擎及原人工数据卷保留；原人工51
 各项检查前后HEAD/tree及干净工作区稳定，gate-before.json、format-resume-before.json、gate-after.json记录环境HMAC`8cebe60684ba5641d54f9c5c32e7c85b7b62c8fd8d55d4583e40330b5f5e9337`完全一致；没有暴露凭据或声称数据库当前内容相同。首次受影响格式入口把无Prettier解析器的SQL/Prisma显式传入，退出2，原日志`task-5-4922f9f-affected-format-parser-error.log`保留；只修树外检查命令为ignore-unknown，在同候选/环境复用已成功的静态/单元结果，支持格式退出0后继续构建/E2E/迁移，没有覆盖原失败或变更质量门禁。Task A死锁RED、冷启动超时、缺原Lint日志由root固定补测、UI成功提示RED及Task C合法迁移seed修复/类型格式失败均保留在各Task报告；812cd323的258/12、a8db9f0的124、ff4de3f的23等仍属各自实际输入，不冒称最终候选旧测试数。
 
 本地仅测试public前向至101条，无reset/drop public。人工5181/3201/15434旧CA-008构建和91条迁移保留，登录页/健康及代理200；不推送、合并、部署或操作开发/生产库。门禁后只补project-status、roadmap、本记录的真实完成状态/证据及已核对快照，累计4922f9f至收口仅这四文件，不改业务规则、代码、测试、环境或验证逻辑；执行文档格式/Spec/严格context，按非执行性收口例外保留实际4922f9f证据，不称收口HEAD重跑门禁。CU006正式契约与计划另行提交，不混入该例外。
+
+### CU006 Task A 后端及审查修复检查点（2026-10-09，尚未整片验收）
+
+原实现7b5120d/tree e0069de、正式迁移helper补提交875c724/tree d3490e6，后续修复实际候选84fc51ef8205daa13ce01f8a7e0d419c147fa7c4/tree d1556c8521e750b5ea81e1c89bb8c23aed5d77f4。新增联系人当前行、不可变版本/回执、旧字段锚定桥接、冻结准入资料与102前向迁移；原准入回执JSON/指纹不改，任何已结束联系人也阻止草稿删除，不生成账号或客户经理。仅测试public前向升级102，SQL SHA256 d7c65786f8290c62c9fc9bf31bc0f314d5db3ce5b8edb2be6757fe403001f03b与完成行checksum一致；未reset/drop public或修改人工/开发/生产库。
+
+正式helper tests/support/customer-contact-migration.mjs在875c724新输入独立实跑五组：空链102、101合成旧客户升级/原JSON与指纹保留、SQL约束负例、同版本矛盾原子失败重试、最低资料缺失失败修正重试。此前原实现定向Jest123/123、OpenAPI45/45、联系人fixture Bearer PG7/7、旧路径6/6及开庭/判决清理2/2按其原候选保留；旧cases/core-leads浏览器选例注入Bearer并模拟session，不能当作真实密码cookie/CSRF证据。迁移初版guard/延后FK、Jest mock及旧PATCH测试输入的失败均记入.local/customer-alignment/task-6-backend-report.md，不抹掉失败或虚称业务RED。
+
+原非实现Sol审查875c724为REJECTED 0/3/0；84fc51e修复后原Reviewer复审ACCEPTED，I1/I2/I3全部关闭、未关闭C/I/M0。同模型隔离独立性不足，外部异模型Review Pending。I1真实actor持锁恢复500→六次有界重试/BUSY409及释放后原键成功，完整生命周期事务保留原隔离设置；两个删除/恢复前端叶子将BUSY归unknown且保留原请求。I2自然双客户重叠在修复前已201/409，未复现自然500；原生P2002元数据和精确23505唯一约束注入才是500 RED→稳定409 GREEN，只映射指定receipt模型和约束，其余数据库异常不误认成功。I3实际Swagger把nullable字符串生成为object的RED已修为显式String；响应required和nullable有测试，原请求optional/format装饰器保留。固定修复候选的整文件联系人PG10/10、相关Jest两套54/54、前端两文件18/18、工作区prepared类型/双端构建/改动lint与format通过。报告及原始日志见.local/customer-alignment/task-6-backend-report.md和task-6-backend-review.md。
+
+当前仅Task A完成，Task B正式联系人页面/严格解码、Task C真实密码cookie/CSRF、组合Final Review和Level3完整verify/全量隔离E2E/最终迁移专项尚未执行。001～005原验收不替代本片；Current CU006、Next CU007保持，006～008尚未交付，不推送/合并/部署或自动更新人工环境。

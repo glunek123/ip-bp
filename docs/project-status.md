@@ -16,9 +16,9 @@ CU004非实现Sol补审ACCEPTED，原I1～I5/M1全部关闭，未关闭C/I/M为0
 
 旧门禁配置失败、f598a52全量111失败/100通过、22d1f6e全量211通过/1失败均保留在.local/customer-alignment/及[验证记录](spec/v0.1/VALIDATION.md)。最后一个失败由6566a94修复：只复用两部门真实准入客户作为开庭fixture父记录，定向开庭3/3；局部判决/开庭fixture来源链仍合成，不冒称该局部样例代表完整准入主链。最终79项另覆盖真实主链、密码cookie/CSRF、范围、重放及回滚。
 
-CU005实际固定候选4922f9f8e56e1e1954fc9f49e171f69cde70ca6f/tree7afbc6efbfbfa01b1d20f4a7fac8a4cea7d2855f通过显式Level2门禁：后端260/260、前端及角色配置166/166、全局check:fast、Spec57REQ/63AC/11BQ/48SD、受支持改动格式、双构建、客户合作/fixture/生命周期/core-leads/cases五文件数据库及Chromium98/98、空链101及100→101合法SQL合成旧Case迁移/失败原子重试。各项前后候选干净一致，环境HMAC8cebe60684ba5641d54f9c5c32e7c85b7b62c8fd8d55d4583e40330b5f5e9337不变。全组合Review在b71846f接受，原I1已关闭C/I/M0；其后4922f9f只含恢复状态/已核对快照，代码和测试不变。同模型隔离独立性不足，外部异模型Review Pending。真实浏览器发现的成功提示缺失和未知维护未冻结资产均修复，RED及格式入口不支持SQL/Prisma的失败保留；更早258/124等证据仍按原候选列明，详见VALIDATION及.local/customer-alignment/task-5-*-report.md、task-5-final-review.md。组合日志有一次材料下载ERR_HTTP_HEADERS_SENT，关联断言通过，CU005未改共享下载实现，后续组合验证继续关注。CU006正式[实施契约](superpowers/specs/2026-10-09-customer-contacts-contract.md)与[计划](superpowers/plans/2026-10-09-customer-contacts.md)已按实际前态复核落盘；下一步高风险Task A后端/迁移与聚焦PG，不把计划标为实现。
+CU005实际固定候选4922f9f8e56e1e1954fc9f49e171f69cde70ca6f/tree7afbc6efbfbfa01b1d20f4a7fac8a4cea7d2855f通过显式Level2门禁：后端260/260、前端及角色配置166/166、全局check:fast、Spec57REQ/63AC/11BQ/48SD、受支持改动格式、双构建、客户合作/fixture/生命周期/core-leads/cases五文件数据库及Chromium98/98、空链101及100→101合法SQL合成旧Case迁移/失败原子重试。各项前后候选干净一致，环境HMAC8cebe60684ba5641d54f9c5c32e7c85b7b62c8fd8d55d4583e40330b5f5e9337不变。全组合Review在b71846f接受，原I1已关闭C/I/M0；其后4922f9f只含恢复状态/已核对快照，代码和测试不变。同模型隔离独立性不足，外部异模型Review Pending。真实浏览器发现的成功提示缺失和未知维护未冻结资产均修复，RED及格式入口不支持SQL/Prisma的失败保留；更早258/124等证据仍按原候选列明，详见VALIDATION及.local/customer-alignment/task-5-*-report.md、task-5-final-review.md。组合日志有一次材料下载ERR_HTTP_HEADERS_SENT，关联断言通过，CU005未改共享下载实现，后续组合验证继续关注。CU006正式[实施契约](superpowers/specs/2026-10-09-customer-contacts-contract.md)与[计划](superpowers/plans/2026-10-09-customer-contacts.md)已按实际前态复核落盘；Task A实际候选84fc51e/tree d1556c8521e750b5ea81e1c89bb8c23aed5d77f4后端/迁移已提交，原非实现Sol复审ACCEPTED、I1/I2/I3全部关闭，未关闭C/I/M0；联系人PG10/10、相关Jest54/54、生命周期前端18/18及类型/双构建通过。详细候选和证据边界见VALIDATION及.local/customer-alignment/task-6-backend-report.md、task-6-backend-review.md。CU006尚未验收；下一步Task B联系人正式页面与严格解码，随后Task C真实密码cookie/CSRF和组合Level3门禁。
 
-仅测试public前向执行到101条迁移，未reset/drop public或操作开发／生产／人工库。人工服务监督进程退出后仅恢复旧脚本，5181登录页、3201健康和代理均200，旧构建及数据不变；服务恢复证据在.local/manual-test-20261008/service-recovery-verification.json。
+仅测试public前向执行到102条迁移；102 SQL与已执行checksum一致，未reset/drop public或操作开发／生产／人工库。人工服务监督进程退出后仅恢复旧脚本，5181登录页、3201健康和代理均200，旧构建及数据不变；服务恢复证据在.local/manual-test-20261008/service-recovery-verification.json。
 
 ## 已实现
 
@@ -52,4 +52,4 @@ CA-008实际业务候选`9092414`完成Level 3：完整verify退出0（后端107
 
 ## 下一步
 
-按客户计划继续006→007→008；高风险实现与审查串行，最终八片组合补集成终审。005已完成本地验收，006下一步按正式计划执行Sol后端/迁移及另Sol审查、Luna页面、真实浏览器与Level3组合验证。006～008未实现，不自动更新人工环境；不推送、合并、部署或操作开发／生产库。
+按客户计划继续006→007→008；高风险实现与审查串行，最终八片组合补集成终审。005已完成本地验收，006的Sol后端/迁移Task A和原Sol复审已完成，下一步Luna页面、真实浏览器与Level3组合验证。006尚未整片验收，007～008未实现，不自动更新人工环境；不推送、合并、部署或操作开发／生产库。
