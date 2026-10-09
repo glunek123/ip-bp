@@ -1,6 +1,6 @@
 # 当前开发状态
 
-更新日期：2026-10-09。本文件只保留恢复当前工作的最小事实；历史状态见[历史状态](project-status-history-through-2026-09-18.md)，候选证据与集成事实见[验证记录](spec/v0.1/VALIDATION.md)。
+更新日期：2026-10-10。本文件只保留恢复当前工作的最小事实；历史状态见[历史状态](project-status-history-through-2026-09-18.md)，候选证据与集成事实见[验证记录](spec/v0.1/VALIDATION.md)。
 
 ## 当前阶段
 
@@ -8,13 +8,15 @@ CORE-CA-001～008及SD-44律师身份前置补齐均已验收、推送并集成m
 
 ## 当前任务
 
-唯一Current为**CORE-CU-007｜协议与开票资料**，Next为CORE-CU-008真实人工结算台账。客户001～006已本地验收，尚未推送或集成main。依据2026-10-08用户批准的客户切片规则及SD-46/47/48继续；只有负责运营，不增加客户经理。正式业务范围见[客户设计](superpowers/specs/2026-10-08-customer-module-alignment-design.md)及[总计划](superpowers/plans/2026-10-08-customer-module-alignment.md)，分支codex/customer-module-alignment，基线8a8fe11。007正式[实施契约](superpowers/specs/2026-10-09-customer-agreements-invoice-contract.md)与[计划](superpowers/plans/2026-10-09-customer-agreements-invoice.md)已按75acd3前态复核，Task A后端候选c8d33c6已通过非实现Sol补审（Spec compliance/Quality均ACCEPTED，C/I/M0/0/0），Task B页面候选c1c356b已提交，106项聚焦Vitest及类型/Lint/格式通过；Sol Task C候选43651d8已提交：父页仅内存资产未知恢复、精确证明人工核对、跨身份隔离、完整冻结及权利主体即时选用已补齐；相关组件58/58、联系人16/16和最终受影响真实会话2/2通过。首次组合终审de5de27为REJECTED（C/I/M0/2/0）：协议上传撤权未清PII、先发送后存标记。Sol修复候选21d7968已提交，相关组件17/17、真实会话4/4及最后请求头断言1/1通过；等待原非实现Reviewer补审，关闭后固定Level 3门禁。007整体尚未验收，008仍为Draft。
+唯一Current为**CORE-CU-008｜真实人工结算台账**，Next为CORE-CA-009后续案件切片（未领取）；先完成客户八片组合验收与独立最新人工入口。客户001～007已本地验收，尚未推送或集成main。依据用户已批准SD-45～48及[客户设计](superpowers/specs/2026-10-08-customer-module-alignment-design.md)、[总计划](superpowers/plans/2026-10-08-customer-module-alignment.md)继续；只有负责运营，没有客户经理。分支codex/customer-module-alignment，基线8a8fe11。
 
-CU006实际通过候选db33bf6c717e98829ba2728a6a9455cf1d886eaf/tree8eca1b3397b7b6c51da434e78c72d12d67c18795：完整verify退出0（工具74/74、前端802/802、后端1134/1134、双构建）、全库隔离PG/Chromium259/259、空链102/101→102旧资料及回执保留、SQL负例和失败原子重试全部通过。门禁前后HEAD/tree与环境HMAC一致，原非实现Reviewer补审ACCEPTED、C/I/M0/0/0；同模型隔离独立性不足，外部异模型Review Pending。首次eff2acb全库251通过/8失败、两轮Review发现及修复按原候选保留于[验证记录](spec/v0.1/VALIDATION.md)和.local/customer-alignment/，不把旧失败改写为通过。005及更早证据也保留在VALIDATION。
+CU007实际候选76c0506/tree d9c68a0通过完整verify（工具74/74、前端842/842、后端1153/1153、双构建）及全库隔离PG/Chromium274/274；全库已包含103～108迁移链、旧回执保留、SQL负例和失败原子重试。非实现Sol补审Spec compliance/Quality均ACCEPTED、未关闭C/I/M0/0/0；同模型隔离独立性不足，外部异模型Review Pending。固定门禁前后HEAD/tree和环境HMAC一致；原de5de27的两项I finding与聚焦失败保留在.local/customer-alignment/task-7-final-review.md及Task C报告。CU006实际db33候选259/259及更早证据仍见[验证记录](spec/v0.1/VALIDATION.md)，不以旧证据替代新片验收。008目前仅预案，金额映射probe尚未执行，必须先实测并正式化方案。
 
-仓库清理CA-001～008及SD-44已集成main，CA-009未领取。独立人工环境5181/3201/15434保持旧CA-008构建和91条迁移，使用原持久卷；未重置或升级，最新前端/后端/代理健康检查均200。E2E只使用backend/.env.test独立测试库15433及5174/3101；仅测试public前向到108，SQL102 checksum与已执行值一致。没有开发/生产迁移、推送、合并或部署。
+E2E仅使用backend/.env.test独立测试库15433及5174/3101；测试public前向到108，已执行102～108迁移不改。旧人工5181/3201/15434保留旧CA-008构建及91迁移/原持久卷，不重置或升级；最新入口5182/3202/15435仅准备脚本，未创建数据库/账号或启动。仓库清理CA-001～008已集成main、CA-009未领取；无开发/生产迁移、推送、合并或部署。
 
 ## 已实现
+
+CU007真实协议及开票资料已本地验收：独立读改权限、不可变版本及精确历史附件，暂停/终止可按当前权限维护；上传未知先存最小标记，撤权清敏感投影并保留恢复入口，人工下载核对后选用。跨业务未知请求冻结保留，旧权利资产恢复仅当前页面内存，不称跨整页刷新保证。
 
 CU006多联系人维护已本地验收：最多一位主要、可无主要，结束关系保留历史；旧平铺接口/回执兼容，准入显式选择活动联系人并冻结独立快照。真实会话的未知原请求、撤权清资料、分页恢复和跨客户迟到响应均已验证，联系人不自动获得账号权限。
 
@@ -48,4 +50,4 @@ CA-008实际业务候选`9092414`完成Level 3：完整verify退出0（后端107
 
 ## 下一步
 
-按已批准计划继续007→008，再做八片组合终审和验证。007方案已按CU006实际通过候选及收口tree复核。Task A原6d15cb1审查REJECTED记录保留；c8d33c6补齐审计不可变与当前版本守卫，108下聚焦PG14/14及补充迁移负例通过，非实现Sol补审ACCEPTED。Task B及Task C已交接；43651d8相关类型、架构、Lint、格式与聚焦真实会话通过，旧失败记录保留在Task C报告。首次组合终审两项I finding由21d7968修复，原REJECTED与失败日志保留；继续非实现Sol补审及固定Level 3门禁，上述聚焦结果不代表整片验收。保持人工环境隔离；不推送、合并、部署或操作开发/生产库。
+008先在独立测试库随机schema实测Prisma无typmod NUMERIC映射、精确往返、双向diff及原始SQL负例；随后以007实际通过候选和收口tree正式化契约，按Sol高风险后端/迁移及独立审查→普通前端→真实会话→最终Review/固定Level3门禁执行。008完成后补八片组合终审和验证，再创建全新独立人工环境；不领取CA-009，不改旧人工环境、不推送/合并/部署。

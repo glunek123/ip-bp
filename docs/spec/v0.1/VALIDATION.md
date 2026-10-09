@@ -872,3 +872,13 @@ Task C实际提交`0cc238bdffc930aecc2be7058425b2d45ee14b00`，tree`c4934c0a904b
 门禁每项前后git干净、HEAD/tree相同，环境HMAC`8cebe60684ba5641d54f9c5c32e7c85b7b62c8fd8d55d4583e40330b5f5e9337`一致；Nodev24.21.0/pnpm11.27.0/win32/x64。原始`.local/customer-alignment/task-6-db33bf6-gate-before.json`与`gate-after.json`均有实际成功记录，三份verify/database-e2e/migration日志同前缀；审查在`task-6-final-review.md`。102SQL SHA256为`d7c65786f8290c62c9fc9bf31bc0f314d5db3ce5b8edb2be6757fe403001f03b`，与已执行checksum相同。全库日志未观察到CU005旧`ERR_HTTP_HEADERS_SENT`，不据此宣称共享下载永无错误。
 
 门禁后的完整收口只改本验证摘要、project-status、feature-roadmap、customers Living Spec的实际完成状态/相应历史表述，以及核对后的context snapshot；不改业务要求、AC、源码、测试、SQL/生成物、依赖、配置或环境。按三级规则的非执行性收口例外复用db33实际业务证据，受影响文档格式、Spec/链接状态一致性、diff和strict检查另实跑，不称收口HEAD实跑过db33完整门禁。Current/Next推进CU007/CU008；007正式契约及实现必须另提交，不混入本完成态例外。仅测试public到102，旧人工5181/3201/15434构建/91迁移/数据不变，无开发生产迁移、推送、合并或部署。
+
+## CORE-CU-007 固定候选Level3通过与本地收口（2026-10-10）
+
+实际业务门禁候选`76c0506d710800894bd2478769644f98448a0b83`/tree`d9c68a0889b648197d28a1aef4cdb2f4797c2cca`，实际时间2026-10-09T23:51:06.6542830+08:00 至 2026-10-10T00:06:31.7838719+08:00。`pnpm verify`退出0：工具74/74、前端842/842（79文件）、后端1153/1153（91 suites）、Spec57REQ/63AC/11BQ/48SD、严格上下文818、类型/Lint/格式及双构建；`pnpm test:e2e --workers=1`全库隔离PostgreSQL/Chromium **274/274**退出0。全库包含customer-agreement-migration.spec.ts的102→108前向链、合成旧协议/开票与旧回执保留、不可变审计与单调head等SQL负例、失败原子与修复重试；不重复单跑相同迁移，不把合成旧数据称线上数据。测试public到108，已执行迁移不改，开发/生产和旧人工环境未迁移。
+
+原组合de5de27终审REJECTED、C/I/M0/2/0，发现上传403/404保留敏感投影和上传先发后存标记。21d7968修复，当前76c0506补审Spec compliance/Quality均ACCEPTED、未关闭C/I/M0/0/0；协议403/404先清当前/历史/草稿并保留上传标记，网络发送前存标记、失败不发，旧代次/卸载保留，当前确定成功/失败才清，清失败禁写；同身份在途协调与删除失败补偿仅内存，不称跨整页刷新/跨标签保证。原报告.local/customer-alignment/task-7-final-review.md保留首轮REJECTED和补审，Task A原两项SQL finding及108修复报告、Task C真实会话/组件RED和修复日志均保留；不拼接旧聚焦通过数冒称同候选整组执行。Reviewer为非实现Sol同模型隔离，独立性不足，外部异模型Review Pending，当前可用工具无异模型审查主体；不称外部审查通过。
+
+门禁前后git干净、HEAD/tree和环境HMAC`8cebe60684ba5641d54f9c5c32e7c85b7b62c8fd8d55d4583e40330b5f5e9337`一致；Nodev24.21.0/pnpm11.27.0/win32/x64。原始`.local/customer-alignment/task-7-76c0506-final-gate-before.json`、`-gate-after.json`、`-verify.log`、`-database-e2e.log`保留。大chunk、pg及NO_COLOR警告为非阻断，不扩大为生产或性能保证。实际密码cookie/CSRF及上传撤权/存储拒绝/正常/未知核对用例包含本次全库；独立人工最新环境尚未启动，旧5181仅旧构建。
+
+门禁后的完整收口仅改本实际验证摘要、路线图完成态/唯一Current与Next、项目恢复摘要、customers Living Spec的实际完成表述与已解释context snapshot；不变更业务要求、权限、AC、源码、测试/输入、迁移、依赖、生成物、构建/运行配置及环境。按三级规则非执行性收口例外保留76c0506业务证据，另执行受影响文档格式、Spec/状态一致性、strict与累计diff专项，结果保存.local/customer-alignment/task-7-closeout-doc-check.log；不称文档收口HEAD实跑完整门禁。Current推进CU008；008正式设计与实现另提交，不混入本例外。001～007尚未推送或集成main，无生产迁移/部署。
