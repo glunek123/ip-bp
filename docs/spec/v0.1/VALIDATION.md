@@ -844,3 +844,13 @@ Task C实际提交`0cc238bdffc930aecc2be7058425b2d45ee14b00`，tree`c4934c0a904b
 新增外部身份用例后首次整组被残留测试会话的外键约束阻断，16例均未进入用例体；夹具RED已单独保留。修正仅清理本用例限定核心部门/客户且用户名和名称核对的CLIENT/LAWYER账号及其会话/凭据/绑定/律师档案，未知身份拒绝清理；其后16/16通过。不改生产守卫或102 SQL；仅测试库15433与5174/3101，未reset/drop public或操作人工/开发/生产。原始日志、需求映射及未覆盖项见`.local/customer-alignment/task-6-integration-report.md`、`task-6-integration-e2e-final.log`、`task-6-integration-old-compat-e2e.log`、`task-6-integration-static.log`、`task-6-integration-fixture-red.log`与`task-6-ui-parent-refresh-*.log`。
 
 本检查点不预写组合Final Review或Level3通过。Task A原I1/I2/I3已关闭的审查结论保留；最终组合审查、固定候选完整verify/全库E2E/迁移专项仍待执行。Current/Next保持CU006/CU007，人工环境仍旧构建及91条迁移。
+
+## CORE-CU-006 组合终审发现与修复候选（2026-10-09，待原审查者关闭）
+
+固定`22c0e24a1aa43c6153d6f948deaa4140a6ef7266`/tree`6bb1cf168f8397a373403a8f1936237d6ac00c50`组合只读审查REJECTED，未关闭C/I/M=0/2/0。I-1是联系人GET失权后父详情及准入快照仍显示已加载姓名/电话/邮箱；I-2是新增显式ID准入在真实提交、响应丢失、撤准入权限后遇403丢原恢复key。I-2通用4xx清key逻辑在CU006前已存在，但新增UI接线继承了本片验收缺口，不称本片新引入旧API回归。两项均经真实密码cookie页面RED复现，原报告不改写为初审通过。
+
+修复`926c2d49b16475396eddb72a92e7a4168984bbca`/tree`5aeef0740a63675ceb740a6278da35d08ea3f9f6`仅十个前端/测试/helper文件。读失权事件携来源客户与actor，清父详情及子快照、取消迟到读取，保留无PII的只读恢复和原联系人请求。新增独立准入pending按user/department/customer保存原正文/key，发送前存储失败不POST；403/404/BUSY保留，刷新重登且客户已准入/联系人已结束仍原key回放。真实I-2回放前后Contact1/Version2/AdmissionReceipt1/准入Audit1，未重复写。正式页面契约仅澄清上述恢复和资料清除，不改后端/旧无ID指纹、schema、已执行102或其他旧模块未知机制。
+
+最终完整联系人真实环境18/18（55.0秒），四份组件/持久化直接spec66/66，十文件Prettier/ESLint、root tsc及frontend vue-tsc通过。真实cookie两条finding定向2/2通过。首轮全文件15/18和后续17/18均保留：旧撤权locator仍查已正确卸载面板、外部身份夹具顺序、首例异步request.allHeaders取证超时；修正后前两例repeat-each=3共6/6，最终18/18。首例同步头验证key/CSRF/无Bearer，原始Cookie头由第二例实际route请求明确验证，不过度概括逐次完整头覆盖。更早编排失败不充当产品RED。
+
+原始证据见`.local/customer-alignment/task-6-integration-report.md`追加节、`task-6-review-findings-red-final.log`、`task-6-review-findings-green-final.log`、`task-6-review-full-contact-e2e-final.log`、`task-6-review-direct-spec-final.log`、`task-6-review-static-final.log`、`task-6-review-header-capture-red.log`和`task-6-review-header-capture-green.log`。此候选仍待原Reviewer确认关闭I-1/I-2，完整Level3门禁尚未执行；Task A原三项finding保持关闭。同模型隔离独立性不足，外部异模型Review Pending。人工环境、开发/生产不变，仅测试库/端口验证。
