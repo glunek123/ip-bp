@@ -1,5 +1,7 @@
 # 技术设计基线、低负担回溯、可配置授权与客户切片
 
+2026-10-10 CORE-CU-008实施边界：CustomerSettlementRecord/Version/Receipt属现有customers，三独立动作与当前customer.read范围相交，沿用CU007 actor事实锁→Customer父锁，不改共享scope/组织锁；无参数Decimal @db.Decimal无typmod映射已在随机schema实际validate/generate/往返/introspection/双向diff通过，CHECK/trigger另验。单快照list/count/stats、局部精确Decimal、原命令幂等、更正留史及SQL审计/head守卫按[人工台账契约](../../superpowers/specs/2026-10-10-customer-settlements-contract.md)实现。前端本地composable唯一持有敏感列表/KPI，不进全局store；本补充不代表CU008验收。
+
 2026-10-09 CORE-CU-007实施边界：协议与开票各自稳定实体/不可变版本/receipt，同客户父锁与独立权限交集；新CUSTOMER_AGREEMENT元数据、计数、上传及精确历史下载均按类别重查。最小中立actor事实锁helper兼容提取，不改变scope/组织锁算法、不引入模块循环。permission_action/material_category先扩展提交，再结构/守卫单事务；purpose仍String，不改已执行102。正式接口、锁序、删除关联与SQL负例见[协议开票实施契约](../../superpowers/specs/2026-10-09-customer-agreements-invoice-contract.md)。本补充是实施依据，不代表CU007验收。
 
 2026-10-09 CORE-CU-006实施补充：按SD-46把联系人当前关系、最多一位主要、结束历史与不可变准入资料分开。原一位联系人切片及下文旧技术基线的最低联系资料，在本片由冻结准入快照延续；结束当前最后联系人不等同撤销原准入，客户仍ADMITTED。旧三字段保持API兼容投影，旧回执/指纹不改写，具体新旧接口、父锁与原子迁移见[联系人实施契约](../../superpowers/specs/2026-10-09-customer-contacts-contract.md)。本补充为实施依据，不代表CU006验收；原身份证明/材料与客户范围门槛继续有效。

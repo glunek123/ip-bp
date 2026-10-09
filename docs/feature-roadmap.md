@@ -136,9 +136,9 @@
 
 ### Current Slice
 
-**CORE-CU-008｜真实人工结算台账（准备实施）。**
+**CORE-CU-008｜真实人工结算台账（实施中）。**
 
-001～007已本地验收。CU007实际候选76c0506/tree d9c68a0通过完整verify（工具74/74、前端842/842、后端1153/1153、双构建）及全库隔离PG/Chromium274/274；全库已包含103～108迁移链、旧回执保留、SQL负例和失败原子重试。非实现Sol补审Spec compliance/Quality均ACCEPTED、未关闭C/I/M0/0/0；同模型隔离独立性不足，外部异模型Review Pending。原de5de27终审REJECTED的两项I finding已由21d7968修复，原记录及聚焦失败均保留，详见[验证记录](spec/v0.1/VALIDATION.md)。008仍为Draft，待独立测试库随机schema金额映射实测后按007最终schema/锁/权限/页面正式化；逐笔登记真实结算、开票、回款事实，未知与零分开，更正留史，不套比例公式或发起支付。
+001～007已本地验收。CU007实际候选76c0506/tree d9c68a0通过完整verify（工具74/74、前端842/842、后端1153/1153、双构建）及全库隔离PG/Chromium274/274；全库已包含103～108迁移链、旧回执保留、SQL负例和失败原子重试。非实现Sol补审Spec compliance/Quality均ACCEPTED、未关闭C/I/M0/0/0；同模型隔离独立性不足，外部异模型Review Pending。原de5de27终审REJECTED的两项I finding已由21d7968修复，原记录及聚焦失败均保留，详见[验证记录](spec/v0.1/VALIDATION.md)。008[正式契约](superpowers/specs/2026-10-10-customer-settlements-contract.md)与[计划](superpowers/plans/2026-10-10-customer-settlements.md)已按007最终schema/锁/权限/页面复核；独立测试库随机schema的无typmod NUMERIC mapping/双向diff/原始SQL边界已实测通过，业务尚未实现或验收；逐笔登记真实结算、开票、回款事实，未知与零分开，更正留史，不套比例公式或发起支付。
 
 ### Next Slice
 
