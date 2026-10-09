@@ -14,7 +14,9 @@ const client = new Client({
   connectionString: environment.childEnvironment.DATABASE_URL,
 });
 const migrationRoot = resolve(root, 'backend/prisma/migrations');
-const target = '20261008040000_customer_draft_lifecycle';
+const lifecycleTarget = '20261008040000_customer_draft_lifecycle';
+const receiptTarget = '20261009010000_customer_lifecycle_receipt_guards';
+const target = '20261009020000_seal_customer_ever_admitted_deletion';
 const migrations = readdirSync(migrationRoot)
   .filter((name) => /^\d{14}_/.test(name) && name <= target)
   .sort();
@@ -28,7 +30,40 @@ const ids = {
   holder: '55555555-5555-4555-8555-555555555555',
   draft: '66666666-6666-4666-8666-666666666666',
   admitted: '77777777-7777-4777-8777-777777777777',
+  account: 'aaaaaaaa-aaaa-4aaa-8aaa-aaaaaaaaaaaa',
+  material: 'bbbbbbbb-bbbb-4bbb-8bbb-bbbbbbbbbbbb',
+  clientUser: 'cccccccc-cccc-4ccc-8ccc-cccccccccccc',
+  lead: 'dddddddd-dddd-4ddd-8ddd-dddddddddddd',
+  admittedBare: 'eeeeeeee-eeee-4eee-8eee-eeeeeeeeeeee',
+  admissionReceipt: '88888888-8888-4888-8888-888888888888',
+  holderReceipt: '99999999-9999-4999-8999-999999999999',
 };
+
+async function seedHistoricalReceipts() {
+  await client.query(
+    `INSERT INTO customer_admission_receipts(id,department_id,actor_user_id,idempotency_key,request_fingerprint,
+      result_customer_id,result_customer_version,result_snapshot)
+      VALUES ($1,$2,$3,'old-admission',repeat('a',64),$4::uuid,1,jsonb_build_object('id',($4::uuid)::text,'version',1))`,
+    [ids.admissionReceipt, ids.department, ids.actor, ids.admitted],
+  );
+  await client.query(
+    `INSERT INTO rights_holder_command_receipts(id,department_id,actor_user_id,action,idempotency_key,
+      request_fingerprint,result_holder_id,result_link_id,result_customer_id,result_customer_version)
+      SELECT $1,$2,$3,'link-existing','old-link',repeat('b',64),$4,l.id,$5,1
+      FROM customer_rights_holder_links l WHERE l.customer_id=$5`,
+    [ids.holderReceipt, ids.department, ids.actor, ids.holder, ids.linked],
+  );
+}
+
+async function receiptSnapshot() {
+  return (
+    await client.query(
+      `SELECT (SELECT to_jsonb(r) FROM customer_admission_receipts r WHERE id=$1) AS admission,
+      (SELECT to_jsonb(r) FROM rights_holder_command_receipts r WHERE id=$2) AS holder`,
+      [ids.admissionReceipt, ids.holderReceipt],
+    )
+  ).rows[0];
+}
 
 async function apply(names) {
   for (const name of names) {
@@ -82,12 +117,42 @@ async function seed() {
     [ids.eligible, ids.linked, ids.draft, ids.department, ids.actor],
   );
   await client.query(
+    `INSERT INTO customers(id,name,normalized_name,department_id,responsible_user_id,updated_at,profile_status)
+      VALUES ($1,'Account','account',$3,$4,now(),'DRAFT'),($2,'Material','material',$3,$4,now(),'DRAFT')`,
+    [ids.account, ids.material, ids.department, ids.actor],
+  );
+  await client.query('BEGIN');
+  await client.query(
+    `INSERT INTO user_accounts(id,external_subject,display_name,account_type,updated_at)
+      VALUES ($1,'cu004-client','CU004 client','CLIENT',now())`,
+    [ids.clientUser],
+  );
+  await client.query(
+    `INSERT INTO customer_account_bindings(id,user_id,customer_id,department_id,active,updated_at)
+      VALUES (gen_random_uuid(),$1,$2,$3,false,now())`,
+    [ids.clientUser, ids.account, ids.department],
+  );
+  await client.query('COMMIT');
+  await client.query(
+    `INSERT INTO materials(id,department_id,owner_type,owner_id,category,purpose,status,deleted_at,updated_at)
+      VALUES (gen_random_uuid(),$1,'CUSTOMER',$2,'CUSTOMER_IDENTITY','IDENTITY_FULL','DELETED',now(),now())`,
+    [ids.department, ids.material],
+  );
+  await client.query(
     `INSERT INTO customers(id,name,normalized_name,department_id,responsible_user_id,updated_at,
     profile_status,admitted_at,customer_type,identity_type,identity_number,normalized_identity_number,
     admission_contact_name,admission_contact_phone,identity_validity_mode)
     VALUES ($1,'Admitted','admitted',$2,$3,now(),'ADMITTED',now(),'ENTERPRISE','BUSINESS_LICENSE',
       'CU004-OLD','CU004-OLD','Contact','12345678','NOT_STATED')`,
     [ids.admitted, ids.department, ids.actor],
+  );
+  await client.query(
+    `INSERT INTO customers(id,name,normalized_name,department_id,responsible_user_id,updated_at,
+      profile_status,admitted_at,customer_type,identity_type,identity_number,normalized_identity_number,
+      admission_contact_name,admission_contact_phone,identity_validity_mode)
+      VALUES ($1,'Bare admitted','bare admitted',$2,$3,now(),'ADMITTED',now(),'ENTERPRISE','BUSINESS_LICENSE',
+        'CU004-BARE','CU004-BARE','Contact','12345678','NOT_STATED')`,
+    [ids.admittedBare, ids.department, ids.actor],
   );
   await client.query(
     `INSERT INTO rights_holders(id,name,department_id,updated_at)
@@ -98,6 +163,17 @@ async function seed() {
     `INSERT INTO customer_rights_holder_links(id,customer_id,rights_holder_id,department_id)
     VALUES (gen_random_uuid(),$1,$2,$3)`,
     [ids.linked, ids.holder, ids.department],
+  );
+  await client.query(
+    `INSERT INTO customer_rights_holder_links(id,customer_id,rights_holder_id,department_id)
+      VALUES (gen_random_uuid(),$1,$2,$3)`,
+    [ids.admitted, ids.holder, ids.department],
+  );
+  await client.query(
+    `INSERT INTO leads(id,department_id,business_no,customer_id,rights_holder_id,responsible_user_id,
+      case_type,source,platform,found_at,shop_name,need_disclose,updated_at)
+      VALUES ($1,$2,'CU004-LEAD',$3,$4,$5,'CIVIL','ONLINE','TAOBAO',now(),'CU004 shop',false,now())`,
+    [ids.lead, ids.department, ids.admitted, ids.holder, ids.actor],
   );
   await client.query(
     `INSERT INTO upload_drafts(id,department_id,actor_user_id,internal_actor_user_id,owner_type,owner_id,category,purpose,original_filename,declared_mime_type,status,expires_at,created_at,updated_at)
@@ -243,7 +319,7 @@ async function run() {
     console.log(`empty chain passed: ${migrations.length}`);
     await client.query(`CREATE SCHEMA "${upgrade}"`);
     await client.query(`SET search_path TO "${upgrade}"`);
-    await apply(migrations.filter((name) => name < target));
+    await apply(migrations.filter((name) => name < lifecycleTarget));
     await seed();
     process.env.NODE_ENV = 'test';
     process.env.DATABASE_URL = environment.childEnvironment.DATABASE_URL;
@@ -258,7 +334,7 @@ async function run() {
     );
     let failed = false;
     try {
-      await apply([target]);
+      await apply([lifecycleTarget]);
     } catch (error) {
       if (!error.message.includes('already exists')) throw error;
       failed = true;
@@ -271,9 +347,87 @@ async function run() {
     )
       throw new Error('failed migration left partial schema');
     await client.query('DROP FUNCTION customer_draft_deletion_guard()');
+    await apply([lifecycleTarget]);
+    await seedHistoricalReceipts();
+    const receiptsBefore = await receiptSnapshot();
+    await client.query(
+      `CREATE FUNCTION rights_holder_receipt_parent_guard() RETURNS trigger LANGUAGE plpgsql AS $$ BEGIN RETURN NEW; END $$`,
+    );
+    let receiptUpgradeFailed = false;
+    try {
+      await apply([receiptTarget]);
+    } catch (error) {
+      if (!error.message.includes('already exists')) throw error;
+      await client.query('ROLLBACK');
+      receiptUpgradeFailed = true;
+    }
+    if (!receiptUpgradeFailed)
+      throw new Error('receipt guard DDL failure did not occur');
+    if (
+      (await count(
+        `SELECT count(*)::int AS count FROM information_schema.triggers WHERE event_object_schema='${upgrade}' AND trigger_name='customer_admission_receipt_parent_guard'`,
+      )) !== 0
+    )
+      throw new Error('receipt guard failed migration left partial trigger');
+    await client.query('DROP FUNCTION rights_holder_receipt_parent_guard()');
+    await apply([receiptTarget]);
+    const previousDeletionGuard = (
+      await client.query(
+        `SELECT pg_get_functiondef(p.oid) AS definition FROM pg_proc p
+      JOIN pg_namespace n ON n.oid=p.pronamespace WHERE n.nspname=$1 AND p.proname='customer_draft_deletion_guard'`,
+        [upgrade],
+      )
+    ).rows[0].definition;
+    await client.query(
+      `ALTER TABLE customers ADD CONSTRAINT customers_deleted_never_admitted_check CHECK (true)`,
+    );
+    let sealUpgradeFailed = false;
+    try {
+      await apply([target]);
+    } catch (error) {
+      if (!error.message.includes('already exists')) throw error;
+      await client.query('ROLLBACK');
+      sealUpgradeFailed = true;
+    }
+    if (!sealUpgradeFailed)
+      throw new Error('ever-admitted seal DDL failure did not occur');
+    const afterFailedSeal = (
+      await client.query(
+        `SELECT pg_get_functiondef(p.oid) AS definition FROM pg_proc p
+      JOIN pg_namespace n ON n.oid=p.pronamespace WHERE n.nspname=$1 AND p.proname='customer_draft_deletion_guard'`,
+        [upgrade],
+      )
+    ).rows[0].definition;
+    if (afterFailedSeal !== previousDeletionGuard)
+      throw new Error('failed seal migration changed guard function');
+    await client.query(
+      `ALTER TABLE customers DROP CONSTRAINT customers_deleted_never_admitted_check`,
+    );
     await apply([target]);
+    const caseDependencyChain = await client.query(
+      `SELECT c.conname FROM pg_constraint c
+       JOIN pg_namespace n ON n.oid=c.connamespace
+       WHERE n.nspname=$1 AND c.conname IN
+         ('leads_customer_department_fkey','cases_lead_fkey','cases_matter_fkey')`,
+      [upgrade],
+    );
+    const caseParentGuard = await count(
+      `SELECT count(*)::int AS count FROM pg_trigger t
+       JOIN pg_class r ON r.oid=t.tgrelid
+       JOIN pg_namespace n ON n.oid=r.relnamespace
+       WHERE n.nspname='${upgrade}' AND r.relname='cases'
+         AND t.tgname='customer_case_parent_guard' AND NOT t.tgisinternal`,
+    );
+    if (caseDependencyChain.rowCount !== 3 || caseParentGuard !== 1)
+      throw new Error('case lead/matter prerequisite or parent guard missing');
+    if (
+      JSON.stringify(await receiptSnapshot()) !== JSON.stringify(receiptsBefore)
+    )
+      throw new Error(
+        'existing customer admission/holder receipts changed on guard upgrade',
+      );
     const after = await count('SELECT count(*)::int AS count FROM customers');
-    if (before !== 5 || after !== 5)
+    if (before !== 8 || after !== 8)
       throw new Error(`customer preservation failed ${before} -> ${after}`);
     const proofAfter = await acceptedProofSnapshot(legacy, proof);
     if (JSON.stringify(proofBefore) !== JSON.stringify(proofAfter))
@@ -305,6 +459,18 @@ async function run() {
         'business history',
       );
       await rejects(
+        `UPDATE customers SET deleted_at=now(),deleted_by_user_id=$2 WHERE id=$1`,
+        [ids.account, ids.actor],
+        '23514',
+        'business history',
+      );
+      await rejects(
+        `UPDATE customers SET deleted_at=now(),deleted_by_user_id=$2 WHERE id=$1`,
+        [ids.material, ids.actor],
+        '23514',
+        'business history',
+      );
+      await rejects(
         `UPDATE customers SET profile_status='DRAFT',admitted_at=NULL,deleted_at=now(),deleted_by_user_id=$2 WHERE id=$1`,
         [ids.admitted, ids.actor],
         '23514',
@@ -321,11 +487,97 @@ async function run() {
         'business history',
       );
       await rejects(
+        `UPDATE customers SET profile_status='DRAFT',admitted_at=NULL,ever_admitted=false,
+          deleted_at=now(),deleted_by_user_id=$2 WHERE id=$1`,
+        [ids.admittedBare, ids.actor],
+        '23514',
+        'business history',
+      );
+      await rejects(
         `INSERT INTO customer_rights_holder_links(id,customer_id,rights_holder_id,department_id)
         VALUES (gen_random_uuid(),$1,$2,$3)`,
         [ids.eligible, ids.holder, ids.department],
         '23514',
         'unavailable',
+      );
+      await rejects(
+        `UPDATE customer_account_bindings SET customer_id=$1 WHERE customer_id=$2`,
+        [ids.eligible, ids.account],
+        '23514',
+        'customer unavailable for business association',
+      );
+      await rejects(
+        `UPDATE materials SET owner_id=$1 WHERE owner_id=$2`,
+        [ids.eligible, ids.material],
+        '23514',
+        'customer unavailable for business association',
+      );
+      await rejects(
+        `UPDATE leads SET customer_id=$1 WHERE id=$2`,
+        [ids.eligible, ids.lead],
+        '23514',
+        'customer unavailable for business association',
+      );
+      await rejects(
+        `UPDATE customer_right_assets SET customer_id=$1 WHERE id=$2`,
+        [ids.eligible, legacy.assetId],
+        '23514',
+        'customer unavailable for business association',
+      );
+      await rejects(
+        `UPDATE customer_right_asset_versions SET customer_id=$1 WHERE id=$2`,
+        [ids.eligible, proof.nextAssetVersionId],
+        '23514',
+        'customer unavailable for business association',
+      );
+      await rejects(
+        `UPDATE customer_right_asset_receipts SET customer_id=$1 WHERE id=$2`,
+        [ids.eligible, proof.receiptId],
+        '23514',
+        'customer unavailable for business association',
+      );
+      await rejects(
+        `INSERT INTO upload_drafts(id,department_id,actor_user_id,internal_actor_user_id,owner_type,owner_id,
+          category,purpose,original_filename,declared_mime_type,status,expires_at,created_at,updated_at)
+        VALUES (gen_random_uuid(),$2,$3,$3,'CUSTOMER',$1,'CUSTOMER_IDENTITY','CUSTOMER_IDENTITY',
+          'late.pdf','application/pdf','EXPIRED',now()-interval '1 day',now(),now())`,
+        [ids.eligible, ids.department, ids.actor],
+        '23514',
+        'customer unavailable for business association',
+      );
+      await rejects(
+        `INSERT INTO customer_admission_receipts(id,department_id,actor_user_id,idempotency_key,request_fingerprint,
+          result_customer_id,result_customer_version,result_snapshot)
+          VALUES (gen_random_uuid(),$2,$3,'deleted-admission',repeat('c',64),$1,2,'{}'::jsonb)`,
+        [ids.eligible, ids.department, ids.actor],
+        '23514',
+        'customer unavailable for business association',
+      );
+      await rejects(
+        `INSERT INTO rights_holder_command_receipts(id,department_id,actor_user_id,action,idempotency_key,
+          request_fingerprint,result_holder_id,result_link_id,result_customer_id,result_customer_version)
+          SELECT gen_random_uuid(),$2,$3,'link-existing','deleted-holder',repeat('d',64),$4,l.id,$1,2
+          FROM customer_rights_holder_links l WHERE l.customer_id=$5`,
+        [ids.eligible, ids.department, ids.actor, ids.holder, ids.linked],
+        '23514',
+        'customer unavailable for business association',
+      );
+      await rejects(
+        `INSERT INTO rights_holder_command_receipts(id,department_id,actor_user_id,action,idempotency_key,
+          request_fingerprint,result_holder_id,result_link_id,result_customer_id,result_customer_version)
+          SELECT gen_random_uuid(),$2,$3,'link-existing','cross-link',repeat('e',64),$4,l.id,$1,2
+          FROM customer_rights_holder_links l WHERE l.customer_id=$5`,
+        [ids.admitted, ids.department, ids.actor, ids.holder, ids.linked],
+        '23514',
+        'rights holder receipt/link identity mismatch',
+      );
+      await rejects(
+        `INSERT INTO customer_admission_receipts(id,department_id,actor_user_id,idempotency_key,request_fingerprint,
+          result_customer_id,result_customer_version,result_snapshot)
+          VALUES (gen_random_uuid(),$2,$3,'draft-admission',repeat('f',64),$1,2,'{}'::jsonb)`,
+        [ids.linked, ids.department, ids.actor],
+        '23514',
+        'customer admission receipt requires admitted customer',
       );
       await client.query('ROLLBACK');
     } catch (error) {

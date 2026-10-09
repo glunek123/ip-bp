@@ -1,6 +1,6 @@
 <script setup lang="ts">
 import { onMounted, ref } from 'vue';
-import { RouterLink } from 'vue-router';
+import { RouterLink, useRoute } from 'vue-router';
 import { ElButton } from 'element-plus/es/components/button/index.mjs';
 import { ApiError } from '../../api/http';
 import {
@@ -18,8 +18,12 @@ import {
 } from './customer-lifecycle-pending';
 
 const auth = useAuthStore(pinia);
+const route = useRoute();
 const state = ref<'loading' | 'ready' | 'failed'>('loading');
 const items = ref<DeletedCustomerDraft[]>([]);
+const page = ref(1);
+const total = ref(0);
+const pageSize = 20;
 const activeId = ref<string>();
 const reason = ref('');
 const commandState = ref<'idle' | 'submitting' | 'unknown' | 'conflict'>(
@@ -50,9 +54,52 @@ function recoverPending(): void {
 async function load(): Promise<void> {
   state.value = 'loading';
   try {
-    const result = await listDeletedCustomerDrafts();
+    const result = await listDeletedCustomerDrafts(page.value, pageSize);
+    const lastPage = Math.max(1, Math.ceil(result.total / pageSize));
+    if (page.value > lastPage) {
+      page.value = lastPage;
+      await load();
+      return;
+    }
     items.value = result.items;
+    total.value = result.total;
     state.value = 'ready';
+  } catch {
+    state.value = 'failed';
+  }
+}
+
+async function changePage(next: number): Promise<void> {
+  if (
+    state.value === 'loading' ||
+    next < 1 ||
+    next > Math.max(1, Math.ceil(total.value / pageSize))
+  )
+    return;
+  page.value = next;
+  activeId.value = frozen.value?.customerId;
+  await load();
+}
+
+async function locateAuthorizedDraft(customerId: string): Promise<void> {
+  state.value = 'loading';
+  try {
+    let nextPage = 1;
+    while (true) {
+      const result = await listDeletedCustomerDrafts(nextPage, pageSize);
+      if (result.items.some((item) => item.id === customerId)) {
+        page.value = nextPage;
+        items.value = result.items;
+        total.value = result.total;
+        activeId.value = customerId;
+        state.value = 'ready';
+        return;
+      }
+      if (nextPage * pageSize >= result.total) break;
+      nextPage += 1;
+    }
+    page.value = 1;
+    await load();
   } catch {
     state.value = 'failed';
   }
@@ -120,7 +167,14 @@ async function refreshConflict(): Promise<void> {
 
 onMounted(() => {
   recoverPending();
-  void load();
+  const focus = route.query.focus;
+  if (
+    !frozen.value &&
+    typeof focus === 'string' &&
+    /^[0-9a-f-]{36}$/i.test(focus)
+  )
+    void locateAuthorizedDraft(focus);
+  else void load();
 });
 </script>
 
@@ -141,9 +195,7 @@ onMounted(() => {
         >
           <p>
             此前对客户
-            {{
-              frozen.customerId
-            }}
+            {{ frozen.customerId }}
             的恢复结果尚不确定。只能用原请求和幂等键重试。
           </p>
           <ElButton
@@ -223,6 +275,28 @@ onMounted(() => {
             </div>
           </div>
         </div>
+        <nav
+          v-if="state === 'ready' && total > pageSize"
+          class="pagination"
+          aria-label="已删除草稿分页"
+        >
+          <ElButton
+            data-test="deleted-drafts-prev"
+            :disabled="page <= 1"
+            @click="changePage(page - 1)"
+            >上一页</ElButton
+          >
+          <span data-test="deleted-drafts-page"
+            >第 {{ page }} / {{ Math.ceil(total / pageSize) }} 页，共
+            {{ total }} 条</span
+          >
+          <ElButton
+            data-test="deleted-drafts-next"
+            :disabled="page >= Math.ceil(total / pageSize)"
+            @click="changePage(page + 1)"
+            >下一页</ElButton
+          >
+        </nav>
       </section>
     </main>
   </div>

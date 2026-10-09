@@ -162,6 +162,7 @@ export class CustomerLifecycleService {
         const associations = await tx.$queryRaw<Array<{ blocked: boolean }>>`
           SELECT (
             EXISTS (SELECT 1 FROM customer_admission_receipts WHERE result_customer_id = ${id}::uuid)
+            OR EXISTS (SELECT 1 FROM rights_holder_command_receipts WHERE result_customer_id = ${id}::uuid)
             OR EXISTS (SELECT 1 FROM customer_rights_holder_links WHERE customer_id = ${id}::uuid)
             OR EXISTS (SELECT 1 FROM customer_account_bindings WHERE customer_id = ${id}::uuid)
             OR EXISTS (SELECT 1 FROM customer_right_assets WHERE customer_id = ${id}::uuid)
@@ -176,6 +177,16 @@ export class CustomerLifecycleService {
           throw this.conflict(
             'CUSTOMER_DRAFT_HAS_ASSOCIATIONS',
             '客户草稿已有业务关联，不能删除',
+          );
+      }
+      if (action === 'RESTORE') {
+        const receiptHistory = await tx.$queryRaw<Array<{ blocked: boolean }>>`
+          SELECT (EXISTS (SELECT 1 FROM customer_admission_receipts WHERE result_customer_id = ${id}::uuid)
+            OR EXISTS (SELECT 1 FROM rights_holder_command_receipts WHERE result_customer_id = ${id}::uuid)) AS blocked`;
+        if (receiptHistory[0]?.blocked)
+          throw this.conflict(
+            'CUSTOMER_DRAFT_HAS_ASSOCIATIONS',
+            '客户草稿已有业务关联，不能恢复',
           );
       }
       const now = new Date();

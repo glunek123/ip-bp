@@ -66,6 +66,7 @@ const materialsLoading = ref(false);
 const uploadingFilename = ref('');
 const submitting = ref(false);
 const formError = ref('');
+const restoreTargetId = ref<string>();
 const materialError = ref('');
 const staleReview = ref(false);
 const externalSnapshotChanged = ref(false);
@@ -126,6 +127,7 @@ function loadCustomerSnapshot(): void {
   staleReview.value = false;
   identityNumberError.value = '';
   formError.value = '';
+  restoreTargetId.value = undefined;
   pendingCommand = undefined;
   void reloadMaterials();
 }
@@ -553,6 +555,10 @@ async function submit(): Promise<void> {
         error instanceof ApiError &&
         error.code === 'CUSTOMER_IDENTITY_RESTORE_AVAILABLE'
       ) {
+        restoreTargetId.value =
+          typeof error.details?.customerId === 'string'
+            ? error.details.customerId
+            : undefined;
         formError.value =
           '本部门已有相同证件号码的已删除草稿。请在已删除草稿中恢复原客户。';
       } else if (
@@ -866,7 +872,10 @@ void reloadMaterials();
       <p v-if="formError" class="submit-error" role="alert">{{ formError }}</p>
       <RouterLink
         v-if="formError.includes('已删除草稿')"
-        to="/customers/deleted-drafts"
+        :to="{
+          path: '/customers/deleted-drafts',
+          query: restoreTargetId ? { focus: restoreTargetId } : {},
+        }"
         >查看已删除草稿</RouterLink
       >
       <div v-if="canManageMaterials" class="admission-submit">

@@ -59,7 +59,30 @@ async function resetLocalAuthE2eData() {
   const roleId = '30000000-0000-4000-8000-000000000010';
   const password = 'Browser-test-passphrase-2026';
   const passwordHash = await hashPassword(password);
+  const actualDatabase = await database.$queryRawUnsafe(
+    'SELECT current_database() AS name',
+  );
+  if (actualDatabase[0]?.name !== 'dev_cor_test')
+    throw new Error('Refusing to reset an unexpected database');
   await database.$transaction(async (transaction) => {
+    await transaction.$executeRawUnsafe(
+      'ALTER TABLE "customer_draft_lifecycle_receipts" DISABLE TRIGGER USER',
+    );
+    await transaction.$executeRawUnsafe(
+      'ALTER TABLE "customer_draft_lifecycle_facts" DISABLE TRIGGER USER',
+    );
+    await transaction.customerDraftLifecycleReceipt.deleteMany({
+      where: { departmentId },
+    });
+    await transaction.customerDraftLifecycleFact.deleteMany({
+      where: { departmentId },
+    });
+    await transaction.$executeRawUnsafe(
+      'ALTER TABLE "customer_draft_lifecycle_receipts" ENABLE TRIGGER USER',
+    );
+    await transaction.$executeRawUnsafe(
+      'ALTER TABLE "customer_draft_lifecycle_facts" ENABLE TRIGGER USER',
+    );
     await transaction.authSession.deleteMany({});
     await transaction.authThrottle.deleteMany({});
     await transaction.localCredential.deleteMany({});

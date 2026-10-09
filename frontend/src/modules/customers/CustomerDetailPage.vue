@@ -207,7 +207,7 @@ async function acceptAdmission(admitted: CustomerSummary): Promise<void> {
   customer.value = {
     ...current,
     ...admitted,
-    capabilities: { ...current.capabilities, admit: false },
+    capabilities: { ...current.capabilities, admit: false, deleteDraft: false },
     history: current.history,
   };
   const controller = new AbortController();

@@ -9,6 +9,7 @@ import {
   grantCustomerLifecycle,
   rejectCustomerLifecycleStage,
   resetCustomerE2eData,
+  resetLocalAuthE2eData,
   revokeCustomerLifecycle,
 } from '../support/customer-database.mjs';
 
@@ -588,4 +589,231 @@ test('lost restore response remains retryable when trash is empty', async ({
       await request.get(`/api/v1/customers/${draft.id}`, { headers: auth })
     ).status(),
   ).toBe(200);
+});
+
+test('password cookie and CSRF carry delete, unknown retry, trash and restore across relogin', async ({
+  page,
+}) => {
+  const credentials = await resetLocalAuthE2eData();
+  const localRole = '30000000-0000-4000-8000-000000000010';
+  await grantCustomerLifecycle(localRole, 'DEPARTMENT');
+  await page.goto('/customers');
+  await expect(page).toHaveURL(/\/login\?returnTo=/);
+  await page.getByLabel('用户名').fill(credentials.username);
+  await page.getByLabel('密码').fill(credentials.password);
+  await page.getByRole('button', { name: '登录', exact: true }).click();
+  await expect(page).toHaveURL(/\/customers$/);
+  await page.getByRole('link', { name: '新建客户' }).click();
+  await page.getByLabel('客户名称').fill('真实 Cookie 生命周期');
+  await page.getByRole('button', { name: '保存草稿' }).click();
+  await expect(
+    page.getByRole('heading', { name: '真实 Cookie 生命周期' }),
+  ).toBeVisible();
+  const detailUrl = page.url();
+  const customerId = detailUrl.split('/').at(-1)!;
+  let firstRequest:
+    | {
+        key: string | undefined;
+        csrf: string | undefined;
+        cookie: string | undefined;
+        authorization: string | undefined;
+      }
+    | undefined;
+  let intercepted = false;
+  await page.route(
+    `**/api/v1/customers/${customerId}/delete-draft`,
+    async (route) => {
+      if (intercepted) return route.continue();
+      intercepted = true;
+      const headers = route.request().headers();
+      firstRequest = {
+        key: headers['idempotency-key'],
+        csrf: headers['x-csrf-token'],
+        cookie: headers.cookie,
+        authorization: headers.authorization,
+      };
+      const committed = await route.fetch();
+      expect(committed.status()).toBe(201);
+      await route.abort('failed');
+    },
+  );
+  await page.locator('[data-test="delete-draft-open"]').click();
+  await page.locator('[data-test="delete-draft-submit"]').click();
+  await expect(
+    page.getByText('结果尚不确定。重试会使用原请求和同一幂等键。'),
+  ).toBeVisible();
+  expect(firstRequest?.key).toBeTruthy();
+  expect(firstRequest?.csrf).toBeTruthy();
+  expect(firstRequest?.cookie).toBeTruthy();
+  expect(firstRequest?.authorization).toBeUndefined();
+  await page.reload();
+  await expect(
+    page.locator('[data-test="pending-delete-after-404"]'),
+  ).toBeVisible();
+  await page.getByRole('button', { name: '退出登录' }).click();
+  await expect(page).toHaveURL(/\/login$/);
+  await page.goto(detailUrl);
+  await page.getByLabel('用户名').fill(credentials.username);
+  await page.getByLabel('密码').fill(credentials.password);
+  await page.getByRole('button', { name: '登录', exact: true }).click();
+  await expect(
+    page.locator('[data-test="pending-delete-after-404"]'),
+  ).toBeVisible();
+  await revokeCustomerLifecycle(localRole, 'CUSTOMER_DELETE_DRAFT');
+  const revokedResponse = page.waitForResponse(
+    (response) =>
+      response.url().endsWith(`/customers/${customerId}/delete-draft`) &&
+      response.request().method() === 'POST',
+  );
+  await page.getByRole('button', { name: '按原请求重试' }).click();
+  expect((await revokedResponse).status()).toBe(403);
+  await expect(
+    page.locator('[data-test="pending-delete-after-404"]'),
+  ).toBeVisible();
+  await expect(
+    page.getByRole('button', { name: '按原请求重试' }),
+  ).toBeEnabled();
+  await grantCustomerLifecycle(localRole, 'DEPARTMENT');
+  const replay = page.waitForRequest(
+    (request) =>
+      request.url().endsWith(`/customers/${customerId}/delete-draft`) &&
+      request.method() === 'POST',
+  );
+  await page.getByRole('button', { name: '按原请求重试' }).click();
+  const replayRequest = await replay;
+  expect(replayRequest.headers()['idempotency-key']).toBe(firstRequest?.key);
+  expect(replayRequest.headers()['x-csrf-token']).toBeTruthy();
+  await expect(page).toHaveURL(/\/customers$/);
+  await page.locator('[data-test="deleted-drafts-link"]').click();
+  await expect(page.getByText('真实 Cookie 生命周期')).toBeVisible();
+  await page.getByRole('button', { name: '恢复', exact: true }).click();
+  const restoreRequest = page.waitForRequest(
+    (request) =>
+      request.url().endsWith(`/customers/${customerId}/restore-draft`) &&
+      request.method() === 'POST',
+  );
+  await page.locator('[data-test="restore-draft-submit"]').click();
+  const restoredCommand = await restoreRequest;
+  expect(restoredCommand.headers()['x-csrf-token']).toBeTruthy();
+  expect(restoredCommand.headers().authorization).toBeUndefined();
+  await expect(page.getByText('没有可恢复的草稿')).toBeVisible();
+  await page.reload();
+  await page.goto(detailUrl);
+  await expect(
+    page.getByRole('heading', { name: '真实 Cookie 生命周期' }),
+  ).toBeVisible();
+});
+
+test('trash page reaches and restores the 21st deleted draft and identity recovery target', async ({
+  page,
+  request,
+}) => {
+  await page.context().setExtraHTTPHeaders(auth);
+  await page.route('**/api/v1/auth/session', (route) =>
+    route.fulfill({
+      status: 200,
+      contentType: 'application/json',
+      body: JSON.stringify({
+        principalType: 'INTERNAL',
+        user: {
+          id: e2eFixtures.userA,
+          displayName: '测试用户甲',
+          username: 'e2e-user-a',
+        },
+        department: { id: e2eFixtures.departmentA, name: 'E2E 知产部' },
+        departments: [{ id: e2eFixtures.departmentA, name: 'E2E 知产部' }],
+        customer: null,
+        notaryOffice: null,
+        authorizationRevision: 1,
+        expiresAt: '2099-01-01T00:00:00.000Z',
+        csrfToken: '',
+      }),
+    }),
+  );
+  const originalCreate = await request.post('/api/v1/customers', {
+    headers: auth,
+    data: { name: 'CU004 第21条旧项', category: '保留资料' },
+  });
+  expect(originalCreate.status()).toBe(201);
+  const original: { id: string; version: number } = await originalCreate.json();
+  const identity = {
+    identityType: 'credit-code',
+    identityNumber: 'CU004-PAGE-21',
+  };
+  const assigned = await request.patch(`/api/v1/customers/${original.id}`, {
+    headers: auth,
+    data: { expectedVersion: original.version, ...identity },
+  });
+  expect(assigned.status()).toBe(200);
+  const firstDelete = await request.post(
+    `/api/v1/customers/${original.id}/delete-draft`,
+    {
+      headers: { ...auth, 'Idempotency-Key': randomUUID() },
+      data: { expectedVersion: original.version + 1 },
+    },
+  );
+  expect(firstDelete.status()).toBe(201);
+  for (let index = 0; index < 20; index += 1) {
+    const created = await request.post('/api/v1/customers', {
+      headers: auth,
+      data: { name: `CU004 后续 ${index}` },
+    });
+    expect(created.status()).toBe(201);
+    const draft: { id: string; version: number } = await created.json();
+    const deleted = await request.post(
+      `/api/v1/customers/${draft.id}/delete-draft`,
+      {
+        headers: { ...auth, 'Idempotency-Key': randomUUID() },
+        data: { expectedVersion: draft.version },
+      },
+    );
+    expect(deleted.status()).toBe(201);
+  }
+  await page.goto('/customers/deleted-drafts');
+  await expect(page.locator('[data-test="deleted-drafts-page"]')).toContainText(
+    '第 1 / 2 页',
+  );
+  await expect(page.getByText('CU004 第21条旧项')).toHaveCount(0);
+  await page.locator('[data-test="deleted-drafts-next"]').click();
+  await expect(page.locator('[data-test="deleted-drafts-page"]')).toContainText(
+    '第 2 / 2 页',
+  );
+  await expect(page.getByText('CU004 第21条旧项')).toBeVisible();
+  const rivalCreate = await request.post('/api/v1/customers', {
+    headers: auth,
+    data: { name: 'CU004 冲突新项' },
+  });
+  const rival: { id: string; version: number } = await rivalCreate.json();
+  const guided = await request.patch(`/api/v1/customers/${rival.id}`, {
+    headers: auth,
+    data: { expectedVersion: rival.version, ...identity },
+  });
+  expect(guided.status()).toBe(409);
+  const conflict: { details: { customerId: string } } = await guided.json();
+  expect(conflict.details.customerId).toBe(original.id);
+  await page.goto(
+    `/customers/deleted-drafts?focus=${conflict.details.customerId}`,
+  );
+  await expect(page.locator('[data-test="deleted-drafts-page"]')).toContainText(
+    '第 2 / 2 页',
+  );
+  await expect(
+    page.locator('[data-test="restore-draft-confirm"]'),
+  ).toContainText(original.id);
+  const restoreResponse = page.waitForResponse(
+    (response) =>
+      response.url().endsWith(`/customers/${original.id}/restore-draft`) &&
+      response.request().method() === 'POST',
+  );
+  await page.locator('[data-test="restore-draft-submit"]').click();
+  expect((await restoreResponse).status()).toBe(201);
+  const restored = await request.get(`/api/v1/customers/${original.id}`, {
+    headers: auth,
+  });
+  expect(restored.status()).toBe(200);
+  expect(await restored.json()).toMatchObject({
+    id: original.id,
+    category: '保留资料',
+    version: original.version + 3,
+  });
 });

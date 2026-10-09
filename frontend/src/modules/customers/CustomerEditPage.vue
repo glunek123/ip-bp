@@ -48,6 +48,7 @@ const identityError = ref('');
 const admissionContactError = ref('');
 const duplicateNameReasonError = ref('');
 const submitError = ref('');
+const restoreTargetId = ref<string>();
 const saving = ref(false);
 const isDirty = ref(false);
 let activeRequest: AbortController | undefined;
@@ -254,6 +255,7 @@ async function submit(): Promise<void> {
       ? '请说明同名情况下继续保存的原因'
       : '';
   submitError.value = '';
+  restoreTargetId.value = undefined;
   duplicateMatches.value = [];
   latestSnapshot.value = null;
   if (
@@ -305,6 +307,10 @@ async function submit(): Promise<void> {
           'exactIdentity',
         );
       } else if (error.code === 'CUSTOMER_IDENTITY_RESTORE_AVAILABLE') {
+        restoreTargetId.value =
+          typeof error.details?.customerId === 'string'
+            ? error.details.customerId
+            : undefined;
         submitError.value =
           '本部门已有相同证件号码的已删除草稿。请在已删除草稿中恢复原客户。';
       } else if (error.code === 'CUSTOMER_DUPLICATE_CONFLICT') {
@@ -559,7 +565,10 @@ onBeforeUnmount(() => activeRequest?.abort());
           </p>
           <RouterLink
             v-if="submitError.includes('已删除草稿')"
-            to="/customers/deleted-drafts"
+            :to="{
+              path: '/customers/deleted-drafts',
+              query: restoreTargetId ? { focus: restoreTargetId } : {},
+            }"
             >查看已删除草稿</RouterLink
           >
           <ul v-if="duplicateMatches.length" class="duplicate-list">

@@ -412,6 +412,25 @@ describe('CustomerDetailPage', () => {
     ).toBe('2');
   });
 
+  it('hides delete immediately after admission even if detail refresh fails', async () => {
+    const draft = {
+      ...customerRecord('customer-1', '准入客户'),
+      capabilities: { editRoutine: true, admit: true, deleteDraft: true },
+    };
+    api.getCustomer
+      .mockResolvedValueOnce(draft)
+      .mockRejectedValueOnce(new Error('offline'));
+    const { wrapper } = await mountPage();
+    await flushPromises();
+    expect(wrapper.find('[data-test="delete-draft-open"]').exists()).toBe(true);
+    await wrapper.get('[data-test="admitted"]').trigger('click');
+    await flushPromises();
+    expect(wrapper.text()).toContain('已准入');
+    expect(wrapper.find('[data-test="delete-draft-open"]').exists()).toBe(
+      false,
+    );
+  });
+
   it('shows a non-leaking unavailable state for 404', async () => {
     api.getCustomer.mockRejectedValue({ code: 'CUSTOMER_NOT_FOUND' });
     const { wrapper } = await mountPage();
