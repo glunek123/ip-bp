@@ -14,6 +14,7 @@ import CustomerAdmissionPanel from './CustomerAdmissionPanel.vue';
 import CustomerAccountPanel from './CustomerAccountPanel.vue';
 import CustomerRightAssetsPanel from './CustomerRightAssetsPanel.vue';
 import CustomerCooperationPanel from './CustomerCooperationPanel.vue';
+import CustomerContactsPanel from './CustomerContactsPanel.vue';
 import { labelCustomerType, labelIdentityType } from './customer-labels';
 import { useAuthStore } from '../../stores/auth';
 import { pinia } from '../../app/pinia';
@@ -24,6 +25,7 @@ import {
   type PendingCustomerDraftCommand,
 } from './customer-lifecycle-pending';
 import { hasPendingCustomerMaintenance } from './customer-maintenance-pending';
+import { listPendingCustomerContacts } from './customer-contacts-pending';
 
 const route = useRoute();
 const router = useRouter();
@@ -39,6 +41,7 @@ const deleteStatus = ref<'idle' | 'submitting' | 'unknown' | 'conflict'>(
 );
 const frozenDelete = ref<PendingCustomerDraftCommand>();
 const maintenancePending = ref(false);
+const contactsPending = ref(false);
 const currentProjectionStale = ref(false);
 const admissionRefreshFailed = ref(false);
 let viewGeneration = 0;
@@ -46,7 +49,11 @@ let viewGeneration = 0;
 const actor = computed(() => {
   const session = auth.session;
   if (session?.principalType !== 'INTERNAL' || !session.department) return null;
-  return { userId: session.user.id, departmentId: session.department.id };
+  return {
+    userId: session.user.id,
+    departmentId: session.department.id,
+    authorizationRevision: session.authorizationRevision,
+  };
 });
 const actorKey = computed(() =>
   actor.value
@@ -82,6 +89,42 @@ function restorePending(customerId: string): void {
   maintenancePending.value = actor.value
     ? hasPendingCustomerMaintenance(actor.value, customerId)
     : false;
+  try {
+    contactsPending.value = actor.value
+      ? listPendingCustomerContacts(actor.value, customerId).length > 0
+      : false;
+  } catch {
+    contactsPending.value = true;
+  }
+}
+
+function updateContactsPending(
+  customerId: string,
+  sourceActorKey: string,
+  pending: boolean,
+): void {
+  if (
+    customerId !== String(route.params.id) ||
+    sourceActorKey !== actorKey.value ||
+    customer.value?.id !== customerId
+  )
+    return;
+  contactsPending.value = pending;
+}
+
+function acceptContactRefresh(
+  customerId: string,
+  sourceActorKey: string,
+  latest: CustomerDetail,
+): void {
+  if (
+    customerId !== String(route.params.id) ||
+    sourceActorKey !== actorKey.value ||
+    latest.id !== customerId ||
+    customer.value?.id !== customerId
+  )
+    return;
+  acceptRefreshedCustomer(latest);
 }
 
 async function submitDelete(): Promise<void> {
@@ -235,11 +278,17 @@ function acceptRefreshedCustomer(latest: CustomerDetail): void {
   currentProjectionStale.value = false;
 }
 
-async function acceptAdmission(admitted: CustomerSummary): Promise<void> {
+async function acceptAdmission(
+  customerId: string,
+  sourceActorKey: string,
+  admitted: CustomerSummary,
+): Promise<void> {
   const current = customer.value;
   if (
     current === undefined ||
-    current.id !== admitted.id ||
+    current.id !== customerId ||
+    sourceActorKey !== actorKey.value ||
+    customerId !== admitted.id ||
     admitted.id !== String(route.params.id)
   ) {
     return;
@@ -249,10 +298,14 @@ async function acceptAdmission(admitted: CustomerSummary): Promise<void> {
   const controller = new AbortController();
   requests.add(controller);
   try {
-    const latest = await getCustomer(admitted.id, {
+    const identityAtStart = actorKey.value;
+    const latest = await getCustomer(customerId, {
       signal: controller.signal,
     });
-    if (isCurrentRequest(admitted.id, controller)) {
+    if (
+      identityAtStart === actorKey.value &&
+      isCurrentRequest(customerId, controller)
+    ) {
       customer.value = latest;
       currentProjectionStale.value = false;
     }
@@ -261,6 +314,19 @@ async function acceptAdmission(admitted: CustomerSummary): Promise<void> {
   } finally {
     requests.delete(controller);
   }
+}
+
+function acceptAdmissionRefresh(
+  customerId: string,
+  sourceActorKey: string,
+  latest: CustomerDetail,
+): void {
+  if (sourceActorKey !== actorKey.value || customerId !== latest.id) return;
+  acceptRefreshedCustomer(latest);
+}
+
+function returnFromAdmission(customerId: string, sourceActorKey: string): void {
+  if (sourceActorKey === actorKey.value) returnToCustomerList(customerId);
 }
 
 async function retryCurrentDetail(): Promise<void> {
@@ -438,6 +504,7 @@ onBeforeUnmount(abortRequests);
                 customer.capabilities.deleteDraft &&
                 !frozenDelete &&
                 !maintenancePending &&
+                !contactsPending &&
                 !currentProjectionStale
               "
               data-test="delete-draft-open"
@@ -449,6 +516,7 @@ onBeforeUnmount(abortRequests);
                 customer.capabilities.editRoutine &&
                 !frozenDelete &&
                 !maintenancePending &&
+                !contactsPending &&
                 !currentProjectionStale
               "
               data-test="edit-customer"
@@ -475,7 +543,7 @@ onBeforeUnmount(abortRequests);
           :customer="customer"
           :actor="actor"
           :blocked-by-other-maintenance="
-            !!frozenDelete || currentProjectionStale
+            !!frozenDelete || contactsPending || currentProjectionStale
           "
           @refreshed="acceptRefreshedCustomer"
           @unreadable="leaveAfterConfirmedMaintenance"
@@ -567,6 +635,7 @@ onBeforeUnmount(abortRequests);
         >
           <nav class="detail-anchor-nav" aria-label="基本信息快速导航">
             <a href="#customer-profile">客户资料</a>
+            <a href="#customer-contacts">联系人</a>
             <a href="#customer-rights-holders">权利人</a>
             <a href="#customer-admission">身份材料</a>
             <a href="#customer-accounts">企业账号</a>
@@ -639,9 +708,22 @@ onBeforeUnmount(abortRequests);
               }}
             </p>
           </section>
+          <CustomerContactsPanel
+            id="customer-contacts"
+            :customer="customer"
+            :actor="actor"
+            :blocked-by-other-maintenance="
+              !!frozenDelete || maintenancePending || currentProjectionStale
+            "
+            @refreshed="acceptContactRefresh"
+            @pending-changed="updateContactsPending"
+          />
           <CustomerRightsHolderPanel
             v-if="
-              !frozenDelete && !maintenancePending && !currentProjectionStale
+              !frozenDelete &&
+              !maintenancePending &&
+              !contactsPending &&
+              !currentProjectionStale
             "
             id="customer-rights-holders"
             :customer-id="customer.id"
@@ -653,17 +735,23 @@ onBeforeUnmount(abortRequests);
           />
           <CustomerAdmissionPanel
             v-if="
-              !frozenDelete && !maintenancePending && !currentProjectionStale
+              !frozenDelete &&
+              !maintenancePending &&
+              !contactsPending &&
+              !currentProjectionStale
             "
             id="customer-admission"
             :customer="customer"
             @admitted="acceptAdmission"
-            @customer-refreshed="acceptRefreshedCustomer"
-            @customer-not-found="returnToCustomerList"
+            @customer-refreshed="acceptAdmissionRefresh"
+            @customer-not-found="returnFromAdmission"
           />
           <CustomerAccountPanel
             v-if="
-              !frozenDelete && !maintenancePending && !currentProjectionStale
+              !frozenDelete &&
+              !maintenancePending &&
+              !contactsPending &&
+              !currentProjectionStale
             "
             id="customer-accounts"
             :customer-id="customer.id"
@@ -691,7 +779,10 @@ onBeforeUnmount(abortRequests);
         >
           <CustomerRightAssetsPanel
             v-if="
-              !frozenDelete && !maintenancePending && !currentProjectionStale
+              !frozenDelete &&
+              !maintenancePending &&
+              !contactsPending &&
+              !currentProjectionStale
             "
             :customer-id="customer.id"
             :customer-version="customer.version"

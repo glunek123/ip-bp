@@ -1,16 +1,20 @@
 <script setup lang="ts">
-import { computed, ref, watch } from 'vue';
+import { computed, onBeforeUnmount, ref, watch } from 'vue';
 import { RouterLink } from 'vue-router';
 import { ElButton } from 'element-plus/es/components/button/index.mjs';
 import {
   admitCustomer,
   getCustomer,
+  listCustomerContacts,
   type AdmitCustomerInput,
+  type CustomerContact,
   type CustomerDetail,
   type CustomerSummary,
 } from '../../api/customers';
 import { ApiError } from '../../api/http';
 import RequiredFieldMark from '../../app/RequiredFieldMark.vue';
+import { useAuthStore } from '../../stores/auth';
+import { pinia } from '../../app/pinia';
 import {
   deleteMaterial,
   downloadMaterialVersion,
@@ -37,12 +41,24 @@ type SelectedFile = InstanceType<typeof globalThis.File>;
 
 const props = defineProps<{ customer: CustomerDetail }>();
 const emit = defineEmits<{
-  admitted: [customer: CustomerSummary];
-  'customer-refreshed': [customer: CustomerDetail];
-  'customer-not-found': [customerId: string];
+  admitted: [customerId: string, actorKey: string, customer: CustomerSummary];
+  'customer-refreshed': [
+    customerId: string,
+    actorKey: string,
+    customer: CustomerDetail,
+  ];
+  'customer-not-found': [customerId: string, actorKey: string];
 }>();
+const auth = useAuthStore(pinia);
+const actorKey = () => {
+  const session = auth.session;
+  return session?.principalType === 'INTERNAL' && session.department
+    ? `${session.user.id}:${session.department.id}:${session.authorizationRevision}`
+    : '';
+};
 
 const expectedVersion = ref(props.customer.version);
+const expectedCustomerId = ref(props.customer.id);
 const name = ref(props.customer.name);
 const customerType = ref(
   normalizeCustomerTypeOption(props.customer.customerType),
@@ -57,9 +73,11 @@ const identityValidTo = ref(props.customer.identityValidTo ?? '');
 const identityValidityMode = ref<IdentityValidityModeCode>(
   props.customer.identityValidityMode ?? 'NOT_STATED',
 );
-const admissionContactName = ref(props.customer.admissionContactName ?? '');
-const admissionContactPhone = ref(props.customer.admissionContactPhone ?? '');
-const admissionContactEmail = ref(props.customer.admissionContactEmail ?? '');
+const admissionContactId = ref('');
+const contactOptions = ref<CustomerContact[]>([]);
+const contactPage = ref(1);
+const contactTotal = ref(0);
+const contactsLoading = ref(false);
 const documentPurpose = ref<MaterialPurpose>('IDENTITY_FULL');
 const materials = ref<OwnerMaterial[]>([]);
 const materialsLoading = ref(false);
@@ -74,6 +92,7 @@ const identityNumberError = ref('');
 const identityNumberInput =
   ref<InstanceType<typeof globalThis.HTMLInputElement>>();
 let pendingCommand: { fingerprint: string; key: string } | undefined;
+let contactsController: AbortController | undefined;
 
 const canManageMaterials = computed(
   () =>
@@ -98,9 +117,47 @@ const purposeOptions = computed<
     : [{ value: 'IDENTITY_FULL', label: '完整证件' }],
 );
 
+async function reloadContacts(page = contactPage.value): Promise<void> {
+  contactsController?.abort();
+  contactsController = new AbortController();
+  const signal = contactsController.signal;
+  const customerId = props.customer.id;
+  const sourceActor = actorKey();
+  contactsLoading.value = true;
+  try {
+    const result = await listCustomerContacts(customerId, 'ACTIVE', page, 20, {
+      signal,
+    });
+    if (
+      props.customer.id !== customerId ||
+      actorKey() !== sourceActor ||
+      result.items.some((item) => item.customerId !== customerId)
+    )
+      return;
+    contactOptions.value = result.items;
+    contactPage.value = result.page;
+    contactTotal.value = result.total;
+  } catch {
+    contactOptions.value = [];
+    contactTotal.value = 0;
+    formError.value = '联系人列表暂时无法读取，请刷新后再准入';
+  } finally {
+    if (props.customer.id === customerId && actorKey() === sourceActor)
+      contactsLoading.value = false;
+  }
+}
+
+onBeforeUnmount(() => contactsController?.abort());
+
 watch(
-  () => props.customer.version,
-  (version) => {
+  () => `${props.customer.id}:${props.customer.version}`,
+  (identity) => {
+    const [customerId, versionText] = identity.split(':');
+    const version = Number(versionText);
+    if (customerId !== expectedCustomerId.value) {
+      loadCustomerSnapshot();
+      return;
+    }
     if (version === expectedVersion.value) return;
     externalSnapshotChanged.value = true;
     pendingCommand = undefined;
@@ -108,8 +165,13 @@ watch(
       '客户资料已在其他区域更新。为避免用旧字段覆盖新资料，请重新载入后核对。';
   },
 );
+watch(
+  () => actorKey(),
+  () => loadCustomerSnapshot(),
+);
 
 function loadCustomerSnapshot(): void {
+  expectedCustomerId.value = props.customer.id;
   expectedVersion.value = props.customer.version;
   name.value = props.customer.name;
   customerType.value = normalizeCustomerTypeOption(props.customer.customerType);
@@ -120,9 +182,7 @@ function loadCustomerSnapshot(): void {
   identityValidTo.value = props.customer.identityValidTo ?? '';
   identityValidityMode.value =
     props.customer.identityValidityMode ?? 'NOT_STATED';
-  admissionContactName.value = props.customer.admissionContactName ?? '';
-  admissionContactPhone.value = props.customer.admissionContactPhone ?? '';
-  admissionContactEmail.value = props.customer.admissionContactEmail ?? '';
+  admissionContactId.value = '';
   externalSnapshotChanged.value = false;
   staleReview.value = false;
   identityNumberError.value = '';
@@ -130,6 +190,7 @@ function loadCustomerSnapshot(): void {
   restoreTargetId.value = undefined;
   pendingCommand = undefined;
   void reloadMaterials();
+  void reloadContacts(1);
 }
 
 function onCustomerTypeChanged(): void {
@@ -164,7 +225,7 @@ async function reloadMaterials(): Promise<void> {
       (error.code === 'RESOURCE_NOT_FOUND' ||
         error.code === 'CUSTOMER_NOT_FOUND')
     ) {
-      emit('customer-not-found', props.customer.id);
+      emit('customer-not-found', props.customer.id, actorKey());
       return;
     }
     materialError.value =
@@ -270,7 +331,7 @@ async function upload(event: { target: unknown }): Promise<void> {
       (error.code === 'RESOURCE_NOT_FOUND' ||
         error.code === 'CUSTOMER_NOT_FOUND')
     ) {
-      emit('customer-not-found', props.customer.id);
+      emit('customer-not-found', props.customer.id, actorKey());
     } else if (
       error instanceof ApiError &&
       (error.code === 'ACTION_FORBIDDEN' ||
@@ -408,16 +469,7 @@ function validate(): AdmitCustomerInput | undefined {
     errors.push('证件类型与客户主体类型不匹配');
   }
   if (!identityNumber.value.trim()) errors.push('请填写证件号码');
-  if (!admissionContactName.value.trim()) errors.push('请填写准入联系人姓名');
-  const phone = admissionContactPhone.value.trim();
-  const email = admissionContactEmail.value.trim();
-  if (!phone && !email) errors.push('联系人至少填写电话或邮箱');
-  if (phone && !/^(?=(?:\D*\d){6,20}\D*$)[+()\d\s-]+$/u.test(phone)) {
-    errors.push('联系人电话格式不正确');
-  }
-  if (email && !/^[^\s@]+@[^\s@]+\.[^\s@]+$/u.test(email)) {
-    errors.push('联系人邮箱格式不正确');
-  }
+  if (!admissionContactId.value) errors.push('请选择一位活动联系人');
   if (identityValidityMode.value === 'FIXED') {
     if (!identityValidTo.value) errors.push('固定有效期请填写截止日期');
     if (
@@ -460,9 +512,7 @@ function validate(): AdmitCustomerInput | undefined {
       ? { identityValidTo: identityValidTo.value }
       : {}),
     identityValidityMode: identityValidityMode.value,
-    admissionContactName: admissionContactName.value.trim(),
-    ...(phone ? { admissionContactPhone: phone } : {}),
-    ...(email ? { admissionContactEmail: email } : {}),
+    admissionContactId: admissionContactId.value,
     identityDocumentContentVersionIds: contentVersionIds,
   };
 }
@@ -479,21 +529,24 @@ function commandKey(input: AdmitCustomerInput): string {
 }
 
 async function refreshAfterConflict(): Promise<void> {
+  const customerId = props.customer.id;
+  const sourceActor = actorKey();
   try {
-    const latest = await getCustomer(props.customer.id);
+    const latest = await getCustomer(customerId);
+    if (props.customer.id !== customerId || actorKey() !== sourceActor) return;
     if (latest.profileStatus === 'admitted') {
-      emit('admitted', latest);
+      emit('admitted', customerId, sourceActor, latest);
       return;
     }
     expectedVersion.value = latest.version;
-    emit('customer-refreshed', latest);
+    emit('customer-refreshed', customerId, sourceActor, latest);
     await reloadMaterials();
     staleReview.value = true;
     pendingCommand = undefined;
     formError.value = `客户资料已被他人更新，已读取最新版本 ${latest.version}。已保留当前填写内容，请核对后重试。`;
   } catch (error) {
     if (error instanceof ApiError && error.code === 'CUSTOMER_NOT_FOUND') {
-      emit('customer-not-found', props.customer.id);
+      emit('customer-not-found', customerId, sourceActor);
       return;
     }
     formError.value = '客户版本已变化，但最新资料读取失败，请稍后重试';
@@ -513,16 +566,16 @@ async function submit(): Promise<void> {
   if (input === undefined) return;
   submitting.value = true;
   formError.value = '';
+  const customerId = props.customer.id;
+  const sourceActor = actorKey();
   try {
-    const admitted = await admitCustomer(
-      props.customer.id,
-      input,
-      commandKey(input),
-    );
+    const admitted = await admitCustomer(customerId, input, commandKey(input));
+    if (props.customer.id !== customerId || actorKey() !== sourceActor) return;
     pendingCommand = undefined;
     expectedVersion.value = admitted.version;
-    emit('admitted', admitted);
+    emit('admitted', customerId, sourceActor, admitted);
   } catch (error) {
+    if (props.customer.id !== customerId || actorKey() !== sourceActor) return;
     if (
       error instanceof ApiError &&
       error.code === 'CUSTOMER_VERSION_CONFLICT'
@@ -534,7 +587,7 @@ async function submit(): Promise<void> {
         error.code === 'CUSTOMER_NOT_FOUND')
     ) {
       pendingCommand = undefined;
-      emit('customer-not-found', props.customer.id);
+      emit('customer-not-found', customerId, sourceActor);
     } else {
       if (
         error instanceof ApiError &&
@@ -591,6 +644,7 @@ async function submit(): Promise<void> {
 }
 
 void reloadMaterials();
+void reloadContacts(1);
 </script>
 
 <template>
@@ -728,35 +782,48 @@ void reloadMaterials();
 
       <fieldset v-if="canManageMaterials" class="admission-section">
         <legend>准入联系人</legend>
-        <div class="admission-grid admission-grid--three">
-          <label>
-            <span>联系人姓名<RequiredFieldMark /></span>
-            <input
-              v-model="admissionContactName"
-              name="admissionContactName"
-              class="text-input"
-              maxlength="100"
-            />
-          </label>
-          <label>
-            <span>电话</span>
-            <input
-              v-model="admissionContactPhone"
-              name="admissionContactPhone"
-              class="text-input"
-              maxlength="30"
-            />
-          </label>
-          <label>
-            <span>邮箱</span>
-            <input
-              v-model="admissionContactEmail"
-              name="admissionContactEmail"
-              class="text-input"
-              maxlength="254"
-            />
-          </label>
+        <p v-if="contactTotal === 0 && !contactsLoading">
+          当前没有活动联系人。请先在“联系人关系”中添加联系人，再返回准入。
+        </p>
+        <label v-else
+          >选择一位活动联系人
+          <select
+            v-model="admissionContactId"
+            name="admissionContactId"
+            class="text-input"
+            :disabled="contactsLoading"
+          >
+            <option value="">请选择</option>
+            <option
+              v-for="contact in contactOptions"
+              :key="contact.id"
+              :value="contact.id"
+            >
+              {{ contact.name }} · {{ contact.phone || contact.email }}
+            </option>
+          </select>
+        </label>
+        <div v-if="contactTotal > 20">
+          <ElButton
+            native-type="button"
+            :disabled="contactPage <= 1 || contactsLoading"
+            @click="reloadContacts(contactPage - 1)"
+            >上一页</ElButton
+          ><span>{{ contactPage }} / {{ Math.ceil(contactTotal / 20) }}</span
+          ><ElButton
+            native-type="button"
+            :disabled="contactPage * 20 >= contactTotal || contactsLoading"
+            @click="reloadContacts(contactPage + 1)"
+            >下一页</ElButton
+          >
         </div>
+        <ElButton
+          native-type="button"
+          data-test="reload-contacts"
+          :loading="contactsLoading"
+          @click="reloadContacts()"
+          >刷新联系人</ElButton
+        >
       </fieldset>
 
       <fieldset class="admission-section material-section">

@@ -4,6 +4,9 @@ import {
   createCustomerDraft,
   findCustomerDuplicates,
   getCustomer,
+  listCustomerContacts,
+  listCustomerContactVersions,
+  createCustomerContact,
   listCustomers,
   updateCustomerDraft,
 } from './customers';
@@ -35,6 +38,154 @@ const summary = {
 };
 
 describe('customer API', () => {
+  const contact = {
+    id: 'contact-1',
+    customerId: 'customer-1',
+    name: '联系人甲',
+    phone: null,
+    email: 'a@example.com',
+    duty: null,
+    isPrimary: false,
+    endedAt: null,
+    endReason: null,
+    version: 1,
+    origin: 'MANUAL',
+    createdAt: '2026-09-17T00:00:00.000Z',
+    updatedAt: '2026-09-17T00:00:00.000Z',
+  };
+
+  it('strictly decodes contact pages and rejects missing nullable contract fields', async () => {
+    vi.stubGlobal(
+      'fetch',
+      vi.fn().mockResolvedValue(
+        new Response(
+          JSON.stringify({
+            items: [contact],
+            total: 1,
+            page: 1,
+            pageSize: 20,
+            primaryContactId: null,
+          }),
+        ),
+      ),
+    );
+    await expect(listCustomerContacts('customer-1')).resolves.toMatchObject({
+      items: [{ id: 'contact-1' }],
+      primaryContactId: null,
+    });
+    vi.stubGlobal(
+      'fetch',
+      vi.fn().mockResolvedValue(
+        new Response(
+          JSON.stringify({
+            items: [{ ...contact, endReason: undefined }],
+            total: 1,
+            page: 1,
+            pageSize: 20,
+            primaryContactId: null,
+          }),
+        ),
+      ),
+    );
+    await expect(listCustomerContacts('customer-1')).rejects.toMatchObject({
+      code: 'INVALID_RESPONSE',
+    });
+  });
+
+  it('sends an idempotency key and rejects an invalid command result', async () => {
+    const result = { contact, customerVersion: 2, primaryContactId: null };
+    const fetch = vi
+      .fn()
+      .mockResolvedValue(new Response(JSON.stringify(result), { status: 201 }));
+    vi.stubGlobal('fetch', fetch);
+    await expect(
+      createCustomerContact(
+        'customer-1',
+        { expectedCustomerVersion: 1, name: '联系人甲' },
+        'contact-key',
+      ),
+    ).resolves.toEqual(result);
+    expect(fetch).toHaveBeenCalledWith(
+      '/api/v1/customers/customer-1/contacts',
+      expect.objectContaining({
+        headers: expect.objectContaining({ 'Idempotency-Key': 'contact-key' }),
+      }),
+    );
+    vi.stubGlobal(
+      'fetch',
+      vi
+        .fn()
+        .mockResolvedValue(
+          new Response(
+            JSON.stringify({ ...result, primaryContactId: undefined }),
+            { status: 201 },
+          ),
+        ),
+    );
+    await expect(
+      createCustomerContact(
+        'customer-1',
+        { expectedCustomerVersion: 1, name: '联系人甲' },
+        'contact-key',
+      ),
+    ).rejects.toMatchObject({ code: 'INVALID_RESPONSE' });
+  });
+
+  it('accepts the legacy migration actor shape and rejects inconsistent actor nullability', async () => {
+    const version = {
+      id: 'contact-version-1',
+      contactId: 'contact-1',
+      version: 1,
+      action: 'CREATED',
+      before: null,
+      after: {
+        name: '联系人甲',
+        phone: null,
+        email: 'a@example.com',
+        duty: null,
+        isPrimary: false,
+        endedAt: null,
+        endReason: null,
+      },
+      actor: { kind: 'LEGACY_MIGRATION', userId: null },
+      occurredAt: '2026-09-17T00:00:00.000Z',
+    };
+    vi.stubGlobal(
+      'fetch',
+      vi.fn().mockResolvedValue(
+        new Response(
+          JSON.stringify({
+            items: [version],
+            total: 1,
+            page: 1,
+            pageSize: 20,
+          }),
+        ),
+      ),
+    );
+    await expect(
+      listCustomerContactVersions('customer-1', 'contact-1'),
+    ).resolves.toMatchObject({
+      items: [{ actor: { kind: 'LEGACY_MIGRATION', userId: null } }],
+    });
+    vi.stubGlobal(
+      'fetch',
+      vi.fn().mockResolvedValue(
+        new Response(
+          JSON.stringify({
+            items: [{ ...version, actor: { kind: 'HUMAN', userId: null } }],
+            total: 1,
+            page: 1,
+            pageSize: 20,
+          }),
+        ),
+      ),
+    );
+    await expect(
+      listCustomerContactVersions('customer-1', 'contact-1'),
+    ).rejects.toMatchObject({ code: 'INVALID_RESPONSE' });
+  });
+
   it.each([undefined, null, 'UNKNOWN'])(
     'rejects a missing or invalid cooperation status %#',
     async (cooperationStatus) => {
@@ -131,6 +282,8 @@ describe('customer API', () => {
         new Response(
           JSON.stringify({
             ...summary,
+            primaryContactId: null,
+            admissionContactSnapshot: null,
             responsibleOperator: { id: 'user-1', displayName: '运营甲' },
             cooperationCapabilities: {
               transfer: false,
@@ -165,6 +318,8 @@ describe('customer API', () => {
         new Response(
           JSON.stringify({
             ...summary,
+            primaryContactId: null,
+            admissionContactSnapshot: null,
             history: [],
             capabilities: { editRoutine: true, admit: true },
           }),
@@ -183,6 +338,8 @@ describe('customer API', () => {
         new Response(
           JSON.stringify({
             ...summary,
+            primaryContactId: null,
+            admissionContactSnapshot: null,
             responsibleOperator: {
               id: 'user-1',
               displayName: '运营甲',
@@ -233,8 +390,7 @@ describe('customer API', () => {
           identityType: 'BUSINESS_LICENSE',
           identityNumber: '91310000ABC123',
           identityValidityMode: 'LONG_TERM',
-          admissionContactName: '张三',
-          admissionContactPhone: '13800138000',
+          admissionContactId: 'contact-1',
           identityDocumentContentVersionIds: ['version-1'],
         },
         'admit-command-1',
@@ -275,8 +431,7 @@ describe('customer API', () => {
           identityType: 'BUSINESS_LICENSE',
           identityNumber: '91310000ABC123',
           identityValidityMode: 'NOT_STATED',
-          admissionContactName: '张三',
-          admissionContactEmail: 'contact@example.com',
+          admissionContactId: 'contact-1',
           identityDocumentContentVersionIds: ['version-1'],
         },
         'admit-command-1',
@@ -314,8 +469,7 @@ describe('customer API', () => {
           identityType: 'BUSINESS_LICENSE',
           identityNumber: '91310000ABC123',
           identityValidityMode: 'LONG_TERM',
-          admissionContactName: '张三',
-          admissionContactPhone: '13800138000',
+          admissionContactId: 'contact-1',
           identityDocumentContentVersionIds: ['version-1'],
         },
         'admit-command-1',

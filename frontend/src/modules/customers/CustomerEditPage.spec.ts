@@ -3,6 +3,9 @@ import { createMemoryHistory, createRouter, RouterView } from 'vue-router';
 import { afterEach, describe, expect, it, vi } from 'vitest';
 import { ApiError } from '../../api/http';
 import CustomerEditPage from './CustomerEditPage.vue';
+import { useAuthStore } from '../../stores/auth';
+import { pinia } from '../../app/pinia';
+import { savePendingCustomerContact } from './customer-contacts-pending';
 
 const api = vi.hoisted(() => ({
   getCustomer: vi.fn(),
@@ -11,7 +14,11 @@ const api = vi.hoisted(() => ({
 }));
 vi.mock('../../api/customers', () => api);
 
-afterEach(() => vi.resetAllMocks());
+afterEach(() => {
+  vi.resetAllMocks();
+  useAuthStore(pinia).session = null;
+  globalThis.sessionStorage.clear();
+});
 
 const customer = {
   id: 'customer-1',
@@ -52,6 +59,40 @@ async function mountPage() {
 }
 
 describe('CustomerEditPage', () => {
+  it('blocks a direct edit route while a contact command is pending', async () => {
+    useAuthStore(pinia).session = {
+      principalType: 'INTERNAL',
+      user: { id: 'user-1', displayName: '运营甲', username: 'operator-a' },
+      department: { id: 'department-1', name: '甲部门' },
+      departments: [{ id: 'department-1', name: '甲部门' }],
+      customer: null,
+      notaryOffice: null,
+      authorizationRevision: 1,
+      expiresAt: '2026-10-09T10:00:00.000Z',
+      csrfToken: 'csrf',
+    };
+    savePendingCustomerContact({
+      action: 'create',
+      userId: 'user-1',
+      departmentId: 'department-1',
+      customerId: 'customer-1',
+      contactId: null,
+      expectedCustomerVersion: 1,
+      expectedContactVersion: null,
+      body: {
+        expectedCustomerVersion: 1,
+        name: '新联系人',
+        phone: '13800138000',
+      },
+      key: 'original-contact-key',
+    });
+    api.getCustomer.mockResolvedValue(customer);
+    const { wrapper } = await mountPage();
+    await flushPromises();
+    expect(wrapper.text()).toContain('请先处理未确认的联系人请求');
+    expect(wrapper.find('form').exists()).toBe(false);
+  });
+
   it('loads the current draft and saves the full editable snapshot', async () => {
     api.getCustomer.mockResolvedValue(customer);
     api.updateCustomerDraft.mockResolvedValue({
@@ -62,17 +103,9 @@ describe('CustomerEditPage', () => {
     const { wrapper, router } = await mountPage();
     await flushPromises();
     expect(wrapper.text()).not.toContain('准入联系人（可选）');
-    expect(
-      wrapper
-        .find('label[for="admission-contact-name"] .required-mark')
-        .exists(),
-    ).toBe(true);
-    expect(
-      wrapper
-        .get('[data-test="admission-contact-channel-requirement"]')
-        .find('.required-mark')
-        .exists(),
-    ).toBe(true);
+    expect(wrapper.find('input[name="admissionContactName"]').exists()).toBe(
+      false,
+    );
     await wrapper.get('input[name="name"]').setValue('客户甲（更新）');
     await wrapper.get('select[name="customerType"]').setValue('ENTERPRISE');
     await wrapper
@@ -81,9 +114,6 @@ describe('CustomerEditPage', () => {
     await wrapper
       .get('input[name="identityNumber"]')
       .setValue('91310000abc123');
-    await wrapper
-      .get('input[name="admissionContactEmail"]')
-      .setValue('contact@example.com');
     await wrapper.get('form').trigger('submit');
     await flushPromises();
     expect(api.updateCustomerDraft).toHaveBeenCalledWith('customer-1', {
@@ -95,9 +125,6 @@ describe('CustomerEditPage', () => {
       issuingCountryOrRegion: '',
       category: '',
       region: '',
-      admissionContactName: '张三',
-      admissionContactPhone: '13800138000',
-      admissionContactEmail: 'contact@example.com',
     });
     expect(router.currentRoute.value.fullPath).toBe('/customers/customer-1');
   });
@@ -220,9 +247,6 @@ describe('CustomerEditPage', () => {
     const { wrapper } = await mountPage();
     await flushPromises();
     await wrapper.get('input[name="name"]').setValue('我的草稿');
-    await wrapper
-      .get('input[name="admissionContactPhone"]')
-      .setValue('13900139000');
     await wrapper.get('form').trigger('submit');
     await flushPromises();
 
@@ -237,12 +261,6 @@ describe('CustomerEditPage', () => {
     expect(
       (wrapper.get('input[name="name"]').element as HTMLInputElement).value,
     ).toBe('我的草稿');
-    expect(
-      (
-        wrapper.get('input[name="admissionContactPhone"]')
-          .element as HTMLInputElement
-      ).value,
-    ).toBe('13900139000');
     expect(api.updateCustomerDraft).toHaveBeenCalledTimes(1);
 
     await wrapper.get('button[name="retryLatest"]').trigger('click');
@@ -291,18 +309,9 @@ describe('CustomerEditPage', () => {
     expect(
       (wrapper.get('input[name="region"]').element as HTMLInputElement).value,
     ).toBe('北京');
-    expect(
-      (
-        wrapper.get('input[name="admissionContactName"]')
-          .element as HTMLInputElement
-      ).value,
-    ).toBe('李四');
-    expect(
-      (
-        wrapper.get('input[name="admissionContactEmail"]')
-          .element as HTMLInputElement
-      ).value,
-    ).toBe('latest@example.com');
+    expect(wrapper.find('input[name="admissionContactName"]').exists()).toBe(
+      false,
+    );
     expect(wrapper.find('button[name="useLatest"]').exists()).toBe(false);
     expect(api.updateCustomerDraft).toHaveBeenCalledTimes(1);
 

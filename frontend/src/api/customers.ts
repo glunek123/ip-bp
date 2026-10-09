@@ -1,4 +1,10 @@
-import { ApiError, getJson, requestJson, type RequestOptions } from './http';
+import {
+  ApiError,
+  getJson,
+  requestJson,
+  type JsonValue,
+  type RequestOptions,
+} from './http';
 import type {
   CustomerTypeCode,
   IdentityTypeCode,
@@ -36,6 +42,14 @@ export type CustomerHistoryEvent = {
 };
 
 export type CustomerDetail = CustomerSummary & {
+  primaryContactId: string | null;
+  admissionContactSnapshot: {
+    name: string;
+    phone: string | null;
+    email: string | null;
+    source: 'RECEIPT' | 'FALLBACK_CURRENT' | 'NEW_ADMISSION';
+    frozenAt: string;
+  } | null;
   capabilities: { editRoutine: boolean; admit: boolean; deleteDraft?: boolean };
   responsibleOperator: { id: string; displayName: string };
   cooperationCapabilities: {
@@ -84,11 +98,65 @@ export type AdmitCustomerInput = {
   identityValidFrom?: string;
   identityValidTo?: string;
   identityValidityMode: IdentityValidityModeCode;
-  admissionContactName: string;
-  admissionContactPhone?: string;
-  admissionContactEmail?: string;
+  admissionContactId: string;
   identityDocumentContentVersionIds: string[];
 };
+
+export type CustomerContact = {
+  id: string;
+  customerId: string;
+  name: string;
+  phone: string | null;
+  email: string | null;
+  duty: string | null;
+  isPrimary: boolean;
+  endedAt: string | null;
+  endReason: string | null;
+  version: number;
+  origin: 'LEGACY_BACKFILL' | 'LEGACY_CREATE' | 'ADMISSION_FREEFORM' | 'MANUAL';
+  createdAt: string;
+  updatedAt: string;
+};
+export type ContactVersionSnapshot = {
+  name: string;
+  phone: string | null;
+  email: string | null;
+  duty: string | null;
+  isPrimary: boolean;
+  endedAt: string | null;
+  endReason: string | null;
+};
+export type CustomerContactVersion = {
+  id: string;
+  contactId: string;
+  version: number;
+  action: 'CREATED' | 'UPDATED' | 'PRIMARY_SET' | 'PRIMARY_UNSET' | 'ENDED';
+  before: ContactVersionSnapshot | null;
+  after: ContactVersionSnapshot;
+  actor:
+    | { kind: 'HUMAN'; userId: string }
+    | { kind: 'LEGACY_MIGRATION'; userId: null };
+  occurredAt: string;
+};
+export type CustomerContactPage = {
+  items: CustomerContact[];
+  total: number;
+  page: number;
+  pageSize: number;
+  primaryContactId: string | null;
+};
+export type CustomerContactVersionPage = {
+  items: CustomerContactVersion[];
+  total: number;
+  page: number;
+  pageSize: number;
+};
+export type CustomerContactCommandResult = {
+  contact: CustomerContact;
+  customerVersion: number;
+  primaryContactId: string | null;
+};
+export type ContactCommandBody = JsonValue;
 
 export type CustomerDuplicateSummary = Pick<
   CustomerSummary,
@@ -121,6 +189,164 @@ function hasExactKeys(
 
 function isNullableString(value: unknown): value is string | null {
   return value === null || typeof value === 'string';
+}
+
+const contactOrigins = [
+  'LEGACY_BACKFILL',
+  'LEGACY_CREATE',
+  'ADMISSION_FREEFORM',
+  'MANUAL',
+] as const;
+const contactActions = [
+  'CREATED',
+  'UPDATED',
+  'PRIMARY_SET',
+  'PRIMARY_UNSET',
+  'ENDED',
+] as const;
+const snapshotKeys = [
+  'name',
+  'phone',
+  'email',
+  'duty',
+  'isPrimary',
+  'endedAt',
+  'endReason',
+] as const;
+function isContactSummary(value: unknown): value is CustomerContact {
+  return (
+    isRecord(value) &&
+    hasExactKeys(value, [
+      'id',
+      'customerId',
+      'name',
+      'phone',
+      'email',
+      'duty',
+      'isPrimary',
+      'endedAt',
+      'endReason',
+      'version',
+      'origin',
+      'createdAt',
+      'updatedAt',
+    ]) &&
+    typeof value.id === 'string' &&
+    typeof value.customerId === 'string' &&
+    typeof value.name === 'string' &&
+    isNullableString(value.phone) &&
+    isNullableString(value.email) &&
+    isNullableString(value.duty) &&
+    typeof value.isPrimary === 'boolean' &&
+    isNullableString(value.endedAt) &&
+    isNullableString(value.endReason) &&
+    Number.isInteger(value.version) &&
+    Number(value.version) >= 1 &&
+    (contactOrigins as readonly unknown[]).includes(value.origin) &&
+    typeof value.createdAt === 'string' &&
+    Number.isFinite(Date.parse(value.createdAt)) &&
+    typeof value.updatedAt === 'string' &&
+    Number.isFinite(Date.parse(value.updatedAt))
+  );
+}
+function isContactSnapshot(value: unknown): value is ContactVersionSnapshot {
+  return (
+    isRecord(value) &&
+    hasExactKeys(value, snapshotKeys) &&
+    typeof value.name === 'string' &&
+    isNullableString(value.phone) &&
+    isNullableString(value.email) &&
+    isNullableString(value.duty) &&
+    typeof value.isPrimary === 'boolean' &&
+    isNullableString(value.endedAt) &&
+    isNullableString(value.endReason)
+  );
+}
+function isContactVersion(value: unknown): value is CustomerContactVersion {
+  if (
+    !isRecord(value) ||
+    !hasExactKeys(value, [
+      'id',
+      'contactId',
+      'version',
+      'action',
+      'before',
+      'after',
+      'actor',
+      'occurredAt',
+    ]) ||
+    typeof value.id !== 'string' ||
+    typeof value.contactId !== 'string' ||
+    !Number.isInteger(value.version) ||
+    Number(value.version) < 1 ||
+    !(contactActions as readonly unknown[]).includes(value.action) ||
+    !(value.before === null || isContactSnapshot(value.before)) ||
+    !isContactSnapshot(value.after) ||
+    typeof value.occurredAt !== 'string' ||
+    !Number.isFinite(Date.parse(value.occurredAt)) ||
+    !isRecord(value.actor) ||
+    !hasExactKeys(value.actor, ['kind', 'userId'])
+  )
+    return false;
+  return (
+    (value.actor.kind === 'HUMAN' && typeof value.actor.userId === 'string') ||
+    (value.actor.kind === 'LEGACY_MIGRATION' && value.actor.userId === null)
+  );
+}
+function isContactPage(value: unknown): value is CustomerContactPage {
+  return (
+    isRecord(value) &&
+    hasExactKeys(value, [
+      'items',
+      'total',
+      'page',
+      'pageSize',
+      'primaryContactId',
+    ]) &&
+    Array.isArray(value.items) &&
+    value.items.every(isContactSummary) &&
+    Number.isInteger(value.total) &&
+    Number(value.total) >= 0 &&
+    Number.isInteger(value.page) &&
+    Number(value.page) >= 1 &&
+    Number.isInteger(value.pageSize) &&
+    Number(value.pageSize) >= 1 &&
+    Number(value.pageSize) <= 100 &&
+    (typeof value.primaryContactId === 'string' ||
+      value.primaryContactId === null)
+  );
+}
+function isContactVersionPage(
+  value: unknown,
+): value is CustomerContactVersionPage {
+  return (
+    isRecord(value) &&
+    hasExactKeys(value, ['items', 'total', 'page', 'pageSize']) &&
+    Array.isArray(value.items) &&
+    value.items.every(isContactVersion) &&
+    Number.isInteger(value.total) &&
+    Number(value.total) >= 0 &&
+    Number.isInteger(value.page) &&
+    Number(value.page) >= 1 &&
+    Number.isInteger(value.pageSize) &&
+    Number(value.pageSize) >= 1 &&
+    Number(value.pageSize) <= 100
+  );
+}
+function isContactCommandResult(
+  value: unknown,
+  customerId: string,
+): value is CustomerContactCommandResult {
+  return (
+    isRecord(value) &&
+    hasExactKeys(value, ['contact', 'customerVersion', 'primaryContactId']) &&
+    isContactSummary(value.contact) &&
+    value.contact.customerId === customerId &&
+    Number.isInteger(value.customerVersion) &&
+    Number(value.customerVersion) >= 1 &&
+    (typeof value.primaryContactId === 'string' ||
+      value.primaryContactId === null)
+  );
 }
 
 function isIdentityValidityMode(
@@ -212,11 +438,33 @@ export async function getCustomer(
     throw invalidResponse();
   }
   const history = data.history;
+  const primaryContactId = data.primaryContactId;
+  const admissionContactSnapshotValue = data.admissionContactSnapshot;
   const capabilities = data.capabilities;
   const responsibleOperator = data.responsibleOperator;
   const cooperationCapabilities = data.cooperationCapabilities;
   if (
     !isCustomerSummary(data) ||
+    !(typeof primaryContactId === 'string' || primaryContactId === null) ||
+    !(
+      admissionContactSnapshotValue === null ||
+      (isRecord(admissionContactSnapshotValue) &&
+        hasExactKeys(admissionContactSnapshotValue, [
+          'name',
+          'phone',
+          'email',
+          'source',
+          'frozenAt',
+        ]) &&
+        typeof admissionContactSnapshotValue.name === 'string' &&
+        isNullableString(admissionContactSnapshotValue.phone) &&
+        isNullableString(admissionContactSnapshotValue.email) &&
+        ['RECEIPT', 'FALLBACK_CURRENT', 'NEW_ADMISSION'].includes(
+          String(admissionContactSnapshotValue.source),
+        ) &&
+        typeof admissionContactSnapshotValue.frozenAt === 'string' &&
+        Number.isFinite(Date.parse(admissionContactSnapshotValue.frozenAt)))
+    ) ||
     !Array.isArray(history) ||
     !isRecord(capabilities) ||
     !isRecord(responsibleOperator) ||
@@ -250,6 +498,9 @@ export async function getCustomer(
   }
   return {
     ...data,
+    primaryContactId,
+    admissionContactSnapshot:
+      admissionContactSnapshotValue as CustomerDetail['admissionContactSnapshot'],
     capabilities: {
       editRoutine: capabilities.editRoutine,
       admit: capabilities.admit,
@@ -411,6 +662,127 @@ export async function admitCustomer(
     throw invalidResponse();
   }
   return data;
+}
+
+export async function listCustomerContacts(
+  id: string,
+  status: 'ACTIVE' | 'ENDED' = 'ACTIVE',
+  page = 1,
+  pageSize = 20,
+  options: RequestOptions = {},
+): Promise<CustomerContactPage> {
+  if (
+    !Number.isInteger(page) ||
+    page < 1 ||
+    !Number.isInteger(pageSize) ||
+    pageSize < 1 ||
+    pageSize > 100
+  )
+    throw new RangeError('联系人分页参数无效');
+  const data = await getJson(
+    `/customers/${encodeURIComponent(id)}/contacts?status=${status}&page=${page}&pageSize=${pageSize}`,
+    options,
+  );
+  if (!isContactPage(data) || data.page !== page || data.pageSize !== pageSize)
+    throw invalidResponse();
+  return data;
+}
+
+export async function listCustomerContactVersions(
+  id: string,
+  contactId: string,
+  page = 1,
+  pageSize = 20,
+  options: RequestOptions = {},
+): Promise<CustomerContactVersionPage> {
+  if (
+    !Number.isInteger(page) ||
+    page < 1 ||
+    !Number.isInteger(pageSize) ||
+    pageSize < 1 ||
+    pageSize > 100
+  )
+    throw new RangeError('联系人历史分页参数无效');
+  const data = await getJson(
+    `/customers/${encodeURIComponent(id)}/contacts/${encodeURIComponent(contactId)}/versions?page=${page}&pageSize=${pageSize}`,
+    options,
+  );
+  if (
+    !isContactVersionPage(data) ||
+    data.page !== page ||
+    data.pageSize !== pageSize ||
+    data.items.some((item) => item.contactId !== contactId)
+  )
+    throw invalidResponse();
+  return data;
+}
+
+async function customerContactCommand(
+  customerId: string,
+  path: string,
+  method: 'POST' | 'PATCH',
+  body: JsonValue,
+  key: string,
+): Promise<CustomerContactCommandResult> {
+  const data = await requestJson(
+    `/customers/${encodeURIComponent(customerId)}/contacts${path}`,
+    {
+      method,
+      headers: { 'Idempotency-Key': key },
+      body,
+    },
+  );
+  if (!isContactCommandResult(data, customerId)) throw invalidResponse();
+  return data;
+}
+export function createCustomerContact(
+  id: string,
+  body: ContactCommandBody,
+  key: string,
+) {
+  return customerContactCommand(id, '', 'POST', body, key);
+}
+export function updateCustomerContact(
+  id: string,
+  contactId: string,
+  body: ContactCommandBody,
+  key: string,
+) {
+  return customerContactCommand(
+    id,
+    `/${encodeURIComponent(contactId)}`,
+    'PATCH',
+    body,
+    key,
+  );
+}
+export function setCustomerContactPrimary(
+  id: string,
+  contactId: string,
+  body: ContactCommandBody,
+  key: string,
+) {
+  return customerContactCommand(
+    id,
+    `/${encodeURIComponent(contactId)}/primary`,
+    'POST',
+    body,
+    key,
+  );
+}
+export function endCustomerContact(
+  id: string,
+  contactId: string,
+  body: ContactCommandBody,
+  key: string,
+) {
+  return customerContactCommand(
+    id,
+    `/${encodeURIComponent(contactId)}/end`,
+    'POST',
+    body,
+    key,
+  );
 }
 
 export async function findCustomerDuplicates(

@@ -12,6 +12,9 @@ import {
 import { ApiError } from '../../api/http';
 import RequiredFieldMark from '../../app/RequiredFieldMark.vue';
 import { useUnsavedForm } from '../../app/use-unsaved-form';
+import { useAuthStore } from '../../stores/auth';
+import { pinia } from '../../app/pinia';
+import { listPendingCustomerContacts } from './customer-contacts-pending';
 import {
   compatibleIdentityOptions,
   customerTypeOptionsWithCurrent,
@@ -24,9 +27,10 @@ import {
 
 const route = useRoute();
 const router = useRouter();
-const state = ref<'loading' | 'ready' | 'missing' | 'denied' | 'failed'>(
-  'loading',
-);
+const auth = useAuthStore(pinia);
+const state = ref<
+  'loading' | 'ready' | 'missing' | 'denied' | 'failed' | 'contact-pending'
+>('loading');
 const expectedVersion = ref(0);
 const name = ref('');
 const customerType = ref('');
@@ -35,17 +39,12 @@ const identityNumber = ref('');
 const issuingCountryOrRegion = ref('');
 const category = ref('');
 const region = ref('');
-const admissionContactName = ref('');
-const admissionContactPhone = ref('');
-const admissionContactEmail = ref('');
-const originalAdmissionContact = ref({ name: '', phone: '', email: '' });
 const duplicateNameReason = ref('');
 const needsDuplicateNameReason = ref(false);
 const duplicateMatches = ref<CustomerDuplicateSummary[]>([]);
 const latestSnapshot = ref<CustomerDetail | null>(null);
 const nameError = ref('');
 const identityError = ref('');
-const admissionContactError = ref('');
 const duplicateNameReasonError = ref('');
 const submitError = ref('');
 const restoreTargetId = ref<string>();
@@ -61,13 +60,6 @@ const displayedCustomerTypeOptions = computed(() =>
 const displayedIdentityTypeOptions = computed(() =>
   compatibleIdentityOptions(customerType.value, identityType.value),
 );
-const hasAdmissionContact = computed(() =>
-  Boolean(
-    admissionContactName.value.trim() ||
-    admissionContactPhone.value.trim() ||
-    admissionContactEmail.value.trim(),
-  ),
-);
 
 function onCustomerTypeChanged(): void {
   if (
@@ -82,59 +74,6 @@ function onCustomerTypeChanged(): void {
 
 function editable(value: string): string {
   return value.trim();
-}
-
-function setOriginalAdmissionContact(customer: CustomerDetail): void {
-  originalAdmissionContact.value = {
-    name: customer.admissionContactName ?? '',
-    phone: customer.admissionContactPhone ?? '',
-    email: customer.admissionContactEmail ?? '',
-  };
-}
-
-function validateAdmissionContact(): boolean {
-  const contactName = admissionContactName.value.trim();
-  const contactPhone = admissionContactPhone.value.trim();
-  const contactEmail = admissionContactEmail.value.trim();
-  const original = originalAdmissionContact.value;
-  admissionContactError.value = '';
-  if (
-    (original.name && !contactName) ||
-    (original.phone && !contactPhone) ||
-    (original.email && !contactEmail)
-  ) {
-    admissionContactError.value = '本轮暂不支持删除联系人信息';
-  } else if ((contactName || contactPhone || contactEmail) && !contactName) {
-    admissionContactError.value = '请填写联系人姓名';
-  } else if (contactName && !contactPhone && !contactEmail) {
-    admissionContactError.value = '联系人至少填写电话或邮箱';
-  } else if (
-    contactPhone &&
-    !/^(?=(?:\D*\d){6,20}\D*$)[+()\d\s-]+$/u.test(contactPhone)
-  ) {
-    admissionContactError.value = '联系人电话格式不正确';
-  } else if (
-    contactEmail &&
-    !/^[^\s@]+@[^\s@]+\.[^\s@]+$/u.test(contactEmail)
-  ) {
-    admissionContactError.value = '联系人邮箱格式不正确';
-  }
-  return admissionContactError.value.length === 0;
-}
-
-function admissionContactPayload(): {
-  admissionContactName?: string;
-  admissionContactPhone?: string;
-  admissionContactEmail?: string;
-} {
-  const contactName = admissionContactName.value.trim();
-  const contactPhone = admissionContactPhone.value.trim();
-  const contactEmail = admissionContactEmail.value.trim();
-  return {
-    ...(contactName ? { admissionContactName: contactName } : {}),
-    ...(contactPhone ? { admissionContactPhone: contactPhone } : {}),
-    ...(contactEmail ? { admissionContactEmail: contactEmail } : {}),
-  };
 }
 
 async function loadVisibleDuplicates(
@@ -178,7 +117,6 @@ async function prepareVersionConflict(): Promise<void> {
 async function retryLatest(): Promise<void> {
   if (latestSnapshot.value === null) return;
   expectedVersion.value = latestSnapshot.value.version;
-  setOriginalAdmissionContact(latestSnapshot.value);
   latestSnapshot.value = null;
   await submit();
 }
@@ -194,10 +132,6 @@ function useLatestSnapshot(): void {
   issuingCountryOrRegion.value = latest.issuingCountryOrRegion ?? '';
   category.value = latest.category ?? '';
   region.value = latest.region ?? '';
-  admissionContactName.value = latest.admissionContactName ?? '';
-  admissionContactPhone.value = latest.admissionContactPhone ?? '';
-  admissionContactEmail.value = latest.admissionContactEmail ?? '';
-  setOriginalAdmissionContact(latest);
   latestSnapshot.value = null;
   duplicateMatches.value = [];
   submitError.value = '';
@@ -218,6 +152,18 @@ async function load(): Promise<void> {
       state.value = 'denied';
       return;
     }
+    const session = auth.session;
+    if (
+      session?.principalType === 'INTERNAL' &&
+      session.department &&
+      listPendingCustomerContacts(
+        { userId: session.user.id, departmentId: session.department.id },
+        customer.id,
+      ).length > 0
+    ) {
+      state.value = 'contact-pending';
+      return;
+    }
     expectedVersion.value = customer.version;
     name.value = customer.name;
     customerType.value = normalizeCustomerTypeOption(customer.customerType);
@@ -226,10 +172,6 @@ async function load(): Promise<void> {
     issuingCountryOrRegion.value = customer.issuingCountryOrRegion ?? '';
     category.value = customer.category ?? '';
     region.value = customer.region ?? '';
-    admissionContactName.value = customer.admissionContactName ?? '';
-    admissionContactPhone.value = customer.admissionContactPhone ?? '';
-    admissionContactEmail.value = customer.admissionContactEmail ?? '';
-    setOriginalAdmissionContact(customer);
     state.value = 'ready';
   } catch (error) {
     if (controller.signal.aborted) return;
@@ -249,7 +191,6 @@ async function submit(): Promise<void> {
     hasIdentityType === hasIdentityNumber
       ? ''
       : '证件类型和证件号码需要同时填写';
-  validateAdmissionContact();
   duplicateNameReasonError.value =
     needsDuplicateNameReason.value && !duplicateNameReason.value.trim()
       ? '请说明同名情况下继续保存的原因'
@@ -258,12 +199,7 @@ async function submit(): Promise<void> {
   restoreTargetId.value = undefined;
   duplicateMatches.value = [];
   latestSnapshot.value = null;
-  if (
-    nameError.value ||
-    identityError.value ||
-    admissionContactError.value ||
-    duplicateNameReasonError.value
-  )
+  if (nameError.value || identityError.value || duplicateNameReasonError.value)
     return;
 
   saving.value = true;
@@ -277,7 +213,6 @@ async function submit(): Promise<void> {
       issuingCountryOrRegion: editable(issuingCountryOrRegion.value),
       category: editable(category.value),
       region: editable(region.value),
-      ...admissionContactPayload(),
       ...(needsDuplicateNameReason.value
         ? { duplicateNameReason: duplicateNameReason.value.trim() }
         : {}),
@@ -355,6 +290,20 @@ onBeforeUnmount(() => activeRequest?.abort());
         <span class="state-index">无编辑权限</span>
         <h1>当前账号没有编辑此客户的权限</h1>
         <p>仍可返回详情查看已有资料。</p>
+      </section>
+      <section
+        v-else-if="state === 'contact-pending'"
+        class="state-panel ledger-panel"
+      >
+        <span class="state-index">联系人请求待恢复</span>
+        <h1>请先处理未确认的联系人请求</h1>
+        <p>
+          同一客户的普通资料维护暂时冻结。请返回详情，按原请求恢复或只读刷新。
+        </p>
+        <RouterLink
+          :to="`/customers/${String(route.params.id)}#customer-contacts`"
+          >返回联系人面板</RouterLink
+        >
       </section>
       <section v-else-if="state === 'failed'" class="state-panel ledger-panel">
         <span class="state-index">连接失败</span>
@@ -472,75 +421,11 @@ onBeforeUnmount(() => activeRequest?.abort());
             maxlength="100"
           />
 
-          <fieldset class="form-section">
-            <legend>准入联系人</legend>
-            <p id="admission-contact-guidance" class="field-help">
-              整组可不填；开始填写后，联系人姓名必填，电话或邮箱至少填写一种。
-            </p>
-            <label class="field-label" for="admission-contact-name">
-              联系人姓名<RequiredFieldMark v-if="hasAdmissionContact" />
-            </label>
-            <input
-              id="admission-contact-name"
-              v-model="admissionContactName"
-              name="admissionContactName"
-              class="text-input"
-              autocomplete="name"
-              maxlength="100"
-              :required="hasAdmissionContact"
-              :aria-describedby="
-                admissionContactError
-                  ? 'admission-contact-guidance admission-contact-error'
-                  : 'admission-contact-guidance'
-              "
-              @input="admissionContactError = ''"
-            />
-            <p
-              data-test="admission-contact-channel-requirement"
-              class="field-help field-label--spaced"
-            >
-              联系方式：电话或邮箱至少一种<RequiredFieldMark
-                v-if="hasAdmissionContact"
-              />
-            </p>
-            <label
-              class="field-label field-label--spaced"
-              for="admission-contact-phone"
-              >电话</label
-            >
-            <input
-              id="admission-contact-phone"
-              v-model="admissionContactPhone"
-              name="admissionContactPhone"
-              class="text-input"
-              autocomplete="tel"
-              maxlength="30"
-              aria-describedby="admission-contact-guidance"
-              @input="admissionContactError = ''"
-            />
-            <label
-              class="field-label field-label--spaced"
-              for="admission-contact-email"
-              >邮箱</label
-            >
-            <input
-              id="admission-contact-email"
-              v-model="admissionContactEmail"
-              name="admissionContactEmail"
-              class="text-input"
-              autocomplete="email"
-              maxlength="254"
-              aria-describedby="admission-contact-guidance"
-              @input="admissionContactError = ''"
-            />
-            <p
-              v-if="admissionContactError"
-              id="admission-contact-error"
-              class="field-error"
-            >
-              {{ admissionContactError }}
-            </p>
-          </fieldset>
+          <p>联系人请在客户详情的“联系人关系”中维护。</p>
+          <RouterLink
+            :to="`/customers/${String(route.params.id)}#customer-contacts`"
+            >管理联系人</RouterLink
+          >
 
           <template v-if="needsDuplicateNameReason">
             <label

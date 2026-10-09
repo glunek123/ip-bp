@@ -35,6 +35,8 @@ const customer = {
   departmentId: actor.departmentId,
   responsibleUserId: actor.userId,
   version: 3,
+  primaryContactId: null,
+  admissionContactSnapshot: null,
   updatedAt: '2026-10-09T01:00:00.000Z',
   responsibleOperator: { id: actor.userId, displayName: '运营甲' },
   cooperationCapabilities: {

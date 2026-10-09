@@ -6,6 +6,8 @@ import { ApiError } from '../../api/http';
 import { useAuthStore } from '../../stores/auth';
 import { pinia } from '../../app/pinia';
 import { savePendingCustomerMaintenance } from './customer-maintenance-pending';
+import { savePendingCustomerContact } from './customer-contacts-pending';
+import { savePendingCustomerDraftCommand } from './customer-lifecycle-pending';
 
 const api = vi.hoisted(() => ({
   getCustomer: vi.fn(),
@@ -32,7 +34,13 @@ const admissionPanel = {
   props: ['customer'],
   emits: ['admitted', 'customer-refreshed', 'customer-not-found'],
   template:
-    '<section data-test="admission-panel" :data-version="customer.version"><button data-test="admitted" @click="$emit(\'admitted\', { ...customer, profileStatus: \'admitted\', admittedAt: \'2026-09-21T03:00:00.000Z\', version: customer.version + 1, capabilities: { ...customer.capabilities, admit: false } })">准入完成</button></section>',
+    '<section data-test="admission-panel" :data-version="customer.version"><button data-test="admitted" @click="$emit(\'admitted\', customer.id, \'\', { ...customer, profileStatus: \'admitted\', admittedAt: \'2026-09-21T03:00:00.000Z\', version: customer.version + 1, capabilities: { ...customer.capabilities, admit: false } })">准入完成</button></section>',
+};
+const contactsPanel = {
+  props: ['customer', 'actor', 'blockedByOtherMaintenance'],
+  emits: ['refreshed', 'pending-changed'],
+  template:
+    '<section data-test="customer-contacts-panel-stub" :data-blocked="blockedByOtherMaintenance" />',
 };
 
 const accountPanel = {
@@ -61,6 +69,7 @@ async function mountPage(customerId = 'customer-1') {
     routes: [
       { path: '/customers', component: { template: '<div>客户列表</div>' } },
       { path: '/customers/:id', component: CustomerDetailPage },
+      { path: '/customers/:id/edit', component: { template: '<div />' } },
     ],
   });
   await router.push(`/customers/${customerId}`);
@@ -71,6 +80,7 @@ async function mountPage(customerId = 'customer-1') {
       stubs: {
         CustomerRightsHolderPanel: rightsHolderPanel,
         CustomerAdmissionPanel: admissionPanel,
+        CustomerContactsPanel: contactsPanel,
         CustomerAccountPanel: accountPanel,
         CustomerRightAssetsPanel: rightAssetsPanel,
       },
@@ -112,6 +122,108 @@ function customerRecord(id: string, name: string) {
 }
 
 describe('CustomerDetailPage', () => {
+  it('keeps its contact recovery panel and freezes other customer maintenance', async () => {
+    useAuthStore(pinia).session = {
+      principalType: 'INTERNAL',
+      user: { id: 'user-1', displayName: '运营甲', username: 'operator-a' },
+      department: { id: 'department-1', name: '甲部门' },
+      departments: [{ id: 'department-1', name: '甲部门' }],
+      customer: null,
+      notaryOffice: null,
+      authorizationRevision: 1,
+      expiresAt: '2026-10-09T10:00:00.000Z',
+      csrfToken: 'csrf',
+    };
+    savePendingCustomerContact({
+      action: 'create',
+      userId: 'user-1',
+      departmentId: 'department-1',
+      customerId: 'customer-1',
+      contactId: null,
+      expectedCustomerVersion: 1,
+      expectedContactVersion: null,
+      body: {
+        expectedCustomerVersion: 1,
+        name: '新联系人',
+        phone: '13800138000',
+      },
+      key: 'original-contact-key',
+    });
+    api.getCustomer.mockResolvedValue(customerRecord('customer-1', '客户甲'));
+    const { wrapper } = await mountPage();
+    await flushPromises();
+    expect(
+      wrapper.find('[data-test="customer-contacts-panel-stub"]').exists(),
+    ).toBe(true);
+    expect(wrapper.find('[data-test="rights-holder-panel"]').exists()).toBe(
+      false,
+    );
+    expect(wrapper.find('[data-test="admission-panel"]').exists()).toBe(false);
+    expect(wrapper.find('[data-test="account-panel"]').exists()).toBe(false);
+    expect(wrapper.find('[data-test="right-assets-panel"]').exists()).toBe(
+      false,
+    );
+    expect(wrapper.find('[data-test="edit-customer"]').exists()).toBe(false);
+    expect(wrapper.find('[data-test="delete-draft-open"]').exists()).toBe(
+      false,
+    );
+  });
+
+  it.each(['cooperation', 'delete'] as const)(
+    'freezes new contact writes during an unknown %s request',
+    async (action) => {
+      useAuthStore(pinia).session = {
+        principalType: 'INTERNAL',
+        user: { id: 'user-1', displayName: '运营甲', username: 'operator-a' },
+        department: { id: 'department-1', name: '甲部门' },
+        departments: [{ id: 'department-1', name: '甲部门' }],
+        customer: null,
+        notaryOffice: null,
+        authorizationRevision: 1,
+        expiresAt: '2026-10-09T10:00:00.000Z',
+        csrfToken: 'csrf',
+      };
+      if (action === 'cooperation') {
+        savePendingCustomerMaintenance({
+          action: 'pause',
+          userId: 'user-1',
+          departmentId: 'department-1',
+          customerId: 'customer-1',
+          expectedVersion: 1,
+          body: { expectedVersion: 1, action: 'pause', reason: '暂停原因' },
+          key: 'pause-key',
+        });
+      } else {
+        savePendingCustomerDraftCommand({
+          action: 'delete-draft',
+          userId: 'user-1',
+          departmentId: 'department-1',
+          customerId: 'customer-1',
+          expectedVersion: 1,
+          key: 'delete-key',
+        });
+      }
+      api.getCustomer.mockResolvedValue({
+        ...customerRecord('customer-1', '客户甲'),
+        capabilities: {
+          editRoutine: true,
+          admit: true,
+          deleteDraft: action === 'delete',
+        },
+      });
+      const { wrapper } = await mountPage();
+      await flushPromises();
+      expect(
+        wrapper
+          .get('[data-test="customer-contacts-panel-stub"]')
+          .attributes('data-blocked'),
+      ).toBe('true');
+      expect(wrapper.find('[data-test="admission-panel"]').exists()).toBe(
+        false,
+      );
+    },
+  );
+
   it('keeps the exact delete request after CONTACT_BUSY and retries the same key', async () => {
     useAuthStore(pinia).session = {
       principalType: 'INTERNAL',

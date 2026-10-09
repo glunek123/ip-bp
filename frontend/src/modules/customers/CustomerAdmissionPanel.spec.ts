@@ -1,11 +1,12 @@
 import { flushPromises, mount } from '@vue/test-utils';
-import { afterEach, describe, expect, it, vi } from 'vitest';
+import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 import { ApiError } from '../../api/http';
 import CustomerAdmissionPanel from './CustomerAdmissionPanel.vue';
 
 const customerApi = vi.hoisted(() => ({
   admitCustomer: vi.fn(),
   getCustomer: vi.fn(),
+  listCustomerContacts: vi.fn(),
 }));
 const materialApi = vi.hoisted(() => ({
   uploadMaterialFile: vi.fn(),
@@ -38,6 +39,8 @@ const customer = {
   departmentId: 'department-1',
   responsibleUserId: 'user-1',
   version: 1,
+  primaryContactId: null,
+  admissionContactSnapshot: null,
   updatedAt: '2026-09-21T01:00:00.000Z',
   responsibleOperator: { id: 'user-1', displayName: '运营甲' },
   cooperationCapabilities: {
@@ -80,6 +83,31 @@ afterEach(() => {
   vi.resetAllMocks();
   document.body.innerHTML = '';
 });
+beforeEach(() => {
+  customerApi.listCustomerContacts.mockResolvedValue({
+    items: [
+      {
+        id: 'contact-1',
+        customerId: 'customer-1',
+        name: '联系人甲',
+        phone: '13800138000',
+        email: null,
+        duty: null,
+        isPrimary: false,
+        endedAt: null,
+        endReason: null,
+        version: 1,
+        origin: 'MANUAL',
+        createdAt: '2026-09-21T01:00:00.000Z',
+        updatedAt: '2026-09-21T01:00:00.000Z',
+      },
+    ],
+    total: 1,
+    page: 1,
+    pageSize: 20,
+    primaryContactId: null,
+  });
+});
 
 async function mountPanel(items: object[] = []) {
   materialApi.listOwnerMaterials.mockResolvedValue({
@@ -107,6 +135,7 @@ async function fillEnterpriseAdmission(wrapper: ReturnType<typeof mount>) {
   await wrapper
     .get('select[name="identityValidityMode"]')
     .setValue('LONG_TERM');
+  await wrapper.get('select[name="admissionContactId"]').setValue('contact-1');
 }
 
 describe('CustomerAdmissionPanel', () => {
@@ -153,6 +182,63 @@ describe('CustomerAdmissionPanel', () => {
     expect(wrapper.text()).toContain('正反面合并 PDF');
     expect(wrapper.text()).toContain('人像面');
     expect(wrapper.text()).toContain('国徽面');
+  });
+
+  it('selects an active contact from a later page and submits its ID', async () => {
+    const firstPage = Array.from({ length: 20 }, (_, index) => ({
+      id: `contact-${index + 1}`,
+      customerId: customer.id,
+      name: `联系人${index + 1}`,
+      phone: '13800138000',
+      email: null,
+      duty: null,
+      isPrimary: false,
+      endedAt: null,
+      endReason: null,
+      version: 1,
+      origin: 'MANUAL',
+      createdAt: '2026-09-21T01:00:00.000Z',
+      updatedAt: '2026-09-21T01:00:00.000Z',
+    }));
+    const lastContact = {
+      ...firstPage[0],
+      id: 'contact-21',
+      name: '末页联系人',
+    };
+    customerApi.listCustomerContacts.mockImplementation(
+      (_id: string, _status: string, page: number) =>
+        Promise.resolve({
+          items: page === 1 ? firstPage : [lastContact],
+          total: 21,
+          page,
+          pageSize: 20,
+          primaryContactId: null,
+        }),
+    );
+    customerApi.admitCustomer.mockResolvedValue({
+      ...customer,
+      profileStatus: 'admitted',
+      version: 2,
+    });
+    const wrapper = await mountPanel([fullMaterial]);
+    expect(wrapper.find('option[value="contact-21"]').exists()).toBe(false);
+    await wrapper
+      .findAll('button')
+      .find((button) => button.text().includes('下一页'))!
+      .trigger('click');
+    await flushPromises();
+    expect(wrapper.find('option[value="contact-21"]').exists()).toBe(true);
+    await fillEnterpriseAdmission(wrapper);
+    await wrapper
+      .get('select[name="admissionContactId"]')
+      .setValue('contact-21');
+    await wrapper.get('form').trigger('submit');
+    await flushPromises();
+    expect(customerApi.admitCustomer).toHaveBeenCalledWith(
+      'customer-1',
+      expect.objectContaining({ admissionContactId: 'contact-21' }),
+      expect.any(String),
+    );
   });
 
   it('rejects unsupported, oversized, and over-count file selections before upload', async () => {
@@ -232,7 +318,7 @@ describe('CustomerAdmissionPanel', () => {
     expect(wrapper.text()).toContain('证件.pdf');
   });
 
-  it('validates contact, fixed validity, and both sides of a national ID', async () => {
+  it('requires an explicit active contact, fixed validity, and both sides of a national ID', async () => {
     const frontOnly = {
       ...fullMaterial,
       purpose: 'IDENTITY_FRONT',
@@ -251,10 +337,9 @@ describe('CustomerAdmissionPanel', () => {
       .get('input[name="identityNumber"]')
       .setValue('310101199001010000');
     await wrapper.get('select[name="identityValidityMode"]').setValue('FIXED');
-    await wrapper.get('input[name="admissionContactPhone"]').setValue('');
     await wrapper.get('form').trigger('submit');
 
-    expect(wrapper.text()).toContain('联系人至少填写电话或邮箱');
+    expect(wrapper.text()).toContain('请选择一位活动联系人');
     expect(wrapper.text()).toContain('固定有效期请填写截止日期');
     expect(wrapper.text()).toContain(
       '身份证需要合并 PDF，或同时上传人像面和国徽面',
@@ -582,7 +667,7 @@ describe('CustomerAdmissionPanel', () => {
     await fillEnterpriseAdmission(wrapper);
     await wrapper.get('form').trigger('submit');
     await flushPromises();
-    expect(wrapper.emitted('customer-not-found')).toEqual([['customer-1']]);
+    expect(wrapper.emitted('customer-not-found')).toEqual([['customer-1', '']]);
   });
 
   it('emits customer-not-found when the material owner becomes inaccessible', async () => {
@@ -591,7 +676,7 @@ describe('CustomerAdmissionPanel', () => {
     );
     const wrapper = mount(CustomerAdmissionPanel, { props: { customer } });
     await flushPromises();
-    expect(wrapper.emitted('customer-not-found')).toEqual([['customer-1']]);
+    expect(wrapper.emitted('customer-not-found')).toEqual([['customer-1', '']]);
   });
 
   it('reloads stale data, preserves input, and retries only after review', async () => {
