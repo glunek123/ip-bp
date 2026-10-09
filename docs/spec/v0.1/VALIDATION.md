@@ -834,3 +834,13 @@ Task B原页面提交355c48e4a01cf39099f039ecc967126d90c165d9/tree35fdabee433963
 Root展开风险源码后发现正常列表读取递增发送上下文代次，使确认成功请求无法收尾；父页在pending清除后未继承联系人资料过期；403/404仍留联系人/历史资料且未完整处理中止卸载。修复d2d57ca52095fc70b65f5e059fc403d1c1924940/treeb9a84805e44d6c8a17d2e9a8f947c927d74f1812仅Panel/Detail及直测四文件，分开身份与读取代次、增加带客户/actor校验的过期事件、保留自恢复、清可见PII但不删未知原请求，并在卸载中止读取；旧源码六项行为RED后两文件35/35 GREEN，最终七文件101/101及类型/lint/格式通过。原始task-6-ui-red.log、task-6-ui-targeted-green.log和task-6-ui-final.log不替代真实浏览器。
 
 最后e2d6ad62f533c1cd85cab7aca30c53a2c663b268/treef2176c8c7bc68aa7bc9d4915546f07f3cc9b0153两文件修复已结束列表第2页只读恢复误取第1页：同一直接行为RED→GREEN，Panel15/15与FE类型/两文件lint/格式通过，task-6-ui-pagination-{red,green,final}.log。其余未变输入沿用此前结果，不称此HEAD实跑101/101。报告.local/customer-alignment/task-6-ui-report.md保留各候选；没有后端/迁移/共享Auth或业务契约改动。尚无本片真实密码cookie/CSRF端到端证据，下一步Task C及Final Review/Level3完整门禁；Current/Next仍CU006/CU007，不将本检查点视作整片验收。
+
+## CORE-CU-006 Task C真实会话与父级刷新修复检查点（2026-10-09，未整片验收）
+
+Task C实际提交`0cc238bdffc930aecc2be7058425b2d45ee14b00`，tree`c4934c0a904b04b21f897531f987ea415ce926a5`，仅六个测试/夹具文件，提交后工作区干净。联系人专项`pnpm test:e2e tests/e2e/customer-contacts.spec.ts --workers=1`16/16通过；前12例真实浏览器密码登录/cookie/CSRF，第13～15例Bearer API兼容/隔离，第16例外部CLIENT/LAWYER真实API密码cookie拒绝访问。准入明确选活动联系人ID、不重复平铺字段，冻结快照/旧回执JSON与指纹保持，未知结果原key/body刷新重登、真实PG BUSY、撤权清可见资料并保留未知请求、合作/删除交叉冻结、只读恢复、实际历史及结束联系人第二页、跨客户迟到读取均有对应证据。未另造浏览器actor切换晚到响应端到端例，复用B组件对应证据；不得把Bearer或组件测试说成真实密码浏览器。旧`customers.spec.ts`仅获批旧UI适配和新增旧平铺PATCH邮箱审计脱敏用例，定向2/2通过；其UI仍为fixtureBearer。六文件Prettier/ESLint/tsc及Git差异检查通过。
+
+真实浏览器先暴露父级同ID新Customer对象被getter数组watch误判为上下文切换，写后保存持续禁用。最小修复`3dbb70d4b5d4ee2149fdffad8a363f634b646e43`/tree`ea90bedad45c027f438ba5986674ad70ea66fb4c`仅Panel与直接spec，改为Vue多源watch；父级实际替换对象的组件RED→GREEN、Panel15/15、类型/精确lint/格式通过。Task C原两条cookie失败例修复后纳入16/16通过；浏览器RED终端输出未单独落盘，保留这一证据限制，不将Panel日志充当浏览器日志。
+
+新增外部身份用例后首次整组被残留测试会话的外键约束阻断，16例均未进入用例体；夹具RED已单独保留。修正仅清理本用例限定核心部门/客户且用户名和名称核对的CLIENT/LAWYER账号及其会话/凭据/绑定/律师档案，未知身份拒绝清理；其后16/16通过。不改生产守卫或102 SQL；仅测试库15433与5174/3101，未reset/drop public或操作人工/开发/生产。原始日志、需求映射及未覆盖项见`.local/customer-alignment/task-6-integration-report.md`、`task-6-integration-e2e-final.log`、`task-6-integration-old-compat-e2e.log`、`task-6-integration-static.log`、`task-6-integration-fixture-red.log`与`task-6-ui-parent-refresh-*.log`。
+
+本检查点不预写组合Final Review或Level3通过。Task A原I1/I2/I3已关闭的审查结论保留；最终组合审查、固定候选完整verify/全库E2E/迁移专项仍待执行。Current/Next保持CU006/CU007，人工环境仍旧构建及91条迁移。
