@@ -42,6 +42,7 @@ const deleteStatus = ref<'idle' | 'submitting' | 'unknown' | 'conflict'>(
 const frozenDelete = ref<PendingCustomerDraftCommand>();
 const maintenancePending = ref(false);
 const contactsPending = ref(false);
+const contactsProjectionStale = ref(false);
 const currentProjectionStale = ref(false);
 const admissionRefreshFailed = ref(false);
 let viewGeneration = 0;
@@ -59,6 +60,9 @@ const actorKey = computed(() =>
   actor.value
     ? `${actor.value.userId}:${actor.value.departmentId}:${auth.session?.authorizationRevision ?? 0}`
     : '',
+);
+const contactsWriteBlocked = computed(
+  () => contactsPending.value || contactsProjectionStale.value,
 );
 
 function pendingIdentity(customerId: string) {
@@ -110,6 +114,20 @@ function updateContactsPending(
   )
     return;
   contactsPending.value = pending;
+}
+
+function updateContactProjectionStale(
+  customerId: string,
+  sourceActorKey: string,
+  stale: boolean,
+): void {
+  if (
+    customerId !== String(route.params.id) ||
+    sourceActorKey !== actorKey.value ||
+    customer.value?.id !== customerId
+  )
+    return;
+  contactsProjectionStale.value = stale;
 }
 
 function acceptContactRefresh(
@@ -444,6 +462,7 @@ watch(
     viewGeneration += 1;
     abortRequests();
     restorePending(String(route.params.id));
+    contactsProjectionStale.value = false;
     customer.value = undefined;
     currentProjectionStale.value = false;
     admissionRefreshFailed.value = false;
@@ -504,7 +523,7 @@ onBeforeUnmount(abortRequests);
                 customer.capabilities.deleteDraft &&
                 !frozenDelete &&
                 !maintenancePending &&
-                !contactsPending &&
+                !contactsWriteBlocked &&
                 !currentProjectionStale
               "
               data-test="delete-draft-open"
@@ -516,7 +535,7 @@ onBeforeUnmount(abortRequests);
                 customer.capabilities.editRoutine &&
                 !frozenDelete &&
                 !maintenancePending &&
-                !contactsPending &&
+                !contactsWriteBlocked &&
                 !currentProjectionStale
               "
               data-test="edit-customer"
@@ -543,7 +562,7 @@ onBeforeUnmount(abortRequests);
           :customer="customer"
           :actor="actor"
           :blocked-by-other-maintenance="
-            !!frozenDelete || contactsPending || currentProjectionStale
+            !!frozenDelete || contactsWriteBlocked || currentProjectionStale
           "
           @refreshed="acceptRefreshedCustomer"
           @unreadable="leaveAfterConfirmedMaintenance"
@@ -717,12 +736,13 @@ onBeforeUnmount(abortRequests);
             "
             @refreshed="acceptContactRefresh"
             @pending-changed="updateContactsPending"
+            @projection-stale="updateContactProjectionStale"
           />
           <CustomerRightsHolderPanel
             v-if="
               !frozenDelete &&
               !maintenancePending &&
-              !contactsPending &&
+              !contactsWriteBlocked &&
               !currentProjectionStale
             "
             id="customer-rights-holders"
@@ -737,7 +757,7 @@ onBeforeUnmount(abortRequests);
             v-if="
               !frozenDelete &&
               !maintenancePending &&
-              !contactsPending &&
+              !contactsWriteBlocked &&
               !currentProjectionStale
             "
             id="customer-admission"
@@ -750,7 +770,7 @@ onBeforeUnmount(abortRequests);
             v-if="
               !frozenDelete &&
               !maintenancePending &&
-              !contactsPending &&
+              !contactsWriteBlocked &&
               !currentProjectionStale
             "
             id="customer-accounts"
@@ -781,7 +801,7 @@ onBeforeUnmount(abortRequests);
             v-if="
               !frozenDelete &&
               !maintenancePending &&
-              !contactsPending &&
+              !contactsWriteBlocked &&
               !currentProjectionStale
             "
             :customer-id="customer.id"

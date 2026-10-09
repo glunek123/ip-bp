@@ -1,5 +1,5 @@
 <script setup lang="ts">
-import { computed, ref, watch } from 'vue';
+import { computed, onBeforeUnmount, ref, watch } from 'vue';
 import { ElButton } from 'element-plus/es/components/button/index.mjs';
 import { ApiError } from '../../api/http';
 import {
@@ -35,6 +35,7 @@ const props = defineProps<{
 const emit = defineEmits<{
   refreshed: [customerId: string, actorKey: string, customer: CustomerDetail];
   'pending-changed': [customerId: string, actorKey: string, pending: boolean];
+  'projection-stale': [customerId: string, actorKey: string, stale: boolean];
 }>();
 const status = ref<'ACTIVE' | 'ENDED'>('ACTIVE');
 const page = ref(1);
@@ -57,7 +58,11 @@ const saving = ref(false);
 const error = ref('');
 const frozen = ref<PendingCustomerContact>();
 const readOnlyStale = ref(false);
-let generation = 0;
+let contextGeneration = 0;
+let listGeneration = 0;
+let versionGeneration = 0;
+let refreshGeneration = 0;
+let confirmedWriteRefresh = false;
 let listController: AbortController | undefined;
 let versionController: AbortController | undefined;
 let refreshController: AbortController | undefined;
@@ -74,12 +79,35 @@ const canWrite = computed(
     Boolean(props.actor && props.customer.capabilities.editRoutine) &&
     !blocked.value,
 );
-function current(g: number, customerId: string, who: string): boolean {
+function current(context: number, customerId: string, who: string): boolean {
   return (
-    generation === g &&
+    contextGeneration === context &&
     props.customer.id === customerId &&
     actorKey.value === who
   );
+}
+function setProjectionStale(stale: boolean): void {
+  if (readOnlyStale.value === stale) return;
+  readOnlyStale.value = stale;
+  emit('projection-stale', props.customer.id, actorKey.value, stale);
+}
+function clearVisibleData(): void {
+  listGeneration++;
+  versionGeneration++;
+  contacts.value = [];
+  total.value = 0;
+  versions.value = [];
+  versionsTotal.value = 0;
+  selected.value = undefined;
+  resetForm();
+}
+function handleDeniedRead(): void {
+  listController?.abort();
+  versionController?.abort();
+  clearVisibleData();
+  loading.value = false;
+  setProjectionStale(true);
+  error.value = '联系人资料当前不可用，请恢复访问后刷新';
 }
 function announcePending(): void {
   emit(
@@ -110,7 +138,8 @@ async function load(): Promise<boolean> {
   listController?.abort();
   listController = new AbortController();
   const signal = listController.signal;
-  const g = ++generation;
+  const context = contextGeneration;
+  const read = ++listGeneration;
   const customerId = props.customer.id;
   const who = actorKey.value;
   loading.value = true;
@@ -126,7 +155,8 @@ async function load(): Promise<boolean> {
       pageSize,
       { signal },
     );
-    if (!current(g, customerId, who)) return false;
+    if (!current(context, customerId, who) || read !== listGeneration)
+      return false;
     contacts.value = result.items;
     total.value = result.total;
     if (
@@ -142,18 +172,29 @@ async function load(): Promise<boolean> {
         (c) => c.id === frozen.value?.contactId,
       );
     return true;
-  } catch {
-    if (current(g, customerId, who)) error.value = '联系人列表暂时无法读取';
+  } catch (cause) {
+    if (
+      current(context, customerId, who) &&
+      read === listGeneration &&
+      cause instanceof ApiError &&
+      (cause.status === 403 || cause.status === 404)
+    ) {
+      handleDeniedRead();
+    } else if (current(context, customerId, who) && read === listGeneration) {
+      error.value = '联系人列表暂时无法读取';
+    }
     return false;
   } finally {
-    if (current(g, customerId, who)) loading.value = false;
+    if (current(context, customerId, who) && read === listGeneration)
+      loading.value = false;
   }
 }
 async function loadVersions(contact: CustomerContact): Promise<void> {
   versionController?.abort();
   versionController = new AbortController();
   const signal = versionController.signal;
-  const g = generation;
+  const context = contextGeneration;
+  const read = ++versionGeneration;
   const customerId = props.customer.id;
   const who = actorKey.value;
   selected.value = contact;
@@ -166,12 +207,28 @@ async function loadVersions(contact: CustomerContact): Promise<void> {
       pageSize,
       { signal },
     );
-    if (!current(g, customerId, who) || selected.value?.id !== contact.id)
+    if (
+      !current(context, customerId, who) ||
+      read !== versionGeneration ||
+      selected.value?.id !== contact.id
+    )
       return;
     versions.value = result.items;
     versionsTotal.value = result.total;
-  } catch {
-    if (current(g, customerId, who)) error.value = '联系人历史暂时无法读取';
+  } catch (cause) {
+    if (
+      current(context, customerId, who) &&
+      read === versionGeneration &&
+      cause instanceof ApiError &&
+      (cause.status === 403 || cause.status === 404)
+    ) {
+      handleDeniedRead();
+    } else if (
+      current(context, customerId, who) &&
+      read === versionGeneration
+    ) {
+      error.value = '联系人历史暂时无法读取';
+    }
   }
 }
 async function loadVersionPage(next: number): Promise<void> {
@@ -179,7 +236,8 @@ async function loadVersionPage(next: number): Promise<void> {
   versionController?.abort();
   versionController = new AbortController();
   const signal = versionController.signal;
-  const g = generation;
+  const context = contextGeneration;
+  const read = ++versionGeneration;
   const customerId = props.customer.id;
   const who = actorKey.value;
   const contactId = selected.value.id;
@@ -191,25 +249,43 @@ async function loadVersionPage(next: number): Promise<void> {
       pageSize,
       { signal },
     );
-    if (!current(g, customerId, who) || selected.value?.id !== contactId)
+    if (
+      !current(context, customerId, who) ||
+      read !== versionGeneration ||
+      selected.value?.id !== contactId
+    )
       return;
     versions.value = result.items;
     versionsPage.value = next;
     versionsTotal.value = result.total;
-  } catch {
-    if (current(g, customerId, who)) error.value = '联系人历史暂时无法读取';
+  } catch (cause) {
+    if (
+      current(context, customerId, who) &&
+      read === versionGeneration &&
+      cause instanceof ApiError &&
+      (cause.status === 403 || cause.status === 404)
+    ) {
+      handleDeniedRead();
+    } else if (
+      current(context, customerId, who) &&
+      read === versionGeneration
+    ) {
+      error.value = '联系人历史暂时无法读取';
+    }
   }
 }
 async function refreshReadonly(): Promise<void> {
   refreshController?.abort();
   refreshController = new AbortController();
   const signal = refreshController.signal;
-  const g = generation,
+  const context = contextGeneration,
+    request = ++refreshGeneration,
     customerId = props.customer.id,
     who = actorKey.value;
   try {
     const latest = await getCustomer(customerId, { signal });
-    if (!current(g, customerId, who)) return;
+    if (!current(context, customerId, who) || request !== refreshGeneration)
+      return;
     const active = await listCustomerContacts(
       customerId,
       'ACTIVE',
@@ -220,13 +296,23 @@ async function refreshReadonly(): Promise<void> {
     const ended = await listCustomerContacts(customerId, 'ENDED', 1, pageSize, {
       signal,
     });
-    if (!current(g, customerId, who)) return;
+    if (!current(context, customerId, who) || request !== refreshGeneration)
+      return;
     contacts.value = status.value === 'ACTIVE' ? active.items : ended.items;
     total.value = status.value === 'ACTIVE' ? active.total : ended.total;
     emit('refreshed', customerId, who, latest);
-    readOnlyStale.value = false;
-  } catch {
-    if (current(g, customerId, who))
+    setProjectionStale(false);
+  } catch (cause) {
+    if (
+      current(context, customerId, who) &&
+      request === refreshGeneration &&
+      cause instanceof ApiError &&
+      (cause.status === 403 || cause.status === 404)
+    ) {
+      handleDeniedRead();
+      return;
+    }
+    if (current(context, customerId, who) && request === refreshGeneration)
       error.value = '当前资料仍未刷新成功，联系人保持只读';
   }
 }
@@ -305,7 +391,7 @@ function pendingCommand(
   };
 }
 async function send(command: PendingCustomerContact): Promise<void> {
-  const g = generation,
+  const context = contextGeneration,
     customerId = command.customerId,
     who = actorKey.value;
   saving.value = true;
@@ -322,31 +408,36 @@ async function send(command: PendingCustomerContact): Promise<void> {
     else if (command.action === 'end' && id)
       await endCustomerContact(customerId, id, body, command.key);
     else throw new Error('联系人请求状态无效');
-    if (!current(g, customerId, who)) return;
-    readOnlyStale.value = true;
+    if (!current(context, customerId, who)) return;
+    setProjectionStale(true);
     clearPendingCustomerContact(command);
     frozen.value = undefined;
     announcePending();
     try {
       const latest = await getCustomer(customerId);
-      if (!current(g, customerId, who)) return;
+      if (!current(context, customerId, who)) return;
+      confirmedWriteRefresh = true;
       emit('refreshed', customerId, who, latest);
-      const contactsRefreshed = await load();
-      if (!current(g, customerId, who)) return;
-      if (contactsRefreshed) {
-        readOnlyStale.value = false;
-      } else {
-        readOnlyStale.value = true;
-        error.value =
-          '联系人已保存，但联系人列表刷新失败。刷新完成前只允许只读重试。';
+      try {
+        const contactsRefreshed = await load();
+        if (!current(context, customerId, who)) return;
+        if (contactsRefreshed) {
+          setProjectionStale(false);
+        } else {
+          setProjectionStale(true);
+          error.value =
+            '联系人已保存，但联系人列表刷新失败。刷新完成前只允许只读重试。';
+        }
+      } finally {
+        confirmedWriteRefresh = false;
       }
     } catch {
-      readOnlyStale.value = true;
+      setProjectionStale(true);
       error.value =
         '联系人已保存，但当前资料刷新失败。刷新完成前只允许只读重试。';
     }
   } catch (cause) {
-    if (!current(g, customerId, who)) return;
+    if (!current(context, customerId, who)) return;
     if (
       cause instanceof ApiError &&
       cause.status === 409 &&
@@ -372,7 +463,7 @@ async function send(command: PendingCustomerContact): Promise<void> {
       error.value = '联系人资料已变化，已保留表单。请刷新并核对后再提交。';
       try {
         const latest = await getCustomer(customerId);
-        if (current(g, customerId, who))
+        if (current(context, customerId, who))
           emit('refreshed', customerId, who, latest);
         await load();
       } catch {
@@ -394,7 +485,7 @@ async function send(command: PendingCustomerContact): Promise<void> {
     error.value =
       '结果尚未确认，已保留原请求和幂等键。恢复访问后可按原请求重试。';
   } finally {
-    if (current(g, customerId, who)) saving.value = false;
+    if (current(context, customerId, who)) saving.value = false;
   }
 }
 async function submit(): Promise<void> {
@@ -450,11 +541,12 @@ watch(
     listController?.abort();
     versionController?.abort();
     refreshController?.abort();
-    generation++;
+    contextGeneration++;
+    confirmedWriteRefresh = false;
     contacts.value = [];
     selected.value = undefined;
     frozen.value = undefined;
-    readOnlyStale.value = false;
+    setProjectionStale(false);
     page.value = 1;
     status.value = 'ACTIVE';
     recoverPending();
@@ -465,10 +557,19 @@ watch(
 watch(
   () => [props.customer.version, props.blockedByOtherMaintenance],
   () => {
-    if (props.customer.id) void load();
+    if (props.customer.id && !confirmedWriteRefresh) void load();
   },
 );
 watch([status, page], () => void load());
+onBeforeUnmount(() => {
+  contextGeneration++;
+  listGeneration++;
+  versionGeneration++;
+  refreshGeneration++;
+  listController?.abort();
+  versionController?.abort();
+  refreshController?.abort();
+});
 </script>
 
 <template>
@@ -545,7 +646,7 @@ watch([status, page], () => void load());
       准入联系人历史快照暂不可用。
     </p>
     <p v-if="loading">正在读取联系人…</p>
-    <p v-else-if="!contacts.length">
+    <p v-else-if="!contacts.length && !error">
       暂无{{ status === 'ACTIVE' ? '活动' : '已结束' }}联系人
     </p>
     <ul>

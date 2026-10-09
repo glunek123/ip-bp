@@ -38,9 +38,9 @@ const admissionPanel = {
 };
 const contactsPanel = {
   props: ['customer', 'actor', 'blockedByOtherMaintenance'],
-  emits: ['refreshed', 'pending-changed'],
+  emits: ['refreshed', 'pending-changed', 'projection-stale'],
   template:
-    '<section data-test="customer-contacts-panel-stub" :data-blocked="blockedByOtherMaintenance" />',
+    '<section data-test="customer-contacts-panel-stub" :data-blocked="blockedByOtherMaintenance"><button data-test="projection-stale-on" @click="$emit(\'projection-stale\', customer.id, actor ? `${actor.userId}:${actor.departmentId}:${actor.authorizationRevision}` : \'\', true)">stale</button><button data-test="projection-stale-off" @click="$emit(\'projection-stale\', customer.id, actor ? `${actor.userId}:${actor.departmentId}:${actor.authorizationRevision}` : \'\', false)">fresh</button></section>',
 };
 
 const accountPanel = {
@@ -167,6 +167,38 @@ describe('CustomerDetailPage', () => {
     expect(wrapper.find('[data-test="delete-draft-open"]').exists()).toBe(
       false,
     );
+  });
+
+  it('freezes other writes while a confirmed contact write needs projection refresh', async () => {
+    useAuthStore(pinia).session = {
+      principalType: 'INTERNAL',
+      user: { id: 'user-1', displayName: '运营甲', username: 'operator-a' },
+      department: { id: 'department-1', name: '甲部门' },
+      departments: [{ id: 'department-1', name: '甲部门' }],
+      customer: null,
+      notaryOffice: null,
+      authorizationRevision: 1,
+      expiresAt: '2026-10-09T10:00:00.000Z',
+      csrfToken: 'csrf',
+    };
+    api.getCustomer.mockResolvedValue(customerRecord('customer-1', '客户甲'));
+    const { wrapper } = await mountPage();
+    await flushPromises();
+    await wrapper.get('[data-test="projection-stale-on"]').trigger('click');
+    expect(
+      wrapper.find('[data-test="customer-contacts-panel-stub"]').exists(),
+    ).toBe(true);
+    expect(wrapper.find('[data-test="admission-panel"]').exists()).toBe(false);
+    expect(wrapper.find('[data-test="account-panel"]').exists()).toBe(false);
+    expect(wrapper.find('[data-test="right-assets-panel"]').exists()).toBe(
+      false,
+    );
+    expect(wrapper.find('[data-test="edit-customer"]').exists()).toBe(false);
+
+    await wrapper.get('[data-test="projection-stale-off"]').trigger('click');
+    expect(wrapper.find('[data-test="admission-panel"]').exists()).toBe(true);
+    expect(wrapper.find('[data-test="account-panel"]').exists()).toBe(true);
+    expect(wrapper.find('[data-test="edit-customer"]').exists()).toBe(true);
   });
 
   it.each(['cooperation', 'delete'] as const)(

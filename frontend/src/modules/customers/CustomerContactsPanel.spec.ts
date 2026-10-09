@@ -3,7 +3,10 @@ import { afterEach, describe, expect, it, vi } from 'vitest';
 import type { CustomerDetail, CustomerContact } from '../../api/customers';
 import { ApiError } from '../../api/http';
 import CustomerContactsPanel from './CustomerContactsPanel.vue';
-import { listPendingCustomerContacts } from './customer-contacts-pending';
+import {
+  listPendingCustomerContacts,
+  savePendingCustomerContact,
+} from './customer-contacts-pending';
 
 const api = vi.hoisted(() => ({
   createCustomerContact: vi.fn(),
@@ -172,6 +175,32 @@ describe('CustomerContactsPanel', () => {
     wrapper.unmount();
   });
 
+  it('allows a new write after a confirmed save and fresh current projection', async () => {
+    api.listCustomerContacts.mockResolvedValue(page([]));
+    api.createCustomerContact.mockResolvedValue({});
+    api.getCustomer.mockResolvedValue({ ...customer, version: 4 });
+    const wrapper = mountPanel();
+    await flushPromises();
+    const fields = wrapper.findAll('form input');
+    await fields[0]!.setValue('联系人甲');
+    await fields[1]!.setValue('13800138000');
+    await wrapper.get('form').trigger('submit');
+    await flushPromises();
+    expect(api.createCustomerContact).toHaveBeenCalledTimes(1);
+    expect(
+      wrapper.find('[data-test="contact-refresh-readonly"]').exists(),
+    ).toBe(false);
+    expect(wrapper.find('form').exists()).toBe(true);
+
+    const nextFields = wrapper.findAll('form input');
+    await nextFields[0]!.setValue('联系人乙');
+    await nextFields[1]!.setValue('13800138001');
+    await wrapper.get('form').trigger('submit');
+    await flushPromises();
+    expect(api.createCustomerContact).toHaveBeenCalledTimes(2);
+    wrapper.unmount();
+  });
+
   it.each([
     ['forbidden', 403, 'ACTION_FORBIDDEN'],
     ['hidden', 404, 'RESOURCE_NOT_FOUND'],
@@ -230,33 +259,203 @@ describe('CustomerContactsPanel', () => {
   });
 
   it('aborts and ignores contact reads from a previous customer or actor', async () => {
-    let resolveOldRead!: (value: ReturnType<typeof page>) => void;
-    api.listCustomerContacts.mockImplementation((id: string) =>
-      id === 'customer-1'
-        ? new Promise((resolve) => {
-            resolveOldRead = resolve;
-          })
-        : Promise.resolve(
-            page([{ ...contact('contact-b'), customerId: 'customer-2' }]),
-          ),
-    );
+    let resolveCustomerA!: (value: ReturnType<typeof page>) => void;
+    let resolveOldActor!: (value: ReturnType<typeof page>) => void;
+    let calls = 0;
+    let deferNextRead = false;
+    let actorSwitched = false;
+    api.listCustomerContacts.mockImplementation((id: string) => {
+      calls += 1;
+      if (calls === 1)
+        return new Promise((resolve) => {
+          resolveCustomerA = resolve;
+        });
+      if (deferNextRead) {
+        deferNextRead = false;
+        return new Promise((resolve) => {
+          resolveOldActor = resolve;
+        });
+      }
+      return Promise.resolve(
+        page([
+          {
+            ...contact('contact-b'),
+            customerId: id,
+            name: actorSwitched ? '新actor联系人' : '客户乙联系人',
+          },
+        ]),
+      );
+    });
     const wrapper = mountPanel();
-    const firstSignal = api.listCustomerContacts.mock.calls[0]?.[4]
+    const customerASignal = api.listCustomerContacts.mock.calls[0]?.[4]
       ?.signal as AbortSignal;
     await wrapper.setProps({
       customer: { ...customer, id: 'customer-2', name: '客户乙' },
-      actor: { ...actor, userId: 'user-2' },
     });
     await flushPromises();
-    expect(firstSignal.aborted).toBe(true);
-    resolveOldRead(page([contact('late-contact')]));
+    expect(customerASignal.aborted).toBe(true);
+    resolveCustomerA(page([contact('late-customer')]));
     await flushPromises();
     expect(wrapper.find('[data-test="contact-contact-b"]').exists()).toBe(true);
-    expect(wrapper.find('[data-test="contact-late-contact"]').exists()).toBe(
+    expect(wrapper.text()).toContain('客户乙联系人');
+    expect(wrapper.find('[data-test="contact-late-customer"]').exists()).toBe(
       false,
     );
+
+    deferNextRead = true;
+    await wrapper.get('button[aria-pressed="false"]').trigger('click');
+    const actorSignal = api.listCustomerContacts.mock.calls[calls - 1]?.[4]
+      ?.signal as AbortSignal;
+    actorSwitched = true;
+    await wrapper.setProps({ actor: { ...actor, userId: 'user-2' } });
+    await flushPromises();
+    expect(actorSignal.aborted).toBe(true);
+    resolveOldActor(page([contact('late-actor')]));
+    await flushPromises();
+    expect(wrapper.find('[data-test="contact-late-actor"]').exists()).toBe(
+      false,
+    );
+    expect(wrapper.text()).toContain('新actor联系人');
     wrapper.unmount();
   });
+
+  it('aborts contact and history reads when the panel unmounts', async () => {
+    api.listCustomerContacts.mockResolvedValue(page([contact('contact-1')]));
+    api.listCustomerContactVersions.mockImplementation(
+      () => new Promise(() => {}),
+    );
+    const wrapper = mountPanel();
+    await flushPromises();
+    const listSignal = api.listCustomerContacts.mock.calls[0]?.[4]
+      ?.signal as AbortSignal;
+    await wrapper
+      .get('[data-test="contact-contact-1"] button')
+      .trigger('click');
+    const historySignal = api.listCustomerContactVersions.mock.calls[0]?.[4]
+      ?.signal as AbortSignal;
+    wrapper.unmount();
+    expect(listSignal.aborted).toBe(true);
+    expect(historySignal.aborted).toBe(true);
+  });
+
+  it.each([403, 404])(
+    'clears visible contact and history data after a %s read failure',
+    async (status) => {
+      api.listCustomerContacts.mockResolvedValue(page([contact('contact-1')]));
+      const pending = {
+        action: 'create' as const,
+        userId: actor.userId,
+        departmentId: actor.departmentId,
+        customerId: customer.id,
+        contactId: null,
+        expectedCustomerVersion: customer.version,
+        expectedContactVersion: null,
+        body: {
+          expectedCustomerVersion: customer.version,
+          name: '待恢复联系人',
+          phone: '13800138000',
+        },
+        key: 'preserved-unknown-key',
+      };
+      if (status === 403) savePendingCustomerContact(pending);
+      api.listCustomerContactVersions.mockResolvedValue({
+        items: [
+          {
+            id: 'version-1',
+            customerId: 'customer-1',
+            contactId: 'contact-1',
+            action: 'CREATED',
+            after: {
+              name: '同名联系人',
+              phone: '13800138000',
+              email: null,
+              duty: null,
+              isPrimary: false,
+            },
+            actor: { kind: 'HUMAN', userId: 'user-1' },
+            occurredAt: '2026-10-09T01:00:00.000Z',
+          },
+        ],
+        total: 1,
+        page: 1,
+        pageSize: 20,
+      });
+      const wrapper = mountPanel();
+      await flushPromises();
+      await wrapper
+        .get('[data-test="contact-contact-1"] button')
+        .trigger('click');
+      await flushPromises();
+      expect(wrapper.text()).toContain('同名联系人');
+      api.listCustomerContacts.mockRejectedValue(
+        new ApiError('unavailable', status, 'RESOURCE_NOT_FOUND'),
+      );
+      await wrapper.setProps({ customer: { ...customer, version: 4 } });
+      await flushPromises();
+      expect(wrapper.find('[data-test="contact-contact-1"]').exists()).toBe(
+        false,
+      );
+      expect(wrapper.text()).not.toContain('13800138000');
+      expect(wrapper.text()).toContain('联系人资料当前不可用');
+      expect(wrapper.text()).not.toContain('暂无活动联系人');
+      if (status === 403) {
+        expect(listPendingCustomerContacts(actor, customer.id)).toEqual([
+          pending,
+        ]);
+      }
+      wrapper.unmount();
+    },
+  );
+
+  it.each([403, 404])(
+    'clears visible history and contacts after a %s history failure',
+    async (status) => {
+      api.listCustomerContacts.mockResolvedValue(page([contact('contact-1')]));
+      const history = {
+        items: [
+          {
+            id: 'version-1',
+            customerId: customer.id,
+            contactId: 'contact-1',
+            action: 'CREATED',
+            after: {
+              name: '同名联系人',
+              phone: '13800138000',
+              email: null,
+              duty: null,
+              isPrimary: false,
+            },
+            actor: { kind: 'HUMAN', userId: actor.userId },
+            occurredAt: '2026-10-09T01:00:00.000Z',
+          },
+        ],
+        total: 1,
+        page: 1,
+        pageSize: 20,
+      };
+      api.listCustomerContactVersions.mockResolvedValue(history);
+      const wrapper = mountPanel();
+      await flushPromises();
+      await wrapper
+        .get('[data-test="contact-contact-1"] button')
+        .trigger('click');
+      await flushPromises();
+      expect(wrapper.text()).toContain('同名联系人');
+      api.listCustomerContactVersions.mockRejectedValue(
+        new ApiError('unavailable', status, 'RESOURCE_NOT_FOUND'),
+      );
+      await wrapper
+        .get('[data-test="contact-contact-1"] button')
+        .trigger('click');
+      await flushPromises();
+      expect(wrapper.find('[data-test="contact-contact-1"]').exists()).toBe(
+        false,
+      );
+      expect(wrapper.text()).not.toContain('13800138000');
+      expect(wrapper.text()).toContain('联系人资料当前不可用');
+      wrapper.unmount();
+    },
+  );
 
   it('keeps confirmed success read-only when the current GET fails', async () => {
     api.listCustomerContacts.mockResolvedValue(page([]));
