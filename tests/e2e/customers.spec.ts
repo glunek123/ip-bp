@@ -679,9 +679,7 @@ test('operations user creates a persisted draft and sees its audit history', asy
   await page.getByRole('tab', { name: '权利资产' }).click();
   await expect(page.getByRole('tabpanel', { name: '权利资产' })).toBeVisible();
   await expect(page.getByRole('tabpanel', { name: '基本信息' })).toBeHidden();
-  await page.getByRole('tab', { name: '结算记录' }).click();
-  await expect(page.getByRole('tabpanel', { name: '结算记录' })).toBeVisible();
-  await expect(page.getByRole('tabpanel', { name: '权利资产' })).toBeHidden();
+  await expect(page.getByRole('tab', { name: '结算记录' })).toHaveCount(0);
   await page.getByRole('tab', { name: '基本信息' }).click();
   await expect(page.getByLabel('权利人名称')).toHaveValue('尚未提交的权利主体');
   await expect(page.getByText('创建客户草稿', { exact: true })).toBeVisible();

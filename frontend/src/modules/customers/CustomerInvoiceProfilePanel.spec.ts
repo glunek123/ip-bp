@@ -1,5 +1,6 @@
 import { flushPromises, mount } from '@vue/test-utils';
 import { afterEach, describe, expect, it, vi } from 'vitest';
+import { ApiError } from '../../api/http';
 import CustomerInvoiceProfilePanel from './CustomerInvoiceProfilePanel.vue';
 
 const api = vi.hoisted(() => ({
@@ -141,5 +142,66 @@ describe('CustomerInvoiceProfilePanel', () => {
       body,
       'invoice-original-key',
     );
+  });
+
+  it('replays only the persisted original command after edit revocation and keeps a 403 unknown', async () => {
+    api.getCustomerInvoiceProfile.mockResolvedValue({
+      profile: null,
+      canEdit: true,
+      customerVersion: 1,
+    });
+    api.createCustomerInvoiceProfile
+      .mockRejectedValueOnce(new Error('network lost'))
+      .mockRejectedValueOnce(new ApiError('forbidden', 403, 'FORBIDDEN'));
+    vi.stubGlobal('crypto', {
+      ...globalThis.crypto,
+      randomUUID: () => 'invoice-original-key',
+    });
+    const wrapper = mountPanel();
+    await flushPromises();
+    await wrapper.get('[data-test="invoice-edit"]').trigger('click');
+    await wrapper.get('input').setValue('original tax number');
+    await wrapper.get('[data-test="invoice-form"]').trigger('submit');
+    await flushPromises();
+    const body = api.createCustomerInvoiceProfile.mock.calls[0]?.[1];
+    await wrapper.setProps({ canEdit: false });
+    await wrapper.setProps({ blockedByOtherMaintenance: true });
+    await wrapper.get('[data-test="invoice-form"]').trigger('submit');
+    expect(api.createCustomerInvoiceProfile).toHaveBeenCalledTimes(1);
+    expect(
+      wrapper.get('[data-test="invoice-submit"]').attributes('disabled'),
+    ).toBeDefined();
+    await wrapper.setProps({ blockedByOtherMaintenance: false });
+
+    await wrapper.get('[data-test="invoice-form"]').trigger('submit');
+    await flushPromises();
+    expect(api.createCustomerInvoiceProfile).toHaveBeenNthCalledWith(
+      2,
+      'customer-1',
+      body,
+      'invoice-original-key',
+    );
+    expect(wrapper.text()).toContain('原请求已保留');
+    expect(wrapper.get('input').element.value).toBe('');
+    expect(globalThis.sessionStorage.length).toBe(1);
+    expect(wrapper.find('[data-test="invoice-edit"]').exists()).toBe(false);
+  });
+
+  it('never creates a new command without edit capability', async () => {
+    api.getCustomerInvoiceProfile.mockResolvedValue({
+      profile: null,
+      canEdit: true,
+      customerVersion: 1,
+    });
+    const wrapper = mountPanel();
+    await flushPromises();
+    await wrapper.get('[data-test="invoice-edit"]').trigger('click');
+    await wrapper.setProps({ canEdit: false });
+    await wrapper.get('[data-test="invoice-form"]').trigger('submit');
+    expect(
+      wrapper.get('[data-test="invoice-submit"]').attributes('disabled'),
+    ).toBeDefined();
+    expect(api.createCustomerInvoiceProfile).not.toHaveBeenCalled();
+    expect(globalThis.sessionStorage.length).toBe(0);
   });
 });

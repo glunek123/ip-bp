@@ -281,10 +281,24 @@ function makeBody(): PendingCustomerDocumentCommand['body'] {
 }
 
 async function submit(): Promise<void> {
-  if (submitting.value || !canSubmit.value) return;
+  if (
+    submitting.value ||
+    status.value === 'refresh-needed' ||
+    props.blockedByOtherMaintenance ||
+    (!pending && !canSubmit.value)
+  )
+    return;
   const key = identity();
   if (!key) return;
   let command = pending;
+  if (
+    command &&
+    (command.userId !== key.userId ||
+      command.departmentId !== key.departmentId ||
+      command.customerId !== key.customerId ||
+      command.kind !== key.kind)
+  )
+    return;
   if (!command) {
     try {
       command = {
@@ -446,8 +460,8 @@ onBeforeUnmount(() => {
         只读刷新
       </button>
     </div>
-    <template v-else-if="data">
-      <template v-if="!editing">
+    <template v-else-if="data || pending">
+      <template v-if="data && !editing">
         <p v-if="!data.profile" data-test="invoice-never-created">
           尚未建立开票档案。
         </p>
@@ -533,6 +547,7 @@ onBeforeUnmount(() => {
             :disabled="
               submitting ||
               status === 'refresh-needed' ||
+              blockedByOtherMaintenance ||
               (!pending && !canSubmit)
             "
           >
@@ -559,7 +574,7 @@ onBeforeUnmount(() => {
         </div>
       </form>
 
-      <div v-if="data.profile && canRead" class="customer-document-history">
+      <div v-if="data?.profile && canRead" class="customer-document-history">
         <button
           type="button"
           data-test="invoice-history-toggle"

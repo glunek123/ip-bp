@@ -709,6 +709,22 @@ test('committed invoice response loss preserves cookie command and refreshes tru
   );
 
   await setCustomerDocumentGrant(localRoleId, 'CUSTOMER_INVOICE_EDIT', false);
+  const revokedProjection = page.waitForResponse(
+    (response) =>
+      response.url().endsWith(`/api/v1/customers/${customerId}`) &&
+      response.request().method() === 'GET',
+  );
+  await page.reload();
+  expect(
+    (
+      (await (await revokedProjection).json()) as {
+        capabilities: { invoice: { edit: boolean } };
+      }
+    ).capabilities.invoice.edit,
+  ).toBe(false);
+  await expect(invoice.locator('[data-test="invoice-submit"]')).toContainText(
+    '按原请求重试',
+  );
   const denied = page.waitForResponse(
     (response) =>
       response.url().endsWith(`/customers/${customerId}/invoice-profile`) &&

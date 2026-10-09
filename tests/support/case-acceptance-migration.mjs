@@ -80,6 +80,11 @@ export async function verifyCaseAcceptanceMigration() {
 
     await use(schemas.upgrade);
     await apply(previous);
+    const dateAnchor = (
+      await client.query(
+        'SELECT CURRENT_DATE::text AS filing, (CURRENT_DATE - 1)::text AS early, (CURRENT_DATE + 2)::text AS future',
+      )
+    ).rows[0];
     const departmentId = randomUUID(),
       actorId = randomUUID(),
       caseId = randomUUID(),
@@ -127,13 +132,14 @@ export async function verifyCaseAcceptanceMigration() {
         ],
       );
       await client.query(
-        'INSERT INTO case_filing_submissions(id,department_id,case_id,court_id,court_name,submitted_at,recorded_by_user_id,audit_event_id) VALUES ($1,$2,$3,$4,$5,current_date,$6,$7)',
+        'INSERT INTO case_filing_submissions(id,department_id,case_id,court_id,court_name,submitted_at,recorded_by_user_id,audit_event_id) VALUES ($1,$2,$3,$4,$5,$6,$7,$8)',
         [
           oldFilingId,
           departmentId,
           caseId,
           randomUUID(),
           'Old court',
+          dateAnchor.filing,
           actorId,
           randomUUID(),
         ],
@@ -216,7 +222,7 @@ export async function verifyCaseAcceptanceMigration() {
       randomUUID(),
       departmentId,
       caseId,
-      new Date(),
+      dateAnchor.filing,
       'CA006-Court-No',
       actorId,
       auditId,
@@ -225,7 +231,7 @@ export async function verifyCaseAcceptanceMigration() {
       randomUUID(),
       departmentId,
       caseId,
-      new Date(Date.now() - 86400000),
+      dateAnchor.early,
       'CA006-Court-No',
       actorId,
       auditId,
@@ -234,7 +240,7 @@ export async function verifyCaseAcceptanceMigration() {
       randomUUID(),
       departmentId,
       caseId,
-      new Date(Date.now() + 3 * 86400000),
+      dateAnchor.future,
       'CA006-Court-No',
       actorId,
       auditId,
@@ -243,7 +249,7 @@ export async function verifyCaseAcceptanceMigration() {
       randomUUID(),
       departmentId,
       caseId,
-      new Date(),
+      dateAnchor.filing,
       'CA006-Court-No',
       actorId,
       randomUUID(),
@@ -454,13 +460,14 @@ export async function verifyCaseAcceptanceMigration() {
     await client.query('SET session_replication_role = replica');
     try {
       await client.query(
-        'INSERT INTO case_filing_submissions(id,department_id,case_id,court_id,court_name,submitted_at,recorded_by_user_id,audit_event_id) VALUES ($1,$2,$3,$4,$5,current_date,$6,$7)',
+        'INSERT INTO case_filing_submissions(id,department_id,case_id,court_id,court_name,submitted_at,recorded_by_user_id,audit_event_id) VALUES ($1,$2,$3,$4,$5,$6,$7,$8)',
         [
           randomUUID(),
           departmentId,
           oldCaseId,
           randomUUID(),
           'Second court',
+          dateAnchor.filing,
           actorId,
           randomUUID(),
         ],
@@ -488,8 +495,15 @@ export async function verifyCaseAcceptanceMigration() {
       ],
     );
     await client.query(
-      "INSERT INTO case_acceptances(id,department_id,case_id,accepted_at,court_case_no,recorded_by_user_id,audit_event_id) VALUES ($1,$2,$3,current_date,'CA006-Second',$4,$5)",
-      [randomUUID(), departmentId, oldCaseId, actorId, incompleteAuditId],
+      "INSERT INTO case_acceptances(id,department_id,case_id,accepted_at,court_case_no,recorded_by_user_id,audit_event_id) VALUES ($1,$2,$3,$4,'CA006-Second',$5,$6)",
+      [
+        randomUUID(),
+        departmentId,
+        oldCaseId,
+        dateAnchor.filing,
+        actorId,
+        incompleteAuditId,
+      ],
     );
     const incompleteReceipt = await sqlCode(
       'INSERT INTO case_acceptance_receipts(id,department_id,actor_user_id,case_id,idempotency_key,request_fingerprint,result_snapshot) VALUES ($1,$2,$3,$4,$5,$6,$7::jsonb)',

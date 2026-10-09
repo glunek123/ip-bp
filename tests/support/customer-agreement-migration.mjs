@@ -82,9 +82,10 @@ export async function verifyCustomerAgreementMigration() {
     )
       throw new Error('102 migration checksum changed');
     checks.push('102 checksum');
+    const chainStart = names.indexOf(prior);
     if (
-      expected.some((name) => !names.includes(name)) ||
-      names.indexOf(auditHeadGuard) !== names.length - 1
+      chainStart < 0 ||
+      expected.some((name, index) => names[chainStart + index + 1] !== name)
     )
       throw new Error('CU007 migration suffix changed');
     await client.query(`CREATE SCHEMA "${schema}"`);
