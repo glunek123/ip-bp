@@ -67,6 +67,10 @@ type AdmissionReceipt = {
   resultSnapshot: unknown;
 };
 
+type HistoricalCustomerSummary = Omit<CustomerSummary, 'cooperationStatus'> & {
+  cooperationStatus?: CustomerSummary['cooperationStatus'];
+};
+
 const MAX_SERIALIZABLE_ATTEMPTS = 3;
 
 @Injectable()
@@ -463,6 +467,7 @@ export class CustomerAdmissionService {
       identityValidityMode: snapshot.identityValidityMode,
       admittedAt: snapshot.admittedAt,
       profileStatus: snapshot.profileStatus,
+      cooperationStatus: snapshot.cooperationStatus ?? 'COOPERATING',
       departmentId: snapshot.departmentId,
       responsibleUserId: snapshot.responsibleUserId,
       version: snapshot.version,
@@ -488,6 +493,7 @@ export class CustomerAdmissionService {
       identityValidityMode: result.identityValidityMode,
       admittedAt: result.admittedAt,
       profileStatus: result.profileStatus,
+      cooperationStatus: result.cooperationStatus,
       departmentId: result.departmentId,
       responsibleUserId: result.responsibleUserId,
       version: result.version,
@@ -495,7 +501,9 @@ export class CustomerAdmissionService {
     };
   }
 
-  private isCustomerSummary(value: unknown): value is CustomerSummary {
+  private isCustomerSummary(
+    value: unknown,
+  ): value is HistoricalCustomerSummary {
     if (value === null || typeof value !== 'object' || Array.isArray(value)) {
       return false;
     }
@@ -526,6 +534,10 @@ export class CustomerAdmissionService {
         snapshot.identityValidityMode === 'LONG_TERM' ||
         snapshot.identityValidityMode === 'NOT_STATED') &&
       snapshot.profileStatus === 'admitted' &&
+      (snapshot.cooperationStatus === undefined ||
+        snapshot.cooperationStatus === 'COOPERATING' ||
+        snapshot.cooperationStatus === 'PAUSED' ||
+        snapshot.cooperationStatus === 'TERMINATED') &&
       typeof snapshot.departmentId === 'string' &&
       typeof snapshot.responsibleUserId === 'string' &&
       Number.isInteger(snapshot.version) &&

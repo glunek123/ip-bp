@@ -16,6 +16,59 @@ export const e2eFixtures: Readonly<{
 }>;
 
 export function resetCustomerE2eData(): Promise<void>;
+export function grantCustomerCooperation(
+  roleId: string,
+  scope?: 'SELF' | 'TEAM' | 'DEPARTMENT',
+): Promise<void>;
+export function getCustomerMaintenanceCounts(customerId: string): Promise<{
+  facts: number;
+  receipts: number;
+}>;
+export function getCustomerMaintenanceGuardState(): Promise<
+  Record<string, string>
+>;
+export function getCustomerMaintenanceState(customerId: string): Promise<{
+  customer: {
+    version: number;
+    responsibleUserId: string;
+    teamId: string | null;
+    cooperationStatus: 'COOPERATING' | 'PAUSED' | 'TERMINATED';
+    deletedAt: Date | null;
+  } | null;
+  facts: number;
+  receipts: number;
+  audits: number;
+}>;
+export function setCustomerOperatorState(
+  userId: string,
+  change: {
+    accountActive?: boolean;
+    membershipActive?: boolean;
+    membershipTeamId?: string;
+    teamStatus?: 'ACTIVE' | 'INACTIVE';
+  },
+): Promise<void>;
+export function revokeCustomerCooperation(
+  roleId: string,
+  action: string,
+): Promise<void>;
+export function rejectCustomerMaintenanceStage(
+  stage: 'audit' | 'fact' | 'receipt',
+): Promise<void>;
+export function allowCustomerMaintenanceStage(
+  stage: 'audit' | 'fact' | 'receipt',
+): Promise<void>;
+export function beginCustomerCooperationBlocker(
+  kind: 'account-disable' | 'membership-move' | 'grant-revoke',
+  targetUserId: string,
+): Promise<{
+  waitForBlocked(): Promise<boolean>;
+  commit(): Promise<void>;
+  rollback(): Promise<void>;
+}>;
+export function beginForeignCustomerAccountBlocker(userId: string): Promise<{
+  rollback(): Promise<void>;
+}>;
 export function grantCustomerLifecycle(
   roleId: string,
   scope?: 'SELF' | 'TEAM' | 'DEPARTMENT',

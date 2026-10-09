@@ -139,7 +139,18 @@ export class CustomerLifecycleService {
             'CUSTOMER_IDEMPOTENCY_CONFLICT',
             '幂等键已用于不同请求',
           );
-        return receipt.resultSnapshot as CustomerSummary;
+        const snapshot = receipt.resultSnapshot as Omit<
+          CustomerSummary,
+          'cooperationStatus'
+        > & {
+          cooperationStatus?: CustomerSummary['cooperationStatus'];
+        };
+        // Receipts written before CU005 represent the then-implicit
+        // COOPERATING state. Their immutable JSON is never rewritten.
+        return {
+          ...snapshot,
+          cooperationStatus: snapshot.cooperationStatus ?? 'COOPERATING',
+        };
       }
       if (current.version !== input.expectedVersion)
         throw this.conflict(

@@ -71,6 +71,18 @@ async function resetLocalAuthE2eData() {
     await transaction.$executeRawUnsafe(
       'ALTER TABLE "customer_draft_lifecycle_facts" DISABLE TRIGGER USER',
     );
+    await transaction.$executeRawUnsafe(
+      'ALTER TABLE "customer_maintenance_receipts" DISABLE TRIGGER USER',
+    );
+    await transaction.$executeRawUnsafe(
+      'ALTER TABLE "customer_maintenance_facts" DISABLE TRIGGER USER',
+    );
+    await transaction.customerMaintenanceReceipt.deleteMany({
+      where: { departmentId },
+    });
+    await transaction.customerMaintenanceFact.deleteMany({
+      where: { departmentId },
+    });
     await transaction.customerDraftLifecycleReceipt.deleteMany({
       where: { departmentId },
     });
@@ -82,6 +94,12 @@ async function resetLocalAuthE2eData() {
     );
     await transaction.$executeRawUnsafe(
       'ALTER TABLE "customer_draft_lifecycle_facts" ENABLE TRIGGER USER',
+    );
+    await transaction.$executeRawUnsafe(
+      'ALTER TABLE "customer_maintenance_receipts" ENABLE TRIGGER USER',
+    );
+    await transaction.$executeRawUnsafe(
+      'ALTER TABLE "customer_maintenance_facts" ENABLE TRIGGER USER',
     );
     await transaction.authSession.deleteMany({});
     await transaction.authThrottle.deleteMany({});
@@ -324,6 +342,8 @@ async function resetCustomerE2eData() {
     'notary_certificates',
     'customer_draft_lifecycle_facts',
     'customer_draft_lifecycle_receipts',
+    'customer_maintenance_facts',
+    'customer_maintenance_receipts',
   ];
 
   await database.$transaction(async (transaction) => {
@@ -400,6 +420,12 @@ async function resetCustomerE2eData() {
       where: { departmentId: { in: departmentIds } },
     });
     await transaction.customerDraftLifecycleFact.deleteMany({
+      where: { departmentId: { in: departmentIds } },
+    });
+    await transaction.customerMaintenanceReceipt.deleteMany({
+      where: { departmentId: { in: departmentIds } },
+    });
+    await transaction.customerMaintenanceFact.deleteMany({
       where: { departmentId: { in: departmentIds } },
     });
     for (const table of [...immutableTables].reverse()) {
@@ -654,6 +680,249 @@ async function grantCustomerLifecycle(roleId, scope = 'TEAM') {
     })),
     skipDuplicates: true,
   });
+}
+
+async function grantCustomerCooperation(roleId, scope = 'TEAM') {
+  await database.roleGrant.createMany({
+    data: [
+      'CUSTOMER_RESPONSIBLE_TRANSFER',
+      'CUSTOMER_COOPERATION_PAUSE',
+      'CUSTOMER_COOPERATION_TERMINATE',
+      'CUSTOMER_COOPERATION_RESUME',
+    ].map((action) => ({ roleTemplateId: roleId, action, scope })),
+    skipDuplicates: true,
+  });
+}
+
+async function getCustomerMaintenanceCounts(customerId) {
+  const [facts, receipts] = await Promise.all([
+    database.customerMaintenanceFact.count({ where: { customerId } }),
+    database.customerMaintenanceReceipt.count({ where: { customerId } }),
+  ]);
+  return { facts, receipts };
+}
+
+async function getCustomerMaintenanceGuardState() {
+  const triggers = await database.$queryRawUnsafe(
+    `SELECT tgname, tgenabled::text AS tgenabled FROM pg_trigger
+     WHERE tgrelid IN (
+       'customer_maintenance_facts'::regclass,
+       'customer_maintenance_receipts'::regclass
+     ) AND tgname IN (
+       'customer_maintenance_fact_immutable',
+       'customer_maintenance_receipt_immutable'
+     )`,
+  );
+  return Object.fromEntries(
+    triggers.map(({ tgname, tgenabled }) => [tgname, tgenabled]),
+  );
+}
+
+async function getCustomerMaintenanceState(customerId) {
+  const [customer, facts, receipts, audits] = await Promise.all([
+    database.customer.findUnique({
+      where: { id: customerId },
+      select: {
+        version: true,
+        responsibleUserId: true,
+        teamId: true,
+        cooperationStatus: true,
+        deletedAt: true,
+      },
+    }),
+    database.customerMaintenanceFact.count({ where: { customerId } }),
+    database.customerMaintenanceReceipt.count({ where: { customerId } }),
+    database.auditEvent.count({
+      where: {
+        resourceType: 'customer',
+        resourceId: customerId,
+        action: {
+          in: [
+            'customer.responsible-transferred',
+            'customer.cooperation-pause',
+            'customer.cooperation-terminate',
+            'customer.cooperation-resume',
+          ],
+        },
+      },
+    }),
+  ]);
+  return { customer, facts, receipts, audits };
+}
+
+async function setCustomerOperatorState(userId, change) {
+  if (change.accountActive !== undefined) {
+    await database.userAccount.update({
+      where: { id: userId },
+      data: { active: change.accountActive },
+    });
+  }
+  if (
+    change.membershipActive !== undefined ||
+    change.membershipTeamId !== undefined
+  ) {
+    await database.departmentMembership.update({
+      where: {
+        userId_departmentId: { userId, departmentId: e2eFixtures.departmentA },
+      },
+      data: {
+        ...(change.membershipActive === undefined
+          ? {}
+          : { active: change.membershipActive }),
+        ...(change.membershipTeamId === undefined
+          ? {}
+          : { teamId: change.membershipTeamId }),
+      },
+    });
+  }
+  if (change.teamStatus !== undefined) {
+    const membership = await database.departmentMembership.findUniqueOrThrow({
+      where: {
+        userId_departmentId: { userId, departmentId: e2eFixtures.departmentA },
+      },
+      select: { teamId: true },
+    });
+    if (membership.teamId === null) throw new Error('Target has no team');
+    await database.team.update({
+      where: { id: membership.teamId },
+      data: { status: change.teamStatus },
+    });
+  }
+}
+
+async function beginCustomerCooperationBlocker(kind, targetUserId) {
+  if (!['account-disable', 'membership-move', 'grant-revoke'].includes(kind)) {
+    throw new Error('Unsupported customer cooperation blocker');
+  }
+  const client = new Client({ connectionString: databaseUrl });
+  await client.connect();
+  try {
+    await client.query('BEGIN');
+    await client.query(
+      'SELECT pg_advisory_xact_lock(hashtextextended($1, 0))',
+      [`organization:${e2eFixtures.departmentA}`],
+    );
+    if (kind === 'account-disable') {
+      await client.query(
+        'UPDATE user_accounts SET active = false WHERE id = $1',
+        [targetUserId],
+      );
+    } else if (kind === 'membership-move') {
+      await client.query(
+        'UPDATE department_memberships SET team_id = $1 WHERE user_id = $2 AND department_id = $3',
+        [e2eFixtures.teamA, targetUserId, e2eFixtures.departmentA],
+      );
+    } else {
+      await client.query(
+        `DELETE FROM role_grants WHERE role_template_id = $1
+          AND action = 'customer.responsible.transfer'`,
+        [e2eFixtures.roleA],
+      );
+    }
+    const pid = Number(
+      (await client.query('SELECT pg_backend_pid() AS pid')).rows[0].pid,
+    );
+    let closed = false;
+    const finish = async (statement) => {
+      if (closed) return;
+      closed = true;
+      try {
+        await client.query(statement);
+      } finally {
+        await client.end();
+      }
+    };
+    return {
+      waitForBlocked: () => waitForBlockedBy(client, pid),
+      commit: () => finish('COMMIT'),
+      rollback: () => finish('ROLLBACK'),
+    };
+  } catch (error) {
+    await client.query('ROLLBACK').catch(() => undefined);
+    await client.end();
+    throw error;
+  }
+}
+
+async function beginForeignCustomerAccountBlocker(userId) {
+  await database.departmentMembership.upsert({
+    where: {
+      userId_departmentId: {
+        userId,
+        departmentId: e2eFixtures.departmentB,
+      },
+    },
+    update: {},
+    create: { userId, departmentId: e2eFixtures.departmentB },
+  });
+  const client = new Client({ connectionString: databaseUrl });
+  await client.connect();
+  try {
+    await client.query('BEGIN');
+    await client.query(
+      'SELECT pg_advisory_xact_lock(hashtextextended($1, 0))',
+      [`organization:${e2eFixtures.departmentB}`],
+    );
+    await client.query('SELECT id FROM user_accounts WHERE id=$1 FOR UPDATE', [
+      userId,
+    ]);
+    let closed = false;
+    return {
+      rollback: async () => {
+        if (closed) return;
+        closed = true;
+        try {
+          await client.query('ROLLBACK');
+        } finally {
+          await client.end();
+        }
+      },
+    };
+  } catch (error) {
+    await client.query('ROLLBACK').catch(() => undefined);
+    await client.end();
+    throw error;
+  }
+}
+
+async function revokeCustomerCooperation(roleId, action) {
+  await database.roleGrant.deleteMany({
+    where: { roleTemplateId: roleId, action },
+  });
+}
+
+async function rejectCustomerMaintenanceStage(stage) {
+  const target = {
+    audit: {
+      table: 'audit_events',
+      condition: "action <> 'customer.cooperation-pause'",
+    },
+    fact: {
+      table: 'customer_maintenance_facts',
+      condition: "action <> 'PAUSE'",
+    },
+    receipt: {
+      table: 'customer_maintenance_receipts',
+      condition: "action <> 'PAUSE'",
+    },
+  }[stage];
+  if (!target) throw new Error('Unsupported maintenance failure stage');
+  await allowCustomerMaintenanceStage(stage);
+  await database.$executeRawUnsafe(
+    `ALTER TABLE ${target.table} ADD CONSTRAINT e2e_reject_customer_maintenance_${stage} CHECK (${target.condition}) NOT VALID`,
+  );
+}
+
+async function allowCustomerMaintenanceStage(stage) {
+  const table = {
+    audit: 'audit_events',
+    fact: 'customer_maintenance_facts',
+    receipt: 'customer_maintenance_receipts',
+  }[stage];
+  if (!table) throw new Error('Unsupported maintenance failure stage');
+  await database.$executeRawUnsafe(
+    `ALTER TABLE ${table} DROP CONSTRAINT IF EXISTS e2e_reject_customer_maintenance_${stage}`,
+  );
 }
 
 async function revokeCustomerLifecycle(roleId, action) {
@@ -2926,6 +3195,16 @@ export {
   rejectCustomerUpdateAuditWrites,
   rejectNamedCustomerWrites,
   resetCustomerE2eData,
+  grantCustomerCooperation,
+  getCustomerMaintenanceCounts,
+  getCustomerMaintenanceGuardState,
+  getCustomerMaintenanceState,
+  setCustomerOperatorState,
+  beginCustomerCooperationBlocker,
+  beginForeignCustomerAccountBlocker,
+  revokeCustomerCooperation,
+  rejectCustomerMaintenanceStage,
+  allowCustomerMaintenanceStage,
   grantCustomerLifecycle,
   revokeCustomerLifecycle,
   createExpiredCustomerUploadDraft,

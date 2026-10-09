@@ -12,17 +12,21 @@ import { CustomerAccountService } from './customer-account.service';
 import { RightAssetController } from './right-asset.controller';
 import { RightAssetService } from './right-asset.service';
 import { CustomerLifecycleService } from './customer-lifecycle.service';
+import { CustomerCooperationController } from './customer-cooperation.controller';
+import { CustomerCooperationService } from './customer-cooperation.service';
 
 @Module({
   imports: [AccessControlModule, AuthModule, DatabaseModule, MaterialModule],
   controllers: [
     CustomerController,
+    CustomerCooperationController,
     RightsHolderController,
     RightAssetController,
   ],
   providers: [
     CustomerService,
     CustomerLifecycleService,
+    CustomerCooperationService,
     CustomerAdmissionService,
     CustomerAccountService,
     RightsHolderService,

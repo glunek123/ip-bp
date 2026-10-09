@@ -23,6 +23,8 @@ export const prismaModelOwners = Object.freeze({
   CustomerAdmissionReceipt: 'customers',
   CustomerDraftLifecycleFact: 'customers',
   CustomerDraftLifecycleReceipt: 'customers',
+  CustomerMaintenanceFact: 'customers',
+  CustomerMaintenanceReceipt: 'customers',
   CustomerAccountBinding: 'customers',
   Lead: 'leads',
   LeadProduct: 'leads',

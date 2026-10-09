@@ -35,6 +35,7 @@ export type CustomerRecord = {
   admittedAt: Date | null;
   deletedAt: Date | null;
   profileStatus: 'DRAFT' | 'ADMITTED';
+  cooperationStatus: 'COOPERATING' | 'PAUSED' | 'TERMINATED';
   departmentId: string;
   responsibleUserId: string;
   teamId: string | null;
@@ -59,6 +60,7 @@ export type CustomerSummary = {
   identityValidityMode: 'FIXED' | 'LONG_TERM' | 'NOT_STATED' | null;
   admittedAt: string | null;
   profileStatus: 'draft' | 'admitted';
+  cooperationStatus: 'COOPERATING' | 'PAUSED' | 'TERMINATED';
   departmentId: string;
   responsibleUserId: string;
   version: number;
@@ -67,6 +69,13 @@ export type CustomerSummary = {
 
 export type CustomerDetail = CustomerSummary & {
   capabilities: { editRoutine: boolean; admit: boolean; deleteDraft: boolean };
+  responsibleOperator: { id: string; displayName: string };
+  cooperationCapabilities: {
+    transfer: boolean;
+    pause: boolean;
+    terminate: boolean;
+    resume: boolean;
+  };
   history: Array<{
     action: string;
     actorUserId: string;
@@ -240,6 +249,11 @@ export class CustomerService {
     );
     const customer = await this.database.customer.findFirst({
       where: { id, ...scope, deletedAt: null },
+      include: {
+        responsibleMembership: {
+          select: { user: { select: { displayName: true } } },
+        },
+      },
     });
     if (customer === null) throw this.notFound();
 
@@ -248,7 +262,16 @@ export class CustomerService {
       responsibleUserId: customer.responsibleUserId,
       ...(customer.teamId === null ? {} : { teamId: customer.teamId }),
     };
-    const [history, editRoutine, admit, deleteDraft] = await Promise.all([
+    const [
+      history,
+      editRoutine,
+      admit,
+      deleteDraft,
+      transfer,
+      pause,
+      terminate,
+      resume,
+    ] = await Promise.all([
       this.database.auditEvent.findMany({
         where: {
           departmentId: actor.departmentId,
@@ -270,9 +293,39 @@ export class CustomerService {
         'customer.delete-draft',
         facts,
       ),
+      this.accessControl.canAuthorizeCustomer(
+        actor,
+        'customer.responsible.transfer',
+        facts,
+      ),
+      this.accessControl.canAuthorizeCustomer(
+        actor,
+        'customer.cooperation.pause',
+        facts,
+      ),
+      this.accessControl.canAuthorizeCustomer(
+        actor,
+        'customer.cooperation.terminate',
+        facts,
+      ),
+      this.accessControl.canAuthorizeCustomer(
+        actor,
+        'customer.cooperation.resume',
+        facts,
+      ),
     ]);
     return {
       ...this.toSummary(customer),
+      responsibleOperator: {
+        id: customer.responsibleUserId,
+        displayName: customer.responsibleMembership.user.displayName,
+      },
+      cooperationCapabilities: {
+        transfer,
+        pause: pause && customer.cooperationStatus === 'COOPERATING',
+        terminate: terminate && customer.cooperationStatus !== 'TERMINATED',
+        resume: resume && customer.cooperationStatus !== 'COOPERATING',
+      },
       capabilities: {
         editRoutine,
         admit,
@@ -854,6 +907,7 @@ export function toCustomerSummary(customer: CustomerRecord): CustomerSummary {
     identityValidityMode: customer.identityValidityMode ?? null,
     admittedAt: customer.admittedAt?.toISOString() ?? null,
     profileStatus: customer.profileStatus === 'ADMITTED' ? 'admitted' : 'draft',
+    cooperationStatus: customer.cooperationStatus,
     departmentId: customer.departmentId,
     responsibleUserId: customer.responsibleUserId,
     version: customer.version,

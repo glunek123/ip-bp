@@ -345,7 +345,19 @@ describe('OrganizationService management context', () => {
       assignTeamRoles: false,
       manageRoleTemplates: true,
     });
-    expect(result.permissionCatalog).toHaveLength(39);
+    expect(result.permissionCatalog).toHaveLength(43);
+    for (const [action, label] of [
+      ['CUSTOMER_RESPONSIBLE_TRANSFER', '转派负责运营'],
+      ['CUSTOMER_COOPERATION_PAUSE', '暂停客户合作'],
+      ['CUSTOMER_COOPERATION_TERMINATE', '终止客户合作'],
+      ['CUSTOMER_COOPERATION_RESUME', '恢复客户合作'],
+    ]) {
+      expect(result.permissionCatalog).toContainEqual({
+        action,
+        label,
+        scopes: ['SELF', 'TEAM', 'DEPARTMENT'],
+      });
+    }
     expect(result.permissionCatalog).toContainEqual({
       action: 'CUSTOMER_DELETE_DRAFT',
       label: '删除客户草稿',

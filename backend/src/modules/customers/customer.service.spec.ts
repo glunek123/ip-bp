@@ -66,6 +66,7 @@ describe('CustomerService', () => {
       category: null,
       region: null,
       profileStatus: 'DRAFT',
+      cooperationStatus: 'COOPERATING',
       departmentId: actor.departmentId,
       responsibleUserId: actor.userId,
       teamId: null,
@@ -103,6 +104,7 @@ describe('CustomerService', () => {
       identityValidityMode: null,
       admittedAt: null,
       profileStatus: 'draft',
+      cooperationStatus: 'COOPERATING',
       departmentId: actor.departmentId,
       responsibleUserId: actor.userId,
       version: 1,
@@ -288,6 +290,11 @@ describe('CustomerService', () => {
       NotFoundException,
     );
     expect(customerFindFirst).toHaveBeenCalledWith({
+      include: {
+        responsibleMembership: {
+          select: { user: { select: { displayName: true } } },
+        },
+      },
       where: {
         id: 'missing',
         departmentId: actor.departmentId,
@@ -304,6 +311,8 @@ describe('CustomerService', () => {
       category: null,
       region: null,
       profileStatus: 'DRAFT',
+      cooperationStatus: 'COOPERATING',
+      responsibleMembership: { user: { displayName: '张运营' } },
       departmentId: actor.departmentId,
       responsibleUserId: actor.userId,
       teamId: null,
@@ -360,6 +369,8 @@ describe('CustomerService', () => {
       admissionContactPhone: '13800138000',
       admissionContactEmail: null,
       profileStatus: 'ADMITTED',
+      cooperationStatus: 'COOPERATING',
+      responsibleMembership: { user: { displayName: '张运营' } },
       departmentId: actor.departmentId,
       responsibleUserId: actor.userId,
       teamId: null,

@@ -14,6 +14,10 @@ enum PermissionAction {
   CUSTOMER_EDIT_ROUTINE        @map("customer.edit-routine")
   CUSTOMER_DELETE_DRAFT        @map("customer.delete-draft")
   CUSTOMER_RESTORE_DRAFT       @map("customer.restore-draft")
+  CUSTOMER_RESPONSIBLE_TRANSFER @map("customer.responsible.transfer")
+  CUSTOMER_COOPERATION_PAUSE    @map("customer.cooperation.pause")
+  CUSTOMER_COOPERATION_TERMINATE @map("customer.cooperation.terminate")
+  CUSTOMER_COOPERATION_RESUME   @map("customer.cooperation.resume")
   CUSTOMER_RIGHT_ASSET_WITHDRAW @map("customer.right-asset.withdraw")
   CUSTOMER_ADMIT               @map("customer.admit")
   LEAD_READ                    @map("lead.read")
@@ -79,6 +83,23 @@ enum CustomerProfileStatus {
   ADMITTED
 
   @@map("customer_profile_status")
+}
+
+enum CustomerCooperationStatus {
+  COOPERATING
+  PAUSED
+  TERMINATED
+
+  @@map("customer_cooperation_status")
+}
+
+enum CustomerMaintenanceAction {
+  TRANSFER
+  PAUSE
+  TERMINATE
+  RESUME
+
+  @@map("customer_maintenance_action")
 }
 
 enum CustomerRightAssetType {
@@ -561,6 +582,10 @@ model DepartmentMembership {
   department                       Department                        @relation(fields: [departmentId], references: [id], onDelete: Restrict)
   team                             Team?                             @relation(fields: [teamId, departmentId], references: [id, departmentId], onDelete: Restrict, onUpdate: Restrict, map: "department_memberships_team_department_fkey")
   responsibleCustomers             Customer[]                        @relation("CustomerResponsibleMembership")
+  customerMaintenanceFacts         CustomerMaintenanceFact[]         @relation("CustomerMaintenanceActor")
+  customerMaintenanceReceipts      CustomerMaintenanceReceipt[]      @relation("CustomerMaintenanceReceiptActor")
+  customerMaintenanceSources       CustomerMaintenanceFact[]         @relation("CustomerMaintenanceSource")
+  customerMaintenanceTargets       CustomerMaintenanceFact[]         @relation("CustomerMaintenanceTarget")
   rightsHolderCommandReceipts      RightsHolderCommandReceipt[]      @relation("RightsHolderReceiptActor")
   customerAdmissionReceipts        CustomerAdmissionReceipt[]        @relation("CustomerAdmissionReceiptActor")
   responsibleLeads                 Lead[]                            @relation("LeadResponsibleMembership")
@@ -655,6 +680,7 @@ model Customer {
   /// SQL trigger latches admission history; 20261009020000 also rejects an ever-admitted tombstone.
   everAdmitted             Boolean                      @default(false) @map("ever_admitted")
   profileStatus            CustomerProfileStatus        @default(DRAFT) @map("profile_status")
+  cooperationStatus        CustomerCooperationStatus    @default(COOPERATING) @map("cooperation_status")
   deletedAt                DateTime?                    @map("deleted_at") @db.Timestamptz(3)
   deletedByUserId          String?                      @map("deleted_by_user_id") @db.Uuid
   deletionReason           String?                      @map("deletion_reason") @db.VarChar(500)
@@ -673,6 +699,8 @@ model Customer {
   admissionReceipts        CustomerAdmissionReceipt[]
   lifecycleFacts           CustomerDraftLifecycleFact[]
   lifecycleReceipts        CustomerDraftLifecycleReceipt[]
+  maintenanceFacts         CustomerMaintenanceFact[]
+  maintenanceReceipts      CustomerMaintenanceReceipt[]
   leads                    Lead[]
   cases                    Case[]
   clientAccountBindings    CustomerAccountBinding[]
@@ -732,6 +760,53 @@ model CustomerDraftLifecycleReceipt {
 
   @@unique([departmentId, actorUserId, idempotencyKey])
   @@map("customer_draft_lifecycle_receipts")
+}
+
+model CustomerMaintenanceFact {
+  id                    String                     @id @default(uuid()) @db.Uuid
+  customerId            String                     @map("customer_id") @db.Uuid
+  departmentId          String                     @map("department_id") @db.Uuid
+  action                CustomerMaintenanceAction
+  actorUserId           String                     @map("actor_user_id") @db.Uuid
+  fromVersion           Int                        @map("from_version")
+  toVersion             Int                        @map("to_version")
+  fromCooperationStatus CustomerCooperationStatus? @map("from_cooperation_status")
+  toCooperationStatus   CustomerCooperationStatus? @map("to_cooperation_status")
+  fromResponsibleUserId String?                    @map("from_responsible_user_id") @db.Uuid
+  toResponsibleUserId   String?                    @map("to_responsible_user_id") @db.Uuid
+  reason                String?                    @db.VarChar(500)
+  auditEventId          String                     @unique @map("audit_event_id") @db.Uuid
+  occurredAt            DateTime                   @default(now()) @map("occurred_at") @db.Timestamptz(3)
+  customer              Customer                   @relation(fields: [customerId, departmentId], references: [id, departmentId], onDelete: Restrict)
+  actorMembership       DepartmentMembership       @relation("CustomerMaintenanceActor", fields: [actorUserId, departmentId], references: [userId, departmentId], onDelete: Restrict)
+  fromResponsibleMembership DepartmentMembership? @relation("CustomerMaintenanceSource", fields: [fromResponsibleUserId, departmentId], references: [userId, departmentId], onDelete: Restrict)
+  toResponsibleMembership   DepartmentMembership? @relation("CustomerMaintenanceTarget", fields: [toResponsibleUserId, departmentId], references: [userId, departmentId], onDelete: Restrict)
+  auditEvent            AuditEvent                 @relation(fields: [auditEventId], references: [id], onDelete: Restrict)
+  receipt               CustomerMaintenanceReceipt?
+
+  @@unique([customerId, toVersion])
+  @@unique([id, departmentId, actorUserId, customerId, action])
+  @@index([departmentId, customerId, occurredAt])
+  @@map("customer_maintenance_facts")
+}
+
+model CustomerMaintenanceReceipt {
+  id                 String                     @id @default(uuid()) @db.Uuid
+  departmentId       String                     @map("department_id") @db.Uuid
+  actorUserId        String                     @map("actor_user_id") @db.Uuid
+  idempotencyKey     String                     @map("idempotency_key") @db.VarChar(128)
+  requestFingerprint String                     @map("request_fingerprint") @db.Char(64)
+  action             CustomerMaintenanceAction
+  customerId         String                     @map("customer_id") @db.Uuid
+  factId             String                     @unique @map("fact_id") @db.Uuid
+  createdAt          DateTime                   @default(now()) @map("created_at") @db.Timestamptz(3)
+  customer           Customer                   @relation(fields: [customerId, departmentId], references: [id, departmentId], onDelete: Restrict)
+  actorMembership    DepartmentMembership       @relation("CustomerMaintenanceReceiptActor", fields: [actorUserId, departmentId], references: [userId, departmentId], onDelete: Restrict)
+  fact               CustomerMaintenanceFact    @relation(fields: [factId, departmentId, actorUserId, customerId, action], references: [id, departmentId, actorUserId, customerId, action], onDelete: Restrict)
+
+  @@unique([departmentId, actorUserId, idempotencyKey])
+  @@unique([factId, departmentId, actorUserId, customerId, action])
+  @@map("customer_maintenance_receipts")
 }
 
 model CustomerAccountBinding {
@@ -2267,6 +2342,7 @@ model AuditEvent {
   hearingCorrections           CaseHearingCorrection[]     @relation("HearingCorrectionAudit")
   judgmentFacts                CaseJudgmentFact[]
   customerDraftLifecycleFact   CustomerDraftLifecycleFact?
+  customerMaintenanceFact      CustomerMaintenanceFact?
   createdAt                    DateTime                    @default(now()) @map("created_at") @db.Timestamptz(3)
 
   @@index([departmentId, resourceType, resourceId, createdAt])

@@ -413,6 +413,8 @@ async function clearDatabase() {
     'case_filing_receipts',
     'customer_draft_lifecycle_facts',
     'customer_draft_lifecycle_receipts',
+    'customer_maintenance_facts',
+    'customer_maintenance_receipts',
   ];
   await database.$transaction(async (transaction) => {
     for (const table of immutableTables) {
@@ -540,6 +542,12 @@ async function clearDatabase() {
       where: { departmentId: { in: departmentIds } },
     });
     await transaction.customerDraftLifecycleFact.deleteMany({
+      where: { departmentId: { in: departmentIds } },
+    });
+    await transaction.customerMaintenanceReceipt.deleteMany({
+      where: { departmentId: { in: departmentIds } },
+    });
+    await transaction.customerMaintenanceFact.deleteMany({
       where: { departmentId: { in: departmentIds } },
     });
     for (const table of [...immutableTables].reverse()) {

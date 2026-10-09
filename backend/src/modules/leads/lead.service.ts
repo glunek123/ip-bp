@@ -248,7 +248,12 @@ export class LeadService {
         'customer.read',
       );
       const customers = await this.database.customer.findMany({
-        where: { ...customerScope, profileStatus: 'ADMITTED', deletedAt: null },
+        where: {
+          ...customerScope,
+          profileStatus: 'ADMITTED',
+          cooperationStatus: 'COOPERATING',
+          deletedAt: null,
+        },
         orderBy: [{ name: 'asc' }, { id: 'asc' }],
         select: {
           id: true,
@@ -700,6 +705,7 @@ export class LeadService {
               actor,
               input.customerId,
               input.rightsHolderId,
+              true,
             );
 
             const materialFacts =
@@ -1546,6 +1552,7 @@ export class LeadService {
     actor: ActorContext,
     customerId: string,
     rightsHolderId: string,
+    newLead = false,
   ) {
     let customerScope;
     try {
@@ -1570,9 +1577,12 @@ export class LeadService {
     });
     if (visibleCustomer === null) throw this.notFound();
     const locked = await transaction.$queryRawUnsafe<
-      Array<{ customer_id: string }>
+      Array<{
+        customer_id: string;
+        cooperation_status: 'COOPERATING' | 'PAUSED' | 'TERMINATED';
+      }>
     >(
-      `SELECT customer."id" AS "customer_id"
+      `SELECT customer."id" AS "customer_id", customer."cooperation_status"
        FROM "customers" customer
        JOIN "customer_rights_holder_links" link
          ON link."customer_id" = customer."id" AND link."department_id" = customer."department_id"
@@ -1584,6 +1594,12 @@ export class LeadService {
       rightsHolderId,
     );
     if (locked.length !== 1) throw this.notFound();
+    if (newLead && locked[0]?.cooperation_status !== 'COOPERATING') {
+      throw new ConflictException({
+        code: 'LEAD_CUSTOMER_NOT_COOPERATING',
+        message: '客户当前未合作，不能新建线索',
+      });
+    }
     const customer = await transaction.customer.findFirst({
       where: customerWhere,
       select: { id: true },

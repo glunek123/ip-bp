@@ -11,6 +11,8 @@ import { CustomerAccountService } from './modules/customers/customer-account.ser
 import { CustomerAdmissionService } from './modules/customers/customer-admission.service';
 import { CustomerLifecycleService } from './modules/customers/customer-lifecycle.service';
 import { CustomerController } from './modules/customers/customer.controller';
+import { CustomerCooperationController } from './modules/customers/customer-cooperation.controller';
+import { CustomerCooperationService } from './modules/customers/customer-cooperation.service';
 import { CustomerService } from './modules/customers/customer.service';
 import { ClientLeadController } from './modules/leads/client-lead.controller';
 import { ClientLeadService } from './modules/leads/client-lead.service';
@@ -45,6 +47,7 @@ describe('CORE-LD-002 OpenAPI contract', () => {
       controllers: [
         AuthController,
         CustomerController,
+        CustomerCooperationController,
         LeadController,
         ClientLeadController,
         ClientNotaryController,
@@ -56,6 +59,7 @@ describe('CORE-LD-002 OpenAPI contract', () => {
       providers: [
         { provide: AuthService, useValue: {} },
         { provide: CustomerService, useValue: {} },
+        { provide: CustomerCooperationService, useValue: {} },
         { provide: CustomerLifecycleService, useValue: {} },
         { provide: CustomerAdmissionService, useValue: {} },
         { provide: CustomerAccountService, useValue: {} },
@@ -93,6 +97,24 @@ describe('CORE-LD-002 OpenAPI contract', () => {
   it.each([
     ['post', '/api/v1/auth/login', '200', 'AuthSessionResponseDto'],
     ['get', '/api/v1/auth/session', '200', 'AuthSessionResponseDto'],
+    [
+      'get',
+      '/api/v1/customers/{id}/eligible-operators',
+      '200',
+      'EligibleOperatorPageDto',
+    ],
+    [
+      'post',
+      '/api/v1/customers/{id}/responsible-transfer',
+      '200',
+      'CustomerMaintenanceResultDto',
+    ],
+    [
+      'post',
+      '/api/v1/customers/{id}/cooperation',
+      '200',
+      'CustomerMaintenanceResultDto',
+    ],
     [
       'get',
       '/api/v1/customers/{id}/client-accounts',

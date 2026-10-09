@@ -591,9 +591,16 @@ describe('LeadService', () => {
 
   it('rejects sequence 1000 without creating a lead', async () => {
     const fixture = createCreateFixture();
-    fixture.tx.$queryRawUnsafe.mockResolvedValue([
-      { sequence: 1000, business_date: new Date('2026-09-21') },
-    ]);
+    fixture.tx.$queryRawUnsafe.mockImplementation(async (sql: string) =>
+      sql.includes('lead_number_counters')
+        ? [{ sequence: 1000, business_date: new Date('2026-09-21') }]
+        : [
+            {
+              customer_id: validCreate().customerId,
+              cooperation_status: 'COOPERATING',
+            },
+          ],
+    );
     await expect(
       fixture.service.create(actor, 'key', validCreate()),
     ).rejects.toMatchObject({ response: { code: 'LEAD_NUMBER_EXHAUSTED' } });
@@ -605,7 +612,12 @@ describe('LeadService', () => {
     fixture.tx.$queryRawUnsafe.mockImplementation(async (sql: string) =>
       sql.includes('lead_number_counters')
         ? []
-        : [{ customer_id: validCreate().customerId }],
+        : [
+            {
+              customer_id: validCreate().customerId,
+              cooperation_status: 'COOPERATING',
+            },
+          ],
     );
     await expect(
       fixture.service.create(actor, 'key', validCreate()),
@@ -921,9 +933,21 @@ describe('LeadService', () => {
 
   it('uses the database-returned Shanghai business date for sequence 999', async () => {
     const fixture = createCreateFixture();
-    fixture.tx.$queryRawUnsafe.mockResolvedValue([
-      { sequence: 999, business_date: new Date('2026-01-02T00:00:00.000Z') },
-    ]);
+    fixture.tx.$queryRawUnsafe.mockImplementation(async (sql: string) =>
+      sql.includes('lead_number_counters')
+        ? [
+            {
+              sequence: 999,
+              business_date: new Date('2026-01-02T00:00:00.000Z'),
+            },
+          ]
+        : [
+            {
+              customer_id: validCreate().customerId,
+              cooperation_status: 'COOPERATING',
+            },
+          ],
+    );
     fixture.tx.lead.create.mockImplementation(async ({ data }) => ({
       ...fixture.createdLead,
       businessNo: data.businessNo,
@@ -1063,6 +1087,41 @@ describe('LeadService', () => {
         details: { fromVersion: 1, toVersion: 2, changedFields: [] },
       }),
     });
+  });
+
+  it('rejects new Lead for a paused customer while preserving existing Lead edits', async () => {
+    const creating = createCreateFixture();
+    creating.tx.$queryRawUnsafe.mockImplementation(async (sql: string) =>
+      sql.includes('lead_number_counters')
+        ? [{ sequence: 1, business_date: new Date('2026-09-21') }]
+        : [
+            {
+              customer_id: validCreate().customerId,
+              cooperation_status: 'PAUSED',
+            },
+          ],
+    );
+    await expect(
+      creating.service.create(actor, 'paused-customer', validCreate()),
+    ).rejects.toMatchObject({
+      response: { code: 'LEAD_CUSTOMER_NOT_COOPERATING' },
+    });
+    expect(creating.tx.lead.create).not.toHaveBeenCalled();
+
+    const editing = createUpdateFixture();
+    editing.tx.$queryRawUnsafe.mockImplementation(async (sql: string) =>
+      sql.includes('FROM "leads"')
+        ? [{ id: editing.current.id }]
+        : [
+            {
+              customer_id: editing.current.customerId,
+              cooperation_status: 'PAUSED',
+            },
+          ],
+    );
+    await expect(
+      editing.service.update(actor, editing.current.id, validUpdate()),
+    ).resolves.toMatchObject({ id: editing.current.id, version: 2 });
   });
 
   it('rejects a missing current customer-rights-holder relationship', async () => {
@@ -1352,6 +1411,7 @@ describe('LeadService', () => {
           departmentId: actor.departmentId,
           responsibleUserId: actor.userId,
           profileStatus: 'ADMITTED',
+          cooperationStatus: 'COOPERATING',
           deletedAt: null,
         },
         select: expect.objectContaining({
@@ -1798,13 +1858,16 @@ function createCreateFixture() {
     notaryMatters: [],
   };
   const tx = {
-    $queryRawUnsafe: jest
-      .fn()
-      .mockImplementation(async (sql: string) =>
-        sql.includes('lead_number_counters')
-          ? [{ sequence: 1, business_date: new Date('2026-09-21') }]
-          : [{ customer_id: validCreate().customerId }],
-      ),
+    $queryRawUnsafe: jest.fn().mockImplementation(async (sql: string) =>
+      sql.includes('lead_number_counters')
+        ? [{ sequence: 1, business_date: new Date('2026-09-21') }]
+        : [
+            {
+              customer_id: validCreate().customerId,
+              cooperation_status: 'COOPERATING',
+            },
+          ],
+    ),
     customer: {
       findFirst: jest.fn().mockResolvedValue({
         id: validCreate().customerId,

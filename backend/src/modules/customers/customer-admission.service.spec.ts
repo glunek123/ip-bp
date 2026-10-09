@@ -112,6 +112,7 @@ describe('CustomerAdmissionService', () => {
     identityValidityMode: null,
     admittedAt: null,
     profileStatus: 'DRAFT' as const,
+    cooperationStatus: 'COOPERATING' as const,
     departmentId: actor.departmentId,
     responsibleUserId: actor.userId,
     teamId: null,
@@ -562,6 +563,34 @@ describe('CustomerAdmissionService', () => {
     expect(customerFindUnique).toHaveBeenCalledTimes(1);
   });
 
+  it('projects a pre-CU005 receipt with its implicit cooperating status without rewriting it', async () => {
+    const original = await service.admit(
+      actor,
+      customerId,
+      'legacy-key',
+      command(),
+    );
+    const created = receiptCreate.mock.calls[0]?.[0]?.data;
+    const legacySnapshot = {
+      ...(created.resultSnapshot as Record<string, unknown>),
+    };
+    delete legacySnapshot.cooperationStatus;
+    receiptFindUnique.mockResolvedValue({
+      requestFingerprint: created.requestFingerprint,
+      resultCustomerId: customerId,
+      resultCustomerVersion: original.version,
+      resultSnapshot: legacySnapshot,
+    });
+
+    await expect(
+      service.admit(actor, customerId, 'legacy-key', command()),
+    ).resolves.toEqual(original);
+    expect(legacySnapshot).not.toHaveProperty('cooperationStatus');
+    expect(receiptCreate).toHaveBeenCalledTimes(1);
+    expect(auditCreate).toHaveBeenCalledTimes(1);
+    expect(customerUpdateMany).toHaveBeenCalledTimes(1);
+  });
+
   it('returns a stable internal error for a corrupted receipt snapshot', async () => {
     const first = await service.admit(
       actor,
@@ -647,6 +676,7 @@ describe('CustomerAdmissionService', () => {
       admissionContactPhone: '+86 138-0013-8000',
       admissionContactEmail: null,
       profileStatus: 'admitted',
+      cooperationStatus: 'COOPERATING',
       departmentId: actor.departmentId,
       responsibleUserId: actor.userId,
       version: 2,
