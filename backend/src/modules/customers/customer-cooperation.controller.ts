@@ -12,6 +12,7 @@ import {
 } from '@nestjs/common';
 import {
   ApiBearerAuth,
+  ApiCreatedResponse,
   ApiHeader,
   ApiOkResponse,
   ApiTags,
@@ -55,7 +56,7 @@ export class CustomerCooperationController {
 
   @Post(':id/responsible-transfer')
   @ApiHeader({ name: 'Idempotency-Key', required: true })
-  @ApiOkResponse({ type: CustomerMaintenanceResultDto })
+  @ApiCreatedResponse({ type: CustomerMaintenanceResultDto })
   transferResponsible(
     @CurrentActor() actor: ActorContext,
     @Param('id', new ParseUUIDPipe()) id: string,
@@ -72,7 +73,7 @@ export class CustomerCooperationController {
 
   @Post(':id/cooperation')
   @ApiHeader({ name: 'Idempotency-Key', required: true })
-  @ApiOkResponse({ type: CustomerMaintenanceResultDto })
+  @ApiCreatedResponse({ type: CustomerMaintenanceResultDto })
   changeCooperation(
     @CurrentActor() actor: ActorContext,
     @Param('id', new ParseUUIDPipe()) id: string,

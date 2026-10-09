@@ -106,13 +106,13 @@ describe('CORE-LD-002 OpenAPI contract', () => {
     [
       'post',
       '/api/v1/customers/{id}/responsible-transfer',
-      '200',
+      '201',
       'CustomerMaintenanceResultDto',
     ],
     [
       'post',
       '/api/v1/customers/{id}/cooperation',
-      '200',
+      '201',
       'CustomerMaintenanceResultDto',
     ],
     [
@@ -228,6 +228,19 @@ describe('CORE-LD-002 OpenAPI contract', () => {
       }
     },
   );
+
+  it.each([
+    '/api/v1/customers/{id}/responsible-transfer',
+    '/api/v1/customers/{id}/cooperation',
+  ] as const)('documents POST %s as 201, not 200', (path) => {
+    const document = SwaggerModule.createDocument(
+      app,
+      new DocumentBuilder().setTitle('test').setVersion('1').build(),
+    );
+    const responses = document.paths[path]?.post?.responses;
+    expect(responses?.['201']).toBeDefined();
+    expect(responses?.['200']).toBeUndefined();
+  });
 
   it.each([
     [
