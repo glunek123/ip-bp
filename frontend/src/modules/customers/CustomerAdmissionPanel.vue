@@ -36,6 +36,12 @@ import {
   normalizeIdentityTypeOption,
   type IdentityValidityModeCode,
 } from './customer-admission-options';
+import {
+  clearPendingCustomerAdmission,
+  readPendingCustomerAdmission,
+  savePendingCustomerAdmission,
+  type PendingCustomerAdmission,
+} from './customer-admission-pending';
 
 type SelectedFile = InstanceType<typeof globalThis.File>;
 
@@ -91,8 +97,18 @@ const externalSnapshotChanged = ref(false);
 const identityNumberError = ref('');
 const identityNumberInput =
   ref<InstanceType<typeof globalThis.HTMLInputElement>>();
-let pendingCommand: { fingerprint: string; key: string } | undefined;
+const pendingCommand = ref<PendingCustomerAdmission>();
 let contactsController: AbortController | undefined;
+function pendingIdentity(customerId = props.customer.id) {
+  const session = auth.session;
+  return session?.principalType === 'INTERNAL' && session.department
+    ? {
+        userId: session.user.id,
+        departmentId: session.department.id,
+        customerId,
+      }
+    : undefined;
+}
 
 const canManageMaterials = computed(
   () =>
@@ -159,8 +175,8 @@ watch(
       return;
     }
     if (version === expectedVersion.value) return;
+    if (pendingCommand.value) return;
     externalSnapshotChanged.value = true;
-    pendingCommand = undefined;
     formError.value =
       '客户资料已在其他区域更新。为避免用旧字段覆盖新资料，请重新载入后核对。';
   },
@@ -171,6 +187,7 @@ watch(
 );
 
 function loadCustomerSnapshot(): void {
+  submitting.value = false;
   expectedCustomerId.value = props.customer.id;
   expectedVersion.value = props.customer.version;
   name.value = props.customer.name;
@@ -188,7 +205,23 @@ function loadCustomerSnapshot(): void {
   identityNumberError.value = '';
   formError.value = '';
   restoreTargetId.value = undefined;
-  pendingCommand = undefined;
+  const identity = pendingIdentity();
+  pendingCommand.value = identity
+    ? readPendingCustomerAdmission(identity)
+    : undefined;
+  if (pendingCommand.value) {
+    const body = pendingCommand.value.body;
+    expectedVersion.value = body.expectedVersion;
+    name.value = body.name;
+    customerType.value = body.customerType;
+    identityType.value = body.identityType;
+    identityNumber.value = body.identityNumber;
+    issuingCountryOrRegion.value = body.issuingCountryOrRegion ?? '';
+    identityValidFrom.value = body.identityValidFrom ?? '';
+    identityValidTo.value = body.identityValidTo ?? '';
+    identityValidityMode.value = body.identityValidityMode;
+    admissionContactId.value = body.admissionContactId;
+  }
   void reloadMaterials();
   void reloadContacts(1);
 }
@@ -517,17 +550,6 @@ function validate(): AdmitCustomerInput | undefined {
   };
 }
 
-function commandKey(input: AdmitCustomerInput): string {
-  const fingerprint = JSON.stringify(input);
-  if (pendingCommand?.fingerprint === fingerprint) return pendingCommand.key;
-  const key =
-    typeof globalThis.crypto?.randomUUID === 'function'
-      ? globalThis.crypto.randomUUID()
-      : `admit-${Date.now()}-${Math.random().toString(16).slice(2)}`;
-  pendingCommand = { fingerprint, key };
-  return key;
-}
-
 async function refreshAfterConflict(): Promise<void> {
   const customerId = props.customer.id;
   const sourceActor = actorKey();
@@ -542,7 +564,6 @@ async function refreshAfterConflict(): Promise<void> {
     emit('customer-refreshed', customerId, sourceActor, latest);
     await reloadMaterials();
     staleReview.value = true;
-    pendingCommand = undefined;
     formError.value = `客户资料已被他人更新，已读取最新版本 ${latest.version}。已保留当前填写内容，请核对后重试。`;
   } catch (error) {
     if (error instanceof ApiError && error.code === 'CUSTOMER_NOT_FOUND') {
@@ -556,6 +577,7 @@ async function refreshAfterConflict(): Promise<void> {
 async function submit(): Promise<void> {
   if (
     submitting.value ||
+    pendingCommand.value ||
     uploadingFilename.value ||
     externalSnapshotChanged.value ||
     !canManageMaterials.value
@@ -568,10 +590,41 @@ async function submit(): Promise<void> {
   formError.value = '';
   const customerId = props.customer.id;
   const sourceActor = actorKey();
+  const identity = pendingIdentity(customerId);
+  if (!identity) {
+    submitting.value = false;
+    formError.value = '无法确认当前内部账号，未发送准入请求';
+    return;
+  }
+  const command: PendingCustomerAdmission = {
+    ...identity,
+    body: input,
+    key: globalThis.crypto.randomUUID(),
+  };
   try {
-    const admitted = await admitCustomer(customerId, input, commandKey(input));
+    savePendingCustomerAdmission(command);
+  } catch {
+    submitting.value = false;
+    formError.value =
+      '无法安全保存准入原请求，未发送请求。请检查浏览器会话存储后重试。';
+    return;
+  }
+  pendingCommand.value = command;
+  await sendPending(command, sourceActor);
+}
+
+async function sendPending(
+  command: PendingCustomerAdmission,
+  sourceActor = actorKey(),
+): Promise<void> {
+  const customerId = command.customerId;
+  submitting.value = true;
+  formError.value = '';
+  try {
+    const admitted = await admitCustomer(customerId, command.body, command.key);
     if (props.customer.id !== customerId || actorKey() !== sourceActor) return;
-    pendingCommand = undefined;
+    clearPendingCustomerAdmission(command);
+    pendingCommand.value = undefined;
     expectedVersion.value = admitted.version;
     emit('admitted', customerId, sourceActor, admitted);
   } catch (error) {
@@ -580,21 +633,24 @@ async function submit(): Promise<void> {
       error instanceof ApiError &&
       error.code === 'CUSTOMER_VERSION_CONFLICT'
     ) {
+      clearPendingCustomerAdmission(command);
+      pendingCommand.value = undefined;
       await refreshAfterConflict();
-    } else if (
-      error instanceof ApiError &&
-      (error.code === 'RESOURCE_NOT_FOUND' ||
-        error.code === 'CUSTOMER_NOT_FOUND')
-    ) {
-      pendingCommand = undefined;
-      emit('customer-not-found', customerId, sourceActor);
     } else {
-      if (
+      const confirmedUnsubmitted =
         error instanceof ApiError &&
-        error.status >= 400 &&
-        error.status < 500
-      ) {
-        pendingCommand = undefined;
+        [
+          'CUSTOMER_IDENTITY_DUPLICATE',
+          'CUSTOMER_IDENTITY_RESTORE_AVAILABLE',
+          'CUSTOMER_DOCUMENT_INVALID',
+          'MATERIAL_VERSION_INVALID',
+          'CUSTOMER_ADMISSION_INCOMPLETE',
+          'CUSTOMER_CONTACT_MISMATCH',
+          'CUSTOMER_CONTACT_SELECTION_REQUIRED',
+        ].includes(error.code);
+      if (confirmedUnsubmitted) {
+        clearPendingCustomerAdmission(command);
+        pendingCommand.value = undefined;
       }
       if (
         error instanceof ApiError &&
@@ -635,16 +691,22 @@ async function submit(): Promise<void> {
         formError.value =
           '准入条件还不完整，请核对主体、证件、有效期、联系人和材料';
       } else {
-        formError.value = '准入没有完成，已保留当前填写内容，请稍后重试';
+        formError.value =
+          '准入结果尚未确认，已保留原请求和幂等键；恢复访问后按原请求重试';
       }
     }
   } finally {
-    submitting.value = false;
+    if (props.customer.id === customerId && actorKey() === sourceActor)
+      submitting.value = false;
   }
 }
 
-void reloadMaterials();
-void reloadContacts(1);
+async function retryOriginal(): Promise<void> {
+  if (!pendingCommand.value || submitting.value) return;
+  await sendPending(pendingCommand.value);
+}
+
+loadCustomerSnapshot();
 </script>
 
 <template>
@@ -673,7 +735,7 @@ void reloadContacts(1);
       }}</span>
     </div>
 
-    <form @submit.prevent="submit">
+    <form :inert="Boolean(pendingCommand)" @submit.prevent="submit">
       <div v-if="canManageMaterials" class="admission-grid">
         <label>
           <span>客户组织类型<RequiredFieldMark /></span>
@@ -980,6 +1042,19 @@ void reloadContacts(1);
         </ElButton>
       </div>
     </form>
+    <div
+      v-if="pendingCommand"
+      data-test="admission-pending-original"
+      role="alert"
+    >
+      <p>准入结果尚未确认。只可按原请求与原幂等键重试；当前表单已冻结。</p>
+      <ElButton
+        data-test="admission-retry-original"
+        :loading="submitting"
+        @click="retryOriginal"
+        >按原请求重试准入</ElButton
+      >
+    </div>
   </section>
 </template>
 

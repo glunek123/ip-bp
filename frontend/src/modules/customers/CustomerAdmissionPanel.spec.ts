@@ -1,7 +1,18 @@
 import { flushPromises, mount } from '@vue/test-utils';
-import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
+import {
+  afterAll,
+  afterEach,
+  beforeAll,
+  beforeEach,
+  describe,
+  expect,
+  it,
+  vi,
+} from 'vitest';
 import { ApiError } from '../../api/http';
 import CustomerAdmissionPanel from './CustomerAdmissionPanel.vue';
+import { useAuthStore } from '../../stores/auth';
+import { pinia } from '../../app/pinia';
 
 const customerApi = vi.hoisted(() => ({
   admitCustomer: vi.fn(),
@@ -80,10 +91,29 @@ const fullMaterial = {
 };
 
 afterEach(() => {
+  vi.restoreAllMocks();
   vi.resetAllMocks();
+  sessionStorage.clear();
   document.body.innerHTML = '';
 });
+beforeAll(() => {
+  useAuthStore(pinia).session = {
+    principalType: 'INTERNAL',
+    user: { id: 'user-1', displayName: '运营甲', username: 'operator' },
+    department: { id: 'department-1', name: '测试部门' },
+    departments: [{ id: 'department-1', name: '测试部门' }],
+    customer: null,
+    notaryOffice: null,
+    authorizationRevision: 1,
+    expiresAt: '2026-12-01T00:00:00.000Z',
+    csrfToken: 'test-csrf',
+  };
+});
+afterAll(() => {
+  useAuthStore(pinia).session = null;
+});
 beforeEach(() => {
+  sessionStorage.clear();
   customerApi.listCustomerContacts.mockResolvedValue({
     items: [
       {
@@ -365,7 +395,7 @@ describe('CustomerAdmissionPanel', () => {
       new ApiError('暂时失败', 503, 'STORAGE_UNAVAILABLE', 'request-1'),
     );
     await flushPromises();
-    expect(wrapper.text()).toContain('准入没有完成');
+    expect(wrapper.text()).toContain('准入结果尚未确认');
     expect(
       (wrapper.get('input[name="identityNumber"]').element as HTMLInputElement)
         .value,
@@ -389,13 +419,55 @@ describe('CustomerAdmissionPanel', () => {
 
     await wrapper.get('form').trigger('submit');
     await flushPromises();
-    await wrapper.get('form').trigger('submit');
+    await wrapper
+      .get('[data-test="admission-retry-original"]')
+      .trigger('click');
     await flushPromises();
 
     expect(customerApi.admitCustomer).toHaveBeenCalledTimes(2);
     expect(customerApi.admitCustomer.mock.calls[1]?.[2]).toBe(
       customerApi.admitCustomer.mock.calls[0]?.[2],
     );
+  });
+
+  it('keeps the original body and key after an admission permission denial', async () => {
+    customerApi.admitCustomer
+      .mockRejectedValueOnce(new ApiError('forbidden', 403, 'ACTION_FORBIDDEN'))
+      .mockResolvedValueOnce({
+        ...customer,
+        profileStatus: 'admitted',
+        admittedAt: '2026-09-21T03:00:00.000Z',
+        version: 2,
+      });
+    const wrapper = await mountPanel([fullMaterial]);
+    await fillEnterpriseAdmission(wrapper);
+    await wrapper.get('form').trigger('submit');
+    await flushPromises();
+    expect(wrapper.text()).toContain('当前账号无权执行客户准入');
+    expect(
+      wrapper.find('[data-test="admission-retry-original"]').exists(),
+    ).toBe(true);
+    expect(sessionStorage.length).toBe(1);
+    await wrapper
+      .get('[data-test="admission-retry-original"]')
+      .trigger('click');
+    await flushPromises();
+    expect(customerApi.admitCustomer.mock.calls[1]).toEqual(
+      customerApi.admitCustomer.mock.calls[0],
+    );
+    expect(sessionStorage.length).toBe(0);
+  });
+
+  it('does not POST when the original admission cannot be persisted', async () => {
+    const wrapper = await mountPanel([fullMaterial]);
+    await fillEnterpriseAdmission(wrapper);
+    vi.spyOn(Storage.prototype, 'setItem').mockImplementation(() => {
+      throw new Error('storage unavailable');
+    });
+    await wrapper.get('form').trigger('submit');
+    await flushPromises();
+    expect(customerApi.admitCustomer).not.toHaveBeenCalled();
+    expect(wrapper.text()).toContain('未发送请求');
   });
 
   it('accepts its own successful admission version without showing an external-change warning', async () => {
@@ -659,7 +731,7 @@ describe('CustomerAdmissionPanel', () => {
     ).toBe(true);
   });
 
-  it('emits customer-not-found when admission loses access to the customer', async () => {
+  it('keeps the original request when admission returns a hidden customer', async () => {
     customerApi.admitCustomer.mockRejectedValue(
       new ApiError('hidden', 404, 'RESOURCE_NOT_FOUND'),
     );
@@ -667,7 +739,10 @@ describe('CustomerAdmissionPanel', () => {
     await fillEnterpriseAdmission(wrapper);
     await wrapper.get('form').trigger('submit');
     await flushPromises();
-    expect(wrapper.emitted('customer-not-found')).toEqual([['customer-1', '']]);
+    expect(wrapper.emitted('customer-not-found')).toBeUndefined();
+    expect(
+      wrapper.find('[data-test="admission-retry-original"]').exists(),
+    ).toBe(true);
   });
 
   it('emits customer-not-found when the material owner becomes inaccessible', async () => {
@@ -676,7 +751,9 @@ describe('CustomerAdmissionPanel', () => {
     );
     const wrapper = mount(CustomerAdmissionPanel, { props: { customer } });
     await flushPromises();
-    expect(wrapper.emitted('customer-not-found')).toEqual([['customer-1', '']]);
+    expect(wrapper.emitted('customer-not-found')).toEqual([
+      ['customer-1', 'user-1:department-1:1'],
+    ]);
   });
 
   it('reloads stale data, preserves input, and retries only after review', async () => {

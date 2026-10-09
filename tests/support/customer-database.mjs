@@ -825,6 +825,26 @@ async function getCustomerContactAccountCounts(customerId) {
   return { accounts, bindings };
 }
 
+async function getCustomerAdmissionReplayCounts(customerId) {
+  const [contacts, versions, admissions, audits] = await database.$transaction([
+    database.customerContact.count({ where: { customerId } }),
+    database.customerContactVersion.count({
+      where: { contact: { customerId } },
+    }),
+    database.customerAdmissionReceipt.count({
+      where: { resultCustomerId: customerId },
+    }),
+    database.auditEvent.count({
+      where: {
+        resourceType: 'customer',
+        resourceId: customerId,
+        action: 'customer.admitted',
+      },
+    }),
+  ]);
+  return { contacts, versions, admissions, audits };
+}
+
 async function createLegacyPendingDeletedCustomer() {
   const id = randomUUID();
   await database.customer.create({
@@ -3410,6 +3430,7 @@ export {
   setLocalCustomerGrant,
   getCustomerContactAdmissionEvidence,
   getCustomerContactAccountCounts,
+  getCustomerAdmissionReplayCounts,
   createLegacyPendingDeletedCustomer,
   getContactProvenance,
   revokeCustomerLifecycle,

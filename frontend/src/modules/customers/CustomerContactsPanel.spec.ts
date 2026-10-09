@@ -69,6 +69,17 @@ const customer: CustomerDetail = {
   },
   history: [],
 };
+const admittedCustomer: CustomerDetail = {
+  ...customer,
+  profileStatus: 'admitted',
+  admissionContactSnapshot: {
+    name: '独特快照人',
+    phone: '13800138099',
+    email: 'snapshot@example.com',
+    source: 'RECEIPT',
+    frozenAt: '2026-10-09T01:00:00.000Z',
+  },
+};
 const actor = { userId: 'user-1', departmentId: 'department-1' };
 const page = (
   items: CustomerContact[],
@@ -80,9 +91,9 @@ const page = (
   pageSize: 20,
   primaryContactId: status === 'ACTIVE' ? 'contact-1' : null,
 });
-function mountPanel() {
+function mountPanel(target: CustomerDetail = customer) {
   return mount(CustomerContactsPanel, {
-    props: { customer, actor, blockedByOtherMaintenance: false },
+    props: { customer: target, actor, blockedByOtherMaintenance: false },
   });
 }
 function mountPanelWithParentRefresh() {
@@ -402,22 +413,27 @@ describe('CustomerContactsPanel', () => {
         page: 1,
         pageSize: 20,
       });
-      const wrapper = mountPanel();
+      const wrapper = mountPanel(admittedCustomer);
       await flushPromises();
       await wrapper
         .get('[data-test="contact-contact-1"] button')
         .trigger('click');
       await flushPromises();
       expect(wrapper.text()).toContain('同名联系人');
+      expect(wrapper.text()).toContain('snapshot@example.com');
       api.listCustomerContacts.mockRejectedValue(
         new ApiError('unavailable', status, 'RESOURCE_NOT_FOUND'),
       );
-      await wrapper.setProps({ customer: { ...customer, version: 4 } });
+      await wrapper.setProps({ customer: { ...admittedCustomer, version: 4 } });
       await flushPromises();
       expect(wrapper.find('[data-test="contact-contact-1"]').exists()).toBe(
         false,
       );
       expect(wrapper.text()).not.toContain('13800138000');
+      expect(wrapper.text()).not.toContain('snapshot@example.com');
+      expect(wrapper.emitted('unavailable')).toEqual([
+        [customer.id, 'user-1:department-1:0'],
+      ]);
       expect(wrapper.text()).toContain('联系人资料当前不可用');
       expect(wrapper.text()).not.toContain('暂无活动联系人');
       if (status === 403) {
@@ -456,13 +472,14 @@ describe('CustomerContactsPanel', () => {
         pageSize: 20,
       };
       api.listCustomerContactVersions.mockResolvedValue(history);
-      const wrapper = mountPanel();
+      const wrapper = mountPanel(admittedCustomer);
       await flushPromises();
       await wrapper
         .get('[data-test="contact-contact-1"] button')
         .trigger('click');
       await flushPromises();
       expect(wrapper.text()).toContain('同名联系人');
+      expect(wrapper.text()).toContain('snapshot@example.com');
       api.listCustomerContactVersions.mockRejectedValue(
         new ApiError('unavailable', status, 'RESOURCE_NOT_FOUND'),
       );
@@ -474,6 +491,10 @@ describe('CustomerContactsPanel', () => {
         false,
       );
       expect(wrapper.text()).not.toContain('13800138000');
+      expect(wrapper.text()).not.toContain('snapshot@example.com');
+      expect(wrapper.emitted('unavailable')).toEqual([
+        [customer.id, 'user-1:department-1:0'],
+      ]);
       expect(wrapper.text()).toContain('联系人资料当前不可用');
       wrapper.unmount();
     },

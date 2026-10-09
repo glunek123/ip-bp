@@ -45,6 +45,12 @@ export function getCustomerContactAccountCounts(customerId: string): Promise<{
   accounts: number;
   bindings: number;
 }>;
+export function getCustomerAdmissionReplayCounts(customerId: string): Promise<{
+  contacts: number;
+  versions: number;
+  admissions: number;
+  audits: number;
+}>;
 export function rejectContactReceiptWrites(): Promise<void>;
 export function allowContactReceiptWrites(): Promise<void>;
 export function createLegacyPendingDeletedCustomer(): Promise<string>;

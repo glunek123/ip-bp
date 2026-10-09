@@ -36,6 +36,7 @@ const emit = defineEmits<{
   refreshed: [customerId: string, actorKey: string, customer: CustomerDetail];
   'pending-changed': [customerId: string, actorKey: string, pending: boolean];
   'projection-stale': [customerId: string, actorKey: string, stale: boolean];
+  unavailable: [customerId: string, actorKey: string];
 }>();
 const status = ref<'ACTIVE' | 'ENDED'>('ACTIVE');
 const page = ref(1);
@@ -58,6 +59,7 @@ const saving = ref(false);
 const error = ref('');
 const frozen = ref<PendingCustomerContact>();
 const readOnlyStale = ref(false);
+const unavailable = ref(false);
 let contextGeneration = 0;
 let listGeneration = 0;
 let versionGeneration = 0;
@@ -105,9 +107,11 @@ function handleDeniedRead(): void {
   listController?.abort();
   versionController?.abort();
   clearVisibleData();
+  unavailable.value = true;
   loading.value = false;
   setProjectionStale(true);
   error.value = '联系人资料当前不可用，请恢复访问后刷新';
+  emit('unavailable', props.customer.id, actorKey.value);
 }
 function announcePending(): void {
   emit(
@@ -304,6 +308,7 @@ async function refreshReadonly(): Promise<void> {
       return;
     contacts.value = status.value === 'ACTIVE' ? active.items : ended.items;
     total.value = status.value === 'ACTIVE' ? active.total : ended.total;
+    unavailable.value = false;
     emit('refreshed', customerId, who, latest);
     setProjectionStale(false);
   } catch (cause) {
@@ -548,6 +553,7 @@ watch(
     contextGeneration++;
     confirmedWriteRefresh = false;
     contacts.value = [];
+    unavailable.value = false;
     selected.value = undefined;
     frozen.value = undefined;
     setProjectionStale(false);
@@ -627,7 +633,7 @@ onBeforeUnmount(() => {
     <p v-if="!props.customer.primaryContactId">当前未指定主要联系人</p>
     <p v-else>主要联系人已从当前授权数据确认。</p>
     <p
-      v-if="props.customer.admissionContactSnapshot"
+      v-if="!unavailable && props.customer.admissionContactSnapshot"
       data-test="admission-contact-snapshot"
     >
       准入时登记的联系人资料：{{
@@ -646,7 +652,7 @@ onBeforeUnmount(() => {
         ).toLocaleDateString('zh-CN')
       }}）
     </p>
-    <p v-else-if="props.customer.profileStatus === 'admitted'">
+    <p v-else-if="!unavailable && props.customer.profileStatus === 'admitted'">
       准入联系人历史快照暂不可用。
     </p>
     <p v-if="loading">正在读取联系人…</p>

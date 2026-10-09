@@ -30,7 +30,9 @@ import { listPendingCustomerContacts } from './customer-contacts-pending';
 const route = useRoute();
 const router = useRouter();
 const auth = useAuthStore(pinia);
-const state = ref<'loading' | 'ready' | 'missing' | 'failed'>('loading');
+const state = ref<'loading' | 'ready' | 'missing' | 'failed' | 'unavailable'>(
+  'loading',
+);
 const customer = ref<CustomerDetail>();
 const activeTab = ref<'basic' | 'assets' | 'settlements'>('basic');
 const requests = new Set<AbortController>();
@@ -145,6 +147,23 @@ function acceptContactRefresh(
   acceptRefreshedCustomer(latest);
 }
 
+function handleContactUnavailable(
+  customerId: string,
+  sourceActorKey: string,
+): void {
+  if (
+    customerId !== String(route.params.id) ||
+    sourceActorKey !== actorKey.value ||
+    customer.value?.id !== customerId
+  )
+    return;
+  viewGeneration += 1;
+  abortRequests();
+  customer.value = undefined;
+  currentProjectionStale.value = false;
+  state.value = 'unavailable';
+}
+
 async function submitDelete(): Promise<void> {
   const current = customer.value;
   if (deleteStatus.value === 'submitting' || maintenancePending.value) return;
@@ -237,6 +256,7 @@ function profileLabel(status: CustomerSummary['profileStatus']): string {
 
 async function load(): Promise<void> {
   const customerId = String(route.params.id);
+  const recoveringUnavailable = state.value === 'unavailable';
   const generation = viewGeneration;
   const identityAtStart = actorKey.value;
   const controller = new AbortController();
@@ -264,8 +284,9 @@ async function load(): Promise<void> {
       String(route.params.id) !== customerId
     )
       return;
-    state.value =
-      error instanceof ApiError && error.code === 'CUSTOMER_NOT_FOUND'
+    state.value = recoveringUnavailable
+      ? 'unavailable'
+      : error instanceof ApiError && error.code === 'CUSTOMER_NOT_FOUND'
         ? 'missing'
         : isCustomerNotFound(error)
           ? 'missing'
@@ -503,6 +524,17 @@ onBeforeUnmount(abortRequests);
           维护结果尚未确认，原请求已保留。恢复访问后可按原请求重试。
         </p>
       </section>
+      <section
+        v-else-if="state === 'unavailable'"
+        class="state-panel ledger-panel"
+        data-test="customer-contact-unavailable"
+      >
+        <h1>客户资料当前不可用</h1>
+        <p>恢复访问后，请先只读刷新客户资料。</p>
+        <ElButton data-test="customer-contact-readonly-retry" @click="load"
+          >只读刷新客户资料</ElButton
+        >
+      </section>
       <section v-else-if="state === 'failed'" class="state-panel ledger-panel">
         <span class="state-index">连接失败</span>
         <h1>客户资料暂时无法加载</h1>
@@ -737,6 +769,7 @@ onBeforeUnmount(abortRequests);
             @refreshed="acceptContactRefresh"
             @pending-changed="updateContactsPending"
             @projection-stale="updateContactProjectionStale"
+            @unavailable="handleContactUnavailable"
           />
           <CustomerRightsHolderPanel
             v-if="

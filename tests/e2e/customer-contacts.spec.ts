@@ -13,7 +13,9 @@ import {
   beginForeignCustomerAccountBlocker,
   getCustomerContactAccountCounts,
   getCustomerContactAdmissionEvidence,
+  getCustomerAdmissionReplayCounts,
   grantCustomerAdmission,
+  revokeCustomerAdmission,
   grantCustomerRoutineEdit,
   grantCustomerCooperation,
   grantCustomerLifecycle,
@@ -157,6 +159,15 @@ test.beforeEach(async () => {
   await resetCustomerE2eData();
 });
 
+test.afterEach(async ({ request }, info) => {
+  void request;
+  if (
+    info.title ===
+    'real CLIENT and LAWYER sessions receive no contact management grant'
+  )
+    await cleanupContactExternalActors();
+});
+
 test.afterAll(async () => {
   await cleanupContactExternalActors();
   await disconnectCustomerTestDatabase();
@@ -176,13 +187,23 @@ test('real password browser creates independent contacts, changes primary, ends 
   ).toBeVisible();
   const customerId = page.url().split('/').at(-1)!;
   const panel = contactPanel(page);
-  const writes: Request[] = [];
+  const writes: Array<{
+    key?: string;
+    csrf?: string;
+    bearer?: string;
+  }> = [];
   page.on('request', (sent) => {
     if (
       sent.url().includes(`/api/v1/customers/${customerId}/contacts`) &&
       ['POST', 'PATCH'].includes(sent.method())
-    )
-      writes.push(sent);
+    ) {
+      const headers = sent.headers();
+      writes.push({
+        key: headers['idempotency-key'],
+        csrf: headers['x-csrf-token'],
+        bearer: headers.authorization,
+      });
+    }
   });
 
   await panel.locator('[data-test="contact-new"]').click();
@@ -228,11 +249,9 @@ test('real password browser creates independent contacts, changes primary, ends 
     panel.locator(`[data-test="contact-${secondId}"]`),
   ).toBeVisible();
   expect(writes).toHaveLength(5);
-  for (const request of writes) {
-    const sent = await commandHeaders(request);
+  for (const sent of writes) {
     expect(sent.key).toBeTruthy();
     expect(sent.csrf).toBeTruthy();
-    expect(sent.cookie).toBeTruthy();
     expect(sent.bearer).toBeUndefined();
   }
 });
@@ -271,6 +290,9 @@ test('committed response loss preserves the original contact command across refr
   await fillContact(page, '原键联系人', '13800138002');
   await panel.getByRole('button', { name: '保存联系人' }).click();
   await expect(panel.getByRole('alert')).toContainText('原请求');
+  expect(first?.cookie).toBeTruthy();
+  expect(first?.csrf).toBeTruthy();
+  expect(first?.bearer).toBeUndefined();
   await expect(page.locator('[data-test="edit-customer"]')).toHaveCount(0);
   await expect(page.locator('#customer-admission')).toHaveCount(0);
   await expect(page.locator('#customer-rights-holders')).toHaveCount(0);
@@ -459,10 +481,13 @@ test('actual revocation clears visible contacts and preserves an unknown origina
   await panel.getByRole('button', { name: '已结束' }).click();
   expect([403, 404]).toContain((await deniedRead).status());
   await expect(panel.locator('li[data-test^="contact-"]')).toHaveCount(0);
-  await expect(panel.locator('[data-test="contact-retry"]')).toBeVisible();
+  await expect(
+    page.locator('[data-test="customer-contact-unavailable"]'),
+  ).toBeVisible();
   await setLocalCustomerGrant('CUSTOMER_READ', true);
   await setLocalCustomerGrant('CUSTOMER_EDIT_ROUTINE', true);
-  await panel.locator('[data-test="contact-refresh-readonly"]').click();
+  await page.locator('[data-test="customer-contact-readonly-retry"]').click();
+  await expect(panel.locator('[data-test="contact-retry"]')).toBeVisible();
   const replay = page.waitForResponse(
     (response) =>
       response.url().endsWith(`/customers/${customerId}/contacts`) &&
@@ -1236,4 +1261,210 @@ test('real CLIENT and LAWYER sessions receive no contact management grant', asyn
     }
   }
   expect((await listContacts(request, customerId)).items).toHaveLength(2);
+});
+
+test('admitted contact denial hides parent and snapshot PII while retaining its original pending command', async ({
+  page,
+}) => {
+  const credentials = await resetLocalAuthE2eData();
+  await grantCustomerAdmission(localRoleId, 'DEPARTMENT');
+  await passwordLogin(page, '/customers', credentials);
+  await page.getByRole('link', { name: '新建客户' }).click();
+  await page.getByLabel('客户名称').fill('撤读准入联系人客户');
+  await page.getByRole('button', { name: '保存草稿' }).click();
+  await expect(
+    page.getByRole('heading', { name: '撤读准入联系人客户' }),
+  ).toBeVisible();
+  const customerId = page.url().split('/').at(-1)!;
+  const panel = contactPanel(page);
+  await panel.locator('[data-test="contact-new"]').click();
+  await fillContact(
+    page,
+    '独特准入人甲',
+    '13800138031',
+    'unique-i1@example.com',
+  );
+  await panel.getByRole('button', { name: '保存联系人' }).click();
+  await expect(panel.getByText('独特准入人甲 · 13800138031')).toBeVisible();
+  const contactId = (await panel
+    .getByText('独特准入人甲 · 13800138031')
+    .locator('..')
+    .getAttribute('data-test'))!.slice(8);
+  await fillAdmission(page, 'CONTACT-I1-001');
+  await page.getByLabel('选择一位活动联系人').selectOption(contactId);
+  await page.locator('[data-test="admit-submit"]').click();
+  await expect(
+    panel.locator('[data-test="admission-contact-snapshot"]'),
+  ).toContainText('unique-i1@example.com');
+  let intercepted = false;
+  let committedResolve!: () => void;
+  const committedDone = new Promise<void>((resolve) => {
+    committedResolve = resolve;
+  });
+  await page.route(
+    `**/api/v1/customers/${customerId}/contacts`,
+    async (route) => {
+      if (intercepted || route.request().method() !== 'POST')
+        return route.continue();
+      intercepted = true;
+      const committed = await route.fetch();
+      expect(committed.status()).toBe(201);
+      await route.abort('failed');
+      committedResolve();
+    },
+  );
+  await panel.locator('[data-test="contact-new"]').click();
+  await fillContact(page, '未知联系人乙', '13800138032');
+  await panel.getByRole('button', { name: '保存联系人' }).click();
+  await committedDone;
+  await expect(panel.locator('[data-test="contact-retry"]')).toBeVisible();
+  await setLocalCustomerGrant('CUSTOMER_READ', false);
+  const denied = page.waitForResponse(
+    (response) =>
+      response
+        .url()
+        .includes(`/customers/${customerId}/contacts?status=ENDED`) &&
+      response.request().method() === 'GET',
+  );
+  await panel.getByRole('button', { name: '已结束' }).click();
+  expect([403, 404]).toContain((await denied).status());
+  await expect(panel.locator('li[data-test^="contact-"]')).toHaveCount(0);
+  await expect(page.getByText('独特准入人甲')).toHaveCount(0);
+  await expect(page.getByText('13800138031')).toHaveCount(0);
+  await expect(page.getByText('unique-i1@example.com')).toHaveCount(0);
+  await expect(
+    page.locator('[data-test="customer-contact-unavailable"]'),
+  ).toBeVisible();
+  await page.locator('[data-test="customer-contact-readonly-retry"]').click();
+  await expect(
+    page.locator('[data-test="customer-contact-unavailable"]'),
+  ).toBeVisible();
+  await expect(page.getByText('unique-i1@example.com')).toHaveCount(0);
+  await setLocalCustomerGrant('CUSTOMER_READ', true);
+  await page.locator('[data-test="customer-contact-readonly-retry"]').click();
+  await expect(
+    panel.locator('[data-test="admission-contact-snapshot"]'),
+  ).toContainText('unique-i1@example.com');
+  await expect(panel.locator('[data-test="contact-retry"]')).toBeVisible();
+});
+
+test('unknown explicit admission replays the same request after permission denial and relogin', async ({
+  page,
+}) => {
+  const credentials = await resetLocalAuthE2eData();
+  await grantCustomerAdmission(localRoleId, 'DEPARTMENT');
+  await passwordLogin(page, '/customers', credentials);
+  await page.getByRole('link', { name: '新建客户' }).click();
+  await page.getByLabel('客户名称').fill('未知准入原键客户');
+  await page.getByRole('button', { name: '保存草稿' }).click();
+  await expect(
+    page.getByRole('heading', { name: '未知准入原键客户' }),
+  ).toBeVisible();
+  const url = page.url();
+  const customerId = url.split('/').at(-1)!;
+  const panel = contactPanel(page);
+  await panel.locator('[data-test="contact-new"]').click();
+  await fillContact(page, '准入原键人', '13800138033');
+  await panel.getByRole('button', { name: '保存联系人' }).click();
+  await expect(panel.getByText('准入原键人 · 13800138033')).toBeVisible();
+  const contactId = (await panel
+    .getByText('准入原键人 · 13800138033')
+    .locator('..')
+    .getAttribute('data-test'))!.slice(8);
+  await fillAdmission(page, 'CONTACT-I2-001');
+  await page.getByLabel('选择一位活动联系人').selectOption(contactId);
+  let original: Awaited<ReturnType<typeof commandHeaders>> | undefined;
+  let intercepted = false;
+  let committedResolve!: () => void;
+  const committedDone = new Promise<void>((resolve) => {
+    committedResolve = resolve;
+  });
+  await page.route(
+    `**/api/v1/customers/${customerId}/admission`,
+    async (route) => {
+      if (intercepted || route.request().method() !== 'POST')
+        return route.continue();
+      intercepted = true;
+      original = await commandHeaders(route.request());
+      const committed = await route.fetch();
+      expect(committed.status()).toBe(201);
+      await route.abort('failed');
+      committedResolve();
+    },
+  );
+  await page.locator('[data-test="admit-submit"]').click();
+  await committedDone;
+  await expect(
+    page.locator('[data-test="admission-retry-original"]'),
+  ).toBeEnabled();
+  await revokeCustomerAdmission(localRoleId);
+  const denied = page.waitForResponse(
+    (response) =>
+      response.url().endsWith(`/customers/${customerId}/admission`) &&
+      response.request().method() === 'POST',
+  );
+  await page.locator('[data-test="admission-retry-original"]').click();
+  expect((await denied).status()).toBe(403);
+  const current = await page
+    .context()
+    .request.get(`http://127.0.0.1:5174/api/v1/customers/${customerId}`);
+  expect(current.status()).toBe(200);
+  const currentVersion = ((await current.json()) as { version: number })
+    .version;
+  const contacts = await page
+    .context()
+    .request.get(
+      `http://127.0.0.1:5174/api/v1/customers/${customerId}/contacts`,
+    );
+  expect(contacts.status()).toBe(200);
+  const contact = (
+    (await contacts.json()) as {
+      items: Array<{ id: string; version: number }>;
+    }
+  ).items[0]!;
+  const ended = await page
+    .context()
+    .request.post(
+      `http://127.0.0.1:5174/api/v1/customers/${customerId}/contacts/${contactId}/end`,
+      {
+        headers: await browserCommandHeaders(page, randomUUID()),
+        data: {
+          expectedCustomerVersion: currentVersion,
+          expectedContactVersion: contact.version,
+        },
+      },
+    );
+  expect(ended.status(), await ended.text()).toBe(200);
+  const countsBeforeReplay = await getCustomerAdmissionReplayCounts(customerId);
+  expect(countsBeforeReplay).toMatchObject({
+    contacts: 1,
+    versions: 2,
+    admissions: 1,
+    audits: 1,
+  });
+  await page.reload();
+  await expect(
+    page.locator('[data-test="admission-retry-original"]'),
+  ).toBeVisible();
+  await grantCustomerAdmission(localRoleId, 'DEPARTMENT');
+  await page.getByRole('button', { name: '退出登录' }).click();
+  await passwordLogin(page, url, credentials);
+  const replay = page.waitForResponse(
+    (response) =>
+      response.url().endsWith(`/customers/${customerId}/admission`) &&
+      response.request().method() === 'POST',
+  );
+  await page.locator('[data-test="admission-retry-original"]').click();
+  const response = await replay;
+  expect(response.status()).toBe(201);
+  expect(await commandHeaders(response.request())).toMatchObject({
+    key: original?.key,
+    body: original?.body,
+  });
+  expect(await getCustomerAdmissionReplayCounts(customerId)).toEqual(
+    countsBeforeReplay,
+  );
+  await expect(
+    panel.locator('[data-test="admission-contact-snapshot"]'),
+  ).toContainText('准入原键人');
 });
