@@ -88,7 +88,13 @@ export type CustomerDetail = CustomerSummary & {
     source: string;
     frozenAt: string;
   } | null;
-  capabilities: { editRoutine: boolean; admit: boolean; deleteDraft: boolean };
+  capabilities: {
+    editRoutine: boolean;
+    admit: boolean;
+    deleteDraft: boolean;
+    agreement: { read: boolean; edit: boolean };
+    invoice: { read: boolean; edit: boolean };
+  };
   responsibleOperator: { id: string; displayName: string };
   cooperationCapabilities: {
     transfer: boolean;
@@ -317,6 +323,10 @@ export class CustomerService {
       pause,
       terminate,
       resume,
+      agreementRead,
+      agreementEdit,
+      invoiceRead,
+      invoiceEdit,
     ] = await Promise.all([
       this.database.auditEvent.findMany({
         where: {
@@ -359,6 +369,26 @@ export class CustomerService {
         'customer.cooperation.resume',
         facts,
       ),
+      this.accessControl.canAuthorizeCustomer(
+        actor,
+        'customer.agreement.read',
+        facts,
+      ),
+      this.accessControl.canAuthorizeCustomer(
+        actor,
+        'customer.agreement.edit',
+        facts,
+      ),
+      this.accessControl.canAuthorizeCustomer(
+        actor,
+        'customer.invoice.read',
+        facts,
+      ),
+      this.accessControl.canAuthorizeCustomer(
+        actor,
+        'customer.invoice.edit',
+        facts,
+      ),
     ]);
     const primaryContact = await this.database.customerContact.findFirst({
       where: {
@@ -398,6 +428,11 @@ export class CustomerService {
       capabilities: {
         editRoutine,
         admit,
+        agreement: {
+          read: agreementRead,
+          edit: agreementRead && agreementEdit,
+        },
+        invoice: { read: invoiceRead, edit: invoiceRead && invoiceEdit },
         deleteDraft:
           deleteDraft &&
           customer.profileStatus === 'DRAFT' &&

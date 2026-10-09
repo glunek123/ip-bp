@@ -42,6 +42,59 @@ const database = new PrismaClient({
   adapter: new PrismaPg({ connectionString: databaseUrl, max: 8 }),
 });
 
+async function clearCoreCustomerDocuments(departmentIds) {
+  await database.$transaction(async (transaction) => {
+    const guarded = [
+      'material_references',
+      'customer_agreement_invoice_receipts',
+      'customer_agreement_versions',
+      'customer_invoice_profile_versions',
+      'customer_agreements',
+      'customer_invoice_profiles',
+    ];
+    for (const table of guarded)
+      await transaction.$executeRawUnsafe(
+        `ALTER TABLE "${table}" DISABLE TRIGGER USER`,
+      );
+    try {
+      await transaction.materialReference.deleteMany({
+        where: {
+          departmentId: { in: departmentIds },
+          purpose: 'CUSTOMER_AGREEMENT',
+        },
+      });
+      await transaction.customerAgreementInvoiceReceipt.deleteMany({
+        where: { departmentId: { in: departmentIds } },
+      });
+      await transaction.customerAgreement.updateMany({
+        where: { departmentId: { in: departmentIds } },
+        data: { currentVersionId: null },
+      });
+      await transaction.customerInvoiceProfile.updateMany({
+        where: { departmentId: { in: departmentIds } },
+        data: { currentVersionId: null },
+      });
+      await transaction.customerAgreementVersion.deleteMany({
+        where: { departmentId: { in: departmentIds } },
+      });
+      await transaction.customerInvoiceProfileVersion.deleteMany({
+        where: { departmentId: { in: departmentIds } },
+      });
+      await transaction.customerAgreement.deleteMany({
+        where: { departmentId: { in: departmentIds } },
+      });
+      await transaction.customerInvoiceProfile.deleteMany({
+        where: { departmentId: { in: departmentIds } },
+      });
+    } finally {
+      for (const table of [...guarded].reverse())
+        await transaction.$executeRawUnsafe(
+          `ALTER TABLE "${table}" ENABLE TRIGGER USER`,
+        );
+    }
+  });
+}
+
 export const coreLeadFixtures = Object.freeze({
   departmentA: '10000000-0000-4000-8000-000000000001',
   departmentB: '10000000-0000-4000-8000-000000000002',
@@ -632,6 +685,7 @@ async function clearDatabase() {
     ...notaryBindings.map(({ userId }) => userId),
     ...lawyerBindings.map(({ userId }) => userId),
   ];
+  await clearCoreCustomerDocuments(departmentIds);
   await database.materialReference.deleteMany({
     where: { departmentId: { in: departmentIds } },
   });

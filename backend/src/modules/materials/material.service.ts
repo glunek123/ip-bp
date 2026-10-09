@@ -15,6 +15,8 @@ import {
   LeadAction,
 } from '../../access-control/access-control.service';
 import { ActorContext } from '../../access-control/actor-context';
+import { OrganizationService } from '../../access-control/organization.service';
+import { lockCustomerActorFacts } from '../../access-control/customer-actor-facts-lock';
 import { currentLawyerBindingId } from '../../access-control/lawyer-case-access';
 import { DatabaseService } from '../../database/database.service';
 import type { Prisma } from '../../generated/prisma/client';
@@ -129,6 +131,7 @@ const allowedMimeTypes = {
     'image/jpeg',
     'image/png',
   ]),
+  CUSTOMER_AGREEMENT: new Set(['application/pdf', 'image/jpeg', 'image/png']),
   LEAD_SCREENSHOT: new Set([
     'application/pdf',
     'image/jpeg',
@@ -183,6 +186,7 @@ export class MaterialService {
     @Optional()
     @Inject(MATERIAL_SERVICE_CLOCK)
     clock?: () => Date,
+    @Optional() private readonly organization?: OrganizationService,
   ) {
     this.clock = clock ?? (() => new Date());
   }
@@ -326,6 +330,25 @@ export class MaterialService {
     const draft =
       input.ownerType === 'CUSTOMER'
         ? await this.database.$transaction(async (transaction) => {
+            if (input.category === 'CUSTOMER_AGREEMENT') {
+              if (!this.organization)
+                throw new Error('OrganizationService unavailable');
+              await lockCustomerActorFacts(
+                transaction,
+                this.organization,
+                actor,
+              );
+              await this.authorizeOwner(
+                actor,
+                'CUSTOMER',
+                ownerId,
+                'write',
+                transaction,
+                transaction,
+                undefined,
+                input.category,
+              );
+            }
             const locked = await transaction.$queryRawUnsafe<
               Array<{ id: string }>
             >(
@@ -482,6 +505,10 @@ export class MaterialService {
             id: draft.id,
             departmentId: actor.departmentId,
             actorUserId: actor.userId,
+            ownerType: draft.ownerType,
+            ownerId: draft.ownerId,
+            category: draft.category,
+            purpose: draft.purpose,
             status: 'OPEN',
             expiresAt: { gt: this.clock() },
             pendingStorageKey: null,
@@ -507,6 +534,25 @@ export class MaterialService {
         }
         await this.database.$transaction(async (transaction) => {
           if (draft.ownerType === 'CUSTOMER') {
+            if (draft.category === 'CUSTOMER_AGREEMENT') {
+              if (!this.organization)
+                throw new Error('OrganizationService unavailable');
+              await lockCustomerActorFacts(
+                transaction,
+                this.organization,
+                actor,
+              );
+              await this.authorizeOwner(
+                actor,
+                'CUSTOMER',
+                draft.ownerId,
+                'write',
+                transaction,
+                transaction,
+                undefined,
+                draft.category,
+              );
+            }
             const locked = await transaction.$queryRawUnsafe<
               Array<{ id: string }>
             >(
@@ -618,7 +664,17 @@ export class MaterialService {
                         },
                       },
                     }
-                  : {}),
+                  : draft.category === 'CUSTOMER_AGREEMENT'
+                    ? {
+                        currentVersion: {
+                          is: {
+                            materialReferences: {
+                              none: { purpose: 'CUSTOMER_AGREEMENT' },
+                            },
+                          },
+                        },
+                      }
+                    : {}),
             },
           });
           if (activeCount >= materialLimit(draft.category)) {
@@ -653,6 +709,12 @@ export class MaterialService {
           const finalized = await transaction.uploadDraft.updateMany({
             where: {
               id: draft.id,
+              departmentId: actor.departmentId,
+              actorUserId: actor.userId,
+              ownerType: draft.ownerType,
+              ownerId: draft.ownerId,
+              category: draft.category,
+              purpose: draft.purpose,
               status: 'OPEN',
               expiresAt: { gt: this.clock() },
               pendingStorageKey: storageKey,
@@ -837,6 +899,12 @@ export class MaterialService {
     if (facts.size !== contentVersionIds.length) {
       throw this.invalidVersion();
     }
+    if (
+      input.category === 'CUSTOMER_AGREEMENT' &&
+      [...facts.values()].some((fact) => fact.purpose !== 'CUSTOMER_AGREEMENT')
+    ) {
+      throw this.invalidVersion();
+    }
     return Object.freeze(
       contentVersionIds.map((contentVersionId) => {
         const fact = facts.get(contentVersionId);
@@ -877,6 +945,18 @@ export class MaterialService {
       }
       return validation.canonicalFact;
     });
+    if (
+      input.resourceType === 'customer_agreement_version' &&
+      canonicalFacts.some(
+        (fact) =>
+          fact.ownerType !== 'CUSTOMER' ||
+          fact.category !== 'CUSTOMER_AGREEMENT' ||
+          fact.purpose !== 'CUSTOMER_AGREEMENT' ||
+          input.actionEventId === undefined,
+      )
+    ) {
+      throw this.invalidVersion();
+    }
 
     return transaction.materialReference.createMany({
       data: canonicalFacts.map((fact) => ({
@@ -1064,6 +1144,9 @@ export class MaterialService {
     ownerId: string,
   ): Promise<OwnerMaterialListDto> {
     await this.authorizeOwner(actor, ownerType, ownerId, 'read');
+    const canViewAgreement =
+      ownerType !== 'CUSTOMER' ||
+      (await this.hasCustomerAgreementScope(actor, ownerId));
     if (
       ownerType === 'CASE' &&
       (actor.clientCustomerId !== undefined ||
@@ -1244,6 +1327,9 @@ export class MaterialService {
         ownerType,
         ownerId,
         status: 'ACTIVE',
+        ...(ownerType === 'CUSTOMER' && !canViewAgreement
+          ? { category: { not: 'CUSTOMER_AGREEMENT' as const } }
+          : {}),
         ...(ownerType === 'NOTARY_MATTER' &&
         actor.notaryOfficeId === undefined &&
         actor.clientCustomerId === undefined
@@ -1563,10 +1649,21 @@ export class MaterialService {
   ) {
     if (actor.notaryOfficeId !== undefined) throw this.forbidden();
     await this.withSerializableMaterialMutation(async (transaction) => {
+      const agreementLocked = await this.lockAgreementMaterialActorFirst(
+        transaction,
+        actor,
+        materialId,
+      );
       await this.lockMaterialAndCurrentVersion(
         transaction,
         actor.departmentId,
         materialId,
+      );
+      await this.assertAgreementCategoryDidNotAppear(
+        transaction,
+        actor,
+        materialId,
+        agreementLocked,
       );
       const material = await this.findMaterialForMutation(
         actor,
@@ -1636,10 +1733,21 @@ export class MaterialService {
   ) {
     if (actor.notaryOfficeId !== undefined) throw this.forbidden();
     await this.withSerializableMaterialMutation(async (transaction) => {
+      const agreementLocked = await this.lockAgreementMaterialActorFirst(
+        transaction,
+        actor,
+        materialId,
+      );
       await this.lockMaterialAndCurrentVersion(
         transaction,
         actor.departmentId,
         materialId,
+      );
+      await this.assertAgreementCategoryDidNotAppear(
+        transaction,
+        actor,
+        materialId,
+        agreementLocked,
       );
       const material = await this.findMaterialForMutation(
         actor,
@@ -1685,7 +1793,17 @@ export class MaterialService {
                     },
                   },
                 }
-              : {}),
+              : material.category === 'CUSTOMER_AGREEMENT'
+                ? {
+                    currentVersion: {
+                      is: {
+                        materialReferences: {
+                          none: { purpose: 'CUSTOMER_AGREEMENT' },
+                        },
+                      },
+                    },
+                  }
+                : {}),
         },
       });
       if (activeCount >= materialLimit(material.category)) {
@@ -1777,6 +1895,95 @@ export class MaterialService {
       throw this.forbidden();
     }
     return material;
+  }
+
+  private async hasCustomerAgreementScope(
+    actor: ActorContext,
+    customerId: string,
+  ): Promise<boolean> {
+    if (
+      actor.clientCustomerId !== undefined ||
+      actor.notaryOfficeId !== undefined ||
+      actor.lawyerAccountId !== undefined
+    )
+      return false;
+    let scope: Awaited<ReturnType<AccessControlService['buildCustomerScope']>>;
+    try {
+      scope = await this.accessControl.buildCustomerScope(
+        actor,
+        'customer.agreement.read',
+      );
+    } catch (error) {
+      if (error instanceof ForbiddenException) return false;
+      throw error;
+    }
+    return (
+      (await this.database.customer.findFirst({
+        where: { id: customerId, deletedAt: null, ...scope },
+        select: { id: true },
+      })) !== null
+    );
+  }
+
+  private async lockAgreementMaterialActorFirst(
+    transaction: MaterialTransactionClient,
+    actor: ActorContext,
+    materialId: string,
+  ): Promise<boolean> {
+    const hint = await transaction.material.findFirst({
+      where: { id: materialId, departmentId: actor.departmentId },
+      select: { ownerType: true, ownerId: true, category: true },
+    });
+    if (
+      hint?.ownerType !== 'CUSTOMER' ||
+      hint.category !== 'CUSTOMER_AGREEMENT'
+    )
+      return false;
+    if (!this.organization) throw new Error('OrganizationService unavailable');
+    await lockCustomerActorFacts(transaction, this.organization, actor);
+    await this.authorizeOwner(
+      actor,
+      'CUSTOMER',
+      hint.ownerId,
+      'write',
+      transaction,
+      transaction,
+      undefined,
+      hint.category,
+    );
+    const locked = await transaction.$queryRaw<Array<{ id: string }>>`
+      SELECT id FROM customers WHERE id = ${hint.ownerId}::uuid
+        AND department_id = ${actor.departmentId}::uuid FOR UPDATE`;
+    if (locked.length !== 1) throw this.notFound();
+    await this.authorizeOwner(
+      actor,
+      'CUSTOMER',
+      hint.ownerId,
+      'write',
+      transaction,
+      transaction,
+      undefined,
+      hint.category,
+    );
+    return true;
+  }
+
+  private async assertAgreementCategoryDidNotAppear(
+    transaction: MaterialTransactionClient,
+    actor: ActorContext,
+    materialId: string,
+    agreementLocked: boolean,
+  ): Promise<void> {
+    const current = await transaction.material.findFirst({
+      where: { id: materialId, departmentId: actor.departmentId },
+      select: { ownerType: true, category: true },
+    });
+    if (
+      current?.ownerType === 'CUSTOMER' &&
+      current.category === 'CUSTOMER_AGREEMENT' &&
+      !agreementLocked
+    )
+      throw this.versionConflict();
   }
 
   private async lockMaterialAndCurrentVersion(
@@ -2714,8 +2921,10 @@ export class MaterialService {
       return;
     }
     if (ownerType === 'CUSTOMER') {
-      const writeAction =
-        notaryCategory === 'CUSTOMER_RIGHT_EVIDENCE'
+      const agreement = notaryCategory === 'CUSTOMER_AGREEMENT';
+      const writeAction = agreement
+        ? ('customer.agreement.edit' as const)
+        : notaryCategory === 'CUSTOMER_RIGHT_EVIDENCE'
           ? ('customer.edit-routine' as const)
           : ('customer.admit' as const);
       const readScope = await this.withMaterialAuthorization(() =>
@@ -2735,11 +2944,24 @@ export class MaterialService {
               ),
             )
           : null;
+      const agreementReadScope = agreement
+        ? await this.withMaterialAuthorization(() =>
+            this.accessControl.buildCustomerScope(
+              actor,
+              'customer.agreement.read',
+              snapshotReader,
+            ),
+          )
+        : null;
       const customer = await reader.customer.findFirst({
         where: {
           id: ownerId,
           deletedAt: null,
-          AND: writeScope === null ? [readScope] : [readScope, writeScope],
+          AND: [
+            readScope,
+            ...(agreementReadScope ? [agreementReadScope] : []),
+            ...(writeScope ? [writeScope] : []),
+          ],
         },
         select: {
           departmentId: true,
@@ -2994,6 +3216,9 @@ export class MaterialService {
       (input.ownerType === 'CUSTOMER' &&
         input.category === 'CUSTOMER_RIGHT_EVIDENCE' &&
         input.purpose === 'CUSTOMER_RIGHT_EVIDENCE') ||
+      (input.ownerType === 'CUSTOMER' &&
+        input.category === 'CUSTOMER_AGREEMENT' &&
+        input.purpose === 'CUSTOMER_AGREEMENT') ||
       (input.ownerType === 'LEAD_DRAFT' &&
         input.category === 'LEAD_SCREENSHOT' &&
         input.purpose === 'LEAD_SCREENSHOT') ||
@@ -3112,6 +3337,7 @@ function toMaterialPurpose(value: string): MaterialPurposeValue {
     value === 'IDENTITY_FRONT' ||
     value === 'IDENTITY_BACK' ||
     value === 'CUSTOMER_RIGHT_EVIDENCE' ||
+    value === 'CUSTOMER_AGREEMENT' ||
     value === 'LEAD_SCREENSHOT' ||
     value === 'NOTARY_OPENING_PHOTO' ||
     value === 'NOTARY_CERTIFICATE' ||
@@ -3134,7 +3360,8 @@ function toMaterialPurpose(value: string): MaterialPurposeValue {
 function materialLimit(category: keyof typeof allowedMimeTypes): number {
   return category === 'CUSTOMER_IDENTITY'
     ? 10
-    : category === 'CUSTOMER_RIGHT_EVIDENCE'
+    : category === 'CUSTOMER_RIGHT_EVIDENCE' ||
+        category === 'CUSTOMER_AGREEMENT'
       ? 10
       : category === 'NOTARY_OPENING_PHOTO'
         ? 50

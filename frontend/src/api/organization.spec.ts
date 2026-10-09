@@ -107,6 +107,26 @@ const context = {
       scopes: ['SELF', 'TEAM', 'DEPARTMENT'],
     },
     {
+      action: 'CUSTOMER_AGREEMENT_READ',
+      label: '查看客户协议',
+      scopes: ['SELF', 'TEAM', 'DEPARTMENT'],
+    },
+    {
+      action: 'CUSTOMER_AGREEMENT_EDIT',
+      label: '维护客户协议',
+      scopes: ['SELF', 'TEAM', 'DEPARTMENT'],
+    },
+    {
+      action: 'CUSTOMER_INVOICE_READ',
+      label: '查看开票资料',
+      scopes: ['SELF', 'TEAM', 'DEPARTMENT'],
+    },
+    {
+      action: 'CUSTOMER_INVOICE_EDIT',
+      label: '维护开票资料',
+      scopes: ['SELF', 'TEAM', 'DEPARTMENT'],
+    },
+    {
       action: 'CUSTOMER_ADMIT',
       label: '准入客户',
       scopes: ['SELF', 'TEAM', 'DEPARTMENT'],
@@ -323,6 +343,10 @@ describe('organization API', () => {
       'CUSTOMER_COOPERATION_TERMINATE',
       'CUSTOMER_COOPERATION_RESUME',
       'CUSTOMER_RIGHT_ASSET_WITHDRAW',
+      'CUSTOMER_AGREEMENT_READ',
+      'CUSTOMER_AGREEMENT_EDIT',
+      'CUSTOMER_INVOICE_READ',
+      'CUSTOMER_INVOICE_EDIT',
       'CUSTOMER_ADMIT',
       'LEAD_READ',
       'LEAD_CREATE',

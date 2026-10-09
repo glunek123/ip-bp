@@ -16,6 +16,8 @@ import { CustomerCooperationService } from './modules/customers/customer-coopera
 import { CustomerService } from './modules/customers/customer.service';
 import { CustomerContactController } from './modules/customers/customer-contact.controller';
 import { CustomerContactService } from './modules/customers/customer-contact.service';
+import { CustomerAgreementInvoiceController } from './modules/customers/customer-agreement-invoice.controller';
+import { CustomerAgreementInvoiceService } from './modules/customers/customer-agreement-invoice.service';
 import { ClientLeadController } from './modules/leads/client-lead.controller';
 import { ClientLeadService } from './modules/leads/client-lead.service';
 import { ClientNotaryController } from './modules/leads/client-notary.controller';
@@ -51,6 +53,7 @@ describe('CORE-LD-002 OpenAPI contract', () => {
         CustomerController,
         CustomerCooperationController,
         CustomerContactController,
+        CustomerAgreementInvoiceController,
         LeadController,
         ClientLeadController,
         ClientNotaryController,
@@ -64,6 +67,7 @@ describe('CORE-LD-002 OpenAPI contract', () => {
         { provide: CustomerService, useValue: {} },
         { provide: CustomerCooperationService, useValue: {} },
         { provide: CustomerContactService, useValue: {} },
+        { provide: CustomerAgreementInvoiceService, useValue: {} },
         { provide: CustomerLifecycleService, useValue: {} },
         { provide: CustomerAdmissionService, useValue: {} },
         { provide: CustomerAccountService, useValue: {} },
@@ -101,6 +105,60 @@ describe('CORE-LD-002 OpenAPI contract', () => {
   it.each([
     ['post', '/api/v1/auth/login', '200', 'AuthSessionResponseDto'],
     ['get', '/api/v1/auth/session', '200', 'AuthSessionResponseDto'],
+    [
+      'get',
+      '/api/v1/customers/{customerId}/agreements',
+      '200',
+      'AgreementResponseDto',
+    ],
+    [
+      'post',
+      '/api/v1/customers/{customerId}/agreements',
+      '201',
+      'AgreementResponseDto',
+    ],
+    [
+      'get',
+      '/api/v1/customers/{customerId}/agreements/{agreementId}',
+      '200',
+      'AgreementResponseDto',
+    ],
+    [
+      'get',
+      '/api/v1/customers/{customerId}/agreements/{agreementId}/versions',
+      '200',
+      'AgreementVersionListResponseDto',
+    ],
+    [
+      'post',
+      '/api/v1/customers/{customerId}/agreements/{agreementId}/revisions',
+      '200',
+      'AgreementResponseDto',
+    ],
+    [
+      'get',
+      '/api/v1/customers/{customerId}/invoice-profile',
+      '200',
+      'InvoiceResponseDto',
+    ],
+    [
+      'post',
+      '/api/v1/customers/{customerId}/invoice-profile',
+      '201',
+      'InvoiceResponseDto',
+    ],
+    [
+      'get',
+      '/api/v1/customers/{customerId}/invoice-profile/versions',
+      '200',
+      'InvoiceVersionListResponseDto',
+    ],
+    [
+      'post',
+      '/api/v1/customers/{customerId}/invoice-profile/revisions',
+      '200',
+      'InvoiceResponseDto',
+    ],
     [
       'get',
       '/api/v1/customers/{customerId}/contacts',
@@ -296,6 +354,28 @@ describe('CORE-LD-002 OpenAPI contract', () => {
   });
 
   it.each([
+    ['/api/v1/customers/{customerId}/agreements', '201', '200'],
+    [
+      '/api/v1/customers/{customerId}/agreements/{agreementId}/revisions',
+      '200',
+      '201',
+    ],
+    ['/api/v1/customers/{customerId}/invoice-profile', '201', '200'],
+    ['/api/v1/customers/{customerId}/invoice-profile/revisions', '200', '201'],
+  ] as const)(
+    'documents CU007 POST %s as %s only',
+    (path, expected, absent) => {
+      const document = SwaggerModule.createDocument(
+        app,
+        new DocumentBuilder().setTitle('test').setVersion('1').build(),
+      );
+      const responses = document.paths[path]?.post?.responses;
+      expect(responses?.[expected]).toBeDefined();
+      expect(responses?.[absent]).toBeUndefined();
+    },
+  );
+
+  it.each([
     [
       'ContactSummaryResponseDto',
       ['phone', 'email', 'duty', 'endedAt', 'endReason'],
@@ -307,6 +387,14 @@ describe('CORE-LD-002 OpenAPI contract', () => {
       ['phone', 'email', 'duty', 'endedAt', 'endReason'],
     ],
     ['ContactVersionActorResponseDto', ['userId']],
+    [
+      'AgreementVersionResponseDto',
+      ['model', 'settlementMethod', 'effectiveFrom', 'effectiveTo'],
+    ],
+    [
+      'InvoiceVersionResponseDto',
+      ['invoiceType', 'invoiceSubject', 'taxNo', 'bank'],
+    ],
   ] as const)(
     'documents %s nullable scalar responses as required strings',
     (name, fields) => {
@@ -327,6 +415,38 @@ describe('CORE-LD-002 OpenAPI contract', () => {
       }
     },
   );
+
+  it.each([
+    [
+      'CreateAgreementDto',
+      ['model', 'settlementMethod', 'effectiveFrom', 'effectiveTo'],
+    ],
+    [
+      'ReviseAgreementDto',
+      ['model', 'settlementMethod', 'effectiveFrom', 'effectiveTo'],
+    ],
+    [
+      'CreateInvoiceProfileDto',
+      ['invoiceType', 'invoiceSubject', 'taxNo', 'bank'],
+    ],
+    [
+      'ReviseInvoiceProfileDto',
+      ['invoiceType', 'invoiceSubject', 'taxNo', 'bank'],
+    ],
+  ] as const)('documents CU007 %s nullable request strings', (name, fields) => {
+    const document = SwaggerModule.createDocument(
+      app,
+      new DocumentBuilder().setTitle('test').setVersion('1').build(),
+    );
+    const schema = document.components?.schemas?.[name] as {
+      properties?: Record<string, unknown>;
+    };
+    for (const field of fields)
+      expect(schema.properties?.[field]).toMatchObject({
+        type: 'string',
+        nullable: true,
+      });
+  });
 
   it.each(['CreateContactDto', 'UpdateContactDto'] as const)(
     'documents %s nullable request scalars as strings',

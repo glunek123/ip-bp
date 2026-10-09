@@ -19,6 +19,10 @@ enum PermissionAction {
   CUSTOMER_COOPERATION_TERMINATE @map("customer.cooperation.terminate")
   CUSTOMER_COOPERATION_RESUME   @map("customer.cooperation.resume")
   CUSTOMER_RIGHT_ASSET_WITHDRAW @map("customer.right-asset.withdraw")
+  CUSTOMER_AGREEMENT_READ       @map("customer.agreement.read")
+  CUSTOMER_AGREEMENT_EDIT       @map("customer.agreement.edit")
+  CUSTOMER_INVOICE_READ         @map("customer.invoice.read")
+  CUSTOMER_INVOICE_EDIT         @map("customer.invoice.edit")
   CUSTOMER_ADMIT               @map("customer.admit")
   LEAD_READ                    @map("lead.read")
   LEAD_CREATE                  @map("lead.create")
@@ -158,6 +162,7 @@ enum MaterialOwnerType {
 enum MaterialCategory {
   CUSTOMER_IDENTITY
   CUSTOMER_RIGHT_EVIDENCE
+  CUSTOMER_AGREEMENT
   LEAD_SCREENSHOT
   NOTARY_OPENING_PHOTO
   NOTARY_CERTIFICATE
@@ -1210,6 +1215,101 @@ model CustomerContactCommandReceipt {
   @@unique([departmentId, actorUserId, idempotencyKey])
   @@index([customerId, departmentId])
   @@map("customer_contact_command_receipts")
+}
+
+enum CustomerAgreementValidityMode {
+  FIXED
+  LONG_TERM
+  UNKNOWN
+
+  @@map("customer_agreement_validity_mode")
+}
+
+model CustomerAgreement {
+  id               String   @id @default(uuid()) @db.Uuid
+  customerId       String   @map("customer_id") @db.Uuid
+  departmentId     String   @map("department_id") @db.Uuid
+  currentVersionId String?  @map("current_version_id") @db.Uuid
+  version          Int      @default(1)
+  createdAt        DateTime @default(now()) @map("created_at") @db.Timestamptz(3)
+  updatedAt        DateTime @updatedAt @map("updated_at") @db.Timestamptz(3)
+
+  @@unique([customerId, departmentId])
+  @@unique([id, customerId, departmentId])
+  @@map("customer_agreements")
+}
+
+model CustomerAgreementVersion {
+  id                String                        @id @default(uuid()) @db.Uuid
+  agreementId       String                        @map("agreement_id") @db.Uuid
+  customerId        String                        @map("customer_id") @db.Uuid
+  departmentId      String                        @map("department_id") @db.Uuid
+  version           Int
+  title             String                        @db.VarChar(200)
+  model             String?                       @db.VarChar(100)
+  settlementMethod  String?                       @map("settlement_method") @db.VarChar(200)
+  validityMode      CustomerAgreementValidityMode @map("validity_mode")
+  effectiveFrom     DateTime?                     @map("effective_from") @db.Date
+  effectiveTo       DateTime?                     @map("effective_to") @db.Date
+  contentVersionIds String[]                      @map("content_version_ids") @db.Uuid
+  recordedByUserId  String                        @map("recorded_by_user_id") @db.Uuid
+  recordedAt        DateTime                      @default(now()) @map("recorded_at") @db.Timestamptz(3)
+  auditEventId      String                        @unique @map("audit_event_id") @db.Uuid
+
+  @@unique([agreementId, version])
+  @@unique([id, agreementId, customerId, departmentId])
+  @@index([customerId, departmentId, version])
+  @@map("customer_agreement_versions")
+}
+
+model CustomerInvoiceProfile {
+  id               String   @id @default(uuid()) @db.Uuid
+  customerId       String   @map("customer_id") @db.Uuid
+  departmentId     String   @map("department_id") @db.Uuid
+  currentVersionId String?  @map("current_version_id") @db.Uuid
+  version          Int      @default(1)
+  createdAt        DateTime @default(now()) @map("created_at") @db.Timestamptz(3)
+  updatedAt        DateTime @updatedAt @map("updated_at") @db.Timestamptz(3)
+
+  @@unique([customerId, departmentId])
+  @@unique([id, customerId, departmentId])
+  @@map("customer_invoice_profiles")
+}
+
+model CustomerInvoiceProfileVersion {
+  id               String   @id @default(uuid()) @db.Uuid
+  profileId        String   @map("profile_id") @db.Uuid
+  customerId       String   @map("customer_id") @db.Uuid
+  departmentId     String   @map("department_id") @db.Uuid
+  version          Int
+  invoiceType      String?  @map("invoice_type") @db.VarChar(100)
+  invoiceSubject   String?  @map("invoice_subject") @db.VarChar(200)
+  taxNo            String?  @map("tax_no") @db.VarChar(100)
+  bank             String?  @db.VarChar(500)
+  recordedByUserId String   @map("recorded_by_user_id") @db.Uuid
+  recordedAt       DateTime @default(now()) @map("recorded_at") @db.Timestamptz(3)
+  auditEventId     String   @unique @map("audit_event_id") @db.Uuid
+
+  @@unique([profileId, version])
+  @@unique([id, profileId, customerId, departmentId])
+  @@index([customerId, departmentId, version])
+  @@map("customer_invoice_profile_versions")
+}
+
+model CustomerAgreementInvoiceReceipt {
+  id                 String   @id @default(uuid()) @db.Uuid
+  departmentId       String   @map("department_id") @db.Uuid
+  actorUserId        String   @map("actor_user_id") @db.Uuid
+  action             String   @db.VarChar(40)
+  idempotencyKey     String   @map("idempotency_key") @db.VarChar(200)
+  requestFingerprint String   @map("request_fingerprint") @db.Char(64)
+  customerId         String   @map("customer_id") @db.Uuid
+  resultSnapshot     Json     @map("result_snapshot")
+  createdAt          DateTime @default(now()) @map("created_at") @db.Timestamptz(3)
+
+  @@unique([departmentId, actorUserId, action, idempotencyKey])
+  @@index([customerId, departmentId])
+  @@map("customer_agreement_invoice_receipts")
 }
 
 model CustomerAdmissionReceipt {

@@ -16,6 +16,8 @@ import { CustomerCooperationController } from './customer-cooperation.controller
 import { CustomerCooperationService } from './customer-cooperation.service';
 import { CustomerContactController } from './customer-contact.controller';
 import { CustomerContactService } from './customer-contact.service';
+import { CustomerAgreementInvoiceController } from './customer-agreement-invoice.controller';
+import { CustomerAgreementInvoiceService } from './customer-agreement-invoice.service';
 
 @Module({
   imports: [AccessControlModule, AuthModule, DatabaseModule, MaterialModule],
@@ -23,6 +25,7 @@ import { CustomerContactService } from './customer-contact.service';
     CustomerController,
     CustomerCooperationController,
     CustomerContactController,
+    CustomerAgreementInvoiceController,
     RightsHolderController,
     RightAssetController,
   ],
@@ -31,6 +34,7 @@ import { CustomerContactService } from './customer-contact.service';
     CustomerLifecycleService,
     CustomerCooperationService,
     CustomerContactService,
+    CustomerAgreementInvoiceService,
     CustomerAdmissionService,
     CustomerAccountService,
     RightsHolderService,

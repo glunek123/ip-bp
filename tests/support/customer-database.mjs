@@ -53,6 +53,57 @@ const database = new PrismaClient({
   adapter: new PrismaPg({ connectionString: databaseUrl, max: 2 }),
 });
 
+async function clearCustomerDocuments(transaction, departmentIds) {
+  const guarded = [
+    'material_references',
+    'customer_agreement_invoice_receipts',
+    'customer_agreement_versions',
+    'customer_invoice_profile_versions',
+    'customer_agreements',
+    'customer_invoice_profiles',
+  ];
+  for (const table of guarded)
+    await transaction.$executeRawUnsafe(
+      `ALTER TABLE "${table}" DISABLE TRIGGER USER`,
+    );
+  try {
+    await transaction.materialReference.deleteMany({
+      where: {
+        departmentId: { in: departmentIds },
+        purpose: 'CUSTOMER_AGREEMENT',
+      },
+    });
+    await transaction.customerAgreementInvoiceReceipt.deleteMany({
+      where: { departmentId: { in: departmentIds } },
+    });
+    await transaction.customerAgreement.updateMany({
+      where: { departmentId: { in: departmentIds } },
+      data: { currentVersionId: null },
+    });
+    await transaction.customerInvoiceProfile.updateMany({
+      where: { departmentId: { in: departmentIds } },
+      data: { currentVersionId: null },
+    });
+    await transaction.customerAgreementVersion.deleteMany({
+      where: { departmentId: { in: departmentIds } },
+    });
+    await transaction.customerInvoiceProfileVersion.deleteMany({
+      where: { departmentId: { in: departmentIds } },
+    });
+    await transaction.customerAgreement.deleteMany({
+      where: { departmentId: { in: departmentIds } },
+    });
+    await transaction.customerInvoiceProfile.deleteMany({
+      where: { departmentId: { in: departmentIds } },
+    });
+  } finally {
+    for (const table of [...guarded].reverse())
+      await transaction.$executeRawUnsafe(
+        `ALTER TABLE "${table}" ENABLE TRIGGER USER`,
+      );
+  }
+}
+
 async function clearCustomerContactData(transaction, departmentIds) {
   await transaction.$executeRawUnsafe(
     'ALTER TABLE "customer_contact_versions" DISABLE TRIGGER USER',
@@ -140,6 +191,7 @@ async function resetLocalAuthE2eData() {
     await transaction.authSession.deleteMany({});
     await transaction.authThrottle.deleteMany({});
     await transaction.localCredential.deleteMany({});
+    await clearCustomerDocuments(transaction, [departmentId]);
     await transaction.materialReference.deleteMany({ where: { departmentId } });
     await transaction.customerAdmissionReceipt.deleteMany({
       where: { departmentId },
@@ -483,6 +535,7 @@ async function resetCustomerE2eData() {
         `ALTER TABLE "${table}" ENABLE TRIGGER USER`,
       );
     }
+    await clearCustomerDocuments(transaction, departmentIds);
     await transaction.materialReference.deleteMany({
       where: { departmentId: { in: departmentIds } },
     });
@@ -731,6 +784,178 @@ async function grantCustomerLifecycle(roleId, scope = 'TEAM') {
     })),
     skipDuplicates: true,
   });
+}
+
+async function setCustomerDocumentGrant(
+  roleId,
+  action,
+  enabled,
+  scope = 'TEAM',
+) {
+  if (
+    ![
+      'CUSTOMER_AGREEMENT_READ',
+      'CUSTOMER_AGREEMENT_EDIT',
+      'CUSTOMER_INVOICE_READ',
+      'CUSTOMER_INVOICE_EDIT',
+    ].includes(action)
+  ) {
+    throw new Error('Unknown customer document action');
+  }
+  if (enabled)
+    await database.roleGrant.upsert({
+      where: {
+        roleTemplateId_action_scope: { roleTemplateId: roleId, action, scope },
+      },
+      update: {},
+      create: { roleTemplateId: roleId, action, scope },
+    });
+  else
+    await database.roleGrant.deleteMany({
+      where: { roleTemplateId: roleId, action },
+    });
+}
+
+async function setCustomerDocumentTestState(customerId, data) {
+  const customer = await database.customer.findUnique({
+    where: { id: customerId },
+    select: { departmentId: true },
+  });
+  if (!customer || customer.departmentId !== e2eFixtures.departmentA)
+    throw new Error('CU007 fixture customer is not owned by department A');
+  if (
+    data.responsibleUserId &&
+    ![e2eFixtures.userA, e2eFixtures.userSelf].includes(data.responsibleUserId)
+  )
+    throw new Error('CU007 fixture responsible user is invalid');
+  if (
+    data.teamId &&
+    ![e2eFixtures.teamA, e2eFixtures.teamSelf].includes(data.teamId)
+  )
+    throw new Error('CU007 fixture team is invalid');
+  if (
+    data.cooperationStatus &&
+    !['COOPERATING', 'PAUSED', 'TERMINATED'].includes(data.cooperationStatus)
+  )
+    throw new Error('CU007 fixture cooperation status is invalid');
+  return database.customer.update({ where: { id: customerId }, data });
+}
+
+async function setCustomerDocumentBaseReadScope(scope) {
+  if (!['TEAM', 'DEPARTMENT'].includes(scope))
+    throw new Error('CU007 fixture scope is invalid');
+  await database.roleGrant.deleteMany({
+    where: { roleTemplateId: e2eFixtures.roleA, action: 'CUSTOMER_READ' },
+  });
+  await database.roleGrant.create({
+    data: { roleTemplateId: e2eFixtures.roleA, action: 'CUSTOMER_READ', scope },
+  });
+}
+
+async function getCustomerDocumentCounts(customerId) {
+  const customer = await database.customer.findUnique({
+    where: { id: customerId },
+    select: { version: true },
+  });
+  const entities = await Promise.all([
+    database.customerAgreement.findFirst({
+      where: { customerId },
+      select: { id: true },
+    }),
+    database.customerInvoiceProfile.findFirst({
+      where: { customerId },
+      select: { id: true },
+    }),
+  ]);
+  const entityIds = entities.flatMap((row) => (row ? [row.id] : []));
+  const [
+    agreements,
+    agreementVersions,
+    invoices,
+    invoiceVersions,
+    receipts,
+    audits,
+  ] = await Promise.all([
+    database.customerAgreement.count({ where: { customerId } }),
+    database.customerAgreementVersion.count({ where: { customerId } }),
+    database.customerInvoiceProfile.count({ where: { customerId } }),
+    database.customerInvoiceProfileVersion.count({ where: { customerId } }),
+    database.customerAgreementInvoiceReceipt.count({ where: { customerId } }),
+    database.auditEvent.count({
+      where: {
+        resourceType: {
+          in: ['customer_agreement', 'customer_invoice_profile'],
+        },
+        resourceId: { in: entityIds },
+      },
+    }),
+  ]);
+  const currentVersionId = entities[0]
+    ? ((
+        await database.customerAgreement.findUnique({
+          where: { id: entities[0].id },
+          select: { currentVersionId: true },
+        })
+      )?.currentVersionId ?? null)
+    : null;
+  const references = await database.materialReference.count({
+    where: {
+      departmentId: e2eFixtures.departmentA,
+      resourceType: 'customer_agreement_version',
+      resourceId: {
+        in: (
+          await database.customerAgreementVersion.findMany({
+            where: { customerId },
+            select: { id: true },
+          })
+        ).map((row) => row.id),
+      },
+    },
+  });
+  return {
+    customerVersion: customer?.version ?? null,
+    currentVersionId,
+    agreements,
+    agreementVersions,
+    invoices,
+    invoiceVersions,
+    receipts,
+    audits,
+    references,
+  };
+}
+
+async function rejectCustomerDocumentStage(stage) {
+  const targets = {
+    audit: ['audit_events', "action <> 'customer.agreement.revised'"],
+    reference: [
+      'material_references',
+      "resource_type <> 'customer_agreement_version'",
+    ],
+    receipt: [
+      'customer_agreement_invoice_receipts',
+      "action <> 'AGREEMENT_REVISE'",
+    ],
+  };
+  const target = targets[stage];
+  if (!target) throw new Error('Unknown CU007 failure stage');
+  await allowCustomerDocumentStage(stage);
+  await database.$executeRawUnsafe(
+    `ALTER TABLE ${target[0]} ADD CONSTRAINT e2e_reject_customer_document_${stage} CHECK (${target[1]}) NOT VALID`,
+  );
+}
+
+async function allowCustomerDocumentStage(stage) {
+  const tables = {
+    audit: 'audit_events',
+    reference: 'material_references',
+    receipt: 'customer_agreement_invoice_receipts',
+  };
+  const table = tables[stage];
+  if (!table) throw new Error('Unknown CU007 failure stage');
+  await database.$executeRawUnsafe(
+    `ALTER TABLE ${table} DROP CONSTRAINT IF EXISTS e2e_reject_customer_document_${stage}`,
+  );
 }
 
 async function grantCustomerAdmission(roleId, scope = 'TEAM') {
@@ -3411,6 +3636,12 @@ export {
   rejectCustomerUpdateAuditWrites,
   rejectNamedCustomerWrites,
   resetCustomerE2eData,
+  setCustomerDocumentGrant,
+  setCustomerDocumentTestState,
+  setCustomerDocumentBaseReadScope,
+  getCustomerDocumentCounts,
+  rejectCustomerDocumentStage,
+  allowCustomerDocumentStage,
   grantCustomerCooperation,
   getCustomerMaintenanceCounts,
   getCustomerMaintenanceGuardState,

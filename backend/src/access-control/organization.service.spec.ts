@@ -345,7 +345,7 @@ describe('OrganizationService management context', () => {
       assignTeamRoles: false,
       manageRoleTemplates: true,
     });
-    expect(result.permissionCatalog).toHaveLength(43);
+    expect(result.permissionCatalog).toHaveLength(47);
     for (const [action, label] of [
       ['CUSTOMER_RESPONSIBLE_TRANSFER', '转派负责运营'],
       ['CUSTOMER_COOPERATION_PAUSE', '暂停客户合作'],
@@ -373,6 +373,17 @@ describe('OrganizationService management context', () => {
       label: '撤下权利资产',
       scopes: ['SELF', 'TEAM', 'DEPARTMENT'],
     });
+    for (const [action, label] of [
+      ['CUSTOMER_AGREEMENT_READ', '查看客户协议'],
+      ['CUSTOMER_AGREEMENT_EDIT', '维护客户协议'],
+      ['CUSTOMER_INVOICE_READ', '查看开票资料'],
+      ['CUSTOMER_INVOICE_EDIT', '维护开票资料'],
+    ])
+      expect(result.permissionCatalog).toContainEqual({
+        action,
+        label,
+        scopes: ['SELF', 'TEAM', 'DEPARTMENT'],
+      });
     expect(result.permissionCatalog).toContainEqual({
       action: 'CASE_JUDGMENT_REGISTER',
       label: '登记一审判决',

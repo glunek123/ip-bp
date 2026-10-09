@@ -16,6 +16,44 @@ export const e2eFixtures: Readonly<{
 }>;
 
 export function resetCustomerE2eData(): Promise<void>;
+export function setCustomerDocumentGrant(
+  roleId: string,
+  action:
+    | 'CUSTOMER_AGREEMENT_READ'
+    | 'CUSTOMER_AGREEMENT_EDIT'
+    | 'CUSTOMER_INVOICE_READ'
+    | 'CUSTOMER_INVOICE_EDIT',
+  enabled: boolean,
+  scope?: 'TEAM' | 'DEPARTMENT' | 'SELF',
+): Promise<void>;
+export function setCustomerDocumentTestState(
+  customerId: string,
+  data: {
+    responsibleUserId?: string;
+    teamId?: string;
+    cooperationStatus?: 'COOPERATING' | 'PAUSED' | 'TERMINATED';
+  },
+): Promise<unknown>;
+export function setCustomerDocumentBaseReadScope(
+  scope: 'TEAM' | 'DEPARTMENT',
+): Promise<void>;
+export function getCustomerDocumentCounts(customerId: string): Promise<{
+  customerVersion: number | null;
+  currentVersionId: string | null;
+  agreements: number;
+  agreementVersions: number;
+  invoices: number;
+  invoiceVersions: number;
+  receipts: number;
+  audits: number;
+  references: number;
+}>;
+export function rejectCustomerDocumentStage(
+  stage: 'audit' | 'reference' | 'receipt',
+): Promise<void>;
+export function allowCustomerDocumentStage(
+  stage: 'audit' | 'reference' | 'receipt',
+): Promise<void>;
 export function grantCustomerAdmission(
   roleId: string,
   scope?: 'TEAM' | 'DEPARTMENT' | 'SELF',
