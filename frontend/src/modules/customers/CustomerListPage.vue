@@ -1,13 +1,80 @@
 <script setup lang="ts">
-import { onBeforeUnmount, onMounted, ref } from 'vue';
-import { RouterLink } from 'vue-router';
+import { computed, onBeforeUnmount, onMounted, ref, watch } from 'vue';
+import { RouterLink, useRouter } from 'vue-router';
 import { ElButton } from 'element-plus/es/components/button/index.mjs';
 import { listCustomers, type CustomerSummary } from '../../api/customers';
+import { pinia } from '../../app/pinia';
+import { useAuthStore } from '../../stores/auth';
 
+const router = useRouter();
+const auth = useAuthStore(pinia);
 const state = ref<'loading' | 'ready' | 'failed'>('loading');
 const items = ref<CustomerSummary[]>([]);
 const canCreateDraft = ref(false);
+const maintenanceSuccessNotice = ref('');
+const actorIdentity = computed(() => {
+  const session = auth.session;
+  if (session?.principalType !== 'INTERNAL' || !session.department) return '';
+  return `${session.user.id}:${session.department.id}:${session.authorizationRevision}`;
+});
 let activeRequest: AbortController | undefined;
+
+function isAccessLossNotice(value: unknown): value is {
+  type: 'access-revoked-after-confirmed-maintenance';
+  userId: string;
+  departmentId: string;
+  authorizationRevision: number;
+} {
+  return (
+    typeof value === 'object' &&
+    value !== null &&
+    'type' in value &&
+    value.type === 'access-revoked-after-confirmed-maintenance' &&
+    'userId' in value &&
+    typeof value.userId === 'string' &&
+    'departmentId' in value &&
+    typeof value.departmentId === 'string' &&
+    'authorizationRevision' in value &&
+    typeof value.authorizationRevision === 'number'
+  );
+}
+
+function consumeMaintenanceSuccessNotice(): void {
+  const historyState = router.options.history.state;
+  if (
+    !Object.prototype.hasOwnProperty.call(
+      historyState,
+      'customerMaintenanceNotice',
+    )
+  )
+    return;
+  const notice = historyState.customerMaintenanceNotice;
+  router.options.history.replace(router.options.history.location, {
+    ...historyState,
+    customerMaintenanceNotice: null,
+  });
+  const session = auth.session;
+  if (
+    !isAccessLossNotice(notice) ||
+    session?.principalType !== 'INTERNAL' ||
+    !session.department ||
+    notice.userId !== session.user.id ||
+    notice.departmentId !== session.department.id ||
+    notice.authorizationRevision !== session.authorizationRevision
+  ) {
+    return;
+  }
+  maintenanceSuccessNotice.value =
+    '维护已成功，当前账号已无法继续查看客户资料。';
+}
+
+watch(
+  actorIdentity,
+  () => {
+    maintenanceSuccessNotice.value = '';
+  },
+  { flush: 'sync' },
+);
 
 function formatTime(value: string): string {
   return new Date(value).toLocaleString('zh-CN', {
@@ -32,13 +99,23 @@ async function load(): Promise<void> {
   }
 }
 
-onMounted(() => void load());
+onMounted(() => {
+  consumeMaintenanceSuccessNotice();
+  void load();
+});
 onBeforeUnmount(() => activeRequest?.abort());
 </script>
 
 <template>
   <div class="page-view">
     <main>
+      <p
+        v-if="maintenanceSuccessNotice"
+        role="status"
+        data-test="maintenance-success-notice"
+      >
+        {{ maintenanceSuccessNotice }}
+      </p>
       <div class="section-heading">
         <div>
           <p class="section-kicker">客户基础</p>

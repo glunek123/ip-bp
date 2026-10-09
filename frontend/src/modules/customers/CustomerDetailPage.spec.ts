@@ -109,6 +109,43 @@ function customerRecord(id: string, name: string) {
 }
 
 describe('CustomerDetailPage', () => {
+  it('carries a confirmed access-loss success to the list without query data', async () => {
+    useAuthStore(pinia).session = {
+      principalType: 'INTERNAL',
+      user: { id: 'user-1', displayName: '运营甲', username: 'operator-a' },
+      department: { id: 'department-1', name: '甲部门' },
+      departments: [{ id: 'department-1', name: '甲部门' }],
+      customer: null,
+      notaryOffice: null,
+      authorizationRevision: 7,
+      expiresAt: '2026-10-09T10:00:00.000Z',
+      csrfToken: 'csrf',
+    };
+    api.getCustomer.mockResolvedValue(customerRecord('customer-1', '客户甲'));
+    maintenanceApi.changeCustomerCooperation.mockResolvedValue({
+      customerId: 'customer-1',
+      action: 'pause',
+      resultVersion: 2,
+      occurredAt: '2026-10-09T02:00:00.000Z',
+      canReadAfter: false,
+    });
+    const { router, wrapper } = await mountPage();
+    await flushPromises();
+    await wrapper.get('[data-test="pause-open"]').trigger('click');
+    await wrapper.get('[data-test="maintenance-reason"]').setValue('暂停原因');
+    await wrapper.get('[data-test="maintenance-submit"]').trigger('submit');
+    await flushPromises();
+    expect(router.currentRoute.value.fullPath).toBe('/customers');
+    expect(router.currentRoute.value.query).toEqual({});
+    expect(router.options.history.state.customerMaintenanceNotice).toEqual({
+      type: 'access-revoked-after-confirmed-maintenance',
+      userId: 'user-1',
+      departmentId: 'department-1',
+      authorizationRevision: 7,
+    });
+    wrapper.unmount();
+  });
+
   it('organizes customer details into accessible tabs and preserves basic-info drafts', async () => {
     api.getCustomer.mockResolvedValue({
       id: 'customer-1',

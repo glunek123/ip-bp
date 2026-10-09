@@ -320,6 +320,31 @@ function returnToCustomerList(customerId: string): void {
   void router.push('/customers');
 }
 
+function leaveAfterConfirmedMaintenance(customerId: string): void {
+  if (
+    customerId !== String(route.params.id) ||
+    customer.value?.id !== customerId
+  ) {
+    return;
+  }
+  const currentActor = actor.value;
+  const authorizationRevision = auth.session?.authorizationRevision;
+  if (!currentActor || typeof authorizationRevision !== 'number') {
+    void router.push('/customers');
+    return;
+  }
+  void router.push({
+    path: '/customers',
+    state: {
+      customerMaintenanceNotice: {
+        type: 'access-revoked-after-confirmed-maintenance',
+        ...currentActor,
+        authorizationRevision,
+      },
+    },
+  });
+}
+
 function isCustomerNotFound(error: unknown): boolean {
   return (
     typeof error === 'object' &&
@@ -451,7 +476,7 @@ onBeforeUnmount(abortRequests);
             !!frozenDelete || currentProjectionStale
           "
           @refreshed="acceptRefreshedCustomer"
-          @unreadable="returnToCustomerList"
+          @unreadable="leaveAfterConfirmedMaintenance"
           @pending-changed="updateMaintenancePending"
           @refresh-required="currentProjectionStale = $event"
           @access-uncertain="refreshAfterMaintenanceAccessFailure"
