@@ -8,7 +8,7 @@ CORE-CA-001～008及SD-44律师身份前置补齐均已验收、推送并集成m
 
 ## 当前任务
 
-唯一Current为**CORE-CU-005｜负责运营与合作状态**，Next为CORE-CU-006多联系人维护。001～004已本地验收：004实际候选a58ff3a通过完整verify及开庭／判决／线索／生命周期组合79/79，迁移专项在22d1f6e通过且相关输入未变；证据边界及失败历史见[验证记录](spec/v0.1/VALIDATION.md)。2026-10-08用户批准客户切片开发、受控草稿删除、不造识别值、多联系人结束关系保留历史和真实人工结算台账；SD-48明确只有负责运营，不增加客户经理。规则见[客户设计](superpowers/specs/2026-10-08-customer-module-alignment-design.md)及[实施计划](superpowers/plans/2026-10-08-customer-module-alignment.md)。分支codex/customer-module-alignment，基线8a8fe11；001～004尚未推送或集成main，005～008尚未交付。
+唯一Current为**CORE-CU-005｜负责运营与合作状态**，Next为CORE-CU-006多联系人维护。001～004已本地验收：004实际候选a58ff3a通过完整verify及开庭／判决／线索／生命周期组合79/79，迁移专项在22d1f6e通过且相关输入未变；证据边界及失败历史见[验证记录](spec/v0.1/VALIDATION.md)。2026-10-08用户批准客户切片开发、受控草稿删除、不造识别值、多联系人结束关系保留历史和真实人工结算台账；2026-10-09澄清SD-48：保留客户经理资料字段，不建立经理角色或访问关系；负责运营仍独立按既有授权办理。资料字段尚未实现／验收，不改Current／Next。规则见[客户设计](superpowers/specs/2026-10-08-customer-module-alignment-design.md)及[实施计划](superpowers/plans/2026-10-08-customer-module-alignment.md)。分支codex/customer-module-alignment，基线8a8fe11；001～004尚未推送或集成main，005～008尚未交付。
 
 仓库清理已完成并集成main。CA-008及SD-44既有集成结论与证据保留；CA-009未领取。独立人工环境5181/3201/15434保持运行，仍为旧CA-008构建与91条迁移，不自动迁移其数据库。2026-10-09环境停止后，Windows保留范围占用旧55434；人工库使用原持久卷改绑15434，未重置或迁移，登录页／后端／代理健康检查均200。E2E只使用测试库15433和5174/3101。
 
