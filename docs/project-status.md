@@ -10,9 +10,9 @@ CORE-CA-001～008及SD-44律师身份前置补齐均已验收、推送并集成m
 
 唯一Current为**CORE-CU-008｜真实人工结算台账**，Next为CORE-CA-009后续案件切片（未领取）；先完成客户八片组合验收与独立最新人工入口。客户001～007已本地验收，尚未推送或集成main。依据用户已批准SD-45～48及[客户设计](superpowers/specs/2026-10-08-customer-module-alignment-design.md)、[总计划](superpowers/plans/2026-10-08-customer-module-alignment.md)继续；只有负责运营，没有客户经理。分支codex/customer-module-alignment，基线8a8fe11。
 
-CU007实际候选76c0506/tree d9c68a0通过完整verify（工具74/74、前端842/842、后端1153/1153、双构建）及全库隔离PG/Chromium274/274；全库已包含103～108迁移链、旧回执保留、SQL负例和失败原子重试。非实现Sol补审Spec compliance/Quality均ACCEPTED、未关闭C/I/M0/0/0；同模型隔离独立性不足，外部异模型Review Pending。固定门禁前后HEAD/tree和环境HMAC一致；原de5de27的两项I finding与聚焦失败保留在.local/customer-alignment/task-7-final-review.md及Task C报告。CU006实际db33候选259/259及更早证据仍见[验证记录](spec/v0.1/VALIDATION.md)，不以旧证据替代新片验收。008[正式契约](superpowers/specs/2026-10-10-customer-settlements-contract.md)及[计划](superpowers/plans/2026-10-10-customer-settlements.md)已按当前69e13d4前态复核；Prisma7.10.0无参数@db.Decimal映射、精确往返、双向diff及原始SQL范围/尺度/非有限负例在随机schema实际通过，报告.local/customer-alignment/task-8-numeric-probe-report.md；probe已释放锁/清自身schema，未改public。台账业务未实现，进入Task A。
+CU007实际候选76c0506/tree d9c68a0通过完整verify（工具74/74、前端842/842、后端1153/1153、双构建）及全库隔离PG/Chromium274/274；全库已包含103～108迁移链、旧回执保留、SQL负例和失败原子重试。非实现Sol补审Spec compliance/Quality均ACCEPTED、未关闭C/I/M0/0/0；同模型隔离独立性不足，外部异模型Review Pending。固定门禁前后HEAD/tree和环境HMAC一致；原de5de27的两项I finding与聚焦失败保留在.local/customer-alignment/task-7-final-review.md及Task C报告。CU006实际db33候选259/259及更早证据仍见[验证记录](spec/v0.1/VALIDATION.md)，不以旧证据替代新片验收。008[正式契约](superpowers/specs/2026-10-10-customer-settlements-contract.md)及[计划](superpowers/plans/2026-10-10-customer-settlements.md)已按当前69e13d4前态复核；Prisma7.10.0无参数@db.Decimal映射、精确往返、双向diff及原始SQL范围/尺度/非有限负例在随机schema实际通过，报告.local/customer-alignment/task-8-numeric-probe-report.md；probe已释放锁/清自身schema，未改public。金额mapping probe已完成。008后端Task A固定f490561/tree11286d7已通过非实现Sol补审，Spec compliance/Quality均ACCEPTED、未关闭C/I/M0/0/0，同模型独立性不足、外部异模型Pending；原9305947的I-1清理范围和M-1守卫判别缺口及修复记录保留在.local/customer-alignment/task-8-backend-review.md。原59b3478聚焦Jest107/107、Vitest134/134及旧客户E2E18/18；最新f490561受影响结算API/迁移9/9、类型/lint/格式和DB收尾检查通过，不称旧结果在新tree重跑。进入Task B，页面、真实UI和Level3组合尚未验收。
 
-E2E仅使用backend/.env.test独立测试库15433及5174/3101；测试public前向到108，已执行102～108迁移不改。旧人工5181/3201/15434保留旧CA-008构建及91迁移/原持久卷，不重置或升级；最新入口5182/3202/15435仅准备脚本，未创建数据库/账号或启动。仓库清理CA-001～008已集成main、CA-009未领取；无开发/生产迁移、推送、合并或部署。
+E2E仅使用backend/.env.test独立测试库15433及5174/3101；测试public前向到112，已执行102～112迁移不改。旧人工5181/3201/15434保留旧CA-008构建及91迁移/原持久卷，不重置或升级；最新入口5182/3202/15435仅准备脚本，未创建数据库/账号或启动。仓库清理CA-001～008已集成main、CA-009未领取；无开发/生产迁移、推送、合并或部署。
 
 ## 已实现
 
@@ -50,4 +50,4 @@ CA-008实际业务候选`9092414`完成Level 3：完整verify退出0（后端107
 
 ## 下一步
 
-按008正式契约执行Sol后端/迁移/真实PG及非实现Sol审查→Luna前端→Sol真实会话；最终一次非实现Sol Review覆盖八片累计差异，finding关闭后固定候选运行完整Level3及全库E2E，同时满足008与八片组合，不重复同tree检查。008完成后补八片组合终审和验证，再创建全新独立人工环境；不领取CA-009，不改旧人工环境、不推送/合并/部署。
+008后端Task A补审已通过，继续Luna页面接线→Sol真实会话；最终一次非实现Sol Review覆盖八片累计差异，finding关闭后固定候选运行完整Level3及全库E2E，同时满足008与八片组合，不重复同tree检查。008完成后补八片组合终审和验证，再创建全新独立人工环境；不领取CA-009，不改旧人工环境、不推送/合并/部署。
