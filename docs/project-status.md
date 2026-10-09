@@ -8,13 +8,15 @@ CORE-CA-001～008及SD-44律师身份前置补齐均已验收、推送并集成m
 
 ## 当前任务
 
-唯一Current为**CORE-CU-008｜真实人工结算台账**，Next为CORE-CA-009后续案件切片（未领取）；先完成客户八片组合验收与独立最新人工入口。客户001～007已本地验收，尚未推送或集成main。依据用户已批准SD-45～48及[客户设计](superpowers/specs/2026-10-08-customer-module-alignment-design.md)、[总计划](superpowers/plans/2026-10-08-customer-module-alignment.md)继续；只有负责运营，没有客户经理。分支codex/customer-module-alignment，基线8a8fe11。
+唯一Current为**CORE-CU-008｜真实人工结算台账（已本地验收）**，Next为CORE-CA-009后续案件切片（未领取）。客户001～008组合已本地验收，尚未推送或集成main；分支codex/customer-module-alignment，基线8a8fe11。依据已批准SD-45～48及客户正式契约实施，只有负责运营，没有客户经理。
 
-CU007实际候选76c0506/tree d9c68a0通过完整verify（工具74/74、前端842/842、后端1153/1153、双构建）及全库隔离PG/Chromium274/274；全库已包含103～108迁移链、旧回执保留、SQL负例和失败原子重试。非实现Sol补审Spec compliance/Quality均ACCEPTED、未关闭C/I/M0/0/0；同模型隔离独立性不足，外部异模型Review Pending。固定门禁前后HEAD/tree和环境HMAC一致；原de5de27的两项I finding与聚焦失败保留在.local/customer-alignment/task-7-final-review.md及Task C报告。CU006实际db33候选259/259及更早证据仍见[验证记录](spec/v0.1/VALIDATION.md)，不以旧证据替代新片验收。008[正式契约](superpowers/specs/2026-10-10-customer-settlements-contract.md)及[计划](superpowers/plans/2026-10-10-customer-settlements.md)已按当前69e13d4前态复核；Prisma7.10.0无参数@db.Decimal映射、精确往返、双向diff及原始SQL范围/尺度/非有限负例在随机schema实际通过，报告.local/customer-alignment/task-8-numeric-probe-report.md；probe已释放锁/清自身schema，未改public。金额mapping probe已完成。008后端Task A固定f490561/tree11286d7已通过非实现Sol补审，Spec compliance/Quality均ACCEPTED、未关闭C/I/M0/0/0，同模型独立性不足、外部异模型Pending；原9305947的I-1清理范围和M-1守卫判别缺口及修复记录保留在.local/customer-alignment/task-8-backend-review.md。原59b3478聚焦Jest107/107、Vitest134/134及旧客户E2E18/18；最新f490561受影响结算API/迁移9/9、类型/lint/格式和DB收尾检查通过，不称旧结果在新tree重跑。Task B固定8e7475c/tree41b4f38已接通页面，mock聚焦6文件59项、prepared类型/目标lint/格式通过；仅12前端文件且契约未变。Task C固定68a2997/treee7c85d6已通过真实密码cookie/CSRF与测试PG/Chromium9/9、聚焦Vitest63/63及类型/目标lint/格式；原键恢复、BUSY误清键、失权更正草稿及成功后存储清理失败已按原契约修复。八片累计初审b48a39e的唯一CU008-FR-I1（合法不足一元超收被前端拒绝）已由d70027a/tree9323184最小修复；新聚焦Vitest59/59、真实整文件10/10及类型/lint/格式通过，原RED保留。原审查者已对4f851d9/tree3cb0939补审ACCEPTED、两轴未关闭C/I/M0/0/0；该候选完整verify实际74/890/1171及双构建通过，但全库E2E为289/293、4项失败，未完成组合验收。四项回归已在5873d7d/treec94233d最小修复：日期夹具统一、103～108精确迁移子链、开票旧请求在撤权后仍交后端鉴权，以及无结算权限时隐藏页签的测试。真实受影响CA006两时区各1/1、CU007 1/1、客户42/42、开票7/7和面板单测6/6、类型/lint/格式通过；原失败与修复证据保留在.local/customer-alignment/task-8-gate-regression-report.md。修复候选待原审查者补审，随后重新固定完整门禁，008及八片Level3组合仍未验收。
+实际候选5cc84c1/tree2dd737a完整verify通过：工具74/74、前端892/892（84文件）、后端1171/1171（93 suites）及双构建；全库隔离PG/Chromium293/293通过，覆盖完整112条迁移链、旧事实/回执、SQL负例、失败原子及重试。原非实现Sol对八片累计及最终回归补审Spec compliance/Quality均ACCEPTED、未关闭C/I/M0/0/0；同模型隔离独立性不足，外部异模型Review Pending。原首轮4f851d9完整verify虽通过，全库为289/293、4项失败；5873d7d最小修复后原审查者补审关闭，保留原失败、trace、RED/GREEN及审查历史，不把旧结果标为新候选通过。完整候选、证据和限制见[验证记录](spec/v0.1/VALIDATION.md)。
 
-E2E仅使用backend/.env.test独立测试库15433及5174/3101；测试public前向到112，已执行102～112迁移不改。旧人工5181/3201/15434保留旧CA-008构建及91迁移/原持久卷，不重置或升级；最新入口5182/3202/15435仅准备脚本，未创建数据库/账号或启动。仓库清理CA-001～008已集成main、CA-009未领取；无开发/生产迁移、推送、合并或部署。
+最新独立人工入口http://localhost:5182/login，后端127.0.0.1:3202，PG127.0.0.1:15435/dev_cor_manual_cu008_20261009，独立账号及密码保存在ignored .local/manual-test-cu008-20261009/credentials.txt。已核112条迁移名称/checksum/完成态、真实密码会话及浏览器cookie/CSRF创建客户、登记台账和刷新；保留一笔明确标识的合成验收数据。旧5181/3201/15434及原持久卷保留旧构建/91迁移，不重置。E2E仍只使用backend/.env.test的15433测试库和5174/3101；新旧人工数据库、账号、端口及私有文件目录均与其分离，物理主机CPU/内存仍共享。无开发/生产迁移、推送、合并或部署。
 
 ## 已实现
+
+CU008真实人工结算台账已本地验收：逐笔登记实际结算、开票、回款事实，未知与零分开；金额精确到分、更正留史、独立读/登记/更正权限，当前统计与列表同一快照。原键重试、撤权清敏感资料、跨业务冻结及超收显示已验证，不套比例公式、不发起支付。
 
 CU007真实协议及开票资料已本地验收：独立读改权限、不可变版本及精确历史附件，暂停/终止可按当前权限维护；上传未知先存最小标记，撤权清敏感投影并保留恢复入口，人工下载核对后选用。跨业务未知请求冻结保留，旧权利资产恢复仅当前页面内存，不称跨整页刷新保证。
 
@@ -50,4 +52,4 @@ CA-008实际业务候选`9092414`完成Level 3：完整verify退出0（后端107
 
 ## 下一步
 
-首轮八片终审已通过，完整门禁暴露的四项回归已最小修复；由原非实现Sol审查者补审新增差异和实际聚焦证据，关闭后在稳定候选重新执行完整verify及全库E2E。两者通过后才创建全新独立人工环境并进行真实密码/CSRF浏览器冒烟；不领取CA-009，不改旧人工环境，不推送、合并或部署。
+客户八片本地验收与独立人工入口已完成，可按正式页面人工测试。CA-009仍未领取；后续按用户授权衔接案件主线，不自动推送、合并或部署。
