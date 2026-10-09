@@ -23,39 +23,22 @@ import {
   type RightAssetFields,
   type RightAssetSummary,
   type RightAssetType,
-  type ReviseRightAssetInput,
-  type WithdrawRightAssetInput,
   type WriteRightAssetInput,
 } from '../../api/right-assets';
-
-type PendingCommand =
-  | {
-      action: 'CREATE';
-      customerId: string;
-      body: WriteRightAssetInput;
-      key: string;
-    }
-  | {
-      action: 'REVISE';
-      customerId: string;
-      assetId: string;
-      body: ReviseRightAssetInput;
-      key: string;
-    }
-  | {
-      action: 'WITHDRAW';
-      customerId: string;
-      assetId: string;
-      body: WithdrawRightAssetInput;
-      key: string;
-    };
+import type {
+  PendingRightAssetCommand,
+  RightAssetRecoverySnapshot,
+} from './customer-right-assets-recovery';
 
 const props = defineProps<{
   customerId: string;
   customerVersion: number;
   canEdit: boolean;
+  actorUserId: string;
+  actorDepartmentId: string;
   actorKey: string;
   blockedByOtherMaintenance: boolean;
+  recoverySnapshot?: RightAssetRecoverySnapshot;
 }>();
 const emit = defineEmits<{
   'version-updated': [customerId: string, version: number];
@@ -66,6 +49,11 @@ const emit = defineEmits<{
     actorKey: string,
     pending: boolean,
   ];
+  'recovery-snapshot': [
+    customerId: string,
+    actorKey: string,
+    snapshot: RightAssetRecoverySnapshot | null,
+  ];
 }>();
 
 const state = ref<'loading' | 'ready' | 'failed'>('loading');
@@ -74,6 +62,7 @@ const total = ref(0);
 const page = ref(1);
 const canCreate = ref(false);
 const holders = ref<RightsHolderSummary[]>([]);
+const holderLoading = ref(false);
 const detail = ref<RightAssetDetail>();
 const availableEvidence = ref<MaterialContentVersion[]>([]);
 const selectedEvidenceIds = ref<string[]>([]);
@@ -118,6 +107,9 @@ const withdrawReason = ref('');
 const writeDenied = ref(false);
 const unknownOutcome = ref(false);
 const singleUploadUnknown = ref(false);
+const singleRecoveryEvidence = ref<MaterialContentVersion[]>([]);
+const verifiedRecoveryIds = ref<string[]>([]);
+const recoveryRefreshing = ref(false);
 const draftOrigin = ref<{
   customerVersion: number;
   assetVersion: number;
@@ -127,26 +119,52 @@ const confirmedCustomerVersion = ref<number>();
 let request: AbortController | undefined;
 let detailRequest: AbortController | undefined;
 let customerRefreshRequest: AbortController | undefined;
+let holderRequest: AbortController | undefined;
 let detailSequence = 0;
-let pending: PendingCommand | undefined;
+let pending: PendingRightAssetCommand | undefined;
 let generation = 0;
+let publishedRecovery = false;
+let recoveryRestored = false;
 
 const hasUnknownWork = computed(
   () =>
     unknownOutcome.value ||
     singleUploadUnknown.value ||
+    uploading.value ||
+    (saving.value && !!pending) ||
     batchHalt.value === 'unknown' ||
     batchRows.value.some(
       (row) =>
-        row.uploadStatus === 'unknown' || row.registrationStatus === 'unknown',
+        row.uploadStatus === 'unknown' ||
+        row.uploadStatus === 'uploading' ||
+        row.registrationStatus === 'unknown' ||
+        row.registrationStatus === 'registering',
     ),
+);
+const ordinaryWritesBlocked = computed(
+  () =>
+    props.blockedByOtherMaintenance ||
+    hasUnknownWork.value ||
+    holderLoading.value,
 );
 watch(
   hasUnknownWork,
   (pending) => {
     emit('maintenance-pending', props.customerId, props.actorKey, pending);
+    if (pending) {
+      publishedRecovery = true;
+      emit(
+        'recovery-snapshot',
+        props.customerId,
+        props.actorKey,
+        makeRecoverySnapshot(),
+      );
+    } else if (publishedRecovery) {
+      publishedRecovery = false;
+      emit('recovery-snapshot', props.customerId, props.actorKey, null);
+    }
   },
-  { immediate: true },
+  { immediate: true, flush: 'sync' },
 );
 
 function emptyFields(): RightAssetFields {
@@ -165,7 +183,7 @@ function emptyFields(): RightAssetFields {
 }
 function addBatchRow(): void {
   if (
-    props.blockedByOtherMaintenance ||
+    ordinaryWritesBlocked.value ||
     batchSaving.value ||
     batchHalt.value !== 'none' ||
     batchRows.value.filter((row) => row.registrationStatus !== 'registered')
@@ -186,7 +204,7 @@ function addBatchRow(): void {
 }
 function openBatch(): void {
   if (
-    props.blockedByOtherMaintenance ||
+    ordinaryWritesBlocked.value ||
     !canCreate.value ||
     !props.canEdit ||
     writeDenied.value
@@ -194,6 +212,7 @@ function openBatch(): void {
     return;
   batchOpen.value = true;
   if (batchRows.value.length === 0) addBatchRow();
+  void refreshHolderOptions();
 }
 function chooseBatchFile(row: BatchRow, event: globalThis.Event): void {
   if (!canChooseBatchFile(row)) return;
@@ -207,7 +226,7 @@ function chooseBatchFile(row: BatchRow, event: globalThis.Event): void {
 function canChooseBatchFile(row: BatchRow): boolean {
   return (
     !batchSaving.value &&
-    !props.blockedByOtherMaintenance &&
+    !ordinaryWritesBlocked.value &&
     batchHalt.value === 'none' &&
     !writeDenied.value &&
     !row.uploaded &&
@@ -252,6 +271,7 @@ async function uploadBatchRow(row: BatchRow): Promise<void> {
 }
 async function refreshBatchEvidence(row: BatchRow): Promise<void> {
   if (
+    props.blockedByOtherMaintenance ||
     row.uploadStatus !== 'unknown' ||
     row.pending ||
     row.recoveryRefreshing ||
@@ -262,16 +282,19 @@ async function refreshBatchEvidence(row: BatchRow): Promise<void> {
     return;
   const ownGeneration = generation;
   row.recoveryRefreshing = true;
+  verifiedRecoveryIds.value = [];
   try {
-    const materials = await listOwnerMaterials('CUSTOMER', props.customerId);
+    const customerId = props.customerId;
+    const materials = await listOwnerMaterials('CUSTOMER', customerId);
     if (ownGeneration !== generation) return;
     row.recoveryEvidence = materials.items
       .filter(
         (item) =>
           item.ownerType === 'CUSTOMER' &&
-          item.ownerId === props.customerId &&
+          item.ownerId === customerId &&
           item.status === 'ACTIVE' &&
-          item.category === 'CUSTOMER_RIGHT_EVIDENCE',
+          item.category === 'CUSTOMER_RIGHT_EVIDENCE' &&
+          item.purpose === 'CUSTOMER_RIGHT_EVIDENCE',
       )
       .flatMap((item) => item.contentVersions)
       .filter((proof) => proof.status === 'AVAILABLE');
@@ -290,8 +313,10 @@ function adoptBatchEvidence(
   proof: MaterialContentVersion,
 ): void {
   if (
+    props.blockedByOtherMaintenance ||
     row.uploadStatus !== 'unknown' ||
     !row.recoveryEvidence?.some((candidate) => candidate.id === proof.id) ||
+    !verifiedRecoveryIds.value.includes(proof.id) ||
     row.pending ||
     row.registrationStatus === 'registering' ||
     row.registrationStatus === 'unknown' ||
@@ -328,14 +353,23 @@ function normalizedBatchFields(row: BatchRow): RightAssetFields {
   };
 }
 async function submitBatch(): Promise<void> {
+  if (ordinaryWritesBlocked.value) return;
+  await executeBatch();
+}
+async function executeBatch(recoverUnknown = false): Promise<void> {
   if (
     props.blockedByOtherMaintenance ||
     batchSaving.value ||
-    batchHalt.value !== 'none'
+    batchHalt.value !== 'none' ||
+    (!recoverUnknown && hasUnknownWork.value)
   )
     return;
   const selected = batchRows.value
-    .filter((row) => row.selected && row.registrationStatus !== 'registered')
+    .filter((row) =>
+      recoverUnknown
+        ? row.registrationStatus === 'unknown'
+        : row.selected && row.registrationStatus !== 'registered',
+    )
     .sort(
       (left, right) =>
         Number(right.registrationStatus === 'unknown') -
@@ -422,14 +456,14 @@ async function submitBatch(): Promise<void> {
   }
 }
 async function retryBatchUnknown(): Promise<void> {
-  if (batchHalt.value !== 'unknown') return;
+  if (props.blockedByOtherMaintenance || batchHalt.value !== 'unknown') return;
   const row = batchRows.value.find(
     (candidate) => candidate.registrationStatus === 'unknown',
   );
   if (!row?.pending) return;
   row.selected = true;
   batchHalt.value = 'none';
-  await submitBatch();
+  await executeBatch(true);
 }
 async function refreshBatchConflict(): Promise<void> {
   if (batchHalt.value !== 'conflict' || batchSaving.value) return;
@@ -454,6 +488,146 @@ async function refreshBatchConflict(): Promise<void> {
   }
 }
 const form = ref<RightAssetFields>(emptyFields());
+function clonePendingCommand(
+  command: PendingRightAssetCommand,
+): PendingRightAssetCommand {
+  if (command.action === 'WITHDRAW')
+    return { ...command, body: { ...command.body } };
+  if (command.action === 'CREATE')
+    return {
+      ...command,
+      body: {
+        ...command.body,
+        contentVersionIds: command.body.contentVersionIds
+          ? [...command.body.contentVersionIds]
+          : undefined,
+      },
+    };
+  return {
+    ...command,
+    body: {
+      ...command.body,
+      contentVersionIds: command.body.contentVersionIds
+        ? [...command.body.contentVersionIds]
+        : undefined,
+    },
+  };
+}
+function makeRecoverySnapshot(): RightAssetRecoverySnapshot {
+  const command = pending ? clonePendingCommand(pending) : undefined;
+  const singleUpload =
+    singleUploadUnknown.value || uploading.value
+      ? {
+          mode:
+            mode.value === 'revise' ? ('revise' as const) : ('create' as const),
+          fields: { ...form.value },
+          selectedEvidenceIds: [...selectedEvidenceIds.value],
+          detailAssetId: detail.value?.assetId,
+          draftOrigin: draftOrigin.value
+            ? { ...draftOrigin.value, fields: { ...draftOrigin.value.fields } }
+            : undefined,
+        }
+      : undefined;
+  const batch =
+    batchHalt.value === 'unknown' ||
+    batchRows.value.some(
+      (row) =>
+        ['unknown', 'uploading'].includes(row.uploadStatus) ||
+        ['unknown', 'registering'].includes(row.registrationStatus),
+    )
+      ? {
+          rows: batchRows.value.map((row) => ({
+            id: row.id,
+            selected: row.selected,
+            fields: { ...row.fields },
+            uploaded: row.uploaded ? { ...row.uploaded } : undefined,
+            uploadStatus:
+              row.uploadStatus === 'uploading'
+                ? ('unknown' as const)
+                : row.uploadStatus,
+            registrationStatus:
+              row.registrationStatus === 'registering'
+                ? ('unknown' as const)
+                : row.registrationStatus,
+            error: row.error,
+            pending: row.pending
+              ? {
+                  key: row.pending.key,
+                  body: {
+                    ...row.pending.body,
+                    contentVersionIds: row.pending.body.contentVersionIds
+                      ? [...row.pending.body.contentVersionIds]
+                      : undefined,
+                  },
+                }
+              : undefined,
+          })),
+          customerVersion: batchCustomerVersion.value,
+          halt:
+            batchHalt.value === 'unknown' ||
+            batchRows.value.some((row) =>
+              ['unknown', 'registering'].includes(row.registrationStatus),
+            )
+              ? ('unknown' as const)
+              : ('none' as const),
+        }
+      : undefined;
+  return {
+    customerId: props.customerId,
+    userId: props.actorUserId,
+    departmentId: props.actorDepartmentId,
+    command,
+    singleUpload,
+    batch,
+  };
+}
+async function restoreRecoverySnapshot(
+  snapshot: RightAssetRecoverySnapshot,
+): Promise<void> {
+  if (
+    snapshot.customerId !== props.customerId ||
+    snapshot.userId !== props.actorUserId ||
+    snapshot.departmentId !== props.actorDepartmentId
+  )
+    return;
+  const ownGeneration = generation;
+  if (
+    snapshot.singleUpload?.mode === 'revise' &&
+    snapshot.singleUpload.detailAssetId
+  ) {
+    const found = await openDetail(snapshot.singleUpload.detailAssetId, true);
+    if (!found || ownGeneration !== generation) return;
+  }
+  pending = snapshot.command;
+  unknownOutcome.value = !!snapshot.command;
+  if (snapshot.singleUpload) {
+    mode.value = snapshot.singleUpload.mode;
+    form.value = { ...snapshot.singleUpload.fields };
+    selectedEvidenceIds.value = [...snapshot.singleUpload.selectedEvidenceIds];
+    draftOrigin.value = snapshot.singleUpload.draftOrigin
+      ? {
+          ...snapshot.singleUpload.draftOrigin,
+          fields: { ...snapshot.singleUpload.draftOrigin.fields },
+        }
+      : undefined;
+    singleUploadUnknown.value = true;
+    uploadMessage.value =
+      '上传结果未知。请刷新证明池、下载核对精确版本后明确选用。';
+  }
+  if (snapshot.batch) {
+    batchOpen.value = true;
+    batchRows.value = snapshot.batch.rows.map((row) => ({
+      ...row,
+      fields: { ...row.fields },
+      uploaded: row.uploaded ? { ...row.uploaded } : undefined,
+      pending: row.pending
+        ? { key: row.pending.key, body: { ...row.pending.body } }
+        : undefined,
+    }));
+    batchHalt.value = snapshot.batch.halt;
+    batchCustomerVersion.value = snapshot.batch.customerVersion;
+  }
+}
 const numberText = computed({
   get: () => form.value.number ?? '',
   set: (value: string) => {
@@ -598,6 +772,11 @@ async function load(nextPage = page.value): Promise<void> {
       .filter((item) => item.category === 'CUSTOMER_RIGHT_EVIDENCE')
       .flatMap((item) => item.contentVersions);
     state.value = 'ready';
+    if (!recoveryRestored) {
+      recoveryRestored = true;
+      if (props.recoverySnapshot)
+        await restoreRecoverySnapshot(props.recoverySnapshot);
+    }
   } catch (error) {
     if (controller.signal.aborted || ownGeneration !== generation) return;
     if (isCode(error, 'CUSTOMER_NOT_FOUND'))
@@ -618,6 +797,41 @@ async function loadHolders(
     if (all.length >= result.total) break;
   }
   return all;
+}
+async function refreshHolderOptions(): Promise<void> {
+  holderRequest?.abort();
+  const controller = new AbortController();
+  holderRequest = controller;
+  const ownGeneration = generation;
+  const customerId = props.customerId;
+  const actorKey = props.actorKey;
+  holders.value = [];
+  holderLoading.value = true;
+  try {
+    const currentHolders = await loadHolders(customerId, controller.signal);
+    if (
+      controller.signal.aborted ||
+      ownGeneration !== generation ||
+      customerId !== props.customerId ||
+      actorKey !== props.actorKey
+    )
+      return;
+    holders.value = currentHolders;
+  } catch (error) {
+    if (
+      controller.signal.aborted ||
+      ownGeneration !== generation ||
+      customerId !== props.customerId ||
+      actorKey !== props.actorKey
+    )
+      return;
+    errorMessage.value = `权利主体读取失败：${message(error)}`;
+  } finally {
+    if (holderRequest === controller) {
+      holderRequest = undefined;
+      holderLoading.value = false;
+    }
+  }
 }
 async function openDetail(
   assetId: string,
@@ -662,8 +876,7 @@ async function openDetail(
   }
 }
 function openCreate(): void {
-  if (props.blockedByOtherMaintenance || unknownOutcome.value || saving.value)
-    return;
+  if (ordinaryWritesBlocked.value || saving.value) return;
   invalidateDetailRequest();
   form.value = emptyFields();
   selectedEvidenceIds.value = [];
@@ -677,10 +890,11 @@ function openCreate(): void {
   conflictDetailReady.value = false;
   confirmedCustomerVersion.value = undefined;
   draftOrigin.value = undefined;
+  void refreshHolderOptions();
 }
 function openRevise(): void {
   if (
-    props.blockedByOtherMaintenance ||
+    ordinaryWritesBlocked.value ||
     !detail.value ||
     unknownOutcome.value ||
     saving.value
@@ -719,7 +933,7 @@ function openRevise(): void {
 function openWithdraw(): void {
   if (
     !detail.value?.capabilities.withdraw ||
-    props.blockedByOtherMaintenance ||
+    ordinaryWritesBlocked.value ||
     detail.value.withdrawn ||
     unknownOutcome.value ||
     saving.value ||
@@ -730,8 +944,7 @@ function openWithdraw(): void {
   conflict.value = false;
 }
 function cancelDraft(): void {
-  if (props.blockedByOtherMaintenance || unknownOutcome.value || saving.value)
-    return;
+  if (ordinaryWritesBlocked.value || saving.value) return;
   invalidateDetailRequest();
   mode.value = 'closed';
   uploadFile.value = undefined;
@@ -742,6 +955,7 @@ function cancelDraft(): void {
   draftOrigin.value = undefined;
 }
 function chooseUpload(event: globalThis.Event): void {
+  if (ordinaryWritesBlocked.value || uploading.value || saving.value) return;
   uploadFile.value = (event.target as globalThis.HTMLInputElement).files?.[0];
 }
 async function uploadEvidence(): Promise<void> {
@@ -751,8 +965,7 @@ async function uploadEvidence(): Promise<void> {
     mode.value === 'closed' ||
     uploading.value ||
     writeDenied.value ||
-    props.blockedByOtherMaintenance ||
-    singleUploadUnknown.value
+    ordinaryWritesBlocked.value
   )
     return;
   const ownGeneration = generation;
@@ -785,6 +998,8 @@ async function uploadEvidence(): Promise<void> {
     ];
     uploadMessage.value = '上传成功，尚未登记';
     singleUploadUnknown.value = false;
+    singleRecoveryEvidence.value = [];
+    verifiedRecoveryIds.value = [];
     uploadFile.value = undefined;
   } catch (error) {
     if (ownGeneration !== generation) return;
@@ -796,14 +1011,90 @@ async function uploadEvidence(): Promise<void> {
     if (ownGeneration === generation) uploading.value = false;
   }
 }
+async function refreshSingleEvidence(): Promise<void> {
+  if (
+    !singleUploadUnknown.value ||
+    props.blockedByOtherMaintenance ||
+    recoveryRefreshing.value ||
+    writeDenied.value
+  )
+    return;
+  const ownGeneration = generation;
+  const customerId = props.customerId;
+  recoveryRefreshing.value = true;
+  verifiedRecoveryIds.value = [];
+  try {
+    const materials = await listOwnerMaterials('CUSTOMER', customerId);
+    if (ownGeneration !== generation) return;
+    singleRecoveryEvidence.value = materials.items
+      .filter(
+        (item) =>
+          item.ownerType === 'CUSTOMER' &&
+          item.ownerId === customerId &&
+          item.category === 'CUSTOMER_RIGHT_EVIDENCE' &&
+          item.purpose === 'CUSTOMER_RIGHT_EVIDENCE' &&
+          item.status === 'ACTIVE',
+      )
+      .flatMap((item) => item.contentVersions)
+      .filter((proof) => proof.status === 'AVAILABLE');
+    uploadMessage.value = singleRecoveryEvidence.value.length
+      ? '请下载核对精确文件版本，再明确选用。'
+      : '证明池没有可核对版本；未知结果保留，请联系管理员核查。';
+  } catch (error) {
+    if (ownGeneration === generation) uploadMessage.value = message(error);
+  } finally {
+    if (ownGeneration === generation) recoveryRefreshing.value = false;
+  }
+}
+async function verifyRecoveryEvidence(
+  proof: MaterialContentVersion,
+): Promise<void> {
+  const ownGeneration = generation;
+  try {
+    await downloadMaterialVersion(proof.materialId, proof.id);
+    if (ownGeneration === generation)
+      verifiedRecoveryIds.value = [
+        ...new Set([...verifiedRecoveryIds.value, proof.id]),
+      ];
+  } catch (error) {
+    if (ownGeneration === generation) uploadMessage.value = message(error);
+  }
+}
+function adoptSingleEvidence(proof: MaterialContentVersion): void {
+  if (
+    !singleUploadUnknown.value ||
+    props.blockedByOtherMaintenance ||
+    writeDenied.value ||
+    recoveryRefreshing.value ||
+    !singleRecoveryEvidence.value.some(
+      (candidate) => candidate.id === proof.id,
+    ) ||
+    !verifiedRecoveryIds.value.includes(proof.id) ||
+    selectedEvidenceIds.value.length >= 10
+  )
+    return;
+  availableEvidence.value = [
+    ...availableEvidence.value.filter((item) => item.id !== proof.id),
+    proof,
+  ];
+  selectedEvidenceIds.value = [
+    ...new Set([...selectedEvidenceIds.value, proof.id]),
+  ];
+  singleUploadUnknown.value = false;
+  singleRecoveryEvidence.value = [];
+  verifiedRecoveryIds.value = [];
+  uploadFile.value = undefined;
+  uploadMessage.value = `已人工选用证明 ${proof.originalFilename}；尚未登记。`;
+}
 async function downloadEvidence(
   materialId: string,
   contentVersionId: string,
 ): Promise<void> {
+  const ownGeneration = generation;
   try {
     await downloadMaterialVersion(materialId, contentVersionId);
   } catch (error) {
-    errorMessage.value = message(error);
+    if (ownGeneration === generation) errorMessage.value = message(error);
   }
 }
 async function refreshAfterConflict(): Promise<void> {
@@ -881,6 +1172,7 @@ function normalizedForm(): RightAssetFields {
 }
 async function submit(): Promise<void> {
   if (
+    ordinaryWritesBlocked.value ||
     saving.value ||
     conflict.value ||
     unknownOutcome.value ||
@@ -930,6 +1222,7 @@ async function submit(): Promise<void> {
 }
 async function submitWithdraw(): Promise<void> {
   if (
+    ordinaryWritesBlocked.value ||
     !detail.value ||
     !detail.value.capabilities.withdraw ||
     detail.value.withdrawn ||
@@ -970,7 +1263,7 @@ async function retryUnknown(): Promise<void> {
     return;
   await runCommand(pending);
 }
-async function runCommand(command: PendingCommand): Promise<void> {
+async function runCommand(command: PendingRightAssetCommand): Promise<void> {
   const ownGeneration = generation;
   const wasUnknown = unknownOutcome.value;
   saving.value = true;
@@ -1035,51 +1328,84 @@ async function runCommand(command: PendingCommand): Promise<void> {
   emit('version-updated', command.customerId, result.customerVersion);
   try {
     await load(command.action === 'CREATE' ? 1 : page.value);
+    if (ownGeneration !== generation) return;
     if (state.value !== 'ready') {
       errorMessage.value = '登记已成功，但列表刷新失败；请重试读取。';
       return;
     }
-    if (!(await openDetail(result.assetId)))
+    if (!(await openDetail(result.assetId)) && ownGeneration === generation)
       errorMessage.value = '登记已成功，但详情刷新失败；请重试读取。';
   } catch (error) {
-    errorMessage.value = `登记已成功，但刷新失败：${message(error)}`;
+    if (ownGeneration === generation)
+      errorMessage.value = `登记已成功，但刷新失败：${message(error)}`;
   }
 }
 watch(
-  () => props.customerId,
-  () => {
+  () => [
+    props.customerId,
+    props.actorUserId,
+    props.actorDepartmentId,
+    props.actorKey,
+  ],
+  (identity, previousIdentity) => {
+    const sameActor =
+      previousIdentity &&
+      identity[0] === previousIdentity[0] &&
+      identity[1] === previousIdentity[1] &&
+      identity[2] === previousIdentity[2];
+    const keepUnknown = sameActor && hasUnknownWork.value;
+    recoveryRestored = !!keepUnknown;
     generation += 1;
     request?.abort();
     invalidateDetailRequest();
     customerRefreshRequest?.abort();
+    holderRequest?.abort();
+    holderLoading.value = false;
     items.value = [];
     availableEvidence.value = [];
-    batchOpen.value = false;
-    batchRows.value = [];
-    batchHalt.value = 'none';
-    batchCustomerVersion.value = undefined;
-    selectedEvidenceIds.value = [];
-    uploadFile.value = undefined;
-    uploadMessage.value = '';
+    holders.value = [];
+    if (!keepUnknown) {
+      batchOpen.value = false;
+      batchRows.value = [];
+      batchHalt.value = 'none';
+      batchCustomerVersion.value = undefined;
+      selectedEvidenceIds.value = [];
+      uploadFile.value = undefined;
+      uploadMessage.value = '';
+      singleUploadUnknown.value = false;
+      singleRecoveryEvidence.value = [];
+      verifiedRecoveryIds.value = [];
+      mode.value = 'closed';
+      pending = undefined;
+      unknownOutcome.value = false;
+    }
+    recoveryRefreshing.value = false;
+    uploading.value = false;
+    batchSaving.value = false;
+    saving.value = false;
     detail.value = undefined;
-    mode.value = 'closed';
-    pending = undefined;
-    unknownOutcome.value = false;
     draftOrigin.value = undefined;
     conflict.value = false;
     conflictDetailReady.value = false;
     confirmedCustomerVersion.value = undefined;
     writeDenied.value = false;
     withdrawOpen.value = false;
+    emit(
+      'maintenance-pending',
+      props.customerId,
+      props.actorKey,
+      !!keepUnknown,
+    );
     void load(1);
   },
-  { immediate: true },
+  { immediate: true, flush: 'sync' },
 );
 onBeforeUnmount(() => {
   generation += 1;
   request?.abort();
   invalidateDetailRequest();
   customerRefreshRequest?.abort();
+  holderRequest?.abort();
 });
 </script>
 
@@ -1100,7 +1426,7 @@ onBeforeUnmount(() => {
       <button
         v-if="state === 'ready' && canEdit && canCreate && !writeDenied"
         type="button"
-        :disabled="blockedByOtherMaintenance || saving || unknownOutcome"
+        :disabled="ordinaryWritesBlocked || saving"
         @click="openCreate"
       >
         登记权利资产
@@ -1108,7 +1434,7 @@ onBeforeUnmount(() => {
       <button
         v-if="state === 'ready' && canEdit && canCreate && !writeDenied"
         type="button"
-        :disabled="blockedByOtherMaintenance || batchSaving || unknownOutcome"
+        :disabled="ordinaryWritesBlocked || batchSaving"
         @click="openBatch"
       >
         批量上传权属
@@ -1229,7 +1555,7 @@ onBeforeUnmount(() => {
       <button
         v-if="detail.capabilities.revise && canEdit && !writeDenied"
         type="button"
-        :disabled="blockedByOtherMaintenance || saving || unknownOutcome"
+        :disabled="ordinaryWritesBlocked || saving"
         @click="openRevise"
       >
         修订字段
@@ -1237,7 +1563,7 @@ onBeforeUnmount(() => {
       <button
         v-if="detail.capabilities.withdraw && !writeDenied"
         type="button"
-        :disabled="blockedByOtherMaintenance || saving || unknownOutcome"
+        :disabled="ordinaryWritesBlocked || saving"
         @click="openWithdraw"
       >
         撤下资产
@@ -1248,13 +1574,13 @@ onBeforeUnmount(() => {
           <input
             v-model="withdrawReason"
             maxlength="500"
-            :disabled="blockedByOtherMaintenance || saving || unknownOutcome"
+            :disabled="ordinaryWritesBlocked || saving"
         /></label>
         <button
           type="button"
           :disabled="
             saving ||
-            blockedByOtherMaintenance ||
+            ordinaryWritesBlocked ||
             conflict ||
             unknownOutcome ||
             !detail.capabilities.withdraw ||
@@ -1322,9 +1648,7 @@ onBeforeUnmount(() => {
       <p v-else-if="conflictDetailReady && mode === 'revise'">
         资产登记字段与草稿来源相同；客户版本变化仍需核对。
       </p>
-      <fieldset
-        :disabled="blockedByOtherMaintenance || saving || unknownOutcome"
-      >
+      <fieldset :disabled="ordinaryWritesBlocked || saving">
         <label
           >资产类型
           <select v-model="form.type">
@@ -1391,14 +1715,13 @@ onBeforeUnmount(() => {
           type="file"
           accept=".pdf,.jpg,.jpeg,.png"
           aria-label="选择权属证明文件"
-          :disabled="blockedByOtherMaintenance || singleUploadUnknown"
+          :disabled="ordinaryWritesBlocked || uploading || saving"
           @change="chooseUpload"
         />
         <button
           type="button"
           :disabled="
-            blockedByOtherMaintenance ||
-            singleUploadUnknown ||
+            ordinaryWritesBlocked ||
             uploading ||
             saving ||
             unknownOutcome ||
@@ -1409,6 +1732,36 @@ onBeforeUnmount(() => {
           {{ uploading ? '上传中…' : '上传证明' }}
         </button>
         <p v-if="uploadMessage" role="status">{{ uploadMessage }}</p>
+        <section v-if="singleUploadUnknown" aria-label="人工核对单笔证明池">
+          <button
+            type="button"
+            :disabled="
+              blockedByOtherMaintenance || recoveryRefreshing || writeDenied
+            "
+            @click="refreshSingleEvidence"
+          >
+            {{ recoveryRefreshing ? '刷新中…' : '刷新证明池' }}
+          </button>
+          <p>请按文件内容人工核对，不会按文件名自动匹配。</p>
+          <div v-for="proof in singleRecoveryEvidence" :key="proof.id">
+            {{ proof.originalFilename }} · {{ proof.createdAt }} ·
+            {{ proof.sizeBytes }} 字节
+            <button type="button" @click="verifyRecoveryEvidence(proof)">
+              下载核对
+            </button>
+            <button
+              type="button"
+              :disabled="
+                blockedByOtherMaintenance ||
+                !verifiedRecoveryIds.includes(proof.id) ||
+                selectedEvidenceIds.length >= 10
+              "
+              @click="adoptSingleEvidence(proof)"
+            >
+              选用此证明
+            </button>
+          </div>
+        </section>
         <p>本次最多选择 10 份证明；取消勾选仅影响本版，历史版本保持原文件。</p>
         <label v-for="proof in availableEvidence" :key="proof.id">
           <input
@@ -1417,7 +1770,7 @@ onBeforeUnmount(() => {
             :value="proof.id"
             :disabled="
               saving ||
-              blockedByOtherMaintenance ||
+              ordinaryWritesBlocked ||
               unknownOutcome ||
               (!selectedEvidenceIds.includes(proof.id) &&
                 selectedEvidenceIds.length >= 10)
@@ -1429,7 +1782,7 @@ onBeforeUnmount(() => {
       <button
         type="submit"
         :disabled="
-          blockedByOtherMaintenance ||
+          ordinaryWritesBlocked ||
           saving ||
           conflict ||
           unknownOutcome ||
@@ -1441,7 +1794,7 @@ onBeforeUnmount(() => {
       </button>
       <button
         type="button"
-        :disabled="blockedByOtherMaintenance || saving || unknownOutcome"
+        :disabled="ordinaryWritesBlocked || saving"
         @click="cancelDraft"
       >
         取消
@@ -1463,7 +1816,7 @@ onBeforeUnmount(() => {
           batchRows.filter((row) => row.registrationStatus !== 'registered')
             .length >= 10 ||
           batchSaving ||
-          blockedByOtherMaintenance ||
+          ordinaryWritesBlocked ||
           batchHalt !== 'none'
         "
         @click="addBatchRow"
@@ -1490,7 +1843,7 @@ onBeforeUnmount(() => {
             :disabled="
               row.registrationStatus === 'registered' ||
               batchSaving ||
-              batchHalt === 'unknown'
+              ordinaryWritesBlocked
             "
           />选择此行登记</label
         >
@@ -1498,7 +1851,7 @@ onBeforeUnmount(() => {
           :disabled="
             row.registrationStatus === 'registered' ||
             batchSaving ||
-            batchHalt === 'unknown'
+            ordinaryWritesBlocked
           "
         >
           <label
@@ -1591,6 +1944,7 @@ onBeforeUnmount(() => {
           <button
             type="button"
             :disabled="
+              blockedByOtherMaintenance ||
               row.recoveryRefreshing ||
               batchSaving ||
               batchHalt !== 'none' ||
@@ -1604,15 +1958,14 @@ onBeforeUnmount(() => {
           <div v-for="proof in row.recoveryEvidence ?? []" :key="proof.id">
             {{ proof.originalFilename }} · {{ proof.createdAt }} ·
             {{ proof.sizeBytes }} 字节
-            <button
-              type="button"
-              @click="downloadEvidence(proof.materialId, proof.id)"
-            >
+            <button type="button" @click="verifyRecoveryEvidence(proof)">
               下载核对
             </button>
             <button
               type="button"
               :disabled="
+                blockedByOtherMaintenance ||
+                !verifiedRecoveryIds.includes(proof.id) ||
                 batchSaving ||
                 batchHalt !== 'none' ||
                 writeDenied ||
@@ -1632,7 +1985,7 @@ onBeforeUnmount(() => {
       <button
         v-if="batchHalt === 'unknown'"
         type="button"
-        :disabled="batchSaving"
+        :disabled="blockedByOtherMaintenance || batchSaving"
         @click="retryBatchUnknown"
       >
         用原内容和幂等键重试
@@ -1648,6 +2001,7 @@ onBeforeUnmount(() => {
       <button
         type="button"
         :disabled="
+          ordinaryWritesBlocked ||
           batchSaving ||
           batchHalt !== 'none' ||
           !batchRows.some(

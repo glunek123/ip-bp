@@ -297,7 +297,19 @@ test('committed response loss preserves the original contact command across refr
   await expect(page.locator('#customer-admission')).toHaveCount(0);
   await expect(page.locator('#customer-rights-holders')).toHaveCount(0);
   await expect(page.locator('#customer-accounts')).toHaveCount(0);
-  await expect(page.locator('#customer-assets')).toHaveCount(0);
+  await page.getByRole('tab', { name: '权利资产' }).click();
+  const assets = page.locator('#customer-tab-assets');
+  await expect(assets.getByRole('heading', { name: '权利资产' })).toBeVisible();
+  await expect(
+    assets.locator('[data-test="right-assets-frozen"]'),
+  ).toBeVisible();
+  await expect(
+    assets.getByRole('button', { name: '登记权利资产' }),
+  ).toBeDisabled();
+  await expect(
+    assets.getByRole('button', { name: '批量上传权属' }),
+  ).toBeDisabled();
+  await page.getByRole('tab', { name: '基本信息' }).click();
   await expect(page.locator('[data-test="pause-open"]')).toHaveCount(0);
   await expect(page.locator('[data-test="delete-draft-open"]')).toHaveCount(0);
   await expect(panel.locator('[data-test="contact-retry"]')).toBeVisible();

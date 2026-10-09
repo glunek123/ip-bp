@@ -88,8 +88,8 @@ function current(context: number, customerId: string, who: string): boolean {
     actorKey.value === who
   );
 }
-function setProjectionStale(stale: boolean): void {
-  if (readOnlyStale.value === stale) return;
+function setProjectionStale(stale: boolean, forceEmit = false): void {
+  if (readOnlyStale.value === stale && !forceEmit) return;
   readOnlyStale.value = stale;
   emit('projection-stale', props.customer.id, actorKey.value, stale);
 }
@@ -175,6 +175,7 @@ async function load(): Promise<boolean> {
       selected.value = result.items.find(
         (c) => c.id === frozen.value?.contactId,
       );
+    setProjectionStale(false, true);
     return true;
   } catch (cause) {
     if (
@@ -310,7 +311,7 @@ async function refreshReadonly(): Promise<void> {
     total.value = status.value === 'ACTIVE' ? active.total : ended.total;
     unavailable.value = false;
     emit('refreshed', customerId, who, latest);
-    setProjectionStale(false);
+    setProjectionStale(false, true);
   } catch (cause) {
     if (
       current(context, customerId, who) &&

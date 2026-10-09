@@ -13,6 +13,7 @@ import CustomerRightsHolderPanel from './CustomerRightsHolderPanel.vue';
 import CustomerAdmissionPanel from './CustomerAdmissionPanel.vue';
 import CustomerAccountPanel from './CustomerAccountPanel.vue';
 import CustomerRightAssetsPanel from './CustomerRightAssetsPanel.vue';
+import type { RightAssetRecoverySnapshot } from './customer-right-assets-recovery';
 import CustomerCooperationPanel from './CustomerCooperationPanel.vue';
 import CustomerContactsPanel from './CustomerContactsPanel.vue';
 import CustomerAgreementPanel from './CustomerAgreementPanel.vue';
@@ -54,6 +55,7 @@ const contactsPending = ref(false);
 const contactsProjectionStale = ref(false);
 const currentProjectionStale = ref(false);
 const assetPending = ref(false);
+const assetRecoverySnapshot = ref<RightAssetRecoverySnapshot>();
 const agreementState = ref({
   unknown: false,
   stale: false,
@@ -167,7 +169,14 @@ function restorePending(customerId: string): void {
   } catch {
     contactsPending.value = true;
   }
-  assetPending.value = false;
+  if (
+    assetRecoverySnapshot.value &&
+    (assetRecoverySnapshot.value.customerId !== customerId ||
+      assetRecoverySnapshot.value.userId !== actor.value?.userId ||
+      assetRecoverySnapshot.value.departmentId !== actor.value?.departmentId)
+  )
+    assetRecoverySnapshot.value = undefined;
+  assetPending.value = !!assetRecoverySnapshot.value;
   agreementState.value = { unknown: false, stale: false, uploadUnknown: false };
   invoiceState.value = { unknown: false, stale: false };
   pendingStorageBlocked.value = false;
@@ -475,8 +484,29 @@ function updateAssetPending(
     customerId === String(route.params.id) &&
     sourceActorKey === actorKey.value &&
     customer.value?.id === customerId
-  )
+  ) {
+    if (!pending && assetRecoverySnapshot.value) return;
     assetPending.value = pending;
+  }
+}
+
+function updateAssetRecovery(
+  customerId: string,
+  sourceActorKey: string,
+  snapshot: RightAssetRecoverySnapshot | null,
+): void {
+  if (
+    customerId !== String(route.params.id) ||
+    sourceActorKey !== actorKey.value ||
+    customer.value?.id !== customerId ||
+    (snapshot &&
+      (snapshot.customerId !== customerId ||
+        snapshot.userId !== actor.value?.userId ||
+        snapshot.departmentId !== actor.value?.departmentId))
+  )
+    return;
+  assetRecoverySnapshot.value = snapshot ?? undefined;
+  assetPending.value = !!snapshot;
 }
 
 function acceptRefreshedCustomer(latest: CustomerDetail): void {
@@ -1033,9 +1063,13 @@ onBeforeUnmount(abortRequests);
             :customer-id="customer.id"
             :customer-version="customer.version"
             :can-edit="customer.capabilities.editRoutine"
+            :actor-user-id="actor?.userId ?? ''"
+            :actor-department-id="actor?.departmentId ?? ''"
             :actor-key="actorKey"
+            :recovery-snapshot="assetRecoverySnapshot"
             :blocked-by-other-maintenance="assetsBlocked"
             @maintenance-pending="updateAssetPending"
+            @recovery-snapshot="updateAssetRecovery"
             @version-updated="updateCustomerVersion"
             @refresh-requested="refreshCustomerVersion"
             @customer-not-found="returnToCustomerList"

@@ -19,7 +19,7 @@ import {
 import { OrganizationService } from '../../access-control/organization.service';
 import { lockCustomerActorFacts } from '../../access-control/customer-actor-facts-lock';
 import { DatabaseService } from '../../database/database.service';
-import { MaterialService } from '../materials/material.service';
+import { MaterialService } from '../materials';
 import type {
   CreateAgreementDto,
   ReviseAgreementDto,

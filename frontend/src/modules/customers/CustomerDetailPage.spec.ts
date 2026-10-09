@@ -8,6 +8,7 @@ import { pinia } from '../../app/pinia';
 import { savePendingCustomerMaintenance } from './customer-maintenance-pending';
 import { savePendingCustomerContact } from './customer-contacts-pending';
 import { savePendingCustomerDraftCommand } from './customer-lifecycle-pending';
+import type { RightAssetRecoverySnapshot } from './customer-right-assets-recovery';
 
 const api = vi.hoisted(() => ({
   getCustomer: vi.fn(),
@@ -53,7 +54,10 @@ const rightAssetsPanel = {
     'customerId',
     'customerVersion',
     'canEdit',
+    'actorUserId',
+    'actorDepartmentId',
     'actorKey',
+    'recoverySnapshot',
     'blockedByOtherMaintenance',
   ],
   emits: [
@@ -61,9 +65,10 @@ const rightAssetsPanel = {
     'refresh-requested',
     'customer-not-found',
     'maintenance-pending',
+    'recovery-snapshot',
   ],
   template:
-    '<section data-test="right-assets-panel" :data-blocked="blockedByOtherMaintenance"><button data-test="asset-pending-on" @click="$emit(\'maintenance-pending\', customerId, actorKey, true)">lock</button><button data-test="asset-pending-off" @click="$emit(\'maintenance-pending\', customerId, actorKey, false)">unlock</button>真实权利资产台账</section>',
+    '<section data-test="right-assets-panel" :data-blocked="blockedByOtherMaintenance" :data-recovery-key="recoverySnapshot?.command?.key"><button data-test="asset-pending-on" @click="$emit(\'maintenance-pending\', customerId, actorKey, true)">lock</button><button data-test="asset-pending-off" @click="$emit(\'maintenance-pending\', customerId, actorKey, false)">unlock</button>真实权利资产台账</section>',
 };
 const agreementPanel = {
   props: ['customerId', 'actorKey', 'blockedByOtherMaintenance', 'canRead'],
@@ -162,6 +167,96 @@ function customerRecord(id: string, name: string) {
 }
 
 describe('CustomerDetailPage', () => {
+  it('keeps only the same actor asset command across a detail unmount and drops it on customer change', async () => {
+    const auth = useAuthStore(pinia);
+    auth.session = {
+      principalType: 'INTERNAL',
+      user: { id: 'user-1', displayName: '运营甲', username: 'operator-a' },
+      department: { id: 'department-1', name: '甲部门' },
+      departments: [{ id: 'department-1', name: '甲部门' }],
+      customer: null,
+      notaryOffice: null,
+      authorizationRevision: 1,
+      expiresAt: '2026-10-09T10:00:00.000Z',
+      csrfToken: 'csrf',
+    };
+    api.getCustomer.mockImplementation(async (id: string) =>
+      customerRecord(id, id === 'customer-1' ? '客户甲' : '客户乙'),
+    );
+    const { router, wrapper } = await mountPage();
+    await flushPromises();
+    const original: RightAssetRecoverySnapshot = {
+      customerId: 'customer-1',
+      userId: 'user-1',
+      departmentId: 'department-1',
+      command: {
+        action: 'WITHDRAW',
+        customerId: 'customer-1',
+        assetId: 'asset-1',
+        key: 'original-asset-key',
+        body: {
+          expectedCustomerVersion: 1,
+          expectedAssetVersion: 1,
+          reason: '原撤下原因',
+        },
+      },
+    };
+    wrapper
+      .findComponent({ name: 'CustomerRightAssetsPanel' })
+      .vm.$emit(
+        'recovery-snapshot',
+        'customer-1',
+        'user-1:department-1:1',
+        original,
+      );
+    await flushPromises();
+    expect(wrapper.find('[data-test="edit-customer"]').exists()).toBe(false);
+    auth.session = { ...auth.session, authorizationRevision: 2 };
+    await flushPromises();
+    expect(
+      wrapper
+        .get('[data-test="right-assets-panel"]')
+        .attributes('data-recovery-key'),
+    ).toBe('original-asset-key');
+    expect(wrapper.find('[data-test="edit-customer"]').exists()).toBe(false);
+    auth.session = {
+      ...auth.session,
+      user: { ...auth.session.user, id: 'user-2' },
+      authorizationRevision: 3,
+    };
+    await flushPromises();
+    expect(
+      wrapper
+        .get('[data-test="right-assets-panel"]')
+        .attributes('data-recovery-key'),
+    ).toBeUndefined();
+    auth.session = {
+      ...auth.session,
+      user: { ...auth.session.user, id: 'user-1' },
+      authorizationRevision: 4,
+    };
+    await flushPromises();
+    expect(
+      wrapper
+        .get('[data-test="right-assets-panel"]')
+        .attributes('data-recovery-key'),
+    ).toBeUndefined();
+    await router.push('/customers/customer-2');
+    await flushPromises();
+    expect(
+      wrapper
+        .get('[data-test="right-assets-panel"]')
+        .attributes('data-recovery-key'),
+    ).toBeUndefined();
+    await router.push('/customers/customer-1');
+    await flushPromises();
+    expect(
+      wrapper
+        .get('[data-test="right-assets-panel"]')
+        .attributes('data-recovery-key'),
+    ).toBeUndefined();
+  });
+
   it('composes agreement and invoice state by kind so one false event cannot clear another lock', async () => {
     useAuthStore(pinia).session = {
       principalType: 'INTERNAL',

@@ -365,7 +365,7 @@ function isUnknown(error: unknown): boolean {
 }
 
 async function submit(): Promise<void> {
-  if (submitting.value || !canSubmit.value) return;
+  if (submitting.value || uploadUnknown.value || !canSubmit.value) return;
   const key = identity();
   if (!key) return;
   let command = pending;
@@ -900,6 +900,7 @@ onBeforeUnmount(() => {
             data-test="agreement-submit"
             :disabled="
               submitting ||
+              uploadUnknown ||
               status === 'refresh-needed' ||
               (!pending && !canSubmit) ||
               (form.validityMode === 'FIXED' && !form.effectiveTo)

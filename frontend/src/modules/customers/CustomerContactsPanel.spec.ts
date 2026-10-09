@@ -126,6 +126,26 @@ afterEach(() => {
 });
 
 describe('CustomerContactsPanel', () => {
+  it('reports a completed authorized read after remount before clearing parent stale state', async () => {
+    let finishRead!: (value: ReturnType<typeof page>) => void;
+    api.listCustomerContacts.mockImplementation(
+      () =>
+        new Promise<ReturnType<typeof page>>((resolve) => {
+          finishRead = resolve;
+        }),
+    );
+    const wrapper = mountPanel();
+    await flushPromises();
+    expect(wrapper.emitted('projection-stale')).toBeUndefined();
+    finishRead(page([]));
+    await flushPromises();
+    expect(wrapper.emitted('projection-stale')).toContainEqual([
+      'customer-1',
+      'user-1:department-1:0',
+      false,
+    ]);
+  });
+
   it('keeps same-name contacts separate and shows the ended view and unassigned primary state', async () => {
     api.listCustomerContacts.mockImplementation((_id: string, status: string) =>
       Promise.resolve(

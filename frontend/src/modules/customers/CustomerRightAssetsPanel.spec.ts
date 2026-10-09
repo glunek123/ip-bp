@@ -2,6 +2,7 @@ import { flushPromises, mount } from '@vue/test-utils';
 import { afterEach, describe, expect, it, vi } from 'vitest';
 import { ApiError } from '../../api/http';
 import CustomerRightAssetsPanel from './CustomerRightAssetsPanel.vue';
+import type { RightAssetRecoverySnapshot } from './customer-right-assets-recovery';
 
 const api = vi.hoisted(() => ({
   listRightAssets: vi.fn(),
@@ -59,7 +60,7 @@ function deferred<T>() {
   });
   return { promise, resolve, reject };
 }
-function setup(items = [asset]) {
+function setup(items = [asset], recoverySnapshot?: RightAssetRecoverySnapshot) {
   materials.listOwnerMaterials.mockResolvedValue({ items: [], total: 0 });
   customers.getCustomer.mockResolvedValue({
     version: 2,
@@ -88,14 +89,235 @@ function setup(items = [asset]) {
       customerId: 'customer-1',
       customerVersion: 2,
       canEdit: true,
+      actorUserId: 'user-1',
+      actorDepartmentId: 'department-1',
       actorKey: 'user-1:department-1:1',
       blockedByOtherMaintenance: false,
+      recoverySnapshot,
     },
   });
 }
 afterEach(() => vi.resetAllMocks());
 
 describe('CustomerRightAssetsPanel', () => {
+  it('restores the exact unknown command after an authorized remount', async () => {
+    const first = setup([]);
+    await flushPromises();
+    await first.get('.right-assets-panel__header button').trigger('click');
+    await first.get('input[required]').setValue('原始商标');
+    await first.findAll('input')[2]!.setValue('商标权');
+    await first.get('select[required]').setValue(holder.id);
+    api.createRightAsset.mockRejectedValueOnce(new Error('response lost'));
+    await first.get('form').trigger('submit');
+    await flushPromises();
+    const original = api.createRightAsset.mock.calls[0];
+    const snapshot = first
+      .emitted('recovery-snapshot')
+      ?.at(-1)?.[2] as RightAssetRecoverySnapshot;
+    expect(snapshot.command?.key).toBe(original[2]);
+    first.unmount();
+    const restored = setup([], snapshot);
+    await flushPromises();
+    expect(
+      restored
+        .findAll('button')
+        .some((button) => button.text().includes('原请求重试')),
+    ).toBe(true);
+    api.createRightAsset.mockResolvedValueOnce({
+      ...asset,
+      customerVersion: 3,
+    });
+    await restored
+      .findAll('button')
+      .find((button) => button.text().includes('原请求重试'))!
+      .trigger('click');
+    await flushPromises();
+    expect(api.createRightAsset.mock.calls[1][1]).toEqual(original[1]);
+    expect(api.createRightAsset.mock.calls[1][2]).toBe(original[2]);
+  });
+
+  it('keeps a single uncertain upload frozen until a refreshed exact proof is downloaded and adopted', async () => {
+    const wrapper = setup([]);
+    await flushPromises();
+    await wrapper.get('.right-assets-panel__header button').trigger('click');
+    const file = wrapper.get('input[aria-label="选择权属证明文件"]');
+    Object.defineProperty(file.element, 'files', {
+      configurable: true,
+      value: [
+        new File(['proof'], 'uncertain.pdf', { type: 'application/pdf' }),
+      ],
+    });
+    await file.trigger('change');
+    materials.uploadMaterialFile.mockRejectedValueOnce(
+      new Error('response lost'),
+    );
+    await wrapper
+      .findAll('button')
+      .find((button) => button.text() === '上传证明')!
+      .trigger('click');
+    await flushPromises();
+    expect(materials.uploadMaterialFile).toHaveBeenCalledTimes(1);
+    expect(
+      wrapper.get('form button[type="submit"]').attributes('disabled'),
+    ).toBeDefined();
+    expect(
+      wrapper.get('.right-assets-panel__header button').attributes('disabled'),
+    ).toBeDefined();
+    expect(
+      wrapper
+        .findAll('button')
+        .find((button) => button.text() === '取消')!
+        .attributes('disabled'),
+    ).toBeDefined();
+    const proof = {
+      id: 'version-recovered',
+      materialId: 'material-recovered',
+      originalFilename: 'uncertain.pdf',
+      mimeType: 'application/pdf',
+      sizeBytes: 5,
+      sha256: 'a'.repeat(64),
+      status: 'AVAILABLE',
+      createdAt: '2026-10-08T01:00:00Z',
+    };
+    materials.listOwnerMaterials.mockResolvedValueOnce({
+      items: [
+        {
+          id: proof.materialId,
+          ownerType: 'CUSTOMER',
+          ownerId: 'customer-1',
+          category: 'CUSTOMER_RIGHT_EVIDENCE',
+          purpose: 'CUSTOMER_RIGHT_EVIDENCE',
+          status: 'ACTIVE',
+          contentVersions: [proof],
+        },
+      ],
+      total: 1,
+    });
+    await wrapper
+      .findAll('button')
+      .find((button) => button.text() === '刷新证明池')!
+      .trigger('click');
+    await flushPromises();
+    expect(
+      wrapper
+        .findAll('button')
+        .find((button) => button.text() === '选用此证明')!
+        .attributes('disabled'),
+    ).toBeDefined();
+    await wrapper
+      .findAll('button')
+      .find((button) => button.text() === '下载核对')!
+      .trigger('click');
+    await flushPromises();
+    await wrapper
+      .findAll('button')
+      .find((button) => button.text() === '选用此证明')!
+      .trigger('click');
+    await flushPromises();
+    expect(materials.downloadMaterialVersion).toHaveBeenCalledWith(
+      proof.materialId,
+      proof.id,
+    );
+    expect(materials.uploadMaterialFile).toHaveBeenCalledTimes(1);
+    expect(
+      wrapper.get('.right-assets-panel__header button').attributes('disabled'),
+    ).toBeUndefined();
+  });
+
+  it('clears uncertain upload state on customer and actor changes and ignores late old uploads', async () => {
+    const wrapper = setup([]);
+    await flushPromises();
+    await wrapper.get('.right-assets-panel__header button').trigger('click');
+    const file = wrapper.get('input[aria-label="选择权属证明文件"]');
+    Object.defineProperty(file.element, 'files', {
+      configurable: true,
+      value: [new File(['proof'], 'late.pdf', { type: 'application/pdf' })],
+    });
+    await file.trigger('change');
+    const late = deferred<unknown>();
+    materials.uploadMaterialFile.mockReturnValueOnce(late.promise);
+    await wrapper
+      .findAll('button')
+      .find((button) => button.text() === '上传证明')!
+      .trigger('click');
+    await wrapper.setProps({
+      actorUserId: 'user-2',
+      actorKey: 'user-2:department-1:2',
+    });
+    late.reject(new Error('old response lost'));
+    await flushPromises();
+    expect(wrapper.emitted('maintenance-pending')?.at(-1)).toEqual([
+      'customer-1',
+      'user-2:department-1:2',
+      false,
+    ]);
+    expect(wrapper.find('form').exists()).toBe(false);
+    await wrapper.setProps({ customerId: 'customer-2' });
+    await flushPromises();
+    expect(wrapper.emitted('maintenance-pending')?.at(-1)).toEqual([
+      'customer-2',
+      'user-2:department-1:2',
+      false,
+    ]);
+  });
+
+  it('keeps an original unknown command across an authorization revision while rejecting the old response', async () => {
+    const wrapper = setup([]);
+    await flushPromises();
+    await wrapper.get('.right-assets-panel__header button').trigger('click');
+    await wrapper.get('input[required]').setValue('原始商标');
+    await wrapper.findAll('input')[2]!.setValue('商标权');
+    await wrapper.get('select[required]').setValue(holder.id);
+    api.createRightAsset.mockRejectedValueOnce(new Error('response lost'));
+    await wrapper.get('form').trigger('submit');
+    await flushPromises();
+    const original = api.createRightAsset.mock.calls[0];
+    await wrapper.setProps({ actorKey: 'user-1:department-1:2' });
+    await flushPromises();
+    expect(wrapper.emitted('maintenance-pending')?.at(-1)).toEqual([
+      'customer-1',
+      'user-1:department-1:2',
+      true,
+    ]);
+    api.createRightAsset.mockResolvedValueOnce({
+      ...asset,
+      customerVersion: 3,
+    });
+    await wrapper
+      .findAll('button')
+      .find((button) => button.text().includes('原请求重试'))!
+      .trigger('click');
+    await flushPromises();
+    expect(api.createRightAsset.mock.calls[1][1]).toEqual(original[1]);
+    expect(api.createRightAsset.mock.calls[1][2]).toBe(original[2]);
+  });
+
+  it('visibly freezes an open batch when another maintenance command is unknown', async () => {
+    const wrapper = setup([]);
+    await flushPromises();
+    await wrapper
+      .findAll('button')
+      .find((button) => button.text() === '批量上传权属')!
+      .trigger('click');
+    await wrapper.setProps({ blockedByOtherMaintenance: true });
+    const batch = wrapper.get('section[aria-label="批量上传权属"]');
+    expect(batch.get('fieldset').attributes('disabled')).toBeDefined();
+    expect(
+      batch.get('input[type="checkbox"]').attributes('disabled'),
+    ).toBeDefined();
+    expect(
+      batch
+        .findAll('button')
+        .find((button) => button.text() === '确认登记')!
+        .attributes('disabled'),
+    ).toBeDefined();
+    await batch
+      .findAll('button')
+      .find((button) => button.text() === '确认登记')!
+      .trigger('click');
+    expect(api.createRightAsset).not.toHaveBeenCalled();
+  });
+
   it('keeps the panel mounted while another maintenance request blocks writes', async () => {
     const wrapper = setup([]);
     await wrapper.setProps({ blockedByOtherMaintenance: true });
@@ -612,6 +834,12 @@ describe('CustomerRightAssetsPanel', () => {
     await batch()
       .findAll('button')
       .find((button) => button.text().includes('原内容和幂等键重试'))!
+      .trigger('click');
+    await flushPromises();
+    expect(api.createRightAsset).toHaveBeenCalledTimes(3);
+    await batch()
+      .findAll('button')
+      .find((button) => button.text() === '确认登记')!
       .trigger('click');
     await flushPromises();
     expect(api.createRightAsset).toHaveBeenCalledTimes(4);
