@@ -1,6 +1,6 @@
 {
   "version": 1,
-  "recordedAt": "2026-10-09T04:49:01.381Z",
+  "recordedAt": "2026-10-09T04:50:21.298Z",
   "files": {
     ".cursor/rules/verified-feature-integration.mdc": "ffd2306612ba6f09749629c5adb9e645f7f37aa6ee27ff1bc1c3d8b14efeca38",
     ".env.example": "07211cde5c2b59efc21b619b752d4c9b871f0980d2d64ca3c146ad6151fd27ca",
@@ -493,7 +493,7 @@
     "docs/superpowers/plans/2026-10-08-case-hearing-followup.md": "1305a599d6611527f160504578f333d05b56372043b06eef68b545ee4a2779e8",
     "docs/superpowers/plans/2026-10-08-case-judgment-registration.md": "ab0f8a0d4db073730e5ae2e7af4fc33a4ef881a79481492767dc5663f327a465",
     "docs/superpowers/plans/2026-10-08-customer-module-alignment.md": "1ecc7b08ef084c29ea9c3b4b9290b9e1cf1d3a7dbcc325272e953517ad3b81e2",
-    "docs/superpowers/plans/2026-10-09-customer-contacts.md": "06cacd0d417775e4e609623f298da41dda9322e8e499b6cdc24aaf76cd7f75b0",
+    "docs/superpowers/plans/2026-10-09-customer-contacts.md": "c5dd836f988ba69e8d9bdbb1039e3f031203846091426398cfcaade5f30e8f11",
     "docs/superpowers/plans/2026-10-09-customer-cooperation.md": "657cf4f15a68d828e17c4717cac0a2dd41c5e61ef64acad195ba335684c2db81",
     "docs/superpowers/specs/2026-09-17-local-account-auth-design.md": "90318fbebae983c71e9558138cbd40b30ef02afce332a0e52f70797601a23d6f",
     "docs/superpowers/specs/2026-09-20-personnel-access-management-design.md": "bfeaf41d0356417c57a5030fd6dc9de0cfafa37d5404bb20cd3f7cff76ee5bda",
@@ -515,7 +515,7 @@
     "docs/superpowers/specs/2026-09-28-core-nt-007-notary-account-opening-design.md": "03fcb848d3d97bf5879cf0ffec130737eefe21b3b45a598b7c5f7f2f2a14a708",
     "docs/superpowers/specs/2026-09-29-core-nt-006-return-archive-design.md": "767cf4cb3ddfe76870c233de5c9f49472bdbb7e1d3788f48b3e4181ba6e1530b",
     "docs/superpowers/specs/2026-10-08-customer-module-alignment-design.md": "19ee453cf7748c215f78058b12028538ac3edcdebc5da6a1cae66f546a92f1aa",
-    "docs/superpowers/specs/2026-10-09-customer-contacts-contract.md": "7ea386e3977e093c5e2ee529b296c5c7de5e92d352a14992e7a91d6ef28901ed",
+    "docs/superpowers/specs/2026-10-09-customer-contacts-contract.md": "341563c489d2865b9a6f29163d83d6ec7388448a6831cb986e4cb0f6240e7ea2",
     "eslint.config.mjs": "daf2a32e995b6fe0ec4648d5e116ddb6e028a2dfa04df23914b3bef88e3fc3d2",
     "frontend/index.html": "d39846e0c586d9b779c4eab746d32f690b878c293128e824cfee6170623b14d8",
     "frontend/package.json": "11be5d17686715dce6637d942b3fa994380b34de28216c4134935f040f40b44b",

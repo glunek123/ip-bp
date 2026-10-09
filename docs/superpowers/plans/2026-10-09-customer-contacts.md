@@ -1,6 +1,6 @@
 # CORE-CU-006 多联系人实施计划
 
-> For agentic workers: 依项目协作路由执行 Task A/B/C；本文件当前仅为 ignored 草稿，CU005 已通过正式门禁，待 root 复核、落入正式计划后才可授权 CU006 实现。逐项以 - [ ] 追踪。writing-plans 的通用子 Agent 推荐不替代项目规定的模型/Review/Level 3 路由。
+> **For agentic workers:** 使用subagent-driven-development执行Task A/B/C；模型、审查和Level3门禁按项目协作路由与三级规则。用户已授权按切片开发，CU005已本地验收；仅依赖真实未决事项的部分暂停，不重复请求计划批准。
 
 **Goal:** 在 CU004/005 真实前态上交付可维护多联系人、最多一位主要、可无主要、结束留史，并无损保留旧建档/PATCH/准入及历史回执。
 
@@ -21,7 +21,7 @@
 
 ## 开工交接与文件边界
 
-root 以 CU005 收口候选 3cc60d1/tree6a8e312、git status、正式报告和本文差异复核；若代码变动影响本契约，更新草稿再落盘正式 docs/superpowers/plans/2026-10-09-customer-contacts.md，及 docs/spec/v0.1/modules/customers.md 中 REQ-CU-006/AC 增量。按需同步 docs/spec/v0.1/TECHNICAL-DESIGN.md 的旧字段/快照说明，最终状态只按真实证据更新路线图/VALIDATION/project-status，不预写通过。
+CU005已在4922f9f完成显式Level2正式门禁，非执行性收口3cc60d1/tree6a8e312仅状态/证据/快照。root已按该实际代码前态复核并落盘本文及联系人契约，REQ-CU-006与技术基线已同步。开工仍核对HEAD/tree和已有差异，只认当前源码/Spec及真实验证；后续只同步真实变化，不预写通过。
 
 | 文件                                                                                                                                                                                   | 职责                                                                                                                                              |
 | -------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- | ------------------------------------------------------------------------------------------------------------------------------------------------- |
@@ -40,7 +40,7 @@ root 以 CU005 收口候选 3cc60d1/tree6a8e312、git status、正式报告和�
 
 ## Task A：后端、迁移与真实 PostgreSQL（高风险，gpt-6-sol）
 
-**产出接口：** ContactSummary={id,customerId,name,phone,email,duty,isPrimary,endedAt,endReason,version,origin,createdAt,updatedAt}；ContactVersion={id,contactId,version,action,before,after,actor,occurredAt}，before/after 的快照精确含 name/phone/email/duty/isPrimary/endedAt/endReason，CREATED.before=null，actor 为 HUMAN(userId) 或 LEGACY_MIGRATION(userId:null)；CustomerContactCommandResult={contact,customerVersion,primaryContactId}。结束原因由已结束 ContactSummary/Version 读取；CustomerDetail 只增 admissionContactSnapshot 和 primaryContactId，原 CustomerSummary 不强加历史字段。联系人 list/versions 均返回 {items,total,page,pageSize}。精确类型、请求、状态码和错误码见契约草稿，Task B 不自行推断字段。Task C 用固定候选真实主链验收。
+**产出接口：** ContactSummary={id,customerId,name,phone,email,duty,isPrimary,endedAt,endReason,version,origin,createdAt,updatedAt}；ContactVersion={id,contactId,version,action,before,after,actor,occurredAt}，before/after 的快照精确含 name/phone/email/duty/isPrimary/endedAt/endReason，CREATED.before=null，actor 为 HUMAN(userId) 或 LEGACY_MIGRATION(userId:null)；CustomerContactCommandResult={contact,customerVersion,primaryContactId}。结束原因由已结束 ContactSummary/Version 读取；CustomerDetail 只增 admissionContactSnapshot 和 primaryContactId，原 CustomerSummary 不强加历史字段。联系人 list/versions 均返回 {items,total,page,pageSize}。精确类型、请求、状态码和错误码见[联系人实施契约](../specs/2026-10-09-customer-contacts-contract.md)，Task B 不自行推断字段。Task C 用固定候选真实主链验收。
 
 - [ ] 先读上表源文件、对应直接测试及 docs/conventions.md 的接口/安全/迁移章节；核对 CU005 gate 后 tree。列一份迁移前数据断言：DRAFT/ADMITTED/deleted、旧三字段完整性、receipt 多候选/无效数及旧指纹样本；不得打印个人资料。确认实际最后迁移序号后取新时间戳，不改旧迁移。
 - [ ] 在写生产 schema 前先预检合法 Customer 合成 seed/范围清理拥有者：tests/support/customer-database.mjs 的 resetLocalAuthE2eData、resetCustomerE2eData、resetPersonnelAccessE2eData 及直接 Prisma/SQL 客户构造；tests/support/core-lead-database.mjs 的 admittedCustomer→resetCoreLeadE2eData/createMany、clearDatabase、临时 schema 升级 seed；核对各自 .d.mts 声明。检查 tests/support/case-judgment-database.mjs 的直接客户 INSERT/DELETE，特别是其 SET LOCAL session_replication_role=replica 后的 Customer INSERT：将合法最小 DRAFT 父客户创建移到正常约束下并补齐必要成员事实，replica 仅限既有特定合成负例的其他表；另核对 case-hearing-database.mjs 与 customer-right-asset-database.mjs 的直接客户引用/清理。其余 auth/案件 DB helper 仅当 rg 显示直接 Customer 写入或共享 reset 时纳入。区分预 CU006 schema 的迁移探针与新 schema 的运行时 seed，以及故意构造的 SQL 负例，不把无关测试批量改写。
