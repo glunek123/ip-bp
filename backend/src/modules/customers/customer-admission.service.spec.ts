@@ -91,6 +91,9 @@ describe('CustomerAdmissionService', () => {
     database,
     accessControl,
     materials,
+    {
+      lockDepartment: jest.fn(),
+    } as unknown as import('../../access-control/organization.service').OrganizationService,
   );
 
   const current = {
@@ -165,6 +168,7 @@ describe('CustomerAdmissionService', () => {
     auditCreate = jest.fn().mockResolvedValue({ id: 'audit-1' });
     queryRaw = jest.fn().mockResolvedValue([{ id: customerId }]);
     tx = {
+      $queryRaw: jest.fn().mockResolvedValue([{ id: customerId }]),
       $queryRawUnsafe: queryRaw,
       customer: {
         findFirst: customerFindFirst,
@@ -175,6 +179,29 @@ describe('CustomerAdmissionService', () => {
         findUnique: receiptFindUnique,
         create: receiptCreate,
       },
+      customerContact: {
+        findFirst: jest.fn().mockResolvedValue(null),
+        count: jest.fn().mockResolvedValue(0),
+        create: jest.fn().mockImplementation(({ data }) =>
+          Promise.resolve({
+            id: '44444444-4444-4444-8444-444444444444',
+            customerId,
+            departmentId: actor.departmentId,
+            name: data.name,
+            phone: data.phone,
+            email: data.email,
+            duty: null,
+            isPrimary: false,
+            endedAt: null,
+            endReason: null,
+            version: 1,
+            origin: data.origin,
+            createdAt: new Date(),
+            updatedAt: new Date(),
+          }),
+        ),
+      },
+      customerContactVersion: { create: jest.fn().mockResolvedValue({}) },
       auditEvent: { create: auditCreate },
     };
     transaction.mockImplementation(async (callback, options) => {
@@ -794,14 +821,14 @@ describe('CustomerAdmissionService', () => {
     expect(transaction).toHaveBeenCalledTimes(2);
   });
 
-  it('maps three consecutive P2034 failures to a stable version conflict', async () => {
+  it('maps six consecutive P2034 failures to a stable busy result', async () => {
     transaction.mockReset().mockRejectedValue({ code: 'P2034' });
 
     await expect(
       service.admit(actor, customerId, 'exhausted', command()),
     ).rejects.toMatchObject({
-      response: { code: 'CUSTOMER_VERSION_CONFLICT' },
+      response: { code: 'CUSTOMER_CONTACT_BUSY' },
     });
-    expect(transaction).toHaveBeenCalledTimes(3);
+    expect(transaction).toHaveBeenCalledTimes(6);
   });
 });

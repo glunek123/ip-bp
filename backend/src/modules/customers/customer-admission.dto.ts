@@ -60,6 +60,10 @@ export const IDENTITY_VALIDITY_MODES = [
 export type IdentityValidityModeCode = (typeof IDENTITY_VALIDITY_MODES)[number];
 
 export class AdmitCustomerDto {
+  @ApiPropertyOptional({ format: 'uuid' })
+  @ValidateIf((_object, value) => value !== undefined)
+  @IsUUID('4')
+  admissionContactId?: string;
   @ApiProperty({ minimum: 1 })
   @IsInt()
   @Min(1)
@@ -113,12 +117,16 @@ export class AdmitCustomerDto {
   @IsIn(IDENTITY_VALIDITY_MODES)
   identityValidityMode!: IdentityValidityModeCode;
 
-  @ApiProperty({ maxLength: 100 })
+  @ApiPropertyOptional({ maxLength: 100 })
   @Transform(trim)
+  @ValidateIf(
+    (object: AdmitCustomerDto, value: unknown) =>
+      object.admissionContactId === undefined || value !== undefined,
+  )
   @IsString()
   @MinLength(1)
   @MaxLength(100)
-  admissionContactName!: string;
+  admissionContactName?: string;
 
   @ApiPropertyOptional({ maxLength: 30 })
   @Transform(trim)

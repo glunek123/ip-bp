@@ -53,6 +53,42 @@ const database = new PrismaClient({
   adapter: new PrismaPg({ connectionString: databaseUrl, max: 2 }),
 });
 
+async function clearCustomerContactData(transaction, departmentIds) {
+  await transaction.$executeRawUnsafe(
+    'ALTER TABLE "customer_contact_versions" DISABLE TRIGGER USER',
+  );
+  await transaction.$executeRawUnsafe(
+    'ALTER TABLE "customer_contact_command_receipts" DISABLE TRIGGER USER',
+  );
+  await transaction.customerContactCommandReceipt.deleteMany({
+    where: { departmentId: { in: departmentIds } },
+  });
+  await transaction.customerContactVersion.deleteMany({
+    where: { contact: { departmentId: { in: departmentIds } } },
+  });
+  await transaction.customer.updateMany({
+    where: {
+      departmentId: { in: departmentIds },
+      compatibilityContactId: { not: null },
+    },
+    data: {
+      compatibilityContactId: null,
+      admissionContactName: null,
+      admissionContactPhone: null,
+      admissionContactEmail: null,
+    },
+  });
+  await transaction.customerContact.deleteMany({
+    where: { departmentId: { in: departmentIds } },
+  });
+  await transaction.$executeRawUnsafe(
+    'ALTER TABLE "customer_contact_command_receipts" ENABLE TRIGGER USER',
+  );
+  await transaction.$executeRawUnsafe(
+    'ALTER TABLE "customer_contact_versions" ENABLE TRIGGER USER',
+  );
+}
+
 async function resetLocalAuthE2eData() {
   const departmentId = '10000000-0000-4000-8000-000000000010';
   const userId = '20000000-0000-4000-8000-000000000010';
@@ -105,6 +141,7 @@ async function resetLocalAuthE2eData() {
     await transaction.authThrottle.deleteMany({});
     await transaction.localCredential.deleteMany({});
     await transaction.auditEvent.deleteMany({ where: { departmentId } });
+    await clearCustomerContactData(transaction, [departmentId]);
     await transaction.customer.deleteMany({ where: { departmentId } });
     await transaction.roleAssignment.deleteMany({ where: { userId } });
     await transaction.roleGrant.deleteMany({
@@ -491,6 +528,7 @@ async function resetCustomerE2eData() {
     await transaction.rightsHolder.deleteMany({
       where: { departmentId: { in: departmentIds } },
     });
+    await clearCustomerContactData(transaction, departmentIds);
     await transaction.customer.deleteMany({
       where: { departmentId: { in: departmentIds } },
     });
@@ -680,6 +718,86 @@ async function grantCustomerLifecycle(roleId, scope = 'TEAM') {
     })),
     skipDuplicates: true,
   });
+}
+
+async function grantCustomerAdmission(roleId, scope = 'TEAM') {
+  await database.roleGrant.createMany({
+    data: [{ roleTemplateId: roleId, action: 'CUSTOMER_ADMIT', scope }],
+    skipDuplicates: true,
+  });
+}
+
+async function revokeCustomerAdmission(roleId) {
+  await database.roleGrant.deleteMany({
+    where: { roleTemplateId: roleId, action: 'CUSTOMER_ADMIT' },
+  });
+}
+
+async function holdCustomerActorLock(userId) {
+  const client = new Client({ connectionString: databaseUrl });
+  await client.connect();
+  try {
+    await client.query('BEGIN');
+    const rows = await client.query(
+      'SELECT id FROM user_accounts WHERE id=$1::uuid FOR UPDATE',
+      [userId],
+    );
+    if (rows.rowCount !== 1) throw new Error('actor lock probe user missing');
+    return async () => {
+      try {
+        await client.query('COMMIT');
+      } finally {
+        await client.end();
+      }
+    };
+  } catch (error) {
+    await client.query('ROLLBACK').catch(() => {});
+    await client.end().catch(() => {});
+    throw error;
+  }
+}
+
+async function revokeCustomerRoutineEdit(roleId) {
+  await database.roleGrant.deleteMany({
+    where: { roleTemplateId: roleId, action: 'CUSTOMER_EDIT_ROUTINE' },
+  });
+}
+
+async function createLegacyPendingDeletedCustomer() {
+  const id = randomUUID();
+  await database.customer.create({
+    data: {
+      id,
+      departmentId: e2eFixtures.departmentA,
+      responsibleUserId: e2eFixtures.userA,
+      teamId: e2eFixtures.teamA,
+      name: 'CU006 legacy deleted synthetic',
+      normalizedName: `cu006-legacy-${id}`,
+      admissionContactName: 'Preserved Person',
+      admissionContactPhone: '13800138000',
+      legacyContactPending: true,
+      deletedAt: new Date(),
+      deletedByUserId: e2eFixtures.userA,
+    },
+  });
+  return id;
+}
+
+async function getContactProvenance(customerId) {
+  const rows = await database.customerContact.findMany({
+    where: { customerId },
+    include: { versions: true },
+  });
+  return rows.map((row) => ({
+    id: row.id,
+    origin: row.origin,
+    createdByUserId: row.createdByUserId,
+    versions: row.versions.map((version) => ({
+      actorUserId: version.actorUserId,
+      source: version.source,
+      action: version.action,
+    })),
+  }));
 }
 
 async function grantCustomerCooperation(roleId, scope = 'TEAM') {
@@ -2171,6 +2289,19 @@ async function allowCustomerUpdateAuditWrites() {
   );
 }
 
+async function rejectContactReceiptWrites() {
+  await allowContactReceiptWrites();
+  await database.$executeRawUnsafe(
+    `ALTER TABLE "customer_contact_command_receipts" ADD CONSTRAINT "e2e_reject_contact_receipt" CHECK ("idempotency_key" <> 'cu006-fault-receipt') NOT VALID`,
+  );
+}
+
+async function allowContactReceiptWrites() {
+  await database.$executeRawUnsafe(
+    'ALTER TABLE "customer_contact_command_receipts" DROP CONSTRAINT IF EXISTS "e2e_reject_contact_receipt"',
+  );
+}
+
 async function rejectNamedCustomerWrites(name) {
   await allowNamedCustomerWrites();
   await database.$executeRawUnsafe(
@@ -2507,6 +2638,7 @@ async function resetPersonnelAccessE2eData() {
     await transaction.auditEvent.deleteMany({
       where: { departmentId: { in: departmentIds } },
     });
+    await clearCustomerContactData(transaction, departmentIds);
     await transaction.customer.deleteMany({
       where: { departmentId: { in: departmentIds } },
     });
@@ -3165,6 +3297,8 @@ export {
   allowNamedCustomerWrites,
   allowCustomerDraftAuditWrites,
   allowCustomerUpdateAuditWrites,
+  rejectContactReceiptWrites,
+  allowContactReceiptWrites,
   assignCrossDepartmentTeamToCustomer,
   assignCrossDepartmentTeamToMembership,
   assignForeignDepartmentAuditActor,
@@ -3206,6 +3340,12 @@ export {
   rejectCustomerMaintenanceStage,
   allowCustomerMaintenanceStage,
   grantCustomerLifecycle,
+  grantCustomerAdmission,
+  revokeCustomerAdmission,
+  holdCustomerActorLock,
+  revokeCustomerRoutineEdit,
+  createLegacyPendingDeletedCustomer,
+  getContactProvenance,
   revokeCustomerLifecycle,
   createExpiredCustomerUploadDraft,
   getCustomerLifecycleCounts,

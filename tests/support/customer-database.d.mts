@@ -16,6 +16,30 @@ export const e2eFixtures: Readonly<{
 }>;
 
 export function resetCustomerE2eData(): Promise<void>;
+export function grantCustomerAdmission(
+  roleId: string,
+  scope?: 'TEAM' | 'DEPARTMENT' | 'SELF',
+): Promise<void>;
+export function revokeCustomerAdmission(roleId: string): Promise<void>;
+export function holdCustomerActorLock(
+  userId: string,
+): Promise<() => Promise<void>>;
+export function revokeCustomerRoutineEdit(roleId: string): Promise<void>;
+export function rejectContactReceiptWrites(): Promise<void>;
+export function allowContactReceiptWrites(): Promise<void>;
+export function createLegacyPendingDeletedCustomer(): Promise<string>;
+export function getContactProvenance(customerId: string): Promise<
+  Array<{
+    id: string;
+    origin: string;
+    createdByUserId: string | null;
+    versions: Array<{
+      actorUserId: string | null;
+      source: string;
+      action: string;
+    }>;
+  }>
+>;
 export function grantCustomerCooperation(
   roleId: string,
   scope?: 'SELF' | 'TEAM' | 'DEPARTMENT',

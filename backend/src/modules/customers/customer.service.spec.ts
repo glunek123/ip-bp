@@ -4,6 +4,17 @@ import { ActorContext } from '../../access-control/actor-context';
 import { DatabaseService } from '../../database/database.service';
 import { CustomerService } from './customer.service';
 
+jest.mock('./customer-contact-locks', () => ({
+  isCustomerContactRetryable: () => false,
+  lockVisibleCustomerForRoutineEdit: jest.fn(
+    (tx, _organization, _access, actor, id) =>
+      tx.customer.findFirst({
+        where: { id, departmentId: actor.departmentId, deletedAt: null },
+      }),
+  ),
+}));
+import { OrganizationService } from '../../access-control/organization.service';
+
 const actor: ActorContext = {
   userId: '11111111-1111-4111-8111-111111111111',
   departmentId: '22222222-2222-4222-8222-222222222222',
@@ -41,9 +52,13 @@ describe('CustomerService', () => {
       updateMany: customerUpdateMany,
     },
     auditEvent: { findMany: auditFindMany },
+    customerContact: { findFirst: jest.fn().mockResolvedValue(null) },
     $transaction: transaction,
   } as unknown as DatabaseService;
-  const service = new CustomerService(database, accessControl);
+  const organization = {
+    lockDepartment: jest.fn(),
+  } as unknown as OrganizationService;
+  const service = new CustomerService(database, accessControl, organization);
 
   beforeEach(() => {
     jest.clearAllMocks();
@@ -208,7 +223,27 @@ describe('CustomerService', () => {
         customer: {
           findFirst: jest.fn().mockResolvedValue(null),
           create: customerCreate,
+          update: jest.fn().mockResolvedValue(created),
         },
+        customerContact: {
+          create: jest.fn().mockResolvedValue({
+            id: '44444444-4444-4444-8444-444444444444',
+            customerId: created.id,
+            departmentId: actor.departmentId,
+            name: '张三',
+            phone: '+86 138-0013-8000',
+            email: null,
+            duty: null,
+            isPrimary: false,
+            endedAt: null,
+            endReason: null,
+            version: 1,
+            origin: 'LEGACY_CREATE',
+            createdAt: new Date(),
+            updatedAt: new Date(),
+          }),
+        },
+        customerContactVersion: { create: jest.fn().mockResolvedValue({}) },
         auditEvent: { create: jest.fn().mockResolvedValue({ id: 'audit-1' }) },
       }),
     );
@@ -671,13 +706,36 @@ describe('CustomerService', () => {
     };
     const txUpdateMany = jest.fn().mockResolvedValue({ count: 1 });
     const txAuditCreate = jest.fn().mockResolvedValue({ id: 'audit-1' });
+    const txContactCreate = jest.fn().mockResolvedValue({
+      id: '44444444-4444-4444-8444-444444444444',
+      customerId: current.id,
+      departmentId: actor.departmentId,
+      name: '李四',
+      phone: '13800138000',
+      email: 'contact@example.com',
+      duty: null,
+      isPrimary: false,
+      endedAt: null,
+      endReason: null,
+      version: 1,
+      origin: 'LEGACY_CREATE',
+      createdAt: new Date(),
+      updatedAt: new Date(),
+    });
     transaction.mockImplementation(async (callback) =>
       callback({
         customer: {
           findFirst: jest.fn().mockResolvedValueOnce(current),
           updateMany: txUpdateMany,
+          update: jest.fn().mockResolvedValue(updated),
           findUnique: jest.fn().mockResolvedValue(updated),
         },
+        customerContact: {
+          findFirst: jest.fn().mockResolvedValue(null),
+          count: jest.fn().mockResolvedValue(0),
+          create: txContactCreate,
+        },
+        customerContactVersion: { create: jest.fn().mockResolvedValue({}) },
         auditEvent: { create: txAuditCreate },
       }),
     );

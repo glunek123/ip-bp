@@ -314,7 +314,10 @@ export async function verifyCoreCaseJudgmentFixtureCleanup(
         'INSERT INTO user_accounts(id,external_subject,display_name,updated_at) VALUES ($1,$2,$3,now())',
         [other.actor, `ca008-cleanup-${other.actor}`, 'CA008 other actor'],
       );
-      await client.query('SET LOCAL session_replication_role = replica');
+      await client.query(
+        'INSERT INTO department_memberships(id,user_id,department_id,updated_at) VALUES (gen_random_uuid(),$1,$2,now())',
+        [other.actor, other.department],
+      );
       await client.query(
         'INSERT INTO customers(id,name,normalized_name,department_id,responsible_user_id,updated_at) VALUES ($1,$2,$2,$3,$4,now())',
         [other.customer, 'CA008 other customer', other.department, other.actor],
@@ -323,6 +326,7 @@ export async function verifyCoreCaseJudgmentFixtureCleanup(
         'INSERT INTO rights_holders(id,name,department_id,updated_at) VALUES ($1,$2,$3,now())',
         [other.holder, 'CA008 other holder', other.department],
       );
+      await client.query('SET LOCAL session_replication_role = replica');
       for (const [fixture, department] of [
         [target, coreLeadFixtures.departmentA],
         [other, other.department],
@@ -530,6 +534,10 @@ export async function verifyCoreCaseJudgmentFixtureCleanup(
       await client.query('DELETE FROM rights_holders WHERE id=$1', [
         other.holder,
       ]);
+      await client.query(
+        'DELETE FROM department_memberships WHERE user_id=$1 AND department_id=$2',
+        [other.actor, other.department],
+      );
       await client.query('DELETE FROM user_accounts WHERE id=$1', [
         other.actor,
       ]);

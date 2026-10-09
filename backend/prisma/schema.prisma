@@ -673,6 +673,13 @@ model Customer {
   admissionContactName     String?                      @map("admission_contact_name")
   admissionContactPhone    String?                      @map("admission_contact_phone")
   admissionContactEmail    String?                      @map("admission_contact_email")
+  compatibilityContactId   String?                      @map("compatibility_contact_id") @db.Uuid
+  legacyContactPending     Boolean                      @default(false) @map("legacy_contact_pending")
+  admissionContactSnapshotName String?                  @map("admission_contact_snapshot_name")
+  admissionContactSnapshotPhone String?                 @map("admission_contact_snapshot_phone")
+  admissionContactSnapshotEmail String?                 @map("admission_contact_snapshot_email")
+  admissionContactSnapshotSource String?                @map("admission_contact_snapshot_source") @db.VarChar(32)
+  admissionContactSnapshotFrozenAt DateTime?            @map("admission_contact_snapshot_frozen_at") @db.Timestamptz(3)
   identityValidFrom        DateTime?                    @map("identity_valid_from") @db.Date
   identityValidTo          DateTime?                    @map("identity_valid_to") @db.Date
   identityValidityMode     IdentityValidityMode?        @map("identity_validity_mode")
@@ -697,6 +704,9 @@ model Customer {
   rightAssetVersions       CustomerRightAssetVersion[]
   rightAssetReceipts       CustomerRightAssetReceipt[]
   admissionReceipts        CustomerAdmissionReceipt[]
+  contacts                 CustomerContact[]            @relation("CustomerContacts")
+  compatibilityContact     CustomerContact?             @relation("CustomerCompatibilityContact", fields: [compatibilityContactId, id, departmentId], references: [id, customerId, departmentId], onDelete: Restrict, onUpdate: Restrict)
+  contactReceipts          CustomerContactCommandReceipt[]
   lifecycleFacts           CustomerDraftLifecycleFact[]
   lifecycleReceipts        CustomerDraftLifecycleReceipt[]
   maintenanceFacts         CustomerMaintenanceFact[]
@@ -1136,6 +1146,70 @@ model MaterialReference {
   @@index([departmentId, resourceType, resourceId])
   @@index([materialId])
   @@map("material_references")
+}
+
+model CustomerContact {
+  id              String @id @default(uuid()) @db.Uuid
+  customerId      String @map("customer_id") @db.Uuid
+  departmentId    String @map("department_id") @db.Uuid
+  name            String @db.VarChar(100)
+  phone           String? @db.VarChar(30)
+  email           String? @db.VarChar(254)
+  duty            String? @db.VarChar(500)
+  isPrimary       Boolean @default(false) @map("is_primary")
+  endedAt         DateTime? @map("ended_at") @db.Timestamptz(3)
+  endedByUserId   String? @map("ended_by_user_id") @db.Uuid
+  endReason       String? @map("end_reason") @db.VarChar(500)
+  version         Int @default(1)
+  origin          String @db.VarChar(32)
+  originKey       String? @map("origin_key") @db.VarChar(128)
+  createdAt       DateTime @default(now()) @map("created_at") @db.Timestamptz(3)
+  createdByUserId String? @map("created_by_user_id") @db.Uuid
+  updatedAt       DateTime @updatedAt @map("updated_at") @db.Timestamptz(3)
+  updatedByUserId String? @map("updated_by_user_id") @db.Uuid
+  customer        Customer @relation("CustomerContacts", fields: [customerId, departmentId], references: [id, departmentId], onDelete: Restrict)
+  compatibilityFor Customer[] @relation("CustomerCompatibilityContact")
+  versions        CustomerContactVersion[]
+
+  @@unique([id, customerId, departmentId])
+  @@unique([customerId, originKey])
+  @@index([customerId, departmentId, endedAt, createdAt, id])
+  @@map("customer_contacts")
+}
+
+model CustomerContactVersion {
+  id          String @id @default(uuid()) @db.Uuid
+  contactId   String @map("contact_id") @db.Uuid
+  version     Int
+  action      String @db.VarChar(20)
+  before      Json?
+  after       Json
+  actorUserId String? @map("actor_user_id") @db.Uuid
+  source      String @db.VarChar(20)
+  occurredAt  DateTime @default(now()) @map("occurred_at") @db.Timestamptz(3)
+  contact     CustomerContact @relation(fields: [contactId], references: [id], onDelete: Restrict)
+
+  @@unique([contactId, version])
+  @@index([contactId, occurredAt, id])
+  @@map("customer_contact_versions")
+}
+
+model CustomerContactCommandReceipt {
+  id                    String @id @default(uuid()) @db.Uuid
+  departmentId          String @map("department_id") @db.Uuid
+  actorUserId           String @map("actor_user_id") @db.Uuid
+  idempotencyKey        String @map("idempotency_key") @db.VarChar(128)
+  customerId            String @map("customer_id") @db.Uuid
+  action                String @db.VarChar(20)
+  requestFingerprint    String @map("request_fingerprint") @db.Char(64)
+  resultSnapshot        Json @map("result_snapshot")
+  resultCustomerVersion Int @map("result_customer_version")
+  createdAt             DateTime @default(now()) @map("created_at") @db.Timestamptz(3)
+  customer              Customer @relation(fields: [customerId, departmentId], references: [id, departmentId], onDelete: Restrict)
+
+  @@unique([departmentId, actorUserId, idempotencyKey])
+  @@index([customerId, departmentId])
+  @@map("customer_contact_command_receipts")
 }
 
 model CustomerAdmissionReceipt {

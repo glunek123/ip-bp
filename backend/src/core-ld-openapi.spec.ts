@@ -14,6 +14,8 @@ import { CustomerController } from './modules/customers/customer.controller';
 import { CustomerCooperationController } from './modules/customers/customer-cooperation.controller';
 import { CustomerCooperationService } from './modules/customers/customer-cooperation.service';
 import { CustomerService } from './modules/customers/customer.service';
+import { CustomerContactController } from './modules/customers/customer-contact.controller';
+import { CustomerContactService } from './modules/customers/customer-contact.service';
 import { ClientLeadController } from './modules/leads/client-lead.controller';
 import { ClientLeadService } from './modules/leads/client-lead.service';
 import { ClientNotaryController } from './modules/leads/client-notary.controller';
@@ -48,6 +50,7 @@ describe('CORE-LD-002 OpenAPI contract', () => {
         AuthController,
         CustomerController,
         CustomerCooperationController,
+        CustomerContactController,
         LeadController,
         ClientLeadController,
         ClientNotaryController,
@@ -60,6 +63,7 @@ describe('CORE-LD-002 OpenAPI contract', () => {
         { provide: AuthService, useValue: {} },
         { provide: CustomerService, useValue: {} },
         { provide: CustomerCooperationService, useValue: {} },
+        { provide: CustomerContactService, useValue: {} },
         { provide: CustomerLifecycleService, useValue: {} },
         { provide: CustomerAdmissionService, useValue: {} },
         { provide: CustomerAccountService, useValue: {} },
@@ -97,6 +101,42 @@ describe('CORE-LD-002 OpenAPI contract', () => {
   it.each([
     ['post', '/api/v1/auth/login', '200', 'AuthSessionResponseDto'],
     ['get', '/api/v1/auth/session', '200', 'AuthSessionResponseDto'],
+    [
+      'get',
+      '/api/v1/customers/{customerId}/contacts',
+      '200',
+      'ContactListResponseDto',
+    ],
+    [
+      'get',
+      '/api/v1/customers/{customerId}/contacts/{contactId}/versions',
+      '200',
+      'ContactVersionListResponseDto',
+    ],
+    [
+      'post',
+      '/api/v1/customers/{customerId}/contacts',
+      '201',
+      'ContactCommandResultResponseDto',
+    ],
+    [
+      'patch',
+      '/api/v1/customers/{customerId}/contacts/{contactId}',
+      '200',
+      'ContactCommandResultResponseDto',
+    ],
+    [
+      'post',
+      '/api/v1/customers/{customerId}/contacts/{contactId}/primary',
+      '200',
+      'ContactCommandResultResponseDto',
+    ],
+    [
+      'post',
+      '/api/v1/customers/{customerId}/contacts/{contactId}/end',
+      '200',
+      'ContactCommandResultResponseDto',
+    ],
     [
       'get',
       '/api/v1/customers/{id}/eligible-operators',
@@ -240,6 +280,19 @@ describe('CORE-LD-002 OpenAPI contract', () => {
     const responses = document.paths[path]?.post?.responses;
     expect(responses?.['201']).toBeDefined();
     expect(responses?.['200']).toBeUndefined();
+  });
+
+  it.each([
+    '/api/v1/customers/{customerId}/contacts/{contactId}/primary',
+    '/api/v1/customers/{customerId}/contacts/{contactId}/end',
+  ] as const)('documents POST %s as 200', (path) => {
+    const document = SwaggerModule.createDocument(
+      app,
+      new DocumentBuilder().setTitle('test').setVersion('1').build(),
+    );
+    const responses = document.paths[path]?.post?.responses;
+    expect(responses?.['200']).toBeDefined();
+    expect(responses?.['201']).toBeUndefined();
   });
 
   it.each([

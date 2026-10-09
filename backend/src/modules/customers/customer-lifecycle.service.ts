@@ -10,6 +10,9 @@ import {
 } from '../../access-control/access-control.service';
 import { ActorContext } from '../../access-control/actor-context';
 import { DatabaseService } from '../../database/database.service';
+import { OrganizationService } from '../../access-control/organization.service';
+import { lockCustomerContactActor } from './customer-contact-locks';
+import { recordContactVersion } from './customer-contact.service';
 import { CustomerDraftLifecycleDto } from './customer-lifecycle.dto';
 import { type CustomerSummary, toCustomerSummary } from './customer.service';
 
@@ -25,6 +28,7 @@ export class CustomerLifecycleService {
   constructor(
     private readonly database: DatabaseService,
     private readonly access: AccessControlService,
+    private readonly organization: OrganizationService,
   ) {}
 
   async listDeleted(actor: ActorContext, page: number, pageSize: number) {
@@ -108,6 +112,16 @@ export class CustomerLifecycleService {
       )
       .digest('hex');
     return this.database.$transaction(async (tx) => {
+      await lockCustomerContactActor(tx, this.organization, actor);
+      const [preRead, preWrite] = await Promise.all([
+        this.access.buildCustomerScope(actor, 'customer.read', tx),
+        this.access.buildCustomerScope(actor, permission, tx),
+      ]);
+      const preliminary = await tx.customer.findFirst({
+        where: { id, AND: [preRead, preWrite] },
+        select: { id: true },
+      });
+      if (preliminary === null) throw this.notFound();
       const locked = await tx.$queryRaw<Array<{ id: string }>>`
         SELECT id FROM customers WHERE id = ${id}::uuid AND department_id = ${actor.departmentId}::uuid FOR UPDATE`;
       if (locked.length !== 1) throw this.notFound();
@@ -179,6 +193,7 @@ export class CustomerLifecycleService {
             OR EXISTS (SELECT 1 FROM customer_right_assets WHERE customer_id = ${id}::uuid)
             OR EXISTS (SELECT 1 FROM customer_right_asset_versions WHERE customer_id = ${id}::uuid)
             OR EXISTS (SELECT 1 FROM customer_right_asset_receipts WHERE customer_id = ${id}::uuid)
+            OR EXISTS (SELECT 1 FROM customer_contacts WHERE customer_id = ${id}::uuid)
             OR EXISTS (SELECT 1 FROM leads WHERE customer_id = ${id}::uuid)
             OR EXISTS (SELECT 1 FROM cases WHERE customer_id = ${id}::uuid)
             OR EXISTS (SELECT 1 FROM upload_drafts WHERE owner_type = 'CUSTOMER' AND owner_id = ${id}::uuid)
@@ -219,9 +234,51 @@ export class CustomerLifecycleService {
           'CUSTOMER_VERSION_CONFLICT',
           '客户资料已被他人更新，请刷新后再提交',
         );
-      // CU006 relationship migration extends RESTORE here, under the same customer row lock.
-      // Only a never-linked legacy contact may be created from preserved flat fields;
-      // an ended relationship must never be revived.
+      if (action === 'RESTORE' && current.legacyContactPending) {
+        const existing = await tx.customerContact.count({
+          where: { customerId: id },
+        });
+        if (existing === 0 && current.admissionContactName !== null) {
+          const contact = await tx.customerContact.create({
+            data: {
+              customerId: id,
+              departmentId: actor.departmentId,
+              name: current.admissionContactName,
+              phone: current.admissionContactPhone,
+              email: current.admissionContactEmail,
+              origin: 'LEGACY_BACKFILL',
+              originKey: `legacy:${id}`,
+              createdByUserId: actor.userId,
+              updatedByUserId: actor.userId,
+            },
+          });
+          await recordContactVersion(
+            tx,
+            contact,
+            'CREATED',
+            null,
+            actor.userId,
+          );
+          await tx.customer.update({
+            where: { id },
+            data: {
+              compatibilityContactId: contact.id,
+              legacyContactPending: false,
+            },
+          });
+        } else {
+          await tx.customer.update({
+            where: { id },
+            data: {
+              compatibilityContactId: null,
+              admissionContactName: null,
+              admissionContactPhone: null,
+              admissionContactEmail: null,
+              legacyContactPending: false,
+            },
+          });
+        }
+      }
       const audit = await tx.auditEvent.create({
         data: {
           departmentId: actor.departmentId,

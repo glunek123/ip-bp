@@ -9,6 +9,15 @@ import {
 import { AccessControlService } from '../../access-control/access-control.service';
 import { ActorContext } from '../../access-control/actor-context';
 import { DatabaseService } from '../../database/database.service';
+import { OrganizationService } from '../../access-control/organization.service';
+import {
+  isCustomerContactRetryable,
+  lockCustomerContactActor,
+} from './customer-contact-locks';
+import {
+  contactSnapshot,
+  recordContactVersion,
+} from './customer-contact.service';
 import type { Prisma } from '../../generated/prisma/client';
 import { MaterialService, ValidatedMaterialVersionFact } from '../materials';
 import {
@@ -71,7 +80,7 @@ type HistoricalCustomerSummary = Omit<CustomerSummary, 'cooperationStatus'> & {
   cooperationStatus?: CustomerSummary['cooperationStatus'];
 };
 
-const MAX_SERIALIZABLE_ATTEMPTS = 3;
+const MAX_SERIALIZABLE_ATTEMPTS = 6;
 
 @Injectable()
 export class CustomerAdmissionService {
@@ -79,6 +88,7 @@ export class CustomerAdmissionService {
     private readonly database: DatabaseService,
     private readonly accessControl: AccessControlService,
     private readonly materials: MaterialService,
+    private readonly organization: OrganizationService,
   ) {}
 
   async admit(
@@ -88,11 +98,28 @@ export class CustomerAdmissionService {
     input: AdmitCustomerDto,
   ): Promise<CustomerSummary> {
     const canonical = this.canonicalizeForFingerprint(input);
-    const fingerprint = this.fingerprint(customerId, canonical);
+    const fingerprint =
+      input.admissionContactId === undefined
+        ? this.fingerprint(customerId, canonical)
+        : createHash('sha256')
+            .update(
+              JSON.stringify({
+                fingerprintVersion: 2,
+                customerId,
+                admissionContactId: input.admissionContactId,
+                ...canonical,
+              }),
+            )
+            .digest('hex');
     for (let attempt = 1; attempt <= MAX_SERIALIZABLE_ATTEMPTS; attempt += 1) {
       try {
         return await this.database.$transaction(
           async (transaction) => {
+            await lockCustomerContactActor(
+              transaction,
+              this.organization,
+              actor,
+            );
             const scope = await this.accessControl.buildCustomerScope(
               actor,
               'customer.admit',
@@ -113,8 +140,13 @@ export class CustomerAdmissionService {
               actor.departmentId,
             );
             if (locked.length !== 1) throw this.notFound();
+            const postLockScope = await this.accessControl.buildCustomerScope(
+              actor,
+              'customer.admit',
+              transaction,
+            );
             const current = await transaction.customer.findFirst({
-              where: { id: customerId, ...scope, deletedAt: null },
+              where: { id: customerId, ...postLockScope, deletedAt: null },
             });
             if (current === null) throw this.notFound();
 
@@ -133,7 +165,66 @@ export class CustomerAdmissionService {
               throw this.stateConflict();
             }
 
-            const normalized = this.validateAndNormalizeDomain(input);
+            let selectedContact =
+              input.admissionContactId === undefined
+                ? null
+                : await transaction.customerContact.findFirst({
+                    where: {
+                      id: input.admissionContactId,
+                      customerId,
+                      departmentId: actor.departmentId,
+                      endedAt: null,
+                    },
+                  });
+            if (
+              input.admissionContactId !== undefined &&
+              selectedContact === null
+            )
+              throw this.contactConflict('CUSTOMER_CONTACT_SELECTION_REQUIRED');
+            if (
+              selectedContact !== null &&
+              ((input.admissionContactName !== undefined &&
+                this.canonicalText(input.admissionContactName) !==
+                  this.canonicalText(selectedContact.name)) ||
+                (input.admissionContactPhone !== undefined &&
+                  this.canonicalOptionalText(input.admissionContactPhone) !==
+                    this.canonicalOptionalText(selectedContact.phone)) ||
+                (input.admissionContactEmail !== undefined &&
+                  this.canonicalOptionalText(input.admissionContactEmail) !==
+                    this.canonicalOptionalText(selectedContact.email)))
+            )
+              throw this.contactConflict('CUSTOMER_CONTACT_MISMATCH');
+            const effectiveInput =
+              selectedContact === null
+                ? input
+                : {
+                    ...input,
+                    admissionContactName: selectedContact.name,
+                    admissionContactPhone: selectedContact.phone ?? undefined,
+                    admissionContactEmail: selectedContact.email ?? undefined,
+                  };
+            const normalized = this.validateAndNormalizeDomain(effectiveInput);
+            if (selectedContact === null) {
+              if (current.compatibilityContactId !== null) {
+                selectedContact = await transaction.customerContact.findFirst({
+                  where: {
+                    id: current.compatibilityContactId,
+                    customerId,
+                    departmentId: actor.departmentId,
+                    endedAt: null,
+                  },
+                });
+              }
+              if (selectedContact === null) {
+                const activeCount = await transaction.customerContact.count({
+                  where: { customerId, endedAt: null },
+                });
+                if (activeCount > 0)
+                  throw this.contactConflict(
+                    'CUSTOMER_CONTACT_SELECTION_REQUIRED',
+                  );
+              }
+            }
 
             const duplicate = await transaction.customer.findFirst({
               where: {
@@ -196,6 +287,53 @@ export class CustomerAdmissionService {
               facts,
             });
 
+            if (
+              selectedContact !== null &&
+              input.admissionContactId === undefined &&
+              (selectedContact.name !== normalized.admissionContactName ||
+                selectedContact.phone !== normalized.admissionContactPhone ||
+                selectedContact.email !== normalized.admissionContactEmail)
+            ) {
+              const before = contactSnapshot(selectedContact);
+              selectedContact = await transaction.customerContact.update({
+                where: { id: selectedContact.id },
+                data: {
+                  name: normalized.admissionContactName,
+                  phone: normalized.admissionContactPhone,
+                  email: normalized.admissionContactEmail,
+                  version: { increment: 1 },
+                  updatedByUserId: actor.userId,
+                },
+              });
+              await recordContactVersion(
+                transaction,
+                selectedContact,
+                'UPDATED',
+                before,
+                actor.userId,
+              );
+            } else if (selectedContact === null) {
+              selectedContact = await transaction.customerContact.create({
+                data: {
+                  customerId,
+                  departmentId: actor.departmentId,
+                  name: normalized.admissionContactName,
+                  phone: normalized.admissionContactPhone,
+                  email: normalized.admissionContactEmail,
+                  origin: 'ADMISSION_FREEFORM',
+                  createdByUserId: actor.userId,
+                  updatedByUserId: actor.userId,
+                },
+              });
+              await recordContactVersion(
+                transaction,
+                selectedContact,
+                'CREATED',
+                null,
+                actor.userId,
+              );
+            }
+
             const admittedAt = new Date();
             const changed = await transaction.customer.updateMany({
               where: {
@@ -219,6 +357,12 @@ export class CustomerAdmissionService {
                 admissionContactName: normalized.admissionContactName,
                 admissionContactPhone: normalized.admissionContactPhone,
                 admissionContactEmail: normalized.admissionContactEmail,
+                compatibilityContactId: selectedContact.id,
+                admissionContactSnapshotName: normalized.admissionContactName,
+                admissionContactSnapshotPhone: normalized.admissionContactPhone,
+                admissionContactSnapshotEmail: normalized.admissionContactEmail,
+                admissionContactSnapshotSource: 'NEW_ADMISSION',
+                admissionContactSnapshotFrozenAt: admittedAt,
                 profileStatus: 'ADMITTED',
                 admittedAt,
                 version: { increment: 1 },
@@ -267,8 +411,9 @@ export class CustomerAdmissionService {
       } catch (error) {
         if (this.isSerializationConflict(error)) {
           if (attempt === MAX_SERIALIZABLE_ATTEMPTS) {
-            throw this.versionConflict();
+            throw this.contactConflict('CUSTOMER_CONTACT_BUSY');
           }
+          await new Promise((resolve) => setTimeout(resolve, attempt * 15));
           continue;
         }
         if (!this.isUniqueConstraintError(error)) throw error;
@@ -278,10 +423,19 @@ export class CustomerAdmissionService {
           },
         );
         if (receipt === null) throw this.identityDuplicate();
+        const scope = await this.accessControl.buildCustomerScope(
+          actor,
+          'customer.admit',
+        );
+        const visible = await this.database.customer.findFirst({
+          where: { id: customerId, ...scope, deletedAt: null },
+          select: { id: true },
+        });
+        if (visible === null) throw this.notFound();
         return this.rebuildReceiptResult(actor, receipt, fingerprint);
       }
     }
-    throw this.versionConflict();
+    throw this.contactConflict('CUSTOMER_CONTACT_BUSY');
   }
 
   private canonicalizeForFingerprint(
@@ -588,7 +742,7 @@ export class CustomerAdmissionService {
     return value === null ? null : value.toISOString().slice(0, 10);
   }
 
-  private required(value: string): string {
+  private required(value: string | undefined): string {
     const normalized = this.normalizeComparable(
       typeof value === 'string' ? value : '',
     );
@@ -617,6 +771,13 @@ export class CustomerAdmissionService {
     return new ConflictException({
       code: 'CUSTOMER_VERSION_CONFLICT',
       message: '客户资料已被他人更新，请重新加载后再提交',
+    });
+  }
+
+  private contactConflict(code: string): ConflictException {
+    return new ConflictException({
+      code,
+      message: '联系人状态已变化，请刷新后重试',
     });
   }
 
@@ -692,9 +853,6 @@ export class CustomerAdmissionService {
   }
 
   private isSerializationConflict(error: unknown): boolean {
-    if (error === null || typeof error !== 'object') return false;
-    const record = error as Record<string, unknown>;
-    if (record.code === 'P2034') return true;
-    return this.isSerializationConflict(record.cause);
+    return isCustomerContactRetryable(error);
   }
 }

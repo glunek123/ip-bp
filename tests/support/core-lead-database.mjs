@@ -651,8 +651,43 @@ async function clearDatabase() {
   await database.rightsHolder.deleteMany({
     where: { departmentId: { in: departmentIds } },
   });
-  await database.customer.deleteMany({
-    where: { departmentId: { in: departmentIds } },
+  await database.$transaction(async (transaction) => {
+    await transaction.$executeRawUnsafe(
+      'ALTER TABLE "customer_contact_versions" DISABLE TRIGGER USER',
+    );
+    await transaction.$executeRawUnsafe(
+      'ALTER TABLE "customer_contact_command_receipts" DISABLE TRIGGER USER',
+    );
+    await transaction.customerContactCommandReceipt.deleteMany({
+      where: { departmentId: { in: departmentIds } },
+    });
+    await transaction.customerContactVersion.deleteMany({
+      where: { contact: { departmentId: { in: departmentIds } } },
+    });
+    await transaction.customer.updateMany({
+      where: {
+        departmentId: { in: departmentIds },
+        compatibilityContactId: { not: null },
+      },
+      data: {
+        compatibilityContactId: null,
+        admissionContactName: null,
+        admissionContactPhone: null,
+        admissionContactEmail: null,
+      },
+    });
+    await transaction.customerContact.deleteMany({
+      where: { departmentId: { in: departmentIds } },
+    });
+    await transaction.$executeRawUnsafe(
+      'ALTER TABLE "customer_contact_command_receipts" ENABLE TRIGGER USER',
+    );
+    await transaction.$executeRawUnsafe(
+      'ALTER TABLE "customer_contact_versions" ENABLE TRIGGER USER',
+    );
+    await transaction.customer.deleteMany({
+      where: { departmentId: { in: departmentIds } },
+    });
   });
   await database.roleAssignment.deleteMany({
     where: { departmentId: { in: departmentIds } },
@@ -714,6 +749,10 @@ function admittedCustomer(id, departmentId, userId, teamId, name, identity) {
     normalizedIdentityNumber: identity,
     admissionContactName: '测试联系人',
     admissionContactPhone: '13800000000',
+    admissionContactSnapshotName: '测试联系人',
+    admissionContactSnapshotPhone: '13800000000',
+    admissionContactSnapshotSource: 'NEW_ADMISSION',
+    admissionContactSnapshotFrozenAt: new Date('2026-09-21T00:00:00.000Z'),
     identityValidityMode: 'LONG_TERM',
     profileStatus: 'ADMITTED',
     admittedAt: new Date('2026-09-21T00:00:00.000Z'),
@@ -884,41 +923,86 @@ export async function resetCoreLeadE2eData() {
       },
     ],
   });
-  await database.customer.createMany({
-    data: [
-      {
-        id: coreLeadFixtures.draftCustomer,
-        departmentId: coreLeadFixtures.departmentA,
-        responsibleUserId: coreLeadFixtures.userA,
-        teamId: coreLeadFixtures.teamA,
-        name: '待准入客户',
-        normalizedName: '待准入客户',
-      },
-      admittedCustomer(
-        coreLeadFixtures.admittedCustomer,
-        coreLeadFixtures.departmentA,
-        coreLeadFixtures.userA,
-        coreLeadFixtures.teamA,
-        '已准入客户',
-        'COREA001',
-      ),
-      admittedCustomer(
-        coreLeadFixtures.foreignCustomer,
-        coreLeadFixtures.departmentB,
-        coreLeadFixtures.userB,
-        null,
-        '外部门客户',
-        'COREB001',
-      ),
-      admittedCustomer(
-        coreLeadFixtures.selfCustomer,
-        coreLeadFixtures.departmentA,
-        coreLeadFixtures.userSelf,
-        coreLeadFixtures.teamSelf,
-        '本人范围客户',
-        'CORESELF1',
-      ),
-    ],
+  await database.$transaction(async (transaction) => {
+    await transaction.customer.createMany({
+      data: [
+        {
+          id: coreLeadFixtures.draftCustomer,
+          departmentId: coreLeadFixtures.departmentA,
+          responsibleUserId: coreLeadFixtures.userA,
+          teamId: coreLeadFixtures.teamA,
+          name: '待准入客户',
+          normalizedName: '待准入客户',
+        },
+        admittedCustomer(
+          coreLeadFixtures.admittedCustomer,
+          coreLeadFixtures.departmentA,
+          coreLeadFixtures.userA,
+          coreLeadFixtures.teamA,
+          '已准入客户',
+          'COREA001',
+        ),
+        admittedCustomer(
+          coreLeadFixtures.foreignCustomer,
+          coreLeadFixtures.departmentB,
+          coreLeadFixtures.userB,
+          null,
+          '外部门客户',
+          'COREB001',
+        ),
+        admittedCustomer(
+          coreLeadFixtures.selfCustomer,
+          coreLeadFixtures.departmentA,
+          coreLeadFixtures.userSelf,
+          coreLeadFixtures.teamSelf,
+          '本人范围客户',
+          'CORESELF1',
+        ),
+      ],
+    });
+    for (const customerId of [
+      coreLeadFixtures.admittedCustomer,
+      coreLeadFixtures.foreignCustomer,
+      coreLeadFixtures.selfCustomer,
+    ]) {
+      const customer = await transaction.customer.findUniqueOrThrow({
+        where: { id: customerId },
+      });
+      const contact = await transaction.customerContact.create({
+        data: {
+          customerId,
+          departmentId: customer.departmentId,
+          name: customer.admissionContactName,
+          phone: customer.admissionContactPhone,
+          email: customer.admissionContactEmail,
+          origin: 'LEGACY_CREATE',
+          createdByUserId: customer.responsibleUserId,
+          updatedByUserId: customer.responsibleUserId,
+        },
+      });
+      await transaction.customerContactVersion.create({
+        data: {
+          contactId: contact.id,
+          version: 1,
+          action: 'CREATED',
+          after: {
+            name: contact.name,
+            phone: contact.phone,
+            email: contact.email,
+            duty: null,
+            isPrimary: false,
+            endedAt: null,
+            endReason: null,
+          },
+          actorUserId: customer.responsibleUserId,
+          source: 'HUMAN',
+        },
+      });
+      await transaction.customer.update({
+        where: { id: customerId },
+        data: { compatibilityContactId: contact.id },
+      });
+    }
   });
   await database.rightsHolder.createMany({
     data: [

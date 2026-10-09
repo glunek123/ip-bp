@@ -8,6 +8,12 @@ import {
 import { AccessControlService } from '../../access-control/access-control.service';
 import { ActorContext } from '../../access-control/actor-context';
 import { DatabaseService } from '../../database/database.service';
+import { OrganizationService } from '../../access-control/organization.service';
+import {
+  isCustomerContactRetryable,
+  lockVisibleCustomerForRoutineEdit,
+} from './customer-contact-locks';
+import { recordContactVersion } from './customer-contact.service';
 import {
   CreateCustomerDraftDto,
   CustomerDuplicatesQueryDto,
@@ -29,6 +35,12 @@ export type CustomerRecord = {
   admissionContactName: string | null;
   admissionContactPhone: string | null;
   admissionContactEmail: string | null;
+  compatibilityContactId: string | null;
+  admissionContactSnapshotName: string | null;
+  admissionContactSnapshotPhone: string | null;
+  admissionContactSnapshotEmail: string | null;
+  admissionContactSnapshotSource: string | null;
+  admissionContactSnapshotFrozenAt: Date | null;
   identityValidFrom: Date | null;
   identityValidTo: Date | null;
   identityValidityMode: 'FIXED' | 'LONG_TERM' | 'NOT_STATED' | null;
@@ -68,6 +80,14 @@ export type CustomerSummary = {
 };
 
 export type CustomerDetail = CustomerSummary & {
+  primaryContactId: string | null;
+  admissionContactSnapshot: {
+    name: string;
+    phone: string | null;
+    email: string | null;
+    source: string;
+    frozenAt: string;
+  } | null;
   capabilities: { editRoutine: boolean; admit: boolean; deleteDraft: boolean };
   responsibleOperator: { id: string; displayName: string };
   cooperationCapabilities: {
@@ -116,6 +136,7 @@ export class CustomerService {
   constructor(
     private readonly database: DatabaseService,
     private readonly accessControl: AccessControlService,
+    private readonly organization: OrganizationService,
   ) {}
 
   async createDraft(
@@ -167,7 +188,7 @@ export class CustomerService {
         if (duplicateNameReason === null) throw this.nameReasonRequired();
       }
 
-      const created = await transaction.customer.create({
+      let created = await transaction.customer.create({
         data: {
           name,
           normalizedName,
@@ -180,6 +201,31 @@ export class CustomerService {
           teamId: facts.teamId ?? null,
         },
       });
+      if (admissionContact.admissionContactName !== null) {
+        const contact = await transaction.customerContact.create({
+          data: {
+            customerId: created.id,
+            departmentId: actor.departmentId,
+            name: admissionContact.admissionContactName,
+            phone: admissionContact.admissionContactPhone,
+            email: admissionContact.admissionContactEmail,
+            origin: 'LEGACY_CREATE',
+            createdByUserId: actor.userId,
+            updatedByUserId: actor.userId,
+          },
+        });
+        await recordContactVersion(
+          transaction,
+          contact,
+          'CREATED',
+          null,
+          actor.userId,
+        );
+        created = await transaction.customer.update({
+          where: { id: created.id },
+          data: { compatibilityContactId: contact.id },
+        });
+      }
       await transaction.auditEvent.create({
         data: {
           departmentId: actor.departmentId,
@@ -314,8 +360,31 @@ export class CustomerService {
         facts,
       ),
     ]);
+    const primaryContact = await this.database.customerContact.findFirst({
+      where: {
+        customerId: id,
+        departmentId: actor.departmentId,
+        isPrimary: true,
+        endedAt: null,
+      },
+      select: { id: true },
+    });
     return {
       ...this.toSummary(customer),
+      primaryContactId: primaryContact?.id ?? null,
+      admissionContactSnapshot:
+        customer.profileStatus === 'ADMITTED' &&
+        customer.admissionContactSnapshotName != null &&
+        customer.admissionContactSnapshotSource != null &&
+        customer.admissionContactSnapshotFrozenAt instanceof Date
+          ? {
+              name: customer.admissionContactSnapshotName,
+              phone: customer.admissionContactSnapshotPhone,
+              email: customer.admissionContactSnapshotEmail,
+              source: customer.admissionContactSnapshotSource,
+              frozenAt: customer.admissionContactSnapshotFrozenAt.toISOString(),
+            }
+          : null,
       responsibleOperator: {
         id: customer.responsibleUserId,
         displayName: customer.responsibleMembership.user.displayName,
@@ -440,180 +509,289 @@ export class CustomerService {
       input.duplicateNameReason,
     );
 
-    try {
-      return await this.database.$transaction(async (transaction) => {
-        const current = await transaction.customer.findFirst({
-          where: { id, ...scope, deletedAt: null },
-        });
-        if (current === null) throw this.notFound();
-        if (current.version !== input.expectedVersion) {
-          throw this.versionConflict();
-        }
+    for (let attempt = 1; attempt <= 6; attempt += 1) {
+      try {
+        return await this.database.$transaction(async (transaction) => {
+          const current = await lockVisibleCustomerForRoutineEdit(
+            transaction,
+            this.organization,
+            this.accessControl,
+            actor,
+            id,
+          );
+          if (current === null) throw this.notFound();
+          if (current.version !== input.expectedVersion) {
+            throw this.versionConflict();
+          }
 
-        const normalized = this.mergeEdit(current, input);
+          const normalized = this.mergeEdit(current, input);
 
-        if (
-          normalized.identityType !== null &&
-          normalized.normalizedIdentityNumber !== null
-        ) {
-          const exactIdentity = await transaction.customer.findFirst({
-            where: {
-              departmentId: actor.departmentId,
-              identityType: normalized.identityType,
-              normalizedIdentityNumber: normalized.normalizedIdentityNumber,
-              id: { not: id },
-            },
-            select: { id: true, deletedAt: true },
-          });
-          if (exactIdentity !== null) {
-            if (exactIdentity.deletedAt !== null && readScope !== null) {
-              const restoreScope =
-                await this.accessControl.tryBuildCustomerScope(
-                  actor,
-                  'customer.restore-draft',
-                  transaction,
-                );
-              if (
-                restoreScope !== null &&
+          if (
+            normalized.identityType !== null &&
+            normalized.normalizedIdentityNumber !== null
+          ) {
+            const exactIdentity = await transaction.customer.findFirst({
+              where: {
+                departmentId: actor.departmentId,
+                identityType: normalized.identityType,
+                normalizedIdentityNumber: normalized.normalizedIdentityNumber,
+                id: { not: id },
+              },
+              select: { id: true, deletedAt: true },
+            });
+            if (exactIdentity !== null) {
+              if (exactIdentity.deletedAt !== null && readScope !== null) {
+                const restoreScope =
+                  await this.accessControl.tryBuildCustomerScope(
+                    actor,
+                    'customer.restore-draft',
+                    transaction,
+                  );
+                if (
+                  restoreScope !== null &&
+                  (await transaction.customer.findFirst({
+                    where: {
+                      id: exactIdentity.id,
+                      deletedAt: { not: null },
+                      AND: [readScope, restoreScope],
+                    },
+                    select: { id: true },
+                  }))
+                )
+                  throw this.identityRestoreAvailable(exactIdentity.id);
+              }
+              const visible =
+                readScope !== null &&
                 (await transaction.customer.findFirst({
                   where: {
                     id: exactIdentity.id,
-                    deletedAt: { not: null },
-                    AND: [readScope, restoreScope],
+                    ...readScope,
+                    deletedAt: null,
                   },
                   select: { id: true },
-                }))
-              )
-                throw this.identityRestoreAvailable(exactIdentity.id);
+                })) !== null;
+              if (!visible) throw this.duplicateConflict();
+              throw this.identityDuplicate();
             }
-            const visible =
-              readScope !== null &&
-              (await transaction.customer.findFirst({
-                where: { id: exactIdentity.id, ...readScope, deletedAt: null },
-                select: { id: true },
-              })) !== null;
-            if (!visible) throw this.duplicateConflict();
-            throw this.identityDuplicate();
           }
-        }
 
-        const nameChanged =
-          this.normalizeComparable(current.name) !== normalized.normalizedName;
-        if (nameChanged) {
-          await transaction.$executeRawUnsafe?.(
-            'SELECT pg_advisory_xact_lock(hashtextextended($1, 0))',
-            `${actor.departmentId}:${normalized.normalizedName}`,
-          );
-        }
-        const sameName = nameChanged
-          ? readScope === null
-            ? null
-            : await transaction.customer.findFirst({
-                where: {
-                  normalizedName: normalized.normalizedName,
-                  id: { not: id },
-                  ...readScope,
-                  deletedAt: null,
-                },
-                select: { id: true },
-              })
-          : null;
-        if (sameName !== null) {
-          if (duplicateNameReason === null) throw this.nameReasonRequired();
-        }
-
-        const changedFields = editableFields.filter(
-          (field) => (current[field] ?? null) !== normalized[field],
-        );
-        if (changedFields.length === 0) return this.toSummary(current);
-
-        const result = await transaction.customer.updateMany({
-          where: {
-            id,
-            ...scope,
-            deletedAt: null,
-            version: input.expectedVersion,
-          },
-          data: { ...normalized, version: { increment: 1 } },
-        });
-        if (result.count !== 1) throw this.versionConflict();
-
-        const toVersion = input.expectedVersion + 1;
-        await transaction.auditEvent.create({
-          data: {
-            departmentId: actor.departmentId,
-            actorUserId: actor.userId,
-            resourceType: 'customer',
-            resourceId: id,
-            action: 'customer.updated',
-            details: {
-              fromVersion: input.expectedVersion,
-              toVersion,
-              changedFields,
-              changes: Object.fromEntries(
-                changedFields.map((field) => [
-                  field,
-                  {
-                    before: this.auditValue(field, current[field] ?? null),
-                    after: this.auditValue(field, normalized[field]),
+          const nameChanged =
+            this.normalizeComparable(current.name) !==
+            normalized.normalizedName;
+          if (nameChanged) {
+            await transaction.$executeRawUnsafe?.(
+              'SELECT pg_advisory_xact_lock(hashtextextended($1, 0))',
+              `${actor.departmentId}:${normalized.normalizedName}`,
+            );
+          }
+          const sameName = nameChanged
+            ? readScope === null
+              ? null
+              : await transaction.customer.findFirst({
+                  where: {
+                    normalizedName: normalized.normalizedName,
+                    id: { not: id },
+                    ...readScope,
+                    deletedAt: null,
                   },
-                ]),
-              ),
+                  select: { id: true },
+                })
+            : null;
+          if (sameName !== null) {
+            if (duplicateNameReason === null) throw this.nameReasonRequired();
+          }
+
+          const changedFields = editableFields.filter(
+            (field) => (current[field] ?? null) !== normalized[field],
+          );
+          if (changedFields.length === 0) return this.toSummary(current);
+          const contactChanged = changedFields.some(
+            (field) =>
+              field === 'admissionContactName' ||
+              field === 'admissionContactPhone' ||
+              field === 'admissionContactEmail',
+          );
+          let existingContact = null;
+          if (contactChanged) {
+            existingContact =
+              current.compatibilityContactId === null
+                ? null
+                : await transaction.customerContact.findFirst({
+                    where: {
+                      id: current.compatibilityContactId,
+                      customerId: id,
+                      departmentId: actor.departmentId,
+                      endedAt: null,
+                    },
+                  });
+            if (
+              existingContact === null &&
+              (await transaction.customerContact.count({
+                where: { customerId: id },
+              })) > 0
+            )
+              throw new ConflictException({
+                code: 'CUSTOMER_CONTACT_SELECTION_REQUIRED',
+                message: '请先选择要维护的联系人',
+              });
+          }
+
+          const result = await transaction.customer.updateMany({
+            where: {
+              id,
+              ...scope,
+              deletedAt: null,
+              version: input.expectedVersion,
             },
-          },
-        });
-        if (sameName !== null && duplicateNameReason !== null) {
+            data: { ...normalized, version: { increment: 1 } },
+          });
+          if (result.count !== 1) throw this.versionConflict();
+
+          if (contactChanged && normalized.admissionContactName !== null) {
+            if (existingContact !== null) {
+              const before = {
+                name: existingContact.name,
+                phone: existingContact.phone,
+                email: existingContact.email,
+                duty: existingContact.duty,
+                isPrimary: existingContact.isPrimary,
+                endedAt: existingContact.endedAt?.toISOString() ?? null,
+                endReason: existingContact.endReason,
+              };
+              const contact = await transaction.customerContact.update({
+                where: { id: existingContact.id },
+                data: {
+                  name: normalized.admissionContactName,
+                  phone: normalized.admissionContactPhone,
+                  email: normalized.admissionContactEmail,
+                  version: { increment: 1 },
+                  updatedByUserId: actor.userId,
+                },
+              });
+              await recordContactVersion(
+                transaction,
+                contact,
+                'UPDATED',
+                before,
+                actor.userId,
+              );
+            } else {
+              const contact = await transaction.customerContact.create({
+                data: {
+                  customerId: id,
+                  departmentId: actor.departmentId,
+                  name: normalized.admissionContactName,
+                  phone: normalized.admissionContactPhone,
+                  email: normalized.admissionContactEmail,
+                  origin: 'LEGACY_CREATE',
+                  createdByUserId: actor.userId,
+                  updatedByUserId: actor.userId,
+                },
+              });
+              await recordContactVersion(
+                transaction,
+                contact,
+                'CREATED',
+                null,
+                actor.userId,
+              );
+              await transaction.customer.update({
+                where: { id },
+                data: { compatibilityContactId: contact.id },
+              });
+            }
+          }
+
+          const toVersion = input.expectedVersion + 1;
           await transaction.auditEvent.create({
             data: {
               departmentId: actor.departmentId,
               actorUserId: actor.userId,
               resourceType: 'customer',
               resourceId: id,
-              action: 'customer.duplicate-name-overridden',
+              action: 'customer.updated',
               details: {
                 fromVersion: input.expectedVersion,
                 toVersion,
-                reason: duplicateNameReason,
+                changedFields,
+                changes: Object.fromEntries(
+                  changedFields.map((field) => [
+                    field,
+                    {
+                      before: this.auditValue(field, current[field] ?? null),
+                      after: this.auditValue(field, normalized[field]),
+                    },
+                  ]),
+                ),
               },
             },
           });
-        }
-
-        const updated = await transaction.customer.findUnique({
-          where: { id },
-        });
-        if (updated === null) throw this.notFound();
-        return this.toSummary(updated);
-      });
-    } catch (error) {
-      if (this.isUniqueConstraintError(error)) {
-        const current = await this.database.customer.findFirst({
-          where: { id, ...scope, deletedAt: null },
-        });
-        if (current !== null) {
-          const normalized = this.mergeEdit(current, input);
-          if (
-            readScope !== null &&
-            normalized.identityType !== null &&
-            normalized.normalizedIdentityNumber !== null
-          ) {
-            const visible = await this.database.customer.findFirst({
-              where: {
-                id: { not: id },
-                identityType: normalized.identityType,
-                normalizedIdentityNumber: normalized.normalizedIdentityNumber,
-                ...readScope,
-                deletedAt: null,
+          if (sameName !== null && duplicateNameReason !== null) {
+            await transaction.auditEvent.create({
+              data: {
+                departmentId: actor.departmentId,
+                actorUserId: actor.userId,
+                resourceType: 'customer',
+                resourceId: id,
+                action: 'customer.duplicate-name-overridden',
+                details: {
+                  fromVersion: input.expectedVersion,
+                  toVersion,
+                  reason: duplicateNameReason,
+                },
               },
-              select: { id: true },
             });
-            if (visible !== null) throw this.identityDuplicate();
           }
+
+          const updated = await transaction.customer.findUnique({
+            where: { id },
+          });
+          if (updated === null) throw this.notFound();
+          return this.toSummary(updated);
+        });
+      } catch (error) {
+        if (isCustomerContactRetryable(error)) {
+          if (attempt === 6)
+            throw new ConflictException({
+              code: 'CUSTOMER_CONTACT_BUSY',
+              message: '联系人操作繁忙，请使用原请求重试',
+            });
+          await new Promise((resolve) => setTimeout(resolve, attempt * 15));
+          continue;
         }
-        throw this.duplicateConflict();
+        if (this.isUniqueConstraintError(error)) {
+          const current = await this.database.customer.findFirst({
+            where: { id, ...scope, deletedAt: null },
+          });
+          if (current !== null) {
+            const normalized = this.mergeEdit(current, input);
+            if (
+              readScope !== null &&
+              normalized.identityType !== null &&
+              normalized.normalizedIdentityNumber !== null
+            ) {
+              const visible = await this.database.customer.findFirst({
+                where: {
+                  id: { not: id },
+                  identityType: normalized.identityType,
+                  normalizedIdentityNumber: normalized.normalizedIdentityNumber,
+                  ...readScope,
+                  deletedAt: null,
+                },
+                select: { id: true },
+              });
+              if (visible !== null) throw this.identityDuplicate();
+            }
+          }
+          throw this.duplicateConflict();
+        }
+        throw error;
       }
-      throw error;
     }
+    throw new ConflictException({
+      code: 'CUSTOMER_CONTACT_BUSY',
+      message: '联系人操作繁忙，请使用原请求重试',
+    });
   }
 
   private mergeEdit(

@@ -63,7 +63,9 @@ describe('CustomerLifecycleService legacy receipt projection', () => {
       .mockResolvedValue({ departmentId: actor.departmentId });
     const access = { buildCustomerScope } as unknown as AccessControlService;
     return {
-      service: new CustomerLifecycleService(database, access),
+      service: new CustomerLifecycleService(database, access, {
+        lockDepartment: jest.fn(),
+      } as unknown as import('../../access-control/organization.service').OrganizationService),
       tx,
       buildCustomerScope,
     };
