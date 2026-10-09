@@ -72,6 +72,16 @@ const context = {
       scopes: ['SELF', 'TEAM', 'DEPARTMENT'],
     },
     {
+      action: 'CUSTOMER_DELETE_DRAFT',
+      label: '删除客户草稿',
+      scopes: ['SELF', 'TEAM', 'DEPARTMENT'],
+    },
+    {
+      action: 'CUSTOMER_RESTORE_DRAFT',
+      label: '恢复客户草稿',
+      scopes: ['SELF', 'TEAM', 'DEPARTMENT'],
+    },
+    {
       action: 'CUSTOMER_RIGHT_ASSET_WITHDRAW',
       label: '撤下权利资产',
       scopes: ['SELF', 'TEAM', 'DEPARTMENT'],
@@ -286,6 +296,8 @@ describe('organization API', () => {
       'CUSTOMER_READ',
       'CUSTOMER_CREATE_DRAFT',
       'CUSTOMER_EDIT_ROUTINE',
+      'CUSTOMER_DELETE_DRAFT',
+      'CUSTOMER_RESTORE_DRAFT',
       'CUSTOMER_RIGHT_ASSET_WITHDRAW',
       'CUSTOMER_ADMIT',
       'LEAD_READ',
@@ -407,6 +419,32 @@ describe('organization API', () => {
       roles: [{ grants: [{ action: 'CASE_MATCH', scope: 'SELF' }] }],
     });
   });
+
+  it.each([
+    ['CUSTOMER_DELETE_DRAFT', 'TEAM'],
+    ['CUSTOMER_RESTORE_DRAFT', 'DEPARTMENT'],
+  ] as const)(
+    'accepts a %s role grant with %s scope',
+    async (action, scope) => {
+      const body = {
+        ...context,
+        roles: [
+          {
+            ...context.roles[0]!,
+            grants: [{ action, scope }],
+          },
+        ],
+      };
+      vi.stubGlobal(
+        'fetch',
+        vi.fn().mockResolvedValue(new Response(JSON.stringify(body))),
+      );
+
+      await expect(getOrganizationManagementContext()).resolves.toMatchObject({
+        roles: [{ grants: [{ action, scope }] }],
+      });
+    },
+  );
 
   it('accepts a self-scoped CASE_COMPLAINT_SUBMIT role grant', async () => {
     const body = {
