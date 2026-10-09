@@ -38,7 +38,12 @@ const customer = {
   responsibleUserId: 'user-1',
   version: 1,
   updatedAt: '2026-09-17T01:00:00.000Z',
-  capabilities: { editRoutine: true, admit: true },
+  capabilities: {
+    editRoutine: true,
+    admit: true,
+    agreement: { read: false, edit: false },
+    invoice: { read: false, edit: false },
+  },
   history: [],
 };
 
@@ -323,7 +328,11 @@ describe('CustomerEditPage', () => {
   it('does not show an editable form if capability is absent', async () => {
     api.getCustomer.mockResolvedValue({
       ...customer,
-      capabilities: { editRoutine: false },
+      capabilities: {
+        editRoutine: false,
+        agreement: { read: false, edit: false },
+        invoice: { read: false, edit: false },
+      },
     });
     const { wrapper } = await mountPage();
     await flushPromises();

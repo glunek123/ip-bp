@@ -84,12 +84,29 @@ function setup(items = [asset]) {
     pageSize: 100,
   });
   return mount(CustomerRightAssetsPanel, {
-    props: { customerId: 'customer-1', customerVersion: 2, canEdit: true },
+    props: {
+      customerId: 'customer-1',
+      customerVersion: 2,
+      canEdit: true,
+      actorKey: 'user-1:department-1:1',
+      blockedByOtherMaintenance: false,
+    },
   });
 }
 afterEach(() => vi.resetAllMocks());
 
 describe('CustomerRightAssetsPanel', () => {
+  it('keeps the panel mounted while another maintenance request blocks writes', async () => {
+    const wrapper = setup([]);
+    await wrapper.setProps({ blockedByOtherMaintenance: true });
+    await flushPromises();
+    expect(wrapper.find('[data-test="right-assets-frozen"]').exists()).toBe(
+      true,
+    );
+    expect(wrapper.get('button').attributes('disabled')).toBeDefined();
+    expect(api.createRightAsset).not.toHaveBeenCalled();
+  });
+
   it('starts an eleventh registration after ten successful rows', async () => {
     const wrapper = setup([]);
     await flushPromises();

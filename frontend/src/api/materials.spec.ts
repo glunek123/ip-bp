@@ -81,6 +81,56 @@ describe('materials API', () => {
     ).rejects.toMatchObject({ code: 'VALIDATION_ERROR' });
     expect(fetch).toHaveBeenCalledTimes(2);
   });
+
+  it('uploads a real customer agreement file through the matching category and purpose', async () => {
+    const file = new File(['agreement bytes'], '客户协议.pdf', {
+      type: 'application/pdf',
+    });
+    const result = {
+      ...uploaded,
+      materialId: 'agreement-material',
+      contentVersionId: 'agreement-version',
+      originalFilename: file.name,
+      purpose: 'CUSTOMER_AGREEMENT',
+      mimeType: file.type,
+      sizeBytes: file.size,
+    };
+    const fetch = vi
+      .fn()
+      .mockResolvedValueOnce(
+        new Response(
+          JSON.stringify({
+            id: 'agreement-draft',
+            ownerType: 'CUSTOMER',
+            ownerId: 'customer-1',
+            category: 'CUSTOMER_AGREEMENT',
+            purpose: 'CUSTOMER_AGREEMENT',
+            originalFilename: file.name,
+            declaredMimeType: file.type,
+            expiresAt: '2026-10-09T00:00:00.000Z',
+          }),
+        ),
+      )
+      .mockResolvedValueOnce(new Response(JSON.stringify(result)));
+    vi.stubGlobal('fetch', fetch);
+
+    await expect(
+      uploadMaterialFile({
+        ownerType: 'CUSTOMER',
+        ownerId: 'customer-1',
+        category: 'CUSTOMER_AGREEMENT' as never,
+        purpose: 'CUSTOMER_AGREEMENT' as never,
+        file,
+      }),
+    ).resolves.toEqual(result);
+    expect(JSON.parse(String(fetch.mock.calls[0]?.[1]?.body))).toMatchObject({
+      ownerType: 'CUSTOMER',
+      ownerId: 'customer-1',
+      category: 'CUSTOMER_AGREEMENT',
+      purpose: 'CUSTOMER_AGREEMENT',
+    });
+    expect(fetch).toHaveBeenCalledTimes(2);
+  });
   it('uploads real JUDGMENT documents with the court-document limits', async () => {
     const file = new File(['actual judgment bytes'], '判决书.jpg', {
       type: 'image/jpeg',

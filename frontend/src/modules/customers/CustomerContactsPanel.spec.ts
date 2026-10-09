@@ -59,7 +59,12 @@ const customer: CustomerDetail = {
   updatedAt: '2026-10-09T01:00:00.000Z',
   primaryContactId: 'contact-1',
   admissionContactSnapshot: null,
-  capabilities: { editRoutine: true, admit: true },
+  capabilities: {
+    editRoutine: true,
+    admit: true,
+    agreement: { read: false, edit: false },
+    invoice: { read: false, edit: false },
+  },
   responsibleOperator: { id: 'user-1', displayName: '运营甲' },
   cooperationCapabilities: {
     transfer: false,

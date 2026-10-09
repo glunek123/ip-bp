@@ -298,7 +298,12 @@ describe('customer API', () => {
                 occurredAt: '2026-09-17T00:59:00.000Z',
               },
             ],
-            capabilities: { editRoutine: true, admit: true },
+            capabilities: {
+              editRoutine: true,
+              admit: true,
+              agreement: { read: false, edit: false },
+              invoice: { read: false, edit: false },
+            },
           }),
         ),
       ),
@@ -306,9 +311,79 @@ describe('customer API', () => {
 
     await expect(getCustomer('customer-1')).resolves.toMatchObject({
       id: 'customer-1',
-      capabilities: { editRoutine: true, admit: true },
+      capabilities: {
+        editRoutine: true,
+        admit: true,
+        agreement: { read: false, edit: false },
+        invoice: { read: false, edit: false },
+      },
       history: [{ action: 'customer.draft-created' }],
     });
+  });
+
+  it('strictly decodes agreement and invoice capability bits on customer detail', async () => {
+    const detail = {
+      ...summary,
+      primaryContactId: null,
+      admissionContactSnapshot: null,
+      responsibleOperator: { id: 'user-1', displayName: '运营甲' },
+      cooperationCapabilities: {
+        transfer: false,
+        pause: true,
+        terminate: true,
+        resume: false,
+      },
+      history: [],
+      capabilities: {
+        editRoutine: true,
+        admit: true,
+        agreement: { read: true, edit: false },
+        invoice: { read: false, edit: false },
+      },
+    };
+    vi.stubGlobal(
+      'fetch',
+      vi.fn().mockResolvedValue(new Response(JSON.stringify(detail))),
+    );
+    await expect(getCustomer('customer-1')).resolves.toMatchObject({
+      capabilities: {
+        agreement: { read: true, edit: false },
+        invoice: { read: false, edit: false },
+      },
+    });
+
+    for (const capabilities of [
+      {
+        editRoutine: true,
+        admit: true,
+        agreement: { read: true },
+        invoice: { read: false, edit: false },
+      },
+      {
+        editRoutine: true,
+        admit: true,
+        agreement: { read: 'true', edit: false },
+        invoice: { read: false, edit: false },
+      },
+      {
+        editRoutine: true,
+        admit: true,
+        agreement: { read: true, edit: false, taxNo: 'sensitive' },
+        invoice: { read: false, edit: false },
+      },
+    ]) {
+      vi.stubGlobal(
+        'fetch',
+        vi
+          .fn()
+          .mockResolvedValue(
+            new Response(JSON.stringify({ ...detail, capabilities })),
+          ),
+      );
+      await expect(getCustomer('customer-1')).rejects.toMatchObject({
+        code: 'INVALID_RESPONSE',
+      });
+    }
   });
 
   it('requires the complete current cooperation projection on detail', async () => {
@@ -321,7 +396,12 @@ describe('customer API', () => {
             primaryContactId: null,
             admissionContactSnapshot: null,
             history: [],
-            capabilities: { editRoutine: true, admit: true },
+            capabilities: {
+              editRoutine: true,
+              admit: true,
+              agreement: { read: false, edit: false },
+              invoice: { read: false, edit: false },
+            },
           }),
         ),
       ),
@@ -351,7 +431,12 @@ describe('customer API', () => {
               terminate: true,
               resume: false,
             },
-            capabilities: { editRoutine: true, admit: true },
+            capabilities: {
+              editRoutine: true,
+              admit: true,
+              agreement: { read: false, edit: false },
+              invoice: { read: false, edit: false },
+            },
             history: [],
           }),
         ),

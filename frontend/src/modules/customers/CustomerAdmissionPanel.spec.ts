@@ -60,7 +60,12 @@ const customer = {
     terminate: true,
     resume: false,
   },
-  capabilities: { editRoutine: true, admit: true },
+  capabilities: {
+    editRoutine: true,
+    admit: true,
+    agreement: { read: false, edit: false },
+    invoice: { read: false, edit: false },
+  },
   history: [],
 };
 
@@ -488,7 +493,12 @@ describe('CustomerAdmissionPanel', () => {
         terminate: true,
         resume: false,
       },
-      capabilities: { editRoutine: true, admit: false },
+      capabilities: {
+        editRoutine: true,
+        admit: false,
+        agreement: { read: false, edit: false },
+        invoice: { read: false, edit: false },
+      },
     };
     customerApi.admitCustomer.mockResolvedValue(admitted);
     const wrapper = await mountPanel([fullMaterial]);
@@ -612,7 +622,12 @@ describe('CustomerAdmissionPanel', () => {
             terminate: true,
             resume: false,
           },
-          capabilities: { editRoutine: false, admit: false },
+          capabilities: {
+            editRoutine: false,
+            admit: false,
+            agreement: { read: false, edit: false },
+            invoice: { read: false, edit: false },
+          },
         },
       },
     });

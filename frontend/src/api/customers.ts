@@ -50,7 +50,13 @@ export type CustomerDetail = CustomerSummary & {
     source: 'RECEIPT' | 'FALLBACK_CURRENT' | 'NEW_ADMISSION';
     frozenAt: string;
   } | null;
-  capabilities: { editRoutine: boolean; admit: boolean; deleteDraft?: boolean };
+  capabilities: {
+    editRoutine: boolean;
+    admit: boolean;
+    deleteDraft?: boolean;
+    agreement: { read: boolean; edit: boolean };
+    invoice: { read: boolean; edit: boolean };
+  };
   responsibleOperator: { id: string; displayName: string };
   cooperationCapabilities: {
     transfer: boolean;
@@ -467,6 +473,14 @@ export async function getCustomer(
     ) ||
     !Array.isArray(history) ||
     !isRecord(capabilities) ||
+    !isRecord(capabilities.agreement) ||
+    !hasExactKeys(capabilities.agreement, ['read', 'edit']) ||
+    typeof capabilities.agreement.read !== 'boolean' ||
+    typeof capabilities.agreement.edit !== 'boolean' ||
+    !isRecord(capabilities.invoice) ||
+    !hasExactKeys(capabilities.invoice, ['read', 'edit']) ||
+    typeof capabilities.invoice.read !== 'boolean' ||
+    typeof capabilities.invoice.edit !== 'boolean' ||
     !isRecord(responsibleOperator) ||
     !hasExactKeys(responsibleOperator, ['id', 'displayName']) ||
     typeof responsibleOperator.id !== 'string' ||
@@ -505,6 +519,14 @@ export async function getCustomer(
       editRoutine: capabilities.editRoutine,
       admit: capabilities.admit,
       deleteDraft: capabilities.deleteDraft === true,
+      agreement: {
+        read: capabilities.agreement.read,
+        edit: capabilities.agreement.edit,
+      },
+      invoice: {
+        read: capabilities.invoice.read,
+        edit: capabilities.invoice.edit,
+      },
     },
     responsibleOperator: {
       id: responsibleOperator.id,

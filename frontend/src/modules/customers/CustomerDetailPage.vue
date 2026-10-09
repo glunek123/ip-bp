@@ -15,6 +15,8 @@ import CustomerAccountPanel from './CustomerAccountPanel.vue';
 import CustomerRightAssetsPanel from './CustomerRightAssetsPanel.vue';
 import CustomerCooperationPanel from './CustomerCooperationPanel.vue';
 import CustomerContactsPanel from './CustomerContactsPanel.vue';
+import CustomerAgreementPanel from './CustomerAgreementPanel.vue';
+import CustomerInvoiceProfilePanel from './CustomerInvoiceProfilePanel.vue';
 import { labelCustomerType, labelIdentityType } from './customer-labels';
 import { useAuthStore } from '../../stores/auth';
 import { pinia } from '../../app/pinia';
@@ -26,6 +28,11 @@ import {
 } from './customer-lifecycle-pending';
 import { hasPendingCustomerMaintenance } from './customer-maintenance-pending';
 import { listPendingCustomerContacts } from './customer-contacts-pending';
+import {
+  hasPendingCustomerAgreementInvoice,
+  readPendingCustomerAgreementUpload,
+  readPendingCustomerDocumentCommand,
+} from './customer-agreements-invoice-pending';
 
 const route = useRoute();
 const router = useRouter();
@@ -46,6 +53,14 @@ const maintenancePending = ref(false);
 const contactsPending = ref(false);
 const contactsProjectionStale = ref(false);
 const currentProjectionStale = ref(false);
+const assetPending = ref(false);
+const agreementState = ref({
+  unknown: false,
+  stale: false,
+  uploadUnknown: false,
+});
+const invoiceState = ref({ unknown: false, stale: false });
+const pendingStorageBlocked = ref(false);
 const admissionRefreshFailed = ref(false);
 let viewGeneration = 0;
 
@@ -65,6 +80,56 @@ const actorKey = computed(() =>
 );
 const contactsWriteBlocked = computed(
   () => contactsPending.value || contactsProjectionStale.value,
+);
+const documentPending = computed(
+  () =>
+    pendingStorageBlocked.value ||
+    agreementState.value.unknown ||
+    agreementState.value.uploadUnknown ||
+    agreementState.value.stale ||
+    invoiceState.value.unknown ||
+    invoiceState.value.stale,
+);
+const sharedWriteBlocked = computed(
+  () =>
+    !!frozenDelete.value ||
+    maintenancePending.value ||
+    contactsWriteBlocked.value ||
+    currentProjectionStale.value ||
+    assetPending.value ||
+    documentPending.value,
+);
+const agreementBlocked = computed(
+  () =>
+    !!frozenDelete.value ||
+    maintenancePending.value ||
+    contactsWriteBlocked.value ||
+    currentProjectionStale.value ||
+    assetPending.value ||
+    pendingStorageBlocked.value ||
+    invoiceState.value.unknown ||
+    invoiceState.value.stale,
+);
+const invoiceBlocked = computed(
+  () =>
+    !!frozenDelete.value ||
+    maintenancePending.value ||
+    contactsWriteBlocked.value ||
+    currentProjectionStale.value ||
+    assetPending.value ||
+    pendingStorageBlocked.value ||
+    agreementState.value.unknown ||
+    agreementState.value.uploadUnknown ||
+    agreementState.value.stale,
+);
+const assetsBlocked = computed(
+  () =>
+    !!frozenDelete.value ||
+    maintenancePending.value ||
+    contactsWriteBlocked.value ||
+    currentProjectionStale.value ||
+    pendingStorageBlocked.value ||
+    documentPending.value,
 );
 
 function pendingIdentity(customerId: string) {
@@ -101,6 +166,41 @@ function restorePending(customerId: string): void {
       : false;
   } catch {
     contactsPending.value = true;
+  }
+  assetPending.value = false;
+  agreementState.value = { unknown: false, stale: false, uploadUnknown: false };
+  invoiceState.value = { unknown: false, stale: false };
+  pendingStorageBlocked.value = false;
+  const session = auth.session;
+  if (session?.principalType === 'INTERNAL' && session.department) {
+    const base = {
+      userId: session.user.id,
+      departmentId: session.department.id,
+      customerId,
+    };
+    const agreement = readPendingCustomerDocumentCommand({
+      ...base,
+      kind: 'agreement',
+    });
+    const invoice = readPendingCustomerDocumentCommand({
+      ...base,
+      kind: 'invoice',
+    });
+    const upload = readPendingCustomerAgreementUpload(base);
+    agreementState.value = {
+      ...agreementState.value,
+      unknown: !!agreement,
+      uploadUnknown: !!upload,
+    };
+    invoiceState.value = { ...invoiceState.value, unknown: !!invoice };
+    pendingStorageBlocked.value =
+      hasPendingCustomerAgreementInvoice(
+        { userId: base.userId, departmentId: base.departmentId },
+        customerId,
+      ) &&
+      !agreement &&
+      !invoice &&
+      !upload;
   }
 }
 
@@ -166,7 +266,15 @@ function handleContactUnavailable(
 
 async function submitDelete(): Promise<void> {
   const current = customer.value;
-  if (deleteStatus.value === 'submitting' || maintenancePending.value) return;
+  if (
+    deleteStatus.value === 'submitting' ||
+    maintenancePending.value ||
+    contactsWriteBlocked.value ||
+    currentProjectionStale.value ||
+    assetPending.value ||
+    documentPending.value
+  )
+    return;
   if (!frozenDelete.value && (!current || !current.capabilities.deleteDraft))
     return;
   if (frozenDelete.value === undefined) {
@@ -304,6 +412,71 @@ function updateCustomerVersion(customerId: string, version: number): void {
     return;
   }
   if (customer.value) customer.value = { ...customer.value, version };
+}
+
+function updateDocumentState(
+  kind: 'agreement' | 'invoice',
+  customerId: string,
+  sourceActorKey: string,
+  field: 'unknown' | 'stale' | 'uploadUnknown',
+  value: boolean,
+): void {
+  if (
+    customerId !== String(route.params.id) ||
+    sourceActorKey !== actorKey.value ||
+    customer.value?.id !== customerId
+  )
+    return;
+  if (kind === 'agreement' && field in agreementState.value)
+    agreementState.value = { ...agreementState.value, [field]: value };
+  if (kind === 'invoice' && field in invoiceState.value)
+    invoiceState.value = { ...invoiceState.value, [field]: value };
+}
+
+function updateDocumentCustomerVersion(
+  customerId: string,
+  sourceActorKey: string,
+  version: number,
+): void {
+  if (sourceActorKey === actorKey.value)
+    updateCustomerVersion(customerId, version);
+}
+
+function refreshDocumentCustomer(
+  customerId: string,
+  sourceActorKey: string,
+): void {
+  if (
+    customerId === String(route.params.id) &&
+    sourceActorKey === actorKey.value &&
+    customer.value?.id === customerId
+  )
+    void refreshCustomerVersion(customerId);
+}
+
+function handleDocumentUnavailable(
+  customerId: string,
+  sourceActorKey: string,
+): void {
+  if (
+    customerId === String(route.params.id) &&
+    sourceActorKey === actorKey.value &&
+    customer.value?.id === customerId
+  )
+    refreshAfterMaintenanceAccessFailure(customerId);
+}
+
+function updateAssetPending(
+  customerId: string,
+  sourceActorKey: string,
+  pending: boolean,
+): void {
+  if (
+    customerId === String(route.params.id) &&
+    sourceActorKey === actorKey.value &&
+    customer.value?.id === customerId
+  )
+    assetPending.value = pending;
 }
 
 function acceptRefreshedCustomer(latest: CustomerDetail): void {
@@ -551,25 +724,13 @@ onBeforeUnmount(abortRequests);
           </div>
           <div class="detail-actions">
             <ElButton
-              v-if="
-                customer.capabilities.deleteDraft &&
-                !frozenDelete &&
-                !maintenancePending &&
-                !contactsWriteBlocked &&
-                !currentProjectionStale
-              "
+              v-if="customer.capabilities.deleteDraft && !sharedWriteBlocked"
               data-test="delete-draft-open"
               @click="deletePrompt = true"
               >删除草稿</ElButton
             >
             <RouterLink
-              v-if="
-                customer.capabilities.editRoutine &&
-                !frozenDelete &&
-                !maintenancePending &&
-                !contactsWriteBlocked &&
-                !currentProjectionStale
-              "
+              v-if="customer.capabilities.editRoutine && !sharedWriteBlocked"
               data-test="edit-customer"
               :to="`/customers/${customer.id}/edit`"
             >
@@ -594,7 +755,11 @@ onBeforeUnmount(abortRequests);
           :customer="customer"
           :actor="actor"
           :blocked-by-other-maintenance="
-            !!frozenDelete || contactsWriteBlocked || currentProjectionStale
+            !!frozenDelete ||
+            contactsWriteBlocked ||
+            currentProjectionStale ||
+            assetPending ||
+            documentPending
           "
           @refreshed="acceptRefreshedCustomer"
           @unreadable="leaveAfterConfirmedMaintenance"
@@ -764,20 +929,64 @@ onBeforeUnmount(abortRequests);
             :customer="customer"
             :actor="actor"
             :blocked-by-other-maintenance="
-              !!frozenDelete || maintenancePending || currentProjectionStale
+              !!frozenDelete ||
+              maintenancePending ||
+              currentProjectionStale ||
+              assetPending ||
+              documentPending
             "
             @refreshed="acceptContactRefresh"
             @pending-changed="updateContactsPending"
             @projection-stale="updateContactProjectionStale"
             @unavailable="handleContactUnavailable"
           />
-          <CustomerRightsHolderPanel
+          <CustomerAgreementPanel
             v-if="
-              !frozenDelete &&
-              !maintenancePending &&
-              !contactsWriteBlocked &&
-              !currentProjectionStale
+              customer.capabilities.agreement.read ||
+              agreementState.unknown ||
+              agreementState.stale ||
+              agreementState.uploadUnknown
             "
+            :customer-id="customer.id"
+            :customer-version="customer.version"
+            :can-read="customer.capabilities.agreement.read"
+            :can-edit="customer.capabilities.agreement.edit"
+            :actor="
+              actor
+                ? { userId: actor.userId, departmentId: actor.departmentId }
+                : null
+            "
+            :actor-key="actorKey"
+            :blocked-by-other-maintenance="agreementBlocked"
+            @document-state="updateDocumentState"
+            @version-updated="updateDocumentCustomerVersion"
+            @refresh-requested="refreshDocumentCustomer"
+            @unavailable="handleDocumentUnavailable"
+          />
+          <CustomerInvoiceProfilePanel
+            v-if="
+              customer.capabilities.invoice.read ||
+              invoiceState.unknown ||
+              invoiceState.stale
+            "
+            :customer-id="customer.id"
+            :customer-version="customer.version"
+            :can-read="customer.capabilities.invoice.read"
+            :can-edit="customer.capabilities.invoice.edit"
+            :actor="
+              actor
+                ? { userId: actor.userId, departmentId: actor.departmentId }
+                : null
+            "
+            :actor-key="actorKey"
+            :blocked-by-other-maintenance="invoiceBlocked"
+            @document-state="updateDocumentState"
+            @version-updated="updateDocumentCustomerVersion"
+            @refresh-requested="refreshDocumentCustomer"
+            @unavailable="handleDocumentUnavailable"
+          />
+          <CustomerRightsHolderPanel
+            v-if="!sharedWriteBlocked"
             id="customer-rights-holders"
             :customer-id="customer.id"
             :customer-version="customer.version"
@@ -787,12 +996,7 @@ onBeforeUnmount(abortRequests);
             @customer-not-found="returnToCustomerList"
           />
           <CustomerAdmissionPanel
-            v-if="
-              !frozenDelete &&
-              !maintenancePending &&
-              !contactsWriteBlocked &&
-              !currentProjectionStale
-            "
+            v-if="!sharedWriteBlocked"
             id="customer-admission"
             :customer="customer"
             @admitted="acceptAdmission"
@@ -800,12 +1004,7 @@ onBeforeUnmount(abortRequests);
             @customer-not-found="returnFromAdmission"
           />
           <CustomerAccountPanel
-            v-if="
-              !frozenDelete &&
-              !maintenancePending &&
-              !contactsWriteBlocked &&
-              !currentProjectionStale
-            "
+            v-if="!sharedWriteBlocked"
             id="customer-accounts"
             :customer-id="customer.id"
             :admitted="customer.profileStatus === 'admitted'"
@@ -831,15 +1030,12 @@ onBeforeUnmount(abortRequests);
           v-show="activeTab === 'assets'"
         >
           <CustomerRightAssetsPanel
-            v-if="
-              !frozenDelete &&
-              !maintenancePending &&
-              !contactsWriteBlocked &&
-              !currentProjectionStale
-            "
             :customer-id="customer.id"
             :customer-version="customer.version"
             :can-edit="customer.capabilities.editRoutine"
+            :actor-key="actorKey"
+            :blocked-by-other-maintenance="assetsBlocked"
+            @maintenance-pending="updateAssetPending"
             @version-updated="updateCustomerVersion"
             @refresh-requested="refreshCustomerVersion"
             @customer-not-found="returnToCustomerList"

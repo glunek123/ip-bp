@@ -54,11 +54,18 @@ const props = defineProps<{
   customerId: string;
   customerVersion: number;
   canEdit: boolean;
+  actorKey: string;
+  blockedByOtherMaintenance: boolean;
 }>();
 const emit = defineEmits<{
   'version-updated': [customerId: string, version: number];
   'refresh-requested': [customerId: string];
   'customer-not-found': [customerId: string];
+  'maintenance-pending': [
+    customerId: string,
+    actorKey: string,
+    pending: boolean,
+  ];
 }>();
 
 const state = ref<'loading' | 'ready' | 'failed'>('loading');
@@ -110,6 +117,7 @@ const withdrawOpen = ref(false);
 const withdrawReason = ref('');
 const writeDenied = ref(false);
 const unknownOutcome = ref(false);
+const singleUploadUnknown = ref(false);
 const draftOrigin = ref<{
   customerVersion: number;
   assetVersion: number;
@@ -122,6 +130,24 @@ let customerRefreshRequest: AbortController | undefined;
 let detailSequence = 0;
 let pending: PendingCommand | undefined;
 let generation = 0;
+
+const hasUnknownWork = computed(
+  () =>
+    unknownOutcome.value ||
+    singleUploadUnknown.value ||
+    batchHalt.value === 'unknown' ||
+    batchRows.value.some(
+      (row) =>
+        row.uploadStatus === 'unknown' || row.registrationStatus === 'unknown',
+    ),
+);
+watch(
+  hasUnknownWork,
+  (pending) => {
+    emit('maintenance-pending', props.customerId, props.actorKey, pending);
+  },
+  { immediate: true },
+);
 
 function emptyFields(): RightAssetFields {
   return {
@@ -139,6 +165,7 @@ function emptyFields(): RightAssetFields {
 }
 function addBatchRow(): void {
   if (
+    props.blockedByOtherMaintenance ||
     batchSaving.value ||
     batchHalt.value !== 'none' ||
     batchRows.value.filter((row) => row.registrationStatus !== 'registered')
@@ -158,7 +185,13 @@ function addBatchRow(): void {
   });
 }
 function openBatch(): void {
-  if (!canCreate.value || !props.canEdit || writeDenied.value) return;
+  if (
+    props.blockedByOtherMaintenance ||
+    !canCreate.value ||
+    !props.canEdit ||
+    writeDenied.value
+  )
+    return;
   batchOpen.value = true;
   if (batchRows.value.length === 0) addBatchRow();
 }
@@ -174,6 +207,7 @@ function chooseBatchFile(row: BatchRow, event: globalThis.Event): void {
 function canChooseBatchFile(row: BatchRow): boolean {
   return (
     !batchSaving.value &&
+    !props.blockedByOtherMaintenance &&
     batchHalt.value === 'none' &&
     !writeDenied.value &&
     !row.uploaded &&
@@ -294,7 +328,12 @@ function normalizedBatchFields(row: BatchRow): RightAssetFields {
   };
 }
 async function submitBatch(): Promise<void> {
-  if (batchSaving.value || batchHalt.value !== 'none') return;
+  if (
+    props.blockedByOtherMaintenance ||
+    batchSaving.value ||
+    batchHalt.value !== 'none'
+  )
+    return;
   const selected = batchRows.value
     .filter((row) => row.selected && row.registrationStatus !== 'registered')
     .sort(
@@ -623,7 +662,8 @@ async function openDetail(
   }
 }
 function openCreate(): void {
-  if (unknownOutcome.value || saving.value) return;
+  if (props.blockedByOtherMaintenance || unknownOutcome.value || saving.value)
+    return;
   invalidateDetailRequest();
   form.value = emptyFields();
   selectedEvidenceIds.value = [];
@@ -639,7 +679,13 @@ function openCreate(): void {
   draftOrigin.value = undefined;
 }
 function openRevise(): void {
-  if (!detail.value || unknownOutcome.value || saving.value) return;
+  if (
+    props.blockedByOtherMaintenance ||
+    !detail.value ||
+    unknownOutcome.value ||
+    saving.value
+  )
+    return;
   invalidateDetailRequest();
   const fields = detail.value.fields;
   form.value = {
@@ -673,6 +719,7 @@ function openRevise(): void {
 function openWithdraw(): void {
   if (
     !detail.value?.capabilities.withdraw ||
+    props.blockedByOtherMaintenance ||
     detail.value.withdrawn ||
     unknownOutcome.value ||
     saving.value ||
@@ -683,7 +730,8 @@ function openWithdraw(): void {
   conflict.value = false;
 }
 function cancelDraft(): void {
-  if (unknownOutcome.value || saving.value) return;
+  if (props.blockedByOtherMaintenance || unknownOutcome.value || saving.value)
+    return;
   invalidateDetailRequest();
   mode.value = 'closed';
   uploadFile.value = undefined;
@@ -698,7 +746,14 @@ function chooseUpload(event: globalThis.Event): void {
 }
 async function uploadEvidence(): Promise<void> {
   const file = uploadFile.value;
-  if (!file || mode.value === 'closed' || uploading.value || writeDenied.value)
+  if (
+    !file ||
+    mode.value === 'closed' ||
+    uploading.value ||
+    writeDenied.value ||
+    props.blockedByOtherMaintenance ||
+    singleUploadUnknown.value
+  )
     return;
   const ownGeneration = generation;
   uploading.value = true;
@@ -729,10 +784,12 @@ async function uploadEvidence(): Promise<void> {
       ...new Set([...selectedEvidenceIds.value, uploaded.contentVersionId]),
     ];
     uploadMessage.value = '上传成功，尚未登记';
+    singleUploadUnknown.value = false;
     uploadFile.value = undefined;
   } catch (error) {
     if (ownGeneration !== generation) return;
     uploadMessage.value = message(error);
+    if (isUnknownOutcome(error)) singleUploadUnknown.value = true;
     if (isCode(error, 'ACTION_FORBIDDEN') || isCode(error, 'FORBIDDEN'))
       writeDenied.value = true;
   } finally {
@@ -904,7 +961,13 @@ async function submitWithdraw(): Promise<void> {
   await runCommand(pending);
 }
 async function retryUnknown(): Promise<void> {
-  if (!unknownOutcome.value || !pending || saving.value) return;
+  if (
+    props.blockedByOtherMaintenance ||
+    !unknownOutcome.value ||
+    !pending ||
+    saving.value
+  )
+    return;
   await runCommand(pending);
 }
 async function runCommand(command: PendingCommand): Promise<void> {
@@ -1022,6 +1085,13 @@ onBeforeUnmount(() => {
 
 <template>
   <div class="right-assets-panel">
+    <p
+      v-if="blockedByOtherMaintenance"
+      role="status"
+      data-test="right-assets-frozen"
+    >
+      客户资料正在核对未确认的维护请求。权利资产保留在页面中，并暂时禁止写入。
+    </p>
     <header class="right-assets-panel__header">
       <div>
         <h2>权利资产</h2>
@@ -1030,7 +1100,7 @@ onBeforeUnmount(() => {
       <button
         v-if="state === 'ready' && canEdit && canCreate && !writeDenied"
         type="button"
-        :disabled="saving || unknownOutcome"
+        :disabled="blockedByOtherMaintenance || saving || unknownOutcome"
         @click="openCreate"
       >
         登记权利资产
@@ -1038,7 +1108,7 @@ onBeforeUnmount(() => {
       <button
         v-if="state === 'ready' && canEdit && canCreate && !writeDenied"
         type="button"
-        :disabled="batchSaving || unknownOutcome"
+        :disabled="blockedByOtherMaintenance || batchSaving || unknownOutcome"
         @click="openBatch"
       >
         批量上传权属
@@ -1083,7 +1153,11 @@ onBeforeUnmount(() => {
     <p v-if="errorMessage" role="alert">{{ errorMessage }}</p>
     <div v-if="unknownOutcome" role="group" aria-label="原请求待确认">
       <p>原请求可能已成功。重试将使用完全相同的内容和幂等键。</p>
-      <button type="button" :disabled="saving" @click="retryUnknown">
+      <button
+        type="button"
+        :disabled="blockedByOtherMaintenance || saving"
+        @click="retryUnknown"
+      >
         用原请求重试
       </button>
     </div>
@@ -1155,7 +1229,7 @@ onBeforeUnmount(() => {
       <button
         v-if="detail.capabilities.revise && canEdit && !writeDenied"
         type="button"
-        :disabled="saving || unknownOutcome"
+        :disabled="blockedByOtherMaintenance || saving || unknownOutcome"
         @click="openRevise"
       >
         修订字段
@@ -1163,7 +1237,7 @@ onBeforeUnmount(() => {
       <button
         v-if="detail.capabilities.withdraw && !writeDenied"
         type="button"
-        :disabled="saving || unknownOutcome"
+        :disabled="blockedByOtherMaintenance || saving || unknownOutcome"
         @click="openWithdraw"
       >
         撤下资产
@@ -1174,12 +1248,13 @@ onBeforeUnmount(() => {
           <input
             v-model="withdrawReason"
             maxlength="500"
-            :disabled="saving || unknownOutcome"
+            :disabled="blockedByOtherMaintenance || saving || unknownOutcome"
         /></label>
         <button
           type="button"
           :disabled="
             saving ||
+            blockedByOtherMaintenance ||
             conflict ||
             unknownOutcome ||
             !detail.capabilities.withdraw ||
@@ -1247,7 +1322,9 @@ onBeforeUnmount(() => {
       <p v-else-if="conflictDetailReady && mode === 'revise'">
         资产登记字段与草稿来源相同；客户版本变化仍需核对。
       </p>
-      <fieldset :disabled="saving || unknownOutcome">
+      <fieldset
+        :disabled="blockedByOtherMaintenance || saving || unknownOutcome"
+      >
         <label
           >资产类型
           <select v-model="form.type">
@@ -1314,11 +1391,19 @@ onBeforeUnmount(() => {
           type="file"
           accept=".pdf,.jpg,.jpeg,.png"
           aria-label="选择权属证明文件"
+          :disabled="blockedByOtherMaintenance || singleUploadUnknown"
           @change="chooseUpload"
         />
         <button
           type="button"
-          :disabled="uploading || saving || unknownOutcome || !uploadFile"
+          :disabled="
+            blockedByOtherMaintenance ||
+            singleUploadUnknown ||
+            uploading ||
+            saving ||
+            unknownOutcome ||
+            !uploadFile
+          "
           @click="uploadEvidence"
         >
           {{ uploading ? '上传中…' : '上传证明' }}
@@ -1332,6 +1417,7 @@ onBeforeUnmount(() => {
             :value="proof.id"
             :disabled="
               saving ||
+              blockedByOtherMaintenance ||
               unknownOutcome ||
               (!selectedEvidenceIds.includes(proof.id) &&
                 selectedEvidenceIds.length >= 10)
@@ -1343,14 +1429,19 @@ onBeforeUnmount(() => {
       <button
         type="submit"
         :disabled="
-          saving || conflict || unknownOutcome || !canReviseDraft || writeDenied
+          blockedByOtherMaintenance ||
+          saving ||
+          conflict ||
+          unknownOutcome ||
+          !canReviseDraft ||
+          writeDenied
         "
       >
         {{ saving ? '保存中…' : '确认保存' }}
       </button>
       <button
         type="button"
-        :disabled="saving || unknownOutcome"
+        :disabled="blockedByOtherMaintenance || saving || unknownOutcome"
         @click="cancelDraft"
       >
         取消
@@ -1372,6 +1463,7 @@ onBeforeUnmount(() => {
           batchRows.filter((row) => row.registrationStatus !== 'registered')
             .length >= 10 ||
           batchSaving ||
+          blockedByOtherMaintenance ||
           batchHalt !== 'none'
         "
         @click="addBatchRow"

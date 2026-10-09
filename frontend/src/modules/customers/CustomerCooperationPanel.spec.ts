@@ -49,7 +49,12 @@ const customer = {
     terminate: true,
     resume: false,
   },
-  capabilities: { editRoutine: true, admit: true },
+  capabilities: {
+    editRoutine: true,
+    admit: true,
+    agreement: { read: false, edit: false },
+    invoice: { read: false, edit: false },
+  },
   history: [],
 };
 

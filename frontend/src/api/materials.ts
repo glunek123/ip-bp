@@ -12,6 +12,7 @@ export type MaterialOwnerType =
 export type MaterialCategory =
   | 'CUSTOMER_IDENTITY'
   | 'CUSTOMER_RIGHT_EVIDENCE'
+  | 'CUSTOMER_AGREEMENT'
   | 'LEAD_SCREENSHOT'
   | 'NOTARY_OPENING_PHOTO'
   | 'NOTARY_CERTIFICATE'
@@ -31,6 +32,7 @@ export type MaterialPurpose =
   | 'IDENTITY_FRONT'
   | 'IDENTITY_BACK'
   | 'CUSTOMER_RIGHT_EVIDENCE'
+  | 'CUSTOMER_AGREEMENT'
   | 'LEAD_SCREENSHOT'
   | 'NOTARY_OPENING_PHOTO'
   | 'NOTARY_CERTIFICATE'
@@ -112,6 +114,18 @@ function isRecord(value: unknown): value is Record<string, unknown> {
   return typeof value === 'object' && value !== null && !Array.isArray(value);
 }
 
+function hasExactKeys(
+  value: Record<string, unknown>,
+  keys: readonly string[],
+): boolean {
+  const actual = Object.keys(value).sort();
+  const expected = [...keys].sort();
+  return (
+    actual.length === expected.length &&
+    actual.every((key, index) => key === expected[index])
+  );
+}
+
 function isOwnerType(value: unknown): value is MaterialOwnerType {
   return (
     value === 'CUSTOMER' ||
@@ -126,6 +140,7 @@ function isCategory(value: unknown): value is MaterialCategory {
   return (
     value === 'CUSTOMER_IDENTITY' ||
     value === 'CUSTOMER_RIGHT_EVIDENCE' ||
+    value === 'CUSTOMER_AGREEMENT' ||
     value === 'LEAD_SCREENSHOT' ||
     value === 'NOTARY_OPENING_PHOTO' ||
     value === 'NOTARY_CERTIFICATE' ||
@@ -148,6 +163,7 @@ function isPurpose(value: unknown): value is MaterialPurpose {
     value === 'IDENTITY_FRONT' ||
     value === 'IDENTITY_BACK' ||
     value === 'CUSTOMER_RIGHT_EVIDENCE' ||
+    value === 'CUSTOMER_AGREEMENT' ||
     value === 'LEAD_SCREENSHOT' ||
     value === 'NOTARY_OPENING_PHOTO' ||
     value === 'NOTARY_CERTIFICATE' ||
@@ -168,9 +184,23 @@ function invalidResponse(): ApiError {
   return new ApiError('服务返回了无效的材料数据', 200, 'INVALID_RESPONSE');
 }
 
-function isUploadDraft(value: unknown): value is UploadDraftResponse {
+function isUploadDraft(
+  value: unknown,
+  strictAgreement = false,
+): value is UploadDraftResponse {
   return (
     isRecord(value) &&
+    (!strictAgreement ||
+      hasExactKeys(value, [
+        'id',
+        'ownerType',
+        'ownerId',
+        'category',
+        'purpose',
+        'originalFilename',
+        'declaredMimeType',
+        'expiresAt',
+      ])) &&
     typeof value.id === 'string' &&
     (value.ownerType === 'CUSTOMER' ||
       value.ownerType === 'LEAD_DRAFT' ||
@@ -205,9 +235,22 @@ function uploadDraftMatches(
   );
 }
 
-function isUploadedMaterial(value: unknown): value is UploadedMaterial {
+function isUploadedMaterial(
+  value: unknown,
+  strictAgreement = false,
+): value is UploadedMaterial {
   return (
     isRecord(value) &&
+    (!strictAgreement ||
+      hasExactKeys(value, [
+        'materialId',
+        'contentVersionId',
+        'originalFilename',
+        'purpose',
+        'mimeType',
+        'sizeBytes',
+        'sha256',
+      ])) &&
     typeof value.materialId === 'string' &&
     typeof value.contentVersionId === 'string' &&
     (value.reservedOwnerId === undefined ||
@@ -288,6 +331,21 @@ export async function uploadMaterialFile(
         400,
         'VALIDATION_ERROR',
       );
+  }
+  if (input.category === 'CUSTOMER_AGREEMENT') {
+    const allowedTypes = new Set([
+      'application/pdf',
+      'image/jpeg',
+      'image/png',
+    ]);
+    if (
+      input.ownerType !== 'CUSTOMER' ||
+      !input.ownerId ||
+      input.purpose !== 'CUSTOMER_AGREEMENT' ||
+      !allowedTypes.has(input.file.type)
+    ) {
+      throw new ApiError('协议文件归属或类型无效', 400, 'VALIDATION_ERROR');
+    }
   }
   if (input.ownerType === 'CASE') {
     if (
@@ -396,7 +454,7 @@ export async function uploadMaterialFile(
     },
   });
   if (
-    !isUploadDraft(draft) ||
+    !isUploadDraft(draft, input.category === 'CUSTOMER_AGREEMENT') ||
     !uploadDraftMatches(draft, input, originalFilename)
   ) {
     throw invalidResponse();
@@ -408,7 +466,7 @@ export async function uploadMaterialFile(
     { method: 'PUT' },
   );
   if (
-    !isUploadedMaterial(uploaded) ||
+    !isUploadedMaterial(uploaded, input.category === 'CUSTOMER_AGREEMENT') ||
     uploaded.purpose !== input.purpose ||
     uploaded.originalFilename !== originalFilename ||
     uploaded.mimeType !== input.file.type ||

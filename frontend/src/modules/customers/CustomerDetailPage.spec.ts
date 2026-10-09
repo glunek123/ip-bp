@@ -49,10 +49,43 @@ const accountPanel = {
 };
 const rightAssetsPanel = {
   name: 'CustomerRightAssetsPanel',
-  props: ['customerId', 'customerVersion', 'canEdit'],
-  emits: ['version-updated', 'refresh-requested', 'customer-not-found'],
+  props: [
+    'customerId',
+    'customerVersion',
+    'canEdit',
+    'actorKey',
+    'blockedByOtherMaintenance',
+  ],
+  emits: [
+    'version-updated',
+    'refresh-requested',
+    'customer-not-found',
+    'maintenance-pending',
+  ],
   template:
-    '<section data-test="right-assets-panel">真实权利资产台账</section>',
+    '<section data-test="right-assets-panel" :data-blocked="blockedByOtherMaintenance"><button data-test="asset-pending-on" @click="$emit(\'maintenance-pending\', customerId, actorKey, true)">lock</button><button data-test="asset-pending-off" @click="$emit(\'maintenance-pending\', customerId, actorKey, false)">unlock</button>真实权利资产台账</section>',
+};
+const agreementPanel = {
+  props: ['customerId', 'actorKey', 'blockedByOtherMaintenance', 'canRead'],
+  emits: [
+    'document-state',
+    'version-updated',
+    'refresh-requested',
+    'unavailable',
+  ],
+  template:
+    '<section data-test="agreement-panel-stub" :data-blocked="blockedByOtherMaintenance"><button data-test="agreement-pending-on" @click="$emit(\'document-state\', \'agreement\', customerId, actorKey, \'unknown\', true)">lock</button><button data-test="agreement-pending-off" @click="$emit(\'document-state\', \'agreement\', customerId, actorKey, \'unknown\', false)">unlock</button></section>',
+};
+const invoicePanel = {
+  props: ['customerId', 'actorKey', 'blockedByOtherMaintenance', 'canRead'],
+  emits: [
+    'document-state',
+    'version-updated',
+    'refresh-requested',
+    'unavailable',
+  ],
+  template:
+    '<section data-test="invoice-panel-stub" :data-blocked="blockedByOtherMaintenance"><button data-test="invoice-stale-on" @click="$emit(\'document-state\', \'invoice\', customerId, actorKey, \'stale\', true)">stale</button></section>',
 };
 
 afterEach(() => {
@@ -83,6 +116,8 @@ async function mountPage(customerId = 'customer-1') {
         CustomerContactsPanel: contactsPanel,
         CustomerAccountPanel: accountPanel,
         CustomerRightAssetsPanel: rightAssetsPanel,
+        CustomerAgreementPanel: agreementPanel,
+        CustomerInvoiceProfilePanel: invoicePanel,
       },
     },
   });
@@ -116,12 +151,61 @@ function customerRecord(id: string, name: string) {
       terminate: true,
       resume: false,
     },
-    capabilities: { editRoutine: true, admit: true },
+    capabilities: {
+      editRoutine: true,
+      admit: true,
+      agreement: { read: false, edit: false },
+      invoice: { read: false, edit: false },
+    },
     history: [],
   };
 }
 
 describe('CustomerDetailPage', () => {
+  it('composes agreement and invoice state by kind so one false event cannot clear another lock', async () => {
+    useAuthStore(pinia).session = {
+      principalType: 'INTERNAL',
+      user: { id: 'user-1', displayName: '运营甲', username: 'operator-a' },
+      department: { id: 'department-1', name: '甲部门' },
+      departments: [{ id: 'department-1', name: '甲部门' }],
+      customer: null,
+      notaryOffice: null,
+      authorizationRevision: 1,
+      expiresAt: '2026-10-09T10:00:00.000Z',
+      csrfToken: 'csrf',
+    };
+    api.getCustomer.mockResolvedValue({
+      ...customerRecord('customer-1', '客户甲'),
+      capabilities: {
+        ...customerRecord('customer-1', '客户甲').capabilities,
+        agreement: { read: true, edit: true },
+        invoice: { read: true, edit: true },
+      },
+    });
+    const { wrapper } = await mountPage();
+    await flushPromises();
+
+    await wrapper.get('[data-test="invoice-stale-on"]').trigger('click');
+    await wrapper.get('[data-test="agreement-pending-on"]').trigger('click');
+    await wrapper.get('[data-test="agreement-pending-off"]').trigger('click');
+    await flushPromises();
+
+    expect(
+      wrapper
+        .get('[data-test="agreement-panel-stub"]')
+        .attributes('data-blocked'),
+    ).toBe('true');
+    expect(
+      wrapper
+        .get('[data-test="invoice-panel-stub"]')
+        .attributes('data-blocked'),
+    ).toBe('false');
+    expect(wrapper.find('[data-test="edit-customer"]').exists()).toBe(false);
+    expect(wrapper.find('[data-test="delete-draft-open"]').exists()).toBe(
+      false,
+    );
+  });
+
   it('keeps its contact recovery panel and freezes other customer maintenance', async () => {
     useAuthStore(pinia).session = {
       principalType: 'INTERNAL',
@@ -161,8 +245,13 @@ describe('CustomerDetailPage', () => {
     expect(wrapper.find('[data-test="admission-panel"]').exists()).toBe(false);
     expect(wrapper.find('[data-test="account-panel"]').exists()).toBe(false);
     expect(wrapper.find('[data-test="right-assets-panel"]').exists()).toBe(
-      false,
+      true,
     );
+    expect(
+      wrapper
+        .get('[data-test="right-assets-panel"]')
+        .attributes('data-blocked'),
+    ).toBe('true');
     expect(wrapper.find('[data-test="edit-customer"]').exists()).toBe(false);
     expect(wrapper.find('[data-test="delete-draft-open"]').exists()).toBe(
       false,
@@ -191,8 +280,13 @@ describe('CustomerDetailPage', () => {
     expect(wrapper.find('[data-test="admission-panel"]').exists()).toBe(false);
     expect(wrapper.find('[data-test="account-panel"]').exists()).toBe(false);
     expect(wrapper.find('[data-test="right-assets-panel"]').exists()).toBe(
-      false,
+      true,
     );
+    expect(
+      wrapper
+        .get('[data-test="right-assets-panel"]')
+        .attributes('data-blocked'),
+    ).toBe('true');
     expect(wrapper.find('[data-test="edit-customer"]').exists()).toBe(false);
 
     await wrapper.get('[data-test="projection-stale-off"]').trigger('click');
@@ -241,6 +335,8 @@ describe('CustomerDetailPage', () => {
           editRoutine: true,
           admit: true,
           deleteDraft: action === 'delete',
+          agreement: { read: false, edit: false },
+          invoice: { read: false, edit: false },
         },
       });
       const { wrapper } = await mountPage();
@@ -270,7 +366,13 @@ describe('CustomerDetailPage', () => {
     };
     api.getCustomer.mockResolvedValue({
       ...customerRecord('customer-1', '客户甲'),
-      capabilities: { editRoutine: true, admit: true, deleteDraft: true },
+      capabilities: {
+        editRoutine: true,
+        admit: true,
+        deleteDraft: true,
+        agreement: { read: false, edit: false },
+        invoice: { read: false, edit: false },
+      },
     });
     api.deleteCustomerDraft
       .mockRejectedValueOnce(new ApiError('busy', 409, 'CUSTOMER_CONTACT_BUSY'))
@@ -364,8 +466,13 @@ describe('CustomerDetailPage', () => {
     expect(wrapper.find('[data-test="admission-panel"]').exists()).toBe(false);
     expect(wrapper.find('[data-test="account-panel"]').exists()).toBe(false);
     expect(wrapper.find('[data-test="right-assets-panel"]').exists()).toBe(
-      false,
+      true,
     );
+    expect(
+      wrapper
+        .get('[data-test="right-assets-panel"]')
+        .attributes('data-blocked'),
+    ).toBe('true');
     wrapper.unmount();
   });
 
@@ -406,8 +513,13 @@ describe('CustomerDetailPage', () => {
     expect(wrapper.find('[data-test="admission-panel"]').exists()).toBe(false);
     expect(wrapper.find('[data-test="account-panel"]').exists()).toBe(false);
     expect(wrapper.find('[data-test="right-assets-panel"]').exists()).toBe(
-      false,
+      true,
     );
+    expect(
+      wrapper
+        .get('[data-test="right-assets-panel"]')
+        .attributes('data-blocked'),
+    ).toBe('true');
     await wrapper
       .get('[data-test="maintenance-refresh-readonly"]')
       .trigger('click');
@@ -449,7 +561,12 @@ describe('CustomerDetailPage', () => {
         terminate: true,
         resume: false,
       },
-      capabilities: { editRoutine: true, admit: true },
+      capabilities: {
+        editRoutine: true,
+        admit: true,
+        agreement: { read: false, edit: false },
+        invoice: { read: false, edit: false },
+      },
       history: [],
     });
     const { wrapper } = await mountPage();
@@ -528,7 +645,12 @@ describe('CustomerDetailPage', () => {
           terminate: true,
           resume: false,
         },
-        capabilities: { editRoutine: true, admit: true },
+        capabilities: {
+          editRoutine: true,
+          admit: true,
+          agreement: { read: false, edit: false },
+          invoice: { read: false, edit: false },
+        },
         history: [],
       });
     });
@@ -594,7 +716,12 @@ describe('CustomerDetailPage', () => {
         terminate: true,
         resume: false,
       },
-      capabilities: { editRoutine: true, admit: false },
+      capabilities: {
+        editRoutine: true,
+        admit: false,
+        agreement: { read: false, edit: false },
+        invoice: { read: false, edit: false },
+      },
     };
     resolveAdmissionRefresh(admittedCustomer);
     await flushPromises();
@@ -700,7 +827,12 @@ describe('CustomerDetailPage', () => {
         terminate: true,
         resume: false,
       },
-      capabilities: { editRoutine: true, admit: true },
+      capabilities: {
+        editRoutine: true,
+        admit: true,
+        agreement: { read: false, edit: false },
+        invoice: { read: false, edit: false },
+      },
       history: [
         {
           action: 'customer.draft-created',
@@ -766,7 +898,12 @@ describe('CustomerDetailPage', () => {
         terminate: true,
         resume: false,
       },
-      capabilities: { editRoutine: true, admit: true },
+      capabilities: {
+        editRoutine: true,
+        admit: true,
+        agreement: { read: false, edit: false },
+        invoice: { read: false, edit: false },
+      },
       history: [],
     };
     api.getCustomer.mockResolvedValueOnce(draft).mockResolvedValueOnce({
@@ -782,7 +919,12 @@ describe('CustomerDetailPage', () => {
         terminate: true,
         resume: false,
       },
-      capabilities: { editRoutine: true, admit: false },
+      capabilities: {
+        editRoutine: true,
+        admit: false,
+        agreement: { read: false, edit: false },
+        invoice: { read: false, edit: false },
+      },
     });
     const { wrapper } = await mountPage();
     await flushPromises();
@@ -812,7 +954,13 @@ describe('CustomerDetailPage', () => {
         terminate: true,
         resume: false,
       },
-      capabilities: { editRoutine: true, admit: true, deleteDraft: true },
+      capabilities: {
+        editRoutine: true,
+        admit: true,
+        deleteDraft: true,
+        agreement: { read: false, edit: false },
+        invoice: { read: false, edit: false },
+      },
     };
     api.getCustomer
       .mockResolvedValueOnce(draft)
@@ -902,7 +1050,12 @@ describe('CustomerDetailPage', () => {
         terminate: true,
         resume: false,
       },
-      capabilities: { editRoutine: false, admit: false },
+      capabilities: {
+        editRoutine: false,
+        admit: false,
+        agreement: { read: false, edit: false },
+        invoice: { read: false, edit: false },
+      },
       history: [],
     });
     const { wrapper } = await mountPage();
@@ -942,7 +1095,12 @@ describe('CustomerDetailPage', () => {
         terminate: true,
         resume: false,
       },
-      capabilities: { editRoutine: true, admit: true },
+      capabilities: {
+        editRoutine: true,
+        admit: true,
+        agreement: { read: false, edit: false },
+        invoice: { read: false, edit: false },
+      },
       history: [],
     });
     const { router, wrapper } = await mountPage();
@@ -979,7 +1137,12 @@ describe('CustomerDetailPage', () => {
           terminate: true,
           resume: false,
         },
-        capabilities: { editRoutine: true, admit: true },
+        capabilities: {
+          editRoutine: true,
+          admit: true,
+          agreement: { read: false, edit: false },
+          invoice: { read: false, edit: false },
+        },
         history: [],
       })
       .mockRejectedValueOnce({ code: 'CUSTOMER_NOT_FOUND' });
