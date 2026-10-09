@@ -8,19 +8,15 @@ CORE-CA-001～008及SD-44律师身份前置补齐均已验收、推送并集成m
 
 ## 当前任务
 
-唯一Current为**CORE-CU-006｜多联系人维护**，Next为CORE-CU-007协议与开票资料。001～005已本地验收：004实际候选a58ff3a通过完整verify及开庭／判决／线索／生命周期组合79/79，迁移专项在22d1f6e通过且相关输入未变；证据边界及失败历史见[验证记录](spec/v0.1/VALIDATION.md)。2026-10-08用户批准客户切片开发、受控草稿删除、不造识别值、多联系人结束关系保留历史和真实人工结算台账；SD-48明确只有负责运营，不增加客户经理。规则见[客户设计](superpowers/specs/2026-10-08-customer-module-alignment-design.md)及[实施计划](superpowers/plans/2026-10-08-customer-module-alignment.md)。分支codex/customer-module-alignment，基线8a8fe11；001～005尚未推送或集成main，006～008尚未交付。
+唯一Current为**CORE-CU-007｜协议与开票资料**，Next为CORE-CU-008真实人工结算台账。客户001～006已本地验收，尚未推送或集成main。依据2026-10-08用户批准的客户切片规则及SD-46/47/48继续；只有负责运营，不增加客户经理。正式业务范围见[客户设计](superpowers/specs/2026-10-08-customer-module-alignment-design.md)及[总计划](superpowers/plans/2026-10-08-customer-module-alignment.md)，分支codex/customer-module-alignment，基线8a8fe11。007/008尚未实现。
 
-仓库清理已完成并集成main。CA-008及SD-44既有集成结论与证据保留；CA-009未领取。独立人工环境5181/3201/15434保持运行，仍为旧CA-008构建与91条迁移，不自动迁移其数据库。2026-10-09环境停止后，Windows保留范围占用旧55434；人工库使用原持久卷改绑15434，未重置或迁移，登录页／后端／代理健康检查均200。E2E只使用测试库15433和5174/3101。
+CU006实际通过候选db33bf6c717e98829ba2728a6a9455cf1d886eaf/tree8eca1b3397b7b6c51da434e78c72d12d67c18795：完整verify退出0（工具74/74、前端802/802、后端1134/1134、双构建）、全库隔离PG/Chromium259/259、空链102/101→102旧资料及回执保留、SQL负例和失败原子重试全部通过。门禁前后HEAD/tree与环境HMAC一致，原非实现Reviewer补审ACCEPTED、C/I/M0/0/0；同模型隔离独立性不足，外部异模型Review Pending。首次eff2acb全库251通过/8失败、两轮Review发现及修复按原候选保留于[验证记录](spec/v0.1/VALIDATION.md)和.local/customer-alignment/，不把旧失败改写为通过。005及更早证据也保留在VALIDATION。
 
-CU004非实现Sol补审ACCEPTED，原I1～I5/M1全部关闭，未关闭C/I/M为0；同模型隔离独立性不足，外部异模型Review Pending。后续仅修权限目录/OpenAPI及旧fixture接线，不改生产守卫。正式候选a58ff3a完整verify退出0（工具74/74、前端740/740、后端1094/1094、双构建），六文件组合数据库／Chromium79/79。22d1f6e迁移专项空链100、97→100旧客户8→8、旧回执及CU003证明元数据保留通过；至a58ff3a仅开庭fixture seed及状态快照变化，保留原迁移候选，不声称新候选全量212项通过。
-
-旧门禁配置失败、f598a52全量111失败/100通过、22d1f6e全量211通过/1失败均保留在.local/customer-alignment/及[验证记录](spec/v0.1/VALIDATION.md)。最后一个失败由6566a94修复：只复用两部门真实准入客户作为开庭fixture父记录，定向开庭3/3；局部判决/开庭fixture来源链仍合成，不冒称该局部样例代表完整准入主链。最终79项另覆盖真实主链、密码cookie/CSRF、范围、重放及回滚。
-
-CU005实际固定候选4922f9f8e56e1e1954fc9f49e171f69cde70ca6f/tree7afbc6efbfbfa01b1d20f4a7fac8a4cea7d2855f通过显式Level2门禁：后端260/260、前端及角色配置166/166、全局check:fast、Spec57REQ/63AC/11BQ/48SD、受支持改动格式、双构建、客户合作/fixture/生命周期/core-leads/cases五文件数据库及Chromium98/98、空链101及100→101合法SQL合成旧Case迁移/失败原子重试。各项前后候选干净一致，环境HMAC8cebe60684ba5641d54f9c5c32e7c85b7b62c8fd8d55d4583e40330b5f5e9337不变。全组合Review在b71846f接受，原I1已关闭C/I/M0；其后4922f9f只含恢复状态/已核对快照，代码和测试不变。同模型隔离独立性不足，外部异模型Review Pending。真实浏览器发现的成功提示缺失和未知维护未冻结资产均修复，RED及格式入口不支持SQL/Prisma的失败保留；更早258/124等证据仍按原候选列明，详见VALIDATION及.local/customer-alignment/task-5-*-report.md、task-5-final-review.md。组合日志有一次材料下载ERR_HTTP_HEADERS_SENT，关联断言通过，CU005未改共享下载实现，后续组合验证继续关注。CU006正式[实施契约](superpowers/specs/2026-10-09-customer-contacts-contract.md)与[计划](superpowers/plans/2026-10-09-customer-contacts.md)已按实际前态复核落盘；Task A实际候选84fc51e/tree d1556c8521e750b5ea81e1c89bb8c23aed5d77f4后端/迁移已提交，原非实现Sol复审ACCEPTED、I1/I2/I3全部关闭，未关闭C/I/M0；联系人PG10/10、相关Jest54/54、生命周期前端18/18及类型/双构建通过。详细候选和证据边界见VALIDATION及.local/customer-alignment/task-6-backend-report.md、task-6-backend-review.md。Task B已实现正式多联系人页面和严格解码：355c48e原94/94；集成发现的请求代次、父页过期冻结和403/404残留资料在d2d57ca修复，七文件101/101；结束第2页只读恢复在e2d6ad6修复，Panel15/15及类型/lint/格式通过。各自候选与RED/GREEN按原时点记录，不称最新HEAD实跑101。Task C已在0cc238b/tree c4934c0a904b04b21f897531f987ea415ce926a5提交六个测试/夹具文件：联系人真实会话16/16、旧客户兼容2/2及精确静态检查通过。真实浏览器发现的同ID父级刷新误判在3dbb70d修复，Panel15/15及类型/lint/格式通过；各自候选和RED/GREEN边界见VALIDATION。组合终审22c0e24为REJECTED C/I/M0/2/0：读失权仍显示父页/准入快照资料、显式ID准入未知后403丢原key。两项真实cookie RED后在926c2d4/tree5aeef0740a63675ceb740a6278da35d08ea3f9f6修复，最终联系人浏览器18/18、直接四文件66/66及精确静态通过；原失败与取证编排失败保留。CU006尚未验收。原组合Reviewer在eff2acb关闭I1/I2，源码ACCEPTED C/I/M0/0/0；该固定候选完整verify通过（工具74、前端800、后端1134、双构建），全库E2E为251通过/8失败/259，迁移专项未启动。3b78b16修复合作pending刷新真实回归并将四个不可达的准入回退fixture改为SQL不可变守卫验证，真实合作1/1、直接12/12、四例PG/Chromium4/4；f47ef82仅适配Auth请求和旧准入UI，认证4/4、准入UI1/1。原失败保留，下一步原Reviewer核补丁后固定新候选执行Level3完整门禁；不将聚焦通过称为整片验收。
-
-仅测试public前向执行到102条迁移；102 SQL与已执行checksum一致，未reset/drop public或操作开发／生产／人工库。人工服务监督进程退出后仅恢复旧脚本，5181登录页、3201健康和代理均200，旧构建及数据不变；服务恢复证据在.local/manual-test-20261008/service-recovery-verification.json。
+仓库清理CA-001～008及SD-44已集成main，CA-009未领取。独立人工环境5181/3201/15434保持旧CA-008构建和91条迁移，使用原持久卷；未重置或升级，最新前端/后端/代理健康检查均200。E2E只使用backend/.env.test独立测试库15433及5174/3101；仅测试public前向到102，SQL102 checksum与已执行值一致。没有开发/生产迁移、推送、合并或部署。
 
 ## 已实现
+
+CU006多联系人维护已本地验收：最多一位主要、可无主要，结束关系保留历史；旧平铺接口/回执兼容，准入显式选择活动联系人并冻结独立快照。真实会话的未知原请求、撤权清资料、分页恢复和跨客户迟到响应均已验证，联系人不自动获得账号权限。
 
 CU004仅允许从未准入且无业务关联的草稿软删除和按独立权限恢复原ID；曾准入锁存、身份唯一占用、所有普通入口拒绝已删除客户、不可变审计/事实/回执及未知请求原键恢复已验收。
 
@@ -52,4 +48,4 @@ CA-008实际业务候选`9092414`完成Level 3：完整verify退出0（后端107
 
 ## 下一步
 
-按客户计划继续006→007→008；高风险实现与审查串行，最终八片组合补集成终审。005已完成本地验收，006的Sol后端/迁移Task A和原Sol复审已完成，Luna页面及其集成修复、Sol真实浏览器Task C已提交，下一步原Reviewer核门禁失败补丁、锁定新候选并重跑Level3完整验证。006尚未整片验收，007～008未实现，不自动更新人工环境；不推送、合并、部署或操作开发／生产库。
+按已批准计划继续007→008，再做八片组合终审和验证。007正式方案须以CU006实际通过候选及收口tree复核，随后Sol高风险后端/迁移及独立审查、明确页面实现和真实会话验收串行执行。保持人工环境隔离；不推送、合并、部署或操作开发/生产库。

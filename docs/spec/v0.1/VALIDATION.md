@@ -862,3 +862,13 @@ Task C实际提交`0cc238bdffc930aecc2be7058425b2d45ee14b00`，tree`c4934c0a904b
 8例诊断：Auth两例多发fixture的userId而被严格DTO拒；旧准入UI一例使用移除的联系人输入；四例直接把ADMITTED改DRAFT，与准入快照不可变/草稿全空正式约束冲突；另有一例真实合作维护回归，runtime actor新增authorizationRevision被spread进持久命令，严格七字段reader刷新后拒绝原请求。`3b78b1664720da486fb7b9d4f38cf9413df0c809`/tree`349b09906d08e5a388e384cd91ebfd3f4edb35c4`只改七个前端/测试/helper文件：新合作命令显式存user/department、读取兼容仅含合法旧revision的现场并返回规范七字段，活跃请求仍按revision隔离；原body/key与持久namespace保持。真实cookie原用例1/1、Panel/helper12/12及精确静态通过。四例保留账号/绑定/Grant/并发/回滚/历史断言，改为原生23514拒绝回退且完整Customer/Lead/products/审计/回执前后相等，PG/Chromium4/4。原四条不可达DRAFT后的HTTP拒绝分支不再覆盖，报告不冒称覆盖；未关守卫、未改SQL102或生产权限。初次仅改状态失败及同次清五列后的第二次4RED均保留，后者日志原名`task-6-core-status-green.log`实际为RED。
 
 `f47ef82f849d46f83b715dd1a48e637a7b7ad9c6`/tree`5450c828452135c6616cda853a2fe2c7ce50dd38`仅两个旧E2E文件：Auth fixture投影为username/password，4/4；单例准入fixture明确补既有TEAM edit-routine Grant，与admit独立，经真实Contact页面创建、选择实际ID，保留PDF/JPEG及下载/元数据断言，客户版本合法前进至3，1/1。该旧浏览器仍fixtureBearer，不充当密码cookie证据；未改默认角色、共享helper或业务实现。首次0tests与缺Grant按钮定位失败保留。报告和实际日志见`.local/customer-alignment/task-6-integration-report.md`末节、`task-6-legacy-test-adaptation-report.md`及其引用；只记各自聚焦结果，完整门禁须在原Reviewer核新组合后重新固定执行。Current/Next仍CU006/CU007，人工环境旧构建和91条迁移不变。
+
+## CORE-CU-006 固定候选Level3通过与本地收口（2026-10-09）
+
+实际业务门禁候选`db33bf6c717e98829ba2728a6a9455cf1d886eaf`/tree`8eca1b3397b7b6c51da434e78c72d12d67c18795`，2026-10-09 17:44至18:00（UTC+8）固定执行：`pnpm verify`退出0，工具74/74、前端802/802、后端1134/1134、全局类型/lint/格式、Spec57REQ/63AC/11BQ/48SD、strict793及双构建通过；`pnpm test:e2e --workers=1`全库隔离PostgreSQL/Chromium **259/259**，13.1分钟，退出0；`node tests/support/customer-contact-migration.mjs`退出0，空链102、合成101→102最早有效/无效原准入回执选择和原JSON/hash保留、SQL非法写负例、冲突回执及最低资料缺失的原子回滚/修复重试均通过。合成升级资料不冒称线上业务数据；数据库专项仍绑定实际临时schema和独立测试库。
+
+原非实现Reviewer在同一db33候选补审ACCEPTED，未关闭C/I/M0/0/0，原I1/I2及Task A三项保持关闭；同模型隔离独立性不足，外部异模型Review Pending，不表述为外部审查通过。原eff2acb完整E2E251通过/8失败及22c首轮REJECTED均保留于前节和原始报告。本次修复后通过，不抹去失败；四条旧的ADMITTED回退DRAFT后的HTTP分支已被真实SQL不可变守卫验证取代，边界仍如前节，不声称它们继续覆盖。
+
+门禁每项前后git干净、HEAD/tree相同，环境HMAC`8cebe60684ba5641d54f9c5c32e7c85b7b62c8fd8d55d4583e40330b5f5e9337`一致；Nodev24.21.0/pnpm11.27.0/win32/x64。原始`.local/customer-alignment/task-6-db33bf6-gate-before.json`与`gate-after.json`均有实际成功记录，三份verify/database-e2e/migration日志同前缀；审查在`task-6-final-review.md`。102SQL SHA256为`d7c65786f8290c62c9fc9bf31bc0f314d5db3ce5b8edb2be6757fe403001f03b`，与已执行checksum相同。全库日志未观察到CU005旧`ERR_HTTP_HEADERS_SENT`，不据此宣称共享下载永无错误。
+
+门禁后的完整收口只改本验证摘要、project-status、feature-roadmap、customers Living Spec的实际完成状态/相应历史表述，以及核对后的context snapshot；不改业务要求、AC、源码、测试、SQL/生成物、依赖、配置或环境。按三级规则的非执行性收口例外复用db33实际业务证据，受影响文档格式、Spec/链接状态一致性、diff和strict检查另实跑，不称收口HEAD实跑过db33完整门禁。Current/Next推进CU007/CU008；007正式契约及实现必须另提交，不混入本完成态例外。仅测试public到102，旧人工5181/3201/15434构建/91迁移/数据不变，无开发生产迁移、推送、合并或部署。
