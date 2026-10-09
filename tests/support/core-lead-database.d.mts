@@ -274,9 +274,8 @@ export function setTeamActive(
   teamId: string,
   active: boolean,
 ): Promise<unknown>;
-export function setCustomerStatus(
+export function attemptCustomerAdmissionRevocation(
   customerId: string,
-  profileStatus: 'DRAFT' | 'ADMITTED',
 ): Promise<unknown>;
 export function setClientAccountActive(
   customerId: string,

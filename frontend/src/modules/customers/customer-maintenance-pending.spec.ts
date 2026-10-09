@@ -56,4 +56,28 @@ describe('customer maintenance pending commands', () => {
       ),
     ).toEqual([]);
   });
+
+  it('normalizes a stored command with a legacy authorization revision', () => {
+    sessionStorage.setItem(
+      'customer-maintenance:user-a:department-a:customer-a:pause',
+      JSON.stringify({ ...command, authorizationRevision: 1 }),
+    );
+    expect(readPendingCustomerMaintenance(command)).toEqual(command);
+  });
+
+  it('rejects an invalid authorization revision or unrelated extra field', () => {
+    const key = 'customer-maintenance:user-a:department-a:customer-a:pause';
+    for (const authorizationRevision of [-1, 1.5, '1']) {
+      sessionStorage.setItem(
+        key,
+        JSON.stringify({ ...command, authorizationRevision }),
+      );
+      expect(readPendingCustomerMaintenance(command)).toBeUndefined();
+    }
+    sessionStorage.setItem(
+      key,
+      JSON.stringify({ ...command, unexpected: true }),
+    );
+    expect(readPendingCustomerMaintenance(command)).toBeUndefined();
+  });
 });

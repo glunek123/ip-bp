@@ -1885,10 +1885,17 @@ export async function setClientUserActive(customerId, active) {
   });
 }
 
-export function setCustomerStatus(customerId, profileStatus) {
+export function attemptCustomerAdmissionRevocation(customerId) {
   return database.customer.update({
     where: { id: customerId },
-    data: { profileStatus },
+    data: {
+      profileStatus: 'DRAFT',
+      admissionContactSnapshotName: null,
+      admissionContactSnapshotPhone: null,
+      admissionContactSnapshotEmail: null,
+      admissionContactSnapshotSource: null,
+      admissionContactSnapshotFrozenAt: null,
+    },
   });
 }
 

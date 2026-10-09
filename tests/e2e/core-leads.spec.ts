@@ -9,6 +9,7 @@ import {
 } from '@playwright/test';
 import {
   allowInjectedFailures,
+  attemptCustomerAdmissionRevocation,
   coreLeadFixtures,
   countAdmissionReceipts,
   countLeadReceipts,
@@ -102,7 +103,6 @@ import {
   setClientBindingActive,
   setClientUserActive,
   setNotaryBindingActive,
-  setCustomerStatus,
   setGrant,
   setInternalAccountActive,
   setTeamActive,
@@ -129,6 +129,28 @@ const secondOpeningPhotoBytes = Buffer.concat([
     0x43, 0x4f, 0x52, 0x45, 0x2d, 0x4e, 0x54, 0x2d, 0x30, 0x30, 0x33,
   ]),
 ]);
+
+async function expectAdmissionRevocationBlocked(
+  customerId: string,
+  leadId: string,
+) {
+  const evidence = async () => ({
+    customer: await getCustomer(customerId),
+    lead: await getLead(leadId),
+    counts: await databaseCounts(),
+    admissionReceipts: await countAdmissionReceipts(),
+    leadReceipts: await countLeadReceipts(),
+    pushReceipts: await countLeadPushReceipts(leadId),
+    reviewReceipts: await countClientLeadReviewReceipts(leadId),
+    withdrawalConfirmations: await countLeadWithdrawalConfirmations(leadId),
+  });
+  const before = await evidence();
+  expect(before.customer).toMatchObject({ profileStatus: 'ADMITTED' });
+  await expect(attemptCustomerAdmissionRevocation(customerId)).rejects.toThrow(
+    /23514[\s\S]*admission contact snapshot is immutable/u,
+  );
+  expect(await evidence()).toEqual(before);
+}
 
 async function configureBrowser(page: Page) {
   await page.context().setExtraHTTPHeaders(authorizationA);
@@ -4377,7 +4399,7 @@ test('customer admission and lead creation are idempotent while stale edits conf
   expect(await stale.json()).toMatchObject({ code: 'VERSION_CONFLICT' });
 });
 
-test('push revalidates account, permission, customer, products, state, version, idempotency, and concurrency', async ({
+test('push revalidates account, permission, admission immutability, products, state, version, idempotency, and concurrency', async ({
   request,
 }) => {
   const unavailableLeadResponse = await createLead(request);
@@ -4448,13 +4470,10 @@ test('push revalidates account, permission, customer, products, state, version, 
   });
   await setClientAccountActive(coreLeadFixtures.admittedCustomer, true);
 
-  await setCustomerStatus(coreLeadFixtures.admittedCustomer, 'DRAFT');
-  const notAdmitted = await pushLead(request, permissionLead.id, 1);
-  expect(notAdmitted.status()).toBe(409);
-  expect(await notAdmitted.json()).toMatchObject({
-    code: 'CUSTOMER_NOT_ADMITTED',
-  });
-  await setCustomerStatus(coreLeadFixtures.admittedCustomer, 'ADMITTED');
+  await expectAdmissionRevocationBlocked(
+    coreLeadFixtures.admittedCustomer,
+    permissionLead.id,
+  );
 
   await removeLeadProducts(permissionLead.id);
   const withoutProducts = await pushLead(request, permissionLead.id, 1);
@@ -4999,7 +5018,7 @@ test('distinct no-infringement keys race safely and injected writes roll back ev
   expect(await countClientLeadReviewReceipts(secondFailure.id)).toBe(0);
 });
 
-test('account, binding and admission revocation deny no-infringement review', async ({
+test('account and binding revocation deny no-infringement review; admission snapshot is immutable', async ({
   request,
 }) => {
   const client = await createClientAccount(request);
@@ -5027,8 +5046,10 @@ test('account, binding and admission revocation deny no-infringement review', as
   await setClientBindingActive(coreLeadFixtures.admittedCustomer, true);
   csrf = await loginClient(request, client.username, client.password);
 
-  await setCustomerStatus(coreLeadFixtures.admittedCustomer, 'DRAFT');
-  expect([401, 403]).toContain((await submit()).status());
+  await expectAdmissionRevocationBlocked(
+    coreLeadFixtures.admittedCustomer,
+    lead.id,
+  );
   expect(await countLeadReviewDecisions(lead.id)).toBe(0);
   expect(await countClientLeadReviewReceipts(lead.id)).toBe(0);
   expect(await getLead(lead.id)).toMatchObject({
@@ -5089,7 +5110,7 @@ test('decision or receipt write failures roll back client review state', async (
   await allowInjectedFailures();
 });
 
-test('account, binding and admission revocation deny the next client review request', async ({
+test('account and binding revocation deny the next client review; admission snapshot is immutable', async ({
   request,
 }) => {
   const client = await createClientAccount(request);
@@ -5109,9 +5130,9 @@ test('account, binding and admission revocation deny the next client review requ
   await setClientBindingActive(coreLeadFixtures.admittedCustomer, true);
   csrf = await loginClient(request, client.username, client.password);
 
-  await setCustomerStatus(coreLeadFixtures.admittedCustomer, 'DRAFT');
-  expect([401, 403]).toContain(
-    (await reviewLead(request, lead.id, 2, csrf)).status(),
+  await expectAdmissionRevocationBlocked(
+    coreLeadFixtures.admittedCustomer,
+    lead.id,
   );
   expect(await countLeadReviewDecisions(lead.id)).toBe(0);
   expect(await countClientLeadReviewReceipts(lead.id)).toBe(0);
@@ -5859,19 +5880,10 @@ test('withdrawal confirmation revalidates client identity, rolls back, and prese
   );
   await setClientBindingActive(coreLeadFixtures.admittedCustomer, true);
   csrf = await loginClient(request, owner.username, owner.password);
-  await setCustomerStatus(coreLeadFixtures.admittedCustomer, 'DRAFT');
-  expect([401, 403]).toContain(
-    (
-      await confirmLeadWithdrawal(
-        request,
-        archived.lead.id,
-        application.id,
-        4,
-        csrf,
-      )
-    ).status(),
+  await expectAdmissionRevocationBlocked(
+    coreLeadFixtures.admittedCustomer,
+    archived.lead.id,
   );
-  await setCustomerStatus(coreLeadFixtures.admittedCustomer, 'ADMITTED');
   csrf = await loginClient(request, owner.username, owner.password);
 
   const allowedMaterial = await getMaterialByVersion(

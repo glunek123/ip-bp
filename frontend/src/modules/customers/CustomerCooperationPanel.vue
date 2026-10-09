@@ -17,7 +17,11 @@ import {
   type PendingCustomerMaintenance,
 } from './customer-maintenance-pending';
 
-type Actor = { userId: string; departmentId: string };
+type Actor = {
+  userId: string;
+  departmentId: string;
+  authorizationRevision?: number;
+};
 const props = defineProps<{
   customer: CustomerDetail;
   actor: Actor | null;
@@ -63,13 +67,16 @@ const canStartAction = computed(
     !frozen.value,
 );
 const actorKey = computed(() =>
-  props.actor ? `${props.actor.userId}:${props.actor.departmentId}` : '',
+  props.actor
+    ? `${props.actor.userId}:${props.actor.departmentId}:${props.actor.authorizationRevision ?? 0}`
+    : '',
 );
 
 function identity(action: PendingCustomerMaintenance['action']) {
   if (!props.actor) return undefined;
   return {
-    ...props.actor,
+    userId: props.actor.userId,
+    departmentId: props.actor.departmentId,
     customerId: props.customer.id,
     action,
   };
@@ -199,7 +206,8 @@ function makeCommand(): PendingCustomerMaintenance | undefined {
   }
   return {
     action: selectedAction.value,
-    ...props.actor,
+    userId: props.actor.userId,
+    departmentId: props.actor.departmentId,
     customerId: props.customer.id,
     expectedVersion,
     body,

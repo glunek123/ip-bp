@@ -71,6 +71,10 @@ export function readPendingCustomerMaintenance(
     if (raw === null) return undefined;
     const value: unknown = JSON.parse(raw);
     if (!isRecord(value)) return undefined;
+    const hasLegacyRevision = Object.prototype.hasOwnProperty.call(
+      value,
+      'authorizationRevision',
+    );
     const expectedKeys = [
       'action',
       'userId',
@@ -79,9 +83,13 @@ export function readPendingCustomerMaintenance(
       'expectedVersion',
       'body',
       'key',
+      ...(hasLegacyRevision ? ['authorizationRevision'] : []),
     ];
     if (
       Object.keys(value).sort().join('|') !== expectedKeys.sort().join('|') ||
+      (hasLegacyRevision &&
+        (!Number.isSafeInteger(value.authorizationRevision) ||
+          Number(value.authorizationRevision) < 0)) ||
       value.action !== identity.action ||
       value.userId !== identity.userId ||
       value.departmentId !== identity.departmentId ||
@@ -95,7 +103,15 @@ export function readPendingCustomerMaintenance(
     ) {
       return undefined;
     }
-    return value as PendingCustomerMaintenance;
+    return {
+      action: identity.action,
+      userId: identity.userId,
+      departmentId: identity.departmentId,
+      customerId: identity.customerId,
+      expectedVersion: Number(value.expectedVersion),
+      body: value.body,
+      key: value.key,
+    };
   } catch {
     return undefined;
   }

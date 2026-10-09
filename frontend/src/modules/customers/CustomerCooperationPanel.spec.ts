@@ -13,7 +13,11 @@ const api = vi.hoisted(() => ({
 vi.mock('../../api/customer-cooperation', () => api);
 vi.mock('../../api/customers', () => ({ getCustomer: api.getCustomer }));
 
-const actor = { userId: 'user-a', departmentId: 'department-a' };
+const actor = {
+  userId: 'user-a',
+  departmentId: 'department-a',
+  authorizationRevision: 1,
+};
 const customer = {
   id: 'customer-a',
   name: '客户甲',
@@ -131,8 +135,9 @@ describe('CustomerCooperationPanel', () => {
       globalThis.sessionStorage.getItem(
         'customer-maintenance:user-a:department-a:customer-a:pause',
       ) ?? 'null',
-    ) as { key: string; body: unknown };
+    ) as { key: string; body: unknown; authorizationRevision?: number };
     expect(frozen.key).toBe('generated-key');
+    expect(frozen).not.toHaveProperty('authorizationRevision');
     expect(frozen.body).toEqual({
       expectedVersion: 3,
       action: 'pause',
@@ -192,6 +197,7 @@ describe('CustomerCooperationPanel', () => {
       expectedVersion: 2,
       body: { expectedVersion: 2, action: 'pause', reason: '原原因' },
       key: 'saved-key',
+      authorizationRevision: 1,
     };
     globalThis.sessionStorage.setItem(
       'customer-maintenance:user-a:department-a:customer-a:pause',
