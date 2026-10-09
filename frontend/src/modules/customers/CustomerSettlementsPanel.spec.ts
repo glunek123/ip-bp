@@ -317,4 +317,62 @@ describe('CustomerSettlementsPanel', () => {
         .attributes('disabled'),
     ).toBeUndefined();
   });
+
+  it('keeps the original key for a bounded BUSY response', async () => {
+    const { ApiError } = await import('../../api/http');
+    api.registerCustomerSettlement.mockRejectedValueOnce(
+      new ApiError('busy', 409, 'BUSY'),
+    );
+    const wrapper = mountPanel({
+      canRead: false,
+      canCorrect: false,
+      data: undefined,
+      status: 'idle',
+    });
+    await wrapper
+      .get('[data-test="settlement-date-input"]')
+      .setValue('2026-10-02');
+    await wrapper.get('[data-test="settlement-amount-input"]').setValue('1.00');
+    await wrapper
+      .get('[data-test="settlement-register-form"]')
+      .trigger('submit');
+    await flushPromises();
+    expect(
+      wrapper.find('[data-test="settlement-retry-original-private"]').exists(),
+    ).toBe(true);
+    expect(sessionStorage.length).toBe(1);
+  });
+
+  it('does not offer a new POST when clearing a confirmed request fails', async () => {
+    vi.spyOn(Storage.prototype, 'removeItem').mockImplementation(() => {
+      throw new DOMException('denied', 'SecurityError');
+    });
+    api.registerCustomerSettlement.mockResolvedValueOnce({
+      recordId: 'record-new',
+      version: 1,
+      customerVersion: 3,
+      snapshot: version('version-new', 'record-new', '1.00', null),
+    });
+    const wrapper = mountPanel({
+      canRead: false,
+      canCorrect: false,
+      data: undefined,
+      status: 'idle',
+    });
+    await wrapper
+      .get('[data-test="settlement-date-input"]')
+      .setValue('2026-10-02');
+    await wrapper.get('[data-test="settlement-amount-input"]').setValue('1.00');
+    await wrapper
+      .get('[data-test="settlement-register-form"]')
+      .trigger('submit');
+    await flushPromises();
+    await wrapper.setProps({ customerVersion: 3 });
+    expect(
+      wrapper
+        .get('[data-test="settlement-register-submit"]')
+        .attributes('disabled'),
+    ).toBeDefined();
+    expect(api.registerCustomerSettlement).toHaveBeenCalledTimes(1);
+  });
 });

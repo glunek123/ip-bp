@@ -21,6 +21,15 @@ const actions = [
 ];
 const settlementExternalActorIds = new Set();
 
+export async function bumpCustomerSettlementLocalActorRevision() {
+  const user = await database.userAccount.update({
+    where: { id: '20000000-0000-4000-8000-000000000010' },
+    data: { authorizationRevision: { increment: 1 } },
+    select: { authorizationRevision: true },
+  });
+  return user.authorizationRevision;
+}
+
 export async function setCustomerSettlementGrant(
   roleTemplateId,
   action,

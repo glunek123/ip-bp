@@ -19,6 +19,8 @@ export type PendingSettlementCommand = SettlementPendingIdentity & {
   key: string;
 };
 
+export class ConfirmedSettlementCommandError extends Error {}
+
 function storageKey(identity: SettlementPendingIdentity): string {
   return `customer-settlement:${identity.userId}:${identity.departmentId}:${identity.customerId}:${identity.kind}`;
 }
@@ -170,6 +172,7 @@ export function savePendingSettlementCommand(
 ): boolean {
   try {
     if (!validCommand(command, command)) return false;
+    if (sessionStorage.getItem(storageKey(command)) !== null) return false;
     sessionStorage.setItem(storageKey(command), JSON.stringify(command));
     return true;
   } catch {
@@ -184,14 +187,52 @@ export function readPendingSettlementCommand(
   if (encoded === null) return undefined;
   try {
     const value: unknown = JSON.parse(encoded);
-    return validCommand(value, identity) ? value : undefined;
+    if (
+      isRecord(value) &&
+      exactKeys(value, [
+        'confirmed',
+        'userId',
+        'departmentId',
+        'customerId',
+        'kind',
+      ]) &&
+      value.confirmed === true &&
+      value.userId === identity.userId &&
+      value.departmentId === identity.departmentId &&
+      value.customerId === identity.customerId &&
+      value.kind === identity.kind
+    )
+      throw new ConfirmedSettlementCommandError();
+    if (validCommand(value, identity)) return value;
+    throw new Error('Stored settlement request is invalid');
+  } catch (error) {
+    if (error instanceof ConfirmedSettlementCommandError) throw error;
+    throw new Error('Stored settlement request cannot be read');
+  }
+}
+
+export function markConfirmedSettlementCommand(
+  command: PendingSettlementCommand,
+): boolean {
+  try {
+    sessionStorage.setItem(
+      storageKey(command),
+      JSON.stringify({
+        confirmed: true,
+        userId: command.userId,
+        departmentId: command.departmentId,
+        customerId: command.customerId,
+        kind: command.kind,
+      }),
+    );
+    return true;
   } catch {
-    return undefined;
+    return false;
   }
 }
 
 export function clearPendingSettlementCommand(
-  command: PendingSettlementCommand,
+  command: SettlementPendingIdentity,
 ): boolean {
   try {
     sessionStorage.removeItem(storageKey(command));

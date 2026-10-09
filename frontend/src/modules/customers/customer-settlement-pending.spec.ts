@@ -1,6 +1,8 @@
 import { beforeEach, describe, expect, it, vi } from 'vitest';
 import {
+  ConfirmedSettlementCommandError,
   clearPendingSettlementCommand,
+  markConfirmedSettlementCommand,
   readPendingSettlementCommand,
   savePendingSettlementCommand,
   type PendingSettlementCommand,
@@ -35,6 +37,25 @@ describe('pending customer settlement command', () => {
     expect(savePendingSettlementCommand(command)).toBe(true);
     expect(readPendingSettlementCommand(command)).toEqual(command);
     clearPendingSettlementCommand(command);
+    expect(readPendingSettlementCommand(command)).toBeUndefined();
+  });
+
+  it('does not overwrite an unreadable original request', () => {
+    sessionStorage.setItem(
+      'customer-settlement:user-1:department-1:customer-1:settlement',
+      '{broken',
+    );
+    expect(savePendingSettlementCommand(command)).toBe(false);
+  });
+
+  it('keeps a confirmed marker distinct from an unknown request', () => {
+    expect(savePendingSettlementCommand(command)).toBe(true);
+    expect(markConfirmedSettlementCommand(command)).toBe(true);
+    expect(() => readPendingSettlementCommand(command)).toThrow(
+      ConfirmedSettlementCommandError,
+    );
+    expect(savePendingSettlementCommand(command)).toBe(false);
+    expect(clearPendingSettlementCommand(command)).toBe(true);
     expect(readPendingSettlementCommand(command)).toBeUndefined();
   });
 
@@ -87,6 +108,6 @@ describe('pending customer settlement command', () => {
         body: { ...command.body, receivedAmount: '1.001' },
       }),
     );
-    expect(readPendingSettlementCommand(command)).toBeUndefined();
+    expect(() => readPendingSettlementCommand(command)).toThrow();
   });
 });

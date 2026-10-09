@@ -7,6 +7,7 @@ export function setCustomerSettlementGrant(
   enabled: boolean,
   scope?: 'SELF' | 'TEAM' | 'DEPARTMENT',
 ): Promise<void>;
+export function bumpCustomerSettlementLocalActorRevision(): Promise<number>;
 export function getCustomerSettlementState(customerId: string): Promise<{
   customerVersion: number | undefined;
   customerDeletedAt: Date | null | undefined;

@@ -30,7 +30,11 @@ import {
 } from './customer-lifecycle-pending';
 import { hasPendingCustomerMaintenance } from './customer-maintenance-pending';
 import { listPendingCustomerContacts } from './customer-contacts-pending';
-import { readPendingSettlementCommand } from './customer-settlement-pending';
+import {
+  ConfirmedSettlementCommandError,
+  clearPendingSettlementCommand,
+  readPendingSettlementCommand,
+} from './customer-settlement-pending';
 import { useCustomerSettlements } from './use-customer-settlements';
 import {
   formatSettlementAmount,
@@ -75,6 +79,7 @@ const pendingStorageBlocked = ref(false);
 const settlementUnknown = ref(false);
 const settlementStale = ref(false);
 const settlementDetailRefreshNeeded = ref(false);
+const settlementConfirmedStorage = ref(false);
 const admissionRefreshFailed = ref(false);
 let viewGeneration = 0;
 
@@ -229,6 +234,8 @@ function restorePending(customerId: string): void {
   pendingStorageBlocked.value = false;
   settlementUnknown.value = false;
   settlementStale.value = false;
+  settlementDetailRefreshNeeded.value = false;
+  settlementConfirmedStorage.value = false;
   const currentSession = auth.session;
   if (
     currentSession?.principalType === 'INTERNAL' &&
@@ -241,8 +248,12 @@ function restorePending(customerId: string): void {
         customerId,
         kind: 'settlement',
       });
-    } catch {
-      settlementUnknown.value = true;
+    } catch (error) {
+      if (error instanceof ConfirmedSettlementCommandError) {
+        settlementConfirmedStorage.value = true;
+        settlementDetailRefreshNeeded.value = true;
+        settlementStale.value = true;
+      } else settlementUnknown.value = true;
     }
   }
   const session = auth.session;
@@ -539,21 +550,35 @@ function invalidateSettlementRead(
 }
 
 async function refreshSettlementList(): Promise<void> {
+  const customerId = String(route.params.id);
+  const sourceActorKey = actorKey.value;
+  const generation = viewGeneration;
   settlementStale.value = true;
   let detailRefreshed = true;
   if (settlementDetailRefreshNeeded.value) {
-    detailRefreshed = await refreshCustomerVersion(String(route.params.id));
+    detailRefreshed = await refreshCustomerVersion(customerId);
+    if (!currentSettlementContext(customerId, sourceActorKey, generation))
+      return;
     if (detailRefreshed) settlementDetailRefreshNeeded.value = false;
   }
   if (!detailRefreshed) return;
   if (!settlementCanRead.value) {
-    if (!settlementDetailRefreshNeeded.value) settlementStale.value = false;
+    if (detailRefreshed) clearConfirmedStorageAfterRead();
+    if (
+      !settlementDetailRefreshNeeded.value &&
+      !settlementConfirmedStorage.value
+    )
+      settlementStale.value = false;
     return;
   }
   await settlementOwner.refresh();
+  if (!currentSettlementContext(customerId, sourceActorKey, generation)) return;
+  if (settlementOwner.status.value === 'ready')
+    clearConfirmedStorageAfterRead();
   if (
     settlementOwner.status.value === 'ready' &&
-    !settlementDetailRefreshNeeded.value
+    !settlementDetailRefreshNeeded.value &&
+    !settlementConfirmedStorage.value
   )
     settlementStale.value = false;
 }
@@ -570,19 +595,63 @@ async function refreshAfterSettlementCommand(
     return;
   settlementStale.value = true;
   settlementDetailRefreshNeeded.value = true;
+  const generation = viewGeneration;
+  try {
+    readPendingSettlementCommand({
+      userId: actor.value!.userId,
+      departmentId: actor.value!.departmentId,
+      customerId,
+      kind: 'settlement',
+    });
+  } catch (error) {
+    if (error instanceof ConfirmedSettlementCommandError)
+      settlementConfirmedStorage.value = true;
+  }
   const detailRefreshed = await refreshCustomerVersion(customerId);
+  if (!currentSettlementContext(customerId, sourceActorKey, generation)) return;
   if (detailRefreshed) settlementDetailRefreshNeeded.value = false;
   if (settlementCanRead.value) {
     await settlementOwner.refresh();
+    if (!currentSettlementContext(customerId, sourceActorKey, generation))
+      return;
+    if (detailRefreshed && settlementOwner.status.value === 'ready')
+      clearConfirmedStorageAfterRead();
     if (
       detailRefreshed &&
       settlementOwner.status.value === 'ready' &&
-      !settlementDetailRefreshNeeded.value
+      !settlementDetailRefreshNeeded.value &&
+      !settlementConfirmedStorage.value
     )
       settlementStale.value = false;
   } else if (detailRefreshed) {
-    settlementStale.value = false;
+    clearConfirmedStorageAfterRead();
+    if (!settlementConfirmedStorage.value) settlementStale.value = false;
   }
+}
+
+function currentSettlementContext(
+  customerId: string,
+  sourceActorKey: string,
+  generation: number,
+): boolean {
+  return (
+    generation === viewGeneration &&
+    customerId === String(route.params.id) &&
+    sourceActorKey === actorKey.value &&
+    customer.value?.id === customerId
+  );
+}
+
+function clearConfirmedStorageAfterRead(): void {
+  if (!settlementConfirmedStorage.value || !actor.value) return;
+  const cleared = clearPendingSettlementCommand({
+    userId: actor.value.userId,
+    departmentId: actor.value.departmentId,
+    customerId: String(route.params.id),
+    kind: 'settlement',
+  });
+  if (cleared) settlementConfirmedStorage.value = false;
+  else settlementStale.value = true;
 }
 
 function updateDocumentCustomerVersion(
@@ -749,16 +818,27 @@ async function refreshCustomerVersion(customerId: string): Promise<boolean> {
     return false;
   }
   const controller = new AbortController();
+  const identityAtStart = actorKey.value;
+  const generation = viewGeneration;
   requests.add(controller);
   try {
     const latest = await getCustomer(customerId, { signal: controller.signal });
-    if (isCurrentRequest(customerId, controller)) {
+    if (
+      generation === viewGeneration &&
+      identityAtStart === actorKey.value &&
+      isCurrentRequest(customerId, controller)
+    ) {
       customer.value = latest;
       return true;
     }
     return false;
   } catch (error) {
-    if (isCurrentRequest(customerId, controller) && isCustomerNotFound(error)) {
+    if (
+      generation === viewGeneration &&
+      identityAtStart === actorKey.value &&
+      isCurrentRequest(customerId, controller) &&
+      isCustomerNotFound(error)
+    ) {
       returnToCustomerList(customerId);
     }
     // Other failures leave the panel's input and refresh prompt visible.
@@ -829,7 +909,11 @@ function refreshAfterMaintenanceAccessFailure(customerId: string): void {
 }
 
 watch(settlementOwner.status, (status) => {
-  if (status === 'ready' && !settlementDetailRefreshNeeded.value)
+  if (
+    status === 'ready' &&
+    !settlementDetailRefreshNeeded.value &&
+    !settlementConfirmedStorage.value
+  )
     settlementStale.value = false;
   else if (status === 'failed' && settlementCanRead.value)
     settlementStale.value = true;

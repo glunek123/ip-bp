@@ -12,7 +12,9 @@ import {
   type RegisterCustomerSettlementInput,
 } from '../../api/customer-settlements';
 import {
+  ConfirmedSettlementCommandError,
   clearPendingSettlementCommand,
+  markConfirmedSettlementCommand,
   readPendingSettlementCommand,
   savePendingSettlementCommand,
   type PendingSettlementCommand,
@@ -96,6 +98,7 @@ const commandStatus = ref<
   'idle' | 'sending' | 'unknown' | 'conflict' | 'refresh-needed'
 >('idle');
 const refreshExpectedCustomerVersion = ref<number>();
+const confirmedStorageBlocked = ref(false);
 const message = ref('');
 let generation = 0;
 let historyController: AbortController | undefined;
@@ -181,14 +184,30 @@ function clearHistory(): void {
 
 function restorePending(): void {
   pending.value = undefined;
+  confirmedStorageBlocked.value = false;
+  refreshExpectedCustomerVersion.value = undefined;
   const who = identity();
   if (!who) return;
   try {
     pending.value = readPendingSettlementCommand(who);
-  } catch {
-    commandStatus.value = 'unknown';
-    message.value = '原结算请求状态无法读取。请恢复本地存储后重试。';
-    emit('settlement-state', props.customerId, props.actorKey, 'unknown', true);
+  } catch (error) {
+    confirmedStorageBlocked.value =
+      error instanceof ConfirmedSettlementCommandError;
+    commandStatus.value =
+      error instanceof ConfirmedSettlementCommandError
+        ? 'refresh-needed'
+        : 'unknown';
+    message.value =
+      error instanceof ConfirmedSettlementCommandError
+        ? '本次结算已确认成功。请只读刷新，并修复浏览器会话存储后继续。'
+        : '原结算请求状态无法读取。请恢复本地存储后重试。';
+    emit(
+      'settlement-state',
+      props.customerId,
+      props.actorKey,
+      error instanceof ConfirmedSettlementCommandError ? 'stale' : 'unknown',
+      true,
+    );
     return;
   }
   if (pending.value) {
@@ -328,7 +347,9 @@ async function send(
       command.departmentId !== props.actor?.departmentId
     )
       return;
-    clearPendingSettlementCommand(command);
+    const cleared = clearPendingSettlementCommand(command);
+    confirmedStorageBlocked.value = !cleared;
+    if (!cleared) markConfirmedSettlementCommand(command);
     pending.value = undefined;
     commandStatus.value = 'refresh-needed';
     refreshExpectedCustomerVersion.value = result.customerVersion;
@@ -350,7 +371,11 @@ async function send(
       command.departmentId !== props.actor?.departmentId
     )
       return;
-    if (error instanceof ApiError && error.status === 409) {
+    if (
+      error instanceof ApiError &&
+      error.status === 409 &&
+      error.code !== 'BUSY'
+    ) {
       clearPendingSettlementCommand(command);
       pending.value = undefined;
       commandStatus.value = 'conflict';
@@ -514,13 +539,36 @@ watch(
 );
 
 watch(
+  () => props.status,
+  (status) => {
+    if (status === 'failed') {
+      privateReadFailed.value = true;
+      clearHistory();
+      clearForm();
+    }
+  },
+);
+
+watch(
   () => props.customerVersion,
   (version) => {
     if (
       commandStatus.value === 'refresh-needed' &&
+      !confirmedStorageBlocked.value &&
       refreshExpectedCustomerVersion.value !== undefined &&
       version >= refreshExpectedCustomerVersion.value
     ) {
+      commandStatus.value = 'idle';
+      refreshExpectedCustomerVersion.value = undefined;
+    }
+  },
+);
+
+watch(
+  () => props.stale,
+  (stale) => {
+    if (!stale && confirmedStorageBlocked.value) {
+      confirmedStorageBlocked.value = false;
       commandStatus.value = 'idle';
       refreshExpectedCustomerVersion.value = undefined;
     }
@@ -850,11 +898,15 @@ onBeforeUnmount(() => {
         取消
       </button>
     </form>
-    <p v-if="pending && !canRead" data-test="settlement-private-retry-note">
+    <p v-if="pending" data-test="settlement-private-retry-note">
       原请求已保留。恢复访问后可按原请求重试。
       <button
         type="button"
-        data-test="settlement-retry-original-private"
+        :data-test="
+          canRead
+            ? 'settlement-retry-original'
+            : 'settlement-retry-original-private'
+        "
         :disabled="busy"
         @click="retryPending"
       >
