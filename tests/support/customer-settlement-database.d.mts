@@ -35,4 +35,15 @@ export function rejectCustomerSettlementAudit(): Promise<void>;
 export function allowCustomerSettlementAudit(): Promise<void>;
 export function cleanupCustomerSettlementExternalActors(
   departmentId: string,
+  selectedIds?: string[],
 ): Promise<void>;
+export function trackCustomerSettlementExternalActor(userId: string): void;
+export function getCustomerSettlementExternalActorState(
+  userId: string,
+): Promise<{
+  exists: boolean;
+  credential: boolean;
+  clientBindings: number;
+  lawyerBindings: number;
+  lawyerProfiles: number;
+}>;

@@ -13,9 +13,11 @@ import {
   cleanupCustomerSettlementExternalActors,
   disconnectCustomerSettlementDatabase,
   exerciseCustomerSettlementDeletionRace,
+  getCustomerSettlementExternalActorState,
   getCustomerSettlementState,
   rejectCustomerSettlementAudit,
   setCustomerSettlementGrant,
+  trackCustomerSettlementExternalActor,
 } from '../support/customer-settlement-database.mjs';
 import {
   coreLeadFixtures,
@@ -580,7 +582,10 @@ test('real CLIENT and LAWYER sessions have no settlement projection or write acc
     },
   );
   expect(client.status(), await client.text()).toBe(201);
+  const clientAccount = (await client.json()) as { id: string };
+  trackCustomerSettlementExternalActor(clientAccount.id);
   const lawyer = await createLawyerAccountThroughApi(request);
+  trackCustomerSettlementExternalActor(lawyer.id);
   for (const candidate of [
     { principal: 'CLIENT', username, password },
     {
@@ -639,5 +644,43 @@ test('real CLIENT and LAWYER sessions have no settlement projection or write acc
     } finally {
       await session.dispose();
     }
+  }
+  const otherLawyer = await createLawyerAccountThroughApi(request);
+  trackCustomerSettlementExternalActor(otherLawyer.id);
+  try {
+    await cleanupCustomerSettlementExternalActors(e2eFixtures.departmentA, [
+      clientAccount.id,
+      lawyer.id,
+    ]);
+    expect(
+      await getCustomerSettlementExternalActorState(clientAccount.id),
+    ).toMatchObject({
+      exists: false,
+      credential: false,
+      clientBindings: 0,
+      lawyerBindings: 0,
+    });
+    expect(
+      await getCustomerSettlementExternalActorState(lawyer.id),
+    ).toMatchObject({
+      exists: false,
+      credential: false,
+      clientBindings: 0,
+      lawyerBindings: 0,
+      lawyerProfiles: 0,
+    });
+    expect(
+      await getCustomerSettlementExternalActorState(otherLawyer.id),
+    ).toMatchObject({
+      exists: true,
+      credential: true,
+      clientBindings: 0,
+      lawyerBindings: 1,
+      lawyerProfiles: 1,
+    });
+  } finally {
+    await cleanupCustomerSettlementExternalActors(e2eFixtures.departmentA, [
+      otherLawyer.id,
+    ]);
   }
 });

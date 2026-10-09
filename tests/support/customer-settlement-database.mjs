@@ -19,6 +19,7 @@ const actions = [
   'CUSTOMER_SETTLEMENT_REGISTER',
   'CUSTOMER_SETTLEMENT_CORRECT',
 ];
+const settlementExternalActorIds = new Set();
 
 export async function setCustomerSettlementGrant(
   roleTemplateId,
@@ -170,28 +171,57 @@ export async function allowCustomerSettlementAudit() {
   );
 }
 
-export async function cleanupCustomerSettlementExternalActors(departmentId) {
+export function trackCustomerSettlementExternalActor(userId) {
+  if (typeof userId !== 'string' || !/^[0-9a-f-]{36}$/iu.test(userId))
+    throw new Error('Invalid CU008 external actor ID');
+  settlementExternalActorIds.add(userId);
+}
+
+export async function getCustomerSettlementExternalActorState(userId) {
+  const user = await database.userAccount.findUnique({
+    where: { id: userId },
+    include: {
+      localCredential: true,
+      clientBinding: true,
+      lawyerBindings: { include: { profile: true } },
+    },
+  });
+  return {
+    exists: user !== null,
+    credential: Boolean(user?.localCredential),
+    clientBindings: user?.clientBinding ? 1 : 0,
+    lawyerBindings: user?.lawyerBindings.length ?? 0,
+    lawyerProfiles:
+      user?.lawyerBindings.filter((row) => row.profile).length ?? 0,
+  };
+}
+
+export async function cleanupCustomerSettlementExternalActors(
+  departmentId,
+  selectedIds = [...settlementExternalActorIds],
+) {
+  if (selectedIds.some((id) => !settlementExternalActorIds.has(id)))
+    throw new Error('CU008 cleanup requires tracked actor IDs');
+  if (selectedIds.length === 0) return;
   const clients = await database.customerAccountBinding.findMany({
-    where: { departmentId, user: { displayName: '结算外部客户' } },
+    where: { departmentId, userId: { in: selectedIds } },
     include: { user: { include: { localCredential: true } } },
   });
   const lawyers = await database.lawyerAccountBinding.findMany({
-    where: { departmentId },
+    where: { departmentId, userId: { in: selectedIds } },
     include: { user: { include: { localCredential: true } }, profile: true },
   });
-  if (
-    clients.some(
-      ({ user }) => !user.localCredential?.username.startsWith('client-'),
-    ) ||
-    lawyers.some(
-      ({ user, profile }) =>
-        !user.localCredential?.username.startsWith('lawyer-') ||
-        profile.fullName !== '承办律师',
-    )
-  )
-    throw new Error('Unexpected actor in CU008 external cleanup scope');
-  const userIds = [...clients, ...lawyers].map(({ userId }) => userId);
-  if (userIds.length === 0) return;
+  const boundIds = new Set(
+    [...clients, ...lawyers].map(({ userId }) => userId),
+  );
+  if (selectedIds.some((id) => !boundIds.has(id)))
+    throw new Error('Tracked CU008 actor has no binding in this department');
+  const allLawyerBindings = await database.lawyerAccountBinding.count({
+    where: { userId: { in: selectedIds } },
+  });
+  if (allLawyerBindings !== lawyers.length)
+    throw new Error('Tracked CU008 actor has another department binding');
+  const userIds = selectedIds;
   await database.$transaction(async (transaction) => {
     await transaction.authSession.deleteMany({
       where: { userId: { in: userIds } },
@@ -212,4 +242,5 @@ export async function cleanupCustomerSettlementExternalActors(departmentId) {
       where: { id: { in: userIds } },
     });
   });
+  for (const id of selectedIds) settlementExternalActorIds.delete(id);
 }

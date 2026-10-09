@@ -374,11 +374,65 @@ export async function verifyCustomerSettlementMigration() {
       [record],
     );
     await rejects(
-      'orphan append',
+      'version audit mismatch',
       `INSERT INTO customer_settlement_versions(id,record_id,customer_id,department_id,version,action,settlement_date,settlement_amount,correction_reason,recorded_by_user_id,audit_event_id)
       VALUES ($1,$2,$3,$4,2,'CORRECT','2026-10-01',1,'reason',$5,$6)`,
       [randomUUID(), record, customer, dept, actor, audit1],
     );
+    const orphanAudit = randomUUID(),
+      orphanVersion = randomUUID();
+    await client.query('BEGIN');
+    try {
+      // The v1 transaction is committed above. Keep the record-head trigger
+      // immediate so only the version INSERT's deferred trigger is exercised.
+      await client.query(
+        'SET CONSTRAINTS customer_settlement_record_head IMMEDIATE',
+      );
+      await client.query(
+        "INSERT INTO audit_events(id,department_id,actor_user_id,resource_type,resource_id,action,details,created_at) VALUES ($1,$2,$3,'customer_settlement',$4,'customer.settlement.correct','{}'::jsonb,now())",
+        [orphanAudit, dept, actor, record],
+      );
+      await client.query(
+        `INSERT INTO customer_settlement_versions(id,record_id,customer_id,department_id,version,action,settlement_date,settlement_amount,correction_reason,recorded_by_user_id,audit_event_id)
+        VALUES ($1,$2,$3,$4,2,'CORRECT','2026-10-01',1,'reason',$5,$6)`,
+        [orphanVersion, record, customer, dept, actor, orphanAudit],
+      );
+      const pending = (
+        await client.query(
+          `SELECT r.version AS head, max(v.version) AS latest
+           FROM customer_settlement_records r
+           JOIN customer_settlement_versions v ON v.record_id=r.id
+           WHERE r.id=$1 GROUP BY r.version`,
+          [record],
+        )
+      ).rows[0];
+      if (pending.head !== 1 || pending.latest !== 2)
+        throw new Error('orphan append did not reach deferred head check');
+      try {
+        await client.query(
+          'SET CONSTRAINTS customer_settlement_version_head IMMEDIATE',
+        );
+        throw new Error('orphan append unexpectedly passed version head');
+      } catch (error) {
+        if (
+          error.code !== '23514' ||
+          !error.message.includes('settlement current version is not latest')
+        )
+          throw error;
+      }
+    } finally {
+      await client.query('ROLLBACK');
+    }
+    const rolledBack = (
+      await client.query(
+        `SELECT (SELECT count(*)::int FROM customer_settlement_versions WHERE id=$1) AS versions,
+                (SELECT count(*)::int FROM audit_events WHERE id=$2) AS audits`,
+        [orphanVersion, orphanAudit],
+      )
+    ).rows[0];
+    if (rolledBack.versions !== 0 || rolledBack.audits !== 0)
+      throw new Error('orphan append rollback left version or audit');
+    checks.push('orphan append rejected by deferred version head');
     const oldKey = randomUUID();
     await client.query(
       `INSERT INTO customer_settlement_receipts(id,department_id,actor_user_id,action,idempotency_key,request_fingerprint,customer_id,record_id,result_version_id,result_customer_version)

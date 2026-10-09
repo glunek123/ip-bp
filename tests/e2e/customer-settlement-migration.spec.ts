@@ -9,5 +9,9 @@ test('CU008 forward migration is atomic and protects exact settlement history', 
   );
   expect(result.checks).toContain('numeric columns without typmod');
   expect(result.checks).toContain('v1-v2-v3 and old receipt v1');
+  expect(result.checks).toContain(
+    'orphan append rejected by deferred version head',
+  );
+  expect(result.checks).toContain('version audit mismatch');
   expect(result.checks).toContain('zero settlement blocks delete');
 });
