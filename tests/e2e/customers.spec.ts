@@ -648,6 +648,7 @@ test('rights holder each audit failure rolls back holder link receipt and versio
 
 test('operations user creates a persisted draft and sees its audit history', async ({
   page,
+  request,
 }) => {
   await configureBearerBrowser(page);
   await page.goto('/customers');
@@ -694,15 +695,11 @@ test('operations user creates a persisted draft and sees its audit history', asy
   await page.getByLabel('客户组织类型').selectOption('ENTERPRISE');
   await page.getByLabel('身份证明类型').selectOption('BUSINESS_LICENSE');
   await page.getByLabel('证件号码').fill('91310000abc123');
-  await page.getByLabel('邮箱').fill('contact@example.com');
   await page.getByRole('button', { name: '保存修改' }).click();
   await expect(
     page.getByRole('heading', { name: '真实数据库客户（更新）', exact: true }),
   ).toBeVisible();
   await expect(page.getByText('91310000ABC123', { exact: true })).toBeVisible();
-  await expect(
-    page.getByText('contact@example.com', { exact: true }),
-  ).toBeVisible();
   await expect(page.getByText('办理历史 · 2 条')).toBeVisible();
 
   const customerId = await findCustomerId(
@@ -710,24 +707,101 @@ test('operations user creates a persisted draft and sees its audit history', asy
     '真实数据库客户（更新）',
   );
   await expect(page).toHaveURL(`/customers/${customerId}`);
+  const contactsBefore = await request.get(
+    `/api/v1/customers/${customerId}/contacts`,
+    { headers: authorizationA },
+  );
+  expect(contactsBefore.status()).toBe(200);
+  const originalContactId = (
+    (await contactsBefore.json()) as { items: Array<{ id: string }> }
+  ).items[0]!.id;
+  const contactsPanel = page.locator('[data-test="customer-contacts-panel"]');
+  await contactsPanel
+    .locator(`[data-test="contact-${originalContactId}"]`)
+    .getByRole('button', { name: '编辑' })
+    .click();
+  await contactsPanel
+    .locator('form')
+    .getByLabel('邮箱')
+    .fill('contact@example.com');
+  await contactsPanel.getByRole('button', { name: '保存联系人' }).click();
+  await expect(contactsPanel.getByText('张三 · 13800138000')).toBeVisible();
+  await expect(
+    page.getByText('contact@example.com', { exact: true }),
+  ).toBeVisible();
+  const contactsAfter = await request.get(
+    `/api/v1/customers/${customerId}/contacts`,
+    { headers: authorizationA },
+  );
+  expect(contactsAfter.status()).toBe(200);
+  expect(
+    (await contactsAfter.json()) as { items: Array<{ id: string }> },
+  ).toMatchObject({
+    items: [{ id: originalContactId }],
+  });
   await expect(getCustomerById(customerId)).resolves.toMatchObject({
     admissionContactName: '张三',
     admissionContactPhone: '13800138000',
     admissionContactEmail: 'contact@example.com',
-    version: 2,
+    version: 3,
   });
-  const contactAudit = await getLatestCustomerAudit(customerId);
+  const contactAudit = await getLatestCustomerAudit(
+    originalContactId,
+    'customer-contact.update',
+  );
   expect(contactAudit.details).toMatchObject({
-    changes: {
-      admissionContactEmail: {
-        before: null,
-        after: '***@example.com',
-      },
-    },
+    customerId,
+    contactId: originalContactId,
+    customerVersion: 3,
   });
   expect(JSON.stringify(contactAudit.details)).not.toContain(
     'contact@example.com',
   );
+});
+
+test('old flat email PATCH keeps the contact ID and masks customer audit', async ({
+  request,
+}) => {
+  const created = await request.post('/api/v1/customers', {
+    headers: authorizationA,
+    data: {
+      name: '旧平铺补邮箱客户',
+      admissionContactName: '旧联系人',
+      admissionContactPhone: '13800138000',
+    },
+  });
+  expect(created.status(), await created.text()).toBe(201);
+  const customerId = ((await created.json()) as { id: string }).id;
+  const before = await request.get(`/api/v1/customers/${customerId}/contacts`, {
+    headers: authorizationA,
+  });
+  expect(before.status()).toBe(200);
+  const originalId = ((await before.json()) as { items: Array<{ id: string }> })
+    .items[0]!.id;
+  const patched = await request.patch(`/api/v1/customers/${customerId}`, {
+    headers: authorizationA,
+    data: { expectedVersion: 1, admissionContactEmail: 'contact@example.com' },
+  });
+  expect(patched.status(), await patched.text()).toBe(200);
+  const after = await request.get(`/api/v1/customers/${customerId}/contacts`, {
+    headers: authorizationA,
+  });
+  expect(after.status()).toBe(200);
+  expect(
+    (await after.json()) as { items: Array<{ id: string; email: string }> },
+  ).toMatchObject({
+    items: [{ id: originalId, email: 'contact@example.com' }],
+  });
+  await expect(getCustomerById(customerId)).resolves.toMatchObject({
+    version: 2,
+  });
+  const audit = await getLatestCustomerAudit(customerId);
+  expect(audit.details).toMatchObject({
+    changes: {
+      admissionContactEmail: { before: null, after: '***@example.com' },
+    },
+  });
+  expect(JSON.stringify(audit.details)).not.toContain('contact@example.com');
 });
 
 test('contact validation accepts email-only data and rejects incomplete contact data', async ({

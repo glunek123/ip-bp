@@ -25,6 +25,26 @@ export function holdCustomerActorLock(
   userId: string,
 ): Promise<() => Promise<void>>;
 export function revokeCustomerRoutineEdit(roleId: string): Promise<void>;
+export function grantCustomerRoutineEdit(
+  roleId: string,
+  scope?: 'TEAM' | 'DEPARTMENT' | 'SELF',
+): Promise<void>;
+export function setLocalCustomerGrant(
+  action: 'CUSTOMER_READ' | 'CUSTOMER_EDIT_ROUTINE',
+  enabled: boolean,
+): Promise<void>;
+export function getCustomerContactAdmissionEvidence(
+  customerId: string,
+): Promise<{
+  requestFingerprint: string;
+  resultSnapshot: unknown;
+  accounts: number;
+  bindings: number;
+}>;
+export function getCustomerContactAccountCounts(customerId: string): Promise<{
+  accounts: number;
+  bindings: number;
+}>;
 export function rejectContactReceiptWrites(): Promise<void>;
 export function allowContactReceiptWrites(): Promise<void>;
 export function createLegacyPendingDeletedCustomer(): Promise<string>;

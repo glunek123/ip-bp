@@ -140,6 +140,19 @@ async function resetLocalAuthE2eData() {
     await transaction.authSession.deleteMany({});
     await transaction.authThrottle.deleteMany({});
     await transaction.localCredential.deleteMany({});
+    await transaction.materialReference.deleteMany({ where: { departmentId } });
+    await transaction.customerAdmissionReceipt.deleteMany({
+      where: { departmentId },
+    });
+    await transaction.uploadDraft.deleteMany({ where: { departmentId } });
+    await transaction.material.updateMany({
+      where: { departmentId },
+      data: { currentVersionId: null },
+    });
+    await transaction.contentVersion.deleteMany({
+      where: { material: { departmentId } },
+    });
+    await transaction.material.deleteMany({ where: { departmentId } });
     await transaction.auditEvent.deleteMany({ where: { departmentId } });
     await clearCustomerContactData(transaction, [departmentId]);
     await transaction.customer.deleteMany({ where: { departmentId } });
@@ -761,6 +774,55 @@ async function revokeCustomerRoutineEdit(roleId) {
   await database.roleGrant.deleteMany({
     where: { roleTemplateId: roleId, action: 'CUSTOMER_EDIT_ROUTINE' },
   });
+}
+
+async function grantCustomerRoutineEdit(roleId, scope = 'TEAM') {
+  await database.roleGrant.createMany({
+    data: [{ roleTemplateId: roleId, action: 'CUSTOMER_EDIT_ROUTINE', scope }],
+    skipDuplicates: true,
+  });
+}
+
+async function setLocalCustomerGrant(action, enabled) {
+  if (!['CUSTOMER_READ', 'CUSTOMER_EDIT_ROUTINE'].includes(action))
+    throw new Error('Unsupported local customer grant');
+  const roleTemplateId = '30000000-0000-4000-8000-000000000010';
+  if (enabled) {
+    await database.roleGrant.createMany({
+      data: [{ roleTemplateId, action, scope: 'DEPARTMENT' }],
+      skipDuplicates: true,
+    });
+  } else {
+    await database.roleGrant.deleteMany({
+      where: { roleTemplateId, action },
+    });
+  }
+}
+
+async function getCustomerContactAdmissionEvidence(customerId) {
+  const [receipt, accounts, bindings] = await database.$transaction([
+    database.customerAdmissionReceipt.findFirstOrThrow({
+      where: { resultCustomerId: customerId },
+      orderBy: { createdAt: 'asc' },
+      select: { requestFingerprint: true, resultSnapshot: true },
+    }),
+    database.userAccount.count(),
+    database.customerAccountBinding.count({ where: { customerId } }),
+  ]);
+  return {
+    requestFingerprint: receipt.requestFingerprint,
+    resultSnapshot: receipt.resultSnapshot,
+    accounts,
+    bindings,
+  };
+}
+
+async function getCustomerContactAccountCounts(customerId) {
+  const [accounts, bindings] = await database.$transaction([
+    database.userAccount.count(),
+    database.customerAccountBinding.count({ where: { customerId } }),
+  ]);
+  return { accounts, bindings };
 }
 
 async function createLegacyPendingDeletedCustomer() {
@@ -3344,6 +3406,10 @@ export {
   revokeCustomerAdmission,
   holdCustomerActorLock,
   revokeCustomerRoutineEdit,
+  grantCustomerRoutineEdit,
+  setLocalCustomerGrant,
+  getCustomerContactAdmissionEvidence,
+  getCustomerContactAccountCounts,
   createLegacyPendingDeletedCustomer,
   getContactProvenance,
   revokeCustomerLifecycle,

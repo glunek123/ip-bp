@@ -70,6 +70,59 @@ export const coreLeadFixtures = Object.freeze({
   selfPassword: 'correct horse battery staple self',
 });
 
+export async function cleanupContactExternalActors() {
+  const clients = await database.customerAccountBinding.findMany({
+    where: {
+      customerId: coreLeadFixtures.admittedCustomer,
+      departmentId: coreLeadFixtures.departmentA,
+    },
+    include: { user: { include: { localCredential: true } } },
+  });
+  const lawyers = await database.lawyerAccountBinding.findMany({
+    where: { departmentId: coreLeadFixtures.departmentA },
+    include: {
+      user: { include: { localCredential: true } },
+      profile: true,
+    },
+  });
+  if (
+    clients.some(
+      ({ user }) =>
+        !user.localCredential?.username.startsWith('client-') ||
+        user.displayName !== '外部客户账号',
+    ) ||
+    lawyers.some(
+      ({ user, profile }) =>
+        !user.localCredential?.username.startsWith('lawyer-') ||
+        profile.fullName !== '承办律师',
+    )
+  ) {
+    throw new Error('Unexpected external actor in contact E2E cleanup scope');
+  }
+  const userIds = [...clients, ...lawyers].map(({ userId }) => userId);
+  if (userIds.length === 0) return;
+  await database.$transaction(async (transaction) => {
+    await transaction.authSession.deleteMany({
+      where: { userId: { in: userIds } },
+    });
+    await transaction.localCredential.deleteMany({
+      where: { userId: { in: userIds } },
+    });
+    await transaction.customerAccountBinding.deleteMany({
+      where: { id: { in: clients.map(({ id }) => id) } },
+    });
+    await transaction.lawyerAccountBinding.deleteMany({
+      where: { id: { in: lawyers.map(({ id }) => id) } },
+    });
+    await transaction.lawyerProfile.deleteMany({
+      where: { id: { in: lawyers.map(({ profileId }) => profileId) } },
+    });
+    await transaction.userAccount.deleteMany({
+      where: { id: { in: userIds } },
+    });
+  });
+}
+
 const operatorPasswordHash = hashPassword(coreLeadFixtures.operatorPassword);
 const selfPasswordHash = hashPassword(coreLeadFixtures.selfPassword);
 
