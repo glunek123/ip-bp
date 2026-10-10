@@ -123,6 +123,34 @@ describe('client cases API', () => {
       code: 'INVALID_RESPONSE',
     });
   });
+  it('decodes the two new stages without accepting internal choice facts', async () => {
+    for (const stage of ['SECOND_INSTANCE', 'WAITING_EXECUTION_DOCUMENTS']) {
+      mock({
+        items: [{ ...item, stage }],
+        total: 1,
+        page: 1,
+        pageSize: 20,
+      });
+      await expect(listClientCases()).resolves.toMatchObject({
+        items: [{ stage }],
+      });
+    }
+    mock({
+      ...item,
+      stage: 'SECOND_INSTANCE',
+      confirmedAmountState: 'KNOWN',
+      confirmedAmount: '123.45',
+      confirmedAt: '2026-10-01T00:00:00Z',
+      complaintFile: file,
+      authorizationFiles: [],
+      pendingReceiptFiles: [],
+      complaintMailing: null,
+      judgmentNextStep: { history: [] },
+    });
+    await expect(getClientCase('case-1')).rejects.toMatchObject({
+      code: 'INVALID_RESPONSE',
+    });
+  });
   it('posts the exact client command and validates the transition', async () => {
     const fetch = mock({
       id: 'case-1',

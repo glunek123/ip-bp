@@ -22,6 +22,12 @@ const emptyResult = {
       canSubmitFiling: true,
       canRegisterAcceptance: false,
       canUploadAcceptanceMaterials: false,
+      canScheduleHearing: false,
+      canCorrectHearing: false,
+      canRegisterJudgment: false,
+      canCorrectJudgment: false,
+      canChooseJudgmentNextStep: false,
+      canRevokeJudgmentNextStep: false,
       createdAt: '2026-10-01T00:00:00Z',
     },
   ],
@@ -37,6 +43,8 @@ const emptyResult = {
     WAITING_FORMAL_ACCEPTANCE: 0,
     WAITING_HEARING: 0,
     WAITING_JUDGMENT: 0,
+    SECOND_INSTANCE: 0,
+    WAITING_EXECUTION_DOCUMENTS: 0,
   },
 };
 
@@ -164,6 +172,22 @@ describe('LawyerCaseListPage', () => {
       expect.any(Object),
     );
     expect(wrapper.text()).toContain('待判决');
+  });
+
+  it('supports both CA-009 stages and their labels', async () => {
+    for (const [stage, label] of [
+      ['SECOND_INSTANCE', '二审'],
+      ['WAITING_EXECUTION_DOCUMENTS', '待写执行材料'],
+    ] as const) {
+      api.listLawyerCases.mockResolvedValueOnce({
+        ...emptyResult,
+        items: [{ ...emptyResult.items[0], stage }],
+      });
+      const { wrapper, router } = await mountPage();
+      await router.push(`/lawyer/cases?stage=${stage}`);
+      await flushPromises();
+      expect(wrapper.text()).toContain(label);
+    }
   });
 
   it('resets to page one on stage change and ignores a late page response', async () => {

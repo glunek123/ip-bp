@@ -11,6 +11,8 @@ import {
   matchCase,
   submitCaseFiling,
   submitComplaint,
+  chooseCaseJudgmentNextStep,
+  revokeCaseJudgmentNextStep,
 } from './cases';
 import * as casesApi from './cases';
 import type { CaseJudgmentFact } from './cases';
@@ -35,6 +37,8 @@ const summary = {
   canCorrectHearing: false,
   canRegisterJudgment: false,
   canCorrectJudgment: false,
+  canChooseJudgmentNextStep: false,
+  canRevokeJudgmentNextStep: false,
   sourceLead: { id: 'lead-1', businessNo: 'LD-1' },
   sourceNotaryMatter: { id: 'matter-1', businessNo: 'NZ-1' },
 };
@@ -109,6 +113,7 @@ const detail = {
     corrections: [],
   },
   judgment: { current: null, history: [], availableFiles: [] },
+  judgmentNextStep: { current: null, history: [], revocations: [] },
 };
 function mockJson(payload: unknown) {
   const fetchMock = vi
@@ -119,6 +124,86 @@ function mockJson(payload: unknown) {
 }
 
 describe('cases API', () => {
+  it('posts the exact execution choice and validates its stage transition', async () => {
+    const fetch = mockJson({
+      id: 'case-1',
+      stage: 'WAITING_EXECUTION_DOCUMENTS',
+      version: 4,
+      choiceId: '70000000-0000-4000-8000-000000000003',
+      judgmentId: '70000000-0000-4000-8000-000000000002',
+      recordedAt: '2026-10-10T03:00:00Z',
+    });
+    await chooseCaseJudgmentNextStep('case-1', {
+      expectedVersion: 3,
+      idempotencyKey: 'choice-key',
+      judgmentId: '70000000-0000-4000-8000-000000000002',
+      next: 'EXECUTION',
+      executionReadinessConfirmed: true,
+    });
+    expect(fetch.mock.calls[0]?.[0]).toBe(
+      '/api/v1/cases/case-1/judgment-next-step',
+    );
+    expect(JSON.parse(String(fetch.mock.calls[0]?.[1]?.body))).toEqual({
+      expectedVersion: 3,
+      idempotencyKey: 'choice-key',
+      judgmentId: '70000000-0000-4000-8000-000000000002',
+      next: 'EXECUTION',
+      executionReadinessConfirmed: true,
+    });
+  });
+
+  it('routes lawyer choices to the lawyer endpoint and rejects illegal branches', async () => {
+    const fetch = mockJson({
+      id: 'case-1',
+      stage: 'SECOND_INSTANCE',
+      version: 4,
+      choiceId: '70000000-0000-4000-8000-000000000003',
+      judgmentId: '70000000-0000-4000-8000-000000000002',
+      recordedAt: '2026-10-10T03:00:00Z',
+    });
+    const valid = {
+      expectedVersion: 3,
+      idempotencyKey: 'appeal-key',
+      judgmentId: '70000000-0000-4000-8000-000000000002',
+      next: 'APPEAL' as const,
+      plaintiffAppeals: true,
+      defendantIds: ['70000000-0000-4000-8000-000000000004'],
+    };
+    await chooseCaseJudgmentNextStep('case-1', valid, 'lawyer');
+    expect(fetch.mock.calls[0]?.[0]).toBe(
+      '/api/v1/lawyer/cases/case-1/judgment-next-step',
+    );
+    await expect(
+      chooseCaseJudgmentNextStep('case-1', {
+        ...valid,
+        plaintiffAppeals: false,
+        defendantIds: [],
+      }),
+    ).rejects.toMatchObject({ code: 'VALIDATION_ERROR' });
+    expect(fetch).toHaveBeenCalledTimes(1);
+  });
+
+  it('posts only an internal revocation and validates its exact target', async () => {
+    const fetch = mockJson({
+      id: 'case-1',
+      stage: 'WAITING_JUDGMENT',
+      version: 5,
+      choiceId: '70000000-0000-4000-8000-000000000003',
+      revocationId: '70000000-0000-4000-8000-000000000005',
+      judgmentId: '70000000-0000-4000-8000-000000000002',
+      recordedAt: '2026-10-10T03:00:00Z',
+    });
+    await revokeCaseJudgmentNextStep('case-1', {
+      expectedVersion: 4,
+      idempotencyKey: 'revoke-key',
+      choiceId: '70000000-0000-4000-8000-000000000003',
+      reason: '复核后确认误选',
+    });
+    expect(fetch.mock.calls[0]?.[0]).toBe(
+      '/api/v1/cases/case-1/judgment-next-step-revoke',
+    );
+  });
+
   it('models the nullable internal REGISTER reason exactly', () => {
     expectTypeOf<CaseJudgmentFact['reason']>().toEqualTypeOf<
       string | null | undefined
@@ -254,6 +339,8 @@ describe('cases API', () => {
       canCorrectHearing: false,
       canRegisterJudgment: false,
       canCorrectJudgment: false,
+      canChooseJudgmentNextStep: false,
+      canRevokeJudgmentNextStep: false,
       createdAt: '2026-09-28T00:00:00.000Z',
       matchedAt: null,
       matchedOn: null,
@@ -275,6 +362,7 @@ describe('cases API', () => {
         history: [lawyerRegistered, lawyerCorrection],
         availableFiles: [file],
       },
+      judgmentNextStep: { current: null, history: [], revocations: [] },
     };
     const readLawyer = Reflect.get(casesApi, 'getLawyerCase') as
       ((id: string) => Promise<Record<string, unknown>>) | undefined;
@@ -677,6 +765,8 @@ describe('cases API', () => {
         WAITING_FORMAL_ACCEPTANCE: 0,
         WAITING_HEARING: 0,
         WAITING_JUDGMENT: 0,
+        SECOND_INSTANCE: 0,
+        WAITING_EXECUTION_DOCUMENTS: 0,
       },
     });
     await expect(
@@ -692,6 +782,8 @@ describe('cases API', () => {
         WAITING_FORMAL_ACCEPTANCE: 0,
         WAITING_HEARING: 0,
         WAITING_JUDGMENT: 0,
+        SECOND_INSTANCE: 0,
+        WAITING_EXECUTION_DOCUMENTS: 0,
       },
     });
     expect(fetchMock.mock.calls[0]?.[0]).toBe(
@@ -721,6 +813,8 @@ describe('cases API', () => {
         WAITING_FORMAL_ACCEPTANCE: 0,
         WAITING_HEARING: 0,
         WAITING_JUDGMENT: 0,
+        SECOND_INSTANCE: 0,
+        WAITING_EXECUTION_DOCUMENTS: 0,
       },
     });
     await expect(
@@ -745,6 +839,8 @@ describe('cases API', () => {
         WAITING_FORMAL_ACCEPTANCE: 0,
         WAITING_HEARING: 0,
         WAITING_JUDGMENT: 0,
+        SECOND_INSTANCE: 0,
+        WAITING_EXECUTION_DOCUMENTS: 0,
       },
     });
     await listCases(1, 20, { stage: 'all' });
@@ -790,6 +886,8 @@ describe('cases API', () => {
       canCorrectHearing: false,
       canRegisterJudgment: false,
       canCorrectJudgment: false,
+      canChooseJudgmentNextStep: true,
+      canRevokeJudgmentNextStep: false,
       filingSubmission: {
         court: {
           id: '70000000-0000-4000-8000-000000000011',
@@ -1107,6 +1205,8 @@ describe('cases API', () => {
       canCorrectHearing: false,
       canRegisterJudgment: false,
       canCorrectJudgment: false,
+      canChooseJudgmentNextStep: true,
+      canRevokeJudgmentNextStep: false,
       createdAt: '2026-09-28T00:00:00.000Z',
       matchedAt: '2026-09-29T01:00:00Z',
       matchedOn: '2026-09-28',
@@ -1124,6 +1224,7 @@ describe('cases API', () => {
       acceptanceMaterials: detail.acceptanceMaterials,
       hearing: detail.hearing,
       judgment: detail.judgment,
+      judgmentNextStep: { current: null, history: [], revocations: [] },
     };
     const read = Reflect.get(casesApi, 'getLawyerCase') as
       ((id: string) => Promise<Record<string, unknown>>) | undefined;
@@ -1382,6 +1483,8 @@ describe('cases API', () => {
         WAITING_FORMAL_ACCEPTANCE: 0,
         WAITING_HEARING: 0,
         WAITING_JUDGMENT: 0,
+        SECOND_INSTANCE: 0,
+        WAITING_EXECUTION_DOCUMENTS: 0,
       },
     });
     const read = Reflect.get(casesApi, 'listLawyerCases') as

@@ -25,6 +25,8 @@ const api = vi.hoisted(() => ({
   correctCaseHearing: vi.fn(),
   registerCaseJudgment: vi.fn(),
   correctCaseJudgment: vi.fn(),
+  chooseCaseJudgmentNextStep: vi.fn(),
+  revokeCaseJudgmentNextStep: vi.fn(),
 }));
 vi.mock('../../api/cases', () => ({
   listCases: api.listCases,
@@ -40,6 +42,8 @@ vi.mock('../../api/cases', () => ({
   correctCaseHearing: api.correctCaseHearing,
   registerCaseJudgment: api.registerCaseJudgment,
   correctCaseJudgment: api.correctCaseJudgment,
+  chooseCaseJudgmentNextStep: api.chooseCaseJudgmentNextStep,
+  revokeCaseJudgmentNextStep: api.revokeCaseJudgmentNextStep,
   todayShanghai: () => '2026-09-29',
 }));
 vi.mock('../../api/materials', () => ({
@@ -84,6 +88,8 @@ beforeEach(() => {
       WAITING_FORMAL_ACCEPTANCE: 0,
       WAITING_HEARING: 0,
       WAITING_JUDGMENT: 0,
+      SECOND_INSTANCE: 0,
+      WAITING_EXECUTION_DOCUMENTS: 0,
     },
   });
   api.listLawyerMatchCandidates.mockResolvedValue([]);
@@ -131,6 +137,8 @@ beforeEach(() => {
     canCorrectHearing: false,
     canRegisterJudgment: false,
     canCorrectJudgment: false,
+    canChooseJudgmentNextStep: false,
+    canRevokeJudgmentNextStep: false,
     complaint: null,
     complaintConfirmation: null,
     complaintMailing: null,
@@ -286,6 +294,41 @@ function confirmationDetail(
       corrections: [],
     },
     judgment: { current: null, history: [], availableFiles: [] },
+    judgmentNextStep: { current: null, history: [], revocations: [] },
+  };
+}
+
+function judgmentDetailWithChoiceCapability(id: string) {
+  const detail = confirmationDetail(id);
+  const file = {
+    materialId: '70000000-0000-4000-8000-000000000001',
+    contentVersionId: '70000000-0000-4000-8000-000000000002',
+    originalFilename: '内部判决.pdf',
+    mimeType: 'application/pdf',
+  };
+  const fact = {
+    id: '70000000-0000-4000-8000-000000000003',
+    kind: 'REGISTER' as const,
+    priorFactId: null,
+    judgmentReceivedAt: '2026-10-02',
+    judgmentAmountState: 'KNOWN' as const,
+    judgmentAmount: '42.50',
+    paidLitigationFeeState: 'KNOWN' as const,
+    paidLitigationFee: '0.00',
+    fromVersion: 6,
+    toVersion: 7,
+    recordedAt: '2026-10-02T03:00:00Z',
+    reason: null,
+    recordedByUserId: '70000000-0000-4000-8000-000000000004',
+    files: [file],
+  };
+  return {
+    ...detail,
+    stage: 'WAITING_JUDGMENT' as const,
+    version: 7,
+    canRegisterJudgment: false,
+    canChooseJudgmentNextStep: true,
+    judgment: { current: fact, history: [fact], availableFiles: [file] },
   };
 }
 
@@ -393,6 +436,22 @@ describe('case pages', () => {
     expect(wrapper.get('.page-head').text()).toContain('待判决');
     expect(wrapper.get('[data-test="case-list"]').text()).toContain('待判决');
     expect(wrapper.text()).not.toContain('法院已判决');
+  });
+
+  it('labels both CA-009 stages in the internal case directory', async () => {
+    const base = await api.listCases();
+    for (const [stage, label] of [
+      ['SECOND_INSTANCE', '二审'],
+      ['WAITING_EXECUTION_DOCUMENTS', '待写执行材料'],
+    ] as const) {
+      api.listCases.mockResolvedValueOnce({
+        ...base,
+        items: [{ ...base.items[0], stage }],
+      });
+      const wrapper = await mountRoute(`/cases?stage=${stage}`, CaseListPage);
+      expect(wrapper.get('.page-head').text()).toContain(label);
+      expect(wrapper.get('[data-test="case-list"]').text()).toContain(label);
+    }
   });
 
   it('shows judgment registration on the internal detail only when authorized', async () => {
@@ -1018,6 +1077,33 @@ describe('case pages', () => {
       ).toBe(false);
     },
   );
+
+  it('clears judgment files and next-step projection when a choice is denied and refresh returns 403', async () => {
+    api.getCase
+      .mockResolvedValueOnce(judgmentDetailWithChoiceCapability('case-a'))
+      .mockRejectedValueOnce(new ApiError('not accessible', 403, 'FORBIDDEN'));
+    api.chooseCaseJudgmentNextStep.mockRejectedValueOnce(
+      new ApiError('no longer authorized', 403, 'ACTION_FORBIDDEN'),
+    );
+    const { wrapper } = await mountRoutedDetail('/cases/case-a');
+    const next = wrapper.get('[data-test="case-judgment-next-step-panel"]');
+    expect(wrapper.text()).toContain('内部判决.pdf');
+
+    await next.get('input[value="EXECUTION"]').setValue();
+    await next.get('input[type="checkbox"]').setValue(true);
+    await next.get('form').trigger('submit');
+    await next.get('[data-confirm-choice]').trigger('click');
+    await flushPromises();
+
+    expect(api.chooseCaseJudgmentNextStep).toHaveBeenCalledTimes(1);
+    expect(api.getCase).toHaveBeenCalledTimes(2);
+    expect(wrapper.text()).not.toContain('内部判决.pdf');
+    expect(wrapper.find('[data-test="judgment-current"]').exists()).toBe(false);
+    expect(
+      wrapper.find('[data-test="case-judgment-next-step-panel"]').exists(),
+    ).toBe(false);
+    expect(wrapper.get('h1').text()).toBe('案件暂时无法读取');
+  });
 
   it('loads route B in the reused RouterView and ignores a late detail response for A', async () => {
     let resolveA!: (value: ReturnType<typeof confirmationDetail>) => void;

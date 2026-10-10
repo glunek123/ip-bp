@@ -12,9 +12,20 @@ export function createSubmittedCaseThroughApi(
   };
   certificateBytes: Buffer;
 }>;
+type SubmittedCaseOptions = {
+  submitAsLawyer?: boolean;
+  stopAtPendingMatch?: false;
+  defendants?: Array<{
+    kind: 'PERSON' | 'ORGANIZATION';
+    name: string;
+    idNo?: string;
+    phone?: string;
+    address?: string;
+  }>;
+};
 export function createSubmittedCaseThroughApi(
   request: APIRequestContext,
-  options?: { submitAsLawyer?: boolean; stopAtPendingMatch?: false },
+  options?: SubmittedCaseOptions,
 ): Promise<{
   caseId: string;
   lawyer: {

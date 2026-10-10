@@ -279,7 +279,9 @@ export async function createSubmittedCaseThroughApi(request, options = {}) {
         expectedVersion: 1,
         idempotencyKey: matchKey,
         matchedOn: '2026-09-28',
-        defendants: [{ kind: 'ORGANIZATION', name: '诉状确认被告公司' }],
+        defendants: options.defendants ?? [
+          { kind: 'ORGANIZATION', name: '诉状确认被告公司' },
+        ],
         lawyerAccountId: lawyer.id,
       },
     }),

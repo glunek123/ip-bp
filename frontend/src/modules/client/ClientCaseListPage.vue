@@ -60,6 +60,8 @@ function stageLabel(stage: ClientCase['stage']) {
   if (stage === 'WAITING_FILING') return '待提交立案';
   if (stage === 'WAITING_FORMAL_ACCEPTANCE') return '待正式立案';
   if (stage === 'WAITING_JUDGMENT') return '待判决';
+  if (stage === 'SECOND_INSTANCE') return '二审';
+  if (stage === 'WAITING_EXECUTION_DOCUMENTS') return '待写执行材料';
   return '待开庭';
 }
 load();

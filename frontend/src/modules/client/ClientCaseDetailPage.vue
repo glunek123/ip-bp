@@ -86,7 +86,11 @@ onBeforeUnmount(() => request?.abort());
                       ? '待正式立案'
                       : item.stage === 'WAITING_JUDGMENT'
                         ? '待判决'
-                        : '待开庭'
+                        : item.stage === 'SECOND_INSTANCE'
+                          ? '二审'
+                          : item.stage === 'WAITING_EXECUTION_DOCUMENTS'
+                            ? '待写执行材料'
+                            : '待开庭'
               }}</span>
               · 权利主体：{{ item.rightsHolderName }}
             </p>

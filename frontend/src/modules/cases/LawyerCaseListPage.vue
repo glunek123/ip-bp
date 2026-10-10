@@ -21,6 +21,8 @@ const stages: Array<{ value: CaseStage; label: string }> = [
   { value: 'WAITING_FORMAL_ACCEPTANCE', label: '待正式立案' },
   { value: 'WAITING_HEARING', label: '待开庭' },
   { value: 'WAITING_JUDGMENT', label: '待判决' },
+  { value: 'SECOND_INSTANCE', label: '二审' },
+  { value: 'WAITING_EXECUTION_DOCUMENTS', label: '待写执行材料' },
 ];
 const state = ref<'loading' | 'ready' | 'failed'>('loading');
 const items = ref<LawyerCaseSummary[]>([]);

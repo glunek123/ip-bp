@@ -262,6 +262,16 @@ const context = {
       scopes: ['SELF', 'TEAM', 'DEPARTMENT'],
     },
     {
+      action: 'CASE_JUDGMENT_NEXT_STEP',
+      label: '登记判决后续选择',
+      scopes: ['SELF', 'TEAM', 'DEPARTMENT'],
+    },
+    {
+      action: 'CASE_JUDGMENT_NEXT_STEP_REVOKE',
+      label: '撤销判决后续选择',
+      scopes: ['SELF', 'TEAM', 'DEPARTMENT'],
+    },
+    {
       action: 'NOTARY_OFFICE_MANAGE',
       label: '管理公证处',
       scopes: ['DEPARTMENT'],
@@ -389,6 +399,8 @@ describe('organization API', () => {
       'CASE_HEARING_CORRECT',
       'CASE_JUDGMENT_REGISTER',
       'CASE_JUDGMENT_CORRECT',
+      'CASE_JUDGMENT_NEXT_STEP',
+      'CASE_JUDGMENT_NEXT_STEP_REVOKE',
       'NOTARY_OFFICE_MANAGE',
       'USER_READ',
       'USER_MANAGE',

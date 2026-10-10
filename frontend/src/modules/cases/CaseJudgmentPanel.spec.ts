@@ -78,6 +78,8 @@ const baseItem: CaseDetail = {
   canCorrectHearing: false,
   canRegisterJudgment: true,
   canCorrectJudgment: false,
+  canChooseJudgmentNextStep: false,
+  canRevokeJudgmentNextStep: false,
   sourceLead: { id: 'lead-1', businessNo: 'LD-1' },
   sourceNotaryMatter: { id: 'matter-1', businessNo: 'NZ-1' },
   courtCaseNo: '（2026）甲0101民初1号',
@@ -120,6 +122,7 @@ const baseItem: CaseDetail = {
     corrections: [],
   },
   judgment: { current: null, history: [], availableFiles: [file] },
+  judgmentNextStep: { current: null, history: [], revocations: [] },
 };
 
 beforeEach(() => {

@@ -46,6 +46,8 @@ function detail(
     canCorrectHearing: false,
     canRegisterJudgment: false,
     canCorrectJudgment: false,
+    canChooseJudgmentNextStep: false,
+    canRevokeJudgmentNextStep: false,
     createdAt: '2026-10-01T00:00:00Z',
     matchedAt: '2026-10-01T00:00:00Z',
     matchedOn: '2026-10-01',
@@ -80,6 +82,7 @@ function detail(
       corrections: [],
     },
     judgment: { current: null, history: [], availableFiles: [] },
+    judgmentNextStep: { current: null, history: [], revocations: [] },
   };
 }
 function materials() {

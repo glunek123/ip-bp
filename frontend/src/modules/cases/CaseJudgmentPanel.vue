@@ -19,16 +19,20 @@ import {
 } from '../../api/materials';
 import { notifyWorkflowChanged } from '../../app/workflow-events';
 
-type PanelItem = Pick<
-  CaseDetail | LawyerCaseDetail,
-  | 'id'
-  | 'stage'
-  | 'version'
-  | 'acceptance'
-  | 'canRegisterJudgment'
-  | 'canCorrectJudgment'
-  | 'judgment'
->;
+type PanelItem = Omit<
+  Pick<
+    CaseDetail | LawyerCaseDetail,
+    | 'id'
+    | 'stage'
+    | 'version'
+    | 'acceptance'
+    | 'canRegisterJudgment'
+    | 'canCorrectJudgment'
+    | 'judgmentNextStep'
+    | 'judgment'
+  >,
+  'judgmentNextStep'
+> & { judgmentNextStep?: CaseDetail['judgmentNextStep'] };
 type AmountState = 'KNOWN' | 'PENDING' | '';
 type Command =
   | { kind: 'register'; input: RegisterCaseJudgmentInput }
@@ -142,7 +146,9 @@ const canCorrect = computed(
     !props.lawyer &&
     props.item.stage === 'WAITING_JUDGMENT' &&
     props.item.canCorrectJudgment &&
-    props.item.judgment.current !== null,
+    props.item.judgment.current !== null &&
+    (props.item.judgmentNextStep?.current === null ||
+      props.item.judgmentNextStep === undefined),
 );
 const canEdit = computed(() => canRegister.value || canCorrect.value);
 const availableFiles = computed(allAvailableFiles);
