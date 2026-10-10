@@ -29,6 +29,14 @@ E2E实际选择`tests/e2e/`内的`case-judgment-next-step.spec.ts`、`case-judgm
 
 本片没有剩余业务验收阻塞；二审结果、执行材料／申请、财务及外部补录未交付。CA-010／011接入正式后续事实时仍必须扩展同案锁及撤销／判决更正数据库阻断，不以缺少未来表冒称已验证未来安全。开发／生产迁移、对象存储生产Provider、部署和远端CI未执行；旧大chunk与pg弃用警告为非阻断，pg@9兼容未验证。Current为CA-010未领取、Next为CA-011未领取；须先获授权集成CA-009及核对组合tree。
 
+### CA-009授权推送与快进集成（2026-10-10）
+
+用户授权“推送合并CA-009，核对组合tree”。只读context无漂移；获取远端后，本地main与origin/main均为`6ae39ac1a688f2d553bc5b439e0fbc208e131151`，是任务分支祖先，无分叉或未提交修改。本地main快进至`866771b56a782b93d778cc67f2369c14695930dd`，tree`a5f66b92adcef638c7a9299eb07cdf5f13ca2202`与原收口完全一致；原子推送main及任务分支后，`git ls-remote`确认两者均指向该提交，没有形成未验证的业务组合。
+
+集成前重新采集候选及实际测试环境，fingerprint与原完整verify／95项E2E一致。从实际业务候选`0442c83`到本次最终状态，累计提交／diff、暂存／未暂存与相关未跟踪项只含上述四份非执行性完成态、集成摘要、证据引用及对应快照；模块Spec、代码、测试、迁移、构建、配置和相关环境未变。复用原业务候选的完整verify与适用95/95证据，未机械重跑完整业务门禁，也不称最终main实跑其结果。集成快进核对、格式／Spec／链接与状态指针、严格上下文及累计范围检查的实际结果保存`.local/case-judgment-next-step/integration-doc-check.log`和`integration-result.json`，原始环境见`integration-environment-before.json`；以真实退出0为状态提交前提，不要求本段包含自身提交哈希。
+
+GitHub查询显示main的protected=false、仓库rulesets为空、Actions workflows为0；首次推送后的`866771b` check-runs为0，无远端必需检查，不表述为服务器CI已通过。首次推送前查询该尚未上传SHA返回422“commit not found”，推送后重新查询成功，不将其误报为CI失败或通过。同模型隔离审查的独立性不足及外部异模型Review Pending仍保留。本轮仅集成CA-009，不实施CA-010／011、不发布／部署、不操作开发／生产数据库，独立人工环境保留。
+
 ## 仓库整理与历史迁移探针修复（2026-10-08）
 
 基线`e15fd4b797abb609b4e8cd39b2b872246271b15a`；本地分支`codex/repository-hygiene`。实际受验候选`c7572c6eb53bf42fd05416d9fb4317134319b062`、tree`1013c61a28ed2878132a6bb904365e98368ad4ed`。整理验收轮不开发业务Slice、不改变Current CA-008／Next CA-009、未推送／合并或部署；后续授权集成另记如下。
