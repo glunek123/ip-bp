@@ -8,7 +8,7 @@ CORE-CA-001～009及SD-44律师身份前置补齐均已验收、推送并集成m
 
 ## 当前任务
 
-唯一Current为**CORE-CA-010｜二审（未领取）**，Next为CORE-CA-011执行材料；指针与范围以[路线图](feature-roadmap.md#current-slice)为准。CA-009已按SD-49验收，收口`866771b`已按本轮授权推送并快进集成main，远端main与任务分支均已核实；组合tree与原收口`a5f66b92adcef638c7a9299eb07cdf5f13ca2202`一致，未带入其他业务改动。实际业务候选`0442c832a92e01942e370837bcc9d870d03d4d5c`、tree`44b6879fa430ed35c7701485f9713dde11e24323`完整verify和适用隔离PG／Chromium95/95通过，集成时环境指纹仍一致。五项前向迁移、运营／律师共享选择及运营受控撤销、真实账号刷新／重登与企业隔离已验收；律师投影、旧草稿改绑、冲突反馈、OpenAPI测试provider及浏览器刷新时序问题均修复并补审关闭。Final Review及F1／F2补审两轴ACCEPTED、未关闭C/I/M0；同模型非实现隔离、独立性不足，外部异模型Review Pending（本轮未执行）。正式证据、集成及失败历史集中见[验证记录](spec/v0.1/VALIDATION.md#core-ca-009-判决后续选择2026-10-10)，原始报告在ignored `.local/case-judgment-next-step/`。本轮仅补非执行性集成状态／证据及已解释快照并做专项检查，不称合并HEAD实跑旧候选门禁；未领取或实施CA-010，不部署、不执行开发／生产迁移。
+唯一Current为**CORE-CA-010｜二审（已领取，设计已确认／实施中）**，Next为CORE-CA-011执行材料；指针与范围以[路线图](feature-roadmap.md#current-slice)为准。2026-10-10按用户授权推送规则组合候选`a1d99fc`，远端main已核实；该tree独立非实现6 Sol Review两轴ACCEPTED、未关闭C/I/M0及完整verify通过，原始证据在ignored `.local/rules-contract-checks-integration/`，历史外部异模型Pending不追认。随后从该main建立`codex/core-ca-010-appeal`。当前完成领取及二审设计／计划，用户集中确认同案重审轮次、受控结果撤销及金额边界，已登记SD-50；高风险设计审查后连续实施，不重复逐阶段审批。业务契约见[案件Spec](spec/v0.1/modules/cases.md#ca-010二审办理与结果)，任务见[计划](superpowers/plans/2026-10-10-case-second-instance.md)。CA-009已验收并推送集成，其候选、失败历史及证据边界继续见[验证记录](spec/v0.1/VALIDATION.md#core-ca-009-判决后续选择2026-10-10)；本轮不冒称CA-010已实现／验收，不部署或执行开发／生产迁移。
 
 实际候选5cc84c1/tree2dd737a完整verify通过：工具74/74、前端892/892（84文件）、后端1171/1171（93 suites）及双构建；全库隔离PG/Chromium293/293通过，覆盖完整112条迁移链、旧事实/回执、SQL负例、失败原子及重试。原非实现Sol对八片累计及最终回归补审Spec compliance/Quality均ACCEPTED、未关闭C/I/M0/0/0；同模型隔离独立性不足，外部异模型Review Pending。原首轮4f851d9完整verify虽通过，全库为289/293、4项失败；5873d7d最小修复后原审查者补审关闭，保留原失败、trace、RED/GREEN及审查历史，不把旧结果标为新候选通过。完整候选、证据和限制见[验证记录](spec/v0.1/VALIDATION.md)。
 
@@ -56,4 +56,4 @@ CA-008实际业务候选`9092414`完成Level 3：完整verify退出0（后端107
 
 ## 下一步
 
-CA-009集成及组合tree核对已完成。下一次获授权后领取CA-010的小粒度设计，集中澄清B13依赖的二审业务边界；本轮不提前领取或开发。CA-010／011新增正式后续事实时必须接同案锁及撤销／更正阻断，不能把当前缺少未来模型视为已证明未来安全。已有CU-008验收与人工环境保留，不重置，不部署或执行开发／生产迁移。
+CA-010已领取且Q1～Q3已按推荐方案确认；完成高风险设计审查，按计划连续实施二审保存、结果、重审及最小纠错。CA-010／011新增正式后续事实时必须接同案锁及撤销／更正阻断，不能把当前缺少未来模型视为已证明未来安全。已有CU-008验收与人工环境保留，不重置，不部署或执行开发／生产迁移。
