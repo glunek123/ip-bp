@@ -419,7 +419,12 @@ describe('CaseJudgmentNextStepPanel', () => {
     expect(wrapper.emitted('refresh')).toHaveLength(1);
 
     await wrapper.setProps({ item: { ...item, version: 4 } });
+    expect(wrapper.get('[role="alert"]').text()).toContain(
+      '案件版本或状态已变化。旧请求未自动改用新版本，请刷新并核对后重新填写。',
+    );
     expect(wrapper.findAll('input[type="radio"]:checked')).toHaveLength(0);
+    expect(wrapper.findAll('input[type="checkbox"]:checked')).toHaveLength(0);
+    expect(wrapper.find('[role="dialog"]').exists()).toBe(false);
     expect(
       (wrapper.get('button[type="submit"]').element as HTMLButtonElement)
         .disabled,

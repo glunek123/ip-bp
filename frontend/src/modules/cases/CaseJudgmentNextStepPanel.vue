@@ -40,6 +40,7 @@ const revokeReason = ref('');
 const pending = ref(false);
 const pendingUnknown = ref<PendingCommand | null>(null);
 const error = ref('');
+const conflictNeedsReview = ref(false);
 const success = ref('');
 const confirmation = ref<'' | 'choose' | 'revoke'>('');
 let revision = 0;
@@ -121,6 +122,7 @@ watch(
     pending.value = false;
     pendingUnknown.value = null;
     error.value = '';
+    conflictNeedsReview.value = false;
     success.value = '';
   },
   { immediate: true, flush: 'sync' },
@@ -134,7 +136,7 @@ watch(
   () => {
     clearDraft();
     if (pendingUnknown.value === null) {
-      error.value = '';
+      if (!conflictNeedsReview.value) error.value = '';
       success.value = '';
     }
   },
@@ -194,17 +196,20 @@ function makeChoiceInput(): ChooseCaseJudgmentNextStepInput {
 function openChoiceConfirmation(): void {
   if (!readyToChoose.value) return;
   error.value = '';
+  conflictNeedsReview.value = false;
   confirmation.value = 'choose';
 }
 function openRevokeConfirmation(): void {
   if (!readyToRevoke.value) return;
   error.value = '';
+  conflictNeedsReview.value = false;
   confirmation.value = 'revoke';
 }
 async function send(command: PendingCommand): Promise<void> {
   const context = capture();
   pending.value = true;
   error.value = '';
+  conflictNeedsReview.value = false;
   success.value = '';
   confirmation.value = '';
   try {
@@ -237,6 +242,7 @@ async function send(command: PendingCommand): Promise<void> {
         ))
     ) {
       pendingUnknown.value = null;
+      conflictNeedsReview.value = true;
       error.value =
         '案件版本或状态已变化。旧请求未自动改用新版本，请刷新并核对后重新填写。';
       emit('refresh');
