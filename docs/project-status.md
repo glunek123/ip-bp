@@ -8,7 +8,7 @@ CORE-CA-001～008及SD-44律师身份前置补齐均已验收、推送并集成m
 
 ## 当前任务
 
-唯一Current为**CORE-CA-009｜判决后续选择（已领取，实施中）**，Next为CORE-CA-010二审；指针与范围以[路线图](feature-roadmap.md#current-slice)为准。分支`codex/core-ca-009-judgment-next-step`，基线本地及远端main均为`6ae39ac1a688f2d553bc5b439e0fbc208e131151`；开工工作区干净，`pnpm context:check`无漂移。已确认的小粒度设计见[案件Spec](spec/v0.1/modules/cases.md#ca-009判决后续选择)，实施步骤见[计划](superpowers/plans/2026-10-10-case-judgment-next-step.md)。三项业务边界已由用户确认，按SD-49继续实施，不逐阶段重复确认。后端及四项前向迁移已提交1f2e341，正在高风险Task审查；前端集成、完整文件纠错链、最终Review及正式门禁尚未完成，不将定向测试或旧客户/判决证据标为本切片通过。客户经理仍是待交付的普通资料字段，不建立角色或访问关系，本切片不顺带实现。
+唯一Current为**CORE-CA-009｜判决后续选择（已领取，实施中）**，Next为CORE-CA-010二审；指针与范围以[路线图](feature-roadmap.md#current-slice)为准。分支`codex/core-ca-009-judgment-next-step`，基线本地及远端main均为`6ae39ac1a688f2d553bc5b439e0fbc208e131151`；开工工作区干净，`pnpm context:check`无漂移。已确认的小粒度设计见[案件Spec](spec/v0.1/modules/cases.md#ca-009判决后续选择)，实施步骤见[计划](superpowers/plans/2026-10-10-case-judgment-next-step.md)。三项业务边界已由用户确认，按SD-49继续实施，不逐阶段重复确认。后端及五项前向迁移、真实冻结文件纠错链和旧112条schema升级验证已在fcf6134完成高风险Task审查；同模型隔离审查ACCEPTED，独立性不足，不等同外部异模型审查。前端与真实账号浏览器仍在集成；律师详情投影遗漏已由96c3cb1补齐，待窄审后恢复浏览器。最终Review及正式门禁未完成，不将定向测试或旧客户/判决证据标为本切片通过。恢复与逐项证据保存在ignored `.local/case-judgment-next-step/`。客户经理仍是待交付的普通资料字段，不建立角色或访问关系，本切片不顺带实现。
 
 实际候选5cc84c1/tree2dd737a完整verify通过：工具74/74、前端892/892（84文件）、后端1171/1171（93 suites）及双构建；全库隔离PG/Chromium293/293通过，覆盖完整112条迁移链、旧事实/回执、SQL负例、失败原子及重试。原非实现Sol对八片累计及最终回归补审Spec compliance/Quality均ACCEPTED、未关闭C/I/M0/0/0；同模型隔离独立性不足，外部异模型Review Pending。原首轮4f851d9完整verify虽通过，全库为289/293、4项失败；5873d7d最小修复后原审查者补审关闭，保留原失败、trace、RED/GREEN及审查历史，不把旧结果标为新候选通过。完整候选、证据和限制见[验证记录](spec/v0.1/VALIDATION.md)。
 
