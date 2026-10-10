@@ -1,6 +1,13 @@
-export function clearCoreCaseJudgmentNextStepFixture(departmentIds: string[]): Promise<void>;
+export function clearCoreCaseJudgmentNextStepFixture(
+  departmentIds: string[],
+): Promise<void>;
 export function verifyCoreCaseJudgmentNextStepFixtureCleanup(
-  coreLeadFixtures: { departmentA: string; admittedCustomer: string; holder: string; userA: string },
+  coreLeadFixtures: {
+    departmentA: string;
+    admittedCustomer: string;
+    holder: string;
+    userA: string;
+  },
   resetCoreLeadE2eData: () => Promise<unknown>,
 ): Promise<{
   faultRejected: boolean;
@@ -15,7 +22,9 @@ export function verifyCaseJudgmentNextStepDatabase(): Promise<{
   version: number;
 }>;
 import type { APIRequestContext } from '@playwright/test';
-export function verifyCaseJudgmentNextStepWithRealJudgment(request: APIRequestContext): Promise<{
+export function verifyCaseJudgmentNextStepWithRealJudgment(
+  request: APIRequestContext,
+): Promise<{
   choiceStage: string | null;
   revokedStage: string | null;
   correctedVersion: number | null;

@@ -166,9 +166,11 @@ class CaseJudgmentNextStepChoiceDto {
   @ApiProperty({ format: 'uuid' }) id!: string;
   @ApiProperty({ format: 'uuid' }) judgmentId!: string;
   @ApiProperty({ enum: ['APPEAL', 'EXECUTION'] }) next!: 'APPEAL' | 'EXECUTION';
-  @ApiProperty({ type: String, nullable: true, format: 'uuid' }) plaintiffRightsHolderId!: string | null;
+  @ApiProperty({ type: String, nullable: true, format: 'uuid' })
+  plaintiffRightsHolderId!: string | null;
   @ApiProperty({ type: String, nullable: true }) plaintiffName!: string | null;
-  @ApiProperty({ type: [CaseJudgmentAppealDefendantDto] }) defendants!: CaseJudgmentAppealDefendantDto[];
+  @ApiProperty({ type: [CaseJudgmentAppealDefendantDto] })
+  defendants!: CaseJudgmentAppealDefendantDto[];
   @ApiProperty() executionReadinessConfirmed!: boolean;
   @ApiProperty() fromVersion!: number;
   @ApiProperty() toVersion!: number;
@@ -185,9 +187,12 @@ class CaseJudgmentNextStepRevocationDto {
   @ApiPropertyOptional({ format: 'uuid' }) recordedByUserId?: string;
 }
 class CaseJudgmentNextStepDto {
-  @ApiProperty({ type: CaseJudgmentNextStepChoiceDto, nullable: true }) current!: CaseJudgmentNextStepChoiceDto | null;
-  @ApiProperty({ type: [CaseJudgmentNextStepChoiceDto] }) history!: CaseJudgmentNextStepChoiceDto[];
-  @ApiProperty({ type: [CaseJudgmentNextStepRevocationDto] }) revocations!: CaseJudgmentNextStepRevocationDto[];
+  @ApiProperty({ type: CaseJudgmentNextStepChoiceDto, nullable: true })
+  current!: CaseJudgmentNextStepChoiceDto | null;
+  @ApiProperty({ type: [CaseJudgmentNextStepChoiceDto] })
+  history!: CaseJudgmentNextStepChoiceDto[];
+  @ApiProperty({ type: [CaseJudgmentNextStepRevocationDto] })
+  revocations!: CaseJudgmentNextStepRevocationDto[];
 }
 
 export class CasePageQueryDto {
@@ -351,7 +356,8 @@ class CaseFeeDto {
 export class CaseDetailResponseDto extends CaseListItemDto {
   @ApiProperty({ type: CaseHearingDto }) hearing!: CaseHearingDto;
   @ApiProperty({ type: CaseJudgmentDto }) judgment!: CaseJudgmentDto;
-  @ApiProperty({ type: CaseJudgmentNextStepDto }) judgmentNextStep!: CaseJudgmentNextStepDto;
+  @ApiProperty({ type: CaseJudgmentNextStepDto })
+  judgmentNextStep!: CaseJudgmentNextStepDto;
   @ApiProperty({ type: CaseComplaintSummaryDto, nullable: true })
   complaint!: CaseComplaintSummaryDto | null;
   @ApiProperty({ type: CaseComplaintConfirmationSummaryDto, nullable: true })

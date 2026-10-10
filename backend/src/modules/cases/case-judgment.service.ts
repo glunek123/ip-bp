@@ -141,8 +141,8 @@ export class CaseJudgmentService {
               record.stage !== 'WAITING_JUDGMENT' ||
               record.acceptance === null ||
               (action === 'REGISTER' && record.currentJudgmentId !== null) ||
-              (action === 'CORRECT' && record.currentJudgmentId === null)
-              || record.currentJudgmentNextStepId !== null
+              (action === 'CORRECT' && record.currentJudgmentId === null) ||
+              record.currentJudgmentNextStepId !== null
             )
               throw this.invalidState();
             if (record.version !== value.expectedVersion)

@@ -3,6 +3,12 @@ import { verifyCaseJudgmentNextStepMigration } from '../support/case-judgment-ne
 
 test('CA-009 empty schema replays the supported 112 migrations and appends guarded choices', async () => {
   const result = await verifyCaseJudgmentNextStepMigration();
-  expect(result).toEqual({ migrationCount: 117, priorMigrationCount: 112, guards: 4,
-    legacyPreserved: true, legacyCorrectionPreserved: true, correctedHeadSelectable: true });
+  expect(result).toEqual({
+    migrationCount: 117,
+    priorMigrationCount: 112,
+    guards: 4,
+    legacyPreserved: true,
+    legacyCorrectionPreserved: true,
+    correctedHeadSelectable: true,
+  });
 });

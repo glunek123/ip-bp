@@ -1,9 +1,17 @@
 export type RegisteredJudgmentFixture = {
-  actor: { userId: string; departmentId: string; authorizationRevision: number };
+  actor: {
+    userId: string;
+    departmentId: string;
+    authorizationRevision: number;
+  };
   roleId: string;
   caseId: string;
   judgmentId: string;
-  registeredFiles: Array<{ materialId: string; contentVersionId: string; bytes: Buffer }>;
+  registeredFiles: Array<{
+    materialId: string;
+    contentVersionId: string;
+    bytes: Buffer;
+  }>;
   registrationInput: {
     expectedVersion: number;
     idempotencyKey: string;

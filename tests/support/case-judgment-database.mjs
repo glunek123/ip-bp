@@ -742,8 +742,15 @@ export async function verifyCaseJudgmentDatabase(options = {}) {
     const result = await judgment.register(actor, ids.case, input);
     if (options.afterRegistration) {
       return await options.afterRegistration({
-        actor, roleId: ids.role, caseId: ids.case, judgmentId: result.judgmentId,
-        judgment, materials, database, client, registeredFiles,
+        actor,
+        roleId: ids.role,
+        caseId: ids.case,
+        judgmentId: result.judgmentId,
+        judgment,
+        materials,
+        database,
+        client,
+        registeredFiles,
         registrationInput: input,
       });
     }
@@ -1216,7 +1223,9 @@ export async function verifyCaseJudgmentDatabase(options = {}) {
         ['CASE', ids.case],
       );
       await client.query('DELETE FROM cases WHERE id=$1', [ids.case]);
-      await client.query('DELETE FROM rights_holders WHERE id=$1', [ids.holder]);
+      await client.query('DELETE FROM rights_holders WHERE id=$1', [
+        ids.holder,
+      ]);
       await client.query('DELETE FROM customers WHERE id=$1', [ids.customer]);
       await client.query(
         'DELETE FROM role_assignments WHERE role_template_id=$1',
@@ -1226,8 +1235,12 @@ export async function verifyCaseJudgmentDatabase(options = {}) {
         ids.role,
       ]);
       await client.query('DELETE FROM role_templates WHERE id=$1', [ids.role]);
-      await client.query('DELETE FROM auth_sessions WHERE user_id=$1', [ids.actor]);
-      await client.query('DELETE FROM local_credentials WHERE user_id=$1', [ids.actor]);
+      await client.query('DELETE FROM auth_sessions WHERE user_id=$1', [
+        ids.actor,
+      ]);
+      await client.query('DELETE FROM local_credentials WHERE user_id=$1', [
+        ids.actor,
+      ]);
       await client.query(
         'DELETE FROM department_memberships WHERE user_id=$1',
         [ids.actor],

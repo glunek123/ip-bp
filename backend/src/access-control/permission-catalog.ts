@@ -206,8 +206,16 @@ const catalog: PermissionCatalogItem[] = [
     scopes: allScopes,
   },
   { action: 'CASE_JUDGMENT_CORRECT', label: '更正一审判决', scopes: allScopes },
-  { action: 'CASE_JUDGMENT_NEXT_STEP', label: '办理判决后续选择', scopes: allScopes },
-  { action: 'CASE_JUDGMENT_NEXT_STEP_REVOKE', label: '撤销判决后续选择', scopes: allScopes },
+  {
+    action: 'CASE_JUDGMENT_NEXT_STEP',
+    label: '办理判决后续选择',
+    scopes: allScopes,
+  },
+  {
+    action: 'CASE_JUDGMENT_NEXT_STEP_REVOKE',
+    label: '撤销判决后续选择',
+    scopes: allScopes,
+  },
   {
     action: 'NOTARY_OFFICE_MANAGE',
     label: '管理公证处',

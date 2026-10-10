@@ -1,34 +1,56 @@
 import { ApiProperty, ApiPropertyOptional } from '@nestjs/swagger';
 import {
-  IsArray, IsBoolean, IsIn, IsInt, IsString, IsUUID,
-  MaxLength, Min, MinLength, ValidateIf,
+  IsArray,
+  IsBoolean,
+  IsIn,
+  IsInt,
+  IsString,
+  IsUUID,
+  MaxLength,
+  Min,
+  MinLength,
+  ValidateIf,
 } from 'class-validator';
 
 export class ChooseJudgmentNextStepDto {
   @ApiProperty({ minimum: 1 }) @IsInt() @Min(1) expectedVersion!: number;
   @ApiProperty({ minLength: 1, maxLength: 128 })
-  @IsString() @MinLength(1) @MaxLength(128) idempotencyKey!: string;
+  @IsString()
+  @MinLength(1)
+  @MaxLength(128)
+  idempotencyKey!: string;
   @ApiProperty({ format: 'uuid' }) @IsUUID('4') judgmentId!: string;
   @ApiProperty({ enum: ['APPEAL', 'EXECUTION'] })
-  @IsIn(['APPEAL', 'EXECUTION']) next!: 'APPEAL' | 'EXECUTION';
+  @IsIn(['APPEAL', 'EXECUTION'])
+  next!: 'APPEAL' | 'EXECUTION';
   @ApiPropertyOptional({ type: Boolean })
   @ValidateIf((input: ChooseJudgmentNextStepDto) => input.next === 'EXECUTION')
-  @IsBoolean() executionReadinessConfirmed?: boolean;
+  @IsBoolean()
+  executionReadinessConfirmed?: boolean;
   @ApiPropertyOptional({ type: Boolean })
   @ValidateIf((input: ChooseJudgmentNextStepDto) => input.next === 'APPEAL')
-  @IsBoolean() plaintiffAppeals?: boolean;
+  @IsBoolean()
+  plaintiffAppeals?: boolean;
   @ApiPropertyOptional({ type: [String] })
   @ValidateIf((input: ChooseJudgmentNextStepDto) => input.next === 'APPEAL')
-  @IsArray() @IsUUID('4', { each: true }) defendantIds?: string[];
+  @IsArray()
+  @IsUUID('4', { each: true })
+  defendantIds?: string[];
 }
 
 export class RevokeJudgmentNextStepDto {
   @ApiProperty({ minimum: 1 }) @IsInt() @Min(1) expectedVersion!: number;
   @ApiProperty({ minLength: 1, maxLength: 128 })
-  @IsString() @MinLength(1) @MaxLength(128) idempotencyKey!: string;
+  @IsString()
+  @MinLength(1)
+  @MaxLength(128)
+  idempotencyKey!: string;
   @ApiProperty({ format: 'uuid' }) @IsUUID('4') choiceId!: string;
   @ApiProperty({ minLength: 1, maxLength: 500 })
-  @IsString() @MinLength(1) @MaxLength(500) reason!: string;
+  @IsString()
+  @MinLength(1)
+  @MaxLength(500)
+  reason!: string;
 }
 
 export class JudgmentNextStepResultDto {

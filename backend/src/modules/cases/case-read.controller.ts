@@ -35,7 +35,12 @@ import { CaseAcceptanceService } from './case-acceptance.service';
 import { CaseHearingService } from './case-hearing.service';
 import { CaseJudgmentService } from './case-judgment.service';
 import { CaseJudgmentNextStepService } from './case-judgment-next-step.service';
-import { ChooseJudgmentNextStepDto, JudgmentNextStepResultDto, RevokeJudgmentNextStepDto, RevokeJudgmentNextStepResultDto } from './case-judgment-next-step.dto';
+import {
+  ChooseJudgmentNextStepDto,
+  JudgmentNextStepResultDto,
+  RevokeJudgmentNextStepDto,
+  RevokeJudgmentNextStepResultDto,
+} from './case-judgment-next-step.dto';
 import {
   CaseJudgmentCommandResultDto,
   CorrectCaseJudgmentDto,
