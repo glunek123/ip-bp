@@ -23,6 +23,8 @@ import { CaseFilingService } from './case-filing.service';
 import { CaseAcceptanceService } from './case-acceptance.service';
 import { CaseHearingService } from './case-hearing.service';
 import { CaseJudgmentService } from './case-judgment.service';
+import { CaseJudgmentNextStepService } from './case-judgment-next-step.service';
+import { ChooseJudgmentNextStepDto } from './case-judgment-next-step.dto';
 import { RegisterCaseJudgmentDto } from './case-judgment.dto';
 import { SaveCaseHearingDto } from './case-hearing.dto';
 import { RegisterCaseAcceptanceDto } from './case-acceptance.dto';
@@ -46,6 +48,7 @@ export class LawyerCaseController {
     private readonly acceptance: CaseAcceptanceService,
     private readonly hearing: CaseHearingService,
     private readonly judgment: CaseJudgmentService,
+    private readonly judgmentNextStep: CaseJudgmentNextStepService,
     private readonly courts: FilingCourtService,
   ) {}
 
@@ -170,5 +173,15 @@ export class LawyerCaseController {
   ) {
     this.lawyer(actor);
     return this.judgment.register(actor, id, body);
+  }
+
+  @Post(':id/judgment-next-step')
+  chooseJudgmentNextStep(
+    @CurrentActor() actor: ActorContext,
+    @Param('id', new ParseUUIDPipe()) id: string,
+    @Body() body: ChooseJudgmentNextStepDto,
+  ) {
+    this.lawyer(actor);
+    return this.judgmentNextStep.choose(actor, id, body);
   }
 }

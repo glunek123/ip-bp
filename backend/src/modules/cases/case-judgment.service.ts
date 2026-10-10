@@ -75,6 +75,7 @@ export class CaseJudgmentService {
                 stage: true,
                 version: true,
                 currentJudgmentId: true,
+                currentJudgmentNextStepId: true,
                 responsibleUserId: true,
                 responsibleMembership: { select: { teamId: true } },
                 acceptance: { select: { acceptedAt: true } },
@@ -141,6 +142,7 @@ export class CaseJudgmentService {
               record.acceptance === null ||
               (action === 'REGISTER' && record.currentJudgmentId !== null) ||
               (action === 'CORRECT' && record.currentJudgmentId === null)
+              || record.currentJudgmentNextStepId !== null
             )
               throw this.invalidState();
             if (record.version !== value.expectedVersion)
@@ -235,6 +237,7 @@ export class CaseJudgmentService {
                 stage: 'WAITING_JUDGMENT',
                 version: value.expectedVersion,
                 currentJudgmentId: record.currentJudgmentId,
+                currentJudgmentNextStepId: null,
               },
               data: {
                 version: { increment: 1 },

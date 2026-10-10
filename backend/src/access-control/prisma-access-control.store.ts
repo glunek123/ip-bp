@@ -54,6 +54,8 @@ const actionMap = {
   CASE_HEARING_CORRECT: 'case.hearing.correct',
   CASE_JUDGMENT_REGISTER: 'case.judgment.register',
   CASE_JUDGMENT_CORRECT: 'case.judgment.correct',
+  CASE_JUDGMENT_NEXT_STEP: 'case.judgment.next_step',
+  CASE_JUDGMENT_NEXT_STEP_REVOKE: 'case.judgment.next_step.revoke',
   CLIENT_CASE_READ: 'client.case.read',
   CLIENT_CASE_COMPLAINT_MAIL: 'client.case.complaint.mail',
   NOTARY_OFFICE_MANAGE: 'notary.office.manage',

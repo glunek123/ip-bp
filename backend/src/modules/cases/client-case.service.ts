@@ -59,6 +59,8 @@ export class ClientCaseService {
                 'WAITING_FORMAL_ACCEPTANCE' as const,
                 'WAITING_HEARING' as const,
                 'WAITING_JUDGMENT' as const,
+                'SECOND_INSTANCE' as const,
+                'WAITING_EXECUTION_DOCUMENTS' as const,
               ],
             },
     };
@@ -88,7 +90,9 @@ export class ClientCaseService {
           | 'WAITING_FILING'
           | 'WAITING_FORMAL_ACCEPTANCE'
           | 'WAITING_HEARING'
-          | 'WAITING_JUDGMENT',
+          | 'WAITING_JUDGMENT'
+          | 'SECOND_INSTANCE'
+          | 'WAITING_EXECUTION_DOCUMENTS',
         version: item.version,
         canMailComplaint: item.stage === 'WAITING_COMPLAINT_STAMP',
         rightsHolderName: item.rightsHolder.name,
@@ -168,7 +172,9 @@ export class ClientCaseService {
         | 'WAITING_FILING'
         | 'WAITING_FORMAL_ACCEPTANCE'
         | 'WAITING_HEARING'
-        | 'WAITING_JUDGMENT',
+        | 'WAITING_JUDGMENT'
+        | 'SECOND_INSTANCE'
+        | 'WAITING_EXECUTION_DOCUMENTS',
       version: record.version,
       canMailComplaint: record.stage === 'WAITING_COMPLAINT_STAMP',
       rightsHolderName: record.rightsHolder.name,

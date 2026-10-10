@@ -14,6 +14,7 @@ import { CaseFilingService } from './case-filing.service';
 import { CaseAcceptanceService } from './case-acceptance.service';
 import { CaseHearingService } from './case-hearing.service';
 import { CaseJudgmentService } from './case-judgment.service';
+import { CaseJudgmentNextStepService } from './case-judgment-next-step.service';
 import { CaseHearingSchedulerService } from './case-hearing-scheduler.service';
 import {
   CASE_HEARING_CLOCK,
@@ -50,6 +51,7 @@ import { LawyerCaseController } from './lawyer-case.controller';
     CaseAcceptanceService,
     CaseHearingService,
     CaseJudgmentService,
+    CaseJudgmentNextStepService,
     CaseHearingSchedulerService,
     CaseHearingSignal,
     { provide: CASE_HEARING_CLOCK, useClass: SystemCaseHearingClock },

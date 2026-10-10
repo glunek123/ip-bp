@@ -46,6 +46,8 @@ export type PermissionAction =
   | 'case.hearing.correct'
   | 'case.judgment.register'
   | 'case.judgment.correct'
+  | 'case.judgment.next_step'
+  | 'case.judgment.next_step.revoke'
   | 'client.case.read'
   | 'client.case.complaint.mail'
   | 'notary.office.manage'
@@ -310,7 +312,9 @@ export class AccessControlService {
       | 'case.hearing.schedule'
       | 'case.hearing.correct'
       | 'case.judgment.register'
-      | 'case.judgment.correct',
+      | 'case.judgment.correct'
+      | 'case.judgment.next_step'
+      | 'case.judgment.next_step.revoke',
     facts: CaseResourceFacts,
     reader?: AccessControlSnapshotReader,
   ): Promise<void> {
@@ -337,7 +341,9 @@ export class AccessControlService {
       | 'case.hearing.schedule'
       | 'case.hearing.correct'
       | 'case.judgment.register'
-      | 'case.judgment.correct',
+      | 'case.judgment.correct'
+      | 'case.judgment.next_step'
+      | 'case.judgment.next_step.revoke',
     facts: CaseResourceFacts,
     reader?: AccessControlSnapshotReader,
   ): Promise<boolean> {

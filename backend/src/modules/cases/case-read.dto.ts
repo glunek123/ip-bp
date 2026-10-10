@@ -158,6 +158,38 @@ class CaseJudgmentDto {
   availableFiles!: CaseCertificateFileDto[];
 }
 
+class CaseJudgmentAppealDefendantDto {
+  @ApiProperty({ format: 'uuid' }) defendantId!: string;
+  @ApiProperty() nameSnapshot!: string;
+}
+class CaseJudgmentNextStepChoiceDto {
+  @ApiProperty({ format: 'uuid' }) id!: string;
+  @ApiProperty({ format: 'uuid' }) judgmentId!: string;
+  @ApiProperty({ enum: ['APPEAL', 'EXECUTION'] }) next!: 'APPEAL' | 'EXECUTION';
+  @ApiProperty({ type: String, nullable: true, format: 'uuid' }) plaintiffRightsHolderId!: string | null;
+  @ApiProperty({ type: String, nullable: true }) plaintiffName!: string | null;
+  @ApiProperty({ type: [CaseJudgmentAppealDefendantDto] }) defendants!: CaseJudgmentAppealDefendantDto[];
+  @ApiProperty() executionReadinessConfirmed!: boolean;
+  @ApiProperty() fromVersion!: number;
+  @ApiProperty() toVersion!: number;
+  @ApiProperty({ format: 'date-time' }) recordedAt!: string;
+  @ApiPropertyOptional({ format: 'uuid' }) recordedByUserId?: string;
+}
+class CaseJudgmentNextStepRevocationDto {
+  @ApiProperty({ format: 'uuid' }) id!: string;
+  @ApiProperty({ format: 'uuid' }) choiceId!: string;
+  @ApiProperty() fromVersion!: number;
+  @ApiProperty() toVersion!: number;
+  @ApiProperty({ format: 'date-time' }) recordedAt!: string;
+  @ApiPropertyOptional() reason?: string;
+  @ApiPropertyOptional({ format: 'uuid' }) recordedByUserId?: string;
+}
+class CaseJudgmentNextStepDto {
+  @ApiProperty({ type: CaseJudgmentNextStepChoiceDto, nullable: true }) current!: CaseJudgmentNextStepChoiceDto | null;
+  @ApiProperty({ type: [CaseJudgmentNextStepChoiceDto] }) history!: CaseJudgmentNextStepChoiceDto[];
+  @ApiProperty({ type: [CaseJudgmentNextStepRevocationDto] }) revocations!: CaseJudgmentNextStepRevocationDto[];
+}
+
 export class CasePageQueryDto {
   @ApiPropertyOptional({ enum: ['mine', 'department'], default: 'department' })
   @IsOptional()
@@ -173,6 +205,8 @@ export class CasePageQueryDto {
       'WAITING_FORMAL_ACCEPTANCE',
       'WAITING_HEARING',
       'WAITING_JUDGMENT',
+      'SECOND_INSTANCE',
+      'WAITING_EXECUTION_DOCUMENTS',
     ],
   })
   @IsOptional()
@@ -185,6 +219,8 @@ export class CasePageQueryDto {
     'WAITING_FORMAL_ACCEPTANCE',
     'WAITING_HEARING',
     'WAITING_JUDGMENT',
+    'SECOND_INSTANCE',
+    'WAITING_EXECUTION_DOCUMENTS',
   ])
   stage?:
     | 'PENDING_MATCH'
@@ -194,7 +230,9 @@ export class CasePageQueryDto {
     | 'WAITING_FILING'
     | 'WAITING_FORMAL_ACCEPTANCE'
     | 'WAITING_HEARING'
-    | 'WAITING_JUDGMENT';
+    | 'WAITING_JUDGMENT'
+    | 'SECOND_INSTANCE'
+    | 'WAITING_EXECUTION_DOCUMENTS';
   @ApiPropertyOptional({ minimum: 1, default: 1 })
   @Type(() => Number)
   @IsInt()
@@ -232,6 +270,8 @@ class CaseListItemDto {
       'WAITING_FORMAL_ACCEPTANCE',
       'WAITING_HEARING',
       'WAITING_JUDGMENT',
+      'SECOND_INSTANCE',
+      'WAITING_EXECUTION_DOCUMENTS',
     ],
   })
   stage!:
@@ -242,7 +282,9 @@ class CaseListItemDto {
     | 'WAITING_FILING'
     | 'WAITING_FORMAL_ACCEPTANCE'
     | 'WAITING_HEARING'
-    | 'WAITING_JUDGMENT';
+    | 'WAITING_JUDGMENT'
+    | 'SECOND_INSTANCE'
+    | 'WAITING_EXECUTION_DOCUMENTS';
   @ApiProperty() version!: number;
   @ApiProperty() canMatch!: boolean;
   @ApiProperty() canSubmitComplaint!: boolean;
@@ -255,6 +297,8 @@ class CaseListItemDto {
   @ApiProperty() canCorrectHearing!: boolean;
   @ApiProperty() canRegisterJudgment!: boolean;
   @ApiProperty() canCorrectJudgment!: boolean;
+  @ApiProperty() canChooseJudgmentNextStep!: boolean;
+  @ApiProperty() canRevokeJudgmentNextStep!: boolean;
   @ApiProperty({ type: CaseOwnerDto }) owner!: CaseOwnerDto;
   @ApiProperty({ format: 'date-time' }) createdAt!: string;
   @ApiProperty({ type: CaseSourceDto }) sourceLead!: CaseSourceDto;
@@ -274,6 +318,8 @@ export class CaseListResponseDto {
     WAITING_FORMAL_ACCEPTANCE: number;
     WAITING_HEARING: number;
     WAITING_JUDGMENT: number;
+    SECOND_INSTANCE: number;
+    WAITING_EXECUTION_DOCUMENTS: number;
   };
 }
 class CaseDefendantDto {
@@ -305,6 +351,7 @@ class CaseFeeDto {
 export class CaseDetailResponseDto extends CaseListItemDto {
   @ApiProperty({ type: CaseHearingDto }) hearing!: CaseHearingDto;
   @ApiProperty({ type: CaseJudgmentDto }) judgment!: CaseJudgmentDto;
+  @ApiProperty({ type: CaseJudgmentNextStepDto }) judgmentNextStep!: CaseJudgmentNextStepDto;
   @ApiProperty({ type: CaseComplaintSummaryDto, nullable: true })
   complaint!: CaseComplaintSummaryDto | null;
   @ApiProperty({ type: CaseComplaintConfirmationSummaryDto, nullable: true })

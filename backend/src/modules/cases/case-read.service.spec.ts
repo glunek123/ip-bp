@@ -112,6 +112,8 @@ describe('CaseReadService', () => {
         WAITING_FORMAL_ACCEPTANCE: 0,
         WAITING_HEARING: 0,
         WAITING_JUDGMENT: 0,
+        SECOND_INSTANCE: 0,
+        WAITING_EXECUTION_DOCUMENTS: 0,
       },
     });
     expect(f.access.authorizeDepartmentAction).toHaveBeenCalledWith(

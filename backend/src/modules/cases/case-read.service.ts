@@ -89,7 +89,9 @@ export class CaseReadService {
       | 'WAITING_FILING'
       | 'WAITING_FORMAL_ACCEPTANCE'
       | 'WAITING_HEARING'
-      | 'WAITING_JUDGMENT',
+      | 'WAITING_JUDGMENT'
+      | 'SECOND_INSTANCE'
+      | 'WAITING_EXECUTION_DOCUMENTS',
   ) {
     const principal = await this.scope(actor);
     const baseWhere: Prisma.CaseWhereInput = {
@@ -117,6 +119,7 @@ export class CaseReadService {
           version: true,
           currentHearingAdvanceId: true,
           currentJudgmentId: true,
+          currentJudgmentNextStepId: true,
           createdAt: true,
           responsibleUserId: true,
           owner: { select: { id: true, displayName: true } },
@@ -282,6 +285,7 @@ export class CaseReadService {
             principal === 'INTERNAL' &&
             item.stage === 'WAITING_JUDGMENT' &&
             item.currentJudgmentId !== null &&
+            item.currentJudgmentNextStepId === null &&
             (await this.access.canAuthorizeCase(
               actor,
               'case.judgment.correct',
@@ -293,6 +297,21 @@ export class CaseReadService {
                   : {}),
               },
             )),
+          canChooseJudgmentNextStep:
+            item.stage === 'WAITING_JUDGMENT' && item.currentJudgmentId !== null &&
+            item.currentJudgmentNextStepId === null &&
+            (principal === 'LAWYER' || (await this.access.canAuthorizeCase(actor, 'case.judgment.next_step', {
+              departmentId: actor.departmentId, responsibleUserId: item.responsibleUserId,
+              ...(item.responsibleMembership.teamId ? { teamId: item.responsibleMembership.teamId } : {}),
+            }))),
+          canRevokeJudgmentNextStep:
+            principal === 'INTERNAL' &&
+            (item.stage === 'SECOND_INSTANCE' || item.stage === 'WAITING_EXECUTION_DOCUMENTS') &&
+            item.currentJudgmentNextStepId !== null &&
+            (await this.access.canAuthorizeCase(actor, 'case.judgment.next_step.revoke', {
+              departmentId: actor.departmentId, responsibleUserId: item.responsibleUserId,
+              ...(item.responsibleMembership.teamId ? { teamId: item.responsibleMembership.teamId } : {}),
+            })),
           createdAt: item.createdAt.toISOString(),
         })),
       ),
@@ -324,6 +343,8 @@ export class CaseReadService {
         WAITING_JUDGMENT:
           grouped.find((row) => row.stage === 'WAITING_JUDGMENT')?._count
             ._all ?? 0,
+        SECOND_INSTANCE: grouped.find((row) => row.stage === 'SECOND_INSTANCE')?._count._all ?? 0,
+        WAITING_EXECUTION_DOCUMENTS: grouped.find((row) => row.stage === 'WAITING_EXECUTION_DOCUMENTS')?._count._all ?? 0,
       },
     };
   }
@@ -388,6 +409,21 @@ export class CaseReadService {
         },
         currentHearingAdvanceId: true,
         currentJudgmentId: true,
+        currentJudgmentNextStepId: true,
+        judgmentNextSteps: {
+          orderBy: [{ toVersion: 'asc' }, { id: 'asc' }],
+          select: {
+            id: true, judgmentId: true, next: true, plaintiffRightsHolderId: true,
+            plaintiffName: true, executionReadinessConfirmed: true,
+            fromVersion: true, toVersion: true, recordedAt: true, recordedByUserId: true,
+            defendants: { orderBy: { defendantId: 'asc' }, select: { defendantId: true, nameSnapshot: true } },
+          },
+        },
+        judgmentNextStepRevocations: {
+          orderBy: [{ toVersion: 'asc' }, { id: 'asc' }],
+          select: { id: true, choiceId: true, reason: true, fromVersion: true, toVersion: true,
+            recordedAt: true, recordedByUserId: true },
+        },
         judgmentFacts: {
           orderBy: [{ toVersion: 'asc' }, { id: 'asc' }],
           select: {
@@ -637,6 +673,15 @@ export class CaseReadService {
         fact.files.map((version) => version.contentVersionId),
       ),
     );
+    const nextStepHistory = (record.judgmentNextSteps ?? []).map((choice) => ({
+      id: choice.id, judgmentId: choice.judgmentId, next: choice.next,
+      plaintiffRightsHolderId: choice.plaintiffRightsHolderId,
+      plaintiffName: choice.plaintiffName, defendants: choice.defendants,
+      executionReadinessConfirmed: choice.executionReadinessConfirmed,
+      fromVersion: choice.fromVersion, toVersion: choice.toVersion,
+      recordedAt: choice.recordedAt.toISOString(),
+      ...(principal === 'INTERNAL' ? { recordedByUserId: choice.recordedByUserId } : {}),
+    }));
     const judgmentAvailableFiles = judgmentMaterials.flatMap((material) =>
       material.contentVersions
         .filter(
@@ -704,6 +749,16 @@ export class CaseReadService {
           ) ?? null,
         history: judgmentHistory,
         availableFiles: judgmentAvailableFiles,
+      },
+      judgmentNextStep: {
+        current: nextStepHistory.find((choice) => choice.id === record.currentJudgmentNextStepId) ?? null,
+        history: nextStepHistory,
+        revocations: (record.judgmentNextStepRevocations ?? []).map((revocation) => ({
+          id: revocation.id, choiceId: revocation.choiceId,
+          fromVersion: revocation.fromVersion, toVersion: revocation.toVersion,
+          recordedAt: revocation.recordedAt.toISOString(),
+          ...(principal === 'INTERNAL' ? { reason: revocation.reason, recordedByUserId: revocation.recordedByUserId } : {}),
+        })),
       },
       matchedAt: record.matchedAt?.toISOString() ?? null,
       matchedOn: record.matchedOn?.toISOString().slice(0, 10) ?? null,
@@ -832,12 +887,29 @@ export class CaseReadService {
         principal === 'INTERNAL' &&
         record.stage === 'WAITING_JUDGMENT' &&
         record.currentJudgmentId !== null &&
+        record.currentJudgmentNextStepId === null &&
         (await this.access.canAuthorizeCase(actor, 'case.judgment.correct', {
           departmentId: actor.departmentId,
           responsibleUserId: record.responsibleUserId,
           ...(record.responsibleMembership.teamId
             ? { teamId: record.responsibleMembership.teamId }
             : {}),
+        })),
+      canChooseJudgmentNextStep:
+        record.stage === 'WAITING_JUDGMENT' && record.currentJudgmentId !== null &&
+        record.currentJudgmentNextStepId === null &&
+        (principal === 'LAWYER' ||
+          (await this.access.canAuthorizeCase(actor, 'case.judgment.next_step', {
+            departmentId: actor.departmentId, responsibleUserId: record.responsibleUserId,
+            ...(record.responsibleMembership.teamId ? { teamId: record.responsibleMembership.teamId } : {}),
+          }))),
+      canRevokeJudgmentNextStep:
+        principal === 'INTERNAL' &&
+        (record.stage === 'SECOND_INSTANCE' || record.stage === 'WAITING_EXECUTION_DOCUMENTS') &&
+        record.currentJudgmentNextStepId !== null &&
+        (await this.access.canAuthorizeCase(actor, 'case.judgment.next_step.revoke', {
+          departmentId: actor.departmentId, responsibleUserId: record.responsibleUserId,
+          ...(record.responsibleMembership.teamId ? { teamId: record.responsibleMembership.teamId } : {}),
         })),
       complaint:
         record.complaintSubmittedAt == null

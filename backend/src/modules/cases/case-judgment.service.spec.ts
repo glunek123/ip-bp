@@ -34,6 +34,7 @@ describe('CaseJudgmentService', () => {
           responsibleMembership: { teamId: null },
           acceptance: { acceptedAt: new Date('2026-10-01T00:00:00.000Z') },
           currentJudgmentId: null,
+          currentJudgmentNextStepId: null,
         }),
         updateMany: jest.fn().mockResolvedValue({ count: 1 }),
       },

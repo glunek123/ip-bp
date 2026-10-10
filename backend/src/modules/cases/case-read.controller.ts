@@ -34,6 +34,8 @@ import { CaseFilingService } from './case-filing.service';
 import { CaseAcceptanceService } from './case-acceptance.service';
 import { CaseHearingService } from './case-hearing.service';
 import { CaseJudgmentService } from './case-judgment.service';
+import { CaseJudgmentNextStepService } from './case-judgment-next-step.service';
+import { ChooseJudgmentNextStepDto, JudgmentNextStepResultDto, RevokeJudgmentNextStepDto, RevokeJudgmentNextStepResultDto } from './case-judgment-next-step.dto';
 import {
   CaseJudgmentCommandResultDto,
   CorrectCaseJudgmentDto,
@@ -84,6 +86,7 @@ export class CaseReadController {
     private readonly acceptance: CaseAcceptanceService,
     private readonly hearing: CaseHearingService,
     private readonly judgment: CaseJudgmentService,
+    private readonly judgmentNextStep: CaseJudgmentNextStepService,
     private readonly courts: FilingCourtService,
   ) {}
 
@@ -233,5 +236,25 @@ export class CaseReadController {
     @Body() body: CorrectCaseJudgmentDto,
   ) {
     return this.judgment.correct(actor, id, body);
+  }
+
+  @Post(':id/judgment-next-step')
+  @ApiCreatedResponse({ type: JudgmentNextStepResultDto })
+  chooseJudgmentNextStep(
+    @CurrentActor() actor: ActorContext,
+    @Param('id', new ParseUUIDPipe()) id: string,
+    @Body() body: ChooseJudgmentNextStepDto,
+  ) {
+    return this.judgmentNextStep.choose(actor, id, body);
+  }
+
+  @Post(':id/judgment-next-step-revoke')
+  @ApiCreatedResponse({ type: RevokeJudgmentNextStepResultDto })
+  revokeJudgmentNextStep(
+    @CurrentActor() actor: ActorContext,
+    @Param('id', new ParseUUIDPipe()) id: string,
+    @Body() body: RevokeJudgmentNextStepDto,
+  ) {
+    return this.judgmentNextStep.revoke(actor, id, body);
   }
 }

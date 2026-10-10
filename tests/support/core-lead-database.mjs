@@ -6,6 +6,7 @@ import { setImmediate as waitForImmediate } from 'node:timers/promises';
 import { validateIsolatedTestDatabaseUrl } from '../../scripts/test-environment.mjs';
 import { clearCoreCaseHearingFixture } from './case-hearing-database.mjs';
 import { clearCoreCaseJudgmentFixture } from './case-judgment-database.mjs';
+import { clearCoreCaseJudgmentNextStepFixture } from './case-judgment-next-step-database.mjs';
 
 const requireFromBackend = createRequire(
   resolve(process.cwd(), 'backend/package.json'),
@@ -478,6 +479,7 @@ async function clearDatabase() {
     coreLeadFixtures.departmentA,
     coreLeadFixtures.departmentB,
   ];
+  await clearCoreCaseJudgmentNextStepFixture(departmentIds);
   await clearCoreCaseJudgmentFixture(departmentIds);
   await clearCoreCaseHearingFixture(departmentIds);
   await dropFaults();

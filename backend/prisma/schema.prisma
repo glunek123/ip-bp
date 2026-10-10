@@ -50,6 +50,8 @@ enum PermissionAction {
   CASE_HEARING_CORRECT         @map("case.hearing.correct")
   CASE_JUDGMENT_REGISTER       @map("case.judgment.register")
   CASE_JUDGMENT_CORRECT        @map("case.judgment.correct")
+  CASE_JUDGMENT_NEXT_STEP      @map("case.judgment.next_step")
+  CASE_JUDGMENT_NEXT_STEP_REVOKE @map("case.judgment.next_step.revoke")
   NOTARY_OFFICE_MANAGE         @map("notary.office.manage")
   CLIENT_LEAD_READ             @map("client.lead.read")
   CLIENT_LEAD_REVIEW           @map("client.lead.review")
@@ -288,6 +290,8 @@ enum CaseStage {
   WAITING_FORMAL_ACCEPTANCE
   WAITING_HEARING
   WAITING_JUDGMENT
+  SECOND_INSTANCE
+  WAITING_EXECUTION_DOCUMENTS
 
   @@map("case_stage")
 }
@@ -516,6 +520,9 @@ model UserAccount {
   hearingReceipts                  CaseHearingReceipt[]              @relation("HearingReceiptActor")
   judgmentFacts                    CaseJudgmentFact[]                @relation("JudgmentRecorder")
   judgmentReceipts                 CaseJudgmentReceipt[]             @relation("JudgmentReceiptActor")
+  judgmentNextSteps                CaseJudgmentNextStep[]            @relation("JudgmentNextStepActor")
+  judgmentNextStepRevocations      CaseJudgmentNextStepRevocation[]  @relation("JudgmentNextStepRevoker")
+  judgmentNextStepReceipts         CaseJudgmentNextStepReceipt[]     @relation("JudgmentNextStepReceiptActor")
   rightAssetVersions              CustomerRightAssetVersion[]       @relation("RightAssetVersionActor")
   rightAssetReceipts              CustomerRightAssetReceipt[]       @relation("RightAssetReceiptActor")
   createdAt                        DateTime                          @default(now()) @map("created_at") @db.Timestamptz(3)
@@ -914,6 +921,7 @@ model RightsHolder {
   commandReceipts     RightsHolderCommandReceipt[] @relation("RightsHolderReceiptHolder")
   leads               Lead[]
   cases               Case[]
+  judgmentNextStepAppeals CaseJudgmentNextStep[]
   createdAt           DateTime                     @default(now()) @map("created_at") @db.Timestamptz(3)
   updatedAt           DateTime                     @updatedAt @map("updated_at") @db.Timestamptz(3)
 
@@ -1750,6 +1758,11 @@ model Case {
   currentJudgment               CaseJudgmentFact?                  @relation("CaseCurrentJudgment", fields: [currentJudgmentId, id, departmentId], references: [id, caseId, departmentId], onDelete: Restrict, onUpdate: Restrict)
   judgmentFacts                 CaseJudgmentFact[]                 @relation("CaseJudgmentFacts")
   judgmentReceipts              CaseJudgmentReceipt[]
+  currentJudgmentNextStepId     String?                            @map("current_judgment_next_step_id") @db.Uuid
+  currentJudgmentNextStep       CaseJudgmentNextStep?              @relation("CaseCurrentJudgmentNextStep", fields: [currentJudgmentNextStepId, id, departmentId], references: [id, caseId, departmentId], onDelete: Restrict, onUpdate: Restrict)
+  judgmentNextSteps             CaseJudgmentNextStep[]             @relation("CaseJudgmentNextSteps")
+  judgmentNextStepRevocations   CaseJudgmentNextStepRevocation[]
+  judgmentNextStepReceipts      CaseJudgmentNextStepReceipt[]
   complaintAmountState          CaseComplaintAmountState?          @map("complaint_amount_state")
   complaintAmount               Decimal?                           @map("complaint_amount") @db.Decimal(16, 2)
   complaintPendingReason        String?                            @map("complaint_pending_reason") @db.VarChar(500)
@@ -1773,6 +1786,7 @@ model Case {
   @@unique([certificateId, sourceNotaryMatterId, departmentId])
   @@index([departmentId, createdAt, id])
   @@unique([currentJudgmentId, id, departmentId])
+  @@unique([currentJudgmentNextStepId, id, departmentId])
   @@map("cases")
 }
 
@@ -1787,6 +1801,9 @@ model CaseDefendant {
   address      String?       @db.VarChar(500)
   createdAt    DateTime      @default(now()) @map("created_at") @db.Timestamptz(3)
   case         Case          @relation(fields: [caseId, departmentId], references: [id, departmentId], onDelete: Restrict, onUpdate: Restrict)
+  judgmentAppeals CaseJudgmentAppealDefendant[]
+
+  @@unique([id, caseId, departmentId])
 
   @@index([caseId, departmentId])
   @@map("case_defendants")
@@ -2177,6 +2194,7 @@ model CaseJudgmentFact {
   recordedBy             UserAccount           @relation("JudgmentRecorder", fields: [recordedByUserId], references: [id], onDelete: Restrict, onUpdate: Restrict)
   auditEvent             AuditEvent            @relation(fields: [auditEventId], references: [id], onDelete: Restrict, onUpdate: Restrict)
   versions               CaseJudgmentVersion[]
+  nextSteps              CaseJudgmentNextStep[]
 
   @@unique([id, caseId, departmentId])
   @@unique([priorFactId, caseId, departmentId])
@@ -2212,6 +2230,101 @@ model CaseJudgmentReceipt {
 
   @@unique([departmentId, actorUserId, action, idempotencyKey])
   @@map("case_judgment_receipts")
+}
+
+enum CaseJudgmentNextStepKind {
+  APPEAL
+  EXECUTION
+
+  @@map("case_judgment_next_step_kind")
+}
+
+enum CaseJudgmentNextStepAction {
+  CHOOSE
+  REVOKE
+
+  @@map("case_judgment_next_step_action")
+}
+
+model CaseJudgmentNextStep {
+  id                          String                            @id @default(uuid()) @db.Uuid
+  caseId                      String                            @map("case_id") @db.Uuid
+  departmentId                String                            @map("department_id") @db.Uuid
+  judgmentId                  String                            @map("judgment_id") @db.Uuid
+  next                        CaseJudgmentNextStepKind
+  plaintiffRightsHolderId     String?                           @map("plaintiff_rights_holder_id") @db.Uuid
+  plaintiffName               String?                           @map("plaintiff_name") @db.VarChar(200)
+  executionReadinessConfirmed Boolean                           @default(false) @map("execution_readiness_confirmed")
+  fromVersion                 Int                               @map("from_version")
+  toVersion                   Int                               @map("to_version")
+  recordedAt                  DateTime                          @default(now()) @map("recorded_at") @db.Timestamptz(3)
+  recordedByUserId            String                            @map("recorded_by_user_id") @db.Uuid
+  auditEventId                String                            @unique @map("audit_event_id") @db.Uuid
+  case                        Case                              @relation("CaseJudgmentNextSteps", fields: [caseId, departmentId], references: [id, departmentId], onDelete: Restrict, onUpdate: Restrict)
+  currentForCase              Case?                             @relation("CaseCurrentJudgmentNextStep")
+  judgment                    CaseJudgmentFact                  @relation(fields: [judgmentId, caseId, departmentId], references: [id, caseId, departmentId], onDelete: Restrict, onUpdate: Restrict)
+  plaintiff                   RightsHolder?                     @relation(fields: [plaintiffRightsHolderId, departmentId], references: [id, departmentId], onDelete: Restrict, onUpdate: Restrict)
+  defendants                  CaseJudgmentAppealDefendant[]
+  revocation                  CaseJudgmentNextStepRevocation?
+  recordedBy                  UserAccount                       @relation("JudgmentNextStepActor", fields: [recordedByUserId], references: [id], onDelete: Restrict, onUpdate: Restrict)
+  auditEvent                  AuditEvent                        @relation(fields: [auditEventId], references: [id], onDelete: Restrict, onUpdate: Restrict)
+
+  @@unique([id, caseId, departmentId])
+  @@unique([caseId, fromVersion])
+  @@unique([caseId, toVersion])
+  @@map("case_judgment_next_steps")
+}
+
+model CaseJudgmentAppealDefendant {
+  choiceId     String                       @map("choice_id") @db.Uuid
+  caseId       String                       @map("case_id") @db.Uuid
+  departmentId String                       @map("department_id") @db.Uuid
+  defendantId  String                       @map("defendant_id") @db.Uuid
+  nameSnapshot String                       @map("name_snapshot") @db.VarChar(200)
+  choice       CaseJudgmentNextStep         @relation(fields: [choiceId, caseId, departmentId], references: [id, caseId, departmentId], onDelete: Restrict, onUpdate: Restrict)
+  defendant    CaseDefendant                @relation(fields: [defendantId, caseId, departmentId], references: [id, caseId, departmentId], onDelete: Restrict, onUpdate: Restrict)
+
+  @@id([choiceId, defendantId])
+  @@map("case_judgment_appeal_defendants")
+}
+
+model CaseJudgmentNextStepRevocation {
+  id               String                    @id @default(uuid()) @db.Uuid
+  choiceId         String                    @unique @map("choice_id") @db.Uuid
+  caseId           String                    @map("case_id") @db.Uuid
+  departmentId     String                    @map("department_id") @db.Uuid
+  reason           String                    @db.VarChar(500)
+  fromVersion      Int                       @map("from_version")
+  toVersion        Int                       @map("to_version")
+  recordedAt       DateTime                  @default(now()) @map("recorded_at") @db.Timestamptz(3)
+  recordedByUserId String                    @map("recorded_by_user_id") @db.Uuid
+  auditEventId     String                    @unique @map("audit_event_id") @db.Uuid
+  choice           CaseJudgmentNextStep      @relation(fields: [choiceId, caseId, departmentId], references: [id, caseId, departmentId], onDelete: Restrict, onUpdate: Restrict)
+  case             Case                      @relation(fields: [caseId, departmentId], references: [id, departmentId], onDelete: Restrict, onUpdate: Restrict)
+  recordedBy       UserAccount               @relation("JudgmentNextStepRevoker", fields: [recordedByUserId], references: [id], onDelete: Restrict, onUpdate: Restrict)
+  auditEvent       AuditEvent                @relation(fields: [auditEventId], references: [id], onDelete: Restrict, onUpdate: Restrict)
+
+  @@unique([caseId, fromVersion])
+  @@unique([caseId, toVersion])
+  @@unique([choiceId, caseId, departmentId])
+  @@map("case_judgment_next_step_revocations")
+}
+
+model CaseJudgmentNextStepReceipt {
+  id                 String                     @id @default(uuid()) @db.Uuid
+  departmentId       String                     @map("department_id") @db.Uuid
+  actorUserId        String                     @map("actor_user_id") @db.Uuid
+  caseId             String                     @map("case_id") @db.Uuid
+  action             CaseJudgmentNextStepAction
+  idempotencyKey     String                     @map("idempotency_key") @db.VarChar(128)
+  requestFingerprint String                     @map("request_fingerprint") @db.Char(64)
+  resultSnapshot     Json                       @map("result_snapshot")
+  createdAt          DateTime                   @default(now()) @map("created_at") @db.Timestamptz(3)
+  case               Case                       @relation(fields: [caseId, departmentId], references: [id, departmentId], onDelete: Restrict, onUpdate: Restrict)
+  actor              UserAccount                @relation("JudgmentNextStepReceiptActor", fields: [actorUserId], references: [id], onDelete: Restrict, onUpdate: Restrict)
+
+  @@unique([departmentId, actorUserId, action, idempotencyKey])
+  @@map("case_judgment_next_step_receipts")
 }
 
 model CaseNumberCounter {
@@ -2590,6 +2703,8 @@ model AuditEvent {
   hearingAdvances              CaseHearingAdvance[]        @relation("HearingAdvanceAudit")
   hearingCorrections           CaseHearingCorrection[]     @relation("HearingCorrectionAudit")
   judgmentFacts                CaseJudgmentFact[]
+  judgmentNextSteps            CaseJudgmentNextStep[]
+  judgmentNextStepRevocations  CaseJudgmentNextStepRevocation[]
   customerDraftLifecycleFact   CustomerDraftLifecycleFact?
   customerMaintenanceFact      CustomerMaintenanceFact?
   createdAt                    DateTime                    @default(now()) @map("created_at") @db.Timestamptz(3)
