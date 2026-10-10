@@ -15,6 +15,7 @@ const added = [
   '20261010031000_add_case_judgment_next_step_facts',
   '20261010032000_guard_case_judgment_next_step_chain',
   '20261010033000_allow_lawyer_judgment_next_step_audit',
+  '20261010034000_guard_case_judgment_plaintiff_snapshot',
 ];
 const sql = (name) => readFileSync(resolve(directory, name, 'migration.sql'), 'utf8');
 
@@ -23,7 +24,7 @@ export async function verifyCaseJudgmentNextStepMigration() {
   validateIsolatedTestDatabaseUrl(process.env.DATABASE_URL, { allowRandomPort: true });
   const previousNames = names.filter((name) => name <= previous);
   if (previousNames.length !== 112 || previousNames.at(-1) !== previous ||
-      names.length !== 116 || added.some((name, i) => names[112 + i] !== name))
+      names.length !== 117 || added.some((name, i) => names[112 + i] !== name))
     throw new Error('Unexpected prior 112 migration chain or CA-009 suffix');
   const schema = `ca009_next_${randomUUID().replaceAll('-', '')}`;
   if (!/^ca009_next_[0-9a-f]{32}$/u.test(schema)) throw new Error('Unsafe temporary schema');
@@ -47,8 +48,8 @@ export async function verifyCaseJudgmentNextStepMigration() {
       (SELECT count(*)::int FROM pg_trigger t
         JOIN pg_class c ON c.oid=t.tgrelid JOIN pg_namespace n ON n.oid=c.relnamespace
         WHERE n.nspname=current_schema() AND t.tgname IN
-        ('case_judgment_next_step_case_guard','case_judgment_next_step_fact_guard','case_judgment_next_step_revoke_guard')) AS guards`)).rows[0];
-    if (!rows.choice || !rows.revoke || !rows.receipt || rows.guards !== 3)
+        ('case_judgment_next_step_case_guard','case_judgment_next_step_fact_guard','case_judgment_next_step_revoke_guard','case_judgment_plaintiff_snapshot_guard')) AS guards`)).rows[0];
+    if (!rows.choice || !rows.revoke || !rows.receipt || rows.guards !== 4)
       throw new Error('CA-009 migrated schema incomplete');
     return { migrationCount: names.length, priorMigrationCount: previousNames.length, guards: rows.guards };
   } finally {

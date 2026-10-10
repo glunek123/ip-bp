@@ -5,5 +5,6 @@ test('CA-009 real PostgreSQL choice, revocation, receipt, actor path, and stage 
   const result = await verifyCaseJudgmentNextStepDatabase();
   expect(result.stage).toBe('WAITING_JUDGMENT');
   expect(result.version).toBe(14);
-  expect(result.checks).toHaveLength(10);
+  expect(result.checks).toHaveLength(11);
 });
+

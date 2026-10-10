@@ -32,6 +32,40 @@ const immutable = [
   ['audit_events', 'case_judgment_audit_immutable'],
 ];
 
+async function attemptForgedPlaintiffSnapshot(client, ids) {
+  const choiceId = randomUUID();
+  const auditId = randomUUID();
+  const recordedAt = new Date().toISOString();
+  let code = null;
+  await client.query('BEGIN');
+  try {
+    await client.query(`INSERT INTO audit_events(id,department_id,actor_user_id,internal_actor_user_id,
+      resource_type,resource_id,action,details)
+      VALUES ($1,$2,$3,$3,'CASE',$4,'case.judgment.next_step',$5::jsonb)`,
+      [auditId, ids.department, ids.actor, ids.case, JSON.stringify({
+        choiceId, judgmentId: ids.judgment, next: 'APPEAL', fromVersion: 10, toVersion: 11,
+        plaintiffAppeals: true, defendantIds: [], executionReadinessConfirmed: false,
+      })]);
+    await client.query(`INSERT INTO case_judgment_next_steps(id,case_id,department_id,judgment_id,
+      next,plaintiff_rights_holder_id,plaintiff_name,execution_readiness_confirmed,
+      from_version,to_version,recorded_at,recorded_by_user_id,audit_event_id)
+      VALUES ($1,$2,$3,$4,'APPEAL',$5,'伪造原告名',false,10,11,$6,$7,$8)`,
+      [choiceId, ids.case, ids.department, ids.judgment, ids.holder, recordedAt, ids.actor, auditId]);
+    await client.query(`UPDATE cases SET stage='SECOND_INSTANCE',version=11,
+      current_judgment_next_step_id=$1 WHERE id=$2`, [choiceId, ids.case]);
+    await client.query(`INSERT INTO case_judgment_next_step_receipts(department_id,actor_user_id,
+      case_id,action,idempotency_key,request_fingerprint,result_snapshot)
+      VALUES ($1,$2,$3,'CHOOSE',$4,$5,$6::jsonb)`,
+      [ids.department, ids.actor, ids.case, `forged-${choiceId}`, 'a'.repeat(64), JSON.stringify({
+        id: ids.case, stage: 'SECOND_INSTANCE', version: 11, choiceId,
+        judgmentId: ids.judgment, recordedAt,
+      })]);
+    await client.query('SET CONSTRAINTS ALL IMMEDIATE');
+  } catch (error) { code = error.code; }
+  finally { await client.query('ROLLBACK'); }
+  return code;
+}
+
 /** Clear only known core-lead fixture owners, preserving unknown cases and all real data. */
 export async function clearCoreCaseJudgmentNextStepFixture(departmentIds) {
   if (!Array.isArray(departmentIds) || departmentIds.length < 1 ||
@@ -170,6 +204,9 @@ export async function verifyCaseJudgmentNextStepDatabase() {
     await client.query('COMMIT');
     const appeal = { expectedVersion: 10, idempotencyKey: `appeal-${ids.case}`, judgmentId: ids.judgment,
       next: 'APPEAL', plaintiffAppeals: true, defendantIds: [ids.defendantA, ids.defendantB] };
+    if (await attemptForgedPlaintiffSnapshot(client, ids) !== '23514')
+      throw new Error('Forged plaintiff name was not rejected by PostgreSQL');
+    checks.push('forged plaintiff name rejected without historical rewrite');
     const chosen = await service.choose(actor, ids.case, appeal);
     const stored = await database.caseJudgmentNextStep.findUnique({ where: { id: chosen.choiceId },
       include: { defendants: true } });
@@ -285,3 +322,4 @@ export async function verifyCaseJudgmentNextStepDatabase() {
     } finally { await database.$disconnect(); await client.end(); }
   }
 }
+
