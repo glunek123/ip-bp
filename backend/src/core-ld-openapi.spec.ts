@@ -41,6 +41,7 @@ import { CaseFilingService } from './modules/cases/case-filing.service';
 import { CaseAcceptanceService } from './modules/cases/case-acceptance.service';
 import { CaseHearingService } from './modules/cases/case-hearing.service';
 import { CaseJudgmentService } from './modules/cases/case-judgment.service';
+import { CaseJudgmentNextStepService } from './modules/cases/case-judgment-next-step.service';
 import { FilingCourtService } from './modules/cases/filing-court.service';
 
 describe('CORE-LD-002 OpenAPI contract', () => {
@@ -87,6 +88,7 @@ describe('CORE-LD-002 OpenAPI contract', () => {
         { provide: CaseAcceptanceService, useValue: {} },
         { provide: CaseHearingService, useValue: {} },
         { provide: CaseJudgmentService, useValue: {} },
+        { provide: CaseJudgmentNextStepService, useValue: {} },
         { provide: FilingCourtService, useValue: {} },
       ],
     })
@@ -307,6 +309,18 @@ describe('CORE-LD-002 OpenAPI contract', () => {
       '/api/v1/cases/{id}/hearing-correct',
       '201',
       'CaseHearingCommandResultDto',
+    ],
+    [
+      'post',
+      '/api/v1/cases/{id}/judgment-next-step',
+      '201',
+      'JudgmentNextStepResultDto',
+    ],
+    [
+      'post',
+      '/api/v1/cases/{id}/judgment-next-step-revoke',
+      '201',
+      'RevokeJudgmentNextStepResultDto',
     ],
   ] as const)(
     'documents %s %s response %s',
