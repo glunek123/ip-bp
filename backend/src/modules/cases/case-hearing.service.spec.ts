@@ -9,6 +9,7 @@ const actor = {
 const caseId = '33333333-3333-4333-8333-333333333333';
 const arrangementId = '44444444-4444-4444-8444-444444444444';
 const advanceId = '55555555-5555-4555-8555-555555555555';
+const trialRoundId = '99999999-9999-4999-8999-999999999999';
 const request = {
   expectedVersion: 7,
   idempotencyKey: 'hearing-1',
@@ -25,6 +26,7 @@ describe('CaseHearingService', () => {
           departmentId: actor.departmentId,
           stage: 'WAITING_HEARING',
           version: 7,
+          currentTrialRoundId: trialRoundId,
           responsibleUserId: actor.userId,
           responsibleMembership: { teamId: null },
           acceptance: { acceptedAt: new Date('2026-10-01T00:00:00.000Z') },
@@ -294,6 +296,7 @@ describe('CaseHearingService', () => {
         Promise.resolve({
           stage: 'WAITING_HEARING',
           version: 8,
+          currentTrialRoundId: trialRoundId,
           currentHearingArrangementId:
             where.id === caseId ? arrangementId : secondArrangementId,
           currentHearingAdvanceId: null,
@@ -301,6 +304,7 @@ describe('CaseHearingService', () => {
             id: where.id === caseId ? arrangementId : secondArrangementId,
             hearingAt: new Date('2026-10-08T00:00:00.000Z'),
             toVersion: 8,
+            trialRoundId,
           },
         }),
     );
@@ -329,6 +333,30 @@ describe('CaseHearingService', () => {
     ).toEqual(['2026-10-08T16:03:00.000Z', '2026-10-08T16:05:00.000Z']);
   });
 
+  it('does not advance an arrangement left by a prior trial round', async () => {
+    const f = fixture();
+    f.database.case.findMany.mockResolvedValue([
+      { id: caseId, departmentId: actor.departmentId },
+    ]);
+    f.tx.case.findFirst.mockResolvedValue({
+      stage: 'WAITING_HEARING',
+      version: 8,
+      currentTrialRoundId: trialRoundId,
+      currentHearingArrangementId: arrangementId,
+      currentHearingAdvanceId: null,
+      currentHearingArrangement: {
+        id: arrangementId,
+        hearingAt: new Date('2026-10-08T00:00:00.000Z'),
+        toVersion: 8,
+        trialRoundId: 'aaaaaaaa-aaaa-4aaa-8aaa-aaaaaaaaaaaa',
+      },
+    });
+    expect(
+      await f.service.advanceDue(new Date('2026-10-09T00:00:00.000Z')),
+    ).toEqual({ advanced: 0, failed: 0 });
+    expect(f.tx.caseHearingAdvance.create).not.toHaveBeenCalled();
+  });
+
   it('logs a failed case and a safe error code while continuing with the next case', async () => {
     const f = fixture();
     const secondCaseId = '77777777-7777-4777-8777-777777777777';
@@ -346,12 +374,14 @@ describe('CaseHearingService', () => {
         Promise.resolve({
           stage: 'WAITING_HEARING',
           version: 8,
+          currentTrialRoundId: trialRoundId,
           currentHearingArrangementId: arrangementId,
           currentHearingAdvanceId: null,
           currentHearingArrangement: {
             id: arrangementId,
             hearingAt: new Date('2026-10-08T00:00:00.000Z'),
             toVersion: 8,
+            trialRoundId,
           },
           id: where.id,
         }),

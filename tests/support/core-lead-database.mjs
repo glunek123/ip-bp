@@ -519,6 +519,8 @@ async function clearDatabase() {
     'case_filing_submissions',
     'case_filing_versions',
     'case_filing_receipts',
+    'case_acceptances',
+    'case_trial_rounds',
     'customer_draft_lifecycle_facts',
     'customer_draft_lifecycle_receipts',
     'customer_maintenance_facts',
@@ -570,6 +572,16 @@ async function clearDatabase() {
       where: { departmentId: { in: departmentIds } },
     });
     await transaction.caseDefendant.deleteMany({
+      where: { departmentId: { in: departmentIds } },
+    });
+    await transaction.case.updateMany({
+      where: { departmentId: { in: departmentIds } },
+      data: { currentAcceptanceId: null, currentTrialRoundId: null },
+    });
+    await transaction.caseAcceptance.deleteMany({
+      where: { departmentId: { in: departmentIds } },
+    });
+    await transaction.caseTrialRound.deleteMany({
       where: { departmentId: { in: departmentIds } },
     });
     await transaction.case.deleteMany({
@@ -726,7 +738,7 @@ async function clearDatabase() {
     where: { userId: { in: allUserIds } },
   });
   await database.authSession.deleteMany({
-    where: { userId: { in: allUserIds } },
+    where: { departmentId: { in: departmentIds } },
   });
   await database.localCredential.deleteMany({
     where: { userId: { in: allUserIds } },

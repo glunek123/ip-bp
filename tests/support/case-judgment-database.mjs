@@ -219,6 +219,8 @@ export async function verifyCoreCaseJudgmentFixtureCleanup(
   const client = new Client({ connectionString: databaseUrl });
   const target = {
     case: randomUUID(),
+    trialRound: randomUUID(),
+    acceptance: randomUUID(),
     fact: randomUUID(),
     audit: randomUUID(),
     receipt: randomUUID(),
@@ -232,6 +234,8 @@ export async function verifyCoreCaseJudgmentFixtureCleanup(
     customer: randomUUID(),
     holder: randomUUID(),
     case: randomUUID(),
+    trialRound: randomUUID(),
+    acceptance: randomUUID(),
     fact: randomUUID(),
     audit: randomUUID(),
     receipt: randomUUID(),
@@ -361,9 +365,35 @@ export async function verifyCoreCaseJudgmentFixtureCleanup(
           [fixture.audit, department, actorId, fixture.case],
         );
         await client.query(
-          `INSERT INTO case_judgment_facts(id,department_id,case_id,kind,judgment_received_at,judgment_amount_state,judgment_amount,paid_litigation_fee_state,recorded_by_user_id,from_version,to_version,audit_event_id)
-           VALUES ($1,$2,$3,'REGISTER','2026-10-08','KNOWN',0,'PENDING',$4,1,2,$5)`,
-          [fixture.fact, department, fixture.case, actorId, fixture.audit],
+          'INSERT INTO case_trial_rounds(id,case_id,department_id,sequence) VALUES ($1,$2,$3,1)',
+          [fixture.trialRound, fixture.case, department],
+        );
+        await client.query(
+          "INSERT INTO case_acceptances(id,case_id,department_id,trial_round_id,accepted_at,court_case_no,recorded_by_user_id,audit_event_id) VALUES ($1,$2,$3,$4,'2026-10-01','CA008-cleanup',$5,$6)",
+          [
+            fixture.acceptance,
+            fixture.case,
+            department,
+            fixture.trialRound,
+            actorId,
+            randomUUID(),
+          ],
+        );
+        await client.query(
+          `INSERT INTO case_judgment_facts(id,department_id,case_id,trial_round_id,kind,judgment_received_at,judgment_amount_state,judgment_amount,paid_litigation_fee_state,recorded_by_user_id,from_version,to_version,audit_event_id)
+           VALUES ($1,$2,$3,$6,'REGISTER','2026-10-08','KNOWN',0,'PENDING',$4,1,2,$5)`,
+          [
+            fixture.fact,
+            department,
+            fixture.case,
+            actorId,
+            fixture.audit,
+            fixture.trialRound,
+          ],
+        );
+        await client.query(
+          'UPDATE cases SET current_trial_round_id=$2,current_acceptance_id=$3 WHERE id=$1',
+          [fixture.case, fixture.trialRound, fixture.acceptance],
         );
         await client.query(
           `INSERT INTO case_judgment_versions(fact_id,case_id,department_id,material_id,content_version_id)
@@ -529,6 +559,14 @@ export async function verifyCoreCaseJudgmentFixtureCleanup(
           fixture.audit,
         ]);
         await client.query('DELETE FROM cases WHERE id=$1', [fixture.case]);
+        if (fixture.acceptance)
+          await client.query('DELETE FROM case_acceptances WHERE id=$1', [
+            fixture.acceptance,
+          ]);
+        if (fixture.trialRound)
+          await client.query('DELETE FROM case_trial_rounds WHERE id=$1', [
+            fixture.trialRound,
+          ]);
       }
       await client.query('DELETE FROM customers WHERE id=$1', [other.customer]);
       await client.query('DELETE FROM rights_holders WHERE id=$1', [
@@ -567,6 +605,7 @@ export async function verifyCaseJudgmentDatabase(options = {}) {
     customer: randomUUID(),
     holder: randomUUID(),
     case: randomUUID(),
+    trialRound: randomUUID(),
     acceptance: randomUUID(),
     arrangement: randomUUID(),
     advance: randomUUID(),
@@ -651,16 +690,45 @@ export async function verifyCaseJudgmentDatabase(options = {}) {
         ],
       );
       await client.query(
-        "INSERT INTO case_acceptances(id,department_id,case_id,accepted_at,court_case_no,recorded_by_user_id,audit_event_id) VALUES ($1,$2,$3,'2026-10-01','CA008-db',$4,$5)",
-        [ids.acceptance, ids.department, ids.case, ids.actor, randomUUID()],
+        'INSERT INTO case_trial_rounds(id,case_id,department_id,sequence) VALUES ($1,$2,$3,1)',
+        [ids.trialRound, ids.case, ids.department],
       );
       await client.query(
-        "INSERT INTO case_hearing_arrangements(id,department_id,case_id,hearing_at,source,recorded_by_user_id,from_version,to_version,audit_event_id) VALUES ($1,$2,$3,'2026-10-02','SCHEDULE',$4,7,8,$5)",
-        [ids.arrangement, ids.department, ids.case, ids.actor, randomUUID()],
+        "INSERT INTO case_acceptances(id,department_id,case_id,trial_round_id,accepted_at,court_case_no,recorded_by_user_id,audit_event_id) VALUES ($1,$2,$3,$4,'2026-10-01','CA008-db',$5,$6)",
+        [
+          ids.acceptance,
+          ids.department,
+          ids.case,
+          ids.trialRound,
+          ids.actor,
+          randomUUID(),
+        ],
       );
       await client.query(
-        "INSERT INTO case_hearing_advances(id,department_id,case_id,arrangement_id,due_at,executed_at,from_version,to_version,audit_event_id) VALUES ($1,$2,$3,$4,'2026-10-02T16:00:00Z','2026-10-02T16:00:01Z',8,9,$5)",
-        [ids.advance, ids.department, ids.case, ids.arrangement, randomUUID()],
+        "INSERT INTO case_hearing_arrangements(id,department_id,case_id,trial_round_id,hearing_at,source,recorded_by_user_id,from_version,to_version,audit_event_id) VALUES ($1,$2,$3,$4,'2026-10-02','SCHEDULE',$5,7,8,$6)",
+        [
+          ids.arrangement,
+          ids.department,
+          ids.case,
+          ids.trialRound,
+          ids.actor,
+          randomUUID(),
+        ],
+      );
+      await client.query(
+        "INSERT INTO case_hearing_advances(id,department_id,case_id,trial_round_id,arrangement_id,due_at,executed_at,from_version,to_version,audit_event_id) VALUES ($1,$2,$3,$4,$5,'2026-10-02T16:00:00Z','2026-10-02T16:00:01Z',8,9,$6)",
+        [
+          ids.advance,
+          ids.department,
+          ids.case,
+          ids.trialRound,
+          ids.arrangement,
+          randomUUID(),
+        ],
+      );
+      await client.query(
+        'UPDATE cases SET current_trial_round_id=$2,current_acceptance_id=$3 WHERE id=$1',
+        [ids.case, ids.trialRound, ids.acceptance],
       );
     } finally {
       await client.query('SET session_replication_role = origin');
@@ -1223,6 +1291,9 @@ export async function verifyCaseJudgmentDatabase(options = {}) {
         ['CASE', ids.case],
       );
       await client.query('DELETE FROM cases WHERE id=$1', [ids.case]);
+      await client.query('DELETE FROM case_trial_rounds WHERE id=$1', [
+        ids.trialRound,
+      ]);
       await client.query('DELETE FROM rights_holders WHERE id=$1', [
         ids.holder,
       ]);

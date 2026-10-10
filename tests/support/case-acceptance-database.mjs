@@ -4,6 +4,8 @@ import { resolve } from 'node:path';
 import { validateIsolatedTestDatabaseUrl } from '../../scripts/test-environment.mjs';
 import { coreLeadFixtures } from './core-lead-database.mjs';
 import { clearCoreCaseHearingFixture } from './case-hearing-database.mjs';
+import { clearCoreCaseJudgmentFixture } from './case-judgment-database.mjs';
+import { clearCoreCaseJudgmentNextStepFixture } from './case-judgment-next-step-database.mjs';
 
 const requireBackend = createRequire(
   resolve(process.cwd(), 'backend/package.json'),
@@ -93,6 +95,14 @@ export async function revokeCaseAcceptanceGrant() {
 }
 export async function clearCaseAcceptanceFixture() {
   await clearCaseAcceptanceFault();
+  await clearCoreCaseJudgmentNextStepFixture([
+    coreLeadFixtures.departmentA,
+    coreLeadFixtures.departmentB,
+  ]);
+  await clearCoreCaseJudgmentFixture([
+    coreLeadFixtures.departmentA,
+    coreLeadFixtures.departmentB,
+  ]);
   await clearCoreCaseHearingFixture([
     coreLeadFixtures.departmentA,
     coreLeadFixtures.departmentB,
@@ -112,7 +122,15 @@ export async function clearCaseAcceptanceFixture() {
         'case_acceptance_receipts',
         'case_acceptance_versions',
         'case_acceptances',
+        'case_trial_rounds',
       ];
+      await client.query(
+        'ALTER TABLE cases DISABLE TRIGGER "case_trial_round_case_guard"',
+      );
+      await client.query(
+        'UPDATE cases SET current_acceptance_id=NULL,current_trial_round_id=NULL WHERE department_id=ANY($1::uuid[])',
+        [departments],
+      );
       for (const table of tables)
         await client.query(`ALTER TABLE "${table}" DISABLE TRIGGER USER`);
       for (const table of tables)
@@ -122,6 +140,9 @@ export async function clearCaseAcceptanceFixture() {
         );
       for (const table of tables)
         await client.query(`ALTER TABLE "${table}" ENABLE TRIGGER USER`);
+      await client.query(
+        'ALTER TABLE cases ENABLE TRIGGER "case_trial_round_case_guard"',
+      );
       await client.query(
         'ALTER TABLE audit_events DISABLE TRIGGER "case_acceptance_audit_immutable"',
       );

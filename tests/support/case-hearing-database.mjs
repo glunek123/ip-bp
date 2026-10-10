@@ -389,7 +389,9 @@ export async function seedCoreCaseHearingFixture(departmentId) {
   const client = new Client({ connectionString: databaseUrl });
   await client.connect();
   const caseId = randomUUID(),
-    acceptanceAuditId = randomUUID();
+    acceptanceAuditId = randomUUID(),
+    acceptanceId = randomUUID(),
+    trialRoundId = randomUUID();
   try {
     const context = (
       await client.query(
@@ -436,8 +438,23 @@ export async function seedCoreCaseHearingFixture(departmentId) {
         [acceptanceAuditId, departmentId, owner.userId, caseId],
       );
       await client.query(
-        "INSERT INTO case_acceptances(id,department_id,case_id,accepted_at,court_case_no,recorded_by_user_id,audit_event_id) VALUES ($1,$2,$3,'2026-10-01','CA007-cleanup',$4,$5)",
-        [randomUUID(), departmentId, caseId, owner.userId, acceptanceAuditId],
+        'INSERT INTO case_trial_rounds(id,case_id,department_id,sequence) VALUES ($1,$2,$3,1)',
+        [trialRoundId, caseId, departmentId],
+      );
+      await client.query(
+        "INSERT INTO case_acceptances(id,department_id,case_id,trial_round_id,accepted_at,court_case_no,recorded_by_user_id,audit_event_id) VALUES ($1,$2,$3,$4,'2026-10-01','CA007-cleanup',$5,$6)",
+        [
+          acceptanceId,
+          departmentId,
+          caseId,
+          trialRoundId,
+          owner.userId,
+          acceptanceAuditId,
+        ],
+      );
+      await client.query(
+        'UPDATE cases SET current_trial_round_id=$2,current_acceptance_id=$3 WHERE id=$1',
+        [caseId, trialRoundId, acceptanceId],
       );
       await client.query('COMMIT');
     } catch (error) {
@@ -630,10 +647,12 @@ export async function inspectCoreCaseHearingGuards() {
     ).rows[0];
     if (context.db !== 'dev_cor_test' || context.schema !== 'public')
       throw new Error('Unexpected hearing guard inspection target');
-    const rows = await client.query(`SELECT tgname,tgenabled FROM pg_trigger
-      WHERE tgname IN ('case_hearing_receipts_immutable','case_hearing_corrections_immutable',
+    const rows =
+      await client.query(`SELECT t.tgname,t.tgenabled FROM pg_trigger t
+      JOIN pg_class c ON c.oid=t.tgrelid JOIN pg_namespace n ON n.oid=c.relnamespace
+      WHERE n.nspname=current_schema() AND t.tgname IN ('case_hearing_receipts_immutable','case_hearing_corrections_immutable',
         'case_hearing_advances_immutable','case_hearing_arrangements_immutable',
-        'case_hearing_audit_immutable') ORDER BY tgname`);
+        'case_hearing_audit_immutable') ORDER BY t.tgname`);
     return rows.rows.map(({ tgname, tgenabled }) => ({
       name: tgname,
       enabled: tgenabled,
@@ -692,12 +711,12 @@ export async function verifyCaseHearingDetailSnapshot() {
     .filter(
       (name) =>
         /^\d{14}_/u.test(name) &&
-        name <= '20261008028000_guard_case_judgment_reference_inserts',
+        name <= '20261010041000_repair_case_trial_round_guard',
     )
     .sort();
   if (
-    names.length !== 91 ||
-    names.at(-1) !== '20261008028000_guard_case_judgment_reference_inserts'
+    names.length !== 119 ||
+    names.at(-1) !== '20261010041000_repair_case_trial_round_guard'
   )
     throw new Error('Unexpected hearing migration chain');
   const admin = new Client({ connectionString: databaseUrl });
@@ -724,8 +743,11 @@ export async function verifyCaseHearingDetailSnapshot() {
     const departmentId = randomUUID();
     const userId = randomUUID();
     const caseId = randomUUID();
+    const customerId = randomUUID();
     const roleId = randomUUID();
     const acceptanceAuditId = randomUUID();
+    const trialRoundId = randomUUID();
+    const acceptanceId = randomUUID();
     await admin.query(
       'INSERT INTO departments(id,name,updated_at) VALUES ($1,$2,now())',
       [departmentId, 'CA007 detail snapshot'],
@@ -750,6 +772,10 @@ export async function verifyCaseHearingDetailSnapshot() {
       'INSERT INTO role_assignments(id,user_id,department_id,role_template_id,active,updated_at) VALUES ($1,$2,$3,$4,true,now())',
       [randomUUID(), userId, departmentId, roleId],
     );
+    await admin.query(
+      'INSERT INTO customers(id,name,normalized_name,department_id,responsible_user_id,updated_at) VALUES ($1,$2,$2,$3,$4,now())',
+      [customerId, 'CA007 snapshot customer', departmentId, userId],
+    );
     await admin.query('SET session_replication_role = replica');
     try {
       await admin.query(
@@ -761,7 +787,7 @@ export async function verifyCaseHearingDetailSnapshot() {
           randomUUID(),
           randomUUID(),
           randomUUID(),
-          randomUUID(),
+          customerId,
           randomUUID(),
           userId,
         ],
@@ -771,8 +797,23 @@ export async function verifyCaseHearingDetailSnapshot() {
         [acceptanceAuditId, departmentId, userId, caseId],
       );
       await admin.query(
-        "INSERT INTO case_acceptances(id,department_id,case_id,accepted_at,court_case_no,recorded_by_user_id,audit_event_id) VALUES ($1,$2,$3,'2026-10-01','CA007-snapshot',$4,$5)",
-        [randomUUID(), departmentId, caseId, userId, acceptanceAuditId],
+        'INSERT INTO case_trial_rounds(id,case_id,department_id,sequence) VALUES ($1,$2,$3,1)',
+        [trialRoundId, caseId, departmentId],
+      );
+      await admin.query(
+        "INSERT INTO case_acceptances(id,department_id,case_id,trial_round_id,accepted_at,court_case_no,recorded_by_user_id,audit_event_id) VALUES ($1,$2,$3,$4,'2026-10-01','CA007-snapshot',$5,$6)",
+        [
+          acceptanceId,
+          departmentId,
+          caseId,
+          trialRoundId,
+          userId,
+          acceptanceAuditId,
+        ],
+      );
+      await admin.query(
+        'UPDATE cases SET current_trial_round_id=$2,current_acceptance_id=$3 WHERE id=$1',
+        [caseId, trialRoundId, acceptanceId],
       );
     } finally {
       await admin.query('SET session_replication_role = origin');
@@ -1034,12 +1075,12 @@ export async function verifyCaseHearingDatabase() {
     .filter(
       (name) =>
         /^\d{14}_/u.test(name) &&
-        name <= '20261008028000_guard_case_judgment_reference_inserts',
+        name <= '20261010041000_repair_case_trial_round_guard',
     )
     .sort();
   if (
-    names.length !== 91 ||
-    names.at(-1) !== '20261008028000_guard_case_judgment_reference_inserts'
+    names.length !== 119 ||
+    names.at(-1) !== '20261010041000_repair_case_trial_round_guard'
   )
     throw new Error('Unexpected migration chain');
   const admin = new Client({ connectionString: databaseUrl });
@@ -1060,12 +1101,17 @@ export async function verifyCaseHearingDatabase() {
     const departmentId = randomUUID(),
       userId = randomUUID(),
       caseId = randomUUID();
+    const customerId = randomUUID();
     const lawyerId = randomUUID(),
       lawyerCaseId = randomUUID(),
       profileId = randomUUID(),
       bindingId = randomUUID();
     const roleId = randomUUID(),
       acceptanceAuditId = randomUUID();
+    const trialRoundId = randomUUID();
+    const lawyerTrialRoundId = randomUUID();
+    const acceptanceId = randomUUID();
+    const lawyerAcceptanceId = randomUUID();
     await admin.query(
       'INSERT INTO departments(id,name,updated_at) VALUES ($1,$2,now())',
       [departmentId, 'CA007 DB'],
@@ -1090,6 +1136,10 @@ export async function verifyCaseHearingDatabase() {
       'INSERT INTO role_assignments(id,user_id,department_id,role_template_id,active,updated_at) VALUES ($1,$2,$3,$4,true,now())',
       [randomUUID(), userId, departmentId, roleId],
     );
+    await admin.query(
+      'INSERT INTO customers(id,name,normalized_name,department_id,responsible_user_id,updated_at) VALUES ($1,$2,$2,$3,$4,now())',
+      [customerId, 'CA007 database customer', departmentId, userId],
+    );
     await admin.query('SET session_replication_role = replica');
     try {
       await admin.query(
@@ -1113,7 +1163,7 @@ export async function verifyCaseHearingDatabase() {
           randomUUID(),
           randomUUID(),
           randomUUID(),
-          randomUUID(),
+          customerId,
           randomUUID(),
           userId,
         ],
@@ -1127,7 +1177,7 @@ export async function verifyCaseHearingDatabase() {
           randomUUID(),
           randomUUID(),
           randomUUID(),
-          randomUUID(),
+          customerId,
           randomUUID(),
           userId,
         ],
@@ -1137,8 +1187,19 @@ export async function verifyCaseHearingDatabase() {
         [acceptanceAuditId, departmentId, userId, caseId],
       );
       await admin.query(
-        "INSERT INTO case_acceptances(id,department_id,case_id,accepted_at,court_case_no,recorded_by_user_id,audit_event_id) VALUES ($1,$2,$3,'2026-10-01','CA007-No',$4,$5)",
-        [randomUUID(), departmentId, caseId, userId, acceptanceAuditId],
+        'INSERT INTO case_trial_rounds(id,case_id,department_id,sequence) VALUES ($1,$2,$3,1),($4,$5,$3,1)',
+        [trialRoundId, caseId, departmentId, lawyerTrialRoundId, lawyerCaseId],
+      );
+      await admin.query(
+        "INSERT INTO case_acceptances(id,department_id,case_id,trial_round_id,accepted_at,court_case_no,recorded_by_user_id,audit_event_id) VALUES ($1,$2,$3,$4,'2026-10-01','CA007-No',$5,$6)",
+        [
+          acceptanceId,
+          departmentId,
+          caseId,
+          trialRoundId,
+          userId,
+          acceptanceAuditId,
+        ],
       );
       const lawyerAcceptanceAuditId = randomUUID();
       await admin.query(
@@ -1146,14 +1207,23 @@ export async function verifyCaseHearingDatabase() {
         [lawyerAcceptanceAuditId, departmentId, userId, lawyerCaseId],
       );
       await admin.query(
-        "INSERT INTO case_acceptances(id,department_id,case_id,accepted_at,court_case_no,recorded_by_user_id,audit_event_id) VALUES ($1,$2,$3,'2026-10-01','CA007-Lawyer',$4,$5)",
+        "INSERT INTO case_acceptances(id,department_id,case_id,trial_round_id,accepted_at,court_case_no,recorded_by_user_id,audit_event_id) VALUES ($1,$2,$3,$4,'2026-10-01','CA007-Lawyer',$5,$6)",
         [
-          randomUUID(),
+          lawyerAcceptanceId,
           departmentId,
           lawyerCaseId,
+          lawyerTrialRoundId,
           userId,
           lawyerAcceptanceAuditId,
         ],
+      );
+      await admin.query(
+        'UPDATE cases SET current_trial_round_id=$2,current_acceptance_id=$3 WHERE id=$1',
+        [caseId, trialRoundId, acceptanceId],
+      );
+      await admin.query(
+        'UPDATE cases SET current_trial_round_id=$2,current_acceptance_id=$3 WHERE id=$1',
+        [lawyerCaseId, lawyerTrialRoundId, lawyerAcceptanceId],
       );
     } finally {
       await admin.query('SET session_replication_role = origin');
@@ -1475,7 +1545,7 @@ export async function verifyCaseHearingDatabase() {
           ],
         ],
         [
-          "INSERT INTO case_hearing_arrangements(id,department_id,case_id,hearing_at,source,recorded_by_user_id,from_version,to_version,audit_event_id) VALUES ($1,$2,$3,$4,'SCHEDULE',$5,$6,$7,$8)",
+          "INSERT INTO case_hearing_arrangements(id,department_id,case_id,trial_round_id,hearing_at,source,recorded_by_user_id,from_version,to_version,audit_event_id) VALUES ($1,$2,$3,$9,$4,'SCHEDULE',$5,$6,$7,$8)",
           [
             arrangementId,
             departmentId,
@@ -1485,6 +1555,7 @@ export async function verifyCaseHearingDatabase() {
             finalCase.version,
             finalCase.version + 1,
             auditId,
+            trialRoundId,
           ],
         ],
         [
@@ -1503,8 +1574,15 @@ export async function verifyCaseHearingDatabase() {
     );
     const duplicateAdvance = await sqlCode([
       [
-        "INSERT INTO case_hearing_advances(id,department_id,case_id,arrangement_id,due_at,executed_at,from_version,to_version,audit_event_id) VALUES ($1,$2,$3,$4,'2026-10-08T16:00:00Z','2026-10-09T16:00:00Z',8,9,$5)",
-        [randomUUID(), departmentId, caseId, saved.arrangementId, randomUUID()],
+        "INSERT INTO case_hearing_advances(id,department_id,case_id,trial_round_id,arrangement_id,due_at,executed_at,from_version,to_version,audit_event_id) VALUES ($1,$2,$3,$6,$4,'2026-10-08T16:00:00Z','2026-10-09T16:00:00Z',8,9,$5)",
+        [
+          randomUUID(),
+          departmentId,
+          caseId,
+          saved.arrangementId,
+          randomUUID(),
+          trialRoundId,
+        ],
       ],
     ]);
     const probeCorrection = async ({
@@ -1536,7 +1614,7 @@ export async function verifyCaseHearingDatabase() {
           [auditId, departmentId, userId, caseId, details],
         ],
         [
-          "INSERT INTO case_hearing_arrangements(id,department_id,case_id,hearing_at,source,recorded_at,recorded_by_user_id,from_version,to_version,audit_event_id) VALUES ($1,$2,$3,$4,'CORRECTION','2026-10-10T00:00:00Z',$5,$6,$7,$8)",
+          "INSERT INTO case_hearing_arrangements(id,department_id,case_id,trial_round_id,hearing_at,source,recorded_at,recorded_by_user_id,from_version,to_version,audit_event_id) VALUES ($1,$2,$3,$9,$4,'CORRECTION','2026-10-10T00:00:00Z',$5,$6,$7,$8)",
           [
             newArrangementId,
             departmentId,
@@ -1546,6 +1624,7 @@ export async function verifyCaseHearingDatabase() {
             fromVersion,
             fromVersion + 1,
             auditId,
+            trialRoundId,
           ],
         ],
         [

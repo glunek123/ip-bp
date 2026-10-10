@@ -90,6 +90,7 @@ export class CaseJudgmentNextStepService {
                 stage: true,
                 version: true,
                 currentJudgmentId: true,
+                currentTrialRoundId: true,
                 currentJudgmentNextStepId: true,
                 currentJudgmentNextStep: {
                   select: { id: true, judgmentId: true, next: true },
@@ -165,6 +166,7 @@ export class CaseJudgmentNextStepService {
               if (
                 record.stage !== 'WAITING_JUDGMENT' ||
                 record.currentJudgmentId === null ||
+                record.currentTrialRoundId === null ||
                 record.currentJudgmentNextStepId !== null
               )
                 throw this.invalidState();
@@ -214,6 +216,7 @@ export class CaseJudgmentNextStepService {
                   id: choiceId,
                   caseId,
                   departmentId: actor.departmentId,
+                  trialRoundId: record.currentTrialRoundId,
                   judgmentId: value.judgmentId,
                   next: value.next,
                   plaintiffRightsHolderId: value.plaintiffAppeals

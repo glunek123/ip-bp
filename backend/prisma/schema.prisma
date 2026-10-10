@@ -1744,8 +1744,13 @@ model Case {
   complaintMailingReceipts      CaseComplaintMailingReceipt[]
   filingSubmission              CaseFilingSubmission?
   filingReceipts                CaseFilingReceipt[]
-  acceptance                    CaseAcceptance?
+  acceptances                   CaseAcceptance[]
   acceptanceReceipts            CaseAcceptanceReceipt[]
+  trialRounds                   CaseTrialRound[]                  @relation("CaseTrialRounds")
+  currentTrialRoundId           String?                           @map("current_trial_round_id") @db.Uuid
+  currentTrialRound             CaseTrialRound?                   @relation("CaseCurrentTrialRound", fields: [currentTrialRoundId, id, departmentId], references: [id, caseId, departmentId], onDelete: Restrict, onUpdate: Restrict)
+  currentAcceptanceId           String?                           @map("current_acceptance_id") @db.Uuid
+  acceptance                    CaseAcceptance?                   @relation("CaseCurrentAcceptance", fields: [currentAcceptanceId, id, departmentId], references: [id, caseId, departmentId], onDelete: Restrict, onUpdate: Restrict)
   currentHearingArrangementId   String?                            @map("current_hearing_arrangement_id") @db.Uuid
   currentHearingAdvanceId       String?                            @map("current_hearing_advance_id") @db.Uuid
   currentHearingArrangement     CaseHearingArrangement?            @relation("CaseCurrentHearing", fields: [currentHearingArrangementId], references: [id], onDelete: Restrict, onUpdate: Restrict)
@@ -1787,7 +1792,28 @@ model Case {
   @@index([departmentId, createdAt, id])
   @@unique([currentJudgmentId, id, departmentId])
   @@unique([currentJudgmentNextStepId, id, departmentId])
+  @@unique([currentTrialRoundId, id, departmentId])
+  @@unique([currentAcceptanceId, id, departmentId])
   @@map("cases")
+}
+
+model CaseTrialRound {
+  id             String           @id @default(uuid()) @db.Uuid
+  caseId         String           @map("case_id") @db.Uuid
+  departmentId   String           @map("department_id") @db.Uuid
+  sequence       Int
+  revokedAt      DateTime?        @map("revoked_at") @db.Timestamptz(3)
+  case           Case             @relation("CaseTrialRounds", fields: [caseId, departmentId], references: [id, departmentId], onDelete: Restrict, onUpdate: Restrict)
+  currentForCase Case?            @relation("CaseCurrentTrialRound")
+  acceptances    CaseAcceptance[]
+  hearings       CaseHearingArrangement[]
+  advances       CaseHearingAdvance[]
+  judgments      CaseJudgmentFact[]
+  choices        CaseJudgmentNextStep[]
+
+  @@unique([id, caseId, departmentId])
+  @@unique([caseId, departmentId, sequence])
+  @@map("case_trial_rounds")
 }
 
 model CaseDefendant {
@@ -2026,19 +2052,24 @@ model CaseFilingReceipt {
 model CaseAcceptance {
   id               String                  @id @default(uuid()) @db.Uuid
   departmentId     String                  @map("department_id") @db.Uuid
-  caseId           String                  @unique @map("case_id") @db.Uuid
+  caseId           String                  @map("case_id") @db.Uuid
+  trialRoundId    String                  @map("trial_round_id") @db.Uuid
   acceptedAt       DateTime                @map("accepted_at") @db.Date
   courtCaseNo      String                  @map("court_case_no") @db.VarChar(100)
   recordedAt       DateTime                @default(now()) @map("recorded_at") @db.Timestamptz(3)
   recordedByUserId String                  @map("recorded_by_user_id") @db.Uuid
   auditEventId     String                  @unique @map("audit_event_id") @db.Uuid
   case             Case                    @relation(fields: [caseId, departmentId], references: [id, departmentId], onDelete: Restrict, onUpdate: Restrict)
+  currentForCase   Case?                   @relation("CaseCurrentAcceptance")
+  trialRound       CaseTrialRound          @relation(fields: [trialRoundId, caseId, departmentId], references: [id, caseId, departmentId], onDelete: Restrict, onUpdate: Restrict)
   recordedBy       UserAccount             @relation("CaseAcceptanceRecorder", fields: [recordedByUserId], references: [id], onDelete: Restrict, onUpdate: Restrict)
   auditEvent       AuditEvent              @relation(fields: [auditEventId], references: [id], onDelete: Restrict, onUpdate: Restrict)
   versions         CaseAcceptanceVersion[]
 
   @@unique([id, caseId, departmentId])
-  @@unique([caseId, departmentId])
+  @@unique([id, caseId, departmentId, trialRoundId])
+  @@unique([trialRoundId, caseId, departmentId])
+  @@unique([caseId, departmentId, trialRoundId])
   @@map("case_acceptances")
 }
 
@@ -2075,6 +2106,7 @@ model CaseHearingArrangement {
   id                 String                  @id @default(uuid()) @db.Uuid
   departmentId       String                  @map("department_id") @db.Uuid
   caseId             String                  @map("case_id") @db.Uuid
+  trialRoundId       String                  @map("trial_round_id") @db.Uuid
   hearingAt          DateTime?               @map("hearing_at") @db.Date
   source             CaseHearingSource
   recordedAt         DateTime                @default(now()) @map("recorded_at") @db.Timestamptz(3)
@@ -2083,6 +2115,7 @@ model CaseHearingArrangement {
   toVersion          Int                     @map("to_version")
   auditEventId       String                  @unique @map("audit_event_id") @db.Uuid
   case               Case                    @relation("CaseHearingArrangements", fields: [caseId, departmentId], references: [id, departmentId], onDelete: Restrict, onUpdate: Restrict)
+  trialRound         CaseTrialRound          @relation(fields: [trialRoundId, caseId, departmentId], references: [id, caseId, departmentId], onDelete: Restrict, onUpdate: Restrict)
   currentForCase     Case[]                  @relation("CaseCurrentHearing")
   auditEvent         AuditEvent              @relation("HearingArrangementAudit", fields: [auditEventId], references: [id], onDelete: Restrict, onUpdate: Restrict)
   recordedBy         UserAccount             @relation("HearingArrangementRecorder", fields: [recordedByUserId], references: [id], onDelete: Restrict, onUpdate: Restrict)
@@ -2091,6 +2124,7 @@ model CaseHearingArrangement {
   correctionAsNew    CaseHearingCorrection?  @relation("HearingCorrectionNewArrangement")
 
   @@unique([id, caseId, departmentId])
+  @@unique([id, caseId, departmentId, trialRoundId])
   @@map("case_hearing_arrangements")
 }
 
@@ -2105,6 +2139,7 @@ model CaseHearingAdvance {
   id             String                  @id @default(uuid()) @db.Uuid
   departmentId   String                  @map("department_id") @db.Uuid
   caseId         String                  @map("case_id") @db.Uuid
+  trialRoundId   String                  @map("trial_round_id") @db.Uuid
   arrangementId  String                  @unique @map("arrangement_id") @db.Uuid
   dueAt          DateTime                @map("due_at") @db.Timestamptz(3)
   executedAt     DateTime                @map("executed_at") @db.Timestamptz(3)
@@ -2112,12 +2147,14 @@ model CaseHearingAdvance {
   toVersion      Int                     @map("to_version")
   auditEventId   String                  @unique @map("audit_event_id") @db.Uuid
   case           Case                    @relation("CaseHearingAdvances", fields: [caseId, departmentId], references: [id, departmentId], onDelete: Restrict, onUpdate: Restrict)
+  trialRound     CaseTrialRound          @relation(fields: [trialRoundId, caseId, departmentId], references: [id, caseId, departmentId], onDelete: Restrict, onUpdate: Restrict)
   currentForCase Case[]                  @relation("CaseCurrentHearingAdvance")
   arrangement    CaseHearingArrangement  @relation(fields: [arrangementId, caseId, departmentId], references: [id, caseId, departmentId], onDelete: Restrict, onUpdate: Restrict)
   auditEvent     AuditEvent              @relation("HearingAdvanceAudit", fields: [auditEventId], references: [id], onDelete: Restrict, onUpdate: Restrict)
   corrections    CaseHearingCorrection[]
 
   @@unique([id, caseId, departmentId])
+  @@unique([id, caseId, departmentId, trialRoundId])
   @@map("case_hearing_advances")
 }
 
@@ -2174,6 +2211,7 @@ model CaseJudgmentFact {
   id                     String                @id @default(uuid()) @db.Uuid
   departmentId           String                @map("department_id") @db.Uuid
   caseId                 String                @map("case_id") @db.Uuid
+  trialRoundId           String                @map("trial_round_id") @db.Uuid
   kind                   CaseJudgmentKind
   priorFactId            String?               @unique @map("prior_fact_id") @db.Uuid
   judgmentReceivedAt     DateTime              @map("judgment_received_at") @db.Date
@@ -2188,6 +2226,7 @@ model CaseJudgmentFact {
   toVersion              Int                   @map("to_version")
   auditEventId           String                @unique @map("audit_event_id") @db.Uuid
   case                   Case                  @relation("CaseJudgmentFacts", fields: [caseId, departmentId], references: [id, departmentId], onDelete: Restrict, onUpdate: Restrict)
+  trialRound             CaseTrialRound        @relation(fields: [trialRoundId, caseId, departmentId], references: [id, caseId, departmentId], onDelete: Restrict, onUpdate: Restrict)
   currentForCase         Case?                 @relation("CaseCurrentJudgment")
   priorFact              CaseJudgmentFact?     @relation("JudgmentChain", fields: [priorFactId, caseId, departmentId], references: [id, caseId, departmentId], onDelete: Restrict, onUpdate: Restrict)
   nextFact               CaseJudgmentFact?     @relation("JudgmentChain")
@@ -2197,6 +2236,7 @@ model CaseJudgmentFact {
   nextSteps              CaseJudgmentNextStep[]
 
   @@unique([id, caseId, departmentId])
+  @@unique([id, caseId, departmentId, trialRoundId])
   @@unique([priorFactId, caseId, departmentId])
   @@index([caseId, toVersion])
   @@map("case_judgment_facts")
@@ -2250,6 +2290,7 @@ model CaseJudgmentNextStep {
   id                          String                            @id @default(uuid()) @db.Uuid
   caseId                      String                            @map("case_id") @db.Uuid
   departmentId                String                            @map("department_id") @db.Uuid
+  trialRoundId                String                            @map("trial_round_id") @db.Uuid
   judgmentId                  String                            @map("judgment_id") @db.Uuid
   next                        CaseJudgmentNextStepKind
   plaintiffRightsHolderId     String?                           @map("plaintiff_rights_holder_id") @db.Uuid
@@ -2261,6 +2302,7 @@ model CaseJudgmentNextStep {
   recordedByUserId            String                            @map("recorded_by_user_id") @db.Uuid
   auditEventId                String                            @unique @map("audit_event_id") @db.Uuid
   case                        Case                              @relation("CaseJudgmentNextSteps", fields: [caseId, departmentId], references: [id, departmentId], onDelete: Restrict, onUpdate: Restrict)
+  trialRound                  CaseTrialRound                    @relation(fields: [trialRoundId, caseId, departmentId], references: [id, caseId, departmentId], onDelete: Restrict, onUpdate: Restrict)
   currentForCase              Case?                             @relation("CaseCurrentJudgmentNextStep")
   judgment                    CaseJudgmentFact                  @relation(fields: [judgmentId, caseId, departmentId], references: [id, caseId, departmentId], onDelete: Restrict, onUpdate: Restrict)
   plaintiff                   RightsHolder?                     @relation(fields: [plaintiffRightsHolderId, departmentId], references: [id, departmentId], onDelete: Restrict, onUpdate: Restrict)
@@ -2270,6 +2312,7 @@ model CaseJudgmentNextStep {
   auditEvent                  AuditEvent                        @relation(fields: [auditEventId], references: [id], onDelete: Restrict, onUpdate: Restrict)
 
   @@unique([id, caseId, departmentId])
+  @@unique([id, caseId, departmentId, trialRoundId])
   @@unique([caseId, fromVersion])
   @@unique([caseId, toVersion])
   @@map("case_judgment_next_steps")

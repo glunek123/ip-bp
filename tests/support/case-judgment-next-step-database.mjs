@@ -93,10 +93,10 @@ async function attemptForgedPlaintiffSnapshot(client, ids) {
       ],
     );
     await client.query(
-      `INSERT INTO case_judgment_next_steps(id,case_id,department_id,judgment_id,
+      `INSERT INTO case_judgment_next_steps(id,case_id,department_id,trial_round_id,judgment_id,
       next,plaintiff_rights_holder_id,plaintiff_name,execution_readiness_confirmed,
       from_version,to_version,recorded_at,recorded_by_user_id,audit_event_id)
-      VALUES ($1,$2,$3,$4,'APPEAL',$5,'伪造原告名',false,10,11,$6,$7,$8)`,
+      VALUES ($1,$2,$3,$9,$4,'APPEAL',$5,'伪造原告名',false,10,11,$6,$7,$8)`,
       [
         choiceId,
         ids.case,
@@ -106,6 +106,7 @@ async function attemptForgedPlaintiffSnapshot(client, ids) {
         recordedAt,
         ids.actor,
         auditId,
+        ids.trialRound,
       ],
     );
     await client.query(
@@ -294,10 +295,10 @@ async function attemptDirectChoice(client, database, ids, variant) {
       ],
     );
     await client.query(
-      `INSERT INTO case_judgment_next_steps(id,case_id,department_id,judgment_id,next,
+      `INSERT INTO case_judgment_next_steps(id,case_id,department_id,trial_round_id,judgment_id,next,
       plaintiff_rights_holder_id,plaintiff_name,execution_readiness_confirmed,from_version,to_version,
       recorded_at,recorded_by_user_id,audit_event_id)
-      VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9,$10,$11,$12,$13)`,
+      VALUES ($1,$2,$3,$14,$4,$5,$6,$7,$8,$9,$10,$11,$12,$13)`,
       [
         choiceId,
         ids.case,
@@ -312,6 +313,7 @@ async function attemptDirectChoice(client, database, ids, variant) {
         recordedAt,
         ids.actor,
         auditId,
+        ids.trialRound,
       ],
     );
     if (defendantId !== null)
@@ -376,9 +378,9 @@ async function attemptCrossCaseChoicePointer(client, database, ids) {
     const otherChoiceId = randomUUID();
     await client.query('SET LOCAL session_replication_role = replica');
     await client.query(
-      `INSERT INTO case_judgment_next_steps(id,case_id,department_id,judgment_id,next,
+      `INSERT INTO case_judgment_next_steps(id,case_id,department_id,trial_round_id,judgment_id,next,
       execution_readiness_confirmed,from_version,to_version,recorded_by_user_id,audit_event_id)
-      VALUES ($1,$2,$3,$4,'EXECUTION',true,10,11,$5,$6)`,
+      VALUES ($1,$2,$3,$7,$4,'EXECUTION',true,10,11,$5,$6)`,
       [
         otherChoiceId,
         otherCaseId,
@@ -386,6 +388,7 @@ async function attemptCrossCaseChoicePointer(client, database, ids) {
         ids.judgment,
         ids.actor,
         randomUUID(),
+        ids.trialRound,
       ],
     );
     await client.query('SET LOCAL session_replication_role = origin');
@@ -550,6 +553,8 @@ export async function verifyCoreCaseJudgmentNextStepFixtureCleanup(
   const ids = Object.fromEntries(
     [
       'case',
+      'trialRound',
+      'acceptance',
       'judgment',
       'judgmentAudit',
       'choice',
@@ -628,22 +633,38 @@ export async function verifyCoreCaseJudgmentNextStepFixtureCleanup(
         ],
       );
       await client.query(
-        `INSERT INTO case_judgment_facts(id,department_id,case_id,kind,judgment_received_at,
+        'INSERT INTO case_trial_rounds(id,case_id,department_id,sequence) VALUES ($1,$2,$3,1)',
+        [ids.trialRound, ids.case, coreLeadFixtures.departmentA],
+      );
+      await client.query(
+        "INSERT INTO case_acceptances(id,case_id,department_id,trial_round_id,accepted_at,court_case_no,recorded_by_user_id,audit_event_id) VALUES ($1,$2,$3,$4,'2026-10-01','CA009-cleanup',$5,$6)",
+        [
+          ids.acceptance,
+          ids.case,
+          coreLeadFixtures.departmentA,
+          ids.trialRound,
+          coreLeadFixtures.userA,
+          randomUUID(),
+        ],
+      );
+      await client.query(
+        `INSERT INTO case_judgment_facts(id,department_id,case_id,trial_round_id,kind,judgment_received_at,
         judgment_amount_state,judgment_amount,paid_litigation_fee_state,recorded_by_user_id,
         from_version,to_version,audit_event_id)
-        VALUES ($1,$2,$3,'REGISTER','2026-10-08','KNOWN',0,'PENDING',$4,1,2,$5)`,
+        VALUES ($1,$2,$3,$6,'REGISTER','2026-10-08','KNOWN',0,'PENDING',$4,1,2,$5)`,
         [
           ids.judgment,
           coreLeadFixtures.departmentA,
           ids.case,
           coreLeadFixtures.userA,
           ids.judgmentAudit,
+          ids.trialRound,
         ],
       );
       await client.query(
-        `INSERT INTO case_judgment_next_steps(id,case_id,department_id,judgment_id,next,
+        `INSERT INTO case_judgment_next_steps(id,case_id,department_id,trial_round_id,judgment_id,next,
         execution_readiness_confirmed,from_version,to_version,recorded_by_user_id,audit_event_id)
-        VALUES ($1,$2,$3,$4,'EXECUTION',true,2,3,$5,$6)`,
+        VALUES ($1,$2,$3,$7,$4,'EXECUTION',true,2,3,$5,$6)`,
         [
           ids.choice,
           ids.case,
@@ -651,7 +672,12 @@ export async function verifyCoreCaseJudgmentNextStepFixtureCleanup(
           ids.judgment,
           coreLeadFixtures.userA,
           ids.choiceAudit,
+          ids.trialRound,
         ],
+      );
+      await client.query(
+        'UPDATE cases SET current_trial_round_id=$2,current_acceptance_id=$3 WHERE id=$1',
+        [ids.case, ids.trialRound, ids.acceptance],
       );
       await client.query(
         `INSERT INTO case_judgment_next_step_receipts(id,department_id,actor_user_id,
@@ -739,6 +765,8 @@ export async function verifyCaseJudgmentNextStepDatabase() {
       'customer',
       'holder',
       'case',
+      'trialRound',
+      'acceptance',
       'judgment',
       'audit',
       'defendantA',
@@ -845,11 +873,37 @@ export async function verifyCaseJudgmentNextStepDatabase() {
       [ids.audit, ids.department, ids.actor, ids.case],
     );
     await client.query(
-      `INSERT INTO case_judgment_facts(id,department_id,case_id,kind,judgment_received_at,
+      'INSERT INTO case_trial_rounds(id,case_id,department_id,sequence) VALUES ($1,$2,$3,1)',
+      [ids.trialRound, ids.case, ids.department],
+    );
+    await client.query(
+      "INSERT INTO case_acceptances(id,case_id,department_id,trial_round_id,accepted_at,court_case_no,recorded_by_user_id,audit_event_id) VALUES ($1,$2,$3,$4,'2026-10-01','CA009-test',$5,$6)",
+      [
+        ids.acceptance,
+        ids.case,
+        ids.department,
+        ids.trialRound,
+        ids.actor,
+        randomUUID(),
+      ],
+    );
+    await client.query(
+      `INSERT INTO case_judgment_facts(id,department_id,case_id,trial_round_id,kind,judgment_received_at,
       judgment_amount_state,judgment_amount,paid_litigation_fee_state,recorded_by_user_id,
       from_version,to_version,audit_event_id)
-      VALUES ($1,$2,$3,'REGISTER','2026-10-08','KNOWN',0,'PENDING',$4,9,10,$5)`,
-      [ids.judgment, ids.department, ids.case, ids.actor, ids.audit],
+      VALUES ($1,$2,$3,$6,'REGISTER','2026-10-08','KNOWN',0,'PENDING',$4,9,10,$5)`,
+      [
+        ids.judgment,
+        ids.department,
+        ids.case,
+        ids.actor,
+        ids.audit,
+        ids.trialRound,
+      ],
+    );
+    await client.query(
+      'UPDATE cases SET current_trial_round_id=$2,current_acceptance_id=$3 WHERE id=$1',
+      [ids.case, ids.trialRound, ids.acceptance],
     );
     await client.query(
       `INSERT INTO case_defendants(id,case_id,department_id,kind,name)
@@ -1141,10 +1195,10 @@ export async function verifyCaseJudgmentNextStepDatabase() {
         [correctedAudit, ids.department, ids.actor, ids.case],
       );
       await client.query(
-        `INSERT INTO case_judgment_facts(id,department_id,case_id,kind,prior_fact_id,
+        `INSERT INTO case_judgment_facts(id,department_id,case_id,trial_round_id,kind,prior_fact_id,
         judgment_received_at,judgment_amount_state,judgment_amount,paid_litigation_fee_state,
         reason,recorded_by_user_id,from_version,to_version,audit_event_id)
-        VALUES ($1,$2,$3,'CORRECT',$4,'2026-10-08','KNOWN',0,'PENDING',
+        VALUES ($1,$2,$3,$7,'CORRECT',$4,'2026-10-08','KNOWN',0,'PENDING',
           '跨选择撤销间隔更正',$5,14,15,$6)`,
         [
           correctedId,
@@ -1153,6 +1207,7 @@ export async function verifyCaseJudgmentNextStepDatabase() {
           ids.judgment,
           ids.actor,
           correctedAudit,
+          ids.trialRound,
         ],
       );
       await client.query('SET LOCAL session_replication_role = origin');
@@ -1193,6 +1248,12 @@ export async function verifyCaseJudgmentNextStepDatabase() {
         ids.department,
       ]);
       await client.query('DELETE FROM cases WHERE id=$1', [ids.case]);
+      await client.query('DELETE FROM case_acceptances WHERE id=$1', [
+        ids.acceptance,
+      ]);
+      await client.query('DELETE FROM case_trial_rounds WHERE id=$1', [
+        ids.trialRound,
+      ]);
       await client.query('DELETE FROM lawyer_account_bindings WHERE id=$1', [
         ids.lawyerBinding,
       ]);

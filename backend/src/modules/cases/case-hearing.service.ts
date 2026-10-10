@@ -132,6 +132,7 @@ export class CaseHearingService {
                 departmentId: true,
                 stage: true,
                 version: true,
+                currentTrialRoundId: true,
                 responsibleUserId: true,
                 responsibleMembership: { select: { teamId: true } },
                 acceptance: { select: { acceptedAt: true } },
@@ -200,6 +201,7 @@ export class CaseHearingService {
             }
             if (
               record.acceptance === null ||
+              record.currentTrialRoundId === null ||
               (action === 'SCHEDULE' && record.stage !== 'WAITING_HEARING') ||
               (action === 'CORRECT' &&
                 (record.stage !== 'WAITING_JUDGMENT' ||
@@ -268,6 +270,7 @@ export class CaseHearingService {
                 id: arrangementId,
                 departmentId: actor.departmentId,
                 caseId,
+                trialRoundId: record.currentTrialRoundId,
                 hearingAt:
                   value.hearingAt === null
                     ? null
@@ -385,9 +388,15 @@ export class CaseHearingService {
                 stage: true,
                 version: true,
                 currentHearingArrangementId: true,
+                currentTrialRoundId: true,
                 currentHearingAdvanceId: true,
                 currentHearingArrangement: {
-                  select: { id: true, hearingAt: true, toVersion: true },
+                  select: {
+                    id: true,
+                    hearingAt: true,
+                    toVersion: true,
+                    trialRoundId: true,
+                  },
                 },
               },
             });
@@ -395,7 +404,9 @@ export class CaseHearingService {
             if (
               record?.stage !== 'WAITING_HEARING' ||
               record.currentHearingAdvanceId !== null ||
+              record.currentTrialRoundId === null ||
               arrangement?.hearingAt == null ||
+              arrangement.trialRoundId !== record.currentTrialRoundId ||
               record.version !== arrangement.toVersion
             )
               return false;
@@ -439,6 +450,7 @@ export class CaseHearingService {
                 id: advanceId,
                 departmentId: candidate.departmentId,
                 caseId: candidate.id,
+                trialRoundId: record.currentTrialRoundId,
                 arrangementId: arrangement.id,
                 dueAt: due[0].due_at,
                 executedAt,

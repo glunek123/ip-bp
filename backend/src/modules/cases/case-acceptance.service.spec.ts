@@ -26,6 +26,8 @@ describe('CaseAcceptanceService', () => {
           departmentId: actor.departmentId,
           stage: 'WAITING_FORMAL_ACCEPTANCE',
           version: 6,
+          currentTrialRoundId: null,
+          currentAcceptanceId: null,
           responsibleUserId: actor.userId,
           responsibleMembership: { teamId: null },
           filingSubmission: {
@@ -45,6 +47,9 @@ describe('CaseAcceptanceService', () => {
       },
       caseAcceptance: {
         create: jest.fn().mockResolvedValue({ id: 'acceptance' }),
+      },
+      caseTrialRound: {
+        create: jest.fn().mockResolvedValue({ id: 'round' }),
       },
       auditEvent: {
         create: jest
@@ -102,6 +107,43 @@ describe('CaseAcceptanceService', () => {
     expect(f.tx.caseAcceptance.create).toHaveBeenCalledTimes(1);
     expect(f.materials.freezeCaseAcceptanceReferences).toHaveBeenCalledTimes(1);
     expect(f.tx.caseAcceptanceReceipt.create).toHaveBeenCalledTimes(1);
+  });
+
+  it('creates the initial round when an unaccepted case is first accepted', async () => {
+    const f = fixture();
+    await f.service.register(actor, caseId, input);
+    expect(f.tx.caseTrialRound.create).toHaveBeenCalledWith({
+      data: expect.objectContaining({
+        caseId,
+        departmentId: actor.departmentId,
+        sequence: 1,
+      }),
+      select: { id: true },
+    });
+    expect(f.tx.caseAcceptance.create).toHaveBeenCalledWith({
+      data: expect.objectContaining({ trialRoundId: 'round' }),
+      select: { id: true },
+    });
+    expect(f.tx.case.updateMany).toHaveBeenCalledWith({
+      where: expect.anything(),
+      data: expect.objectContaining({ currentTrialRoundId: 'round' }),
+    });
+  });
+
+  it('uses the active empty remand round without changing its identity', async () => {
+    const f = fixture();
+    const before = await f.tx.case.findFirst();
+    f.tx.case.findFirst.mockResolvedValue({
+      ...before,
+      currentTrialRoundId: 'existing-round',
+      currentAcceptanceId: null,
+    });
+    await f.service.register(actor, caseId, input);
+    expect(f.tx.caseTrialRound.create).not.toHaveBeenCalled();
+    expect(f.tx.caseAcceptance.create).toHaveBeenCalledWith({
+      data: expect.objectContaining({ trialRoundId: 'existing-round' }),
+      select: { id: true },
+    });
   });
 
   it('allows no optional material and preserves the same receipt on replay', async () => {

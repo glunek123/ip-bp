@@ -18,6 +18,7 @@ describe('CaseJudgmentNextStepService', () => {
       stage: 'WAITING_JUDGMENT',
       version: 10,
       currentJudgmentId: judgmentId,
+      currentTrialRoundId: '99999999-9999-4999-8999-999999999999',
       currentJudgmentNextStepId: null,
       rightsHolderId: '66666666-6666-4666-8666-666666666666',
       rightsHolder: { name: '权利主体' },

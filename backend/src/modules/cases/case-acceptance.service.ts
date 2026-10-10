@@ -64,6 +64,8 @@ export class CaseAcceptanceService {
                 departmentId: true,
                 stage: true,
                 version: true,
+                currentTrialRoundId: true,
+                currentAcceptanceId: true,
                 responsibleUserId: true,
                 responsibleMembership: { select: { teamId: true } },
                 filingSubmission: { select: { submittedAt: true } },
@@ -148,7 +150,8 @@ export class CaseAcceptanceService {
             }
             if (
               record.stage !== 'WAITING_FORMAL_ACCEPTANCE' ||
-              record.filingSubmission === null
+              record.filingSubmission === null ||
+              record.currentAcceptanceId !== null
             )
               throw this.invalidState();
             if (record.version !== value.expectedVersion)
@@ -171,6 +174,18 @@ export class CaseAcceptanceService {
                 })),
               );
             }
+            const trialRoundId =
+              record.currentTrialRoundId ??
+              (
+                await tx.caseTrialRound.create({
+                  data: {
+                    caseId,
+                    departmentId: actor.departmentId,
+                    sequence: 1,
+                  },
+                  select: { id: true },
+                })
+              ).id;
             const updated = await tx.case.updateMany({
               where: {
                 id: caseId,
@@ -181,6 +196,7 @@ export class CaseAcceptanceService {
               data: {
                 stage: 'WAITING_HEARING',
                 courtCaseNo: value.courtCaseNo,
+                currentTrialRoundId: trialRoundId,
                 version: { increment: 1 },
               },
             });
@@ -215,6 +231,7 @@ export class CaseAcceptanceService {
               data: {
                 departmentId: actor.departmentId,
                 caseId,
+                trialRoundId,
                 acceptedAt: new Date(`${value.acceptedAt}T00:00:00.000Z`),
                 courtCaseNo: value.courtCaseNo,
                 recordedAt,
@@ -222,6 +239,14 @@ export class CaseAcceptanceService {
                 auditEventId: audit.id,
               },
               select: { id: true },
+            });
+            await tx.case.updateMany({
+              where: {
+                id: caseId,
+                departmentId: actor.departmentId,
+                currentTrialRoundId: trialRoundId,
+              },
+              data: { currentAcceptanceId: acceptance.id },
             });
             await this.materials.freezeCaseAcceptanceReferences(
               tx,

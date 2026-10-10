@@ -29,6 +29,7 @@ describe('CaseJudgmentService', () => {
           id: caseId,
           departmentId: actor.departmentId,
           stage: 'WAITING_JUDGMENT',
+          currentTrialRoundId: '99999999-9999-4999-8999-999999999999',
           version: 9,
           responsibleUserId: actor.userId,
           responsibleMembership: { teamId: null },

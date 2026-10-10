@@ -74,6 +74,7 @@ export class CaseJudgmentService {
                 departmentId: true,
                 stage: true,
                 version: true,
+                currentTrialRoundId: true,
                 currentJudgmentId: true,
                 currentJudgmentNextStepId: true,
                 responsibleUserId: true,
@@ -140,6 +141,7 @@ export class CaseJudgmentService {
             if (
               record.stage !== 'WAITING_JUDGMENT' ||
               record.acceptance === null ||
+              record.currentTrialRoundId === null ||
               (action === 'REGISTER' && record.currentJudgmentId !== null) ||
               (action === 'CORRECT' && record.currentJudgmentId === null) ||
               record.currentJudgmentNextStepId !== null
@@ -204,6 +206,7 @@ export class CaseJudgmentService {
                 id: judgmentId,
                 departmentId: actor.departmentId,
                 caseId,
+                trialRoundId: record.currentTrialRoundId,
                 kind: action,
                 priorFactId:
                   action === 'CORRECT' ? record.currentJudgmentId : null,
