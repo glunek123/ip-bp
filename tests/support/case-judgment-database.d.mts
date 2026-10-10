@@ -1,3 +1,27 @@
+export type RegisteredJudgmentFixture = {
+  actor: { userId: string; departmentId: string; authorizationRevision: number };
+  roleId: string;
+  caseId: string;
+  judgmentId: string;
+  registeredFiles: Array<{ materialId: string; contentVersionId: string; bytes: Buffer }>;
+  registrationInput: {
+    expectedVersion: number;
+    idempotencyKey: string;
+    judgmentReceivedAt: string;
+    judgmentAmountState: string;
+    judgmentAmount: string;
+    paidLitigationFeeState: string;
+    paidLitigationFee: null;
+    judgmentContentVersionIds: string[];
+  };
+  judgment: unknown;
+  materials: unknown;
+  database: unknown;
+  client: unknown;
+};
+export function verifyCaseJudgmentDatabase<T>(options: {
+  afterRegistration: (context: RegisteredJudgmentFixture) => Promise<T>;
+}): Promise<T>;
 export function verifyCaseJudgmentDatabase(): Promise<{
   stage: string;
   version: number;

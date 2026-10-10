@@ -554,7 +554,7 @@ export async function verifyCoreCaseJudgmentFixtureCleanup(
   }
 }
 
-export async function verifyCaseJudgmentDatabase() {
+export async function verifyCaseJudgmentDatabase(options = {}) {
   const client = new Client({ connectionString: databaseUrl });
   const database = new PrismaClient({
     adapter: new PrismaPg({ connectionString: databaseUrl }),
@@ -565,6 +565,7 @@ export async function verifyCaseJudgmentDatabase() {
     actor: randomUUID(),
     role: randomUUID(),
     customer: randomUUID(),
+    holder: randomUUID(),
     case: randomUUID(),
     acceptance: randomUUID(),
     arrangement: randomUUID(),
@@ -610,6 +611,10 @@ export async function verifyCaseJudgmentDatabase() {
       ],
     );
     await client.query(
+      'INSERT INTO rights_holders(id,name,department_id,updated_at) VALUES ($1,$2,$3,now())',
+      [ids.holder, 'CA008 rights holder', ids.department],
+    );
+    await client.query(
       'INSERT INTO role_templates(id,department_id,name,updated_at) VALUES ($1,$2,$3,now())',
       [ids.role, ids.department, 'CA008 test role'],
     );
@@ -639,7 +644,7 @@ export async function verifyCaseJudgmentDatabase() {
           randomUUID(),
           randomUUID(),
           ids.customer,
-          randomUUID(),
+          ids.holder,
           ids.actor,
           ids.arrangement,
           ids.advance,
@@ -735,6 +740,13 @@ export async function verifyCaseJudgmentDatabase() {
       ),
     };
     const result = await judgment.register(actor, ids.case, input);
+    if (options.afterRegistration) {
+      return await options.afterRegistration({
+        actor, roleId: ids.role, caseId: ids.case, judgmentId: result.judgmentId,
+        judgment, materials, database, client, registeredFiles,
+        registrationInput: input,
+      });
+    }
     const snapshot = {
       case: await database.case.findUnique({
         where: { id: ids.case },
@@ -1165,6 +1177,10 @@ export async function verifyCaseJudgmentDatabase() {
     try {
       await client.query('SET LOCAL session_replication_role = replica');
       const tables = [
+        'case_judgment_next_step_receipts',
+        'case_judgment_appeal_defendants',
+        'case_judgment_next_step_revocations',
+        'case_judgment_next_steps',
         'case_judgment_receipts',
         'case_judgment_versions',
         'case_judgment_facts',
@@ -1200,6 +1216,7 @@ export async function verifyCaseJudgmentDatabase() {
         ['CASE', ids.case],
       );
       await client.query('DELETE FROM cases WHERE id=$1', [ids.case]);
+      await client.query('DELETE FROM rights_holders WHERE id=$1', [ids.holder]);
       await client.query('DELETE FROM customers WHERE id=$1', [ids.customer]);
       await client.query(
         'DELETE FROM role_assignments WHERE role_template_id=$1',
@@ -1209,6 +1226,8 @@ export async function verifyCaseJudgmentDatabase() {
         ids.role,
       ]);
       await client.query('DELETE FROM role_templates WHERE id=$1', [ids.role]);
+      await client.query('DELETE FROM auth_sessions WHERE user_id=$1', [ids.actor]);
+      await client.query('DELETE FROM local_credentials WHERE user_id=$1', [ids.actor]);
       await client.query(
         'DELETE FROM department_memberships WHERE user_id=$1',
         [ids.actor],
