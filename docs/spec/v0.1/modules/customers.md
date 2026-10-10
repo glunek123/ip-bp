@@ -6,7 +6,7 @@
 
 ## REQ-CU-001 建档与稳定关联
 
-SD-48补充：正式系统只维护负责运营（responsibleUserId），不增加客户经理。客户读取沿用既有完整Grant和负责运营／团队范围，维护与转派仍需各自对应权限。
+SD-48补充：保留客户经理资料字段，不建立客户经理角色或访问关系。客户经理与负责运营（responsibleUserId）分别记录，不要求客户经理绑定登录账号，不因填写姓名创建账号、授予权限或扩大数据范围。客户读取沿用既有完整Grant和负责运营／团队范围，维护与转派仍需各自对应权限。
 
 - 状态：确认方向（SD-11/12/22/28～33）＋纠偏约束。来源：CU-C01 CU-C06 FIX-07 FIX-11。字段组：CU01/CU02/CU04/CU06/AC01～06。
 - 目标／动作与结果：授权人员维护真实客户信息和稳定身份。信用／证件号码在本部门精确相同禁止重复创建并引导使用已有客户；仅名称相同则提醒，填写继续原因后可创建。无正式证件只保存草稿，不得用于正式取证或案件。客户暂停／终止后不得新增业务，存量默认继续，有对应权限的人员可逐项暂停并填写原因。
@@ -71,7 +71,7 @@ SD-47补充：本轮批准实际人工结算台账，逐笔录入实际结算日
 ## REQ-CU-007 负责运营与合作状态维护
 
 - 状态：SD-12/48方向及用户切片开发已确认；本节固定CORE-CU-005范围，实施及验收状态见路线图。
-- 客户仅一位负责运营responsibleUserId，不新增客户经理；转派不改变customer.teamId、子业务负责人、企业账号或角色授权。目标须为同部门有效内部账号和有效部门成员；有团队时团队须有效，但目标团队不必等于客户团队。目标是否能读客户仍取决于自己的当前Grant。
+- 客户仅一位负责运营responsibleUserId；客户经理是独立普通资料字段，不要求为内部账号，不建立角色或访问关系，也不因负责运营转派自动改写。转派不改变customer.teamId、子业务负责人、企业账号或角色授权。目标须为同部门有效内部账号和有效部门成员；有团队时团队须有效，但目标团队不必等于客户团队。目标是否能读客户仍取决于自己的当前Grant。
 - 合作状态cooperationStatus与profileStatus独立，为COOPERATING/PAUSED/TERMINATED；旧客户默认COOPERATING，不生成协议日期。COOPERATING可暂停或终止，PAUSED可恢复或终止，TERMINATED可恢复；同态409且无版本/事实/审计变化。pause/terminate及转派原因去空白后必填1～500字；resume可省略，填写时也为1～500字。DRAFT/ADMITTED均可授权维护，已删除客户拒绝；维护历史本身不阻断CU004无关联草稿删除。
 - 独立Action为customer.responsible.transfer及customer.cooperation.pause/terminate/resume，均支持SELF/TEAM/DEPARTMENT；当前customer.read与动作Grant分别覆盖变更前客户，既有角色不自动获权。候选运营查询同样需read与transfer，只返回id/displayName/teamName，分页默认20、上限100，不要求user.read，不暴露账号名、邮箱、角色。
 - HTTP：GET /customers/:id/eligible-operators；POST /customers/:id/responsible-transfer提交expectedVersion/targetUserId/reason；POST /customers/:id/cooperation提交expectedVersion/action/reason?；写请求使用Idempotency-Key且拒绝未知字段。成功仅返回customerId/action/resultVersion/occurredAt/canReadAfter。转派使源SELF失读时仍返回已成功的最小结果，前端提示成功并离开详情。

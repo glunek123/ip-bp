@@ -8,7 +8,7 @@ CORE-CA-001～008及SD-44律师身份前置补齐均已验收、推送并集成m
 
 ## 当前任务
 
-唯一Current为**CORE-CU-008｜真实人工结算台账（已验收并集成main）**，Next为CORE-CA-009后续案件切片（未领取）。客户001～008组合及人工修复/界面统一已验收、推送并快进集成main至b719857；分支codex/customer-module-alignment，基线8a8fe11。依据已批准SD-45～48及客户正式契约实施，只有负责运营，没有客户经理。
+唯一Current为**CORE-CU-008｜真实人工结算台账（已验收并集成main）**，Next为CORE-CA-009后续案件切片（未领取）。客户001～008组合及人工修复/界面统一已验收、推送并快进集成main至b719857；分支codex/customer-module-alignment，基线8a8fe11。依据已批准SD-45～48及客户正式契约实施；客户经理仅为待交付的普通资料字段，负责运营仍是独立的授权与数据范围事实。
 
 实际候选5cc84c1/tree2dd737a完整verify通过：工具74/74、前端892/892（84文件）、后端1171/1171（93 suites）及双构建；全库隔离PG/Chromium293/293通过，覆盖完整112条迁移链、旧事实/回执、SQL负例、失败原子及重试。原非实现Sol对八片累计及最终回归补审Spec compliance/Quality均ACCEPTED、未关闭C/I/M0/0/0；同模型隔离独立性不足，外部异模型Review Pending。原首轮4f851d9完整verify虽通过，全库为289/293、4项失败；5873d7d最小修复后原审查者补审关闭，保留原失败、trace、RED/GREEN及审查历史，不把旧结果标为新候选通过。完整候选、证据和限制见[验证记录](spec/v0.1/VALIDATION.md)。
 
