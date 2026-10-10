@@ -611,17 +611,17 @@ onBeforeUnmount(() => {
       >只读刷新联系人</ElButton
     >
     <div class="detail-actions">
-      <button
-        type="button"
+      <ElButton
+        native-type="button"
         :aria-pressed="status === 'ACTIVE'"
         @click="
           status = 'ACTIVE';
           page = 1;
         "
       >
-        活动联系人</button
-      ><button
-        type="button"
+        活动联系人</ElButton
+      ><ElButton
+        native-type="button"
         :aria-pressed="status === 'ENDED'"
         @click="
           status = 'ENDED';
@@ -629,7 +629,7 @@ onBeforeUnmount(() => {
         "
       >
         已结束
-      </button>
+      </ElButton>
     </div>
     <p v-if="!props.customer.primaryContactId">当前未指定主要联系人</p>
     <p v-else>主要联系人已从当前授权数据确认。</p>
@@ -660,20 +660,21 @@ onBeforeUnmount(() => {
     <p v-else-if="!contacts.length && !error">
       暂无{{ status === 'ACTIVE' ? '活动' : '已结束' }}联系人
     </p>
-    <ul>
+    <ul class="customer-contact-list">
       <li
         v-for="contact in contacts"
         :key="contact.id"
         :data-test="`contact-${contact.id}`"
       >
-        <button type="button" @click="loadVersions(contact)">
+        <ElButton native-type="button" @click="loadVersions(contact)">
           {{ contact.name }} · {{ contact.phone || contact.email
-          }}<span v-if="contact.isPrimary">（主要）</span></button
+          }}<span v-if="contact.isPrimary">（主要）</span></ElButton
         ><small
           >{{ contact.origin === 'LEGACY_BACKFILL' ? '系统记录时间：' : ''
           }}{{ new Date(contact.createdAt).toLocaleDateString('zh-CN') }}</small
         ><ElButton
           v-if="canWrite && !contact.endedAt"
+          :data-test="`contact-edit-${contact.id}`"
           @click="
             selected = contact;
             resetForm(contact);
@@ -721,7 +722,11 @@ onBeforeUnmount(() => {
         >
       </div>
     </div>
-    <form v-if="canWrite && (editingId || !frozen)" @submit.prevent="submit">
+    <form
+      class="customer-contacts-form"
+      v-if="canWrite && (editingId || !frozen)"
+      @submit.prevent="submit"
+    >
       <h3>{{ editingId ? '编辑联系人' : '新增联系人' }}</h3>
       <label>姓名<input v-model="name" maxlength="100" required /></label
       ><label>电话<input v-model="phone" maxlength="30" /></label
@@ -730,22 +735,28 @@ onBeforeUnmount(() => {
       ><label v-if="!editingId"
         ><input v-model="primary" type="checkbox" />设为主要联系人</label
       ><label v-if="editingId && selected?.endedAt === null"
-        >结束原因（选填）<input v-model="endReason" maxlength="500" /></label
-      ><ElButton native-type="submit" :disabled="saving || Boolean(frozen)"
-        >保存联系人</ElButton
-      ><ElButton
-        v-if="editingId && selected?.endedAt === null"
-        native-type="button"
-        :disabled="saving || Boolean(frozen)"
-        @click="end"
-        >结束关系</ElButton
-      ><ElButton
-        v-if="editingId && selected?.endedAt === null"
-        native-type="button"
-        :disabled="saving || Boolean(frozen)"
-        @click="setPrimary"
-        >{{ selected?.isPrimary ? '取消主要' : '设为主要' }}</ElButton
-      >
+        >结束原因（选填）<input v-model="endReason" maxlength="500"
+      /></label>
+      <div class="customer-form-actions">
+        <ElButton
+          native-type="submit"
+          type="primary"
+          :disabled="saving || Boolean(frozen)"
+          >保存联系人</ElButton
+        ><ElButton
+          v-if="editingId && selected?.endedAt === null"
+          native-type="button"
+          :disabled="saving || Boolean(frozen)"
+          @click="end"
+          >结束关系</ElButton
+        ><ElButton
+          v-if="editingId && selected?.endedAt === null"
+          native-type="button"
+          :disabled="saving || Boolean(frozen)"
+          @click="setPrimary"
+          >{{ selected?.isPrimary ? '取消主要' : '设为主要' }}</ElButton
+        >
+      </div>
     </form>
     <p v-if="error" role="alert">{{ error }}</p>
     <ElButton

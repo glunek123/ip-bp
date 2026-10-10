@@ -1,4 +1,5 @@
 <script setup lang="ts">
+import './customer-workspace.css';
 import { onBeforeUnmount, ref, watch } from 'vue';
 import { RouterLink, useRoute } from 'vue-router';
 import { ElButton } from 'element-plus/es/components/button/index.mjs';
@@ -62,7 +63,7 @@ onBeforeUnmount(() => activeRequest?.abort());
 </script>
 
 <template>
-  <div class="page-view page-view--narrow">
+  <div class="page-view customer-workspace">
     <main>
       <RouterLink
         class="back-link"

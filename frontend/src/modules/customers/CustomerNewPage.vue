@@ -1,4 +1,5 @@
 <script setup lang="ts">
+import './customer-workspace.css';
 import { computed, ref } from 'vue';
 import { RouterLink, useRouter } from 'vue-router';
 import { ElButton } from 'element-plus/es/components/button/index.mjs';
@@ -123,13 +124,13 @@ async function submit(): Promise<void> {
 </script>
 
 <template>
-  <div class="page-view page-view--narrow">
+  <div class="page-view customer-workspace customer-form-page">
     <main>
       <RouterLink class="back-link" to="/customers">← 返回客户列表</RouterLink>
       <div class="section-heading section-heading--form">
         <div>
-          <p class="section-kicker">新建客户</p>
-          <h1>先保存一份草稿</h1>
+          <p class="section-kicker">客户管理</p>
+          <h1>新建客户</h1>
           <p>只需客户名称即可开始，证件和联系人稍后补充。</p>
         </div>
       </div>

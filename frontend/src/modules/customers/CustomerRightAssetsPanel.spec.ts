@@ -389,6 +389,8 @@ describe('CustomerRightAssetsPanel', () => {
         .trigger('click');
       await flushPromises();
     }
+    expect(rows()[0]!.text()).toContain('已上传并登记');
+    expect(rows()[0]!.text()).not.toContain('尚未登记');
     await batch()
       .findAll('button')
       .find((button) => button.text().includes('下一批'))!

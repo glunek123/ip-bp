@@ -1,4 +1,5 @@
 <script setup lang="ts">
+import './customer-workspace.css';
 import { computed, onBeforeUnmount, onMounted, ref, watch } from 'vue';
 import { RouterLink, useRouter } from 'vue-router';
 import { ElButton } from 'element-plus/es/components/button/index.mjs';
@@ -107,7 +108,7 @@ onBeforeUnmount(() => activeRequest?.abort());
 </script>
 
 <template>
-  <div class="page-view">
+  <div class="page-view customer-workspace">
     <main>
       <p
         v-if="maintenanceSuccessNotice"
@@ -119,21 +120,24 @@ onBeforeUnmount(() => activeRequest?.abort());
       <div class="section-heading">
         <div>
           <p class="section-kicker">客户基础</p>
-          <h1>客户</h1>
+          <h1>客户管理</h1>
           <p>先建立客户草稿，资料可在后续业务中继续补充。</p>
         </div>
-        <RouterLink
-          v-if="state === 'ready' && canCreateDraft"
-          to="/customers/new"
-          data-test="create-customer"
-        >
-          <ElButton type="primary">新建客户</ElButton>
-        </RouterLink>
-        <RouterLink
-          to="/customers/deleted-drafts"
-          data-test="deleted-drafts-link"
-          >已删除草稿</RouterLink
-        >
+        <div class="customer-heading-actions">
+          <RouterLink
+            class="customer-action-link"
+            to="/customers/deleted-drafts"
+            data-test="deleted-drafts-link"
+            >已删除草稿</RouterLink
+          >
+          <RouterLink
+            v-if="state === 'ready' && canCreateDraft"
+            to="/customers/new"
+            data-test="create-customer"
+          >
+            <ElButton type="primary">新建客户</ElButton>
+          </RouterLink>
+        </div>
       </div>
 
       <section class="ledger-panel" aria-live="polite">
@@ -169,13 +173,18 @@ onBeforeUnmount(() => activeRequest?.abort());
               <span class="status-chip">{{
                 customer.profileStatus === 'admitted' ? '已准入' : '草稿'
               }}</span>
-              <span class="status-chip" data-test="cooperation-status">{{
-                customer.cooperationStatus === 'COOPERATING'
-                  ? '合作中'
-                  : customer.cooperationStatus === 'PAUSED'
-                    ? '已暂停合作'
-                    : '已终止合作'
-              }}</span>
+              <span
+                class="status-chip"
+                :class="`status-chip--${customer.cooperationStatus.toLowerCase()}`"
+                data-test="cooperation-status"
+                >{{
+                  customer.cooperationStatus === 'COOPERATING'
+                    ? '合作中'
+                    : customer.cooperationStatus === 'PAUSED'
+                      ? '已暂停合作'
+                      : '已终止合作'
+                }}</span
+              >
             </span>
             <time>{{ formatTime(customer.updatedAt) }}</time>
           </RouterLink>

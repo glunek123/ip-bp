@@ -1,4 +1,5 @@
 <script setup lang="ts">
+import './customer-workspace.css';
 import { computed, onBeforeUnmount, ref, watch } from 'vue';
 import { RouterLink, useRoute, useRouter } from 'vue-router';
 import { ElButton } from 'element-plus/es/components/button/index.mjs';
@@ -59,9 +60,10 @@ const activeTab = ref<'basic' | 'assets' | 'settlements'>('basic');
 const requests = new Set<AbortController>();
 const deletionReason = ref('');
 const deletePrompt = ref(false);
-const deleteStatus = ref<'idle' | 'submitting' | 'unknown' | 'conflict'>(
-  'idle',
-);
+const deleteStatus = ref<
+  'idle' | 'submitting' | 'unknown' | 'conflict' | 'blocked'
+>('idle');
+const deleteBlockedReason = ref('');
 const frozenDelete = ref<PendingCustomerDraftCommand>();
 const maintenancePending = ref(false);
 const contactsPending = ref(false);
@@ -198,6 +200,7 @@ function pendingIdentity(customerId: string) {
 }
 
 function restorePending(customerId: string): void {
+  deleteBlockedReason.value = '';
   const identity = pendingIdentity(customerId);
   frozenDelete.value =
     identity === undefined
@@ -353,6 +356,8 @@ async function submitDelete(): Promise<void> {
   const current = customer.value;
   if (
     deleteStatus.value === 'submitting' ||
+    deleteStatus.value === 'blocked' ||
+    deleteStatus.value === 'conflict' ||
     maintenancePending.value ||
     contactsWriteBlocked.value ||
     currentProjectionStale.value ||
@@ -377,6 +382,7 @@ async function submitDelete(): Promise<void> {
     savePendingCustomerDraftCommand(frozenDelete.value);
   }
   const command = frozenDelete.value;
+  const sourceActorKey = actorKey.value;
   deleteStatus.value = 'submitting';
   try {
     await deleteCustomerDraft(
@@ -392,7 +398,26 @@ async function submitDelete(): Promise<void> {
     if (String(route.params.id) === command.customerId)
       await router.push('/customers');
   } catch (error) {
-    if (String(route.params.id) !== command.customerId) return;
+    if (
+      String(route.params.id) !== command.customerId ||
+      actorKey.value !== sourceActorKey
+    )
+      return;
+    if (
+      error instanceof ApiError &&
+      error.status === 409 &&
+      (error.code === 'CUSTOMER_DRAFT_HAS_ASSOCIATIONS' ||
+        error.code === 'CUSTOMER_DRAFT_STATE_CONFLICT')
+    ) {
+      clearPendingCustomerDraftCommand(command);
+      frozenDelete.value = undefined;
+      deleteStatus.value = 'blocked';
+      deleteBlockedReason.value =
+        error.code === 'CUSTOMER_DRAFT_HAS_ASSOCIATIONS'
+          ? '客户草稿已有业务关联，不能删除。请通过暂停或终止合作保留业务历史。'
+          : '客户当前状态不允许删除。只有从未准入且没有业务关联的草稿可以删除。';
+      return;
+    }
     deleteStatus.value =
       error instanceof ApiError &&
       error.status === 409 &&
@@ -942,7 +967,7 @@ onBeforeUnmount(() => {
 </script>
 
 <template>
-  <div class="page-view page-view--narrow">
+  <div class="page-view customer-workspace customer-detail-page">
     <main>
       <RouterLink class="back-link" to="/customers">← 返回客户列表</RouterLink>
       <section v-if="state === 'loading'" class="state-panel ledger-panel">
@@ -996,12 +1021,19 @@ onBeforeUnmount(() => {
           </div>
           <div class="detail-actions">
             <ElButton
-              v-if="customer.capabilities.deleteDraft && !sharedWriteBlocked"
+              v-if="
+                customer.capabilities.deleteDraft &&
+                !sharedWriteBlocked &&
+                deleteStatus !== 'blocked'
+              "
               data-test="delete-draft-open"
+              type="danger"
+              plain
               @click="deletePrompt = true"
               >删除草稿</ElButton
             >
             <RouterLink
+              class="customer-action-link"
               v-if="customer.capabilities.editRoutine && !sharedWriteBlocked"
               data-test="edit-customer"
               :to="`/customers/${customer.id}/edit`"
@@ -1099,7 +1131,16 @@ onBeforeUnmount(() => {
           <p v-if="deleteStatus === 'conflict'" role="alert">
             客户资料已变化。保留当前原因，请明确刷新后再决定。
           </p>
+          <p
+            v-if="deleteStatus === 'blocked'"
+            role="alert"
+            data-test="delete-draft-blocked"
+          >
+            {{ deleteBlockedReason }}
+          </p>
           <ElButton
+            v-if="deleteStatus !== 'blocked'"
+            type="danger"
             data-test="delete-draft-submit"
             :loading="deleteStatus === 'submitting'"
             :disabled="deleteStatus === 'conflict'"
@@ -1116,6 +1157,12 @@ onBeforeUnmount(() => {
           >
           <ElButton v-if="deleteStatus === 'idle'" @click="deletePrompt = false"
             >取消</ElButton
+          >
+          <ElButton
+            v-if="deleteStatus === 'blocked'"
+            data-test="delete-draft-close"
+            @click="deletePrompt = false"
+            >关闭</ElButton
           >
         </section>
         <div class="customer-tabs" role="tablist" aria-label="客户详情">
@@ -1430,7 +1477,7 @@ onBeforeUnmount(() => {
   gap: var(--s-1);
   padding: var(--s-3);
   border: 1px solid var(--color-hairline);
-  border-radius: var(--radius-card);
+  border-radius: 8px;
 }
 
 .settlement-top-kpis__bar {
@@ -1444,7 +1491,7 @@ onBeforeUnmount(() => {
 .settlement-top-kpis__bar > span {
   display: block;
   height: 100%;
-  background: var(--color-accent);
+  background: var(--color-primary);
 }
 
 .customer-tabs__tab {

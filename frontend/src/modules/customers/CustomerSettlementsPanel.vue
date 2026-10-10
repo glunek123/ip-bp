@@ -1,4 +1,5 @@
 <script setup lang="ts">
+import { ElButton } from 'element-plus/es/components/button/index.mjs';
 import { computed, onBeforeUnmount, ref, watch } from 'vue';
 import { ApiError } from '../../api/http';
 import {
@@ -592,15 +593,15 @@ onBeforeUnmount(() => {
         <p class="section-kicker">客户结算</p>
         <h2 id="settlement-heading">结算记录</h2>
       </div>
-      <button
+      <ElButton
         v-if="canRead || (canRegister && stale)"
-        type="button"
+        native-type="button"
         data-test="settlement-refresh"
         :disabled="status === 'loading'"
         @click="emit('refresh')"
       >
         只读刷新
-      </button>
+      </ElButton>
     </header>
 
     <div
@@ -640,14 +641,14 @@ onBeforeUnmount(() => {
       data-test="settlement-read-error"
     >
       <p>{{ error || '结算资料读取失败。' }}</p>
-      <button
+      <ElButton
         v-if="canRead"
-        type="button"
+        native-type="button"
         data-test="settlement-read-retry"
         @click="emit('refresh')"
       >
         只读重试
-      </button>
+      </ElButton>
     </div>
     <div v-else-if="canRead && data" data-test="settlement-records">
       <p v-if="data.total === 0" data-test="settlement-empty">暂无结算记录。</p>
@@ -683,23 +684,23 @@ onBeforeUnmount(() => {
           >
         </div>
         <div class="settlement-record__actions">
-          <button
-            type="button"
+          <ElButton
+            native-type="button"
             :data-test="`settlement-history-${record.id}`"
             :disabled="busy"
             @click="toggleHistory(record.id)"
           >
             {{ historyOpen[record.id] ? '收起版本' : '版本历史' }}
-          </button>
-          <button
+          </ElButton>
+          <ElButton
             v-if="canRead && canCorrect"
-            type="button"
+            native-type="button"
             :data-test="`correct-settlement-${record.id}`"
             :disabled="busy"
             @click="beginCorrection(record)"
           >
             更正
-          </button>
+          </ElButton>
         </div>
         <ol
           v-if="historyOpen[record.id]"
@@ -718,21 +719,21 @@ onBeforeUnmount(() => {
           "
           class="settlement-pagination"
         >
-          <button
-            type="button"
+          <ElButton
+            native-type="button"
             :disabled="
               (historyPage[record.id] ?? 1) <= 1 || historyLoading[record.id]
             "
             @click="loadHistory(record.id, (historyPage[record.id] ?? 1) - 1)"
           >
             上一页
-          </button>
+          </ElButton>
           <span
             >{{ historyPage[record.id] }} /
             {{ Math.ceil((historyTotal[record.id] ?? 0) / pageSize) }}</span
           >
-          <button
-            type="button"
+          <ElButton
+            native-type="button"
             :disabled="
               (historyPage[record.id] ?? 1) * pageSize >=
                 (historyTotal[record.id] ?? 0) || historyLoading[record.id]
@@ -740,7 +741,7 @@ onBeforeUnmount(() => {
             @click="loadHistory(record.id, (historyPage[record.id] ?? 1) + 1)"
           >
             下一页
-          </button>
+          </ElButton>
         </div>
       </article>
       <nav
@@ -748,21 +749,21 @@ onBeforeUnmount(() => {
         class="settlement-pagination"
         aria-label="结算记录分页"
       >
-        <button
-          type="button"
+        <ElButton
+          native-type="button"
           :disabled="page <= 1"
           @click="emit('page-change', page - 1)"
         >
           上一页
-        </button>
+        </ElButton>
         <span>{{ page }} / {{ pageCount }}</span>
-        <button
-          type="button"
+        <ElButton
+          native-type="button"
           :disabled="page >= pageCount"
           @click="emit('page-change', page + 1)"
         >
           下一页
-        </button>
+        </ElButton>
       </nav>
       <div class="settlement-derived">
         <span>{{ pendingDisplay.label }}：{{ pendingDisplay.amount }}</span>
@@ -774,6 +775,7 @@ onBeforeUnmount(() => {
     </div>
 
     <form
+      class="settlement-register-form"
       v-if="
         !pending && (canRegister || (selectedRecord && canRead && canCorrect))
       "
@@ -863,45 +865,48 @@ onBeforeUnmount(() => {
         {{ message }}
       </p>
       <p v-else-if="message" role="status">{{ message }}</p>
-      <button
-        v-if="commandStatus === 'unknown' && pending"
-        type="button"
-        data-test="settlement-retry-original"
-        :disabled="busy"
-        @click="retryPending"
-      >
-        按原请求重试
-      </button>
-      <button
-        v-else
-        type="submit"
-        :data-test="
-          editing ? 'settlement-correct-submit' : 'settlement-register-submit'
-        "
-        :disabled="editing ? !canSubmitCorrection : !canSubmitRegister"
-      >
-        {{
-          commandStatus === 'sending'
-            ? '提交中'
-            : editing
-              ? '确认更正'
-              : '登记结算'
-        }}
-      </button>
-      <button
-        v-if="editing && !pending"
-        type="button"
-        data-test="settlement-cancel-edit"
-        :disabled="blockedByOtherMaintenance"
-        @click="cancelDraft"
-      >
-        取消
-      </button>
+      <div class="customer-form-actions">
+        <ElButton
+          v-if="commandStatus === 'unknown' && pending"
+          native-type="button"
+          data-test="settlement-retry-original"
+          :disabled="busy"
+          @click="retryPending"
+        >
+          按原请求重试
+        </ElButton>
+        <ElButton
+          v-else
+          native-type="submit"
+          type="primary"
+          :data-test="
+            editing ? 'settlement-correct-submit' : 'settlement-register-submit'
+          "
+          :disabled="editing ? !canSubmitCorrection : !canSubmitRegister"
+        >
+          {{
+            commandStatus === 'sending'
+              ? '提交中'
+              : editing
+                ? '确认更正'
+                : '登记结算'
+          }}
+        </ElButton>
+        <ElButton
+          v-if="editing && !pending"
+          native-type="button"
+          data-test="settlement-cancel-edit"
+          :disabled="blockedByOtherMaintenance"
+          @click="cancelDraft"
+        >
+          取消
+        </ElButton>
+      </div>
     </form>
     <p v-if="pending" data-test="settlement-private-retry-note">
       原请求已保留。恢复访问后可按原请求重试。
-      <button
-        type="button"
+      <ElButton
+        native-type="button"
         :data-test="
           canRead
             ? 'settlement-retry-original'
@@ -911,7 +916,7 @@ onBeforeUnmount(() => {
         @click="retryPending"
       >
         按原请求重试
-      </button>
+      </ElButton>
     </p>
     <p v-if="stale && canRead" role="status">结算台账需要只读刷新。</p>
     <p v-else-if="stale && canRegister" role="status">
@@ -946,7 +951,7 @@ onBeforeUnmount(() => {
   gap: var(--s-1);
   padding: var(--s-3);
   border: 1px solid var(--color-hairline);
-  border-radius: var(--radius-card);
+  border-radius: 6px;
 }
 .settlement-record {
   flex-wrap: wrap;
@@ -976,7 +981,7 @@ onBeforeUnmount(() => {
 .settlement-derived__bar > span {
   display: block;
   height: 100%;
-  background: var(--color-accent);
+  background: var(--color-primary);
 }
 form {
   display: grid;

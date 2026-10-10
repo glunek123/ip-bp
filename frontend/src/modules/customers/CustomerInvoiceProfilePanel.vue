@@ -1,4 +1,5 @@
 <script setup lang="ts">
+import { ElButton } from 'element-plus/es/components/button/index.mjs';
 import { computed, onBeforeUnmount, ref, watch } from 'vue';
 import { ApiError } from '../../api/http';
 import {
@@ -429,7 +430,7 @@ onBeforeUnmount(() => {
         <span class="state-index">开票资料</span>
         <h2 id="invoice-profile-heading">客户开票信息</h2>
       </div>
-      <button
+      <ElButton
         v-if="
           canRead &&
           state === 'ready' &&
@@ -438,13 +439,13 @@ onBeforeUnmount(() => {
           data?.canEdit &&
           canEdit
         "
-        type="button"
+        native-type="button"
         data-test="invoice-edit"
         :disabled="blockedByOtherMaintenance"
         @click="startEditing"
       >
         {{ hasProfile ? '编辑新版本' : '建立开票档案' }}
-      </button>
+      </ElButton>
     </header>
 
     <p v-if="!canRead && status === 'unknown'" role="status">
@@ -456,9 +457,13 @@ onBeforeUnmount(() => {
     <p v-else-if="state === 'loading'">正在读取开票资料。</p>
     <div v-else-if="state === 'failed'" role="alert">
       <p>{{ message }}</p>
-      <button type="button" data-test="invoice-refresh" @click="refreshCurrent">
+      <ElButton
+        native-type="button"
+        data-test="invoice-refresh"
+        @click="refreshCurrent"
+      >
         只读刷新
-      </button>
+      </ElButton>
     </div>
     <template v-else-if="data || pending">
       <template v-if="data && !editing">
@@ -541,8 +546,9 @@ onBeforeUnmount(() => {
           {{ message }}
         </p>
         <div class="customer-document-actions">
-          <button
-            type="submit"
+          <ElButton
+            native-type="submit"
+            type="primary"
             data-test="invoice-submit"
             :disabled="
               submitting ||
@@ -552,17 +558,17 @@ onBeforeUnmount(() => {
             "
           >
             {{ status === 'unknown' ? '按原请求重试' : '保存新版本' }}
-          </button>
-          <button
+          </ElButton>
+          <ElButton
             v-if="status === 'refresh-needed'"
-            type="button"
+            native-type="button"
             data-test="invoice-refresh-current"
             @click="refreshCurrent"
           >
             只读刷新
-          </button>
-          <button
-            type="button"
+          </ElButton>
+          <ElButton
+            native-type="button"
             data-test="invoice-cancel"
             :disabled="
               !canCancel || status === 'unknown' || status === 'refresh-needed'
@@ -570,19 +576,19 @@ onBeforeUnmount(() => {
             @click="cancelEditing"
           >
             取消编辑
-          </button>
+          </ElButton>
         </div>
       </form>
 
       <div v-if="data?.profile && canRead" class="customer-document-history">
-        <button
-          type="button"
+        <ElButton
+          native-type="button"
           data-test="invoice-history-toggle"
           :disabled="historyLoading"
           @click="historyOpen ? (historyOpen = false) : loadHistory(1)"
         >
           {{ historyOpen ? '收起版本历史' : '查看版本历史' }}
-        </button>
+        </ElButton>
         <section v-if="historyOpen" aria-label="开票资料版本历史">
           <ol>
             <li v-for="item in history" :key="item.id">
@@ -598,23 +604,23 @@ onBeforeUnmount(() => {
             </li>
           </ol>
           <div class="customer-document-actions">
-            <button
-              type="button"
+            <ElButton
+              native-type="button"
               :disabled="historyLoading || historyPage <= 1"
               @click="loadHistory(historyPage - 1)"
             >
               上一页
-            </button>
+            </ElButton>
             <span>第 {{ historyPage }} 页，共 {{ historyTotal }} 条</span>
-            <button
-              type="button"
+            <ElButton
+              native-type="button"
               :disabled="
                 historyLoading || historyPage * versionCount >= historyTotal
               "
               @click="loadHistory(historyPage + 1)"
             >
               下一页
-            </button>
+            </ElButton>
           </div>
         </section>
       </div>
@@ -637,20 +643,6 @@ onBeforeUnmount(() => {
 .customer-document-card h2 {
   margin: var(--s-1) 0 var(--s-3);
   font-size: 18px;
-}
-.customer-document-card button {
-  min-height: 36px;
-  padding: 0 var(--s-3);
-  border: 1px solid var(--color-hairline);
-  border-radius: 6px;
-  background: var(--color-surface-1);
-  color: var(--color-ink);
-  cursor: pointer;
-  font: inherit;
-}
-.customer-document-card button:disabled {
-  cursor: not-allowed;
-  opacity: 0.55;
 }
 .customer-document-form {
   display: grid;

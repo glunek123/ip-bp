@@ -1,4 +1,5 @@
 <script setup lang="ts">
+import './customer-workspace.css';
 import { onMounted, ref } from 'vue';
 import { RouterLink, useRoute } from 'vue-router';
 import { ElButton } from 'element-plus/es/components/button/index.mjs';
@@ -181,7 +182,7 @@ onMounted(() => {
 </script>
 
 <template>
-  <div class="page-view page-view--narrow">
+  <div class="page-view customer-workspace">
     <main>
       <RouterLink class="back-link" to="/customers">← 返回客户列表</RouterLink>
       <div class="section-heading">

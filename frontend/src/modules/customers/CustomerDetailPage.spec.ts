@@ -649,6 +649,51 @@ describe('CustomerDetailPage', () => {
     },
   );
 
+  it('explains an associated draft deletion denial and releases unrelated maintenance', async () => {
+    setInternalActor();
+    const customer = customerRecord('customer-1', '客户甲');
+    api.getCustomer.mockResolvedValue({
+      ...customer,
+      capabilities: { ...customer.capabilities, deleteDraft: true },
+    });
+    api.deleteCustomerDraft.mockRejectedValueOnce(
+      new ApiError(
+        '客户草稿已有业务关联，不能删除',
+        409,
+        'CUSTOMER_DRAFT_HAS_ASSOCIATIONS',
+      ),
+    );
+    const { wrapper } = await mountPage();
+    await flushPromises();
+    await wrapper.get('[data-test="delete-draft-open"]').trigger('click');
+    await wrapper.get('[data-test="delete-draft-submit"]').trigger('click');
+    await flushPromises();
+
+    expect(wrapper.text()).toContain('客户草稿已有业务关联，不能删除');
+    expect(wrapper.text()).not.toContain('客户资料已变化');
+    expect(wrapper.find('[data-test="delete-draft-refresh"]').exists()).toBe(
+      false,
+    );
+    expect(wrapper.find('[data-test="delete-draft-open"]').exists()).toBe(
+      false,
+    );
+    expect(wrapper.find('[data-test="delete-draft-submit"]').exists()).toBe(
+      false,
+    );
+    expect(globalThis.sessionStorage.length).toBe(0);
+    expect(
+      wrapper
+        .get('[data-test="customer-contacts-panel-stub"]')
+        .attributes('data-blocked'),
+    ).toBe('false');
+    expect(wrapper.find('[data-test="edit-customer"]').exists()).toBe(true);
+    await wrapper.get('[data-test="delete-draft-close"]').trigger('click');
+    expect(wrapper.find('[data-test="delete-draft-confirm"]').exists()).toBe(
+      false,
+    );
+    expect(api.deleteCustomerDraft).toHaveBeenCalledTimes(1);
+  });
+
   it('keeps the exact delete request after CONTACT_BUSY and retries the same key', async () => {
     useAuthStore(pinia).session = {
       principalType: 'INTERNAL',

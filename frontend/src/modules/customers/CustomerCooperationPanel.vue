@@ -1,4 +1,5 @@
 <script setup lang="ts">
+import { ElButton } from 'element-plus/es/components/button/index.mjs';
 import { computed, onBeforeUnmount, ref, watch } from 'vue';
 import { ApiError } from '../../api/http';
 import {
@@ -373,51 +374,51 @@ function cancel(): void {
     </p>
     <template v-if="actor && !blockedByOtherMaintenance">
       <div class="cooperation-actions">
-        <button
+        <ElButton
           v-if="customer.cooperationCapabilities.transfer"
-          type="button"
+          native-type="button"
           data-test="transfer-open"
           :disabled="!canStartAction"
           @click="openAction('responsible-transfer')"
         >
           转派负责运营
-        </button>
-        <button
+        </ElButton>
+        <ElButton
           v-if="
             customer.cooperationCapabilities.pause &&
             customer.cooperationStatus === 'COOPERATING'
           "
-          type="button"
+          native-type="button"
           data-test="pause-open"
           :disabled="!canStartAction"
           @click="openAction('pause')"
         >
           暂停合作
-        </button>
-        <button
+        </ElButton>
+        <ElButton
           v-if="
             customer.cooperationCapabilities.terminate &&
             customer.cooperationStatus !== 'TERMINATED'
           "
-          type="button"
+          native-type="button"
           data-test="terminate-open"
           :disabled="!canStartAction"
           @click="openAction('terminate')"
         >
           终止合作
-        </button>
-        <button
+        </ElButton>
+        <ElButton
           v-if="
             customer.cooperationCapabilities.resume &&
             customer.cooperationStatus !== 'COOPERATING'
           "
-          type="button"
+          native-type="button"
           data-test="resume-open"
           :disabled="!canStartAction"
           @click="openAction('resume')"
         >
           恢复合作
-        </button>
+        </ElButton>
       </div>
       <form
         v-if="selectedAction"
@@ -442,18 +443,18 @@ function cancel(): void {
             </option>
           </select>
         </label>
-        <button
+        <ElButton
           v-if="
             selectedAction === 'responsible-transfer' &&
             operators.length < totalOperators
           "
-          type="button"
+          native-type="button"
           :disabled="loadingOperators"
           data-test="operators-more"
           @click="loadOperators()"
         >
           加载更多运营
-        </button>
+        </ElButton>
         <label v-if="selectedAction !== 'resume'"
           >原因
           <textarea
@@ -478,8 +479,9 @@ function cancel(): void {
         <p v-if="status === 'conflict'" role="alert">
           请先刷新资料，再决定是否发起新的维护。
         </p>
-        <button
-          type="submit"
+        <ElButton
+          native-type="submit"
+          type="primary"
           data-test="maintenance-submit"
           :disabled="
             status === 'submitting' ||
@@ -489,33 +491,33 @@ function cancel(): void {
           "
         >
           {{ status === 'unknown' ? '按原请求重试' : '确认维护' }}
-        </button>
-        <button
+        </ElButton>
+        <ElButton
           v-if="status === 'conflict'"
-          type="button"
+          native-type="button"
           data-test="maintenance-refresh-conflict"
           @click="refreshCurrentCustomer()"
         >
           刷新客户资料
-        </button>
-        <button
+        </ElButton>
+        <ElButton
           v-if="status === 'idle' && !frozen"
-          type="button"
+          native-type="button"
           @click="cancel"
         >
           取消
-        </button>
+        </ElButton>
       </form>
     </template>
     <p v-if="successMessage" role="status">{{ successMessage }}</p>
-    <button
+    <ElButton
       v-if="refreshFailed"
-      type="button"
+      native-type="button"
       data-test="maintenance-refresh-readonly"
       @click="refreshCurrentCustomer()"
     >
       只读重试刷新
-    </button>
+    </ElButton>
   </section>
 </template>
 

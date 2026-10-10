@@ -203,9 +203,7 @@ describe('CustomerContactsPanel', () => {
       .get('[data-test="contact-contact-1"] button')
       .trigger('click');
     await flushPromises();
-    await wrapper
-      .get('[data-test="contact-contact-1"] .el-button')
-      .trigger('click');
+    await wrapper.get('[data-test="contact-edit-contact-1"]').trigger('click');
     await wrapper
       .findAll('button')
       .find((button) => button.text().includes('取消主要'))

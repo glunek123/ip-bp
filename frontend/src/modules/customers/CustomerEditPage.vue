@@ -1,4 +1,5 @@
 <script setup lang="ts">
+import './customer-workspace.css';
 import { computed, onBeforeUnmount, onMounted, ref } from 'vue';
 import { RouterLink, useRoute, useRouter } from 'vue-router';
 import { ElButton } from 'element-plus/es/components/button/index.mjs';
@@ -270,7 +271,7 @@ onBeforeUnmount(() => activeRequest?.abort());
 </script>
 
 <template>
-  <div class="page-view page-view--narrow">
+  <div class="page-view customer-workspace customer-form-page">
     <main>
       <RouterLink
         class="back-link"
@@ -324,103 +325,118 @@ onBeforeUnmount(() => activeRequest?.abort());
           @input="isDirty = true"
           @change="isDirty = true"
         >
-          <label class="field-label" for="customer-name"
-            >客户名称<RequiredFieldMark
-          /></label>
-          <input
-            id="customer-name"
-            v-model="name"
-            name="name"
-            class="text-input"
-            maxlength="200"
-          />
-          <p v-if="nameError" class="field-error">{{ nameError }}</p>
-
-          <label class="field-label field-label--spaced" for="customer-type"
-            >客户组织类型</label
-          >
-          <select
-            id="customer-type"
-            v-model="customerType"
-            name="customerType"
-            class="text-input"
-            @change="onCustomerTypeChanged"
-          >
-            <option value="">请选择</option>
-            <option
-              v-for="option in displayedCustomerTypeOptions"
-              :key="option.value"
-              :value="option.value"
-            >
-              {{ option.label }}
-            </option>
-          </select>
-
-          <label class="field-label field-label--spaced" for="identity-type"
-            >身份证明类型</label
-          >
-          <select
-            id="identity-type"
-            v-model="identityType"
-            name="identityType"
-            class="text-input"
-            @change="identityError = ''"
-          >
-            <option value="">请选择</option>
-            <option
-              v-for="option in displayedIdentityTypeOptions"
-              :key="option.value"
-              :value="option.value"
-            >
-              {{ option.label }}
-            </option>
-          </select>
-
-          <label class="field-label field-label--spaced" for="identity-number"
-            >证件号码</label
-          >
-          <input
-            id="identity-number"
-            v-model="identityNumber"
-            name="identityNumber"
-            class="text-input"
-            maxlength="100"
-          />
-          <p v-if="identityError" class="field-error">{{ identityError }}</p>
-
-          <label class="field-label field-label--spaced" for="issuing-region"
-            >签发国家／地区</label
-          >
-          <input
-            id="issuing-region"
-            v-model="issuingCountryOrRegion"
-            name="issuingCountryOrRegion"
-            class="text-input"
-            maxlength="100"
-          />
-
-          <label class="field-label field-label--spaced" for="category"
-            >客户类别</label
-          >
-          <input
-            id="category"
-            v-model="category"
-            name="category"
-            class="text-input"
-            maxlength="100"
-          />
-
-          <label class="field-label field-label--spaced" for="region"
-            >所属地区</label
-          >
-          <input
-            id="region"
-            v-model="region"
-            name="region"
-            class="text-input"
-            maxlength="100"
-          />
-
+          <div class="customer-form-fields">
+            <div>
+              <label class="field-label" for="customer-name"
+                >客户名称<RequiredFieldMark
+              /></label>
+              <input
+                id="customer-name"
+                v-model="name"
+                name="name"
+                class="text-input"
+                maxlength="200"
+              />
+              <p v-if="nameError" class="field-error">{{ nameError }}</p>
+            </div>
+            <div>
+              <label class="field-label field-label--spaced" for="customer-type"
+                >客户组织类型</label
+              >
+              <select
+                id="customer-type"
+                v-model="customerType"
+                name="customerType"
+                class="text-input"
+                @change="onCustomerTypeChanged"
+              >
+                <option value="">请选择</option>
+                <option
+                  v-for="option in displayedCustomerTypeOptions"
+                  :key="option.value"
+                  :value="option.value"
+                >
+                  {{ option.label }}
+                </option>
+              </select>
+            </div>
+            <div>
+              <label class="field-label field-label--spaced" for="identity-type"
+                >身份证明类型</label
+              >
+              <select
+                id="identity-type"
+                v-model="identityType"
+                name="identityType"
+                class="text-input"
+                @change="identityError = ''"
+              >
+                <option value="">请选择</option>
+                <option
+                  v-for="option in displayedIdentityTypeOptions"
+                  :key="option.value"
+                  :value="option.value"
+                >
+                  {{ option.label }}
+                </option>
+              </select>
+            </div>
+            <div>
+              <label
+                class="field-label field-label--spaced"
+                for="identity-number"
+                >证件号码</label
+              >
+              <input
+                id="identity-number"
+                v-model="identityNumber"
+                name="identityNumber"
+                class="text-input"
+                maxlength="100"
+              />
+              <p v-if="identityError" class="field-error">
+                {{ identityError }}
+              </p>
+            </div>
+            <div>
+              <label
+                class="field-label field-label--spaced"
+                for="issuing-region"
+                >签发国家／地区</label
+              >
+              <input
+                id="issuing-region"
+                v-model="issuingCountryOrRegion"
+                name="issuingCountryOrRegion"
+                class="text-input"
+                maxlength="100"
+              />
+            </div>
+            <div>
+              <label class="field-label field-label--spaced" for="category"
+                >客户类别</label
+              >
+              <input
+                id="category"
+                v-model="category"
+                name="category"
+                class="text-input"
+                maxlength="100"
+              />
+            </div>
+            <div>
+              <label class="field-label field-label--spaced" for="region"
+                >所属地区</label
+              >
+              <input
+                id="region"
+                v-model="region"
+                name="region"
+                class="text-input"
+                maxlength="100"
+              />
+            </div>
+          </div>
           <p>联系人请在客户详情的“联系人关系”中维护。</p>
           <RouterLink
             :to="`/customers/${String(route.params.id)}#customer-contacts`"

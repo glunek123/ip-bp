@@ -1,4 +1,5 @@
 <script setup lang="ts">
+import { ElButton } from 'element-plus/es/components/button/index.mjs';
 import { computed, onBeforeUnmount, ref, watch } from 'vue';
 import { ApiError } from '../../api/http';
 import { getCustomer } from '../../api/customers';
@@ -1423,77 +1424,112 @@ onBeforeUnmount(() => {
         <h2>权利资产</h2>
         <p>人工登记事实与历史版本；期限提示不代表法律效力核验。</p>
       </div>
-      <button
+      <ElButton
         v-if="state === 'ready' && canEdit && canCreate && !writeDenied"
-        type="button"
+        native-type="button"
         :disabled="ordinaryWritesBlocked || saving"
         @click="openCreate"
+        type="primary"
       >
         登记权利资产
-      </button>
-      <button
+      </ElButton>
+      <ElButton
         v-if="state === 'ready' && canEdit && canCreate && !writeDenied"
-        type="button"
+        native-type="button"
         :disabled="ordinaryWritesBlocked || batchSaving"
         @click="openBatch"
       >
         批量上传权属
-      </button>
+      </ElButton>
     </header>
     <p v-if="state === 'loading'">正在读取权利资产…</p>
     <div v-else-if="state === 'failed'">
       <p>权利资产读取失败。</p>
-      <button type="button" @click="load()">重试读取</button>
+      <ElButton native-type="button" @click="load()">重试读取</ElButton>
     </div>
     <template v-else>
       <p v-if="items.length === 0">暂无人工登记的权利资产。</p>
-      <ul v-else class="right-assets-panel__list">
-        <li v-for="asset in items" :key="asset.assetId">
-          <button
-            type="button"
-            :disabled="saving || unknownOutcome"
-            @click="openDetail(asset.assetId)"
-          >
-            {{ asset.fields.name }}
-          </button>
-          <span
-            >{{ typeLabels[asset.fields.type] }} ·
-            {{ asset.withdrawn ? '已撤下' : termLabel(asset.fields) }}</span
-          >
-        </li>
-      </ul>
+      <div v-else class="customer-table-scroll">
+        <table class="right-assets-panel__list customer-asset-table">
+          <thead>
+            <tr>
+              <th scope="col">类型</th>
+              <th scope="col">资产名称</th>
+              <th scope="col">注册号 / 登记号</th>
+              <th scope="col">类别</th>
+              <th scope="col">权利主体</th>
+              <th scope="col">期限 / 状态</th>
+            </tr>
+          </thead>
+          <tbody>
+            <tr v-for="asset in items" :key="asset.assetId">
+              <td>
+                <span class="status-chip">{{
+                  typeLabels[asset.fields.type]
+                }}</span>
+              </td>
+              <td>
+                <ElButton
+                  native-type="button"
+                  link
+                  type="primary"
+                  :disabled="saving || unknownOutcome"
+                  @click="openDetail(asset.assetId)"
+                >
+                  {{ asset.fields.name }}
+                </ElButton>
+              </td>
+              <td>{{ asset.fields.number || '未知' }}</td>
+              <td>{{ asset.fields.category || '未填写' }}</td>
+              <td>
+                {{
+                  holders.find((holder) => holder.id === asset.fields.holderId)
+                    ?.name || asset.fields.holderId
+                }}
+              </td>
+              <td>
+                {{ asset.withdrawn ? '已撤下' : termLabel(asset.fields) }}
+              </td>
+            </tr>
+          </tbody>
+        </table>
+      </div>
       <nav v-if="total > 20" aria-label="权利资产分页">
-        <button type="button" :disabled="page <= 1" @click="load(page - 1)">
+        <ElButton
+          native-type="button"
+          :disabled="page <= 1"
+          @click="load(page - 1)"
+        >
           上一页
-        </button>
+        </ElButton>
         <span>第 {{ page }} 页，共 {{ total }} 条</span>
-        <button
-          type="button"
+        <ElButton
+          native-type="button"
           :disabled="page * 20 >= total"
           @click="load(page + 1)"
         >
           下一页
-        </button>
+        </ElButton>
       </nav>
     </template>
     <p v-if="errorMessage" role="alert">{{ errorMessage }}</p>
     <div v-if="unknownOutcome" role="group" aria-label="原请求待确认">
       <p>原请求可能已成功。重试将使用完全相同的内容和幂等键。</p>
-      <button
-        type="button"
+      <ElButton
+        native-type="button"
         :disabled="blockedByOtherMaintenance || saving"
         @click="retryUnknown"
       >
         用原请求重试
-      </button>
+      </ElButton>
     </div>
-    <button
+    <ElButton
       v-if="conflict && !unknownOutcome"
-      type="button"
+      native-type="button"
       @click="refreshAfterConflict"
     >
       明确刷新版本并核对草稿
-    </button>
+    </ElButton>
     <section
       v-if="detail"
       class="right-assets-panel__detail"
@@ -1541,33 +1577,33 @@ onBeforeUnmount(() => {
             :key="proof.contentVersionId"
           >
             {{ proof.originalFilename }} · {{ proof.createdAt.slice(0, 10) }}
-            <button
-              type="button"
+            <ElButton
+              native-type="button"
               @click="
                 downloadEvidence(proof.materialId, proof.contentVersionId)
               "
             >
               下载
-            </button>
+            </ElButton>
           </li>
         </ul>
       </section>
-      <button
+      <ElButton
         v-if="detail.capabilities.revise && canEdit && !writeDenied"
-        type="button"
+        native-type="button"
         :disabled="ordinaryWritesBlocked || saving"
         @click="openRevise"
       >
         修订字段
-      </button>
-      <button
+      </ElButton>
+      <ElButton
         v-if="detail.capabilities.withdraw && !writeDenied"
-        type="button"
+        native-type="button"
         :disabled="ordinaryWritesBlocked || saving"
         @click="openWithdraw"
       >
         撤下资产
-      </button>
+      </ElButton>
       <div v-if="withdrawOpen">
         <label
           >撤下原因
@@ -1576,8 +1612,8 @@ onBeforeUnmount(() => {
             maxlength="500"
             :disabled="ordinaryWritesBlocked || saving"
         /></label>
-        <button
-          type="button"
+        <ElButton
+          native-type="button"
           :disabled="
             saving ||
             ordinaryWritesBlocked ||
@@ -1590,7 +1626,7 @@ onBeforeUnmount(() => {
           @click="submitWithdraw"
         >
           确认撤下
-        </button>
+        </ElButton>
       </div>
       <details>
         <summary>历史版本 · {{ detail.history.length }} 条</summary>
@@ -1616,14 +1652,14 @@ onBeforeUnmount(() => {
               >
                 {{ proof.originalFilename }} ·
                 {{ proof.createdAt.slice(0, 10) }}
-                <button
-                  type="button"
+                <ElButton
+                  native-type="button"
                   @click="
                     downloadEvidence(proof.materialId, proof.contentVersionId)
                   "
                 >
                   下载原版
-                </button>
+                </ElButton>
               </li>
             </ul>
           </li>
@@ -1718,8 +1754,8 @@ onBeforeUnmount(() => {
           :disabled="ordinaryWritesBlocked || uploading || saving"
           @change="chooseUpload"
         />
-        <button
-          type="button"
+        <ElButton
+          native-type="button"
           :disabled="
             ordinaryWritesBlocked ||
             uploading ||
@@ -1730,27 +1766,30 @@ onBeforeUnmount(() => {
           @click="uploadEvidence"
         >
           {{ uploading ? '上传中…' : '上传证明' }}
-        </button>
+        </ElButton>
         <p v-if="uploadMessage" role="status">{{ uploadMessage }}</p>
         <section v-if="singleUploadUnknown" aria-label="人工核对单笔证明池">
-          <button
-            type="button"
+          <ElButton
+            native-type="button"
             :disabled="
               blockedByOtherMaintenance || recoveryRefreshing || writeDenied
             "
             @click="refreshSingleEvidence"
           >
             {{ recoveryRefreshing ? '刷新中…' : '刷新证明池' }}
-          </button>
+          </ElButton>
           <p>请按文件内容人工核对，不会按文件名自动匹配。</p>
           <div v-for="proof in singleRecoveryEvidence" :key="proof.id">
             {{ proof.originalFilename }} · {{ proof.createdAt }} ·
             {{ proof.sizeBytes }} 字节
-            <button type="button" @click="verifyRecoveryEvidence(proof)">
+            <ElButton
+              native-type="button"
+              @click="verifyRecoveryEvidence(proof)"
+            >
               下载核对
-            </button>
-            <button
-              type="button"
+            </ElButton>
+            <ElButton
+              native-type="button"
               :disabled="
                 blockedByOtherMaintenance ||
                 !verifiedRecoveryIds.includes(proof.id) ||
@@ -1759,7 +1798,7 @@ onBeforeUnmount(() => {
               @click="adoptSingleEvidence(proof)"
             >
               选用此证明
-            </button>
+            </ElButton>
           </div>
         </section>
         <p>本次最多选择 10 份证明；取消勾选仅影响本版，历史版本保持原文件。</p>
@@ -1779,8 +1818,9 @@ onBeforeUnmount(() => {
           {{ proof.originalFilename }} · {{ proof.createdAt.slice(0, 10) }}
         </label>
       </section>
-      <button
-        type="submit"
+      <ElButton
+        native-type="submit"
+        type="primary"
         :disabled="
           ordinaryWritesBlocked ||
           saving ||
@@ -1791,14 +1831,14 @@ onBeforeUnmount(() => {
         "
       >
         {{ saving ? '保存中…' : '确认保存' }}
-      </button>
-      <button
-        type="button"
+      </ElButton>
+      <ElButton
+        native-type="button"
         :disabled="ordinaryWritesBlocked || saving"
         @click="cancelDraft"
       >
         取消
-      </button>
+      </ElButton>
     </form>
     <section
       v-if="batchOpen"
@@ -1810,8 +1850,8 @@ onBeforeUnmount(() => {
         最多 10
         条待登记证明。逐条上传并人工填写；勾选后再确认登记。未识别，请人工填写。
       </p>
-      <button
-        type="button"
+      <ElButton
+        native-type="button"
         :disabled="
           batchRows.filter((row) => row.registrationStatus !== 'registered')
             .length >= 10 ||
@@ -1826,7 +1866,7 @@ onBeforeUnmount(() => {
             ? '开始下一批（保留未完成行）'
             : '添加一行'
         }}
-      </button>
+      </ElButton>
       <div
         v-for="(row, index) in batchRows"
         :key="row.id"
@@ -1915,25 +1955,27 @@ onBeforeUnmount(() => {
             :disabled="!canChooseBatchFile(row)"
             @change="chooseBatchFile(row, $event)"
           />
-          <button
-            type="button"
+          <ElButton
+            native-type="button"
             :disabled="!canUploadBatchRow(row)"
             @click="uploadBatchRow(row)"
           >
             上传此行证明
-          </button>
+          </ElButton>
         </fieldset>
         <p>
           文件：{{
-            row.uploadStatus === 'uploaded'
-              ? '上传成功，尚未登记'
-              : row.uploadStatus === 'uploading'
-                ? '上传中'
-                : row.uploadStatus === 'failed'
-                  ? '上传失败'
-                  : row.uploadStatus === 'unknown'
-                    ? '上传结果未知'
-                    : '尚未上传'
+            row.registrationStatus === 'registered'
+              ? '已上传并登记'
+              : row.uploadStatus === 'uploaded'
+                ? '上传成功，尚未登记'
+                : row.uploadStatus === 'uploading'
+                  ? '上传中'
+                  : row.uploadStatus === 'failed'
+                    ? '上传失败'
+                    : row.uploadStatus === 'unknown'
+                      ? '上传结果未知'
+                      : '尚未上传'
           }}；登记：{{ batchRegistrationLabels[row.registrationStatus] }}
         </p>
         <p v-if="row.error" role="status">{{ row.error }}</p>
@@ -1941,8 +1983,8 @@ onBeforeUnmount(() => {
           v-if="row.uploadStatus === 'unknown'"
           aria-label="人工核对证明池"
         >
-          <button
-            type="button"
+          <ElButton
+            native-type="button"
             :disabled="
               blockedByOtherMaintenance ||
               row.recoveryRefreshing ||
@@ -1953,16 +1995,19 @@ onBeforeUnmount(() => {
             @click="refreshBatchEvidence(row)"
           >
             {{ row.recoveryRefreshing ? '刷新中…' : '刷新证明池' }}
-          </button>
+          </ElButton>
           <p>请按文件内容人工核对，不会按文件名自动匹配。</p>
           <div v-for="proof in row.recoveryEvidence ?? []" :key="proof.id">
             {{ proof.originalFilename }} · {{ proof.createdAt }} ·
             {{ proof.sizeBytes }} 字节
-            <button type="button" @click="verifyRecoveryEvidence(proof)">
+            <ElButton
+              native-type="button"
+              @click="verifyRecoveryEvidence(proof)"
+            >
               下载核对
-            </button>
-            <button
-              type="button"
+            </ElButton>
+            <ElButton
+              native-type="button"
               :disabled="
                 blockedByOtherMaintenance ||
                 !verifiedRecoveryIds.includes(proof.id) ||
@@ -1974,7 +2019,7 @@ onBeforeUnmount(() => {
               @click="adoptBatchEvidence(row, proof)"
             >
               选用此证明
-            </button>
+            </ElButton>
           </div>
         </section>
       </div>
@@ -1982,24 +2027,24 @@ onBeforeUnmount(() => {
         后续行已停止；请先用原请求确认未知结果。
       </p>
       <p v-if="batchHalt === 'conflict'">客户版本冲突；剩余草稿已保留。</p>
-      <button
+      <ElButton
         v-if="batchHalt === 'unknown'"
-        type="button"
+        native-type="button"
         :disabled="blockedByOtherMaintenance || batchSaving"
         @click="retryBatchUnknown"
       >
         用原内容和幂等键重试
-      </button>
-      <button
+      </ElButton>
+      <ElButton
         v-if="batchHalt === 'conflict'"
-        type="button"
+        native-type="button"
         :disabled="batchSaving"
         @click="refreshBatchConflict"
       >
         明确刷新版本并核对批量草稿
-      </button>
-      <button
-        type="button"
+      </ElButton>
+      <ElButton
+        native-type="button"
         :disabled="
           ordinaryWritesBlocked ||
           batchSaving ||
@@ -2011,7 +2056,7 @@ onBeforeUnmount(() => {
         @click="submitBatch"
       >
         确认登记
-      </button>
+      </ElButton>
     </section>
   </div>
 </template>
@@ -2035,15 +2080,6 @@ onBeforeUnmount(() => {
 .right-assets-panel__header p {
   color: var(--color-ink-muted);
 }
-.right-assets-panel__list {
-  padding-left: var(--s-5);
-}
-.right-assets-panel__list li {
-  margin: var(--s-3) 0;
-  display: flex;
-  gap: var(--s-3);
-  flex-wrap: wrap;
-}
 .right-assets-panel__detail,
 .right-assets-panel__form {
   border-top: 1px solid var(--color-hairline);
@@ -2062,9 +2098,6 @@ onBeforeUnmount(() => {
 .right-assets-panel__form select {
   max-width: 32rem;
   padding: var(--s-2);
-}
-button {
-  margin-right: var(--s-2);
 }
 dt {
   color: var(--color-ink-muted);

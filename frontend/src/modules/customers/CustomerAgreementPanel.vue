@@ -1,4 +1,5 @@
 <script setup lang="ts">
+import { ElButton } from 'element-plus/es/components/button/index.mjs';
 import { computed, onBeforeUnmount, ref, watch } from 'vue';
 import { ApiError } from '../../api/http';
 import {
@@ -768,7 +769,7 @@ onBeforeUnmount(() => {
         <span class="state-index">协议</span>
         <h2 id="agreement-heading">客户协议</h2>
       </div>
-      <button
+      <ElButton
         v-if="
           canRead &&
           state === 'ready' &&
@@ -777,13 +778,13 @@ onBeforeUnmount(() => {
           data?.canEdit &&
           canEdit
         "
-        type="button"
+        native-type="button"
         data-test="agreement-edit"
         :disabled="blockedByOtherMaintenance"
         @click="startEditing"
       >
         {{ hasAgreement ? '编辑新版本' : '建立协议' }}
-      </button>
+      </ElButton>
     </header>
 
     <p v-if="!canRead && (status === 'unknown' || uploadUnknown)" role="status">
@@ -795,13 +796,13 @@ onBeforeUnmount(() => {
     <p v-else-if="state === 'loading'">正在读取协议资料。</p>
     <div v-else-if="state === 'failed'" role="alert">
       <p>{{ message }}</p>
-      <button
-        type="button"
+      <ElButton
+        native-type="button"
         data-test="agreement-refresh"
         @click="refreshCurrent"
       >
         只读刷新
-      </button>
+      </ElButton>
     </div>
     <template v-else-if="data">
       <template v-if="!editing">
@@ -847,13 +848,13 @@ onBeforeUnmount(() => {
                 :key="file.contentVersionId"
               >
                 <span>{{ file.originalFilename }}</span>
-                <button
-                  type="button"
+                <ElButton
+                  native-type="button"
                   :data-test="`agreement-download-${file.contentVersionId}`"
                   @click="downloadFile(file)"
                 >
                   下载此版本
-                </button>
+                </ElButton>
               </li>
             </ul>
           </div>
@@ -949,8 +950,8 @@ onBeforeUnmount(() => {
           <ul v-else>
             <li v-for="file in form.files" :key="file.contentVersionId">
               <span>{{ file.originalFilename }}</span>
-              <button
-                type="button"
+              <ElButton
+                native-type="button"
                 :disabled="blockedByOtherMaintenance || status === 'unknown'"
                 @click="
                   form.files = form.files.filter(
@@ -959,7 +960,7 @@ onBeforeUnmount(() => {
                 "
               >
                 移除此版附件
-              </button>
+              </ElButton>
             </li>
           </ul>
           <p v-if="uploading" role="status">正在上传协议文件。</p>
@@ -975,8 +976,9 @@ onBeforeUnmount(() => {
         </p>
         <p v-else-if="message" role="status">{{ message }}</p>
         <div class="customer-document-actions">
-          <button
-            type="submit"
+          <ElButton
+            native-type="submit"
+            type="primary"
             data-test="agreement-submit"
             :disabled="
               submitting ||
@@ -987,17 +989,17 @@ onBeforeUnmount(() => {
             "
           >
             {{ status === 'unknown' ? '按原请求重试' : '保存新版本' }}
-          </button>
-          <button
+          </ElButton>
+          <ElButton
             v-if="status === 'refresh-needed'"
-            type="button"
+            native-type="button"
             data-test="agreement-refresh-current"
             @click="refreshCurrent"
           >
             只读刷新
-          </button>
-          <button
-            type="button"
+          </ElButton>
+          <ElButton
+            native-type="button"
             data-test="agreement-cancel"
             :disabled="
               !canCancel || status === 'unknown' || status === 'refresh-needed'
@@ -1005,7 +1007,7 @@ onBeforeUnmount(() => {
             @click="cancelEditing"
           >
             取消编辑
-          </button>
+          </ElButton>
         </div>
       </form>
 
@@ -1013,14 +1015,14 @@ onBeforeUnmount(() => {
         <p role="status">
           上传结果未知。请下载并人工核对现有精确版本，再选择是否用于协议。
         </p>
-        <button
-          type="button"
+        <ElButton
+          native-type="button"
           data-test="agreement-recovery-refresh"
           :disabled="recoveryLoading || uploading"
           @click="refreshRecoveryFiles"
         >
           刷新已有协议文件
-        </button>
+        </ElButton>
         <ul>
           <li
             v-for="file in recoveryFiles"
@@ -1030,16 +1032,16 @@ onBeforeUnmount(() => {
               >{{ file.version.originalFilename }} ·
               {{ file.version.createdAt }}</span
             >
-            <button
-              type="button"
+            <ElButton
+              native-type="button"
               :data-test="`recovery-download-${file.version.id}`"
               :disabled="uploading"
               @click="downloadRecoveryFile(file)"
             >
               下载核对
-            </button>
-            <button
-              type="button"
+            </ElButton>
+            <ElButton
+              native-type="button"
               :data-test="`recovery-adopt-${file.version.id}`"
               :disabled="
                 !verifiedRecoveryFiles.has(recoveryKey(file)) || !canSubmit
@@ -1047,20 +1049,20 @@ onBeforeUnmount(() => {
               @click="adoptRecoveryFile(file)"
             >
               确认选用此版本
-            </button>
+            </ElButton>
           </li>
         </ul>
       </div>
 
       <div v-if="data.agreement && canRead" class="customer-document-history">
-        <button
-          type="button"
+        <ElButton
+          native-type="button"
           data-test="agreement-history-toggle"
           :disabled="historyLoading"
           @click="historyOpen ? (historyOpen = false) : loadHistory(1)"
         >
           {{ historyOpen ? '收起版本历史' : '查看版本历史' }}
-        </button>
+        </ElButton>
         <section v-if="historyOpen" aria-label="协议版本历史">
           <ol>
             <li v-for="item in history" :key="item.id">
@@ -1079,35 +1081,35 @@ onBeforeUnmount(() => {
               <ul v-else>
                 <li v-for="file in item.files" :key="file.contentVersionId">
                   {{ file.originalFilename }}
-                  <button
-                    type="button"
+                  <ElButton
+                    native-type="button"
                     :data-test="`history-download-${file.contentVersionId}`"
                     @click="downloadFile(file)"
                   >
                     下载此历史版本
-                  </button>
+                  </ElButton>
                 </li>
               </ul>
             </li>
           </ol>
           <div class="customer-document-actions">
-            <button
-              type="button"
+            <ElButton
+              native-type="button"
               :disabled="historyLoading || historyPage <= 1"
               @click="loadHistory(historyPage - 1)"
             >
               上一页
-            </button>
+            </ElButton>
             <span>第 {{ historyPage }} 页，共 {{ historyTotal }} 条</span>
-            <button
-              type="button"
+            <ElButton
+              native-type="button"
               :disabled="
                 historyLoading || historyPage * versionCount >= historyTotal
               "
               @click="loadHistory(historyPage + 1)"
             >
               下一页
-            </button>
+            </ElButton>
           </div>
         </section>
       </div>
@@ -1134,20 +1136,6 @@ onBeforeUnmount(() => {
 .customer-document-card h3 {
   margin: 0 0 var(--s-3);
   font-size: 16px;
-}
-.customer-document-card button {
-  min-height: 36px;
-  padding: 0 var(--s-3);
-  border: 1px solid var(--color-hairline);
-  border-radius: 6px;
-  background: var(--color-surface-1);
-  color: var(--color-ink);
-  cursor: pointer;
-  font: inherit;
-}
-.customer-document-card button:disabled {
-  cursor: not-allowed;
-  opacity: 0.55;
 }
 .customer-document-form {
   display: grid;
