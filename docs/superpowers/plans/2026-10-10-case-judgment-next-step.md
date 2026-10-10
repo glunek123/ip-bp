@@ -60,6 +60,8 @@ type JudgmentNextStepResult = {
 
 ## Task 1：固定业务规则、后端与前向迁移（6 Sol）
 
+执行边界：Task 3的真实PG、迁移及SQL安全helper并入本高风险Task，由同一Sol实现并独立审查；正常API／真实账号浏览器接线并入接口固定后的Task 2，避免重复理解数据库不变量。业务范围和验收要求不变。
+
 **Allowed files:**
 
 - Modify: `backend/prisma/schema.prisma`、`scripts/prisma-model-owners.mjs`及新增前向`backend/prisma/migrations/*/migration.sql`。
@@ -81,7 +83,7 @@ type JudgmentNextStepResult = {
 
 ## Task 2：共享页面与前端契约（6 Luna）
 
-**Allowed files:** `frontend/src/api/cases.ts`、`client-cases.ts`、`organization.ts`及直接spec；`frontend/src/modules/cases/CaseDetailPage.vue`、`LawyerCaseDetailPage.vue`、`CaseJudgmentPanel.vue`和相关spec；新建`CaseJudgmentNextStepPanel.vue`及直接spec；`frontend/src/app/AppShell.vue`及直接spec。权限类型／解码器复用现有`organization.ts`，不另建平行目录。
+**Allowed files:** `frontend/src/api/cases.ts`、`client-cases.ts`、`organization.ts`及直接spec；`frontend/src/modules/cases/CaseDetailPage.vue`、`LawyerCaseDetailPage.vue`、`CaseJudgmentPanel.vue`和相关spec；新建`CaseJudgmentNextStepPanel.vue`及直接spec；`frontend/src/app/AppShell.vue`及直接spec；Task 3定义的浏览器spec与必要的正常API／真实账号helper。权限类型／解码器复用现有`organization.ts`，不另建平行目录；不修改SQL、schema或安全规则。
 
 **Acceptance:** 按Task 1固定的capability展示，保留现有判决登记／更正；无分支默认猜测、必填星号、操作前说明影响，未知结果原键恢复，冲突不偷换版本。侧栏只新增已可到达节点，页内不重复阶段筛选条；客户不增加内部数据。
 
@@ -92,6 +94,8 @@ type JudgmentNextStepResult = {
 - [ ] 5. 若发现需改Task 1契约、schema、权限或业务语义，立即停止扩大修改并升级Sol，不自行架构重构。
 
 ## Task 3：真实数据库、迁移和浏览器验收（Sol判断，Luna执行明确用例）
+
+本节保留统一验收清单，不另派重复实现Task：数据库与迁移项由Task 1交付并审查，接口已确定的浏览器项由Task 2执行。完整撤销后判决更正必须包含真实冻结文件及HTTP办理，不以合成事实链探针替代。
 
 **Allowed files:** 新建`tests/e2e/case-judgment-next-step.spec.ts`、`case-judgment-next-step-database.spec.ts`、`case-judgment-next-step-migration.spec.ts`；对应`tests/support/case-judgment-next-step-database.mjs`／`.d.mts`、`case-judgment-next-step-migration.mjs`／`.d.mts`。仅按必要性扩展既有真实账号fixture及清理helper；不改变测试门禁、超时、重试或断言质量。
 
