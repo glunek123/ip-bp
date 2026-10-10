@@ -55,7 +55,7 @@ Requires Sol attention: YES / NO
 
 测试分层：Worker运行本Task聚焦测试及必要的类型／构建检查；高风险Reviewer只按finding补针对性验证，不默认复跑Worker测试；主Agent在阶段集成后运行集成测试和快速门禁。所有Task集成为固定候选后，由独立`gpt-6-sol`做一次Final Review，修复并关闭finding后再运行Level 3完整门禁及适用数据库E2E／迁移专项。同一tree及输入的可信结果直接复用；Level 3已运行完整`verify`与对应E2E时，不为重复覆盖额外运行Slice门禁，除非该Slice证据是明确交付要求。普通技术失败优先由原Luna在原Task内连续修复；首次暴露上述高风险或语义冲突即升级Sol。补审优先由原Reviewer掌握整体范围及相关约束，聚焦原finding、修复diff和新增影响；出现新实质风险才扩大审查。原执行者或审查者不可用时，按同一范围交接已有证据。审查主体与可用性降级以[三级规则](../.cursor/rules/verified-feature-integration.mdc#review-主体的可用性降级适用于-level-3)为准。
 
-既有实施计划或方法Skill若要求每个Task都配独立Reviewer，普通Task按本节风险路由执行；高风险Task与集成后Final Review仍不可省略。
+本节独立Reviewer须满足[三级规则的不同主体判据](../.cursor/rules/verified-feature-integration.mdc#review-主体的可用性降级适用于-level-3)。既有实施计划或方法Skill若要求每个Task都配独立Reviewer，普通Task按本节风险路由执行；高风险Task与集成后Final Review仍不可省略。
 
 ## 状态与检查点
 

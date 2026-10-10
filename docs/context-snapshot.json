@@ -1,8 +1,8 @@
 {
   "version": 1,
-  "recordedAt": "2026-10-10T07:26:11.177Z",
+  "recordedAt": "2026-10-10T07:42:55.580Z",
   "files": {
-    ".cursor/rules/verified-feature-integration.mdc": "3a72f9f87123c9357444eff44aac8d8b93782bbd5e7b29f4df2abe7765c100db",
+    ".cursor/rules/verified-feature-integration.mdc": "cd02bbd900731c351d04863fc3dfd7236162511a5118e5797e6a56e01da9822c",
     ".env.example": "07211cde5c2b59efc21b619b752d4c9b871f0980d2d64ca3c146ad6151fd27ca",
     ".gitattributes": "b4cebf3dd35dc75e5c469f4326cd59238b86334aeed5d99b8e3d91c139a321dd",
     ".gitignore": "ba9bc8399767569e5412f23f4783afc64e7dc21b38b61242b42fe6104eaed074",
@@ -413,7 +413,7 @@
     "demo/app.js": "a4caad5bb00ed08152ff70e59e7af08a5c581a8c770586bd3868713e3de9d0e8",
     "demo/index.html": "e433b6f6125623c788bd4c020dae2d723a40fb889f48d577853136e967dd1721",
     "demo/styles.css": "b3f1f86112d2948271a790c5e050b831ea2325f5645ecc496d0aaf04bc87edf3",
-    "docs/ai-coding.md": "0f3150bdf174263df71ed07c74ae5b4481d2a03a4270888efb43184c289b13fd",
+    "docs/ai-coding.md": "aae4521bc878ed8ef81c7c37ed372615c2227a977de8beeecac1acf324d90b83",
     "docs/architecture.md": "20037b1cd2c72316bfbd262c5d59d1a4bdc732e3a8379454073e0b27c7619e75",
     "docs/component-compatibility.md": "7c2f7b7b6b13e02d276af4809a5c904a9c88af1ca0a065aeed8ec896008c2200",
     "docs/conventions.md": "94139e195e5cbff3f52a07bf1456fad057935aa3409b742dad600e26bd460208",
