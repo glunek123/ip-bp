@@ -105,22 +105,40 @@ const commandSummary = computed(() =>
       ].join('、')}。`,
 );
 
+function clearDraft(): void {
+  path.value = '';
+  plaintiffAppeals.value = false;
+  defendantIds.value = new Set();
+  readinessConfirmed.value = false;
+  revokeReason.value = '';
+  confirmation.value = '';
+}
 watch(
   [() => props.item.id, () => props.contextKey],
   () => {
     revision += 1;
-    path.value = '';
-    plaintiffAppeals.value = false;
-    defendantIds.value = new Set();
-    readinessConfirmed.value = false;
-    revokeReason.value = '';
+    clearDraft();
     pending.value = false;
     pendingUnknown.value = null;
     error.value = '';
     success.value = '';
-    confirmation.value = '';
   },
   { immediate: true, flush: 'sync' },
+);
+watch(
+  [
+    () => props.item.version,
+    () => props.item.judgment.current?.id,
+    () => props.item.judgmentNextStep.current?.id,
+  ],
+  () => {
+    clearDraft();
+    if (pendingUnknown.value === null) {
+      error.value = '';
+      success.value = '';
+    }
+  },
+  { flush: 'sync' },
 );
 onBeforeUnmount(() => {
   mounted = false;

@@ -68,6 +68,30 @@ function mountPanel(props = {}) {
     props: { item, contextKey: 'internal:user-1:1', ...props },
   });
 }
+const activeChoice = {
+  id: '70000000-0000-4000-8000-000000000006',
+  judgmentId,
+  next: 'APPEAL' as const,
+  plaintiffRightsHolderId: item.rightsHolder.id,
+  plaintiffName: item.rightsHolder.name,
+  defendants: [],
+  executionReadinessConfirmed: false,
+  fromVersion: 3,
+  toVersion: 4,
+  recordedAt: '2026-10-10T03:00:00Z',
+};
+const revocableItem = {
+  ...item,
+  stage: 'SECOND_INSTANCE' as const,
+  version: 4,
+  canChooseJudgmentNextStep: false,
+  canRevokeJudgmentNextStep: true,
+  judgmentNextStep: {
+    current: activeChoice,
+    history: [activeChoice],
+    revocations: [],
+  },
+};
 
 describe('CaseJudgmentNextStepPanel', () => {
   it('requires an explicit path and explicit execution readiness confirmation', async () => {
@@ -86,6 +110,73 @@ describe('CaseJudgmentNextStepPanel', () => {
         .disabled,
     ).toBe(true);
   });
+
+  it.each([
+    ['version', { version: 4 }],
+    [
+      'current judgment',
+      {
+        judgment: {
+          ...item.judgment,
+          current: { ...judgment, id: '70000000-0000-4000-8000-000000000009' },
+        },
+      },
+    ],
+  ])(
+    'clears an unsubmitted choice when the same case %s changes',
+    async (_label, change) => {
+      const wrapper = mountPanel();
+      await wrapper.get('input[value="APPEAL"]').setValue();
+      await wrapper.get('input[data-plaintiff-appeals="true"]').setValue(true);
+      await wrapper.get('form').trigger('submit');
+      expect(wrapper.find('[role="dialog"]').exists()).toBe(true);
+
+      await wrapper.setProps({ item: { ...item, ...change } });
+      expect(wrapper.find('[role="dialog"]').exists()).toBe(false);
+      expect(wrapper.findAll('input[type="radio"]:checked')).toHaveLength(0);
+      expect(
+        (wrapper.get('button[type="submit"]').element as HTMLButtonElement)
+          .disabled,
+      ).toBe(true);
+      expect(api.chooseCaseJudgmentNextStep).not.toHaveBeenCalled();
+    },
+  );
+
+  it.each([
+    ['version', { version: 5 }],
+    [
+      'current choice',
+      {
+        judgmentNextStep: {
+          ...revocableItem.judgmentNextStep,
+          current: {
+            ...activeChoice,
+            id: '70000000-0000-4000-8000-000000000010',
+          },
+        },
+      },
+    ],
+  ])(
+    'clears an unsubmitted revocation when the same case %s changes',
+    async (_label, change) => {
+      const wrapper = mountPanel({ item: revocableItem });
+      await wrapper.get('[data-revoke-reason]').setValue('旧选择的撤销原因');
+      await wrapper.get('[data-revoke-choice]').trigger('click');
+      expect(wrapper.find('[role="dialog"]').exists()).toBe(true);
+
+      await wrapper.setProps({ item: { ...revocableItem, ...change } });
+      expect(wrapper.find('[role="dialog"]').exists()).toBe(false);
+      expect(
+        (wrapper.get('[data-revoke-reason]').element as HTMLTextAreaElement)
+          .value,
+      ).toBe('');
+      expect(
+        (wrapper.get('[data-revoke-choice]').element as HTMLButtonElement)
+          .disabled,
+      ).toBe(true);
+      expect(api.revokeCaseJudgmentNextStep).not.toHaveBeenCalled();
+    },
+  );
 
   it('submits both appeal sides by stable defendant ID and reuses the original key after an unknown result', async () => {
     api.chooseCaseJudgmentNextStep.mockRejectedValueOnce(
@@ -148,6 +239,84 @@ describe('CaseJudgmentNextStepPanel', () => {
     expect(
       api.chooseCaseJudgmentNextStep.mock.calls[1]![1].expectedVersion,
     ).toBe(3);
+  });
+
+  it('keeps an in-flight choice when detail refreshes before an unknown response', async () => {
+    let rejectRequest!: (reason: unknown) => void;
+    api.chooseCaseJudgmentNextStep.mockReturnValueOnce(
+      new Promise((_resolve, reject) => {
+        rejectRequest = reject;
+      }),
+    );
+    api.chooseCaseJudgmentNextStep.mockResolvedValueOnce({});
+    const wrapper = mountPanel();
+    await wrapper.get('input[value="EXECUTION"]').setValue();
+    await wrapper.get('input[type="checkbox"]').setValue(true);
+    await wrapper.get('form').trigger('submit');
+    await wrapper.get('[data-confirm-choice]').trigger('click');
+    const first = api.chooseCaseJudgmentNextStep.mock.calls[0]![1];
+    const committedChoice = {
+      ...activeChoice,
+      next: 'EXECUTION' as const,
+      plaintiffRightsHolderId: null,
+      plaintiffName: null,
+      executionReadinessConfirmed: true,
+    };
+
+    await wrapper.setProps({
+      item: {
+        ...item,
+        stage: 'WAITING_EXECUTION_DOCUMENTS',
+        version: 4,
+        canChooseJudgmentNextStep: false,
+        judgmentNextStep: {
+          current: committedChoice,
+          history: [committedChoice],
+          revocations: [],
+        },
+      },
+    });
+    rejectRequest(new ApiError('unknown', 503, 'NETWORK_ERROR'));
+    await flushPromises();
+    expect(wrapper.find('[data-retry-choice]').exists()).toBe(true);
+    await wrapper.get('[data-retry-choice]').trigger('click');
+    await flushPromises();
+    expect(api.chooseCaseJudgmentNextStep.mock.calls[1]![1]).toEqual(first);
+  });
+
+  it('keeps an in-flight revocation through a refreshed target stage and retries the original body and key', async () => {
+    let rejectRequest!: (reason: unknown) => void;
+    api.revokeCaseJudgmentNextStep.mockReturnValueOnce(
+      new Promise((_resolve, reject) => {
+        rejectRequest = reject;
+      }),
+    );
+    api.revokeCaseJudgmentNextStep.mockResolvedValueOnce({});
+    const wrapper = mountPanel({ item: revocableItem });
+    await wrapper.get('[data-revoke-reason]').setValue('原撤销原因');
+    await wrapper.get('[data-revoke-choice]').trigger('click');
+    await wrapper.get('[data-confirm-revoke]').trigger('click');
+    const first = api.revokeCaseJudgmentNextStep.mock.calls[0]![1];
+
+    await wrapper.setProps({
+      item: {
+        ...revocableItem,
+        stage: 'WAITING_JUDGMENT',
+        version: 5,
+        canRevokeJudgmentNextStep: false,
+        judgmentNextStep: {
+          current: null,
+          history: [activeChoice],
+          revocations: [],
+        },
+      },
+    });
+    rejectRequest(new ApiError('unknown', 503, 'NETWORK_ERROR'));
+    await flushPromises();
+    expect(wrapper.find('[data-retry-choice]').exists()).toBe(true);
+    await wrapper.get('[data-retry-choice]').trigger('click');
+    await flushPromises();
+    expect(api.revokeCaseJudgmentNextStep.mock.calls[1]![1]).toEqual(first);
   });
 
   it.each(['SECOND_INSTANCE', 'WAITING_EXECUTION_DOCUMENTS'] as const)(
@@ -248,6 +417,13 @@ describe('CaseJudgmentNextStepPanel', () => {
     expect(wrapper.text()).toContain('旧请求未自动改用新版本');
     expect(wrapper.find('[data-retry-choice]').exists()).toBe(false);
     expect(wrapper.emitted('refresh')).toHaveLength(1);
+
+    await wrapper.setProps({ item: { ...item, version: 4 } });
+    expect(wrapper.findAll('input[type="radio"]:checked')).toHaveLength(0);
+    expect(
+      (wrapper.get('button[type="submit"]').element as HTMLButtonElement)
+        .disabled,
+    ).toBe(true);
 
     let rejectRequest!: (reason: unknown) => void;
     api.chooseCaseJudgmentNextStep.mockReturnValueOnce(
