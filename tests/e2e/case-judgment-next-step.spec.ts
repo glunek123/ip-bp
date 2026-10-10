@@ -553,10 +553,31 @@ test('real operator chooses, revokes, corrects, and chooses a new judgment path;
       new URL(response.url()).pathname ===
         `/api/v1/cases/${internalCase.caseId}/judgment-correct`,
   );
+  const correctedDetail = page.waitForResponse(
+    (response) =>
+      response.request().method() === 'GET' &&
+      new URL(response.url()).pathname ===
+        `/api/v1/cases/${internalCase.caseId}`,
+  );
   await internalJudgment.panel
     .locator('[data-test="judgment-correct"]')
     .click();
-  await status(await correction, 201);
+  const correctionResponse = await correction;
+  await status(correctionResponse, 201);
+  const correctionResult = await correctionResponse.json();
+  const correctedDetailResponse = await correctedDetail;
+  await status(correctedDetailResponse, 200);
+  const correctedDetailResult = await correctedDetailResponse.json();
+  expect(correctedDetailResult.judgment.current.id).toBe(
+    correctionResult.judgmentId,
+  );
+  expect(correctedDetailResult.version).toBe(correctionResult.version);
+  await expect(
+    internalJudgment.panel.locator('[data-test="judgment-current"]'),
+  ).toContainText('已知 1.00');
+  await expect(
+    internalJudgment.panel.locator('[data-test="judgment-current"]'),
+  ).toContainText('CA009更正判决.pdf');
   const execution = page.locator('[data-test="case-judgment-next-step-panel"]');
   await execution.locator('input[value="EXECUTION"]').check();
   await expect(execution.locator('input[type="checkbox"]')).not.toBeChecked();
