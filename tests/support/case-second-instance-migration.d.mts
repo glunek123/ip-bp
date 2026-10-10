@@ -3,6 +3,8 @@ export declare function verifyCaseSecondInstanceMigration(): Promise<{
   priorMigrationCount: number;
   emptyRoundTable: boolean;
   oldChainPreserved: boolean;
+  combinedDetachRejected: boolean;
+  combinedDetachAtomic: boolean;
   guardsEnabled: boolean;
   oldFactImmutable: boolean;
   oldChainImmutable: boolean;

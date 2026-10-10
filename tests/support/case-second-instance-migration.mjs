@@ -13,6 +13,7 @@ const names = readdirSync(directory)
   .sort();
 const target = '20261010040000_add_case_trial_round_foundation';
 const repair = '20261010041000_repair_case_trial_round_guard';
+const detachRepair = '20261010042000_reject_detached_initial_trial_round';
 const sql = (name) =>
   readFileSync(resolve(directory, name, 'migration.sql'), 'utf8');
 
@@ -26,7 +27,7 @@ async function replay(client, migrations) {
   }
 }
 
-async function seedLegacyCase(client, { invalid = false } = {}) {
+async function seedLegacyCase(client, { invalid = false, early = false } = {}) {
   const ids = Object.fromEntries(
     [
       'department',
@@ -85,12 +86,12 @@ async function seedLegacyCase(client, { invalid = false } = {}) {
         ids.customer,
         ids.holder,
         ids.actor,
-        invalid ? 'WAITING_HEARING' : 'SECOND_INSTANCE',
-        invalid ? 7 : 11,
-        ids.hearing,
-        invalid ? null : ids.advance,
-        invalid ? null : ids.judgment,
-        invalid ? null : ids.choice,
+        invalid || early ? 'WAITING_HEARING' : 'SECOND_INSTANCE',
+        invalid || early ? 7 : 11,
+        early ? null : ids.hearing,
+        invalid || early ? null : ids.advance,
+        invalid || early ? null : ids.judgment,
+        invalid || early ? null : ids.choice,
       ],
     );
     await client.query(
@@ -123,34 +124,36 @@ async function seedLegacyCase(client, { invalid = false } = {}) {
           }),
         ],
       );
-      await client.query(
-        `INSERT INTO case_hearing_arrangements(id,department_id,case_id,hearing_at,source,recorded_by_user_id,from_version,to_version,audit_event_id)
+      if (!early) {
+        await client.query(
+          `INSERT INTO case_hearing_arrangements(id,department_id,case_id,hearing_at,source,recorded_by_user_id,from_version,to_version,audit_event_id)
         VALUES ($1,$2,$3,'2026-10-02','SCHEDULE',$4,7,8,$5)`,
-        [ids.hearing, ids.department, ids.case, ids.actor, randomUUID()],
-      );
-      await client.query(
-        `INSERT INTO case_hearing_advances(id,department_id,case_id,arrangement_id,due_at,executed_at,from_version,to_version,audit_event_id)
+          [ids.hearing, ids.department, ids.case, ids.actor, randomUUID()],
+        );
+        await client.query(
+          `INSERT INTO case_hearing_advances(id,department_id,case_id,arrangement_id,due_at,executed_at,from_version,to_version,audit_event_id)
         VALUES ($1,$2,$3,$4,'2026-10-02T16:00:00Z','2026-10-02T16:00:01Z',8,9,$5)`,
-        [ids.advance, ids.department, ids.case, ids.hearing, randomUUID()],
-      );
-      await client.query(
-        `INSERT INTO case_judgment_facts(id,department_id,case_id,kind,judgment_received_at,judgment_amount_state,judgment_amount,paid_litigation_fee_state,recorded_by_user_id,from_version,to_version,audit_event_id)
+          [ids.advance, ids.department, ids.case, ids.hearing, randomUUID()],
+        );
+        await client.query(
+          `INSERT INTO case_judgment_facts(id,department_id,case_id,kind,judgment_received_at,judgment_amount_state,judgment_amount,paid_litigation_fee_state,recorded_by_user_id,from_version,to_version,audit_event_id)
         VALUES ($1,$2,$3,'REGISTER','2026-10-05','KNOWN',100,'PENDING',$4,9,10,$5)`,
-        [ids.judgment, ids.department, ids.case, ids.actor, randomUUID()],
-      );
-      await client.query(
-        `INSERT INTO case_judgment_next_steps(id,department_id,case_id,judgment_id,next,plaintiff_rights_holder_id,plaintiff_name,execution_readiness_confirmed,from_version,to_version,recorded_by_user_id,audit_event_id)
+          [ids.judgment, ids.department, ids.case, ids.actor, randomUUID()],
+        );
+        await client.query(
+          `INSERT INTO case_judgment_next_steps(id,department_id,case_id,judgment_id,next,plaintiff_rights_holder_id,plaintiff_name,execution_readiness_confirmed,from_version,to_version,recorded_by_user_id,audit_event_id)
         VALUES ($1,$2,$3,$4,'APPEAL',$5,'CA010 fixture holder',false,10,11,$6,$7)`,
-        [
-          ids.choice,
-          ids.department,
-          ids.case,
-          ids.judgment,
-          ids.holder,
-          ids.actor,
-          randomUUID(),
-        ],
-      );
+          [
+            ids.choice,
+            ids.department,
+            ids.case,
+            ids.judgment,
+            ids.holder,
+            ids.actor,
+            randomUUID(),
+          ],
+        );
+      }
     }
     await client.query('COMMIT');
     return ids;
@@ -167,10 +170,11 @@ export async function verifyCaseSecondInstanceMigration() {
     allowRandomPort: true,
   });
   if (
-    names.length !== 119 ||
+    names.length !== 120 ||
     names[116] !== '20261010034000_guard_case_judgment_plaintiff_snapshot' ||
     names[117] !== target ||
-    names[118] !== repair
+    names[118] !== repair ||
+    names[119] !== detachRepair
   )
     throw new Error('Unexpected 117 migration baseline or CA-010 suffix');
   const client = new Client({ connectionString: process.env.DATABASE_URL });
@@ -197,8 +201,9 @@ export async function verifyCaseSecondInstanceMigration() {
       )
     ).rows[0].exists;
     await use(schemas[1]);
-    await replay(client, names.slice(0, -2));
+    await replay(client, names.slice(0, -3));
     const legacy = await seedLegacyCase(client);
+    const earlyAccepted = await seedLegacyCase(client, { early: true });
     const prior = (
       await client.query(
         'SELECT a.accepted_at::text AS date, a.recorded_by_user_id AS actor, r.result_snapshot AS receipt FROM case_acceptances a JOIN case_acceptance_receipts r ON r.case_id=a.case_id WHERE a.case_id=$1',
@@ -215,7 +220,30 @@ export async function verifyCaseSecondInstanceMigration() {
         [legacy.hearing, legacy.advance, legacy.judgment, legacy.choice],
       )
     ).rows[0];
-    await replay(client, [target, repair]);
+    await replay(client, [target, repair, detachRepair]);
+    let combinedDetachRejected = false;
+    await client.query('BEGIN');
+    try {
+      await client.query(
+        `UPDATE cases SET stage='WAITING_FORMAL_ACCEPTANCE',
+          current_trial_round_id=NULL,current_acceptance_id=NULL,court_case_no=NULL
+          WHERE id=$1`,
+        [earlyAccepted.case],
+      );
+      await client.query('SET CONSTRAINTS ALL IMMEDIATE');
+    } catch (error) {
+      combinedDetachRejected = error.code === '23514';
+    } finally {
+      await client.query('ROLLBACK');
+    }
+    const combinedDetachAtomic = (
+      await client.query(
+        `SELECT stage='WAITING_HEARING' AND current_trial_round_id IS NOT NULL
+          AND current_acceptance_id=$2 AND court_case_no='CA010-old' AS preserved
+          FROM cases WHERE id=$1`,
+        [earlyAccepted.case, earlyAccepted.acceptance],
+      )
+    ).rows[0].preserved;
     const migrated = (
       await client.query(
         `SELECT c.current_trial_round_id AS round_id, c.current_acceptance_id AS acceptance_id, a.trial_round_id AS acceptance_round_id, a.accepted_at::text AS date, a.recorded_by_user_id AS actor, r.result_snapshot AS receipt
@@ -313,7 +341,7 @@ export async function verifyCaseSecondInstanceMigration() {
       await client.query('ROLLBACK');
     }
     await use(schemas[2]);
-    await replay(client, names.slice(0, -2));
+    await replay(client, names.slice(0, -3));
     const broken = await seedLegacyCase(client, { invalid: true });
     const guardsBeforeFailure = (
       await client.query(`SELECT count(*)::int AS n FROM pg_trigger t JOIN pg_class c ON c.oid=t.tgrelid
@@ -354,7 +382,7 @@ export async function verifyCaseSecondInstanceMigration() {
       ],
     );
     await client.query('COMMIT');
-    await replay(client, [target, repair]);
+    await replay(client, [target, repair, detachRepair]);
     const retry = (
       await client.query(
         'SELECT current_acceptance_id=$2 AS accepted FROM cases WHERE id=$1',
@@ -363,9 +391,11 @@ export async function verifyCaseSecondInstanceMigration() {
     ).rows[0].accepted;
     return {
       migrationCount: names.length,
-      priorMigrationCount: names.length - 2,
+      priorMigrationCount: names.length - 3,
       emptyRoundTable,
       oldChainPreserved,
+      combinedDetachRejected,
+      combinedDetachAtomic,
       guardsEnabled,
       oldFactImmutable,
       oldChainImmutable,
