@@ -85,6 +85,8 @@ type JudgmentNextStepResult = {
 
 **Allowed files:** `frontend/src/api/cases.ts`、`client-cases.ts`、`organization.ts`及直接spec；`frontend/src/modules/cases/CaseDetailPage.vue`、`LawyerCaseDetailPage.vue`、`CaseJudgmentPanel.vue`和相关spec；新建`CaseJudgmentNextStepPanel.vue`及直接spec；`frontend/src/app/AppShell.vue`及直接spec；Task 3定义的浏览器spec与必要的正常API／真实账号helper。权限类型／解码器复用现有`organization.ts`，不另建平行目录；不修改SQL、schema或安全规则。
 
+同步新阶段还包括案件／律师列表及其直接spec、客户端案件列表／详情的阶段展示映射，以及直接受影响的类型fixture。客户端仍只读原企业投影，不增加内部事实；不借类型同步扩展业务行为。
+
 **Acceptance:** 按Task 1固定的capability展示，保留现有判决登记／更正；无分支默认猜测、必填星号、操作前说明影响，未知结果原键恢复，冲突不偷换版本。侧栏只新增已可到达节点，页内不重复阶段筛选条；客户不增加内部数据。
 
 - [ ] 1. 先补严格解码／能力及组件RED；包含非法组合、双方／多被告（按批准规则）、只读／律师、取消无请求、未知POST及重试、过时版本、切案迟到响应。
