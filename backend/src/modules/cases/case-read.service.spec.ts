@@ -284,6 +284,11 @@ describe('CaseReadService', () => {
       accountType: 'LAWYER',
       active: true,
     });
+    f.db.case.findFirst.mockResolvedValue({
+      ...record,
+      stage: 'WAITING_JUDGMENT',
+      currentJudgmentNextStepId: null,
+    });
     const lawyerDetail = await f.service.get(
       { ...actor, lawyerAccountId: actor.userId },
       'case-1',
@@ -295,10 +300,192 @@ describe('CaseReadService', () => {
     expect(lawyerDetail.hearing.corrections[0]).not.toHaveProperty(
       'recordedByUserId',
     );
+    expect(lawyerDetail).toMatchObject({
+      canChooseJudgmentNextStep: false,
+      canRevokeJudgmentNextStep: false,
+      judgmentNextStep: { current: null, history: [], revocations: [] },
+    });
+
+    const judgment = {
+      id: 'judgment-1',
+      kind: 'REGISTER',
+      priorFactId: null,
+      judgmentReceivedAt: new Date('2026-10-08T00:00:00.000Z'),
+      judgmentAmountState: 'PENDING',
+      judgmentAmount: null,
+      paidLitigationFeeState: 'PENDING',
+      paidLitigationFee: null,
+      reason: 'internal judgment reason',
+      recordedAt: new Date('2026-10-08T01:00:00.000Z'),
+      recordedByUserId: 'internal-judgment-user',
+      fromVersion: 2,
+      toVersion: 3,
+      versions: [],
+    };
+    f.db.case.findFirst.mockResolvedValue({
+      ...record,
+      stage: 'WAITING_JUDGMENT',
+      version: 3,
+      currentJudgmentId: judgment.id,
+      currentJudgmentNextStepId: null,
+      judgmentFacts: [judgment],
+      judgmentNextSteps: [],
+      judgmentNextStepRevocations: [],
+    });
+    const eligibleLawyerDetail = await f.service.get(
+      { ...actor, lawyerAccountId: actor.userId },
+      'case-1',
+    );
+    expect(eligibleLawyerDetail).toMatchObject({
+      canChooseJudgmentNextStep: true,
+      canRevokeJudgmentNextStep: false,
+      judgmentNextStep: { current: null, history: [], revocations: [] },
+    });
+
+    const choices = [
+      {
+        id: 'choice-1',
+        judgmentId: judgment.id,
+        next: 'APPEAL',
+        plaintiffRightsHolderId: 'rights-1',
+        plaintiffName: '原告',
+        defendants: [{ defendantId: 'defendant-1', nameSnapshot: '被告' }],
+        executionReadinessConfirmed: false,
+        fromVersion: 3,
+        toVersion: 4,
+        recordedAt: new Date('2026-10-09T01:00:00.000Z'),
+        recordedByUserId: 'internal-choice-user',
+      },
+      {
+        id: 'choice-2',
+        judgmentId: judgment.id,
+        next: 'EXECUTION',
+        plaintiffRightsHolderId: null,
+        plaintiffName: null,
+        defendants: [],
+        executionReadinessConfirmed: true,
+        fromVersion: 5,
+        toVersion: 6,
+        recordedAt: new Date('2026-10-10T01:00:00.000Z'),
+        recordedByUserId: 'internal-choice-user-2',
+      },
+    ];
+    f.db.case.findFirst.mockResolvedValue({
+      ...record,
+      stage: 'WAITING_EXECUTION_DOCUMENTS',
+      version: 6,
+      currentJudgmentId: judgment.id,
+      currentJudgmentNextStepId: choices[1].id,
+      judgmentFacts: [judgment],
+      judgmentNextSteps: choices,
+      judgmentNextStepRevocations: [
+        {
+          id: 'revocation-1',
+          choiceId: choices[0].id,
+          reason: 'internal revocation reason',
+          fromVersion: 4,
+          toVersion: 5,
+          recordedAt: new Date('2026-10-09T02:00:00.000Z'),
+          recordedByUserId: 'internal-revocation-user',
+        },
+      ],
+    });
+    const historyLawyerDetail = await f.service.get(
+      { ...actor, lawyerAccountId: actor.userId },
+      'case-1',
+    );
+    expect(historyLawyerDetail).toMatchObject({
+      canChooseJudgmentNextStep: false,
+      canRevokeJudgmentNextStep: false,
+      judgmentNextStep: {
+        current: {
+          id: 'choice-2',
+          next: 'EXECUTION',
+          executionReadinessConfirmed: true,
+        },
+        history: [
+          {
+            id: 'choice-1',
+            defendants: [{ defendantId: 'defendant-1', nameSnapshot: '被告' }],
+          },
+          { id: 'choice-2', judgmentId: judgment.id },
+        ],
+        revocations: [{ id: 'revocation-1', choiceId: 'choice-1' }],
+      },
+    });
+    expect(historyLawyerDetail).toHaveProperty('judgmentNextStep.history', [
+      {
+        id: 'choice-1',
+        judgmentId: judgment.id,
+        next: 'APPEAL',
+        plaintiffRightsHolderId: 'rights-1',
+        plaintiffName: '原告',
+        defendants: [{ defendantId: 'defendant-1', nameSnapshot: '被告' }],
+        executionReadinessConfirmed: false,
+        fromVersion: 3,
+        toVersion: 4,
+        recordedAt: '2026-10-09T01:00:00.000Z',
+      },
+      {
+        id: 'choice-2',
+        judgmentId: judgment.id,
+        next: 'EXECUTION',
+        plaintiffRightsHolderId: null,
+        plaintiffName: null,
+        defendants: [],
+        executionReadinessConfirmed: true,
+        fromVersion: 5,
+        toVersion: 6,
+        recordedAt: '2026-10-10T01:00:00.000Z',
+      },
+    ]);
+    expect(historyLawyerDetail).toHaveProperty('judgmentNextStep.revocations', [
+      {
+        id: 'revocation-1',
+        choiceId: 'choice-1',
+        fromVersion: 4,
+        toVersion: 5,
+        recordedAt: '2026-10-09T02:00:00.000Z',
+      },
+    ]);
+    expect(historyLawyerDetail).not.toHaveProperty(
+      'judgmentNextStep.history.0.recordedByUserId',
+    );
+    expect(historyLawyerDetail).not.toHaveProperty(
+      'judgmentNextStep.history.1.recordedByUserId',
+    );
+    expect(historyLawyerDetail).not.toHaveProperty(
+      'judgmentNextStep.revocations.0.reason',
+    );
+    expect(historyLawyerDetail).not.toHaveProperty(
+      'judgmentNextStep.revocations.0.recordedByUserId',
+    );
+    expect(historyLawyerDetail).not.toHaveProperty('judgment.history.0.reason');
+    expect(historyLawyerDetail).not.toHaveProperty(
+      'judgment.history.0.recordedByUserId',
+    );
+    expect(historyLawyerDetail).not.toHaveProperty('owner');
+    expect(historyLawyerDetail).not.toHaveProperty('department');
+    expect(historyLawyerDetail).not.toHaveProperty('fees');
+
     f.db.userAccount.findUnique.mockResolvedValue({
       accountType: 'INTERNAL',
       active: true,
     });
+    const historyInternalDetail = await f.service.get(actor, 'case-1');
+    expect(historyInternalDetail).toHaveProperty(
+      'judgmentNextStep.history.0.recordedByUserId',
+      'internal-choice-user',
+    );
+    expect(historyInternalDetail).toHaveProperty(
+      'judgmentNextStep.revocations.0.reason',
+      'internal revocation reason',
+    );
+    expect(historyInternalDetail).toHaveProperty(
+      'judgmentNextStep.revocations.0.recordedByUserId',
+      'internal-revocation-user',
+    );
+    f.db.case.findFirst.mockResolvedValue(record);
     expect(result).toMatchObject({
       courtCaseNo: null,
       fees: [
