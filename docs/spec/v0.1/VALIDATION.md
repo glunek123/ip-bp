@@ -1,5 +1,34 @@
 # SPEC-001 文档验证
 
+## CORE-CA-009 判决后续选择（2026-10-10）
+
+实际通过正式门禁的业务候选为`0442c832a92e01942e370837bcc9d870d03d4d5c`、tree`44b6879fa430ed35c7701485f9713dde11e24323`；分支`codex/core-ca-009-judgment-next-step`，main基线`6ae39ac1a688f2d553bc5b439e0fbc208e131151`。本轮本地验收，不推送／合并／部署，不实施CA-010。后续状态收口提交不冒称实跑过该候选的业务门禁。
+
+按SD-49交付不可变`CaseJudgmentNextStep`、上诉人关联、`CaseJudgmentNextStepRevocation`及回执、案件当前选择指针。有权运营或当前PRIMARY律师从已登记判决的待判决选择APPEAL→二审，或明确核实EXECUTION→待写执行材料；支持原告、多个被告及双方同时上诉，稳定ID与当时名称分别保留。内部独立撤销权限、必填原因、允许阶段和同案锁约束受控回到待判决，再更正／重新选择；律师没有异常撤销权。选择、撤销、审计、CAS与幂等回执原子提交；原键返回原结果，当前权限及承办关系仍重验。客户仅同步阶段，不获取内部判决、选择、原因、人员账号ID或附件。
+
+新增内部／律师`POST .../judgment-next-step`和内部`POST .../judgment-next-step-revoke`，同步详情capability、权限目录及前端严格解码；共享`CaseJudgmentNextStepPanel.vue`接通运营／律师详情、历史、影响说明、确认、未知原请求恢复与冲突反馈，侧栏新增真实可达的二审／待写执行材料。不得将转执行准备称为已申请强制执行。五份前向迁移为`20261010030000_add_case_judgment_next_step_enums`、`20261010031000_add_case_judgment_next_step_facts`、`20261010032000_guard_case_judgment_next_step_chain`、`20261010033000_allow_lawyer_judgment_next_step_audit`、`20261010034000_guard_case_judgment_plaintiff_snapshot`；仅独立测试库升级至117条，未改已执行迁移。
+
+高风险Task及最终集成Review由非实现`gpt-6-sol`子Agent执行；最终代码`487d948`的两轴Spec compliance／Code quality均ACCEPTED，未关闭Critical／Important／Minor为0，`0442c83`只记录已解释上下文快照。原告名称SQL守卫、旧CORRECT头升级、律师投影、同案未提交草稿失效和409反馈等finding均已补审关闭。报告集中在`.local/case-judgment-next-step/{task-1-review,lawyer-projection-review,final-review}.md`及Task／修复报告。审查为**同模型非实现隔离，独立性不足**；外部异模型独立Review为**Pending（本轮未执行）**，不称其通过，也没有证据称外部服务不可用。
+
+| 固定候选正式检查                             | 实际结果                                                                                                              | 包装耗时  |
+| -------------------------------------------- | --------------------------------------------------------------------------------------------------------------------- | --------- |
+| `pnpm verify`                                | 退出0；严格上下文、Spec、架构、类型、Lint、格式、工具11文件74/74、前端85文件913/913、后端94 suites1180/1180及双端构建 | 179.600秒 |
+| `pnpm test:e2e`，下述13个文件，`--workers=1` | 退出0；适用隔离PostgreSQL／Chromium95/95，无跳过或重试                                                                | 451.467秒 |
+
+E2E实际选择`tests/e2e/`内的`case-judgment-next-step.spec.ts`、`case-judgment-next-step-database.spec.ts`、`case-judgment-next-step-migration.spec.ts`、`case-judgment.spec.ts`、`case-judgment-database.spec.ts`、`case-judgment-migration.spec.ts`、`case-hearing.spec.ts`、`case-hearing-database.spec.ts`、`case-hearing-migration.spec.ts`、`case-lawyer.spec.ts`、`case-lawyer-database.spec.ts`、`cases.spec.ts`和`core-leads.spec.ts`。这是本片及受影响旧链的正式风险范围，**不是全仓E2E**，不伪称自动affected选择。verify于UTC`2026-10-10T07:03:06.9105622Z`开始、`07:06:06.5100689Z`结束，E2E于`07:06:46.7909407Z`开始、`07:14:18.2577796Z`结束。
+
+两项前后干净commit／tree及环境一致，fingerprint均为`8cebe60684ba5641d54f9c5c32e7c85b7b62c8fd8d55d4583e40330b5f5e9337`；Node v24.21.0、pnpm11.27.0，数据库只用`backend/.env.test`的15433独立测试库，不打印凭据。指纹不证明数据库内容相同。原始日志、真实退出／时长及环境摘要为`.local/case-judgment-next-step/formal-attempt3-verify{.log,-result.json,-environment-before.json,-environment-after.json}`与`formal-attempt2-e2e`同组文件；独立复制的HTML为`formal-attempt2-e2e-playwright-report/index.html`，机器结果为`formal-attempt2-e2e-test-results/.last-run.json`，status=passed且failedTests为空。原始证据被Git忽略，不冒称远端CI产物。
+
+真实PG覆盖权限／企业范围、当前承办及停用即时拒绝、原键重放／异参、旧version／judgment、选择与判决更正竞争、撤销竞争，以及事实／上诉人关联／审计／回执故障整笔回滚。SQL负例拒绝假原告名称、外案被告、伪造版本／锚点／审计／回执和跨案指针；主体后来改名仍保留原快照。撤销后通过真实HTTP更正并逐字下载原冻结文件，旧回执不变；清理故障回滚并恢复不可变守卫。迁移覆盖空链117条及上一支持112条含REGISTER／CORRECT头、开庭、审计、回执和冻结引用的合成旧数据升级，逐JSON保真后以旧更正头正常选择提交。合成旧数据不冒称旧HTTP办理，真实文件字节另由HTTP路径证明。
+
+真实密码浏览器覆盖运营双方／同名多被告选择→二审→刷新→留原因撤销→真实上传并更正判决→转执行准备→列表／侧栏／刷新／重登；当前律师真实登记并选择，不能撤销；本企业客户只见允许阶段，其他企业拒绝，内部事实及附件不可见。未知POST原body/key恢复、同案普通草稿失效、切案／身份迟到响应、403清资料及409持续提示另有组件证据。
+
+失败与复跑如实保留：正式verify共启动3次。首轮`fb7eb34`退出1（161.178秒），工具74/74、前端913/913通过，后端93 suites／1107项通过、OpenAPI一suite71项因测试provider遗漏失败，构建未运行；F1只补provider及两项201 schema断言，聚焦76/76及补审通过。第二轮`9eff3fc`完整verify退出0（174.262秒），但正式E2E首轮94/95退出1（461.412秒）：更正POST成功后测试先填写旧详情，随后GET新判决触发正确的旧草稿保护。F2只等待真实GET的judgmentId／version一致及新金额／文件DOM呈现，单条1/1后补审关闭；没有改保护、断言、重试或超时。最终新候选才取得上表完整通过。首轮verify在`formal-verify.*`，第二轮在`formal-attempt2-verify.*`，失败E2E在`formal-attempt1-e2e.*`及独立复制的HTML／trace；F1／F2 RED／GREEN及原因见`final-fix-report.md`。正式E2E共启动2次；这些复跑源于实际测试修复，不是完成状态写回Spec。未取得token用量，提速效果未量化。
+
+之后仅补本验证记录、`feature-roadmap.md`完成态／受影响余量与唯一指针、`project-status.md`恢复摘要及对应`context-snapshot.json`。按现行非执行性收口例外，必须核对从实际候选到拟收口状态的累计提交／diff、暂存／未暂存及相关未跟踪项，只允许上述状态、证据和已解释快照；代码、测试、迁移、业务契约／AC、构建、配置及环境不变。收口检查使用受影响Prettier、Spec、链接／指针一致性、标准上下文记录及strict和Git差异，实际结果保存在`.local/case-judgment-next-step/closeout-doc-check.log`，以真实退出0为收口前提，不要求本段包含自身提交哈希，也不称收口HEAD实跑业务门禁。
+
+本片没有剩余业务验收阻塞；二审结果、执行材料／申请、财务及外部补录未交付。CA-010／011接入正式后续事实时仍必须扩展同案锁及撤销／判决更正数据库阻断，不以缺少未来表冒称已验证未来安全。开发／生产迁移、对象存储生产Provider、部署和远端CI未执行；旧大chunk与pg弃用警告为非阻断，pg@9兼容未验证。Current为CA-010未领取、Next为CA-011未领取；须先获授权集成CA-009及核对组合tree。
+
 ## 仓库整理与历史迁移探针修复（2026-10-08）
 
 基线`e15fd4b797abb609b4e8cd39b2b872246271b15a`；本地分支`codex/repository-hygiene`。实际受验候选`c7572c6eb53bf42fd05416d9fb4317134319b062`、tree`1013c61a28ed2878132a6bb904365e98368ad4ed`。整理验收轮不开发业务Slice、不改变Current CA-008／Next CA-009、未推送／合并或部署；后续授权集成另记如下。
