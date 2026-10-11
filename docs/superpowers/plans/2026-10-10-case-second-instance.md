@@ -70,7 +70,7 @@ type RevokeSecondInstanceResultInput = {
 
 ## Task 1：最小轮次、前向升级及旧链兼容（6 Sol，高风险）
 
-**Files:** 修改`backend/prisma/schema.prisma`；新增本片前向migration；新增`backend/src/modules/cases/case-trial-round.ts`及`.spec.ts`；定向修改`case-acceptance.service.ts`、`case-hearing.service.ts`、`case-hearing-scheduler.service.ts`、`case-judgment.service.ts`、`case-judgment-next-step.service.ts`、`case-read.service.ts`、`case-read.dto.ts`及对应直接测试；迁移测试新增`tests/support/case-second-instance-migration.mjs`／`.d.mts`和`tests/e2e/case-second-instance-migration.spec.ts`。
+**Files:** 修改`backend/prisma/schema.prisma`；新增本片前向migration；当前轮次解析复用Prisma关系及既有Service，不另建无调用的`case-trial-round.ts`；定向修改`case-acceptance.service.ts`、`case-hearing.service.ts`、`case-hearing-scheduler.service.ts`、`case-judgment.service.ts`、`case-judgment-next-step.service.ts`、`case-read.service.ts`、`case-read.dto.ts`及对应直接测试；迁移测试新增`tests/support/case-second-instance-migration.mjs`／`.d.mts`和`tests/e2e/case-second-instance-migration.spec.ts`。
 
 **Interfaces:** 产生当前轮次解析／建初始轮次能力，Case当前受理指针及分轮事实关系；消费既有案件事务及版本，不改变现有正式接口成功回执。
 
@@ -136,4 +136,4 @@ pnpm test:e2e tests/e2e/case-second-instance.spec.ts tests/e2e/case-second-insta
 
 ## 当前设计检查与恢复点
 
-已核对Demo字段／三结果、现有CA-009与SD-49、CA-006一案一受理约束、当前判决全案单REGISTER根及精确版本守卫、律师与客户投影、材料类别及直接测试、正式workspace命令。用户已集中确认Q1～Q3并登记SD-50；尚无CA-010源码、迁移或业务验证结果，不预写验收通过。业务完成态只由路线图维护，本计划不复制待门禁／已通过台账。
+2026-10-10实施前已核对Demo字段／三结果、CA-009与SD-49、CA-006一案一受理约束、判决全案单REGISTER根及精确版本守卫、律师与客户投影、材料类别及直接测试、正式workspace命令。用户已集中确认Q1～Q3并登记SD-50；此段只记录设计基线，不表示当前实现状态或验收结果。业务完成态由路线图维护，恢复点见开发状态，实际候选及结果见VALIDATION，本计划不复制动态验收台账。
