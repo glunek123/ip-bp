@@ -31,6 +31,7 @@ const file = {
 };
 const fact = {
   id: '70000000-0000-4000-8000-000000000003',
+  trialRoundId: '70000000-0000-4000-8000-000000000099',
   kind: 'REGISTER' as const,
   priorFactId: null,
   judgmentReceivedAt: '2026-10-07',
@@ -80,6 +81,9 @@ const baseItem: CaseDetail = {
   canCorrectJudgment: false,
   canChooseJudgmentNextStep: false,
   canRevokeJudgmentNextStep: false,
+  canSaveSecondInstance: false,
+  canRegisterSecondInstanceResult: false,
+  canRevokeSecondInstanceResult: false,
   sourceLead: { id: 'lead-1', businessNo: 'LD-1' },
   sourceNotaryMatter: { id: 'matter-1', businessNo: 'NZ-1' },
   courtCaseNo: '（2026）甲0101民初1号',
@@ -123,6 +127,16 @@ const baseItem: CaseDetail = {
   },
   judgment: { current: null, history: [], availableFiles: [file] },
   judgmentNextStep: { current: null, history: [], revocations: [] },
+  acceptances: [],
+  secondInstance: {
+    currentTrialRoundId: null,
+    currentProgress: null,
+    currentResult: null,
+    rounds: [],
+    progresses: [],
+    results: [],
+    revocations: [],
+  },
 };
 
 beforeEach(() => {

@@ -18,6 +18,7 @@ const caseId = '70000000-0000-4000-8000-000000000001';
 const judgmentId = '70000000-0000-4000-8000-000000000002';
 const judgment = {
   id: judgmentId,
+  trialRoundId: '70000000-0000-4000-8000-000000000099',
   kind: 'REGISTER',
   priorFactId: null,
   judgmentReceivedAt: '2026-10-09',
@@ -70,6 +71,7 @@ function mountPanel(props = {}) {
 }
 const activeChoice = {
   id: '70000000-0000-4000-8000-000000000006',
+  trialRoundId: '70000000-0000-4000-8000-000000000099',
   judgmentId,
   next: 'APPEAL' as const,
   plaintiffRightsHolderId: item.rightsHolder.id,
@@ -205,6 +207,7 @@ describe('CaseJudgmentNextStepPanel', () => {
     expect(wrapper.text()).toContain('结果未知');
     const committedChoice = {
       id: '70000000-0000-4000-8000-000000000006',
+      trialRoundId: '70000000-0000-4000-8000-000000000099',
       judgmentId,
       next: 'APPEAL' as const,
       plaintiffRightsHolderId: item.rightsHolder.id,

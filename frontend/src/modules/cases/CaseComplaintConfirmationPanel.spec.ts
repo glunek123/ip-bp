@@ -46,6 +46,9 @@ const detail = {
   canCorrectJudgment: false,
   canChooseJudgmentNextStep: false,
   canRevokeJudgmentNextStep: false,
+  canSaveSecondInstance: false,
+  canRegisterSecondInstanceResult: false,
+  canRevokeSecondInstanceResult: false,
   canConfirmComplaint: true,
   canMailComplaint: false,
   sourceLead: { id: 'lead-1', businessNo: 'LD-1' },
@@ -94,6 +97,16 @@ const detail = {
   },
   judgment: { current: null, history: [], availableFiles: [] },
   judgmentNextStep: { current: null, history: [], revocations: [] },
+  acceptances: [],
+  secondInstance: {
+    currentTrialRoundId: null,
+    currentProgress: null,
+    currentResult: null,
+    rounds: [],
+    progresses: [],
+    results: [],
+    revocations: [],
+  },
 } as CaseDetail;
 
 function material(contentVersions = [file]) {

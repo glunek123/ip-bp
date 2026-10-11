@@ -33,6 +33,9 @@ export type CaseSummary = {
   canCorrectJudgment: boolean;
   canChooseJudgmentNextStep: boolean;
   canRevokeJudgmentNextStep: boolean;
+  canSaveSecondInstance: boolean;
+  canRegisterSecondInstanceResult: boolean;
+  canRevokeSecondInstanceResult: boolean;
   sourceLead: { id: string; businessNo: string };
   sourceNotaryMatter: { id: string; businessNo: string };
 };
@@ -92,9 +95,12 @@ export type CaseDetail = CaseSummary & {
   hearing: CaseHearing;
   judgment: CaseJudgment;
   judgmentNextStep: CaseJudgmentNextStep;
+  acceptances: Array<CaseAcceptanceHistory>;
+  secondInstance: CaseSecondInstance;
 };
 export type CaseHearingArrangement = {
   id: string;
+  trialRoundId: string;
   hearingAt: string | null;
   source: 'SCHEDULE' | 'CORRECTION';
   recordedAt: string;
@@ -102,6 +108,7 @@ export type CaseHearingArrangement = {
 };
 export type CaseHearingAdvance = {
   id: string;
+  trialRoundId: string;
   arrangementId: string;
   dueAt: string;
   executedAt: string;
@@ -132,6 +139,7 @@ export type LawyerCaseHearing = Omit<CaseHearing, 'corrections'> & {
 };
 export type CaseJudgmentFact = {
   id: string;
+  trialRoundId: string;
   kind: 'REGISTER' | 'CORRECT';
   priorFactId: string | null;
   judgmentReceivedAt: string;
@@ -162,6 +170,7 @@ export type LawyerCaseJudgment = {
 };
 export type CaseJudgmentNextStepChoice = {
   id: string;
+  trialRoundId: string;
   judgmentId: string;
   next: 'APPEAL' | 'EXECUTION';
   plaintiffRightsHolderId: string | null;
@@ -322,6 +331,9 @@ export type LawyerCaseSummary = {
   canCorrectJudgment: false;
   canChooseJudgmentNextStep: boolean;
   canRevokeJudgmentNextStep: false;
+  canSaveSecondInstance: boolean;
+  canRegisterSecondInstanceResult: boolean;
+  canRevokeSecondInstanceResult: false;
   createdAt: string;
 };
 export type LawyerCaseList = {
@@ -364,7 +376,143 @@ export type LawyerCaseDetail = CaseWorkflowItem &
     hearing: LawyerCaseHearing;
     judgment: LawyerCaseJudgment;
     judgmentNextStep: LawyerCaseJudgmentNextStep;
+    acceptances: Array<LawyerCaseAcceptanceHistory>;
+    secondInstance: LawyerCaseSecondInstance;
   };
+
+export type SecondInstanceProgressInput = {
+  hearingAt: string | null;
+  hearingPlace: string | null;
+  judgeName: string | null;
+  documentContentVersionIds: string[];
+  serviceContentVersionIds: string[];
+};
+export type SaveSecondInstanceInput = {
+  expectedVersion: number;
+  idempotencyKey: string;
+  trialRoundId: string;
+  choiceId: string;
+  expectedProgressId: string | null;
+  progress: SecondInstanceProgressInput;
+};
+export type RegisterSecondInstanceResultInput = {
+  expectedVersion: number;
+  idempotencyKey: string;
+  trialRoundId: string;
+  choiceId: string;
+  result: 'REMAND' | 'CHANGE' | 'AFFIRM';
+  resultReceivedAt: string;
+  judgmentContentVersionIds: string[];
+  paidLitigationFee: { state: 'KNOWN' | 'PENDING'; amount: string | null };
+  judgmentAmount?: { state: 'KNOWN' | 'PENDING'; amount: string | null };
+  progress: SecondInstanceProgressInput;
+};
+export type RevokeSecondInstanceResultInput = {
+  expectedVersion: number;
+  idempotencyKey: string;
+  trialRoundId: string;
+  resultId: string;
+  reason: string;
+};
+export type SecondInstanceCommandResult = {
+  id: string;
+  stage: CaseStage;
+  version: number;
+  currentTrialRoundId: string | null;
+  progressId: string | null;
+  resultId: string | null;
+  recordedAt: string;
+  revocationId?: string;
+};
+export type CaseSecondInstanceRound = {
+  id: string;
+  sequence: number;
+  sourceResultId: string | null;
+  revokedAt: string | null;
+};
+type SecondInstanceProgressBase = {
+  id: string;
+  trialRoundId: string;
+  choiceId: string;
+  priorProgressId: string | null;
+  hearingAt: string | null;
+  hearingPlace: string | null;
+  judgeName: string | null;
+  fromVersion: number;
+  toVersion: number;
+  recordedAt: string;
+  documentFiles: CaseFile[];
+  serviceFiles: CaseFile[];
+};
+export type CaseSecondInstanceProgress = SecondInstanceProgressBase & {
+  recordedByUserId?: string;
+};
+export type LawyerSecondInstanceProgress = SecondInstanceProgressBase;
+type SecondInstanceResultBase = {
+  id: string;
+  trialRoundId: string;
+  choiceId: string;
+  judgmentId: string;
+  progressId: string | null;
+  result: 'REMAND' | 'CHANGE' | 'AFFIRM';
+  resultReceivedAt: string;
+  judgmentAmountState: 'KNOWN' | 'PENDING';
+  judgmentAmount: string | null;
+  paidLitigationFeeState: 'KNOWN' | 'PENDING';
+  paidLitigationFee: string | null;
+  fromVersion: number;
+  toVersion: number;
+  recordedAt: string;
+  files: CaseFile[];
+  childTrialRoundId: string | null;
+  revocationId: string | null;
+};
+export type CaseSecondInstanceResult = SecondInstanceResultBase & {
+  recordedByUserId?: string;
+};
+export type LawyerSecondInstanceResult = SecondInstanceResultBase;
+export type CaseSecondInstanceRevocation = {
+  id: string;
+  resultId: string;
+  fromVersion: number;
+  toVersion: number;
+  recordedAt: string;
+  reason?: string;
+  recordedByUserId?: string;
+};
+export type LawyerSecondInstanceRevocation = Omit<
+  CaseSecondInstanceRevocation,
+  'reason' | 'recordedByUserId'
+>;
+export type CaseSecondInstance = {
+  currentTrialRoundId: string | null;
+  currentProgress: CaseSecondInstanceProgress | null;
+  currentResult: CaseSecondInstanceResult | null;
+  rounds: CaseSecondInstanceRound[];
+  progresses: CaseSecondInstanceProgress[];
+  results: CaseSecondInstanceResult[];
+  revocations: CaseSecondInstanceRevocation[];
+};
+export type LawyerCaseSecondInstance = {
+  currentTrialRoundId: string | null;
+  currentProgress: LawyerSecondInstanceProgress | null;
+  currentResult: LawyerSecondInstanceResult | null;
+  rounds: CaseSecondInstanceRound[];
+  progresses: LawyerSecondInstanceProgress[];
+  results: LawyerSecondInstanceResult[];
+  revocations: LawyerSecondInstanceRevocation[];
+};
+export type CaseAcceptanceHistory = CaseAcceptance & {
+  id: string;
+  trialRoundId: string;
+  acceptedAt: string;
+  courtCaseNo: string;
+  files: Array<CaseFile & { category: 'ACCEPTANCE_NOTICE' }>;
+};
+export type LawyerCaseAcceptanceHistory = Omit<
+  CaseAcceptanceHistory,
+  'recordedByUserId'
+>;
 export type SubmitComplaintInput = {
   expectedVersion: number;
   idempotencyKey: string;
@@ -476,6 +624,9 @@ function summary(value: unknown): value is CaseSummary {
       'canCorrectJudgment',
       'canChooseJudgmentNextStep',
       'canRevokeJudgmentNextStep',
+      'canSaveSecondInstance',
+      'canRegisterSecondInstanceResult',
+      'canRevokeSecondInstanceResult',
       'sourceLead',
       'sourceNotaryMatter',
     ]) &&
@@ -500,6 +651,9 @@ function summary(value: unknown): value is CaseSummary {
     typeof value.canCorrectJudgment === 'boolean' &&
     typeof value.canChooseJudgmentNextStep === 'boolean' &&
     typeof value.canRevokeJudgmentNextStep === 'boolean' &&
+    typeof value.canSaveSecondInstance === 'boolean' &&
+    typeof value.canRegisterSecondInstanceResult === 'boolean' &&
+    typeof value.canRevokeSecondInstanceResult === 'boolean' &&
     source(value.sourceLead) &&
     source(value.sourceNotaryMatter)
   );
@@ -522,6 +676,7 @@ function validJudgmentFact(value: unknown, internal: boolean): boolean {
   if (!record(value)) return false;
   const required = [
     'id',
+    'trialRoundId',
     'kind',
     'priorFactId',
     'judgmentReceivedAt',
@@ -538,6 +693,7 @@ function validJudgmentFact(value: unknown, internal: boolean): boolean {
   return (
     exactWithOptional(value, required, optional) &&
     uuidV4(value.id) &&
+    uuidV4(value.trialRoundId) &&
     (value.kind === 'REGISTER' || value.kind === 'CORRECT') &&
     (value.priorFactId === null || uuidV4(value.priorFactId)) &&
     (value.kind === 'REGISTER'
@@ -598,6 +754,7 @@ function validNextStepChoice(value: unknown, internal: boolean): boolean {
   if (!record(value)) return false;
   const required = [
     'id',
+    'trialRoundId',
     'judgmentId',
     'next',
     'plaintiffRightsHolderId',
@@ -632,6 +789,7 @@ function validNextStepChoice(value: unknown, internal: boolean): boolean {
     return false;
   const baseValid =
     uuidV4(value.id) &&
+    uuidV4(value.trialRoundId) &&
     uuidV4(value.judgmentId) &&
     Number.isInteger(value.fromVersion) &&
     Number(value.fromVersion) >= 1 &&
@@ -792,11 +950,12 @@ function exactWithOptional(
 }
 function validHearingArrangement(value: unknown, internal: boolean): boolean {
   if (!record(value)) return false;
-  const required = ['id', 'hearingAt', 'source', 'recordedAt'];
+  const required = ['id', 'trialRoundId', 'hearingAt', 'source', 'recordedAt'];
   const optional = internal ? ['recordedByUserId'] : [];
   return (
     exactWithOptional(value, required, optional) &&
     uuidV4(value.id) &&
+    uuidV4(value.trialRoundId) &&
     (value.hearingAt === null || businessDate(value.hearingAt)) &&
     (value.source === 'SCHEDULE' || value.source === 'CORRECTION') &&
     typeof value.recordedAt === 'string' &&
@@ -807,8 +966,15 @@ function validHearingArrangement(value: unknown, internal: boolean): boolean {
 function validHearingAdvance(value: unknown): boolean {
   return (
     record(value) &&
-    exact(value, ['id', 'arrangementId', 'dueAt', 'executedAt']) &&
+    exact(value, [
+      'id',
+      'trialRoundId',
+      'arrangementId',
+      'dueAt',
+      'executedAt',
+    ]) &&
     uuidV4(value.id) &&
+    uuidV4(value.trialRoundId) &&
     uuidV4(value.arrangementId) &&
     typeof value.dueAt === 'string' &&
     !Number.isNaN(Date.parse(value.dueAt)) &&
@@ -905,6 +1071,9 @@ function validCaseDetail(value: unknown, id: string): value is CaseDetail {
       'canCorrectJudgment',
       'canChooseJudgmentNextStep',
       'canRevokeJudgmentNextStep',
+      'canSaveSecondInstance',
+      'canRegisterSecondInstanceResult',
+      'canRevokeSecondInstanceResult',
       'complaintConfirmation',
       'complaintMailing',
       'filingSubmission',
@@ -913,6 +1082,8 @@ function validCaseDetail(value: unknown, id: string): value is CaseDetail {
       'hearing',
       'judgment',
       'judgmentNextStep',
+      'acceptances',
+      'secondInstance',
     ]) &&
     value.id === id &&
     summary({
@@ -935,6 +1106,9 @@ function validCaseDetail(value: unknown, id: string): value is CaseDetail {
       canCorrectJudgment: value.canCorrectJudgment,
       canChooseJudgmentNextStep: value.canChooseJudgmentNextStep,
       canRevokeJudgmentNextStep: value.canRevokeJudgmentNextStep,
+      canSaveSecondInstance: value.canSaveSecondInstance,
+      canRegisterSecondInstanceResult: value.canRegisterSecondInstanceResult,
+      canRevokeSecondInstanceResult: value.canRevokeSecondInstanceResult,
       sourceLead: value.sourceLead,
       sourceNotaryMatter: value.sourceNotaryMatter,
     }) &&
@@ -1000,6 +1174,9 @@ function validCaseDetail(value: unknown, id: string): value is CaseDetail {
     typeof value.canCorrectJudgment === 'boolean' &&
     typeof value.canChooseJudgmentNextStep === 'boolean' &&
     typeof value.canRevokeJudgmentNextStep === 'boolean' &&
+    typeof value.canSaveSecondInstance === 'boolean' &&
+    typeof value.canRegisterSecondInstanceResult === 'boolean' &&
+    typeof value.canRevokeSecondInstanceResult === 'boolean' &&
     (value.complaint === null || validComplaint(value.complaint)) &&
     (value.complaintConfirmation === null ||
       validComplaintConfirmation(value.complaintConfirmation)) &&
@@ -1011,7 +1188,239 @@ function validCaseDetail(value: unknown, id: string): value is CaseDetail {
     validAcceptanceMaterials(value.acceptanceMaterials) &&
     validHearing(value.hearing, true) &&
     validJudgment(value.judgment, true) &&
-    validNextStep(value.judgmentNextStep, true)
+    validNextStep(value.judgmentNextStep, true) &&
+    Array.isArray(value.acceptances) &&
+    value.acceptances.every((item) => validAcceptanceHistory(item, true)) &&
+    validSecondInstance(value.secondInstance, true)
+  );
+}
+function validRoundId(value: unknown): boolean {
+  return value === null || uuidV4(value);
+}
+function validSecondInstanceRound(value: unknown): boolean {
+  return (
+    record(value) &&
+    exact(value, ['id', 'sequence', 'sourceResultId', 'revokedAt']) &&
+    uuidV4(value.id) &&
+    Number.isInteger(value.sequence) &&
+    Number(value.sequence) >= 1 &&
+    (value.sourceResultId === null || uuidV4(value.sourceResultId)) &&
+    (value.revokedAt === null ||
+      (typeof value.revokedAt === 'string' &&
+        !Number.isNaN(Date.parse(value.revokedAt))))
+  );
+}
+function validSecondInstanceProgress(
+  value: unknown,
+  internal: boolean,
+): boolean {
+  if (!record(value)) return false;
+  const required = [
+    'id',
+    'trialRoundId',
+    'choiceId',
+    'priorProgressId',
+    'hearingAt',
+    'hearingPlace',
+    'judgeName',
+    'fromVersion',
+    'toVersion',
+    'recordedAt',
+    'documentFiles',
+    'serviceFiles',
+  ];
+  const optional = internal ? ['recordedByUserId'] : [];
+  return (
+    exactWithOptional(value, required, optional) &&
+    uuidV4(value.id) &&
+    uuidV4(value.trialRoundId) &&
+    uuidV4(value.choiceId) &&
+    (value.priorProgressId === null || uuidV4(value.priorProgressId)) &&
+    (value.hearingAt === null || businessDate(value.hearingAt)) &&
+    (value.hearingPlace === null ||
+      (typeof value.hearingPlace === 'string' &&
+        value.hearingPlace === value.hearingPlace.trim() &&
+        value.hearingPlace.length <= 500)) &&
+    (value.judgeName === null ||
+      (typeof value.judgeName === 'string' &&
+        value.judgeName === value.judgeName.trim() &&
+        value.judgeName.length <= 200)) &&
+    Number.isInteger(value.fromVersion) &&
+    Number(value.fromVersion) >= 1 &&
+    Number.isInteger(value.toVersion) &&
+    Number(value.toVersion) === Number(value.fromVersion) + 1 &&
+    typeof value.recordedAt === 'string' &&
+    !Number.isNaN(Date.parse(value.recordedAt)) &&
+    (!('recordedByUserId' in value) ||
+      (internal && uuidV4(value.recordedByUserId))) &&
+    Array.isArray(value.documentFiles) &&
+    value.documentFiles.every(caseFile) &&
+    Array.isArray(value.serviceFiles) &&
+    value.serviceFiles.every(caseFile)
+  );
+}
+function validSecondInstanceResult(value: unknown, internal: boolean): boolean {
+  if (!record(value)) return false;
+  const required = [
+    'id',
+    'trialRoundId',
+    'choiceId',
+    'judgmentId',
+    'progressId',
+    'result',
+    'resultReceivedAt',
+    'judgmentAmountState',
+    'judgmentAmount',
+    'paidLitigationFeeState',
+    'paidLitigationFee',
+    'fromVersion',
+    'toVersion',
+    'recordedAt',
+    'files',
+    'childTrialRoundId',
+    'revocationId',
+  ];
+  const optional = internal ? ['recordedByUserId'] : [];
+  const amountValid = (state: unknown, amount: unknown) =>
+    state === 'PENDING'
+      ? amount === null
+      : state === 'KNOWN' &&
+        typeof amount === 'string' &&
+        /^(0|[1-9]\d{0,13})\.\d{2}$/u.test(amount);
+  return (
+    exactWithOptional(value, required, optional) &&
+    uuidV4(value.id) &&
+    uuidV4(value.trialRoundId) &&
+    uuidV4(value.choiceId) &&
+    uuidV4(value.judgmentId) &&
+    (value.progressId === null || uuidV4(value.progressId)) &&
+    ['REMAND', 'CHANGE', 'AFFIRM'].includes(String(value.result)) &&
+    businessDate(value.resultReceivedAt) &&
+    (value.result !== 'REMAND' || value.judgmentAmountState === 'PENDING') &&
+    amountValid(value.judgmentAmountState, value.judgmentAmount) &&
+    amountValid(value.paidLitigationFeeState, value.paidLitigationFee) &&
+    Number.isInteger(value.fromVersion) &&
+    Number(value.fromVersion) >= 1 &&
+    Number.isInteger(value.toVersion) &&
+    Number(value.toVersion) === Number(value.fromVersion) + 1 &&
+    typeof value.recordedAt === 'string' &&
+    !Number.isNaN(Date.parse(value.recordedAt)) &&
+    (!('recordedByUserId' in value) ||
+      (internal && uuidV4(value.recordedByUserId))) &&
+    Array.isArray(value.files) &&
+    value.files.length >= 1 &&
+    value.files.every(caseFile) &&
+    (value.childTrialRoundId === null || uuidV4(value.childTrialRoundId)) &&
+    (value.revocationId === null || uuidV4(value.revocationId)) &&
+    (value.result === 'REMAND'
+      ? uuidV4(value.childTrialRoundId)
+      : value.childTrialRoundId === null)
+  );
+}
+function validSecondInstanceRevocation(
+  value: unknown,
+  internal: boolean,
+): boolean {
+  if (!record(value)) return false;
+  const required = ['id', 'resultId', 'fromVersion', 'toVersion', 'recordedAt'];
+  const optional = internal ? ['reason', 'recordedByUserId'] : [];
+  return (
+    exactWithOptional(value, required, optional) &&
+    uuidV4(value.id) &&
+    uuidV4(value.resultId) &&
+    Number.isInteger(value.fromVersion) &&
+    Number(value.fromVersion) >= 1 &&
+    Number.isInteger(value.toVersion) &&
+    Number(value.toVersion) === Number(value.fromVersion) + 1 &&
+    typeof value.recordedAt === 'string' &&
+    !Number.isNaN(Date.parse(value.recordedAt)) &&
+    (!('reason' in value) ||
+      (internal &&
+        typeof value.reason === 'string' &&
+        value.reason.trim() === value.reason &&
+        value.reason.length >= 1 &&
+        value.reason.length <= 500)) &&
+    (!('recordedByUserId' in value) ||
+      (internal && uuidV4(value.recordedByUserId)))
+  );
+}
+function validSecondInstance(value: unknown, internal: boolean): boolean {
+  if (
+    !record(value) ||
+    !exact(value, [
+      'currentTrialRoundId',
+      'currentProgress',
+      'currentResult',
+      'rounds',
+      'progresses',
+      'results',
+      'revocations',
+    ])
+  )
+    return false;
+  return (
+    validRoundId(value.currentTrialRoundId) &&
+    (value.currentProgress === null ||
+      validSecondInstanceProgress(value.currentProgress, internal)) &&
+    (value.currentResult === null ||
+      validSecondInstanceResult(value.currentResult, internal)) &&
+    Array.isArray(value.rounds) &&
+    value.rounds.every(validSecondInstanceRound) &&
+    Array.isArray(value.progresses) &&
+    value.progresses.every((item) =>
+      validSecondInstanceProgress(item, internal),
+    ) &&
+    Array.isArray(value.results) &&
+    value.results.every((item) => validSecondInstanceResult(item, internal)) &&
+    Array.isArray(value.revocations) &&
+    value.revocations.every((item) =>
+      validSecondInstanceRevocation(item, internal),
+    )
+  );
+}
+function validAcceptanceHistory(value: unknown, internal: boolean): boolean {
+  if (!record(value)) return false;
+  const required = [
+    'id',
+    'trialRoundId',
+    'acceptedAt',
+    'courtCaseNo',
+    'recordedAt',
+    'files',
+  ];
+  const optional = internal ? ['recordedByUserId'] : [];
+  return (
+    exactWithOptional(value, required, optional) &&
+    uuidV4(value.id) &&
+    uuidV4(value.trialRoundId) &&
+    businessDate(value.acceptedAt) &&
+    nonempty(value.courtCaseNo) &&
+    value.courtCaseNo.trim() === value.courtCaseNo &&
+    value.courtCaseNo.length <= 100 &&
+    typeof value.recordedAt === 'string' &&
+    !Number.isNaN(Date.parse(value.recordedAt)) &&
+    (!('recordedByUserId' in value) ||
+      (internal && uuidV4(value.recordedByUserId))) &&
+    Array.isArray(value.files) &&
+    value.files.length > 0 &&
+    value.files.every(
+      (file) =>
+        record(file) &&
+        exact(file, [
+          'category',
+          'materialId',
+          'contentVersionId',
+          'originalFilename',
+          'mimeType',
+        ]) &&
+        file.category === 'ACCEPTANCE_NOTICE' &&
+        caseFile({
+          materialId: file.materialId,
+          contentVersionId: file.contentVersionId,
+          originalFilename: file.originalFilename,
+          mimeType: file.mimeType,
+        }),
+    )
   );
 }
 function validFilingCourt(value: unknown): value is FilingCourt {
@@ -1184,6 +1593,9 @@ function validLawyerSummary(value: unknown): value is LawyerCaseSummary {
       'canCorrectJudgment',
       'canChooseJudgmentNextStep',
       'canRevokeJudgmentNextStep',
+      'canSaveSecondInstance',
+      'canRegisterSecondInstanceResult',
+      'canRevokeSecondInstanceResult',
       'createdAt',
     ]) &&
     nonempty(value.id) &&
@@ -1204,6 +1616,9 @@ function validLawyerSummary(value: unknown): value is LawyerCaseSummary {
     value.canCorrectJudgment === false &&
     typeof value.canChooseJudgmentNextStep === 'boolean' &&
     value.canRevokeJudgmentNextStep === false &&
+    typeof value.canSaveSecondInstance === 'boolean' &&
+    typeof value.canRegisterSecondInstanceResult === 'boolean' &&
+    value.canRevokeSecondInstanceResult === false &&
     typeof value.createdAt === 'string' &&
     !Number.isNaN(Date.parse(value.createdAt))
   );
@@ -1395,6 +1810,9 @@ export async function getLawyerCase(
       'canCorrectJudgment',
       'canChooseJudgmentNextStep',
       'canRevokeJudgmentNextStep',
+      'canSaveSecondInstance',
+      'canRegisterSecondInstanceResult',
+      'canRevokeSecondInstanceResult',
       'createdAt',
       'matchedAt',
       'matchedOn',
@@ -1413,6 +1831,8 @@ export async function getLawyerCase(
       'hearing',
       'judgment',
       'judgmentNextStep',
+      'acceptances',
+      'secondInstance',
     ]) ||
     result.id !== id ||
     !validLawyerSummary({
@@ -1433,6 +1853,9 @@ export async function getLawyerCase(
       canCorrectJudgment: result.canCorrectJudgment,
       canChooseJudgmentNextStep: result.canChooseJudgmentNextStep,
       canRevokeJudgmentNextStep: result.canRevokeJudgmentNextStep,
+      canSaveSecondInstance: result.canSaveSecondInstance,
+      canRegisterSecondInstanceResult: result.canRegisterSecondInstanceResult,
+      canRevokeSecondInstanceResult: result.canRevokeSecondInstanceResult,
       createdAt: result.createdAt,
     }) ||
     (result.matchedAt !== null &&
@@ -1458,7 +1881,10 @@ export async function getLawyerCase(
     !validAcceptanceMaterials(result.acceptanceMaterials) ||
     !validHearing(result.hearing, false) ||
     !validJudgment(result.judgment, false) ||
-    !validNextStep(result.judgmentNextStep, false)
+    !validNextStep(result.judgmentNextStep, false) ||
+    !Array.isArray(result.acceptances) ||
+    !result.acceptances.every((item) => validAcceptanceHistory(item, false)) ||
+    !validSecondInstance(result.secondInstance, false)
   )
     throw invalidResponse();
   return result as unknown as LawyerCaseDetail;
@@ -1729,6 +2155,246 @@ function validNextStepResult(
     typeof value.recordedAt === 'string' &&
     !Number.isNaN(Date.parse(value.recordedAt))
   );
+}
+function validIdempotencyKey(value: unknown): value is string {
+  return (
+    typeof value === 'string' &&
+    value.trim() === value &&
+    value.length >= 1 &&
+    value.length <= 128
+  );
+}
+function normalizeSecondInstanceProgress(
+  value: SecondInstanceProgressInput,
+): SecondInstanceProgressInput | null {
+  const validIds = (ids: unknown) =>
+    Array.isArray(ids) &&
+    ids.length <= 10 &&
+    ids.every(uuidV4) &&
+    new Set(ids).size === ids.length;
+  if (
+    !record(value) ||
+    !exact(value, [
+      'hearingAt',
+      'hearingPlace',
+      'judgeName',
+      'documentContentVersionIds',
+      'serviceContentVersionIds',
+    ]) ||
+    !(value.hearingAt === null || businessDate(value.hearingAt)) ||
+    !(
+      value.hearingPlace === null ||
+      (typeof value.hearingPlace === 'string' &&
+        value.hearingPlace.trim().length <= 500)
+    ) ||
+    !(
+      value.judgeName === null ||
+      (typeof value.judgeName === 'string' &&
+        value.judgeName.trim().length <= 200)
+    ) ||
+    !validIds(value.documentContentVersionIds) ||
+    !validIds(value.serviceContentVersionIds)
+  )
+    return null;
+  return {
+    hearingAt: value.hearingAt,
+    hearingPlace:
+      typeof value.hearingPlace === 'string' && value.hearingPlace.trim()
+        ? value.hearingPlace.trim()
+        : null,
+    judgeName:
+      typeof value.judgeName === 'string' && value.judgeName.trim()
+        ? value.judgeName.trim()
+        : null,
+    documentContentVersionIds: value.documentContentVersionIds,
+    serviceContentVersionIds: value.serviceContentVersionIds,
+  };
+}
+function validSecondInstanceCommandResult(
+  value: unknown,
+  id: string,
+  expectedVersion: number,
+  expectedStage: CaseStage | readonly CaseStage[],
+  requireRevocation = false,
+): value is SecondInstanceCommandResult {
+  const stages = Array.isArray(expectedStage) ? expectedStage : [expectedStage];
+  if (!record(value)) return false;
+  const keys = [
+    'id',
+    'stage',
+    'version',
+    'currentTrialRoundId',
+    'progressId',
+    'resultId',
+    'recordedAt',
+  ];
+  if (requireRevocation) keys.push('revocationId');
+  return (
+    exact(value, keys) &&
+    value.id === id &&
+    stages.includes(value.stage as CaseStage) &&
+    Number(value.version) === expectedVersion + 1 &&
+    validRoundId(value.currentTrialRoundId) &&
+    (value.progressId === null || uuidV4(value.progressId)) &&
+    (value.resultId === null || uuidV4(value.resultId)) &&
+    (!requireRevocation || uuidV4(value.revocationId)) &&
+    typeof value.recordedAt === 'string' &&
+    !Number.isNaN(Date.parse(value.recordedAt))
+  );
+}
+function validateSecondInstanceCommon(
+  input: Pick<
+    SaveSecondInstanceInput,
+    'expectedVersion' | 'idempotencyKey' | 'trialRoundId' | 'choiceId'
+  >,
+): boolean {
+  return (
+    Number.isInteger(input.expectedVersion) &&
+    input.expectedVersion >= 1 &&
+    validIdempotencyKey(input.idempotencyKey) &&
+    uuidV4(input.trialRoundId) &&
+    uuidV4(input.choiceId)
+  );
+}
+export async function saveSecondInstance(
+  id: string,
+  input: SaveSecondInstanceInput,
+  audience: 'internal' | 'lawyer' = 'internal',
+): Promise<SecondInstanceCommandResult> {
+  const progress = normalizeSecondInstanceProgress(input.progress);
+  if (
+    !validateSecondInstanceCommon(input) ||
+    (input.expectedProgressId !== null && !uuidV4(input.expectedProgressId)) ||
+    !progress
+  )
+    throw new ApiError(
+      '二审进展无效，请检查日期、文本和材料。',
+      400,
+      'VALIDATION_ERROR',
+    );
+  const body = { ...input, progress };
+  const response = await requestJson(
+    `/${audience === 'lawyer' ? 'lawyer/cases' : 'cases'}/${encodeURIComponent(id)}/second-instance-save`,
+    {
+      method: 'POST',
+      headers: { 'Idempotency-Key': input.idempotencyKey },
+      body,
+    },
+  );
+  if (
+    !validSecondInstanceCommandResult(
+      response,
+      id,
+      input.expectedVersion,
+      'SECOND_INSTANCE',
+    )
+  )
+    throw invalidResponse();
+  return response;
+}
+export async function registerSecondInstanceResult(
+  id: string,
+  input: RegisterSecondInstanceResultInput,
+  audience: 'internal' | 'lawyer' = 'internal',
+): Promise<SecondInstanceCommandResult> {
+  const progress = normalizeSecondInstanceProgress(input.progress);
+  const amountValid = (amount: {
+    state: 'KNOWN' | 'PENDING';
+    amount: string | null;
+  }) =>
+    amount.state === 'PENDING'
+      ? amount.amount === null
+      : typeof amount.amount === 'string' &&
+        /^(0|[1-9]\d{0,13})(\.\d{1,2})?$/u.test(amount.amount);
+  const resultShape =
+    input.result === 'CHANGE'
+      ? input.judgmentAmount !== undefined && amountValid(input.judgmentAmount)
+      : input.judgmentAmount === undefined;
+  if (
+    !validateSecondInstanceCommon(input) ||
+    !progress ||
+    !['REMAND', 'CHANGE', 'AFFIRM'].includes(input.result) ||
+    !businessDate(input.resultReceivedAt) ||
+    input.resultReceivedAt > todayShanghai() ||
+    !Array.isArray(input.judgmentContentVersionIds) ||
+    input.judgmentContentVersionIds.length < 1 ||
+    input.judgmentContentVersionIds.length > 10 ||
+    !input.judgmentContentVersionIds.every(uuidV4) ||
+    new Set(input.judgmentContentVersionIds).size !==
+      input.judgmentContentVersionIds.length ||
+    !record(input.paidLitigationFee) ||
+    !exact(input.paidLitigationFee, ['state', 'amount']) ||
+    !amountValid(input.paidLitigationFee) ||
+    !resultShape
+  )
+    throw new ApiError(
+      '二审结果无效，请检查结果、日期、金额和材料。',
+      400,
+      'VALIDATION_ERROR',
+    );
+  const body = { ...input, progress };
+  const response = await requestJson(
+    `/${audience === 'lawyer' ? 'lawyer/cases' : 'cases'}/${encodeURIComponent(id)}/second-instance-result`,
+    {
+      method: 'POST',
+      headers: { 'Idempotency-Key': input.idempotencyKey },
+      body,
+    },
+  );
+  const stage =
+    input.result === 'REMAND'
+      ? 'WAITING_FORMAL_ACCEPTANCE'
+      : 'WAITING_EXECUTION_DOCUMENTS';
+  if (
+    !validSecondInstanceCommandResult(
+      response,
+      id,
+      input.expectedVersion,
+      stage,
+    )
+  )
+    throw invalidResponse();
+  return response;
+}
+export async function revokeSecondInstanceResult(
+  id: string,
+  input: RevokeSecondInstanceResultInput,
+): Promise<SecondInstanceCommandResult> {
+  const reason = input.reason.trim();
+  if (
+    !Number.isInteger(input.expectedVersion) ||
+    input.expectedVersion < 1 ||
+    !validIdempotencyKey(input.idempotencyKey) ||
+    !uuidV4(input.trialRoundId) ||
+    !uuidV4(input.resultId) ||
+    reason.length < 1 ||
+    reason.length > 500
+  )
+    throw new ApiError(
+      '撤销二审结果无效，请填写原因。',
+      400,
+      'VALIDATION_ERROR',
+    );
+  const body = { ...input, reason };
+  const response = await requestJson(
+    `/cases/${encodeURIComponent(id)}/second-instance-result-revoke`,
+    {
+      method: 'POST',
+      headers: { 'Idempotency-Key': input.idempotencyKey },
+      body,
+    },
+  );
+  if (
+    !validSecondInstanceCommandResult(
+      response,
+      id,
+      input.expectedVersion,
+      'SECOND_INSTANCE',
+      true,
+    )
+  )
+    throw invalidResponse();
+  return response;
 }
 export async function chooseCaseJudgmentNextStep(
   id: string,

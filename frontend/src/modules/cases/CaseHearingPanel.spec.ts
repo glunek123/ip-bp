@@ -36,6 +36,9 @@ const baseItem: CaseDetail = {
   canCorrectJudgment: false,
   canChooseJudgmentNextStep: false,
   canRevokeJudgmentNextStep: false,
+  canSaveSecondInstance: false,
+  canRegisterSecondInstanceResult: false,
+  canRevokeSecondInstanceResult: false,
   sourceLead: { id: 'lead-1', businessNo: 'LD-1' },
   sourceNotaryMatter: { id: 'matter-1', businessNo: 'NZ-1' },
   courtCaseNo: '（2026）甲0101民初1号',
@@ -79,6 +82,16 @@ const baseItem: CaseDetail = {
   },
   judgment: { current: null, history: [], availableFiles: [] },
   judgmentNextStep: { current: null, history: [], revocations: [] },
+  acceptances: [],
+  secondInstance: {
+    currentTrialRoundId: null,
+    currentProgress: null,
+    currentResult: null,
+    rounds: [],
+    progresses: [],
+    results: [],
+    revocations: [],
+  },
 };
 
 const commandResult = {
@@ -142,6 +155,7 @@ describe('case hearing panel', () => {
         ...baseItem.hearing,
         currentArrangement: {
           id: '80000000-0000-4000-8000-000000000011',
+          trialRoundId: '70000000-0000-4000-8000-000000000099',
           hearingAt: '2026-10-20',
           source: 'SCHEDULE',
           recordedAt: '2026-10-01T00:00:00.000Z',
@@ -180,6 +194,7 @@ describe('case hearing panel', () => {
         ...baseItem.hearing,
         currentArrangement: {
           id: '80000000-0000-4000-8000-000000000011',
+          trialRoundId: '70000000-0000-4000-8000-000000000099',
           hearingAt: '2026-10-05',
           source: 'SCHEDULE',
           recordedAt: '2026-10-01T00:00:00.000Z',
@@ -277,6 +292,7 @@ describe('case hearing panel', () => {
               ...baseItem.hearing,
               currentArrangement: {
                 id: '80000000-0000-4000-8000-000000000011',
+                trialRoundId: '70000000-0000-4000-8000-000000000099',
                 hearingAt: '2026-10-05',
                 source: 'SCHEDULE',
                 recordedAt: '2026-10-01T00:00:00.000Z',
@@ -341,6 +357,7 @@ describe('case hearing panel', () => {
           ...item.hearing,
           currentArrangement: {
             id: '80000000-0000-4000-8000-000000000021',
+            trialRoundId: '70000000-0000-4000-8000-000000000099',
             hearingAt: '2026-10-30',
             source: 'SCHEDULE',
             recordedAt: '2026-10-07T00:00:00.000Z',
@@ -384,6 +401,7 @@ describe('case hearing panel', () => {
               ...baseItem.hearing,
               currentArrangement: {
                 id: '80000000-0000-4000-8000-000000000011',
+                trialRoundId: '70000000-0000-4000-8000-000000000099',
                 hearingAt: '2026-10-05',
                 source: 'SCHEDULE',
                 recordedAt: '2026-10-01T00:00:00.000Z',
@@ -473,12 +491,14 @@ describe('case hearing panel', () => {
       hearing: {
         currentArrangement: {
           id: '80000000-0000-4000-8000-000000000011',
+          trialRoundId: '70000000-0000-4000-8000-000000000099',
           hearingAt: '2026-10-05',
           source: 'SCHEDULE',
           recordedAt: '2026-10-01T08:00:00.000Z',
         },
         currentAdvance: {
           id: '80000000-0000-4000-8000-000000000012',
+          trialRoundId: '70000000-0000-4000-8000-000000000099',
           arrangementId: '80000000-0000-4000-8000-000000000011',
           dueAt: '2026-10-06T00:00:00.000+08:00',
           executedAt: '2026-10-06T01:00:00.000Z',
@@ -486,6 +506,7 @@ describe('case hearing panel', () => {
         arrangements: [
           {
             id: '80000000-0000-4000-8000-000000000011',
+            trialRoundId: '70000000-0000-4000-8000-000000000099',
             hearingAt: '2026-10-05',
             source: 'SCHEDULE',
             recordedAt: '2026-10-01T08:00:00.000Z',
@@ -494,6 +515,7 @@ describe('case hearing panel', () => {
         advances: [
           {
             id: '80000000-0000-4000-8000-000000000012',
+            trialRoundId: '70000000-0000-4000-8000-000000000099',
             arrangementId: '80000000-0000-4000-8000-000000000011',
             dueAt: '2026-10-06T00:00:00.000+08:00',
             executedAt: '2026-10-06T01:00:00.000Z',

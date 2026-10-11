@@ -272,6 +272,21 @@ const context = {
       scopes: ['SELF', 'TEAM', 'DEPARTMENT'],
     },
     {
+      action: 'CASE_SECOND_INSTANCE_SAVE',
+      label: '登记二审进展',
+      scopes: ['SELF', 'TEAM', 'DEPARTMENT'],
+    },
+    {
+      action: 'CASE_SECOND_INSTANCE_RESULT',
+      label: '登记二审结果',
+      scopes: ['SELF', 'TEAM', 'DEPARTMENT'],
+    },
+    {
+      action: 'CASE_SECOND_INSTANCE_RESULT_REVOKE',
+      label: '撤销二审结果',
+      scopes: ['SELF', 'TEAM', 'DEPARTMENT'],
+    },
+    {
       action: 'NOTARY_OFFICE_MANAGE',
       label: '管理公证处',
       scopes: ['DEPARTMENT'],
@@ -401,6 +416,9 @@ describe('organization API', () => {
       'CASE_JUDGMENT_CORRECT',
       'CASE_JUDGMENT_NEXT_STEP',
       'CASE_JUDGMENT_NEXT_STEP_REVOKE',
+      'CASE_SECOND_INSTANCE_SAVE',
+      'CASE_SECOND_INSTANCE_RESULT',
+      'CASE_SECOND_INSTANCE_RESULT_REVOKE',
       'NOTARY_OFFICE_MANAGE',
       'USER_READ',
       'USER_MANAGE',

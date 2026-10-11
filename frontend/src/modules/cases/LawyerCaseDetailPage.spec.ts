@@ -48,6 +48,9 @@ function detail(
     canCorrectJudgment: false,
     canChooseJudgmentNextStep: false,
     canRevokeJudgmentNextStep: false,
+    canSaveSecondInstance: false,
+    canRegisterSecondInstanceResult: false,
+    canRevokeSecondInstanceResult: false,
     createdAt: '2026-10-01T00:00:00Z',
     matchedAt: '2026-10-01T00:00:00Z',
     matchedOn: '2026-10-01',
@@ -83,6 +86,16 @@ function detail(
     },
     judgment: { current: null, history: [], availableFiles: [] },
     judgmentNextStep: { current: null, history: [], revocations: [] },
+    acceptances: [],
+    secondInstance: {
+      currentTrialRoundId: null,
+      currentProgress: null,
+      currentResult: null,
+      rounds: [],
+      progresses: [],
+      results: [],
+      revocations: [],
+    },
   };
 }
 function materials() {
@@ -161,6 +174,37 @@ beforeEach(() => {
 });
 
 describe('LawyerCaseDetailPage', () => {
+  it('shows second-instance history to the active lawyer without exposing revoke', async () => {
+    const trialRoundId = '70000000-0000-4000-8000-000000000001';
+    api.getLawyerCase.mockResolvedValueOnce({
+      ...detail('case-second-instance', 'CA-2', 'SECOND_INSTANCE'),
+      secondInstance: {
+        currentTrialRoundId: null,
+        currentProgress: null,
+        currentResult: null,
+        rounds: [
+          {
+            id: trialRoundId,
+            sequence: 1,
+            sourceResultId: null,
+            revokedAt: null,
+          },
+        ],
+        progresses: [],
+        results: [],
+        revocations: [],
+      },
+    });
+    const { wrapper } = await mountPage('/lawyer/cases/case-second-instance');
+    expect(wrapper.find('[data-test="second-instance-panel"]').exists()).toBe(
+      true,
+    );
+    expect(wrapper.text()).toContain('第1轮办理');
+    expect(wrapper.find('[data-test="second-instance-revoke"]').exists()).toBe(
+      false,
+    );
+  });
+
   it('shows authorized lawyer registration and never shows internal correction', async () => {
     const caseDetail = detail('case-a', 'CA-A', 'WAITING_JUDGMENT');
     caseDetail.canRegisterJudgment = true;

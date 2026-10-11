@@ -25,7 +25,10 @@ export type MaterialCategory =
   | 'ACCEPTANCE_NOTICE'
   | 'PAYMENT_LIST'
   | 'SERVICE_DOCUMENT'
-  | 'JUDGMENT';
+  | 'JUDGMENT'
+  | 'SECOND_INSTANCE_DOCUMENT'
+  | 'SECOND_INSTANCE_SERVICE'
+  | 'SECOND_INSTANCE_JUDGMENT';
 
 export type MaterialPurpose =
   | 'IDENTITY_FULL'
@@ -45,7 +48,10 @@ export type MaterialPurpose =
   | 'ACCEPTANCE_NOTICE'
   | 'PAYMENT_LIST'
   | 'SERVICE_DOCUMENT'
-  | 'JUDGMENT';
+  | 'JUDGMENT'
+  | 'SECOND_INSTANCE_DOCUMENT'
+  | 'SECOND_INSTANCE_SERVICE'
+  | 'SECOND_INSTANCE_JUDGMENT';
 
 export type UploadedMaterial = {
   materialId: string;
@@ -153,7 +159,10 @@ function isCategory(value: unknown): value is MaterialCategory {
     value === 'ACCEPTANCE_NOTICE' ||
     value === 'PAYMENT_LIST' ||
     value === 'SERVICE_DOCUMENT' ||
-    value === 'JUDGMENT'
+    value === 'JUDGMENT' ||
+    value === 'SECOND_INSTANCE_DOCUMENT' ||
+    value === 'SECOND_INSTANCE_SERVICE' ||
+    value === 'SECOND_INSTANCE_JUDGMENT'
   );
 }
 
@@ -176,7 +185,10 @@ function isPurpose(value: unknown): value is MaterialPurpose {
     value === 'ACCEPTANCE_NOTICE' ||
     value === 'PAYMENT_LIST' ||
     value === 'SERVICE_DOCUMENT' ||
-    value === 'JUDGMENT'
+    value === 'JUDGMENT' ||
+    value === 'SECOND_INSTANCE_DOCUMENT' ||
+    value === 'SECOND_INSTANCE_SERVICE' ||
+    value === 'SECOND_INSTANCE_JUDGMENT'
   );
 }
 
@@ -352,7 +364,10 @@ export async function uploadMaterialFile(
       input.category === 'ACCEPTANCE_NOTICE' ||
       input.category === 'PAYMENT_LIST' ||
       input.category === 'SERVICE_DOCUMENT' ||
-      input.category === 'JUDGMENT'
+      input.category === 'JUDGMENT' ||
+      input.category === 'SECOND_INSTANCE_DOCUMENT' ||
+      input.category === 'SECOND_INSTANCE_SERVICE' ||
+      input.category === 'SECOND_INSTANCE_JUDGMENT'
     ) {
       const types = new Map([
         ['.pdf', 'application/pdf'],

@@ -23,6 +23,60 @@ const uploaded = {
 };
 
 describe('materials API', () => {
+  it.each([
+    ['SECOND_INSTANCE_DOCUMENT', 'SECOND_INSTANCE_DOCUMENT'],
+    ['SECOND_INSTANCE_SERVICE', 'SECOND_INSTANCE_SERVICE'],
+    ['SECOND_INSTANCE_JUDGMENT', 'SECOND_INSTANCE_JUDGMENT'],
+  ] as const)(
+    'uploads the explicit %s category and purpose',
+    async (category, purpose) => {
+      const file = new File(['second-instance bytes'], '二审材料.pdf', {
+        type: 'application/pdf',
+      });
+      const uploadedResult = {
+        ...uploaded,
+        materialId: `material-${category}`,
+        contentVersionId: `version-${category}`,
+        originalFilename: file.name,
+        purpose,
+        mimeType: file.type,
+        sizeBytes: file.size,
+      };
+      const fetch = vi
+        .fn()
+        .mockResolvedValueOnce(
+          new Response(
+            JSON.stringify({
+              id: 'draft-second-instance',
+              ownerType: 'CASE',
+              ownerId: 'case-1',
+              category,
+              purpose,
+              originalFilename: file.name,
+              declaredMimeType: file.type,
+              expiresAt: '2026-10-07T00:00:00Z',
+            }),
+          ),
+        )
+        .mockResolvedValueOnce(new Response(JSON.stringify(uploadedResult)));
+      vi.stubGlobal('fetch', fetch);
+      await expect(
+        uploadMaterialFile({
+          ownerType: 'CASE',
+          ownerId: 'case-1',
+          category,
+          purpose,
+          file,
+        }),
+      ).resolves.toMatchObject({ contentVersionId: `version-${category}` });
+      expect(JSON.parse(String(fetch.mock.calls[0]?.[1]?.body))).toMatchObject({
+        category,
+        purpose,
+        ownerId: 'case-1',
+      });
+    },
+  );
+
   it('uses the dedicated customer proof category and rejects a file over 20 MiB before upload', async () => {
     const file = new File(['%PDF-1.4'], 'proof.pdf', {
       type: 'application/pdf',

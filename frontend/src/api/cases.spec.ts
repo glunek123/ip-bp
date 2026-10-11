@@ -13,6 +13,9 @@ import {
   submitComplaint,
   chooseCaseJudgmentNextStep,
   revokeCaseJudgmentNextStep,
+  saveSecondInstance,
+  registerSecondInstanceResult,
+  revokeSecondInstanceResult,
 } from './cases';
 import * as casesApi from './cases';
 import type { CaseJudgmentFact } from './cases';
@@ -39,6 +42,9 @@ const summary = {
   canCorrectJudgment: false,
   canChooseJudgmentNextStep: false,
   canRevokeJudgmentNextStep: false,
+  canSaveSecondInstance: false,
+  canRegisterSecondInstanceResult: false,
+  canRevokeSecondInstanceResult: false,
   sourceLead: { id: 'lead-1', businessNo: 'LD-1' },
   sourceNotaryMatter: { id: 'matter-1', businessNo: 'NZ-1' },
 };
@@ -114,6 +120,16 @@ const detail = {
   },
   judgment: { current: null, history: [], availableFiles: [] },
   judgmentNextStep: { current: null, history: [], revocations: [] },
+  acceptances: [],
+  secondInstance: {
+    currentTrialRoundId: null,
+    currentProgress: null,
+    currentResult: null,
+    rounds: [],
+    progresses: [],
+    results: [],
+    revocations: [],
+  },
 };
 function mockJson(payload: unknown) {
   const fetchMock = vi
@@ -124,6 +140,116 @@ function mockJson(payload: unknown) {
 }
 
 describe('cases API', () => {
+  it('posts second-instance progress with explicit nulls and the selected round', async () => {
+    const fetch = mockJson({
+      id: 'case-1',
+      stage: 'SECOND_INSTANCE',
+      version: 4,
+      currentTrialRoundId: '70000000-0000-4000-8000-000000000001',
+      progressId: '70000000-0000-4000-8000-000000000002',
+      resultId: null,
+      recordedAt: '2026-10-10T03:00:00Z',
+    });
+    await saveSecondInstance(
+      'case-1',
+      {
+        expectedVersion: 3,
+        idempotencyKey: 'save-key',
+        trialRoundId: '70000000-0000-4000-8000-000000000001',
+        choiceId: '70000000-0000-4000-8000-000000000003',
+        expectedProgressId: null,
+        progress: {
+          hearingAt: null,
+          hearingPlace: null,
+          judgeName: null,
+          documentContentVersionIds: [],
+          serviceContentVersionIds: [],
+        },
+      },
+      'lawyer',
+    );
+    expect(fetch.mock.calls[0]?.[0]).toBe(
+      '/api/v1/lawyer/cases/case-1/second-instance-save',
+    );
+    expect(fetch.mock.calls[0]?.[1]?.headers).toMatchObject({
+      'Idempotency-Key': 'save-key',
+    });
+    expect(JSON.parse(String(fetch.mock.calls[0]?.[1]?.body))).toEqual({
+      expectedVersion: 3,
+      idempotencyKey: 'save-key',
+      trialRoundId: '70000000-0000-4000-8000-000000000001',
+      choiceId: '70000000-0000-4000-8000-000000000003',
+      expectedProgressId: null,
+      progress: {
+        hearingAt: null,
+        hearingPlace: null,
+        judgeName: null,
+        documentContentVersionIds: [],
+        serviceContentVersionIds: [],
+      },
+    });
+  });
+
+  it('registers an explicit result with frozen files and fee state', async () => {
+    const fetch = mockJson({
+      id: 'case-1',
+      stage: 'WAITING_EXECUTION_DOCUMENTS',
+      version: 4,
+      currentTrialRoundId: '70000000-0000-4000-8000-000000000001',
+      progressId: null,
+      resultId: '70000000-0000-4000-8000-000000000004',
+      recordedAt: '2026-10-10T03:00:00Z',
+    });
+    await registerSecondInstanceResult('case-1', {
+      expectedVersion: 3,
+      idempotencyKey: 'result-key',
+      trialRoundId: '70000000-0000-4000-8000-000000000001',
+      choiceId: '70000000-0000-4000-8000-000000000003',
+      result: 'AFFIRM',
+      resultReceivedAt: '2026-10-10',
+      judgmentContentVersionIds: ['70000000-0000-4000-8000-000000000005'],
+      paidLitigationFee: { state: 'KNOWN', amount: '0' },
+      progress: {
+        hearingAt: null,
+        hearingPlace: null,
+        judgeName: null,
+        documentContentVersionIds: [],
+        serviceContentVersionIds: [],
+      },
+    });
+    expect(fetch.mock.calls[0]?.[0]).toBe(
+      '/api/v1/cases/case-1/second-instance-result',
+    );
+    expect(JSON.parse(String(fetch.mock.calls[0]?.[1]?.body))).toMatchObject({
+      result: 'AFFIRM',
+      paidLitigationFee: { state: 'KNOWN', amount: '0' },
+      judgmentContentVersionIds: ['70000000-0000-4000-8000-000000000005'],
+    });
+  });
+
+  it('exposes result revocation only through the internal route', async () => {
+    const fetch = mockJson({
+      id: 'case-1',
+      stage: 'SECOND_INSTANCE',
+      version: 5,
+      currentTrialRoundId: '70000000-0000-4000-8000-000000000001',
+      progressId: null,
+      resultId: null,
+      revocationId: '70000000-0000-4000-8000-000000000006',
+      recordedAt: '2026-10-10T03:00:00Z',
+    });
+    await revokeSecondInstanceResult('case-1', {
+      expectedVersion: 4,
+      idempotencyKey: 'revoke-key',
+      trialRoundId: '70000000-0000-4000-8000-000000000001',
+      resultId: '70000000-0000-4000-8000-000000000004',
+      reason: '复核后确认登记有误',
+    });
+    expect(fetch.mock.calls[0]?.[0]).toBe(
+      '/api/v1/cases/case-1/second-instance-result-revoke',
+    );
+  });
+
   it('posts the exact execution choice and validates its stage transition', async () => {
     const fetch = mockJson({
       id: 'case-1',
@@ -219,6 +345,7 @@ describe('cases API', () => {
     };
     const fact = {
       id: '70000000-0000-4000-8000-000000000003',
+      trialRoundId: '70000000-0000-4000-8000-000000000099',
       kind: 'REGISTER',
       priorFactId: null,
       judgmentReceivedAt: '2026-10-07',
@@ -264,6 +391,7 @@ describe('cases API', () => {
     const file = detail.certificate.files[0]!;
     const registered = {
       id: '70000000-0000-4000-8000-000000000003',
+      trialRoundId: '70000000-0000-4000-8000-000000000099',
       kind: 'REGISTER',
       priorFactId: null,
       judgmentReceivedAt: '2026-10-07',
@@ -341,6 +469,9 @@ describe('cases API', () => {
       canCorrectJudgment: false,
       canChooseJudgmentNextStep: false,
       canRevokeJudgmentNextStep: false,
+      canSaveSecondInstance: false,
+      canRegisterSecondInstanceResult: false,
+      canRevokeSecondInstanceResult: false,
       createdAt: '2026-09-28T00:00:00.000Z',
       matchedAt: null,
       matchedOn: null,
@@ -363,6 +494,16 @@ describe('cases API', () => {
         availableFiles: [file],
       },
       judgmentNextStep: { current: null, history: [], revocations: [] },
+      acceptances: [],
+      secondInstance: {
+        currentTrialRoundId: null,
+        currentProgress: null,
+        currentResult: null,
+        rounds: [],
+        progresses: [],
+        results: [],
+        revocations: [],
+      },
     };
     const readLawyer = Reflect.get(casesApi, 'getLawyerCase') as
       ((id: string) => Promise<Record<string, unknown>>) | undefined;
@@ -463,6 +604,7 @@ describe('cases API', () => {
       hearing: {
         currentArrangement: {
           id: '80000000-0000-4000-8000-000000000001',
+          trialRoundId: '70000000-0000-4000-8000-000000000099',
           hearingAt: '2026-10-05',
           source: 'CORRECTION',
           recordedAt: '2026-10-06T01:00:00.000Z',
@@ -470,6 +612,7 @@ describe('cases API', () => {
         },
         currentAdvance: {
           id: '80000000-0000-4000-8000-000000000002',
+          trialRoundId: '70000000-0000-4000-8000-000000000099',
           arrangementId: '80000000-0000-4000-8000-000000000001',
           dueAt: '2026-10-06T00:00:00.000+08:00',
           executedAt: '2026-10-06T00:00:00.000+08:00',
@@ -888,6 +1031,9 @@ describe('cases API', () => {
       canCorrectJudgment: false,
       canChooseJudgmentNextStep: true,
       canRevokeJudgmentNextStep: false,
+      canSaveSecondInstance: false,
+      canRegisterSecondInstanceResult: false,
+      canRevokeSecondInstanceResult: false,
       filingSubmission: {
         court: {
           id: '70000000-0000-4000-8000-000000000011',
@@ -1207,6 +1353,9 @@ describe('cases API', () => {
       canCorrectJudgment: false,
       canChooseJudgmentNextStep: true,
       canRevokeJudgmentNextStep: false,
+      canSaveSecondInstance: false,
+      canRegisterSecondInstanceResult: false,
+      canRevokeSecondInstanceResult: false,
       createdAt: '2026-09-28T00:00:00.000Z',
       matchedAt: '2026-09-29T01:00:00Z',
       matchedOn: '2026-09-28',
@@ -1225,6 +1374,8 @@ describe('cases API', () => {
       hearing: detail.hearing,
       judgment: detail.judgment,
       judgmentNextStep: { current: null, history: [], revocations: [] },
+      acceptances: [],
+      secondInstance: detail.secondInstance,
     };
     const read = Reflect.get(casesApi, 'getLawyerCase') as
       ((id: string) => Promise<Record<string, unknown>>) | undefined;

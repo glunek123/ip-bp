@@ -18,6 +18,30 @@ const permissionCatalog = [
 ];
 
 describe('RoleTemplatePanel', () => {
+  it('shows the backend label for an internal second-instance revoke grant', () => {
+    const wrapper = mount(RoleTemplatePanel, {
+      props: {
+        roles: [
+          {
+            ...role,
+            grants: [
+              { action: 'CASE_SECOND_INSTANCE_RESULT_REVOKE', scope: 'TEAM' },
+            ],
+          },
+        ],
+        permissionCatalog: [
+          {
+            action: 'CASE_SECOND_INSTANCE_RESULT_REVOKE',
+            label: '撤销二审结果',
+            scopes: ['SELF', 'TEAM', 'DEPARTMENT'],
+          },
+        ],
+        canManage: false,
+      },
+    });
+    expect(wrapper.text()).toContain('撤销二审结果 · 团队');
+  });
+
   it('shows the backend label for a formal acceptance grant', () => {
     const wrapper = mount(RoleTemplatePanel, {
       props: {

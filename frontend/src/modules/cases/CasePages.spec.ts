@@ -137,6 +137,9 @@ beforeEach(() => {
     canCorrectHearing: false,
     canRegisterJudgment: false,
     canCorrectJudgment: false,
+    canSaveSecondInstance: false,
+    canRegisterSecondInstanceResult: false,
+    canRevokeSecondInstanceResult: false,
     canChooseJudgmentNextStep: false,
     canRevokeJudgmentNextStep: false,
     complaint: null,
@@ -157,6 +160,16 @@ beforeEach(() => {
       corrections: [],
     },
     judgment: { current: null, history: [], availableFiles: [] },
+    acceptances: [],
+    secondInstance: {
+      currentTrialRoundId: null,
+      currentProgress: null,
+      currentResult: null,
+      rounds: [],
+      progresses: [],
+      results: [],
+      revocations: [],
+    },
   });
   api.listOwnerMaterials.mockResolvedValue({ items: [], total: 0 });
   api.listFilingCourts.mockResolvedValue([]);
@@ -295,6 +308,19 @@ function confirmationDetail(
     },
     judgment: { current: null, history: [], availableFiles: [] },
     judgmentNextStep: { current: null, history: [], revocations: [] },
+    acceptances: [],
+    canSaveSecondInstance: false,
+    canRegisterSecondInstanceResult: false,
+    canRevokeSecondInstanceResult: false,
+    secondInstance: {
+      currentTrialRoundId: null,
+      currentProgress: null,
+      currentResult: null,
+      rounds: [],
+      progresses: [],
+      results: [],
+      revocations: [],
+    },
   };
 }
 
@@ -452,6 +478,41 @@ describe('case pages', () => {
       expect(wrapper.get('.page-head').text()).toContain(label);
       expect(wrapper.get('[data-test="case-list"]').text()).toContain(label);
     }
+  });
+
+  it('shows the shared second-instance history on the internal case detail', async () => {
+    const base = confirmationDetail('case-second-instance');
+    const trialRoundId = '70000000-0000-4000-8000-000000000001';
+    api.getCase.mockResolvedValueOnce({
+      ...base,
+      stage: 'SECOND_INSTANCE',
+      judgmentNextStep: { current: null, history: [], revocations: [] },
+      secondInstance: {
+        currentTrialRoundId: null,
+        currentProgress: null,
+        currentResult: null,
+        rounds: [
+          {
+            id: trialRoundId,
+            sequence: 1,
+            sourceResultId: null,
+            revokedAt: null,
+          },
+        ],
+        progresses: [],
+        results: [],
+        revocations: [],
+      },
+    });
+    const wrapper = await mountRoute(
+      '/cases/case-second-instance',
+      CaseDetailPage,
+    );
+    expect(wrapper.find('[data-test="second-instance-panel"]').exists()).toBe(
+      true,
+    );
+    expect(wrapper.text()).toContain('第1轮办理');
+    expect(wrapper.text()).not.toContain('三审');
   });
 
   it('shows judgment registration on the internal detail only when authorized', async () => {
@@ -776,6 +837,19 @@ describe('case pages', () => {
       ],
       matchedAt: '2026-09-29T01:00:00Z',
       matchedOn: '2026-09-28',
+      canSaveSecondInstance: false,
+      canRegisterSecondInstanceResult: false,
+      canRevokeSecondInstanceResult: false,
+      acceptances: [],
+      secondInstance: {
+        currentTrialRoundId: null,
+        currentProgress: null,
+        currentResult: null,
+        rounds: [],
+        progresses: [],
+        results: [],
+        revocations: [],
+      },
     });
     const form = wrapper.get('[data-test="case-match-form"]');
     expect(
@@ -869,6 +943,19 @@ describe('case pages', () => {
       lawyers: [],
       matchedAt: null,
       matchedOn: null,
+      canSaveSecondInstance: false,
+      canRegisterSecondInstanceResult: false,
+      canRevokeSecondInstanceResult: false,
+      acceptances: [],
+      secondInstance: {
+        currentTrialRoundId: null,
+        currentProgress: null,
+        currentResult: null,
+        rounds: [],
+        progresses: [],
+        results: [],
+        revocations: [],
+      },
     });
     const wrapper = await mountRoute('/cases/case-1', CaseDetailPage);
     expect(wrapper.find('[data-test="case-match-form"]').exists()).toBe(false);

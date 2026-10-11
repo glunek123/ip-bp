@@ -30,6 +30,7 @@ import CaseAcceptancePanel from './CaseAcceptancePanel.vue';
 import CaseHearingPanel from './CaseHearingPanel.vue';
 import CaseJudgmentPanel from './CaseJudgmentPanel.vue';
 import CaseJudgmentNextStepPanel from './CaseJudgmentNextStepPanel.vue';
+import CaseSecondInstancePanel from './CaseSecondInstancePanel.vue';
 
 const route = useRoute();
 const auth = useAuthStore();
@@ -759,6 +760,18 @@ onBeforeUnmount(() => request?.abort());
         />
         <CaseJudgmentNextStepPanel
           v-if="item.judgment !== undefined && item.judgment.current !== null"
+          :item="item"
+          :context-key="identity"
+          @changed="load"
+          @refresh="load"
+        />
+        <CaseSecondInstancePanel
+          v-if="
+            item.secondInstance.rounds.length > 0 ||
+            item.canSaveSecondInstance ||
+            item.canRegisterSecondInstanceResult ||
+            item.canRevokeSecondInstanceResult
+          "
           :item="item"
           :context-key="identity"
           @changed="load"
