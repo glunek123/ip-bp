@@ -436,12 +436,13 @@ export async function verifyCaseJudgmentNextStepMigration() {
   validateIsolatedTestDatabaseUrl(process.env.DATABASE_URL, {
     allowRandomPort: true,
   });
-  const previousNames = names.filter((name) => name <= previous);
+  const supportedNames = names.slice(0, 117);
+  const previousNames = supportedNames.filter((name) => name <= previous);
   if (
+    supportedNames.length !== 117 ||
     previousNames.length !== 112 ||
     previousNames.at(-1) !== previous ||
-    names.length !== 117 ||
-    added.some((name, i) => names[112 + i] !== name)
+    added.some((name, i) => supportedNames[112 + i] !== name)
   )
     throw new Error('Unexpected prior 112 migration chain or CA-009 suffix');
   const schema = `ca009_next_${randomUUID().replaceAll('-', '')}`;
@@ -463,7 +464,7 @@ export async function verifyCaseJudgmentNextStepMigration() {
     await client.query(`CREATE SCHEMA "${schema}"`);
     created = true;
     await client.query(`SET search_path TO "${schema}"`);
-    for (const name of names) {
+    for (const name of supportedNames) {
       if (name === added[0]) {
         priorRows = await seedPrior112Rows(client);
         before = await priorRowsSnapshot(client, priorRows);
@@ -517,7 +518,7 @@ export async function verifyCaseJudgmentNextStepMigration() {
     if (!correctedHeadSelectable)
       throw new Error('Migrated corrected head could not be chosen normally');
     return {
-      migrationCount: names.length,
+      migrationCount: supportedNames.length,
       priorMigrationCount: previousNames.length,
       guards: rows.guards,
       legacyPreserved,

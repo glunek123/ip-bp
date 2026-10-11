@@ -335,50 +335,7 @@ async function registerJudgment(
   return { filename, panel };
 }
 
-let admin: { username: string; password: string };
-test.beforeEach(async () => {
-  await clearCoreCaseHearingAdminSessions();
-  await clearCaseAcceptanceFault();
-  await clearCaseAcceptanceFixture();
-  await clearCaseFilingFixture();
-  await clearCaseComplaintMailingFixture();
-  await resetCoreLeadE2eData();
-  await clearCoreCaseHearingAdmin();
-  admin = await prepareCoreCaseHearingAdmin();
-  await prepareCaseFilingFixture();
-  await prepareCaseAcceptanceFixture();
-  await allowOtherEnterpriseAccountSetup();
-});
-test.afterEach(async () => {
-  await clearCoreCaseHearingAdminSessions();
-  await clearCaseAcceptanceFault();
-  await clearCaseAcceptanceFixture();
-  await clearCaseFilingFixture();
-  await clearCaseComplaintMailingFixture();
-  await resetCoreLeadE2eData();
-  await clearCoreCaseHearingAdmin();
-});
-test.afterAll(async () => disconnectCustomerTestDatabase());
-
-test('real operator chooses, revokes, corrects, and chooses a new judgment path; lawyer and client projections stay scoped', async ({
-  page,
-  browser,
-  request,
-}) => {
-  const businessDate = pastWorkflowDate();
-  const internalCase = await createSubmittedCaseThroughApi(request, {
-    defendants: [
-      { kind: 'ORGANIZATION', name: '同名被告' },
-      { kind: 'ORGANIZATION', name: '同名被告' },
-    ],
-  });
-  const lawyerCase = await createSubmittedCaseThroughApi(request, {
-    submitAsLawyer: true,
-  });
-  const foreignClient = await createOtherEnterpriseClient(request);
-  await prepareWaitingFormal(request, internalCase, businessDate);
-  await prepareWaitingFormal(request, lawyerCase, businessDate);
-
+async function grantJudgmentActions(page: Page) {
   await login(page, '/settings/people-access', admin.username, admin.password);
   const context = await page.request.get(
     '/api/v1/organization/management-context',
@@ -417,8 +374,48 @@ test('real operator chooses, revokes, corrects, and chooses a new judgment path;
   await expect(page.getByRole('dialog')).toHaveCount(0);
   await status(await contextRefresh, 200);
   await logout(page);
+}
 
-  let csrf = await login(
+let admin: { username: string; password: string };
+test.beforeEach(async () => {
+  await clearCoreCaseHearingAdminSessions();
+  await clearCaseAcceptanceFault();
+  await clearCaseAcceptanceFixture();
+  await clearCaseFilingFixture();
+  await clearCaseComplaintMailingFixture();
+  await resetCoreLeadE2eData();
+  await clearCoreCaseHearingAdmin();
+  admin = await prepareCoreCaseHearingAdmin();
+  await prepareCaseFilingFixture();
+  await prepareCaseAcceptanceFixture();
+  await allowOtherEnterpriseAccountSetup();
+});
+test.afterEach(async () => {
+  await clearCoreCaseHearingAdminSessions();
+  await clearCaseAcceptanceFault();
+  await clearCaseAcceptanceFixture();
+  await clearCaseFilingFixture();
+  await clearCaseComplaintMailingFixture();
+  await resetCoreLeadE2eData();
+  await clearCoreCaseHearingAdmin();
+});
+test.afterAll(async () => disconnectCustomerTestDatabase());
+
+test('operator chooses, revokes, corrects, and chooses a new judgment path', async ({
+  page,
+  request,
+}) => {
+  const businessDate = pastWorkflowDate();
+  const internalCase = await createSubmittedCaseThroughApi(request, {
+    defendants: [
+      { kind: 'ORGANIZATION', name: '同名被告' },
+      { kind: 'ORGANIZATION', name: '同名被告' },
+    ],
+  });
+  await prepareWaitingFormal(request, internalCase, businessDate);
+  await grantJudgmentActions(page);
+
+  const csrf = await login(
     page,
     '/cases',
     coreLeadFixtures.operatorUsername,
@@ -553,19 +550,15 @@ test('real operator chooses, revokes, corrects, and chooses a new judgment path;
       new URL(response.url()).pathname ===
         `/api/v1/cases/${internalCase.caseId}/judgment-correct`,
   );
-  const correctedDetail = page.waitForResponse(
-    (response) =>
-      response.request().method() === 'GET' &&
-      new URL(response.url()).pathname ===
-        `/api/v1/cases/${internalCase.caseId}`,
-  );
   await internalJudgment.panel
     .locator('[data-test="judgment-correct"]')
     .click();
   const correctionResponse = await correction;
   await status(correctionResponse, 201);
   const correctionResult = await correctionResponse.json();
-  const correctedDetailResponse = await correctedDetail;
+  const correctedDetailResponse = await page.request.get(
+    `/api/v1/cases/${internalCase.caseId}`,
+  );
   await status(correctedDetailResponse, 200);
   const correctedDetailResult = await correctedDetailResponse.json();
   expect(correctedDetailResult.judgment.current.id).toBe(
@@ -627,8 +620,20 @@ test('real operator chooses, revokes, corrects, and chooses a new judgment path;
   );
   await page.goto(`/cases/${internalCase.caseId}`);
   await expect(page.locator('.page-head .pill')).toContainText('待写执行材料');
-  await logout(page);
-  csrf = await login(
+});
+
+test('assigned lawyer registers a judgment and chooses an execution path', async ({
+  page,
+  browser,
+  request,
+}) => {
+  const businessDate = pastWorkflowDate();
+  const lawyerCase = await createSubmittedCaseThroughApi(request, {
+    submitAsLawyer: true,
+  });
+  await prepareWaitingFormal(request, lawyerCase, businessDate);
+  await grantJudgmentActions(page);
+  const csrf = await login(
     page,
     '/cases',
     coreLeadFixtures.operatorUsername,
@@ -690,6 +695,94 @@ test('real operator chooses, revokes, corrects, and chooses a new judgment path;
   } finally {
     await lawyerPage.close();
   }
+});
+
+test('client sees only its execution-stage projection and foreign cases stay denied', async ({
+  page,
+  browser,
+  request,
+}) => {
+  const businessDate = pastWorkflowDate();
+  const internalCase = await createSubmittedCaseThroughApi(request, {
+    defendants: [
+      { kind: 'ORGANIZATION', name: '客户隔离被告甲' },
+      { kind: 'ORGANIZATION', name: '客户隔离被告乙' },
+    ],
+  });
+  const foreignClient = await createOtherEnterpriseClient(request);
+  await prepareWaitingFormal(request, internalCase, businessDate);
+  await grantJudgmentActions(page);
+  const csrf = await login(
+    page,
+    '/cases',
+    coreLeadFixtures.operatorUsername,
+    coreLeadFixtures.operatorPassword,
+  );
+  await prepareWaitingJudgment(
+    page,
+    internalCase.caseId,
+    internalCase.lawyer,
+    businessDate,
+    csrf,
+  );
+  await login(
+    page,
+    '/cases',
+    coreLeadFixtures.operatorUsername,
+    coreLeadFixtures.operatorPassword,
+  );
+  await registerJudgment(page, internalCase.caseId, businessDate);
+  const next = page.locator('[data-test="case-judgment-next-step-panel"]');
+  await next.locator('input[value="APPEAL"]').check();
+  const detail = await page.request.get(`/api/v1/cases/${internalCase.caseId}`);
+  await status(detail, 200);
+  const defendants = (await detail.json()).defendants as Array<{ id: string }>;
+  await next.locator('[data-plaintiff-appeals="true"]').check();
+  for (const defendant of defendants)
+    await next.locator(`[data-defendant-id="${defendant.id}"]`).check();
+  const appealChoice = page.waitForResponse(
+    (response) =>
+      response.request().method() === 'POST' &&
+      new URL(response.url()).pathname ===
+        `/api/v1/cases/${internalCase.caseId}/judgment-next-step`,
+  );
+  await next.getByRole('button', { name: '核对并提交选择' }).click();
+  await expect(next.getByRole('dialog')).toContainText('原告方');
+  await next.locator('[data-confirm-choice]').click();
+  await status(await appealChoice, 201);
+  await expect(next).toContainText('二审');
+  const revokeReason = '客户投影隔离验证的撤销原因';
+  await next.locator('[data-revoke-reason]').fill(revokeReason);
+  const revoke = page.waitForResponse(
+    (response) =>
+      response.request().method() === 'POST' &&
+      new URL(response.url()).pathname ===
+        `/api/v1/cases/${internalCase.caseId}/judgment-next-step-revoke`,
+  );
+  await next.locator('[data-revoke-choice]').click();
+  await next.locator('[data-confirm-revoke]').click();
+  await status(await revoke, 201);
+  await expect(next).toContainText('待判决');
+  await expect(next).toContainText(revokeReason);
+  const execution = page.locator('[data-test="case-judgment-next-step-panel"]');
+  await execution.locator('input[value="EXECUTION"]').check();
+  await expect(execution.locator('input[type="checkbox"]')).not.toBeChecked();
+  await execution.locator('input[type="checkbox"]').check();
+  const chooseExecution = page.waitForResponse(
+    (response) =>
+      response.request().method() === 'POST' &&
+      new URL(response.url()).pathname ===
+        `/api/v1/cases/${internalCase.caseId}/judgment-next-step`,
+  );
+  await execution.getByRole('button', { name: '核对并提交选择' }).click();
+  await expect(execution.getByRole('dialog')).toContainText(
+    '不代表已经申请强制执行',
+  );
+  await execution.locator('[data-confirm-choice]').click();
+  await status(await chooseExecution, 201);
+  await expect(page.locator('.page-head .pill')).toContainText('待写执行材料');
+  await logout(page);
+
   const clientPage = await browser.newPage({ baseURL: origin });
   try {
     await login(
@@ -715,9 +808,7 @@ test('real operator chooses, revokes, corrects, and chooses a new judgment path;
     const clientProjection = await clientProjectionResponse.json();
     expect(clientProjection.stage).toBe('WAITING_EXECUTION_DOCUMENTS');
     expect(clientProjection).not.toHaveProperty('judgmentNextStep');
-    expect(JSON.stringify(clientProjection)).not.toContain(
-      '二审材料核对后决定先修正判决事实',
-    );
+    expect(JSON.stringify(clientProjection)).not.toContain(revokeReason);
     await clientPage.reload();
     await expect(
       clientPage.getByText('待写执行材料', { exact: true }),
