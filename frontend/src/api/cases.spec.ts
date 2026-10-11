@@ -140,6 +140,187 @@ function mockJson(payload: unknown) {
 }
 
 describe('cases API', () => {
+  it('decodes nullable REMAND amounts in current and mixed history without admitting internal fields to lawyer', async () => {
+    const id = (value: number) =>
+      `70000000-0000-4000-8000-${String(value).padStart(12, '0')}`;
+    const file = {
+      materialId: id(20),
+      contentVersionId: id(21),
+      originalFilename: '发回裁定.pdf',
+      mimeType: 'application/pdf',
+    };
+    const remand = {
+      id: id(5),
+      trialRoundId: id(1),
+      choiceId: id(3),
+      judgmentId: id(4),
+      progressId: null,
+      result: 'REMAND',
+      resultReceivedAt: '2026-10-10',
+      judgmentAmountState: null,
+      judgmentAmount: null,
+      paidLitigationFeeState: 'PENDING',
+      paidLitigationFee: null,
+      fromVersion: 12,
+      toVersion: 13,
+      recordedAt: '2026-10-10T03:00:00Z',
+      recordedByUserId: id(9),
+      files: [file],
+      childTrialRoundId: id(2),
+      revocationId: null,
+    };
+    const priorChange = {
+      ...remand,
+      id: id(6),
+      result: 'CHANGE',
+      judgmentAmountState: 'KNOWN',
+      judgmentAmount: '0.00',
+      childTrialRoundId: null,
+      revocationId: id(7),
+      fromVersion: 10,
+      toVersion: 11,
+    };
+    const secondInstance = {
+      currentTrialRoundId: id(2),
+      currentProgress: null,
+      currentResult: remand,
+      rounds: [
+        { id: id(1), sequence: 1, sourceResultId: null, revokedAt: null },
+        { id: id(2), sequence: 2, sourceResultId: id(5), revokedAt: null },
+      ],
+      progresses: [],
+      results: [priorChange, remand],
+      revocations: [
+        {
+          id: id(7),
+          resultId: id(6),
+          fromVersion: 11,
+          toVersion: 12,
+          recordedAt: '2026-10-10T02:00:00Z',
+          reason: '改判误录',
+          recordedByUserId: id(9),
+        },
+      ],
+    };
+    const remandDetail = {
+      ...detail,
+      stage: 'WAITING_FORMAL_ACCEPTANCE',
+      version: 13,
+      secondInstance,
+    };
+    mockJson(remandDetail);
+    await expect(getCase('case-1')).resolves.toMatchObject({
+      secondInstance: {
+        currentResult: { result: 'REMAND', judgmentAmountState: null },
+        results: [
+          { result: 'CHANGE', judgmentAmount: '0.00' },
+          { result: 'REMAND', judgmentAmount: null },
+        ],
+      },
+    });
+    const lawyerBase: Record<string, unknown> = { ...remandDetail };
+    for (const key of [
+      'owner',
+      'department',
+      'fees',
+      'sourceLead',
+      'sourceNotaryMatter',
+    ])
+      delete lawyerBase[key];
+    const lawyerRemand: Record<string, unknown> = { ...remand };
+    delete lawyerRemand.recordedByUserId;
+    const lawyerChange: Record<string, unknown> = { ...priorChange };
+    delete lawyerChange.recordedByUserId;
+    const lawyerRevoke: Record<string, unknown> = {
+      ...secondInstance.revocations[0],
+    };
+    delete lawyerRevoke.reason;
+    delete lawyerRevoke.recordedByUserId;
+    const lawyerPayload = {
+      ...lawyerBase,
+      canMatch: false,
+      canCorrectHearing: false,
+      canCorrectJudgment: false,
+      canRevokeJudgmentNextStep: false,
+      canRevokeSecondInstanceResult: false,
+      secondInstance: {
+        ...secondInstance,
+        currentResult: lawyerRemand,
+        results: [lawyerChange, lawyerRemand],
+        revocations: [lawyerRevoke],
+      },
+    };
+    const readLawyer = Reflect.get(casesApi, 'getLawyerCase') as
+      ((id: string) => Promise<Record<string, unknown>>) | undefined;
+    expect(readLawyer).toBeTypeOf('function');
+    if (!readLawyer) return;
+    mockJson(lawyerPayload);
+    await expect(readLawyer('case-1')).resolves.toMatchObject({
+      secondInstance: { currentResult: { result: 'REMAND' } },
+    });
+    mockJson({
+      ...lawyerPayload,
+      secondInstance: {
+        ...lawyerPayload.secondInstance,
+        results: [lawyerChange, remand],
+      },
+    });
+    await expect(readLawyer('case-1')).rejects.toMatchObject({
+      code: 'INVALID_RESPONSE',
+    });
+  });
+
+  it('rejects REMAND fake amounts and missing CHANGE or AFFIRM amounts', async () => {
+    const remand = {
+      id: '70000000-0000-4000-8000-000000000005',
+      trialRoundId: '70000000-0000-4000-8000-000000000001',
+      choiceId: '70000000-0000-4000-8000-000000000003',
+      judgmentId: '70000000-0000-4000-8000-000000000004',
+      progressId: null,
+      result: 'REMAND',
+      resultReceivedAt: '2026-10-10',
+      judgmentAmountState: null,
+      judgmentAmount: null,
+      paidLitigationFeeState: 'KNOWN',
+      paidLitigationFee: '0.00',
+      fromVersion: 12,
+      toVersion: 13,
+      recordedAt: '2026-10-10T03:00:00Z',
+      recordedByUserId: '70000000-0000-4000-8000-000000000009',
+      files: [
+        {
+          materialId: 'material-1',
+          contentVersionId: 'version-1',
+          originalFilename: '裁定.pdf',
+          mimeType: 'application/pdf',
+        },
+      ],
+      childTrialRoundId: '70000000-0000-4000-8000-000000000002',
+      revocationId: null,
+    };
+    for (const invalid of [
+      { ...remand, judgmentAmountState: 'PENDING' },
+      { ...remand, judgmentAmountState: 'KNOWN', judgmentAmount: '0.00' },
+      { ...remand, result: 'CHANGE', childTrialRoundId: null },
+      { ...remand, result: 'AFFIRM', childTrialRoundId: null },
+      { ...remand, judgmentAmount: '0.00' },
+      { ...remand, extra: true },
+    ]) {
+      mockJson({
+        ...detail,
+        stage: 'WAITING_FORMAL_ACCEPTANCE',
+        secondInstance: {
+          ...detail.secondInstance,
+          currentResult: invalid,
+          results: [invalid],
+        },
+      });
+      await expect(getCase('case-1')).rejects.toMatchObject({
+        code: 'INVALID_RESPONSE',
+      });
+    }
+  });
+
   it('posts second-instance progress with explicit nulls and the selected round', async () => {
     const fetch = mockJson({
       id: 'case-1',

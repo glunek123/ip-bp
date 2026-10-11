@@ -452,10 +452,7 @@ type SecondInstanceResultBase = {
   choiceId: string;
   judgmentId: string;
   progressId: string | null;
-  result: 'REMAND' | 'CHANGE' | 'AFFIRM';
   resultReceivedAt: string;
-  judgmentAmountState: 'KNOWN' | 'PENDING';
-  judgmentAmount: string | null;
   paidLitigationFeeState: 'KNOWN' | 'PENDING';
   paidLitigationFee: string | null;
   fromVersion: number;
@@ -464,7 +461,14 @@ type SecondInstanceResultBase = {
   files: CaseFile[];
   childTrialRoundId: string | null;
   revocationId: string | null;
-};
+} & (
+  | { result: 'REMAND'; judgmentAmountState: null; judgmentAmount: null }
+  | {
+      result: 'CHANGE' | 'AFFIRM';
+      judgmentAmountState: 'KNOWN' | 'PENDING';
+      judgmentAmount: string | null;
+    }
+);
 export type CaseSecondInstanceResult = SecondInstanceResultBase & {
   recordedByUserId?: string;
 };
@@ -1279,8 +1283,9 @@ function validSecondInstanceResult(value: unknown, internal: boolean): boolean {
     (value.progressId === null || uuidV4(value.progressId)) &&
     ['REMAND', 'CHANGE', 'AFFIRM'].includes(String(value.result)) &&
     businessDate(value.resultReceivedAt) &&
-    (value.result !== 'REMAND' || value.judgmentAmountState === 'PENDING') &&
-    amountValid(value.judgmentAmountState, value.judgmentAmount) &&
+    (value.result === 'REMAND'
+      ? value.judgmentAmountState === null && value.judgmentAmount === null
+      : amountValid(value.judgmentAmountState, value.judgmentAmount)) &&
     amountValid(value.paidLitigationFeeState, value.paidLitigationFee) &&
     Number.isInteger(value.fromVersion) &&
     Number(value.fromVersion) >= 1 &&
