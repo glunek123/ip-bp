@@ -35,6 +35,11 @@ const identity = computed(() =>
     ? ''
     : `${auth.session.user.id}:${auth.session.authorizationRevision}`,
 );
+const secondInstanceActorKey = computed(() =>
+  auth.session === null
+    ? ''
+    : `${auth.session.principalType}:${auth.session.user.id}:${auth.session.department?.id ?? ''}`,
+);
 const item = ref<LawyerCaseDetail>();
 const state = ref<'loading' | 'ready' | 'missing' | 'failed'>('loading');
 const error = ref('');
@@ -535,6 +540,7 @@ onBeforeUnmount(() => {
           :item="item"
           :lawyer="true"
           :context-key="identity"
+          :actor-key="secondInstanceActorKey"
           @changed="load"
           @refresh="load"
         />

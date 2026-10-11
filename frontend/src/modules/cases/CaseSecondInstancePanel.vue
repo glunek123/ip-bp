@@ -8,17 +8,28 @@ import {
   type CaseDetail,
   type LawyerCaseDetail,
   type RegisterSecondInstanceResultInput,
-  type RevokeSecondInstanceResultInput,
   type SaveSecondInstanceInput,
   type SecondInstanceProgressInput,
 } from '../../api/cases';
 import { ApiError } from '../../api/http';
 import {
   downloadMaterialVersion,
+  listOwnerMaterials,
   uploadMaterialFile,
   type MaterialCategory,
 } from '../../api/materials';
 import { notifyWorkflowChanged } from '../../app/workflow-events';
+import {
+  beginSecondInstanceUpload,
+  clearSecondInstanceCommand,
+  clearSecondInstanceUpload,
+  hasUnclearedSecondInstanceUpload,
+  pendingSecondInstanceCommand,
+  readSecondInstanceUpload,
+  saveSecondInstanceCommand,
+  type SecondInstanceCommand,
+  type SecondInstanceUploadKind,
+} from './case-second-instance-recovery';
 
 type PanelItem = Pick<
   CaseDetail | LawyerCaseDetail,
@@ -35,11 +46,8 @@ type PanelItem = Pick<
   | 'canRegisterSecondInstanceResult'
   | 'canRevokeSecondInstanceResult'
 >;
-type PendingCommand =
-  | { kind: 'progress'; input: SaveSecondInstanceInput }
-  | { kind: 'result'; input: RegisterSecondInstanceResultInput }
-  | { kind: 'revoke'; input: RevokeSecondInstanceResultInput };
-type UploadKind = 'document' | 'service' | 'judgment';
+type PendingCommand = SecondInstanceCommand;
+type UploadKind = SecondInstanceUploadKind;
 type ResultChoice = '' | 'REMAND' | 'CHANGE' | 'AFFIRM';
 type AmountState = '' | 'KNOWN' | 'PENDING';
 type PanelFile = {
@@ -52,6 +60,7 @@ type PanelFile = {
 const props = defineProps<{
   item: PanelItem;
   contextKey: string;
+  actorKey: string;
   lawyer?: boolean;
 }>();
 const emit = defineEmits<{ changed: []; refresh: [] }>();
@@ -78,6 +87,20 @@ const conflictNeedsReview = ref(false);
 const accessDenied = ref(false);
 const success = ref('');
 const uploading = ref<UploadKind | null>(null);
+const uploadUnknown = ref(false);
+const recoveryFiles = ref<
+  Array<{
+    materialId: string;
+    version: {
+      id: string;
+      originalFilename: string;
+      mimeType: string;
+      createdAt: string;
+    };
+  }>
+>([]);
+const verifiedRecoveryFiles = ref(new Set<string>());
+const recoveryLoading = ref(false);
 let revision = 0;
 let mounted = true;
 
@@ -85,14 +108,9 @@ const second = computed(() => props.item.secondInstance);
 const currentRoundId = computed(() => second.value.currentTrialRoundId);
 const currentChoice = computed(() => {
   const roundId = currentRoundId.value;
-  return roundId
-    ? (props.item.judgmentNextStep.history.find(
-        (choice) => choice.trialRoundId === roundId && choice.next === 'APPEAL',
-      ) ??
-        (props.item.judgmentNextStep.current?.trialRoundId === roundId &&
-        props.item.judgmentNextStep.current.next === 'APPEAL'
-          ? props.item.judgmentNextStep.current
-          : null))
+  const choice = props.item.judgmentNextStep.current;
+  return roundId && choice?.trialRoundId === roundId && choice.next === 'APPEAL'
+    ? choice
     : null;
 });
 const canSaveCurrent = computed(
@@ -154,6 +172,7 @@ const progressReady = computed(
     canSaveCurrent.value &&
     !conflictNeedsReview.value &&
     pendingUnknown.value === null &&
+    !uploadUnknown.value &&
     !pending.value &&
     uploading.value === null,
 );
@@ -162,6 +181,7 @@ const resultReady = computed(
     canRegister.value &&
     !conflictNeedsReview.value &&
     pendingUnknown.value === null &&
+    !uploadUnknown.value &&
     !pending.value &&
     uploading.value === null &&
     resultChoice.value !== '' &&
@@ -233,19 +253,39 @@ function clearSensitive(): void {
   accessDenied.value = true;
 }
 watch(
-  [() => props.item.id, () => props.contextKey],
+  [() => props.item.id, () => props.actorKey],
   () => {
     revision += 1;
     resetDraft();
     pending.value = false;
-    pendingUnknown.value = null;
+    pendingUnknown.value = pendingSecondInstanceCommand(recoveryIdentity());
     error.value = '';
     uploadMessage.value = '';
     conflictNeedsReview.value = false;
     accessDenied.value = false;
     success.value = '';
+    uploadUnknown.value =
+      !!readSecondInstanceUpload(recoveryIdentity()) ||
+      hasUnclearedSecondInstanceUpload(recoveryIdentity());
+    recoveryFiles.value = [];
+    verifiedRecoveryFiles.value.clear();
   },
   { immediate: true, flush: 'sync' },
+);
+watch(
+  () => props.contextKey,
+  () => {
+    revision += 1;
+    pending.value = false;
+    pendingUnknown.value = pendingSecondInstanceCommand(recoveryIdentity());
+    uploadUnknown.value =
+      !!readSecondInstanceUpload(recoveryIdentity()) ||
+      hasUnclearedSecondInstanceUpload(recoveryIdentity());
+    if (pendingUnknown.value)
+      error.value =
+        '原请求结果未知。请使用原请求核对；旧回执只确认原轮次请求。';
+  },
+  { flush: 'sync' },
 );
 watch(
   [
@@ -270,14 +310,30 @@ onBeforeUnmount(() => {
 });
 
 function capture() {
-  return { id: props.item.id, contextKey: props.contextKey, revision };
+  return {
+    id: props.item.id,
+    actorKey: props.actorKey,
+    contextKey: props.contextKey,
+    revision,
+  };
+}
+function recoveryIdentity() {
+  return { actor: props.actorKey, caseId: props.item.id };
 }
 function currentContext(context: ReturnType<typeof capture>): boolean {
   return (
     mounted &&
     context.revision === revision &&
     context.id === props.item.id &&
+    context.actorKey === props.actorKey &&
     context.contextKey === props.contextKey
+  );
+}
+function sameRecoveryContext(context: ReturnType<typeof capture>): boolean {
+  return (
+    mounted &&
+    context.id === props.item.id &&
+    context.actorKey === props.actorKey
   );
 }
 function isUnknown(reason: unknown): boolean {
@@ -338,6 +394,8 @@ function makeResultInput(): RegisterSecondInstanceResultInput {
 }
 async function send(command: PendingCommand): Promise<void> {
   const context = capture();
+  const identity = recoveryIdentity();
+  saveSecondInstanceCommand(identity, command);
   pending.value = true;
   error.value = '';
   conflictNeedsReview.value = false;
@@ -357,18 +415,47 @@ async function send(command: PendingCommand): Promise<void> {
         props.lawyer ? 'lawyer' : 'internal',
       );
     else await revokeSecondInstanceResult(context.id, command.input);
-    if (!currentContext(context)) return;
+    clearSecondInstanceCommand(identity, command);
+    if (!currentContext(context)) {
+      if (sameRecoveryContext(context) && pendingUnknown.value === command) {
+        pendingUnknown.value = null;
+        success.value =
+          '原轮次请求已确认。请刷新核对最新案件详情；此回执不代表当前轮次已登记。';
+        emit('refresh');
+      }
+      return;
+    }
     pendingUnknown.value = null;
     success.value =
-      command.kind === 'progress'
-        ? '二审进展已登记，正在读取最新案件详情。'
-        : command.kind === 'result'
-          ? '二审结果已登记，正在读取最新案件详情。'
-          : '二审结果已撤销，历史记录已保留。';
+      props.item.version !== command.input.expectedVersion ||
+      (command.kind !== 'revoke' &&
+        currentRoundId.value !== command.input.trialRoundId)
+        ? '原轮次请求已确认。请核对最新案件详情；此回执不代表当前轮次已登记。'
+        : command.kind === 'progress'
+          ? '二审进展已登记，正在读取最新案件详情。'
+          : command.kind === 'result'
+            ? '二审结果已登记，正在读取最新案件详情。'
+            : '二审结果已撤销，历史记录已保留。';
     notifyWorkflowChanged();
     emit('changed');
   } catch (reason) {
-    if (!currentContext(context)) return;
+    if (!currentContext(context)) {
+      if (isUnknown(reason) && sameRecoveryContext(context)) {
+        pendingUnknown.value = command;
+        error.value =
+          '原请求结果未知。请使用原请求核对；旧回执只确认原轮次请求。';
+      } else if (!isUnknown(reason)) {
+        clearSecondInstanceCommand(identity, command);
+        if (sameRecoveryContext(context) && pendingUnknown.value === command) {
+          pendingUnknown.value = null;
+          if (reason instanceof ApiError && [403, 404].includes(reason.status))
+            clearSensitive();
+          error.value = '原请求已返回明确结果。请刷新并核对当前案件详情。';
+          emit('refresh');
+        }
+      }
+      return;
+    }
     if (isUnknown(reason)) {
       pendingUnknown.value = command;
       error.value =
@@ -380,23 +467,29 @@ async function send(command: PendingCommand): Promise<void> {
           reason.code,
         ))
     ) {
+      clearSecondInstanceCommand(identity, command);
       pendingUnknown.value = null;
       conflictNeedsReview.value = true;
       error.value =
         '案件版本或轮次已变化。旧请求不会改用新版本，请刷新并核对后重新填写。';
       emit('refresh');
     } else if (reason instanceof ApiError && reason.status === 403) {
+      clearSecondInstanceCommand(identity, command);
       pendingUnknown.value = null;
       clearSensitive();
       error.value =
         '当前账号已不能办理此案件，敏感内容已清除，正在核对访问权限。';
       emit('refresh');
     } else if (reason instanceof ApiError && reason.status === 404) {
+      clearSecondInstanceCommand(identity, command);
       pendingUnknown.value = null;
       clearSensitive();
       error.value = '案件已不可访问，正在核对案件状态。';
       emit('refresh');
-    } else error.value = '操作未完成，请核对案件详情后重试。';
+    } else {
+      clearSecondInstanceCommand(identity, command);
+      error.value = '操作未完成，请核对案件详情后重试。';
+    }
   } finally {
     if (currentContext(context)) pending.value = false;
   }
@@ -492,8 +585,19 @@ async function upload(
   const input = event.target as globalThis.HTMLInputElement;
   const file = input.files?.[0];
   input.value = '';
-  if (!file || uploading.value) return;
+  if (!file || uploading.value || uploadUnknown.value || pendingUnknown.value)
+    return;
   const context = capture();
+  const identity = recoveryIdentity();
+  let marker: ReturnType<typeof beginSecondInstanceUpload>;
+  try {
+    marker = beginSecondInstanceUpload(identity, kind);
+  } catch {
+    uploadUnknown.value = true;
+    uploadMessage.value =
+      '无法记录上传恢复状态，已停止上传；请联系管理员核查。';
+    return;
+  }
   uploading.value = kind;
   uploadMessage.value = '';
   error.value = '';
@@ -512,6 +616,14 @@ async function upload(
       file,
     });
     if (!currentContext(context)) return;
+    try {
+      clearSecondInstanceUpload(marker);
+    } catch {
+      uploadUnknown.value = true;
+      uploadMessage.value =
+        '文件已返回，但无法清除恢复标记；请停止重传并联系管理员核查。';
+      return;
+    }
     const choice = {
       materialId: uploaded.materialId,
       contentVersionId: uploaded.contentVersionId,
@@ -541,13 +653,132 @@ async function upload(
       ];
     uploadMessage.value = '文件已上传并可选择；业务登记尚未提交。';
   } catch (reason) {
-    if (currentContext(context))
-      uploadMessage.value = isUnknown(reason)
-        ? '上传结果未知。请先核对可用材料，再决定是否重新上传。'
-        : '文件未能加入本次办理，请检查文件后重试。';
+    if (currentContext(context)) {
+      if (isUnknown(reason)) {
+        uploadUnknown.value = true;
+        uploadMessage.value =
+          '上传结果未知。请刷新已有材料并下载精确版本核对；不要重新上传。';
+      } else {
+        try {
+          clearSecondInstanceUpload(marker);
+        } catch {
+          uploadUnknown.value = true;
+        }
+        uploadMessage.value = uploadUnknown.value
+          ? '无法清除恢复标记，请联系管理员核查。'
+          : '文件未能加入本次办理，请检查文件后重试。';
+      }
+    }
   } finally {
     if (currentContext(context)) uploading.value = null;
   }
+}
+function recoveryFileKey(file: {
+  materialId: string;
+  version: { id: string };
+}): string {
+  return `${file.materialId}:${file.version.id}`;
+}
+async function refreshRecoveryFiles(): Promise<void> {
+  if (
+    !uploadUnknown.value ||
+    recoveryLoading.value ||
+    uploading.value ||
+    accessDenied.value
+  )
+    return;
+  const context = capture();
+  const marker = readSecondInstanceUpload(recoveryIdentity());
+  if (!marker) {
+    uploadMessage.value = '恢复标记不可读取，请停止重传并联系管理员核查。';
+    return;
+  }
+  const category: MaterialCategory =
+    marker.kind === 'document'
+      ? 'SECOND_INSTANCE_DOCUMENT'
+      : marker.kind === 'service'
+        ? 'SECOND_INSTANCE_SERVICE'
+        : 'SECOND_INSTANCE_JUDGMENT';
+  recoveryLoading.value = true;
+  recoveryFiles.value = [];
+  verifiedRecoveryFiles.value.clear();
+  try {
+    const result = await listOwnerMaterials('CASE', context.id);
+    if (!currentContext(context)) return;
+    recoveryFiles.value = result.items
+      .filter(
+        (material) =>
+          material.ownerType === 'CASE' &&
+          material.ownerId === context.id &&
+          material.category === category &&
+          material.purpose === category &&
+          material.status === 'ACTIVE',
+      )
+      .flatMap((material) =>
+        material.contentVersions
+          .filter((version) => version.status === 'AVAILABLE')
+          .map((version) => ({ materialId: material.id, version })),
+      );
+    uploadMessage.value = recoveryFiles.value.length
+      ? '请下载候选版本人工核对，再确认选用精确版本。'
+      : '没有可核对的材料版本。未知上传标记保留，请联系管理员核查。';
+  } catch (reason) {
+    if (!currentContext(context)) return;
+    if (reason instanceof ApiError && [403, 404].includes(reason.status))
+      clearSensitive();
+    uploadMessage.value =
+      '材料列表无法读取。未知上传标记保留，请联系管理员核查。';
+  } finally {
+    if (currentContext(context)) recoveryLoading.value = false;
+  }
+}
+async function downloadRecoveryFile(
+  file: (typeof recoveryFiles.value)[number],
+): Promise<void> {
+  const context = capture();
+  try {
+    await downloadMaterialVersion(file.materialId, file.version.id);
+    if (currentContext(context))
+      verifiedRecoveryFiles.value.add(recoveryFileKey(file));
+  } catch {
+    if (currentContext(context))
+      uploadMessage.value = '候选版本下载失败，请稍后重试。';
+  }
+}
+function adoptRecoveryFile(file: (typeof recoveryFiles.value)[number]): void {
+  if (
+    !uploadUnknown.value ||
+    !verifiedRecoveryFiles.value.has(recoveryFileKey(file)) ||
+    accessDenied.value
+  )
+    return;
+  const marker = readSecondInstanceUpload(recoveryIdentity());
+  if (!marker) return;
+  if (marker.kind === 'judgment' ? !canRegister.value : !canSaveCurrent.value)
+    return;
+  try {
+    clearSecondInstanceUpload(marker);
+  } catch {
+    uploadMessage.value = '无法清除恢复标记，请停止重传并联系管理员核查。';
+    return;
+  }
+  const chosen = {
+    materialId: file.materialId,
+    contentVersionId: file.version.id,
+    originalFilename: file.version.originalFilename,
+    mimeType: file.version.mimeType,
+  };
+  const target =
+    marker.kind === 'document'
+      ? documentFiles
+      : marker.kind === 'service'
+        ? serviceFiles
+        : judgmentFiles;
+  target.value = uniqueFiles([...target.value, chosen]);
+  uploadUnknown.value = false;
+  recoveryFiles.value = [];
+  verifiedRecoveryFiles.value.clear();
+  uploadMessage.value = '已人工核对并选用此精确文件版本；业务登记尚未提交。';
 }
 async function download(file: {
   materialId: string;
@@ -725,7 +956,9 @@ function roundLabel(round: (typeof roundHistory.value)[number]): string {
             type="file"
             accept="application/pdf,image/jpeg,image/png"
             data-test="second-instance-document-upload"
-            :disabled="uploading !== null"
+            :disabled="
+              uploading !== null || uploadUnknown || pendingUnknown !== null
+            "
             @change="upload('document', $event)"
         /></label>
         <label
@@ -733,7 +966,9 @@ function roundLabel(round: (typeof roundHistory.value)[number]): string {
             type="file"
             accept="application/pdf,image/jpeg,image/png"
             data-test="second-instance-service-upload"
-            :disabled="uploading !== null"
+            :disabled="
+              uploading !== null || uploadUnknown || pendingUnknown !== null
+            "
             @change="upload('service', $event)"
         /></label>
         <fieldset>
@@ -883,7 +1118,9 @@ function roundLabel(round: (typeof roundHistory.value)[number]): string {
             type="file"
             accept="application/pdf,image/jpeg,image/png"
             data-test="second-instance-judgment-upload"
-            :disabled="uploading !== null"
+            :disabled="
+              uploading !== null || uploadUnknown || pendingUnknown !== null
+            "
             @change="upload('judgment', $event)"
         /></label>
         <label v-for="file in judgmentOptions" :key="file.contentVersionId"
@@ -940,7 +1177,8 @@ function roundLabel(round: (typeof roundHistory.value)[number]): string {
           !revokeReason.trim() ||
           !revokeImpactConfirmed ||
           pending ||
-          pendingUnknown !== null
+          pendingUnknown !== null ||
+          uploadUnknown
         "
         @click="openRevokeConfirmation"
       >
@@ -948,6 +1186,39 @@ function roundLabel(round: (typeof roundHistory.value)[number]): string {
       </button>
     </section>
     <p v-if="uploadMessage" role="status">{{ uploadMessage }}</p>
+    <div v-if="uploadUnknown && !accessDenied" class="demo-card demo-card--pad">
+      <p role="alert">
+        上传结果未知。请下载已有材料的精确版本核对，再明确选用。
+      </p>
+      <button
+        data-test="second-instance-recovery-refresh"
+        type="button"
+        :disabled="recoveryLoading || uploading !== null"
+        @click="refreshRecoveryFiles"
+      >
+        刷新已有材料
+      </button>
+      <ul>
+        <li v-for="file in recoveryFiles" :key="recoveryFileKey(file)">
+          {{ file.version.originalFilename }} · {{ file.version.createdAt }}
+          <button
+            data-test="second-instance-recovery-download"
+            type="button"
+            @click="downloadRecoveryFile(file)"
+          >
+            下载核对
+          </button>
+          <button
+            data-test="second-instance-recovery-adopt"
+            type="button"
+            :disabled="!verifiedRecoveryFiles.has(recoveryFileKey(file))"
+            @click="adoptRecoveryFile(file)"
+          >
+            确认选用此版本
+          </button>
+        </li>
+      </ul>
+    </div>
     <p v-if="success" role="status">{{ success }}</p>
     <p v-if="error" role="alert">{{ error }}</p>
     <button

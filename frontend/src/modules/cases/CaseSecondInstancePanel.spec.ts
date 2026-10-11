@@ -1,8 +1,12 @@
 import { flushPromises, mount } from '@vue/test-utils';
-import { beforeEach, describe, expect, it, vi } from 'vitest';
+import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 import type { CaseDetail } from '../../api/cases';
 import { ApiError } from '../../api/http';
 import CaseSecondInstancePanel from './CaseSecondInstancePanel.vue';
+import {
+  clearSecondInstanceCommand,
+  pendingSecondInstanceCommand,
+} from './case-second-instance-recovery';
 
 const api = vi.hoisted(() => ({
   saveSecondInstance: vi.fn(),
@@ -27,7 +31,15 @@ vi.mock('../../api/materials', async (importOriginal) => ({
 vi.mock('../../app/workflow-events', () => ({
   notifyWorkflowChanged: vi.fn(),
 }));
-beforeEach(() => vi.resetAllMocks());
+beforeEach(() => {
+  vi.resetAllMocks();
+  sessionStorage.clear();
+});
+afterEach(() => {
+  const identity = { actor: 'internal:user-a:department-a', caseId: id('20') };
+  const pending = pendingSecondInstanceCommand(identity);
+  if (pending) clearSecondInstanceCommand(identity, pending);
+});
 
 const id = (last: string) =>
   `70000000-0000-4000-8000-${last.padStart(12, '0')}`;
@@ -145,18 +157,307 @@ function item(stage: CaseDetail['stage'] = 'SECOND_INSTANCE') {
 }
 
 function mountPanel(
-  overrides: { item?: unknown; contextKey?: string; lawyer?: boolean } = {},
+  overrides: {
+    item?: unknown;
+    contextKey?: string;
+    actorKey?: string;
+    lawyer?: boolean;
+  } = {},
 ) {
   return mount(CaseSecondInstancePanel, {
     props: {
       item: item(),
       contextKey: 'internal:user-a:1',
+      actorKey: 'internal:user-a:department-a',
       ...overrides,
     } as never,
   });
 }
 
 describe('CaseSecondInstancePanel', () => {
+  it('uses only the current appeal after a same-round revoke and rechoose', async () => {
+    api.saveSecondInstance.mockResolvedValueOnce({});
+    api.registerSecondInstanceResult.mockResolvedValueOnce({});
+    const detail = item();
+    detail.judgmentNextStep.current!.trialRoundId = round2;
+    detail.judgmentNextStep.history.unshift({
+      ...detail.judgmentNextStep.current!,
+      id: id('31'),
+    });
+    const wrapper = mountPanel({ item: detail });
+    await wrapper
+      .get('[data-test="second-instance-progress-form"]')
+      .trigger('submit');
+    expect(api.saveSecondInstance.mock.calls[0]?.[1].choiceId).toBe(choice2);
+    await wrapper
+      .get('[data-test="second-instance-result-option"][value="REMAND"]')
+      .setValue();
+    await wrapper
+      .get('[data-test="second-instance-received-at"]')
+      .setValue('2026-10-10');
+    await wrapper
+      .get('[data-test="second-instance-fee-state"][value="PENDING"]')
+      .setValue();
+    await wrapper
+      .get('[data-test="second-instance-result-file-choice"]')
+      .setValue(true);
+    await wrapper
+      .get('[data-test="second-instance-result-form"]')
+      .trigger('submit');
+    await wrapper
+      .get('[data-test="second-instance-confirm-result"]')
+      .trigger('click');
+    expect(api.registerSecondInstanceResult.mock.calls[0]?.[1].choiceId).toBe(
+      choice2,
+    );
+    await wrapper.setProps({
+      item: {
+        ...detail,
+        judgmentNextStep: { ...detail.judgmentNextStep, current: null },
+      } as CaseDetail,
+    });
+    expect(
+      wrapper.find('[data-test="second-instance-progress-form"]').exists(),
+    ).toBe(false);
+  });
+
+  it('keeps the original unknown command through a same-actor revision and remount', async () => {
+    api.saveSecondInstance
+      .mockRejectedValueOnce(new ApiError('unknown', 503, 'NETWORK_ERROR'))
+      .mockResolvedValueOnce({});
+    const wrapper = mountPanel();
+    await wrapper
+      .get('[data-test="second-instance-progress-form"]')
+      .trigger('submit');
+    await flushPromises();
+    const first = api.saveSecondInstance.mock.calls[0];
+    await wrapper.setProps({ contextKey: 'internal:user-a:2' });
+    expect(
+      wrapper.find('[data-test="second-instance-result-retry"]').exists(),
+    ).toBe(true);
+    wrapper.unmount();
+    const returned = mountPanel({ contextKey: 'internal:user-a:3' });
+    expect(
+      returned.find('[data-test="second-instance-result-retry"]').exists(),
+    ).toBe(true);
+    await returned
+      .get('[data-test="second-instance-result-retry"]')
+      .trigger('click');
+    expect(api.saveSecondInstance.mock.calls[1]).toEqual(first);
+    returned.unmount();
+  });
+
+  it('labels an old receipt as confirmation of the original round only', async () => {
+    api.saveSecondInstance
+      .mockRejectedValueOnce(new ApiError('unknown', 503, 'NETWORK_ERROR'))
+      .mockResolvedValueOnce({});
+    const wrapper = mountPanel();
+    await wrapper
+      .get('[data-test="second-instance-progress-form"]')
+      .trigger('submit');
+    await flushPromises();
+    await wrapper.setProps({ item: { ...item(), version: 11 } as CaseDetail });
+    await wrapper
+      .get('[data-test="second-instance-result-retry"]')
+      .trigger('click');
+    await flushPromises();
+    expect(wrapper.text()).toContain('原轮次请求已确认');
+    expect(wrapper.text()).not.toContain(
+      '二审进展已登记，正在读取最新案件详情',
+    );
+    wrapper.unmount();
+  });
+
+  it('blocks blind reupload and recovers only a downloaded exact case version', async () => {
+    api.uploadMaterialFile.mockRejectedValueOnce(
+      new ApiError('unknown', 503, 'NETWORK_ERROR'),
+    );
+    api.listOwnerMaterials.mockResolvedValueOnce({
+      items: [
+        {
+          id: id('40'),
+          ownerType: 'CASE',
+          ownerId: id('20'),
+          category: 'SECOND_INSTANCE_DOCUMENT',
+          purpose: 'SECOND_INSTANCE_DOCUMENT',
+          status: 'ACTIVE',
+          contentVersions: [
+            {
+              id: id('41'),
+              status: 'AVAILABLE',
+              originalFilename: '候选.pdf',
+              mimeType: 'application/pdf',
+              createdAt: '2026-10-11T00:00:00Z',
+            },
+          ],
+        },
+      ],
+      total: 1,
+    });
+    api.downloadMaterialVersion.mockResolvedValueOnce(undefined);
+    const wrapper = mountPanel();
+    const input = wrapper.get('[data-test="second-instance-document-upload"]');
+    Object.defineProperty(input.element, 'files', {
+      configurable: true,
+      value: [new File(['x'], 'x.pdf', { type: 'application/pdf' })],
+    });
+    await input.trigger('change');
+    await flushPromises();
+    expect((input.element as HTMLInputElement).disabled).toBe(true);
+    expect(
+      (
+        wrapper.get('[data-test="second-instance-progress-save"]')
+          .element as HTMLButtonElement
+      ).disabled,
+    ).toBe(true);
+    await wrapper
+      .get('[data-test="second-instance-recovery-refresh"]')
+      .trigger('click');
+    expect(api.listOwnerMaterials).toHaveBeenCalledWith('CASE', id('20'));
+    expect(
+      (
+        wrapper.get('[data-test="second-instance-recovery-adopt"]')
+          .element as HTMLButtonElement
+      ).disabled,
+    ).toBe(true);
+    await wrapper
+      .get('[data-test="second-instance-recovery-download"]')
+      .trigger('click');
+    await flushPromises();
+    await wrapper
+      .get('[data-test="second-instance-recovery-adopt"]')
+      .trigger('click');
+    expect((input.element as HTMLInputElement).disabled).toBe(false);
+    wrapper.unmount();
+  });
+
+  it('keeps unknown upload blocked after remount when no exact usable version exists', async () => {
+    api.uploadMaterialFile.mockRejectedValueOnce(
+      new ApiError('unknown', 503, 'NETWORK_ERROR'),
+    );
+    api.listOwnerMaterials.mockResolvedValueOnce({
+      items: [
+        {
+          id: id('40'),
+          ownerType: 'CASE',
+          ownerId: id('99'),
+          category: 'SECOND_INSTANCE_DOCUMENT',
+          purpose: 'SECOND_INSTANCE_DOCUMENT',
+          status: 'ACTIVE',
+          contentVersions: [{ id: id('41'), status: 'AVAILABLE' }],
+        },
+        {
+          id: id('42'),
+          ownerType: 'CASE',
+          ownerId: id('20'),
+          category: 'SECOND_INSTANCE_DOCUMENT',
+          purpose: 'OTHER',
+          status: 'ACTIVE',
+          contentVersions: [{ id: id('43'), status: 'AVAILABLE' }],
+        },
+        {
+          id: id('44'),
+          ownerType: 'CASE',
+          ownerId: id('20'),
+          category: 'SECOND_INSTANCE_DOCUMENT',
+          purpose: 'SECOND_INSTANCE_DOCUMENT',
+          status: 'DELETED',
+          contentVersions: [{ id: id('45'), status: 'AVAILABLE' }],
+        },
+        {
+          id: id('46'),
+          ownerType: 'CASE',
+          ownerId: id('20'),
+          category: 'SECOND_INSTANCE_DOCUMENT',
+          purpose: 'SECOND_INSTANCE_DOCUMENT',
+          status: 'ACTIVE',
+          contentVersions: [{ id: id('47'), status: 'DELETED' }],
+        },
+      ],
+      total: 4,
+    });
+    const wrapper = mountPanel();
+    const uploadInput = wrapper.get(
+      '[data-test="second-instance-document-upload"]',
+    );
+    Object.defineProperty(uploadInput.element, 'files', {
+      configurable: true,
+      value: [new File(['x'], 'x.pdf', { type: 'application/pdf' })],
+    });
+    await uploadInput.trigger('change');
+    await flushPromises();
+    wrapper.unmount();
+    const returned = mountPanel({ contextKey: 'internal:user-a:2' });
+    expect(
+      (
+        returned.get('[data-test="second-instance-document-upload"]')
+          .element as HTMLInputElement
+      ).disabled,
+    ).toBe(true);
+    await returned
+      .get('[data-test="second-instance-recovery-refresh"]')
+      .trigger('click');
+    await flushPromises();
+    expect(
+      returned.find('[data-test="second-instance-recovery-adopt"]').exists(),
+    ).toBe(false);
+    expect(returned.text()).toContain('请联系管理员核查');
+    expect(sessionStorage.length).toBe(1);
+    returned.unmount();
+  });
+
+  it('does not start an upload when the recovery marker cannot be stored', async () => {
+    const storage = vi
+      .spyOn(Storage.prototype, 'setItem')
+      .mockImplementation(() => {
+        throw new Error('storage unavailable');
+      });
+    try {
+      const wrapper = mountPanel({
+        actorKey: 'internal:user-storage:department-a',
+      });
+      const input = wrapper.get(
+        '[data-test="second-instance-document-upload"]',
+      );
+      Object.defineProperty(input.element, 'files', {
+        configurable: true,
+        value: [new File(['x'], 'x.pdf', { type: 'application/pdf' })],
+      });
+      await input.trigger('change');
+      expect(api.uploadMaterialFile).not.toHaveBeenCalled();
+      expect((input.element as HTMLInputElement).disabled).toBe(true);
+      wrapper.unmount();
+    } finally {
+      storage.mockRestore();
+    }
+  });
+
+  it('does not offer another actor or case the original unknown command', async () => {
+    api.saveSecondInstance.mockRejectedValueOnce(
+      new ApiError('unknown', 503, 'NETWORK_ERROR'),
+    );
+    const wrapper = mountPanel();
+    await wrapper
+      .get('[data-test="second-instance-progress-form"]')
+      .trigger('submit');
+    await flushPromises();
+    wrapper.unmount();
+    const otherActor = mountPanel({
+      actorKey: 'internal:user-b:department-a',
+      contextKey: 'internal:user-b:1',
+    });
+    expect(
+      otherActor.find('[data-test="second-instance-result-retry"]').exists(),
+    ).toBe(false);
+    otherActor.unmount();
+    const otherCase = mountPanel({
+      item: { ...item(), id: id('99') } as CaseDetail,
+    });
+    expect(
+      otherCase.find('[data-test="second-instance-result-retry"]').exists(),
+    ).toBe(false);
+    otherCase.unmount();
+  });
   it('groups history by trial round and distinguishes a real zero from pending', () => {
     const wrapper = mountPanel();
     expect(wrapper.text()).toContain('第1轮办理');

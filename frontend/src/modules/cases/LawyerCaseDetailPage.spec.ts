@@ -13,11 +13,13 @@ const api = vi.hoisted(() => ({
   listOwnerMaterials: vi.fn(),
   uploadMaterialFile: vi.fn(),
   downloadMaterialVersion: vi.fn(),
+  saveSecondInstance: vi.fn(),
 }));
 vi.mock('../../api/cases', async (importOriginal) => ({
   ...(await importOriginal<typeof import('../../api/cases')>()),
   getLawyerCase: api.getLawyerCase,
   submitComplaint: api.submitComplaint,
+  saveSecondInstance: api.saveSecondInstance,
 }));
 vi.mock('../../api/materials', () => ({
   listOwnerMaterials: api.listOwnerMaterials,
@@ -174,6 +176,68 @@ beforeEach(() => {
 });
 
 describe('LawyerCaseDetailPage', () => {
+  it('keeps an unknown original command when detail becomes unavailable and returns for the same lawyer', async () => {
+    const roundId = '70000000-0000-4000-8000-000000000081';
+    const choiceId = '70000000-0000-4000-8000-000000000082';
+    const current = {
+      ...detail('case-a', 'CA-A', 'SECOND_INSTANCE'),
+      canSaveSecondInstance: true,
+      judgmentNextStep: {
+        current: {
+          id: choiceId,
+          trialRoundId: roundId,
+          judgmentId: 'judgment-1',
+          next: 'APPEAL' as const,
+        },
+        history: [],
+        revocations: [],
+      },
+      secondInstance: {
+        currentTrialRoundId: roundId,
+        currentProgress: null,
+        currentResult: null,
+        rounds: [
+          { id: roundId, sequence: 1, sourceResultId: null, revokedAt: null },
+        ],
+        progresses: [],
+        results: [],
+        revocations: [],
+      },
+    };
+    api.getLawyerCase
+      .mockResolvedValueOnce(current)
+      .mockRejectedValueOnce(new ApiError('Forbidden', 403, 'ACTION_FORBIDDEN'))
+      .mockResolvedValueOnce(current);
+    api.saveSecondInstance
+      .mockRejectedValueOnce(new ApiError('unknown', 503, 'NETWORK_ERROR'))
+      .mockResolvedValueOnce({});
+    const { wrapper, auth } = await mountPage();
+    await wrapper
+      .get('[data-test="second-instance-progress-form"]')
+      .trigger('submit');
+    await flushPromises();
+    const first = api.saveSecondInstance.mock.calls[0];
+    expect(
+      wrapper.find('[data-test="second-instance-result-retry"]').exists(),
+    ).toBe(true);
+    await wrapper
+      .findAll('button')
+      .find((button) => button.text() === '刷新')!
+      .trigger('click');
+    await flushPromises();
+    expect(wrapper.find('[data-test="second-instance-panel"]').exists()).toBe(
+      false,
+    );
+    auth.session = { ...auth.session!, authorizationRevision: 2 };
+    await flushPromises();
+    expect(
+      wrapper.find('[data-test="second-instance-result-retry"]').exists(),
+    ).toBe(true);
+    await wrapper
+      .get('[data-test="second-instance-result-retry"]')
+      .trigger('click');
+    expect(api.saveSecondInstance.mock.calls[1]).toEqual(first);
+  });
   it('shows second-instance history to the active lawyer without exposing revoke', async () => {
     const trialRoundId = '70000000-0000-4000-8000-000000000001';
     api.getLawyerCase.mockResolvedValueOnce({

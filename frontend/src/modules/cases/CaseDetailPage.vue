@@ -40,6 +40,11 @@ const identity = computed(() =>
     ? ''
     : `${auth.session.principalType}:${auth.session.user.id}:${auth.session.authorizationRevision}`,
 );
+const secondInstanceActorKey = computed(() =>
+  auth.session === null
+    ? ''
+    : `${auth.session.principalType}:${auth.session.user.id}:${auth.session.department?.id ?? ''}`,
+);
 const backTo = computed(() => ({ path: '/cases', query: route.query }));
 const state = ref<'loading' | 'ready' | 'missing' | 'failed'>('loading');
 const refreshing = ref(false);
@@ -774,6 +779,7 @@ onBeforeUnmount(() => request?.abort());
           "
           :item="item"
           :context-key="identity"
+          :actor-key="secondInstanceActorKey"
           @changed="load"
           @refresh="load"
         />
