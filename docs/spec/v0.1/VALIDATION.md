@@ -1,5 +1,19 @@
 # SPEC-001 文档验证
 
+## 切片前置反馈最小修复（2026-10-11）
+
+基线`f88264086c124568c8203b1ea7d033b7e7f437f2`；实际通过规则验收的候选`26b4f23b7a71f33c704eecde72c854e106a6ae4b`、tree`99bab86cb9c7f53006a60a8302155ea747fee946`，仍在`codex/core-ca-010-appeal`。仅修改既有三级规则、AI交接段落、状态摘要和已解释快照；未改业务Spec／范围、代码、schema、迁移、测试／输入、选测逻辑、依赖、运行配置或CI。Current仍为CA-010已完成待集成，Next仍CA-011未领取；本轮不推送、合并、部署或开发新片。
+
+前置反馈复用现有Brief／计划和Tests executed／Contract changes字段：先核对本次公共契约的必填锚、合法空值和精确版本变化，提前检查受影响的权限目录、旧fixture及历史迁移边界；先主要真实纵向流程，再覆盖其余必需分支／角色。重复失败无新证据先定位，不靠改生产授权、弱化断言、放宽超时或增加重试通过。未新建脚本／平台／台账，未增加逐Task全量门禁，保留原独立审查、正式门禁及真实数据库／浏览器要求。
+
+独立上下文且未参与实现的`gpt-6-sol`Reviewer核对完整四文件差异，并走读缺必填锚、合法空附件、SAVE+0／RESULT+2、新Action兼容、旧117与新130迁移链、旧GET／会话／日期／选附件时序、首条流程不替代最终覆盖、规则修改不适用文档例外共八个场景；Spec符合性／质量均ACCEPTED，未关闭C/I/M0。报告`.local/slice-feedback-optimization/review.md`，是规则边界走读，不冒称自动证明未来不会再发生同类错误。
+
+此规则修改按Level 3在固定候选实际运行一次`pnpm verify`，退出0、264.743秒：严格上下文889文件、Spec57 REQ／63 AC／11 BQ／50 SD、架构、Prisma、类型、Lint、格式、工具11文件74/74、前端87文件963/963、后端95 suites1206/1206及双端构建通过。UTC`2026-10-11T15:13:34.8236743Z`开始、`15:17:59.5718506Z`结束；前后干净commit／tree与环境一致，fingerprint为`8cebe60684ba5641d54f9c5c32e7c85b7b62c8fd8d55d4583e40330b5f5e9337`，Node v24.21.0、pnpm11.27.0。完整日志和真实退出／时长、候选／环境在ignored `.local/slice-feedback-optimization/verify{.log,-summary.json,-before.json,-after.json}`。`.mdc`另以Prettier显式Markdown parser通过格式检查。
+
+没有业务、权限实现、数据库结构／输入或验证入口变化，本轮不重新运行数据库／Chromium整组验收；CA-010的147/147仍只绑定下文`38c7ab9`，不写成规则候选实跑。正式门禁后仅补本记录、状态摘要和对应快照；须核对`26b4f23`至最终收口的累计diff、暂存／未暂存及未跟踪项，仅允许非执行性状态／证据／已解释快照，再运行受影响格式、Spec、链接／指针、strict context及Git专项，日志`.local/slice-feedback-optimization/closeout-doc-check.log`和`closeout-diff.txt`，真实退出0才提交。规则正文和交接流程不在收口阶段改动，不以文档例外跳过本轮规则的完整verify。
+
+前置调用曾因Node版本比较漏归一化`v`前缀、Prettier未指定`.mdc`解析器而停止；修正调用后使用锁定运行时和显式parser通过，未修改环境锁或测试条件。原始情况保留在ignored `progress.md`，不计作正式verify成功。未取得token用量；本轮证明规则一致性和工程检查通过，不证明未来返工率下降，提速效果尚未量化。
+
 ## CORE-CA-010 二审办理与结果（2026-10-11）
 
 实际通过正式门禁的业务候选为`38c7ab98dad1717bdaeeb9956208291f96ba49ce`、tree`53309640bdc258ea29eec4dade1d3784b01bb1b4`；分支`codex/core-ca-010-appeal`，main基线`a1d99fc446b0753957fb1a268a297ab5f19913de`。本轮本地验收，不推送／合并／部署，不领取CA-011。后续非执行性收口提交不冒称实跑过该候选的业务门禁。

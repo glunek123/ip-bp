@@ -8,7 +8,7 @@ CORE-CA-001～009及SD-44律师身份前置补齐均已验收、推送并集成m
 
 ## 当前任务
 
-2026-10-11附属任务：按用户要求最小优化CA-010暴露的晚发现与重复联调问题，只完善既有前置反馈／交接规则；不改业务范围、Current／Next、测试覆盖或门禁脚本。规则变化按Level 3独立审查和完整verify验收，当前尚未验证；不推送／合并或领取下一片。
+2026-10-11附属任务已验收：最小完善既有前置契约反馈、旧测试兼容和交接规则，未改业务范围、Current／Next、测试覆盖或门禁脚本。实际规则候选`26b4f23`通过独立非实现6 Sol Review两轴ACCEPTED、C/I/M0及一次完整verify；结果和证据边界见[前置反馈修复记录](spec/v0.1/VALIDATION.md#切片前置反馈最小修复2026-10-11)。尚未推送／合并，不领取下一片；实际提速未量化。
 
 唯一Current为**CORE-CA-010｜二审（已完成，待授权集成）**，Next为CORE-CA-011执行材料未领取；指针与范围以[路线图](feature-roadmap.md#current-slice)为准。从已核实main`a1d99fc`建立的`codex/core-ca-010-appeal`已按SD-50完成二审保存、三种结果、同案分轮重审及受控撤销。业务契约见[案件Spec](spec/v0.1/modules/cases.md#ca-010二审办理与结果)，任务步骤见[计划](superpowers/plans/2026-10-10-case-second-instance.md)。CA-010尚未推送或合入main，不部署或执行开发／生产迁移。
 
