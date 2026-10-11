@@ -6,7 +6,9 @@ export function verifyCaseSecondInstanceDatabase(): Promise<{
   remandReplay: boolean;
   oldRound: string | null;
   clearedPointers: boolean;
+  emptyChildVersionBypass: string | null;
   restored: boolean;
+  revokedChildReactivation: string | null;
   bypassStage: string | null;
   immutableResult: string | null;
   faultRaised: boolean;
@@ -14,6 +16,18 @@ export function verifyCaseSecondInstanceDatabase(): Promise<{
   progressRevision: boolean;
   repeatedFrozenVersions: boolean;
   preservedProgressBytes: boolean;
+  wrongResultCategory: string | null;
+  wrongDepartment: string | null;
+  lawyerRead: boolean;
+  roundHistory: boolean;
+  remandRead: boolean;
+  remandLifecycle: boolean;
+  remandEmptyCanRevoke: boolean;
+  lawyerFile: boolean;
+  clientRead: boolean;
+  clientSecondFileDenied: boolean;
+  formerLawyerDenied: boolean;
+  formerFileDenied: boolean;
   noAudit: string | null;
   wrongCase: string | null;
   wrongPurpose: string | null;

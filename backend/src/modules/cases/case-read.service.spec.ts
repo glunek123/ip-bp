@@ -532,6 +532,57 @@ describe('CaseReadService', () => {
       'judgmentNextStep.revocations.0.recordedByUserId',
       'internal-revocation-user',
     );
+    const oldChoiceProgress = {
+      id: 'old-progress',
+      trialRoundId: 'round-1',
+      choiceId: 'choice-1',
+      priorProgressId: null,
+      hearingAt: null,
+      hearingPlace: null,
+      judgeName: null,
+      fromVersion: 4,
+      toVersion: 5,
+      recordedAt: new Date('2026-10-09T03:00:00.000Z'),
+      recordedByUserId: actor.userId,
+      versions: [],
+    };
+    f.db.case.findFirst.mockResolvedValue({
+      ...record,
+      stage: 'SECOND_INSTANCE',
+      currentJudgmentId: 'judgment-2',
+      currentJudgmentNextStepId: 'choice-current',
+      judgmentNextSteps: [
+        ...choices,
+        { ...choices[0], id: 'choice-current', trialRoundId: 'round-2' },
+      ],
+      judgmentNextStepRevocations: [],
+      secondInstanceProgresses: [oldChoiceProgress],
+    });
+    await expect(f.service.get(actor, 'case-1')).resolves.toMatchObject({
+      canRevokeJudgmentNextStep: true,
+    });
+    f.db.case.findFirst.mockResolvedValue({
+      ...record,
+      stage: 'SECOND_INSTANCE',
+      currentJudgmentId: 'judgment-2',
+      currentJudgmentNextStepId: 'choice-current',
+      judgmentNextSteps: [
+        ...choices,
+        { ...choices[0], id: 'choice-current', trialRoundId: 'round-2' },
+      ],
+      judgmentNextStepRevocations: [],
+      secondInstanceProgresses: [
+        oldChoiceProgress,
+        {
+          ...oldChoiceProgress,
+          id: 'current-progress',
+          choiceId: 'choice-current',
+        },
+      ],
+    });
+    await expect(f.service.get(actor, 'case-1')).resolves.toMatchObject({
+      canRevokeJudgmentNextStep: false,
+    });
     f.db.case.findFirst.mockResolvedValue(record);
     expect(result).toMatchObject({
       courtCaseNo: null,
@@ -749,6 +800,7 @@ describe('CaseReadService', () => {
         businessNo: 'CA-1',
         stage: 'PENDING_MATCH',
         version: 1,
+        currentSecondInstanceResultId: null,
         createdAt: new Date('2026-09-28T00:00:00.000Z'),
         responsibleUserId: actor.userId,
         responsibleMembership: { teamId: 'team-private' },
@@ -763,6 +815,103 @@ describe('CaseReadService', () => {
     expect(result.items[0]).toMatchObject({
       owner: { id: actor.userId },
       canMatch: true,
+    });
+  });
+
+  it('lists second-instance actions by current choice, stage and actual authorization', async () => {
+    const f = fixture();
+    const listCase = {
+      id: 'case-1',
+      businessNo: 'CA-1',
+      stage: 'SECOND_INSTANCE',
+      version: 20,
+      currentTrialRoundId: 'round-2',
+      currentJudgmentId: 'judgment-2',
+      currentJudgmentNextStepId: 'choice-current',
+      currentJudgmentNextStep: {
+        next: 'APPEAL',
+        judgmentId: 'judgment-2',
+        trialRoundId: 'round-2',
+      },
+      currentSecondInstanceResultId: null,
+      currentSecondInstanceResult: null,
+      secondInstanceProgresses: [{ choiceId: 'choice-old' }],
+      secondInstanceResults: [{ choiceId: 'choice-old' }],
+      createdAt: new Date('2026-10-10T00:00:00.000Z'),
+      responsibleUserId: actor.userId,
+      responsibleMembership: { teamId: null },
+      owner: { id: actor.userId, displayName: '负责人' },
+      sourceLead: { id: 'lead-1', businessNo: 'LD-1' },
+      sourceNotaryMatter: { id: 'matter-1', businessNo: 'NT-1' },
+    };
+    f.db.case.findMany.mockResolvedValue([listCase]);
+    const operator = (await f.service.list(actor, 1, 20)).items[0];
+    expect(operator).toMatchObject({
+      canSaveSecondInstance: true,
+      canRegisterSecondInstanceResult: true,
+      canRevokeSecondInstanceResult: false,
+      canRevokeJudgmentNextStep: true,
+    });
+    f.db.case.findMany.mockResolvedValue([
+      {
+        ...listCase,
+        secondInstanceProgresses: [
+          { choiceId: 'choice-old' },
+          { choiceId: 'choice-current' },
+        ],
+      },
+    ]);
+    expect((await f.service.list(actor, 1, 20)).items[0]).toMatchObject({
+      canSaveSecondInstance: true,
+      canRevokeJudgmentNextStep: false,
+    });
+    f.access.canAuthorizeCase.mockResolvedValue(false);
+    expect((await f.service.list(actor, 1, 20)).items[0]).toMatchObject({
+      canSaveSecondInstance: false,
+      canRegisterSecondInstanceResult: false,
+      canRevokeSecondInstanceResult: false,
+      canRevokeJudgmentNextStep: false,
+    });
+    f.db.userAccount.findUnique.mockResolvedValue({
+      accountType: 'LAWYER',
+      active: true,
+    });
+    expect(
+      (await f.service.list({ ...actor, lawyerAccountId: actor.userId }, 1, 20))
+        .items[0],
+    ).toMatchObject({
+      canSaveSecondInstance: true,
+      canRegisterSecondInstanceResult: true,
+      canRevokeSecondInstanceResult: false,
+      canRevokeJudgmentNextStep: false,
+    });
+    f.db.userAccount.findUnique.mockResolvedValue({
+      accountType: 'INTERNAL',
+      active: true,
+    });
+    f.access.canAuthorizeCase.mockResolvedValue(true);
+    f.db.case.findMany.mockResolvedValue([
+      {
+        ...listCase,
+        stage: 'WAITING_EXECUTION_DOCUMENTS',
+        currentSecondInstanceResultId: 'result-current',
+        currentSecondInstanceResult: {
+          id: 'result-current',
+          result: 'CHANGE',
+          revocation: null,
+          childRound: null,
+        },
+      },
+    ]);
+    expect((await f.service.list(actor, 1, 20)).items[0]).toMatchObject({
+      canSaveSecondInstance: false,
+      canRegisterSecondInstanceResult: false,
+      canRevokeSecondInstanceResult: true,
+      canRevokeJudgmentNextStep: false,
+    });
+    f.access.canAuthorizeCase.mockResolvedValue(false);
+    expect((await f.service.list(actor, 1, 20)).items[0]).toMatchObject({
+      canRevokeSecondInstanceResult: false,
     });
   });
 });

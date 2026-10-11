@@ -1276,6 +1276,7 @@ export async function verifyCaseJudgmentDatabase(options = {}) {
         'case_acceptance_receipts',
         'case_acceptance_versions',
         'case_acceptances',
+        'case_filing_submissions',
       ];
       await client.query(
         'DELETE FROM material_references WHERE resource_type=$1 AND resource_id=$2',
@@ -1309,6 +1310,9 @@ export async function verifyCaseJudgmentDatabase(options = {}) {
         ['CASE', ids.case],
       );
       await client.query('DELETE FROM cases WHERE id=$1', [ids.case]);
+      await client.query('DELETE FROM filing_courts WHERE department_id=$1', [
+        ids.department,
+      ]);
       await client.query('DELETE FROM case_trial_rounds WHERE case_id=$1', [
         ids.case,
       ]);

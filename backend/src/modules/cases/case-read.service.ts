@@ -120,6 +120,40 @@ export class CaseReadService {
           currentHearingAdvanceId: true,
           currentJudgmentId: true,
           currentJudgmentNextStepId: true,
+          currentJudgmentNextStep: {
+            select: {
+              id: true,
+              trialRoundId: true,
+              judgmentId: true,
+              next: true,
+            },
+          },
+          currentTrialRoundId: true,
+          currentSecondInstanceResultId: true,
+          currentSecondInstanceResult: {
+            select: {
+              id: true,
+              result: true,
+              revocation: { select: { id: true } },
+              childRound: {
+                select: {
+                  id: true,
+                  revokedAt: true,
+                  _count: {
+                    select: {
+                      acceptances: true,
+                      hearings: true,
+                      advances: true,
+                      judgments: true,
+                      choices: true,
+                    },
+                  },
+                },
+              },
+            },
+          },
+          secondInstanceProgresses: { select: { choiceId: true } },
+          secondInstanceResults: { select: { choiceId: true } },
           createdAt: true,
           responsibleUserId: true,
           owner: { select: { id: true, displayName: true } },
@@ -318,6 +352,17 @@ export class CaseReadService {
             (item.stage === 'SECOND_INSTANCE' ||
               item.stage === 'WAITING_EXECUTION_DOCUMENTS') &&
             item.currentJudgmentNextStepId !== null &&
+            item.currentJudgmentNextStep?.next ===
+              (item.stage === 'SECOND_INSTANCE' ? 'APPEAL' : 'EXECUTION') &&
+            (item.currentJudgmentNextStep.next !== 'APPEAL' ||
+              (!item.secondInstanceProgresses.some(
+                (progress) =>
+                  progress.choiceId === item.currentJudgmentNextStepId,
+              ) &&
+                !item.secondInstanceResults.some(
+                  (result) =>
+                    result.choiceId === item.currentJudgmentNextStepId,
+                ))) &&
             (await this.access.canAuthorizeCase(
               actor,
               'case.judgment.next_step.revoke',
@@ -329,9 +374,77 @@ export class CaseReadService {
                   : {}),
               },
             )),
-          canSaveSecondInstance: false,
-          canRegisterSecondInstanceResult: false,
-          canRevokeSecondInstanceResult: false,
+          canSaveSecondInstance:
+            item.stage === 'SECOND_INSTANCE' &&
+            item.currentTrialRoundId !== null &&
+            item.currentJudgmentNextStepId !== null &&
+            item.currentJudgmentNextStep?.next === 'APPEAL' &&
+            item.currentJudgmentNextStep.trialRoundId ===
+              item.currentTrialRoundId &&
+            item.currentJudgmentNextStep.judgmentId ===
+              item.currentJudgmentId &&
+            item.currentSecondInstanceResultId === null &&
+            (principal === 'LAWYER' ||
+              (await this.access.canAuthorizeCase(
+                actor,
+                'case.second_instance.save',
+                {
+                  departmentId: actor.departmentId,
+                  responsibleUserId: item.responsibleUserId,
+                  ...(item.responsibleMembership.teamId
+                    ? { teamId: item.responsibleMembership.teamId }
+                    : {}),
+                },
+              ))),
+          canRegisterSecondInstanceResult:
+            item.stage === 'SECOND_INSTANCE' &&
+            item.currentTrialRoundId !== null &&
+            item.currentJudgmentNextStepId !== null &&
+            item.currentJudgmentNextStep?.next === 'APPEAL' &&
+            item.currentJudgmentNextStep.trialRoundId ===
+              item.currentTrialRoundId &&
+            item.currentJudgmentNextStep.judgmentId ===
+              item.currentJudgmentId &&
+            item.currentSecondInstanceResultId === null &&
+            (principal === 'LAWYER' ||
+              (await this.access.canAuthorizeCase(
+                actor,
+                'case.second_instance.result',
+                {
+                  departmentId: actor.departmentId,
+                  responsibleUserId: item.responsibleUserId,
+                  ...(item.responsibleMembership.teamId
+                    ? { teamId: item.responsibleMembership.teamId }
+                    : {}),
+                },
+              ))),
+          canRevokeSecondInstanceResult:
+            principal === 'INTERNAL' &&
+            item.currentSecondInstanceResultId !== null &&
+            item.currentSecondInstanceResult?.id ===
+              item.currentSecondInstanceResultId &&
+            item.currentSecondInstanceResult.revocation === null &&
+            (item.currentSecondInstanceResult.result === 'REMAND'
+              ? item.stage === 'WAITING_FORMAL_ACCEPTANCE' &&
+                item.currentSecondInstanceResult.childRound?.id ===
+                  item.currentTrialRoundId &&
+                item.currentSecondInstanceResult.childRound.revokedAt ===
+                  null &&
+                Object.values(
+                  item.currentSecondInstanceResult.childRound._count,
+                ).every((count) => count === 0)
+              : item.stage === 'WAITING_EXECUTION_DOCUMENTS') &&
+            (await this.access.canAuthorizeCase(
+              actor,
+              'case.second_instance.result.revoke',
+              {
+                departmentId: actor.departmentId,
+                responsibleUserId: item.responsibleUserId,
+                ...(item.responsibleMembership.teamId
+                  ? { teamId: item.responsibleMembership.teamId }
+                  : {}),
+              },
+            )),
           createdAt: item.createdAt.toISOString(),
         })),
       ),
@@ -1215,8 +1328,18 @@ export class CaseReadService {
         (record.stage === 'SECOND_INSTANCE' ||
           record.stage === 'WAITING_EXECUTION_DOCUMENTS') &&
         record.currentJudgmentNextStepId !== null &&
-        record.secondInstanceProgresses.length === 0 &&
-        record.secondInstanceResults.length === 0 &&
+        record.judgmentNextSteps.some(
+          (choice) =>
+            choice.id === record.currentJudgmentNextStepId &&
+            choice.next ===
+              (record.stage === 'SECOND_INSTANCE' ? 'APPEAL' : 'EXECUTION'),
+        ) &&
+        !record.secondInstanceProgresses.some(
+          (progress) => progress.choiceId === record.currentJudgmentNextStepId,
+        ) &&
+        !record.secondInstanceResults.some(
+          (result) => result.choiceId === record.currentJudgmentNextStepId,
+        ) &&
         (await this.access.canAuthorizeCase(
           actor,
           'case.judgment.next_step.revoke',
@@ -1230,7 +1353,15 @@ export class CaseReadService {
         )),
       canSaveSecondInstance:
         record.stage === 'SECOND_INSTANCE' &&
+        record.currentTrialRoundId !== null &&
         record.currentJudgmentNextStepId !== null &&
+        record.judgmentNextSteps.some(
+          (choice) =>
+            choice.id === record.currentJudgmentNextStepId &&
+            choice.next === 'APPEAL' &&
+            choice.trialRoundId === record.currentTrialRoundId &&
+            choice.judgmentId === record.currentJudgmentId,
+        ) &&
         record.currentSecondInstanceResultId === null &&
         (principal === 'LAWYER' ||
           (await this.access.canAuthorizeCase(
@@ -1246,7 +1377,15 @@ export class CaseReadService {
           ))),
       canRegisterSecondInstanceResult:
         record.stage === 'SECOND_INSTANCE' &&
+        record.currentTrialRoundId !== null &&
         record.currentJudgmentNextStepId !== null &&
+        record.judgmentNextSteps.some(
+          (choice) =>
+            choice.id === record.currentJudgmentNextStepId &&
+            choice.next === 'APPEAL' &&
+            choice.trialRoundId === record.currentTrialRoundId &&
+            choice.judgmentId === record.currentJudgmentId,
+        ) &&
         record.currentSecondInstanceResultId === null &&
         (principal === 'LAWYER' ||
           (await this.access.canAuthorizeCase(

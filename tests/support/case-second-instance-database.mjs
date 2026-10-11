@@ -16,6 +16,15 @@ const { PrismaAccessControlStore } = requireBackend(
 const { CaseJudgmentNextStepService } = requireBackend(
   './dist/modules/cases/case-judgment-next-step.service.js',
 );
+const { CaseAcceptanceService } = requireBackend(
+  './dist/modules/cases/case-acceptance.service.js',
+);
+const { CaseHearingService } = requireBackend(
+  './dist/modules/cases/case-hearing.service.js',
+);
+const { CaseHearingSignal } = requireBackend(
+  './dist/modules/cases/case-hearing-signal.js',
+);
 const { CaseSecondInstanceService } = requireBackend(
   './dist/modules/cases/case-second-instance.service.js',
 );
@@ -54,6 +63,7 @@ export async function verifyCaseSecondInstanceDatabase() {
       roleId,
       caseId,
       judgmentId,
+      judgment,
       materials,
       storage,
       database,
@@ -64,6 +74,9 @@ export async function verifyCaseSecondInstanceDatabase() {
     }) => {
       for (const action of [
         'case.judgment.next_step',
+        'case.judgment.next_step.revoke',
+        'case.acceptance.register',
+        'case.hearing.schedule',
         'case.second_instance.save',
         'case.second_instance.result',
         'case.second_instance.result.revoke',
@@ -104,10 +117,11 @@ export async function verifyCaseSecondInstanceDatabase() {
         originalFilename: 'ca010-result.pdf',
         declaredMimeType: 'application/pdf',
       });
+      const resultBytes = Buffer.from('%PDF-1.7\nCA010 real result\n%%EOF\n');
       const file = await materials.finalizeUpload(
         actor,
         draft.id,
-        Readable.from(Buffer.from('%PDF-1.7\nCA010 real result\n%%EOF\n')),
+        Readable.from(resultBytes),
       );
       const stored = await database.contentVersion.findUnique({
         where: { id: file.contentVersionId },
@@ -195,6 +209,11 @@ export async function verifyCaseSecondInstanceDatabase() {
           courtCaseNo: true,
         },
       });
+      const emptyChildVersionBypass = await sqlCode(
+        client,
+        'UPDATE cases SET version=version+1 WHERE id=$1',
+        [caseId],
+      );
       const revoke = await second.revokeResult(actor, caseId, {
         expectedVersion: 13,
         idempotencyKey: `ca010-revoke-${caseId}`,
@@ -401,6 +420,8 @@ export async function verifyCaseSecondInstanceDatabase() {
       });
       const customerId = source.customerId;
       const acceptanceMaterialId = randomUUID();
+      const filingCourtId = randomUUID();
+      const filingAuditId = randomUUID();
       const acceptanceVersionId = randomUUID();
       const acceptanceStorageKey = `ca010/${caseId}/acceptance-${randomUUID()}.pdf`;
       const acceptanceBytes = Buffer.from(
@@ -483,6 +504,25 @@ export async function verifyCaseSecondInstanceDatabase() {
             randomUUID(),
             actor.userId,
             `CA010-cert-${caseId}`,
+          ],
+        );
+        await client.query(
+          'INSERT INTO filing_courts(id,department_id,name) VALUES ($1,$2,$3)',
+          [filingCourtId, actor.departmentId, 'CA010 source filing court'],
+        );
+        await client.query(
+          "INSERT INTO audit_events(id,department_id,actor_user_id,internal_actor_user_id,resource_type,resource_id,action) VALUES ($1,$2,$3,$3,'CASE',$4,'case.filing.submitted')",
+          [filingAuditId, actor.departmentId, actor.userId, caseId],
+        );
+        await client.query(
+          "INSERT INTO case_filing_submissions(id,department_id,case_id,court_id,court_name,submitted_at,recorded_by_user_id,audit_event_id) VALUES ($1,$2,$3,$4,'CA010 source filing court','2026-09-30',$5,$6)",
+          [
+            randomUUID(),
+            actor.departmentId,
+            caseId,
+            filingCourtId,
+            actor.userId,
+            filingAuditId,
           ],
         );
         await client.query(
@@ -599,6 +639,170 @@ export async function verifyCaseSecondInstanceDatabase() {
         select: { sequence: true, revokedAt: true },
       });
       const remandDetail = await caseRead.get(lawyerActor, caseId);
+      const remandInternalDetail = await caseRead.get(actor, caseId);
+      const remandInternalList = (await caseRead.list(actor, 1, 20)).items.find(
+        (item) => item.id === caseId,
+      );
+      const sourceReceipt = await database.caseSecondInstanceReceipt.findFirst({
+        where: {
+          caseId,
+          idempotencyKey: `ca010-remand-again-${caseId}`,
+        },
+        select: { resultSnapshot: true },
+      });
+      const acceptance = new CaseAcceptanceService(database, access, materials);
+      const acceptedChild = await acceptance.register(actor, caseId, {
+        expectedVersion: remandAgain.version,
+        idempotencyKey: `ca010-child-accept-${caseId}`,
+        acceptedAt: '2026-10-09',
+        courtCaseNo: 'CA010-retrial',
+        acceptanceNoticeContentVersionIds: [],
+        paymentListContentVersionIds: [],
+        serviceDocumentContentVersionIds: [],
+      });
+      const hearing = new CaseHearingService(
+        database,
+        access,
+        new CaseHearingSignal(),
+        { now: () => new Date('2026-10-11T10:00:00.000Z') },
+      );
+      const scheduledChild = await hearing.schedule(actor, caseId, {
+        expectedVersion: acceptedChild.version,
+        idempotencyKey: `ca010-child-hearing-${caseId}`,
+        hearingAt: '2026-10-10',
+      });
+      const advancedChild = await hearing.advanceDue(
+        new Date('2026-10-11T10:00:00.000Z'),
+      );
+      const childBeforeJudgment = await database.case.findUnique({
+        where: { id: caseId },
+        select: { stage: true, version: true, currentHearingAdvanceId: true },
+      });
+      const childJudgmentDraft = await materials.createUploadDraft(actor, {
+        ownerType: 'CASE',
+        ownerId: caseId,
+        category: 'JUDGMENT',
+        purpose: 'JUDGMENT',
+        originalFilename: 'ca010-child-judgment.pdf',
+        declaredMimeType: 'application/pdf',
+      });
+      const childJudgmentFile = await materials.finalizeUpload(
+        actor,
+        childJudgmentDraft.id,
+        Readable.from(Buffer.from('%PDF-1.7\nCA010 child judgment\n%%EOF\n')),
+      );
+      const childJudgmentStored = await database.contentVersion.findUnique({
+        where: { id: childJudgmentFile.contentVersionId },
+        select: { storageKey: true },
+      });
+      trackStorageKey(childJudgmentStored.storageKey);
+      const judgedChild = await judgment.register(actor, caseId, {
+        expectedVersion: childBeforeJudgment.version,
+        idempotencyKey: `ca010-child-judgment-${caseId}`,
+        judgmentReceivedAt: '2026-10-11',
+        judgmentAmountState: 'KNOWN',
+        judgmentAmount: '25',
+        paidLitigationFeeState: 'PENDING',
+        paidLitigationFee: null,
+        judgmentContentVersionIds: [childJudgmentFile.contentVersionId],
+      });
+      const chosenChild = await choiceService.choose(actor, caseId, {
+        expectedVersion: judgedChild.version,
+        idempotencyKey: `ca010-child-appeal-${caseId}`,
+        judgmentId: judgedChild.judgmentId,
+        next: 'APPEAL',
+        plaintiffAppeals: true,
+        defendantIds: [],
+      });
+      const childBeforeProgress = await caseRead.get(actor, caseId);
+      const childListBeforeProgress = (
+        await caseRead.list(actor, 1, 20)
+      ).items.find((item) => item.id === caseId);
+      const revokedChildChoice = await choiceService.revoke(actor, caseId, {
+        expectedVersion: chosenChild.version,
+        idempotencyKey: `ca010-child-choice-revoke-${caseId}`,
+        choiceId: chosenChild.choiceId,
+        reason: '重审选择改录',
+      });
+      const reChosenChild = await choiceService.choose(actor, caseId, {
+        expectedVersion: revokedChildChoice.version,
+        idempotencyKey: `ca010-child-appeal-again-${caseId}`,
+        judgmentId: judgedChild.judgmentId,
+        next: 'APPEAL',
+        plaintiffAppeals: true,
+        defendantIds: [],
+      });
+      const savedChildProgress = await second.save(actor, caseId, {
+        expectedVersion: reChosenChild.version,
+        idempotencyKey: `ca010-child-progress-${caseId}`,
+        trialRoundId: remandAgain.currentTrialRoundId,
+        choiceId: reChosenChild.choiceId,
+        expectedProgressId: null,
+        progress,
+      });
+      const childAfterProgress = await caseRead.get(actor, caseId);
+      const childListAfterProgress = (
+        await caseRead.list(actor, 1, 20)
+      ).items.find((item) => item.id === caseId);
+      let childChoiceProgressBlocked = null;
+      try {
+        await choiceService.revoke(actor, caseId, {
+          expectedVersion: savedChildProgress.version,
+          idempotencyKey: `ca010-child-choice-blocked-${caseId}`,
+          choiceId: reChosenChild.choiceId,
+          reason: '本轮已有进展，不可撤销',
+        });
+      } catch (error) {
+        childChoiceProgressBlocked = error.response?.code ?? null;
+      }
+      const childFinal = await database.case.findUnique({
+        where: { id: caseId },
+        select: {
+          stage: true,
+          version: true,
+          currentTrialRoundId: true,
+          currentAcceptanceId: true,
+          currentJudgmentId: true,
+          currentJudgmentNextStepId: true,
+          courtCaseNo: true,
+        },
+      });
+      const sourceReceiptAfter =
+        await database.caseSecondInstanceReceipt.findFirst({
+          where: { caseId, idempotencyKey: `ca010-remand-again-${caseId}` },
+          select: { resultSnapshot: true },
+        });
+      const sourceAcceptanceAfter = await database.caseAcceptance.findFirst({
+        where: { caseId, trialRoundId: anchor.currentTrialRoundId },
+        select: {
+          courtCaseNo: true,
+          versions: { select: { contentVersionId: true } },
+        },
+      });
+      const sourceJudgmentAfter = await database.caseJudgmentFact.findUnique({
+        where: { id: judgmentId },
+        select: { trialRoundId: true },
+      });
+      const sourceChoiceAfter = await database.caseJudgmentNextStep.findUnique({
+        where: { id: anchor.currentJudgmentNextStepId },
+        select: { trialRoundId: true },
+      });
+      const oldAcceptanceOpened = await materials.openVersion(
+        actor,
+        acceptanceMaterialId,
+        acceptanceVersionId,
+      );
+      const oldAcceptanceBytesAfter = Buffer.concat(
+        await Array.fromAsync(oldAcceptanceOpened.stream),
+      );
+      const oldSecondOpened = await materials.openVersion(
+        actor,
+        file.materialId,
+        file.contentVersionId,
+      );
+      const oldSecondBytesAfter = Buffer.concat(
+        await Array.fromAsync(oldSecondOpened.stream),
+      );
       await client.query(
         'UPDATE case_lawyer_assignments SET ended_at=now() WHERE id=$1',
         [assignmentId],
@@ -639,6 +843,7 @@ export async function verifyCaseSecondInstanceDatabase() {
           remandCase.currentJudgmentId === null &&
           remandCase.currentJudgmentNextStepId === null &&
           remandCase.courtCaseNo === null,
+        emptyChildVersionBypass,
         restored:
           revoke.stage === 'SECOND_INSTANCE' &&
           restoredCase.version === 14 &&
@@ -711,6 +916,43 @@ export async function verifyCaseSecondInstanceDatabase() {
             anchor.currentTrialRoundId &&
           remandDetail.acceptances[0].files[0]?.contentVersionId ===
             acceptanceVersionId,
+        remandLifecycle:
+          acceptedChild.version === 19 &&
+          scheduledChild.version === 20 &&
+          advancedChild.advanced >= 1 &&
+          childBeforeJudgment.stage === 'WAITING_JUDGMENT' &&
+          childBeforeJudgment.currentHearingAdvanceId !== null &&
+          judgedChild.version === 22 &&
+          chosenChild.version === 23 &&
+          revokedChildChoice.version === 24 &&
+          reChosenChild.version === 25 &&
+          savedChildProgress.version === 26 &&
+          childChoiceProgressBlocked === 'INVALID_STATE' &&
+          childBeforeProgress.canRevokeJudgmentNextStep === true &&
+          childListBeforeProgress?.canRevokeJudgmentNextStep === true &&
+          childAfterProgress.canRevokeJudgmentNextStep === false &&
+          childListAfterProgress?.canRevokeJudgmentNextStep === false &&
+          childFinal.stage === 'SECOND_INSTANCE' &&
+          childFinal.version === 26 &&
+          childFinal.currentTrialRoundId === remandAgain.currentTrialRoundId &&
+          childFinal.currentAcceptanceId !== null &&
+          childFinal.currentJudgmentId === judgedChild.judgmentId &&
+          childFinal.currentJudgmentNextStepId === reChosenChild.choiceId &&
+          childFinal.courtCaseNo === 'CA010-retrial' &&
+          sourceAcceptanceAfter.courtCaseNo === 'CA008-db' &&
+          sourceJudgmentAfter.trialRoundId === anchor.currentTrialRoundId &&
+          sourceChoiceAfter.trialRoundId === anchor.currentTrialRoundId &&
+          sourceAcceptanceAfter.versions.some(
+            (version) => version.contentVersionId === acceptanceVersionId,
+          ) &&
+          oldAcceptanceBytesAfter.equals(acceptanceBytes) &&
+          oldSecondBytesAfter.equals(resultBytes) &&
+          JSON.stringify(sourceReceiptAfter.resultSnapshot) ===
+            JSON.stringify(sourceReceipt.resultSnapshot),
+        remandEmptyCanRevoke:
+          remandInternalDetail.canRevokeSecondInstanceResult === true &&
+          remandInternalList?.canRevokeSecondInstanceResult === true &&
+          childBeforeProgress.canRevokeSecondInstanceResult === false,
         lawyerFile: lawyerBytes.includes(Buffer.from('CA010 real result')),
         clientRead:
           clientList.items.some((item) => item.id === caseId) &&
