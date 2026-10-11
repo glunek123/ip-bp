@@ -315,6 +315,16 @@ export class CaseJudgmentNextStepService {
                 })) > 0)
             )
               throw this.invalidState();
+            if (
+              (await tx.caseExecutionSubmission.count({
+                where: {
+                  caseId,
+                  departmentId: actor.departmentId,
+                  judgmentNextStepId: value.choiceId,
+                },
+              })) > 0
+            )
+              throw this.invalidState();
             const revocationId = randomUUID();
             await tx.auditEvent.create({
               data: {

@@ -55,6 +55,7 @@ export const internalAssignablePermissionActions = [
   'CASE_SECOND_INSTANCE_SAVE',
   'CASE_SECOND_INSTANCE_RESULT',
   'CASE_SECOND_INSTANCE_RESULT_REVOKE',
+  'CASE_EXECUTION_SUBMIT',
   'NOTARY_OFFICE_MANAGE',
   'USER_READ',
   'USER_MANAGE',
@@ -234,6 +235,7 @@ const catalog: PermissionCatalogItem[] = [
     label: '撤销二审结果',
     scopes: allScopes,
   },
+  { action: 'CASE_EXECUTION_SUBMIT', label: '提交执行材料', scopes: allScopes },
   {
     action: 'NOTARY_OFFICE_MANAGE',
     label: '管理公证处',

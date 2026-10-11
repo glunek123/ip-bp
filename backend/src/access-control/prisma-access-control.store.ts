@@ -59,6 +59,7 @@ const actionMap = {
   CASE_SECOND_INSTANCE_SAVE: 'case.second_instance.save',
   CASE_SECOND_INSTANCE_RESULT: 'case.second_instance.result',
   CASE_SECOND_INSTANCE_RESULT_REVOKE: 'case.second_instance.result.revoke',
+  CASE_EXECUTION_SUBMIT: 'case.execution.submit',
   CLIENT_CASE_READ: 'client.case.read',
   CLIENT_CASE_COMPLAINT_MAIL: 'client.case.complaint.mail',
   NOTARY_OFFICE_MANAGE: 'notary.office.manage',

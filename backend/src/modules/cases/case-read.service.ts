@@ -1,4 +1,5 @@
 import {
+  BadRequestException,
   ForbiddenException,
   Injectable,
   NotFoundException,
@@ -91,8 +92,15 @@ export class CaseReadService {
       | 'WAITING_HEARING'
       | 'WAITING_JUDGMENT'
       | 'SECOND_INSTANCE'
-      | 'WAITING_EXECUTION_DOCUMENTS',
+      | 'WAITING_EXECUTION_DOCUMENTS'
+      | 'WAITING_EXECUTION_CONFIRMATION',
+    stageGroup?: 'EXECUTION_PREPARATION',
   ) {
+    if (stage !== undefined && stageGroup !== undefined)
+      throw new BadRequestException({
+        code: 'VALIDATION_ERROR',
+        message: '阶段与阶段组不能同时筛选',
+      });
     const principal = await this.scope(actor);
     const baseWhere: Prisma.CaseWhereInput = {
       departmentId: actor.departmentId,
@@ -104,7 +112,18 @@ export class CaseReadService {
     };
     const where: Prisma.CaseWhereInput = {
       ...baseWhere,
-      ...(stage ? { stage } : {}),
+      ...(stage
+        ? { stage }
+        : stageGroup === 'EXECUTION_PREPARATION'
+          ? {
+              stage: {
+                in: [
+                  'WAITING_EXECUTION_DOCUMENTS',
+                  'WAITING_EXECUTION_CONFIRMATION',
+                ],
+              },
+            }
+          : {}),
     };
     const [items, total, grouped] = await Promise.all([
       this.database.case.findMany({
@@ -130,10 +149,13 @@ export class CaseReadService {
           },
           currentTrialRoundId: true,
           currentSecondInstanceResultId: true,
+          currentExecutionSubmissionId: true,
           currentSecondInstanceResult: {
             select: {
               id: true,
               result: true,
+              trialRoundId: true,
+              choiceId: true,
               revocation: { select: { id: true } },
               childRound: {
                 select: {
@@ -445,6 +467,40 @@ export class CaseReadService {
                   : {}),
               },
             )),
+          canSubmitExecution:
+            (item.stage === 'WAITING_EXECUTION_DOCUMENTS' ||
+              item.stage === 'WAITING_EXECUTION_CONFIRMATION') &&
+            item.currentTrialRoundId !== null &&
+            item.currentJudgmentNextStepId !== null &&
+            item.currentJudgmentNextStep?.trialRoundId ===
+              item.currentTrialRoundId &&
+            (item.currentJudgmentNextStep.next === 'EXECUTION'
+              ? item.currentSecondInstanceResultId === null
+              : item.currentJudgmentNextStep.next === 'APPEAL' &&
+                item.currentSecondInstanceResult?.id ===
+                  item.currentSecondInstanceResultId &&
+                item.currentSecondInstanceResult?.choiceId ===
+                  item.currentJudgmentNextStepId &&
+                item.currentSecondInstanceResult?.trialRoundId ===
+                  item.currentTrialRoundId &&
+                (item.currentSecondInstanceResult?.result === 'CHANGE' ||
+                  item.currentSecondInstanceResult?.result === 'AFFIRM') &&
+                item.currentSecondInstanceResult?.revocation === null) &&
+            (item.stage === 'WAITING_EXECUTION_DOCUMENTS'
+              ? item.currentExecutionSubmissionId === null
+              : item.currentExecutionSubmissionId !== null) &&
+            (principal === 'LAWYER' ||
+              (await this.access.canAuthorizeCase(
+                actor,
+                'case.execution.submit',
+                {
+                  departmentId: actor.departmentId,
+                  responsibleUserId: item.responsibleUserId,
+                  ...(item.responsibleMembership.teamId
+                    ? { teamId: item.responsibleMembership.teamId }
+                    : {}),
+                },
+              ))),
           createdAt: item.createdAt.toISOString(),
         })),
       ),
@@ -481,6 +537,9 @@ export class CaseReadService {
           0,
         WAITING_EXECUTION_DOCUMENTS:
           grouped.find((row) => row.stage === 'WAITING_EXECUTION_DOCUMENTS')
+            ?._count._all ?? 0,
+        WAITING_EXECUTION_CONFIRMATION:
+          grouped.find((row) => row.stage === 'WAITING_EXECUTION_CONFIRMATION')
             ?._count._all ?? 0,
       },
     };
@@ -583,6 +642,34 @@ export class CaseReadService {
         currentTrialRoundId: true,
         currentSecondInstanceProgressId: true,
         currentSecondInstanceResultId: true,
+        currentExecutionSubmissionId: true,
+        executionSubmissions: {
+          orderBy: [{ toVersion: 'asc' }, { id: 'asc' }],
+          select: {
+            id: true,
+            trialRoundId: true,
+            judgmentNextStepId: true,
+            secondInstanceResultId: true,
+            priorSubmissionId: true,
+            changeReason: true,
+            fromVersion: true,
+            toVersion: true,
+            submittedAt: true,
+            versions: {
+              select: {
+                materialId: true,
+                contentVersionId: true,
+                contentVersion: {
+                  select: {
+                    originalFilename: true,
+                    mimeType: true,
+                    createdAt: true,
+                  },
+                },
+              },
+            },
+          },
+        },
         trialRounds: {
           orderBy: [{ sequence: 'asc' }, { id: 'asc' }],
           select: {
@@ -874,11 +961,36 @@ export class CaseReadService {
                   },
                 },
               });
-        return { record, judgmentMaterials };
+        const executionMaterials =
+          record === null
+            ? []
+            : await transaction.material.findMany({
+                where: {
+                  departmentId: actor.departmentId,
+                  ownerType: 'CASE',
+                  ownerId: id,
+                  category: 'EXECUTION_APPLICATION',
+                  status: 'ACTIVE',
+                },
+                select: {
+                  id: true,
+                  currentVersionId: true,
+                  contentVersions: {
+                    where: { status: 'AVAILABLE' },
+                    select: {
+                      id: true,
+                      originalFilename: true,
+                      mimeType: true,
+                      createdAt: true,
+                    },
+                  },
+                },
+              });
+        return { record, judgmentMaterials, executionMaterials };
       },
       { isolationLevel: 'RepeatableRead' },
     );
-    const { record, judgmentMaterials } = snapshot;
+    const { record, judgmentMaterials, executionMaterials } = snapshot;
     if (record === null)
       throw new NotFoundException({
         code: 'RESOURCE_NOT_FOUND',
@@ -1055,6 +1167,46 @@ export class CaseReadService {
           mimeType: version.mimeType,
         })),
     );
+    const executionSubmissions = (record.executionSubmissions ?? []).map(
+      (submission) => ({
+        id: submission.id,
+        trialRoundId: submission.trialRoundId,
+        judgmentNextStepId: submission.judgmentNextStepId,
+        secondInstanceResultId: submission.secondInstanceResultId,
+        priorSubmissionId: submission.priorSubmissionId,
+        changeReason: submission.changeReason,
+        fromVersion: submission.fromVersion,
+        toVersion: submission.toVersion,
+        submittedAt: submission.submittedAt.toISOString(),
+        files: submission.versions.map((version) => ({
+          materialId: version.materialId,
+          contentVersionId: version.contentVersionId,
+          originalFilename: version.contentVersion.originalFilename,
+          mimeType: version.contentVersion.mimeType,
+          uploadedAt: version.contentVersion.createdAt.toISOString(),
+        })),
+      }),
+    );
+    const executionFrozenIds = new Set(
+      executionSubmissions.flatMap((submission) =>
+        submission.files.map((file) => file.contentVersionId),
+      ),
+    );
+    const executionAvailableFiles = executionMaterials.flatMap((material) =>
+      material.contentVersions
+        .filter(
+          (version) =>
+            version.id === material.currentVersionId &&
+            !executionFrozenIds.has(version.id),
+        )
+        .map((version) => ({
+          materialId: material.id,
+          contentVersionId: version.id,
+          originalFilename: version.originalFilename,
+          mimeType: version.mimeType,
+          uploadedAt: version.createdAt.toISOString(),
+        })),
+    );
     const sample = record.sourceNotaryMatter.evidence;
     const arrangement = (
       value: (typeof record.hearingArrangements)[number],
@@ -1080,6 +1232,15 @@ export class CaseReadService {
       businessNo: record.businessNo,
       stage: record.stage,
       version: record.version,
+      executionSubmission: {
+        current:
+          executionSubmissions.find(
+            (submission) =>
+              submission.id === record.currentExecutionSubmissionId,
+          ) ?? null,
+        submissions: executionSubmissions,
+        availableFiles: executionAvailableFiles,
+      },
       hearing: {
         currentArrangement:
           record.currentHearingArrangement === null
@@ -1426,6 +1587,41 @@ export class CaseReadService {
               : {}),
           },
         )),
+      canSubmitExecution:
+        (record.stage === 'WAITING_EXECUTION_DOCUMENTS' ||
+          record.stage === 'WAITING_EXECUTION_CONFIRMATION') &&
+        record.currentTrialRoundId !== null &&
+        record.currentJudgmentNextStepId !== null &&
+        record.judgmentNextSteps.some(
+          (choice) =>
+            choice.id === record.currentJudgmentNextStepId &&
+            choice.trialRoundId === record.currentTrialRoundId &&
+            !(record.judgmentNextStepRevocations ?? []).some(
+              (revocation) => revocation.choiceId === choice.id,
+            ) &&
+            (choice.next === 'EXECUTION'
+              ? record.currentSecondInstanceResultId === null
+              : record.secondInstanceResults.some(
+                  (result) =>
+                    result.id === record.currentSecondInstanceResultId &&
+                    result.choiceId === choice.id &&
+                    result.trialRoundId === record.currentTrialRoundId &&
+                    (result.result === 'CHANGE' ||
+                      result.result === 'AFFIRM') &&
+                    result.revocation === null,
+                )),
+        ) &&
+        (record.stage === 'WAITING_EXECUTION_DOCUMENTS'
+          ? record.currentExecutionSubmissionId === null
+          : record.currentExecutionSubmissionId !== null) &&
+        (principal === 'LAWYER' ||
+          (await this.access.canAuthorizeCase(actor, 'case.execution.submit', {
+            departmentId: actor.departmentId,
+            responsibleUserId: record.responsibleUserId,
+            ...(record.responsibleMembership.teamId
+              ? { teamId: record.responsibleMembership.teamId }
+              : {}),
+          }))),
       complaint:
         record.complaintSubmittedAt == null
           ? null

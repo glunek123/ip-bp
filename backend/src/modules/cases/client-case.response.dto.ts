@@ -38,6 +38,7 @@ export class ClientCaseListItemDto {
       'WAITING_JUDGMENT',
       'SECOND_INSTANCE',
       'WAITING_EXECUTION_DOCUMENTS',
+      'WAITING_EXECUTION_CONFIRMATION',
     ],
   })
   stage!:
@@ -47,7 +48,8 @@ export class ClientCaseListItemDto {
     | 'WAITING_HEARING'
     | 'WAITING_JUDGMENT'
     | 'SECOND_INSTANCE'
-    | 'WAITING_EXECUTION_DOCUMENTS';
+    | 'WAITING_EXECUTION_DOCUMENTS'
+    | 'WAITING_EXECUTION_CONFIRMATION';
   @ApiProperty() version!: number;
   @ApiProperty() canMailComplaint!: boolean;
   @ApiProperty() rightsHolderName!: string;

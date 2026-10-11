@@ -54,6 +54,9 @@ describe('CaseJudgmentNextStepService', () => {
       caseSecondInstanceResult: {
         count: jest.fn().mockResolvedValue(0),
       },
+      caseExecutionSubmission: {
+        count: jest.fn().mockResolvedValue(0),
+      },
       auditEvent: {
         create: jest
           .fn()
@@ -262,6 +265,28 @@ describe('CaseJudgmentNextStepService', () => {
       f.service.revoke(actor, caseId, {
         expectedVersion: 11,
         idempotencyKey: 'revoke-after-progress',
+        choiceId,
+        reason: '误选',
+      }),
+    ).rejects.toMatchObject({ response: { code: 'INVALID_STATE' } });
+    expect(f.tx.caseJudgmentNextStepRevocation.create).not.toHaveBeenCalled();
+  });
+
+  it('does not revoke a direct execution choice with a historical formal submission', async () => {
+    const f = fixture();
+    const choiceId = 'aaaaaaaa-aaaa-4aaa-8aaa-aaaaaaaaaaaa';
+    f.tx.case.findFirst.mockResolvedValue({
+      ...f.record,
+      stage: 'WAITING_EXECUTION_DOCUMENTS',
+      version: 11,
+      currentJudgmentNextStepId: choiceId,
+      currentJudgmentNextStep: { id: choiceId, judgmentId, next: 'EXECUTION' },
+    });
+    f.tx.caseExecutionSubmission.count.mockResolvedValue(1);
+    await expect(
+      f.service.revoke(actor, caseId, {
+        expectedVersion: 11,
+        idempotencyKey: 'revoke-after-execution',
         choiceId,
         reason: '误选',
       }),

@@ -114,6 +114,7 @@ describe('CaseReadService', () => {
         WAITING_JUDGMENT: 0,
         SECOND_INSTANCE: 0,
         WAITING_EXECUTION_DOCUMENTS: 0,
+        WAITING_EXECUTION_CONFIRMATION: 0,
       },
     });
     expect(f.access.authorizeDepartmentAction).toHaveBeenCalledWith(
@@ -585,6 +586,12 @@ describe('CaseReadService', () => {
     });
     f.db.case.findFirst.mockResolvedValue(record);
     expect(result).toMatchObject({
+      executionSubmission: {
+        current: null,
+        submissions: [],
+        availableFiles: [],
+      },
+      canSubmitExecution: false,
       courtCaseNo: null,
       fees: [
         {
@@ -913,5 +920,48 @@ describe('CaseReadService', () => {
     expect((await f.service.list(actor, 1, 20)).items[0]).toMatchObject({
       canRevokeSecondInstanceResult: false,
     });
+  });
+
+  it('filters the execution preparation group and sums its two atomic stages', async () => {
+    const f = fixture();
+    f.db.case.groupBy.mockResolvedValue([
+      { stage: 'WAITING_EXECUTION_DOCUMENTS', _count: { _all: 2 } },
+      { stage: 'WAITING_EXECUTION_CONFIRMATION', _count: { _all: 3 } },
+    ]);
+    const result = await f.service.list(
+      actor,
+      1,
+      20,
+      'department',
+      undefined,
+      'EXECUTION_PREPARATION',
+    );
+    expect(f.db.case.findMany).toHaveBeenCalledWith(
+      expect.objectContaining({
+        where: expect.objectContaining({
+          stage: {
+            in: [
+              'WAITING_EXECUTION_DOCUMENTS',
+              'WAITING_EXECUTION_CONFIRMATION',
+            ],
+          },
+        }),
+      }),
+    );
+    expect(result.counts).toMatchObject({
+      WAITING_EXECUTION_DOCUMENTS: 2,
+      WAITING_EXECUTION_CONFIRMATION: 3,
+    });
+    expect(result.counts).not.toHaveProperty('EXECUTION_PREPARATION');
+    await expect(
+      f.service.list(
+        actor,
+        1,
+        20,
+        'department',
+        'WAITING_EXECUTION_DOCUMENTS',
+        'EXECUTION_PREPARATION',
+      ),
+    ).rejects.toMatchObject({ status: 400 });
   });
 });

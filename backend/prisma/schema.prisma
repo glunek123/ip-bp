@@ -55,6 +55,7 @@ enum PermissionAction {
   CASE_SECOND_INSTANCE_SAVE @map("case.second_instance.save")
   CASE_SECOND_INSTANCE_RESULT @map("case.second_instance.result")
   CASE_SECOND_INSTANCE_RESULT_REVOKE @map("case.second_instance.result.revoke")
+  CASE_EXECUTION_SUBMIT @map("case.execution.submit")
   NOTARY_OFFICE_MANAGE         @map("notary.office.manage")
   CLIENT_LEAD_READ             @map("client.lead.read")
   CLIENT_LEAD_REVIEW           @map("client.lead.review")
@@ -187,6 +188,7 @@ enum MaterialCategory {
   SECOND_INSTANCE_DOCUMENT
   SECOND_INSTANCE_SERVICE
   SECOND_INSTANCE_JUDGMENT
+  EXECUTION_APPLICATION
 
   @@map("material_category")
 }
@@ -298,6 +300,7 @@ enum CaseStage {
   WAITING_JUDGMENT
   SECOND_INSTANCE
   WAITING_EXECUTION_DOCUMENTS
+  WAITING_EXECUTION_CONFIRMATION
 
   @@map("case_stage")
 }
@@ -533,6 +536,8 @@ model UserAccount {
   secondInstanceResults            CaseSecondInstanceResult[]       @relation("SecondResultRecorder")
   secondInstanceRevocations        CaseSecondInstanceResultRevocation[] @relation("SecondResultRevoker")
   secondInstanceReceipts           CaseSecondInstanceReceipt[]      @relation("SecondReceiptActor")
+  executionSubmissions CaseExecutionSubmission[] @relation("ExecutionSubmissionActor")
+  executionSubmissionReceipts CaseExecutionSubmissionReceipt[] @relation("ExecutionSubmissionReceiptActor")
   rightAssetVersions              CustomerRightAssetVersion[]       @relation("RightAssetVersionActor")
   rightAssetReceipts              CustomerRightAssetReceipt[]       @relation("RightAssetReceiptActor")
   createdAt                        DateTime                          @default(now()) @map("created_at") @db.Timestamptz(3)
@@ -1145,6 +1150,7 @@ model ContentVersion {
   caseJudgmentVersions         CaseJudgmentVersion[]
   caseSecondProgressVersions CaseSecondInstanceProgressVersion[]
   caseSecondResultVersions CaseSecondInstanceResultVersion[]
+  caseExecutionSubmissionVersions CaseExecutionSubmissionVersion[]
   notarySelections             NotaryMatterMaterial[]
   createdAt                    DateTime                      @default(now()) @map("created_at") @db.Timestamptz(3)
 
@@ -1788,6 +1794,10 @@ model Case {
   secondInstanceResults CaseSecondInstanceResult[] @relation("CaseSecondResults")
   secondInstanceRevocations CaseSecondInstanceResultRevocation[]
   secondInstanceReceipts CaseSecondInstanceReceipt[]
+  currentExecutionSubmissionId String? @map("current_execution_submission_id") @db.Uuid
+  currentExecutionSubmission CaseExecutionSubmission? @relation("CaseCurrentExecutionSubmission", fields: [currentExecutionSubmissionId, id, departmentId], references: [id, caseId, departmentId], onDelete: Restrict, onUpdate: Restrict)
+  executionSubmissions CaseExecutionSubmission[] @relation("CaseExecutionSubmissions")
+  executionSubmissionReceipts CaseExecutionSubmissionReceipt[]
   complaintAmountState          CaseComplaintAmountState?          @map("complaint_amount_state")
   complaintAmount               Decimal?                           @map("complaint_amount") @db.Decimal(16, 2)
   complaintPendingReason        String?                            @map("complaint_pending_reason") @db.VarChar(500)
@@ -1816,6 +1826,7 @@ model Case {
   @@unique([currentAcceptanceId, id, departmentId])
   @@unique([currentSecondInstanceProgressId, id, departmentId])
   @@unique([currentSecondInstanceResultId, id, departmentId])
+  @@unique([currentExecutionSubmissionId, id, departmentId])
   @@map("cases")
 }
 
@@ -1836,6 +1847,7 @@ model CaseTrialRound {
   advances       CaseHearingAdvance[]
   judgments      CaseJudgmentFact[]
   choices        CaseJudgmentNextStep[]
+  executionSubmissions CaseExecutionSubmission[]
 
   @@unique([id, caseId, departmentId])
   @@unique([sourceResultId, caseId, departmentId])
@@ -2337,6 +2349,7 @@ model CaseJudgmentNextStep {
   revocation                  CaseJudgmentNextStepRevocation?
   secondInstanceProgresses CaseSecondInstanceProgress[]
   secondInstanceResults CaseSecondInstanceResult[]
+  executionSubmissions CaseExecutionSubmission[]
   recordedBy                  UserAccount                       @relation("JudgmentNextStepActor", fields: [recordedByUserId], references: [id], onDelete: Restrict, onUpdate: Restrict)
   auditEvent                  AuditEvent                        @relation(fields: [auditEventId], references: [id], onDelete: Restrict, onUpdate: Restrict)
 
@@ -2489,6 +2502,7 @@ model CaseSecondInstanceResult {
   progress CaseSecondInstanceProgress? @relation(fields: [progressId, caseId, departmentId, trialRoundId], references: [id, caseId, departmentId, trialRoundId], onDelete: Restrict, onUpdate: Restrict)
   versions CaseSecondInstanceResultVersion[]
   revocation CaseSecondInstanceResultRevocation?
+  executionSubmissions CaseExecutionSubmission[]
   recordedBy UserAccount @relation("SecondResultRecorder", fields: [recordedByUserId], references: [id], onDelete: Restrict, onUpdate: Restrict)
   auditEvent AuditEvent @relation(fields: [auditEventId], references: [id], onDelete: Restrict, onUpdate: Restrict)
 
@@ -2548,6 +2562,66 @@ model CaseSecondInstanceReceipt {
 
   @@unique([departmentId, actorUserId, action, idempotencyKey])
   @@map("case_second_instance_receipts")
+}
+
+model CaseExecutionSubmission {
+  id String @id @default(uuid()) @db.Uuid
+  caseId String @map("case_id") @db.Uuid
+  departmentId String @map("department_id") @db.Uuid
+  trialRoundId String @map("trial_round_id") @db.Uuid
+  judgmentNextStepId String @map("judgment_next_step_id") @db.Uuid
+  secondInstanceResultId String? @map("second_instance_result_id") @db.Uuid
+  priorSubmissionId String? @map("prior_submission_id") @db.Uuid
+  changeReason String? @map("change_reason") @db.VarChar(500)
+  fromVersion Int @map("from_version")
+  toVersion Int @map("to_version")
+  submittedAt DateTime @default(now()) @map("submitted_at") @db.Timestamptz(3)
+  submittedByUserId String @map("submitted_by_user_id") @db.Uuid
+  auditEventId String @unique @map("audit_event_id") @db.Uuid
+  case Case @relation("CaseExecutionSubmissions", fields: [caseId, departmentId], references: [id, departmentId], onDelete: Restrict, onUpdate: Restrict)
+  currentForCase Case? @relation("CaseCurrentExecutionSubmission")
+  trialRound CaseTrialRound @relation(fields: [trialRoundId, caseId, departmentId], references: [id, caseId, departmentId], onDelete: Restrict, onUpdate: Restrict)
+  judgmentNextStep CaseJudgmentNextStep @relation(fields: [judgmentNextStepId, caseId, departmentId, trialRoundId], references: [id, caseId, departmentId, trialRoundId], onDelete: Restrict, onUpdate: Restrict)
+  secondInstanceResult CaseSecondInstanceResult? @relation(fields: [secondInstanceResultId, caseId, departmentId], references: [id, caseId, departmentId], onDelete: Restrict, onUpdate: Restrict)
+  priorSubmission CaseExecutionSubmission? @relation("ExecutionSubmissionChain", fields: [priorSubmissionId, caseId, departmentId], references: [id, caseId, departmentId], onDelete: Restrict, onUpdate: Restrict)
+  nextSubmissions CaseExecutionSubmission[] @relation("ExecutionSubmissionChain")
+  versions CaseExecutionSubmissionVersion[]
+  submittedBy UserAccount @relation("ExecutionSubmissionActor", fields: [submittedByUserId], references: [id], onDelete: Restrict, onUpdate: Restrict)
+  auditEvent AuditEvent @relation(fields: [auditEventId], references: [id], onDelete: Restrict, onUpdate: Restrict)
+
+  @@unique([id, caseId, departmentId])
+  @@unique([caseId, fromVersion])
+  @@unique([caseId, toVersion])
+  @@map("case_execution_submissions")
+}
+
+model CaseExecutionSubmissionVersion {
+  submissionId String @map("submission_id") @db.Uuid
+  caseId String @map("case_id") @db.Uuid
+  departmentId String @map("department_id") @db.Uuid
+  materialId String @map("material_id") @db.Uuid
+  contentVersionId String @map("content_version_id") @db.Uuid
+  submission CaseExecutionSubmission @relation(fields: [submissionId, caseId, departmentId], references: [id, caseId, departmentId], onDelete: Restrict, onUpdate: Restrict)
+  contentVersion ContentVersion @relation(fields: [materialId, contentVersionId], references: [materialId, id], onDelete: Restrict, onUpdate: Restrict)
+
+  @@id([submissionId, contentVersionId])
+  @@map("case_execution_submission_versions")
+}
+
+model CaseExecutionSubmissionReceipt {
+  id String @id @default(uuid()) @db.Uuid
+  departmentId String @map("department_id") @db.Uuid
+  actorUserId String @map("actor_user_id") @db.Uuid
+  caseId String @map("case_id") @db.Uuid
+  idempotencyKey String @map("idempotency_key") @db.VarChar(128)
+  requestFingerprint String @map("request_fingerprint") @db.Char(64)
+  resultSnapshot Json @map("result_snapshot")
+  createdAt DateTime @default(now()) @map("created_at") @db.Timestamptz(3)
+  case Case @relation(fields: [caseId, departmentId], references: [id, departmentId], onDelete: Restrict, onUpdate: Restrict)
+  actor UserAccount @relation("ExecutionSubmissionReceiptActor", fields: [actorUserId], references: [id], onDelete: Restrict, onUpdate: Restrict)
+
+  @@unique([departmentId, actorUserId, idempotencyKey])
+  @@map("case_execution_submission_receipts")
 }
 
 model CaseNumberCounter {
@@ -2928,6 +3002,7 @@ model AuditEvent {
   judgmentFacts                CaseJudgmentFact[]
   judgmentNextSteps            CaseJudgmentNextStep[]
   judgmentNextStepRevocations  CaseJudgmentNextStepRevocation[]
+  executionSubmissions CaseExecutionSubmission[]
   secondInstanceProgresses CaseSecondInstanceProgress[]
   secondInstanceResults CaseSecondInstanceResult[]
   secondInstanceRevocations CaseSecondInstanceResultRevocation[]

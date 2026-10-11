@@ -152,6 +152,40 @@ describe('ClientCaseService', () => {
     expect(detail).not.toHaveProperty('judgmentNextStep');
   });
 
+  it('keeps execution confirmation visible from the recorded list through detail without internal submission fields', async () => {
+    const f = fixture();
+    f.db.case.findMany.mockResolvedValue([
+      {
+        id: caseId,
+        businessNo: 'CA-1',
+        stage: 'WAITING_EXECUTION_CONFIRMATION',
+        version: 15,
+        rightsHolder: { name: '持权企业' },
+        defendants: [],
+      },
+    ]);
+    f.db.case.findFirst.mockResolvedValue({
+      ...(await f.db.case.findFirst()),
+      stage: 'WAITING_EXECUTION_CONFIRMATION',
+      version: 15,
+    });
+    const list = await f.service.list(actor, 'RECORDED', 1, 20);
+    const detail = await f.service.get(actor, list.items[0].id);
+    expect(f.db.case.findMany).toHaveBeenCalledWith(
+      expect.objectContaining({
+        where: expect.objectContaining({
+          stage: {
+            in: expect.arrayContaining(['WAITING_EXECUTION_CONFIRMATION']),
+          },
+        }),
+      }),
+    );
+    expect(list.items[0].stage).toBe('WAITING_EXECUTION_CONFIRMATION');
+    expect(detail.stage).toBe('WAITING_EXECUTION_CONFIRMATION');
+    expect(detail).not.toHaveProperty('executionSubmission');
+    expect(detail).not.toHaveProperty('changeReason');
+  });
+
   it('projects only confirmed file, submitted authorization and safe mailing facts', async () => {
     const f = fixture();
     const detail = await f.service.get(actor, caseId);

@@ -179,6 +179,11 @@ const allowedMimeTypes = {
     'image/jpeg',
     'image/png',
   ]),
+  EXECUTION_APPLICATION: new Set([
+    'application/pdf',
+    'application/msword',
+    'application/vnd.openxmlformats-officedocument.wordprocessingml.document',
+  ]),
 } as const;
 
 @Injectable()
@@ -1227,6 +1232,7 @@ export class MaterialService {
                 'SECOND_INSTANCE_DOCUMENT',
                 'SECOND_INSTANCE_SERVICE',
                 'SECOND_INSTANCE_JUDGMENT',
+                'EXECUTION_APPLICATION',
               ].includes(material.category) &&
               versions.some(
                 (version) => version.id === material.currentVersionId,
@@ -2557,6 +2563,51 @@ export class MaterialService {
     }
   }
 
+  async freezeCaseExecutionSubmissionReferences(
+    transaction: MaterialTransactionClient,
+    actor: ActorContext,
+    caseId: string,
+    submissionId: string,
+    facts: readonly ValidatedMaterialVersionFact[],
+    actionEventId: string,
+  ): Promise<void> {
+    for (const fact of facts) {
+      const validation = this.validatedVersionFacts.get(fact);
+      const canonical = validation?.canonicalFact;
+      if (
+        validation?.transaction !== transaction ||
+        canonical?.departmentId !== actor.departmentId ||
+        canonical.ownerType !== 'CASE' ||
+        canonical.ownerId !== caseId ||
+        canonical.category !== 'EXECUTION_APPLICATION' ||
+        canonical.purpose !== 'EXECUTION_APPLICATION' ||
+        !allowedMimeTypes.EXECUTION_APPLICATION.has(canonical.mimeType) ||
+        canonical.sizeBytes > BigInt(materialFileLimit('EXECUTION_APPLICATION'))
+      )
+        throw this.invalidVersion();
+      await transaction.caseExecutionSubmissionVersion.create({
+        data: {
+          submissionId,
+          caseId,
+          departmentId: actor.departmentId,
+          materialId: canonical.materialId,
+          contentVersionId: canonical.contentVersionId,
+        },
+      });
+      await transaction.materialReference.create({
+        data: {
+          departmentId: actor.departmentId,
+          resourceType: 'case',
+          resourceId: caseId,
+          purpose: 'EXECUTION_APPLICATION',
+          materialId: canonical.materialId,
+          contentVersionId: canonical.contentVersionId,
+          actionEventId,
+        },
+      });
+    }
+  }
+
   private async isFrozenCaseVersion(
     transaction: MaterialTransactionClient,
     category: MaterialCategoryValue,
@@ -2565,6 +2616,13 @@ export class MaterialService {
     materialId: string,
     contentVersionId: string,
   ): Promise<boolean> {
+    if (category === 'EXECUTION_APPLICATION')
+      return (
+        (await transaction.caseExecutionSubmissionVersion.findFirst({
+          where: { caseId, departmentId, materialId, contentVersionId },
+          select: { submissionId: true },
+        })) !== null
+      );
     if (category === 'JUDGMENT')
       return (
         (await transaction.caseJudgmentVersion.findFirst({
@@ -2724,7 +2782,12 @@ export class MaterialService {
                 'SECOND_INSTANCE_DOCUMENT',
                 'SECOND_INSTANCE_SERVICE',
                 'SECOND_INSTANCE_JUDGMENT',
-              ].includes(notaryCategory ?? ''))
+              ].includes(notaryCategory ?? '')) ||
+            ([
+              'WAITING_EXECUTION_DOCUMENTS',
+              'WAITING_EXECUTION_CONFIRMATION',
+            ].includes(lawyerCase.stage) &&
+              notaryCategory === 'EXECUTION_APPLICATION')
           )
         )
           throw this.versionConflict();
@@ -2811,6 +2874,13 @@ export class MaterialService {
               'SECOND_INSTANCE_SERVICE',
               'SECOND_INSTANCE_JUDGMENT',
             ].includes(notaryCategory ?? '')
+          ) &&
+          !(
+            [
+              'WAITING_EXECUTION_DOCUMENTS',
+              'WAITING_EXECUTION_CONFIRMATION',
+            ].includes(record.stage) &&
+            notaryCategory === 'EXECUTION_APPLICATION'
           )
         )
           throw this.versionConflict();
@@ -2851,6 +2921,18 @@ export class MaterialService {
               !(await this.accessControl.canAuthorizeCase(
                 actor,
                 'case.second_instance.result',
+                facts,
+                snapshotReader,
+              ))
+            )
+              throw this.forbidden();
+            return;
+          }
+          if (notaryCategory === 'EXECUTION_APPLICATION') {
+            if (
+              !(await this.accessControl.canAuthorizeCase(
+                actor,
+                'case.execution.submit',
                 facts,
                 snapshotReader,
               ))
@@ -3201,6 +3283,7 @@ export class MaterialService {
               'SECOND_INSTANCE_DOCUMENT',
               'SECOND_INSTANCE_SERVICE',
               'SECOND_INSTANCE_JUDGMENT',
+              'EXECUTION_APPLICATION',
             ],
           },
         },
@@ -3452,7 +3535,8 @@ export class MaterialService {
           input.category === 'JUDGMENT' ||
           input.category === 'SECOND_INSTANCE_DOCUMENT' ||
           input.category === 'SECOND_INSTANCE_SERVICE' ||
-          input.category === 'SECOND_INSTANCE_JUDGMENT') &&
+          input.category === 'SECOND_INSTANCE_JUDGMENT' ||
+          input.category === 'EXECUTION_APPLICATION') &&
         input.purpose === input.category) ||
       (input.ownerType === 'NOTARY_MATTER' &&
         input.category === 'NOTARY_OPENING_PHOTO' &&
@@ -3572,7 +3656,8 @@ function toMaterialPurpose(value: string): MaterialPurposeValue {
     value === 'JUDGMENT' ||
     value === 'SECOND_INSTANCE_DOCUMENT' ||
     value === 'SECOND_INSTANCE_SERVICE' ||
-    value === 'SECOND_INSTANCE_JUDGMENT'
+    value === 'SECOND_INSTANCE_JUDGMENT' ||
+    value === 'EXECUTION_APPLICATION'
   ) {
     return value;
   }
@@ -3601,7 +3686,8 @@ function materialLimit(category: keyof typeof allowedMimeTypes): number {
               category === 'JUDGMENT' ||
               category === 'SECOND_INSTANCE_DOCUMENT' ||
               category === 'SECOND_INSTANCE_SERVICE' ||
-              category === 'SECOND_INSTANCE_JUDGMENT'
+              category === 'SECOND_INSTANCE_JUDGMENT' ||
+              category === 'EXECUTION_APPLICATION'
             ? 10
             : 20;
 }
@@ -3618,7 +3704,8 @@ function materialFileLimit(category: keyof typeof allowedMimeTypes): number {
     category === 'JUDGMENT' ||
     category === 'SECOND_INSTANCE_DOCUMENT' ||
     category === 'SECOND_INSTANCE_SERVICE' ||
-    category === 'SECOND_INSTANCE_JUDGMENT'
+    category === 'SECOND_INSTANCE_JUDGMENT' ||
+    category === 'EXECUTION_APPLICATION'
     ? 50 * 1024 * 1024
     : 20 * 1024 * 1024;
 }

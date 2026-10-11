@@ -630,6 +630,16 @@ export class CaseSecondInstanceService {
           : 'WAITING_EXECUTION_DOCUMENTS')
     )
       throw this.invalidState();
+    if (
+      (await tx.caseExecutionSubmission.count({
+        where: {
+          caseId,
+          departmentId: actor.departmentId,
+          secondInstanceResultId: value.resultId,
+        },
+      })) > 0
+    )
+      throw this.invalidState();
     let childRoundId: string | null = null;
     if (result.result === 'REMAND') {
       const child = await tx.caseTrialRound.findFirst({

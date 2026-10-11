@@ -18,6 +18,7 @@ import { CaseHearingService } from './case-hearing.service';
 import { CaseJudgmentService } from './case-judgment.service';
 import { CaseJudgmentNextStepService } from './case-judgment-next-step.service';
 import { CaseSecondInstanceService } from './case-second-instance.service';
+import { CaseExecutionSubmissionService } from './case-execution-submission.service';
 import { FilingCourtService } from './filing-court.service';
 
 const routeCaseId = '33333333-3333-4333-8333-333333333333';
@@ -56,6 +57,7 @@ describe('internal complaint mailing route identity', () => {
       {} as never,
       {} as never,
       {} as never,
+      {} as never,
       {} as FilingCourtService,
     );
     expect(() =>
@@ -78,6 +80,15 @@ describe('case read OpenAPI contract', () => {
     const secondInstance = {
       save: jest.fn().mockRejectedValue(unexpectedUnique),
     };
+    const executionSubmission = {
+      submit: jest.fn().mockResolvedValue({
+        id: routeCaseId,
+        submissionId: routeCaseId,
+        stage: 'WAITING_EXECUTION_CONFIRMATION',
+        version: 12,
+        submittedAt: '2026-10-11T00:00:00.000Z',
+      }),
+    };
     const module = await Test.createTestingModule({
       controllers: [CaseReadController],
       providers: [
@@ -92,6 +103,10 @@ describe('case read OpenAPI contract', () => {
         { provide: CaseJudgmentService, useValue: {} },
         { provide: CaseJudgmentNextStepService, useValue: {} },
         { provide: CaseSecondInstanceService, useValue: secondInstance },
+        {
+          provide: CaseExecutionSubmissionService,
+          useValue: executionSubmission,
+        },
         { provide: FilingCourtService, useValue: {} },
       ],
     })
@@ -159,6 +174,48 @@ describe('case read OpenAPI contract', () => {
           },
         },
       );
+      expect(
+        document.components?.schemas?.CaseExecutionSubmissionDto,
+      ).toMatchObject({
+        properties: {
+          current: expect.objectContaining({ nullable: true }),
+          submissions: { type: 'array' },
+          availableFiles: { type: 'array' },
+        },
+      });
+      expect(document.components?.schemas?.CaseListItemDto).toMatchObject({
+        properties: { canSubmitExecution: { type: 'boolean' } },
+      });
+      expect(
+        document.paths['/api/v1/cases/{id}/execution-submit']?.post?.responses[
+          '201'
+        ],
+      ).toBeDefined();
+      const missingAnchor = await request(app.getHttpServer())
+        .post(`/api/v1/cases/${routeCaseId}/execution-submit`)
+        .send({
+          expectedVersion: 11,
+          idempotencyKey: 'missing-anchor',
+          trialRoundId: routeCaseId,
+          judgmentNextStepId: routeCaseId,
+          secondInstanceResultId: null,
+          executionApplicationContentVersionIds: [routeCaseId],
+        });
+      expect(missingAnchor.status).toBe(400);
+      const unknownField = await request(app.getHttpServer())
+        .post(`/api/v1/cases/${routeCaseId}/execution-submit`)
+        .send({
+          expectedVersion: 11,
+          idempotencyKey: 'unknown-field',
+          trialRoundId: routeCaseId,
+          judgmentNextStepId: routeCaseId,
+          secondInstanceResultId: null,
+          expectedSubmissionId: null,
+          executionApplicationContentVersionIds: [routeCaseId],
+          arbitrary: true,
+        });
+      expect(unknownField.status).toBe(400);
+      expect(executionSubmission.submit).not.toHaveBeenCalled();
       expect(
         document.paths['/api/v1/cases/{id}/second-instance-save']?.post
           ?.responses['201'],

@@ -36,6 +36,11 @@ import { CaseHearingService } from './case-hearing.service';
 import { CaseJudgmentService } from './case-judgment.service';
 import { CaseJudgmentNextStepService } from './case-judgment-next-step.service';
 import { CaseSecondInstanceService } from './case-second-instance.service';
+import { CaseExecutionSubmissionService } from './case-execution-submission.service';
+import {
+  SubmitExecutionRequestDto,
+  SubmitExecutionResultDto,
+} from './case-execution-submission.dto';
 import {
   RegisterSecondInstanceResultDto,
   RevokeSecondInstanceResultDto,
@@ -100,6 +105,7 @@ export class CaseReadController {
     private readonly judgment: CaseJudgmentService,
     private readonly judgmentNextStep: CaseJudgmentNextStepService,
     private readonly secondInstance: CaseSecondInstanceService,
+    private readonly executionSubmission: CaseExecutionSubmissionService,
     private readonly courts: FilingCourtService,
   ) {}
 
@@ -112,6 +118,7 @@ export class CaseReadController {
       query.pageSize,
       query.view,
       query.stage,
+      query.stageGroup,
     );
   }
 
@@ -122,6 +129,16 @@ export class CaseReadController {
     @Param('id', new ParseUUIDPipe()) id: string,
   ) {
     return this.cases.get(actor, id);
+  }
+
+  @Post(':id/execution-submit')
+  @ApiCreatedResponse({ type: SubmitExecutionResultDto })
+  submitExecution(
+    @CurrentActor() actor: ActorContext,
+    @Param('id', new ParseUUIDPipe()) id: string,
+    @Body() body: SubmitExecutionRequestDto,
+  ) {
+    return this.executionSubmission.submit(actor, id, body);
   }
 
   @Post(':id/match')

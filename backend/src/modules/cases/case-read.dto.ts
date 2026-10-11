@@ -307,6 +307,7 @@ export class CasePageQueryDto {
       'WAITING_JUDGMENT',
       'SECOND_INSTANCE',
       'WAITING_EXECUTION_DOCUMENTS',
+      'WAITING_EXECUTION_CONFIRMATION',
     ],
   })
   @IsOptional()
@@ -321,6 +322,7 @@ export class CasePageQueryDto {
     'WAITING_JUDGMENT',
     'SECOND_INSTANCE',
     'WAITING_EXECUTION_DOCUMENTS',
+    'WAITING_EXECUTION_CONFIRMATION',
   ])
   stage?:
     | 'PENDING_MATCH'
@@ -332,7 +334,12 @@ export class CasePageQueryDto {
     | 'WAITING_HEARING'
     | 'WAITING_JUDGMENT'
     | 'SECOND_INSTANCE'
-    | 'WAITING_EXECUTION_DOCUMENTS';
+    | 'WAITING_EXECUTION_DOCUMENTS'
+    | 'WAITING_EXECUTION_CONFIRMATION';
+  @ApiPropertyOptional({ enum: ['EXECUTION_PREPARATION'] })
+  @IsOptional()
+  @IsIn(['EXECUTION_PREPARATION'])
+  stageGroup?: 'EXECUTION_PREPARATION';
   @ApiPropertyOptional({ minimum: 1, default: 1 })
   @Type(() => Number)
   @IsInt()
@@ -372,6 +379,7 @@ class CaseListItemDto {
       'WAITING_JUDGMENT',
       'SECOND_INSTANCE',
       'WAITING_EXECUTION_DOCUMENTS',
+      'WAITING_EXECUTION_CONFIRMATION',
     ],
   })
   stage!:
@@ -384,7 +392,8 @@ class CaseListItemDto {
     | 'WAITING_HEARING'
     | 'WAITING_JUDGMENT'
     | 'SECOND_INSTANCE'
-    | 'WAITING_EXECUTION_DOCUMENTS';
+    | 'WAITING_EXECUTION_DOCUMENTS'
+    | 'WAITING_EXECUTION_CONFIRMATION';
   @ApiProperty() version!: number;
   @ApiProperty() canMatch!: boolean;
   @ApiProperty() canSubmitComplaint!: boolean;
@@ -402,6 +411,7 @@ class CaseListItemDto {
   @ApiProperty() canSaveSecondInstance!: boolean;
   @ApiProperty() canRegisterSecondInstanceResult!: boolean;
   @ApiProperty() canRevokeSecondInstanceResult!: boolean;
+  @ApiProperty() canSubmitExecution!: boolean;
   @ApiProperty({ type: CaseOwnerDto }) owner!: CaseOwnerDto;
   @ApiProperty({ format: 'date-time' }) createdAt!: string;
   @ApiProperty({ type: CaseSourceDto }) sourceLead!: CaseSourceDto;
@@ -423,7 +433,34 @@ export class CaseListResponseDto {
     WAITING_JUDGMENT: number;
     SECOND_INSTANCE: number;
     WAITING_EXECUTION_DOCUMENTS: number;
+    WAITING_EXECUTION_CONFIRMATION: number;
   };
+}
+class ExecutionSubmissionFileDto extends CaseCertificateFileDto {
+  @ApiProperty({ format: 'date-time' }) uploadedAt!: string;
+}
+class ExecutionSubmissionSummaryDto {
+  @ApiProperty({ format: 'uuid' }) id!: string;
+  @ApiProperty({ format: 'uuid' }) trialRoundId!: string;
+  @ApiProperty({ format: 'uuid' }) judgmentNextStepId!: string;
+  @ApiProperty({ type: String, nullable: true, format: 'uuid' })
+  secondInstanceResultId!: string | null;
+  @ApiProperty({ type: String, nullable: true, format: 'uuid' })
+  priorSubmissionId!: string | null;
+  @ApiProperty({ type: String, nullable: true }) changeReason!: string | null;
+  @ApiProperty() fromVersion!: number;
+  @ApiProperty() toVersion!: number;
+  @ApiProperty({ format: 'date-time' }) submittedAt!: string;
+  @ApiProperty({ type: [ExecutionSubmissionFileDto] })
+  files!: ExecutionSubmissionFileDto[];
+}
+class CaseExecutionSubmissionDto {
+  @ApiProperty({ type: ExecutionSubmissionSummaryDto, nullable: true })
+  current!: ExecutionSubmissionSummaryDto | null;
+  @ApiProperty({ type: [ExecutionSubmissionSummaryDto] })
+  submissions!: ExecutionSubmissionSummaryDto[];
+  @ApiProperty({ type: [ExecutionSubmissionFileDto] })
+  availableFiles!: ExecutionSubmissionFileDto[];
 }
 class CaseDefendantDto {
   @ApiProperty({ format: 'uuid' }) id!: string;
@@ -452,6 +489,8 @@ class CaseFeeDto {
   @ApiProperty({ format: 'uuid' }) sourceId!: string;
 }
 export class CaseDetailResponseDto extends CaseListItemDto {
+  @ApiProperty({ type: CaseExecutionSubmissionDto })
+  executionSubmission!: CaseExecutionSubmissionDto;
   @ApiProperty({ type: CaseHearingDto }) hearing!: CaseHearingDto;
   @ApiProperty({ type: CaseJudgmentDto }) judgment!: CaseJudgmentDto;
   @ApiProperty({ type: CaseJudgmentNextStepDto })

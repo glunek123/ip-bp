@@ -80,6 +80,7 @@ describe('CaseSecondInstanceService', () => {
         findFirst: jest.fn().mockResolvedValue(null),
         create: jest.fn().mockResolvedValue({}),
       },
+      caseExecutionSubmission: { count: jest.fn().mockResolvedValue(0) },
       caseSecondInstanceResultRevocation: {
         create: jest.fn().mockResolvedValue({}),
       },
@@ -484,6 +485,42 @@ describe('CaseSecondInstanceService', () => {
         reason: '撤销',
       }),
     ).rejects.toMatchObject({ status: 409 });
+    expect(
+      f.tx.caseSecondInstanceResultRevocation.create,
+    ).not.toHaveBeenCalled();
+  });
+
+  it('rejects result revocation after a formal execution submission exists', async () => {
+    const f = fixture();
+    f.record.stage = 'WAITING_EXECUTION_DOCUMENTS';
+    f.record.currentSecondInstanceResultId = resultId;
+    f.record.currentSecondInstanceResult = {
+      id: resultId,
+      result: 'CHANGE',
+      trialRoundId,
+      choiceId,
+      progressId: null,
+    };
+    f.tx.caseExecutionSubmission.count.mockResolvedValue(1);
+    f.tx.caseTrialRound.findFirst.mockResolvedValue({ id: trialRoundId });
+    f.tx.caseJudgmentNextStep.findFirst.mockResolvedValue({
+      id: choiceId,
+      judgmentId,
+    });
+    f.tx.caseAcceptance.findFirst.mockResolvedValue({
+      id: f.record.currentAcceptanceId,
+      courtCaseNo: f.record.courtCaseNo,
+    });
+    await expect(
+      f.service.revokeResult(actor, caseId, {
+        expectedVersion: 12,
+        idempotencyKey: 'revoke-after-execution',
+        trialRoundId,
+        resultId,
+        reason: '误录',
+      }),
+    ).rejects.toMatchObject({ response: { code: 'INVALID_STATE' } });
+    expect(f.tx.caseExecutionSubmission.count).toHaveBeenCalledTimes(1);
     expect(
       f.tx.caseSecondInstanceResultRevocation.create,
     ).not.toHaveBeenCalled();
