@@ -660,6 +660,11 @@ export async function verifyCaseSecondInstanceDatabase() {
         paymentListContentVersionIds: [],
         serviceDocumentContentVersionIds: [],
       });
+      const acceptedChildVersionBypass = await sqlCode(
+        client,
+        'UPDATE cases SET version=version+1 WHERE id=$1',
+        [caseId],
+      );
       const hearing = new CaseHearingService(
         database,
         access,
@@ -671,6 +676,11 @@ export async function verifyCaseSecondInstanceDatabase() {
         idempotencyKey: `ca010-child-hearing-${caseId}`,
         hearingAt: '2026-10-10',
       });
+      const scheduledChildVersionBypass = await sqlCode(
+        client,
+        'UPDATE cases SET version=version+1 WHERE id=$1',
+        [caseId],
+      );
       const advancedChild = await hearing.advanceDue(
         new Date('2026-10-11T10:00:00.000Z'),
       );
@@ -678,6 +688,45 @@ export async function verifyCaseSecondInstanceDatabase() {
         where: { id: caseId },
         select: { stage: true, version: true, currentHearingAdvanceId: true },
       });
+      const advancedChildVersionBypass = await sqlCode(
+        client,
+        'UPDATE cases SET version=version+1 WHERE id=$1',
+        [caseId],
+      );
+      const pendingCorrection = await hearing.correct(actor, caseId, {
+        expectedVersion: childBeforeJudgment.version,
+        idempotencyKey: `ca010-child-hearing-pending-${caseId}`,
+        hearingAt: '2026-10-11',
+        reason: '改为尚未到期的开庭日',
+      });
+      const pendingCorrectionVersionBypass = await sqlCode(
+        client,
+        'UPDATE cases SET version=version+1 WHERE id=$1',
+        [caseId],
+      );
+      const rescheduledChild = await hearing.schedule(actor, caseId, {
+        expectedVersion: pendingCorrection.version,
+        idempotencyKey: `ca010-child-hearing-reschedule-${caseId}`,
+        hearingAt: '2026-10-10',
+      });
+      const reAdvancedChild = await hearing.advanceDue(
+        new Date('2026-10-11T10:00:00.000Z'),
+      );
+      const childBeforeDueCorrection = await database.case.findUnique({
+        where: { id: caseId },
+        select: { version: true, currentHearingAdvanceId: true },
+      });
+      const correctedChild = await hearing.correct(actor, caseId, {
+        expectedVersion: childBeforeDueCorrection.version,
+        idempotencyKey: `ca010-child-hearing-correct-${caseId}`,
+        hearingAt: '2026-10-10',
+        reason: '重审排期记录更正',
+      });
+      const correctedChildVersionBypass = await sqlCode(
+        client,
+        'UPDATE cases SET version=version+1 WHERE id=$1',
+        [caseId],
+      );
       const childJudgmentDraft = await materials.createUploadDraft(actor, {
         ownerType: 'CASE',
         ownerId: caseId,
@@ -697,7 +746,7 @@ export async function verifyCaseSecondInstanceDatabase() {
       });
       trackStorageKey(childJudgmentStored.storageKey);
       const judgedChild = await judgment.register(actor, caseId, {
-        expectedVersion: childBeforeJudgment.version,
+        expectedVersion: correctedChild.version,
         idempotencyKey: `ca010-child-judgment-${caseId}`,
         judgmentReceivedAt: '2026-10-11',
         judgmentAmountState: 'KNOWN',
@@ -922,18 +971,26 @@ export async function verifyCaseSecondInstanceDatabase() {
           advancedChild.advanced >= 1 &&
           childBeforeJudgment.stage === 'WAITING_JUDGMENT' &&
           childBeforeJudgment.currentHearingAdvanceId !== null &&
-          judgedChild.version === 22 &&
-          chosenChild.version === 23 &&
-          revokedChildChoice.version === 24 &&
-          reChosenChild.version === 25 &&
-          savedChildProgress.version === 26 &&
+          pendingCorrection.stage === 'WAITING_HEARING' &&
+          pendingCorrection.version === 22 &&
+          rescheduledChild.version === 23 &&
+          reAdvancedChild.advanced >= 1 &&
+          childBeforeDueCorrection.version === 24 &&
+          childBeforeDueCorrection.currentHearingAdvanceId !== null &&
+          correctedChild.stage === 'WAITING_JUDGMENT' &&
+          correctedChild.version === 25 &&
+          judgedChild.version === 26 &&
+          chosenChild.version === 27 &&
+          revokedChildChoice.version === 28 &&
+          reChosenChild.version === 29 &&
+          savedChildProgress.version === 30 &&
           childChoiceProgressBlocked === 'INVALID_STATE' &&
           childBeforeProgress.canRevokeJudgmentNextStep === true &&
           childListBeforeProgress?.canRevokeJudgmentNextStep === true &&
           childAfterProgress.canRevokeJudgmentNextStep === false &&
           childListAfterProgress?.canRevokeJudgmentNextStep === false &&
           childFinal.stage === 'SECOND_INSTANCE' &&
-          childFinal.version === 26 &&
+          childFinal.version === 30 &&
           childFinal.currentTrialRoundId === remandAgain.currentTrialRoundId &&
           childFinal.currentAcceptanceId !== null &&
           childFinal.currentJudgmentId === judgedChild.judgmentId &&
@@ -949,6 +1006,11 @@ export async function verifyCaseSecondInstanceDatabase() {
           oldSecondBytesAfter.equals(resultBytes) &&
           JSON.stringify(sourceReceiptAfter.resultSnapshot) ===
             JSON.stringify(sourceReceipt.resultSnapshot),
+        acceptedChildVersionBypass,
+        scheduledChildVersionBypass,
+        advancedChildVersionBypass,
+        correctedChildVersionBypass,
+        pendingCorrectionVersionBypass,
         remandEmptyCanRevoke:
           remandInternalDetail.canRevokeSecondInstanceResult === true &&
           remandInternalList?.canRevokeSecondInstanceResult === true &&

@@ -22,6 +22,7 @@ const secondInstanceMigrations = [
   '20261010047000_allow_second_instance_frozen_version_reuse',
   '20261010048000_allow_remand_after_revoked_child',
   '20261010049000_guard_empty_remand_child_version',
+  '20261010050000_guard_retrial_prejudgment_version',
 ];
 const sql = (name) =>
   readFileSync(resolve(directory, name, 'migration.sql'), 'utf8');
@@ -179,7 +180,7 @@ export async function verifyCaseSecondInstanceMigration() {
     allowRandomPort: true,
   });
   if (
-    names.length !== 127 ||
+    names.length !== 128 ||
     names[116] !== '20261010034000_guard_case_judgment_plaintiff_snapshot' ||
     names[117] !== target ||
     names[118] !== repair ||
@@ -211,7 +212,7 @@ export async function verifyCaseSecondInstanceMigration() {
       )
     ).rows[0].exists;
     await use(schemas[1]);
-    await replay(client, names.slice(0, -10));
+    await replay(client, names.slice(0, -11));
     const legacy = await seedLegacyCase(client);
     const earlyAccepted = await seedLegacyCase(client, { early: true });
     const prior = (
@@ -352,7 +353,7 @@ export async function verifyCaseSecondInstanceMigration() {
       await client.query('ROLLBACK');
     }
     await use(schemas[2]);
-    await replay(client, names.slice(0, -10));
+    await replay(client, names.slice(0, -11));
     const broken = await seedLegacyCase(client, { invalid: true });
     const guardsBeforeFailure = (
       await client.query(`SELECT count(*)::int AS n FROM pg_trigger t JOIN pg_class c ON c.oid=t.tgrelid
@@ -403,7 +404,7 @@ export async function verifyCaseSecondInstanceMigration() {
     ).rows[0].accepted;
     return {
       migrationCount: names.length,
-      priorMigrationCount: names.length - 10,
+      priorMigrationCount: names.length - 11,
       emptyRoundTable,
       oldChainPreserved,
       combinedDetachRejected,

@@ -22,6 +22,11 @@ export function verifyCaseSecondInstanceDatabase(): Promise<{
   roundHistory: boolean;
   remandRead: boolean;
   remandLifecycle: boolean;
+  acceptedChildVersionBypass: string | null;
+  scheduledChildVersionBypass: string | null;
+  advancedChildVersionBypass: string | null;
+  correctedChildVersionBypass: string | null;
+  pendingCorrectionVersionBypass: string | null;
   remandEmptyCanRevoke: boolean;
   lawyerFile: boolean;
   clientRead: boolean;

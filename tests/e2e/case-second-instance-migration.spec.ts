@@ -1,9 +1,9 @@
 import { test, expect } from '@playwright/test';
 import { verifyCaseSecondInstanceMigration } from '../support/case-second-instance-migration.mjs';
 
-test('CA-010 replays 127 migrations, preserves the old chain and retries an atomic repair', async () => {
+test('CA-010 replays 128 migrations, preserves the old chain and retries an atomic repair', async () => {
   expect(await verifyCaseSecondInstanceMigration()).toEqual({
-    migrationCount: 127,
+    migrationCount: 128,
     priorMigrationCount: 117,
     emptyRoundTable: true,
     oldChainPreserved: true,
