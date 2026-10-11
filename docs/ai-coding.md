@@ -38,7 +38,7 @@
 
 Luna遇到架构或公共契约变更、schema／migration、权限或安全边界、事务／并发／幂等、业务语义不明、Brief与现场冲突，或必须明显扩围时，立即停止扩大修改并升级主Agent；由主Agent裁决或改派Sol，不让Luna自行重构。
 
-派发Brief只含Goal、允许文件、相关接口／契约、验收条件、必要测试、禁止改动和关键业务约束；以文件指针或局部摘要交接，不复制项目历史、完整设计讨论和其他Task报告。必要测试按[三级规则](../.cursor/rules/verified-feature-integration.mdc#自动化与数据库)选出本Task触及的契约与风险反例，不套用全量清单。每个子Agent按下列字段简报；Tests executed写实际命令、退出状态和证据位置，Known risks写未验证边界，不新增报告层。普通Luna报告为PASS、无风险且公共契约未变时，主Agent核对报告、文件清单、diff摘要和测试结果即可集成；出现越界、缺证据、失败或契约风险再展开源码／完整diff，不重做同一Task。
+派发Brief只含Goal、允许文件、相关接口／契约、验收条件、必要测试、禁止改动和关键业务约束；以文件指针或局部摘要交接，不复制项目历史、完整设计讨论和其他Task报告。公共契约由主Agent按批准Spec裁定，普通同步Task只接收本次变化的最小例子和禁止改变的语义；前置反馈顺序只见[三级规则](../.cursor/rules/verified-feature-integration.mdc#自动化与数据库)。必要测试按该规则选出本Task触及的契约与风险反例，不套用全量清单。每个子Agent按下列字段简报；Tests executed写实际命令、退出状态和证据位置，Contract changes写本次触及的兼容点及已验证例子（无则写无），Known risks写未验证边界，不新增报告层。普通Luna报告为PASS、无风险且公共契约未变时，主Agent核对报告、文件清单、diff摘要和测试结果即可集成；出现越界、缺证据、失败或契约风险再展开源码／完整diff，不重做同一Task。
 
 ```text
 Task:

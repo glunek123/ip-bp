@@ -1,8 +1,8 @@
 {
   "version": 1,
-  "recordedAt": "2026-10-11T10:18:25.834Z",
+  "recordedAt": "2026-10-11T15:11:19.613Z",
   "files": {
-    ".cursor/rules/verified-feature-integration.mdc": "4348bed5f99d8881092aa70d3608fe99424677a3fe14324e72b4410a2b59d8cc",
+    ".cursor/rules/verified-feature-integration.mdc": "ae4a657aadc5e3e1651771ae3292b333b4b4e6f6dcdecd0c8ded33382bf4b1c0",
     ".env.example": "07211cde5c2b59efc21b619b752d4c9b871f0980d2d64ca3c146ad6151fd27ca",
     ".gitattributes": "b4cebf3dd35dc75e5c469f4326cd59238b86334aeed5d99b8e3d91c139a321dd",
     ".gitignore": "ba9bc8399767569e5412f23f4783afc64e7dc21b38b61242b42fe6104eaed074",
@@ -429,7 +429,7 @@
     "demo/app.js": "a4caad5bb00ed08152ff70e59e7af08a5c581a8c770586bd3868713e3de9d0e8",
     "demo/index.html": "e433b6f6125623c788bd4c020dae2d723a40fb889f48d577853136e967dd1721",
     "demo/styles.css": "b3f1f86112d2948271a790c5e050b831ea2325f5645ecc496d0aaf04bc87edf3",
-    "docs/ai-coding.md": "aae4521bc878ed8ef81c7c37ed372615c2227a977de8beeecac1acf324d90b83",
+    "docs/ai-coding.md": "ea41e84ae765196357d182ab104fdda8cb57f80dda71b5bf2b3b8d13fe6a5df7",
     "docs/architecture.md": "20037b1cd2c72316bfbd262c5d59d1a4bdc732e3a8379454073e0b27c7619e75",
     "docs/component-compatibility.md": "7c2f7b7b6b13e02d276af4809a5c904a9c88af1ca0a065aeed8ec896008c2200",
     "docs/conventions.md": "94139e195e5cbff3f52a07bf1456fad057935aa3409b742dad600e26bd460208",
@@ -480,7 +480,7 @@
     "docs/environment.md": "2c07c5c2ccecb30055e318b6670c8c910d4474e691d7fd1d645016a2d657debf",
     "docs/feature-roadmap.md": "9dfbe302b0fdba9a745021c8ec9522af74e2b23e434f0ba3ef435c074f425785",
     "docs/project-status-history-through-2026-09-18.md": "c7c858eb4b2a935ce78a85c75e5d3227691382186101d6ff6911249e38729208",
-    "docs/project-status.md": "0b738b29d16dde318ce42f108df6ff5cadc2a52b1e73aaf979227d9411b871e7",
+    "docs/project-status.md": "04d02b086981a7518fd7391820932c5e1c4c6a632b994226a9070e418a96c8e7",
     "docs/security/customer-foundation-q2-review.md": "f5745450cb85aedde92892646c6c824bc9670b8c9bf6f0d9761fe5e46cc6d109",
     "docs/security/local-account-auth-q2-review.md": "4e7b38d73b2597e483340490c788aa034ef6f465baccc12240be7ad2c6ec61f1",
     "docs/spec/v0.1/BUSINESS-REVIEW.md": "950c73ac72470d2e3556fd416701b4486944c1e3ef21c84be11132cbe617c24e",
