@@ -2203,7 +2203,9 @@ function validSecondInstanceCommandResult(
   id: string,
   expectedVersion: number,
   expectedStage: CaseStage | readonly CaseStage[],
-  requireRevocation = false,
+  command:
+    | { kind: 'SAVE' | 'RESULT'; expectedProgressId: string | null }
+    | { kind: 'REVOKE' },
 ): value is SecondInstanceCommandResult {
   const stages = Array.isArray(expectedStage) ? expectedStage : [expectedStage];
   if (!record(value)) return false;
@@ -2216,16 +2218,29 @@ function validSecondInstanceCommandResult(
     'resultId',
     'recordedAt',
   ];
-  if (requireRevocation) keys.push('revocationId');
+  if (command.kind === 'REVOKE') keys.push('revocationId');
+  const versionIncrement =
+    command.kind === 'REVOKE'
+      ? 1
+      : value.progressId === command.expectedProgressId
+        ? command.kind === 'SAVE'
+          ? 0
+          : 1
+        : value.progressId !== null && uuidV4(value.progressId)
+          ? command.kind === 'SAVE'
+            ? 1
+            : 2
+          : null;
   return (
     exact(value, keys) &&
     value.id === id &&
     stages.includes(value.stage as CaseStage) &&
-    Number(value.version) === expectedVersion + 1 &&
+    versionIncrement !== null &&
+    Number(value.version) === expectedVersion + versionIncrement &&
     validRoundId(value.currentTrialRoundId) &&
     (value.progressId === null || uuidV4(value.progressId)) &&
     (value.resultId === null || uuidV4(value.resultId)) &&
-    (!requireRevocation || uuidV4(value.revocationId)) &&
+    (command.kind !== 'REVOKE' || uuidV4(value.revocationId)) &&
     typeof value.recordedAt === 'string' &&
     !Number.isNaN(Date.parse(value.recordedAt))
   );
@@ -2275,6 +2290,7 @@ export async function saveSecondInstance(
       id,
       input.expectedVersion,
       'SECOND_INSTANCE',
+      { kind: 'SAVE', expectedProgressId: input.expectedProgressId },
     )
   )
     throw invalidResponse();
@@ -2340,6 +2356,7 @@ export async function registerSecondInstanceResult(
       id,
       input.expectedVersion,
       stage,
+      { kind: 'RESULT', expectedProgressId: input.expectedProgressId },
     )
   )
     throw invalidResponse();
@@ -2379,7 +2396,7 @@ export async function revokeSecondInstanceResult(
       id,
       input.expectedVersion,
       'SECOND_INSTANCE',
-      true,
+      { kind: 'REVOKE' },
     )
   )
     throw invalidResponse();

@@ -131,10 +131,12 @@ const detail = {
     revocations: [],
   },
 };
-function mockJson(payload: unknown) {
+function mockJson(payload: unknown, status = 200) {
   const fetchMock = vi
     .fn()
-    .mockResolvedValue(new Response(JSON.stringify(payload)));
+    .mockImplementation(
+      async () => new Response(JSON.stringify(payload), { status }),
+    );
   vi.stubGlobal('fetch', fetchMock);
   return fetchMock;
 }
@@ -371,6 +373,194 @@ describe('cases API', () => {
     });
   });
 
+  it('accepts and replays an unchanged empty SAVE receipt at the original version', async () => {
+    const roundId = '70000000-0000-4000-8000-000000000001';
+    const input = {
+      expectedVersion: 3,
+      idempotencyKey: 'empty-save-key',
+      trialRoundId: roundId,
+      choiceId: '70000000-0000-4000-8000-000000000003',
+      expectedProgressId: null,
+      progress: {
+        hearingAt: null,
+        hearingPlace: null,
+        judgeName: null,
+        documentContentVersionIds: [],
+        serviceContentVersionIds: [],
+      },
+    };
+    const receipt = {
+      id: 'case-1',
+      stage: 'SECOND_INSTANCE',
+      version: 3,
+      currentTrialRoundId: roundId,
+      progressId: null,
+      resultId: null,
+      recordedAt: '2026-10-10T03:00:00Z',
+    };
+    const fetch = mockJson(receipt, 201);
+
+    expect(await saveSecondInstance('case-1', input)).toEqual(receipt);
+    expect(await saveSecondInstance('case-1', input)).toEqual(receipt);
+    expect(fetch).toHaveBeenCalledTimes(2);
+    expect(fetch.mock.calls[0]?.[1]?.body).toBe(fetch.mock.calls[1]?.[1]?.body);
+    expect(fetch.mock.calls[1]?.[1]?.headers).toMatchObject({
+      'Idempotency-Key': input.idempotencyKey,
+    });
+  });
+
+  it('accepts unchanged existing SAVE only at +0 and new progress only at +1', async () => {
+    const roundId = '70000000-0000-4000-8000-000000000001';
+    const oldProgressId = '70000000-0000-4000-8000-000000000002';
+    const newProgressId = '70000000-0000-4000-8000-000000000007';
+    const input = {
+      expectedVersion: 3,
+      idempotencyKey: 'anchored-save-key',
+      trialRoundId: roundId,
+      choiceId: '70000000-0000-4000-8000-000000000003',
+      expectedProgressId: oldProgressId,
+      progress: {
+        hearingAt: '2026-10-10',
+        hearingPlace: null,
+        judgeName: null,
+        documentContentVersionIds: [],
+        serviceContentVersionIds: [],
+      },
+    };
+    const receipt = {
+      id: 'case-1',
+      stage: 'SECOND_INSTANCE',
+      version: 3,
+      currentTrialRoundId: roundId,
+      progressId: oldProgressId,
+      resultId: null,
+      recordedAt: '2026-10-10T03:00:00Z',
+    };
+    mockJson(receipt, 201);
+    expect(await saveSecondInstance('case-1', input)).toEqual(receipt);
+    mockJson({ ...receipt, version: 4, progressId: newProgressId }, 201);
+    await expect(saveSecondInstance('case-1', input)).resolves.toMatchObject({
+      version: 4,
+      progressId: newProgressId,
+    });
+    for (const invalid of [
+      { ...receipt, version: 4 },
+      { ...receipt, progressId: newProgressId },
+      { ...receipt, version: 5, progressId: newProgressId },
+      { ...receipt, progressId: null },
+    ]) {
+      mockJson(invalid, 201);
+      await expect(saveSecondInstance('case-1', input)).rejects.toMatchObject({
+        code: 'INVALID_RESPONSE',
+      });
+    }
+  });
+
+  it('accepts and replays a RESULT receipt at +2 only when it creates progress', async () => {
+    const roundId = '70000000-0000-4000-8000-000000000001';
+    const progressId = '70000000-0000-4000-8000-000000000002';
+    const input = {
+      expectedVersion: 3,
+      idempotencyKey: 'result-with-progress',
+      trialRoundId: roundId,
+      choiceId: '70000000-0000-4000-8000-000000000003',
+      expectedProgressId: null,
+      result: 'AFFIRM' as const,
+      resultReceivedAt: '2026-10-10',
+      judgmentContentVersionIds: ['70000000-0000-4000-8000-000000000005'],
+      paidLitigationFee: { state: 'KNOWN' as const, amount: '0' },
+      progress: {
+        hearingAt: '2026-10-10',
+        hearingPlace: null,
+        judgeName: null,
+        documentContentVersionIds: [],
+        serviceContentVersionIds: [],
+      },
+    };
+    const receipt = {
+      id: 'case-1',
+      stage: 'WAITING_EXECUTION_DOCUMENTS',
+      version: 5,
+      currentTrialRoundId: roundId,
+      progressId,
+      resultId: '70000000-0000-4000-8000-000000000004',
+      recordedAt: '2026-10-10T03:00:00Z',
+    };
+    const fetch = mockJson(receipt, 201);
+    expect(await registerSecondInstanceResult('case-1', input)).toEqual(
+      receipt,
+    );
+    expect(await registerSecondInstanceResult('case-1', input)).toEqual(
+      receipt,
+    );
+    expect(fetch).toHaveBeenCalledTimes(2);
+    expect(fetch.mock.calls[0]?.[1]?.body).toBe(fetch.mock.calls[1]?.[1]?.body);
+    expect(fetch.mock.calls[1]?.[1]?.headers).toMatchObject({
+      'Idempotency-Key': input.idempotencyKey,
+    });
+    for (const invalid of [
+      { ...receipt, version: 4 },
+      { ...receipt, version: 3 },
+      { ...receipt, progressId: null },
+    ]) {
+      mockJson(invalid, 201);
+      await expect(
+        registerSecondInstanceResult('case-1', input),
+      ).rejects.toMatchObject({ code: 'INVALID_RESPONSE' });
+    }
+  });
+
+  it('accepts RESULT at +1 only when it reuses the expected progress anchor', async () => {
+    const roundId = '70000000-0000-4000-8000-000000000001';
+    const progressId = '70000000-0000-4000-8000-000000000002';
+    const input = {
+      expectedVersion: 3,
+      idempotencyKey: 'result-unchanged-progress',
+      trialRoundId: roundId,
+      choiceId: '70000000-0000-4000-8000-000000000003',
+      expectedProgressId: progressId,
+      result: 'AFFIRM' as const,
+      resultReceivedAt: '2026-10-10',
+      judgmentContentVersionIds: ['70000000-0000-4000-8000-000000000005'],
+      paidLitigationFee: { state: 'KNOWN' as const, amount: '0' },
+      progress: {
+        hearingAt: null,
+        hearingPlace: null,
+        judgeName: null,
+        documentContentVersionIds: [],
+        serviceContentVersionIds: [],
+      },
+    };
+    const receipt = {
+      id: 'case-1',
+      stage: 'WAITING_EXECUTION_DOCUMENTS',
+      version: 4,
+      currentTrialRoundId: roundId,
+      progressId,
+      resultId: '70000000-0000-4000-8000-000000000004',
+      recordedAt: '2026-10-10T03:00:00Z',
+    };
+    mockJson(receipt, 201);
+    expect(await registerSecondInstanceResult('case-1', input)).toEqual(
+      receipt,
+    );
+    for (const invalid of [
+      { ...receipt, version: 5 },
+      { ...receipt, version: 3 },
+      { ...receipt, progressId: null },
+      {
+        ...receipt,
+        version: 4,
+        progressId: '70000000-0000-4000-8000-000000000007',
+      },
+    ]) {
+      mockJson(invalid, 201);
+      await expect(
+        registerSecondInstanceResult('case-1', input),
+      ).rejects.toMatchObject({ code: 'INVALID_RESPONSE' });
+    }
+  });
+
   it('registers an explicit result with frozen files and fee state', async () => {
     const fetch = mockJson({
       id: 'case-1',
@@ -416,7 +606,7 @@ describe('cases API', () => {
       stage: 'WAITING_EXECUTION_DOCUMENTS',
       version: 4,
       currentTrialRoundId: '70000000-0000-4000-8000-000000000001',
-      progressId: null,
+      progressId: '70000000-0000-4000-8000-000000000006',
       resultId: '70000000-0000-4000-8000-000000000004',
       recordedAt: '2026-10-10T03:00:00Z',
     });
