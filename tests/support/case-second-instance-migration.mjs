@@ -24,6 +24,7 @@ const secondInstanceMigrations = [
   '20261010049000_guard_empty_remand_child_version',
   '20261010050000_guard_retrial_prejudgment_version',
   '20261011010000_allow_lawyer_second_instance_material_upload',
+  '20261011020000_scope_retrial_acceptance_freeze',
 ];
 const sql = (name) =>
   readFileSync(resolve(directory, name, 'migration.sql'), 'utf8');
@@ -181,7 +182,7 @@ export async function verifyCaseSecondInstanceMigration() {
     allowRandomPort: true,
   });
   if (
-    names.length !== 129 ||
+    names.length !== 130 ||
     names[116] !== '20261010034000_guard_case_judgment_plaintiff_snapshot' ||
     names[117] !== target ||
     names[118] !== repair ||
@@ -190,9 +191,13 @@ export async function verifyCaseSecondInstanceMigration() {
   )
     throw new Error('Unexpected 117 migration baseline or CA-010 suffix');
   const client = new Client({ connectionString: process.env.DATABASE_URL });
-  const schemas = ['empty', 'upgrade', 'repair', 'upgrade128'].map(
-    (part) => `ca010_${part}_${randomUUID().replaceAll('-', '')}`,
-  );
+  const schemas = [
+    'empty',
+    'upgrade',
+    'repair',
+    'upgrade128',
+    'upgrade129',
+  ].map((part) => `ca010_${part}_${randomUUID().replaceAll('-', '')}`);
   const use = (schema) => client.query(`SET search_path TO "${schema}"`);
   try {
     await client.connect();
@@ -213,7 +218,7 @@ export async function verifyCaseSecondInstanceMigration() {
       )
     ).rows[0].exists;
     await use(schemas[1]);
-    await replay(client, names.slice(0, -12));
+    await replay(client, names.slice(0, -13));
     const legacy = await seedLegacyCase(client);
     const earlyAccepted = await seedLegacyCase(client, { early: true });
     const prior = (
@@ -354,7 +359,7 @@ export async function verifyCaseSecondInstanceMigration() {
       await client.query('ROLLBACK');
     }
     await use(schemas[2]);
-    await replay(client, names.slice(0, -12));
+    await replay(client, names.slice(0, -13));
     const broken = await seedLegacyCase(client, { invalid: true });
     const guardsBeforeFailure = (
       await client.query(`SELECT count(*)::int AS n FROM pg_trigger t JOIN pg_class c ON c.oid=t.tgrelid
@@ -404,13 +409,13 @@ export async function verifyCaseSecondInstanceMigration() {
       )
     ).rows[0].accepted;
     await use(schemas[3]);
-    await replay(client, names.slice(0, -1));
+    await replay(client, names.slice(0, -2));
     const before128 = (
       await client.query(
         "SELECT pg_get_functiondef('enforce_case_client_mailing_actor_path()'::regprocedure) AS body",
       )
     ).rows[0].body;
-    await replay(client, [secondInstanceMigrations.at(-1)]);
+    await replay(client, [secondInstanceMigrations.at(-2)]);
     const after128 = (
       await client.query(
         "SELECT pg_get_functiondef('enforce_case_client_mailing_actor_path()'::regprocedure) AS body",
@@ -422,10 +427,36 @@ export async function verifyCaseSecondInstanceMigration() {
       after128.includes("'SECOND_INSTANCE_SERVICE'") &&
       after128.includes("'SECOND_INSTANCE_JUDGMENT'") &&
       after128.includes("THEN 'SECOND_INSTANCE'");
+    await use(schemas[4]);
+    await replay(client, names.slice(0, -1));
+    const oldVersionGuard = (
+      await client.query(
+        "SELECT pg_get_functiondef('check_case_acceptance_version()'::regprocedure) AS body",
+      )
+    ).rows[0].body;
+    await replay(client, [secondInstanceMigrations.at(-1)]);
+    const newVersionGuard = (
+      await client.query(
+        "SELECT pg_get_functiondef('check_case_acceptance_version()'::regprocedure) AS body",
+      )
+    ).rows[0].body;
+    const newReceiptGuard = (
+      await client.query(
+        "SELECT pg_get_functiondef('check_case_acceptance_receipt()'::regprocedure) AS body",
+      )
+    ).rows[0].body;
+    const prior129Upgraded =
+      !oldVersionGuard.includes('c."current_acceptance_id" = ca."id"') &&
+      newVersionGuard.includes('c."current_acceptance_id" = ca."id"') &&
+      newVersionGuard.includes(
+        'r."result_snapshot" ->> \'version\' = acceptance_version',
+      ) &&
+      newReceiptGuard.includes('ca."id" = c."current_acceptance_id"');
     return {
       migrationCount: names.length,
-      priorMigrationCount: names.length - 12,
+      priorMigrationCount: names.length - 13,
       prior128Upgraded,
+      prior129Upgraded,
       emptyRoundTable,
       oldChainPreserved,
       combinedDetachRejected,

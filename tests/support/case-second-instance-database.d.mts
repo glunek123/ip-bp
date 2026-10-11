@@ -24,6 +24,11 @@ export function verifyCaseSecondInstanceDatabase(): Promise<{
   roundHistory: boolean;
   remandRead: boolean;
   remandLifecycle: boolean;
+  frozenAfterReceipt: string | null;
+  frozenOnOldRound: string | null;
+  frozenOnWrongCase: string | null;
+  frozenOnWrongDepartment: string | null;
+  historicalReceiptReplayBypass: string | null;
   acceptedChildVersionBypass: string | null;
   scheduledChildVersionBypass: string | null;
   advancedChildVersionBypass: string | null;

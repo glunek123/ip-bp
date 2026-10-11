@@ -465,6 +465,29 @@ export async function verifyCaseSecondInstanceDatabase() {
             acceptanceVersionId,
           ],
         );
+        // CA-008 seeds its source acceptance without a receipt. A real remand
+        // starts from a completed registration, so preserve that older receipt.
+        await client.query(
+          `INSERT INTO case_acceptance_receipts
+          (id,department_id,actor_user_id,case_id,idempotency_key,request_fingerprint,result_snapshot)
+          VALUES ($1,$2,$3,$4,$5,$6,$7::jsonb)`,
+          [
+            randomUUID(),
+            actor.departmentId,
+            actor.userId,
+            caseId,
+            `ca010-source-accept-${caseId}`,
+            'a'.repeat(64),
+            JSON.stringify({
+              id: caseId,
+              stage: 'WAITING_HEARING',
+              version: 7,
+              acceptedAt: '2026-10-01',
+              courtCaseNo: 'CA008-db',
+              recordedAt: '2026-10-01T00:00:00.000Z',
+            }),
+          ],
+        );
         await client.query(
           `INSERT INTO leads(id,department_id,business_no,customer_id,rights_holder_id,responsible_user_id,
           case_type,source,platform,found_at,shop_name,need_disclose,updated_at)
@@ -701,16 +724,110 @@ export async function verifyCaseSecondInstanceDatabase() {
         },
         select: { resultSnapshot: true },
       });
+      const sourceAcceptanceReceipt =
+        await database.caseAcceptanceReceipt.findFirst({
+          where: {
+            caseId,
+            idempotencyKey: `ca010-source-accept-${caseId}`,
+          },
+          select: { resultSnapshot: true },
+        });
       const acceptance = new CaseAcceptanceService(database, access, materials);
-      const acceptedChild = await acceptance.register(actor, caseId, {
+      const childAcceptanceInput = {
         expectedVersion: remandAgain.version,
         idempotencyKey: `ca010-child-accept-${caseId}`,
         acceptedAt: '2026-10-09',
         courtCaseNo: 'CA010-retrial',
-        acceptanceNoticeContentVersionIds: [],
+        acceptanceNoticeContentVersionIds: [acceptanceVersionId],
         paymentListContentVersionIds: [],
         serviceDocumentContentVersionIds: [],
+      };
+      const acceptedChild = await acceptance.register(
+        actor,
+        caseId,
+        childAcceptanceInput,
+      );
+      const acceptedChildReplay = await acceptance.register(
+        actor,
+        caseId,
+        childAcceptanceInput,
+      );
+      const acceptedChildCase = await database.case.findUnique({
+        where: { id: caseId },
+        select: {
+          currentAcceptanceId: true,
+          acceptance: {
+            select: { versions: { select: { contentVersionId: true } } },
+          },
+        },
       });
+      const frozenAfterReceipt = await sqlCode(
+        client,
+        `INSERT INTO case_acceptance_versions
+          (acceptance_id,case_id,department_id,material_id,content_version_id,category)
+          VALUES ($1,$2,$3,$4,$5,'ACCEPTANCE_NOTICE')`,
+        [
+          acceptedChildCase.currentAcceptanceId,
+          caseId,
+          actor.departmentId,
+          acceptanceMaterialId,
+          acceptanceVersionId,
+        ],
+      );
+      const frozenOnOldRound = await sqlCode(
+        client,
+        `INSERT INTO case_acceptance_versions
+          (acceptance_id,case_id,department_id,material_id,content_version_id,category)
+          VALUES ($1,$2,$3,$4,$5,'ACCEPTANCE_NOTICE')`,
+        [
+          restoredCase.currentAcceptanceId,
+          caseId,
+          actor.departmentId,
+          acceptanceMaterialId,
+          acceptanceVersionId,
+        ],
+      );
+      const frozenOnWrongCase = await sqlCode(
+        client,
+        `INSERT INTO case_acceptance_versions
+          (acceptance_id,case_id,department_id,material_id,content_version_id,category)
+          VALUES ($1,$2,$3,$4,$5,'ACCEPTANCE_NOTICE')`,
+        [
+          acceptedChildCase.currentAcceptanceId,
+          randomUUID(),
+          actor.departmentId,
+          acceptanceMaterialId,
+          acceptanceVersionId,
+        ],
+      );
+      const frozenOnWrongDepartment = await sqlCode(
+        client,
+        `INSERT INTO case_acceptance_versions
+          (acceptance_id,case_id,department_id,material_id,content_version_id,category)
+          VALUES ($1,$2,$3,$4,$5,'ACCEPTANCE_NOTICE')`,
+        [
+          acceptedChildCase.currentAcceptanceId,
+          caseId,
+          randomUUID(),
+          acceptanceMaterialId,
+          acceptanceVersionId,
+        ],
+      );
+      const historicalReceiptReplayBypass = await sqlCode(
+        client,
+        `INSERT INTO case_acceptance_receipts
+          (id,department_id,actor_user_id,case_id,idempotency_key,request_fingerprint,result_snapshot)
+          VALUES ($1,$2,$3,$4,$5,$6,$7::jsonb)`,
+        [
+          randomUUID(),
+          actor.departmentId,
+          actor.userId,
+          caseId,
+          `ca010-source-replay-bypass-${caseId}`,
+          'b'.repeat(64),
+          JSON.stringify(sourceAcceptanceReceipt.resultSnapshot),
+        ],
+      );
       const acceptedChildVersionBypass = await sqlCode(
         client,
         'UPDATE cases SET version=version+1 WHERE id=$1',
@@ -973,6 +1090,19 @@ export async function verifyCaseSecondInstanceDatabase() {
           where: { caseId, idempotencyKey: `ca010-remand-again-${caseId}` },
           select: { resultSnapshot: true },
         });
+      const sourceAcceptanceReceiptAfter =
+        await database.caseAcceptanceReceipt.findFirst({
+          where: {
+            caseId,
+            idempotencyKey: `ca010-source-accept-${caseId}`,
+          },
+          select: { resultSnapshot: true },
+        });
+      const acceptanceReceiptsAfter =
+        await database.caseAcceptanceReceipt.findMany({
+          where: { caseId },
+          select: { resultSnapshot: true },
+        });
       const sourceAcceptanceAfter = await database.caseAcceptance.findFirst({
         where: { caseId, trialRoundId: anchor.currentTrialRoundId },
         select: {
@@ -1143,6 +1273,11 @@ export async function verifyCaseSecondInstanceDatabase() {
             acceptanceVersionId,
         remandLifecycle:
           acceptedChild.version === 19 &&
+          JSON.stringify(acceptedChildReplay) ===
+            JSON.stringify(acceptedChild) &&
+          acceptedChildCase.acceptance.versions.length === 1 &&
+          acceptedChildCase.acceptance.versions[0].contentVersionId ===
+            acceptanceVersionId &&
           scheduledChild.version === 20 &&
           advancedChild.advanced >= 1 &&
           childBeforeJudgment.stage === 'WAITING_JUDGMENT' &&
@@ -1180,8 +1315,19 @@ export async function verifyCaseSecondInstanceDatabase() {
           ) &&
           oldAcceptanceBytesAfter.equals(acceptanceBytes) &&
           oldSecondBytesAfter.equals(resultBytes) &&
+          JSON.stringify(sourceAcceptanceReceiptAfter.resultSnapshot) ===
+            JSON.stringify(sourceAcceptanceReceipt.resultSnapshot) &&
+          acceptanceReceiptsAfter.length === 2 &&
+          acceptanceReceiptsAfter.some(
+            (receipt) => receipt.resultSnapshot.version === 19,
+          ) &&
           JSON.stringify(sourceReceiptAfter.resultSnapshot) ===
             JSON.stringify(sourceReceipt.resultSnapshot),
+        frozenAfterReceipt,
+        frozenOnOldRound,
+        frozenOnWrongCase,
+        frozenOnWrongDepartment,
+        historicalReceiptReplayBypass,
         acceptedChildVersionBypass,
         scheduledChildVersionBypass,
         advancedChildVersionBypass,

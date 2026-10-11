@@ -2,6 +2,7 @@ export declare function verifyCaseSecondInstanceMigration(): Promise<{
   migrationCount: number;
   priorMigrationCount: number;
   prior128Upgraded: boolean;
+  prior129Upgraded: boolean;
   emptyRoundTable: boolean;
   oldChainPreserved: boolean;
   combinedDetachRejected: boolean;
