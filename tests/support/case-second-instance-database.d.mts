@@ -1,3 +1,5 @@
+export function clearCoreCaseSecondInstanceFixture(): Promise<string[]>;
+
 export function verifyCaseSecondInstanceDatabase(): Promise<{
   saved: boolean;
   saveReplay: boolean;

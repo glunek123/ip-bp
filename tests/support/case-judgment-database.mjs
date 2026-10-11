@@ -72,6 +72,159 @@ const judgmentCleanupGuards = [
   ['audit_events', 'case_judgment_audit_immutable'],
 ];
 
+// The order is shared by the canonical CA-010 fixture and core-case cleanup.
+const secondInstanceDependentTables = [
+  'case_second_instance_receipts',
+  'case_second_instance_result_revocations',
+  'case_second_instance_result_versions',
+  'case_second_instance_results',
+  'case_second_instance_progress_versions',
+  'case_second_instance_progresses',
+  'case_judgment_next_step_receipts',
+  'case_judgment_appeal_defendants',
+  'case_judgment_next_step_revocations',
+  'case_judgment_next_steps',
+  'case_judgment_receipts',
+  'case_judgment_versions',
+  'case_judgment_facts',
+  'case_hearing_receipts',
+  'case_hearing_corrections',
+  'case_hearing_advances',
+  'case_hearing_arrangements',
+  'case_acceptance_receipts',
+  'case_acceptance_versions',
+  'case_acceptances',
+];
+const secondInstanceDependentActions = [
+  'case.second_instance.save',
+  'case.second_instance.result',
+  'case.second_instance.result.revoke',
+  'case.judgment.next_step',
+  'case.judgment.next_step.revoke',
+  'case.judgment.registered',
+  'case.judgment.corrected',
+  'case.hearing.scheduled',
+  'case.hearing.corrected',
+  'case.hearing.auto_advanced',
+  'case.acceptance.registered',
+];
+
+// Call only inside a test-only transaction with LOCAL replica mode: the
+// remand child round points back to its result, so the whole chain is cleared.
+async function clearSecondInstanceDependentFacts(client, caseIds) {
+  await client.query(
+    `UPDATE cases SET stage='WAITING_FORMAL_ACCEPTANCE',
+      current_trial_round_id=NULL,current_acceptance_id=NULL,
+      current_hearing_arrangement_id=NULL,current_hearing_advance_id=NULL,
+      current_judgment_id=NULL,current_judgment_next_step_id=NULL,
+      current_second_instance_progress_id=NULL,current_second_instance_result_id=NULL,
+      court_case_no=NULL WHERE id=ANY($1::uuid[])`,
+    [caseIds],
+  );
+  await client.query(
+    `DELETE FROM material_references WHERE resource_type='case'
+      AND resource_id=ANY($1::uuid[]) AND action_event_id IN (
+        SELECT id FROM audit_events WHERE resource_type='CASE'
+          AND resource_id=ANY($1::uuid[]) AND action=ANY($2::text[]))`,
+    [caseIds, secondInstanceDependentActions],
+  );
+  for (const table of secondInstanceDependentTables)
+    await client.query(`DELETE FROM "${table}" WHERE case_id=ANY($1::uuid[])`, [
+      caseIds,
+    ]);
+  await client.query(
+    `DELETE FROM audit_events WHERE resource_type='CASE'
+      AND resource_id=ANY($1::uuid[]) AND action=ANY($2::text[])`,
+    [caseIds, secondInstanceDependentActions],
+  );
+  await client.query(
+    'DELETE FROM case_trial_rounds WHERE case_id=ANY($1::uuid[])',
+    [caseIds],
+  );
+}
+
+async function assertSecondInstanceCleanupGuards(client) {
+  const guards = [
+    ['cases', 'case_trial_round_case_guard'],
+    ['cases', 'cases_empty_remand_child_version_guard'],
+    ['cases', 'cases_retrial_prejudgment_version_guard'],
+    ['case_trial_rounds', 'case_trial_rounds_immutable'],
+    [
+      'case_second_instance_progresses',
+      'case_second_instance_progresses_immutable',
+    ],
+    ['case_second_instance_results', 'case_second_instance_results_immutable'],
+    ['case_judgment_next_steps', 'case_judgment_next_steps_immutable'],
+  ];
+  for (const [table, trigger] of guards) {
+    const rows = (
+      await client.query(
+        'SELECT tgenabled FROM pg_trigger WHERE tgrelid=$1::regclass AND tgname=$2',
+        [table, trigger],
+      )
+    ).rows;
+    if (rows.length !== 1 || rows[0].tgenabled !== 'O')
+      throw new Error(`Second-instance cleanup guard unavailable: ${trigger}`);
+  }
+}
+
+/** Clear only CA-010 facts on exact core-fixture cases, before legacy cleanup. */
+export async function clearCoreCaseSecondInstanceFixture() {
+  const client = new Client({ connectionString: databaseUrl });
+  await client.connect();
+  try {
+    const context = (
+      await client.query(
+        'SELECT current_database() AS db,current_schema() AS schema',
+      )
+    ).rows[0];
+    if (context.db !== 'dev_cor_test' || context.schema !== 'public')
+      throw new Error(
+        'Second-instance cleanup requires isolated public test schema',
+      );
+    await client.query('BEGIN');
+    try {
+      await assertSecondInstanceCleanupGuards(client);
+      const cases = (
+        await client.query(
+          `SELECT c.id,c.department_id,c.responsible_user_id,c.customer_id
+            FROM cases c JOIN leads l ON l.id=c.source_lead_id
+            WHERE c.department_id=$1 AND c.responsible_user_id=$2
+              AND c.customer_id=$3 AND l.shop_name LIKE '确认诉状店铺-%'
+              AND (EXISTS (SELECT 1 FROM case_second_instance_progresses p WHERE p.case_id=c.id)
+                OR EXISTS (SELECT 1 FROM case_second_instance_results r WHERE r.case_id=c.id)
+                OR EXISTS (SELECT 1 FROM case_second_instance_receipts q WHERE q.case_id=c.id))
+            ORDER BY c.id FOR UPDATE OF c`,
+          [
+            '10000000-0000-4000-8000-000000000001',
+            '20000000-0000-4000-8000-000000000001',
+            '50000000-0000-4000-8000-000000000002',
+          ],
+        )
+      ).rows;
+      const caseIds = cases.map((row) => row.id);
+      if (caseIds.length > 0) {
+        await client.query('SET LOCAL session_replication_role = replica');
+        await clearSecondInstanceDependentFacts(client, caseIds);
+      }
+      await client.query('COMMIT');
+      const role = (await client.query('SHOW session_replication_role')).rows[0]
+        .session_replication_role;
+      if (role !== 'origin')
+        throw new Error(
+          'Second-instance cleanup trigger mode was not restored',
+        );
+      await assertSecondInstanceCleanupGuards(client);
+      return caseIds;
+    } catch (error) {
+      await client.query('ROLLBACK').catch(() => undefined);
+      throw error;
+    }
+  } finally {
+    await client.end();
+  }
+}
+
 async function assertJudgmentCleanupGuards(client) {
   for (const [table, trigger] of judgmentCleanupGuards) {
     const rows = (
@@ -1255,29 +1408,7 @@ export async function verifyCaseJudgmentDatabase(options = {}) {
     let cleanupCommitted = false;
     try {
       await client.query('SET LOCAL session_replication_role = replica');
-      const tables = [
-        'case_second_instance_receipts',
-        'case_second_instance_result_revocations',
-        'case_second_instance_result_versions',
-        'case_second_instance_results',
-        'case_second_instance_progress_versions',
-        'case_second_instance_progresses',
-        'case_judgment_next_step_receipts',
-        'case_judgment_appeal_defendants',
-        'case_judgment_next_step_revocations',
-        'case_judgment_next_steps',
-        'case_judgment_receipts',
-        'case_judgment_versions',
-        'case_judgment_facts',
-        'case_hearing_receipts',
-        'case_hearing_corrections',
-        'case_hearing_advances',
-        'case_hearing_arrangements',
-        'case_acceptance_receipts',
-        'case_acceptance_versions',
-        'case_acceptances',
-        'case_filing_submissions',
-      ];
+      await clearSecondInstanceDependentFacts(client, [ids.case]);
       await client.query(
         'DELETE FROM material_references WHERE resource_type=$1 AND resource_id=$2',
         ['case', ids.case],
@@ -1290,10 +1421,10 @@ export async function verifyCaseJudgmentDatabase(options = {}) {
         'DELETE FROM case_complaint_confirmations WHERE case_id=$1',
         [ids.case],
       );
-      for (const table of tables)
-        await client.query(`DELETE FROM "${table}" WHERE case_id=$1`, [
-          ids.case,
-        ]);
+      await client.query(
+        'DELETE FROM case_filing_submissions WHERE case_id=$1',
+        [ids.case],
+      );
       await client.query('DELETE FROM audit_events WHERE department_id=$1', [
         ids.department,
       ]);

@@ -205,6 +205,7 @@ describe('cases API', () => {
       idempotencyKey: 'result-key',
       trialRoundId: '70000000-0000-4000-8000-000000000001',
       choiceId: '70000000-0000-4000-8000-000000000003',
+      expectedProgressId: null,
       result: 'AFFIRM',
       resultReceivedAt: '2026-10-10',
       judgmentContentVersionIds: ['70000000-0000-4000-8000-000000000005'],
@@ -221,10 +222,53 @@ describe('cases API', () => {
       '/api/v1/cases/case-1/second-instance-result',
     );
     expect(JSON.parse(String(fetch.mock.calls[0]?.[1]?.body))).toMatchObject({
+      expectedProgressId: null,
       result: 'AFFIRM',
       paidLitigationFee: { state: 'KNOWN', amount: '0' },
       judgmentContentVersionIds: ['70000000-0000-4000-8000-000000000005'],
     });
+  });
+
+  it('keeps the exact current progress anchor on a result and rejects a missing anchor', async () => {
+    const fetch = mockJson({
+      id: 'case-1',
+      stage: 'WAITING_EXECUTION_DOCUMENTS',
+      version: 4,
+      currentTrialRoundId: '70000000-0000-4000-8000-000000000001',
+      progressId: null,
+      resultId: '70000000-0000-4000-8000-000000000004',
+      recordedAt: '2026-10-10T03:00:00Z',
+    });
+    const input = {
+      expectedVersion: 3,
+      idempotencyKey: 'result-current-progress',
+      trialRoundId: '70000000-0000-4000-8000-000000000001',
+      choiceId: '70000000-0000-4000-8000-000000000003',
+      expectedProgressId: '70000000-0000-4000-8000-000000000006',
+      result: 'AFFIRM' as const,
+      resultReceivedAt: '2026-10-10',
+      judgmentContentVersionIds: ['70000000-0000-4000-8000-000000000005'],
+      paidLitigationFee: { state: 'KNOWN' as const, amount: '0' },
+      progress: {
+        hearingAt: null,
+        hearingPlace: null,
+        judgeName: null,
+        documentContentVersionIds: [],
+        serviceContentVersionIds: [],
+      },
+    };
+    await registerSecondInstanceResult('case-1', input);
+    expect(JSON.parse(String(fetch.mock.calls[0]?.[1]?.body))).toHaveProperty(
+      'expectedProgressId',
+      input.expectedProgressId,
+    );
+    await expect(
+      registerSecondInstanceResult('case-1', {
+        ...input,
+        expectedProgressId: undefined as unknown as string | null,
+      }),
+    ).rejects.toMatchObject({ code: 'VALIDATION_ERROR' });
+    expect(fetch).toHaveBeenCalledTimes(1);
   });
 
   it('exposes result revocation only through the internal route', async () => {

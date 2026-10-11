@@ -398,17 +398,12 @@ export type SaveSecondInstanceInput = {
   expectedProgressId: string | null;
   progress: SecondInstanceProgressInput;
 };
-export type RegisterSecondInstanceResultInput = {
-  expectedVersion: number;
-  idempotencyKey: string;
-  trialRoundId: string;
-  choiceId: string;
+export type RegisterSecondInstanceResultInput = SaveSecondInstanceInput & {
   result: 'REMAND' | 'CHANGE' | 'AFFIRM';
   resultReceivedAt: string;
   judgmentContentVersionIds: string[];
   paidLitigationFee: { state: 'KNOWN' | 'PENDING'; amount: string | null };
   judgmentAmount?: { state: 'KNOWN' | 'PENDING'; amount: string | null };
-  progress: SecondInstanceProgressInput;
 };
 export type RevokeSecondInstanceResultInput = {
   expectedVersion: number;
@@ -2300,6 +2295,7 @@ export async function registerSecondInstanceResult(
       : input.judgmentAmount === undefined;
   if (
     !validateSecondInstanceCommon(input) ||
+    (input.expectedProgressId !== null && !uuidV4(input.expectedProgressId)) ||
     !progress ||
     !['REMAND', 'CHANGE', 'AFFIRM'].includes(input.result) ||
     !businessDate(input.resultReceivedAt) ||

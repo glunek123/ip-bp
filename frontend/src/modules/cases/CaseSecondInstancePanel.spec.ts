@@ -619,6 +619,7 @@ describe('CaseSecondInstancePanel', () => {
         expectedVersion: 9,
         trialRoundId: round2,
         choiceId: choice2,
+        expectedProgressId: null,
         result: 'REMAND',
         judgmentContentVersionIds: [resultFile.contentVersionId],
         paidLitigationFee: { state: 'PENDING', amount: null },
@@ -672,7 +673,22 @@ describe('CaseSecondInstancePanel', () => {
     api.registerSecondInstanceResult
       .mockRejectedValueOnce(new ApiError('unknown', 503, 'NETWORK_ERROR'))
       .mockResolvedValueOnce({});
-    const wrapper = mountPanel();
+    const withProgress = item();
+    withProgress.secondInstance.currentProgress = {
+      id: id('24'),
+      trialRoundId: round2,
+      choiceId: choice2,
+      priorProgressId: null,
+      hearingAt: null,
+      hearingPlace: '原进展地点',
+      judgeName: null,
+      fromVersion: 8,
+      toVersion: 9,
+      recordedAt: '2026-10-09T01:00:00Z',
+      documentFiles: [],
+      serviceFiles: [],
+    };
+    const wrapper = mountPanel({ item: withProgress });
     await wrapper
       .get('[data-test="second-instance-result-option"][value="REMAND"]')
       .setValue();
@@ -693,6 +709,13 @@ describe('CaseSecondInstancePanel', () => {
       .trigger('click');
     await flushPromises();
     const original = api.registerSecondInstanceResult.mock.calls[0];
+    expect(original?.[1].expectedProgressId).toBe(id('24'));
+    const changed = item();
+    changed.secondInstance.currentProgress = {
+      ...withProgress.secondInstance.currentProgress!,
+      id: id('25'),
+    };
+    await wrapper.setProps({ item: changed });
     await wrapper
       .get('[data-test="second-instance-result-retry"]')
       .trigger('click');

@@ -3,6 +3,7 @@ import { createRequire } from 'node:module';
 import { resolve } from 'node:path';
 import { Readable } from 'node:stream';
 import { verifyCaseJudgmentDatabase } from './case-judgment-database.mjs';
+export { clearCoreCaseSecondInstanceFixture } from './case-judgment-database.mjs';
 
 const requireBackend = createRequire(
   resolve(process.cwd(), 'backend/package.json'),

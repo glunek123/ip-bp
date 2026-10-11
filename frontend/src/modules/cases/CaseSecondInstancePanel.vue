@@ -426,6 +426,7 @@ function makeResultInput(): RegisterSecondInstanceResultInput {
     idempotencyKey: globalThis.crypto.randomUUID(),
     trialRoundId: currentRoundId.value!,
     choiceId: currentChoice.value!.id,
+    expectedProgressId: second.value.currentProgress?.id ?? null,
     result: resultChoice.value as Exclude<ResultChoice, ''>,
     resultReceivedAt: receivedAt.value,
     judgmentContentVersionIds: selectedJudgmentIds.value,
