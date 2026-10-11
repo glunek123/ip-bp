@@ -48,6 +48,22 @@ const baseItem: TestItem = {
   complaintConfirmation: null,
   complaintMailing: null,
 };
+const acceptedFact: NonNullable<TestItem['acceptance']> = {
+  id: '80000000-0000-4000-8000-000000000031',
+  trialRoundId: '80000000-0000-4000-8000-000000000032',
+  acceptedAt: '2026-10-05',
+  courtCaseNo: '甲0101民初1号',
+  recordedAt: '2026-10-06T01:00:00.000Z',
+  files: [
+    {
+      category: 'ACCEPTANCE_NOTICE',
+      materialId: 'material-notice',
+      contentVersionId: 'version-notice',
+      originalFilename: '受理通知书.pdf',
+      mimeType: 'application/pdf',
+    },
+  ],
+};
 
 let workflowRefreshCount = 0;
 function recordWorkflowRefresh(): void {
@@ -221,11 +237,7 @@ describe('case acceptance panel', () => {
         stage: 'WAITING_HEARING',
         version: 7,
         canRegisterAcceptance: false,
-        acceptance: {
-          acceptedAt: '2026-10-05',
-          courtCaseNo: '甲0101民初1号',
-          recordedAt: '2026-10-06T01:00:00.000Z',
-        },
+        acceptance: acceptedFact,
         acceptanceMaterials: {
           ...item.acceptanceMaterials,
           ACCEPTANCE_NOTICE: {
@@ -277,11 +289,7 @@ describe('case acceptance panel', () => {
         stage: 'WAITING_HEARING',
         version: 7,
         canRegisterAcceptance: false,
-        acceptance: {
-          acceptedAt: '2026-10-05',
-          courtCaseNo: '甲0101民初1号',
-          recordedAt: '2026-10-06T01:00:00.000Z',
-        },
+        acceptance: acceptedFact,
       },
     });
     rejectRegistration();
@@ -338,11 +346,7 @@ describe('case acceptance panel', () => {
         ...baseItem,
         stage: 'WAITING_HEARING',
         canRegisterAcceptance: false,
-        acceptance: {
-          acceptedAt: '2026-10-05',
-          courtCaseNo: '甲0101民初1号',
-          recordedAt: '2026-10-06T01:00:00.000Z',
-        },
+        acceptance: acceptedFact,
         acceptanceMaterials: {
           ...baseItem.acceptanceMaterials,
           ACCEPTANCE_NOTICE: {

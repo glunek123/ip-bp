@@ -63,10 +63,21 @@ const baseItem: CaseDetail = {
   complaintMailing: null,
   filingSubmission: null,
   acceptance: {
+    id: '80000000-0000-4000-8000-000000000031',
+    trialRoundId: '80000000-0000-4000-8000-000000000032',
     acceptedAt: '2026-10-05',
     courtCaseNo: '（2026）甲0101民初1号',
     recordedAt: '2026-10-05T01:00:00.000Z',
     recordedByUserId: '80000000-0000-4000-8000-000000000007',
+    files: [
+      {
+        category: 'ACCEPTANCE_NOTICE',
+        materialId: 'material-notice',
+        contentVersionId: 'version-notice',
+        originalFilename: '受理通知书.pdf',
+        mimeType: 'application/pdf',
+      },
+    ],
   },
   acceptanceMaterials: {
     ACCEPTANCE_NOTICE: { available: [], frozen: [], later: [] },

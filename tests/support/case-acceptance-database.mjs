@@ -138,11 +138,27 @@ export async function clearCaseAcceptanceFixture() {
           `DELETE FROM "${table}" WHERE department_id = ANY($1::uuid[])`,
           [departments],
         );
+      await client.query('SET CONSTRAINTS ALL IMMEDIATE');
       for (const table of tables)
         await client.query(`ALTER TABLE "${table}" ENABLE TRIGGER USER`);
       await client.query(
         'ALTER TABLE cases ENABLE TRIGGER "case_trial_round_case_guard"',
       );
+      const caseGuards = await client.query(
+        "SELECT tgname,tgenabled FROM pg_trigger WHERE tgrelid='cases'::regclass AND tgname=ANY($1::text[])",
+        [
+          [
+            'case_trial_round_case_guard',
+            'cases_empty_remand_child_version_guard',
+            'cases_retrial_prejudgment_version_guard',
+          ],
+        ],
+      );
+      if (
+        caseGuards.rows.length !== 3 ||
+        caseGuards.rows.some((guard) => guard.tgenabled !== 'O')
+      )
+        throw new Error('Case fact guards were not restored');
       await client.query(
         'ALTER TABLE audit_events DISABLE TRIGGER "case_acceptance_audit_immutable"',
       );

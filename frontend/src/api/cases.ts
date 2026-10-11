@@ -252,10 +252,13 @@ export type AcceptanceMaterialGroup = {
   later: CaseFile[];
 };
 export type CaseAcceptance = {
+  id: string;
+  trialRoundId: string;
   acceptedAt: string;
   courtCaseNo: string;
   recordedAt: string;
   recordedByUserId?: string;
+  files: Array<CaseFile & { category: 'ACCEPTANCE_NOTICE' }>;
 };
 export type AcceptanceMaterials = {
   ACCEPTANCE_NOTICE: AcceptanceMaterialGroup;
@@ -502,13 +505,7 @@ export type LawyerCaseSecondInstance = {
   results: LawyerSecondInstanceResult[];
   revocations: LawyerSecondInstanceRevocation[];
 };
-export type CaseAcceptanceHistory = CaseAcceptance & {
-  id: string;
-  trialRoundId: string;
-  acceptedAt: string;
-  courtCaseNo: string;
-  files: Array<CaseFile & { category: 'ACCEPTANCE_NOTICE' }>;
-};
+export type CaseAcceptanceHistory = CaseAcceptance;
 export type LawyerCaseAcceptanceHistory = Omit<
   CaseAcceptanceHistory,
   'recordedByUserId'
@@ -851,18 +848,9 @@ function validNextStep(value: unknown, internal: boolean): boolean {
 }
 function validAcceptance(value: unknown, internal: boolean): boolean {
   if (value === null) return true;
-  if (!record(value)) return false;
-  const keys = ['acceptedAt', 'courtCaseNo', 'recordedAt'];
-  if (internal) keys.push('recordedByUserId');
   return (
-    exact(value, keys) &&
-    businessDate(value.acceptedAt) &&
-    nonempty(value.courtCaseNo) &&
-    value.courtCaseNo.trim() === value.courtCaseNo &&
-    value.courtCaseNo.length <= 100 &&
-    typeof value.recordedAt === 'string' &&
-    !Number.isNaN(Date.parse(value.recordedAt)) &&
-    (!internal || nonempty(value.recordedByUserId))
+    validAcceptanceHistory(value, internal) &&
+    (!internal || (record(value) && uuidV4(value.recordedByUserId)))
   );
 }
 function courtCaseNoMatchesAcceptance(

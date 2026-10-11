@@ -538,9 +538,20 @@ describe('LawyerCaseDetailPage', () => {
     const caseDetail = detail('case-a', 'CA-A', 'WAITING_JUDGMENT');
     caseDetail.canRegisterJudgment = true;
     caseDetail.acceptance = {
+      id: '70000000-0000-4000-8000-000000000031',
+      trialRoundId: '70000000-0000-4000-8000-000000000032',
       acceptedAt: '2026-10-01',
       courtCaseNo: '甲0101民初1号',
       recordedAt: '2026-10-01T01:00:00Z',
+      files: [
+        {
+          category: 'ACCEPTANCE_NOTICE',
+          materialId: 'material-notice',
+          contentVersionId: 'version-notice',
+          originalFilename: '受理通知书.pdf',
+          mimeType: 'application/pdf',
+        },
+      ],
     };
     api.getLawyerCase.mockResolvedValue(caseDetail);
     const { wrapper } = await mountPage();

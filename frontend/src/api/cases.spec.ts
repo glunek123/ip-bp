@@ -746,10 +746,13 @@ describe('cases API', () => {
       canRegisterAcceptance: false,
       canUploadAcceptanceMaterials: true,
       acceptance: {
+        id: '80000000-0000-4000-8000-000000000031',
+        trialRoundId: '80000000-0000-4000-8000-000000000032',
         acceptedAt: '2026-10-05',
         courtCaseNo: '（2026）甲0101民初1号',
         recordedAt: '2026-10-05T01:00:00.000Z',
         recordedByUserId: '80000000-0000-4000-8000-000000000006',
+        files: [{ category: 'ACCEPTANCE_NOTICE', ...file }],
       },
       acceptanceMaterials: {
         ACCEPTANCE_NOTICE: { available: [], frozen: [file], later: [] },
@@ -765,6 +768,42 @@ describe('cases API', () => {
       },
     });
   });
+  it('rejects legacy, malformed, and extra fields in the current acceptance', async () => {
+    const acceptance = {
+      id: '80000000-0000-4000-8000-000000000031',
+      trialRoundId: '80000000-0000-4000-8000-000000000032',
+      acceptedAt: '2026-10-05',
+      courtCaseNo: '（2026）甲0101民初1号',
+      recordedAt: '2026-10-05T01:00:00.000Z',
+      recordedByUserId: '80000000-0000-4000-8000-000000000006',
+      files: [
+        {
+          category: 'ACCEPTANCE_NOTICE',
+          materialId: 'material-notice',
+          contentVersionId: 'version-notice',
+          originalFilename: '受理通知书.pdf',
+          mimeType: 'application/pdf',
+        },
+      ],
+    };
+    const legacyAcceptance: Record<string, unknown> = { ...acceptance };
+    delete legacyAcceptance.trialRoundId;
+    for (const invalid of [
+      legacyAcceptance,
+      { ...acceptance, trialRoundId: 'old-round' },
+      { ...acceptance, extra: true },
+      { ...acceptance, files: [{ ...acceptance.files[0], category: 'OTHER' }] },
+    ]) {
+      mockJson({
+        ...detail,
+        courtCaseNo: acceptance.courtCaseNo,
+        acceptance: invalid,
+      });
+      await expect(getCase('case-1')).rejects.toMatchObject({
+        code: 'INVALID_RESPONSE',
+      });
+    }
+  });
   it('requires the top-level court case number to match the accepted fact', async () => {
     const accepted = {
       ...detail,
@@ -773,10 +812,21 @@ describe('cases API', () => {
       canRegisterAcceptance: false,
       canUploadAcceptanceMaterials: true,
       acceptance: {
+        id: '80000000-0000-4000-8000-000000000031',
+        trialRoundId: '80000000-0000-4000-8000-000000000032',
         acceptedAt: '2026-10-05',
         courtCaseNo: '（2026）甲0101民初1号',
         recordedAt: '2026-10-05T01:00:00.000Z',
-        recordedByUserId: 'operator-1',
+        recordedByUserId: '80000000-0000-4000-8000-000000000006',
+        files: [
+          {
+            category: 'ACCEPTANCE_NOTICE',
+            materialId: 'material-notice',
+            contentVersionId: 'version-notice',
+            originalFilename: '受理通知书.pdf',
+            mimeType: 'application/pdf',
+          },
+        ],
       },
     };
     for (const courtCaseNo of [null, '（2026）甲0101民初2号']) {
@@ -1394,9 +1444,20 @@ describe('cases API', () => {
       canUploadAcceptanceMaterials: true,
       courtCaseNo: '（2026）甲0101民初1号',
       acceptance: {
+        id: '80000000-0000-4000-8000-000000000031',
+        trialRoundId: '80000000-0000-4000-8000-000000000032',
         acceptedAt: '2026-10-05',
         courtCaseNo: '（2026）甲0101民初1号',
         recordedAt: '2026-10-05T01:00:00.000Z',
+        files: [
+          {
+            category: 'ACCEPTANCE_NOTICE',
+            materialId: 'material-notice',
+            contentVersionId: 'version-notice',
+            originalFilename: '受理通知书.pdf',
+            mimeType: 'application/pdf',
+          },
+        ],
       },
     };
     mockJson(acceptedLawyerDetail);
@@ -1404,6 +1465,16 @@ describe('cases API', () => {
       stage: 'WAITING_HEARING',
       courtCaseNo: '（2026）甲0101民初1号',
       acceptance: { courtCaseNo: '（2026）甲0101民初1号' },
+    });
+    mockJson({
+      ...acceptedLawyerDetail,
+      acceptance: {
+        ...acceptedLawyerDetail.acceptance,
+        recordedByUserId: '80000000-0000-4000-8000-000000000006',
+      },
+    });
+    await expect(read('case-1')).rejects.toMatchObject({
+      code: 'INVALID_RESPONSE',
     });
     for (const courtCaseNo of [null, '（2026）甲0101民初2号']) {
       mockJson({ ...acceptedLawyerDetail, courtCaseNo });
