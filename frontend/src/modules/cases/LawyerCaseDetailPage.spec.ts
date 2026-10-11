@@ -6,6 +6,7 @@ import { ApiError } from '../../api/http';
 import type { CaseStage, LawyerCaseDetail } from '../../api/cases';
 import { useAuthStore } from '../../stores/auth';
 import LawyerCaseDetailPage from './LawyerCaseDetailPage.vue';
+import { secondInstanceCommandState } from './case-second-instance-recovery';
 
 const api = vi.hoisted(() => ({
   getLawyerCase: vi.fn(),
@@ -386,6 +387,120 @@ describe('LawyerCaseDetailPage', () => {
       expect(
         wrapper.find('[data-test="second-instance-result-retry"]').exists(),
       ).toBe(false);
+    },
+  );
+  it.each([403, 404] as const)(
+    'hides sensitive second-instance details as soon as the current retry returns %s with the old attempt pending',
+    async (status) => {
+      const caseId = `case-current-denial-${status}`;
+      const roundId = `70000000-0000-4000-8000-0000000000${status}`;
+      const current = {
+        ...detail(caseId, 'CA-DENIED', 'SECOND_INSTANCE'),
+        canSaveSecondInstance: true,
+        judgmentNextStep: {
+          current: {
+            id: 'choice-denied',
+            trialRoundId: roundId,
+            judgmentId: 'judgment-denied',
+            next: 'APPEAL' as const,
+          },
+          history: [],
+          revocations: [],
+        },
+        secondInstance: {
+          currentTrialRoundId: roundId,
+          currentProgress: null,
+          currentResult: null,
+          rounds: [
+            { id: roundId, sequence: 1, sourceResultId: null, revokedAt: null },
+          ],
+          progresses: [
+            {
+              id: 'progress-history',
+              trialRoundId: roundId,
+              choiceId: 'choice-denied',
+              hearingAt: null,
+              hearingPlace: null,
+              judgeName: null,
+              documentFiles: [
+                {
+                  materialId: 'material-private',
+                  contentVersionId: 'version-private',
+                  originalFilename: '敏感文书.pdf',
+                  mimeType: 'application/pdf',
+                },
+              ],
+              serviceFiles: [],
+            },
+          ],
+          results: [],
+          revocations: [],
+        },
+      };
+      let resolveOld!: (value: unknown) => void;
+      let rejectRetry!: (reason: unknown) => void;
+      const old = new Promise((resolve) => {
+        resolveOld = resolve;
+      });
+      const retry = new Promise((_, reject) => {
+        rejectRetry = reject;
+      });
+      api.getLawyerCase.mockResolvedValue(current);
+      api.saveSecondInstance
+        .mockReturnValueOnce(old)
+        .mockReturnValueOnce(retry);
+      const { wrapper, auth } = await mountPage(`/lawyer/cases/${caseId}`);
+      await wrapper
+        .get('[data-test="second-instance-progress-form"]')
+        .trigger('submit');
+      const original = api.saveSecondInstance.mock.calls[0];
+      auth.session = { ...auth.session!, authorizationRevision: 2 };
+      await flushPromises();
+      await wrapper
+        .get('[data-test="second-instance-hearing-at"]')
+        .setValue('2026-10-09');
+      await wrapper
+        .get(
+          '[data-test="second-instance-progress-form"] fieldset input[type="checkbox"]',
+        )
+        .setValue(true);
+      expect(wrapper.text()).toContain('敏感文书.pdf');
+      await wrapper
+        .get('[data-test="second-instance-result-retry"]')
+        .trigger('click');
+      expect(api.saveSecondInstance.mock.calls[1]).toEqual(original);
+      rejectRetry(
+        new ApiError(
+          'denied',
+          status,
+          status === 403 ? 'ACTION_FORBIDDEN' : 'RESOURCE_NOT_FOUND',
+        ),
+      );
+      await flushPromises();
+      const identity = { actor: 'LAWYER:lawyer-1:', caseId };
+      expect(secondInstanceCommandState(identity)).toMatchObject({
+        status: 'sending',
+        command: { input: original[1] },
+      });
+      expect(
+        wrapper.find('[data-test="second-instance-progress-form"]').exists(),
+      ).toBe(false);
+      expect(
+        wrapper.find('[data-test="second-instance-round-1"]').exists(),
+      ).toBe(false);
+      expect(
+        wrapper.find('[data-test="second-instance-result-retry"]').exists(),
+      ).toBe(false);
+      expect(wrapper.text()).not.toContain('敏感文书.pdf');
+      resolveOld({});
+      await flushPromises();
+      expect(secondInstanceCommandState(identity)?.status).toBe('confirmed');
+      expect(wrapper.text()).toContain('原轮次请求已确认');
+      expect(
+        wrapper.find('[data-test="second-instance-progress-form"]').exists(),
+      ).toBe(false);
+      expect(wrapper.text()).not.toContain('敏感文书.pdf');
+      wrapper.unmount();
     },
   );
   it('shows second-instance history to the active lawyer without exposing revoke', async () => {

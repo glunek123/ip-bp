@@ -512,6 +512,21 @@ async function send(command: PendingCommand): Promise<void> {
     );
     settlingCurrent = false;
     if (
+      currentContext(context) &&
+      reason instanceof ApiError &&
+      [403, 404].includes(reason.status)
+    ) {
+      clearSensitive();
+      error.value =
+        reason.status === 403
+          ? '当前账号已不能办理此案件，敏感内容已清除，正在核对访问权限。'
+          : '案件已不可访问，敏感内容已清除，正在核对案件状态。';
+      if (state?.status === 'rejected')
+        clearSecondInstanceCommand(identity, command);
+      emit('refresh');
+      return;
+    }
+    if (
       !currentContext(context) ||
       state === null ||
       state.status === 'confirmed' ||
@@ -520,8 +535,6 @@ async function send(command: PendingCommand): Promise<void> {
       return;
     if (state.status === 'unknown') {
       pendingUnknown.value = command;
-      if (reason instanceof ApiError && [403, 404].includes(reason.status))
-        clearSensitive();
       error.value =
         '操作结果未知。请使用相同请求安全重试；刷新详情不能确认提交结果。';
     } else if (
@@ -536,19 +549,6 @@ async function send(command: PendingCommand): Promise<void> {
       conflictNeedsReview.value = true;
       error.value =
         '案件版本或轮次已变化。旧请求不会改用新版本，请刷新并核对后重新填写。';
-      emit('refresh');
-    } else if (reason instanceof ApiError && reason.status === 403) {
-      clearSecondInstanceCommand(identity, command);
-      pendingUnknown.value = null;
-      clearSensitive();
-      error.value =
-        '当前账号已不能办理此案件，敏感内容已清除，正在核对访问权限。';
-      emit('refresh');
-    } else if (reason instanceof ApiError && reason.status === 404) {
-      clearSecondInstanceCommand(identity, command);
-      pendingUnknown.value = null;
-      clearSensitive();
-      error.value = '案件已不可访问，正在核对案件状态。';
       emit('refresh');
     } else {
       clearSecondInstanceCommand(identity, command);
@@ -1307,7 +1307,7 @@ function roundLabel(round: (typeof roundHistory.value)[number]): string {
       我已核对最新案件详情，继续填写
     </button>
     <button
-      v-if="pendingUnknown"
+      v-if="pendingUnknown && !accessDenied"
       data-test="second-instance-result-retry"
       type="button"
       :disabled="pending"
