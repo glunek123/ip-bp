@@ -1183,6 +1183,46 @@ describe('cases API', () => {
       },
     });
   });
+  it('decodes a formal acceptance with no selected files in current and history', async () => {
+    const acceptance = {
+      id: '80000000-0000-4000-8000-000000000031',
+      trialRoundId: '80000000-0000-4000-8000-000000000032',
+      acceptedAt: '2026-10-05',
+      courtCaseNo: '（2026）甲0101民初1号',
+      recordedAt: '2026-10-05T01:00:00.000Z',
+      recordedByUserId: '80000000-0000-4000-8000-000000000006',
+      files: [],
+    };
+    const response = {
+      ...detail,
+      stage: 'WAITING_HEARING',
+      version: 6,
+      courtCaseNo: acceptance.courtCaseNo,
+      canRegisterAcceptance: false,
+      canUploadAcceptanceMaterials: true,
+      acceptance,
+      acceptances: [acceptance],
+    };
+    mockJson(response);
+    await expect(getCase('case-1')).resolves.toMatchObject({
+      acceptance: { files: [] },
+      acceptances: [{ files: [] }],
+    });
+    mockJson({
+      ...response,
+      acceptances: [{ ...acceptance, files: [{ extra: true }] }],
+    });
+    await expect(getCase('case-1')).rejects.toMatchObject({
+      code: 'INVALID_RESPONSE',
+    });
+    mockJson({
+      ...response,
+      acceptance: { ...acceptance, unexpected: true },
+    });
+    await expect(getCase('case-1')).rejects.toMatchObject({
+      code: 'INVALID_RESPONSE',
+    });
+  });
   it('rejects legacy, malformed, and extra fields in the current acceptance', async () => {
     const acceptance = {
       id: '80000000-0000-4000-8000-000000000031',
@@ -1901,6 +1941,79 @@ describe('cases API', () => {
     await expect(read('case-1')).rejects.toMatchObject({
       code: 'INVALID_RESPONSE',
     });
+  });
+
+  it('decodes the lawyer acceptance without optional files but rejects hidden actor and malformed history', async () => {
+    const acceptance = {
+      id: '80000000-0000-4000-8000-000000000031',
+      trialRoundId: '80000000-0000-4000-8000-000000000032',
+      acceptedAt: '2026-10-05',
+      courtCaseNo: '（2026）甲0101民初1号',
+      recordedAt: '2026-10-05T01:00:00.000Z',
+      files: [],
+    };
+    const response = {
+      id: 'case-1',
+      businessNo: 'CA-1',
+      stage: 'WAITING_HEARING',
+      version: 6,
+      canMatch: false,
+      canSubmitComplaint: false,
+      canConfirmComplaint: false,
+      canMailComplaint: false,
+      canSubmitFiling: false,
+      canRegisterAcceptance: false,
+      canUploadAcceptanceMaterials: true,
+      canScheduleHearing: true,
+      canCorrectHearing: false,
+      canRegisterJudgment: false,
+      canCorrectJudgment: false,
+      canChooseJudgmentNextStep: false,
+      canRevokeJudgmentNextStep: false,
+      canSaveSecondInstance: false,
+      canRegisterSecondInstanceResult: false,
+      canRevokeSecondInstanceResult: false,
+      createdAt: '2026-09-28T00:00:00.000Z',
+      matchedAt: '2026-09-29T01:00:00Z',
+      matchedOn: '2026-09-28',
+      defendants: detail.defendants,
+      lawyers: detail.lawyers,
+      customer: { id: 'customer-1', name: '客户甲' },
+      rightsHolder: { id: 'holder-1', name: '权利人甲' },
+      certificate: detail.certificate,
+      complaint: null,
+      complaintConfirmation: null,
+      complaintMailing: null,
+      filingSubmission: null,
+      courtCaseNo: acceptance.courtCaseNo,
+      acceptance,
+      acceptanceMaterials: detail.acceptanceMaterials,
+      hearing: detail.hearing,
+      judgment: detail.judgment,
+      judgmentNextStep: { current: null, history: [], revocations: [] },
+      acceptances: [acceptance],
+      secondInstance: detail.secondInstance,
+    };
+    mockJson(response);
+    await expect(casesApi.getLawyerCase('case-1')).resolves.toMatchObject({
+      acceptance: { files: [] },
+      acceptances: [{ files: [] }],
+    });
+    for (const invalidAcceptance of [
+      {
+        ...acceptance,
+        recordedByUserId: '80000000-0000-4000-8000-000000000006',
+      },
+      {
+        ...acceptance,
+        files: [{ category: 'ACCEPTANCE_NOTICE', extra: true }],
+      },
+    ]) {
+      mockJson({ ...response, acceptances: [invalidAcceptance] });
+      await expect(casesApi.getLawyerCase('case-1')).rejects.toMatchObject({
+        code: 'INVALID_RESPONSE',
+      });
+    }
   });
 
   it('posts the existing complaint command through the lawyer route', async () => {

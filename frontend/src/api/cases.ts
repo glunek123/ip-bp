@@ -1390,7 +1390,6 @@ function validAcceptanceHistory(value: unknown, internal: boolean): boolean {
     (!('recordedByUserId' in value) ||
       (internal && uuidV4(value.recordedByUserId))) &&
     Array.isArray(value.files) &&
-    value.files.length > 0 &&
     value.files.every(
       (file) =>
         record(file) &&
