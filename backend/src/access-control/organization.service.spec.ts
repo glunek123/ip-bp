@@ -345,7 +345,7 @@ describe('OrganizationService management context', () => {
       assignTeamRoles: false,
       manageRoleTemplates: true,
     });
-    expect(result.permissionCatalog).toHaveLength(52);
+    expect(result.permissionCatalog).toHaveLength(55);
     for (const [action, label] of [
       ['CUSTOMER_RESPONSIBLE_TRANSFER', '转派负责运营'],
       ['CUSTOMER_COOPERATION_PAUSE', '暂停客户合作'],
@@ -407,6 +407,17 @@ describe('OrganizationService management context', () => {
       label: '撤销判决后续选择',
       scopes: ['SELF', 'TEAM', 'DEPARTMENT'],
     });
+    for (const [action, label] of [
+      ['CASE_SECOND_INSTANCE_SAVE', '保存二审进展'],
+      ['CASE_SECOND_INSTANCE_RESULT', '登记二审结果'],
+      ['CASE_SECOND_INSTANCE_RESULT_REVOKE', '撤销二审结果'],
+    ]) {
+      expect(result.permissionCatalog).toContainEqual({
+        action,
+        label,
+        scopes: ['SELF', 'TEAM', 'DEPARTMENT'],
+      });
+    }
     expect(result.permissionCatalog).toContainEqual({
       action: 'CASE_HEARING_CORRECT',
       label: '更正开庭安排',
