@@ -126,7 +126,7 @@ type RevokeSecondInstanceResultInput = {
 node --version
 pnpm --version
 pnpm --filter @dev-cor/backend test src/modules/cases/case-second-instance.service.spec.ts src/modules/cases/case-acceptance.service.spec.ts src/modules/cases/case-hearing.service.spec.ts src/modules/cases/case-hearing-scheduler.service.spec.ts src/modules/cases/case-judgment.service.spec.ts src/modules/cases/case-judgment-next-step.service.spec.ts
-pnpm --filter @dev-cor/frontend test src/api/cases.spec.ts src/modules/cases/CaseSecondInstancePanel.spec.ts src/modules/cases/CaseDetailPage.spec.ts src/modules/cases/LawyerCaseDetailPage.spec.ts
+pnpm --filter @dev-cor/frontend exec vitest run src/api/cases.spec.ts src/modules/cases/CaseSecondInstancePanel.spec.ts src/modules/cases/CasePages.spec.ts src/modules/cases/LawyerCaseDetailPage.spec.ts
 pnpm check:fast
 pnpm verify
 pnpm test:e2e tests/e2e/case-second-instance.spec.ts tests/e2e/case-second-instance-database.spec.ts tests/e2e/case-second-instance-migration.spec.ts tests/e2e/case-acceptance.spec.ts tests/e2e/case-acceptance-database.spec.ts tests/e2e/case-acceptance-migration.spec.ts tests/e2e/case-hearing.spec.ts tests/e2e/case-hearing-database.spec.ts tests/e2e/case-hearing-migration.spec.ts tests/e2e/case-judgment.spec.ts tests/e2e/case-judgment-database.spec.ts tests/e2e/case-judgment-migration.spec.ts tests/e2e/case-judgment-next-step.spec.ts tests/e2e/case-judgment-next-step-database.spec.ts tests/e2e/case-judgment-next-step-migration.spec.ts tests/e2e/case-lawyer.spec.ts tests/e2e/case-lawyer-database.spec.ts tests/e2e/cases.spec.ts tests/e2e/core-leads.spec.ts --workers=1
