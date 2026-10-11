@@ -68,7 +68,7 @@ interface SubmitExecutionResult {
 
 ## Task 3：真实纵向验收与迁移证据（6 Luna执行；高风险断言由Sol裁定）
 
-**Allowed files:** 新增`tests/e2e/case-execution-submission.spec.ts`／`-database.spec.ts`／`-migration.spec.ts`；新增`tests/support/case-execution-submission-database.mjs`／`.d.mts`与migration对应helper；只调整直接受新外键影响的旧清理／迁移支持边界。不改Playwright配置、超时、重试或旧迁移断言。
+**Allowed files:** Luna只新增`tests/e2e/case-execution-submission.spec.ts`真实浏览器纵向用例及其不涉及数据库规则的页面交互辅助。`tests/support/case-execution-submission-database.mjs`／`.d.mts`、migration helper、`*-database.spec.ts`／`*-migration.spec.ts`及旧清理／历史迁移支持边界由Task 1 Sol独占编写；本Task只按已定命令执行并回报，不自行修改数据库不变量或SQL。发现相关缺口升级Sol，不改Playwright配置、超时、重试或旧迁移断言。
 
 - [ ] 复用现有真实密码账号及正常来源链，经CA-009直接转执行先走一条运营上传→提交→待确认→下载→刷新／重登录；fixture不得预置本片目标成功状态。低成本契约通过后尽早跑该单例，不等最终整组。
 - [ ] 再验证当前律师正常办理、同部门只读组员下载但写拒绝、其他律师／跨部门／外部身份拒绝；提交后同企业真实客户账号在已处理列表仍看到本案，详情／刷新／重登录识别新阶段且不泄漏执行草稿／历史／内部原因；另一企业不可读。内部两种view和律师侧栏组计数／过滤一致。二审CHANGE／AFFIRM及重审轮后转执行保留准确来源，不重复承担全系统盘点。

@@ -1,6 +1,6 @@
 {
   "version": 1,
-  "recordedAt": "2026-10-11T15:43:47.225Z",
+  "recordedAt": "2026-10-11T15:45:53.599Z",
   "files": {
     ".cursor/rules/verified-feature-integration.mdc": "ae4a657aadc5e3e1651771ae3292b333b4b4e6f6dcdecd0c8ded33382bf4b1c0",
     ".env.example": "07211cde5c2b59efc21b619b752d4c9b871f0980d2d64ca3c146ad6151fd27ca",
@@ -549,7 +549,7 @@
     "docs/superpowers/plans/2026-10-10-case-judgment-next-step.md": "f921053df197f2879e8977d3d6828025b4084b2d9f360375e8c651b70a4b8894",
     "docs/superpowers/plans/2026-10-10-case-second-instance.md": "3e3602a82a896630fd32842b6e6c3201002b3c4f58646e6ec845c62602ebfd21",
     "docs/superpowers/plans/2026-10-10-customer-settlements.md": "5100504826a4acd2df450d98347a6d925c3ffb8b2dd7a1b7c3cd26c4ceb661b4",
-    "docs/superpowers/plans/2026-10-11-case-execution-materials.md": "84b1b9d5be44f7829cac2c7101a58df29ef9051b91fc2462253e02b4d6472edc",
+    "docs/superpowers/plans/2026-10-11-case-execution-materials.md": "7aab8d7710f872d34b6fa9e17dbf14d85b6f59c18334f5220bb6f8dccc9bede3",
     "docs/superpowers/specs/2026-09-17-local-account-auth-design.md": "90318fbebae983c71e9558138cbd40b30ef02afce332a0e52f70797601a23d6f",
     "docs/superpowers/specs/2026-09-20-personnel-access-management-design.md": "bfeaf41d0356417c57a5030fd6dc9de0cfafa37d5404bb20cd3f7cff76ee5bda",
     "docs/superpowers/specs/2026-09-20-role-template-management-design.md": "51c18905b48e4b2b3ca835446b59dcb4e489eb8813b4922255fd403161b90dd8",
