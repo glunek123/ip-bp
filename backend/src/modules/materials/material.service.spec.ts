@@ -145,6 +145,125 @@ describe('MaterialService', () => {
       }),
     );
   });
+  it.each([
+    'SECOND_INSTANCE_DOCUMENT',
+    'SECOND_INSTANCE_SERVICE',
+    'SECOND_INSTANCE_JUDGMENT',
+  ] as const)(
+    'lists %s current and exact frozen versions only for the current primary lawyer',
+    async (category) => {
+      const fixture = createFixture();
+      let pointer = 'current-version';
+      const lawyer = { ...actor, lawyerAccountId: actor.userId };
+      fixture.db.caseLawyerAssignment.findFirst.mockResolvedValue({
+        lawyer: { accountBinding: { id: 'binding-1' } },
+      });
+      fixture.db.case.findFirst.mockResolvedValue({ stage: 'SECOND_INSTANCE' });
+      fixture.db.materialReference.findMany.mockResolvedValue([]);
+      if (category === 'SECOND_INSTANCE_JUDGMENT')
+        fixture.db.caseSecondInstanceResultVersion.findMany.mockResolvedValue([
+          { materialId: 'second-material', contentVersionId: 'frozen-version' },
+        ]);
+      else
+        fixture.db.caseSecondInstanceProgressVersion.findMany.mockResolvedValue(
+          [
+            {
+              materialId: 'second-material',
+              contentVersionId: 'frozen-version',
+              category,
+            },
+          ],
+        );
+      fixture.db.material.findMany.mockImplementation(async ({ where }) => {
+        if (!where.id) {
+          return where.category.in.includes(category)
+            ? [
+                {
+                  id: 'second-material',
+                  category,
+                  currentVersionId: pointer,
+                },
+              ]
+            : [];
+        }
+        return [
+          {
+            id: 'second-material',
+            ownerType: 'CASE',
+            ownerId: 'case-1',
+            category,
+            purpose: category,
+            currentVersionId: pointer,
+            status: 'ACTIVE',
+            version: 2,
+            deletedAt: null,
+            createdAt: now,
+            updatedAt: now,
+            contentVersions: [
+              {
+                id: 'current-version',
+                materialId: 'second-material',
+                originalFilename: '二审进展.pdf',
+                mimeType: 'application/pdf',
+                sizeBytes: 4n,
+                sha256: 'a'.repeat(64),
+                status: 'AVAILABLE',
+                createdAt: now,
+              },
+              ...['frozen-version', 'unfrozen-version'].map((id) => ({
+                id,
+                materialId: 'second-material',
+                originalFilename: `${id}.pdf`,
+                mimeType: 'application/pdf',
+                sizeBytes: 4n,
+                sha256: 'a'.repeat(64),
+                status: 'AVAILABLE',
+                createdAt: now,
+              })),
+            ],
+          },
+        ];
+      });
+      const listed = await fixture.service.listOwnerMaterials(
+        lawyer,
+        'CASE',
+        'case-1',
+      );
+      expect(listed.items[0]).toMatchObject({
+        category,
+        currentVersionId: 'current-version',
+        contentVersions: [{ id: 'current-version' }, { id: 'frozen-version' }],
+      });
+      pointer = 'missing-version';
+      const missingPointer = await fixture.service.listOwnerMaterials(
+        lawyer,
+        'CASE',
+        'case-1',
+      );
+      expect(missingPointer.items[0]).toMatchObject({
+        currentVersionId: null,
+        contentVersions: [{ id: 'frozen-version' }],
+      });
+      fixture.db.caseLawyerAssignment.findFirst.mockResolvedValue(null);
+      await expect(
+        fixture.service.listOwnerMaterials(lawyer, 'CASE', 'case-1'),
+      ).rejects.toMatchObject({ response: { code: 'ACTION_FORBIDDEN' } });
+      const client = { ...actor, clientCustomerId: customerId };
+      fixture.db.customerAccountBinding.findFirst.mockResolvedValue({
+        id: 'client-binding',
+      });
+      fixture.db.case.findFirst.mockResolvedValue({
+        stage: 'SECOND_INSTANCE',
+        complaintConfirmation: {
+          confirmedComplaintContentVersionId: 'complaint-1',
+        },
+      });
+      expect(
+        (await fixture.service.listOwnerMaterials(client, 'CASE', 'case-1'))
+          .items,
+      ).toEqual([]);
+    },
+  );
   it('denies a client who guesses a CASE material version outside the whitelist', async () => {
     const fixture = createFixture();
     const client = { ...actor, clientCustomerId: customerId };
@@ -3355,6 +3474,13 @@ function createFixture() {
       count: materialReferenceCount,
       findMany: jest.fn(),
       findFirst: jest.fn(),
+    },
+    caseLawyerAssignment: { findFirst: jest.fn() },
+    caseSecondInstanceProgressVersion: {
+      findMany: jest.fn().mockResolvedValue([]),
+    },
+    caseSecondInstanceResultVersion: {
+      findMany: jest.fn().mockResolvedValue([]),
     },
     lead: { findFirst: leadFindFirst },
     case: { findFirst: jest.fn() },

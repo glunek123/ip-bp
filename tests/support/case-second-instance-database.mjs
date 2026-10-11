@@ -583,6 +583,28 @@ export async function verifyCaseSecondInstanceDatabase() {
       const caseRead = new CaseReadService(database, access, materials);
       const lawyerList = await caseRead.list(lawyerActor, 1, 20);
       const lawyerDetail = await caseRead.get(lawyerActor, caseId);
+      const lawyerMaterials = await materials.listOwnerMaterials(
+        lawyerActor,
+        'CASE',
+        caseId,
+      );
+      let wrongLawyerMaterialsDenied = false;
+      try {
+        const otherLawyerId = randomUUID();
+        await materials.listOwnerMaterials(
+          {
+            ...lawyerActor,
+            userId: otherLawyerId,
+            lawyerAccountId: otherLawyerId,
+          },
+          'CASE',
+          caseId,
+        );
+      } catch (error) {
+        wrongLawyerMaterialsDenied =
+          error.response?.code === 'RESOURCE_NOT_FOUND' ||
+          error.response?.code === 'ACTION_FORBIDDEN';
+      }
       const lawyerOpened = await materials.openVersion(
         lawyerActor,
         file.materialId,
@@ -608,6 +630,11 @@ export async function verifyCaseSecondInstanceDatabase() {
       const clientCase = new ClientCaseService(database, materials);
       const clientList = await clientCase.list(clientActor, 'RECORDED', 1, 20);
       const clientDetail = await clientCase.get(clientActor, caseId);
+      const clientMaterials = await materials.listOwnerMaterials(
+        clientActor,
+        'CASE',
+        caseId,
+      );
       let clientSecondFileDenied = false;
       try {
         await materials.openVersion(
@@ -863,6 +890,14 @@ export async function verifyCaseSecondInstanceDatabase() {
         formerLawyerDenied = error.response?.code === 'RESOURCE_NOT_FOUND';
       }
       let formerFileDenied = false;
+      let formerLawyerMaterialsDenied = false;
+      try {
+        await materials.listOwnerMaterials(lawyerActor, 'CASE', caseId);
+      } catch (error) {
+        formerLawyerMaterialsDenied =
+          error.response?.code === 'RESOURCE_NOT_FOUND' ||
+          error.response?.code === 'ACTION_FORBIDDEN';
+      }
       try {
         await materials.openVersion(
           lawyerActor,
@@ -1016,6 +1051,17 @@ export async function verifyCaseSecondInstanceDatabase() {
           remandInternalList?.canRevokeSecondInstanceResult === true &&
           childBeforeProgress.canRevokeSecondInstanceResult === false,
         lawyerFile: lawyerBytes.includes(Buffer.from('CA010 real result')),
+        lawyerMaterials:
+          [file, progressFile].every((uploaded) =>
+            lawyerMaterials.items.some(
+              (material) =>
+                material.id === uploaded.materialId &&
+                material.currentVersionId === uploaded.contentVersionId &&
+                material.contentVersions.some(
+                  (version) => version.id === uploaded.contentVersionId,
+                ),
+            ),
+          ) && wrongLawyerMaterialsDenied,
         clientRead:
           clientList.items.some((item) => item.id === caseId) &&
           clientDetail.stage === 'WAITING_EXECUTION_DOCUMENTS' &&
@@ -1023,8 +1069,12 @@ export async function verifyCaseSecondInstanceDatabase() {
           !('judgmentNextStep' in clientDetail) &&
           !('fees' in clientDetail),
         clientSecondFileDenied,
+        clientSecondMaterialsHidden: clientMaterials.items.every(
+          (material) => !material.category.startsWith('SECOND_INSTANCE_'),
+        ),
         formerLawyerDenied,
         formerFileDenied,
+        formerLawyerMaterialsDenied,
         race,
         final:
           finalCase.stage === 'WAITING_EXECUTION_DOCUMENTS' &&

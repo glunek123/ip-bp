@@ -281,6 +281,7 @@ describe('CaseSecondInstancePanel', () => {
           category: 'SECOND_INSTANCE_DOCUMENT',
           purpose: 'SECOND_INSTANCE_DOCUMENT',
           status: 'ACTIVE',
+          currentVersionId: id('41'),
           contentVersions: [
             {
               id: id('41'),
@@ -328,6 +329,75 @@ describe('CaseSecondInstancePanel', () => {
       .get('[data-test="second-instance-recovery-adopt"]')
       .trigger('click');
     expect((input.element as HTMLInputElement).disabled).toBe(false);
+    wrapper.unmount();
+  });
+  it('offers a current version and a frozen old version, but not an unfrozen old version', async () => {
+    api.uploadMaterialFile.mockRejectedValueOnce(
+      new ApiError('unknown', 503, 'NETWORK_ERROR'),
+    );
+    const currentFile = {
+      id: id('51'),
+      materialId: id('50'),
+      status: 'AVAILABLE',
+      originalFilename: '当前.pdf',
+      mimeType: 'application/pdf',
+      createdAt: '2026-10-11T00:00:00Z',
+    };
+    const unfrozenFile = {
+      ...currentFile,
+      id: id('52'),
+      originalFilename: '旧未冻结.pdf',
+    };
+    const frozenFile = {
+      ...currentFile,
+      id: id('53'),
+      originalFilename: '旧已冻结.pdf',
+    };
+    api.listOwnerMaterials.mockResolvedValueOnce({
+      items: [
+        {
+          id: id('50'),
+          ownerType: 'CASE',
+          ownerId: id('20'),
+          category: 'SECOND_INSTANCE_DOCUMENT',
+          purpose: 'SECOND_INSTANCE_DOCUMENT',
+          status: 'ACTIVE',
+          currentVersionId: currentFile.id,
+          contentVersions: [unfrozenFile, frozenFile, currentFile],
+        },
+      ],
+      total: 1,
+    });
+    const detail = item();
+    detail.secondInstance.progresses.push({
+      id: id('54'),
+      trialRoundId: round1,
+      choiceId: choice1,
+      documentFiles: [
+        {
+          materialId: id('50'),
+          contentVersionId: frozenFile.id,
+          originalFilename: frozenFile.originalFilename,
+          mimeType: frozenFile.mimeType,
+        },
+      ],
+      serviceFiles: [],
+    } as never);
+    const wrapper = mountPanel({ item: detail });
+    const input = wrapper.get('[data-test="second-instance-document-upload"]');
+    Object.defineProperty(input.element, 'files', {
+      configurable: true,
+      value: [new File(['x'], 'x.pdf', { type: 'application/pdf' })],
+    });
+    await input.trigger('change');
+    await flushPromises();
+    await wrapper
+      .get('[data-test="second-instance-recovery-refresh"]')
+      .trigger('click');
+    await flushPromises();
+    expect(wrapper.text()).toContain('当前.pdf');
+    expect(wrapper.text()).toContain('旧已冻结.pdf');
+    expect(wrapper.text()).not.toContain('旧未冻结.pdf');
     wrapper.unmount();
   });
 

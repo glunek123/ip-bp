@@ -238,6 +238,156 @@ describe('LawyerCaseDetailPage', () => {
       .trigger('click');
     expect(api.saveSecondInstance.mock.calls[1]).toEqual(first);
   });
+  it.each(['old-first', 'retry-first'] as const)(
+    'keeps a confirmed original receipt across overlapping same-key attempts (%s)',
+    async (order) => {
+      const roundId = '70000000-0000-4000-8000-000000000091';
+      const caseId = `case-overlap-${order}`;
+      const current = {
+        ...detail(caseId, 'CA-OVERLAP', 'SECOND_INSTANCE'),
+        canSaveSecondInstance: true,
+        judgmentNextStep: {
+          current: {
+            id: 'choice-overlap',
+            trialRoundId: roundId,
+            judgmentId: 'judgment-overlap',
+            next: 'APPEAL' as const,
+          },
+          history: [],
+          revocations: [],
+        },
+        secondInstance: {
+          currentTrialRoundId: roundId,
+          currentProgress: null,
+          currentResult: null,
+          rounds: [
+            { id: roundId, sequence: 1, sourceResultId: null, revokedAt: null },
+          ],
+          progresses: [],
+          results: [],
+          revocations: [],
+        },
+      };
+      let resolveOld!: (value: unknown) => void;
+      let rejectOld!: (reason: unknown) => void;
+      let resolveRetry!: (value: unknown) => void;
+      let rejectRetry!: (reason: unknown) => void;
+      const old = new Promise((resolve, reject) => {
+        resolveOld = resolve;
+        rejectOld = reject;
+      });
+      const retry = new Promise((resolve, reject) => {
+        resolveRetry = resolve;
+        rejectRetry = reject;
+      });
+      api.getLawyerCase.mockResolvedValue(current);
+      api.saveSecondInstance
+        .mockReturnValueOnce(old)
+        .mockReturnValueOnce(retry);
+      const { wrapper, auth } = await mountPage(`/lawyer/cases/${caseId}`);
+      await wrapper
+        .get('[data-test="second-instance-progress-form"]')
+        .trigger('submit');
+      auth.session = { ...auth.session!, authorizationRevision: 2 };
+      await flushPromises();
+      expect(
+        wrapper.find('[data-test="second-instance-result-retry"]').exists(),
+      ).toBe(true);
+      await wrapper
+        .get('[data-test="second-instance-result-retry"]')
+        .trigger('click');
+      expect(api.saveSecondInstance.mock.calls[1]).toEqual(
+        api.saveSecondInstance.mock.calls[0],
+      );
+      if (order === 'old-first') {
+        resolveOld({});
+        await flushPromises();
+        rejectRetry(new ApiError('unknown', 503, 'NETWORK_ERROR'));
+      } else {
+        resolveRetry({});
+        await flushPromises();
+        rejectOld(new ApiError('unknown', 503, 'NETWORK_ERROR'));
+      }
+      await flushPromises();
+      expect(wrapper.text()).toContain('原轮次请求已确认');
+      expect(
+        wrapper.find('[data-test="second-instance-result-retry"]').exists(),
+      ).toBe(false);
+      auth.session = { ...auth.session!, authorizationRevision: 3 };
+      await flushPromises();
+      expect(wrapper.text()).toContain('原轮次请求已确认');
+      expect(
+        wrapper.find('[data-test="second-instance-result-retry"]').exists(),
+      ).toBe(false);
+    },
+  );
+  it.each(['old-first', 'retry-first'] as const)(
+    'does not let a sibling 403 erase a confirmed same-key receipt (%s)',
+    async (order) => {
+      const caseId = `case-definitive-${order}`;
+      const roundId = '70000000-0000-4000-8000-000000000092';
+      const current = {
+        ...detail(caseId, 'CA-DEFINITE', 'SECOND_INSTANCE'),
+        canSaveSecondInstance: true,
+        judgmentNextStep: {
+          current: {
+            id: 'choice-definite',
+            trialRoundId: roundId,
+            judgmentId: 'judgment-definite',
+            next: 'APPEAL' as const,
+          },
+          history: [],
+          revocations: [],
+        },
+        secondInstance: {
+          currentTrialRoundId: roundId,
+          currentProgress: null,
+          currentResult: null,
+          rounds: [
+            { id: roundId, sequence: 1, sourceResultId: null, revokedAt: null },
+          ],
+          progresses: [],
+          results: [],
+          revocations: [],
+        },
+      };
+      let rejectOld!: (reason: unknown) => void;
+      let resolveRetry!: (value: unknown) => void;
+      const old = new Promise((_, reject) => {
+        rejectOld = reject;
+      });
+      const retry = new Promise((resolve) => {
+        resolveRetry = resolve;
+      });
+      api.getLawyerCase.mockResolvedValue(current);
+      api.saveSecondInstance
+        .mockReturnValueOnce(old)
+        .mockReturnValueOnce(retry);
+      const { wrapper, auth } = await mountPage(`/lawyer/cases/${caseId}`);
+      await wrapper
+        .get('[data-test="second-instance-progress-form"]')
+        .trigger('submit');
+      auth.session = { ...auth.session!, authorizationRevision: 2 };
+      await flushPromises();
+      await wrapper
+        .get('[data-test="second-instance-result-retry"]')
+        .trigger('click');
+      if (order === 'old-first') {
+        rejectOld(new ApiError('denied', 403, 'ACTION_FORBIDDEN'));
+        await flushPromises();
+        resolveRetry({});
+      } else {
+        resolveRetry({});
+        await flushPromises();
+        rejectOld(new ApiError('denied', 403, 'ACTION_FORBIDDEN'));
+      }
+      await flushPromises();
+      expect(wrapper.text()).toContain('原轮次请求已确认');
+      expect(
+        wrapper.find('[data-test="second-instance-result-retry"]').exists(),
+      ).toBe(false);
+    },
+  );
   it('shows second-instance history to the active lawyer without exposing revoke', async () => {
     const trialRoundId = '70000000-0000-4000-8000-000000000001';
     api.getLawyerCase.mockResolvedValueOnce({

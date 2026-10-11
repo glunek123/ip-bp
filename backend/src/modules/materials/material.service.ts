@@ -1187,6 +1187,7 @@ export class MaterialService {
           ownerId: true,
           category: true,
           purpose: true,
+          currentVersionId: true,
           status: true,
           version: true,
           deletedAt: true,
@@ -1220,7 +1221,18 @@ export class MaterialService {
             ownerId: material.ownerId,
             category: material.category,
             purpose: toMaterialPurpose(material.purpose),
-            currentVersionId: null,
+            currentVersionId:
+              actor.lawyerAccountId !== undefined &&
+              [
+                'SECOND_INSTANCE_DOCUMENT',
+                'SECOND_INSTANCE_SERVICE',
+                'SECOND_INSTANCE_JUDGMENT',
+              ].includes(material.category) &&
+              versions.some(
+                (version) => version.id === material.currentVersionId,
+              )
+                ? material.currentVersionId
+                : null,
             status: 'ACTIVE' as const,
             version: material.version,
             deletedAt: material.deletedAt,
@@ -3186,10 +3198,13 @@ export class MaterialService {
               'PAYMENT_LIST',
               'SERVICE_DOCUMENT',
               'JUDGMENT',
+              'SECOND_INSTANCE_DOCUMENT',
+              'SECOND_INSTANCE_SERVICE',
+              'SECOND_INSTANCE_JUDGMENT',
             ],
           },
         },
-        select: { id: true, currentVersionId: true },
+        select: { id: true, category: true, currentVersionId: true },
       }),
       this.database.materialReference.findMany({
         where: {
@@ -3208,13 +3223,67 @@ export class MaterialService {
       }),
     ]);
     const allowed = new Map<string, Set<string>>();
+    const secondCategories = new Set([
+      'SECOND_INSTANCE_DOCUMENT',
+      'SECOND_INSTANCE_SERVICE',
+      'SECOND_INSTANCE_JUDGMENT',
+    ]);
+    const categories = new Map(
+      materials.map((material) => [material.id, material.category]),
+    );
     for (const material of materials) {
-      if (material.currentVersionId !== null)
-        allowed.set(material.id, new Set([material.currentVersionId]));
+      if (
+        material.currentVersionId !== null ||
+        secondCategories.has(material.category)
+      )
+        allowed.set(
+          material.id,
+          new Set(
+            material.currentVersionId === null
+              ? []
+              : [material.currentVersionId],
+          ),
+        );
     }
     for (const reference of references) {
+      if (secondCategories.has(categories.get(reference.materialId) ?? ''))
+        continue;
       const versions = allowed.get(reference.materialId);
       if (versions !== undefined) versions.add(reference.contentVersionId);
+    }
+    const secondMaterialIds = materials
+      .filter((material) => secondCategories.has(material.category))
+      .map((material) => material.id);
+    if (secondMaterialIds.length > 0) {
+      const [progressVersions, resultVersions] = await Promise.all([
+        this.database.caseSecondInstanceProgressVersion.findMany({
+          where: {
+            caseId,
+            departmentId: actor.departmentId,
+            materialId: { in: secondMaterialIds },
+            category: {
+              in: ['SECOND_INSTANCE_DOCUMENT', 'SECOND_INSTANCE_SERVICE'],
+            },
+          },
+          select: { materialId: true, contentVersionId: true, category: true },
+        }),
+        this.database.caseSecondInstanceResultVersion.findMany({
+          where: {
+            caseId,
+            departmentId: actor.departmentId,
+            materialId: { in: secondMaterialIds },
+          },
+          select: { materialId: true, contentVersionId: true },
+        }),
+      ]);
+      for (const version of progressVersions) {
+        if (categories.get(version.materialId) === version.category)
+          allowed.get(version.materialId)?.add(version.contentVersionId);
+      }
+      for (const version of resultVersions) {
+        if (categories.get(version.materialId) === 'SECOND_INSTANCE_JUDGMENT')
+          allowed.get(version.materialId)?.add(version.contentVersionId);
+      }
     }
     return allowed;
   }

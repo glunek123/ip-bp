@@ -20,13 +20,16 @@ import {
 } from '../../api/materials';
 import { notifyWorkflowChanged } from '../../app/workflow-events';
 import {
+  beginSecondInstanceCommandAttempt,
   beginSecondInstanceUpload,
   clearSecondInstanceCommand,
   clearSecondInstanceUpload,
   hasUnclearedSecondInstanceUpload,
   pendingSecondInstanceCommand,
   readSecondInstanceUpload,
-  saveSecondInstanceCommand,
+  secondInstanceCommandState,
+  settleSecondInstanceCommandAttempt,
+  subscribeSecondInstanceCommand,
   type SecondInstanceCommand,
   type SecondInstanceUploadKind,
 } from './case-second-instance-recovery';
@@ -103,6 +106,8 @@ const verifiedRecoveryFiles = ref(new Set<string>());
 const recoveryLoading = ref(false);
 let revision = 0;
 let mounted = true;
+let settlingCurrent = false;
+let unsubscribeCommand: (() => void) | null = null;
 
 const second = computed(() => props.item.secondInstance);
 const currentRoundId = computed(() => second.value.currentTrialRoundId);
@@ -255,6 +260,7 @@ function clearSensitive(): void {
 watch(
   [() => props.item.id, () => props.actorKey],
   () => {
+    unsubscribeCommand?.();
     revision += 1;
     resetDraft();
     pending.value = false;
@@ -269,6 +275,51 @@ watch(
       hasUnclearedSecondInstanceUpload(recoveryIdentity());
     recoveryFiles.value = [];
     verifiedRecoveryFiles.value.clear();
+    const identity = recoveryIdentity();
+    const stored = secondInstanceCommandState(identity);
+    if (stored?.status === 'confirmed')
+      success.value =
+        '原轮次请求已确认。请核对最新案件详情；此回执不代表当前轮次已登记。';
+    unsubscribeCommand = subscribeSecondInstanceCommand(identity, (state) => {
+      if (
+        !mounted ||
+        props.item.id !== identity.caseId ||
+        props.actorKey !== identity.actor
+      )
+        return;
+      if (settlingCurrent) return;
+      if (state.status === 'confirmed') {
+        pendingUnknown.value = null;
+        error.value = '';
+        success.value =
+          '原轮次请求已确认。请核对最新案件详情；此回执不代表当前轮次已登记。';
+        emit('refresh');
+      } else if (state.status === 'unknown') {
+        pendingUnknown.value = state.command;
+        error.value =
+          '原请求结果未知。请使用原请求核对；旧回执只确认原轮次请求。';
+      } else if (state.status === 'rejected') {
+        pendingUnknown.value = null;
+        if (
+          state.rejection instanceof ApiError &&
+          [403, 404].includes(state.rejection.status)
+        )
+          clearSensitive();
+        if (
+          state.rejection instanceof ApiError &&
+          (state.rejection.status === 409 ||
+            [
+              'VERSION_CONFLICT',
+              'INVALID_STATE',
+              'IDEMPOTENCY_CONFLICT',
+            ].includes(state.rejection.code))
+        )
+          conflictNeedsReview.value = true;
+        error.value = '原请求已返回明确结果。请刷新并核对当前案件详情。';
+        clearSecondInstanceCommand(identity, state.command);
+        emit('refresh');
+      }
+    });
   },
   { immediate: true, flush: 'sync' },
 );
@@ -298,7 +349,11 @@ watch(
     resetDraft();
     if (pendingUnknown.value === null) {
       if (!conflictNeedsReview.value) error.value = '';
-      success.value = '';
+      if (
+        !success.value.startsWith('原轮次请求已确认') ||
+        secondInstanceCommandState(recoveryIdentity())?.status !== 'confirmed'
+      )
+        success.value = '';
       uploadMessage.value = '';
     }
   },
@@ -307,6 +362,7 @@ watch(
 onBeforeUnmount(() => {
   mounted = false;
   revision += 1;
+  unsubscribeCommand?.();
 });
 
 function capture() {
@@ -327,13 +383,6 @@ function currentContext(context: ReturnType<typeof capture>): boolean {
     context.id === props.item.id &&
     context.actorKey === props.actorKey &&
     context.contextKey === props.contextKey
-  );
-}
-function sameRecoveryContext(context: ReturnType<typeof capture>): boolean {
-  return (
-    mounted &&
-    context.id === props.item.id &&
-    context.actorKey === props.actorKey
   );
 }
 function isUnknown(reason: unknown): boolean {
@@ -395,7 +444,15 @@ function makeResultInput(): RegisterSecondInstanceResultInput {
 async function send(command: PendingCommand): Promise<void> {
   const context = capture();
   const identity = recoveryIdentity();
-  saveSecondInstanceCommand(identity, command);
+  let attempt: symbol;
+  try {
+    const started = beginSecondInstanceCommandAttempt(identity, command);
+    attempt = started.attempt;
+    command = started.command;
+  } catch {
+    error.value = '原请求仍待核对。请使用原请求安全重试。';
+    return;
+  }
   pending.value = true;
   error.value = '';
   conflictNeedsReview.value = false;
@@ -415,14 +472,20 @@ async function send(command: PendingCommand): Promise<void> {
         props.lawyer ? 'lawyer' : 'internal',
       );
     else await revokeSecondInstanceResult(context.id, command.input);
-    clearSecondInstanceCommand(identity, command);
-    if (!currentContext(context)) {
-      if (sameRecoveryContext(context) && pendingUnknown.value === command) {
-        pendingUnknown.value = null;
-        success.value =
-          '原轮次请求已确认。请刷新核对最新案件详情；此回执不代表当前轮次已登记。';
-        emit('refresh');
-      }
+    settlingCurrent = currentContext(context);
+    const state = settleSecondInstanceCommandAttempt(
+      identity,
+      command,
+      attempt,
+      'confirmed',
+    );
+    settlingCurrent = false;
+    if (!currentContext(context) || state === null) return;
+    if (state.count > 1) {
+      pendingUnknown.value = null;
+      success.value =
+        '原轮次请求已确认。请核对最新案件详情；此回执不代表当前轮次已登记。';
+      emit('refresh');
       return;
     }
     pendingUnknown.value = null;
@@ -439,25 +502,26 @@ async function send(command: PendingCommand): Promise<void> {
     notifyWorkflowChanged();
     emit('changed');
   } catch (reason) {
-    if (!currentContext(context)) {
-      if (isUnknown(reason) && sameRecoveryContext(context)) {
-        pendingUnknown.value = command;
-        error.value =
-          '原请求结果未知。请使用原请求核对；旧回执只确认原轮次请求。';
-      } else if (!isUnknown(reason)) {
-        clearSecondInstanceCommand(identity, command);
-        if (sameRecoveryContext(context) && pendingUnknown.value === command) {
-          pendingUnknown.value = null;
-          if (reason instanceof ApiError && [403, 404].includes(reason.status))
-            clearSensitive();
-          error.value = '原请求已返回明确结果。请刷新并核对当前案件详情。';
-          emit('refresh');
-        }
-      }
+    settlingCurrent = currentContext(context);
+    const state = settleSecondInstanceCommandAttempt(
+      identity,
+      command,
+      attempt,
+      isUnknown(reason) ? 'unknown' : 'rejected',
+      reason,
+    );
+    settlingCurrent = false;
+    if (
+      !currentContext(context) ||
+      state === null ||
+      state.status === 'confirmed' ||
+      state.status === 'sending'
+    )
       return;
-    }
-    if (isUnknown(reason)) {
+    if (state.status === 'unknown') {
       pendingUnknown.value = command;
+      if (reason instanceof ApiError && [403, 404].includes(reason.status))
+        clearSensitive();
       error.value =
         '操作结果未知。请使用相同请求安全重试；刷新详情不能确认提交结果。';
     } else if (
@@ -699,6 +763,14 @@ async function refreshRecoveryFiles(): Promise<void> {
       : marker.kind === 'service'
         ? 'SECOND_INSTANCE_SERVICE'
         : 'SECOND_INSTANCE_JUDGMENT';
+  const frozenKeys = new Set(
+    (category === 'SECOND_INSTANCE_DOCUMENT'
+      ? second.value.progresses.flatMap((progress) => progress.documentFiles)
+      : category === 'SECOND_INSTANCE_SERVICE'
+        ? second.value.progresses.flatMap((progress) => progress.serviceFiles)
+        : second.value.results.flatMap((result) => result.files)
+    ).map((file) => `${file.materialId}:${file.contentVersionId}`),
+  );
   recoveryLoading.value = true;
   recoveryFiles.value = [];
   verifiedRecoveryFiles.value.clear();
@@ -716,7 +788,12 @@ async function refreshRecoveryFiles(): Promise<void> {
       )
       .flatMap((material) =>
         material.contentVersions
-          .filter((version) => version.status === 'AVAILABLE')
+          .filter(
+            (version) =>
+              version.status === 'AVAILABLE' &&
+              (version.id === material.currentVersionId ||
+                frozenKeys.has(`${material.id}:${version.id}`)),
+          )
           .map((version) => ({ materialId: material.id, version })),
       );
     uploadMessage.value = recoveryFiles.value.length

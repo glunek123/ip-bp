@@ -36,10 +36,13 @@ test('CA-010 real PostgreSQL preserves anchors, remand history, receipts and ato
     pendingCorrectionVersionBypass: '23514',
     remandEmptyCanRevoke: true,
     lawyerFile: true,
+    lawyerMaterials: true,
     clientRead: true,
     clientSecondFileDenied: true,
+    clientSecondMaterialsHidden: true,
     formerLawyerDenied: true,
     formerFileDenied: true,
+    formerLawyerMaterialsDenied: true,
     race: ['OK:16', 'VERSION_CONFLICT'],
     final: true,
   });
