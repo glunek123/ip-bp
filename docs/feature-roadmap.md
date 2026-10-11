@@ -1,6 +1,6 @@
 # 功能开发路线图
 
-更新日期：2026-10-11。CORE-CA-001～010、NT-008～010及SD-44已验收并集成`main`；客户001～008组合及人工问题修复已验收并集成。CA-010与前置反馈流程优化已按授权推送并快进合入main至`6fd7a92`，组合tree及证据边界见[验证记录](spec/v0.1/VALIDATION.md#ca-010与前置反馈规则集成2026-10-11)。唯一Current为CA-010（已完成并集成），Next为CA-011未领取。
+更新日期：2026-10-11。CORE-CA-001～010、NT-008～010及SD-44已验收并集成`main`；客户001～008组合及人工问题修复已验收并集成。CA-010与前置反馈流程优化已按授权推送并快进合入main，组合tree及证据边界见[验证记录](spec/v0.1/VALIDATION.md#ca-010与前置反馈规则集成2026-10-11)。唯一Current为CA-011（已领取，实施中），Next为CA-012未领取。
 
 本文只回答“已经做到哪里、下一步做什么、之后按什么依赖顺序做”。详细业务规则仍以 [`docs/spec/`](spec/) 为准，核心主线的编码级字段、附件与存储边界以[核心业务字段、附件与存储契约](superpowers/specs/2026-09-21-core-flow-field-material-contract.md)为准，技术方案以设计文档为准，当前切片的技术任务以实施计划为准，实际验证结果以 [`docs/spec/v0.1/VALIDATION.md`](spec/v0.1/VALIDATION.md) 为准；[`docs/project-status.md`](project-status.md)仅保留当前恢复摘要。
 
@@ -138,17 +138,21 @@
 
 从main`6ae39ac1a688f2d553bc5b439e0fbc208e131151`建立`codex/core-ca-009-judgment-next-step`。已按[案件契约](spec/v0.1/modules/cases.md#ca-009判决后续选择)交付运营／当前承办律师正常选择、双方／多被告上诉、人工核实转执行准备及独立权限运营受控撤销；选择、撤销、判决和附件历史保留。固定候选`0442c83`、tree`44b6879fa430ed35c7701485f9713dde11e24323`通过完整verify和适用隔离PG／Chromium95/95；Final Review及修复补审两轴ACCEPTED、未关闭C/I/M0。同模型非实现隔离、独立性不足，外部异模型Review Pending。实际证据、失败历史及纯文档收口边界见[验证记录](spec/v0.1/VALIDATION.md#core-ca-009-判决后续选择2026-10-10)，[计划](superpowers/plans/2026-10-10-case-judgment-next-step.md)只维护实施任务。收口`866771b`已按授权推送并快进集成main，组合tree与原收口一致；本片不登记二审结果、不办理执行申请或财务。
 
-### Current Slice
-
 **CORE-CA-010｜二审（已完成并集成）。**
 
 2026-10-10从已核实main`a1d99fc446b0753957fb1a268a297ab5f19913de`建立`codex/core-ca-010-appeal`。按SD-50交付二审进展保存、改判／维持原判／发回重审、同案分轮继续办理及有权运营留原因撤销；运营和当前承办律师办理正常动作，客户仅见本企业允许投影。业务契约见[案件Spec](spec/v0.1/modules/cases.md#ca-010二审办理与结果)，实施步骤见[计划](superpowers/plans/2026-10-10-case-second-instance.md)。实际候选`38c7ab9`／tree`53309640bdc258ea29eec4dade1d3784b01bb1b4`通过独立非实现6 Sol终审及补审、完整verify和适用隔离PG／Chromium147/147；失败历史、13份前向迁移及证据边界集中见[验证记录](spec/v0.1/VALIDATION.md#core-ca-010-二审办理与结果2026-10-11)。2026-10-11已与前置反馈规则一并推送并快进合入main，组合tree与原收口`6fd7a92`一致，未混入其他业务变化。
 
+### Current Slice
+
+**CORE-CA-011｜上传执行材料（已领取，实施中）。**
+
+2026-10-11从已推送且核对组合tree的main`caba39d264d68da11577519d4dc87852571240a4`建立`codex/core-ca-011-execution-materials`。只推进待写执行材料→执行材料待确认，正常办理限有权运营和当前承办律师；SD-51已批准本片纳入确认前留原因同阶段重提。设计见[案件Spec](spec/v0.1/modules/cases.md#ca-011上传执行材料)，任务拆解见[计划](superpowers/plans/2026-10-11-case-execution-materials.md)。独立设计审查补齐客户阶段兼容，不扩大客户端材料范围；本片尚无实现或验收结论。
+
 ### Next Slice
 
-**CORE-CA-011｜执行材料（未领取）。**
+**CORE-CA-012｜确认执行材料（未领取）。**
 
-按既定主线在前置切片验收、获授权集成并核对组合tree后领取；当前只有“待写执行材料”可达，不等于执行材料、盖章邮寄或强制执行申请已交付。
+前置为CA-011正式验收并按授权集成；只处理执行材料待确认→执行材料待盖章，不提前实现客户邮寄或申请执行。
 
 ## 核心主线优先的交付顺序
 
