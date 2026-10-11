@@ -23,6 +23,7 @@ const secondInstanceMigrations = [
   '20261010048000_allow_remand_after_revoked_child',
   '20261010049000_guard_empty_remand_child_version',
   '20261010050000_guard_retrial_prejudgment_version',
+  '20261011010000_allow_lawyer_second_instance_material_upload',
 ];
 const sql = (name) =>
   readFileSync(resolve(directory, name, 'migration.sql'), 'utf8');
@@ -180,7 +181,7 @@ export async function verifyCaseSecondInstanceMigration() {
     allowRandomPort: true,
   });
   if (
-    names.length !== 128 ||
+    names.length !== 129 ||
     names[116] !== '20261010034000_guard_case_judgment_plaintiff_snapshot' ||
     names[117] !== target ||
     names[118] !== repair ||
@@ -189,7 +190,7 @@ export async function verifyCaseSecondInstanceMigration() {
   )
     throw new Error('Unexpected 117 migration baseline or CA-010 suffix');
   const client = new Client({ connectionString: process.env.DATABASE_URL });
-  const schemas = ['empty', 'upgrade', 'repair'].map(
+  const schemas = ['empty', 'upgrade', 'repair', 'upgrade128'].map(
     (part) => `ca010_${part}_${randomUUID().replaceAll('-', '')}`,
   );
   const use = (schema) => client.query(`SET search_path TO "${schema}"`);
@@ -212,7 +213,7 @@ export async function verifyCaseSecondInstanceMigration() {
       )
     ).rows[0].exists;
     await use(schemas[1]);
-    await replay(client, names.slice(0, -11));
+    await replay(client, names.slice(0, -12));
     const legacy = await seedLegacyCase(client);
     const earlyAccepted = await seedLegacyCase(client, { early: true });
     const prior = (
@@ -353,7 +354,7 @@ export async function verifyCaseSecondInstanceMigration() {
       await client.query('ROLLBACK');
     }
     await use(schemas[2]);
-    await replay(client, names.slice(0, -11));
+    await replay(client, names.slice(0, -12));
     const broken = await seedLegacyCase(client, { invalid: true });
     const guardsBeforeFailure = (
       await client.query(`SELECT count(*)::int AS n FROM pg_trigger t JOIN pg_class c ON c.oid=t.tgrelid
@@ -402,9 +403,29 @@ export async function verifyCaseSecondInstanceMigration() {
         [broken.case, broken.acceptance],
       )
     ).rows[0].accepted;
+    await use(schemas[3]);
+    await replay(client, names.slice(0, -1));
+    const before128 = (
+      await client.query(
+        "SELECT pg_get_functiondef('enforce_case_client_mailing_actor_path()'::regprocedure) AS body",
+      )
+    ).rows[0].body;
+    await replay(client, [secondInstanceMigrations.at(-1)]);
+    const after128 = (
+      await client.query(
+        "SELECT pg_get_functiondef('enforce_case_client_mailing_actor_path()'::regprocedure) AS body",
+      )
+    ).rows[0].body;
+    const prior128Upgraded =
+      !before128.includes("'SECOND_INSTANCE_DOCUMENT'") &&
+      after128.includes("'SECOND_INSTANCE_DOCUMENT'") &&
+      after128.includes("'SECOND_INSTANCE_SERVICE'") &&
+      after128.includes("'SECOND_INSTANCE_JUDGMENT'") &&
+      after128.includes("THEN 'SECOND_INSTANCE'");
     return {
       migrationCount: names.length,
-      priorMigrationCount: names.length - 11,
+      priorMigrationCount: names.length - 12,
+      prior128Upgraded,
       emptyRoundTable,
       oldChainPreserved,
       combinedDetachRejected,

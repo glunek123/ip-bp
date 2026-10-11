@@ -35,6 +35,13 @@ export function verifyCaseSecondInstanceDatabase(): Promise<{
   clientSecondFileDenied: boolean;
   formerLawyerDenied: boolean;
   formerFileDenied: boolean;
+  lawyerUpload: boolean;
+  wrongLawyerUploadDenied: boolean;
+  clientUploadDenied: boolean;
+  formerLawyerUploadDenied: boolean;
+  lawyerWrongStage: string | null;
+  lawyerWrongPurpose: string | null;
+  lawyerGuardRollback: boolean;
   noAudit: string | null;
   wrongCase: string | null;
   wrongPurpose: string | null;

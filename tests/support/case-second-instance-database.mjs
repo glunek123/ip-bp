@@ -581,6 +581,19 @@ export async function verifyCaseSecondInstanceDatabase() {
         departmentId: actor.departmentId,
         authorizationRevision: 1,
       };
+      const lawyerBinding = await database.lawyerAccountBinding.findFirst({
+        where: {
+          userId: lawyerId,
+          departmentId: actor.departmentId,
+          active: true,
+        },
+        select: { id: true },
+      });
+      if (!lawyerBinding) throw new Error('CA010 lawyer binding missing');
+      const lawyerDraftSql = `INSERT INTO upload_drafts
+        (id,department_id,actor_user_id,lawyer_account_binding_id,owner_type,owner_id,
+         category,purpose,original_filename,declared_mime_type,expires_at,updated_at)
+        VALUES ($1,$2,$3,$4,'CASE',$5,$6,$7,'guard.pdf','application/pdf',now() + interval '1 hour',now())`;
       const caseRead = new CaseReadService(database, access, materials);
       const lawyerList = await caseRead.list(lawyerActor, 1, 20);
       const lawyerDetail = await caseRead.get(lawyerActor, caseId);
@@ -662,6 +675,16 @@ export async function verifyCaseSecondInstanceDatabase() {
         idempotencyKey: `ca010-remand-again-${caseId}`,
         progress: revisedProgress,
       });
+      const wrongStageDraftId = randomUUID();
+      const lawyerWrongStage = await sqlCode(client, lawyerDraftSql, [
+        wrongStageDraftId,
+        actor.departmentId,
+        lawyerId,
+        lawyerBinding.id,
+        caseId,
+        'SECOND_INSTANCE_DOCUMENT',
+        'SECOND_INSTANCE_DOCUMENT',
+      ]);
       const remandAgainRound = await database.caseTrialRound.findUnique({
         where: { id: remandAgain.currentTrialRoundId },
         select: { sequence: true, revokedAt: true },
@@ -809,6 +832,107 @@ export async function verifyCaseSecondInstanceDatabase() {
         plaintiffAppeals: true,
         defendantIds: [],
       });
+      const wrongPurposeDraftId = randomUUID();
+      const lawyerWrongPurpose = await sqlCode(client, lawyerDraftSql, [
+        wrongPurposeDraftId,
+        actor.departmentId,
+        lawyerId,
+        lawyerBinding.id,
+        caseId,
+        'SECOND_INSTANCE_DOCUMENT',
+        'SECOND_INSTANCE_SERVICE',
+      ]);
+      const lawyerGuardRollback =
+        (await database.uploadDraft.count({
+          where: { id: { in: [wrongStageDraftId, wrongPurposeDraftId] } },
+        })) === 0;
+      const lawyerUploads = [];
+      for (const category of [
+        'SECOND_INSTANCE_DOCUMENT',
+        'SECOND_INSTANCE_SERVICE',
+        'SECOND_INSTANCE_JUDGMENT',
+      ]) {
+        const bytes = Buffer.from(
+          `%PDF-1.7\nCA010 lawyer ${category}\n%%EOF\n`,
+        );
+        const draft = await materials.createUploadDraft(lawyerActor, {
+          ownerType: 'CASE',
+          ownerId: caseId,
+          category,
+          purpose: category,
+          originalFilename: `ca010-lawyer-${category}.pdf`,
+          declaredMimeType: 'application/pdf',
+        });
+        const uploaded = await materials.finalizeUpload(
+          lawyerActor,
+          draft.id,
+          Readable.from(bytes),
+        );
+        const version = await database.contentVersion.findUnique({
+          where: { id: uploaded.contentVersionId },
+          select: { storageKey: true, uploadedBy: true },
+        });
+        trackStorageKey(version.storageKey);
+        const opened = await materials.openVersion(
+          lawyerActor,
+          uploaded.materialId,
+          uploaded.contentVersionId,
+        );
+        lawyerUploads.push({
+          category,
+          draftId: draft.id,
+          uploaded,
+          uploadedBy: version.uploadedBy,
+          exactBytes: Buffer.concat(
+            await Array.fromAsync(opened.stream),
+          ).equals(bytes),
+        });
+      }
+      const lawyerDraftBindings = await database.uploadDraft.findMany({
+        where: { id: { in: lawyerUploads.map((item) => item.draftId) } },
+        select: {
+          lawyerAccountBindingId: true,
+          actorUserId: true,
+          status: true,
+        },
+      });
+      let wrongLawyerUploadDenied = false;
+      try {
+        const otherLawyerId = randomUUID();
+        await materials.createUploadDraft(
+          {
+            ...lawyerActor,
+            userId: otherLawyerId,
+            lawyerAccountId: otherLawyerId,
+          },
+          {
+            ownerType: 'CASE',
+            ownerId: caseId,
+            category: 'SECOND_INSTANCE_DOCUMENT',
+            purpose: 'SECOND_INSTANCE_DOCUMENT',
+            originalFilename: 'wrong.pdf',
+            declaredMimeType: 'application/pdf',
+          },
+        );
+      } catch (error) {
+        wrongLawyerUploadDenied = [
+          'RESOURCE_NOT_FOUND',
+          'ACTION_FORBIDDEN',
+        ].includes(error.response?.code);
+      }
+      let clientUploadDenied = false;
+      try {
+        await materials.createUploadDraft(clientActor, {
+          ownerType: 'CASE',
+          ownerId: caseId,
+          category: 'SECOND_INSTANCE_DOCUMENT',
+          purpose: 'SECOND_INSTANCE_DOCUMENT',
+          originalFilename: 'client.pdf',
+          declaredMimeType: 'application/pdf',
+        });
+      } catch (error) {
+        clientUploadDenied = error.response?.code === 'VERSION_CONFLICT';
+      }
       const savedChildProgress = await second.save(actor, caseId, {
         expectedVersion: reChosenChild.version,
         idempotencyKey: `ca010-child-progress-${caseId}`,
@@ -884,6 +1008,22 @@ export async function verifyCaseSecondInstanceDatabase() {
         'UPDATE case_lawyer_assignments SET ended_at=now() WHERE id=$1',
         [assignmentId],
       );
+      let formerLawyerUploadDenied = false;
+      try {
+        await materials.createUploadDraft(lawyerActor, {
+          ownerType: 'CASE',
+          ownerId: caseId,
+          category: 'SECOND_INSTANCE_DOCUMENT',
+          purpose: 'SECOND_INSTANCE_DOCUMENT',
+          originalFilename: 'former.pdf',
+          declaredMimeType: 'application/pdf',
+        });
+      } catch (error) {
+        formerLawyerUploadDenied = [
+          'RESOURCE_NOT_FOUND',
+          'ACTION_FORBIDDEN',
+        ].includes(error.response?.code);
+      }
       let formerLawyerDenied = false;
       try {
         await caseRead.get(lawyerActor, caseId);
@@ -1076,6 +1216,25 @@ export async function verifyCaseSecondInstanceDatabase() {
         formerLawyerDenied,
         formerFileDenied,
         formerLawyerMaterialsDenied,
+        lawyerUpload:
+          lawyerUploads.length === 3 &&
+          lawyerUploads.every(
+            (item) => item.exactBytes && item.uploadedBy === lawyerId,
+          ) &&
+          lawyerDraftBindings.length === 3 &&
+          lawyerBinding !== null &&
+          lawyerDraftBindings.every(
+            (draft) =>
+              draft.lawyerAccountBindingId === lawyerBinding.id &&
+              draft.actorUserId === lawyerId &&
+              draft.status === 'FINALIZED',
+          ),
+        wrongLawyerUploadDenied,
+        clientUploadDenied,
+        formerLawyerUploadDenied,
+        lawyerWrongStage,
+        lawyerWrongPurpose,
+        lawyerGuardRollback,
         race,
         final:
           finalCase.stage === 'WAITING_EXECUTION_DOCUMENTS' &&
