@@ -612,7 +612,7 @@ async function exactUploadedVersionId(
 }
 
 let hearingAdmin: { username: string; password: string };
-test.beforeEach(async ({ page }) => {
+test.beforeEach(async () => {
   await clearCoreCaseHearingAdminSessions();
   await clearCaseAcceptanceFault();
   await clearCoreCaseSecondInstanceFixture();
