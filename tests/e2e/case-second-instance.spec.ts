@@ -644,15 +644,69 @@ test('operator recovers an unknown real upload, then saves progress/result again
 }) => {
   const source = await prepareAppealCase(page, request);
   const panel = page.locator('[data-test="second-instance-panel"]');
+  const beforeBlankSave = await getInternalDetail(page, source.caseId);
+  expect(beforeBlankSave.secondInstance.currentProgress).toBeNull();
+  expect(beforeBlankSave.secondInstance.progresses).toHaveLength(0);
+  const initialProgressForm = panel.locator(
+    '[data-test="second-instance-progress-form"]',
+  );
+  await expect(
+    initialProgressForm.locator('[data-test="second-instance-hearing-at"]'),
+  ).toHaveValue('');
+  await expect(initialProgressForm.getByLabel('开庭地点')).toHaveValue('');
+  await expect(initialProgressForm.getByLabel('法官')).toHaveValue('');
+  await expect(
+    initialProgressForm.locator('input[type="checkbox"]:checked'),
+  ).toHaveCount(0);
   const blankSave = page.waitForResponse(
     (response) =>
       response.request().method() === 'POST' &&
       new URL(response.url()).pathname ===
         `/api/v1/cases/${source.caseId}/second-instance-save`,
   );
+  const blankSaveRequest = page.waitForRequest(
+    (request) =>
+      request.method() === 'POST' &&
+      new URL(request.url()).pathname ===
+        `/api/v1/cases/${source.caseId}/second-instance-save`,
+  );
   await panel.locator('[data-test="second-instance-progress-save"]').click();
-  await status(await blankSave, 201);
+  const [blankSaveResponse, blankSaveRequestRecord] = await Promise.all([
+    blankSave,
+    blankSaveRequest,
+  ]);
+  await status(blankSaveResponse, 201);
+  const blankSaveCommand = blankSaveRequestRecord.postDataJSON() as {
+    expectedProgressId: string | null;
+    progress: {
+      hearingAt: string | null;
+      hearingPlace: string | null;
+      judgeName: string | null;
+      documentContentVersionIds: string[];
+      serviceContentVersionIds: string[];
+    };
+  };
+  expect(blankSaveCommand).toMatchObject({
+    expectedProgressId: null,
+    progress: {
+      hearingAt: null,
+      hearingPlace: null,
+      judgeName: null,
+      documentContentVersionIds: [],
+      serviceContentVersionIds: [],
+    },
+  });
+  const blankSaveReceipt = (await blankSaveResponse.json()) as {
+    version: number;
+    progressId: string | null;
+  };
+  expect(blankSaveReceipt).toMatchObject({
+    version: beforeBlankSave.version,
+    progressId: null,
+  });
+  await expect(panel.getByRole('status')).toContainText('二审进展已登记');
   const blankDetail = await getInternalDetail(page, source.caseId);
+  expect(blankDetail.version).toBe(beforeBlankSave.version);
   expect(blankDetail.secondInstance.currentProgress).toBeNull();
   expect(blankDetail.secondInstance.progresses).toHaveLength(0);
 
@@ -845,6 +899,17 @@ test('operator recovers an unknown real upload, then saves progress/result again
   );
   await page.goto(`/cases/${source.caseId}`);
 
+  const resultProgressForm = panel.locator(
+    '[data-test="second-instance-progress-form"]',
+  );
+  const resultTimeJudgeName = '李法官（随结果原子更新）';
+  await resultProgressForm.getByLabel('法官').fill(resultTimeJudgeName);
+  const beforeCombinedResult = await getInternalDetail(page, source.caseId);
+  expect(beforeCombinedResult.version).toBe(saved.version);
+  expect(beforeCombinedResult.secondInstance.currentProgress?.id).toBe(
+    saved.secondInstance.currentProgress!.id,
+  );
+
   const resultName = 'CA010-改判文书.pdf';
   await uploadInBrowserAndWaitForSelectableVersion(
     page,
@@ -878,15 +943,49 @@ test('operator recovers an unknown real upload, then saves progress/result again
     .locator('[data-test="second-instance-result-file-choice"]')
     .check();
   await result.locator('[data-test="second-instance-result-submit"]').click();
-  const resultResponse = page.waitForResponse(
+  const resultResponsePromise = page.waitForResponse(
     (response) =>
       response.request().method() === 'POST' &&
       new URL(response.url()).pathname ===
         `/api/v1/cases/${source.caseId}/second-instance-result`,
   );
+  const resultRequestPromise = page.waitForRequest(
+    (request) =>
+      request.method() === 'POST' &&
+      new URL(request.url()).pathname ===
+        `/api/v1/cases/${source.caseId}/second-instance-result`,
+  );
   await panel.locator('[data-test="second-instance-confirm-result"]').click();
-  await status(await resultResponse, 201);
+  const [resultResponse, resultRequest] = await Promise.all([
+    resultResponsePromise,
+    resultRequestPromise,
+  ]);
+  await status(resultResponse, 201);
+  const resultCommand = resultRequest.postDataJSON() as {
+    expectedVersion: number;
+    expectedProgressId: string | null;
+    progress: { judgeName: string | null };
+  };
+  expect(resultCommand).toMatchObject({
+    expectedVersion: beforeCombinedResult.version,
+    expectedProgressId: saved.secondInstance.currentProgress!.id,
+    progress: { judgeName: resultTimeJudgeName },
+  });
+  const resultReceipt = (await resultResponse.json()) as {
+    version: number;
+    progressId: string | null;
+  };
+  expect(resultReceipt.version).toBe(beforeCombinedResult.version + 2);
+  expect(resultReceipt.progressId).toBeTruthy();
+  expect(resultReceipt.progressId).not.toBe(
+    saved.secondInstance.currentProgress!.id,
+  );
   const afterResult = await getInternalDetail(page, source.caseId);
+  expect(afterResult.version).toBe(resultReceipt.version);
+  expect(afterResult.secondInstance.currentProgress).toMatchObject({
+    id: resultReceipt.progressId,
+    judgeName: resultTimeJudgeName,
+  });
   expect(afterResult.stage).toBe('WAITING_EXECUTION_DOCUMENTS');
   expect(afterResult.secondInstance.currentResult).toMatchObject({
     result: 'CHANGE',
