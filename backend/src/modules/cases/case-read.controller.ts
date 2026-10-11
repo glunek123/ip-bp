@@ -35,6 +35,13 @@ import { CaseAcceptanceService } from './case-acceptance.service';
 import { CaseHearingService } from './case-hearing.service';
 import { CaseJudgmentService } from './case-judgment.service';
 import { CaseJudgmentNextStepService } from './case-judgment-next-step.service';
+import { CaseSecondInstanceService } from './case-second-instance.service';
+import {
+  RegisterSecondInstanceResultDto,
+  RevokeSecondInstanceResultDto,
+  SaveSecondInstanceDto,
+  SecondInstanceCommandResultDto,
+} from './case-second-instance.dto';
 import {
   ChooseJudgmentNextStepDto,
   JudgmentNextStepResultDto,
@@ -92,6 +99,7 @@ export class CaseReadController {
     private readonly hearing: CaseHearingService,
     private readonly judgment: CaseJudgmentService,
     private readonly judgmentNextStep: CaseJudgmentNextStepService,
+    private readonly secondInstance: CaseSecondInstanceService,
     private readonly courts: FilingCourtService,
   ) {}
 
@@ -261,5 +269,35 @@ export class CaseReadController {
     @Body() body: RevokeJudgmentNextStepDto,
   ) {
     return this.judgmentNextStep.revoke(actor, id, body);
+  }
+
+  @Post(':id/second-instance-save')
+  @ApiCreatedResponse({ type: SecondInstanceCommandResultDto })
+  saveSecondInstance(
+    @CurrentActor() actor: ActorContext,
+    @Param('id', new ParseUUIDPipe()) id: string,
+    @Body() body: SaveSecondInstanceDto,
+  ) {
+    return this.secondInstance.save(actor, id, body);
+  }
+
+  @Post(':id/second-instance-result')
+  @ApiCreatedResponse({ type: SecondInstanceCommandResultDto })
+  registerSecondInstanceResult(
+    @CurrentActor() actor: ActorContext,
+    @Param('id', new ParseUUIDPipe()) id: string,
+    @Body() body: RegisterSecondInstanceResultDto,
+  ) {
+    return this.secondInstance.registerResult(actor, id, body);
+  }
+
+  @Post(':id/second-instance-result-revoke')
+  @ApiCreatedResponse({ type: SecondInstanceCommandResultDto })
+  revokeSecondInstanceResult(
+    @CurrentActor() actor: ActorContext,
+    @Param('id', new ParseUUIDPipe()) id: string,
+    @Body() body: RevokeSecondInstanceResultDto,
+  ) {
+    return this.secondInstance.revokeResult(actor, id, body);
   }
 }

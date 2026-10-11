@@ -164,6 +164,21 @@ const allowedMimeTypes = {
   PAYMENT_LIST: new Set(['application/pdf', 'image/jpeg', 'image/png']),
   SERVICE_DOCUMENT: new Set(['application/pdf', 'image/jpeg', 'image/png']),
   JUDGMENT: new Set(['application/pdf', 'image/jpeg', 'image/png']),
+  SECOND_INSTANCE_DOCUMENT: new Set([
+    'application/pdf',
+    'image/jpeg',
+    'image/png',
+  ]),
+  SECOND_INSTANCE_SERVICE: new Set([
+    'application/pdf',
+    'image/jpeg',
+    'image/png',
+  ]),
+  SECOND_INSTANCE_JUDGMENT: new Set([
+    'application/pdf',
+    'image/jpeg',
+    'image/png',
+  ]),
 } as const;
 
 @Injectable()
@@ -856,18 +871,14 @@ export class MaterialService {
           !contentVersionIds.includes(version.id) ||
           (input.ownerType === 'CASE' &&
             material.currentVersionId !== version.id &&
-            !(
-              input.category === 'JUDGMENT' &&
-              (await transaction.caseJudgmentVersion.findFirst({
-                where: {
-                  caseId: input.ownerId,
-                  departmentId: actor.departmentId,
-                  materialId: material.id,
-                  contentVersionId: version.id,
-                },
-                select: { factId: true },
-              }))
-            )) ||
+            !(await this.isFrozenCaseVersion(
+              transaction,
+              input.category,
+              input.ownerId,
+              actor.departmentId,
+              material.id,
+              version.id,
+            ))) ||
           (input.ownerType === 'CASE' &&
             input.category === 'MAIL_RECEIPT' &&
             actor.clientCustomerId !== undefined &&
@@ -2471,6 +2482,110 @@ export class MaterialService {
     }
   }
 
+  async freezeCaseSecondInstanceReferences(
+    transaction: MaterialTransactionClient,
+    actor: ActorContext,
+    caseId: string,
+    factId: string,
+    facts: readonly ValidatedMaterialVersionFact[],
+    actionEventId: string,
+    target: 'PROGRESS' | 'RESULT',
+  ): Promise<void> {
+    for (const fact of facts) {
+      const validation = this.validatedVersionFacts.get(fact);
+      const canonical = validation?.canonicalFact;
+      if (
+        validation?.transaction !== transaction ||
+        canonical?.departmentId !== actor.departmentId ||
+        canonical.ownerType !== 'CASE' ||
+        canonical.ownerId !== caseId ||
+        canonical.purpose !== canonical.category ||
+        (target === 'PROGRESS'
+          ? !['SECOND_INSTANCE_DOCUMENT', 'SECOND_INSTANCE_SERVICE'].includes(
+              canonical.category,
+            )
+          : canonical.category !== 'SECOND_INSTANCE_JUDGMENT') ||
+        !allowedMimeTypes[canonical.category].has(canonical.mimeType) ||
+        canonical.sizeBytes > BigInt(materialFileLimit(canonical.category))
+      )
+        throw this.invalidVersion();
+      if (target === 'PROGRESS') {
+        await transaction.caseSecondInstanceProgressVersion.create({
+          data: {
+            progressId: factId,
+            caseId,
+            departmentId: actor.departmentId,
+            materialId: canonical.materialId,
+            contentVersionId: canonical.contentVersionId,
+            category: canonical.category,
+          },
+        });
+      } else {
+        await transaction.caseSecondInstanceResultVersion.create({
+          data: {
+            resultId: factId,
+            caseId,
+            departmentId: actor.departmentId,
+            materialId: canonical.materialId,
+            contentVersionId: canonical.contentVersionId,
+          },
+        });
+      }
+      await transaction.materialReference.create({
+        data: {
+          departmentId: actor.departmentId,
+          resourceType: 'case',
+          resourceId: caseId,
+          purpose: canonical.category,
+          materialId: canonical.materialId,
+          contentVersionId: canonical.contentVersionId,
+          actionEventId,
+        },
+      });
+    }
+  }
+
+  private async isFrozenCaseVersion(
+    transaction: MaterialTransactionClient,
+    category: MaterialCategoryValue,
+    caseId: string,
+    departmentId: string,
+    materialId: string,
+    contentVersionId: string,
+  ): Promise<boolean> {
+    if (category === 'JUDGMENT')
+      return (
+        (await transaction.caseJudgmentVersion.findFirst({
+          where: { caseId, departmentId, materialId, contentVersionId },
+          select: { factId: true },
+        })) !== null
+      );
+    if (category === 'SECOND_INSTANCE_JUDGMENT')
+      return (
+        (await transaction.caseSecondInstanceResultVersion.findFirst({
+          where: { caseId, departmentId, materialId, contentVersionId },
+          select: { resultId: true },
+        })) !== null
+      );
+    if (
+      category === 'SECOND_INSTANCE_DOCUMENT' ||
+      category === 'SECOND_INSTANCE_SERVICE'
+    )
+      return (
+        (await transaction.caseSecondInstanceProgressVersion.findFirst({
+          where: {
+            caseId,
+            departmentId,
+            materialId,
+            contentVersionId,
+            category,
+          },
+          select: { progressId: true },
+        })) !== null
+      );
+    return false;
+  }
+
   async listFrozenCaseAcceptanceFiles(actor: ActorContext, caseId: string) {
     await this.authorizeOwner(actor, 'CASE', caseId, 'read');
     const references = await this.database.materialReference.findMany({
@@ -2591,7 +2706,13 @@ export class MaterialService {
                 'SERVICE_DOCUMENT',
               ].includes(notaryCategory ?? '')) ||
             (lawyerCase.stage === 'WAITING_JUDGMENT' &&
-              notaryCategory === 'JUDGMENT')
+              notaryCategory === 'JUDGMENT') ||
+            (lawyerCase.stage === 'SECOND_INSTANCE' &&
+              [
+                'SECOND_INSTANCE_DOCUMENT',
+                'SECOND_INSTANCE_SERVICE',
+                'SECOND_INSTANCE_JUDGMENT',
+              ].includes(notaryCategory ?? ''))
           )
         )
           throw this.versionConflict();
@@ -2670,6 +2791,14 @@ export class MaterialService {
           ) &&
           !(
             record.stage === 'WAITING_JUDGMENT' && notaryCategory === 'JUDGMENT'
+          ) &&
+          !(
+            record.stage === 'SECOND_INSTANCE' &&
+            [
+              'SECOND_INSTANCE_DOCUMENT',
+              'SECOND_INSTANCE_SERVICE',
+              'SECOND_INSTANCE_JUDGMENT',
+            ].includes(notaryCategory ?? '')
           )
         )
           throw this.versionConflict();
@@ -2692,6 +2821,24 @@ export class MaterialService {
               !(await this.accessControl.canAuthorizeCase(
                 actor,
                 'case.judgment.correct',
+                facts,
+                snapshotReader,
+              ))
+            )
+              throw this.forbidden();
+            return;
+          }
+          if (notaryCategory?.startsWith('SECOND_INSTANCE_')) {
+            if (
+              !(await this.accessControl.canAuthorizeCase(
+                actor,
+                'case.second_instance.save',
+                facts,
+                snapshotReader,
+              )) &&
+              !(await this.accessControl.canAuthorizeCase(
+                actor,
+                'case.second_instance.result',
                 facts,
                 snapshotReader,
               ))
@@ -3233,7 +3380,10 @@ export class MaterialService {
         (input.category === 'ACCEPTANCE_NOTICE' ||
           input.category === 'PAYMENT_LIST' ||
           input.category === 'SERVICE_DOCUMENT' ||
-          input.category === 'JUDGMENT') &&
+          input.category === 'JUDGMENT' ||
+          input.category === 'SECOND_INSTANCE_DOCUMENT' ||
+          input.category === 'SECOND_INSTANCE_SERVICE' ||
+          input.category === 'SECOND_INSTANCE_JUDGMENT') &&
         input.purpose === input.category) ||
       (input.ownerType === 'NOTARY_MATTER' &&
         input.category === 'NOTARY_OPENING_PHOTO' &&
@@ -3350,7 +3500,10 @@ function toMaterialPurpose(value: string): MaterialPurposeValue {
     value === 'ACCEPTANCE_NOTICE' ||
     value === 'PAYMENT_LIST' ||
     value === 'SERVICE_DOCUMENT' ||
-    value === 'JUDGMENT'
+    value === 'JUDGMENT' ||
+    value === 'SECOND_INSTANCE_DOCUMENT' ||
+    value === 'SECOND_INSTANCE_SERVICE' ||
+    value === 'SECOND_INSTANCE_JUDGMENT'
   ) {
     return value;
   }
@@ -3376,7 +3529,10 @@ function materialLimit(category: keyof typeof allowedMimeTypes): number {
               category === 'ACCEPTANCE_NOTICE' ||
               category === 'PAYMENT_LIST' ||
               category === 'SERVICE_DOCUMENT' ||
-              category === 'JUDGMENT'
+              category === 'JUDGMENT' ||
+              category === 'SECOND_INSTANCE_DOCUMENT' ||
+              category === 'SECOND_INSTANCE_SERVICE' ||
+              category === 'SECOND_INSTANCE_JUDGMENT'
             ? 10
             : 20;
 }
@@ -3390,7 +3546,10 @@ function materialFileLimit(category: keyof typeof allowedMimeTypes): number {
     category === 'ACCEPTANCE_NOTICE' ||
     category === 'PAYMENT_LIST' ||
     category === 'SERVICE_DOCUMENT' ||
-    category === 'JUDGMENT'
+    category === 'JUDGMENT' ||
+    category === 'SECOND_INSTANCE_DOCUMENT' ||
+    category === 'SECOND_INSTANCE_SERVICE' ||
+    category === 'SECOND_INSTANCE_JUDGMENT'
     ? 50 * 1024 * 1024
     : 20 * 1024 * 1024;
 }

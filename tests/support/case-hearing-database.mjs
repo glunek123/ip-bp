@@ -711,12 +711,12 @@ export async function verifyCaseHearingDetailSnapshot() {
     .filter(
       (name) =>
         /^\d{14}_/u.test(name) &&
-        name <= '20261010042000_reject_detached_initial_trial_round',
+        name <= '20261010048000_allow_remand_after_revoked_child',
     )
     .sort();
   if (
-    names.length !== 120 ||
-    names.at(-1) !== '20261010042000_reject_detached_initial_trial_round'
+    names.length !== 126 ||
+    names.at(-1) !== '20261010048000_allow_remand_after_revoked_child'
   )
     throw new Error('Unexpected hearing migration chain');
   const admin = new Client({ connectionString: databaseUrl });
@@ -899,6 +899,7 @@ export async function verifyCaseHearingDetailSnapshot() {
       currentHearingArrangement: {
         select: {
           id: true,
+          trialRoundId: true,
           hearingAt: true,
           source: true,
           recordedAt: true,
@@ -908,6 +909,7 @@ export async function verifyCaseHearingDetailSnapshot() {
       currentHearingAdvance: {
         select: {
           id: true,
+          trialRoundId: true,
           arrangementId: true,
           dueAt: true,
           executedAt: true,
@@ -916,6 +918,7 @@ export async function verifyCaseHearingDetailSnapshot() {
       hearingArrangements: {
         select: {
           id: true,
+          trialRoundId: true,
           hearingAt: true,
           source: true,
           recordedAt: true,
@@ -925,6 +928,7 @@ export async function verifyCaseHearingDetailSnapshot() {
       hearingAdvances: {
         select: {
           id: true,
+          trialRoundId: true,
           arrangementId: true,
           dueAt: true,
           executedAt: true,
@@ -959,8 +963,18 @@ export async function verifyCaseHearingDetailSnapshot() {
             complaintMailing: null,
             filingSubmission: null,
             acceptance: null,
+            acceptances: [],
             judgmentFacts: [],
             currentJudgmentId: null,
+            judgmentNextSteps: [],
+            judgmentNextStepRevocations: [],
+            currentJudgmentNextStepId: null,
+            trialRounds: [],
+            currentTrialRoundId: null,
+            secondInstanceProgresses: [],
+            secondInstanceResults: [],
+            currentSecondInstanceProgressId: null,
+            currentSecondInstanceResultId: null,
             responsibleUserId: userId,
             responsibleMembership: { teamId: null },
             defendants: [],
@@ -1075,12 +1089,12 @@ export async function verifyCaseHearingDatabase() {
     .filter(
       (name) =>
         /^\d{14}_/u.test(name) &&
-        name <= '20261010042000_reject_detached_initial_trial_round',
+        name <= '20261010048000_allow_remand_after_revoked_child',
     )
     .sort();
   if (
-    names.length !== 120 ||
-    names.at(-1) !== '20261010042000_reject_detached_initial_trial_round'
+    names.length !== 126 ||
+    names.at(-1) !== '20261010048000_allow_remand_after_revoked_child'
   )
     throw new Error('Unexpected migration chain');
   const admin = new Client({ connectionString: databaseUrl });

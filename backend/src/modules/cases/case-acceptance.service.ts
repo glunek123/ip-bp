@@ -246,7 +246,10 @@ export class CaseAcceptanceService {
                 departmentId: actor.departmentId,
                 currentTrialRoundId: trialRoundId,
               },
-              data: { currentAcceptanceId: acceptance.id },
+              data: {
+                currentAcceptanceId: acceptance.id,
+                currentSecondInstanceResultId: null,
+              },
             });
             await this.materials.freezeCaseAcceptanceReferences(
               tx,

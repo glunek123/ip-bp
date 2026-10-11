@@ -297,6 +297,24 @@ export class CaseJudgmentNextStepService {
                   : 'WAITING_EXECUTION_DOCUMENTS')
             )
               throw this.invalidState();
+            if (
+              choice.next === 'APPEAL' &&
+              ((await tx.caseSecondInstanceProgress.count({
+                where: {
+                  caseId,
+                  departmentId: actor.departmentId,
+                  choiceId: value.choiceId,
+                },
+              })) > 0 ||
+                (await tx.caseSecondInstanceResult.count({
+                  where: {
+                    caseId,
+                    departmentId: actor.departmentId,
+                    choiceId: value.choiceId,
+                  },
+                })) > 0)
+            )
+              throw this.invalidState();
             const revocationId = randomUUID();
             await tx.auditEvent.create({
               data: {

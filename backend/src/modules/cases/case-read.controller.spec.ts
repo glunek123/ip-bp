@@ -1,7 +1,8 @@
 import 'reflect-metadata';
-import { INestApplication } from '@nestjs/common';
+import { ExecutionContext, INestApplication } from '@nestjs/common';
 import { Test } from '@nestjs/testing';
 import { DocumentBuilder, SwaggerModule } from '@nestjs/swagger';
+import request from 'supertest';
 import { ActorContextGuard } from '../../access-control/actor-context.guard';
 import { CsrfGuard } from '../../auth/csrf.guard';
 import { configureApp } from '../../common/configure-app';
@@ -16,6 +17,7 @@ import { CaseAcceptanceService } from './case-acceptance.service';
 import { CaseHearingService } from './case-hearing.service';
 import { CaseJudgmentService } from './case-judgment.service';
 import { CaseJudgmentNextStepService } from './case-judgment-next-step.service';
+import { CaseSecondInstanceService } from './case-second-instance.service';
 import { FilingCourtService } from './filing-court.service';
 
 const routeCaseId = '33333333-3333-4333-8333-333333333333';
@@ -53,6 +55,7 @@ describe('internal complaint mailing route identity', () => {
       {} as CaseHearingService,
       {} as never,
       {} as never,
+      {} as never,
       {} as FilingCourtService,
     );
     expect(() =>
@@ -68,6 +71,13 @@ describe('internal complaint mailing route identity', () => {
 
 describe('case read OpenAPI contract', () => {
   it('declares minimal list and detail response with source fee identities', async () => {
+    const unexpectedUnique = {
+      code: 'P2002',
+      meta: { target: 'case_second_instance_results_case_from_key' },
+    };
+    const secondInstance = {
+      save: jest.fn().mockRejectedValue(unexpectedUnique),
+    };
     const module = await Test.createTestingModule({
       controllers: [CaseReadController],
       providers: [
@@ -81,11 +91,21 @@ describe('case read OpenAPI contract', () => {
         { provide: CaseHearingService, useValue: {} },
         { provide: CaseJudgmentService, useValue: {} },
         { provide: CaseJudgmentNextStepService, useValue: {} },
+        { provide: CaseSecondInstanceService, useValue: secondInstance },
         { provide: FilingCourtService, useValue: {} },
       ],
     })
       .overrideGuard(ActorContextGuard)
-      .useValue({ canActivate: () => true })
+      .useValue({
+        canActivate: (context: ExecutionContext) => {
+          context.switchToHttp().getRequest().actor = {
+            userId: routeCaseId,
+            departmentId: routeCaseId,
+            authorizationRevision: 1,
+          };
+          return true;
+        },
+      })
       .overrideGuard(CsrfGuard)
       .useValue({ canActivate: () => true })
       .compile();
@@ -126,6 +146,88 @@ describe('case read OpenAPI contract', () => {
           },
         },
       );
+      expect(document.components?.schemas?.CaseSecondInstanceDto).toMatchObject(
+        {
+          properties: {
+            currentTrialRoundId: {
+              type: 'string',
+              format: 'uuid',
+              nullable: true,
+            },
+            currentProgress: expect.objectContaining({ nullable: true }),
+            currentResult: expect.objectContaining({ nullable: true }),
+          },
+        },
+      );
+      expect(
+        document.paths['/api/v1/cases/{id}/second-instance-save']?.post
+          ?.responses['201'],
+      ).toBeDefined();
+      expect(
+        document.paths['/api/v1/cases/{id}/second-instance-result']?.post
+          ?.responses['201'],
+      ).toBeDefined();
+      expect(
+        document.paths['/api/v1/cases/{id}/second-instance-result-revoke']?.post
+          ?.responses['201'],
+      ).toBeDefined();
+      const missingFiles = await request(app.getHttpServer())
+        .post(`/api/v1/cases/${routeCaseId}/second-instance-save`)
+        .send({
+          expectedVersion: 1,
+          idempotencyKey: 'invalid',
+          trialRoundId: routeCaseId,
+          choiceId: routeCaseId,
+          expectedProgressId: null,
+          progress: {
+            hearingAt: null,
+            hearingPlace: null,
+            judgeName: null,
+            documentContentVersionIds: [],
+          },
+        });
+      expect(missingFiles.status).toBe(400);
+      expect(secondInstance.save).not.toHaveBeenCalled();
+      const missingJudgment = await request(app.getHttpServer())
+        .post(`/api/v1/cases/${routeCaseId}/second-instance-result`)
+        .send({
+          expectedVersion: 1,
+          idempotencyKey: 'invalid-result',
+          trialRoundId: routeCaseId,
+          choiceId: routeCaseId,
+          expectedProgressId: null,
+          progress: {
+            hearingAt: null,
+            hearingPlace: null,
+            judgeName: null,
+            documentContentVersionIds: [],
+            serviceContentVersionIds: [],
+          },
+          result: 'AFFIRM',
+          resultReceivedAt: '2026-10-08',
+          paidLitigationFee: { state: 'PENDING', amount: null },
+        });
+      expect(missingJudgment.status).toBe(400);
+      const uniqueResponse = await request(app.getHttpServer())
+        .post(`/api/v1/cases/${routeCaseId}/second-instance-save`)
+        .send({
+          expectedVersion: 1,
+          idempotencyKey: 'unique-fact',
+          trialRoundId: routeCaseId,
+          choiceId: routeCaseId,
+          expectedProgressId: null,
+          progress: {
+            hearingAt: null,
+            hearingPlace: null,
+            judgeName: null,
+            documentContentVersionIds: [],
+            serviceContentVersionIds: [],
+          },
+        });
+      expect(uniqueResponse.status).toBe(500);
+      expect(secondInstance.save).toHaveBeenCalledTimes(1);
+      expect(uniqueResponse.body).toMatchObject({ code: 'INTERNAL_ERROR' });
+      expect(JSON.stringify(uniqueResponse.body)).not.toContain('P2002');
       expect(document.paths['/api/v1/cases/{id}/match']?.post).toBeDefined();
       expect(
         document.paths['/api/v1/cases/{id}/complaint-confirm']?.post,

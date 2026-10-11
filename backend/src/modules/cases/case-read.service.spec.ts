@@ -173,6 +173,25 @@ describe('CaseReadService', () => {
 
   it('reads four fees by original source without inventing a court case number', async () => {
     const f = fixture();
+    const historicalAcceptance = {
+      id: 'acceptance-1',
+      trialRoundId: 'round-1',
+      acceptedAt: new Date('2026-10-01T00:00:00.000Z'),
+      courtCaseNo: 'OLD-CASE-NO',
+      recordedAt: new Date('2026-10-01T01:00:00.000Z'),
+      recordedByUserId: actor.userId,
+      versions: [
+        {
+          category: 'ACCEPTANCE_NOTICE',
+          materialId: 'material-1',
+          contentVersionId: 'version-1',
+          contentVersion: {
+            originalFilename: 'old.pdf',
+            mimeType: 'application/pdf',
+          },
+        },
+      ],
+    };
     const record = {
       id: 'case-1',
       businessNo: 'CA-1',
@@ -180,9 +199,17 @@ describe('CaseReadService', () => {
       version: 1,
       currentJudgmentId: null,
       judgmentFacts: [],
+      currentTrialRoundId: null,
+      acceptances: [historicalAcceptance],
+      currentSecondInstanceProgressId: null,
+      currentSecondInstanceResultId: null,
+      trialRounds: [],
+      secondInstanceProgresses: [],
+      secondInstanceResults: [],
       currentHearingAdvanceId: 'advance-1',
       currentHearingArrangement: {
         id: 'arrangement-1',
+        trialRoundId: 'round-1',
         hearingAt: new Date('2026-10-08T00:00:00.000Z'),
         source: 'SCHEDULE',
         recordedAt: new Date('2026-10-07T01:00:00.000Z'),
@@ -190,6 +217,7 @@ describe('CaseReadService', () => {
       },
       currentHearingAdvance: {
         id: 'advance-1',
+        trialRoundId: 'round-1',
         arrangementId: 'arrangement-1',
         dueAt: new Date('2026-10-08T16:00:00.000Z'),
         executedAt: new Date('2026-10-08T16:00:01.000Z'),
@@ -197,6 +225,7 @@ describe('CaseReadService', () => {
       hearingArrangements: [
         {
           id: 'arrangement-1',
+          trialRoundId: 'round-1',
           hearingAt: new Date('2026-10-08T00:00:00.000Z'),
           source: 'SCHEDULE',
           recordedAt: new Date('2026-10-07T01:00:00.000Z'),
@@ -206,6 +235,7 @@ describe('CaseReadService', () => {
       hearingAdvances: [
         {
           id: 'advance-1',
+          trialRoundId: 'round-1',
           arrangementId: 'arrangement-1',
           dueAt: new Date('2026-10-08T16:00:00.000Z'),
           executedAt: new Date('2026-10-08T16:00:01.000Z'),
@@ -271,6 +301,13 @@ describe('CaseReadService', () => {
     };
     f.db.case.findFirst.mockResolvedValue(record);
     const result = await f.service.get(actor, 'case-1');
+    expect(result.acceptance).toBeNull();
+    expect(result.acceptances[0]).toMatchObject({
+      trialRoundId: 'round-1',
+      courtCaseNo: 'OLD-CASE-NO',
+      recordedByUserId: actor.userId,
+      files: [{ category: 'ACCEPTANCE_NOTICE', contentVersionId: 'version-1' }],
+    });
     expect(result.hearing.currentArrangement).toMatchObject({
       hearingAt: '2026-10-08',
       recordedByUserId: actor.userId,
@@ -293,6 +330,11 @@ describe('CaseReadService', () => {
       { ...actor, lawyerAccountId: actor.userId },
       'case-1',
     );
+    expect(lawyerDetail.acceptances[0]).not.toHaveProperty('recordedByUserId');
+    expect(lawyerDetail.acceptances[0].files[0]).toMatchObject({
+      category: 'ACCEPTANCE_NOTICE',
+      contentVersionId: 'version-1',
+    });
     expect(lawyerDetail.hearing.currentArrangement).not.toHaveProperty(
       'recordedByUserId',
     );
@@ -308,6 +350,7 @@ describe('CaseReadService', () => {
 
     const judgment = {
       id: 'judgment-1',
+      trialRoundId: 'round-1',
       kind: 'REGISTER',
       priorFactId: null,
       judgmentReceivedAt: new Date('2026-10-08T00:00:00.000Z'),
@@ -345,6 +388,7 @@ describe('CaseReadService', () => {
     const choices = [
       {
         id: 'choice-1',
+        trialRoundId: 'round-1',
         judgmentId: judgment.id,
         next: 'APPEAL',
         plaintiffRightsHolderId: 'rights-1',
@@ -358,6 +402,7 @@ describe('CaseReadService', () => {
       },
       {
         id: 'choice-2',
+        trialRoundId: 'round-1',
         judgmentId: judgment.id,
         next: 'EXECUTION',
         plaintiffRightsHolderId: null,
@@ -416,6 +461,7 @@ describe('CaseReadService', () => {
     expect(historyLawyerDetail).toHaveProperty('judgmentNextStep.history', [
       {
         id: 'choice-1',
+        trialRoundId: 'round-1',
         judgmentId: judgment.id,
         next: 'APPEAL',
         plaintiffRightsHolderId: 'rights-1',
@@ -428,6 +474,7 @@ describe('CaseReadService', () => {
       },
       {
         id: 'choice-2',
+        trialRoundId: 'round-1',
         judgmentId: judgment.id,
         next: 'EXECUTION',
         plaintiffRightsHolderId: null,

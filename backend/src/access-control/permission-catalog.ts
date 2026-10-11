@@ -52,6 +52,9 @@ export const internalAssignablePermissionActions = [
   'CASE_JUDGMENT_CORRECT',
   'CASE_JUDGMENT_NEXT_STEP',
   'CASE_JUDGMENT_NEXT_STEP_REVOKE',
+  'CASE_SECOND_INSTANCE_SAVE',
+  'CASE_SECOND_INSTANCE_RESULT',
+  'CASE_SECOND_INSTANCE_RESULT_REVOKE',
   'NOTARY_OFFICE_MANAGE',
   'USER_READ',
   'USER_MANAGE',
@@ -214,6 +217,21 @@ const catalog: PermissionCatalogItem[] = [
   {
     action: 'CASE_JUDGMENT_NEXT_STEP_REVOKE',
     label: '撤销判决后续选择',
+    scopes: allScopes,
+  },
+  {
+    action: 'CASE_SECOND_INSTANCE_SAVE',
+    label: '保存二审进展',
+    scopes: allScopes,
+  },
+  {
+    action: 'CASE_SECOND_INSTANCE_RESULT',
+    label: '登记二审结果',
+    scopes: allScopes,
+  },
+  {
+    action: 'CASE_SECOND_INSTANCE_RESULT_REVOKE',
+    label: '撤销二审结果',
     scopes: allScopes,
   },
   {

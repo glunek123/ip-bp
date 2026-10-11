@@ -14,6 +14,14 @@ const names = readdirSync(directory)
 const target = '20261010040000_add_case_trial_round_foundation';
 const repair = '20261010041000_repair_case_trial_round_guard';
 const detachRepair = '20261010042000_reject_detached_initial_trial_round';
+const secondInstanceMigrations = [
+  '20261010043000_add_case_second_instance_enums',
+  '20261010044000_add_case_second_instance_facts',
+  '20261010045000_guard_case_second_instance_chain',
+  '20261010046000_repair_case_second_instance_version_guard',
+  '20261010047000_allow_second_instance_frozen_version_reuse',
+  '20261010048000_allow_remand_after_revoked_child',
+];
 const sql = (name) =>
   readFileSync(resolve(directory, name, 'migration.sql'), 'utf8');
 
@@ -170,11 +178,12 @@ export async function verifyCaseSecondInstanceMigration() {
     allowRandomPort: true,
   });
   if (
-    names.length !== 120 ||
+    names.length !== 126 ||
     names[116] !== '20261010034000_guard_case_judgment_plaintiff_snapshot' ||
     names[117] !== target ||
     names[118] !== repair ||
-    names[119] !== detachRepair
+    names[119] !== detachRepair ||
+    secondInstanceMigrations.some((name, index) => names[120 + index] !== name)
   )
     throw new Error('Unexpected 117 migration baseline or CA-010 suffix');
   const client = new Client({ connectionString: process.env.DATABASE_URL });
@@ -201,7 +210,7 @@ export async function verifyCaseSecondInstanceMigration() {
       )
     ).rows[0].exists;
     await use(schemas[1]);
-    await replay(client, names.slice(0, -3));
+    await replay(client, names.slice(0, -9));
     const legacy = await seedLegacyCase(client);
     const earlyAccepted = await seedLegacyCase(client, { early: true });
     const prior = (
@@ -221,6 +230,7 @@ export async function verifyCaseSecondInstanceMigration() {
       )
     ).rows[0];
     await replay(client, [target, repair, detachRepair]);
+    await replay(client, secondInstanceMigrations);
     let combinedDetachRejected = false;
     await client.query('BEGIN');
     try {
@@ -341,7 +351,7 @@ export async function verifyCaseSecondInstanceMigration() {
       await client.query('ROLLBACK');
     }
     await use(schemas[2]);
-    await replay(client, names.slice(0, -3));
+    await replay(client, names.slice(0, -9));
     const broken = await seedLegacyCase(client, { invalid: true });
     const guardsBeforeFailure = (
       await client.query(`SELECT count(*)::int AS n FROM pg_trigger t JOIN pg_class c ON c.oid=t.tgrelid
@@ -383,6 +393,7 @@ export async function verifyCaseSecondInstanceMigration() {
     );
     await client.query('COMMIT');
     await replay(client, [target, repair, detachRepair]);
+    await replay(client, secondInstanceMigrations);
     const retry = (
       await client.query(
         'SELECT current_acceptance_id=$2 AS accepted FROM cases WHERE id=$1',
@@ -391,7 +402,7 @@ export async function verifyCaseSecondInstanceMigration() {
     ).rows[0].accepted;
     return {
       migrationCount: names.length,
-      priorMigrationCount: names.length - 3,
+      priorMigrationCount: names.length - 9,
       emptyRoundTable,
       oldChainPreserved,
       combinedDetachRejected,

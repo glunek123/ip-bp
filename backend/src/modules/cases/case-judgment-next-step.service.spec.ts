@@ -48,6 +48,12 @@ describe('CaseJudgmentNextStepService', () => {
       caseJudgmentNextStepRevocation: {
         create: jest.fn().mockResolvedValue({}),
       },
+      caseSecondInstanceProgress: {
+        count: jest.fn().mockResolvedValue(0),
+      },
+      caseSecondInstanceResult: {
+        count: jest.fn().mockResolvedValue(0),
+      },
       auditEvent: {
         create: jest
           .fn()
@@ -239,5 +245,27 @@ describe('CaseJudgmentNextStepService', () => {
         data: expect.objectContaining({ reason: '误选', choiceId }),
       }),
     );
+  });
+
+  it('does not revoke an appeal after second-instance progress exists', async () => {
+    const f = fixture();
+    const choiceId = 'aaaaaaaa-aaaa-4aaa-8aaa-aaaaaaaaaaaa';
+    f.tx.case.findFirst.mockResolvedValue({
+      ...f.record,
+      stage: 'SECOND_INSTANCE',
+      version: 11,
+      currentJudgmentNextStepId: choiceId,
+      currentJudgmentNextStep: { id: choiceId, judgmentId, next: 'APPEAL' },
+    });
+    f.tx.caseSecondInstanceProgress.count.mockResolvedValue(1);
+    await expect(
+      f.service.revoke(actor, caseId, {
+        expectedVersion: 11,
+        idempotencyKey: 'revoke-after-progress',
+        choiceId,
+        reason: '误选',
+      }),
+    ).rejects.toMatchObject({ response: { code: 'INVALID_STATE' } });
+    expect(f.tx.caseJudgmentNextStepRevocation.create).not.toHaveBeenCalled();
   });
 });

@@ -329,6 +329,9 @@ export class CaseReadService {
                   : {}),
               },
             )),
+          canSaveSecondInstance: false,
+          canRegisterSecondInstanceResult: false,
+          canRevokeSecondInstanceResult: false,
           createdAt: item.createdAt.toISOString(),
         })),
       ),
@@ -422,19 +425,145 @@ export class CaseReadService {
         },
         acceptance: {
           select: {
+            id: true,
+            trialRoundId: true,
             acceptedAt: true,
             courtCaseNo: true,
             recordedAt: true,
             recordedByUserId: true,
+            versions: {
+              select: {
+                category: true,
+                materialId: true,
+                contentVersionId: true,
+                contentVersion: {
+                  select: { originalFilename: true, mimeType: true },
+                },
+              },
+            },
+          },
+        },
+        acceptances: {
+          orderBy: [{ acceptedAt: 'asc' }, { id: 'asc' }],
+          select: {
+            id: true,
+            trialRoundId: true,
+            acceptedAt: true,
+            courtCaseNo: true,
+            recordedAt: true,
+            recordedByUserId: true,
+            versions: {
+              select: {
+                category: true,
+                materialId: true,
+                contentVersionId: true,
+                contentVersion: {
+                  select: { originalFilename: true, mimeType: true },
+                },
+              },
+            },
           },
         },
         currentHearingAdvanceId: true,
         currentJudgmentId: true,
         currentJudgmentNextStepId: true,
+        currentTrialRoundId: true,
+        currentSecondInstanceProgressId: true,
+        currentSecondInstanceResultId: true,
+        trialRounds: {
+          orderBy: [{ sequence: 'asc' }, { id: 'asc' }],
+          select: {
+            id: true,
+            sequence: true,
+            sourceResultId: true,
+            revokedAt: true,
+          },
+        },
+        secondInstanceProgresses: {
+          orderBy: [{ toVersion: 'asc' }, { id: 'asc' }],
+          select: {
+            id: true,
+            trialRoundId: true,
+            choiceId: true,
+            priorProgressId: true,
+            hearingAt: true,
+            hearingPlace: true,
+            judgeName: true,
+            fromVersion: true,
+            toVersion: true,
+            recordedAt: true,
+            recordedByUserId: true,
+            versions: {
+              select: {
+                category: true,
+                materialId: true,
+                contentVersionId: true,
+                contentVersion: {
+                  select: { originalFilename: true, mimeType: true },
+                },
+              },
+            },
+          },
+        },
+        secondInstanceResults: {
+          orderBy: [{ toVersion: 'asc' }, { id: 'asc' }],
+          select: {
+            id: true,
+            trialRoundId: true,
+            choiceId: true,
+            judgmentId: true,
+            progressId: true,
+            result: true,
+            resultReceivedAt: true,
+            judgmentAmountState: true,
+            judgmentAmount: true,
+            paidLitigationFeeState: true,
+            paidLitigationFee: true,
+            fromVersion: true,
+            toVersion: true,
+            recordedAt: true,
+            recordedByUserId: true,
+            childRound: {
+              select: {
+                id: true,
+                revokedAt: true,
+                _count: {
+                  select: {
+                    acceptances: true,
+                    hearings: true,
+                    advances: true,
+                    judgments: true,
+                    choices: true,
+                  },
+                },
+              },
+            },
+            revocation: {
+              select: {
+                id: true,
+                reason: true,
+                fromVersion: true,
+                toVersion: true,
+                recordedAt: true,
+                recordedByUserId: true,
+              },
+            },
+            versions: {
+              select: {
+                materialId: true,
+                contentVersionId: true,
+                contentVersion: {
+                  select: { originalFilename: true, mimeType: true },
+                },
+              },
+            },
+          },
+        },
         judgmentNextSteps: {
           orderBy: [{ toVersion: 'asc' }, { id: 'asc' }],
           select: {
             id: true,
+            trialRoundId: true,
             judgmentId: true,
             next: true,
             plaintiffRightsHolderId: true,
@@ -466,6 +595,7 @@ export class CaseReadService {
           orderBy: [{ toVersion: 'asc' }, { id: 'asc' }],
           select: {
             id: true,
+            trialRoundId: true,
             kind: true,
             priorFactId: true,
             judgmentReceivedAt: true,
@@ -492,6 +622,7 @@ export class CaseReadService {
         currentHearingArrangement: {
           select: {
             id: true,
+            trialRoundId: true,
             hearingAt: true,
             source: true,
             recordedAt: true,
@@ -501,6 +632,7 @@ export class CaseReadService {
         currentHearingAdvance: {
           select: {
             id: true,
+            trialRoundId: true,
             arrangementId: true,
             dueAt: true,
             executedAt: true,
@@ -510,6 +642,7 @@ export class CaseReadService {
           orderBy: [{ recordedAt: 'asc' }, { id: 'asc' }],
           select: {
             id: true,
+            trialRoundId: true,
             hearingAt: true,
             source: true,
             recordedAt: true,
@@ -520,6 +653,7 @@ export class CaseReadService {
           orderBy: [{ executedAt: 'asc' }, { id: 'asc' }],
           select: {
             id: true,
+            trialRoundId: true,
             arrangementId: true,
             dueAt: true,
             executedAt: true,
@@ -680,6 +814,7 @@ export class CaseReadService {
     });
     const judgmentHistory = record.judgmentFacts.map((fact) => ({
       id: fact.id,
+      trialRoundId: fact.trialRoundId,
       kind: fact.kind,
       priorFactId: fact.priorFactId,
       judgmentReceivedAt: fact.judgmentReceivedAt.toISOString().slice(0, 10),
@@ -713,6 +848,7 @@ export class CaseReadService {
     );
     const nextStepHistory = (record.judgmentNextSteps ?? []).map((choice) => ({
       id: choice.id,
+      trialRoundId: choice.trialRoundId,
       judgmentId: choice.judgmentId,
       next: choice.next,
       plaintiffRightsHolderId: choice.plaintiffRightsHolderId,
@@ -725,6 +861,72 @@ export class CaseReadService {
       ...(principal === 'INTERNAL'
         ? { recordedByUserId: choice.recordedByUserId }
         : {}),
+    }));
+    const secondProgresses = record.secondInstanceProgresses.map(
+      (progress) => ({
+        id: progress.id,
+        trialRoundId: progress.trialRoundId,
+        choiceId: progress.choiceId,
+        priorProgressId: progress.priorProgressId,
+        hearingAt: progress.hearingAt?.toISOString().slice(0, 10) ?? null,
+        hearingPlace: progress.hearingPlace,
+        judgeName: progress.judgeName,
+        fromVersion: progress.fromVersion,
+        toVersion: progress.toVersion,
+        recordedAt: progress.recordedAt.toISOString(),
+        ...(principal === 'INTERNAL'
+          ? { recordedByUserId: progress.recordedByUserId }
+          : {}),
+        documentFiles: progress.versions
+          .filter((version) => version.category === 'SECOND_INSTANCE_DOCUMENT')
+          .map((version) => ({
+            materialId: version.materialId,
+            contentVersionId: version.contentVersionId,
+            originalFilename: version.contentVersion.originalFilename,
+            mimeType: version.contentVersion.mimeType,
+          })),
+        serviceFiles: progress.versions
+          .filter((version) => version.category === 'SECOND_INSTANCE_SERVICE')
+          .map((version) => ({
+            materialId: version.materialId,
+            contentVersionId: version.contentVersionId,
+            originalFilename: version.contentVersion.originalFilename,
+            mimeType: version.contentVersion.mimeType,
+          })),
+      }),
+    );
+    const secondResults = record.secondInstanceResults.map((result) => ({
+      id: result.id,
+      trialRoundId: result.trialRoundId,
+      choiceId: result.choiceId,
+      judgmentId: result.judgmentId,
+      progressId: result.progressId,
+      result: result.result,
+      resultReceivedAt: result.resultReceivedAt.toISOString().slice(0, 10),
+      judgmentAmountState: result.judgmentAmountState,
+      judgmentAmount:
+        result.judgmentAmount === null
+          ? null
+          : new Prisma.Decimal(result.judgmentAmount.toString()).toFixed(2),
+      paidLitigationFeeState: result.paidLitigationFeeState,
+      paidLitigationFee:
+        result.paidLitigationFee === null
+          ? null
+          : new Prisma.Decimal(result.paidLitigationFee.toString()).toFixed(2),
+      fromVersion: result.fromVersion,
+      toVersion: result.toVersion,
+      recordedAt: result.recordedAt.toISOString(),
+      ...(principal === 'INTERNAL'
+        ? { recordedByUserId: result.recordedByUserId }
+        : {}),
+      files: result.versions.map((version) => ({
+        materialId: version.materialId,
+        contentVersionId: version.contentVersionId,
+        originalFilename: version.contentVersion.originalFilename,
+        mimeType: version.contentVersion.mimeType,
+      })),
+      childTrialRoundId: result.childRound?.id ?? null,
+      revocationId: result.revocation?.id ?? null,
     }));
     const judgmentAvailableFiles = judgmentMaterials.flatMap((material) =>
       material.contentVersions
@@ -745,6 +947,7 @@ export class CaseReadService {
       value: (typeof record.hearingArrangements)[number],
     ) => ({
       id: value.id,
+      trialRoundId: value.trialRoundId,
       hearingAt: value.hearingAt?.toISOString().slice(0, 10) ?? null,
       source: value.source,
       recordedAt: value.recordedAt.toISOString(),
@@ -754,6 +957,7 @@ export class CaseReadService {
     });
     const advance = (value: (typeof record.hearingAdvances)[number]) => ({
       id: value.id,
+      trialRoundId: value.trialRoundId,
       arrangementId: value.arrangementId,
       dueAt: value.dueAt.toISOString(),
       executedAt: value.executedAt.toISOString(),
@@ -814,6 +1018,45 @@ export class CaseReadService {
                 }
               : {}),
           }),
+        ),
+      },
+      secondInstance: {
+        currentTrialRoundId: record.currentTrialRoundId,
+        currentProgress:
+          secondProgresses.find(
+            (progress) =>
+              progress.id === record.currentSecondInstanceProgressId,
+          ) ?? null,
+        currentResult:
+          secondResults.find(
+            (result) => result.id === record.currentSecondInstanceResultId,
+          ) ?? null,
+        rounds: record.trialRounds.map((round) => ({
+          id: round.id,
+          sequence: round.sequence,
+          sourceResultId: round.sourceResultId,
+          revokedAt: round.revokedAt?.toISOString() ?? null,
+        })),
+        progresses: secondProgresses,
+        results: secondResults,
+        revocations: record.secondInstanceResults.flatMap((result) =>
+          result.revocation === null
+            ? []
+            : [
+                {
+                  id: result.revocation.id,
+                  resultId: result.id,
+                  fromVersion: result.revocation.fromVersion,
+                  toVersion: result.revocation.toVersion,
+                  recordedAt: result.revocation.recordedAt.toISOString(),
+                  ...(principal === 'INTERNAL'
+                    ? {
+                        reason: result.revocation.reason,
+                        recordedByUserId: result.revocation.recordedByUserId,
+                      }
+                    : {}),
+                },
+              ],
         ),
       },
       matchedAt: record.matchedAt?.toISOString() ?? null,
@@ -972,9 +1215,70 @@ export class CaseReadService {
         (record.stage === 'SECOND_INSTANCE' ||
           record.stage === 'WAITING_EXECUTION_DOCUMENTS') &&
         record.currentJudgmentNextStepId !== null &&
+        record.secondInstanceProgresses.length === 0 &&
+        record.secondInstanceResults.length === 0 &&
         (await this.access.canAuthorizeCase(
           actor,
           'case.judgment.next_step.revoke',
+          {
+            departmentId: actor.departmentId,
+            responsibleUserId: record.responsibleUserId,
+            ...(record.responsibleMembership.teamId
+              ? { teamId: record.responsibleMembership.teamId }
+              : {}),
+          },
+        )),
+      canSaveSecondInstance:
+        record.stage === 'SECOND_INSTANCE' &&
+        record.currentJudgmentNextStepId !== null &&
+        record.currentSecondInstanceResultId === null &&
+        (principal === 'LAWYER' ||
+          (await this.access.canAuthorizeCase(
+            actor,
+            'case.second_instance.save',
+            {
+              departmentId: actor.departmentId,
+              responsibleUserId: record.responsibleUserId,
+              ...(record.responsibleMembership.teamId
+                ? { teamId: record.responsibleMembership.teamId }
+                : {}),
+            },
+          ))),
+      canRegisterSecondInstanceResult:
+        record.stage === 'SECOND_INSTANCE' &&
+        record.currentJudgmentNextStepId !== null &&
+        record.currentSecondInstanceResultId === null &&
+        (principal === 'LAWYER' ||
+          (await this.access.canAuthorizeCase(
+            actor,
+            'case.second_instance.result',
+            {
+              departmentId: actor.departmentId,
+              responsibleUserId: record.responsibleUserId,
+              ...(record.responsibleMembership.teamId
+                ? { teamId: record.responsibleMembership.teamId }
+                : {}),
+            },
+          ))),
+      canRevokeSecondInstanceResult:
+        principal === 'INTERNAL' &&
+        record.currentSecondInstanceResultId !== null &&
+        record.secondInstanceResults.some(
+          (result) =>
+            result.id === record.currentSecondInstanceResultId &&
+            result.revocation === null &&
+            (result.result === 'REMAND'
+              ? record.stage === 'WAITING_FORMAL_ACCEPTANCE' &&
+                result.childRound?.id === record.currentTrialRoundId &&
+                result.childRound.revokedAt === null &&
+                Object.values(result.childRound._count).every(
+                  (count) => count === 0,
+                )
+              : record.stage === 'WAITING_EXECUTION_DOCUMENTS'),
+        ) &&
+        (await this.access.canAuthorizeCase(
+          actor,
+          'case.second_instance.result.revoke',
           {
             departmentId: actor.departmentId,
             responsibleUserId: record.responsibleUserId,
@@ -1067,13 +1371,39 @@ export class CaseReadService {
         record.acceptance == null
           ? null
           : {
+              id: record.acceptance.id,
+              trialRoundId: record.acceptance.trialRoundId,
               acceptedAt: record.acceptance.acceptedAt
                 .toISOString()
                 .slice(0, 10),
               courtCaseNo: record.acceptance.courtCaseNo,
               recordedAt: record.acceptance.recordedAt.toISOString(),
               recordedByUserId: record.acceptance.recordedByUserId,
+              files: record.acceptance.versions.map((version) => ({
+                category: version.category,
+                materialId: version.materialId,
+                contentVersionId: version.contentVersionId,
+                originalFilename: version.contentVersion.originalFilename,
+                mimeType: version.contentVersion.mimeType,
+              })),
             },
+      acceptances: record.acceptances.map((value) => ({
+        id: value.id,
+        trialRoundId: value.trialRoundId,
+        acceptedAt: value.acceptedAt.toISOString().slice(0, 10),
+        courtCaseNo: value.courtCaseNo,
+        recordedAt: value.recordedAt.toISOString(),
+        ...(principal === 'INTERNAL'
+          ? { recordedByUserId: value.recordedByUserId }
+          : {}),
+        files: value.versions.map((version) => ({
+          category: version.category,
+          materialId: version.materialId,
+          contentVersionId: version.contentVersionId,
+          originalFilename: version.contentVersion.originalFilename,
+          mimeType: version.contentVersion.mimeType,
+        })),
+      })),
       acceptanceMaterials: Object.fromEntries(
         (
           ['ACCEPTANCE_NOTICE', 'PAYMENT_LIST', 'SERVICE_DOCUMENT'] as const
@@ -1205,9 +1535,13 @@ export class CaseReadService {
         canCorrectJudgment: false,
         canChooseJudgmentNextStep: detail.canChooseJudgmentNextStep,
         canRevokeJudgmentNextStep: false,
+        canSaveSecondInstance: detail.canSaveSecondInstance,
+        canRegisterSecondInstanceResult: detail.canRegisterSecondInstanceResult,
+        canRevokeSecondInstanceResult: false,
         hearing: detail.hearing,
         judgment: detail.judgment,
         judgmentNextStep: detail.judgmentNextStep,
+        secondInstance: detail.secondInstance,
         complaint:
           detail.complaint === null
             ? null
@@ -1258,10 +1592,14 @@ export class CaseReadService {
           detail.acceptance === null
             ? null
             : {
+                id: detail.acceptance.id,
+                trialRoundId: detail.acceptance.trialRoundId,
                 acceptedAt: detail.acceptance.acceptedAt,
                 courtCaseNo: detail.acceptance.courtCaseNo,
                 recordedAt: detail.acceptance.recordedAt,
+                files: detail.acceptance.files,
               },
+        acceptances: detail.acceptances,
         acceptanceMaterials: detail.acceptanceMaterials,
         courtCaseNo: detail.courtCaseNo,
         customer: detail.customer,

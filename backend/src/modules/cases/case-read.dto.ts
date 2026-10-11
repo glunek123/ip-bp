@@ -67,11 +67,21 @@ class CaseFilingSubmissionSummaryDto {
   @ApiProperty({ type: [CaseCertificateFileDto] })
   screenshotFiles!: CaseCertificateFileDto[];
 }
+class CaseAcceptanceFileDto extends CaseCertificateFileDto {
+  @ApiProperty({
+    enum: ['ACCEPTANCE_NOTICE', 'PAYMENT_LIST', 'SERVICE_DOCUMENT'],
+  })
+  category!: 'ACCEPTANCE_NOTICE' | 'PAYMENT_LIST' | 'SERVICE_DOCUMENT';
+}
 class CaseAcceptanceSummaryDto {
+  @ApiProperty({ format: 'uuid' }) id!: string;
+  @ApiProperty({ format: 'uuid' }) trialRoundId!: string;
   @ApiProperty({ format: 'date' }) acceptedAt!: string;
   @ApiProperty() courtCaseNo!: string;
   @ApiProperty({ format: 'date-time' }) recordedAt!: string;
   @ApiProperty({ format: 'uuid', required: false }) recordedByUserId?: string;
+  @ApiProperty({ type: [CaseAcceptanceFileDto] })
+  files!: CaseAcceptanceFileDto[];
 }
 class CaseAcceptanceMaterialGroupDto {
   @ApiProperty({ type: [CaseCertificateFileDto] })
@@ -92,6 +102,7 @@ class CaseAcceptanceMaterialsDto {
 
 class CaseHearingArrangementDto {
   @ApiProperty({ format: 'uuid' }) id!: string;
+  @ApiProperty({ format: 'uuid' }) trialRoundId!: string;
   @ApiProperty({ type: String, nullable: true, format: 'date' }) hearingAt!:
     string | null;
   @ApiProperty({ enum: ['SCHEDULE', 'CORRECTION'] }) source!:
@@ -101,6 +112,7 @@ class CaseHearingArrangementDto {
 }
 class CaseHearingAdvanceDto {
   @ApiProperty({ format: 'uuid' }) id!: string;
+  @ApiProperty({ format: 'uuid' }) trialRoundId!: string;
   @ApiProperty({ format: 'uuid' }) arrangementId!: string;
   @ApiProperty({ format: 'date-time' }) dueAt!: string;
   @ApiProperty({ format: 'date-time' }) executedAt!: string;
@@ -131,6 +143,7 @@ class CaseHearingDto {
 
 class CaseJudgmentFactDto {
   @ApiProperty({ format: 'uuid' }) id!: string;
+  @ApiProperty({ format: 'uuid' }) trialRoundId!: string;
   @ApiProperty({ enum: ['REGISTER', 'CORRECT'] }) kind!: 'REGISTER' | 'CORRECT';
   @ApiProperty({ type: String, nullable: true, format: 'uuid' }) priorFactId!:
     string | null;
@@ -164,6 +177,7 @@ class CaseJudgmentAppealDefendantDto {
 }
 class CaseJudgmentNextStepChoiceDto {
   @ApiProperty({ format: 'uuid' }) id!: string;
+  @ApiProperty({ format: 'uuid' }) trialRoundId!: string;
   @ApiProperty({ format: 'uuid' }) judgmentId!: string;
   @ApiProperty({ enum: ['APPEAL', 'EXECUTION'] }) next!: 'APPEAL' | 'EXECUTION';
   @ApiProperty({ type: String, nullable: true, format: 'uuid' })
@@ -193,6 +207,87 @@ class CaseJudgmentNextStepDto {
   history!: CaseJudgmentNextStepChoiceDto[];
   @ApiProperty({ type: [CaseJudgmentNextStepRevocationDto] })
   revocations!: CaseJudgmentNextStepRevocationDto[];
+}
+
+class CaseSecondInstanceProgressSummaryDto {
+  @ApiProperty({ format: 'uuid' }) id!: string;
+  @ApiProperty({ format: 'uuid' }) trialRoundId!: string;
+  @ApiProperty({ format: 'uuid' }) choiceId!: string;
+  @ApiProperty({ type: String, nullable: true, format: 'uuid' })
+  priorProgressId!: string | null;
+  @ApiProperty({ type: String, nullable: true, format: 'date' }) hearingAt!:
+    string | null;
+  @ApiProperty({ type: String, nullable: true }) hearingPlace!: string | null;
+  @ApiProperty({ type: String, nullable: true }) judgeName!: string | null;
+  @ApiProperty() fromVersion!: number;
+  @ApiProperty() toVersion!: number;
+  @ApiProperty({ format: 'date-time' }) recordedAt!: string;
+  @ApiPropertyOptional({ format: 'uuid' }) recordedByUserId?: string;
+  @ApiProperty({ type: [CaseCertificateFileDto] })
+  documentFiles!: CaseCertificateFileDto[];
+  @ApiProperty({ type: [CaseCertificateFileDto] })
+  serviceFiles!: CaseCertificateFileDto[];
+}
+class CaseSecondInstanceResultSummaryDto {
+  @ApiProperty({ format: 'uuid' }) id!: string;
+  @ApiProperty({ format: 'uuid' }) trialRoundId!: string;
+  @ApiProperty({ format: 'uuid' }) choiceId!: string;
+  @ApiProperty({ format: 'uuid' }) judgmentId!: string;
+  @ApiProperty({ type: String, nullable: true, format: 'uuid' }) progressId!:
+    string | null;
+  @ApiProperty({ enum: ['REMAND', 'CHANGE', 'AFFIRM'] }) result!:
+    'REMAND' | 'CHANGE' | 'AFFIRM';
+  @ApiProperty({ format: 'date' }) resultReceivedAt!: string;
+  @ApiProperty({ enum: ['KNOWN', 'PENDING'], nullable: true })
+  judgmentAmountState!: 'KNOWN' | 'PENDING' | null;
+  @ApiProperty({ type: String, nullable: true }) judgmentAmount!: string | null;
+  @ApiProperty({ enum: ['KNOWN', 'PENDING'] }) paidLitigationFeeState!:
+    'KNOWN' | 'PENDING';
+  @ApiProperty({ type: String, nullable: true }) paidLitigationFee!:
+    string | null;
+  @ApiProperty() fromVersion!: number;
+  @ApiProperty() toVersion!: number;
+  @ApiProperty({ format: 'date-time' }) recordedAt!: string;
+  @ApiPropertyOptional({ format: 'uuid' }) recordedByUserId?: string;
+  @ApiProperty({ type: [CaseCertificateFileDto] })
+  files!: CaseCertificateFileDto[];
+  @ApiProperty({ type: String, nullable: true, format: 'uuid' })
+  childTrialRoundId!: string | null;
+  @ApiProperty({ type: String, nullable: true, format: 'uuid' }) revocationId!:
+    string | null;
+}
+class CaseSecondInstanceRevocationSummaryDto {
+  @ApiProperty({ format: 'uuid' }) id!: string;
+  @ApiProperty({ format: 'uuid' }) resultId!: string;
+  @ApiProperty() fromVersion!: number;
+  @ApiProperty() toVersion!: number;
+  @ApiProperty({ format: 'date-time' }) recordedAt!: string;
+  @ApiPropertyOptional() reason?: string;
+  @ApiPropertyOptional({ format: 'uuid' }) recordedByUserId?: string;
+}
+class CaseSecondInstanceRoundDto {
+  @ApiProperty({ format: 'uuid' }) id!: string;
+  @ApiProperty() sequence!: number;
+  @ApiProperty({ type: String, nullable: true, format: 'uuid' })
+  sourceResultId!: string | null;
+  @ApiProperty({ type: String, nullable: true, format: 'date-time' })
+  revokedAt!: string | null;
+}
+class CaseSecondInstanceDto {
+  @ApiProperty({ type: String, format: 'uuid', nullable: true })
+  currentTrialRoundId!: string | null;
+  @ApiProperty({ type: CaseSecondInstanceProgressSummaryDto, nullable: true })
+  currentProgress!: CaseSecondInstanceProgressSummaryDto | null;
+  @ApiProperty({ type: CaseSecondInstanceResultSummaryDto, nullable: true })
+  currentResult!: CaseSecondInstanceResultSummaryDto | null;
+  @ApiProperty({ type: [CaseSecondInstanceRoundDto] })
+  rounds!: CaseSecondInstanceRoundDto[];
+  @ApiProperty({ type: [CaseSecondInstanceProgressSummaryDto] })
+  progresses!: CaseSecondInstanceProgressSummaryDto[];
+  @ApiProperty({ type: [CaseSecondInstanceResultSummaryDto] })
+  results!: CaseSecondInstanceResultSummaryDto[];
+  @ApiProperty({ type: [CaseSecondInstanceRevocationSummaryDto] })
+  revocations!: CaseSecondInstanceRevocationSummaryDto[];
 }
 
 export class CasePageQueryDto {
@@ -304,6 +399,9 @@ class CaseListItemDto {
   @ApiProperty() canCorrectJudgment!: boolean;
   @ApiProperty() canChooseJudgmentNextStep!: boolean;
   @ApiProperty() canRevokeJudgmentNextStep!: boolean;
+  @ApiProperty() canSaveSecondInstance!: boolean;
+  @ApiProperty() canRegisterSecondInstanceResult!: boolean;
+  @ApiProperty() canRevokeSecondInstanceResult!: boolean;
   @ApiProperty({ type: CaseOwnerDto }) owner!: CaseOwnerDto;
   @ApiProperty({ format: 'date-time' }) createdAt!: string;
   @ApiProperty({ type: CaseSourceDto }) sourceLead!: CaseSourceDto;
@@ -358,6 +456,8 @@ export class CaseDetailResponseDto extends CaseListItemDto {
   @ApiProperty({ type: CaseJudgmentDto }) judgment!: CaseJudgmentDto;
   @ApiProperty({ type: CaseJudgmentNextStepDto })
   judgmentNextStep!: CaseJudgmentNextStepDto;
+  @ApiProperty({ type: CaseSecondInstanceDto })
+  secondInstance!: CaseSecondInstanceDto;
   @ApiProperty({ type: CaseComplaintSummaryDto, nullable: true })
   complaint!: CaseComplaintSummaryDto | null;
   @ApiProperty({ type: CaseComplaintConfirmationSummaryDto, nullable: true })
@@ -368,6 +468,8 @@ export class CaseDetailResponseDto extends CaseListItemDto {
   filingSubmission!: CaseFilingSubmissionSummaryDto | null;
   @ApiProperty({ type: CaseAcceptanceSummaryDto, nullable: true })
   acceptance!: CaseAcceptanceSummaryDto | null;
+  @ApiProperty({ type: [CaseAcceptanceSummaryDto] })
+  acceptances!: CaseAcceptanceSummaryDto[];
   @ApiProperty({ type: CaseAcceptanceMaterialsDto })
   acceptanceMaterials!: CaseAcceptanceMaterialsDto;
   @ApiProperty({ type: String, nullable: true, format: 'date-time' })

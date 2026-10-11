@@ -616,6 +616,7 @@ export async function verifyCaseJudgmentDatabase(options = {}) {
     authorizationRevision: 1,
   };
   const keys = [];
+  const extraUserIds = [];
   const fault = `ca008_fault_${randomUUID().replaceAll('-', '')}`;
   let faultInstalled = false;
   await client.connect();
@@ -816,10 +817,13 @@ export async function verifyCaseJudgmentDatabase(options = {}) {
         judgmentId: result.judgmentId,
         judgment,
         materials,
+        storage,
         database,
         client,
         registeredFiles,
         registrationInput: input,
+        trackStorageKey: (key) => keys.push(key),
+        trackExtraUserId: (id) => extraUserIds.push(id),
       });
     }
     const snapshot = {
@@ -1252,6 +1256,12 @@ export async function verifyCaseJudgmentDatabase(options = {}) {
     try {
       await client.query('SET LOCAL session_replication_role = replica');
       const tables = [
+        'case_second_instance_receipts',
+        'case_second_instance_result_revocations',
+        'case_second_instance_result_versions',
+        'case_second_instance_results',
+        'case_second_instance_progress_versions',
+        'case_second_instance_progresses',
         'case_judgment_next_step_receipts',
         'case_judgment_appeal_defendants',
         'case_judgment_next_step_revocations',
@@ -1270,6 +1280,14 @@ export async function verifyCaseJudgmentDatabase(options = {}) {
       await client.query(
         'DELETE FROM material_references WHERE resource_type=$1 AND resource_id=$2',
         ['case', ids.case],
+      );
+      await client.query(
+        'DELETE FROM case_lawyer_assignments WHERE case_id=$1',
+        [ids.case],
+      );
+      await client.query(
+        'DELETE FROM case_complaint_confirmations WHERE case_id=$1',
+        [ids.case],
       );
       for (const table of tables)
         await client.query(`DELETE FROM "${table}" WHERE case_id=$1`, [
@@ -1291,13 +1309,34 @@ export async function verifyCaseJudgmentDatabase(options = {}) {
         ['CASE', ids.case],
       );
       await client.query('DELETE FROM cases WHERE id=$1', [ids.case]);
-      await client.query('DELETE FROM case_trial_rounds WHERE id=$1', [
-        ids.trialRound,
+      await client.query('DELETE FROM case_trial_rounds WHERE case_id=$1', [
+        ids.case,
+      ]);
+      await client.query(
+        'DELETE FROM notary_certificates WHERE id IN (SELECT id FROM notary_certificates WHERE certificate_no=$1)',
+        [`CA010-cert-${ids.case}`],
+      );
+      await client.query('DELETE FROM notary_matters WHERE business_no=$1', [
+        `CA010-matter-${ids.case}`,
+      ]);
+      await client.query('DELETE FROM leads WHERE business_no=$1', [
+        `CA010-lead-${ids.case}`,
       ]);
       await client.query('DELETE FROM rights_holders WHERE id=$1', [
         ids.holder,
       ]);
       await client.query('DELETE FROM customers WHERE id=$1', [ids.customer]);
+      await client.query(
+        'DELETE FROM customer_account_bindings WHERE department_id=$1',
+        [ids.department],
+      );
+      await client.query(
+        'DELETE FROM lawyer_account_bindings WHERE department_id=$1',
+        [ids.department],
+      );
+      await client.query('DELETE FROM lawyer_profiles WHERE department_id=$1', [
+        ids.department,
+      ]);
       await client.query(
         'DELETE FROM role_assignments WHERE role_template_id=$1',
         [ids.role],
@@ -1317,6 +1356,8 @@ export async function verifyCaseJudgmentDatabase(options = {}) {
         [ids.actor],
       );
       await client.query('DELETE FROM user_accounts WHERE id=$1', [ids.actor]);
+      for (const id of extraUserIds)
+        await client.query('DELETE FROM user_accounts WHERE id=$1', [id]);
       await client.query('DELETE FROM departments WHERE id=$1', [
         ids.department,
       ]);

@@ -1,0 +1,22 @@
+export function verifyCaseSecondInstanceDatabase(): Promise<{
+  saved: boolean;
+  saveReplay: boolean;
+  changedKey: string | null;
+  remand: boolean;
+  remandReplay: boolean;
+  oldRound: string | null;
+  clearedPointers: boolean;
+  restored: boolean;
+  bypassStage: string | null;
+  immutableResult: string | null;
+  faultRaised: boolean;
+  rollback: boolean;
+  progressRevision: boolean;
+  repeatedFrozenVersions: boolean;
+  preservedProgressBytes: boolean;
+  noAudit: string | null;
+  wrongCase: string | null;
+  wrongPurpose: string | null;
+  race: string[];
+  final: boolean;
+}>;

@@ -39,6 +39,9 @@ export const materialCategories = [
   'PAYMENT_LIST',
   'SERVICE_DOCUMENT',
   'JUDGMENT',
+  'SECOND_INSTANCE_DOCUMENT',
+  'SECOND_INSTANCE_SERVICE',
+  'SECOND_INSTANCE_JUDGMENT',
 ] as const;
 export type MaterialCategoryValue = (typeof materialCategories)[number];
 export const materialPurposes = [
@@ -60,6 +63,9 @@ export const materialPurposes = [
   'PAYMENT_LIST',
   'SERVICE_DOCUMENT',
   'JUDGMENT',
+  'SECOND_INSTANCE_DOCUMENT',
+  'SECOND_INSTANCE_SERVICE',
+  'SECOND_INSTANCE_JUDGMENT',
 ] as const;
 export type MaterialPurposeValue = (typeof materialPurposes)[number];
 

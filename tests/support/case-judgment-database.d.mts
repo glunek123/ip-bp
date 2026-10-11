@@ -24,8 +24,11 @@ export type RegisteredJudgmentFixture = {
   };
   judgment: unknown;
   materials: unknown;
+  storage: unknown;
   database: unknown;
   client: unknown;
+  trackStorageKey: (key: string) => void;
+  trackExtraUserId: (id: string) => void;
 };
 export function verifyCaseJudgmentDatabase<T>(options: {
   afterRegistration: (context: RegisteredJudgmentFixture) => Promise<T>;

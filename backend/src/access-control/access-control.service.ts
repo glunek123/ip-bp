@@ -48,6 +48,9 @@ export type PermissionAction =
   | 'case.judgment.correct'
   | 'case.judgment.next_step'
   | 'case.judgment.next_step.revoke'
+  | 'case.second_instance.save'
+  | 'case.second_instance.result'
+  | 'case.second_instance.result.revoke'
   | 'client.case.read'
   | 'client.case.complaint.mail'
   | 'notary.office.manage'
@@ -314,7 +317,10 @@ export class AccessControlService {
       | 'case.judgment.register'
       | 'case.judgment.correct'
       | 'case.judgment.next_step'
-      | 'case.judgment.next_step.revoke',
+      | 'case.judgment.next_step.revoke'
+      | 'case.second_instance.save'
+      | 'case.second_instance.result'
+      | 'case.second_instance.result.revoke',
     facts: CaseResourceFacts,
     reader?: AccessControlSnapshotReader,
   ): Promise<void> {
@@ -343,7 +349,10 @@ export class AccessControlService {
       | 'case.judgment.register'
       | 'case.judgment.correct'
       | 'case.judgment.next_step'
-      | 'case.judgment.next_step.revoke',
+      | 'case.judgment.next_step.revoke'
+      | 'case.second_instance.save'
+      | 'case.second_instance.result'
+      | 'case.second_instance.result.revoke',
     facts: CaseResourceFacts,
     reader?: AccessControlSnapshotReader,
   ): Promise<boolean> {

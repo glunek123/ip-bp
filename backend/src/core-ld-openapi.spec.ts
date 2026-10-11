@@ -42,6 +42,7 @@ import { CaseAcceptanceService } from './modules/cases/case-acceptance.service';
 import { CaseHearingService } from './modules/cases/case-hearing.service';
 import { CaseJudgmentService } from './modules/cases/case-judgment.service';
 import { CaseJudgmentNextStepService } from './modules/cases/case-judgment-next-step.service';
+import { CaseSecondInstanceService } from './modules/cases/case-second-instance.service';
 import { FilingCourtService } from './modules/cases/filing-court.service';
 
 describe('CORE-LD-002 OpenAPI contract', () => {
@@ -89,6 +90,7 @@ describe('CORE-LD-002 OpenAPI contract', () => {
         { provide: CaseHearingService, useValue: {} },
         { provide: CaseJudgmentService, useValue: {} },
         { provide: CaseJudgmentNextStepService, useValue: {} },
+        { provide: CaseSecondInstanceService, useValue: {} },
         { provide: FilingCourtService, useValue: {} },
       ],
     })

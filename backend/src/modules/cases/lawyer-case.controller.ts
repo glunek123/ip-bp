@@ -24,6 +24,11 @@ import { CaseAcceptanceService } from './case-acceptance.service';
 import { CaseHearingService } from './case-hearing.service';
 import { CaseJudgmentService } from './case-judgment.service';
 import { CaseJudgmentNextStepService } from './case-judgment-next-step.service';
+import { CaseSecondInstanceService } from './case-second-instance.service';
+import {
+  RegisterSecondInstanceResultDto,
+  SaveSecondInstanceDto,
+} from './case-second-instance.dto';
 import { ChooseJudgmentNextStepDto } from './case-judgment-next-step.dto';
 import { RegisterCaseJudgmentDto } from './case-judgment.dto';
 import { SaveCaseHearingDto } from './case-hearing.dto';
@@ -49,6 +54,7 @@ export class LawyerCaseController {
     private readonly hearing: CaseHearingService,
     private readonly judgment: CaseJudgmentService,
     private readonly judgmentNextStep: CaseJudgmentNextStepService,
+    private readonly secondInstance: CaseSecondInstanceService,
     private readonly courts: FilingCourtService,
   ) {}
 
@@ -183,5 +189,25 @@ export class LawyerCaseController {
   ) {
     this.lawyer(actor);
     return this.judgmentNextStep.choose(actor, id, body);
+  }
+
+  @Post(':id/second-instance-save')
+  saveSecondInstance(
+    @CurrentActor() actor: ActorContext,
+    @Param('id', new ParseUUIDPipe()) id: string,
+    @Body() body: SaveSecondInstanceDto,
+  ) {
+    this.lawyer(actor);
+    return this.secondInstance.save(actor, id, body);
+  }
+
+  @Post(':id/second-instance-result')
+  registerSecondInstanceResult(
+    @CurrentActor() actor: ActorContext,
+    @Param('id', new ParseUUIDPipe()) id: string,
+    @Body() body: RegisterSecondInstanceResultDto,
+  ) {
+    this.lawyer(actor);
+    return this.secondInstance.registerResult(actor, id, body);
   }
 }

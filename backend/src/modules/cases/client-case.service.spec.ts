@@ -126,6 +126,32 @@ describe('ClientCaseService', () => {
     );
   });
 
+  it('keeps a second-instance case visible to the client without exposing internal second-instance facts', async () => {
+    const f = fixture();
+    f.db.case.findMany.mockResolvedValue([
+      {
+        id: caseId,
+        businessNo: 'CA-1',
+        stage: 'SECOND_INSTANCE',
+        version: 12,
+        rightsHolder: { name: '持权企业' },
+        defendants: [],
+      },
+    ]);
+    f.db.case.findFirst.mockResolvedValue({
+      ...(await f.db.case.findFirst()),
+      stage: 'SECOND_INSTANCE',
+      version: 12,
+    });
+    const list = await f.service.list(actor, 'RECORDED', 1, 20);
+    const detail = await f.service.get(actor, caseId);
+    expect(list.items[0].stage).toBe('SECOND_INSTANCE');
+    expect(list.items[0]).not.toHaveProperty('secondInstance');
+    expect(detail.stage).toBe('SECOND_INSTANCE');
+    expect(detail).not.toHaveProperty('secondInstance');
+    expect(detail).not.toHaveProperty('judgmentNextStep');
+  });
+
   it('projects only confirmed file, submitted authorization and safe mailing facts', async () => {
     const f = fixture();
     const detail = await f.service.get(actor, caseId);
