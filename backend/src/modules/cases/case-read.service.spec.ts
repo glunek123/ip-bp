@@ -115,6 +115,7 @@ describe('CaseReadService', () => {
         SECOND_INSTANCE: 0,
         WAITING_EXECUTION_DOCUMENTS: 0,
         WAITING_EXECUTION_CONFIRMATION: 0,
+        WAITING_EXECUTION_STAMP: 0,
       },
     });
     expect(f.access.authorizeDepartmentAction).toHaveBeenCalledWith(
@@ -906,6 +907,42 @@ describe('CaseReadService', () => {
     });
   });
 
+  it('projects the independent execution confirmation capability in internal lists', async () => {
+    const f = fixture();
+    f.db.case.findMany.mockResolvedValue([
+      {
+        id: 'case-1',
+        businessNo: 'CA-1',
+        stage: 'WAITING_EXECUTION_CONFIRMATION',
+        version: 7,
+        currentTrialRoundId: null,
+        currentJudgmentNextStepId: null,
+        currentJudgmentNextStep: null,
+        currentExecutionSubmissionId: 'submission-1',
+        executionConfirmation: null,
+        currentSecondInstanceResultId: null,
+        createdAt: new Date('2026-10-11T00:00:00.000Z'),
+        responsibleUserId: actor.userId,
+        responsibleMembership: { teamId: null },
+        owner: { id: actor.userId, displayName: 'operator' },
+        sourceLead: { id: 'lead-1', businessNo: 'LD-1' },
+        sourceNotaryMatter: { id: 'matter-1', businessNo: 'NT-1' },
+      },
+    ]);
+    expect((await f.service.list(actor, 1, 20)).items[0]).toMatchObject({
+      canConfirmExecution: true,
+    });
+    expect(f.access.canAuthorizeCase).toHaveBeenCalledWith(
+      actor,
+      'case.execution.confirm',
+      expect.any(Object),
+    );
+    f.access.canAuthorizeCase.mockResolvedValue(false);
+    expect((await f.service.list(actor, 1, 20)).items[0]).toMatchObject({
+      canConfirmExecution: false,
+    });
+  });
+
   it('lists second-instance actions by current choice, stage and actual authorization', async () => {
     const f = fixture();
     const listCase = {
@@ -1003,7 +1040,7 @@ describe('CaseReadService', () => {
     });
   });
 
-  it('filters the execution preparation group and sums its two atomic stages', async () => {
+  it('filters the execution preparation group across all three atomic stages', async () => {
     const f = fixture();
     f.db.case.groupBy.mockResolvedValue([
       { stage: 'WAITING_EXECUTION_DOCUMENTS', _count: { _all: 2 } },
@@ -1024,6 +1061,7 @@ describe('CaseReadService', () => {
             in: [
               'WAITING_EXECUTION_DOCUMENTS',
               'WAITING_EXECUTION_CONFIRMATION',
+              'WAITING_EXECUTION_STAMP',
             ],
           },
         }),

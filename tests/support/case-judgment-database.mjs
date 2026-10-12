@@ -74,6 +74,8 @@ const judgmentCleanupGuards = [
 
 // The order is shared by the canonical CA-010 fixture and core-case cleanup.
 const secondInstanceDependentTables = [
+  'case_execution_confirmation_receipts',
+  'case_execution_confirmations',
   'case_execution_submission_receipts',
   'case_execution_submission_versions',
   'case_execution_submissions',
@@ -99,6 +101,7 @@ const secondInstanceDependentTables = [
   'case_acceptances',
 ];
 const secondInstanceDependentActions = [
+  'case.execution.confirmed',
   'case.execution.submitted',
   'case.second_instance.save',
   'case.second_instance.result',
@@ -156,6 +159,11 @@ async function assertSecondInstanceCleanupGuards(client) {
     ['cases', 'case_execution_head_guard'],
     ['case_trial_rounds', 'case_trial_rounds_immutable'],
     ['case_execution_submissions', 'case_execution_submissions_immutable'],
+    ['case_execution_confirmations', 'case_execution_confirmations_immutable'],
+    [
+      'case_execution_confirmation_receipts',
+      'case_execution_confirmation_receipts_immutable',
+    ],
     [
       'case_execution_submission_versions',
       'case_execution_submission_versions_immutable',
@@ -215,6 +223,8 @@ export async function clearCoreCaseSecondInstanceFixture() {
                 OR EXISTS (SELECT 1 FROM case_second_instance_receipts q WHERE q.case_id=c.id)
                 OR EXISTS (SELECT 1 FROM case_execution_submissions s WHERE s.case_id=c.id)
                 OR EXISTS (SELECT 1 FROM case_execution_submission_receipts r WHERE r.case_id=c.id)
+                OR EXISTS (SELECT 1 FROM case_execution_confirmations f WHERE f.case_id=c.id)
+                OR EXISTS (SELECT 1 FROM case_execution_confirmation_receipts r WHERE r.case_id=c.id)
                 OR c.current_execution_submission_id IS NOT NULL)
             ORDER BY c.id FOR UPDATE OF c`,
           [

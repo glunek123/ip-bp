@@ -63,6 +63,7 @@ function stageLabel(stage: ClientCase['stage']) {
   if (stage === 'SECOND_INSTANCE') return '二审';
   if (stage === 'WAITING_EXECUTION_DOCUMENTS') return '待写执行材料';
   if (stage === 'WAITING_EXECUTION_CONFIRMATION') return '执行材料待确认';
+  if (stage === 'WAITING_EXECUTION_STAMP') return '执行材料待盖章';
   return '待开庭';
 }
 load();

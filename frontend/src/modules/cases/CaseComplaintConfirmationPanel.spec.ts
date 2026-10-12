@@ -51,6 +51,8 @@ const detail = {
   canRevokeSecondInstanceResult: false,
   canSubmitExecution: false,
   executionSubmission: { current: null, submissions: [], availableFiles: [] },
+  canConfirmExecution: false,
+  executionConfirmation: null,
   canConfirmComplaint: true,
   canMailComplaint: false,
   sourceLead: { id: 'lead-1', businessNo: 'LD-1' },

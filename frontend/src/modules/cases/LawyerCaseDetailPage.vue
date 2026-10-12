@@ -27,6 +27,7 @@ import CaseJudgmentPanel from './CaseJudgmentPanel.vue';
 import CaseJudgmentNextStepPanel from './CaseJudgmentNextStepPanel.vue';
 import CaseSecondInstancePanel from './CaseSecondInstancePanel.vue';
 import CaseExecutionSubmissionPanel from './CaseExecutionSubmissionPanel.vue';
+import CaseExecutionConfirmationPanel from './CaseExecutionConfirmationPanel.vue';
 
 const route = useRoute();
 const auth = useAuthStore();
@@ -367,6 +368,7 @@ function stageLabel(stage: string): string {
         SECOND_INSTANCE: '二审',
         WAITING_EXECUTION_DOCUMENTS: '待写执行材料',
         WAITING_EXECUTION_CONFIRMATION: '执行材料待确认',
+        WAITING_EXECUTION_STAMP: '执行材料待盖章',
       } as Record<string, string>
     )[stage] ?? stage
   );
@@ -550,6 +552,19 @@ onBeforeUnmount(() => {
           v-if="
             item.canSubmitExecution ||
             item.executionSubmission.submissions.length > 0
+          "
+          :item="item"
+          :lawyer="true"
+          :context-key="identity"
+          :actor-key="secondInstanceActorKey"
+          @changed="load"
+          @refresh="load"
+        />
+        <CaseExecutionConfirmationPanel
+          v-if="
+            item.canConfirmExecution ||
+            item.executionConfirmation ||
+            item.stage === 'WAITING_EXECUTION_STAMP'
           "
           :item="item"
           :lawyer="true"

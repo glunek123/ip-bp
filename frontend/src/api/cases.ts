@@ -11,7 +11,8 @@ export type CaseStage =
   | 'WAITING_JUDGMENT'
   | 'SECOND_INSTANCE'
   | 'WAITING_EXECUTION_DOCUMENTS'
-  | 'WAITING_EXECUTION_CONFIRMATION';
+  | 'WAITING_EXECUTION_CONFIRMATION'
+  | 'WAITING_EXECUTION_STAMP';
 export type CaseView = 'mine' | 'department';
 export type CaseStageFilter = CaseStage | 'all';
 export type CaseStageGroup = 'EXECUTION_PREPARATION';
@@ -24,6 +25,7 @@ export type CaseSummary = {
   owner: { id: string; displayName: string };
   canMatch: boolean;
   canSubmitExecution: boolean;
+  canConfirmExecution: boolean;
   canSubmitComplaint: boolean;
   canConfirmComplaint: boolean;
   canMailComplaint: boolean;
@@ -101,6 +103,8 @@ export type CaseDetail = CaseSummary & {
   acceptances: Array<CaseAcceptanceHistory>;
   secondInstance: CaseSecondInstance;
   executionSubmission: ExecutionSubmissionState;
+  canConfirmExecution: boolean;
+  executionConfirmation: ExecutionConfirmation | null;
 };
 export type ExecutionSubmissionFile = CaseFile & { uploadedAt: string };
 export type ExecutionSubmissionSummary = {
@@ -119,6 +123,13 @@ export type ExecutionSubmissionState = {
   current: ExecutionSubmissionSummary | null;
   submissions: ExecutionSubmissionSummary[];
   availableFiles: ExecutionSubmissionFile[];
+};
+export type ExecutionConfirmation = {
+  id: string;
+  submissionId: string;
+  confirmedAt: string;
+  confirmedByUserId: string;
+  files: ExecutionSubmissionFile[];
 };
 export type CaseHearingArrangement = {
   id: string;
@@ -345,6 +356,7 @@ export type LawyerCaseSummary = {
   version: number;
   canMatch: false;
   canSubmitExecution: boolean;
+  canConfirmExecution: boolean;
   canSubmitComplaint: boolean;
   canConfirmComplaint: boolean;
   canMailComplaint: boolean;
@@ -405,6 +417,8 @@ export type LawyerCaseDetail = CaseWorkflowItem &
     acceptances: Array<LawyerCaseAcceptanceHistory>;
     secondInstance: LawyerCaseSecondInstance;
     executionSubmission: ExecutionSubmissionState;
+    canConfirmExecution: boolean;
+    executionConfirmation: ExecutionConfirmation | null;
   };
 
 export type SubmitExecutionInput = {
@@ -423,6 +437,19 @@ export type SubmitExecutionResult = {
   stage: 'WAITING_EXECUTION_CONFIRMATION';
   version: number;
   submittedAt: string;
+};
+export type ConfirmExecutionInput = {
+  expectedVersion: number;
+  idempotencyKey: string;
+  expectedSubmissionId: string;
+};
+export type ConfirmExecutionResult = {
+  id: string;
+  confirmationId: string;
+  submissionId: string;
+  stage: 'WAITING_EXECUTION_STAMP';
+  version: number;
+  confirmedAt: string;
 };
 
 export type SecondInstanceProgressInput = {
@@ -621,7 +648,8 @@ function validStage(value: unknown): value is CaseStage {
     value === 'WAITING_JUDGMENT' ||
     value === 'SECOND_INSTANCE' ||
     value === 'WAITING_EXECUTION_DOCUMENTS' ||
-    value === 'WAITING_EXECUTION_CONFIRMATION'
+    value === 'WAITING_EXECUTION_CONFIRMATION' ||
+    value === 'WAITING_EXECUTION_STAMP'
   );
 }
 function source(value: unknown): value is { id: string; businessNo: string } {
@@ -652,6 +680,7 @@ function summary(value: unknown): value is CaseSummary {
       'owner',
       'canMatch',
       'canSubmitExecution',
+      'canConfirmExecution',
       'canSubmitComplaint',
       'canConfirmComplaint',
       'canMailComplaint',
@@ -680,6 +709,7 @@ function summary(value: unknown): value is CaseSummary {
     named(value.owner, 'displayName') &&
     typeof value.canMatch === 'boolean' &&
     typeof value.canSubmitExecution === 'boolean' &&
+    typeof value.canConfirmExecution === 'boolean' &&
     typeof value.canSubmitComplaint === 'boolean' &&
     typeof value.canConfirmComplaint === 'boolean' &&
     typeof value.canMailComplaint === 'boolean' &&
@@ -780,7 +810,9 @@ function executionSubmissionSummary(
     ).size === value.files.length
   );
 }
-function executionSubmissionState(value: unknown): boolean {
+function executionSubmissionState(
+  value: unknown,
+): value is ExecutionSubmissionState {
   return (
     record(value) &&
     exact(value, ['current', 'submissions', 'availableFiles']) &&
@@ -800,6 +832,58 @@ function executionSubmissionState(value: unknown): boolean {
         (file) => (file as ExecutionSubmissionFile).contentVersionId,
       ),
     ).size === value.availableFiles.length
+  );
+}
+function executionConfirmation(value: unknown): value is ExecutionConfirmation {
+  return (
+    record(value) &&
+    exact(value, [
+      'id',
+      'submissionId',
+      'confirmedAt',
+      'confirmedByUserId',
+      'files',
+    ]) &&
+    uuidV4(value.id) &&
+    uuidV4(value.submissionId) &&
+    typeof value.confirmedAt === 'string' &&
+    !Number.isNaN(Date.parse(value.confirmedAt)) &&
+    nonempty(value.confirmedByUserId) &&
+    Array.isArray(value.files) &&
+    value.files.length >= 1 &&
+    value.files.length <= 10 &&
+    value.files.every(executionSubmissionFile) &&
+    new Set(
+      value.files.map(
+        (file) => (file as ExecutionSubmissionFile).contentVersionId,
+      ),
+    ).size === value.files.length
+  );
+}
+function executionConfirmationMatchesSubmission(
+  confirmation: unknown,
+  state: unknown,
+): boolean {
+  if (confirmation === null) return true;
+  if (!executionConfirmation(confirmation) || !executionSubmissionState(state))
+    return false;
+  const current = state.current;
+  if (!current || confirmation.submissionId !== current.id) return false;
+  const confirmedFiles = new Map<string, ExecutionSubmissionFile>(
+    confirmation.files.map((file) => [file.contentVersionId, file]),
+  );
+  return (
+    current.files.length === confirmedFiles.size &&
+    current.files.every((file) => {
+      const confirmedFile = confirmedFiles.get(file.contentVersionId);
+      return (
+        confirmedFile !== undefined &&
+        confirmedFile.materialId === file.materialId &&
+        confirmedFile.originalFilename === file.originalFilename &&
+        confirmedFile.mimeType === file.mimeType &&
+        confirmedFile.uploadedAt === file.uploadedAt
+      );
+    })
   );
 }
 function validJudgmentFact(value: unknown, internal: boolean): boolean {
@@ -1207,6 +1291,8 @@ function validCaseDetail(value: unknown, id: string): value is CaseDetail {
       'secondInstance',
       'canSubmitExecution',
       'executionSubmission',
+      'canConfirmExecution',
+      'executionConfirmation',
     ]) &&
     value.id === id &&
     summary({
@@ -1218,6 +1304,7 @@ function validCaseDetail(value: unknown, id: string): value is CaseDetail {
       owner: value.owner,
       canMatch: value.canMatch,
       canSubmitExecution: value.canSubmitExecution,
+      canConfirmExecution: value.canConfirmExecution,
       canSubmitComplaint: value.canSubmitComplaint,
       canConfirmComplaint: value.canConfirmComplaint,
       canMailComplaint: value.canMailComplaint,
@@ -1317,7 +1404,12 @@ function validCaseDetail(value: unknown, id: string): value is CaseDetail {
     value.acceptances.every((item) => validAcceptanceHistory(item, true)) &&
     validSecondInstance(value.secondInstance, true) &&
     typeof value.canSubmitExecution === 'boolean' &&
-    executionSubmissionState(value.executionSubmission)
+    executionSubmissionState(value.executionSubmission) &&
+    typeof value.canConfirmExecution === 'boolean' &&
+    executionConfirmationMatchesSubmission(
+      value.executionConfirmation,
+      value.executionSubmission,
+    )
   );
 }
 function validRoundId(value: unknown): boolean {
@@ -1698,6 +1790,7 @@ const caseStages: CaseStage[] = [
   'SECOND_INSTANCE',
   'WAITING_EXECUTION_DOCUMENTS',
   'WAITING_EXECUTION_CONFIRMATION',
+  'WAITING_EXECUTION_STAMP',
 ];
 function validLawyerSummary(value: unknown): value is LawyerCaseSummary {
   return (
@@ -1709,6 +1802,7 @@ function validLawyerSummary(value: unknown): value is LawyerCaseSummary {
       'version',
       'canMatch',
       'canSubmitExecution',
+      'canConfirmExecution',
       'canSubmitComplaint',
       'canConfirmComplaint',
       'canMailComplaint',
@@ -1733,6 +1827,7 @@ function validLawyerSummary(value: unknown): value is LawyerCaseSummary {
     Number(value.version) > 0 &&
     value.canMatch === false &&
     typeof value.canSubmitExecution === 'boolean' &&
+    typeof value.canConfirmExecution === 'boolean' &&
     typeof value.canSubmitComplaint === 'boolean' &&
     typeof value.canConfirmComplaint === 'boolean' &&
     typeof value.canMailComplaint === 'boolean' &&
@@ -1967,6 +2062,8 @@ export async function getLawyerCase(
       'secondInstance',
       'canSubmitExecution',
       'executionSubmission',
+      'canConfirmExecution',
+      'executionConfirmation',
     ]) ||
     result.id !== id ||
     !validLawyerSummary({
@@ -1976,6 +2073,7 @@ export async function getLawyerCase(
       version: result.version,
       canMatch: result.canMatch,
       canSubmitExecution: result.canSubmitExecution,
+      canConfirmExecution: result.canConfirmExecution,
       canSubmitComplaint: result.canSubmitComplaint,
       canConfirmComplaint: result.canConfirmComplaint,
       canMailComplaint: result.canMailComplaint,
@@ -2021,7 +2119,12 @@ export async function getLawyerCase(
     !result.acceptances.every((item) => validAcceptanceHistory(item, false)) ||
     !validSecondInstance(result.secondInstance, false) ||
     typeof result.canSubmitExecution !== 'boolean' ||
-    !executionSubmissionState(result.executionSubmission)
+    !executionSubmissionState(result.executionSubmission) ||
+    typeof result.canConfirmExecution !== 'boolean' ||
+    !executionConfirmationMatchesSubmission(
+      result.executionConfirmation,
+      result.executionSubmission,
+    )
   )
     throw invalidResponse();
   return result as unknown as LawyerCaseDetail;
@@ -2106,6 +2209,7 @@ export async function listCases(
       'SECOND_INSTANCE',
       'WAITING_EXECUTION_DOCUMENTS',
       'WAITING_EXECUTION_CONFIRMATION',
+      'WAITING_EXECUTION_STAMP',
     ]) ||
     !Number.isInteger(response.counts.PENDING_MATCH) ||
     (response.counts.PENDING_MATCH as number) < 0 ||
@@ -2128,7 +2232,9 @@ export async function listCases(
     !Number.isInteger(response.counts.WAITING_EXECUTION_DOCUMENTS) ||
     (response.counts.WAITING_EXECUTION_DOCUMENTS as number) < 0 ||
     !Number.isInteger(response.counts.WAITING_EXECUTION_CONFIRMATION) ||
-    (response.counts.WAITING_EXECUTION_CONFIRMATION as number) < 0
+    (response.counts.WAITING_EXECUTION_CONFIRMATION as number) < 0 ||
+    !Number.isInteger(response.counts.WAITING_EXECUTION_STAMP) ||
+    (response.counts.WAITING_EXECUTION_STAMP as number) < 0
   )
     throw invalidResponse();
   return response as unknown as CaseList;
@@ -3236,6 +3342,56 @@ export async function submitExecution(
   )
     throw invalidResponse();
   return response as unknown as SubmitExecutionResult;
+}
+
+export async function confirmCaseExecution(
+  id: string,
+  input: ConfirmExecutionInput,
+  audience: 'internal' | 'lawyer' = 'internal',
+): Promise<ConfirmExecutionResult> {
+  if (
+    !Number.isInteger(input.expectedVersion) ||
+    input.expectedVersion < 1 ||
+    !input.idempotencyKey ||
+    input.idempotencyKey.trim() !== input.idempotencyKey ||
+    input.idempotencyKey.length > 128 ||
+    !uuidV4(input.expectedSubmissionId)
+  ) {
+    throw new ApiError(
+      '\u6267\u884c\u6750\u6599\u786e\u8ba4\u4fe1\u606f\u65e0\u6548',
+      400,
+      'VALIDATION_ERROR',
+    );
+  }
+  const response = await requestJson(
+    `/${audience === 'lawyer' ? 'lawyer/cases' : 'cases'}/${encodeURIComponent(id)}/execution-confirm`,
+    {
+      method: 'POST',
+      headers: { 'Idempotency-Key': input.idempotencyKey },
+      body: input,
+    },
+  );
+  if (
+    !record(response) ||
+    !exact(response, [
+      'id',
+      'confirmationId',
+      'submissionId',
+      'stage',
+      'version',
+      'confirmedAt',
+    ]) ||
+    response.id !== id ||
+    !uuidV4(response.confirmationId) ||
+    response.submissionId !== input.expectedSubmissionId ||
+    response.stage !== 'WAITING_EXECUTION_STAMP' ||
+    response.version !== input.expectedVersion + 1 ||
+    typeof response.confirmedAt !== 'string' ||
+    Number.isNaN(Date.parse(response.confirmedAt))
+  ) {
+    throw invalidResponse();
+  }
+  return response as unknown as ConfirmExecutionResult;
 }
 
 export async function confirmCaseComplaint(

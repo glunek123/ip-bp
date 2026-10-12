@@ -37,6 +37,11 @@ import { CaseJudgmentService } from './case-judgment.service';
 import { CaseJudgmentNextStepService } from './case-judgment-next-step.service';
 import { CaseSecondInstanceService } from './case-second-instance.service';
 import { CaseExecutionSubmissionService } from './case-execution-submission.service';
+import { CaseExecutionConfirmationService } from './case-execution-confirmation.service';
+import {
+  ConfirmExecutionRequestDto,
+  ConfirmExecutionResultDto,
+} from './case-execution-confirmation.dto';
 import {
   SubmitExecutionRequestDto,
   SubmitExecutionResultDto,
@@ -106,6 +111,7 @@ export class CaseReadController {
     private readonly judgmentNextStep: CaseJudgmentNextStepService,
     private readonly secondInstance: CaseSecondInstanceService,
     private readonly executionSubmission: CaseExecutionSubmissionService,
+    private readonly executionConfirmation: CaseExecutionConfirmationService,
     private readonly courts: FilingCourtService,
   ) {}
 
@@ -139,6 +145,16 @@ export class CaseReadController {
     @Body() body: SubmitExecutionRequestDto,
   ) {
     return this.executionSubmission.submit(actor, id, body);
+  }
+
+  @Post(':id/execution-confirm')
+  @ApiCreatedResponse({ type: ConfirmExecutionResultDto })
+  confirmExecution(
+    @CurrentActor() actor: ActorContext,
+    @Param('id', new ParseUUIDPipe()) id: string,
+    @Body() body: ConfirmExecutionRequestDto,
+  ) {
+    return this.executionConfirmation.confirm(actor, id, body);
   }
 
   @Post(':id/match')

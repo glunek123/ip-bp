@@ -32,6 +32,7 @@ import CaseJudgmentPanel from './CaseJudgmentPanel.vue';
 import CaseJudgmentNextStepPanel from './CaseJudgmentNextStepPanel.vue';
 import CaseSecondInstancePanel from './CaseSecondInstancePanel.vue';
 import CaseExecutionSubmissionPanel from './CaseExecutionSubmissionPanel.vue';
+import CaseExecutionConfirmationPanel from './CaseExecutionConfirmationPanel.vue';
 
 const route = useRoute();
 const auth = useAuthStore();
@@ -340,6 +341,7 @@ function stageLabel(stage: CaseDetail['stage']): string {
   if (stage === 'SECOND_INSTANCE') return '二审';
   if (stage === 'WAITING_EXECUTION_DOCUMENTS') return '待写执行材料';
   if (stage === 'WAITING_EXECUTION_CONFIRMATION') return '执行材料待确认';
+  if (stage === 'WAITING_EXECUTION_STAMP') return '执行材料待盖章';
   return '待开庭';
 }
 function removeDefendant(index: number) {
@@ -789,6 +791,18 @@ onBeforeUnmount(() => request?.abort());
           v-if="
             item.canSubmitExecution ||
             item.executionSubmission.submissions.length > 0
+          "
+          :item="item"
+          :context-key="identity"
+          :actor-key="secondInstanceActorKey"
+          @changed="load"
+          @refresh="load"
+        />
+        <CaseExecutionConfirmationPanel
+          v-if="
+            item.canConfirmExecution ||
+            item.executionConfirmation ||
+            item.stage === 'WAITING_EXECUTION_STAMP'
           "
           :item="item"
           :context-key="identity"

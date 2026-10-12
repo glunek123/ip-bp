@@ -23,6 +23,9 @@ const { CaseSecondInstanceService } = requireBackend(
 const { CaseExecutionSubmissionService } = requireBackend(
   './dist/modules/cases/case-execution-submission.service.js',
 );
+const { CaseExecutionConfirmationService } = requireBackend(
+  './dist/modules/cases/case-execution-confirmation.service.js',
+);
 const { CaseReadService } = requireBackend(
   './dist/modules/cases/case-read.service.js',
 );
@@ -97,6 +100,86 @@ async function verifyFailureRollback(
   return true;
 }
 
+async function confirmationSnapshot(client, caseId) {
+  const row = (
+    await client.query(
+      `SELECT c.stage,c.version,c.current_execution_submission_id,
+        (SELECT count(*)::int FROM case_execution_confirmations WHERE case_id=c.id) AS facts,
+        (SELECT count(*)::int FROM case_execution_confirmation_receipts WHERE case_id=c.id) AS receipts,
+        (SELECT count(*)::int FROM audit_events WHERE resource_type='CASE' AND resource_id=c.id
+          AND action='case.execution.confirmed') AS audits
+       FROM cases c WHERE c.id=$1`,
+      [caseId],
+    )
+  ).rows[0];
+  return JSON.stringify(row);
+}
+
+async function verifyExecutionConfirmationFailureRollback(
+  client,
+  confirmationService,
+  actor,
+  caseId,
+  input,
+) {
+  const before = await confirmationSnapshot(client, caseId);
+  for (const [table, condition] of [
+    ['audit_events', `NEW.action = 'case.execution.confirmed'`],
+    ['case_execution_confirmations', 'true'],
+    ['cases', `NEW.stage = 'WAITING_EXECUTION_STAMP'`],
+    ['case_execution_confirmation_receipts', 'true'],
+  ]) {
+    const suffix = randomUUID().replaceAll('-', '');
+    const functionName = `ca012_fault_${suffix}`;
+    const triggerName = `ca012_fault_${suffix}`;
+    await client.query(`CREATE FUNCTION "${functionName}"() RETURNS trigger LANGUAGE plpgsql AS $$
+      BEGIN IF ${condition} THEN RAISE EXCEPTION 'ca012 injected fault' USING ERRCODE='23514';
+      END IF; RETURN NEW; END $$`);
+    const event = table === 'cases' ? 'UPDATE' : 'INSERT';
+    await client.query(`CREATE TRIGGER "${triggerName}" BEFORE ${event} ON "${table}"
+      FOR EACH ROW EXECUTE FUNCTION "${functionName}"()`);
+    let rejected = false;
+    try {
+      await confirmationService.confirm(actor, caseId, {
+        ...input,
+        idempotencyKey: `ca012-fault-${table}-${caseId}`,
+      });
+    } catch (error) {
+      rejected = String(error.message).includes('ca012 injected fault');
+    } finally {
+      await client.query(`DROP TRIGGER "${triggerName}" ON "${table}"`);
+      await client.query(`DROP FUNCTION "${functionName}"()`);
+    }
+    if (!rejected || (await confirmationSnapshot(client, caseId)) !== before)
+      return false;
+  }
+  const assertAvailableVersions =
+    confirmationService.materials.assertAvailableVersions;
+  confirmationService.materials.assertAvailableVersions = async () => {
+    throw new Error('ca012 unavailable execution file');
+  };
+  let unavailableFileRejected = false;
+  try {
+    await confirmationService.confirm(actor, caseId, {
+      ...input,
+      idempotencyKey: `ca012-unavailable-file-${caseId}`,
+    });
+  } catch (error) {
+    unavailableFileRejected = String(error.message).includes(
+      'ca012 unavailable execution file',
+    );
+  } finally {
+    confirmationService.materials.assertAvailableVersions =
+      assertAvailableVersions;
+  }
+  if (
+    !unavailableFileRejected ||
+    (await confirmationSnapshot(client, caseId)) !== before
+  )
+    return false;
+  return true;
+}
+
 async function upload(
   materials,
   actor,
@@ -131,6 +214,7 @@ async function upload(
 export async function verifyExecutionAppealSource(
   resultKind,
   raceWithRevocation,
+  confirmExecution = false,
 ) {
   return verifyCaseJudgmentDatabase({
     afterRegistration: async ({
@@ -149,6 +233,7 @@ export async function verifyExecutionAppealSource(
         'case.second_instance.result',
         'case.second_instance.result.revoke',
         'case.execution.submit',
+        ...(confirmExecution ? ['case.execution.confirm'] : []),
       ])
         await client.query(
           `INSERT INTO role_grants(id,role_template_id,action,scope)
@@ -161,6 +246,11 @@ export async function verifyExecutionAppealSource(
       const choiceService = new CaseJudgmentNextStepService(database, access);
       const second = new CaseSecondInstanceService(database, access, materials);
       const execution = new CaseExecutionSubmissionService(
+        database,
+        access,
+        materials,
+      );
+      const confirmation = new CaseExecutionConfirmationService(
         database,
         access,
         materials,
@@ -333,6 +423,39 @@ export async function verifyExecutionAppealSource(
         };
       }
       const submitted = await execution.submit(actor, caseId, input);
+      if (confirmExecution) {
+        const confirmed = await confirmation.confirm(actor, caseId, {
+          expectedVersion: submitted.version,
+          idempotencyKey: `ca012-appeal-confirm-${caseId}`,
+          expectedSubmissionId: submitted.submissionId,
+        });
+        const stored = await database.case.findUnique({
+          where: { id: caseId },
+          select: {
+            stage: true,
+            currentExecutionSubmissionId: true,
+            executionConfirmation: {
+              select: {
+                submissionId: true,
+                fromVersion: true,
+                toVersion: true,
+              },
+            },
+          },
+        });
+        return {
+          accepted:
+            submitted.version === 14 &&
+            confirmed.version === 15 &&
+            confirmed.submissionId === submitted.submissionId &&
+            stored.stage === 'WAITING_EXECUTION_STAMP' &&
+            stored.currentExecutionSubmissionId === submitted.submissionId &&
+            stored.executionConfirmation?.submissionId ===
+              submitted.submissionId &&
+            stored.executionConfirmation.fromVersion === 14 &&
+            stored.executionConfirmation.toVersion === 15,
+        };
+      }
       let serviceBlocked = null;
       try {
         await second.revokeResult(actor, caseId, {
@@ -377,6 +500,15 @@ export async function verifyExecutionAppealSource(
       };
     },
   });
+}
+
+export async function verifyExecutionConfirmationAppealSources() {
+  const change = await verifyExecutionAppealSource('CHANGE', false, true);
+  const affirm = await verifyExecutionAppealSource('AFFIRM', false, true);
+  return {
+    change: change.accepted === true,
+    affirm: affirm.accepted === true,
+  };
 }
 
 export async function verifyDirectExecutionChoiceRace() {
@@ -930,6 +1062,352 @@ export async function verifyCaseExecutionSubmissionDatabase() {
           final.stage === 'WAITING_EXECUTION_CONFIRMATION' &&
           final.version === 13 &&
           final.currentExecutionSubmissionId === second.submissionId,
+      };
+    },
+  });
+}
+
+export async function verifyCaseExecutionConfirmationDatabase() {
+  return verifyCaseJudgmentDatabase({
+    afterRegistration: async ({
+      actor,
+      roleId,
+      caseId,
+      judgmentId,
+      materials,
+      database,
+      client,
+      trackStorageKey,
+      trackExtraUserId,
+    }) => {
+      await client.query(
+        `INSERT INTO role_grants(id,role_template_id,action,scope)
+        VALUES ($1,$2,'case.judgment.next_step','DEPARTMENT'),
+               ($3,$2,'case.execution.submit','DEPARTMENT'),
+               ($4,$2,'case.execution.confirm','DEPARTMENT') ON CONFLICT DO NOTHING`,
+        [randomUUID(), roleId, randomUUID(), randomUUID()],
+      );
+      const access = new AccessControlService(
+        new PrismaAccessControlStore(database),
+      );
+      const choiceService = new CaseJudgmentNextStepService(database, access);
+      const submissionService = new CaseExecutionSubmissionService(
+        database,
+        access,
+        materials,
+      );
+      const confirmationService = new CaseExecutionConfirmationService(
+        database,
+        access,
+        materials,
+      );
+      const reader = new CaseReadService(database, access, materials);
+      const choice = await choiceService.choose(actor, caseId, {
+        expectedVersion: 10,
+        idempotencyKey: `ca012-choice-${caseId}`,
+        judgmentId,
+        next: 'EXECUTION',
+        executionReadinessConfirmed: true,
+      });
+      const lawyerActor = await seedReadableSource(
+        client,
+        database,
+        actor,
+        caseId,
+        trackExtraUserId,
+      );
+      const anchors = await database.case.findUnique({
+        where: { id: caseId },
+        select: { currentTrialRoundId: true },
+      });
+      const first = await upload(
+        materials,
+        actor,
+        caseId,
+        database,
+        trackStorageKey,
+        'confirmation-a',
+      );
+      const second = await upload(
+        materials,
+        actor,
+        caseId,
+        database,
+        trackStorageKey,
+        'confirmation-b',
+      );
+      const submissionInput = {
+        expectedVersion: 11,
+        idempotencyKey: `ca012-submit-${caseId}`,
+        trialRoundId: anchors.currentTrialRoundId,
+        judgmentNextStepId: choice.choiceId,
+        secondInstanceResultId: null,
+        expectedSubmissionId: null,
+        executionApplicationContentVersionIds: [
+          first.contentVersionId,
+          second.contentVersionId,
+        ],
+      };
+      const submitted = await submissionService.submit(
+        actor,
+        caseId,
+        submissionInput,
+      );
+      const input = {
+        expectedVersion: submitted.version,
+        idempotencyKey: `ca012-confirm-${caseId}`,
+        expectedSubmissionId: submitted.submissionId,
+      };
+      let wrongSubmission = null;
+      try {
+        await confirmationService.confirm(actor, caseId, {
+          ...input,
+          idempotencyKey: `ca012-wrong-submission-${caseId}`,
+          expectedSubmissionId: randomUUID(),
+        });
+      } catch (error) {
+        wrongSubmission = error.response?.code ?? null;
+      }
+      const faultRollbacks = await verifyExecutionConfirmationFailureRollback(
+        client,
+        confirmationService,
+        actor,
+        caseId,
+        input,
+      );
+      let wrongCase = null;
+      try {
+        await confirmationService.confirm(actor, randomUUID(), {
+          ...input,
+          idempotencyKey: `ca012-wrong-case-${caseId}`,
+        });
+      } catch (error) {
+        wrongCase = error.response?.code ?? null;
+      }
+      const third = await upload(
+        materials,
+        lawyerActor,
+        caseId,
+        database,
+        trackStorageKey,
+        'confirmation-resubmit',
+      );
+      const confirmInput = {
+        ...input,
+        idempotencyKey: `ca012-race-confirm-${caseId}`,
+      };
+      const resubmitInput = {
+        ...submissionInput,
+        idempotencyKey: `ca012-race-resubmit-${caseId}`,
+        expectedSubmissionId: submitted.submissionId,
+        executionApplicationContentVersionIds: [
+          second.contentVersionId,
+          third.contentVersionId,
+        ],
+        changeReason: '确认竞争中补交一套新材料',
+      };
+      const race = await Promise.allSettled([
+        confirmationService.confirm(actor, caseId, confirmInput),
+        submissionService.submit(lawyerActor, caseId, resubmitInput),
+      ]);
+      const confirmWon = race[0]?.status === 'fulfilled';
+      const resubmitWon = race[1]?.status === 'fulfilled';
+      const raceSingleWinner = confirmWon !== resubmitWon;
+      if (!raceSingleWinner)
+        throw new Error(
+          'Execution confirmation and resubmission did not have one winner',
+        );
+      const staleConfirm = confirmWon
+        ? null
+        : await (async () => {
+            try {
+              await confirmationService.confirm(actor, caseId, confirmInput);
+              return null;
+            } catch (error) {
+              return error.response?.code ?? null;
+            }
+          })();
+      const finalSubmissionId = confirmWon
+        ? submitted.submissionId
+        : race[1].value.submissionId;
+      const finalConfirmInput = confirmWon
+        ? confirmInput
+        : {
+            ...input,
+            expectedVersion: submitted.version + 1,
+            idempotencyKey: `ca012-confirm-resubmitted-${caseId}`,
+            expectedSubmissionId: finalSubmissionId,
+          };
+      const winner = confirmWon
+        ? race[0].value
+        : await confirmationService.confirm(actor, caseId, finalConfirmInput);
+      const replay = await confirmationService.confirm(
+        actor,
+        caseId,
+        finalConfirmInput,
+      );
+      let changedKey = null;
+      try {
+        await confirmationService.confirm(actor, caseId, {
+          ...finalConfirmInput,
+          expectedSubmissionId: randomUUID(),
+        });
+      } catch (error) {
+        changedKey = error.response?.code ?? null;
+      }
+      await client.query(
+        `DELETE FROM role_grants WHERE role_template_id=$1
+          AND action='case.execution.confirm'`,
+        [roleId],
+      );
+      let revokedReplay = null;
+      try {
+        await confirmationService.confirm(actor, caseId, finalConfirmInput);
+      } catch (error) {
+        revokedReplay = error.response?.code ?? null;
+      }
+      await client.query(
+        `INSERT INTO role_grants(id,role_template_id,action,scope)
+          VALUES ($1,$2,'case.execution.confirm','DEPARTMENT')`,
+        [randomUUID(), roleId],
+      );
+      const internalRead = await reader.get(actor, caseId);
+      const lawyerRead = await reader.get(lawyerActor, caseId);
+      let resubmitBlocked = null;
+      try {
+        await submissionService.submit(lawyerActor, caseId, {
+          ...submissionInput,
+          expectedVersion: winner.version,
+          idempotencyKey: `ca012-submit-after-confirm-${caseId}`,
+          expectedSubmissionId: finalSubmissionId,
+          changeReason: '确认后禁止重提',
+          executionApplicationContentVersionIds: [first.contentVersionId],
+        });
+      } catch (error) {
+        resubmitBlocked = error.response?.code ?? null;
+      }
+      await client.query('BEGIN');
+      let sqlResubmitBlocked = null;
+      try {
+        const auditEventId = randomUUID();
+        await client.query(
+          `INSERT INTO audit_events(id,department_id,actor_user_id,internal_actor_user_id,
+            resource_type,resource_id,action,details)
+           VALUES ($1,$2,$3,$3,'CASE',$4,'case.execution.submitted','{}'::jsonb)`,
+          [auditEventId, actor.departmentId, actor.userId, caseId],
+        );
+        await client.query(
+          `INSERT INTO case_execution_submissions(id,case_id,department_id,trial_round_id,
+            judgment_next_step_id,second_instance_result_id,prior_submission_id,change_reason,
+            from_version,to_version,submitted_by_user_id,audit_event_id)
+           VALUES ($1,$2,$3,$4,$5,NULL,$6,'SQL confirmation bypass',$7,$8,$9,$10)`,
+          [
+            randomUUID(),
+            caseId,
+            actor.departmentId,
+            anchors.currentTrialRoundId,
+            choice.choiceId,
+            submitted.submissionId,
+            winner.version,
+            winner.version + 1,
+            actor.userId,
+            auditEventId,
+          ],
+        );
+        await client.query('SET CONSTRAINTS ALL IMMEDIATE');
+      } catch (error) {
+        sqlResubmitBlocked = error.code ?? null;
+      } finally {
+        await client.query('ROLLBACK');
+      }
+      const rejectedStageReversal = await sqlCode(
+        client,
+        `UPDATE cases SET stage='WAITING_EXECUTION_CONFIRMATION',version=version+1 WHERE id=$1`,
+        [caseId],
+      );
+      const state = await database.case.findUnique({
+        where: { id: caseId },
+        select: {
+          stage: true,
+          version: true,
+          currentExecutionSubmissionId: true,
+          executionConfirmation: {
+            select: {
+              id: true,
+              submissionId: true,
+              fromVersion: true,
+              toVersion: true,
+            },
+          },
+          executionSubmissions: {
+            select: {
+              id: true,
+              versions: { select: { contentVersionId: true } },
+            },
+            orderBy: { toVersion: 'asc' },
+          },
+        },
+      });
+      const facts = await database.caseExecutionConfirmation.count({
+        where: { caseId },
+      });
+      const receipts = await database.caseExecutionConfirmationReceipt.count({
+        where: { caseId },
+      });
+      const audits = await database.auditEvent.count({
+        where: {
+          resourceType: 'CASE',
+          resourceId: caseId,
+          action: 'case.execution.confirmed',
+        },
+      });
+      const confirmedFiles = state.executionSubmissions
+        .find((item) => item.id === state.executionConfirmation?.submissionId)
+        ?.versions.map((file) => file.contentVersionId);
+      return {
+        source: choice.stage === 'WAITING_EXECUTION_DOCUMENTS',
+        wrongSubmission,
+        wrongCase,
+        faultRollbacks,
+        raceSingleWinner,
+        raceBoundCurrent:
+          state.executionConfirmation?.submissionId === finalSubmissionId &&
+          (confirmWon
+            ? staleConfirm === null &&
+              finalSubmissionId === submitted.submissionId
+            : ['INVALID_STATE', 'VERSION_CONFLICT'].includes(staleConfirm)),
+        response:
+          winner.stage === 'WAITING_EXECUTION_STAMP' &&
+          winner.version === submitted.version + (confirmWon ? 1 : 2) &&
+          winner.submissionId === finalSubmissionId,
+        replay: isDeepStrictEqual(replay, winner),
+        changedKey,
+        revokedReplay,
+        internalProjection:
+          internalRead.executionConfirmation?.id === winner.confirmationId &&
+          internalRead.canConfirmExecution === false,
+        lawyerProjection:
+          lawyerRead.executionConfirmation?.submissionId ===
+            finalSubmissionId && lawyerRead.canConfirmExecution === false,
+        resubmitBlocked,
+        sqlResubmitBlocked,
+        rejectedStageReversal,
+        singleFact: facts === 1 && receipts === 1 && audits === 1,
+        preservedBundle:
+          state.executionConfirmation?.id === winner.confirmationId &&
+          state.executionConfirmation?.submissionId === finalSubmissionId &&
+          state.executionConfirmation?.fromVersion === winner.version - 1 &&
+          state.executionConfirmation?.toVersion === winner.version &&
+          state.stage === 'WAITING_EXECUTION_STAMP' &&
+          state.currentExecutionSubmissionId === finalSubmissionId &&
+          state.executionSubmissions.length === (confirmWon ? 1 : 2) &&
+          confirmedFiles?.slice().sort().join(',') ===
+            (confirmWon
+              ? [first.contentVersionId, second.contentVersionId]
+              : [second.contentVersionId, third.contentVersionId]
+            )
+              .sort()
+              .join(','),
       };
     },
   });

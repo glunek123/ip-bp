@@ -52,6 +52,7 @@ export type PermissionAction =
   | 'case.second_instance.result'
   | 'case.second_instance.result.revoke'
   | 'case.execution.submit'
+  | 'case.execution.confirm'
   | 'client.case.read'
   | 'client.case.complaint.mail'
   | 'notary.office.manage'
@@ -322,7 +323,8 @@ export class AccessControlService {
       | 'case.second_instance.save'
       | 'case.second_instance.result'
       | 'case.second_instance.result.revoke'
-      | 'case.execution.submit',
+      | 'case.execution.submit'
+      | 'case.execution.confirm',
     facts: CaseResourceFacts,
     reader?: AccessControlSnapshotReader,
   ): Promise<void> {
@@ -355,7 +357,8 @@ export class AccessControlService {
       | 'case.second_instance.save'
       | 'case.second_instance.result'
       | 'case.second_instance.result.revoke'
-      | 'case.execution.submit',
+      | 'case.execution.submit'
+      | 'case.execution.confirm',
     facts: CaseResourceFacts,
     reader?: AccessControlSnapshotReader,
   ): Promise<boolean> {

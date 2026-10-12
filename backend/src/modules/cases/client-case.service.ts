@@ -62,6 +62,7 @@ export class ClientCaseService {
                 'SECOND_INSTANCE' as const,
                 'WAITING_EXECUTION_DOCUMENTS' as const,
                 'WAITING_EXECUTION_CONFIRMATION' as const,
+                'WAITING_EXECUTION_STAMP' as const,
               ],
             },
     };
@@ -94,7 +95,8 @@ export class ClientCaseService {
           | 'WAITING_JUDGMENT'
           | 'SECOND_INSTANCE'
           | 'WAITING_EXECUTION_DOCUMENTS'
-          | 'WAITING_EXECUTION_CONFIRMATION',
+          | 'WAITING_EXECUTION_CONFIRMATION'
+          | 'WAITING_EXECUTION_STAMP',
         version: item.version,
         canMailComplaint: item.stage === 'WAITING_COMPLAINT_STAMP',
         rightsHolderName: item.rightsHolder.name,
@@ -177,7 +179,8 @@ export class ClientCaseService {
         | 'WAITING_JUDGMENT'
         | 'SECOND_INSTANCE'
         | 'WAITING_EXECUTION_DOCUMENTS'
-        | 'WAITING_EXECUTION_CONFIRMATION',
+        | 'WAITING_EXECUTION_CONFIRMATION'
+        | 'WAITING_EXECUTION_STAMP',
       version: record.version,
       canMailComplaint: record.stage === 'WAITING_COMPLAINT_STAMP',
       rightsHolderName: record.rightsHolder.name,

@@ -1,6 +1,7 @@
 import { afterEach, describe, expect, expectTypeOf, it, vi } from 'vitest';
 import {
   confirmCaseComplaint,
+  confirmCaseExecution,
   createFilingCourt,
   getCase,
   listFilingCourts,
@@ -36,6 +37,7 @@ const summary = {
   owner: { id: 'user-1', displayName: '负责人' },
   canMatch: true,
   canSubmitExecution: false,
+  canConfirmExecution: false,
   canSubmitComplaint: false,
   canConfirmComplaint: false,
   canMailComplaint: false,
@@ -58,6 +60,8 @@ const detail = {
   ...summary,
   canSubmitExecution: false,
   executionSubmission: { current: null, submissions: [], availableFiles: [] },
+  canConfirmExecution: false,
+  executionConfirmation: null,
   courtCaseNo: null,
   department: { id: 'department-1', name: '知产部' },
   customer: { id: 'customer-1', name: '客户甲' },
@@ -159,6 +163,8 @@ describe('cases API', () => {
         submissions: [],
         availableFiles: [],
       },
+      canConfirmExecution: false,
+      executionConfirmation: null,
     };
     mockJson(empty);
     await expect(getCase('case-1')).resolves.toMatchObject({
@@ -194,6 +200,7 @@ describe('cases API', () => {
       ...empty,
       stage: 'WAITING_EXECUTION_CONFIRMATION',
       version: 15,
+      canConfirmExecution: true,
       executionSubmission: {
         current: submission,
         submissions: [submission],
@@ -203,6 +210,25 @@ describe('cases API', () => {
     mockJson(populated);
     await expect(getCase('case-1')).resolves.toMatchObject({
       executionSubmission: { current: { files: [file] } },
+    });
+
+    const confirmed = {
+      ...populated,
+      stage: 'WAITING_EXECUTION_STAMP',
+      canSubmitExecution: false,
+      canConfirmExecution: false,
+      executionConfirmation: {
+        id: '80000000-0000-4000-8000-000000000106',
+        submissionId: submission.id,
+        confirmedAt: '2026-10-11T08:32:00.000Z',
+        confirmedByUserId: 'user-1',
+        files: [file],
+      },
+    };
+    mockJson(confirmed);
+    await expect(getCase('case-1')).resolves.toMatchObject({
+      stage: 'WAITING_EXECUTION_STAMP',
+      executionConfirmation: { files: [file] },
     });
 
     mockJson({
@@ -221,6 +247,34 @@ describe('cases API', () => {
     await expect(getCase('case-1')).rejects.toMatchObject({
       code: 'INVALID_RESPONSE',
     });
+  });
+
+  it('confirms an exact execution submission using its expected version and idempotency key', async () => {
+    const input = {
+      expectedVersion: 15,
+      idempotencyKey: '80000000-0000-4000-8000-000000000111',
+      expectedSubmissionId: '80000000-0000-4000-8000-000000000103',
+    };
+    const fetchMock = mockJson({
+      id: 'case-1',
+      confirmationId: '80000000-0000-4000-8000-000000000106',
+      submissionId: input.expectedSubmissionId,
+      stage: 'WAITING_EXECUTION_STAMP',
+      version: 16,
+      confirmedAt: '2026-10-11T08:32:00.000Z',
+    });
+    await expect(confirmCaseExecution('case-1', input)).resolves.toMatchObject({
+      stage: 'WAITING_EXECUTION_STAMP',
+      submissionId: input.expectedSubmissionId,
+      version: 16,
+    });
+    expect(fetchMock).toHaveBeenCalledWith(
+      '/api/v1/cases/case-1/execution-confirm',
+      expect.objectContaining({
+        method: 'POST',
+        body: JSON.stringify(input),
+      }),
+    );
   });
 
   it('submits execution with explicit nullable anchors and preserves exact retry inputs', async () => {
@@ -295,6 +349,7 @@ describe('cases API', () => {
       SECOND_INSTANCE: 0,
       WAITING_EXECUTION_DOCUMENTS: 2,
       WAITING_EXECUTION_CONFIRMATION: 3,
+      WAITING_EXECUTION_STAMP: 0,
     };
     const fetchMock = mockJson({
       items: [],
@@ -1090,6 +1145,8 @@ describe('cases API', () => {
         submissions: [],
         availableFiles: [],
       },
+      canConfirmExecution: false,
+      executionConfirmation: null,
       createdAt: '2026-09-28T00:00:00.000Z',
       matchedAt: null,
       matchedOn: null,
@@ -1619,6 +1676,7 @@ describe('cases API', () => {
         SECOND_INSTANCE: 0,
         WAITING_EXECUTION_DOCUMENTS: 0,
         WAITING_EXECUTION_CONFIRMATION: 0,
+        WAITING_EXECUTION_STAMP: 0,
       },
     });
     await expect(
@@ -1637,6 +1695,7 @@ describe('cases API', () => {
         SECOND_INSTANCE: 0,
         WAITING_EXECUTION_DOCUMENTS: 0,
         WAITING_EXECUTION_CONFIRMATION: 0,
+        WAITING_EXECUTION_STAMP: 0,
       },
     });
     expect(fetchMock.mock.calls[0]?.[0]).toBe(
@@ -1669,6 +1728,7 @@ describe('cases API', () => {
         SECOND_INSTANCE: 0,
         WAITING_EXECUTION_DOCUMENTS: 0,
         WAITING_EXECUTION_CONFIRMATION: 0,
+        WAITING_EXECUTION_STAMP: 0,
       },
     });
     await expect(
@@ -1691,21 +1751,51 @@ describe('cases API', () => {
       SECOND_INSTANCE: 0,
       WAITING_EXECUTION_DOCUMENTS: 1,
       WAITING_EXECUTION_CONFIRMATION: 0,
+      WAITING_EXECUTION_STAMP: 0,
     };
     const item = {
       ...summary,
       stage: 'WAITING_EXECUTION_DOCUMENTS',
       canSubmitExecution: true,
+      canConfirmExecution: false,
     };
     mockJson({ items: [item], total: 1, page: 1, pageSize: 20, counts });
     await expect(listCases()).resolves.toMatchObject({
       items: [
-        { stage: 'WAITING_EXECUTION_DOCUMENTS', canSubmitExecution: true },
+        {
+          stage: 'WAITING_EXECUTION_DOCUMENTS',
+          canSubmitExecution: true,
+          canConfirmExecution: false,
+        },
       ],
     });
 
     mockJson({
       items: [{ ...item, unexpected: true }],
+      total: 1,
+      page: 1,
+      pageSize: 20,
+      counts,
+    });
+    await expect(listCases()).rejects.toMatchObject({
+      code: 'INVALID_RESPONSE',
+    });
+
+    const { canConfirmExecution: _missingCapability, ...missingCapability } =
+      item;
+    mockJson({
+      items: [missingCapability],
+      total: 1,
+      page: 1,
+      pageSize: 20,
+      counts,
+    });
+    await expect(listCases()).rejects.toMatchObject({
+      code: 'INVALID_RESPONSE',
+    });
+
+    mockJson({
+      items: [{ ...item, canConfirmExecution: 'yes' }],
       total: 1,
       page: 1,
       pageSize: 20,
@@ -1729,6 +1819,7 @@ describe('cases API', () => {
       SECOND_INSTANCE: 0,
       WAITING_EXECUTION_DOCUMENTS: 1,
       WAITING_EXECUTION_CONFIRMATION: 0,
+      WAITING_EXECUTION_STAMP: 0,
     };
     const item = {
       id: 'case-1',
@@ -1752,17 +1843,46 @@ describe('cases API', () => {
       canRegisterSecondInstanceResult: false,
       canRevokeSecondInstanceResult: false,
       canSubmitExecution: true,
+      canConfirmExecution: false,
       createdAt: '2026-09-28T00:00:00.000Z',
     };
     mockJson({ items: [item], total: 1, page: 1, pageSize: 20, counts });
     await expect(listLawyerCases()).resolves.toMatchObject({
       items: [
-        { stage: 'WAITING_EXECUTION_DOCUMENTS', canSubmitExecution: true },
+        {
+          stage: 'WAITING_EXECUTION_DOCUMENTS',
+          canSubmitExecution: true,
+          canConfirmExecution: false,
+        },
       ],
     });
 
     mockJson({
       items: [{ ...item, unexpected: true }],
+      total: 1,
+      page: 1,
+      pageSize: 20,
+      counts,
+    });
+    await expect(listLawyerCases()).rejects.toMatchObject({
+      code: 'INVALID_RESPONSE',
+    });
+
+    const { canConfirmExecution: _missingCapability, ...missingCapability } =
+      item;
+    mockJson({
+      items: [missingCapability],
+      total: 1,
+      page: 1,
+      pageSize: 20,
+      counts,
+    });
+    await expect(listLawyerCases()).rejects.toMatchObject({
+      code: 'INVALID_RESPONSE',
+    });
+
+    mockJson({
+      items: [{ ...item, canConfirmExecution: 'yes' }],
       total: 1,
       page: 1,
       pageSize: 20,
@@ -1791,6 +1911,7 @@ describe('cases API', () => {
         SECOND_INSTANCE: 0,
         WAITING_EXECUTION_DOCUMENTS: 0,
         WAITING_EXECUTION_CONFIRMATION: 0,
+        WAITING_EXECUTION_STAMP: 0,
       },
     });
     await listCases(1, 20, { stage: 'all' });
@@ -2164,6 +2285,8 @@ describe('cases API', () => {
       canRegisterSecondInstanceResult: false,
       canRevokeSecondInstanceResult: false,
       canSubmitExecution: false,
+      canConfirmExecution: false,
+      executionConfirmation: null,
       createdAt: '2026-09-28T00:00:00.000Z',
       matchedAt: '2026-09-29T01:00:00Z',
       matchedOn: '2026-09-28',
@@ -2307,6 +2430,8 @@ describe('cases API', () => {
         submissions: [],
         availableFiles: [],
       },
+      canConfirmExecution: false,
+      executionConfirmation: null,
     };
     mockJson(response);
     await expect(casesApi.getLawyerCase('case-1')).resolves.toMatchObject({
@@ -2550,6 +2675,7 @@ describe('cases API', () => {
         SECOND_INSTANCE: 0,
         WAITING_EXECUTION_DOCUMENTS: 0,
         WAITING_EXECUTION_CONFIRMATION: 0,
+        WAITING_EXECUTION_STAMP: 0,
       },
     });
     const read = Reflect.get(casesApi, 'listLawyerCases') as

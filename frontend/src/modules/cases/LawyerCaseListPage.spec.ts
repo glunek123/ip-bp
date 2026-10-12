@@ -17,6 +17,7 @@ const emptyResult = {
       version: 7,
       canMatch: false,
       canSubmitExecution: false,
+      canConfirmExecution: false,
       canSubmitComplaint: false,
       canConfirmComplaint: false,
       canMailComplaint: false,
@@ -47,6 +48,7 @@ const emptyResult = {
     SECOND_INSTANCE: 0,
     WAITING_EXECUTION_DOCUMENTS: 0,
     WAITING_EXECUTION_CONFIRMATION: 0,
+    WAITING_EXECUTION_STAMP: 0,
   },
 };
 
@@ -187,13 +189,14 @@ describe('LawyerCaseListPage', () => {
           ...emptyResult.items[0],
           id: 'execution-actionable',
           stage: 'WAITING_EXECUTION_CONFIRMATION',
-          canSubmitExecution: true,
+          canConfirmExecution: true,
         },
         {
           ...emptyResult.items[0],
           id: 'execution-readonly',
           stage: 'WAITING_EXECUTION_CONFIRMATION',
           canSubmitExecution: false,
+          canConfirmExecution: false,
           canSubmitFiling: false,
         },
       ],

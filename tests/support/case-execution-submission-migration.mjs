@@ -8,14 +8,21 @@ const root = process.cwd();
 const requireBackend = createRequire(resolve(root, 'backend/package.json'));
 const { Client } = requireBackend('pg');
 const directory = resolve(root, 'backend/prisma/migrations');
-const names = readdirSync(directory)
+const allNames = readdirSync(directory)
   .filter((name) => /^\d{14}_/u.test(name))
   .sort();
+// Keep the CA-011 historical probe on its original 134-migration support
+// window. CA-012's own migration probe applies and verifies the full chain.
+const names = allNames.slice(0, 134);
 const additions = [
   '20261011030000_add_case_execution_submission_enums',
   '20261011031000_add_case_execution_submission_facts',
   '20261011032000_guard_case_execution_submission',
   '20261012010000_fix_lawyer_execution_upload_stage',
+];
+const confirmationMigrations = [
+  '20261012020000_add_case_execution_confirmation_enums',
+  '20261012021000_guard_case_execution_confirmation',
 ];
 const sql = (name) =>
   readFileSync(resolve(directory, name, 'migration.sql'), 'utf8');
@@ -331,7 +338,8 @@ export async function verifyCaseExecutionSubmissionMigration() {
   });
   if (
     names.length !== 134 ||
-    additions.some((name, index) => names[130 + index] !== name)
+    additions.some((name, index) => names[130 + index] !== name) ||
+    confirmationMigrations.some((name, index) => allNames[134 + index] !== name)
   )
     throw new Error('Unexpected CA-011 migration suffix');
   const client = new Client({ connectionString: process.env.DATABASE_URL });
@@ -498,6 +506,359 @@ export async function verifyCaseExecutionSubmissionMigration() {
     await client.query('ROLLBACK').catch(() => undefined);
     await client.query('SET search_path TO public').catch(() => undefined);
     for (const schema of schemas)
+      await client
+        .query(`DROP SCHEMA IF EXISTS "${schema}" CASCADE`)
+        .catch(() => undefined);
+    await client.end().catch(() => undefined);
+  }
+}
+
+export async function verifyCaseExecutionConfirmationMigration() {
+  if (process.env.NODE_ENV !== 'test')
+    throw new Error('Isolated test database required');
+  validateIsolatedTestDatabaseUrl(process.env.DATABASE_URL, {
+    allowRandomPort: true,
+  });
+  if (
+    allNames.length !== 136 ||
+    confirmationMigrations.some((name, index) => allNames[134 + index] !== name)
+  )
+    throw new Error('Unexpected CA-012 migration suffix');
+  const client = new Client({ connectionString: process.env.DATABASE_URL });
+  const schemas = Object.fromEntries(
+    ['empty', 'upgrade', 'enum_failure', 'guard_retry'].map((part) => [
+      part,
+      `ca012_${part}_${randomUUID().replaceAll('-', '')}`,
+    ]),
+  );
+  const use = (schema) => client.query(`SET search_path TO "${schema}"`);
+  const count = async (statement, values = []) =>
+    Number((await client.query(statement, values)).rows[0].n);
+  const sqlCode = async (targetClient, statement, values = []) => {
+    await targetClient.query('BEGIN');
+    try {
+      await targetClient.query(statement, values);
+      await targetClient.query('SET CONSTRAINTS ALL IMMEDIATE');
+      return null;
+    } catch (error) {
+      await targetClient.query('ROLLBACK').catch(() => undefined);
+      return error.code ?? null;
+    } finally {
+      await targetClient.query('ROLLBACK').catch(() => undefined);
+    }
+  };
+  try {
+    await client.connect();
+    const location = (
+      await client.query(
+        'SELECT current_database() AS db,current_schema() AS schema',
+      )
+    ).rows[0];
+    if (location.db !== 'dev_cor_test' || location.schema !== 'public')
+      throw new Error('Isolated public test database required');
+    for (const schema of Object.values(schemas))
+      await client.query(`CREATE SCHEMA "${schema}"`);
+
+    await use(schemas.empty);
+    await replay(client, allNames);
+    const emptyChain =
+      (await count(
+        'SELECT count(*) AS n FROM information_schema.tables WHERE table_schema=$1 AND table_name IN ($2,$3)',
+        [
+          schemas.empty,
+          'case_execution_confirmations',
+          'case_execution_confirmation_receipts',
+        ],
+      )) === 2 &&
+      (await count(
+        `SELECT count(*) AS n FROM pg_trigger t
+          WHERE t.tgrelid IN ('case_execution_confirmations'::regclass,
+            'case_execution_confirmation_receipts'::regclass)
+            AND NOT t.tgisinternal`,
+      )) >= 3;
+
+    await use(schemas.upgrade);
+    await replay(client, names);
+    const ids = await seedOldDirectChain(client);
+    const first = await submitSql(client, ids);
+    const second = await submitSql(client, ids, {
+      priorId: first.submissionId,
+      priorVersion: 12,
+      versionId: ids.versionB,
+      reason: 'CA-012 migration history bundle',
+    });
+    const roleId = randomUUID();
+    await client.query(
+      'INSERT INTO role_templates(id,department_id,name,updated_at) VALUES ($1,$2,$3,now())',
+      [roleId, ids.department, `CA012 ${roleId}`],
+    );
+    await client.query(
+      "INSERT INTO role_grants(id,role_template_id,action,scope) VALUES ($1,$2,'case.execution.submit','TEAM')",
+      [randomUUID(), roleId],
+    );
+    await client.query(
+      'INSERT INTO role_assignments(id,user_id,department_id,role_template_id,active,updated_at) VALUES ($1,$2,$3,$4,true,now())',
+      [randomUUID(), ids.actor, ids.department, roleId],
+    );
+    const permissionBefore = (
+      await client.query(
+        `SELECT t.version AS role_version,u.authorization_revision
+          FROM role_templates t JOIN user_accounts u ON u.id=$2 WHERE t.id=$1`,
+        [roleId, ids.actor],
+      )
+    ).rows[0];
+    await replay(client, confirmationMigrations);
+    const permissionAfter = (
+      await client.query(
+        `SELECT g.scope,t.version AS role_version,u.authorization_revision
+          FROM role_templates t JOIN role_grants g ON g.role_template_id=t.id
+            AND g.action='case.execution.confirm'
+          JOIN user_accounts u ON u.id=$2 WHERE t.id=$1`,
+        [roleId, ids.actor],
+      )
+    ).rows[0];
+    const sameScopePermission =
+      permissionAfter?.scope === 'TEAM' &&
+      permissionAfter.role_version === permissionBefore.role_version + 1 &&
+      permissionAfter.authorization_revision ===
+        permissionBefore.authorization_revision + 1;
+    const historicalBefore = (
+      await client.query(
+        `SELECT count(*)::int AS submissions,
+          (SELECT count(*)::int FROM case_execution_submission_versions WHERE case_id=$1) AS versions,
+          stage,version,current_execution_submission_id
+         FROM cases c LEFT JOIN case_execution_submissions s ON s.case_id=c.id
+         WHERE c.id=$1 GROUP BY c.stage,c.version,c.current_execution_submission_id`,
+        [ids.case],
+      )
+    ).rows[0];
+    const invalidStage = await sqlCode(
+      client,
+      `UPDATE cases SET stage='WAITING_EXECUTION_STAMP',version=version+1 WHERE id=$1`,
+      [ids.case],
+    );
+    const confirmedAt = new Date().toISOString();
+    const confirmationId = randomUUID();
+    const auditId = randomUUID();
+    const result = {
+      id: ids.case,
+      confirmationId,
+      submissionId: second.submissionId,
+      stage: 'WAITING_EXECUTION_STAMP',
+      version: 14,
+      confirmedAt,
+    };
+    await client.query('BEGIN');
+    try {
+      await client.query(
+        `INSERT INTO audit_events(id,department_id,actor_user_id,internal_actor_user_id,
+          resource_type,resource_id,action,details)
+         VALUES ($1,$2,$3,$3,'CASE',$4,'case.execution.confirmed',$5::jsonb)`,
+        [
+          auditId,
+          ids.department,
+          ids.actor,
+          ids.case,
+          JSON.stringify({
+            confirmationId,
+            submissionId: second.submissionId,
+            fromVersion: 13,
+            toVersion: 14,
+          }),
+        ],
+      );
+      await client.query(
+        `INSERT INTO case_execution_confirmations(id,case_id,department_id,submission_id,
+          from_version,to_version,confirmed_at,confirmed_by_user_id,audit_event_id)
+         VALUES ($1,$2,$3,$4,13,14,$5,$6,$7)`,
+        [
+          confirmationId,
+          ids.case,
+          ids.department,
+          second.submissionId,
+          confirmedAt,
+          ids.actor,
+          auditId,
+        ],
+      );
+      await client.query(
+        `UPDATE cases SET stage='WAITING_EXECUTION_STAMP',version=14 WHERE id=$1`,
+        [ids.case],
+      );
+      await client.query(
+        `INSERT INTO case_execution_confirmation_receipts(id,department_id,actor_user_id,
+          case_id,idempotency_key,request_fingerprint,result_snapshot)
+         VALUES ($1,$2,$3,$4,'ca012-migration-confirm',$5,$6::jsonb)`,
+        [
+          randomUUID(),
+          ids.department,
+          ids.actor,
+          ids.case,
+          'b'.repeat(64),
+          JSON.stringify(result),
+        ],
+      );
+      await client.query('SET CONSTRAINTS ALL IMMEDIATE');
+      await client.query('COMMIT');
+    } catch (error) {
+      await client.query('ROLLBACK').catch(() => undefined);
+      throw error;
+    }
+    const confirmed = (
+      await client.query(
+        `SELECT c.stage,c.version,c.current_execution_submission_id,
+          f.submission_id,f.from_version,f.to_version,
+          (SELECT count(*)::int FROM case_execution_submissions WHERE case_id=c.id) AS submissions,
+          (SELECT count(*)::int FROM case_execution_submission_versions WHERE case_id=c.id) AS versions,
+          (SELECT count(*)::int FROM case_execution_confirmations WHERE case_id=c.id) AS confirmations
+         FROM cases c JOIN case_execution_confirmations f ON f.case_id=c.id WHERE c.id=$1`,
+        [ids.case],
+      )
+    ).rows[0];
+    const oldHistoryPreserved =
+      historicalBefore.submissions === 2 &&
+      historicalBefore.versions === 2 &&
+      historicalBefore.stage === 'WAITING_EXECUTION_CONFIRMATION' &&
+      historicalBefore.version === 13 &&
+      historicalBefore.current_execution_submission_id ===
+        second.submissionId &&
+      confirmed.submissions === 2 &&
+      confirmed.versions === 2 &&
+      confirmed.confirmations === 1 &&
+      confirmed.submission_id === second.submissionId &&
+      confirmed.from_version === 13 &&
+      confirmed.to_version === 14 &&
+      confirmed.current_execution_submission_id === second.submissionId &&
+      confirmed.stage === 'WAITING_EXECUTION_STAMP' &&
+      confirmed.version === 14;
+    const directResubmit = await sqlCode(
+      client,
+      `UPDATE cases SET stage='WAITING_EXECUTION_CONFIRMATION',version=version+1 WHERE id=$1`,
+      [ids.case],
+    );
+    await client.query('BEGIN');
+    let directSubmissionInsert = null;
+    try {
+      const directAuditId = randomUUID();
+      await client.query(
+        `INSERT INTO audit_events(id,department_id,actor_user_id,internal_actor_user_id,
+          resource_type,resource_id,action,details)
+         VALUES ($1,$2,$3,$3,'CASE',$4,'case.execution.submitted','{}'::jsonb)`,
+        [directAuditId, ids.department, ids.actor, ids.case],
+      );
+      await client.query(
+        `INSERT INTO case_execution_submissions(id,case_id,department_id,trial_round_id,
+          judgment_next_step_id,second_instance_result_id,prior_submission_id,change_reason,
+          from_version,to_version,submitted_by_user_id,audit_event_id)
+         VALUES ($1,$2,$3,$4,$5,NULL,$6,'direct SQL after confirmation',14,15,$7,$8)`,
+        [
+          randomUUID(),
+          ids.case,
+          ids.department,
+          ids.round,
+          ids.choice,
+          second.submissionId,
+          ids.actor,
+          directAuditId,
+        ],
+      );
+      await client.query('SET CONSTRAINTS ALL IMMEDIATE');
+    } catch (error) {
+      directSubmissionInsert = error.code ?? null;
+    } finally {
+      await client.query('ROLLBACK').catch(() => undefined);
+    }
+
+    await use(schemas.enum_failure);
+    await replay(client, names);
+    await client.query(
+      'ALTER TYPE "permission_action" ADD VALUE \'case.execution.confirm\'',
+    );
+    let enumFailureCode = null;
+    try {
+      await client.query(sql(confirmationMigrations[0]));
+    } catch (error) {
+      enumFailureCode = error.code ?? null;
+      await client.query('ROLLBACK').catch(() => undefined);
+    }
+    const enumFailureAtomic =
+      enumFailureCode !== null &&
+      (await count(
+        `SELECT count(*) AS n FROM pg_enum e JOIN pg_type t ON t.oid=e.enumtypid
+          JOIN pg_namespace n ON n.oid=t.typnamespace
+          WHERE n.nspname=$1 AND t.typname='case_stage' AND e.enumlabel='WAITING_EXECUTION_STAMP'`,
+        [schemas.enum_failure],
+      )) === 0;
+
+    await use(schemas.guard_retry);
+    await replay(client, names);
+    await replay(client, [confirmationMigrations[0]]);
+    const beforeGuard = (
+      await client.query(
+        `SELECT pg_get_functiondef(p.oid) AS definition FROM pg_proc p
+          JOIN pg_namespace n ON n.oid=p.pronamespace
+          WHERE n.nspname=current_schema() AND p.proname='check_case_execution_submission_final' AND p.pronargs=0`,
+      )
+    ).rows[0].definition;
+    const needle = `c."stage" <> 'WAITING_EXECUTION_CONFIRMATION' OR c."version" <> e."to_version"`;
+    if (!beforeGuard.includes(needle))
+      throw new Error('Expected CA-011 submission guard unavailable');
+    const changedGuard = beforeGuard.replace(
+      needle,
+      `c."stage" <> 'CA012_UNKNOWN_STAGE' OR c."version" <> e."to_version"`,
+    );
+    await client.query(changedGuard);
+    let guardFailureCode = null;
+    try {
+      await client.query(sql(confirmationMigrations[1]));
+    } catch (error) {
+      guardFailureCode = error.code ?? null;
+      await client.query('ROLLBACK').catch(() => undefined);
+    }
+    const guardFailureAtomic =
+      guardFailureCode === '23514' &&
+      (await count(
+        `SELECT count(*) AS n FROM information_schema.tables WHERE table_schema=$1
+          AND table_name IN ('case_execution_confirmations','case_execution_confirmation_receipts')`,
+        [schemas.guard_retry],
+      )) === 0 &&
+      (
+        await client.query(
+          `SELECT pg_get_functiondef(p.oid) AS definition FROM pg_proc p
+          JOIN pg_namespace n ON n.oid=p.pronamespace
+          WHERE n.nspname=current_schema() AND p.proname='check_case_execution_submission_final' AND p.pronargs=0`,
+        )
+      ).rows[0].definition === changedGuard;
+    await client.query(beforeGuard);
+    await replay(client, [confirmationMigrations[1]]);
+    const guardRetry =
+      (await count(
+        `SELECT count(*) AS n FROM information_schema.tables WHERE table_schema=$1
+          AND table_name IN ('case_execution_confirmations','case_execution_confirmation_receipts')`,
+        [schemas.guard_retry],
+      )) === 2 &&
+      (
+        await client.query(
+          `SELECT to_regprocedure('check_case_execution_confirmation_final()') IS NOT NULL AS ready`,
+        )
+      ).rows[0].ready;
+
+    return {
+      migrationCount: allNames.length,
+      emptyChain,
+      sameScopePermission,
+      invalidStage,
+      oldHistoryPreserved,
+      directResubmit,
+      directSubmissionInsert,
+      enumFailureAtomic,
+      guardFailureAtomic,
+      guardRetry,
+    };
+  } finally {
+    await client.query('ROLLBACK').catch(() => undefined);
+    await client.query('SET search_path TO public').catch(() => undefined);
+    for (const schema of Object.values(schemas))
       await client
         .query(`DROP SCHEMA IF EXISTS "${schema}" CASCADE`)
         .catch(() => undefined);

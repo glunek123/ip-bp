@@ -101,6 +101,8 @@ function detail(
       revocations: [],
     },
     executionSubmission: { current: null, submissions: [], availableFiles: [] },
+    canConfirmExecution: false,
+    executionConfirmation: null,
   };
 }
 function materials() {

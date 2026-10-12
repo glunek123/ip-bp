@@ -64,7 +64,11 @@ let conflictIdentity = '';
 let conflictVersion: number | null = null;
 
 const maySubmit = computed(
-  () => props.item.canSubmitExecution && !accessDenied.value,
+  () =>
+    props.item.canSubmitExecution &&
+    props.item.stage === 'WAITING_EXECUTION_DOCUMENTS' &&
+    !props.item.executionConfirmation &&
+    !accessDenied.value,
 );
 const current = computed(() =>
   accessDenied.value ? null : props.item.executionSubmission.current,
@@ -567,9 +571,25 @@ onBeforeUnmount(() => {
     class="demo-card demo-card--pad"
     data-test="execution-submission-panel"
   >
-    <h2 class="form-section-title">执行材料提交</h2>
-    <p class="field-help">
+    <h2 class="form-section-title">
+      {{
+        accessDenied
+          ? '执行材料'
+          : maySubmit
+            ? '执行材料提交'
+            : '执行材料提交历史'
+      }}
+    </h2>
+    <p v-if="maySubmit" class="field-help">
       上传材料不会推进案件。确认提交后，案件进入“执行材料待确认”，并限制撤销上游执行决定。
+    </p>
+    <p
+      v-else-if="
+        !accessDenied && props.item.executionSubmission.submissions.length
+      "
+      class="field-help"
+    >
+      当前阶段仅展示已提交材料历史。请在确认面板核对整套材料，确认后不可重提。
     </p>
     <p v-if="error" class="submit-error" role="alert">{{ error }}</p>
     <p v-if="message" role="status">{{ message }}</p>

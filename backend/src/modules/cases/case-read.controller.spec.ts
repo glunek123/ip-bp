@@ -19,6 +19,7 @@ import { CaseJudgmentService } from './case-judgment.service';
 import { CaseJudgmentNextStepService } from './case-judgment-next-step.service';
 import { CaseSecondInstanceService } from './case-second-instance.service';
 import { CaseExecutionSubmissionService } from './case-execution-submission.service';
+import { CaseExecutionConfirmationService } from './case-execution-confirmation.service';
 import { FilingCourtService } from './filing-court.service';
 
 const routeCaseId = '33333333-3333-4333-8333-333333333333';
@@ -58,6 +59,7 @@ describe('internal complaint mailing route identity', () => {
       {} as never,
       {} as never,
       {} as never,
+      {} as never,
       {} as FilingCourtService,
     );
     expect(() =>
@@ -89,6 +91,16 @@ describe('case read OpenAPI contract', () => {
         submittedAt: '2026-10-11T00:00:00.000Z',
       }),
     };
+    const executionConfirmation = {
+      confirm: jest.fn().mockResolvedValue({
+        id: routeCaseId,
+        confirmationId: routeCaseId,
+        submissionId: routeCaseId,
+        stage: 'WAITING_EXECUTION_STAMP',
+        version: 13,
+        confirmedAt: '2026-10-12T00:00:00.000Z',
+      }),
+    };
     const module = await Test.createTestingModule({
       controllers: [CaseReadController],
       providers: [
@@ -106,6 +118,10 @@ describe('case read OpenAPI contract', () => {
         {
           provide: CaseExecutionSubmissionService,
           useValue: executionSubmission,
+        },
+        {
+          provide: CaseExecutionConfirmationService,
+          useValue: executionConfirmation,
         },
         { provide: FilingCourtService, useValue: {} },
       ],
@@ -184,8 +200,18 @@ describe('case read OpenAPI contract', () => {
         },
       });
       expect(document.components?.schemas?.CaseListItemDto).toMatchObject({
-        properties: { canSubmitExecution: { type: 'boolean' } },
+        properties: {
+          canSubmitExecution: { type: 'boolean' },
+          canConfirmExecution: { type: 'boolean' },
+        },
       });
+      expect(document.components?.schemas?.CaseDetailResponseDto).toMatchObject(
+        {
+          properties: {
+            executionConfirmation: expect.objectContaining({ nullable: true }),
+          },
+        },
+      );
       expect(
         document.paths['/api/v1/cases/{id}/execution-submit']?.post?.responses[
           '201'
@@ -216,6 +242,21 @@ describe('case read OpenAPI contract', () => {
         });
       expect(unknownField.status).toBe(400);
       expect(executionSubmission.submit).not.toHaveBeenCalled();
+      expect(
+        document.paths['/api/v1/cases/{id}/execution-confirm']?.post?.responses[
+          '201'
+        ],
+      ).toBeDefined();
+      const extraConfirmationField = await request(app.getHttpServer())
+        .post(`/api/v1/cases/${routeCaseId}/execution-confirm`)
+        .send({
+          expectedVersion: 12,
+          idempotencyKey: 'confirm',
+          expectedSubmissionId: routeCaseId,
+          executionApplicationContentVersionIds: [routeCaseId],
+        });
+      expect(extraConfirmationField.status).toBe(400);
+      expect(executionConfirmation.confirm).not.toHaveBeenCalled();
       expect(
         document.paths['/api/v1/cases/{id}/second-instance-save']?.post
           ?.responses['201'],

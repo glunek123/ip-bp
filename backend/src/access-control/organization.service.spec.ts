@@ -345,7 +345,7 @@ describe('OrganizationService management context', () => {
       assignTeamRoles: false,
       manageRoleTemplates: true,
     });
-    expect(result.permissionCatalog).toHaveLength(56);
+    expect(result.permissionCatalog).toHaveLength(57);
     for (const [action, label] of [
       ['CUSTOMER_RESPONSIBLE_TRANSFER', '转派负责运营'],
       ['CUSTOMER_COOPERATION_PAUSE', '暂停客户合作'],
@@ -376,6 +376,11 @@ describe('OrganizationService management context', () => {
     expect(result.permissionCatalog).toContainEqual({
       action: 'CASE_EXECUTION_SUBMIT',
       label: '提交执行材料',
+      scopes: ['SELF', 'TEAM', 'DEPARTMENT'],
+    });
+    expect(result.permissionCatalog).toContainEqual({
+      action: 'CASE_EXECUTION_CONFIRM',
+      label: '确认执行材料',
       scopes: ['SELF', 'TEAM', 'DEPARTMENT'],
     });
     for (const [action, label] of [

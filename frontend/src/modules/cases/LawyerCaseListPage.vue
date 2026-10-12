@@ -28,6 +28,7 @@ const stages: Array<{ value: CaseStage; label: string }> = [
     value: 'WAITING_EXECUTION_CONFIRMATION',
     label: '执行材料待确认',
   },
+  { value: 'WAITING_EXECUTION_STAMP', label: '执行材料待盖章' },
 ];
 const state = ref<'loading' | 'ready' | 'failed'>('loading');
 const items = ref<LawyerCaseSummary[]>([]);
@@ -162,6 +163,7 @@ onBeforeUnmount(() => {
             ><span class="pill">{{
               item.canSubmitComplaint ||
               item.canSubmitExecution ||
+              item.canConfirmExecution ||
               item.canConfirmComplaint ||
               item.canMailComplaint ||
               item.canSubmitFiling ||

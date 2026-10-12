@@ -65,6 +65,7 @@ beforeEach(() => {
         owner: { id: 'user-1', displayName: '负责人' },
         canMatch: true,
         canSubmitExecution: false,
+        canConfirmExecution: false,
         canSubmitComplaint: false,
         canSubmitFiling: false,
         canRegisterAcceptance: false,
@@ -92,6 +93,7 @@ beforeEach(() => {
       SECOND_INSTANCE: 0,
       WAITING_EXECUTION_DOCUMENTS: 0,
       WAITING_EXECUTION_CONFIRMATION: 0,
+      WAITING_EXECUTION_STAMP: 0,
     },
   });
   api.listLawyerMatchCandidates.mockResolvedValue([]);
@@ -174,6 +176,8 @@ beforeEach(() => {
       revocations: [],
     },
     executionSubmission: { current: null, submissions: [], availableFiles: [] },
+    canConfirmExecution: false,
+    executionConfirmation: null,
   });
   api.listOwnerMaterials.mockResolvedValue({ items: [], total: 0 });
   api.listFilingCourts.mockResolvedValue([]);
@@ -327,6 +331,8 @@ function confirmationDetail(
       revocations: [],
     },
     executionSubmission: { current: null, submissions: [], availableFiles: [] },
+    canConfirmExecution: false,
+    executionConfirmation: null,
   };
 }
 
@@ -450,6 +456,27 @@ describe('case pages', () => {
       ],
     });
     const wrapper = await mountRoute('/cases', CaseListPage);
+    expect(wrapper.get('[data-test="case-list"]').text()).toContain('办理');
+    expect(wrapper.get('[data-test="case-list"]').text()).not.toContain('只读');
+  });
+
+  it('labels an execution-confirmation-only case as writable in the list', async () => {
+    const base = await api.listCases();
+    api.listCases.mockResolvedValueOnce({
+      ...base,
+      items: [
+        {
+          ...base.items[0],
+          stage: 'WAITING_EXECUTION_CONFIRMATION',
+          canSubmitExecution: false,
+          canConfirmExecution: true,
+        },
+      ],
+    });
+    const wrapper = await mountRoute(
+      '/cases?stage=WAITING_EXECUTION_CONFIRMATION',
+      CaseListPage,
+    );
     expect(wrapper.get('[data-test="case-list"]').text()).toContain('办理');
     expect(wrapper.get('[data-test="case-list"]').text()).not.toContain('只读');
   });

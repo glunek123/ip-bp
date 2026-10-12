@@ -15,3 +15,16 @@ export function verifyCaseExecutionSubmissionMigration(): Promise<{
   actorRetry: boolean;
   emptyChain: boolean;
 }>;
+
+export function verifyCaseExecutionConfirmationMigration(): Promise<{
+  migrationCount: number;
+  emptyChain: boolean;
+  sameScopePermission: boolean;
+  invalidStage: string | null;
+  oldHistoryPreserved: boolean;
+  directResubmit: string | null;
+  directSubmissionInsert: string | null;
+  enumFailureAtomic: boolean;
+  guardFailureAtomic: boolean;
+  guardRetry: boolean;
+}>;

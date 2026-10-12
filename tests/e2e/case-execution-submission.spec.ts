@@ -261,6 +261,12 @@ async function grantJudgmentAndExecutionActions(page: Page) {
   await expect(button).toBeVisible();
   await button.click();
   const editor = page.getByRole('dialog', { name: 'CORE TEAM' });
+  await expect(
+    editor.locator('[data-test="grant-CASE_EXECUTION_CONFIRM"]'),
+  ).toBeChecked();
+  await expect(
+    editor.locator('[data-test="scope-CASE_EXECUTION_CONFIRM"]'),
+  ).toHaveValue('TEAM');
   for (const action of [
     'CASE_JUDGMENT_REGISTER',
     'CASE_JUDGMENT_NEXT_STEP',
@@ -634,6 +640,384 @@ test('operator uploads, explicitly submits, and retrieves exact execution bytes 
   expect(
     await browserDownloadBytes(page, () => afterLoginFile.click()),
   ).toEqual(applicationPdf);
+});
+
+test('CA-012 current lawyer confirms the complete submitted file set and clients only read the new stage', async ({
+  page,
+  request,
+  browser,
+}) => {
+  const source = await prepareOperatorExecutionCase(page, request);
+  const operatorPanel = page.locator(
+    '[data-test="execution-submission-panel"]',
+  );
+  const firstBytes = Buffer.from(
+    '%PDF-1.4\nCA012 execution application exact bytes\n%%EOF\n',
+  );
+  const secondBytes = Buffer.from(
+    '%PDF-1.4\nCA012 supporting execution document exact bytes\n%%EOF\n',
+  );
+  const files = [
+    {
+      name: `CA012-execution-${randomUUID().slice(0, 8)}.pdf`,
+      bytes: firstBytes,
+    },
+    {
+      name: `CA012-support-${randomUUID().slice(0, 8)}.pdf`,
+      bytes: secondBytes,
+    },
+  ];
+
+  for (const file of files) {
+    const uploaded = page.waitForResponse(
+      (response) =>
+        response.request().method() === 'PUT' &&
+        /^\/api\/v1\/materials\/upload-drafts\/[^/]+\/content$/u.test(
+          new URL(response.url()).pathname,
+        ),
+    );
+    await operatorPanel.locator('input[type="file"]').setInputFiles({
+      name: file.name,
+      mimeType: 'application/pdf',
+      buffer: file.bytes,
+    });
+    await status(await uploaded, 200);
+  }
+  const versionIds = await Promise.all(
+    files.map((file) => exactUploadedVersionId(page, source.caseId, file.name)),
+  );
+  for (const file of files)
+    await operatorPanel
+      .locator('label')
+      .filter({ hasText: file.name })
+      .locator('input[type="checkbox"]')
+      .check();
+
+  const beforeSubmit = await page.request.get(`/api/v1/cases/${source.caseId}`);
+  await status(beforeSubmit, 200);
+  const before = (await beforeSubmit.json()) as {
+    version: number;
+    stage: string;
+  };
+  const submitted = page.waitForResponse(
+    (response) =>
+      response.request().method() === 'POST' &&
+      new URL(response.url()).pathname ===
+        `/api/v1/cases/${source.caseId}/execution-submit`,
+  );
+  await operatorPanel.locator('[data-test="submit-execution"]').click();
+  await status(await submitted, 201);
+  const afterSubmit = await page.request.get(`/api/v1/cases/${source.caseId}`);
+  await status(afterSubmit, 200);
+  const submittedDetail = (await afterSubmit.json()) as {
+    version: number;
+    stage: string;
+    executionSubmission: {
+      current: { id: string; files: Array<{ contentVersionId: string }> };
+    };
+    executionConfirmation: null;
+    canConfirmExecution: boolean;
+  };
+  expect(submittedDetail.stage).toBe('WAITING_EXECUTION_CONFIRMATION');
+  expect(submittedDetail.version).toBe(before.version + 1);
+  expect(submittedDetail.executionConfirmation).toBeNull();
+  expect(submittedDetail.canConfirmExecution).toBe(true);
+  expect(
+    submittedDetail.executionSubmission.current.files
+      .map((file) => file.contentVersionId)
+      .sort(),
+  ).toEqual([...versionIds].sort());
+
+  await logout(page);
+  await login(
+    page,
+    '/lawyer/cases',
+    source.lawyer.username,
+    source.lawyer.password,
+  );
+  await page.goto(`/lawyer/cases/${source.caseId}`);
+  const confirmationPanel = page.locator(
+    '[data-test="execution-confirmation-panel"]',
+  );
+  await expect(confirmationPanel).toBeVisible();
+  await expect(confirmationPanel).toContainText(files[0]!.name);
+  await expect(confirmationPanel).toContainText(files[1]!.name);
+  const confirmPath = `/api/v1/lawyer/cases/${source.caseId}/execution-confirm`;
+  const confirmResponse = page.waitForResponse(
+    (response) =>
+      response.request().method() === 'POST' &&
+      new URL(response.url()).pathname === confirmPath,
+  );
+  await confirmationPanel.locator('[data-test="confirm-execution"]').click();
+  const confirmation = await confirmResponse;
+  await status(confirmation, 201);
+  const body = (await confirmation.json()) as {
+    id: string;
+    confirmationId: string;
+    submissionId: string;
+    stage: string;
+    version: number;
+    confirmedAt: string;
+  };
+  expect(body).toMatchObject({
+    id: source.caseId,
+    submissionId: submittedDetail.executionSubmission.current.id,
+    stage: 'WAITING_EXECUTION_STAMP',
+    version: before.version + 2,
+  });
+  expect(body.confirmationId).toBeTruthy();
+  expect(Date.parse(body.confirmedAt)).not.toBeNaN();
+
+  const lawyerDetailResponse = await page.request.get(
+    `/api/v1/lawyer/cases/${source.caseId}`,
+  );
+  await status(lawyerDetailResponse, 200);
+  const lawyerDetail = (await lawyerDetailResponse.json()) as {
+    stage: string;
+    canConfirmExecution: boolean;
+    canSubmitExecution: boolean;
+    executionConfirmation: {
+      id: string;
+      submissionId: string;
+      confirmedByUserId: string;
+      files: Array<{ contentVersionId: string }>;
+    } | null;
+  };
+  expect(lawyerDetail.stage).toBe('WAITING_EXECUTION_STAMP');
+  expect(lawyerDetail.canConfirmExecution).toBe(false);
+  expect(lawyerDetail.canSubmitExecution).toBe(false);
+  expect(lawyerDetail.executionConfirmation).toMatchObject({
+    id: body.confirmationId,
+    submissionId: body.submissionId,
+  });
+  expect(
+    lawyerDetail.executionConfirmation?.files
+      .map((file) => file.contentVersionId)
+      .sort(),
+  ).toEqual([...versionIds].sort());
+  await expect(
+    confirmationPanel.locator('[data-test="confirm-execution"]'),
+  ).toHaveCount(0);
+  await expect(
+    page.locator(
+      '[data-test="execution-submission-panel"] [data-test="submit-execution"]',
+    ),
+  ).toHaveCount(0);
+
+  const clientPage = await browser.newPage({ baseURL: origin });
+  try {
+    await login(
+      clientPage,
+      '/client/leads',
+      source.clientSession.user.username,
+      'client correct horse battery',
+    );
+    await clientPage.goto(`/client/cases/${source.caseId}`);
+    await expect(clientPage.locator('.page-head .pill')).toContainText(
+      '执行材料待盖章',
+    );
+    const clientDetailResponse = await clientPage.request.get(
+      `/api/v1/client/cases/${source.caseId}`,
+    );
+    await status(clientDetailResponse, 200);
+    const clientDetail = (await clientDetailResponse.json()) as Record<
+      string,
+      unknown
+    >;
+    expect(clientDetail.stage).toBe('WAITING_EXECUTION_STAMP');
+    expect(clientDetail).not.toHaveProperty('executionConfirmation');
+    expect(clientDetail).not.toHaveProperty('canConfirmExecution');
+    expect(JSON.stringify(clientDetail)).not.toContain(body.confirmationId);
+    expect(JSON.stringify(clientDetail)).not.toContain(body.submissionId);
+    for (const versionId of versionIds)
+      expect(JSON.stringify(clientDetail)).not.toContain(versionId);
+    await logout(clientPage);
+  } finally {
+    await clientPage.close();
+  }
+
+  await logout(page);
+  await login(
+    page,
+    `/cases/${source.caseId}`,
+    coreLeadFixtures.operatorUsername,
+    coreLeadFixtures.operatorPassword,
+  );
+  const persistedPanel = page.locator(
+    '[data-test="execution-confirmation-panel"]',
+  );
+  await expect(persistedPanel).toBeVisible();
+  await expect(persistedPanel).toContainText(files[0]!.name);
+  await expect(persistedPanel).toContainText(files[1]!.name);
+  await page.reload();
+  await expect(page.locator('.page-head .pill')).toContainText(
+    '执行材料待盖章',
+  );
+  for (const [index, file] of files.entries()) {
+    const exactFile = persistedPanel.locator(
+      `[data-test="execution-confirmation-file-${versionIds[index]}"]`,
+    );
+    expect(
+      await browserDownloadBytes(page, () =>
+        exactFile.getByRole('button', { name: '下载', exact: true }).click(),
+      ),
+    ).toEqual(file.bytes);
+  }
+  await logout(page);
+  await login(
+    page,
+    `/cases/${source.caseId}`,
+    coreLeadFixtures.operatorUsername,
+    coreLeadFixtures.operatorPassword,
+  );
+  await expect(
+    page.locator('[data-test="execution-confirmation-panel"]'),
+  ).toContainText(files[0]!.name);
+  await expect(
+    page.locator('[data-test="execution-confirmation-panel"]'),
+  ).toContainText(files[1]!.name);
+});
+
+test('CA-012 operator confirms the current complete bundle from the internal case page', async ({
+  page,
+  request,
+}) => {
+  const source = await prepareOperatorExecutionCase(page, request);
+  const session = await page.request.get('/api/v1/auth/session');
+  await status(session, 200);
+  const csrfToken = ((await session.json()) as { csrfToken: string }).csrfToken;
+  const headers = {
+    Origin: origin,
+    'X-CSRF-Token': csrfToken,
+  };
+  const fileVersionIds = [
+    await uploadByApi(
+      page.request,
+      source.caseId,
+      'EXECUTION_APPLICATION',
+      headers,
+    ),
+    await uploadByApi(
+      page.request,
+      source.caseId,
+      'EXECUTION_APPLICATION',
+      headers,
+    ),
+  ];
+  const detailResponse = await page.request.get(
+    `/api/v1/cases/${source.caseId}`,
+  );
+  await status(detailResponse, 200);
+  const detail = (await detailResponse.json()) as {
+    version: number;
+    judgmentNextStep: { current: { id: string; trialRoundId: string } };
+  };
+  const submissionKey = randomUUID();
+  const submitted = await page.request.post(
+    `/api/v1/cases/${source.caseId}/execution-submit`,
+    {
+      headers,
+      data: {
+        expectedVersion: detail.version,
+        idempotencyKey: submissionKey,
+        trialRoundId: detail.judgmentNextStep.current.trialRoundId,
+        judgmentNextStepId: detail.judgmentNextStep.current.id,
+        secondInstanceResultId: null,
+        expectedSubmissionId: null,
+        executionApplicationContentVersionIds: fileVersionIds,
+      },
+    },
+  );
+  await status(submitted, 201);
+  const submission = (await submitted.json()) as {
+    submissionId: string;
+    version: number;
+  };
+  const refreshedDetail = page.waitForResponse(
+    (response) =>
+      response.request().method() === 'GET' &&
+      new URL(response.url()).pathname === `/api/v1/cases/${source.caseId}`,
+  );
+  await page.reload();
+  const refreshedDetailResponse = await refreshedDetail;
+  await status(refreshedDetailResponse, 200);
+  const currentDetail = (await refreshedDetailResponse.json()) as {
+    stage: string;
+    version: number;
+    canConfirmExecution: boolean;
+    executionSubmission: {
+      current: { id: string; files: Array<{ contentVersionId: string }> };
+    };
+  };
+  expect(currentDetail.stage).toBe('WAITING_EXECUTION_CONFIRMATION');
+  expect(currentDetail.version).toBe(submission.version);
+  expect(currentDetail.canConfirmExecution).toBe(true);
+  expect(currentDetail.executionSubmission.current.id).toBe(
+    submission.submissionId,
+  );
+  expect(
+    currentDetail.executionSubmission.current.files
+      .map((file) => file.contentVersionId)
+      .sort(),
+  ).toEqual([...fileVersionIds].sort());
+  const panel = page.locator('[data-test="execution-confirmation-panel"]');
+  await expect(panel).toBeVisible();
+  await expect(panel.locator('[data-test="confirm-execution"]')).toBeVisible();
+  const confirmPath = `/api/v1/cases/${source.caseId}/execution-confirm`;
+  const confirmRequest = page.waitForRequest(
+    (requestEvent) =>
+      requestEvent.method() === 'POST' &&
+      new URL(requestEvent.url()).pathname === confirmPath,
+  );
+  const confirmResponse = page.waitForResponse(
+    (response) =>
+      response.request().method() === 'POST' &&
+      new URL(response.url()).pathname === confirmPath,
+  );
+  await panel.locator('[data-test="confirm-execution"]').click();
+  const [requestEvent, response] = await Promise.all([
+    confirmRequest,
+    confirmResponse,
+  ]);
+  await status(response, 201);
+  const body = requestEvent.postDataJSON() as {
+    expectedVersion: number;
+    idempotencyKey: string;
+    expectedSubmissionId: string;
+  };
+  expect(body.expectedVersion).toBe(submission.version);
+  expect(body.idempotencyKey).toBeTruthy();
+  expect(body.expectedSubmissionId).toBe(submission.submissionId);
+  const result = (await response.json()) as {
+    submissionId: string;
+    stage: string;
+    version: number;
+  };
+  expect(result).toMatchObject({
+    submissionId: submission.submissionId,
+    stage: 'WAITING_EXECUTION_STAMP',
+    version: submission.version + 1,
+  });
+  const persisted = await page.request.get(`/api/v1/cases/${source.caseId}`);
+  await status(persisted, 200);
+  const confirmed = (await persisted.json()) as {
+    stage: string;
+    canConfirmExecution: boolean;
+    executionConfirmation: {
+      submissionId: string;
+      files: Array<{ contentVersionId: string }>;
+    };
+  };
+  expect(confirmed.stage).toBe('WAITING_EXECUTION_STAMP');
+  expect(confirmed.canConfirmExecution).toBe(false);
+  expect(confirmed.executionConfirmation.submissionId).toBe(
+    submission.submissionId,
+  );
+  expect(
+    confirmed.executionConfirmation.files
+      .map((file) => file.contentVersionId)
+      .sort(),
+  ).toEqual([...fileVersionIds].sort());
 });
 
 test('current lawyer resubmits with a reason and keeps exact prior history after re-login', async ({

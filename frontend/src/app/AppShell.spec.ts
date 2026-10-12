@@ -66,6 +66,7 @@ beforeEach(() => {
       SECOND_INSTANCE: 0,
       WAITING_EXECUTION_DOCUMENTS: 0,
       WAITING_EXECUTION_CONFIRMATION: 0,
+      WAITING_EXECUTION_STAMP: 0,
     },
   });
   api.listNotaryOffices.mockResolvedValue({
@@ -118,6 +119,7 @@ beforeEach(() => {
       SECOND_INSTANCE: 2,
       WAITING_EXECUTION_DOCUMENTS: 1,
       WAITING_EXECUTION_CONFIRMATION: 2,
+      WAITING_EXECUTION_STAMP: 0,
     },
   });
 });
@@ -274,6 +276,7 @@ describe('AppShell', () => {
         SECOND_INSTANCE: 0,
         WAITING_EXECUTION_DOCUMENTS: 1,
         WAITING_EXECUTION_CONFIRMATION: 2,
+        WAITING_EXECUTION_STAMP: 0,
       },
     });
     const { wrapper } = await mountShell('/lawyer/cases', lawyerSession);

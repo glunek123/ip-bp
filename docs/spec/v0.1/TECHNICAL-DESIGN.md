@@ -1,5 +1,7 @@
 # 技术设计基线、低负担回溯、可配置授权与客户切片
 
+2026-10-12追加SD-52：CA-012按当前整套执行提交快照一次确认，精确版本自动保留；边界见[案件Spec](modules/cases.md#ca-012确认执行材料)，不代表实现或验收。
+
 2026-10-11追加SD-51：CA-011确认前留原因重新提交已批准，边界见[案件Spec](modules/cases.md#ca-011上传执行材料)；不代表实现或验收。
 
 2026-10-10 CORE-CU-008实施边界：CustomerSettlementRecord/Version/Receipt属现有customers，三独立动作与当前customer.read范围相交，沿用CU007 actor事实锁→Customer父锁，不改共享scope/组织锁；无参数Decimal @db.Decimal无typmod映射已在随机schema实际validate/generate/往返/introspection/双向diff通过，CHECK/trigger另验。单快照list/count/stats、局部精确Decimal、原命令幂等、更正留史及SQL审计/head守卫按[人工台账契约](../../superpowers/specs/2026-10-10-customer-settlements-contract.md)实现。前端本地composable唯一持有敏感列表/KPI，不进全局store；本补充不代表CU008验收。

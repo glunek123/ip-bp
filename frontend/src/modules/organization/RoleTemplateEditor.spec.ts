@@ -71,6 +71,11 @@ const permissionCatalog = [
     label: '更正开庭安排',
     scopes: ['SELF', 'TEAM', 'DEPARTMENT'] as const,
   },
+  {
+    action: 'CASE_EXECUTION_CONFIRM' as const,
+    label: '确认执行材料',
+    scopes: ['SELF', 'TEAM', 'DEPARTMENT'] as const,
+  },
 ].map((item) => ({ ...item, scopes: [...item.scopes] }));
 
 afterEach(() => vi.clearAllMocks());
@@ -93,6 +98,9 @@ describe('RoleTemplateEditor', () => {
     ).toBe(true);
     expect(
       wrapper.find('[data-test="grant-CASE_HEARING_CORRECT"]').exists(),
+    ).toBe(true);
+    expect(
+      wrapper.find('[data-test="grant-CASE_EXECUTION_CONFIRM"]').exists(),
     ).toBe(true);
     expect(
       wrapper.find('[data-test="grant-CASE_HEARING_AUTO_ADVANCED"]').exists(),

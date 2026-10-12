@@ -197,6 +197,7 @@ const allActions = [
   'CASE_MATCH',
   'CASE_COMPLAINT_SUBMIT',
   'CASE_COMPLAINT_CONFIRM',
+  'CASE_EXECUTION_CONFIRM',
   'NOTARY_OFFICE_MANAGE',
   'LEAD_WITHDRAW_APPLY',
 ];
@@ -217,6 +218,7 @@ const actionNames = Object.freeze({
   'case.match': 'CASE_MATCH',
   'case.complaint.submit': 'CASE_COMPLAINT_SUBMIT',
   'case.complaint.confirm': 'CASE_COMPLAINT_CONFIRM',
+  'case.execution.confirm': 'CASE_EXECUTION_CONFIRM',
   'notary.office.manage': 'NOTARY_OFFICE_MANAGE',
   'lead.withdraw.apply': 'LEAD_WITHDRAW_APPLY',
   'notary.list.export': 'NOTARY_LIST_EXPORT',

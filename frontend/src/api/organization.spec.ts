@@ -292,6 +292,11 @@ const context = {
       scopes: ['SELF', 'TEAM', 'DEPARTMENT'],
     },
     {
+      action: 'CASE_EXECUTION_CONFIRM',
+      label: '确认执行材料',
+      scopes: ['SELF', 'TEAM', 'DEPARTMENT'],
+    },
+    {
       action: 'NOTARY_OFFICE_MANAGE',
       label: '管理公证处',
       scopes: ['DEPARTMENT'],
@@ -425,6 +430,7 @@ describe('organization API', () => {
       'CASE_SECOND_INSTANCE_RESULT',
       'CASE_SECOND_INSTANCE_RESULT_REVOKE',
       'CASE_EXECUTION_SUBMIT',
+      'CASE_EXECUTION_CONFIRM',
       'NOTARY_OFFICE_MANAGE',
       'USER_READ',
       'USER_MANAGE',
@@ -591,6 +597,36 @@ describe('organization API', () => {
             { action: 'CASE_EXECUTION_SUBMIT', scope: 'SELF' },
             { action: 'CASE_EXECUTION_SUBMIT', scope: 'TEAM' },
             { action: 'CASE_EXECUTION_SUBMIT', scope: 'DEPARTMENT' },
+          ],
+        },
+      ],
+    });
+  });
+
+  it('accepts execution confirmation grants with all case scopes', async () => {
+    const body = {
+      ...context,
+      roles: [
+        {
+          ...context.roles[0]!,
+          grants: ['SELF', 'TEAM', 'DEPARTMENT'].map((scope) => ({
+            action: 'CASE_EXECUTION_CONFIRM',
+            scope,
+          })),
+        },
+      ],
+    };
+    vi.stubGlobal(
+      'fetch',
+      vi.fn().mockResolvedValue(new Response(JSON.stringify(body))),
+    );
+    await expect(getOrganizationManagementContext()).resolves.toMatchObject({
+      roles: [
+        {
+          grants: [
+            { action: 'CASE_EXECUTION_CONFIRM', scope: 'SELF' },
+            { action: 'CASE_EXECUTION_CONFIRM', scope: 'TEAM' },
+            { action: 'CASE_EXECUTION_CONFIRM', scope: 'DEPARTMENT' },
           ],
         },
       ],

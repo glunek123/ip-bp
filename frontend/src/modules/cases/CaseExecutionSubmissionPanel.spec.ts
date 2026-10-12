@@ -137,6 +137,38 @@ function mountPanel(caseItem = item()) {
 }
 
 describe('CaseExecutionSubmissionPanel', () => {
+  it('shows submission history only while execution materials await confirmation', async () => {
+    const wrapper = mountPanel(
+      item({
+        stage: 'WAITING_EXECUTION_CONFIRMATION',
+        executionSubmission: {
+          current: null,
+          submissions: [
+            {
+              id: id('30'),
+              trialRoundId: id('2'),
+              judgmentNextStepId: id('1'),
+              secondInstanceResultId: null,
+              priorSubmissionId: null,
+              changeReason: null,
+              fromVersion: 13,
+              toVersion: 14,
+              submittedAt: file.uploadedAt,
+              files: [file],
+            },
+          ],
+          availableFiles: [],
+        },
+      }),
+    );
+    await flushPromises();
+    expect(wrapper.text()).toContain('执行材料提交历史');
+    expect(wrapper.text()).toContain(file.originalFilename);
+    expect(wrapper.text()).toContain('请在确认面板核对整套材料');
+    expect(wrapper.find('input[type="file"]').exists()).toBe(false);
+    expect(wrapper.find('[data-test="submit-execution"]').exists()).toBe(false);
+  });
+
   it('auto-selects the sole eligible file and submits explicit nullable anchors', async () => {
     api.submitExecution.mockResolvedValue({
       id: id('20'),

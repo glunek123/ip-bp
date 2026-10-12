@@ -90,6 +90,11 @@ const context = {
       label: '更正开庭安排',
       scopes: ['SELF', 'TEAM', 'DEPARTMENT'],
     },
+    {
+      action: 'CASE_EXECUTION_CONFIRM',
+      label: '确认执行材料',
+      scopes: ['SELF', 'TEAM', 'DEPARTMENT'],
+    },
   ],
 };
 

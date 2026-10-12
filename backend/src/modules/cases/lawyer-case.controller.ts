@@ -26,6 +26,8 @@ import { CaseJudgmentService } from './case-judgment.service';
 import { CaseJudgmentNextStepService } from './case-judgment-next-step.service';
 import { CaseSecondInstanceService } from './case-second-instance.service';
 import { CaseExecutionSubmissionService } from './case-execution-submission.service';
+import { CaseExecutionConfirmationService } from './case-execution-confirmation.service';
+import { ConfirmExecutionRequestDto } from './case-execution-confirmation.dto';
 import { SubmitExecutionRequestDto } from './case-execution-submission.dto';
 import {
   RegisterSecondInstanceResultDto,
@@ -58,6 +60,7 @@ export class LawyerCaseController {
     private readonly judgmentNextStep: CaseJudgmentNextStepService,
     private readonly secondInstance: CaseSecondInstanceService,
     private readonly executionSubmission: CaseExecutionSubmissionService,
+    private readonly executionConfirmation: CaseExecutionConfirmationService,
     private readonly courts: FilingCourtService,
   ) {}
 
@@ -104,6 +107,16 @@ export class LawyerCaseController {
   ) {
     this.lawyer(actor);
     return this.executionSubmission.submit(actor, id, body);
+  }
+
+  @Post(':id/execution-confirm')
+  confirmExecution(
+    @CurrentActor() actor: ActorContext,
+    @Param('id', new ParseUUIDPipe()) id: string,
+    @Body() body: ConfirmExecutionRequestDto,
+  ) {
+    this.lawyer(actor);
+    return this.executionConfirmation.confirm(actor, id, body);
   }
 
   @Post(':id/complaint-submit')

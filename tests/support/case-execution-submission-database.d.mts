@@ -23,6 +23,26 @@ export function verifyCaseExecutionSubmissionDatabase(): Promise<{
   final: boolean;
 }>;
 
+export function verifyCaseExecutionConfirmationDatabase(): Promise<{
+  source: boolean;
+  wrongSubmission: string | null;
+  wrongCase: string | null;
+  faultRollbacks: boolean;
+  raceSingleWinner: boolean;
+  raceBoundCurrent: boolean;
+  response: boolean;
+  replay: boolean;
+  changedKey: string | null;
+  revokedReplay: string | null;
+  internalProjection: boolean;
+  lawyerProjection: boolean;
+  resubmitBlocked: string | null;
+  sqlResubmitBlocked: string | null;
+  rejectedStageReversal: string | null;
+  singleFact: boolean;
+  preservedBundle: boolean;
+}>;
+
 export function verifyExecutionAppealSource(
   resultKind: 'AFFIRM' | 'CHANGE' | 'REMAND',
   raceWithRevocation: boolean,
@@ -38,7 +58,13 @@ export function verifyExecutionAppealSource(
       serviceBlocked: string | null;
       sqlBlocked: string | null;
     }
+  | { accepted: boolean }
 >;
+
+export function verifyExecutionConfirmationAppealSources(): Promise<{
+  change: boolean;
+  affirm: boolean;
+}>;
 
 export function verifyDirectExecutionChoiceRace(): Promise<{
   raceSingleWinner: boolean;
