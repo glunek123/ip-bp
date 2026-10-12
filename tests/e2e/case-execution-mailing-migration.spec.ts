@@ -22,6 +22,7 @@ const names = readdirSync(migrations)
 const suffix = [
   '20261012030000_add_execution_mailing_filing_enums',
   '20261012031000_guard_execution_mailing_filing',
+  '20261012032000_align_execution_source_unique_indexes',
 ];
 const sql = (name: string) =>
   readFileSync(resolve(migrations, name, 'migration.sql'), 'utf8');
@@ -56,7 +57,7 @@ test('CA-013/014 migrates empty and legacy schemas, rejects direct SQL bypass, a
   validateIsolatedTestDatabaseUrl(process.env.DATABASE_URL, {
     allowRandomPort: true,
   });
-  expect(names.slice(136, 138)).toEqual(suffix);
+  expect(names.slice(136, 139)).toEqual(suffix);
   const client = new Client({ connectionString: process.env.DATABASE_URL });
   const prefix = `ca013_migration_${randomUUID().replaceAll('-', '')}`;
   const schemas = ['empty', 'upgrade', 'retry'].map(
@@ -90,6 +91,11 @@ test('CA-013/014 migrates empty and legacy schemas, rejects direct SQL bypass, a
         [schemas[0]],
       ),
     ).toBe(6);
+    expect(
+      await count(`SELECT count(*) AS n FROM pg_indexes WHERE schemaname=current_schema()
+      AND indexname IN ('case_execution_mailings_confirmation_case_department_key',
+      'case_execution_filings_mailing_case_department_key')`),
+    ).toBe(2);
     expect(
       await count(`SELECT count(*) AS n FROM pg_trigger WHERE tgrelid IN
       ('case_execution_mailings'::regclass,'case_execution_filings'::regclass)

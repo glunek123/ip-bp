@@ -2716,7 +2716,7 @@ model CaseExecutionMailing {
   @@unique([caseId, fromVersion])
   @@unique([caseId, toVersion])
   @@map("case_execution_mailings")
-  @@unique([confirmationId, caseId, departmentId])
+  @@unique([confirmationId, caseId, departmentId], map: "case_execution_mailings_confirmation_case_department_key")
 }
 
 model CaseExecutionMailingVersion {
@@ -2768,7 +2768,7 @@ model CaseExecutionFiling {
   @@unique([caseId, fromVersion])
   @@unique([caseId, toVersion])
   @@map("case_execution_filings")
-  @@unique([mailingId, caseId, departmentId])
+  @@unique([mailingId, caseId, departmentId], map: "case_execution_filings_mailing_case_department_key")
 }
 
 model CaseExecutionFilingVersion {

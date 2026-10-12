@@ -281,7 +281,7 @@ AC-CA-004本片增量：运营、承办律师、本企业客户经正常来源�
 - 内部／律师分别调用`cases/:id/execution-filing-submit`，请求为`expectedVersion/idempotencyKey/expectedMailingId/submittedAt/executionFilingProofContentVersionIds`；锁定并重验当前邮寄、确认、提交和审理来源。不可改删执行立案提交、精确冻结、成功审计`case.execution.filing.submitted`、原键回执与阶段CAS同事务。重放再授权、同键异参、竞争、旧锚和失败全回滚规则保持。
 - 正式导航新增“待申请执行”“强制执行中”，准备执行文书包含待写／待确认／待盖章三阶段。进入强制执行中仅展示真实完成事实；执行结束、结案资金及归档仍由B13／B15和后续切片定义，不提供占位办理按钮。
 
-本批次扩展既有阶段SQL守卫与共享材料身份路径，按Level 3：高风险实现独立Sol审查及组合终审后，在稳定候选运行完整工程门禁、适用真实PG／Chromium、138份完整迁移链、136份上一支持schema升级、直接SQL负例及失败原子／向前重试。实际完成状态与候选证据只记路线图和VALIDATION。
+本批次扩展既有阶段SQL守卫与共享材料身份路径，按Level 3：高风险实现独立Sol审查及组合终审后，在稳定候选运行完整工程门禁、适用真实PG／Chromium、139份完整迁移链、136份上一支持schema升级、直接SQL负例及失败原子／向前重试。实际完成状态与候选证据只记路线图和VALIDATION。
 
 ## REQ-CA-005 结案归档与实际款项
 

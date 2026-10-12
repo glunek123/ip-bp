@@ -16,6 +16,7 @@ const names = readdirSync(directory)
 const suffix = [
   '20261012030000_add_execution_mailing_filing_enums',
   '20261012031000_guard_execution_mailing_filing',
+  '20261012032000_align_execution_source_unique_indexes',
 ];
 const quote = (value) => `"${value.replaceAll('"', '""')}"`;
 const sql = (name) =>
@@ -159,7 +160,7 @@ export async function verifyConfirmedPublicCaseUpgrade(caseId) {
     allowRandomPort: true,
   });
   if (
-    names.length < 138 ||
+    names.length < 139 ||
     suffix.some((name, index) => names[136 + index] !== name)
   )
     throw new Error('Unexpected CA013/014 migration suffix');
