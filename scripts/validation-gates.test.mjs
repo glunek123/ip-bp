@@ -27,6 +27,7 @@ const e2eScripts = [
   'test:e2e:auth',
   'test:e2e:core-ld',
   'test:e2e:full',
+  'test:e2e:case-compat',
 ];
 
 const unitScripts = [
@@ -34,6 +35,7 @@ const unitScripts = [
   'test:unit:right-holder',
   'test:unit:auth',
   'test:unit:core-ld',
+  'test:unit:case-contracts',
 ];
 
 test('explicit slice and database E2E gates are defined', () => {
@@ -98,6 +100,33 @@ test('scoped E2E commands reuse the guarded runner and full remains explicit', (
     backendPackage.scripts['db:migrate:deploy:test'],
     /--env-file|DATABASE_URL/,
   );
+});
+
+test('case compatibility preflight selects each existing regression exactly once', () => {
+  const command = packageJson.scripts['test:e2e:case-compat'];
+  assert.match(command, /^node scripts\/run-e2e\.mjs /);
+  const grep = command.match(/ --grep "([^"]+)"$/);
+  assert.ok(
+    grep,
+    'case compatibility preflight needs an explicit test selector',
+  );
+  const selector = new RegExp(grep[1]);
+  for (const file of [
+    'tests/e2e/case-hearing-database.spec.ts',
+    'tests/e2e/case-second-instance-migration.spec.ts',
+    'tests/e2e/case-judgment-next-step.spec.ts',
+  ]) {
+    assert.ok(command.includes(file), `${file} must remain in the preflight`);
+    const source = readFileSync(resolve(root, file), 'utf8');
+    const titles = [...source.matchAll(/\btest\('([^']+)'/g)].map(
+      (match) => match[1],
+    );
+    assert.equal(
+      titles.filter((title) => selector.test(title)).length,
+      1,
+      `${file} must select one test; renamed or broadened selectors need review`,
+    );
+  }
 });
 
 test('formal slice scopes already subsume their immediate development checks', () => {
