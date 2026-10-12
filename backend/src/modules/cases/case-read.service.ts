@@ -1873,10 +1873,12 @@ export class CaseReadService {
         canSaveSecondInstance: detail.canSaveSecondInstance,
         canRegisterSecondInstanceResult: detail.canRegisterSecondInstanceResult,
         canRevokeSecondInstanceResult: false,
+        canSubmitExecution: detail.canSubmitExecution,
         hearing: detail.hearing,
         judgment: detail.judgment,
         judgmentNextStep: detail.judgmentNextStep,
         secondInstance: detail.secondInstance,
+        executionSubmission: detail.executionSubmission,
         complaint:
           detail.complaint === null
             ? null

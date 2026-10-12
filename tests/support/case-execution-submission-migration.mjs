@@ -282,7 +282,9 @@ export async function verifyCaseExecutionSubmissionMigration() {
   )
     throw new Error('Unexpected CA-011 migration suffix');
   const client = new Client({ connectionString: process.env.DATABASE_URL });
-  const schema = `ca011_upgrade_${randomUUID().replaceAll('-', '')}`;
+  const schemas = ['upgrade', 'retry'].map(
+    (part) => `ca011_${part}_${randomUUID().replaceAll('-', '')}`,
+  );
   try {
     await client.connect();
     const location = (
@@ -292,8 +294,9 @@ export async function verifyCaseExecutionSubmissionMigration() {
     ).rows[0];
     if (location.db !== 'dev_cor_test' || location.schema !== 'public')
       throw new Error('Isolated public test database required');
-    await client.query(`CREATE SCHEMA "${schema}"`);
-    await client.query(`SET search_path TO "${schema}"`);
+    for (const schema of schemas)
+      await client.query(`CREATE SCHEMA "${schema}"`);
+    await client.query(`SET search_path TO "${schemas[0]}"`);
     await replay(client, names.slice(0, 130));
     // Existing case and its old trial facts are never recreated by CA-011.
     await replay(client, additions.slice(0, 1));
@@ -322,6 +325,36 @@ export async function verifyCaseExecutionSubmissionMigration() {
         [ids.case],
       )
     ).rows[0];
+    await client.query(`SET search_path TO "${schemas[1]}"`);
+    await replay(client, names.slice(0, 132));
+    const badId = randomUUID();
+    await client.query('BEGIN');
+    await client.query('SET LOCAL session_replication_role = replica');
+    await client.query(
+      `INSERT INTO material_references(id,department_id,resource_type,resource_id,purpose,
+      material_id,content_version_id) VALUES ($1,$2,'case',$3,'EXECUTION_APPLICATION',$4,$5)`,
+      [badId, randomUUID(), randomUUID(), randomUUID(), randomUUID()],
+    );
+    await client.query('COMMIT');
+    let invalidRejected = false;
+    try {
+      await client.query(sql(additions[2]));
+    } catch (error) {
+      invalidRejected = error.code === '23514';
+      await client.query('ROLLBACK');
+    }
+    const atomic = (
+      await client.query(
+        `SELECT to_regprocedure('check_case_execution_submission_final()') IS NULL AS clean`,
+      )
+    ).rows[0].clean;
+    await client.query('DELETE FROM material_references WHERE id=$1', [badId]);
+    await replay(client, [additions[2]]);
+    const retry = (
+      await client.query(
+        `SELECT to_regprocedure('check_case_execution_submission_final()') IS NOT NULL AS ready`,
+      )
+    ).rows[0].ready;
     return {
       migrationCount: names.length,
       oldChainPreserved:
@@ -336,13 +369,17 @@ export async function verifyCaseExecutionSubmissionMigration() {
         after.current_execution_submission_id === second.submissionId,
       history:
         after.submissions === 2 && after.versions === 2 && after.refs === 2,
+      invalidRejected,
+      atomic,
+      retry,
     };
   } finally {
     await client.query('ROLLBACK').catch(() => undefined);
     await client.query('SET search_path TO public').catch(() => undefined);
-    await client
-      .query(`DROP SCHEMA IF EXISTS "${schema}" CASCADE`)
-      .catch(() => undefined);
+    for (const schema of schemas)
+      await client
+        .query(`DROP SCHEMA IF EXISTS "${schema}" CASCADE`)
+        .catch(() => undefined);
     await client.end().catch(() => undefined);
   }
 }

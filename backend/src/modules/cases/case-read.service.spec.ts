@@ -515,6 +515,14 @@ describe('CaseReadService', () => {
     expect(historyLawyerDetail).not.toHaveProperty('owner');
     expect(historyLawyerDetail).not.toHaveProperty('department');
     expect(historyLawyerDetail).not.toHaveProperty('fees');
+    expect(historyLawyerDetail).toMatchObject({
+      executionSubmission: {
+        current: null,
+        submissions: [],
+        availableFiles: [],
+      },
+      canSubmitExecution: false,
+    });
 
     f.db.userAccount.findUnique.mockResolvedValue({
       accountType: 'INTERNAL',
@@ -533,6 +541,79 @@ describe('CaseReadService', () => {
       'judgmentNextStep.revocations.0.recordedByUserId',
       'internal-revocation-user',
     );
+    f.db.userAccount.findUnique.mockResolvedValue({
+      accountType: 'LAWYER',
+      active: true,
+    });
+    f.db.case.findFirst.mockResolvedValue({
+      ...record,
+      stage: 'WAITING_EXECUTION_CONFIRMATION',
+      version: 7,
+      currentTrialRoundId: 'round-1',
+      currentJudgmentId: judgment.id,
+      currentJudgmentNextStepId: 'choice-2',
+      currentExecutionSubmissionId: 'submission-1',
+      judgmentFacts: [judgment],
+      judgmentNextSteps: choices,
+      judgmentNextStepRevocations: [],
+      executionSubmissions: [
+        {
+          id: 'submission-1',
+          trialRoundId: 'round-1',
+          judgmentNextStepId: 'choice-2',
+          secondInstanceResultId: null,
+          priorSubmissionId: null,
+          changeReason: null,
+          fromVersion: 6,
+          toVersion: 7,
+          submittedAt: new Date('2026-10-11T02:00:00.000Z'),
+          versions: [
+            {
+              materialId: 'execution-material-1',
+              contentVersionId: 'execution-version-1',
+              contentVersion: {
+                originalFilename: '申请执行.pdf',
+                mimeType: 'application/pdf',
+                createdAt: new Date('2026-10-11T01:00:00.000Z'),
+              },
+            },
+          ],
+        },
+      ],
+    });
+    const submittedLawyerDetail = await f.service.get(
+      { ...actor, lawyerAccountId: actor.userId },
+      'case-1',
+    );
+    expect(submittedLawyerDetail).toMatchObject({
+      canSubmitExecution: true,
+      executionSubmission: {
+        current: {
+          id: 'submission-1',
+          files: [
+            {
+              contentVersionId: 'execution-version-1',
+              uploadedAt: '2026-10-11T01:00:00.000Z',
+            },
+          ],
+        },
+        submissions: [
+          {
+            id: 'submission-1',
+            secondInstanceResultId: null,
+            priorSubmissionId: null,
+            changeReason: null,
+          },
+        ],
+        availableFiles: [],
+      },
+    });
+    expect(submittedLawyerDetail).not.toHaveProperty('owner');
+    expect(submittedLawyerDetail).not.toHaveProperty('fees');
+    f.db.userAccount.findUnique.mockResolvedValue({
+      accountType: 'INTERNAL',
+      active: true,
+    });
     const oldChoiceProgress = {
       id: 'old-progress',
       trialRoundId: 'round-1',

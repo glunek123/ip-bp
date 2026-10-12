@@ -4,4 +4,7 @@ export function verifyCaseExecutionSubmissionMigration(): Promise<{
   first: boolean;
   resubmitted: boolean;
   history: boolean;
+  invalidRejected: boolean;
+  atomic: boolean;
+  retry: boolean;
 }>;

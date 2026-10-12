@@ -74,6 +74,9 @@ const judgmentCleanupGuards = [
 
 // The order is shared by the canonical CA-010 fixture and core-case cleanup.
 const secondInstanceDependentTables = [
+  'case_execution_submission_receipts',
+  'case_execution_submission_versions',
+  'case_execution_submissions',
   'case_second_instance_receipts',
   'case_second_instance_result_revocations',
   'case_second_instance_result_versions',
@@ -96,6 +99,7 @@ const secondInstanceDependentTables = [
   'case_acceptances',
 ];
 const secondInstanceDependentActions = [
+  'case.execution.submitted',
   'case.second_instance.save',
   'case.second_instance.result',
   'case.second_instance.result.revoke',
@@ -118,6 +122,7 @@ async function clearSecondInstanceDependentFacts(client, caseIds) {
       current_hearing_arrangement_id=NULL,current_hearing_advance_id=NULL,
       current_judgment_id=NULL,current_judgment_next_step_id=NULL,
       current_second_instance_progress_id=NULL,current_second_instance_result_id=NULL,
+      current_execution_submission_id=NULL,
       court_case_no=NULL WHERE id=ANY($1::uuid[])`,
     [caseIds],
   );

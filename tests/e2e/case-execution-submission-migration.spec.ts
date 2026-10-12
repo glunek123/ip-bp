@@ -8,5 +8,8 @@ test('CA-011 upgrades 130 migrations and preserves direct execution history acro
     first: true,
     resubmitted: true,
     history: true,
+    invalidRejected: true,
+    atomic: true,
+    retry: true,
   });
 });
