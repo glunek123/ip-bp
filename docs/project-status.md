@@ -8,6 +8,8 @@ CORE-CA-001～011及SD-44律师身份前置补齐均已验收、推送并集成m
 
 ## 当前任务
 
+2026-10-12用户授权CA-012推送／集成并复盘优化。现场干净，从收口`5b77d00`建立附属`codex/ca012-development-feedback`；真实origin/main核实仍为`d57b359`，main未保护、rulesets为空、Actions workflows为0，未冒称CI通过。只补既有预检的权限页面／旧重提选测、范围护栏及恢复锚点，未改业务／迁移。流程增量独立审查及Level 3门禁待完成，随后按授权集成并核远端；Current仍CA-012已完成待集成，CA-013未领取，不部署。
+
 2026-10-12用户授权开发CORE-CA-012，基线main`d57b359`，分支`codex/core-ca-012-execution-confirmation`，本地已验收待授权集成。按SD-52确认整套不可变执行提交；运营／当前PRIMARY律师办理，客户不扩大材料读取。实际候选`e5ccf8c`／tree`dded001ee691915813078033f64a4c6375559a48`通过独立非实现Sol Task／Final及修复补审，两轴ACCEPTED、I-01关闭、未关闭C/I/M0；完整verify退出0（工具77、前端998、后端1222及双构建），36文件隔离PG／Chromium163/163退出0，前后候选及环境一致。确认前重提保留、确认后服务／SQL阻断已验证，测试库前向升级至136条。正式门禁UTC06:30:36完成，完整证据、真实耗时、失败与收口边界见[CA-012验证记录](spec/v0.1/VALIDATION.md#core-ca-012-确认执行材料2026-10-12)及ignored `.local/case-execution-confirmation/`；不推送、合并main、部署或操作人工／开发／生产库。
 
 2026-10-12附属效率优化已本地验证，分支`codex/ca011-development-feedback`：CA-011会话明确结束、收口`fbe3b9a`且现场干净后，增加两个按需案件兼容预检入口及选测范围护栏，不改业务实现、迁移、原断言、正式门禁或Current／Next。实际规则／脚本候选`5303dce`经独立非实现Sol终审及补审两轴ACCEPTED、未关闭C/I/M0，完整verify退出0；契约预检126＋103项通过约14秒，三项PG／Chromium兼容冒烟通过约29秒。入口实测合计约43.5秒，同等切片总耗时与返工下降尚未证明，不阻塞交接；完整范围、失败修复与收口边界见[效率优化记录](spec/v0.1/VALIDATION.md#ca-011开发期兼容反馈优化2026-10-12)。已随CA-011按本轮授权推送并集成main；组合tree见[集成记录](spec/v0.1/VALIDATION.md#ca-011与开发反馈入口集成2026-10-12)。未部署或领取CA-012。

@@ -114,6 +114,7 @@ function assertCaseCompatibilitySelection(command, readSource) {
     'tests/e2e/case-hearing-database.spec.ts',
     'tests/e2e/case-second-instance-migration.spec.ts',
     'tests/e2e/case-judgment-next-step.spec.ts',
+    'tests/e2e/case-execution-submission.spec.ts',
   ];
   assert.deepEqual(
     command.slice(runner.length, grep.index).trim().split(/\s+/u),
@@ -166,6 +167,39 @@ test('case compatibility preflight rejects matching double-quoted test additions
       packageJson.scripts['test:e2e:case-compat'],
       readSource,
     ),
+  );
+});
+
+test('case compatibility preflight rejects losing the approved resubmission regression', () => {
+  const command = packageJson.scripts['test:e2e:case-compat'].replace(
+    '|current lawyer resubmits with a reason and keeps exact prior history after re-login',
+    '',
+  );
+  assert.throws(() =>
+    assertCaseCompatibilitySelection(command, readTestSource),
+  );
+});
+
+function assertCaseContractSelection(command) {
+  assert.deepEqual(command.split(' && '), [
+    'pnpm --filter @dev-cor/backend test src/core-ld-openapi.spec.ts src/access-control/organization.service.spec.ts src/modules/cases/case-read.controller.spec.ts src/modules/cases/client-case.controller.spec.ts src/modules/cases/case-read.service.spec.ts',
+    'pnpm --filter @dev-cor/frontend test src/api/cases.spec.ts src/api/organization.spec.ts src/modules/cases/CasePages.spec.ts src/modules/cases/LawyerCaseListPage.spec.ts src/modules/organization/PeopleAccessPage.spec.ts src/modules/organization/RoleTemplateEditor.spec.ts',
+  ]);
+}
+
+test('case contract feedback includes permission decoding and editing surfaces', () => {
+  assertCaseContractSelection(packageJson.scripts['test:unit:case-contracts']);
+});
+
+test('case contract feedback rejects a missing permission decoder or an unreviewed suite', () => {
+  const command = packageJson.scripts['test:unit:case-contracts'];
+  assert.throws(() =>
+    assertCaseContractSelection(
+      command.replace(' src/api/organization.spec.ts', ''),
+    ),
+  );
+  assert.throws(() =>
+    assertCaseContractSelection(command + ' src/modules/unrelated.spec.ts'),
   );
 });
 
