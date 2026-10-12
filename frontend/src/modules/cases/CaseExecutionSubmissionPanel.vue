@@ -66,7 +66,8 @@ let conflictVersion: number | null = null;
 const maySubmit = computed(
   () =>
     props.item.canSubmitExecution &&
-    props.item.stage === 'WAITING_EXECUTION_DOCUMENTS' &&
+    (props.item.stage === 'WAITING_EXECUTION_DOCUMENTS' ||
+      props.item.stage === 'WAITING_EXECUTION_CONFIRMATION') &&
     !props.item.executionConfirmation &&
     !accessDenied.value,
 );

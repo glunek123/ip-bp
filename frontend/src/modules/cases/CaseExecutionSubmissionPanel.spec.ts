@@ -137,10 +137,60 @@ function mountPanel(caseItem = item()) {
 }
 
 describe('CaseExecutionSubmissionPanel', () => {
-  it('shows submission history only while execution materials await confirmation', async () => {
+  it('allows an authorized resubmission while the current submission awaits confirmation', async () => {
+    const current = {
+      id: id('30'),
+      trialRoundId: id('2'),
+      judgmentNextStepId: id('1'),
+      secondInstanceResultId: null,
+      priorSubmissionId: null,
+      changeReason: null,
+      fromVersion: 13,
+      toVersion: 14,
+      submittedAt: file.uploadedAt,
+      files: [secondFile],
+    };
+    api.submitExecution.mockResolvedValue({
+      id: id('20'),
+      submissionId: id('31'),
+      stage: 'WAITING_EXECUTION_CONFIRMATION',
+      version: 15,
+      submittedAt: file.uploadedAt,
+    });
     const wrapper = mountPanel(
       item({
         stage: 'WAITING_EXECUTION_CONFIRMATION',
+        executionSubmission: {
+          current,
+          submissions: [current],
+          availableFiles: [file],
+        },
+      }),
+    );
+    await flushPromises();
+
+    expect(wrapper.find('input[type="file"]').exists()).toBe(true);
+    expect(wrapper.find('[data-test="submit-execution"]').exists()).toBe(true);
+    await wrapper.get('textarea').setValue('更正执行材料');
+    await wrapper.get('[data-test="submit-execution"]').trigger('click');
+    await flushPromises();
+    expect(api.submitExecution).toHaveBeenCalledWith(
+      id('20'),
+      expect.objectContaining({
+        expectedVersion: 14,
+        expectedSubmissionId: current.id,
+        changeReason: '更正执行材料',
+        executionApplicationContentVersionIds: [file.contentVersionId],
+      }),
+      'internal',
+    );
+  });
+
+  it('keeps a pending submission read-only when this actor lacks submit capability', async () => {
+    const wrapper = mountPanel(
+      item({
+        stage: 'WAITING_EXECUTION_CONFIRMATION',
+        canSubmitExecution: false,
         executionSubmission: {
           current: null,
           submissions: [
@@ -165,6 +215,45 @@ describe('CaseExecutionSubmissionPanel', () => {
     expect(wrapper.text()).toContain('执行材料提交历史');
     expect(wrapper.text()).toContain(file.originalFilename);
     expect(wrapper.text()).toContain('请在确认面板核对整套材料');
+    expect(wrapper.find('input[type="file"]').exists()).toBe(false);
+    expect(wrapper.find('[data-test="submit-execution"]').exists()).toBe(false);
+  });
+
+  it('shows only immutable history after the execution submission is confirmed', async () => {
+    const wrapper = mountPanel(
+      item({
+        stage: 'WAITING_EXECUTION_STAMP',
+        canSubmitExecution: false,
+        executionSubmission: {
+          current: null,
+          submissions: [
+            {
+              id: id('30'),
+              trialRoundId: id('2'),
+              judgmentNextStepId: id('1'),
+              secondInstanceResultId: null,
+              priorSubmissionId: null,
+              changeReason: null,
+              fromVersion: 13,
+              toVersion: 14,
+              submittedAt: file.uploadedAt,
+              files: [file],
+            },
+          ],
+          availableFiles: [],
+        },
+        executionConfirmation: {
+          id: id('31'),
+          submissionId: id('30'),
+          confirmedAt: file.uploadedAt,
+          confirmedByUserId: id('32'),
+          files: [file],
+        },
+      }),
+    );
+    await flushPromises();
+    expect(wrapper.text()).toContain('执行材料提交历史');
+    expect(wrapper.text()).toContain(file.originalFilename);
     expect(wrapper.find('input[type="file"]').exists()).toBe(false);
     expect(wrapper.find('[data-test="submit-execution"]').exists()).toBe(false);
   });
