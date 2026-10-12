@@ -43,6 +43,7 @@ import { CaseHearingService } from './modules/cases/case-hearing.service';
 import { CaseJudgmentService } from './modules/cases/case-judgment.service';
 import { CaseJudgmentNextStepService } from './modules/cases/case-judgment-next-step.service';
 import { CaseSecondInstanceService } from './modules/cases/case-second-instance.service';
+import { CaseExecutionSubmissionService } from './modules/cases/case-execution-submission.service';
 import { FilingCourtService } from './modules/cases/filing-court.service';
 
 describe('CORE-LD-002 OpenAPI contract', () => {
@@ -91,6 +92,7 @@ describe('CORE-LD-002 OpenAPI contract', () => {
         { provide: CaseJudgmentService, useValue: {} },
         { provide: CaseJudgmentNextStepService, useValue: {} },
         { provide: CaseSecondInstanceService, useValue: {} },
+        { provide: CaseExecutionSubmissionService, useValue: {} },
         { provide: FilingCourtService, useValue: {} },
       ],
     })
@@ -324,6 +326,12 @@ describe('CORE-LD-002 OpenAPI contract', () => {
       '201',
       'RevokeJudgmentNextStepResultDto',
     ],
+    [
+      'post',
+      '/api/v1/cases/{id}/execution-submit',
+      '201',
+      'SubmitExecutionResultDto',
+    ],
   ] as const)(
     'documents %s %s response %s',
     (method, path, status, schemaName) => {
@@ -493,6 +501,19 @@ describe('CORE-LD-002 OpenAPI contract', () => {
       'CorrectCaseHearingDto',
       ['expectedVersion', 'idempotencyKey', 'hearingAt', 'reason'],
     ],
+    [
+      '/api/v1/cases/{id}/execution-submit',
+      'SubmitExecutionRequestDto',
+      [
+        'expectedVersion',
+        'idempotencyKey',
+        'trialRoundId',
+        'judgmentNextStepId',
+        'secondInstanceResultId',
+        'expectedSubmissionId',
+        'executionApplicationContentVersionIds',
+      ],
+    ],
   ] as const)(
     'documents required request metadata for %s',
     (path, schemaName, requiredFields) => {
@@ -519,6 +540,28 @@ describe('CORE-LD-002 OpenAPI contract', () => {
       });
     },
   );
+
+  it('documents the CA-011 execution submission result schema', () => {
+    const document = SwaggerModule.createDocument(
+      app,
+      new DocumentBuilder().setTitle('test').setVersion('1').build(),
+    );
+    expect(
+      document.components?.schemas?.SubmitExecutionResultDto,
+    ).toMatchObject({
+      required: ['id', 'submissionId', 'stage', 'version', 'submittedAt'],
+      properties: {
+        id: { type: 'string', format: 'uuid' },
+        submissionId: { type: 'string', format: 'uuid' },
+        stage: {
+          type: 'string',
+          enum: ['WAITING_EXECUTION_CONFIRMATION'],
+        },
+        version: { type: 'number' },
+        submittedAt: { type: 'string', format: 'date-time' },
+      },
+    });
+  });
 
   it('documents nullable internal judgment registration reason', () => {
     const document = SwaggerModule.createDocument(
