@@ -29,6 +29,7 @@ import {
   clearCoreCaseHearingAdminSessions,
   prepareCoreCaseHearingAdmin,
 } from '../support/case-hearing-database.mjs';
+import { clearCoreCaseSecondInstanceFixture } from '../support/case-second-instance-database.mjs';
 import { disconnectCustomerTestDatabase } from '../support/customer-database.mjs';
 
 const origin = 'http://127.0.0.1:5174';
@@ -443,6 +444,7 @@ let admin: { username: string; password: string };
 test.beforeEach(async () => {
   await clearCoreCaseHearingAdminSessions();
   await clearCaseAcceptanceFault();
+  await clearCoreCaseSecondInstanceFixture();
   await clearCaseAcceptanceFixture();
   await clearCaseFilingFixture();
   await clearCaseComplaintMailingFixture();
@@ -456,6 +458,8 @@ test.beforeEach(async () => {
 test.afterEach(async () => {
   await clearCoreCaseHearingAdminSessions();
   await clearCaseAcceptanceFault();
+  await clearCoreCaseSecondInstanceFixture();
+  expect(await clearCoreCaseSecondInstanceFixture()).toEqual([]);
   await clearCaseAcceptanceFixture();
   await clearCaseFilingFixture();
   await clearCaseComplaintMailingFixture();

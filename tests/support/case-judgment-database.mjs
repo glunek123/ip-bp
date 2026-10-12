@@ -153,7 +153,17 @@ async function assertSecondInstanceCleanupGuards(client) {
     ['cases', 'case_trial_round_case_guard'],
     ['cases', 'cases_empty_remand_child_version_guard'],
     ['cases', 'cases_retrial_prejudgment_version_guard'],
+    ['cases', 'case_execution_head_guard'],
     ['case_trial_rounds', 'case_trial_rounds_immutable'],
+    ['case_execution_submissions', 'case_execution_submissions_immutable'],
+    [
+      'case_execution_submission_versions',
+      'case_execution_submission_versions_immutable',
+    ],
+    [
+      'case_execution_submission_receipts',
+      'case_execution_submission_receipts_immutable',
+    ],
     [
       'case_second_instance_progresses',
       'case_second_instance_progresses_immutable',
@@ -173,7 +183,7 @@ async function assertSecondInstanceCleanupGuards(client) {
   }
 }
 
-/** Clear only CA-010 facts on exact core-fixture cases, before legacy cleanup. */
+/** Clear CA-010/CA-011 facts on exact core-fixture cases, before legacy cleanup. */
 export async function clearCoreCaseSecondInstanceFixture() {
   const client = new Client({ connectionString: databaseUrl });
   await client.connect();
@@ -192,13 +202,20 @@ export async function clearCoreCaseSecondInstanceFixture() {
       await assertSecondInstanceCleanupGuards(client);
       const cases = (
         await client.query(
-          `SELECT c.id,c.department_id,c.responsible_user_id,c.customer_id
+          `SELECT c.id,c.department_id,c.responsible_user_id,c.customer_id,
+              c.current_execution_submission_id,
+              EXISTS (SELECT 1 FROM case_execution_submissions s
+                WHERE s.id=c.current_execution_submission_id AND s.case_id=c.id)
+                AS has_current_execution_submission
             FROM cases c JOIN leads l ON l.id=c.source_lead_id
             WHERE c.department_id=$1 AND c.responsible_user_id=$2
               AND c.customer_id=$3 AND l.shop_name LIKE '确认诉状店铺-%'
               AND (EXISTS (SELECT 1 FROM case_second_instance_progresses p WHERE p.case_id=c.id)
                 OR EXISTS (SELECT 1 FROM case_second_instance_results r WHERE r.case_id=c.id)
-                OR EXISTS (SELECT 1 FROM case_second_instance_receipts q WHERE q.case_id=c.id))
+                OR EXISTS (SELECT 1 FROM case_second_instance_receipts q WHERE q.case_id=c.id)
+                OR EXISTS (SELECT 1 FROM case_execution_submissions s WHERE s.case_id=c.id)
+                OR EXISTS (SELECT 1 FROM case_execution_submission_receipts r WHERE r.case_id=c.id)
+                OR c.current_execution_submission_id IS NOT NULL)
             ORDER BY c.id FOR UPDATE OF c`,
           [
             '10000000-0000-4000-8000-000000000001',
@@ -207,6 +224,16 @@ export async function clearCoreCaseSecondInstanceFixture() {
           ],
         )
       ).rows;
+      if (
+        cases.some(
+          (row) =>
+            row.current_execution_submission_id !== null &&
+            !row.has_current_execution_submission,
+        )
+      )
+        throw new Error(
+          'Second-instance cleanup found an execution pointer without its fact',
+        );
       const caseIds = cases.map((row) => row.id);
       if (caseIds.length > 0) {
         await client.query('SET LOCAL session_replication_role = replica');
