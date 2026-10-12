@@ -17,6 +17,7 @@ test('CA-011 PostgreSQL command preserves execution submissions, files and recei
     lawyerRead: true,
     resubmitted: true,
     lawyerSubmitted: true,
+    lawyerUploadBytes: true,
     lawyerRevokedReplay: 'ACTION_FORBIDDEN',
     lawyerAssignmentRevokedReplay: 'ACTION_FORBIDDEN',
     staleAnchor: 'INVALID_STATE',

@@ -635,19 +635,38 @@ export async function verifyCaseExecutionSubmissionDatabase() {
         anchors.currentJudgmentNextStepId !== choice.choiceId
       )
         throw new Error('Execution fixture did not enter exact source stage');
-      const uploaded = [];
-      for (const suffix of ['a', 'b', 'c'])
-        uploaded.push(
-          await upload(
-            materials,
-            actor,
-            caseId,
-            database,
-            trackStorageKey,
-            suffix,
-          ),
-        );
-      const [a, b, c] = uploaded;
+      const a = await upload(
+        materials,
+        actor,
+        caseId,
+        database,
+        trackStorageKey,
+        'a',
+      );
+      const b = await upload(
+        materials,
+        actor,
+        caseId,
+        database,
+        trackStorageKey,
+        'b',
+      );
+      const c = await upload(
+        materials,
+        lawyerActor,
+        caseId,
+        database,
+        trackStorageKey,
+        'c',
+      );
+      const lawyerUpload = await materials.openVersion(
+        lawyerActor,
+        c.materialId,
+        c.contentVersionId,
+      );
+      const lawyerUploadBytes = Buffer.concat(
+        await Array.fromAsync(lawyerUpload.stream),
+      ).equals(c.bytes);
       const firstInput = {
         expectedVersion: 11,
         idempotencyKey: `ca011-first-${caseId}`,
@@ -882,6 +901,7 @@ export async function verifyCaseExecutionSubmissionDatabase() {
           secondFact.submittedByUserId === lawyerActor.userId &&
           secondFact.auditEvent.lawyerAccountBindingId !== null &&
           secondFact.auditEvent.internalActorUserId === null,
+        lawyerUploadBytes,
         lawyerRevokedReplay,
         lawyerAssignmentRevokedReplay,
         staleAnchor,

@@ -9,6 +9,7 @@ export function verifyCaseExecutionSubmissionDatabase(): Promise<{
   lawyerRead: boolean;
   resubmitted: boolean;
   lawyerSubmitted: boolean;
+  lawyerUploadBytes: boolean;
   lawyerRevokedReplay: string | null;
   lawyerAssignmentRevokedReplay: string | null;
   staleAnchor: string | null;

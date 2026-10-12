@@ -3,7 +3,7 @@ import { verifyCaseExecutionSubmissionMigration } from '../support/case-executio
 
 test('CA-011 upgrades 130 migrations and preserves direct execution history across first submit and resubmit', async () => {
   expect(await verifyCaseExecutionSubmissionMigration()).toEqual({
-    migrationCount: 133,
+    migrationCount: 134,
     oldChainPreserved: true,
     first: true,
     resubmitted: true,
@@ -11,5 +11,12 @@ test('CA-011 upgrades 130 migrations and preserves direct execution history acro
     invalidRejected: true,
     atomic: true,
     retry: true,
+    lawyerDraftBefore: { accepted: false, rejectedCode: '23514' },
+    lawyerDraft: { accepted: true, rejectedCode: null },
+    lawyerDraftAfterSubmit: { accepted: true, rejectedCode: null },
+    actorInvalidRejected: true,
+    actorAtomic: true,
+    actorRetry: true,
+    emptyChain: true,
   });
 });

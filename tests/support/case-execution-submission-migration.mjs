@@ -15,6 +15,7 @@ const additions = [
   '20261011030000_add_case_execution_submission_enums',
   '20261011031000_add_case_execution_submission_facts',
   '20261011032000_guard_case_execution_submission',
+  '20261012010000_fix_lawyer_execution_upload_stage',
 ];
 const sql = (name) =>
   readFileSync(resolve(directory, name, 'migration.sql'), 'utf8');
@@ -174,6 +175,58 @@ async function seedOldDirectChain(client) {
   }
 }
 
+async function seedCurrentLawyer(client, ids) {
+  const lawyer = {
+    userId: randomUUID(),
+    profileId: randomUUID(),
+    bindingId: randomUUID(),
+  };
+  await client.query('BEGIN');
+  await client.query('SET LOCAL session_replication_role = replica');
+  try {
+    await client.query(
+      `INSERT INTO user_accounts(id,external_subject,display_name,account_type,updated_at)
+    VALUES ($1,$2,'CA011 migration lawyer','LAWYER',now())`,
+      [lawyer.userId, `ca011-lawyer-${lawyer.userId}`],
+    );
+    await client.query(
+      `INSERT INTO lawyer_profiles(id,department_id,bound_user_id,full_name)
+    VALUES ($1,$2,$3,'CA011 migration lawyer')`,
+      [lawyer.profileId, ids.department, lawyer.userId],
+    );
+    await client.query(
+      `INSERT INTO lawyer_account_bindings(id,user_id,department_id,profile_id,updated_at)
+    VALUES ($1,$2,$3,$4,now())`,
+      [lawyer.bindingId, lawyer.userId, ids.department, lawyer.profileId],
+    );
+    await client.query(
+      `INSERT INTO case_lawyer_assignments(id,case_id,department_id,lawyer_id,role,started_at)
+    VALUES ($1,$2,$3,$4,'PRIMARY',now())`,
+      [randomUUID(), ids.case, ids.department, lawyer.profileId],
+    );
+    await client.query('COMMIT');
+  } catch (error) {
+    await client.query('ROLLBACK').catch(() => undefined);
+    throw error;
+  }
+  return lawyer;
+}
+
+async function tryLawyerExecutionDraft(client, ids, lawyer) {
+  try {
+    await client.query(
+      `INSERT INTO upload_drafts(id,department_id,actor_user_id,lawyer_account_binding_id,
+      owner_type,owner_id,category,purpose,original_filename,declared_mime_type,expires_at,updated_at)
+      VALUES ($1,$2,$3,$4,'CASE',$5,'EXECUTION_APPLICATION','EXECUTION_APPLICATION',
+        'ca011-lawyer-application.pdf','application/pdf',now()+interval '1 day',now())`,
+      [randomUUID(), ids.department, lawyer.userId, lawyer.bindingId, ids.case],
+    );
+    return { accepted: true, rejectedCode: null };
+  } catch (error) {
+    return { accepted: false, rejectedCode: error.code ?? null };
+  }
+}
+
 async function submitSql(
   client,
   ids,
@@ -277,12 +330,12 @@ export async function verifyCaseExecutionSubmissionMigration() {
     allowRandomPort: true,
   });
   if (
-    names.length !== 133 ||
+    names.length !== 134 ||
     additions.some((name, index) => names[130 + index] !== name)
   )
     throw new Error('Unexpected CA-011 migration suffix');
   const client = new Client({ connectionString: process.env.DATABASE_URL });
-  const schemas = ['upgrade', 'retry'].map(
+  const schemas = ['upgrade', 'retry', 'empty'].map(
     (part) => `ca011_${part}_${randomUUID().replaceAll('-', '')}`,
   );
   try {
@@ -301,7 +354,15 @@ export async function verifyCaseExecutionSubmissionMigration() {
     // Existing case and its old trial facts are never recreated by CA-011.
     await replay(client, additions.slice(0, 1));
     const ids = await seedOldDirectChain(client);
-    await replay(client, additions.slice(1));
+    await replay(client, additions.slice(1, 3));
+    const lawyer = await seedCurrentLawyer(client, ids);
+    const lawyerDraftBefore = await tryLawyerExecutionDraft(
+      client,
+      ids,
+      lawyer,
+    );
+    await replay(client, additions.slice(3));
+    const lawyerDraft = await tryLawyerExecutionDraft(client, ids, lawyer);
     const before = (
       await client.query(
         'SELECT stage,version,current_judgment_next_step_id FROM cases WHERE id=$1',
@@ -315,6 +376,11 @@ export async function verifyCaseExecutionSubmissionMigration() {
       versionId: ids.versionB,
       reason: '补充更新执行材料',
     });
+    const lawyerDraftAfterSubmit = await tryLawyerExecutionDraft(
+      client,
+      ids,
+      lawyer,
+    );
     const after = (
       await client.query(
         `SELECT c.stage,c.version,c.current_execution_submission_id,
@@ -355,6 +421,54 @@ export async function verifyCaseExecutionSubmissionMigration() {
         `SELECT to_regprocedure('check_case_execution_submission_final()') IS NOT NULL AS ready`,
       )
     ).rows[0].ready;
+    const beforeActorFix = (
+      await client.query(
+        `SELECT pg_get_functiondef(p.oid) AS definition FROM pg_proc p
+          JOIN pg_namespace n ON n.oid=p.pronamespace
+          WHERE n.nspname=current_schema() AND p.proname='enforce_case_client_mailing_actor_path' AND p.pronargs=0`,
+      )
+    ).rows[0].definition;
+    const actorArm = `WHEN NEW."category" IN ('SECOND_INSTANCE_DOCUMENT', 'SECOND_INSTANCE_SERVICE', 'SECOND_INSTANCE_JUDGMENT', 'EXECUTION_APPLICATION') THEN 'SECOND_INSTANCE'`;
+    if (!beforeActorFix.includes(actorArm))
+      throw new Error('Expected pre-134 lawyer actor path unavailable');
+    const unknownActorPath = beforeActorFix.replace(
+      actorArm,
+      actorArm.replace("THEN 'SECOND_INSTANCE'", "THEN 'UNKNOWN_STAGE'"),
+    );
+    await client.query(unknownActorPath);
+    let actorInvalidRejected = false;
+    try {
+      await client.query(sql(additions[3]));
+    } catch (error) {
+      actorInvalidRejected = error.code === '23514';
+      await client.query('ROLLBACK');
+    }
+    const actorAtomic =
+      (
+        await client.query(
+          `SELECT pg_get_functiondef(p.oid) AS definition FROM pg_proc p
+            JOIN pg_namespace n ON n.oid=p.pronamespace
+            WHERE n.nspname=current_schema() AND p.proname='enforce_case_client_mailing_actor_path' AND p.pronargs=0`,
+        )
+      ).rows[0].definition === unknownActorPath;
+    await client.query(beforeActorFix);
+    await replay(client, [additions[3]]);
+    const actorRetry = (
+      await client.query(
+        `SELECT pg_get_functiondef(p.oid) LIKE '%WHEN NEW."category" = ''EXECUTION_APPLICATION'' THEN ''WAITING_EXECUTION_DOCUMENTS,WAITING_EXECUTION_CONFIRMATION''%' AS ready
+          FROM pg_proc p JOIN pg_namespace n ON n.oid=p.pronamespace
+          WHERE n.nspname=current_schema() AND p.proname='enforce_case_client_mailing_actor_path' AND p.pronargs=0`,
+      )
+    ).rows[0].ready;
+    await client.query(`SET search_path TO "${schemas[2]}"`);
+    await replay(client, names);
+    const emptyChain = (
+      await client.query(
+        `SELECT pg_get_functiondef(p.oid) LIKE '%WHEN NEW."category" = ''EXECUTION_APPLICATION'' THEN ''WAITING_EXECUTION_DOCUMENTS,WAITING_EXECUTION_CONFIRMATION''%' AS ready
+          FROM pg_proc p JOIN pg_namespace n ON n.oid=p.pronamespace
+          WHERE n.nspname=current_schema() AND p.proname='enforce_case_client_mailing_actor_path' AND p.pronargs=0`,
+      )
+    ).rows[0].ready;
     return {
       migrationCount: names.length,
       oldChainPreserved:
@@ -372,6 +486,13 @@ export async function verifyCaseExecutionSubmissionMigration() {
       invalidRejected,
       atomic,
       retry,
+      lawyerDraftBefore,
+      lawyerDraft,
+      lawyerDraftAfterSubmit,
+      actorInvalidRejected,
+      actorAtomic,
+      actorRetry,
+      emptyChain,
     };
   } finally {
     await client.query('ROLLBACK').catch(() => undefined);
