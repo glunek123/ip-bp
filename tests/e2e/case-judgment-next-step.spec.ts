@@ -594,7 +594,7 @@ test('operator chooses, revokes, corrects, and chooses a new judgment path', asy
   await expect(page.locator('.page-head .pill')).toContainText('待写执行材料');
   await expect(
     page.locator('[data-test="execution-preparation-stage"]'),
-  ).toContainText('待写执行材料');
+  ).toContainText('准备执行文书');
   await page.locator('[data-test="execution-preparation-stage"]').click();
   await page.getByRole('button', { name: '本部门全部' }).click();
   const internalStageLink = page.locator(
