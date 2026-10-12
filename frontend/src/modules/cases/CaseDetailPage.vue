@@ -339,6 +339,7 @@ function stageLabel(stage: CaseDetail['stage']): string {
   if (stage === 'WAITING_JUDGMENT') return '待判决';
   if (stage === 'SECOND_INSTANCE') return '二审';
   if (stage === 'WAITING_EXECUTION_DOCUMENTS') return '待写执行材料';
+  if (stage === 'WAITING_EXECUTION_CONFIRMATION') return '执行材料待确认';
   return '待开庭';
 }
 function removeDefendant(index: number) {

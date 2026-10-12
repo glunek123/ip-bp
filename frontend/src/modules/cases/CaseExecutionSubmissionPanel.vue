@@ -202,8 +202,9 @@ async function loadFiles(): Promise<void> {
   }
 }
 
-function fileInput(event: Event): void {
-  const input = event.target as HTMLInputElement;
+function fileInput(event: globalThis.Event): void {
+  const input = event.target;
+  if (!(input instanceof globalThis.HTMLInputElement)) return;
   const picked = Array.from(input.files ?? []);
   input.value = '';
   if (
@@ -226,7 +227,9 @@ function fileInput(event: Event): void {
   void uploadFiles(picked);
 }
 
-async function uploadFiles(picked: File[]): Promise<void> {
+async function uploadFiles(
+  picked: Array<InstanceType<typeof globalThis.File>>,
+): Promise<void> {
   const captured = context();
   let uploadedAny = false;
   for (const file of picked) {

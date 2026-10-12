@@ -366,6 +366,7 @@ function stageLabel(stage: string): string {
         WAITING_JUDGMENT: '待判决',
         SECOND_INSTANCE: '二审',
         WAITING_EXECUTION_DOCUMENTS: '待写执行材料',
+        WAITING_EXECUTION_CONFIRMATION: '执行材料待确认',
       } as Record<string, string>
     )[stage] ?? stage
   );

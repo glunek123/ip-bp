@@ -179,6 +179,14 @@ beforeEach(() => {
 });
 
 describe('LawyerCaseDetailPage', () => {
+  it('labels the execution confirmation stage on the lawyer case detail', async () => {
+    api.getLawyerCase.mockResolvedValue(
+      detail('case-a', 'CA-A', 'WAITING_EXECUTION_CONFIRMATION'),
+    );
+    const { wrapper } = await mountPage();
+    expect(wrapper.text()).toContain('执行材料待确认');
+  });
+
   it('keeps an unknown original command when detail becomes unavailable and returns for the same lawyer', async () => {
     const roundId = '70000000-0000-4000-8000-000000000081';
     const choiceId = '70000000-0000-4000-8000-000000000082';

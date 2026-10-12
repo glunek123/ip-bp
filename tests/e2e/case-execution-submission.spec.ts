@@ -145,7 +145,12 @@ async function prepareWaitingFormal(
     },
   });
   await status(confirmed, 201);
-  const receipt = await uploadByApi(request, source.caseId, 'MAIL_RECEIPT', headers);
+  const receipt = await uploadByApi(
+    request,
+    source.caseId,
+    'MAIL_RECEIPT',
+    headers,
+  );
   const mailed = await request.post(`${prefix}/complaint-mail`, {
     headers,
     data: {
@@ -188,12 +193,10 @@ async function prepareWaitingJudgment(
   businessDate: string,
   operatorCsrf: string,
 ) {
-  const notice = await uploadByApi(
-    page.request,
-    caseId,
-    'ACCEPTANCE_NOTICE',
-    { Origin: new URL(page.url()).origin, 'X-CSRF-Token': operatorCsrf },
-  );
+  const notice = await uploadByApi(page.request, caseId, 'ACCEPTANCE_NOTICE', {
+    Origin: new URL(page.url()).origin,
+    'X-CSRF-Token': operatorCsrf,
+  });
   const detail = await page.request.get(`/api/v1/cases/${caseId}`);
   await status(detail, 200);
   const accepted = await page.request.post(
@@ -249,12 +252,7 @@ async function prepareWaitingJudgment(
 }
 
 async function grantJudgmentAndExecutionActions(page: Page) {
-  await login(
-    page,
-    '/settings/people-access',
-    admin.username,
-    admin.password,
-  );
+  await login(page, '/settings/people-access', admin.username, admin.password);
   const button = page.locator(
     `[data-test="edit-role-${coreLeadFixtures.roleA}"]`,
   );
@@ -293,7 +291,9 @@ async function registerJudgment(page: Page, caseId: string, date: string) {
   });
   await expect(panel.getByText(filename)).toBeVisible();
   await panel.locator('[data-test="judgment-date"]').fill(date);
-  await panel.locator('[data-test="judgment-amount-state"]').selectOption('PENDING');
+  await panel
+    .locator('[data-test="judgment-amount-state"]')
+    .selectOption('PENDING');
   await panel.locator('[data-test="paid-fee-state"]').selectOption('KNOWN');
   await panel.locator('[data-test="paid-fee-amount"]').fill('0.00');
   const responsePromise = page.waitForResponse(
@@ -430,7 +430,10 @@ async function exactUploadedVersionId(
 }
 
 async function browserDownloadBytes(page: Page, click: () => Promise<unknown>) {
-  const [download] = await Promise.all([page.waitForEvent('download'), click()]);
+  const [download] = await Promise.all([
+    page.waitForEvent('download'),
+    click(),
+  ]);
   const path = await download.path();
   if (path === null) throw new Error('浏览器未生成附件下载文件');
   return readFile(path);
@@ -468,6 +471,9 @@ test('operator uploads, explicitly submits, and retrieves exact execution bytes 
   const source = await prepareOperatorExecutionCase(page, request);
   const panel = page.locator('[data-test="execution-submission-panel"]');
   await expect(panel).toBeVisible();
+  await expect(panel).toContainText(
+    '上传材料不会推进案件。确认提交后，案件进入“执行材料待确认”',
+  );
   const beforeUpload = await page.request.get(`/api/v1/cases/${source.caseId}`);
   await status(beforeUpload, 200);
   const initial = (await beforeUpload.json()) as {
@@ -494,7 +500,6 @@ test('operator uploads, explicitly submits, and retrieves exact execution bytes 
   });
   await status(await uploadResponse, 200);
   await expect(panel.getByText(filename)).toBeVisible();
-  await expect(panel.getByRole('status')).toContainText('上传不会提交');
   const afterUpload = await page.request.get(`/api/v1/cases/${source.caseId}`);
   await status(afterUpload, 200);
   const uploaded = (await afterUpload.json()) as {
@@ -565,7 +570,9 @@ test('operator uploads, explicitly submits, and retrieves exact execution bytes 
   expect(receipt.submissionId).toMatch(
     /^[0-9a-f]{8}-[0-9a-f]{4}-4[0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$/iu,
   );
-  await expect(page.locator('.page-head .pill')).toContainText('执行材料待确认');
+  await expect(page.locator('.page-head .pill')).toContainText(
+    '执行材料待确认',
+  );
 
   const persistedResponse = await page.request.get(
     `/api/v1/cases/${source.caseId}`,
@@ -581,9 +588,7 @@ test('operator uploads, explicitly submits, and retrieves exact execution bytes 
   };
   expect(persisted.stage).toBe('WAITING_EXECUTION_CONFIRMATION');
   expect(persisted.version).toBe(receipt.version);
-  expect(persisted.executionSubmission.current.id).toBe(
-    receipt.submissionId,
-  );
+  expect(persisted.executionSubmission.current.id).toBe(receipt.submissionId);
   expect(
     persisted.executionSubmission.current.files.map(
       (file) => file.contentVersionId,
@@ -599,7 +604,9 @@ test('operator uploads, explicitly submits, and retrieves exact execution bytes 
     applicationPdf,
   );
   await page.reload();
-  await expect(page.locator('.page-head .pill')).toContainText('执行材料待确认');
+  await expect(page.locator('.page-head .pill')).toContainText(
+    '执行材料待确认',
+  );
   await expect(panel.getByText(filename)).toBeVisible();
   await logout(page);
   await login(
@@ -608,7 +615,9 @@ test('operator uploads, explicitly submits, and retrieves exact execution bytes 
     coreLeadFixtures.operatorUsername,
     coreLeadFixtures.operatorPassword,
   );
-  await expect(page.locator('.page-head .pill')).toContainText('执行材料待确认');
+  await expect(page.locator('.page-head .pill')).toContainText(
+    '执行材料待确认',
+  );
   const afterLoginPanel = page.locator(
     '[data-test="execution-submission-panel"]',
   );
@@ -617,9 +626,9 @@ test('operator uploads, explicitly submits, and retrieves exact execution bytes 
     .locator('li')
     .filter({ hasText: filename })
     .getByRole('button', { name: '下载', exact: true });
-  expect(await browserDownloadBytes(page, () => afterLoginFile.click())).toEqual(
-    applicationPdf,
-  );
+  expect(
+    await browserDownloadBytes(page, () => afterLoginFile.click()),
+  ).toEqual(applicationPdf);
 });
 
 test('current lawyer resubmits with a reason and keeps exact prior history after re-login', async ({
@@ -746,9 +755,7 @@ test('current lawyer resubmits with a reason and keeps exact prior history after
   await secondChoice.check();
   const changeReason = '补齐承办律师核对后的执行依据和送达信息';
   await panel.getByLabel(/重提原因/).fill(`  ${changeReason}  `);
-  await expect(
-    panel.locator('[data-test="submit-execution"]'),
-  ).toBeEnabled();
+  await expect(panel.locator('[data-test="submit-execution"]')).toBeEnabled();
   const secondRequest = page.waitForRequest(
     (candidate) =>
       candidate.method() === 'POST' &&
@@ -951,7 +958,9 @@ test('client can read the new stage but not execution facts or another enterpris
     await expect(
       clientPage.locator('[data-test="execution-submission-panel"]'),
     ).toHaveCount(0);
-    await expect(clientPage.getByText(filename, { exact: true })).toHaveCount(0);
+    await expect(clientPage.getByText(filename, { exact: true })).toHaveCount(
+      0,
+    );
     await expect(
       clientPage.getByText(unconfirmedFilename, { exact: true }),
     ).toHaveCount(0);
@@ -1068,9 +1077,7 @@ test('read-only and unrelated actors cannot write or cross case boundaries', asy
     '[data-test="execution-submission-panel"]',
   );
   await expect(readOnlyPanel).toBeVisible();
-  await expect(
-    readOnlyPanel.locator('input[type="file"]'),
-  ).toHaveCount(0);
+  await expect(readOnlyPanel.locator('input[type="file"]')).toHaveCount(0);
   await expect(
     readOnlyPanel.locator('[data-test="submit-execution"]'),
   ).toHaveCount(0);
@@ -1181,7 +1188,9 @@ test('internal and current-lawyer preparation groups navigate to their execution
   );
   await expect(internalGroup).toBeVisible();
   await internalGroup.click();
-  await expect(page).toHaveURL(/\/cases\?view=department&stageGroup=EXECUTION_PREPARATION$/u);
+  await expect(page).toHaveURL(
+    /\/cases\?view=department&stageGroup=EXECUTION_PREPARATION$/u,
+  );
   await page.getByRole('button', { name: '本部门全部' }).click();
   const internalCase = page.locator(
     `[data-test="case-list"] a[href^="/cases/${source.caseId}?"]`,
@@ -1189,7 +1198,9 @@ test('internal and current-lawyer preparation groups navigate to their execution
   await expect(internalCase).toBeVisible();
   await expect(internalGroup).toContainText('准备执行文书');
   await page.locator('[data-test="case-view-mine"]').click();
-  await expect(page).toHaveURL(/\/cases\?view=mine&stageGroup=EXECUTION_PREPARATION$/u);
+  await expect(page).toHaveURL(
+    /\/cases\?view=mine&stageGroup=EXECUTION_PREPARATION$/u,
+  );
   await expect(
     page.locator('[data-test="execution-preparation-nav"]'),
   ).toContainText('准备执行文书');

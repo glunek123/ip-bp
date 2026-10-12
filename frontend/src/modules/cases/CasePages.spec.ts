@@ -541,6 +541,15 @@ describe('case pages', () => {
     expect(wrapper.text()).not.toContain('三审');
   });
 
+  it('labels the execution confirmation stage on the internal case detail', async () => {
+    api.getCase.mockResolvedValueOnce({
+      ...(await api.getCase()),
+      stage: 'WAITING_EXECUTION_CONFIRMATION',
+    });
+    const wrapper = await mountRoute('/cases/case-1', CaseDetailPage);
+    expect(wrapper.get('.page-head').text()).toContain('执行材料待确认');
+  });
+
   it('shows judgment registration on the internal detail only when authorized', async () => {
     const base = await api.getCase();
     api.getCase.mockResolvedValueOnce({
