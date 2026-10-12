@@ -1781,8 +1781,8 @@ describe('cases API', () => {
       code: 'INVALID_RESPONSE',
     });
 
-    const { canConfirmExecution: _missingCapability, ...missingCapability } =
-      item;
+    const missingCapability = { ...item };
+    Reflect.deleteProperty(missingCapability, 'canConfirmExecution');
     mockJson({
       items: [missingCapability],
       total: 1,
@@ -1868,8 +1868,8 @@ describe('cases API', () => {
       code: 'INVALID_RESPONSE',
     });
 
-    const { canConfirmExecution: _missingCapability, ...missingCapability } =
-      item;
+    const missingCapability = { ...item };
+    Reflect.deleteProperty(missingCapability, 'canConfirmExecution');
     mockJson({
       items: [missingCapability],
       total: 1,

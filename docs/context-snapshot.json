@@ -1,6 +1,6 @@
 {
   "version": 1,
-  "recordedAt": "2026-10-12T05:37:15.832Z",
+  "recordedAt": "2026-10-12T05:43:02.333Z",
   "files": {
     ".cursor/rules/verified-feature-integration.mdc": "08e3a0afd05ad89eb3900b67e051c8a7ee8d59ed7daf64e616fc20b9ed6fae00",
     ".env.example": "07211cde5c2b59efc21b619b752d4c9b871f0980d2d64ca3c146ad6151fd27ca",
@@ -492,7 +492,7 @@
     "docs/environment.md": "2c07c5c2ccecb30055e318b6670c8c910d4474e691d7fd1d645016a2d657debf",
     "docs/feature-roadmap.md": "bf77ba944aa4de75a0fe5435d9751b207dfb3760a64515f78ac8c476413de4d4",
     "docs/project-status-history-through-2026-09-18.md": "c7c858eb4b2a935ce78a85c75e5d3227691382186101d6ff6911249e38729208",
-    "docs/project-status.md": "307e7b64efb3494f9ba24f001ed1b56564ea6f031e7bc22c88f79957ea762ea5",
+    "docs/project-status.md": "b07c0c9bf37953a1c959ac0c3fe81e208eb99b266793b04c7c704d6c3dbb7541",
     "docs/security/customer-foundation-q2-review.md": "f5745450cb85aedde92892646c6c824bc9670b8c9bf6f0d9761fe5e46cc6d109",
     "docs/security/local-account-auth-q2-review.md": "4e7b38d73b2597e483340490c788aa034ef6f465baccc12240be7ad2c6ec61f1",
     "docs/spec/v0.1/BUSINESS-REVIEW.md": "950c73ac72470d2e3556fd416701b4486944c1e3ef21c84be11132cbe617c24e",
@@ -590,7 +590,7 @@
     "frontend/package.json": "11be5d17686715dce6637d942b3fa994380b34de28216c4134935f040f40b44b",
     "frontend/src/api/auth.spec.ts": "a81c5d283cc1f8d4fd6ae106c8e8e1bbd86e8fdefc5731712bee9e87cc7f1820",
     "frontend/src/api/auth.ts": "6373ab373a34409e123aa188bdeba8d7642a695bf30ad70a98ef1cecd764cc9e",
-    "frontend/src/api/cases.spec.ts": "1680648a93b556da7c493133455078a031ca31165c1db460e6d5a16ee7f376e2",
+    "frontend/src/api/cases.spec.ts": "a3e642b6a645cbe10cc44dbe20c640dfb1151762dac4b4bd4dc20098cae2ba22",
     "frontend/src/api/cases.ts": "6a3cc28b4373efe30019353a91fa3d57df0e2c9e6e237692b64eb9ce705f86a5",
     "frontend/src/api/client-accounts.spec.ts": "8f76d9676f583bae0e6bf2bc6605f6fd43df6f98fe6f5710f88149851dc75e36",
     "frontend/src/api/client-accounts.ts": "06e241248bc826303dcb83e83193a902ae196949eb6e8c152fe88a89fae0da28",
