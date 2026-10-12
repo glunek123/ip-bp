@@ -507,6 +507,46 @@ describe('case pages', () => {
     }
   });
 
+  it('parses and labels the execution confirmation stage and its action badge', async () => {
+    const base = await api.listCases();
+    api.listCases.mockResolvedValueOnce({
+      ...base,
+      items: [
+        {
+          ...base.items[0],
+          id: 'execution-actionable',
+          stage: 'WAITING_EXECUTION_CONFIRMATION',
+          canMatch: false,
+          canSubmitExecution: true,
+        },
+        {
+          ...base.items[0],
+          id: 'execution-readonly',
+          stage: 'WAITING_EXECUTION_CONFIRMATION',
+          canMatch: false,
+          canSubmitExecution: false,
+        },
+      ],
+    });
+
+    const wrapper = await mountRoute(
+      '/cases?stage=WAITING_EXECUTION_CONFIRMATION',
+      CaseListPage,
+    );
+
+    expect(api.listCases).toHaveBeenLastCalledWith(
+      1,
+      20,
+      expect.objectContaining({ stage: 'WAITING_EXECUTION_CONFIRMATION' }),
+    );
+    expect(wrapper.get('.page-head').text()).toContain('执行材料待确认');
+    const rows = wrapper.findAll('[data-test="case-list"] li');
+    expect(rows).toHaveLength(2);
+    expect(rows[0]!.text()).toContain('执行材料待确认');
+    expect(rows[0]!.text()).toContain('办理');
+    expect(rows[1]!.text()).toContain('只读');
+  });
+
   it('shows the shared second-instance history on the internal case detail', async () => {
     const base = confirmationDetail('case-second-instance');
     const trialRoundId = '70000000-0000-4000-8000-000000000001';

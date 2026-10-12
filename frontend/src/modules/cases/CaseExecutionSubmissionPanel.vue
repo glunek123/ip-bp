@@ -66,7 +66,9 @@ let conflictVersion: number | null = null;
 const maySubmit = computed(
   () => props.item.canSubmitExecution && !accessDenied.value,
 );
-const current = computed(() => props.item.executionSubmission.current);
+const current = computed(() =>
+  accessDenied.value ? null : props.item.executionSubmission.current,
+);
 const recoveryIdentity = () => ({
   actor: props.actorKey,
   caseId: props.item.id,
@@ -81,6 +83,7 @@ const context = () => ({
 });
 const isCurrent = (captured: ReturnType<typeof context>) =>
   mounted &&
+  !accessDenied.value &&
   captured.revision === revision &&
   captured.id === props.item.id &&
   captured.actor === props.actorKey &&
@@ -139,11 +142,14 @@ function resetContext(): void {
 
 function clearSensitive(): void {
   accessDenied.value = true;
+  revision += 1;
   files.value = [];
   selected.value = [];
   changeReason.value = '';
+  recoveryLoading.value = false;
   candidates.value = [];
   verified.value.clear();
+  error.value = '';
   message.value = '当前账号已无权读取或提交执行材料，敏感草稿已清除。';
 }
 
@@ -325,7 +331,7 @@ async function refreshRecovery(): Promise<void> {
   } catch (reason) {
     if (!isCurrent(captured)) return;
     if (reason instanceof ApiError && reason.status === 403) clearSensitive();
-    message.value = '候选材料读取失败；未知上传标记仍保留。';
+    else message.value = '候选材料读取失败；未知上传标记仍保留。';
   } finally {
     if (isCurrent(captured)) recoveryLoading.value = false;
   }
@@ -344,8 +350,10 @@ async function downloadCandidate(
   try {
     await downloadMaterialVersion(file.materialId, file.version.id);
     if (isCurrent(captured)) verified.value.add(candidateKey(file));
-  } catch {
-    if (isCurrent(captured)) message.value = '候选版本下载失败，请重试。';
+  } catch (reason) {
+    if (!isCurrent(captured)) return;
+    if (reason instanceof ApiError && reason.status === 403) clearSensitive();
+    else message.value = '候选版本下载失败，请重试。';
   }
 }
 function adoptCandidate(file: (typeof candidates.value)[number]): void {
@@ -512,8 +520,18 @@ const emit = defineEmits<{ refresh: []; changed: [] }>();
 function retry(): void {
   if (pendingCommand.value) void send(pendingCommand.value);
 }
-function download(file: CaseFile | ExecutionSubmissionFile): void {
-  void downloadMaterialVersion(file.materialId, file.contentVersionId);
+async function download(
+  file: CaseFile | ExecutionSubmissionFile,
+): Promise<void> {
+  if (accessDenied.value) return;
+  const captured = context();
+  try {
+    await downloadMaterialVersion(file.materialId, file.contentVersionId);
+  } catch (reason) {
+    if (!isCurrent(captured)) return;
+    if (reason instanceof ApiError && reason.status === 403) clearSensitive();
+    else error.value = '执行材料下载失败，请重试。';
+  }
 }
 function timestamp(value: string): string {
   return new Date(value).toLocaleString('zh-CN', {
@@ -662,7 +680,7 @@ onBeforeUnmount(() => {
       </div>
     </template>
     <section
-      v-if="props.item.executionSubmission.submissions.length"
+      v-if="!accessDenied && props.item.executionSubmission.submissions.length"
       aria-label="执行材料提交历史"
     >
       <h3>提交历史</h3>

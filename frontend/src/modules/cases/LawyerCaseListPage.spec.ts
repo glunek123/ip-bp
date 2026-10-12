@@ -178,6 +178,43 @@ describe('LawyerCaseListPage', () => {
     expect(wrapper.text()).toContain('待开庭');
   });
 
+  it('parses and labels execution confirmation with the execution action badge', async () => {
+    const { wrapper, router } = await mountPage();
+    api.listLawyerCases.mockResolvedValueOnce({
+      ...emptyResult,
+      items: [
+        {
+          ...emptyResult.items[0],
+          id: 'execution-actionable',
+          stage: 'WAITING_EXECUTION_CONFIRMATION',
+          canSubmitExecution: true,
+        },
+        {
+          ...emptyResult.items[0],
+          id: 'execution-readonly',
+          stage: 'WAITING_EXECUTION_CONFIRMATION',
+          canSubmitExecution: false,
+          canSubmitFiling: false,
+        },
+      ],
+    });
+    await router.push('/lawyer/cases?stage=WAITING_EXECUTION_CONFIRMATION');
+    await flushPromises();
+
+    expect(api.listLawyerCases).toHaveBeenLastCalledWith(
+      1,
+      20,
+      'WAITING_EXECUTION_CONFIRMATION',
+      { signal: expect.any(AbortSignal) },
+    );
+    expect(wrapper.get('.page-head').text()).toContain('执行材料待确认');
+    const rows = wrapper.findAll('[data-test="lawyer-case-list"] li');
+    expect(rows).toHaveLength(2);
+    expect(rows[0]!.text()).toContain('执行材料待确认');
+    expect(rows[0]!.text()).toContain('可办理');
+    expect(rows[1]!.text()).toContain('只读');
+  });
+
   it('supports the single WAITING_JUDGMENT filter and label', async () => {
     const { wrapper, router } = await mountPage();
     await router.push('/lawyer/cases?stage=WAITING_JUDGMENT');

@@ -349,13 +349,61 @@ describe('CaseExecutionSubmissionPanel', () => {
     ).toBeNull();
   });
 
-  it('clears private material state on a revoked read', async () => {
-    api.listOwnerMaterials.mockRejectedValue(
-      new ApiError('forbidden', 403, 'FORBIDDEN'),
+  it('hides cached submission history after a revoked read and ignores a late material response', async () => {
+    let finishInitialRead!: (result: { items: typeof ownerMaterials }) => void;
+    api.listOwnerMaterials
+      .mockReturnValueOnce(
+        new Promise((resolve) => {
+          finishInitialRead = resolve;
+        }),
+      )
+      .mockRejectedValueOnce(new ApiError('forbidden', 403, 'FORBIDDEN'));
+    const marker = beginExecutionUpload({
+      actor: 'user-a:rev-1',
+      caseId: id('20'),
+    });
+    const wrapper = mountPanel(
+      item({
+        executionSubmission: {
+          current: { id: id('30'), files: [file] },
+          submissions: [
+            {
+              id: id('30'),
+              submittedAt: file.uploadedAt,
+              fromVersion: 14,
+              toVersion: 15,
+              changeReason: '更新执行申请材料',
+              files: [file],
+            },
+          ],
+          availableFiles: [file],
+        },
+      }),
     );
-    const wrapper = mountPanel();
     await flushPromises();
+    expect(wrapper.text()).toContain('提交历史');
+    expect(wrapper.text()).toContain(file.originalFilename);
+
+    const refreshCandidates = wrapper
+      .findAll('button')
+      .find((button) => button.text() === '刷新候选');
+    expect(refreshCandidates).toBeDefined();
+    await refreshCandidates!.trigger('click');
+    await flushPromises();
+    expect(wrapper.text()).toContain('当前账号已无权读取或提交执行材料');
+    expect(wrapper.text()).not.toContain('提交历史');
+    expect(wrapper.text()).not.toContain(file.originalFilename);
     expect(wrapper.find('input[type="file"]').exists()).toBe(false);
-    expect(wrapper.text()).toContain('敏感草稿已清除');
+    expect(wrapper.find('textarea').exists()).toBe(false);
+    expect(wrapper.find('[data-test="submit-execution"]').exists()).toBe(false);
+    expect(
+      wrapper.findAll('button').some((button) => button.text() === '下载'),
+    ).toBe(false);
+
+    finishInitialRead({ items: ownerMaterials });
+    await flushPromises();
+    expect(wrapper.text()).not.toContain(file.originalFilename);
+    expect(wrapper.text()).not.toContain('提交历史');
+    clearExecutionUpload(marker);
   });
 });

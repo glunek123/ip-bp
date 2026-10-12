@@ -26,7 +26,8 @@ const stage = computed<CaseStageFilter>(() =>
   route.query.stage === 'WAITING_HEARING' ||
   route.query.stage === 'WAITING_JUDGMENT' ||
   route.query.stage === 'SECOND_INSTANCE' ||
-  route.query.stage === 'WAITING_EXECUTION_DOCUMENTS'
+  route.query.stage === 'WAITING_EXECUTION_DOCUMENTS' ||
+  route.query.stage === 'WAITING_EXECUTION_CONFIRMATION'
     ? route.query.stage
     : 'all',
 );
@@ -45,6 +46,7 @@ function stageLabel(value: CaseSummary['stage']): string {
   if (value === 'WAITING_JUDGMENT') return '待判决';
   if (value === 'SECOND_INSTANCE') return '二审';
   if (value === 'WAITING_EXECUTION_DOCUMENTS') return '待写执行材料';
+  if (value === 'WAITING_EXECUTION_CONFIRMATION') return '执行材料待确认';
   return '待开庭';
 }
 const state = ref<'loading' | 'ready' | 'failed'>('loading');
@@ -145,6 +147,7 @@ onBeforeUnmount(() => request?.abort());
             ><span class="pill">{{ stageLabel(item.stage) }}</span>
             <span class="field-help">负责人：{{ item.owner.displayName }}</span>
             <span class="pill">{{
+              item.canSubmitExecution ||
               item.canMatch ||
               item.canSubmitComplaint ||
               item.canConfirmComplaint ||

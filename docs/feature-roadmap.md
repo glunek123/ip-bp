@@ -146,7 +146,7 @@
 
 **CORE-CA-011｜上传执行材料（已领取，实施中）。**
 
-2026-10-11从已推送且核对组合tree的main`caba39d264d68da11577519d4dc87852571240a4`建立`codex/core-ca-011-execution-materials`。只推进待写执行材料→执行材料待确认，正常办理限有权运营和当前承办律师；SD-51已批准本片纳入确认前留原因同阶段重提。设计见[案件Spec](spec/v0.1/modules/cases.md#ca-011上传执行材料)，任务拆解见[计划](superpowers/plans/2026-10-11-case-execution-materials.md)。独立设计审查补齐客户阶段兼容，不扩大客户端材料范围；本片尚无实现或验收结论。
+2026-10-11从已推送且核对组合tree的main`caba39d264d68da11577519d4dc87852571240a4`建立`codex/core-ca-011-execution-materials`。只推进待写执行材料→执行材料待确认，正常办理限有权运营和当前承办律师；SD-51已批准本片纳入确认前留原因同阶段重提。设计见[案件Spec](spec/v0.1/modules/cases.md#ca-011上传执行材料)，任务拆解见[计划](superpowers/plans/2026-10-11-case-execution-materials.md)。独立设计审查补齐客户阶段兼容，不扩大客户端材料范围；已实现并本地集成，尚待最终审查与正式门禁。
 
 ### Next Slice
 
