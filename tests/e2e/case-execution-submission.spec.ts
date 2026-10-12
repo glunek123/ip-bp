@@ -1015,6 +1015,18 @@ test('read-only and unrelated actors cannot write or cross case boundaries', asy
   page,
   request,
 }) => {
+  const unrelatedSourceRequest = await playwrightRequest.newContext({
+    baseURL: origin,
+  });
+  const unrelatedLawyerSource = await (async () => {
+    try {
+      return await createSubmittedCaseThroughApi(unrelatedSourceRequest, {
+        submitAsLawyer: true,
+      });
+    } finally {
+      await unrelatedSourceRequest.dispose();
+    }
+  })();
   const source = await prepareOperatorExecutionCase(page, request);
   const panel = page.locator('[data-test="execution-submission-panel"]');
   const filename = `CA011只读核验材料-${randomUUID().slice(0, 8)}.pdf`;
@@ -1068,18 +1080,6 @@ test('read-only and unrelated actors cannot write or cross case boundaries', asy
   );
   await panel.locator('[data-test="submit-execution"]').click();
   await status(await submitted, 201);
-  const unrelatedSourceRequest = await playwrightRequest.newContext({
-    baseURL: origin,
-  });
-  const unrelatedLawyerSource = await (async () => {
-    try {
-      return await createSubmittedCaseThroughApi(unrelatedSourceRequest, {
-        submitAsLawyer: true,
-      });
-    } finally {
-      await unrelatedSourceRequest.dispose();
-    }
-  })();
 
   await logout(page);
   await login(
@@ -1151,7 +1151,7 @@ test('read-only and unrelated actors cannot write or cross case boundaries', asy
     },
   );
   expect(deniedWrite.status()).toBe(403);
-  expect((await deniedWrite.json()).code).toBe('FORBIDDEN');
+  expect((await deniedWrite.json()).code).toBe('ACTION_FORBIDDEN');
   await logout(page);
 
   await login(

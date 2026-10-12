@@ -64,6 +64,7 @@ beforeEach(() => {
         version: 1,
         owner: { id: 'user-1', displayName: '负责人' },
         canMatch: true,
+        canSubmitExecution: false,
         canSubmitComplaint: false,
         canSubmitFiling: false,
         canRegisterAcceptance: false,

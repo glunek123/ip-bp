@@ -5,6 +5,7 @@ import {
   getCase,
   listFilingCourts,
   listCases,
+  listLawyerCases,
   listLawyerMatchCandidates,
   registerCaseAcceptance,
   mailCaseComplaint,
@@ -34,6 +35,7 @@ const summary = {
   version: 3,
   owner: { id: 'user-1', displayName: '负责人' },
   canMatch: true,
+  canSubmitExecution: false,
   canSubmitComplaint: false,
   canConfirmComplaint: false,
   canMailComplaint: false,
@@ -1673,6 +1675,101 @@ describe('cases API', () => {
       listCases(1, 20, { view: 'department' }),
     ).resolves.toMatchObject({
       items: [{ canMatch: false, canSubmitComplaint: true }],
+    });
+  });
+
+  it('decodes execution submit capability in a nonempty internal case list', async () => {
+    const counts = {
+      PENDING_MATCH: 0,
+      WAITING_COMPLAINT: 0,
+      WAITING_COMPLAINT_CONFIRMATION: 0,
+      WAITING_COMPLAINT_STAMP: 0,
+      WAITING_FILING: 0,
+      WAITING_FORMAL_ACCEPTANCE: 0,
+      WAITING_HEARING: 0,
+      WAITING_JUDGMENT: 0,
+      SECOND_INSTANCE: 0,
+      WAITING_EXECUTION_DOCUMENTS: 1,
+      WAITING_EXECUTION_CONFIRMATION: 0,
+    };
+    const item = {
+      ...summary,
+      stage: 'WAITING_EXECUTION_DOCUMENTS',
+      canSubmitExecution: true,
+    };
+    mockJson({ items: [item], total: 1, page: 1, pageSize: 20, counts });
+    await expect(listCases()).resolves.toMatchObject({
+      items: [
+        { stage: 'WAITING_EXECUTION_DOCUMENTS', canSubmitExecution: true },
+      ],
+    });
+
+    mockJson({
+      items: [{ ...item, unexpected: true }],
+      total: 1,
+      page: 1,
+      pageSize: 20,
+      counts,
+    });
+    await expect(listCases()).rejects.toMatchObject({
+      code: 'INVALID_RESPONSE',
+    });
+  });
+
+  it('decodes execution submit capability in a nonempty lawyer case list', async () => {
+    const counts = {
+      PENDING_MATCH: 0,
+      WAITING_COMPLAINT: 0,
+      WAITING_COMPLAINT_CONFIRMATION: 0,
+      WAITING_COMPLAINT_STAMP: 0,
+      WAITING_FILING: 0,
+      WAITING_FORMAL_ACCEPTANCE: 0,
+      WAITING_HEARING: 0,
+      WAITING_JUDGMENT: 0,
+      SECOND_INSTANCE: 0,
+      WAITING_EXECUTION_DOCUMENTS: 1,
+      WAITING_EXECUTION_CONFIRMATION: 0,
+    };
+    const item = {
+      id: 'case-1',
+      businessNo: 'CA-1',
+      stage: 'WAITING_EXECUTION_DOCUMENTS',
+      version: 3,
+      canMatch: false,
+      canSubmitComplaint: false,
+      canConfirmComplaint: false,
+      canMailComplaint: false,
+      canSubmitFiling: false,
+      canRegisterAcceptance: false,
+      canUploadAcceptanceMaterials: false,
+      canScheduleHearing: false,
+      canCorrectHearing: false,
+      canRegisterJudgment: false,
+      canCorrectJudgment: false,
+      canChooseJudgmentNextStep: false,
+      canRevokeJudgmentNextStep: false,
+      canSaveSecondInstance: false,
+      canRegisterSecondInstanceResult: false,
+      canRevokeSecondInstanceResult: false,
+      canSubmitExecution: true,
+      createdAt: '2026-09-28T00:00:00.000Z',
+    };
+    mockJson({ items: [item], total: 1, page: 1, pageSize: 20, counts });
+    await expect(listLawyerCases()).resolves.toMatchObject({
+      items: [
+        { stage: 'WAITING_EXECUTION_DOCUMENTS', canSubmitExecution: true },
+      ],
+    });
+
+    mockJson({
+      items: [{ ...item, unexpected: true }],
+      total: 1,
+      page: 1,
+      pageSize: 20,
+      counts,
+    });
+    await expect(listLawyerCases()).rejects.toMatchObject({
+      code: 'INVALID_RESPONSE',
     });
   });
 

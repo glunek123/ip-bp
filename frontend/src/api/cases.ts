@@ -23,6 +23,7 @@ export type CaseSummary = {
   version: number;
   owner: { id: string; displayName: string };
   canMatch: boolean;
+  canSubmitExecution: boolean;
   canSubmitComplaint: boolean;
   canConfirmComplaint: boolean;
   canMailComplaint: boolean;
@@ -99,7 +100,6 @@ export type CaseDetail = CaseSummary & {
   judgmentNextStep: CaseJudgmentNextStep;
   acceptances: Array<CaseAcceptanceHistory>;
   secondInstance: CaseSecondInstance;
-  canSubmitExecution: boolean;
   executionSubmission: ExecutionSubmissionState;
 };
 export type ExecutionSubmissionFile = CaseFile & { uploadedAt: string };
@@ -344,6 +344,7 @@ export type LawyerCaseSummary = {
   stage: CaseStage;
   version: number;
   canMatch: false;
+  canSubmitExecution: boolean;
   canSubmitComplaint: boolean;
   canConfirmComplaint: boolean;
   canMailComplaint: boolean;
@@ -403,7 +404,6 @@ export type LawyerCaseDetail = CaseWorkflowItem &
     judgmentNextStep: LawyerCaseJudgmentNextStep;
     acceptances: Array<LawyerCaseAcceptanceHistory>;
     secondInstance: LawyerCaseSecondInstance;
-    canSubmitExecution: boolean;
     executionSubmission: ExecutionSubmissionState;
   };
 
@@ -651,6 +651,7 @@ function summary(value: unknown): value is CaseSummary {
       'version',
       'owner',
       'canMatch',
+      'canSubmitExecution',
       'canSubmitComplaint',
       'canConfirmComplaint',
       'canMailComplaint',
@@ -678,6 +679,7 @@ function summary(value: unknown): value is CaseSummary {
     (value.version as number) >= 1 &&
     named(value.owner, 'displayName') &&
     typeof value.canMatch === 'boolean' &&
+    typeof value.canSubmitExecution === 'boolean' &&
     typeof value.canSubmitComplaint === 'boolean' &&
     typeof value.canConfirmComplaint === 'boolean' &&
     typeof value.canMailComplaint === 'boolean' &&
@@ -1215,6 +1217,7 @@ function validCaseDetail(value: unknown, id: string): value is CaseDetail {
       version: value.version,
       owner: value.owner,
       canMatch: value.canMatch,
+      canSubmitExecution: value.canSubmitExecution,
       canSubmitComplaint: value.canSubmitComplaint,
       canConfirmComplaint: value.canConfirmComplaint,
       canMailComplaint: value.canMailComplaint,
@@ -1705,6 +1708,7 @@ function validLawyerSummary(value: unknown): value is LawyerCaseSummary {
       'stage',
       'version',
       'canMatch',
+      'canSubmitExecution',
       'canSubmitComplaint',
       'canConfirmComplaint',
       'canMailComplaint',
@@ -1728,6 +1732,7 @@ function validLawyerSummary(value: unknown): value is LawyerCaseSummary {
     Number.isInteger(value.version) &&
     Number(value.version) > 0 &&
     value.canMatch === false &&
+    typeof value.canSubmitExecution === 'boolean' &&
     typeof value.canSubmitComplaint === 'boolean' &&
     typeof value.canConfirmComplaint === 'boolean' &&
     typeof value.canMailComplaint === 'boolean' &&
@@ -1970,6 +1975,7 @@ export async function getLawyerCase(
       stage: result.stage,
       version: result.version,
       canMatch: result.canMatch,
+      canSubmitExecution: result.canSubmitExecution,
       canSubmitComplaint: result.canSubmitComplaint,
       canConfirmComplaint: result.canConfirmComplaint,
       canMailComplaint: result.canMailComplaint,

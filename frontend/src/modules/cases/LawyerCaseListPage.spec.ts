@@ -16,6 +16,7 @@ const emptyResult = {
       stage: 'WAITING_FILING',
       version: 7,
       canMatch: false,
+      canSubmitExecution: false,
       canSubmitComplaint: false,
       canConfirmComplaint: false,
       canMailComplaint: false,
