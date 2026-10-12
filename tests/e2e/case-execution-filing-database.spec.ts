@@ -27,5 +27,9 @@ test('CA-013 and CA-014 PostgreSQL commands freeze exact evidence and transition
     finalStage: true,
     auditFacts: true,
     sqlReversal: '23514',
+    disabledMailReplay: 'ACTION_FORBIDDEN',
+    disabledFilingReplay: 'ACTION_FORBIDDEN',
+    disabledReplayUnchanged: true,
+    restoredReplay: true,
   });
 });

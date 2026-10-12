@@ -477,6 +477,51 @@ export async function verifyCaseExecutionMailingAndFilingDatabase() {
         },
         select: { action: true, details: true },
       });
+      const beforeDisabledReplay = await snapshot(client, caseId);
+      const originalAccount = await database.userAccount.findUniqueOrThrow({
+        where: { id: actor.userId },
+        select: { active: true },
+      });
+      let disabledMailReplay;
+      let disabledFilingReplay;
+      let disabledReplayUnchanged;
+      try {
+        await database.userAccount.update({
+          where: { id: actor.userId },
+          data: { active: false },
+        });
+        disabledMailReplay = await rejected(() =>
+          mailing.mail(actor, caseId, winnerInput),
+        );
+        disabledFilingReplay = await rejected(() =>
+          filing.submit(actor, caseId, filingWinnerInput),
+        );
+        disabledReplayUnchanged =
+          (await snapshot(client, caseId)) === beforeDisabledReplay;
+      } finally {
+        await database.userAccount.update({
+          where: { id: actor.userId },
+          data: { active: originalAccount.active },
+        });
+      }
+      const restoredAccount = await database.userAccount.findUniqueOrThrow({
+        where: { id: actor.userId },
+        select: { authorizationRevision: true },
+      });
+      const restoredActor = {
+        ...actor,
+        authorizationRevision: restoredAccount.authorizationRevision,
+      };
+      const restoredReplay =
+        isDeepStrictEqual(
+          await mailing.mail(restoredActor, caseId, winnerInput),
+          mailed,
+        ) &&
+        isDeepStrictEqual(
+          await filing.submit(restoredActor, caseId, filingWinnerInput),
+          filed,
+        ) &&
+        (await snapshot(client, caseId)) === beforeDisabledReplay;
       return {
         source:
           chosen.stage === 'WAITING_EXECUTION_DOCUMENTS' &&
@@ -514,6 +559,10 @@ export async function verifyCaseExecutionMailingAndFilingDatabase() {
           state.stage === 'EXECUTING' && state.version === filed.version,
         auditFacts: audits.length === 2,
         sqlReversal,
+        disabledMailReplay,
+        disabledFilingReplay,
+        disabledReplayUnchanged,
+        restoredReplay,
       };
     },
   });

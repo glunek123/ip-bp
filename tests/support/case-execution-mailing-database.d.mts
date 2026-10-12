@@ -23,4 +23,8 @@ export function verifyCaseExecutionMailingAndFilingDatabase(): Promise<{
   finalStage: boolean;
   auditFacts: boolean;
   sqlReversal: string | null;
+  disabledMailReplay: string | null;
+  disabledFilingReplay: string | null;
+  disabledReplayUnchanged: boolean;
+  restoredReplay: boolean;
 }>;

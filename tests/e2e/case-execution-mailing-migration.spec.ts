@@ -23,6 +23,7 @@ const suffix = [
   '20261012030000_add_execution_mailing_filing_enums',
   '20261012031000_guard_execution_mailing_filing',
   '20261012032000_align_execution_source_unique_indexes',
+  '20261012033000_allow_unrelated_null_event_references',
 ];
 const sql = (name: string) =>
   readFileSync(resolve(migrations, name, 'migration.sql'), 'utf8');
@@ -57,7 +58,7 @@ test('CA-013/014 migrates empty and legacy schemas, rejects direct SQL bypass, a
   validateIsolatedTestDatabaseUrl(process.env.DATABASE_URL, {
     allowRandomPort: true,
   });
-  expect(names.slice(136, 139)).toEqual(suffix);
+  expect(names.slice(136, 140)).toEqual(suffix);
   const client = new Client({ connectionString: process.env.DATABASE_URL });
   const prefix = `ca013_migration_${randomUUID().replaceAll('-', '')}`;
   const schemas = ['empty', 'upgrade', 'retry'].map(
@@ -95,6 +96,18 @@ test('CA-013/014 migrates empty and legacy schemas, rejects direct SQL bypass, a
       await count(`SELECT count(*) AS n FROM pg_indexes WHERE schemaname=current_schema()
       AND indexname IN ('case_execution_mailings_confirmation_case_department_key',
       'case_execution_filings_mailing_case_department_key')`),
+    ).toBe(2);
+    // Exercise the actual trigger with the ordinary NULL-event inputs used by
+    // customer admission and lead creation, without unrelated FK fixtures.
+    await client.query(`CREATE TEMP TABLE ca013_plain_reference_probe (
+      action_event_id uuid, purpose text, resource_type text, resource_id uuid,
+      department_id uuid, material_id uuid, content_version_id uuid) ON COMMIT PRESERVE ROWS`);
+    await client.query(`CREATE TRIGGER ordinary_reference_probe BEFORE INSERT ON ca013_plain_reference_probe
+      FOR EACH ROW EXECUTE FUNCTION check_case_execution_mailing_reference()`);
+    await client.query(`INSERT INTO ca013_plain_reference_probe(purpose,resource_type)
+      VALUES ('IDENTITY_FULL','customer'),('LEAD_SCREENSHOT','lead')`);
+    expect(
+      await count('SELECT count(*) AS n FROM ca013_plain_reference_probe'),
     ).toBe(2);
     expect(
       await count(`SELECT count(*) AS n FROM pg_trigger WHERE tgrelid IN
@@ -258,7 +271,37 @@ test('CA-013/014 migrates empty and legacy schemas, rejects direct SQL bypass, a
       ),
     ).toBe(0);
     await client.query(original);
-    await replay(client, suffix.slice(1));
+    await replay(client, suffix.slice(1, 3));
+    const mailingGuard = (
+      await client.query(`SELECT pg_get_functiondef(p.oid) AS definition
+      FROM pg_proc p JOIN pg_namespace n ON n.oid=p.pronamespace
+      WHERE n.nspname=current_schema() AND p.proname='check_case_execution_mailing_reference' AND p.pronargs=0`)
+    ).rows[0].definition as string;
+    const oldReturn =
+      "IF event_action<>'case.execution.mailed' THEN RETURN NEW; END IF;";
+    expect(mailingGuard).toContain(oldReturn);
+    const unknownGuard = mailingGuard.replace(
+      oldReturn,
+      'IF false THEN RETURN NEW; END IF;',
+    );
+    await client.query(unknownGuard);
+    let repairFailure: string | null = null;
+    try {
+      await client.query(sql(suffix[3]));
+    } catch (error) {
+      repairFailure = (error as { code?: string }).code ?? null;
+      await client.query('ROLLBACK');
+    }
+    expect(repairFailure).toBe('23514');
+    expect(
+      (
+        await client.query(`SELECT pg_get_functiondef(p.oid) AS definition
+      FROM pg_proc p JOIN pg_namespace n ON n.oid=p.pronamespace
+      WHERE n.nspname=current_schema() AND p.proname='check_case_execution_mailing_reference' AND p.pronargs=0`)
+      ).rows[0].definition,
+    ).toBe(unknownGuard);
+    await client.query(mailingGuard);
+    await replay(client, suffix.slice(3));
     expect(
       await count(
         `SELECT count(*) AS n FROM information_schema.tables

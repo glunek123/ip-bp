@@ -827,7 +827,15 @@ test('CA-012 current lawyer confirms the complete submitted file set and clients
     expect(clientDetail.stage).toBe('WAITING_EXECUTION_STAMP');
     expect(clientDetail).not.toHaveProperty('executionConfirmation');
     expect(clientDetail).not.toHaveProperty('canConfirmExecution');
-    expect(JSON.stringify(clientDetail)).not.toContain(body.confirmationId);
+    expect(clientDetail).not.toHaveProperty('executionSubmission');
+    // CA-013 permits only this technical anchor for the client's mailing request.
+    const { executionConfirmationId, ...clientPublicFacts } = clientDetail;
+    expect(executionConfirmationId).toBe(body.confirmationId);
+    expect(clientDetail.canMailExecution).toBe(true);
+    expect(clientDetail.executionMailing).toBeNull();
+    expect(JSON.stringify(clientPublicFacts)).not.toContain(
+      body.confirmationId,
+    );
     expect(JSON.stringify(clientDetail)).not.toContain(body.submissionId);
     for (const versionId of versionIds)
       expect(JSON.stringify(clientDetail)).not.toContain(versionId);
