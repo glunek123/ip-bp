@@ -1,7 +1,8 @@
-import { mount } from '@vue/test-utils';
-import { afterEach, describe, expect, it } from 'vitest';
+import { enableAutoUnmount, mount } from '@vue/test-utils';
+import { h, nextTick } from 'vue';
+import { afterEach, describe, expect, it, vi } from 'vitest';
 import CalendarMonthGrid from './CalendarMonthGrid.vue';
-import type { CalendarHearingEvent } from './calendar-month';
+import type { CalendarEvent, CalendarHearingEvent } from './calendar-month';
 
 const first: CalendarHearingEvent = {
   eventKey: 'hearing-a',
@@ -10,6 +11,39 @@ const first: CalendarHearingEvent = {
   caseLabel: '同名合成案件',
 };
 const second = { ...first, eventKey: 'hearing-b', caseId: 'case-b' };
+const court: CalendarEvent = {
+  eventKey: 'second-trial-a',
+  date: '2024-02-29',
+  type: 'court',
+  title: '二审开庭 · 合成法院',
+  sub: '第二法庭',
+  caseId: 'case-a',
+  courtDetails: {
+    party: '合成权利主体',
+    defendant: '合成被告',
+    reason: '商标侵权',
+    time: '14:30',
+    place: '合成法院第二法庭',
+    judge: '合成法官',
+  },
+};
+const payment: CalendarEvent = {
+  eventKey: 'pay-a',
+  date: '2024-02-29',
+  type: 'pay',
+  title: '缴费截止 · 诉讼费',
+  sub: '合成案号',
+  caseId: 'case-b',
+  caseDetails: {
+    customer: '合成客户',
+    rightsHolder: '合成权利主体',
+    defendant: '合成被告',
+    caseNumber: '（2024）合成民初1号',
+    amount: '12345678901234567890.01',
+  },
+};
+
+enableAutoUnmount(afterEach);
 
 function render(
   overrides: Partial<InstanceType<typeof CalendarMonthGrid>['$props']> = {},
@@ -29,6 +63,256 @@ afterEach(() => {
 });
 
 describe('CalendarMonthGrid', () => {
+  it('uses a general empty state when no event source type is supplied', () => {
+    const wrapper = render({ events: [] });
+    expect(wrapper.get('[role="status"]').text()).toBe('本月暂无事件。');
+  });
+  it('returns to the caller-provided current month and marks only a valid current day', async () => {
+    const wrapper = render({ month: '2023-12', today: '2024-02-29' });
+    await wrapper.get('[aria-label="回到本月"]').trigger('click');
+    expect(wrapper.emitted('update:month')).toEqual([['2024-02']]);
+    expect(wrapper.get('h2').text()).toBe('2023年12月');
+    await wrapper.setProps({ month: '2024-02' });
+    expect(
+      wrapper.get('[data-date="2024-02-29"]').attributes('aria-current'),
+    ).toBe('date');
+    await wrapper.setProps({ today: '2024-02-30' });
+    expect(wrapper.find('[aria-current="date"]').exists()).toBe(false);
+    expect(
+      wrapper.get('[aria-label="回到本月"]').attributes('disabled'),
+    ).toBeDefined();
+    await wrapper.setProps({ today: null });
+    expect(
+      wrapper.get('[aria-label="回到本月"]').attributes('disabled'),
+    ).toBeDefined();
+  });
+
+  it('shows all four types, independent titles/sub, and multiple explicit trial events', () => {
+    const wrapper = render({
+      events: [
+        court,
+        { ...court, eventKey: 'first-trial', title: '一审开庭 · 另一法院' },
+        payment,
+        {
+          eventKey: 'contract',
+          date: '2024-02-29',
+          type: 'contract',
+          title: '合同到期',
+          caseId: null,
+        },
+        {
+          eventKey: 'other',
+          date: '2024-02-29',
+          type: 'other',
+          title: '来源明确的重要节点',
+          caseId: null,
+        },
+      ],
+    });
+    expect(wrapper.findAll('.calendar-event')).toHaveLength(5);
+    expect(wrapper.get('.calendar-event-court').text()).toBe(court.title);
+    expect(wrapper.text()).toContain('一审开庭 · 另一法院');
+    expect(wrapper.find('.calendar-event-pay').exists()).toBe(true);
+    expect(wrapper.find('.calendar-event-contract').exists()).toBe(true);
+    expect(wrapper.find('.calendar-event-other').exists()).toBe(true);
+    expect(wrapper.get('[aria-label="事件类型图例"]').text()).toContain(
+      '开庭缴费截止合同到期重要节点',
+    );
+  });
+
+  it('shows the six authorized court fields with title/sub on hover or focus', async () => {
+    const wrapper = render({ events: [court] });
+    const button = wrapper.get('.calendar-event');
+    await button.trigger('mouseenter');
+    await nextTick();
+    const tip = document.querySelector('[role="tooltip"]');
+    expect(tip?.textContent).toContain('二审开庭 · 合成法院');
+    expect(tip?.textContent).toContain('第二法庭');
+    expect(
+      [...(tip?.querySelectorAll('dt') ?? [])].map((node) => node.textContent),
+    ).toEqual([
+      '权利主体',
+      '被告',
+      '侵权类型',
+      '开庭日期',
+      '开庭地点',
+      '承办法官',
+    ]);
+    expect(
+      [...(tip?.querySelectorAll('dd') ?? [])].map((node) => node.textContent),
+    ).toEqual([
+      '合成权利主体',
+      '合成被告',
+      '商标侵权',
+      '2024-02-29 14:30',
+      '合成法院第二法庭',
+      '合成法官',
+    ]);
+    expect(button.attributes('aria-describedby')).toBe(tip?.id);
+    await button.trigger('mouseleave');
+    expect(document.querySelector('[role="tooltip"]')).toBeNull();
+    await button.trigger('focus');
+    expect(document.querySelector('[role="tooltip"]')).not.toBeNull();
+    await button.trigger('blur');
+    expect(document.querySelector('[role="tooltip"]')).toBeNull();
+  });
+
+  it('shows authorized non-court fields without changing exact amount strings or guessing missing values', async () => {
+    const wrapper = render({ events: [payment] });
+    await wrapper.get('.calendar-event').trigger('focus');
+    expect(
+      [...document.querySelectorAll('[role="tooltip"] dt')].map(
+        (node) => node.textContent,
+      ),
+    ).toEqual(['客户', '权利主体', '被告', '案号', '标的额']);
+    expect(document.querySelector('[role="tooltip"]')?.textContent).toContain(
+      '12345678901234567890.01',
+    );
+    await wrapper.setProps({
+      events: [{ ...payment, caseDetails: { amount: '0.00' } }],
+    });
+    await wrapper.get('.calendar-event').trigger('focus');
+    expect(
+      [...document.querySelectorAll('[role="tooltip"] dd')].map(
+        (node) => node.textContent,
+      ),
+    ).toEqual(['未知', '未知', '未知', '未知', '0.00']);
+  });
+
+  it('uses an informational notice for an unassociated event and never guesses a case from its sub', async () => {
+    const wrapper = render({
+      events: [
+        {
+          eventKey: 'contract',
+          type: 'contract',
+          date: '2024-02-29',
+          title: '合同到期',
+          sub: '（2024）合成民初1号',
+          caseId: null,
+        },
+      ],
+    });
+    await wrapper.get('.calendar-event').trigger('mouseenter');
+    expect(document.querySelector('[role="tooltip"]')?.textContent).toContain(
+      '（2024）合成民初1号',
+    );
+    await wrapper.get('.calendar-event').trigger('click');
+    expect(wrapper.emitted('openCase')).toBeUndefined();
+    expect(wrapper.get('[role="status"]').text()).toBe(
+      '合同到期 · （2024）合成民初1号 · 未关联案件。',
+    );
+    expect(document.querySelector('[role="tooltip"]')).toBeNull();
+    await wrapper.setProps({ loading: true });
+    expect(wrapper.text()).not.toContain('合同到期');
+  });
+
+  it('clamps tooltip positioning to the viewport and flips below an anchor near the top edge', async () => {
+    vi.spyOn(HTMLElement.prototype, 'getBoundingClientRect').mockImplementation(
+      function (this: HTMLElement) {
+        return this.getAttribute('role') === 'tooltip'
+          ? new DOMRect(0, 0, 340, 240)
+          : new DOMRect(1000, 0, 24, 24);
+      },
+    );
+    const wrapper = render({ events: [court] });
+    await wrapper.get('.calendar-event').trigger('mouseenter');
+    await nextTick();
+    const tip = document.querySelector<HTMLElement>('[role="tooltip"]');
+    expect(tip?.style.left).toBe(`${window.innerWidth - 340 - 8}px`);
+    expect(tip?.style.top).toBe('32px');
+    expect(tip?.style.visibility).toBe('visible');
+  });
+
+  it.each(['click', 'scroll', 'resize', 'escape'])(
+    'closes an active tooltip on %s and cleans up on unmount',
+    async (action) => {
+      const wrapper = render({ events: [court] });
+      await wrapper.get('.calendar-event').trigger('mouseenter');
+      expect(document.querySelector('[role="tooltip"]')).not.toBeNull();
+      if (action === 'click') document.dispatchEvent(new MouseEvent('click'));
+      else if (action === 'escape')
+        document.dispatchEvent(new KeyboardEvent('keydown', { key: 'Escape' }));
+      else window.dispatchEvent(new Event(action));
+      await nextTick();
+      expect(document.querySelector('[role="tooltip"]')).toBeNull();
+      await wrapper.get('.calendar-event').trigger('focus');
+      wrapper.unmount();
+      expect(document.querySelector('[role="tooltip"]')).toBeNull();
+    },
+  );
+
+  it.each([{ canRead: false }, { loading: true }, { error: '读取失败' }])(
+    'clears teleported details and ignores stale activation when state changes to %j',
+    async (state) => {
+      const wrapper = render({ events: [court] });
+      const button = wrapper.get('.calendar-event');
+      await button.trigger('mouseenter');
+      expect(document.querySelector('[role="tooltip"]')?.textContent).toContain(
+        '合成法官',
+      );
+      await wrapper.setProps(state);
+      await button.trigger('focus');
+      await button.trigger('click');
+      expect(document.querySelector('[role="tooltip"]')).toBeNull();
+      expect(document.body.textContent).not.toContain('合成法官');
+      expect(wrapper.html()).not.toContain('合成法院');
+      expect(wrapper.emitted('openCase')).toBeUndefined();
+    },
+  );
+
+  it('drops old tooltip content after same-event details are updated, cleared or the month changes', async () => {
+    const wrapper = render({ events: [court] });
+    await wrapper.get('.calendar-event').trigger('focus');
+    await wrapper.setProps({ events: [{ ...court, courtDetails: undefined }] });
+    expect(document.querySelector('[role="tooltip"]')).toBeNull();
+    await wrapper.get('.calendar-event').trigger('focus');
+    expect(document.querySelector('[role="tooltip"]')?.textContent).toContain(
+      '未知',
+    );
+    expect(
+      document.querySelector('[role="tooltip"]')?.textContent,
+    ).not.toContain('合成法官');
+    const stale = wrapper.get('.calendar-event');
+    await wrapper.setProps({ events: [{ ...court, date: null }] });
+    await stale.trigger('click');
+    expect(wrapper.emitted('openCase')).toBeUndefined();
+    await wrapper.setProps({ month: '2024-03' });
+    expect(document.querySelector('[role="tooltip"]')).toBeNull();
+  });
+
+  it('escapes event and tooltip text and keeps separate tooltip identities per instance', async () => {
+    const hostile = {
+      ...court,
+      title: '<script>title()</script>',
+      sub: '<img src=x onerror=attack()>',
+      courtDetails: { judge: '<script>judge()</script>' },
+    };
+    const wrapper = mount({
+      render: () =>
+        h('div', [
+          h(CalendarMonthGrid, {
+            month: '2024-02',
+            events: [hostile],
+            canRead: true,
+          }),
+          h(CalendarMonthGrid, {
+            month: '2024-02',
+            events: [court],
+            canRead: true,
+          }),
+        ]),
+    });
+    const buttons = wrapper.findAll('.calendar-event');
+    await buttons[0]?.trigger('focus');
+    await buttons[1]?.trigger('focus');
+    const tips = [...document.querySelectorAll('[role="tooltip"]')];
+    expect(tips).toHaveLength(2);
+    expect(tips[0]?.id).not.toBe(tips[1]?.id);
+    expect(document.querySelector('[role="tooltip"] script')).toBeNull();
+    expect(document.querySelector('[role="tooltip"] img')).toBeNull();
+    expect(tips[0]?.textContent).toContain('<script>judge()</script>');
+  });
+
   it('renders a Sunday-first month with leap-day arrangements and exact case links', async () => {
     const wrapper = render();
     expect(wrapper.get('h2').text()).toBe('2024年2月');

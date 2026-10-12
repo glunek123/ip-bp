@@ -1,9 +1,12 @@
 import { describe, expect, it } from 'vitest';
 import {
   buildCalendarMonth,
+  calendarEventTitle,
   calendarMonthLabel,
+  isCalendarDate,
   moveCalendarMonth,
   type CalendarHearingEvent,
+  type CalendarEvent,
 } from './calendar-month';
 
 const event: CalendarHearingEvent = {
@@ -14,6 +17,60 @@ const event: CalendarHearingEvent = {
 };
 
 describe('calendar month business dates', () => {
+  it('retains explicit multiple trial and unassociated non-court events without inventing metadata', () => {
+    const events: CalendarEvent[] = [
+      {
+        eventKey: 'first',
+        date: '2024-02-29',
+        type: 'court',
+        title: '一审开庭',
+        caseId: 'case-a',
+      },
+      {
+        eventKey: 'second',
+        date: '2024-02-29',
+        type: 'court',
+        title: '二审开庭',
+        caseId: 'case-a',
+      },
+      {
+        eventKey: 'contract',
+        date: '2024-02-29',
+        type: 'contract',
+        title: null,
+        caseId: null,
+      },
+    ];
+    const result = buildCalendarMonth('2024-02', Object.freeze(events)).flatMap(
+      (cell) => cell.events,
+    );
+    expect(result.map((item) => item.eventKey)).toEqual([
+      'first',
+      'second',
+      'contract',
+    ]);
+    expect(result[2]?.caseId).toBeNull();
+    expect(result[2]?.courtDetails).toBeUndefined();
+    expect(calendarEventTitle(events[2]!)).toBe('合同到期 · 标题未提供');
+    expect(
+      buildCalendarMonth('2024-02', [{ ...events[0]!, date: null }]).flatMap(
+        (cell) => cell.events,
+      ),
+    ).toEqual([]);
+  });
+
+  it.each([
+    ['2024-02-29', true],
+    ['2025-02-29', false],
+    ['0000-01-01', false],
+    ['2024-02-29T12:00:00Z', false],
+    [null, false],
+  ])(
+    'validates an explicit today date %s without a clock or timezone conversion',
+    (date, valid) => {
+      expect(isCalendarDate(date)).toBe(valid);
+    },
+  );
   it('moves across years and supports a multi-month offset', () => {
     expect(moveCalendarMonth('2025-12', 1)).toBe('2026-01');
     expect(moveCalendarMonth('2026-01', -1)).toBe('2025-12');

@@ -5,11 +5,62 @@ export interface CalendarHearingEvent {
   caseLabel: string | null;
 }
 
+export const CALENDAR_EVENT_LABELS = {
+  court: '开庭',
+  pay: '缴费截止',
+  contract: '合同到期',
+  other: '重要节点',
+} as const;
+
+export interface CalendarEvent {
+  eventKey: string;
+  date: string | null;
+  type: keyof typeof CALENDAR_EVENT_LABELS;
+  title: string | null;
+  sub?: string | null;
+  caseId: string | null;
+  courtDetails?: {
+    party?: string | null;
+    defendant?: string | null;
+    reason?: string | null;
+    time?: string | null;
+    place?: string | null;
+    judge?: string | null;
+  };
+  caseDetails?: {
+    customer?: string | null;
+    rightsHolder?: string | null;
+    defendant?: string | null;
+    caseNumber?: string | null;
+    amount?: string | null;
+  };
+}
+
+export type CalendarEventInput = CalendarHearingEvent | CalendarEvent;
+
+export function calendarEventTitle(event: CalendarEvent): string {
+  return (
+    event.title?.trim() || `${CALENDAR_EVENT_LABELS[event.type]} · 标题未提供`
+  );
+}
+
+function normalizeEvent(event: CalendarEventInput): CalendarEvent | null {
+  if ('date' in event) return event;
+  if (!event.caseId.trim()) return null;
+  return {
+    eventKey: event.eventKey,
+    caseId: event.caseId,
+    date: event.hearingAt,
+    type: 'court',
+    title: `开庭 · ${event.caseLabel?.trim() || '案件名称未提供'}`,
+  };
+}
+
 export interface CalendarMonthCell {
   date: string | null;
   day: number | null;
   inMonth: boolean;
-  events: readonly CalendarHearingEvent[];
+  events: readonly CalendarEvent[];
 }
 
 function parseMonth(month: string): { year: number; month: number } | null {
@@ -23,6 +74,15 @@ function daysInMonth(year: number, month: number): number {
     return year % 4 === 0 && (year % 100 !== 0 || year % 400 === 0) ? 29 : 28;
   }
   return [4, 6, 9, 11].includes(month) ? 30 : 31;
+}
+
+export function isCalendarDate(date: string | null): date is string {
+  if (!date || !/^\d{4}-\d{2}-\d{2}$/u.test(date)) return false;
+  const parsed = parseMonth(date.slice(0, 7));
+  const day = Number(date.slice(8));
+  return (
+    parsed !== null && day >= 1 && day <= daysInMonth(parsed.year, parsed.month)
+  );
 }
 
 function formatMonth(year: number, month: number): string {
@@ -48,7 +108,7 @@ export function calendarMonthLabel(month: string): string | null {
 // Business dates remain calendar strings; no conversion to an instant or timezone.
 export function buildCalendarMonth(
   month: string,
-  events: readonly CalendarHearingEvent[] = [],
+  events: readonly CalendarEventInput[] = [],
 ): CalendarMonthCell[] {
   const parsed = parseMonth(month);
   if (!parsed) return [];
@@ -67,22 +127,20 @@ export function buildCalendarMonth(
       1) %
     7;
   const monthDays = daysInMonth(year, monthNumber);
-  const byDate = new Map<string, CalendarHearingEvent[]>();
-  for (const event of events) {
+  const byDate = new Map<string, CalendarEvent[]>();
+  for (const input of events) {
+    const event = normalizeEvent(input);
     if (
-      !event.hearingAt ||
-      !event.hearingAt.startsWith(`${month}-`) ||
-      !/^\d{4}-\d{2}-\d{2}$/u.test(event.hearingAt) ||
-      !event.eventKey.trim() ||
-      !event.caseId.trim()
+      !event ||
+      !isCalendarDate(event.date) ||
+      !event.date.startsWith(`${month}-`) ||
+      !event.eventKey.trim()
     ) {
       continue;
     }
-    const day = Number(event.hearingAt.slice(8));
-    if (day < 1 || day > monthDays) continue;
-    const group = byDate.get(event.hearingAt) ?? [];
+    const group = byDate.get(event.date) ?? [];
     group.push(event);
-    byDate.set(event.hearingAt, group);
+    byDate.set(event.date, group);
   }
   const length = Math.ceil((firstWeekday + monthDays) / 7) * 7;
   return Array.from({ length }, (_, index) => {
