@@ -1,6 +1,6 @@
 # 当前开发状态
 
-更新日期：2026-10-11。本文件只保留恢复当前工作的最小事实；历史状态见[历史状态](project-status-history-through-2026-09-18.md)，候选证据与集成事实见[验证记录](spec/v0.1/VALIDATION.md)。
+更新日期：2026-10-12。本文件只保留恢复当前工作的最小事实；历史状态见[历史状态](project-status-history-through-2026-09-18.md)，候选证据与集成事实见[验证记录](spec/v0.1/VALIDATION.md)。
 
 ## 当前阶段
 
@@ -10,7 +10,7 @@ CORE-CA-001～010及SD-44律师身份前置补齐均已验收、推送并集成m
 
 2026-10-11附属任务已验收并随CA-010推送、集成：最小完善既有前置契约反馈、旧测试兼容和交接规则，未改业务范围、测试覆盖或门禁脚本。实际规则候选`26b4f23`通过独立非实现6 Sol Review两轴ACCEPTED、C/I/M0及一次完整verify；结果和证据边界见[前置反馈修复记录](spec/v0.1/VALIDATION.md#切片前置反馈最小修复2026-10-11)。实际提速未量化。
 
-唯一Current为**CORE-CA-011｜上传执行材料（已领取，实施中）**，Next为CORE-CA-012未领取；指针与范围以[路线图](feature-roadmap.md#current-slice)为准。从更新后main`caba39d`建立`codex/core-ca-011-execution-materials`；设计见[案件Spec](spec/v0.1/modules/cases.md#ca-011上传执行材料)，步骤见[计划](superpowers/plans/2026-10-11-case-execution-materials.md)。SD-51已确认本片含确认前留原因重提；独立设计审查已补齐客户阶段投影遗漏，不扩大客户材料范围。当前未实现／未验收。CA-010与规则推送、组合tree及证据边界见[集成记录](spec/v0.1/VALIDATION.md#ca-010与前置反馈规则集成2026-10-11)；本次不部署或执行开发／生产迁移。
+唯一Current为**CORE-CA-011｜上传执行材料（已领取，实施中，未验收）**，Next为CORE-CA-012未领取；指针与范围以[路线图](feature-roadmap.md#current-slice)为准。从更新后main`caba39d`建立`codex/core-ca-011-execution-materials`；设计见[案件Spec](spec/v0.1/modules/cases.md#ca-011上传执行材料)，步骤见[计划](superpowers/plans/2026-10-11-case-execution-materials.md)。SD-51已确认本片含确认前留原因重提。后端Task独立补审两轴ACCEPTED、未关闭C/I/M0，前后端及浏览器用例已本地集成；真实浏览器、集成终审及完整门禁尚未完成，不扩大客户材料范围。Docker恢复后仅重建临时测试容器的既有迁移链，独立测试库共133条；没有修改已执行迁移。恢复报告在ignored `.local/case-execution-submission/`。CA-010与规则推送、组合tree及证据边界见[集成记录](spec/v0.1/VALIDATION.md#ca-010与前置反馈规则集成2026-10-11)；本次不推送新片、不部署或执行开发／生产迁移。
 
 2026-10-11实际业务候选`38c7ab98dad1717bdaeeb9956208291f96ba49ce`／tree`53309640bdc258ea29eec4dade1d3784b01bb1b4`已通过独立非实现6 Sol Task／Final Review及修复补审，两轴ACCEPTED、未关闭C/I/M0。完整verify退出0，工具74/74、前端963/963、后端1206/1206及双构建；适用31文件隔离PG／Chromium147/147退出0，无跳过／重试，包含本片5条真实浏览器流程和130条迁移链。正式命令前后候选与环境一致。失败历史、累计文档收口和证据边界只见[CA-010验证记录](spec/v0.1/VALIDATION.md#core-ca-010-二审办理与结果2026-10-11)，完整报告在ignored `.local/case-second-instance/`。只升级15433独立测试库，人工／开发／生产库未操作。前任律师参与期历史查看仍属SD-44后续；当前承办结束后的拒读有真实PG服务证据，不冒称浏览器已有结束承办入口。历史外部异模型Pending不追认。
 
@@ -50,7 +50,7 @@ SD-44增加独立LAWYER账号身份、外部身份与内部权限隔离、律师
 
 CA-008没有剩余业务验收阻塞。非实现子Agent的同模型隔离终审ACCEPTED，未关闭C／I／M为0；独立性不足，外部异模型独立Review仍Pending（本轮未执行），不表述为外部Review通过。自动测试、工程门禁及同模型审查结果分别见[VALIDATION](spec/v0.1/VALIDATION.md)；原始证据／Review在`.local/case-judgment/`。仅测试public升级至91条，开发／生产迁移和部署未执行。
 
-CA-007～010已集成，已补二审／重审同案锁及撤销／判决更正阻断。退费明细及办理状态仍属B18财务范围；后续执行、外部案件补录和完整财务未实现。CA-011接入正式后续事实时须继续补阻断及阶段数据库守卫，不以当前缺少后续表证明未来安全。原有大chunk与pg弃用警告为非阻断。
+CA-007～010已集成，已补二审／重审同案锁及撤销／判决更正阻断。退费明细及办理状态仍属B18财务范围；后续执行、外部案件补录和完整财务未实现。CA-011已实现执行提交与上游撤销的阻断及阶段守卫，尚待全片验收；未来CA-012接入确认事实时须增量补齐后续阻断和竞争测试，不能以当前缺少确认表证明未来安全。原有大chunk与pg弃用警告为非阻断。
 
 ## 最近验证
 
