@@ -84,6 +84,7 @@ export const permissionActionValues = [
   'CASE_SECOND_INSTANCE_SAVE',
   'CASE_SECOND_INSTANCE_RESULT',
   'CASE_SECOND_INSTANCE_RESULT_REVOKE',
+  'CASE_EXECUTION_SUBMIT',
   'NOTARY_OFFICE_MANAGE',
   'USER_READ',
   'USER_MANAGE',
@@ -304,7 +305,8 @@ function isPermissionCatalog(
         item.action === 'CASE_JUDGMENT_REGISTER' ||
         item.action === 'CASE_JUDGMENT_CORRECT' ||
         item.action === 'CASE_JUDGMENT_NEXT_STEP' ||
-        item.action === 'CASE_JUDGMENT_NEXT_STEP_REVOKE') &&
+        item.action === 'CASE_JUDGMENT_NEXT_STEP_REVOKE' ||
+        item.action === 'CASE_EXECUTION_SUBMIT') &&
         (item.scopes.length !== 3 ||
           item.scopes[0] !== 'SELF' ||
           item.scopes[1] !== 'TEAM' ||

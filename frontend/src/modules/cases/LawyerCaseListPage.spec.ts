@@ -45,6 +45,7 @@ const emptyResult = {
     WAITING_JUDGMENT: 0,
     SECOND_INSTANCE: 0,
     WAITING_EXECUTION_DOCUMENTS: 0,
+    WAITING_EXECUTION_CONFIRMATION: 0,
   },
 };
 
@@ -90,6 +91,22 @@ describe('LawyerCaseListPage', () => {
     expect(wrapper.text()).toContain('待提交立案');
     expect(wrapper.text()).not.toContain('本部门全部');
     expect(wrapper.get('a').attributes('href')).toBe('/lawyer/cases/case-1');
+  });
+
+  it('loads the execution preparation group without a single-stage filter', async () => {
+    const { wrapper, router } = await mountPage();
+    await router.push('/lawyer/cases?stageGroup=EXECUTION_PREPARATION');
+    await flushPromises();
+    expect(api.listLawyerCases).toHaveBeenLastCalledWith(
+      1,
+      20,
+      undefined,
+      expect.objectContaining({
+        stageGroup: 'EXECUTION_PREPARATION',
+        signal: expect.any(AbortSignal),
+      }),
+    );
+    expect(wrapper.get('.page-head').text()).toContain('准备执行文书');
   });
 
   it('requests and displays the second server page and disables boundary controls', async () => {

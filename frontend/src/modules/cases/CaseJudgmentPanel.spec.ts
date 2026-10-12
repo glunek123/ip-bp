@@ -84,6 +84,8 @@ const baseItem: CaseDetail = {
   canSaveSecondInstance: false,
   canRegisterSecondInstanceResult: false,
   canRevokeSecondInstanceResult: false,
+  canSubmitExecution: false,
+  executionSubmission: { current: null, submissions: [], availableFiles: [] },
   sourceLead: { id: 'lead-1', businessNo: 'LD-1' },
   sourceNotaryMatter: { id: 'matter-1', businessNo: 'NZ-1' },
   courtCaseNo: '（2026）甲0101民初1号',

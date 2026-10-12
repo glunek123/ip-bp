@@ -90,6 +90,7 @@ beforeEach(() => {
       WAITING_JUDGMENT: 0,
       SECOND_INSTANCE: 0,
       WAITING_EXECUTION_DOCUMENTS: 0,
+      WAITING_EXECUTION_CONFIRMATION: 0,
     },
   });
   api.listLawyerMatchCandidates.mockResolvedValue([]);
@@ -140,6 +141,7 @@ beforeEach(() => {
     canSaveSecondInstance: false,
     canRegisterSecondInstanceResult: false,
     canRevokeSecondInstanceResult: false,
+    canSubmitExecution: false,
     canChooseJudgmentNextStep: false,
     canRevokeJudgmentNextStep: false,
     complaint: null,
@@ -170,6 +172,7 @@ beforeEach(() => {
       results: [],
       revocations: [],
     },
+    executionSubmission: { current: null, submissions: [], availableFiles: [] },
   });
   api.listOwnerMaterials.mockResolvedValue({ items: [], total: 0 });
   api.listFilingCourts.mockResolvedValue([]);
@@ -312,6 +315,7 @@ function confirmationDetail(
     canSaveSecondInstance: false,
     canRegisterSecondInstanceResult: false,
     canRevokeSecondInstanceResult: false,
+    canSubmitExecution: false,
     secondInstance: {
       currentTrialRoundId: null,
       currentProgress: null,
@@ -321,6 +325,7 @@ function confirmationDetail(
       results: [],
       revocations: [],
     },
+    executionSubmission: { current: null, submissions: [], availableFiles: [] },
   };
 }
 
@@ -407,6 +412,27 @@ describe('case pages', () => {
     expect(wrapper.get('[data-test="case-list"]').text()).toContain('LD-1');
     expect(wrapper.get('[data-test="case-list"]').text()).toContain('NZ-1');
     expect(wrapper.get('a[href="/cases/case-1"]').text()).toBe('CA-1');
+  });
+
+  it('loads the execution preparation group as one atomic-stage filter', async () => {
+    const wrapper = await mountRoute(
+      '/cases?view=department&stageGroup=EXECUTION_PREPARATION',
+      CaseListPage,
+    );
+    expect(api.listCases).toHaveBeenCalledWith(
+      1,
+      20,
+      expect.objectContaining({
+        view: 'department',
+        stageGroup: 'EXECUTION_PREPARATION',
+      }),
+    );
+    const filter = api.listCases.mock.calls.at(-1)?.[2];
+    expect(filter).not.toHaveProperty('stage');
+    expect(wrapper.get('.page-head').text()).toContain('准备执行文书');
+    expect(wrapper.get('a').attributes('href')).toContain(
+      'stageGroup=EXECUTION_PREPARATION',
+    );
   });
 
   it('labels an actionable complaint case as writable in the list', async () => {
@@ -841,6 +867,12 @@ describe('case pages', () => {
       canRegisterSecondInstanceResult: false,
       canRevokeSecondInstanceResult: false,
       acceptances: [],
+      canSubmitExecution: false,
+      executionSubmission: {
+        current: null,
+        submissions: [],
+        availableFiles: [],
+      },
       secondInstance: {
         currentTrialRoundId: null,
         currentProgress: null,
@@ -947,6 +979,12 @@ describe('case pages', () => {
       canRegisterSecondInstanceResult: false,
       canRevokeSecondInstanceResult: false,
       acceptances: [],
+      canSubmitExecution: false,
+      executionSubmission: {
+        current: null,
+        submissions: [],
+        availableFiles: [],
+      },
       secondInstance: {
         currentTrialRoundId: null,
         currentProgress: null,

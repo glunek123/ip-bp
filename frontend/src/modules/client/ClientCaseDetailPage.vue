@@ -90,7 +90,9 @@ onBeforeUnmount(() => request?.abort());
                           ? '二审'
                           : item.stage === 'WAITING_EXECUTION_DOCUMENTS'
                             ? '待写执行材料'
-                            : '待开庭'
+                            : item.stage === 'WAITING_EXECUTION_CONFIRMATION'
+                              ? '执行材料待确认'
+                              : '待开庭'
               }}</span>
               · 权利主体：{{ item.rightsHolderName }}
             </p>

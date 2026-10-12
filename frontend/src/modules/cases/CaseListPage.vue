@@ -5,6 +5,7 @@ import { ElButton } from 'element-plus/es/components/button/index.mjs';
 import { ApiError } from '../../api/http';
 import {
   listCases,
+  type CaseStageGroup,
   type CaseStageFilter,
   type CaseSummary,
   type CaseView,
@@ -28,6 +29,11 @@ const stage = computed<CaseStageFilter>(() =>
   route.query.stage === 'WAITING_EXECUTION_DOCUMENTS'
     ? route.query.stage
     : 'all',
+);
+const stageGroup = computed<CaseStageGroup | undefined>(() =>
+  stage.value === 'all' && route.query.stageGroup === 'EXECUTION_PREPARATION'
+    ? 'EXECUTION_PREPARATION'
+    : undefined,
 );
 function stageLabel(value: CaseSummary['stage']): string {
   if (value === 'PENDING_MATCH') return '待匹配';
@@ -56,7 +62,9 @@ async function load() {
     const result = await listCases(1, 20, {
       signal: controller.signal,
       view: view.value,
-      stage: stage.value,
+      ...(stageGroup.value
+        ? { stageGroup: stageGroup.value }
+        : { stage: stage.value }),
     });
     if (controller.signal.aborted) return;
     items.value = result.items;
@@ -75,7 +83,7 @@ function setView(next: CaseView) {
   void router.push({ query: { ...route.query, view: next } });
 }
 watch(
-  () => [route.query.view, route.query.stage],
+  () => [route.query.view, route.query.stage, route.query.stageGroup],
   () => void load(),
 );
 onMounted(() => void load());
@@ -91,7 +99,13 @@ onBeforeUnmount(() => request?.abort());
           <h1>案件</h1>
           <p>
             {{ view === 'mine' ? '我负责的案件' : '本部门全部案件' }} ·
-            {{ stage === 'all' ? '全部阶段' : stageLabel(stage) }}
+            {{
+              stageGroup
+                ? '准备执行文书'
+                : stage === 'all'
+                  ? '全部阶段'
+                  : stageLabel(stage)
+            }}
           </p>
         </div>
         <ElButton text :loading="state === 'loading'" @click="load"

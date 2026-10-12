@@ -10,9 +10,11 @@ export type CaseStage =
   | 'WAITING_HEARING'
   | 'WAITING_JUDGMENT'
   | 'SECOND_INSTANCE'
-  | 'WAITING_EXECUTION_DOCUMENTS';
+  | 'WAITING_EXECUTION_DOCUMENTS'
+  | 'WAITING_EXECUTION_CONFIRMATION';
 export type CaseView = 'mine' | 'department';
 export type CaseStageFilter = CaseStage | 'all';
+export type CaseStageGroup = 'EXECUTION_PREPARATION';
 export type CaseSummary = {
   id: string;
   businessNo: string;
@@ -97,6 +99,26 @@ export type CaseDetail = CaseSummary & {
   judgmentNextStep: CaseJudgmentNextStep;
   acceptances: Array<CaseAcceptanceHistory>;
   secondInstance: CaseSecondInstance;
+  canSubmitExecution: boolean;
+  executionSubmission: ExecutionSubmissionState;
+};
+export type ExecutionSubmissionFile = CaseFile & { uploadedAt: string };
+export type ExecutionSubmissionSummary = {
+  id: string;
+  trialRoundId: string;
+  judgmentNextStepId: string;
+  secondInstanceResultId: string | null;
+  priorSubmissionId: string | null;
+  changeReason: string | null;
+  fromVersion: number;
+  toVersion: number;
+  submittedAt: string;
+  files: ExecutionSubmissionFile[];
+};
+export type ExecutionSubmissionState = {
+  current: ExecutionSubmissionSummary | null;
+  submissions: ExecutionSubmissionSummary[];
+  availableFiles: ExecutionSubmissionFile[];
 };
 export type CaseHearingArrangement = {
   id: string;
@@ -381,7 +403,27 @@ export type LawyerCaseDetail = CaseWorkflowItem &
     judgmentNextStep: LawyerCaseJudgmentNextStep;
     acceptances: Array<LawyerCaseAcceptanceHistory>;
     secondInstance: LawyerCaseSecondInstance;
+    canSubmitExecution: boolean;
+    executionSubmission: ExecutionSubmissionState;
   };
+
+export type SubmitExecutionInput = {
+  expectedVersion: number;
+  idempotencyKey: string;
+  trialRoundId: string;
+  judgmentNextStepId: string;
+  secondInstanceResultId: string | null;
+  expectedSubmissionId: string | null;
+  executionApplicationContentVersionIds: string[];
+  changeReason?: string;
+};
+export type SubmitExecutionResult = {
+  id: string;
+  submissionId: string;
+  stage: 'WAITING_EXECUTION_CONFIRMATION';
+  version: number;
+  submittedAt: string;
+};
 
 export type SecondInstanceProgressInput = {
   hearingAt: string | null;
@@ -578,7 +620,8 @@ function validStage(value: unknown): value is CaseStage {
     value === 'WAITING_HEARING' ||
     value === 'WAITING_JUDGMENT' ||
     value === 'SECOND_INSTANCE' ||
-    value === 'WAITING_EXECUTION_DOCUMENTS'
+    value === 'WAITING_EXECUTION_DOCUMENTS' ||
+    value === 'WAITING_EXECUTION_CONFIRMATION'
   );
 }
 function source(value: unknown): value is { id: string; businessNo: string } {
@@ -666,6 +709,95 @@ function caseFile(value: unknown): value is CaseFile {
     ['materialId', 'contentVersionId', 'originalFilename', 'mimeType'].every(
       (key) => nonempty(value[key]),
     )
+  );
+}
+function executionSubmissionFile(
+  value: unknown,
+): value is ExecutionSubmissionFile {
+  return (
+    record(value) &&
+    exact(value, [
+      'materialId',
+      'contentVersionId',
+      'originalFilename',
+      'mimeType',
+      'uploadedAt',
+    ]) &&
+    caseFile({
+      materialId: value.materialId,
+      contentVersionId: value.contentVersionId,
+      originalFilename: value.originalFilename,
+      mimeType: value.mimeType,
+    }) &&
+    typeof value.uploadedAt === 'string' &&
+    !Number.isNaN(Date.parse(value.uploadedAt))
+  );
+}
+function executionSubmissionSummary(
+  value: unknown,
+): value is ExecutionSubmissionSummary {
+  return (
+    record(value) &&
+    exact(value, [
+      'id',
+      'trialRoundId',
+      'judgmentNextStepId',
+      'secondInstanceResultId',
+      'priorSubmissionId',
+      'changeReason',
+      'fromVersion',
+      'toVersion',
+      'submittedAt',
+      'files',
+    ]) &&
+    uuidV4(value.id) &&
+    uuidV4(value.trialRoundId) &&
+    uuidV4(value.judgmentNextStepId) &&
+    (value.secondInstanceResultId === null ||
+      uuidV4(value.secondInstanceResultId)) &&
+    (value.priorSubmissionId === null || uuidV4(value.priorSubmissionId)) &&
+    (value.changeReason === null ||
+      (typeof value.changeReason === 'string' &&
+        value.changeReason.trim() === value.changeReason &&
+        value.changeReason.length >= 1 &&
+        value.changeReason.length <= 500)) &&
+    Number.isInteger(value.fromVersion) &&
+    Number(value.fromVersion) >= 1 &&
+    Number.isInteger(value.toVersion) &&
+    value.toVersion === Number(value.fromVersion) + 1 &&
+    typeof value.submittedAt === 'string' &&
+    !Number.isNaN(Date.parse(value.submittedAt)) &&
+    Array.isArray(value.files) &&
+    value.files.length >= 1 &&
+    value.files.length <= 10 &&
+    value.files.every(executionSubmissionFile) &&
+    new Set(
+      value.files.map(
+        (file) => (file as ExecutionSubmissionFile).contentVersionId,
+      ),
+    ).size === value.files.length
+  );
+}
+function executionSubmissionState(value: unknown): boolean {
+  return (
+    record(value) &&
+    exact(value, ['current', 'submissions', 'availableFiles']) &&
+    (value.current === null || executionSubmissionSummary(value.current)) &&
+    Array.isArray(value.submissions) &&
+    value.submissions.every(executionSubmissionSummary) &&
+    (value.current === null ||
+      value.submissions.some(
+        (submission) =>
+          (submission as ExecutionSubmissionSummary).id ===
+          (value.current as ExecutionSubmissionSummary).id,
+      )) &&
+    Array.isArray(value.availableFiles) &&
+    value.availableFiles.every(executionSubmissionFile) &&
+    new Set(
+      value.availableFiles.map(
+        (file) => (file as ExecutionSubmissionFile).contentVersionId,
+      ),
+    ).size === value.availableFiles.length
   );
 }
 function validJudgmentFact(value: unknown, internal: boolean): boolean {
@@ -1071,6 +1203,8 @@ function validCaseDetail(value: unknown, id: string): value is CaseDetail {
       'judgmentNextStep',
       'acceptances',
       'secondInstance',
+      'canSubmitExecution',
+      'executionSubmission',
     ]) &&
     value.id === id &&
     summary({
@@ -1178,7 +1312,9 @@ function validCaseDetail(value: unknown, id: string): value is CaseDetail {
     validNextStep(value.judgmentNextStep, true) &&
     Array.isArray(value.acceptances) &&
     value.acceptances.every((item) => validAcceptanceHistory(item, true)) &&
-    validSecondInstance(value.secondInstance, true)
+    validSecondInstance(value.secondInstance, true) &&
+    typeof value.canSubmitExecution === 'boolean' &&
+    executionSubmissionState(value.executionSubmission)
   );
 }
 function validRoundId(value: unknown): boolean {
@@ -1558,6 +1694,7 @@ const caseStages: CaseStage[] = [
   'WAITING_JUDGMENT',
   'SECOND_INSTANCE',
   'WAITING_EXECUTION_DOCUMENTS',
+  'WAITING_EXECUTION_CONFIRMATION',
 ];
 function validLawyerSummary(value: unknown): value is LawyerCaseSummary {
   return (
@@ -1746,13 +1883,16 @@ export async function listLawyerCases(
   page = 1,
   pageSize = 20,
   stage?: CaseStage,
-  options: RequestOptions = {},
+  options: RequestOptions & { stageGroup?: CaseStageGroup } = {},
 ): Promise<LawyerCaseList> {
+  if (stage && options.stageGroup)
+    throw new ApiError('案件阶段和阶段组不能同时筛选', 400, 'VALIDATION_ERROR');
   const query = new URLSearchParams({
     page: String(page),
     pageSize: String(pageSize),
   });
   if (stage) query.set('stage', stage);
+  if (options.stageGroup) query.set('stageGroup', options.stageGroup);
   const result = await getJson(`/lawyer/cases?${query}`, options);
   if (
     !record(result) ||
@@ -1820,6 +1960,8 @@ export async function getLawyerCase(
       'judgmentNextStep',
       'acceptances',
       'secondInstance',
+      'canSubmitExecution',
+      'executionSubmission',
     ]) ||
     result.id !== id ||
     !validLawyerSummary({
@@ -1871,7 +2013,9 @@ export async function getLawyerCase(
     !validNextStep(result.judgmentNextStep, false) ||
     !Array.isArray(result.acceptances) ||
     !result.acceptances.every((item) => validAcceptanceHistory(item, false)) ||
-    !validSecondInstance(result.secondInstance, false)
+    !validSecondInstance(result.secondInstance, false) ||
+    typeof result.canSubmitExecution !== 'boolean' ||
+    !executionSubmissionState(result.executionSubmission)
   )
     throw invalidResponse();
   return result as unknown as LawyerCaseDetail;
@@ -1917,8 +2061,14 @@ export async function listLawyerMatchCandidates(
 export async function listCases(
   page = 1,
   pageSize = 20,
-  options: RequestOptions & { view?: CaseView; stage?: CaseStageFilter } = {},
+  options: RequestOptions & {
+    view?: CaseView;
+    stage?: CaseStageFilter;
+    stageGroup?: CaseStageGroup;
+  } = {},
 ): Promise<CaseList> {
+  if (options.stage && options.stage !== 'all' && options.stageGroup)
+    throw new ApiError('案件阶段和阶段组不能同时筛选', 400, 'VALIDATION_ERROR');
   const query = new URLSearchParams({
     page: String(page),
     pageSize: String(pageSize),
@@ -1926,6 +2076,7 @@ export async function listCases(
   });
   if (options.stage && options.stage !== 'all')
     query.set('stage', options.stage);
+  if (options.stageGroup) query.set('stageGroup', options.stageGroup);
   const response = await getJson(`/cases?${query}`, options);
   if (
     !record(response) ||
@@ -1948,6 +2099,7 @@ export async function listCases(
       'WAITING_JUDGMENT',
       'SECOND_INSTANCE',
       'WAITING_EXECUTION_DOCUMENTS',
+      'WAITING_EXECUTION_CONFIRMATION',
     ]) ||
     !Number.isInteger(response.counts.PENDING_MATCH) ||
     (response.counts.PENDING_MATCH as number) < 0 ||
@@ -1968,7 +2120,9 @@ export async function listCases(
     !Number.isInteger(response.counts.SECOND_INSTANCE) ||
     (response.counts.SECOND_INSTANCE as number) < 0 ||
     !Number.isInteger(response.counts.WAITING_EXECUTION_DOCUMENTS) ||
-    (response.counts.WAITING_EXECUTION_DOCUMENTS as number) < 0
+    (response.counts.WAITING_EXECUTION_DOCUMENTS as number) < 0 ||
+    !Number.isInteger(response.counts.WAITING_EXECUTION_CONFIRMATION) ||
+    (response.counts.WAITING_EXECUTION_CONFIRMATION as number) < 0
   )
     throw invalidResponse();
   return response as unknown as CaseList;
@@ -3015,6 +3169,67 @@ export async function submitComplaint(
     version: number;
     submittedAt: string;
   };
+}
+
+export async function submitExecution(
+  id: string,
+  input: SubmitExecutionInput,
+  audience: 'internal' | 'lawyer' = 'internal',
+): Promise<SubmitExecutionResult> {
+  const reason = input.changeReason?.trim();
+  const versions = input.executionApplicationContentVersionIds;
+  if (
+    !Number.isInteger(input.expectedVersion) ||
+    input.expectedVersion < 1 ||
+    !validIdempotencyKey(input.idempotencyKey) ||
+    !uuidV4(input.trialRoundId) ||
+    !uuidV4(input.judgmentNextStepId) ||
+    (input.secondInstanceResultId !== null &&
+      !uuidV4(input.secondInstanceResultId)) ||
+    (input.expectedSubmissionId !== null &&
+      !uuidV4(input.expectedSubmissionId)) ||
+    !Array.isArray(versions) ||
+    versions.length < 1 ||
+    versions.length > 10 ||
+    !versions.every(uuidV4) ||
+    new Set(versions).size !== versions.length ||
+    (input.expectedSubmissionId === null
+      ? input.changeReason !== undefined
+      : !reason || reason.length > 500)
+  ) {
+    throw new ApiError('执行材料提交信息无效', 400, 'VALIDATION_ERROR');
+  }
+  const body: SubmitExecutionInput =
+    input.changeReason === undefined
+      ? input
+      : { ...input, changeReason: reason };
+  const response = await requestJson(
+    `/${audience === 'lawyer' ? 'lawyer/cases' : 'cases'}/${encodeURIComponent(id)}/execution-submit`,
+    {
+      method: 'POST',
+      headers: { 'Idempotency-Key': input.idempotencyKey },
+      body,
+    },
+  );
+  if (
+    !record(response) ||
+    !exact(response, [
+      'id',
+      'submissionId',
+      'stage',
+      'version',
+      'submittedAt',
+    ]) ||
+    response.id !== id ||
+    !uuidV4(response.submissionId) ||
+    response.stage !== 'WAITING_EXECUTION_CONFIRMATION' ||
+    !Number.isInteger(response.version) ||
+    Number(response.version) !== input.expectedVersion + 1 ||
+    typeof response.submittedAt !== 'string' ||
+    Number.isNaN(Date.parse(response.submittedAt))
+  )
+    throw invalidResponse();
+  return response as unknown as SubmitExecutionResult;
 }
 
 export async function confirmCaseComplaint(

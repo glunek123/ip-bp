@@ -124,7 +124,11 @@ describe('client cases API', () => {
     });
   });
   it('decodes the two new stages without accepting internal choice facts', async () => {
-    for (const stage of ['SECOND_INSTANCE', 'WAITING_EXECUTION_DOCUMENTS']) {
+    for (const stage of [
+      'SECOND_INSTANCE',
+      'WAITING_EXECUTION_DOCUMENTS',
+      'WAITING_EXECUTION_CONFIRMATION',
+    ]) {
       mock({
         items: [{ ...item, stage }],
         total: 1,
@@ -135,6 +139,21 @@ describe('client cases API', () => {
         items: [{ stage }],
       });
     }
+    mock({
+      ...item,
+      stage: 'WAITING_EXECUTION_CONFIRMATION',
+      confirmedAmountState: 'KNOWN',
+      confirmedAmount: '123.45',
+      confirmedAt: '2026-10-01T00:00:00Z',
+      complaintFile: file,
+      authorizationFiles: [],
+      pendingReceiptFiles: [],
+      complaintMailing: null,
+    });
+    await expect(getClientCase('case-1')).resolves.toMatchObject({
+      stage: 'WAITING_EXECUTION_CONFIRMATION',
+    });
+
     mock({
       ...item,
       stage: 'SECOND_INSTANCE',

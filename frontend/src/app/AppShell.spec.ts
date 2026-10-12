@@ -65,6 +65,7 @@ beforeEach(() => {
       WAITING_JUDGMENT: 0,
       SECOND_INSTANCE: 0,
       WAITING_EXECUTION_DOCUMENTS: 0,
+      WAITING_EXECUTION_CONFIRMATION: 0,
     },
   });
   api.listNotaryOffices.mockResolvedValue({
@@ -116,6 +117,7 @@ beforeEach(() => {
       WAITING_JUDGMENT: 3,
       SECOND_INSTANCE: 2,
       WAITING_EXECUTION_DOCUMENTS: 1,
+      WAITING_EXECUTION_CONFIRMATION: 2,
     },
   });
 });
@@ -209,13 +211,18 @@ describe('AppShell', () => {
     expect(stages).toHaveLength(9);
     expect(
       wrapper.get('[data-test="execution-preparation-nav"]').text(),
-    ).toContain('准备执行文书待写执行材料1');
+    ).toContain('准备执行文书3');
     expect(
       wrapper
         .get('[data-test="execution-preparation-stage"]')
         .attributes('href'),
-    ).toContain('stage=WAITING_EXECUTION_DOCUMENTS');
-    expect(wrapper.get('[data-test="case-nav"]').text()).toContain('17');
+    ).toContain('stageGroup=EXECUTION_PREPARATION');
+    expect(
+      wrapper
+        .get('[data-test="execution-preparation-stage"]')
+        .attributes('href'),
+    ).not.toContain('stage=');
+    expect(wrapper.get('[data-test="case-nav"]').text()).toContain('19');
   });
 
   it('renders a minimal, distinct navigation for notary accounts', async () => {
@@ -266,6 +273,7 @@ describe('AppShell', () => {
         WAITING_JUDGMENT: 0,
         SECOND_INSTANCE: 0,
         WAITING_EXECUTION_DOCUMENTS: 1,
+        WAITING_EXECUTION_CONFIRMATION: 2,
       },
     });
     const { wrapper } = await mountShell('/lawyer/cases', lawyerSession);
@@ -279,12 +287,12 @@ describe('AppShell', () => {
     expect(api.listLawyerCases).toHaveBeenCalled();
     expect(
       wrapper.get('[data-test="lawyer-execution-preparation-nav"]').text(),
-    ).toContain('准备执行文书待写执行材料1');
+    ).toContain('准备执行文书3');
     expect(
       wrapper
         .get('[data-test="execution-preparation-stage"]')
         .attributes('href'),
-    ).toContain('stage=WAITING_EXECUTION_DOCUMENTS');
+    ).toContain('stageGroup=EXECUTION_PREPARATION');
     expect(api.listCases).not.toHaveBeenCalled();
     expect(api.listLeads).not.toHaveBeenCalled();
     expect(api.listNotaryMatters).not.toHaveBeenCalled();
@@ -344,7 +352,7 @@ describe('AppShell', () => {
       wrapper.get('[data-test="case-view-mine"]').attributes('href'),
     ).toContain('view=mine');
     expect(wrapper.findAll('[data-test="case-stage"]')).toHaveLength(9);
-    expect(wrapper.get('[data-test="case-nav"]').text()).toContain('17');
+    expect(wrapper.get('[data-test="case-nav"]').text()).toContain('19');
     expect(api.listCases).toHaveBeenCalledWith(1, 1, {
       signal: expect.any(AbortSignal),
       view: 'department',

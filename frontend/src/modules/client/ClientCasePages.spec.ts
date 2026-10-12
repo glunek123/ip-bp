@@ -138,6 +138,23 @@ describe('client case pages', () => {
     expect(detailPage.wrapper.text()).not.toContain('正式立案登记');
     expect(detailPage.wrapper.text()).not.toContain('法院案号');
   });
+  it('shows execution confirmation as a client stage without internal execution facts', async () => {
+    api.listClientCases.mockResolvedValueOnce({
+      ...list,
+      items: [{ ...list.items[0], stage: 'WAITING_EXECUTION_CONFIRMATION' }],
+    });
+    const listPage = await mountPage('/client/cases');
+    expect(listPage.wrapper.text()).toContain('执行材料待确认');
+
+    api.getClientCase.mockResolvedValueOnce({
+      ...detail,
+      stage: 'WAITING_EXECUTION_CONFIRMATION',
+    });
+    const detailPage = await mountPage('/client/cases/case-1');
+    expect(detailPage.wrapper.text()).toContain('执行材料待确认');
+    expect(detailPage.wrapper.text()).not.toContain('执行提交');
+    expect(detailPage.wrapper.text()).not.toContain('执行申请书');
+  });
   it('ignores a late detail response after changing cases and reloads after an authorization revision change', async () => {
     let finish!: (value: typeof detail) => void;
     api.getClientCase.mockImplementation((id: string) =>

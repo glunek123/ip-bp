@@ -6,6 +6,7 @@ import { ApiError } from '../../api/http';
 import {
   listLawyerCases,
   type CaseStage,
+  type CaseStageGroup,
   type LawyerCaseSummary,
 } from '../../api/cases';
 import { useAuthStore } from '../../stores/auth';
@@ -35,6 +36,12 @@ let revision = 0;
 const stage = computed(
   () => stages.find((item) => item.value === route.query.stage)?.value,
 );
+const stageGroup = computed<CaseStageGroup | undefined>(() =>
+  stage.value === undefined &&
+  route.query.stageGroup === 'EXECUTION_PREPARATION'
+    ? 'EXECUTION_PREPARATION'
+    : undefined,
+);
 const identity = computed(() =>
   auth.session === null
     ? ''
@@ -50,12 +57,14 @@ async function load(): Promise<void> {
   const currentIdentity = identity.value;
   const currentPage = page.value;
   const currentStage = stage.value;
+  const currentStageGroup = stageGroup.value;
   items.value = [];
   state.value = 'loading';
   error.value = '';
   try {
     const result = await listLawyerCases(currentPage, pageSize, currentStage, {
       signal: controller.signal,
+      ...(currentStageGroup ? { stageGroup: currentStageGroup } : {}),
     });
     if (
       controller.signal.aborted ||
@@ -88,7 +97,7 @@ function stageLabel(value: CaseStage): string {
   return stages.find((item) => item.value === value)?.label ?? value;
 }
 watch(
-  () => [route.query.stage, identity.value],
+  () => [route.query.stage, route.query.stageGroup, identity.value],
   () => {
     if (page.value === 1) void load();
     else page.value = 1;
@@ -110,7 +119,14 @@ onBeforeUnmount(() => {
           <p class="eyebrow">律师工作台</p>
           <h1>本人承办案件</h1>
           <p>
-            {{ stage ? stageLabel(stage) : '全部办理阶段' }} · 共 {{ total }} 项
+            {{
+              stageGroup
+                ? '准备执行文书'
+                : stage
+                  ? stageLabel(stage)
+                  : '全部办理阶段'
+            }}
+            · 共 {{ total }} 项
           </p>
         </div>
         <ElButton text :loading="state === 'loading'" @click="load"

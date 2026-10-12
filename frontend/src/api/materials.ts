@@ -28,7 +28,8 @@ export type MaterialCategory =
   | 'JUDGMENT'
   | 'SECOND_INSTANCE_DOCUMENT'
   | 'SECOND_INSTANCE_SERVICE'
-  | 'SECOND_INSTANCE_JUDGMENT';
+  | 'SECOND_INSTANCE_JUDGMENT'
+  | 'EXECUTION_APPLICATION';
 
 export type MaterialPurpose =
   | 'IDENTITY_FULL'
@@ -51,7 +52,8 @@ export type MaterialPurpose =
   | 'JUDGMENT'
   | 'SECOND_INSTANCE_DOCUMENT'
   | 'SECOND_INSTANCE_SERVICE'
-  | 'SECOND_INSTANCE_JUDGMENT';
+  | 'SECOND_INSTANCE_JUDGMENT'
+  | 'EXECUTION_APPLICATION';
 
 export type UploadedMaterial = {
   materialId: string;
@@ -162,7 +164,8 @@ function isCategory(value: unknown): value is MaterialCategory {
     value === 'JUDGMENT' ||
     value === 'SECOND_INSTANCE_DOCUMENT' ||
     value === 'SECOND_INSTANCE_SERVICE' ||
-    value === 'SECOND_INSTANCE_JUDGMENT'
+    value === 'SECOND_INSTANCE_JUDGMENT' ||
+    value === 'EXECUTION_APPLICATION'
   );
 }
 
@@ -188,7 +191,8 @@ function isPurpose(value: unknown): value is MaterialPurpose {
     value === 'JUDGMENT' ||
     value === 'SECOND_INSTANCE_DOCUMENT' ||
     value === 'SECOND_INSTANCE_SERVICE' ||
-    value === 'SECOND_INSTANCE_JUDGMENT'
+    value === 'SECOND_INSTANCE_JUDGMENT' ||
+    value === 'EXECUTION_APPLICATION'
   );
 }
 
@@ -448,11 +452,18 @@ export async function uploadMaterialFile(
         if (
           (input.category !== 'COMPLAINT' &&
             input.category !== 'AUTHORIZATION' &&
-            input.category !== 'FILING_EVIDENCE') ||
+            input.category !== 'FILING_EVIDENCE' &&
+            input.category !== 'EXECUTION_APPLICATION') ||
           input.purpose !== input.category ||
           !input.ownerId
         ) {
-          throw new ApiError('起诉材料归属信息无效', 400, 'VALIDATION_ERROR');
+          throw new ApiError(
+            input.category === 'EXECUTION_APPLICATION'
+              ? '执行申请材料归属信息无效'
+              : '起诉材料归属信息无效',
+            400,
+            'VALIDATION_ERROR',
+          );
         }
       }
     }

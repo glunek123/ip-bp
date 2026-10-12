@@ -91,6 +91,12 @@ const selectedCaseView = computed(() =>
 const selectedCaseStage = computed(() =>
   typeof route.query.stage === 'string' ? route.query.stage : undefined,
 );
+const selectedCaseStageGroup = computed(() =>
+  selectedCaseStage.value === undefined &&
+  route.query.stageGroup === 'EXECUTION_PREPARATION'
+    ? 'EXECUTION_PREPARATION'
+    : undefined,
+);
 const isLeadRoute = computed(
   () => route.path === '/leads' || route.path.startsWith('/leads/'),
 );
@@ -438,24 +444,24 @@ async function logout(): Promise<void> {
             class="app-subnav__group"
             data-test="lawyer-execution-preparation-nav"
           >
-            <span class="app-subnav__item">准备执行文书</span>
             <RouterLink
               class="app-subnav__item"
               :class="{
                 active:
                   route.path === '/lawyer/cases' &&
-                  selectedCaseStage === 'WAITING_EXECUTION_DOCUMENTS',
+                  selectedCaseStageGroup === 'EXECUTION_PREPARATION',
               }"
               :to="{
                 path: '/lawyer/cases',
-                query: { stage: 'WAITING_EXECUTION_DOCUMENTS' },
+                query: { stageGroup: 'EXECUTION_PREPARATION' },
               }"
               data-test="execution-preparation-stage"
               @click="closeDrawer"
             >
-              <span>待写执行材料</span
+              <span>准备执行文书</span
               ><span v-if="caseCounts" class="app-nav__badge">{{
-                caseCounts.WAITING_EXECUTION_DOCUMENTS
+                caseCounts.WAITING_EXECUTION_DOCUMENTS +
+                caseCounts.WAITING_EXECUTION_CONFIRMATION
               }}</span>
             </RouterLink>
           </div>
@@ -498,7 +504,9 @@ async function logout(): Promise<void> {
             data-test="case-view-mine"
             :to="{
               path: '/cases',
-              query: { view: 'mine', stage: selectedCaseStage },
+              query: selectedCaseStageGroup
+                ? { view: 'mine', stageGroup: selectedCaseStageGroup }
+                : { view: 'mine', stage: selectedCaseStage },
             }"
             @click="closeDrawer"
             >我负责</RouterLink
@@ -511,14 +519,21 @@ async function logout(): Promise<void> {
             data-test="case-view-department"
             :to="{
               path: '/cases',
-              query: { view: 'department', stage: selectedCaseStage },
+              query: selectedCaseStageGroup
+                ? { view: 'department', stageGroup: selectedCaseStageGroup }
+                : { view: 'department', stage: selectedCaseStage },
             }"
             @click="closeDrawer"
             >本部门全部</RouterLink
           >
           <RouterLink
             class="app-subnav__item"
-            :class="{ active: isCaseRoute && selectedCaseStage === undefined }"
+            :class="{
+              active:
+                isCaseRoute &&
+                selectedCaseStage === undefined &&
+                selectedCaseStageGroup === undefined,
+            }"
             :to="{ path: '/cases', query: { view: selectedCaseView } }"
             @click="closeDrawer"
           >
@@ -547,26 +562,26 @@ async function logout(): Promise<void> {
             }}</span>
           </RouterLink>
           <div class="app-subnav__group" data-test="execution-preparation-nav">
-            <span class="app-subnav__item">准备执行文书</span>
             <RouterLink
               class="app-subnav__item"
               :class="{
                 active:
                   isCaseRoute &&
-                  selectedCaseStage === 'WAITING_EXECUTION_DOCUMENTS',
+                  selectedCaseStageGroup === 'EXECUTION_PREPARATION',
               }"
               :to="{
                 path: '/cases',
                 query: {
                   view: selectedCaseView,
-                  stage: 'WAITING_EXECUTION_DOCUMENTS',
+                  stageGroup: 'EXECUTION_PREPARATION',
                 },
               }"
               data-test="execution-preparation-stage"
               @click="closeDrawer"
-              ><span>待写执行材料</span
+              ><span>准备执行文书</span
               ><span v-if="caseCounts" class="app-nav__badge">{{
-                caseCounts.WAITING_EXECUTION_DOCUMENTS
+                caseCounts.WAITING_EXECUTION_DOCUMENTS +
+                caseCounts.WAITING_EXECUTION_CONFIRMATION
               }}</span></RouterLink
             >
           </div>

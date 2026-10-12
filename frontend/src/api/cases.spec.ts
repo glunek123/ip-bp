@@ -18,7 +18,11 @@ import {
   revokeSecondInstanceResult,
 } from './cases';
 import * as casesApi from './cases';
-import type { CaseJudgmentFact } from './cases';
+import type {
+  CaseJudgmentFact,
+  SubmitExecutionInput,
+  SubmitExecutionResult,
+} from './cases';
 
 afterEach(() => vi.unstubAllGlobals());
 
@@ -50,6 +54,8 @@ const summary = {
 };
 const detail = {
   ...summary,
+  canSubmitExecution: false,
+  executionSubmission: { current: null, submissions: [], availableFiles: [] },
   courtCaseNo: null,
   department: { id: 'department-1', name: '知产部' },
   customer: { id: 'customer-1', name: '客户甲' },
@@ -142,6 +148,194 @@ function mockJson(payload: unknown, status = 200) {
 }
 
 describe('cases API', () => {
+  it('strictly decodes execution submission history and execution-only timestamps', async () => {
+    const empty = {
+      ...detail,
+      canSubmitExecution: true,
+      executionSubmission: {
+        current: null,
+        submissions: [],
+        availableFiles: [],
+      },
+    };
+    mockJson(empty);
+    await expect(getCase('case-1')).resolves.toMatchObject({
+      canSubmitExecution: true,
+      executionSubmission: {
+        current: null,
+        submissions: [],
+        availableFiles: [],
+      },
+    });
+
+    const file = {
+      materialId: '80000000-0000-4000-8000-000000000101',
+      contentVersionId: '80000000-0000-4000-8000-000000000102',
+      originalFilename: '执行申请书.docx',
+      mimeType:
+        'application/vnd.openxmlformats-officedocument.wordprocessingml.document',
+      uploadedAt: '2026-10-11T08:30:00.000Z',
+    };
+    const submission = {
+      id: '80000000-0000-4000-8000-000000000103',
+      trialRoundId: '80000000-0000-4000-8000-000000000104',
+      judgmentNextStepId: '80000000-0000-4000-8000-000000000105',
+      secondInstanceResultId: null,
+      priorSubmissionId: null,
+      changeReason: null,
+      fromVersion: 14,
+      toVersion: 15,
+      submittedAt: '2026-10-11T08:31:00.000Z',
+      files: [file],
+    };
+    const populated = {
+      ...empty,
+      stage: 'WAITING_EXECUTION_CONFIRMATION',
+      version: 15,
+      executionSubmission: {
+        current: submission,
+        submissions: [submission],
+        availableFiles: [],
+      },
+    };
+    mockJson(populated);
+    await expect(getCase('case-1')).resolves.toMatchObject({
+      executionSubmission: { current: { files: [file] } },
+    });
+
+    mockJson({
+      ...populated,
+      executionSubmission: {
+        ...populated.executionSubmission,
+        current: {
+          ...submission,
+          files: [{ ...file, uploadedAt: 'yesterday' }],
+        },
+        submissions: [
+          { ...submission, files: [{ ...file, uploadedAt: 'yesterday' }] },
+        ],
+      },
+    });
+    await expect(getCase('case-1')).rejects.toMatchObject({
+      code: 'INVALID_RESPONSE',
+    });
+  });
+
+  it('submits execution with explicit nullable anchors and preserves exact retry inputs', async () => {
+    const call = Reflect.get(casesApi, 'submitExecution') as
+      | ((
+          id: string,
+          input: SubmitExecutionInput,
+          audience?: 'internal' | 'lawyer',
+        ) => Promise<SubmitExecutionResult>)
+      | undefined;
+    expect(call).toBeTypeOf('function');
+    if (!call) return;
+    const input = {
+      expectedVersion: 14,
+      idempotencyKey: '80000000-0000-4000-8000-000000000111',
+      trialRoundId: '80000000-0000-4000-8000-000000000104',
+      judgmentNextStepId: '80000000-0000-4000-8000-000000000105',
+      secondInstanceResultId: null,
+      expectedSubmissionId: null,
+      executionApplicationContentVersionIds: [
+        '80000000-0000-4000-8000-000000000102',
+      ],
+    };
+    const fetchMock = mockJson({
+      id: 'case-1',
+      submissionId: '80000000-0000-4000-8000-000000000103',
+      stage: 'WAITING_EXECUTION_CONFIRMATION',
+      version: 15,
+      submittedAt: '2026-10-11T08:31:00.000Z',
+    });
+    await expect(call('case-1', input, 'lawyer')).resolves.toMatchObject({
+      submissionId: '80000000-0000-4000-8000-000000000103',
+      version: 15,
+    });
+    expect(fetchMock.mock.calls[0]?.[0]).toBe(
+      '/api/v1/lawyer/cases/case-1/execution-submit',
+    );
+    const request = fetchMock.mock.calls[0]?.[1] as RequestInit;
+    expect(JSON.parse(String(request.body))).toEqual(input);
+
+    const changedInput = {
+      ...input,
+      expectedVersion: 15,
+      expectedSubmissionId: '80000000-0000-4000-8000-000000000103',
+      changeReason: '补充执行申请材料',
+    };
+    const retryMock = mockJson({
+      id: 'case-1',
+      submissionId: '80000000-0000-4000-8000-000000000112',
+      stage: 'WAITING_EXECUTION_CONFIRMATION',
+      version: 16,
+      submittedAt: '2026-10-11T08:32:00.000Z',
+    });
+    await expect(call('case-1', changedInput)).resolves.toMatchObject({
+      version: 16,
+    });
+    expect(JSON.parse(String(retryMock.mock.calls[0]?.[1]?.body))).toEqual(
+      changedInput,
+    );
+  });
+
+  it('sends execution preparation group filters without a synthetic count key', async () => {
+    const counts = {
+      PENDING_MATCH: 0,
+      WAITING_COMPLAINT: 0,
+      WAITING_COMPLAINT_CONFIRMATION: 0,
+      WAITING_COMPLAINT_STAMP: 0,
+      WAITING_FILING: 0,
+      WAITING_FORMAL_ACCEPTANCE: 0,
+      WAITING_HEARING: 0,
+      WAITING_JUDGMENT: 0,
+      SECOND_INSTANCE: 0,
+      WAITING_EXECUTION_DOCUMENTS: 2,
+      WAITING_EXECUTION_CONFIRMATION: 3,
+    };
+    const fetchMock = mockJson({
+      items: [],
+      total: 5,
+      page: 1,
+      pageSize: 20,
+      counts,
+    });
+    const options = {
+      view: 'department',
+      stageGroup: 'EXECUTION_PREPARATION',
+    } as Parameters<typeof listCases>[2];
+    await listCases(1, 20, options);
+    expect(fetchMock.mock.calls[0]?.[0]).toBe(
+      '/api/v1/cases?page=1&pageSize=20&view=department&stageGroup=EXECUTION_PREPARATION',
+    );
+
+    const lawyerFetch = mockJson({
+      items: [],
+      total: 0,
+      page: 1,
+      pageSize: 20,
+      counts,
+    });
+    const lawyerList = Reflect.get(casesApi, 'listLawyerCases') as
+      | ((
+          page: number,
+          pageSize: number,
+          stage?: string,
+          options?: { stageGroup?: string },
+        ) => Promise<unknown>)
+      | undefined;
+    expect(lawyerList).toBeTypeOf('function');
+    if (!lawyerList) return;
+    await lawyerList(1, 20, undefined, {
+      stageGroup: 'EXECUTION_PREPARATION',
+    });
+    expect(lawyerFetch.mock.calls[0]?.[0]).toBe(
+      '/api/v1/lawyer/cases?page=1&pageSize=20&stageGroup=EXECUTION_PREPARATION',
+    );
+    expect(Object.keys(counts)).not.toContain('EXECUTION_PREPARATION');
+  });
+
   it('decodes nullable REMAND amounts in current and mixed history without admitting internal fields to lawyer', async () => {
     const id = (value: number) =>
       `70000000-0000-4000-8000-${String(value).padStart(12, '0')}`;
@@ -245,6 +439,7 @@ describe('cases API', () => {
       canCorrectJudgment: false,
       canRevokeJudgmentNextStep: false,
       canRevokeSecondInstanceResult: false,
+      canSubmitExecution: false,
       secondInstance: {
         ...secondInstance,
         currentResult: lawyerRemand,
@@ -887,6 +1082,12 @@ describe('cases API', () => {
       canSaveSecondInstance: false,
       canRegisterSecondInstanceResult: false,
       canRevokeSecondInstanceResult: false,
+      canSubmitExecution: false,
+      executionSubmission: {
+        current: null,
+        submissions: [],
+        availableFiles: [],
+      },
       createdAt: '2026-09-28T00:00:00.000Z',
       matchedAt: null,
       matchedOn: null,
@@ -1415,6 +1616,7 @@ describe('cases API', () => {
         WAITING_JUDGMENT: 0,
         SECOND_INSTANCE: 0,
         WAITING_EXECUTION_DOCUMENTS: 0,
+        WAITING_EXECUTION_CONFIRMATION: 0,
       },
     });
     await expect(
@@ -1432,6 +1634,7 @@ describe('cases API', () => {
         WAITING_JUDGMENT: 0,
         SECOND_INSTANCE: 0,
         WAITING_EXECUTION_DOCUMENTS: 0,
+        WAITING_EXECUTION_CONFIRMATION: 0,
       },
     });
     expect(fetchMock.mock.calls[0]?.[0]).toBe(
@@ -1463,6 +1666,7 @@ describe('cases API', () => {
         WAITING_JUDGMENT: 0,
         SECOND_INSTANCE: 0,
         WAITING_EXECUTION_DOCUMENTS: 0,
+        WAITING_EXECUTION_CONFIRMATION: 0,
       },
     });
     await expect(
@@ -1489,6 +1693,7 @@ describe('cases API', () => {
         WAITING_JUDGMENT: 0,
         SECOND_INSTANCE: 0,
         WAITING_EXECUTION_DOCUMENTS: 0,
+        WAITING_EXECUTION_CONFIRMATION: 0,
       },
     });
     await listCases(1, 20, { stage: 'all' });
@@ -1861,6 +2066,7 @@ describe('cases API', () => {
       canSaveSecondInstance: false,
       canRegisterSecondInstanceResult: false,
       canRevokeSecondInstanceResult: false,
+      canSubmitExecution: false,
       createdAt: '2026-09-28T00:00:00.000Z',
       matchedAt: '2026-09-29T01:00:00Z',
       matchedOn: '2026-09-28',
@@ -1881,6 +2087,11 @@ describe('cases API', () => {
       judgmentNextStep: { current: null, history: [], revocations: [] },
       acceptances: [],
       secondInstance: detail.secondInstance,
+      executionSubmission: {
+        current: null,
+        submissions: [],
+        availableFiles: [],
+      },
     };
     const read = Reflect.get(casesApi, 'getLawyerCase') as
       ((id: string) => Promise<Record<string, unknown>>) | undefined;
@@ -1973,6 +2184,7 @@ describe('cases API', () => {
       canSaveSecondInstance: false,
       canRegisterSecondInstanceResult: false,
       canRevokeSecondInstanceResult: false,
+      canSubmitExecution: false,
       createdAt: '2026-09-28T00:00:00.000Z',
       matchedAt: '2026-09-29T01:00:00Z',
       matchedOn: '2026-09-28',
@@ -1993,6 +2205,11 @@ describe('cases API', () => {
       judgmentNextStep: { current: null, history: [], revocations: [] },
       acceptances: [acceptance],
       secondInstance: detail.secondInstance,
+      executionSubmission: {
+        current: null,
+        submissions: [],
+        availableFiles: [],
+      },
     };
     mockJson(response);
     await expect(casesApi.getLawyerCase('case-1')).resolves.toMatchObject({
@@ -2235,6 +2452,7 @@ describe('cases API', () => {
         WAITING_JUDGMENT: 0,
         SECOND_INSTANCE: 0,
         WAITING_EXECUTION_DOCUMENTS: 0,
+        WAITING_EXECUTION_CONFIRMATION: 0,
       },
     });
     const read = Reflect.get(casesApi, 'listLawyerCases') as

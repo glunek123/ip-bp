@@ -54,6 +54,7 @@ function detail(
     canSaveSecondInstance: false,
     canRegisterSecondInstanceResult: false,
     canRevokeSecondInstanceResult: false,
+    canSubmitExecution: false,
     createdAt: '2026-10-01T00:00:00Z',
     matchedAt: '2026-10-01T00:00:00Z',
     matchedOn: '2026-10-01',
@@ -99,6 +100,7 @@ function detail(
       results: [],
       revocations: [],
     },
+    executionSubmission: { current: null, submissions: [], availableFiles: [] },
   };
 }
 function materials() {

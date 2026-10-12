@@ -27,10 +27,11 @@ describe('materials API', () => {
     ['SECOND_INSTANCE_DOCUMENT', 'SECOND_INSTANCE_DOCUMENT'],
     ['SECOND_INSTANCE_SERVICE', 'SECOND_INSTANCE_SERVICE'],
     ['SECOND_INSTANCE_JUDGMENT', 'SECOND_INSTANCE_JUDGMENT'],
+    ['EXECUTION_APPLICATION', 'EXECUTION_APPLICATION'],
   ] as const)(
     'uploads the explicit %s category and purpose',
     async (category, purpose) => {
-      const file = new File(['second-instance bytes'], '二审材料.pdf', {
+      const file = new File(['workflow bytes'], '案件材料.pdf', {
         type: 'application/pdf',
       });
       const uploadedResult = {
@@ -76,6 +77,62 @@ describe('materials API', () => {
       });
     },
   );
+
+  it('accepts only PDF, DOC, and DOCX for execution applications', async () => {
+    const file = new File(['docx bytes'], '执行申请书.docx', {
+      type: 'application/vnd.openxmlformats-officedocument.wordprocessingml.document',
+    });
+    const uploadedResult = {
+      ...uploaded,
+      materialId: 'execution-material',
+      contentVersionId: 'execution-version',
+      originalFilename: file.name,
+      purpose: 'EXECUTION_APPLICATION',
+      mimeType: file.type,
+      sizeBytes: file.size,
+    };
+    const fetch = vi
+      .fn()
+      .mockResolvedValueOnce(
+        new Response(
+          JSON.stringify({
+            id: 'draft-execution',
+            ownerType: 'CASE',
+            ownerId: 'case-1',
+            category: 'EXECUTION_APPLICATION',
+            purpose: 'EXECUTION_APPLICATION',
+            originalFilename: file.name,
+            declaredMimeType: file.type,
+            expiresAt: '2026-10-08T00:00:00.000Z',
+          }),
+        ),
+      )
+      .mockResolvedValueOnce(new Response(JSON.stringify(uploadedResult)));
+    vi.stubGlobal('fetch', fetch);
+    await expect(
+      uploadMaterialFile({
+        ownerType: 'CASE',
+        ownerId: 'case-1',
+        category: 'EXECUTION_APPLICATION',
+        purpose: 'EXECUTION_APPLICATION',
+        file,
+      }),
+    ).resolves.toMatchObject({ contentVersionId: 'execution-version' });
+
+    const image = new File(['png bytes'], '执行申请书.png', {
+      type: 'image/png',
+    });
+    await expect(
+      uploadMaterialFile({
+        ownerType: 'CASE',
+        ownerId: 'case-1',
+        category: 'EXECUTION_APPLICATION',
+        purpose: 'EXECUTION_APPLICATION',
+        file: image,
+      }),
+    ).rejects.toMatchObject({ code: 'VALIDATION_ERROR' });
+    expect(fetch).toHaveBeenCalledTimes(2);
+  });
 
   it('uses the dedicated customer proof category and rejects a file over 20 MiB before upload', async () => {
     const file = new File(['%PDF-1.4'], 'proof.pdf', {
