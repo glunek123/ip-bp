@@ -1,5 +1,15 @@
 # SPEC-001 文档验证
 
+## CA-011与开发反馈入口集成（2026-10-12）
+
+按用户授权获取远端后，本地／远端main均为`caba39d264d68da11577519d4dc87852571240a4`，工作区干净且无分叉。本地main快进至`9105da8535d3919765b5e8a08f7716b7e27f34b2`，组合tree为`3baab87637fbdbf948f53a4a20f80926c939d993`，与开发反馈任务收口完全相同，无冲突或额外代码变化；原子推送main、CA-011业务分支及开发反馈分支成功。
+
+证据分层保留：业务候选`f206df0`的独立非实现Sol终审、完整verify及34文件隔离PG／Chromium158/158；后续规则／入口候选`5303dce`的独立非实现Sol终审及补审、完整verify（工具77、前端988、后端1216及双构建）和新增入口3/3。后者包含原业务全部实现；相对业务候选，backend、frontend、tests、受控E2E runner、环境入口及锁文件均无差异。规则和工具测试变化已由后者实际验证，不归入纯文档例外。
+
+逐项核对`5303dce`至集成tree的累计差异及干净工作区，只有项目状态、验证摘要及对应快照。当前环境指纹仍为`8cebe60684ba5641d54f9c5c32e7c85b7b62c8fd8d55d4583e40330b5f5e9337`。因此按现行收口／集成规则保留上述不同候选的实际证据，不把组合HEAD描述为实跑完整门禁。集成专项strict context906、Spec57 REQ／63 AC／11 BQ／51 SD、受影响格式及Git diff检查均退出0。GitHub现场main未保护、rulesets为空、Actions workflows为0，不冒称远端CI已运行。
+
+本记录之后仅同步路线图、项目状态和解释快照，最终累计收口差异仍须完成相同文档专项检查。证据原件沿用ignored `.local/case-execution-submission/`与`.local/ca011-development-feedback/`；本轮未重跑完整verify或158项E2E，未改业务／测试／配置，未部署、未操作人工／开发／生产数据库。Current保留CA-011已完成已集成，Next为CA-012未领取，本轮不启动下一切片。
+
 ## CA-011开发期兼容反馈优化（2026-10-12）
 
 用户要求同时减少总耗时／不必要返工并保持代码质量。原CA-011会话`01a0c73a-3c32-7090-a1ee-0f7291fd52ec`于UTC`2026-10-12T03:28:08Z`明确completed／idle、收口`fbe3b9a`且现场干净后，才在本地`codex/ca011-development-feedback`实施。保留原业务成果、Current为CA-011已完成待集成、Next为CA-012未领取；没有推送、合入main或部署。
