@@ -102,31 +102,71 @@ test('scoped E2E commands reuse the guarded runner and full remains explicit', (
   );
 });
 
-test('case compatibility preflight selects each existing regression exactly once', () => {
-  const command = packageJson.scripts['test:e2e:case-compat'];
-  assert.match(command, /^node scripts\/run-e2e\.mjs /);
+function assertCaseCompatibilitySelection(command, readSource) {
+  const runner = 'node scripts/run-e2e.mjs ';
+  assert.ok(command.startsWith(runner));
   const grep = command.match(/ --grep "([^"]+)"$/);
   assert.ok(
     grep,
     'case compatibility preflight needs an explicit test selector',
   );
-  const selector = new RegExp(grep[1]);
-  for (const file of [
+  const files = [
     'tests/e2e/case-hearing-database.spec.ts',
     'tests/e2e/case-second-instance-migration.spec.ts',
     'tests/e2e/case-judgment-next-step.spec.ts',
-  ]) {
-    assert.ok(command.includes(file), `${file} must remain in the preflight`);
-    const source = readFileSync(resolve(root, file), 'utf8');
-    const titles = [...source.matchAll(/\btest\('([^']+)'/g)].map(
-      (match) => match[1],
-    );
+  ];
+  assert.deepEqual(
+    command.slice(runner.length, grep.index).trim().split(/\s+/u),
+    files,
+    'case compatibility preflight file arguments must match its reviewed scope',
+  );
+  const selector = new RegExp(grep[1]);
+  for (const file of files) {
+    const source = readSource(file);
+    const titles = [
+      ...source.matchAll(
+        /\btest\(\s*(?:'((?:\\.|[^'\\])*)'|"((?:\\.|[^"\\])*)")/gu,
+      ),
+    ].map((match) => match[1] ?? match[2]);
     assert.equal(
       titles.filter((title) => selector.test(title)).length,
       1,
       `${file} must select one test; renamed or broadened selectors need review`,
     );
   }
+}
+
+const readTestSource = (file) => readFileSync(resolve(root, file), 'utf8');
+
+test('case compatibility preflight selects each existing regression exactly once', () => {
+  assertCaseCompatibilitySelection(
+    packageJson.scripts['test:e2e:case-compat'],
+    readTestSource,
+  );
+});
+
+test('case compatibility preflight rejects an extra test file', () => {
+  const command = packageJson.scripts['test:e2e:case-compat'].replace(
+    ' --grep ',
+    ' tests/e2e/unrelated.spec.ts --grep ',
+  );
+  assert.throws(() =>
+    assertCaseCompatibilitySelection(command, readTestSource),
+  );
+});
+
+test('case compatibility preflight rejects matching double-quoted test additions', () => {
+  const readSource = (file) =>
+    readTestSource(file) +
+    (file === 'tests/e2e/case-hearing-database.spec.ts'
+      ? '\ntest("extra one committed snapshot", async () => {});'
+      : '');
+  assert.throws(() =>
+    assertCaseCompatibilitySelection(
+      packageJson.scripts['test:e2e:case-compat'],
+      readSource,
+    ),
+  );
 });
 
 test('formal slice scopes already subsume their immediate development checks', () => {
