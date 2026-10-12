@@ -2,6 +2,7 @@ import { randomUUID } from 'node:crypto';
 import { readFile } from 'node:fs/promises';
 import {
   expect,
+  request as playwrightRequest,
   test,
   type APIRequestContext,
   type Page,
@@ -1067,7 +1068,18 @@ test('read-only and unrelated actors cannot write or cross case boundaries', asy
   );
   await panel.locator('[data-test="submit-execution"]').click();
   await status(await submitted, 201);
-  const unrelatedLawyerSource = await createSubmittedCaseThroughApi(request);
+  const unrelatedSourceRequest = await playwrightRequest.newContext({
+    baseURL: origin,
+  });
+  const unrelatedLawyerSource = await (async () => {
+    try {
+      return await createSubmittedCaseThroughApi(unrelatedSourceRequest, {
+        submitAsLawyer: true,
+      });
+    } finally {
+      await unrelatedSourceRequest.dispose();
+    }
+  })();
 
   await logout(page);
   await login(
@@ -1193,9 +1205,14 @@ test('internal and current-lawyer preparation groups navigate to their execution
   await expect(internalGroup).toBeVisible();
   await internalGroup.click();
   await expect(page).toHaveURL(
+    /\/cases\?view=mine&stageGroup=EXECUTION_PREPARATION$/u,
+  );
+  await expect(internalGroup.locator('.app-nav__badge')).toHaveText(/^\d+$/u);
+  await page.getByRole('button', { name: '本部门全部' }).click();
+  await expect(page).toHaveURL(
     /\/cases\?view=department&stageGroup=EXECUTION_PREPARATION$/u,
   );
-  await page.getByRole('button', { name: '本部门全部' }).click();
+  await expect(internalGroup.locator('.app-nav__badge')).toHaveText(/^\d+$/u);
   const internalCase = page.locator(
     `[data-test="case-list"] a[href^="/cases/${source.caseId}?"]`,
   );
