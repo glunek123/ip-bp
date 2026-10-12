@@ -42,6 +42,8 @@ describe('CaseReadService', () => {
         .fn()
         .mockResolvedValue(null),
       listFrozenCaseComplaintMailingFiles: jest.fn().mockResolvedValue([]),
+      listFrozenCaseExecutionMailingFiles: jest.fn().mockResolvedValue([]),
+      listFrozenCaseExecutionFilingFiles: jest.fn().mockResolvedValue([]),
     };
     db.$transaction.mockImplementation(async (operation) =>
       operation({
@@ -116,6 +118,8 @@ describe('CaseReadService', () => {
         WAITING_EXECUTION_DOCUMENTS: 0,
         WAITING_EXECUTION_CONFIRMATION: 0,
         WAITING_EXECUTION_STAMP: 0,
+        WAITING_EXECUTION_FILING: 0,
+        EXECUTING: 0,
       },
     });
     expect(f.access.authorizeDepartmentAction).toHaveBeenCalledWith(
@@ -199,6 +203,9 @@ describe('CaseReadService', () => {
       businessNo: 'CA-1',
       stage: 'PENDING_MATCH',
       version: 1,
+      executionConfirmation: null,
+      executionMailing: null,
+      executionFiling: null,
       currentJudgmentId: null,
       judgmentFacts: [],
       currentTrialRoundId: null,
@@ -941,6 +948,68 @@ describe('CaseReadService', () => {
     expect((await f.service.list(actor, 1, 20)).items[0]).toMatchObject({
       canConfirmExecution: false,
     });
+  });
+
+  it('projects execution mailing and filing capabilities only from their anchored stages', async () => {
+    const f = fixture();
+    const shared = {
+      businessNo: 'CA-1',
+      version: 8,
+      currentTrialRoundId: null,
+      currentJudgmentNextStepId: null,
+      currentJudgmentNextStep: null,
+      currentExecutionSubmissionId: null,
+      currentSecondInstanceResultId: null,
+      currentSecondInstanceResult: null,
+      responsibleUserId: actor.userId,
+      responsibleMembership: { teamId: null },
+      createdAt: new Date('2026-10-11T00:00:00.000Z'),
+      owner: { id: actor.userId, displayName: 'operator' },
+      sourceLead: { id: 'lead-1', businessNo: 'LD-1' },
+      sourceNotaryMatter: { id: 'matter-1', businessNo: 'NT-1' },
+    };
+    f.db.case.findMany.mockResolvedValue([
+      {
+        ...shared,
+        id: 'case-mail',
+        stage: 'WAITING_EXECUTION_STAMP',
+        executionConfirmation: { id: 'confirmation-1' },
+        executionMailing: null,
+        executionFiling: null,
+      },
+      {
+        ...shared,
+        id: 'case-filing',
+        stage: 'WAITING_EXECUTION_FILING',
+        executionConfirmation: { id: 'confirmation-2' },
+        executionMailing: { id: 'mailing-2' },
+        executionFiling: null,
+      },
+    ]);
+
+    const result = await f.service.list(actor, 1, 20);
+    expect(result.items).toMatchObject([
+      {
+        id: 'case-mail',
+        canMailExecution: true,
+        canSubmitExecutionFiling: false,
+      },
+      {
+        id: 'case-filing',
+        canMailExecution: false,
+        canSubmitExecutionFiling: true,
+      },
+    ]);
+    expect(f.access.canAuthorizeCase).toHaveBeenCalledWith(
+      actor,
+      'case.execution.mail',
+      expect.objectContaining({ departmentId: actor.departmentId }),
+    );
+    expect(f.access.canAuthorizeCase).toHaveBeenCalledWith(
+      actor,
+      'case.execution.filing.submit',
+      expect.objectContaining({ departmentId: actor.departmentId }),
+    );
   });
 
   it('lists second-instance actions by current choice, stage and actual authorization', async () => {

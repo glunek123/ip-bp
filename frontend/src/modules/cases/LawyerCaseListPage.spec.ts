@@ -21,6 +21,8 @@ const emptyResult = {
       canSubmitComplaint: false,
       canConfirmComplaint: false,
       canMailComplaint: false,
+      canMailExecution: false,
+      canSubmitExecutionFiling: false,
       canSubmitFiling: true,
       canRegisterAcceptance: false,
       canUploadAcceptanceMaterials: false,
@@ -49,6 +51,8 @@ const emptyResult = {
     WAITING_EXECUTION_DOCUMENTS: 0,
     WAITING_EXECUTION_CONFIRMATION: 0,
     WAITING_EXECUTION_STAMP: 0,
+    WAITING_EXECUTION_FILING: 0,
+    EXECUTING: 0,
   },
 };
 

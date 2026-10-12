@@ -10,8 +10,10 @@ import {
   listLawyerMatchCandidates,
   registerCaseAcceptance,
   mailCaseComplaint,
+  mailCaseExecution,
   matchCase,
   submitCaseFiling,
+  submitCaseExecutionFiling,
   submitComplaint,
   chooseCaseJudgmentNextStep,
   revokeCaseJudgmentNextStep,
@@ -38,6 +40,8 @@ const summary = {
   canMatch: true,
   canSubmitExecution: false,
   canConfirmExecution: false,
+  canMailExecution: false,
+  canSubmitExecutionFiling: false,
   canSubmitComplaint: false,
   canConfirmComplaint: false,
   canMailComplaint: false,
@@ -61,7 +65,11 @@ const detail = {
   canSubmitExecution: false,
   executionSubmission: { current: null, submissions: [], availableFiles: [] },
   canConfirmExecution: false,
+  canMailExecution: false,
+  canSubmitExecutionFiling: false,
   executionConfirmation: null,
+  executionMailing: null,
+  executionFiling: null,
   courtCaseNo: null,
   department: { id: 'department-1', name: '知产部' },
   customer: { id: 'customer-1', name: '客户甲' },
@@ -164,7 +172,11 @@ describe('cases API', () => {
         availableFiles: [],
       },
       canConfirmExecution: false,
+      canMailExecution: false,
+      canSubmitExecutionFiling: false,
       executionConfirmation: null,
+      executionMailing: null,
+      executionFiling: null,
     };
     mockJson(empty);
     await expect(getCase('case-1')).resolves.toMatchObject({
@@ -201,6 +213,8 @@ describe('cases API', () => {
       stage: 'WAITING_EXECUTION_CONFIRMATION',
       version: 15,
       canConfirmExecution: true,
+      canMailExecution: false,
+      canSubmitExecutionFiling: false,
       executionSubmission: {
         current: submission,
         submissions: [submission],
@@ -217,6 +231,8 @@ describe('cases API', () => {
       stage: 'WAITING_EXECUTION_STAMP',
       canSubmitExecution: false,
       canConfirmExecution: false,
+      canMailExecution: false,
+      canSubmitExecutionFiling: false,
       executionConfirmation: {
         id: '80000000-0000-4000-8000-000000000106',
         submissionId: submission.id,
@@ -229,6 +245,41 @@ describe('cases API', () => {
     await expect(getCase('case-1')).resolves.toMatchObject({
       stage: 'WAITING_EXECUTION_STAMP',
       executionConfirmation: { files: [file] },
+    });
+
+    const mailed = {
+      ...confirmed,
+      stage: 'WAITING_EXECUTION_FILING',
+      version: 17,
+      canMailExecution: false,
+      executionMailing: {
+        id: '80000000-0000-4000-8000-000000000171',
+        confirmationId: confirmed.executionConfirmation.id,
+        mailedAt: '2026-10-11',
+        recordedAt: '2026-10-11T09:00:00.000Z',
+        files: [
+          {
+            materialId: file.materialId,
+            contentVersionId: file.contentVersionId,
+            originalFilename: file.originalFilename,
+            mimeType: file.mimeType,
+          },
+        ],
+      },
+    };
+    mockJson(mailed);
+    await expect(getCase('case-1')).resolves.toMatchObject({
+      executionMailing: { confirmationId: confirmed.executionConfirmation.id },
+    });
+    mockJson({
+      ...mailed,
+      executionMailing: {
+        ...mailed.executionMailing,
+        confirmationId: '80000000-0000-4000-8000-000000000199',
+      },
+    });
+    await expect(getCase('case-1')).rejects.toMatchObject({
+      code: 'INVALID_RESPONSE',
     });
 
     mockJson({
@@ -275,6 +326,110 @@ describe('cases API', () => {
         body: JSON.stringify(input),
       }),
     );
+  });
+
+  it('mails confirmed execution with a strict anchored receipt and exact transition', async () => {
+    const input = {
+      expectedVersion: 16,
+      idempotencyKey: '80000000-0000-4000-8000-000000000151',
+      expectedConfirmationId: '80000000-0000-4000-8000-000000000106',
+      mailedAt: '2026-10-11',
+      mailReceiptContentVersionIds: ['80000000-0000-4000-8000-000000000152'],
+    };
+    const fetchMock = mockJson({
+      id: 'case-1',
+      mailingId: '80000000-0000-4000-8000-000000000153',
+      confirmationId: input.expectedConfirmationId,
+      stage: 'WAITING_EXECUTION_FILING',
+      version: 17,
+      mailedAt: input.mailedAt,
+      recordedAt: '2026-10-11T09:00:00.000Z',
+    });
+    await expect(
+      mailCaseExecution('case-1', input, 'lawyer'),
+    ).resolves.toMatchObject({
+      mailingId: '80000000-0000-4000-8000-000000000153',
+      confirmationId: input.expectedConfirmationId,
+      stage: 'WAITING_EXECUTION_FILING',
+      version: 17,
+    });
+    expect(fetchMock).toHaveBeenCalledWith(
+      '/api/v1/lawyer/cases/case-1/execution-mail',
+      expect.objectContaining({
+        method: 'POST',
+        headers: expect.objectContaining({
+          'Idempotency-Key': input.idempotencyKey,
+        }),
+        body: JSON.stringify(input),
+      }),
+    );
+
+    mockJson({
+      id: 'case-1',
+      mailingId: '80000000-0000-4000-8000-000000000153',
+      confirmationId: '80000000-0000-4000-8000-000000000154',
+      stage: 'WAITING_EXECUTION_FILING',
+      version: 17,
+      mailedAt: input.mailedAt,
+      recordedAt: '2026-10-11T09:00:00.000Z',
+    });
+    await expect(mailCaseExecution('case-1', input)).rejects.toMatchObject({
+      code: 'INVALID_RESPONSE',
+    });
+
+    const futureFetch = mockJson({});
+    await expect(
+      mailCaseExecution('case-1', { ...input, mailedAt: '2099-01-01' }),
+    ).rejects.toMatchObject({ code: 'VALIDATION_ERROR' });
+    expect(futureFetch).not.toHaveBeenCalled();
+  });
+
+  it('submits execution filing with the exact mailing anchor and transition', async () => {
+    const input = {
+      expectedVersion: 17,
+      idempotencyKey: '80000000-0000-4000-8000-000000000161',
+      expectedMailingId: '80000000-0000-4000-8000-000000000153',
+      submittedAt: '2026-10-11',
+      executionFilingProofContentVersionIds: [
+        '80000000-0000-4000-8000-000000000162',
+      ],
+    };
+    const fetchMock = mockJson({
+      id: 'case-1',
+      filingId: '80000000-0000-4000-8000-000000000163',
+      mailingId: input.expectedMailingId,
+      stage: 'EXECUTING',
+      version: 18,
+      submittedAt: input.submittedAt,
+      recordedAt: '2026-10-11T10:00:00.000Z',
+    });
+    await expect(
+      submitCaseExecutionFiling('case-1', input, 'lawyer'),
+    ).resolves.toMatchObject({
+      filingId: '80000000-0000-4000-8000-000000000163',
+      mailingId: input.expectedMailingId,
+      stage: 'EXECUTING',
+      version: 18,
+    });
+    expect(fetchMock).toHaveBeenCalledWith(
+      '/api/v1/lawyer/cases/case-1/execution-filing-submit',
+      expect.objectContaining({
+        method: 'POST',
+        body: JSON.stringify(input),
+      }),
+    );
+    mockJson({
+      id: 'case-1',
+      filingId: '80000000-0000-4000-8000-000000000163',
+      mailingId: '80000000-0000-4000-8000-000000000164',
+      stage: 'EXECUTING',
+      version: 18,
+      submittedAt: input.submittedAt,
+      recordedAt: '2026-10-11T10:00:00.000Z',
+    });
+    await expect(
+      submitCaseExecutionFiling('case-1', input),
+    ).rejects.toMatchObject({ code: 'INVALID_RESPONSE' });
   });
 
   it('submits execution with explicit nullable anchors and preserves exact retry inputs', async () => {
@@ -350,6 +505,8 @@ describe('cases API', () => {
       WAITING_EXECUTION_DOCUMENTS: 2,
       WAITING_EXECUTION_CONFIRMATION: 3,
       WAITING_EXECUTION_STAMP: 0,
+      WAITING_EXECUTION_FILING: 0,
+      EXECUTING: 0,
     };
     const fetchMock = mockJson({
       items: [],
@@ -1146,7 +1303,11 @@ describe('cases API', () => {
         availableFiles: [],
       },
       canConfirmExecution: false,
+      canMailExecution: false,
+      canSubmitExecutionFiling: false,
       executionConfirmation: null,
+      executionMailing: null,
+      executionFiling: null,
       createdAt: '2026-09-28T00:00:00.000Z',
       matchedAt: null,
       matchedOn: null,
@@ -1677,6 +1838,8 @@ describe('cases API', () => {
         WAITING_EXECUTION_DOCUMENTS: 0,
         WAITING_EXECUTION_CONFIRMATION: 0,
         WAITING_EXECUTION_STAMP: 0,
+        WAITING_EXECUTION_FILING: 0,
+        EXECUTING: 0,
       },
     });
     await expect(
@@ -1696,6 +1859,8 @@ describe('cases API', () => {
         WAITING_EXECUTION_DOCUMENTS: 0,
         WAITING_EXECUTION_CONFIRMATION: 0,
         WAITING_EXECUTION_STAMP: 0,
+        WAITING_EXECUTION_FILING: 0,
+        EXECUTING: 0,
       },
     });
     expect(fetchMock.mock.calls[0]?.[0]).toBe(
@@ -1729,6 +1894,8 @@ describe('cases API', () => {
         WAITING_EXECUTION_DOCUMENTS: 0,
         WAITING_EXECUTION_CONFIRMATION: 0,
         WAITING_EXECUTION_STAMP: 0,
+        WAITING_EXECUTION_FILING: 0,
+        EXECUTING: 0,
       },
     });
     await expect(
@@ -1752,12 +1919,16 @@ describe('cases API', () => {
       WAITING_EXECUTION_DOCUMENTS: 1,
       WAITING_EXECUTION_CONFIRMATION: 0,
       WAITING_EXECUTION_STAMP: 0,
+      WAITING_EXECUTION_FILING: 0,
+      EXECUTING: 0,
     };
     const item = {
       ...summary,
       stage: 'WAITING_EXECUTION_DOCUMENTS',
       canSubmitExecution: true,
       canConfirmExecution: false,
+      canMailExecution: false,
+      canSubmitExecutionFiling: false,
     };
     mockJson({ items: [item], total: 1, page: 1, pageSize: 20, counts });
     await expect(listCases()).resolves.toMatchObject({
@@ -1766,6 +1937,8 @@ describe('cases API', () => {
           stage: 'WAITING_EXECUTION_DOCUMENTS',
           canSubmitExecution: true,
           canConfirmExecution: false,
+          canMailExecution: false,
+          canSubmitExecutionFiling: false,
         },
       ],
     });
@@ -1820,6 +1993,8 @@ describe('cases API', () => {
       WAITING_EXECUTION_DOCUMENTS: 1,
       WAITING_EXECUTION_CONFIRMATION: 0,
       WAITING_EXECUTION_STAMP: 0,
+      WAITING_EXECUTION_FILING: 0,
+      EXECUTING: 0,
     };
     const item = {
       id: 'case-1',
@@ -1844,6 +2019,8 @@ describe('cases API', () => {
       canRevokeSecondInstanceResult: false,
       canSubmitExecution: true,
       canConfirmExecution: false,
+      canMailExecution: false,
+      canSubmitExecutionFiling: false,
       createdAt: '2026-09-28T00:00:00.000Z',
     };
     mockJson({ items: [item], total: 1, page: 1, pageSize: 20, counts });
@@ -1853,6 +2030,8 @@ describe('cases API', () => {
           stage: 'WAITING_EXECUTION_DOCUMENTS',
           canSubmitExecution: true,
           canConfirmExecution: false,
+          canMailExecution: false,
+          canSubmitExecutionFiling: false,
         },
       ],
     });
@@ -1912,6 +2091,8 @@ describe('cases API', () => {
         WAITING_EXECUTION_DOCUMENTS: 0,
         WAITING_EXECUTION_CONFIRMATION: 0,
         WAITING_EXECUTION_STAMP: 0,
+        WAITING_EXECUTION_FILING: 0,
+        EXECUTING: 0,
       },
     });
     await listCases(1, 20, { stage: 'all' });
@@ -2286,7 +2467,11 @@ describe('cases API', () => {
       canRevokeSecondInstanceResult: false,
       canSubmitExecution: false,
       canConfirmExecution: false,
+      canMailExecution: false,
+      canSubmitExecutionFiling: false,
       executionConfirmation: null,
+      executionMailing: null,
+      executionFiling: null,
       createdAt: '2026-09-28T00:00:00.000Z',
       matchedAt: '2026-09-29T01:00:00Z',
       matchedOn: '2026-09-28',
@@ -2431,7 +2616,11 @@ describe('cases API', () => {
         availableFiles: [],
       },
       canConfirmExecution: false,
+      canMailExecution: false,
+      canSubmitExecutionFiling: false,
       executionConfirmation: null,
+      executionMailing: null,
+      executionFiling: null,
     };
     mockJson(response);
     await expect(casesApi.getLawyerCase('case-1')).resolves.toMatchObject({
@@ -2676,6 +2865,8 @@ describe('cases API', () => {
         WAITING_EXECUTION_DOCUMENTS: 0,
         WAITING_EXECUTION_CONFIRMATION: 0,
         WAITING_EXECUTION_STAMP: 0,
+        WAITING_EXECUTION_FILING: 0,
+        EXECUTING: 0,
       },
     });
     const read = Reflect.get(casesApi, 'listLawyerCases') as

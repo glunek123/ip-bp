@@ -1,7 +1,9 @@
 import { ApiError, getJson, type RequestOptions } from './http';
 import {
   mailCaseComplaint,
+  mailCaseExecution,
   type MailCaseComplaintInput,
+  type MailCaseExecutionInput,
   type CaseFile,
 } from './cases';
 
@@ -14,17 +16,27 @@ export type ClientCaseStage =
   | 'SECOND_INSTANCE'
   | 'WAITING_EXECUTION_DOCUMENTS'
   | 'WAITING_EXECUTION_CONFIRMATION'
-  | 'WAITING_EXECUTION_STAMP';
+  | 'WAITING_EXECUTION_STAMP'
+  | 'WAITING_EXECUTION_FILING'
+  | 'EXECUTING';
 export type ClientCase = {
   id: string;
   businessNo: string;
   stage: ClientCaseStage;
   version: number;
   canMailComplaint: boolean;
+  canMailExecution: boolean;
   rightsHolderName: string;
   defendantNames: string[];
 };
 export type ClientCaseDetail = ClientCase & {
+  executionConfirmationId: string | null;
+  executionMailing: {
+    id: string;
+    mailedAt: string;
+    recordedAt: string;
+    files: CaseFile[];
+  } | null;
   confirmedAmountState: 'KNOWN' | 'PENDING';
   confirmedAmount: string | null;
   confirmedAt: string;
@@ -45,6 +57,22 @@ function exact(value: Record<string, unknown>, keys: string[]): boolean {
   return (
     Object.keys(value).length === keys.length &&
     keys.every((key) => key in value)
+  );
+}
+function uuidV4(value: unknown): value is string {
+  return (
+    typeof value === 'string' &&
+    /^[0-9a-f]{8}-[0-9a-f]{4}-4[0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$/iu.test(
+      value,
+    )
+  );
+}
+function businessDate(value: unknown): value is string {
+  if (typeof value !== 'string' || !/^\d{4}-\d{2}-\d{2}$/u.test(value))
+    return false;
+  const date = new Date(`${value}T00:00:00.000Z`);
+  return (
+    !Number.isNaN(date.getTime()) && date.toISOString().slice(0, 10) === value
   );
 }
 function validFile(value: unknown): value is CaseFile {
@@ -70,6 +98,7 @@ function validCase(value: unknown): value is ClientCase {
       'stage',
       'version',
       'canMailComplaint',
+      'canMailExecution',
       'rightsHolderName',
       'defendantNames',
     ]) &&
@@ -85,9 +114,12 @@ function validCase(value: unknown): value is ClientCase {
       value.stage === 'SECOND_INSTANCE' ||
       value.stage === 'WAITING_EXECUTION_DOCUMENTS' ||
       value.stage === 'WAITING_EXECUTION_CONFIRMATION' ||
-      value.stage === 'WAITING_EXECUTION_STAMP') &&
+      value.stage === 'WAITING_EXECUTION_STAMP' ||
+      value.stage === 'WAITING_EXECUTION_FILING' ||
+      value.stage === 'EXECUTING') &&
     Number.isInteger(value.version) &&
     typeof value.canMailComplaint === 'boolean' &&
+    typeof value.canMailExecution === 'boolean' &&
     typeof value.rightsHolderName === 'string' &&
     Array.isArray(value.defendantNames) &&
     value.defendantNames.every((name) => typeof name === 'string')
@@ -103,6 +135,7 @@ function validDetail(value: unknown, id: string): value is ClientCaseDetail {
       'stage',
       'version',
       'canMailComplaint',
+      'canMailExecution',
       'rightsHolderName',
       'defendantNames',
       'confirmedAmountState',
@@ -112,6 +145,8 @@ function validDetail(value: unknown, id: string): value is ClientCaseDetail {
       'authorizationFiles',
       'pendingReceiptFiles',
       'complaintMailing',
+      'executionConfirmationId',
+      'executionMailing',
     ])
   )
     return false;
@@ -121,11 +156,32 @@ function validDetail(value: unknown, id: string): value is ClientCaseDetail {
     stage: value.stage,
     version: value.version,
     canMailComplaint: value.canMailComplaint,
+    canMailExecution: value.canMailExecution,
     rightsHolderName: value.rightsHolderName,
     defendantNames: value.defendantNames,
   };
   return (
     validCase(base) &&
+    (value.executionConfirmationId === null ||
+      uuidV4(value.executionConfirmationId)) &&
+    (value.executionMailing === null ||
+      (record(value.executionMailing) &&
+        exact(value.executionMailing, [
+          'id',
+          'mailedAt',
+          'recordedAt',
+          'files',
+        ]) &&
+        uuidV4(value.executionMailing.id) &&
+        businessDate(value.executionMailing.mailedAt) &&
+        typeof value.executionMailing.recordedAt === 'string' &&
+        !Number.isNaN(Date.parse(value.executionMailing.recordedAt)) &&
+        Array.isArray(value.executionMailing.files) &&
+        value.executionMailing.files.length > 0 &&
+        value.executionMailing.files.length <= 10 &&
+        value.executionMailing.files.every(validFile))) &&
+    (value.executionMailing === null ||
+      value.executionConfirmationId !== null) &&
     (value.confirmedAmountState === 'KNOWN' ||
       value.confirmedAmountState === 'PENDING') &&
     (value.confirmedAmountState === 'KNOWN'
@@ -207,4 +263,10 @@ export function mailClientCaseComplaint(
   input: MailCaseComplaintInput,
 ) {
   return mailCaseComplaint(id, input, 'client');
+}
+export function mailClientCaseExecution(
+  id: string,
+  input: MailCaseExecutionInput,
+) {
+  return mailCaseExecution(id, input, 'client');
 }

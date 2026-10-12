@@ -263,6 +263,26 @@ AC-CA-004的CA-010增量：运营／当前承办律师真实保存二审进展�
 
 AC-CA-004本片增量：正常来源经CA-011多文件提交后，运营／当前承办律师一次确认整套，刷新／重登后读取同一提交及全部精确字节；直接执行和二审CHANGE／AFFIRM来源有效。越权／撤权重放、旧锚、旧版本、错误阶段／来源拒绝；同键重放不重复，双确认和确认与重提竞争只产生合法结果，确认后重提在服务及SQL均拒绝；审计／确认／阶段／回执故障全回滚。空库全链、134条上一支持schema合法旧提交升级、历史保留、每份迁移失败原子与向前重试、直接SQL负例均验证。客户端识别待盖章且敏感字段缺席；不声称CA-013或完整执行流程已完成。
 
+### CA-013执行材料盖章邮寄
+
+依据SD-23／25／28／33／39／44及字段材料契约，仅完成单案`WAITING_EXECUTION_STAMP → WAITING_EXECUTION_FILING`（执行材料待盖章→待申请执行）。有权运营须独立`case.execution.mail`并覆盖本案；有效律师限当前PRIMARY承办；客户限有效绑定的本企业本部门已确认案件；公证处不得办理。初始内部Grant从`case.execution.confirm`同范围复制，不以读取范围获得办理权。
+
+- 真实邮寄业务日`mailedAt`严格为合法`YYYY-MM-DD`且不晚于上海当天；本案有效`MAIL_RECEIPT`精确版本1～10份、无重复，PDF／JPEG／PNG、每份20MB。沿用真实上传／内容校验，不加盖章扫描件、物流接口或前序日期下限。上传不推进；用户明确复核后才登记。
+- 内部、律师及客户分别调用各自`cases/:id/execution-mail`，请求为`expectedVersion/idempotencyKey/expectedConfirmationId/mailedAt/mailReceiptContentVersionIds`。锁定本案并重验身份／范围、当前确认及其不可变提交与有效审理来源；同案CAS仅加1版本。不可改删邮寄事实、精确冻结、成功审计`case.execution.mailed`及原键回执同事务；失败整体回滚，重放先重新授权，同键异参／旧版本／旧锚／错误阶段拒绝。
+- 客户只增加办理能力、确认ID技术锚及邮寄日期／凭证事实；不因此读取执行申请材料、内部确认详情、执行立案材料、原因或费用。客户只能选择本人当前可读草稿，冻结邮寄凭证按本企业本案范围读取。上传开始、完成、版本枚举／下载和重放均重验有效账号与绑定。
+
+AC-CA-004本片增量：运营、承办律师、本企业客户经正常来源确认后登记邮寄；刷新／重登仍读同一真实事实及精确文件字节。覆盖无权／跨企业部门／撤权重放／错误来源锚／缺件／同键异参／旧版本、并发单胜及各写点故障回滚；直接SQL错误身份、冻结、审计和回执链拒绝，历史事实保留。
+
+### CA-014申请执行
+
+依据同一批准门槛，仅完成单案`WAITING_EXECUTION_FILING → EXECUTING`（待申请执行→强制执行中）。运营须独立`case.execution.filing.submit`并覆盖本案；有效律师限当前PRIMARY承办；客户／公证处不能提交。初始内部Grant从`case.execution.mail`同范围复制并失效受影响授权版本。
+
+- 真实提交业务日`submittedAt`严格为合法日期且不晚于上海当天；本案有效`EXECUTION_FILING_PROOF`精确版本1～10份、无重复，PDF／JPEG／PNG、每份50MB。不能继承Demo空日期／空截图仍推进的漏洞，不虚构法院API、支付或正式受理事实。
+- 内部／律师分别调用`cases/:id/execution-filing-submit`，请求为`expectedVersion/idempotencyKey/expectedMailingId/submittedAt/executionFilingProofContentVersionIds`；锁定并重验当前邮寄、确认、提交和审理来源。不可改删执行立案提交、精确冻结、成功审计`case.execution.filing.submitted`、原键回执与阶段CAS同事务。重放再授权、同键异参、竞争、旧锚和失败全回滚规则保持。
+- 正式导航新增“待申请执行”“强制执行中”，准备执行文书包含待写／待确认／待盖章三阶段。进入强制执行中仅展示真实完成事实；执行结束、结案资金及归档仍由B13／B15和后续切片定义，不提供占位办理按钮。
+
+本批次扩展既有阶段SQL守卫与共享材料身份路径，按Level 3：高风险实现独立Sol审查及组合终审后，在稳定候选运行完整工程门禁、适用真实PG／Chromium、138份完整迁移链、136份上一支持schema升级、直接SQL负例及失败原子／向前重试。实际完成状态与候选证据只记路线图和VALIDATION。
+
 ## REQ-CA-005 结案归档与实际款项
 
 - 状态：纠偏约束＋待审核。来源：C-C08 C-D08 C-D09 FIX-08 FIX-09。字段组：CA10/CA11/ST02/ST04。

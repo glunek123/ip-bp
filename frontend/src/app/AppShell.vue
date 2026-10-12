@@ -43,6 +43,8 @@ const caseStageCards: ReadonlyArray<{ stage: CaseStage; label: string }> = [
   { stage: 'WAITING_JUDGMENT', label: '待判决' },
   { stage: 'SECOND_INSTANCE', label: '二审' },
   { stage: 'WAITING_EXECUTION_DOCUMENTS', label: '待写执行材料' },
+  { stage: 'WAITING_EXECUTION_FILING', label: '待申请执行' },
+  { stage: 'EXECUTING', label: '强制执行中' },
 ];
 const notaryStageCards: ReadonlyArray<{
   stage: NotaryListStage;
@@ -461,7 +463,8 @@ async function logout(): Promise<void> {
               <span>准备执行文书</span
               ><span v-if="caseCounts" class="app-nav__badge">{{
                 caseCounts.WAITING_EXECUTION_DOCUMENTS +
-                caseCounts.WAITING_EXECUTION_CONFIRMATION
+                caseCounts.WAITING_EXECUTION_CONFIRMATION +
+                caseCounts.WAITING_EXECUTION_STAMP
               }}</span>
             </RouterLink>
           </div>
@@ -581,7 +584,8 @@ async function logout(): Promise<void> {
               ><span>准备执行文书</span
               ><span v-if="caseCounts" class="app-nav__badge">{{
                 caseCounts.WAITING_EXECUTION_DOCUMENTS +
-                caseCounts.WAITING_EXECUTION_CONFIRMATION
+                caseCounts.WAITING_EXECUTION_CONFIRMATION +
+                caseCounts.WAITING_EXECUTION_STAMP
               }}</span></RouterLink
             >
           </div>

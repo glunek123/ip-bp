@@ -3,6 +3,7 @@ import {
   getClientCase,
   listClientCases,
   mailClientCaseComplaint,
+  mailClientCaseExecution,
 } from './client-cases';
 afterEach(() => vi.unstubAllGlobals());
 const item = {
@@ -11,6 +12,7 @@ const item = {
   stage: 'WAITING_COMPLAINT_STAMP',
   version: 4,
   canMailComplaint: true,
+  canMailExecution: false,
   rightsHolderName: '权利人甲',
   defendantNames: ['被告甲'],
 };
@@ -53,6 +55,8 @@ describe('client cases API', () => {
       authorizationFiles: [],
       pendingReceiptFiles: [],
       complaintMailing: null,
+      executionConfirmationId: null,
+      executionMailing: null,
     });
     await expect(getClientCase('case-1')).resolves.toMatchObject({
       complaintFile: file,
@@ -90,6 +94,8 @@ describe('client cases API', () => {
       authorizationFiles: [],
       pendingReceiptFiles: [],
       complaintMailing: null,
+      executionConfirmationId: null,
+      executionMailing: null,
       acceptance: { acceptedAt: '2026-10-01', courtCaseNo: 'private' },
     });
     await expect(getClientCase('case-1')).rejects.toMatchObject({
@@ -117,6 +123,8 @@ describe('client cases API', () => {
       authorizationFiles: [],
       pendingReceiptFiles: [],
       complaintMailing: null,
+      executionConfirmationId: null,
+      executionMailing: null,
       hearing: { corrections: [] },
     });
     await expect(getClientCase('case-1')).rejects.toMatchObject({
@@ -149,6 +157,8 @@ describe('client cases API', () => {
       authorizationFiles: [],
       pendingReceiptFiles: [],
       complaintMailing: null,
+      executionConfirmationId: null,
+      executionMailing: null,
     });
     await expect(getClientCase('case-1')).resolves.toMatchObject({
       stage: 'WAITING_EXECUTION_CONFIRMATION',
@@ -164,6 +174,8 @@ describe('client cases API', () => {
       authorizationFiles: [],
       pendingReceiptFiles: [],
       complaintMailing: null,
+      executionConfirmationId: null,
+      executionMailing: null,
       judgmentNextStep: { history: [] },
     });
     await expect(getClientCase('case-1')).rejects.toMatchObject({
@@ -192,6 +204,73 @@ describe('client cases API', () => {
       idempotencyKey: 'key-1',
       mailedAt: '2026-10-02',
       mailReceiptContentVersionIds: ['version-1'],
+    });
+  });
+
+  it('decodes the client execution anchor and minimal mailing fact', async () => {
+    const confirmationId = '80000000-0000-4000-8000-000000000101';
+    const mailingId = '80000000-0000-4000-8000-000000000102';
+    mock({
+      ...item,
+      stage: 'WAITING_EXECUTION_FILING',
+      canMailExecution: false,
+      confirmedAmountState: 'KNOWN',
+      confirmedAmount: '123.45',
+      confirmedAt: '2026-10-01T00:00:00Z',
+      complaintFile: file,
+      authorizationFiles: [],
+      pendingReceiptFiles: [],
+      complaintMailing: null,
+      executionConfirmationId: confirmationId,
+      executionMailing: {
+        id: mailingId,
+        mailedAt: '2026-10-02',
+        recordedAt: '2026-10-02T03:00:00Z',
+        files: [file],
+      },
+    });
+    await expect(getClientCase('case-1')).resolves.toMatchObject({
+      executionConfirmationId: confirmationId,
+      executionMailing: { id: mailingId, files: [file] },
+    });
+  });
+
+  it('delegates client execution mailing and validates confirmation anchor and version', async () => {
+    const input = {
+      expectedVersion: 8,
+      idempotencyKey: 'key-execution-mail',
+      expectedConfirmationId: '80000000-0000-4000-8000-000000000101',
+      mailedAt: '2026-10-11',
+      mailReceiptContentVersionIds: ['80000000-0000-4000-8000-000000000103'],
+    };
+    const fetch = mock({
+      id: 'case-1',
+      mailingId: '80000000-0000-4000-8000-000000000102',
+      confirmationId: input.expectedConfirmationId,
+      stage: 'WAITING_EXECUTION_FILING',
+      version: 9,
+      mailedAt: input.mailedAt,
+      recordedAt: '2026-10-11T03:00:00Z',
+    });
+    await mailClientCaseExecution('case-1', input);
+    expect(fetch.mock.calls[0]?.[0]).toBe(
+      '/api/v1/client/cases/case-1/execution-mail',
+    );
+    expect(JSON.parse(String(fetch.mock.calls[0]?.[1]?.body))).toEqual(input);
+
+    mock({
+      id: 'case-1',
+      mailingId: '80000000-0000-4000-8000-000000000102',
+      confirmationId: '80000000-0000-4000-8000-000000000104',
+      stage: 'WAITING_EXECUTION_FILING',
+      version: 9,
+      mailedAt: input.mailedAt,
+      recordedAt: '2026-10-11T03:00:00Z',
+    });
+    await expect(
+      mailClientCaseExecution('case-1', input),
+    ).rejects.toMatchObject({
+      code: 'INVALID_RESPONSE',
     });
   });
 });

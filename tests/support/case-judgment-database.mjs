@@ -74,6 +74,12 @@ const judgmentCleanupGuards = [
 
 // The order is shared by the canonical CA-010 fixture and core-case cleanup.
 const secondInstanceDependentTables = [
+  'case_execution_filing_receipts',
+  'case_execution_filing_versions',
+  'case_execution_filings',
+  'case_execution_mailing_receipts',
+  'case_execution_mailing_versions',
+  'case_execution_mailings',
   'case_execution_confirmation_receipts',
   'case_execution_confirmations',
   'case_execution_submission_receipts',
@@ -101,6 +107,8 @@ const secondInstanceDependentTables = [
   'case_acceptances',
 ];
 const secondInstanceDependentActions = [
+  'case.execution.filing.submitted',
+  'case.execution.mailed',
   'case.execution.confirmed',
   'case.execution.submitted',
   'case.second_instance.save',
@@ -153,6 +161,24 @@ async function clearSecondInstanceDependentFacts(client, caseIds) {
 
 async function assertSecondInstanceCleanupGuards(client) {
   const guards = [
+    ['case_execution_mailings', 'case_execution_mailings_immutable'],
+    ['case_execution_filings', 'case_execution_filings_immutable'],
+    [
+      'case_execution_mailing_versions',
+      'case_execution_mailing_versions_immutable',
+    ],
+    [
+      'case_execution_filing_versions',
+      'case_execution_filing_versions_immutable',
+    ],
+    [
+      'case_execution_mailing_receipts',
+      'case_execution_mailing_receipts_immutable',
+    ],
+    [
+      'case_execution_filing_receipts',
+      'case_execution_filing_receipts_immutable',
+    ],
     ['cases', 'case_trial_round_case_guard'],
     ['cases', 'cases_empty_remand_child_version_guard'],
     ['cases', 'cases_retrial_prejudgment_version_guard'],

@@ -297,6 +297,16 @@ const context = {
       scopes: ['SELF', 'TEAM', 'DEPARTMENT'],
     },
     {
+      action: 'CASE_EXECUTION_MAIL',
+      label: '登记执行邮寄',
+      scopes: ['SELF', 'TEAM', 'DEPARTMENT'],
+    },
+    {
+      action: 'CASE_EXECUTION_FILING_SUBMIT',
+      label: '申请执行',
+      scopes: ['SELF', 'TEAM', 'DEPARTMENT'],
+    },
+    {
       action: 'NOTARY_OFFICE_MANAGE',
       label: '管理公证处',
       scopes: ['DEPARTMENT'],
@@ -431,6 +441,8 @@ describe('organization API', () => {
       'CASE_SECOND_INSTANCE_RESULT_REVOKE',
       'CASE_EXECUTION_SUBMIT',
       'CASE_EXECUTION_CONFIRM',
+      'CASE_EXECUTION_MAIL',
+      'CASE_EXECUTION_FILING_SUBMIT',
       'NOTARY_OFFICE_MANAGE',
       'USER_READ',
       'USER_MANAGE',
@@ -603,14 +615,18 @@ describe('organization API', () => {
     });
   });
 
-  it('accepts execution confirmation grants with all case scopes', async () => {
+  it.each([
+    'CASE_EXECUTION_CONFIRM',
+    'CASE_EXECUTION_MAIL',
+    'CASE_EXECUTION_FILING_SUBMIT',
+  ])('accepts %s grants with all case scopes', async (action) => {
     const body = {
       ...context,
       roles: [
         {
           ...context.roles[0]!,
           grants: ['SELF', 'TEAM', 'DEPARTMENT'].map((scope) => ({
-            action: 'CASE_EXECUTION_CONFIRM',
+            action,
             scope,
           })),
         },
@@ -624,9 +640,9 @@ describe('organization API', () => {
       roles: [
         {
           grants: [
-            { action: 'CASE_EXECUTION_CONFIRM', scope: 'SELF' },
-            { action: 'CASE_EXECUTION_CONFIRM', scope: 'TEAM' },
-            { action: 'CASE_EXECUTION_CONFIRM', scope: 'DEPARTMENT' },
+            { action, scope: 'SELF' },
+            { action, scope: 'TEAM' },
+            { action, scope: 'DEPARTMENT' },
           ],
         },
       ],

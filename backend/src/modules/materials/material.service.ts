@@ -179,6 +179,11 @@ const allowedMimeTypes = {
     'image/jpeg',
     'image/png',
   ]),
+  EXECUTION_FILING_PROOF: new Set([
+    'application/pdf',
+    'image/jpeg',
+    'image/png',
+  ]),
   EXECUTION_APPLICATION: new Set([
     'application/pdf',
     'application/msword',
@@ -668,33 +673,46 @@ export class MaterialService {
               ownerId: draft.ownerId,
               category: draft.category,
               status: 'ACTIVE',
-              ...(draft.category === 'JUDGMENT'
+              ...(draft.category === 'MAIL_RECEIPT'
                 ? {
-                    contentVersions: {
-                      none: { caseJudgmentVersions: { some: {} } },
-                    },
-                  }
-                : draft.category === 'CUSTOMER_RIGHT_EVIDENCE'
-                  ? {
-                      currentVersion: {
-                        is: {
-                          materialReferences: {
-                            none: { assetVersionId: { not: null } },
+                    currentVersion: {
+                      is: {
+                        materialReferences: {
+                          none: {
+                            purpose: 'MAIL_RECEIPT',
+                            actionEventId: { not: null },
                           },
                         },
                       },
+                    },
+                  }
+                : draft.category === 'JUDGMENT'
+                  ? {
+                      contentVersions: {
+                        none: { caseJudgmentVersions: { some: {} } },
+                      },
                     }
-                  : draft.category === 'CUSTOMER_AGREEMENT'
+                  : draft.category === 'CUSTOMER_RIGHT_EVIDENCE'
                     ? {
                         currentVersion: {
                           is: {
                             materialReferences: {
-                              none: { purpose: 'CUSTOMER_AGREEMENT' },
+                              none: { assetVersionId: { not: null } },
                             },
                           },
                         },
                       }
-                    : {}),
+                    : draft.category === 'CUSTOMER_AGREEMENT'
+                      ? {
+                          currentVersion: {
+                            is: {
+                              materialReferences: {
+                                none: { purpose: 'CUSTOMER_AGREEMENT' },
+                              },
+                            },
+                          },
+                        }
+                      : {}),
             },
           });
           if (activeCount >= materialLimit(draft.category)) {
@@ -887,7 +905,18 @@ export class MaterialService {
           (input.ownerType === 'CASE' &&
             input.category === 'MAIL_RECEIPT' &&
             actor.clientCustomerId !== undefined &&
-            version.uploadedBy !== actor.userId)
+            (version.uploadedBy !== actor.userId ||
+              material.currentVersionId !== version.id ||
+              (await transaction.materialReference.count({
+                where: {
+                  departmentId: actor.departmentId,
+                  resourceType: 'case',
+                  resourceId: input.ownerId,
+                  materialId: material.id,
+                  contentVersionId: version.id,
+                  actionEventId: { not: null },
+                },
+              })) > 0))
         ) {
           throw this.invalidVersion();
         }
@@ -1233,6 +1262,7 @@ export class MaterialService {
                 'SECOND_INSTANCE_SERVICE',
                 'SECOND_INSTANCE_JUDGMENT',
                 'EXECUTION_APPLICATION',
+                'EXECUTION_FILING_PROOF',
               ].includes(material.category) &&
               versions.some(
                 (version) => version.id === material.currentVersionId,
@@ -1806,33 +1836,46 @@ export class MaterialService {
           ownerId: material.ownerId,
           category: material.category,
           status: 'ACTIVE',
-          ...(material.category === 'JUDGMENT'
+          ...(material.category === 'MAIL_RECEIPT'
             ? {
-                contentVersions: {
-                  none: { caseJudgmentVersions: { some: {} } },
-                },
-              }
-            : material.category === 'CUSTOMER_RIGHT_EVIDENCE'
-              ? {
-                  currentVersion: {
-                    is: {
-                      materialReferences: {
-                        none: { assetVersionId: { not: null } },
+                currentVersion: {
+                  is: {
+                    materialReferences: {
+                      none: {
+                        purpose: 'MAIL_RECEIPT',
+                        actionEventId: { not: null },
                       },
                     },
                   },
+                },
+              }
+            : material.category === 'JUDGMENT'
+              ? {
+                  contentVersions: {
+                    none: { caseJudgmentVersions: { some: {} } },
+                  },
                 }
-              : material.category === 'CUSTOMER_AGREEMENT'
+              : material.category === 'CUSTOMER_RIGHT_EVIDENCE'
                 ? {
                     currentVersion: {
                       is: {
                         materialReferences: {
-                          none: { purpose: 'CUSTOMER_AGREEMENT' },
+                          none: { assetVersionId: { not: null } },
                         },
                       },
                     },
                   }
-                : {}),
+                : material.category === 'CUSTOMER_AGREEMENT'
+                  ? {
+                      currentVersion: {
+                        is: {
+                          materialReferences: {
+                            none: { purpose: 'CUSTOMER_AGREEMENT' },
+                          },
+                        },
+                      },
+                    }
+                  : {}),
         },
       });
       if (activeCount >= materialLimit(material.category)) {
@@ -2608,6 +2651,97 @@ export class MaterialService {
     }
   }
 
+  async freezeCaseExecutionMailingReferences(
+    transaction: MaterialTransactionClient,
+    actor: ActorContext,
+    caseId: string,
+    mailingId: string,
+    facts: readonly ValidatedMaterialVersionFact[],
+    actionEventId: string,
+  ): Promise<void> {
+    for (const fact of facts) {
+      const validation = this.validatedVersionFacts.get(fact);
+      const canonical = validation?.canonicalFact;
+      if (
+        validation?.transaction !== transaction ||
+        canonical?.departmentId !== actor.departmentId ||
+        canonical.ownerType !== 'CASE' ||
+        canonical.ownerId !== caseId ||
+        canonical.category !== 'MAIL_RECEIPT' ||
+        canonical.purpose !== 'MAIL_RECEIPT' ||
+        !allowedMimeTypes.MAIL_RECEIPT.has(canonical.mimeType) ||
+        canonical.sizeBytes > BigInt(materialFileLimit('MAIL_RECEIPT'))
+      )
+        throw this.invalidVersion();
+      await transaction.caseExecutionMailingVersion.create({
+        data: {
+          mailingId,
+          caseId,
+          departmentId: actor.departmentId,
+          materialId: canonical.materialId,
+          contentVersionId: canonical.contentVersionId,
+        },
+      });
+      await transaction.materialReference.create({
+        data: {
+          departmentId: actor.departmentId,
+          resourceType: 'case',
+          resourceId: caseId,
+          purpose: 'MAIL_RECEIPT',
+          materialId: canonical.materialId,
+          contentVersionId: canonical.contentVersionId,
+          actionEventId,
+        },
+      });
+    }
+  }
+
+  async freezeCaseExecutionFilingReferences(
+    transaction: MaterialTransactionClient,
+    actor: ActorContext,
+    caseId: string,
+    filingId: string,
+    facts: readonly ValidatedMaterialVersionFact[],
+    actionEventId: string,
+  ): Promise<void> {
+    for (const fact of facts) {
+      const validation = this.validatedVersionFacts.get(fact);
+      const canonical = validation?.canonicalFact;
+      if (
+        validation?.transaction !== transaction ||
+        canonical?.departmentId !== actor.departmentId ||
+        canonical.ownerType !== 'CASE' ||
+        canonical.ownerId !== caseId ||
+        canonical.category !== 'EXECUTION_FILING_PROOF' ||
+        canonical.purpose !== 'EXECUTION_FILING_PROOF' ||
+        !allowedMimeTypes.EXECUTION_FILING_PROOF.has(canonical.mimeType) ||
+        canonical.sizeBytes >
+          BigInt(materialFileLimit('EXECUTION_FILING_PROOF'))
+      )
+        throw this.invalidVersion();
+      await transaction.caseExecutionFilingVersion.create({
+        data: {
+          filingId,
+          caseId,
+          departmentId: actor.departmentId,
+          materialId: canonical.materialId,
+          contentVersionId: canonical.contentVersionId,
+        },
+      });
+      await transaction.materialReference.create({
+        data: {
+          departmentId: actor.departmentId,
+          resourceType: 'case',
+          resourceId: caseId,
+          purpose: 'EXECUTION_FILING_PROOF',
+          materialId: canonical.materialId,
+          contentVersionId: canonical.contentVersionId,
+          actionEventId,
+        },
+      });
+    }
+  }
+
   private async isFrozenCaseVersion(
     transaction: MaterialTransactionClient,
     category: MaterialCategoryValue,
@@ -2723,6 +2857,77 @@ export class MaterialService {
     }));
   }
 
+  async listFrozenCaseExecutionMailingFiles(
+    actor: ActorContext,
+    caseId: string,
+  ) {
+    await this.authorizeOwner(actor, 'CASE', caseId, 'read');
+    const references = await this.database.materialReference.findMany({
+      where: {
+        departmentId: actor.departmentId,
+        resourceType: 'case',
+        resourceId: caseId,
+        purpose: 'MAIL_RECEIPT',
+        actionEvent: {
+          action: 'case.execution.mailed',
+          resourceType: 'CASE',
+          resourceId: caseId,
+          departmentId: actor.departmentId,
+        },
+      },
+      orderBy: { createdAt: 'asc' },
+      select: {
+        materialId: true,
+        contentVersionId: true,
+        contentVersion: { select: { originalFilename: true, mimeType: true } },
+      },
+    });
+    return references.map((reference) => ({
+      materialId: reference.materialId,
+      contentVersionId: reference.contentVersionId,
+      originalFilename: reference.contentVersion.originalFilename,
+      mimeType: reference.contentVersion.mimeType,
+    }));
+  }
+
+  async listFrozenCaseExecutionFilingFiles(
+    actor: ActorContext,
+    caseId: string,
+  ) {
+    if (
+      actor.clientCustomerId !== undefined ||
+      actor.notaryOfficeId !== undefined
+    )
+      throw this.forbidden();
+    await this.authorizeOwner(actor, 'CASE', caseId, 'read');
+    const references = await this.database.materialReference.findMany({
+      where: {
+        departmentId: actor.departmentId,
+        resourceType: 'case',
+        resourceId: caseId,
+        purpose: 'EXECUTION_FILING_PROOF',
+        actionEvent: {
+          action: 'case.execution.filing.submitted',
+          resourceType: 'CASE',
+          resourceId: caseId,
+          departmentId: actor.departmentId,
+        },
+      },
+      orderBy: { createdAt: 'asc' },
+      select: {
+        materialId: true,
+        contentVersionId: true,
+        contentVersion: { select: { originalFilename: true, mimeType: true } },
+      },
+    });
+    return references.map((reference) => ({
+      materialId: reference.materialId,
+      contentVersionId: reference.contentVersionId,
+      originalFilename: reference.contentVersion.originalFilename,
+      mimeType: reference.contentVersion.mimeType,
+    }));
+  }
+
   private async authorizeOwner(
     actor: ActorContext,
     ownerType: MaterialOwnerTypeValue,
@@ -2787,7 +2992,11 @@ export class MaterialService {
               'WAITING_EXECUTION_DOCUMENTS',
               'WAITING_EXECUTION_CONFIRMATION',
             ].includes(lawyerCase.stage) &&
-              notaryCategory === 'EXECUTION_APPLICATION')
+              notaryCategory === 'EXECUTION_APPLICATION') ||
+            (lawyerCase.stage === 'WAITING_EXECUTION_STAMP' &&
+              notaryCategory === 'MAIL_RECEIPT') ||
+            (lawyerCase.stage === 'WAITING_EXECUTION_FILING' &&
+              notaryCategory === 'EXECUTION_FILING_PROOF')
           )
         )
           throw this.versionConflict();
@@ -2818,7 +3027,9 @@ export class MaterialService {
         if (clientCase === null) throw this.notFound();
         if (
           operation === 'write' &&
-          (clientCase.stage !== 'WAITING_COMPLAINT_STAMP' ||
+          (!['WAITING_COMPLAINT_STAMP', 'WAITING_EXECUTION_STAMP'].includes(
+            clientCase.stage,
+          ) ||
             notaryCategory !== 'MAIL_RECEIPT')
         )
           throw this.versionConflict();
@@ -2849,8 +3060,9 @@ export class MaterialService {
             notaryCategory === 'COMPLAINT'
           ) &&
           !(
-            record.stage === 'WAITING_COMPLAINT_STAMP' &&
-            notaryCategory === 'MAIL_RECEIPT'
+            ['WAITING_COMPLAINT_STAMP', 'WAITING_EXECUTION_STAMP'].includes(
+              record.stage,
+            ) && notaryCategory === 'MAIL_RECEIPT'
           ) &&
           !(
             record.stage === 'WAITING_FILING' &&
@@ -2881,6 +3093,10 @@ export class MaterialService {
               'WAITING_EXECUTION_CONFIRMATION',
             ].includes(record.stage) &&
             notaryCategory === 'EXECUTION_APPLICATION'
+          ) &&
+          !(
+            record.stage === 'WAITING_EXECUTION_FILING' &&
+            notaryCategory === 'EXECUTION_FILING_PROOF'
           )
         )
           throw this.versionConflict();
@@ -2942,16 +3158,20 @@ export class MaterialService {
           }
           await this.accessControl.authorizeCase(
             actor,
-            record.stage === 'WAITING_COMPLAINT'
-              ? 'case.complaint.submit'
-              : record.stage === 'WAITING_COMPLAINT_CONFIRMATION'
-                ? 'case.complaint.confirm'
-                : record.stage === 'WAITING_FILING'
-                  ? 'case.filing.submit'
-                  : record.stage === 'WAITING_FORMAL_ACCEPTANCE' ||
-                      record.stage === 'WAITING_HEARING'
-                    ? 'case.acceptance.register'
-                    : 'case.complaint.mail',
+            record.stage === 'WAITING_EXECUTION_STAMP'
+              ? 'case.execution.mail'
+              : record.stage === 'WAITING_EXECUTION_FILING'
+                ? 'case.execution.filing.submit'
+                : record.stage === 'WAITING_COMPLAINT'
+                  ? 'case.complaint.submit'
+                  : record.stage === 'WAITING_COMPLAINT_CONFIRMATION'
+                    ? 'case.complaint.confirm'
+                    : record.stage === 'WAITING_FILING'
+                      ? 'case.filing.submit'
+                      : record.stage === 'WAITING_FORMAL_ACCEPTANCE' ||
+                          record.stage === 'WAITING_HEARING'
+                        ? 'case.acceptance.register'
+                        : 'case.complaint.mail',
             facts,
             snapshotReader,
           );
@@ -3284,6 +3504,7 @@ export class MaterialService {
               'SECOND_INSTANCE_SERVICE',
               'SECOND_INSTANCE_JUDGMENT',
               'EXECUTION_APPLICATION',
+              'EXECUTION_FILING_PROOF',
             ],
           },
         },
@@ -3437,7 +3658,9 @@ export class MaterialService {
               category: 'MAIL_RECEIPT',
             },
             actionEvent: {
-              action: 'case.complaint.mailed',
+              action: {
+                in: ['case.complaint.mailed', 'case.execution.mailed'],
+              },
               resourceType: 'CASE',
               resourceId: caseId,
               departmentId: actor.departmentId,
@@ -3462,7 +3685,11 @@ export class MaterialService {
         continue;
       add(ref.materialId, ref.contentVersionId);
     }
-    if (record.stage === 'WAITING_COMPLAINT_STAMP') {
+    if (
+      ['WAITING_COMPLAINT_STAMP', 'WAITING_EXECUTION_STAMP'].includes(
+        record.stage,
+      )
+    ) {
       const drafts = await this.database.material.findMany({
         where: {
           departmentId: actor.departmentId,
@@ -3536,7 +3763,8 @@ export class MaterialService {
           input.category === 'SECOND_INSTANCE_DOCUMENT' ||
           input.category === 'SECOND_INSTANCE_SERVICE' ||
           input.category === 'SECOND_INSTANCE_JUDGMENT' ||
-          input.category === 'EXECUTION_APPLICATION') &&
+          input.category === 'EXECUTION_APPLICATION' ||
+          input.category === 'EXECUTION_FILING_PROOF') &&
         input.purpose === input.category) ||
       (input.ownerType === 'NOTARY_MATTER' &&
         input.category === 'NOTARY_OPENING_PHOTO' &&
@@ -3657,7 +3885,8 @@ function toMaterialPurpose(value: string): MaterialPurposeValue {
     value === 'SECOND_INSTANCE_DOCUMENT' ||
     value === 'SECOND_INSTANCE_SERVICE' ||
     value === 'SECOND_INSTANCE_JUDGMENT' ||
-    value === 'EXECUTION_APPLICATION'
+    value === 'EXECUTION_APPLICATION' ||
+    value === 'EXECUTION_FILING_PROOF'
   ) {
     return value;
   }
@@ -3687,7 +3916,8 @@ function materialLimit(category: keyof typeof allowedMimeTypes): number {
               category === 'SECOND_INSTANCE_DOCUMENT' ||
               category === 'SECOND_INSTANCE_SERVICE' ||
               category === 'SECOND_INSTANCE_JUDGMENT' ||
-              category === 'EXECUTION_APPLICATION'
+              category === 'EXECUTION_APPLICATION' ||
+              category === 'EXECUTION_FILING_PROOF'
             ? 10
             : 20;
 }
@@ -3705,7 +3935,8 @@ function materialFileLimit(category: keyof typeof allowedMimeTypes): number {
     category === 'SECOND_INSTANCE_DOCUMENT' ||
     category === 'SECOND_INSTANCE_SERVICE' ||
     category === 'SECOND_INSTANCE_JUDGMENT' ||
-    category === 'EXECUTION_APPLICATION'
+    category === 'EXECUTION_APPLICATION' ||
+    category === 'EXECUTION_FILING_PROOF'
     ? 50 * 1024 * 1024
     : 20 * 1024 * 1024;
 }

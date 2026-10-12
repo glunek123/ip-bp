@@ -1,12 +1,18 @@
+import { CaseExecutionMailingService } from './case-execution-mailing.service';
+import { CaseExecutionFilingService } from './case-execution-filing.service';
 import 'reflect-metadata';
 import { ExecutionContext, INestApplication } from '@nestjs/common';
 import { Test } from '@nestjs/testing';
 import { DocumentBuilder, SwaggerModule } from '@nestjs/swagger';
 import request from 'supertest';
+import { plainToInstance } from 'class-transformer';
+import { validateSync } from 'class-validator';
 import { ActorContextGuard } from '../../access-control/actor-context.guard';
 import { CsrfGuard } from '../../auth/csrf.guard';
 import { configureApp } from '../../common/configure-app';
 import { CaseReadController } from './case-read.controller';
+import { LawyerCaseController } from './lawyer-case.controller';
+import { CasePageQueryDto } from './case-read.dto';
 import { CaseReadService } from './case-read.service';
 import { CaseMatchService } from './case-match.service';
 import { CaseComplaintService } from './case-complaint.service';
@@ -29,6 +35,67 @@ const routeMailInput = {
   mailedAt: '2026-10-02',
   mailReceiptContentVersionIds: ['55555555-5555-4555-8555-555555555555'],
 };
+
+describe('lawyer execution route identity', () => {
+  it.each([
+    {},
+    { clientCustomerId: 'customer' },
+    { notaryOfficeId: 'office' },
+    { lawyerAccountId: 'another-user' },
+    { lawyerAccountId: 'user', clientCustomerId: 'customer' },
+  ])('rejects a non-lawyer principal before either command: %j', (identity) => {
+    const mailing = { mail: jest.fn() };
+    const filing = { submit: jest.fn() };
+    const controller = new LawyerCaseController(
+      {} as never,
+      {} as never,
+      {} as never,
+      {} as never,
+      {} as never,
+      {} as never,
+      {} as never,
+      {} as never,
+      {} as never,
+      {} as never,
+      {} as never,
+      {} as never,
+      mailing as never,
+      filing as never,
+      {} as never,
+    );
+    const actor = {
+      userId: 'user',
+      departmentId: 'department',
+      authorizationRevision: 1,
+      ...identity,
+    };
+    expect(() =>
+      controller.mailExecution(actor, routeCaseId, {
+        ...routeMailInput,
+        expectedConfirmationId: routeCaseId,
+      }),
+    ).toThrow(
+      expect.objectContaining({
+        response: expect.objectContaining({ code: 'ACTION_FORBIDDEN' }),
+      }),
+    );
+    expect(() =>
+      controller.submitExecutionFiling(actor, routeCaseId, {
+        expectedVersion: 5,
+        idempotencyKey: 'route-filing-identity',
+        expectedMailingId: routeCaseId,
+        submittedAt: '2026-10-02',
+        executionFilingProofContentVersionIds: [routeCaseId],
+      }),
+    ).toThrow(
+      expect.objectContaining({
+        response: expect.objectContaining({ code: 'ACTION_FORBIDDEN' }),
+      }),
+    );
+    expect(mailing.mail).not.toHaveBeenCalled();
+    expect(filing.submit).not.toHaveBeenCalled();
+  });
+});
 
 describe('internal complaint mailing route identity', () => {
   it.each([
@@ -55,6 +122,8 @@ describe('internal complaint mailing route identity', () => {
       {} as CaseFilingService,
       {} as CaseAcceptanceService,
       {} as CaseHearingService,
+      {} as never,
+      {} as never,
       {} as never,
       {} as never,
       {} as never,
@@ -104,6 +173,11 @@ describe('case read OpenAPI contract', () => {
     const module = await Test.createTestingModule({
       controllers: [CaseReadController],
       providers: [
+        { provide: CaseExecutionMailingService, useValue: { mail: jest.fn() } },
+        {
+          provide: CaseExecutionFilingService,
+          useValue: { submit: jest.fn() },
+        },
         { provide: CaseReadService, useValue: {} },
         { provide: CaseMatchService, useValue: {} },
         { provide: CaseComplaintService, useValue: {} },
@@ -355,5 +429,24 @@ describe('case read OpenAPI contract', () => {
     } finally {
       await app.close();
     }
+  });
+});
+
+describe('case list execution stage query validation', () => {
+  it.each(['WAITING_EXECUTION_FILING', 'EXECUTING'] as const)(
+    'accepts the %s stage filter',
+    (stage) => {
+      const query = plainToInstance(CasePageQueryDto, { stage });
+      expect(validateSync(query)).toEqual([]);
+    },
+  );
+
+  it('continues to reject unknown stage filters', () => {
+    const query = plainToInstance(CasePageQueryDto, {
+      stage: 'UNRECOGNIZED_EXECUTION_STAGE',
+    });
+    expect(validateSync(query).map((error) => error.property)).toContain(
+      'stage',
+    );
   });
 });

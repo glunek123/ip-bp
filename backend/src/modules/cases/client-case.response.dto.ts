@@ -40,6 +40,8 @@ export class ClientCaseListItemDto {
       'WAITING_EXECUTION_DOCUMENTS',
       'WAITING_EXECUTION_CONFIRMATION',
       'WAITING_EXECUTION_STAMP',
+      'WAITING_EXECUTION_FILING',
+      'EXECUTING',
     ],
   })
   stage!:
@@ -51,9 +53,12 @@ export class ClientCaseListItemDto {
     | 'SECOND_INSTANCE'
     | 'WAITING_EXECUTION_DOCUMENTS'
     | 'WAITING_EXECUTION_CONFIRMATION'
-    | 'WAITING_EXECUTION_STAMP';
+    | 'WAITING_EXECUTION_STAMP'
+    | 'WAITING_EXECUTION_FILING'
+    | 'EXECUTING';
   @ApiProperty() version!: number;
   @ApiProperty() canMailComplaint!: boolean;
+  @ApiProperty() canMailExecution!: boolean;
   @ApiProperty() rightsHolderName!: string;
   @ApiProperty({ type: [String] }) defendantNames!: string[];
 }
@@ -73,7 +78,18 @@ export class ClientCaseMailingDto {
   receiptFiles!: ClientCaseFileDto[];
 }
 
+export class ClientCaseExecutionMailingDto {
+  @ApiProperty({ format: 'uuid' }) id!: string;
+  @ApiProperty({ format: 'date' }) mailedAt!: string;
+  @ApiProperty({ format: 'date-time' }) recordedAt!: string;
+  @ApiProperty({ type: [ClientCaseFileDto] }) files!: ClientCaseFileDto[];
+}
+
 export class ClientCaseDetailResponseDto extends ClientCaseListItemDto {
+  @ApiProperty({ type: String, nullable: true, format: 'uuid' })
+  executionConfirmationId!: string | null;
+  @ApiProperty({ type: ClientCaseExecutionMailingDto, nullable: true })
+  executionMailing!: ClientCaseExecutionMailingDto | null;
   @ApiProperty({ enum: ['KNOWN', 'PENDING'] }) confirmedAmountState!:
     'KNOWN' | 'PENDING';
   @ApiProperty({ type: String, nullable: true }) confirmedAmount!:

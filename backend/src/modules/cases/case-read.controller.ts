@@ -1,3 +1,13 @@
+import { CaseExecutionMailingService } from './case-execution-mailing.service';
+import { CaseExecutionFilingService } from './case-execution-filing.service';
+import {
+  MailCaseExecutionDto,
+  MailCaseExecutionResponseDto,
+} from './case-execution-mailing.dto';
+import {
+  SubmitCaseExecutionFilingDto,
+  SubmitCaseExecutionFilingResponseDto,
+} from './case-execution-filing.dto';
 import {
   Controller,
   Body,
@@ -112,6 +122,8 @@ export class CaseReadController {
     private readonly secondInstance: CaseSecondInstanceService,
     private readonly executionSubmission: CaseExecutionSubmissionService,
     private readonly executionConfirmation: CaseExecutionConfirmationService,
+    private readonly executionMailing: CaseExecutionMailingService,
+    private readonly executionFiling: CaseExecutionFilingService,
     private readonly courts: FilingCourtService,
   ) {}
 
@@ -137,6 +149,33 @@ export class CaseReadController {
     return this.cases.get(actor, id);
   }
 
+  @Post(':id/execution-mail')
+  @ApiCreatedResponse({ type: MailCaseExecutionResponseDto })
+  mailExecution(
+    @CurrentActor() actor: ActorContext,
+    @Param('id', new ParseUUIDPipe()) id: string,
+    @Body() body: MailCaseExecutionDto,
+  ) {
+    if (
+      actor.clientCustomerId !== undefined ||
+      actor.notaryOfficeId !== undefined
+    )
+      throw new ForbiddenException({
+        code: 'ACTION_FORBIDDEN',
+        message: '无权登记执行邮寄',
+      });
+    return this.executionMailing.mail(actor, id, body);
+  }
+
+  @Post(':id/execution-filing-submit')
+  @ApiCreatedResponse({ type: SubmitCaseExecutionFilingResponseDto })
+  submitExecutionFiling(
+    @CurrentActor() actor: ActorContext,
+    @Param('id', new ParseUUIDPipe()) id: string,
+    @Body() body: SubmitCaseExecutionFilingDto,
+  ) {
+    return this.executionFiling.submit(actor, id, body);
+  }
   @Post(':id/execution-submit')
   @ApiCreatedResponse({ type: SubmitExecutionResultDto })
   submitExecution(

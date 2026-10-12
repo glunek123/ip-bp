@@ -26,54 +26,109 @@ const customerId = '33333333-3333-4333-8333-333333333333';
 const now = new Date('2026-09-21T04:00:00.000Z');
 
 describe('MaterialService', () => {
-  it('permits only a bound client to draft a mail receipt for a confirmed stamp-stage case', async () => {
-    const fixture = createFixture();
-    const client = { ...actor, clientCustomerId: customerId };
-    fixture.db.customerAccountBinding.findFirst.mockResolvedValue({
-      id: 'binding-1',
-    });
-    fixture.db.case.findFirst.mockResolvedValue({
-      departmentId: actor.departmentId,
-      customerId,
-      stage: 'WAITING_COMPLAINT_STAMP',
-      complaintConfirmation: { id: 'confirmation-1' },
-      responsibleUserId: actor.userId,
-      responsibleMembership: { teamId: null },
-    });
-    const receipt = {
-      ownerType: 'CASE' as const,
-      ownerId: customerId,
-      category: 'MAIL_RECEIPT' as const,
-      purpose: 'MAIL_RECEIPT' as const,
-      originalFilename: 'receipt.pdf',
-      declaredMimeType: 'application/pdf',
-    };
-    await expect(
-      fixture.service.createUploadDraft(client, receipt),
-    ).resolves.toMatchObject({
-      category: 'MAIL_RECEIPT',
-    });
-    expect(fixture.db.uploadDraft.create).toHaveBeenCalledWith(
-      expect.objectContaining({
-        data: expect.objectContaining({
-          customerAccountBindingId: 'binding-1',
+  it.each([0, 1])(
+    'client mail candidates exclude versions frozen by a prior action (%s)',
+    async (priorReferences) => {
+      const f = createFixture();
+      const client = { ...actor, clientCustomerId: customerId };
+      f.transaction.customerAccountBinding.findFirst.mockResolvedValue({
+        id: 'binding-1',
+      });
+      f.transaction.case.findFirst.mockResolvedValue({
+        stage: 'WAITING_EXECUTION_STAMP',
+      });
+      f.transaction.materialReference.count.mockResolvedValue(priorReferences);
+      f.transaction.material.findMany.mockResolvedValue([
+        {
+          id: 'receipt-1',
+          departmentId: actor.departmentId,
+          ownerType: 'CASE',
+          ownerId: customerId,
+          category: 'MAIL_RECEIPT',
+          purpose: 'MAIL_RECEIPT',
+          status: 'ACTIVE',
+          currentVersionId: 'version-1',
+          contentVersions: [
+            {
+              id: 'version-1',
+              status: 'AVAILABLE',
+              mimeType: 'image/png',
+              sizeBytes: 10n,
+              uploadedBy: actor.userId,
+            },
+          ],
+        },
+      ]);
+      const result = f.service.assertAvailableVersions(
+        f.transaction as unknown as MaterialTransactionClient,
+        client,
+        {
+          ownerType: 'CASE',
+          ownerId: customerId,
+          category: 'MAIL_RECEIPT',
+          contentVersionIds: ['version-1'],
+          minCount: 1,
+          maxCount: 10,
+        },
+      );
+      if (priorReferences === 0) await expect(result).resolves.toHaveLength(1);
+      else
+        await expect(result).rejects.toMatchObject({
+          response: { code: 'MATERIAL_VERSION_INVALID' },
+        });
+    },
+  );
+  it.each(['WAITING_COMPLAINT_STAMP', 'WAITING_EXECUTION_STAMP'])(
+    'permits only a bound client to draft a mail receipt in %s',
+    async (stage) => {
+      const fixture = createFixture();
+      const client = { ...actor, clientCustomerId: customerId };
+      fixture.db.customerAccountBinding.findFirst.mockResolvedValue({
+        id: 'binding-1',
+      });
+      fixture.db.case.findFirst.mockResolvedValue({
+        departmentId: actor.departmentId,
+        customerId,
+        stage,
+        complaintConfirmation: { id: 'confirmation-1' },
+        responsibleUserId: actor.userId,
+        responsibleMembership: { teamId: null },
+      });
+      const receipt = {
+        ownerType: 'CASE' as const,
+        ownerId: customerId,
+        category: 'MAIL_RECEIPT' as const,
+        purpose: 'MAIL_RECEIPT' as const,
+        originalFilename: 'receipt.pdf',
+        declaredMimeType: 'application/pdf',
+      };
+      await expect(
+        fixture.service.createUploadDraft(client, receipt),
+      ).resolves.toMatchObject({
+        category: 'MAIL_RECEIPT',
+      });
+      expect(fixture.db.uploadDraft.create).toHaveBeenCalledWith(
+        expect.objectContaining({
+          data: expect.objectContaining({
+            customerAccountBindingId: 'binding-1',
+          }),
         }),
-      }),
-    );
-    await expect(
-      fixture.service.createUploadDraft(client, {
-        ...receipt,
-        category: 'COMPLAINT',
-        purpose: 'COMPLAINT',
-      }),
-    ).rejects.toMatchObject({ response: { code: 'VERSION_CONFLICT' } });
-    fixture.db.customerAccountBinding.findFirst.mockResolvedValue(null);
-    await expect(
-      fixture.service.createUploadDraft(client, receipt),
-    ).rejects.toMatchObject({
-      response: { code: 'ACTION_FORBIDDEN' },
-    });
-  });
+      );
+      await expect(
+        fixture.service.createUploadDraft(client, {
+          ...receipt,
+          category: 'COMPLAINT',
+          purpose: 'COMPLAINT',
+        }),
+      ).rejects.toMatchObject({ response: { code: 'VERSION_CONFLICT' } });
+      fixture.db.customerAccountBinding.findFirst.mockResolvedValue(null);
+      await expect(
+        fixture.service.createUploadDraft(client, receipt),
+      ).rejects.toMatchObject({
+        response: { code: 'ACTION_FORBIDDEN' },
+      });
+    },
+  );
   it('enumerates only exact confirmed CASE versions and never reveals a current pointer', async () => {
     const fixture = createFixture();
     const client = { ...actor, clientCustomerId: customerId };

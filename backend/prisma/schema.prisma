@@ -57,12 +57,15 @@ enum PermissionAction {
   CASE_SECOND_INSTANCE_RESULT_REVOKE @map("case.second_instance.result.revoke")
   CASE_EXECUTION_SUBMIT @map("case.execution.submit")
   CASE_EXECUTION_CONFIRM @map("case.execution.confirm")
+  CASE_EXECUTION_MAIL @map("case.execution.mail")
+  CASE_EXECUTION_FILING_SUBMIT @map("case.execution.filing.submit")
   NOTARY_OFFICE_MANAGE         @map("notary.office.manage")
   CLIENT_LEAD_READ             @map("client.lead.read")
   CLIENT_LEAD_REVIEW           @map("client.lead.review")
   CLIENT_LEAD_WITHDRAW_CONFIRM @map("client.lead.withdraw.confirm")
   CLIENT_CASE_READ             @map("client.case.read")
   CLIENT_CASE_COMPLAINT_MAIL   @map("client.case.complaint.mail")
+  CLIENT_CASE_EXECUTION_MAIL @map("client.case.execution.mail")
   USER_READ                    @map("user.read")
   USER_MANAGE                  @map("user.manage")
   LAWYER_ACCOUNT_MANAGE        @map("lawyer.account.manage")
@@ -190,6 +193,7 @@ enum MaterialCategory {
   SECOND_INSTANCE_SERVICE
   SECOND_INSTANCE_JUDGMENT
   EXECUTION_APPLICATION
+  EXECUTION_FILING_PROOF
 
   @@map("material_category")
 }
@@ -303,6 +307,8 @@ enum CaseStage {
   WAITING_EXECUTION_DOCUMENTS
   WAITING_EXECUTION_CONFIRMATION
   WAITING_EXECUTION_STAMP
+  WAITING_EXECUTION_FILING
+  EXECUTING
 
   @@map("case_stage")
 }
@@ -542,6 +548,10 @@ model UserAccount {
   executionSubmissionReceipts CaseExecutionSubmissionReceipt[] @relation("ExecutionSubmissionReceiptActor")
   executionConfirmations CaseExecutionConfirmation[] @relation("ExecutionConfirmationActor")
   executionConfirmationReceipts CaseExecutionConfirmationReceipt[] @relation("ExecutionConfirmationReceiptActor")
+  executionMailings CaseExecutionMailing[] @relation("ExecutionMailingActor")
+  executionMailingReceipts CaseExecutionMailingReceipt[] @relation("ExecutionMailingReceiptActor")
+  executionFilings CaseExecutionFiling[] @relation("ExecutionFilingActor")
+  executionFilingReceipts CaseExecutionFilingReceipt[] @relation("ExecutionFilingReceiptActor")
   rightAssetVersions              CustomerRightAssetVersion[]       @relation("RightAssetVersionActor")
   rightAssetReceipts              CustomerRightAssetReceipt[]       @relation("RightAssetReceiptActor")
   createdAt                        DateTime                          @default(now()) @map("created_at") @db.Timestamptz(3)
@@ -870,6 +880,7 @@ model CustomerAccountBinding {
   notaryOpeningReviewReceipts  NotaryOpeningReviewReceipt[]  @relation("NotaryOpeningReviewReceiptClientActor")
   withdrawalConfirmations      LeadWithdrawalConfirmation[]
   caseComplaintMailings        CaseComplaintMailing[]
+  caseExecutionMailings CaseExecutionMailing[]
   caseMailUploadDrafts         UploadDraft[]
   caseMailAuditEvents          AuditEvent[]
   createdAt                    DateTime                      @default(now()) @map("created_at") @db.Timestamptz(3)
@@ -917,6 +928,7 @@ model LawyerAccountBinding {
   uploadDrafts          UploadDraft[]
   auditEvents           AuditEvent[]
   caseComplaintMailings CaseComplaintMailing[]
+  caseExecutionMailings CaseExecutionMailing[]
   createdAt             DateTime               @default(now()) @map("created_at") @db.Timestamptz(3)
   updatedAt             DateTime               @updatedAt @map("updated_at") @db.Timestamptz(3)
 
@@ -1155,6 +1167,8 @@ model ContentVersion {
   caseSecondProgressVersions CaseSecondInstanceProgressVersion[]
   caseSecondResultVersions CaseSecondInstanceResultVersion[]
   caseExecutionSubmissionVersions CaseExecutionSubmissionVersion[]
+  caseExecutionMailingVersions CaseExecutionMailingVersion[]
+  caseExecutionFilingVersions CaseExecutionFilingVersion[]
   notarySelections             NotaryMatterMaterial[]
   createdAt                    DateTime                      @default(now()) @map("created_at") @db.Timestamptz(3)
 
@@ -1804,6 +1818,10 @@ model Case {
   executionSubmissionReceipts CaseExecutionSubmissionReceipt[]
   executionConfirmation CaseExecutionConfirmation?
   executionConfirmationReceipts CaseExecutionConfirmationReceipt[]
+  executionMailing CaseExecutionMailing?
+  executionMailingReceipts CaseExecutionMailingReceipt[]
+  executionFiling CaseExecutionFiling?
+  executionFilingReceipts CaseExecutionFilingReceipt[]
   complaintAmountState          CaseComplaintAmountState?          @map("complaint_amount_state")
   complaintAmount               Decimal?                           @map("complaint_amount") @db.Decimal(16, 2)
   complaintPendingReason        String?                            @map("complaint_pending_reason") @db.VarChar(500)
@@ -2645,12 +2663,14 @@ model CaseExecutionConfirmation {
   submission CaseExecutionSubmission @relation(fields: [submissionId, caseId, departmentId], references: [id, caseId, departmentId], onDelete: Restrict, onUpdate: Restrict)
   confirmedBy UserAccount @relation("ExecutionConfirmationActor", fields: [confirmedByUserId], references: [id], onDelete: Restrict, onUpdate: Restrict)
   auditEvent AuditEvent @relation(fields: [auditEventId], references: [id], onDelete: Restrict, onUpdate: Restrict)
+  mailing CaseExecutionMailing?
 
   @@unique([caseId, fromVersion])
   @@unique([caseId, toVersion])
   @@unique([caseId, departmentId])
   @@unique([submissionId, caseId, departmentId])
   @@map("case_execution_confirmations")
+  @@unique([id, caseId, departmentId])
 }
 
 model CaseExecutionConfirmationReceipt {
@@ -2667,6 +2687,116 @@ model CaseExecutionConfirmationReceipt {
 
   @@unique([departmentId, actorUserId, idempotencyKey])
   @@map("case_execution_confirmation_receipts")
+}
+
+model CaseExecutionMailing {
+  id String @id @default(uuid()) @db.Uuid
+  caseId String @unique @map("case_id") @db.Uuid
+  departmentId String @map("department_id") @db.Uuid
+  confirmationId String @unique @map("confirmation_id") @db.Uuid
+  fromVersion Int @map("from_version")
+  toVersion Int @map("to_version")
+  mailedAt DateTime @map("mailed_at") @db.Date
+  recordedAt DateTime @default(now()) @map("recorded_at") @db.Timestamptz(3)
+  recordedByUserId String @map("recorded_by_user_id") @db.Uuid
+  actorType UserAccountType @map("actor_type")
+  customerAccountBindingId String? @map("customer_account_binding_id") @db.Uuid
+  lawyerAccountBindingId String? @map("lawyer_account_binding_id") @db.Uuid
+  auditEventId String @unique @map("audit_event_id") @db.Uuid
+  case Case @relation(fields: [caseId, departmentId], references: [id, departmentId], onDelete: Restrict, onUpdate: Restrict)
+  confirmation CaseExecutionConfirmation @relation(fields: [confirmationId, caseId, departmentId], references: [id, caseId, departmentId], onDelete: Restrict, onUpdate: Restrict)
+  recordedBy UserAccount @relation("ExecutionMailingActor", fields: [recordedByUserId], references: [id], onDelete: Restrict, onUpdate: Restrict)
+  customerAccountBinding CustomerAccountBinding? @relation(fields: [customerAccountBindingId, recordedByUserId, departmentId], references: [id, userId, departmentId], onDelete: Restrict, onUpdate: Restrict)
+  lawyerAccountBinding LawyerAccountBinding? @relation(fields: [lawyerAccountBindingId, recordedByUserId, departmentId], references: [id, userId, departmentId], onDelete: Restrict, onUpdate: Restrict)
+  auditEvent AuditEvent @relation(fields: [auditEventId], references: [id], onDelete: Restrict, onUpdate: Restrict)
+  versions CaseExecutionMailingVersion[]
+  filing CaseExecutionFiling?
+  @@unique([id, caseId, departmentId])
+  @@unique([caseId, departmentId])
+  @@unique([caseId, fromVersion])
+  @@unique([caseId, toVersion])
+  @@map("case_execution_mailings")
+  @@unique([confirmationId, caseId, departmentId])
+}
+
+model CaseExecutionMailingVersion {
+  mailingId String @map("mailing_id") @db.Uuid
+  caseId String @map("case_id") @db.Uuid
+  departmentId String @map("department_id") @db.Uuid
+  materialId String @map("material_id") @db.Uuid
+  contentVersionId String @map("content_version_id") @db.Uuid
+  mailing CaseExecutionMailing @relation(fields: [mailingId, caseId, departmentId], references: [id, caseId, departmentId], onDelete: Restrict, onUpdate: Restrict)
+  contentVersion ContentVersion @relation(fields: [materialId, contentVersionId], references: [materialId, id], onDelete: Restrict, onUpdate: Restrict)
+  @@id([mailingId, contentVersionId])
+  @@unique([mailingId, materialId])
+  @@map("case_execution_mailing_versions")
+}
+
+model CaseExecutionMailingReceipt {
+  id String @id @default(uuid()) @db.Uuid
+  departmentId String @map("department_id") @db.Uuid
+  actorUserId String @map("actor_user_id") @db.Uuid
+  caseId String @map("case_id") @db.Uuid
+  idempotencyKey String @map("idempotency_key") @db.VarChar(128)
+  requestFingerprint String @map("request_fingerprint") @db.Char(64)
+  resultSnapshot Json @map("result_snapshot")
+  createdAt DateTime @default(now()) @map("created_at") @db.Timestamptz(3)
+  case Case @relation(fields: [caseId, departmentId], references: [id, departmentId], onDelete: Restrict, onUpdate: Restrict)
+  actor UserAccount @relation("ExecutionMailingReceiptActor", fields: [actorUserId], references: [id], onDelete: Restrict, onUpdate: Restrict)
+  @@unique([departmentId, actorUserId, idempotencyKey])
+  @@map("case_execution_mailing_receipts")
+}
+
+model CaseExecutionFiling {
+  id String @id @default(uuid()) @db.Uuid
+  caseId String @unique @map("case_id") @db.Uuid
+  departmentId String @map("department_id") @db.Uuid
+  mailingId String @unique @map("mailing_id") @db.Uuid
+  fromVersion Int @map("from_version")
+  toVersion Int @map("to_version")
+  submittedAt DateTime @map("submitted_at") @db.Date
+  recordedAt DateTime @default(now()) @map("recorded_at") @db.Timestamptz(3)
+  submittedByUserId String @map("submitted_by_user_id") @db.Uuid
+  auditEventId String @unique @map("audit_event_id") @db.Uuid
+  case Case @relation(fields: [caseId, departmentId], references: [id, departmentId], onDelete: Restrict, onUpdate: Restrict)
+  mailing CaseExecutionMailing @relation(fields: [mailingId, caseId, departmentId], references: [id, caseId, departmentId], onDelete: Restrict, onUpdate: Restrict)
+  submittedBy UserAccount @relation("ExecutionFilingActor", fields: [submittedByUserId], references: [id], onDelete: Restrict, onUpdate: Restrict)
+  auditEvent AuditEvent @relation(fields: [auditEventId], references: [id], onDelete: Restrict, onUpdate: Restrict)
+  versions CaseExecutionFilingVersion[]
+  @@unique([id, caseId, departmentId])
+  @@unique([caseId, departmentId])
+  @@unique([caseId, fromVersion])
+  @@unique([caseId, toVersion])
+  @@map("case_execution_filings")
+  @@unique([mailingId, caseId, departmentId])
+}
+
+model CaseExecutionFilingVersion {
+  filingId String @map("filing_id") @db.Uuid
+  caseId String @map("case_id") @db.Uuid
+  departmentId String @map("department_id") @db.Uuid
+  materialId String @map("material_id") @db.Uuid
+  contentVersionId String @map("content_version_id") @db.Uuid
+  filing CaseExecutionFiling @relation(fields: [filingId, caseId, departmentId], references: [id, caseId, departmentId], onDelete: Restrict, onUpdate: Restrict)
+  contentVersion ContentVersion @relation(fields: [materialId, contentVersionId], references: [materialId, id], onDelete: Restrict, onUpdate: Restrict)
+  @@id([filingId, contentVersionId])
+  @@unique([filingId, materialId])
+  @@map("case_execution_filing_versions")
+}
+
+model CaseExecutionFilingReceipt {
+  id String @id @default(uuid()) @db.Uuid
+  departmentId String @map("department_id") @db.Uuid
+  actorUserId String @map("actor_user_id") @db.Uuid
+  caseId String @map("case_id") @db.Uuid
+  idempotencyKey String @map("idempotency_key") @db.VarChar(128)
+  requestFingerprint String @map("request_fingerprint") @db.Char(64)
+  resultSnapshot Json @map("result_snapshot")
+  createdAt DateTime @default(now()) @map("created_at") @db.Timestamptz(3)
+  case Case @relation(fields: [caseId, departmentId], references: [id, departmentId], onDelete: Restrict, onUpdate: Restrict)
+  actor UserAccount @relation("ExecutionFilingReceiptActor", fields: [actorUserId], references: [id], onDelete: Restrict, onUpdate: Restrict)
+  @@unique([departmentId, actorUserId, idempotencyKey])
+  @@map("case_execution_filing_receipts")
 }
 
 model CaseNumberCounter {
@@ -3049,6 +3179,8 @@ model AuditEvent {
   judgmentNextStepRevocations  CaseJudgmentNextStepRevocation[]
   executionSubmissions CaseExecutionSubmission[]
   executionConfirmations CaseExecutionConfirmation[]
+  executionMailings CaseExecutionMailing[]
+  executionFilings CaseExecutionFiling[]
   secondInstanceProgresses CaseSecondInstanceProgress[]
   secondInstanceResults CaseSecondInstanceResult[]
   secondInstanceRevocations CaseSecondInstanceResultRevocation[]

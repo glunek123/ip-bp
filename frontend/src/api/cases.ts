@@ -12,7 +12,9 @@ export type CaseStage =
   | 'SECOND_INSTANCE'
   | 'WAITING_EXECUTION_DOCUMENTS'
   | 'WAITING_EXECUTION_CONFIRMATION'
-  | 'WAITING_EXECUTION_STAMP';
+  | 'WAITING_EXECUTION_STAMP'
+  | 'WAITING_EXECUTION_FILING'
+  | 'EXECUTING';
 export type CaseView = 'mine' | 'department';
 export type CaseStageFilter = CaseStage | 'all';
 export type CaseStageGroup = 'EXECUTION_PREPARATION';
@@ -26,6 +28,8 @@ export type CaseSummary = {
   canMatch: boolean;
   canSubmitExecution: boolean;
   canConfirmExecution: boolean;
+  canMailExecution: boolean;
+  canSubmitExecutionFiling: boolean;
   canSubmitComplaint: boolean;
   canConfirmComplaint: boolean;
   canMailComplaint: boolean;
@@ -105,6 +109,8 @@ export type CaseDetail = CaseSummary & {
   executionSubmission: ExecutionSubmissionState;
   canConfirmExecution: boolean;
   executionConfirmation: ExecutionConfirmation | null;
+  executionMailing: ExecutionMailing | null;
+  executionFiling: ExecutionFiling | null;
 };
 export type ExecutionSubmissionFile = CaseFile & { uploadedAt: string };
 export type ExecutionSubmissionSummary = {
@@ -130,6 +136,20 @@ export type ExecutionConfirmation = {
   confirmedAt: string;
   confirmedByUserId: string;
   files: ExecutionSubmissionFile[];
+};
+export type ExecutionMailing = {
+  id: string;
+  confirmationId: string;
+  mailedAt: string;
+  recordedAt: string;
+  files: CaseFile[];
+};
+export type ExecutionFiling = {
+  id: string;
+  mailingId: string;
+  submittedAt: string;
+  recordedAt: string;
+  files: CaseFile[];
 };
 export type CaseHearingArrangement = {
   id: string;
@@ -319,6 +339,8 @@ export type CaseWorkflowItem = {
   canSubmitComplaint: boolean;
   canConfirmComplaint: boolean;
   canMailComplaint: boolean;
+  canMailExecution: boolean;
+  canSubmitExecutionFiling: boolean;
   canSubmitFiling: boolean;
   canRegisterAcceptance: boolean;
   canUploadAcceptanceMaterials: boolean;
@@ -357,6 +379,8 @@ export type LawyerCaseSummary = {
   canMatch: false;
   canSubmitExecution: boolean;
   canConfirmExecution: boolean;
+  canMailExecution: boolean;
+  canSubmitExecutionFiling: boolean;
   canSubmitComplaint: boolean;
   canConfirmComplaint: boolean;
   canMailComplaint: boolean;
@@ -419,6 +443,8 @@ export type LawyerCaseDetail = CaseWorkflowItem &
     executionSubmission: ExecutionSubmissionState;
     canConfirmExecution: boolean;
     executionConfirmation: ExecutionConfirmation | null;
+    executionMailing: ExecutionMailing | null;
+    executionFiling: ExecutionFiling | null;
   };
 
 export type SubmitExecutionInput = {
@@ -450,6 +476,38 @@ export type ConfirmExecutionResult = {
   stage: 'WAITING_EXECUTION_STAMP';
   version: number;
   confirmedAt: string;
+};
+export type MailCaseExecutionInput = {
+  expectedVersion: number;
+  idempotencyKey: string;
+  expectedConfirmationId: string;
+  mailedAt: string;
+  mailReceiptContentVersionIds: string[];
+};
+export type SubmitCaseExecutionFilingInput = {
+  expectedVersion: number;
+  idempotencyKey: string;
+  expectedMailingId: string;
+  submittedAt: string;
+  executionFilingProofContentVersionIds: string[];
+};
+export type MailCaseExecutionResult = {
+  id: string;
+  mailingId: string;
+  confirmationId: string;
+  stage: 'WAITING_EXECUTION_FILING';
+  version: number;
+  mailedAt: string;
+  recordedAt: string;
+};
+export type SubmitCaseExecutionFilingResult = {
+  id: string;
+  filingId: string;
+  mailingId: string;
+  stage: 'EXECUTING';
+  version: number;
+  submittedAt: string;
+  recordedAt: string;
 };
 
 export type SecondInstanceProgressInput = {
@@ -649,7 +707,9 @@ function validStage(value: unknown): value is CaseStage {
     value === 'SECOND_INSTANCE' ||
     value === 'WAITING_EXECUTION_DOCUMENTS' ||
     value === 'WAITING_EXECUTION_CONFIRMATION' ||
-    value === 'WAITING_EXECUTION_STAMP'
+    value === 'WAITING_EXECUTION_STAMP' ||
+    value === 'WAITING_EXECUTION_FILING' ||
+    value === 'EXECUTING'
   );
 }
 function source(value: unknown): value is { id: string; businessNo: string } {
@@ -681,6 +741,8 @@ function summary(value: unknown): value is CaseSummary {
       'canMatch',
       'canSubmitExecution',
       'canConfirmExecution',
+      'canMailExecution',
+      'canSubmitExecutionFiling',
       'canSubmitComplaint',
       'canConfirmComplaint',
       'canMailComplaint',
@@ -710,6 +772,8 @@ function summary(value: unknown): value is CaseSummary {
     typeof value.canMatch === 'boolean' &&
     typeof value.canSubmitExecution === 'boolean' &&
     typeof value.canConfirmExecution === 'boolean' &&
+    typeof value.canMailExecution === 'boolean' &&
+    typeof value.canSubmitExecutionFiling === 'boolean' &&
     typeof value.canSubmitComplaint === 'boolean' &&
     typeof value.canConfirmComplaint === 'boolean' &&
     typeof value.canMailComplaint === 'boolean' &&
@@ -742,6 +806,63 @@ function caseFile(value: unknown): value is CaseFile {
       (key) => nonempty(value[key]),
     )
   );
+}
+function executionMailing(value: unknown): value is ExecutionMailing {
+  return (
+    record(value) &&
+    exact(value, ['id', 'confirmationId', 'mailedAt', 'recordedAt', 'files']) &&
+    uuidV4(value.id) &&
+    uuidV4(value.confirmationId) &&
+    businessDate(value.mailedAt) &&
+    typeof value.recordedAt === 'string' &&
+    !Number.isNaN(Date.parse(value.recordedAt)) &&
+    Array.isArray(value.files) &&
+    value.files.length >= 1 &&
+    value.files.length <= 10 &&
+    value.files.every(caseFile) &&
+    new Set(value.files.map((file) => (file as CaseFile).contentVersionId))
+      .size === value.files.length
+  );
+}
+function executionFiling(value: unknown): value is ExecutionFiling {
+  return (
+    record(value) &&
+    exact(value, ['id', 'mailingId', 'submittedAt', 'recordedAt', 'files']) &&
+    uuidV4(value.id) &&
+    uuidV4(value.mailingId) &&
+    businessDate(value.submittedAt) &&
+    typeof value.recordedAt === 'string' &&
+    !Number.isNaN(Date.parse(value.recordedAt)) &&
+    Array.isArray(value.files) &&
+    value.files.length >= 1 &&
+    value.files.length <= 10 &&
+    value.files.every(caseFile) &&
+    new Set(value.files.map((file) => (file as CaseFile).contentVersionId))
+      .size === value.files.length
+  );
+}
+function executionFactsMatch(
+  mailing: unknown,
+  filing: unknown,
+  confirmation: unknown,
+): boolean {
+  if (
+    mailing !== null &&
+    (!executionMailing(mailing) ||
+      !record(confirmation) ||
+      confirmation.id !== mailing.confirmationId)
+  ) {
+    return false;
+  }
+  if (
+    filing !== null &&
+    (!executionFiling(filing) ||
+      !executionMailing(mailing) ||
+      filing.mailingId !== mailing.id)
+  ) {
+    return false;
+  }
+  return true;
 }
 function executionSubmissionFile(
   value: unknown,
@@ -1293,6 +1414,10 @@ function validCaseDetail(value: unknown, id: string): value is CaseDetail {
       'executionSubmission',
       'canConfirmExecution',
       'executionConfirmation',
+      'canMailExecution',
+      'canSubmitExecutionFiling',
+      'executionMailing',
+      'executionFiling',
     ]) &&
     value.id === id &&
     summary({
@@ -1305,6 +1430,8 @@ function validCaseDetail(value: unknown, id: string): value is CaseDetail {
       canMatch: value.canMatch,
       canSubmitExecution: value.canSubmitExecution,
       canConfirmExecution: value.canConfirmExecution,
+      canMailExecution: value.canMailExecution,
+      canSubmitExecutionFiling: value.canSubmitExecutionFiling,
       canSubmitComplaint: value.canSubmitComplaint,
       canConfirmComplaint: value.canConfirmComplaint,
       canMailComplaint: value.canMailComplaint,
@@ -1406,6 +1533,17 @@ function validCaseDetail(value: unknown, id: string): value is CaseDetail {
     typeof value.canSubmitExecution === 'boolean' &&
     executionSubmissionState(value.executionSubmission) &&
     typeof value.canConfirmExecution === 'boolean' &&
+    typeof value.canMailExecution === 'boolean' &&
+    typeof value.canSubmitExecutionFiling === 'boolean' &&
+    (value.executionMailing === null ||
+      executionMailing(value.executionMailing)) &&
+    (value.executionFiling === null ||
+      executionFiling(value.executionFiling)) &&
+    executionFactsMatch(
+      value.executionMailing,
+      value.executionFiling,
+      value.executionConfirmation,
+    ) &&
     executionConfirmationMatchesSubmission(
       value.executionConfirmation,
       value.executionSubmission,
@@ -1791,6 +1929,8 @@ const caseStages: CaseStage[] = [
   'WAITING_EXECUTION_DOCUMENTS',
   'WAITING_EXECUTION_CONFIRMATION',
   'WAITING_EXECUTION_STAMP',
+  'WAITING_EXECUTION_FILING',
+  'EXECUTING',
 ];
 function validLawyerSummary(value: unknown): value is LawyerCaseSummary {
   return (
@@ -1803,6 +1943,8 @@ function validLawyerSummary(value: unknown): value is LawyerCaseSummary {
       'canMatch',
       'canSubmitExecution',
       'canConfirmExecution',
+      'canMailExecution',
+      'canSubmitExecutionFiling',
       'canSubmitComplaint',
       'canConfirmComplaint',
       'canMailComplaint',
@@ -1828,6 +1970,8 @@ function validLawyerSummary(value: unknown): value is LawyerCaseSummary {
     value.canMatch === false &&
     typeof value.canSubmitExecution === 'boolean' &&
     typeof value.canConfirmExecution === 'boolean' &&
+    typeof value.canMailExecution === 'boolean' &&
+    typeof value.canSubmitExecutionFiling === 'boolean' &&
     typeof value.canSubmitComplaint === 'boolean' &&
     typeof value.canConfirmComplaint === 'boolean' &&
     typeof value.canMailComplaint === 'boolean' &&
@@ -2064,6 +2208,10 @@ export async function getLawyerCase(
       'executionSubmission',
       'canConfirmExecution',
       'executionConfirmation',
+      'canMailExecution',
+      'canSubmitExecutionFiling',
+      'executionMailing',
+      'executionFiling',
     ]) ||
     result.id !== id ||
     !validLawyerSummary({
@@ -2074,6 +2222,8 @@ export async function getLawyerCase(
       canMatch: result.canMatch,
       canSubmitExecution: result.canSubmitExecution,
       canConfirmExecution: result.canConfirmExecution,
+      canMailExecution: result.canMailExecution,
+      canSubmitExecutionFiling: result.canSubmitExecutionFiling,
       canSubmitComplaint: result.canSubmitComplaint,
       canConfirmComplaint: result.canConfirmComplaint,
       canMailComplaint: result.canMailComplaint,
@@ -2121,6 +2271,17 @@ export async function getLawyerCase(
     typeof result.canSubmitExecution !== 'boolean' ||
     !executionSubmissionState(result.executionSubmission) ||
     typeof result.canConfirmExecution !== 'boolean' ||
+    typeof result.canMailExecution !== 'boolean' ||
+    typeof result.canSubmitExecutionFiling !== 'boolean' ||
+    (result.executionMailing !== null &&
+      !executionMailing(result.executionMailing)) ||
+    (result.executionFiling !== null &&
+      !executionFiling(result.executionFiling)) ||
+    !executionFactsMatch(
+      result.executionMailing,
+      result.executionFiling,
+      result.executionConfirmation,
+    ) ||
     !executionConfirmationMatchesSubmission(
       result.executionConfirmation,
       result.executionSubmission,
@@ -2210,6 +2371,8 @@ export async function listCases(
       'WAITING_EXECUTION_DOCUMENTS',
       'WAITING_EXECUTION_CONFIRMATION',
       'WAITING_EXECUTION_STAMP',
+      'WAITING_EXECUTION_FILING',
+      'EXECUTING',
     ]) ||
     !Number.isInteger(response.counts.PENDING_MATCH) ||
     (response.counts.PENDING_MATCH as number) < 0 ||
@@ -2234,7 +2397,11 @@ export async function listCases(
     !Number.isInteger(response.counts.WAITING_EXECUTION_CONFIRMATION) ||
     (response.counts.WAITING_EXECUTION_CONFIRMATION as number) < 0 ||
     !Number.isInteger(response.counts.WAITING_EXECUTION_STAMP) ||
-    (response.counts.WAITING_EXECUTION_STAMP as number) < 0
+    (response.counts.WAITING_EXECUTION_STAMP as number) < 0 ||
+    !Number.isInteger(response.counts.WAITING_EXECUTION_FILING) ||
+    (response.counts.WAITING_EXECUTION_FILING as number) < 0 ||
+    !Number.isInteger(response.counts.EXECUTING) ||
+    (response.counts.EXECUTING as number) < 0
   )
     throw invalidResponse();
   return response as unknown as CaseList;
@@ -3167,6 +3334,113 @@ export async function mailCaseComplaint(
     mailedAt: string;
     recordedAt: string;
   };
+}
+
+export async function mailCaseExecution(
+  id: string,
+  input: MailCaseExecutionInput,
+  audience: 'internal' | 'client' | 'lawyer' = 'internal',
+): Promise<MailCaseExecutionResult> {
+  const versions = input.mailReceiptContentVersionIds;
+  if (
+    !Number.isInteger(input.expectedVersion) ||
+    input.expectedVersion < 1 ||
+    !validIdempotencyKey(input.idempotencyKey) ||
+    !uuidV4(input.expectedConfirmationId) ||
+    !businessDate(input.mailedAt) ||
+    input.mailedAt > todayShanghai() ||
+    !Array.isArray(versions) ||
+    versions.length < 1 ||
+    versions.length > 10 ||
+    !versions.every(uuidV4) ||
+    new Set(versions).size !== versions.length
+  )
+    throw new ApiError('执行邮寄登记信息无效', 400, 'VALIDATION_ERROR');
+
+  const path =
+    audience === 'client'
+      ? `/client/cases/${encodeURIComponent(id)}/execution-mail`
+      : `/${audience === 'lawyer' ? 'lawyer/cases' : 'cases'}/${encodeURIComponent(id)}/execution-mail`;
+  const response = await requestJson(path, {
+    method: 'POST',
+    headers: { 'Idempotency-Key': input.idempotencyKey },
+    body: input,
+  });
+  if (
+    !record(response) ||
+    !exact(response, [
+      'id',
+      'mailingId',
+      'confirmationId',
+      'stage',
+      'version',
+      'mailedAt',
+      'recordedAt',
+    ]) ||
+    response.id !== id ||
+    !uuidV4(response.mailingId) ||
+    response.confirmationId !== input.expectedConfirmationId ||
+    response.stage !== 'WAITING_EXECUTION_FILING' ||
+    response.version !== input.expectedVersion + 1 ||
+    response.mailedAt !== input.mailedAt ||
+    typeof response.recordedAt !== 'string' ||
+    Number.isNaN(Date.parse(response.recordedAt))
+  )
+    throw invalidResponse();
+  return response as MailCaseExecutionResult;
+}
+
+export async function submitCaseExecutionFiling(
+  id: string,
+  input: SubmitCaseExecutionFilingInput,
+  audience: 'internal' | 'lawyer' = 'internal',
+): Promise<SubmitCaseExecutionFilingResult> {
+  const versions = input.executionFilingProofContentVersionIds;
+  if (
+    !Number.isInteger(input.expectedVersion) ||
+    input.expectedVersion < 1 ||
+    !validIdempotencyKey(input.idempotencyKey) ||
+    !uuidV4(input.expectedMailingId) ||
+    !businessDate(input.submittedAt) ||
+    input.submittedAt > todayShanghai() ||
+    !Array.isArray(versions) ||
+    versions.length < 1 ||
+    versions.length > 10 ||
+    !versions.every(uuidV4) ||
+    new Set(versions).size !== versions.length
+  )
+    throw new ApiError('执行立案登记信息无效', 400, 'VALIDATION_ERROR');
+
+  const response = await requestJson(
+    `/${audience === 'lawyer' ? 'lawyer/cases' : 'cases'}/${encodeURIComponent(id)}/execution-filing-submit`,
+    {
+      method: 'POST',
+      headers: { 'Idempotency-Key': input.idempotencyKey },
+      body: input,
+    },
+  );
+  if (
+    !record(response) ||
+    !exact(response, [
+      'id',
+      'filingId',
+      'mailingId',
+      'stage',
+      'version',
+      'submittedAt',
+      'recordedAt',
+    ]) ||
+    response.id !== id ||
+    !uuidV4(response.filingId) ||
+    response.mailingId !== input.expectedMailingId ||
+    response.stage !== 'EXECUTING' ||
+    response.version !== input.expectedVersion + 1 ||
+    response.submittedAt !== input.submittedAt ||
+    typeof response.recordedAt !== 'string' ||
+    Number.isNaN(Date.parse(response.recordedAt))
+  )
+    throw invalidResponse();
+  return response as SubmitCaseExecutionFilingResult;
 }
 
 export async function getCase(

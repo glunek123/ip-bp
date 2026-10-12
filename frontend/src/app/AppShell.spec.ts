@@ -67,6 +67,8 @@ beforeEach(() => {
       WAITING_EXECUTION_DOCUMENTS: 0,
       WAITING_EXECUTION_CONFIRMATION: 0,
       WAITING_EXECUTION_STAMP: 0,
+      WAITING_EXECUTION_FILING: 0,
+      EXECUTING: 0,
     },
   });
   api.listNotaryOffices.mockResolvedValue({
@@ -120,6 +122,8 @@ beforeEach(() => {
       WAITING_EXECUTION_DOCUMENTS: 1,
       WAITING_EXECUTION_CONFIRMATION: 2,
       WAITING_EXECUTION_STAMP: 0,
+      WAITING_EXECUTION_FILING: 0,
+      EXECUTING: 0,
     },
   });
 });
@@ -210,7 +214,7 @@ describe('AppShell', () => {
     expect(stages.map((link) => link.text())).toContain('待正式立案2');
     expect(stages.map((link) => link.text())).toContain('待开庭1');
     expect(stages.map((link) => link.text())).toContain('待判决3');
-    expect(stages).toHaveLength(9);
+    expect(stages).toHaveLength(11);
     expect(
       wrapper.get('[data-test="execution-preparation-nav"]').text(),
     ).toContain('准备执行文书3');
@@ -277,6 +281,8 @@ describe('AppShell', () => {
         WAITING_EXECUTION_DOCUMENTS: 1,
         WAITING_EXECUTION_CONFIRMATION: 2,
         WAITING_EXECUTION_STAMP: 0,
+        WAITING_EXECUTION_FILING: 0,
+        EXECUTING: 0,
       },
     });
     const { wrapper } = await mountShell('/lawyer/cases', lawyerSession);
@@ -354,7 +360,7 @@ describe('AppShell', () => {
     expect(
       wrapper.get('[data-test="case-view-mine"]').attributes('href'),
     ).toContain('view=mine');
-    expect(wrapper.findAll('[data-test="case-stage"]')).toHaveLength(9);
+    expect(wrapper.findAll('[data-test="case-stage"]')).toHaveLength(11);
     expect(wrapper.get('[data-test="case-nav"]').text()).toContain('19');
     expect(api.listCases).toHaveBeenCalledWith(1, 1, {
       signal: expect.any(AbortSignal),

@@ -1,4 +1,6 @@
 <script setup lang="ts">
+import { CaseExecutionMailingPanel } from '../cases';
+
 import { computed, onBeforeUnmount, ref, watch } from 'vue';
 import { RouterLink, useRoute } from 'vue-router';
 import { ElButton } from 'element-plus/es/components/button/index.mjs';
@@ -94,7 +96,11 @@ onBeforeUnmount(() => request?.abort());
                               ? '执行材料待盖章'
                               : item.stage === 'WAITING_EXECUTION_CONFIRMATION'
                                 ? '执行材料待确认'
-                                : '待开庭'
+                                : item.stage === 'WAITING_EXECUTION_FILING'
+                                  ? '待申请执行'
+                                  : item.stage === 'EXECUTING'
+                                    ? '强制执行中'
+                                    : '待开庭'
               }}</span>
               · 权利主体：{{ item.rightsHolderName }}
             </p>
@@ -137,6 +143,13 @@ onBeforeUnmount(() => request?.abort());
             </li>
           </ul>
         </section>
+        <CaseExecutionMailingPanel
+          v-if="item.canMailExecution || item.executionMailing"
+          :item="item"
+          client
+          @changed="load"
+          @refresh="load"
+        />
         <CaseComplaintMailingPanel
           :item="item"
           client

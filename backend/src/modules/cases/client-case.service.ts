@@ -52,7 +52,12 @@ export class ClientCaseService {
       complaintConfirmation: { isNot: null },
       stage:
         view === 'PENDING'
-          ? ('WAITING_COMPLAINT_STAMP' as const)
+          ? {
+              in: [
+                'WAITING_COMPLAINT_STAMP' as const,
+                'WAITING_EXECUTION_STAMP' as const,
+              ],
+            }
           : {
               in: [
                 'WAITING_FILING' as const,
@@ -63,6 +68,8 @@ export class ClientCaseService {
                 'WAITING_EXECUTION_DOCUMENTS' as const,
                 'WAITING_EXECUTION_CONFIRMATION' as const,
                 'WAITING_EXECUTION_STAMP' as const,
+                'WAITING_EXECUTION_FILING' as const,
+                'EXECUTING' as const,
               ],
             },
     };
@@ -77,6 +84,8 @@ export class ClientCaseService {
           businessNo: true,
           stage: true,
           version: true,
+          executionConfirmation: { select: { id: true } },
+          executionMailing: { select: { id: true } },
           rightsHolder: { select: { name: true } },
           defendants: { orderBy: { createdAt: 'asc' }, select: { name: true } },
         },
@@ -96,9 +105,15 @@ export class ClientCaseService {
           | 'SECOND_INSTANCE'
           | 'WAITING_EXECUTION_DOCUMENTS'
           | 'WAITING_EXECUTION_CONFIRMATION'
-          | 'WAITING_EXECUTION_STAMP',
+          | 'WAITING_EXECUTION_STAMP'
+          | 'WAITING_EXECUTION_FILING'
+          | 'EXECUTING',
         version: item.version,
         canMailComplaint: item.stage === 'WAITING_COMPLAINT_STAMP',
+        canMailExecution:
+          item.stage === 'WAITING_EXECUTION_STAMP' &&
+          item.executionConfirmation !== null &&
+          item.executionMailing === null,
         rightsHolderName: item.rightsHolder.name,
         defendantNames: item.defendants.map((defendant) => defendant.name),
       })),
@@ -136,6 +151,10 @@ export class ClientCaseService {
           },
         },
         complaintMailing: { select: { mailedAt: true, recordedAt: true } },
+        executionConfirmation: { select: { id: true } },
+        executionMailing: {
+          select: { id: true, mailedAt: true, recordedAt: true },
+        },
       },
     });
     if (record?.complaintConfirmation == null) throw this.notFound();
@@ -165,8 +184,30 @@ export class ClientCaseService {
         file.contentVersionId ===
           record.complaintConfirmation!.confirmedComplaintContentVersionId,
     );
-    const receiptFiles = files
-      .filter((file) => file.category === 'MAIL_RECEIPT')
+    const complaintMailingFiles =
+      record.complaintMailing === null
+        ? []
+        : await this.materials.listFrozenCaseComplaintMailingFiles(
+            actor,
+            caseId,
+          );
+    const executionMailingFiles =
+      record.executionMailing === null
+        ? []
+        : await this.materials.listFrozenCaseExecutionMailingFiles(
+            actor,
+            caseId,
+          );
+    const frozenReceiptContentVersionIds = new Set([
+      ...complaintMailingFiles.map((file) => file.contentVersionId),
+      ...executionMailingFiles.map((file) => file.contentVersionId),
+    ]);
+    const pendingReceiptFiles = files
+      .filter(
+        (file) =>
+          file.category === 'MAIL_RECEIPT' &&
+          !frozenReceiptContentVersionIds.has(file.contentVersionId),
+      )
       .map(toFile);
     return {
       id: record.id,
@@ -180,9 +221,15 @@ export class ClientCaseService {
         | 'SECOND_INSTANCE'
         | 'WAITING_EXECUTION_DOCUMENTS'
         | 'WAITING_EXECUTION_CONFIRMATION'
-        | 'WAITING_EXECUTION_STAMP',
+        | 'WAITING_EXECUTION_STAMP'
+        | 'WAITING_EXECUTION_FILING'
+        | 'EXECUTING',
       version: record.version,
       canMailComplaint: record.stage === 'WAITING_COMPLAINT_STAMP',
+      canMailExecution:
+        record.stage === 'WAITING_EXECUTION_STAMP' &&
+        record.executionConfirmation !== null &&
+        record.executionMailing === null,
       rightsHolderName: record.rightsHolder.name,
       defendantNames: record.defendants.map((defendant) => defendant.name),
       confirmedAmountState: record.complaintConfirmation.amountState,
@@ -193,12 +240,24 @@ export class ClientCaseService {
               record.complaintConfirmation.amount.toString(),
             ).toFixed(2),
       confirmedAt: record.complaintConfirmation.confirmedAt.toISOString(),
+      executionConfirmationId: record.executionConfirmation?.id ?? null,
+      executionMailing:
+        record.executionMailing === null
+          ? null
+          : {
+              id: record.executionMailing.id,
+              mailedAt: record.executionMailing.mailedAt
+                .toISOString()
+                .slice(0, 10),
+              recordedAt: record.executionMailing.recordedAt.toISOString(),
+              files: executionMailingFiles,
+            },
       complaintFile: complaintFile === undefined ? null : toFile(complaintFile),
       authorizationFiles: files
         .filter((file) => file.category === 'AUTHORIZATION')
         .map(toFile),
       pendingReceiptFiles:
-        record.stage === 'WAITING_COMPLAINT_STAMP' ? receiptFiles : [],
+        record.stage === 'WAITING_COMPLAINT_STAMP' ? pendingReceiptFiles : [],
       complaintMailing:
         record.complaintMailing === null
           ? null
@@ -207,7 +266,7 @@ export class ClientCaseService {
                 .toISOString()
                 .slice(0, 10),
               recordedAt: record.complaintMailing.recordedAt.toISOString(),
-              receiptFiles,
+              receiptFiles: complaintMailingFiles,
             },
     };
   }

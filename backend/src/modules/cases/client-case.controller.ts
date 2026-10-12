@@ -1,3 +1,8 @@
+import { CaseExecutionMailingService } from './case-execution-mailing.service';
+import {
+  MailCaseExecutionDto,
+  MailCaseExecutionResponseDto,
+} from './case-execution-mailing.dto';
 import {
   Body,
   Controller,
@@ -34,6 +39,7 @@ export class ClientCaseController {
   constructor(
     private readonly cases: ClientCaseService,
     private readonly mailing: CaseComplaintMailingService,
+    private readonly executionMailing: CaseExecutionMailingService,
   ) {}
 
   @Get()
@@ -54,6 +60,23 @@ export class ClientCaseController {
     return this.cases.get(actor, id);
   }
 
+  @Post(':id/execution-mail')
+  @ApiOkResponse({ type: MailCaseExecutionResponseDto })
+  mailExecution(
+    @CurrentActor() actor: ActorContext,
+    @Param('id', new ParseUUIDPipe()) id: string,
+    @Body() body: MailCaseExecutionDto,
+  ) {
+    if (
+      actor.clientCustomerId === undefined ||
+      actor.notaryOfficeId !== undefined
+    )
+      throw new ForbiddenException({
+        code: 'ACTION_FORBIDDEN',
+        message: '无权登记执行邮寄',
+      });
+    return this.executionMailing.mail(actor, id, body);
+  }
   @Post(':id/complaint-mail')
   @ApiOkResponse({ type: MailCaseComplaintResponseDto })
   mailComplaint(

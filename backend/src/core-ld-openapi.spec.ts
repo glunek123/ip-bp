@@ -1,3 +1,5 @@
+import { CaseExecutionMailingService } from './modules/cases/case-execution-mailing.service';
+import { CaseExecutionFilingService } from './modules/cases/case-execution-filing.service';
 import 'reflect-metadata';
 import { INestApplication } from '@nestjs/common';
 import { Test } from '@nestjs/testing';
@@ -67,6 +69,11 @@ describe('CORE-LD-002 OpenAPI contract', () => {
         CaseReadController,
       ],
       providers: [
+        { provide: CaseExecutionMailingService, useValue: { mail: jest.fn() } },
+        {
+          provide: CaseExecutionFilingService,
+          useValue: { submit: jest.fn() },
+        },
         { provide: AuthService, useValue: {} },
         { provide: CustomerService, useValue: {} },
         { provide: CustomerCooperationService, useValue: {} },

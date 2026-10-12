@@ -1,0 +1,26 @@
+export function verifyCaseExecutionMailingAndFilingDatabase(): Promise<{
+  source: boolean;
+  wrongConfirmation: string | null;
+  wrongMaterial: string | null;
+  missingMail: string | null;
+  futureMail: string | null;
+  mailFault: boolean;
+  mailingRace: boolean;
+  mailReplay: boolean;
+  mailConflict: string | null;
+  mailFrozen: boolean;
+  clientDenied: string | null;
+  notaryDenied: string | null;
+  wrongMailing: string | null;
+  wrongProof: string | null;
+  missingProof: string | null;
+  futureFiling: string | null;
+  filingFault: boolean;
+  filingRace: boolean;
+  filingReplay: boolean;
+  filingConflict: string | null;
+  filingFrozen: boolean;
+  finalStage: boolean;
+  auditFacts: boolean;
+  sqlReversal: string | null;
+}>;

@@ -21,6 +21,8 @@ describe('ClientCaseService', () => {
             businessNo: 'CA-1',
             stage: 'WAITING_COMPLAINT_STAMP',
             version: 4,
+            executionConfirmation: null,
+            executionMailing: null,
             rightsHolder: { name: '持权企业' },
             defendants: [{ name: '被告企业' }],
           },
@@ -40,10 +42,14 @@ describe('ClientCaseService', () => {
             amount: { toString: () => '123.45' },
           },
           complaintMailing: null,
+          executionConfirmation: null,
+          executionMailing: null,
         }),
       },
     };
     const materials = {
+      listFrozenCaseComplaintMailingFiles: jest.fn().mockResolvedValue([]),
+      listFrozenCaseExecutionMailingFiles: jest.fn().mockResolvedValue([]),
       listOwnerMaterials: jest.fn().mockResolvedValue({
         items: [
           {
@@ -96,7 +102,9 @@ describe('ClientCaseService', () => {
           departmentId: actor.departmentId,
           customerId: actor.clientCustomerId,
           complaintConfirmation: { isNot: null },
-          stage: 'WAITING_COMPLAINT_STAMP',
+          stage: {
+            in: ['WAITING_COMPLAINT_STAMP', 'WAITING_EXECUTION_STAMP'],
+          },
         }),
       }),
     );
@@ -203,6 +211,70 @@ describe('ClientCaseService', () => {
     expect(detail).not.toHaveProperty('fees');
     expect(detail).not.toHaveProperty('owner');
     expect(detail).not.toHaveProperty('complaintAmount');
+  });
+
+  it('keeps complaint and execution frozen receipts separate from pending drafts', async () => {
+    const f = fixture();
+    f.db.case.findFirst.mockResolvedValue({
+      ...(await f.db.case.findFirst()),
+      stage: 'WAITING_COMPLAINT_STAMP',
+      complaintMailing: {
+        mailedAt: new Date('2026-10-03T00:00:00Z'),
+        recordedAt: new Date('2026-10-03T01:00:00Z'),
+      },
+      executionConfirmation: { id: 'execution-confirmation' },
+      executionMailing: {
+        id: 'execution-mailing',
+        mailedAt: new Date('2026-10-04T00:00:00Z'),
+        recordedAt: new Date('2026-10-04T01:00:00Z'),
+      },
+    });
+    const file = (contentVersionId: string) => ({
+      materialId: `material-${contentVersionId}`,
+      contentVersionId,
+      originalFilename: `${contentVersionId}.pdf`,
+      mimeType: 'application/pdf',
+    });
+    f.materials.listFrozenCaseComplaintMailingFiles.mockResolvedValue([
+      file('complaint-receipt'),
+    ]);
+    f.materials.listFrozenCaseExecutionMailingFiles.mockResolvedValue([
+      file('execution-receipt'),
+    ]);
+    f.materials.listOwnerMaterials.mockResolvedValue({
+      items: [
+        {
+          id: 'complaint-receipt-material',
+          category: 'MAIL_RECEIPT',
+          contentVersions: [
+            { id: 'complaint-receipt', ...file('complaint-receipt') },
+          ],
+        },
+        {
+          id: 'execution-receipt-material',
+          category: 'MAIL_RECEIPT',
+          contentVersions: [
+            { id: 'execution-receipt', ...file('execution-receipt') },
+          ],
+        },
+        {
+          id: 'draft-receipt-material',
+          category: 'MAIL_RECEIPT',
+          contentVersions: [{ id: 'draft-receipt', ...file('draft-receipt') }],
+        },
+      ],
+      total: 3,
+    });
+
+    const detail = await f.service.get(actor, caseId);
+
+    expect(detail.complaintMailing?.receiptFiles).toEqual([
+      file('complaint-receipt'),
+    ]);
+    expect(detail.executionMailing?.files).toEqual([file('execution-receipt')]);
+    expect(detail.pendingReceiptFiles).toEqual([
+      { ...file('draft-receipt'), materialId: 'draft-receipt-material' },
+    ]);
   });
 
   it('refuses a revoked binding and never queries cases', async () => {

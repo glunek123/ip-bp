@@ -309,6 +309,8 @@ export class CasePageQueryDto {
       'WAITING_EXECUTION_DOCUMENTS',
       'WAITING_EXECUTION_CONFIRMATION',
       'WAITING_EXECUTION_STAMP',
+      'WAITING_EXECUTION_FILING',
+      'EXECUTING',
     ],
   })
   @IsOptional()
@@ -325,6 +327,8 @@ export class CasePageQueryDto {
     'WAITING_EXECUTION_DOCUMENTS',
     'WAITING_EXECUTION_CONFIRMATION',
     'WAITING_EXECUTION_STAMP',
+    'WAITING_EXECUTION_FILING',
+    'EXECUTING',
   ])
   stage?:
     | 'PENDING_MATCH'
@@ -338,7 +342,9 @@ export class CasePageQueryDto {
     | 'SECOND_INSTANCE'
     | 'WAITING_EXECUTION_DOCUMENTS'
     | 'WAITING_EXECUTION_CONFIRMATION'
-    | 'WAITING_EXECUTION_STAMP';
+    | 'WAITING_EXECUTION_STAMP'
+    | 'WAITING_EXECUTION_FILING'
+    | 'EXECUTING';
   @ApiPropertyOptional({ enum: ['EXECUTION_PREPARATION'] })
   @IsOptional()
   @IsIn(['EXECUTION_PREPARATION'])
@@ -384,6 +390,8 @@ class CaseListItemDto {
       'WAITING_EXECUTION_DOCUMENTS',
       'WAITING_EXECUTION_CONFIRMATION',
       'WAITING_EXECUTION_STAMP',
+      'WAITING_EXECUTION_FILING',
+      'EXECUTING',
     ],
   })
   stage!:
@@ -398,7 +406,9 @@ class CaseListItemDto {
     | 'SECOND_INSTANCE'
     | 'WAITING_EXECUTION_DOCUMENTS'
     | 'WAITING_EXECUTION_CONFIRMATION'
-    | 'WAITING_EXECUTION_STAMP';
+    | 'WAITING_EXECUTION_STAMP'
+    | 'WAITING_EXECUTION_FILING'
+    | 'EXECUTING';
   @ApiProperty() version!: number;
   @ApiProperty() canMatch!: boolean;
   @ApiProperty() canSubmitComplaint!: boolean;
@@ -418,6 +428,8 @@ class CaseListItemDto {
   @ApiProperty() canRevokeSecondInstanceResult!: boolean;
   @ApiProperty() canSubmitExecution!: boolean;
   @ApiProperty() canConfirmExecution!: boolean;
+  @ApiProperty() canMailExecution!: boolean;
+  @ApiProperty() canSubmitExecutionFiling!: boolean;
   @ApiProperty({ type: CaseOwnerDto }) owner!: CaseOwnerDto;
   @ApiProperty({ format: 'date-time' }) createdAt!: string;
   @ApiProperty({ type: CaseSourceDto }) sourceLead!: CaseSourceDto;
@@ -441,7 +453,25 @@ export class CaseListResponseDto {
     WAITING_EXECUTION_DOCUMENTS: number;
     WAITING_EXECUTION_CONFIRMATION: number;
     WAITING_EXECUTION_STAMP: number;
+    WAITING_EXECUTION_FILING: number;
+    EXECUTING: number;
   };
+}
+class CaseExecutionMailingDto {
+  @ApiProperty({ format: 'uuid' }) id!: string;
+  @ApiProperty({ format: 'uuid' }) confirmationId!: string;
+  @ApiProperty({ format: 'date' }) mailedAt!: string;
+  @ApiProperty({ format: 'date-time' }) recordedAt!: string;
+  @ApiProperty({ type: [CaseCertificateFileDto] })
+  files!: CaseCertificateFileDto[];
+}
+class CaseExecutionFilingDto {
+  @ApiProperty({ format: 'uuid' }) id!: string;
+  @ApiProperty({ format: 'uuid' }) mailingId!: string;
+  @ApiProperty({ format: 'date' }) submittedAt!: string;
+  @ApiProperty({ format: 'date-time' }) recordedAt!: string;
+  @ApiProperty({ type: [CaseCertificateFileDto] })
+  files!: CaseCertificateFileDto[];
 }
 class ExecutionSubmissionFileDto extends CaseCertificateFileDto {
   @ApiProperty({ format: 'date-time' }) uploadedAt!: string;
@@ -508,6 +538,10 @@ export class CaseDetailResponseDto extends CaseListItemDto {
   executionConfirmation!: CaseExecutionConfirmationDto | null;
   @ApiProperty({ type: CaseExecutionSubmissionDto })
   executionSubmission!: CaseExecutionSubmissionDto;
+  @ApiProperty({ type: CaseExecutionMailingDto, nullable: true })
+  executionMailing!: CaseExecutionMailingDto | null;
+  @ApiProperty({ type: CaseExecutionFilingDto, nullable: true })
+  executionFiling!: CaseExecutionFilingDto | null;
   @ApiProperty({ type: CaseHearingDto }) hearing!: CaseHearingDto;
   @ApiProperty({ type: CaseJudgmentDto }) judgment!: CaseJudgmentDto;
   @ApiProperty({ type: CaseJudgmentNextStepDto })

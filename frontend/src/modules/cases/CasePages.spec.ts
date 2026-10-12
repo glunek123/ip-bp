@@ -94,6 +94,8 @@ beforeEach(() => {
       WAITING_EXECUTION_DOCUMENTS: 0,
       WAITING_EXECUTION_CONFIRMATION: 0,
       WAITING_EXECUTION_STAMP: 0,
+      WAITING_EXECUTION_FILING: 0,
+      EXECUTING: 0,
     },
   });
   api.listLawyerMatchCandidates.mockResolvedValue([]);
@@ -178,6 +180,8 @@ beforeEach(() => {
     executionSubmission: { current: null, submissions: [], availableFiles: [] },
     canConfirmExecution: false,
     executionConfirmation: null,
+    executionMailing: null,
+    executionFiling: null,
   });
   api.listOwnerMaterials.mockResolvedValue({ items: [], total: 0 });
   api.listFilingCourts.mockResolvedValue([]);
@@ -237,6 +241,8 @@ function confirmationDetail(
     canSubmitComplaint: false,
     canConfirmComplaint: stage === 'WAITING_COMPLAINT_CONFIRMATION',
     canMailComplaint: false,
+    canMailExecution: false,
+    canSubmitExecutionFiling: false,
     canSubmitFiling: false,
     canRegisterAcceptance: false,
     canUploadAcceptanceMaterials: false,
@@ -333,6 +339,8 @@ function confirmationDetail(
     executionSubmission: { current: null, submissions: [], availableFiles: [] },
     canConfirmExecution: false,
     executionConfirmation: null,
+    executionMailing: null,
+    executionFiling: null,
   };
 }
 

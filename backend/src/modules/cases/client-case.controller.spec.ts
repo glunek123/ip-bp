@@ -1,3 +1,4 @@
+import { CaseExecutionMailingService } from './case-execution-mailing.service';
 import 'reflect-metadata';
 import { INestApplication } from '@nestjs/common';
 import { Test } from '@nestjs/testing';
@@ -29,6 +30,7 @@ describe('client complaint mailing route identity', () => {
       const controller = new ClientCaseController(
         {} as never,
         mailing as never,
+        { mail: jest.fn() } as never,
       );
       expect(() =>
         controller.mailComplaint(
@@ -58,6 +60,7 @@ describe('client case OpenAPI contract', () => {
     const module = await Test.createTestingModule({
       controllers: [ClientCaseController],
       providers: [
+        { provide: CaseExecutionMailingService, useValue: { mail: jest.fn() } },
         { provide: ClientCaseService, useValue: {} },
         { provide: CaseComplaintMailingService, useValue: {} },
       ],

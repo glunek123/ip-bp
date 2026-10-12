@@ -1,4 +1,7 @@
 <script setup lang="ts">
+import CaseExecutionMailingPanel from './CaseExecutionMailingPanel.vue';
+import CaseExecutionFilingPanel from './CaseExecutionFilingPanel.vue';
+
 import { computed, onBeforeUnmount, onMounted, ref, watch } from 'vue';
 import { RouterLink, useRoute } from 'vue-router';
 import { ElButton } from 'element-plus/es/components/button/index.mjs';
@@ -342,6 +345,8 @@ function stageLabel(stage: CaseDetail['stage']): string {
   if (stage === 'WAITING_EXECUTION_DOCUMENTS') return '待写执行材料';
   if (stage === 'WAITING_EXECUTION_CONFIRMATION') return '执行材料待确认';
   if (stage === 'WAITING_EXECUTION_STAMP') return '执行材料待盖章';
+  if (stage === 'WAITING_EXECUTION_FILING') return '待申请执行';
+  if (stage === 'EXECUTING') return '强制执行中';
   return '待开庭';
 }
 function removeDefendant(index: number) {
@@ -795,6 +800,28 @@ onBeforeUnmount(() => request?.abort());
           :item="item"
           :context-key="identity"
           :actor-key="secondInstanceActorKey"
+          @changed="load"
+          @refresh="load"
+        />
+        <CaseExecutionMailingPanel
+          v-if="
+            item.canMailExecution ||
+            item.executionMailing ||
+            item.stage === 'WAITING_EXECUTION_STAMP'
+          "
+          :item="item"
+          :context-key="identity"
+          @changed="load"
+          @refresh="load"
+        />
+        <CaseExecutionFilingPanel
+          v-if="
+            item.canSubmitExecutionFiling ||
+            item.executionFiling ||
+            item.stage === 'WAITING_EXECUTION_FILING'
+          "
+          :item="item"
+          :context-key="identity"
           @changed="load"
           @refresh="load"
         />

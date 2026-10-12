@@ -94,7 +94,9 @@ export class CaseReadService {
       | 'SECOND_INSTANCE'
       | 'WAITING_EXECUTION_DOCUMENTS'
       | 'WAITING_EXECUTION_CONFIRMATION'
-      | 'WAITING_EXECUTION_STAMP',
+      | 'WAITING_EXECUTION_STAMP'
+      | 'WAITING_EXECUTION_FILING'
+      | 'EXECUTING',
     stageGroup?: 'EXECUTION_PREPARATION',
   ) {
     if (stage !== undefined && stageGroup !== undefined)
@@ -153,6 +155,8 @@ export class CaseReadService {
           currentSecondInstanceResultId: true,
           currentExecutionSubmissionId: true,
           executionConfirmation: { select: { id: true } },
+          executionMailing: { select: { id: true } },
+          executionFiling: { select: { id: true } },
           currentSecondInstanceResult: {
             select: {
               id: true,
@@ -520,6 +524,38 @@ export class CaseReadService {
                     : {}),
                 },
               ))),
+          canMailExecution:
+            item.stage === 'WAITING_EXECUTION_STAMP' &&
+            item.executionConfirmation !== null &&
+            item.executionMailing === null &&
+            (principal === 'LAWYER' ||
+              (await this.access.canAuthorizeCase(
+                actor,
+                'case.execution.mail',
+                {
+                  departmentId: actor.departmentId,
+                  responsibleUserId: item.responsibleUserId,
+                  ...(item.responsibleMembership.teamId
+                    ? { teamId: item.responsibleMembership.teamId }
+                    : {}),
+                },
+              ))),
+          canSubmitExecutionFiling:
+            item.stage === 'WAITING_EXECUTION_FILING' &&
+            item.executionMailing !== null &&
+            item.executionFiling === null &&
+            (principal === 'LAWYER' ||
+              (await this.access.canAuthorizeCase(
+                actor,
+                'case.execution.filing.submit',
+                {
+                  departmentId: actor.departmentId,
+                  responsibleUserId: item.responsibleUserId,
+                  ...(item.responsibleMembership.teamId
+                    ? { teamId: item.responsibleMembership.teamId }
+                    : {}),
+                },
+              ))),
           createdAt: item.createdAt.toISOString(),
         })),
       ),
@@ -563,6 +599,11 @@ export class CaseReadService {
         WAITING_EXECUTION_STAMP:
           grouped.find((row) => row.stage === 'WAITING_EXECUTION_STAMP')?._count
             ._all ?? 0,
+        WAITING_EXECUTION_FILING:
+          grouped.find((row) => row.stage === 'WAITING_EXECUTION_FILING')
+            ?._count._all ?? 0,
+        EXECUTING:
+          grouped.find((row) => row.stage === 'EXECUTING')?._count._all ?? 0,
       },
     };
   }
@@ -671,6 +712,22 @@ export class CaseReadService {
             submissionId: true,
             confirmedAt: true,
             confirmedByUserId: true,
+          },
+        },
+        executionMailing: {
+          select: {
+            id: true,
+            confirmationId: true,
+            mailedAt: true,
+            recordedAt: true,
+          },
+        },
+        executionFiling: {
+          select: {
+            id: true,
+            mailingId: true,
+            submittedAt: true,
+            recordedAt: true,
           },
         },
         executionSubmissions: {
@@ -1050,6 +1107,14 @@ export class CaseReadService {
       record.filingSubmission == null
         ? []
         : await this.materials.listFrozenCaseFilingFiles(actor, id);
+    const executionMailingFiles =
+      record.executionMailing == null
+        ? []
+        : await this.materials.listFrozenCaseExecutionMailingFiles(actor, id);
+    const executionFilingFiles =
+      record.executionFiling == null
+        ? []
+        : await this.materials.listFrozenCaseExecutionFilingFiles(actor, id);
     const acceptanceFrozen =
       record.acceptance == null
         ? []
@@ -1285,6 +1350,30 @@ export class CaseReadService {
                 record.executionConfirmation.confirmedAt.toISOString(),
               confirmedByUserId: record.executionConfirmation.confirmedByUserId,
               files: confirmedSubmission?.files ?? [],
+            },
+      executionMailing:
+        record.executionMailing == null
+          ? null
+          : {
+              id: record.executionMailing.id,
+              confirmationId: record.executionMailing.confirmationId,
+              mailedAt: record.executionMailing.mailedAt
+                .toISOString()
+                .slice(0, 10),
+              recordedAt: record.executionMailing.recordedAt.toISOString(),
+              files: executionMailingFiles,
+            },
+      executionFiling:
+        record.executionFiling == null
+          ? null
+          : {
+              id: record.executionFiling.id,
+              mailingId: record.executionFiling.mailingId,
+              submittedAt: record.executionFiling.submittedAt
+                .toISOString()
+                .slice(0, 10),
+              recordedAt: record.executionFiling.recordedAt.toISOString(),
+              files: executionFilingFiles,
             },
       hearing: {
         currentArrangement:
@@ -1685,6 +1774,34 @@ export class CaseReadService {
               ? { teamId: record.responsibleMembership.teamId }
               : {}),
           }))),
+      canMailExecution:
+        record.stage === 'WAITING_EXECUTION_STAMP' &&
+        record.executionConfirmation !== null &&
+        record.executionMailing === null &&
+        (principal === 'LAWYER' ||
+          (await this.access.canAuthorizeCase(actor, 'case.execution.mail', {
+            departmentId: actor.departmentId,
+            responsibleUserId: record.responsibleUserId,
+            ...(record.responsibleMembership.teamId
+              ? { teamId: record.responsibleMembership.teamId }
+              : {}),
+          }))),
+      canSubmitExecutionFiling:
+        record.stage === 'WAITING_EXECUTION_FILING' &&
+        record.executionMailing !== null &&
+        record.executionFiling === null &&
+        (principal === 'LAWYER' ||
+          (await this.access.canAuthorizeCase(
+            actor,
+            'case.execution.filing.submit',
+            {
+              departmentId: actor.departmentId,
+              responsibleUserId: record.responsibleUserId,
+              ...(record.responsibleMembership.teamId
+                ? { teamId: record.responsibleMembership.teamId }
+                : {}),
+            },
+          ))),
       complaint:
         record.complaintSubmittedAt == null
           ? null
@@ -1938,12 +2055,16 @@ export class CaseReadService {
         canRevokeSecondInstanceResult: false,
         canSubmitExecution: detail.canSubmitExecution,
         canConfirmExecution: detail.canConfirmExecution,
+        canMailExecution: detail.canMailExecution,
+        canSubmitExecutionFiling: detail.canSubmitExecutionFiling,
         hearing: detail.hearing,
         judgment: detail.judgment,
         judgmentNextStep: detail.judgmentNextStep,
         secondInstance: detail.secondInstance,
         executionSubmission: detail.executionSubmission,
         executionConfirmation: detail.executionConfirmation,
+        executionMailing: detail.executionMailing,
+        executionFiling: detail.executionFiling,
         complaint:
           detail.complaint === null
             ? null

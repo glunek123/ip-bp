@@ -37,7 +37,7 @@ async function replay(client, migrations) {
   }
 }
 
-async function seedOldDirectChain(client) {
+export async function seedOldDirectChain(client) {
   const ids = Object.fromEntries(
     [
       'department',
@@ -234,7 +234,7 @@ async function tryLawyerExecutionDraft(client, ids, lawyer) {
   }
 }
 
-async function submitSql(
+export async function submitSql(
   client,
   ids,
   {
@@ -520,7 +520,7 @@ export async function verifyCaseExecutionConfirmationMigration() {
     allowRandomPort: true,
   });
   if (
-    allNames.length !== 136 ||
+    allNames.length < 136 ||
     confirmationMigrations.some((name, index) => allNames[134 + index] !== name)
   )
     throw new Error('Unexpected CA-012 migration suffix');
@@ -560,7 +560,7 @@ export async function verifyCaseExecutionConfirmationMigration() {
       await client.query(`CREATE SCHEMA "${schema}"`);
 
     await use(schemas.empty);
-    await replay(client, allNames);
+    await replay(client, allNames.slice(0, 136));
     const emptyChain =
       (await count(
         'SELECT count(*) AS n FROM information_schema.tables WHERE table_schema=$1 AND table_name IN ($2,$3)',
@@ -844,7 +844,7 @@ export async function verifyCaseExecutionConfirmationMigration() {
       ).rows[0].ready;
 
     return {
-      migrationCount: allNames.length,
+      migrationCount: 136,
       emptyChain,
       sameScopePermission,
       invalidStage,

@@ -42,6 +42,8 @@ function detail(
     canSubmitComplaint: false,
     canConfirmComplaint: false,
     canMailComplaint: false,
+    canMailExecution: false,
+    canSubmitExecutionFiling: false,
     canSubmitFiling: false,
     canRegisterAcceptance: false,
     canUploadAcceptanceMaterials: false,
@@ -103,6 +105,8 @@ function detail(
     executionSubmission: { current: null, submissions: [], availableFiles: [] },
     canConfirmExecution: false,
     executionConfirmation: null,
+    executionMailing: null,
+    executionFiling: null,
   };
 }
 function materials() {

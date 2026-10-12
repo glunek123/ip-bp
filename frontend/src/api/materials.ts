@@ -29,7 +29,8 @@ export type MaterialCategory =
   | 'SECOND_INSTANCE_DOCUMENT'
   | 'SECOND_INSTANCE_SERVICE'
   | 'SECOND_INSTANCE_JUDGMENT'
-  | 'EXECUTION_APPLICATION';
+  | 'EXECUTION_APPLICATION'
+  | 'EXECUTION_FILING_PROOF';
 
 export type MaterialPurpose =
   | 'IDENTITY_FULL'
@@ -53,7 +54,8 @@ export type MaterialPurpose =
   | 'SECOND_INSTANCE_DOCUMENT'
   | 'SECOND_INSTANCE_SERVICE'
   | 'SECOND_INSTANCE_JUDGMENT'
-  | 'EXECUTION_APPLICATION';
+  | 'EXECUTION_APPLICATION'
+  | 'EXECUTION_FILING_PROOF';
 
 export type UploadedMaterial = {
   materialId: string;
@@ -165,7 +167,8 @@ function isCategory(value: unknown): value is MaterialCategory {
     value === 'SECOND_INSTANCE_DOCUMENT' ||
     value === 'SECOND_INSTANCE_SERVICE' ||
     value === 'SECOND_INSTANCE_JUDGMENT' ||
-    value === 'EXECUTION_APPLICATION'
+    value === 'EXECUTION_APPLICATION' ||
+    value === 'EXECUTION_FILING_PROOF'
   );
 }
 
@@ -192,7 +195,8 @@ function isPurpose(value: unknown): value is MaterialPurpose {
     value === 'SECOND_INSTANCE_DOCUMENT' ||
     value === 'SECOND_INSTANCE_SERVICE' ||
     value === 'SECOND_INSTANCE_JUDGMENT' ||
-    value === 'EXECUTION_APPLICATION'
+    value === 'EXECUTION_APPLICATION' ||
+    value === 'EXECUTION_FILING_PROOF'
   );
 }
 
@@ -453,7 +457,8 @@ export async function uploadMaterialFile(
           (input.category !== 'COMPLAINT' &&
             input.category !== 'AUTHORIZATION' &&
             input.category !== 'FILING_EVIDENCE' &&
-            input.category !== 'EXECUTION_APPLICATION') ||
+            input.category !== 'EXECUTION_APPLICATION' &&
+            input.category !== 'EXECUTION_FILING_PROOF') ||
           input.purpose !== input.category ||
           !input.ownerId
         ) {
