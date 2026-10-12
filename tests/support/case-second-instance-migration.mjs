@@ -9,7 +9,11 @@ const requireBackend = createRequire(resolve(root, 'backend/package.json'));
 const { Client } = requireBackend('pg');
 const directory = resolve(root, 'backend/prisma/migrations');
 const names = readdirSync(directory)
-  .filter((name) => /^\d{14}_/u.test(name))
+  .filter(
+    (name) =>
+      /^\d{14}_/u.test(name) &&
+      name <= '20261011020000_scope_retrial_acceptance_freeze',
+  )
   .sort();
 const target = '20261010040000_add_case_trial_round_foundation';
 const repair = '20261010041000_repair_case_trial_round_guard';
