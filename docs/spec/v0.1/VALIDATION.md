@@ -1,5 +1,13 @@
 # SPEC-001 文档验证
 
+## CA-012与开发反馈优化集成（2026-10-12）
+
+按用户明确授权重新 fetch 并读取真实远端，集成前本地／远端 main 均为 `d57b359ae3e77bfdf73f090e4f3a29cc35750b72`、工作区干净且无分叉。main 快进至 `e6c53d1083924b6e713c1830869995cc0dbe76d2`，组合 tree 为 `05d5c48287edea2735a7cf015667683ea5762b9d`，与流程收口完全一致，无冲突或额外代码变化。原子推送 main、`codex/core-ca-012-execution-confirmation`（`5b77d00`）及 `codex/ca012-development-feedback`（`e6c53d1`）成功；随后真实远端 main 精确 SHA 及包含两个实际候选已核实，原件 `.local/ca012-development-feedback/integration-result.json`。
+
+证据分层保留：业务候选 `e5ccf8c` 的独立非实现审查、完整 verify 及 36 文件隔离 PG／Chromium 163/163；流程候选 `eab6494` 的独立非实现审查、完整 verify（工具80、前端998、后端1222与双构建）和扩展入口127＋159项／4项实测。后者包含原业务实现，相对业务收口 backend／frontend／原tests／SQL／runner／锁及环境输入均无差异；质量规则和预检配置增量由新候选实际验证，不能当作纯文档变化借旧门禁。`eab6494` 至首次集成仅三份非执行性证据／状态／快照变化，文档格式、Spec、strict context及累计diff均退出0，日志 `closeout-*`，环境指纹一致。没有重复原163项整组，不声称组合HEAD实跑原业务门禁。
+
+UTC07:18远端 main 未保护、rulesets0、Actions workflows0、该SHA check-runs0、commit statuses0。Combined status 的默认 `pending` 对应空列表，不代表存在必需检查；未发现必须PR／CI的约束，未绕过保护，不把无CI说成CI通过。本记录之后仅同步实际集成完成状态、验证摘要及对应已核快照，累计四份文档差异按非执行性收口例外执行格式、Spec／链接／状态、strict context和Git diff检查后推送补记，原件在同目录 `integration-closeout-*`。CA-012与本轮微调已推送并集成，Current保留CA-012已完成已集成，CA-013未领取；未部署、创建试用账号或操作人工／开发／生产库，原人工环境保留。
+
 ## CA-012开发反馈优化与效率对照（2026-10-12）
 
 用户授权复盘、少量流程微调及 CA-012 推送／集成；不部署或领取 CA-013。流程增量在 `codex/ca012-development-feedback`，从已验收业务收口 `5b77d004622459d6c7a86bc94b7f9b244fcc2234` 建立，与 CA-012 业务提交分开。以下对照只用两片实际记录，不把不同起点的 CA-011 恢复会话约 144.5 分钟与 CA-012 分支准备至收口约 95 分钟换算成提速百分比。
