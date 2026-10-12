@@ -727,18 +727,59 @@ export async function verifyCaseExecutionSubmissionDatabase() {
         ],
       };
       const second = await submissionService.submit(
-        actor,
+        lawyerActor,
         caseId,
         resubmitInput,
       );
       const secondReplay = await submissionService.submit(
-        actor,
+        lawyerActor,
         caseId,
         resubmitInput,
       );
+      const secondFact = await database.caseExecutionSubmission.findUnique({
+        where: { id: second.submissionId },
+        select: {
+          submittedByUserId: true,
+          auditEvent: {
+            select: { lawyerAccountBindingId: true, internalActorUserId: true },
+          },
+        },
+      });
+      await database.lawyerAccountBinding.updateMany({
+        where: { userId: lawyerActor.userId, departmentId: actor.departmentId },
+        data: { active: false },
+      });
+      let lawyerRevokedReplay = null;
+      try {
+        await submissionService.submit(lawyerActor, caseId, resubmitInput);
+      } catch (error) {
+        lawyerRevokedReplay = error.response?.code ?? null;
+      }
+      await database.lawyerAccountBinding.updateMany({
+        where: { userId: lawyerActor.userId, departmentId: actor.departmentId },
+        data: { active: true },
+      });
+      await client.query(
+        `UPDATE case_lawyer_assignments SET ended_at=now()
+        WHERE case_id=$1 AND lawyer_id=(SELECT profile_id FROM lawyer_account_bindings
+          WHERE user_id=$2 AND department_id=$3)`,
+        [caseId, lawyerActor.userId, actor.departmentId],
+      );
+      let lawyerAssignmentRevokedReplay = null;
+      try {
+        await submissionService.submit(lawyerActor, caseId, resubmitInput);
+      } catch (error) {
+        lawyerAssignmentRevokedReplay = error.response?.code ?? null;
+      }
+      await client.query(
+        `UPDATE case_lawyer_assignments SET ended_at=NULL
+        WHERE case_id=$1 AND lawyer_id=(SELECT profile_id FROM lawyer_account_bindings
+          WHERE user_id=$2 AND department_id=$3)`,
+        [caseId, lawyerActor.userId, actor.departmentId],
+      );
       let staleAnchor = null;
       try {
-        await submissionService.submit(actor, caseId, {
+        await submissionService.submit(lawyerActor, caseId, {
           ...resubmitInput,
           expectedVersion: 13,
           idempotencyKey: `ca011-stale-anchor-${caseId}`,
@@ -750,7 +791,7 @@ export async function verifyCaseExecutionSubmissionDatabase() {
       }
       let noChange = null;
       try {
-        await submissionService.submit(actor, caseId, {
+        await submissionService.submit(lawyerActor, caseId, {
           ...resubmitInput,
           expectedVersion: 13,
           idempotencyKey: `ca011-unchanged-${caseId}`,
@@ -837,6 +878,12 @@ export async function verifyCaseExecutionSubmissionDatabase() {
           !Object.hasOwn(firstLawyerRead, 'fees'),
         resubmitted:
           second.version === 13 && second.submissionId !== first.submissionId,
+        lawyerSubmitted:
+          secondFact.submittedByUserId === lawyerActor.userId &&
+          secondFact.auditEvent.lawyerAccountBindingId !== null &&
+          secondFact.auditEvent.internalActorUserId === null,
+        lawyerRevokedReplay,
+        lawyerAssignmentRevokedReplay,
         staleAnchor,
         noChange,
         serviceChoiceBlocked,
