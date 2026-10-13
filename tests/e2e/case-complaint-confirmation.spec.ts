@@ -132,11 +132,18 @@ test('normal password pagination keeps 21 source cases accessible to operations 
     page.getByRole('button', { name: '下一页', exact: true }),
   ).toBeDisabled();
   await readList('/api/v1/cases', 2, () => page.reload());
-  await internalList.locator(`a[href="/cases/${internalCaseId}"]`).click();
-  await expect(page).toHaveURL(new RegExp(`/cases/${internalCaseId}$`, 'u'));
+  const internalDetail = internalList.locator(
+    `a[href^="/cases/${internalCaseId}?"]`,
+  );
+  await expect(internalDetail).toBeVisible();
+  await internalDetail.click();
+  await expect(page).toHaveURL(
+    (url) => url.pathname === `/cases/${internalCaseId}`,
+  );
+  expect(new URL(page.url()).searchParams.get('page')).toBe('2');
   await readList('/api/v1/cases', 2, () => page.goBack());
   await expect(
-    internalList.locator(`a[href="/cases/${internalCaseId}"]`),
+    internalList.locator(`a[href^="/cases/${internalCaseId}?"]`),
   ).toBeVisible();
   await readList('/api/v1/cases', 1, () =>
     page.getByRole('button', { name: '本部门全部', exact: true }).click(),

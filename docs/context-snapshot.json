@@ -1,6 +1,6 @@
 {
   "version": 1,
-  "recordedAt": "2026-10-13T06:28:14.586Z",
+  "recordedAt": "2026-10-13T06:35:04.021Z",
   "files": {
     ".cursor/rules/verified-feature-integration.mdc": "da673301f0440a6a9615786027dffc8e01f739a97f81cd97accef1580ac51f98",
     ".env.example": "07211cde5c2b59efc21b619b752d4c9b871f0980d2d64ca3c146ad6151fd27ca",
@@ -869,7 +869,7 @@
     "tests/e2e/case-acceptance.spec.ts": "e4a15e5fa4fd86bca45404a914114ef9b805a80a22e50e1a2b9159c37ae14389",
     "tests/e2e/case-complaint-confirmation-database.spec.ts": "09d37771dca17566650970cfa592d4c93785069b29d1bf13ce8f9db11f4e8c76",
     "tests/e2e/case-complaint-confirmation-migration.spec.ts": "ac7d6c302102a9fe0047c265556dec82cd6b17cdb1d0f6f2a9bb362a69788934",
-    "tests/e2e/case-complaint-confirmation.spec.ts": "7ef58c5d3c823279aa8b59d36ea7da4b4bcb5a41f17b8f2bfc12e12fefe69c87",
+    "tests/e2e/case-complaint-confirmation.spec.ts": "251937a086ecc70ff472455cc773da9bfcab3490710569148645ece33a08b0cf",
     "tests/e2e/case-complaint-mailing-database.spec.ts": "5b18d81f7395f474834d0d16ebbd3cc69ca666b157d79963d8f99093b9fe0633",
     "tests/e2e/case-complaint-mailing-migration.spec.ts": "22a9b730e64a002764ffbdd44ba5b20c104c85d0a428d8bb501b45d1101fe5e8",
     "tests/e2e/case-complaint-mailing.spec.ts": "91d864605fe1c2c7186cdd4f6ebc98d5e2081face0849e9af00bb2238e9afcdb",
