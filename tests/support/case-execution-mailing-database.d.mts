@@ -1,4 +1,7 @@
-export function verifyCaseExecutionMailingAndFilingDatabase(): Promise<{
+export function verifyCaseExecutionMailingAndFilingDatabase(options?: {
+  afterFiling?: (context: object) => Promise<unknown>;
+}): Promise<{
+  continuation?: unknown;
   source: boolean;
   wrongConfirmation: string | null;
   wrongMaterial: string | null;

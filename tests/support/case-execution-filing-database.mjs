@@ -19,7 +19,13 @@ async function expectStatus(response, expected) {
   return response.json();
 }
 
-async function upload(request, caseId, category, label, headers = internalHeaders) {
+async function upload(
+  request,
+  caseId,
+  category,
+  label,
+  headers = internalHeaders,
+) {
   const draft = await expectStatus(
     await request.post('/api/v1/materials/upload-drafts', {
       headers,
@@ -35,13 +41,10 @@ async function upload(request, caseId, category, label, headers = internalHeader
     201,
   );
   return expectStatus(
-    await request.put(
-      `/api/v1/materials/upload-drafts/${draft.id}/content`,
-      {
-        headers: { ...headers, 'Content-Type': 'application/octet-stream' },
-        data: testPdf,
-      },
-    ),
+    await request.put(`/api/v1/materials/upload-drafts/${draft.id}/content`, {
+      headers: { ...headers, 'Content-Type': 'application/octet-stream' },
+      data: testPdf,
+    }),
     200,
   );
 }
@@ -174,9 +177,7 @@ export async function createCaseExecutionFilingSourceThroughApi(request) {
         idempotencyKey: randomUUID(),
         acceptedAt: pastDate,
         courtCaseNo: `（2026）甲0101民初${randomUUID().slice(0, 6)}号`,
-        acceptanceNoticeContentVersionIds: [
-          acceptanceNotice.contentVersionId,
-        ],
+        acceptanceNoticeContentVersionIds: [acceptanceNotice.contentVersionId],
       },
     }),
     201,
@@ -213,12 +214,7 @@ export async function createCaseExecutionFilingSourceThroughApi(request) {
   );
   detail = await waitForStage(request, caseId, 'WAITING_JUDGMENT');
 
-  const judgmentFile = await upload(
-    request,
-    caseId,
-    'JUDGMENT',
-    'judgment',
-  );
+  const judgmentFile = await upload(request, caseId, 'JUDGMENT', 'judgment');
   const judgment = await expectStatus(
     await request.post(`${prefix}/judgment-register`, {
       headers: internalHeaders,
@@ -329,7 +325,9 @@ export async function createCaseExecutionFilingSourceThroughApi(request) {
 
   detail = await caseDetail(request, caseId);
   if (detail.stage !== 'EXECUTING' || !detail.executionFiling) {
-    throw new Error('CA-015 ordinary source chain did not reach a filed execution');
+    throw new Error(
+      'CA-015 ordinary source chain did not reach a filed execution',
+    );
   }
   return {
     caseId,

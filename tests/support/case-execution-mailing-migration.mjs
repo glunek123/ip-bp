@@ -58,7 +58,7 @@ async function snapshot(client, schema, caseId) {
   ).rows[0];
 }
 
-async function copyOldTables(client, schema) {
+export async function copyOldTables(client, schema) {
   const tables = (
     await client.query(
       `SELECT table_name FROM information_schema.tables
@@ -110,7 +110,7 @@ async function copyOldTables(client, schema) {
   }
 }
 
-async function assertNoOrphanedOldForeignKeys(client, schema) {
+export async function assertNoOrphanedOldForeignKeys(client, schema) {
   const keys = (
     await client.query(
       `SELECT k.conname,

@@ -140,7 +140,9 @@ async function sqlReject(client, sql, values) {
   }
 }
 
-export async function verifyCaseExecutionMailingAndFilingDatabase() {
+export async function verifyCaseExecutionMailingAndFilingDatabase(
+  options = {},
+) {
   return verifyCaseJudgmentDatabase({
     afterRegistration: async ({
       actor,
@@ -522,7 +524,20 @@ export async function verifyCaseExecutionMailingAndFilingDatabase() {
           filed,
         ) &&
         (await snapshot(client, caseId)) === beforeDisabledReplay;
+      const continuation = options.afterFiling
+        ? await options.afterFiling({
+            actor: restoredActor,
+            roleId,
+            caseId,
+            materials,
+            database,
+            client,
+            trackStorageKey,
+            filed,
+          })
+        : undefined;
       return {
+        ...(continuation === undefined ? {} : { continuation }),
         source:
           chosen.stage === 'WAITING_EXECUTION_DOCUMENTS' &&
           confirmed.stage === 'WAITING_EXECUTION_STAMP',

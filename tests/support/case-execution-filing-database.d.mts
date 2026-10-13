@@ -22,7 +22,12 @@ export function createCaseExecutionFilingSourceThroughApi(
     };
     complaint: { materialId: string; contentVersionId: string };
     authorization: { materialId: string; contentVersionId: string };
-    submitted: { id: string; stage: string; version: number; submittedAt: string };
+    submitted: {
+      id: string;
+      stage: string;
+      version: number;
+      submittedAt: string;
+    };
   };
   stage: 'EXECUTING';
 }>;

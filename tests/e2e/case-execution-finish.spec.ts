@@ -1,16 +1,17 @@
 import { randomUUID } from 'node:crypto';
 import { readFile } from 'node:fs/promises';
-import { expect, test, type APIRequestContext, type Page } from '@playwright/test';
+import {
+  expect,
+  test,
+  type APIRequestContext,
+  type Page,
+} from '@playwright/test';
 import {
   coreLeadFixtures,
   resetCoreLeadE2eData,
 } from '../support/core-lead-database.mjs';
-import {
-  clearCaseExecutionFinishFixture,
-} from '../support/case-execution-finish-database.mjs';
-import {
-  createCaseExecutionFilingSourceThroughApi,
-} from '../support/case-execution-filing-database.mjs';
+import { clearCaseExecutionFinishFixture } from '../support/case-execution-finish-database.mjs';
+import { createCaseExecutionFilingSourceThroughApi } from '../support/case-execution-filing-database.mjs';
 import {
   allowOtherEnterpriseAccountSetup,
   clearCaseComplaintMailingFixture,
@@ -31,8 +32,8 @@ import {
 } from '../support/case-hearing-database.mjs';
 import { clearCoreCaseSecondInstanceFixture } from '../support/case-second-instance-database.mjs';
 import { disconnectCustomerTestDatabase } from '../support/customer-database.mjs';
+import { verifyExecutionFinishMigration } from '../support/case-execution-finish-migration.mjs';
 
-const origin = 'http://127.0.0.1:5174';
 const basisBytes = Buffer.from(
   '%PDF-1.7\nCA015 synthetic execution finish basis bytes\n%%EOF\n',
 );
@@ -95,7 +96,8 @@ async function uploadResponseBytes(page: Page, filename: string) {
       .click(),
   ]);
   const path = await download.path();
-  if (path === null) throw new Error('Browser did not save the basis attachment');
+  if (path === null)
+    throw new Error('Browser did not save the basis attachment');
   return readFile(path);
 }
 
@@ -131,12 +133,7 @@ test.afterEach(async () => {
 test.afterAll(async () => disconnectCustomerTestDatabase());
 
 async function grantFinishActionToExistingRoleA(page: Page) {
-  await login(
-    page,
-    '/settings/people-access',
-    admin.username,
-    admin.password,
-  );
+  await login(page, '/settings/people-access', admin.username, admin.password);
   const button = page.locator(
     `[data-test="edit-role-${coreLeadFixtures.roleA}"]`,
   );
@@ -185,6 +182,17 @@ test('operator finishes through the real panel with an explanation and customer 
   await grantFinishActionToExistingRoleA(page);
   const source = await createCaseExecutionFilingSourceThroughApi(request);
   expect(source.stage).toBe('EXECUTING');
+  const migration = await verifyExecutionFinishMigration(source.caseId);
+  expect(migration).toMatchObject({
+    empty: true,
+    enumCommitted: true,
+    injectedFailure: true,
+    ddlRolledBack: true,
+    forwardRecovery: true,
+    preserved: true,
+    stageOnlyRejected: true,
+  });
+  expect(migration.foreignKeys).toBeGreaterThan(0);
 
   await login(
     page,
@@ -194,7 +202,9 @@ test('operator finishes through the real panel with an explanation and customer 
   );
   const panel = page.locator('[data-test="execution-finish-panel"]');
   await expect(panel).toBeVisible();
-  await panel.locator('[data-test="execution-finish-date"]').fill(todayShanghai());
+  await panel
+    .locator('[data-test="execution-finish-date"]')
+    .fill(todayShanghai());
   await panel
     .locator('[data-test="execution-finish-reason"]')
     .fill('合成验收案件已完成执行，记录实际履行结果。');
@@ -256,10 +266,12 @@ test('operator finishes through the real panel with an explanation and customer 
     files: [],
   });
   await page.reload();
-  await expect(panel.locator('[data-test="execution-finish-fact"]')).toContainText(
-    todayShanghai(),
+  await expect(
+    panel.locator('[data-test="execution-finish-fact"]'),
+  ).toContainText(todayShanghai());
+  await expect(panel).toContainText(
+    '依据法院执行回执；本说明不表示案件已结案。',
   );
-  await expect(panel).toContainText('依据法院执行回执；本说明不表示案件已结案。');
   await expect(
     panel.locator('[data-test="execution-finish-reason"]'),
   ).toHaveCount(0);
@@ -276,7 +288,9 @@ test('operator finishes through the real panel with an explanation and customer 
     filingId: receipt.filingId,
     reason: '合成验收案件已完成执行，记录实际履行结果。',
   });
-  await expect(page.locator('[data-test="execution-finish-fact"]')).toBeVisible();
+  await expect(
+    page.locator('[data-test="execution-finish-fact"]'),
+  ).toBeVisible();
 
   await logout(page);
   await login(
@@ -285,7 +299,9 @@ test('operator finishes through the real panel with an explanation and customer 
     source.client.username,
     source.client.password,
   );
-  const clientList = await page.request.get('/api/v1/client/cases?view=RECORDED');
+  const clientList = await page.request.get(
+    '/api/v1/client/cases?view=RECORDED',
+  );
   await status(clientList, 200);
   const listBody = (await clientList.json()) as {
     items: Array<{ id: string; stage: string }>;
@@ -334,7 +350,12 @@ test('current PRIMARY lawyer finishes with an uploaded basis and downloads its o
   const source = await createCaseExecutionFilingSourceThroughApi(request);
   expect(source.stage).toBe('EXECUTING');
 
-  await login(page, '/lawyer/cases', source.lawyer.username, source.lawyer.password);
+  await login(
+    page,
+    '/lawyer/cases',
+    source.lawyer.username,
+    source.lawyer.password,
+  );
   await page.goto(`/lawyer/cases/${source.caseId}`);
   const panel = page.locator('[data-test="execution-finish-panel"]');
   await expect(panel).toBeVisible();
@@ -357,7 +378,9 @@ test('current PRIMARY lawyer finishes with an uploaded basis and downloads its o
     .filter({ hasText: filename })
     .locator('[data-test="execution-finish-choice"]');
   await expect(chosen).toBeChecked();
-  await panel.locator('[data-test="execution-finish-date"]').fill(todayShanghai());
+  await panel
+    .locator('[data-test="execution-finish-date"]')
+    .fill(todayShanghai());
   await panel
     .locator('[data-test="execution-finish-reason"]')
     .fill('合成验收案件已执行完毕，以真实上传附件作为依据。');
@@ -423,11 +446,18 @@ test('current PRIMARY lawyer finishes with an uploaded basis and downloads its o
   await expect(panel).toContainText(filename);
   await expect(await uploadResponseBytes(page, filename)).toEqual(basisBytes);
   await logout(page);
-  await login(page, '/lawyer/cases', source.lawyer.username, source.lawyer.password);
-  await page.goto(`/lawyer/cases/${source.caseId}`);
-  await expect(page.locator('[data-test="execution-finish-fact"]')).toBeVisible();
-  await expect(page.locator('[data-test="execution-finish-panel"]')).toContainText(
-    '合成验收案件已执行完毕，以真实上传附件作为依据。',
+  await login(
+    page,
+    '/lawyer/cases',
+    source.lawyer.username,
+    source.lawyer.password,
   );
+  await page.goto(`/lawyer/cases/${source.caseId}`);
+  await expect(
+    page.locator('[data-test="execution-finish-fact"]'),
+  ).toBeVisible();
+  await expect(
+    page.locator('[data-test="execution-finish-panel"]'),
+  ).toContainText('合成验收案件已执行完毕，以真实上传附件作为依据。');
   await expect(await uploadResponseBytes(page, filename)).toEqual(basisBytes);
 });
