@@ -1,5 +1,5 @@
 <script setup lang="ts">
-import { computed, onBeforeUnmount, onMounted, ref, watch } from 'vue';
+import { computed, onBeforeUnmount, ref, watch } from 'vue';
 import { RouterLink, useRoute, useRouter } from 'vue-router';
 import { ElButton } from 'element-plus/es/components/button/index.mjs';
 import { ApiError } from '../../api/http';
@@ -39,6 +39,19 @@ const stageGroup = computed<CaseStageGroup | undefined>(() =>
     ? 'EXECUTION_PREPARATION'
     : undefined,
 );
+const pageSize = 20;
+const page = computed(() => {
+  const value = route.query.page;
+  const parsed =
+    typeof value === 'string' && /^[1-9]\d*$/.test(value) ? Number(value) : 1;
+  return Number.isSafeInteger(parsed) ? parsed : 1;
+});
+const totalPages = computed(() =>
+  Math.max(1, Math.ceil(total.value / pageSize)),
+);
+const requestKey = computed(
+  () => `${view.value}:${stage.value}:${stageGroup.value ?? ''}:${page.value}`,
+);
 function stageLabel(value: CaseSummary['stage']): string {
   if (value === 'PENDING_MATCH') return '待匹配';
   if (value === 'WAITING_COMPLAINT') return '待写诉状';
@@ -65,21 +78,32 @@ async function load() {
   const controller = new AbortController();
   request = controller;
   state.value = 'loading';
+  items.value = [];
+  total.value = 0;
   error.value = '';
+  const currentPage = page.value;
+  const currentKey = requestKey.value;
   try {
-    const result = await listCases(1, 20, {
+    const result = await listCases(currentPage, pageSize, {
       signal: controller.signal,
       view: view.value,
       ...(stageGroup.value
         ? { stageGroup: stageGroup.value }
         : { stage: stage.value }),
     });
-    if (controller.signal.aborted) return;
+    if (controller.signal.aborted || currentKey !== requestKey.value) return;
+    const lastPage = Math.max(1, Math.ceil(result.total / pageSize));
+    if (currentPage > lastPage) {
+      await router.replace({
+        query: { ...route.query, page: String(lastPage) },
+      });
+      return;
+    }
     items.value = result.items;
     total.value = result.total;
     state.value = 'ready';
   } catch (reason) {
-    if (controller.signal.aborted) return;
+    if (controller.signal.aborted || currentKey !== requestKey.value) return;
     error.value =
       reason instanceof ApiError && reason.status === 403
         ? '当前账号无权读取案件，请联系管理员核实权限。'
@@ -88,13 +112,47 @@ async function load() {
   }
 }
 function setView(next: CaseView) {
-  void router.push({ query: { ...route.query, view: next } });
+  if (next === view.value) return;
+  void router.push({ query: { ...route.query, view: next, page: '1' } });
+}
+function goToPage(next: number) {
+  if (
+    state.value !== 'ready' ||
+    next < 1 ||
+    next > totalPages.value ||
+    next === page.value
+  )
+    return;
+  void router.push({ query: { ...route.query, page: String(next) } });
 }
 watch(
-  () => [route.query.view, route.query.stage, route.query.stageGroup],
-  () => void load(),
+  () => [view.value, stage.value, stageGroup.value, route.query.page] as const,
+  (next, previous) => {
+    const filterChanged =
+      previous &&
+      next.slice(0, 3).some((value, index) => value !== previous[index]);
+    if (filterChanged && next[3] === previous[3] && page.value !== 1) {
+      request?.abort();
+      items.value = [];
+      total.value = 0;
+      state.value = 'loading';
+      void router.replace({ query: { ...route.query, page: '1' } });
+      return;
+    }
+    if (
+      route.query.page !== undefined &&
+      route.query.page !== String(page.value)
+    ) {
+      request?.abort();
+      void router.replace({
+        query: { ...route.query, page: String(page.value) },
+      });
+      return;
+    }
+    void load();
+  },
+  { immediate: true },
 );
-onMounted(() => void load());
 onBeforeUnmount(() => request?.abort());
 </script>
 
@@ -171,9 +229,26 @@ onBeforeUnmount(() => request?.abort());
             >
           </li>
         </ul>
-        <p v-if="total > items.length" class="field-help">
+        <p class="field-help" aria-live="polite">
           当前显示 {{ items.length }} / {{ total }} 项
         </p>
+        <div class="page-head" data-test="case-pagination">
+          <ElButton
+            text
+            data-test="previous-page"
+            :disabled="page <= 1"
+            @click="goToPage(page - 1)"
+            >上一页</ElButton
+          >
+          <span>第 {{ page }} / {{ totalPages }} 页</span>
+          <ElButton
+            text
+            data-test="next-page"
+            :disabled="page >= totalPages"
+            @click="goToPage(page + 1)"
+            >下一页</ElButton
+          >
+        </div>
       </section>
     </main>
   </div>

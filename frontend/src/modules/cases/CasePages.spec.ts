@@ -1,6 +1,6 @@
 import { flushPromises, mount } from '@vue/test-utils';
 import { createPinia, setActivePinia } from 'pinia';
-import { createMemoryHistory, createRouter } from 'vue-router';
+import { createMemoryHistory, createRouter, RouterView } from 'vue-router';
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 import { ApiError } from '../../api/http';
 import { useAuthStore } from '../../stores/auth';
@@ -422,6 +422,313 @@ async function createUnknownConfirmation(wrapper: ReturnType<typeof mount>) {
 }
 
 describe('case pages', () => {
+  async function paginatedCases(total = 21) {
+    const base = await api.listCases();
+    const records = Array.from({ length: total }, (_, index) => ({
+      ...base.items[0],
+      id: `case-${index + 1}`,
+      businessNo: `CA-${index + 1}`,
+    }));
+    api.listCases.mockImplementation((page: number, pageSize: number) =>
+      Promise.resolve({
+        ...base,
+        items: records.slice((page - 1) * pageSize, page * pageSize),
+        total: records.length,
+        page,
+        pageSize,
+      }),
+    );
+    api.listCases.mockClear();
+    return base;
+  }
+
+  it('pages 21 records, preserves exact links and disables the first and last boundaries', async () => {
+    await paginatedCases();
+    const wrapper = await mountRoute('/cases?view=department', CaseListPage);
+    expect(wrapper.findAll('[data-test="case-list"] li')).toHaveLength(20);
+    expect(
+      wrapper.get('[data-test="previous-page"]').attributes('disabled'),
+    ).toBeDefined();
+    await wrapper.get('[data-test="next-page"]').trigger('click');
+    await flushPromises();
+    expect(api.listCases).toHaveBeenLastCalledWith(
+      2,
+      20,
+      expect.objectContaining({ view: 'department' }),
+    );
+    expect(wrapper.findAll('[data-test="case-list"] li')).toHaveLength(1);
+    expect(wrapper.get('[data-test="case-list"] a').attributes('href')).toBe(
+      '/cases/case-21?view=department&page=2',
+    );
+    expect(wrapper.get('[data-test="case-list"]').text()).toContain('办理');
+    expect(wrapper.text()).toContain('第 2 / 2 页');
+    expect(
+      wrapper.get('[data-test="next-page"]').attributes('disabled'),
+    ).toBeDefined();
+    await wrapper.get('[data-test="previous-page"]').trigger('click');
+    await flushPromises();
+    expect(api.listCases).toHaveBeenLastCalledWith(
+      1,
+      20,
+      expect.objectContaining({ view: 'department' }),
+    );
+    wrapper.unmount();
+  });
+
+  it('restores URL pages on mount, refresh, back and forward', async () => {
+    await paginatedCases();
+    const wrapper = await mountRoute(
+      '/cases?view=department&stage=WAITING_COMPLAINT&page=2',
+      CaseListPage,
+    );
+    expect(api.listCases).toHaveBeenLastCalledWith(
+      2,
+      20,
+      expect.objectContaining({ stage: 'WAITING_COMPLAINT' }),
+    );
+    await wrapper
+      .findAll('button')
+      .find((button) => button.text() === '刷新')!
+      .trigger('click');
+    await flushPromises();
+    expect(api.listCases.mock.calls.at(-1)?.[0]).toBe(2);
+    await wrapper.get('[data-test="previous-page"]').trigger('click');
+    await flushPromises();
+    const router = wrapper.vm.$router;
+    router.back();
+    await flushPromises();
+    expect(router.currentRoute.value.query.page).toBe('2');
+    expect(wrapper.text()).toContain('CA-21');
+    router.forward();
+    await flushPromises();
+    expect(router.currentRoute.value.query.page).toBe('1');
+    const url = '/cases?view=department&stage=WAITING_COMPLAINT&page=2';
+    wrapper.unmount();
+    const restored = await mountRoute(url, CaseListPage);
+    expect(restored.text()).toContain('CA-21');
+    restored.unmount();
+  });
+
+  it('opens the exact second-page case and returns from detail with the page preserved', async () => {
+    await paginatedCases();
+    const detail = await api.getCase();
+    api.getCase.mockResolvedValue({
+      ...detail,
+      id: 'case-21',
+      businessNo: 'CA-21',
+    });
+    api.getCase.mockClear();
+    const router = createRouter({
+      history: createMemoryHistory(),
+      routes: [
+        { path: '/cases', component: CaseListPage },
+        { path: '/cases/:id', component: CaseDetailPage },
+      ],
+    });
+    await router.push('/cases?view=department&page=2');
+    await router.isReady();
+    const pinia = createPinia();
+    setActivePinia(pinia);
+    const wrapper = mount(RouterView, { global: { plugins: [pinia, router] } });
+    await flushPromises();
+    await wrapper.get('[data-test="case-list"] a').trigger('click');
+    await flushPromises();
+    expect(api.getCase).toHaveBeenCalledWith('case-21', expect.anything());
+    const returnLink = wrapper.get('a');
+    expect(returnLink.attributes('href')).toBe('/cases?view=department&page=2');
+    await returnLink.trigger('click');
+    await flushPromises();
+    expect(api.listCases.mock.calls.at(-1)?.[0]).toBe(2);
+    expect(wrapper.get('[data-test="case-list"]').text()).toContain('CA-21');
+    wrapper.unmount();
+  });
+
+  it('moves to the new last page when the current final page becomes empty on refresh', async () => {
+    const base = await paginatedCases();
+    const wrapper = await mountRoute('/cases?page=2', CaseListPage);
+    api.listCases
+      .mockResolvedValueOnce({ ...base, items: [], total: 20, page: 2 })
+      .mockResolvedValueOnce({ ...base, total: 20, page: 1 });
+    await wrapper
+      .findAll('button')
+      .find((button) => button.text() === '刷新')!
+      .trigger('click');
+    await flushPromises();
+    expect(wrapper.vm.$route.query.page).toBe('1');
+    expect(wrapper.text()).toContain('第 1 / 1 页');
+    expect(
+      wrapper.get('[data-test="next-page"]').attributes('disabled'),
+    ).toBeDefined();
+    wrapper.unmount();
+  });
+
+  it.each(['mine', 'department'] as const)(
+    'resets page when switching from %s and restores the old scope on back',
+    async (view) => {
+      await paginatedCases();
+      const wrapper = await mountRoute(
+        `/cases?view=${view}&page=2`,
+        CaseListPage,
+      );
+      const next = view === 'mine' ? 'department' : 'mine';
+      await wrapper
+        .findAll('button')
+        .find(
+          (button) =>
+            button.text() === (next === 'mine' ? '我负责' : '本部门全部'),
+        )!
+        .trigger('click');
+      await flushPromises();
+      expect(api.listCases).toHaveBeenLastCalledWith(
+        1,
+        20,
+        expect.objectContaining({ view: next }),
+      );
+      wrapper.vm.$router.back();
+      await flushPromises();
+      expect(api.listCases).toHaveBeenLastCalledWith(
+        2,
+        20,
+        expect.objectContaining({ view }),
+      );
+      wrapper.unmount();
+    },
+  );
+
+  it.each(['stage=WAITING_COMPLAINT', 'stageGroup=EXECUTION_PREPARATION'])(
+    'resets an inherited page when %s changes',
+    async (filter) => {
+      await paginatedCases();
+      const wrapper = await mountRoute(
+        '/cases?view=department&page=2',
+        CaseListPage,
+      );
+      await wrapper.vm.$router.push(`/cases?view=department&page=2&${filter}`);
+      await flushPromises();
+      expect(wrapper.vm.$route.query.page).toBe('1');
+      expect(api.listCases.mock.calls.at(-1)?.[0]).toBe(1);
+      expect(wrapper.text()).toContain('第 1 / 2 页');
+      wrapper.unmount();
+    },
+  );
+
+  it.each(['0', '-1', '1.5', 'abc', '9007199254740992', '2&page=3'])(
+    'normalizes invalid page %s before requesting',
+    async (page) => {
+      await paginatedCases();
+      const wrapper = await mountRoute(`/cases?page=${page}`, CaseListPage);
+      expect(wrapper.vm.$route.query.page).toBe('1');
+      expect(api.listCases.mock.calls.map((call) => call[0])).toEqual([1]);
+      wrapper.unmount();
+    },
+  );
+
+  it('recovers an out-of-range URL to the last available page', async () => {
+    await paginatedCases();
+    const wrapper = await mountRoute('/cases?page=8', CaseListPage);
+    expect(api.listCases.mock.calls.map((call) => call[0])).toEqual([8, 2]);
+    expect(wrapper.vm.$route.query.page).toBe('2');
+    expect(wrapper.text()).toContain('CA-21');
+    wrapper.unmount();
+  });
+
+  it('shows an empty result at page one with both boundaries disabled', async () => {
+    await paginatedCases(0);
+    const wrapper = await mountRoute('/cases?page=2', CaseListPage);
+    expect(wrapper.vm.$route.query.page).toBe('1');
+    expect(wrapper.text()).toContain('当前没有案件');
+    expect(wrapper.text()).toContain('第 1 / 1 页');
+    expect(
+      wrapper.get('[data-test="previous-page"]').attributes('disabled'),
+    ).toBeDefined();
+    expect(
+      wrapper.get('[data-test="next-page"]').attributes('disabled'),
+    ).toBeDefined();
+    wrapper.unmount();
+  });
+
+  it('ignores a late old-page response after changing scope', async () => {
+    const base = await paginatedCases();
+    let resolveOld!: (value: unknown) => void;
+    api.listCases.mockReturnValueOnce(
+      new Promise((resolve) => {
+        resolveOld = resolve;
+      }),
+    );
+    const wrapper = await mountRoute('/cases?page=2', CaseListPage);
+    expect(wrapper.text()).toContain('正在读取案件');
+    await wrapper
+      .findAll('button')
+      .find((button) => button.text() === '本部门全部')!
+      .trigger('click');
+    await flushPromises();
+    expect(api.listCases.mock.calls[0]?.[2].signal.aborted).toBe(true);
+    resolveOld({
+      ...base,
+      items: [{ ...base.items[0], businessNo: 'CA-stale' }],
+      total: 80,
+      page: 2,
+    });
+    await flushPromises();
+    expect(wrapper.text()).not.toContain('CA-stale');
+    expect(wrapper.text()).toContain('第 1 / 2 页');
+    wrapper.unmount();
+  });
+
+  it('ignores a late previous-page success after URL navigation to the next page', async () => {
+    const base = await paginatedCases();
+    let resolveOld!: (value: unknown) => void;
+    api.listCases.mockReturnValueOnce(
+      new Promise((resolve) => {
+        resolveOld = resolve;
+      }),
+    );
+    const wrapper = await mountRoute('/cases?page=1', CaseListPage);
+    await wrapper.vm.$router.push('/cases?page=2');
+    await flushPromises();
+    resolveOld({
+      ...base,
+      items: [{ ...base.items[0], businessNo: 'CA-stale-page' }],
+      total: 100,
+    });
+    await flushPromises();
+    expect(wrapper.text()).toContain('CA-21');
+    expect(wrapper.text()).not.toContain('CA-stale-page');
+    expect(wrapper.text()).toContain('第 2 / 2 页');
+    wrapper.unmount();
+  });
+
+  it('ignores a late old-page error and retries the current page after a failure', async () => {
+    await paginatedCases();
+    let rejectOld!: (reason: Error) => void;
+    api.listCases.mockReturnValueOnce(
+      new Promise((_, reject) => {
+        rejectOld = reject;
+      }),
+    );
+    const wrapper = await mountRoute('/cases?page=2', CaseListPage);
+    await wrapper.vm.$router.push('/cases?page=1');
+    await flushPromises();
+    rejectOld(new ApiError('denied', 403, 'FORBIDDEN'));
+    await flushPromises();
+    expect(wrapper.find('[role="alert"]').exists()).toBe(false);
+    api.listCases.mockRejectedValueOnce(
+      new ApiError('denied', 403, 'FORBIDDEN'),
+    );
+    await wrapper.get('[data-test="next-page"]').trigger('click');
+    await flushPromises();
+    expect(wrapper.find('[data-test="case-list"]').exists()).toBe(false);
+    expect(wrapper.text()).toContain('当前账号无权读取案件');
+    await wrapper
+      .findAll('button')
+      .find((button) => button.text() === '重新加载')!
+      .trigger('click');
+    await flushPromises();
+    expect(api.listCases.mock.calls.at(-1)?.[0]).toBe(2);
+    expect(wrapper.text()).toContain('CA-21');
+    wrapper.unmount();
+  });
+
   it('lists source identities and links to the internal read-only detail', async () => {
     const wrapper = await mountRoute('/cases', CaseListPage);
     expect(wrapper.get('[data-test="case-list"]').text()).toContain('LD-1');
