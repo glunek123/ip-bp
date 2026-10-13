@@ -1,12 +1,20 @@
 # SPEC-001 文档验证
 
-## U1／U2案件列表分页组合（2026-10-13，验收进行中）
+## U1／U2案件列表分页组合（2026-10-13，本地验收完成）
 
-基线main`953ae33a811d9c22da3a8f390f393ba407a7f2a7`。U1源`9d93abc4e819fce1c3d751a6ea24a8d37eed4cc3`／tree`ad1b51a0697d60a1625875fe7a46662708455c56`，只改内部列表与CasePages测试；U2源`025694b43eee9fbcfd7aa9a49f144472112af08c`／tree`94358ecc5c6a2545e7f1914480b8751baaa6b7d2`，只改客户列表与ClientCasePages测试。两线停止修改、工作区干净后，I于UTC06:02:12.399～06:02:12.680分别接纳为`2a8b8d0`／`2c7d4ff`，exit0，无冲突，原未提交恢复文档未被夹带；本批尚未推送或合main。
+基线main`953ae33a811d9c22da3a8f390f393ba407a7f2a7`。U1源`9d93abc4e819fce1c3d751a6ea24a8d37eed4cc3`／tree`ad1b51a0697d60a1625875fe7a46662708455c56`，只改内部列表与CasePages测试；U2源`025694b43eee9fbcfd7aa9a49f144472112af08c`／tree`94358ecc5c6a2545e7f1914480b8751baaa6b7d2`，只改客户列表与ClientCasePages测试。两线停止修改、工作区干净后，I于UTC06:02:12.399～06:02:12.680分别接纳为`2a8b8d0`／`2c7d4ff`，exit0，无冲突，原未提交恢复文档未被夹带；本批本地验收完成；推送申请被自动审批拒绝且命令未启动，本地／远端main仍为953ae33，等待明确授权。
 
-作者实际报告已核：U1组件56/56，类型16.155秒、Lint1.557秒、格式0.423秒均exit0；原件在U1 ignored `.local/u1-evidence/report.json`及对应日志。U2组件／既有客户严格API契约36/36，类型17.087秒、Lint1.456秒、格式0.351秒均exit0；原件在U2 ignored `.local/u2-evidence/checks.json`。两线Node24.21.0／pnpm11.27.0、锁文件及Element Plus patch与I基线一致，隔离junction依赖的pnpm元数据异常如实保留；作者使用已核项目Node直接调用已有CLI，未改锁文件、patch、策略或.pnpm-store，未把这些结果称为标准pnpm正式门禁。I最终门禁必须走既有正常入口和完整环境指纹，不沿用跳过依赖校验参数。
+作者实际报告已核：U1组件56/56，类型16.155秒、Lint1.557秒、格式0.423秒均exit0；原件在U1 ignored `.local/u1-evidence/report.json`及对应日志。U2组件／既有客户严格API契约36/36，类型17.087秒、Lint1.456秒、格式0.351秒均exit0；原件在U2 ignored `.local/u2-evidence/checks.json`。两线Node24.21.0／pnpm11.27.0、锁文件及Element Plus patch与I基线一致，隔离junction依赖的pnpm元数据异常如实保留；作者使用已核项目Node直接调用已有CLI，未改锁文件、patch、策略或.pnpm-store，未把这些结果称为标准pnpm正式门禁。I本批实际门禁均走既有正常pnpm入口和完整环境指纹，未沿用跳过依赖校验参数。
 
-I只为本次真实分页验收扩展现有`case-complaint-confirmation.spec.ts`：复用`createSubmittedCaseThroughApi`的完整普通来源链，21案确认后用正常运营／本企业客户密码会话验证20＋1、刷新、精确ID详情返回、范围／view回首页、空view及客户最小字段白名单。既有准备器只增加返回其已创建的客户登录信息，未改生产API／schema／授权或直接写目标阶段；密码不写聊天、普通日志或公开摘要。该场景尚未执行，不预写通过；只在固定15433合成测试库运行既有入口，不调用其reset／fixture身份到15436持久预览。新组合需独立Review及本批显式Level2门禁，上一批68项和旧verify不能冒充本批新分页通过；后续实际候选、时间、退出码和原始结果在此节补记。
+I只为本次真实分页验收扩展现有`case-complaint-confirmation.spec.ts`：复用`createSubmittedCaseThroughApi`的完整普通来源链，21案确认后用正常运营／本企业客户密码会话验证20＋1、刷新、精确ID详情返回、范围／view回首页、空view及客户最小字段白名单。既有准备器只增加返回其已创建的客户登录信息，未改生产API／schema／授权或直接写目标阶段；密码不写聊天、普通日志或公开摘要。实际仅在固定15433合成测试库运行既有入口，未调用其reset／fixture身份到15436持久预览。新组合已完成独立Review和本批显式Level2门禁；上一批68项和旧verify没有作为本批新分页通过证据。
+
+执行性通过候选为`a9207b43dfe24e3d19284daaea28cedf91f5f7cb`／tree`b1166044e5e2b587e843e708b799fa30ae720da6`。新双端普通密码分页场景47.9秒，既有确认／真实材料下载／同部门只读场景7.4秒；全文件2/2、exit0，UTC06:35:06.345～06:36:09.039、62.692秒，前后候选干净、tree及环境指纹`343c59891dfe4d82e03a5c91faac2e1de7325b9c847f35fbaa3819c72290a627`一致。原件为既有ignored `.local/calendar-funds-evidence/pagination-e2e-20261013-143505-result.json`、同名log及before／after，不伪称Evidence v2。21案完整普通来源链、两端20＋1精确ID集合、刷新与详情返回、范围／view重置、空view和客户字段白名单均通过；不是向持久预览准备21案。
+
+本批正式聚焦单元命令为`pnpm --filter @dev-cor/frontend test src/modules/cases/CasePages.spec.ts src/modules/client/ClientCasePages.spec.ts src/api/cases.spec.ts src/api/client-cases.spec.ts`，4文件154/154、exit0，UTC06:26:22.842～06:26:27.453；`pnpm check:fast` exit0，UTC06:26:28.943～06:27:17.644；累计受影响文件Prettier检查exit0，UTC06:27:19.061～06:27:21.336。这些原始证据绑定`98ff53756767c415735cfa1315af9eb5ebfa7b67`／tree`0799ddb32cfa7b3ca1b82d3068e9b6cda7eea5db`，分别见pagination-unit-20261013-142622、pagination-static-20261013-142628、pagination-format-20261013-142718的result／log。到a9207b4累计差异仅新E2E两项验收请求／链接修正及对应context；产品、组件、严格API及来源准备器输入未变，blob边界见pagination-reuse-boundary.json，限定复用获独立Reviewer接受。变化文件ESLint／Prettier及strict context已补验，a9207b4根TypeScript、Spec57REQ／66AC／11BQ／54SD、strict context、diff检查均exit0，UTC06:36:30.724～06:36:36.041，原件pagination-final-delta-checks.json。未重跑旧完整verify或68项来替代当前切片。
+
+失败完整保留：98ff537首轮新分页场景因确认请求缺body.idempotencyKey而HTTP400，原场景通过，全文件1过1失败／exit1，UTC06:25:58.059～06:26:23.563、25.503秒；71e63de补同键后，内部页2刷新和20＋1已通过，但测试错误要求无query的详情href，实际链接保留page=2，等待耗尽300秒，全文件1过1失败／exit1，UTC06:28:16.785～06:33:35.327、318.540秒。两次仅修测试，不改产品；原件pagination-e2e-20261013-142557／142816的result及log，最终成功不覆盖旧失败。最终独立Reviewer为gpt-6-sol新上下文只读复核累计diff与两项finding关闭；Spec Compliance／Code Quality均ACCEPTED，未关闭Critical／Important／Minor为0／0／0，报告pagination-final-review.md。不是自审冒充独立Review。
+
+预览只读核实UTC06:29:36.735～06:29:37.050：5186/login及3206/api/v1/health均HTTP200，原件pagination-preview-readonly.json；未更改15436数据、Demo8123或部署生产。短暂连接状态不作为通过证据；成功由上述实际result／after及退出码确认。文档收口只允许更新本节、路线图状态、项目恢复点及已核context，不更改代码、测试、合同或下一批设计。自动审批两次在CreateProcess之前拒绝本批main快进／原子推送，理由为初始no-push限制及历史工具输出中的后续授权不能确认为可信批准；命令未启动，不将其称为执行失败后已推送，等待用户明确授权。
 
 ## CA-013／014、日历与人工台账集成（2026-10-13）
 
