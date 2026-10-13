@@ -251,6 +251,7 @@ export async function notaryDisplayCapabilities(
   access: AccessControlService,
   actor: ActorContext,
   matter: CapabilityMatter,
+  frozenPhotoCount = 0,
 ) {
   const capabilities = {
     recordEvidence: false,
@@ -279,7 +280,10 @@ export async function notaryDisplayCapabilities(
     [
       'reviewOpening',
       'notary.opening.review',
-      matter.stage === 'UNBOX_REVIEW' && matter.opening !== null,
+      matter.stage === 'UNBOX_REVIEW' &&
+        matter.opening !== null &&
+        Number.isSafeInteger(frozenPhotoCount) &&
+        frozenPhotoCount > 0,
     ],
     [
       'decideIssuance',
@@ -290,6 +294,7 @@ export async function notaryDisplayCapabilities(
       'archiveReturn',
       'notary.return.archive',
       matter.stage === 'WAITING_RETURN' &&
+        matter.evidence !== null &&
         infringement &&
         matter.issuanceDecision?.decision === 'NO_ISSUE',
     ],

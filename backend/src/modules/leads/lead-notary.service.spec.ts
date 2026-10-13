@@ -297,6 +297,14 @@ describe('LeadNotaryService opening review read projection', () => {
       ...record,
       stage: 'WAITING_RETURN',
       version: 3,
+      evidence: {
+        evidenceAt: new Date('2026-09-28'),
+        sampleFeeState: 'PENDING',
+        sampleFeeAmount: null,
+        recordedAt: new Date('2026-09-28T00:00:00Z'),
+        recordedByUserId: actor.userId,
+        logistics: [],
+      },
       openingReviewDecision: {
         ...record.openingReviewDecision,
         result: 'INFRINGEMENT',

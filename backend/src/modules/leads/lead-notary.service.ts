@@ -886,6 +886,9 @@ export class LeadNotaryService {
       matter.sourceSnapshot,
       matter.selectedMaterials.map((item) => item.contentVersionId),
     );
+    const frozenPhotoCount = new Set(
+      openingReferences.map((reference) => reference.contentVersionId),
+    ).size;
     return {
       id: matter.id,
       businessNo: matter.businessNo,
@@ -894,15 +897,18 @@ export class LeadNotaryService {
       leadVersion: matter.toLeadVersion,
       stage: matter.stage,
       version: matter.version,
-      capabilities: await notaryDisplayCapabilities(this.access, actor, matter),
+      capabilities: await notaryDisplayCapabilities(
+        this.access,
+        actor,
+        matter,
+        frozenPhotoCount,
+      ),
       ...(await readNotaryDisplay(
         this.database,
         this.access,
         actor,
         matter,
-        new Set(
-          openingReferences.map((reference) => reference.contentVersionId),
-        ).size,
+        frozenPhotoCount,
       )),
       certificateFiles:
         matter.certificate == null

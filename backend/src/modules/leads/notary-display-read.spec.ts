@@ -337,6 +337,7 @@ describe('notary display read', () => {
         access as unknown as AccessControlService,
         actor,
         { ...matter, stage },
+        1,
       );
       expect(Object.values(result).filter(Boolean)).toHaveLength(1);
       expect(result[key]).toBe(true);
@@ -369,6 +370,36 @@ describe('notary display read', () => {
         )
       ).reviewOpening,
     ).toBe(false);
+    expect(access.authorizeLead).not.toHaveBeenCalled();
+  });
+
+  it('does not advertise review after all committed photos have become unavailable', async () => {
+    const { access, matter } = fixture();
+    const unavailable = await notaryDisplayCapabilities(
+      access as unknown as AccessControlService,
+      actor,
+      { ...matter, stage: 'UNBOX_REVIEW' },
+      0,
+    );
+    expect(unavailable.reviewOpening).toBe(false);
+    expect(access.authorizeLead).not.toHaveBeenCalled();
+    const available = await notaryDisplayCapabilities(
+      access as unknown as AccessControlService,
+      actor,
+      { ...matter, stage: 'UNBOX_REVIEW' },
+      1,
+    );
+    expect(available.reviewOpening).toBe(true);
+  });
+
+  it('does not advertise return archive without its committed evidence fact', async () => {
+    const { access, matter } = fixture();
+    const result = await notaryDisplayCapabilities(
+      access as unknown as AccessControlService,
+      actor,
+      { ...matter, stage: 'WAITING_RETURN', evidence: null },
+    );
+    expect(result.archiveReturn).toBe(false);
     expect(access.authorizeLead).not.toHaveBeenCalled();
   });
 });

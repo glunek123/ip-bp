@@ -107,23 +107,32 @@ export class NotaryListService {
     }
     return {
       items: await Promise.all(
-        items.map(async (item) => ({
-          id: item.id,
-          businessNo: item.businessNo,
-          stage: item.stage,
-          sourceLead: {
-            id: item.sourceLead.id,
-            businessNo: item.sourceLead.businessNo,
-          },
-          notaryOffice: item.notaryOffice,
-          createdAt: item.createdAt.toISOString(),
-          ...(await readNotaryDisplay(this.database, this.access, actor, item)),
-          capabilities: await notaryDisplayCapabilities(
+        items.map(async (item) => {
+          const display = await readNotaryDisplay(
+            this.database,
             this.access,
             actor,
             item,
-          ),
-        })),
+          );
+          return {
+            id: item.id,
+            businessNo: item.businessNo,
+            stage: item.stage,
+            sourceLead: {
+              id: item.sourceLead.id,
+              businessNo: item.sourceLead.businessNo,
+            },
+            notaryOffice: item.notaryOffice,
+            createdAt: item.createdAt.toISOString(),
+            ...display,
+            capabilities: await notaryDisplayCapabilities(
+              this.access,
+              actor,
+              item,
+              display.openingSummary?.photoCount ?? 0,
+            ),
+          };
+        }),
       ),
       total,
       page,
