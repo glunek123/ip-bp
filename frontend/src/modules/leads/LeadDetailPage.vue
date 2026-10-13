@@ -19,19 +19,28 @@ import {
   pushLead,
   type LeadDetail,
 } from '../../api/leads';
-import { getCustomer } from '../../api/customers';
-import { getCustomerRightsHolder } from '../../api/rights-holders';
 import {
   downloadMaterialVersion,
   listOwnerMaterials,
 } from '../../api/materials';
 import { leadStatusLabels } from './lead-options';
+import { summarizeLeadProducts } from './lead-display';
 
 const route = useRoute();
 const state = ref<'loading' | 'ready' | 'missing' | 'failed'>('loading');
 const lead = ref<LeadDetail>();
-const customerName = ref('');
-const holderName = ref('');
+const customerName = computed(
+  () => lead.value?.displayNames.customerName ?? '客户名称不可见',
+);
+const holderName = computed(
+  () => lead.value?.displayNames.rightsHolderName ?? '权利主体名称不可见',
+);
+const productSummary = computed(() =>
+  summarizeLeadProducts(lead.value?.products ?? []),
+);
+const orderedProducts = computed(() =>
+  [...(lead.value?.products ?? [])].sort((a, b) => a.position - b.position),
+);
 const screenshots = ref<
   Array<{ materialId: string; versionId: string; filename: string }>
 >([]);
@@ -131,6 +140,15 @@ function formatTime(value: string): string {
     hour12: false,
   });
 }
+function safeProductUrl(value: string | null): string | null {
+  if (!value) return null;
+  try {
+    const url = new globalThis.URL(value);
+    return ['http:', 'https:'].includes(url.protocol) ? url.href : null;
+  } catch {
+    return null;
+  }
+}
 async function load(): Promise<void> {
   request?.abort();
   const controller = new AbortController();
@@ -142,13 +160,7 @@ async function load(): Promise<void> {
     });
     if (controller.signal.aborted) return;
     lead.value = current;
-    const [customer, holder, materials, officeResponse] = await Promise.all([
-      getCustomer(current.customerId, { signal: controller.signal }).catch(
-        () => null,
-      ),
-      getCustomerRightsHolder(current.customerId, current.rightsHolderId, {
-        signal: controller.signal,
-      }).catch(() => null),
+    const [materials, officeResponse] = await Promise.all([
       listOwnerMaterials('LEAD', current.id, {
         signal: controller.signal,
       }).catch(() => null),
@@ -176,8 +188,6 @@ async function load(): Promise<void> {
     selectedProductIds.value = selectedProductIds.value.filter((id) =>
       current.products.some((product) => product.id === id),
     );
-    customerName.value = customer?.name ?? current.customerId;
-    holderName.value = holder?.name ?? current.rightsHolderId;
     const available = new Map(
       (materials?.items ?? []).flatMap((material) => {
         if (!material.currentVersionId || material.status !== 'ACTIVE')
@@ -646,16 +656,20 @@ onBeforeUnmount(() => request?.abort());
               <dd>{{ customerName }}</dd>
             </div>
             <div>
-              <dt>权利人</dt>
+              <dt>权利主体</dt>
               <dd>{{ holderName }}</dd>
             </div>
             <div>
-              <dt>拟办理业务类型</dt>
+              <dt>案件类型</dt>
               <dd>{{ label(lead.caseType) }}</dd>
             </div>
             <div>
               <dt>来源／平台</dt>
               <dd>{{ label(lead.source) }} · {{ label(lead.platform) }}</dd>
+            </div>
+            <div>
+              <dt>负责人</dt>
+              <dd>{{ lead.displayNames.responsibleUserName }}</dd>
             </div>
             <div>
               <dt>店铺</dt>
@@ -686,36 +700,80 @@ onBeforeUnmount(() => request?.abort());
         </section>
         <section class="demo-card" data-test="lead-products-table">
           <h2 class="card-section-title">商品及估算</h2>
-          <div class="demo-table-wrap">
-            <table class="demo-table">
+          <div
+            class="demo-table-wrap business-list-scroll"
+            tabindex="0"
+            role="region"
+            aria-label="商品明细，可横向滚动"
+          >
+            <table class="demo-table business-list-table lead-product-table">
+              <colgroup>
+                <col style="width: 200px" />
+                <col style="width: 260px" />
+                <col style="width: 100px" />
+                <col style="width: 120px" />
+                <col style="width: 100px" />
+                <col style="width: 160px" />
+              </colgroup>
               <thead>
                 <tr>
-                  <th>名称／链接</th>
-                  <th class="num">数量</th>
-                  <th class="num">单价</th>
+                  <th>商品名称</th>
+                  <th>商品链接</th>
+                  <th class="num">销量</th>
+                  <th class="num">单价（元）</th>
                   <th class="num">评论数</th>
-                  <th class="num">估算额</th>
+                  <th class="num">销售总额（估算／元）</th>
                 </tr>
               </thead>
               <tbody>
-                <tr v-for="product in lead.products" :key="product.id">
-                  <td>
-                    <strong>{{ product.title || '未命名商品' }}</strong>
-                    <a
-                      v-if="product.url"
-                      class="product-link"
-                      :href="product.url"
-                      target="_blank"
-                      rel="noreferrer"
-                      >{{ product.url }}</a
-                    >
+                <tr v-for="product in orderedProducts" :key="product.id">
+                  <td class="business-list-cell--text">
+                    <details>
+                      <summary>{{ product.title || '未登记商品名称' }}</summary>
+                      <p>{{ product.title || '未登记商品名称' }}</p>
+                    </details>
                   </td>
-                  <td class="num mono">{{ product.quantity }}</td>
-                  <td class="num mono">{{ product.unitPrice }}</td>
-                  <td class="num mono">{{ product.commentCount }}</td>
-                  <td class="num mono">{{ product.estimatedAmount }}</td>
+                  <td class="business-list-cell--text">
+                    <details v-if="safeProductUrl(product.url)">
+                      <summary>查看商品链接</summary>
+                      <a
+                        :href="safeProductUrl(product.url)!"
+                        target="_blank"
+                        rel="noopener noreferrer"
+                        >{{ product.url }}</a
+                      >
+                    </details>
+                    <span v-else>无有效商品链接</span>
+                  </td>
+                  <td class="num mono business-list-cell--number">
+                    {{ product.quantity }}
+                  </td>
+                  <td class="num mono business-list-cell--number">
+                    {{ product.unitPrice }}
+                  </td>
+                  <td class="num mono business-list-cell--number">
+                    {{ product.commentCount }}
+                  </td>
+                  <td class="num mono business-list-cell--number">
+                    {{ product.estimatedAmount }}
+                  </td>
                 </tr>
               </tbody>
+              <tfoot>
+                <tr data-test="lead-product-summary">
+                  <th colspan="2" scope="row">合计（估算）</th>
+                  <td class="num mono business-list-cell--number">
+                    {{ productSummary.quantityTotal }}
+                  </td>
+                  <td class="num mono business-list-cell--number">—</td>
+                  <td class="num mono business-list-cell--number">
+                    {{ productSummary.commentTotal }}
+                  </td>
+                  <td class="num mono business-list-cell--number">
+                    {{ productSummary.estimatedAmount }}
+                  </td>
+                </tr>
+              </tfoot>
             </table>
           </div>
         </section>
@@ -1169,3 +1227,25 @@ onBeforeUnmount(() => request?.abort());
     </main>
   </div>
 </template>
+
+<style scoped>
+.lead-product-table {
+  min-width: 940px;
+  table-layout: fixed;
+}
+.lead-product-table .business-list-cell--text {
+  overflow-wrap: anywhere;
+}
+.lead-product-table summary {
+  cursor: pointer;
+}
+.lead-product-table details:not([open]) summary {
+  display: -webkit-box;
+  -webkit-box-orient: vertical;
+  -webkit-line-clamp: 2;
+  overflow: hidden;
+}
+.lead-product-table a {
+  overflow-wrap: anywhere;
+}
+</style>

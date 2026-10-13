@@ -48,6 +48,7 @@ async function fillRequired(wrapper: ReturnType<typeof mount>) {
   await wrapper.get('input[name="quantity-0"]').setValue('3');
   await wrapper.get('input[name="unitPrice-0"]').setValue('0.10');
   await wrapper.get('input[name="commentCount-0"]').setValue('9');
+  await wrapper.get('input[name="needDisclose"][value="false"]').setValue(true);
 }
 
 describe('LeadForm', () => {
@@ -118,13 +119,13 @@ describe('LeadForm', () => {
   it('uses business wording and explains the estimate', () => {
     const wrapper = mount(LeadForm, { props: { context } });
 
-    expect(wrapper.text()).toContain('权利人');
-    expect(wrapper.text()).toContain('拟办理业务类型');
+    expect(wrapper.text()).toContain('权利主体');
+    expect(wrapper.text()).toContain('案件类型');
     expect(wrapper.text()).toContain('平台店铺ID（选填）');
     expect(wrapper.text()).toContain('销量');
     expect(wrapper.text()).toContain('预估销售额（元）');
     expect(wrapper.text()).toContain('销量为 0 时使用评论数');
-    expect(wrapper.text()).toContain('商品链接和商品标题至少填写一项');
+    expect(wrapper.text()).toContain('商品链接和商品名称至少填写一项');
     expect(
       wrapper.get('input[name="productUrl-0"]').attributes('aria-describedby'),
     ).toBe('product-entry-guidance-0');
@@ -143,6 +144,108 @@ describe('LeadForm', () => {
     expect(wrapper.text()).toContain('申请披露店铺经营者信息');
     expect(wrapper.findAll('.required-mark').length).toBeGreaterThan(0);
   });
+
+  it('requires an explicit disclosure choice and focuses the choice before submission', async () => {
+    const wrapper = mount(LeadForm, {
+      attachTo: document.body,
+      props: { context },
+    });
+    expect(
+      wrapper
+        .findAll('input[name="needDisclose"]')
+        .every((input) => !(input.element as HTMLInputElement).checked),
+    ).toBe(true);
+    wrapper.unmount();
+    const unselected = mount(LeadForm, {
+      attachTo: document.body,
+      props: {
+        context,
+        initialValue: {
+          customerId: 'customer-a',
+          rightsHolderId: 'holder-a',
+          caseType: 'CIVIL',
+          infringementTypes: ['TRADEMARK'],
+          source: 'ONLINE',
+          platform: 'TAOBAO',
+          foundAt: '2026-09-21T04:00:00Z',
+          shopName: '测试店铺',
+          products: [
+            {
+              title: '商品甲',
+              quantity: 3,
+              unitPrice: '0.10',
+              commentCount: 9,
+            },
+          ],
+        },
+      },
+    });
+    await unselected.get('form').trigger('submit');
+    expect(unselected.emitted('submit')).toBeUndefined();
+    expect(unselected.text()).toContain('请选择是否申请披露店铺经营者信息');
+    expect(document.activeElement).toBe(
+      unselected.get('input[name="needDisclose"][value="true"]').element,
+    );
+    await unselected
+      .get('input[name="needDisclose"][value="true"]')
+      .setValue(true);
+    await unselected.get('form').trigger('submit');
+    expect(unselected.emitted('submit')?.[0]?.[0]).toMatchObject({
+      fields: { needDisclose: true },
+    });
+    unselected.unmount();
+  });
+
+  it.each([true, false])(
+    'preserves the existing disclosure boolean %s on edit',
+    async (value) => {
+      const wrapper = mount(LeadForm, {
+        props: {
+          context,
+          customerLocked: true,
+          initialValue: {
+            customerId: 'customer-a',
+            rightsHolderId: 'holder-b',
+            needDisclose: value,
+            caseType: 'CIVIL',
+            infringementTypes: ['TRADEMARK'],
+            source: 'ONLINE',
+            platform: 'TAOBAO',
+            foundAt: '2026-09-21T04:00:00Z',
+            shopName: '测试店铺',
+            products: [
+              {
+                title: '商品甲',
+                quantity: 3,
+                unitPrice: '0.10',
+                commentCount: 9,
+              },
+            ],
+          },
+        },
+      });
+      expect(
+        (
+          wrapper.get(`input[name="needDisclose"][value="${value}"]`)
+            .element as HTMLInputElement
+        ).checked,
+      ).toBe(true);
+      expect(
+        wrapper.get('select[name="customerId"]').attributes('disabled'),
+      ).toBeDefined();
+      expect(
+        wrapper.get('select[name="rightsHolderId"]').attributes('disabled'),
+      ).toBeDefined();
+      await wrapper.get('form').trigger('submit');
+      expect(wrapper.emitted('submit')?.[0]?.[0]).toMatchObject({
+        fields: {
+          customerId: 'customer-a',
+          rightsHolderId: 'holder-b',
+          needDisclose: value,
+        },
+      });
+    },
+  );
 
   it('resets only an incompatible platform when source changes', async () => {
     const wrapper = mount(LeadForm, { props: { context } });
@@ -172,8 +275,8 @@ describe('LeadForm', () => {
     await wrapper.get('input[name="quantity-0"]').setValue('-1');
     await wrapper.get('input[name="unitPrice-0"]').setValue('1.999');
     await wrapper.get('form').trigger('submit');
-    expect(wrapper.text()).toContain('商品链接和标题至少填写一项');
-    expect(wrapper.text()).toContain('数量必须是非负整数');
+    expect(wrapper.text()).toContain('商品链接和名称至少填写一项');
+    expect(wrapper.text()).toContain('销量必须是非负整数');
     expect(wrapper.text()).toContain('金额最多保留两位小数');
     expect(wrapper.emitted('submit')).toBeUndefined();
     wrapper.unmount();
@@ -224,6 +327,7 @@ describe('LeadForm', () => {
       rightsHolderId: 'holder-a',
       infringementTypes: ['TRADEMARK'],
       products: [{ unitPrice: '0.10', quantity: 3, commentCount: 9 }],
+      needDisclose: false,
     });
     expect(payload.fields).not.toHaveProperty('status');
     expect(payload.fields).not.toHaveProperty('estimatedAmount');

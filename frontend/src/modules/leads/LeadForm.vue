@@ -75,7 +75,7 @@ const platform = ref<LeadPlatform | ''>(initial?.platform ?? '');
 const foundAt = ref(toLocalDateTime(initial?.foundAt));
 const shopName = ref(initial?.shopName ?? '');
 const shopExternalId = ref(initial?.shopExternalId ?? '');
-const needDisclose = ref(initial?.needDisclose ?? false);
+const needDisclose = ref<boolean | null>(initial?.needDisclose ?? null);
 const remark = ref(initial?.remark ?? '');
 const products = ref<ProductDraft[]>(
   initial?.products?.length
@@ -222,6 +222,7 @@ function firstErrorSelector(): string | undefined {
       if (errors[key]) return `[name="${key}"]`;
     }
   }
+  if (errors.needDisclose) return '[name="needDisclose"]';
   if (errors.screenshots) return '[name="screenshots"]';
   return undefined;
 }
@@ -230,8 +231,8 @@ function validate(): boolean {
   for (const key of Object.keys(errors)) delete errors[key];
   if (screenshotError) errors.screenshots = screenshotError;
   if (!customerId.value) errors.customerId = '请选择客户';
-  if (!rightsHolderId.value) errors.rightsHolderId = '请选择权利人';
-  if (!caseType.value) errors.caseType = '请选择拟办理业务类型';
+  if (!rightsHolderId.value) errors.rightsHolderId = '请选择权利主体';
+  if (!caseType.value) errors.caseType = '请选择案件类型';
   if (infringementTypes.value.length === 0)
     errors.infringementTypes = '请至少选择一种侵权类型';
   if (!source.value) errors.source = '请选择线索来源';
@@ -239,9 +240,11 @@ function validate(): boolean {
   if (!foundAt.value || Number.isNaN(new Date(foundAt.value).getTime()))
     errors.foundAt = '请选择发现时间';
   if (!shopName.value.trim()) errors.shopName = '请输入店铺名称';
+  if (needDisclose.value === null)
+    errors.needDisclose = '请选择是否申请披露店铺经营者信息';
   products.value.forEach((product, index) => {
     if (!product.url.trim() && !product.title.trim())
-      errors[`productTitle-${index}`] = '商品链接和标题至少填写一项';
+      errors[`productTitle-${index}`] = '商品链接和名称至少填写一项';
     if (product.url.trim()) {
       try {
         const parsed = new globalThis.URL(product.url.trim());
@@ -251,7 +254,7 @@ function validate(): boolean {
       }
     }
     if (!nonNegativeInteger(product.quantity))
-      errors[`quantity-${index}`] = '数量必须是非负整数';
+      errors[`quantity-${index}`] = '销量必须是非负整数';
     if (!money(product.unitPrice))
       errors[`unitPrice-${index}`] = '金额最多保留两位小数';
     if (!nonNegativeInteger(product.commentCount))
@@ -260,7 +263,7 @@ function validate(): boolean {
   return Object.values(errors).every((message) => !message);
 }
 async function submit(): Promise<void> {
-  if (props.submitting || !validate()) {
+  if (props.submitting || !validate() || needDisclose.value === null) {
     await nextTick();
     const selector = firstErrorSelector();
     if (selector)
@@ -330,7 +333,7 @@ async function submit(): Promise<void> {
           }}</small>
         </label>
         <label>
-          <span>权利人<RequiredFieldMark /></span>
+          <span>权利主体<RequiredFieldMark /></span>
           <select
             v-model="rightsHolderId"
             name="rightsHolderId"
@@ -356,7 +359,7 @@ async function submit(): Promise<void> {
           }}</small>
         </label>
         <label>
-          <span>拟办理业务类型<RequiredFieldMark /></span>
+          <span>案件类型<RequiredFieldMark /></span>
           <select v-model="caseType" name="caseType" class="text-input">
             <option value="">请选择</option>
             <option
@@ -466,7 +469,7 @@ async function submit(): Promise<void> {
 
     <section class="demo-card demo-card--pad" data-test="products-section">
       <div class="lead-form__section-head">
-        <h2 class="form-section-title">商品链接</h2>
+        <h2 class="form-section-title">商品信息</h2>
         <ElButton data-test="add-product" @click="addProduct"
           >添加商品</ElButton
         >
@@ -493,7 +496,7 @@ async function submit(): Promise<void> {
             class="field-guidance product-entry-guidance"
             :data-test="`product-entry-guidance-${index}`"
           >
-            商品信息<RequiredFieldMark />：商品链接和商品标题至少填写一项。
+            商品信息<RequiredFieldMark />：商品链接和商品名称至少填写一项。
           </p>
           <label
             ><span>商品链接</span
@@ -507,7 +510,7 @@ async function submit(): Promise<void> {
             }}</small></label
           >
           <label
-            ><span>商品标题</span
+            ><span>商品名称</span
             ><input
               v-model="product.title"
               :name="`productTitle-${index}`"
@@ -574,10 +577,30 @@ async function submit(): Promise<void> {
 
     <section class="demo-card demo-card--pad" data-test="screenshots-section">
       <h2 class="form-section-title">附件与备注</h2>
-      <label class="disclose-field">
-        <input v-model="needDisclose" name="needDisclose" type="checkbox" />
-        申请披露店铺经营者信息
-      </label>
+      <fieldset class="form-section disclose-field">
+        <legend>申请披露店铺经营者信息<RequiredFieldMark /></legend>
+        <label class="check-option">
+          <input
+            v-model="needDisclose"
+            name="needDisclose"
+            type="radio"
+            :value="true"
+            aria-describedby="disclose-error"
+          />
+          是
+        </label>
+        <label class="check-option">
+          <input
+            v-model="needDisclose"
+            name="needDisclose"
+            type="radio"
+            :value="false"
+            aria-describedby="disclose-error"
+          />
+          否
+        </label>
+        <p id="disclose-error" class="field-error">{{ errors.needDisclose }}</p>
+      </fieldset>
       <label class="field-label field-label--spaced" for="lead-remark"
         >备注</label
       >
@@ -628,3 +651,14 @@ async function submit(): Promise<void> {
     </footer>
   </form>
 </template>
+
+<style scoped>
+.disclose-field {
+  flex-wrap: wrap;
+  margin-top: 0;
+}
+.disclose-field .field-error {
+  flex-basis: 100%;
+  margin: 0;
+}
+</style>

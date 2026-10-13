@@ -2,6 +2,7 @@ import { flushPromises, mount } from '@vue/test-utils';
 import { createMemoryHistory, createRouter } from 'vue-router';
 import { beforeEach, describe, expect, it, vi } from 'vitest';
 import { ApiError } from '../../api/http';
+import type { LeadDetail } from '../../api/leads';
 import LeadDetailPage from './LeadDetailPage.vue';
 
 const leadApi = vi.hoisted(() => ({
@@ -32,6 +33,11 @@ const lead = {
   businessNo: 'LD-20260921-001',
   customerId: 'customer-1',
   rightsHolderId: 'holder-1',
+  displayNames: {
+    customerName: '客户甲',
+    rightsHolderName: '主体甲',
+    responsibleUserName: '运营甲',
+  },
   status: 'WAITING_PUSH',
   caseType: 'CIVIL',
   infringementTypes: ['TRADEMARK'],
@@ -72,13 +78,14 @@ const lead = {
   },
   notaryMatters: [],
   pendingWithdrawalApplication: null,
+  evidenceDecision: null,
   history: [],
   departmentId: 'd',
   responsibleUserId: 'u',
   teamId: null,
   creationChannel: 'MANUAL',
   externalSourceRef: null,
-};
+} satisfies LeadDetail;
 
 async function mountPage() {
   const router = createRouter({
@@ -588,10 +595,11 @@ describe('LeadDetailPage', () => {
 
   it('renders real detail fields, record information and push action', async () => {
     const wrapper = await mountPage();
-    expect(wrapper.text()).toContain('权利人');
-    expect(wrapper.text()).toContain('拟办理业务类型');
-    expect(wrapper.text()).not.toContain('权利主体');
-    expect(wrapper.text()).not.toContain('案件类型');
+    expect(wrapper.text()).toContain('权利主体');
+    expect(wrapper.text()).toContain('案件类型');
+    expect(wrapper.text()).toContain('运营甲');
+    expect(customerApi.getCustomer).not.toHaveBeenCalled();
+    expect(holderApi.getCustomerRightsHolder).not.toHaveBeenCalled();
     expect(wrapper.text()).toContain('客户甲');
     expect(wrapper.text()).toContain('主体甲');
     expect(wrapper.text()).toContain('测试店铺');
@@ -625,6 +633,120 @@ describe('LeadDetailPage', () => {
     await flushPromises();
     expect(wrapper.find('[data-test="edit-lead"]').exists()).toBe(false);
     expect(wrapper.find('[data-test="push-lead"]').exists()).toBe(false);
+  });
+
+  it('shows only authorized names even when master data cannot be read', async () => {
+    customerApi.getCustomer.mockRejectedValue(
+      new ApiError('禁止读取', 403, 'FORBIDDEN'),
+    );
+    holderApi.getCustomerRightsHolder.mockRejectedValue(
+      new ApiError('禁止读取', 403, 'FORBIDDEN'),
+    );
+    leadApi.getLead.mockResolvedValue({
+      ...lead,
+      displayNames: {
+        customerName: '客户名称不可见',
+        rightsHolderName: '权利主体名称不可见',
+        responsibleUserName: '负责人名称不可见',
+      },
+    });
+    const wrapper = await mountPage();
+    expect(wrapper.text()).toContain('客户名称不可见');
+    expect(wrapper.text()).toContain('权利主体名称不可见');
+    expect(wrapper.text()).toContain('负责人名称不可见');
+    expect(wrapper.get('[data-test="lead-facts"]').text()).not.toContain(
+      'customer-1',
+    );
+    expect(wrapper.get('[data-test="lead-facts"]').text()).not.toContain(
+      'holder-1',
+    );
+    expect(customerApi.getCustomer).not.toHaveBeenCalled();
+    expect(holderApi.getCustomerRightsHolder).not.toHaveBeenCalled();
+  });
+
+  it('keeps transferred source read-only and displays exact product totals and safe links', async () => {
+    const longTitle = '完整商品名称'.repeat(50);
+    leadApi.getLead.mockResolvedValue({
+      ...lead,
+      status: 'TRANSFERRED_TO_NOTARY',
+      capabilities: {
+        edit: false,
+        push: false,
+        withdrawApply: false,
+        evidenceDecide: false,
+        transferToNotary: false,
+        createEvidenceBatch: true,
+      },
+      products: [
+        {
+          ...lead.products[0],
+          id: 'p2',
+          position: 2,
+          title: longTitle,
+          url: 'https://example.com/product',
+          quantity: 2,
+          commentCount: 7,
+          unitPrice: '4503599627370496.51',
+          estimatedAmount: '9007199254740993.02',
+        },
+        {
+          ...lead.products[0],
+          position: 1,
+          title: '评论估算商品',
+          quantity: 0,
+          commentCount: 3,
+          unitPrice: '0.10',
+          estimatedAmount: '0.30',
+          url: 'javascript:alert(1)',
+        },
+      ],
+    });
+    const wrapper = await mountPage();
+    expect(wrapper.find('[data-test="edit-lead"]').exists()).toBe(false);
+    expect(wrapper.find('[data-test="push-lead"]').exists()).toBe(false);
+    expect(wrapper.find('[data-test="transfer-to-notary"]').exists()).toBe(
+      true,
+    );
+    const table = wrapper.get('[data-test="lead-products-table"]');
+    expect(table.findAll('thead th').map((cell) => cell.text())).toEqual([
+      '商品名称',
+      '商品链接',
+      '销量',
+      '单价（元）',
+      '评论数',
+      '销售总额（估算／元）',
+    ]);
+    expect(table.get('tbody tr').text()).toContain('评论估算商品');
+    expect(table.text()).toContain(longTitle);
+    expect(table.findAll('a')).toHaveLength(1);
+    expect(table.get('a').attributes('href')).toBe(
+      'https://example.com/product',
+    );
+    expect(table.text()).toContain('无有效商品链接');
+    expect(table.text()).not.toContain('javascript:');
+    expect(
+      table
+        .get('[data-test="lead-product-summary"]')
+        .findAll('td')
+        .map((cell) => cell.text()),
+    ).toEqual(['2', '—', '10', '9007199254740993.32']);
+  });
+
+  it('aborts pending detail reads when the account context unmounts the page', async () => {
+    let resolveOld!: (value: unknown) => void;
+    leadApi.getLead.mockReturnValue(
+      new Promise((resolve) => {
+        resolveOld = resolve;
+      }),
+    );
+    const wrapper = await mountPage();
+    const signal = leadApi.getLead.mock.calls[0]?.[1].signal as AbortSignal;
+    wrapper.unmount();
+    expect(signal.aborted).toBe(true);
+    resolveOld(lead);
+    await flushPromises();
+    expect(materialApi.listOwnerMaterials).not.toHaveBeenCalled();
+    expect(notaryApi.listNotaryOffices).not.toHaveBeenCalled();
   });
 
   it('pushes once with the current version, shows success and reloads', async () => {
