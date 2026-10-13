@@ -8,6 +8,158 @@
   max-width: 860px;
 }
 
+/* Operational lists use a stable table grid without changing other pages. */
+.page-view.business-list-page {
+  width: 100%;
+  max-width: none;
+  min-width: 0;
+  padding: 20px 24px 32px;
+}
+
+.business-list-page > main {
+  min-width: 0;
+}
+
+.business-list-page .page-head {
+  align-items: center;
+  gap: 12px;
+  margin-bottom: 16px;
+}
+
+.business-list-page .page-head h1 {
+  font-size: 22px;
+}
+
+.business-list-toolbar,
+.business-list-footer {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  justify-content: space-between;
+  gap: 8px 12px;
+}
+
+.business-list-toolbar {
+  margin-bottom: 12px;
+}
+
+.business-list-toolbar > .segmented-control {
+  margin: 0;
+}
+
+.business-list-scroll {
+  width: 100%;
+  min-width: 0;
+  overflow-x: auto;
+  overscroll-behavior-x: contain;
+}
+
+.business-list-scroll:focus-visible {
+  outline: 2px solid var(--color-primary);
+  outline-offset: -2px;
+}
+
+.demo-table.business-list-table {
+  width: 100%;
+  table-layout: auto;
+  font-size: 13px;
+  line-height: 1.5;
+}
+
+.demo-table.business-list-table th,
+.demo-table.business-list-table td {
+  height: 44px;
+  padding: 8px 12px;
+  vertical-align: middle;
+}
+
+.demo-table.business-list-table th {
+  background: var(--color-surface-2);
+  font-size: 12px;
+  letter-spacing: 0;
+}
+
+.business-list-table .business-list-cell--nowrap,
+.business-list-table .pill {
+  white-space: nowrap;
+  word-break: normal;
+}
+
+.business-list-table .business-list-cell--text {
+  white-space: normal;
+  overflow-wrap: anywhere;
+}
+
+.business-list-table .business-list-cell--number {
+  text-align: right;
+  white-space: nowrap;
+  font-variant-numeric: tabular-nums;
+}
+
+.demo-table.business-list-table th.num,
+.demo-table.business-list-table td.num {
+  text-align: right;
+  white-space: nowrap;
+  font-variant-numeric: tabular-nums;
+}
+
+.business-list-table details {
+  min-width: 0;
+}
+
+.business-list-table details summary {
+  max-width: 100%;
+  cursor: pointer;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.business-list-table details[open] {
+  white-space: normal;
+  overflow-wrap: anywhere;
+}
+
+.business-list-table .field-help {
+  margin: 0;
+}
+
+.business-list-footer {
+  min-height: 48px;
+  padding: 8px 12px;
+  border-top: 1px solid var(--color-hairline);
+  font-size: 12px;
+}
+
+.business-list-footer .page-head {
+  margin: 0;
+}
+
+.business-list-footer > p {
+  margin: 0;
+}
+
+.business-list-page .state-panel {
+  min-height: 0;
+  padding: 28px 20px;
+}
+
+@media (max-width: 640px) {
+  .page-view.business-list-page {
+    padding: 16px 12px 24px;
+  }
+
+  .business-list-page .page-head {
+    flex-wrap: wrap;
+    align-items: flex-start;
+  }
+
+  .business-list-toolbar,
+  .business-list-footer {
+    justify-content: flex-start;
+  }
+}
+
 .page-head {
   display: flex;
   align-items: flex-end;

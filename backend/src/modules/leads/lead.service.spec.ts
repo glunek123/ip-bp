@@ -18,6 +18,72 @@ const actor: ActorContext = {
 };
 
 describe('LeadService', () => {
+  it('projects only the current names of the exact scoped source relations', async () => {
+    const record = createCreateFixture().createdLead;
+    const findFirst = jest.fn().mockResolvedValue(record);
+    const scope = {
+      departmentId: actor.departmentId,
+      responsibleUserId: actor.userId,
+    };
+    const service = new LeadService(
+      { lead: { findFirst } } as unknown as DatabaseService,
+      {
+        buildLeadScope: jest.fn().mockResolvedValue(scope),
+        authorizeLead: jest.fn().mockResolvedValue(undefined),
+      } as unknown as AccessControlService,
+      {
+        listCurrentReferenceVersionIds: jest.fn().mockResolvedValue([]),
+      } as unknown as MaterialService,
+    );
+    const result = await service.get(actor, record.id);
+    expect(result.displayNames).toEqual({
+      customerName: '客户甲',
+      rightsHolderName: '主体甲',
+      responsibleUserName: '运营甲',
+    });
+    expect(findFirst).toHaveBeenCalledWith(
+      expect.objectContaining({
+        where: { id: record.id, ...scope },
+        include: expect.objectContaining({
+          customer: { select: { name: true } },
+          rightsHolder: { select: { name: true } },
+          responsibleMembership: {
+            select: { user: { select: { displayName: true } } },
+          },
+        }),
+      }),
+    );
+  });
+
+  it('fails closed for missing source names and does not query after read permission is revoked', async () => {
+    const record = {
+      ...createCreateFixture().createdLead,
+      customer: { name: '' },
+    };
+    const findFirst = jest.fn().mockResolvedValue(record);
+    const buildLeadScope = jest
+      .fn()
+      .mockResolvedValue({ departmentId: actor.departmentId });
+    const service = new LeadService(
+      { lead: { findFirst } } as unknown as DatabaseService,
+      {
+        buildLeadScope,
+        authorizeLead: jest.fn().mockResolvedValue(undefined),
+      } as unknown as AccessControlService,
+      {
+        listCurrentReferenceVersionIds: jest.fn().mockResolvedValue([]),
+      } as unknown as MaterialService,
+    );
+    await expect(service.get(actor, record.id)).rejects.toMatchObject({
+      response: { code: 'INVALID_SOURCE' },
+    });
+    findFirst.mockClear();
+    buildLeadScope.mockRejectedValue(new ForbiddenException());
+    await expect(service.get(actor, record.id)).rejects.toBeInstanceOf(
+      ForbiddenException,
+    );
+    expect(findFirst).not.toHaveBeenCalled();
+  });
   it.each([
     ['CLIENT', false],
     ['INTERNAL', true],
@@ -1820,6 +1886,9 @@ function validCreate() {
 
 function createCreateFixture() {
   const createdLead = {
+    customer: { name: '客户甲' },
+    rightsHolder: { name: '主体甲' },
+    responsibleMembership: { user: { displayName: '运营甲' } },
     id: '55555555-5555-4555-8555-555555555555',
     businessNo: 'LD-20260921-001',
     departmentId: actor.departmentId,

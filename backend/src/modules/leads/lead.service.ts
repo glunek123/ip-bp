@@ -64,8 +64,17 @@ const leadInclude = {
   },
 } satisfies Prisma.LeadInclude;
 
-const leadDetailInclude = {
+const leadReadInclude = {
   ...leadInclude,
+  customer: { select: { name: true } },
+  rightsHolder: { select: { name: true } },
+  responsibleMembership: {
+    select: { user: { select: { displayName: true } } },
+  },
+} satisfies Prisma.LeadInclude;
+
+const leadDetailInclude = {
+  ...leadReadInclude,
   notaryMatters: {
     orderBy: [{ createdAt: 'asc' as const }, { id: 'asc' as const }],
     select: {
@@ -112,6 +121,9 @@ const leadDetailInclude = {
 } satisfies Prisma.LeadInclude;
 
 type LeadRecord = Prisma.LeadGetPayload<{ include: typeof leadInclude }>;
+type LeadReadRecord = Prisma.LeadGetPayload<{
+  include: typeof leadReadInclude;
+}>;
 type LeadDetailRecord = Prisma.LeadGetPayload<{
   include: typeof leadDetailInclude;
 }>;
@@ -314,7 +326,7 @@ export class LeadService {
         orderBy: [{ updatedAt: 'desc' }, { id: 'asc' }],
         skip: (page - 1) * pageSize,
         take: pageSize,
-        include: leadInclude,
+        include: leadReadInclude,
       }),
       this.database.lead.count({ where: itemScope }),
       this.database.lead.groupBy({
@@ -335,7 +347,7 @@ export class LeadService {
     );
     return {
       items: items.map((item) =>
-        this.view(item, screenshotIds.get(item.id) ?? []),
+        this.readView(item, screenshotIds.get(item.id) ?? []),
       ),
       total,
       page,
@@ -501,7 +513,7 @@ export class LeadService {
         left.fromVersion - right.fromVersion || left.id.localeCompare(right.id),
     );
     return {
-      ...this.view(lead, screenshotIds.get(lead.id) ?? []),
+      ...this.readView(lead, screenshotIds.get(lead.id) ?? []),
       capabilities: {
         edit,
         push,
@@ -1712,6 +1724,29 @@ export class LeadService {
             .replaceAll('-', '');
     if (!/^\d{8}$/u.test(dateCode)) throw this.versionConflict();
     return `LD-${dateCode}-${String(sequence).padStart(3, '0')}`;
+  }
+
+  private readView(
+    record: LeadReadRecord,
+    leadScreenshotContentVersionIds: readonly string[],
+  ) {
+    const customerName = record.customer?.name;
+    const rightsHolderName = record.rightsHolder?.name;
+    const responsibleUserName = record.responsibleMembership?.user?.displayName;
+    if (
+      !customerName?.trim() ||
+      !rightsHolderName?.trim() ||
+      !responsibleUserName?.trim()
+    ) {
+      throw new InternalServerErrorException({
+        code: 'INVALID_SOURCE',
+        message: '线索关联信息不完整，请联系管理员核实',
+      });
+    }
+    return {
+      ...this.view(record, leadScreenshotContentVersionIds),
+      displayNames: { customerName, rightsHolderName, responsibleUserName },
+    };
   }
 
   private view(
