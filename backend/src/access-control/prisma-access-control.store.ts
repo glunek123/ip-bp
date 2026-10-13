@@ -63,6 +63,7 @@ const actionMap = {
   CASE_EXECUTION_CONFIRM: 'case.execution.confirm',
   CASE_EXECUTION_MAIL: 'case.execution.mail',
   CASE_EXECUTION_FILING_SUBMIT: 'case.execution.filing.submit',
+  CASE_EXECUTION_FINISH: 'case.execution.finish',
   CLIENT_CASE_READ: 'client.case.read',
   CLIENT_CASE_COMPLAINT_MAIL: 'client.case.complaint.mail',
   CLIENT_CASE_EXECUTION_MAIL: 'client.case.execution.mail',

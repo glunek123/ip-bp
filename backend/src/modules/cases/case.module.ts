@@ -1,3 +1,4 @@
+import { CaseExecutionFinishService } from './case-execution-finish.service';
 import { CaseExecutionMailingService } from './case-execution-mailing.service';
 import { CaseExecutionFilingService } from './case-execution-filing.service';
 import { Module } from '@nestjs/common';
@@ -64,6 +65,7 @@ import { LawyerCaseController } from './lawyer-case.controller';
     CaseExecutionConfirmationService,
     CaseExecutionMailingService,
     CaseExecutionFilingService,
+    CaseExecutionFinishService,
     CaseHearingSchedulerService,
     CaseHearingSignal,
     { provide: CASE_HEARING_CLOCK, useClass: SystemCaseHearingClock },

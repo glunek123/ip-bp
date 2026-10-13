@@ -22,6 +22,45 @@ function createStore(
 }
 
 describe('AccessControlService', () => {
+  it('requires the independent live finish grant instead of read or filing submit', async () => {
+    const snapshot: AccessControlSnapshot = {
+      active: true,
+      authorizationRevision: 4,
+      grants: [
+        { action: 'case.read', scope: 'department' },
+        { action: 'case.execution.filing.submit', scope: 'department' },
+      ],
+    };
+    const store = createStore(snapshot);
+    const service = new AccessControlService(store);
+    const facts = {
+      departmentId: actor.departmentId,
+      responsibleUserId: actor.userId,
+    };
+    await expect(
+      service.canAuthorizeCase(actor, 'case.execution.finish', facts),
+    ).resolves.toBe(false);
+    snapshot.grants.push({ action: 'case.execution.finish', scope: 'self' });
+    await expect(
+      service.canAuthorizeCase(actor, 'case.execution.finish', facts),
+    ).resolves.toBe(true);
+    await expect(
+      service.canAuthorizeCase(actor, 'case.execution.finish', {
+        ...facts,
+        responsibleUserId: 'other',
+      }),
+    ).resolves.toBe(false);
+    await expect(
+      service.canAuthorizeCase(actor, 'case.execution.finish', {
+        ...facts,
+        departmentId: 'other',
+      }),
+    ).resolves.toBe(false);
+    snapshot.authorizationRevision += 1;
+    await expect(
+      service.authorizeCase(actor, 'case.execution.finish', facts),
+    ).rejects.toBeInstanceOf(ForbiddenException);
+  });
   it('keeps department case read and self case match as independent live grants', async () => {
     const store = createStore({
       active: true,

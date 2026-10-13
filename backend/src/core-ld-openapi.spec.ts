@@ -1,3 +1,4 @@
+import { CaseExecutionFinishService } from './modules/cases/case-execution-finish.service';
 import { CaseExecutionMailingService } from './modules/cases/case-execution-mailing.service';
 import { CaseExecutionFilingService } from './modules/cases/case-execution-filing.service';
 import 'reflect-metadata';
@@ -51,6 +52,44 @@ import { FilingCourtService } from './modules/cases/filing-court.service';
 
 describe('CORE-LD-002 OpenAPI contract', () => {
   let app: INestApplication;
+  it('declares the strict execution finish request and fixed seven-field receipt', () => {
+    const document = SwaggerModule.createDocument(
+      app,
+      new DocumentBuilder().setTitle('test').setVersion('1').build(),
+    );
+    expect(
+      document.paths['/api/v1/cases/{id}/execution-finish']?.post,
+    ).toBeDefined();
+    expect(document.components?.schemas?.FinishCaseExecutionDto).toMatchObject({
+      required: expect.arrayContaining([
+        'expectedVersion',
+        'idempotencyKey',
+        'expectedFilingId',
+        'finishedAt',
+        'reason',
+        'basisNote',
+        'basisContentVersionIds',
+      ]),
+      properties: {
+        basisNote: { nullable: true },
+        basisContentVersionIds: { minItems: 0, maxItems: 10 },
+      },
+    });
+    expect(
+      document.components?.schemas?.FinishCaseExecutionResponseDto,
+    ).toMatchObject({
+      required: [
+        'id',
+        'finishId',
+        'filingId',
+        'stage',
+        'version',
+        'finishedAt',
+        'recordedAt',
+      ],
+      properties: { stage: { enum: ['WAITING_ARCHIVE'] } },
+    });
+  });
 
   beforeAll(async () => {
     const module = await Test.createTestingModule({
@@ -69,6 +108,10 @@ describe('CORE-LD-002 OpenAPI contract', () => {
         CaseReadController,
       ],
       providers: [
+        {
+          provide: CaseExecutionFinishService,
+          useValue: { finish: jest.fn() },
+        },
         { provide: CaseExecutionMailingService, useValue: { mail: jest.fn() } },
         {
           provide: CaseExecutionFilingService,

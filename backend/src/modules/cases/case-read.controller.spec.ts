@@ -1,3 +1,4 @@
+import { CaseExecutionFinishService } from './case-execution-finish.service';
 import { CaseExecutionMailingService } from './case-execution-mailing.service';
 import { CaseExecutionFilingService } from './case-execution-filing.service';
 import 'reflect-metadata';
@@ -46,6 +47,7 @@ describe('lawyer execution route identity', () => {
   ])('rejects a non-lawyer principal before either command: %j', (identity) => {
     const mailing = { mail: jest.fn() };
     const filing = { submit: jest.fn() };
+    const finish = { finish: jest.fn() };
     const controller = new LawyerCaseController(
       {} as never,
       {} as never,
@@ -61,6 +63,7 @@ describe('lawyer execution route identity', () => {
       {} as never,
       mailing as never,
       filing as never,
+      finish as never,
       {} as never,
     );
     const actor = {
@@ -94,6 +97,22 @@ describe('lawyer execution route identity', () => {
     );
     expect(mailing.mail).not.toHaveBeenCalled();
     expect(filing.submit).not.toHaveBeenCalled();
+    expect(() =>
+      controller.finishExecution(actor, routeCaseId, {
+        expectedVersion: 24,
+        idempotencyKey: 'finish',
+        expectedFilingId: routeCaseId,
+        finishedAt: '2026-10-01',
+        reason: '真实原因',
+        basisNote: '真实依据',
+        basisContentVersionIds: [],
+      }),
+    ).toThrow(
+      expect.objectContaining({
+        response: expect.objectContaining({ code: 'ACTION_FORBIDDEN' }),
+      }),
+    );
+    expect(finish.finish).not.toHaveBeenCalled();
   });
 });
 
@@ -122,6 +141,7 @@ describe('internal complaint mailing route identity', () => {
       {} as CaseFilingService,
       {} as CaseAcceptanceService,
       {} as CaseHearingService,
+      {} as never,
       {} as never,
       {} as never,
       {} as never,
@@ -173,6 +193,10 @@ describe('case read OpenAPI contract', () => {
     const module = await Test.createTestingModule({
       controllers: [CaseReadController],
       providers: [
+        {
+          provide: CaseExecutionFinishService,
+          useValue: { finish: jest.fn() },
+        },
         { provide: CaseExecutionMailingService, useValue: { mail: jest.fn() } },
         {
           provide: CaseExecutionFilingService,
@@ -433,13 +457,14 @@ describe('case read OpenAPI contract', () => {
 });
 
 describe('case list execution stage query validation', () => {
-  it.each(['WAITING_EXECUTION_FILING', 'EXECUTING'] as const)(
-    'accepts the %s stage filter',
-    (stage) => {
-      const query = plainToInstance(CasePageQueryDto, { stage });
-      expect(validateSync(query)).toEqual([]);
-    },
-  );
+  it.each([
+    'WAITING_EXECUTION_FILING',
+    'EXECUTING',
+    'WAITING_ARCHIVE',
+  ] as const)('accepts the %s stage filter', (stage) => {
+    const query = plainToInstance(CasePageQueryDto, { stage });
+    expect(validateSync(query)).toEqual([]);
+  });
 
   it('continues to reject unknown stage filters', () => {
     const query = plainToInstance(CasePageQueryDto, {

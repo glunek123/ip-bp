@@ -9,6 +9,47 @@ const actor = {
 const caseId = '44444444-4444-4444-8444-444444444444';
 
 describe('ClientCaseService', () => {
+  it('keeps WAITING_ARCHIVE in RECORDED without any internal finish projection', async () => {
+    const f = fixture();
+    const original = await f.db.case.findFirst();
+    const poisoned = {
+      ...original,
+      stage: 'WAITING_ARCHIVE',
+      version: 25,
+      executionFinish: {
+        id: 'secret',
+        reason: 'secret',
+        basisNote: 'secret',
+        finishedAt: new Date(),
+      },
+      finishedAt: 'secret',
+      auditEventId: 'secret',
+    };
+    f.db.case.findFirst.mockResolvedValue(poisoned);
+    f.db.case.findMany.mockResolvedValue([poisoned]);
+    const list = await f.service.list(actor, 'RECORDED', 1, 20);
+    const detail = await f.service.get(actor, caseId);
+    expect(list.items[0].stage).toBe('WAITING_ARCHIVE');
+    expect(detail.stage).toBe('WAITING_ARCHIVE');
+    for (const projection of [list.items[0], detail])
+      for (const key of [
+        'executionFinish',
+        'finishId',
+        'finishedAt',
+        'reason',
+        'basisNote',
+        'auditEventId',
+        'canFinishExecution',
+      ])
+        expect(projection).not.toHaveProperty(key);
+    expect(f.db.case.findMany).toHaveBeenCalledWith(
+      expect.objectContaining({
+        where: expect.objectContaining({
+          stage: { in: expect.arrayContaining(['WAITING_ARCHIVE']) },
+        }),
+      }),
+    );
+  });
   function fixture() {
     const db = {
       customerAccountBinding: {

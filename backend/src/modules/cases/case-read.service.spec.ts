@@ -44,6 +44,7 @@ describe('CaseReadService', () => {
       listFrozenCaseComplaintMailingFiles: jest.fn().mockResolvedValue([]),
       listFrozenCaseExecutionMailingFiles: jest.fn().mockResolvedValue([]),
       listFrozenCaseExecutionFilingFiles: jest.fn().mockResolvedValue([]),
+      listFrozenCaseExecutionFinishFiles: jest.fn().mockResolvedValue([]),
     };
     db.$transaction.mockImplementation(async (operation) =>
       operation({
@@ -120,6 +121,7 @@ describe('CaseReadService', () => {
         WAITING_EXECUTION_STAMP: 0,
         WAITING_EXECUTION_FILING: 0,
         EXECUTING: 0,
+        WAITING_ARCHIVE: 0,
       },
     });
     expect(f.access.authorizeDepartmentAction).toHaveBeenCalledWith(
@@ -357,6 +359,35 @@ describe('CaseReadService', () => {
       judgmentNextStep: { current: null, history: [], revocations: [] },
     });
 
+    const executionFinish = {
+      id: 'finish-1',
+      filingId: 'filing-1',
+      finishedAt: new Date('2026-10-01T00:00:00Z'),
+      reason: '真实原因',
+      basisNote: '真实依据',
+      recordedAt: new Date('2026-10-13T01:00:00Z'),
+    };
+    f.db.case.findFirst.mockResolvedValue({
+      ...record,
+      stage: 'WAITING_ARCHIVE',
+      version: 25,
+      executionFinish,
+    });
+    const finishedDetail = await f.service.get(
+      { ...actor, lawyerAccountId: actor.userId },
+      'case-1',
+    );
+    expect(finishedDetail.executionFinish).toEqual({
+      ...executionFinish,
+      finishedAt: '2026-10-01',
+      recordedAt: '2026-10-13T01:00:00.000Z',
+      files: [],
+    });
+    expect(finishedDetail.canFinishExecution).toBe(false);
+    expect(f.materials.listFrozenCaseExecutionFinishFiles).toHaveBeenCalledWith(
+      { ...actor, lawyerAccountId: actor.userId },
+      'case-1',
+    );
     const judgment = {
       id: 'judgment-1',
       trialRoundId: 'round-1',
@@ -1010,6 +1041,49 @@ describe('CaseReadService', () => {
       'case.execution.filing.submit',
       expect.objectContaining({ departmentId: actor.departmentId }),
     );
+  });
+  it('projects finish capability only for the exact filing version and live action', async () => {
+    const f = fixture();
+    const row = {
+      id: 'case-1',
+      businessNo: 'CA-1',
+      stage: 'EXECUTING',
+      version: 24,
+      currentTrialRoundId: null,
+      currentJudgmentNextStepId: null,
+      currentJudgmentNextStep: null,
+      currentExecutionSubmissionId: 'submission',
+      currentSecondInstanceResultId: null,
+      currentSecondInstanceResult: null,
+      executionConfirmation: { id: 'confirmation' },
+      executionMailing: { id: 'mailing' },
+      executionFiling: { id: 'filing', toVersion: 24 },
+      executionFinish: null,
+      responsibleUserId: actor.userId,
+      responsibleMembership: { teamId: null },
+      createdAt: new Date(),
+      owner: { id: actor.userId, displayName: 'operator' },
+      sourceLead: { id: 'lead', businessNo: 'LD-1' },
+      sourceNotaryMatter: { id: 'matter', businessNo: 'NT-1' },
+    };
+    f.db.case.findMany.mockResolvedValue([row]);
+    expect(
+      (await f.service.list(actor, 1, 20)).items[0].canFinishExecution,
+    ).toBe(true);
+    expect(f.access.canAuthorizeCase).toHaveBeenCalledWith(
+      actor,
+      'case.execution.finish',
+      expect.any(Object),
+    );
+    f.access.canAuthorizeCase.mockResolvedValue(false);
+    expect(
+      (await f.service.list(actor, 1, 20)).items[0].canFinishExecution,
+    ).toBe(false);
+    f.access.canAuthorizeCase.mockResolvedValue(true);
+    row.executionFiling.toVersion = 23;
+    expect(
+      (await f.service.list(actor, 1, 20)).items[0].canFinishExecution,
+    ).toBe(false);
   });
 
   it('lists second-instance actions by current choice, stage and actual authorization', async () => {

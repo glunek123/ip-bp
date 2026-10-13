@@ -59,6 +59,7 @@ export const internalAssignablePermissionActions = [
   'CASE_EXECUTION_CONFIRM',
   'CASE_EXECUTION_MAIL',
   'CASE_EXECUTION_FILING_SUBMIT',
+  'CASE_EXECUTION_FINISH',
   'NOTARY_OFFICE_MANAGE',
   'USER_READ',
   'USER_MANAGE',
@@ -250,6 +251,7 @@ const catalog: PermissionCatalogItem[] = [
     label: '申请执行',
     scopes: allScopes,
   },
+  { action: 'CASE_EXECUTION_FINISH', label: '登记执行结束', scopes: allScopes },
   {
     action: 'NOTARY_OFFICE_MANAGE',
     label: '管理公证处',

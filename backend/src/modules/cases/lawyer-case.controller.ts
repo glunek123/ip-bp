@@ -1,3 +1,8 @@
+import {
+  FinishCaseExecutionDto,
+  FinishCaseExecutionResponseDto,
+} from './case-execution-finish.dto';
+import { CaseExecutionFinishService } from './case-execution-finish.service';
 import { CaseExecutionMailingService } from './case-execution-mailing.service';
 import { CaseExecutionFilingService } from './case-execution-filing.service';
 import {
@@ -78,6 +83,7 @@ export class LawyerCaseController {
     private readonly executionConfirmation: CaseExecutionConfirmationService,
     private readonly executionMailing: CaseExecutionMailingService,
     private readonly executionFiling: CaseExecutionFilingService,
+    private readonly executionFinish: CaseExecutionFinishService,
     private readonly courts: FilingCourtService,
   ) {}
 
@@ -127,6 +133,16 @@ export class LawyerCaseController {
     return this.executionMailing.mail(actor, id, body);
   }
 
+  @Post(':id/execution-finish')
+  @ApiCreatedResponse({ type: FinishCaseExecutionResponseDto })
+  finishExecution(
+    @CurrentActor() actor: ActorContext,
+    @Param('id', new ParseUUIDPipe()) id: string,
+    @Body() body: FinishCaseExecutionDto,
+  ) {
+    this.lawyer(actor);
+    return this.executionFinish.finish(actor, id, body);
+  }
   @Post(':id/execution-filing-submit')
   @ApiCreatedResponse({ type: SubmitCaseExecutionFilingResponseDto })
   submitExecutionFiling(

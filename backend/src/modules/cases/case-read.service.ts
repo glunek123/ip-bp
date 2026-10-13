@@ -96,7 +96,8 @@ export class CaseReadService {
       | 'WAITING_EXECUTION_CONFIRMATION'
       | 'WAITING_EXECUTION_STAMP'
       | 'WAITING_EXECUTION_FILING'
-      | 'EXECUTING',
+      | 'EXECUTING'
+      | 'WAITING_ARCHIVE',
     stageGroup?: 'EXECUTION_PREPARATION',
   ) {
     if (stage !== undefined && stageGroup !== undefined)
@@ -156,7 +157,8 @@ export class CaseReadService {
           currentExecutionSubmissionId: true,
           executionConfirmation: { select: { id: true } },
           executionMailing: { select: { id: true } },
-          executionFiling: { select: { id: true } },
+          executionFiling: { select: { id: true, toVersion: true } },
+          executionFinish: { select: { id: true } },
           currentSecondInstanceResult: {
             select: {
               id: true,
@@ -540,6 +542,23 @@ export class CaseReadService {
                     : {}),
                 },
               ))),
+          canFinishExecution:
+            item.stage === 'EXECUTING' &&
+            item.executionFiling != null &&
+            item.executionFiling.toVersion === item.version &&
+            item.executionFinish == null &&
+            (principal === 'LAWYER' ||
+              (await this.access.canAuthorizeCase(
+                actor,
+                'case.execution.finish',
+                {
+                  departmentId: actor.departmentId,
+                  responsibleUserId: item.responsibleUserId,
+                  ...(item.responsibleMembership.teamId
+                    ? { teamId: item.responsibleMembership.teamId }
+                    : {}),
+                },
+              ))),
           canSubmitExecutionFiling:
             item.stage === 'WAITING_EXECUTION_FILING' &&
             item.executionMailing !== null &&
@@ -602,6 +621,9 @@ export class CaseReadService {
         WAITING_EXECUTION_FILING:
           grouped.find((row) => row.stage === 'WAITING_EXECUTION_FILING')
             ?._count._all ?? 0,
+        WAITING_ARCHIVE:
+          grouped.find((row) => row.stage === 'WAITING_ARCHIVE')?._count._all ??
+          0,
         EXECUTING:
           grouped.find((row) => row.stage === 'EXECUTING')?._count._all ?? 0,
       },
@@ -722,8 +744,19 @@ export class CaseReadService {
             recordedAt: true,
           },
         },
+        executionFinish: {
+          select: {
+            id: true,
+            filingId: true,
+            finishedAt: true,
+            reason: true,
+            basisNote: true,
+            recordedAt: true,
+          },
+        },
         executionFiling: {
           select: {
+            toVersion: true,
             id: true,
             mailingId: true,
             submittedAt: true,
@@ -1111,6 +1144,10 @@ export class CaseReadService {
       record.executionMailing == null
         ? []
         : await this.materials.listFrozenCaseExecutionMailingFiles(actor, id);
+    const executionFinishFiles =
+      record.executionFinish == null
+        ? []
+        : await this.materials.listFrozenCaseExecutionFinishFiles(actor, id);
     const executionFilingFiles =
       record.executionFiling == null
         ? []
@@ -1362,6 +1399,20 @@ export class CaseReadService {
                 .slice(0, 10),
               recordedAt: record.executionMailing.recordedAt.toISOString(),
               files: executionMailingFiles,
+            },
+      executionFinish:
+        record.executionFinish == null
+          ? null
+          : {
+              id: record.executionFinish.id,
+              filingId: record.executionFinish.filingId,
+              finishedAt: record.executionFinish.finishedAt
+                .toISOString()
+                .slice(0, 10),
+              reason: record.executionFinish.reason,
+              basisNote: record.executionFinish.basisNote,
+              recordedAt: record.executionFinish.recordedAt.toISOString(),
+              files: executionFinishFiles,
             },
       executionFiling:
         record.executionFiling == null
@@ -1786,6 +1837,19 @@ export class CaseReadService {
               ? { teamId: record.responsibleMembership.teamId }
               : {}),
           }))),
+      canFinishExecution:
+        record.stage === 'EXECUTING' &&
+        record.executionFiling != null &&
+        record.executionFiling.toVersion === record.version &&
+        record.executionFinish == null &&
+        (principal === 'LAWYER' ||
+          (await this.access.canAuthorizeCase(actor, 'case.execution.finish', {
+            departmentId: actor.departmentId,
+            responsibleUserId: record.responsibleUserId,
+            ...(record.responsibleMembership.teamId
+              ? { teamId: record.responsibleMembership.teamId }
+              : {}),
+          }))),
       canSubmitExecutionFiling:
         record.stage === 'WAITING_EXECUTION_FILING' &&
         record.executionMailing !== null &&
@@ -2057,6 +2121,7 @@ export class CaseReadService {
         canConfirmExecution: detail.canConfirmExecution,
         canMailExecution: detail.canMailExecution,
         canSubmitExecutionFiling: detail.canSubmitExecutionFiling,
+        canFinishExecution: detail.canFinishExecution,
         hearing: detail.hearing,
         judgment: detail.judgment,
         judgmentNextStep: detail.judgmentNextStep,
@@ -2065,6 +2130,7 @@ export class CaseReadService {
         executionConfirmation: detail.executionConfirmation,
         executionMailing: detail.executionMailing,
         executionFiling: detail.executionFiling,
+        executionFinish: detail.executionFinish,
         complaint:
           detail.complaint === null
             ? null

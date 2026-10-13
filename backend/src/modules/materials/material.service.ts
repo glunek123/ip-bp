@@ -179,6 +179,11 @@ const allowedMimeTypes = {
     'image/jpeg',
     'image/png',
   ]),
+  EXECUTION_FINISH_BASIS: new Set([
+    'application/pdf',
+    'image/jpeg',
+    'image/png',
+  ]),
   EXECUTION_FILING_PROOF: new Set([
     'application/pdf',
     'image/jpeg',
@@ -1263,6 +1268,7 @@ export class MaterialService {
                 'SECOND_INSTANCE_JUDGMENT',
                 'EXECUTION_APPLICATION',
                 'EXECUTION_FILING_PROOF',
+                'EXECUTION_FINISH_BASIS',
               ].includes(material.category) &&
               versions.some(
                 (version) => version.id === material.currentVersionId,
@@ -2742,6 +2748,52 @@ export class MaterialService {
     }
   }
 
+  async freezeCaseExecutionFinishReferences(
+    transaction: MaterialTransactionClient,
+    actor: ActorContext,
+    caseId: string,
+    finishId: string,
+    facts: readonly ValidatedMaterialVersionFact[],
+    actionEventId: string,
+  ): Promise<void> {
+    for (const fact of facts) {
+      const validation = this.validatedVersionFacts.get(fact);
+      const canonical = validation?.canonicalFact;
+      if (
+        validation?.transaction !== transaction ||
+        canonical?.departmentId !== actor.departmentId ||
+        canonical.ownerType !== 'CASE' ||
+        canonical.ownerId !== caseId ||
+        canonical.category !== 'EXECUTION_FINISH_BASIS' ||
+        canonical.purpose !== 'EXECUTION_FINISH_BASIS' ||
+        !allowedMimeTypes.EXECUTION_FINISH_BASIS.has(canonical.mimeType) ||
+        canonical.sizeBytes >
+          BigInt(materialFileLimit('EXECUTION_FINISH_BASIS'))
+      )
+        throw this.invalidVersion();
+      await transaction.caseExecutionFinishVersion.create({
+        data: {
+          finishId,
+          caseId,
+          departmentId: actor.departmentId,
+          materialId: canonical.materialId,
+          contentVersionId: canonical.contentVersionId,
+        },
+      });
+      await transaction.materialReference.create({
+        data: {
+          departmentId: actor.departmentId,
+          resourceType: 'case',
+          resourceId: caseId,
+          purpose: 'EXECUTION_FINISH_BASIS',
+          materialId: canonical.materialId,
+          contentVersionId: canonical.contentVersionId,
+          actionEventId,
+        },
+      });
+    }
+  }
+
   private async isFrozenCaseVersion(
     transaction: MaterialTransactionClient,
     category: MaterialCategoryValue,
@@ -2928,6 +2980,44 @@ export class MaterialService {
     }));
   }
 
+  async listFrozenCaseExecutionFinishFiles(
+    actor: ActorContext,
+    caseId: string,
+  ) {
+    if (
+      actor.clientCustomerId !== undefined ||
+      actor.notaryOfficeId !== undefined
+    )
+      throw this.forbidden();
+    await this.authorizeOwner(actor, 'CASE', caseId, 'read');
+    const references = await this.database.materialReference.findMany({
+      where: {
+        departmentId: actor.departmentId,
+        resourceType: 'case',
+        resourceId: caseId,
+        purpose: 'EXECUTION_FINISH_BASIS',
+        actionEvent: {
+          action: 'case.execution.finished',
+          resourceType: 'CASE',
+          resourceId: caseId,
+          departmentId: actor.departmentId,
+        },
+      },
+      orderBy: { createdAt: 'asc' },
+      select: {
+        materialId: true,
+        contentVersionId: true,
+        contentVersion: { select: { originalFilename: true, mimeType: true } },
+      },
+    });
+    return references.map((reference) => ({
+      materialId: reference.materialId,
+      contentVersionId: reference.contentVersionId,
+      originalFilename: reference.contentVersion.originalFilename,
+      mimeType: reference.contentVersion.mimeType,
+    }));
+  }
+
   private async authorizeOwner(
     actor: ActorContext,
     ownerType: MaterialOwnerTypeValue,
@@ -2952,6 +3042,34 @@ export class MaterialService {
       throw this.forbidden();
     if (ownerType === 'CASE') {
       if (actor.notaryOfficeId !== undefined) throw this.forbidden();
+      if (
+        operation === 'write' &&
+        notaryCategory === 'EXECUTION_FINISH_BASIS'
+      ) {
+        if (actor.clientCustomerId !== undefined) throw this.forbidden();
+        const source = await reader.$queryRawUnsafe<Array<{ id: string }>>(
+          `SELECT c."id" FROM "cases" c
+           JOIN "case_execution_filings" f ON f."case_id"=c."id" AND f."department_id"=c."department_id" AND f."to_version"=c."version"
+           JOIN "case_execution_mailings" m ON m."id"=f."mailing_id" AND m."case_id"=c."id" AND m."department_id"=c."department_id" AND m."to_version"=f."from_version"
+           JOIN "case_execution_confirmations" conf ON conf."id"=m."confirmation_id" AND conf."case_id"=c."id" AND conf."department_id"=c."department_id" AND conf."to_version"=m."from_version"
+           JOIN "case_execution_submissions" s ON s."id"=conf."submission_id" AND s."case_id"=c."id" AND s."department_id"=c."department_id" AND s."to_version"=conf."from_version"
+           JOIN "case_judgment_next_steps" choice ON choice."id"=s."judgment_next_step_id" AND choice."case_id"=c."id" AND choice."department_id"=c."department_id" AND choice."trial_round_id"=s."trial_round_id"
+           WHERE c."id"=$1::uuid AND c."department_id"=$2::uuid AND c."stage"='EXECUTING'
+             AND c."current_execution_submission_id"=s."id" AND c."current_trial_round_id"=s."trial_round_id"
+             AND c."current_judgment_next_step_id"=s."judgment_next_step_id"
+             AND c."current_second_instance_result_id" IS NOT DISTINCT FROM s."second_instance_result_id"
+             AND NOT EXISTS (SELECT 1 FROM "case_judgment_next_step_revocations" r WHERE r."choice_id"=choice."id")
+             AND ((choice."next"='EXECUTION' AND s."second_instance_result_id" IS NULL) OR
+               (choice."next"='APPEAL' AND EXISTS (SELECT 1 FROM "case_second_instance_results" r
+                 WHERE r."id"=s."second_instance_result_id" AND r."case_id"=c."id" AND r."department_id"=c."department_id"
+                   AND r."choice_id"=choice."id" AND r."trial_round_id"=s."trial_round_id" AND r."result" IN ('CHANGE','AFFIRM')
+                   AND NOT EXISTS (SELECT 1 FROM "case_second_instance_result_revocations" rev WHERE rev."result_id"=r."id"))))
+             AND NOT EXISTS (SELECT 1 FROM "case_execution_finishes" ef WHERE ef."case_id"=c."id" AND ef."department_id"=c."department_id")`,
+          ownerId,
+          actor.departmentId,
+        );
+        if (source.length !== 1) throw this.versionConflict();
+      }
       if (actor.lawyerAccountId !== undefined) {
         await currentLawyerBindingId(reader, actor, ownerId);
         const lawyerCase = await reader.case.findFirst({
@@ -2996,7 +3114,9 @@ export class MaterialService {
             (lawyerCase.stage === 'WAITING_EXECUTION_STAMP' &&
               notaryCategory === 'MAIL_RECEIPT') ||
             (lawyerCase.stage === 'WAITING_EXECUTION_FILING' &&
-              notaryCategory === 'EXECUTION_FILING_PROOF')
+              notaryCategory === 'EXECUTION_FILING_PROOF') ||
+            (lawyerCase.stage === 'EXECUTING' &&
+              notaryCategory === 'EXECUTION_FINISH_BASIS')
           )
         )
           throw this.versionConflict();
@@ -3097,6 +3217,10 @@ export class MaterialService {
           !(
             record.stage === 'WAITING_EXECUTION_FILING' &&
             notaryCategory === 'EXECUTION_FILING_PROOF'
+          ) &&
+          !(
+            record.stage === 'EXECUTING' &&
+            notaryCategory === 'EXECUTION_FINISH_BASIS'
           )
         )
           throw this.versionConflict();
@@ -3158,20 +3282,22 @@ export class MaterialService {
           }
           await this.accessControl.authorizeCase(
             actor,
-            record.stage === 'WAITING_EXECUTION_STAMP'
-              ? 'case.execution.mail'
-              : record.stage === 'WAITING_EXECUTION_FILING'
-                ? 'case.execution.filing.submit'
-                : record.stage === 'WAITING_COMPLAINT'
-                  ? 'case.complaint.submit'
-                  : record.stage === 'WAITING_COMPLAINT_CONFIRMATION'
-                    ? 'case.complaint.confirm'
-                    : record.stage === 'WAITING_FILING'
-                      ? 'case.filing.submit'
-                      : record.stage === 'WAITING_FORMAL_ACCEPTANCE' ||
-                          record.stage === 'WAITING_HEARING'
-                        ? 'case.acceptance.register'
-                        : 'case.complaint.mail',
+            record.stage === 'EXECUTING'
+              ? 'case.execution.finish'
+              : record.stage === 'WAITING_EXECUTION_STAMP'
+                ? 'case.execution.mail'
+                : record.stage === 'WAITING_EXECUTION_FILING'
+                  ? 'case.execution.filing.submit'
+                  : record.stage === 'WAITING_COMPLAINT'
+                    ? 'case.complaint.submit'
+                    : record.stage === 'WAITING_COMPLAINT_CONFIRMATION'
+                      ? 'case.complaint.confirm'
+                      : record.stage === 'WAITING_FILING'
+                        ? 'case.filing.submit'
+                        : record.stage === 'WAITING_FORMAL_ACCEPTANCE' ||
+                            record.stage === 'WAITING_HEARING'
+                          ? 'case.acceptance.register'
+                          : 'case.complaint.mail',
             facts,
             snapshotReader,
           );
@@ -3505,6 +3631,7 @@ export class MaterialService {
               'SECOND_INSTANCE_JUDGMENT',
               'EXECUTION_APPLICATION',
               'EXECUTION_FILING_PROOF',
+              'EXECUTION_FINISH_BASIS',
             ],
           },
         },
@@ -3764,7 +3891,8 @@ export class MaterialService {
           input.category === 'SECOND_INSTANCE_SERVICE' ||
           input.category === 'SECOND_INSTANCE_JUDGMENT' ||
           input.category === 'EXECUTION_APPLICATION' ||
-          input.category === 'EXECUTION_FILING_PROOF') &&
+          input.category === 'EXECUTION_FILING_PROOF' ||
+          input.category === 'EXECUTION_FINISH_BASIS') &&
         input.purpose === input.category) ||
       (input.ownerType === 'NOTARY_MATTER' &&
         input.category === 'NOTARY_OPENING_PHOTO' &&
@@ -3886,7 +4014,8 @@ function toMaterialPurpose(value: string): MaterialPurposeValue {
     value === 'SECOND_INSTANCE_SERVICE' ||
     value === 'SECOND_INSTANCE_JUDGMENT' ||
     value === 'EXECUTION_APPLICATION' ||
-    value === 'EXECUTION_FILING_PROOF'
+    value === 'EXECUTION_FILING_PROOF' ||
+    value === 'EXECUTION_FINISH_BASIS'
   ) {
     return value;
   }
@@ -3917,7 +4046,8 @@ function materialLimit(category: keyof typeof allowedMimeTypes): number {
               category === 'SECOND_INSTANCE_SERVICE' ||
               category === 'SECOND_INSTANCE_JUDGMENT' ||
               category === 'EXECUTION_APPLICATION' ||
-              category === 'EXECUTION_FILING_PROOF'
+              category === 'EXECUTION_FILING_PROOF' ||
+              category === 'EXECUTION_FINISH_BASIS'
             ? 10
             : 20;
 }
@@ -3936,7 +4066,8 @@ function materialFileLimit(category: keyof typeof allowedMimeTypes): number {
     category === 'SECOND_INSTANCE_SERVICE' ||
     category === 'SECOND_INSTANCE_JUDGMENT' ||
     category === 'EXECUTION_APPLICATION' ||
-    category === 'EXECUTION_FILING_PROOF'
+    category === 'EXECUTION_FILING_PROOF' ||
+    category === 'EXECUTION_FINISH_BASIS'
     ? 50 * 1024 * 1024
     : 20 * 1024 * 1024;
 }

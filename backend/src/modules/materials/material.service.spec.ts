@@ -26,6 +26,154 @@ const customerId = '33333333-3333-4333-8333-333333333333';
 const now = new Date('2026-09-21T04:00:00.000Z');
 
 describe('MaterialService', () => {
+  it('uploads finish basis only under the finish action and an exact current executing source', async () => {
+    const f = createFixture();
+    f.db.case.findFirst.mockResolvedValue({
+      departmentId: actor.departmentId,
+      stage: 'EXECUTING',
+      responsibleUserId: actor.userId,
+      responsibleMembership: { teamId: null },
+    });
+    const input = {
+      ownerType: 'CASE' as const,
+      ownerId: customerId,
+      category: 'EXECUTION_FINISH_BASIS' as const,
+      purpose: 'EXECUTION_FINISH_BASIS' as const,
+      originalFilename: '真实依据.pdf',
+      declaredMimeType: 'application/pdf',
+    };
+    await expect(
+      f.service.createUploadDraft(actor, input),
+    ).resolves.toMatchObject({ category: 'EXECUTION_FINISH_BASIS' });
+    expect(f.access.authorizeCase).toHaveBeenCalledWith(
+      actor,
+      'case.execution.finish',
+      expect.any(Object),
+      undefined,
+    );
+    expect(f.db.$queryRawUnsafe).toHaveBeenCalledWith(
+      expect.stringContaining('f."to_version"=c."version"'),
+      customerId,
+      actor.departmentId,
+    );
+    f.db.$queryRawUnsafe.mockResolvedValue([]);
+    await expect(
+      f.service.createUploadDraft(actor, input),
+    ).rejects.toMatchObject({ response: { code: 'VERSION_CONFLICT' } });
+    await expect(
+      f.service.createUploadDraft(
+        { ...actor, clientCustomerId: customerId },
+        input,
+      ),
+    ).rejects.toMatchObject({ response: { code: 'ACTION_FORBIDDEN' } });
+  });
+  it('freezes the exact validated finish version, rejects forged facts and exposes only authorized frozen files', async () => {
+    const f = createFixture();
+    f.transaction.case.findFirst.mockResolvedValue({
+      departmentId: actor.departmentId,
+      stage: 'EXECUTING',
+      responsibleUserId: actor.userId,
+      responsibleMembership: { teamId: null },
+    });
+    f.transaction.material.findMany.mockResolvedValue([
+      {
+        id: 'basis',
+        departmentId: actor.departmentId,
+        ownerType: 'CASE',
+        ownerId: customerId,
+        category: 'EXECUTION_FINISH_BASIS',
+        purpose: 'EXECUTION_FINISH_BASIS',
+        status: 'ACTIVE',
+        currentVersionId: 'basis-v1',
+        contentVersions: [
+          {
+            id: 'basis-v1',
+            status: 'AVAILABLE',
+            mimeType: 'application/pdf',
+            sizeBytes: 12n,
+          },
+        ],
+      },
+    ]);
+    const facts = await f.service.assertAvailableVersions(
+      f.transaction as unknown as MaterialTransactionClient,
+      actor,
+      {
+        ownerType: 'CASE',
+        ownerId: customerId,
+        category: 'EXECUTION_FINISH_BASIS',
+        contentVersionIds: ['basis-v1'],
+      },
+    );
+    await f.service.freezeCaseExecutionFinishReferences(
+      f.transaction as unknown as MaterialTransactionClient,
+      actor,
+      customerId,
+      'finish',
+      facts,
+      'audit',
+    );
+    expect(
+      f.transaction.caseExecutionFinishVersion.create,
+    ).toHaveBeenCalledWith({
+      data: {
+        finishId: 'finish',
+        caseId: customerId,
+        departmentId: actor.departmentId,
+        materialId: 'basis',
+        contentVersionId: 'basis-v1',
+      },
+    });
+    expect(f.transaction.materialReference.create).toHaveBeenCalledWith({
+      data: expect.objectContaining({
+        purpose: 'EXECUTION_FINISH_BASIS',
+        contentVersionId: 'basis-v1',
+        actionEventId: 'audit',
+      }),
+    });
+    await expect(
+      f.service.freezeCaseExecutionFinishReferences(
+        f.transaction as unknown as MaterialTransactionClient,
+        actor,
+        customerId,
+        'finish',
+        [{ ...facts[0] }],
+        'audit',
+      ),
+    ).rejects.toMatchObject({ response: { code: 'MATERIAL_VERSION_INVALID' } });
+    f.db.case.findFirst.mockResolvedValue({
+      departmentId: actor.departmentId,
+      stage: 'WAITING_ARCHIVE',
+      responsibleUserId: actor.userId,
+      responsibleMembership: { teamId: null },
+    });
+    f.db.materialReference.findMany.mockResolvedValue([
+      {
+        materialId: 'basis',
+        contentVersionId: 'basis-v1',
+        contentVersion: {
+          originalFilename: 'original.pdf',
+          mimeType: 'application/pdf',
+        },
+      },
+    ]);
+    await expect(
+      f.service.listFrozenCaseExecutionFinishFiles(actor, customerId),
+    ).resolves.toEqual([
+      {
+        materialId: 'basis',
+        contentVersionId: 'basis-v1',
+        originalFilename: 'original.pdf',
+        mimeType: 'application/pdf',
+      },
+    ]);
+    await expect(
+      f.service.listFrozenCaseExecutionFinishFiles(
+        { ...actor, clientCustomerId: customerId },
+        customerId,
+      ),
+    ).rejects.toMatchObject({ response: { code: 'ACTION_FORBIDDEN' } });
+  });
   it.each([0, 1])(
     'client mail candidates exclude versions frozen by a prior action (%s)',
     async (priorReferences) => {
@@ -3476,6 +3624,7 @@ function createFixture() {
   const leadFindFirst = jest.fn();
   const notaryMatterFindFirst = jest.fn();
   const transaction = {
+    caseExecutionFinishVersion: { create: jest.fn().mockResolvedValue({}) },
     $executeRawUnsafe: jest.fn(async () => 1),
     $queryRawUnsafe: jest.fn(async () => [{ id: 'material-1' }]),
     customer: { findFirst: customerFindFirst },
@@ -3502,6 +3651,7 @@ function createFixture() {
       updateMany: jest.fn(async () => ({ count: 1 })),
     },
     materialReference: {
+      create: jest.fn().mockResolvedValue({}),
       count: materialReferenceCount,
       findMany: jest.fn(),
       deleteMany: jest.fn(),
@@ -3510,6 +3660,9 @@ function createFixture() {
     auditEvent: { create: jest.fn(async ({ data }) => data) },
   };
   const db = {
+    $queryRawUnsafe: jest
+      .fn<Promise<Array<{ id: string }>>, unknown[]>()
+      .mockResolvedValue([{ id: customerId }]),
     userAccount: { findUnique: jest.fn() },
     notaryOfficeAccountBinding: { findFirst: jest.fn() },
     customerAccountBinding: { findFirst: jest.fn() },

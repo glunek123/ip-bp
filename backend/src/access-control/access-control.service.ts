@@ -55,6 +55,7 @@ export type PermissionAction =
   | 'case.execution.confirm'
   | 'case.execution.mail'
   | 'case.execution.filing.submit'
+  | 'case.execution.finish'
   | 'client.case.read'
   | 'client.case.complaint.mail'
   | 'client.case.execution.mail'
@@ -329,7 +330,8 @@ export class AccessControlService {
       | 'case.execution.submit'
       | 'case.execution.confirm'
       | 'case.execution.mail'
-      | 'case.execution.filing.submit',
+      | 'case.execution.filing.submit'
+      | 'case.execution.finish',
     facts: CaseResourceFacts,
     reader?: AccessControlSnapshotReader,
   ): Promise<void> {
@@ -365,7 +367,8 @@ export class AccessControlService {
       | 'case.execution.submit'
       | 'case.execution.confirm'
       | 'case.execution.mail'
-      | 'case.execution.filing.submit',
+      | 'case.execution.filing.submit'
+      | 'case.execution.finish',
     facts: CaseResourceFacts,
     reader?: AccessControlSnapshotReader,
   ): Promise<boolean> {
