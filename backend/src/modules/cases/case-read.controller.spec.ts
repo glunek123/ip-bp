@@ -1,3 +1,4 @@
+import { CaseClosureService } from './case-closure.service';
 import { CaseExecutionFinishService } from './case-execution-finish.service';
 import { CaseExecutionMailingService } from './case-execution-mailing.service';
 import { CaseExecutionFilingService } from './case-execution-filing.service';
@@ -64,6 +65,7 @@ describe('lawyer execution route identity', () => {
       mailing as never,
       filing as never,
       finish as never,
+      {} as never,
       {} as never,
     );
     const actor = {
@@ -149,6 +151,7 @@ describe('internal complaint mailing route identity', () => {
       {} as never,
       {} as never,
       {} as never,
+      {} as never,
       {} as FilingCourtService,
     );
     expect(() =>
@@ -191,6 +194,10 @@ describe('case read OpenAPI contract', () => {
       }),
     };
     let lawyerRead = false;
+    const closure = {
+      record: jest.fn().mockResolvedValue({ id: routeCaseId }),
+      correct: jest.fn().mockResolvedValue({ id: routeCaseId }),
+    };
     const reads = new CaseReadService(
       {
         userAccount: {
@@ -217,6 +224,10 @@ describe('case read OpenAPI contract', () => {
     const module = await Test.createTestingModule({
       controllers: [CaseReadController, LawyerCaseController],
       providers: [
+        {
+          provide: CaseClosureService,
+          useValue: closure,
+        },
         {
           provide: CaseExecutionFinishService,
           useValue: { finish: jest.fn() },
@@ -267,6 +278,63 @@ describe('case read OpenAPI contract', () => {
     try {
       configureApp(app);
       await app.init();
+      const closureInput = {
+        expectedVersion: 25,
+        idempotencyKey: 'closure-route',
+        expectedFinishId: routeCaseId,
+        closeAt: null,
+        closeAmountState: 'PENDING',
+        closeAmt: null,
+        note: null,
+        closeContentVersionIds: [],
+      };
+      await request(app.getHttpServer())
+        .post(`/api/v1/cases/${routeCaseId}/closure`)
+        .send(closureInput)
+        .expect(201);
+      expect(closure.record).toHaveBeenCalledWith(
+        expect.any(Object),
+        routeCaseId,
+        closureInput,
+      );
+      await request(app.getHttpServer())
+        .post(`/api/v1/cases/${routeCaseId}/closure-correction`)
+        .send({
+          ...closureInput,
+          expectedClosureVersionId: routeCaseId,
+          correctionReason: '真实原因',
+        })
+        .expect(201);
+      expect(closure.correct).toHaveBeenCalledTimes(1);
+      await request(app.getHttpServer())
+        .post(`/api/v1/cases/${routeCaseId}/closure`)
+        .send({ ...closureInput, extra: true })
+        .expect(400);
+      const omittedClosureInput = Object.fromEntries(
+        Object.entries(closureInput).filter(([key]) => key !== 'note'),
+      );
+      await request(app.getHttpServer())
+        .post(`/api/v1/cases/${routeCaseId}/closure`)
+        .send(omittedClosureInput)
+        .expect(400);
+      await request(app.getHttpServer())
+        .post('/api/v1/cases/invalid/closure')
+        .send(closureInput)
+        .expect(400);
+      lawyerRead = true;
+      await request(app.getHttpServer())
+        .post(`/api/v1/lawyer/cases/${routeCaseId}/closure`)
+        .send(closureInput)
+        .expect(201);
+      await request(app.getHttpServer())
+        .post(`/api/v1/lawyer/cases/${routeCaseId}/closure-correction`)
+        .send({
+          ...closureInput,
+          expectedClosureVersionId: routeCaseId,
+          correctionReason: '真实原因',
+        })
+        .expect(404);
+      lawyerRead = false;
       const document = SwaggerModule.createDocument(
         app,
         new DocumentBuilder().setTitle('test').setVersion('1').build(),

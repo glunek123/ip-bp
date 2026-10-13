@@ -1,4 +1,4 @@
-import { ApiProperty, ApiPropertyOptional } from '@nestjs/swagger';
+import { ApiProperty, ApiPropertyOptional, OmitType } from '@nestjs/swagger';
 import { Type } from 'class-transformer';
 import { IsIn, IsInt, IsOptional, Max, Min } from 'class-validator';
 
@@ -374,6 +374,107 @@ class CaseNamedDto {
   @ApiProperty({ format: 'uuid' }) id!: string;
   @ApiProperty() name!: string;
 }
+class CaseDisplayAmountDto {
+  @ApiProperty({ enum: ['UNRECORDED', 'PENDING', 'KNOWN'] }) state!:
+    'UNRECORDED' | 'PENDING' | 'KNOWN';
+  @ApiProperty({ type: String, nullable: true }) amount!: string | null;
+  @ApiProperty({
+    enum: [
+      'COMPLAINT_CONFIRMATION',
+      'COMPLAINT_SUBMISSION',
+      'FIRST_INSTANCE_JUDGMENT',
+      'SECOND_INSTANCE_RESULT',
+      'CASE_CLOSURE_VERSION',
+    ],
+    nullable: true,
+  })
+  sourceType!:
+    | 'COMPLAINT_CONFIRMATION'
+    | 'COMPLAINT_SUBMISSION'
+    | 'FIRST_INSTANCE_JUDGMENT'
+    | 'SECOND_INSTANCE_RESULT'
+    | 'CASE_CLOSURE_VERSION'
+    | null;
+  @ApiProperty({ type: String, nullable: true, format: 'uuid' }) sourceId!:
+    string | null;
+}
+class CaseDisplaySourceDto {
+  @ApiProperty({
+    enum: [
+      'TAOBAO',
+      'TMALL',
+      'PINDUODUO',
+      'JD',
+      'DOUYIN',
+      'ALIBABA_1688',
+      'XIAOHONGSHU',
+      'KUAISHOU',
+      'XIANYU',
+      'WECHAT',
+      'MEITUAN',
+      'DIANPING',
+      'MAP',
+      'OTHER',
+    ],
+  })
+  platform!: string;
+  @ApiProperty() shopName!: string;
+  @ApiProperty({ type: String, nullable: true }) shopExternalId!: string | null;
+}
+class CaseDisplayPartyDto {
+  @ApiProperty({ format: 'uuid' }) id!: string;
+  @ApiProperty() name!: string;
+}
+class CaseDisplayLawyerDto {
+  @ApiProperty({ format: 'uuid' }) id!: string;
+  @ApiProperty() fullName!: string;
+}
+class CaseDisplaySummaryDto {
+  @ApiProperty() customerName!: string;
+  @ApiProperty() rightsHolderName!: string;
+  @ApiProperty({ type: CaseDisplaySourceDto }) source!: CaseDisplaySourceDto;
+  @ApiProperty({ type: [CaseDisplayPartyDto] })
+  defendants!: CaseDisplayPartyDto[];
+  @ApiProperty({ type: [CaseDisplayLawyerDto] })
+  lawyers!: CaseDisplayLawyerDto[];
+  @ApiProperty({ type: CaseFilingCourtDto, nullable: true })
+  court!: CaseFilingCourtDto | null;
+  @ApiProperty({ type: String, nullable: true }) courtCaseNo!: string | null;
+  @ApiProperty({ type: CaseDisplayAmountDto })
+  claimAmount!: CaseDisplayAmountDto;
+  @ApiProperty({ type: CaseDisplayAmountDto })
+  judgmentAmount!: CaseDisplayAmountDto;
+  @ApiProperty({ type: CaseDisplayAmountDto })
+  closureAmount!: CaseDisplayAmountDto;
+}
+class CaseClosureVersionDto {
+  @ApiProperty({ format: 'uuid' }) id!: string;
+  @ApiProperty({ enum: ['REGISTER', 'CORRECT'] }) kind!: 'REGISTER' | 'CORRECT';
+  @ApiProperty({ type: String, nullable: true, format: 'uuid' })
+  priorVersionId!: string | null;
+  @ApiProperty({ format: 'uuid' }) finishId!: string;
+  @ApiProperty() fromVersion!: number;
+  @ApiProperty() toVersion!: number;
+  @ApiProperty({ type: String, nullable: true, format: 'date' }) closeAt!:
+    string | null;
+  @ApiProperty({ enum: ['KNOWN', 'PENDING'] }) closeAmountState!:
+    'KNOWN' | 'PENDING';
+  @ApiProperty({ type: String, nullable: true }) closeAmt!: string | null;
+  @ApiProperty({ type: String, nullable: true }) note!: string | null;
+  @ApiProperty({ type: String, nullable: true }) correctionReason!:
+    string | null;
+  @ApiProperty({ format: 'date-time' }) recordedAt!: string;
+  @ApiProperty({ format: 'uuid' }) recordedByUserId!: string;
+  @ApiProperty({ type: [CaseCertificateFileDto] })
+  files!: CaseCertificateFileDto[];
+}
+class CaseClosureDto {
+  @ApiProperty({ format: 'uuid' }) id!: string;
+  @ApiProperty({ format: 'uuid' }) finishId!: string;
+  @ApiProperty({ type: CaseClosureVersionDto }) current!: CaseClosureVersionDto;
+  @ApiProperty({ type: [CaseClosureVersionDto] })
+  history!: CaseClosureVersionDto[];
+}
 class CaseOwnerDto {
   @ApiProperty({ format: 'uuid' }) id!: string;
   @ApiProperty() displayName!: string;
@@ -438,6 +539,10 @@ class CaseListItemDto {
   @ApiProperty() canMailExecution!: boolean;
   @ApiProperty() canSubmitExecutionFiling!: boolean;
   @ApiProperty() canFinishExecution!: boolean;
+  @ApiProperty() canRecordClosure!: boolean;
+  @ApiProperty() canCorrectClosure!: boolean;
+  @ApiProperty({ type: CaseDisplaySummaryDto })
+  displaySummary!: CaseDisplaySummaryDto;
   @ApiProperty({ type: CaseOwnerDto }) owner!: CaseOwnerDto;
   @ApiProperty({ format: 'date-time' }) createdAt!: string;
   @ApiProperty({ type: CaseSourceDto }) sourceLead!: CaseSourceDto;
@@ -552,7 +657,11 @@ class CaseFeeDto {
   sourceType!: 'NOTARY_CERTIFICATE_FEE' | 'NOTARY_MATTER_EVIDENCE';
   @ApiProperty({ format: 'uuid' }) sourceId!: string;
 }
-export class CaseDetailResponseDto extends CaseListItemDto {
+export class CaseDetailResponseDto extends OmitType(CaseListItemDto, [
+  'displaySummary',
+] as const) {
+  @ApiProperty({ type: CaseClosureDto, nullable: true })
+  closure!: CaseClosureDto | null;
   @ApiProperty({ type: CaseExecutionConfirmationDto, nullable: true })
   executionConfirmation!: CaseExecutionConfirmationDto | null;
   @ApiProperty({ type: CaseExecutionSubmissionDto })

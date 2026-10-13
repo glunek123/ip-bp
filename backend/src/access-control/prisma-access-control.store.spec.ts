@@ -29,6 +29,38 @@ const snapshotRecord = {
 
 describe('PrismaAccessControlStore', () => {
   it.each(['SELF', 'TEAM', 'DEPARTMENT'])(
+    'maps both closure actions only from explicit %s grants',
+    async (scope) => {
+      const store = new PrismaAccessControlStore({
+        userAccount: {
+          findUnique: jest.fn().mockResolvedValue({
+            ...snapshotRecord,
+            roleAssignments: [
+              {
+                teamId: 'team-a',
+                roleTemplate: {
+                  active: true,
+                  grants: [
+                    { action: 'CASE_CLOSURE_RECORD', scope },
+                    { action: 'CASE_CLOSURE_CORRECT', scope },
+                  ],
+                },
+              },
+            ],
+          }),
+        },
+      } as unknown as DatabaseService);
+      await expect(
+        store.loadSnapshot('user-a', 'department-a'),
+      ).resolves.toMatchObject({
+        grants: [
+          { action: 'case.closure.record', scope: scope.toLowerCase() },
+          { action: 'case.closure.correct', scope: scope.toLowerCase() },
+        ],
+      });
+    },
+  );
+  it.each(['SELF', 'TEAM', 'DEPARTMENT'])(
     'maps the independent finish action with %s scope',
     async (scope) => {
       const record = {

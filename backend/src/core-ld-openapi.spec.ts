@@ -1,3 +1,4 @@
+import { CaseClosureService } from './modules/cases/case-closure.service';
 import { CaseExecutionFinishService } from './modules/cases/case-execution-finish.service';
 import { CaseExecutionMailingService } from './modules/cases/case-execution-mailing.service';
 import { CaseExecutionFilingService } from './modules/cases/case-execution-filing.service';
@@ -52,6 +53,46 @@ import { FilingCourtService } from './modules/cases/filing-court.service';
 
 describe('CORE-LD-002 OpenAPI contract', () => {
   let app: INestApplication;
+  it('declares explicit closure commands and keeps displaySummary in the internal list schema only', () => {
+    const document = SwaggerModule.createDocument(
+      app,
+      new DocumentBuilder().setTitle('test').setVersion('1').build(),
+    );
+    expect(document.paths['/api/v1/cases/{id}/closure']?.post).toBeDefined();
+    expect(
+      document.paths['/api/v1/cases/{id}/closure-correction']?.post,
+    ).toBeDefined();
+    expect(document.components?.schemas?.RecordCaseClosureInput).toMatchObject({
+      required: expect.arrayContaining([
+        'expectedVersion',
+        'idempotencyKey',
+        'expectedFinishId',
+        'closeAt',
+        'closeAmountState',
+        'closeAmt',
+        'note',
+        'closeContentVersionIds',
+      ]),
+    });
+    expect(document.components?.schemas?.CaseDetailResponseDto).toMatchObject({
+      properties: expect.objectContaining({
+        closure: expect.any(Object),
+        canRecordClosure: expect.any(Object),
+        canCorrectClosure: expect.any(Object),
+      }),
+    });
+    const detailSchema = document.components?.schemas?.CaseDetailResponseDto;
+    expect(
+      detailSchema && 'properties' in detailSchema
+        ? detailSchema.properties
+        : null,
+    ).not.toHaveProperty('displaySummary');
+    expect(document.components?.schemas?.CaseListItemDto).toMatchObject({
+      properties: expect.objectContaining({
+        displaySummary: expect.any(Object),
+      }),
+    });
+  });
   it('declares the strict execution finish request and fixed seven-field receipt', () => {
     const document = SwaggerModule.createDocument(
       app,
@@ -108,6 +149,10 @@ describe('CORE-LD-002 OpenAPI contract', () => {
         CaseReadController,
       ],
       providers: [
+        {
+          provide: CaseClosureService,
+          useValue: { record: jest.fn(), correct: jest.fn() },
+        },
         {
           provide: CaseExecutionFinishService,
           useValue: { finish: jest.fn() },

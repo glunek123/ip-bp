@@ -26,6 +26,159 @@ const customerId = '33333333-3333-4333-8333-333333333333';
 const now = new Date('2026-09-21T04:00:00.000Z');
 
 describe('MaterialService', () => {
+  it('uploads closure documents under the correct independent action and refuses a missing exact source', async () => {
+    const f = createFixture();
+    const record = {
+      departmentId: actor.departmentId,
+      stage: 'WAITING_ARCHIVE',
+      responsibleUserId: actor.userId,
+      responsibleMembership: { teamId: null },
+      closure: null,
+    };
+    f.db.case.findFirst.mockResolvedValue(record);
+    const input = {
+      ownerType: 'CASE' as const,
+      ownerId: customerId,
+      category: 'CASE_CLOSURE_DOCUMENT' as const,
+      purpose: 'CASE_CLOSURE_DOCUMENT' as const,
+      originalFilename: '结案.pdf',
+      declaredMimeType: 'application/pdf',
+    };
+    await expect(
+      f.service.createUploadDraft(actor, input),
+    ).resolves.toMatchObject({ category: 'CASE_CLOSURE_DOCUMENT' });
+    expect(f.access.authorizeCase).toHaveBeenLastCalledWith(
+      actor,
+      'case.closure.record',
+      expect.any(Object),
+      undefined,
+    );
+    f.db.case.findFirst.mockResolvedValue({
+      ...record,
+      closure: { id: 'closure' },
+    });
+    await f.service.createUploadDraft(actor, input);
+    expect(f.access.authorizeCase).toHaveBeenLastCalledWith(
+      actor,
+      'case.closure.correct',
+      expect.any(Object),
+      undefined,
+    );
+    f.db.$queryRawUnsafe.mockResolvedValue([]);
+    await expect(
+      f.service.createUploadDraft(actor, input),
+    ).rejects.toMatchObject({ response: { code: 'VERSION_CONFLICT' } });
+    await expect(
+      f.service.createUploadDraft(
+        { ...actor, clientCustomerId: customerId },
+        input,
+      ),
+    ).rejects.toMatchObject({ response: { code: 'ACTION_FORBIDDEN' } });
+  });
+  it('freezes authentic closure versions and reads a particular historical version without following current bytes', async () => {
+    const f = createFixture();
+    f.transaction.case.findFirst.mockResolvedValue({
+      departmentId: actor.departmentId,
+      stage: 'WAITING_ARCHIVE',
+      responsibleUserId: actor.userId,
+      responsibleMembership: { teamId: null },
+      closure: null,
+    });
+    f.transaction.material.findMany.mockResolvedValue([
+      {
+        id: 'material',
+        departmentId: actor.departmentId,
+        ownerType: 'CASE',
+        ownerId: customerId,
+        category: 'CASE_CLOSURE_DOCUMENT',
+        purpose: 'CASE_CLOSURE_DOCUMENT',
+        status: 'ACTIVE',
+        currentVersionId: 'v1',
+        contentVersions: [
+          {
+            id: 'v1',
+            status: 'AVAILABLE',
+            mimeType: 'application/pdf',
+            sizeBytes: 12n,
+          },
+        ],
+      },
+    ]);
+    const facts = await f.service.assertAvailableVersions(
+      asTransactionClient(f.transaction),
+      actor,
+      {
+        ownerType: 'CASE',
+        ownerId: customerId,
+        category: 'CASE_CLOSURE_DOCUMENT',
+        contentVersionIds: ['v1'],
+      },
+    );
+    await f.service.freezeCaseClosureReferences(
+      asTransactionClient(f.transaction),
+      actor,
+      customerId,
+      'closure-v1',
+      facts,
+      'audit',
+    );
+    expect(f.transaction.caseClosureDocument.create).toHaveBeenCalledWith({
+      data: {
+        closureVersionId: 'closure-v1',
+        caseId: customerId,
+        departmentId: actor.departmentId,
+        materialId: 'material',
+        contentVersionId: 'v1',
+      },
+    });
+    await expect(
+      f.service.freezeCaseClosureReferences(
+        asTransactionClient(f.transaction),
+        actor,
+        customerId,
+        'closure-v1',
+        [{ ...facts[0] }],
+        'audit',
+      ),
+    ).rejects.toMatchObject({ response: { code: 'MATERIAL_VERSION_INVALID' } });
+    f.db.case.findFirst.mockResolvedValue({
+      departmentId: actor.departmentId,
+      stage: 'WAITING_ARCHIVE',
+      responsibleUserId: actor.userId,
+      responsibleMembership: { teamId: null },
+    });
+    f.db.caseClosureDocument.findMany.mockResolvedValue([
+      {
+        materialId: 'material',
+        contentVersionId: 'v1',
+        contentVersion: {
+          originalFilename: '原文.pdf',
+          mimeType: 'application/pdf',
+        },
+      },
+    ]);
+    expect(
+      await f.service.listFrozenCaseClosureFiles(
+        actor,
+        customerId,
+        'closure-v1',
+      ),
+    ).toEqual([
+      {
+        materialId: 'material',
+        contentVersionId: 'v1',
+        originalFilename: '原文.pdf',
+        mimeType: 'application/pdf',
+      },
+    ]);
+    await expect(
+      f.service.listFrozenCaseClosureFiles(
+        { ...actor, clientCustomerId: customerId },
+        customerId,
+        'closure-v1',
+      ),
+    ).rejects.toMatchObject({ response: { code: 'ACTION_FORBIDDEN' } });
+  });
   it('uploads finish basis only under the finish action and an exact current executing source', async () => {
     const f = createFixture();
     f.db.case.findFirst.mockResolvedValue({
@@ -3624,6 +3777,7 @@ function createFixture() {
   const leadFindFirst = jest.fn();
   const notaryMatterFindFirst = jest.fn();
   const transaction = {
+    caseClosureDocument: { create: jest.fn().mockResolvedValue({}) },
     caseExecutionFinishVersion: { create: jest.fn().mockResolvedValue({}) },
     $executeRawUnsafe: jest.fn(async () => 1),
     $queryRawUnsafe: jest.fn(async () => [{ id: 'material-1' }]),
@@ -3660,6 +3814,7 @@ function createFixture() {
     auditEvent: { create: jest.fn(async ({ data }) => data) },
   };
   const db = {
+    caseClosureDocument: { findMany: jest.fn().mockResolvedValue([]) },
     $queryRawUnsafe: jest
       .fn<Promise<Array<{ id: string }>>, unknown[]>()
       .mockResolvedValue([{ id: customerId }]),

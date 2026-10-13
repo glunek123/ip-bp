@@ -184,6 +184,11 @@ const allowedMimeTypes = {
     'image/jpeg',
     'image/png',
   ]),
+  CASE_CLOSURE_DOCUMENT: new Set([
+    'application/pdf',
+    'image/jpeg',
+    'image/png',
+  ]),
   EXECUTION_FILING_PROOF: new Set([
     'application/pdf',
     'image/jpeg',
@@ -1269,6 +1274,7 @@ export class MaterialService {
                 'EXECUTION_APPLICATION',
                 'EXECUTION_FILING_PROOF',
                 'EXECUTION_FINISH_BASIS',
+                'CASE_CLOSURE_DOCUMENT',
               ].includes(material.category) &&
               versions.some(
                 (version) => version.id === material.currentVersionId,
@@ -2748,6 +2754,79 @@ export class MaterialService {
     }
   }
 
+  async freezeCaseClosureReferences(
+    transaction: MaterialTransactionClient,
+    actor: ActorContext,
+    caseId: string,
+    closureVersionId: string,
+    facts: readonly ValidatedMaterialVersionFact[],
+    actionEventId: string,
+  ): Promise<void> {
+    for (const fact of facts) {
+      const validation = this.validatedVersionFacts.get(fact);
+      const canonical = validation?.canonicalFact;
+      if (
+        validation?.transaction !== transaction ||
+        canonical?.departmentId !== actor.departmentId ||
+        canonical.ownerType !== 'CASE' ||
+        canonical.ownerId !== caseId ||
+        canonical.category !== 'CASE_CLOSURE_DOCUMENT' ||
+        canonical.purpose !== 'CASE_CLOSURE_DOCUMENT' ||
+        !allowedMimeTypes.CASE_CLOSURE_DOCUMENT.has(canonical.mimeType) ||
+        canonical.sizeBytes > BigInt(materialFileLimit('CASE_CLOSURE_DOCUMENT'))
+      )
+        throw this.invalidVersion();
+      await transaction.caseClosureDocument.create({
+        data: {
+          closureVersionId,
+          caseId,
+          departmentId: actor.departmentId,
+          materialId: canonical.materialId,
+          contentVersionId: canonical.contentVersionId,
+        },
+      });
+      await transaction.materialReference.create({
+        data: {
+          departmentId: actor.departmentId,
+          resourceType: 'case',
+          resourceId: caseId,
+          purpose: 'CASE_CLOSURE_DOCUMENT',
+          materialId: canonical.materialId,
+          contentVersionId: canonical.contentVersionId,
+          actionEventId,
+        },
+      });
+    }
+  }
+
+  async listFrozenCaseClosureFiles(
+    actor: ActorContext,
+    caseId: string,
+    closureVersionId: string,
+  ) {
+    if (
+      actor.clientCustomerId !== undefined ||
+      actor.notaryOfficeId !== undefined
+    )
+      throw this.forbidden();
+    await this.authorizeOwner(actor, 'CASE', caseId, 'read');
+    const documents = await this.database.caseClosureDocument.findMany({
+      where: { caseId, departmentId: actor.departmentId, closureVersionId },
+      select: {
+        materialId: true,
+        contentVersionId: true,
+        contentVersion: { select: { originalFilename: true, mimeType: true } },
+      },
+      orderBy: { contentVersionId: 'asc' },
+    });
+    return documents.map((item) => ({
+      materialId: item.materialId,
+      contentVersionId: item.contentVersionId,
+      originalFilename: item.contentVersion.originalFilename,
+      mimeType: item.contentVersion.mimeType,
+    }));
+  }
+
   async freezeCaseExecutionFinishReferences(
     transaction: MaterialTransactionClient,
     actor: ActorContext,
@@ -2802,6 +2881,13 @@ export class MaterialService {
     materialId: string,
     contentVersionId: string,
   ): Promise<boolean> {
+    if (category === 'CASE_CLOSURE_DOCUMENT')
+      return (
+        (await transaction.caseClosureDocument.findFirst({
+          where: { caseId, departmentId, materialId, contentVersionId },
+          select: { closureVersionId: true },
+        })) !== null
+      );
     if (category === 'EXECUTION_APPLICATION')
       return (
         (await transaction.caseExecutionSubmissionVersion.findFirst({
@@ -3043,6 +3129,23 @@ export class MaterialService {
     if (ownerType === 'CASE') {
       if (actor.notaryOfficeId !== undefined) throw this.forbidden();
       if (
+        notaryCategory === 'CASE_CLOSURE_DOCUMENT' &&
+        actor.clientCustomerId !== undefined
+      )
+        throw this.forbidden();
+      if (operation === 'write' && notaryCategory === 'CASE_CLOSURE_DOCUMENT') {
+        const source = await reader.$queryRawUnsafe<Array<{ id: string }>>(
+          `SELECT c."id" FROM "cases" c JOIN "case_execution_finishes" f ON f."case_id"=c."id" AND f."department_id"=c."department_id"
+           LEFT JOIN "case_closures" h ON h."case_id"=c."id" AND h."department_id"=c."department_id"
+           LEFT JOIN "case_closure_versions" v ON v."id"=h."current_version_id" AND v."closure_id"=h."id" AND v."finish_id"=f."id" AND v."case_id"=c."id" AND v."department_id"=c."department_id"
+           WHERE c."id"=$1::uuid AND c."department_id"=$2::uuid AND c."stage"='WAITING_ARCHIVE'
+            AND ((h."id" IS NULL AND f."to_version"=c."version") OR (h."finish_id"=f."id" AND v."to_version"=c."version"))`,
+          ownerId,
+          actor.departmentId,
+        );
+        if (source.length !== 1) throw this.versionConflict();
+      }
+      if (
         operation === 'write' &&
         notaryCategory === 'EXECUTION_FINISH_BASIS'
       ) {
@@ -3116,7 +3219,17 @@ export class MaterialService {
             (lawyerCase.stage === 'WAITING_EXECUTION_FILING' &&
               notaryCategory === 'EXECUTION_FILING_PROOF') ||
             (lawyerCase.stage === 'EXECUTING' &&
-              notaryCategory === 'EXECUTION_FINISH_BASIS')
+              notaryCategory === 'EXECUTION_FINISH_BASIS') ||
+            (lawyerCase.stage === 'WAITING_ARCHIVE' &&
+              notaryCategory === 'CASE_CLOSURE_DOCUMENT' &&
+              (await reader.case.findFirst({
+                where: {
+                  id: ownerId,
+                  departmentId: actor.departmentId,
+                  closure: { is: null },
+                },
+                select: { id: true },
+              })) !== null)
           )
         )
           throw this.versionConflict();
@@ -3221,6 +3334,10 @@ export class MaterialService {
           !(
             record.stage === 'EXECUTING' &&
             notaryCategory === 'EXECUTION_FINISH_BASIS'
+          ) &&
+          !(
+            record.stage === 'WAITING_ARCHIVE' &&
+            notaryCategory === 'CASE_CLOSURE_DOCUMENT'
           )
         )
           throw this.versionConflict();
@@ -3278,6 +3395,22 @@ export class MaterialService {
               ))
             )
               throw this.forbidden();
+            return;
+          }
+          if (notaryCategory === 'CASE_CLOSURE_DOCUMENT') {
+            const source = await reader.case.findFirst({
+              where: { id: ownerId, departmentId: actor.departmentId },
+              select: { closure: { select: { id: true } } },
+            });
+            if (source === null) throw this.notFound();
+            await this.accessControl.authorizeCase(
+              actor,
+              source.closure === null
+                ? 'case.closure.record'
+                : 'case.closure.correct',
+              facts,
+              snapshotReader,
+            );
             return;
           }
           await this.accessControl.authorizeCase(
@@ -3632,6 +3765,7 @@ export class MaterialService {
               'EXECUTION_APPLICATION',
               'EXECUTION_FILING_PROOF',
               'EXECUTION_FINISH_BASIS',
+              'CASE_CLOSURE_DOCUMENT',
             ],
           },
         },
@@ -3892,7 +4026,8 @@ export class MaterialService {
           input.category === 'SECOND_INSTANCE_JUDGMENT' ||
           input.category === 'EXECUTION_APPLICATION' ||
           input.category === 'EXECUTION_FILING_PROOF' ||
-          input.category === 'EXECUTION_FINISH_BASIS') &&
+          input.category === 'EXECUTION_FINISH_BASIS' ||
+          input.category === 'CASE_CLOSURE_DOCUMENT') &&
         input.purpose === input.category) ||
       (input.ownerType === 'NOTARY_MATTER' &&
         input.category === 'NOTARY_OPENING_PHOTO' &&
@@ -4015,7 +4150,8 @@ function toMaterialPurpose(value: string): MaterialPurposeValue {
     value === 'SECOND_INSTANCE_JUDGMENT' ||
     value === 'EXECUTION_APPLICATION' ||
     value === 'EXECUTION_FILING_PROOF' ||
-    value === 'EXECUTION_FINISH_BASIS'
+    value === 'EXECUTION_FINISH_BASIS' ||
+    value === 'CASE_CLOSURE_DOCUMENT'
   ) {
     return value;
   }
@@ -4047,7 +4183,8 @@ function materialLimit(category: keyof typeof allowedMimeTypes): number {
               category === 'SECOND_INSTANCE_JUDGMENT' ||
               category === 'EXECUTION_APPLICATION' ||
               category === 'EXECUTION_FILING_PROOF' ||
-              category === 'EXECUTION_FINISH_BASIS'
+              category === 'EXECUTION_FINISH_BASIS' ||
+              category === 'CASE_CLOSURE_DOCUMENT'
             ? 10
             : 20;
 }
@@ -4067,7 +4204,8 @@ function materialFileLimit(category: keyof typeof allowedMimeTypes): number {
     category === 'SECOND_INSTANCE_JUDGMENT' ||
     category === 'EXECUTION_APPLICATION' ||
     category === 'EXECUTION_FILING_PROOF' ||
-    category === 'EXECUTION_FINISH_BASIS'
+    category === 'EXECUTION_FINISH_BASIS' ||
+    category === 'CASE_CLOSURE_DOCUMENT'
     ? 50 * 1024 * 1024
     : 20 * 1024 * 1024;
 }

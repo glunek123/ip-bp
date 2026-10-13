@@ -9,6 +9,10 @@ import { ActorContext } from '../../access-control/actor-context';
 import { DatabaseService } from '../../database/database.service';
 import { Prisma } from '../../generated/prisma/client';
 import { MaterialService } from '../materials';
+import {
+  caseListDisplay,
+  caseListDisplaySelect,
+} from './case-list-display-read';
 
 @Injectable()
 export class CaseReadService {
@@ -168,7 +172,13 @@ export class CaseReadService {
           executionConfirmation: { select: { id: true } },
           executionMailing: { select: { id: true } },
           executionFiling: { select: { id: true, toVersion: true } },
-          executionFinish: { select: { id: true } },
+          executionFinish: { select: { id: true, toVersion: true } },
+          closure: {
+            select: {
+              id: true,
+              currentVersion: { select: { id: true, toVersion: true } },
+            },
+          },
           currentSecondInstanceResult: {
             select: {
               id: true,
@@ -210,6 +220,16 @@ export class CaseReadService {
         _count: { _all: true },
       }),
     ]);
+    const displayRecords =
+      principal === 'INTERNAL' && items.length > 0
+        ? await this.database.case.findMany({
+            where: { ...baseWhere, id: { in: items.map((item) => item.id) } },
+            select: caseListDisplaySelect,
+          })
+        : [];
+    const displays = new Map(
+      displayRecords.map((item) => [item.id, caseListDisplay(item)]),
+    );
     return {
       items: await Promise.all(
         items.map(async (item) => ({
@@ -220,6 +240,14 @@ export class CaseReadService {
           ...(principal === 'LAWYER'
             ? {}
             : {
+                displaySummary:
+                  displays.get(item.id) ??
+                  (() => {
+                    throw new NotFoundException({
+                      code: 'CASE_NOT_FOUND',
+                      message: '案件不存在',
+                    });
+                  })(),
                 owner: item.owner,
                 sourceLead: item.sourceLead,
                 sourceNotaryMatter: item.sourceNotaryMatter,
@@ -552,6 +580,34 @@ export class CaseReadService {
                     : {}),
                 },
               ))),
+          canRecordClosure:
+            item.stage === 'WAITING_ARCHIVE' &&
+            item.executionFinish != null &&
+            item.executionFinish.toVersion === item.version &&
+            item.closure == null &&
+            (principal === 'LAWYER' ||
+              (await this.access.canAuthorizeCase(
+                actor,
+                'case.closure.record',
+                {
+                  departmentId: actor.departmentId,
+                  responsibleUserId: item.responsibleUserId,
+                  ...(item.responsibleMembership.teamId
+                    ? { teamId: item.responsibleMembership.teamId }
+                    : {}),
+                },
+              ))),
+          canCorrectClosure:
+            principal === 'INTERNAL' &&
+            item.stage === 'WAITING_ARCHIVE' &&
+            item.closure?.currentVersion?.toVersion === item.version &&
+            (await this.access.canAuthorizeCase(actor, 'case.closure.correct', {
+              departmentId: actor.departmentId,
+              responsibleUserId: item.responsibleUserId,
+              ...(item.responsibleMembership.teamId
+                ? { teamId: item.responsibleMembership.teamId }
+                : {}),
+            })),
           canFinishExecution:
             item.stage === 'EXECUTING' &&
             item.executionFiling != null &&
@@ -756,6 +812,7 @@ export class CaseReadService {
         },
         executionFinish: {
           select: {
+            toVersion: true,
             id: true,
             filingId: true,
             finishedAt: true,
@@ -764,6 +821,7 @@ export class CaseReadService {
             recordedAt: true,
           },
         },
+        closure: { include: { versions: { orderBy: { fromVersion: 'asc' } } } },
         executionFiling: {
           select: {
             toVersion: true,
@@ -1154,6 +1212,54 @@ export class CaseReadService {
       record.executionMailing == null
         ? []
         : await this.materials.listFrozenCaseExecutionMailingFiles(actor, id);
+    const closureRecord = record.closure ?? null;
+    const closureHistory =
+      closureRecord === null
+        ? []
+        : await Promise.all(
+            closureRecord.versions.map(async (version) => ({
+              id: version.id,
+              kind: version.kind,
+              priorVersionId: version.priorVersionId,
+              finishId: version.finishId,
+              fromVersion: version.fromVersion,
+              toVersion: version.toVersion,
+              closeAt: version.closeAt?.toISOString().slice(0, 10) ?? null,
+              closeAmountState: version.closeAmountState,
+              closeAmt: version.closeAmt?.toFixed(2) ?? null,
+              note: version.note,
+              correctionReason: version.correctionReason,
+              recordedAt: version.recordedAt.toISOString(),
+              recordedByUserId: version.recordedByUserId,
+              files: await this.materials.listFrozenCaseClosureFiles(
+                actor,
+                id,
+                version.id,
+              ),
+            })),
+          );
+    const currentClosure = closureHistory.find(
+      (version) => version.id === closureRecord?.currentVersionId,
+    );
+    if (
+      closureRecord !== null &&
+      (currentClosure === undefined ||
+        closureHistory.at(-1)?.id !== currentClosure.id ||
+        currentClosure.toVersion !== record.version)
+    )
+      throw new NotFoundException({
+        code: 'CASE_NOT_FOUND',
+        message: '案件结案来源不完整',
+      });
+    const closure =
+      closureRecord === null
+        ? null
+        : {
+            id: closureRecord.id,
+            finishId: closureRecord.finishId,
+            current: currentClosure!,
+            history: closureHistory,
+          };
     const executionFinishFiles =
       record.executionFinish == null
         ? []
@@ -1410,6 +1516,31 @@ export class CaseReadService {
               recordedAt: record.executionMailing.recordedAt.toISOString(),
               files: executionMailingFiles,
             },
+      closure,
+      canRecordClosure:
+        record.stage === 'WAITING_ARCHIVE' &&
+        closure === null &&
+        record.executionFinish != null &&
+        record.executionFinish.toVersion === record.version &&
+        (principal === 'LAWYER' ||
+          (await this.access.canAuthorizeCase(actor, 'case.closure.record', {
+            departmentId: actor.departmentId,
+            responsibleUserId: record.responsibleUserId,
+            ...(record.responsibleMembership.teamId
+              ? { teamId: record.responsibleMembership.teamId }
+              : {}),
+          }))),
+      canCorrectClosure:
+        principal === 'INTERNAL' &&
+        record.stage === 'WAITING_ARCHIVE' &&
+        closure !== null &&
+        (await this.access.canAuthorizeCase(actor, 'case.closure.correct', {
+          departmentId: actor.departmentId,
+          responsibleUserId: record.responsibleUserId,
+          ...(record.responsibleMembership.teamId
+            ? { teamId: record.responsibleMembership.teamId }
+            : {}),
+        })),
       executionFinish:
         record.executionFinish == null
           ? null
@@ -2102,6 +2233,22 @@ export class CaseReadService {
       ),
     };
     if (principal === 'LAWYER') {
+      const closureVersion = (
+        version: NonNullable<typeof detail.closure>['current'],
+      ) => ({
+        id: version.id,
+        kind: version.kind,
+        priorVersionId: version.priorVersionId,
+        finishId: version.finishId,
+        fromVersion: version.fromVersion,
+        toVersion: version.toVersion,
+        closeAt: version.closeAt,
+        closeAmountState: version.closeAmountState,
+        closeAmt: version.closeAmt,
+        note: version.note,
+        recordedAt: version.recordedAt,
+        files: version.files,
+      });
       return {
         id: detail.id,
         businessNo: detail.businessNo,
@@ -2132,6 +2279,17 @@ export class CaseReadService {
         canMailExecution: detail.canMailExecution,
         canSubmitExecutionFiling: detail.canSubmitExecutionFiling,
         canFinishExecution: detail.canFinishExecution,
+        canRecordClosure: detail.canRecordClosure,
+        canCorrectClosure: false,
+        closure:
+          detail.closure === null
+            ? null
+            : {
+                id: detail.closure.id,
+                finishId: detail.closure.finishId,
+                current: closureVersion(detail.closure.current),
+                history: detail.closure.history.map(closureVersion),
+              },
         hearing: detail.hearing,
         judgment: detail.judgment,
         judgmentNextStep: detail.judgmentNextStep,

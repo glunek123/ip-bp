@@ -22,6 +22,37 @@ function createStore(
 }
 
 describe('AccessControlService', () => {
+  it.each(['case.closure.record', 'case.closure.correct'] as const)(
+    'requires the independent live %s grant and its own scope',
+    async (action) => {
+      const snapshot: AccessControlSnapshot = {
+        active: true,
+        authorizationRevision: 4,
+        grants: [
+          { action: 'case.read', scope: 'department' },
+          { action: 'case.execution.finish', scope: 'department' },
+        ],
+      };
+      const service = new AccessControlService(createStore(snapshot));
+      const facts = {
+        departmentId: actor.departmentId,
+        responsibleUserId: actor.userId,
+      };
+      expect(await service.canAuthorizeCase(actor, action, facts)).toBe(false);
+      snapshot.grants.push({ action, scope: 'self' });
+      expect(await service.canAuthorizeCase(actor, action, facts)).toBe(true);
+      expect(
+        await service.canAuthorizeCase(actor, action, {
+          ...facts,
+          responsibleUserId: 'other',
+        }),
+      ).toBe(false);
+      snapshot.authorizationRevision++;
+      await expect(
+        service.authorizeCase(actor, action, facts),
+      ).rejects.toBeInstanceOf(ForbiddenException);
+    },
+  );
   it('requires the independent live finish grant instead of read or filing submit', async () => {
     const snapshot: AccessControlSnapshot = {
       active: true,

@@ -1,3 +1,9 @@
+import { CaseClosureService } from './case-closure.service';
+import {
+  RecordCaseClosureInput,
+  CorrectCaseClosureInput,
+  CaseClosureResult,
+} from './case-closure.dto';
 import {
   FinishCaseExecutionDto,
   FinishCaseExecutionResponseDto,
@@ -130,6 +136,7 @@ export class CaseReadController {
     private readonly executionMailing: CaseExecutionMailingService,
     private readonly executionFiling: CaseExecutionFilingService,
     private readonly executionFinish: CaseExecutionFinishService,
+    private readonly closure: CaseClosureService,
     private readonly courts: FilingCourtService,
   ) {}
 
@@ -171,6 +178,26 @@ export class CaseReadController {
         message: '无权登记执行邮寄',
       });
     return this.executionMailing.mail(actor, id, body);
+  }
+
+  @Post(':id/closure')
+  @ApiCreatedResponse({ type: CaseClosureResult })
+  recordClosure(
+    @CurrentActor() actor: ActorContext,
+    @Param('id', new ParseUUIDPipe()) id: string,
+    @Body() body: RecordCaseClosureInput,
+  ) {
+    return this.closure.record(actor, id, body);
+  }
+
+  @Post(':id/closure-correction')
+  @ApiCreatedResponse({ type: CaseClosureResult })
+  correctClosure(
+    @CurrentActor() actor: ActorContext,
+    @Param('id', new ParseUUIDPipe()) id: string,
+    @Body() body: CorrectCaseClosureInput,
+  ) {
+    return this.closure.correct(actor, id, body);
   }
 
   @Post(':id/execution-finish')

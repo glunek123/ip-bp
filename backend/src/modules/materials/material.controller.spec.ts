@@ -64,6 +64,27 @@ describe('MaterialController', () => {
 
   afterAll(async () => app?.close());
   beforeEach(() => jest.clearAllMocks());
+  it('accepts the closure category and purpose through the existing upload endpoint', async () => {
+    createUploadDraft.mockResolvedValue({
+      id: draftId,
+      ownerId: materialId,
+      category: 'CASE_CLOSURE_DOCUMENT',
+    });
+    const input = {
+      ownerType: 'CASE',
+      ownerId: materialId,
+      category: 'CASE_CLOSURE_DOCUMENT',
+      purpose: 'CASE_CLOSURE_DOCUMENT',
+      originalFilename: '结案.pdf',
+      declaredMimeType: 'application/pdf',
+    };
+    await request(app.getHttpServer())
+      .post('/api/v1/materials/upload-drafts')
+      .set('Authorization', 'Bearer allowed-token')
+      .send(input)
+      .expect(201);
+    expect(createUploadDraft).toHaveBeenCalledWith(actor, input);
+  });
 
   it('accepts JSON draft metadata and rejects forged fields', async () => {
     createUploadDraft.mockResolvedValue({ id: draftId, ownerId: materialId });

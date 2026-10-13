@@ -5,6 +5,53 @@ const actor = {
   departmentId: '22222222-2222-4222-8222-222222222222',
   authorizationRevision: 1,
 };
+function displaySource(leadId: string, matterId: string) {
+  return {
+    departmentId: actor.departmentId,
+    customerId: 'customer',
+    rightsHolderId: 'holder',
+    sourceLeadId: leadId,
+    sourceNotaryMatterId: matterId,
+    customer: {
+      id: 'customer',
+      departmentId: actor.departmentId,
+      name: '真实客户',
+    },
+    rightsHolder: {
+      id: 'holder',
+      departmentId: actor.departmentId,
+      name: '真实权利主体',
+    },
+    sourceLead: {
+      id: leadId,
+      businessNo: 'LD-1',
+      departmentId: actor.departmentId,
+      customerId: 'customer',
+      rightsHolderId: 'holder',
+      platform: 'TMALL',
+      shopName: '真实店铺',
+      shopExternalId: null,
+    },
+    sourceNotaryMatter: {
+      id: matterId,
+      businessNo: 'NT-1',
+      departmentId: actor.departmentId,
+      customerId: 'customer',
+      rightsHolderId: 'holder',
+      sourceLeadId: leadId,
+    },
+    defendants: [],
+    lawyers: [],
+    filingSubmission: null,
+    courtCaseNo: null,
+    complaintSubmittedAt: null,
+    complaintAmountState: null,
+    complaintAmount: null,
+    complaintConfirmation: null,
+    currentJudgment: null,
+    closure: null,
+  };
+}
 
 describe('CaseReadService', () => {
   function fixture() {
@@ -45,6 +92,7 @@ describe('CaseReadService', () => {
       listFrozenCaseExecutionMailingFiles: jest.fn().mockResolvedValue([]),
       listFrozenCaseExecutionFilingFiles: jest.fn().mockResolvedValue([]),
       listFrozenCaseExecutionFinishFiles: jest.fn().mockResolvedValue([]),
+      listFrozenCaseClosureFiles: jest.fn().mockResolvedValue([]),
     };
     db.$transaction.mockImplementation(async (operation) =>
       operation({
@@ -387,6 +435,64 @@ describe('CaseReadService', () => {
     expect(f.materials.listFrozenCaseExecutionFinishFiles).toHaveBeenCalledWith(
       { ...actor, lawyerAccountId: actor.userId },
       'case-1',
+    );
+    const closureVersion = {
+      id: 'closure-version',
+      kind: 'REGISTER',
+      priorVersionId: null,
+      finishId: executionFinish.id,
+      fromVersion: 25,
+      toVersion: 26,
+      closeAt: null,
+      closeAmountState: 'KNOWN',
+      closeAmt: { toFixed: () => '0.00' },
+      note: '真实结案',
+      correctionReason: null,
+      recordedAt: new Date('2026-10-13T02:00:00Z'),
+      recordedByUserId: actor.userId,
+    };
+    f.db.case.findFirst.mockResolvedValue({
+      ...record,
+      stage: 'WAITING_ARCHIVE',
+      version: 26,
+      executionFinish,
+      closure: {
+        id: 'closure',
+        finishId: executionFinish.id,
+        currentVersionId: closureVersion.id,
+        versions: [closureVersion],
+      },
+    });
+    f.db.userAccount.findUnique.mockResolvedValue({
+      accountType: 'INTERNAL',
+      active: true,
+    });
+    const closedInternal = await f.service.get(actor, 'case-1');
+    expect(closedInternal).not.toHaveProperty('displaySummary');
+    expect(closedInternal.closure?.current).toMatchObject({
+      closeAt: null,
+      closeAmt: '0.00',
+      recordedByUserId: actor.userId,
+    });
+    expect(closedInternal.canRecordClosure).toBe(false);
+    expect(closedInternal.canCorrectClosure).toBe(true);
+    f.db.userAccount.findUnique.mockResolvedValue({
+      accountType: 'LAWYER',
+      active: true,
+    });
+    const closedLawyer = await f.service.get(
+      { ...actor, lawyerAccountId: actor.userId },
+      'case-1',
+    );
+    expect(closedLawyer.canCorrectClosure).toBe(false);
+    expect(closedLawyer.closure?.current).not.toHaveProperty(
+      'recordedByUserId',
+    );
+    expect(closedLawyer.closure?.current).not.toHaveProperty(
+      'correctionReason',
+    );
+    expect(closedLawyer.closure?.history[0]).not.toHaveProperty(
+      'correctionReason',
     );
     const judgment = {
       id: 'judgment-1',
@@ -932,8 +1038,7 @@ describe('CaseReadService', () => {
         responsibleUserId: actor.userId,
         responsibleMembership: { teamId: 'team-private' },
         owner: { id: actor.userId, displayName: '负责人' },
-        sourceLead: { id: 'lead-1', businessNo: 'LD-1' },
-        sourceNotaryMatter: { id: 'matter-1', businessNo: 'NT-1' },
+        ...displaySource('lead-1', 'matter-1'),
       },
     ]);
     const result = await f.service.list(actor, 1, 20);
@@ -963,8 +1068,7 @@ describe('CaseReadService', () => {
         responsibleUserId: actor.userId,
         responsibleMembership: { teamId: null },
         owner: { id: actor.userId, displayName: 'operator' },
-        sourceLead: { id: 'lead-1', businessNo: 'LD-1' },
-        sourceNotaryMatter: { id: 'matter-1', businessNo: 'NT-1' },
+        ...displaySource('lead-1', 'matter-1'),
       },
     ]);
     expect((await f.service.list(actor, 1, 20)).items[0]).toMatchObject({
@@ -996,8 +1100,7 @@ describe('CaseReadService', () => {
       responsibleMembership: { teamId: null },
       createdAt: new Date('2026-10-11T00:00:00.000Z'),
       owner: { id: actor.userId, displayName: 'operator' },
-      sourceLead: { id: 'lead-1', businessNo: 'LD-1' },
-      sourceNotaryMatter: { id: 'matter-1', businessNo: 'NT-1' },
+      ...displaySource('lead-1', 'matter-1'),
     };
     f.db.case.findMany.mockResolvedValue([
       {
@@ -1063,8 +1166,7 @@ describe('CaseReadService', () => {
       responsibleMembership: { teamId: null },
       createdAt: new Date(),
       owner: { id: actor.userId, displayName: 'operator' },
-      sourceLead: { id: 'lead', businessNo: 'LD-1' },
-      sourceNotaryMatter: { id: 'matter', businessNo: 'NT-1' },
+      ...displaySource('lead', 'matter'),
     };
     f.db.case.findMany.mockResolvedValue([row]);
     expect(
@@ -1109,8 +1211,7 @@ describe('CaseReadService', () => {
       responsibleUserId: actor.userId,
       responsibleMembership: { teamId: null },
       owner: { id: actor.userId, displayName: '负责人' },
-      sourceLead: { id: 'lead-1', businessNo: 'LD-1' },
-      sourceNotaryMatter: { id: 'matter-1', businessNo: 'NT-1' },
+      ...displaySource('lead-1', 'matter-1'),
     };
     f.db.case.findMany.mockResolvedValue([listCase]);
     const operator = (await f.service.list(actor, 1, 20)).items[0];
@@ -1276,8 +1377,7 @@ describe('CaseReadService', () => {
             responsibleUserId: actor.userId,
             responsibleMembership: { teamId: null },
             owner: { id: actor.userId, displayName: 'owner' },
-            sourceLead: { id: 'lead', businessNo: 'LD-1' },
-            sourceNotaryMatter: { id: 'matter', businessNo: 'NT-1' },
+            ...displaySource('lead', 'matter'),
           })),
         );
         f.db.case.count.mockResolvedValue(27);
