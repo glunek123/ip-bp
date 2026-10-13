@@ -6,6 +6,7 @@ import type { AuthSession } from '../api/auth';
 import { ApiError } from '../api/http';
 import { useAuthStore } from '../stores/auth';
 import AppShell from './AppShell.vue';
+import { notifyCalendarSummaryRead } from './workflow-events';
 
 const api = vi.hoisted(() => ({
   getOrganizationManagementContext: vi.fn(),
@@ -215,6 +216,40 @@ async function mountShell(
 }
 
 describe('AppShell', () => {
+  it('uses the current calendar read for its badge and rejects an older summary response', async () => {
+    let resolveOld:
+      ((value: { metrics: { next30: { count: number } } }) => void) | undefined;
+    api.getCalendarSummary.mockImplementationOnce(
+      () =>
+        new Promise((resolve) => {
+          resolveOld = resolve;
+        }),
+    );
+    const { wrapper } = await mountShell();
+    const identity = JSON.stringify([
+      session.user.id,
+      session.principalType,
+      session.department.id,
+      undefined,
+      session.authorizationRevision,
+    ]);
+    notifyCalendarSummaryRead(identity, 3);
+    await flushPromises();
+    expect(wrapper.get('[data-test="calendar-count"]').text()).toBe('3');
+    resolveOld?.({ metrics: { next30: { count: 99 } } });
+    await flushPromises();
+    expect(wrapper.get('[data-test="calendar-count"]').text()).toBe('3');
+    notifyCalendarSummaryRead('other-user', 8);
+    await flushPromises();
+    expect(wrapper.get('[data-test="calendar-count"]').text()).toBe('3');
+    notifyCalendarSummaryRead(identity, 0);
+    await flushPromises();
+    expect(wrapper.get('[data-test="calendar-count"]').text()).toBe('0');
+    notifyCalendarSummaryRead(identity, null);
+    await flushPromises();
+    expect(wrapper.find('[data-test="calendar-count"]').exists()).toBe(false);
+  });
+
   it('uses the visible date summary for the calendar badge and preserves real zero', async () => {
     const { wrapper } = await mountShell();
     expect(wrapper.get('[data-test="calendar-nav"]').attributes('href')).toBe(

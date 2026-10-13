@@ -1,5 +1,15 @@
 # SPEC-001 文档验证
 
+## 日历与人工台账组合（2026-10-13，验收进行中）
+
+以A业务`0c7be16`为基础，在I独立分支接纳B1/B2（`1d35d32`／`c3af081`）、calendar严格API`d7aacdf`、C1/C2（`c4c06f3`／`ee74f88`／`249b8a1`／`d90675e`），新组合`ee430658ade6ad3d3217deb5f30b7d11613fcaf3`／tree`8ed1663e0d20e608244216fba92622f705892e2e`。SD-53只批准真实当前开庭／协议到期与既有人工台账接线；pay／other未接入，支付发起另定。独立静态两轴ACCEPTED、未关闭C/I/M0；I-01当前关系竞态及M-01旧来源指针已关闭。
+
+新组合完整verify实际exit0，UTC02:34:05.526～02:37:45.074、219.546秒；工具80、前端1166、后端1277、strict／Lint／格式／架构／Prisma／双构建通过，前后候选／干净状态／环境HMAC匹配。原件ignored `.local/calendar-funds-evidence/formal-verify-20261013-103405-result.json`及日志。九文件PG／Chromium的第一次实际exit1，UTC02:38:57.523～02:39:00.704、3.179秒：后端启动时日历模块未直接导入AccessControlModule，无法解析ActorContextGuard的IDENTITY_ADAPTER；没有测试执行，不记0项通过。原件`formal-e2e-20261013-103857-result.json`／日志保留。源修复后须重新绑定稳定候选门禁，不能继承ee43065通过结论；原A39文件167/167仍只指A原tree。
+
+修复循环：I-02已补日历模块直接身份授权依赖及真实module编译测试（不替换guard，1/1通过）。日历PG首轮2/3通过；一审准备其他企业账号时缺customer.read范围，修正夹具后又发现律师账号ID误当档案profileId，现取真实API profiles返回，最终失败场景1/1通过，协议／二审原通过输入未变化；这些失败仅测试准备，不放宽业务授权。原件分别为`focus-calendar-after-module-fix.log`、`focus-calendar-first-instance-fixture-fix.log`、`focus-calendar-first-instance-profile-fix.log`。正常持久预览三角色日历切月、五卡／导航、精确caseId、无案协议与缺源类别均通过（`runtime/browser-calendar-summary.json`）；客户两案／律师一案，协议仅内部获权者可见。最后补导航读取同步与失权清空，旧summary成功／失败不可覆盖当前页读取，协议确认后刷新计数；三文件57项聚焦通过，独立静态补审C/I/M0。稳定候选与完整verify／九文件结果待下段正式补记。
+
+开发态持久预览15436／3206／5186的正常密码、cookie／CSRF来源链94步已生成两条待执行邮寄／待申请执行合成案；真实Chromium验证四个运营／客户／律师待办入口可见，保留未办理；人工资金登记123.45→刷新逐笔来源→更正223.45→两版历史通过，金额未知仍未录入。摘要与截图在ignored `.local/ca013-preview/runtime/browser-scenario-summary.json`，这是开发态正常入口证明，不是固定新候选正式门禁；日历持久预览仍待新构建重启与真实浏览器验收。没有生产发布、推送、合main或Demo服务操作。
+
 ## CORE-CA-013／014执行申请办理（2026-10-13）
 
 授权范围为单案执行材料盖章邮寄→待申请执行、真实法院提交→强制执行中。基线`4802c320892a7ce50ce6f2c8600c806213061396`；业务候选`0c7be16b8d7c50c33535386b66b75d13c6db2569`，tree`84ef4308b4528f86b4039f54647ca306d335de72`，独立`codex/ca013-014-integration`。三类合法邮寄身份、两类提交身份、准确来源锚、不可变日期／精确材料／成功审计／幂等回执及同案CAS／失败回滚已实现；客户仅新增最小邮寄事实与技术锚，不获得执行提交材料或确认详情。四个前向迁移使正式支持链136→140，原已执行SQL未改；执行结束、资金发起、结案和归档未完成。

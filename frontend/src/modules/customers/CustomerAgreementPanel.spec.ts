@@ -18,6 +18,8 @@ const materialApi = vi.hoisted(() => ({
   listOwnerMaterials: vi.fn(),
   uploadMaterialFile: vi.fn(),
 }));
+const workflow = vi.hoisted(() => ({ notifyWorkflowChanged: vi.fn() }));
+vi.mock('../../app/workflow-events', () => workflow);
 vi.mock('../../api/customer-agreements-invoice', () => api);
 vi.mock('../../api/materials', () => materialApi);
 
@@ -365,6 +367,7 @@ describe('CustomerAgreementPanel', () => {
     await flushPromises();
 
     expect(api.createCustomerAgreement).toHaveBeenCalledTimes(1);
+    expect(workflow.notifyWorkflowChanged).toHaveBeenCalledTimes(1);
     expect(wrapper.text()).toContain('当前协议第三版');
     expect(wrapper.text()).not.toContain('提交时第一版</h3>');
     expect(wrapper.text()).toContain('当前第 3 版');

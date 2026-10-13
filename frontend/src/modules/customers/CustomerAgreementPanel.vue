@@ -2,6 +2,7 @@
 import { ElButton } from 'element-plus/es/components/button/index.mjs';
 import { computed, onBeforeUnmount, ref, watch } from 'vue';
 import { ApiError } from '../../api/http';
+import { notifyWorkflowChanged } from '../../app/workflow-events';
 import {
   createCustomerAgreement,
   getCustomerAgreement,
@@ -435,6 +436,7 @@ async function submit(): Promise<void> {
     message.value = `本次提交已成功（第 ${result.agreement?.currentVersion.version ?? '新'} 版），正在刷新当前资料。`;
     setField('stale', true);
     emit('version-updated', customerId, actorKey, result.customerVersion);
+    notifyWorkflowChanged();
     await refreshCurrent();
   } catch (error) {
     if (!current(ownGeneration, customerId, actorKey)) return;

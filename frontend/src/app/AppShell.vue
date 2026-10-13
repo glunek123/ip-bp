@@ -16,7 +16,10 @@ import {
 } from '../api/notary';
 import { leadStatusCards } from '../modules/leads/lead-options';
 import { useAuthStore } from '../stores/auth';
-import { workflowChangedEvent } from './workflow-events';
+import {
+  calendarSummaryReadEvent,
+  workflowChangedEvent,
+} from './workflow-events';
 
 const auth = useAuthStore();
 const route = useRoute();
@@ -30,6 +33,7 @@ const leadCounts = ref<Record<LeadStatus, number> | null>(null);
 const notaryCounts = ref<Record<NotaryListStage, number> | null>(null);
 const caseCounts = ref<Record<CaseStage, number> | null>(null);
 const calendarCount = ref<number | null>(null);
+let calendarSummaryRevision = 0;
 const countRevision = ref(0);
 const expandedGroup = ref<'cases' | 'leads' | 'notary' | 'settings' | null>(
   null,
@@ -105,6 +109,7 @@ watch(
     calendarCount.value = null;
     if (currentIdentity === null || isNotary.value) return;
     const controller = new AbortController();
+    const requestRevision = calendarSummaryRevision;
     let current = true;
     onCleanup(() => {
       current = false;
@@ -112,13 +117,49 @@ watch(
     });
     try {
       const summary = await getCalendarSummary({ signal: controller.signal });
-      if (current && calendarIdentity.value === currentIdentity)
+      if (
+        current &&
+        calendarIdentity.value === currentIdentity &&
+        requestRevision === calendarSummaryRevision
+      )
         calendarCount.value = summary.metrics.next30.count;
     } catch {
-      if (current) calendarCount.value = null;
+      if (current && requestRevision === calendarSummaryRevision)
+        calendarCount.value = null;
     }
   },
   { immediate: true },
+);
+function acceptCalendarSummary(event: Event): void {
+  if (calendarIdentity.value === null || isNotary.value) return;
+  if (!(event instanceof CustomEvent)) return;
+  const detail: unknown = event.detail;
+  if (
+    detail === null ||
+    typeof detail !== 'object' ||
+    !('identity' in detail) ||
+    detail.identity !== calendarIdentity.value ||
+    !('count' in detail) ||
+    (detail.count !== null &&
+      (typeof detail.count !== 'number' ||
+        !Number.isSafeInteger(detail.count) ||
+        detail.count < 0))
+  )
+    return;
+  calendarSummaryRevision += 1;
+  calendarCount.value = detail.count;
+}
+onMounted(() =>
+  globalThis.window.addEventListener(
+    calendarSummaryReadEvent,
+    acceptCalendarSummary,
+  ),
+);
+onBeforeUnmount(() =>
+  globalThis.window.removeEventListener(
+    calendarSummaryReadEvent,
+    acceptCalendarSummary,
+  ),
 );
 const breadcrumbs = computed(() =>
   Array.isArray(route.meta.breadcrumbs)

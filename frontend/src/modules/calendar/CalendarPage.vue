@@ -15,6 +15,7 @@ import {
 } from '../../api/calendar';
 import { ApiError } from '../../api/http';
 import { useAuthStore } from '../../stores/auth';
+import { notifyCalendarSummaryRead } from '../../app/workflow-events';
 import CalendarMonthGrid from './CalendarMonthGrid.vue';
 import CalendarStatistics from './CalendarStatistics.vue';
 import { calendarMonthLabel, type CalendarEvent } from './calendar-month';
@@ -116,8 +117,11 @@ async function load(): Promise<void> {
     snapshot.value = result;
     summary.value = result;
     state.value = 'ready';
+    if (result.metrics.next30.count !== null)
+      notifyCalendarSummaryRead(currentIdentity, result.metrics.next30.count);
   } catch (reason) {
     if (!current()) return;
+    notifyCalendarSummaryRead(currentIdentity, null);
     snapshot.value = null;
     summary.value = null;
     if (

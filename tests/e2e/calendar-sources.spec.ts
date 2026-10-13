@@ -362,6 +362,12 @@ test('calendar current first-instance source uses a complete case workflow and l
 
     const foreignUsername = `calendar-other-${randomUUID().slice(0, 8)}`;
     const foreignPassword = `Calendar-other-${randomUUID()}`;
+    // The setup operator may create accounts only for customers in its real
+    // customer.read scope. This remains a different enterprise from the case.
+    await setCustomerDocumentTestState(coreLeadFixtures.selfCustomer, {
+      responsibleUserId: coreLeadFixtures.userA,
+      teamId: coreLeadFixtures.teamA,
+    });
     await status(
       await request.post(
         `/api/v1/customers/${coreLeadFixtures.selfCustomer}/client-accounts`,
@@ -407,7 +413,13 @@ test('calendar current first-instance source uses a complete case workflow and l
     );
 
     const newLawyer = await createLawyerAccountThroughApi(request);
-    await replaceCalendarPrimaryLawyer(caseId, source.lawyer.id, newLawyer.id);
+    expect(source.lawyer.profiles).toHaveLength(1);
+    expect(newLawyer.profiles).toHaveLength(1);
+    await replaceCalendarPrimaryLawyer(
+      caseId,
+      source.lawyer.profiles[0].profileId,
+      newLawyer.profiles[0].profileId,
+    );
     const oldLawyerView = await snapshot(lawyer, month, lawyerHeaders);
     expect(oldLawyerView.events.some((item) => item.caseId === caseId)).toBe(
       false,
