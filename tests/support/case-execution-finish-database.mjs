@@ -49,6 +49,7 @@ export async function clearCaseExecutionFinishFixture() {
         'case_execution_finish_versions',
         'case_execution_finish_receipts',
         'material_references',
+        'audit_events',
       ];
       for (const table of guarded)
         await client.query(`ALTER TABLE "${table}" DISABLE TRIGGER USER`);
@@ -71,6 +72,11 @@ export async function clearCaseExecutionFinishFixture() {
       await client.query(
         `DELETE FROM material_references
          WHERE department_id=ANY($1::uuid[]) AND purpose='EXECUTION_FINISH_BASIS'`,
+        [fixtureDepartments],
+      );
+      await client.query(
+        `DELETE FROM audit_events WHERE department_id=ANY($1::uuid[])
+         AND resource_type='CASE' AND action='case.execution.finished'`,
         [fixtureDepartments],
       );
       for (const table of [...guarded].reverse())
