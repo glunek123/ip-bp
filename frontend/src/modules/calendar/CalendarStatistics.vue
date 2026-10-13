@@ -1,17 +1,13 @@
 <script setup lang="ts">
 import { computed } from 'vue';
+import type { CalendarMetric, CalendarSummary } from '../../api/calendar';
 
 // Presentation inputs only. Counts come from the authorized server projection,
 // never from the events in the selected month.
 const props = withDefaults(
   defineProps<{
-    counts: {
-      upcoming30: number | null;
-      court: number | null;
-      pay: number | null;
-      contract: number | null;
-      other: number | null;
-    } | null;
+    metrics: CalendarSummary['metrics'] | null;
+    window: CalendarSummary['window'] | null;
     canRead: boolean;
     loading?: boolean;
     error?: string | null;
@@ -19,18 +15,24 @@ const props = withDefaults(
   { loading: false, error: null },
 );
 const cards = computed(() => [
-  { key: 'upcoming30', label: '30天内待办', count: props.counts?.upcoming30 },
-  { key: 'court', label: '开庭', count: props.counts?.court },
-  { key: 'pay', label: '缴费截止', count: props.counts?.pay },
-  { key: 'contract', label: '协议到期', count: props.counts?.contract },
-  { key: 'other', label: '重要节点', count: props.counts?.other },
+  { key: 'next30', label: '30天内待办', metric: props.metrics?.next30 },
+  { key: 'court', label: '开庭', metric: props.metrics?.court },
+  { key: 'pay', label: '缴费截止', metric: props.metrics?.pay },
+  { key: 'contract', label: '协议到期', metric: props.metrics?.contract },
+  { key: 'other', label: '重要节点', metric: props.metrics?.other },
 ]);
-function displayCount(count: number | null | undefined): string {
+const ready = computed(
+  () =>
+    props.canRead && !props.loading && !props.error && props.metrics !== null,
+);
+function displayCount(metric: CalendarMetric | undefined): string {
   if (!props.canRead) return '无查看权限';
   if (props.loading) return '加载中';
   if (props.error) return '暂不可用';
-  if (!props.counts) return '待加载';
-  return count === null || count === undefined ? '未接入' : String(count);
+  if (!metric) return '待加载';
+  if (metric.state === 'NOT_CONNECTED') return '未接入';
+  if (metric.state === 'FORBIDDEN') return '无查看权限';
+  return String(metric.count);
 }
 </script>
 
@@ -43,11 +45,26 @@ function displayCount(count: number | null | undefined): string {
     <dl class="calendar-statistics-cards">
       <div v-for="card in cards" :key="card.key" :data-statistic="card.key">
         <dt>{{ card.label }}</dt>
-        <dd>{{ displayCount(card.count) }}</dd>
+        <dd>{{ displayCount(card.metric) }}</dd>
+        <p
+          v-if="
+            ready &&
+            card.metric?.state === 'AVAILABLE' &&
+            card.metric.nearestDate
+          "
+          class="field-help"
+        >
+          最近：<time :datetime="card.metric.nearestDate">{{
+            card.metric.nearestDate
+          }}</time>
+        </p>
       </div>
     </dl>
-    <p v-if="canRead && !loading && !error && counts" class="field-help">
-      统计范围为当前有权查看的全部已接入事件，不随切月变化。30天内待办以服务端当天为起点，包含当天及第30天；未接入类别不计入。
+    <p v-if="ready" class="field-help">
+      统计范围为当前有权查看的全部已接入事件，不随切月变化。30天内待办<span
+        v-if="window"
+        >（{{ window.from }}至{{ window.through }}，含两端）</span
+      >以服务端上海当天为起点；未接入类别不计入。
     </p>
   </section>
 </template>

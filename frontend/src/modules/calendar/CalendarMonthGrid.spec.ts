@@ -67,7 +67,7 @@ describe('CalendarMonthGrid', () => {
     const wrapper = render({ events: [], unconnectedTypes: ['pay', 'other'] });
     expect(
       wrapper.findAll('.calendar-legend li').map((item) => item.text()),
-    ).toEqual(['开庭', '缴费截止 · 未接入', '合同到期', '重要节点 · 未接入']);
+    ).toEqual(['开庭', '缴费截止 · 未接入', '协议到期', '重要节点 · 未接入']);
     expect(wrapper.find('.calendar-event').exists()).toBe(false);
   });
   it('uses a general empty state when no event source type is supplied', () => {
@@ -104,7 +104,7 @@ describe('CalendarMonthGrid', () => {
           eventKey: 'contract',
           date: '2024-02-29',
           type: 'contract',
-          title: '合同到期',
+          title: '协议到期',
           caseId: null,
         },
         {
@@ -123,7 +123,7 @@ describe('CalendarMonthGrid', () => {
     expect(wrapper.find('.calendar-event-contract').exists()).toBe(true);
     expect(wrapper.find('.calendar-event-other').exists()).toBe(true);
     expect(wrapper.get('[aria-label="事件类型图例"]').text()).toContain(
-      '开庭缴费截止合同到期重要节点',
+      '开庭缴费截止协议到期重要节点',
     );
   });
 
@@ -193,7 +193,7 @@ describe('CalendarMonthGrid', () => {
           eventKey: 'contract',
           type: 'contract',
           date: '2024-02-29',
-          title: '合同到期',
+          title: '协议到期',
           sub: '（2024）合成民初1号',
           caseId: null,
         },
@@ -206,11 +206,11 @@ describe('CalendarMonthGrid', () => {
     await wrapper.get('.calendar-event').trigger('click');
     expect(wrapper.emitted('openCase')).toBeUndefined();
     expect(wrapper.get('[role="status"]').text()).toBe(
-      '合同到期 · （2024）合成民初1号 · 未关联案件。',
+      '协议到期 · （2024）合成民初1号 · 未关联案件。',
     );
     expect(document.querySelector('[role="tooltip"]')).toBeNull();
     await wrapper.setProps({ loading: true });
-    expect(wrapper.text()).not.toContain('合同到期');
+    expect(wrapper.text()).not.toContain('协议到期');
   });
 
   it('clamps tooltip positioning to the viewport and flips below an anchor near the top edge', async () => {

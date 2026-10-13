@@ -51,7 +51,7 @@ describe('calendar month business dates', () => {
     ]);
     expect(result[2]?.caseId).toBeNull();
     expect(result[2]?.courtDetails).toBeUndefined();
-    expect(calendarEventTitle(events[2]!)).toBe('合同到期 · 标题未提供');
+    expect(calendarEventTitle(events[2]!)).toBe('协议到期 · 标题未提供');
     expect(
       buildCalendarMonth('2024-02', [{ ...events[0]!, date: null }]).flatMap(
         (cell) => cell.events,

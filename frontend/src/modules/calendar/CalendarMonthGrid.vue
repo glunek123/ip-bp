@@ -31,8 +31,15 @@ const props = withDefaults(
     error?: string | null;
     canRead: boolean;
     unconnectedTypes?: readonly CalendarEvent['type'][];
+    forbiddenTypes?: readonly CalendarEvent['type'][];
   }>(),
-  { loading: false, error: null, today: null, unconnectedTypes: () => [] },
+  {
+    loading: false,
+    error: null,
+    today: null,
+    unconnectedTypes: () => [],
+    forbiddenTypes: () => [],
+  },
 );
 const emit = defineEmits<{
   'update:month': [month: string];
@@ -274,6 +281,7 @@ function openEvent(event: CalendarEvent): void {
                       text
                       class="calendar-event"
                       :class="`calendar-event-${event.type}`"
+                      :data-event-key="event.eventKey"
                       :aria-label="`${event.date} ${CALENDAR_EVENT_LABELS[event.type]}：${calendarEventTitle(event)}`"
                       :aria-describedby="
                         activeEvent === event ? tooltipId : undefined
@@ -297,7 +305,8 @@ function openEvent(event: CalendarEvent): void {
         <li v-for="(typeLabel, type) in CALENDAR_EVENT_LABELS" :key="type">
           <i :class="`calendar-dot-${type}`" aria-hidden="true"></i
           >{{ typeLabel
-          }}<span v-if="unconnectedTypes.includes(type)"> · 未接入</span>
+          }}<span v-if="unconnectedTypes.includes(type)"> · 未接入</span
+          ><span v-else-if="forbiddenTypes.includes(type)"> · 无查看权限</span>
         </li>
       </ul>
     </template>

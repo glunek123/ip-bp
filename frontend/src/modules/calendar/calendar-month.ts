@@ -8,7 +8,7 @@ export interface CalendarHearingEvent {
 export const CALENDAR_EVENT_LABELS = {
   court: '开庭',
   pay: '缴费截止',
-  contract: '合同到期',
+  contract: '协议到期',
   other: '重要节点',
 } as const;
 
@@ -19,7 +19,7 @@ export interface CalendarEvent {
   title: string | null;
   sub?: string | null;
   caseId: string | null;
-  courtDetails?: {
+  courtDetails?: null | {
     party?: string | null;
     defendant?: string | null;
     reason?: string | null;
@@ -27,7 +27,7 @@ export interface CalendarEvent {
     place?: string | null;
     judge?: string | null;
   };
-  caseDetails?: {
+  caseDetails?: null | {
     customer?: string | null;
     rightsHolder?: string | null;
     defendant?: string | null;
