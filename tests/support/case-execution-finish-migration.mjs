@@ -1,4 +1,4 @@
-import { randomUUID } from 'node:crypto';
+import { createHash, randomUUID } from 'node:crypto';
 import { readFileSync, readdirSync } from 'node:fs';
 import { createRequire } from 'node:module';
 import { resolve } from 'node:path';
@@ -19,6 +19,34 @@ const suffix = [
 const quote = (value) => `"${value.replaceAll('"', '""')}"`;
 const sql = (name) =>
   readFileSync(resolve(directory, name, 'migration.sql'), 'utf8');
+
+async function exactBlobSnapshot(contents) {
+  const root = resolve(process.env.PRIVATE_FILE_ROOT ?? '');
+  if (root !== resolve(process.cwd(), '.local/private-files/test'))
+    throw new Error('Exact blob check requires the isolated test file root');
+  const backend = createRequire(resolve(process.cwd(), 'backend/package.json'));
+  const { LocalPrivateBlobStorage } = backend(
+    './dist/modules/materials/local-private-blob-storage.js',
+  );
+  const storage = new LocalPrivateBlobStorage(root);
+  const result = [];
+  for (const content of contents) {
+    const chunks = [];
+    for await (const chunk of await storage.open(content.storage_key))
+      chunks.push(Buffer.from(chunk));
+    const bytes = Buffer.concat(chunks);
+    const sha256 = createHash('sha256').update(bytes).digest('hex');
+    if (
+      sha256 !== content.sha256 ||
+      bytes.length !== Number(content.size_bytes)
+    )
+      throw new Error(
+        'Stored source blob differs from its exact content version',
+      );
+    result.push({ id: content.id, bytes: bytes.toString('base64') });
+  }
+  return result;
+}
 
 export async function executionSourceSnapshot(client, caseId) {
   const result = {};
@@ -101,6 +129,7 @@ export async function verifyExecutionFinishMigration(caseId) {
     if (head?.stage !== 'EXECUTING')
       throw new Error('A complete current execution filing source is required');
     const before = await executionSourceSnapshot(client, caseId);
+    const beforeBlobs = await exactBlobSnapshot(before.content);
     if (
       before.case_execution_filings.length !== 1 ||
       before.case_execution_filing_receipts.length !== 1
@@ -158,6 +187,11 @@ export async function verifyExecutionFinishMigration(caseId) {
       throw new Error(
         'Finish migration changed prior execution facts or exact versions',
       );
+    const oldBytesPreserved =
+      JSON.stringify(await exactBlobSnapshot(before.content)) ===
+      JSON.stringify(beforeBlobs);
+    if (!oldBytesPreserved)
+      throw new Error('Upgrade changed exact source blob bytes');
     let stageOnlyRejected = false;
     await client.query('BEGIN');
     try {
@@ -179,6 +213,7 @@ export async function verifyExecutionFinishMigration(caseId) {
       ddlRolledBack,
       forwardRecovery: true,
       preserved,
+      oldBytesPreserved,
       stageOnlyRejected,
     };
   } finally {

@@ -20,7 +20,9 @@
 
 I持有新finish DB/migration support、组合E2E、三模型归属及权威文档。新增测试准备中；仅给既有mailing DB来源helper追加显式afterFiling回调、给既有migration helper公开原复制/FK检查函数，默认旧行为不变；不改共享清理器。Finish清理限定既有合成fixture两部门、独立test库及文件root；随机PG fixture另按精确caseId清除新依赖。08:13:04正常pnpm Prisma生成/后端准备构建exit0（前次因沙箱引擎缓存utime权限失败已保留）；未进行CA015数据库或浏览器验收。
 
-中央新I正常离线冻结安装exit0，复用缓存只读复制到自身store，不关闭verifyDepsBeforeRun。worker迁移安装元数据限制仍属作者检查边界，未冒称正常pnpm门禁。N1候选回收后集中组合审查和门禁，业务来源链使用普通API；不能以PG合成守卫fixture冒称真实业务全链来源。
+中央新I正常离线冻结安装exit0，复用缓存只读复制到自身store，不关闭verifyDepsBeforeRun。worker迁移安装元数据限制仍属作者检查边界，未冒称正常pnpm门禁。N1最终a9083b2已于08:36:53接纳为8079b80，原作者idle/completed，12文件源码准确；最终Review确认两个URL契约Important，N1修复消息返回路径反序列化错误未送达，I接管其中两列表及直接测试四文件，103/103聚焦通过，待固定候选及Reviewer关闭。业务来源链用普通API，两个组浏览器和旧材料实际字节比对已补测试，尚待运行。
+
+当前开发实证：891fbea正常前端7文件286/286 exit0；两份新迁移08:31:40～44经标准锁部署15433测试库exit0；4c0e6a9／treeca7b4f6的PG合成守卫fixture1/1 exit0（08:34:51～08:35:05）。首次Temp权限零测试、旧文件root在DB操作前拒绝、动态导入加载失败均保留，详见VALIDATION；不把其中任一结果当最终组合或普通API来源验收。最终Review和稳定门禁待收口，未推送或改变main。
 
 测试资源UTC07:13:25只读核实：backend/.env.test为127.0.0.1:15433/dev_cor_test、原Compose测试容器健康，标准E2E锁无owner、3101/5174空闲；I当前不运行PG/Playwright，E2/E3仅本线非DB检查，E1候选就绪后独占窗口。窗口内仅既有守卫入口和受控随机schema专项；不另reset主测试schema、不动15436人工预览。模型容量错误只记执行服务故障，不记代码或测试失败；恢复先核现场/日志，未重复创建目录或启动测试。
 

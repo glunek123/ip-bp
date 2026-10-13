@@ -2,6 +2,10 @@ import type { APIRequestContext } from '@playwright/test';
 
 export function createCaseExecutionFilingSourceThroughApi(
   request: APIRequestContext,
+  options?: {
+    onComplaintSubmitted?: (caseId: string) => Promise<void>;
+    onExecutionPrepared?: (caseId: string) => Promise<void>;
+  },
 ): Promise<{
   caseId: string;
   client: { username: string; password: string };

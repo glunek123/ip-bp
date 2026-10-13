@@ -459,7 +459,7 @@ describe.each([
     wrapper.unmount();
   });
 });
-it('does not drop the group when both filter parameters are supplied', async () => {
+it('canonicalizes mixed filters to the precise stage and removes the group', async () => {
   const { wrapper, router } = await mountPage();
   await router.push(
     '/lawyer/cases?stage=WAITING_COMPLAINT&stageGroup=COMPLAINT_PREPARATION',
@@ -469,7 +469,32 @@ it('does not drop the group when both filter parameters are supplied', async () 
     1,
     20,
     'WAITING_COMPLAINT',
-    expect.objectContaining({ stageGroup: 'COMPLAINT_PREPARATION' }),
+    expect.not.objectContaining({ stageGroup: 'COMPLAINT_PREPARATION' }),
   );
+  expect(router.currentRoute.value.query.stageGroup).toBeUndefined();
+  expect(router.currentRoute.value.query.stage).toBe('WAITING_COMPLAINT');
   wrapper.unmount();
 });
+it.each([
+  'stage=UNKNOWN',
+  'stageGroup=UNKNOWN',
+  'stage=WAITING_COMPLAINT&stageGroup=UNKNOWN',
+  'stage=UNKNOWN&stageGroup=COMPLAINT_PREPARATION',
+  'stage=WAITING_COMPLAINT&stage=EXECUTING',
+  'stageGroup=COMPLAINT_PREPARATION&stageGroup=EXECUTION_PREPARATION',
+])(
+  'rejects invalid %s and cancels stale data until explicit clearing',
+  async (query) => {
+    const { wrapper, router } = await mountPage();
+    api.listLawyerCases.mockClear();
+    await router.push('/lawyer/cases?' + query);
+    await flushPromises();
+    expect(api.listLawyerCases).not.toHaveBeenCalled();
+    expect(wrapper.text()).toContain('阶段筛选无效');
+    expect(wrapper.find('[data-test="lawyer-case-list"]').exists()).toBe(false);
+    await router.push('/lawyer/cases');
+    await flushPromises();
+    expect(api.listLawyerCases).toHaveBeenCalledTimes(1);
+    wrapper.unmount();
+  },
+);

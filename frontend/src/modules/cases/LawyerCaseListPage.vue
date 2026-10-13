@@ -1,6 +1,6 @@
 <script setup lang="ts">
 import { computed, onBeforeUnmount, onMounted, ref, watch } from 'vue';
-import { RouterLink, useRoute } from 'vue-router';
+import { RouterLink, useRoute, useRouter } from 'vue-router';
 import { ElButton } from 'element-plus/es/components/button/index.mjs';
 import { ApiError } from '../../api/http';
 import {
@@ -12,6 +12,7 @@ import {
 import { useAuthStore } from '../../stores/auth';
 
 const route = useRoute();
+const router = useRouter();
 const auth = useAuthStore();
 const stages: Array<{ value: CaseStage; label: string }> = [
   { value: 'PENDING_MATCH', label: '待匹配' },
@@ -50,6 +51,13 @@ const stageGroup = computed<CaseStageGroup | undefined>(() =>
     ? route.query.stageGroup
     : undefined,
 );
+const invalidFilter = computed(
+  () =>
+    (route.query.stage !== undefined &&
+      route.query.stage !== 'all' &&
+      stage.value === undefined) ||
+    (route.query.stageGroup !== undefined && stageGroup.value === undefined),
+);
 const identity = computed(() =>
   auth.session === null
     ? ''
@@ -71,6 +79,17 @@ async function load(): Promise<void> {
   counts.value = null;
   state.value = 'loading';
   error.value = '';
+  if (invalidFilter.value) {
+    error.value = '阶段筛选无效，请清除筛选后重试。';
+    state.value = 'failed';
+    return;
+  }
+  if (currentStage !== undefined && currentStageGroup !== undefined) {
+    const query = { ...route.query };
+    delete query.stageGroup;
+    await router.replace({ query });
+    return;
+  }
   try {
     const result = await listLawyerCases(currentPage, pageSize, currentStage, {
       signal: controller.signal,

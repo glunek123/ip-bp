@@ -90,12 +90,16 @@ function pastShanghaiDate() {
  * Builds a real case through the public, ordinary command APIs until the
  * current execution filing is recorded and the case is EXECUTING.
  */
-export async function createCaseExecutionFilingSourceThroughApi(request) {
+export async function createCaseExecutionFilingSourceThroughApi(
+  request,
+  options = {},
+) {
   const source = await createSubmittedCaseThroughApi(request);
   const caseId = source.caseId;
   const prefix = `/api/v1/cases/${caseId}`;
   const pastDate = pastShanghaiDate();
   const today = shanghaiToday();
+  if (options.onComplaintSubmitted) await options.onComplaintSubmitted(caseId);
 
   let detail = await caseDetail(request, caseId);
   await expectStatus(
@@ -247,6 +251,7 @@ export async function createCaseExecutionFilingSourceThroughApi(request) {
   );
 
   detail = await caseDetail(request, caseId);
+  if (options.onExecutionPrepared) await options.onExecutionPrepared(caseId);
   const executionApplication = await upload(
     request,
     caseId,

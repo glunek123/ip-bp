@@ -48,6 +48,13 @@ const stageGroup = computed<CaseStageGroup | undefined>(() =>
     ? route.query.stageGroup
     : undefined,
 );
+const invalidFilter = computed(
+  () =>
+    (route.query.stage !== undefined &&
+      route.query.stage !== 'all' &&
+      stage.value === 'all') ||
+    (route.query.stageGroup !== undefined && stageGroup.value === undefined),
+);
 const pageSize = 20;
 const page = computed(() => {
   const value = route.query.page;
@@ -92,6 +99,17 @@ async function load() {
   items.value = [];
   total.value = 0;
   error.value = '';
+  if (invalidFilter.value) {
+    error.value = '阶段筛选无效，请清除筛选后重试。';
+    state.value = 'failed';
+    return;
+  }
+  if (stage.value !== 'all' && stageGroup.value !== undefined) {
+    const query = { ...route.query };
+    delete query.stageGroup;
+    await router.replace({ query });
+    return;
+  }
   const currentPage = page.value;
   const currentKey = requestKey.value;
   try {
@@ -101,7 +119,6 @@ async function load() {
       ...(stageGroup.value
         ? {
             stageGroup: stageGroup.value,
-            ...(stage.value !== 'all' ? { stage: stage.value } : {}),
           }
         : { stage: stage.value }),
     });
@@ -147,12 +164,34 @@ watch(
       stageGroup.value,
       route.query.page,
       identity.value,
+      route.query.stage,
+      route.query.stageGroup,
     ] as const,
   (next, previous) => {
     const filterChanged =
       previous &&
       next.slice(0, 3).some((value, index) => value !== previous[index]);
-    if (filterChanged && next[3] === previous[3] && page.value !== 1) {
+    // Canonicalizing a legal mixed bookmark preserves its page and scope.
+    if (
+      !invalidFilter.value &&
+      stage.value !== 'all' &&
+      stageGroup.value !== undefined
+    ) {
+      void load();
+      return;
+    }
+    const canonicalized =
+      previous &&
+      next[5] === previous[5] &&
+      next[1] !== 'all' &&
+      previous[2] !== undefined &&
+      next[2] === undefined;
+    if (
+      filterChanged &&
+      !canonicalized &&
+      next[3] === previous[3] &&
+      page.value !== 1
+    ) {
       request?.abort();
       items.value = [];
       total.value = 0;

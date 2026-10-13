@@ -2350,22 +2350,43 @@ describe.each([
     wrapper.unmount();
   });
 });
-it('passes a stage plus group conflict to the API guard instead of broadening the list', async () => {
-  api.listCases.mockRejectedValue(
-    new ApiError('dual filters', 400, 'VALIDATION_ERROR'),
-  );
+it('canonicalizes a legal mixed bookmark to its precise stage while preserving page and view', async () => {
+  const result = await api.listCases();
+  api.listCases.mockClear();
+  api.listCases.mockResolvedValue({ ...result, total: 41 });
   const wrapper = await mountRoute(
-    '/cases?stage=WAITING_COMPLAINT&stageGroup=COMPLAINT_PREPARATION',
+    '/cases?view=department&page=2&stage=WAITING_COMPLAINT&stageGroup=COMPLAINT_PREPARATION',
     CaseListPage,
   );
   expect(api.listCases).toHaveBeenCalledWith(
-    1,
+    2,
     20,
     expect.objectContaining({
       stage: 'WAITING_COMPLAINT',
-      stageGroup: 'COMPLAINT_PREPARATION',
+      view: 'department',
     }),
   );
-  expect(wrapper.find('[data-test="case-list"]').exists()).toBe(false);
+  expect(api.listCases.mock.calls.every((call) => !call[2]?.stageGroup)).toBe(
+    true,
+  );
+  expect(wrapper.vm.$route.query.stageGroup).toBeUndefined();
+  expect(wrapper.vm.$route.query.page).toBe('2');
+  expect(wrapper.find('[data-test="case-list"]').exists()).toBe(true);
+  wrapper.unmount();
+});
+it.each([
+  'stage=UNKNOWN',
+  'stageGroup=UNKNOWN',
+  'stage=WAITING_COMPLAINT&stageGroup=UNKNOWN',
+  'stage=UNKNOWN&stageGroup=COMPLAINT_PREPARATION',
+  'stage=WAITING_COMPLAINT&stage=EXECUTING',
+  'stageGroup=COMPLAINT_PREPARATION&stageGroup=EXECUTION_PREPARATION',
+])('rejects invalid filter %s without requesting all cases', async (query) => {
+  const { wrapper, router } = await mountRoutedDetail('/cases?' + query);
+  expect(api.listCases).not.toHaveBeenCalled();
+  expect(wrapper.text()).toContain('阶段筛选无效');
+  await router.push('/cases');
+  await flushPromises();
+  expect(api.listCases).toHaveBeenCalledTimes(1);
   wrapper.unmount();
 });

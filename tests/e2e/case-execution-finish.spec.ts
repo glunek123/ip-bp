@@ -174,13 +174,100 @@ async function executionFinishDetail(
   return (await response.json()) as Record<string, unknown>;
 }
 
+async function verifyDocumentGroupNavigation(
+  page: Page,
+  caseId: string,
+  group: 'COMPLAINT_PREPARATION' | 'EXECUTION_PREPARATION',
+  atomicStage: string,
+) {
+  const selector =
+    group === 'COMPLAINT_PREPARATION'
+      ? 'complaint-preparation-stage'
+      : 'execution-preparation-stage';
+  const stages =
+    group === 'COMPLAINT_PREPARATION'
+      ? [
+          'WAITING_COMPLAINT',
+          'WAITING_COMPLAINT_CONFIRMATION',
+          'WAITING_COMPLAINT_STAMP',
+        ]
+      : [
+          'WAITING_EXECUTION_DOCUMENTS',
+          'WAITING_EXECUTION_CONFIRMATION',
+          'WAITING_EXECUTION_STAMP',
+        ];
+  for (const view of ['mine', 'department']) {
+    await page.goto(`/cases?view=${view}&stageGroup=${group}`);
+    const link = page.locator(`[data-test="${selector}"]`);
+    await expect(link).toHaveClass(/active/u);
+    await expect(page.locator('[data-test="case-list"]')).toBeVisible();
+    const response = await page.request.get(
+      `/api/v1/cases?view=${view}&page=1&pageSize=20&stageGroup=${group}`,
+    );
+    await status(response, 200);
+    const body = (await response.json()) as {
+      items: Array<{ id: string; stage: string }>;
+      total: number;
+      counts: Record<string, number>;
+    };
+    expect(body.items.map((item) => item.id)).toContain(caseId);
+    expect(body.items.every((item) => stages.includes(item.stage))).toBe(true);
+    expect(body.total).toBe(
+      stages.reduce((sum, stage) => sum + body.counts[stage]!, 0),
+    );
+    await expect(link.locator('.app-nav__badge')).toHaveText(
+      String(body.total),
+    );
+    const detailLink = page
+      .locator('[data-test="case-list"]')
+      .locator(`a[href^="/cases/${caseId}"]`)
+      .first();
+    await detailLink.click();
+    await expect(page).toHaveURL(new RegExp(`/cases/${caseId}`, 'u'));
+    await page.goBack();
+    await expect
+      .poll(() => new URL(page.url()).searchParams.get('stageGroup'))
+      .toBe(group);
+  }
+  await page.goto(`/cases?view=mine&stage=${atomicStage}`);
+  await expect(page.locator(`[data-test="${selector}"]`)).toHaveClass(
+    /active/u,
+  );
+  expect(new URL(page.url()).searchParams.get('stage')).toBe(atomicStage);
+  expect(new URL(page.url()).searchParams.has('stageGroup')).toBe(false);
+}
+
 test('operator finishes through the real panel with an explanation and customer sees only RECORDED facts', async ({
   page,
   request,
 }) => {
   test.setTimeout(180_000);
   await grantFinishActionToExistingRoleA(page);
-  const source = await createCaseExecutionFilingSourceThroughApi(request);
+  const source = await createCaseExecutionFilingSourceThroughApi(request, {
+    onComplaintSubmitted: async (caseId) => {
+      await login(
+        page,
+        '/cases',
+        coreLeadFixtures.operatorUsername,
+        coreLeadFixtures.operatorPassword,
+      );
+      await verifyDocumentGroupNavigation(
+        page,
+        caseId,
+        'COMPLAINT_PREPARATION',
+        'WAITING_COMPLAINT_CONFIRMATION',
+      );
+    },
+    onExecutionPrepared: async (caseId) => {
+      await verifyDocumentGroupNavigation(
+        page,
+        caseId,
+        'EXECUTION_PREPARATION',
+        'WAITING_EXECUTION_DOCUMENTS',
+      );
+    },
+  });
+  await logout(page);
   expect(source.stage).toBe('EXECUTING');
   const migration = await verifyExecutionFinishMigration(source.caseId);
   expect(migration).toMatchObject({
@@ -190,6 +277,7 @@ test('operator finishes through the real panel with an explanation and customer 
     ddlRolledBack: true,
     forwardRecovery: true,
     preserved: true,
+    oldBytesPreserved: true,
     stageOnlyRejected: true,
   });
   expect(migration.foreignKeys).toBeGreaterThan(0);

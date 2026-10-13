@@ -2,11 +2,24 @@
 
 ## CA-015执行结束（2026-10-13，实施中）
 
-合同ada34c6／tree148b006的独立技术Review两轴ACCEPTED、C/I/M=0，仅批准实现，不是业务或迁移通过。E1后端及两步SQL仍稿中；E3独立73986ac／tree1796943已交，16文件375/375及Lint/格式/Spec为作者原件，类型exit2仅缺E2两个导入，待接E2后的真实组合结果。无本批稳定整体候选、PG／Chromium或正式门禁成功证据。
+合同ada34c6／tree148b006的独立技术Review两轴ACCEPTED、C/I/M=0，仅批准实现。E1源d2a769c／tree166cf1c独立Sol静态Review两轴ACCEPTED、C/I/M=0；作者339/339及类型/build/Lint/格式通过，I接纳为4b753de。E3自身73986ac＋7457885接纳为7e18a50＋d9932d7，真实E2/E3组合417/417及类型/Lint/格式/Spec/Vite是作者证据；375/375缺模块类型失败及装配/日期fixture失败保留。N1源a9083b2／tree9190618已接纳为8079b80（精确12文件，源dd8d897为中间候选不接纳），作者216/216及34/34、格式修正后的控制器14/14只作为作者证据。
+
+I现用独占`.local/worktrees/ca015-integration`，原ca013-014-integration固定detached main3f914ad，仅服务旧5186预览。中央正常pnpm离线冻结安装exit0，自身store来自只读复制缓存，无策略关闭；Node24.21.0／pnpm11.27.0。Prisma生成首次sandbox utime EPERM，正常提权重试08:12:38～08:13:04生成及后端构建exit0。I维护三模型归属，architecture检查122模型、Spec54SD通过；未新增另一套验证账本。
+
+| 实际检查                | 候选与范围                                  | 真实结果与证据（新I ignored .local/calendar-funds-evidence）                                                                                                                                                                                          |
+| ----------------------- | ------------------------------------------- | ----------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| 正常pnpm前端聚焦        | 891fbea／tree2d2bb5e，7文件                 | 首次Temp mkdir EPERM，零测试执行；正常提权同入口重试08:28:43～49 UTC，286/286 exit0，ca015-front-development-retry-result.json及.log。                                                                                                                |
+| 独立测试库前向迁移      | E1两新迁移，15433/dev_cor_test              | 08:31:40～44 UTC db:test:migrate:deploy exit0；142份文件，两新增实际应用。ca015-test-migrate-result.json/.log；不是空库/升级专项通过。                                                                                                                |
+| 聚焦PG开发检查          | 4c0e6a9／treeca7b4f6，Finish守卫合成fixture | 08:34:51～08:35:05 UTC正常test:e2e，1/1 exit0，测试本体3.3s。六处写入失败回滚、竞争单胜、原键重放/异参、停用及撤权、七处不可变SQL拒绝、旧执行facts/版本哈希与存储键保留。ca015-pg-source-{before,after,result}.json及.log；不称普通来源业务全链通过。 |
+| 组合Review后URL修正聚焦 | 8079b80后的I四文件修正                      | 正常前端入口2文件103/103 exit0，ca015-url-recovery-result.json/.log；当前实际输入在固定后由最终门禁覆盖，不称旧8079b80原提交实跑此修正。                                                                                                              |
+
+保留开发期阻断/失败：首次PG环境捕获在数据库操作前因复制的旧private-file root拒绝；只对齐新I自己的测试root，数据库目标/凭据不变。891fbea首次标准PG运行1failed，旧helper的lazy import在Playwright加载阶段报named export missing；修为既有static import后8dda2f5固定，4c0e6a9再加精确Finish成功审计fixture清理，后续1/1通过。pnpm exec短工具名首次未解析，后续正常pnpm exec node调用同一安装CLI进行静态检查，未关闭预检。所有原日志保留。
+
+最终组合Review进行中：独立Sol确认两项Important（合法混合URL规范化与非法过滤误退全部），N1已idle/completed，修复消息工具失败未送达，I接管四文件实现修正及103项聚焦，待Reviewer核实关闭。迁移来源必须是普通API创建的EXECUTING案件，新增空库/上一支持schema升级/enum提交与第二段故障回滚/向前恢复、旧精确blob真实字节读取，当前尚待运行。两身份真实面板、客户最小投影、两个文书组浏览器和最终稳定门禁亦待执行，不提前标CA015完成。
 
 E2源b2d4ddd38b28515d8f4bf4dc6baee4e788244b87／treec21f6233af40afd40b78c111b12bc973194fc84f，仅两份新面板/vue及spec，40/40、类型、双文件Lint/格式均exit0，原件在其ignored .local/ca015-e2-evidence/report.json，UTC07:17:53～07:18:42。保留pnpm元数据失败、早期33/35及Lint失败后修正；未改策略，用已锁Node原CLI和隔离cache，不能称正常pnpm正式门禁。I核7项manifest/lock/policy/patch指纹匹配后于UTC07:25:31.049～07:25:31.387接纳为0935ef357fb4e493492f5a736528e4746519f760／tree64fee94c6dedfaab7bb84d12fc27ee0c03cc5156，exit0、clean，原件ignored .local/calendar-funds-evidence/ca015-e2-acceptance.json；这是依赖接纳，不冒充整批验收。
 
-I完成来源链及迁移probe定位、资源只读核实及排程，未写新finish验收文件或运行PG。UTC07:13:25已核固定15433/dev_cor_test健康、标准E2E锁无owner、3101/5174空闲；15436及5186/3206已验预览保持。容量服务Selected model is at capacity不记代码或测试失败，恢复先核现场，没有重复创建目录或启动结果不明的验证。
+资源于08:22:24 UTC只读复核固定15433/dev_cor_test和15436预览库均健康，3101/5174空闲、标准资源锁无owner，5186/3206原PID10636/21616仍在；之后I独占标准锁运行上述开发检查。容量服务Selected model is at capacity不记代码或测试失败，恢复先核现场，不重复启动结果不明的验证。未push/main/生产，旧人工预览未热换候选。
 
 ## U1／U2案件列表分页组合（2026-10-13，已验收并集成）
 

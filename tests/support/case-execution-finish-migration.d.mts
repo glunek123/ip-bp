@@ -6,5 +6,6 @@ export function verifyExecutionFinishMigration(caseId: string): Promise<{
   ddlRolledBack: boolean;
   forwardRecovery: boolean;
   preserved: boolean;
+  oldBytesPreserved: boolean;
   stageOnlyRejected: boolean;
 }>;
