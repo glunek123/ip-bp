@@ -29,6 +29,7 @@ describe('materials API', () => {
     ['SECOND_INSTANCE_JUDGMENT', 'SECOND_INSTANCE_JUDGMENT'],
     ['EXECUTION_APPLICATION', 'EXECUTION_APPLICATION'],
     ['EXECUTION_FILING_PROOF', 'EXECUTION_FILING_PROOF'],
+    ['EXECUTION_FINISH_BASIS', 'EXECUTION_FINISH_BASIS'],
   ] as const)(
     'uploads the explicit %s category and purpose',
     async (category, purpose) => {

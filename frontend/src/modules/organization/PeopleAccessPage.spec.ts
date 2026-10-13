@@ -59,12 +59,18 @@ const context = {
       assignable: true,
       grants: [
         { action: 'CUSTOMER_READ', scope: 'DEPARTMENT' },
+        { action: 'CASE_EXECUTION_FINISH', scope: 'DEPARTMENT' },
         { action: 'CASE_ACCEPTANCE_REGISTER', scope: 'DEPARTMENT' },
         { action: 'CASE_HEARING_CORRECT', scope: 'DEPARTMENT' },
       ],
     },
   ],
   permissionCatalog: [
+    {
+      action: 'CASE_EXECUTION_FINISH',
+      label: '登记执行结束',
+      scopes: ['SELF', 'TEAM', 'DEPARTMENT'],
+    },
     {
       action: 'CUSTOMER_READ',
       label: '查看客户',
@@ -159,6 +165,7 @@ describe('PeopleAccessPage', () => {
     expect(wrapper.text()).toContain('商标组');
     expect(wrapper.text()).toContain('客户经办');
     expect(wrapper.get('.role-template-card').text()).toContain('查看客户');
+    expect(wrapper.get('.role-template-card').text()).toContain('登记执行结束');
     expect(wrapper.get('.role-template-card').text()).toContain(
       '登记正式立案 · 部门',
     );
@@ -166,6 +173,9 @@ describe('PeopleAccessPage', () => {
       '更正开庭安排 · 部门',
     );
     await wrapper.get('[data-test="edit-role-role-1"]').trigger('click');
+    expect(
+      wrapper.find('[data-test="grant-CASE_EXECUTION_FINISH"]').exists(),
+    ).toBe(true);
     expect(wrapper.find('[data-test="grant-CASE_READ"]').exists()).toBe(true);
     expect(
       wrapper.find('[data-test="grant-CASE_ACCEPTANCE_REGISTER"]').exists(),

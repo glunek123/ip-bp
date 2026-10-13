@@ -23,6 +23,7 @@ const emptyResult = {
       canMailComplaint: false,
       canMailExecution: false,
       canSubmitExecutionFiling: false,
+      canFinishExecution: false,
       canSubmitFiling: true,
       canRegisterAcceptance: false,
       canUploadAcceptanceMaterials: false,
@@ -53,6 +54,7 @@ const emptyResult = {
     WAITING_EXECUTION_STAMP: 0,
     WAITING_EXECUTION_FILING: 0,
     EXECUTING: 0,
+    WAITING_ARCHIVE: 0,
   },
 };
 
@@ -307,4 +309,29 @@ describe('LawyerCaseListPage', () => {
     expect(wrapper.text()).toContain('CA-current');
     expect(wrapper.text()).not.toContain('CA-late');
   });
+});
+
+it('offers WAITING_ARCHIVE in the lawyer route filter and keeps a finished case read-only', async () => {
+  api.listLawyerCases.mockResolvedValue({
+    ...emptyResult,
+    items: [
+      {
+        ...emptyResult.items[0],
+        stage: 'WAITING_ARCHIVE',
+        canFinishExecution: false,
+      },
+    ],
+    counts: { ...emptyResult.counts, WAITING_ARCHIVE: 1 },
+  });
+  const { wrapper, router } = await mountPage();
+  await router.push('/lawyer/cases?stage=WAITING_ARCHIVE');
+  await flushPromises();
+  expect(api.listLawyerCases).toHaveBeenLastCalledWith(
+    1,
+    20,
+    'WAITING_ARCHIVE',
+    expect.objectContaining({ signal: expect.any(AbortSignal) }),
+  );
+  expect(wrapper.text()).toContain('待归档');
+  wrapper.unmount();
 });

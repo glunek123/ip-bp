@@ -8,12 +8,30 @@ import CaseListPage from './CaseListPage.vue';
 import CaseDetailPage from './CaseDetailPage.vue';
 import { workflowChangedEvent } from '../../app/workflow-events';
 
+vi.mock('./CaseExecutionFinishPanel.vue', () => ({
+  default: {
+    name: 'FinishContractPanel',
+    props: [
+      'item',
+      'contextKey',
+      'pendingRequest',
+      'submitFinish',
+      'listBasisFiles',
+      'uploadBasisFile',
+      'downloadBasisFile',
+    ],
+    emits: ['pending-change', 'changed', 'refresh'],
+    template: '<section data-test="finish-caller-double" />',
+  },
+}));
+
 const api = vi.hoisted(() => ({
   listCases: vi.fn(),
   getCase: vi.fn(),
   matchCase: vi.fn(),
   listLawyerMatchCandidates: vi.fn(),
   submitComplaint: vi.fn(),
+  finishCaseExecution: vi.fn(),
   confirmCaseComplaint: vi.fn(),
   uploadMaterialFile: vi.fn(),
   listOwnerMaterials: vi.fn(),
@@ -28,12 +46,14 @@ const api = vi.hoisted(() => ({
   chooseCaseJudgmentNextStep: vi.fn(),
   revokeCaseJudgmentNextStep: vi.fn(),
 }));
-vi.mock('../../api/cases', () => ({
+vi.mock('../../api/cases', async (importOriginal) => ({
+  ...(await importOriginal<typeof import('../../api/cases')>()),
   listCases: api.listCases,
   getCase: api.getCase,
   matchCase: api.matchCase,
   listLawyerMatchCandidates: api.listLawyerMatchCandidates,
   submitComplaint: api.submitComplaint,
+  finishCaseExecution: api.finishCaseExecution,
   confirmCaseComplaint: api.confirmCaseComplaint,
   listFilingCourts: api.listFilingCourts,
   createFilingCourt: api.createFilingCourt,
@@ -96,6 +116,7 @@ beforeEach(() => {
       WAITING_EXECUTION_STAMP: 0,
       WAITING_EXECUTION_FILING: 0,
       EXECUTING: 0,
+      WAITING_ARCHIVE: 0,
     },
   });
   api.listLawyerMatchCandidates.mockResolvedValue([]);
@@ -182,6 +203,7 @@ beforeEach(() => {
     executionConfirmation: null,
     executionMailing: null,
     executionFiling: null,
+    executionFinish: null,
   });
   api.listOwnerMaterials.mockResolvedValue({ items: [], total: 0 });
   api.listFilingCourts.mockResolvedValue([]);
@@ -243,6 +265,7 @@ function confirmationDetail(
     canMailComplaint: false,
     canMailExecution: false,
     canSubmitExecutionFiling: false,
+    canFinishExecution: false,
     canSubmitFiling: false,
     canRegisterAcceptance: false,
     canUploadAcceptanceMaterials: false,
@@ -341,6 +364,7 @@ function confirmationDetail(
     executionConfirmation: null,
     executionMailing: null,
     executionFiling: null,
+    executionFinish: null,
   };
 }
 
@@ -410,7 +434,7 @@ async function mountRoutedDetail(path: string) {
     },
   );
   await flushPromises();
-  return { wrapper, router, auth };
+  return { wrapper, router, auth, pinia };
 }
 
 async function createUnknownConfirmation(wrapper: ReturnType<typeof mount>) {
@@ -1822,5 +1846,265 @@ describe('case pages', () => {
 
     expect(wrapper.text()).toContain('CA-case-b');
     expect(wrapper.find('[role="alert"]').exists()).toBe(false);
+  });
+});
+
+const finishRequest = {
+  expectedVersion: 18,
+  idempotencyKey: 'finish-original-key',
+  expectedFilingId: '80000000-0000-4000-8000-000000000181',
+  finishedAt: '2026-10-01',
+  reason: '  执行结束原文  ',
+  basisNote: '法院说明',
+  basisContentVersionIds: ['80000000-0000-4000-8000-000000000182'],
+};
+const finishResult = {
+  id: 'case-1',
+  finishId: '80000000-0000-4000-8000-000000000191',
+  filingId: finishRequest.expectedFilingId,
+  stage: 'WAITING_ARCHIVE',
+  version: 19,
+  finishedAt: finishRequest.finishedAt,
+  recordedAt: '2026-10-13T07:00:00.000Z',
+};
+async function finishCase() {
+  const base = await api.getCase();
+  api.getCase.mockClear();
+  return {
+    ...base,
+    stage: 'EXECUTING',
+    canMatch: false,
+    canFinishExecution: true,
+    version: 18,
+    executionFiling: {
+      id: finishRequest.expectedFilingId,
+      mailingId: 'mailing-1',
+      submittedAt: '2026-10-12',
+      recordedAt: '2026-10-12T00:00:00.000Z',
+      files: [],
+    },
+    executionFinish: null,
+  };
+}
+describe('internal execution finish caller', () => {
+  it('preserves original unknown request through refresh, competing fact and remount; only explicit success notifies once', async () => {
+    const base = await finishCase();
+    api.getCase.mockResolvedValue(base);
+    api.finishCaseExecution.mockRejectedValue(
+      new ApiError('结果未知', 503, 'UNAVAILABLE'),
+    );
+    const { wrapper, router, pinia } = await mountRoutedDetail('/cases/case-1');
+    const changed = vi.fn();
+    window.addEventListener(workflowChangedEvent, changed);
+    let panel = wrapper.getComponent({ name: 'FinishContractPanel' });
+    panel.vm.$emit('pending-change', finishRequest);
+    await expect(
+      panel.props('submitFinish')('case-1', finishRequest),
+    ).rejects.toMatchObject({ status: 503 });
+    api.getCase.mockResolvedValue({
+      ...base,
+      stage: 'WAITING_ARCHIVE',
+      canFinishExecution: false,
+      version: 19,
+      executionFinish: {
+        id: 'other-finish',
+        filingId: finishRequest.expectedFilingId,
+        finishedAt: '2026-10-02',
+        reason: '他人事实',
+        basisNote: '他人依据',
+        recordedAt: finishResult.recordedAt,
+        files: [],
+      },
+    });
+    panel.vm.$emit('refresh');
+    await flushPromises();
+    expect(panel.props('pendingRequest')).toEqual(finishRequest);
+    expect(api.finishCaseExecution).toHaveBeenCalledTimes(1);
+    expect(changed).not.toHaveBeenCalled();
+    wrapper.unmount();
+    const remounted = mount(RouterView, {
+      global: { plugins: [pinia, router] },
+    });
+    await flushPromises();
+    panel = remounted.getComponent({ name: 'FinishContractPanel' });
+    expect(panel.props('pendingRequest')).toEqual(finishRequest);
+    api.finishCaseExecution.mockResolvedValue(finishResult);
+    const result = await panel.props('submitFinish')(
+      'case-1',
+      panel.props('pendingRequest'),
+    );
+    expect(api.finishCaseExecution).toHaveBeenLastCalledWith(
+      'case-1',
+      finishRequest,
+      'internal',
+    );
+    const reads = api.getCase.mock.calls.length;
+    panel.vm.$emit('changed', result);
+    panel.vm.$emit('changed', result);
+    await flushPromises();
+    expect(changed).toHaveBeenCalledTimes(1);
+    expect(api.getCase).toHaveBeenCalledTimes(reads + 1);
+    expect(
+      remounted
+        .getComponent({ name: 'FinishContractPanel' })
+        .props('pendingRequest'),
+    ).toBeNull();
+    window.removeEventListener(workflowChangedEvent, changed);
+    remounted.unmount();
+  });
+  it.each([401, 403])(
+    'clears sensitive input on %s and can rebind after an authorized detail reload',
+    async (status) => {
+      const base = await finishCase();
+      api.getCase.mockResolvedValue(base);
+      api.finishCaseExecution.mockRejectedValue(
+        new ApiError('拒绝', status, 'FORBIDDEN'),
+      );
+      const { wrapper, auth } = await mountRoutedDetail('/cases/case-1');
+      let panel = wrapper.getComponent({ name: 'FinishContractPanel' });
+      panel.vm.$emit('pending-change', finishRequest);
+      await expect(
+        panel.props('submitFinish')('case-1', finishRequest),
+      ).rejects.toMatchObject({ status });
+      await flushPromises();
+      panel = wrapper.getComponent({ name: 'FinishContractPanel' });
+      expect(panel.props('pendingRequest')).toBeNull();
+      api.finishCaseExecution.mockResolvedValue(finishResult);
+      await expect(
+        panel.props('submitFinish')('case-1', finishRequest),
+      ).resolves.toEqual(finishResult);
+      expect(panel.props('contextKey')).toContain('department-1');
+      auth.session = { ...auth.session!, authorizationRevision: 2 };
+      await flushPromises();
+      expect(
+        wrapper
+          .getComponent({ name: 'FinishContractPanel' })
+          .props('pendingRequest'),
+      ).toBeNull();
+      wrapper.unmount();
+    },
+  );
+  it('isolates switched case and late events, and clears retained input on logout while unmounted', async () => {
+    const base = await finishCase();
+    api.getCase.mockResolvedValue(base);
+    const { wrapper, router, auth, pinia } =
+      await mountRoutedDetail('/cases/case-1');
+    const panel = wrapper.getComponent({ name: 'FinishContractPanel' });
+    panel.vm.$emit('pending-change', finishRequest);
+    await flushPromises();
+    const oldSubmit = panel.props('submitFinish');
+    api.getCase.mockResolvedValue({
+      ...base,
+      id: 'case-2',
+      executionFinish: null,
+    });
+    await router.push('/cases/case-2');
+    await flushPromises();
+    expect(
+      wrapper
+        .getComponent({ name: 'FinishContractPanel' })
+        .props('pendingRequest'),
+    ).toBeNull();
+    await expect(oldSubmit('case-1', finishRequest)).rejects.toMatchObject({
+      code: 'INVALID_STATE',
+    });
+    expect(api.finishCaseExecution).not.toHaveBeenCalled();
+    const changed = vi.fn();
+    window.addEventListener(workflowChangedEvent, changed);
+    panel.vm.$emit('changed', finishResult);
+    await flushPromises();
+    expect(changed).not.toHaveBeenCalled();
+    wrapper.unmount();
+    const session = auth.session!;
+    auth.clear();
+    auth.session = session;
+    api.getCase.mockResolvedValue(base);
+    await router.push('/cases/case-1');
+    const remounted = mount(RouterView, {
+      global: { plugins: [pinia, router] },
+    });
+    await flushPromises();
+    expect(
+      remounted
+        .getComponent({ name: 'FinishContractPanel' })
+        .props('pendingRequest'),
+    ).toBeNull();
+    window.removeEventListener(workflowChangedEvent, changed);
+    remounted.unmount();
+  });
+  it('filters basis drafts and injects exact upload and cancellable download callbacks', async () => {
+    const base = await finishCase();
+    api.getCase.mockResolvedValue(base);
+    const file = {
+      materialId: 'material-basis',
+      contentVersionId: 'version-basis',
+      originalFilename: '依据.pdf',
+      mimeType: 'application/pdf',
+    };
+    const material = {
+      id: file.materialId,
+      category: 'EXECUTION_FINISH_BASIS',
+      status: 'ACTIVE',
+      currentVersionId: file.contentVersionId,
+      contentVersions: [
+        {
+          id: file.contentVersionId,
+          originalFilename: file.originalFilename,
+          mimeType: file.mimeType,
+        },
+      ],
+    };
+    api.listOwnerMaterials.mockResolvedValue({
+      items: [
+        material,
+        { ...material, category: 'JUDGMENT' },
+        { ...material, status: 'DELETED' },
+        { ...material, currentVersionId: 'unavailable' },
+      ],
+    });
+    api.uploadMaterialFile.mockResolvedValue(file);
+    const { wrapper } = await mountRoutedDetail('/cases/case-1');
+    const panel = wrapper.getComponent({ name: 'FinishContractPanel' });
+    await expect(panel.props('listBasisFiles')('case-1')).resolves.toEqual([
+      file,
+    ]);
+    const bytes = new File(['basis'], file.originalFilename, {
+      type: file.mimeType,
+    });
+    await expect(
+      panel.props('uploadBasisFile')('case-1', bytes),
+    ).resolves.toEqual(file);
+    expect(api.uploadMaterialFile).toHaveBeenCalledWith({
+      ownerType: 'CASE',
+      ownerId: 'case-1',
+      category: 'EXECUTION_FINISH_BASIS',
+      purpose: 'EXECUTION_FINISH_BASIS',
+      file: bytes,
+    });
+    const controller = new AbortController();
+    await panel.props('downloadBasisFile')('case-1', file, controller.signal);
+    expect(api.downloadMaterialVersion).toHaveBeenCalledWith(
+      file.materialId,
+      file.contentVersionId,
+      controller.signal,
+    );
+    wrapper.unmount();
+  });
+  it('retains WAITING_ARCHIVE as the internal route filter and stage label', async () => {
+    const result = await api.listCases();
+    api.listCases.mockClear();
+    api.listCases.mockResolvedValue({
+      ...result,
+      items: [{ ...result.items[0], stage: 'WAITING_ARCHIVE' }],
+    });
+    const wrapper = await mountRoute(
+      '/cases?stage=WAITING_ARCHIVE',
+      CaseListPage,
+    );
+    expect(api.listCases.mock.calls[0]?.[2]).toMatchObject({
+      stage: 'WAITING_ARCHIVE',
+    });
+    expect(wrapper.text()).toContain('待归档');
+    wrapper.unmount();
   });
 });

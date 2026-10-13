@@ -1,3 +1,4 @@
+import { effectScope, shallowRef, watch } from 'vue';
 import { ApiError, getJson, requestJson, type RequestOptions } from './http';
 
 export type CaseStage =
@@ -14,7 +15,8 @@ export type CaseStage =
   | 'WAITING_EXECUTION_CONFIRMATION'
   | 'WAITING_EXECUTION_STAMP'
   | 'WAITING_EXECUTION_FILING'
-  | 'EXECUTING';
+  | 'EXECUTING'
+  | 'WAITING_ARCHIVE';
 export type CaseView = 'mine' | 'department';
 export type CaseStageFilter = CaseStage | 'all';
 export type CaseStageGroup = 'EXECUTION_PREPARATION';
@@ -30,6 +32,7 @@ export type CaseSummary = {
   canConfirmExecution: boolean;
   canMailExecution: boolean;
   canSubmitExecutionFiling: boolean;
+  canFinishExecution: boolean;
   canSubmitComplaint: boolean;
   canConfirmComplaint: boolean;
   canMailComplaint: boolean;
@@ -111,6 +114,7 @@ export type CaseDetail = CaseSummary & {
   executionConfirmation: ExecutionConfirmation | null;
   executionMailing: ExecutionMailing | null;
   executionFiling: ExecutionFiling | null;
+  executionFinish: ExecutionFinish | null;
 };
 export type ExecutionSubmissionFile = CaseFile & { uploadedAt: string };
 export type ExecutionSubmissionSummary = {
@@ -150,6 +154,33 @@ export type ExecutionFiling = {
   submittedAt: string;
   recordedAt: string;
   files: CaseFile[];
+};
+export type ExecutionFinish = {
+  id: string;
+  filingId: string;
+  finishedAt: string;
+  reason: string;
+  basisNote: string | null;
+  recordedAt: string;
+  files: CaseFile[];
+};
+export type FinishCaseExecutionInput = {
+  expectedVersion: number;
+  idempotencyKey: string;
+  expectedFilingId: string;
+  finishedAt: string;
+  reason: string;
+  basisNote: string | null;
+  basisContentVersionIds: string[];
+};
+export type FinishCaseExecutionResult = {
+  id: string;
+  finishId: string;
+  filingId: string;
+  stage: 'WAITING_ARCHIVE';
+  version: number;
+  finishedAt: string;
+  recordedAt: string;
 };
 export type CaseHearingArrangement = {
   id: string;
@@ -341,6 +372,7 @@ export type CaseWorkflowItem = {
   canMailComplaint: boolean;
   canMailExecution: boolean;
   canSubmitExecutionFiling: boolean;
+  canFinishExecution: boolean;
   canSubmitFiling: boolean;
   canRegisterAcceptance: boolean;
   canUploadAcceptanceMaterials: boolean;
@@ -381,6 +413,7 @@ export type LawyerCaseSummary = {
   canConfirmExecution: boolean;
   canMailExecution: boolean;
   canSubmitExecutionFiling: boolean;
+  canFinishExecution: boolean;
   canSubmitComplaint: boolean;
   canConfirmComplaint: boolean;
   canMailComplaint: boolean;
@@ -445,6 +478,7 @@ export type LawyerCaseDetail = CaseWorkflowItem &
     executionConfirmation: ExecutionConfirmation | null;
     executionMailing: ExecutionMailing | null;
     executionFiling: ExecutionFiling | null;
+    executionFinish: ExecutionFinish | null;
   };
 
 export type SubmitExecutionInput = {
@@ -709,7 +743,8 @@ function validStage(value: unknown): value is CaseStage {
     value === 'WAITING_EXECUTION_CONFIRMATION' ||
     value === 'WAITING_EXECUTION_STAMP' ||
     value === 'WAITING_EXECUTION_FILING' ||
-    value === 'EXECUTING'
+    value === 'EXECUTING' ||
+    value === 'WAITING_ARCHIVE'
   );
 }
 function source(value: unknown): value is { id: string; businessNo: string } {
@@ -743,6 +778,7 @@ function summary(value: unknown): value is CaseSummary {
       'canConfirmExecution',
       'canMailExecution',
       'canSubmitExecutionFiling',
+      'canFinishExecution',
       'canSubmitComplaint',
       'canConfirmComplaint',
       'canMailComplaint',
@@ -774,6 +810,7 @@ function summary(value: unknown): value is CaseSummary {
     typeof value.canConfirmExecution === 'boolean' &&
     typeof value.canMailExecution === 'boolean' &&
     typeof value.canSubmitExecutionFiling === 'boolean' &&
+    typeof value.canFinishExecution === 'boolean' &&
     typeof value.canSubmitComplaint === 'boolean' &&
     typeof value.canConfirmComplaint === 'boolean' &&
     typeof value.canMailComplaint === 'boolean' &&
@@ -839,6 +876,67 @@ function executionFiling(value: unknown): value is ExecutionFiling {
     value.files.every(caseFile) &&
     new Set(value.files.map((file) => (file as CaseFile).contentVersionId))
       .size === value.files.length
+  );
+}
+function finishText(value: unknown): value is string {
+  return nonempty(value) && value.length <= 2000;
+}
+function utcTimestamp(value: unknown): value is string {
+  return (
+    typeof value === 'string' &&
+    /^\d{4}-\d{2}-\d{2}T\d{2}:\d{2}:\d{2}(?:\.\d{1,3})?Z$/u.test(value) &&
+    !Number.isNaN(Date.parse(value)) &&
+    new Date(value).toISOString().slice(0, 19) === value.slice(0, 19)
+  );
+}
+function executionFinish(value: unknown): value is ExecutionFinish {
+  return (
+    record(value) &&
+    exact(value, [
+      'id',
+      'filingId',
+      'finishedAt',
+      'reason',
+      'basisNote',
+      'recordedAt',
+      'files',
+    ]) &&
+    uuidV4(value.id) &&
+    uuidV4(value.filingId) &&
+    businessDate(value.finishedAt) &&
+    finishText(value.reason) &&
+    (value.basisNote === null || finishText(value.basisNote)) &&
+    utcTimestamp(value.recordedAt) &&
+    Array.isArray(value.files) &&
+    value.files.length <= 10 &&
+    value.files.every(
+      (file) =>
+        caseFile(file) &&
+        uuidV4(file.materialId) &&
+        uuidV4(file.contentVersionId),
+    ) &&
+    new Set(value.files.map((file) => (file as CaseFile).contentVersionId))
+      .size === value.files.length &&
+    (value.basisNote !== null || value.files.length > 0)
+  );
+}
+function executionFinishMatches(
+  finish: unknown,
+  filing: unknown,
+  stage: unknown,
+  canFinish: unknown,
+): boolean {
+  if (finish === null)
+    return (
+      stage !== 'WAITING_ARCHIVE' &&
+      (canFinish !== true || (stage === 'EXECUTING' && executionFiling(filing)))
+    );
+  return (
+    executionFinish(finish) &&
+    executionFiling(filing) &&
+    finish.filingId === filing.id &&
+    stage === 'WAITING_ARCHIVE' &&
+    canFinish === false
   );
 }
 function executionFactsMatch(
@@ -1416,8 +1514,10 @@ function validCaseDetail(value: unknown, id: string): value is CaseDetail {
       'executionConfirmation',
       'canMailExecution',
       'canSubmitExecutionFiling',
+      'canFinishExecution',
       'executionMailing',
       'executionFiling',
+      'executionFinish',
     ]) &&
     value.id === id &&
     summary({
@@ -1432,6 +1532,7 @@ function validCaseDetail(value: unknown, id: string): value is CaseDetail {
       canConfirmExecution: value.canConfirmExecution,
       canMailExecution: value.canMailExecution,
       canSubmitExecutionFiling: value.canSubmitExecutionFiling,
+      canFinishExecution: value.canFinishExecution,
       canSubmitComplaint: value.canSubmitComplaint,
       canConfirmComplaint: value.canConfirmComplaint,
       canMailComplaint: value.canMailComplaint,
@@ -1535,10 +1636,17 @@ function validCaseDetail(value: unknown, id: string): value is CaseDetail {
     typeof value.canConfirmExecution === 'boolean' &&
     typeof value.canMailExecution === 'boolean' &&
     typeof value.canSubmitExecutionFiling === 'boolean' &&
+    typeof value.canFinishExecution === 'boolean' &&
     (value.executionMailing === null ||
       executionMailing(value.executionMailing)) &&
     (value.executionFiling === null ||
       executionFiling(value.executionFiling)) &&
+    executionFinishMatches(
+      value.executionFinish,
+      value.executionFiling,
+      value.stage,
+      value.canFinishExecution,
+    ) &&
     executionFactsMatch(
       value.executionMailing,
       value.executionFiling,
@@ -1931,6 +2039,7 @@ const caseStages: CaseStage[] = [
   'WAITING_EXECUTION_STAMP',
   'WAITING_EXECUTION_FILING',
   'EXECUTING',
+  'WAITING_ARCHIVE',
 ];
 function validLawyerSummary(value: unknown): value is LawyerCaseSummary {
   return (
@@ -1945,6 +2054,7 @@ function validLawyerSummary(value: unknown): value is LawyerCaseSummary {
       'canConfirmExecution',
       'canMailExecution',
       'canSubmitExecutionFiling',
+      'canFinishExecution',
       'canSubmitComplaint',
       'canConfirmComplaint',
       'canMailComplaint',
@@ -1972,6 +2082,7 @@ function validLawyerSummary(value: unknown): value is LawyerCaseSummary {
     typeof value.canConfirmExecution === 'boolean' &&
     typeof value.canMailExecution === 'boolean' &&
     typeof value.canSubmitExecutionFiling === 'boolean' &&
+    typeof value.canFinishExecution === 'boolean' &&
     typeof value.canSubmitComplaint === 'boolean' &&
     typeof value.canConfirmComplaint === 'boolean' &&
     typeof value.canMailComplaint === 'boolean' &&
@@ -2210,8 +2321,10 @@ export async function getLawyerCase(
       'executionConfirmation',
       'canMailExecution',
       'canSubmitExecutionFiling',
+      'canFinishExecution',
       'executionMailing',
       'executionFiling',
+      'executionFinish',
     ]) ||
     result.id !== id ||
     !validLawyerSummary({
@@ -2224,6 +2337,7 @@ export async function getLawyerCase(
       canConfirmExecution: result.canConfirmExecution,
       canMailExecution: result.canMailExecution,
       canSubmitExecutionFiling: result.canSubmitExecutionFiling,
+      canFinishExecution: result.canFinishExecution,
       canSubmitComplaint: result.canSubmitComplaint,
       canConfirmComplaint: result.canConfirmComplaint,
       canMailComplaint: result.canMailComplaint,
@@ -2273,10 +2387,17 @@ export async function getLawyerCase(
     typeof result.canConfirmExecution !== 'boolean' ||
     typeof result.canMailExecution !== 'boolean' ||
     typeof result.canSubmitExecutionFiling !== 'boolean' ||
+    typeof result.canFinishExecution !== 'boolean' ||
     (result.executionMailing !== null &&
       !executionMailing(result.executionMailing)) ||
     (result.executionFiling !== null &&
       !executionFiling(result.executionFiling)) ||
+    !executionFinishMatches(
+      result.executionFinish,
+      result.executionFiling,
+      result.stage,
+      result.canFinishExecution,
+    ) ||
     !executionFactsMatch(
       result.executionMailing,
       result.executionFiling,
@@ -2373,6 +2494,7 @@ export async function listCases(
       'WAITING_EXECUTION_STAMP',
       'WAITING_EXECUTION_FILING',
       'EXECUTING',
+      'WAITING_ARCHIVE',
     ]) ||
     !Number.isInteger(response.counts.PENDING_MATCH) ||
     (response.counts.PENDING_MATCH as number) < 0 ||
@@ -2400,6 +2522,8 @@ export async function listCases(
     (response.counts.WAITING_EXECUTION_STAMP as number) < 0 ||
     !Number.isInteger(response.counts.WAITING_EXECUTION_FILING) ||
     (response.counts.WAITING_EXECUTION_FILING as number) < 0 ||
+    !Number.isInteger(response.counts.WAITING_ARCHIVE) ||
+    Number(response.counts.WAITING_ARCHIVE) < 0 ||
     !Number.isInteger(response.counts.EXECUTING) ||
     (response.counts.EXECUTING as number) < 0
   )
@@ -3441,6 +3565,127 @@ export async function submitCaseExecutionFiling(
   )
     throw invalidResponse();
   return response as SubmitCaseExecutionFilingResult;
+}
+
+export async function finishCaseExecution(
+  id: string,
+  input: FinishCaseExecutionInput,
+  audience: 'internal' | 'lawyer' = 'internal',
+): Promise<FinishCaseExecutionResult> {
+  if (
+    !record(input) ||
+    !exact(input, [
+      'expectedVersion',
+      'idempotencyKey',
+      'expectedFilingId',
+      'finishedAt',
+      'reason',
+      'basisNote',
+      'basisContentVersionIds',
+    ]) ||
+    !Number.isSafeInteger(input.expectedVersion) ||
+    input.expectedVersion < 1 ||
+    !validIdempotencyKey(input.idempotencyKey) ||
+    !uuidV4(input.expectedFilingId) ||
+    !businessDate(input.finishedAt) ||
+    input.finishedAt > todayShanghai() ||
+    !finishText(input.reason) ||
+    (input.basisNote !== null && !finishText(input.basisNote)) ||
+    !Array.isArray(input.basisContentVersionIds) ||
+    input.basisContentVersionIds.length > 10 ||
+    !input.basisContentVersionIds.every(uuidV4) ||
+    new Set(input.basisContentVersionIds).size !==
+      input.basisContentVersionIds.length ||
+    (input.basisNote === null && input.basisContentVersionIds.length === 0) ||
+    (audience !== 'internal' && audience !== 'lawyer')
+  )
+    throw new ApiError('执行结束登记信息无效', 400, 'VALIDATION_ERROR');
+  const response = await requestJson(
+    '/' +
+      (audience === 'lawyer' ? 'lawyer/cases' : 'cases') +
+      '/' +
+      encodeURIComponent(id) +
+      '/execution-finish',
+    {
+      method: 'POST',
+      headers: { 'Idempotency-Key': input.idempotencyKey },
+      body: input,
+    },
+  );
+  if (
+    !record(response) ||
+    !exact(response, [
+      'id',
+      'finishId',
+      'filingId',
+      'stage',
+      'version',
+      'finishedAt',
+      'recordedAt',
+    ]) ||
+    response.id !== id ||
+    !uuidV4(response.finishId) ||
+    response.filingId !== input.expectedFilingId ||
+    response.stage !== 'WAITING_ARCHIVE' ||
+    !Number.isSafeInteger(response.version) ||
+    response.version !== input.expectedVersion + 1 ||
+    response.finishedAt !== input.finishedAt ||
+    !utcTimestamp(response.recordedAt)
+  )
+    throw invalidResponse();
+  return response as FinishCaseExecutionResult;
+}
+
+// A detached session watcher also clears requests after the details have unmounted.
+// No request body is persisted outside memory or inferred from a later GET.
+type FinishSessionState = {
+  pending: (caseId: string) => FinishCaseExecutionInput | null;
+  setPending: (caseId: string, input: FinishCaseExecutionInput | null) => void;
+  markChanged: (finishId: string) => boolean;
+  clear: () => void;
+};
+const finishSessions = new WeakMap<object, FinishSessionState>();
+export function executionFinishSession(
+  owner: object,
+  context: () => string,
+): FinishSessionState {
+  const existing = finishSessions.get(owner);
+  if (existing) return existing;
+  const requests = shallowRef(new Map<string, FinishCaseExecutionInput>());
+  const notified = new Set<string>();
+  const state: FinishSessionState = {
+    pending: (caseId) => {
+      const input = requests.value.get(caseId);
+      return input
+        ? {
+            ...input,
+            basisContentVersionIds: [...input.basisContentVersionIds],
+          }
+        : null;
+    },
+    setPending: (caseId, input) => {
+      const next = new Map(requests.value);
+      if (input)
+        next.set(caseId, {
+          ...input,
+          basisContentVersionIds: [...input.basisContentVersionIds],
+        });
+      else next.delete(caseId);
+      requests.value = next;
+    },
+    markChanged: (finishId) => {
+      if (notified.has(finishId)) return false;
+      notified.add(finishId);
+      return true;
+    },
+    clear: () => {
+      requests.value = new Map();
+      notified.clear();
+    },
+  };
+  effectScope(true).run(() => watch(context, state.clear, { flush: 'sync' }));
+  finishSessions.set(owner, state);
+  return state;
 }
 
 export async function getCase(

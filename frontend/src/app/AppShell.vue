@@ -51,6 +51,7 @@ const caseStageCards: ReadonlyArray<{ stage: CaseStage; label: string }> = [
   { stage: 'WAITING_EXECUTION_DOCUMENTS', label: '待写执行材料' },
   { stage: 'WAITING_EXECUTION_FILING', label: '待申请执行' },
   { stage: 'EXECUTING', label: '强制执行中' },
+  { stage: 'WAITING_ARCHIVE', label: '待归档' },
 ];
 const notaryStageCards: ReadonlyArray<{
   stage: NotaryListStage;

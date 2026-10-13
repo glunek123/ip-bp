@@ -27,6 +27,7 @@ const item = {
   stage: 'WAITING_EXECUTION_FILING',
   version: 8,
   canSubmitExecutionFiling: true,
+  canFinishExecution: false,
   executionMailing: {
     id: 'mailing-1',
     mailedAt: '2026-10-02',
@@ -34,6 +35,7 @@ const item = {
     files: [],
   },
   executionFiling: null,
+  executionFinish: null,
 };
 beforeEach(() => {
   vi.resetAllMocks();

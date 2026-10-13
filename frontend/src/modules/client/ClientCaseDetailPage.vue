@@ -100,7 +100,9 @@ onBeforeUnmount(() => request?.abort());
                                   ? '待申请执行'
                                   : item.stage === 'EXECUTING'
                                     ? '强制执行中'
-                                    : '待开庭'
+                                    : item.stage === 'WAITING_ARCHIVE'
+                                      ? '待归档'
+                                      : '待开庭'
               }}</span>
               · 权利主体：{{ item.rightsHolderName }}
             </p>

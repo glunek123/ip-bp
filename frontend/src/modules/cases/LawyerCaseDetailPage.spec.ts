@@ -8,9 +8,27 @@ import { useAuthStore } from '../../stores/auth';
 import LawyerCaseDetailPage from './LawyerCaseDetailPage.vue';
 import { secondInstanceCommandState } from './case-second-instance-recovery';
 
+vi.mock('./CaseExecutionFinishPanel.vue', () => ({
+  default: {
+    name: 'FinishContractPanel',
+    props: [
+      'item',
+      'contextKey',
+      'pendingRequest',
+      'submitFinish',
+      'listBasisFiles',
+      'uploadBasisFile',
+      'downloadBasisFile',
+    ],
+    emits: ['pending-change', 'changed', 'refresh'],
+    template: '<section data-test="finish-caller-double" />',
+  },
+}));
+
 const api = vi.hoisted(() => ({
   getLawyerCase: vi.fn(),
   submitComplaint: vi.fn(),
+  finishCaseExecution: vi.fn(),
   listOwnerMaterials: vi.fn(),
   uploadMaterialFile: vi.fn(),
   downloadMaterialVersion: vi.fn(),
@@ -20,6 +38,7 @@ vi.mock('../../api/cases', async (importOriginal) => ({
   ...(await importOriginal<typeof import('../../api/cases')>()),
   getLawyerCase: api.getLawyerCase,
   submitComplaint: api.submitComplaint,
+  finishCaseExecution: api.finishCaseExecution,
   saveSecondInstance: api.saveSecondInstance,
 }));
 vi.mock('../../api/materials', () => ({
@@ -44,6 +63,7 @@ function detail(
     canMailComplaint: false,
     canMailExecution: false,
     canSubmitExecutionFiling: false,
+    canFinishExecution: false,
     canSubmitFiling: false,
     canRegisterAcceptance: false,
     canUploadAcceptanceMaterials: false,
@@ -107,6 +127,7 @@ function detail(
     executionConfirmation: null,
     executionMailing: null,
     executionFiling: null,
+    executionFinish: null,
   };
 }
 function materials() {
@@ -170,7 +191,7 @@ async function mountPage(path = '/lawyer/cases/case-a') {
     global: { plugins: [pinia, router] },
   });
   await flushPromises();
-  return { wrapper, router, auth };
+  return { wrapper, router, auth, pinia };
 }
 
 beforeEach(() => {
@@ -792,5 +813,109 @@ describe('LawyerCaseDetailPage', () => {
       .findAll('button')
       .find((button) => button.text() === '确认提交');
     expect(submit?.attributes('disabled')).toBeDefined();
+  });
+});
+
+const finishRequest = {
+  expectedVersion: 18,
+  idempotencyKey: 'lawyer-original-key',
+  expectedFilingId: '80000000-0000-4000-8000-000000000181',
+  finishedAt: '2026-10-01',
+  reason: '律师登记原文',
+  basisNote: null,
+  basisContentVersionIds: ['80000000-0000-4000-8000-000000000182'],
+};
+const finishResult = {
+  id: 'case-a',
+  finishId: '80000000-0000-4000-8000-000000000191',
+  filingId: finishRequest.expectedFilingId,
+  stage: 'WAITING_ARCHIVE',
+  version: 19,
+  finishedAt: finishRequest.finishedAt,
+  recordedAt: '2026-10-13T07:00:00.000Z',
+};
+const finishDetail = () => ({
+  ...detail('case-a', 'CA-A', 'EXECUTING'),
+  version: 18,
+  canFinishExecution: true,
+  executionFiling: {
+    id: finishRequest.expectedFilingId,
+    mailingId: 'mailing-1',
+    submittedAt: '2026-10-12',
+    recordedAt: '2026-10-12T00:00:00.000Z',
+    files: [],
+  },
+});
+describe('lawyer execution finish caller', () => {
+  it('injects the lawyer command and retains unknown body after refresh before explicit same-key retry', async () => {
+    const payload = finishDetail();
+    api.getLawyerCase.mockResolvedValue(payload);
+    api.finishCaseExecution.mockRejectedValue(
+      new ApiError('结果未知', 200, 'INVALID_RESPONSE'),
+    );
+    const { wrapper } = await mountPage();
+    let panel = wrapper.getComponent({ name: 'FinishContractPanel' });
+    panel.vm.$emit('pending-change', finishRequest);
+    await expect(
+      panel.props('submitFinish')('case-a', finishRequest),
+    ).rejects.toMatchObject({ code: 'INVALID_RESPONSE' });
+    panel.vm.$emit('refresh');
+    await flushPromises();
+    panel = wrapper.getComponent({ name: 'FinishContractPanel' });
+    expect(panel.props('pendingRequest')).toEqual(finishRequest);
+    expect(api.finishCaseExecution).toHaveBeenCalledTimes(1);
+    api.finishCaseExecution.mockResolvedValue(finishResult);
+    const response = await panel.props('submitFinish')(
+      'case-a',
+      panel.props('pendingRequest'),
+    );
+    expect(api.finishCaseExecution).toHaveBeenLastCalledWith(
+      'case-a',
+      finishRequest,
+      'lawyer',
+    );
+    const changed = vi.fn();
+    window.addEventListener('dev-cor:workflow-changed', changed);
+    panel.vm.$emit('changed', response);
+    panel.vm.$emit('changed', response);
+    await flushPromises();
+    expect(changed).toHaveBeenCalledTimes(1);
+    window.removeEventListener('dev-cor:workflow-changed', changed);
+    wrapper.unmount();
+  });
+  it('retains a pending verification entry after WAITING_ARCHIVE and clears it on authorization revision change', async () => {
+    const payload = finishDetail();
+    api.getLawyerCase.mockResolvedValue(payload);
+    const { wrapper, auth } = await mountPage();
+    let panel = wrapper.getComponent({ name: 'FinishContractPanel' });
+    panel.vm.$emit('pending-change', finishRequest);
+    api.getLawyerCase.mockResolvedValue({
+      ...payload,
+      stage: 'WAITING_ARCHIVE',
+      canFinishExecution: false,
+      executionFinish: null,
+    });
+    panel.vm.$emit('refresh');
+    await flushPromises();
+    panel = wrapper.getComponent({ name: 'FinishContractPanel' });
+    expect(panel.props('pendingRequest')).toEqual(finishRequest);
+    expect(wrapper.text()).toContain('待归档');
+    auth.session = { ...auth.session!, authorizationRevision: 2 };
+    await flushPromises();
+    expect(
+      wrapper.findComponent({ name: 'FinishContractPanel' }).exists(),
+    ).toBe(false);
+    wrapper.unmount();
+  });
+  it('does not apply a late finish success after the details unmount', async () => {
+    api.getLawyerCase.mockResolvedValue(finishDetail());
+    const { wrapper } = await mountPage();
+    const panel = wrapper.getComponent({ name: 'FinishContractPanel' });
+    const oldSubmit = panel.props('submitFinish');
+    wrapper.unmount();
+    await expect(oldSubmit('case-a', finishRequest)).rejects.toMatchObject({
+      code: 'INVALID_STATE',
+    });
+    expect(api.finishCaseExecution).not.toHaveBeenCalled();
   });
 });

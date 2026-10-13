@@ -34,6 +34,7 @@ const baseItem: TestItem = {
   canMailComplaint: false,
   canMailExecution: false,
   canSubmitExecutionFiling: false,
+  canFinishExecution: false,
   canSubmitFiling: false,
   canRegisterAcceptance: true,
   canUploadAcceptanceMaterials: true,

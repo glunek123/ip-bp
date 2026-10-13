@@ -1,12 +1,17 @@
 <script setup lang="ts">
 import CaseExecutionMailingPanel from './CaseExecutionMailingPanel.vue';
 import CaseExecutionFilingPanel from './CaseExecutionFilingPanel.vue';
+import CaseExecutionFinishPanel from './CaseExecutionFinishPanel.vue';
 
 import { computed, onBeforeUnmount, onMounted, ref, watch } from 'vue';
 import { RouterLink, useRoute } from 'vue-router';
 import { ElButton } from 'element-plus/es/components/button/index.mjs';
 import { ApiError } from '../../api/http';
 import {
+  finishCaseExecution,
+  executionFinishSession,
+  type FinishCaseExecutionInput,
+  type FinishCaseExecutionResult,
   getCase,
   matchCase,
   listLawyerMatchCandidates,
@@ -43,7 +48,7 @@ const id = computed(() => String(route.params.id));
 const identity = computed(() =>
   auth.session === null
     ? ''
-    : `${auth.session.principalType}:${auth.session.user.id}:${auth.session.authorizationRevision}`,
+    : `${auth.session.principalType}:${auth.session.user.id}:${auth.session.department?.id ?? ''}:${auth.session.authorizationRevision}`,
 );
 const secondInstanceActorKey = computed(() =>
   auth.session === null
@@ -116,6 +121,159 @@ function isCurrentOperation(context: OperationContext): boolean {
     context.identity === identity.value
   );
 }
+
+const finishSession = executionFinishSession(auth, () => identity.value);
+const finishPending = computed(() => finishSession.pending(id.value));
+const finishCallbacks = computed(() => {
+  const caseId = item.value?.id ?? id.value;
+  const contextKey = identity.value;
+  const revision = contextRevision;
+  const current = () =>
+    caseId === id.value &&
+    contextKey === identity.value &&
+    revision === contextRevision;
+  const denied = async (reason: unknown) => {
+    if (
+      current() &&
+      reason instanceof ApiError &&
+      (reason.status === 401 || reason.status === 403)
+    ) {
+      contextRevision += 1;
+      readRevision += 1;
+      request?.abort();
+      finishSession.clear();
+      clearContext();
+      await load();
+    }
+    throw reason;
+  };
+  return {
+    pending: (input: FinishCaseExecutionInput | null) => {
+      if (current()) finishSession.setPending(caseId, input);
+    },
+    submit: async (targetId: string, input: FinishCaseExecutionInput) => {
+      if (!current() || targetId !== caseId)
+        throw new ApiError(
+          '案件办理身份已变化，请重新读取',
+          409,
+          'INVALID_STATE',
+        );
+      // Store before transport as well as pending-change, without changing the original body.
+      finishSession.setPending(caseId, input);
+      try {
+        return await finishCaseExecution(caseId, input, 'internal');
+      } catch (reason) {
+        return denied(reason);
+      }
+    },
+    list: async (targetId: string): Promise<CaseFile[]> => {
+      if (!current() || targetId !== caseId)
+        throw new ApiError(
+          '案件办理身份已变化，请重新读取',
+          409,
+          'INVALID_STATE',
+        );
+      try {
+        const materials = await listOwnerMaterials('CASE', caseId);
+        if (!current())
+          throw new ApiError(
+            '案件办理身份已变化，请重新读取',
+            409,
+            'INVALID_STATE',
+          );
+        return materials.items
+          .filter(
+            (material) =>
+              material.status === 'ACTIVE' &&
+              material.category === 'EXECUTION_FINISH_BASIS',
+          )
+          .flatMap((material) => {
+            const version = material.contentVersions.find(
+              (entry) => entry.id === material.currentVersionId,
+            );
+            return version
+              ? [
+                  {
+                    materialId: material.id,
+                    contentVersionId: version.id,
+                    originalFilename: version.originalFilename,
+                    mimeType: version.mimeType,
+                  },
+                ]
+              : [];
+          });
+      } catch (reason) {
+        return denied(reason);
+      }
+    },
+    upload: async (
+      targetId: string,
+      file: globalThis.File,
+    ): Promise<CaseFile> => {
+      if (!current() || targetId !== caseId)
+        throw new ApiError(
+          '案件办理身份已变化，请重新读取',
+          409,
+          'INVALID_STATE',
+        );
+      try {
+        const result = await uploadMaterialFile({
+          ownerType: 'CASE',
+          ownerId: caseId,
+          category: 'EXECUTION_FINISH_BASIS',
+          purpose: 'EXECUTION_FINISH_BASIS',
+          file,
+        });
+        if (!current())
+          throw new ApiError(
+            '案件办理身份已变化，请重新读取',
+            409,
+            'INVALID_STATE',
+          );
+        return {
+          materialId: result.materialId,
+          contentVersionId: result.contentVersionId,
+          originalFilename: result.originalFilename,
+          mimeType: result.mimeType,
+        };
+      } catch (reason) {
+        return denied(reason);
+      }
+    },
+    download: async (
+      targetId: string,
+      file: CaseFile,
+      signal: globalThis.AbortSignal,
+    ) => {
+      if (!current() || targetId !== caseId)
+        throw new ApiError(
+          '案件办理身份已变化，请重新读取',
+          409,
+          'INVALID_STATE',
+        );
+      try {
+        return await downloadMaterialVersion(
+          file.materialId,
+          file.contentVersionId,
+          signal,
+        );
+      } catch (reason) {
+        return denied(reason);
+      }
+    },
+    changed: (result: FinishCaseExecutionResult) => {
+      if (!current() || result.id !== caseId) return;
+      finishSession.setPending(caseId, null);
+      if (finishSession.markChanged(result.finishId)) {
+        notifyWorkflowChanged();
+        void load();
+      }
+    },
+    refresh: () => {
+      if (current()) void load();
+    },
+  };
+});
 
 async function load() {
   request?.abort();
@@ -199,12 +357,13 @@ async function load() {
     if (!isCurrentRead()) return;
     if (
       reason instanceof ApiError &&
-      (reason.status === 403 || reason.status === 404)
+      (reason.status === 401 || reason.status === 403 || reason.status === 404)
     ) {
       contextRevision += 1;
       readRevision += 1;
       request?.abort();
       request = undefined;
+      finishSession.clear();
       clearContext();
       state.value = reason.status === 404 ? 'missing' : 'failed';
       error.value =
@@ -347,6 +506,7 @@ function stageLabel(stage: CaseDetail['stage']): string {
   if (stage === 'WAITING_EXECUTION_STAMP') return '执行材料待盖章';
   if (stage === 'WAITING_EXECUTION_FILING') return '待申请执行';
   if (stage === 'EXECUTING') return '强制执行中';
+  if (stage === 'WAITING_ARCHIVE') return '待归档';
   return '待开庭';
 }
 function removeDefendant(index: number) {
@@ -668,7 +828,11 @@ async function download(materialId: string, versionId: string) {
   }
 }
 onMounted(() => void load());
-onBeforeUnmount(() => request?.abort());
+onBeforeUnmount(() => {
+  contextRevision += 1;
+  readRevision += 1;
+  request?.abort();
+});
 </script>
 
 <template>
@@ -813,6 +977,24 @@ onBeforeUnmount(() => request?.abort());
           :context-key="identity"
           @changed="load"
           @refresh="load"
+        />
+        <CaseExecutionFinishPanel
+          v-if="
+            item.canFinishExecution ||
+            item.executionFinish ||
+            finishPending ||
+            item.stage === 'EXECUTING'
+          "
+          :item="item"
+          :context-key="identity"
+          :pending-request="finishPending"
+          :submit-finish="finishCallbacks.submit"
+          :list-basis-files="finishCallbacks.list"
+          :upload-basis-file="finishCallbacks.upload"
+          :download-basis-file="finishCallbacks.download"
+          @pending-change="finishCallbacks.pending"
+          @changed="finishCallbacks.changed"
+          @refresh="finishCallbacks.refresh"
         />
         <CaseExecutionFilingPanel
           v-if="

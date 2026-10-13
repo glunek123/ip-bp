@@ -78,6 +78,7 @@ beforeEach(() => {
       WAITING_EXECUTION_STAMP: 0,
       WAITING_EXECUTION_FILING: 0,
       EXECUTING: 0,
+      WAITING_ARCHIVE: 0,
     },
   });
   api.listNotaryOffices.mockResolvedValue({
@@ -133,6 +134,7 @@ beforeEach(() => {
       WAITING_EXECUTION_STAMP: 0,
       WAITING_EXECUTION_FILING: 0,
       EXECUTING: 0,
+      WAITING_ARCHIVE: 0,
     },
   });
 });
@@ -302,7 +304,7 @@ describe('AppShell', () => {
     expect(stages.map((link) => link.text())).toContain('待正式立案2');
     expect(stages.map((link) => link.text())).toContain('待开庭1');
     expect(stages.map((link) => link.text())).toContain('待判决3');
-    expect(stages).toHaveLength(11);
+    expect(stages).toHaveLength(12);
     expect(
       wrapper.get('[data-test="execution-preparation-nav"]').text(),
     ).toContain('准备执行文书3');
@@ -373,6 +375,7 @@ describe('AppShell', () => {
         WAITING_EXECUTION_STAMP: 0,
         WAITING_EXECUTION_FILING: 0,
         EXECUTING: 0,
+        WAITING_ARCHIVE: 0,
       },
     });
     const { wrapper } = await mountShell('/lawyer/cases', lawyerSession);
@@ -450,7 +453,7 @@ describe('AppShell', () => {
     expect(
       wrapper.get('[data-test="case-view-mine"]').attributes('href'),
     ).toContain('view=mine');
-    expect(wrapper.findAll('[data-test="case-stage"]')).toHaveLength(11);
+    expect(wrapper.findAll('[data-test="case-stage"]')).toHaveLength(12);
     expect(wrapper.get('[data-test="case-nav"]').text()).toContain('19');
     expect(api.listCases).toHaveBeenCalledWith(1, 1, {
       signal: expect.any(AbortSignal),
@@ -622,4 +625,21 @@ describe('AppShell', () => {
     expect(wrapper.find('[data-test="lead-nav"]').exists()).toBe(false);
     expect(wrapper.find('[data-test="customer-nav"]').exists()).toBe(false);
   });
+});
+
+it('links the real WAITING_ARCHIVE count without implying financial completion', async () => {
+  const result = await api.listCases();
+  api.listCases.mockClear();
+  api.listCases.mockResolvedValue({
+    ...result,
+    counts: { ...result.counts, WAITING_ARCHIVE: 2 },
+  });
+  const { wrapper } = await mountShell('/cases?stage=WAITING_ARCHIVE');
+  const link = wrapper
+    .findAll('[data-test="case-stage"]')
+    .find((entry) => entry.text() === '待归档2');
+  expect(link?.attributes('href')).toContain('stage=WAITING_ARCHIVE');
+  expect(link?.classes()).toContain('active');
+  expect(wrapper.text()).not.toContain('已结清');
+  expect(wrapper.text()).not.toContain('已结算');
 });

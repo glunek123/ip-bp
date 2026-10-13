@@ -42,6 +42,7 @@ const summary = {
   canConfirmExecution: false,
   canMailExecution: false,
   canSubmitExecutionFiling: false,
+  canFinishExecution: false,
   canSubmitComplaint: false,
   canConfirmComplaint: false,
   canMailComplaint: false,
@@ -67,9 +68,11 @@ const detail = {
   canConfirmExecution: false,
   canMailExecution: false,
   canSubmitExecutionFiling: false,
+  canFinishExecution: false,
   executionConfirmation: null,
   executionMailing: null,
   executionFiling: null,
+  executionFinish: null,
   courtCaseNo: null,
   department: { id: 'department-1', name: '知产部' },
   customer: { id: 'customer-1', name: '客户甲' },
@@ -174,9 +177,11 @@ describe('cases API', () => {
       canConfirmExecution: false,
       canMailExecution: false,
       canSubmitExecutionFiling: false,
+      canFinishExecution: false,
       executionConfirmation: null,
       executionMailing: null,
       executionFiling: null,
+      executionFinish: null,
     };
     mockJson(empty);
     await expect(getCase('case-1')).resolves.toMatchObject({
@@ -215,6 +220,7 @@ describe('cases API', () => {
       canConfirmExecution: true,
       canMailExecution: false,
       canSubmitExecutionFiling: false,
+      canFinishExecution: false,
       executionSubmission: {
         current: submission,
         submissions: [submission],
@@ -233,6 +239,7 @@ describe('cases API', () => {
       canConfirmExecution: false,
       canMailExecution: false,
       canSubmitExecutionFiling: false,
+      canFinishExecution: false,
       executionConfirmation: {
         id: '80000000-0000-4000-8000-000000000106',
         submissionId: submission.id,
@@ -507,6 +514,7 @@ describe('cases API', () => {
       WAITING_EXECUTION_STAMP: 0,
       WAITING_EXECUTION_FILING: 0,
       EXECUTING: 0,
+      WAITING_ARCHIVE: 0,
     };
     const fetchMock = mockJson({
       items: [],
@@ -1305,9 +1313,11 @@ describe('cases API', () => {
       canConfirmExecution: false,
       canMailExecution: false,
       canSubmitExecutionFiling: false,
+      canFinishExecution: false,
       executionConfirmation: null,
       executionMailing: null,
       executionFiling: null,
+      executionFinish: null,
       createdAt: '2026-09-28T00:00:00.000Z',
       matchedAt: null,
       matchedOn: null,
@@ -1840,6 +1850,7 @@ describe('cases API', () => {
         WAITING_EXECUTION_STAMP: 0,
         WAITING_EXECUTION_FILING: 0,
         EXECUTING: 0,
+        WAITING_ARCHIVE: 0,
       },
     });
     await expect(
@@ -1861,6 +1872,7 @@ describe('cases API', () => {
         WAITING_EXECUTION_STAMP: 0,
         WAITING_EXECUTION_FILING: 0,
         EXECUTING: 0,
+        WAITING_ARCHIVE: 0,
       },
     });
     expect(fetchMock.mock.calls[0]?.[0]).toBe(
@@ -1896,6 +1908,7 @@ describe('cases API', () => {
         WAITING_EXECUTION_STAMP: 0,
         WAITING_EXECUTION_FILING: 0,
         EXECUTING: 0,
+        WAITING_ARCHIVE: 0,
       },
     });
     await expect(
@@ -1921,6 +1934,7 @@ describe('cases API', () => {
       WAITING_EXECUTION_STAMP: 0,
       WAITING_EXECUTION_FILING: 0,
       EXECUTING: 0,
+      WAITING_ARCHIVE: 0,
     };
     const item = {
       ...summary,
@@ -1929,6 +1943,7 @@ describe('cases API', () => {
       canConfirmExecution: false,
       canMailExecution: false,
       canSubmitExecutionFiling: false,
+      canFinishExecution: false,
     };
     mockJson({ items: [item], total: 1, page: 1, pageSize: 20, counts });
     await expect(listCases()).resolves.toMatchObject({
@@ -1939,6 +1954,7 @@ describe('cases API', () => {
           canConfirmExecution: false,
           canMailExecution: false,
           canSubmitExecutionFiling: false,
+          canFinishExecution: false,
         },
       ],
     });
@@ -1995,6 +2011,7 @@ describe('cases API', () => {
       WAITING_EXECUTION_STAMP: 0,
       WAITING_EXECUTION_FILING: 0,
       EXECUTING: 0,
+      WAITING_ARCHIVE: 0,
     };
     const item = {
       id: 'case-1',
@@ -2021,6 +2038,7 @@ describe('cases API', () => {
       canConfirmExecution: false,
       canMailExecution: false,
       canSubmitExecutionFiling: false,
+      canFinishExecution: false,
       createdAt: '2026-09-28T00:00:00.000Z',
     };
     mockJson({ items: [item], total: 1, page: 1, pageSize: 20, counts });
@@ -2032,6 +2050,7 @@ describe('cases API', () => {
           canConfirmExecution: false,
           canMailExecution: false,
           canSubmitExecutionFiling: false,
+          canFinishExecution: false,
         },
       ],
     });
@@ -2093,6 +2112,7 @@ describe('cases API', () => {
         WAITING_EXECUTION_STAMP: 0,
         WAITING_EXECUTION_FILING: 0,
         EXECUTING: 0,
+        WAITING_ARCHIVE: 0,
       },
     });
     await listCases(1, 20, { stage: 'all' });
@@ -2469,9 +2489,11 @@ describe('cases API', () => {
       canConfirmExecution: false,
       canMailExecution: false,
       canSubmitExecutionFiling: false,
+      canFinishExecution: false,
       executionConfirmation: null,
       executionMailing: null,
       executionFiling: null,
+      executionFinish: null,
       createdAt: '2026-09-28T00:00:00.000Z',
       matchedAt: '2026-09-29T01:00:00Z',
       matchedOn: '2026-09-28',
@@ -2618,9 +2640,11 @@ describe('cases API', () => {
       canConfirmExecution: false,
       canMailExecution: false,
       canSubmitExecutionFiling: false,
+      canFinishExecution: false,
       executionConfirmation: null,
       executionMailing: null,
       executionFiling: null,
+      executionFinish: null,
     };
     mockJson(response);
     await expect(casesApi.getLawyerCase('case-1')).resolves.toMatchObject({
@@ -2867,6 +2891,7 @@ describe('cases API', () => {
         WAITING_EXECUTION_STAMP: 0,
         WAITING_EXECUTION_FILING: 0,
         EXECUTING: 0,
+        WAITING_ARCHIVE: 0,
       },
     });
     const read = Reflect.get(casesApi, 'listLawyerCases') as
@@ -2878,5 +2903,244 @@ describe('cases API', () => {
     expect(fetchMock.mock.calls[0]?.[0]).toBe(
       '/api/v1/lawyer/cases?page=1&pageSize=20&stage=WAITING_FILING',
     );
+  });
+});
+
+const finishInput = {
+  expectedVersion: 18,
+  idempotencyKey: 'finish-original-key',
+  expectedFilingId: '80000000-0000-4000-8000-000000000181',
+  finishedAt: '2026-10-01',
+  reason: '  实际执行结束，原文本保留  ',
+  basisNote: '  法院说明原文  ',
+  basisContentVersionIds: [] as string[],
+};
+const finishReceipt = {
+  id: 'case-1',
+  finishId: '80000000-0000-4000-8000-000000000191',
+  filingId: finishInput.expectedFilingId,
+  stage: 'WAITING_ARCHIVE',
+  version: 19,
+  finishedAt: finishInput.finishedAt,
+  recordedAt: '2026-10-13T07:00:00.000Z',
+};
+function finishDetailPayload() {
+  const file = {
+    materialId: '80000000-0000-4000-8000-000000000101',
+    contentVersionId: '80000000-0000-4000-8000-000000000102',
+    originalFilename: '真实材料.pdf',
+    mimeType: 'application/pdf',
+  };
+  const submissionFile = { ...file, uploadedAt: '2026-10-01T00:00:00.000Z' };
+  const submission = {
+    id: '80000000-0000-4000-8000-000000000103',
+    trialRoundId: '80000000-0000-4000-8000-000000000104',
+    judgmentNextStepId: '80000000-0000-4000-8000-000000000105',
+    secondInstanceResultId: null,
+    priorSubmissionId: null,
+    changeReason: null,
+    fromVersion: 14,
+    toVersion: 15,
+    submittedAt: '2026-10-01T00:00:00.000Z',
+    files: [submissionFile],
+  };
+  const confirmation = {
+    id: '80000000-0000-4000-8000-000000000106',
+    submissionId: submission.id,
+    confirmedAt: '2026-10-01T00:00:00.000Z',
+    confirmedByUserId: 'user-1',
+    files: [submissionFile],
+  };
+  const mailing = {
+    id: '80000000-0000-4000-8000-000000000171',
+    confirmationId: confirmation.id,
+    mailedAt: '2026-10-01',
+    recordedAt: '2026-10-01T00:00:00.000Z',
+    files: [file],
+  };
+  return {
+    ...detail,
+    stage: 'WAITING_ARCHIVE',
+    version: 19,
+    executionSubmission: {
+      current: submission,
+      submissions: [submission],
+      availableFiles: [],
+    },
+    executionConfirmation: confirmation,
+    executionMailing: mailing,
+    executionFiling: {
+      id: finishInput.expectedFilingId,
+      mailingId: mailing.id,
+      submittedAt: '2026-10-12',
+      recordedAt: '2026-10-12T00:00:00.000Z',
+      files: [file],
+    },
+    executionFinish: {
+      id: finishReceipt.finishId,
+      filingId: finishReceipt.filingId,
+      finishedAt: finishInput.finishedAt,
+      reason: finishInput.reason,
+      basisNote: finishInput.basisNote,
+      recordedAt: finishReceipt.recordedAt,
+      files: [] as (typeof file)[],
+    },
+  };
+}
+describe('CA-015 execution finish contract', () => {
+  it.each(['internal', 'lawyer'] as const)(
+    'uses the shared command for %s without trimming or reordering the original input',
+    async (audience) => {
+      const fetch = mockJson(finishReceipt, 201);
+      await expect(
+        casesApi.finishCaseExecution('case-1', finishInput, audience),
+      ).resolves.toEqual(finishReceipt);
+      expect(fetch).toHaveBeenCalledTimes(1);
+      expect(fetch.mock.calls[0]?.[0]).toBe(
+        `/api/v1/${audience === 'lawyer' ? 'lawyer/cases' : 'cases'}/case-1/execution-finish`,
+      );
+      expect(JSON.parse(String(fetch.mock.calls[0]?.[1]?.body))).toEqual(
+        finishInput,
+      );
+      expect(fetch.mock.calls[0]?.[1]?.headers['Idempotency-Key']).toBe(
+        finishInput.idempotencyKey,
+      );
+    },
+  );
+  it.each([
+    { expectedVersion: 0 },
+    { expectedVersion: Number.MAX_SAFE_INTEGER + 1 },
+    { idempotencyKey: ' key ' },
+    { expectedFilingId: 'old-filing' },
+    { finishedAt: '2026-02-30' },
+    { finishedAt: '2099-10-01' },
+    { reason: ' ' },
+    { reason: 'a'.repeat(2001) },
+    { basisNote: '' },
+    { basisNote: null },
+    { basisContentVersionIds: ['invalid'] },
+    { basisContentVersionIds: Array(11).fill(finishInput.expectedFilingId) },
+    {
+      basisContentVersionIds: [
+        finishInput.expectedFilingId,
+        finishInput.expectedFilingId,
+      ],
+    },
+    { unexpected: true },
+  ])('rejects malformed request %j before transport', async (override) => {
+    const fetch = mockJson(finishReceipt, 201);
+    await expect(
+      casesApi.finishCaseExecution('case-1', { ...finishInput, ...override }),
+    ).rejects.toMatchObject({ code: 'VALIDATION_ERROR' });
+    expect(fetch).not.toHaveBeenCalled();
+  });
+  it('requires every explicit key but accepts attachment-only basis and a real date earlier than filing', async () => {
+    const missing: Record<string, unknown> = { ...finishInput };
+    delete missing.basisNote;
+    const fetch = mockJson(finishReceipt, 201);
+    await expect(
+      casesApi.finishCaseExecution(
+        'case-1',
+        missing as casesApi.FinishCaseExecutionInput,
+      ),
+    ).rejects.toMatchObject({ code: 'VALIDATION_ERROR' });
+    expect(fetch).not.toHaveBeenCalled();
+    await expect(
+      casesApi.finishCaseExecution('case-1', {
+        ...finishInput,
+        basisNote: null,
+        basisContentVersionIds: [finishInput.expectedFilingId],
+      }),
+    ).resolves.toEqual(finishReceipt);
+  });
+  it.each([
+    { id: 'other-case' },
+    { finishId: 'finish-1' },
+    { filingId: '80000000-0000-4000-8000-000000000199' },
+    { stage: 'EXECUTING' },
+    { version: 20 },
+    { finishedAt: '2026-10-02' },
+    { recordedAt: '2026-02-30T00:00:00Z' },
+    { recordedAt: '2026-10-13T15:00:00+08:00' },
+    { reason: 'leaked' },
+  ])('rejects incompatible or extra receipt fields %j', async (override) => {
+    mockJson({ ...finishReceipt, ...override }, 201);
+    await expect(
+      casesApi.finishCaseExecution('case-1', finishInput),
+    ).rejects.toMatchObject({ code: 'INVALID_RESPONSE' });
+  });
+  it('decodes finish fact with note-only or attachment-only basis and ties it to the current filing', async () => {
+    const payload = finishDetailPayload();
+    mockJson(payload);
+    await expect(getCase('case-1')).resolves.toMatchObject({
+      executionFinish: payload.executionFinish,
+      stage: 'WAITING_ARCHIVE',
+    });
+    const file = payload.executionFiling.files[0]!;
+    mockJson({
+      ...payload,
+      executionFinish: {
+        ...payload.executionFinish,
+        basisNote: null,
+        files: [file],
+      },
+    });
+    await expect(getCase('case-1')).resolves.toMatchObject({
+      executionFinish: { basisNote: null, files: [file] },
+    });
+    for (const override of [
+      { executionFinish: null },
+      { canFinishExecution: true },
+      { stage: 'EXECUTING' },
+      {
+        executionFinish: {
+          ...payload.executionFinish,
+          filingId: '80000000-0000-4000-8000-000000000199',
+        },
+      },
+      {
+        executionFinish: {
+          ...payload.executionFinish,
+          basisNote: null,
+          files: [],
+        },
+      },
+      { executionFinish: { ...payload.executionFinish, files: [file, file] } },
+      {
+        executionFinish: {
+          ...payload.executionFinish,
+          recordedByUserId: 'internal-user',
+        },
+      },
+    ]) {
+      mockJson({ ...payload, ...override });
+      await expect(getCase('case-1')).rejects.toMatchObject({
+        code: 'INVALID_RESPONSE',
+      });
+    }
+  });
+  it('decodes the same authorized finish facts on lawyer detail without broadening the lawyer projection', async () => {
+    const {
+      owner,
+      fees,
+      department,
+      sourceLead,
+      sourceNotaryMatter,
+      ...payload
+    } = finishDetailPayload();
+    void owner;
+    void fees;
+    void department;
+    void sourceLead;
+    void sourceNotaryMatter;
+    const lawyerPayload = { ...payload, canMatch: false };
+    mockJson(lawyerPayload);
+    await expect(casesApi.getLawyerCase('case-1')).resolves.toMatchObject({
+      executionFinish: payload.executionFinish,
+    });
+    mockJson({ ...lawyerPayload, fees: [] });
+    await expect(casesApi.getLawyerCase('case-1')).rejects.toMatchObject({
+      code: 'INVALID_RESPONSE',
+    });
   });
 });

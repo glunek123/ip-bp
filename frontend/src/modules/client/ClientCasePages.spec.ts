@@ -524,3 +524,39 @@ describe('client case pages', () => {
     expect(api.getClientCase).toHaveBeenCalledTimes(3);
   });
 });
+
+it('shows only WAITING_ARCHIVE in the client recorded list and detail, without an internal finish form or inferred financial completion', async () => {
+  const archived = {
+    ...list.items[0],
+    stage: 'WAITING_ARCHIVE',
+    canMailComplaint: false,
+    canMailExecution: false,
+  };
+  api.listClientCases.mockResolvedValue({ ...list, items: [archived] });
+  api.getClientCase.mockResolvedValue({
+    ...detail,
+    ...archived,
+    confirmedAmountState: 'PENDING',
+    confirmedAmount: null,
+    executionConfirmationId: null,
+    executionMailing: null,
+  });
+  const { wrapper, router } = await mountPage('/client/cases?view=RECORDED');
+  expect(wrapper.text()).toContain('待归档');
+  await router.push('/client/cases/case-1');
+  await flushPromises();
+  expect(wrapper.text()).toContain('待归档');
+  expect(wrapper.text()).toContain('确认标的额：待确认');
+  expect(wrapper.find('[data-test="execution-finish-panel"]').exists()).toBe(
+    false,
+  );
+  for (const forbidden of [
+    '结束原因',
+    '依据说明',
+    '执行结束',
+    '已结清',
+    '已结算',
+    '操作者',
+  ])
+    expect(wrapper.text()).not.toContain(forbidden);
+});

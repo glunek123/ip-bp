@@ -31,6 +31,7 @@ const stages: Array<{ value: CaseStage; label: string }> = [
   { value: 'WAITING_EXECUTION_STAMP', label: '执行材料待盖章' },
   { value: 'WAITING_EXECUTION_FILING', label: '待申请执行' },
   { value: 'EXECUTING', label: '强制执行中' },
+  { value: 'WAITING_ARCHIVE', label: '待归档' },
 ];
 const state = ref<'loading' | 'ready' | 'failed'>('loading');
 const items = ref<LawyerCaseSummary[]>([]);
