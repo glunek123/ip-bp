@@ -8,25 +8,17 @@
 
 ## 当前任务
 
-**CORE-CA-015**：I唯一写入目录现为`.local/worktrees/ca015-integration`，分支`codex/ca015-execution-finish-integration`。原`.local/worktrees/ca013-014-integration`已固定detached main `3f914ad`，仅服务已验收5186预览，不写候选源码或重建其backend/dist。08:09:15 UTC完整E1/E2/E3组合`4b753de3bb9a7997e9f9771b8316101269567fe9`／tree`082f191a207ce1552c94ecec6fc8f1eb8c6e11d9`，exit0、干净；08:19:27接纳浏览器测试准备为`2829dff`，它不是验收通过。技术冻结和E1独立Review均两轴ACCEPTED、未关闭0/0/0；最终组合Review、PG及浏览器仍待执行。
+**CORE-CA-015＋N1已完成本地组合验收，正在文档与Git收口。** 唯一I目录`.local/worktrees/ca015-integration`，分支`codex/ca015-execution-finish-integration`；稳定代码/测试候选`8c2f45efd0491d4d4edfc2dab4a83cbe3c423c9c`／tree`537ffac310d70ccb922ab3a80a36edcd7d7b579c`。E1源d2a769c、E2源b2d4ddd、E3自身73986ac＋7457885、N1最终a9083b2均已接纳，原作者停止写入；I独占测试支持、审查修正及权威文档，具体对应与失败留痕只在VALIDATION。
 
-| 实施任务               | 线程／分支／worktree                                                                                        | 已核实际状态                                                                                                                                                                                                                                                                 |
-| ---------------------- | ----------------------------------------------------------------------------------------------------------- | ---------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
-| E1后端及材料/客户兼容  | 01a13414-9407-717f-96fd-ec1fda486013；codex/ca015-e1-backend；.local/worktrees/ca015-e1-backend             | 源d2a769c／tree166cf1c已冻结、独立Sol Review ACCEPTED，作者339/339及类型/build/Lint/格式exit0。I接纳为4b753de；静态审查不证明PG或迁移通过。E1停止写入。                                                                                                                      |
-| E2结束面板             | 01a13414-f88b-72bd-a0ea-c23beb1de012；codex/ca015-e2-panel；.local/worktrees/ca015-e2-panel                 | E2源b2d4ddd／treec21f6233已完成、干净，仅新面板/spec；作者40/40及类型/Lint/格式exit0原件已核，7项指纹与I匹配。I于UTC07:25:31接纳为0935ef3／tree64fee94，exit0；完整组合未验。                                                                                                |
-| E3前端接线             | 01a13415-4866-7694-a9c4-a6c3430ce038；codex/ca015-e3-frontend；.local/worktrees/ca015-e3-frontend           | 自身73986ac＋7457885已接纳为7e18a50＋d9932d7，E2依赖未重复接纳；真实组合417/417及类型/Lint/格式/Spec/Vite exit0为作者证据。早期缺面板类型及装配/日期fixture失败保留，后续对应通过。E3停止写入。                                                                              |
-| N1导航与只读分组       | 01a13452-9ded-7087-a0a6-d0241fd84005；独占新worktree；基线4b753de                                           | 唯一作者持有AppShell、cases API、内部/律师列表及直接测试，共8前端文件，加case-read DTO/service/service.spec/controller.spec共4后端文件。落实REQ-CA-010两平级文书分组、流程与模块顺序、原子书签及范围计数；不改真实阶段、权限机制、迁移或客户入口。I和原E1/E3不并写这12文件。 |
-| 普通API/浏览器验收准备 | /root/ca015_api_browser_acceptance；codex/ca015-api-browser-tests；.local/worktrees/ca015-api-browser-tests | 源1d69e075已接纳为2829dff，仅新filing来源helper及声明、finish浏览器spec三文件。MJS语法通过；无依赖导致其他静态入口阻断，未运行PG/浏览器。实际验收由I正常入口统一完成。                                                                                                       |
+独立Review两轴ACCEPTED、未关闭C/I/M=0/0/0。58fbd5d完整verify于09:05:23～09:09:36 UTC exit0（工具80／前端1337／后端1345及双构建）；8c2f45e只修改旧导航E2E及快照，产品／单元／构建输入未变，独立审查限定复用上述结果。8c2f45e实际check:fast:prepared＋全格式＋严格context＋Spec exit0，09:19:18～09:20:40；同5项标准PG／浏览器组合5/5 exit0，09:19:24～09:21:17，前后环境指纹一致且干净。首次4/5、动态导入、来源身份与登录URL断言等失败保留，不能拼称此前组合通过。
 
-I持有新finish DB/migration support、组合E2E、三模型归属及权威文档。新增测试准备中；仅给既有mailing DB来源helper追加显式afterFiling回调、给既有migration helper公开原复制/FK检查函数，默认旧行为不变；不改共享清理器。Finish清理限定既有合成fixture两部门、独立test库及文件root；随机PG fixture另按精确caseId清除新依赖。08:13:04正常pnpm Prisma生成/后端准备构建exit0（前次因沙箱引擎缓存utime权限失败已保留）；未进行CA015数据库或浏览器验收。
+范围仅执行中→待归档的真实结束事实、日期／原因／说明或精确附件，原执行链与回执/字节保留；内部/当前PRIMARY律师办理、客户最小阶段可读。N1落实既有平级两文书组、模块/流程顺序、范围计数、旧原子书签和非法URL拦截。不是全部Demo或16阶段闭环：CA016/017归档／更正、重开、资金发起、历史补录及全面字段／展示对齐未实施。
 
-中央新I正常离线冻结安装exit0，复用缓存只读复制到自身store，不关闭verifyDepsBeforeRun。worker迁移安装元数据限制仍属作者检查边界，未冒称正常pnpm门禁。N1最终a9083b2已于08:36:53接纳为8079b80，原作者idle/completed，12文件源码准确；最终Review确认两个URL契约Important，N1修复消息返回路径反序列化错误未送达，I接管其中两列表及直接测试四文件，103/103聚焦通过，待固定候选及Reviewer关闭。业务来源链用普通API，两个组浏览器和旧材料实际字节比对已补测试，尚待运行。
+中央依赖为正常pnpm离线冻结安装、自身store，Node24.21.0／pnpm11.27.0，未关闭预检。只有backend/.env.test的15433测试库应用两新迁移（142文件），未reset，标准入口独占锁已释放。文档收口不得混入新产品改动；远端最新origin/main仍3f914ad，可快进关系已核，实际推送／main结果待执行核对，不预写成功。
 
-当前开发实证：891fbea正常前端7文件286/286 exit0；两份新迁移08:31:40～44经标准锁部署15433测试库exit0；4c0e6a9／treeca7b4f6的PG合成守卫fixture1/1 exit0（08:34:51～08:35:05）。75ea569／tree34955ab独立最终组合Review两轴ACCEPTED、未关闭0/0/0，关闭两URL问题。普通来源浏览器开发期08:50:33～08:51:00两项均在来源准备被403拒绝，尚未Finish；I修测试来源角色编辑后旧fixture身份和律师切换后运营材料请求，采用正常运营重新登录与最新CSRF，不改产品守卫。首次Temp权限零测试、旧文件root在DB操作前拒绝、动态导入加载失败及上述失败均保留。修正后Reviewer再核必要delta，稳定门禁待收口，未推送或改变main。
+预览只读复核09:23:23 UTC：5186/login与3206/health均200；`.local/worktrees/ca013-014-integration`仍detached3f914ad，15436保持旧已验数据与版本，不热换前端、不重建其dist。新能力尚未升级到该入口；整体更新需按既有合成隔离环境规范协调。Demo8123不操作、无生产部署。主目录原cases.ts stash `b07482c2c6130baa39cc43658f3dadb17cf81551`及既有`.pnpm-store/`保留；恢复说明在旧preview树`.local/ca013-preview/README.md`和`.local/calendar-funds-evidence/main-workspace-preservation.json`，新验收结果在I ignored `.local/calendar-funds-evidence/ca015-*`。
 
-测试资源UTC07:13:25只读核实：backend/.env.test为127.0.0.1:15433/dev_cor_test、原Compose测试容器健康，标准E2E锁无owner、3101/5174空闲；I当前不运行PG/Playwright，E2/E3仅本线非DB检查，E1候选就绪后独占窗口。窗口内仅既有守卫入口和受控随机schema专项；不另reset主测试schema、不动15436人工预览。模型容量错误只记执行服务故障，不记代码或测试失败；恢复先核现场/日志，未重复创建目录或启动测试。
-
-用户可见预览5186/3206/15436保持已验收版本；仅文档变更不切到未验CA015，登录交给独立任务01a1341b-1de5-71ad-8d08-5d8cbd6e0000，父已处理本机安全输入，I不再转发或抢标签页。没有生产部署。主目录原cases.ts stash b07482c2c6130baa39cc43658f3dadb17cf81551及.pnpm-store保留，恢复指针ignored .local/calendar-funds-evidence/main-workspace-preservation.json；原预览恢复说明.local/ca013-preview/README.md。
+下一批仅按既有路线图排运营Demo字段与展示对齐，公证优先、线索／案件随后。只读审计01a13475-5465-773e-9173-b7d97424a00a已完成，不是验收证据或当前收口前置；案件API/列表/详情与本批共享文件，须从收口后的基线再派唯一作者。
 
 ### 已集成分页批次（2026-10-13）
 

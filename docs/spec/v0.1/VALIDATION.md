@@ -1,6 +1,12 @@
 # SPEC-001 文档验证
 
-## CA-015执行结束（2026-10-13，实施中）
+## CA-015执行结束＋N1导航（2026-10-13，本地组合已验收）
+
+稳定代码／测试提交`8c2f45efd0491d4d4edfc2dab4a83cbe3c423c9c`／tree`537ffac310d70ccb922ab3a80a36edcd7d7b579c`，独立Sol最终组合Review两轴ACCEPTED、未关闭C/I/M=0/0/0。最后五项不是散装拼接：同一正常`pnpm test:e2e`运行`case-execution-finish-database.spec.ts`、`case-execution-finish.spec.ts`、`case-complaint-confirmation.spec.ts`，09:19:24.748～09:21:17.964 UTC，5/5 exit0；覆盖普通来源两身份、客户最小投影、说明-only/附件-only、刷新/重登/下载真实字节、两组与两个授权范围的列表/总数/badge/详情返回/原子书签、21条内部/客户分页、同部门只读与精确诉状下载，以及合成PG事务/重放/不可变守卫。迁移从普通API完成EXECUTING的旧来源复制到受控随机schema，空库全链、140份上一支持schema→142、第二段注入失败留下enum但DDL全回滚、向前恢复、直接stage-only拒绝、旧facts/回执/精确元数据及实际blob字节相同；不是仅检查SQL源码。
+
+完整`pnpm verify`实际在`58fbd5d868b88f1355ac9be0c8691ca09bf646d6`／tree`5745eb34821c0cbea1e60884bc3a5ae67852ba5e`于09:05:23.198～09:09:36.800 UTC exit0：工具80/80、前端99文件1337/1337、后端106文件1345/1345，全部静态与两端构建通过。普通Vite >500kB chunk warning保留。随后该树5项首次4/5，旧诉状E2E仍定位原子菜单“诉状待盖章”而非获批文书组；失败在导航断言，不掩去。8c2f45e仅改该E2E定位、补组URL与精确原子书签和context snapshot，产品、依赖、单元及构建输入全部相同，独立Reviewer明确接受限定复用这些结果，不称完整verify在8c2f45e实跑。8c2f45e实际正常`check:fast:prepared`＋全`format:check`＋严格context＋Spec于09:19:18.455～09:20:40.348 UTC exit0，然后上述同5项全部通过。
+
+新I ignored证据入口`.local/calendar-funds-evidence/ca015-formal-{verify,static,e2e-final}-{before,after,result}.json`及各`.log`；前后fingerprint均`343c59891dfe4d82e03a5c91faac2e1de7325b9c847f35fbaa3819c72290a627`且Git干净。`ca015-formal-e2e-*`首次4/5、开发失败、源提交/作者限制都保留于下文。最终仅文档收口时核非执行diff及文档专项；远端/main/预览升级只按后续实际结果补记，不提前称成功。当前预览09:23:23只读HTTP200，仍3f914ad；无15436或生产迁移、无生产部署。
 
 合同ada34c6／tree148b006的独立技术Review两轴ACCEPTED、C/I/M=0，仅批准实现。E1源d2a769c／tree166cf1c独立Sol静态Review两轴ACCEPTED、C/I/M=0；作者339/339及类型/build/Lint/格式通过，I接纳为4b753de。E3自身73986ac＋7457885接纳为7e18a50＋d9932d7，真实E2/E3组合417/417及类型/Lint/格式/Spec/Vite是作者证据；375/375缺模块类型失败及装配/日期fixture失败保留。N1源a9083b2／tree9190618已接纳为8079b80（精确12文件，源dd8d897为中间候选不接纳），作者216/216及34/34、格式修正后的控制器14/14只作为作者证据。
 
@@ -19,7 +25,7 @@ I现用独占`.local/worktrees/ca015-integration`，原ca013-014-integration固�
 
 普通来源开发验收失败与修正：75ea两项08:50:33～08:51:00均在来源准备被403拒绝、未提交Finish；测试曾在角色编辑后沿用旧fixture bearer及律师登录后继续运营材料路径。4b66测试改为先建诉状来源再正常UI改角色、当前运营重新登录/CSRF，律师开庭后重新回运营；产品权限守卫不变。4b66标准2项08:59:51～09:01:00结果1过1失败：律师附件-only及刷新重登/原字节下载通过，运营Finish/两组两范围/计数/详情返回/旧原子URL及普通API来源迁移探针已执行，但客户登录helper错误地用带query的path比较pathname，停止在客户投影断言前。修正为pathname及所需query逐项核验，保留ca015-browser-{development,source-retry}-{before,after,result}.json与.log，不将部分成功拼称组合通过。
 
-迁移测试核普通API创建的EXECUTING来源，空库/上一支持schema升级/enum提交与第二段故障回滚/向前恢复、旧facts及精确blob实际字节；最终稳定三项组合及全仓门禁尚待执行。新增Demo字段展示对齐仅在既有路线图下一批排队，明确不成为当前验收或推送前置。
+迁移测试核普通API创建的EXECUTING来源，空库/上一支持schema升级/enum提交与第二段故障回滚/向前恢复、旧facts及精确blob实际字节；这些已在顶部稳定同5项组合通过。新增Demo字段展示对齐仅在既有路线图下一批排队，明确不成为当前验收或推送前置。
 
 E2源b2d4ddd38b28515d8f4bf4dc6baee4e788244b87／treec21f6233af40afd40b78c111b12bc973194fc84f，仅两份新面板/vue及spec，40/40、类型、双文件Lint/格式均exit0，原件在其ignored .local/ca015-e2-evidence/report.json，UTC07:17:53～07:18:42。保留pnpm元数据失败、早期33/35及Lint失败后修正；未改策略，用已锁Node原CLI和隔离cache，不能称正常pnpm正式门禁。I核7项manifest/lock/policy/patch指纹匹配后于UTC07:25:31.049～07:25:31.387接纳为0935ef357fb4e493492f5a736528e4746519f760／tree64fee94c6dedfaab7bb84d12fc27ee0c03cc5156，exit0、clean，原件ignored .local/calendar-funds-evidence/ca015-e2-acceptance.json；这是依赖接纳，不冒充整批验收。
 
