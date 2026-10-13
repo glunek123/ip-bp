@@ -1,6 +1,8 @@
 import { flushPromises, mount } from '@vue/test-utils';
 import { createMemoryHistory, createRouter } from 'vue-router';
 import { afterEach, describe, expect, it, vi } from 'vitest';
+import { createPinia, setActivePinia } from 'pinia';
+import { useAuthStore } from '../../stores/auth';
 import type { Lead } from '../../api/leads';
 import LeadListPage from './LeadListPage.vue';
 
@@ -70,6 +72,20 @@ const summary = {
 } satisfies Lead;
 
 async function mountWithRoute(path: string) {
+  const pinia = createPinia();
+  setActivePinia(pinia);
+  const auth = useAuthStore();
+  auth.session = {
+    principalType: 'INTERNAL',
+    user: { id: 'operator-1', displayName: '运营甲', username: 'operator' },
+    department: { id: 'department-1', name: '知产部' },
+    departments: [{ id: 'department-1', name: '知产部' }],
+    customer: null,
+    notaryOffice: null,
+    authorizationRevision: 1,
+    expiresAt: '2099-01-01T00:00:00.000Z',
+    csrfToken: 'test-csrf',
+  };
   const router = createRouter({
     history: createMemoryHistory(),
     routes: [
@@ -81,14 +97,57 @@ async function mountWithRoute(path: string) {
   });
   await router.push(path);
   await router.isReady();
-  const wrapper = mount(LeadListPage, { global: { plugins: [router] } });
+  const wrapper = mount(LeadListPage, { global: { plugins: [pinia, router] } });
   await flushPromises();
-  return { router, wrapper };
+  return { router, wrapper, auth };
 }
 
 afterEach(() => vi.resetAllMocks());
 
 describe('LeadListPage', () => {
+  it.each(['user', 'department', 'revision'] as const)(
+    'clears old projections and rejects late responses after %s changes',
+    async (change) => {
+      let resolveOld!: (
+        value: Omit<typeof result, 'items'> & { items: Lead[] },
+      ) => void;
+      api.listLeads
+        .mockResolvedValueOnce({ ...result, items: [summary], total: 1 })
+        .mockImplementationOnce(
+          () =>
+            new Promise((resolve) => {
+              resolveOld = resolve;
+            }),
+        )
+        .mockResolvedValueOnce({
+          ...result,
+          items: [],
+          total: 0,
+          capabilities: { create: false },
+        });
+      const { router, wrapper, auth } = await mountWithRoute('/leads');
+      expect(wrapper.text()).toContain(summary.businessNo);
+      await router.push('/leads?page=2');
+      await flushPromises();
+      const oldSignal = api.listLeads.mock.calls[1]![2].signal as AbortSignal;
+      auth.session = {
+        ...auth.session!,
+        ...(change === 'revision'
+          ? { authorizationRevision: 2 }
+          : change === 'user'
+            ? { user: { ...auth.session!.user, id: 'operator-2' } }
+            : { department: { id: 'department-2', name: '另一部门' } }),
+      };
+      expect(wrapper.text()).not.toContain(summary.businessNo);
+      await flushPromises();
+      expect(oldSignal.aborted).toBe(true);
+      resolveOld({ ...result, items: [summary], total: 1 });
+      await flushPromises();
+      expect(wrapper.text()).not.toContain(summary.businessNo);
+      expect(wrapper.find('[data-test="create-lead"]').exists()).toBe(false);
+      wrapper.unmount();
+    },
+  );
   it('leaves workflow counters to the shared shell and keeps an empty state', async () => {
     api.listLeads.mockResolvedValue(result);
     const { wrapper } = await mountWithRoute('/leads');

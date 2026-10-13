@@ -1,5 +1,5 @@
 <script setup lang="ts">
-import { computed, onBeforeUnmount, onMounted, ref } from 'vue';
+import { computed, onBeforeUnmount, ref, watch } from 'vue';
 import { RouterLink, useRoute } from 'vue-router';
 import { ElButton } from 'element-plus/es/components/button/index.mjs';
 import RequiredFieldMark from '../../app/RequiredFieldMark.vue';
@@ -25,8 +25,16 @@ import {
 } from '../../api/materials';
 import { leadStatusLabels } from './lead-options';
 import { summarizeLeadProducts } from './lead-display';
+import { useAuthStore } from '../../stores/auth';
 
 const route = useRoute();
+const auth = useAuthStore();
+const requestScopeKey = computed(
+  () =>
+    `${String(route.params.id)}:${auth.session?.user.id ?? ''}:${auth.session?.principalType ?? ''}:${auth.session?.department?.id ?? ''}:${auth.session?.authorizationRevision ?? ''}`,
+);
+let contextGeneration = 0;
+const downloadRequests = new Set<AbortController>();
 const state = ref<'loading' | 'ready' | 'missing' | 'failed'>('loading');
 const lead = ref<LeadDetail>();
 const customerName = computed(
@@ -150,15 +158,20 @@ function safeProductUrl(value: string | null): string | null {
   }
 }
 async function load(): Promise<void> {
+  const generation = contextGeneration;
   request?.abort();
   const controller = new AbortController();
   request = controller;
   state.value = 'loading';
+  lead.value = undefined;
+  screenshots.value = [];
+  notaryOffices.value = [];
+  notaryOfficeCanCreate.value = false;
   try {
     const current = await getLead(String(route.params.id), {
       signal: controller.signal,
     });
-    if (controller.signal.aborted) return;
+    if (controller.signal.aborted || generation !== contextGeneration) return;
     lead.value = current;
     const [materials, officeResponse] = await Promise.all([
       listOwnerMaterials('LEAD', current.id, {
@@ -169,7 +182,7 @@ async function load(): Promise<void> {
         ? listNotaryOffices({ signal: controller.signal }).catch(() => null)
         : Promise.resolve(null),
     ]);
-    if (controller.signal.aborted) return;
+    if (controller.signal.aborted || generation !== contextGeneration) return;
     notaryOffices.value = officeResponse?.items ?? [];
     notaryOfficeCanCreate.value = officeResponse?.capabilities.create ?? false;
     notaryOfficeLoadError.value =
@@ -219,9 +232,12 @@ async function load(): Promise<void> {
       (id) =>
         screenshots.value.some((screenshot) => screenshot.versionId === id),
     );
-    if (!controller.signal.aborted) state.value = 'ready';
+    if (!controller.signal.aborted && generation === contextGeneration)
+      state.value = 'ready';
   } catch (error) {
-    if (controller.signal.aborted) return;
+    if (controller.signal.aborted || generation !== contextGeneration) return;
+    lead.value = undefined;
+    screenshots.value = [];
     state.value =
       error instanceof ApiError && error.code === 'RESOURCE_NOT_FOUND'
         ? 'missing'
@@ -232,11 +248,17 @@ async function downloadScreenshot(
   materialId: string,
   versionId: string,
 ): Promise<void> {
+  const generation = contextGeneration;
+  const controller = new AbortController();
+  downloadRequests.add(controller);
   downloadError.value = '';
   try {
-    await downloadMaterialVersion(materialId, versionId);
+    await downloadMaterialVersion(materialId, versionId, controller.signal);
   } catch {
+    if (controller.signal.aborted || generation !== contextGeneration) return;
     downloadError.value = '截图下载失败，请稍后重试';
+  } finally {
+    downloadRequests.delete(controller);
   }
 }
 function makePushKey(): string {
@@ -359,6 +381,7 @@ function transferErrorMessage(error: unknown): string {
   return '移交公证失败；已保留本次选择，可安全重试';
 }
 async function addNotaryOffice(): Promise<void> {
+  const generation = contextGeneration;
   if (!notaryOfficeCanCreate.value || notaryOfficeCreating.value) return;
   const name = notaryOfficeName.value.trim();
   if (!name) return;
@@ -366,19 +389,22 @@ async function addNotaryOffice(): Promise<void> {
   notaryOfficeError.value = '';
   try {
     const office = await createNotaryOffice(name);
+    if (generation !== contextGeneration) return;
     notaryOffices.value = [...notaryOffices.value, office];
     notaryOfficeId.value = office.id;
     notaryOfficeName.value = '';
   } catch (error) {
+    if (generation !== contextGeneration) return;
     notaryOfficeError.value =
       error instanceof ApiError && error.code === 'ACTION_FORBIDDEN'
         ? '当前账号没有维护公证处的权限'
         : '新增公证处失败，请检查名称后重试';
   } finally {
-    notaryOfficeCreating.value = false;
+    if (generation === contextGeneration) notaryOfficeCreating.value = false;
   }
 }
 async function transferToNotary(): Promise<void> {
+  const generation = contextGeneration;
   if (!lead.value || !transferAvailable.value || transferSubmitting.value)
     return;
   if (!transferRetryLocked.value && !transferFormValid.value) return;
@@ -414,6 +440,7 @@ async function transferToNotary(): Promise<void> {
   transferSubmitting.value = true;
   try {
     await createNotaryMatter(lead.value.id, frozenTransferInput, transferKey);
+    if (generation !== contextGeneration) return;
     notifyWorkflowChanged();
     transferKey = undefined;
     frozenTransferInput = undefined;
@@ -426,12 +453,14 @@ async function transferToNotary(): Promise<void> {
     selectedContentVersionIds.value = [];
     await load();
   } catch (error) {
+    if (generation !== contextGeneration) return;
     transferError.value = transferErrorMessage(error);
   } finally {
-    transferSubmitting.value = false;
+    if (generation === contextGeneration) transferSubmitting.value = false;
   }
 }
 async function archiveNoEvidence(): Promise<void> {
+  const generation = contextGeneration;
   if (
     !lead.value ||
     !lead.value.capabilities.evidenceDecide ||
@@ -464,6 +493,7 @@ async function archiveNoEvidence(): Promise<void> {
       frozenEvidenceVersion,
       evidenceKey,
     );
+    if (generation !== contextGeneration) return;
     notifyWorkflowChanged();
     evidenceKey = undefined;
     frozenEvidenceReason = undefined;
@@ -472,6 +502,7 @@ async function archiveNoEvidence(): Promise<void> {
     evidenceSuccess.value = '已判定不取证，线索已归档';
     await load();
   } catch (error) {
+    if (generation !== contextGeneration) return;
     const code = error instanceof ApiError ? error.code : '';
     if (code === 'VERSION_CONFLICT' || code === 'INVALID_STATE') {
       evidenceKey = undefined;
@@ -495,10 +526,11 @@ async function archiveNoEvidence(): Promise<void> {
         '不取证归档失败；原因和请求键已锁定，可安全重试或刷新查看结果';
     }
   } finally {
-    evidenceSubmitting.value = false;
+    if (generation === contextGeneration) evidenceSubmitting.value = false;
   }
 }
 async function applyWithdrawal(): Promise<void> {
+  const generation = contextGeneration;
   if (
     !lead.value ||
     !lead.value.capabilities.withdrawApply ||
@@ -531,6 +563,7 @@ async function applyWithdrawal(): Promise<void> {
       frozenWithdrawalVersion,
       withdrawalKey,
     );
+    if (generation !== contextGeneration) return;
     withdrawalKey = undefined;
     frozenWithdrawalReason = undefined;
     frozenWithdrawalVersion = undefined;
@@ -539,12 +572,14 @@ async function applyWithdrawal(): Promise<void> {
       '已提交撤回申请；线索仍保持归档，等待原客户企业确认';
     await load();
   } catch (error) {
+    if (generation !== contextGeneration) return;
     withdrawalError.value = withdrawalErrorMessage(error);
   } finally {
-    withdrawalSubmitting.value = false;
+    if (generation === contextGeneration) withdrawalSubmitting.value = false;
   }
 }
 async function push(): Promise<void> {
+  const generation = contextGeneration;
   if (!lead.value || !lead.value.capabilities.push || pushing.value) return;
   if (
     !globalThis.window.confirm(
@@ -558,18 +593,78 @@ async function push(): Promise<void> {
   pushKey ??= makePushKey();
   try {
     await pushLead(lead.value.id, lead.value.version, pushKey);
+    if (generation !== contextGeneration) return;
     notifyWorkflowChanged();
     pushKey = undefined;
     pushSuccess.value = '已推送给客户审核，客户下次读取立即可见';
     await load();
   } catch (error) {
+    if (generation !== contextGeneration) return;
     pushError.value = pushErrorMessage(error);
   } finally {
-    pushing.value = false;
+    if (generation === contextGeneration) pushing.value = false;
   }
 }
-onMounted(() => void load());
-onBeforeUnmount(() => request?.abort());
+function clearContext(): void {
+  contextGeneration += 1;
+  request?.abort();
+  for (const controller of downloadRequests) controller.abort();
+  downloadRequests.clear();
+  lead.value = undefined;
+  screenshots.value = [];
+  notaryOffices.value = [];
+  notaryOfficeCanCreate.value = false;
+  selectedProductIds.value = [];
+  selectedContentVersionIds.value = [];
+  for (const field of [
+    downloadError,
+    pushError,
+    pushSuccess,
+    withdrawalReason,
+    withdrawalError,
+    withdrawalSuccess,
+    evidenceReason,
+    evidenceError,
+    evidenceSuccess,
+    notaryOfficeLoadError,
+    notaryOfficeName,
+    notaryOfficeError,
+    notaryOfficeId,
+    batchPurpose,
+    transferError,
+    transferSuccess,
+  ])
+    field.value = '';
+  for (const field of [
+    pushing,
+    withdrawalSubmitting,
+    withdrawalRetryLocked,
+    evidenceSubmitting,
+    evidenceRetryLocked,
+    notaryOfficeCreating,
+    transferSubmitting,
+    transferRetryLocked,
+  ])
+    field.value = false;
+  pushKey = undefined;
+  withdrawalKey = undefined;
+  frozenWithdrawalReason = undefined;
+  frozenWithdrawalVersion = undefined;
+  evidenceKey = undefined;
+  frozenEvidenceReason = undefined;
+  frozenEvidenceVersion = undefined;
+  transferKey = undefined;
+  frozenTransferInput = undefined;
+}
+watch(
+  requestScopeKey,
+  () => {
+    clearContext();
+    void load();
+  },
+  { immediate: true, flush: 'sync' },
+);
+onBeforeUnmount(clearContext);
 </script>
 
 <template>

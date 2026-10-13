@@ -1,6 +1,8 @@
 import { flushPromises, mount } from '@vue/test-utils';
 import { createMemoryHistory, createRouter } from 'vue-router';
 import { beforeEach, describe, expect, it, vi } from 'vitest';
+import { createPinia, setActivePinia } from 'pinia';
+import { useAuthStore } from '../../stores/auth';
 import { ApiError } from '../../api/http';
 import type { LeadDetail } from '../../api/leads';
 import LeadDetailPage from './LeadDetailPage.vue';
@@ -88,6 +90,19 @@ const lead = {
 } satisfies LeadDetail;
 
 async function mountPage() {
+  const pinia = createPinia();
+  setActivePinia(pinia);
+  useAuthStore().session = {
+    principalType: 'INTERNAL',
+    user: { id: 'operator-1', displayName: '运营甲', username: 'operator' },
+    department: { id: 'department-1', name: '知产部' },
+    departments: [{ id: 'department-1', name: '知产部' }],
+    customer: null,
+    notaryOffice: null,
+    authorizationRevision: 1,
+    expiresAt: '2099-01-01T00:00:00.000Z',
+    csrfToken: 'test-csrf',
+  };
   const router = createRouter({
     history: createMemoryHistory(),
     routes: [
@@ -98,7 +113,9 @@ async function mountPage() {
   });
   await router.push('/leads/lead-1');
   await router.isReady();
-  const wrapper = mount(LeadDetailPage, { global: { plugins: [router] } });
+  const wrapper = mount(LeadDetailPage, {
+    global: { plugins: [pinia, router] },
+  });
   await flushPromises();
   return wrapper;
 }
@@ -158,6 +175,104 @@ beforeEach(() => {
 });
 
 describe('LeadDetailPage', () => {
+  it.each(['user', 'department', 'revision'] as const)(
+    'clears sensitive detail and ignores late reads after %s changes',
+    async (change) => {
+      let resolveOld!: (value: LeadDetail) => void;
+      leadApi.getLead
+        .mockResolvedValueOnce(lead)
+        .mockImplementationOnce(
+          () =>
+            new Promise((resolve) => {
+              resolveOld = resolve;
+            }),
+        )
+        .mockRejectedValueOnce(
+          new ApiError('forbidden', 403, 'ACTION_FORBIDDEN'),
+        );
+      const wrapper = await mountPage();
+      expect(wrapper.text()).toContain('客户甲');
+      await wrapper.get('[data-test="refresh"]').trigger('click');
+      const oldSignal = leadApi.getLead.mock.calls[1]![1].signal as AbortSignal;
+      const auth = useAuthStore();
+      auth.session = {
+        ...auth.session!,
+        ...(change === 'revision'
+          ? { authorizationRevision: 2 }
+          : change === 'user'
+            ? { user: { ...auth.session!.user, id: 'operator-2' } }
+            : { department: { id: 'department-2', name: '另一部门' } }),
+      };
+      await flushPromises();
+      expect(oldSignal.aborted).toBe(true);
+      resolveOld(lead);
+      await flushPromises();
+      expect(wrapper.text()).not.toContain('客户甲');
+      expect(wrapper.text()).not.toContain('测试店铺');
+      expect(wrapper.find('[data-test="push-lead"]').exists()).toBe(false);
+      expect(
+        wrapper.find('[data-test="download-screenshot-version-1"]').exists(),
+      ).toBe(false);
+      wrapper.unmount();
+    },
+  );
+
+  it('aborts downloads and hides a late command success after identity change', async () => {
+    let resolvePush!: () => void;
+    let rejectDownload!: (error: Error) => void;
+    leadApi.pushLead.mockImplementationOnce(
+      () =>
+        new Promise<void>((resolve) => {
+          resolvePush = resolve;
+        }),
+    );
+    materialApi.downloadMaterialVersion.mockImplementationOnce(
+      () =>
+        new Promise<void>((_resolve, reject) => {
+          rejectDownload = reject;
+        }),
+    );
+    vi.spyOn(window, 'confirm').mockReturnValue(true);
+    const wrapper = await mountPage();
+    await wrapper
+      .get('[data-test="download-screenshot-version-1"]')
+      .trigger('click');
+    const downloadSignal = materialApi.downloadMaterialVersion.mock
+      .calls[0]![2] as AbortSignal;
+    await wrapper.get('[data-test="push-lead"]').trigger('click');
+    leadApi.getLead.mockRejectedValueOnce(
+      new ApiError('forbidden', 403, 'ACTION_FORBIDDEN'),
+    );
+    const auth = useAuthStore();
+    auth.session = { ...auth.session!, authorizationRevision: 2 };
+    await flushPromises();
+    expect(downloadSignal.aborted).toBe(true);
+    resolvePush();
+    rejectDownload(new Error('late error'));
+    await flushPromises();
+    expect(wrapper.text()).not.toContain('已推送给客户审核');
+    expect(wrapper.text()).not.toContain('截图下载失败');
+    expect(leadApi.getLead).toHaveBeenCalledTimes(2);
+    wrapper.unmount();
+  });
+
+  it('reloads a reused detail route without keeping the prior source', async () => {
+    const wrapper = await mountPage();
+    leadApi.getLead.mockResolvedValueOnce({
+      ...lead,
+      id: 'lead-2',
+      shopName: '另一来源店铺',
+    });
+    await wrapper.vm.$router.push('/leads/lead-2');
+    await flushPromises();
+    expect(leadApi.getLead).toHaveBeenLastCalledWith(
+      'lead-2',
+      expect.any(Object),
+    );
+    expect(wrapper.text()).toContain('另一来源店铺');
+    expect(wrapper.text()).not.toContain('测试店铺');
+    wrapper.unmount();
+  });
   it('creates the first notary matter from explicit goods, material, office and purpose selections', async () => {
     const confirm = vi.spyOn(window, 'confirm').mockReturnValue(true);
     leadApi.getLead.mockResolvedValue({
@@ -619,6 +734,7 @@ describe('LeadDetailPage', () => {
     expect(materialApi.downloadMaterialVersion).toHaveBeenCalledWith(
       'material-1',
       'version-1',
+      expect.any(AbortSignal),
     );
   });
 

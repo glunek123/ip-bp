@@ -9,9 +9,15 @@ import {
   leadStatusLabels,
 } from './lead-options';
 import { summarizeLeadProducts } from './lead-display';
+import { useAuthStore } from '../../stores/auth';
 
 const route = useRoute();
 const router = useRouter();
+const auth = useAuthStore();
+const identity = computed(
+  () =>
+    `${auth.session?.user.id ?? ''}:${auth.session?.principalType ?? ''}:${auth.session?.department?.id ?? ''}:${auth.session?.authorizationRevision ?? ''}`,
+);
 const state = ref<'loading' | 'ready' | 'failed'>('loading');
 const items = ref<Lead[]>([]);
 const displayItems = computed(() =>
@@ -50,6 +56,10 @@ async function load(): Promise<void> {
   const controller = new AbortController();
   request = controller;
   state.value = 'loading';
+  items.value = [];
+  total.value = 0;
+  canCreate.value = false;
+  const scope = identity.value;
   const page = requestedPage.value;
   const status = selectedStatus.value;
   try {
@@ -60,7 +70,12 @@ async function load(): Promise<void> {
       status,
       'LIBRARY',
     );
-    if (controller.signal.aborted) return;
+    if (
+      controller.signal.aborted ||
+      scope !== identity.value ||
+      request !== controller
+    )
+      return;
     items.value = result.items;
     total.value = result.total;
     currentPage.value = result.page;
@@ -68,7 +83,12 @@ async function load(): Promise<void> {
     canCreate.value = result.capabilities.create;
     state.value = 'ready';
   } catch {
-    if (!controller.signal.aborted) state.value = 'failed';
+    if (
+      !controller.signal.aborted &&
+      scope === identity.value &&
+      request === controller
+    )
+      state.value = 'failed';
   }
 }
 async function goToPage(page: number): Promise<void> {
@@ -91,9 +111,9 @@ function safeProductUrl(value: string | null): string | null {
   }
 }
 watch(
-  () => [route.query.page, route.query.status],
+  () => [route.query.page, route.query.status, identity.value],
   () => void load(),
-  { immediate: true },
+  { immediate: true, flush: 'sync' },
 );
 onBeforeUnmount(() => request?.abort());
 </script>
