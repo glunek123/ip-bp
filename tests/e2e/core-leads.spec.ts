@@ -1457,7 +1457,9 @@ test('real operator and client logins transfer a lead and record notary evidence
   await page.locator('[data-test="transfer-to-notary"]').click();
   await expect(page.locator('.page-head .pill')).toHaveText('已移交公证');
   await expect(
-    page.locator('[data-test="lead-products-table"]').getByText('公证移交商品'),
+    page
+      .locator('[data-test="lead-products-table"] summary')
+      .filter({ hasText: /^公证移交商品$/u }),
   ).toBeVisible();
   const matterLink = page.locator('[data-test^="matter-link-"]').first();
   await expect(matterLink).toBeVisible();

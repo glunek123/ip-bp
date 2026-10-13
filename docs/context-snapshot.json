@@ -1,6 +1,6 @@
 {
   "version": 1,
-  "recordedAt": "2026-10-13T17:39:27.955Z",
+  "recordedAt": "2026-10-13T17:54:07.317Z",
   "files": {
     ".cursor/rules/verified-feature-integration.mdc": "da673301f0440a6a9615786027dffc8e01f739a97f81cd97accef1580ac51f98",
     ".env.example": "07211cde5c2b59efc21b619b752d4c9b871f0980d2d64ca3c146ad6151fd27ca",
@@ -540,7 +540,7 @@
     "docs/spec/v0.1/READINESS.md": "d873884baff01d514f859bb4bfa429c54660d9746d83055e3e8f1535bdc7bdd3",
     "docs/spec/v0.1/README.md": "41214df80221a28e09a7e996835cc649a8d12511fbac8d2b295c4beb2a58042e",
     "docs/spec/v0.1/TECHNICAL-DESIGN.md": "c30b182c72dbf1c5aefbe1f41ecddc3497a7b24e502ae49e8d44d9e79a1b1e1d",
-    "docs/spec/v0.1/VALIDATION.md": "bef2bc65672862c5409acc05ed2732fcf91eb1333162eb87b0dbf9e172903b2a",
+    "docs/spec/v0.1/VALIDATION.md": "486a3097cf907b2174b316564d17d74ad4ecf967fa3b28f75e0056cce0b5a75e",
     "docs/spec/v0.1/modules/calendar.md": "3991b1148b13e2bf2daad951caa48935c5ed6a202b12817b3c47624ad3e0c774",
     "docs/spec/v0.1/modules/cases.md": "809142ed089c624f2a2d061971bbb6531999ad2b20a1c7968591d2b15fbcec9a",
     "docs/spec/v0.1/modules/customers.md": "dda577688b5c64baeb1dd2bb3787cbb4263f3f5868cf51b90bc39493f625f0b0",
@@ -915,7 +915,7 @@
     "tests/e2e/case-second-instance.spec.ts": "8878220c915033bd4db8962429182916b0e36d63421243864e61652f78af3c65",
     "tests/e2e/cases.spec.ts": "f590e210e25a37ba8faa0fb5e711a46bede0134143cd89a19240145f11c1b61d",
     "tests/e2e/components.spec.ts": "8d94b3b044d9ddc24c323536aba04edc08e216271ff3082705a21c1ac2796742",
-    "tests/e2e/core-leads.spec.ts": "df91035a577de948c5aaf50ef6439ec89d4d5a12a9d7af13a4adcc6777b61271",
+    "tests/e2e/core-leads.spec.ts": "6f00e4426f366afb449b19497baf23e1dfb2c0d32d1eb22510a2e7bc0a428d99",
     "tests/e2e/customer-agreement-invoice-ui.spec.ts": "0538dd6f07177751fee57d86a6b5c0ab3b2530a9756bfd56d021a7d13d3b0511",
     "tests/e2e/customer-agreement-invoice.spec.ts": "755c76aef6e9f10f5330f785dc82b62e2d8c65c669ddcdc998c2c4be42a4d12b",
     "tests/e2e/customer-agreement-migration.spec.ts": "8ac8886ca028c01a042f9a4d06ab5817642927fa3ebbf3e67b0e99ec85fb2da3",

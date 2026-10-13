@@ -1238,3 +1238,5 @@ Task C实际提交`0cc238bdffc930aecc2be7058425b2d45ee14b00`，tree`c4934c0a904b
 正式最终完整verify与同17项统一PG／Chromium组合待执行；三视口最终图片待读图确认。当前未push／main或更新5186，不称本批完成、生产可用或全部Demo完成。最终结果将在本节回填，不新建平行账本。
 
 正式verify首轮候选`7feeb001bc4d45074323ce3678768010508a6675`／tree`a6adf1982f6f8a237c62e4ef57aae0634f59ae43`，17:31:55–17:35:10 UTC exit1；严格context、Spec、架构、Prisma、类型、Lint、格式及80工具测试通过，后端1374过1失败（旧OpenAPI偏好尺寸仍5/5/3）。前端整套未给完成结果、双构建未执行，不能称通过。只将该断言同步到批准的19/19/17，不改产品或DTO规则；原首轮log/JSON与环境HMAC前后一致`343c59891dfe4d82e03a5c91faac2e1de7325b9c847f35fbaa3819c72290a627`保留。
+
+最终稳定候选`ed3dc29153c8abc0f898b10a83873c342afb1c4b`／tree`c57bf677c4007b5f0b877ed4596be85c3f36fe7e`完整`pnpm verify`于17:40:48–17:44:20 UTC退出0：80工具、1443前端、1375后端及双构建均通过。17项统一PG／Chromium于17:45:28–17:49:15 UTC为16过1失败、exit1，唯一失败为旧移交测试商品文字同时命中新summary与展开正文；新来源／权限／偏好与三视口三项通过。原结果及全部15张对照／展开截图已保全于`.local/ui-evidence/final-e2e-first-artifacts`，没有称17项通过。仅将该E2E选择器明确到商品summary，不改产品、单元、迁移、依赖或构建配置；根E2E类型／受影响Lint与格式复核后，按独立审查核定复用上述完整verify并重新固定运行同17项。原成功及失败metadata均绑定实际候选、前后干净、同HMAC`343c59891dfe4d82e03a5c91faac2e1de7325b9c847f35fbaa3819c72290a627`，不把新tree说成旧完整verify实跑。
