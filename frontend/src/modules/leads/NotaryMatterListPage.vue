@@ -23,6 +23,8 @@ import {
 } from '../../api/notary-list-preference';
 import { useAuthStore } from '../../stores/auth';
 import NotaryReturnArchiveBatchPanel from './NotaryReturnArchiveBatchPanel.vue';
+import { labelLeadPlatform } from './lead-options';
+import type { CaseStage } from '../../api/cases';
 
 const stageLabels: Record<NotaryListStage, string> = {
   PENDING_EVIDENCE: '待取证',
@@ -36,6 +38,10 @@ const stageLabels: Record<NotaryListStage, string> = {
 const route = useRoute();
 const router = useRouter();
 const auth = useAuthStore();
+const identity = computed(
+  () =>
+    `${auth.session?.user.id ?? ''}:${auth.session?.principalType ?? ''}:${auth.session?.department?.id ?? ''}:${auth.session?.authorizationRevision ?? ''}`,
+);
 const state = ref<'loading' | 'ready' | 'failed'>('loading');
 const items = ref<NotaryMatterListItem[]>([]);
 const total = ref(0);
@@ -44,12 +50,14 @@ const pageSize = ref(20);
 const preferenceState = ref<'loading' | 'ready' | 'failed'>('loading');
 const savedPreference = ref<NotaryListPreference>({
   order: [...defaultNotaryListPreference.order],
-  hidden: [],
+  hidden: [...defaultNotaryListPreference.hidden],
 });
 const draftOrder = ref<NotaryListPreferenceColumn[]>([
   ...defaultNotaryListPreference.order,
 ]);
-const draftHidden = ref<NotaryListPreference['hidden']>([]);
+const draftHidden = ref<NotaryListPreference['hidden']>([
+  ...defaultNotaryListPreference.hidden,
+]);
 const settingsOpen = ref(false);
 const preferenceMessage = ref('正在读取个人列设置。');
 const saving = ref(false);
@@ -97,7 +105,21 @@ const totalPages = computed(() =>
 );
 const columnLabels: Record<NotaryListPreferenceColumn, string> = {
   businessNo: '公证事项编号',
-  stage: '阶段',
+  stage: '案件进展',
+  rightsHolder: '权利主体',
+  platform: '平台',
+  shopName: '店铺名',
+  shopExternalId: '店铺ID',
+  transferredAt: '推送日期',
+  evidenceAt: '取证日期',
+  openingPhotos: '开箱照片',
+  certificateNo: '公证书编号',
+  senderName: '发货人',
+  senderPhone: '发货电话',
+  senderAddress: '发货地址',
+  notaryFee: '公证费',
+  investigationFee: '调查费',
+  sampleFee: '样品费',
   sourceLead: '来源线索',
   notaryOffice: '公证处',
   createdAt: '创建时间',
@@ -108,12 +130,153 @@ const optionalColumns = computed(() =>
 const visibleColumns = computed(() =>
   savedPreference.value.order.filter(
     (column) =>
-      !isOptionalColumn(column) ||
-      !savedPreference.value.hidden.includes(column),
+      column !== 'businessNo' &&
+      (!isOptionalColumn(column) ||
+        !savedPreference.value.hidden.includes(column)),
   ),
 );
+const tableWidth = computed(
+  () =>
+    48 +
+    200 +
+    visibleColumns.value.reduce(
+      (width, column) => width + columnWidth(column),
+      0,
+    ),
+);
+const caseStageLabels: Record<CaseStage, string> = {
+  PENDING_MATCH: '待匹配',
+  WAITING_COMPLAINT: '待写诉状',
+  WAITING_COMPLAINT_CONFIRMATION: '诉状待确认',
+  WAITING_COMPLAINT_STAMP: '诉状待盖章',
+  WAITING_FILING: '待提交立案',
+  WAITING_FORMAL_ACCEPTANCE: '待正式立案',
+  WAITING_HEARING: '待开庭',
+  WAITING_JUDGMENT: '待判决',
+  SECOND_INSTANCE: '二审',
+  WAITING_EXECUTION_DOCUMENTS: '待写执行材料',
+  WAITING_EXECUTION_CONFIRMATION: '执行材料待确认',
+  WAITING_EXECUTION_STAMP: '执行材料待盖章',
+  WAITING_EXECUTION_FILING: '待申请执行',
+  EXECUTING: '强制执行中',
+  WAITING_ARCHIVE: '待归档',
+};
+
+function columnWidth(column: NotaryListPreferenceColumn): number {
+  if (column === 'stage' || column === 'senderPhone') return 140;
+  if (column === 'platform') return 100;
+  if (
+    column === 'senderAddress' ||
+    column === 'certificateNo' ||
+    column === 'createdAt'
+  )
+    return 240;
+  if (
+    [
+      'transferredAt',
+      'evidenceAt',
+      'openingPhotos',
+      'notaryFee',
+      'investigationFee',
+      'sampleFee',
+    ].includes(column)
+  )
+    return 120;
+  return 160;
+}
+function isTextColumn(column: NotaryListPreferenceColumn): boolean {
+  return [
+    'rightsHolder',
+    'shopName',
+    'senderName',
+    'senderAddress',
+    'notaryOffice',
+  ].includes(column);
+}
+function isFeeColumn(column: NotaryListPreferenceColumn): boolean {
+  return ['notaryFee', 'investigationFee', 'sampleFee'].includes(column);
+}
+function feeLabel(fee: NotaryMatterListItem['fees']['notary']): string {
+  return fee.state === 'KNOWN'
+    ? `¥ ${fee.amount}`
+    : fee.state === 'PENDING'
+      ? '待定'
+      : '未登记';
+}
+function columnText(
+  matter: NotaryMatterListItem,
+  column: NotaryListPreferenceColumn,
+): string {
+  switch (column) {
+    case 'rightsHolder':
+      return matter.sourceSummary.rightsHolder.name;
+    case 'platform':
+      return labelLeadPlatform(matter.sourceSummary.platform);
+    case 'shopName':
+      return matter.sourceSummary.shopName;
+    case 'shopExternalId':
+      return matter.sourceSummary.shopExternalId ?? '未登记';
+    case 'transferredAt':
+      return matter.transferredAt;
+    case 'evidenceAt':
+      return matter.evidenceAt ?? '未登记';
+    case 'certificateNo':
+      return matter.certificateSummary?.certificateNo ?? '未登记';
+    case 'senderName':
+      return matter.openingSummary?.senderName ?? '未登记';
+    case 'senderPhone':
+      return matter.openingSummary?.senderPhone ?? '未登记';
+    case 'senderAddress':
+      return matter.openingSummary?.senderAddress ?? '未登记';
+    case 'notaryFee':
+      return feeLabel(matter.fees.notary);
+    case 'investigationFee':
+      return feeLabel(matter.fees.investigation);
+    case 'sampleFee':
+      return feeLabel(matter.fees.sample);
+    case 'notaryOffice':
+      return matter.notaryOffice.name;
+    case 'createdAt':
+      return formatTime(matter.createdAt);
+    default:
+      return '';
+  }
+}
+function matterActions(
+  matter: NotaryMatterListItem,
+): Array<{ label: string; anchor: string }> {
+  const actions = [
+    {
+      enabled: matter.capabilities.recordEvidence,
+      label: '登记取证',
+      anchor: 'evidence-form',
+    },
+    {
+      enabled: matter.capabilities.recordOpening,
+      label: '登记开箱',
+      anchor: 'opening-form',
+    },
+    {
+      enabled: matter.capabilities.reviewOpening,
+      label: '审核',
+      anchor: 'review-form',
+    },
+    {
+      enabled: matter.capabilities.decideIssuance,
+      label: '确认',
+      anchor: 'issuance-form',
+    },
+    {
+      enabled: matter.capabilities.archiveReturn,
+      label: '处理退货',
+      anchor: 'return-archive-form',
+    },
+  ];
+  return actions.filter((action) => action.enabled);
+}
 const exportScopeKey = computed(() =>
   JSON.stringify({
+    identity: identity.value,
     userId: auth.session?.user.id ?? '',
     departmentId: auth.session?.department?.id ?? '',
     stage: selectedStage.value ?? null,
@@ -123,8 +286,7 @@ const exportScopeKey = computed(() =>
   }),
 );
 const batchScopeKey = computed(
-  () =>
-    `${auth.session?.user.id ?? ''}:${auth.session?.department?.id ?? ''}:${selectedStage.value ?? ''}`,
+  () => `${identity.value}:${selectedStage.value ?? ''}`,
 );
 const pendingBatchForScope = computed(
   () => pendingBatches.value[batchScopeKey.value] ?? null,
@@ -349,6 +511,7 @@ function setDraft(preference: NotaryListPreference): void {
 }
 
 async function loadPreference(userId: string | undefined): Promise<void> {
+  const scope = identity.value;
   preferenceRequest?.abort();
   saveRequest?.abort();
   preferenceGeneration += 1;
@@ -375,7 +538,7 @@ async function loadPreference(userId: string | undefined): Promise<void> {
     if (
       controller.signal.aborted ||
       generation !== preferenceGeneration ||
-      auth.session?.user.id !== userId
+      identity.value !== scope
     )
       return;
     savedPreference.value = copyPreference(preference);
@@ -386,7 +549,7 @@ async function loadPreference(userId: string | undefined): Promise<void> {
     if (
       controller.signal.aborted ||
       generation !== preferenceGeneration ||
-      auth.session?.user.id !== userId
+      identity.value !== scope
     )
       return;
     preferenceState.value = 'failed';
@@ -420,6 +583,7 @@ function toggleDraftColumn(
 }
 
 async function savePreference(preference: NotaryListPreference): Promise<void> {
+  const scope = identity.value;
   const userId = auth.session?.user.id;
   if (preferenceState.value !== 'ready' || !userId || saving.value) return;
   saveRequest?.abort();
@@ -435,7 +599,7 @@ async function savePreference(preference: NotaryListPreference): Promise<void> {
     if (
       controller.signal.aborted ||
       generation !== saveGeneration ||
-      auth.session?.user.id !== userId
+      identity.value !== scope
     )
       return;
     savedPreference.value = copyPreference(saved);
@@ -445,7 +609,7 @@ async function savePreference(preference: NotaryListPreference): Promise<void> {
     if (
       controller.signal.aborted ||
       generation !== saveGeneration ||
-      auth.session?.user.id !== userId
+      identity.value !== scope
     )
       return;
     preferenceMessage.value = '保存失败，草稿仍保留，可以重试。';
@@ -476,7 +640,7 @@ async function load(): Promise<void> {
   listRequest?.abort();
   const userId = auth.session?.user.id;
   const departmentId = auth.session?.department?.id;
-  const scope = `${userId ?? ''}:${departmentId ?? ''}`;
+  const scope = identity.value;
   if (currentListScope && currentListScope !== scope) {
     items.value = [];
     total.value = 0;
@@ -500,6 +664,7 @@ async function load(): Promise<void> {
     );
     if (
       controller.signal.aborted ||
+      identity.value !== scope ||
       auth.session?.user.id !== userId ||
       auth.session?.department?.id !== departmentId
     )
@@ -510,7 +675,8 @@ async function load(): Promise<void> {
     pageSize.value = result.pageSize;
     state.value = 'ready';
   } catch {
-    if (!controller.signal.aborted) state.value = 'failed';
+    if (!controller.signal.aborted && identity.value === scope)
+      state.value = 'failed';
   }
 }
 async function goToPage(page: number): Promise<void> {
@@ -530,6 +696,8 @@ watch(
     route.query.stage,
     auth.session?.user.id,
     auth.session?.department?.id,
+    auth.session?.authorizationRevision,
+    auth.session?.principalType,
   ],
   () => void load(),
   { immediate: true },
@@ -538,6 +706,8 @@ watch(
   () => [
     auth.session?.user.id,
     auth.session?.department?.id,
+    auth.session?.authorizationRevision,
+    auth.session?.principalType,
     selectedStage.value,
   ],
   () => {
@@ -555,11 +725,9 @@ watch(exportScopeKey, () => {
   )
     invalidateExport();
 });
-watch(
-  () => auth.session?.user.id,
-  (userId) => void loadPreference(userId),
-  { immediate: true },
-);
+watch(identity, () => void loadPreference(auth.session?.user.id), {
+  immediate: true,
+});
 onBeforeUnmount(() => {
   listRequest?.abort();
   preferenceRequest?.abort();
@@ -569,7 +737,7 @@ onBeforeUnmount(() => {
 </script>
 
 <template>
-  <div class="page-view">
+  <div class="page-view business-list-page">
     <main>
       <div class="page-head">
         <div>
@@ -583,7 +751,10 @@ onBeforeUnmount(() => {
           >列设置</ElButton
         >
       </div>
-      <section class="export-panel demo-card" aria-label="公证事项清单导出">
+      <section
+        class="export-panel business-list-toolbar"
+        aria-label="公证事项清单导出"
+      >
         <div class="export-actions">
           <span data-test="selected-count"
             >已选择 {{ selectedIds.length }} 项</span
@@ -712,7 +883,7 @@ onBeforeUnmount(() => {
       >
         <div class="column-settings-fixed">
           <strong>始终显示</strong>
-          <span>公证事项编号、阶段</span>
+          <span>选择、操作／公证事项编号、案件进展</span>
         </div>
         <div class="column-settings-options">
           <div
@@ -813,8 +984,26 @@ onBeforeUnmount(() => {
           <p v-if="selectedStage">可在侧栏切换其他阶段查看公证事项。</p>
           <p v-else>线索确认取证并移交后，事项会在这里出现。</p>
         </div>
-        <div v-else class="demo-table-wrap">
-          <table class="demo-table">
+        <div
+          v-else
+          class="demo-table-wrap business-list-scroll"
+          tabindex="0"
+          role="region"
+          aria-label="公证事项表格，可横向滚动"
+        >
+          <table
+            class="demo-table business-list-table"
+            :style="{ minWidth: `${tableWidth}px` }"
+          >
+            <colgroup>
+              <col style="width: 48px" />
+              <col style="width: 200px" />
+              <col
+                v-for="column in visibleColumns"
+                :key="column"
+                :style="{ width: `${columnWidth(column)}px` }"
+              />
+            </colgroup>
             <thead>
               <tr>
                 <th class="selection-column">
@@ -836,7 +1025,17 @@ onBeforeUnmount(() => {
                     "
                   />选择
                 </th>
-                <th v-for="column in visibleColumns" :key="column">
+                <th class="business-list-cell--nowrap">操作</th>
+                <th
+                  v-for="column in visibleColumns"
+                  :key="column"
+                  :data-column="column"
+                  :class="
+                    isFeeColumn(column)
+                      ? 'business-list-cell--number'
+                      : 'business-list-cell--nowrap'
+                  "
+                >
                   {{ columnLabels[column] }}
                 </th>
               </tr>
@@ -862,16 +1061,48 @@ onBeforeUnmount(() => {
                     "
                   />
                 </td>
-                <td v-for="column in visibleColumns" :key="column">
-                  <template v-if="column === 'businessNo'">
+                <td class="business-list-cell--nowrap notary-actions">
+                  <div>
+                    <RouterLink
+                      v-for="action in matterActions(matter)"
+                      :key="action.anchor"
+                      data-test="matter-action"
+                      :to="`/notary-matters/${matter.id}#${action.anchor}`"
+                      >{{ action.label }}</RouterLink
+                    >
                     <RouterLink
                       data-test="matter-link"
                       :to="`/notary-matters/${matter.id}`"
-                      >{{ matter.businessNo }}</RouterLink
+                      >详情</RouterLink
                     >
-                  </template>
-                  <template v-else-if="column === 'stage'">
+                  </div>
+                  <span class="mono notary-business-no">{{
+                    matter.businessNo
+                  }}</span>
+                </td>
+                <td
+                  v-for="column in visibleColumns"
+                  :key="column"
+                  :data-column="column"
+                  :class="
+                    isFeeColumn(column)
+                      ? 'business-list-cell--number'
+                      : isTextColumn(column)
+                        ? 'business-list-cell--text'
+                        : 'business-list-cell--nowrap'
+                  "
+                >
+                  <template v-if="column === 'stage'">
                     <span class="pill">{{ stageLabels[matter.stage] }}</span>
+                    <RouterLink
+                      v-if="matter.linkedCase"
+                      class="notary-case-link"
+                      data-test="linked-case"
+                      :to="`/cases/${matter.linkedCase.id}`"
+                      >已流转诉讼 ·
+                      {{ caseStageLabels[matter.linkedCase.stage] }}</RouterLink
+                    >
+                    <span v-else class="notary-case-link">暂无可见案件</span>
                   </template>
                   <template v-else-if="column === 'sourceLead'">
                     <RouterLink
@@ -880,11 +1111,38 @@ onBeforeUnmount(() => {
                       >{{ matter.sourceLead.businessNo }}</RouterLink
                     >
                   </template>
-                  <template v-else-if="column === 'notaryOffice'">
-                    {{ matter.notaryOffice.name }}
+                  <template v-else-if="column === 'openingPhotos'">
+                    <RouterLink
+                      v-if="
+                        matter.openingSummary &&
+                        matter.openingSummary.photoCount > 0
+                      "
+                      data-test="opening-photos-link"
+                      :to="`/notary-matters/${matter.id}#saved-opening`"
+                      >{{ matter.openingSummary.photoCount }} 张 ·
+                      查看</RouterLink
+                    >
+                    <span v-else>{{
+                      matter.openingSummary ? '0 张' : '未登记'
+                    }}</span>
+                  </template>
+                  <template v-else-if="isTextColumn(column)">
+                    <details
+                      v-if="columnText(matter, column) !== '未登记'"
+                      class="notary-long-text"
+                      :style="{ maxWidth: `${columnWidth(column) - 24}px` }"
+                    >
+                      <summary
+                        :aria-label="`展开${columnLabels[column]}：${columnText(matter, column)}`"
+                      >
+                        <span>{{ columnText(matter, column) }}</span>
+                      </summary>
+                      <p>{{ columnText(matter, column) }}</p>
+                    </details>
+                    <span v-else>未登记</span>
                   </template>
                   <template v-else>
-                    <span class="mono">{{ formatTime(matter.createdAt) }}</span>
+                    <span class="mono">{{ columnText(matter, column) }}</span>
                   </template>
                 </td>
               </tr>
@@ -893,7 +1151,7 @@ onBeforeUnmount(() => {
         </div>
         <nav
           v-if="state === 'ready' && totalPages > 1"
-          class="lead-pagination"
+          class="lead-pagination business-list-footer"
           aria-label="公证事项列表分页"
         >
           <ElButton
@@ -916,6 +1174,40 @@ onBeforeUnmount(() => {
 </template>
 
 <style scoped>
+.demo-table.business-list-table {
+  table-layout: auto;
+}
+
+.notary-actions a + a {
+  margin-left: 0.75rem;
+}
+
+.notary-business-no,
+.notary-case-link {
+  display: block;
+  margin-top: 0.25rem;
+  white-space: nowrap;
+}
+
+.notary-long-text summary {
+  cursor: pointer;
+}
+
+.notary-long-text summary span {
+  display: -webkit-box;
+  -webkit-box-orient: vertical;
+  -webkit-line-clamp: 2;
+  overflow: hidden;
+  overflow-wrap: anywhere;
+  white-space: normal;
+}
+
+.notary-long-text p {
+  margin: 0.5rem 0 0;
+  overflow-wrap: anywhere;
+  white-space: normal;
+}
+
 .column-settings {
   margin-bottom: 1rem;
 }

@@ -1,10 +1,13 @@
 <script setup lang="ts">
-import { onBeforeUnmount, onMounted, ref } from 'vue';
+import { computed, onBeforeUnmount, ref, watch } from 'vue';
 import { RouterLink, useRoute } from 'vue-router';
 import { ElButton } from 'element-plus/es/components/button/index.mjs';
 import { ApiError } from '../../api/http';
 import RequiredFieldMark from '../../app/RequiredFieldMark.vue';
 import { notifyWorkflowChanged } from '../../app/workflow-events';
+import { labelLeadPlatform } from './lead-options';
+import type { CaseStage } from '../../api/cases';
+import { useAuthStore } from '../../stores/auth';
 import {
   deleteMaterial,
   downloadMaterialVersion,
@@ -28,7 +31,16 @@ import {
 } from '../../api/notary';
 
 const route = useRoute();
+const auth = useAuthStore();
+const requestScopeKey = computed(
+  () =>
+    `${String(route.params.id)}:${auth.session?.user.id ?? ''}:${auth.session?.principalType ?? ''}:${auth.session?.department?.id ?? ''}:${auth.session?.authorizationRevision ?? ''}`,
+);
+let contextGeneration = 0;
+const downloadRequests = new Set<AbortController>();
 const state = ref<'loading' | 'ready' | 'missing' | 'failed'>('loading');
+type DetailElement = InstanceType<typeof globalThis.HTMLElement>;
+const detailRoot = ref<DetailElement>();
 const matter = ref<NotaryMatterDetail>();
 const downloadError = ref('');
 const evidenceDate = ref('');
@@ -104,7 +116,34 @@ let issuanceSubmissionFingerprint = '';
 let returnArchiveIdempotencyKey = '';
 let returnArchiveSubmissionFingerprint = '';
 let request: AbortController | undefined;
+let openingMaterialsRequest: AbortController | undefined;
 let nextOpeningPhotoLocalId = 1;
+
+const caseStageLabels: Record<CaseStage, string> = {
+  PENDING_MATCH: '待匹配',
+  WAITING_COMPLAINT: '待写诉状',
+  WAITING_COMPLAINT_CONFIRMATION: '诉状待确认',
+  WAITING_COMPLAINT_STAMP: '诉状待盖章',
+  WAITING_FILING: '待提交立案',
+  WAITING_FORMAL_ACCEPTANCE: '待正式立案',
+  WAITING_HEARING: '待开庭',
+  WAITING_JUDGMENT: '待判决',
+  SECOND_INSTANCE: '二审',
+  WAITING_EXECUTION_DOCUMENTS: '待写执行材料',
+  WAITING_EXECUTION_CONFIRMATION: '执行材料待确认',
+  WAITING_EXECUTION_STAMP: '执行材料待盖章',
+  WAITING_EXECUTION_FILING: '待申请执行',
+  EXECUTING: '强制执行中',
+  WAITING_ARCHIVE: '待归档',
+};
+
+function feeLabel(fee: NotaryMatterDetail['fees']['notary']): string {
+  return fee.state === 'KNOWN'
+    ? `${fee.amount} 元`
+    : fee.state === 'PENDING'
+      ? '待定'
+      : '未登记';
+}
 
 function formatTime(value: string): string {
   return new Date(value).toLocaleString('zh-CN', {
@@ -132,28 +171,39 @@ function isReviewed(value: NotaryMatterDetail | undefined): boolean {
 }
 
 async function load(): Promise<boolean> {
+  const generation = contextGeneration;
   evidenceIdempotencyKey = '';
   evidenceSubmissionFingerprint = '';
   request?.abort();
   const controller = new AbortController();
   request = controller;
   state.value = 'loading';
+  matter.value = undefined;
+  if (!auth.session || auth.session.principalType !== 'INTERNAL') {
+    state.value = 'missing';
+    return false;
+  }
   try {
     const current = await getNotaryMatter(String(route.params.id), {
       signal: controller.signal,
     });
-    if (controller.signal.aborted) return false;
+    if (controller.signal.aborted || generation !== contextGeneration)
+      return false;
     matter.value = current;
     state.value = 'ready';
-    if (current.stage === 'WAITING_UNBOX') {
+    if (
+      current.stage === 'WAITING_UNBOX' &&
+      current.capabilities.recordOpening
+    ) {
       await refreshOpeningPhotos(current.id);
     } else {
       openingPhotos.value = [];
       openingMaterialsError.value = '';
     }
-    return true;
+    return generation === contextGeneration && !controller.signal.aborted;
   } catch (error) {
-    if (controller.signal.aborted) return false;
+    if (controller.signal.aborted || generation !== contextGeneration)
+      return false;
     state.value =
       error instanceof ApiError && error.code === 'RESOURCE_NOT_FOUND'
         ? 'missing'
@@ -204,7 +254,10 @@ function openingPhotoDraftsFromMaterials(
 }
 
 async function refreshOpeningPhotos(matterId: string): Promise<void> {
+  const generation = contextGeneration;
   if (refreshingOpeningPhotos.value) return;
+  const controller = new AbortController();
+  openingMaterialsRequest = controller;
   refreshingOpeningPhotos.value = true;
   openingMaterialsError.value = '';
   const selectedIds = new Set(
@@ -213,7 +266,10 @@ async function refreshOpeningPhotos(matterId: string): Promise<void> {
       .map((photo) => photo.contentVersionId as string),
   );
   try {
-    const result = await listOwnerMaterials('NOTARY_MATTER', matterId);
+    const result = await listOwnerMaterials('NOTARY_MATTER', matterId, {
+      signal: controller.signal,
+    });
+    if (controller.signal.aborted || generation !== contextGeneration) return;
     const serverPhotos = openingPhotoDraftsFromMaterials(
       result.items,
       selectedIds,
@@ -223,15 +279,17 @@ async function refreshOpeningPhotos(matterId: string): Promise<void> {
     );
     openingPhotos.value = [...serverPhotos, ...localPhotos];
   } catch {
+    if (generation !== contextGeneration) return;
     openingMaterialsError.value = '开箱照片列表读取失败，请刷新重试';
   } finally {
-    refreshingOpeningPhotos.value = false;
+    if (generation === contextGeneration) refreshingOpeningPhotos.value = false;
   }
 }
 
 async function uploadOpeningFiles(
   event: InstanceType<typeof globalThis.Event>,
 ): Promise<void> {
+  const generation = contextGeneration;
   if (
     uploadingOpeningPhotos.value ||
     deletingOpeningMaterialId.value !== null ||
@@ -272,13 +330,17 @@ async function uploadOpeningFiles(
   if (accepted.length === 0) return;
   uploadingOpeningPhotos.value = true;
   try {
-    for (const photo of accepted) await uploadOpeningPhoto(photo);
+    for (const photo of accepted) {
+      if (generation !== contextGeneration) return;
+      await uploadOpeningPhoto(photo);
+    }
   } finally {
-    uploadingOpeningPhotos.value = false;
+    if (generation === contextGeneration) uploadingOpeningPhotos.value = false;
   }
 }
 
 async function uploadOpeningPhoto(photo: OpeningPhotoDraft): Promise<void> {
+  const generation = contextGeneration;
   if (!photo.file) return;
   photo.error = undefined;
   photo.uploading = true;
@@ -290,6 +352,7 @@ async function uploadOpeningPhoto(photo: OpeningPhotoDraft): Promise<void> {
       purpose: 'NOTARY_OPENING_PHOTO',
       file: photo.file,
     });
+    if (generation !== contextGeneration) return;
     photo.materialId = uploaded.materialId;
     photo.contentVersionId = uploaded.contentVersionId;
     photo.originalFilename = uploaded.originalFilename;
@@ -297,19 +360,21 @@ async function uploadOpeningPhoto(photo: OpeningPhotoDraft): Promise<void> {
     photo.selected = true;
     await refreshOpeningPhotos(matter.value?.id ?? String(route.params.id));
   } catch {
+    if (generation !== contextGeneration) return;
     photo.error = '上传失败，可移除后重试';
   } finally {
-    photo.uploading = false;
+    if (generation === contextGeneration) photo.uploading = false;
   }
 }
 
 async function retryOpeningPhoto(photo: OpeningPhotoDraft): Promise<void> {
+  const generation = contextGeneration;
   if (!photo.file) return;
   uploadingOpeningPhotos.value = true;
   try {
     await uploadOpeningPhoto(photo);
   } finally {
-    uploadingOpeningPhotos.value = false;
+    if (generation === contextGeneration) uploadingOpeningPhotos.value = false;
   }
 }
 
@@ -327,6 +392,7 @@ function removeLocalOpeningPhoto(localId: number): void {
 }
 
 async function deleteOpeningPhoto(photo: OpeningPhotoDraft): Promise<void> {
+  const generation = contextGeneration;
   if (
     !photo.materialId ||
     photo.version === null ||
@@ -342,17 +408,21 @@ async function deleteOpeningPhoto(photo: OpeningPhotoDraft): Promise<void> {
   photo.error = undefined;
   try {
     await deleteMaterial(photo.materialId, photo.version);
+    if (generation !== contextGeneration) return;
     openingPhotos.value = openingPhotos.value.filter(
       (candidate) => candidate.materialId !== photo.materialId,
     );
   } catch {
+    if (generation !== contextGeneration) return;
     photo.error = '删除失败，材料仍保留在待提交列表中';
   } finally {
-    deletingOpeningMaterialId.value = null;
+    if (generation === contextGeneration)
+      deletingOpeningMaterialId.value = null;
   }
 }
 
 async function submitOpening(): Promise<void> {
+  const generation = contextGeneration;
   openingError.value = '';
   openingSuccess.value = '';
   openingUploadError.value = '';
@@ -401,8 +471,10 @@ async function submitOpening(): Promise<void> {
   submittingOpening.value = true;
   try {
     await recordNotaryOpening(current.id, input, openingIdempotencyKey);
+    if (generation !== contextGeneration) return;
     notifyWorkflowChanged();
     await load();
+    if (generation !== contextGeneration) return;
     if (hasSavedOpening(matter.value)) {
       openingPhotos.value = [];
       openingIdempotencyKey = '';
@@ -412,6 +484,7 @@ async function submitOpening(): Promise<void> {
       openingError.value = '提交已受理，但暂时无法读取保存结果，请刷新确认。';
     }
   } catch (error) {
+    if (generation !== contextGeneration) return;
     openingError.value =
       error instanceof ApiError &&
       ['VERSION_CONFLICT', 'IDEMPOTENCY_CONFLICT', 'INVALID_STATE'].includes(
@@ -420,7 +493,7 @@ async function submitOpening(): Promise<void> {
         ? '事项状态或提交内容已变化，请刷新后再试。'
         : '开箱记录提交失败，请检查网络后重试。';
   } finally {
-    submittingOpening.value = false;
+    if (generation === contextGeneration) submittingOpening.value = false;
   }
 }
 
@@ -428,11 +501,21 @@ async function downloadMaterial(
   materialId: string,
   contentVersionId: string,
 ): Promise<void> {
+  const generation = contextGeneration;
+  const controller = new AbortController();
+  downloadRequests.add(controller);
   downloadError.value = '';
   try {
-    await downloadMaterialVersion(materialId, contentVersionId);
+    await downloadMaterialVersion(
+      materialId,
+      contentVersionId,
+      controller.signal,
+    );
   } catch {
+    if (controller.signal.aborted || generation !== contextGeneration) return;
     downloadError.value = '附件下载失败，请稍后重试';
+  } finally {
+    downloadRequests.delete(controller);
   }
 }
 
@@ -511,6 +594,7 @@ function readReturnAmount(
 }
 
 async function submitReturnArchive(): Promise<void> {
+  const generation = contextGeneration;
   returnArchiveError.value = '';
   returnArchiveSuccess.value = '';
   const current = matter.value;
@@ -573,8 +657,10 @@ async function submitReturnArchive(): Promise<void> {
   submittingReturnArchive.value = true;
   try {
     await archiveNotaryReturn(current.id, input, returnArchiveIdempotencyKey);
+    if (generation !== contextGeneration) return;
     notifyWorkflowChanged();
     const loaded = await load();
+    if (generation !== contextGeneration) return;
     if (
       loaded &&
       matter.value?.returnArchive?.returnChoice === input.returnChoice
@@ -591,6 +677,7 @@ async function submitReturnArchive(): Promise<void> {
         '归档已提交，但暂时无法读取保存结果；可使用相同请求键重试或刷新确认。';
     }
   } catch (error) {
+    if (generation !== contextGeneration) return;
     const code = error instanceof ApiError ? error.code : '';
     if (code === 'VERSION_CONFLICT' || code === 'INVALID_STATE') {
       returnArchiveIdempotencyKey = '';
@@ -617,11 +704,12 @@ async function submitReturnArchive(): Promise<void> {
         '退货归档失败；可使用相同请求键重试或刷新查看结果。';
     }
   } finally {
-    submittingReturnArchive.value = false;
+    if (generation === contextGeneration) submittingReturnArchive.value = false;
   }
 }
 
 async function submitIssuanceDecision(): Promise<void> {
+  const generation = contextGeneration;
   issuanceError.value = '';
   issuanceSuccess.value = '';
   const current = matter.value;
@@ -648,8 +736,10 @@ async function submitIssuanceDecision(): Promise<void> {
   submittingIssuance.value = true;
   try {
     await decideNotaryIssuance(current.id, input, issuanceIdempotencyKey);
+    if (generation !== contextGeneration) return;
     notifyWorkflowChanged();
     const loaded = await load();
+    if (generation !== contextGeneration) return;
     const decision = matter.value?.issuanceDecision;
     if (loaded && decision?.decision === input.decision) {
       issuanceSuccess.value = `决定已保存：${input.decision === 'ISSUE' ? '待出证' : '待退货'}。`;
@@ -664,6 +754,7 @@ async function submitIssuanceDecision(): Promise<void> {
         '决定已提交，但暂时无法读取保存结果；可使用相同请求键安全重试或刷新确认。';
     }
   } catch (error) {
+    if (generation !== contextGeneration) return;
     const code = error instanceof ApiError ? error.code : '';
     if (code === 'VERSION_CONFLICT' || code === 'INVALID_STATE') {
       issuanceIdempotencyKey = '';
@@ -694,11 +785,12 @@ async function submitIssuanceDecision(): Promise<void> {
         '出证决定失败；可使用相同请求键重试或刷新查看结果。';
     }
   } finally {
-    submittingIssuance.value = false;
+    if (generation === contextGeneration) submittingIssuance.value = false;
   }
 }
 
 async function submitOpeningReview(): Promise<void> {
+  const generation = contextGeneration;
   reviewError.value = '';
   reviewSuccess.value = '';
   const current = matter.value;
@@ -735,8 +827,10 @@ async function submitOpeningReview(): Promise<void> {
   submittingReview.value = true;
   try {
     await reviewNotaryOpening(current.id, input, reviewIdempotencyKey);
+    if (generation !== contextGeneration) return;
     notifyWorkflowChanged();
     const loaded = await load();
+    if (generation !== contextGeneration) return;
     if (
       loaded &&
       isReviewed(matter.value) &&
@@ -752,6 +846,7 @@ async function submitOpeningReview(): Promise<void> {
       reviewError.value = '审核已提交，但暂时无法读取保存结果，请刷新确认。';
     }
   } catch (error) {
+    if (generation !== contextGeneration) return;
     const code = error instanceof ApiError ? error.code : '';
     if (code === 'VERSION_CONFLICT' || code === 'INVALID_STATE') {
       reviewIdempotencyKey = '';
@@ -780,7 +875,7 @@ async function submitOpeningReview(): Promise<void> {
       reviewError.value = '开箱审核失败，请稍后重试或刷新查看结果。';
     }
   } finally {
-    submittingReview.value = false;
+    if (generation === contextGeneration) submittingReview.value = false;
   }
 }
 
@@ -798,6 +893,7 @@ function removeLogisticsRow(index: number): void {
 }
 
 async function submitEvidence(): Promise<void> {
+  const generation = contextGeneration;
   evidenceErrors.value = [];
   evidenceError.value = '';
   evidenceSuccess.value = '';
@@ -855,16 +951,19 @@ async function submitEvidence(): Promise<void> {
   }
   try {
     await recordNotaryEvidence(current.id, input, evidenceIdempotencyKey);
+    if (generation !== contextGeneration) return;
     notifyWorkflowChanged();
     evidenceIdempotencyKey = '';
     evidenceSubmissionFingerprint = '';
     const loaded = await load();
+    if (generation !== contextGeneration) return;
     if (loaded && hasSavedEvidence(matter.value)) {
       evidenceSuccess.value = '取证物流已登记，事项已进入待开箱。';
     } else {
       evidenceError.value = '取证已提交，但暂时无法读取保存结果，请刷新确认。';
     }
   } catch (error) {
+    if (generation !== contextGeneration) return;
     evidenceError.value =
       error instanceof ApiError &&
       ['VERSION_CONFLICT', 'IDEMPOTENCY_CONFLICT', 'INVALID_STATE'].includes(
@@ -873,16 +972,127 @@ async function submitEvidence(): Promise<void> {
         ? '事项状态或提交内容已变化，请刷新后再试。'
         : '取证物流登记失败，请检查网络或刷新后重试。';
   } finally {
-    submittingEvidence.value = false;
+    if (generation === contextGeneration) submittingEvidence.value = false;
   }
 }
 
-onMounted(() => void load());
-onBeforeUnmount(() => request?.abort());
+function clearContext(): void {
+  contextGeneration += 1;
+  request?.abort();
+  openingMaterialsRequest?.abort();
+  for (const controller of downloadRequests) controller.abort();
+  downloadRequests.clear();
+  matter.value = undefined;
+  for (const field of [
+    downloadError,
+    evidenceDate,
+    sampleFeeState,
+    sampleFeeAmount,
+    evidenceError,
+    evidenceSuccess,
+    openingSenderName,
+    openingSenderPhone,
+    openingSenderAddress,
+    openingUploadError,
+    openingMaterialsError,
+    openingError,
+    openingSuccess,
+    reviewResult,
+    reviewReason,
+    reviewError,
+    reviewSuccess,
+    issuanceChoice,
+    issuanceError,
+    issuanceSuccess,
+    returnChoice,
+    returnReason,
+    refundState,
+    refundAmount,
+    refundPartyKind,
+    refundPartyName,
+    freightState,
+    freightAmount,
+    freightPartyKind,
+    freightPartyName,
+    returnArchiveError,
+    returnArchiveSuccess,
+  ])
+    field.value = '';
+  for (const flag of [
+    submittingEvidence,
+    uploadingOpeningPhotos,
+    submittingOpening,
+    submittingReview,
+    reviewRetryLocked,
+    reviewRetryAvailable,
+    submittingIssuance,
+    issuanceRetryLocked,
+    issuanceRetryAvailable,
+    submittingReturnArchive,
+    returnArchiveRetryLocked,
+    returnArchiveRetryAvailable,
+    refreshingOpeningPhotos,
+  ])
+    flag.value = false;
+  openingPhotos.value = [];
+  evidenceErrors.value = [];
+  deletingOpeningMaterialId.value = null;
+  logisticsRows.value = [
+    {
+      companyState: '',
+      companyValue: '',
+      trackingState: '',
+      trackingValue: '',
+    },
+  ];
+  evidenceIdempotencyKey = '';
+  evidenceSubmissionFingerprint = '';
+  openingIdempotencyKey = '';
+  openingSubmissionFingerprint = '';
+  reviewIdempotencyKey = '';
+  reviewSubmissionFingerprint = '';
+  issuanceIdempotencyKey = '';
+  issuanceSubmissionFingerprint = '';
+  returnArchiveIdempotencyKey = '';
+  returnArchiveSubmissionFingerprint = '';
+}
+
+watch(
+  requestScopeKey,
+  () => {
+    clearContext();
+    void load();
+  },
+  { immediate: true, flush: 'sync' },
+);
+onBeforeUnmount(clearContext);
+watch(
+  [() => route.hash, () => state.value, () => matter.value?.id],
+  () => {
+    if (state.value !== 'ready') return;
+    const anchor = route.hash.slice(1);
+    if (
+      ![
+        'evidence-form',
+        'opening-form',
+        'saved-opening',
+        'review-form',
+        'issuance-form',
+        'return-archive-form',
+        'certificate-summary',
+      ].includes(anchor)
+    )
+      return;
+    const target = detailRoot.value?.querySelector<DetailElement>(`#${anchor}`);
+    target?.scrollIntoView?.({ block: 'start' });
+    target?.focus({ preventScroll: true });
+  },
+  { flush: 'post' },
+);
 </script>
 
 <template>
-  <div class="page-view page-view--narrow">
+  <div ref="detailRoot" class="page-view page-view--narrow">
     <main>
       <RouterLink class="back-link" to="/notary-matters"
         >← 返回公证阶段</RouterLink
@@ -940,6 +1150,60 @@ onBeforeUnmount(() => request?.abort());
           <h2 class="form-section-title">批次信息</h2>
           <dl class="demo-detail-grid">
             <div>
+              <dt>客户</dt>
+              <dd>{{ matter.sourceSummary.customer.name }}</dd>
+            </div>
+            <div>
+              <dt>权利主体</dt>
+              <dd>{{ matter.sourceSummary.rightsHolder.name }}</dd>
+            </div>
+            <div>
+              <dt>平台</dt>
+              <dd>{{ labelLeadPlatform(matter.sourceSummary.platform) }}</dd>
+            </div>
+            <div>
+              <dt>店铺名</dt>
+              <dd>{{ matter.sourceSummary.shopName }}</dd>
+            </div>
+            <div>
+              <dt>店铺ID</dt>
+              <dd class="mono">
+                {{ matter.sourceSummary.shopExternalId ?? '未登记' }}
+              </dd>
+            </div>
+            <div>
+              <dt>推送日期</dt>
+              <dd class="mono">{{ matter.transferredAt }}</dd>
+            </div>
+            <div>
+              <dt>取证日期</dt>
+              <dd class="mono">{{ matter.evidenceAt ?? '未登记' }}</dd>
+            </div>
+            <div>
+              <dt>开箱照片</dt>
+              <dd>
+                {{
+                  matter.openingSummary
+                    ? `${matter.openingSummary.photoCount} 张`
+                    : '未登记'
+                }}
+              </dd>
+            </div>
+            <div>
+              <dt>发货人</dt>
+              <dd>{{ matter.openingSummary?.senderName ?? '未登记' }}</dd>
+            </div>
+            <div>
+              <dt>发货电话</dt>
+              <dd class="mono">
+                {{ matter.openingSummary?.senderPhone ?? '未登记' }}
+              </dd>
+            </div>
+            <div class="detail-grid__wide">
+              <dt>发货地址</dt>
+              <dd>{{ matter.openingSummary?.senderAddress ?? '未登记' }}</dd>
+            </div>
+            <div>
               <dt>来源线索</dt>
               <dd>
                 <RouterLink
@@ -968,7 +1232,108 @@ onBeforeUnmount(() => request?.abort());
           </dl>
         </section>
         <section
-          v-if="matter.stage === 'WAITING_UNBOX'"
+          class="demo-card demo-card--pad"
+          data-test="notary-fee-summary"
+        >
+          <h2 class="form-section-title">费用摘要</h2>
+          <dl class="demo-detail-grid">
+            <div>
+              <dt>公证费</dt>
+              <dd class="mono">{{ feeLabel(matter.fees.notary) }}</dd>
+            </div>
+            <div>
+              <dt>调查费</dt>
+              <dd class="mono">{{ feeLabel(matter.fees.investigation) }}</dd>
+            </div>
+            <div>
+              <dt>样品费</dt>
+              <dd class="mono">{{ feeLabel(matter.fees.sample) }}</dd>
+            </div>
+          </dl>
+        </section>
+        <section
+          class="demo-card demo-card--pad"
+          data-test="notary-case-summary"
+        >
+          <h2 class="form-section-title">诉讼流转</h2>
+          <p v-if="matter.linkedCase">
+            已流转诉讼 · {{ caseStageLabels[matter.linkedCase.stage] }} ·
+            <RouterLink
+              data-test="linked-case"
+              :to="`/cases/${matter.linkedCase.id}`"
+              >{{ matter.linkedCase.businessNo }}</RouterLink
+            >
+          </p>
+          <p v-else>暂无可见案件</p>
+        </section>
+        <section
+          id="certificate-summary"
+          tabindex="-1"
+          class="demo-card demo-card--pad"
+          data-test="notary-certificate-summary"
+        >
+          <h2 class="form-section-title">公证书</h2>
+          <template v-if="matter.certificateSummary">
+            <dl class="demo-detail-grid">
+              <div>
+                <dt>公证书编号</dt>
+                <dd class="mono">
+                  {{ matter.certificateSummary.certificateNo }}
+                </dd>
+              </div>
+              <div>
+                <dt>出证日期</dt>
+                <dd class="mono">
+                  {{ matter.certificateSummary.certificateDate }}
+                </dd>
+              </div>
+              <div>
+                <dt>出证登记时间</dt>
+                <dd class="mono">
+                  {{ formatTime(matter.certificateSummary.issuedAt) }}
+                </dd>
+              </div>
+              <div>
+                <dt>需要披露</dt>
+                <dd>
+                  {{ matter.certificateSummary.needDisclose ? '是' : '否' }}
+                </dd>
+              </div>
+            </dl>
+            <p v-if="matter.stage === 'ARCHIVED'">本事项已出证归档。</p>
+          </template>
+          <p v-else>未登记公证书</p>
+          <ul v-if="matter.certificateFiles.length">
+            <li
+              v-for="file in matter.certificateFiles"
+              :key="`${file.purpose}:${file.contentVersionId}`"
+            >
+              {{
+                file.purpose === 'NOTARY_CERTIFICATE'
+                  ? '公证书文件'
+                  : '披露材料'
+              }}：{{ file.originalFilename }}
+              <ElButton
+                text
+                :data-test="`download-certificate-${file.contentVersionId}`"
+                @click="
+                  downloadMaterial(file.materialId, file.contentVersionId)
+                "
+                >下载附件</ElButton
+              >
+            </li>
+          </ul>
+          <p v-if="downloadError" class="field-error" role="alert">
+            {{ downloadError }}
+          </p>
+        </section>
+        <section
+          id="opening-form"
+          tabindex="-1"
+          v-if="
+            matter.stage === 'WAITING_UNBOX' &&
+            matter.capabilities.recordOpening
+          "
           class="demo-card demo-card--pad"
           data-test="opening-form"
         >
@@ -1121,6 +1486,8 @@ onBeforeUnmount(() => request?.abort());
           </form>
         </section>
         <section
+          id="saved-opening"
+          tabindex="-1"
           v-else-if="matter.opening"
           class="demo-card demo-card--pad"
           data-test="saved-opening"
@@ -1156,6 +1523,8 @@ onBeforeUnmount(() => request?.abort());
           "
           class="demo-card demo-card--pad"
           data-test="opening-review-section"
+          id="review-form"
+          tabindex="-1"
         >
           <h2 class="form-section-title">开箱审核</h2>
           <p>请选择本批次的审核结论。</p>
@@ -1251,6 +1620,8 @@ onBeforeUnmount(() => request?.abort());
           "
           class="demo-card demo-card--pad"
           data-test="issuance-decision-section"
+          id="issuance-form"
+          tabindex="-1"
         >
           <h2 class="form-section-title">是否出证</h2>
           <p>选择 ISSUE → 待出证，或 NO_ISSUE → 待退货。决定保存后不可修改。</p>
@@ -1315,6 +1686,8 @@ onBeforeUnmount(() => request?.abort());
           "
           class="demo-card demo-card--pad"
           data-test="return-archive-form"
+          id="return-archive-form"
+          tabindex="-1"
         >
           <h2 class="form-section-title">办理退货归档</h2>
           <p>提交后事项将不可逆地归档；本操作不会发起付款。</p>
@@ -1556,6 +1929,8 @@ onBeforeUnmount(() => request?.abort());
           "
           class="demo-card demo-card--pad"
           data-test="evidence-form"
+          id="evidence-form"
+          tabindex="-1"
         >
           <h2 class="form-section-title">登记取证物流</h2>
           <p>提交后事项将进入待开箱。</p>
@@ -1753,3 +2128,19 @@ onBeforeUnmount(() => request?.abort());
     </main>
   </div>
 </template>
+
+<style scoped>
+.demo-detail-grid dd,
+.demo-card li,
+.demo-card p {
+  overflow-wrap: anywhere;
+}
+
+.demo-detail-grid .mono {
+  font-variant-numeric: tabular-nums;
+}
+
+section[id] {
+  scroll-margin-top: 1rem;
+}
+</style>

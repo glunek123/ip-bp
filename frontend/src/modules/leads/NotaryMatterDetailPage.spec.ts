@@ -3,6 +3,40 @@ import { createMemoryHistory, createRouter } from 'vue-router';
 import { beforeEach, describe, expect, it, vi } from 'vitest';
 import { ApiError } from '../../api/http';
 import NotaryMatterDetailPage from './NotaryMatterDetailPage.vue';
+import type { NotaryMatterDetail } from '../../api/notary';
+import { createPinia, setActivePinia } from 'pinia';
+import { useAuthStore } from '../../stores/auth';
+
+const sourceProjection = {
+  sourceSummary: {
+    customer: { id: 'customer-1', name: '来源客户' },
+    rightsHolder: { id: 'holder-1', name: '来源权利主体' },
+    platform: 'TAOBAO',
+    shopName: '来源店铺',
+    shopExternalId: 'TB-001',
+  },
+  transferredAt: '2026-09-24',
+  evidenceAt: null,
+  openingSummary: null,
+  certificateSummary: null,
+  linkedCase: null,
+  certificateFiles: [],
+  fees: {
+    notary: { state: 'UNRECORDED', amount: null },
+    investigation: { state: 'UNRECORDED', amount: null },
+    sample: { state: 'UNRECORDED', amount: null },
+  },
+} satisfies Pick<
+  NotaryMatterDetail,
+  | 'sourceSummary'
+  | 'transferredAt'
+  | 'evidenceAt'
+  | 'openingSummary'
+  | 'certificateSummary'
+  | 'linkedCase'
+  | 'fees'
+  | 'certificateFiles'
+>;
 
 const api = vi.hoisted(() => ({
   getNotaryMatter: vi.fn(),
@@ -18,10 +52,15 @@ const materials = vi.hoisted(() => ({
   listOwnerMaterials: vi.fn(),
   deleteMaterial: vi.fn(),
 }));
+const workflow = vi.hoisted(() => ({ notify: vi.fn() }));
+vi.mock('../../app/workflow-events', () => ({
+  notifyWorkflowChanged: workflow.notify,
+}));
 vi.mock('../../api/notary', () => api);
 vi.mock('../../api/materials', () => materials);
 
 const matter = {
+  ...sourceProjection,
   id: 'matter-1',
   businessNo: 'NT-20260924-001',
   leadId: 'lead-1',
@@ -133,17 +172,32 @@ async function selectOpeningFile(
 }
 
 async function mountPage() {
+  const pinia = createPinia();
+  setActivePinia(pinia);
+  const auth = useAuthStore();
+  auth.session = {
+    principalType: 'INTERNAL',
+    user: { id: 'user-1', displayName: '运营', username: 'operator' },
+    department: { id: 'department-1', name: '知产部' },
+    departments: [{ id: 'department-1', name: '知产部' }],
+    customer: null,
+    notaryOffice: null,
+    authorizationRevision: 1,
+    expiresAt: '2099-01-01T00:00:00.000Z',
+    csrfToken: 'csrf-token',
+  };
   const router = createRouter({
     history: createMemoryHistory(),
     routes: [
       { path: '/notary-matters/:id', component: NotaryMatterDetailPage },
       { path: '/leads/:id', component: { template: '<div />' } },
+      { path: '/cases/:id', component: { template: '<div />' } },
     ],
   });
   await router.push('/notary-matters/matter-1');
   await router.isReady();
   const wrapper = mount(NotaryMatterDetailPage, {
-    global: { plugins: [router] },
+    global: { plugins: [router, pinia] },
   });
   await flushPromises();
   return wrapper;
@@ -174,6 +228,304 @@ beforeEach(() => {
 });
 
 describe('NotaryMatterDetailPage', () => {
+  it('scrolls and focuses a real form anchor without reloading the same matter', async () => {
+    const wrapper = await mountPage();
+    const target = wrapper.get('#evidence-form').element;
+    const scroll = vi.fn();
+    Object.defineProperty(target, 'scrollIntoView', {
+      value: scroll,
+      configurable: true,
+    });
+    const focus = vi.spyOn(target as HTMLElement, 'focus');
+    await wrapper.vm.$router.push('/notary-matters/matter-1#evidence-form');
+    await flushPromises();
+    expect(scroll).toHaveBeenCalledWith({ block: 'start' });
+    expect(focus).toHaveBeenCalledWith({ preventScroll: true });
+    expect(api.getNotaryMatter).toHaveBeenCalledTimes(1);
+    wrapper.unmount();
+  });
+
+  it.each(['route', 'identity', 'department', 'revision'])(
+    'clears the previous source and rejects a late read after a %s change',
+    async (change) => {
+      let resolveFirst: ((value: unknown) => void) | undefined;
+      api.getNotaryMatter.mockImplementationOnce(
+        () =>
+          new Promise((resolve) => {
+            resolveFirst = resolve;
+          }),
+      );
+      const wrapper = await mountPage();
+      const firstOptions = api.getNotaryMatter.mock.calls[0]?.[1] as {
+        signal: AbortSignal;
+      };
+      api.getNotaryMatter.mockResolvedValueOnce({
+        ...matter,
+        id: change === 'route' ? 'matter-2' : matter.id,
+        businessNo: 'NT-新上下文',
+        sourceSummary: {
+          ...sourceProjection.sourceSummary,
+          shopName: '新上下文店铺',
+        },
+      });
+      const auth = useAuthStore();
+      if (change === 'route')
+        await wrapper.vm.$router.push('/notary-matters/matter-2');
+      else if (change === 'identity')
+        auth.session = {
+          ...auth.session!,
+          user: { ...auth.session!.user, id: 'user-2' },
+        };
+      else if (change === 'department')
+        auth.session = {
+          ...auth.session!,
+          department: { id: 'department-2', name: '另一部门' },
+        };
+      else auth.session = { ...auth.session!, authorizationRevision: 2 };
+      await flushPromises();
+      resolveFirst?.(matter);
+      await flushPromises();
+      expect(firstOptions.signal.aborted).toBe(true);
+      expect(wrapper.text()).toContain('新上下文店铺');
+      expect(wrapper.text()).not.toContain('来源店铺');
+      expect(api.getNotaryMatter).toHaveBeenCalledTimes(2);
+      wrapper.unmount();
+    },
+  );
+
+  it('aborts exact-version downloads and discards their late errors on authorization revision change', async () => {
+    let rejectDownload: ((error: Error) => void) | undefined;
+    materials.downloadMaterialVersion.mockImplementationOnce(
+      () =>
+        new Promise((_resolve, reject) => {
+          rejectDownload = reject;
+        }),
+    );
+    const wrapper = await mountPage();
+    await wrapper
+      .get('[data-test="download-matter-material-content-1"]')
+      .trigger('click');
+    const signal = materials.downloadMaterialVersion.mock
+      .calls[0]?.[2] as AbortSignal;
+    useAuthStore().session = {
+      ...useAuthStore().session!,
+      authorizationRevision: 2,
+    };
+    await flushPromises();
+    rejectDownload?.(new Error('old-context failure'));
+    await flushPromises();
+    expect(signal.aborted).toBe(true);
+    expect(wrapper.text()).not.toContain('附件下载失败');
+    wrapper.unmount();
+  });
+
+  it('aborts a staged opening-material read and ignores old photos after switching matters', async () => {
+    let resolveMaterials: ((value: unknown) => void) | undefined;
+    api.getNotaryMatter.mockResolvedValueOnce({
+      ...matter,
+      stage: 'WAITING_UNBOX',
+      capabilities: { recordEvidence: false, recordOpening: true },
+    });
+    materials.listOwnerMaterials.mockImplementationOnce(
+      () =>
+        new Promise((resolve) => {
+          resolveMaterials = resolve;
+        }),
+    );
+    const wrapper = await mountPage();
+    const signal = materials.listOwnerMaterials.mock.calls[0]?.[2]
+      ?.signal as AbortSignal;
+    api.getNotaryMatter.mockResolvedValueOnce({
+      ...matter,
+      id: 'matter-2',
+      businessNo: 'NT-新事项',
+    });
+    await wrapper.vm.$router.push('/notary-matters/matter-2');
+    await flushPromises();
+    resolveMaterials?.({
+      items: [openingMaterial('old-photo', 'old-version', '旧事项照片.jpg')],
+      total: 1,
+    });
+    await flushPromises();
+    expect(signal.aborted).toBe(true);
+    expect(wrapper.text()).not.toContain('旧事项照片.jpg');
+    expect(wrapper.text()).toContain('NT-新事项');
+    wrapper.unmount();
+  });
+
+  it('ignores a late successful issuance submission after navigation to another matter', async () => {
+    let resolveSubmission: ((value: unknown) => void) | undefined;
+    api.getNotaryMatter.mockResolvedValueOnce({
+      ...matter,
+      stage: 'ISSUANCE_DECISION',
+      capabilities: {
+        recordEvidence: false,
+        recordOpening: false,
+        decideIssuance: true,
+      },
+    });
+    api.decideNotaryIssuance.mockImplementationOnce(
+      () =>
+        new Promise((resolve) => {
+          resolveSubmission = resolve;
+        }),
+    );
+    const wrapper = await mountPage();
+    await wrapper.get('[data-test="issuance-decision-issue"]').setValue(true);
+    await wrapper
+      .get('[data-test="issuance-decision-section"] form')
+      .trigger('submit');
+    api.getNotaryMatter.mockResolvedValueOnce({
+      ...matter,
+      id: 'matter-2',
+      businessNo: 'NT-新事项',
+    });
+    await wrapper.vm.$router.push('/notary-matters/matter-2');
+    await flushPromises();
+    resolveSubmission?.({});
+    await flushPromises();
+    expect(wrapper.text()).toContain('NT-新事项');
+    expect(wrapper.text()).not.toContain('决定已保存');
+    expect(api.getNotaryMatter).toHaveBeenCalledTimes(2);
+    expect(api.decideNotaryIssuance.mock.calls[0]?.[0]).toBe('matter-1');
+    expect(workflow.notify).not.toHaveBeenCalled();
+    wrapper.unmount();
+  });
+
+  it('shows exact source names, business dates and unrecorded fees without a case or certificate', async () => {
+    const wrapper = await mountPage();
+    const summary = wrapper.get('[data-test="notary-matter-detail"]');
+    for (const value of [
+      '来源客户',
+      '来源权利主体',
+      '来源店铺',
+      '淘宝',
+      'TB-001',
+      '2026-09-24',
+    ])
+      expect(summary.text()).toContain(value);
+    expect(
+      wrapper
+        .get('[data-test="notary-fee-summary"]')
+        .findAll('dd')
+        .map((cell) => cell.text()),
+    ).toEqual(['未登记', '未登记', '未登记']);
+    expect(wrapper.get('[data-test="notary-case-summary"]').text()).toContain(
+      '暂无可见案件',
+    );
+    expect(wrapper.find('[data-test="linked-case"]').exists()).toBe(false);
+    expect(
+      wrapper.get('[data-test="notary-certificate-summary"]').text(),
+    ).toContain('未登记公证书');
+  });
+
+  it('keeps pending, zero and positive fees distinct and reads frozen certificate files through the existing download API', async () => {
+    api.getNotaryMatter.mockResolvedValueOnce({
+      ...matter,
+      stage: 'ARCHIVED',
+      capabilities: { recordEvidence: false, recordOpening: false },
+      evidenceAt: '2026-09-25',
+      fees: {
+        notary: { state: 'KNOWN', amount: '0.00' },
+        investigation: { state: 'PENDING', amount: null },
+        sample: { state: 'KNOWN', amount: '12345678901234.56' },
+      },
+      certificateSummary: {
+        id: 'certificate-1',
+        certificateNo: '真实公证书001',
+        certificateDate: '2026-09-26',
+        issuedAt: '2026-09-26T01:00:00.000Z',
+        needDisclose: true,
+      },
+      certificateFiles: [
+        {
+          materialId: 'certificate-material',
+          contentVersionId: 'certificate-frozen',
+          originalFilename: '真实公证书.pdf',
+          mimeType: 'application/pdf',
+          purpose: 'NOTARY_CERTIFICATE',
+        },
+        {
+          materialId: 'disclosure-material',
+          contentVersionId: 'disclosure-frozen',
+          originalFilename: '披露.pdf',
+          mimeType: 'application/pdf',
+          purpose: 'NOTARY_DISCLOSURE',
+        },
+      ],
+      linkedCase: {
+        id: 'case-1',
+        businessNo: 'CA-真实001',
+        stage: 'WAITING_COMPLAINT',
+      },
+    });
+    const wrapper = await mountPage();
+    expect(
+      wrapper
+        .get('[data-test="notary-fee-summary"]')
+        .findAll('dd')
+        .map((cell) => cell.text()),
+    ).toEqual(['0.00 元', '待定', '12345678901234.56 元']);
+    expect(
+      wrapper.get('[data-test="notary-certificate-summary"]').text(),
+    ).toContain('本事项已出证归档');
+    expect(
+      wrapper.get('[data-test="notary-certificate-summary"]').text(),
+    ).toContain('披露材料：披露.pdf');
+    expect(wrapper.get('[data-test="notary-case-summary"]').text()).toContain(
+      '已流转诉讼 · 待写诉状',
+    );
+    expect(wrapper.get('[data-test="linked-case"]').attributes('href')).toBe(
+      '/cases/case-1',
+    );
+    await wrapper
+      .get('[data-test="download-certificate-certificate-frozen"]')
+      .trigger('click');
+    await wrapper
+      .get('[data-test="download-certificate-disclosure-frozen"]')
+      .trigger('click');
+    await flushPromises();
+    expect(materials.downloadMaterialVersion.mock.calls).toEqual([
+      ['certificate-material', 'certificate-frozen', expect.any(AbortSignal)],
+      ['disclosure-material', 'disclosure-frozen', expect.any(AbortSignal)],
+    ]);
+    expect(materials.listOwnerMaterials).not.toHaveBeenCalled();
+  });
+
+  it('keeps certificate download failures visible', async () => {
+    api.getNotaryMatter.mockResolvedValueOnce({
+      ...matter,
+      stage: 'ARCHIVED',
+      certificateSummary: {
+        id: 'certificate-1',
+        certificateNo: '真实公证書001',
+        certificateDate: '2026-09-26',
+        issuedAt: '2026-09-26T01:00:00.000Z',
+        needDisclose: false,
+      },
+      certificateFiles: [
+        {
+          materialId: 'material-1',
+          contentVersionId: 'frozen-1',
+          originalFilename: '公证书.pdf',
+          mimeType: 'application/pdf',
+          purpose: 'NOTARY_CERTIFICATE',
+        },
+      ],
+    });
+    materials.downloadMaterialVersion.mockRejectedValueOnce(
+      new Error('forbidden'),
+    );
+    const wrapper = await mountPage();
+    await wrapper
+      .get('[data-test="download-certificate-frozen-1"]')
+      .trigger('click');
+    await flushPromises();
+    expect(
+      wrapper.get('[data-test="notary-certificate-summary"]').text(),
+    ).toContain('附件下载失败');
+  });
+
   it('does not show the return form when the server capability is false', async () => {
     api.getNotaryMatter.mockResolvedValueOnce({
       ...matter,
@@ -191,6 +543,19 @@ describe('NotaryMatterDetailPage', () => {
       false,
     );
     expect(api.archiveNotaryReturn).not.toHaveBeenCalled();
+  });
+
+  it('does not open a draft photo read or form without the server opening capability', async () => {
+    api.getNotaryMatter.mockResolvedValueOnce({
+      ...matter,
+      stage: 'WAITING_UNBOX',
+      capabilities: { recordEvidence: false, recordOpening: false },
+    });
+    const wrapper = await mountPage();
+    expect(wrapper.find('[data-test="opening-form"]').exists()).toBe(false);
+    expect(materials.listOwnerMaterials).not.toHaveBeenCalled();
+    expect(api.recordNotaryOpening).not.toHaveBeenCalled();
+    wrapper.unmount();
   });
 
   it('shows the server-authorized return archive form and reloads the saved record', async () => {
@@ -657,6 +1022,7 @@ describe('NotaryMatterDetailPage', () => {
     expect(materials.downloadMaterialVersion).toHaveBeenCalledWith(
       'photo-1',
       'photo-v1',
+      expect.any(AbortSignal),
     );
   });
 
@@ -808,6 +1174,7 @@ describe('NotaryMatterDetailPage', () => {
     expect(materials.downloadMaterialVersion).toHaveBeenCalledWith(
       'material-1',
       'content-1',
+      expect.any(AbortSignal),
     );
   });
 
@@ -1058,6 +1425,7 @@ describe('NotaryMatterDetailPage', () => {
     expect(materials.downloadMaterialVersion).toHaveBeenCalledWith(
       'photo-1',
       'photo-v1',
+      expect.any(AbortSignal),
     );
   });
 

@@ -5,6 +5,91 @@ import { createPinia, setActivePinia } from 'pinia';
 import { useAuthStore } from '../../stores/auth';
 import { ApiError } from '../../api/http';
 import NotaryMatterListPage from './NotaryMatterListPage.vue';
+import type { NotaryMatterListItem } from '../../api/notary';
+import {
+  defaultNotaryListPreference,
+  type NotaryListPreference,
+} from '../../api/notary-list-preference';
+
+const sourceProjection = {
+  sourceSummary: {
+    customer: { id: 'customer-1', name: '来源客户' },
+    rightsHolder: { id: 'holder-1', name: '来源权利主体' },
+    platform: 'TAOBAO',
+    shopName: '来源店铺',
+    shopExternalId: 'TB-001',
+  },
+  transferredAt: '2026-09-24',
+  evidenceAt: null,
+  openingSummary: null,
+  certificateSummary: null,
+  linkedCase: null,
+  fees: {
+    notary: { state: 'UNRECORDED', amount: null },
+    investigation: { state: 'UNRECORDED', amount: null },
+    sample: { state: 'UNRECORDED', amount: null },
+  },
+  capabilities: {
+    recordEvidence: false,
+    recordOpening: false,
+    reviewOpening: false,
+    decideIssuance: false,
+    archiveReturn: false,
+  },
+} satisfies Pick<
+  NotaryMatterListItem,
+  | 'sourceSummary'
+  | 'transferredAt'
+  | 'evidenceAt'
+  | 'openingSummary'
+  | 'certificateSummary'
+  | 'linkedCase'
+  | 'fees'
+  | 'capabilities'
+>;
+
+const businessHeaders = [
+  '权利主体',
+  '平台',
+  '店铺名',
+  '店铺ID',
+  '推送日期',
+  '取证日期',
+  '开箱照片',
+  '公证书编号',
+  '发货人',
+  '发货电话',
+  '发货地址',
+  '公证费',
+  '调查费',
+  '样品费',
+];
+const defaultHeaders = ['选择', '操作', '案件进展', ...businessHeaders];
+function preferenceWithLegacyOrder(
+  order: Array<
+    'businessNo' | 'stage' | 'sourceLead' | 'notaryOffice' | 'createdAt'
+  >,
+  hidden: NotaryListPreference['hidden'] = [],
+): NotaryListPreference {
+  return {
+    order: [
+      'businessNo',
+      'stage',
+      ...defaultNotaryListPreference.order.filter(
+        (column) =>
+          ![
+            'businessNo',
+            'stage',
+            'sourceLead',
+            'notaryOffice',
+            'createdAt',
+          ].includes(column),
+      ),
+      ...order.slice(2),
+    ],
+    hidden,
+  };
+}
 
 const api = vi.hoisted(() => ({
   listNotaryMatters: vi.fn(),
@@ -40,6 +125,7 @@ vi.mock('../../api/notary-list-export', () => ({
 const result = {
   items: [
     {
+      ...sourceProjection,
       id: 'matter-1',
       businessNo: 'NT-001',
       stage: 'PENDING_EVIDENCE',
@@ -75,10 +161,8 @@ async function mountPage(path: string) {
     csrfToken: 'csrf-token',
   };
   auth.restored = true;
-  preferenceApi.get.mockResolvedValue({
-    order: ['businessNo', 'stage', 'sourceLead', 'notaryOffice', 'createdAt'],
-    hidden: [],
-  });
+  if (!preferenceApi.get.getMockImplementation())
+    preferenceApi.get.mockResolvedValue(defaultNotaryListPreference);
   preferenceApi.save.mockImplementation((preference) =>
     Promise.resolve(preference),
   );
@@ -88,6 +172,7 @@ async function mountPage(path: string) {
       { path: '/notary-matters', component: NotaryMatterListPage },
       { path: '/notary-matters/:id', component: { template: '<div />' } },
       { path: '/leads/:id', component: { template: '<div />' } },
+      { path: '/cases/:id', component: { template: '<div />' } },
     ],
   });
   await router.push(path);
@@ -102,6 +187,210 @@ async function mountPage(path: string) {
 afterEach(() => vi.resetAllMocks());
 
 describe('NotaryMatterListPage', () => {
+  it('aborts old list and preference reads after an authorization revision change', async () => {
+    let resolveList: ((value: unknown) => void) | undefined;
+    let resolvePreference: ((value: unknown) => void) | undefined;
+    api.listNotaryMatters
+      .mockImplementationOnce(
+        () =>
+          new Promise((resolve) => {
+            resolveList = resolve;
+          }),
+      )
+      .mockResolvedValueOnce({ ...result, items: [], total: 0 });
+    preferenceApi.get
+      .mockImplementationOnce(
+        () =>
+          new Promise((resolve) => {
+            resolvePreference = resolve;
+          }),
+      )
+      .mockResolvedValueOnce(defaultNotaryListPreference);
+    const { wrapper, auth } = await mountPage('/notary-matters');
+    const listSignal = api.listNotaryMatters.mock.calls[0]?.[2]
+      ?.signal as AbortSignal;
+    const preferenceSignal = preferenceApi.get.mock.calls[0]?.[0]
+      ?.signal as AbortSignal;
+    auth.session = { ...auth.session!, authorizationRevision: 2 };
+    await flushPromises();
+    resolveList?.(result);
+    resolvePreference?.(
+      preferenceWithLegacyOrder([
+        'businessNo',
+        'stage',
+        'sourceLead',
+        'notaryOffice',
+        'createdAt',
+      ]),
+    );
+    await flushPromises();
+    expect(listSignal.aborted).toBe(true);
+    expect(preferenceSignal.aborted).toBe(true);
+    expect(wrapper.find('[data-test="matter-row"]').exists()).toBe(false);
+    expect(api.listNotaryMatters).toHaveBeenCalledTimes(2);
+    expect(preferenceApi.get).toHaveBeenCalledTimes(2);
+    expect(preferenceApi.save).not.toHaveBeenCalled();
+    wrapper.unmount();
+  });
+
+  it('renders the seventeen Demo columns from the exact source and preserves business dates', async () => {
+    api.listNotaryMatters.mockResolvedValue({
+      ...result,
+      items: [
+        {
+          ...result.items[0],
+          createdAt: '2026-09-24T18:00:00.000Z',
+          transferredAt: '2026-09-25',
+          evidenceAt: '2026-09-26',
+        },
+      ],
+    });
+    const { wrapper } = await mountPage('/notary-matters');
+    expect(wrapper.findAll('thead th').map((cell) => cell.text())).toEqual(
+      defaultHeaders,
+    );
+    const row = wrapper.get('[data-test="matter-row"]');
+    expect(row.get('[data-column="rightsHolder"]').text()).toContain(
+      '来源权利主体',
+    );
+    expect(row.get('[data-column="platform"]').text()).toBe('淘宝');
+    expect(row.get('[data-column="shopExternalId"]').text()).toBe('TB-001');
+    expect(row.get('[data-column="transferredAt"]').text()).toBe('2026-09-25');
+    expect(row.get('[data-column="evidenceAt"]').text()).toBe('2026-09-26');
+    expect(row.get('.notary-business-no').text()).toBe('NT-001');
+    expect(wrapper.findAll('colgroup col')).toHaveLength(17);
+    expect(wrapper.get('.business-list-scroll').attributes('tabindex')).toBe(
+      '0',
+    );
+    expect(row.get('summary').attributes('aria-label')).toContain(
+      '来源权利主体',
+    );
+  });
+
+  it.each([
+    [{ state: 'UNRECORDED', amount: null }, '未登记'],
+    [{ state: 'PENDING', amount: null }, '待定'],
+    [{ state: 'KNOWN', amount: '0.00' }, '¥ 0.00'],
+    [{ state: 'KNOWN', amount: '99999999999999.99' }, '¥ 99999999999999.99'],
+  ])('keeps the fee fact %j distinct', async (fee, label) => {
+    api.listNotaryMatters.mockResolvedValue({
+      ...result,
+      items: [
+        {
+          ...result.items[0],
+          fees: { notary: fee, investigation: fee, sample: fee },
+        },
+      ],
+    });
+    const { wrapper } = await mountPage('/notary-matters');
+    const row = wrapper.get('[data-test="matter-row"]');
+    for (const column of ['notaryFee', 'investigationFee', 'sampleFee'])
+      expect(row.get(`[data-column="${column}"]`).text()).toBe(label);
+  });
+
+  it('links only a real frozen opening count and an authorized linked case', async () => {
+    api.listNotaryMatters.mockResolvedValue({
+      ...result,
+      items: [
+        {
+          ...result.items[0],
+          openingSummary: {
+            photoCount: 3,
+            senderName: '真实寄件人',
+            senderPhone: '13800000000',
+            senderAddress: '来源登记地址',
+          },
+          certificateSummary: {
+            id: 'certificate-1',
+            certificateNo: '（2026）真实公证字第001号',
+            certificateDate: '2026-09-27',
+            issuedAt: '2026-09-27T01:00:00.000Z',
+            needDisclose: false,
+          },
+          linkedCase: {
+            id: 'case-1',
+            businessNo: 'CA-001',
+            stage: 'PENDING_MATCH',
+          },
+        },
+      ],
+    });
+    const { wrapper } = await mountPage('/notary-matters');
+    expect(
+      wrapper.get('[data-test="opening-photos-link"]').attributes('href'),
+    ).toBe('/notary-matters/matter-1#saved-opening');
+    expect(wrapper.get('[data-test="opening-photos-link"]').text()).toBe(
+      '3 张 · 查看',
+    );
+    expect(wrapper.text()).not.toContain('OCR');
+    expect(wrapper.get('[data-test="linked-case"]').attributes('href')).toBe(
+      '/cases/case-1',
+    );
+    expect(wrapper.get('[data-test="linked-case"]').text()).toContain(
+      '已流转诉讼 · 待匹配',
+    );
+    expect(wrapper.get('tbody [data-column="certificateNo"]').text()).toBe(
+      '（2026）真实公证字第001号',
+    );
+  });
+
+  it('shows no photo or case link and no invented certificate action without a fact or capability', async () => {
+    api.listNotaryMatters.mockResolvedValue({
+      ...result,
+      items: [
+        {
+          ...result.items[0],
+          stage: 'WAITING_CERTIFICATE',
+          capabilities: {
+            recordEvidence: false,
+            recordOpening: false,
+            reviewOpening: false,
+            decideIssuance: false,
+            archiveReturn: false,
+          },
+        },
+      ],
+    });
+    const { wrapper } = await mountPage('/notary-matters');
+    expect(wrapper.find('[data-test="opening-photos-link"]').exists()).toBe(
+      false,
+    );
+    expect(wrapper.find('[data-test="linked-case"]').exists()).toBe(false);
+    expect(wrapper.find('[data-test="matter-action"]').exists()).toBe(false);
+    expect(wrapper.text()).toContain('暂无可见案件');
+    expect(wrapper.text()).not.toContain('填写出证');
+  });
+
+  it.each([
+    ['recordEvidence', 'evidence-form', '登记取证'],
+    ['recordOpening', 'opening-form', '登记开箱'],
+    ['reviewOpening', 'review-form', '审核'],
+    ['decideIssuance', 'issuance-form', '确认'],
+    ['archiveReturn', 'return-archive-form', '处理退货'],
+  ])(
+    'navigates the server-authorized %s capability to its existing form',
+    async (capability, anchor, label) => {
+      const capabilities = {
+        recordEvidence: false,
+        recordOpening: false,
+        reviewOpening: false,
+        decideIssuance: false,
+        archiveReturn: false,
+        [capability]: true,
+      };
+      api.listNotaryMatters.mockResolvedValue({
+        ...result,
+        items: [{ ...result.items[0], capabilities }],
+      });
+      const { wrapper } = await mountPage('/notary-matters');
+      expect(wrapper.findAll('[data-test="matter-action"]')).toHaveLength(1);
+      expect(
+        wrapper.get('[data-test="matter-action"]').attributes('href'),
+      ).toBe(`/notary-matters/matter-1#${anchor}`);
+      expect(wrapper.get('[data-test="matter-action"]').text()).toBe(label);
+    },
+  );
+
   it('keeps the transfer hint when no stage is selected', async () => {
     api.listNotaryMatters.mockResolvedValue({ ...result, items: [], total: 0 });
     const { wrapper } = await mountPage('/notary-matters');
@@ -135,6 +424,15 @@ describe('NotaryMatterListPage', () => {
 
   it('shows each matter separately and preserves its source lead link', async () => {
     api.listNotaryMatters.mockResolvedValue(result);
+    preferenceApi.get.mockResolvedValue(
+      preferenceWithLegacyOrder([
+        'businessNo',
+        'stage',
+        'sourceLead',
+        'notaryOffice',
+        'createdAt',
+      ]),
+    );
     const { wrapper } = await mountPage(
       '/notary-matters?stage=PENDING_EVIDENCE',
     );
@@ -412,72 +710,52 @@ describe('NotaryMatterListPage', () => {
     expect(wrapper.get('[data-test="matter-row"]').text()).toContain('已归档');
   });
 
-  it('opens the personal column settings while keeping the two fixed columns visible', async () => {
+  it('opens all seventeen optional settings and keeps selection, operations and progress fixed', async () => {
     api.listNotaryMatters.mockResolvedValue(result);
     const { wrapper } = await mountPage('/notary-matters');
-
     await wrapper.get('[data-test="column-settings-toggle"]').trigger('click');
     expect(wrapper.text()).toContain('始终显示');
-    expect(wrapper.findAll('thead th').map((cell) => cell.text())).toEqual([
-      '选择',
-      '公证事项编号',
-      '阶段',
-      '来源线索',
-      '公证处',
-      '创建时间',
-    ]);
-    expect(wrapper.findAll('[data-test="column-option"]')).toHaveLength(3);
+    expect(wrapper.findAll('thead th').map((cell) => cell.text())).toEqual(
+      defaultHeaders,
+    );
+    expect(wrapper.findAll('[data-test="column-option"]')).toHaveLength(17);
+    expect(wrapper.find('[data-column-key="businessNo"]').exists()).toBe(false);
+    expect(wrapper.find('[data-column-key="stage"]').exists()).toBe(false);
   });
 
-  it('applies a reordered and hidden column only after saving', async () => {
+  it('applies a reordered and hidden business column only after saving', async () => {
     api.listNotaryMatters.mockResolvedValue(result);
     const { wrapper } = await mountPage('/notary-matters');
     await wrapper.get('[data-test="column-settings-toggle"]').trigger('click');
-    await wrapper.get('[data-column-key="sourceLead"]').setValue(false);
-    await wrapper.get('[aria-label="上移公证处"]').trigger('click');
-
-    expect(wrapper.findAll('thead th').map((cell) => cell.text())).toEqual([
-      '选择',
-      '公证事项编号',
-      '阶段',
-      '来源线索',
-      '公证处',
-      '创建时间',
-    ]);
+    await wrapper.get('[data-column-key="rightsHolder"]').setValue(false);
+    await wrapper.get('[aria-label="上移平台"]').trigger('click');
+    expect(wrapper.findAll('thead th').map((cell) => cell.text())).toEqual(
+      defaultHeaders,
+    );
     await wrapper.get('[data-test="save-columns"]').trigger('click');
     await flushPromises();
-
+    const nextOrder = [...defaultNotaryListPreference.order];
+    [nextOrder[2], nextOrder[3]] = [nextOrder[3]!, nextOrder[2]!];
     expect(preferenceApi.save).toHaveBeenCalledWith(
       {
-        order: [
-          'businessNo',
-          'stage',
-          'notaryOffice',
-          'sourceLead',
-          'createdAt',
-        ],
-        hidden: ['sourceLead'],
+        order: nextOrder,
+        hidden: [...defaultNotaryListPreference.hidden, 'rightsHolder'],
       },
       expect.objectContaining({ signal: expect.any(AbortSignal) }),
     );
-    expect(wrapper.findAll('thead th').map((cell) => cell.text())).toEqual([
-      '选择',
-      '公证事项编号',
-      '阶段',
-      '公证处',
-      '创建时间',
-    ]);
+    expect(wrapper.findAll('thead th').map((cell) => cell.text())).toEqual(
+      defaultHeaders.filter((header) => header !== '权利主体'),
+    );
   });
 
   it('cancels a draft without making a preference request', async () => {
     api.listNotaryMatters.mockResolvedValue(result);
     const { wrapper } = await mountPage('/notary-matters');
     await wrapper.get('[data-test="column-settings-toggle"]').trigger('click');
-    await wrapper.get('[data-column-key="createdAt"]').setValue(false);
+    await wrapper.get('[data-column-key="rightsHolder"]').setValue(false);
     await wrapper.get('[data-test="cancel-columns"]').trigger('click');
-
     expect(preferenceApi.save).not.toHaveBeenCalled();
-    expect(wrapper.findAll('thead th')).toHaveLength(6);
+    expect(wrapper.findAll('thead th')).toHaveLength(17);
   });
 
   it('keeps the saved columns and draft after a save failure', async () => {
@@ -485,14 +763,13 @@ describe('NotaryMatterListPage', () => {
     preferenceApi.save.mockRejectedValueOnce(new Error('offline'));
     const { wrapper } = await mountPage('/notary-matters');
     await wrapper.get('[data-test="column-settings-toggle"]').trigger('click');
-    await wrapper.get('[data-column-key="createdAt"]').setValue(false);
+    await wrapper.get('[data-column-key="rightsHolder"]').setValue(false);
     await wrapper.get('[data-test="save-columns"]').trigger('click');
     await flushPromises();
-
-    expect(wrapper.findAll('thead th')).toHaveLength(6);
-    expect(wrapper.get('[data-column-key="createdAt"]').element).toMatchObject({
-      checked: false,
-    });
+    expect(wrapper.findAll('thead th')).toHaveLength(17);
+    expect(
+      wrapper.get('[data-column-key="rightsHolder"]').element,
+    ).toMatchObject({ checked: false });
     expect(
       wrapper.get('[data-test="column-preference-status"]').text(),
     ).toContain('草稿仍保留');
@@ -500,45 +777,31 @@ describe('NotaryMatterListPage', () => {
 
   it('persists restore-defaults through the preference API', async () => {
     api.listNotaryMatters.mockResolvedValue(result);
-    preferenceApi.get.mockResolvedValue({
-      order: ['businessNo', 'stage', 'createdAt', 'notaryOffice', 'sourceLead'],
-      hidden: ['sourceLead'],
-    });
+    preferenceApi.get.mockResolvedValue(
+      preferenceWithLegacyOrder(
+        ['businessNo', 'stage', 'createdAt', 'notaryOffice', 'sourceLead'],
+        ['sourceLead'],
+      ),
+    );
     const { wrapper } = await mountPage('/notary-matters');
     await wrapper.get('[data-test="column-settings-toggle"]').trigger('click');
     await wrapper.get('[data-test="reset-columns"]').trigger('click');
     await flushPromises();
-
     expect(preferenceApi.save).toHaveBeenCalledWith(
-      {
-        order: [
-          'businessNo',
-          'stage',
-          'sourceLead',
-          'notaryOffice',
-          'createdAt',
-        ],
-        hidden: [],
-      },
+      defaultNotaryListPreference,
       expect.objectContaining({ signal: expect.any(AbortSignal) }),
     );
-    expect(wrapper.findAll('thead th').map((cell) => cell.text())).toEqual([
-      '选择',
-      '公证事项编号',
-      '阶段',
-      '来源线索',
-      '公证处',
-      '创建时间',
-    ]);
+    expect(wrapper.findAll('thead th').map((cell) => cell.text())).toEqual(
+      defaultHeaders,
+    );
   });
 
   it('keeps the default list usable and locks editing when preference loading fails', async () => {
     api.listNotaryMatters.mockResolvedValue(result);
     preferenceApi.get.mockRejectedValueOnce(new Error('offline'));
     const { wrapper } = await mountPage('/notary-matters');
-
     expect(wrapper.findAll('[data-test="matter-row"]')).toHaveLength(1);
-    expect(wrapper.findAll('thead th')).toHaveLength(6);
+    expect(wrapper.findAll('thead th')).toHaveLength(17);
     expect(
       wrapper
         .get('[data-test="column-settings-toggle"]')
@@ -547,11 +810,7 @@ describe('NotaryMatterListPage', () => {
     expect(
       wrapper.get('[data-test="column-preference-status"]').text(),
     ).toContain('读取失败');
-
-    preferenceApi.get.mockResolvedValueOnce({
-      order: ['businessNo', 'stage', 'sourceLead', 'notaryOffice', 'createdAt'],
-      hidden: [],
-    });
+    preferenceApi.get.mockResolvedValueOnce(defaultNotaryListPreference);
     await wrapper.get('[data-test="retry-preference"]').trigger('click');
     await flushPromises();
     expect(
@@ -559,6 +818,23 @@ describe('NotaryMatterListPage', () => {
         .get('[data-test="column-settings-toggle"]')
         .attributes('disabled'),
     ).toBeUndefined();
+  });
+
+  it('renders an already expanded legacy preference without overwriting it', async () => {
+    api.listNotaryMatters.mockResolvedValue(result);
+    preferenceApi.get.mockResolvedValue(
+      preferenceWithLegacyOrder(
+        ['businessNo', 'stage', 'createdAt', 'notaryOffice', 'sourceLead'],
+        ['sourceLead'],
+      ),
+    );
+    const { wrapper } = await mountPage('/notary-matters');
+    expect(wrapper.findAll('thead th').map((cell) => cell.text())).toEqual([
+      ...defaultHeaders,
+      '创建时间',
+      '公证处',
+    ]);
+    expect(preferenceApi.save).not.toHaveBeenCalled();
   });
 
   it('ignores a delayed preference response from the previous account', async () => {
@@ -571,32 +847,22 @@ describe('NotaryMatterListPage', () => {
             resolveFirst = resolve;
           }),
       )
-      .mockResolvedValueOnce({
-        order: [
-          'businessNo',
-          'stage',
-          'createdAt',
-          'notaryOffice',
-          'sourceLead',
-        ],
-        hidden: ['sourceLead'],
-      });
+      .mockResolvedValueOnce(
+        preferenceWithLegacyOrder(
+          ['businessNo', 'stage', 'createdAt', 'notaryOffice', 'sourceLead'],
+          ['sourceLead'],
+        ),
+      );
     const { wrapper, auth } = await mountPage('/notary-matters');
     auth.session = {
       ...auth.session!,
       user: { ...auth.session!.user, id: 'user-2' },
     };
     await flushPromises();
-    resolveFirst?.({
-      order: ['businessNo', 'stage', 'sourceLead', 'createdAt', 'notaryOffice'],
-      hidden: ['notaryOffice'],
-    });
+    resolveFirst?.(defaultNotaryListPreference);
     await flushPromises();
-
     expect(wrapper.findAll('thead th').map((cell) => cell.text())).toEqual([
-      '选择',
-      '公证事项编号',
-      '阶段',
+      ...defaultHeaders,
       '创建时间',
       '公证处',
     ]);
@@ -613,34 +879,28 @@ describe('NotaryMatterListPage', () => {
           resolveSave = resolve;
         }),
     );
-    preferenceApi.get.mockResolvedValueOnce({
-      order: ['businessNo', 'stage', 'createdAt', 'sourceLead', 'notaryOffice'],
-      hidden: ['sourceLead'],
-    });
-
+    preferenceApi.get.mockResolvedValueOnce(
+      preferenceWithLegacyOrder(
+        ['businessNo', 'stage', 'createdAt', 'sourceLead', 'notaryOffice'],
+        ['sourceLead'],
+      ),
+    );
     await wrapper.get('[data-test="column-settings-toggle"]').trigger('click');
-    await wrapper.get('[data-column-key="createdAt"]').setValue(false);
+    await wrapper.get('[data-column-key="rightsHolder"]').setValue(false);
     await wrapper.get('[data-test="save-columns"]').trigger('click');
     await flushPromises();
     const saveOptions = preferenceApi.save.mock.calls[0]?.[1] as
       { signal: AbortSignal } | undefined;
-
     auth.session = {
       ...auth.session!,
       user: { ...auth.session!.user, id: 'user-2' },
     };
     await flushPromises();
-    resolveSave?.({
-      order: ['businessNo', 'stage', 'sourceLead', 'notaryOffice', 'createdAt'],
-      hidden: ['createdAt'],
-    });
+    resolveSave?.(defaultNotaryListPreference);
     await flushPromises();
-
     expect(saveOptions?.signal.aborted).toBe(true);
     expect(wrapper.findAll('thead th').map((cell) => cell.text())).toEqual([
-      '选择',
-      '公证事项编号',
-      '阶段',
+      ...defaultHeaders,
       '创建时间',
       '公证处',
     ]);
@@ -648,7 +908,6 @@ describe('NotaryMatterListPage', () => {
       wrapper.get('[data-test="column-preference-status"]').text(),
     ).toContain('个人列设置已加载');
   });
-
   it('requires an explicit scope and a successful preview before download', async () => {
     api.listNotaryMatters.mockResolvedValue(result);
     exportApi.preview.mockResolvedValue({ count: 1, maxRows: 1000 });
