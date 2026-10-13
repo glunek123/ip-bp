@@ -86,6 +86,11 @@ function stageLabel(value: CaseSummary['stage']): string {
   if (value === 'WAITING_ARCHIVE') return '待归档';
   return '待开庭';
 }
+function canHandle(item: CaseSummary): boolean {
+  return Object.entries(item).some(
+    ([name, value]) => name.startsWith('can') && value === true,
+  );
+}
 const state = ref<'loading' | 'ready' | 'failed'>('loading');
 const items = ref<CaseSummary[]>([]);
 const total = ref(0);
@@ -217,7 +222,7 @@ onBeforeUnmount(() => request?.abort());
 </script>
 
 <template>
-  <div class="page-view page-view--narrow">
+  <div class="page-view business-list-page">
     <main>
       <div class="page-head">
         <div>
@@ -240,7 +245,11 @@ onBeforeUnmount(() => request?.abort());
           >刷新</ElButton
         >
       </div>
-      <div class="segmented-control" role="group" aria-label="案件范围">
+      <div
+        class="segmented-control business-list-toolbar"
+        role="group"
+        aria-label="案件范围"
+      >
         <ElButton
           :type="view === 'mine' ? 'primary' : 'default'"
           @click="setView('mine')"
@@ -260,58 +269,152 @@ onBeforeUnmount(() => request?.abort());
         <p class="submit-error" role="alert">{{ error }}</p>
         <ElButton type="primary" @click="load">重新加载</ElButton>
       </section>
-      <section v-else class="demo-card demo-card--pad" data-test="case-list">
-        <p v-if="items.length === 0" class="field-help">当前没有案件。</p>
-        <ul v-else class="notary-offices-list">
-          <li v-for="item in items" :key="item.id">
-            <RouterLink
-              :to="{
-                path: `/cases/${encodeURIComponent(item.id)}`,
-                query: route.query,
-              }"
-              >{{ item.businessNo }}</RouterLink
-            ><span class="pill">{{ stageLabel(item.stage) }}</span>
-            <span class="field-help">负责人：{{ item.owner.displayName }}</span>
-            <span class="pill">{{
-              item.canSubmitExecution ||
-              item.canConfirmExecution ||
-              item.canMatch ||
-              item.canSubmitComplaint ||
-              item.canConfirmComplaint ||
-              item.canMailComplaint ||
-              item.canSubmitFiling ||
-              item.canRegisterAcceptance ||
-              item.canUploadAcceptanceMaterials
-                ? '办理'
-                : '只读'
-            }}</span
-            ><span
-              >来源线索 {{ item.sourceLead.businessNo }} · 公证事项
-              {{ item.sourceNotaryMatter.businessNo }}</span
-            >
-          </li>
-        </ul>
-        <p class="field-help" aria-live="polite">
-          当前显示 {{ items.length }} / {{ total }} 项
+      <section v-else class="demo-card" data-test="case-list">
+        <p v-if="items.length === 0" class="field-help demo-card--pad">
+          当前没有案件。
         </p>
-        <div class="page-head" data-test="case-pagination">
-          <ElButton
-            text
-            data-test="previous-page"
-            :disabled="page <= 1"
-            @click="goToPage(page - 1)"
-            >上一页</ElButton
+        <div
+          v-else
+          class="business-list-scroll"
+          role="region"
+          aria-label="案件列表，可横向滚动"
+          tabindex="0"
+        >
+          <table class="demo-table business-list-table case-list-table">
+            <caption class="sr-only">
+              案件列表
+            </caption>
+            <colgroup>
+              <col class="case-list-col--identity" />
+              <col class="case-list-col--stage" />
+              <col class="case-list-col--owner" />
+              <col class="case-list-col--permission" />
+              <col class="case-list-col--identity" />
+              <col class="case-list-col--identity" />
+            </colgroup>
+            <thead>
+              <tr>
+                <th scope="col">操作／案件编号</th>
+                <th scope="col">案件进展</th>
+                <th scope="col">负责人</th>
+                <th scope="col">办理权限</th>
+                <th scope="col">来源线索</th>
+                <th scope="col">公证事项</th>
+              </tr>
+            </thead>
+            <tbody>
+              <tr v-for="item in items" :key="item.id">
+                <td class="business-list-cell--nowrap">
+                  <RouterLink
+                    :to="{
+                      path: `/cases/${encodeURIComponent(item.id)}`,
+                      query: route.query,
+                    }"
+                    >{{ item.businessNo }}</RouterLink
+                  >
+                </td>
+                <td class="business-list-cell--nowrap">
+                  <span class="pill">{{ stageLabel(item.stage) }}</span>
+                </td>
+                <td class="business-list-cell--text">
+                  <details class="case-list-owner">
+                    <summary :title="item.owner.displayName">
+                      {{ item.owner.displayName }}
+                    </summary>
+                    <p>{{ item.owner.displayName }}</p>
+                  </details>
+                </td>
+                <td class="business-list-cell--nowrap">
+                  <span class="pill">{{
+                    canHandle(item) ? '办理' : '只读'
+                  }}</span>
+                </td>
+                <td class="business-list-cell--nowrap">
+                  {{ item.sourceLead.businessNo }}
+                </td>
+                <td class="business-list-cell--nowrap">
+                  {{ item.sourceNotaryMatter.businessNo }}
+                </td>
+              </tr>
+            </tbody>
+          </table>
+        </div>
+        <div class="business-list-footer">
+          <p class="field-help" aria-live="polite">
+            当前显示 {{ items.length }} / {{ total }} 项
+          </p>
+          <nav
+            class="case-list-pagination"
+            aria-label="案件分页"
+            data-test="case-pagination"
           >
-          <span>第 {{ page }} / {{ totalPages }} 页</span>
-          <ElButton
-            text
-            data-test="next-page"
-            :disabled="page >= totalPages"
-            @click="goToPage(page + 1)"
-            >下一页</ElButton
-          >
+            <ElButton
+              text
+              data-test="previous-page"
+              :disabled="page <= 1"
+              @click="goToPage(page - 1)"
+              >上一页</ElButton
+            >
+            <span>第 {{ page }} / {{ totalPages }} 页</span>
+            <ElButton
+              text
+              data-test="next-page"
+              :disabled="page >= totalPages"
+              @click="goToPage(page + 1)"
+              >下一页</ElButton
+            >
+          </nav>
         </div>
       </section>
     </main>
   </div>
 </template>
+
+<style scoped>
+.case-list-table {
+  min-width: 1020px;
+}
+
+.case-list-col--identity {
+  width: 200px;
+}
+
+.case-list-col--stage {
+  width: 140px;
+}
+
+.case-list-col--owner {
+  width: 160px;
+}
+
+.case-list-col--permission {
+  width: 120px;
+}
+
+.case-list-owner summary {
+  display: -webkit-box;
+  overflow: hidden;
+  -webkit-box-orient: vertical;
+  -webkit-line-clamp: 2;
+  cursor: pointer;
+  white-space: normal;
+  overflow-wrap: anywhere;
+}
+
+.case-list-owner p {
+  margin: var(--s-2) 0 0;
+  white-space: normal;
+  overflow-wrap: anywhere;
+}
+
+.case-list-pagination {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: var(--s-2);
+}
+
+.case-list-pagination span {
+  white-space: nowrap;
+}
+</style>

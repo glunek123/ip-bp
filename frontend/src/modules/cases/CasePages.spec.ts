@@ -4,6 +4,7 @@ import { createPinia, setActivePinia } from 'pinia';
 import { createMemoryHistory, createRouter, RouterView } from 'vue-router';
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 import { ApiError } from '../../api/http';
+import type { CaseSummary } from '../../api/cases';
 import { useAuthStore } from '../../stores/auth';
 import CaseListPage from './CaseListPage.vue';
 import CaseDetailPage from './CaseDetailPage.vue';
@@ -87,7 +88,12 @@ beforeEach(() => {
         canMatch: true,
         canSubmitExecution: false,
         canConfirmExecution: false,
+        canMailExecution: false,
+        canSubmitExecutionFiling: false,
+        canFinishExecution: false,
         canSubmitComplaint: false,
+        canConfirmComplaint: false,
+        canMailComplaint: false,
         canSubmitFiling: false,
         canRegisterAcceptance: false,
         canUploadAcceptanceMaterials: false,
@@ -95,9 +101,14 @@ beforeEach(() => {
         canCorrectHearing: false,
         canRegisterJudgment: false,
         canCorrectJudgment: false,
+        canChooseJudgmentNextStep: false,
+        canRevokeJudgmentNextStep: false,
+        canSaveSecondInstance: false,
+        canRegisterSecondInstanceResult: false,
+        canRevokeSecondInstanceResult: false,
         sourceLead: { id: 'lead-1', businessNo: 'LD-1' },
         sourceNotaryMatter: { id: 'matter-1', businessNo: 'NZ-1' },
-      },
+      } satisfies CaseSummary,
     ],
     total: 1,
     page: 1,
@@ -449,6 +460,110 @@ async function createUnknownConfirmation(wrapper: ReturnType<typeof mount>) {
 }
 
 describe('case pages', () => {
+  it('renders six aligned columns with exact identifiers and an accessible owner', async () => {
+    const base = await api.listCases();
+    const ownerName = '负责运营甲（负责多个区域与客户的长名称）';
+    api.listCases.mockResolvedValue({
+      ...base,
+      items: [
+        {
+          ...base.items[0],
+          id: 'case/encoded',
+          businessNo: 'CA-20261013-00001234',
+          owner: { id: 'owner-1', displayName: ownerName },
+          sourceLead: { id: 'lead-1', businessNo: 'LD-20261013-00005678' },
+          sourceNotaryMatter: {
+            id: 'matter-1',
+            businessNo: 'NZ-20261013-00009012',
+          },
+        },
+      ],
+    });
+    const wrapper = await mountRoute(
+      '/cases?view=department&stage=PENDING_MATCH',
+      CaseListPage,
+    );
+    expect(wrapper.findAll('thead th').map((cell) => cell.text())).toEqual([
+      '操作／案件编号',
+      '案件进展',
+      '负责人',
+      '办理权限',
+      '来源线索',
+      '公证事项',
+    ]);
+    expect(
+      wrapper
+        .findAll('thead th')
+        .every((cell) => cell.attributes('scope') === 'col'),
+    ).toBe(true);
+    expect(wrapper.findAll('colgroup col')).toHaveLength(6);
+    const cells = wrapper.findAll('tbody tr td');
+    expect(cells).toHaveLength(6);
+    expect(cells[0]!.get('a').text()).toBe('CA-20261013-00001234');
+    expect(cells[0]!.get('a').attributes('href')).toBe(
+      '/cases/case%2Fencoded?view=department&stage=PENDING_MATCH',
+    );
+    expect(cells[4]!.text()).toBe('LD-20261013-00005678');
+    expect(cells[5]!.text()).toBe('NZ-20261013-00009012');
+    expect(cells[2]!.get('details summary').text()).toBe(ownerName);
+    expect(cells[2]!.get('details p').text()).toBe(ownerName);
+    expect(wrapper.get('.business-list-scroll').attributes()).toMatchObject({
+      role: 'region',
+      tabindex: '0',
+      'aria-label': '案件列表，可横向滚动',
+    });
+    expect(wrapper.get('[data-test="case-pagination"]').element.tagName).toBe(
+      'NAV',
+    );
+    wrapper.unmount();
+  });
+
+  it.each([
+    'canMatch',
+    'canSubmitExecution',
+    'canConfirmExecution',
+    'canMailExecution',
+    'canSubmitExecutionFiling',
+    'canFinishExecution',
+    'canSubmitComplaint',
+    'canConfirmComplaint',
+    'canMailComplaint',
+    'canSubmitFiling',
+    'canRegisterAcceptance',
+    'canUploadAcceptanceMaterials',
+    'canScheduleHearing',
+    'canCorrectHearing',
+    'canRegisterJudgment',
+    'canCorrectJudgment',
+    'canChooseJudgmentNextStep',
+    'canRevokeJudgmentNextStep',
+    'canSaveSecondInstance',
+    'canRegisterSecondInstanceResult',
+    'canRevokeSecondInstanceResult',
+  ] as const satisfies readonly (keyof CaseSummary)[])(
+    'shows handling when only %s is authorized',
+    async (capability) => {
+      const base = await api.listCases();
+      const denied = Object.fromEntries(
+        Object.keys(base.items[0])
+          .filter((key) => key.startsWith('can'))
+          .map((key) => [key, false]),
+      );
+      api.listCases.mockResolvedValue({
+        ...base,
+        items: [
+          { ...base.items[0], ...denied, [capability]: true },
+          { ...base.items[0], ...denied, id: 'readonly-case' },
+        ],
+      });
+      const wrapper = await mountRoute('/cases', CaseListPage);
+      const rows = wrapper.findAll('tbody tr');
+      expect(rows[0]!.findAll('td')[3]!.text()).toBe('办理');
+      expect(rows[1]!.findAll('td')[3]!.text()).toBe('只读');
+      wrapper.unmount();
+    },
+  );
+
   async function paginatedCases(total = 21) {
     const base = await api.listCases();
     const records = Array.from({ length: total }, (_, index) => ({
@@ -472,7 +587,9 @@ describe('case pages', () => {
   it('pages 21 records, preserves exact links and disables the first and last boundaries', async () => {
     await paginatedCases();
     const wrapper = await mountRoute('/cases?view=department', CaseListPage);
-    expect(wrapper.findAll('[data-test="case-list"] li')).toHaveLength(20);
+    expect(wrapper.findAll('[data-test="case-list"] tbody tr')).toHaveLength(
+      20,
+    );
     expect(
       wrapper.get('[data-test="previous-page"]').attributes('disabled'),
     ).toBeDefined();
@@ -483,7 +600,7 @@ describe('case pages', () => {
       20,
       expect.objectContaining({ view: 'department' }),
     );
-    expect(wrapper.findAll('[data-test="case-list"] li')).toHaveLength(1);
+    expect(wrapper.findAll('[data-test="case-list"] tbody tr')).toHaveLength(1);
     expect(wrapper.get('[data-test="case-list"] a').attributes('href')).toBe(
       '/cases/case-21?view=department&page=2',
     );
@@ -910,7 +1027,7 @@ describe('case pages', () => {
       expect.objectContaining({ stage: 'WAITING_EXECUTION_CONFIRMATION' }),
     );
     expect(wrapper.get('.page-head').text()).toContain('执行材料待确认');
-    const rows = wrapper.findAll('[data-test="case-list"] li');
+    const rows = wrapper.findAll('[data-test="case-list"] tbody tr');
     expect(rows).toHaveLength(2);
     expect(rows[0]!.text()).toContain('执行材料待确认');
     expect(rows[0]!.text()).toContain('办理');
@@ -1116,7 +1233,9 @@ describe('case pages', () => {
       expect(wrapper.get('[data-test="case-list"]').text()).toContain(
         `CA-FILING-${view}`,
       );
-      expect(wrapper.findAll('li')).toHaveLength(1);
+      expect(wrapper.findAll('[data-test="case-list"] tbody tr')).toHaveLength(
+        1,
+      );
       wrapper.unmount();
     },
   );

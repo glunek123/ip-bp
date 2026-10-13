@@ -3,13 +3,14 @@ import { createPinia, setActivePinia } from 'pinia';
 import { createMemoryHistory, createRouter } from 'vue-router';
 import { beforeEach, describe, expect, it, vi } from 'vitest';
 import { ApiError } from '../../api/http';
+import type { LawyerCaseList, LawyerCaseSummary } from '../../api/cases';
 import { useAuthStore } from '../../stores/auth';
 import LawyerCaseListPage from './LawyerCaseListPage.vue';
 
 const api = vi.hoisted(() => ({ listLawyerCases: vi.fn() }));
 vi.mock('../../api/cases', () => ({ listLawyerCases: api.listLawyerCases }));
 
-const emptyResult = {
+const emptyResult: LawyerCaseList = {
   items: [
     {
       id: 'case-1',
@@ -34,6 +35,9 @@ const emptyResult = {
       canCorrectJudgment: false,
       canChooseJudgmentNextStep: false,
       canRevokeJudgmentNextStep: false,
+      canSaveSecondInstance: false,
+      canRegisterSecondInstanceResult: false,
+      canRevokeSecondInstanceResult: false,
       createdAt: '2026-10-01T00:00:00Z',
     },
   ],
@@ -92,6 +96,85 @@ beforeEach(() => {
 });
 
 describe('LawyerCaseListPage', () => {
+  it('renders only the three available columns and keeps the complete encoded case link', async () => {
+    api.listLawyerCases.mockResolvedValue({
+      ...emptyResult,
+      items: [
+        {
+          ...emptyResult.items[0],
+          id: 'case/encoded',
+          businessNo: 'CA-20261013-00001234',
+        },
+      ],
+    });
+    const { wrapper } = await mountPage();
+    expect(wrapper.findAll('thead th').map((cell) => cell.text())).toEqual([
+      '操作／案件编号',
+      '案件进展',
+      '办理权限',
+    ]);
+    expect(
+      wrapper
+        .findAll('thead th')
+        .every((cell) => cell.attributes('scope') === 'col'),
+    ).toBe(true);
+    expect(wrapper.findAll('colgroup col')).toHaveLength(3);
+    expect(wrapper.findAll('tbody tr td')).toHaveLength(3);
+    expect(wrapper.get('tbody a').text()).toBe('CA-20261013-00001234');
+    expect(wrapper.get('tbody a').attributes('href')).toBe(
+      '/lawyer/cases/case%2Fencoded',
+    );
+    expect(wrapper.get('.business-list-scroll').attributes()).toMatchObject({
+      role: 'region',
+      tabindex: '0',
+      'aria-label': '本人承办案件列表，可横向滚动',
+    });
+    expect(wrapper.text()).not.toContain('负责人');
+    expect(wrapper.text()).not.toContain('来源线索');
+    wrapper.unmount();
+  });
+
+  it.each([
+    'canSubmitExecution',
+    'canConfirmExecution',
+    'canMailExecution',
+    'canSubmitExecutionFiling',
+    'canFinishExecution',
+    'canSubmitComplaint',
+    'canConfirmComplaint',
+    'canMailComplaint',
+    'canSubmitFiling',
+    'canRegisterAcceptance',
+    'canUploadAcceptanceMaterials',
+    'canScheduleHearing',
+    'canRegisterJudgment',
+    'canChooseJudgmentNextStep',
+    'canSaveSecondInstance',
+    'canRegisterSecondInstanceResult',
+  ] as const satisfies readonly (keyof LawyerCaseSummary)[])(
+    'shows handling when only %s is authorized',
+    async (capability) => {
+      const base = emptyResult.items[0]!;
+      const denied = Object.fromEntries(
+        Object.keys(base)
+          .filter((key) => key.startsWith('can'))
+          .map((key) => [key, false]),
+      );
+      api.listLawyerCases.mockResolvedValue({
+        ...emptyResult,
+        items: [
+          { ...base, ...denied, [capability]: true },
+          { ...base, ...denied, id: 'readonly-case' },
+        ],
+      });
+      const { wrapper } = await mountPage();
+      const rows = wrapper.findAll('tbody tr');
+      expect(rows[0]!.findAll('td')[2]!.text()).toBe('可办理');
+      expect(rows[1]!.findAll('td')[2]!.text()).toBe('只读');
+      wrapper.unmount();
+    },
+  );
+
   it('loads the本人 queue and does not offer department scope', async () => {
     const { wrapper } = await mountPage();
     expect(api.listLawyerCases).toHaveBeenCalledWith(1, 20, undefined, {
@@ -218,7 +301,7 @@ describe('LawyerCaseListPage', () => {
       { signal: expect.any(AbortSignal) },
     );
     expect(wrapper.get('.page-head').text()).toContain('执行材料待确认');
-    const rows = wrapper.findAll('[data-test="lawyer-case-list"] li');
+    const rows = wrapper.findAll('[data-test="lawyer-case-list"] tbody tr');
     expect(rows).toHaveLength(2);
     expect(rows[0]!.text()).toContain('执行材料待确认');
     expect(rows[0]!.text()).toContain('可办理');
@@ -320,6 +403,7 @@ it('offers WAITING_ARCHIVE in the lawyer route filter and keeps a finished case 
         ...emptyResult.items[0],
         stage: 'WAITING_ARCHIVE',
         canFinishExecution: false,
+        canSubmitFiling: false,
       },
     ],
     counts: { ...emptyResult.counts, WAITING_ARCHIVE: 1 },
@@ -334,6 +418,7 @@ it('offers WAITING_ARCHIVE in the lawyer route filter and keeps a finished case 
     expect.objectContaining({ signal: expect.any(AbortSignal) }),
   );
   expect(wrapper.text()).toContain('待归档');
+  expect(wrapper.get('tbody tr').findAll('td')[2]!.text()).toBe('只读');
   wrapper.unmount();
 });
 
