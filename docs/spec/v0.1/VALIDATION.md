@@ -1,5 +1,13 @@
 # SPEC-001 文档验证
 
+## U1／U2案件列表分页组合（2026-10-13，验收进行中）
+
+基线main`953ae33a811d9c22da3a8f390f393ba407a7f2a7`。U1源`9d93abc4e819fce1c3d751a6ea24a8d37eed4cc3`／tree`ad1b51a0697d60a1625875fe7a46662708455c56`，只改内部列表与CasePages测试；U2源`025694b43eee9fbcfd7aa9a49f144472112af08c`／tree`94358ecc5c6a2545e7f1914480b8751baaa6b7d2`，只改客户列表与ClientCasePages测试。两线停止修改、工作区干净后，I于UTC06:02:12.399～06:02:12.680分别接纳为`2a8b8d0`／`2c7d4ff`，exit0，无冲突，原未提交恢复文档未被夹带；本批尚未推送或合main。
+
+作者实际报告已核：U1组件56/56，类型16.155秒、Lint1.557秒、格式0.423秒均exit0；原件在U1 ignored `.local/u1-evidence/report.json`及对应日志。U2组件／既有客户严格API契约36/36，类型17.087秒、Lint1.456秒、格式0.351秒均exit0；原件在U2 ignored `.local/u2-evidence/checks.json`。两线Node24.21.0／pnpm11.27.0、锁文件及Element Plus patch与I基线一致，隔离junction依赖的pnpm元数据异常如实保留；作者使用已核项目Node直接调用已有CLI，未改锁文件、patch、策略或.pnpm-store，未把这些结果称为标准pnpm正式门禁。I最终门禁必须走既有正常入口和完整环境指纹，不沿用跳过依赖校验参数。
+
+I只为本次真实分页验收扩展现有`case-complaint-confirmation.spec.ts`：复用`createSubmittedCaseThroughApi`的完整普通来源链，21案确认后用正常运营／本企业客户密码会话验证20＋1、刷新、精确ID详情返回、范围／view回首页、空view及客户最小字段白名单。既有准备器只增加返回其已创建的客户登录信息，未改生产API／schema／授权或直接写目标阶段；密码不写聊天、普通日志或公开摘要。该场景尚未执行，不预写通过；只在固定15433合成测试库运行既有入口，不调用其reset／fixture身份到15436持久预览。新组合需独立Review及本批显式Level2门禁，上一批68项和旧verify不能冒充本批新分页通过；后续实际候选、时间、退出码和原始结果在此节补记。
+
 ## CA-013／014、日历与人工台账集成（2026-10-13）
 
 用户本轮明确授权推送、合main并持续管理后续开发，不部署生产。读取远端及仓库准入后，确认origin/main与本地main均为`4802c320892a7ce50ce6f2c8600c806213061396`、是任务收口`ea9dcd18fcfcbf9fa092aeb427505ac9892db88b`的祖先；任务工作区干净。已快进本地main并原子推送main与`codex/ca013-014-integration`，实际推送exit0，两处远端refs均核实为`ea9dcd1`，GitHub commit API核实tree`5cd3290a6bf1e25133f30aa8574500170c3080ec`，与已核收口完全相同。没有冲突、强推、额外合并变化或混入主目录草稿，不因快进重复业务门禁。提交链接：[ea9dcd1](https://github.com/glunek123/ip-bp/commit/ea9dcd18fcfcbf9fa092aeb427505ac9892db88b)。
@@ -10,7 +18,7 @@ GitHub准入只读核实：main未保护、rulesets为空、Actions workflows为
 
 主目录`frontend/src/api/cases.ts`原未提交改动与本批重叠，先按字节保全原文件及binary patch，再仅stash该已核tracked文件，stash commit为`b07482c2c6130baa39cc43658f3dadb17cf81551`；原文件SHA256`C9E6C897C616DBC0E60FF40B5D9B504D8D9283493A3CF1CD539444B78189F95E`。原件与恢复说明为同目录`main-cases-before-integration.ts`、`.patch`及`main-workspace-preservation.json`，stash保留，未盲目回填到已前进main，也未加入远端提交。未跟踪`.pnpm-store/`保留原位；其他现场未覆盖、重置或删除。
 
-工程总控继续独占接口／文件所有权、schema／迁移、集成验收及权威文档；父任务负责需求优先级与启动独立实现任务。下一批只读分页U1／U2和历史补录技术设计D1的唯一白名单与验收已在[路线图](../../feature-roadmap.md#下一批分派边界准备完成待父任务派发)准备，均未开始实施，原组合证据不能覆盖未来新增分页逻辑。B13执行结束、B15结案／归档及资金门槛继续待业务决定；缴费／其他日历来源、支付、提醒及完整Demo仍未交付。
+工程总控继续独占接口／文件所有权、schema／迁移、集成验收及权威文档；父任务负责需求优先级与启动独立实现任务。下一批只读分页U1／U2和历史补录技术设计D1的唯一白名单与验收已在[路线图](../../feature-roadmap.md#下一批分派边界)准备，集成时均未开始实施；后续在途恢复点只见项目状态，原组合证据不能覆盖未来新增分页逻辑。B13执行结束、B15结案／归档及资金门槛继续待业务决定；缴费／其他日历来源、支付、提醒及完整Demo仍未交付。
 
 ## 日历与人工台账组合（2026-10-13，本地验收完成，待集成）
 

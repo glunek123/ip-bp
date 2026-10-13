@@ -28,6 +28,7 @@ export function createSubmittedCaseThroughApi(
   options?: SubmittedCaseOptions,
 ): Promise<{
   caseId: string;
+  client: { username: string; password: string };
   lawyer: {
     id: string;
     username: string;

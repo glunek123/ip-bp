@@ -4,17 +4,28 @@
 
 ## 当前阶段
 
-CORE-CA-001～012及SD-44律师身份前置补齐均已验收、推送并集成main；最新前置反馈规则已同时集成。业务能力状态及唯一Current／Next唯一指针见[路线图](feature-roadmap.md#current-slice)：当前CORE-KL-001已完成、已集成，既有人工台账B2也已组合验收；下一指针为CORE-CA-015待B13业务决定、未领取，下一批实施尚未派发。
+CORE-CA-001～012及SD-44律师身份前置补齐均已验收、推送并集成main；最新前置反馈规则已同时集成。业务能力状态及唯一Current／Next唯一指针见[路线图](feature-roadmap.md#current-slice)：当前CORE-KL-001已完成、已集成，既有人工台账B2也已组合验收；下一指针为CORE-CA-015按SD-54已批准、待技术冻结与派发，U1／U2辅助分页批次已派发并在各自worktree实施；D1只读线程01a133e4-bd3f-71ff-bf4e-7f1a5c317013已完成报告（基线953ae33，无写入或验证）。
 
 ## 当前任务
 
-2026-10-13当前**CORE-KL-001**真实来源日历及既有人工台账B2接线均已完成本地验收、推送并集成main；Next为CORE-CA-015待B13业务决定、未领取，唯一指针见[路线图](feature-roadmap.md#current-slice)。复用`codex/ca013-014-integration`／`.local/worktrees/ca013-014-integration`；已按用户新授权从main基线`4802c32`快进至`ea9dcd1`／tree`5cd3290a6bf1e25133f30aa8574500170c3080ec`并原子推送任务分支与main；无CI配置，不冒称CI通过。主目录重叠cases.ts已保全原文件／补丁及stash`b07482c2c6130baa39cc43658f3dadb17cf81551`，恢复指针在ignored `.local/calendar-funds-evidence/main-workspace-preservation.json`；.pnpm-store保留原位。没有部署生产。下一批白名单已在路线图准备，实施由父任务分派。
+2026-10-13当前**CORE-KL-001**真实来源日历及既有人工台账B2接线均已完成本地验收、推送并集成main；Next为CORE-CA-015按SD-54已批准、待技术冻结与派发，唯一指针见[路线图](feature-roadmap.md#current-slice)。复用`codex/ca013-014-integration`／`.local/worktrees/ca013-014-integration`；已按用户新授权从main基线`4802c32`快进至`ea9dcd1`／tree`5cd3290a6bf1e25133f30aa8574500170c3080ec`并原子推送任务分支与main；无CI配置，不冒称CI通过。主目录重叠cases.ts已保全原文件／补丁及stash`b07482c2c6130baa39cc43658f3dadb17cf81551`，恢复指针在ignored `.local/calendar-funds-evidence/main-workspace-preservation.json`；.pnpm-store保留原位。没有部署生产。集成文档收口`953ae33`已核本地／远端main与任务分支一致；U1／U2依此基线开发，白名单见路线图，父任务已授权直接接纳作者最终候选；I已接纳U1为`2a8b8d0`、U2为`2c7d4ff`，正在准备稳定组合Review和门禁，尚未推送本批。
 
 最后执行性候选`32cb30d`／tree`c62f9412407d571cf713059240cd25d78f348eed`：独立补审已接受产品／单元／构建输入未变的`f415f7f`完整verify限定复用（80／1167／1278及双构建），原九文件68项整组本次exit0、68/68、前后候选及环境一致。原67/68失败与115245仅58项通过的中断均保留，原中断退出码未知；真实结果、复用和收口边界只在[验证记录](spec/v0.1/VALIDATION.md#日历与人工台账组合2026-10-13本地验收完成待集成)维护。A原39文件167/167只绑定其原tree，不冒充新组合全仓回归。
 
-持久预览5186／3206／15436保留正常密码／cookie／CSRF及两条未办理的合成待办案；资金登记→刷新→来源→更正→历史和日历三角色五卡／切月／精确跳转均已有正常浏览器证据。恢复时先读ignored `.local/ca013-preview/README.md`与`runtime/services.json`；凭据仅`runtime/login.txt`，摘要为`runtime/browser-scenario-summary.json`和`browser-calendar-summary.json`。本轮只读核实登录页和health均200，未新登录、改预览数据或重启服务；Demo8123和其他环境未操作。缴费截止／其他节点、提醒、资金发起、CA-015及后续未做，不称全部Demo完成。
+持久预览5186／3206／15436保留正常密码／cookie／CSRF及两条未办理的合成待办案；资金登记→刷新→来源→更正→历史和日历三角色五卡／切月／精确跳转均已有正常浏览器证据。恢复时先读ignored `.local/ca013-preview/README.md`与`runtime/services.json`；凭据仅`runtime/login.txt`，摘要为`runtime/browser-scenario-summary.json`和`browser-calendar-summary.json`。本轮只读核实登录页和health均200，未新登录、改预览数据或重启服务；Demo8123和其他环境未操作。缴费截止／其他节点、提醒、资金发起、CA-015及后续未做；SD-54新批准范围已入既有Decision／Spec／GAPS，下一批E0/E1/E2/A0边界只见路线图，不开放重开，不称全部Demo完成。
 
-本批工程总控与唯一仓库写入者为本任务接替I；前任I任务01a12f29-e1e2-7753-83ff-89e766266035及B/C作者均已结束。父任务负责需求优先级与对用户沟通；工程边界、接口／文件所有权、分支提交、集成验收和权威仓库文档统一由工程总控维护，后续并行实现只按白名单交代码／证据／遗留，不另建项目状态。既有[协作路由](ai-coding.md#多-agent-协作路由)及[单写入者规则](../.cursor/rules/verified-feature-integration.mdc#工作区选择与生命周期)继续适用；接替必须先交接并核实无活动写入者。本轮完成既定集成及下一批边界准备；U1／U2只读分页可并行，D1先做技术设计，均待父任务派发，不重做流程体系。
+工程主线程01a133a9-8151-751f-a3ec-c3cbc7111019为本任务接替I，唯一集成工作区写入者；前任I任务01a12f29-e1e2-7753-83ff-89e766266035及B/C作者均已结束。父任务负责需求优先级与对用户沟通；工程边界、接口／文件所有权、分支提交、集成验收和权威仓库文档统一由工程总控维护，后续并行实现只按白名单交代码／证据／遗留，不另建项目状态。既有[协作路由](ai-coding.md#多-agent-协作路由)及[单写入者规则](../.cursor/rules/verified-feature-integration.mdc#工作区选择与生命周期)继续适用；接替必须先交接并核实无活动写入者。U1／U2已在独占worktree并行，只持有各自两个白名单文件；D1只读线程01a133e4-bd3f-71ff-bf4e-7f1a5c317013已完成报告（基线953ae33，无写入或验证）。I本阶段只登记实际恢复点并准备组合验收，不抢共享文件、运行环境或正式门禁，按父任务追加授权直接接纳最终候选并统一验收，尚未推送本批。
+
+### 在途分页批次（2026-10-13）
+
+| 任务            | 线程／分支／实际worktree                                                                                                                 | 当前事实与下一步                                                                                                                                                                                                                                                                                            |
+| --------------- | ---------------------------------------------------------------------------------------------------------------------------------------- | ----------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| U1 内部案件列表 | 01a133cb-c9e7-749c-af40-992386d5c01d；`codex/u1-internal-case-pagination`；`.local/worktrees/u1-internal-case-pagination`，基线`953ae33` | 已领取并修改白名单。最终源SHA`9d93abc4e819fce1c3d751a6ea24a8d37eed4cc3`／tree`ad1b51a0697d60a1625875fe7a46662708455c56`；完整证据已核其ignored `.local/u1-evidence/report.json`，56/56、frontend类型／Lint／格式exit0，已由I接纳为`2a8b8d0`。URL只存page，每页固定20，无新增筛选契约；真实21条两页验收待I。 |
+| U2 客户案件列表 | 01a133cc-2794-7575-830b-1f6d93427014；`codex/u2-client-case-pagination`；`.local/worktrees/u2-client-case-pagination`，基线`953ae33`     | 实际本地候选`025694b43eee9fbcfd7aa9a49f144472112af08c`／tree`94358ecc5c6a2545e7f1914480b8751baaa6b7d2`，已核提交只含两个白名单文件。最终证据已核其ignored `.local/u2-evidence/checks.json`，36/36、类型／Lint／格式exit0；I接纳为`2c7d4ff`，真实客户两页验收未做。                                          |
+
+两线隔离依赖的pnpm元数据校验异常已报告；未修改锁文件／patch／pnpm策略或.pnpm-store，作者使用已核项目Node直接运行已有CLI。作者报告不代替I最终组合证据；正式门禁不得沿用跳过依赖预检的参数。现有预览于UTC05:57只读登录页及health均200，来源摘要只确认两条不同案件，不是最新总量查询，也无21条证明。账号／来源链仍在既有私密runtime目录，不在聊天传密码。两线无需改环境或新造数据，I在稳定组合候选上统一完成真实两页验证；原测试库准备器仅供固定15433合成验收库，不得用于持久15436预览。
+
+D1报告已收到，只作为历史补录技术建议，不是分页或历史补录验证证据；其关于B13／B15仍未决的基线描述已被本轮SD-54批准替代，以当前Decision／Spec为准。可靠外部身份缺失时的疑似重复处理，以及前序日期未知时的接续校验，留历史补录技术冻结时最小确认，不重问B12。
 
 ### 并行恢复位置（2026-10-13）
 

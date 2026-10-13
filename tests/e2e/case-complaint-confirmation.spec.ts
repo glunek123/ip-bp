@@ -1,3 +1,4 @@
+import { randomUUID } from 'node:crypto';
 import { readFile } from 'node:fs/promises';
 import { expect, test, type Page } from '@playwright/test';
 import {
@@ -11,13 +12,14 @@ async function loginWithPassword(
   page: Page,
   username: string,
   password: string,
+  target = '/cases',
 ): Promise<void> {
-  await page.goto('/cases');
+  await page.goto(target);
   await expect(page).toHaveURL(/\/login\?returnTo=/u);
   await page.getByLabel('用户名').fill(username);
   await page.getByLabel('密码').fill(password);
   await page.getByRole('button', { name: '登录', exact: true }).click();
-  await expect.poll(() => new URL(page.url()).pathname).toBe('/cases');
+  await expect.poll(() => new URL(page.url()).pathname).toBe(target);
   await expect(
     page.getByRole('button', { name: '退出登录', exact: true }),
   ).toBeVisible();
@@ -37,6 +39,171 @@ async function readDownloadedBytes(
 
 test.beforeEach(async () => resetCoreLeadE2eData());
 test.afterEach(async () => allowInjectedFailures());
+
+test('normal password pagination keeps 21 source cases accessible to operations and their enterprise client', async ({
+  page,
+  request,
+}) => {
+  test.setTimeout(300_000);
+  const cases: Array<
+    Awaited<ReturnType<typeof createSubmittedCaseThroughApi>>
+  > = [];
+  for (let index = 0; index < 21; index += 1) {
+    const source = await createSubmittedCaseThroughApi(request);
+    const confirmation = await request.post(
+      `/api/v1/cases/${source.caseId}/complaint-confirm`,
+      {
+        headers: {
+          Authorization: `Bearer ${coreLeadFixtures.tokenA}`,
+          'Idempotency-Key': randomUUID(),
+        },
+        data: {
+          expectedVersion: source.submitted.version,
+          confirmedComplaintContentVersionId: source.complaint.contentVersionId,
+          amountState: 'KNOWN',
+          amount: source.submitInput.amount,
+          pendingReason: null,
+          confirmDisclose: false,
+        },
+      },
+    );
+    expect(confirmation.status()).toBe(201);
+    cases.push(source);
+  }
+  const sourceIds = cases.map((source) => source.caseId).sort();
+  type ListPayload = {
+    items: Array<{ id: string }>;
+    total: number;
+    page: number;
+    pageSize: number;
+  };
+  async function readList(
+    pathname: '/api/v1/cases' | '/api/v1/client/cases',
+    requestedPage: number,
+    action: () => Promise<unknown>,
+    expectedTotal = 21,
+  ): Promise<ListPayload> {
+    const ready = page.waitForResponse((response) => {
+      const url = new URL(response.url());
+      return (
+        response.request().method() === 'GET' &&
+        url.pathname === pathname &&
+        url.searchParams.get('page') === String(requestedPage) &&
+        url.searchParams.get('pageSize') === '20'
+      );
+    });
+    await action();
+    const response = await ready;
+    expect(response.status()).toBe(200);
+    const payload: ListPayload = await response.json();
+    expect(payload.page).toBe(requestedPage);
+    expect(payload.pageSize).toBe(20);
+    expect(payload.total).toBe(expectedTotal);
+    return payload;
+  }
+
+  const internalFirst = await readList('/api/v1/cases', 1, () =>
+    loginWithPassword(
+      page,
+      coreLeadFixtures.operatorUsername,
+      coreLeadFixtures.operatorPassword,
+    ),
+  );
+  expect(internalFirst.items).toHaveLength(20);
+  const internalList = page.locator('[data-test="case-list"]');
+  await expect(internalList.locator('li')).toHaveCount(20);
+  await expect(
+    page.getByRole('button', { name: '上一页', exact: true }),
+  ).toBeDisabled();
+  const internalSecond = await readList('/api/v1/cases', 2, () =>
+    page.getByRole('button', { name: '下一页', exact: true }).click(),
+  );
+  expect(internalSecond.items).toHaveLength(1);
+  expect(
+    [...internalFirst.items, ...internalSecond.items]
+      .map((item) => item.id)
+      .sort(),
+  ).toEqual(sourceIds);
+  const internalCaseId = internalSecond.items[0]!.id;
+  await expect(internalList.locator('li')).toHaveCount(1);
+  await expect(
+    page.getByRole('button', { name: '下一页', exact: true }),
+  ).toBeDisabled();
+  await readList('/api/v1/cases', 2, () => page.reload());
+  await internalList.locator(`a[href="/cases/${internalCaseId}"]`).click();
+  await expect(page).toHaveURL(new RegExp(`/cases/${internalCaseId}$`, 'u'));
+  await readList('/api/v1/cases', 2, () => page.goBack());
+  await expect(
+    internalList.locator(`a[href="/cases/${internalCaseId}"]`),
+  ).toBeVisible();
+  await readList('/api/v1/cases', 1, () =>
+    page.getByRole('button', { name: '本部门全部', exact: true }).click(),
+  );
+  expect(new URL(page.url()).searchParams.get('page')).toBe('1');
+  await expect(internalList.locator('li')).toHaveCount(20);
+  await page.getByRole('button', { name: '退出登录', exact: true }).click();
+  await expect(page).toHaveURL(/\/login$/u);
+
+  const clientFirst = await readList('/api/v1/client/cases', 1, () =>
+    loginWithPassword(
+      page,
+      cases[0]!.client.username,
+      cases[0]!.client.password,
+      '/client/cases',
+    ),
+  );
+  expect(clientFirst.items).toHaveLength(20);
+  const clientList = page.locator('[data-test="client-case-list"]');
+  await expect(clientList.locator('li')).toHaveCount(20);
+  const clientSecond = await readList('/api/v1/client/cases', 2, () =>
+    page.getByRole('button', { name: '下一页', exact: true }).click(),
+  );
+  expect(clientSecond.items).toHaveLength(1);
+  expect(
+    [...clientFirst.items, ...clientSecond.items].map((item) => item.id).sort(),
+  ).toEqual(sourceIds);
+  for (const item of [...clientFirst.items, ...clientSecond.items]) {
+    expect(Object.keys(item).sort()).toEqual(
+      [
+        'id',
+        'businessNo',
+        'stage',
+        'version',
+        'canMailComplaint',
+        'canMailExecution',
+        'rightsHolderName',
+        'defendantNames',
+      ].sort(),
+    );
+  }
+  const clientCaseId = clientSecond.items[0]!.id;
+  await expect(clientList.locator('li')).toHaveCount(1);
+  await expect(
+    page.getByRole('button', { name: '下一页', exact: true }),
+  ).toBeDisabled();
+  await readList('/api/v1/client/cases', 2, () => page.reload());
+  await clientList.locator(`a[href="/client/cases/${clientCaseId}"]`).click();
+  await expect(page).toHaveURL(
+    new RegExp(`/client/cases/${clientCaseId}$`, 'u'),
+  );
+  await readList('/api/v1/client/cases', 2, () => page.goBack());
+  await expect(
+    clientList.locator(`a[href="/client/cases/${clientCaseId}"]`),
+  ).toBeVisible();
+  const recorded = await readList(
+    '/api/v1/client/cases',
+    1,
+    () => page.getByRole('button', { name: '已登记', exact: true }).click(),
+    0,
+  );
+  expect(recorded.items).toHaveLength(0);
+  expect(new URL(page.url()).searchParams.has('page')).toBe(false);
+  await expect(clientList).toContainText('当前没有案件');
+  await readList('/api/v1/client/cases', 1, () =>
+    page.getByRole('button', { name: '待盖章', exact: true }).click(),
+  );
+  await expect(clientList.locator('li')).toHaveCount(20);
+});
 
 test('password sessions confirm an exact revision, download real bytes and keep other same-department users read-only', async ({
   page,

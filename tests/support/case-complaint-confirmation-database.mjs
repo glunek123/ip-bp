@@ -334,6 +334,7 @@ export async function createSubmittedCaseThroughApi(request, options = {}) {
   );
   return {
     caseId,
+    client: { username: clientUsername, password: clientPassword },
     lawyer,
     lawyerSession,
     complaint,
