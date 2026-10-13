@@ -4,7 +4,7 @@
 
 ## 当前阶段
 
-业务唯一Current／Next见[路线图](feature-roadmap.md#current-slice)：Current为CORE-CA-015执行结束，E1/E2/E3已接纳、组合验收准备中；Next为CORE-CA-016最小结案信息，待另行技术冻结，不实施归档/重开/财务规则。此前CA013/014、日历/人工台账及U1/U2分页均已集成main3f914ad；证据只在VALIDATION维护。
+业务唯一Current／Next见[路线图](feature-roadmap.md#current-slice)：Current为CORE-CA-015执行结束＋N1导航，完整代码已接纳、组合验收中；Next为运营Demo字段／展示对齐（公证优先，线索／案件随后），只读审计独立进行，不阻断当前验收／推送／预览更新，不夹带改造。CA-016最小结案信息仍保留后续、待技术冻结，不实施归档/重开/财务规则。此前CA013/014、日历/人工台账及U1/U2分页均已集成main3f914ad；证据只在VALIDATION维护。
 
 ## 当前任务
 
@@ -22,7 +22,7 @@ I持有新finish DB/migration support、组合E2E、三模型归属及权威文�
 
 中央新I正常离线冻结安装exit0，复用缓存只读复制到自身store，不关闭verifyDepsBeforeRun。worker迁移安装元数据限制仍属作者检查边界，未冒称正常pnpm门禁。N1最终a9083b2已于08:36:53接纳为8079b80，原作者idle/completed，12文件源码准确；最终Review确认两个URL契约Important，N1修复消息返回路径反序列化错误未送达，I接管其中两列表及直接测试四文件，103/103聚焦通过，待固定候选及Reviewer关闭。业务来源链用普通API，两个组浏览器和旧材料实际字节比对已补测试，尚待运行。
 
-当前开发实证：891fbea正常前端7文件286/286 exit0；两份新迁移08:31:40～44经标准锁部署15433测试库exit0；4c0e6a9／treeca7b4f6的PG合成守卫fixture1/1 exit0（08:34:51～08:35:05）。首次Temp权限零测试、旧文件root在DB操作前拒绝、动态导入加载失败均保留，详见VALIDATION；不把其中任一结果当最终组合或普通API来源验收。最终Review和稳定门禁待收口，未推送或改变main。
+当前开发实证：891fbea正常前端7文件286/286 exit0；两份新迁移08:31:40～44经标准锁部署15433测试库exit0；4c0e6a9／treeca7b4f6的PG合成守卫fixture1/1 exit0（08:34:51～08:35:05）。75ea569／tree34955ab独立最终组合Review两轴ACCEPTED、未关闭0/0/0，关闭两URL问题。普通来源浏览器开发期08:50:33～08:51:00两项均在来源准备被403拒绝，尚未Finish；I修测试来源角色编辑后旧fixture身份和律师切换后运营材料请求，采用正常运营重新登录与最新CSRF，不改产品守卫。首次Temp权限零测试、旧文件root在DB操作前拒绝、动态导入加载失败及上述失败均保留。修正后Reviewer再核必要delta，稳定门禁待收口，未推送或改变main。
 
 测试资源UTC07:13:25只读核实：backend/.env.test为127.0.0.1:15433/dev_cor_test、原Compose测试容器健康，标准E2E锁无owner、3101/5174空闲；I当前不运行PG/Playwright，E2/E3仅本线非DB检查，E1候选就绪后独占窗口。窗口内仅既有守卫入口和受控随机schema专项；不另reset主测试schema、不动15436人工预览。模型容量错误只记执行服务故障，不记代码或测试失败；恢复先核现场/日志，未重复创建目录或启动测试。
 

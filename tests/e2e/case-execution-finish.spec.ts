@@ -242,9 +242,9 @@ test('operator finishes through the real panel with an explanation and customer 
   request,
 }) => {
   test.setTimeout(180_000);
-  await grantFinishActionToExistingRoleA(page);
   const source = await createCaseExecutionFilingSourceThroughApi(request, {
     onComplaintSubmitted: async (caseId) => {
+      await grantFinishActionToExistingRoleA(page);
       await login(
         page,
         '/cases',
@@ -435,7 +435,9 @@ test('current PRIMARY lawyer finishes with an uploaded basis and downloads its o
   request,
 }) => {
   test.setTimeout(180_000);
-  const source = await createCaseExecutionFilingSourceThroughApi(request);
+  const source = await createCaseExecutionFilingSourceThroughApi(request, {
+    onComplaintSubmitted: async () => grantFinishActionToExistingRoleA(page),
+  });
   expect(source.stage).toBe('EXECUTING');
 
   await login(

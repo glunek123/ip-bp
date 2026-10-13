@@ -3,9 +3,26 @@ import { coreLeadFixtures } from './core-lead-database.mjs';
 import { createSubmittedCaseThroughApi } from './case-complaint-confirmation-database.mjs';
 
 const origin = 'http://127.0.0.1:5174';
-const internalHeaders = {
-  Authorization: `Bearer ${coreLeadFixtures.tokenA}`,
-};
+async function authenticatedHeaders(request) {
+  const session = await expectStatus(
+    await request.get('/api/v1/auth/session'),
+    200,
+  );
+  return { Origin: origin, 'X-CSRF-Token': session.csrfToken };
+}
+async function loginOperator(request) {
+  await expectStatus(
+    await request.post('/api/v1/auth/login', {
+      headers: { Origin: origin },
+      data: {
+        username: coreLeadFixtures.operatorUsername,
+        password: coreLeadFixtures.operatorPassword,
+      },
+    }),
+    200,
+  );
+  return authenticatedHeaders(request);
+}
 const testPdf = Buffer.from(
   '%PDF-1.7\nCA015 synthetic ordinary-source evidence\n%%EOF\n',
 );
@@ -19,13 +36,8 @@ async function expectStatus(response, expected) {
   return response.json();
 }
 
-async function upload(
-  request,
-  caseId,
-  category,
-  label,
-  headers = internalHeaders,
-) {
+async function upload(request, caseId, category, label, headers) {
+  headers ??= await authenticatedHeaders(request);
   const draft = await expectStatus(
     await request.post('/api/v1/materials/upload-drafts', {
       headers,
@@ -50,12 +62,7 @@ async function upload(
 }
 
 async function caseDetail(request, caseId) {
-  return expectStatus(
-    await request.get(`/api/v1/cases/${caseId}`, {
-      headers: internalHeaders,
-    }),
-    200,
-  );
+  return expectStatus(await request.get(`/api/v1/cases/${caseId}`), 200);
 }
 
 async function waitForStage(request, caseId, expectedStage) {
@@ -100,6 +107,7 @@ export async function createCaseExecutionFilingSourceThroughApi(
   const pastDate = pastShanghaiDate();
   const today = shanghaiToday();
   if (options.onComplaintSubmitted) await options.onComplaintSubmitted(caseId);
+  let internalHeaders = await loginOperator(request);
 
   let detail = await caseDetail(request, caseId);
   await expectStatus(
@@ -216,6 +224,7 @@ export async function createCaseExecutionFilingSourceThroughApi(
     }),
     201,
   );
+  internalHeaders = await loginOperator(request);
   detail = await waitForStage(request, caseId, 'WAITING_JUDGMENT');
 
   const judgmentFile = await upload(request, caseId, 'JUDGMENT', 'judgment');
