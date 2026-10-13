@@ -190,8 +190,32 @@ describe('case read OpenAPI contract', () => {
         confirmedAt: '2026-10-12T00:00:00.000Z',
       }),
     };
+    let lawyerRead = false;
+    const reads = new CaseReadService(
+      {
+        userAccount: {
+          findUnique: jest.fn().mockImplementation(async () => ({
+            accountType: lawyerRead ? 'LAWYER' : 'INTERNAL',
+            active: true,
+          })),
+        },
+        lawyerAccountBinding: {
+          findFirst: jest.fn().mockResolvedValue({ id: 'binding-1' }),
+        },
+        case: {
+          findMany: jest.fn().mockResolvedValue([]),
+          count: jest.fn().mockResolvedValue(0),
+          groupBy: jest.fn().mockResolvedValue([]),
+        },
+      } as never,
+      {
+        authorizeDepartmentAction: jest.fn().mockResolvedValue(undefined),
+      } as never,
+      {} as never,
+    );
+    const listRead = jest.spyOn(reads, 'list');
     const module = await Test.createTestingModule({
-      controllers: [CaseReadController],
+      controllers: [CaseReadController, LawyerCaseController],
       providers: [
         {
           provide: CaseExecutionFinishService,
@@ -202,7 +226,7 @@ describe('case read OpenAPI contract', () => {
           provide: CaseExecutionFilingService,
           useValue: { submit: jest.fn() },
         },
-        { provide: CaseReadService, useValue: {} },
+        { provide: CaseReadService, useValue: reads },
         { provide: CaseMatchService, useValue: {} },
         { provide: CaseComplaintService, useValue: {} },
         { provide: CaseComplaintConfirmationService, useValue: {} },
@@ -231,6 +255,7 @@ describe('case read OpenAPI contract', () => {
             userId: routeCaseId,
             departmentId: routeCaseId,
             authorizationRevision: 1,
+            ...(lawyerRead ? { lawyerAccountId: routeCaseId } : {}),
           };
           return true;
         },
@@ -246,6 +271,64 @@ describe('case read OpenAPI contract', () => {
         app,
         new DocumentBuilder().setTitle('test').setVersion('1').build(),
       );
+      expect(document.paths['/api/v1/cases']?.get?.parameters).toEqual(
+        expect.arrayContaining([
+          expect.objectContaining({
+            name: 'stageGroup',
+            schema: expect.objectContaining({
+              enum: ['COMPLAINT_PREPARATION', 'EXECUTION_PREPARATION'],
+            }),
+          }),
+        ]),
+      );
+      for (const stageGroup of [
+        'COMPLAINT_PREPARATION',
+        'EXECUTION_PREPARATION',
+      ] as const) {
+        await request(app.getHttpServer())
+          .get('/api/v1/cases')
+          .query({ stageGroup, view: 'mine', page: 2 })
+          .expect(200);
+        expect(listRead).toHaveBeenLastCalledWith(
+          expect.any(Object),
+          2,
+          20,
+          'mine',
+          undefined,
+          stageGroup,
+        );
+        await request(app.getHttpServer())
+          .get('/api/v1/cases')
+          .query({ stage: 'WAITING_COMPLAINT', stageGroup })
+          .expect(400);
+      }
+      lawyerRead = true;
+      for (const stageGroup of [
+        'COMPLAINT_PREPARATION',
+        'EXECUTION_PREPARATION',
+      ] as const) {
+        await request(app.getHttpServer())
+          .get('/api/v1/lawyer/cases')
+          .query({ stageGroup, page: 2 })
+          .expect(200);
+        expect(listRead).toHaveBeenLastCalledWith(
+          expect.objectContaining({ lawyerAccountId: routeCaseId }),
+          2,
+          20,
+          'department',
+          undefined,
+          stageGroup,
+        );
+        await request(app.getHttpServer())
+          .get('/api/v1/lawyer/cases')
+          .query({ stage: 'WAITING_COMPLAINT', stageGroup })
+          .expect(400);
+      }
+      lawyerRead = false;
+      await request(app.getHttpServer())
+        .get('/api/v1/cases')
+        .query({ stageGroup: 'UNKNOWN' })
+        .expect(400);
       expect(
         document.paths['/api/v1/cases']?.get?.responses['200'],
       ).toMatchObject({
@@ -475,3 +558,12 @@ describe('case list execution stage query validation', () => {
     );
   });
 });
+
+it.each(['COMPLAINT_PREPARATION', 'EXECUTION_PREPARATION'])(
+  'accepts %s as a read-only group query',
+  (stageGroup) => {
+    expect(
+      validateSync(plainToInstance(CasePageQueryDto, { stageGroup })),
+    ).toEqual([]);
+  },
+);

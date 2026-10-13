@@ -622,22 +622,23 @@ describe('case pages', () => {
     },
   );
 
-  it.each(['stage=WAITING_COMPLAINT', 'stageGroup=EXECUTION_PREPARATION'])(
-    'resets an inherited page when %s changes',
-    async (filter) => {
-      await paginatedCases();
-      const wrapper = await mountRoute(
-        '/cases?view=department&page=2',
-        CaseListPage,
-      );
-      await wrapper.vm.$router.push(`/cases?view=department&page=2&${filter}`);
-      await flushPromises();
-      expect(wrapper.vm.$route.query.page).toBe('1');
-      expect(api.listCases.mock.calls.at(-1)?.[0]).toBe(1);
-      expect(wrapper.text()).toContain('第 1 / 2 页');
-      wrapper.unmount();
-    },
-  );
+  it.each([
+    'stage=WAITING_COMPLAINT',
+    'stageGroup=COMPLAINT_PREPARATION',
+    'stageGroup=EXECUTION_PREPARATION',
+  ])('resets an inherited page when %s changes', async (filter) => {
+    await paginatedCases();
+    const wrapper = await mountRoute(
+      '/cases?view=department&page=2',
+      CaseListPage,
+    );
+    await wrapper.vm.$router.push(`/cases?view=department&page=2&${filter}`);
+    await flushPromises();
+    expect(wrapper.vm.$route.query.page).toBe('1');
+    expect(api.listCases.mock.calls.at(-1)?.[0]).toBe(1);
+    expect(wrapper.text()).toContain('第 1 / 2 页');
+    wrapper.unmount();
+  });
 
   it.each(['0', '-1', '1.5', 'abc', '9007199254740992', '2&page=3'])(
     'normalizes invalid page %s before requesting',
@@ -2216,4 +2217,155 @@ it('connects the actual E2 panel to internal unknown recovery across remount and
   expect(remounted.text()).toContain('实际结束原因');
   window.removeEventListener(workflowChangedEvent, changed);
   remounted.unmount();
+});
+
+describe.each([
+  [
+    'COMPLAINT_PREPARATION',
+    '准备起诉文书',
+    [
+      'WAITING_COMPLAINT',
+      'WAITING_COMPLAINT_CONFIRMATION',
+      'WAITING_COMPLAINT_STAMP',
+    ],
+  ],
+  [
+    'EXECUTION_PREPARATION',
+    '准备执行文书',
+    [
+      'WAITING_EXECUTION_DOCUMENTS',
+      'WAITING_EXECUTION_CONFIRMATION',
+      'WAITING_EXECUTION_STAMP',
+    ],
+  ],
+] as const)('%s internal list', (group, label, stages) => {
+  it.each(['mine', 'department'])(
+    'requests the %s group and keeps atom labels, refresh and return query',
+    async (view) => {
+      const base = await api.listCases();
+      api.listCases.mockResolvedValue({
+        ...base,
+        items: stages.map((stage, index) => ({
+          ...base.items[0],
+          id: 'case-' + (index + 1),
+          stage,
+        })),
+      });
+      const { wrapper, router } = await mountRoutedDetail(
+        '/cases?view=' + view + '&stageGroup=' + group,
+      );
+      expect(api.listCases).toHaveBeenLastCalledWith(
+        1,
+        20,
+        expect.objectContaining({ view, stageGroup: group }),
+      );
+      expect(api.listCases.mock.calls.at(-1)?.[2]).not.toHaveProperty('stage');
+      expect(wrapper.get('.page-head').text()).toContain(label);
+      expect(
+        wrapper
+          .findAll('[data-test="case-list"] .pill')
+          .map((pill) => pill.text()),
+      ).toEqual(
+        expect.arrayContaining(
+          group === 'COMPLAINT_PREPARATION'
+            ? ['待写诉状', '诉状待确认', '诉状待盖章']
+            : ['待写执行材料', '执行材料待确认', '执行材料待盖章'],
+        ),
+      );
+      await wrapper
+        .findAll('button')
+        .find((button) => button.text() === '刷新')!
+        .trigger('click');
+      await flushPromises();
+      expect(api.listCases).toHaveBeenLastCalledWith(
+        1,
+        20,
+        expect.objectContaining({ view, stageGroup: group }),
+      );
+      await router.push('/cases/case-1?view=' + view + '&stageGroup=' + group);
+      await flushPromises();
+      router.back();
+      await flushPromises();
+      expect(router.currentRoute.value.query).toEqual({
+        view,
+        stageGroup: group,
+      });
+      expect(wrapper.get('.page-head').text()).toContain(label);
+      wrapper.unmount();
+    },
+  );
+  it('isolates an old group request after switching group, identity and revoked access', async () => {
+    const base = await api.listCases();
+    let resolveOld!: (value: unknown) => void;
+    api.listCases.mockReturnValueOnce(
+      new Promise((resolve) => {
+        resolveOld = resolve;
+      }),
+    );
+    const { wrapper, router, auth } = await mountRoutedDetail(
+      '/cases?stageGroup=' + group,
+    );
+    const other =
+      group === 'COMPLAINT_PREPARATION'
+        ? 'EXECUTION_PREPARATION'
+        : 'COMPLAINT_PREPARATION';
+    await router.push('/cases?stageGroup=' + other);
+    await flushPromises();
+    api.listCases.mockRejectedValue(
+      new ApiError('revoked', 403, 'ACTION_FORBIDDEN'),
+    );
+    auth.session = { ...auth.session!, authorizationRevision: 2 };
+    await flushPromises();
+    expect(wrapper.text()).toContain('当前账号无权读取案件');
+    resolveOld({
+      ...base,
+      items: [{ ...base.items[0], businessNo: 'CA-stale' }],
+    });
+    await flushPromises();
+    expect(wrapper.text()).not.toContain('CA-stale');
+    expect(wrapper.find('[data-test="case-list"]').exists()).toBe(false);
+    api.listCases.mockResolvedValue({
+      ...base,
+      items: [{ ...base.items[0], businessNo: 'CA-user-2' }],
+    });
+    auth.session = {
+      ...auth.session!,
+      user: { ...auth.session!.user, id: 'user-2' },
+    };
+    await flushPromises();
+    expect(wrapper.text()).toContain('CA-user-2');
+    wrapper.unmount();
+  });
+  it.each(stages)('preserves the exact %s bookmark request', async (stage) => {
+    const wrapper = await mountRoute('/cases?stage=' + stage, CaseListPage);
+    expect(api.listCases).toHaveBeenLastCalledWith(
+      1,
+      20,
+      expect.objectContaining({ stage }),
+    );
+    expect(api.listCases.mock.calls.at(-1)?.[2]).not.toHaveProperty(
+      'stageGroup',
+    );
+    expect(wrapper.vm.$route.query.stage).toBe(stage);
+    wrapper.unmount();
+  });
+});
+it('passes a stage plus group conflict to the API guard instead of broadening the list', async () => {
+  api.listCases.mockRejectedValue(
+    new ApiError('dual filters', 400, 'VALIDATION_ERROR'),
+  );
+  const wrapper = await mountRoute(
+    '/cases?stage=WAITING_COMPLAINT&stageGroup=COMPLAINT_PREPARATION',
+    CaseListPage,
+  );
+  expect(api.listCases).toHaveBeenCalledWith(
+    1,
+    20,
+    expect.objectContaining({
+      stage: 'WAITING_COMPLAINT',
+      stageGroup: 'COMPLAINT_PREPARATION',
+    }),
+  );
+  expect(wrapper.find('[data-test="case-list"]').exists()).toBe(false);
+  wrapper.unmount();
 });

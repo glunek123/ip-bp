@@ -45,15 +45,15 @@ const stage = computed(
   () => stages.find((item) => item.value === route.query.stage)?.value,
 );
 const stageGroup = computed<CaseStageGroup | undefined>(() =>
-  stage.value === undefined &&
+  route.query.stageGroup === 'COMPLAINT_PREPARATION' ||
   route.query.stageGroup === 'EXECUTION_PREPARATION'
-    ? 'EXECUTION_PREPARATION'
+    ? route.query.stageGroup
     : undefined,
 );
 const identity = computed(() =>
   auth.session === null
     ? ''
-    : `${auth.session.user.id}:${auth.session.authorizationRevision}`,
+    : `${auth.session.user.id}:${auth.session.principalType}:${auth.session.department?.id ?? ''}:${auth.session.authorizationRevision}`,
 );
 const counts = ref<Record<CaseStage, number> | null>(null);
 
@@ -67,6 +67,8 @@ async function load(): Promise<void> {
   const currentStage = stage.value;
   const currentStageGroup = stageGroup.value;
   items.value = [];
+  total.value = 0;
+  counts.value = null;
   state.value = 'loading';
   error.value = '';
   try {
@@ -129,7 +131,9 @@ onBeforeUnmount(() => {
           <p>
             {{
               stageGroup
-                ? '准备执行文书'
+                ? stageGroup === 'COMPLAINT_PREPARATION'
+                  ? '准备起诉文书'
+                  : '准备执行文书'
                 : stage
                   ? stageLabel(stage)
                   : '全部办理阶段'

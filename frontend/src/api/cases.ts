@@ -19,7 +19,7 @@ export type CaseStage =
   | 'WAITING_ARCHIVE';
 export type CaseView = 'mine' | 'department';
 export type CaseStageFilter = CaseStage | 'all';
-export type CaseStageGroup = 'EXECUTION_PREPARATION';
+export type CaseStageGroup = 'COMPLAINT_PREPARATION' | 'EXECUTION_PREPARATION';
 export type CaseSummary = {
   id: string;
   businessNo: string;

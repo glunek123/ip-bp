@@ -1226,4 +1226,176 @@ describe('CaseReadService', () => {
       ),
     ).rejects.toMatchObject({ status: 400 });
   });
+  describe.each([
+    [
+      'COMPLAINT_PREPARATION',
+      [
+        'WAITING_COMPLAINT',
+        'WAITING_COMPLAINT_CONFIRMATION',
+        'WAITING_COMPLAINT_STAMP',
+      ],
+    ],
+    [
+      'EXECUTION_PREPARATION',
+      [
+        'WAITING_EXECUTION_DOCUMENTS',
+        'WAITING_EXECUTION_CONFIRMATION',
+        'WAITING_EXECUTION_STAMP',
+      ],
+    ],
+  ] as const)('%s read group', (group, stages) => {
+    it.each(['mine', 'department', 'lawyer'] as const)(
+      'intersects exact stages with %s list, total and full-scope counts',
+      async (scope) => {
+        const f = fixture();
+        const currentActor =
+          scope === 'lawyer'
+            ? { ...actor, lawyerAccountId: actor.userId }
+            : actor;
+        if (scope === 'lawyer')
+          f.db.userAccount.findUnique.mockResolvedValue({
+            accountType: 'LAWYER',
+            active: true,
+          });
+        f.db.case.findMany.mockResolvedValue(
+          stages.map((stage, index) => ({
+            id: 'case-' + index,
+            businessNo: 'CA-' + index,
+            stage,
+            version: 1,
+            createdAt: new Date('2026-10-13T00:00:00Z'),
+            currentTrialRoundId: null,
+            currentJudgmentNextStepId: null,
+            currentJudgmentNextStep: null,
+            currentExecutionSubmissionId: null,
+            executionConfirmation: null,
+            executionMailing: null,
+            executionFiling: null,
+            executionFinish: null,
+            currentSecondInstanceResultId: null,
+            responsibleUserId: actor.userId,
+            responsibleMembership: { teamId: null },
+            owner: { id: actor.userId, displayName: 'owner' },
+            sourceLead: { id: 'lead', businessNo: 'LD-1' },
+            sourceNotaryMatter: { id: 'matter', businessNo: 'NT-1' },
+          })),
+        );
+        f.db.case.count.mockResolvedValue(27);
+        f.db.case.groupBy.mockResolvedValue([
+          ...stages.map((stage, index) => ({
+            stage,
+            _count: { _all: index + 8 },
+          })),
+          { stage: 'PENDING_MATCH', _count: { _all: 77 } },
+          { stage: 'WAITING_FILING', _count: { _all: 66 } },
+          { stage: 'SECOND_INSTANCE', _count: { _all: 55 } },
+          { stage: 'WAITING_EXECUTION_FILING', _count: { _all: 44 } },
+        ]);
+        const view = scope === 'mine' ? 'mine' : 'department';
+        const result = await f.service.list(
+          currentActor,
+          2,
+          3,
+          view,
+          undefined,
+          group,
+        );
+        const baseWhere = {
+          departmentId: actor.departmentId,
+          ...(scope === 'mine'
+            ? { responsibleUserId: actor.userId }
+            : scope === 'lawyer'
+              ? {
+                  lawyers: {
+                    some: {
+                      role: 'PRIMARY',
+                      endedAt: null,
+                      lawyer: {
+                        accountBinding: {
+                          is: {
+                            userId: actor.userId,
+                            departmentId: actor.departmentId,
+                            active: true,
+                            user: { active: true, accountType: 'LAWYER' },
+                          },
+                        },
+                      },
+                    },
+                  },
+                }
+              : {}),
+        };
+        const where = { ...baseWhere, stage: { in: [...stages] } };
+        expect(f.db.case.findMany).toHaveBeenCalledWith(
+          expect.objectContaining({
+            where,
+            skip: 3,
+            take: 3,
+            orderBy: [{ createdAt: 'desc' }, { id: 'asc' }],
+          }),
+        );
+        expect(f.db.case.count).toHaveBeenCalledWith({ where });
+        expect(f.db.case.groupBy).toHaveBeenCalledWith({
+          by: ['stage'],
+          where: baseWhere,
+          _count: { _all: true },
+        });
+        expect(result.items.map((item) => item.stage)).toEqual([...stages]);
+        expect(result.total).toBe(27);
+        expect(stages.map((stage) => result.counts[stage])).toEqual([8, 9, 10]);
+        expect(result.counts.WAITING_FILING).toBe(66);
+        expect(result.counts).not.toHaveProperty(group);
+        for (const stage of stages) {
+          await f.service.list(currentActor, 1, 20, view, stage);
+          expect(f.db.case.count).toHaveBeenLastCalledWith({
+            where: { ...baseWhere, stage },
+          });
+        }
+        await expect(
+          f.service.list(currentActor, 1, 20, view, stages[0], group),
+        ).rejects.toMatchObject({ status: 400 });
+        f.db.userAccount.findUnique.mockResolvedValue({
+          accountType: scope === 'lawyer' ? 'LAWYER' : 'INTERNAL',
+          active: false,
+        });
+        f.db.case.findMany.mockClear();
+        f.db.case.count.mockClear();
+        f.db.case.groupBy.mockClear();
+        await expect(
+          f.service.list(currentActor, 1, 20, view, undefined, group),
+        ).rejects.toMatchObject({ status: 403 });
+        expect(f.db.case.findMany).not.toHaveBeenCalled();
+        expect(f.db.case.count).not.toHaveBeenCalled();
+        expect(f.db.case.groupBy).not.toHaveBeenCalled();
+      },
+    );
+    it('rechecks a revoked department grant or lawyer binding before group reads', async () => {
+      const f = fixture();
+      const { ForbiddenException } = await import('@nestjs/common');
+      f.access.authorizeDepartmentAction.mockRejectedValue(
+        new ForbiddenException(),
+      );
+      await expect(
+        f.service.list(actor, 1, 20, 'department', undefined, group),
+      ).rejects.toMatchObject({ status: 403 });
+      f.db.userAccount.findUnique.mockResolvedValue({
+        accountType: 'LAWYER',
+        active: true,
+      });
+      f.db.lawyerAccountBinding.findFirst.mockResolvedValue(null);
+      await expect(
+        f.service.list(
+          { ...actor, lawyerAccountId: actor.userId },
+          1,
+          20,
+          'department',
+          undefined,
+          group,
+        ),
+      ).rejects.toMatchObject({ status: 403 });
+      expect(f.db.case.findMany).not.toHaveBeenCalled();
+      expect(f.db.case.count).not.toHaveBeenCalled();
+      expect(f.db.case.groupBy).not.toHaveBeenCalled();
+    });
+  });
 });

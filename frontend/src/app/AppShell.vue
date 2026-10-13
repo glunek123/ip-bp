@@ -4,7 +4,7 @@ import { RouterLink, useRoute, useRouter } from 'vue-router';
 import { ElButton } from 'element-plus/es/components/button/index.mjs';
 import { ApiError } from '../api/http';
 import { getCalendarSummary } from '../api/calendar';
-import { listCases, type CaseStage } from '../api/cases';
+import { listCases, type CaseStage, type CaseStageGroup } from '../api/cases';
 import { listLawyerCases } from '../api/cases';
 import { listLeads, type LeadStatus } from '../api/leads';
 import { getOrganizationManagementContext } from '../api/organization';
@@ -38,21 +38,59 @@ const countRevision = ref(0);
 const expandedGroup = ref<'cases' | 'leads' | 'notary' | 'settings' | null>(
   null,
 );
-const caseStageCards: ReadonlyArray<{ stage: CaseStage; label: string }> = [
-  { stage: 'PENDING_MATCH', label: '案件待匹配' },
-  { stage: 'WAITING_COMPLAINT', label: '待写诉状' },
-  { stage: 'WAITING_COMPLAINT_CONFIRMATION', label: '诉状待确认' },
-  { stage: 'WAITING_COMPLAINT_STAMP', label: '诉状待盖章' },
-  { stage: 'WAITING_FILING', label: '待提交立案' },
-  { stage: 'WAITING_FORMAL_ACCEPTANCE', label: '待正式立案' },
-  { stage: 'WAITING_HEARING', label: '待开庭' },
-  { stage: 'WAITING_JUDGMENT', label: '待判决' },
-  { stage: 'SECOND_INSTANCE', label: '二审' },
-  { stage: 'WAITING_EXECUTION_DOCUMENTS', label: '待写执行材料' },
-  { stage: 'WAITING_EXECUTION_FILING', label: '待申请执行' },
-  { stage: 'EXECUTING', label: '强制执行中' },
-  { stage: 'WAITING_ARCHIVE', label: '待归档' },
+type CaseStageCard = { label: string; stages: readonly CaseStage[] } & (
+  | { stage: CaseStage; stageGroup?: never }
+  | { stage?: never; stageGroup: CaseStageGroup }
+);
+const caseStageCards: readonly CaseStageCard[] = [
+  { stage: 'PENDING_MATCH', stages: ['PENDING_MATCH'], label: '案件待匹配' },
+  {
+    stageGroup: 'COMPLAINT_PREPARATION',
+    stages: [
+      'WAITING_COMPLAINT',
+      'WAITING_COMPLAINT_CONFIRMATION',
+      'WAITING_COMPLAINT_STAMP',
+    ],
+    label: '准备起诉文书',
+  },
+  { stage: 'WAITING_FILING', stages: ['WAITING_FILING'], label: '待提交立案' },
+  {
+    stage: 'WAITING_FORMAL_ACCEPTANCE',
+    stages: ['WAITING_FORMAL_ACCEPTANCE'],
+    label: '待正式立案',
+  },
+  { stage: 'WAITING_HEARING', stages: ['WAITING_HEARING'], label: '待开庭' },
+  { stage: 'WAITING_JUDGMENT', stages: ['WAITING_JUDGMENT'], label: '待判决' },
+  { stage: 'SECOND_INSTANCE', stages: ['SECOND_INSTANCE'], label: '二审' },
+  {
+    stageGroup: 'EXECUTION_PREPARATION',
+    stages: [
+      'WAITING_EXECUTION_DOCUMENTS',
+      'WAITING_EXECUTION_CONFIRMATION',
+      'WAITING_EXECUTION_STAMP',
+    ],
+    label: '准备执行文书',
+  },
+  {
+    stage: 'WAITING_EXECUTION_FILING',
+    stages: ['WAITING_EXECUTION_FILING'],
+    label: '待申请执行',
+  },
+  { stage: 'EXECUTING', stages: ['EXECUTING'], label: '强制执行中' },
+  { stage: 'WAITING_ARCHIVE', stages: ['WAITING_ARCHIVE'], label: '待归档' },
 ];
+function caseCardSelected(card: CaseStageCard): boolean {
+  return selectedCaseStage.value !== undefined
+    ? card.stages.some((stage) => stage === selectedCaseStage.value)
+    : card.stageGroup !== undefined &&
+        card.stageGroup === selectedCaseStageGroup.value;
+}
+function caseCardCount(card: CaseStageCard): number {
+  return card.stages.reduce(
+    (sum, stage) => sum + (caseCounts.value?.[stage] ?? 0),
+    0,
+  );
+}
 const notaryStageCards: ReadonlyArray<{
   stage: NotaryListStage;
   label: string;
@@ -90,7 +128,7 @@ const homePath = computed(() =>
 const identity = computed(() =>
   auth.session === null
     ? null
-    : `${auth.session.user.id}:${auth.session.authorizationRevision}`,
+    : `${auth.session.user.id}:${auth.session.principalType}:${auth.session.department?.id ?? ''}:${auth.session.authorizationRevision}`,
 );
 const calendarIdentity = computed(() => {
   const session = auth.session;
@@ -179,8 +217,9 @@ const selectedCaseStage = computed(() =>
 );
 const selectedCaseStageGroup = computed(() =>
   selectedCaseStage.value === undefined &&
-  route.query.stageGroup === 'EXECUTION_PREPARATION'
-    ? 'EXECUTION_PREPARATION'
+  (route.query.stageGroup === 'COMPLAINT_PREPARATION' ||
+    route.query.stageGroup === 'EXECUTION_PREPARATION')
+    ? route.query.stageGroup
     : undefined,
 );
 const isLeadRoute = computed(
@@ -347,6 +386,7 @@ watch(
       isLawyer.value
     )
       return;
+    caseCounts.value = null;
     const controller = new AbortController();
     let current = true;
     onCleanup(() => {
@@ -516,7 +556,8 @@ async function logout(): Promise<void> {
             :class="{
               active:
                 route.path === '/lawyer/cases' &&
-                selectedCaseStage === undefined,
+                selectedCaseStage === undefined &&
+                selectedCaseStageGroup === undefined,
             }"
             to="/lawyer/cases"
             @click="closeDrawer"
@@ -525,47 +566,44 @@ async function logout(): Promise<void> {
               caseTotal
             }}</span></RouterLink
           >
-          <RouterLink
-            v-for="card in caseStageCards.filter(
-              (item) => item.stage !== 'WAITING_EXECUTION_DOCUMENTS',
-            )"
-            :key="card.stage"
-            class="app-subnav__item"
-            :class="{
-              active:
-                route.path === '/lawyer/cases' &&
-                selectedCaseStage === card.stage,
-            }"
-            :to="{ path: '/lawyer/cases', query: { stage: card.stage } }"
-            @click="closeDrawer"
-            ><span>{{ card.label }}</span
-            ><span v-if="caseCounts" class="app-nav__badge">{{
-              caseCounts[card.stage]
-            }}</span></RouterLink
-          >
           <div
-            class="app-subnav__group"
-            data-test="lawyer-execution-preparation-nav"
+            v-for="card in caseStageCards"
+            :key="card.stageGroup ?? card.stage"
+            :data-test="
+              card.stageGroup === 'COMPLAINT_PREPARATION'
+                ? 'lawyer-complaint-preparation-nav'
+                : card.stageGroup === 'EXECUTION_PREPARATION'
+                  ? 'lawyer-execution-preparation-nav'
+                  : undefined
+            "
           >
             <RouterLink
               class="app-subnav__item"
               :class="{
                 active:
-                  route.path === '/lawyer/cases' &&
-                  selectedCaseStageGroup === 'EXECUTION_PREPARATION',
+                  route.path.startsWith('/lawyer/cases') &&
+                  caseCardSelected(card),
               }"
+              :data-test="
+                card.stageGroup === 'COMPLAINT_PREPARATION'
+                  ? 'complaint-preparation-stage'
+                  : card.stageGroup === 'EXECUTION_PREPARATION'
+                    ? 'execution-preparation-stage'
+                    : 'case-stage'
+              "
               :to="{
                 path: '/lawyer/cases',
-                query: { stageGroup: 'EXECUTION_PREPARATION' },
+                query: {
+                  ...(card.stageGroup
+                    ? { stageGroup: card.stageGroup }
+                    : { stage: card.stage }),
+                },
               }"
-              data-test="execution-preparation-stage"
               @click="closeDrawer"
             >
-              <span>准备执行文书</span
+              <span>{{ card.label }}</span
               ><span v-if="caseCounts" class="app-nav__badge">{{
-                caseCounts.WAITING_EXECUTION_DOCUMENTS +
-                caseCounts.WAITING_EXECUTION_CONFIRMATION +
-                caseCounts.WAITING_EXECUTION_STAMP
+                caseCardCount(card)
               }}</span>
             </RouterLink>
           </div>
@@ -573,124 +611,6 @@ async function logout(): Promise<void> {
       </nav>
       <nav v-else class="app-nav" aria-label="主要导航">
         <p class="app-nav__label">工作台</p>
-        <div v-if="!isClient" class="app-nav__group">
-          <RouterLink
-            class="app-nav__item"
-            :class="{ active: isCaseRoute }"
-            data-test="case-nav"
-            to="/cases"
-            @click="closeDrawer"
-          >
-            <span>案件</span>
-            <span v-if="caseTotal !== null" class="app-nav__badge">{{
-              caseTotal
-            }}</span>
-          </RouterLink>
-          <button
-            class="app-nav__expand"
-            type="button"
-            data-test="case-expand"
-            :aria-expanded="expandedGroup === 'cases'"
-            aria-label="展开或收起案件"
-            @click="expandedGroup = expandedGroup === 'cases' ? null : 'cases'"
-          >
-            {{ expandedGroup === 'cases' ? '⌄' : '›' }}
-          </button>
-        </div>
-        <div
-          v-if="!isClient && expandedGroup === 'cases'"
-          class="app-subnav"
-          aria-label="案件范围与阶段"
-        >
-          <RouterLink
-            class="app-subnav__item"
-            :class="{ active: isCaseRoute && selectedCaseView === 'mine' }"
-            data-test="case-view-mine"
-            :to="{
-              path: '/cases',
-              query: selectedCaseStageGroup
-                ? { view: 'mine', stageGroup: selectedCaseStageGroup }
-                : { view: 'mine', stage: selectedCaseStage },
-            }"
-            @click="closeDrawer"
-            >我负责</RouterLink
-          >
-          <RouterLink
-            class="app-subnav__item"
-            :class="{
-              active: isCaseRoute && selectedCaseView === 'department',
-            }"
-            data-test="case-view-department"
-            :to="{
-              path: '/cases',
-              query: selectedCaseStageGroup
-                ? { view: 'department', stageGroup: selectedCaseStageGroup }
-                : { view: 'department', stage: selectedCaseStage },
-            }"
-            @click="closeDrawer"
-            >本部门全部</RouterLink
-          >
-          <RouterLink
-            class="app-subnav__item"
-            :class="{
-              active:
-                isCaseRoute &&
-                selectedCaseStage === undefined &&
-                selectedCaseStageGroup === undefined,
-            }"
-            :to="{ path: '/cases', query: { view: selectedCaseView } }"
-            @click="closeDrawer"
-          >
-            <span>全部阶段</span>
-            <span v-if="caseTotal !== null" class="app-nav__badge">{{
-              caseTotal
-            }}</span>
-          </RouterLink>
-          <RouterLink
-            v-for="card in caseStageCards.filter(
-              (item) => item.stage !== 'WAITING_EXECUTION_DOCUMENTS',
-            )"
-            :key="card.stage"
-            class="app-subnav__item"
-            :class="{ active: isCaseRoute && selectedCaseStage === card.stage }"
-            data-test="case-stage"
-            :to="{
-              path: '/cases',
-              query: { view: selectedCaseView, stage: card.stage },
-            }"
-            @click="closeDrawer"
-          >
-            <span>{{ card.label }}</span>
-            <span v-if="caseCounts" class="app-nav__badge">{{
-              caseCounts[card.stage]
-            }}</span>
-          </RouterLink>
-          <div class="app-subnav__group" data-test="execution-preparation-nav">
-            <RouterLink
-              class="app-subnav__item"
-              :class="{
-                active:
-                  isCaseRoute &&
-                  selectedCaseStageGroup === 'EXECUTION_PREPARATION',
-              }"
-              :to="{
-                path: '/cases',
-                query: {
-                  view: selectedCaseView,
-                  stageGroup: 'EXECUTION_PREPARATION',
-                },
-              }"
-              data-test="execution-preparation-stage"
-              @click="closeDrawer"
-              ><span>准备执行文书</span
-              ><span v-if="caseCounts" class="app-nav__badge">{{
-                caseCounts.WAITING_EXECUTION_DOCUMENTS +
-                caseCounts.WAITING_EXECUTION_CONFIRMATION +
-                caseCounts.WAITING_EXECUTION_STAMP
-              }}</span></RouterLink
-            >
-          </div>
-        </div>
         <div v-if="!isClient" class="app-nav__group">
           <RouterLink
             class="app-nav__item"
@@ -816,6 +736,118 @@ async function logout(): Promise<void> {
           </RouterLink>
         </div>
 
+        <div v-if="!isClient" class="app-nav__group">
+          <RouterLink
+            class="app-nav__item"
+            :class="{ active: isCaseRoute }"
+            data-test="case-nav"
+            to="/cases"
+            @click="closeDrawer"
+          >
+            <span>案件</span>
+            <span v-if="caseTotal !== null" class="app-nav__badge">{{
+              caseTotal
+            }}</span>
+          </RouterLink>
+          <button
+            class="app-nav__expand"
+            type="button"
+            data-test="case-expand"
+            :aria-expanded="expandedGroup === 'cases'"
+            aria-label="展开或收起案件"
+            @click="expandedGroup = expandedGroup === 'cases' ? null : 'cases'"
+          >
+            {{ expandedGroup === 'cases' ? '⌄' : '›' }}
+          </button>
+        </div>
+        <div
+          v-if="!isClient && expandedGroup === 'cases'"
+          class="app-subnav"
+          aria-label="案件范围与阶段"
+        >
+          <RouterLink
+            class="app-subnav__item"
+            :class="{ active: isCaseRoute && selectedCaseView === 'mine' }"
+            data-test="case-view-mine"
+            :to="{
+              path: '/cases',
+              query: selectedCaseStageGroup
+                ? { view: 'mine', stageGroup: selectedCaseStageGroup }
+                : { view: 'mine', stage: selectedCaseStage },
+            }"
+            @click="closeDrawer"
+            >我负责</RouterLink
+          >
+          <RouterLink
+            class="app-subnav__item"
+            :class="{
+              active: isCaseRoute && selectedCaseView === 'department',
+            }"
+            data-test="case-view-department"
+            :to="{
+              path: '/cases',
+              query: selectedCaseStageGroup
+                ? { view: 'department', stageGroup: selectedCaseStageGroup }
+                : { view: 'department', stage: selectedCaseStage },
+            }"
+            @click="closeDrawer"
+            >本部门全部</RouterLink
+          >
+          <RouterLink
+            class="app-subnav__item"
+            :class="{
+              active:
+                isCaseRoute &&
+                selectedCaseStage === undefined &&
+                selectedCaseStageGroup === undefined,
+            }"
+            :to="{ path: '/cases', query: { view: selectedCaseView } }"
+            @click="closeDrawer"
+          >
+            <span>全部阶段</span>
+            <span v-if="caseTotal !== null" class="app-nav__badge">{{
+              caseTotal
+            }}</span>
+          </RouterLink>
+          <div
+            v-for="card in caseStageCards"
+            :key="card.stageGroup ?? card.stage"
+            :data-test="
+              card.stageGroup === 'COMPLAINT_PREPARATION'
+                ? 'complaint-preparation-nav'
+                : card.stageGroup === 'EXECUTION_PREPARATION'
+                  ? 'execution-preparation-nav'
+                  : undefined
+            "
+          >
+            <RouterLink
+              class="app-subnav__item"
+              :class="{ active: isCaseRoute && caseCardSelected(card) }"
+              :data-test="
+                card.stageGroup === 'COMPLAINT_PREPARATION'
+                  ? 'complaint-preparation-stage'
+                  : card.stageGroup === 'EXECUTION_PREPARATION'
+                    ? 'execution-preparation-stage'
+                    : 'case-stage'
+              "
+              :to="{
+                path: '/cases',
+                query: {
+                  view: selectedCaseView,
+                  ...(card.stageGroup
+                    ? { stageGroup: card.stageGroup }
+                    : { stage: card.stage }),
+                },
+              }"
+              @click="closeDrawer"
+            >
+              <span>{{ card.label }}</span
+              ><span v-if="caseCounts" class="app-nav__badge">{{
+                caseCardCount(card)
+              }}</span>
+            </RouterLink>
+          </div>
+        </div>
         <RouterLink
           v-if="isClient"
           class="app-nav__item"

@@ -348,10 +348,12 @@ export class CasePageQueryDto {
     | 'WAITING_EXECUTION_FILING'
     | 'EXECUTING'
     | 'WAITING_ARCHIVE';
-  @ApiPropertyOptional({ enum: ['EXECUTION_PREPARATION'] })
+  @ApiPropertyOptional({
+    enum: ['COMPLAINT_PREPARATION', 'EXECUTION_PREPARATION'],
+  })
   @IsOptional()
-  @IsIn(['EXECUTION_PREPARATION'])
-  stageGroup?: 'EXECUTION_PREPARATION';
+  @IsIn(['COMPLAINT_PREPARATION', 'EXECUTION_PREPARATION'])
+  stageGroup?: 'COMPLAINT_PREPARATION' | 'EXECUTION_PREPARATION';
   @ApiPropertyOptional({ minimum: 1, default: 1 })
   @Type(() => Number)
   @IsInt()

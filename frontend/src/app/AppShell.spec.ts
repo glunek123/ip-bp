@@ -304,7 +304,7 @@ describe('AppShell', () => {
     expect(stages.map((link) => link.text())).toContain('待正式立案2');
     expect(stages.map((link) => link.text())).toContain('待开庭1');
     expect(stages.map((link) => link.text())).toContain('待判决3');
-    expect(stages).toHaveLength(12);
+    expect(stages).toHaveLength(9);
     expect(
       wrapper.get('[data-test="execution-preparation-nav"]').text(),
     ).toContain('准备执行文书3');
@@ -453,7 +453,7 @@ describe('AppShell', () => {
     expect(
       wrapper.get('[data-test="case-view-mine"]').attributes('href'),
     ).toContain('view=mine');
-    expect(wrapper.findAll('[data-test="case-stage"]')).toHaveLength(12);
+    expect(wrapper.findAll('[data-test="case-stage"]')).toHaveLength(9);
     expect(wrapper.get('[data-test="case-nav"]').text()).toContain('19');
     expect(api.listCases).toHaveBeenCalledWith(1, 1, {
       signal: expect.any(AbortSignal),
@@ -464,18 +464,17 @@ describe('AppShell', () => {
     expect(wrapper.get('[data-test="case-view-mine"]').classes()).toContain(
       'active',
     );
-    expect(wrapper.findAll('[data-test="case-stage"].active')).toHaveLength(1);
     expect(
-      wrapper
-        .findAll('[data-test="case-stage"]')
-        .some(
-          (item) =>
-            item.text().includes('诉状待盖章1') &&
-            (item.attributes('href') ?? '').includes(
-              'stage=WAITING_COMPLAINT_STAMP',
-            ),
-        ),
-    ).toBe(true);
+      wrapper.get('[data-test="complaint-preparation-stage"]').classes(),
+    ).toContain('active');
+    expect(
+      wrapper.get('[data-test="complaint-preparation-stage"]').text(),
+    ).toBe('准备起诉文书4');
+    expect(router.currentRoute.value.query.stage).toBe('WAITING_COMPLAINT');
+    expect(
+      wrapper.get('[data-test="case-view-department"]').attributes('href'),
+    ).toContain('stage=WAITING_COMPLAINT');
+    expect(wrapper.text()).not.toContain('诉状待盖章');
   });
 
   it('shows the notary office entry only when the office list is authorized', async () => {
@@ -642,4 +641,218 @@ it('links the real WAITING_ARCHIVE count without implying financial completion',
   expect(link?.classes()).toContain('active');
   expect(wrapper.text()).not.toContain('已结清');
   expect(wrapper.text()).not.toContain('已结算');
+});
+
+const navigationLabels = [
+  '全部阶段',
+  '案件待匹配',
+  '准备起诉文书',
+  '待提交立案',
+  '待正式立案',
+  '待开庭',
+  '待判决',
+  '二审',
+  '准备执行文书',
+  '待申请执行',
+  '强制执行中',
+  '待归档',
+];
+const lawyerSession: AuthSession = { ...session, principalType: 'LAWYER' };
+it.each(['/cases?view=mine', '/cases?view=department', '/lawyer/cases'])(
+  'orders a single stage directory in %s',
+  async (path) => {
+    const { wrapper } = await mountShell(
+      path,
+      path.startsWith('/lawyer') ? lawyerSession : session,
+    );
+    const nav = wrapper.get(
+      path.startsWith('/lawyer')
+        ? '[aria-label="本人案件阶段"]'
+        : '[aria-label="案件范围与阶段"]',
+    );
+    expect(
+      nav
+        .findAll('a')
+        .filter((link) => link.find('span').exists())
+        .map((link) => link.get('span').text()),
+    ).toEqual(navigationLabels);
+    expect(nav.text()).not.toContain('已归档');
+    expect(nav.text()).not.toContain('诉状待确认');
+    expect(nav.text()).not.toContain('执行材料待盖章');
+    wrapper.unmount();
+  },
+);
+it('orders the internal workflow modules while preserving other entries', async () => {
+  const { wrapper } = await mountShell('/cases');
+  const entries = wrapper.findAll(
+    '[data-test="lead-nav"], [data-test="notary-nav"], [data-test="case-nav"]',
+  );
+  expect(entries.map((link) => link.attributes('data-test'))).toEqual([
+    'lead-nav',
+    'notary-nav',
+    'case-nav',
+  ]);
+});
+describe.each([
+  [
+    'COMPLAINT_PREPARATION',
+    '准备起诉文书',
+    [
+      'WAITING_COMPLAINT',
+      'WAITING_COMPLAINT_CONFIRMATION',
+      'WAITING_COMPLAINT_STAMP',
+    ],
+  ],
+  [
+    'EXECUTION_PREPARATION',
+    '准备执行文书',
+    [
+      'WAITING_EXECUTION_DOCUMENTS',
+      'WAITING_EXECUTION_CONFIRMATION',
+      'WAITING_EXECUTION_STAMP',
+    ],
+  ],
+] as const)('%s sidebar', (group, label, stages) => {
+  it.each(['/cases?view=mine', '/cases?view=department', '/lawyer/cases'])(
+    'highlights only the group and sums full atomic counts for %s',
+    async (path) => {
+      const base = await api.listCases();
+      const counts = {
+        ...base.counts,
+        [stages[0]]: 8,
+        [stages[1]]: 9,
+        [stages[2]]: 10,
+        PENDING_MATCH: 90,
+        WAITING_FILING: 80,
+        WAITING_EXECUTION_FILING: 70,
+      };
+      api.listCases.mockResolvedValue({ ...base, items: [], total: 1, counts });
+      api.listLawyerCases.mockResolvedValue({
+        ...base,
+        items: [],
+        total: 1,
+        counts,
+      });
+      const { wrapper, router } = await mountShell(
+        path + (path.includes('?') ? '&' : '?') + 'stageGroup=' + group,
+        path.startsWith('/lawyer') ? lawyerSession : session,
+      );
+      const nav = wrapper.get(
+        path.startsWith('/lawyer')
+          ? '[aria-label="本人案件阶段"]'
+          : '[aria-label="案件范围与阶段"]',
+      );
+      const active = nav
+        .findAll('a.active')
+        .filter(
+          (link) => !link.attributes('data-test')?.startsWith('case-view-'),
+        );
+      expect(active).toHaveLength(1);
+      expect(active[0].text()).toBe(label + '27');
+      for (const stage of stages) {
+        await router.push(
+          path + (path.includes('?') ? '&' : '?') + 'stage=' + stage,
+        );
+        await flushPromises();
+        const selected = nav
+          .findAll('a.active')
+          .filter(
+            (link) => !link.attributes('data-test')?.startsWith('case-view-'),
+          );
+        expect(selected).toHaveLength(1);
+        expect(selected[0].text()).toBe(label + '27');
+        expect(router.currentRoute.value.query).toHaveProperty('stage', stage);
+        expect(router.currentRoute.value.query).not.toHaveProperty(
+          'stageGroup',
+        );
+        if (!path.startsWith('/lawyer'))
+          expect(
+            wrapper
+              .get('[data-test="case-view-department"]')
+              .attributes('href'),
+          ).toContain('stage=' + stage);
+      }
+      wrapper.unmount();
+    },
+  );
+});
+it('discards stale group counters after range, authorization and user changes', async () => {
+  const base = await api.listCases();
+  let resolveOld!: (value: unknown) => void;
+  api.listCases.mockReturnValueOnce(
+    new Promise((resolve) => {
+      resolveOld = resolve;
+    }),
+  );
+  const { wrapper, router } = await mountShell(
+    '/cases?stageGroup=COMPLAINT_PREPARATION',
+  );
+  api.listCases.mockResolvedValue({
+    ...base,
+    counts: {
+      ...base.counts,
+      WAITING_COMPLAINT: 3,
+      WAITING_COMPLAINT_CONFIRMATION: 4,
+      WAITING_COMPLAINT_STAMP: 5,
+    },
+  });
+  await router.push('/cases?view=department&stageGroup=COMPLAINT_PREPARATION');
+  await flushPromises();
+  resolveOld({ ...base, counts: { ...base.counts, WAITING_COMPLAINT: 99 } });
+  await flushPromises();
+  expect(wrapper.get('[data-test="complaint-preparation-stage"]').text()).toBe(
+    '准备起诉文书12',
+  );
+  api.listCases.mockRejectedValue(
+    new ApiError('revoked', 403, 'ACTION_FORBIDDEN'),
+  );
+  const auth = useAuthStore();
+  auth.session = { ...session, authorizationRevision: 2 };
+  await flushPromises();
+  expect(wrapper.get('[data-test="complaint-preparation-stage"]').text()).toBe(
+    '准备起诉文书',
+  );
+  auth.session = { ...session, user: { ...session.user, id: 'user-2' } };
+  await flushPromises();
+  expect(wrapper.get('[data-test="complaint-preparation-stage"]').text()).toBe(
+    '准备起诉文书',
+  );
+});
+
+it('invalidates lawyer group badges on identity change and ignores the old response after revocation', async () => {
+  const base = await api.listLawyerCases();
+  let resolveOld!: (value: unknown) => void;
+  api.listLawyerCases.mockReturnValueOnce(
+    new Promise((resolve) => {
+      resolveOld = resolve;
+    }),
+  );
+  const { wrapper } = await mountShell(
+    '/lawyer/cases?stageGroup=COMPLAINT_PREPARATION',
+    lawyerSession,
+  );
+  api.listLawyerCases.mockResolvedValue({
+    ...base,
+    counts: { ...base.counts, WAITING_COMPLAINT: 7 },
+  });
+  const auth = useAuthStore();
+  auth.session = {
+    ...lawyerSession,
+    user: { ...lawyerSession.user, id: 'lawyer-2' },
+    authorizationRevision: 2,
+  };
+  await flushPromises();
+  resolveOld({ ...base, counts: { ...base.counts, WAITING_COMPLAINT: 99 } });
+  await flushPromises();
+  expect(wrapper.get('[data-test="complaint-preparation-stage"]').text()).toBe(
+    '准备起诉文书7',
+  );
+  api.listLawyerCases.mockRejectedValue(
+    new ApiError('revoked', 403, 'ACTION_FORBIDDEN'),
+  );
+  auth.session = { ...auth.session!, authorizationRevision: 3 };
+  await flushPromises();
+  expect(wrapper.get('[data-test="complaint-preparation-stage"]').text()).toBe(
+    '准备起诉文书',
+  );
 });

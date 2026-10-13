@@ -2,6 +2,7 @@ import { flushPromises, mount } from '@vue/test-utils';
 import { createPinia, setActivePinia } from 'pinia';
 import { createMemoryHistory, createRouter } from 'vue-router';
 import { beforeEach, describe, expect, it, vi } from 'vitest';
+import { ApiError } from '../../api/http';
 import { useAuthStore } from '../../stores/auth';
 import LawyerCaseListPage from './LawyerCaseListPage.vue';
 
@@ -333,5 +334,142 @@ it('offers WAITING_ARCHIVE in the lawyer route filter and keeps a finished case 
     expect.objectContaining({ signal: expect.any(AbortSignal) }),
   );
   expect(wrapper.text()).toContain('待归档');
+  wrapper.unmount();
+});
+
+describe.each([
+  [
+    'COMPLAINT_PREPARATION',
+    '准备起诉文书',
+    [
+      'WAITING_COMPLAINT',
+      'WAITING_COMPLAINT_CONFIRMATION',
+      'WAITING_COMPLAINT_STAMP',
+    ],
+  ],
+  [
+    'EXECUTION_PREPARATION',
+    '准备执行文书',
+    [
+      'WAITING_EXECUTION_DOCUMENTS',
+      'WAITING_EXECUTION_CONFIRMATION',
+      'WAITING_EXECUTION_STAMP',
+    ],
+  ],
+] as const)('%s lawyer list', (group, label, stages) => {
+  it('keeps all three atom labels and exact legacy bookmarks', async () => {
+    api.listLawyerCases.mockResolvedValue({
+      ...emptyResult,
+      items: stages.map((stage, index) => ({
+        ...emptyResult.items[0],
+        id: 'case-' + index,
+        stage,
+      })),
+    });
+    const { wrapper, router } = await mountPage();
+    await router.push('/lawyer/cases?stageGroup=' + group);
+    await flushPromises();
+    expect(api.listLawyerCases).toHaveBeenLastCalledWith(
+      1,
+      20,
+      undefined,
+      expect.objectContaining({ stageGroup: group }),
+    );
+    expect(wrapper.get('.page-head').text()).toContain(label);
+    expect(
+      wrapper
+        .findAll('[data-test="lawyer-case-list"] .pill')
+        .map((pill) => pill.text()),
+    ).toEqual(
+      expect.arrayContaining(
+        group === 'COMPLAINT_PREPARATION'
+          ? ['待写诉状', '诉状待确认', '诉状待盖章']
+          : ['待写执行材料', '执行材料待确认', '执行材料待盖章'],
+      ),
+    );
+    await wrapper
+      .findAll('button')
+      .find((button) => button.text() === '刷新')!
+      .trigger('click');
+    await flushPromises();
+    for (const stage of stages) {
+      await router.push('/lawyer/cases?stage=' + stage);
+      await flushPromises();
+      expect(api.listLawyerCases).toHaveBeenLastCalledWith(1, 20, stage, {
+        signal: expect.any(AbortSignal),
+      });
+    }
+    router.back();
+    await flushPromises();
+    expect(api.listLawyerCases.mock.calls.at(-1)?.[2]).toBe(stages[1]);
+    wrapper.unmount();
+  });
+  it('returns to page one and discards old page data after switching group or identity', async () => {
+    let resolveOld!: (value: typeof emptyResult) => void;
+    api.listLawyerCases.mockResolvedValue({ ...emptyResult, total: 21 });
+    const { wrapper, router } = await mountPage();
+    await router.push('/lawyer/cases?stageGroup=' + group);
+    await flushPromises();
+    api.listLawyerCases.mockReturnValueOnce(
+      new Promise((resolve) => {
+        resolveOld = resolve;
+      }),
+    );
+    await wrapper
+      .findAll('button')
+      .find((button) => button.text() === '下一页')!
+      .trigger('click');
+    await flushPromises();
+    const other =
+      group === 'COMPLAINT_PREPARATION'
+        ? 'EXECUTION_PREPARATION'
+        : 'COMPLAINT_PREPARATION';
+    await router.push('/lawyer/cases?stageGroup=' + other);
+    await flushPromises();
+    expect(api.listLawyerCases).toHaveBeenLastCalledWith(
+      1,
+      20,
+      undefined,
+      expect.objectContaining({ stageGroup: other }),
+    );
+    const auth = useAuthStore();
+    api.listLawyerCases.mockRejectedValue(
+      new ApiError('revoked', 403, 'ACTION_FORBIDDEN'),
+    );
+    auth.session = { ...auth.session!, authorizationRevision: 4 };
+    await flushPromises();
+    resolveOld({
+      ...emptyResult,
+      items: [{ ...emptyResult.items[0], businessNo: 'CA-late' }],
+    });
+    await flushPromises();
+    expect(wrapper.text()).not.toContain('CA-late');
+    expect(wrapper.text()).toContain('当前账号已不能读取这些案件');
+    expect(wrapper.find('[data-test="lawyer-case-list"]').exists()).toBe(false);
+    api.listLawyerCases.mockResolvedValue({
+      ...emptyResult,
+      items: [{ ...emptyResult.items[0], businessNo: 'CA-user-2' }],
+    });
+    auth.session = {
+      ...auth.session!,
+      user: { ...auth.session!.user, id: 'lawyer-2' },
+    };
+    await flushPromises();
+    expect(wrapper.text()).toContain('CA-user-2');
+    wrapper.unmount();
+  });
+});
+it('does not drop the group when both filter parameters are supplied', async () => {
+  const { wrapper, router } = await mountPage();
+  await router.push(
+    '/lawyer/cases?stage=WAITING_COMPLAINT&stageGroup=COMPLAINT_PREPARATION',
+  );
+  await flushPromises();
+  expect(api.listLawyerCases).toHaveBeenLastCalledWith(
+    1,
+    20,
+    'WAITING_COMPLAINT',
+    expect.objectContaining({ stageGroup: 'COMPLAINT_PREPARATION' }),
+  );
   wrapper.unmount();
 });

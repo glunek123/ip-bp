@@ -98,7 +98,7 @@ export class CaseReadService {
       | 'WAITING_EXECUTION_FILING'
       | 'EXECUTING'
       | 'WAITING_ARCHIVE',
-    stageGroup?: 'EXECUTION_PREPARATION',
+    stageGroup?: 'COMPLAINT_PREPARATION' | 'EXECUTION_PREPARATION',
   ) {
     if (stage !== undefined && stageGroup !== undefined)
       throw new BadRequestException({
@@ -118,17 +118,27 @@ export class CaseReadService {
       ...baseWhere,
       ...(stage
         ? { stage }
-        : stageGroup === 'EXECUTION_PREPARATION'
+        : stageGroup === 'COMPLAINT_PREPARATION'
           ? {
               stage: {
                 in: [
-                  'WAITING_EXECUTION_DOCUMENTS',
-                  'WAITING_EXECUTION_CONFIRMATION',
-                  'WAITING_EXECUTION_STAMP',
+                  'WAITING_COMPLAINT',
+                  'WAITING_COMPLAINT_CONFIRMATION',
+                  'WAITING_COMPLAINT_STAMP',
                 ],
               },
             }
-          : {}),
+          : stageGroup === 'EXECUTION_PREPARATION'
+            ? {
+                stage: {
+                  in: [
+                    'WAITING_EXECUTION_DOCUMENTS',
+                    'WAITING_EXECUTION_CONFIRMATION',
+                    'WAITING_EXECUTION_STAMP',
+                  ],
+                },
+              }
+            : {}),
     };
     const [items, total, grouped] = await Promise.all([
       this.database.case.findMany({

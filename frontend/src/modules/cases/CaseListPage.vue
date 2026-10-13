@@ -3,6 +3,7 @@ import { computed, onBeforeUnmount, ref, watch } from 'vue';
 import { RouterLink, useRoute, useRouter } from 'vue-router';
 import { ElButton } from 'element-plus/es/components/button/index.mjs';
 import { ApiError } from '../../api/http';
+import { useAuthStore } from '../../stores/auth';
 import {
   listCases,
   type CaseStageGroup,
@@ -13,6 +14,12 @@ import {
 
 const route = useRoute();
 const router = useRouter();
+const auth = useAuthStore();
+const identity = computed(() =>
+  auth.session === null
+    ? ''
+    : `${auth.session.user.id}:${auth.session.principalType}:${auth.session.department?.id ?? ''}:${auth.session.authorizationRevision}`,
+);
 const view = computed<CaseView>(() =>
   route.query.view === 'department' ? 'department' : 'mine',
 );
@@ -36,8 +43,9 @@ const stage = computed<CaseStageFilter>(() =>
     : 'all',
 );
 const stageGroup = computed<CaseStageGroup | undefined>(() =>
-  stage.value === 'all' && route.query.stageGroup === 'EXECUTION_PREPARATION'
-    ? 'EXECUTION_PREPARATION'
+  route.query.stageGroup === 'COMPLAINT_PREPARATION' ||
+  route.query.stageGroup === 'EXECUTION_PREPARATION'
+    ? route.query.stageGroup
     : undefined,
 );
 const pageSize = 20;
@@ -51,7 +59,8 @@ const totalPages = computed(() =>
   Math.max(1, Math.ceil(total.value / pageSize)),
 );
 const requestKey = computed(
-  () => `${view.value}:${stage.value}:${stageGroup.value ?? ''}:${page.value}`,
+  () =>
+    `${identity.value}:${view.value}:${stage.value}:${stageGroup.value ?? ''}:${page.value}`,
 );
 function stageLabel(value: CaseSummary['stage']): string {
   if (value === 'PENDING_MATCH') return '待匹配';
@@ -90,7 +99,10 @@ async function load() {
       signal: controller.signal,
       view: view.value,
       ...(stageGroup.value
-        ? { stageGroup: stageGroup.value }
+        ? {
+            stageGroup: stageGroup.value,
+            ...(stage.value !== 'all' ? { stage: stage.value } : {}),
+          }
         : { stage: stage.value }),
     });
     if (controller.signal.aborted || currentKey !== requestKey.value) return;
@@ -128,7 +140,14 @@ function goToPage(next: number) {
   void router.push({ query: { ...route.query, page: String(next) } });
 }
 watch(
-  () => [view.value, stage.value, stageGroup.value, route.query.page] as const,
+  () =>
+    [
+      view.value,
+      stage.value,
+      stageGroup.value,
+      route.query.page,
+      identity.value,
+    ] as const,
   (next, previous) => {
     const filterChanged =
       previous &&
@@ -169,7 +188,9 @@ onBeforeUnmount(() => request?.abort());
             {{ view === 'mine' ? '我负责的案件' : '本部门全部案件' }} ·
             {{
               stageGroup
-                ? '准备执行文书'
+                ? stageGroup === 'COMPLAINT_PREPARATION'
+                  ? '准备起诉文书'
+                  : '准备执行文书'
                 : stage === 'all'
                   ? '全部阶段'
                   : stageLabel(stage)

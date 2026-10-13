@@ -498,65 +498,68 @@ describe('cases API', () => {
     );
   });
 
-  it('sends execution preparation group filters without a synthetic count key', async () => {
-    const counts = {
-      PENDING_MATCH: 0,
-      WAITING_COMPLAINT: 0,
-      WAITING_COMPLAINT_CONFIRMATION: 0,
-      WAITING_COMPLAINT_STAMP: 0,
-      WAITING_FILING: 0,
-      WAITING_FORMAL_ACCEPTANCE: 0,
-      WAITING_HEARING: 0,
-      WAITING_JUDGMENT: 0,
-      SECOND_INSTANCE: 0,
-      WAITING_EXECUTION_DOCUMENTS: 2,
-      WAITING_EXECUTION_CONFIRMATION: 3,
-      WAITING_EXECUTION_STAMP: 0,
-      WAITING_EXECUTION_FILING: 0,
-      EXECUTING: 0,
-      WAITING_ARCHIVE: 0,
-    };
-    const fetchMock = mockJson({
-      items: [],
-      total: 5,
-      page: 1,
-      pageSize: 20,
-      counts,
-    });
-    const options = {
-      view: 'department',
-      stageGroup: 'EXECUTION_PREPARATION',
-    } as Parameters<typeof listCases>[2];
-    await listCases(1, 20, options);
-    expect(fetchMock.mock.calls[0]?.[0]).toBe(
-      '/api/v1/cases?page=1&pageSize=20&view=department&stageGroup=EXECUTION_PREPARATION',
-    );
+  it.each(['COMPLAINT_PREPARATION', 'EXECUTION_PREPARATION'] as const)(
+    'sends %s group filters without a synthetic count key',
+    async (group) => {
+      const counts = {
+        PENDING_MATCH: 0,
+        WAITING_COMPLAINT: 0,
+        WAITING_COMPLAINT_CONFIRMATION: 0,
+        WAITING_COMPLAINT_STAMP: 0,
+        WAITING_FILING: 0,
+        WAITING_FORMAL_ACCEPTANCE: 0,
+        WAITING_HEARING: 0,
+        WAITING_JUDGMENT: 0,
+        SECOND_INSTANCE: 0,
+        WAITING_EXECUTION_DOCUMENTS: 2,
+        WAITING_EXECUTION_CONFIRMATION: 3,
+        WAITING_EXECUTION_STAMP: 0,
+        WAITING_EXECUTION_FILING: 0,
+        EXECUTING: 0,
+        WAITING_ARCHIVE: 0,
+      };
+      const fetchMock = mockJson({
+        items: [],
+        total: 5,
+        page: 1,
+        pageSize: 20,
+        counts,
+      });
+      const options = {
+        view: 'department',
+        stageGroup: group,
+      } as Parameters<typeof listCases>[2];
+      await listCases(1, 20, options);
+      expect(fetchMock.mock.calls[0]?.[0]).toBe(
+        `/api/v1/cases?page=1&pageSize=20&view=department&stageGroup=${group}`,
+      );
 
-    const lawyerFetch = mockJson({
-      items: [],
-      total: 0,
-      page: 1,
-      pageSize: 20,
-      counts,
-    });
-    const lawyerList = Reflect.get(casesApi, 'listLawyerCases') as
-      | ((
-          page: number,
-          pageSize: number,
-          stage?: string,
-          options?: { stageGroup?: string },
-        ) => Promise<unknown>)
-      | undefined;
-    expect(lawyerList).toBeTypeOf('function');
-    if (!lawyerList) return;
-    await lawyerList(1, 20, undefined, {
-      stageGroup: 'EXECUTION_PREPARATION',
-    });
-    expect(lawyerFetch.mock.calls[0]?.[0]).toBe(
-      '/api/v1/lawyer/cases?page=1&pageSize=20&stageGroup=EXECUTION_PREPARATION',
-    );
-    expect(Object.keys(counts)).not.toContain('EXECUTION_PREPARATION');
-  });
+      const lawyerFetch = mockJson({
+        items: [],
+        total: 0,
+        page: 1,
+        pageSize: 20,
+        counts,
+      });
+      const lawyerList = Reflect.get(casesApi, 'listLawyerCases') as
+        | ((
+            page: number,
+            pageSize: number,
+            stage?: string,
+            options?: { stageGroup?: string },
+          ) => Promise<unknown>)
+        | undefined;
+      expect(lawyerList).toBeTypeOf('function');
+      if (!lawyerList) return;
+      await lawyerList(1, 20, undefined, {
+        stageGroup: group,
+      });
+      expect(lawyerFetch.mock.calls[0]?.[0]).toBe(
+        `/api/v1/lawyer/cases?page=1&pageSize=20&stageGroup=${group}`,
+      );
+      expect(Object.keys(counts)).not.toContain('EXECUTION_PREPARATION');
+    },
+  );
 
   it('decodes nullable REMAND amounts in current and mixed history without admitting internal fields to lawyer', async () => {
     const id = (value: number) =>
@@ -3144,3 +3147,18 @@ describe('CA-015 execution finish contract', () => {
     });
   });
 });
+
+it.each(['COMPLAINT_PREPARATION', 'EXECUTION_PREPARATION'] as const)(
+  'rejects stage plus %s before sending requests',
+  async (stageGroup) => {
+    const fetchMock = vi.fn();
+    vi.stubGlobal('fetch', fetchMock);
+    await expect(
+      listCases(1, 20, { stage: 'WAITING_COMPLAINT', stageGroup }),
+    ).rejects.toMatchObject({ status: 400, code: 'VALIDATION_ERROR' });
+    await expect(
+      listLawyerCases(1, 20, 'WAITING_COMPLAINT', { stageGroup }),
+    ).rejects.toMatchObject({ status: 400, code: 'VALIDATION_ERROR' });
+    expect(fetchMock).not.toHaveBeenCalled();
+  },
+);
