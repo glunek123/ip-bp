@@ -1276,3 +1276,7 @@ Task C实际提交`0cc238bdffc930aecc2be7058425b2d45ee14b00`，tree`c4934c0a904b
 限定复验19:48:21～19:48:56 UTC为2过1失败：最终144／142迁移及旧CA015原子／不可变证据通过，列表被告顺序断言失败。后续列表各次只改验收接点：精确被告集合、客户RECORDED视图、按aria-expanded避免折叠已展开导航、独立active类避免命中Router默认类、旧原子书签高亮其批准分组、实际批准表头。原API／业务规则不放宽；各次log／JSON保留。最终列表单项19:55:13～19:55:41 UTC退出0，14列／源金额／权限／导航／1440／1024／390横滚键盘及无body溢出已过，三视口主图已实际读图。最终同候选统一组合及完整门禁待运行，不将散装复验合称统一通过。
 
 新干净候选`94c18831383ffbd2917da06c8293e1573d349fad`／tree `d0b378a70c18c370f3ea2313a2b180406a492167`的累计组合Review两轴ACCEPTED、C0/I0/M0。统一九项（原八项＋旧CA015 PG）19:58:06～20:00:31 UTC退出0，9/9，前后HEAD／tree及clean相同，环境HMAC前后一致。完整verify首次19:58:32～19:58:36 UTC退出1：严格context和Spec已过，架构门禁拒绝CaseListPage直接导入leads内部lead-options，后续类型／单元／构建均未执行，不能称完整verify通过。I按现有公开模块边界仅新增leads/index.ts re-export同一labelLeadPlatform、替换一个导入路径，函数及显示规则未变；新候选须再次独立确认及完整门禁／同树验收。
+
+公开入口修复后的干净`fc0a514d5349c4c48536d793efa573923938a177`／tree `67fdc973edb1a81762f3418bc9f216bcbf921a07`，独立组合增量确认两轴ACCEPTED、C0/I0/M0；完整`pnpm verify`20:03:07～20:06:56 UTC实际exit0：80工具、1586前端、1411后端及双构建通过，前后同tree／clean，正常预检保持。Vite只有既有500kB普通chunk warning，未调阈值。15433十个新函数prosrc与最终新DDL对应体逐字一致、原部署checksum保留，另以随机schema验证最终144文件及142升级，不能混淆二者。
+
+最终最低验收补齐仅扩`tests/e2e/case-closure.spec.ts`：当前律师真实密码读取两版最小历史并下载同一结案PDF字节、客户内容下载拒绝，律师登记后结束当前PRIMARY承办，同cookie同键原参重放403且事实／历史未变。根E2E类型、该文件Lint／格式实际通过；20:09:07～20:09:51 UTC同文件3/3 exit0，输入SHA256 A5D433A1EA6697005569EBB149CE89723FDBAF5B2385751416EB9A3F8A1E2727。此后产品／单元／构建输入不再修改；最终固定增量须核明确Git输入组同一性，并将fc0完整verify的限定复用与新候选根检查／统一九项分开记录。

@@ -7,6 +7,7 @@ import {
 } from '@playwright/test';
 import {
   coreLeadFixtures,
+  endCurrentLawyerAssignment,
   resetCoreLeadE2eData,
 } from '../support/core-lead-database.mjs';
 import {
@@ -313,6 +314,29 @@ test('operator records unknown closure date and pending amount, appends a reason
   await signOut(page);
   await signIn(
     page,
+    `/lawyer/cases/${source.caseId}`,
+    source.lawyer.username,
+    source.lawyer.password,
+  );
+  const lawyerHistory = await read(page.request, source.caseId, true);
+  expect(lawyerHistory.closure?.history).toHaveLength(2);
+  for (const version of lawyerHistory.closure!.history) {
+    expect(version).not.toHaveProperty('recordedByUserId');
+    expect(version).not.toHaveProperty('correctionReason');
+  }
+  expect(lawyerHistory.closure!.current.id).toBe(corrected.closureVersionId);
+  expect(lawyerHistory.closure!.current.files).toEqual([file]);
+  expect(lawyerHistory.closure!.history[0]!.files).toEqual([]);
+  expect(lawyerHistory.closure!.history[1]!.files).toEqual([file]);
+  const lawyerFile = lawyerHistory.closure!.current.files[0]!;
+  const lawyerBytes = await page.request.get(
+    `/api/v1/materials/${lawyerFile.materialId}/versions/${lawyerFile.contentVersionId}/content`,
+  );
+  expect(lawyerBytes.status()).toBe(200);
+  expect(Buffer.from(await lawyerBytes.body()).equals(bytes)).toBe(true);
+  await signOut(page);
+  await signIn(
+    page,
     `/client/cases/${source.caseId}`,
     source.client.username,
     source.client.password,
@@ -332,6 +356,10 @@ test('operator records unknown closure date and pending amount, appends a reason
     expect(client).not.toHaveProperty(key);
   expect(client.stage).toBe('WAITING_ARCHIVE');
   await expect(page.locator('[data-test="closure-panel"]')).toHaveCount(0);
+  const clientDownload = await page.request.get(
+    `/api/v1/materials/${file.materialId}/versions/${file.contentVersionId}/content`,
+  );
+  expect([403, 404]).toContain(clientDownload.status());
 });
 
 test('current primary lawyer records real zero with unknown date and cannot perform internal closure correction', async ({
@@ -362,7 +390,12 @@ test('current primary lawyer records real zero with unknown date and cannot perf
         `/api/v1/lawyer/cases/${source.caseId}/closure`,
   );
   await panel.locator('[data-test="closure-submit"]').click();
-  const receipt = await body<Receipt>(await posted, 201);
+  const postedResponse = await posted;
+  const originalInput = postedResponse.request().postDataJSON() as Record<
+    string,
+    unknown
+  >;
+  const receipt = await body<Receipt>(postedResponse, 201);
   const detail = await read(page.request, source.caseId, true);
   expect(detail.closure?.current).toMatchObject({
     closeAt: null,
@@ -397,6 +430,18 @@ test('current primary lawyer records real zero with unknown date and cannot perf
   await expect(panel.locator('[data-test="closure-current"]')).toContainText(
     '0.00',
   );
+  await endCurrentLawyerAssignment(
+    source.caseId,
+    source.lawyer.profiles[0]!.profileId,
+  );
+  const revokedReplay = await page.request.post(
+    `/api/v1/lawyer/cases/${source.caseId}/closure`,
+    { headers: csrf, data: originalInput },
+  );
+  expect(revokedReplay.status()).toBe(403);
+  const preserved = await read(request, source.caseId);
+  expect(preserved.closure?.history).toHaveLength(1);
+  expect(preserved.closure?.current.id).toBe(receipt.closureVersionId);
 });
 
 test('lost closure success keeps the exact original request through refresh and SPA remount, then one explicit replay succeeds', async ({

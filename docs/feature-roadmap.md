@@ -1,6 +1,6 @@
 # 功能开发路线图
 
-更新日期：2026-10-13。CORE-CA-001～015、两文书导航分组N1、真实来源日历及人工台账B2、内部／客户分页均已验收并集成main。Current为CORE-CA-016最小结案资料＋案件既有字段受权摘要（工程已冻结，准备独占派发，未实现）；N2跨模块导航独立并行；Next为CORE-CA-017业务归档及归档后原因更正。CORE-UI-001已验收并集成main1471bfa，持久预览已保留数据更新。只以Current／Next段落维护指针，不把最小闭环扩大为全部Demo或生产完成。
+更新日期：2026-10-13。CORE-CA-001～015、两文书导航分组N1、真实来源日历及人工台账B2、内部／客户分页均已验收并集成main。Current为CORE-CA-016最小结案资料＋案件既有字段受权摘要＋N2导航，五路实现已接纳、fc0a514完整verify及94c1883统一九项通过；最后验收增量候选待同树统一确认，未集成main。Next为CORE-CA-017业务归档及归档后原因更正，本轮不展开。CORE-UI-001已集成main1471bfa，持久预览维持旧已验版本。实际证据只见VALIDATION，不把最小闭环扩大为全部Demo或生产完成。
 
 本文只回答“已经做到哪里、下一步做什么、之后按什么依赖顺序做”。详细业务规则仍以 [`docs/spec/`](spec/) 为准，核心主线的编码级字段、附件与存储边界以[核心业务字段、附件与存储契约](superpowers/specs/2026-09-21-core-flow-field-material-contract.md)为准，技术方案以设计文档为准，当前切片的技术任务以实施计划为准，实际验证结果以 [`docs/spec/v0.1/VALIDATION.md`](spec/v0.1/VALIDATION.md) 为准；[`docs/project-status.md`](project-status.md)仅保留当前恢复摘要。
 
