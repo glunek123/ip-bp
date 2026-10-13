@@ -289,6 +289,26 @@ AC-CA-004本片增量：运营、承办律师、本企业客户经正常来源�
 
 SD-54同时批准最小后续业务归档及归档资料更正：业务已办完可以归档，不以全部收齐款项作为默认门槛；有权限的运营原因必填，更正追加旧版可追溯记录，不静默覆盖。重新开案暂不开放，普通编辑不能任意回退阶段。没有案件级实收记录显示未登记；存在记录但金额／结清信息未知时显示未知，真实0按SD-26保留。已有事实证明尚未收齐才显示未结清；既无记录又无来源不能替用户断言财务状态。客户人工台账不是案件级实收来源，不自动按判决额分摊或算结清。CA-016／017的具体持久化与接口仍须按本子范围技术冻结，不把支付、财务公式、分期删除或完整财务结果一起实现。
 
+### CA-015技术冻结（2026-10-13，依据SD-54，尚未实现）
+
+本片仅正常来源案件`EXECUTING → WAITING_ARCHIVE`（待归档），一次登记结束事实；不实施历史补录、归档、更正、重开或收款。开发基线为已核main`3f914ade4613fd75c1463f7f7f2c16951f12b0a4`。E0只读报告为输入；以下是I工程裁定，不把未执行建议称作实现或验证通过。文件所有权见路线图本片表。
+
+- 内部`POST /api/v1/cases/:id/execution-finish`和当前承办律师`POST /api/v1/lawyer/cases/:id/execution-finish`共用`CaseExecutionFinishService.finish(actor,id,input)`，沿既有认证、CSRF、UUID及错误结构；客户、公证处无办理入口。初次和有权同键重放均201。
+- 请求`FinishCaseExecutionDto`的全部键必须显式传：`expectedVersion`（正安全整数）、`idempotencyKey`（1～128且首尾无空白）、`expectedFilingId`（UUIDv4）、`finishedAt`（严格YYYY-MM-DD）、`reason`（非空白文本1～2000）、`basisNote`（null或非空白文本1～2000）、`basisContentVersionIds`（UUIDv4数组0～10）。未知字段、重复版本ID、非法／未来业务日期拒绝；业务日按Asia/Shanghai。没有获批的“结束日期必须不早于立案日期”前置，本片不增加。原因不代替依据；非空说明或至少一份真实依据附件满足依据要求，也可同时有，不强制二者都填。null／[]表示未选择该种依据，不造材料、日期或财务值。原始文本／版本顺序进入请求指纹，不静默trim或重排后冒充原请求。
+- 回执严格为`{id,finishId,filingId,stage:'WAITING_ARCHIVE',version,finishedAt,recordedAt}`；version为原expectedVersion＋1，业务日与UTC实际记录时间分别保存。回执固定原结果，不随着后续案版本重算。原因、依据及材料只从授权GET读取，不进入普通HTTP日志。
+- 新Action`case.execution.finish`／`CASE_EXECUTION_FINISH`支持SELF／TEAM／DEPARTMENT，逐个既有`case.execution.filing.submit` Grant的scope增补新项，沿既有授权revision失效；不改计算算法、靠角色名称或读范围推办理权。律师须当前PRIMARY、有效绑定／账号／部门和未结束承办；内部须该独立Action及案范围。每次请求包括原键重放先重验身份、范围和权限，撤权后重放拒绝。
+- Serializable同部门同案行锁后，先查授权有效的原回执，再裁决首次命令；首次必须EXECUTING、expectedVersion匹配、无结束事实、当前filing.id匹配expectedFilingId且filing.toVersion等于expectedVersion。重验filing→mailing→confirmation→当前submission及trialRound／nextStep／有效二审分支完整同案同部门来源，不靠stage或日期单独判断。CAS保留当前来源ID条件。
+- 幂等唯一键为该Finish命令内`(departmentId,actorUserId,idempotencyKey)`，跨案同键亦冲突；SHA256指纹包括caseId、全部expected和业务字段，排除键本身。同键同参返原结果，异参／异案409 IDEMPOTENCY_CONFLICT；版本／阶段错误沿VERSION_CONFLICT／INVALID_STATE。沿现有有限完整事务重试和受限回执唯一冲突恢复，不把其他P2002转换为成功。
+- `CaseExecutionFinish`一案及一filing各唯一，保存部门、from／toVersion、真实finishedAt／reason／basisNote、recordedAt、真实recordedByUserId、auditEventId；`CaseExecutionFinishVersion`保存finish／case／department／material／精确contentVersionId；`CaseExecutionFinishReceipt`保存指纹及固定结果。事实、版本映射、回执、成功audit及引用不可改删，复合来源FK禁止跨案跨部门；toVersion＝fromVersion＋1。真实actor审计`case.execution.finished`、结束事实、精确引用、Case CAS、回执同事务，任一点失败全部回滚。
+- 新材料类别／purpose为`EXECUTION_FINISH_BASIS`。上传只在该正常动作有权及当前有效来源下进行，上传不推进。使用材料模块的`assertAvailableVersions`及公开`freezeCaseExecutionFinishReferences`／`listFrozenCaseExecutionFinishFiles`，冻结精确已获准内容版本，空数组不调用非空冻结。材料上传／完成、当前律师可用版本及下载身份路径由材料模块核对；客户不获得依据材料或内部办理表单。旧引用不指向currentVersion替代原字节。
+- 两份独占前向迁移：`20261013070000_add_case_execution_finish_enums`先追加WAITING_ARCHIVE、Action及材料enum；`20261013070100_guard_case_execution_finish`再以明确事务创建表、FK／约束／审计与材料身份路径、Grant和阶段守卫。不得改已执行迁移。第一份提交后第二份才能使用新enum，不宣称两份全原子；第二份失败DDL／Grant／函数整体回滚，enum可留，按既有失败迁移专项验证向前修复／重试，不删除enum或改旧checksum。
+- 新守卫接续既有matching／complaint／trialRound／judgment／nextStep／secondInstance／execution submission／confirmation／mailing／filing完整版本链；WAITING_ARCHIVE只接受`filing.toVersion=finish.fromVersion`及`finish.toVersion=case.version`的唯一真实结束事实、actor/audit、依据和回执，不用宽泛version≥放行。EXECUTING旧分支无finish；原filing回执仍固定EXECUTING及原version。延期提交守卫拒绝仅改stage、孤立事实、假audit／回执和无依据。SQL同样验证依据说明或精确版本映射至少一项。
+- 内部／当前律师list及detail新增`canFinishExecution`；detail新增`executionFinish:null | {id,filingId,finishedAt,reason,basisNote,recordedAt,files}`，files沿CaseFile。按钮由有效授权、阶段与来源共同决定。内部、律师筛选／统计／导航及客户RECORDED读取、严格parser／详情阶段显示均兼容WAITING_ARCHIVE。客户仅新增阶段兼容，不增加finishedAt、原因、依据、finishId、actor/audit或金额字段；最小字段白名单保持。
+- E2局部面板item为上述id／stage／version／canFinishExecution／executionFiling／executionFinish，contextKey包含身份／部门／authorizationRevision；注入`submitFinish(caseId,input)`、`listBasisFiles(caseId)`、`uploadBasisFile(caseId,file)`、`downloadBasisFile(caseId,file,signal)`，复用CaseFile。事件`changed(result)`与`refresh()`；统一API回执严格校验和一次workflow通知由接线层持有。E2不依赖尚未存在的API实现，可在新组件局部声明冻结结构。
+- 核对提交后冻结原输入／键／版本／来源；网络、超时、5xx及INVALID_RESPONSE属结果未知，保留原请求，只允许显式同键原参重试或刷新核实，不自动POST、换键或以旧GET断言失败。相同身份／案件详情刷新不能清掉未知请求；409提示核对，幂等冲突不偷偷换键；401／403清敏感投影并刷新。换案／身份／授权revision、卸载隔离迟到响应和取消下载。详情接线层保留同案同身份的未知请求快照供刷新／面板重挂载恢复，仅内存、不落localStorage、不跨退出登录；出现他人新事实不冒称本次成功。
+
+E1高风险实现需独立Review；E2普通组件自审及聚焦测试；最终集成需独立Review与所属正式门禁。冻结不等于已实现：正常两身份来源→结束→刷新／重登、客户最小阶段兼容、精确原材料、撤权重放、并发单胜、事务失败全回滚、SQL负例、空库／支持schema升级及两步enum失败向前恢复仍须实际验证。门禁按最终真实修改与三级规则裁定，不能把E0报告、旧CA014或分页结果当本片通过。
+
 ## REQ-CA-005 结案归档与实际款项
 
 - 状态：SD-54最小业务归档／资料更正子范围已批准、未实现；其余财务／留存细则保留。来源：C-C08 C-D08 C-D09 FIX-08 FIX-09。字段组：CA10/CA11/ST02/ST04。

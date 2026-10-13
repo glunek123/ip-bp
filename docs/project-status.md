@@ -6,6 +6,8 @@
 
 CORE-CA-001～012及SD-44律师身份前置补齐均已验收、推送并集成main；最新前置反馈规则已同时集成。业务能力状态及唯一Current／Next唯一指针见[路线图](feature-roadmap.md#current-slice)：当前CORE-KL-001已完成、已集成，既有人工台账B2也已组合验收；下一指针为CORE-CA-015按SD-54已批准、待技术冻结与派发，U1／U2辅助分页批次已完成组合验收并快进集成main；D1只读线程01a133e4-bd3f-71ff-bf4e-7f1a5c317013已完成报告（基线953ae33，无写入或验证）。
 
+CA-015恢复点：已核分页main为3f914ad／tree6f82768后，在原干净工作区新建独立分支`codex/ca015-execution-finish-integration`，分页分支保留原SHA。E0只读建议及计数措辞校正已收到；本分支仅I冻结Spec／DOMAIN／唯一ownership，等待独立技术Review，不执行产品/数据库或把文档检查算本片验收。E1统一backend／材料／客户兼容，E2新面板，E3共享前端，精确白名单与实施基线只见路线图。
+
 ## 当前任务
 
 2026-10-13当前**CORE-KL-001**真实来源日历及既有人工台账B2接线均已完成本地验收、推送并集成main；Next为CORE-CA-015按SD-54已批准、待技术冻结与派发，唯一指针见[路线图](feature-roadmap.md#current-slice)。复用`codex/ca013-014-integration`／`.local/worktrees/ca013-014-integration`；已按用户新授权从main基线`4802c32`快进至`ea9dcd1`／tree`5cd3290a6bf1e25133f30aa8574500170c3080ec`并原子推送任务分支与main；无CI配置，不冒称CI通过。主目录重叠cases.ts已保全原文件／补丁及stash`b07482c2c6130baa39cc43658f3dadb17cf81551`，恢复指针在ignored `.local/calendar-funds-evidence/main-workspace-preservation.json`；.pnpm-store保留原位。没有部署生产。集成文档收口`953ae33`已核本地／远端main与任务分支一致；U1／U2依此基线开发，白名单见路线图，父任务已授权直接接纳作者最终候选；I已接纳U1为`2a8b8d0`、U2为`2c7d4ff`，组合候选a9207b4／tree b116604已完成154/154、check:fast、双端21条真实来源2/2及独立两轴ACCEPTED；首次推送审批拒绝记录已保留；补充精确用户授权后UTC06:45快进及原子推送exit0，本地／远端main和任务分支均为1f69c4b，tree a3fc54e687eea5d808b6cd7c3fbeb856575e2aa2。
