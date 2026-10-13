@@ -20,27 +20,49 @@ const identity = computed(() =>
 const view = computed<ClientCaseView>(() =>
   route.query.view === 'RECORDED' ? 'RECORDED' : 'PENDING',
 );
+const page = computed(() => {
+  const value = route.query.page;
+  if (typeof value !== 'string' || !/^[1-9]\d*$/u.test(value)) return 1;
+  const parsed = Number(value);
+  return Number.isSafeInteger(parsed) ? parsed : 1;
+});
+const pageSize = 20;
 const state = ref<'loading' | 'ready' | 'failed'>('loading');
 const items = ref<ClientCase[]>([]);
 const total = ref(0);
+const pageCount = computed(() =>
+  Math.max(1, Math.ceil(total.value / pageSize)),
+);
 const error = ref('');
 let request: AbortController | undefined;
 async function load() {
   request?.abort();
   const controller = new AbortController();
   request = controller;
+  const currentIdentity = identity.value;
+  const currentPage = page.value;
+  const currentView = view.value;
+  const isCurrent = () =>
+    !controller.signal.aborted &&
+    currentIdentity === identity.value &&
+    currentPage === page.value &&
+    currentView === view.value;
+  items.value = [];
+  total.value = 0;
   state.value = 'loading';
   error.value = '';
   try {
-    const result = await listClientCases(1, 20, view.value, {
+    const result = await listClientCases(currentPage, pageSize, currentView, {
       signal: controller.signal,
     });
-    if (controller.signal.aborted) return;
+    if (!isCurrent()) return;
     items.value = result.items;
     total.value = result.total;
     state.value = 'ready';
   } catch (reason) {
-    if (controller.signal.aborted) return;
+    if (!isCurrent()) return;
+    items.value = [];
+    total.value = 0;
     error.value =
       reason instanceof ApiError && reason.status === 403
         ? '当前账号无权读取案件。'
@@ -49,11 +71,14 @@ async function load() {
   }
 }
 watch(
-  () => [route.query.view, identity.value],
+  () => [view.value, page.value, identity.value],
   () => void load(),
 );
 function select(next: ClientCaseView) {
-  void router.push({ query: { ...route.query, view: next } });
+  void router.push({ query: { ...route.query, view: next, page: undefined } });
+}
+function selectPage(next: number) {
+  void router.push({ query: { ...route.query, page: String(next) } });
 }
 function stageLabel(stage: ClientCase['stage']) {
   if (stage === 'WAITING_COMPLAINT_STAMP') return '诉状待盖章';
@@ -108,7 +133,11 @@ onBeforeUnmount(() => request?.abort());
         class="demo-card demo-card--pad"
         data-test="client-case-list"
       >
-        <p v-if="items.length === 0" class="field-help">当前没有案件。</p>
+        <p v-if="items.length === 0" class="field-help">
+          {{
+            total === 0 ? '当前没有案件。' : '当前页没有案件，请返回上一页。'
+          }}
+        </p>
         <ul v-else class="notary-offices-list">
           <li v-for="item in items" :key="item.id">
             <RouterLink :to="`/client/cases/${encodeURIComponent(item.id)}`">{{
@@ -122,9 +151,25 @@ onBeforeUnmount(() => request?.abort());
             }}</span>
           </li>
         </ul>
-        <p v-if="total > items.length" class="field-help">
+        <p v-if="items.length && total > items.length" class="field-help">
           当前显示 {{ items.length }} / {{ total }} 项
         </p>
+        <div
+          v-if="total > pageSize || page > 1"
+          class="page-head"
+          data-test="client-case-pagination"
+        >
+          <ElButton text :disabled="page <= 1" @click="selectPage(page - 1)"
+            >上一页</ElButton
+          >
+          <span>第 {{ page }} 页 · 共 {{ total }} 项</span>
+          <ElButton
+            text
+            :disabled="page >= pageCount"
+            @click="selectPage(page + 1)"
+            >下一页</ElButton
+          >
+        </div>
       </section>
     </main>
   </div>
