@@ -161,11 +161,31 @@ test('real internal accounts persist personal notary columns across refresh, re-
   ).toHaveAttribute('href', `/notary-matters/${matterId}`);
   const businessNo = await rows
     .first()
-    .locator('[data-test="matter-link"]')
+    .locator('.notary-business-no')
     .textContent();
 
   await page.locator('[data-test="column-settings-toggle"]').click();
+  for (const column of [
+    'rightsHolder',
+    'platform',
+    'shopName',
+    'shopExternalId',
+    'transferredAt',
+    'evidenceAt',
+    'openingPhotos',
+    'certificateNo',
+    'senderName',
+    'senderPhone',
+    'senderAddress',
+    'notaryFee',
+    'investigationFee',
+    'sampleFee',
+  ]) {
+    await page.locator(`[data-column-key="${column}"]`).uncheck();
+  }
   await page.locator('[data-column-key="sourceLead"]').uncheck();
+  await page.locator('[data-column-key="notaryOffice"]').check();
+  await page.locator('[data-column-key="createdAt"]').check();
   await page.getByRole('button', { name: '上移公证处' }).click();
   await page.locator('[data-test="save-columns"]').click();
   await expect(
@@ -173,21 +193,21 @@ test('real internal accounts persist personal notary columns across refresh, re-
   ).toContainText('已保存');
   await expect(page.locator('thead th')).toHaveText([
     '选择',
-    '公证事项编号',
-    '阶段',
+    '操作',
+    '案件进展',
     '公证处',
     '创建时间',
   ]);
   await page.reload();
   await expect(page.locator('thead th')).toHaveText([
     '选择',
-    '公证事项编号',
-    '阶段',
+    '操作',
+    '案件进展',
     '公证处',
     '创建时间',
   ]);
   await expect(rows).toHaveCount(1);
-  await expect(rows.first().locator('[data-test="matter-link"]')).toHaveText(
+  await expect(rows.first().locator('.notary-business-no')).toHaveText(
     businessNo!,
   );
 
@@ -200,8 +220,8 @@ test('real internal accounts persist personal notary columns across refresh, re-
   );
   await expect(page.locator('thead th')).toHaveText([
     '选择',
-    '公证事项编号',
-    '阶段',
+    '操作',
+    '案件进展',
     '公证处',
     '创建时间',
   ]);
@@ -218,8 +238,8 @@ test('real internal accounts persist personal notary columns across refresh, re-
     );
     await expect(otherPage.locator('thead th')).toHaveText([
       '选择',
-      '公证事项编号',
-      '阶段',
+      '操作',
+      '案件进展',
       '公证处',
       '创建时间',
     ]);
@@ -237,27 +257,32 @@ test('real internal accounts persist personal notary columns across refresh, re-
   await expect(page.locator('[data-test="matter-row"]')).toHaveCount(0);
   await expect(page.getByText('当前没有公证事项')).toBeVisible();
   await page.locator('[data-test="column-settings-toggle"]').click();
-  await expect(page.locator('[data-test="column-option"]')).toHaveCount(3);
-  await expect(page.locator('[data-column-key="sourceLead"]')).toBeChecked();
-  await expect(page.locator('[data-column-key="notaryOffice"]')).toBeChecked();
-  await expect(page.locator('[data-column-key="createdAt"]')).toBeChecked();
-  await page.locator('[data-column-key="notaryOffice"]').uncheck();
+  await expect(page.locator('[data-test="column-option"]')).toHaveCount(17);
+  await expect(
+    page.locator('[data-column-key="sourceLead"]'),
+  ).not.toBeChecked();
+  await expect(
+    page.locator('[data-column-key="notaryOffice"]'),
+  ).not.toBeChecked();
+  await expect(page.locator('[data-column-key="createdAt"]')).not.toBeChecked();
+  await page.locator('[data-column-key="platform"]').uncheck();
   await page.locator('[data-test="save-columns"]').click();
-  await expect(
-    page.locator('[data-column-key="notaryOffice"]'),
-  ).not.toBeChecked();
+  await expect(page.locator('[data-column-key="platform"]')).not.toBeChecked();
   await page.reload();
   await page.locator('[data-test="column-settings-toggle"]').click();
-  await expect(
-    page.locator('[data-column-key="notaryOffice"]'),
-  ).not.toBeChecked();
+  await expect(page.locator('[data-column-key="platform"]')).not.toBeChecked();
   await page.locator('[data-test="reset-columns"]').click();
-  await expect(page.locator('[data-column-key="notaryOffice"]')).toBeChecked();
+  await expect(page.locator('[data-column-key="platform"]')).toBeChecked();
   await page.reload();
   await page.locator('[data-test="column-settings-toggle"]').click();
-  await expect(page.locator('[data-column-key="sourceLead"]')).toBeChecked();
-  await expect(page.locator('[data-column-key="notaryOffice"]')).toBeChecked();
-  await expect(page.locator('[data-column-key="createdAt"]')).toBeChecked();
+  await expect(
+    page.locator('[data-column-key="sourceLead"]'),
+  ).not.toBeChecked();
+  await expect(
+    page.locator('[data-column-key="notaryOffice"]'),
+  ).not.toBeChecked();
+  await expect(page.locator('[data-column-key="createdAt"]')).not.toBeChecked();
+  await expect(page.locator('[data-column-key="platform"]')).toBeChecked();
 
   await page.getByRole('button', { name: '退出登录' }).click();
   await login(
@@ -267,8 +292,8 @@ test('real internal accounts persist personal notary columns across refresh, re-
   );
   await expect(page.locator('thead th')).toHaveText([
     '选择',
-    '公证事项编号',
-    '阶段',
+    '操作',
+    '案件进展',
     '公证处',
     '创建时间',
   ]);

@@ -105,10 +105,11 @@
 
 .business-list-table details {
   min-width: 0;
+  max-width: 220px;
 }
 
 .business-list-table details summary {
-  max-width: 100%;
+  max-width: 220px;
   cursor: pointer;
   overflow: hidden;
   text-overflow: ellipsis;
@@ -118,6 +119,11 @@
 .business-list-table details[open] {
   white-space: normal;
   overflow-wrap: anywhere;
+}
+
+.business-list-table details[open] summary {
+  overflow: visible;
+  white-space: normal;
 }
 
 .business-list-table .field-help {

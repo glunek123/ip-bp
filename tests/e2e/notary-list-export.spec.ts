@@ -95,10 +95,10 @@ test('real operator selects across pages, previews and downloads explicit ranges
   await page.locator('[data-column-key="notaryOffice"]').uncheck();
   await page.locator('[data-column-key="createdAt"]').uncheck();
   await page.locator('[data-test="save-columns"]').click();
-  await expect(page.locator('thead th')).toHaveCount(3);
+  await expect(page.locator('thead th')).toHaveCount(17);
   await page.getByRole('button', { name: '列设置' }).click();
   const firstPageBusinessNo = await page
-    .locator('[data-test="matter-link"]')
+    .locator('.notary-business-no')
     .first()
     .innerText();
   const firstPageMatterId = (await page
@@ -111,7 +111,7 @@ test('real operator selects across pages, previews and downloads explicit ranges
   await page.locator('[data-test="next-page"]').click();
   await expect(page.locator('[data-test="matter-row"]')).toHaveCount(2);
   const secondPageBusinessNo = await page
-    .locator('[data-test="matter-link"]')
+    .locator('.notary-business-no')
     .first()
     .innerText();
   const secondPageMatterId = (await page
@@ -228,7 +228,7 @@ test('real operator selects across pages, previews and downloads explicit ranges
   await expect(getNotaryListExportAudits()).resolves.toHaveLength(2);
 
   await page.reload();
-  await expect(page.locator('thead th')).toHaveCount(3);
+  await expect(page.locator('thead th')).toHaveCount(17);
   await page.getByRole('button', { name: '退出登录' }).click();
   await expect(page).toHaveURL(/\/login$/u);
   await page.getByLabel('用户名').fill(coreLeadFixtures.operatorUsername);
@@ -236,7 +236,7 @@ test('real operator selects across pages, previews and downloads explicit ranges
   await page.getByRole('button', { name: '登录', exact: true }).click();
   await expect(page).toHaveURL(/\/customers$/u);
   await page.goto('/notary-matters?stage=PENDING_EVIDENCE');
-  await expect(page.locator('thead th')).toHaveCount(3);
+  await expect(page.locator('thead th')).toHaveCount(17);
 
   const session = await page.request.get('/api/v1/auth/session');
   const csrfToken = (await session.json()).csrfToken as string;
