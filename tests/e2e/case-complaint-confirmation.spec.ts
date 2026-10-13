@@ -50,14 +50,16 @@ test('normal password pagination keeps 21 source cases accessible to operations 
   > = [];
   for (let index = 0; index < 21; index += 1) {
     const source = await createSubmittedCaseThroughApi(request);
+    const confirmationKey = randomUUID();
     const confirmation = await request.post(
       `/api/v1/cases/${source.caseId}/complaint-confirm`,
       {
         headers: {
           Authorization: `Bearer ${coreLeadFixtures.tokenA}`,
-          'Idempotency-Key': randomUUID(),
+          'Idempotency-Key': confirmationKey,
         },
         data: {
+          idempotencyKey: confirmationKey,
           expectedVersion: source.submitted.version,
           confirmedComplaintContentVersionId: source.complaint.contentVersionId,
           amountState: 'KNOWN',
