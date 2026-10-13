@@ -1,5 +1,6 @@
 import { effectScope, shallowRef, watch } from 'vue';
 import { ApiError, getJson, requestJson, type RequestOptions } from './http';
+import type { LeadPlatform } from './leads';
 
 export type CaseStage =
   | 'PENDING_MATCH'
@@ -33,6 +34,9 @@ export type CaseSummary = {
   canMailExecution: boolean;
   canSubmitExecutionFiling: boolean;
   canFinishExecution: boolean;
+  canRecordClosure: boolean;
+  canCorrectClosure: boolean;
+  displaySummary: CaseDisplaySummary;
   canSubmitComplaint: boolean;
   canConfirmComplaint: boolean;
   canMailComplaint: boolean;
@@ -74,7 +78,7 @@ export type CaseLawyer = {
   role: 'PRIMARY';
   assignedAt: string;
 };
-export type CaseDetail = CaseSummary & {
+export type CaseDetail = Omit<CaseSummary, 'displaySummary'> & {
   courtCaseNo: string | null;
   department: { id: string; name: string };
   customer: { id: string; name: string };
@@ -115,6 +119,7 @@ export type CaseDetail = CaseSummary & {
   executionMailing: ExecutionMailing | null;
   executionFiling: ExecutionFiling | null;
   executionFinish: ExecutionFinish | null;
+  closure: CaseClosure | null;
 };
 export type ExecutionSubmissionFile = CaseFile & { uploadedAt: string };
 export type ExecutionSubmissionSummary = {
@@ -182,6 +187,88 @@ export type FinishCaseExecutionResult = {
   finishedAt: string;
   recordedAt: string;
 };
+export type CaseDisplayAmount<Source extends string> = {
+  state: 'UNRECORDED' | 'PENDING' | 'KNOWN';
+  amount: string | null;
+  sourceType: Source | null;
+  sourceId: string | null;
+};
+export type CaseDisplaySummary = {
+  customerName: string;
+  rightsHolderName: string;
+  source: {
+    platform: LeadPlatform;
+    shopName: string;
+    shopExternalId: string | null;
+  };
+  defendants: Array<{ id: string; name: string }>;
+  lawyers: Array<{ id: string; fullName: string }>;
+  court: { id: string; name: string } | null;
+  courtCaseNo: string | null;
+  claimAmount: CaseDisplayAmount<
+    'COMPLAINT_CONFIRMATION' | 'COMPLAINT_SUBMISSION'
+  >;
+  judgmentAmount: CaseDisplayAmount<
+    'FIRST_INSTANCE_JUDGMENT' | 'SECOND_INSTANCE_RESULT'
+  >;
+  closureAmount: CaseDisplayAmount<'CASE_CLOSURE_VERSION'>;
+};
+export type RecordCaseClosureInput = {
+  expectedVersion: number;
+  idempotencyKey: string;
+  expectedFinishId: string;
+  closeAt: string | null;
+  closeAmountState: 'KNOWN' | 'PENDING';
+  closeAmt: string | null;
+  note: string | null;
+  closeContentVersionIds: string[];
+};
+export type CorrectCaseClosureInput = RecordCaseClosureInput & {
+  expectedClosureVersionId: string;
+  correctionReason: string;
+};
+export type CaseClosureResult = {
+  id: string;
+  closureId: string;
+  closureVersionId: string;
+  finishId: string;
+  stage: 'WAITING_ARCHIVE';
+  version: number;
+  recordedAt: string;
+};
+export type CaseClosureVersion = {
+  id: string;
+  kind: 'REGISTER' | 'CORRECT';
+  priorVersionId: string | null;
+  finishId: string;
+  fromVersion: number;
+  toVersion: number;
+  closeAt: string | null;
+  closeAmountState: 'KNOWN' | 'PENDING';
+  closeAmt: string | null;
+  note: string | null;
+  correctionReason: string | null;
+  recordedAt: string;
+  recordedByUserId: string;
+  files: CaseFile[];
+};
+export type LawyerCaseClosureVersion = Omit<
+  CaseClosureVersion,
+  'correctionReason' | 'recordedByUserId'
+>;
+export type CaseClosure = {
+  id: string;
+  finishId: string;
+  current: CaseClosureVersion;
+  history: CaseClosureVersion[];
+};
+export type LawyerCaseClosure = Omit<CaseClosure, 'current' | 'history'> & {
+  current: LawyerCaseClosureVersion;
+  history: LawyerCaseClosureVersion[];
+};
+export type CaseClosurePendingRequest =
+  | { command: 'RECORD'; input: RecordCaseClosureInput }
+  | { command: 'CORRECT'; input: CorrectCaseClosureInput };
 export type CaseHearingArrangement = {
   id: string;
   trialRoundId: string;
@@ -414,6 +501,8 @@ export type LawyerCaseSummary = {
   canMailExecution: boolean;
   canSubmitExecutionFiling: boolean;
   canFinishExecution: boolean;
+  canRecordClosure: boolean;
+  canCorrectClosure: false;
   canSubmitComplaint: boolean;
   canConfirmComplaint: boolean;
   canMailComplaint: boolean;
@@ -479,6 +568,7 @@ export type LawyerCaseDetail = CaseWorkflowItem &
     executionMailing: ExecutionMailing | null;
     executionFiling: ExecutionFiling | null;
     executionFinish: ExecutionFinish | null;
+    closure: LawyerCaseClosure | null;
   };
 
 export type SubmitExecutionInput = {
@@ -764,6 +854,12 @@ function named(value: unknown, lastKey: 'name' | 'displayName'): boolean {
   );
 }
 function summary(value: unknown): value is CaseSummary {
+  if (!record(value)) return false;
+  const { displaySummary: projection, ...fields } = value;
+  return summaryFields(fields) && displaySummary(projection);
+}
+
+function summaryFields(value: unknown): boolean {
   return (
     record(value) &&
     exact(value, [
@@ -779,6 +875,8 @@ function summary(value: unknown): value is CaseSummary {
       'canMailExecution',
       'canSubmitExecutionFiling',
       'canFinishExecution',
+      'canRecordClosure',
+      'canCorrectClosure',
       'canSubmitComplaint',
       'canConfirmComplaint',
       'canMailComplaint',
@@ -811,6 +909,8 @@ function summary(value: unknown): value is CaseSummary {
     typeof value.canMailExecution === 'boolean' &&
     typeof value.canSubmitExecutionFiling === 'boolean' &&
     typeof value.canFinishExecution === 'boolean' &&
+    typeof value.canRecordClosure === 'boolean' &&
+    typeof value.canCorrectClosure === 'boolean' &&
     typeof value.canSubmitComplaint === 'boolean' &&
     typeof value.canConfirmComplaint === 'boolean' &&
     typeof value.canMailComplaint === 'boolean' &&
@@ -828,6 +928,224 @@ function summary(value: unknown): value is CaseSummary {
     typeof value.canRevokeSecondInstanceResult === 'boolean' &&
     source(value.sourceLead) &&
     source(value.sourceNotaryMatter)
+  );
+}
+function decimalAmount(value: unknown, canonical: boolean): value is string {
+  return (
+    typeof value === 'string' &&
+    (canonical ? /^\d{1,14}\.\d{2}$/u : /^\d{1,14}(?:\.\d{1,2})?$/u).test(value)
+  );
+}
+function displayAmount(value: unknown, sources: readonly string[]): boolean {
+  if (
+    !record(value) ||
+    !exact(value, ['state', 'amount', 'sourceType', 'sourceId'])
+  )
+    return false;
+  if (value.state === 'UNRECORDED')
+    return (
+      value.amount === null &&
+      value.sourceType === null &&
+      value.sourceId === null
+    );
+  return (
+    typeof value.sourceType === 'string' &&
+    sources.includes(value.sourceType) &&
+    uuidV4(value.sourceId) &&
+    (value.state === 'PENDING'
+      ? value.amount === null
+      : value.state === 'KNOWN' && decimalAmount(value.amount, true))
+  );
+}
+function displaySummary(value: unknown): value is CaseDisplaySummary {
+  return (
+    record(value) &&
+    exact(value, [
+      'customerName',
+      'rightsHolderName',
+      'source',
+      'defendants',
+      'lawyers',
+      'court',
+      'courtCaseNo',
+      'claimAmount',
+      'judgmentAmount',
+      'closureAmount',
+    ]) &&
+    nonempty(value.customerName) &&
+    nonempty(value.rightsHolderName) &&
+    record(value.source) &&
+    exact(value.source, ['platform', 'shopName', 'shopExternalId']) &&
+    [
+      'TAOBAO',
+      'TMALL',
+      'PINDUODUO',
+      'JD',
+      'DOUYIN',
+      'ALIBABA_1688',
+      'XIAOHONGSHU',
+      'KUAISHOU',
+      'XIANYU',
+      'WECHAT',
+      'MEITUAN',
+      'DIANPING',
+      'MAP',
+      'OTHER',
+    ].includes(String(value.source.platform)) &&
+    nonempty(value.source.shopName) &&
+    (value.source.shopExternalId === null ||
+      nonempty(value.source.shopExternalId)) &&
+    Array.isArray(value.defendants) &&
+    value.defendants.every((item) => named(item, 'name')) &&
+    Array.isArray(value.lawyers) &&
+    value.lawyers.every(
+      (item) =>
+        record(item) &&
+        exact(item, ['id', 'fullName']) &&
+        nonempty(item.id) &&
+        nonempty(item.fullName),
+    ) &&
+    (value.court === null || named(value.court, 'name')) &&
+    (value.courtCaseNo === null || nonempty(value.courtCaseNo)) &&
+    displayAmount(value.claimAmount, [
+      'COMPLAINT_CONFIRMATION',
+      'COMPLAINT_SUBMISSION',
+    ]) &&
+    displayAmount(value.judgmentAmount, [
+      'FIRST_INSTANCE_JUDGMENT',
+      'SECOND_INSTANCE_RESULT',
+    ]) &&
+    displayAmount(value.closureAmount, ['CASE_CLOSURE_VERSION'])
+  );
+}
+function closureVersion(
+  value: unknown,
+  internal: boolean,
+): value is CaseClosureVersion | LawyerCaseClosureVersion {
+  if (
+    !record(value) ||
+    !exact(value, [
+      'id',
+      'kind',
+      'priorVersionId',
+      'finishId',
+      'fromVersion',
+      'toVersion',
+      'closeAt',
+      'closeAmountState',
+      'closeAmt',
+      'note',
+      'recordedAt',
+      'files',
+      ...(internal ? ['correctionReason', 'recordedByUserId'] : []),
+    ])
+  )
+    return false;
+  return (
+    uuidV4(value.id) &&
+    uuidV4(value.finishId) &&
+    Number.isSafeInteger(value.fromVersion) &&
+    Number(value.fromVersion) >= 1 &&
+    Number.isSafeInteger(value.toVersion) &&
+    value.toVersion === Number(value.fromVersion) + 1 &&
+    (value.kind === 'REGISTER'
+      ? value.priorVersionId === null &&
+        (!internal || value.correctionReason === null)
+      : value.kind === 'CORRECT' &&
+        uuidV4(value.priorVersionId) &&
+        (!internal ||
+          (nonempty(value.correctionReason) &&
+            value.correctionReason.length <= 500))) &&
+    (value.closeAt === null || businessDate(value.closeAt)) &&
+    (value.closeAmountState === 'PENDING'
+      ? value.closeAmt === null
+      : value.closeAmountState === 'KNOWN' &&
+        decimalAmount(value.closeAmt, true)) &&
+    (value.note === null || finishText(value.note)) &&
+    utcTimestamp(value.recordedAt) &&
+    (!internal || uuidV4(value.recordedByUserId)) &&
+    Array.isArray(value.files) &&
+    value.files.length <= 10 &&
+    value.files.every(
+      (file) =>
+        caseFile(file) &&
+        uuidV4(file.materialId) &&
+        uuidV4(file.contentVersionId),
+    ) &&
+    new Set(value.files.map((file) => (file as CaseFile).materialId)).size ===
+      value.files.length &&
+    new Set(value.files.map((file) => (file as CaseFile).contentVersionId))
+      .size === value.files.length
+  );
+}
+function sameClosureVersion(
+  left: CaseClosureVersion | LawyerCaseClosureVersion,
+  right: CaseClosureVersion | LawyerCaseClosureVersion,
+): boolean {
+  const rightValue: unknown = right;
+  if (!record(rightValue)) return false;
+  return Object.entries(left).every(([key, value]) =>
+    key === 'files'
+      ? left.files.length === right.files.length &&
+        left.files.every((file, i) => {
+          const other = right.files[i];
+          return (
+            other !== undefined &&
+            file.materialId === other.materialId &&
+            file.contentVersionId === other.contentVersionId &&
+            file.originalFilename === other.originalFilename &&
+            file.mimeType === other.mimeType
+          );
+        })
+      : rightValue[key] === value,
+  );
+}
+function closureMatches(
+  value: unknown,
+  finish: unknown,
+  stage: unknown,
+  version: unknown,
+  canRecord: unknown,
+  canCorrect: unknown,
+  internal: boolean,
+): boolean {
+  if (value === null)
+    return (
+      canCorrect === false &&
+      (canRecord !== true ||
+        (stage === 'WAITING_ARCHIVE' && executionFinish(finish)))
+    );
+  if (
+    stage !== 'WAITING_ARCHIVE' ||
+    canRecord !== false ||
+    !executionFinish(finish) ||
+    !record(value) ||
+    !exact(value, ['id', 'finishId', 'current', 'history']) ||
+    !uuidV4(value.id) ||
+    value.finishId !== finish.id ||
+    !closureVersion(value.current, internal) ||
+    !Array.isArray(value.history) ||
+    value.history.length === 0 ||
+    !value.history.every((entry) => closureVersion(entry, internal))
+  )
+    return false;
+  const history = value.history as Array<
+    CaseClosureVersion | LawyerCaseClosureVersion
+  >;
+  const last = history[history.length - 1]!;
+  return (
+    new Set(history.map((entry) => entry.id)).size === history.length &&
+    last.toVersion === version &&
+    sameClosureVersion(value.current, last) &&
+    history.every(
+      (entry, index) =>
+        entry.finishId === finish.id &&
+        (index === 0
+          ? entry.kind === 'REGISTER'
+          : entry.kind === 'CORRECT' &&
+            entry.priorVersionId === history[index - 1]!.id &&
+            entry.fromVersion === history[index - 1]!.toVersion),
+    )
   );
 }
 function caseFile(value: unknown): value is CaseFile {
@@ -1515,12 +1833,15 @@ function validCaseDetail(value: unknown, id: string): value is CaseDetail {
       'canMailExecution',
       'canSubmitExecutionFiling',
       'canFinishExecution',
+      'canRecordClosure',
+      'canCorrectClosure',
       'executionMailing',
       'executionFiling',
       'executionFinish',
+      'closure',
     ]) &&
     value.id === id &&
-    summary({
+    summaryFields({
       id: value.id,
       businessNo: value.businessNo,
       stage: value.stage,
@@ -1533,6 +1854,8 @@ function validCaseDetail(value: unknown, id: string): value is CaseDetail {
       canMailExecution: value.canMailExecution,
       canSubmitExecutionFiling: value.canSubmitExecutionFiling,
       canFinishExecution: value.canFinishExecution,
+      canRecordClosure: value.canRecordClosure,
+      canCorrectClosure: value.canCorrectClosure,
       canSubmitComplaint: value.canSubmitComplaint,
       canConfirmComplaint: value.canConfirmComplaint,
       canMailComplaint: value.canMailComplaint,
@@ -1637,10 +1960,21 @@ function validCaseDetail(value: unknown, id: string): value is CaseDetail {
     typeof value.canMailExecution === 'boolean' &&
     typeof value.canSubmitExecutionFiling === 'boolean' &&
     typeof value.canFinishExecution === 'boolean' &&
+    typeof value.canRecordClosure === 'boolean' &&
+    typeof value.canCorrectClosure === 'boolean' &&
     (value.executionMailing === null ||
       executionMailing(value.executionMailing)) &&
     (value.executionFiling === null ||
       executionFiling(value.executionFiling)) &&
+    closureMatches(
+      value.closure,
+      value.executionFinish,
+      value.stage,
+      value.version,
+      value.canRecordClosure,
+      value.canCorrectClosure,
+      true,
+    ) &&
     executionFinishMatches(
       value.executionFinish,
       value.executionFiling,
@@ -2055,6 +2389,8 @@ function validLawyerSummary(value: unknown): value is LawyerCaseSummary {
       'canMailExecution',
       'canSubmitExecutionFiling',
       'canFinishExecution',
+      'canRecordClosure',
+      'canCorrectClosure',
       'canSubmitComplaint',
       'canConfirmComplaint',
       'canMailComplaint',
@@ -2083,6 +2419,8 @@ function validLawyerSummary(value: unknown): value is LawyerCaseSummary {
     typeof value.canMailExecution === 'boolean' &&
     typeof value.canSubmitExecutionFiling === 'boolean' &&
     typeof value.canFinishExecution === 'boolean' &&
+    typeof value.canRecordClosure === 'boolean' &&
+    value.canCorrectClosure === false &&
     typeof value.canSubmitComplaint === 'boolean' &&
     typeof value.canConfirmComplaint === 'boolean' &&
     typeof value.canMailComplaint === 'boolean' &&
@@ -2322,9 +2660,12 @@ export async function getLawyerCase(
       'canMailExecution',
       'canSubmitExecutionFiling',
       'canFinishExecution',
+      'canRecordClosure',
+      'canCorrectClosure',
       'executionMailing',
       'executionFiling',
       'executionFinish',
+      'closure',
     ]) ||
     result.id !== id ||
     !validLawyerSummary({
@@ -2338,6 +2679,8 @@ export async function getLawyerCase(
       canMailExecution: result.canMailExecution,
       canSubmitExecutionFiling: result.canSubmitExecutionFiling,
       canFinishExecution: result.canFinishExecution,
+      canRecordClosure: result.canRecordClosure,
+      canCorrectClosure: result.canCorrectClosure,
       canSubmitComplaint: result.canSubmitComplaint,
       canConfirmComplaint: result.canConfirmComplaint,
       canMailComplaint: result.canMailComplaint,
@@ -2392,6 +2735,15 @@ export async function getLawyerCase(
       !executionMailing(result.executionMailing)) ||
     (result.executionFiling !== null &&
       !executionFiling(result.executionFiling)) ||
+    !closureMatches(
+      result.closure,
+      result.executionFinish,
+      result.stage,
+      result.version,
+      result.canRecordClosure,
+      result.canCorrectClosure,
+      false,
+    ) ||
     !executionFinishMatches(
       result.executionFinish,
       result.executionFiling,
@@ -3685,6 +4037,160 @@ export function executionFinishSession(
   };
   effectScope(true).run(() => watch(context, state.clear, { flush: 'sync' }));
   finishSessions.set(owner, state);
+  return state;
+}
+
+async function submitClosure(
+  id: string,
+  input: RecordCaseClosureInput | CorrectCaseClosureInput,
+  command: 'RECORD' | 'CORRECT',
+  audience: 'internal' | 'lawyer',
+): Promise<CaseClosureResult> {
+  if (
+    !record(input) ||
+    !exact(input, [
+      'expectedVersion',
+      'idempotencyKey',
+      'expectedFinishId',
+      'closeAt',
+      'closeAmountState',
+      'closeAmt',
+      'note',
+      'closeContentVersionIds',
+      ...(command === 'CORRECT'
+        ? ['expectedClosureVersionId', 'correctionReason']
+        : []),
+    ]) ||
+    !Number.isSafeInteger(input.expectedVersion) ||
+    input.expectedVersion < 1 ||
+    !validIdempotencyKey(input.idempotencyKey) ||
+    !uuidV4(input.expectedFinishId) ||
+    (input.closeAt !== null &&
+      (!businessDate(input.closeAt) || input.closeAt > todayShanghai())) ||
+    !(input.closeAmountState === 'PENDING'
+      ? input.closeAmt === null
+      : input.closeAmountState === 'KNOWN' &&
+        decimalAmount(input.closeAmt, false)) ||
+    (input.note !== null && !finishText(input.note)) ||
+    !Array.isArray(input.closeContentVersionIds) ||
+    input.closeContentVersionIds.length > 10 ||
+    !input.closeContentVersionIds.every(uuidV4) ||
+    new Set(input.closeContentVersionIds).size !==
+      input.closeContentVersionIds.length ||
+    (command === 'CORRECT' &&
+      (!('expectedClosureVersionId' in input) ||
+        !('correctionReason' in input) ||
+        !uuidV4(input.expectedClosureVersionId) ||
+        !nonempty(input.correctionReason) ||
+        input.correctionReason.length > 500)) ||
+    (audience !== 'internal' && audience !== 'lawyer') ||
+    (command === 'CORRECT' && audience !== 'internal')
+  )
+    throw new ApiError('结案登记信息无效', 400, 'VALIDATION_ERROR');
+  const response = await requestJson(
+    `/${audience === 'lawyer' ? 'lawyer/cases' : 'cases'}/${encodeURIComponent(id)}/${command === 'CORRECT' ? 'closure-correction' : 'closure'}`,
+    {
+      method: 'POST',
+      headers: { 'Idempotency-Key': input.idempotencyKey },
+      body: input,
+    },
+  );
+  if (
+    !record(response) ||
+    !exact(response, [
+      'id',
+      'closureId',
+      'closureVersionId',
+      'finishId',
+      'stage',
+      'version',
+      'recordedAt',
+    ]) ||
+    response.id !== id ||
+    !uuidV4(response.closureId) ||
+    !uuidV4(response.closureVersionId) ||
+    response.finishId !== input.expectedFinishId ||
+    response.stage !== 'WAITING_ARCHIVE' ||
+    !Number.isSafeInteger(response.version) ||
+    response.version !== input.expectedVersion + 1 ||
+    !utcTimestamp(response.recordedAt)
+  )
+    throw invalidResponse();
+  return response as CaseClosureResult;
+}
+export function recordCaseClosure(
+  id: string,
+  input: RecordCaseClosureInput,
+  audience: 'internal' | 'lawyer' = 'internal',
+): Promise<CaseClosureResult> {
+  return submitClosure(id, input, 'RECORD', audience);
+}
+export function correctCaseClosure(
+  id: string,
+  input: CorrectCaseClosureInput,
+): Promise<CaseClosureResult> {
+  return submitClosure(id, input, 'CORRECT', 'internal');
+}
+type ClosureSessionState = {
+  pending: (caseId: string) => CaseClosurePendingRequest | null;
+  setPending: (
+    caseId: string,
+    request: CaseClosurePendingRequest | null,
+  ) => void;
+  markChanged: (versionId: string) => boolean;
+  clear: () => void;
+};
+function copyClosureRequest(
+  request: CaseClosurePendingRequest,
+): CaseClosurePendingRequest {
+  return request.command === 'RECORD'
+    ? {
+        command: 'RECORD',
+        input: {
+          ...request.input,
+          closeContentVersionIds: [...request.input.closeContentVersionIds],
+        },
+      }
+    : {
+        command: 'CORRECT',
+        input: {
+          ...request.input,
+          closeContentVersionIds: [...request.input.closeContentVersionIds],
+        },
+      };
+}
+const closureSessions = new WeakMap<object, ClosureSessionState>();
+export function caseClosureSession(
+  owner: object,
+  context: () => string,
+): ClosureSessionState {
+  const existing = closureSessions.get(owner);
+  if (existing) return existing;
+  const requests = shallowRef(new Map<string, CaseClosurePendingRequest>());
+  const notified = new Set<string>();
+  const state: ClosureSessionState = {
+    pending: (caseId) => {
+      const request = requests.value.get(caseId);
+      return request ? copyClosureRequest(request) : null;
+    },
+    setPending: (caseId, request) => {
+      const next = new Map(requests.value);
+      if (request) next.set(caseId, copyClosureRequest(request));
+      else next.delete(caseId);
+      requests.value = next;
+    },
+    markChanged: (versionId) => {
+      if (notified.has(versionId)) return false;
+      notified.add(versionId);
+      return true;
+    },
+    clear: () => {
+      requests.value = new Map();
+      notified.clear();
+    },
+  };
+  effectScope(true).run(() => watch(context, state.clear, { flush: 'sync' }));
+  closureSessions.set(owner, state);
   return state;
 }
 

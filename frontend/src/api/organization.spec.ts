@@ -312,6 +312,16 @@ const context = {
       scopes: ['SELF', 'TEAM', 'DEPARTMENT'],
     },
     {
+      action: 'CASE_CLOSURE_RECORD',
+      label: '登记结案资料',
+      scopes: ['SELF', 'TEAM', 'DEPARTMENT'],
+    },
+    {
+      action: 'CASE_CLOSURE_CORRECT',
+      label: '更正结案资料',
+      scopes: ['SELF', 'TEAM', 'DEPARTMENT'],
+    },
+    {
       action: 'NOTARY_OFFICE_MANAGE',
       label: '管理公证处',
       scopes: ['DEPARTMENT'],
@@ -449,6 +459,8 @@ describe('organization API', () => {
       'CASE_EXECUTION_MAIL',
       'CASE_EXECUTION_FILING_SUBMIT',
       'CASE_EXECUTION_FINISH',
+      'CASE_CLOSURE_RECORD',
+      'CASE_CLOSURE_CORRECT',
       'NOTARY_OFFICE_MANAGE',
       'USER_READ',
       'USER_MANAGE',
@@ -626,6 +638,8 @@ describe('organization API', () => {
     'CASE_EXECUTION_MAIL',
     'CASE_EXECUTION_FILING_SUBMIT',
     'CASE_EXECUTION_FINISH',
+    'CASE_CLOSURE_RECORD',
+    'CASE_CLOSURE_CORRECT',
   ])('accepts %s grants with all case scopes', async (action) => {
     const body = {
       ...context,

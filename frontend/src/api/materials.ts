@@ -31,7 +31,8 @@ export type MaterialCategory =
   | 'SECOND_INSTANCE_JUDGMENT'
   | 'EXECUTION_APPLICATION'
   | 'EXECUTION_FILING_PROOF'
-  | 'EXECUTION_FINISH_BASIS';
+  | 'EXECUTION_FINISH_BASIS'
+  | 'CASE_CLOSURE_DOCUMENT';
 
 export type MaterialPurpose =
   | 'IDENTITY_FULL'
@@ -57,7 +58,8 @@ export type MaterialPurpose =
   | 'SECOND_INSTANCE_JUDGMENT'
   | 'EXECUTION_APPLICATION'
   | 'EXECUTION_FILING_PROOF'
-  | 'EXECUTION_FINISH_BASIS';
+  | 'EXECUTION_FINISH_BASIS'
+  | 'CASE_CLOSURE_DOCUMENT';
 
 export type UploadedMaterial = {
   materialId: string;
@@ -171,7 +173,8 @@ function isCategory(value: unknown): value is MaterialCategory {
     value === 'SECOND_INSTANCE_JUDGMENT' ||
     value === 'EXECUTION_APPLICATION' ||
     value === 'EXECUTION_FILING_PROOF' ||
-    value === 'EXECUTION_FINISH_BASIS'
+    value === 'EXECUTION_FINISH_BASIS' ||
+    value === 'CASE_CLOSURE_DOCUMENT'
   );
 }
 
@@ -200,7 +203,8 @@ function isPurpose(value: unknown): value is MaterialPurpose {
     value === 'SECOND_INSTANCE_JUDGMENT' ||
     value === 'EXECUTION_APPLICATION' ||
     value === 'EXECUTION_FILING_PROOF' ||
-    value === 'EXECUTION_FINISH_BASIS'
+    value === 'EXECUTION_FINISH_BASIS' ||
+    value === 'CASE_CLOSURE_DOCUMENT'
   );
 }
 
@@ -380,7 +384,8 @@ export async function uploadMaterialFile(
       input.category === 'SECOND_INSTANCE_DOCUMENT' ||
       input.category === 'SECOND_INSTANCE_SERVICE' ||
       input.category === 'SECOND_INSTANCE_JUDGMENT' ||
-      input.category === 'EXECUTION_FINISH_BASIS'
+      input.category === 'EXECUTION_FINISH_BASIS' ||
+      input.category === 'CASE_CLOSURE_DOCUMENT'
     ) {
       const types = new Map([
         ['.pdf', 'application/pdf'],

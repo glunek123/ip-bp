@@ -89,6 +89,8 @@ export const permissionActionValues = [
   'CASE_EXECUTION_MAIL',
   'CASE_EXECUTION_FILING_SUBMIT',
   'CASE_EXECUTION_FINISH',
+  'CASE_CLOSURE_RECORD',
+  'CASE_CLOSURE_CORRECT',
   'NOTARY_OFFICE_MANAGE',
   'USER_READ',
   'USER_MANAGE',
@@ -314,7 +316,9 @@ function isPermissionCatalog(
         item.action === 'CASE_EXECUTION_CONFIRM' ||
         item.action === 'CASE_EXECUTION_MAIL' ||
         item.action === 'CASE_EXECUTION_FILING_SUBMIT' ||
-        item.action === 'CASE_EXECUTION_FINISH') &&
+        item.action === 'CASE_EXECUTION_FINISH' ||
+        item.action === 'CASE_CLOSURE_RECORD' ||
+        item.action === 'CASE_CLOSURE_CORRECT') &&
         (item.scopes.length !== 3 ||
           item.scopes[0] !== 'SELF' ||
           item.scopes[1] !== 'TEAM' ||
