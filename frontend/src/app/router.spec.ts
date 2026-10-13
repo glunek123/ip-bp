@@ -21,6 +21,22 @@ beforeEach(async () => {
 });
 
 describe('authentication routing', () => {
+  it.each([
+    ['INTERNAL', '/calendar'],
+    ['LAWYER', '/lawyer/calendar'],
+    ['CLIENT', '/client/calendar'],
+  ] as const)(
+    'keeps %s on its own calendar entry',
+    async (principalType, path) => {
+      auth.session = { principalType, user: { id: 'calendar-user' } };
+      await router.push(path);
+      expect(router.currentRoute.value.path).toBe(path);
+      auth.session = { principalType: 'NOTARY', user: { id: 'notary-user' } };
+      await router.push('/health');
+      await router.push(path);
+      expect(router.currentRoute.value.path).toBe('/notary-portal/matters');
+    },
+  );
   it('does not run session restoration before entering a public page', async () => {
     await router.push('/login');
 

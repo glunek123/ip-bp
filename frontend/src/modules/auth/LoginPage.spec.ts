@@ -26,6 +26,9 @@ async function mountPage(returnTo = '/customers') {
       { path: '/lawyer/cases/:id', component: { template: '<div />' } },
       { path: '/client/leads', component: { template: '<div />' } },
       { path: '/client/leads/:id', component: { template: '<div />' } },
+      { path: '/client/cases/:id', component: { template: '<div />' } },
+      { path: '/client/calendar', component: { template: '<div />' } },
+      { path: '/lawyer/calendar', component: { template: '<div />' } },
       { path: '/notary-portal/matters', component: { template: '<div />' } },
       {
         path: '/notary-portal/matters/:id',
@@ -51,6 +54,23 @@ async function fillCredentials(
 }
 
 describe('LoginPage', () => {
+  it.each([
+    ['client', '/client/calendar?month=2026-10'],
+    ['client', '/client/cases/case-1'],
+    ['lawyer', '/lawyer/calendar?month=2026-10'],
+  ])(
+    'returns %s to its actual protected %s destination',
+    async (principal, path) => {
+      api.login.mockResolvedValue(
+        principal === 'client' ? clientSession() : lawyerSession(),
+      );
+      const { wrapper, router } = await mountPage(path);
+      await fillCredentials(wrapper);
+      await wrapper.get('form').trigger('submit');
+      await flushPromises();
+      expect(router.currentRoute.value.fullPath).toBe(path);
+    },
+  );
   it('logs in and returns only to a safe internal path', async () => {
     api.login.mockResolvedValue(internalSession());
     const { wrapper, router } = await mountPage('/customers/customer-1');

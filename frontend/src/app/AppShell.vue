@@ -3,6 +3,7 @@ import { computed, onBeforeUnmount, onMounted, ref, watch } from 'vue';
 import { RouterLink, useRoute, useRouter } from 'vue-router';
 import { ElButton } from 'element-plus/es/components/button/index.mjs';
 import { ApiError } from '../api/http';
+import { getCalendarSummary } from '../api/calendar';
 import { listCases, type CaseStage } from '../api/cases';
 import { listLawyerCases } from '../api/cases';
 import { listLeads, type LeadStatus } from '../api/leads';
@@ -28,6 +29,7 @@ const canViewNotaryMatters = ref(false);
 const leadCounts = ref<Record<LeadStatus, number> | null>(null);
 const notaryCounts = ref<Record<NotaryListStage, number> | null>(null);
 const caseCounts = ref<Record<CaseStage, number> | null>(null);
+const calendarCount = ref<number | null>(null);
 const countRevision = ref(0);
 const expandedGroup = ref<'cases' | 'leads' | 'notary' | 'settings' | null>(
   null,
@@ -63,6 +65,13 @@ const logoutError = ref('');
 const isClient = computed(() => auth.session?.principalType === 'CLIENT');
 const isNotary = computed(() => auth.session?.principalType === 'NOTARY');
 const isLawyer = computed(() => auth.session?.principalType === 'LAWYER');
+const calendarPath = computed(() =>
+  isClient.value
+    ? '/client/calendar'
+    : isLawyer.value
+      ? '/lawyer/calendar'
+      : '/calendar',
+);
 const homePath = computed(() =>
   isClient.value
     ? '/client/leads'
@@ -77,6 +86,39 @@ const identity = computed(() =>
   auth.session === null
     ? null
     : `${auth.session.user.id}:${auth.session.authorizationRevision}`,
+);
+const calendarIdentity = computed(() => {
+  const session = auth.session;
+  return session === null
+    ? null
+    : JSON.stringify([
+        session.user.id,
+        session.principalType,
+        session.department?.id,
+        session.customer?.id,
+        session.authorizationRevision,
+      ]);
+});
+watch(
+  [calendarIdentity, countRevision],
+  async ([currentIdentity], _previous, onCleanup) => {
+    calendarCount.value = null;
+    if (currentIdentity === null || isNotary.value) return;
+    const controller = new AbortController();
+    let current = true;
+    onCleanup(() => {
+      current = false;
+      controller.abort();
+    });
+    try {
+      const summary = await getCalendarSummary({ signal: controller.signal });
+      if (current && calendarIdentity.value === currentIdentity)
+        calendarCount.value = summary.metrics.next30.count;
+    } catch {
+      if (current) calendarCount.value = null;
+    }
+  },
+  { immediate: true },
 );
 const breadcrumbs = computed(() =>
   Array.isArray(route.meta.breadcrumbs)
@@ -384,6 +426,23 @@ async function logout(): Promise<void> {
         </span>
       </RouterLink>
 
+      <nav v-if="!isNotary" class="app-nav" aria-label="日期事件导航">
+        <RouterLink
+          class="app-nav__item"
+          :class="{ active: route.path === calendarPath }"
+          data-test="calendar-nav"
+          :to="calendarPath"
+          @click="closeDrawer"
+        >
+          <span>日历</span>
+          <span
+            v-if="calendarCount !== null"
+            class="app-nav__badge"
+            data-test="calendar-count"
+            >{{ calendarCount }}</span
+          >
+        </RouterLink>
+      </nav>
       <nav v-if="isNotary" class="app-nav" aria-label="公证处导航">
         <p class="app-nav__label">公证处工作台</p>
         <RouterLink

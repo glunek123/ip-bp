@@ -8,6 +8,7 @@ import { AuthModule } from './auth/auth.module';
 import { MaterialModule } from './modules/materials/material.module';
 import { LeadModule } from './modules/leads/lead.module';
 import { CaseModule } from './modules/cases/case.module';
+import { CalendarModule } from './modules/calendar';
 
 @Module({
   imports: [
@@ -22,6 +23,7 @@ import { CaseModule } from './modules/cases/case.module';
     MaterialModule,
     LeadModule,
     CaseModule,
+    CalendarModule,
     HealthModule,
   ],
 })

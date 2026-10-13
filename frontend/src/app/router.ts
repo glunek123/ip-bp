@@ -28,6 +28,7 @@ import CaseDetailPage from '../modules/cases/CaseDetailPage.vue';
 import LawyerAccountsPage from '../modules/organization/LawyerAccountsPage.vue';
 import LawyerCaseListPage from '../modules/cases/LawyerCaseListPage.vue';
 import LawyerCaseDetailPage from '../modules/cases/LawyerCaseDetailPage.vue';
+import CalendarPage from '../modules/calendar/CalendarPage.vue';
 import { useAuthStore } from '../stores/auth';
 import { pinia } from './pinia';
 
@@ -37,6 +38,21 @@ export const router = createRouter({
     { path: '/login', component: LoginPage, meta: { public: true } },
     { path: '/health', component: HealthPage, meta: { public: true } },
     { path: '/', redirect: '/customers' },
+    {
+      path: '/calendar',
+      component: CalendarPage,
+      meta: { audience: 'INTERNAL', section: '日历', breadcrumbs: ['日历'] },
+    },
+    {
+      path: '/lawyer/calendar',
+      component: CalendarPage,
+      meta: { audience: 'LAWYER', section: '日历', breadcrumbs: ['日历'] },
+    },
+    {
+      path: '/client/calendar',
+      component: CalendarPage,
+      meta: { audience: 'CLIENT', section: '日历', breadcrumbs: ['日历'] },
+    },
     {
       path: '/lawyer/cases',
       component: LawyerCaseListPage,

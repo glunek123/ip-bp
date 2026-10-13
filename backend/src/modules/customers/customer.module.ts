@@ -3,6 +3,7 @@ import { AccessControlModule } from '../../access-control/access-control.module'
 import { DatabaseModule } from '../../database/database.module';
 import { CustomerController } from './customer.controller';
 import { CustomerService } from './customer.service';
+import { CustomerCalendarSourceService } from './customer-calendar-source.service';
 import { RightsHolderController } from './rights-holder.controller';
 import { RightsHolderService } from './rights-holder.service';
 import { AuthModule } from '../../auth/auth.module';
@@ -33,6 +34,7 @@ import { CustomerSettlementService } from './customer-settlement.service';
     RightAssetController,
   ],
   providers: [
+    CustomerCalendarSourceService,
     CustomerService,
     CustomerLifecycleService,
     CustomerCooperationService,
@@ -45,6 +47,7 @@ import { CustomerSettlementService } from './customer-settlement.service';
     RightAssetService,
   ],
   exports: [
+    CustomerCalendarSourceService,
     CustomerService,
     CustomerAdmissionService,
     CustomerAccountService,

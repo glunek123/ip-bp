@@ -6,6 +6,7 @@ import { AuthModule } from '../../auth/auth.module';
 import { DatabaseModule } from '../../database/database.module';
 import { MaterialModule } from '../materials';
 import { CaseCreationService } from './case-creation.service';
+import { CaseCalendarSourceService } from './case-calendar-source.service';
 import { CaseReadController } from './case-read.controller';
 import { CaseReadService } from './case-read.service';
 import { CaseMatchService } from './case-match.service';
@@ -46,6 +47,7 @@ import { LawyerCaseController } from './lawyer-case.controller';
     LawyerCaseController,
   ],
   providers: [
+    CaseCalendarSourceService,
     CaseReadService,
     CaseCreationService,
     CaseMatchService,
@@ -69,6 +71,6 @@ import { LawyerCaseController } from './lawyer-case.controller';
     ClientCaseService,
     LawyerAccountService,
   ],
-  exports: [CaseCreationService],
+  exports: [CaseCreationService, CaseCalendarSourceService],
 })
 export class CaseModule {}

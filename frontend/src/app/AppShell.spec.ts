@@ -3,6 +3,7 @@ import { createPinia, setActivePinia } from 'pinia';
 import { createMemoryHistory, createRouter } from 'vue-router';
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 import type { AuthSession } from '../api/auth';
+import { ApiError } from '../api/http';
 import { useAuthStore } from '../stores/auth';
 import AppShell from './AppShell.vue';
 
@@ -14,11 +15,15 @@ const api = vi.hoisted(() => ({
   listCases: vi.fn(),
   listLawyerAccounts: vi.fn(),
   listLawyerCases: vi.fn(),
+  getCalendarSummary: vi.fn(),
 }));
 const mountedShells: Array<ReturnType<typeof mount>> = [];
 
 vi.mock('../api/organization', () => ({
   getOrganizationManagementContext: api.getOrganizationManagementContext,
+}));
+vi.mock('../api/calendar', () => ({
+  getCalendarSummary: api.getCalendarSummary,
 }));
 vi.mock('../api/lawyer-accounts', () => ({
   listLawyerAccounts: api.listLawyerAccounts,
@@ -47,6 +52,9 @@ const session = {
 
 beforeEach(() => {
   vi.resetAllMocks();
+  api.getCalendarSummary.mockResolvedValue({
+    metrics: { next30: { count: 0 } },
+  });
   api.getOrganizationManagementContext.mockResolvedValue({});
   api.listLawyerAccounts.mockRejectedValue({ status: 403 });
   api.listLawyerCases.mockResolvedValue({
@@ -207,6 +215,51 @@ async function mountShell(
 }
 
 describe('AppShell', () => {
+  it('uses the visible date summary for the calendar badge and preserves real zero', async () => {
+    const { wrapper } = await mountShell();
+    expect(wrapper.get('[data-test="calendar-nav"]').attributes('href')).toBe(
+      '/calendar',
+    );
+    expect(wrapper.get('[data-test="calendar-count"]').text()).toBe('0');
+    expect(api.getCalendarSummary).toHaveBeenCalledWith({
+      signal: expect.any(AbortSignal),
+    });
+  });
+
+  it('does not disguise a failed calendar summary as a zero count', async () => {
+    api.getCalendarSummary.mockRejectedValue(
+      new ApiError('没有权限', 403, 'ACTION_FORBIDDEN'),
+    );
+    const { wrapper } = await mountShell();
+    expect(wrapper.find('[data-test="calendar-count"]').exists()).toBe(false);
+  });
+
+  it('discards a late calendar count after a department change', async () => {
+    let resolveOld:
+      ((value: { metrics: { next30: { count: number } } }) => void) | undefined;
+    api.getCalendarSummary.mockImplementationOnce(
+      () =>
+        new Promise((resolve) => {
+          resolveOld = resolve;
+        }),
+    );
+    const { wrapper } = await mountShell();
+    const oldSignal = api.getCalendarSummary.mock.calls[0][0].signal;
+    api.getCalendarSummary.mockResolvedValueOnce({
+      metrics: { next30: { count: 2 } },
+    });
+    const auth = useAuthStore();
+    auth.session = {
+      ...session,
+      department: { id: 'department-2', name: '品维部' },
+    };
+    await flushPromises();
+    expect(oldSignal.aborted).toBe(true);
+    expect(wrapper.get('[data-test="calendar-count"]').text()).toBe('2');
+    resolveOld?.({ metrics: { next30: { count: 99 } } });
+    await flushPromises();
+    expect(wrapper.get('[data-test="calendar-count"]').text()).toBe('2');
+  });
   it('adds one formal acceptance stage link with its current count', async () => {
     const { wrapper } = await mountShell();
     await wrapper.get('[data-test="case-expand"]').trigger('click');
@@ -250,6 +303,8 @@ describe('AppShell', () => {
     expect(wrapper.find('[data-test="notary-nav"]').exists()).toBe(false);
     expect(wrapper.find('[data-test="customer-nav"]').exists()).toBe(false);
     expect(wrapper.find('[data-test="case-nav"]').exists()).toBe(false);
+    expect(wrapper.find('[data-test="calendar-nav"]').exists()).toBe(false);
+    expect(api.getCalendarSummary).not.toHaveBeenCalled();
     expect(wrapper.find('[data-test="settings-expand"]').exists()).toBe(false);
     expect(wrapper.text()).toContain('南方公证处');
   });

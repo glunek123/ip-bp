@@ -30,19 +30,29 @@ function safeReturnPath(
     !value.includes('\\')
       ? value
       : null;
-  const clientPath =
-    safe === '/client/leads' || safe?.startsWith('/client/leads/');
+  const pathname = safe?.split(/[?#]/u)[0];
+  const clientPath = [
+    '/client/leads',
+    '/client/cases',
+    '/client/notary-matters',
+    '/client/calendar',
+  ].some((base) => pathname === base || pathname?.startsWith(`${base}/`));
   const notaryPath =
-    safe === '/notary-portal/matters' ||
-    safe?.startsWith('/notary-portal/matters/');
-  const lawyerPath =
-    safe === '/lawyer/cases' || safe?.startsWith('/lawyer/cases/');
+    pathname === '/notary-portal/matters' ||
+    pathname?.startsWith('/notary-portal/matters/');
+  const lawyerPath = ['/lawyer/cases', '/lawyer/calendar'].some(
+    (base) => pathname === base || pathname?.startsWith(`${base}/`),
+  );
   if (principalType === 'CLIENT') return clientPath ? safe! : '/client/leads';
   if (principalType === 'NOTARY')
     return notaryPath ? safe! : '/notary-portal/matters';
   if (principalType === 'LAWYER') return lawyerPath ? safe! : '/lawyer/cases';
-  if (lawyerPath) return '/customers';
-  return safe !== null && !clientPath && !notaryPath ? safe : '/customers';
+  return safe !== null &&
+    !pathname?.startsWith('/client/') &&
+    !pathname?.startsWith('/notary-portal/') &&
+    !pathname?.startsWith('/lawyer/')
+    ? safe
+    : '/customers';
 }
 
 async function submit(): Promise<void> {
