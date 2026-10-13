@@ -40,7 +40,7 @@ CORE-CU-003的文件契约：客户权属证明使用独立`CUSTOMER_RIGHT_EVIDE
 
 ## REQ-CU-004 合作协议与客户统计
 
-SD-53既有人工台账B2页面接线已完成本地组合验收，待集成；只覆盖既有登记、更正、逐笔来源与版本历史，不改变SD-47人工事实契约。实际证据和未交付边界见[验证记录](../VALIDATION.md#日历与人工台账组合2026-10-13本地验收完成待集成)，资金发起与完整财务规则仍未交付。
+SD-53既有人工台账B2页面接线已完成本地组合验收，已集成main；只覆盖既有登记、更正、逐笔来源与版本历史，不改变SD-47人工事实契约。实际证据和未交付边界见[验证记录](../VALIDATION.md#日历与人工台账组合2026-10-13本地验收完成待集成)，资金发起与完整财务规则仍未交付。
 
 CORE-CU-007按[正式实施契约](../../../superpowers/specs/2026-10-09-customer-agreements-invoice-contract.md)与[计划](../../../superpowers/plans/2026-10-09-customer-agreements-invoice.md)开发：每客户唯一稳定协议与不可变版本、真实期限及精确历史附件，开票资料独立版本；当前客户read与协议/开票各自独立read/edit范围相交，不自动授Grant，不绑定或回填Lead/Case。暂停/终止仍可按当前权限维护资料，删除资格计入全部新关联。结算台账留CU008，不以协议字段回算金额。CORE-CU-007已本地验收，尚未推送或集成main；实际76c0506完整verify、全库274/274与103～108迁移验证通过，证据及审查限制见[验证记录](../VALIDATION.md)。CORE-CU-008人工结算台账按[正式契约](../../../superpowers/specs/2026-10-10-customer-settlements-contract.md)与[计划](../../../superpowers/plans/2026-10-10-customer-settlements.md)实施：三个读/登记/更正动作独立，普通详情仅Boolean能力，专用列表/统计同快照；严格原始金额字符串、无typmod NUMERIC与SQL守卫，不变更既定SD-47人工事实范围。CORE-CU-008及客户001～008组合已本地验收，尚未推送或集成main；实际5cc84c1完整verify、全库293/293及112条迁移验证通过，独立人工入口已核真实密码、cookie/CSRF写入和刷新。非实现Sol累计补审两轴ACCEPTED、未关闭C/I/M0/0/0，同模型独立性不足、外部异模型Pending；证据及原失败历史见[验证记录](../VALIDATION.md)。
 

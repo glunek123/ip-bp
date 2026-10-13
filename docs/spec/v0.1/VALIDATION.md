@@ -1,5 +1,17 @@
 # SPEC-001 文档验证
 
+## CA-013／014、日历与人工台账集成（2026-10-13）
+
+用户本轮明确授权推送、合main并持续管理后续开发，不部署生产。读取远端及仓库准入后，确认origin/main与本地main均为`4802c320892a7ce50ce6f2c8600c806213061396`、是任务收口`ea9dcd18fcfcbf9fa092aeb427505ac9892db88b`的祖先；任务工作区干净。已快进本地main并原子推送main与`codex/ca013-014-integration`，实际推送exit0，两处远端refs均核实为`ea9dcd1`，GitHub commit API核实tree`5cd3290a6bf1e25133f30aa8574500170c3080ec`，与已核收口完全相同。没有冲突、强推、额外合并变化或混入主目录草稿，不因快进重复业务门禁。提交链接：[ea9dcd1](https://github.com/glunek123/ip-bp/commit/ea9dcd18fcfcbf9fa092aeb427505ac9892db88b)。
+
+业务证据分别绑定原A`0c7be16`的完整verify／39文件167/167，以及新组合`32cb30d`九文件68/68（UTC05:15:49.403～05:19:34.849、exit0）；`f415f7f`完整verify复用已获独立补审接受，输入边界见下节。`32cb30d`至`ea9dcd1`只有六份完成状态／验证摘要／Spec完成态及已核快照，文档格式、Spec、strict context及diff检查全部exit0，原件ignored `.local/calendar-funds-evidence/closeout-doc-checks.json`。不称`ea9dcd1`实跑了原业务门禁。后续仅集成完成状态及下一批白名单准备，不改本批业务代码、测试、配置或批准契约；下一批任务说明不表示相应新能力已经实现或通过旧门禁。
+
+GitHub准入只读核实：main未保护、rulesets为空、Actions workflows为0，仓库允许push；`ea9dcd1`的workflow runs、check-runs及commit statuses均0。combined status返回pending但没有任何status记录，属于没有配置CI，不能报告CI通过或CI失败。集成及最终收口refs、API结果与实际命令退出状态保存于同目录`remote-integration.json`，文档专项为`integration-doc-checks.json`；后续若配置远端强制检查，按实际规则执行。
+
+主目录`frontend/src/api/cases.ts`原未提交改动与本批重叠，先按字节保全原文件及binary patch，再仅stash该已核tracked文件，stash commit为`b07482c2c6130baa39cc43658f3dadb17cf81551`；原文件SHA256`C9E6C897C616DBC0E60FF40B5D9B504D8D9283493A3CF1CD539444B78189F95E`。原件与恢复说明为同目录`main-cases-before-integration.ts`、`.patch`及`main-workspace-preservation.json`，stash保留，未盲目回填到已前进main，也未加入远端提交。未跟踪`.pnpm-store/`保留原位；其他现场未覆盖、重置或删除。
+
+工程总控继续独占接口／文件所有权、schema／迁移、集成验收及权威文档；父任务负责需求优先级与启动独立实现任务。下一批只读分页U1／U2和历史补录技术设计D1的唯一白名单与验收已在[路线图](../../feature-roadmap.md#下一批分派边界准备完成待父任务派发)准备，均未开始实施，原组合证据不能覆盖未来新增分页逻辑。B13执行结束、B15结案／归档及资金门槛继续待业务决定；缴费／其他日历来源、支付、提醒及完整Demo仍未交付。
+
 ## 日历与人工台账组合（2026-10-13，本地验收完成，待集成）
 
 以A业务`0c7be16`为基础，在I独立分支接纳B1/B2（`1d35d32`／`c3af081`）、calendar严格API`d7aacdf`、C1/C2（`c4c06f3`／`ee74f88`／`249b8a1`／`d90675e`），新组合`ee430658ade6ad3d3217deb5f30b7d11613fcaf3`／tree`8ed1663e0d20e608244216fba92622f705892e2e`。SD-53只批准真实当前开庭／协议到期与既有人工台账接线；pay／other未接入，支付发起另定。独立静态两轴ACCEPTED、未关闭C/I/M0；I-01当前关系竞态及M-01旧来源指针已关闭。

@@ -2,7 +2,7 @@
 
 日历表达业务来源事件，不提供未经确认的法定期限、自动撤诉、自动续约或通知承诺。主链自动推进由REQ-CA-008负责。
 
-依据：[固定事实](../../../demo-reverse/v158/modules/M07-calendar.md)、[候选](../../../demo-reverse/v158/modules/M07-calendar-candidates.md)、[决定](../../../demo-reverse/v158/DECISIONS.md)和[纠偏](../../../demo-reverse/v158/CORRECTIONS.md)。字段见[领域模型](../DOMAIN.md)，B/T/E见[缺口](../GAPS.md)，通用技术设计见[TD-BASE-05／TD-TRACE-UX-01](../TECHNICAL-DESIGN.md)。SD-53批准下述真实来源读取切片，已完成本地组合验收、待集成；实际证据与边界见[验证记录](../VALIDATION.md#日历与人工台账组合2026-10-13本地验收完成待集成)，不需要新表或迁移。提醒与手工节点仍未完成。
+依据：[固定事实](../../../demo-reverse/v158/modules/M07-calendar.md)、[候选](../../../demo-reverse/v158/modules/M07-calendar-candidates.md)、[决定](../../../demo-reverse/v158/DECISIONS.md)和[纠偏](../../../demo-reverse/v158/CORRECTIONS.md)。字段见[领域模型](../DOMAIN.md)，B/T/E见[缺口](../GAPS.md)，通用技术设计见[TD-BASE-05／TD-TRACE-UX-01](../TECHNICAL-DESIGN.md)。SD-53批准下述真实来源读取切片，已完成本地组合验收、已集成main；实际证据与边界见[验证记录](../VALIDATION.md#日历与人工台账组合2026-10-13本地验收完成待集成)，不需要新表或迁移。提醒与手工节点仍未完成。
 
 ## REQ-KL-001 事件来源、变更与取消
 

@@ -4,23 +4,23 @@
 
 ## 当前阶段
 
-CORE-CA-001～012及SD-44律师身份前置补齐均已验收、推送并集成main；最新前置反馈规则已同时集成。业务能力状态及唯一Current／Next唯一指针见[路线图](feature-roadmap.md#current-slice)：当前CORE-KL-001本地验收完成待集成，既有人工台账B2也已组合验收；下一指针为CORE-CA-015待B13业务决定、未领取，本批不启动下一批。
+CORE-CA-001～012及SD-44律师身份前置补齐均已验收、推送并集成main；最新前置反馈规则已同时集成。业务能力状态及唯一Current／Next唯一指针见[路线图](feature-roadmap.md#current-slice)：当前CORE-KL-001已完成、已集成，既有人工台账B2也已组合验收；下一指针为CORE-CA-015待B13业务决定、未领取，下一批实施尚未派发。
 
 ## 当前任务
 
-2026-10-13当前**CORE-KL-001**真实来源日历及既有人工台账B2接线均已完成本地验收、待集成；Next为CORE-CA-015待B13业务决定、未领取，唯一指针见[路线图](feature-roadmap.md#current-slice)。复用`codex/ca013-014-integration`／`.local/worktrees/ca013-014-integration`；main基线`4802c32`与主目录cases.ts／.pnpm-store未提交现场保留。本批结束，不推送／合main／部署或启动下一批。
+2026-10-13当前**CORE-KL-001**真实来源日历及既有人工台账B2接线均已完成本地验收、推送并集成main；Next为CORE-CA-015待B13业务决定、未领取，唯一指针见[路线图](feature-roadmap.md#current-slice)。复用`codex/ca013-014-integration`／`.local/worktrees/ca013-014-integration`；已按用户新授权从main基线`4802c32`快进至`ea9dcd1`／tree`5cd3290a6bf1e25133f30aa8574500170c3080ec`并原子推送任务分支与main；无CI配置，不冒称CI通过。主目录重叠cases.ts已保全原文件／补丁及stash`b07482c2c6130baa39cc43658f3dadb17cf81551`，恢复指针在ignored `.local/calendar-funds-evidence/main-workspace-preservation.json`；.pnpm-store保留原位。没有部署生产。下一批白名单已在路线图准备，实施由父任务分派。
 
 最后执行性候选`32cb30d`／tree`c62f9412407d571cf713059240cd25d78f348eed`：独立补审已接受产品／单元／构建输入未变的`f415f7f`完整verify限定复用（80／1167／1278及双构建），原九文件68项整组本次exit0、68/68、前后候选及环境一致。原67/68失败与115245仅58项通过的中断均保留，原中断退出码未知；真实结果、复用和收口边界只在[验证记录](spec/v0.1/VALIDATION.md#日历与人工台账组合2026-10-13本地验收完成待集成)维护。A原39文件167/167只绑定其原tree，不冒充新组合全仓回归。
 
 持久预览5186／3206／15436保留正常密码／cookie／CSRF及两条未办理的合成待办案；资金登记→刷新→来源→更正→历史和日历三角色五卡／切月／精确跳转均已有正常浏览器证据。恢复时先读ignored `.local/ca013-preview/README.md`与`runtime/services.json`；凭据仅`runtime/login.txt`，摘要为`runtime/browser-scenario-summary.json`和`browser-calendar-summary.json`。本轮只读核实登录页和health均200，未新登录、改预览数据或重启服务；Demo8123和其他环境未操作。缴费截止／其他节点、提醒、资金发起、CA-015及后续未做，不称全部Demo完成。
 
-本批工程总控与唯一仓库写入者为本任务接替I；前任I任务01a12f29-e1e2-7753-83ff-89e766266035及B/C作者均已结束。父任务负责需求优先级与对用户沟通；工程边界、接口／文件所有权、分支提交、集成验收和权威仓库文档统一由工程总控维护，后续并行实现只按白名单交代码／证据／遗留，不另建项目状态。既有[协作路由](ai-coding.md#多-agent-协作路由)及[单写入者规则](../.cursor/rules/verified-feature-integration.mdc#工作区选择与生命周期)继续适用；接替必须先交接并核实无活动写入者。本轮仅收尾，未重做流程体系。
+本批工程总控与唯一仓库写入者为本任务接替I；前任I任务01a12f29-e1e2-7753-83ff-89e766266035及B/C作者均已结束。父任务负责需求优先级与对用户沟通；工程边界、接口／文件所有权、分支提交、集成验收和权威仓库文档统一由工程总控维护，后续并行实现只按白名单交代码／证据／遗留，不另建项目状态。既有[协作路由](ai-coding.md#多-agent-协作路由)及[单写入者规则](../.cursor/rules/verified-feature-integration.mdc#工作区选择与生命周期)继续适用；接替必须先交接并核实无活动写入者。本轮完成既定集成及下一批边界准备；U1／U2只读分页可并行，D1先做技术设计，均待父任务派发，不重做流程体系。
 
 ### 并行恢复位置（2026-10-13）
 
 | 线  | 分支／worktree与已提交代码                                                                                                                                                                                                                    | 组件／接线／正式验收及合入状态                                                                                                               | 下一动作／阻塞                                                                                            |
 | --- | --------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- | -------------------------------------------------------------------------------------------------------------------------------------------- | --------------------------------------------------------------------------------------------------------- |
-| A   | `codex/ca013-014-integration`；`.local/worktrees/ca013-014-integration`；`ada40f9`主实现、`4ae29e9`源键索引、`0c7be16`NULL引用守卫修复与严格回归                                                                                              | CA-013／014端到端实现及本地正式验收通过；尚未合main或远端                                                                                    | 原A已验收；本批日历／台账组合亦已验收，未合main                                                           |
+| A   | `codex/ca013-014-integration`；`.local/worktrees/ca013-014-integration`；`ada40f9`主实现、`4ae29e9`源键索引、`0c7be16`NULL引用守卫修复与严格回归                                                                                              | CA-013／014端到端实现及本地正式验收通过；已推送并快进集成main                                                                                | 原A及日历／台账组合均已验收并集成；原证据边界保留                                                         |
 | B   | B1 `codex/parallel-b-funds-read-foundation`／`.local/worktrees/b-funds-read-foundation`，`afc8ba61`两文件；B2 `codex/b2-customer-settlement-loop`／`.local/worktrees/b2-customer-settlement-loop`（任务01a132ef-49c9-771d-a333-fa7cc4eb700f） | B1只读人工事实表与13项聚焦测试完成；B2 `60ecf1c`接线完成，I接纳为`c3af081`；97项本线及正常浏览器通过，已纳入最终组合验收；不是完整费用中心   | 沿现有客户API登记→刷新→逐笔→更正→历史，保留权限／未知请求恢复；本批不发起支付，B18～21／E03仍开放         |
 | C   | C1 `codex/parallel-c-calendar-month-view`／`.local/worktrees/c-calendar-month-view`，`67364cc`＋`cc795abc`四文件；C2 `codex/c2-calendar-page`／`.local/worktrees/c2-calendar-page`（任务01a132f0-0b7b-7163-b50c-35bf24b89016）                | C1回本月／今日／图例／悬浮／精确ID组件47项完成；C2 `b4b2531`接线完成，I接纳为`d90675e`；77项本线与真实来源／三角色浏览器通过，最终组合已验收 | I提供冻结calendar接口、真实一二审与当前协议源、同范围统计及路由；缴费／其他节点按用户决定未接入，不造期限 |
 
