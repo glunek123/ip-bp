@@ -4,19 +4,19 @@
 
 ## 当前阶段
 
-业务唯一Current／Next见[路线图](feature-roadmap.md#current-slice)：Current为CORE-CA-015执行结束＋N1导航，完整代码已接纳、组合验收中；Next为运营Demo字段／展示对齐（公证优先，线索／案件随后），只读审计独立进行，不阻断当前验收／推送／预览更新，不夹带改造。CA-016最小结案信息仍保留后续、待技术冻结，不实施归档/重开/财务规则。此前CA013/014、日历/人工台账及U1/U2分页均已集成main3f914ad；证据只在VALIDATION维护。
+业务唯一Current／Next见[路线图](feature-roadmap.md#current-slice)：Current为CORE-CA-015执行结束＋N1导航，已验收、已集成并升级隔离预览；Next为运营Demo字段／展示对齐（公证优先，线索／案件随后），只读审计独立进行，不阻断当前验收／推送／预览更新，不夹带改造。CA-016最小结案信息仍保留后续、待技术冻结，不实施归档/重开/财务规则。此前CA013/014、日历/人工台账及U1/U2分页均已集成main3f914ad；证据只在VALIDATION维护。
 
 ## 当前任务
 
-**CORE-CA-015＋N1已完成本地组合验收，正在文档与Git收口。** 唯一I目录`.local/worktrees/ca015-integration`，分支`codex/ca015-execution-finish-integration`；稳定代码/测试候选`8c2f45efd0491d4d4edfc2dab4a83cbe3c423c9c`／tree`537ffac310d70ccb922ab3a80a36edcd7d7b579c`。E1源d2a769c、E2源b2d4ddd、E3自身73986ac＋7457885、N1最终a9083b2均已接纳，原作者停止写入；I独占测试支持、审查修正及权威文档，具体对应与失败留痕只在VALIDATION。
+**CORE-CA-015＋N1已验收并快进集成main，最后同步实际集成记录。** 唯一I目录`.local/worktrees/ca015-integration`，分支`codex/ca015-execution-finish-integration`；稳定代码/测试候选`8c2f45efd0491d4d4edfc2dab4a83cbe3c423c9c`／tree`537ffac310d70ccb922ab3a80a36edcd7d7b579c`。E1源d2a769c、E2源b2d4ddd、E3自身73986ac＋7457885、N1最终a9083b2均已接纳，原作者停止写入；具体对应与失败留痕只在VALIDATION。
 
 独立Review两轴ACCEPTED、未关闭C/I/M=0/0/0。58fbd5d完整verify于09:05:23～09:09:36 UTC exit0（工具80／前端1337／后端1345及双构建）；8c2f45e只修改旧导航E2E及快照，产品／单元／构建输入未变，独立审查限定复用上述结果。8c2f45e实际check:fast:prepared＋全格式＋严格context＋Spec exit0，09:19:18～09:20:40；同5项标准PG／浏览器组合5/5 exit0，09:19:24～09:21:17，前后环境指纹一致且干净。首次4/5、动态导入、来源身份与登录URL断言等失败保留，不能拼称此前组合通过。
 
 范围仅执行中→待归档的真实结束事实、日期／原因／说明或精确附件，原执行链与回执/字节保留；内部/当前PRIMARY律师办理、客户最小阶段可读。N1落实既有平级两文书组、模块/流程顺序、范围计数、旧原子书签和非法URL拦截。不是全部Demo或16阶段闭环：CA016/017归档／更正、重开、资金发起、历史补录及全面字段／展示对齐未实施。
 
-中央依赖为正常pnpm离线冻结安装、自身store，Node24.21.0／pnpm11.27.0，未关闭预检。只有backend/.env.test的15433测试库应用两新迁移（142文件），未reset，标准入口独占锁已释放。文档收口不得混入新产品改动；远端最新origin/main仍3f914ad，可快进关系已核，实际推送／main结果待执行核对，不预写成功。
+中央依赖为正常pnpm离线冻结安装、自身store，Node24.21.0／pnpm11.27.0，未关闭预检。只有backend/.env.test的15433测试库应用两新迁移（142文件），未reset，标准入口独占锁已释放。66b85ce／tree662a13d相对8c2f45e仅五份文档/快照，文档专项通过后原子push exit0；远端main与任务分支均实核66b85ce，本地主main于09:32:22 UTC ff至同一SHA/tree，仅既有未跟踪.pnpm-store，原stash仍存在。当前末次记录仍仅文档，不混入产品改动；CI状态未查询，不称CI通过。
 
-预览只读复核09:23:23 UTC：5186/login与3206/health均200；`.local/worktrees/ca013-014-integration`仍detached3f914ad，15436保持旧已验数据与版本，不热换前端、不重建其dist。新能力尚未升级到该入口；整体更新需按既有合成隔离环境规范协调。Demo8123不操作、无生产部署。主目录原cases.ts stash `b07482c2c6130baa39cc43658f3dadb17cf81551`及既有`.pnpm-store/`保留；恢复说明在旧preview树`.local/ca013-preview/README.md`和`.local/calendar-funds-evidence/main-workspace-preservation.json`，新验收结果在I ignored `.local/calendar-funds-evidence/ca015-*`。
+预览已按用户授权原位升级：旧ca013-014-integration固定detached66b85ce，5186／3206／15436不变。09:43:35～09:43:59 UTC升级exit0，迁移140→142；114张原业务表计数／内容哈希相同，两条案件、原账号／私密配置保留，未reset／seed／创建账号／改密码。09:45:06 UTC登录页及health均200；随后可见Edge原会话重新加载，模块和两个文书分组顺序、两案及分组计数正常。备份已校验可读，恢复见旧preview的.local/ca013-preview/README.md及runtime/ca015-*.json。Demo8123、共享15433与生产未操作。主目录原cases.ts stash b07482c2c6130baa39cc43658f3dadb17cf81551及未跟踪.pnpm-store/仍保留。
 
 下一批仅按既有路线图排运营Demo字段与展示对齐，公证优先、线索／案件随后。只读审计01a13475-5465-773e-9173-b7d97424a00a已完成，不是验收证据或当前收口前置；案件API/列表/详情与本批共享文件，须从收口后的基线再派唯一作者。
 

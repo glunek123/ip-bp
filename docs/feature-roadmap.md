@@ -164,11 +164,11 @@
 
 ### Current Slice
 
-**CORE-CA-015｜执行结束及N1导航（本地组合已验收，收口集成中）。**
+**CORE-CA-015｜执行结束及N1导航（已验收并快进集成main）。**
 
 SD-54仅批准正常执行中→待归档，日期／原因／真实依据，不夹带归档、重开、收款或历史补录。冻结提交`ada34c6e28cf504e35c92346b35ed4c934b278e2`／tree`148b00610e12e02e4a2b5e975854b9354057d5b8`独立技术Review两轴ACCEPTED、C/I/M=0；只批准进入实现，没有产品／PG／迁移验收结论。E1/E2/E3已从此基线建立各自独占worktree，当前实际状态只见项目状态，精确所有权见下表。I独占验收文件和测试资源排程，收候选后按依赖接纳及一次组合Review／所属门禁，不把旧CA014或分页结果当本片通过。
 
-上一已集成CORE-KL-001、人工台账B2及U1/U2分页已收口main`3f914ad`，真实证据及旧失败保留于VALIDATION；本片不修改用户可见5186/3206/15436预览，Demo8123不操作。
+上一已集成CORE-KL-001、人工台账B2及U1/U2分页已收口main`3f914ad`，真实证据及旧失败保留于VALIDATION；验收后按用户单独授权备份并升级5186/3206/15436至66b85ce，原数据保留，Demo8123不操作。
 
 CA015＋N1本地验收已完成：稳定代码/测试8c2f45e／tree537ffac3，独立组合Review两轴ACCEPTED、未关闭0/0/0；同5项正式PG／Chromium组合5/5、实际静态复核exit0。完整verify在58fbd5d执行（80工具／1337前端／1345后端及双构建），只因旧导航E2E定位修正，产品／单元／构建输入相同按独立审查限定复用，不冒称新tree实跑完整verify。实际SHA、失败与时间只见VALIDATION；当前仅文档与Git收口，不展开下一批。
 
@@ -178,17 +178,21 @@ CA015＋N1本地验收已完成：稳定代码/测试8c2f45e／tree537ffac3，�
 
 用户消息`Sentinel_19b040f6b8848191b533ba5fe95f6a6f`明确要求对齐运营设计，随后明确“不阻断正在进行的任务”。只读审计01a13475-5465-773e-9173-b7d97424a00a独立产出差异，不能作为CA015＋N1验收、推送或已验预览更新的前置条件；本候选仅登记任务，不夹带字段源码改造。逐项核表单／列表／详情字段名、顺序、显隐、状态与交互，以Demo为默认展示验收依据，权限与真实来源仍按批准Spec。审计先分清个人列设置、最小投影、真实来源缺口，不用工程字段替代运营展示，不造数据或把未知变0。
 
-公证初步只读证据：正式列偏好与列表DTO只允许businessNo／stage／sourceLead／notaryOffice／createdAt五数据列，不是配置隐藏了Demo其他字段。Demo包含权利主体、平台、店铺名／ID、推送／取证日期、开箱照片、公证书编号、发货人／电话／地址、三类费用以及真实案件进展；既有Lead、Notary和CertificateFee等来源可复用，需在授权后扩读取／严格decoder／列偏好合同，尚未据此修改数据库或实现。后续先从CA015＋N1收口后的基线分派公证；案件AppShell/API/列表详情与当前候选共享文件，必须错开作者，线索／案件随后。完整只读报告待核，不当成验证通过。
+公证初步只读证据：正式列偏好与列表DTO只允许businessNo／stage／sourceLead／notaryOffice／createdAt五数据列，不是配置隐藏了Demo其他字段。Demo包含权利主体、平台、店铺名／ID、推送／取证日期、开箱照片、公证书编号、发货人／电话／地址、三类费用以及真实案件进展；既有Lead、Notary和CertificateFee等来源可复用，需在授权后扩读取／严格decoder／列偏好合同，尚未据此修改数据库或实现。后续先从CA015＋N1收口后的基线分派公证；案件AppShell/API/列表详情与当前候选共享文件，必须错开作者，线索／案件随后。完整只读报告已交回，仅作下一批契约准备，不当成验证通过。
 
 后续案件主线保留**CORE-CA-016｜最小结案信息（待技术冻结，未实施）**，再CA-017；本次排队不预建模型或推迟当前收口。
 
 只读审计已完成（不是验证通过）：首批公证默认17列为选择／操作／案件进展／权利主体／平台／店铺名／店铺ID／推送日期／取证日期／开箱照片／公证书编号／发货人／发货电话／发货地址／公证费／调查费／样品费。重要来源校正：Demo推送日期是移交公证／建事项业务日，取事项createdAt按上海日展示，不能用Lead.pushedAt的客户审核推送日替代。费用沿CertificateFee及evidence事实，未登记、PENDING、真实0分别展示；案件摘要须另验case.read，不从lead.read拼接授权。旧五列偏好需兼容并保留本人设置，导出权限与资料不可变边界不扩。首批不必改schema；搜索／导出／线下调查／通用编辑另列正式能力，不能用按钮toast、前端本页假筛或Demo假文件冒充。
 
-线索随后以既有products/shopExternalId真实响应补运营字段与汇总、显式是／否和受权名称，不露UUID作名称。案件随后扩受权列表摘要与过滤偏好，修已有courtCaseNo却硬写“未登记”及capability办理标识缺项，复用现有Panel；无真实结案额、执行正式受理/案号、支付等来源时标后端缺口，不用客户台账或判决额代填。详细逐字段冻结及测试随后续独占任务接纳，只读报告不作为当前发布前置。
+线索可按独占文件并行，以既有products/shopExternalId真实响应补运营字段与汇总、显式是／否和受权名称，不露UUID作名称。案件随后扩受权列表摘要与过滤偏好，修已有courtCaseNo却硬写“未登记”及capability办理标识缺项，复用现有Panel；无真实结案额、执行正式受理/案号、支付等来源时标后端缺口，不用客户台账或判决额代填。详细逐字段冻结及测试随后续独占任务接纳，只读报告不作为当前发布前置。
+
+下一批由I冻结：公证列表／详情受权DTO与精确来源；17列keys／顺序及旧五列偏好兼容；费用未登记／待定／真实0与上海业务日期；转案摘要独立case.read及不可见投影；准确文件白名单和聚焦验收数据。公证列表／详情／偏好先闭环，线索现有来源展示可独占并行，案件共享文件后排。公证后端notary-list及详情Query、list-preference DTO／service和直接测试，前端api/notary、NotaryMatterListPage／详情／偏好测试作为一边界；线索LeadListPage／LeadForm／LeadDetail及直接测试为另一边界，受权名称／Decimal汇总所需共享API与样式由I统一认领，派发前核准确文件路径。
+
+用户新增Sentinel_1ef3772160bc8191893995eb9aa361a1要求以Demo列表为基准改善布局，与字段修复同批，不另开改版、不重写侧栏。验收包含列顺序／合理宽度、文本／数字／日期对齐、紧凑可读行距、状态badge、工具栏／操作区、长文本／横向滚动、空／加载／错误态；复用Demo样式和项目组件，不启动新设计服务。具体像素结论待父读图补入，不阻断当前收口。另排可见预览导航边缘：公证ARCHIVED页展开案件时范围链接可能继承非案件stage，直接案件入口正常；后续案件上下文回归，本批不夹带产品修改。
 
 按SD-54业务归档与财务分开；本指针只保留既有主线顺序，CA-016／017持久化及接口仍需另行技术冻结，重开、付款发起及未批准财务规则不开放。历史补录D1是只读建议，不作为本片前置或通过证据；剩余问题先核旧决定，不能阻塞不依赖它们的CA-015。
 
-#### 下一批分派边界
+#### 已完成分页批次的分派留痕
 
 本批开工时实查内部`CaseListPage.vue`及客户`ClientCaseListPage.vue`分别固定调用`listCases(1, 20)`／`listClientCases(1, 20)`，现有严格API已支持分页；公证与律师列表已有分页，不重复开发。依据本页Demo对齐矩阵的案件列表范围、SD-13／39既有读取合同及`demo/DESIGN.md`，先补只读可用性；不从Demo批准新的阶段或财务规则。
 
@@ -202,7 +206,7 @@ I唯一持有`frontend/src/api/{cases,client-cases}.ts`、共享类型／样式�
 
 本批组合验收边界（实际通过见VALIDATION）：两线固定SHA和实际检查已交回；父已授权I直接接纳，白名单／基线已核，集中做一次组合Review。对新候选运行两线组件／相关严格API契约、正常项目入口的静态与受影响格式检查；只有实际新增契约才扩相应门禁，不默认重跑旧完整verify或68项。现成`LawyerCaseListPage.spec.ts`有21条第二页组件范例；当前案件相关E2E与`core-leads.spec.ts`未找到内部／客户两页场景，不能冒称已有整合覆盖。复用既有`createSubmittedCaseThroughApi`、正常密码登录与数据准备／清理入口，先核重复准备和账号／案件归属，再在固定合成测试库补最小真实21条跨页浏览器验证；不新建服务或把测试fixture身份／reset用于持久预览。实际运行的PID、日志、开始／结束／退出码和最终候选进入既有VALIDATION，不预写通过。I已在既有诉状确认E2E及来源准备器补一个双端21条分页场景（普通来源API／密码登录），已在稳定候选完成固定测试库2/2，正常密码和两端21条分页取得实际通过；作者组件结果没有代替浏览器证明。
 
-#### SD-54下一批闭环与所有权（已批准范围，尚未实现）
+#### SD-54本批实施所有权留痕（CA015已验收，CA016／017未实施）
 
 父任务可立即派技术冻结／设计准备；实现基线取本分页批次最终核实main。先交付CA-015单次办理闭环，不等整个财务中心；CA-016／017按SD-54另行冻结，不能将重开或付款发起夹带。每个闭环都要正常角色办理→刷新／重登→事实与准确历史可读，并覆盖失权、旧版本／来源、未知结果、竞争和失败回滚；展示未登记／未知，不伪造实收或结清。
 
@@ -217,7 +221,7 @@ CA-015工程合同已在[案件Spec](spec/v0.1/modules/cases.md#ca-015技术冻�
 | I工程集成，Sol                 | 权威docs及context；`scripts/prisma-model-owners.mjs`仅新三模型归cases，随接纳schema同步，不改architecture-check算法；`tests/e2e/case-execution-finish*.spec.ts`；`tests/support/case-execution-finish*.{mjs,d.mts}`及现有`case-execution-filing-database.{mjs,d.mts}`的必要来源复用（不改共同清理器）                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                    | 冻结/技术审查、接纳E1/E2/E3固定提交、测试环境/门禁互斥、两正常身份普通API闭环、最小客户/精确材料及一次组合Review与最终门禁；不与worker争写其backend/前端白名单。实际验证层级按最终修改裁定，旧CA014/分页证据不冒充CA015通过。                                                                                   |
 | A0归档/资料更正准备，Sol       | 仅只读报告，无文档/代码/环境写权                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                         | 与上述实施并行准备SD-54后续片，不能夹带重开、收款、财务公式或历史补录问题。                                                                                                                                                                                                                                     |
 
-冻结技术Review已接受，E1/E2/E3均已冻结并由I接纳，原作者停止写入；来源SHA、接纳SHA及实际检查见project-status/VALIDATION，尚不能称CA015通过。E1两步迁移不可把enum失败后的现场说成全原子，必须测新库/支持schema升级、旧facts与回执保留、第二段失败回滚及向前恢复。E1所需直接数据库验证统一预约I的backend/.env.test测试库，worker不争用其他预览环境。E2/E3仅普通Task自审和聚焦验证，不逐Task加重复Reviewer。
+冻结技术Review已接受，E1/E2/E3均已冻结并由I接纳，原作者停止写入；来源SHA、接纳SHA及实际检查见project-status/VALIDATION；CA015最终组合已通过，本段保留实施所有权。E1两步迁移不可把enum失败后的现场说成全原子，必须测新库/支持schema升级、旧facts与回执保留、第二段失败回滚及向前恢复。E1所需直接数据库验证统一预约I的backend/.env.test测试库，worker不争用其他预览环境。E2/E3仅普通Task自审和聚焦验证，不逐Task加重复Reviewer。
 
 2026-10-13用户再次授权指挥实施并同步文档。导航N1（01a13452-9ded-7087-a0a6-d0241fd84005）从完整组合4b753de独占12文件：frontend/src/app/AppShell.vue/spec、frontend/src/api/cases.ts/spec、frontend/src/modules/cases/CaseListPage.vue及CasePages.spec.ts、LawyerCaseListPage.vue/spec；backend/src/modules/cases/case-read.dto.ts、case-read.service.ts、case-read.service.spec.ts、case-read.controller.spec.ts。它只落实REQ-CA-010既有两文书分组与顺序、范围计数及旧原子书签，不新增状态或办理权；此所有权替代E1/E3对这些文件的已完成实施分派，I不得并写。I持有新finish DB/migration/浏览器验收、必要的旧mailing来源显式回调和迁移复制/FK检查导出、模型归属和权威文档。浏览器测试准备任务仅新filing来源helper及声明、finish.spec三文件，已交固定候选，未运行PG。最终组合统一Review及所属门禁，不把只读导航报告当验证结果。
 
