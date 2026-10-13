@@ -4,13 +4,13 @@
 
 ## 当前阶段
 
-业务唯一Current／Next见[路线图](feature-roadmap.md#current-slice)：Current为CORE-UI-001运营Demo字段与列表视觉对齐，已授权启动冻结与并行派发；Next为CA-016后续技术冻结。CA015＋N1已验收、集成main bd0e02b且预览66b85ce产品相同；本批不重跑上一批门禁。CA-016最小结案信息仍保留后续、待技术冻结，不实施归档/重开/财务规则。此前CA013/014、日历/人工台账及U1/U2分页均已集成main3f914ad；证据只在VALIDATION维护。
+业务唯一Current／Next见[路线图](feature-roadmap.md#current-slice)：Current为CORE-UI-001运营Demo字段与列表视觉对齐，已验收，收尾Git集成与保留数据的预览更新；Next为CA-016后续技术冻结。CA015＋N1已验收、集成main bd0e02b且预览66b85ce产品相同；本批不重跑上一批门禁。CA-016最小结案信息仍保留后续、待技术冻结，不实施归档/重开/财务规则。此前CA013/014、日历/人工台账及U1/U2分页均已集成main3f914ad；证据只在VALIDATION维护。
 
 ## 当前任务
 
-**CORE-UI-001｜产品与验收候选已固定，最终门禁待执行。** I目录`.local/worktrees/ca015-integration`、分支`codex/demo-list-display-alignment`，源码／验收候选`fd7a839cb6cb119953da78e61c759893dbc2f04f`／tree`771a42db2840ae2b244f11a5151db8906f01bad5`。四路作者提交已接纳；V0独立复审关闭两项真实前序能力问题，最终组合另发现线索身份／授权代次隔离缺口，`0cdec61`修复后40/40及前端类型通过、同一独立Sol两轴ACCEPTED C/I/M=0。CSS长文本边界与新增真实来源／权限／偏好／三视口测试已固定，最终增量Review进行中。准确运行模型只核到Reviewer明确gpt-6-sol，作者实际标识未核，不假称。
+**CORE-UI-001｜运营字段与列表已验收，Git集成／持久预览收尾中。** I目录`.local/worktrees/ca015-integration`、分支`codex/demo-list-display-alignment`；稳定源码／测试候选`5ad06d1fd4dd7294fab227ea73f56052bf839453`／tree`5ef3342d2d6bc4e8b8ebe292b05bc9ed70325f49`。完整verify在`ed3dc291`实际通过80工具／1443前端／1375后端及双构建；后续仅旧E2E商品summary定位及文档/context，14组产品／单元／构建／依赖／运行输入Git blob/tree相同，独立审查明确接受限定复用；新树根E2E类型／Lint／格式、strict与Spec通过，不能称新tree实跑完整verify。独立Sol两轴ACCEPTED，未关C/I/M=0/0/0；作者实际模型标识未核，不假称。
 
-2026-10-13 17:25 UTC：仅恢复既有compose测试容器15433并完成142条前向迁移，用户持久预览尚未操作。新三项初跑2过1失败（恢复case.read误用TEAM已修为原DEPARTMENT），旧八文件14项初跑8过6失败（平台标签同时匹配店铺ID，已改既有select name并补齐文案）；原日志、JSON、trace与截图保留在ignored `.local/ui-evidence/`。没有将散装结果称为最终验收通过。下一步：最终组合Review、固定文档/context后完整verify及同17项统一PG/Chromium验收，读图确认，再按既有授权推送／快进main、保留15436数据更新预览。主仓库原stash与.pnpm-store保留；本批未push、未更新5186，生产不操作。
+同17项PG／Chromium统一组合已在上述干净候选exit0，精确UTC／退出码／tree／环境HMAC、首轮失败及最终截图只见VALIDATION和ignored `.local/ui-evidence/`。已读三视口图片：业务宽表在容器内横滚、页面无横向溢出，准确业务编号和日期不拆竖排，原详情／分页／范围／权限保持；长摘要可展开，CSS只限定业务列表。本批没有schema／迁移或新业务Command，不扩大为全部Demo完成。下一步按既有授权原子推送任务分支和main、主仓快进，核15436既有数据／账号后备份及替换应用预览；恢复stash与.pnpm-store保留，生产不操作。
 
 ### 已完成CA015＋N1恢复证据
 
