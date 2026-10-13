@@ -1236,3 +1236,5 @@ Task C实际提交`0cc238bdffc930aecc2be7058425b2d45ee14b00`，tree`c4934c0a904b
 初轮真实验收不算最终通过：17:14:29–17:15:15 UTC新三项2过1失败（恢复case.read helper写回TEAM而非原DEPARTMENT，已精确恢复）；17:21:57–17:25:11 UTC八个明确文件14项8过6失败（“平台”匹配下拉及店铺ID，已改稳定name并补齐批准文案）。2过包括旧偏好与三视口；8过包含普通密码21案双端分页、律师办理、判决分组、列偏好、原五列CSV与批归档。日志／退出码／准确UTC／输入SHA256／初轮trace及图片保留于ignored `.local/ui-evidence/operational-display-initial.*`、`display-compatibility-initial.*`与对应artifact副本。新截图进一步限制长摘要宽度、展开全文，并区分closed主图与expanded补图；旧失败结果不改写为新候选通过。
 
 正式最终完整verify与同17项统一PG／Chromium组合待执行；三视口最终图片待读图确认。当前未push／main或更新5186，不称本批完成、生产可用或全部Demo完成。最终结果将在本节回填，不新建平行账本。
+
+正式verify首轮候选`7feeb001bc4d45074323ce3678768010508a6675`／tree`a6adf1982f6f8a237c62e4ef57aae0634f59ae43`，17:31:55–17:35:10 UTC exit1；严格context、Spec、架构、Prisma、类型、Lint、格式及80工具测试通过，后端1374过1失败（旧OpenAPI偏好尺寸仍5/5/3）。前端整套未给完成结果、双构建未执行，不能称通过。只将该断言同步到批准的19/19/17，不改产品或DTO规则；原首轮log/JSON与环境HMAC前后一致`343c59891dfe4d82e03a5c91faac2e1de7325b9c847f35fbaa3819c72290a627`保留。

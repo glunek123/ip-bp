@@ -696,15 +696,15 @@ describe('CORE-LD-002 OpenAPI contract', () => {
         properties: {
           order: {
             type: 'array',
-            minItems: 5,
-            maxItems: 5,
+            minItems: 19,
+            maxItems: 19,
             uniqueItems: true,
             description: expect.stringContaining('前两项必须依次'),
           },
           hidden: {
             type: 'array',
             minItems: 0,
-            maxItems: 3,
+            maxItems: 17,
             uniqueItems: true,
             description: expect.stringContaining('固定列不可隐藏'),
           },
