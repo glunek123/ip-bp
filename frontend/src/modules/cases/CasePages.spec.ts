@@ -1,4 +1,5 @@
 import { flushPromises, mount } from '@vue/test-utils';
+import type { Component } from 'vue';
 import { createPinia, setActivePinia } from 'pinia';
 import { createMemoryHistory, createRouter, RouterView } from 'vue-router';
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
@@ -402,7 +403,7 @@ function judgmentDetailWithChoiceCapability(id: string) {
   };
 }
 
-async function mountRoutedDetail(path: string) {
+async function mountRoutedDetail(path: string, realPage?: Component) {
   const pinia = createPinia();
   setActivePinia(pinia);
   const auth = useAuthStore(pinia);
@@ -422,7 +423,7 @@ async function mountRoutedDetail(path: string) {
     history: createMemoryHistory(),
     routes: [
       { path: '/cases', component: CaseListPage },
-      { path: '/cases/:id', component: CaseDetailPage },
+      { path: '/cases/:id', component: realPage ?? CaseDetailPage },
     ],
   });
   await router.push(path);
@@ -430,7 +431,9 @@ async function mountRoutedDetail(path: string) {
   const wrapper = mount(
     { template: '<RouterView />' },
     {
-      global: { plugins: [pinia, router] },
+      global: {
+        plugins: [pinia, router],
+      },
     },
   );
   await flushPromises();
@@ -2107,4 +2110,110 @@ describe('internal execution finish caller', () => {
     expect(wrapper.text()).toContain('待归档');
     wrapper.unmount();
   });
+});
+
+it('connects the actual E2 panel to internal unknown recovery across remount and emits one workflow change on exact retry', async () => {
+  vi.doUnmock('./CaseExecutionFinishPanel.vue');
+  vi.resetModules();
+  const { default: realPage } = await import('./CaseDetailPage.vue');
+  const base = await finishCase();
+  api.getCase.mockResolvedValue(base);
+  api.finishCaseExecution.mockRejectedValueOnce(
+    new ApiError('网络中断', 0, 'NETWORK_ERROR'),
+  );
+  const { wrapper, router, pinia } = await mountRoutedDetail(
+    '/cases/case-1',
+    realPage,
+  );
+  expect(wrapper.find('[data-test="finish-caller-double"]').exists()).toBe(
+    false,
+  );
+  await wrapper
+    .get('[data-test="execution-finish-date"]')
+    .setValue('2026-09-28');
+  await wrapper
+    .get('[data-test="execution-finish-reason"]')
+    .setValue('  实际结束原因  ');
+  await wrapper
+    .get('[data-test="execution-finish-note"]')
+    .setValue('  法院真实说明  ');
+  await wrapper.get('[data-test="execution-finish-review"]').trigger('click');
+  await wrapper.get('[data-test="execution-finish-submit"]').trigger('click');
+  await flushPromises();
+  const original = structuredClone(api.finishCaseExecution.mock.calls[0]![1]);
+  expect(original).toEqual({
+    expectedVersion: 18,
+    expectedFilingId: finishRequest.expectedFilingId,
+    idempotencyKey: expect.any(String),
+    finishedAt: '2026-09-28',
+    reason: '  实际结束原因  ',
+    basisNote: '  法院真实说明  ',
+    basisContentVersionIds: [],
+  });
+  expect(wrapper.text()).toContain('提交结果暂时未知');
+  await wrapper.get('[data-test="execution-finish-refresh"]').trigger('click');
+  await flushPromises();
+  expect(api.finishCaseExecution).toHaveBeenCalledTimes(1);
+  wrapper.unmount();
+  const competingFact = {
+    id: 'other-finish',
+    filingId: finishRequest.expectedFilingId,
+    finishedAt: '2026-10-02',
+    reason: '他人登记',
+    basisNote: '他人说明',
+    recordedAt: finishResult.recordedAt,
+    files: [],
+  };
+  api.getCase.mockResolvedValue({
+    ...base,
+    stage: 'WAITING_ARCHIVE',
+    canFinishExecution: false,
+    version: 19,
+    executionFinish: competingFact,
+  });
+  const remounted = mount(RouterView, {
+    global: {
+      plugins: [pinia, router],
+    },
+  });
+  await flushPromises();
+  expect(
+    remounted.get('[data-test="execution-finish-pending-summary"]').text(),
+  ).toContain('实际结束原因');
+  expect(remounted.text()).toContain('他人登记');
+  expect(api.finishCaseExecution).toHaveBeenCalledTimes(1);
+  const changed = vi.fn();
+  window.addEventListener(workflowChangedEvent, changed);
+  api.finishCaseExecution.mockResolvedValue({
+    ...finishResult,
+    finishedAt: original.finishedAt,
+  });
+  api.getCase.mockResolvedValue({
+    ...base,
+    stage: 'WAITING_ARCHIVE',
+    canFinishExecution: false,
+    version: 19,
+    executionFinish: {
+      ...competingFact,
+      id: finishResult.finishId,
+      finishedAt: original.finishedAt,
+      reason: original.reason,
+      basisNote: original.basisNote,
+    },
+  });
+  await remounted.get('[data-test="execution-finish-retry"]').trigger('click');
+  await flushPromises();
+  expect(api.finishCaseExecution).toHaveBeenLastCalledWith(
+    'case-1',
+    original,
+    'internal',
+  );
+  expect(api.finishCaseExecution).toHaveBeenCalledTimes(2);
+  expect(changed).toHaveBeenCalledTimes(1);
+  expect(remounted.find('[data-test="execution-finish-retry"]').exists()).toBe(
+    false,
+  );
+  expect(remounted.text()).toContain('实际结束原因');
+  window.removeEventListener(workflowChangedEvent, changed);
+  remounted.unmount();
 });

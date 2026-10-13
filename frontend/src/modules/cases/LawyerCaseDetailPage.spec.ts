@@ -1,4 +1,5 @@
 import { flushPromises, mount } from '@vue/test-utils';
+import type { Component } from 'vue';
 import { createPinia, setActivePinia } from 'pinia';
 import { createMemoryHistory, createRouter } from 'vue-router';
 import { beforeEach, describe, expect, it, vi } from 'vitest';
@@ -163,7 +164,7 @@ function materials() {
   };
 }
 
-async function mountPage(path = '/lawyer/cases/case-a') {
+async function mountPage(path = '/lawyer/cases/case-a', realPage?: Component) {
   const pinia = createPinia();
   setActivePinia(pinia);
   const auth = useAuthStore(pinia);
@@ -187,8 +188,10 @@ async function mountPage(path = '/lawyer/cases/case-a') {
   });
   await router.push(path);
   await router.isReady();
-  const wrapper = mount(LawyerCaseDetailPage, {
-    global: { plugins: [pinia, router] },
+  const wrapper = mount(realPage ?? LawyerCaseDetailPage, {
+    global: {
+      plugins: [pinia, router],
+    },
   });
   await flushPromises();
   return { wrapper, router, auth, pinia };
@@ -918,4 +921,92 @@ describe('lawyer execution finish caller', () => {
     });
     expect(api.finishCaseExecution).not.toHaveBeenCalled();
   });
+});
+
+it('connects the actual E2 panel to lawyer file-only finish and reads the retained fact after one workflow notification', async () => {
+  vi.doUnmock('./CaseExecutionFinishPanel.vue');
+  vi.resetModules();
+  const { default: realPage } = await import('./LawyerCaseDetailPage.vue');
+  const base = finishDetail();
+  api.getLawyerCase.mockResolvedValue(base);
+  const file = {
+    materialId: '80000000-0000-4000-8000-000000000183',
+    contentVersionId: finishRequest.basisContentVersionIds[0]!,
+    originalFilename: '执行结束依据.pdf',
+    mimeType: 'application/pdf',
+  };
+  api.listOwnerMaterials.mockResolvedValue({
+    items: [
+      {
+        id: file.materialId,
+        status: 'ACTIVE',
+        category: 'EXECUTION_FINISH_BASIS',
+        currentVersionId: file.contentVersionId,
+        contentVersions: [
+          {
+            id: file.contentVersionId,
+            originalFilename: file.originalFilename,
+            mimeType: file.mimeType,
+          },
+        ],
+      },
+    ],
+  });
+  api.finishCaseExecution.mockResolvedValue(finishResult);
+  const { wrapper } = await mountPage('/lawyer/cases/case-a', realPage);
+  expect(wrapper.find('[data-test="finish-caller-double"]').exists()).toBe(
+    false,
+  );
+  await wrapper
+    .get('[data-test="execution-finish-date"]')
+    .setValue('2026-10-01');
+  await wrapper
+    .get('[data-test="execution-finish-reason"]')
+    .setValue('  律师实际结束  ');
+  await wrapper.get('[data-test="execution-finish-choice"]').setValue(true);
+  await wrapper.get('[data-test="execution-finish-review"]').trigger('click');
+  expect(
+    wrapper.get('[data-test="execution-finish-review-summary"]').text(),
+  ).toContain(file.contentVersionId);
+  const changed = vi.fn();
+  window.addEventListener('dev-cor:workflow-changed', changed);
+  api.getLawyerCase.mockResolvedValue({
+    ...base,
+    stage: 'WAITING_ARCHIVE',
+    canFinishExecution: false,
+    version: 19,
+    executionFinish: {
+      id: finishResult.finishId,
+      filingId: finishResult.filingId,
+      finishedAt: finishResult.finishedAt,
+      reason: '  律师实际结束  ',
+      basisNote: null,
+      recordedAt: finishResult.recordedAt,
+      files: [file],
+    },
+  });
+  await wrapper.get('[data-test="execution-finish-submit"]').trigger('click');
+  await flushPromises();
+  expect(api.finishCaseExecution).toHaveBeenCalledWith(
+    'case-a',
+    {
+      expectedVersion: 18,
+      idempotencyKey: expect.any(String),
+      expectedFilingId: finishRequest.expectedFilingId,
+      finishedAt: '2026-10-01',
+      reason: '  律师实际结束  ',
+      basisNote: null,
+      basisContentVersionIds: [file.contentVersionId],
+    },
+    'lawyer',
+  );
+  expect(changed).toHaveBeenCalledTimes(1);
+  expect(wrapper.text()).toContain('待归档');
+  expect(wrapper.text()).toContain('律师实际结束');
+  expect(wrapper.text()).toContain(file.originalFilename);
+  expect(wrapper.find('[data-test="execution-finish-review"]').exists()).toBe(
+    false,
+  );
+  window.removeEventListener('dev-cor:workflow-changed', changed);
+  wrapper.unmount();
 });
