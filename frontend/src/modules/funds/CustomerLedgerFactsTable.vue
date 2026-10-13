@@ -2,7 +2,7 @@
 import { ElButton } from 'element-plus/es/components/button/index.mjs';
 import { computed } from 'vue';
 import type { CustomerSettlementRecord } from '../../api/customer-settlements';
-import { formatSettlementAmount } from '../customers/customer-settlement-money';
+import { formatSettlementAmount } from '../customers';
 
 const props = defineProps<{
   customerId: string;
@@ -10,10 +10,16 @@ const props = defineProps<{
   canRead: boolean;
   loading: boolean;
   error: string;
+  expandedRecordIds?: string[];
 }>();
 
 const emit = defineEmits<{
   openRecord: [customerId: string, recordId: string];
+}>();
+
+defineSlots<{
+  actions(props: { record: CustomerSettlementRecord }): unknown;
+  details(props: { record: CustomerSettlementRecord }): unknown;
 }>();
 
 const visibleRecords = computed(() =>
@@ -66,35 +72,37 @@ function openRecord(record: CustomerSettlementRecord): void {
           </tr>
         </thead>
         <tbody>
-          <tr
-            v-for="record in visibleRecords"
-            :key="record.id"
-            data-test="ledger-record"
-          >
-            <td data-test="ledger-date">
-              {{ record.currentVersion.settlementDate }}
-            </td>
-            <td class="num mono" data-test="ledger-settlement">
-              {{ displayAmount(record.currentVersion.settlementAmount) }}
-            </td>
-            <td class="num mono" data-test="ledger-invoice">
-              {{ displayAmount(record.currentVersion.invoiceAmount) }}
-            </td>
-            <td class="num mono" data-test="ledger-received">
-              {{ displayAmount(record.currentVersion.receivedAmount) }}
-            </td>
-            <td>
-              <ElButton
-                native-type="button"
-                link
-                type="primary"
-                data-test="ledger-open-record"
-                @click="openRecord(record)"
-              >
-                查看记录
-              </ElButton>
-            </td>
-          </tr>
+          <template v-for="record in visibleRecords" :key="record.id">
+            <tr data-test="ledger-record">
+              <td data-test="ledger-date">
+                {{ record.currentVersion.settlementDate }}
+              </td>
+              <td class="num mono" data-test="ledger-settlement">
+                {{ displayAmount(record.currentVersion.settlementAmount) }}
+              </td>
+              <td class="num mono" data-test="ledger-invoice">
+                {{ displayAmount(record.currentVersion.invoiceAmount) }}
+              </td>
+              <td class="num mono" data-test="ledger-received">
+                {{ displayAmount(record.currentVersion.receivedAmount) }}
+              </td>
+              <td>
+                <ElButton
+                  native-type="button"
+                  link
+                  type="primary"
+                  data-test="ledger-open-record"
+                  @click="openRecord(record)"
+                >
+                  查看记录
+                </ElButton>
+                <slot name="actions" :record="record" />
+              </td>
+            </tr>
+            <tr v-if="$slots.details && expandedRecordIds?.includes(record.id)">
+              <td colspan="5"><slot name="details" :record="record" /></td>
+            </tr>
+          </template>
         </tbody>
       </table>
     </div>

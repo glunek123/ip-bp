@@ -53,6 +53,31 @@ function mountTable(
 }
 
 describe('CustomerLedgerFactsTable', () => {
+  it('exposes actions and expanded details for the authorized row and clears both after revocation', async () => {
+    const wrapper = mount(CustomerLedgerFactsTable, {
+      props: {
+        customerId: 'customer-1',
+        records: [settlement('record-1'), settlement('record-2')],
+        canRead: true,
+        loading: false,
+        error: '',
+        expandedRecordIds: ['record-1'],
+      },
+      slots: {
+        actions: `<template #default="{ record }"><span data-test="row-action">动作 {{ record.id }}</span></template>`,
+        details: `<template #default="{ record }"><span data-test="row-detail">来源 {{ record.currentVersion.auditEventId }}</span></template>`,
+      },
+    });
+    expect(wrapper.findAll('[data-test="row-action"]')).toHaveLength(2);
+    expect(wrapper.findAll('[data-test="row-detail"]')).toHaveLength(1);
+    expect(wrapper.get('[data-test="row-detail"]').text()).toContain(
+      'audit-record-1',
+    );
+    await wrapper.setProps({ canRead: false });
+    expect(wrapper.find('[data-test="row-action"]').exists()).toBe(false);
+    expect(wrapper.find('[data-test="row-detail"]').exists()).toBe(false);
+    expect(wrapper.text()).not.toContain('audit-record-1');
+  });
   it('keeps same-month facts separate and distinguishes null from real zero', () => {
     const wrapper = mountTable({
       records: [

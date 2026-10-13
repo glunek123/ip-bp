@@ -4,11 +4,15 @@ import { computed, onBeforeUnmount, ref, watch } from 'vue';
 import { ApiError } from '../../api/http';
 import {
   correctCustomerSettlement,
+  getCustomerSettlement,
   listCustomerSettlementVersions,
   registerCustomerSettlement,
   type CorrectCustomerSettlementInput,
   type CustomerSettlementCommandResult,
   type CustomerSettlementRecord,
+  type CustomerSettlementDetail,
+  type CustomerSettlementPage,
+  type CustomerSettlementCapabilities,
   type CustomerSettlementVersion,
   type RegisterCustomerSettlementInput,
 } from '../../api/customer-settlements';
@@ -27,23 +31,9 @@ import {
   settlementPendingDisplay,
   settlementRecoveryBarWidth,
 } from './customer-settlement-money';
+import { CustomerLedgerFactsTable } from '../funds';
 
 type Actor = { userId: string; departmentId: string } | null;
-type ListData = {
-  items: CustomerSettlementRecord[];
-  total: number;
-  stats: {
-    recordCount: number;
-    totalSettlement: string;
-    invoiceKnownSubtotal: string;
-    invoiceUnknownCount: number;
-    receivedKnownSubtotal: string;
-    receivedUnknownCount: number;
-    pendingAmount: string | null;
-    recoveryRate: string | null;
-  };
-};
-
 const props = defineProps<{
   customerId: string;
   customerVersion: number;
@@ -52,7 +42,7 @@ const props = defineProps<{
   canRead: boolean;
   canRegister: boolean;
   canCorrect: boolean;
-  data?: ListData;
+  data?: CustomerSettlementPage;
   status: 'idle' | 'loading' | 'ready' | 'failed';
   stale: boolean;
   error: string;
@@ -88,6 +78,12 @@ const receivedDateKnown = ref(false);
 const receivedDate = ref('');
 const correctionReason = ref('');
 const selectedRecord = ref<CustomerSettlementRecord>();
+const recordDetail = ref<CustomerSettlementDetail>();
+const observedCapabilities = ref<CustomerSettlementCapabilities>();
+const detailStatus = ref<'idle' | 'loading' | 'ready' | 'failed'>('idle');
+const detailRecordId = ref('');
+const detailError = ref('');
+const sourceStale = ref(false);
 const histories = ref<Record<string, CustomerSettlementVersion[]>>({});
 const historyOpen = ref<Record<string, boolean>>({});
 const historyLoading = ref<Record<string, boolean>>({});
@@ -103,21 +99,42 @@ const confirmedStorageBlocked = ref(false);
 const message = ref('');
 let generation = 0;
 let historyController: AbortController | undefined;
+let detailController: AbortController | undefined;
 
 const canDiscover = computed(
   () =>
     props.canRead &&
     !privateReadFailed.value &&
+    !sourceStale.value &&
+    !props.stale &&
     props.data !== undefined &&
+    props.data.capabilities.read &&
     props.status === 'ready',
 );
 const editing = computed(() => selectedRecord.value !== undefined);
+const canRegisterCurrent = computed(
+  () =>
+    props.canRegister &&
+    (!props.canRead || (props.data?.capabilities.register ?? true)) &&
+    (observedCapabilities.value?.register ?? true),
+);
+const canCorrectCurrent = computed(
+  () =>
+    props.canCorrect &&
+    (props.data?.capabilities.correct ?? false) &&
+    (observedCapabilities.value?.correct ?? true),
+);
 const busy = computed(
-  () => commandStatus.value === 'sending' || props.blockedByOtherMaintenance,
+  () =>
+    commandStatus.value === 'sending' ||
+    props.blockedByOtherMaintenance ||
+    props.status === 'loading',
 );
 const canSubmitRegister = computed(
   () =>
-    props.canRegister &&
+    canRegisterCurrent.value &&
+    !privateReadFailed.value &&
+    !sourceStale.value &&
     !props.stale &&
     !busy.value &&
     !pending.value &&
@@ -126,8 +143,8 @@ const canSubmitRegister = computed(
 );
 const canSubmitCorrection = computed(
   () =>
-    props.canRead &&
-    props.canCorrect &&
+    canDiscover.value &&
+    canCorrectCurrent.value &&
     !props.stale &&
     selectedRecord.value !== undefined &&
     !busy.value &&
@@ -149,6 +166,113 @@ const rateLabel = computed(() =>
 const rateWidth = computed(() =>
   settlementRecoveryBarWidth(props.data?.stats.recoveryRate ?? null),
 );
+const visibleRecords = computed(() =>
+  canDiscover.value
+    ? props.data!.items.filter(
+        (record) => record.currentVersion.customerId === props.customerId,
+      )
+    : [],
+);
+const expandedRecordIds = computed(() =>
+  visibleRecords.value
+    .filter((record) => historyOpen.value[record.id])
+    .map((record) => record.id),
+);
+const visibleDetail = computed(() =>
+  canDiscover.value &&
+  detailStatus.value === 'ready' &&
+  recordDetail.value?.capabilities.read
+    ? recordDetail.value.record
+    : undefined,
+);
+
+const commandCustomerVersion = computed(() =>
+  canDiscover.value ? props.data!.customerVersion : props.customerVersion,
+);
+
+function clearDetail(): void {
+  detailController?.abort();
+  detailController = undefined;
+  recordDetail.value = undefined;
+  detailRecordId.value = '';
+  detailStatus.value = 'idle';
+  detailError.value = '';
+}
+
+async function openRecord(customerId: string, recordId: string): Promise<void> {
+  if (
+    customerId !== props.customerId ||
+    !canDiscover.value ||
+    busy.value ||
+    pending.value ||
+    !visibleRecords.value.some((record) => record.id === recordId) ||
+    (detailStatus.value === 'loading' && detailRecordId.value === recordId)
+  )
+    return;
+  clearDetail();
+  const requestGeneration = generation;
+  const actorKey = props.actorKey;
+  const controller = new AbortController();
+  detailController = controller;
+  detailRecordId.value = recordId;
+  detailStatus.value = 'loading';
+  try {
+    const result = await getCustomerSettlement(customerId, recordId, {
+      signal: controller.signal,
+    });
+    if (
+      controller.signal.aborted ||
+      requestGeneration !== generation ||
+      customerId !== props.customerId ||
+      actorKey !== props.actorKey ||
+      !canDiscover.value
+    )
+      return;
+    observedCapabilities.value = result.capabilities;
+    if (!result.capabilities.read) {
+      setSensitiveUnavailable();
+      return;
+    }
+    const current = visibleRecords.value.find(
+      (record) => record.id === recordId,
+    );
+    if (
+      !current ||
+      current.version !== result.record.version ||
+      props.data!.customerVersion !== result.customerVersion
+    ) {
+      clearDetail();
+      clearHistory();
+      sourceStale.value = true;
+      emit('settlement-state', customerId, actorKey, 'stale', true);
+      message.value = '结算资料已变化。请只读刷新后查看当前记录。';
+      return;
+    }
+    recordDetail.value = result;
+    detailStatus.value = 'ready';
+  } catch (error) {
+    if (
+      controller.signal.aborted ||
+      requestGeneration !== generation ||
+      customerId !== props.customerId ||
+      actorKey !== props.actorKey ||
+      !props.canRead
+    )
+      return;
+    if (
+      error instanceof ApiError &&
+      (error.status === 403 || error.status === 404)
+    ) {
+      setSensitiveUnavailable();
+      return;
+    }
+    recordDetail.value = undefined;
+    detailStatus.value = 'failed';
+    detailError.value = '记录读取失败，请只读重试。';
+  } finally {
+    if (detailController === controller) detailController = undefined;
+  }
+}
 
 function identity() {
   if (!props.actor) return undefined;
@@ -230,6 +354,7 @@ function restorePending(): void {
 function setSensitiveUnavailable(): void {
   privateReadFailed.value = true;
   clearHistory();
+  clearDetail();
   clearForm();
   emit('private-read-failed', props.customerId, props.actorKey);
 }
@@ -247,8 +372,12 @@ function useVersion(version: CustomerSettlementVersion): void {
 
 function beginCorrection(record: CustomerSettlementRecord): void {
   if (
-    !props.canRead ||
-    !props.canCorrect ||
+    !canDiscover.value ||
+    !canCorrectCurrent.value ||
+    pending.value ||
+    busy.value ||
+    commandStatus.value === 'refresh-needed' ||
+    !visibleRecords.value.includes(record) ||
     props.stale ||
     props.blockedByOtherMaintenance
   )
@@ -258,6 +387,14 @@ function beginCorrection(record: CustomerSettlementRecord): void {
   correctionReason.value = '';
   commandStatus.value = 'idle';
   message.value = '';
+}
+
+function correctViewedRecord(): void {
+  if (!visibleDetail.value || !recordDetail.value?.capabilities.correct) return;
+  const record = visibleRecords.value.find(
+    (item) => item.id === visibleDetail.value!.id,
+  );
+  if (record) beginCorrection(record);
 }
 
 function isValidDate(value: string): boolean {
@@ -293,12 +430,12 @@ function createBody():
   };
   return editing.value
     ? {
-        expectedCustomerVersion: props.customerVersion,
+        expectedCustomerVersion: commandCustomerVersion.value,
         expectedRecordVersion: selectedRecord.value!.version,
         ...facts,
         reason: correctionReason.value.trim(),
       }
-    : { expectedCustomerVersion: props.customerVersion, ...facts };
+    : { expectedCustomerVersion: commandCustomerVersion.value, ...facts };
 }
 
 function makeCommand(): PendingSettlementCommand {
@@ -306,7 +443,7 @@ function makeCommand(): PendingSettlementCommand {
   const common = {
     ...identity()!,
     action: editing.value ? ('correct' as const) : ('register' as const),
-    expectedCustomerVersion: props.customerVersion,
+    expectedCustomerVersion: commandCustomerVersion.value,
     body,
     key: globalThis.crypto.randomUUID(),
   };
@@ -324,6 +461,13 @@ async function send(
   sourceActorKey = props.actorKey,
 ): Promise<void> {
   if (busy.value) return;
+  const requestGeneration = generation;
+  const isCurrent = () =>
+    requestGeneration === generation &&
+    sourceActorKey === props.actorKey &&
+    command.customerId === props.customerId &&
+    command.userId === props.actor?.userId &&
+    command.departmentId === props.actor?.departmentId;
   commandStatus.value = 'sending';
   message.value = '';
   emit('settlement-state', props.customerId, props.actorKey, 'unknown', true);
@@ -341,13 +485,7 @@ async function send(
             command.body as RegisterCustomerSettlementInput,
             command.key,
           );
-    if (
-      sourceActorKey !== props.actorKey ||
-      command.customerId !== props.customerId ||
-      command.userId !== props.actor?.userId ||
-      command.departmentId !== props.actor?.departmentId
-    )
-      return;
+    if (!isCurrent()) return;
     const cleared = clearPendingSettlementCommand(command);
     confirmedStorageBlocked.value = !cleared;
     if (!cleared) markConfirmedSettlementCommand(command);
@@ -362,16 +500,13 @@ async function send(
       false,
     );
     message.value = `本次提交已成功（第 ${result.version} 版）。`;
+    clearDetail();
+    clearHistory();
+    clearForm();
+    sourceStale.value = false;
     emit('command-confirmed', props.customerId, props.actorKey, result);
-    if (command.action === 'register' && !props.canRead) clearForm();
   } catch (error) {
-    if (
-      sourceActorKey !== props.actorKey ||
-      command.customerId !== props.customerId ||
-      command.userId !== props.actor?.userId ||
-      command.departmentId !== props.actor?.departmentId
-    )
-      return;
+    if (!isCurrent()) return;
     if (
       error instanceof ApiError &&
       error.status === 409 &&
@@ -405,13 +540,7 @@ async function send(
     )
       setSensitiveUnavailable();
   } finally {
-    if (
-      sourceActorKey === props.actorKey &&
-      command.customerId === props.customerId &&
-      command.userId === props.actor?.userId &&
-      command.departmentId === props.actor?.departmentId &&
-      commandStatus.value === 'sending'
-    )
+    if (isCurrent() && commandStatus.value === 'sending')
       commandStatus.value = 'unknown';
   }
 }
@@ -455,8 +584,11 @@ function cancelDraft(): void {
 
 async function loadHistory(recordId: string, page = 1): Promise<void> {
   if (
-    !props.canRead ||
+    !canDiscover.value ||
+    historyLoading.value[recordId] ||
+    !visibleRecords.value.some((record) => record.id === recordId) ||
     !props.data ||
+    busy.value ||
     props.stale ||
     props.blockedByOtherMaintenance
   )
@@ -481,7 +613,7 @@ async function loadHistory(recordId: string, page = 1): Promise<void> {
       controller.signal.aborted ||
       customerId !== props.customerId ||
       actorKey !== props.actorKey ||
-      !props.canRead
+      !canDiscover.value
     )
       return;
     histories.value = { ...histories.value, [recordId]: result.items };
@@ -507,6 +639,8 @@ async function loadHistory(recordId: string, page = 1): Promise<void> {
 }
 
 function toggleHistory(recordId: string): void {
+  if (!canDiscover.value || busy.value || historyLoading.value[recordId])
+    return;
   if (historyOpen.value[recordId]) {
     historyOpen.value = { ...historyOpen.value, [recordId]: false };
     return;
@@ -519,6 +653,10 @@ watch(
     `${props.customerId}:${props.actorKey}:${props.canRead}:${props.canRegister}:${props.canCorrect}`,
   () => {
     generation += 1;
+    privateReadFailed.value = false;
+    sourceStale.value = false;
+    observedCapabilities.value = undefined;
+    clearDetail();
     clearHistory();
     clearForm();
     message.value = '';
@@ -535,7 +673,13 @@ watch(
 watch(
   () => props.data,
   (data) => {
-    if (data && props.status === 'ready') privateReadFailed.value = false;
+    clearDetail();
+    clearHistory();
+    if (data && props.status === 'ready') {
+      privateReadFailed.value = false;
+      sourceStale.value = false;
+      observedCapabilities.value = undefined;
+    }
   },
 );
 
@@ -544,6 +688,7 @@ watch(
   (status) => {
     if (status === 'failed') {
       privateReadFailed.value = true;
+      clearDetail();
       clearHistory();
       clearForm();
     }
@@ -568,6 +713,10 @@ watch(
 watch(
   () => props.stale,
   (stale) => {
+    if (stale) {
+      clearDetail();
+      clearHistory();
+    }
     if (!stale && confirmedStorageBlocked.value) {
       confirmedStorageBlocked.value = false;
       commandStatus.value = 'idle';
@@ -578,6 +727,7 @@ watch(
 
 onBeforeUnmount(() => {
   generation += 1;
+  clearDetail();
   clearHistory();
 });
 </script>
@@ -650,100 +800,225 @@ onBeforeUnmount(() => {
         只读重试
       </ElButton>
     </div>
-    <div v-else-if="canRead && data" data-test="settlement-records">
-      <p v-if="data.total === 0" data-test="settlement-empty">暂无结算记录。</p>
-      <article
-        v-for="record in data.items"
-        :key="record.id"
-        class="settlement-record"
-        data-test="settlement-record"
+    <div v-else-if="canDiscover" data-test="settlement-records">
+      <CustomerLedgerFactsTable
+        :customer-id="customerId"
+        :records="visibleRecords"
+        :can-read="canDiscover"
+        :loading="false"
+        :error="error"
+        :expanded-record-ids="expandedRecordIds"
+        @open-record="openRecord"
       >
-        <div class="settlement-record__facts">
-          <strong>{{ record.currentVersion.settlementDate }}</strong>
-          <span
-            >结算
-            {{
-              formatSettlementAmount(record.currentVersion.settlementAmount)
-            }}</span
+        <template #actions="{ record }">
+          <div data-test="settlement-record">
+            <div class="settlement-record__actions">
+              <ElButton
+                native-type="button"
+                :data-test="`settlement-history-${record.id}`"
+                :disabled="busy || !!historyLoading[record.id]"
+                @click="toggleHistory(record.id)"
+              >
+                {{ historyOpen[record.id] ? '收起版本' : '版本历史' }}
+              </ElButton>
+              <ElButton
+                v-if="canRead && canCorrectCurrent"
+                native-type="button"
+                :data-test="`correct-settlement-${record.id}`"
+                :disabled="
+                  busy || !!pending || commandStatus === 'refresh-needed'
+                "
+                @click="beginCorrection(record)"
+              >
+                更正
+              </ElButton>
+            </div>
+          </div>
+        </template>
+        <template #details="{ record }">
+          <ol
+            v-if="historyOpen[record.id]"
+            :data-test="`settlement-history-list-${record.id}`"
           >
-          <span :data-test="`settlement-received-${record.id}`"
-            >回款
-            {{
-              record.currentVersion.receivedAmount === null
-                ? '未录入'
-                : formatSettlementAmount(record.currentVersion.receivedAmount)
-            }}</span
-          >
-          <span
-            >开票
-            {{
-              record.currentVersion.invoiceAmount === null
-                ? '未录入'
-                : formatSettlementAmount(record.currentVersion.invoiceAmount)
-            }}</span
-          >
-        </div>
-        <div class="settlement-record__actions">
-          <ElButton
-            native-type="button"
-            :data-test="`settlement-history-${record.id}`"
-            :disabled="busy"
-            @click="toggleHistory(record.id)"
-          >
-            {{ historyOpen[record.id] ? '收起版本' : '版本历史' }}
-          </ElButton>
-          <ElButton
-            v-if="canRead && canCorrect"
-            native-type="button"
-            :data-test="`correct-settlement-${record.id}`"
-            :disabled="busy"
-            @click="beginCorrection(record)"
-          >
-            更正
-          </ElButton>
-        </div>
-        <ol
-          v-if="historyOpen[record.id]"
-          :data-test="`settlement-history-list-${record.id}`"
-        >
-          <li v-for="version in histories[record.id] ?? []" :key="version.id">
-            第 {{ version.version }} 版 ·
-            {{ version.action === 'REGISTER' ? '登记' : '更正' }} ·
-            {{ version.correctionReason || '初次登记' }} ·
-            {{ version.recordedByUserId }} · {{ version.recordedAt }}
-          </li>
-        </ol>
-        <div
-          v-if="
-            historyOpen[record.id] && (historyTotal[record.id] ?? 0) > pageSize
-          "
-          class="settlement-pagination"
-        >
-          <ElButton
-            native-type="button"
-            :disabled="
-              (historyPage[record.id] ?? 1) <= 1 || historyLoading[record.id]
+            <li v-for="version in histories[record.id] ?? []" :key="version.id">
+              <p>
+                第 {{ version.version }} 版 ·
+                {{ version.action === 'REGISTER' ? '登记' : '更正' }} ·
+                {{ version.correctionReason || '初次登记' }} ·
+                {{ version.recordedByUserId }} · {{ version.recordedAt }}
+              </p>
+              <dl class="settlement-source-facts">
+                <dt>结算日期</dt>
+                <dd>{{ version.settlementDate }}</dd>
+                <dt>结算金额</dt>
+                <dd>{{ formatSettlementAmount(version.settlementAmount) }}</dd>
+                <dt>开票金额</dt>
+                <dd>
+                  {{
+                    version.invoiceAmount === null
+                      ? '未录入'
+                      : formatSettlementAmount(version.invoiceAmount)
+                  }}
+                </dd>
+                <dt>回款金额</dt>
+                <dd>
+                  {{
+                    version.receivedAmount === null
+                      ? '未录入'
+                      : formatSettlementAmount(version.receivedAmount)
+                  }}
+                </dd>
+                <dt>回款日期</dt>
+                <dd>{{ version.receivedDate ?? '未录入' }}</dd>
+                <dt>来源版本 ID</dt>
+                <dd>{{ version.id }}</dd>
+                <dt>审计事件 ID</dt>
+                <dd>{{ version.auditEventId }}</dd>
+              </dl>
+            </li>
+          </ol>
+          <div
+            v-if="
+              historyOpen[record.id] &&
+              (historyTotal[record.id] ?? 0) > pageSize
             "
-            @click="loadHistory(record.id, (historyPage[record.id] ?? 1) - 1)"
+            class="settlement-pagination"
           >
-            上一页
-          </ElButton>
-          <span
-            >{{ historyPage[record.id] }} /
-            {{ Math.ceil((historyTotal[record.id] ?? 0) / pageSize) }}</span
-          >
+            <ElButton
+              native-type="button"
+              :disabled="
+                (historyPage[record.id] ?? 1) <= 1 || historyLoading[record.id]
+              "
+              @click="loadHistory(record.id, (historyPage[record.id] ?? 1) - 1)"
+            >
+              上一页
+            </ElButton>
+            <span
+              >{{ historyPage[record.id] }} /
+              {{ Math.ceil((historyTotal[record.id] ?? 0) / pageSize) }}</span
+            >
+            <ElButton
+              native-type="button"
+              :disabled="
+                (historyPage[record.id] ?? 1) * pageSize >=
+                  (historyTotal[record.id] ?? 0) || historyLoading[record.id]
+              "
+              @click="loadHistory(record.id, (historyPage[record.id] ?? 1) + 1)"
+            >
+              下一页
+            </ElButton>
+          </div>
+        </template>
+      </CustomerLedgerFactsTable>
+      <section
+        v-if="detailStatus !== 'idle'"
+        class="settlement-source"
+        data-test="settlement-detail"
+        aria-label="结算记录来源"
+      >
+        <header class="settlement-panel__heading">
+          <h3>结算记录来源</h3>
           <ElButton
             native-type="button"
-            :disabled="
-              (historyPage[record.id] ?? 1) * pageSize >=
-                (historyTotal[record.id] ?? 0) || historyLoading[record.id]
-            "
-            @click="loadHistory(record.id, (historyPage[record.id] ?? 1) + 1)"
+            data-test="settlement-detail-close"
+            @click="clearDetail"
+            >关闭记录</ElButton
           >
-            下一页
-          </ElButton>
+        </header>
+        <p v-if="detailStatus === 'loading'" role="status">
+          正在读取记录来源。
+        </p>
+        <div v-else-if="detailStatus === 'failed'" role="alert">
+          <p>{{ detailError }}</p>
+          <ElButton
+            native-type="button"
+            data-test="settlement-detail-retry"
+            @click="openRecord(customerId, detailRecordId)"
+            >只读重试记录</ElButton
+          >
         </div>
-      </article>
+        <template v-else-if="visibleDetail">
+          <p>
+            客户人工台账 · 第 {{ visibleDetail.version }} 版 ·
+            {{
+              visibleDetail.currentVersion.action === 'REGISTER'
+                ? '登记'
+                : '更正'
+            }}
+          </p>
+          <dl class="settlement-source-facts">
+            <dt>记录 ID</dt>
+            <dd>{{ visibleDetail.id }}</dd>
+            <dt>客户 ID</dt>
+            <dd>{{ visibleDetail.currentVersion.customerId }}</dd>
+            <dt>部门 ID</dt>
+            <dd>{{ visibleDetail.currentVersion.departmentId }}</dd>
+            <dt>来源版本 ID</dt>
+            <dd>{{ visibleDetail.currentVersion.id }}</dd>
+            <dt>结算日期</dt>
+            <dd>{{ visibleDetail.currentVersion.settlementDate }}</dd>
+            <dt>结算金额</dt>
+            <dd>
+              {{
+                formatSettlementAmount(
+                  visibleDetail.currentVersion.settlementAmount,
+                )
+              }}
+            </dd>
+            <dt>开票金额</dt>
+            <dd>
+              {{
+                visibleDetail.currentVersion.invoiceAmount === null
+                  ? '未录入'
+                  : formatSettlementAmount(
+                      visibleDetail.currentVersion.invoiceAmount,
+                    )
+              }}
+            </dd>
+            <dt>回款金额</dt>
+            <dd>
+              {{
+                visibleDetail.currentVersion.receivedAmount === null
+                  ? '未录入'
+                  : formatSettlementAmount(
+                      visibleDetail.currentVersion.receivedAmount,
+                    )
+              }}
+            </dd>
+            <dt>回款日期</dt>
+            <dd>{{ visibleDetail.currentVersion.receivedDate ?? '未录入' }}</dd>
+            <dt>更正原因</dt>
+            <dd>
+              {{ visibleDetail.currentVersion.correctionReason ?? '初次登记' }}
+            </dd>
+            <dt>登记账号 ID</dt>
+            <dd>{{ visibleDetail.currentVersion.recordedByUserId }}</dd>
+            <dt>登记时间</dt>
+            <dd>{{ visibleDetail.currentVersion.recordedAt }}</dd>
+            <dt>审计事件 ID</dt>
+            <dd>{{ visibleDetail.currentVersion.auditEventId }}</dd>
+          </dl>
+          <div class="settlement-record__actions">
+            <ElButton
+              native-type="button"
+              data-test="settlement-detail-history"
+              :disabled="busy || !!historyLoading[visibleDetail.id]"
+              @click="toggleHistory(visibleDetail.id)"
+              >版本历史</ElButton
+            >
+            <ElButton
+              v-if="canCorrectCurrent && recordDetail?.capabilities.correct"
+              native-type="button"
+              data-test="settlement-detail-correct"
+              :disabled="
+                busy || !!pending || commandStatus === 'refresh-needed'
+              "
+              @click="correctViewedRecord"
+              >更正此记录</ElButton
+            >
+          </div>
+        </template>
+      </section>
       <nav
         v-if="pageCount > 1"
         class="settlement-pagination"
@@ -774,10 +1049,23 @@ onBeforeUnmount(() => {
       </div>
     </div>
 
+    <p v-if="sourceStale" role="status">
+      结算资料已变化。请只读刷新后查看当前记录。
+    </p>
+    <p
+      v-else-if="privateReadFailed && canRead && status !== 'failed'"
+      role="alert"
+    >
+      当前授权或客户状态已变化。请只读刷新。
+    </p>
+
     <form
       class="settlement-register-form"
       v-if="
-        !pending && (canRegister || (selectedRecord && canRead && canCorrect))
+        !privateReadFailed &&
+        !pending &&
+        ((!editing && canRegisterCurrent) ||
+          (selectedRecord && canRead && canCorrectCurrent))
       "
       data-test="settlement-register-form"
       @submit.prevent="submit"
@@ -926,6 +1214,19 @@ onBeforeUnmount(() => {
 </template>
 
 <style scoped>
+.settlement-source {
+  padding: var(--s-3);
+  border: 1px solid var(--color-hairline);
+}
+.settlement-source-facts {
+  display: grid;
+  grid-template-columns: max-content minmax(0, 1fr);
+  gap: var(--s-2) var(--s-3);
+}
+.settlement-source-facts dd {
+  margin: 0;
+  overflow-wrap: anywhere;
+}
 .settlement-panel {
   display: grid;
   gap: var(--s-3);
