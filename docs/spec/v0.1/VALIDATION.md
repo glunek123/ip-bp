@@ -1,8 +1,8 @@
 # SPEC-001 文档验证
 
-## U1／U2案件列表分页组合（2026-10-13，本地验收完成）
+## U1／U2案件列表分页组合（2026-10-13，已验收并集成）
 
-基线main`953ae33a811d9c22da3a8f390f393ba407a7f2a7`。U1源`9d93abc4e819fce1c3d751a6ea24a8d37eed4cc3`／tree`ad1b51a0697d60a1625875fe7a46662708455c56`，只改内部列表与CasePages测试；U2源`025694b43eee9fbcfd7aa9a49f144472112af08c`／tree`94358ecc5c6a2545e7f1914480b8751baaa6b7d2`，只改客户列表与ClientCasePages测试。两线停止修改、工作区干净后，I于UTC06:02:12.399～06:02:12.680分别接纳为`2a8b8d0`／`2c7d4ff`，exit0，无冲突，原未提交恢复文档未被夹带；本批本地验收完成；推送申请被自动审批拒绝且命令未启动，本地／远端main仍为953ae33，等待明确授权。
+基线main`953ae33a811d9c22da3a8f390f393ba407a7f2a7`。U1源`9d93abc4e819fce1c3d751a6ea24a8d37eed4cc3`／tree`ad1b51a0697d60a1625875fe7a46662708455c56`，只改内部列表与CasePages测试；U2源`025694b43eee9fbcfd7aa9a49f144472112af08c`／tree`94358ecc5c6a2545e7f1914480b8751baaa6b7d2`，只改客户列表与ClientCasePages测试。两线停止修改、工作区干净后，I于UTC06:02:12.399～06:02:12.680分别接纳为`2a8b8d0`／`2c7d4ff`，exit0，无冲突，原未提交恢复文档未被夹带；本批已完成本地验收并快进集成；首次授权审批阻塞及最终成功均保留于下文。
 
 作者实际报告已核：U1组件56/56，类型16.155秒、Lint1.557秒、格式0.423秒均exit0；原件在U1 ignored `.local/u1-evidence/report.json`及对应日志。U2组件／既有客户严格API契约36/36，类型17.087秒、Lint1.456秒、格式0.351秒均exit0；原件在U2 ignored `.local/u2-evidence/checks.json`。两线Node24.21.0／pnpm11.27.0、锁文件及Element Plus patch与I基线一致，隔离junction依赖的pnpm元数据异常如实保留；作者使用已核项目Node直接调用已有CLI，未改锁文件、patch、策略或.pnpm-store，未把这些结果称为标准pnpm正式门禁。I本批实际门禁均走既有正常pnpm入口和完整环境指纹，未沿用跳过依赖校验参数。
 
@@ -14,7 +14,9 @@ I只为本次真实分页验收扩展现有`case-complaint-confirmation.spec.ts`
 
 失败完整保留：98ff537首轮新分页场景因确认请求缺body.idempotencyKey而HTTP400，原场景通过，全文件1过1失败／exit1，UTC06:25:58.059～06:26:23.563、25.503秒；71e63de补同键后，内部页2刷新和20＋1已通过，但测试错误要求无query的详情href，实际链接保留page=2，等待耗尽300秒，全文件1过1失败／exit1，UTC06:28:16.785～06:33:35.327、318.540秒。两次仅修测试，不改产品；原件pagination-e2e-20261013-142557／142816的result及log，最终成功不覆盖旧失败。最终独立Reviewer为gpt-6-sol新上下文只读复核累计diff与两项finding关闭；Spec Compliance／Code Quality均ACCEPTED，未关闭Critical／Important／Minor为0／0／0，报告pagination-final-review.md。不是自审冒充独立Review。
 
-预览只读核实UTC06:29:36.735～06:29:37.050：5186/login及3206/api/v1/health均HTTP200，原件pagination-preview-readonly.json；未更改15436数据、Demo8123或部署生产。短暂连接状态不作为通过证据；成功由上述实际result／after及退出码确认。文档收口只允许更新本节、路线图状态、项目恢复点及已核context，不更改代码、测试、合同或下一批设计。自动审批两次在CreateProcess之前拒绝本批main快进／原子推送，理由为初始no-push限制及历史工具输出中的后续授权不能确认为可信批准；命令未启动，不将其称为执行失败后已推送，等待用户明确授权。
+预览只读核实UTC06:29:36.735～06:29:37.050：5186/login及3206/api/v1/health均HTTP200，原件pagination-preview-readonly.json；未更改15436数据、Demo8123或部署生产。短暂连接状态不作为通过证据；成功由上述实际result／after及退出码确认。文档收口只允许更新本节、路线图状态、项目恢复点及已核context，不更改代码、测试、合同或下一批设计。自动审批两次在CreateProcess之前拒绝本批main快进／原子推送，理由为初始no-push限制及历史工具输出中的后续授权不能确认为可信批准；两次命令未启动。随后父任务补充用户精确原文及ID Sentinel_d31d3fe5eaf481918243f6e22c08283b，并明确目标为本批U1/U2及必要文档合入main、不部署生产；再次自动审批允许后，实际UTC06:45:04.836～06:45:14.946快进并原子推送exit0，本地main／远端main／任务分支均核为1f69c4baeb81ad7b32cd2f19a905045bb0f12578，tree a3fc54e687eea5d808b6cd7c3fbeb856575e2aa2。原件pagination-first-integration.json；未绕过审批或重试结果不明的写操作。
+
+通过业务候选a9207b4之后到集成收口1f69c4b累计diff只含project-status／feature-roadmap／本验证节及已核context，未改变业务合同、执行说明、代码、测试或环境；文档专项UTC06:43:44.956～06:43:49.169全部exit0，原件pagination-closeout-doc-checks.json。合并为快进且tree精确对应收口，依三级规则限定复用原业务证据，不称收口SHA实跑过业务门禁。后续仅补实际集成状态和对应快照，仍须文档专项与累计输入核对。主目录原cases.ts草稿stash b07482c2c6130baa39cc43658f3dadb17cf81551和未跟踪.pnpm-store保留，恢复指针main-workspace-preservation.json；没有生产部署。
 
 ## CA-013／014、日历与人工台账集成（2026-10-13）
 
