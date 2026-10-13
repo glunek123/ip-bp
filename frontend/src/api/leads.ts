@@ -475,7 +475,7 @@ function invalidResponse(): ApiError {
 }
 
 function isLead(value: unknown): value is Lead {
-  if (!isLeadBusinessResult(value) || !isRecord(value)) return false;
+  if (!isLeadBusinessResult(value) || !('displayNames' in value)) return false;
   const names = value.displayNames;
   return (
     isRecord(names) &&
