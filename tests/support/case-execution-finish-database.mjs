@@ -4,6 +4,7 @@ import { randomUUID } from 'node:crypto';
 import { Readable } from 'node:stream';
 import { isDeepStrictEqual } from 'node:util';
 import { validateIsolatedTestDatabaseUrl } from '../../scripts/test-environment.mjs';
+import { verifyCaseExecutionMailingAndFilingDatabase } from './case-execution-mailing-database.mjs';
 import { executionSourceSnapshot } from './case-execution-finish-migration.mjs';
 
 const fixtureDepartments = [
@@ -161,8 +162,6 @@ async function faultRollback(
 }
 
 export async function verifyCaseExecutionFinishDatabase() {
-  const { verifyCaseExecutionMailingAndFilingDatabase } =
-    await import('./case-execution-mailing-database.mjs');
   const backend = createRequire(resolve(process.cwd(), 'backend/package.json'));
   const { AccessControlService } = backend(
     './dist/access-control/access-control.service.js',
