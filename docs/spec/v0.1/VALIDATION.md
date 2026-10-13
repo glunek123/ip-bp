@@ -15,7 +15,11 @@ I现用独占`.local/worktrees/ca015-integration`，原ca013-014-integration固�
 
 保留开发期阻断/失败：首次PG环境捕获在数据库操作前因复制的旧private-file root拒绝；只对齐新I自己的测试root，数据库目标/凭据不变。891fbea首次标准PG运行1failed，旧helper的lazy import在Playwright加载阶段报named export missing；修为既有static import后8dda2f5固定，4c0e6a9再加精确Finish成功审计fixture清理，后续1/1通过。pnpm exec短工具名首次未解析，后续正常pnpm exec node调用同一安装CLI进行静态检查，未关闭预检。所有原日志保留。
 
-最终组合Review进行中：独立Sol确认两项Important（合法混合URL规范化与非法过滤误退全部），N1已idle/completed，修复消息工具失败未送达，I接管四文件实现修正及103项聚焦，待Reviewer核实关闭。迁移来源必须是普通API创建的EXECUTING案件，新增空库/上一支持schema升级/enum提交与第二段故障回滚/向前恢复、旧精确blob真实字节读取，当前尚待运行。两身份真实面板、客户最小投影、两个文书组浏览器和最终稳定门禁亦待执行，不提前标CA015完成。
+独立最终组合Review：75ea569／tree34955ab两轴ACCEPTED，未关闭0/0/0；原两URL Important已通过列表修正和103项直接测试关闭，N1 idle/completed后由I接管四文件，无并写。4b66f54／treed53e69fb相对75ea只改测试来源身份及下一批排队文档，Reviewer再次两轴ACCEPTED、0/0/0。审查不替代正式门禁。
+
+普通来源开发验收失败与修正：75ea两项08:50:33～08:51:00均在来源准备被403拒绝、未提交Finish；测试曾在角色编辑后沿用旧fixture bearer及律师登录后继续运营材料路径。4b66测试改为先建诉状来源再正常UI改角色、当前运营重新登录/CSRF，律师开庭后重新回运营；产品权限守卫不变。4b66标准2项08:59:51～09:01:00结果1过1失败：律师附件-only及刷新重登/原字节下载通过，运营Finish/两组两范围/计数/详情返回/旧原子URL及普通API来源迁移探针已执行，但客户登录helper错误地用带query的path比较pathname，停止在客户投影断言前。修正为pathname及所需query逐项核验，保留ca015-browser-{development,source-retry}-{before,after,result}.json与.log，不将部分成功拼称组合通过。
+
+迁移测试核普通API创建的EXECUTING来源，空库/上一支持schema升级/enum提交与第二段故障回滚/向前恢复、旧facts及精确blob实际字节；最终稳定三项组合及全仓门禁尚待执行。新增Demo字段展示对齐仅在既有路线图下一批排队，明确不成为当前验收或推送前置。
 
 E2源b2d4ddd38b28515d8f4bf4dc6baee4e788244b87／treec21f6233af40afd40b78c111b12bc973194fc84f，仅两份新面板/vue及spec，40/40、类型、双文件Lint/格式均exit0，原件在其ignored .local/ca015-e2-evidence/report.json，UTC07:17:53～07:18:42。保留pnpm元数据失败、早期33/35及Lint失败后修正；未改策略，用已锁Node原CLI和隔离cache，不能称正常pnpm正式门禁。I核7项manifest/lock/policy/patch指纹匹配后于UTC07:25:31.049～07:25:31.387接纳为0935ef357fb4e493492f5a736528e4746519f760／tree64fee94c6dedfaab7bb84d12fc27ee0c03cc5156，exit0、clean，原件ignored .local/calendar-funds-evidence/ca015-e2-acceptance.json；这是依赖接纳，不冒充整批验收。
 

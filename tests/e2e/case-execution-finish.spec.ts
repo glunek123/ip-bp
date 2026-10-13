@@ -70,7 +70,14 @@ async function login(
   await page.getByLabel('用户名').fill(username);
   await page.getByLabel('密码').fill(password);
   await page.getByRole('button', { name: '登录', exact: true }).click();
-  await expect.poll(() => new URL(page.url()).pathname).toBe(path);
+  const expectedUrl = new URL(path, 'http://127.0.0.1:5174');
+  await expect
+    .poll(() => new URL(page.url()).pathname)
+    .toBe(expectedUrl.pathname);
+  for (const [name, value] of expectedUrl.searchParams)
+    await expect
+      .poll(() => new URL(page.url()).searchParams.get(name))
+      .toBe(value);
   await status(await responsePromise, 200);
 }
 

@@ -1,6 +1,6 @@
 {
   "version": 1,
-  "recordedAt": "2026-10-13T08:58:14.627Z",
+  "recordedAt": "2026-10-13T09:02:54.905Z",
   "files": {
     ".cursor/rules/verified-feature-integration.mdc": "da673301f0440a6a9615786027dffc8e01f739a97f81cd97accef1580ac51f98",
     ".env.example": "07211cde5c2b59efc21b619b752d4c9b871f0980d2d64ca3c146ad6151fd27ca",
@@ -538,7 +538,7 @@
     "docs/spec/v0.1/READINESS.md": "d873884baff01d514f859bb4bfa429c54660d9746d83055e3e8f1535bdc7bdd3",
     "docs/spec/v0.1/README.md": "41214df80221a28e09a7e996835cc649a8d12511fbac8d2b295c4beb2a58042e",
     "docs/spec/v0.1/TECHNICAL-DESIGN.md": "c30b182c72dbf1c5aefbe1f41ecddc3497a7b24e502ae49e8d44d9e79a1b1e1d",
-    "docs/spec/v0.1/VALIDATION.md": "b90cf3dae6a7a073cc86f4b803cb69d18f81fd4c3f5d3080c2a301266a323092",
+    "docs/spec/v0.1/VALIDATION.md": "695ab0943928d3c4c4af1a84d767123d5362294fb4e74c79ac3403f6f8e2bcc2",
     "docs/spec/v0.1/modules/calendar.md": "3991b1148b13e2bf2daad951caa48935c5ed6a202b12817b3c47624ad3e0c774",
     "docs/spec/v0.1/modules/cases.md": "94031ce7b43fd20a6dee8a643fcdd4ac48fe3753bb756e9088a9e5c29a0159ee",
     "docs/spec/v0.1/modules/customers.md": "dda577688b5c64baeb1dd2bb3787cbb4263f3f5868cf51b90bc39493f625f0b0",
@@ -885,7 +885,7 @@
     "tests/e2e/case-execution-confirmation-migration.spec.ts": "e631dd15309b44b4dfee1db1c4ad2f836a3f34e0a5fa8ae96b77e83d6d419f93",
     "tests/e2e/case-execution-filing-database.spec.ts": "22165a6d938ec0a0ade8f4310f6b9c69d1bf75abfede4eeb8746b0d56f3135ad",
     "tests/e2e/case-execution-finish-database.spec.ts": "1e7bb9e0fb72d815e84f55d5e65822cbfa4147db49f8036e501ccf318a1671fc",
-    "tests/e2e/case-execution-finish.spec.ts": "f0cf6374130498ab8b43c48cf879817d5c02f6816d35035f3f42a55df5270bc8",
+    "tests/e2e/case-execution-finish.spec.ts": "abd6eb67cf20f9f29fb9d69e0c008455ce2b9e530dcf68618b3c5a8c07215371",
     "tests/e2e/case-execution-mailing-migration.spec.ts": "d9b4c846e288819184d3ac497e1fc9053a364853afb3bcceefd9e20aa583400b",
     "tests/e2e/case-execution-mailing.spec.ts": "1362187ce086545f65e4c3ed7dfad105dd61625e2d046114c7ff279d05afb850",
     "tests/e2e/case-execution-submission-database.spec.ts": "d5b9e54d42a21c2e0d0f50a67a43722b7d15d8352d338cb4f90e5e6b1942699f",
