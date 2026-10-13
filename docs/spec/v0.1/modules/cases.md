@@ -317,7 +317,7 @@ AC-CA-004本片增量：运营、承办律师、本企业客户经正常来源�
 
 ### 案件Demo既有字段受权摘要（同批，非新业务Command）
 
-内部CaseSummary新增`displaySummary`与`canRecordClosure/canCorrectClosure`；律师Summary只补两能力（更正false），保持既有最小列表字段，不自动扩其来源／内部财务。内部详情继续旧精确字段，法院案号使用现有courtCaseNo，null才显示未登记。
+内部CaseSummary新增`displaySummary`与`canRecordClosure/canCorrectClosure`；律师Summary只补两能力（更正false），保持既有最小列表字段，不自动扩其来源／内部财务。`displaySummary`仅内部列表返回；内部详情使用`Omit<CaseSummary,'displaySummary'>`（后端详情DTO亦排除该继承字段），继续旧精确字段并追加结案能力及closure。法院案号使用现有courtCaseNo，null才显示未登记。
 
 `displaySummary`固定为`{customerName,rightsHolderName,source,defendants,lawyers,court,courtCaseNo,claimAmount,judgmentAmount,closureAmount}`：
 

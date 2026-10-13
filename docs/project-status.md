@@ -4,15 +4,17 @@
 
 ## 当前阶段
 
-唯一Current／Next见路线图：Current为CA016最小结案资料＋案件既有字段受权摘要，工程冻结及独占派发准备，未实现／未验收；N2导航两文件独立并行，Next为CA017业务归档及归档后原因更正。本批从已验main1471bfa启动。上一运营字段批次17/17、完整verify限定复用、main推送及保留数据预览已完成，证据只见VALIDATION。
+唯一Current／Next见路线图：Current为CA016最小结案资料＋案件既有字段受权摘要＋N2导航，五路作者固定候选已接纳，集成验收进行中；尚未完成组合验收／最终门禁。Next为CA017业务归档及归档后原因更正。本批从已验main1471bfa启动。上一运营字段批次证据只见VALIDATION，不复用为CA016组合通过。
 
 ## 当前任务
 
-**CORE-CA-016＋案件字段对齐已工程冻结，执行worktree准备中。** I复用`.local/worktrees/ca015-integration`／`codex/ca016-closure-display-integration`，业务基线`1471bfa76380409607a2d87a834b63cda3bc35cd`／tree`1d595f73970c66155273f4bc5ab2e0ed2a82905e`。已读只读分析01a1367f并裁定最小登记及原因更正仍WAITING_ARCHIVE、未知日期null、结案额独立KNOWN／PENDING、首版附件可空；不实现实收／结清／归档／重开。两新前向迁移必须精确接续finish→closure连续链，旧142迁移、事实／回执／字节保持。
+**CORE-CA-016＋案件字段对齐已实现候选，I独占组合验收中。** I复用`.local/worktrees/ca015-integration`／`codex/ca016-closure-display-integration`，业务基线`1471bfa76380409607a2d87a834b63cda3bc35cd`／tree`1d595f73970c66155273f4bc5ab2e0ed2a82905e`。五路源N2 fc57d2d、B1 61bfff4、P1 004f95c、F1 b956906＋abdf7f2＋e7c8461、D1 3d9141e已接纳，作者停止写入。前端作者实际15套494/494和全前端类型／静态检查通过；B1实际11套327/327、后端类型／静态通过且独立审查两轴ACCEPTED、未关C/I/M0，但不证明PG实测。最小登记及原因更正仍WAITING_ARCHIVE、未知日期null、结案额独立KNOWN／PENDING、首版附件可空；不实现实收／结清／归档／重开。
 
-后端B1唯一持有case-read服务／DTO及材料／权限必要接点，同时实现案件既有字段摘要；I不并写这些文件。N2两AppShell文件已建立独占树、正常冻结离线安装及context exit0；其他B1／P1／F1／D1准备见路线图唯一白名单。案件courtCaseNo真值与CA016详情合批；列表补客户／主体／平台／店铺／被告／律师／法院／案号及真实金额，不以假数据或财务推断补Demo。Worker不触权威文档、共享环境、PG、预览或push/main。
+集成8a4e315／tree5323049的Prisma生成及后端构建exit0。15433标准迁移首次DDL因PL/pgSQL IF中CASE缺括号失败，第一枚举已提交、第二步全回滚；I只修唯一新DDL两行，独立复核接受，144迁移随机schema回放exit0。精确核失败状态后Prisma resolve --rolled-back，标准前向部署exit0。失败、恢复、每步UTC／退出码／tree及新迁移SHA256保留ignored `.local/ca016-evidence/`；旧142未改，真实Grant不回填。新PG／普通密码浏览器与最终稳定候选完整门禁仍待统一结果，不拼称已通过。
 
-本批工程冻结及工作区准备不算实现／验收；风险角色路由和正式验证按三级规则。动作目录只增加类型，不自动回填现有真实Grant／Boundary或扩大账号scope；合成测试显式授权，真实新授权另据明确目标。既有预览5186／3206／15436维持b26cdfe、原2案／6凭据／142迁移，不提前迁移／reset／seed，主仓.pnpm-store及恢复stash保留。
+普通来源首项验收另暴露新引用守卫局部action变量与列名歧义（PG42702），旧opening API受影响。I仅修新函数局部变量及限定列，独立复核接受；15433精确CREATE OR REPLACE此新函数，全部迁移记录／原checksum保持。首次运营闭环1/1已通过；最终新迁移文件的空库144／142升级仍由独立随机schema验证，不把此前部署变体声称为最终checksum。上述两类失败及运行函数修复均保留原证据。
+
+尚未完成的组合验收、最终Review及完整门禁按三级规则执行。动作目录只增加类型，不自动回填现有真实Grant／Boundary或扩大账号scope；合成测试显式授权，真实新授权另据明确目标。既有预览5186／3206／15436维持b26cdfe、原2案／6凭据／142迁移，不提前迁移／reset／seed，主仓.pnpm-store及恢复stash保留。
 
 ### 已完成CORE-UI-001恢复证据
 

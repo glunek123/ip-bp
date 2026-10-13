@@ -167,10 +167,10 @@ END; $$;
 CREATE TRIGGER "case_closure_document_guard" BEFORE INSERT ON "case_closure_documents" FOR EACH ROW EXECUTE FUNCTION "check_case_closure_document"();
 
 CREATE FUNCTION "check_case_closure_reference"() RETURNS trigger LANGUAGE plpgsql AS $$
-DECLARE v record; action text;
+DECLARE v record; audit_action text;
 BEGIN
- SELECT "action" INTO action FROM "audit_events" WHERE "id"=NEW."action_event_id";
- IF action IN ('case.closure.recorded','case.closure.corrected') AND NEW."purpose"<>'CASE_CLOSURE_DOCUMENT' THEN RAISE EXCEPTION 'closure reference purpose mismatch' USING ERRCODE='23514'; END IF;
+ SELECT a."action" INTO audit_action FROM "audit_events" a WHERE a."id"=NEW."action_event_id";
+ IF audit_action IN ('case.closure.recorded','case.closure.corrected') AND NEW."purpose"<>'CASE_CLOSURE_DOCUMENT' THEN RAISE EXCEPTION 'closure reference purpose mismatch' USING ERRCODE='23514'; END IF;
  IF NEW."purpose"<>'CASE_CLOSURE_DOCUMENT' THEN RETURN NEW; END IF;
  SELECT * INTO v FROM "case_closure_versions" WHERE "audit_event_id"=NEW."action_event_id" AND "case_id"=NEW."resource_id" AND "department_id"=NEW."department_id" FOR UPDATE;
  IF NEW."resource_type"<>'case' OR v."id" IS NULL OR NOT EXISTS (SELECT 1 FROM "case_closure_documents" d WHERE d."closure_version_id"=v."id" AND d."case_id"=v."case_id" AND d."department_id"=v."department_id" AND d."material_id"=NEW."material_id" AND d."content_version_id"=NEW."content_version_id") OR EXISTS (SELECT 1 FROM "case_closure_receipts" r WHERE r."result_snapshot"->>'closureVersionId'=v."id"::text) THEN RAISE EXCEPTION 'closure reference mismatch' USING ERRCODE='23514'; END IF;
@@ -193,7 +193,7 @@ BEGIN
   NOT NEW."result_snapshot" ?& ARRAY['id','closureId','closureVersionId','finishId','stage','version','recordedAt'] OR
   NEW."result_snapshot"->>'id' IS DISTINCT FROM NEW."case_id"::text OR NEW."result_snapshot"->>'closureId' IS DISTINCT FROM v."closure_id"::text OR NEW."result_snapshot"->>'finishId' IS DISTINCT FROM v."finish_id"::text OR
   NEW."result_snapshot"->>'stage' IS DISTINCT FROM 'WAITING_ARCHIVE' OR NEW."result_snapshot"->>'version' IS DISTINCT FROM v."to_version"::text OR (NEW."result_snapshot"->>'recordedAt')::timestamptz IS DISTINCT FROM v."recorded_at" OR
-  NEW."command"::text IS DISTINCT FROM CASE WHEN v."kind"='REGISTER' THEN 'RECORD' ELSE 'CORRECT' END OR
+  NEW."command"::text IS DISTINCT FROM (CASE WHEN v."kind"='REGISTER' THEN 'RECORD' ELSE 'CORRECT' END) OR
   NOT EXISTS (SELECT 1 FROM "cases" c JOIN "case_closures" h ON h."case_id"=c."id" AND h."department_id"=c."department_id" WHERE c."id"=NEW."case_id" AND c."department_id"=NEW."department_id" AND c."stage"='WAITING_ARCHIVE' AND c."version"=v."to_version" AND h."current_version_id"=v."id")
  THEN RAISE EXCEPTION 'closure receipt mismatch' USING ERRCODE='23514'; END IF;
  RETURN NEW;
@@ -214,7 +214,7 @@ BEGIN
   SELECT * INTO a FROM "audit_events" WHERE "id"=v."audit_event_id";
   selected:=a."details"->'closeContentVersionIds';
   IF a."id" IS NULL OR a."actor_kind"<>'HUMAN' OR a."department_id"<>target_department OR a."resource_type"<>'CASE' OR a."resource_id"<>target_case OR a."actor_user_id"<>v."recorded_by_user_id" OR
-   a."action" IS DISTINCT FROM CASE WHEN v."kind"='REGISTER' THEN 'case.closure.recorded' ELSE 'case.closure.corrected' END OR
+   a."action" IS DISTINCT FROM (CASE WHEN v."kind"='REGISTER' THEN 'case.closure.recorded' ELSE 'case.closure.corrected' END) OR
    (a."internal_actor_user_id" IS DISTINCT FROM v."recorded_by_user_id" AND (v."kind"<>'REGISTER' OR NOT EXISTS (SELECT 1 FROM "lawyer_account_bindings" b WHERE b."id"=a."lawyer_account_binding_id" AND b."user_id"=v."recorded_by_user_id" AND b."department_id"=target_department))) OR
    a."details"->>'closureId' IS DISTINCT FROM h."id"::text OR a."details"->>'closureVersionId' IS DISTINCT FROM v."id"::text OR a."details"->>'finishId' IS DISTINCT FROM f."id"::text OR
    a."details"->'priorVersionId' IS DISTINCT FROM COALESCE(to_jsonb(v."prior_version_id"),'null'::jsonb) OR a."details"->>'fromVersion' IS DISTINCT FROM v."from_version"::text OR a."details"->>'toVersion' IS DISTINCT FROM v."to_version"::text OR

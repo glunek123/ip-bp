@@ -9,13 +9,18 @@ import {
 } from './case-execution-mailing-migration.mjs';
 
 const directory = resolve(process.cwd(), 'backend/prisma/migrations');
-const names = readdirSync(directory)
+const allNames = readdirSync(directory)
   .filter((name) => /^\d{14}_/u.test(name))
   .sort();
 const suffix = [
   '20261013070000_add_case_execution_finish_enums',
   '20261013070100_guard_case_execution_finish',
 ];
+// CA015 probes its original supported prefix. Later slices own their full-chain
+// migration probes; adding a forward migration must not rewrite this boundary.
+const finishBoundary = allNames.indexOf(suffix[1]);
+if (finishBoundary < 0) throw new Error('Missing execution finish boundary');
+const names = allNames.slice(0, finishBoundary + 1);
 const quote = (value) => `"${value.replaceAll('"', '""')}"`;
 const sql = (name) =>
   readFileSync(resolve(directory, name, 'migration.sql'), 'utf8');
