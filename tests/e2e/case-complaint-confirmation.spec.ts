@@ -269,17 +269,21 @@ test('password sessions confirm an exact revision, download real bytes and keep 
     page.locator('[data-test="confirmed-complaint-record"]'),
   ).toContainText('确认金额：¥ 223.45');
   await expect(
-    page.locator('[data-test="case-stage"]').filter({
-      hasText: '诉状待盖章',
-    }),
+    page.locator('[data-test="complaint-preparation-stage"]'),
   ).toContainText('1');
 
-  await page
-    .locator('[data-test="case-stage"]')
-    .filter({
-      hasText: '诉状待盖章',
-    })
-    .click();
+  await page.locator('[data-test="complaint-preparation-stage"]').click();
+  await expect
+    .poll(() => new URL(page.url()).searchParams.get('stageGroup'))
+    .toBe('COMPLAINT_PREPARATION');
+  await expect(
+    page.locator(`[data-test="case-list"] a[href^="/cases/${seeded.caseId}"]`),
+  ).toBeVisible();
+  await page.goto('/cases?view=mine&stage=WAITING_COMPLAINT_STAMP');
+  expect(new URL(page.url()).searchParams.has('stageGroup')).toBe(false);
+  expect(new URL(page.url()).searchParams.get('stage')).toBe(
+    'WAITING_COMPLAINT_STAMP',
+  );
   await expect(
     page.locator(`[data-test="case-list"] a[href^="/cases/${seeded.caseId}"]`),
   ).toBeVisible();
