@@ -4,7 +4,7 @@ import { createPinia, setActivePinia } from 'pinia';
 import { createMemoryHistory, createRouter, RouterView } from 'vue-router';
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 import { ApiError } from '../../api/http';
-import type { CaseSummary } from '../../api/cases';
+import type { CaseDetail, CaseSummary } from '../../api/cases';
 import { useAuthStore } from '../../stores/auth';
 import CaseListPage from './CaseListPage.vue';
 import CaseDetailPage from './CaseDetailPage.vue';
@@ -91,6 +91,8 @@ beforeEach(() => {
         canMailExecution: false,
         canSubmitExecutionFiling: false,
         canFinishExecution: false,
+        canRecordClosure: false,
+        canCorrectClosure: false,
         canSubmitComplaint: false,
         canConfirmComplaint: false,
         canMailComplaint: false,
@@ -108,6 +110,37 @@ beforeEach(() => {
         canRevokeSecondInstanceResult: false,
         sourceLead: { id: 'lead-1', businessNo: 'LD-1' },
         sourceNotaryMatter: { id: 'matter-1', businessNo: 'NZ-1' },
+        displaySummary: {
+          customerName: '客户甲',
+          rightsHolderName: '权利人甲',
+          source: {
+            platform: 'TAOBAO',
+            shopName: '店铺甲',
+            shopExternalId: null,
+          },
+          defendants: [],
+          lawyers: [],
+          court: null,
+          courtCaseNo: null,
+          claimAmount: {
+            state: 'UNRECORDED',
+            amount: null,
+            sourceType: null,
+            sourceId: null,
+          },
+          judgmentAmount: {
+            state: 'UNRECORDED',
+            amount: null,
+            sourceType: null,
+            sourceId: null,
+          },
+          closureAmount: {
+            state: 'UNRECORDED',
+            amount: null,
+            sourceType: null,
+            sourceId: null,
+          },
+        },
       } satisfies CaseSummary,
     ],
     total: 1,
@@ -139,6 +172,9 @@ beforeEach(() => {
     createdAt: '2026-09-28T00:00:00Z',
     version: 1,
     canMatch: true,
+    canRecordClosure: false,
+    canCorrectClosure: false,
+    closure: null,
     courtCaseNo: null,
     department: { id: 'department-1', name: '知产部' },
     customer: { id: 'customer-1', name: '客户甲' },
@@ -169,6 +205,7 @@ beforeEach(() => {
     matchedOn: null,
     canSubmitComplaint: false,
     canConfirmComplaint: false,
+    canMailComplaint: false,
     canSubmitFiling: false,
     canRegisterAcceptance: false,
     canUploadAcceptanceMaterials: false,
@@ -200,6 +237,7 @@ beforeEach(() => {
       corrections: [],
     },
     judgment: { current: null, history: [], availableFiles: [] },
+    judgmentNextStep: { current: null, history: [], revocations: [] },
     acceptances: [],
     secondInstance: {
       currentTrialRoundId: null,
@@ -212,11 +250,14 @@ beforeEach(() => {
     },
     executionSubmission: { current: null, submissions: [], availableFiles: [] },
     canConfirmExecution: false,
+    canMailExecution: false,
+    canSubmitExecutionFiling: false,
+    canFinishExecution: false,
     executionConfirmation: null,
     executionMailing: null,
     executionFiling: null,
     executionFinish: null,
-  });
+  } satisfies CaseDetail);
   api.listOwnerMaterials.mockResolvedValue({ items: [], total: 0 });
   api.listFilingCourts.mockResolvedValue([]);
   api.createFilingCourt.mockResolvedValue({ id: 'court-1', name: '真实法院' });
@@ -264,7 +305,7 @@ function confirmationDetail(
     | 'WAITING_COMPLAINT_CONFIRMATION'
     | 'WAITING_COMPLAINT_STAMP' = 'WAITING_COMPLAINT_CONFIRMATION',
   version = 3,
-) {
+): CaseDetail {
   return {
     id,
     businessNo: `CA-${id}`,
@@ -278,6 +319,9 @@ function confirmationDetail(
     canMailExecution: false,
     canSubmitExecutionFiling: false,
     canFinishExecution: false,
+    canRecordClosure: false,
+    canCorrectClosure: false,
+    closure: null,
     canSubmitFiling: false,
     canRegisterAcceptance: false,
     canUploadAcceptanceMaterials: false,
@@ -285,6 +329,8 @@ function confirmationDetail(
     canCorrectHearing: false,
     canRegisterJudgment: false,
     canCorrectJudgment: false,
+    canChooseJudgmentNextStep: false,
+    canRevokeJudgmentNextStep: false,
     courtCaseNo: null,
     department: { id: 'department-1', name: '知产部' },
     customer: { id: 'customer-1', name: '客户甲' },
@@ -460,7 +506,7 @@ async function createUnknownConfirmation(wrapper: ReturnType<typeof mount>) {
 }
 
 describe('case pages', () => {
-  it('renders six aligned columns with exact identifiers and an accessible owner', async () => {
+  it('renders authorized columns with exact identifiers and an accessible owner', async () => {
     const base = await api.listCases();
     const ownerName = '负责运营甲（负责多个区域与客户的长名称）';
     api.listCases.mockResolvedValue({
@@ -486,27 +532,37 @@ describe('case pages', () => {
     expect(wrapper.findAll('thead th').map((cell) => cell.text())).toEqual([
       '操作／案件编号',
       '案件进展',
-      '负责人',
-      '办理权限',
-      '来源线索',
-      '公证事项',
+      '客户',
+      '权利主体',
+      '平台',
+      '店铺',
+      '店铺ID',
+      '被告',
+      '律师',
+      '法院',
+      '案号',
+      '标的额',
+      '判决额',
+      '结案额',
     ]);
     expect(
       wrapper
         .findAll('thead th')
         .every((cell) => cell.attributes('scope') === 'col'),
     ).toBe(true);
-    expect(wrapper.findAll('colgroup col')).toHaveLength(6);
+    expect(wrapper.findAll('colgroup col')).toHaveLength(14);
     const cells = wrapper.findAll('tbody tr td');
-    expect(cells).toHaveLength(6);
+    expect(cells).toHaveLength(14);
     expect(cells[0]!.get('a').text()).toBe('CA-20261013-00001234');
     expect(cells[0]!.get('a').attributes('href')).toBe(
       '/cases/case%2Fencoded?view=department&stage=PENDING_MATCH',
     );
-    expect(cells[4]!.text()).toBe('LD-20261013-00005678');
-    expect(cells[5]!.text()).toBe('NZ-20261013-00009012');
-    expect(cells[2]!.get('details summary').text()).toBe(ownerName);
-    expect(cells[2]!.get('details p').text()).toBe(ownerName);
+    expect(cells[0]!.text()).toContain('LD-20261013-00005678');
+    expect(cells[0]!.text()).toContain('NZ-20261013-00009012');
+    expect(cells[0]!.get('details summary').text()).toBe(
+      `负责人：${ownerName}`,
+    );
+    expect(cells[0]!.get('details p').text()).toBe(`负责人：${ownerName}`);
     expect(wrapper.get('.business-list-scroll').attributes()).toMatchObject({
       role: 'region',
       tabindex: '0',
@@ -525,6 +581,8 @@ describe('case pages', () => {
     'canMailExecution',
     'canSubmitExecutionFiling',
     'canFinishExecution',
+    'canRecordClosure',
+    'canCorrectClosure',
     'canSubmitComplaint',
     'canConfirmComplaint',
     'canMailComplaint',
@@ -558,8 +616,8 @@ describe('case pages', () => {
       });
       const wrapper = await mountRoute('/cases', CaseListPage);
       const rows = wrapper.findAll('tbody tr');
-      expect(rows[0]!.findAll('td')[3]!.text()).toBe('办理');
-      expect(rows[1]!.findAll('td')[3]!.text()).toBe('只读');
+      expect(rows[0]!.findAll('td')[1]!.get('.field-help').text()).toBe('办理');
+      expect(rows[1]!.findAll('td')[1]!.get('.field-help').text()).toBe('只读');
       wrapper.unmount();
     },
   );
@@ -1364,6 +1422,9 @@ describe('case pages', () => {
       createdAt: '2026-09-28T00:00:00Z',
       version: 2,
       canMatch: false,
+      canRecordClosure: false,
+      canCorrectClosure: false,
+      closure: null,
       owner: { id: 'user-1', displayName: '负责人' },
       courtCaseNo: null,
       department: { id: 'department-1', name: '知产部' },
@@ -1494,6 +1555,9 @@ describe('case pages', () => {
       createdAt: '2026-09-28T00:00:00Z',
       version: 1,
       canMatch: false,
+      canRecordClosure: false,
+      canCorrectClosure: false,
+      closure: null,
       owner: { id: 'user-1', displayName: '同部门负责人' },
       courtCaseNo: null,
       department: { id: 'department-1', name: '知产部' },

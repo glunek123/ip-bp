@@ -4,6 +4,7 @@ import { RouterLink, useRoute, useRouter } from 'vue-router';
 import { ElButton } from 'element-plus/es/components/button/index.mjs';
 import { ApiError } from '../../api/http';
 import { useAuthStore } from '../../stores/auth';
+import { labelLeadPlatform } from '../leads/lead-options';
 import {
   listCases,
   type CaseStageGroup,
@@ -90,6 +91,27 @@ function canHandle(item: CaseSummary): boolean {
   return Object.entries(item).some(
     ([name, value]) => name.startsWith('can') && value === true,
   );
+}
+const amountColumns = [
+  { key: 'claimAmount', label: '标的额' },
+  { key: 'judgmentAmount', label: '判决额' },
+  { key: 'closureAmount', label: '结案额' },
+] as const;
+const nameColumns = ['customerName', 'rightsHolderName'] as const;
+type DisplayAmount =
+  CaseSummary['displaySummary'][(typeof amountColumns)[number]['key']];
+function amountLabel(amount: DisplayAmount): string {
+  if (amount.state === 'UNRECORDED') return '未登记';
+  if (amount.state === 'PENDING') return '待定';
+  return amount.amount ?? '未登记';
+}
+function amountSourceLabel(source: DisplayAmount['sourceType']): string {
+  if (source === 'COMPLAINT_CONFIRMATION') return '诉状确认';
+  if (source === 'COMPLAINT_SUBMISSION') return '已提交诉状';
+  if (source === 'FIRST_INSTANCE_JUDGMENT') return '一审判决';
+  if (source === 'SECOND_INSTANCE_RESULT') return '二审结果';
+  if (source === 'CASE_CLOSURE_VERSION') return '结案登记';
+  return '未登记';
 }
 const state = ref<'loading' | 'ready' | 'failed'>('loading');
 const items = ref<CaseSummary[]>([]);
@@ -287,53 +309,188 @@ onBeforeUnmount(() => request?.abort());
             <colgroup>
               <col class="case-list-col--identity" />
               <col class="case-list-col--stage" />
-              <col class="case-list-col--owner" />
-              <col class="case-list-col--permission" />
+              <col class="case-list-col--name" />
+              <col class="case-list-col--name" />
+              <col class="case-list-col--platform" />
+              <col class="case-list-col--name" />
               <col class="case-list-col--identity" />
+              <col class="case-list-col--name" />
+              <col class="case-list-col--name" />
+              <col class="case-list-col--name" />
               <col class="case-list-col--identity" />
+              <col
+                v-for="column in amountColumns"
+                :key="column.key"
+                class="case-list-col--amount"
+              />
             </colgroup>
             <thead>
               <tr>
                 <th scope="col">操作／案件编号</th>
                 <th scope="col">案件进展</th>
-                <th scope="col">负责人</th>
-                <th scope="col">办理权限</th>
-                <th scope="col">来源线索</th>
-                <th scope="col">公证事项</th>
+                <th scope="col">客户</th>
+                <th scope="col">权利主体</th>
+                <th scope="col">平台</th>
+                <th scope="col">店铺</th>
+                <th scope="col">店铺ID</th>
+                <th scope="col">被告</th>
+                <th scope="col">律师</th>
+                <th scope="col">法院</th>
+                <th scope="col">案号</th>
+                <th
+                  v-for="column in amountColumns"
+                  :key="column.key"
+                  scope="col"
+                  class="num"
+                >
+                  {{ column.label }}
+                </th>
               </tr>
             </thead>
             <tbody>
               <tr v-for="item in items" :key="item.id">
                 <td class="business-list-cell--nowrap">
                   <RouterLink
+                    class="mono"
                     :to="{
                       path: `/cases/${encodeURIComponent(item.id)}`,
                       query: route.query,
                     }"
                     >{{ item.businessNo }}</RouterLink
                   >
-                </td>
-                <td class="business-list-cell--nowrap">
-                  <span class="pill">{{ stageLabel(item.stage) }}</span>
-                </td>
-                <td class="business-list-cell--text">
-                  <details class="case-list-owner">
+                  <details class="case-list-context">
                     <summary :title="item.owner.displayName">
-                      {{ item.owner.displayName }}
+                      负责人：{{ item.owner.displayName }}
                     </summary>
-                    <p>{{ item.owner.displayName }}</p>
+                    <p>负责人：{{ item.owner.displayName }}</p>
+                    <p>
+                      来源线索：<span class="mono case-list-identifier">{{
+                        item.sourceLead.businessNo
+                      }}</span>
+                    </p>
+                    <p>
+                      公证事项：<span class="mono case-list-identifier">{{
+                        item.sourceNotaryMatter.businessNo
+                      }}</span>
+                    </p>
                   </details>
                 </td>
                 <td class="business-list-cell--nowrap">
-                  <span class="pill">{{
-                    canHandle(item) ? '办理' : '只读'
+                  <span class="pill">{{ stageLabel(item.stage) }}</span>
+                  <p class="field-help">
+                    {{ canHandle(item) ? '办理' : '只读' }}
+                  </p>
+                </td>
+                <td
+                  v-for="column in nameColumns"
+                  :key="column"
+                  class="business-list-cell--text"
+                >
+                  <details class="case-list-name">
+                    <summary :title="item.displaySummary[column]">
+                      {{ item.displaySummary[column] }}
+                    </summary>
+                    <p>{{ item.displaySummary[column] }}</p>
+                  </details>
+                </td>
+                <td class="business-list-cell--nowrap">
+                  {{ labelLeadPlatform(item.displaySummary.source.platform) }}
+                </td>
+                <td class="business-list-cell--text">
+                  <details class="case-list-name">
+                    <summary :title="item.displaySummary.source.shopName">
+                      {{ item.displaySummary.source.shopName }}
+                    </summary>
+                    <p>{{ item.displaySummary.source.shopName }}</p>
+                  </details>
+                </td>
+                <td class="mono business-list-cell--nowrap">
+                  {{ item.displaySummary.source.shopExternalId ?? '未登记' }}
+                </td>
+                <td class="business-list-cell--text">
+                  <details
+                    v-if="item.displaySummary.defendants.length"
+                    class="case-list-name"
+                  >
+                    <summary>
+                      {{
+                        item.displaySummary.defendants
+                          .map((defendant) => defendant.name)
+                          .join('、')
+                      }}
+                    </summary>
+                    <ul>
+                      <li
+                        v-for="defendant in item.displaySummary.defendants"
+                        :key="defendant.id"
+                      >
+                        {{ defendant.name }}
+                      </li>
+                    </ul>
+                  </details>
+                  <span v-else>未登记</span>
+                </td>
+                <td class="business-list-cell--text">
+                  <details
+                    v-if="item.displaySummary.lawyers.length"
+                    class="case-list-name"
+                  >
+                    <summary>
+                      {{
+                        item.displaySummary.lawyers
+                          .map((lawyer) => lawyer.fullName)
+                          .join('、')
+                      }}
+                    </summary>
+                    <ul>
+                      <li
+                        v-for="lawyer in item.displaySummary.lawyers"
+                        :key="lawyer.id"
+                      >
+                        {{ lawyer.fullName }}
+                      </li>
+                    </ul>
+                  </details>
+                  <span v-else>未登记</span>
+                </td>
+                <td class="business-list-cell--text">
+                  <details
+                    v-if="item.displaySummary.court"
+                    class="case-list-name"
+                  >
+                    <summary :title="item.displaySummary.court.name">
+                      {{ item.displaySummary.court.name }}
+                    </summary>
+                    <p>{{ item.displaySummary.court.name }}</p>
+                  </details>
+                  <span v-else>未登记</span>
+                </td>
+                <td class="mono business-list-cell--nowrap">
+                  {{ item.displaySummary.courtCaseNo ?? '未登记' }}
+                </td>
+                <td
+                  v-for="column in amountColumns"
+                  :key="column.key"
+                  class="mono business-list-cell--number"
+                >
+                  <span>{{
+                    amountLabel(item.displaySummary[column.key])
                   }}</span>
-                </td>
-                <td class="business-list-cell--nowrap">
-                  {{ item.sourceLead.businessNo }}
-                </td>
-                <td class="business-list-cell--nowrap">
-                  {{ item.sourceNotaryMatter.businessNo }}
+                  <details
+                    v-if="item.displaySummary[column.key].sourceId !== null"
+                    class="case-list-amount-source"
+                  >
+                    <summary>
+                      {{
+                        amountSourceLabel(
+                          item.displaySummary[column.key].sourceType,
+                        )
+                      }}
+                    </summary>
+                    <p>
+                      来源记录：{{ item.displaySummary[column.key].sourceId }}
+                    </p>
+                  </details>
                 </td>
               </tr>
             </tbody>
@@ -372,7 +529,7 @@ onBeforeUnmount(() => request?.abort());
 
 <style scoped>
 .case-list-table {
-  min-width: 1020px;
+  min-width: 2600px;
 }
 
 .case-list-col--identity {
@@ -383,15 +540,19 @@ onBeforeUnmount(() => request?.abort());
   width: 140px;
 }
 
-.case-list-col--owner {
+.case-list-col--name {
+  width: 180px;
+}
+
+.case-list-col--platform {
+  width: 100px;
+}
+
+.case-list-col--amount {
   width: 160px;
 }
 
-.case-list-col--permission {
-  width: 120px;
-}
-
-.case-list-owner summary {
+.case-list-name summary {
   display: -webkit-box;
   overflow: hidden;
   -webkit-box-orient: vertical;
@@ -401,10 +562,25 @@ onBeforeUnmount(() => request?.abort());
   overflow-wrap: anywhere;
 }
 
-.case-list-owner p {
+.case-list-name p,
+.case-list-name ul,
+.case-list-context p,
+.case-list-amount-source p {
   margin: var(--s-2) 0 0;
   white-space: normal;
   overflow-wrap: anywhere;
+}
+
+.case-list-context,
+.case-list-amount-source {
+  margin-top: var(--s-2);
+  color: var(--color-ink-muted);
+  font-size: 12px;
+}
+
+.case-list-identifier {
+  white-space: nowrap;
+  word-break: normal;
 }
 
 .case-list-pagination {
