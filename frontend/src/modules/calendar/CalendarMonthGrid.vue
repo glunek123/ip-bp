@@ -30,8 +30,9 @@ const props = withDefaults(
     loading?: boolean;
     error?: string | null;
     canRead: boolean;
+    unconnectedTypes?: readonly CalendarEvent['type'][];
   }>(),
-  { loading: false, error: null, today: null },
+  { loading: false, error: null, today: null, unconnectedTypes: () => [] },
 );
 const emit = defineEmits<{
   'update:month': [month: string];
@@ -295,7 +296,8 @@ function openEvent(event: CalendarEvent): void {
       <ul class="calendar-legend" aria-label="事件类型图例">
         <li v-for="(typeLabel, type) in CALENDAR_EVENT_LABELS" :key="type">
           <i :class="`calendar-dot-${type}`" aria-hidden="true"></i
-          >{{ typeLabel }}
+          >{{ typeLabel
+          }}<span v-if="unconnectedTypes.includes(type)"> · 未接入</span>
         </li>
       </ul>
     </template>

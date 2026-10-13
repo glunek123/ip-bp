@@ -63,6 +63,13 @@ afterEach(() => {
 });
 
 describe('CalendarMonthGrid', () => {
+  it('labels only caller-declared missing sources without inventing events', () => {
+    const wrapper = render({ events: [], unconnectedTypes: ['pay', 'other'] });
+    expect(
+      wrapper.findAll('.calendar-legend li').map((item) => item.text()),
+    ).toEqual(['开庭', '缴费截止 · 未接入', '合同到期', '重要节点 · 未接入']);
+    expect(wrapper.find('.calendar-event').exists()).toBe(false);
+  });
   it('uses a general empty state when no event source type is supplied', () => {
     const wrapper = render({ events: [] });
     expect(wrapper.get('[role="status"]').text()).toBe('本月暂无事件。');
