@@ -1224,3 +1224,15 @@ Task C实际提交`0cc238bdffc930aecc2be7058425b2d45ee14b00`，tree`c4934c0a904b
 该集成候选相对前端修复提交d659f1b仅增加项目恢复摘要、本验证记录和对应快照；客户源码仍与225项测试及浏览器复测的16文件SHA256清单一致。原5cc84c1完整verify/293项数据库证据和本次Level 1增量证据分别保留，不称b719857实跑完整门禁。准备阶段及快进后严格上下文、Spec及受影响格式检查按实际输出核对；本次最后收口仅补项目状态、路线图、本完成态记录及对应快照，使用文档专项核对，不重新改写业务契约或验证输入。
 
 远端CI结果未查询，不称CI已通过。未创建PR、Release或部署，未执行开发/生产迁移，也未停止独立人工服务。外部异模型Review仍Pending，Current保持CU008已验收并集成main、Next为未领取CA009。
+
+## CORE-UI-001运营字段与列表对齐（2026-10-13）
+
+代码／测试固定候选`fd7a839cb6cb119953da78e61c759893dbc2f04f`，tree`771a42db2840ae2b244f11a5151db8906f01bad5`；从冻结`d709600`组合V0源8091e62＋修复c063f0a、V1源3d4e24f、V2源5ecb044、V3源9504aa8及I共享API／精确汇总／受权名称／限定CSS。公证来源只按同部门精确关系读取，转案摘要另要求case.read DEPARTMENT，不从lead.read拼接；旧五列存储读时扩19而不PUT，新默认17运营列。线索读响应新增displayNames，原创建／更新回执不扩；BigInt分位汇总保留真实0，未登记／待定不造金额。案件只重排既有字段和真实能力汇总，不新增案件财务或操作。
+
+作者及I聚焦结果分别保留：V1两页82/82，V2表单＋列表详情46/46，V3两页142/142；I共享线索API／helper25/25、后续guard API17/17、公证API37/37、后端Lead91/91；V0原76项与审查前序修复45/45。不能把各树合计称为本候选一次组合测试。V0原独立Review REJECTED I1，修复前序照片／evidence门槛后两轴ACCEPTED。组合a224437另REJECTED I1（线索旧身份投影），0cdec61加入同步范围watch、读／下载取消和迟到命令保护及40/40反例，frontend类型首次fixture never[]错误仅修注解后exit0；同一未参与实现的gpt-6-sol独立复审及fd7a839最终增量审查两轴ACCEPTED，未关C/I/M=0/0/0。未核到作者实际模型标识，不假称路由匹配；未宣称外部异模型Review通过。
+
+真实隔离环境恢复：既有dev-cor-postgres-test-1此前停止，启动后第一次迁移在health尚starting时拒绝、未执行；健康后正式pnpm db:test:migrate:deploy exit0，142条前向迁移已应用。只15433/backend/.env.test及I专用test私有文件根，未碰15436持久预览或其他库。LeadNewPage初轮Temp EPERM／0tests，相同pnpm入口一次提权4/4通过；保留预检和工程配置。
+
+初轮真实验收不算最终通过：17:14:29–17:15:15 UTC新三项2过1失败（恢复case.read helper写回TEAM而非原DEPARTMENT，已精确恢复）；17:21:57–17:25:11 UTC八个明确文件14项8过6失败（“平台”匹配下拉及店铺ID，已改稳定name并补齐批准文案）。2过包括旧偏好与三视口；8过包含普通密码21案双端分页、律师办理、判决分组、列偏好、原五列CSV与批归档。日志／退出码／准确UTC／输入SHA256／初轮trace及图片保留于ignored `.local/ui-evidence/operational-display-initial.*`、`display-compatibility-initial.*`与对应artifact副本。新截图进一步限制长摘要宽度、展开全文，并区分closed主图与expanded补图；旧失败结果不改写为新候选通过。
+
+正式最终完整verify与同17项统一PG／Chromium组合待执行；三视口最终图片待读图确认。当前未push／main或更新5186，不称本批完成、生产可用或全部Demo完成。最终结果将在本节回填，不新建平行账本。

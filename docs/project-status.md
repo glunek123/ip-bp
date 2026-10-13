@@ -8,7 +8,9 @@
 
 ## 当前任务
 
-**CORE-UI-001｜Demo字段与列表视觉对齐已启动，尚未实现／验收。** I复用ca015-integration的codex/demo-list-display-alignment，从bd0e02b冻结来源／DTO／偏好与V0～V3独占白名单（见路线图及notary/leads Spec）；父线程启动Worker。I持有API、共享CSS、最小Lead名称投影、验收及文档。原用户预览5186／3206／15436继续运行，不重启／占库；主仓.pnpm-store与stash保留。已核无.agents/skills、无.codegraph；运行时24.21.0／11.27.0，开工context:check exit0无漂移。用户暂停后未提交或派发，四份草稿保留；用户明确继续后从原现场恢复，修复Current编号一致性。本批暂无产品／数据库／截图验证结果。
+**CORE-UI-001｜产品与验收候选已固定，最终门禁待执行。** I目录`.local/worktrees/ca015-integration`、分支`codex/demo-list-display-alignment`，源码／验收候选`fd7a839cb6cb119953da78e61c759893dbc2f04f`／tree`771a42db2840ae2b244f11a5151db8906f01bad5`。四路作者提交已接纳；V0独立复审关闭两项真实前序能力问题，最终组合另发现线索身份／授权代次隔离缺口，`0cdec61`修复后40/40及前端类型通过、同一独立Sol两轴ACCEPTED C/I/M=0。CSS长文本边界与新增真实来源／权限／偏好／三视口测试已固定，最终增量Review进行中。准确运行模型只核到Reviewer明确gpt-6-sol，作者实际标识未核，不假称。
+
+2026-10-13 17:25 UTC：仅恢复既有compose测试容器15433并完成142条前向迁移，用户持久预览尚未操作。新三项初跑2过1失败（恢复case.read误用TEAM已修为原DEPARTMENT），旧八文件14项初跑8过6失败（平台标签同时匹配店铺ID，已改既有select name并补齐文案）；原日志、JSON、trace与截图保留在ignored `.local/ui-evidence/`。没有将散装结果称为最终验收通过。下一步：最终组合Review、固定文档/context后完整verify及同17项统一PG/Chromium验收，读图确认，再按既有授权推送／快进main、保留15436数据更新预览。主仓库原stash与.pnpm-store保留；本批未push、未更新5186，生产不操作。
 
 ### 已完成CA015＋N1恢复证据
 
