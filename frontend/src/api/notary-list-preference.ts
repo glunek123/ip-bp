@@ -3,6 +3,20 @@ import { ApiError, getJson, requestJson, type RequestOptions } from './http';
 export const notaryListPreferenceColumns = [
   'businessNo',
   'stage',
+  'rightsHolder',
+  'platform',
+  'shopName',
+  'shopExternalId',
+  'transferredAt',
+  'evidenceAt',
+  'openingPhotos',
+  'certificateNo',
+  'senderName',
+  'senderPhone',
+  'senderAddress',
+  'notaryFee',
+  'investigationFee',
+  'sampleFee',
   'sourceLead',
   'notaryOffice',
   'createdAt',
@@ -15,11 +29,16 @@ export type NotaryListPreference = {
 };
 
 const fixedColumns = ['businessNo', 'stage'] as const;
-const optionalColumns = ['sourceLead', 'notaryOffice', 'createdAt'] as const;
+const optionalColumns = notaryListPreferenceColumns.filter(
+  (
+    column,
+  ): column is Exclude<NotaryListPreferenceColumn, 'businessNo' | 'stage'> =>
+    column !== 'businessNo' && column !== 'stage',
+);
 
 export const defaultNotaryListPreference: NotaryListPreference = {
   order: [...notaryListPreferenceColumns],
-  hidden: [],
+  hidden: ['sourceLead', 'notaryOffice', 'createdAt'],
 };
 
 function invalidResponse(): ApiError {

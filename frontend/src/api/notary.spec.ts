@@ -21,7 +21,36 @@ import {
   archiveNotaryReturn,
 } from './notary';
 
+const displayFields = {
+  sourceSummary: {
+    customer: { id: 'customer-1', name: '客户甲' },
+    rightsHolder: { id: 'holder-1', name: '主体甲' },
+    platform: 'TAOBAO',
+    shopName: '真实店铺',
+    shopExternalId: null,
+  },
+  transferredAt: '2026-09-24',
+  evidenceAt: null,
+  openingSummary: null,
+  certificateSummary: null,
+  fees: {
+    notary: { state: 'UNRECORDED', amount: null },
+    investigation: { state: 'UNRECORDED', amount: null },
+    sample: { state: 'UNRECORDED', amount: null },
+  },
+  linkedCase: null,
+  capabilities: {
+    recordEvidence: true,
+    recordOpening: false,
+    reviewOpening: false,
+    decideIssuance: false,
+    archiveReturn: false,
+  },
+};
+
 const matter = {
+  ...displayFields,
+  certificateFiles: [],
   id: 'matter-1',
   businessNo: 'NT-20260924-001',
   leadId: 'lead-1',
@@ -51,6 +80,239 @@ const matter = {
 
 beforeEach(() => vi.resetAllMocks());
 
+function displayList(item: Record<string, unknown>) {
+  return {
+    items: [item],
+    total: 1,
+    page: 1,
+    pageSize: 20,
+    counts: Object.fromEntries(
+      [
+        'PENDING_EVIDENCE',
+        'WAITING_UNBOX',
+        'UNBOX_REVIEW',
+        'ISSUANCE_DECISION',
+        'WAITING_CERTIFICATE',
+        'WAITING_RETURN',
+        'ARCHIVED',
+      ].map((stage) => [stage, stage === item.stage ? 1 : 0]),
+    ),
+  };
+}
+
+function displayItem() {
+  return {
+    ...displayFields,
+    id: 'matter-1',
+    businessNo: 'NT-001',
+    stage: 'WAITING_UNBOX',
+    createdAt: matter.createdAt,
+    evidenceAt: '2026-09-24',
+    sourceLead: { id: 'lead-1', businessNo: 'LD-001' },
+    notaryOffice: matter.notaryOffice,
+    capabilities: {
+      ...displayFields.capabilities,
+      recordEvidence: false,
+      recordOpening: true,
+    },
+  };
+}
+
+describe('notary operational display contract', () => {
+  it.each([
+    { state: 'UNRECORDED', amount: null },
+    { state: 'PENDING', amount: null },
+    { state: 'KNOWN', amount: '0.00' },
+    { state: 'KNOWN', amount: '9999999999999999.99' },
+  ])(
+    'preserves the exact fee state and decimal string $state/$amount',
+    async (fee) => {
+      const item = {
+        ...displayItem(),
+        fees: { ...displayFields.fees, sample: fee },
+      };
+      http.getJson.mockResolvedValue(displayList(item));
+      const result = await listNotaryMatters();
+      expect(result.items[0]?.fees.sample).toEqual(fee);
+    },
+  );
+
+  it.each([
+    { fees: { ...displayFields.fees, sample: { state: 'KNOWN', amount: 0 } } },
+    {
+      fees: {
+        ...displayFields.fees,
+        sample: { state: 'PENDING', amount: '0.00' },
+      },
+    },
+    { transferredAt: '2026-02-30' },
+    {
+      openingSummary: {
+        photoCount: -1,
+        senderName: null,
+        senderPhone: null,
+        senderAddress: null,
+      },
+    },
+    {
+      linkedCase: {
+        id: 'case-1',
+        businessNo: 'CA-1',
+        stage: 'EXECUTING',
+        internalAmount: '10.00',
+      },
+    },
+    { sourceSummary: { ...displayFields.sourceSummary, platform: 'UNKNOWN' } },
+    { capabilities: { ...displayFields.capabilities, recordEvidence: 'true' } },
+  ])(
+    'rejects an invalid or overbroad operational projection %j',
+    async (change) => {
+      http.getJson.mockResolvedValue(
+        displayList({ ...displayItem(), ...change }),
+      );
+      await expect(listNotaryMatters()).rejects.toMatchObject({
+        code: 'INVALID_RESPONSE',
+      });
+    },
+  );
+
+  it('keeps frozen PDF and disclosure references exact and rejects storage metadata', async () => {
+    const certificateFiles = [
+      {
+        materialId: 'certificate-material',
+        contentVersionId: 'certificate-version',
+        originalFilename: '证书.pdf',
+        mimeType: 'application/pdf',
+        purpose: 'NOTARY_CERTIFICATE',
+      },
+      {
+        materialId: 'disclosure-material',
+        contentVersionId: 'disclosure-version',
+        originalFilename: '披露.png',
+        mimeType: 'image/png',
+        purpose: 'NOTARY_DISCLOSURE',
+      },
+    ];
+    const issued = {
+      ...matter,
+      stage: 'ARCHIVED',
+      version: 6,
+      capabilities: {
+        recordEvidence: false,
+        recordOpening: false,
+        reviewOpening: false,
+        decideIssuance: false,
+        archiveReturn: false,
+      },
+      evidenceAt: '2026-09-24',
+      evidence: {
+        evidenceAt: '2026-09-24',
+        sampleFeeState: 'PENDING',
+        sampleFeeAmount: null,
+        recordedAt: matter.createdAt,
+        recordedByUserId: 'operator',
+        logistics: [
+          {
+            id: 'logistics',
+            companyState: 'NONE',
+            companyValue: null,
+            trackingState: 'NONE',
+            trackingValue: null,
+          },
+        ],
+      },
+      openingSummary: {
+        photoCount: 1,
+        senderName: null,
+        senderPhone: null,
+        senderAddress: null,
+      },
+      opening: {
+        senderName: null,
+        senderPhone: null,
+        senderAddress: null,
+        recordedAt: matter.createdAt,
+        recordedByUserId: 'operator',
+        photos: [
+          {
+            materialId: 'photo-material',
+            contentVersionId: 'photo-version',
+            originalFilename: '照片.jpg',
+            mimeType: 'image/jpeg',
+          },
+        ],
+      },
+      reviewDecision: {
+        result: 'INFRINGEMENT',
+        reason: null,
+        actorKind: 'INTERNAL',
+        actorDisplayName: '运营',
+        decidedAt: matter.createdAt,
+        archivedAt: null,
+      },
+      issuanceDecision: {
+        decision: 'ISSUE',
+        actorDisplayName: '公证员',
+        decidedAt: matter.createdAt,
+      },
+      certificateSummary: {
+        id: 'certificate',
+        certificateNo: '真实证书',
+        certificateDate: '2026-09-24',
+        issuedAt: matter.createdAt,
+        needDisclose: true,
+      },
+      linkedCase: {
+        id: 'case-1',
+        businessNo: 'CA-001',
+        stage: 'WAITING_ARCHIVE',
+      },
+      certificateFiles,
+      sourceLead: { id: 'lead-1', businessNo: 'LD-001' },
+      selectedProducts: [
+        {
+          id: 'product-1',
+          position: 1,
+          title: '商品',
+          url: null,
+          quantity: 1,
+          unitPrice: '1.00',
+          commentCount: 0,
+          estimatedAmount: '1.00',
+        },
+      ],
+      selectedMaterials: [
+        {
+          materialId: 'lead-material',
+          contentVersionId: 'content-1',
+          originalFilename: '来源.png',
+          mimeType: 'image/png',
+        },
+      ],
+    };
+    http.getJson.mockResolvedValue(issued);
+    const result = await getNotaryMatter('matter-1');
+    expect(result.certificateFiles).toEqual(certificateFiles);
+    http.getJson.mockResolvedValue({
+      ...issued,
+      certificateFiles: certificateFiles.map((file) => ({
+        ...file,
+        storageKey: 'private-key',
+      })),
+    });
+    await expect(getNotaryMatter('matter-1')).rejects.toMatchObject({
+      code: 'INVALID_RESPONSE',
+    });
+    http.getJson.mockResolvedValue({
+      ...issued,
+      certificateFiles: [certificateFiles[0]],
+    });
+    await expect(getNotaryMatter('matter-1')).rejects.toMatchObject({
+      code: 'INVALID_RESPONSE',
+    });
+  });
+});
+
 describe('notary API', () => {
   it('validates a scoped matter list and its stage counts', async () => {
     const result = {
@@ -62,6 +324,7 @@ describe('notary API', () => {
           createdAt: '2026-09-24T01:00:00.000Z',
           sourceLead: { id: 'lead-1', businessNo: 'LD-001' },
           notaryOffice: { id: 'office-1', name: '测试公证处' },
+          ...displayFields,
         },
       ],
       total: 1,

@@ -1,5 +1,6 @@
 import { ApiError, getJson, requestJson, type RequestOptions } from './http';
-import type { LeadProduct } from './leads';
+import type { LeadPlatform, LeadProduct } from './leads';
+import type { CaseStage } from './cases';
 
 export type NotaryOffice = {
   id: string;
@@ -22,7 +23,51 @@ export const notaryListStages = [
   'ARCHIVED',
 ] as const;
 export type NotaryListStage = (typeof notaryListStages)[number];
-export type NotaryMatterListItem = {
+export type NotaryDisplayFee =
+  | { state: 'UNRECORDED' | 'PENDING'; amount: null }
+  | { state: 'KNOWN'; amount: string };
+export type NotaryDisplayCapabilities = {
+  recordEvidence: boolean;
+  recordOpening: boolean;
+  reviewOpening: boolean;
+  decideIssuance: boolean;
+  archiveReturn: boolean;
+};
+export type NotaryMatterDisplay = {
+  sourceSummary: {
+    customer: { id: string; name: string };
+    rightsHolder: { id: string; name: string };
+    platform: LeadPlatform;
+    shopName: string;
+    shopExternalId: string | null;
+  };
+  transferredAt: string;
+  evidenceAt: string | null;
+  openingSummary: null | {
+    photoCount: number;
+    senderName: string | null;
+    senderPhone: string | null;
+    senderAddress: string | null;
+  };
+  certificateSummary: null | {
+    id: string;
+    certificateNo: string;
+    certificateDate: string;
+    issuedAt: string;
+    needDisclose: boolean;
+  };
+  fees: {
+    notary: NotaryDisplayFee;
+    investigation: NotaryDisplayFee;
+    sample: NotaryDisplayFee;
+  };
+  linkedCase: null | { id: string; businessNo: string; stage: CaseStage };
+  capabilities: NotaryDisplayCapabilities;
+};
+export type NotaryCertificateFile = NotaryOpeningPhoto & {
+  purpose: 'NOTARY_CERTIFICATE' | 'NOTARY_DISCLOSURE';
+};
+export type NotaryMatterListItem = NotaryMatterDisplay & {
   id: string;
   businessNo: string;
   stage: NotaryListStage;
@@ -213,37 +258,39 @@ export type RecordNotaryEvidenceResult = {
   evidence: NotaryEvidence;
 };
 
-export type NotaryMatterDetail = Omit<NotaryMatterResult, 'stage'> & {
-  stage:
-    | 'PENDING_EVIDENCE'
-    | 'WAITING_UNBOX'
-    | 'UNBOX_REVIEW'
-    | 'ISSUANCE_DECISION'
-    | 'WAITING_CERTIFICATE'
-    | 'WAITING_RETURN'
-    | 'ARCHIVED';
-  version: number;
-  capabilities: {
-    recordEvidence: boolean;
-    recordOpening: boolean;
-    reviewOpening: boolean;
-    decideIssuance: boolean;
-    archiveReturn: boolean;
+export type NotaryMatterDetail = Omit<NotaryMatterResult, 'stage'> &
+  NotaryMatterDisplay & {
+    certificateFiles: NotaryCertificateFile[];
+    stage:
+      | 'PENDING_EVIDENCE'
+      | 'WAITING_UNBOX'
+      | 'UNBOX_REVIEW'
+      | 'ISSUANCE_DECISION'
+      | 'WAITING_CERTIFICATE'
+      | 'WAITING_RETURN'
+      | 'ARCHIVED';
+    version: number;
+    capabilities: {
+      recordEvidence: boolean;
+      recordOpening: boolean;
+      reviewOpening: boolean;
+      decideIssuance: boolean;
+      archiveReturn: boolean;
+    };
+    evidence: NotaryEvidence | null;
+    opening: NotaryOpening | null;
+    reviewDecision: NotaryOpeningReviewDecision | null;
+    issuanceDecision: NotaryIssuanceDecision | null;
+    returnArchive: NotaryReturnArchiveSummary | null;
+    sourceLead: { id: string; businessNo: string };
+    selectedProducts: LeadProduct[];
+    selectedMaterials: Array<{
+      materialId: string;
+      contentVersionId: string;
+      originalFilename: string;
+      mimeType: string;
+    }>;
   };
-  evidence: NotaryEvidence | null;
-  opening: NotaryOpening | null;
-  reviewDecision: NotaryOpeningReviewDecision | null;
-  issuanceDecision: NotaryIssuanceDecision | null;
-  returnArchive: NotaryReturnArchiveSummary | null;
-  sourceLead: { id: string; businessNo: string };
-  selectedProducts: LeadProduct[];
-  selectedMaterials: Array<{
-    materialId: string;
-    contentVersionId: string;
-    originalFilename: string;
-    mimeType: string;
-  }>;
-};
 
 function isLogistics(value: unknown): value is NotaryEvidenceLogistics {
   return (
@@ -331,6 +378,164 @@ function exactKeys(
   return (
     Object.keys(value).length === keys.length &&
     keys.every((key) => key in value)
+  );
+}
+
+function nonBlank(value: unknown): value is string {
+  return typeof value === 'string' && value.trim().length > 0;
+}
+
+function isDisplayFee(value: unknown): value is NotaryDisplayFee {
+  return (
+    isRecord(value) &&
+    exactKeys(value, ['state', 'amount']) &&
+    (value.state === 'KNOWN'
+      ? typeof value.amount === 'string' &&
+        /^(0|[1-9]\d{0,15})\.\d{2}$/u.test(value.amount)
+      : (value.state === 'UNRECORDED' || value.state === 'PENDING') &&
+        value.amount === null)
+  );
+}
+
+function isNotaryDisplay(
+  value: Record<string, unknown>,
+): value is Record<string, unknown> & NotaryMatterDisplay {
+  const source = value.sourceSummary;
+  const opening = value.openingSummary;
+  const certificate = value.certificateSummary;
+  const fees = value.fees;
+  const linked = value.linkedCase;
+  const capabilities = value.capabilities;
+  const platforms: readonly LeadPlatform[] = [
+    'TAOBAO',
+    'TMALL',
+    'PINDUODUO',
+    'JD',
+    'DOUYIN',
+    'ALIBABA_1688',
+    'XIAOHONGSHU',
+    'KUAISHOU',
+    'XIANYU',
+    'WECHAT',
+    'MEITUAN',
+    'DIANPING',
+    'MAP',
+    'OTHER',
+  ];
+  const stages: readonly CaseStage[] = [
+    'PENDING_MATCH',
+    'WAITING_COMPLAINT',
+    'WAITING_COMPLAINT_CONFIRMATION',
+    'WAITING_COMPLAINT_STAMP',
+    'WAITING_FILING',
+    'WAITING_FORMAL_ACCEPTANCE',
+    'WAITING_HEARING',
+    'WAITING_JUDGMENT',
+    'SECOND_INSTANCE',
+    'WAITING_EXECUTION_DOCUMENTS',
+    'WAITING_EXECUTION_CONFIRMATION',
+    'WAITING_EXECUTION_STAMP',
+    'WAITING_EXECUTION_FILING',
+    'EXECUTING',
+    'WAITING_ARCHIVE',
+  ];
+  return (
+    isRecord(source) &&
+    exactKeys(source, [
+      'customer',
+      'rightsHolder',
+      'platform',
+      'shopName',
+      'shopExternalId',
+    ]) &&
+    isRecord(source.customer) &&
+    exactKeys(source.customer, ['id', 'name']) &&
+    nonBlank(source.customer.id) &&
+    nonBlank(source.customer.name) &&
+    isRecord(source.rightsHolder) &&
+    exactKeys(source.rightsHolder, ['id', 'name']) &&
+    nonBlank(source.rightsHolder.id) &&
+    nonBlank(source.rightsHolder.name) &&
+    platforms.some((platform) => platform === source.platform) &&
+    nonBlank(source.shopName) &&
+    (source.shopExternalId === null ||
+      typeof source.shopExternalId === 'string') &&
+    typeof value.transferredAt === 'string' &&
+    isCalendarDate(value.transferredAt) &&
+    (value.evidenceAt === null ||
+      (typeof value.evidenceAt === 'string' &&
+        isCalendarDate(value.evidenceAt))) &&
+    (opening === null ||
+      (isRecord(opening) &&
+        exactKeys(opening, [
+          'photoCount',
+          'senderName',
+          'senderPhone',
+          'senderAddress',
+        ]) &&
+        Number.isSafeInteger(opening.photoCount) &&
+        typeof opening.photoCount === 'number' &&
+        opening.photoCount >= 0 &&
+        [opening.senderName, opening.senderPhone, opening.senderAddress].every(
+          (part) => part === null || typeof part === 'string',
+        ))) &&
+    (certificate === null ||
+      (isRecord(certificate) &&
+        exactKeys(certificate, [
+          'id',
+          'certificateNo',
+          'certificateDate',
+          'issuedAt',
+          'needDisclose',
+        ]) &&
+        nonBlank(certificate.id) &&
+        nonBlank(certificate.certificateNo) &&
+        typeof certificate.certificateDate === 'string' &&
+        isCalendarDate(certificate.certificateDate) &&
+        typeof certificate.issuedAt === 'string' &&
+        !Number.isNaN(Date.parse(certificate.issuedAt)) &&
+        typeof certificate.needDisclose === 'boolean')) &&
+    isRecord(fees) &&
+    exactKeys(fees, ['notary', 'investigation', 'sample']) &&
+    isDisplayFee(fees.notary) &&
+    isDisplayFee(fees.investigation) &&
+    isDisplayFee(fees.sample) &&
+    (linked === null ||
+      (isRecord(linked) &&
+        exactKeys(linked, ['id', 'businessNo', 'stage']) &&
+        nonBlank(linked.id) &&
+        nonBlank(linked.businessNo) &&
+        stages.some((stage) => stage === linked.stage))) &&
+    (linked === null || certificate !== null) &&
+    isRecord(capabilities) &&
+    exactKeys(capabilities, [
+      'recordEvidence',
+      'recordOpening',
+      'reviewOpening',
+      'decideIssuance',
+      'archiveReturn',
+    ]) &&
+    Object.values(capabilities).every((allowed) => typeof allowed === 'boolean')
+  );
+}
+
+function isCertificateFile(value: unknown): value is NotaryCertificateFile {
+  return (
+    isRecord(value) &&
+    exactKeys(value, [
+      'materialId',
+      'contentVersionId',
+      'originalFilename',
+      'mimeType',
+      'purpose',
+    ]) &&
+    nonBlank(value.materialId) &&
+    nonBlank(value.contentVersionId) &&
+    nonBlank(value.originalFilename) &&
+    typeof value.mimeType === 'string' &&
+    ['application/pdf', 'image/jpeg', 'image/png'].includes(value.mimeType) &&
+    (value.purpose === 'NOTARY_CERTIFICATE' ||
+      value.purpose === 'NOTARY_DISCLOSURE')
   );
 }
 
@@ -606,6 +811,19 @@ function isMatterDetail(value: unknown): value is NotaryMatterDetail {
   const selectedProductIds = detail.selectedProductIds;
   const selectedContentVersionIds = detail.selectedContentVersionIds;
   return (
+    isNotaryDisplay(detail) &&
+    Array.isArray(detail.certificateFiles) &&
+    detail.certificateFiles.every(isCertificateFile) &&
+    (detail.certificateSummary === null
+      ? detail.certificateFiles.length === 0
+      : detail.stage === 'ARCHIVED' &&
+        detail.certificateFiles.some(
+          (file) => file.purpose === 'NOTARY_CERTIFICATE',
+        ) &&
+        (!detail.certificateSummary.needDisclose ||
+          detail.certificateFiles.some(
+            (file) => file.purpose === 'NOTARY_DISCLOSURE',
+          ))) &&
     Number.isInteger(detail.version) &&
     (detail.version as number) >= 1 &&
     (detail.stage === 'PENDING_EVIDENCE' ||
@@ -825,6 +1043,7 @@ export async function listNotaryMatters(
     !data.items.every(
       (item) =>
         isRecord(item) &&
+        isNotaryDisplay(item) &&
         typeof item.id === 'string' &&
         item.id.length > 0 &&
         typeof item.businessNo === 'string' &&

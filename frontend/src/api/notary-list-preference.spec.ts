@@ -11,20 +11,38 @@ vi.mock('./http', async (importOriginal) => ({
 import {
   getNotaryListPreference,
   saveNotaryListPreference,
+  defaultNotaryListPreference,
   type NotaryListPreference,
 } from './notary-list-preference';
 
 const valid: NotaryListPreference = {
-  order: ['businessNo', 'stage', 'sourceLead', 'notaryOffice', 'createdAt'],
+  order: [...defaultNotaryListPreference.order],
   hidden: [],
 };
 
 beforeEach(() => vi.resetAllMocks());
 
 describe('notary list preference API', () => {
+  it('defaults to the fourteen new operational fields while retaining legacy columns as options', () => {
+    expect(defaultNotaryListPreference.order).toHaveLength(19);
+    expect(defaultNotaryListPreference.order.slice(0, 2)).toEqual([
+      'businessNo',
+      'stage',
+    ]);
+    expect(defaultNotaryListPreference.hidden).toEqual([
+      'sourceLead',
+      'notaryOffice',
+      'createdAt',
+    ]);
+  });
   it('reads the exact fixed-column contract and preserves an optional column order', async () => {
     const value = {
-      order: ['businessNo', 'stage', 'createdAt', 'notaryOffice', 'sourceLead'],
+      order: [
+        ...valid.order.slice(0, 16),
+        'createdAt',
+        'notaryOffice',
+        'sourceLead',
+      ],
       hidden: ['notaryOffice'],
     };
     http.getJson.mockResolvedValue(value);
