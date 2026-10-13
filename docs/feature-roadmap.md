@@ -164,7 +164,7 @@
 
 ### Current Slice
 
-**CORE-CA-015｜执行结束及N1导航（已验收并快进集成main）。**
+**CORE-UI-001｜运营Demo字段与列表视觉对齐（已启动冻结，实施／验收待完成）。**
 
 SD-54仅批准正常执行中→待归档，日期／原因／真实依据，不夹带归档、重开、收款或历史补录。冻结提交`ada34c6e28cf504e35c92346b35ed4c934b278e2`／tree`148b00610e12e02e4a2b5e975854b9354057d5b8`独立技术Review两轴ACCEPTED、C/I/M=0；只批准进入实现，没有产品／PG／迁移验收结论。E1/E2/E3已从此基线建立各自独占worktree，当前实际状态只见项目状态，精确所有权见下表。I独占验收文件和测试资源排程，收候选后按依赖接纳及一次组合Review／所属门禁，不把旧CA014或分页结果当本片通过。
 
@@ -172,9 +172,27 @@ SD-54仅批准正常执行中→待归档，日期／原因／真实依据，不
 
 CA015＋N1本地验收已完成：稳定代码/测试8c2f45e／tree537ffac3，独立组合Review两轴ACCEPTED、未关闭0/0/0；同5项正式PG／Chromium组合5/5、实际静态复核exit0。完整verify在58fbd5d执行（80工具／1337前端／1345后端及双构建），只因旧导航E2E定位修正，产品／单元／构建输入相同按独立审查限定复用，不冒称新tree实跑完整verify。实际SHA、失败与时间只见VALIDATION；当前仅文档与Git收口，不展开下一批。
 
+#### 当前批次唯一文件所有权（从bd0e02b冻结，Worker由父线程启动）
+
+本批保留侧栏；公证17列与详情／偏好、线索真实字段和案件现有字段纯排版并行。不扩案件新业务事实。DTO／来源与偏好合同见notary／leads Spec本日冻结段。没有本地.agents/skills或.codegraph，未加载额外设计服务。
+
+| 任务／模型                 | 独占worktree与分支                                                        | 精确写入白名单                                                                                                                                                                                                                                                                                                                                                                                               |
+| -------------------------- | ------------------------------------------------------------------------- | ------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------ |
+| V0公证受权Query与偏好，Sol | .local/worktrees/v0-notary-display-read；codex/v0-notary-display-read     | backend/src/modules/leads/notary-list.dto.ts、notary-list.service.ts、notary-list.service.spec.ts、notary-list.controller.spec.ts、notary-list-preference.dto.ts、notary-list-preference.service.ts、notary-list-preference.service.spec.ts、notary-list-routing.spec.ts、lead-notary.service.ts、lead-notary.service.spec.ts；新增notary-display-read.ts／notary-display-read.spec.ts                       |
+| V1公证列表详情，Luna       | .local/worktrees/v1-notary-display-ui；codex/v1-notary-display-ui         | frontend/src/modules/leads/NotaryMatterListPage.vue／NotaryMatterListPage.spec.ts／NotaryMatterDetailPage.vue／NotaryMatterDetailPage.spec.ts                                                                                                                                                                                                                                                                |
+| V2线索列表表单详情，Luna   | .local/worktrees/v2-lead-display-ui；codex/v2-lead-display-ui             | frontend/src/modules/leads/LeadListPage.vue／LeadListPage.spec.ts／LeadForm.vue／LeadForm.spec.ts／LeadDetailPage.vue／LeadDetailPage.spec.ts                                                                                                                                                                                                                                                                |
+| V3案件现有字段表格，Luna   | .local/worktrees/v3-case-list-layout；codex/v3-case-list-layout           | frontend/src/modules/cases/CaseListPage.vue／CasePages.spec.ts／LawyerCaseListPage.vue／LawyerCaseListPage.spec.ts                                                                                                                                                                                                                                                                                           |
+| I唯一共享接线及验收，Sol   | 复用.local/worktrees/ca015-integration；codex/demo-list-display-alignment | frontend/src/api/notary.ts／notary.spec.ts／notary-list-preference.ts／notary-list-preference.spec.ts／leads.ts／leads.spec.ts；新增frontend/src/modules/leads/lead-display.ts／lead-display.spec.ts；backend/src/modules/leads/lead.service.ts／lead.service.spec.ts；frontend/src/styles/demo-components.css；必要既有OpenAPI／leads module直接接点；权威文档／context；tests/e2e及support本片专用新增文件 |
+
+V3不改后端/API/AppShell/阶段语义，仅现有businessNo、stage、owner、sourceLead、sourceNotaryMatter与所有实际capability合并显示，准确编号不截后四位；无虚假选择／搜索／导出入口。详情链接、旧URL、分页／请求取消和未知URL行为保留。既有表格结构table/thead/colgroup/tbody，六列：操作／案件编号、案件进展、负责人、办理权限、来源线索、公证事项；律师只呈现既有字段，不猜未提供的负责人。全部can*实际能力有任一true才显示办理，仍由服务器授权。不得占V1／V2文件。
+
+I共享CSS只新增业务列表限定类，不重写全站table／导航。统一class约定：页面business-list-page；工具栏business-list-toolbar；容器business-list-scroll；表格demo-table business-list-table；单元格business-list-cell--nowrap／--text／--number；徽标沿pill；页尾business-list-footer。正文13px/1.5、表头12px，单元格8px 12px，普通单行目标44px，长文本最多两行约60px；数字／金额右对齐且tabular-nums，日期／短编号／状态不换行。列min-width：操作/编号200、阶段140、姓名主体/店铺160、平台100、日期120、手机140、金额120、地址240，宽表按colgroup与min-width横滚，不压成竖排；长文本有键盘可用展开或精确详情。工具栏与分页紧凑相邻，不以固定min-height制造大片空白。视口1440×900与1024×768同Demo对照，并核390×844无正文横向溢出（表内横滚允许），键盘横滚/展开/详情可用。
+
+Worker只跑自身聚焦测试／类型／lint／格式，报告SHA/tree/实际结果／边界；不改共享API／样式／docs，不运行PG、环境安装或全仓门禁。新API缺模块期间先做现有字段与fixture，I共享候选后补真实类型组合，不以测试替身通过冒称整合。V0涉及跨资源读取，由独立Sol审查；普通UI自审，不逐Task另设Reviewer。I统一普通API／固定15433测试库、真实素材语义与受控浏览器截图，保持5186用户预览及其15436/进程不变。未开始任何数据库或浏览器执行，不称本批通过。
+
 ### Next Slice
 
-**运营Demo字段与展示对齐｜下一批排队，公证优先，再线索／案件。**
+**CORE-CA-016｜最小结案信息（后续技术冻结，未实施）。**
 
 用户消息`Sentinel_19b040f6b8848191b533ba5fe95f6a6f`明确要求对齐运营设计，随后明确“不阻断正在进行的任务”。只读审计01a13475-5465-773e-9173-b7d97424a00a独立产出差异，不能作为CA015＋N1验收、推送或已验预览更新的前置条件；本候选仅登记任务，不夹带字段源码改造。逐项核表单／列表／详情字段名、顺序、显隐、状态与交互，以Demo为默认展示验收依据，权限与真实来源仍按批准Spec。审计先分清个人列设置、最小投影、真实来源缺口，不用工程字段替代运营展示，不造数据或把未知变0。
 

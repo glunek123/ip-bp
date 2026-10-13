@@ -4,9 +4,13 @@
 
 ## 当前阶段
 
-业务唯一Current／Next见[路线图](feature-roadmap.md#current-slice)：Current为CORE-CA-015执行结束＋N1导航，已验收、已集成并升级隔离预览；Next为运营Demo字段／展示对齐（公证优先，线索／案件随后），只读审计独立进行，不阻断当前验收／推送／预览更新，不夹带改造。CA-016最小结案信息仍保留后续、待技术冻结，不实施归档/重开/财务规则。此前CA013/014、日历/人工台账及U1/U2分页均已集成main3f914ad；证据只在VALIDATION维护。
+业务唯一Current／Next见[路线图](feature-roadmap.md#current-slice)：Current为CORE-UI-001运营Demo字段与列表视觉对齐，已授权启动冻结与并行派发；Next为CA-016后续技术冻结。CA015＋N1已验收、集成main bd0e02b且预览66b85ce产品相同；本批不重跑上一批门禁。CA-016最小结案信息仍保留后续、待技术冻结，不实施归档/重开/财务规则。此前CA013/014、日历/人工台账及U1/U2分页均已集成main3f914ad；证据只在VALIDATION维护。
 
 ## 当前任务
+
+**CORE-UI-001｜Demo字段与列表视觉对齐已启动，尚未实现／验收。** I复用ca015-integration的codex/demo-list-display-alignment，从bd0e02b冻结来源／DTO／偏好与V0～V3独占白名单（见路线图及notary/leads Spec）；父线程启动Worker。I持有API、共享CSS、最小Lead名称投影、验收及文档。原用户预览5186／3206／15436继续运行，不重启／占库；主仓.pnpm-store与stash保留。已核无.agents/skills、无.codegraph；运行时24.21.0／11.27.0，开工context:check exit0无漂移。用户暂停后未提交或派发，四份草稿保留；用户明确继续后从原现场恢复，修复Current编号一致性。本批暂无产品／数据库／截图验证结果。
+
+### 已完成CA015＋N1恢复证据
 
 **CORE-CA-015＋N1已验收并快进集成main，最后同步实际集成记录。** 唯一I目录`.local/worktrees/ca015-integration`，分支`codex/ca015-execution-finish-integration`；稳定代码/测试候选`8c2f45efd0491d4d4edfc2dab4a83cbe3c423c9c`／tree`537ffac310d70ccb922ab3a80a36edcd7d7b579c`。E1源d2a769c、E2源b2d4ddd、E3自身73986ac＋7457885、N1最终a9083b2均已接纳，原作者停止写入；具体对应与失败留痕只在VALIDATION。
 

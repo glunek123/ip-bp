@@ -83,3 +83,23 @@ CORE-NT-005的已确认最小门槛：每个`WAITING_CERTIFICATE`事项本切片
 - 实施契约：`POST /api/v1/notary-matters/return-archive-batches`，请求为`{ items: [{ matterId, returnChoice, refund?, freight?, archiveReason, expectedVersion }] }`，必填`Idempotency-Key`（1～128字符）。首版一次1～50项唯一UUID，未知字段、重复ID及非法组合400；ID规范化并按ID稳定排序，同一组逐项事实重排不改变请求指纹。退款／运费输入及校验完整复用NT-006，不新增权限Action。成功返回`{ batchId, items }`，items为按规范ID排序的既有单项归档结果快照，不是前端自行推算的结果。
 - 事务与回执：一个Serializable事务锁定本部门事项并按稳定ID顺序处理，复用单项归档的事务内校验／写入路径，不循环调用多个独立事务。逐项保留`notary.return.archive.succeeded`审计，并写一次`notary.return.archive.batch.succeeded`批次审计（服务端batchId、事项ID与数量）；任一审计／回执失败整批回滚。新增不可变`NotaryReturnArchiveBatchReceipt`，以部门＋操作者＋幂等键唯一，保存指纹和原成功快照；不借用要求单一resultMatterId的原单项回执，不建立通用批次平台。重放先重新验证当前内部身份及每项授权，再核对回执与不可变事实；撤权／停用下一请求拒绝。错误沿用现有400／403／404／409／500契约，同键异参`IDEMPOTENCY_CONFLICT`，旧版本`VERSION_CONFLICT`，错误阶段`INVALID_STATE`；服务内部损坏回执为`RECEIPT_CORRUPT`，HTTP依既有过滤器返回500／`INTERNAL_ERROR`。
 - 页面：复用列表明确勾选，批量归档仅针对已勾选ID，不默认全库；通过正式详情读取逐项当前版本及归档能力。逐项填写选择、适用退款／运费及原因，提交前说明全部一起成功或一起失败、归档后只读、不发起付款；必填标记和金额待定提示沿用共享视觉语言。身份／部门／阶段变化取消旧读取并清空，迟到响应不能提交或提示成功。网络超时、断连或服务端未知结果时保留冻结请求及原幂等键，明确提示结果未确认并只允许原请求重试；不得换键或改输入后冒充同一次提交。确定性拒绝则提示刷新事实后重新填写，成功清空选择并刷新实际列表与阶段数量。
+
+### 2026-10-13 运营列表与详情投影冻结（本批待实现）
+
+依据SD-08及用户Demo字段／列表布局对齐要求，本批仅扩内部获权读取、列偏好与真实呈现。沿原lead.read范围、同部门与当前有效内部身份；外部响应、状态机、出证／归档Command、材料授权计算和五列导出不变，无schema迁移。主数据名称是当前精确关联名称，不宣称冻结历史名称。
+
+列表原有六项id／businessNo／stage／createdAt／sourceLead／notaryOffice保留，增加以下显式字段（详情增加同名字段，原证据／开箱／审核／归档字段保留）：
+
+- sourceSummary：{ customer: {id,name}, rightsHolder: {id,name}, platform, shopName, shopExternalId: string|null }。只取本事项sourceLeadId及customerId／rightsHolderId的精确同部门关联；不按同店铺猜配。platform复用LeadPlatform。姓名关系缺失属于源完整性错误，不填UUID或演示名称。
+- transferredAt：YYYY-MM-DD，事项createdAt转换Asia/Shanghai业务日；不取Lead.pushedAt。evidenceAt：YYYY-MM-DD|null，取本事项Evidence业务日期。
+- openingSummary：null|{photoCount: 非负安全整数, senderName: string|null, senderPhone: string|null, senderAddress: string|null}。仅计本事项Opening成功事件冻结的精确照片引用，不计未提交／失效或另一事项照片；照片具体版本继续从现有详情opening.photos读取。
+- certificateSummary：null|{id,certificateNo,certificateDate:YYYY-MM-DD,issuedAt:UTC ISO,needDisclose:boolean}。本事项真实Certificate，无证书时null。
+- fees：{notary,investigation,sample}，各项为{state:'UNRECORDED'|'PENDING'|'KNOWN',amount:string|null}；UNRECORDED／PENDING要求amount=null，KNOWN要求非负两位小数Decimal字符串，真实0为'0.00'。公证／调查沿该CertificateFee NOTARY／INVESTIGATION；样品沿本事项Evidence。未登记不能变0，不能计算代替原费用事实。
+- linkedCase：null|{id,businessNo,stage}。先独立用当前case.read和既有案件读取范围判定，且源为本事项同部门真实关联Case；不可见和不存在均null，不另泄漏存在标记。null显示“暂无可见案件”；获权显示“已流转诉讼”及真实阶段，可跳精确案件。不能用lead.read拼接案件读取权；不得新增role-name绕过。当前内部case.read是部门读取，复用既有AccessControlService.authorizeDepartmentAction语义，不新造SELF案件读取机制。
+- capabilities：现有getMatter五个boolean同名recordEvidence／recordOpening／reviewOpening／decideIssuance／archiveReturn，来源身份、Action范围和真实前序门槛与详情一致；列表只导航现有详情锚，不直接推进或替运营新增公证处出证权。
+
+详情额外certificateFiles：精确四项materialId／contentVersionId／originalFilename／mimeType加purpose:'NOTARY_CERTIFICATE'|'NOTARY_DISCLOSURE'。仅调用既有MaterialService.listFrozenCertificateFiles及现行下载接口，不返回storageKey／URL、当前版本替代或新下载授权。未出证为[]；归档结论复用既有reviewDecision／returnArchive／certificateSummary，不造额外成功事实。
+
+列偏好继续GET／PUT本人{order,hidden}。完整19个键：businessNo,stage,rightsHolder,platform,shopName,shopExternalId,transferredAt,evidenceAt,openingPhotos,certificateNo,senderName,senderPhone,senderAddress,notaryFee,investigationFee,sampleFee,sourceLead,notaryOffice,createdAt。businessNo／stage固定前两项、不可隐藏；选择列和操作列在偏好外固定，businessNo在操作单元格次行展示，不额外占主列；stage列标题为案件进展，同时保留事项真实阶段。其余17键可排／隐藏。无偏好时按以上顺序，hidden默认sourceLead／notaryOffice／createdAt，形成Demo17个运营列。旧五键存储读取时：插入新14键于stage后，再保留旧三个可选键的相对顺序和hidden；不得写回覆盖用户设置。新版PUT要求完整19键无重复排列、hidden仅可选键，无未知字段；旧存储兼容不意味着放宽非法新请求。恢复默认仅影响本人。
+
+验收：旧五列记录／无记录／两账号独立／恢复默认／撤权，未登记／待定／真实0／正数费用；同事项来源、冻结照片与证书／披露版本；出证归档／不侵权归档／退货归档，转案有权与无case.read时最小投影；列表／total／counts同范围、原分页和阶段不变。真实浏览器在相同视口核Demo与正式页、窄窗口横滚和错误／空／加载态，不以单元测试代替视觉验收。
