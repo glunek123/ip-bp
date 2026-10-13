@@ -130,9 +130,9 @@ watch(
   },
   { immediate: true },
 );
-function acceptCalendarSummary(event: Event): void {
+function acceptCalendarSummary(event: globalThis.Event): void {
   if (calendarIdentity.value === null || isNotary.value) return;
-  if (!(event instanceof CustomEvent)) return;
+  if (!(event instanceof globalThis.CustomEvent)) return;
   const detail: unknown = event.detail;
   if (
     detail === null ||
