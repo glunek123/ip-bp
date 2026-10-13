@@ -41,7 +41,7 @@ import { disconnectCustomerTestDatabase } from '../support/customer-database.mjs
 const operator = { Authorization: `Bearer ${coreLeadFixtures.tokenA}` };
 const foreign = { Authorization: `Bearer ${coreLeadFixtures.tokenB}` };
 const headerOrder = [
-  '案件编号',
+  '操作／案件编号',
   '案件进展',
   '客户',
   '权利主体',
@@ -53,7 +53,7 @@ const headerOrder = [
   '法院',
   '案号',
   '标的额',
-  '判赔额',
+  '判决额',
   '结案额',
 ];
 type Amount = {
@@ -174,10 +174,9 @@ test('real case summary keeps fourteen display columns, source amounts and permi
     defendants,
   });
   const list = await body<{ items: CaseRow[]; total: number }>(
-    await request.get(
-      '/api/v1/cases?view=department&page=1&pageSize=20&stage=all',
-      { headers: operator },
-    ),
+    await request.get('/api/v1/cases?view=department&page=1&pageSize=20', {
+      headers: operator,
+    }),
   );
   expect(list.total).toBe(2);
   const finishedRow = list.items.find(
@@ -226,8 +225,10 @@ test('real case summary keeps fourteen display columns, source amounts and permi
   expect(finishedRow.displaySummary.court?.name).toBeTruthy();
   expect(submittedRow.stage).toBe('WAITING_COMPLAINT_CONFIRMATION');
   expect(
-    submittedRow.displaySummary.defendants.map((defendant) => defendant.name),
-  ).toEqual(defendants.map((defendant) => defendant.name));
+    submittedRow.displaySummary.defendants
+      .map((defendant) => defendant.name)
+      .sort(),
+  ).toEqual(defendants.map((defendant) => defendant.name).sort());
   expect(submittedRow.displaySummary.claimAmount).toMatchObject({
     state: 'KNOWN',
     amount: '123.45',
@@ -251,10 +252,9 @@ test('real case summary keeps fourteen display columns, source amounts and permi
 
   await setRoleGrant(coreLeadFixtures.roleSelf, 'case.read', 'DEPARTMENT');
   const sameDepartment = await body<{ items: CaseRow[] }>(
-    await request.get(
-      '/api/v1/cases?view=department&page=1&pageSize=20&stage=all',
-      { headers: { Authorization: `Bearer ${coreLeadFixtures.tokenSelf}` } },
-    ),
+    await request.get('/api/v1/cases?view=department&page=1&pageSize=20', {
+      headers: { Authorization: `Bearer ${coreLeadFixtures.tokenSelf}` },
+    }),
   );
   expect(sameDepartment.items.map((item) => item.id).sort()).toEqual(
     [closedSource.caseId, submitted.caseId].sort(),
@@ -264,10 +264,9 @@ test('real case summary keeps fourteen display columns, source amounts and permi
       ?.canRecordClosure,
   ).toBe(false);
   const otherDepartment = await body<{ items: CaseRow[] }>(
-    await request.get(
-      '/api/v1/cases?view=department&page=1&pageSize=20&stage=all',
-      { headers: foreign },
-    ),
+    await request.get('/api/v1/cases?view=department&page=1&pageSize=20', {
+      headers: foreign,
+    }),
   );
   expect(otherDepartment.items).toEqual([]);
   expect(
@@ -296,12 +295,21 @@ test('real case summary keeps fourteen display columns, source amounts and permi
         await external.request.get(path),
       );
       expect(response).not.toHaveProperty('displaySummary');
+      const listPath = path.replace(`/${closedSource.caseId}`, '');
       const externalList = await body<{
         items: Array<Record<string, unknown>>;
       }>(
-        await external.request.get(path.replace(`/${closedSource.caseId}`, '')),
+        await external.request.get(
+          listPath.startsWith('/api/v1/client/')
+            ? `${listPath}?view=RECORDED`
+            : listPath,
+        ),
       );
-      expect(externalList.items[0]).not.toHaveProperty('displaySummary');
+      const externalRow = externalList.items.find(
+        (row) => row.id === closedSource.caseId,
+      );
+      expect(externalRow).toBeDefined();
+      expect(externalRow).not.toHaveProperty('displaySummary');
     } finally {
       await context.close();
     }
@@ -315,26 +323,28 @@ test('real case summary keeps fourteen display columns, source amounts and permi
   );
   await page.locator('[data-test="case-nav"]').click();
   await expect(page).toHaveURL(/\/cases$/u);
-  await page.locator('[data-test="case-expand"]').click();
+  const expand = page.locator('[data-test="case-expand"]');
+  if ((await expand.getAttribute('aria-expanded')) !== 'true')
+    await expand.click();
   await expect(page.locator('[data-test="case-view-mine"]')).toHaveClass(
-    /active/u,
+    /(?:^|\s)active(?:\s|$)/u,
   );
   await expect(
     page.locator('[data-test="case-view-department"]'),
-  ).not.toHaveClass(/active/u);
+  ).not.toHaveClass(/(?:^|\s)active(?:\s|$)/u);
   await page.locator('[data-test="case-view-department"]').click();
   await expect(page).toHaveURL(/\/cases\?view=department$/u);
   await expect(page.locator('[data-test="case-view-department"]')).toHaveClass(
-    /active/u,
+    /(?:^|\s)active(?:\s|$)/u,
   );
   await expect(page.locator('[data-test="case-view-mine"]')).not.toHaveClass(
-    /active/u,
+    /(?:^|\s)active(?:\s|$)/u,
   );
   await page.locator('[data-test="complaint-preparation-stage"]').click();
   await expect(page).toHaveURL(/stageGroup=COMPLAINT_PREPARATION/u);
   await expect(
     page.locator('[data-test="complaint-preparation-stage"]'),
-  ).toHaveClass(/active/u);
+  ).toHaveClass(/(?:^|\s)active(?:\s|$)/u);
   await expect(page.locator('[data-test="case-list"] tbody tr')).toHaveCount(1);
   await expect(
     page.locator(`a[href*="/cases/${submitted.caseId}"]`),
@@ -343,7 +353,14 @@ test('real case summary keeps fourteen display columns, source amounts and permi
     '/cases?view=department&stage=WAITING_COMPLAINT_CONFIRMATION',
   );
   await expect(page.locator('[data-test="case-list"] tbody tr')).toHaveCount(1);
-  await expect(page.locator('[data-test="case-stage"].active')).toHaveCount(1);
+  await expect(
+    page.locator(
+      '[data-test="case-stage"].active, [data-test="complaint-preparation-stage"].active, [data-test="execution-preparation-stage"].active',
+    ),
+  ).toHaveCount(1);
+  await expect(
+    page.locator('[data-test="complaint-preparation-stage"]'),
+  ).toHaveClass(/(?:^|\s)active(?:\s|$)/u);
   await expect(
     page.locator(`a[href*="/cases/${submitted.caseId}"]`),
   ).toBeVisible();
@@ -418,6 +435,13 @@ test('real case summary keeps fourteen display columns, source amounts and permi
     });
     await page.screenshot({
       path: testInfo.outputPath(`cases-${label}.png`),
+      fullPage: true,
+    });
+    await region.evaluate((element) => {
+      element.scrollLeft = element.scrollWidth;
+    });
+    await page.screenshot({
+      path: testInfo.outputPath(`cases-amounts-${label}.png`),
       fullPage: true,
     });
     const longRow = table

@@ -21,6 +21,41 @@ const newNames = [
 const quote = (name) => `"${name.replaceAll('"', '""')}"`;
 const sql = (name) =>
   readFileSync(resolve(migrationDirectory, name, 'migration.sql'), 'utf8');
+const closureGrantActions = new Set([
+  'case.closure.record',
+  'case.closure.correct',
+]);
+
+function oldCompatibleSource(snapshot) {
+  return {
+    ...snapshot,
+    // A 142 permission_action enum cannot hold either CA-016 action. Keep
+    // every older grant and compare the full copied 142 grant set thereafter.
+    grants: snapshot.grants.filter(
+      ({ row }) => !closureGrantActions.has(row.action),
+    ),
+  };
+}
+
+function changedSourceFields(left, right) {
+  const changed = [];
+  for (const key of Object.keys(left)) {
+    if (key === 'oldExecution') {
+      for (const child of Object.keys(left.oldExecution)) {
+        if (
+          JSON.stringify(left.oldExecution[child]) !==
+          JSON.stringify(right.oldExecution[child])
+        )
+          changed.push(`oldExecution.${child}`);
+      }
+    } else if (JSON.stringify(left[key]) !== JSON.stringify(right[key])) {
+      const count = (value) =>
+        Array.isArray(value) ? value.length : value === null ? 0 : 1;
+      changed.push(`${key}(${count(left[key])}/${count(right[key])})`);
+    }
+  }
+  return changed.join(', ');
+}
 
 async function sourceSnapshot(client, caseId) {
   const oldExecution = await executionSourceSnapshot(client, caseId);
@@ -190,8 +225,11 @@ export async function verifyCaseClosureMigration(caseId) {
       schemas[1],
     );
     const before = await sourceSnapshot(client, caseId);
-    if (JSON.stringify(before) !== JSON.stringify(current))
-      throw new Error('Copy into 142 schema changed old source facts');
+    const comparableCurrent = oldCompatibleSource(current);
+    if (JSON.stringify(before) !== JSON.stringify(comparableCurrent))
+      throw new Error(
+        `Copy into 142 schema changed old source facts: ${changedSourceFields(before, comparableCurrent)}`,
+      );
     await replay(client, newNames.slice(0, 1));
     const enumCommitted =
       (

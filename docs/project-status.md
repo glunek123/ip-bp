@@ -16,6 +16,8 @@
 
 尚未完成的组合验收、最终Review及完整门禁按三级规则执行。动作目录只增加类型，不自动回填现有真实Grant／Boundary或扩大账号scope；合成测试显式授权，真实新授权另据明确目标。既有预览5186／3206／15436维持b26cdfe、原2案／6凭据／142迁移，不提前迁移／reset／seed，主仓.pnpm-store及恢复stash保留。
 
+首轮干净8f4f4d5统一8项6过2失败；迁移142兼容Grant比较及列表接口／选择器／顺序夹具已限定修正，迁移及旧CA015 PG实测通过、最终列表三视口单项通过。组合Review I1（确定409同值刷新锁定）已修复并经62/62及独立复核关闭；未知原参保持。完整结果只见VALIDATION与ignored证据，当前固定新候选后执行最终Review／完整verify／统一组合，不以各树通过拼总数。
+
 ### 已完成CORE-UI-001恢复证据
 
 **CORE-UI-001｜运营字段与列表已验收并集成，持久预览已更新。** I目录`.local/worktrees/ca015-integration`、分支`codex/demo-list-display-alignment`；稳定源码／测试候选`5ad06d1fd4dd7294fab227ea73f56052bf839453`／tree`5ef3342d2d6bc4e8b8ebe292b05bc9ed70325f49`。完整verify在`ed3dc291`实际通过80工具／1443前端／1375后端及双构建；后续仅旧E2E商品summary定位及文档/context，14组产品／单元／构建／依赖／运行输入Git blob/tree相同，独立审查明确接受限定复用；新树根E2E类型／Lint／格式、strict与Spec通过，不能称新tree实跑完整verify。独立Sol两轴ACCEPTED，未关C/I/M=0/0/0；作者实际模型标识未核，不假称。

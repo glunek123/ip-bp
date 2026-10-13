@@ -448,6 +448,30 @@ describe('injected closure panel', () => {
     expect(wrapper.emitted('changed')).toBeUndefined();
     wrapper.unmount();
   });
+  it.each(['VERSION_CONFLICT', 'INVALID_STATE', 'IDEMPOTENCY_CONFLICT'])(
+    'allows a new manual intention after a trusted same-value refresh resolves %s',
+    async (code) => {
+      api.recordClosure.mockRejectedValueOnce(
+        new ApiError('conflict', 409, code),
+      );
+      const wrapper = panel({ pendingRequest: original });
+      await submit(wrapper, 'retry');
+      expect(exists(wrapper, 'form')).toBe(false);
+      await wrapper.setProps({ pendingRequest: null, item: { ...item } });
+      await flushPromises();
+      expect(exists(wrapper, 'form')).toBe(true);
+      expect(api.recordClosure).toHaveBeenCalledTimes(1);
+      expect(exists(wrapper, 'retry')).toBe(false);
+      await control(wrapper, 'note').setValue('刷新核对后的新意图');
+      await submit(wrapper);
+      expect(api.recordClosure).toHaveBeenCalledTimes(2);
+      const next = api.recordClosure.mock.calls[1]![1];
+      expect(next.note).toBe('刷新核对后的新意图');
+      expect(next.idempotencyKey).not.toBe(original.input.idempotencyKey);
+      expect(wrapper.emitted('changed')).toEqual([[result]]);
+      wrapper.unmount();
+    },
+  );
   it.each(['case', 'identity', 'department', 'authorization', 'unmount'])(
     'isolates late POST responses and clears sensitive data on %s changes',
     async (change) => {

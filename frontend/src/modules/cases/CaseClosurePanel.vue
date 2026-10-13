@@ -297,6 +297,14 @@ watch(
     if (item !== trustedItem) {
       trustedItem = item;
       projectionBlocked.value = false;
+      if (conflict.value && !pending.value && !denied.value) {
+        // A successful same-context read resolves a definite conflict even
+        // when its business fields have not changed. It never releases an
+        // unknown request or submits a replacement intention automatically.
+        conflict.value = false;
+        clearDraft();
+        error.value = '';
+      }
       void loadFiles();
     }
   },

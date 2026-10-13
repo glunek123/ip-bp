@@ -1256,3 +1256,21 @@ Task C实际提交`0cc238bdffc930aecc2be7058425b2d45ee14b00`，tree`c4934c0a904b
 18:14:04 UTC 5186/login及3206/api/v1/health实际200；15436仍142迁移。更新前后121张业务／凭据表（仅排除认证会话／限流表）的行数及哈希完全相同，2案件、6本地凭据保留。原私密本地密码经真实登录cookie只读核验：案件6列／2行，公证17列／2行，线索空列表保持原状；exit0、业务POST/PUT/PATCH/DELETE为0，未打印账号密码或造数据。证据与预览指纹为原runtime内`ui-display-{before,after,backup,source-update,health,browser-readonly,fingerprint}.json`和三页PNG；恢复仍用原start.ps1／stop.ps1，不重新prepare／initialize。此次版本比较包装器首次因v前缀误判停止于DB读取前，修正比较后实际检查通过，失败不算数据或产品错误。
 
 最终15张三视口／展开／Demo对照图保全于I `.local/ui-evidence/final-success-artifacts/`；统一17项、完整verify及限定复用证据仍沿上段精确候选，不把预览私密账号只读三页当作正式PG组合。Demo8123、其他人工库与生产未操作；全部Demo、案件新业务摘要、CA016／017、历史补录、资金发起及生产准入仍未完成。Next只准备CA016工程冻结，不夹带实现。
+
+## CORE-CA-016最小结案资料、案件摘要与N2集成（2026-10-13）
+
+业务基线main `1471bfa76380409607a2d87a834b63cda3bc35cd`／tree `1d595f73970c66155273f4bc5ab2e0ed2a82905e`，冻结`0d52a004ef2ab1d92886b1dc7ca58a36df8be3a2`／tree `c2d93ba83356a15bd1cf67a7c7ca3bb74f2b3adf`。I复用`.local/worktrees/ca015-integration`／`codex/ca016-closure-display-integration`，主仓原.pnpm-store及恢复stash保留。范围仅待归档中的最小结案登记和原因更正、真实来源内部列表摘要、真实法院案号及跨模块导航上下文；不实现实收／结清／最终归档／重开／历史补录或资金发起。
+
+接纳链：N2源fc57d2d→9f95508；F1最小API b956906→5da49f9；P1源004f95c→2e08174；D1源3d9141e→243e0fa；F1作者增量abdf7f2＋e7c8461→8082bab＋80985c1；B1源61bfff4→8a4e315。P1／D1依赖blob保持，不重复接纳各Worker依赖副本。B1源tree40acddd、28白名单；作者固定候选11套327/327、后端类型／Lint／格式通过；F1真实组合15套494/494、全前端类型／静态通过。作者报告只证明各自输入，不拼成I同树门禁；作者实际模型元数据无法核验，不假称路由型号。B1由未参与实现的独立gpt-6-sol主体两轴ACCEPTED、C0/I0/M0，静态接受不证明PG。
+
+集成8a4e315／tree5323049的正常pnpm Prisma生成及后端构建exit0。15433测试库标准迁移第一次普通沙箱因Docker inspect权限阻断未执行；精确升级原入口后第一enum提交、第二DDL失败（PG语法错误character19614）。I仅修新DDL两处IF内CASE括号，独立复核接受；144全链随机schema回放退出0、第二DDL表仍缺席，官方Prisma resolve --rolled-back后标准前向部署退出0。旧142迁移文件无diff，无真实Grant回填。
+
+随后普通旧来源opening API触发新引用守卫PG42702（局部action变量与列名歧义）；I只改新函数局部名及限定列，独立复核接受。15433精确CREATE OR REPLACE该新函数，所有_prisma_migrations行／原checksum保留；不能把此前部署变体称为最终迁移源码checksum一致。最终新文件另以随机schema空库144、142真实Finish源复制升级、第二DDL失败回滚／enum留存／前向恢复及旧事实／回执／文件元数据／字节逐项实证；无回填比较针对142兼容旧Grant全集，不将142无法表示的两新Action合成Grant混入历史基线。持久15436从未迁移。
+
+首项运营纵向修复后1/1通过。干净固定候选`8f4f4d5cdf2b4643cd940b371941e909bd35e58c`／tree `1bd4c1b0cdf2044ad745571bfdd7b28bbc9e9a3e`统一8项于19:43:32～19:45:52 UTC退出1：6过2失败。已过权限范围不拼接、撤权原键、竞争更正；七个故障点均以独立sequence命中标记证明实际到达并回滚，正常原参随后成功；运营／律师、未知成功原参跨同案刷新及SPA重挂、21案普通密码双端分页通过。两失败为迁移初次快照误包含142无法表示的新Action Grant、列表验收非法stage=all请求，不能称本组合通过。限定修正后迁移及旧CA015 PG兼容实际通过，列表再因未获合同保证的被告录入顺序断言失败，按精确集合修正；原失败保留。
+
+组合Review另报Important I1：确定409后同值新详情对象不解锁。I只在可信新item且conflict／无pending／未denied时清确定冲突和草稿，不释放未知原参或自动POST；三code回归覆盖手动新意图。普通pnpm初次Temp EPERM、0tests保留；同入口升级重试2套62/62通过（47面板＋15真实详情），独立复核I1关闭、C0/I0/M0。最终固定候选／完整门禁与同组PG／Chromium结果待本节回填，尚未push／main或更新预览。
+
+恢复证据统一ignored `.local/ca016-evidence/`：各作者接纳JSON、迁移首次／恢复／函数修复、首项闭环、combination-8、focused-3、review-fix-unit及最终候选记录。每步绑定实际退出码、UTC、commit/tree或未提交输入SHA256；失败记录不覆盖。2026-10-13本轮只读5186/login及3206/health均200、预览HEAD b26cdfe干净，15436原142／2案／6凭据保持；Demo8123、其他库及生产不操作。该旧预览不是CA016验收入口。
+
+限定复验19:48:21～19:48:56 UTC为2过1失败：最终144／142迁移及旧CA015原子／不可变证据通过，列表被告顺序断言失败。后续列表各次只改验收接点：精确被告集合、客户RECORDED视图、按aria-expanded避免折叠已展开导航、独立active类避免命中Router默认类、旧原子书签高亮其批准分组、实际批准表头。原API／业务规则不放宽；各次log／JSON保留。最终列表单项19:55:13～19:55:41 UTC退出0，14列／源金额／权限／导航／1440／1024／390横滚键盘及无body溢出已过，三视口主图已实际读图。最终同候选统一组合及完整门禁待运行，不将散装复验合称统一通过。
