@@ -47,6 +47,11 @@ const lead = {
   customerId: 'customer-1',
   rightsHolderId: 'holder-1',
   responsibleUserId: 'user-1',
+  displayNames: {
+    customerName: '客户甲',
+    rightsHolderName: '主体甲',
+    responsibleUserName: '运营甲',
+  },
   teamId: null,
   status: 'WAITING_PUSH',
   caseType: 'CIVIL',
@@ -111,6 +116,50 @@ const createInput = {
 };
 
 beforeEach(() => vi.resetAllMocks());
+
+describe('internal lead display names', () => {
+  it('rejects a missing or overbroad name projection on a read', async () => {
+    const legacy: Partial<typeof lead> = { ...lead };
+    delete legacy.displayNames;
+    http.getJson.mockResolvedValueOnce(legacy);
+    await expect(getLead('lead-1')).rejects.toMatchObject({
+      code: 'INVALID_RESPONSE',
+    });
+    http.getJson.mockResolvedValueOnce({
+      ...lead,
+      displayNames: { ...lead.displayNames, phone: 'private' },
+    });
+    await expect(getLead('lead-1')).rejects.toMatchObject({
+      code: 'INVALID_RESPONSE',
+    });
+  });
+
+  it('keeps a legacy creation receipt valid without adding fake names', async () => {
+    const legacy: Partial<typeof lead> = { ...lead };
+    delete legacy.displayNames;
+    http.requestJson.mockResolvedValue(legacy);
+    const result = await createLead(
+      {
+        customerId: lead.customerId,
+        rightsHolderId: lead.rightsHolderId,
+        caseType: 'CIVIL',
+        infringementTypes: ['TRADEMARK'],
+        source: 'ONLINE',
+        platform: 'TAOBAO',
+        foundAt: lead.foundAt,
+        shopName: lead.shopName,
+        needDisclose: false,
+        products: [
+          { title: '商品', quantity: 3, unitPrice: '1.55', commentCount: 9 },
+        ],
+        leadScreenshotContentVersionIds: [],
+      },
+      'original-key',
+    );
+    expect(result).toEqual(legacy);
+    expect(result).not.toHaveProperty('displayNames');
+  });
+});
 
 describe('Lead API', () => {
   it('strictly validates form context and every unknown response', async () => {

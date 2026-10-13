@@ -127,7 +127,7 @@ export type LeadEvidenceDecision = {
   archiveType: 'NO_EVIDENCE';
   archivedAt: string;
 };
-export type Lead = {
+export type LeadBusinessResult = {
   id: string;
   businessNo: string;
   departmentId: string;
@@ -156,6 +156,13 @@ export type Lead = {
   reviewDecision: LeadReviewDecision | null;
   createdAt: string;
   updatedAt: string;
+};
+export type Lead = LeadBusinessResult & {
+  displayNames: {
+    customerName: string;
+    rightsHolderName: string;
+    responsibleUserName: string;
+  };
 };
 export type LeadDetail = Lead & {
   capabilities: {
@@ -401,7 +408,7 @@ function isEvidenceDecision(value: unknown): value is LeadEvidenceDecision {
     isDateTime(value.archivedAt)
   );
 }
-function isLead(value: unknown): value is Lead {
+function isLeadBusinessResult(value: unknown): value is LeadBusinessResult {
   if (!isRecord(value)) return false;
   const source = value.source;
   const platform = value.platform;
@@ -465,6 +472,18 @@ function isLead(value: unknown): value is Lead {
 }
 function invalidResponse(): ApiError {
   return new ApiError('服务返回了无效的线索数据', 200, 'INVALID_RESPONSE');
+}
+
+function isLead(value: unknown): value is Lead {
+  if (!isLeadBusinessResult(value) || !isRecord(value)) return false;
+  const names = value.displayNames;
+  return (
+    isRecord(names) &&
+    Object.keys(names).length === 3 &&
+    ['customerName', 'rightsHolderName', 'responsibleUserName'].every(
+      (key) => typeof names[key] === 'string' && names[key].trim().length > 0,
+    )
+  );
 }
 
 function decodeLeadFormContext(data: unknown): LeadFormContext {
@@ -782,24 +801,24 @@ function requestBody(input: CreateLeadInput | UpdateLeadInput) {
 export async function createLead(
   input: CreateLeadInput,
   idempotencyKey: string,
-): Promise<Lead> {
+): Promise<LeadBusinessResult> {
   const data = await requestJson('/leads', {
     method: 'POST',
     headers: { 'Idempotency-Key': idempotencyKey },
     body: requestBody(input),
   });
-  if (!isLead(data)) throw invalidResponse();
+  if (!isLeadBusinessResult(data)) throw invalidResponse();
   return data;
 }
 
 export async function updateLead(
   id: string,
   input: UpdateLeadInput,
-): Promise<Lead> {
+): Promise<LeadBusinessResult> {
   const data = await requestJson(`/leads/${encodeURIComponent(id)}`, {
     method: 'PATCH',
     body: requestBody(input),
   });
-  if (!isLead(data)) throw invalidResponse();
+  if (!isLeadBusinessResult(data)) throw invalidResponse();
   return data;
 }
