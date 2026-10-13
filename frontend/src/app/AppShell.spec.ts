@@ -175,6 +175,11 @@ async function mountShell(
         meta: { section: '案件', breadcrumbs: ['案件'] },
       },
       {
+        path: '/lawyer/calendar',
+        component: { template: '<div />' },
+        meta: { section: '日期事件', breadcrumbs: ['日期事件'] },
+      },
+      {
         path: '/leads',
         component: { template: '<div />' },
         meta: { section: '线索', breadcrumbs: ['线索'] },
@@ -658,6 +663,228 @@ const navigationLabels = [
   '待归档',
 ];
 const lawyerSession: AuthSession = { ...session, principalType: 'LAWYER' };
+describe('case route context', () => {
+  it.each([
+    ['PENDING_MATCH', '案件待匹配'],
+    ['WAITING_FILING', '待提交立案'],
+    ['WAITING_FORMAL_ACCEPTANCE', '待正式立案'],
+    ['WAITING_HEARING', '待开庭'],
+    ['WAITING_JUDGMENT', '待判决'],
+    ['SECOND_INSTANCE', '二审'],
+    ['WAITING_EXECUTION_FILING', '待申请执行'],
+    ['EXECUTING', '强制执行中'],
+    ['WAITING_ARCHIVE', '待归档'],
+  ])(
+    'selects only the bookmarked atomic stage %s in both case shells',
+    async (stage, label) => {
+      for (const path of [
+        '/cases?view=mine',
+        '/cases?view=department',
+        '/lawyer/cases',
+      ]) {
+        const isLawyer = path.startsWith('/lawyer');
+        const { wrapper, router } = await mountShell(
+          `${path}${path.includes('?') ? '&' : '?'}stage=${stage}&page=3`,
+          isLawyer ? lawyerSession : session,
+        );
+        const nav = wrapper.get(
+          isLawyer
+            ? '[aria-label="本人案件阶段"]'
+            : '[aria-label="案件范围与阶段"]',
+        );
+        const active = nav
+          .findAll('a.active')
+          .filter(
+            (link) => !link.attributes('data-test')?.startsWith('case-view-'),
+          );
+        expect(active).toHaveLength(1);
+        expect(active[0].get('span').text()).toBe(label);
+        expect(router.currentRoute.value.query.stage).toBe(stage);
+        expect(router.currentRoute.value.query.page).toBe('3');
+      }
+    },
+  );
+  it.each([
+    '/notary-matters?stage=ARCHIVED&view=department&page=3',
+    '/notary-matters?stage=WAITING_HEARING&stageGroup=COMPLAINT_PREPARATION&view=department&page=3',
+    '/leads?status=ARCHIVED&stageGroup=EXECUTION_PREPARATION&view=department&page=3',
+    '/customers?stage=WAITING_HEARING&view=department&page=3',
+  ])('drops foreign case filters when entering cases from %s', async (path) => {
+    const { wrapper, router } = await mountShell(path);
+    await wrapper.get('[data-test="case-expand"]').trigger('click');
+    const nav = wrapper.get('[aria-label="案件范围与阶段"]');
+    expect(nav.findAll('a.active')).toHaveLength(0);
+    for (const view of ['mine', 'department']) {
+      expect(
+        wrapper.get(`[data-test="case-view-${view}"]`).attributes('href'),
+      ).toBe(`/cases?view=${view}`);
+    }
+    expect(
+      wrapper
+        .get('[data-test="complaint-preparation-stage"]')
+        .attributes('href'),
+    ).toBe('/cases?view=mine&stageGroup=COMPLAINT_PREPARATION');
+    await wrapper.get('[data-test="case-view-department"]').trigger('click');
+    await flushPromises();
+    expect(router.currentRoute.value.path).toBe('/cases');
+    expect(router.currentRoute.value.query).toEqual({ view: 'department' });
+    expect(nav.findAll('a.active').map((link) => link.text())).toEqual([
+      '本部门全部',
+      '全部阶段19',
+    ]);
+    expect(api.listCases).toHaveBeenLastCalledWith(1, 1, {
+      signal: expect.any(AbortSignal),
+      view: 'department',
+    });
+  });
+
+  it.each([
+    'stage=WAITING_HEARING',
+    'stage=WAITING_COMPLAINT_CONFIRMATION',
+    'stage=WAITING_EXECUTION_STAMP',
+    'stageGroup=COMPLAINT_PREPARATION',
+    'stageGroup=EXECUTION_PREPARATION',
+    'stage=all',
+    'stage=all&stageGroup=EXECUTION_PREPARATION',
+  ])(
+    'preserves the case bookmark and resets pagination for %s',
+    async (filter) => {
+      const { wrapper, router } = await mountShell(
+        `/cases?view=mine&${filter}&page=3`,
+      );
+      const filters = { ...router.currentRoute.value.query };
+      delete filters.page;
+      const nav = wrapper.get('[aria-label="案件范围与阶段"]');
+      const activeStages = () =>
+        nav
+          .findAll('a.active')
+          .filter(
+            (link) => !link.attributes('data-test')?.startsWith('case-view-'),
+          );
+      expect(activeStages()).toHaveLength(1);
+      const selectedLabel = activeStages()[0].text();
+      for (const view of ['department', 'mine']) {
+        await wrapper.get(`[data-test="case-view-${view}"]`).trigger('click');
+        await flushPromises();
+        expect(router.currentRoute.value.query).toEqual({ ...filters, view });
+        expect(activeStages()).toHaveLength(1);
+        expect(activeStages()[0].text()).toBe(selectedLabel);
+      }
+      await wrapper
+        .get('[data-test="execution-preparation-stage"]')
+        .trigger('click');
+      await flushPromises();
+      expect(router.currentRoute.value.query).toEqual({
+        view: 'mine',
+        stageGroup: 'EXECUTION_PREPARATION',
+      });
+    },
+  );
+
+  it.each([
+    'stage=ARCHIVED',
+    'stage=WAITING_HEARING&stage=WAITING_JUDGMENT',
+    'stage',
+    'stageGroup=UNKNOWN',
+    'stageGroup=COMPLAINT_PREPARATION&stageGroup=EXECUTION_PREPARATION',
+    'stageGroup',
+  ])(
+    'preserves rejected case filters on scope switches for %s',
+    async (filter) => {
+      const { wrapper, router } = await mountShell(`/cases?${filter}&page=3`);
+      const filters = { ...router.currentRoute.value.query };
+      delete filters.page;
+      const nav = wrapper.get('[aria-label="案件范围与阶段"]');
+      expect(
+        nav
+          .findAll('a.active')
+          .filter(
+            (link) => !link.attributes('data-test')?.startsWith('case-view-'),
+          ),
+      ).toHaveLength(0);
+      for (const view of ['department', 'mine']) {
+        await wrapper.get(`[data-test="case-view-${view}"]`).trigger('click');
+        await flushPromises();
+        expect(router.currentRoute.value.query).toEqual({ ...filters, view });
+      }
+    },
+  );
+
+  it('does not select a lawyer case stage from a foreign route', async () => {
+    const { wrapper, router } = await mountShell(
+      '/lawyer/calendar?stage=WAITING_HEARING&stageGroup=EXECUTION_PREPARATION&page=3',
+      lawyerSession,
+    );
+    const nav = wrapper.get('[aria-label="本人案件阶段"]');
+    expect(nav.findAll('a.active')).toHaveLength(0);
+    await wrapper
+      .get('[data-test="execution-preparation-stage"]')
+      .trigger('click');
+    await flushPromises();
+    expect(router.currentRoute.value.path).toBe('/lawyer/cases');
+    expect(router.currentRoute.value.query).toEqual({
+      stageGroup: 'EXECUTION_PREPARATION',
+    });
+    expect(nav.findAll('a.active')).toHaveLength(1);
+  });
+
+  it.each(['/cases', '/lawyer/cases'])(
+    'keeps the current URL unchanged and resets page on explicit stage navigation in %s',
+    async (path) => {
+      const original = `${path}?stage=ARCHIVED&page=3`;
+      const { wrapper, router } = await mountShell(
+        original,
+        path.startsWith('/lawyer') ? lawyerSession : session,
+      );
+      expect(router.currentRoute.value.fullPath).toBe(original);
+      await wrapper
+        .get('[data-test="complaint-preparation-stage"]')
+        .trigger('click');
+      await flushPromises();
+      expect(router.currentRoute.value.query).toEqual({
+        ...(path === '/cases' ? { view: 'mine' } : {}),
+        stageGroup: 'COMPLAINT_PREPARATION',
+      });
+      await router.push(`${path}?stageGroup=EXECUTION_PREPARATION&page=3`);
+      await flushPromises();
+      const hearing = wrapper
+        .findAll('[data-test="case-stage"]')
+        .find((link) => link.text().startsWith('待开庭'));
+      await hearing!.trigger('click');
+      await flushPromises();
+      expect(router.currentRoute.value.query).toEqual({
+        ...(path === '/cases' ? { view: 'mine' } : {}),
+        stage: 'WAITING_HEARING',
+      });
+      await router.push(`${path}?stage=WAITING_HEARING&page=3`);
+      await flushPromises();
+      const nav = wrapper.get(
+        path === '/cases'
+          ? '[aria-label="案件范围与阶段"]'
+          : '[aria-label="本人案件阶段"]',
+      );
+      const allStages = nav
+        .findAll('a')
+        .find(
+          (link) =>
+            link.find('span').exists() &&
+            link.get('span').text() === '全部阶段',
+        );
+      await allStages!.trigger('click');
+      await flushPromises();
+      expect(router.currentRoute.value.query).toEqual(
+        path === '/cases' ? { view: 'mine' } : {},
+      );
+      const active = nav
+        .findAll('a.active')
+        .filter(
+          (link) => !link.attributes('data-test')?.startsWith('case-view-'),
+        );
+      expect(active).toHaveLength(1);
+      expect(active[0].get('span').text()).toBe('全部阶段');
+    },
+  );
+});
 it.each(['/cases?view=mine', '/cases?view=department', '/lawyer/cases'])(
   'orders a single stage directory in %s',
   async (path) => {

@@ -208,20 +208,50 @@ const breadcrumbs = computed(() =>
     : [],
 );
 const isCustomerRoute = computed(() => route.path.startsWith('/customers'));
-const isCaseRoute = computed(() => route.path.startsWith('/cases'));
+const isCaseRoute = computed(
+  () => route.path === '/cases' || route.path.startsWith('/cases/'),
+);
+const isLawyerCaseRoute = computed(
+  () =>
+    route.path === '/lawyer/cases' || route.path.startsWith('/lawyer/cases/'),
+);
+const isCaseContext = computed(
+  () => isCaseRoute.value || isLawyerCaseRoute.value,
+);
 const selectedCaseView = computed(() =>
-  route.query.view === 'department' ? 'department' : 'mine',
+  isCaseRoute.value && route.query.view === 'department'
+    ? 'department'
+    : 'mine',
 );
 const selectedCaseStage = computed(() =>
-  typeof route.query.stage === 'string' ? route.query.stage : undefined,
+  isCaseContext.value &&
+  typeof route.query.stage === 'string' &&
+  route.query.stage !== 'all'
+    ? route.query.stage
+    : undefined,
 );
 const selectedCaseStageGroup = computed(() =>
-  selectedCaseStage.value === undefined &&
+  isCaseContext.value &&
+  (route.query.stage === undefined || route.query.stage === 'all') &&
   (route.query.stageGroup === 'COMPLAINT_PREPARATION' ||
     route.query.stageGroup === 'EXECUTION_PREPARATION')
     ? route.query.stageGroup
     : undefined,
 );
+const allCaseStagesSelected = computed(
+  () =>
+    isCaseContext.value &&
+    (route.query.stage === undefined || route.query.stage === 'all') &&
+    route.query.stageGroup === undefined,
+);
+function caseViewQuery(view: 'mine' | 'department') {
+  return {
+    view,
+    ...(isCaseRoute.value
+      ? { stage: route.query.stage, stageGroup: route.query.stageGroup }
+      : {}),
+  };
+}
 const isLeadRoute = computed(
   () => route.path === '/leads' || route.path.startsWith('/leads/'),
 );
@@ -540,7 +570,7 @@ async function logout(): Promise<void> {
         <p class="app-nav__label">律师工作台</p>
         <RouterLink
           class="app-nav__item"
-          :class="{ active: route.path.startsWith('/lawyer/cases') }"
+          :class="{ active: isLawyerCaseRoute }"
           data-test="lawyer-case-nav"
           to="/lawyer/cases"
           @click="closeDrawer"
@@ -554,10 +584,7 @@ async function logout(): Promise<void> {
           <RouterLink
             class="app-subnav__item"
             :class="{
-              active:
-                route.path === '/lawyer/cases' &&
-                selectedCaseStage === undefined &&
-                selectedCaseStageGroup === undefined,
+              active: route.path === '/lawyer/cases' && allCaseStagesSelected,
             }"
             to="/lawyer/cases"
             @click="closeDrawer"
@@ -580,9 +607,7 @@ async function logout(): Promise<void> {
             <RouterLink
               class="app-subnav__item"
               :class="{
-                active:
-                  route.path.startsWith('/lawyer/cases') &&
-                  caseCardSelected(card),
+                active: isLawyerCaseRoute && caseCardSelected(card),
               }"
               :data-test="
                 card.stageGroup === 'COMPLAINT_PREPARATION'
@@ -771,9 +796,7 @@ async function logout(): Promise<void> {
             data-test="case-view-mine"
             :to="{
               path: '/cases',
-              query: selectedCaseStageGroup
-                ? { view: 'mine', stageGroup: selectedCaseStageGroup }
-                : { view: 'mine', stage: selectedCaseStage },
+              query: caseViewQuery('mine'),
             }"
             @click="closeDrawer"
             >我负责</RouterLink
@@ -786,9 +809,7 @@ async function logout(): Promise<void> {
             data-test="case-view-department"
             :to="{
               path: '/cases',
-              query: selectedCaseStageGroup
-                ? { view: 'department', stageGroup: selectedCaseStageGroup }
-                : { view: 'department', stage: selectedCaseStage },
+              query: caseViewQuery('department'),
             }"
             @click="closeDrawer"
             >本部门全部</RouterLink
@@ -796,10 +817,7 @@ async function logout(): Promise<void> {
           <RouterLink
             class="app-subnav__item"
             :class="{
-              active:
-                isCaseRoute &&
-                selectedCaseStage === undefined &&
-                selectedCaseStageGroup === undefined,
+              active: isCaseRoute && allCaseStagesSelected,
             }"
             :to="{ path: '/cases', query: { view: selectedCaseView } }"
             @click="closeDrawer"
