@@ -1087,7 +1087,7 @@ test('operator creates, refreshes, views, and edits a waiting-push lead', async 
   await page.locator('input[name="needDisclose"][value="false"]').check();
   await page.getByLabel('发现时间').fill('2026-09-21T10:30');
   await page.getByLabel('线索来源').selectOption('ONLINE');
-  await page.getByLabel('平台').selectOption('TAOBAO');
+  await page.locator('select[name="platform"]').selectOption('TAOBAO');
   await page.getByLabel('店铺名称').fill('浏览器店铺');
   await page.getByLabel('商标权').check();
   await page.locator('input[name="productTitle-0"]').fill('浏览器商品');
@@ -1157,7 +1157,7 @@ test('real operator and client logins persist infringement review, screenshot an
   await page.locator('input[name="needDisclose"][value="false"]').check();
   await page.getByLabel('发现时间').fill('2026-09-22T10:30');
   await page.getByLabel('线索来源').selectOption('ONLINE');
-  await page.getByLabel('平台').selectOption('TAOBAO');
+  await page.locator('select[name="platform"]').selectOption('TAOBAO');
   await page.getByLabel('店铺名称').fill('客户端闭环店铺');
   await page.getByLabel('商标权').check();
   await page.locator('input[name="productTitle-0"]').fill('客户端闭环商品');
@@ -1382,7 +1382,7 @@ test('real operator and client logins transfer a lead and record notary evidence
   await page.locator('input[name="needDisclose"][value="false"]').check();
   await page.getByLabel('发现时间').fill('2026-09-24T10:30');
   await page.getByLabel('线索来源').selectOption('ONLINE');
-  await page.getByLabel('平台').selectOption('TAOBAO');
+  await page.locator('select[name="platform"]').selectOption('TAOBAO');
   await page.getByLabel('店铺名称').fill('公证移交闭环店铺');
   await page.getByLabel('商标权').check();
   await page.locator('input[name="productTitle-0"]').fill('公证移交商品');
@@ -3959,7 +3959,7 @@ test('real operator and client logins archive a no-infringement review and prese
   await page.locator('input[name="needDisclose"][value="false"]').check();
   await page.getByLabel('发现时间').fill('2026-09-22T10:30');
   await page.getByLabel('线索来源').selectOption('ONLINE');
-  await page.getByLabel('平台').selectOption('TAOBAO');
+  await page.locator('select[name="platform"]').selectOption('TAOBAO');
   await page.getByLabel('店铺名称').fill('不侵权浏览器链路店铺');
   await page.getByLabel('商标权').check();
   await page.locator('input[name="productTitle-0"]').fill('待归档浏览器商品');

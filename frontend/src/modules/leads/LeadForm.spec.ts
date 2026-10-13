@@ -112,7 +112,7 @@ describe('LeadForm', () => {
       ).value,
     ).toBe('');
     expect(wrapper.text()).toContain(
-      '该客户有多个权利人，请选择本线索对应的一项',
+      '该客户有多个权利主体，请选择本线索对应的一项',
     );
   });
 
@@ -121,6 +121,7 @@ describe('LeadForm', () => {
 
     expect(wrapper.text()).toContain('权利主体');
     expect(wrapper.text()).toContain('案件类型');
+    expect(wrapper.text()).not.toContain('发现平台');
     expect(wrapper.text()).toContain('平台店铺ID（选填）');
     expect(wrapper.text()).toContain('销量');
     expect(wrapper.text()).toContain('预估销售额（元）');

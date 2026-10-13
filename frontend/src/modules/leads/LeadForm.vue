@@ -100,9 +100,9 @@ const rightsHolders = computed(
 const rightsHolderGuidance = computed(() => {
   if (!customerId.value) return '请先选择客户。';
   if (rightsHolders.value.length === 0)
-    return '该客户尚未维护权利人，请先前往客户详情添加后再创建线索。';
+    return '该客户尚未维护权利主体，请先前往客户详情添加后再创建线索。';
   if (rightsHolders.value.length === 1) return '已按客户自动带出。';
-  return '该客户有多个权利人，请选择本线索对应的一项。';
+  return '该客户有多个权利主体，请选择本线索对应的一项。';
 });
 const platforms = computed(() =>
   source.value ? props.context.dictionaries.platforms[source.value] : [],
@@ -408,7 +408,7 @@ async function submit(): Promise<void> {
           }}</small>
         </label>
         <label>
-          <span>发现平台<RequiredFieldMark /></span>
+          <span>平台<RequiredFieldMark /></span>
           <select v-model="platform" name="platform" class="text-input">
             <option value="">请选择</option>
             <option
