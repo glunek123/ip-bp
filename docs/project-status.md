@@ -4,19 +4,23 @@
 
 ## 当前阶段
 
-CORE-CA-001～012及SD-44律师身份前置补齐均已验收、推送并集成main；最新前置反馈规则已同时集成。业务能力状态及唯一Current／Next唯一指针见[路线图](feature-roadmap.md#current-slice)：当前CORE-KL-001已完成、已集成，既有人工台账B2也已组合验收；下一指针为CORE-CA-015按SD-54已批准、待技术冻结与派发，U1／U2辅助分页批次已完成组合验收并快进集成main；D1只读线程01a133e4-bd3f-71ff-bf4e-7f1a5c317013已完成报告（基线953ae33，无写入或验证）。
-
-CA-015恢复点：已核分页main为3f914ad／tree6f82768后，在原干净工作区新建独立分支`codex/ca015-execution-finish-integration`，分页分支保留原SHA。E0只读建议及计数措辞校正已收到；本分支仅I冻结Spec／DOMAIN／唯一ownership，等待独立技术Review，不执行产品/数据库或把文档检查算本片验收。E1统一backend／材料／客户兼容，E2新面板，E3共享前端，精确白名单与实施基线只见路线图。
+业务唯一Current／Next见[路线图](feature-roadmap.md#current-slice)：Current为CORE-CA-015执行结束，技术冻结已接受、三线实施中；Next为CORE-CA-016最小结案信息，待另行技术冻结，不实施归档/重开/财务规则。此前CA013/014、日历/人工台账及U1/U2分页均已集成main3f914ad；证据只在VALIDATION维护。
 
 ## 当前任务
 
-2026-10-13当前**CORE-KL-001**真实来源日历及既有人工台账B2接线均已完成本地验收、推送并集成main；Next为CORE-CA-015按SD-54已批准、待技术冻结与派发，唯一指针见[路线图](feature-roadmap.md#current-slice)。复用`codex/ca013-014-integration`／`.local/worktrees/ca013-014-integration`；已按用户新授权从main基线`4802c32`快进至`ea9dcd1`／tree`5cd3290a6bf1e25133f30aa8574500170c3080ec`并原子推送任务分支与main；无CI配置，不冒称CI通过。主目录重叠cases.ts已保全原文件／补丁及stash`b07482c2c6130baa39cc43658f3dadb17cf81551`，恢复指针在ignored `.local/calendar-funds-evidence/main-workspace-preservation.json`；.pnpm-store保留原位。没有部署生产。集成文档收口`953ae33`已核本地／远端main与任务分支一致；U1／U2依此基线开发，白名单见路线图，父任务已授权直接接纳作者最终候选；I已接纳U1为`2a8b8d0`、U2为`2c7d4ff`，组合候选a9207b4／tree b116604已完成154/154、check:fast、双端21条真实来源2/2及独立两轴ACCEPTED；首次推送审批拒绝记录已保留；补充精确用户授权后UTC06:45快进及原子推送exit0，本地／远端main和任务分支均为1f69c4b，tree a3fc54e687eea5d808b6cd7c3fbeb856575e2aa2。
+**CORE-CA-015**：I在独立`codex/ca015-execution-finish-integration`复用`.local/worktrees/ca013-014-integration`，HEAD基线`ada34c6e28cf504e35c92346b35ed4c934b278e2`／tree`148b00610e12e02e4a2b5e975854b9354057d5b8`，恢复核实干净，pnpm context:check exit0。冻结两轴技术Review ACCEPTED、未关闭0/0/0，仅文档合同不是实现通过。I独占契约、唯一状态、接纳和最终门禁；父线程排优先级、向用户沟通并处理需其输入的问题；worker只写白名单，互不争写。
 
-上一日历与台账执行性候选`32cb30d`／tree`c62f9412407d571cf713059240cd25d78f348eed`：独立补审已接受产品／单元／构建输入未变的`f415f7f`完整verify限定复用（80／1167／1278及双构建），原九文件68项整组本次exit0、68/68、前后候选及环境一致。原67/68失败与115245仅58项通过的中断均保留，原中断退出码未知；真实结果、复用和收口边界只在[验证记录](spec/v0.1/VALIDATION.md#日历与人工台账组合2026-10-13本地验收完成待集成)维护。A原39文件167/167只绑定其原tree，不冒充新组合全仓回归。
+| 实施任务              | 线程／分支／worktree                                                                              | 已核实际状态                                                                                                                                                                                                           |
+| --------------------- | ------------------------------------------------------------------------------------------------- | ---------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| E1后端及材料/客户兼容 | 01a13414-9407-717f-96fd-ec1fda486013；codex/ca015-e1-backend；.local/worktrees/ca015-e1-backend   | 初次普通沙箱Git锁拒绝、未写源码后已正常审批恢复，同一worktree成功，基线ada34c6；已领取并准备隔离依赖/实施，无最终候选或PG结果。消息通道恢复，额外OpenAPI provider和organization目录直接测试已归E1，其他backend作者无。 |
+| E2结束面板            | 01a13414-f88b-72bd-a0ea-c23beb1de012；codex/ca015-e2-panel；.local/worktrees/ca015-e2-panel       | 已从ada34c6建立独占目录并运行，严格只新增面板与spec两文件，尚无最终提交/验收。                                                                                                                                         |
+| E3前端接线            | 01a13415-4866-7694-a9c4-a6c3430ce038；codex/ca015-e3-frontend；.local/worktrees/ca015-e3-frontend | 已领取，从ada34c6实施严格API与阶段/权限/材料枚举；新目录正常pnpm入口因安装元数据阻断如实报告，隔离复制依赖中，未关闭策略，尚无最终候选/真实面板组合检查。                                                              |
 
-持久预览5186／3206／15436保留正常密码／cookie／CSRF及两条未办理的合成待办案；资金登记→刷新→来源→更正→历史和日历三角色五卡／切月／精确跳转均已有正常浏览器证据。恢复时先读ignored `.local/ca013-preview/README.md`与`runtime/services.json`；凭据仅`runtime/login.txt`，摘要为`runtime/browser-scenario-summary.json`和`browser-calendar-summary.json`。本轮只读核实登录页和health均200，未新登录、改预览数据或重启服务；Demo8123和其他环境未操作。缴费截止／其他节点、提醒、资金发起、CA-015及后续未做；SD-54新批准范围已入既有Decision／Spec／GAPS，下一批E0/E1/E2/A0边界只见路线图，不开放重开，不称全部Demo完成。
+I已确认持有新case-execution-finish E2E/DB/migration support及新增/必要case-execution-filing support，不改共享清理器；目前仅完成旧来源链/迁移probe定位和切片范围准备，未写这些新测试、未运行CA015数据库或浏览器。三新Prisma模型的中央ownership实际为scripts/prisma-model-owners.mjs（不是JSON）；I随schema接纳维护，不放宽architecture-check，尚未修改。E1先不依赖PG做代码/单元，稳定SHA及具体命令回I后使用预约窗口。
 
-工程主线程01a133a9-8151-751f-a3ec-c3cbc7111019为本任务接替I，唯一集成工作区写入者；前任I任务01a12f29-e1e2-7753-83ff-89e766266035及B/C作者均已结束。父任务负责需求优先级与对用户沟通；工程边界、接口／文件所有权、分支提交、集成验收和权威仓库文档统一由工程总控维护，后续并行实现只按白名单交代码／证据／遗留，不另建项目状态。既有[协作路由](ai-coding.md#多-agent-协作路由)及[单写入者规则](../.cursor/rules/verified-feature-integration.mdc#工作区选择与生命周期)继续适用；接替必须先交接并核实无活动写入者。U1／U2已在独占worktree并行，只持有各自两个白名单文件；D1只读线程01a133e4-bd3f-71ff-bf4e-7f1a5c317013已完成报告（基线953ae33，无写入或验证）。I已完成本批实际组合门禁及独立Review；主目录与远端main已核为1f69c4b，原stash和.pnpm-store现场保留。新组合a9207b4的实际结果、旧失败及首次审批阻塞与最终推送成功只在VALIDATION记录。
+测试资源UTC07:13:25只读核实：backend/.env.test为127.0.0.1:15433/dev_cor_test、原Compose测试容器健康，标准E2E锁无owner、3101/5174空闲；I当前不运行PG/Playwright，E2/E3仅本线非DB检查，E1候选就绪后独占窗口。窗口内仅既有守卫入口和受控随机schema专项；不另reset主测试schema、不动15436人工预览。模型容量错误只记执行服务故障，不记代码或测试失败；恢复先核现场/日志，未重复创建目录或启动测试。
+
+用户可见预览5186/3206/15436保持已验收版本；仅文档变更不切到未验CA015，登录交给独立任务01a1341b-1de5-71ad-8d08-5d8cbd6e0000，父已处理本机安全输入，I不再转发或抢标签页。没有生产部署。主目录原cases.ts stash b07482c2c6130baa39cc43658f3dadb17cf81551及.pnpm-store保留，恢复指针ignored .local/calendar-funds-evidence/main-workspace-preservation.json；原预览恢复说明.local/ca013-preview/README.md。
 
 ### 已集成分页批次（2026-10-13）
 
