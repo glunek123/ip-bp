@@ -60,12 +60,24 @@ const context = {
       grants: [
         { action: 'CUSTOMER_READ', scope: 'DEPARTMENT' },
         { action: 'CASE_EXECUTION_FINISH', scope: 'DEPARTMENT' },
+        { action: 'CASE_CLOSURE_RECORD', scope: 'DEPARTMENT' },
+        { action: 'CASE_CLOSURE_CORRECT', scope: 'DEPARTMENT' },
         { action: 'CASE_ACCEPTANCE_REGISTER', scope: 'DEPARTMENT' },
         { action: 'CASE_HEARING_CORRECT', scope: 'DEPARTMENT' },
       ],
     },
   ],
   permissionCatalog: [
+    {
+      action: 'CASE_CLOSURE_RECORD',
+      label: '登记结案资料',
+      scopes: ['SELF', 'TEAM', 'DEPARTMENT'],
+    },
+    {
+      action: 'CASE_CLOSURE_CORRECT',
+      label: '更正结案资料',
+      scopes: ['SELF', 'TEAM', 'DEPARTMENT'],
+    },
     {
       action: 'CASE_EXECUTION_FINISH',
       label: '登记执行结束',
@@ -166,6 +178,12 @@ describe('PeopleAccessPage', () => {
     expect(wrapper.text()).toContain('客户经办');
     expect(wrapper.get('.role-template-card').text()).toContain('查看客户');
     expect(wrapper.get('.role-template-card').text()).toContain('登记执行结束');
+    expect(wrapper.get('.role-template-card').text()).toContain(
+      '登记结案资料 · 部门',
+    );
+    expect(wrapper.get('.role-template-card').text()).toContain(
+      '更正结案资料 · 部门',
+    );
     expect(wrapper.get('.role-template-card').text()).toContain(
       '登记正式立案 · 部门',
     );

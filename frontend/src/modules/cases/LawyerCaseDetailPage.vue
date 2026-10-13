@@ -2,12 +2,19 @@
 import CaseExecutionMailingPanel from './CaseExecutionMailingPanel.vue';
 import CaseExecutionFilingPanel from './CaseExecutionFilingPanel.vue';
 import CaseExecutionFinishPanel from './CaseExecutionFinishPanel.vue';
+import CaseClosurePanel from './CaseClosurePanel.vue';
 
 import { computed, onBeforeUnmount, onMounted, ref, watch } from 'vue';
 import { RouterLink, useRoute } from 'vue-router';
 import { ElButton } from 'element-plus/es/components/button/index.mjs';
 import { ApiError } from '../../api/http';
 import {
+  recordCaseClosure,
+  caseClosureSession,
+  type RecordCaseClosureInput,
+  type CorrectCaseClosureInput,
+  type CaseClosureResult,
+  type CaseClosurePendingRequest,
   finishCaseExecution,
   executionFinishSession,
   type FinishCaseExecutionInput,
@@ -117,6 +124,7 @@ const finishCallbacks = computed(() => {
       readRevision += 1;
       request?.abort();
       finishSession.clear();
+      closureSession.clear();
       clearContext();
       await load();
     }
@@ -250,6 +258,171 @@ const finishCallbacks = computed(() => {
   };
 });
 
+const closureSession = caseClosureSession(auth, () => identity.value);
+const closurePending = computed(() => closureSession.pending(id.value));
+const closureCallbacks = computed(() => {
+  const caseId = item.value?.id ?? id.value;
+  const contextKey = identity.value;
+  const revision = contextRevision;
+  const current = () =>
+    caseId === id.value &&
+    contextKey === identity.value &&
+    revision === contextRevision;
+  const denied = async (reason: unknown) => {
+    if (
+      current() &&
+      reason instanceof ApiError &&
+      (reason.status === 401 || reason.status === 403)
+    ) {
+      contextRevision += 1;
+      readRevision += 1;
+      request?.abort();
+      finishSession.clear();
+      closureSession.clear();
+      clearContext();
+      await load();
+    }
+    throw reason;
+  };
+  return {
+    pending: (input: CaseClosurePendingRequest | null) => {
+      if (current()) closureSession.setPending(caseId, input);
+    },
+    record: async (targetId: string, input: RecordCaseClosureInput) => {
+      if (!current() || targetId !== caseId)
+        throw new ApiError(
+          '案件办理身份已变化，请重新读取',
+          409,
+          'INVALID_STATE',
+        );
+      closureSession.setPending(caseId, { command: 'RECORD', input });
+      try {
+        const result = await recordCaseClosure(caseId, input, 'lawyer');
+        if (!current())
+          throw new ApiError(
+            '案件办理身份已变化，请重新读取',
+            409,
+            'INVALID_STATE',
+          );
+        return result;
+      } catch (reason) {
+        return denied(reason);
+      }
+    },
+    correct: async (
+      _targetId: string,
+      _input: CorrectCaseClosureInput,
+    ): Promise<CaseClosureResult> => {
+      throw new ApiError('律师不能更正结案资料', 403, 'ACTION_FORBIDDEN');
+    },
+    list: async (targetId: string): Promise<CaseFile[]> => {
+      if (!current() || targetId !== caseId)
+        throw new ApiError(
+          '案件办理身份已变化，请重新读取',
+          409,
+          'INVALID_STATE',
+        );
+      try {
+        const materials = await listOwnerMaterials('CASE', caseId);
+        if (!current())
+          throw new ApiError(
+            '案件办理身份已变化，请重新读取',
+            409,
+            'INVALID_STATE',
+          );
+        return materials.items
+          .filter(
+            (material) =>
+              material.status === 'ACTIVE' &&
+              material.category === 'CASE_CLOSURE_DOCUMENT',
+          )
+          .flatMap((material) => {
+            const version = material.contentVersions.find(
+              (entry) => entry.id === material.currentVersionId,
+            );
+            return version
+              ? [
+                  {
+                    materialId: material.id,
+                    contentVersionId: version.id,
+                    originalFilename: version.originalFilename,
+                    mimeType: version.mimeType,
+                  },
+                ]
+              : [];
+          });
+      } catch (reason) {
+        return denied(reason);
+      }
+    },
+    upload: async (
+      targetId: string,
+      file: globalThis.File,
+    ): Promise<CaseFile> => {
+      if (!current() || targetId !== caseId)
+        throw new ApiError(
+          '案件办理身份已变化，请重新读取',
+          409,
+          'INVALID_STATE',
+        );
+      try {
+        const result = await uploadMaterialFile({
+          ownerType: 'CASE',
+          ownerId: caseId,
+          category: 'CASE_CLOSURE_DOCUMENT',
+          purpose: 'CASE_CLOSURE_DOCUMENT',
+          file,
+        });
+        if (!current())
+          throw new ApiError(
+            '案件办理身份已变化，请重新读取',
+            409,
+            'INVALID_STATE',
+          );
+        return {
+          materialId: result.materialId,
+          contentVersionId: result.contentVersionId,
+          originalFilename: result.originalFilename,
+          mimeType: result.mimeType,
+        };
+      } catch (reason) {
+        return denied(reason);
+      }
+    },
+    download: async (
+      targetId: string,
+      file: CaseFile,
+      signal: globalThis.AbortSignal,
+    ) => {
+      if (!current() || targetId !== caseId)
+        throw new ApiError(
+          '案件办理身份已变化，请重新读取',
+          409,
+          'INVALID_STATE',
+        );
+      try {
+        return await downloadMaterialVersion(
+          file.materialId,
+          file.contentVersionId,
+          signal,
+        );
+      } catch (reason) {
+        return denied(reason);
+      }
+    },
+    changed: (result: CaseClosureResult) => {
+      if (!current() || result.id !== caseId) return;
+      closureSession.setPending(caseId, null);
+      if (closureSession.markChanged(result.closureVersionId)) {
+        notifyWorkflowChanged();
+        void load();
+      }
+    },
+    refresh: () => {
+      if (current()) void load();
+    },
+  };
+});
 async function load(): Promise<void> {
   request?.abort();
   const controller = new AbortController();
@@ -323,6 +496,7 @@ async function load(): Promise<void> {
       request = undefined;
       abortDownloads();
       finishSession.clear();
+      closureSession.clear();
       clearContext();
       state.value = reason.status === 404 ? 'missing' : 'failed';
       error.value =
@@ -345,7 +519,9 @@ async function load(): Promise<void> {
 
 watch(
   [id, identity],
-  () => {
+  ([caseId], [priorCaseId]) => {
+    if (caseId !== priorCaseId && route.params.id !== undefined)
+      closureSession.clear();
     contextRevision += 1;
     readRevision += 1;
     request?.abort();
@@ -757,6 +933,24 @@ onBeforeUnmount(() => {
           @changed="finishCallbacks.changed"
           @refresh="finishCallbacks.refresh"
         />
+        <CaseClosurePanel
+          v-if="
+            item.stage === 'WAITING_ARCHIVE' || item.closure || closurePending
+          "
+          :item="item"
+          :context-key="identity"
+          lawyer
+          :pending-request="closurePending"
+          :record-closure="closureCallbacks.record"
+          :correct-closure="closureCallbacks.correct"
+          :list-closure-files="closureCallbacks.list"
+          :upload-closure-file="closureCallbacks.upload"
+          :download-closure-file="closureCallbacks.download"
+          @pending-change="closureCallbacks.pending"
+          @changed="closureCallbacks.changed"
+          @refresh="closureCallbacks.refresh"
+        />
+
         <CaseExecutionFilingPanel
           v-if="
             item.canSubmitExecutionFiling ||
@@ -782,6 +976,12 @@ onBeforeUnmount(() => {
           @changed="load"
           @refresh="load"
         />
+        <section class="demo-card demo-card--pad">
+          <h2 class="form-section-title">案件信息</h2>
+          <p data-test="court-case-no">
+            法院案号：{{ item.courtCaseNo ?? '未登记' }}
+          </p>
+        </section>
         <section v-if="item.complaint" class="demo-card demo-card--pad">
           <h2 class="form-section-title">起诉材料记录</h2>
           <ul>

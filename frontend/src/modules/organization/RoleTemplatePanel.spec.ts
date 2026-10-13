@@ -18,6 +18,34 @@ const permissionCatalog = [
 ];
 
 describe('RoleTemplatePanel', () => {
+  it.each(['CASE_CLOSURE_RECORD', 'CASE_CLOSURE_CORRECT'] as const)(
+    'uses the catalog label for %s without granting new actions',
+    (action) => {
+      const wrapper = mount(RoleTemplatePanel, {
+        props: {
+          roles: [{ ...role, grants: [{ action, scope: 'TEAM' }] }],
+          permissionCatalog: [
+            {
+              action,
+              label:
+                action === 'CASE_CLOSURE_RECORD'
+                  ? '登记结案资料'
+                  : '更正结案资料',
+              scopes: ['SELF', 'TEAM', 'DEPARTMENT'],
+            },
+          ],
+          canManage: false,
+        },
+      });
+      expect(wrapper.text()).toContain(
+        `${action === 'CASE_CLOSURE_RECORD' ? '登记结案资料' : '更正结案资料'} · 团队`,
+      );
+      expect(wrapper.find('[data-test="copy-role-role-1"]').exists()).toBe(
+        false,
+      );
+    },
+  );
+
   it('shows the backend label for an internal second-instance revoke grant', () => {
     const wrapper = mount(RoleTemplatePanel, {
       props: {
