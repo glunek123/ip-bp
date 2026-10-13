@@ -283,6 +283,59 @@ AC-CA-004本片增量：运营、承办律师、本企业客户经正常来源�
 
 本批次扩展既有阶段SQL守卫与共享材料身份路径，按Level 3：高风险实现独立Sol审查及组合终审后，在稳定候选运行完整工程门禁、适用真实PG／Chromium、140份完整迁移链、136份上一支持schema升级、直接SQL负例及失败原子／向前重试。实际完成状态与候选证据只记路线图和VALIDATION。
 
+## CA-016最小结案资料与案件列表摘要技术冻结（2026-10-13，未实现／未验收）
+
+依据SD-44／54、CA01～CA11及用户案件字段对齐要求，工程基线为已实核main `1471bfa76380409607a2d87a834b63cda3bc35cd`／tree `1d595f73970c66155273f4bc5ab2e0ed2a82905e`。只读分析01a1367f为输入，以下为I裁定。CA-016只登记最小结案资料及待归档阶段的原因更正，保存仍为`WAITING_ARCHIVE`；CA-017另做最终归档及归档后原因更正。首版不新增案件实收／付款／结算事实，不开放重开或任意回退，不建立审批层。
+
+### 请求、响应与金额来源
+
+- 内部`POST /api/v1/cases/:id/closure`、当前PRIMARY律师`POST /api/v1/lawyer/cases/:id/closure`共用登记Command；内部`POST /api/v1/cases/:id/closure-correction`共用原因更正Command。沿既有ActorContextGuard、CsrfGuard、UUID路径校验；首次及有权同键原参重放均201。
+- `RecordCaseClosureInput`所有键显式：`{expectedVersion,idempotencyKey,expectedFinishId,closeAt,closeAmountState,closeAmt,note,closeContentVersionIds}`。`CorrectCaseClosureInput`加`expectedClosureVersionId`及`correctionReason`，提交完整新版本，不把省略解释为沿旧值。
+- 版本为1～Number.MAX_SAFE_INTEGER整数；expected IDs为UUIDv4；key为1～128字符、无首尾空白。拒绝未知字段、非法日期、空白文本、重复精确内容版本或同材料多版本；服务端不静默trim、重排附件或改请求指纹。
+- `closeAt: YYYY-MM-DD|null`为真实结案业务日，未知用null；不默认今天、不复制执行结束日。严格round-trip且不晚于北京时间当日，不另加未经批准的先后日期门槛。
+- `closeAmountState: KNOWN|PENDING`；KNOWN对应非负、至多14位整数及2位小数的Decimal(16,2)字符串，回读规范为两位小数，真实`0.00`保留；PENDING只允许null。无结案版本为未登记，有版本但金额PENDING为待定。结案额是独立真实业务登记，不能解释成实收、判决额或结清结果。
+- `note:null|非空白文本`上限2000字符；更正原因必填非空白，上限500字符。附件数组0～10个精确UUIDv4内容版本，不要求说明或附件齐全才可首次保存。不得复制文件名、空文书或客户台账作结案事实。
+- 固定`CaseClosureResult`：`{id,closureId,closureVersionId,finishId,stage:'WAITING_ARCHIVE',version,recordedAt}`；version为本次expectedVersion+1、recordedAt为UTC ISO。原回执不因后来更正重算。
+- 内部详情增加`closure:null|{id,finishId,current,history}`及`canRecordClosure/canCorrectClosure`。版本字段为`{id,kind:'REGISTER'|'CORRECT',priorVersionId,finishId,fromVersion,toVersion,closeAt,closeAmountState,closeAmt,note,correctionReason,recordedAt,recordedByUserId,files}`；文件复用CaseFile四项。REGISTER的priorVersionId／correctionReason为null。history按真实版本链顺序，current准确等于链末版。
+- 律师详情保留本案结案业务字段／精确文件与历史，排除recordedByUserId和correctionReason，canCorrectClosure固定false；客户和公证处不获得内部结案Command或新金额、原因、操作者／审计／文件投影。现阶段案件实收／款项状态只显示未登记，不擅自显示已结清或未结清。
+
+### 授权、事务与材料
+
+- 新增`CASE_CLOSURE_RECORD @map("case.closure.record")`、`CASE_CLOSURE_CORRECT @map("case.closure.correct")`，内部分别按独立Action＋原SELF／TEAM／DEPARTMENT求交，不用读Grant或角色名称拼接。当前有效PRIMARY律师只可正常登记；更正仅获权内部运营。每次包括回执重放均重验账号、当前授权、部门、负责人／团队或律师绑定／承办有效性。
+- 本次迁移只增加动作目录／类型，不自动复制或新增现有真实RolePermissionGrant、GrantBoundary、账号绑定或scope，不修改真实账号安全权限。隔离测试以显式合成授权准备反例；持久账号若需新授权，另依明确动作／目标授权，不能借夜间通用指示回填。
+- Serializable、同部门同案FOR UPDATE、沿现有锁顺序；授权先于回执裁决。回执唯一`(departmentId,actorUserId,command,idempotencyKey)`，command为RECORD／CORRECT。SHA256固定序列覆盖caseId、command、全部expected及完整业务输入（不含key）；同命令异案／异参同键409 IDEMPOTENCY_CONFLICT，原参重放返回原结果。
+- 登记要求正常来源WAITING_ARCHIVE、当前版本和expectedFinishId精确匹配、真实结束来源链有效且未登记closure；更正要求当前头／版本及expectedClosureVersionId一致。CAS同时限定部门、案件、阶段、版本和当前结束／结案锚。事实、精确引用、真人audit、Case CAS、头指针及固定receipt同事务；有限完整事务重试，不将其他唯一冲突冒作幂等成功。
+- 新材料category／purpose同名`CASE_CLOSURE_DOCUMENT`，PDF／JPEG／PNG，上限沿现有结束依据50MiB；上传／完成重验同案Action与身份，上传不改变案件状态。公开`freezeCaseClosureReferences`及`listFrozenCaseClosureFiles`由材料模块实现，cases不私造引用。校验owner CASE、同案同部门、ACTIVE／AVAILABLE、精确materialId/contentVersionId、去重及大小／MIME；0附件不调用非空冻结服务。当前律师仅本案精确获准版本下载，客户无此新类别。
+- audit actions为`case.closure.recorded`／`case.closure.corrected`，记录真实actor、精确finish／prior／from-to版本和业务字段；不向客户或普通HTTP日志输出原因／审计正文。沿既有VALIDATION_ERROR、ACTION_FORBIDDEN、CASE_NOT_FOUND、VERSION_CONFLICT、INVALID_STATE、IDEMPOTENCY_CONFLICT错误结构，前端未知结果类别不冒充业务失败。
+
+### 不可变连续链与唯一前向迁移
+
+- 新四模型`CaseClosure`（稳定case／department／finish锚及可受控currentVersionId）、`CaseClosureVersion`、`CaseClosureDocument`（精确版本映射）、`CaseClosureReceipt`。头除正常链推进currentVersionId外不得改身份／来源；版本、引用、回执及对应成功audit不可UPDATE／DELETE。
+- 唯一两份新迁移：`20261013190000_add_case_closure_enums/migration.sql`先提交Action／材料／版本kind／command枚举；`20261013190100_guard_case_closure/migration.sql`以单事务建立模型、索引、复合FK、不可变／授权身份／审计／回执／连续链守卫及必要旧函数前向接续。不改既有142份checksum，不造结案／实收历史；第二步失败全部回滚，第一步enum可留，按现有前向恢复方式重试。
+- 原无closure分支继续`finish.toVersion=case.version`；首版`closureVersion.fromVersion=finish.toVersion`；更正准确`prior.toVersion=new.fromVersion`，每步to=from+1，current头指向连续链唯一末版且末版toVersion=Case.version。禁止跨案／跨部门、分叉、跳号、孤立头／事实、假actor／audit／receipt、只SQL增加Case.version。
+- 新前向函数同时接续当前matching／complaint／trial／judgment／second-instance／execution submission／confirmation／mailing／filing／finish各末端判断。不能把精确相等改为`>=`或仅检查有结案头。旧事实、Finish／Filing成功回执、材料字节均保持；老键仍返回老阶段／版本。提交时DEFERRABLE检查完整原子事务。
+
+### 案件Demo既有字段受权摘要（同批，非新业务Command）
+
+内部CaseSummary新增`displaySummary`与`canRecordClosure/canCorrectClosure`；律师Summary只补两能力（更正false），保持既有最小列表字段，不自动扩其来源／内部财务。内部详情继续旧精确字段，法院案号使用现有courtCaseNo，null才显示未登记。
+
+`displaySummary`固定为`{customerName,rightsHolderName,source,defendants,lawyers,court,courtCaseNo,claimAmount,judgmentAmount,closureAmount}`：
+
+- customerName／rightsHolderName按Case明确关系、同部门最小名称，缺必需关系fail closed，不以UUID代运营名称。source为`{platform,shopName,shopExternalId}`，仅按本案精确sourceLeadId＋customerId＋departmentId与公证来源一致关系，沿原平台枚举；店铺ID可null，不按同名店铺猜配、不返回完整线索或截图。
+- defendants为本案`{id,name}`集合，lawyers为本案当前PRIMARY承办`{id,fullName}`集合；保留多名，不返回证件／电话／地址／账号。停用账号不把旧姓名改成假值，也不因此增加办理权。
+- court为现有详情filingSubmission.court的`{id,name}|null`；courtCaseNo为现有详情精确当前法院案号，不取businessNo、诉调号或执行提交日代替。无源显示未登记，不新增执行正式受理／执行案号事实。
+- 三金额统一`{state:'UNRECORDED'|'PENDING'|'KNOWN',amount:string|null,sourceType:string|null,sourceId:string|null}`，严格限定sourceType枚举。claimAmount优先真实COMPLAINT_CONFIRMATION，其次已提交COMPLAINT_SUBMISSION；不得读未提交草稿。judgmentAmount使用当前有效同案轮次的FIRST_INSTANCE_JUDGMENT；有效二审CHANGE用精确SECOND_INSTANCE_RESULT，AFFIRM沿原判决，REMAND／撤销按现有current链重新判定，不能用数组最后一项或跨轮旧金额。closureAmount只CASE_CLOSURE_VERSION当前版；无源均UNRECORDED且其他字段null，PENDING保留真实source且amount=null，KNOWN回读两位Decimal字符串。
+- 案件读取授权和baseWhere先限定允许案件；摘要仅本案同部门最小业务投影，不赋予customer／rights-holder／lead通用接口读取。内部只读他案仍无写权，律师／客户／公证处不混入内部摘要。列表／total／counts继续相同授权范围，21条跨页及旧group／stage书签保持；不增加新排序／关键词／筛选／导出／模拟批量选择。
+- 内部表按Demo顺序呈现操作／编号、案件进展、客户、权利主体、平台、店铺、店铺ID、被告、律师、法院、案号、标的额、判决额、结案额；保留负责人／办理权限及真实来源锚为行内次级信息。沿本批已验business-list宽表、短编号／金额不换行、长姓名可键盘展开，三视口表内横滚，无正文横向溢出。
+
+### 独立面板与调用方合同
+
+仅新增`CaseClosurePanel.vue／CaseClosurePanel.spec.ts`。props：`item:{id,stage,version,canRecordClosure,canCorrectClosure,executionFinish:{id}|null,closure:上述业务投影|null}`、`contextKey`、`lawyer?:boolean`、`pendingRequest:null|{command:'RECORD',input:RecordCaseClosureInput}|{command:'CORRECT',input:CorrectCaseClosureInput}`；callbacks `recordClosure(caseId,input)`、`correctClosure(caseId,input)`返回CaseClosureResult，`listClosureFiles(caseId)`／`uploadClosureFile(caseId,file)`返回CaseFile集合／单项，`downloadClosureFile(caseId,file,signal)`返回void。events：changed(result)、refresh()、pending-change(原请求或null)。共享API类型与内存请求保留由前端接线作者持有，面板不得改api或自行发送全局workflow通知。
+
+Demo结案信息折叠区，普通填写后保存，不增加审批／强制二次确认层。日期空即未知、金额明确KNOWN／PENDING而不预填0；更正加载当前完整业务版并提示原因。首次点击锁定原键／版本／来源及完整输入，防重复点击。网络／timeout／5xx／INVALID_RESPONSE保留同案同身份原参，仅显式同键重试或刷新核实，不自动POST、不换键；同案刷新／重挂载或竞争事实不能清掉原请求。401／403、身份／department／authorizationRevision／案ID变化同步清敏感数据并隔离迟到提交／读／上传响应，下载可取消。changed由详情调用方只发一次workflow通知。只读仍可查看真实历史和精确附件，无未获准表单。
+
+文件所有权、worktree和派发依赖只见路线图本片表；Worker不改权威文档／context／共享环境。高风险后端作者聚焦验证后独立Sol Review，I固定组合再终审及所属门禁。应验运营／当前律师首次登记、内部原因更正、null／待定／真实0、重登／精确历史／字节、撤权重放、同键／旧锚／竞争／回滚、直接SQL约束、空库及142基线升级／第二步失败前向恢复、内部摘要及外部最小投影、三视口及N2跨模块路由。上述为验收要求，本冻结未执行实现或业务测试。
+
 ## CA-015 执行结束批准边界（SD-54，已实现并通过本地组合验收）
 
 正常办理沿SD-39／44已有有权运营及当前承办律师范围，登记真实执行结束日期、原因和依据后只推进强制执行中→待归档；结束事实、原执行提交／材料和历史分别留存。实际执行结果不是判决额、应收额或实收额；本动作不发起支付，也不自动结清或归档。日期／原因／依据的持久化、精确当前来源、版本、幂等、并发与失败回滚必须在技术冻结和实际实现中落到现有同案事务、审计与材料边界，不能靠前端隐藏按钮授权。

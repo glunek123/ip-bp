@@ -4,9 +4,17 @@
 
 ## 当前阶段
 
-业务唯一Current／Next见[路线图](feature-roadmap.md#current-slice)：Current为CORE-UI-001运营Demo字段与列表视觉对齐，已验收并集成，持久预览已保留数据更新；Next为CA-016后续技术冻结。CA015＋N1已验收、集成main bd0e02b；上一批预览曾以产品相同的66b85ce保留数据升级；本批不重跑上一批门禁。CA-016最小结案信息仍保留后续、待技术冻结，不实施归档/重开/财务规则。此前CA013/014、日历/人工台账及U1/U2分页均已集成main3f914ad；证据只在VALIDATION维护。
+唯一Current／Next见路线图：Current为CA016最小结案资料＋案件既有字段受权摘要，工程冻结及独占派发准备，未实现／未验收；N2导航两文件独立并行，Next为CA017业务归档及归档后原因更正。本批从已验main1471bfa启动。上一运营字段批次17/17、完整verify限定复用、main推送及保留数据预览已完成，证据只见VALIDATION。
 
 ## 当前任务
+
+**CORE-CA-016＋案件字段对齐已工程冻结，执行worktree准备中。** I复用`.local/worktrees/ca015-integration`／`codex/ca016-closure-display-integration`，业务基线`1471bfa76380409607a2d87a834b63cda3bc35cd`／tree`1d595f73970c66155273f4bc5ab2e0ed2a82905e`。已读只读分析01a1367f并裁定最小登记及原因更正仍WAITING_ARCHIVE、未知日期null、结案额独立KNOWN／PENDING、首版附件可空；不实现实收／结清／归档／重开。两新前向迁移必须精确接续finish→closure连续链，旧142迁移、事实／回执／字节保持。
+
+后端B1唯一持有case-read服务／DTO及材料／权限必要接点，同时实现案件既有字段摘要；I不并写这些文件。N2两AppShell文件已建立独占树、正常冻结离线安装及context exit0；其他B1／P1／F1／D1准备见路线图唯一白名单。案件courtCaseNo真值与CA016详情合批；列表补客户／主体／平台／店铺／被告／律师／法院／案号及真实金额，不以假数据或财务推断补Demo。Worker不触权威文档、共享环境、PG、预览或push/main。
+
+本批工程冻结及工作区准备不算实现／验收；风险角色路由和正式验证按三级规则。动作目录只增加类型，不自动回填现有真实Grant／Boundary或扩大账号scope；合成测试显式授权，真实新授权另据明确目标。既有预览5186／3206／15436维持b26cdfe、原2案／6凭据／142迁移，不提前迁移／reset／seed，主仓.pnpm-store及恢复stash保留。
+
+### 已完成CORE-UI-001恢复证据
 
 **CORE-UI-001｜运营字段与列表已验收并集成，持久预览已更新。** I目录`.local/worktrees/ca015-integration`、分支`codex/demo-list-display-alignment`；稳定源码／测试候选`5ad06d1fd4dd7294fab227ea73f56052bf839453`／tree`5ef3342d2d6bc4e8b8ebe292b05bc9ed70325f49`。完整verify在`ed3dc291`实际通过80工具／1443前端／1375后端及双构建；后续仅旧E2E商品summary定位及文档/context，14组产品／单元／构建／依赖／运行输入Git blob/tree相同，独立审查明确接受限定复用；新树根E2E类型／Lint／格式、strict与Spec通过，不能称新tree实跑完整verify。独立Sol两轴ACCEPTED，未关C/I/M=0/0/0；作者实际模型标识未核，不假称。
 
@@ -113,4 +121,4 @@ CA-008实际业务候选`9092414`完成Level 3：完整verify退出0（后端107
 
 ## 下一步
 
-按路线图Next领取CA-016技术冻结，基线取本批最终实核远端main。先冻结已批准最小结案信息、不可变版本接续与准确写入白名单，再派发实现；不提前开发归档、更正、重开或财务规则，不重跑本批相同输入门禁。
+从本工程冻结提交派发N2／B1／P1／F1／D1，准确所有权及依赖只见路线图。先正常聚焦候选、B1独立Review，再固定组合终审／相应门禁；不把准备任务或旧门禁当作CA016已完成。CA017保持后续未实施。
