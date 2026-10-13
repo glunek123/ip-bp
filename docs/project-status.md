@@ -4,13 +4,13 @@
 
 ## 当前阶段
 
-业务唯一Current／Next见[路线图](feature-roadmap.md#current-slice)：Current为CORE-UI-001运营Demo字段与列表视觉对齐，已验收，收尾Git集成与保留数据的预览更新；Next为CA-016后续技术冻结。CA015＋N1已验收、集成main bd0e02b且预览66b85ce产品相同；本批不重跑上一批门禁。CA-016最小结案信息仍保留后续、待技术冻结，不实施归档/重开/财务规则。此前CA013/014、日历/人工台账及U1/U2分页均已集成main3f914ad；证据只在VALIDATION维护。
+业务唯一Current／Next见[路线图](feature-roadmap.md#current-slice)：Current为CORE-UI-001运营Demo字段与列表视觉对齐，已验收并集成，持久预览已保留数据更新；Next为CA-016后续技术冻结。CA015＋N1已验收、集成main bd0e02b；上一批预览曾以产品相同的66b85ce保留数据升级；本批不重跑上一批门禁。CA-016最小结案信息仍保留后续、待技术冻结，不实施归档/重开/财务规则。此前CA013/014、日历/人工台账及U1/U2分页均已集成main3f914ad；证据只在VALIDATION维护。
 
 ## 当前任务
 
-**CORE-UI-001｜运营字段与列表已验收，Git集成／持久预览收尾中。** I目录`.local/worktrees/ca015-integration`、分支`codex/demo-list-display-alignment`；稳定源码／测试候选`5ad06d1fd4dd7294fab227ea73f56052bf839453`／tree`5ef3342d2d6bc4e8b8ebe292b05bc9ed70325f49`。完整verify在`ed3dc291`实际通过80工具／1443前端／1375后端及双构建；后续仅旧E2E商品summary定位及文档/context，14组产品／单元／构建／依赖／运行输入Git blob/tree相同，独立审查明确接受限定复用；新树根E2E类型／Lint／格式、strict与Spec通过，不能称新tree实跑完整verify。独立Sol两轴ACCEPTED，未关C/I/M=0/0/0；作者实际模型标识未核，不假称。
+**CORE-UI-001｜运营字段与列表已验收并集成，持久预览已更新。** I目录`.local/worktrees/ca015-integration`、分支`codex/demo-list-display-alignment`；稳定源码／测试候选`5ad06d1fd4dd7294fab227ea73f56052bf839453`／tree`5ef3342d2d6bc4e8b8ebe292b05bc9ed70325f49`。完整verify在`ed3dc291`实际通过80工具／1443前端／1375后端及双构建；后续仅旧E2E商品summary定位及文档/context，14组产品／单元／构建／依赖／运行输入Git blob/tree相同，独立审查明确接受限定复用；新树根E2E类型／Lint／格式、strict与Spec通过，不能称新tree实跑完整verify。独立Sol两轴ACCEPTED，未关C/I/M=0/0/0；作者实际模型标识未核，不假称。
 
-同17项PG／Chromium统一组合已在上述干净候选exit0，精确UTC／退出码／tree／环境HMAC、首轮失败及最终截图只见VALIDATION和ignored `.local/ui-evidence/`。已读三视口图片：业务宽表在容器内横滚、页面无横向溢出，准确业务编号和日期不拆竖排，原详情／分页／范围／权限保持；长摘要可展开，CSS只限定业务列表。本批没有schema／迁移或新业务Command，不扩大为全部Demo完成。下一步按既有授权原子推送任务分支和main、主仓快进，核15436既有数据／账号后备份及替换应用预览；恢复stash与.pnpm-store保留，生产不操作。
+同17项PG／Chromium统一组合已在上述干净候选exit0，精确UTC／退出码／tree／环境HMAC、首轮失败及最终截图只见VALIDATION和ignored `.local/ui-evidence/`。已读三视口图片：业务宽表在容器内横滚、页面无横向溢出，准确业务编号和日期不拆竖排，原详情／分页／范围／权限保持；长摘要可展开，CSS只限定业务列表。本批没有schema／迁移或新业务Command，不扩大为全部Demo完成。已按明确授权原子推送main与任务分支、主仓快进至应用收口b26cdfe。5186／3206／15436已备份并保留数据更新，121表哈希／计数与6账号凭据一致，2案保留、142迁移未变；真实私密账号只读三页exit0、无业务写入。末次仅补实际回执文档／快照，不再运行已通过门禁；恢复stash与.pnpm-store保留，生产不操作。
 
 ### 已完成CA015＋N1恢复证据
 
@@ -113,4 +113,4 @@ CA-008实际业务候选`9092414`完成Level 3：完整verify退出0（后端107
 
 ## 下一步
 
-CA-012及反馈微调已按授权推送／集成，完成集成事实的非执行性文档补记；不自动开始后续实现或部署。CA-013未领取，运营试用环境访问／范围仍待确定，CU-008人工环境保留、不启动或重置。
+按路线图Next领取CA-016技术冻结，基线取本批最终实核远端main。先冻结已批准最小结案信息、不可变版本接续与准确写入白名单，再派发实现；不提前开发归档、更正、重开或财务规则，不重跑本批相同输入门禁。

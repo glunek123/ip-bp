@@ -1,6 +1,6 @@
 # 功能开发路线图
 
-更新日期：2026-10-13。CORE-CA-001～015、两文书导航分组N1、真实来源日历及人工台账B2、内部／客户分页均已验收并集成main。Current为CORE-UI-001运营Demo字段与列表视觉对齐，已验收，Git／预览收尾中；Next为CORE-CA-016最小结案信息，仍待技术冻结。只以Current／Next段落维护指针，不把最小闭环扩大为全部Demo或生产完成。
+更新日期：2026-10-13。CORE-CA-001～015、两文书导航分组N1、真实来源日历及人工台账B2、内部／客户分页均已验收并集成main。Current为CORE-UI-001运营Demo字段与列表视觉对齐，已验收、集成并保留数据更新预览；Next为CORE-CA-016最小结案信息，仍待技术冻结。只以Current／Next段落维护指针，不把最小闭环扩大为全部Demo或生产完成。
 
 本文只回答“已经做到哪里、下一步做什么、之后按什么依赖顺序做”。详细业务规则仍以 [`docs/spec/`](spec/) 为准，核心主线的编码级字段、附件与存储边界以[核心业务字段、附件与存储契约](superpowers/specs/2026-09-21-core-flow-field-material-contract.md)为准，技术方案以设计文档为准，当前切片的技术任务以实施计划为准，实际验证结果以 [`docs/spec/v0.1/VALIDATION.md`](spec/v0.1/VALIDATION.md) 为准；[`docs/project-status.md`](project-status.md)仅保留当前恢复摘要。
 
@@ -164,7 +164,7 @@
 
 ### Current Slice
 
-**CORE-UI-001｜运营Demo字段与列表视觉对齐（已完成，Git／预览收尾中）。**
+**CORE-UI-001｜运营Demo字段与列表视觉对齐（已完成、已集成、预览已更新）。**
 
 本批从已验main bd0e02b冻结d709600，严格沿受权真实来源扩展公证／线索Query与前端展示；原Command、schema、迁移、导出和财务语义不扩。四路候选已接纳；V0高风险独立审查及组合发现修复留痕、正式门禁与真实浏览器结果只在VALIDATION维护。
 
@@ -188,7 +188,7 @@ V3不改后端/API/AppShell/阶段语义，仅现有businessNo、stage、owner�
 
 I共享CSS只新增业务列表限定类，不重写全站table／导航。统一class约定：页面business-list-page；工具栏business-list-toolbar；容器business-list-scroll；表格demo-table business-list-table；单元格business-list-cell--nowrap／--text／--number；徽标沿pill；页尾business-list-footer。正文13px/1.5、表头12px，单元格8px 12px，普通单行目标44px，长文本最多两行约60px；数字／金额右对齐且tabular-nums，日期／短编号／状态不换行。列min-width：操作/编号200、阶段140、姓名主体/店铺160、平台100、日期120、手机140、金额120、地址240，宽表按colgroup与min-width横滚，不压成竖排；长文本有键盘可用展开或精确详情。工具栏与分页紧凑相邻，不以固定min-height制造大片空白。视口1440×900与1024×768同Demo对照，并核390×844无正文横向溢出（表内横滚允许），键盘横滚/展开/详情可用。
 
-Worker只跑自身聚焦测试／类型／lint／格式，报告SHA/tree/实际结果／边界；不改共享API／样式／docs，不运行PG、环境安装或全仓门禁。新API缺模块期间先做现有字段与fixture，I共享候选后补真实类型组合，不以测试替身通过冒称整合。V0涉及跨资源读取，由独立Sol审查；普通UI自审，不逐Task另设Reviewer。I统一普通API／固定15433测试库、真实素材语义与受控浏览器截图，保持5186用户预览及其15436/进程不变。正式固定组合及真实来源／权限／偏好／三视口已验收，实际结果只在VALIDATION维护；不扩大为其他新增字段、支付发起或全部Demo完成。
+Worker只跑自身聚焦测试／类型／lint／格式，报告SHA/tree/实际结果／边界；不改共享API／样式／docs，不运行PG、环境安装或全仓门禁。新API缺模块期间先做现有字段与fixture，I共享候选后补真实类型组合，不以测试替身通过冒称整合。V0涉及跨资源读取，由独立Sol审查；普通UI自审，不逐Task另设Reviewer。I统一普通API／固定15433测试库、真实素材语义与受控浏览器截图，验收期间保持5186用户预览及其15436/进程不变；验收后按明确授权备份并保留数据更新预览。正式固定组合及真实来源／权限／偏好／三视口已验收，实际结果只在VALIDATION维护；不扩大为其他新增字段、支付发起或全部Demo完成。
 
 ### Next Slice
 

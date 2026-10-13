@@ -1246,3 +1246,13 @@ Task C实际提交`0cc238bdffc930aecc2be7058425b2d45ee14b00`，tree`c4934c0a904b
 固定候选`5ad06d1fd4dd7294fab227ea73f56052bf839453`／tree`5ef3342d2d6bc4e8b8ebe292b05bc9ed70325f49`，2026-10-13 17:56:21–18:00:10 UTC原标准入口统一17/17退出0；前后HEAD/tree及干净状态相同，环境HMAC仍`343c59891dfe4d82e03a5c91faac2e1de7325b9c847f35fbaa3819c72290a627`。此为同一新候选的完整明确组合，不拼装初轮2/3、8/14或16/17。实际普通来源、精确字段／版本／字节、内部密码cookie、客户隔离与律师冻结下载、授权独立性／撤权、旧偏好不写回和双账号、21案分页及原CSV／批归档均通过。1440×900、1024×768、390×844的closed主图、展开补图及同视口Demo公证参考共15张已保全，几何／键盘横滚与页面溢出由真实页面验证；I读图确认准确编号／短日期、表内滚动及长摘要展开，金额仍按原十进制字符串真实展示。Demo图片只作视觉参考，不是业务或权限证据。
 
 完整verify仍精确引用ed3dc291（17:40:48–17:44:20 UTC exit0，80／1443／1375及双构建）；相对新候选只E2E定位和非执行性记录，14组Git输入逐字相同，独立Reviewer已明确接受限定复用，新E2E根TSC、Lint、格式和新树strict／Spec另通过，不宣称新tree实跑verify。两轴ACCEPTED，未关C/I/M0/0/0。首次V0前序、线索身份、尺寸、标签重名、商品重名及文档Minor失败与修复均保留。没有新增模型／迁移、改Command回执或权限算法、构造未知费用／结算、预建CA016，剩余案件摘要／新业务字段、CA016／017、历史补录、资金发起与生产条件仍未完成。按三级规则本段及状态／路线图收口仅非执行性文档与快照；Git实际集成及15436数据保留回执稍后记录。
+
+### 本批实际Git集成与持久预览
+
+2026-10-13 18:11:29–18:11:35 UTC将已验收应用收口候选`b26cdfeedf699f2803f331352052db48798a3e36`／tree`333921eb581287684a277b9558a59fc66cfdc347`原子非强制推送main与`codex/demo-list-display-alignment`，退出0，远端两ref实核同SHA；主仓main从bd0e02b快进至同候选，保留原未跟踪.pnpm-store与恢复stash b07482c。b26相对5ad仅四份文档，不称其另跑完整verify或17项；末次提交继续只补实际回执及对应快照，远端最终ref以交付实核为准，未查询CI。
+
+持久预览此前已停止，核两个旧PID均不存在后保全旧services记录，恢复唯一dev-cor-ca013-preview容器及原命名卷。备份`runtime/ui-display-before.dump`为1,028,124字节，SHA256 `043453EC6BE81A43282ED9D476D6D78BA6B9FA2534521881F590CD451161AA13`；pg_restore目录检查exit0，未做恢复演练。原源码66b85ce与旧dist备份`runtime/ui-display-backend-dist-before`保留。应用切换b26cdfe、后端复制ed3完整verify构建，逐文件哈希与I构建一致；未运行新迁移、reset、seed、初始化或改密码。
+
+18:14:04 UTC 5186/login及3206/api/v1/health实际200；15436仍142迁移。更新前后121张业务／凭据表（仅排除认证会话／限流表）的行数及哈希完全相同，2案件、6本地凭据保留。原私密本地密码经真实登录cookie只读核验：案件6列／2行，公证17列／2行，线索空列表保持原状；exit0、业务POST/PUT/PATCH/DELETE为0，未打印账号密码或造数据。证据与预览指纹为原runtime内`ui-display-{before,after,backup,source-update,health,browser-readonly,fingerprint}.json`和三页PNG；恢复仍用原start.ps1／stop.ps1，不重新prepare／initialize。此次版本比较包装器首次因v前缀误判停止于DB读取前，修正比较后实际检查通过，失败不算数据或产品错误。
+
+最终15张三视口／展开／Demo对照图保全于I `.local/ui-evidence/final-success-artifacts/`；统一17项、完整verify及限定复用证据仍沿上段精确候选，不把预览私密账号只读三页当作正式PG组合。Demo8123、其他人工库与生产未操作；全部Demo、案件新业务摘要、CA016／017、历史补录、资金发起及生产准入仍未完成。Next只准备CA016工程冻结，不夹带实现。
