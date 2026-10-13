@@ -1,5 +1,13 @@
 # SPEC-001 文档验证
 
+## CA-015执行结束（2026-10-13，实施中）
+
+合同ada34c6／tree148b006的独立技术Review两轴ACCEPTED、C/I/M=0，仅批准实现，不是业务或迁移通过。E1后端及两步SQL仍稿中；E3独立73986ac／tree1796943已交，16文件375/375及Lint/格式/Spec为作者原件，类型exit2仅缺E2两个导入，待接E2后的真实组合结果。无本批稳定整体候选、PG／Chromium或正式门禁成功证据。
+
+E2源b2d4ddd38b28515d8f4bf4dc6baee4e788244b87／treec21f6233af40afd40b78c111b12bc973194fc84f，仅两份新面板/vue及spec，40/40、类型、双文件Lint/格式均exit0，原件在其ignored .local/ca015-e2-evidence/report.json，UTC07:17:53～07:18:42。保留pnpm元数据失败、早期33/35及Lint失败后修正；未改策略，用已锁Node原CLI和隔离cache，不能称正常pnpm正式门禁。I核7项manifest/lock/policy/patch指纹匹配后于UTC07:25:31.049～07:25:31.387接纳为0935ef357fb4e493492f5a736528e4746519f760／tree64fee94c6dedfaab7bb84d12fc27ee0c03cc5156，exit0、clean，原件ignored .local/calendar-funds-evidence/ca015-e2-acceptance.json；这是依赖接纳，不冒充整批验收。
+
+I完成来源链及迁移probe定位、资源只读核实及排程，未写新finish验收文件或运行PG。UTC07:13:25已核固定15433/dev_cor_test健康、标准E2E锁无owner、3101/5174空闲；15436及5186/3206已验预览保持。容量服务Selected model is at capacity不记代码或测试失败，恢复先核现场，没有重复创建目录或启动结果不明的验证。
+
 ## U1／U2案件列表分页组合（2026-10-13，已验收并集成）
 
 基线main`953ae33a811d9c22da3a8f390f393ba407a7f2a7`。U1源`9d93abc4e819fce1c3d751a6ea24a8d37eed4cc3`／tree`ad1b51a0697d60a1625875fe7a46662708455c56`，只改内部列表与CasePages测试；U2源`025694b43eee9fbcfd7aa9a49f144472112af08c`／tree`94358ecc5c6a2545e7f1914480b8751baaa6b7d2`，只改客户列表与ClientCasePages测试。两线停止修改、工作区干净后，I于UTC06:02:12.399～06:02:12.680分别接纳为`2a8b8d0`／`2c7d4ff`，exit0，无冲突，原未提交恢复文档未被夹带；本批已完成本地验收并快进集成；首次授权审批阻塞及最终成功均保留于下文。
