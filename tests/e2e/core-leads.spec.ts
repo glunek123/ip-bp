@@ -1083,10 +1083,11 @@ test('operator creates, refreshes, views, and edits a waiting-push lead', async 
     coreLeadFixtures.holder,
   );
   await expect(page.getByText('已按客户自动带出')).toBeVisible();
-  await page.getByLabel('拟办理业务类型').selectOption('CIVIL');
+  await page.getByLabel('案件类型').selectOption('CIVIL');
+  await page.locator('input[name="needDisclose"][value="false"]').check();
   await page.getByLabel('发现时间').fill('2026-09-21T10:30');
   await page.getByLabel('线索来源').selectOption('ONLINE');
-  await page.getByLabel('发现平台').selectOption('TAOBAO');
+  await page.getByLabel('平台').selectOption('TAOBAO');
   await page.getByLabel('店铺名称').fill('浏览器店铺');
   await page.getByLabel('商标权').check();
   await page.locator('input[name="productTitle-0"]').fill('浏览器商品');
@@ -1152,10 +1153,11 @@ test('real operator and client logins persist infringement review, screenshot an
   await expect(page.locator('select[name="rightsHolderId"]')).toHaveValue(
     coreLeadFixtures.holder,
   );
-  await page.getByLabel('拟办理业务类型').selectOption('CIVIL');
+  await page.getByLabel('案件类型').selectOption('CIVIL');
+  await page.locator('input[name="needDisclose"][value="false"]').check();
   await page.getByLabel('发现时间').fill('2026-09-22T10:30');
   await page.getByLabel('线索来源').selectOption('ONLINE');
-  await page.getByLabel('发现平台').selectOption('TAOBAO');
+  await page.getByLabel('平台').selectOption('TAOBAO');
   await page.getByLabel('店铺名称').fill('客户端闭环店铺');
   await page.getByLabel('商标权').check();
   await page.locator('input[name="productTitle-0"]').fill('客户端闭环商品');
@@ -1376,10 +1378,11 @@ test('real operator and client logins transfer a lead and record notary evidence
   await page
     .locator('select[name="customerId"]')
     .selectOption(coreLeadFixtures.admittedCustomer);
-  await page.getByLabel('拟办理业务类型').selectOption('CIVIL');
+  await page.getByLabel('案件类型').selectOption('CIVIL');
+  await page.locator('input[name="needDisclose"][value="false"]').check();
   await page.getByLabel('发现时间').fill('2026-09-24T10:30');
   await page.getByLabel('线索来源').selectOption('ONLINE');
-  await page.getByLabel('发现平台').selectOption('TAOBAO');
+  await page.getByLabel('平台').selectOption('TAOBAO');
   await page.getByLabel('店铺名称').fill('公证移交闭环店铺');
   await page.getByLabel('商标权').check();
   await page.locator('input[name="productTitle-0"]').fill('公证移交商品');
@@ -3952,10 +3955,11 @@ test('real operator and client logins archive a no-infringement review and prese
   await page
     .locator('select[name="customerId"]')
     .selectOption(coreLeadFixtures.admittedCustomer);
-  await page.getByLabel('拟办理业务类型').selectOption('CIVIL');
+  await page.getByLabel('案件类型').selectOption('CIVIL');
+  await page.locator('input[name="needDisclose"][value="false"]').check();
   await page.getByLabel('发现时间').fill('2026-09-22T10:30');
   await page.getByLabel('线索来源').selectOption('ONLINE');
-  await page.getByLabel('发现平台').selectOption('TAOBAO');
+  await page.getByLabel('平台').selectOption('TAOBAO');
   await page.getByLabel('店铺名称').fill('不侵权浏览器链路店铺');
   await page.getByLabel('商标权').check();
   await page.locator('input[name="productTitle-0"]').fill('待归档浏览器商品');

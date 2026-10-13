@@ -56,6 +56,7 @@ async function submitValid(wrapper: ReturnType<typeof mount>) {
   await wrapper.get('input[name="quantity-0"]').setValue('1');
   await wrapper.get('input[name="unitPrice-0"]').setValue('1.00');
   await wrapper.get('input[name="commentCount-0"]').setValue('0');
+  await wrapper.get('input[name="needDisclose"][value="false"]').setValue(true);
   await wrapper.get('form').trigger('submit');
 }
 

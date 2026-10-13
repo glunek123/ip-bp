@@ -683,10 +683,11 @@ for (const status of ['PAUSED', 'TERMINATED'] as const) {
     await expect(page.locator('select[name="rightsHolderId"]')).toHaveValue(
       coreLeadFixtures.holder,
     );
-    await page.getByLabel('拟办理业务类型').selectOption('CIVIL');
+    await page.getByLabel('案件类型').selectOption('CIVIL');
+    await page.locator('input[name="needDisclose"][value="false"]').check();
     await page.getByLabel('发现时间').fill('2026-09-21T10:30');
     await page.getByLabel('线索来源').selectOption('ONLINE');
-    await page.getByLabel('发现平台').selectOption('TAOBAO');
+    await page.getByLabel('平台').selectOption('TAOBAO');
     await page.getByLabel('店铺名称').fill(`恢复后浏览器新建-${status}`);
     await page.getByLabel('商标权').check();
     await page.locator('input[name="productTitle-0"]').fill('恢复后商品');
@@ -1186,7 +1187,7 @@ test('an authenticated operator matches, uploads and submits complaint materials
   await matchCaseThroughBrowser(page, caseId, lawyerAccount);
   await page.goto('/cases');
   const actionableRow = page
-    .locator('[data-test="case-list"] li')
+    .locator('[data-test="case-list"] tbody tr')
     .filter({ has: page.locator(`a[href="/cases/${caseId}"]`) });
   await expect(actionableRow).toContainText('办理');
   await actionableRow.getByRole('link').click();

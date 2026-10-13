@@ -113,7 +113,7 @@ test('normal password pagination keeps 21 source cases accessible to operations 
   );
   expect(internalFirst.items).toHaveLength(20);
   const internalList = page.locator('[data-test="case-list"]');
-  await expect(internalList.locator('li')).toHaveCount(20);
+  await expect(internalList.locator('tbody tr')).toHaveCount(20);
   await expect(
     page.getByRole('button', { name: '上一页', exact: true }),
   ).toBeDisabled();
@@ -127,7 +127,7 @@ test('normal password pagination keeps 21 source cases accessible to operations 
       .sort(),
   ).toEqual(sourceIds);
   const internalCaseId = internalSecond.items[0]!.id;
-  await expect(internalList.locator('li')).toHaveCount(1);
+  await expect(internalList.locator('tbody tr')).toHaveCount(1);
   await expect(
     page.getByRole('button', { name: '下一页', exact: true }),
   ).toBeDisabled();
@@ -149,7 +149,7 @@ test('normal password pagination keeps 21 source cases accessible to operations 
     page.getByRole('button', { name: '本部门全部', exact: true }).click(),
   );
   expect(new URL(page.url()).searchParams.get('page')).toBe('1');
-  await expect(internalList.locator('li')).toHaveCount(20);
+  await expect(internalList.locator('tbody tr')).toHaveCount(20);
   await page.getByRole('button', { name: '退出登录', exact: true }).click();
   await expect(page).toHaveURL(/\/login$/u);
 

@@ -603,7 +603,7 @@ test('operator chooses, revokes, corrects, and chooses a new judgment path', asy
   await expect(internalStageLink).toBeVisible();
   await expect(
     page
-      .locator('[data-test="case-list"] li')
+      .locator('[data-test="case-list"] tbody tr')
       .filter({ hasText: '待写执行材料' }),
   ).toHaveCount(1);
   await internalStageLink.click();

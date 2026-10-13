@@ -198,7 +198,9 @@ test('管理员创建律师，律师独立办理真实来源案件并受账号�
   const lawyerNav = lawyerPage.getByRole('navigation', { name: '律师导航' });
   await expect(lawyerNav.getByText('本人案件')).toBeVisible();
   await expect(lawyerNav.getByText('设置')).toHaveCount(0);
-  const ownCases = lawyerPage.locator('[data-test="lawyer-case-list"] li');
+  const ownCases = lawyerPage.locator(
+    '[data-test="lawyer-case-list"] tbody tr',
+  );
   await expect(ownCases).toHaveCount(2);
   await expect(
     lawyerPage.locator(
@@ -454,7 +456,7 @@ test('管理员创建律师，律师独立办理真实来源案件并受账号�
     lawyerB.password,
   );
   await expect(
-    lawyerBPage.locator('[data-test="lawyer-case-list"] li'),
+    lawyerBPage.locator('[data-test="lawyer-case-list"] tbody tr'),
   ).toHaveCount(1);
   await expect(
     lawyerBPage.locator(
