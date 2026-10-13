@@ -1274,3 +1274,5 @@ Task C实际提交`0cc238bdffc930aecc2be7058425b2d45ee14b00`，tree`c4934c0a904b
 恢复证据统一ignored `.local/ca016-evidence/`：各作者接纳JSON、迁移首次／恢复／函数修复、首项闭环、combination-8、focused-3、review-fix-unit及最终候选记录。每步绑定实际退出码、UTC、commit/tree或未提交输入SHA256；失败记录不覆盖。2026-10-13本轮只读5186/login及3206/health均200、预览HEAD b26cdfe干净，15436原142／2案／6凭据保持；Demo8123、其他库及生产不操作。该旧预览不是CA016验收入口。
 
 限定复验19:48:21～19:48:56 UTC为2过1失败：最终144／142迁移及旧CA015原子／不可变证据通过，列表被告顺序断言失败。后续列表各次只改验收接点：精确被告集合、客户RECORDED视图、按aria-expanded避免折叠已展开导航、独立active类避免命中Router默认类、旧原子书签高亮其批准分组、实际批准表头。原API／业务规则不放宽；各次log／JSON保留。最终列表单项19:55:13～19:55:41 UTC退出0，14列／源金额／权限／导航／1440／1024／390横滚键盘及无body溢出已过，三视口主图已实际读图。最终同候选统一组合及完整门禁待运行，不将散装复验合称统一通过。
+
+新干净候选`94c18831383ffbd2917da06c8293e1573d349fad`／tree `d0b378a70c18c370f3ea2313a2b180406a492167`的累计组合Review两轴ACCEPTED、C0/I0/M0。统一九项（原八项＋旧CA015 PG）19:58:06～20:00:31 UTC退出0，9/9，前后HEAD／tree及clean相同，环境HMAC前后一致。完整verify首次19:58:32～19:58:36 UTC退出1：严格context和Spec已过，架构门禁拒绝CaseListPage直接导入leads内部lead-options，后续类型／单元／构建均未执行，不能称完整verify通过。I按现有公开模块边界仅新增leads/index.ts re-export同一labelLeadPlatform、替换一个导入路径，函数及显示规则未变；新候选须再次独立确认及完整门禁／同树验收。

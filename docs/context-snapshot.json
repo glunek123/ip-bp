@@ -1,6 +1,6 @@
 {
   "version": 1,
-  "recordedAt": "2026-10-13T19:56:58.274Z",
+  "recordedAt": "2026-10-13T20:02:02.422Z",
   "files": {
     ".cursor/rules/verified-feature-integration.mdc": "da673301f0440a6a9615786027dffc8e01f739a97f81cd97accef1580ac51f98",
     ".env.example": "07211cde5c2b59efc21b619b752d4c9b871f0980d2d64ca3c146ad6151fd27ca",
@@ -548,7 +548,7 @@
     "docs/spec/v0.1/READINESS.md": "d873884baff01d514f859bb4bfa429c54660d9746d83055e3e8f1535bdc7bdd3",
     "docs/spec/v0.1/README.md": "41214df80221a28e09a7e996835cc649a8d12511fbac8d2b295c4beb2a58042e",
     "docs/spec/v0.1/TECHNICAL-DESIGN.md": "c30b182c72dbf1c5aefbe1f41ecddc3497a7b24e502ae49e8d44d9e79a1b1e1d",
-    "docs/spec/v0.1/VALIDATION.md": "0980637050b36e87961469715f64182b2f1ad0112e29df80aa5bac282cae1235",
+    "docs/spec/v0.1/VALIDATION.md": "0380c712f1002b999656798fe317d857ec186ab7047df8b2c550eb2430d20654",
     "docs/spec/v0.1/modules/calendar.md": "3991b1148b13e2bf2daad951caa48935c5ed6a202b12817b3c47624ad3e0c774",
     "docs/spec/v0.1/modules/cases.md": "f3d0ec93865a01f84c312ef526e4d35078af2499d6a03a9f05d235f895978cda",
     "docs/spec/v0.1/modules/customers.md": "dda577688b5c64baeb1dd2bb3787cbb4263f3f5868cf51b90bc39493f625f0b0",
@@ -733,7 +733,7 @@
     "frontend/src/modules/cases/CaseJudgmentPanel.spec.ts": "f9d36648b1aec203278e665826266ec37b4950094208a74530c0a06fe4a81ffc",
     "frontend/src/modules/cases/CaseJudgmentPanel.vue": "9bdd820033669eebd55ca22e7abeabf09ff4a325cae653fef00cd7e2fd84a355",
     "frontend/src/modules/cases/CaseListDisplay.spec.ts": "06ecd9284bfa56af854e15700ec00cae3c1bf4a5c1548f842867096f74250dfe",
-    "frontend/src/modules/cases/CaseListPage.vue": "b06cbd512fef67d9b9753b9ed5cfc250aa9c0c76b2d5ebdebb483556af85fb4c",
+    "frontend/src/modules/cases/CaseListPage.vue": "ed703349ea1499620404f16ec8c71add441a68d2d6645810de1e424cec63b970",
     "frontend/src/modules/cases/CasePages.spec.ts": "c8baf777ddca849888fa6465c64d6f7d2b4e7cfb6dc400d24b4161baec848cf8",
     "frontend/src/modules/cases/CaseSecondInstancePanel.spec.ts": "b109f015fe6a3cd6d83e13e24645abbbe4f745869bad058087eb99130f5fcb06",
     "frontend/src/modules/cases/CaseSecondInstancePanel.vue": "d471289d8c58e60f9edca76354ec868e4a04d6fabf38c91a1601174cea25bfe4",
@@ -831,6 +831,7 @@
     "frontend/src/modules/leads/NotaryOfficesPage.vue": "c790e6b1ca9db96b397e3880cb49c7219f7f8563aba242aa2be237a589a77fc6",
     "frontend/src/modules/leads/NotaryReturnArchiveBatchPanel.spec.ts": "ff7293ac180e095b340c60becbe0e791bec97c5d48e21d6c8e9044ed349520cb",
     "frontend/src/modules/leads/NotaryReturnArchiveBatchPanel.vue": "e0ee16eae5699f87a976c6c1309a22e95ce04d54ab7ce25a3c1c2cfb3c5c7ac1",
+    "frontend/src/modules/leads/index.ts": "0077d34bf532b9f3eef224ebe19af98816fdcd5d379f77a305b6010a4adc2866",
     "frontend/src/modules/leads/lead-display.spec.ts": "d07b6329e932d8242ec7c4c2328ec448d2b1825b7bb6a3db5f96f1e216c855dc",
     "frontend/src/modules/leads/lead-display.ts": "61c920211afa4ae4ec8036cc3d6a0cd8053581cb131aa95caa2661c9666835ce",
     "frontend/src/modules/leads/lead-options.ts": "af8f2576cb731cc89441416bcf74cbd50756c0a97ca2051f57b9243d4231b571",

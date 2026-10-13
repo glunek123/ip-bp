@@ -4,7 +4,7 @@ import { RouterLink, useRoute, useRouter } from 'vue-router';
 import { ElButton } from 'element-plus/es/components/button/index.mjs';
 import { ApiError } from '../../api/http';
 import { useAuthStore } from '../../stores/auth';
-import { labelLeadPlatform } from '../leads/lead-options';
+import { labelLeadPlatform } from '../leads/index';
 import {
   listCases,
   type CaseStageGroup,
