@@ -12,7 +12,6 @@ import {
   recordCaseClosure,
   caseClosureSession,
   type RecordCaseClosureInput,
-  type CorrectCaseClosureInput,
   type CaseClosureResult,
   type CaseClosurePendingRequest,
   finishCaseExecution,
@@ -309,10 +308,7 @@ const closureCallbacks = computed(() => {
         return denied(reason);
       }
     },
-    correct: async (
-      _targetId: string,
-      _input: CorrectCaseClosureInput,
-    ): Promise<CaseClosureResult> => {
+    correct: async (): Promise<CaseClosureResult> => {
       throw new ApiError('律师不能更正结案资料', 403, 'ACTION_FORBIDDEN');
     },
     list: async (targetId: string): Promise<CaseFile[]> => {
