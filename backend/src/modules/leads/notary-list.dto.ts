@@ -1,6 +1,7 @@
 import { ApiProperty, ApiPropertyOptional } from '@nestjs/swagger';
 import { Type } from 'class-transformer';
 import { IsIn, IsInt, IsOptional, Max, Min } from 'class-validator';
+import { LeadPlatform, CaseStage } from '../../generated/prisma/client';
 
 export const NOTARY_LIST_STAGES = [
   'PENDING_EVIDENCE',
@@ -23,6 +24,63 @@ class NotaryListOfficeDto {
   @ApiProperty() name!: string;
 }
 
+class NotarySourceSummaryDto {
+  @ApiProperty({ type: NotaryListOfficeDto }) customer!: NotaryListOfficeDto;
+  @ApiProperty({ type: NotaryListOfficeDto })
+  rightsHolder!: NotaryListOfficeDto;
+  @ApiProperty({ enum: LeadPlatform }) platform!: LeadPlatform;
+  @ApiProperty() shopName!: string;
+  @ApiProperty({ type: String, nullable: true }) shopExternalId!: string | null;
+}
+
+class NotaryOpeningSummaryDto {
+  @ApiProperty({ minimum: 0, maximum: Number.MAX_SAFE_INTEGER })
+  photoCount!: number;
+  @ApiProperty({ type: String, nullable: true }) senderName!: string | null;
+  @ApiProperty({ type: String, nullable: true }) senderPhone!: string | null;
+  @ApiProperty({ type: String, nullable: true }) senderAddress!: string | null;
+}
+
+class NotaryCertificateSummaryDto {
+  @ApiProperty({ format: 'uuid' }) id!: string;
+  @ApiProperty() certificateNo!: string;
+  @ApiProperty({ format: 'date' }) certificateDate!: string;
+  @ApiProperty({ format: 'date-time' }) issuedAt!: string;
+  @ApiProperty() needDisclose!: boolean;
+}
+
+class NotaryDisplayFeeDto {
+  @ApiProperty({ enum: ['UNRECORDED', 'PENDING', 'KNOWN'] }) state!:
+    'UNRECORDED' | 'PENDING' | 'KNOWN';
+  @ApiProperty({
+    type: String,
+    nullable: true,
+    pattern: '^(0|[1-9]\\d*)\\.\\d{2}$',
+  })
+  amount!: string | null;
+}
+
+class NotaryDisplayFeesDto {
+  @ApiProperty({ type: NotaryDisplayFeeDto }) notary!: NotaryDisplayFeeDto;
+  @ApiProperty({ type: NotaryDisplayFeeDto })
+  investigation!: NotaryDisplayFeeDto;
+  @ApiProperty({ type: NotaryDisplayFeeDto }) sample!: NotaryDisplayFeeDto;
+}
+
+class NotaryLinkedCaseDto {
+  @ApiProperty({ format: 'uuid' }) id!: string;
+  @ApiProperty() businessNo!: string;
+  @ApiProperty({ enum: CaseStage }) stage!: CaseStage;
+}
+
+class NotaryDisplayCapabilitiesDto {
+  @ApiProperty() recordEvidence!: boolean;
+  @ApiProperty() recordOpening!: boolean;
+  @ApiProperty() reviewOpening!: boolean;
+  @ApiProperty() decideIssuance!: boolean;
+  @ApiProperty() archiveReturn!: boolean;
+}
+
 class NotaryListItemDto {
   @ApiProperty({ format: 'uuid' }) id!: string;
   @ApiProperty() businessNo!: string;
@@ -31,6 +89,20 @@ class NotaryListItemDto {
   @ApiProperty({ type: NotaryListLeadDto }) sourceLead!: NotaryListLeadDto;
   @ApiProperty({ type: NotaryListOfficeDto })
   notaryOffice!: NotaryListOfficeDto;
+  @ApiProperty({ type: NotarySourceSummaryDto })
+  sourceSummary!: NotarySourceSummaryDto;
+  @ApiProperty({ format: 'date' }) transferredAt!: string;
+  @ApiProperty({ type: String, format: 'date', nullable: true }) evidenceAt!:
+    string | null;
+  @ApiProperty({ type: NotaryOpeningSummaryDto, nullable: true })
+  openingSummary!: NotaryOpeningSummaryDto | null;
+  @ApiProperty({ type: NotaryCertificateSummaryDto, nullable: true })
+  certificateSummary!: NotaryCertificateSummaryDto | null;
+  @ApiProperty({ type: NotaryDisplayFeesDto }) fees!: NotaryDisplayFeesDto;
+  @ApiProperty({ type: NotaryLinkedCaseDto, nullable: true })
+  linkedCase!: NotaryLinkedCaseDto | null;
+  @ApiProperty({ type: NotaryDisplayCapabilitiesDto })
+  capabilities!: NotaryDisplayCapabilitiesDto;
 }
 
 export class NotaryListCountsDto {

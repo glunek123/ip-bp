@@ -12,6 +12,7 @@ import { LeadModule } from './lead.module';
 import { NotaryIssuanceDecisionService } from './notary-issuance-decision.service';
 import { NotaryListController } from './notary-list.controller';
 import { NotaryListPreferenceService } from './notary-list-preference.service';
+import { NOTARY_LIST_COLUMN_ORDER } from './notary-list-preference.dto';
 import { NotaryListService } from './notary-list.service';
 import { NotaryOpeningReviewService } from './notary-opening-review.service';
 import { NotaryOpeningService } from './notary-opening.service';
@@ -24,7 +25,7 @@ const actor = {
 };
 const matterId = '33333333-3333-4333-8333-333333333333';
 const preference = {
-  order: ['businessNo', 'stage', 'sourceLead', 'notaryOffice', 'createdAt'],
+  order: [...NOTARY_LIST_COLUMN_ORDER],
   hidden: [],
 };
 

@@ -12,6 +12,12 @@ import { ActorContext } from '../../access-control/actor-context';
 import { DatabaseService } from '../../database/database.service';
 import { Prisma } from '../../generated/prisma/client';
 import { isFrozenOpeningPhotoVersion, MaterialService } from '../materials';
+import {
+  NOTARY_DISPLAY_CERTIFICATE_SELECT,
+  NOTARY_DISPLAY_LEAD_SELECT,
+  notaryDisplayCapabilities,
+  readNotaryDisplay,
+} from './notary-display-read';
 import { openingReviewMatchesStage } from './notary-opening-review-read';
 import {
   CreateNotaryOfficeDto,
@@ -646,6 +652,12 @@ export class LeadNotaryService {
   }
 
   async getMatter(actor: ActorContext, id: string) {
+    if (
+      actor.clientCustomerId !== undefined ||
+      actor.notaryOfficeId !== undefined ||
+      actor.lawyerAccountId !== undefined
+    )
+      throw this.mapAuthorization(new ForbiddenException());
     await this.assertInternal(actor);
     let scope;
     try {
@@ -656,14 +668,7 @@ export class LeadNotaryService {
     const matter = await this.database.notaryMatter.findFirst({
       where: { id, departmentId: actor.departmentId, sourceLead: scope },
       include: {
-        sourceLead: {
-          select: {
-            id: true,
-            businessNo: true,
-            responsibleUserId: true,
-            teamId: true,
-          },
-        },
+        sourceLead: { select: NOTARY_DISPLAY_LEAD_SELECT },
         notaryOffice: { select: { id: true, name: true } },
         evidence: {
           include: { logistics: { orderBy: { position: 'asc' } } },
@@ -686,7 +691,7 @@ export class LeadNotaryService {
             decidedAt: true,
           },
         },
-        certificate: { select: { id: true } },
+        certificate: { select: NOTARY_DISPLAY_CERTIFICATE_SELECT },
         returnArchive: {
           select: {
             returnChoice: true,
@@ -719,81 +724,6 @@ export class LeadNotaryService {
       },
     });
     if (matter === null) throw this.notFound();
-    let recordEvidence = false;
-    let recordOpening = false;
-    let reviewOpening = false;
-    let decideIssuance = false;
-    let archiveReturn = false;
-    if (matter.stage === 'PENDING_EVIDENCE') {
-      try {
-        await this.access.authorizeLead(actor, 'notary.evidence.record', {
-          departmentId: matter.departmentId,
-          responsibleUserId: matter.sourceLead.responsibleUserId,
-          ...(matter.sourceLead.teamId === null
-            ? {}
-            : { teamId: matter.sourceLead.teamId }),
-        });
-        recordEvidence = true;
-      } catch (error) {
-        if (!(error instanceof ForbiddenException)) throw error;
-      }
-    }
-    if (matter.stage === 'WAITING_UNBOX') {
-      try {
-        await this.access.authorizeLead(actor, 'notary.unbox.record', {
-          departmentId: matter.departmentId,
-          responsibleUserId: matter.sourceLead.responsibleUserId,
-          ...(matter.sourceLead.teamId === null
-            ? {}
-            : { teamId: matter.sourceLead.teamId }),
-        });
-        recordOpening = true;
-      } catch (error) {
-        if (!(error instanceof ForbiddenException)) throw error;
-      }
-    }
-    if (matter.stage === 'UNBOX_REVIEW') {
-      try {
-        await this.access.authorizeLead(actor, 'notary.opening.review', {
-          departmentId: matter.departmentId,
-          responsibleUserId: matter.sourceLead.responsibleUserId,
-          ...(matter.sourceLead.teamId === null
-            ? {}
-            : { teamId: matter.sourceLead.teamId }),
-        });
-        reviewOpening = true;
-      } catch (error) {
-        if (!(error instanceof ForbiddenException)) throw error;
-      }
-    }
-    if (matter.stage === 'ISSUANCE_DECISION') {
-      try {
-        await this.access.authorizeLead(actor, 'notary.issuance.decide', {
-          departmentId: matter.departmentId,
-          responsibleUserId: matter.sourceLead.responsibleUserId,
-          ...(matter.sourceLead.teamId === null
-            ? {}
-            : { teamId: matter.sourceLead.teamId }),
-        });
-        decideIssuance = true;
-      } catch (error) {
-        if (!(error instanceof ForbiddenException)) throw error;
-      }
-    }
-    if (matter.stage === 'WAITING_RETURN') {
-      try {
-        await this.access.authorizeLead(actor, 'notary.return.archive', {
-          departmentId: matter.departmentId,
-          responsibleUserId: matter.sourceLead.responsibleUserId,
-          ...(matter.sourceLead.teamId === null
-            ? {}
-            : { teamId: matter.sourceLead.teamId }),
-        });
-        archiveReturn = true;
-      } catch (error) {
-        if (!(error instanceof ForbiddenException)) throw error;
-      }
-    }
     if (matter.stage === 'WAITING_UNBOX' && matter.evidence === null)
       throw this.corruptReceipt();
     if (
@@ -964,13 +894,24 @@ export class LeadNotaryService {
       leadVersion: matter.toLeadVersion,
       stage: matter.stage,
       version: matter.version,
-      capabilities: {
-        recordEvidence,
-        recordOpening,
-        reviewOpening,
-        decideIssuance,
-        archiveReturn,
-      },
+      capabilities: await notaryDisplayCapabilities(this.access, actor, matter),
+      ...(await readNotaryDisplay(
+        this.database,
+        this.access,
+        actor,
+        matter,
+        new Set(
+          openingReferences.map((reference) => reference.contentVersionId),
+        ).size,
+      )),
+      certificateFiles:
+        matter.certificate == null
+          ? []
+          : await this.materials.listFrozenCertificateFiles(
+              actor,
+              matter.id,
+              matter.certificate.id,
+            ),
       returnArchive:
         archive === null || archive === undefined
           ? null

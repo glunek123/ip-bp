@@ -8,6 +8,8 @@ describe('LeadNotaryService opening review read projection', () => {
       businessNo: 'NT-1',
       departmentId: actor.departmentId,
       sourceLeadId: leadId,
+      customerId: 'customer-1',
+      rightsHolderId: 'rights-holder-1',
       toLeadVersion: 4,
       stage: 'ARCHIVED',
       version: 4,
@@ -17,6 +19,9 @@ describe('LeadNotaryService opening review read projection', () => {
         businessNo: 'LD-1',
         responsibleUserId: actor.userId,
         teamId: null,
+        platform: 'TAOBAO',
+        shopName: '精确店铺',
+        shopExternalId: null,
       },
       notaryOffice: { id: officeId, name: '公证处' },
       evidence: null,
@@ -43,6 +48,16 @@ describe('LeadNotaryService opening review read projection', () => {
       },
     };
     const database = {
+      customer: {
+        findFirst: jest
+          .fn()
+          .mockResolvedValue({ id: 'customer-1', name: '客户' }),
+      },
+      rightsHolder: {
+        findFirst: jest
+          .fn()
+          .mockResolvedValue({ id: 'rights-holder-1', name: '主体' }),
+      },
       userAccount: {
         findUnique: jest
           .fn()
@@ -66,11 +81,33 @@ describe('LeadNotaryService opening review read projection', () => {
     const access = {
       buildLeadScope: jest.fn().mockResolvedValue({}),
       authorizeLead: jest.fn().mockRejectedValue(new ForbiddenException()),
+      authorizeDepartmentAction: jest
+        .fn()
+        .mockRejectedValue(new ForbiddenException()),
+    };
+    const frozenFiles = [
+      {
+        materialId: 'certificate-material',
+        contentVersionId: 'certificate-frozen-v1',
+        originalFilename: 'certificate.pdf',
+        mimeType: 'application/pdf',
+        purpose: 'NOTARY_CERTIFICATE',
+      },
+      {
+        materialId: 'disclosure-material',
+        contentVersionId: 'disclosure-frozen-v1',
+        originalFilename: 'disclosure.pdf',
+        mimeType: 'application/pdf',
+        purpose: 'NOTARY_DISCLOSURE',
+      },
+    ];
+    const materials = {
+      listFrozenCertificateFiles: jest.fn().mockResolvedValue(frozenFiles),
     };
     const service = new LeadNotaryService(
       database as never,
       access as never,
-      {} as never,
+      materials as never,
     );
     const result = await service.getMatter(actor, matterId);
     expect(result.capabilities).toEqual({
@@ -81,6 +118,9 @@ describe('LeadNotaryService opening review read projection', () => {
       archiveReturn: false,
     });
     expect(result).toHaveProperty('returnArchive', null);
+    expect(result.certificateFiles).toEqual([]);
+    expect(materials.listFrozenCertificateFiles).not.toHaveBeenCalled();
+    expect(result.openingSummary?.photoCount).toBe(1);
     expect(result.reviewDecision).toEqual({
       result: 'NO_INFRINGEMENT',
       reason: '不侵权',
@@ -216,10 +256,24 @@ describe('LeadNotaryService opening review read projection', () => {
         decision: 'ISSUE',
         decidedAt: new Date('2026-09-28T02:00:00Z'),
       },
-      certificate: { id: 'certificate-1' },
+      certificate: {
+        id: 'certificate-1',
+        certificateNo: '真实证书',
+        certificateDate: new Date('2026-09-28'),
+        issuedAt: new Date('2026-09-28T02:00:00Z'),
+        needDisclose: false,
+        fees: [],
+      },
       returnArchive: null,
     });
     expect((await service.getMatter(actor, matterId)).returnArchive).toBeNull();
+    const issued = await service.getMatter(actor, matterId);
+    expect(issued.certificateFiles).toEqual(frozenFiles);
+    expect(materials.listFrozenCertificateFiles).toHaveBeenCalledWith(
+      actor,
+      matterId,
+      'certificate-1',
+    );
     database.notaryMatter.findFirst.mockResolvedValue({
       ...record,
       stage: 'ARCHIVED',

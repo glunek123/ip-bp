@@ -7,6 +7,7 @@ import {
   NotaryListPreferenceDto,
 } from './notary-list-preference.dto';
 import {
+  NOTARY_LIST_DEFAULT_HIDDEN,
   normalizeNotaryListPreference,
   NotaryListPreferenceService,
 } from './notary-list-preference.service';
@@ -20,7 +21,11 @@ const actorB: ActorContext = {
   ...actorA,
   userId: '33333333-3333-4333-8333-333333333333',
 };
-const defaults = { order: [...NOTARY_LIST_COLUMN_ORDER], hidden: [] };
+const newColumns = NOTARY_LIST_COLUMN_ORDER.slice(2, 16);
+const defaults = {
+  order: [...NOTARY_LIST_COLUMN_ORDER],
+  hidden: [...NOTARY_LIST_DEFAULT_HIDDEN],
+};
 
 function fixture() {
   const rows = new Map<
@@ -68,6 +73,33 @@ function fixture() {
 }
 
 describe('NotaryListPreferenceService', () => {
+  it('expands an old five-key row in memory and preserves its optional order and hidden values without writing', async () => {
+    const { service, preferences, rows } = fixture();
+    const legacy = {
+      columnOrder: [
+        'businessNo',
+        'stage',
+        'createdAt',
+        'notaryOffice',
+        'sourceLead',
+      ],
+      hiddenColumns: ['sourceLead'],
+    };
+    rows.set(actorA.userId, legacy);
+    await expect(service.get(actorA)).resolves.toEqual({
+      order: [
+        'businessNo',
+        'stage',
+        ...newColumns,
+        'createdAt',
+        'notaryOffice',
+        'sourceLead',
+      ],
+      hidden: ['sourceLead'],
+    });
+    expect(rows.get(actorA.userId)).toEqual(legacy);
+    expect(preferences.upsert).not.toHaveBeenCalled();
+  });
   it('returns visible default columns without creating a row', async () => {
     const { service, preferences, access } = fixture();
     await expect(service.get(actorA)).resolves.toEqual(defaults);
@@ -78,7 +110,14 @@ describe('NotaryListPreferenceService', () => {
   it('saves a full replacement for one actor and restores only that actor', async () => {
     const { service, rows, preferences } = fixture();
     const changed = {
-      order: ['businessNo', 'stage', 'createdAt', 'sourceLead', 'notaryOffice'],
+      order: [
+        'businessNo',
+        'stage',
+        ...newColumns,
+        'createdAt',
+        'sourceLead',
+        'notaryOffice',
+      ],
       hidden: ['notaryOffice'],
     } as NotaryListPreferenceDto;
     await expect(service.put(actorA, changed)).resolves.toEqual(changed);
@@ -100,12 +139,12 @@ describe('NotaryListPreferenceService', () => {
       2,
       expect.objectContaining({
         where: { userId: actorA.userId },
-        update: { columnOrder: defaults.order, hiddenColumns: [] },
+        update: { columnOrder: defaults.order, hiddenColumns: defaults.hidden },
       }),
     );
     expect(rows.get(actorA.userId)).toEqual({
       columnOrder: defaults.order,
-      hiddenColumns: [],
+      hiddenColumns: defaults.hidden,
     });
     expect(rows.has(actorB.userId)).toBe(false);
   });
@@ -123,7 +162,14 @@ describe('NotaryListPreferenceService', () => {
         hiddenColumns: ['businessNo', 'createdAt', 'createdAt', 'retired'],
       }),
     ).toEqual({
-      order: ['businessNo', 'stage', 'createdAt', 'sourceLead', 'notaryOffice'],
+      order: [
+        'businessNo',
+        'stage',
+        ...newColumns,
+        'createdAt',
+        'sourceLead',
+        'notaryOffice',
+      ],
       hidden: ['createdAt'],
     });
   });
@@ -172,6 +218,7 @@ describe('NotaryListPreferenceDto', () => {
           order: [
             'businessNo',
             'stage',
+            ...newColumns,
             'createdAt',
             'sourceLead',
             'notaryOffice',
@@ -184,6 +231,12 @@ describe('NotaryListPreferenceDto', () => {
   });
 
   it.each([
+    {
+      order: ['businessNo', 'stage', 'sourceLead', 'notaryOffice', 'createdAt'],
+      hidden: [],
+    },
+    { ...defaults, order: [...defaults.order.slice(0, -1), 'sourceLead'] },
+    { ...defaults, order: [...defaults.order.slice(0, -1), 'unknown'] },
     {
       order: ['businessNo', 'stage', 'sourceLead', 'notaryOffice', 'unknown'],
       hidden: [],

@@ -4,6 +4,12 @@ import { ActorContext } from '../../access-control/actor-context';
 import { DatabaseService } from '../../database/database.service';
 import { Prisma } from '../../generated/prisma/client';
 import { NOTARY_LIST_STAGES, NotaryListStage } from './notary-list.dto';
+import {
+  NOTARY_DISPLAY_CERTIFICATE_SELECT,
+  NOTARY_DISPLAY_LEAD_SELECT,
+  notaryDisplayCapabilities,
+  readNotaryDisplay,
+} from './notary-display-read';
 
 @Injectable()
 export class NotaryListService {
@@ -18,12 +24,17 @@ export class NotaryListService {
     pageSize: number,
     stage?: NotaryListStage,
   ) {
-    if (actor.clientCustomerId !== undefined) throw this.forbidden();
+    if (
+      actor.clientCustomerId !== undefined ||
+      actor.notaryOfficeId !== undefined ||
+      actor.lawyerAccountId !== undefined
+    )
+      throw this.forbidden();
     const account = await this.database.userAccount.findUnique({
       where: { id: actor.userId },
       select: { accountType: true, active: true },
     });
-    if (account?.accountType !== 'INTERNAL' || account.active === false)
+    if (account?.accountType !== 'INTERNAL' || account.active !== true)
       throw this.forbidden();
 
     let leadScope: Prisma.LeadWhereInput;
@@ -50,7 +61,30 @@ export class NotaryListService {
           businessNo: true,
           stage: true,
           createdAt: true,
-          sourceLead: { select: { id: true, businessNo: true } },
+          departmentId: true,
+          customerId: true,
+          rightsHolderId: true,
+          evidenceMode: true,
+          evidence: {
+            select: {
+              evidenceAt: true,
+              sampleFeeState: true,
+              sampleFeeAmount: true,
+            },
+          },
+          opening: {
+            select: {
+              senderName: true,
+              senderPhone: true,
+              senderAddress: true,
+            },
+          },
+          openingReviewDecision: {
+            select: { result: true, reason: true, archivedAt: true },
+          },
+          issuanceDecision: { select: { decision: true } },
+          certificate: { select: NOTARY_DISPLAY_CERTIFICATE_SELECT },
+          sourceLead: { select: NOTARY_DISPLAY_LEAD_SELECT },
           notaryOffice: { select: { id: true, name: true } },
         },
       }),
@@ -72,10 +106,25 @@ export class NotaryListService {
       if (listedStage !== undefined) counts[listedStage] = group._count._all;
     }
     return {
-      items: items.map((item) => ({
-        ...item,
-        createdAt: item.createdAt.toISOString(),
-      })),
+      items: await Promise.all(
+        items.map(async (item) => ({
+          id: item.id,
+          businessNo: item.businessNo,
+          stage: item.stage,
+          sourceLead: {
+            id: item.sourceLead.id,
+            businessNo: item.sourceLead.businessNo,
+          },
+          notaryOffice: item.notaryOffice,
+          createdAt: item.createdAt.toISOString(),
+          ...(await readNotaryDisplay(this.database, this.access, actor, item)),
+          capabilities: await notaryDisplayCapabilities(
+            this.access,
+            actor,
+            item,
+          ),
+        })),
+      ),
       total,
       page,
       pageSize,

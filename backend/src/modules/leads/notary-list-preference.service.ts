@@ -15,10 +15,39 @@ type StoredPreference = {
   hiddenColumns: string[];
 };
 
+export const NOTARY_LIST_DEFAULT_HIDDEN: NotaryListOptionalColumn[] = [
+  'sourceLead',
+  'notaryOffice',
+  'createdAt',
+];
+
 export function normalizeNotaryListPreference(
   stored: StoredPreference | null,
 ): NotaryListPreferenceDto {
   const optionalOrder: NotaryListOptionalColumn[] = [];
+  if (stored === null)
+    return {
+      order: [...NOTARY_LIST_COLUMN_ORDER],
+      hidden: [...NOTARY_LIST_DEFAULT_HIDDEN],
+    };
+  const legacyKeys = [
+    'businessNo',
+    'stage',
+    'sourceLead',
+    'notaryOffice',
+    'createdAt',
+  ];
+  const isLegacy = !stored.columnOrder.some((key) =>
+    NOTARY_LIST_OPTIONAL_COLUMNS.some(
+      (column) => column === key && !legacyKeys.includes(column),
+    ),
+  );
+  if (isLegacy)
+    optionalOrder.push(
+      ...NOTARY_LIST_OPTIONAL_COLUMNS.filter(
+        (key) => !legacyKeys.includes(key),
+      ),
+    );
   for (const key of stored?.columnOrder ?? []) {
     const optional = NOTARY_LIST_OPTIONAL_COLUMNS.find((item) => item === key);
     if (optional !== undefined && !optionalOrder.includes(optional)) {
@@ -80,7 +109,12 @@ export class NotaryListPreferenceService {
   }
 
   private async authorize(actor: ActorContext): Promise<void> {
-    if (actor.clientCustomerId !== undefined) throw this.forbidden();
+    if (
+      actor.clientCustomerId !== undefined ||
+      actor.notaryOfficeId !== undefined ||
+      actor.lawyerAccountId !== undefined
+    )
+      throw this.forbidden();
     const account = await this.database.userAccount.findUnique({
       where: { id: actor.userId },
       select: { accountType: true, active: true },

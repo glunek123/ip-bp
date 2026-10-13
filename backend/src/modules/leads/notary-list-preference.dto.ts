@@ -4,11 +4,39 @@ import { ValidateBy } from 'class-validator';
 export const NOTARY_LIST_COLUMN_ORDER = [
   'businessNo',
   'stage',
+  'rightsHolder',
+  'platform',
+  'shopName',
+  'shopExternalId',
+  'transferredAt',
+  'evidenceAt',
+  'openingPhotos',
+  'certificateNo',
+  'senderName',
+  'senderPhone',
+  'senderAddress',
+  'notaryFee',
+  'investigationFee',
+  'sampleFee',
   'sourceLead',
   'notaryOffice',
   'createdAt',
 ] as const;
 export const NOTARY_LIST_OPTIONAL_COLUMNS = [
+  'rightsHolder',
+  'platform',
+  'shopName',
+  'shopExternalId',
+  'transferredAt',
+  'evidenceAt',
+  'openingPhotos',
+  'certificateNo',
+  'senderName',
+  'senderPhone',
+  'senderAddress',
+  'notaryFee',
+  'investigationFee',
+  'sampleFee',
   'sourceLead',
   'notaryOffice',
   'createdAt',
@@ -61,11 +89,11 @@ export class NotaryListPreferenceDto {
   @ApiProperty({
     enum: NOTARY_LIST_COLUMN_ORDER,
     isArray: true,
-    minItems: 5,
-    maxItems: 5,
+    minItems: 19,
+    maxItems: 19,
     uniqueItems: true,
     description:
-      '前两项必须依次为 businessNo、stage；后三项为 sourceLead、notaryOffice、createdAt 的无重复排列。',
+      '前两项必须依次为 businessNo、stage；其余十七项为全部可选列的无重复排列。',
   })
   @ValidateBy({
     name: 'notaryListColumnOrder',
@@ -77,10 +105,9 @@ export class NotaryListPreferenceDto {
     enum: NOTARY_LIST_OPTIONAL_COLUMNS,
     isArray: true,
     minItems: 0,
-    maxItems: 3,
+    maxItems: 17,
     uniqueItems: true,
-    description:
-      '仅可隐藏 sourceLead、notaryOffice、createdAt；固定列不可隐藏。',
+    description: '仅可隐藏十七项可选列；businessNo、stage 固定列不可隐藏。',
   })
   @ValidateBy({
     name: 'notaryListHiddenColumns',
