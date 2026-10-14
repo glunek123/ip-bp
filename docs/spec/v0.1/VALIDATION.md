@@ -1390,3 +1390,13 @@ SPA固定源f46a0c2／f2cb2ac／9de1248分别接为7173e16／8748f4b／41fb15367
 原cases匹配、同部门只读／跨部门404、普通密码匹配上传起诉三条沿新入口保留原断言，开发检查2＋1通过；新正常密码匹配＋起诉先真实POST201再丢响应、GETahead／calendar离返／原body/key显式回执比对实际1/1 GREEN（8748产品）通过。期间新测试误等不存在POST/materials，随后误把真实PUT完成200期望为201，两次测试准备错误均已修，不记为产品缺陷，业务POST仍严格断言201。完整verify与固定14项PG／Chromium尚未执行，不提前写通过。
 
 持久预览仍3f636ea／144，按原私密正常登录只读核两案、0业务写入：0001处于WAITING_EXECUTION_STAMP、canMailExecution=true；0002处于WAITING_EXECUTION_FILING、canSubmitExecutionFiling=true。两现有面板及受必填约束的核对按钮存在，旧标题只有刷新，不是完全无推进权限；新版主动作应分别为登记执行邮寄／登记执行立案。真实账号不扩权、不代办两案，升级后再核主动作打开并取消与数据保持。数据来源与后续最小编辑缺口结论只在UI002合同，不声称联系方式或受理更正已实现。
+
+### UI002断网恢复与浏览器失败留痕（2026-10-14，尚未最终交付）
+
+08:40 UTC实际终端恢复，15cca4ef8b3270e6310906e671f41e2660ac528f／tree7df299948212f79e60a8799540d6d64c5e115430干净，旧源码和日志保留，原恢复检查点补丁未落盘。旧final-15-pg.log只确认11项，完成JSON缺失；旧进程和子进程已结束、3101／5174空闲。原日志副本与锁owner记录保全后恢复共享测试锁；15433为Compose的tmpfs测试库，宿主重启后空库，标准db:test:migrate:deploy只在15433恢复146链，不是重复迁移15436持久数据。启动命令首次缺主仓私密Compose变量而失败，未初始化凭据；改用原主仓.env后正常恢复，凭据未输出。
+
+完整verify实际候选4419c10cc9461a1ece4f1c71a5ab1934ab72244d／tree111020a7fbca3102c92c3d2029f0a44d684d2b24，于07:39:13～07:43:23 UTC exit0，80工具／1779前端／1451后端、静态及双构建通过；15仅helper和snapshot变化，17组产品／单元／构建／运行输入逐字相同，累计独立Review双轴ACCEPTED C/I/M0。限定复用不是15完整verify。drawer CSS曾放Vue模块直接导入导致Node测试unknown CSS extension；已移到既有main.ts按需style入口，未改依赖或绕过Vitest；同候选完整verify证明修复。此前七栏、八栏初试、分组定位及drawer辅助用例失败证据保持，不拼接为最终组合成功。
+
+15恢复后完整14项受控PG／Chromium于08:45:49～08:51:15 UTC exit1，11通过／1失败／2未运行。第12项原matching请求显式重放成功、原body和固定回执断言已过；CaseDetail确认成功后正常移除retry并关闭drawer，测试立即打开complaint时helper把尚处于关闭过渡的drawer当打开并点击已隐藏关闭按钮，120秒超时。仅在原重放成功断言后等待dialog隐藏，不增超时、force click或重试，不改产品／API／权限；聚焦复验及最终14项尚待完成。实际head/tree/exit/clean及前后环境HMAC见ignored reconnected-15-pg.json、reconnected-environment-{before,after}.json；完整失败trace另存reconnected-15-failure-artifacts，中断副本final-15-interrupted-0749.log及原失败记录均保留。
+
+持久预览已为fc1c9f3c03c532eb26ae6c0f1c9859cb5da01f6c／146，原144→146前向升级记录保留。原start入口恢复后再次核124张业务／凭据／授权原表、2案／6凭据、材料及私密配置保持，归档新增事实0；不reset／seed／改密码或扩权。146新完整备份runtime/ui002-reconnected-146.dump为1,113,990字节，SHA256 ef27cb222f02c0afb7eff51d16cbdf121dc8a934c0220abf05af51274f1b65b5，pg_restore TOC可读、未演练恢复；旧1,074,833字节备份及旧dist保留。预览尚缺最终抽屉CSS，UI002未推送／合并；08:50 UTC远端main实核696fad75，主仓原.pnpm-store和stash保留。

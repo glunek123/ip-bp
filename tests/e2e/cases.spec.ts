@@ -1035,6 +1035,9 @@ test('UI002 normal operator explicitly replays original matching and complaint r
     expect(bodies).toHaveLength(2);
     expect(bodies[1]).toEqual(bodies[0]);
     await expect(retry).toHaveCount(0);
+    await expect(
+      page.locator('.case-workspace-editors[role="dialog"]'),
+    ).not.toBeVisible();
   }
   await commitLoseAndReplay('match', 'match', () =>
     matchForm.getByRole('button', { name: '确认匹配并进入待写诉状' }).click(),

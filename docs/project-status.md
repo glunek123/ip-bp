@@ -8,6 +8,16 @@
 
 ## 当前任务
 
+### 2026-10-14断网恢复检查点（尚未最终交付）
+
+08:40 UTC实际终端恢复，I仍为`15cca4ef8b3270e6310906e671f41e2660ac528f`／tree`7df299948212f79e60a8799540d6d64c5e115430`，恢复前工作区干净；断连检查点补丁未落盘，源码提交及旧验证日志保留。原PG进程已结束，原日志只确认11/14、无完成JSON；已另存中断日志及死亡PID45468的锁记录，不能记为通过。运行时Node24.21.0／pnpm11.27.0与strict快照实核通过。
+
+完整verify实际在4419c10候选通过（80工具／1779前端／1451后端及双构建），17组产品／单元／构建输入与15逐字一致，独立累计Review双轴ACCEPTED、C/I/M0；不是15实跑完整verify。恢复后的独立14PG组合于08:45:49～08:51:15 UTC实际11通过／1失败／2未运行，失败是matching显式重试成功后抽屉自动关闭过渡与测试再次点击关闭的竞争；仅补成功后dialog已关闭的断言，保留原body／key、回执及真实POST201断言，待聚焦复验和最终组合。原失败log／trace／JSON保留在ignored ui002-evidence。
+
+持久预览fc1c9f3／146已按原start入口恢复，原2案／6凭据及124张业务／凭据／授权原表、材料、私密配置再次核验保持。旧144→146已完成，禁止重复基线迁移；本次仅15433临时测试库因容器重启丢失tmpfs而按标准入口恢复146链。新146全库备份1,113,990字节、SHA256 `ef27cb222f02c0afb7eff51d16cbdf121dc8a934c0220abf05af51274f1b65b5`，TOC可读、未演练恢复；旧备份及dist仍保留。预览尚缺441抽屉样式，UI002未push／合main；远端main08:50 UTC实核696fad75。没有业务代办、reset／seed／改密码或扩权。
+
+下文UI002实施叙述是恢复前检查点；最终验收、预览同步及远端交付以随后VALIDATION实证收口覆盖，不将旧3f／144描述当当前现场。
+
 **CORE-UI-002｜已冻结并开始实施，未组合验收／部署。** 基线`696fad75ad427ce7431866c0710806983fdf9ba5`／tree`bd378946d0cf3d256816c7244340a271a35407b5`，I复用`.local/worktrees/ca015-integration`／`codex/ui002-case-workspace-integration`。三项只有：案件工作页三个子页和标题操作；八栏默认折叠／合法编辑与字体层级；收紧padding。源码已核Demo及CaseDetail、既有Lead编辑、材料和费用投影；父级截图已核。file://Demo实际浏览器读取被安全协议策略拒绝，没有UI输入、绕过或业务修改；用本地源码及截图继续准备。唯一props／类名／来源与编辑限制／白名单及验收见[UI002合同](superpowers/specs/2026-10-14-case-workspace-ui-contract.md)，冻结SHA `cb5efe70d2853227c774ee19e7e47bb81baa54e5`，独立准备Review双轴ACCEPTED、C/I/M0；I独占docs/context/router/E2E。A2 `01a13883-7ef6-7705-ba66-662de1bdf002`（ca016-closure-panel）已完成停写：公共类型源beab784、骨架源56b6254；D2 `01a13883-de91-7672-add0-3006dff7d009`（ca016-frontend-integration）已完成停写：源9b8c77e。I已逐个核白名单、停写干净和源blob后无冲突接入d0e5fb3，不改源组件或切Worker分支。R2 `01a1388c-c558-7367-b79f-ff6ca2af602a`（ca016-case-list-display）源f886ab7及M2 `01a1388d-186b-71b3-b6a1-f7532cd1c038`（ca016-backend-summary）源e0fb389均已完成停写，I只接纳两个实现提交为4efae18／a3fe4f9，不重复其A2依赖；I按AGENTS把M2按钮改为既有按需入口。F2 `01a1389e-d6d9-7354-b76e-e71965e64026`已交付停写，源15e5c9e（parent b1b1866），I已接为95e9df5；五文件来源范围已核，Worker报告150定向／1755前端测试及静态通过，不能冒称I完整组合门禁。当前全部实现Worker停写，I接管组合修复：R2跨模块lead-options导入已改为cases私有类型映射；SPA修复源f46a0c2＋f2cb2ac已接为7173e16／8748f4b，原请求恢复及空旧入口已修；Final Review发现的inactive身份变更辅助读取以9de1248接为41fb153，空旧入口及请求前guard均已独立关闭，双轴ACCEPTED、C/I/M0；接下来集中固定完整verify与14项PG／Chromium验收。只在隔离白名单派发必要高风险修复，I唯一docs及最终集成者。原D2及旧F2候选refs保留。准确准备SHA与runtime／strict检查见ignored UI002 f2-ready回执，I不重复启动Worker。F2原ca015-e3-frontend候选的pnpm安装补丁记录失配，已停止该目录验证，没有安装或绕过，四路可派目录的环境／strict检查均通过。
 
 原已有Command按能力复用；普通案件字段通用编辑、手工时间轴、案件完整收付/付款暂无能力；最小补缺建议（非实施合同）已记UI002合同末段，不能把现有表单入口称每栏全部字段可修改，不以假保存或Case整体PUT补齐。缺权限来源保持只读，真实流程不可跳、原审计不可改。源模型及正常146链均保持CA017；本轮仅实施案件工作页UI、路由及直接测试，不改后端／API／数据库，不升级预览、重置密码或扩权。CA018仅SD-23与源码只读分析后停在安全点；未形成合同、迁移或Worker。依用户最新粒度要求，三模块仅在唯一路线图排结算中心→证物管理→数据报表的顺序及前置，到阶段再拆；刚拟且未提交的远期细拆已撤回，不抢当前UI002。
