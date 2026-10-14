@@ -1,6 +1,5 @@
 import type { CaseDetail, CaseFile, CaseStage } from '../../api/cases';
 import type { LeadDetail } from '../../api/leads';
-import { leadPlatformLabels, leadStatusLabels } from '../leads/lead-options';
 import type { SectionKey } from './case-workspace-contract';
 
 export type LeadState = 'idle' | 'loading' | 'ready' | 'denied' | 'failed';
@@ -24,6 +23,30 @@ export type WorkspaceEvent = {
   businessAt: string | null;
   recordedAt: string | null;
   fields: WorkspaceField[];
+};
+
+const leadStatusLabels: Record<LeadDetail['status'], string> = {
+  WAITING_PUSH: '待推送',
+  WAITING_REVIEW: '线索待审核',
+  WAITING_EVIDENCE_DECISION: '线索待确认',
+  TRANSFERRED_TO_NOTARY: '已移交公证',
+  ARCHIVED: '线索已归档',
+};
+const leadPlatformLabels: Record<LeadDetail['platform'], string> = {
+  TAOBAO: '淘宝',
+  TMALL: '天猫',
+  PINDUODUO: '拼多多',
+  JD: '京东',
+  DOUYIN: '抖音',
+  ALIBABA_1688: '1688',
+  XIAOHONGSHU: '小红书',
+  KUAISHOU: '快手',
+  XIANYU: '闲鱼',
+  WECHAT: '微信',
+  MEITUAN: '美团',
+  DIANPING: '大众点评',
+  MAP: '地图',
+  OTHER: '其他',
 };
 
 const stageLabels: Record<CaseStage, string> = {
