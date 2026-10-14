@@ -479,7 +479,7 @@ CA-007一并交付专用“更正开庭安排”，而非任意状态编辑器�
 
 ## CORE-CE-001联系方式与一审受理更正（2026-10-14，最小技术冻结，已验收；证据见VALIDATION）
 
-依据用户已授权案件字段编辑补缺和SD-55。仅补稳定CaseDefendant的phone／address，以及真实CaseAcceptance根下已登记的一审（含发回重审）acceptedAt／courtCaseNo；不修改被告姓名／身份／证件号、法院主体、来源、业务号、部门、承办关系、材料或阶段。已有匹配、受理登记、材料后补及开庭更正继续复用其原命令。二审progress只有开庭／法官／资料及裁判结果，没有独立受理日期／案号接口，作为下一小步，不以本片称全部受理字段完成。
+依据用户已授权案件字段编辑补缺和SD-55。仅补稳定CaseDefendant的phone／address，以及真实CaseAcceptance根下已登记的一审（含发回重审）acceptedAt／courtCaseNo；不修改被告姓名／身份／证件号、法院主体、来源、业务号、部门、承办关系、材料或阶段。已有匹配、受理登记、材料后补及开庭更正继续复用其原命令。二审独立受理日期／案号由后续CORE-CE-002单独交付，不以本片称全部受理字段完成。
 
 - 交互：案件信息的编辑抽屉增加“联系方式”，按真实被告名称带出电话／地址，普通保存／取消，无原因；一审信息增加“更正受理信息”，选择已登记真实轮次（只有一条不增加选择步骤）、带出现值，保存时填一句原因。不替代原阶段办理入口；有多个合法动作时同栏可明确选择。没有Action、没有相关事实、失去范围或身份时显示具体不可用原因，禁止伪保存。资料更正不退阶段，不修改生成文书或冻结文件；当前显示与原登记及更正历史可区分。
 - 权限：两个独立内部运营Action `case.defendant-contact.update`（目录枚举CASE_DEFENDANT_CONTACT_UPDATE）和`case.acceptance.correct`（CASE_ACCEPTANCE_CORRECT），复用authorizeCase及SELF／TEAM／DEPARTMENT范围。客户、公证处、律师不能调用这两个新写入口；律师已有读取范围仅取得有效联系方式／受理值，不增加内部更正原因、审计或办理权限。迁移只登记Action，不自动复制Grant、Boundary、重置账号或提升授权；持久原账号无新Action时新入口明确禁用。验收使用隔离测试库显式合成授权账号，普通预览账号实测范围按实际can*报告。
@@ -490,3 +490,18 @@ CA-007一并交付专用“更正开庭安排”，而非任意状态编辑器�
 - 内部CaseDetail追加`recordEdits`：{canUpdateDefendantContact,canCorrectAcceptance,defendantContacts,acceptanceCorrections}。defendantContacts每项{defendantId,contactRevision,history}，history为{id,fromRevision,toRevision,beforePhone,beforeAddress,phone,address,recordedAt,recordedByUserId}；acceptanceCorrections每项{acceptanceId,trialRoundId,acceptanceRevision,originalAcceptedAt,originalCourtCaseNo,history}，history为{id,priorCorrectionId,fromRevision,toRevision,acceptedAt,courtCaseNo,reason,recordedAt,recordedByUserId}。history按revision升序，根ID保持稳定，当前／历史acceptance读取值用有效值，recordEdits保留原登记值与更正链供内部时间轴区分。律师只读投影继续原字段、提供有效值而不暴露recordEdits内部正文；客户端维持原最小投影，无电话地址或新增内部事实。前端新增recordEdits为明确可选兼容字段：旧响应缺失时两新入口禁用、不编造revision，新后端正常内部响应始终包含；存在时严格白名单、类型、归属、连续revision和最后有效值校验，不开放索引或any。
 
 本片Level 3：扩展跨阶段、发回及归档相关数据库守卫和公共读取兼容。后端Sol独占schema／命令／读模型／目录及相关直接测试，另一Sol独立审查；前端Luna只在冻结契约范围同步API／可见目录和分栏表单，根主控独占文档／集成。最终先审查关finding，再稳定候选完整verify及触发的真实PG验收／空库和146前驱迁移专项。重点反例为授权撤销含重放、部门和被告／受理归属、过期资料revision／并发单胜、成功丢响应后原body/key显式恢复、归档锚／原回执／文书字节保持、历史重审恢复有效案号和日期冲突回滚；不重复原UI002全部验收或给真实预览账号增权。
+
+## CORE-CE-002二审受理字段补缺（2026-10-14，最小技术冻结，未实施／验收）
+
+依据SD-56及已授权继续开发。实核Demo二审仅有开庭／法官／文书，正式CaseSecondInstanceProgress也无独立受理日／案号；现有二审面板的正式立案来自一审CaseAcceptance，须标明一审，不冒充二审事实。仅补真实APPEAL选择下的二审acceptedAt／courtCaseNo及带原因更正，不补缴费、法院主体、材料或新流程。二审案号独立，不覆盖Case.courtCaseNo。
+
+- 在二审信息编辑抽屉增加独立受理资料表单，普通登记／取消，后续更正只填一句原因；未知日期或案号各自为null，不填假日期／0。只有一个真实上诉选择不增加选择步骤，多条才明确选择轮次；当前选择优先，其余合法历史只读或按资格更正。独立资料保存不参与办理主动作优先级，不复用会递增Case.version的二审进展命令，也不复制其上传／阶段恢复机制。
+- 一个新内部运营Action `case.second-instance-acceptance.update`（CASE_SECOND_INSTANCE_ACCEPTANCE_UPDATE），复用原案件授权和SELF／TEAM／DEPARTMENT范围；律师仅沿原当前PRIMARY读取范围查看有效值，客户／公证处不扩读取。迁移只登记Action，绝不自动扩真实Grant；CE001已授权两项不覆盖本Action。
+- 内部 `POST /api/v1/cases/:id/second-instance-acceptance-save` 严格完整请求 `{choiceId,trialRoundId,expectedAcceptanceRevision,idempotencyKey,acceptedAt,courtCaseNo,reason}`。revision为非负整数；日期null或有效YYYY-MM-DD；案号null或trim后1～100字符；原因null或trim后1～500字符。首次revision0必须至少一个值非空且reason为null；后续必须原因且值有变化，允许清除误填字段。trim空串归null；未知字段及Case版本／阶段／材料拒绝。固定结果 `{caseId,choiceId,trialRoundId,changeId,acceptanceRevision,acceptedAt,courtCaseNo,recordedAt}`。
+- 复用不可变真实CaseJudgmentNextStep APPEAL根，不另建受理根／head／审批表。新增不可变CaseSecondInstanceAcceptanceChange，包含根／案件／部门／轮次、priorChangeId、fromRevision／toRevision、两有效值、原因、操作者／录入时刻／审计引用；revision0表示尚无登记，链从0→1连续递增并验证前序同根。复用CaseRecordEditReceipt，新增SECOND_INSTANCE_ACCEPTANCE_SAVE命令和精确事实／审计／回执对应分支；现有一审回执校验不改写。事实、审计、回执原子提交，同案锁、当前身份／授权／范围重检、CAS、有界重试；重放也重检授权，原body／key显式恢复，不静默换revision重发。
+- 必须是未撤销真实APPEAL且根归属正确。当前有效选择可首次登记；非当前历史选择只有已有真实二审进展／裁判或本资料链才允许补缺／更正，不借此制造外部转入或未知前序。无真实二审事实的已撤销选择不可写。资料链存在后即构成下游事实，后续清空字段也不能允许撤销原APPEAL；服务与数据库守卫一致。
+- 已知受理日期不得早于该APPEAL所引用原判决的真实receivedAt，不晚于北京时间当日；该选择实际二审开庭／裁判及依赖其结果的发回、执行、结案、归档非空业务日期作为上界。查真实字段，不推导二审提交日期、不用recordedAt作业务日期。新增二审进展／裁判日期同样检验有效二审受理下界，同时保留原一审日期下界。共用案锁，登记／更正与办理竞争不能留下矛盾。原Case.version、stage、currentTrialRoundId、currentAcceptanceId及归档锚、原事实／回执／审计／附件字节不变；只新增前向迁移，不修改已执行148或更早迁移。
+- 原内部／律师secondInstance追加可选兼容 `acceptances:[{choiceId,trialRoundId,acceptedAt,courtCaseNo,recordedAt}]`，仅含已登记根的最后有效值，无内部原因／操作者／revision。新后端始终提供；旧响应缺失时标明未提供，不编造值。客户端原最小投影不变。
+- 内部recordEdits追加成对兼容字段 `canSaveSecondInstanceAcceptance` 与 `secondInstanceAcceptances:[{choiceId,trialRoundId,acceptanceRevision,acceptedAt,courtCaseNo,canEdit,history}]`。列出真实APPEAL根；未登记为revision0／两值null／history空。历史项 `{id,priorChangeId,fromRevision,toRevision,acceptedAt,courtCaseNo,reason,recordedAt,recordedByUserId}` 按revision升序。canEdit结合当前授权与上述根资格；记录原因只在内部历史。前端接受旧四字段或完整新成对字段，严格白名单、归属、连续revision和有效投影一致性检查；缺新字段时禁用新编辑，不开放any／索引签名。
+
+Level 3：后端Sol独占schema／前向迁移／服务／读模型／Action及直接测试，另一Sol独立审查；前端Luna独占API类型／表单／精确展示及聚焦测试；独立测试任务只占本片E2E／support。主控独占文档、模型归属清单、集成及数据库环境。审查后固定候选完整verify、新增真实PG／浏览器组合及148前驱升级专项；重点覆盖部分未知／清除、历史发回、撤销屏障、日期竞争、权限撤销含重放、CAS／回滚、未知结果恢复、旧回执／归档锚／文件保持和律师最小读取。持久预览保留数据，隔离验收使用15433，不自动授权15436真实账号；CA018不并行改共享案件契约。
