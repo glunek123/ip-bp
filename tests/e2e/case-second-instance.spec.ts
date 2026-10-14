@@ -1596,7 +1596,7 @@ test('operator revokes only an exact empty REMAND child and completes a distinct
   ).toEqual(sourcePdf);
 });
 
-test('current PRIMARY lawyer can register CHANGE and AFFIRM while client projection stays restricted', async ({
+test('current PRIMARY lawyer can register CHANGE while client projection stays restricted', async ({
   page,
   request,
   browser,
@@ -1606,6 +1606,7 @@ test('current PRIMARY lawyer can register CHANGE and AFFIRM while client project
     submitAsLawyer: true,
     firstJudgmentAmount: 'KNOWN',
   });
+  await closeCaseWorkspaceDrawer(page);
   await logout(page);
   await login(
     page,
