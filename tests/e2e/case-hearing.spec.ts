@@ -6,6 +6,7 @@ import {
   type Page,
 } from '@playwright/test';
 import { disconnectCustomerTestDatabase } from '../support/customer-database.mjs';
+import { openCaseWorkspaceCommand } from '../support/case-workspace-browser.js';
 import {
   coreLeadFixtures,
   resetCoreLeadE2eData,
@@ -227,6 +228,11 @@ async function registerAcceptance(
   label: string,
 ): Promise<void> {
   await page.goto(`/cases/${caseId}`);
+  await openCaseWorkspaceCommand(
+    page,
+    'acceptance',
+    '[data-test="case-acceptance-panel"]',
+  );
   const panel = page.locator('[data-test="case-acceptance-panel"]');
   await expect(panel).toBeVisible();
   await panel
@@ -275,7 +281,7 @@ async function registerAcceptance(
     stage: 'WAITING_HEARING',
     acceptance: { acceptedAt },
   });
-  await expect(page.locator('.page-head .pill')).toHaveText('待开庭');
+  await expect(page.locator('.case-workspace .pill')).toHaveText('待开庭');
 }
 
 type HearingDetailPayload = {
@@ -338,10 +344,18 @@ async function runHearingCommand(
     });
   if (!latest) throw new Error('Latest case detail was not read');
   await page.reload();
+  await openCaseWorkspaceCommand(
+    page,
+    'hearing',
+    '[data-test="case-hearing-panel"]',
+  );
   const visibleStage = stage === 'WAITING_HEARING' ? '待开庭' : '待判决';
   if (audience === 'lawyer')
     await expect(page.locator('.page-head')).toContainText(visibleStage);
-  else await expect(page.locator('.page-head .pill')).toHaveText(visibleStage);
+  else
+    await expect(page.locator('.case-workspace .pill')).toHaveText(
+      visibleStage,
+    );
   return latest;
 }
 
@@ -351,6 +365,11 @@ async function scheduleOverdue(
   date: string,
   expectedAdvanceCount: number,
 ) {
+  await openCaseWorkspaceCommand(
+    page,
+    'hearing',
+    '[data-test="case-hearing-panel"]',
+  );
   await page.locator('[data-test="hearing-date"]').fill(date);
   await expect(page.locator('[data-test="hearing-save"]')).toBeEnabled();
   const latest = await runHearingCommand(
@@ -511,6 +530,11 @@ test('formal role grants control overdue hearing registration and correction in 
   await expectStatus(accountProbe, 201);
   await registerAcceptance(page, primary.caseId, acceptedAt, '第一案');
   await page.goto(`/cases/${primary.caseId}`);
+  await openCaseWorkspaceCommand(
+    page,
+    'hearing',
+    '[data-test="case-hearing-panel"]',
+  );
   const hearingPanel = page.locator('[data-test="case-hearing-panel"]');
   await expect(hearingPanel).toBeVisible();
   await expect(hearingPanel).toContainText('允许补录真实过去日期');
@@ -532,7 +556,12 @@ test('formal role grants control overdue hearing registration and correction in 
   );
   await expect(hearingPanel).toContainText('法院来函确认原登记日期有误');
   await page.reload();
-  await expect(page.locator('.page-head .pill')).toHaveText('待开庭');
+  await openCaseWorkspaceCommand(
+    page,
+    'hearing',
+    '[data-test="case-hearing-panel"]',
+  );
+  await expect(page.locator('.case-workspace .pill')).toHaveText('待开庭');
   await expect(hearingPanel).toContainText('登记开庭安排');
   await expect(hearingPanel).toContainText('系统自动推进至待判决');
   await expect(hearingPanel).toContainText('人工更正安排');
@@ -549,7 +578,7 @@ test('formal role grants control overdue hearing registration and correction in 
     coreLeadFixtures.selfPassword,
   );
   await page.goto(`/cases/${primary.caseId}`);
-  await expect(page.locator('.page-head .pill')).toHaveText('待判决');
+  await expect(page.locator('.case-workspace .pill')).toHaveText('待判决');
   await expect(
     page.locator('[data-test="hearing-correction-form"]'),
   ).toHaveCount(0);
@@ -731,7 +760,12 @@ test('formal role grants control overdue hearing registration and correction in 
     coreLeadFixtures.operatorPassword,
   );
   await page.goto(`/cases/${secondary.caseId}`);
-  await expect(page.locator('.page-head .pill')).toHaveText('待判决');
+  await openCaseWorkspaceCommand(
+    page,
+    'hearing',
+    '[data-test="case-hearing-panel"]',
+  );
+  await expect(page.locator('.case-workspace .pill')).toHaveText('待判决');
   await page.locator('[data-test="hearing-date"]').fill(acceptedAt);
   await page
     .locator('[data-test="hearing-correction-reason"]')

@@ -28,6 +28,7 @@ import {
   verifyCaseComplaintMigration,
 } from '../support/core-lead-database.mjs';
 import { createLawyerAccountThroughApi } from '../support/case-lawyer-account.mjs';
+import { openCaseWorkspaceCommand } from '../support/case-workspace-browser.js';
 import {
   disconnectCustomerTestDatabase,
   getCustomerMaintenanceState,
@@ -896,6 +897,134 @@ test('an operator matches a real notary case and the result survives refresh', a
       PENDING_MATCH: 0,
       WAITING_COMPLAINT: 1,
       WAITING_COMPLAINT_CONFIRMATION: 0,
+    },
+  });
+});
+
+test('UI002 normal operator explicitly replays original matching and complaint requests after real commit, lost response and SPA navigation', async ({
+  page,
+  request,
+}) => {
+  test.setTimeout(120_000);
+  const { caseId } = await createPendingMatchCase(request);
+  const lawyer = await createLawyerAccountThroughApi(request, {
+    fullName: '恢复验收律师',
+  });
+  await loginOperator(page);
+  await page.goto(`/cases/${caseId}`);
+  await openCaseWorkspaceCommand(
+    page,
+    'match',
+    '[data-test="case-match-form"]',
+  );
+  const matchForm = page.locator('[data-test="case-match-form"]');
+  await matchForm.getByLabel('主体类型').selectOption('ORGANIZATION');
+  await matchForm.getByLabel('名称').fill('真实原请求恢复验收公司');
+  await matchForm.getByLabel('按姓名或用户名搜索').fill(lawyer.username);
+  await expect(matchForm.getByLabel('账号')).toContainText(lawyer.username);
+  await matchForm
+    .getByLabel('账号')
+    .selectOption({ label: `${lawyer.displayName}（${lawyer.username}）` });
+  await matchForm.getByLabel('实际匹配日期').fill('2026-10-01');
+
+  async function commitLoseAndReplay(
+    command: 'match' | 'complaint',
+    suffix: string,
+    submit: () => Promise<void>,
+  ) {
+    const endpoint = `/api/v1/cases/${caseId}/${suffix}`;
+    const bodies: unknown[] = [];
+    let receipt: unknown;
+    await page.route(`**${endpoint}`, async (route) => {
+      if (route.request().method() !== 'POST') return route.continue();
+      bodies.push(route.request().postDataJSON());
+      if (bodies.length === 1) {
+        const response = await route.fetch();
+        expect(response.status()).toBe(201);
+        receipt = await response.json();
+        await route.abort('failed');
+      } else await route.continue();
+    });
+    await submit();
+    const retry = page.locator(`[data-test="${command}-retry-original"]`);
+    await expect(retry).toBeVisible();
+    expect(bodies).toHaveLength(1);
+    await page.locator('[data-test="case-refresh"]').click();
+    await expect(retry).toBeVisible();
+    expect(bodies).toHaveLength(1);
+    await page.locator('[data-test="calendar-nav"]').click();
+    await expect(page.locator('.case-workspace-editors')).not.toBeVisible();
+    expect(bodies).toHaveLength(1);
+    await page.goBack();
+    await expect(page).toHaveURL(new RegExp(`/cases/${caseId}$`, 'u'));
+    await openCaseWorkspaceCommand(
+      page,
+      command,
+      `[data-test="${command}-retry-original"]`,
+    );
+    await expect(retry).toBeVisible();
+    expect(bodies).toHaveLength(1);
+    const replay = page.waitForResponse(
+      (response) =>
+        response.request().method() === 'POST' &&
+        new URL(response.url()).pathname === endpoint,
+    );
+    await retry.click();
+    const response = await replay;
+    expect(response.status()).toBe(201);
+    expect(await response.json()).toEqual(receipt);
+    expect(bodies).toHaveLength(2);
+    expect(bodies[1]).toEqual(bodies[0]);
+    await expect(retry).toHaveCount(0);
+  }
+  await commitLoseAndReplay('match', 'match', () =>
+    matchForm.getByRole('button', { name: '确认匹配并进入待写诉状' }).click(),
+  );
+  await openCaseWorkspaceCommand(
+    page,
+    'complaint',
+    '[data-test="complaint-submit-form"]',
+  );
+  const complaintForm = page.locator('[data-test="complaint-submit-form"]');
+  for (const [index, name] of [
+    '原请求起诉状.pdf',
+    '原请求授权材料.pdf',
+  ].entries()) {
+    const uploaded = page.waitForResponse(
+      (response) =>
+        response.request().method() === 'POST' &&
+        new URL(response.url()).pathname === '/api/v1/materials',
+    );
+    await complaintForm
+      .locator('input[type="file"]')
+      .nth(index)
+      .setInputFiles({ name, mimeType: 'application/pdf', buffer: pdfBytes });
+    expect((await uploaded).status()).toBe(201);
+    await expect(complaintForm).toContainText(name);
+  }
+  await complaintForm
+    .getByRole('textbox', { name: '金额', exact: true })
+    .fill('0.00');
+  await commitLoseAndReplay('complaint', 'complaint-submit', () =>
+    complaintForm.locator('[data-test="submit-complaint"]').click(),
+  );
+  const response = await request.get(`/api/v1/cases/${caseId}`, {
+    headers: authorizationA,
+  });
+  expect(response.status()).toBe(200);
+  expect(await response.json()).toMatchObject({
+    stage: 'WAITING_COMPLAINT_CONFIRMATION',
+    version: 3,
+    matchedOn: '2026-10-01',
+    complaint: {
+      amountState: 'KNOWN',
+      amount: '0.00',
+      complaintFiles: [
+        expect.objectContaining({ originalFilename: '原请求起诉状.pdf' }),
+      ],
+      authorizationFiles: [
+        expect.objectContaining({ originalFilename: '原请求授权材料.pdf' }),
+      ],
     },
   });
 });

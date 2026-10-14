@@ -1,3 +1,7 @@
+import {
+  openCaseWorkspaceCommand,
+  revealCaseWorkspaceSection,
+} from '../support/case-workspace-browser.js';
 import { randomUUID } from 'node:crypto';
 import { readFile } from 'node:fs/promises';
 import {
@@ -295,6 +299,11 @@ test('operator finishes through the real panel with an explanation and customer 
     coreLeadFixtures.operatorUsername,
     coreLeadFixtures.operatorPassword,
   );
+  await openCaseWorkspaceCommand(
+    page,
+    'finish',
+    '[data-test="execution-finish-panel"]',
+  );
   const panel = page.locator('[data-test="execution-finish-panel"]');
   await expect(panel).toBeVisible();
   await panel
@@ -361,10 +370,14 @@ test('operator finishes through the real panel with an explanation and customer 
     files: [],
   });
   await page.reload();
-  await expect(
-    panel.locator('[data-test="execution-finish-fact"]'),
-  ).toContainText(todayShanghai());
-  await expect(panel).toContainText(
+  await revealCaseWorkspaceSection(page, 'execution');
+  const finishFact = page
+    .locator('[data-section="execution"] .case-workspace-group')
+    .filter({
+      has: page.getByRole('heading', { name: '执行结束（当前）', exact: true }),
+    });
+  await expect(finishFact).toContainText(todayShanghai());
+  await expect(finishFact).toContainText(
     '依据法院执行回执；本说明不表示案件已结案。',
   );
   await expect(
@@ -383,9 +396,8 @@ test('operator finishes through the real panel with an explanation and customer 
     filingId: receipt.filingId,
     reason: '合成验收案件已完成执行，记录实际履行结果。',
   });
-  await expect(
-    page.locator('[data-test="execution-finish-fact"]'),
-  ).toBeVisible();
+  await revealCaseWorkspaceSection(page, 'execution');
+  await expect(finishFact).toBeVisible();
 
   await logout(page);
   await login(
@@ -454,6 +466,11 @@ test('current PRIMARY lawyer finishes with an uploaded basis and downloads its o
     source.lawyer.password,
   );
   await page.goto(`/lawyer/cases/${source.caseId}`);
+  await openCaseWorkspaceCommand(
+    page,
+    'finish',
+    '[data-test="execution-finish-panel"]',
+  );
   const panel = page.locator('[data-test="execution-finish-panel"]');
   await expect(panel).toBeVisible();
   const filename = `CA015-primary-basis-${randomUUID().slice(0, 8)}.pdf`;
@@ -540,6 +557,8 @@ test('current PRIMARY lawyer finishes with an uploaded basis and downloads its o
     finish.files[0]!.contentVersionId,
   ]);
   await page.reload();
+  if (new URL(page.url()).pathname.startsWith('/cases/'))
+    await revealCaseWorkspaceSection(page, 'execution');
   await expect(panel).toContainText(filename);
   await expect(await uploadResponseBytes(page, filename)).toEqual(basisBytes);
   await logout(page);

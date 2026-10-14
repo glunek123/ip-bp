@@ -1,6 +1,6 @@
 # 功能开发路线图
 
-更新日期：2026-10-14。CORE-CA-001～016、N2及CORE-UI-001已集成main；CA017已实现、验收并原子集成main。Current为CORE-UI-002三项案件工作页优化，A2／D2／R2／M2已接入I、F2接线实施中、未完整组合验收；Next为CA018只读暂停、未冻结。人工测试窗口已结束，5186仍3f636ea／144；后续正常验收／备份保全后才升级。实际候选及Git／预览回执只见VALIDATION，不扩大为全部Demo或生产完成。
+更新日期：2026-10-14。CORE-CA-001～016、N2及CORE-UI-001已集成main；CA017已实现、验收并原子集成main。Current为CORE-UI-002三项案件工作页优化，A2／D2／R2／M2／F2已接入I，正在修复SPA未知请求与迟到结果隔离、适配真实浏览器入口，未完整组合验收；Next为CA018只读暂停、未冻结。人工测试窗口已结束，5186仍3f636ea／144；后续正常验收／备份保全后才升级。实际候选及Git／预览回执只见VALIDATION，不扩大为全部Demo或生产完成。
 
 本文只回答“已经做到哪里、下一步做什么、之后按什么依赖顺序做”。详细业务规则仍以 [`docs/spec/`](spec/) 为准，核心主线的编码级字段、附件与存储边界以[核心业务字段、附件与存储契约](superpowers/specs/2026-09-21-core-flow-field-material-contract.md)为准，技术方案以设计文档为准，当前切片的技术任务以实施计划为准，实际验证结果以 [`docs/spec/v0.1/VALIDATION.md`](spec/v0.1/VALIDATION.md) 为准；[`docs/project-status.md`](project-status.md)仅保留当前恢复摘要。
 

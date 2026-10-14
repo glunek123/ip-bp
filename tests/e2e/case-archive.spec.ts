@@ -1,3 +1,7 @@
+import {
+  openCaseWorkspaceCommand,
+  revealCaseWorkspaceSection,
+} from '../support/case-workspace-browser.js';
 import { randomUUID } from 'node:crypto';
 import { mkdirSync, readFileSync } from 'node:fs';
 import { resolve } from 'node:path';
@@ -333,6 +337,11 @@ test('normal operator archives pending amount and unknown closure date, appends 
     coreLeadFixtures.operatorUsername,
     coreLeadFixtures.operatorPassword,
   );
+  await openCaseWorkspaceCommand(
+    page,
+    'archive',
+    '[data-test="archive-panel"]',
+  );
   const panel = page.locator('[data-test="archive-panel"]');
   await expect(panel.locator('[data-test="archive-form"]')).toBeVisible();
   await expect(panel.locator('[data-test="archive-date"]')).toHaveValue('');
@@ -383,11 +392,18 @@ test('normal operator archives pending amount and unknown closure date, appends 
     toVersion: archived.version,
   });
   await page.reload();
+  await revealCaseWorkspaceSection(page, 'case-info');
+  await expect(page.locator('[data-section="case-info"]')).toContainText(
+    '待确认',
+  );
+  await openCaseWorkspaceCommand(
+    page,
+    'archive',
+    '[data-test="archive-panel"]',
+  );
+
   await expect(panel.locator('[data-test="archive-current"]')).toContainText(
     '执行到款',
-  );
-  await expect(page.locator('[data-test="closure-current"]')).toContainText(
-    '待定',
   );
   await expect(page.locator('[data-test="closure-correct"]')).toHaveCount(0);
   await panel.locator('summary').first().click();
@@ -429,6 +445,12 @@ test('normal operator archives pending amount and unknown closure date, appends 
   });
   expect(detail.closure).toEqual(before.closure);
   await page.reload();
+  await openCaseWorkspaceCommand(
+    page,
+    'archive',
+    '[data-test="archive-panel"]',
+  );
+
   await expect(panel.locator('[data-test="archive-current"]')).toContainText(
     '执行终本',
   );
@@ -439,10 +461,15 @@ test('normal operator archives pending amount and unknown closure date, appends 
     coreLeadFixtures.operatorUsername,
     coreLeadFixtures.operatorPassword,
   );
+  await openCaseWorkspaceCommand(
+    page,
+    'archive',
+    '[data-test="archive-panel"]',
+  );
   await expect(panel.locator('[data-test="archive-current"]')).toContainText(
     '执行终本',
   );
-  const directory = resolve('.local/ca017-evidence/browser-artifacts');
+  const directory = resolve('.local/ui002-evidence/browser-artifacts');
   mkdirSync(directory, { recursive: true });
   await panel.locator('summary').first().click();
   for (const [width, height] of [
@@ -563,6 +590,11 @@ test('current primary lawyer archives real zero and exact old file, cannot corre
     source.lawyer.username,
     source.lawyer.password,
   );
+  await openCaseWorkspaceCommand(
+    page,
+    'archive',
+    '[data-test="archive-panel"]',
+  );
   const panel = page.locator('[data-test="archive-panel"]');
   await expect(panel.locator('[data-test="archive-form"]')).toBeVisible();
   await panel.locator('[data-test="archive-date"]').fill(today());
@@ -609,6 +641,12 @@ test('current primary lawyer archives real zero and exact old file, cannot corre
     ).status(),
   ).toBe(403);
   await page.reload();
+  await openCaseWorkspaceCommand(
+    page,
+    'archive',
+    '[data-test="archive-panel"]',
+  );
+
   await expect(panel.locator('[data-test="archive-current"]')).toContainText(
     '和解结案',
   );
@@ -652,6 +690,11 @@ test('lost archive success retains the original body through refresh and SPA rem
     coreLeadFixtures.operatorUsername,
     coreLeadFixtures.operatorPassword,
   );
+  await openCaseWorkspaceCommand(
+    page,
+    'archive',
+    '[data-test="archive-panel"]',
+  );
   const panel = page.locator('[data-test="archive-panel"]');
   await expect(panel.locator('[data-test="archive-form"]')).toBeVisible();
   await panel.locator('[data-test="archive-date"]').fill(today());
@@ -686,6 +729,12 @@ test('lost archive success retains the original body through refresh and SPA rem
   await expect(page.locator('[data-test="archive-panel"]')).toHaveCount(0);
   await page.goBack();
   await expect(page).toHaveURL(new RegExp(`/cases/${source.caseId}$`, 'u'));
+  expect(requests).toHaveLength(1);
+  await openCaseWorkspaceCommand(
+    page,
+    'archive',
+    '[data-test="archive-panel"]',
+  );
   await expect(panel.locator('[data-test="archive-retry"]')).toBeVisible();
   expect(requests).toHaveLength(1);
   const replay = page.waitForResponse(

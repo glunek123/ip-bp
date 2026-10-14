@@ -59,6 +59,7 @@ function edit(): void {
         <span
           v-if="action.hint"
           :id="`${id}-hint`"
+          :title="action.hint"
           class="case-workspace-field__help"
         >
           {{ action.hint }}

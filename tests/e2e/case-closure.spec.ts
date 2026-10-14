@@ -1,3 +1,4 @@
+import { openCaseWorkspaceCommand } from '../support/case-workspace-browser.js';
 import { randomUUID } from 'node:crypto';
 import {
   expect,
@@ -177,6 +178,11 @@ test('operator records unknown closure date and pending amount, appends a reason
     coreLeadFixtures.operatorUsername,
     coreLeadFixtures.operatorPassword,
   );
+  await openCaseWorkspaceCommand(
+    page,
+    'closure',
+    '[data-test="closure-panel"]',
+  );
   const panel = page.locator('[data-test="closure-panel"]');
   await expect(panel.locator('[data-test="closure-form"]')).toBeVisible();
   await expect(panel.locator('[data-test="closure-date"]')).toHaveValue('');
@@ -223,6 +229,12 @@ test('operator records unknown closure date and pending amount, appends a reason
   expect(detail.executionFiling).toEqual(before.executionFiling);
   expect(detail.executionSubmission).toEqual(before.executionSubmission);
   await page.reload();
+  await openCaseWorkspaceCommand(
+    page,
+    'closure',
+    '[data-test="closure-panel"]',
+  );
+
   await expect(panel.locator('[data-test="closure-current"]')).toContainText(
     '未知',
   );
@@ -304,6 +316,11 @@ test('operator records unknown closure date and pending amount, appends a reason
     coreLeadFixtures.operatorUsername,
     coreLeadFixtures.operatorPassword,
   );
+  await openCaseWorkspaceCommand(
+    page,
+    'closure',
+    '[data-test="closure-panel"]',
+  );
   await expect(panel.locator('[data-test="closure-current"]')).toContainText(
     '0.00',
   );
@@ -374,6 +391,11 @@ test('current primary lawyer records real zero with unknown date and cannot perf
     source.lawyer.username,
     source.lawyer.password,
   );
+  await openCaseWorkspaceCommand(
+    page,
+    'closure',
+    '[data-test="closure-panel"]',
+  );
   const panel = page.locator('[data-test="closure-panel"]');
   await expect(panel.locator('[data-test="closure-form"]')).toBeVisible();
   await panel
@@ -427,6 +449,12 @@ test('current primary lawyer records real zero with unknown date and cannot perf
   );
   expect(refusal.status()).toBe(403);
   await page.reload();
+  await openCaseWorkspaceCommand(
+    page,
+    'closure',
+    '[data-test="closure-panel"]',
+  );
+
   await expect(panel.locator('[data-test="closure-current"]')).toContainText(
     '0.00',
   );
@@ -472,6 +500,11 @@ test('lost closure success keeps the exact original request through refresh and 
       await route.abort('failed');
     } else await route.continue();
   });
+  await openCaseWorkspaceCommand(
+    page,
+    'closure',
+    '[data-test="closure-panel"]',
+  );
   const panel = page.locator('[data-test="closure-panel"]');
   await panel
     .locator('[data-test="closure-note"]')
@@ -491,6 +524,12 @@ test('lost closure success keeps the exact original request through refresh and 
     .first();
   await expect(link).toBeVisible();
   await link.click();
+  expect(requests).toHaveLength(1);
+  await openCaseWorkspaceCommand(
+    page,
+    'closure',
+    '[data-test="closure-panel"]',
+  );
   await expect(panel.locator('[data-test="closure-retry"]')).toBeVisible();
   const replay = page.waitForResponse(
     (response) =>
