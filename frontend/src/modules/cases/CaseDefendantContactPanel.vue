@@ -88,8 +88,7 @@ watch(
     unknownRequest.value = null;
     submitting.value = false;
     error.value = '';
-    success.value =
-      '\u88ab\u544a\u8054\u7cfb\u65b9\u5f0f\u5df2\u4fdd\u5b58\u3002';
+    success.value = '';
     setSelectedValues();
   },
   { immediate: true, flush: 'sync' },
@@ -99,19 +98,18 @@ function reset(): void {
   if (unknownRequest.value) return;
   unknownRequest.value = null;
   error.value = '';
-  success.value =
-    '\u88ab\u544a\u8054\u7cfb\u65b9\u5f0f\u5df2\u4fdd\u5b58\u3002';
+  success.value = '';
   setSelectedValues();
 }
 function unavailableReason(): string {
   if (!props.item.recordEdits)
-    return '\u5f53\u524d\u63a5\u53e3\u672a\u63d0\u4f9b\u8054\u7cfb\u65b9\u5f0f\u7248\u672c\u4e0e\u64cd\u4f5c\u6743\u9650\uff0c\u8054\u7cfb\u65b9\u5f0f\u7f16\u8f91\u6682\u4e0d\u53ef\u7528\u3002';
+    return '\u6b64\u8d44\u6599\u6682\u4e0d\u53ef\u7f16\u8f91\uff0c\u8bf7\u5237\u65b0\u540e\u91cd\u8bd5\u3002';
   if (!props.item.recordEdits.canUpdateDefendantContact)
     return '\u5f53\u524d\u8d26\u53f7\u6ca1\u6709\u66f4\u65b0\u88ab\u544a\u8054\u7cfb\u65b9\u5f0f\u7684\u6848\u4ef6\u6743\u9650\u3002';
   if (!selected.value)
     return '\u5f53\u524d\u6848\u4ef6\u6ca1\u6709\u53ef\u7f16\u8f91\u7684\u88ab\u544a\u8d44\u6599\u3002';
   if (!recordEdit.value)
-    return '\u88ab\u544a\u8054\u7cfb\u65b9\u5f0f\u7f3a\u5c11\u53ef\u6838\u5bf9\u7684\u7248\u672c\u4fe1\u606f\u3002';
+    return '\u6b64\u8d44\u6599\u6682\u4e0d\u53ef\u7f16\u8f91\uff0c\u8bf7\u5237\u65b0\u540e\u91cd\u8bd5\u3002';
   return '\u5f53\u524d\u88ab\u544a\u8054\u7cfb\u65b9\u5f0f\u6682\u4e0d\u53ef\u7f16\u8f91\u3002';
 }
 function failureMessage(reason: unknown): string {
@@ -139,8 +137,7 @@ async function send(input: UpdateCaseDefendantContactInput): Promise<void> {
   unknownRequest.value = input;
   submitting.value = true;
   error.value = '';
-  success.value =
-    '\u88ab\u544a\u8054\u7cfb\u65b9\u5f0f\u5df2\u4fdd\u5b58\u3002';
+  success.value = '';
   try {
     await updateCaseDefendantContact(context.caseId, input, {
       signal: controller.signal,

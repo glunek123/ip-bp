@@ -102,8 +102,7 @@ watch(
     unknownRequest.value = null;
     submitting.value = false;
     error.value = '';
-    success.value =
-      '\u53d7\u7406\u4fe1\u606f\u66f4\u6b63\u5df2\u4fdd\u5b58\u3002';
+    success.value = '';
     setSelectedValues();
   },
   { immediate: true, flush: 'sync' },
@@ -112,13 +111,12 @@ watch(acceptanceId, setSelectedValues, { flush: 'sync' });
 function reset(): void {
   if (unknownRequest.value) return;
   error.value = '';
-  success.value =
-    '\u53d7\u7406\u4fe1\u606f\u66f4\u6b63\u5df2\u4fdd\u5b58\u3002';
+  success.value = '';
   setSelectedValues();
 }
 function unavailableReason(): string {
   if (!props.item.recordEdits)
-    return '\u5f53\u524d\u63a5\u53e3\u672a\u63d0\u4f9b\u53d7\u7406\u66f4\u6b63\u7248\u672c\u4e0e\u64cd\u4f5c\u6743\u9650\uff0c\u53d7\u7406\u66f4\u6b63\u6682\u4e0d\u53ef\u7528\u3002';
+    return '\u6b64\u8d44\u6599\u6682\u4e0d\u53ef\u7f16\u8f91\uff0c\u8bf7\u5237\u65b0\u540e\u91cd\u8bd5\u3002';
   if (!props.item.recordEdits.canCorrectAcceptance)
     return '\u5f53\u524d\u8d26\u53f7\u6ca1\u6709\u66f4\u6b63\u4e00\u5ba1\u53d7\u7406\u4fe1\u606f\u7684\u6848\u4ef6\u6743\u9650\u3002';
   if (acceptances.value.length === 0)
@@ -126,7 +124,7 @@ function unavailableReason(): string {
   if (!selected.value)
     return '\u8bf7\u9009\u62e9\u4e00\u6761\u5df2\u767b\u8bb0\u7684\u4e00\u5ba1\u53d7\u7406\u5b9e\u4f8b\u3002';
   if (!recordEdit.value)
-    return '\u8be5\u53d7\u7406\u5b9e\u4f8b\u7f3a\u5c11\u53ef\u6838\u5bf9\u7684\u66f4\u6b63\u7248\u672c\u3002';
+    return '\u6b64\u8d44\u6599\u6682\u4e0d\u53ef\u7f16\u8f91\uff0c\u8bf7\u5237\u65b0\u540e\u91cd\u8bd5\u3002';
   return '\u5f53\u524d\u53d7\u7406\u4fe1\u606f\u6682\u4e0d\u53ef\u66f4\u6b63\u3002';
 }
 function failureMessage(reason: unknown): string {
@@ -154,8 +152,7 @@ async function send(input: CorrectCaseAcceptanceInput): Promise<void> {
   unknownRequest.value = input;
   submitting.value = true;
   error.value = '';
-  success.value =
-    '\u53d7\u7406\u4fe1\u606f\u66f4\u6b63\u5df2\u4fdd\u5b58\u3002';
+  success.value = '';
   try {
     await correctCaseAcceptance(context.caseId, input, {
       signal: controller.signal,

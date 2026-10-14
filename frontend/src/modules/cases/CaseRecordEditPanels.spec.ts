@@ -1,5 +1,5 @@
 import { flushPromises, mount } from '@vue/test-utils';
-import { describe, expect, it, vi } from 'vitest';
+import { beforeEach, describe, expect, it, vi } from 'vitest';
 import type { CaseDetail } from '../../api/cases';
 import { ApiError } from '../../api/http';
 import CaseAcceptanceCorrectionPanel from './CaseAcceptanceCorrectionPanel.vue';
@@ -59,6 +59,86 @@ function detail(): CaseDetail {
 }
 
 describe('case record edit panels', () => {
+  beforeEach(() => {
+    api.updateCaseDefendantContact.mockReset();
+    api.correctCaseAcceptance.mockReset();
+  });
+
+  it('only reports contact success after a resolved save and clears it on cancel or context change', async () => {
+    const wrapper = mount(CaseDefendantContactPanel, {
+      props: { item: detail(), contextKey: 'case:case-1:user:operator-1' },
+    });
+    expect(wrapper.find('[role="status"]').exists()).toBe(false);
+
+    await wrapper.get('[data-test="defendant-contact-phone"]').setValue('200');
+    await wrapper
+      .get('[data-test="defendant-contact-cancel"]')
+      .trigger('click');
+    expect(wrapper.find('[role="status"]').exists()).toBe(false);
+
+    await wrapper.get('[data-test="defendant-contact-phone"]').setValue('200');
+    api.updateCaseDefendantContact.mockResolvedValue({
+      caseId,
+      defendantId,
+      changeId: '50000000-0000-4000-8000-000000000001',
+      contactRevision: 1,
+      phone: '200',
+      address: '原地址',
+      recordedAt: '2026-10-14T00:00:00.000Z',
+    });
+    await wrapper.get('[data-test="defendant-contact-save"]').trigger('click');
+    await flushPromises();
+    expect(wrapper.find('[role="status"]').exists()).toBe(true);
+
+    await wrapper.setProps({ contextKey: 'case:case-1:user:operator-2' });
+    expect(wrapper.find('[role="status"]').exists()).toBe(false);
+  });
+
+  it('only reports acceptance correction success after a resolved save and clears it on cancel', async () => {
+    const wrapper = mount(CaseAcceptanceCorrectionPanel, {
+      props: { item: detail(), contextKey: 'case:case-1:user:operator-1' },
+    });
+    expect(wrapper.find('[role="status"]').exists()).toBe(false);
+
+    await wrapper
+      .get('[data-test="acceptance-correction-date"]')
+      .setValue('2026-10-02');
+    await wrapper
+      .get('[data-test="acceptance-correction-court-case-no"]')
+      .setValue('new-no');
+    await wrapper
+      .get('[data-test="acceptance-correction-reason"]')
+      .setValue('reason');
+    await wrapper
+      .get('[data-test="acceptance-correction-cancel"]')
+      .trigger('click');
+    expect(wrapper.find('[role="status"]').exists()).toBe(false);
+
+    await wrapper
+      .get('[data-test="acceptance-correction-date"]')
+      .setValue('2026-10-02');
+    await wrapper
+      .get('[data-test="acceptance-correction-court-case-no"]')
+      .setValue('new-no');
+    await wrapper
+      .get('[data-test="acceptance-correction-reason"]')
+      .setValue('reason');
+    api.correctCaseAcceptance.mockResolvedValue({
+      caseId,
+      acceptanceId,
+      correctionId: '60000000-0000-4000-8000-000000000001',
+      acceptanceRevision: 1,
+      acceptedAt: '2026-10-02',
+      courtCaseNo: 'new-no',
+      recordedAt: '2026-10-14T00:00:00.000Z',
+    });
+    await wrapper
+      .get('[data-test="acceptance-correction-save"]')
+      .trigger('click');
+    await flushPromises();
+    expect(wrapper.find('[role="status"]').exists()).toBe(true);
+  });
+
   it('submits both trimmed contact fields and preserves the original request for explicit retry', async () => {
     const item = detail();
     api.updateCaseDefendantContact
@@ -86,6 +166,12 @@ describe('case record edit panels', () => {
     expect(wrapper.get('[data-test="record-edit-unknown"]').text()).toContain(
       '\u8bf7\u6c42\u7ed3\u679c\u5f85\u6838\u5bf9\uff0c\u4fdd\u7559\u539f\u8bf7\u6c42\u5185\u5bb9\u548c\u8bf7\u6c42\u952e\u3002',
     );
+    expect(
+      (
+        wrapper.get('[data-test="defendant-contact-cancel"]')
+          .element as HTMLButtonElement
+      ).disabled,
+    ).toBe(true);
     expect(api.updateCaseDefendantContact).toHaveBeenCalledTimes(1);
     const firstRequest = api.updateCaseDefendantContact.mock.calls[0];
     expect(firstRequest[0]).toBe(caseId);
@@ -155,6 +241,12 @@ describe('case record edit panels', () => {
       courtCaseNo: '（2026）更正案号',
       reason: '核对立案通知',
     });
+    expect(
+      (
+        wrapper.get('[data-test="acceptance-correction-cancel"]')
+          .element as HTMLButtonElement
+      ).disabled,
+    ).toBe(true);
     await wrapper
       .get('[data-test="acceptance-correction-retry-original"]')
       .trigger('click');
