@@ -1280,3 +1280,15 @@ Task C实际提交`0cc238bdffc930aecc2be7058425b2d45ee14b00`，tree`c4934c0a904b
 公开入口修复后的干净`fc0a514d5349c4c48536d793efa573923938a177`／tree `67fdc973edb1a81762f3418bc9f216bcbf921a07`，独立组合增量确认两轴ACCEPTED、C0/I0/M0；完整`pnpm verify`20:03:07～20:06:56 UTC实际exit0：80工具、1586前端、1411后端及双构建通过，前后同tree／clean，正常预检保持。Vite只有既有500kB普通chunk warning，未调阈值。15433十个新函数prosrc与最终新DDL对应体逐字一致、原部署checksum保留，另以随机schema验证最终144文件及142升级，不能混淆二者。
 
 最终最低验收补齐仅扩`tests/e2e/case-closure.spec.ts`：当前律师真实密码读取两版最小历史并下载同一结案PDF字节、客户内容下载拒绝，律师登记后结束当前PRIMARY承办，同cookie同键原参重放403且事实／历史未变。根E2E类型、该文件Lint／格式实际通过；20:09:07～20:09:51 UTC同文件3/3 exit0，输入SHA256 A5D433A1EA6697005569EBB149CE89723FDBAF5B2385751416EB9A3F8A1E2727。此后产品／单元／构建输入不再修改；最终固定增量须核明确Git输入组同一性，并将fc0完整verify的限定复用与新候选根检查／统一九项分开记录。
+
+### CA016最终固定候选与恢复核验（2026-10-14）
+
+最终候选`8cc3a8e88a9ce7305e4dee7714f05b81e8268cd2`／tree`3a7e0054218b08d4405939ba6bd48c3ed6ff607c`于2026-10-13 20:16:35～20:19:01 UTC统一六文件九项PG／Chromium实际exit0，9/9，前后HEAD／tree／clean一致。环境HMAC前后一致；五项根TSC、E2E文件Lint、格式、strict context及Spec均exit0（20:16:28～20:16:37 UTC）。独立Reviewer 01a13607在未参与实现的上下文自行核累计diff，两轴ACCEPTED、C0/I0/M0，接受fc0a514完整verify的限定复用；随后九项及五静态真实结果另行完成。
+
+限定复用证据`.local/ca016-evidence/verify-reuse-proof.json`逐字比对17组Git输入；fc0a514→8cc累计仅docs/context-snapshot.json、feature-roadmap.md、project-status.md、VALIDATION.md及tests/e2e/case-closure.spec.ts。唯一执行性差异是该E2E律师历史／精确下载／撤权原参重放增量，其直接3/3、根静态及同树9/9已另验。backend、frontend、scripts、patches、package／lock／workspace、runtime入口、根TS／ESLint／Vitest／Playwright／Prettier配置与环境锁均相同。不得把8cc称为实跑完整verify；完整实跑候选及失败历史仍沿上文fc0／94c准确记录。
+
+2026-10-14接替I实际只读确认原HEAD和产品tree相同、status／diff干净，无不确定补丁落盘；context:check exit0，Node24.21.0／pnpm11.27.0按锁核对。根及主仓无.agents/skills目录，使用AGENTS和三级规则；没有.codegraph，按rg／源码定位。原reviewer最终增量报告已读取核验；旧主控completed且未执行恢复写入。获取远端后origin/main仍1471bfa，主仓只有已知.pnpm-store未跟踪，保留原stash。普通沙箱fetch／CIM访问受限，精确升级后fetch及只读进程核验成功；没有并行实现或验收进程。持久预览专用库／应用原来停止，按既有start-db恢复15436后再备份检查。
+
+本轮收口只补完成状态、以上实际结果、证据引用及对应已核快照，累计白名单为docs/feature-roadmap.md、docs/project-status.md、docs/spec/v0.1/VALIDATION.md、docs/spec/v0.1/modules/cases.md与docs/context-snapshot.json，不改变合同／AC／权限／业务或工程输入。产品、全tests与既有142迁移须逐字保持8cc；文档专项和独立收口检查完成后才提交／集成。CA017不在本轮实现。详细恢复、Git及预览回执存于同一ignored证据目录并在后续真实完成后回填，不能预称已推送或已升级。
+
+独立收口Reviewer `/root/ca016_closeout_review` 未参与该五文件修改，自行核累计diff、17组Git输入及原日志；首次报M1（历史CA015派发段仍用现在时），I仅改历史叙述／当前Spec锚。2026-10-14 01:11 UTC文档格式、strict context、Spec及git diff检查均exit0，证据`recovery-doc-checks.json`；Reviewer复核关闭M1，最终Spec／Quality两轴ACCEPTED、C0/I0/M0。此审查只覆盖非执行性收口／证据边界，未重复全产品审查或旧完整门禁。本段实际结果回填后重新记录对应快照并核文档专项，不能沿用变更前快照。

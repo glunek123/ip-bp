@@ -1,22 +1,20 @@
 # 当前开发状态
 
-更新日期：2026-10-13。本文件只保留恢复当前工作的最小事实；历史状态见[历史状态](project-status-history-through-2026-09-18.md)，候选证据与集成事实见[验证记录](spec/v0.1/VALIDATION.md)。
+更新日期：2026-10-14。本文件只保留恢复当前工作的最小事实；历史状态见[历史状态](project-status-history-through-2026-09-18.md)，候选证据与集成事实见[验证记录](spec/v0.1/VALIDATION.md)。
 
 ## 当前阶段
 
-唯一Current／Next见路线图：Current为CA016最小结案资料＋案件既有字段受权摘要＋N2导航，五路作者固定候选已接纳，集成验收进行中；尚未完成组合验收／最终门禁。Next为CA017业务归档及归档后原因更正。本批从已验main1471bfa启动。上一运营字段批次证据只见VALIDATION，不复用为CA016组合通过。
+唯一Current／Next只见路线图。Current为CA016最小结案资料＋案件既有字段受权摘要＋N2导航，固定候选验收完成，正在交付收口；Next为CA017业务归档及归档后原因更正，尚未冻结／实施。实际候选、证据复用及Git／预览回执只见VALIDATION。
 
 ## 当前任务
 
-**CORE-CA-016＋案件字段对齐已实现候选，I独占组合验收中。** I复用`.local/worktrees/ca015-integration`／`codex/ca016-closure-display-integration`，业务基线`1471bfa76380409607a2d87a834b63cda3bc35cd`／tree`1d595f73970c66155273f4bc5ab2e0ed2a82905e`。五路源N2 fc57d2d、B1 61bfff4、P1 004f95c、F1 b956906＋abdf7f2＋e7c8461、D1 3d9141e已接纳，作者停止写入。前端作者实际15套494/494和全前端类型／静态检查通过；B1实际11套327/327、后端类型／静态通过且独立审查两轴ACCEPTED、未关C/I/M0，但不证明PG实测。最小登记及原因更正仍WAITING_ARCHIVE、未知日期null、结案额独立KNOWN／PENDING、首版附件可空；不实现实收／结清／归档／重开。
+**CORE-CA-016＋案件字段摘要＋N2已验收，接替I独占交付收口。** 2026-10-14实际终端／文件恢复；原I目录`.local/worktrees/ca015-integration`、分支`codex/ca016-closure-display-integration`、HEAD`8cc3a8e88a9ce7305e4dee7714f05b81e8268cd2`干净且与最终证据一致，没有挂起文档改动或运行中本片验证。所有Worker已停止；主仓只有已知未跟踪.pnpm-store，原恢复stash保留。
 
-集成8a4e315／tree5323049的Prisma生成及后端构建exit0。15433标准迁移首次DDL因PL/pgSQL IF中CASE缺括号失败，第一枚举已提交、第二步全回滚；I只修唯一新DDL两行，独立复核接受，144迁移随机schema回放exit0。精确核失败状态后Prisma resolve --rolled-back，标准前向部署exit0。失败、恢复、每步UTC／退出码／tree及新迁移SHA256保留ignored `.local/ca016-evidence/`；旧142未改，真实Grant不回填。新PG／普通密码浏览器与最终稳定候选完整门禁仍待统一结果，不拼称已通过。
+固定候选tree`3a7e0054218b08d4405939ba6bd48c3ed6ff607c`同树PG／Chromium9/9、五项静态实际通过，独立Spec／Quality ACCEPTED，未关闭C/I/M0/0/0。完整verify在fc0a514实跑80工具／1586前端／1411后端及双构建，通过后只有E2E增量和非执行性记录；17组工程输入逐字一致，复用经独立审查接受，不能称8cc或收口HEAD实跑完整verify。失败／修复及准确UTC、tree见[CA016验证记录](spec/v0.1/VALIDATION.md#core-ca-016最小结案资料案件摘要与n2集成2026-10-13)及ignored `.local/ca016-evidence/`。
 
-普通来源首项验收另暴露新引用守卫局部action变量与列名歧义（PG42702），旧opening API受影响。I仅修新函数局部变量及限定列，独立复核接受；15433精确CREATE OR REPLACE此新函数，全部迁移记录／原checksum保持。首次运营闭环1/1已通过；最终新迁移文件的空库144／142升级仍由独立随机schema验证，不把此前部署变体声称为最终checksum。上述两类失败及运行函数修复均保留原证据。
+登记／带原因更正仍WAITING_ARCHIVE，未知日期null，结案额KNOWN／PENDING与实收独立；内部14列真实来源摘要、真实courtCaseNo与N2路由已验收。新两迁移不增真实Grant／Boundary，不改旧142文件。CA017、实收／结清、历史补录、资金发起及生产仍未完成。本次只交付CA016并给CA017简报。
 
-尚未完成的组合验收、最终Review及完整门禁按三级规则执行。动作目录只增加类型，不自动回填现有真实Grant／Boundary或扩大账号scope；合成测试显式授权，真实新授权另据明确目标。既有预览5186／3206／15436维持b26cdfe、原2案／6凭据／142迁移，不提前迁移／reset／seed，主仓.pnpm-store及恢复stash保留。
-
-首轮干净8f4f4d5统一8项6过2失败及各限定复验均保留；组合Review I1（确定409同值刷新锁定）已修复并经62/62及独立复核关闭，未知原参保持。94c1883统一9/9实际通过；完整verify首次只在架构门禁失败，I补公开leads/index入口后fc0a514完整verify20:03:07～20:06:56 UTC exit0（80工具／1586前端／1411后端／双构建），独立累计审查接受、未关C/I/M0。随后仅一E2E文件补当前律师精确附件下载、客户拒绝、承办结束后的原键403，根类型／Lint／格式与该文件3/3实际通过。现在固定该验收增量并核代码／单元／构建输入同一性，最终同候选九项待统一完成；不能称新tree实跑完整verify，详细结果只见VALIDATION及ignored `.local/ca016-evidence/`。
+恢复时远端main1471bfa，未含本片；持久预览b26cdfe源码干净，旧进程和15436库均未运行，已按原README恢复专用数据库供备份核验。仅备份、原数据校验及前向升级，不reset／seed／初始化／改密码／扩权；Git与预览实际回执后补。禁止触及Demo8123、其他库或生产。
 
 ### 已完成CORE-UI-001恢复证据
 
