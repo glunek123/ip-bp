@@ -1422,3 +1422,17 @@ b73b82a506958da535bc16f0cb6f579eb25eb88e固定聚焦三项实际2通过／1失�
 648faa1后的0c4／bac9只改文档与快照，17组产品／单元／构建输入和完整tests tree与验收候选逐字相同；格式、strict、Spec及diff实际通过，复用仅限已证明输入，不冒称bac9实跑全verify／14PG。原80／1779／1451及双构建来自441，14PG来自648。末次本段只补已发生的远端事实、完成态和快照，再执行受影响文档专项并原子同步main／任务分支；最终末次SHA见ignored remote-final-receipt.json及交付报告，不能把本段回执SHA误作未来任何新树通过证据。
 
 持久预览保持已验648产品；末次只同步相同产品的文档ref，前端／后端／schema和完整tests输入一致，不重复迁移或初始化。原2案／6凭据、124业务／授权表、材料、配置及146迁移已实际保全验证，0业务代办；源、备份和恢复指纹见本机README/runtime。普通联系方式、受理日／案号受控更正仍未实现，下一阶段先冻结独占最小合同，CA018保持只读暂停，不重复派发已停写Worker或在本批新建业务Task。CI未查询，生产未操作。
+
+### UI002“当前”展示修复与暂停恢复验收（2026-10-14）
+
+用户要求盘查全前端并直接删除误导性“（当前）”，不能改成“本轮”。58个命中文件及动态标题按真实业务stage、最新记录、选中态和普通权限／范围／版本语句分类；分类证据ignored `.local/ui002-label-evidence/current-text-audit.json`。事件组和二审步骤仅保留真实业务名称／序号，历史仍可辨，选择态仍aria-pressed；真正当前阶段来自item.stage，已确认执行事实不再在后续阶段声称“当前阶段待盖章”。匹配、起诉及正式立案成功提示改完成时结果。技术轮次、截图、文件版本和费用来源标识进入可展开次级详情；主视图保留真实文件名、来源和金额语义，未知轮次不默认初审，未提供版次不虚构。
+
+第一次冻结候选`3b6416fd6fd8aaa4c3934ecd923952fa09463807`／tree`aee1eae856642f1a13cd8e63cd0b42e78891b5ee`，8个直接前端spec实际108/108，通过check:fast（架构、前后端及根类型、Lint）、strict、Spec和修改文件格式。正式入口PG／Chromium5/5于10:06:09～10:07:07 UTC exit0，同干净候选和前后环境HMAC `343c59891dfe4d82e03a5c91faac2e1de7325b9c847f35fbaa3819c72290a627`；覆盖真实三tab／八栏／三宽／原文件bytes／PENDING、匹配及刷新、原body/key丢响应后显式恢复、只读下载／跨部门404和正常密码上传起诉。原日志JSON在ignored ui002-evidence/label-final-pg，8spec在ui002-label-evidence/final-eight-specs-retry.log。此前89过2失败为新测试顺序／时间假设，已纠正；严格类型缺confirmedByUserId已补；普通沙箱首次无法创建Vitest临时目录、0测试，获准执行后通过，失败日志保留，不计入成绩。
+
+10:07暂停时预览脚本工具调用中断未落盘。11:19后真实终端恢复只读核3b HEAD和tree干净、远端main及原UI002分支仍eccd28e，5项完成JSON已落盘，无残留测试／浏览器进程。持久预览source已是3b，但宿主断连使原应用PID死亡、端口空闲；保全services-before-pause-1014-1125.json后只沿原start启动原专用容器和应用。未重开已完成5项、未重复迁移／reset／seed或初始化。恢复首次只读浏览器在normal-login因服务尚未启动失败，0业务写入，log保留；服务恢复后用独立新证据名重验。
+
+独立Sol审查3b为Spec REJECTED／Quality ACCEPTED、C0/I1/M0：截图版本和费用来源ID仍直出主视图。修复仅4个前端源码／测试文件及已核快照，最终稳定源码`be71b5b57ecabd7c436fd0faf9011b968ad0c5af`／tree`5392bec3eb0f5599a828265768e66868446cf213`；截图保留真实引用数量和未读取说明，原版本ID标为technical，费用保留来源名及金额状态、原精确来源ID折叠。相关read-model／Sections／Fees三个spec实际32/32（含新增截图和详情开合反例），check:fast、strict、Spec、修改文件格式及diff均exit0；ui002-label-evidence/review-fix-final-three.log及review-fix-final-static.log。审查主体固定新SHA后确认原Important关闭，累计Spec／Quality ACCEPTED C/I/M0。5/5 PG仅对应3b，不表述为be71或最终文档tree实跑；原批14项及441完整verify也仅属原批，不借作新前端全仓门禁。本次Level1展示修复不更改API／授权／状态机／数据库／资金规则，无全仓verify重跑。
+
+持久预览源码be71、5186／3206 HTTP200，15436仍146迁移；11:25最新全库备份runtime/ui002-label-final-current-146.dump为1114251字节、SHA256 `346d62467036162af505eaa9931ded9673750f1a28ceaf96dc88a13b07e347fb`，TOC可读、未演练恢复，10:05备份及旧备份／dist均保留。正常原私密密码和cookie只读三页、三tab×1440／1024／390、八栏默认关闭和无整页横溢出通过；两案API实际stage与页面相符，执行分组无当前／本轮后缀、仅一组被选中，技术及文件／费用来源详情默认折叠可展开。实际桌面执行与移动费用截图已读取核对，验收0业务写入。最新基线前后129表中除正常登录session/throttle外业务表无变化，2案／6凭据、授权、配置、全部材料和迁移行保持，不用用户早前数据状态覆盖现有数据。证据runtime/ui002-label-final-{before,backup,after,browser-readonly,case-audit}.json及ignored preview-final-health／readonly；账号密码不输出。
+
+源码冻结后仅补真实完成状态、上述证据和对应快照；正常快进及原子push前执行文档格式、strict、Spec和diff，逐项核累计收口diff只有非执行性文档，不改变上述验证输入。最终远端SHA和实际push回执另存ignored remote-final-receipt.json并随最终报告交付。原UI002分支eccd不改写，原main stash及.pnpm-store保留；不声称CI或生产部署完成。Next仍先冻结案件字段编辑补缺，CA018只读暂停。
