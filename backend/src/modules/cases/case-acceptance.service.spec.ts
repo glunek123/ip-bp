@@ -8,6 +8,7 @@ const actor = {
 };
 const caseId = '33333333-3333-4333-8333-333333333333';
 const versionId = '44444444-4444-4444-8444-444444444444';
+const courtId = '99999999-9999-4999-8999-999999999999';
 const input = {
   expectedVersion: 6,
   idempotencyKey: 'acceptance-1',
@@ -25,6 +26,10 @@ describe('CaseAcceptanceService', () => {
         findFirst: jest.fn().mockResolvedValue({
           id: caseId,
           departmentId: actor.departmentId,
+          sourceLeadId: '66666666-6666-4666-8666-666666666666',
+          sourceNotaryMatterId: '77777777-7777-4777-8777-777777777777',
+          certificateId: '88888888-8888-4888-8888-888888888888',
+          externalEntry: null,
           stage: 'WAITING_FORMAL_ACCEPTANCE',
           version: 6,
           currentTrialRoundId: null,
@@ -49,6 +54,7 @@ describe('CaseAcceptanceService', () => {
       caseAcceptance: {
         create: jest.fn().mockResolvedValue({ id: 'acceptance' }),
       },
+      filingCourt: { count: jest.fn().mockResolvedValue(1) },
       caseTrialRound: {
         create: jest.fn().mockResolvedValue({ id: 'round' }),
       },
@@ -128,6 +134,53 @@ describe('CaseAcceptanceService', () => {
     expect(f.tx.case.updateMany).toHaveBeenCalledWith({
       where: expect.anything(),
       data: expect.objectContaining({ currentTrialRoundId: 'round' }),
+    });
+  });
+
+  it('requires an actual court only for an external acceptance without filing', async () => {
+    const f = fixture();
+    const before = await f.tx.case.findFirst();
+    f.tx.case.findFirst.mockResolvedValue({
+      ...before,
+      sourceLeadId: null,
+      sourceNotaryMatterId: null,
+      certificateId: null,
+      filingSubmission: null,
+      externalEntry: {
+        id: 'aaaaaaaa-aaaa-4aaa-8aaa-aaaaaaaaaaaa',
+        caseId,
+        departmentId: actor.departmentId,
+        initialStage: 'WAITING_FORMAL_ACCEPTANCE',
+        stageReachedOn: new Date('2026-10-03T00:00:00.000Z'),
+        known: {
+          courtId: null,
+          courtCaseNo: null,
+          acceptedOn: null,
+          secondInstanceAcceptedOn: null,
+          platform: null,
+          shopName: null,
+          shopExternalId: null,
+          caseType: null,
+          infringementTypes: null,
+        },
+      },
+    });
+    await expect(
+      f.service.register(actor, caseId, input),
+    ).rejects.toMatchObject({
+      response: { code: 'VALIDATION_ERROR' },
+    });
+    expect(f.tx.caseAcceptance.create).not.toHaveBeenCalled();
+    await f.service.register(actor, caseId, { ...input, courtId });
+    expect(f.tx.filingCourt.count).toHaveBeenCalledWith({
+      where: { id: courtId, departmentId: actor.departmentId },
+    });
+    expect(f.tx.caseAcceptance.create).toHaveBeenCalledWith({
+      data: expect.objectContaining({
+        courtId,
+        externalEntryId: 'aaaaaaaa-aaaa-4aaa-8aaa-aaaaaaaaaaaa',
+      }),
+      select: { id: true },
     });
   });
 

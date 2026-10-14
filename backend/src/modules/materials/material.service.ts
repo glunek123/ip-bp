@@ -3235,7 +3235,21 @@ export class MaterialService {
            LEFT JOIN "case_closures" h ON h."case_id"=c."id" AND h."department_id"=c."department_id"
            LEFT JOIN "case_closure_versions" v ON v."id"=h."current_version_id" AND v."closure_id"=h."id" AND v."finish_id"=f."id" AND v."case_id"=c."id" AND v."department_id"=c."department_id"
            WHERE c."id"=$1::uuid AND c."department_id"=$2::uuid AND c."stage"='WAITING_ARCHIVE'
-            AND ((h."id" IS NULL AND f."to_version"=c."version") OR (h."finish_id"=f."id" AND v."to_version"=c."version"))`,
+            AND c."source_lead_id" IS NOT NULL AND c."source_notary_matter_id" IS NOT NULL AND c."certificate_id" IS NOT NULL
+            AND ((h."id" IS NULL AND f."to_version"=c."version") OR (h."finish_id"=f."id" AND v."to_version"=c."version"))
+           UNION ALL
+           SELECT c."id" FROM "cases" c
+           JOIN "case_external_entries" e ON e."case_id"=c."id" AND e."department_id"=c."department_id"
+           LEFT JOIN "case_execution_finishes" f ON f."case_id"=c."id" AND f."department_id"=c."department_id" AND f."external_entry_id"=e."id"
+           LEFT JOIN "case_closures" h ON h."case_id"=c."id" AND h."department_id"=c."department_id" AND h."external_entry_id"=e."id"
+           LEFT JOIN "case_closure_versions" v ON v."id"=h."current_version_id" AND v."closure_id"=h."id"
+             AND v."case_id"=c."id" AND v."department_id"=c."department_id" AND v."external_entry_id"=e."id"
+             AND v."finish_id" IS NOT DISTINCT FROM h."finish_id"
+           WHERE c."id"=$1::uuid AND c."department_id"=$2::uuid AND c."stage"='WAITING_ARCHIVE'
+             AND c."source_lead_id" IS NULL AND c."source_notary_matter_id" IS NULL AND c."certificate_id" IS NULL
+             AND ((h."id" IS NULL AND ((e."initial_stage"='WAITING_ARCHIVE' AND c."version"=1 AND f."id" IS NULL)
+               OR (f."id" IS NOT NULL AND f."to_version"=c."version")))
+               OR (h."id" IS NOT NULL AND h."finish_id" IS NOT DISTINCT FROM f."id" AND v."to_version"=c."version"))`,
           ownerId,
           actor.departmentId,
         );
@@ -3254,6 +3268,7 @@ export class MaterialService {
            JOIN "case_execution_submissions" s ON s."id"=conf."submission_id" AND s."case_id"=c."id" AND s."department_id"=c."department_id" AND s."to_version"=conf."from_version"
            JOIN "case_judgment_next_steps" choice ON choice."id"=s."judgment_next_step_id" AND choice."case_id"=c."id" AND choice."department_id"=c."department_id" AND choice."trial_round_id"=s."trial_round_id"
            WHERE c."id"=$1::uuid AND c."department_id"=$2::uuid AND c."stage"='EXECUTING'
+             AND c."source_lead_id" IS NOT NULL AND c."source_notary_matter_id" IS NOT NULL AND c."certificate_id" IS NOT NULL
              AND c."current_execution_submission_id"=s."id" AND c."current_trial_round_id"=s."trial_round_id"
              AND c."current_judgment_next_step_id"=s."judgment_next_step_id"
              AND c."current_second_instance_result_id" IS NOT DISTINCT FROM s."second_instance_result_id"
@@ -3263,7 +3278,16 @@ export class MaterialService {
                  WHERE r."id"=s."second_instance_result_id" AND r."case_id"=c."id" AND r."department_id"=c."department_id"
                    AND r."choice_id"=choice."id" AND r."trial_round_id"=s."trial_round_id" AND r."result" IN ('CHANGE','AFFIRM')
                    AND NOT EXISTS (SELECT 1 FROM "case_second_instance_result_revocations" rev WHERE rev."result_id"=r."id"))))
-             AND NOT EXISTS (SELECT 1 FROM "case_execution_finishes" ef WHERE ef."case_id"=c."id" AND ef."department_id"=c."department_id")`,
+             AND NOT EXISTS (SELECT 1 FROM "case_execution_finishes" ef WHERE ef."case_id"=c."id" AND ef."department_id"=c."department_id")
+           UNION ALL
+           SELECT c."id" FROM "cases" c
+           JOIN "case_external_entries" e ON e."case_id"=c."id" AND e."department_id"=c."department_id"
+           LEFT JOIN "case_execution_filings" f ON f."case_id"=c."id" AND f."department_id"=c."department_id" AND f."external_entry_id"=e."id"
+           WHERE c."id"=$1::uuid AND c."department_id"=$2::uuid AND c."stage"='EXECUTING'
+             AND c."source_lead_id" IS NULL AND c."source_notary_matter_id" IS NULL AND c."certificate_id" IS NULL
+             AND NOT EXISTS (SELECT 1 FROM "case_execution_finishes" ef WHERE ef."case_id"=c."id" AND ef."department_id"=c."department_id")
+             AND ((e."initial_stage"='EXECUTING' AND c."version"=1 AND f."id" IS NULL)
+               OR (f."id" IS NOT NULL AND f."to_version"=c."version"))`,
           ownerId,
           actor.departmentId,
         );
