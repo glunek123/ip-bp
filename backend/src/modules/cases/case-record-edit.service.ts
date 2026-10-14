@@ -10,6 +10,7 @@ import { AccessControlService } from '../../access-control/access-control.servic
 import { ActorContext } from '../../access-control/actor-context';
 import { DatabaseService } from '../../database/database.service';
 import type { Prisma } from '../../generated/prisma/client';
+import { readCaseSourceAnchor } from './case-entry-source';
 import {
   AcceptanceCorrectionResultDto,
   CorrectCaseAcceptanceDto,
@@ -46,7 +47,7 @@ type AcceptanceValue = {
   reason: string;
 };
 type SecondAcceptanceValue = {
-  choiceId: string;
+  choiceId: string | null;
   trialRoundId: string;
   expectedAcceptanceRevision: number;
   idempotencyKey: string;
@@ -423,21 +424,52 @@ export class CaseRecordEditService {
                 throw this.conflict('IDEMPOTENCY_CONFLICT');
               return this.secondAcceptanceReceipt(prior.resultSnapshot, caseId);
             }
-            const choice = await tx.caseJudgmentNextStep.findFirst({
-              where: {
-                id: value.choiceId,
-                caseId,
-                departmentId: actor.departmentId,
-                trialRoundId: value.trialRoundId,
-                next: 'APPEAL',
-                revocation: null,
-              },
-              select: {
-                id: true,
-                judgment: { select: { judgmentReceivedAt: true } },
-              },
-            });
-            if (choice === null) throw this.conflict('INVALID_STATE');
+            const source = await readCaseSourceAnchor(
+              tx,
+              caseId,
+              actor.departmentId,
+            );
+            const directEntry =
+              value.choiceId === null &&
+              source.kind === 'EXTERNAL_ENTRY' &&
+              source.initialStage === 'SECOND_INSTANCE';
+            const directRound = directEntry
+              ? await tx.caseTrialRound.findFirst({
+                  where: {
+                    id: value.trialRoundId,
+                    caseId,
+                    departmentId: actor.departmentId,
+                    origin: 'EXTERNAL_CURRENT',
+                    externalEntryId: source.entryId,
+                    sourceResultId: null,
+                  },
+                  select: { id: true },
+                })
+              : null;
+            if (
+              value.choiceId === null &&
+              (!directEntry || directRound === null)
+            )
+              throw this.conflict('INVALID_STATE');
+            const choice =
+              value.choiceId === null
+                ? null
+                : await tx.caseJudgmentNextStep.findFirst({
+                    where: {
+                      id: value.choiceId,
+                      caseId,
+                      departmentId: actor.departmentId,
+                      trialRoundId: value.trialRoundId,
+                      next: 'APPEAL',
+                      revocation: null,
+                    },
+                    select: {
+                      id: true,
+                      judgment: { select: { judgmentReceivedAt: true } },
+                    },
+                  });
+            if (value.choiceId !== null && choice === null)
+              throw this.conflict('INVALID_STATE');
             const latest =
               await tx.caseSecondInstanceAcceptanceChange.findFirst({
                 where: {
@@ -451,7 +483,9 @@ export class CaseRecordEditService {
             if (revision !== value.expectedAcceptanceRevision)
               throw this.conflict('VERSION_CONFLICT');
             if (
-              record.currentJudgmentNextStepId !== value.choiceId &&
+              (value.choiceId === null
+                ? record.currentTrialRoundId !== value.trialRoundId
+                : record.currentJudgmentNextStepId !== value.choiceId) &&
               latest === null &&
               (await tx.caseSecondInstanceProgress.count({
                 where: {
@@ -489,7 +523,16 @@ export class CaseRecordEditService {
               throw this.validation('二审受理信息没有变化');
             if (value.acceptedAt !== null) {
               if (
-                choice.judgment !== null &&
+                directEntry &&
+                source.kind === 'EXTERNAL_ENTRY' &&
+                (value.acceptedAt < source.stageReachedOn ||
+                  (source.known.secondInstanceAcceptedOn !== null &&
+                    value.acceptedAt < source.known.secondInstanceAcceptedOn))
+              )
+                throw this.validation('二审受理日期不得早于外部转入真实日期');
+              if (
+                choice?.judgment !== null &&
+                choice?.judgment !== undefined &&
                 value.acceptedAt < isoDate(choice.judgment.judgmentReceivedAt)
               )
                 throw this.validation('二审受理日期不得早于原判决收到日');
@@ -532,6 +575,8 @@ export class CaseRecordEditService {
                 departmentId: actor.departmentId,
                 trialRoundId: value.trialRoundId,
                 choiceId: value.choiceId,
+                externalEntryId:
+                  source.kind === 'EXTERNAL_ENTRY' ? source.entryId : null,
                 priorChangeId: latest?.id ?? null,
                 fromRevision: revision,
                 toRevision: revision + 1,
@@ -824,8 +869,8 @@ export class CaseRecordEditService {
       typeof input !== 'object' ||
       Object.keys(input).length !== keys.length ||
       Object.keys(input).some((key) => !keys.includes(key)) ||
-      typeof input.choiceId !== 'string' ||
-      !uuid.test(input.choiceId) ||
+      (input.choiceId !== null &&
+        (typeof input.choiceId !== 'string' || !uuid.test(input.choiceId))) ||
       typeof input.trialRoundId !== 'string' ||
       !uuid.test(input.trialRoundId) ||
       !Number.isSafeInteger(input.expectedAcceptanceRevision) ||
@@ -938,8 +983,9 @@ export class CaseRecordEditService {
       typeof snapshot !== 'object' ||
       Array.isArray(snapshot) ||
       snapshot.caseId !== caseId ||
-      typeof snapshot.choiceId !== 'string' ||
-      !uuid.test(snapshot.choiceId) ||
+      (snapshot.choiceId !== null &&
+        (typeof snapshot.choiceId !== 'string' ||
+          !uuid.test(snapshot.choiceId))) ||
       typeof snapshot.trialRoundId !== 'string' ||
       !uuid.test(snapshot.trialRoundId) ||
       typeof snapshot.changeId !== 'string' ||

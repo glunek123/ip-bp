@@ -45,6 +45,10 @@ describe('CaseRecordEditService', () => {
       currentAcceptanceId: acceptanceId,
       currentTrialRoundId: roundId,
       currentJudgmentNextStepId: choiceId,
+      sourceLeadId: 'aaaaaaaa-aaaa-4aaa-8aaa-aaaaaaaaaaaa',
+      sourceNotaryMatterId: 'bbbbbbbb-bbbb-4bbb-8bbb-bbbbbbbbbbbb',
+      certificateId: 'cccccccc-cccc-4ccc-8ccc-cccccccccccc',
+      externalEntry: null,
       filingSubmission: { submittedAt: new Date('2026-10-01T00:00:00.000Z') },
       hearingArrangements: [],
       judgmentFacts: [],
@@ -97,6 +101,9 @@ describe('CaseRecordEditService', () => {
             judgmentReceivedAt: new Date('2026-10-08T00:00:00.000Z'),
           },
         }),
+      },
+      caseTrialRound: {
+        findFirst: jest.fn().mockResolvedValue({ id: roundId }),
       },
       caseSecondInstanceAcceptanceChange: {
         findFirst: jest.fn().mockResolvedValue(null),
@@ -349,6 +356,61 @@ describe('CaseRecordEditService', () => {
         }),
       }),
     );
+  });
+
+  it('records a direct second-instance acceptance against the real entry and local round', async () => {
+    const f = fixture();
+    f.record.sourceLeadId = null as never;
+    f.record.sourceNotaryMatterId = null as never;
+    f.record.certificateId = null as never;
+    f.record.currentJudgmentNextStepId = null as never;
+    f.record.externalEntry = {
+      id: 'dddddddd-dddd-4ddd-8ddd-dddddddddddd',
+      caseId,
+      departmentId: actor.departmentId,
+      initialStage: 'SECOND_INSTANCE',
+      stageReachedOn: new Date('2026-10-08T00:00:00.000Z'),
+      known: {
+        courtId: null,
+        courtCaseNo: null,
+        acceptedOn: null,
+        secondInstanceAcceptedOn: null,
+        platform: null,
+        shopName: null,
+        shopExternalId: null,
+        caseType: null,
+        infringementTypes: null,
+      },
+    } as never;
+    const direct = { ...secondInput, choiceId: null };
+    const result = await f.service.saveSecondInstanceAcceptance(
+      actor,
+      caseId,
+      direct,
+    );
+    expect(result.choiceId).toBeNull();
+    expect(f.tx.caseJudgmentNextStep.findFirst).not.toHaveBeenCalled();
+    expect(f.tx.caseSecondInstanceAcceptanceChange.create).toHaveBeenCalledWith(
+      {
+        data: expect.objectContaining({
+          choiceId: null,
+          externalEntryId: 'dddddddd-dddd-4ddd-8ddd-dddddddddddd',
+        }),
+      },
+    );
+  });
+
+  it('rejects null choice on a normal-source second-instance case', async () => {
+    const f = fixture();
+    await expect(
+      f.service.saveSecondInstanceAcceptance(actor, caseId, {
+        ...secondInput,
+        choiceId: null,
+      }),
+    ).rejects.toMatchObject({ response: { code: 'INVALID_STATE' } });
+    expect(
+      f.tx.caseSecondInstanceAcceptanceChange.create,
+    ).not.toHaveBeenCalled();
   });
 
   it('requires a reason on correction and permits clearing a mistaken field', async () => {

@@ -73,7 +73,10 @@ export class AcceptanceCorrectionResultDto {
 }
 
 export class SaveSecondInstanceAcceptanceDto {
-  @ApiProperty({ format: 'uuid' }) @IsUUID('4') choiceId!: string;
+  @ApiProperty({ type: String, nullable: true, format: 'uuid' })
+  @ValidateIf((_object, value) => value !== null)
+  @IsUUID('4')
+  choiceId!: string | null;
   @ApiProperty({ format: 'uuid' }) @IsUUID('4') trialRoundId!: string;
   @ApiProperty({ minimum: 0 })
   @IsInt()
@@ -98,7 +101,8 @@ export class SaveSecondInstanceAcceptanceDto {
 
 export class SaveSecondInstanceAcceptanceResultDto {
   @ApiProperty({ format: 'uuid' }) caseId!: string;
-  @ApiProperty({ format: 'uuid' }) choiceId!: string;
+  @ApiProperty({ type: String, nullable: true, format: 'uuid' }) choiceId!:
+    string | null;
   @ApiProperty({ format: 'uuid' }) trialRoundId!: string;
   @ApiProperty({ format: 'uuid' }) changeId!: string;
   @ApiProperty() acceptanceRevision!: number;
