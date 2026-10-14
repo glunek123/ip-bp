@@ -1,6 +1,6 @@
 # 功能开发路线图
 
-更新日期：2026-10-14。CORE-CA-001～016、N2及CORE-UI-001已验收并集成main。Current为CORE-CA-016最小结案资料＋案件既有字段受权摘要＋N2导航，固定候选8cc3a8e已通过独立审查、同树九项及静态验收，已集成main并保留原数据更新持久预览。Next为CORE-CA-017业务归档及归档后原因更正，尚未冻结／实施。实际候选、完整verify限定复用、Git及预览回执只见VALIDATION，不将最小闭环扩大为全部Demo或生产完成。
+更新日期：2026-10-14。CORE-CA-001～016、N2及CORE-UI-001已验收并集成main，持久预览保留原数据更新至3f636ea。Current为CORE-CA-017最终归档及归档后原因更正，正在最小工程冻结／技术复核，尚未实现。Next预留CORE-CA-018外部转入／历史补录入口，仅沿已批准SD-23范围排队，尚未冻结／领取。实际候选、Git及预览回执只见VALIDATION，不扩大为全部Demo或生产完成。
 
 本文只回答“已经做到哪里、下一步做什么、之后按什么依赖顺序做”。详细业务规则仍以 [`docs/spec/`](spec/) 为准，核心主线的编码级字段、附件与存储边界以[核心业务字段、附件与存储契约](superpowers/specs/2026-09-21-core-flow-field-material-contract.md)为准，技术方案以设计文档为准，当前切片的技术任务以实施计划为准，实际验证结果以 [`docs/spec/v0.1/VALIDATION.md`](spec/v0.1/VALIDATION.md) 为准；[`docs/project-status.md`](project-status.md)仅保留当前恢复摘要。
 
@@ -164,6 +164,125 @@
 
 ### Current Slice
 
+**CORE-CA-017｜最终业务归档及归档后原因更正，工程合同已通过独立技术复核，四任务待派发，尚未实现／验收。**
+
+实核main基线`3f636ea5f7f1adfef0adaf215dd97384ac87a318`／tree`3c7d8896461a07521f49fd9c66c3aa0e0810991d`。I复用`.local/worktrees/ca015-integration`，分支`codex/ca017-archive-integration`；只写权威文档／快照／集成和隔离验收。合同只见[案件CA017冻结](spec/v0.1/modules/cases.md#ca-017最终归档与归档后原因更正技术冻结2026-10-14尚未实现)。SD-44允许当前PRIMARY律师正常归档，原因更正仅获权内部运营；正常WAITING_ARCHIVE→ARCHIVED，精确当前结案版锚、日期／Demo六类型／原因，更正追加不可变版。PENDING结案额／null日期／空附件及未收齐款项不自动阻塞；不产生实收／结清或重开事实。
+
+四执行目录复用已干净、停写的CA016目录，原分支及成果保留，不创建第二批同职责编码目录。下表是本轮唯一文件所有权；I先固定冻结文档候选并通过技术Review，再在各目录从该冻结SHA建新分支。B17独占全部共享后端读取／DTO／Controller，F17独占共享API；P17只有两个新增面板文件，N17不写API或内部／律师详情，不与F17共改CasePages。白名单外接点必须先由I裁定重新分配，不覆盖其他Task文件。
+
+| Task | 模型                      | 复用目录／新分支                                                                  | 可独立交付目标                                                                    |
+| ---- | ------------------------- | --------------------------------------------------------------------------------- | --------------------------------------------------------------------------------- |
+| B17  | gpt-6-sol＋独立Sol Review | `.local/worktrees/ca016-backend-summary`／`codex/ca017-backend-archive`           | 唯一后端／schema作者；正常归档、内部原因更正、连续链、固定回执和最小外部投影      |
+| P17  | gpt-6-luna                | `.local/worktrees/ca016-closure-panel`／`codex/ca017-archive-panel`               | 仅两个新面板文件；局部冻结props／callback／事件；无文件上传／额外审批             |
+| F17  | gpt-6-luna                | `.local/worktrees/ca016-frontend-integration`／`codex/ca017-frontend-integration` | 唯一共享API作者；先固定最小API给N17，再接P17面板和内部／律师详情；保留未知原参    |
+| N17  | gpt-6-luna                | `.local/worktrees/ca016-case-list-display`／`codex/ca017-archive-navigation`      | 只读ARCHIVED阶段／列表／导航兼容；精确API依赖后同步自身fixtures，保留N1／N2及分页 |
+
+#### B17精确写入白名单
+
+```text
+backend/prisma/schema.prisma
+backend/prisma/migrations/20261014090000_add_case_archive_enums/migration.sql
+backend/prisma/migrations/20261014090100_guard_case_archive/migration.sql
+backend/src/modules/cases/case-archive.dto.ts
+backend/src/modules/cases/case-archive.dto.spec.ts
+backend/src/modules/cases/case-archive.service.ts
+backend/src/modules/cases/case-archive.service.spec.ts
+backend/src/modules/cases/case-read.controller.ts
+backend/src/modules/cases/case-read.controller.spec.ts
+backend/src/modules/cases/case-read.dto.ts
+backend/src/modules/cases/case-read.service.ts
+backend/src/modules/cases/case-read.service.spec.ts
+backend/src/modules/cases/lawyer-case.controller.ts
+backend/src/modules/cases/case.module.ts
+backend/src/modules/cases/client-case.response.dto.ts
+backend/src/modules/cases/client-case.service.ts
+backend/src/modules/cases/client-case.service.spec.ts
+backend/src/modules/cases/client-case.controller.spec.ts
+backend/src/modules/cases/case-closure.service.spec.ts
+backend/src/modules/cases/case-execution-finish.service.spec.ts
+backend/src/access-control/access-control.service.ts
+backend/src/access-control/access-control.service.spec.ts
+backend/src/access-control/permission-catalog.ts
+backend/src/access-control/prisma-access-control.store.ts
+backend/src/access-control/prisma-access-control.store.spec.ts
+backend/src/access-control/organization.service.ts
+backend/src/access-control/organization.service.spec.ts
+backend/src/modules/materials/material.service.ts
+backend/src/modules/materials/material.service.spec.ts
+backend/src/modules/materials/material.controller.spec.ts
+backend/src/core-ld-openapi.spec.ts
+scripts/prisma-model-owners.mjs
+```
+
+#### P17精确写入白名单
+
+```text
+frontend/src/modules/cases/CaseArchivePanel.vue
+frontend/src/modules/cases/CaseArchivePanel.spec.ts
+```
+
+#### F17精确写入白名单
+
+```text
+frontend/src/api/cases.ts
+frontend/src/api/cases.spec.ts
+frontend/src/api/client-cases.ts
+frontend/src/api/client-cases.spec.ts
+frontend/src/api/notary.ts
+frontend/src/api/notary.spec.ts
+frontend/src/api/organization.ts
+frontend/src/api/organization.spec.ts
+frontend/src/modules/cases/CaseDetailPage.vue
+frontend/src/modules/cases/LawyerCaseDetailPage.vue
+frontend/src/modules/cases/LawyerCaseDetailPage.spec.ts
+frontend/src/modules/cases/CaseArchiveDetailIntegration.spec.ts
+frontend/src/modules/cases/CaseClosureDetailIntegration.spec.ts
+frontend/src/modules/cases/CaseClosurePanel.vue
+frontend/src/modules/cases/CaseClosurePanel.spec.ts
+frontend/src/modules/cases/CaseComplaintConfirmationPanel.spec.ts
+frontend/src/modules/cases/CaseExecutionConfirmationPanel.spec.ts
+frontend/src/modules/cases/CaseExecutionSubmissionPanel.spec.ts
+frontend/src/modules/cases/CaseExecutionFinishPanel.spec.ts
+frontend/src/modules/cases/CaseHearingPanel.spec.ts
+frontend/src/modules/cases/CaseFilingPanel.spec.ts
+frontend/src/modules/cases/CaseJudgmentPanel.spec.ts
+frontend/src/modules/cases/CaseSecondInstancePanel.spec.ts
+frontend/src/modules/organization/RoleTemplateEditor.spec.ts
+frontend/src/modules/organization/RoleTemplatePanel.spec.ts
+frontend/src/modules/organization/PeopleAccessPage.spec.ts
+```
+
+#### N17精确写入白名单
+
+```text
+frontend/src/app/AppShell.vue
+frontend/src/app/AppShell.spec.ts
+frontend/src/modules/cases/CaseListPage.vue
+frontend/src/modules/cases/CaseListDisplay.spec.ts
+frontend/src/modules/cases/CasePages.spec.ts
+frontend/src/modules/cases/LawyerCaseListPage.vue
+frontend/src/modules/cases/LawyerCaseListPage.spec.ts
+frontend/src/modules/client/ClientCaseListPage.vue
+frontend/src/modules/client/ClientCaseDetailPage.vue
+frontend/src/modules/client/ClientCasePages.spec.ts
+frontend/src/modules/leads/NotaryMatterListPage.vue
+frontend/src/modules/leads/NotaryMatterListPage.spec.ts
+frontend/src/modules/leads/NotaryMatterDetailPage.vue
+frontend/src/modules/leads/NotaryMatterDetailPage.spec.ts
+```
+
+#### 依赖与验收安排
+
+B17和P17可从同一冻结提交独立并行。F17先固定最小案件／客户／公证／Action API类型、严格解码与所需回执方法，交准确SHA给N17；N17只接固定API依赖，不读未提交共享源码。F17在P17固定后接纳真实面板补内部／律师详情交互。B17无前端依赖，P17按局部冻结类型开发；F17不能用替身声称真实面板已验收。F17的旧Panel测试只改本片必要typed fixtures及直接兼容反例，P17不碰旧Panel；N17持有CasePages及列表fixtures，F17不得代改这些文件。
+
+作者只跑本Task聚焦单元／契约、对应类型／Lint／格式／context，精确区分未接依赖引起的组合编译缺口；不改权威docs/context、不跑共享PG／完整verify、不迁移预览、不push/main。B17独立Sol Review后交固定候选，材料路径只保持原结案历史下载，不新增归档文件category或上传。Action目录开发期核权限目录／严格parser／人员角色页及case-contracts，前后两阶段缺项分别报告，不拼称通过。Model路由按AGENTS；实际执行型号不可核验时不假称满足。
+
+I唯一持有权威文档、最终前向迁移环境及合成E2E：新增tests/e2e/case-archive.spec.ts、case-archive-database.spec.ts、case-archive-migration.spec.ts；tests/support/case-archive-database.mjs／.d.mts、case-archive-migration.mjs／.d.mts。直接旧兼容接点允许串行修改tests/e2e/case-closure.spec.ts、case-closure-database.spec.ts、case-closure-migration.spec.ts、case-execution-finish.spec.ts、case-execution-finish-database.spec.ts、case-list-display.spec.ts、case-complaint-confirmation.spec.ts及tests/support/case-closure-database.mjs／.d.mts、case-closure-migration.mjs／.d.mts、case-execution-finish-migration.mjs；只支持新146链／准确旧144探针和正常来源准备／清理，不放宽原断言或改旧SQL。其他接点先报告后裁定；不另造门禁scope或自动affected能力。
+
+本片接续跨历史事实末端守卫，I组合采用Level 3：作者聚焦验证→B17高风险独立审查→固定组合一次Final Review／finding关闭→稳定候选完整verify及适用PG／Chromium／146空库／144升级和失败原子专项。真实运营／当前律师归档、有权运营更正、旧Closure及Archive回执／准确文件、未知结果原参、撤权／竞争／回滚／直接SQL、客户／公证最小投影、ARCHIVED stage/counts与N1／N2／21条分页／三视口均需覆盖。使用backend/.env.test的15433隔离库，持久5186／3206／15436保持已验3f636ea与原数据，不提前迁移／seed／造归档数据。真实新Grant另需明确目标授权。
+
+### 已完成CA016批次（历史独占边界保留）
+
 **CORE-CA-016＋案件既有字段对齐＋N2｜已验收、集成main并更新持久预览。**
 
 已验main基线`1471bfa76380409607a2d87a834b63cda3bc35cd`／tree`1d595f73970c66155273f4bc5ab2e0ed2a82905e`；只读分析01a1367f已读，I采纳登记及原因更正仍WAITING_ARCHIVE、未知日期null、真实结案额KNOWN／PENDING、首版附件可空、当前PRIMARY律师正常登记、获权内部运营更正。实收保持未登记，不伪推结清。具体请求／响应／版本链／摘要／面板合同只见案件Spec的CA016冻结段，不用Demo派生财务语义。
@@ -217,11 +336,11 @@ Worker只跑自身聚焦测试／类型／lint／格式，报告SHA/tree/实际�
 
 ### Next Slice
 
-**CORE-CA-017｜业务最终归档及归档后原因更正（待领取，未冻结／未实施）。**
+**CORE-CA-018｜外部转入／历史补录独立入口（标识预留，未冻结／未领取）。**
 
-CA016已交付真实结案资料及待归档原因更正；CA017再按SD-54冻结ARCHIVED、真实归档日／类型／原因、准确结案锚及归档后追加更正。业务办完可归档，收齐款项不是默认前置；结案金额不等于实收，未登记／未知／真实0保留真实来源，不新增付款发起、财务公式、重开或任意回退。不得提前用公证ARCHIVED当案件枚举。本片完成后取实际main冻结下一片，不预建归档模型。
+沿SD-23已批准的独立外部转入／中途接办／历史补录入口排队；真实业务日期、来源、原因及主管补已归档限制保持，不虚构正常前序材料。CORE-CA-018仅是未使用的跟踪标识，不新增业务决定，本次只冻结CA017；待CA017完成后从实核main裁定入口来源身份、编号防重、权限、历史锚及迁移最小合同再实施。
 
-字段对齐剩余队列仍在既有模块Spec／Demo对齐矩阵：案件受权摘要、真实案号显示、正式执行受理来源及缴费等新事实，各自按最小闭环领取。搜索／导出扩列、线下调查、通用编辑与历史补录另排，不用按钮、假材料、未知0或现有台账替代；公证／线索本批已实现范围与未做边界只按本片实际证据判断。已有公证ARCHIVED展开案件范围链接继承非案件stage的导航边缘留待案件上下文回归，本批未夹带修改。
+字段对齐剩余队列仍在既有模块Spec／Demo对齐矩阵：正式执行受理来源及缴费等新事实各自按最小闭环领取；案件受权摘要及真实案号已由CA016交付。搜索／导出扩列、线下调查、通用编辑与历史补录另排，不用按钮、假材料、未知0或现有台账替代；公证／线索本批已实现范围与未做边界只按本片实际证据判断。公证ARCHIVED进入案件时继承非案件stage的问题已由CA016的N2修复验收，CA017只验证新增案件ARCHIVED兼容，不再列为未完成。
 
 #### 已完成分页批次的分派留痕
 

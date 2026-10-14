@@ -1308,3 +1308,13 @@ Task C实际提交`0cc238bdffc930aecc2be7058425b2d45ee14b00`，tree`c4934c0a904b
 本轮交付已完成CA016＋案件字段摘要＋N2；唯一Next仍CA017，尚未冻结／实施。下一批先从末次实核main冻结ARCHIVED及准确结案版本锚、归档业务日／类型／原因和追加原因更正，再按既有独占文件边界划分后端／迁移高风险Task、独立面板、共享API与详情接线、I组合验收；支付、案件实收／结清、历史补录、重开和真实扩权不夹带。这里只给任务建议，不提前修改归档模型或验收合同。
 
 末次实际交付回执由同一独立Reviewer只读核对Git、备份、122／120表逐项哈希及计数、旧142迁移行、私密配置／文件哈希、两案／六凭据、浏览器exit0／0业务写入和环境指纹。另报M1（Next标题残留“待CA016完成”），I仅改为待领取、未冻结／实施并更新快照，01:20 UTC文档专项四项exit0；复核关闭后最终Spec／Quality ACCEPTED、C0/I0/M0。范围只为非执行性收口／回执，不重新宣称全产品审查或旧完整门禁。本实际记录回填后的文档专项及末次远端SHA另保留`recovery-final-*`回执，产品／tests／工程输入继续逐字保持8cc。
+
+## CA017最小工程冻结与派发准备（2026-10-14）
+
+实核main／远端基线`3f636ea5f7f1adfef0adaf215dd97384ac87a318`／tree`3c7d8896461a07521f49fd9c66c3aa0e0810991d`，I干净并从该基线创建codex/ca017-archive-integration，原CA016集成分支和四作者refs／成果保留。只写既有cases／DOMAIN、roadmap、project-status、VALIDATION及对应快照；合同按SD-23／28／39／44／54、CA016源码／144迁移及Demo最小日期／六类型／原因冻结，没有正式代码／schema／迁移／测试实现或持久库操作。正常当前PRIMARY律师可归档，获权内部运营原因更正，准确结案版本与旧事实／回执／文件字节保留；分类不是实收，未扩真实Grant／Boundary，不能称CA017功能或业务验收完成。
+
+未参与合同写入的独立gpt-6-sol Reviewer自行只读核累计diff、批准决定、CA016 schema／service及closure SQL强制WAITING_ARCHIVE的真实接点，确认新前向迁移须精确接续closure final／helper与matching→finish末端、不用`>=`或非空头跳过。Spec Compliance／Quality两轴ACCEPTED，未关C/I/M0/0/0；检查B17／P17／F17／N17白名单无重叠、B17共享后端和F17共享API单一作者、固定API后N17接依赖及I独占环境／E2E。此为可实现性技术审查，未执行代码／PG／浏览器或产品门禁。未来I稳定组合按合同采用Level 3完整verify与风险专项，旧CA016证据不冒充本片通过。
+
+四执行目录复用原CA016干净停写目录，旧任务成果仍在原refs；共同锁文件／运行时输入须与基线逐字相同，B17的既有生成schema再核同一性，前端目录不把未生成后端Client视为依赖坏。冻结候选及正常格式／Spec／严格context检查实际结果、复用输入／目录就绪、精确HEAD／tree均保存ignored `.local/ca017-evidence/{freeze-checks,freeze,worktrees,dispatch-ready}.json`，不在正文写自身提交SHA或预称尚未返回的操作完成。首次只读复用检查误将前端P17旧后端schema当共同运行输入而停止，无修改；按职责分别核共享九项与B17 schema后继续，不为前端目录重新安装后端生成物。各目录实际准备只切干净工作区到固定冻结新分支、保留原refs，依赖输入未变时不重复安装；如缺失才按冻结离线入口补齐，不运行setup／bootstrap／seed或DB。
+
+CORE-CA-018仅为已批准SD-23外部转入／历史补录后续入口预留跟踪标识，没有新业务批准、技术冻结或实现。本轮只交父级CA017派发准备；5186／3206／15436保持已验3f636ea、144迁移和原数据／账号／授权，Worker不得写入。真实新Action权限仍需明确目标授权，隔离测试只用backend/.env.test的15433合成流程。

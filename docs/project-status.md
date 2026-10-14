@@ -4,9 +4,17 @@
 
 ## 当前阶段
 
-唯一Current／Next只见路线图。Current为CA016最小结案资料＋案件既有字段受权摘要＋N2导航，固定候选验收完成，已集成main并保留原数据更新持久预览；Next为CA017业务归档及归档后原因更正，尚未冻结／实施。实际候选、证据复用及Git／预览回执只见VALIDATION。
+唯一Current／Next只见路线图。Current为CA017最终归档及归档后原因更正，工程合同已通过独立技术复核，四任务待派发，尚未实施；Next预留CORE-CA-018外部转入／历史补录入口，未冻结／领取。CA016已交付main及保留原数据更新预览；实际证据只见VALIDATION。
 
 ## 当前任务
+
+**CORE-CA-017｜I独占工程冻结与派发准备，技术Review已接受，未实现／未验收。** 已核main／远端`3f636ea5f7f1adfef0adaf215dd97384ac87a318`及干净I，复用`.local/worktrees/ca015-integration`并新建`codex/ca017-archive-integration`。SD-44／54和CA016源链已读，Demo六类仅作真实归档分类、不推财务；正常归档允许当前PRIMARY律师，原因更正仅有权内部运营。精确请求、回执、链及面板合同只见[CA017技术冻结](spec/v0.1/modules/cases.md#ca-017最终归档与归档后原因更正技术冻结2026-10-14尚未实现)，白名单／模型／依赖只见路线图。本片最终组合Level 3，冻结阶段仅文档专项，尚无业务通过证据。
+
+原CA016 B／P／F／D四目录已干净、停写、无占用进程，依赖可复用；计划从独立技术复核通过的冻结SHA建立四个CA017分支，保留旧任务refs及成果，不另造平行目录。B17共享后端唯一作者、F17共享API唯一作者、P17仅新面板、N17仅只读stage／导航和自身fixtures；所有Worker不得写权威docs/context、PG、预览或main。当前只准备，不启动Worker实现；父级收到精确基线及就绪证据后派发。
+
+持久预览5186／3206／15436保持3f636ea、144迁移和原2案／6凭据／授权／文件，本片不提前迁移或办理业务。旧15433测试环境已恢复且指纹对应CA016，但不将旧验收复用为CA017通过。新Action不自动回填真实Grant／Boundary，实收／结清／资金发起、重开、历史补录及生产仍留后续。
+
+### 已完成CA016恢复证据
 
 **CORE-CA-016＋案件字段摘要＋N2已验收、集成并更新持久预览。** 2026-10-14实际终端／文件恢复；原I目录`.local/worktrees/ca015-integration`、分支`codex/ca016-closure-display-integration`、HEAD`8cc3a8e88a9ce7305e4dee7714f05b81e8268cd2`干净且与最终证据一致，没有挂起文档改动或运行中本片验证。所有Worker已停止；主仓只有已知未跟踪.pnpm-store，原恢复stash保留。
 

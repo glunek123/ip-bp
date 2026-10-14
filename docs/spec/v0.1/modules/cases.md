@@ -336,6 +336,45 @@ Demo结案信息折叠区，普通填写后保存，不增加审批／强制二�
 
 文件所有权、worktree和派发依赖只见路线图本片表；Worker不改权威文档／context／共享环境。高风险后端作者聚焦验证后独立Sol Review，I固定组合再终审及所属门禁。应验运营／当前律师首次登记、内部原因更正、null／待定／真实0、重登／精确历史／字节、撤权重放、同键／旧锚／竞争／回滚、直接SQL约束、空库及142基线升级／第二步失败前向恢复、内部摘要及外部最小投影、三视口及N2跨模块路由。上述验收要求已由固定候选覆盖，实际结果及限定复用边界只见[CA016验证记录](../VALIDATION.md#core-ca-016最小结案资料案件摘要与n2集成2026-10-13)。CA017及其余财务子范围仍未实施。
 
+## CA-017最终归档与归档后原因更正技术冻结（2026-10-14，尚未实现）
+
+基线为实核main `3f636ea5f7f1adfef0adaf215dd97384ac87a318`／tree `3c7d8896461a07521f49fd9c66c3aa0e0810991d`。依据SD-23／28／39／44／54及CA016真实事实链，I采纳Demo日期／类型／原因的简单交互；Demo只作表单参考，不复制批量假写入、今天兜底或“结案并完成结算”假事实。正常单案`WAITING_ARCHIVE→ARCHIVED`，归档后原因更正仍`ARCHIVED`；本片不开放重开、回退、历史补录、删除、实收、结清或付款发起。
+
+### 最小业务边界和独立金额
+
+- 首次归档必须有本案当前有效结案版本，准确锚定`closureId/closureVersionId`及其完整Finish前序。当前结案版本金额PENDING、日期null或附件空均不另设归档障碍，不要求已收到款项。归档分类或备注不是实收来源；现有实收／款项状态继续未登记，不因ARCHIVED、分类“执行到款”或原因文字改成已结清。
+- `archiveAt`为必填真实业务日`YYYY-MM-DD`，严格round-trip、不晚于北京时间当日，不默认今天、不复制closeAt或Finish日期，不增加未经批准的日期先后门槛。`archiveReason`必填非空白，1～2000字符。更正提交完整新归档资料，另必填`correctionReason`1～500字符；不静默trim、合并或覆盖旧版。
+- `CaseArchiveType`仅六项：`VOIDED`案件作废、`SETTLEMENT`和解结案、`MEDIATION`调解结案、`JUDGMENT_PERFORMED`判决履行、`EXECUTION_COLLECTED`执行到款、`EXECUTION_CLOSED`执行终本。工程代码只作Demo六类型的稳定分类映射，不由它执行作废／撤销、确认款项或生成执行结果。
+- 归档后本片更正只含归档日期／类型／原因；锚定的CA016结案版本及其日期、金额、说明和精确附件不替换，旧结案／归档版本、成功回执及材料字节保留。更正结案业务内容、重开或任意回退不借此入口实现。没有新归档文件种类、上传池或独立附件版本；归档引用已有结案版本，原历史文件仍按当前权限下载。
+
+### 请求、固定回执及投影
+
+- 内部`POST /api/v1/cases/:id/archive`与当前PRIMARY律师`POST /api/v1/lawyer/cases/:id/archive`共用正常归档Command；内部`POST /api/v1/cases/:id/archive-correction`处理原因更正。沿ActorContextGuard、CsrfGuard、UUIDv4路径，合法首次及有权同键原参重放均201。
+- `ArchiveCaseInput`显式所有键：`{expectedVersion,idempotencyKey,expectedClosureVersionId,archiveAt,archiveType,archiveReason}`。`CorrectCaseArchiveInput`加`expectedArchiveVersionId,correctionReason`，所有业务字段显式重提。expected版本沿已有安全整数校验，IDs均UUIDv4；key沿既有1～128字符、无首尾空白。拒绝未知键、非法类型／日期／空白原因，不把省略解释成原值。
+- 固定`CaseArchiveResult`：`{id,archiveId,archiveVersionId,closureId,closureVersionId,stage:'ARCHIVED',version,recordedAt}`；version为该次expectedVersion+1，recordedAt为UTC ISO，旧回执不因后续更正重算。相同命令／账号／部门原键原参重放返回原结果；同键异案／异参409 `IDEMPOTENCY_CONFLICT`。
+- 内部／律师Summary仅追加`canArchive,canCorrectArchive`两个必填Boolean；内部列表仍为已验14列及原displaySummary，不把归档日期、原因或新金额塞入摘要。内部／律师详情追加`archive:null|{id,closureId,closureVersionId,current,history}`；版本为`{id,kind:'ARCHIVE'|'CORRECT',priorVersionId,closureVersionId,fromVersion,toVersion,archiveAt,archiveType,archiveReason,correctionReason,recordedAt,recordedByUserId}`。首版prior／correctionReason为null；历史按精确连续版本链，current等于唯一末版。律师版本排除recordedByUserId／correctionReason，canCorrectArchive固定false；业务归档原因允许查看，不获得内部audit。
+- `canArchive`要求当前WAITING_ARCHIVE、真实当前closure版toVersion=Case.version、无archive及本次正确身份／Action；`canCorrectArchive`仅内部ARCHIVED、archive当前版toVersion=Case.version且本次correct Action。ARCHIVED的CA016登记／更正能力均false，但原closure投影、准确历史及已获权文件可读。
+- frontend严格解码器联核finish→closure→archive，不将末端精确相等放宽成`>=`／任意较小版本：无archive保持CA016精确链；有archive须Case.stage=ARCHIVED、首版from=冻结closure.toVersion、所有archive版连续、固定closureVersionId一致、最后archive.toVersion=Case.version。正常其他阶段archive=null；本片正常ARCHIVED必须有可核archive及closure。
+- 新案件CaseStage `ARCHIVED`与公证的同名枚举独立。内部／律师列表、DTO、严格stage／counts、筛选及侧栏新增真实已归档入口；客户只在原RECORDED视图按原企业范围读stage=ARCHIVED，不能读archive资料、结案额、原因、操作者／审计／文件或内部Command。公证linkedCase只补合法案件阶段及标签，原投影不扩大。保持N1组／原子书签、N2跨模块stage隔离、21条分页及列表／total／counts同范围，不新增批量归档／搜索／导出。
+
+### 授权、事务和完整历史接续
+
+- 新Action `CASE_ARCHIVE @map("case.archive")`及`CASE_ARCHIVE_CORRECT @map("case.archive.correct")`，内部分别沿原SELF／TEAM／DEPARTMENT和当前责任关系求交，不按角色名、不拼接read Grant或其他Action的范围。当前启用账号／有效绑定／当前PRIMARY承办律师可正常归档；归档后更正仅获权内部运营，律师、客户、公证处不能调用更正。每次包括旧回执重放先重验账号、当前授权、部门、责任团队或律师承办关系。
+- 本片只扩Action目录／类型，不自动生成真实Grant／GrantBoundary、绑定、角色或更大的scope；既有原账号缺新Action是授权边界，不误报功能失败。隔离15433显式合成授权，持久15436原账号授权另需明确目标，Worker不得操作。
+- Serializable、同部门同案FOR UPDATE及既有锁顺序；授权在回执之前。首次须当前无archive、准确closureVersionId及正常Finish／closure链；更正须准确archive当前版及固定closureVersionId。CAS同时限定case／department／stage／version与准确当前锚；事实、版本、真人audit、Case CAS、头及固定receipt在同一事务，沿既有有限完整事务重试。登记archiveAt不写业务资金或终止律师绑定。
+- SHA256固定序列包含caseId、command、expectedVersion、expectedClosureVersionId、expectedArchiveVersionId或null、archiveAt／type／reason和correctionReason或null，不含key；command为`ARCHIVE|CORRECT`，receipt唯一`(departmentId,actorUserId,command,idempotencyKey)`。audit为`case.archived`／`case.archive.corrected`，记录真人、准确closure／archive版、from/to及真实业务字段；内部原因／audit正文不入普通HTTP日志或外部投影。
+- 新三模型：`CaseArchive`稳定一案唯一头，固定case／department／closureId／closureVersionId及受控currentVersionId；`CaseArchiveVersion`不可变首次ARCHIVE及追加CORRECT版；`CaseArchiveReceipt`固定原键结果。首版from=冻结closure版to，后续from=准确prior.to，每版to=from+1；头只能推进末版，Case.version精确等于末版to。版本／receipt／对应成功audit不能UPDATE／DELETE，禁止跨案／跨部门、错误actor、错锚、分叉、跳号、孤立头或仅SQL提升Case.version。
+- 唯一两份新迁移`20261014090000_add_case_archive_enums/migration.sql`先提交案件ARCHIVED、两个Action及archive type／kind／command枚举；`20261014090100_guard_case_archive/migration.sql`单事务创建三模型、复合FK、约束和业务连续链守卫。前者允许在后者失败后留存，后者必须全部回滚并可标准前向重试。原144迁移文件／checksum保持，不改CA016旧SQL或造历史归档事实。
+- 新迁移显式前向接续CA016末端helper、closure final与原matching／complaint／trial／judgment／second-instance／execution submission／confirmation／mailing／filing／finish的当前末端判断。可新增`case_archive_terminal_version`并在原closure helper完整验证之后接续准确archive末端；不得递归循环、仅靠非空archive头或`>=`绕过真实前序。原WAITING_ARCHIVE无archive分支行为逐字保持；ARCHIVED只在该案完整archive链成立时认可。只改变历史链可接受的真实新末端，不修改旧事实／审计／成功回执／材料内容，旧Closure键仍返回原WAITING_ARCHIVE回执。新原子archive写入／失权及直接SQL负例必须实库证明。
+
+### 独立面板合同和本片验收
+
+仅新增`CaseArchivePanel.vue/CaseArchivePanel.spec.ts`。props为`item:{id,stage,version,canArchive,canCorrectArchive,closure:{id,current:{id}}|null,archive:上述投影|null}`、`contextKey`、`lawyer?:boolean`、`pendingRequest:null|{command:'ARCHIVE',input:ArchiveCaseInput}|{command:'CORRECT',input:CorrectCaseArchiveInput}`；callbacks `archiveCase(caseId,input)`／`correctArchive(caseId,input):Promise<CaseArchiveResult>`，events `changed(result)`、`refresh()`、`pending-change(原请求或null)`。P17可声明局部冻结类型，不能写共享API；F17提供正式API类型、原参内存和真实详情接线。
+
+详情就地折叠区收日期／六类型／原因，一个“确认归档”动作即可，不再套审批或强制第二次确认。已归档显示真实资料／历史，有权运营点击更正并填原因；外部只读，旧结案区保留真实历史／文件但不再编辑。第一次提交锁原键／版本／锚／完整body，未知结果保留同案同身份原参；只显式原键重试或刷新核实，不自动POST／换键。同案刷新／SPA重挂／竞争不能清未知原请求；确定409在可信刷新后可开启新的手动意图。401／403及身份／部门／revision／案ID变化立即清敏感草稿并隔离迟到响应。changed由调用方发一次workflow通知，刷新详情／列表／侧栏真实已归档计数；P17不自行发全局通知。
+
+验收覆盖运营／当前律师正常归档、有权运营原因更正、日期／六类型／空附件／null结案日期／PENDING金额无财务门槛、正常密码刷新重登及精确版本历史、旧Closure／Archive原回执／同键异参、失权／承办结束后原键拒绝、竞争／故障回滚／直接SQL绕过、空库146及真实144旧数据升级／第二DDL失败原子回滚前向恢复、旧Finish／closure／材料字节不变、客户／公证最小投影、ARCHIVED导航／分页／N2跨模块及三视口。复用正常来源API从前序推进，不预置目标成功状态。B17高风险独立审查；所有Task合成后一次独立Final Review，稳定候选集中执行完整verify及风险触发PG／Chromium组合，因为本片接续跨历史事实末端守卫，最终集成采用Level 3。工程冻结阶段只运行文档／Spec／context检查，不代表实现或业务验收；详细所有权和派发依赖仅见路线图。
+
 ## CA-015 执行结束批准边界（SD-54，已实现并通过本地组合验收）
 
 正常办理沿SD-39／44已有有权运营及当前承办律师范围，登记真实执行结束日期、原因和依据后只推进强制执行中→待归档；结束事实、原执行提交／材料和历史分别留存。实际执行结果不是判决额、应收额或实收额；本动作不发起支付，也不自动结清或归档。日期／原因／依据的持久化、精确当前来源、版本、幂等、并发与失败回滚必须在技术冻结和实际实现中落到现有同案事务、审计与材料边界，不能靠前端隐藏按钮授权。
