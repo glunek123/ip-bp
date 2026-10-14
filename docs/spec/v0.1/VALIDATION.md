@@ -1402,3 +1402,15 @@ SPA固定源f46a0c2／f2cb2ac／9de1248分别接为7173e16／8748f4b／41fb15367
 b73b82a506958da535bc16f0cb6f579eb25eb88e固定聚焦三项实际2通过／1失败：原请求丢响应／SPA显式回执恢复与同部门只读／跨部门404均通过，普通密码多文件兼容在旧matchCaseThroughBrowser正常匹配成功后紧接打开complaint时命中同一关闭过渡抢点，240秒超时。进一步仅在该真实匹配成功状态断言后等待dialog隐藏，不改产品/helper、不增加超时、不绕过点击；原两处完整断言保留。完整log／trace／JSON见ignored focused-recovery-pg及focused-recovery-failure-artifacts；该失败不计为通过，下一步先复验最后兼容用例，再固定最终14项组合。
 
 持久预览已为fc1c9f3c03c532eb26ae6c0f1c9859cb5da01f6c／146，原144→146前向升级记录保留。原start入口恢复后再次核124张业务／凭据／授权原表、2案／6凭据、材料及私密配置保持，归档新增事实0；不reset／seed／改密码或扩权。146新完整备份runtime/ui002-reconnected-146.dump为1,113,990字节，SHA256 ef27cb222f02c0afb7eff51d16cbdf121dc8a934c0220abf05af51274f1b65b5，pg_restore TOC可读、未演练恢复；旧1,074,833字节备份及旧dist保留。预览尚缺最终抽屉CSS，UI002未推送／合并；08:50 UTC远端main实核696fad75，主仓原.pnpm-store和stash保留。
+
+### UI002八栏与抽屉最终组合验收（2026-10-14）
+
+稳定源码／测试候选`648faa1da8a625a7d450a8d999ab7e292deaa446`／tree`6ecd8aef04afa4df8c33882c7a0fc8a23dd29b57`，正式14项受控PG／Chromium于`2026-10-14T09:04:26.4601208Z`～`2026-10-14T09:07:30.5713751Z` exit0、14/14，前后候选精确相同且干净，环境HMAC `343c59891dfe4d82e03a5c91faac2e1de7325b9c847f35fbaa3819c72290a627`相同。覆盖真实八栏默认闭合、三标签／键盘／三屏宽／真实文件bytes／PENDING与KNOWN0／历史归属，内部及当前PRIMARY律师结案／归档／执行结束／撤权、正常开庭／更正／推进、原匹配／同部门只读／跨部门404、普通密码多文件和真实201后丢响应／GETahead／SPA离返／原body/key显式固定回执恢复。最终日志和JSON见ignored stable-final-pg，最终截图在test-results及随后保全的stable-final-artifacts；不拼接先前中断或失败作为本次通过。
+
+完整verify实际4419c10／tree111020a于07:39:13～07:43:23 UTC通过80工具／1779前端／1451后端、静态和双构建；17组backend／frontend／scripts／依赖／配置／运行输入与稳定候选Git tree/blob逐字一致，复用明确限定于产品、单元和构建。441之后只有浏览器helper、cases测试中的真实自动关闭等待、非执行性状态／验证文档及快照；根TypeScript、相应Lint／格式、strict／Spec已实跑，架构检查此前同输入通过。独立最终Reviewer及两处时序补审累计双轴ACCEPTED C/I/M0。不是稳定候选重新跑完整verify，也不把旧七栏证据当八栏验收；审查／proof见ignored stable-648-review-static、stable-input-proof及后续final-input-proof。成功后切换调用点一次只读核对：只有匹配与起诉成功自动关闭路径需要等待真实dialog隐藏，原回执／body／key／bytes／权限断言保持，无新增sleep、force click、重试或超时；聚焦原请求恢复／404两项及最后普通兼容1/1分别已过，最后只运行一次稳定14项组合。
+
+持久预览已从fc源码同步稳定候选，5186／3206健康通过，15436仍146迁移；本轮样式同步不执行持久迁移、初始化、reset／seed／改密码／扩权。正常私密账号三页、三tab×1440／1024／390、八栏默认关闭及无整页横溢出通过；原0001执行邮寄、0002执行立案真实主动作按原can*打开并取消，drawer为fixed overlay、absolute flex且贴视口右侧，0业务写入。124张原业务／凭据／Grant表、2案／6凭据、材料／配置、原144迁移行保持，新增归档事实0。新增146全库备份`1113990`字节、SHA256 `ef27cb222f02c0afb7eff51d16cbdf121dc8a934c0220abf05af51274f1b65b5`，TOC可读、未演练恢复；旧备份、完整dist、stash和.pnpm-store均保留。实际只读／数据及健康回执见本机runtime与ignored preview-action-final、preview-final-health；只读图片实际核对，不复用未带drawer CSS的旧预览截图。
+
+本次只补真实结果及当前状态，随后按非执行性收口例外执行受影响文档格式、strict、Spec及diff检查，固定收口tree并核正常快进／原子推送；远端回执取得后再补记。不新增业务规则／API／schema、不改旧迁移、Demo或生产。普通联系方式、受理信息受控更正、实收／结清、重开、历史补录／外部转入及其他详情页新布局仍未实施。
+
+预览只读脚本首次调用漏传其要求的精确目录参数，在登录前失败，未有业务或权限写入；原preview-final-readonly.log保留，补齐参数后的preview-final-readonly-rerun及实际动作／几何／数据检查均通过。不是产品故障或迁移重试。

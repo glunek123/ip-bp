@@ -1,12 +1,12 @@
 # CORE-UI-002 案件工作页、八栏折叠与紧凑密度合同
 
-状态：2026-10-14用户三项优化及后续字段值布局要求已实现到I候选；A2／D2／R2／M2／F2均已接纳，SPA修复固定源f46a0c2已停写、Task Review通过，正在接纳最终组合并验收，尚未交付UI002或升级预览。准备阶段独立Spec／Quality审查未关闭C/I/M=0/0/0；不等同最终组合Review。基线main `696fad75ad427ce7431866c0710806983fdf9ba5`／tree `bd378946d0cf3d256816c7244340a271a35407b5`；I复用 `.local/worktrees/ca015-integration`，UI002独占分支。正常流程及权限以案件Living Spec和既有Command为准，本合同只规定其工作页呈现、编辑入口及宿主行为。
+状态：2026-10-14内部案件三页签／八栏、字段值布局、内容分组与真实抽屉操作已完成组合验收，独立累计Spec／Quality ACCEPTED、C/I/M0；固定候选及实际验证边界见VALIDATION。持久预览已保全数据同步；远端交付按实际回执记录。普通联系方式编辑及受理信息受控更正仍是后续缺口，不能把本合同的合法编辑入口称每栏全部字段可修改。基线main696fad75，I复用ca015-integration；业务流程和授权仍以案件Living Spec及既有Command为准。
 
 ## 范围与证据
 
 - 本批优先于CA018；CA018只完成SD-23／现有源码只读核对，无合同冻结、正式修改或实现派发。CA001～017、14列摘要、N1／N2、内部／客户分页均已交付，不重复开发。
 - 用户只要求：案件工作页三个子页及标题操作；八栏默认折叠、编辑入口和文字层级；收紧padding与留白。先落实内部 `/cases/:id`；律师／客户／公证页不扩大投影或重设计，只验既有行为兼容。
-- Demo原始路径 `D:/工作项目/品维and知产/dev_cor/demo`，已读DESIGN、`index.html`三个tabs与timeline、`app.js`的renderCaseDetail、renderCollapsePanels、editCard、openTimelineAdd。父级已核两张截图：返回箭头、标题／灰色摘要、右侧真实阶段及示例动作、紫色tab下划线、八栏白底浅边框。截图只证明折叠外观，没有证明内部编辑字段或费用功能。
+- Demo原始路径 `D:/工作项目/品维and知产/dev_cor/demo`，已读DESIGN、`index.html`三个tabs与timeline、`app.js`的renderCaseDetail、renderCollapsePanels、editCard、openTimelineAdd。父级已核两张截图：返回箭头、标题／灰色摘要、右侧真实阶段及示例动作、紫色tab下划线、当时七栏白底浅边框；其后用户要求增设第七位只读结案栏形成八栏。截图只证明折叠外观，没有证明内部编辑字段或费用功能。
 - 当前Edge的file://Demo读取被浏览器协议安全策略拒绝，未点击／改值，未绕过。此处真实行为核对来自本地源码；不是已完成实际浏览器操作。Demo部分执行／结案栏默认展开，与本次用户全部默认收起要求不同，以用户要求为准。
 - Demo可直接换阶段、改数组、播种材料、填今天及生成模拟时间轴；正式系统不采用这些行为。Demo保全／删除／执行更新是阶段示例，不能新增无授权或未实现的正式操作。
 
