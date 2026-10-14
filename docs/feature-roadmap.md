@@ -164,7 +164,7 @@
 
 ### Current Slice
 
-**CORE-CA-017｜最终业务归档及归档后原因更正，工程合同已通过独立技术复核，四任务待派发，尚未实现／验收。**
+**CORE-CA-017｜最终业务归档及归档后原因更正，工程合同已通过独立技术复核，四任务固定提交已接入I，隔离组合验收进行中，尚未验收。**
 
 实核main基线`3f636ea5f7f1adfef0adaf215dd97384ac87a318`／tree`3c7d8896461a07521f49fd9c66c3aa0e0810991d`。I复用`.local/worktrees/ca015-integration`，分支`codex/ca017-archive-integration`；只写权威文档／快照／集成和隔离验收。合同只见[案件CA017冻结](spec/v0.1/modules/cases.md#ca-017最终归档与归档后原因更正技术冻结2026-10-14尚未实现)。SD-44允许当前PRIMARY律师正常归档，原因更正仅获权内部运营；正常WAITING_ARCHIVE→ARCHIVED，精确当前结案版锚、日期／Demo六类型／原因，更正追加不可变版。PENDING结案额／null日期／空附件及未收齐款项不自动阻塞；不产生实收／结清或重开事实。
 

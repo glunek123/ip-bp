@@ -4,13 +4,15 @@
 
 ## 当前阶段
 
-唯一Current／Next只见路线图。Current为CA017最终归档及归档后原因更正，工程合同已通过独立技术复核，四任务待派发，尚未实施；Next预留CORE-CA-018外部转入／历史补录入口，未冻结／领取。CA016已交付main及保留原数据更新预览；实际证据只见VALIDATION。
+唯一Current／Next只见路线图。Current为CA017最终归档及归档后原因更正，四任务固定提交已接入I，正在隔离组合验收；Next预留CORE-CA-018外部转入／历史补录入口，未冻结／领取。CA016已交付main及保留原数据更新预览；实际证据只见VALIDATION。
 
 ## 当前任务
 
-**CORE-CA-017｜I独占工程冻结与派发准备，技术Review已接受，未实现／未验收。** 已核main／远端`3f636ea5f7f1adfef0adaf215dd97384ac87a318`及干净I，复用`.local/worktrees/ca015-integration`并新建`codex/ca017-archive-integration`。SD-44／54和CA016源链已读，Demo六类仅作真实归档分类、不推财务；正常归档允许当前PRIMARY律师，原因更正仅有权内部运营。精确请求、回执、链及面板合同只见[CA017技术冻结](spec/v0.1/modules/cases.md#ca-017最终归档与归档后原因更正技术冻结2026-10-14尚未实现)，白名单／模型／依赖只见路线图。本片最终组合Level 3，冻结阶段仅文档专项，尚无业务通过证据。
+**CORE-CA-017｜四路固定提交已接入，I独占隔离组合验收，尚未验收。** 工程冻结`c2dead6f9830edc4dc2a39a3f8d5916afd9e28d3`／tree`cac61d3340a76fa516646eef2d176994400a5fc8`已通过独立技术Review及文档专项；I复用`.local/worktrees/ca015-integration`／`codex/ca017-archive-integration`。SD-44／54和CA016源链已读，Demo六类仅作真实归档分类、不推财务；正常归档允许当前PRIMARY律师，原因更正仅有权内部运营。精确请求、回执、链及面板合同只见[CA017技术冻结](spec/v0.1/modules/cases.md#ca-017最终归档与归档后原因更正技术冻结2026-10-14尚未实现)，白名单／模型／依赖只见路线图。本片最终组合Level 3，冻结文档通过不代表业务通过。
 
-原CA016 B／P／F／D四目录已干净、停写、无占用进程，依赖可复用；计划从独立技术复核通过的冻结SHA建立四个CA017分支，保留旧任务refs及成果，不另造平行目录。B17共享后端唯一作者、F17共享API唯一作者、P17仅新面板、N17仅只读stage／导航和自身fixtures；所有Worker不得写权威docs/context、PG、预览或main。当前只准备，不启动Worker实现；父级收到精确基线及就绪证据后派发。
+原CA016 B／P／F／D四目录已从同一冻结SHA建立CA017分支，原refs及成果保留，依赖复用／context核验成功；就绪证据`.local/ca017-evidence/dispatch-ready.json`。B17线程01a13818-d5b9、P17 01a13819-88a6、F17 01a13817-ec3b、N17 01a13818-642c均由父级确认接收。B17共享后端唯一作者、F17共享API唯一作者、P17仅新面板、N17仅只读stage／导航和自身fixtures；所有Worker不得写权威docs/context、PG、预览或main。I只接固定依赖提交，F17 API→N17、P17面板→F17；后端独立审查通过后才接纳并运行PG，不拼作者单项成组合通过。
+
+I组合HEAD为`4ba9ad712168d61d86ad14201a1b1f00fd1fc6eb`，B17独立静态Spec／Quality ACCEPTED、C/I/M 0/0/0；前端组合及根类型检查已通过。146条空链已在15433随机schema实跑通过，随后标准部署到已恢复的空public测试库；真实144源数据前向升级、SQL反例、故障回滚和Chromium纵向验收仍待实跑。发现测试public为空时未据旧记录虚称144基线；15436持久预览不变。证据在ignored `.local/ca017-evidence/`，最终集成Review进行中，不将作者单测或静态审查当作业务验收。
 
 持久预览5186／3206／15436保持3f636ea、144迁移和原2案／6凭据／授权／文件，本片不提前迁移或办理业务。旧15433测试环境已恢复且指纹对应CA016，但不将旧验收复用为CA017通过。新Action不自动回填真实Grant／Boundary，实收／结清／资金发起、重开、历史补录及生产仍留后续。
 

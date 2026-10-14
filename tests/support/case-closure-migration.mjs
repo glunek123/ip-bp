@@ -18,18 +18,24 @@ const newNames = [
   '20261013190000_add_case_closure_enums',
   '20261013190100_guard_case_closure',
 ];
+// Retain the exact CA016 boundary; later slices validate their own full chain.
+const closureBoundary = allNames.indexOf(newNames[1]);
+if (closureBoundary < 0) throw new Error('Missing case closure boundary');
+const names = allNames.slice(0, closureBoundary + 1);
 const quote = (name) => `"${name.replaceAll('"', '""')}"`;
 const sql = (name) =>
   readFileSync(resolve(migrationDirectory, name, 'migration.sql'), 'utf8');
 const closureGrantActions = new Set([
   'case.closure.record',
   'case.closure.correct',
+  'case.archive',
+  'case.archive.correct',
 ]);
 
 function oldCompatibleSource(snapshot) {
   return {
     ...snapshot,
-    // A 142 permission_action enum cannot hold either CA-016 action. Keep
+    // A 142 permission_action enum cannot hold CA016 or CA017 actions. Keep
     // every older grant and compare the full copied 142 grant set thereafter.
     grants: snapshot.grants.filter(
       ({ row }) => !closureGrantActions.has(row.action),
@@ -165,9 +171,9 @@ export async function verifyCaseClosureMigration(caseId) {
       'Closure migration requires the isolated private file root',
     );
   if (
-    allNames.length !== 144 ||
-    allNames[142] !== newNames[0] ||
-    allNames[143] !== newNames[1]
+    names.length !== 144 ||
+    names[142] !== newNames[0] ||
+    names[143] !== newNames[1]
   )
     throw new Error('Expected exact 142 + 2 closure migration chain');
   const requireBackend = createRequire(resolve(root, 'backend/package.json'));
@@ -204,7 +210,7 @@ export async function verifyCaseClosureMigration(caseId) {
 
     await client.query(`CREATE SCHEMA ${quote(schemas[0])}`);
     await client.query(`SET search_path TO ${quote(schemas[0])}`);
-    await replay(client, allNames);
+    await replay(client, names);
     const empty = (
       await client.query(
         `SELECT to_regclass('case_closures') IS NOT NULL AS head,
@@ -218,7 +224,7 @@ export async function verifyCaseClosureMigration(caseId) {
 
     await client.query(`CREATE SCHEMA ${quote(schemas[1])}`);
     await client.query(`SET search_path TO ${quote(schemas[1])}`);
-    await replay(client, allNames.slice(0, 142));
+    await replay(client, names.slice(0, 142));
     await copyOldTables(client, schemas[1]);
     const oldForeignKeys = await assertNoOrphanedOldForeignKeys(
       client,
