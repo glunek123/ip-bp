@@ -408,9 +408,13 @@ test('acceptance correction chains exact root and rejects invalid values, old re
   request,
 }) => {
   test.setTimeout(240_000);
+  const registeredDate = pastWorkflowDate();
+  const correctedDate = today();
+  expect(registeredDate < correctedDate).toBe(true);
   const { caseId, detail, notice, originalInput, originalReceipt } =
-    await acceptedCase(request);
+    await acceptedCase(request, registeredDate);
   const acceptanceId = detail.acceptance!.id;
+  expect(detail.acceptance!.acceptedAt).toBe(registeredDate);
   await setRecordEditGrant(
     coreLeadFixtures.roleA,
     'case.acceptance.correct',
@@ -419,11 +423,7 @@ test('acceptance correction chains exact root and rejects invalid values, old re
   );
   const before = await recordEditSnapshot(caseId);
   const url = `/api/v1/cases/${caseId}/acceptance-correction`;
-  const firstInput = correctionInput(
-    acceptanceId,
-    0,
-    detail.acceptance!.acceptedAt,
-  );
+  const firstInput = correctionInput(acceptanceId, 0, correctedDate);
   for (const invalid of [
     { ...firstInput, idempotencyKey: randomUUID(), reason: '  ' },
     { ...firstInput, idempotencyKey: randomUUID(), courtCaseNo: '  ' },
@@ -470,11 +470,7 @@ test('acceptance correction chains exact root and rejects invalid values, old re
     }),
     [409],
   );
-  const secondInput = correctionInput(
-    acceptanceId,
-    1,
-    detail.acceptance!.acceptedAt,
-  );
+  const secondInput = correctionInput(acceptanceId, 1, correctedDate);
   await rejectRecordEditWrite('acceptance');
   await reject(
     await request.post(url, { headers: operator, data: secondInput }),
@@ -508,10 +504,17 @@ test('acceptance correction chains exact root and rejects invalid values, old re
   });
   expect(
     current.recordEdits.acceptanceCorrections[0].history.map(
-      ({ priorCorrectionId, fromRevision, toRevision, reason }) => ({
+      ({
         priorCorrectionId,
         fromRevision,
         toRevision,
+        acceptedAt,
+        reason,
+      }) => ({
+        priorCorrectionId,
+        fromRevision,
+        toRevision,
+        acceptedAt,
         reason,
       }),
     ),
@@ -520,12 +523,14 @@ test('acceptance correction chains exact root and rejects invalid values, old re
       priorCorrectionId: null,
       fromRevision: 0,
       toRevision: 1,
+      acceptedAt: correctedDate,
       reason: firstInput.reason,
     },
     {
       priorCorrectionId: first.correctionId,
       fromRevision: 1,
       toRevision: 2,
+      acceptedAt: correctedDate,
       reason: secondInput.reason,
     },
   ]);
