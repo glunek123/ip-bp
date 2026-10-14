@@ -1336,3 +1336,11 @@ ignored证据入口`.local/ca017-evidence/`：b17-review、combination-candidate
 本片已验收并原子交付main，实际Git回执见末段；演示升级依用户测试窗口另行协调。用户02:33 UTC预告、02:38 UTC开始人工测试，父级要求保持持久演示5186／3206／15436的CA016 `3f636ea5f7f1adfef0adaf215dd97384ac87a318`、144迁移、原2案／6凭据／授权／文件；本轮没有预览迁移／重启／密码或权限更改。CA017预览更新等待协调测试窗口，不将5174／3101隔离验收入口当演示入口。不做生产／真实资金／新长期凭据、reset、seed或历史删除。Next CA018仅独立合同与独占任务建议，未冻结或实现。
 
 CA017 Git实际交付回执：六份必要docs/context收口commit`f9d6201f1160bc27a960e32c9e88a0581601bf7a`／tree`56ef4d137218727c2a2c852fe1c556078008dae7`相对已验4487f9b只非执行性收口，产品及验收文件逐字未改；独立文档Review发现路线图／Spec当前态残留未完成，I修正后M1关闭，双轴ACCEPTED、C/I/M0/0/0，文档格式／严格context／Spec／diff实际通过。02:49:59.582～02:50:05.435 UTC `git push --atomic` main＋codex/ca017-archive-integration exit0，随后ls-remote两个ref精确f9d6201；主仓已核3f基线且只有原.pnpm-store，快进至f9d6201，原stash仍保留。证据ignored `.local/ca017-evidence/{closeout,push-first}.json`及日志。本段是实际操作后的文档回填，最终文档回填SHA/远端复核以同目录final-push回执为准，不反写自身提交SHA、不重复产品门禁、不称未查询的CI已过。持久预览保持3f/144，用户人工测试中，本轮无15436数据迁移或服务重启。
+
+## UI002案件工作页实施准备（2026-10-14，尚未实现）
+
+基线main `696fad75ad427ce7431866c0710806983fdf9ba5`／tree `bd378946d0cf3d256816c7244340a271a35407b5`，I复用ca015-integration，新建codex/ui002-case-workspace-integration并保留CA017 refs。只同步[UI002合同](../../superpowers/specs/2026-10-14-case-workspace-ui-contract.md)、案件Spec链接、roadmap／当前状态及快照；无正式代码、API、迁移或实现Worker操作。CA018停于只读，三后续模块只排结算中心→证物管理→数据报表及前置，到阶段再细拆。
+
+独立gpt-6-sol只读准备Review先拒绝contextKey缺caseId、刷新含义及下载参数不准确；I逐项修订，并在复核中补准列表total与下载Promise<void>、单文件403/404只移该文件。现Spec Compliance／Quality均ACCEPTED，未关闭C/I/M=0/0/0。A2／R2／M2／D2／F2独占文件、Interface、顺序及最终新组合Level3验收见合同，不把准备Review冒称UI、PG或浏览器门禁通过。
+
+03:34:05 UTC文档格式、context record／strict、Spec和diff实际exit0，Spec为57 REQ／66 AC／11 BQ／54 SD；后续本次最小修订的最终专项结果与准确冻结SHA只据ignored `.local/ui002-evidence/freeze.json`，不得预写本提交SHA。没有重复产品verify或数据库E2E。Demo现有Edge file://tab只读选择被浏览器URL安全策略拒绝，未输入、点击或绕过；独立的本地源码及父级已核截图用于准备。持久预览仍CA016 3f/144，本轮不操作5186／3206／15436的进程、数据、账号、密码、权限或文件；人工测试窗口结束，未来稳定候选验收后仍先备份并保全原数据。
