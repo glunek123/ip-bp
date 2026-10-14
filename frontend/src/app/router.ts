@@ -103,6 +103,7 @@ export const router = createRouter({
     {
       path: '/cases/:id',
       component: CaseDetailPage,
+      props: true,
       meta: {
         audience: 'INTERNAL',
         caseWorkspace: true,

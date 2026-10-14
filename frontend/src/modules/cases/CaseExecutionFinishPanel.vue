@@ -1,5 +1,12 @@
 <script setup lang="ts">
-import { computed, onBeforeUnmount, ref, watch } from 'vue';
+import {
+  computed,
+  onActivated,
+  onBeforeUnmount,
+  onDeactivated,
+  ref,
+  watch,
+} from 'vue';
 import { ElButton } from 'element-plus/es/components/button/index.mjs';
 import { todayShanghai, type CaseFile } from '../../api/cases';
 import { ApiError } from '../../api/http';
@@ -32,6 +39,7 @@ type FinishRecord = {
   files: CaseFile[];
 };
 const props = defineProps<{
+  readRevision?: number;
   item: {
     id: string;
     stage: string;
@@ -234,6 +242,25 @@ watch(
   },
   { flush: 'sync' },
 );
+watch(
+  () => props.readRevision,
+  () => {
+    if (active) void loadFiles();
+  },
+  { flush: 'sync' },
+);
+onDeactivated(() => {
+  active = false;
+  revision += 1;
+  abortDownloads();
+  submitting.value = false;
+  uploading.value = false;
+  loading.value = false;
+  reviewing.value = false;
+});
+onActivated(() => {
+  active = true;
+});
 onBeforeUnmount(() => {
   active = false;
   revision += 1;

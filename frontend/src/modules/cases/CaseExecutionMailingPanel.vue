@@ -1,5 +1,12 @@
 <script setup lang="ts">
-import { computed, onBeforeUnmount, ref, watch } from 'vue';
+import {
+  computed,
+  onActivated,
+  onBeforeUnmount,
+  onDeactivated,
+  ref,
+  watch,
+} from 'vue';
 import { ElButton } from 'element-plus/es/components/button/index.mjs';
 import {
   mailCaseExecution,
@@ -29,6 +36,7 @@ type MailingRecord = {
   files: VersionFile[];
 };
 const props = defineProps<{
+  readRevision?: number;
   item: {
     id: string;
     stage: string;
@@ -231,14 +239,42 @@ watch(
     props.contextKey,
     identity.value,
   ],
-  () => {
+  (next, previous) => {
+    const pending =
+      previous &&
+      next[0] === previous[0] &&
+      next[7] === previous[7] &&
+      next[8] === previous[8] &&
+      next[9] === previous[9] &&
+      next[10] === previous[10]
+        ? unknownRequest.value
+        : null;
     revision += 1;
     attachmentRevision += 1;
     reset();
+    unknownRequest.value = pending;
     void loadAvailable();
   },
   { immediate: true },
 );
+watch(
+  () => props.readRevision,
+  () => {
+    if (active) void loadAvailable();
+  },
+  { flush: 'sync' },
+);
+onDeactivated(() => {
+  active = false;
+  revision += 1;
+  attachmentRevision += 1;
+  abortDownloads();
+  submitting.value = false;
+  uploading.value = false;
+});
+onActivated(() => {
+  active = true;
+});
 onBeforeUnmount(() => {
   active = false;
   revision += 1;
@@ -397,7 +433,7 @@ async function download(file: VersionFile) {
 
 <template>
   <section class="demo-card demo-card--pad" data-test="execution-mailing-panel">
-    <template v-if="item.executionMailing">
+    <template v-if="item.executionMailing && !unknownRequest">
       <h2 class="form-section-title">执行邮寄登记</h2>
       <p>
         实际邮寄日期：{{ item.executionMailing.mailedAt }}；登记时间：{{
@@ -420,12 +456,16 @@ async function download(file: VersionFile) {
         </li>
       </ul>
     </template>
-    <template v-else-if="item.stage === 'WAITING_EXECUTION_STAMP'">
+    <template
+      v-else-if="unknownRequest || item.stage === 'WAITING_EXECUTION_STAMP'"
+    >
       <h2 class="form-section-title">登记执行材料邮寄</h2>
       <p class="field-help">
         确认执行申请材料已邮寄后，选择实际邮寄日期并上传邮寄凭证。本操作只记录邮寄事实。
       </p>
-      <template v-if="item.canMailExecution && confirmationId">
+      <template
+        v-if="unknownRequest || (item.canMailExecution && confirmationId)"
+      >
         <label
           >实际邮寄日期 <span aria-hidden="true">*</span
           ><input

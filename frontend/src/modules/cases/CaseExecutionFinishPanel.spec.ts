@@ -1,4 +1,5 @@
 import { flushPromises, mount } from '@vue/test-utils';
+import { defineComponent, h, KeepAlive, nextTick, ref } from 'vue';
 import { beforeEach, describe, expect, it, vi } from 'vitest';
 import { ApiError } from '../../api/http';
 import type { CaseFile } from '../../api/cases';
@@ -106,6 +107,45 @@ async function upload(wrapper: Panel) {
   await flushPromises();
 }
 describe('execution finish injected panel', () => {
+  it('reloads basis files only when the return case read is verified', async () => {
+    const late = deferred<CaseFile[]>();
+    api.listBasisFiles
+      .mockReturnValueOnce(late.promise)
+      .mockResolvedValueOnce([file]);
+    const visible = ref(true);
+    const readRevision = ref(0);
+    const host = mount(
+      defineComponent({
+        setup: () => () =>
+          h(KeepAlive, null, {
+            default: () =>
+              visible.value
+                ? h(CaseExecutionFinishPanel, {
+                    item,
+                    contextKey: 'INTERNAL:user-1:dept-1:rev-1',
+                    pendingRequest: null,
+                    readRevision: readRevision.value,
+                    ...api,
+                  })
+                : h('div'),
+          }),
+      }),
+    );
+    expect(api.listBasisFiles).toHaveBeenCalledTimes(1);
+    visible.value = false;
+    await nextTick();
+    late.resolve([file]);
+    await flushPromises();
+    visible.value = true;
+    await nextTick();
+    expect(api.listBasisFiles).toHaveBeenCalledTimes(1);
+    readRevision.value = 1;
+    await nextTick();
+    await flushPromises();
+    expect(api.listBasisFiles).toHaveBeenCalledTimes(2);
+    expect(host.text()).toContain(file.originalFilename);
+    host.unmount();
+  });
   it.each([
     { canFinishExecution: false },
     { stage: 'WAITING_EXECUTION_FILING' },

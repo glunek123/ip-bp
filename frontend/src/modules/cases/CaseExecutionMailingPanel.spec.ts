@@ -294,6 +294,17 @@ describe('case execution mailing panel', () => {
     await flushPromises();
     const original = api.mailCaseExecution.mock.calls[0];
     expect(wrapper.text()).toContain('提交结果暂时未知');
+    await wrapper.setProps({
+      item: {
+        ...item,
+        version: 8,
+        stage: 'WAITING_EXECUTION_FILING',
+        canMailExecution: false,
+      },
+    });
+    expect(wrapper.find('[data-test="execution-mailing-retry"]').exists()).toBe(
+      true,
+    );
     await wrapper.get('[data-test="execution-mailing-retry"]').trigger('click');
     await flushPromises();
     expect(api.mailCaseExecution.mock.calls[1]).toEqual(original);

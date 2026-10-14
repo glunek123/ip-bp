@@ -1710,6 +1710,51 @@ describe('case pages', () => {
     expect(api.confirmCaseComplaint.mock.calls[1]).toEqual(originalRequest);
   });
 
+  it('keeps an unknown confirmation retry after GET advances the stage', async () => {
+    const pending = confirmationDetail('case-a');
+    const ahead = confirmationDetail('case-a', 'WAITING_COMPLAINT_STAMP', 4);
+    api.getCase.mockResolvedValueOnce(pending).mockResolvedValueOnce(ahead);
+    api.confirmCaseComplaint
+      .mockRejectedValueOnce(new ApiError('timeout', 0, 'NETWORK_ERROR'))
+      .mockResolvedValueOnce({
+        id: 'case-a',
+        stage: 'WAITING_COMPLAINT_STAMP',
+        version: 4,
+        confirmedAt: '2026-10-02T02:00:00Z',
+      });
+    const { wrapper } = await mountRoutedDetail('/cases/case-a');
+    const originalRequest = await createUnknownConfirmation(wrapper);
+    await wrapper.get('[data-test="confirmation-check"]').trigger('click');
+    await flushPromises();
+    expect(wrapper.find('[data-test="confirmation-retry"]').exists()).toBe(
+      true,
+    );
+    await wrapper.get('[data-test="confirmation-retry"]').trigger('click');
+    await flushPromises();
+    expect(api.confirmCaseComplaint.mock.calls[1]).toEqual(originalRequest);
+  });
+  it('unlocks the saved confirmation request when GET advances before its POST settles', async () => {
+    const pending = confirmationDetail('case-a');
+    const ahead = confirmationDetail('case-a', 'WAITING_COMPLAINT_STAMP', 4);
+    api.getCase.mockResolvedValueOnce(pending).mockResolvedValueOnce(ahead);
+    let resolveOld!: (value: unknown) => void;
+    api.confirmCaseComplaint
+      .mockReturnValueOnce(new Promise((resolve) => (resolveOld = resolve)))
+      .mockRejectedValueOnce(new ApiError('timeout', 0, 'NETWORK_ERROR'));
+    const { wrapper } = await mountRoutedDetail('/cases/case-a');
+    const originalRequest = await createUnknownConfirmation(wrapper);
+    await wrapper.get('[data-test="confirmation-check"]').trigger('click');
+    await flushPromises();
+    const retry = wrapper.get('[data-test="confirmation-retry"]');
+    expect((retry.element as HTMLButtonElement).disabled).toBe(false);
+    await retry.trigger('click');
+    await flushPromises();
+    expect(api.confirmCaseComplaint.mock.calls[1]).toEqual(originalRequest);
+    resolveOld(undefined);
+    await flushPromises();
+    expect(api.confirmCaseComplaint).toHaveBeenCalledTimes(2);
+  });
+
   it('keeps the original confirmation body and key after a transient refresh failure', async () => {
     const pending = confirmationDetail('case-a');
     api.getCase
@@ -1826,7 +1871,7 @@ describe('case pages', () => {
     expect(api.confirmCaseComplaint).toHaveBeenCalledTimes(1);
   });
 
-  it('clears retry state when refresh observes the confirmed server fact', async () => {
+  it('retains the original retry beside a confirmed GET fact until POST resolves', async () => {
     const pending = confirmationDetail('case-a');
     const confirmed = confirmationDetail(
       'case-a',
@@ -1849,7 +1894,7 @@ describe('case pages', () => {
       wrapper.find('[data-test="confirmed-complaint-record"]').exists(),
     ).toBe(true);
     expect(wrapper.find('[data-test="confirmation-retry"]').exists()).toBe(
-      false,
+      true,
     );
   });
 

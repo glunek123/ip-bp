@@ -132,6 +132,15 @@ describe('complaint mailing panel', () => {
     await flushPromises();
     expect(wrapper.text()).toContain('提交结果暂时未知');
     const first = api.mailCaseComplaint.mock.calls[0];
+    await wrapper.setProps({
+      item: {
+        ...item,
+        version: 5,
+        stage: 'WAITING_FILING',
+        canMailComplaint: false,
+      },
+    });
+    expect(wrapper.find('[data-test="mailing-submit"]').exists()).toBe(true);
     await wrapper.get('[data-test="mailing-submit"]').trigger('click');
     await flushPromises();
     expect(api.mailCaseComplaint).toHaveBeenCalledTimes(2);

@@ -1,4 +1,5 @@
 import { flushPromises, mount } from '@vue/test-utils';
+import { defineComponent, h, KeepAlive, nextTick, ref } from 'vue';
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 import type { CaseDetail } from '../../api/cases';
 import { ApiError } from '../../api/http';
@@ -401,6 +402,47 @@ describe('CaseSecondInstancePanel', () => {
     wrapper.unmount();
   });
 
+  it('rehydrates an unresolved upload marker after KeepAlive return', async () => {
+    let resolveUpload!: (value: unknown) => void;
+    api.uploadMaterialFile.mockReturnValueOnce(
+      new Promise((resolve) => (resolveUpload = resolve)),
+    );
+    const visible = ref(true);
+    const host = mount(
+      defineComponent({
+        setup: () => () =>
+          h(KeepAlive, null, {
+            default: () =>
+              visible.value
+                ? h(CaseSecondInstancePanel, {
+                    item: item(),
+                    contextKey: 'internal:user-a:1',
+                    actorKey: 'internal:user-a:department-a',
+                  })
+                : h('div'),
+          }),
+      }),
+    );
+    const input = host.get('[data-test="second-instance-document-upload"]');
+    Object.defineProperty(input.element, 'files', {
+      configurable: true,
+      value: [new File(['pdf'], 'first.pdf', { type: 'application/pdf' })],
+    });
+    await input.trigger('change');
+    visible.value = false;
+    await nextTick();
+    resolveUpload({});
+    await flushPromises();
+    visible.value = true;
+    await nextTick();
+    expect(
+      (
+        host.get('[data-test="second-instance-document-upload"]')
+          .element as HTMLInputElement
+      ).disabled,
+    ).toBe(true);
+    host.unmount();
+  });
   it('keeps unknown upload blocked after remount when no exact usable version exists', async () => {
     api.uploadMaterialFile.mockRejectedValueOnce(
       new ApiError('unknown', 503, 'NETWORK_ERROR'),

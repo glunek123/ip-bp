@@ -1,5 +1,12 @@
 <script setup lang="ts">
-import { computed, onBeforeUnmount, ref, watch } from 'vue';
+import {
+  computed,
+  onActivated,
+  onBeforeUnmount,
+  onDeactivated,
+  ref,
+  watch,
+} from 'vue';
 import { ElButton } from 'element-plus/es/components/button/index.mjs';
 import {
   createFilingCourt,
@@ -19,6 +26,7 @@ import {
 import { notifyWorkflowChanged } from '../../app/workflow-events';
 
 const props = defineProps<{
+  readRevision?: number;
   item: CaseWorkflowItem;
   contextKey: string;
   lawyer?: boolean;
@@ -119,13 +127,36 @@ watch(
     props.item.canSubmitFiling,
     props.contextKey,
   ],
-  () => {
+  (next, previous) => {
+    const pending =
+      previous && next[0] === previous[0] && next[4] === previous[4]
+        ? unknownRequest.value
+        : null;
     revision += 1;
     clearContext();
+    unknownRequest.value = pending;
     void loadCourts();
   },
   { immediate: true },
 );
+watch(
+  () => props.readRevision,
+  () => {
+    if (active) void loadCourts();
+  },
+  { flush: 'sync' },
+);
+onDeactivated(() => {
+  active = false;
+  revision += 1;
+  abortDownloads();
+  submitting.value = false;
+  uploading.value = null;
+  courtsLoading.value = false;
+});
+onActivated(() => {
+  active = true;
+});
 onBeforeUnmount(() => {
   active = false;
   revision += 1;
@@ -394,7 +425,12 @@ async function download(file: CaseFile) {
 <template>
   <section class="demo-card demo-card--pad" data-test="case-filing-panel">
     <h2 class="form-section-title">提交立案</h2>
-    <template v-if="item.canSubmitFiling && item.stage === 'WAITING_FILING'">
+    <template
+      v-if="
+        unknownRequest ||
+        (item.canSubmitFiling && item.stage === 'WAITING_FILING')
+      "
+    >
       <p class="field-help">
         请确认真实法院、实际提交日期和本次材料。确认后案件将进入“待正式立案”，系统会保存法院、日期、诉调号及所选文件版本；已确认金额保持不变。
       </p>

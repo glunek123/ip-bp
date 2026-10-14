@@ -1,5 +1,12 @@
 <script setup lang="ts">
-import { computed, onBeforeUnmount, ref, watch } from 'vue';
+import {
+  computed,
+  onActivated,
+  onBeforeUnmount,
+  onDeactivated,
+  ref,
+  watch,
+} from 'vue';
 import { ElButton } from 'element-plus/es/components/button/index.mjs';
 import type { CaseDetail, CaseFile } from '../../api/cases';
 import { ApiError, type RequestOptions } from '../../api/http';
@@ -26,6 +33,7 @@ const downloadMessage = ref('');
 const invalidFiles = ref(new Set<string>());
 const downloading = ref(new Set<string>());
 let revision = 0;
+let active = true;
 let loadController: AbortController | undefined;
 const downloadControllers = new Map<string, AbortController>();
 
@@ -178,9 +186,10 @@ const canOpenUpload = computed(() => {
   }
 });
 function openUpload(): void {
-  if (canOpenUpload.value) emit('open-upload');
+  if (active && canOpenUpload.value) emit('open-upload');
 }
 async function load(): Promise<void> {
+  if (!active) return;
   loadController?.abort();
   const controller = new AbortController();
   loadController = controller;
@@ -188,6 +197,7 @@ async function load(): Promise<void> {
   const caseId = props.item.id;
   const contextKey = props.contextKey;
   const isCurrent = () =>
+    active &&
     !controller.signal.aborted &&
     currentRevision === revision &&
     caseId === props.item.id &&
@@ -228,9 +238,21 @@ watch(
   { immediate: true },
 );
 onBeforeUnmount(cancel);
+onDeactivated(() => {
+  active = false;
+  cancel();
+});
+onActivated(() => {
+  active = true;
+});
 
 async function download(row: FileRow): Promise<void> {
-  if (downloading.value.has(row.key) || invalidFiles.value.has(row.key)) return;
+  if (
+    !active ||
+    downloading.value.has(row.key) ||
+    invalidFiles.value.has(row.key)
+  )
+    return;
   const currentRevision = revision;
   const caseId = props.item.id;
   const contextKey = props.contextKey;
@@ -246,6 +268,7 @@ async function download(row: FileRow): Promise<void> {
     );
   } catch (error) {
     if (
+      !active ||
       controller.signal.aborted ||
       currentRevision !== revision ||
       caseId !== props.item.id ||

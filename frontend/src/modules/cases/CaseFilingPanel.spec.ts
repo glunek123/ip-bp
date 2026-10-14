@@ -205,6 +205,15 @@ describe('case filing panel', () => {
     await flushPromises();
     expect(wrapper.text()).toContain('提交结果暂时未知');
     const original = api.submitCaseFiling.mock.calls[0];
+    await wrapper.setProps({
+      item: {
+        ...baseItem,
+        version: 6,
+        stage: 'WAITING_FORMAL_ACCEPTANCE',
+        canSubmitFiling: false,
+      },
+    });
+    expect(wrapper.find('[data-test="filing-retry"]').exists()).toBe(true);
     await wrapper.get('[data-test="filing-retry"]').trigger('click');
     await flushPromises();
     expect(api.submitCaseFiling).toHaveBeenCalledTimes(2);

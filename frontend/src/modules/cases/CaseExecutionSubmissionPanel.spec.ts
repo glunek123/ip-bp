@@ -1,4 +1,5 @@
 import { flushPromises, mount } from '@vue/test-utils';
+import { defineComponent, h, KeepAlive, nextTick, ref } from 'vue';
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 import type { CaseDetail } from '../../api/cases';
 import { ApiError } from '../../api/http';
@@ -363,6 +364,49 @@ describe('CaseExecutionSubmissionPanel', () => {
     expect(
       (wrapper.get('input[type="file"]').element as HTMLInputElement).disabled,
     ).toBe(true);
+  });
+
+  it('rehydrates an unresolved upload marker after KeepAlive return', async () => {
+    let resolveUpload!: (value: unknown) => void;
+    api.uploadMaterialFile.mockReturnValueOnce(
+      new Promise((resolve) => (resolveUpload = resolve)),
+    );
+    const visible = ref(true);
+    const host = mount(
+      defineComponent({
+        setup: () => () =>
+          h(KeepAlive, null, {
+            default: () =>
+              visible.value
+                ? h(CaseExecutionSubmissionPanel, {
+                    item: item(),
+                    contextKey: 'identity-a',
+                    actorKey: 'user-a:rev-1',
+                  })
+                : h('div'),
+          }),
+      }),
+    );
+    await flushPromises();
+    const input = host.get('input[type="file"]');
+    Object.defineProperty(input.element, 'files', {
+      configurable: true,
+      value: [new File(['pdf'], 'first.pdf', { type: 'application/pdf' })],
+    });
+    await input.trigger('change');
+    visible.value = false;
+    await nextTick();
+    resolveUpload({});
+    await flushPromises();
+    expect(
+      readExecutionUpload({ actor: 'user-a:rev-1', caseId: id('20') }),
+    ).not.toBeNull();
+    visible.value = true;
+    await nextTick();
+    expect(
+      (host.get('input[type="file"]').element as HTMLInputElement).disabled,
+    ).toBe(true);
+    host.unmount();
   });
 
   it('does not start an upload when the recovery marker cannot be stored', async () => {

@@ -7,9 +7,11 @@ import type { LeadDetail } from '../../api/leads';
 import { ApiError } from '../../api/http';
 import { useAuthStore } from '../../stores/auth';
 import CaseDetailPage from './CaseDetailPage.vue';
+import App from '../../app/App.vue';
 import CaseWorkspaceFiles from './CaseWorkspaceFiles.vue';
 import CaseDetailsSections from './CaseDetailsSections.vue';
 import CaseComplaintSubmissionForm from './CaseComplaintSubmissionForm.vue';
+import CaseHearingPanel from './CaseHearingPanel.vue';
 import { ElDrawer } from 'element-plus/es/components/drawer/index.mjs';
 
 const api = vi.hoisted(() => ({
@@ -20,6 +22,10 @@ const api = vi.hoisted(() => ({
   submitComplaint: vi.fn(),
   matchCase: vi.fn(),
   listLawyerMatchCandidates: vi.fn(),
+  scheduleCaseHearing: vi.fn(),
+  registerCaseAcceptance: vi.fn(),
+  uploadMaterialFile: vi.fn(),
+  listFilingCourts: vi.fn(),
 }));
 vi.mock('../../api/cases', async (original) => ({
   ...(await original<typeof import('../../api/cases')>()),
@@ -27,12 +33,16 @@ vi.mock('../../api/cases', async (original) => ({
   submitComplaint: api.submitComplaint,
   matchCase: api.matchCase,
   listLawyerMatchCandidates: api.listLawyerMatchCandidates,
+  scheduleCaseHearing: api.scheduleCaseHearing,
+  registerCaseAcceptance: api.registerCaseAcceptance,
+  listFilingCourts: api.listFilingCourts,
 }));
 vi.mock('../../api/leads', () => ({ getLead: api.getLead }));
 vi.mock('../../api/materials', async (original) => ({
   ...(await original<typeof import('../../api/materials')>()),
   listOwnerMaterials: api.listOwnerMaterials,
   downloadMaterialVersion: api.downloadMaterialVersion,
+  uploadMaterialFile: api.uploadMaterialFile,
 }));
 const baseItem: CaseDetail = {
   id: 'case-1',
@@ -239,6 +249,65 @@ async function render(
   await flushPromises();
   return { wrapper, router, auth };
 }
+async function renderSpa(item: CaseDetail, realDrawer = false) {
+  api.getCase.mockResolvedValue(item);
+  const pinia = createPinia();
+  setActivePinia(pinia);
+  const auth = useAuthStore(pinia);
+  auth.session = {
+    principalType: 'INTERNAL',
+    user: { id: 'operator-1', username: 'actor', displayName: 'Operator' },
+    department: { id: 'department-1', name: 'Legal' },
+    departments: [],
+    customer: null,
+    notaryOffice: null,
+    authorizationRevision: 1,
+    expiresAt: '2026-10-15T00:00:00Z',
+    csrfToken: 'csrf',
+  };
+  const router = createRouter({
+    history: createMemoryHistory(),
+    routes: [
+      {
+        path: '/cases',
+        component: { template: '<div data-test="case-list-route" />' },
+      },
+      {
+        path: '/calendar',
+        component: { template: '<div data-test="calendar-route" />' },
+      },
+      {
+        path: '/cases/:id',
+        component: CaseDetailPage,
+        props: true,
+        meta: { caseWorkspace: true },
+      },
+    ],
+  });
+  await router.push('/cases/case-1');
+  await router.isReady();
+  const wrapper = mount(App, {
+    attachTo: document.body,
+    global: {
+      plugins: [pinia, router],
+      stubs: realDrawer
+        ? {
+            AppShell: { template: '<main><slot /></main>' },
+          }
+        : {
+            AppShell: { template: '<main><slot /></main>' },
+            ElDrawer: {
+              props: ['modelValue'],
+              template:
+                '<div v-show="modelValue" role="dialog" class="case-workspace-editors"><slot /></div>',
+            },
+          },
+    },
+  });
+  wrappers.push(wrapper);
+  await flushPromises();
+  return { wrapper, router, auth };
+}
 async function tab(wrapper: VueWrapper, key: string) {
   await wrapper.get(`[data-workspace-tab="${key}"]`).trigger('click');
   await flushPromises();
@@ -249,6 +318,7 @@ beforeEach(() => {
   api.listOwnerMaterials.mockResolvedValue({ items: [], total: 0 });
   api.downloadMaterialVersion.mockResolvedValue(undefined);
   api.listLawyerMatchCandidates.mockResolvedValue([]);
+  api.listFilingCourts.mockResolvedValue([]);
 });
 afterEach(() => {
   for (const wrapper of wrappers.splice(0)) wrapper.unmount();
@@ -256,6 +326,417 @@ afterEach(() => {
 });
 
 describe('UI002 real case workspace host', () => {
+  it('recovers an in-flight matching intent across real SPA routes without accepting its late response', async () => {
+    const item = structuredClone(baseItem);
+    item.stage = 'PENDING_MATCH';
+    item.canMatch = true;
+    api.listLawyerMatchCandidates.mockResolvedValue([
+      {
+        lawyerAccountId: 'lawyer-account',
+        lawyerProfileId: 'lawyer-profile',
+        displayName: 'Lawyer',
+        username: 'lawyer',
+      },
+    ]);
+    const late = deferred<void>();
+    api.matchCase
+      .mockReturnValueOnce(late.promise)
+      .mockRejectedValueOnce(new ApiError('unknown', 0, 'NETWORK_ERROR'));
+    const other = { ...item, id: 'case-2', businessNo: 'CA-2' };
+    const { wrapper, router } = await renderSpa(item);
+    api.getCase.mockImplementation(async (id: string) =>
+      id === 'case-2' ? other : item,
+    );
+    await wrapper
+      .get('[data-test="workspace-primary-action"]')
+      .trigger('click');
+    await wrapper
+      .get('[data-test="case-match-form"]')
+      .findAll('input')[1]!
+      .setValue('Defendant');
+    await wrapper
+      .get('[data-test="case-match-form"]')
+      .findAll('button')
+      .find((button) => button.text().includes('确认匹配'))!
+      .trigger('click');
+    const original = JSON.parse(
+      JSON.stringify(api.matchCase.mock.calls[0]![1]),
+    );
+    await router.push('/calendar');
+    await flushPromises();
+    expect(wrapper.find('[data-test="calendar-route"]').exists()).toBe(true);
+    await router.push('/cases/case-2');
+    await flushPromises();
+    expect(wrapper.text()).not.toContain('CA-1');
+    late.resolve(undefined);
+    await flushPromises();
+    expect(wrapper.text()).not.toContain('Defendant');
+    await router.push('/cases');
+    await router.push('/cases/case-1');
+    await flushPromises();
+    expect(api.matchCase).toHaveBeenCalledTimes(1);
+    await wrapper
+      .get('[data-test="workspace-primary-action"]')
+      .trigger('click');
+    await wrapper.get('[data-test="match-retry-original"]').trigger('click');
+    await flushPromises();
+    expect(api.matchCase.mock.calls[1]).toEqual(['case-1', original]);
+  });
+  it('keeps an unsent lawyer selection after the case is revalidated on SPA return', async () => {
+    const item = structuredClone(baseItem);
+    item.stage = 'PENDING_MATCH';
+    item.canMatch = true;
+    api.listLawyerMatchCandidates.mockResolvedValue([
+      {
+        lawyerAccountId: 'account-1',
+        lawyerProfileId: 'profile-1',
+        displayName: 'First',
+        username: 'first',
+      },
+      {
+        lawyerAccountId: 'account-2',
+        lawyerProfileId: 'profile-2',
+        displayName: 'Second',
+        username: 'second',
+      },
+    ]);
+    const { wrapper, router } = await renderSpa(item);
+    await wrapper
+      .get('[data-test="workspace-primary-action"]')
+      .trigger('click');
+    await flushPromises();
+    const select = wrapper
+      .get('[data-test="case-match-form"]')
+      .findAll('select')
+      .at(-1)!.element as HTMLSelectElement;
+    expect(select.options.length).toBe(3);
+    select.selectedIndex = 2;
+    await wrapper
+      .get('[data-test="case-match-form"]')
+      .findAll('select')
+      .at(-1)!
+      .trigger('change');
+    expect(
+      (
+        wrapper.get('[data-test="case-match-form"]').findAll('select').at(-1)!
+          .element as HTMLSelectElement
+      ).selectedIndex,
+    ).toBe(2);
+    await router.push('/calendar');
+    await router.push('/cases/case-1');
+    await flushPromises();
+    await wrapper
+      .get('[data-test="workspace-primary-action"]')
+      .trigger('click');
+    expect(
+      (
+        wrapper.get('[data-test="case-match-form"]').findAll('select').at(-1)!
+          .element as HTMLSelectElement
+      ).selectedIndex,
+    ).toBe(2);
+  });
+  it('recovers the original complaint body and key after visiting the case list', async () => {
+    const item = structuredClone(baseItem);
+    item.stage = 'WAITING_COMPLAINT';
+    item.canSubmitComplaint = true;
+    api.listOwnerMaterials.mockResolvedValue({
+      items: ['COMPLAINT', 'AUTHORIZATION'].map((category) => ({
+        id: `material-${category}`,
+        ownerType: 'CASE',
+        ownerId: item.id,
+        category,
+        purpose: category,
+        currentVersionId: `version-${category}`,
+        status: 'ACTIVE',
+        version: 1,
+        deletedAt: null,
+        createdAt: '2026-10-14T00:00:00Z',
+        updatedAt: '2026-10-14T00:00:00Z',
+        contentVersions: [
+          {
+            id: `version-${category}`,
+            materialId: `material-${category}`,
+            originalFilename: `${category}.pdf`,
+            mimeType: 'application/pdf',
+            sizeBytes: 8,
+            sha256: 'a'.repeat(64),
+            status: 'AVAILABLE',
+            createdAt: '2026-10-14T00:00:00Z',
+          },
+        ],
+      })),
+      total: 2,
+    });
+    api.submitComplaint.mockRejectedValue(
+      new ApiError('unknown', 0, 'NETWORK_ERROR'),
+    );
+    const { wrapper, router } = await renderSpa(item);
+    await wrapper
+      .get('[data-test="workspace-primary-action"]')
+      .trigger('click');
+    await wrapper
+      .getComponent(CaseComplaintSubmissionForm)
+      .get('input[inputmode="decimal"]')
+      .setValue('12.30');
+    await wrapper.get('[data-test="submit-complaint"]').trigger('click');
+    await flushPromises();
+    const original = JSON.parse(
+      JSON.stringify(api.submitComplaint.mock.calls[0]![1]),
+    );
+    await router.push('/cases');
+    await flushPromises();
+    api.getCase.mockResolvedValue({ ...item, version: 8 });
+    await router.push('/cases/case-1');
+    await flushPromises();
+    expect(api.submitComplaint).toHaveBeenCalledTimes(1);
+    await wrapper
+      .get('[data-test="workspace-primary-action"]')
+      .trigger('click');
+    await wrapper
+      .get('[data-test="complaint-retry-original"]')
+      .trigger('click');
+    await flushPromises();
+    expect(api.submitComplaint.mock.calls[1]).toEqual(['case-1', original]);
+  });
+  it('retains the hearing panel unknown request across a SPA calendar visit and a newer GET', async () => {
+    const item = structuredClone(baseItem);
+    item.stage = 'WAITING_HEARING';
+    item.canScheduleHearing = true;
+    item.acceptance = {
+      id: 'acceptance-1',
+      trialRoundId: 'round-1',
+      acceptedAt: '2026-10-05',
+      courtCaseNo: 'Court-1',
+      recordedAt: '2026-10-05T01:00:00Z',
+      recordedByUserId: 'user-1',
+      files: [],
+    };
+    const late = deferred<void>();
+    api.scheduleCaseHearing
+      .mockReturnValueOnce(late.promise)
+      .mockRejectedValueOnce(new ApiError('unknown', 0, 'TIMEOUT'));
+    const { wrapper, router } = await renderSpa(item);
+    await wrapper
+      .get('[data-test="workspace-primary-action"]')
+      .trigger('click');
+    await wrapper
+      .getComponent(CaseHearingPanel)
+      .get('[data-test="hearing-date"]')
+      .setValue('2026-10-05');
+    await wrapper.get('[data-test="hearing-save"]').trigger('click');
+    await flushPromises();
+    const original = api.scheduleCaseHearing.mock.calls[0];
+    await router.push('/calendar');
+    await flushPromises();
+    late.resolve(undefined);
+    await flushPromises();
+    api.getCase.mockResolvedValue({
+      ...item,
+      version: 8,
+      stage: 'WAITING_JUDGMENT',
+      canScheduleHearing: false,
+      canRegisterJudgment: true,
+    });
+    await router.push('/cases/case-1');
+    await flushPromises();
+    await wrapper
+      .get('[data-test="workspace-primary-action"]')
+      .trigger('click');
+    await wrapper.get('[data-test="workspace-prior-editor"]').trigger('click');
+    expect(wrapper.find('[data-test="hearing-retry"]').exists()).toBe(true);
+    await wrapper.get('[data-test="hearing-retry"]').trigger('click');
+    await flushPromises();
+    expect(api.scheduleCaseHearing.mock.calls[1]).toEqual(original);
+  });
+  it('retains an acceptance POST intent sent before leaving and replays its exact request after GET advances', async () => {
+    const item = structuredClone(baseItem);
+    item.stage = 'WAITING_FORMAL_ACCEPTANCE';
+    item.canRegisterAcceptance = true;
+    item.filingSubmission = {
+      court: { id: 'court-1', name: 'Court' },
+      submittedAt: '2026-10-03',
+      recordedAt: '2026-10-03T03:00:00Z',
+      recordedByUserId: 'user-1',
+      mediationNo: null,
+      evidenceFiles: [],
+      screenshotFiles: [],
+    };
+    const late = deferred<void>();
+    api.registerCaseAcceptance
+      .mockReturnValueOnce(late.promise)
+      .mockRejectedValueOnce(new ApiError('unknown', 0, 'TIMEOUT'));
+    const { wrapper, router } = await renderSpa(item);
+    await wrapper
+      .get('[data-test="workspace-primary-action"]')
+      .trigger('click');
+    await wrapper
+      .get('[data-test="acceptance-accepted-at"]')
+      .setValue('2026-10-05');
+    await wrapper
+      .get('[data-test="acceptance-court-case-no"]')
+      .setValue('Court-1');
+    await wrapper.get('[data-test="acceptance-register"]').trigger('click');
+    await flushPromises();
+    const original = api.registerCaseAcceptance.mock.calls[0];
+    await router.push('/calendar');
+    await flushPromises();
+    late.resolve(undefined);
+    await flushPromises();
+    api.getCase.mockResolvedValue({
+      ...item,
+      version: 8,
+      stage: 'WAITING_HEARING',
+      canRegisterAcceptance: false,
+    });
+    await router.push('/cases/case-1');
+    await flushPromises();
+    expect(api.registerCaseAcceptance).toHaveBeenCalledTimes(1);
+    await wrapper.get('[data-test="workspace-prior-editor"]').trigger('click');
+    await wrapper.get('[data-test="acceptance-retry"]').trigger('click');
+    await flushPromises();
+    expect(api.registerCaseAcceptance.mock.calls[1]).toEqual(original);
+  });
+  it('stops a second acceptance material upload after leaving the cached case', async () => {
+    const item = structuredClone(baseItem);
+    item.stage = 'WAITING_FORMAL_ACCEPTANCE';
+    item.canUploadAcceptanceMaterials = true;
+    const late = deferred<{
+      materialId: string;
+      contentVersionId: string;
+      originalFilename: string;
+      mimeType: string;
+    }>();
+    api.uploadMaterialFile.mockReturnValueOnce(late.promise);
+    const { wrapper, router } = await renderSpa(item);
+    await wrapper
+      .get('[data-test="workspace-primary-action"]')
+      .trigger('click');
+    const input = wrapper.get(
+      '[data-test="acceptance-material-input-ACCEPTANCE_NOTICE"]',
+    );
+    Object.defineProperty(input.element, 'files', {
+      configurable: true,
+      value: [
+        new File(['first'], 'first.pdf', { type: 'application/pdf' }),
+        new File(['second'], 'second.pdf', { type: 'application/pdf' }),
+      ],
+    });
+    await input.trigger('change');
+    expect(api.uploadMaterialFile).toHaveBeenCalledTimes(1);
+    await router.push('/calendar');
+    await flushPromises();
+    late.resolve({
+      materialId: 'material-1',
+      contentVersionId: 'version-1',
+      originalFilename: 'first.pdf',
+      mimeType: 'application/pdf',
+    });
+    await flushPromises();
+    expect(api.uploadMaterialFile).toHaveBeenCalledTimes(1);
+  });
+  it('hides the teleported case editor on SPA departure', async () => {
+    const item = structuredClone(baseItem);
+    item.stage = 'PENDING_MATCH';
+    item.canMatch = true;
+    const { wrapper, router } = await renderSpa(item, true);
+    await wrapper
+      .get('[data-test="workspace-primary-action"]')
+      .trigger('click');
+    await flushPromises();
+    expect(
+      document.body.querySelector('.case-workspace-editors'),
+    ).not.toBeNull();
+    await router.push('/calendar');
+    await flushPromises();
+    const drawer = document.body.querySelector('.case-workspace-editors');
+    expect(
+      drawer === null ||
+        getComputedStyle(drawer.closest('.el-overlay')!).display === 'none',
+    ).toBe(true);
+  });
+  it('cancels a material listing on departure and reloads only after return GET authorizes the case', async () => {
+    const item = structuredClone(baseItem);
+    const pending = deferred<{ items: []; total: number }>();
+    api.listOwnerMaterials
+      .mockReturnValueOnce(pending.promise)
+      .mockResolvedValue({ items: [], total: 0 });
+    const { wrapper, router } = await renderSpa(item);
+    await tab(wrapper, 'files');
+    const signal: AbortSignal = api.listOwnerMaterials.mock.calls[0]![2].signal;
+    expect(signal.aborted).toBe(false);
+    await router.push('/calendar');
+    await flushPromises();
+    expect(signal.aborted).toBe(true);
+    expect(api.listOwnerMaterials).toHaveBeenCalledTimes(1);
+    pending.resolve({ items: [], total: 0 });
+    await flushPromises();
+    const authorized = deferred<CaseDetail>();
+    api.getCase.mockReturnValueOnce(authorized.promise);
+    await router.push('/cases/case-1');
+    await flushPromises();
+    expect(api.listOwnerMaterials).toHaveBeenCalledTimes(1);
+    authorized.resolve(item);
+    await flushPromises();
+    expect(api.listOwnerMaterials).toHaveBeenCalledTimes(2);
+  });
+  it('reloads filing courts after an interrupted read and authorized SPA return', async () => {
+    const item = structuredClone(baseItem);
+    item.stage = 'WAITING_FILING';
+    item.canSubmitFiling = true;
+    const late = deferred<Array<{ id: string; name: string }>>();
+    api.listFilingCourts
+      .mockReturnValueOnce(late.promise)
+      .mockResolvedValue([{ id: 'court-1', name: 'Court One' }]);
+    const { wrapper, router } = await renderSpa(item);
+    await wrapper
+      .get('[data-test="workspace-primary-action"]')
+      .trigger('click');
+    expect(api.listFilingCourts).toHaveBeenCalledTimes(1);
+    await router.push('/calendar');
+    late.resolve([]);
+    await flushPromises();
+    await router.push('/cases/case-1');
+    await flushPromises();
+    expect(api.listFilingCourts).toHaveBeenCalledTimes(2);
+    await wrapper
+      .get('[data-test="workspace-primary-action"]')
+      .trigger('click');
+    expect(wrapper.text()).toContain('Court One');
+  });
+  it('clears cached case facts and pending controls when return GET is forbidden', async () => {
+    const item = structuredClone(baseItem);
+    item.stage = 'PENDING_MATCH';
+    item.canMatch = true;
+    const { wrapper, router } = await renderSpa(item);
+    await router.push('/cases');
+    api.getCase.mockRejectedValueOnce(
+      new ApiError('forbidden', 403, 'FORBIDDEN'),
+    );
+    await router.push('/cases/case-1');
+    await flushPromises();
+    expect(wrapper.text()).not.toContain('CA-1');
+    expect(
+      wrapper.find('[data-test="workspace-primary-action"]').exists(),
+    ).toBe(false);
+  });
+
+  it('drops a retained case instance when authorization revision changes away from it', async () => {
+    const item = structuredClone(baseItem);
+    item.stage = 'PENDING_MATCH';
+    item.canMatch = true;
+    const { wrapper, router, auth } = await renderSpa(item);
+    await router.push('/cases');
+    auth.session = { ...auth.session!, authorizationRevision: 2 };
+    await flushPromises();
+    const fresh = { ...item, canMatch: false, businessNo: 'CA-1-new' };
+    api.getCase.mockResolvedValue(fresh);
+    await router.push('/cases/case-1');
+    await flushPromises();
+    expect(wrapper.text()).toContain('CA-1-new');
+    expect(
+      wrapper.find('[data-test="workspace-primary-action"]').exists(),
+    ).toBe(false);
+  });
   it('keeps authorized second-result revocation available after the stage advances and prioritizes the current stage command', async () => {
     const item = structuredClone(baseItem);
     item.stage = 'WAITING_EXECUTION_DOCUMENTS';

@@ -510,6 +510,42 @@ describe('case hearing panel', () => {
     );
   });
 
+  it('rejects an ABA context response after authorization revision changes and returns', async () => {
+    let resolveCommand: ((value: typeof commandResult) => void) | undefined;
+    api.scheduleCaseHearing.mockImplementationOnce(
+      () =>
+        new Promise((resolve) => {
+          resolveCommand = resolve;
+        }),
+    );
+    const wrapper = mountPanel();
+    await wrapper.get('[data-test="hearing-date"]').setValue('2026-10-05');
+    await wrapper.get('[data-test="hearing-save"]').trigger('click');
+    await wrapper.setProps({ contextKey: 'INTERNAL:user-1:2' });
+    await wrapper.setProps({ contextKey: 'INTERNAL:user-1:1' });
+    resolveCommand?.(commandResult);
+    await flushPromises();
+    expect(wrapper.emitted('changed')).toBeUndefined();
+    expect(wrapper.find('[data-test="hearing-retry"]').exists()).toBe(false);
+  });
+
+  it('ignores a command result after unmount', async () => {
+    let resolveCommand: ((value: typeof commandResult) => void) | undefined;
+    api.scheduleCaseHearing.mockImplementationOnce(
+      () =>
+        new Promise((resolve) => {
+          resolveCommand = resolve;
+        }),
+    );
+    const wrapper = mountPanel();
+    await wrapper.get('[data-test="hearing-date"]').setValue('2026-10-05');
+    await wrapper.get('[data-test="hearing-save"]').trigger('click');
+    wrapper.unmount();
+    resolveCommand?.(commandResult);
+    await flushPromises();
+    expect(wrapper.emitted('changed')).toBeUndefined();
+  });
+
   it('shows business dates separately from recorded and executed times without claiming a court judgment', () => {
     const item: CaseDetail = {
       ...baseItem,

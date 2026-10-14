@@ -5,7 +5,15 @@ import CaseExecutionFinishPanel from './CaseExecutionFinishPanel.vue';
 import CaseClosurePanel from './CaseClosurePanel.vue';
 import CaseArchivePanel from './CaseArchivePanel.vue';
 
-import { computed, onBeforeUnmount, onMounted, ref, watch } from 'vue';
+import {
+  computed,
+  onActivated,
+  onBeforeUnmount,
+  onDeactivated,
+  onMounted,
+  ref,
+  watch,
+} from 'vue';
 import { RouterLink, useRoute, useRouter } from 'vue-router';
 import { ElButton } from 'element-plus/es/components/button/index.mjs';
 import { ElDrawer } from 'element-plus/es/components/drawer/index.mjs';
@@ -86,7 +94,9 @@ import {
 const route = useRoute();
 const router = useRouter();
 const auth = useAuthStore();
-const id = computed(() => String(route.params.id));
+defineOptions({ name: 'CaseDetailPage' });
+const props = defineProps<{ id?: string }>();
+const id = computed(() => props.id ?? String(route.params.id));
 const identity = computed(() =>
   auth.session === null
     ? ''
@@ -112,11 +122,13 @@ const activeTab = computed<WorkspaceTab>(() =>
     : 'details',
 );
 function selectTab(tab: WorkspaceTab): void {
+  if (String(route.params.id) !== id.value) return;
   void router.replace({ path: route.path, query: { ...route.query, tab } });
 }
 watch(
   () => route.query.tab,
   (tab) => {
+    if (String(route.params.id) !== id.value) return;
     if (
       tab !== undefined &&
       tab !== 'details' &&
@@ -130,12 +142,14 @@ watch(
 const lead = ref<LeadDetail | null>(null);
 const leadState = ref<LeadState>('idle');
 const drawerOpen = ref(false);
+const editorVisible = ref(true);
 const editorSection = ref<SectionKey>('case-info');
 const selectedCommand = ref('');
 const timelineView = ref(false);
 // Each command has one instance. Hiding the drawer or switching its view never resets it.
 const openedCommands = ref(new Set<string>());
 type WorkspaceCommand = { id: string; section: SectionKey; label: string };
+const openedCommandEntries = ref(new Map<string, WorkspaceCommand>());
 const commands = computed<WorkspaceCommand[]>(() => {
   const current = item.value;
   if (!current) return [];
@@ -367,6 +381,11 @@ const commands = computed<WorkspaceCommand[]>(() => {
     });
   return result;
 });
+const priorEditors = computed(() =>
+  [...openedCommandEntries.value.values()].filter(
+    (previous) => !commands.value.some((entry) => entry.id === previous.id),
+  ),
+);
 const sectionActions = computed<Record<SectionKey, SectionAction>>(() => {
   const action = (section: SectionKey): SectionAction => ({
     enabled: commands.value.some(
@@ -380,8 +399,8 @@ const sectionActions = computed<Record<SectionKey, SectionAction>>(() => {
         command.section === section ||
         (section === 'execution' && command.id === 'closure'),
     )
-      ? '仅办理已有业务命令；其他字段只读。'
-      : '当前阶段或权限没有可办理命令；通用字段编辑尚未提供。',
+      ? '使用已有业务命令；字段只读。'
+      : '当前无可办命令；字段只读。',
   });
   return {
     'case-info': action('case-info'),
@@ -391,8 +410,8 @@ const sectionActions = computed<Record<SectionKey, SectionAction>>(() => {
       label: '编辑',
       hint:
         leadState.value === 'denied'
-          ? '无权读取来源线索；案件资料仍可查看。'
-          : '仅来源线索允许编辑时进入原编辑页；受保护字段仍只读。',
+          ? '无权读取来源线索；案件仍可查看。'
+          : '仅在来源线索可编辑时进入原编辑页。',
     },
     'first-instance': action('first-instance'),
     'second-instance': action('second-instance'),
@@ -401,19 +420,23 @@ const sectionActions = computed<Record<SectionKey, SectionAction>>(() => {
     timeline: {
       enabled: commands.value.length > 0,
       label: '登记／更正',
-      hint: '仅办理已有业务命令；没有手工时间轴保存能力，不能修改审计记录。',
+      hint: '使用已有命令；审计记录只读。',
     },
   };
 });
-const editorCommands = computed(() =>
-  editorSection.value === 'timeline'
-    ? commands.value
-    : commands.value.filter(
+const editorCommands = computed(() => {
+  const entries = [...commands.value];
+  for (const previous of openedCommandEntries.value.values())
+    if (!entries.some((entry) => entry.id === previous.id))
+      entries.push(previous);
+  return editorSection.value === 'timeline'
+    ? entries
+    : entries.filter(
         (command) =>
           command.section === editorSection.value ||
           (editorSection.value === 'execution' && command.id === 'closure'),
-      ),
-);
+      );
+});
 const primaryCommand = computed(() => {
   const stage = item.value?.stage;
   const stageCommands: Partial<Record<CaseDetail['stage'], string>> = {
@@ -458,6 +481,14 @@ function openCommand(command: WorkspaceCommand): void {
   editorSection.value = command.section;
   selectedCommand.value = command.id;
   openedCommands.value.add(command.id);
+  openedCommandEntries.value.set(command.id, command);
+  drawerOpen.value = true;
+}
+function reopenPriorEditor(previous: WorkspaceCommand): void {
+  if (!priorEditors.value.some((entry) => entry.id === previous.id)) return;
+  timelineView.value = false;
+  editorSection.value = previous.section;
+  selectedCommand.value = previous.id;
   drawerOpen.value = true;
 }
 function editSection(section: SectionKey): void {
@@ -487,6 +518,7 @@ function chooseCommand(commandId: string): void {
   if (!command) return;
   selectedCommand.value = command.id;
   openedCommands.value.add(command.id);
+  openedCommandEntries.value.set(command.id, command);
 }
 function viewTimeline(): void {
   timelineView.value = true;
@@ -521,18 +553,21 @@ const state = ref<'loading' | 'ready' | 'missing' | 'failed'>('loading');
 const refreshing = ref(false);
 const refreshError = ref('');
 const item = ref<CaseDetail>();
+const accessVerified = ref(false);
+const activationRevision = ref(0);
 watch(
   [
     workspaceContext,
     () => item.value?.sourceLead.id,
     () => item.value?.version,
+    accessVerified,
   ],
   async ([contextKey, leadId, version], _prior, onCleanup) => {
     const controller = new AbortController();
     onCleanup(() => controller.abort());
     lead.value = null;
     leadState.value = leadId ? 'loading' : 'idle';
-    if (!leadId) return;
+    if (!leadId || !accessVerified.value) return;
     try {
       const result = await getLead(leadId, { signal: controller.signal });
       if (
@@ -601,6 +636,8 @@ let request: AbortController | undefined;
 let contextRevision = 0;
 let readRevision = 0;
 let candidateRequest: AbortController | undefined;
+let active = true;
+let firstActivation = true;
 
 type OperationContext = {
   caseId: string;
@@ -623,6 +660,7 @@ function isCurrentOperation(
   checkVersion = true,
 ): boolean {
   return (
+    active &&
     context.revision === contextRevision &&
     context.caseId === id.value &&
     context.identity === identity.value &&
@@ -1077,6 +1115,7 @@ const closureCallbacks = computed(() => {
 });
 
 async function load() {
+  if (!active) return;
   request?.abort();
   const controller = new AbortController();
   request = controller;
@@ -1087,6 +1126,7 @@ async function load() {
   const preserveCurrent =
     state.value === 'ready' && item.value?.id === targetId;
   const isCurrentRead = () =>
+    active &&
     !controller.signal.aborted &&
     thisReadRevision === readRevision &&
     targetContextRevision === contextRevision &&
@@ -1104,6 +1144,8 @@ async function load() {
     const result = await getCase(targetId, { signal: controller.signal });
     if (!isCurrentRead()) return;
     item.value = result;
+    if (!accessVerified.value) activationRevision.value += 1;
+    accessVerified.value = true;
     if (
       result.stage === 'WAITING_COMPLAINT' &&
       result.canSubmitComplaint &&
@@ -1207,8 +1249,10 @@ async function load() {
 }
 
 function clearContext(): void {
+  accessVerified.value = false;
   drawerOpen.value = false;
   openedCommands.value = new Set();
+  openedCommandEntries.value = new Map();
   selectedCommand.value = '';
   lead.value = null;
   leadState.value = 'idle';
@@ -1265,8 +1309,14 @@ watch(
 );
 
 watch(
-  [id, lawyerQuery, () => item.value?.stage, () => item.value?.canMatch],
-  async ([caseId], _previous, onCleanup) => {
+  [
+    id,
+    lawyerQuery,
+    () => item.value?.stage,
+    () => item.value?.canMatch,
+    accessVerified,
+  ],
+  async ([caseId], [previousCaseId, previousQuery], onCleanup) => {
     candidateRequest?.abort();
     const controller = new AbortController();
     candidateRequest = controller;
@@ -1276,10 +1326,15 @@ watch(
       controller.abort();
     });
     lawyerCandidates.value = [];
-    selectedLawyer.value = undefined;
+    const selectedAccountId =
+      caseId === previousCaseId && lawyerQuery.value === previousQuery
+        ? selectedLawyer.value?.lawyerAccountId
+        : undefined;
+    if (accessVerified.value) selectedLawyer.value = undefined;
     lawyerCandidatesError.value = '';
     if (
       !caseId ||
+      !accessVerified.value ||
       item.value?.stage !== 'PENDING_MATCH' ||
       !item.value.canMatch
     )
@@ -1293,7 +1348,10 @@ watch(
       );
       if (!current || controller.signal.aborted) return;
       lawyerCandidates.value = candidates;
-      if (candidates.length === 1) selectedLawyer.value = candidates[0];
+      selectedLawyer.value =
+        candidates.find(
+          (candidate) => candidate.lawyerAccountId === selectedAccountId,
+        ) ?? (candidates.length === 1 ? candidates[0] : undefined);
     } catch (reason) {
       if (current && !controller.signal.aborted)
         lawyerCandidatesError.value =
@@ -1695,7 +1753,35 @@ async function download(materialId: string, versionId: string) {
   }
 }
 onMounted(() => void load());
+onActivated(() => {
+  if (firstActivation) {
+    firstActivation = false;
+    return;
+  }
+  active = true;
+  editorVisible.value = true;
+  // The retained editor remains mounted, but no cached case projection is
+  // rendered until the server confirms this session can still read it.
+  accessVerified.value = false;
+  state.value = 'loading';
+  void load();
+});
+onDeactivated(() => {
+  active = false;
+  editorVisible.value = false;
+  contextRevision += 1;
+  readRevision += 1;
+  request?.abort();
+  candidateRequest?.abort();
+  request = undefined;
+  accessVerified.value = false;
+  state.value = 'loading';
+  drawerOpen.value = false;
+  submitting.value = false;
+  complaintSubmitting.value = false;
+});
 onBeforeUnmount(() => {
+  active = false;
   contextRevision += 1;
   readRevision += 1;
   request?.abort();
@@ -1704,7 +1790,10 @@ onBeforeUnmount(() => {
 
 <template>
   <div class="page-view">
-    <section v-if="state !== 'ready' || !item" class="state-panel ledger-panel">
+    <section
+      v-if="!accessVerified || state !== 'ready' || !item"
+      class="state-panel ledger-panel"
+    >
       <p><RouterLink :to="backTo">返回案件列表</RouterLink></p>
       <h1 v-if="state === 'loading'">正在读取案件</h1>
       <h1 v-else-if="state === 'missing'">案件不存在或已不可访问</h1>
@@ -1715,7 +1804,8 @@ onBeforeUnmount(() => {
       </template>
     </section>
     <CaseWorkspaceShell
-      v-else
+      v-if="item"
+      v-show="accessVerified && state === 'ready'"
       :business-no="item.businessNo"
       :subtitle="`${item.courtCaseNo ?? '法院案号未登记'} · ${item.customer.name} · ${stageLabel(item.stage)}`"
       :active-tab="activeTab"
@@ -1759,6 +1849,22 @@ onBeforeUnmount(() => {
         </div>
       </template>
       <template #details>
+        <div
+          v-if="priorEditors.length > 0"
+          class="case-workspace-field__help"
+          data-test="workspace-prior-forms"
+        >
+          <span>先前打开的表单：</span>
+          <ElButton
+            v-for="previous in priorEditors"
+            :key="previous.id"
+            text
+            data-test="workspace-prior-editor"
+            :data-command="previous.id"
+            @click="reopenPriorEditor(previous)"
+            >{{ previous.label }}</ElButton
+          >
+        </div>
         <p
           v-if="commands.length === 0"
           data-test="case-read-only"
@@ -1786,7 +1892,7 @@ onBeforeUnmount(() => {
       <template #files>
         <CaseWorkspaceFiles
           :item="item"
-          :context-key="`${workspaceContext}:${item.version}`"
+          :context-key="`${workspaceContext}:${item.version}:${activationRevision}`"
           :list-case-materials="listCaseMaterials"
           :download-version="downloadMaterialVersion"
           @open-upload="openUpload"
@@ -1796,6 +1902,9 @@ onBeforeUnmount(() => {
       <template #editors>
         <ElDrawer
           v-model="drawerOpen"
+          :modal-class="
+            editorVisible ? undefined : 'case-workspace-editors--inactive'
+          "
           class="case-workspace-editors"
           :title="timelineView ? '流程时间轴记录' : '登记／更正案件资料'"
           size="min(720px, 100vw)"
@@ -1858,6 +1967,7 @@ onBeforeUnmount(() => {
           >
             <CaseComplaintConfirmationPanel
               :item="item"
+              :read-revision="activationRevision"
               @changed="load"
               @refresh="load"
             />
@@ -1868,6 +1978,7 @@ onBeforeUnmount(() => {
           >
             <CaseComplaintMailingPanel
               :item="item"
+              :read-revision="activationRevision"
               @changed="load"
               @refresh="load"
             />
@@ -1878,6 +1989,7 @@ onBeforeUnmount(() => {
           >
             <CaseFilingPanel
               :item="item"
+              :read-revision="activationRevision"
               :context-key="identity"
               @changed="load"
               @refresh="load"
@@ -1947,6 +2059,7 @@ onBeforeUnmount(() => {
               :item="item"
               :context-key="identity"
               :actor-key="secondInstanceActorKey"
+              :read-revision="activationRevision"
               @changed="load"
               @refresh="load"
             />
@@ -1957,6 +2070,7 @@ onBeforeUnmount(() => {
           >
             <CaseExecutionMailingPanel
               :item="item"
+              :read-revision="activationRevision"
               :context-key="identity"
               @changed="load"
               @refresh="load"
@@ -1968,6 +2082,7 @@ onBeforeUnmount(() => {
           >
             <CaseExecutionFinishPanel
               :item="item"
+              :read-revision="activationRevision"
               :context-key="identity"
               :pending-request="finishPending"
               :submit-finish="finishCallbacks.submit"
@@ -2000,6 +2115,7 @@ onBeforeUnmount(() => {
           >
             <CaseClosurePanel
               :item="item"
+              :read-revision="activationRevision"
               :context-key="identity"
               :pending-request="closurePending"
               :record-closure="closureCallbacks.record"
@@ -2018,6 +2134,7 @@ onBeforeUnmount(() => {
           >
             <CaseExecutionFilingPanel
               :item="item"
+              :read-revision="activationRevision"
               :context-key="identity"
               @changed="load"
               @refresh="load"
@@ -2250,3 +2367,9 @@ onBeforeUnmount(() => {
     </CaseWorkspaceShell>
   </div>
 </template>
+
+<style>
+.case-workspace-editors--inactive {
+  display: none !important;
+}
+</style>

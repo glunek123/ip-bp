@@ -1,5 +1,12 @@
 <script setup lang="ts">
-import { computed, onBeforeUnmount, ref, watch } from 'vue';
+import {
+  computed,
+  onActivated,
+  onBeforeUnmount,
+  onDeactivated,
+  ref,
+  watch,
+} from 'vue';
 import { ElButton } from 'element-plus/es/components/button/index.mjs';
 import {
   correctCaseJudgment,
@@ -126,9 +133,24 @@ watch(
 );
 watch(
   () => props.item.version,
-  () => resetContext(true, true),
+  () => {
+    revision += 1;
+    resetContext(true, true);
+    submitting.value = false;
+    uploading.value = false;
+  },
   { flush: 'sync' },
 );
+onDeactivated(() => {
+  active = false;
+  revision += 1;
+  abortDownloads();
+  submitting.value = false;
+  uploading.value = false;
+});
+onActivated(() => {
+  active = true;
+});
 onBeforeUnmount(() => {
   active = false;
   revision += 1;
@@ -258,6 +280,7 @@ function failureMessage(reason: unknown): string {
 }
 async function send(command: Command): Promise<void> {
   const context = captureContext();
+  unknownRequest.value = command;
   submitting.value = true;
   error.value = '';
   success.value = '';
@@ -287,7 +310,7 @@ async function send(command: Command): Promise<void> {
     ) {
       unknownRequest.value = null;
       emit('refresh');
-    }
+    } else unknownRequest.value = null;
   } finally {
     if (isCurrent(context)) submitting.value = false;
   }

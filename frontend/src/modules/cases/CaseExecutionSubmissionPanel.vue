@@ -1,5 +1,13 @@
 <script setup lang="ts">
-import { computed, onBeforeUnmount, onMounted, ref, watch } from 'vue';
+import {
+  computed,
+  onActivated,
+  onBeforeUnmount,
+  onDeactivated,
+  onMounted,
+  ref,
+  watch,
+} from 'vue';
 import { ApiError } from '../../api/http';
 import {
   submitExecution,
@@ -31,6 +39,7 @@ const props = defineProps<{
   lawyer?: boolean;
   contextKey: string;
   actorKey: string;
+  readRevision?: number;
 }>();
 const files = ref<ExecutionSubmissionFile[]>([]);
 const selected = ref<string[]>([]);
@@ -557,9 +566,29 @@ watch(
   resetContext,
   { flush: 'sync' },
 );
+watch(
+  () => props.readRevision,
+  () => {
+    if (mounted) void loadFiles();
+  },
+  { flush: 'sync' },
+);
 onMounted(() => {
   mounted = true;
   resetContext();
+});
+onDeactivated(() => {
+  mounted = false;
+  revision += 1;
+  submitting.value = false;
+  uploading.value = false;
+  recoveryLoading.value = false;
+});
+onActivated(() => {
+  mounted = true;
+  uploadUnknown.value =
+    !!readExecutionUpload(recoveryIdentity()) ||
+    hasUnclearedExecutionUpload(recoveryIdentity());
 });
 onBeforeUnmount(() => {
   mounted = false;

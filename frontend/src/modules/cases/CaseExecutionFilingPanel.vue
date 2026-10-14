@@ -1,5 +1,12 @@
 <script setup lang="ts">
-import { computed, onBeforeUnmount, ref, watch } from 'vue';
+import {
+  computed,
+  onActivated,
+  onBeforeUnmount,
+  onDeactivated,
+  ref,
+  watch,
+} from 'vue';
 import { ElButton } from 'element-plus/es/components/button/index.mjs';
 import {
   submitCaseExecutionFiling,
@@ -33,6 +40,7 @@ type FilingRecord = {
   files: VersionFile[];
 };
 const props = defineProps<{
+  readRevision?: number;
   item: {
     id: string;
     stage: string;
@@ -173,14 +181,40 @@ watch(
     props.contextKey,
     props.lawyer,
   ],
-  () => {
+  (next, previous) => {
+    const pending =
+      previous &&
+      next[0] === previous[0] &&
+      next[5] === previous[5] &&
+      next[6] === previous[6]
+        ? unknownRequest.value
+        : null;
     revision += 1;
     attachmentRevision += 1;
     reset();
+    unknownRequest.value = pending;
     void loadAvailable();
   },
   { immediate: true },
 );
+watch(
+  () => props.readRevision,
+  () => {
+    if (active) void loadAvailable();
+  },
+  { flush: 'sync' },
+);
+onDeactivated(() => {
+  active = false;
+  revision += 1;
+  attachmentRevision += 1;
+  abortDownloads();
+  submitting.value = false;
+  uploading.value = false;
+});
+onActivated(() => {
+  active = true;
+});
 onBeforeUnmount(() => {
   active = false;
   revision += 1;
@@ -335,7 +369,7 @@ async function download(file: VersionFile) {
 
 <template>
   <section class="demo-card demo-card--pad" data-test="execution-filing-panel">
-    <template v-if="item.executionFiling">
+    <template v-if="item.executionFiling && !unknownRequest">
       <h2 class="form-section-title">执行备案登记</h2>
       <p>
         实际提交日期：{{ item.executionFiling.submittedAt }}；登记时间：{{
@@ -358,12 +392,19 @@ async function download(file: VersionFile) {
         </li>
       </ul>
     </template>
-    <template v-else-if="item.stage === 'WAITING_EXECUTION_FILING'">
+    <template
+      v-else-if="unknownRequest || item.stage === 'WAITING_EXECUTION_FILING'"
+    >
       <h2 class="form-section-title">登记执行备案</h2>
       <p class="field-help">
         执行申请邮寄登记完成后，记录实际向法院提交执行材料的日期并上传备案凭证。
       </p>
-      <template v-if="item.canSubmitExecutionFiling && item.executionMailing">
+      <template
+        v-if="
+          unknownRequest ||
+          (item.canSubmitExecutionFiling && item.executionMailing)
+        "
+      >
         <label
           >实际提交日期 <span aria-hidden="true">*</span
           ><input

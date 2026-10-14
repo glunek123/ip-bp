@@ -1,5 +1,12 @@
 <script setup lang="ts">
-import { computed, onBeforeUnmount, ref, watch } from 'vue';
+import {
+  computed,
+  onActivated,
+  onBeforeUnmount,
+  onDeactivated,
+  ref,
+  watch,
+} from 'vue';
 import { ElButton } from 'element-plus/es/components/button/index.mjs';
 import {
   confirmCaseComplaint,
@@ -17,7 +24,11 @@ import {
 import { useAuthStore } from '../../stores/auth';
 import { notifyWorkflowChanged } from '../../app/workflow-events';
 
-const props = defineProps<{ item: CaseWorkflowItem; lawyer?: boolean }>();
+const props = defineProps<{
+  item: CaseWorkflowItem;
+  lawyer?: boolean;
+  readRevision?: number;
+}>();
 const emit = defineEmits<{ changed: []; refresh: [] }>();
 type ComplaintVersion = CaseFile & { createdAt: string };
 
@@ -193,12 +204,12 @@ watch(
   ([scope], [previousScope]) => {
     if (scope !== previousScope) abortDownloads();
     const preserveUnknownRequest =
-      previousScope === scope &&
-      unknownRequest.value !== null &&
-      props.item.stage === 'WAITING_COMPLAINT_CONFIRMATION';
+      previousScope === scope && unknownRequest.value !== null;
     const preserveSuccessfulPost =
       previousScope === scope && confirmationPostSucceeded.value;
     contextRevision.value += 1;
+    confirmationSubmitting.value = false;
+    uploadLoading.value = false;
     if (preserveUnknownRequest || preserveSuccessfulPost) {
       confirmationError.value = '';
       if (preserveUnknownRequest) confirmationSuccess.value = '';
@@ -343,10 +354,12 @@ async function sendConfirmation(
   if (
     confirmationSubmitting.value ||
     confirmationPostSucceeded.value ||
-    props.item.stage !== 'WAITING_COMPLAINT_CONFIRMATION' ||
-    !props.item.canConfirmComplaint
+    (unknownRequest.value !== body &&
+      (props.item.stage !== 'WAITING_COMPLAINT_CONFIRMATION' ||
+        !props.item.canConfirmComplaint))
   )
     return;
+  unknownRequest.value = body;
   confirmationSubmitting.value = true;
   confirmationError.value = '';
   const revision = contextRevision.value;
@@ -376,6 +389,7 @@ async function sendConfirmation(
       confirmationError.value =
         '确认结果暂时未知；原表单和请求键已保留。请刷新案件核实，或使用同一请求键重试。';
     } else {
+      unknownRequest.value = null;
       confirmationError.value =
         reason instanceof ApiError && reason.code === 'IDEMPOTENCY_CONFLICT'
           ? '该请求键已用于不同的确认内容。案件详情已刷新，请核对后重新办理。'
@@ -402,6 +416,24 @@ function checkUnknownResult(): void {
   emit('refresh');
 }
 
+watch(
+  () => props.readRevision,
+  () => {
+    if (mounted) void loadVersions(contextRevision.value);
+  },
+  { flush: 'sync' },
+);
+onDeactivated(() => {
+  mounted = false;
+  contextRevision.value += 1;
+  versionsRequest?.abort();
+  abortDownloads();
+  confirmationSubmitting.value = false;
+  uploadLoading.value = false;
+});
+onActivated(() => {
+  mounted = true;
+});
 onBeforeUnmount(() => {
   mounted = false;
   contextRevision.value += 1;
@@ -420,6 +452,19 @@ onBeforeUnmount(() => {
         item.stage === 'WAITING_COMPLAINT_STAMP' ? '诉状确认记录' : '确认诉状'
       }}
     </h2>
+
+    <div v-if="unknownRequest" class="confirmation-unknown">
+      <ElButton text data-test="confirmation-check" @click="checkUnknownResult"
+        >刷新核对结果</ElButton
+      >
+      <ElButton
+        type="primary"
+        data-test="confirmation-retry"
+        :loading="confirmationSubmitting"
+        @click="retryUnknownRequest"
+        >使用原请求键重试</ElButton
+      >
+    </div>
 
     <template v-if="item.stage === 'WAITING_COMPLAINT_CONFIRMATION'">
       <p class="field-help">
@@ -610,23 +655,8 @@ onBeforeUnmount(() => {
         <p v-if="confirmationError" class="submit-error" role="alert">
           {{ confirmationError }}
         </p>
-        <div v-if="unknownRequest" class="confirmation-unknown">
-          <ElButton
-            text
-            data-test="confirmation-check"
-            @click="checkUnknownResult"
-            >刷新核对结果</ElButton
-          >
-          <ElButton
-            type="primary"
-            data-test="confirmation-retry"
-            :loading="confirmationSubmitting"
-            @click="retryUnknownRequest"
-            >使用原请求键重试</ElButton
-          >
-        </div>
         <ElButton
-          v-else
+          v-if="!unknownRequest"
           type="primary"
           data-test="confirmation-review"
           :disabled="!readyToReview || uploadLoading"

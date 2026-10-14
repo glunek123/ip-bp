@@ -1,5 +1,12 @@
 <script setup lang="ts">
-import { computed, onBeforeUnmount, ref, watch } from 'vue';
+import {
+  computed,
+  onActivated,
+  onBeforeUnmount,
+  onDeactivated,
+  ref,
+  watch,
+} from 'vue';
 import {
   registerSecondInstanceResult,
   revokeSecondInstanceResult,
@@ -359,6 +366,20 @@ watch(
   },
   { flush: 'sync' },
 );
+onDeactivated(() => {
+  mounted = false;
+  revision += 1;
+  pending.value = false;
+  uploading.value = null;
+  recoveryLoading.value = false;
+});
+onActivated(() => {
+  mounted = true;
+  pendingUnknown.value = pendingSecondInstanceCommand(recoveryIdentity());
+  uploadUnknown.value =
+    !!readSecondInstanceUpload(recoveryIdentity()) ||
+    hasUnclearedSecondInstanceUpload(recoveryIdentity());
+});
 onBeforeUnmount(() => {
   mounted = false;
   revision += 1;

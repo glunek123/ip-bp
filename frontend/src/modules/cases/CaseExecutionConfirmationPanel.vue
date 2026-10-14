@@ -1,5 +1,12 @@
 <script setup lang="ts">
-import { computed, onBeforeUnmount, ref, watch } from 'vue';
+import {
+  computed,
+  onActivated,
+  onBeforeUnmount,
+  onDeactivated,
+  ref,
+  watch,
+} from 'vue';
 import {
   confirmCaseExecution,
   type CaseDetail,
@@ -104,6 +111,7 @@ async function confirm(command?: ConfirmExecutionInput): Promise<void> {
     expectedSubmissionId: currentSubmission!.id,
   };
   const context = operationContext();
+  unknownCommand.value = input;
   submitting.value = true;
   error.value = '';
   try {
@@ -189,6 +197,16 @@ watch(
   },
   { flush: 'sync' },
 );
+onDeactivated(() => {
+  mounted = false;
+  revision += 1;
+  submitting.value = false;
+  for (const controller of downloads) controller.abort();
+  downloads.clear();
+});
+onActivated(() => {
+  mounted = true;
+});
 onBeforeUnmount(() => {
   mounted = false;
   revision += 1;

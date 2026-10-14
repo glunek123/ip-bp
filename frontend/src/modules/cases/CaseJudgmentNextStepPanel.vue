@@ -1,5 +1,12 @@
 <script setup lang="ts">
-import { computed, onBeforeUnmount, ref, watch } from 'vue';
+import {
+  computed,
+  onActivated,
+  onBeforeUnmount,
+  onDeactivated,
+  ref,
+  watch,
+} from 'vue';
 import {
   chooseCaseJudgmentNextStep,
   revokeCaseJudgmentNextStep,
@@ -142,6 +149,14 @@ watch(
   },
   { flush: 'sync' },
 );
+onDeactivated(() => {
+  mounted = false;
+  revision += 1;
+  pending.value = false;
+});
+onActivated(() => {
+  mounted = true;
+});
 onBeforeUnmount(() => {
   mounted = false;
   revision += 1;
@@ -207,6 +222,7 @@ function openRevokeConfirmation(): void {
 }
 async function send(command: PendingCommand): Promise<void> {
   const context = capture();
+  pendingUnknown.value = command;
   pending.value = true;
   error.value = '';
   conflictNeedsReview.value = false;
@@ -254,6 +270,7 @@ async function send(command: PendingCommand): Promise<void> {
       error.value = '当前账号已不能办理此案件，正在核对访问权限。';
       emit('refresh');
     } else {
+      pendingUnknown.value = null;
       error.value = '操作未完成，请核对案件详情后重试。';
     }
   } finally {

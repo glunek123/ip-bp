@@ -1,5 +1,12 @@
 <script setup lang="ts">
-import { computed, onBeforeUnmount, ref, watch } from 'vue';
+import {
+  computed,
+  onActivated,
+  onBeforeUnmount,
+  onDeactivated,
+  ref,
+  watch,
+} from 'vue';
 import { ElButton } from 'element-plus/es/components/button/index.mjs';
 import {
   mailCaseComplaint,
@@ -18,6 +25,7 @@ import { useAuthStore } from '../../stores/auth';
 import { notifyWorkflowChanged } from '../../app/workflow-events';
 
 const props = defineProps<{
+  readRevision?: number;
   item: {
     id: string;
     stage: string;
@@ -170,7 +178,14 @@ watch(
     props.client,
     identity.value,
   ],
-  () => {
+  (next, previous) => {
+    const pending =
+      previous &&
+      next[0] === previous[0] &&
+      next[3] === previous[3] &&
+      next[4] === previous[4]
+        ? unknownRequest.value
+        : null;
     contextRevision += 1;
     attachmentRevision += 1;
     files.value = [];
@@ -180,6 +195,7 @@ watch(
     success.value = false;
     review.value = false;
     unknownRequest.value = null;
+    unknownRequest.value = pending;
     idempotencyKey.value = '';
     error.value = '';
     uploadError.value = '';
@@ -187,6 +203,24 @@ watch(
   },
   { immediate: true },
 );
+watch(
+  () => props.readRevision,
+  () => {
+    if (active) void loadAvailable();
+  },
+  { flush: 'sync' },
+);
+onDeactivated(() => {
+  active = false;
+  contextRevision += 1;
+  attachmentRevision += 1;
+  abortDownloads();
+  submitting.value = false;
+  busyUpload.value = false;
+});
+onActivated(() => {
+  active = true;
+});
 onBeforeUnmount(() => {
   active = false;
   contextRevision += 1;
@@ -335,7 +369,7 @@ function removeFile(contentVersionId: string) {
 
 <template>
   <section class="demo-card demo-card--pad" data-test="complaint-mailing-panel">
-    <template v-if="item.complaintMailing">
+    <template v-if="item.complaintMailing && !unknownRequest">
       <h2 class="form-section-title">邮寄登记记录</h2>
       <p>
         实际邮寄日：{{ item.complaintMailing.mailedAt }} · 系统登记时间：{{
@@ -358,12 +392,14 @@ function removeFile(contentVersionId: string) {
         </li>
       </ul>
     </template>
-    <template v-else-if="item.stage === 'WAITING_COMPLAINT_STAMP'">
+    <template
+      v-else-if="unknownRequest || item.stage === 'WAITING_COMPLAINT_STAMP'"
+    >
       <h2 class="form-section-title">登记诉状邮寄</h2>
       <p class="field-help">
         登记后案件将进入“待提交立案”；请填写实际邮寄日并上传邮寄凭证。此操作不会提交法院。
       </p>
-      <template v-if="item.canMailComplaint">
+      <template v-if="unknownRequest || item.canMailComplaint">
         <label
           >实际邮寄日期 <span aria-hidden="true">*</span
           ><input

@@ -152,6 +152,17 @@ describe('case execution filing panel', () => {
     await flushPromises();
     const original = api.submitCaseExecutionFiling.mock.calls[0];
     expect(wrapper.text()).toContain('提交结果暂时未知');
+    await wrapper.setProps({
+      item: {
+        ...item,
+        version: 9,
+        stage: 'EXECUTING',
+        canSubmitExecutionFiling: false,
+      },
+    });
+    expect(wrapper.find('[data-test="execution-filing-retry"]').exists()).toBe(
+      true,
+    );
     await wrapper.get('[data-test="execution-filing-retry"]').trigger('click');
     await flushPromises();
     expect(api.submitCaseExecutionFiling.mock.calls[1]).toEqual(original);

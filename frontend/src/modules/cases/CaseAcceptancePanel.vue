@@ -1,5 +1,12 @@
 <script setup lang="ts">
-import { computed, onBeforeUnmount, ref, watch } from 'vue';
+import {
+  computed,
+  onActivated,
+  onBeforeUnmount,
+  onDeactivated,
+  ref,
+  watch,
+} from 'vue';
 import { ElButton } from 'element-plus/es/components/button/index.mjs';
 import {
   registerCaseAcceptance,
@@ -117,6 +124,16 @@ watch(
   },
   { flush: 'sync' },
 );
+onDeactivated(() => {
+  active = false;
+  revision += 1;
+  abortDownloads();
+  submitting.value = false;
+  uploading.value = null;
+});
+onActivated(() => {
+  active = true;
+});
 onBeforeUnmount(() => {
   active = false;
   revision += 1;
@@ -239,6 +256,7 @@ function failureMessage(reason: unknown): string {
 }
 async function register(input: RegisterCaseAcceptanceInput): Promise<void> {
   const context = captureContext();
+  unknownRequest.value = input;
   submitting.value = true;
   error.value = '';
   try {
@@ -269,7 +287,7 @@ async function register(input: RegisterCaseAcceptanceInput): Promise<void> {
       requestFingerprint = '';
       requestKey = '';
       emit('refresh');
-    }
+    } else unknownRequest.value = null;
   } finally {
     if (isCurrent(context)) submitting.value = false;
   }

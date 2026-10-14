@@ -1,5 +1,12 @@
 <script setup lang="ts">
-import { computed, onBeforeUnmount, ref, watch } from 'vue';
+import {
+  computed,
+  onActivated,
+  onBeforeUnmount,
+  onDeactivated,
+  ref,
+  watch,
+} from 'vue';
 import {
   correctCaseHearing,
   scheduleCaseHearing,
@@ -75,6 +82,14 @@ watch(
 onBeforeUnmount(() => {
   active = false;
   revision += 1;
+});
+onDeactivated(() => {
+  active = false;
+  revision += 1;
+  submitting.value = false;
+});
+onActivated(() => {
+  active = true;
 });
 
 const canSchedule = computed(
@@ -170,6 +185,10 @@ async function send(
   input: SaveCaseHearingInput | CorrectCaseHearingInput,
 ): Promise<void> {
   const context = captureContext();
+  // Preserve the exact request before transport so deactivation cannot lose it.
+  unknownRequest.value = { kind, input } as
+    | { kind: 'schedule'; input: SaveCaseHearingInput }
+    | { kind: 'correct'; input: CorrectCaseHearingInput };
   submitting.value = true;
   error.value = '';
   success.value = '';
@@ -193,14 +212,15 @@ async function send(
       unknownRequest.value = { kind, input } as
         | { kind: 'schedule'; input: SaveCaseHearingInput }
         | { kind: 'correct'; input: CorrectCaseHearingInput };
-    else if (
-      reason instanceof ApiError &&
-      ['VERSION_CONFLICT', 'INVALID_STATE', 'IDEMPOTENCY_CONFLICT'].includes(
-        reason.code,
-      )
-    ) {
+    else {
       unknownRequest.value = null;
-      emit('refresh');
+      if (
+        reason instanceof ApiError &&
+        ['VERSION_CONFLICT', 'INVALID_STATE', 'IDEMPOTENCY_CONFLICT'].includes(
+          reason.code,
+        )
+      )
+        emit('refresh');
     }
   } finally {
     if (isCurrent(context)) submitting.value = false;

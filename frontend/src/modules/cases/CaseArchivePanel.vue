@@ -1,5 +1,12 @@
 <script setup lang="ts">
-import { computed, onBeforeUnmount, ref, watch } from 'vue';
+import {
+  computed,
+  onActivated,
+  onBeforeUnmount,
+  onDeactivated,
+  ref,
+  watch,
+} from 'vue';
 import { ElButton } from 'element-plus/es/components/button/index.mjs';
 import { todayShanghai } from '../../api/cases';
 import { ApiError } from '../../api/http';
@@ -257,6 +264,14 @@ watch(
   },
   { flush: 'sync' },
 );
+onDeactivated(() => {
+  active = false;
+  revision += 1;
+  submitting.value = false;
+});
+onActivated(() => {
+  active = true;
+});
 onBeforeUnmount(() => {
   active = false;
   revision += 1;
