@@ -1,6 +1,6 @@
 {
   "version": 1,
-  "recordedAt": "2026-10-14T07:04:57.828Z",
+  "recordedAt": "2026-10-14T07:12:27.016Z",
   "files": {
     ".cursor/rules/verified-feature-integration.mdc": "da673301f0440a6a9615786027dffc8e01f739a97f81cd97accef1580ac51f98",
     ".env.example": "07211cde5c2b59efc21b619b752d4c9b871f0980d2d64ca3c146ad6151fd27ca",
@@ -958,7 +958,7 @@
     "tests/e2e/case-second-instance-database.spec.ts": "d10fe5afdc0b663e0cc978ac428454dd5fb38507ae9ed0de5b61e8d47c697ea6",
     "tests/e2e/case-second-instance-migration.spec.ts": "2959c19cee7818291a67944f939f247a78c67d3c4f3c5d48ecd14f21e9bf512d",
     "tests/e2e/case-second-instance.spec.ts": "8878220c915033bd4db8962429182916b0e36d63421243864e61652f78af3c65",
-    "tests/e2e/cases.spec.ts": "32818f291445f8b96558e51b5f7f88fe070de0e2a2d8ff0e1b3b1b57b86027b7",
+    "tests/e2e/cases.spec.ts": "edf578a84360ae5fb142605e1926e53c86ab834e50dee64a72e0b0f334c564b1",
     "tests/e2e/components.spec.ts": "8d94b3b044d9ddc24c323536aba04edc08e216271ff3082705a21c1ac2796742",
     "tests/e2e/core-leads.spec.ts": "6f00e4426f366afb449b19497baf23e1dfb2c0d32d1eb22510a2e7bc0a428d99",
     "tests/e2e/customer-agreement-invoice-ui.spec.ts": "0538dd6f07177751fee57d86a6b5c0ab3b2530a9756bfd56d021a7d13d3b0511",

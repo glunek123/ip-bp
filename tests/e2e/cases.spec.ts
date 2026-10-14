@@ -893,6 +893,7 @@ test('an operator matches a real notary case and the result survives refresh', a
       .locator('[data-section="case-info"] .case-workspace-field')
       .filter({ has: page.getByText('实际匹配日期', { exact: true }) }),
   ).toContainText('2026-09-28');
+  await expect(page.getByText('匹配记录时间', { exact: true })).toBeVisible();
   await page
     .locator('[data-section="case-info"] .case-workspace-group-nav button')
     .filter({ hasText: '当前承办律师' })
@@ -905,7 +906,6 @@ test('an operator matches a real notary case and the result survives refresh', a
       .locator('[data-section="case-info"] .case-workspace-group:visible')
       .getByText('张律师', { exact: true }),
   ).toBeVisible();
-  await expect(page.getByText('匹配记录时间', { exact: true })).toBeVisible();
   const detail = await request.get(`/api/v1/cases/${caseId}`, {
     headers: authorizationA,
   });
