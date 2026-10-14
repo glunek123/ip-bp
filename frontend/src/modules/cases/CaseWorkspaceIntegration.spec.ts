@@ -326,6 +326,134 @@ afterEach(() => {
 });
 
 describe('UI002 real case workspace host', () => {
+  it('does not offer an empty prior matching editor after a confirmed POST and SPA return', async () => {
+    const item = structuredClone(baseItem);
+    item.stage = 'PENDING_MATCH';
+    item.canMatch = true;
+    api.listLawyerMatchCandidates.mockResolvedValue([
+      {
+        lawyerAccountId: 'account-1',
+        lawyerProfileId: 'profile-1',
+        displayName: 'Lawyer',
+        username: 'lawyer',
+      },
+    ]);
+    api.matchCase.mockResolvedValue(undefined);
+    const { wrapper, router } = await renderSpa(item);
+    const ahead = {
+      ...item,
+      stage: 'WAITING_COMPLAINT' as const,
+      version: 8,
+      canMatch: false,
+      matchedAt: '2026-10-14T01:00:00Z',
+      matchedOn: '',
+    };
+    api.getCase.mockImplementation(async () => ({
+      ...ahead,
+      matchedOn: api.matchCase.mock.calls[0]?.[1].matchedOn ?? '',
+    }));
+    await wrapper
+      .get('[data-test="workspace-primary-action"]')
+      .trigger('click');
+    await wrapper
+      .get('[data-test="case-match-form"]')
+      .findAll('input')[1]!
+      .setValue('Defendant');
+    await wrapper
+      .get('[data-test="case-match-form"]')
+      .findAll('button')
+      .find((button) => button.text().includes('确认匹配'))!
+      .trigger('click');
+    await flushPromises();
+    expect(api.matchCase).toHaveBeenCalledTimes(1);
+    expect(
+      wrapper
+        .find('[data-test="workspace-prior-editor"][data-command="match"]')
+        .exists(),
+    ).toBe(false);
+    await router.push('/calendar');
+    await router.push('/cases/case-1');
+    await flushPromises();
+    expect(
+      wrapper
+        .find('[data-test="workspace-prior-editor"][data-command="match"]')
+        .exists(),
+    ).toBe(false);
+  });
+  it('does not offer an empty prior complaint editor after a confirmed POST and SPA return', async () => {
+    const item = structuredClone(baseItem);
+    item.stage = 'WAITING_COMPLAINT';
+    item.canSubmitComplaint = true;
+    api.listOwnerMaterials.mockResolvedValue({
+      items: ['COMPLAINT', 'AUTHORIZATION'].map((category) => ({
+        id: `material-${category}`,
+        ownerType: 'CASE',
+        ownerId: item.id,
+        category,
+        purpose: category,
+        currentVersionId: `version-${category}`,
+        status: 'ACTIVE',
+        version: 1,
+        deletedAt: null,
+        createdAt: '2026-10-14T00:00:00Z',
+        updatedAt: '2026-10-14T00:00:00Z',
+        contentVersions: [
+          {
+            id: `version-${category}`,
+            materialId: `material-${category}`,
+            originalFilename: `${category}.pdf`,
+            mimeType: 'application/pdf',
+            sizeBytes: 8,
+            sha256: 'a'.repeat(64),
+            status: 'AVAILABLE',
+            createdAt: '2026-10-14T00:00:00Z',
+          },
+        ],
+      })),
+      total: 2,
+    });
+    api.submitComplaint.mockResolvedValue(undefined);
+    const { wrapper, router } = await renderSpa(item);
+    const ahead: CaseDetail = {
+      ...item,
+      stage: 'WAITING_COMPLAINT_CONFIRMATION',
+      version: 8,
+      canSubmitComplaint: false,
+      complaint: {
+        amountState: 'KNOWN',
+        amount: '12.30',
+        pendingReason: null,
+        submittedAt: '2026-10-14T01:00:00Z',
+        submittedByUserId: 'operator-1',
+        complaintFiles: [],
+        authorizationFiles: [],
+      },
+    };
+    api.getCase.mockResolvedValue(ahead);
+    await wrapper
+      .get('[data-test="workspace-primary-action"]')
+      .trigger('click');
+    await wrapper
+      .getComponent(CaseComplaintSubmissionForm)
+      .get('input[inputmode="decimal"]')
+      .setValue('12.30');
+    await wrapper.get('[data-test="submit-complaint"]').trigger('click');
+    await flushPromises();
+    expect(api.submitComplaint).toHaveBeenCalledTimes(1);
+    expect(
+      wrapper
+        .find('[data-test="workspace-prior-editor"][data-command="complaint"]')
+        .exists(),
+    ).toBe(false);
+    await router.push('/calendar');
+    await router.push('/cases/case-1');
+    await flushPromises();
+    expect(
+      wrapper
+        .find('[data-test="workspace-prior-editor"][data-command="complaint"]')
+        .exists(),
+    ).toBe(false);
+  });
   it('recovers an in-flight matching intent across real SPA routes without accepting its late response', async () => {
     const item = structuredClone(baseItem);
     item.stage = 'PENDING_MATCH';

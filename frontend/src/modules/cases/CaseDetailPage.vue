@@ -1570,6 +1570,7 @@ async function submitComplaintMaterials() {
       complaintSuccess.value = '起诉材料已确认提交，当前阶段为诉状待确认。';
       complaintUnknown.value = null;
       openedCommands.value.delete('complaint');
+      openedCommandEntries.value.delete('complaint');
       drawerOpen.value = false;
       complaintFingerprint = '';
       complaintIdempotencyKey = '';
@@ -1674,6 +1675,7 @@ async function submitMatch() {
       matchSuccess.value = '案件匹配已完成，当前阶段为待写诉状。';
       matchUnknown.value = null;
       openedCommands.value.delete('match');
+      openedCommandEntries.value.delete('match');
       drawerOpen.value = false;
       submissionFingerprint = '';
       idempotencyKey = '';
