@@ -1,6 +1,6 @@
 {
   "version": 1,
-  "recordedAt": "2026-10-14T17:32:10.382Z",
+  "recordedAt": "2026-10-14T17:41:16.944Z",
   "files": {
     ".cursor/rules/verified-feature-integration.mdc": "da673301f0440a6a9615786027dffc8e01f739a97f81cd97accef1580ac51f98",
     ".env.example": "07211cde5c2b59efc21b619b752d4c9b871f0980d2d64ca3c146ad6151fd27ca",
@@ -968,7 +968,7 @@
     "tests/e2e/case-list-display.spec.ts": "e5c492c421ed2c1ffeccbbe48540ba63fd840d7a45ecaed4649d85a90a15bba2",
     "tests/e2e/case-record-edit-migration.spec.ts": "90c3daed4403f60b835ed522c43062d751dc668ac90049e8067f588dbfd222b3",
     "tests/e2e/case-record-edit.spec.ts": "ffce405bb5fa9d519f58ecbab12cf19ee796c39ba25389d63942874dac14aa6e",
-    "tests/e2e/case-second-instance-acceptance-migration.spec.ts": "cb53bfaed8b9a7f2b29019e54740a781816640f5a23910cb7cbe691cf7878c7a",
+    "tests/e2e/case-second-instance-acceptance-migration.spec.ts": "d7a9badbd509708262ec61dbbbc64e721ccee10ab6ec090c588838646f8d2d5b",
     "tests/e2e/case-second-instance-acceptance.spec.ts": "bcb7a4871f504a0c3f43165e3540ec073a03a2754cca8ece6694e5bb48332f1f",
     "tests/e2e/case-second-instance-cleanup-database.spec.ts": "b181b9b8980fbf485a67b6e44b855809b02a8879c30b250f8d874d52b3d7c6dd",
     "tests/e2e/case-second-instance-database.spec.ts": "d10fe5afdc0b663e0cc978ac428454dd5fb38507ae9ed0de5b61e8d47c697ea6",
@@ -1022,7 +1022,7 @@
     "tests/support/case-execution-submission-migration.mjs": "a411727342843aafc879668296701c4e6744aba97626d0123ee340da1b7b11a5",
     "tests/support/case-filing-database.mjs": "6191f5602b98adefb7800759751eced229354a02928908e25c49ef0f703391f0",
     "tests/support/case-filing-migration.mjs": "8be0675a17989797f303e495ac9518888d9af9170e0fac5e59d47e05a8878d74",
-    "tests/support/case-hearing-database.mjs": "663be0c75df2b262ad1234163ce901e37c51df5a85e619240c2a413de16f314f",
+    "tests/support/case-hearing-database.mjs": "bbfb9ae0ed944ddae22ba6804a3434f2db4a69f19dff08e0988b8b2ad608fcda",
     "tests/support/case-hearing-migration.mjs": "904889abeccbe07dc3dd6fb334980a86951c6ea2800b823c428c3470e6922374",
     "tests/support/case-judgment-database.mjs": "4cc3f92a49130832246e3ca19920b1a8dd02069e9cb370fb56ae538703212fa8",
     "tests/support/case-judgment-migration.mjs": "50ed8feefa9991e1c92119da03297308324ec904194ce7719153dfb1d90339eb",

@@ -86,7 +86,9 @@ async function withCoreHearingAdminDatabase(operation) {
 }
 
 /** Isolated login identity for exercising the real department-A RoleEditor. */
-export async function prepareCoreCaseHearingAdmin() {
+export async function prepareCoreCaseHearingAdmin({
+  includeSecondInstanceAcceptance = true,
+} = {}) {
   const password = randomBytes(24).toString('base64url');
   const passwordHash = await hashPassword(password);
   const fixture = coreHearingAdmin;
@@ -196,7 +198,12 @@ export async function prepareCoreCaseHearingAdmin() {
             data: { active: true },
           });
 
-        const allowedActions = new Set(internalAssignablePermissionActions);
+        const fixtureActions = internalAssignablePermissionActions.filter(
+          (action) =>
+            includeSecondInstanceAcceptance ||
+            action !== 'CASE_SECOND_INSTANCE_ACCEPTANCE_UPDATE',
+        );
+        const allowedActions = new Set(fixtureActions);
         const grants = await transaction.roleGrant.findMany({
           where: { roleTemplateId: fixture.roleId },
         });
@@ -209,7 +216,7 @@ export async function prepareCoreCaseHearingAdmin() {
           throw new Error('Hearing admin grant collision');
         const grantedActions = new Set(grants.map(({ action }) => action));
         await transaction.roleGrant.createMany({
-          data: internalAssignablePermissionActions
+          data: fixtureActions
             .filter((action) => !grantedActions.has(action))
             .map((action) => ({
               roleTemplateId: fixture.roleId,

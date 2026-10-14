@@ -69,7 +69,8 @@ async function clean() {
 }
 test.beforeEach(async () => {
   await clean();
-  await prepareCoreCaseHearingAdmin();
+  // The public source still runs the verified 148 backend before forward deploy.
+  await prepareCoreCaseHearingAdmin({ includeSecondInstanceAcceptance: false });
   await prepareCaseFilingFixture();
   await prepareCaseAcceptanceFixture();
   await allowOtherEnterpriseAccountSetup();

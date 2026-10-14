@@ -51,7 +51,9 @@ export function verifyCaseHearingDetailSnapshot(): Promise<{
 export function seedCoreCaseHearingFixture(
   departmentId: string,
 ): Promise<string>;
-export function prepareCoreCaseHearingAdmin(): Promise<{
+export function prepareCoreCaseHearingAdmin(options?: {
+  includeSecondInstanceAcceptance?: boolean;
+}): Promise<{
   username: string;
   password: string;
 }>;
