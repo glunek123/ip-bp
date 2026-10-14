@@ -94,6 +94,7 @@ export const prismaModelOwners = Object.freeze({
   CaseJudgmentNextStepRevocation: 'cases',
   CaseJudgmentNextStepReceipt: 'cases',
   CaseTrialRound: 'cases',
+  CaseSecondInstanceAcceptanceChange: 'cases',
   CaseSecondInstanceProgress: 'cases',
   CaseSecondInstanceProgressVersion: 'cases',
   CaseSecondInstanceResult: 'cases',
