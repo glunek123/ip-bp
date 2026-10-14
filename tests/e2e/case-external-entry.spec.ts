@@ -207,6 +207,19 @@ async function uploadCaseFile(
   );
 }
 
+async function expectExactDownload(
+  request: APIRequestContext,
+  file: { materialId: string; contentVersionId: string },
+  expectedBytes: Buffer,
+) {
+  const response = await request.get(
+    `/api/v1/materials/${file.materialId}/versions/${file.contentVersionId}/content`,
+    { headers: operator },
+  );
+  expect(response.status(), await response.text()).toBe(200);
+  expect((await response.body()).equals(expectedBytes)).toBe(true);
+}
+
 async function clean() {
   await clearCaseArchiveFixture();
   await clearCaseClosureFixture();
@@ -233,6 +246,9 @@ async function clean() {
   );
   await setRoleGrant(coreLeadFixtures.roleA, 'case.match', 'TEAM');
   await setRoleGrant(coreLeadFixtures.roleA, 'case.complaint.submit', 'TEAM');
+  await setRoleGrant(coreLeadFixtures.roleA, 'case.complaint.confirm', 'TEAM');
+  await setRoleGrant(coreLeadFixtures.roleA, 'case.complaint.mail', 'TEAM');
+  await setRoleGrant(coreLeadFixtures.roleA, 'case.filing.submit', 'TEAM');
   await setRoleGrant(coreLeadFixtures.roleA, 'case.execution.finish', 'TEAM');
   await setRoleGrant(coreLeadFixtures.roleA, 'case.closure.record', 'TEAM');
   await setRoleGrant(coreLeadFixtures.roleA, 'case.archive', 'TEAM');
@@ -254,6 +270,374 @@ async function clean() {
     'case.acceptance.register',
     'TEAM',
   );
+  await setRoleGrant(coreLeadFixtures.roleA, 'case.execution.submit', 'TEAM');
+  await setRoleGrant(coreLeadFixtures.roleA, 'case.execution.confirm', 'TEAM');
+  await setRoleGrant(coreLeadFixtures.roleA, 'case.execution.mail', 'TEAM');
+  await setRoleGrant(
+    coreLeadFixtures.roleA,
+    'case.execution.filing.submit',
+    'TEAM',
+  );
+}
+
+async function sourceView(request: APIRequestContext, caseId: string) {
+  return readCase(request, caseId);
+}
+
+async function submitComplaint(
+  request: APIRequestContext,
+  caseId: string,
+  expectedVersion: number,
+) {
+  const complaintBytes = Buffer.from(
+    '%PDF-1.7\nCA018 actual complaint content\n%%EOF\n',
+  );
+  const authorizationBytes = Buffer.from(
+    '%PDF-1.7\nCA018 actual authorization content\n%%EOF\n',
+  );
+  const complaint = await uploadCaseFile(
+    request,
+    caseId,
+    'COMPLAINT',
+    complaintBytes,
+  );
+  const authorization = await uploadCaseFile(
+    request,
+    caseId,
+    'AUTHORIZATION',
+    authorizationBytes,
+  );
+  const submitted = await body<{ stage: string; version: number }>(
+    await request.post(`/api/v1/cases/${caseId}/complaint-submit`, {
+      headers: operator,
+      data: {
+        expectedVersion,
+        idempotencyKey: randomUUID(),
+        amountState: 'PENDING',
+        amount: null,
+        pendingReason: 'CA018 current submission amount awaits evidence',
+        complaintContentVersionIds: [complaint.contentVersionId],
+        authorizationContentVersionIds: [authorization.contentVersionId],
+      },
+    }),
+    201,
+  );
+  return {
+    submitted,
+    complaint,
+    complaintBytes,
+    authorization,
+    authorizationBytes,
+  };
+}
+
+async function confirmComplaint(
+  request: APIRequestContext,
+  caseId: string,
+  expectedVersion: number,
+  complaintContentVersionId: string,
+) {
+  return body<{ stage: string; version: number }>(
+    await request.post(`/api/v1/cases/${caseId}/complaint-confirm`, {
+      headers: operator,
+      data: {
+        expectedVersion,
+        idempotencyKey: randomUUID(),
+        confirmedComplaintContentVersionId: complaintContentVersionId,
+        amountState: 'KNOWN',
+        amount: '123.45',
+        pendingReason: null,
+        confirmDisclose: true,
+      },
+    }),
+    201,
+  );
+}
+
+async function mailComplaint(
+  request: APIRequestContext,
+  caseId: string,
+  expectedVersion: number,
+) {
+  const receiptBytes = Buffer.from(
+    '%PDF-1.7\nCA018 actual complaint mail receipt\n%%EOF\n',
+  );
+  const receipt = await uploadCaseFile(
+    request,
+    caseId,
+    'MAIL_RECEIPT',
+    receiptBytes,
+  );
+  const result = await body<{ stage: string; version: number }>(
+    await request.post(`/api/v1/cases/${caseId}/complaint-mail`, {
+      headers: operator,
+      data: {
+        expectedVersion,
+        idempotencyKey: randomUUID(),
+        mailedAt: shanghaiToday(),
+        mailReceiptContentVersionIds: [receipt.contentVersionId],
+      },
+    }),
+    201,
+  );
+  return { result, receipt, receiptBytes };
+}
+
+async function submitFiling(
+  request: APIRequestContext,
+  caseId: string,
+  expectedVersion: number,
+) {
+  const court = await body<{ id: string }>(
+    await request.post(`/api/v1/cases/${caseId}/filing-courts`, {
+      headers: operator,
+      data: { name: `CA018 court ${randomUUID().slice(0, 8)}` },
+    }),
+    201,
+  );
+  const evidence = await uploadCaseFile(
+    request,
+    caseId,
+    'FILING_EVIDENCE',
+    Buffer.from('%PDF-1.7\nCA018 actual filing evidence\n%%EOF\n'),
+  );
+  const screenshot = await uploadCaseFile(
+    request,
+    caseId,
+    'FILING_SCREENSHOT',
+    Buffer.from('%PDF-1.7\nCA018 actual filing screenshot\n%%EOF\n'),
+  );
+  const result = await body<{
+    stage: string;
+    version: number;
+    filingId: string;
+  }>(
+    await request.post(`/api/v1/cases/${caseId}/filing-submit`, {
+      headers: operator,
+      data: {
+        expectedVersion,
+        idempotencyKey: randomUUID(),
+        courtId: court.id,
+        submittedAt: shanghaiToday(),
+        mediationNo: `CA018-${randomUUID().slice(0, 8)}`,
+        filingEvidenceContentVersionIds: [evidence.contentVersionId],
+        filingScreenshotContentVersionIds: [screenshot.contentVersionId],
+      },
+    }),
+    201,
+  );
+  return {
+    result,
+    evidence,
+    evidenceBytes: Buffer.from(
+      '%PDF-1.7\nCA018 actual filing evidence\n%%EOF\n',
+    ),
+    screenshot,
+    screenshotBytes: Buffer.from(
+      '%PDF-1.7\nCA018 actual filing screenshot\n%%EOF\n',
+    ),
+  };
+}
+
+async function registerAcceptance(
+  request: APIRequestContext,
+  caseId: string,
+  expectedVersion: number,
+  acceptedAt = shanghaiToday(),
+) {
+  const notice = await uploadCaseFile(
+    request,
+    caseId,
+    'ACCEPTANCE_NOTICE',
+    Buffer.from('%PDF-1.7\nCA018 actual acceptance notice\n%%EOF\n'),
+  );
+  const result = await body<{
+    stage: string;
+    version: number;
+    acceptanceId: string;
+  }>(
+    await request.post(`/api/v1/cases/${caseId}/acceptance-register`, {
+      headers: operator,
+      data: {
+        expectedVersion,
+        idempotencyKey: randomUUID(),
+        acceptedAt,
+        courtCaseNo: `CA018-${randomUUID().slice(0, 8)}`,
+        acceptanceNoticeContentVersionIds: [notice.contentVersionId],
+      },
+    }),
+    201,
+  );
+  return {
+    result,
+    notice,
+    bytes: Buffer.from('%PDF-1.7\nCA018 actual acceptance notice\n%%EOF\n'),
+  };
+}
+
+async function submitExecution(
+  request: APIRequestContext,
+  caseId: string,
+  expectedVersion: number,
+) {
+  const current = await sourceView(request, caseId);
+  expect(current.currentTrialRoundId).toEqual(expect.any(String));
+  const bytes = Buffer.from(
+    '%PDF-1.7\nCA018 actual execution application bytes\n%%EOF\n',
+  );
+  const application = await uploadCaseFile(
+    request,
+    caseId,
+    'EXECUTION_APPLICATION',
+    bytes,
+  );
+  const result = await body<{
+    submissionId: string;
+    stage: string;
+    version: number;
+  }>(
+    await request.post(`/api/v1/cases/${caseId}/execution-submit`, {
+      headers: operator,
+      data: {
+        expectedVersion,
+        idempotencyKey: randomUUID(),
+        trialRoundId: current.currentTrialRoundId,
+        judgmentNextStepId: null,
+        secondInstanceResultId: null,
+        expectedSubmissionId: null,
+        executionApplicationContentVersionIds: [application.contentVersionId],
+      },
+    }),
+    201,
+  );
+  return { result, application, bytes };
+}
+
+async function confirmExecution(
+  request: APIRequestContext,
+  caseId: string,
+  expectedVersion: number,
+  expectedSubmissionId: string | null,
+  executionApplicationContentVersionIds?: string[],
+) {
+  return body<{ confirmationId: string; stage: string; version: number }>(
+    await request.post(`/api/v1/cases/${caseId}/execution-confirm`, {
+      headers: operator,
+      data: {
+        expectedVersion,
+        idempotencyKey: randomUUID(),
+        expectedSubmissionId,
+        ...(expectedSubmissionId === null
+          ? { executionApplicationContentVersionIds }
+          : {}),
+      },
+    }),
+    201,
+  );
+}
+
+async function mailExecution(
+  request: APIRequestContext,
+  caseId: string,
+  expectedVersion: number,
+  expectedConfirmationId: string | null,
+) {
+  const receiptBytes = Buffer.from(
+    '%PDF-1.7\nCA018 actual execution mail receipt\n%%EOF\n',
+  );
+  const receipt = await uploadCaseFile(
+    request,
+    caseId,
+    'MAIL_RECEIPT',
+    receiptBytes,
+  );
+  const result = await body<{
+    mailingId: string;
+    stage: string;
+    version: number;
+  }>(
+    await request.post(`/api/v1/cases/${caseId}/execution-mail`, {
+      headers: operator,
+      data: {
+        expectedVersion,
+        idempotencyKey: randomUUID(),
+        expectedConfirmationId,
+        mailedAt: shanghaiToday(),
+        mailReceiptContentVersionIds: [receipt.contentVersionId],
+      },
+    }),
+    201,
+  );
+  return { result, receipt, receiptBytes };
+}
+
+async function submitExecutionFiling(
+  request: APIRequestContext,
+  caseId: string,
+  expectedVersion: number,
+  expectedMailingId: string | null,
+) {
+  const proofBytes = Buffer.from(
+    '%PDF-1.7\nCA018 actual execution filing proof\n%%EOF\n',
+  );
+  const proof = await uploadCaseFile(
+    request,
+    caseId,
+    'EXECUTION_FILING_PROOF',
+    proofBytes,
+  );
+  const result = await body<{
+    filingId: string;
+    stage: string;
+    version: number;
+  }>(
+    await request.post(`/api/v1/cases/${caseId}/execution-filing-submit`, {
+      headers: operator,
+      data: {
+        expectedVersion,
+        idempotencyKey: randomUUID(),
+        expectedMailingId,
+        submittedAt: shanghaiToday(),
+        executionFilingProofContentVersionIds: [proof.contentVersionId],
+      },
+    }),
+    201,
+  );
+  return { result, proof, proofBytes };
+}
+
+async function finishExecution(
+  request: APIRequestContext,
+  caseId: string,
+  expectedVersion: number,
+  expectedFilingId: string | null,
+) {
+  const basis = await uploadCaseFile(
+    request,
+    caseId,
+    'EXECUTION_FINISH_BASIS',
+    Buffer.from('%PDF-1.7\nCA018 actual execution finish basis\n%%EOF\n'),
+  );
+  const result = await body<{
+    finishId: string;
+    stage: string;
+    version: number;
+  }>(
+    await request.post(`/api/v1/cases/${caseId}/execution-finish`, {
+      headers: operator,
+      data: {
+        expectedVersion,
+        idempotencyKey: randomUUID(),
+        expectedFilingId,
+        finishedAt: shanghaiToday(),
+        reason: 'CA018 actual execution result recorded from current source',
+        basisNote: null,
+        basisContentVersionIds: [basis.contentVersionId],
+      },
+    }),
+    201,
+  );
+  return { result, basis };
 }
 
 test.beforeEach(clean);
@@ -381,6 +765,603 @@ test('continues a PENDING_MATCH entry through real matching and actual complaint
     entryId: created.entryId,
     initialStage: 'PENDING_MATCH',
   });
+});
+
+test('continues the three complaint roots through their real next action with source lineage intact', async ({
+  request,
+}) => {
+  const complaintRoot = await createEntry(
+    request,
+    input('WAITING_COMPLAINT', {
+      defendants: [
+        { kind: 'ORGANIZATION', name: 'CA018 complaint-stage defendant' },
+      ],
+    }),
+  );
+  const submitted = await submitComplaint(request, complaintRoot.id, 1);
+  expect(submitted.submitted).toMatchObject({
+    stage: 'WAITING_COMPLAINT_CONFIRMATION',
+    version: 2,
+  });
+  const confirmed = await confirmComplaint(
+    request,
+    complaintRoot.id,
+    submitted.submitted.version,
+    submitted.complaint.contentVersionId,
+  );
+  expect(confirmed).toMatchObject({
+    stage: 'WAITING_COMPLAINT_STAMP',
+    version: 3,
+  });
+  await expectExactDownload(
+    request,
+    submitted.complaint,
+    submitted.complaintBytes,
+  );
+  await expectExactDownload(
+    request,
+    submitted.authorization,
+    submitted.authorizationBytes,
+  );
+  expect((await sourceView(request, complaintRoot.id)).origin).toMatchObject({
+    entryId: complaintRoot.entryId,
+    initialStage: 'WAITING_COMPLAINT',
+  });
+
+  const confirmationRoot = await createEntry(
+    request,
+    input('WAITING_COMPLAINT_CONFIRMATION', {
+      defendants: [
+        { kind: 'ORGANIZATION', name: 'CA018 confirmation defendant' },
+      ],
+    }),
+  );
+  const currentComplaintBytes = Buffer.from(
+    '%PDF-1.7\nCA018 uploaded current complaint at confirmation root\n%%EOF\n',
+  );
+  const currentComplaint = await uploadCaseFile(
+    request,
+    confirmationRoot.id,
+    'COMPLAINT',
+    currentComplaintBytes,
+  );
+  const directConfirmation = await confirmComplaint(
+    request,
+    confirmationRoot.id,
+    confirmationRoot.version,
+    currentComplaint.contentVersionId,
+  );
+  expect(directConfirmation).toMatchObject({
+    stage: 'WAITING_COMPLAINT_STAMP',
+    version: 2,
+  });
+  const mailedAfterConfirmation = await mailComplaint(
+    request,
+    confirmationRoot.id,
+    directConfirmation.version,
+  );
+  expect(mailedAfterConfirmation.result).toMatchObject({
+    stage: 'WAITING_FILING',
+    version: 3,
+  });
+  await expectExactDownload(
+    request,
+    mailedAfterConfirmation.receipt,
+    mailedAfterConfirmation.receiptBytes,
+  );
+
+  const stampRoot = await createEntry(
+    request,
+    input('WAITING_COMPLAINT_STAMP', {
+      defendants: [
+        { kind: 'ORGANIZATION', name: 'CA018 complaint-stamp defendant' },
+      ],
+    }),
+  );
+  const mailedFromStamp = await mailComplaint(request, stampRoot.id, 1);
+  expect(mailedFromStamp.result).toMatchObject({
+    stage: 'WAITING_FILING',
+    version: 2,
+  });
+  await expectExactDownload(
+    request,
+    mailedFromStamp.receipt,
+    mailedFromStamp.receiptBytes,
+  );
+  const filedAfterMail = await submitFiling(
+    request,
+    stampRoot.id,
+    mailedFromStamp.result.version,
+  );
+  expect(filedAfterMail.result).toMatchObject({
+    stage: 'WAITING_FORMAL_ACCEPTANCE',
+    version: 3,
+  });
+  await expectExactDownload(
+    request,
+    filedAfterMail.evidence,
+    filedAfterMail.evidenceBytes,
+  );
+  await expectExactDownload(
+    request,
+    filedAfterMail.screenshot,
+    filedAfterMail.screenshotBytes,
+  );
+
+  for (const [caseId, entryId, initialStage] of [
+    [complaintRoot.id, complaintRoot.entryId, 'WAITING_COMPLAINT'],
+    [
+      confirmationRoot.id,
+      confirmationRoot.entryId,
+      'WAITING_COMPLAINT_CONFIRMATION',
+    ],
+    [stampRoot.id, stampRoot.entryId, 'WAITING_COMPLAINT_STAMP'],
+  ] as const) {
+    const final = await sourceView(request, caseId);
+    expect(final.origin).toMatchObject({
+      kind: 'EXTERNAL_ENTRY',
+      entryId,
+      initialStage,
+    });
+    expect(final.sourceLead).toBeNull();
+    expect(final.sourceNotaryMatter).toBeNull();
+    expect(final.certificate).toBeNull();
+  }
+  const downloaded = await request.get(
+    `/api/v1/materials/${currentComplaint.materialId}/versions/${currentComplaint.contentVersionId}/content`,
+    { headers: operator },
+  );
+  expect(downloaded.status(), await downloaded.text()).toBe(200);
+  expect((await downloaded.body()).equals(currentComplaintBytes)).toBe(true);
+});
+
+test('continues filing and acceptance roots through real command successors', async ({
+  request,
+}) => {
+  const filingRoot = await createEntry(
+    request,
+    input('WAITING_FILING', {
+      defendants: [{ kind: 'ORGANIZATION', name: 'CA018 filing defendant' }],
+    }),
+  );
+  const filing = await submitFiling(request, filingRoot.id, filingRoot.version);
+  expect(filing.result).toMatchObject({
+    stage: 'WAITING_FORMAL_ACCEPTANCE',
+    version: 2,
+  });
+  const acceptanceAfterFiling = await registerAcceptance(
+    request,
+    filingRoot.id,
+    filing.result.version,
+  );
+  expect(acceptanceAfterFiling.result).toMatchObject({
+    stage: 'WAITING_HEARING',
+    version: 3,
+  });
+  await expectExactDownload(
+    request,
+    acceptanceAfterFiling.notice,
+    acceptanceAfterFiling.bytes,
+  );
+
+  const acceptanceDate = shanghaiDaysAgo(1);
+  const acceptanceRoot = await createEntry(
+    request,
+    input('WAITING_FORMAL_ACCEPTANCE', {
+      stageReachedOn: acceptanceDate,
+      defendants: [
+        { kind: 'ORGANIZATION', name: 'CA018 acceptance defendant' },
+      ],
+    }),
+  );
+  const accepted = await registerAcceptance(
+    request,
+    acceptanceRoot.id,
+    acceptanceRoot.version,
+    acceptanceDate,
+  );
+  expect(accepted.result).toMatchObject({
+    stage: 'WAITING_HEARING',
+    version: 2,
+  });
+  const scheduled = await body<{
+    stage: string;
+    version: number;
+    arrangementId: string;
+  }>(
+    await request.post(`/api/v1/cases/${acceptanceRoot.id}/hearing-schedule`, {
+      headers: operator,
+      data: {
+        expectedVersion: accepted.result.version,
+        idempotencyKey: randomUUID(),
+        hearingAt: acceptanceDate,
+      },
+    }),
+    201,
+  );
+  expect(scheduled).toMatchObject({ stage: 'WAITING_HEARING', version: 3 });
+  await expectExactDownload(request, accepted.notice, accepted.bytes);
+  await expect
+    .poll(async () => (await sourceView(request, acceptanceRoot.id)).stage, {
+      timeout: 30_000,
+    })
+    .toBe('WAITING_JUDGMENT');
+  const final = await sourceView(request, acceptanceRoot.id);
+  expect(final.origin).toMatchObject({
+    kind: 'EXTERNAL_ENTRY',
+    entryId: acceptanceRoot.entryId,
+    initialStage: 'WAITING_FORMAL_ACCEPTANCE',
+  });
+  expect(final.sourceLead).toBeNull();
+  expect(final.sourceNotaryMatter).toBeNull();
+  expect(final.certificate).toBeNull();
+});
+
+test('continues a WAITING_JUDGMENT entry through a real judgment and linked execution choice', async ({
+  request,
+}) => {
+  const created = await createEntry(
+    request,
+    input('WAITING_JUDGMENT', {
+      defendants: [{ kind: 'ORGANIZATION', name: 'CA018 judgment defendant' }],
+    }),
+  );
+  const judgmentBytes = Buffer.from(
+    '%PDF-1.7\nCA018 actual judgment registered from external current round\n%%EOF\n',
+  );
+  const judgmentFile = await uploadCaseFile(
+    request,
+    created.id,
+    'JUDGMENT',
+    judgmentBytes,
+  );
+  const judgment = await body<{
+    judgmentId: string;
+    stage: string;
+    version: number;
+  }>(
+    await request.post(`/api/v1/cases/${created.id}/judgment-register`, {
+      headers: operator,
+      data: {
+        expectedVersion: created.version,
+        idempotencyKey: randomUUID(),
+        judgmentReceivedAt: shanghaiToday(),
+        judgmentAmountState: 'PENDING',
+        judgmentAmount: null,
+        paidLitigationFeeState: 'PENDING',
+        paidLitigationFee: null,
+        judgmentContentVersionIds: [judgmentFile.contentVersionId],
+      },
+    }),
+    201,
+  );
+  expect(judgment).toMatchObject({ stage: 'WAITING_JUDGMENT', version: 2 });
+  const choice = await body<{
+    stage: string;
+    version: number;
+    choiceId: string;
+  }>(
+    await request.post(`/api/v1/cases/${created.id}/judgment-next-step`, {
+      headers: operator,
+      data: {
+        expectedVersion: judgment.version,
+        idempotencyKey: randomUUID(),
+        judgmentId: judgment.judgmentId,
+        next: 'EXECUTION',
+        executionReadinessConfirmed: true,
+      },
+    }),
+    201,
+  );
+  expect(choice).toMatchObject({
+    stage: 'WAITING_EXECUTION_DOCUMENTS',
+    version: 3,
+    choiceId: expect.any(String),
+  });
+  expect((await sourceView(request, created.id)).origin).toMatchObject({
+    kind: 'EXTERNAL_ENTRY',
+    entryId: created.entryId,
+    initialStage: 'WAITING_JUDGMENT',
+  });
+  const downloaded = await request.get(
+    `/api/v1/materials/${judgmentFile.materialId}/versions/${judgmentFile.contentVersionId}/content`,
+    { headers: operator },
+  );
+  expect(downloaded.status(), await downloaded.text()).toBe(200);
+  expect((await downloaded.body()).equals(judgmentBytes)).toBe(true);
+});
+
+test('continues all four execution roots with nullable first predecessors and real IDs on every next step', async ({
+  request,
+}) => {
+  const documentsRoot = await createEntry(
+    request,
+    input('WAITING_EXECUTION_DOCUMENTS'),
+  );
+  const submitted = await submitExecution(
+    request,
+    documentsRoot.id,
+    documentsRoot.version,
+  );
+  expect(submitted.result).toMatchObject({
+    stage: 'WAITING_EXECUTION_CONFIRMATION',
+    version: 2,
+  });
+  const confirmedSubmitted = await confirmExecution(
+    request,
+    documentsRoot.id,
+    submitted.result.version,
+    submitted.result.submissionId,
+  );
+  expect(confirmedSubmitted).toMatchObject({
+    stage: 'WAITING_EXECUTION_STAMP',
+    version: 3,
+  });
+  await expectExactDownload(request, submitted.application, submitted.bytes);
+
+  const confirmationRoot = await createEntry(
+    request,
+    input('WAITING_EXECUTION_CONFIRMATION'),
+  );
+  const confirmationApplicationBytes = Buffer.from(
+    '%PDF-1.7\nCA018 actual application proof for direct confirmation root\n%%EOF\n',
+  );
+  const confirmationApplication = await uploadCaseFile(
+    request,
+    confirmationRoot.id,
+    'EXECUTION_APPLICATION',
+    confirmationApplicationBytes,
+  );
+  const directConfirmation = await confirmExecution(
+    request,
+    confirmationRoot.id,
+    confirmationRoot.version,
+    null,
+    [confirmationApplication.contentVersionId],
+  );
+  expect(directConfirmation).toMatchObject({
+    stage: 'WAITING_EXECUTION_STAMP',
+    version: 2,
+  });
+  const mailedAfterConfirmation = await mailExecution(
+    request,
+    confirmationRoot.id,
+    directConfirmation.version,
+    directConfirmation.confirmationId,
+  );
+  expect(mailedAfterConfirmation.result).toMatchObject({
+    stage: 'WAITING_EXECUTION_FILING',
+    version: 3,
+  });
+  await expectExactDownload(
+    request,
+    mailedAfterConfirmation.receipt,
+    mailedAfterConfirmation.receiptBytes,
+  );
+  const exactApplication = await request.get(
+    `/api/v1/materials/${confirmationApplication.materialId}/versions/${confirmationApplication.contentVersionId}/content`,
+    { headers: operator },
+  );
+  expect(exactApplication.status(), await exactApplication.text()).toBe(200);
+  expect(
+    (await exactApplication.body()).equals(confirmationApplicationBytes),
+  ).toBe(true);
+
+  const stampRoot = await createEntry(
+    request,
+    input('WAITING_EXECUTION_STAMP'),
+  );
+  const mailedFromStamp = await mailExecution(
+    request,
+    stampRoot.id,
+    stampRoot.version,
+    null,
+  );
+  expect(mailedFromStamp.result).toMatchObject({
+    stage: 'WAITING_EXECUTION_FILING',
+    version: 2,
+  });
+  const filedAfterMail = await submitExecutionFiling(
+    request,
+    stampRoot.id,
+    mailedFromStamp.result.version,
+    mailedFromStamp.result.mailingId,
+  );
+  expect(filedAfterMail.result).toMatchObject({
+    stage: 'EXECUTING',
+    version: 3,
+  });
+  await expectExactDownload(
+    request,
+    filedAfterMail.proof,
+    filedAfterMail.proofBytes,
+  );
+
+  const filingRoot = await createEntry(
+    request,
+    input('WAITING_EXECUTION_FILING'),
+  );
+  const filed = await submitExecutionFiling(
+    request,
+    filingRoot.id,
+    filingRoot.version,
+    null,
+  );
+  expect(filed.result).toMatchObject({ stage: 'EXECUTING', version: 2 });
+  const finished = await finishExecution(
+    request,
+    filingRoot.id,
+    filed.result.version,
+    filed.result.filingId,
+  );
+  expect(finished.result).toMatchObject({
+    stage: 'WAITING_ARCHIVE',
+    version: 3,
+  });
+  const closureFile = await uploadCaseFile(
+    request,
+    filingRoot.id,
+    'CASE_CLOSURE_DOCUMENT',
+    Buffer.from('%PDF-1.7\nCA018 closure after actual finish\n%%EOF\n'),
+  );
+  const closure = await body<{
+    finishId: string;
+    closureVersionId: string;
+    version: number;
+    stage: string;
+  }>(
+    await request.post(`/api/v1/cases/${filingRoot.id}/closure`, {
+      headers: operator,
+      data: {
+        expectedVersion: finished.result.version,
+        idempotencyKey: randomUUID(),
+        expectedFinishId: finished.result.finishId,
+        closeAt: null,
+        closeAmountState: 'PENDING',
+        closeAmt: null,
+        note: 'CA018 closure follows the actual returned finish fact',
+        closeContentVersionIds: [closureFile.contentVersionId],
+      },
+    }),
+    201,
+  );
+  expect(closure).toMatchObject({
+    finishId: finished.result.finishId,
+    stage: 'WAITING_ARCHIVE',
+    version: 4,
+  });
+  const archived = await body<{ stage: string; version: number }>(
+    await request.post(`/api/v1/cases/${filingRoot.id}/archive`, {
+      headers: operator,
+      data: {
+        expectedVersion: closure.version,
+        idempotencyKey: randomUUID(),
+        expectedClosureVersionId: closure.closureVersionId,
+        archiveAt: shanghaiToday(),
+        archiveType: 'EXECUTION_CLOSED',
+        archiveReason: 'CA018 archive follows real finish and closure IDs',
+      },
+    }),
+    201,
+  );
+  expect(archived).toMatchObject({ stage: 'ARCHIVED', version: 5 });
+  await expectExactDownload(
+    request,
+    closureFile,
+    Buffer.from('%PDF-1.7\nCA018 closure after actual finish\n%%EOF\n'),
+  );
+
+  for (const entry of [
+    documentsRoot,
+    confirmationRoot,
+    stampRoot,
+    filingRoot,
+  ]) {
+    const final = await sourceView(request, entry.id);
+    expect(final.origin).toMatchObject({
+      kind: 'EXTERNAL_ENTRY',
+      entryId: entry.entryId,
+      initialStage: entry.stage,
+    });
+    expect(final.sourceLead).toBeNull();
+    expect(final.sourceNotaryMatter).toBeNull();
+    expect(final.certificate).toBeNull();
+  }
+  const downloaded = await request.get(
+    `/api/v1/materials/${submitted.application.materialId}/versions/${submitted.application.contentVersionId}/content`,
+    { headers: operator },
+  );
+  expect(downloaded.status(), await downloaded.text()).toBe(200);
+  expect((await downloaded.body()).equals(submitted.bytes)).toBe(true);
+});
+
+test('continues a direct WAITING_ARCHIVE root with null only for its absent finish, then archives the real closure', async ({
+  request,
+}) => {
+  const created = await createEntry(request, input('WAITING_ARCHIVE'));
+  const bytes = Buffer.from(
+    '%PDF-1.7\nCA018 direct archive-entry closure document bytes\n%%EOF\n',
+  );
+  const document = await uploadCaseFile(
+    request,
+    created.id,
+    'CASE_CLOSURE_DOCUMENT',
+    bytes,
+  );
+  const before = await caseExternalEntrySnapshot(created.id);
+  const missingFinish = await request.post(
+    `/api/v1/cases/${created.id}/closure`,
+    {
+      headers: operator,
+      data: {
+        expectedVersion: created.version,
+        idempotencyKey: randomUUID(),
+        expectedFinishId: randomUUID(),
+        closeAt: null,
+        closeAmountState: 'PENDING',
+        closeAmt: null,
+        note: null,
+        closeContentVersionIds: [document.contentVersionId],
+      },
+    },
+  );
+  expect([400, 409], await missingFinish.text()).toContain(
+    missingFinish.status(),
+  );
+  expect(await caseExternalEntrySnapshot(created.id)).toEqual(before);
+
+  const closure = await body<{
+    finishId: string | null;
+    closureVersionId: string;
+    version: number;
+    stage: string;
+  }>(
+    await request.post(`/api/v1/cases/${created.id}/closure`, {
+      headers: operator,
+      data: {
+        expectedVersion: created.version,
+        idempotencyKey: randomUUID(),
+        expectedFinishId: null,
+        closeAt: null,
+        closeAmountState: 'PENDING',
+        closeAmt: null,
+        note: 'CA018 source root directly reached closure state',
+        closeContentVersionIds: [document.contentVersionId],
+      },
+    }),
+    201,
+  );
+  expect(closure).toMatchObject({
+    finishId: null,
+    stage: 'WAITING_ARCHIVE',
+    version: created.version + 1,
+  });
+  const archived = await body<{ stage: string; version: number }>(
+    await request.post(`/api/v1/cases/${created.id}/archive`, {
+      headers: operator,
+      data: {
+        expectedVersion: closure.version,
+        idempotencyKey: randomUUID(),
+        expectedClosureVersionId: closure.closureVersionId,
+        archiveAt: shanghaiToday(),
+        archiveType: 'EXECUTION_CLOSED',
+        archiveReason: 'CA018 archive after direct-root closure',
+      },
+    }),
+    201,
+  );
+  expect(archived.stage).toBe('ARCHIVED');
+  expect((await sourceView(request, created.id)).origin).toMatchObject({
+    kind: 'EXTERNAL_ENTRY',
+    entryId: created.entryId,
+    initialStage: 'WAITING_ARCHIVE',
+  });
+  const downloaded = await request.get(
+    `/api/v1/materials/${document.materialId}/versions/${document.contentVersionId}/content`,
+    { headers: operator },
+  );
+  expect(downloaded.status(), await downloaded.text()).toBe(200);
+  expect((await downloaded.body()).equals(bytes)).toBe(true);
 });
 
 test('continues an EXECUTING entry through real finish, closure, archive, and exact file downloads', async ({

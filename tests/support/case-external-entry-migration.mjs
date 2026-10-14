@@ -11,7 +11,10 @@ import {
 const root = process.cwd();
 const requireBackend = createRequire(resolve(root, 'backend/package.json'));
 const { Client } = requireBackend('pg');
-const migrationRoot = resolve(root, 'backend/prisma/migrations');
+const old150PrismaRoot = process.env.CA018_OLD150_PRISMA_DIR;
+if (!old150PrismaRoot)
+  throw new Error('CA018 requires the preserved old150 Prisma directory');
+const migrationRoot = resolve(old150PrismaRoot, 'migrations');
 export const externalEntryActionMigration =
   '20261014170000_case_external_entry_actions';
 export const externalEntryFoundationMigration =
@@ -23,6 +26,19 @@ export const oldCaseMigrations = readdirSync(migrationRoot)
     (name) => /^\d{14}_/u.test(name) && name < externalEntryActionMigration,
   )
   .sort();
+if (
+  oldCaseMigrations.length !== 150 ||
+  resolve(old150PrismaRoot) !==
+    resolve(
+      root,
+      '..',
+      'ca015-integration',
+      '.local/ca018-evidence/old150-runtime/backend/prisma',
+    )
+)
+  throw new Error(
+    'CA018 migration tests require the preserved exact old150 snapshot',
+  );
 
 export async function withCaseExternalEntryMigrationDatabase(operation) {
   const url = process.env.DATABASE_URL;
