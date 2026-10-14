@@ -246,6 +246,8 @@ export class CaseExecutionConfirmationService {
               throw this.invalidState();
             if (choice === null) {
               // The source chain check already verified the exact imported root.
+            } else if (submission === null) {
+              throw this.invalidState();
             } else if (choice.next === 'EXECUTION') {
               if (submission.secondInstanceResultId !== null)
                 throw this.invalidState();
@@ -261,9 +263,9 @@ export class CaseExecutionConfirmationService {
               )
                 throw this.invalidState();
             } else throw this.invalidState();
-            let directFacts:
-              | Awaited<ReturnType<MaterialService['assertAvailableVersions']>>
-              | null = null;
+            let directFacts: Awaited<
+              ReturnType<MaterialService['assertAvailableVersions']>
+            > | null = null;
             if (submission !== null)
               await this.materials.assertAvailableVersions(tx, actor, {
                 ownerType: 'CASE',
