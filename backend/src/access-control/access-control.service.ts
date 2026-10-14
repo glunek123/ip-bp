@@ -36,6 +36,8 @@ export type PermissionAction =
   | 'notary.return.archive'
   | 'notary.list.export'
   | 'case.read'
+  | 'case.external-entry.create'
+  | 'case.external-entry.archive'
   | 'case.match'
   | 'case.complaint.submit'
   | 'case.complaint.confirm'
@@ -345,6 +347,8 @@ export class AccessControlService {
       | 'case.closure.correct'
       | 'case.archive'
       | 'case.archive.correct'
+      | 'case.external-entry.create'
+      | 'case.external-entry.archive'
       | 'case.execution.finish',
     facts: CaseResourceFacts,
     reader?: AccessControlSnapshotReader,
@@ -389,6 +393,8 @@ export class AccessControlService {
       | 'case.closure.correct'
       | 'case.archive'
       | 'case.archive.correct'
+      | 'case.external-entry.create'
+      | 'case.external-entry.archive'
       | 'case.execution.finish',
     facts: CaseResourceFacts,
     reader?: AccessControlSnapshotReader,
