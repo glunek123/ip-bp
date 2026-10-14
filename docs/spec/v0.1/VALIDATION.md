@@ -1482,3 +1482,6 @@ b73b82a506958da535bc16f0cb6f579eb25eb88e固定聚焦三项实际2通过／1失�
 旧CA010适配的首份开发聚焦log／trace曾因执行Task重用输出路径被第二次开发跑覆盖，不能声称首份完整文件仍保留；根实际读取的904行展示失败局部观察另存legacy-first-evidence-loss.json，未伪造完整恢复。后续开发日志／trace均改独立label，正式完整verify、迁移专项、两个22组合、旧三项失败组合及最终单项凭据保持；该局限不扩展为任何失败通过证明。
 
 本次只收口实际受影响的Spec当前态、路线图、状态、READINESS／技术现状和验证记录／快照；SD-56合同保持，CA018暂停，其他详情UI两条待办仍在各模块交付前验收。正常原子main／任务分支交付回执取得后追加，不反写未来SHA或冒称未查询CI／生产发布；主仓原.pnpm-store／stash及可复用工作树保留。
+**CORE-CE-002正常Git首交付及非执行性收口。** 独立最终收口候选9d96ac8f553d76bbbee038214666b725af6a6a42／treeeffcc397337816d21a92785b6094974145f66f8d，Spec／Quality ACCEPTED、C/I/M0；81eb源候选后仅七份必要当前态文档与已核快照，整个tests目录tree均c49fc4e18246b10c7479ab52ebe74c0dd063dd4c。受影响文档格式、diff检查、严格上下文、Spec（57REQ／66AC／11BQ／56SD）实际通过，产品、测试、依赖及运行／构建输入不变，证据docs-closeout-check、verify-input-reuse-recovery-pointer-closeout及closeout-review。预览README的旧当前指针发现后已修为source81e／680文件／150，旧CE001明确历史，独立复核finding关闭，未改恢复命令或数据。
+
+于10/14/2026 19:23:27～10/14/2026 19:23:32 UTC实际正常git push --atomic（非force）exit0，远端main／codex/ce002-second-instance-acceptance及本地主main均实核9d96ac8f553d76bbbee038214666b725af6a6a42，原stash及未跟踪.pnpm-store保持。交付回执push-first.json／log、main-ff-first.log；未查询CI，不称远端CI通过、Release或生产上线。末次只补这份真实回执、完成态及对应已核快照，未改业务要求或验收输入；最终远端SHA以实际Git及本机push-final回执为准，不在本记录自指未来提交。预览仍已验source81eb，后续完成态文档差异不改变产品、原数据或新Action待用户确认的边界。

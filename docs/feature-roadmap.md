@@ -1,6 +1,6 @@
 # 功能开发路线图
 
-更新日期：2026-10-14。CORE-CA-001～017、N1／N2、CORE-UI-001／002及展示修复、CORE-CE-001已交付；CORE-CE-002已完成验收及持久预览同步，正在正常Git交付收口。CA018继续暂停。准确证据与交付只见VALIDATION，不扩大为全部Demo或生产完成。
+更新日期：2026-10-14。CORE-CA-001～017、N1／N2、CORE-UI-001／002及展示修复、CORE-CE-001已交付；CORE-CE-002已完成验收及持久预览同步，已正常原子交付main与任务分支。CA018继续暂停。准确证据与交付只见VALIDATION，不扩大为全部Demo或生产完成。
 
 本文只回答“已经做到哪里、下一步做什么、之后按什么依赖顺序做”。详细业务规则仍以 [`docs/spec/`](spec/) 为准，核心主线的编码级字段、附件与存储边界以[核心业务字段、附件与存储契约](superpowers/specs/2026-09-21-core-flow-field-material-contract.md)为准，技术方案以设计文档为准，当前切片的技术任务以实施计划为准，实际验证结果以 [`docs/spec/v0.1/VALIDATION.md`](spec/v0.1/VALIDATION.md) 为准；[`docs/project-status.md`](project-status.md)仅保留当前恢复摘要。
 
@@ -164,7 +164,7 @@
 
 ### Current Slice
 
-**CORE-CE-002｜二审受理字段补缺：已完成验收和持久预览同步，正常Git交付收口中。** 稳定源码／测试候选81ebfedc41967ea76e113c748ca1bd426b6743e7（treef3cc0ec1f20c14a135b1918e5b51c95f59fdd268）独立双轴ACCEPTED、C/I/M0；22项PG／Chromium边界按原19项＋旧2项相同输入证据＋本次律师1项实跑闭合，迁移专项1/1通过，不称同一HEAD单组22全过。完整verify实际597bace通过80工具／1819前端／1473后端、静态及双构建，后续仅测试夹具／操作等待和文档变更，按已核输入限定复用。真实APPEAL根下受理日期／法院案号可登记、带原因更正及清空，资料revision独立；不改Case版本／阶段／一审案号／归档锚。持久预览5186／3206／15436为source81ebfed、150迁移，原2案／6凭据、130张原非会话表、授权／材料／配置保持；原账号旧两编辑Action继续可用，新case.second-instance-acceptance.update未增权，需用户另行确认。证据见VALIDATION及本机ce002-evidence／预览runtime；CA018继续暂停，其他详情UI两条待办仍在各模块功能交付前验收。
+**CORE-CE-002｜二审受理字段补缺：已完成验收和持久预览同步，已正常原子交付main与任务分支。** 稳定源码／测试候选81ebfedc41967ea76e113c748ca1bd426b6743e7（treef3cc0ec1f20c14a135b1918e5b51c95f59fdd268）独立双轴ACCEPTED、C/I/M0；22项PG／Chromium边界按原19项＋旧2项相同输入证据＋本次律师1项实跑闭合，迁移专项1/1通过，不称同一HEAD单组22全过。完整verify实际597bace通过80工具／1819前端／1473后端、静态及双构建，后续仅测试夹具／操作等待和文档变更，按已核输入限定复用。真实APPEAL根下受理日期／法院案号可登记、带原因更正及清空，资料revision独立；不改Case版本／阶段／一审案号／归档锚。持久预览5186／3206／15436为source81ebfed、150迁移，原2案／6凭据、130张原非会话表、授权／材料／配置保持；原账号旧两编辑Action继续可用，新case.second-instance-acceptance.update未增权，需用户另行确认。证据见VALIDATION及本机ce002-evidence／预览runtime；CA018继续暂停，其他详情UI两条待办仍在各模块功能交付前验收。
 
 ### 上批已交付
 
