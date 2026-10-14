@@ -616,30 +616,42 @@ async function selectCaseWorkspaceGroup(
   page: Page,
   sectionKey: string,
   title: string,
+  recordMarker: string,
 ): Promise<Locator> {
   await revealCaseDetailsSection(page, sectionKey);
   const section = page.locator(`[data-section="${sectionKey}"]`);
   const escapedTitle = title.replace(/[.*+?^${}()|[\]\\]/g, '\\$&');
-  const button = section.getByRole('button', {
-    name: new RegExp(`^${escapedTitle}，第\\d+组$`),
+  const buttons = section.getByRole('button', {
+    name: new RegExp(
+      `^${escapedTitle}${title.endsWith('（历史）') ? '' : '(?:（历史）)?'}，第\\d+组$`,
+    ),
   });
-  await expect(button).toHaveCount(1);
-  await button.click();
-  const group = section.locator('.case-workspace-group:visible');
-  await expect(group).toHaveCount(1);
-  const summary = group.locator(':scope > summary');
-  if (
-    (await summary.count()) > 0 &&
-    (await group.getAttribute('open')) === null
-  )
-    await summary.click();
-  const technical = group.locator('[data-test="workspace-technical-details"]');
-  if ((await technical.count()) > 0) {
-    const technicalSummary = technical.locator(':scope > summary');
-    if ((await technical.getAttribute('open')) === null)
-      await technicalSummary.click();
+  await expect(buttons.first()).toBeVisible();
+  for (let index = 0; index < (await buttons.count()); index += 1) {
+    const button = buttons.nth(index);
+    await button.click();
+    await expect(button).toHaveAttribute('aria-pressed', 'true');
+    const group = section.locator('.case-workspace-group:visible');
+    await expect(group).toHaveCount(1);
+    const summary = group.locator(':scope > summary');
+    if (
+      (await summary.count()) > 0 &&
+      (await group.getAttribute('open')) === null
+    )
+      await summary.click();
+    const technical = group.locator(
+      '[data-test="workspace-technical-details"]',
+    );
+    if ((await technical.count()) > 0) {
+      const technicalSummary = technical.locator(':scope > summary');
+      if ((await technical.getAttribute('open')) === null)
+        await technicalSummary.click();
+    }
+    if ((await group.innerText()).includes(recordMarker)) return group;
   }
-  return group;
+  throw new Error(
+    `Workspace group ${title} does not show record ${recordMarker}`,
+  );
 }
 
 async function downloadCaseWorkspaceFile(
@@ -970,6 +982,7 @@ test('operator recovers an unknown real upload, then saves progress/result again
     page,
     'second-instance',
     '二审资料登记',
+    uploadName,
   );
   const progressRound = saved.secondInstance.rounds.find(
     (round) => round.id === saved.secondInstance.currentProgress!.trialRoundId,
@@ -1161,6 +1174,7 @@ test('operator recovers an unknown real upload, then saves progress/result again
     page,
     'judgment',
     `${workspaceRoundTitle(resultRound)} · 二审结果登记`,
+    resultName,
   );
   await expect(resultGroup).toContainText(resultName);
   await expect(resultGroup).toContainText(resultRound.id);
@@ -1177,6 +1191,7 @@ test('operator recovers an unknown real upload, then saves progress/result again
     page,
     'judgment',
     `${workspaceRoundTitle(resultRound)} · 二审结果登记`,
+    resultName,
   );
   await expect(persistedResultGroup).toContainText(resultName);
   await expect(persistedResultGroup).toContainText(resultRound.id);
@@ -1192,6 +1207,7 @@ test('operator recovers an unknown real upload, then saves progress/result again
     page,
     'judgment',
     `${workspaceRoundTitle(resultRound)} · 二审结果登记`,
+    resultName,
   );
   await expect(reloadedResultGroup).toContainText(resultName);
   await expect(reloadedResultGroup).toContainText(resultRound.id);
@@ -1280,6 +1296,7 @@ test('operator revokes only an exact empty REMAND child and completes a distinct
     page,
     'judgment',
     `${workspaceRoundTitle(sourceRound)} · 二审结果登记`,
+    firstRemandFilename,
   );
   await expect(firstRemandGroup).toContainText(firstRemandFilename);
   await expect(firstRemandGroup).toContainText(sourceRound.id);
@@ -1290,12 +1307,14 @@ test('operator revokes only an exact empty REMAND child and completes a distinct
     page,
     'second-instance',
     `审理轮次 ${canceledChild.sequence}`,
+    canceledChildId,
   );
   await expect(canceledChildGroup).toContainText(canceledChildId);
   const sourceJudgmentGroup = await selectCaseWorkspaceGroup(
     page,
     'judgment',
     `${workspaceRoundTitle(sourceRound)} · 判决登记`,
+    source.firstJudgmentFile,
   );
   await expect(sourceJudgmentGroup).toContainText(source.firstJudgmentFile);
   await selectCaseWorkspaceFiles(page);
@@ -1521,6 +1540,7 @@ test('operator revokes only an exact empty REMAND child and completes a distinct
     page,
     'judgment',
     `${workspaceRoundTitle(sourceRound)} · 二审结果登记`,
+    secondRemandFilename,
   );
   await expect(currentRemandGroup).toContainText(secondRemandFilename);
   await expect(currentRemandGroup).toContainText(sourceRound.id);
@@ -1528,6 +1548,7 @@ test('operator revokes only an exact empty REMAND child and completes a distinct
     page,
     'judgment',
     `${workspaceRoundTitle(sourceRound)} · 二审结果登记（历史）`,
+    firstRemandFilename,
   );
   await expect(priorRemandGroup).toContainText(firstRemandFilename);
   await expect(priorRemandGroup).toContainText(sourceRound.id);
@@ -1535,6 +1556,7 @@ test('operator revokes only an exact empty REMAND child and completes a distinct
     page,
     'judgment',
     `${workspaceRoundTitle(newChildRound)} · 判决登记`,
+    secondJudgmentFilename,
   );
   await expect(secondJudgmentGroup).toContainText(secondJudgmentFilename);
   await expect(secondJudgmentGroup).toContainText(newChildId);
