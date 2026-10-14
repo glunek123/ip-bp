@@ -197,6 +197,57 @@ describe('CaseSecondInstanceService', () => {
     return f;
   }
 
+  async function remandedExternalAppealFixture() {
+    const f = fixture();
+    const source = {
+      kind: 'EXTERNAL_ENTRY',
+      entryId,
+      initialStage: 'WAITING_JUDGMENT',
+      stageReachedOn: '2025-12-31',
+      known: {
+        acceptedOn: null,
+        secondInstanceAcceptedOn: null,
+        courtCaseNo: 'EXTERNAL-CASE-NO',
+      },
+    } as never;
+    jest
+      .mocked(readCaseSourceAnchor)
+      .mockResolvedValueOnce(source)
+      .mockResolvedValueOnce(source);
+    f.record.currentTrialRound = {
+      origin: 'EXTERNAL_CURRENT',
+      externalEntryId: entryId,
+      sourceResultId: null,
+      revokedAt: null,
+    };
+    f.record.currentAcceptanceId = null;
+    f.record.acceptance = null as never;
+    f.record.currentJudgment.externalEntryId = entryId;
+    const result = await f.service.registerResult(
+      actor,
+      caseId,
+      resultInput('REMAND', 'real-external-appeal-remand'),
+    );
+    f.record.stage = 'WAITING_FORMAL_ACCEPTANCE';
+    f.record.currentTrialRoundId = result.currentTrialRoundId;
+    f.record.currentTrialRound = {
+      origin: 'NORMAL',
+      externalEntryId: entryId,
+      sourceResultId: result.resultId,
+      revokedAt: null,
+    };
+    f.record.currentSecondInstanceResultId = result.resultId;
+    f.record.currentSecondInstanceResult = {
+      id: result.resultId!,
+      result: 'REMAND',
+      trialRoundId,
+      choiceId,
+      externalEntryId: entryId,
+      progressId: null,
+    };
+    return { f, result };
+  }
+
   it('saves direct second-instance progress with a null choice and exact entry', async () => {
     const f = directEntryFixture();
     await f.service.save(actor, caseId, {
@@ -355,6 +406,79 @@ describe('CaseSecondInstanceService', () => {
         }),
       }),
     );
+  });
+
+  it('revokes a real external appeal REMAND without inventing an old acceptance', async () => {
+    const { f, result } = await remandedExternalAppealFixture();
+    f.tx.caseTrialRound.findFirst
+      .mockResolvedValueOnce({
+        id: result.currentTrialRoundId,
+        revokedAt: null,
+      })
+      .mockResolvedValueOnce({
+        id: trialRoundId,
+        origin: 'EXTERNAL_CURRENT',
+        externalEntryId: entryId,
+      });
+    f.tx.caseJudgmentNextStep.findFirst
+      .mockResolvedValueOnce(null)
+      .mockResolvedValueOnce({ id: choiceId, judgmentId });
+    f.tx.caseJudgmentFact.findFirst
+      .mockResolvedValueOnce(null)
+      .mockResolvedValueOnce({ id: judgmentId });
+    const response = await f.service.revokeResult(actor, caseId, {
+      expectedVersion: 12,
+      idempotencyKey: 'real-external-appeal-revoke',
+      trialRoundId,
+      resultId: result.resultId!,
+      reason: 'Real appeal remand correction',
+    });
+    expect(response.stage).toBe('SECOND_INSTANCE');
+    expect(f.tx.caseJudgmentFact.findFirst).toHaveBeenLastCalledWith({
+      where: {
+        id: judgmentId,
+        caseId,
+        departmentId: actor.departmentId,
+        trialRoundId,
+        externalEntryId: entryId,
+      },
+      select: { id: true },
+    });
+    expect(f.tx.case.updateMany).toHaveBeenCalledWith(
+      expect.objectContaining({
+        data: expect.objectContaining({
+          currentTrialRoundId: trialRoundId,
+          currentAcceptanceId: null,
+          currentJudgmentId: judgmentId,
+          currentJudgmentNextStepId: choiceId,
+          courtCaseNo: 'EXTERNAL-CASE-NO',
+        }),
+      }),
+    );
+  });
+
+  it('blocks external appeal REMAND revocation after a child acceptance exists', async () => {
+    const { f, result } = await remandedExternalAppealFixture();
+    f.tx.caseTrialRound.findFirst.mockResolvedValueOnce({
+      id: result.currentTrialRoundId,
+      revokedAt: null,
+    });
+    f.tx.caseAcceptance.findFirst.mockResolvedValueOnce({
+      id: documentVersionId,
+    });
+    await expect(
+      f.service.revokeResult(actor, caseId, {
+        expectedVersion: 12,
+        idempotencyKey: 'real-external-appeal-child-fact',
+        trialRoundId,
+        resultId: result.resultId!,
+        reason: 'Too late after child acceptance',
+      }),
+    ).rejects.toMatchObject({ response: { code: 'INVALID_STATE' } });
+    expect(
+      f.tx.caseSecondInstanceResultRevocation.create,
+    ).not.toHaveBeenCalled();
+    expect(f.tx.caseTrialRound.update).not.toHaveBeenCalled();
   });
 
   it('rejects a null choice for a normal second-instance case', async () => {

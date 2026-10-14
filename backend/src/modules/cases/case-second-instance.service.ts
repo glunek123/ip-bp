@@ -877,7 +877,9 @@ export class CaseSecondInstanceService {
               caseId,
               departmentId: actor.departmentId,
               trialRoundId: result.trialRoundId,
+              externalEntryId: entryId,
               next: 'APPEAL',
+              revocation: { is: null },
             },
             select: { id: true, judgmentId: true },
           });
@@ -915,7 +917,31 @@ export class CaseSecondInstanceService {
       orderBy: [{ toVersion: 'desc' }, { id: 'desc' }],
       select: { id: true },
     });
-    if (!directEntry && (sourceChoice === null || sourceAcceptance === null))
+    const unacceptedExternalAppeal =
+      source.kind === 'EXTERNAL_ENTRY' &&
+      (source.initialStage === 'WAITING_HEARING' ||
+        source.initialStage === 'WAITING_JUDGMENT') &&
+      sourceRound.origin === 'EXTERNAL_CURRENT' &&
+      sourceRound.externalEntryId === source.entryId &&
+      result.choiceId !== null &&
+      sourceChoice?.judgmentId !== null &&
+      sourceChoice?.judgmentId !== undefined &&
+      sourceAcceptance === null &&
+      (await tx.caseJudgmentFact.findFirst({
+        where: {
+          id: sourceChoice.judgmentId,
+          caseId,
+          departmentId: actor.departmentId,
+          trialRoundId: result.trialRoundId,
+          externalEntryId: source.entryId,
+        },
+        select: { id: true },
+      })) !== null;
+    if (
+      !directEntry &&
+      (sourceChoice === null ||
+        (sourceAcceptance === null && !unacceptedExternalAppeal))
+    )
       throw this.invalidState();
     const revocationId = randomUUID();
     const recordedAt = new Date();
