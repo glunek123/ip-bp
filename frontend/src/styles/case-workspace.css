@@ -173,6 +173,47 @@
   min-width: 0;
 }
 
+.case-workspace-details dl.case-workspace-fields {
+  gap: 0 var(--s-4);
+}
+
+.case-workspace-details dl.case-workspace-fields > .case-workspace-field {
+  display: grid;
+  grid-template-columns: 108px minmax(0, 1fr);
+  min-height: 36px;
+  border-bottom: 1px solid var(--color-hairline);
+}
+
+.case-workspace-details .case-workspace-field--wide {
+  grid-column: 1 / -1;
+}
+
+.case-workspace-details .case-workspace-field__label {
+  margin: 0;
+  padding: 8px 10px 8px 0;
+}
+
+.case-workspace-details .case-workspace-field__value {
+  min-width: 0;
+  padding: 8px 0;
+  font-weight: 500;
+}
+
+.case-workspace-group--history > summary {
+  cursor: pointer;
+  color: var(--color-ink-muted);
+  font-size: 12px;
+  font-weight: 400;
+  min-height: 36px;
+}
+
+.case-workspace-section__tools .case-workspace-field__help {
+  max-width: 160px;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
 .case-workspace-field__label {
   margin: 0 0 var(--s-1);
   color: var(--color-ink-muted);
@@ -273,6 +314,10 @@
 
   .case-workspace-section__title {
     flex: 0 0 auto;
+  }
+
+  .case-workspace-details dl.case-workspace-fields > .case-workspace-field {
+    grid-template-columns: 92px minmax(0, 1fr);
   }
 
   .case-workspace-section__tools .case-workspace-field__help {

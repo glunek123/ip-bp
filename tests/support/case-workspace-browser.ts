@@ -8,6 +8,15 @@ export async function openCaseWorkspaceCommand(
   if (!new URL(page.url()).pathname.startsWith('/cases/')) return;
   await expect(page.locator('.case-workspace').first()).toBeVisible();
   if (await page.locator(panelSelector).isVisible()) return;
+  const previous = page.locator(
+    `[data-test="workspace-prior-editor"][data-command="${command}"]`,
+  );
+  if (await previous.count()) {
+    await page.getByRole('tab', { name: '案件详情', exact: true }).click();
+    await previous.click();
+    await expect(page.locator(panelSelector)).toBeVisible();
+    return;
+  }
   const more = page.locator(
     `[data-test="workspace-more-actions"] [data-command="${command}"]`,
   );

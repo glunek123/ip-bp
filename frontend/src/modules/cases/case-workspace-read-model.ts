@@ -3,11 +3,17 @@ import type { LeadDetail } from '../../api/leads';
 import type { SectionKey } from './case-workspace-contract';
 
 export type LeadState = 'idle' | 'loading' | 'ready' | 'denied' | 'failed';
-export type WorkspaceField = { label: string; value: string; help?: string };
+export type WorkspaceField = {
+  label: string;
+  value: string;
+  help?: string;
+  wide?: boolean;
+};
 export type WorkspaceGroup = {
   id: string;
   title: string;
   fields: WorkspaceField[];
+  historical?: boolean;
 };
 export type WorkspaceSection = {
   key: SectionKey;
@@ -123,7 +129,15 @@ function field(
   value: string | null,
   help?: string,
 ): WorkspaceField {
-  return { label, value: value ?? '未登记', ...(help ? { help } : {}) };
+  const wide =
+    /备注|原因|说明|地址|链接|文件|材料|文书|依据|意见/u.test(label) ||
+    (value?.length ?? 0) > 80;
+  return {
+    label,
+    value: value ?? '未登记',
+    ...(help ? { help } : {}),
+    ...(wide ? { wide: true } : {}),
+  };
 }
 function date(label: string, value: string | null): WorkspaceField {
   return field(label, workspaceDate(value));
@@ -515,14 +529,29 @@ export function buildCaseWorkspaceEvents(item: CaseDetail): WorkspaceEvent[] {
 }
 
 function eventGroup(event: WorkspaceEvent, current: boolean): WorkspaceGroup {
+  const primaryJudgmentLabels = new Set(['判决金额', '已缴诉讼费']);
+  const fields =
+    event.source === 'judgment'
+      ? [
+          date('收到判决日期', event.businessAt),
+          ...event.fields.filter((value) =>
+            primaryJudgmentLabels.has(value.label),
+          ),
+          ...event.fields.filter(
+            (value) => !primaryJudgmentLabels.has(value.label),
+          ),
+          date('记录时间', event.recordedAt),
+        ]
+      : [
+          date('业务日期／时间', event.businessAt),
+          date('记录时间', event.recordedAt),
+          ...event.fields,
+        ];
   return {
     id: `${event.source}:${event.id}`,
     title: `${event.title}${current ? '（当前）' : '（历史）'}`,
-    fields: [
-      date('业务日期／时间', event.businessAt),
-      date('记录时间', event.recordedAt),
-      ...event.fields,
-    ],
+    fields,
+    ...(!current ? { historical: true } : {}),
   };
 }
 

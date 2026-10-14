@@ -28,7 +28,10 @@ import {
   verifyCaseComplaintMigration,
 } from '../support/core-lead-database.mjs';
 import { createLawyerAccountThroughApi } from '../support/case-lawyer-account.mjs';
-import { openCaseWorkspaceCommand } from '../support/case-workspace-browser.js';
+import {
+  openCaseWorkspaceCommand,
+  revealCaseWorkspaceSection,
+} from '../support/case-workspace-browser.js';
 import {
   disconnectCustomerTestDatabase,
   getCustomerMaintenanceState,
@@ -160,6 +163,11 @@ async function matchCaseThroughBrowser(
   );
   await expect(caseLink).toBeVisible();
   await caseLink.click();
+  await openCaseWorkspaceCommand(
+    page,
+    'match',
+    '[data-test="case-match-form"]',
+  );
   const form = page.locator('[data-test="case-match-form"]');
   await expect(form).toBeVisible();
   await form.getByLabel('主体类型').selectOption('ORGANIZATION');
@@ -173,6 +181,11 @@ async function matchCaseThroughBrowser(
   });
   await page.getByRole('button', { name: '确认匹配并进入待写诉状' }).click();
   await expect(page.getByRole('status')).toContainText('待写诉状');
+  await openCaseWorkspaceCommand(
+    page,
+    'complaint',
+    '[data-test="complaint-submit-form"]',
+  );
   await expect(
     page.locator('[data-test="complaint-submit-form"]'),
   ).toBeVisible();
@@ -646,6 +659,11 @@ for (const status of ['PAUSED', 'TERMINATED'] as const) {
     await expectCaseListSession(page);
     await matchCaseThroughBrowser(page, source.caseId, lawyer);
     await page.reload();
+    await openCaseWorkspaceCommand(
+      page,
+      'complaint',
+      '[data-test="complaint-submit-form"]',
+    );
     await expect(
       page.locator('[data-test="complaint-submit-form"]'),
     ).toBeVisible();
@@ -838,6 +856,11 @@ test('an operator matches a real notary case and the result survives refresh', a
   );
   await configureBrowser(page);
   await page.goto(`/cases/${caseId}`);
+  await openCaseWorkspaceCommand(
+    page,
+    'match',
+    '[data-test="case-match-form"]',
+  );
   await expect(page.locator('[data-test="case-match-form"]')).toBeVisible();
   const form = page.locator('[data-test="case-match-form"]');
   await form.getByLabel('主体类型').selectOption('ORGANIZATION');
@@ -859,13 +882,18 @@ test('an operator matches a real notary case and the result survives refresh', a
   await expect(page.getByRole('status')).toContainText('待写诉状');
   await expect(page.locator('[data-test="case-match-form"]')).toHaveCount(0);
   await page.reload();
+  await revealCaseWorkspaceSection(page, 'case-info');
   await expect(
-    page.getByRole('heading', { name: '当事人与承办律师' }),
+    page.getByRole('heading', { name: '当前承办律师', exact: true }),
   ).toBeVisible();
   await expect(page.getByText(/杭州真实匹配测试公司/u)).toBeVisible();
   await expect(page.getByText(/张律师/u)).toBeVisible();
-  await expect(page.getByText(/实际匹配日期：2026-09-28/u)).toBeVisible();
-  await expect(page.getByText(/系统登记时间/u)).toBeVisible();
+  await expect(
+    page
+      .locator('[data-section="case-info"] .case-workspace-field')
+      .filter({ has: page.getByText('实际匹配日期', { exact: true }) }),
+  ).toContainText('2026-09-28');
+  await expect(page.getByText('匹配记录时间', { exact: true })).toBeVisible();
   const detail = await request.get(`/api/v1/cases/${caseId}`, {
     headers: authorizationA,
   });
@@ -1065,9 +1093,14 @@ test('same-department reader can download but cannot write; another department g
   await configureBrowser(page, authorizationSelf);
   await page.goto(`/cases/${caseId}`);
   await expect(page.locator('[data-test="case-read-only"]')).toBeVisible();
-  await expect(page.getByRole('button', { name: '下载' })).toBeVisible();
+  await page.getByRole('tab', { name: '文件管理', exact: true }).click();
+  const certificateDownload = page
+    .locator('[data-test="workspace-file"]')
+    .filter({ hasText: certificateFile.contentVersionId })
+    .getByRole('button', { name: /^下载 /u });
+  await expect(certificateDownload).toBeVisible();
   const download = page.waitForEvent('download');
-  await page.getByRole('button', { name: '下载' }).click();
+  await certificateDownload.click();
   expect(await readFile(await (await download).path())).toEqual(pdfBytes);
   const denied = await matchCase(
     request,
@@ -1320,6 +1353,11 @@ test('an authenticated operator matches, uploads and submits complaint materials
     .filter({ has: page.locator(`a[href="/cases/${caseId}"]`) });
   await expect(actionableRow).toContainText('办理');
   await actionableRow.getByRole('link').click();
+  await openCaseWorkspaceCommand(
+    page,
+    'complaint',
+    '[data-test="complaint-submit-form"]',
+  );
   const form = page.locator('[data-test="complaint-submit-form"]');
   await form
     .locator('input[type="file"]')
@@ -1437,12 +1475,15 @@ test('an authenticated operator matches, uploads and submits complaint materials
   await expect(complaintAmount).toBeVisible();
   await complaintAmount.fill('123.45');
   await form.locator('[data-test="submit-complaint"]').click();
-  await expect(page.locator('.page-head')).toContainText('诉状待确认');
-  await expect(page.locator('[data-test="complaint-submit-form"]')).toHaveCount(
-    0,
+  await expect(page.locator('.case-workspace .pill')).toContainText(
+    '诉状待确认',
   );
-  await expect(page.locator('[data-test="complaint-read-only"]')).toContainText(
-    '¥ 123.45',
+  await expect(
+    page.locator('[data-test="complaint-submit-form"]'),
+  ).not.toBeVisible();
+  await revealCaseWorkspaceSection(page, 'first-instance');
+  await expect(page.locator('[data-section="first-instance"]')).toContainText(
+    '123.45 元',
   );
   const submitted = await request.get(`/api/v1/cases/${caseId}`, {
     headers: authorizationA,
@@ -1490,15 +1531,17 @@ test('an authenticated operator matches, uploads and submits complaint materials
   });
 
   await page.reload();
-  await expect(page.getByText('诉状待确认', { exact: true })).toBeVisible();
-  await expect(page.locator('[data-test="complaint-read-only"]')).toContainText(
+  await expect(page.locator('.case-workspace-header .pill')).toBeVisible();
+  await revealCaseWorkspaceSection(page, 'first-instance');
+  await expect(page.locator('[data-section="first-instance"]')).toContainText(
     '真实起诉状验收.pdf',
   );
   const operatorDownload = page.waitForEvent('download');
+  await page.getByRole('tab', { name: '文件管理', exact: true }).click();
   await page
-    .locator('[data-test="complaint-read-only"]')
-    .getByRole('button', { name: '下载' })
-    .first()
+    .locator('[data-test="workspace-file"]')
+    .filter({ hasText: '真实起诉状验收.pdf' })
+    .getByRole('button', { name: /^下载 /u })
     .click();
   expect(await readFile(await (await operatorDownload).path())).toEqual(
     pdfBytes,
@@ -1508,8 +1551,9 @@ test('an authenticated operator matches, uploads and submits complaint materials
   await expect(page).toHaveURL(/\/login$/u);
   await loginOperator(page);
   await page.goto(`/cases/${caseId}`);
-  await expect(page.getByText('诉状待确认', { exact: true })).toBeVisible();
-  await expect(page.locator('[data-test="complaint-read-only"]')).toContainText(
+  await expect(page.locator('.case-workspace-header .pill')).toBeVisible();
+  await revealCaseWorkspaceSection(page, 'first-instance');
+  await expect(page.locator('[data-section="first-instance"]')).toContainText(
     '真实授权材料验收.docx',
   );
 
@@ -1544,9 +1588,12 @@ test('an authenticated operator matches, uploads and submits complaint materials
     ).toHaveCount(0);
     const sameDepartmentDownload = readOnlyPage.waitForEvent('download');
     await readOnlyPage
-      .locator('[data-test="complaint-read-only"]')
-      .getByRole('button', { name: '下载' })
-      .first()
+      .getByRole('tab', { name: '文件管理', exact: true })
+      .click();
+    await readOnlyPage
+      .locator('[data-test="workspace-file"]')
+      .filter({ hasText: '真实起诉状验收.pdf' })
+      .getByRole('button', { name: /^下载 /u })
       .click();
     expect(await readFile(await (await sameDepartmentDownload).path())).toEqual(
       pdfBytes,

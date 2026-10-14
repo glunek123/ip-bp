@@ -285,6 +285,49 @@ test('internal case workspace keeps seven closed sections, real file bytes and p
       path: testInfo.outputPath(`workspace-${label}-closed.png`),
       fullPage: true,
     });
+    await revealCaseWorkspaceSection(page, 'case-info');
+    await expect(
+      page.locator('[data-section="case-info"] dl').first(),
+    ).toBeVisible();
+    expect(
+      await page.evaluate(() => document.body.scrollWidth),
+    ).toBeLessThanOrEqual(width + 1);
+    await page.screenshot({
+      path: testInfo.outputPath(`workspace-${label}-case-fields.png`),
+      fullPage: true,
+    });
+    await page
+      .locator('[data-section="case-info"] .case-workspace-section__toggle')
+      .click();
+    await revealCaseWorkspaceSection(page, 'execution');
+    await page.screenshot({
+      path: testInfo.outputPath(`workspace-${label}-execution-fields.png`),
+      fullPage: true,
+    });
+    expect(
+      await page.evaluate(() => document.body.scrollWidth),
+    ).toBeLessThanOrEqual(width + 1);
+    await page
+      .locator('[data-section="execution"] .case-workspace-section__toggle')
+      .click();
+    await revealCaseWorkspaceSection(page, 'judgment');
+    const currentJudgment = page
+      .locator('[data-section="judgment"] .case-workspace-group')
+      .filter({
+        has: page.getByRole('heading', {
+          name: '判决登记（当前）',
+          exact: true,
+        }),
+      });
+    await expect(currentJudgment).toContainText('待确认');
+    await expect(currentJudgment).toContainText('0.00 元');
+    await page.screenshot({
+      path: testInfo.outputPath(`workspace-${label}-judgment-fields.png`),
+      fullPage: true,
+    });
+    await page
+      .locator('[data-section="judgment"] .case-workspace-section__toggle')
+      .click();
     await page.getByRole('tab', { name: '文件管理', exact: true }).click();
     await expect(row).toHaveCount(1);
     await page.screenshot({

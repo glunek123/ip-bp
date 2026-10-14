@@ -59,17 +59,24 @@ function edit(key: SectionKey): void {
       >
         {{ section.message }}
       </p>
-      <div
+      <component
+        :is="group.historical ? 'details' : 'div'"
         v-for="group in section.groups"
         :key="group.id"
         class="case-workspace-group"
+        :class="{ 'case-workspace-group--history': group.historical }"
       >
-        <h3 class="case-workspace-group__title">{{ group.title }}</h3>
+        <component
+          :is="group.historical ? 'summary' : 'h3'"
+          class="case-workspace-group__title"
+          >{{ group.title }}</component
+        >
         <dl class="case-workspace-fields">
           <div
             v-for="(field, index) in group.fields"
             :key="`${field.label}:${index}`"
             class="case-workspace-field"
+            :class="{ 'case-workspace-field--wide': field.wide }"
           >
             <dt class="case-workspace-field__label">{{ field.label }}</dt>
             <dd class="case-workspace-field__value">
@@ -80,7 +87,7 @@ function edit(key: SectionKey): void {
             </dd>
           </div>
         </dl>
-      </div>
+      </component>
       <ol v-if="section.key === 'timeline'" class="case-workspace-timeline">
         <li
           v-for="event in events"
@@ -105,6 +112,7 @@ function edit(key: SectionKey): void {
               v-for="(field, index) in event.fields"
               :key="`${field.label}:${index}`"
               class="case-workspace-field"
+              :class="{ 'case-workspace-field--wide': field.wide }"
             >
               <dt class="case-workspace-field__label">{{ field.label }}</dt>
               <dd class="case-workspace-field__value">
