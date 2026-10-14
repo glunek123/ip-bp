@@ -221,6 +221,7 @@ export class CaseReadService {
           responsibleMembership: { select: { teamId: true } },
           sourceLead: { select: { id: true, businessNo: true } },
           sourceNotaryMatter: { select: { id: true, businessNo: true } },
+          externalEntry: { select: { id: true, entryKind: true, initialStage: true, stageReachedOn: true, source: true, reason: true, recordedAt: true, recordedByUserId: true, known: true } },
         },
       }),
       this.database.case.count({ where }),
@@ -261,6 +262,9 @@ export class CaseReadService {
                 owner: item.owner,
                 sourceLead: item.sourceLead,
                 sourceNotaryMatter: item.sourceNotaryMatter,
+                origin: item.externalEntry === null
+                  ? { kind: 'NOTARY' as const }
+                  : { kind: 'EXTERNAL_ENTRY' as const, entryId: item.externalEntry.id, entryKind: item.externalEntry.entryKind, initialStage: item.externalEntry.initialStage, stageReachedOn: item.externalEntry.stageReachedOn.toISOString().slice(0, 10), source: item.externalEntry.source, reason: item.externalEntry.reason, recordedAt: item.externalEntry.recordedAt.toISOString(), recordedByUserId: item.externalEntry.recordedByUserId, known: item.externalEntry.known },
               }),
           canMatch:
             principal === 'INTERNAL' &&
@@ -1196,6 +1200,7 @@ export class CaseReadService {
         customer: { select: { id: true, name: true } },
         rightsHolder: { select: { id: true, name: true } },
         sourceLead: { select: { id: true, businessNo: true } },
+        externalEntry: { select: { id: true, entryKind: true, initialStage: true, stageReachedOn: true, source: true, reason: true, recordedAt: true, recordedByUserId: true, known: true } },
         sourceNotaryMatter: {
           select: {
             id: true,
@@ -1283,11 +1288,13 @@ export class CaseReadService {
         code: 'RESOURCE_NOT_FOUND',
         message: '案件不存在或不可访问',
       });
-    const frozen = await this.materials.listFrozenCertificateFiles(
-      actor,
-      record.sourceNotaryMatter.id,
-      record.certificate.id,
-    );
+    const externalEntry = record.externalEntry;
+    const normalSource = record.sourceLead !== null && record.sourceNotaryMatter !== null && record.certificate !== null && externalEntry === null;
+    const externalSource = record.sourceLead === null && record.sourceNotaryMatter === null && record.certificate === null && externalEntry !== null;
+    if (!normalSource && !externalSource) throw new NotFoundException({ code: 'CASE_NOT_FOUND', message: 'Invalid case source' });
+    const frozen = normalSource && record.sourceNotaryMatter !== null && record.certificate !== null
+      ? await this.materials.listFrozenCertificateFiles(actor, record.sourceNotaryMatter.id, record.certificate.id)
+      : [];
     const complaintFiles = record.complaintSubmittedAt
       ? await this.materials.listFrozenCaseComplaintFiles(actor, id)
       : [];
@@ -1664,7 +1671,7 @@ export class CaseReadService {
       (submission) =>
         submission.id === record.executionConfirmation?.submissionId,
     );
-    const sample = record.sourceNotaryMatter.evidence;
+    const sample = record.sourceNotaryMatter?.evidence ?? null;
     const arrangement = (
       value: (typeof record.hearingArrangements)[number],
     ) => ({
@@ -2536,15 +2543,16 @@ export class CaseReadService {
       customer: record.customer,
       rightsHolder: record.rightsHolder,
       owner: record.owner,
-      sourceLead: {
+      origin: externalEntry === null ? { kind: 'NOTARY' as const } : { kind: 'EXTERNAL_ENTRY' as const, entryId: externalEntry.id, entryKind: externalEntry.entryKind, initialStage: externalEntry.initialStage, stageReachedOn: externalEntry.stageReachedOn.toISOString().slice(0, 10), source: externalEntry.source, reason: externalEntry.reason, recordedAt: externalEntry.recordedAt.toISOString(), recordedByUserId: externalEntry.recordedByUserId, known: externalEntry.known },
+      sourceLead: record.sourceLead === null ? null : {
         id: record.sourceLead.id,
         businessNo: record.sourceLead.businessNo,
       },
-      sourceNotaryMatter: {
+      sourceNotaryMatter: record.sourceNotaryMatter === null ? null : {
         id: record.sourceNotaryMatter.id,
         businessNo: record.sourceNotaryMatter.businessNo,
       },
-      certificate: {
+      certificate: record.certificate === null ? null : {
         certificateNo: record.certificate.certificateNo,
         certificateDate: record.certificate.certificateDate
           .toISOString()
@@ -2558,7 +2566,7 @@ export class CaseReadService {
           .filter((ref) => ref.purpose === 'NOTARY_DISCLOSURE')
           .map(file),
       },
-      fees: [
+      fees: record.certificate === null || record.sourceNotaryMatter === null ? [] : [
         ...record.certificate.fees.map((fee) => ({
           category: fee.category,
           state: fee.state,
@@ -2567,7 +2575,7 @@ export class CaseReadService {
               ? null
               : new Prisma.Decimal(fee.amount.toString()).toFixed(2),
           sourceType: 'NOTARY_CERTIFICATE_FEE' as const,
-          sourceId: record.certificate.id,
+          sourceId: record.certificate!.id,
         })),
         {
           category: 'SAMPLE' as const,

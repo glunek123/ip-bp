@@ -142,6 +142,7 @@ describe('internal complaint mailing route identity', () => {
       {} as never,
       {} as never,
       {} as never,
+      {} as never,
       mailing as never,
       {} as CaseFilingService,
       {} as CaseAcceptanceService,

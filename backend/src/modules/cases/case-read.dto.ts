@@ -588,8 +588,11 @@ class CaseListItemDto {
   displaySummary!: CaseDisplaySummaryDto;
   @ApiProperty({ type: CaseOwnerDto }) owner!: CaseOwnerDto;
   @ApiProperty({ format: 'date-time' }) createdAt!: string;
-  @ApiProperty({ type: CaseSourceDto }) sourceLead!: CaseSourceDto;
-  @ApiProperty({ type: CaseSourceDto }) sourceNotaryMatter!: CaseSourceDto;
+  @ApiProperty({ type: CaseSourceDto, nullable: true }) sourceLead!: CaseSourceDto | null;
+  @ApiProperty({ type: CaseSourceDto, nullable: true }) sourceNotaryMatter!: CaseSourceDto | null;
+  @ApiProperty() origin!: { kind: 'NOTARY' } | {
+    kind: 'EXTERNAL_ENTRY'; entryId: string; entryKind: 'EXTERNAL_TRANSFER' | 'HISTORICAL_BACKFILL'; initialStage: string; stageReachedOn: string; source: string; reason: string; recordedAt: string; recordedByUserId: string; known: unknown;
+  };
 }
 export class CaseListResponseDto {
   @ApiProperty({ type: [CaseListItemDto] }) items!: CaseListItemDto[];
@@ -821,8 +824,8 @@ export class CaseDetailResponseDto extends OmitType(CaseListItemDto, [
   @ApiProperty({ type: CaseNamedDto }) department!: CaseNamedDto;
   @ApiProperty({ type: CaseNamedDto }) customer!: CaseNamedDto;
   @ApiProperty({ type: CaseNamedDto }) rightsHolder!: CaseNamedDto;
-  @ApiProperty({ type: CaseCertificateSummaryDto })
-  certificate!: CaseCertificateSummaryDto;
+  @ApiProperty({ type: CaseCertificateSummaryDto, nullable: true })
+  certificate!: CaseCertificateSummaryDto | null;
   @ApiProperty({ type: [CaseFeeDto] }) fees!: CaseFeeDto[];
   @ApiProperty({ type: [CaseDefendantDto] }) defendants!: CaseDefendantDto[];
   @ApiProperty({ type: [CaseLawyerDto] }) lawyers!: CaseLawyerDto[];

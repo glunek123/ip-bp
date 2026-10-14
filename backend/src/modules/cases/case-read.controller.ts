@@ -52,6 +52,8 @@ import {
   CasePageQueryDto,
 } from './case-read.dto';
 import { CaseReadService } from './case-read.service';
+import { CaseExternalEntryService } from './case-external-entry.service';
+import { CreateCaseExternalEntryDto, CreateCaseExternalEntryResultDto } from './case-external-entry.dto';
 import { CaseMatchService } from './case-match.service';
 import { MatchCaseDto, MatchCaseResponseDto } from './case-match.dto';
 import { CaseComplaintService } from './case-complaint.service';
@@ -136,6 +138,7 @@ import {
 export class CaseReadController {
   constructor(
     private readonly cases: CaseReadService,
+    private readonly externalEntries: CaseExternalEntryService,
     private readonly matching: CaseMatchService,
     private readonly complaint: CaseComplaintService,
     private readonly confirmation: CaseComplaintConfirmationService,
@@ -156,6 +159,18 @@ export class CaseReadController {
     private readonly archive: CaseArchiveService,
     private readonly courts: FilingCourtService,
   ) {}
+
+  @Get('external-entry-options')
+  @ApiOkResponse()
+  externalEntryOptions(@CurrentActor() actor: ActorContext) {
+    return this.externalEntries.options(actor);
+  }
+
+  @Post('external-entries')
+  @ApiCreatedResponse({ type: CreateCaseExternalEntryResultDto })
+  createExternalEntry(@CurrentActor() actor: ActorContext, @Body() body: CreateCaseExternalEntryDto) {
+    return this.externalEntries.create(actor, body);
+  }
 
   @Get()
   @ApiOkResponse({ type: CaseListResponseDto })

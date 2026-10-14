@@ -1556,7 +1556,8 @@ export class MaterialService {
           },
           select: { id: true, certificateId: true },
         });
-        if (sourceCase === null) throw this.notFound();
+        if (sourceCase === null || sourceCase.certificateId === null)
+          throw this.notFound();
         const frozen = await this.listFrozenCertificateFiles(
           actor,
           material.ownerId,

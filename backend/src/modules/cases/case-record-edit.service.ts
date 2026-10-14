@@ -489,6 +489,7 @@ export class CaseRecordEditService {
               throw this.validation('二审受理信息没有变化');
             if (value.acceptedAt !== null) {
               if (
+                choice.judgment !== null &&
                 value.acceptedAt < isoDate(choice.judgment.judgmentReceivedAt)
               )
                 throw this.validation('二审受理日期不得早于原判决收到日');

@@ -11,6 +11,8 @@ function fixture(): CaseListDisplayRecord {
     rightsHolderId: 'holder',
     sourceLeadId: 'lead',
     sourceNotaryMatterId: 'matter',
+    certificateId: 'certificate',
+    externalEntry: null,
     customer: { id: 'customer', departmentId: 'department', name: '客户' },
     rightsHolder: {
       id: 'holder',
@@ -147,10 +149,10 @@ describe('authorized case list display', () => {
   });
   it('fails closed on a cross-department or guessed lead source', () => {
     const record = fixture();
-    record.sourceLead.departmentId = 'other';
+    record.sourceLead!.departmentId = 'other';
     expect(() => caseListDisplay(record)).toThrow();
-    record.sourceLead.departmentId = 'department';
-    record.sourceNotaryMatter.sourceLeadId = 'same-shop-other-lead';
+    record.sourceLead!.departmentId = 'department';
+    record.sourceNotaryMatter!.sourceLeadId = 'same-shop-other-lead';
     expect(() => caseListDisplay(record)).toThrow();
   });
 });

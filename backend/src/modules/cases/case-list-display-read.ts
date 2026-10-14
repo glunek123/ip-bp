@@ -8,6 +8,10 @@ export const caseListDisplaySelect = {
   rightsHolderId: true,
   sourceLeadId: true,
   sourceNotaryMatterId: true,
+  certificateId: true,
+  externalEntry: {
+    select: { id: true, caseId: true, departmentId: true, known: true },
+  },
   customer: { select: { id: true, departmentId: true, name: true } },
   rightsHolder: { select: { id: true, departmentId: true, name: true } },
   sourceLead: {
@@ -116,24 +120,40 @@ export function caseListDisplay(record: CaseListDisplayRecord) {
     sourceLead: lead,
     sourceNotaryMatter: matter,
   } = record;
+  const external = record.externalEntry;
+  const isExternal =
+    record.sourceLeadId === null &&
+    record.sourceNotaryMatterId === null &&
+    record.certificateId === null &&
+    external !== null &&
+    external.caseId === record.id &&
+    external.departmentId === record.departmentId &&
+    lead === null &&
+    matter === null;
+  const isNormal =
+    external === null &&
+    record.sourceLeadId !== null &&
+    record.sourceNotaryMatterId !== null &&
+    record.certificateId !== null &&
+    lead !== null &&
+    matter !== null &&
+    lead.departmentId === record.departmentId &&
+    matter.departmentId === record.departmentId &&
+    lead.id === record.sourceLeadId &&
+    matter.id === record.sourceNotaryMatterId &&
+    matter.sourceLeadId === lead.id &&
+    lead.customerId === record.customerId &&
+    matter.customerId === record.customerId &&
+    lead.rightsHolderId === record.rightsHolderId &&
+    matter.rightsHolderId === record.rightsHolderId;
   if (
     !customer ||
     !rightsHolder ||
-    !lead ||
-    !matter ||
     customer.id !== record.customerId ||
     rightsHolder.id !== record.rightsHolderId ||
     customer.departmentId !== record.departmentId ||
     rightsHolder.departmentId !== record.departmentId ||
-    lead.departmentId !== record.departmentId ||
-    matter.departmentId !== record.departmentId ||
-    lead.id !== record.sourceLeadId ||
-    matter.id !== record.sourceNotaryMatterId ||
-    matter.sourceLeadId !== lead.id ||
-    lead.customerId !== record.customerId ||
-    matter.customerId !== record.customerId ||
-    lead.rightsHolderId !== record.rightsHolderId ||
-    matter.rightsHolderId !== record.rightsHolderId
+    (!isNormal && !isExternal)
   )
     throw new InternalServerErrorException({
       code: 'INVALID_CASE_DISPLAY_SOURCE',
@@ -185,11 +205,13 @@ export function caseListDisplay(record: CaseListDisplayRecord) {
   return {
     customerName: customer.name,
     rightsHolderName: rightsHolder.name,
-    source: {
-      platform: lead.platform,
-      shopName: lead.shopName,
-      shopExternalId: lead.shopExternalId,
-    },
+    source: isNormal && lead !== null
+      ? { platform: lead.platform, shopName: lead.shopName, shopExternalId: lead.shopExternalId }
+      : {
+          platform: typeof external?.known === 'object' && external.known !== null && !Array.isArray(external.known) && typeof external.known.platform === 'string' ? external.known.platform : null,
+          shopName: typeof external?.known === 'object' && external.known !== null && !Array.isArray(external.known) && typeof external.known.shopName === 'string' ? external.known.shopName : null,
+          shopExternalId: typeof external?.known === 'object' && external.known !== null && !Array.isArray(external.known) && typeof external.known.shopExternalId === 'string' ? external.known.shopExternalId : null,
+        },
     defendants: record.defendants.map(({ id, name }) => ({ id, name })),
     lawyers: record.lawyers.map(({ lawyer }) => ({
       id: lawyer.id,
