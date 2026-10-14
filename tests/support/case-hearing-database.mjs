@@ -710,13 +710,12 @@ export async function verifyCaseHearingDetailSnapshot() {
   const names = (await readdir(migrations))
     .filter(
       (name) =>
-        /^\d{14}_/u.test(name) &&
-        name <= '20261012010000_fix_lawyer_execution_upload_stage',
+        /^\d{14}_/u.test(name) && name <= '20261014120100_case_record_edits',
     )
     .sort();
   if (
-    names.length !== 134 ||
-    names.at(-1) !== '20261012010000_fix_lawyer_execution_upload_stage'
+    names.length !== 148 ||
+    names.at(-1) !== '20261014120100_case_record_edits'
   )
     throw new Error('Unexpected hearing migration chain');
   const admin = new Client({ connectionString: databaseUrl });
