@@ -43,6 +43,8 @@ describe('PrismaAccessControlStore', () => {
                   grants: [
                     { action: 'CASE_CLOSURE_RECORD', scope },
                     { action: 'CASE_CLOSURE_CORRECT', scope },
+                    { action: 'CASE_ARCHIVE', scope },
+                    { action: 'CASE_ARCHIVE_CORRECT', scope },
                   ],
                 },
               },
@@ -56,6 +58,8 @@ describe('PrismaAccessControlStore', () => {
         grants: [
           { action: 'case.closure.record', scope: scope.toLowerCase() },
           { action: 'case.closure.correct', scope: scope.toLowerCase() },
+          { action: 'case.archive', scope: scope.toLowerCase() },
+          { action: 'case.archive.correct', scope: scope.toLowerCase() },
         ],
       });
     },

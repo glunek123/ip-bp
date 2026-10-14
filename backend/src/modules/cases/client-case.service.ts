@@ -71,6 +71,7 @@ export class ClientCaseService {
                 'WAITING_EXECUTION_FILING' as const,
                 'EXECUTING' as const,
                 'WAITING_ARCHIVE' as const,
+                'ARCHIVED' as const,
               ],
             },
     };
@@ -109,7 +110,8 @@ export class ClientCaseService {
           | 'WAITING_EXECUTION_STAMP'
           | 'WAITING_EXECUTION_FILING'
           | 'EXECUTING'
-          | 'WAITING_ARCHIVE',
+          | 'WAITING_ARCHIVE'
+          | 'ARCHIVED',
         version: item.version,
         canMailComplaint: item.stage === 'WAITING_COMPLAINT_STAMP',
         canMailExecution:
@@ -226,7 +228,8 @@ export class ClientCaseService {
         | 'WAITING_EXECUTION_STAMP'
         | 'WAITING_EXECUTION_FILING'
         | 'EXECUTING'
-        | 'WAITING_ARCHIVE',
+        | 'WAITING_ARCHIVE'
+        | 'ARCHIVED',
       version: record.version,
       canMailComplaint: record.stage === 'WAITING_COMPLAINT_STAMP',
       canMailExecution:

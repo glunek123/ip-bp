@@ -378,8 +378,10 @@ describe('CaseExecutionFinishService', () => {
     expect(f.tx.auditEvent.create).not.toHaveBeenCalled();
   });
 
-  it('returns an authorized matching receipt without another write', async () => {
+  it('returns the original WAITING_ARCHIVE receipt after archive without another write', async () => {
     const f = fixture();
+    f.record.stage = 'ARCHIVED';
+    f.record.version = 99;
     const fingerprint = createHash('sha256')
       .update(
         JSON.stringify({

@@ -101,7 +101,8 @@ export class CaseReadService {
       | 'WAITING_EXECUTION_STAMP'
       | 'WAITING_EXECUTION_FILING'
       | 'EXECUTING'
-      | 'WAITING_ARCHIVE',
+      | 'WAITING_ARCHIVE'
+      | 'ARCHIVED',
     stageGroup?: 'COMPLAINT_PREPARATION' | 'EXECUTION_PREPARATION',
   ) {
     if (stage !== undefined && stageGroup !== undefined)
@@ -173,6 +174,12 @@ export class CaseReadService {
           executionMailing: { select: { id: true } },
           executionFiling: { select: { id: true, toVersion: true } },
           executionFinish: { select: { id: true, toVersion: true } },
+          archive: {
+            select: {
+              id: true,
+              currentVersion: { select: { id: true, toVersion: true } },
+            },
+          },
           closure: {
             select: {
               id: true,
@@ -580,6 +587,29 @@ export class CaseReadService {
                     : {}),
                 },
               ))),
+          canArchive:
+            item.stage === 'WAITING_ARCHIVE' &&
+            item.archive == null &&
+            item.closure?.currentVersion?.toVersion === item.version &&
+            (principal === 'LAWYER' ||
+              (await this.access.canAuthorizeCase(actor, 'case.archive', {
+                departmentId: actor.departmentId,
+                responsibleUserId: item.responsibleUserId,
+                ...(item.responsibleMembership.teamId
+                  ? { teamId: item.responsibleMembership.teamId }
+                  : {}),
+              }))),
+          canCorrectArchive:
+            principal === 'INTERNAL' &&
+            item.stage === 'ARCHIVED' &&
+            item.archive?.currentVersion?.toVersion === item.version &&
+            (await this.access.canAuthorizeCase(actor, 'case.archive.correct', {
+              departmentId: actor.departmentId,
+              responsibleUserId: item.responsibleUserId,
+              ...(item.responsibleMembership.teamId
+                ? { teamId: item.responsibleMembership.teamId }
+                : {}),
+            })),
           canRecordClosure:
             item.stage === 'WAITING_ARCHIVE' &&
             item.executionFinish != null &&
@@ -687,6 +717,8 @@ export class CaseReadService {
         WAITING_EXECUTION_FILING:
           grouped.find((row) => row.stage === 'WAITING_EXECUTION_FILING')
             ?._count._all ?? 0,
+        ARCHIVED:
+          grouped.find((row) => row.stage === 'ARCHIVED')?._count._all ?? 0,
         WAITING_ARCHIVE:
           grouped.find((row) => row.stage === 'WAITING_ARCHIVE')?._count._all ??
           0,
@@ -822,6 +854,7 @@ export class CaseReadService {
           },
         },
         closure: { include: { versions: { orderBy: { fromVersion: 'asc' } } } },
+        archive: { include: { versions: { orderBy: { fromVersion: 'asc' } } } },
         executionFiling: {
           select: {
             toVersion: true,
@@ -1241,16 +1274,89 @@ export class CaseReadService {
     const currentClosure = closureHistory.find(
       (version) => version.id === closureRecord?.currentVersionId,
     );
+    const archiveRecord = record.archive ?? null;
+    const archiveHistory =
+      archiveRecord?.versions.map((v) => ({
+        id: v.id,
+        kind: v.kind,
+        priorVersionId: v.priorVersionId,
+        closureVersionId: v.closureVersionId,
+        fromVersion: v.fromVersion,
+        toVersion: v.toVersion,
+        archiveAt: v.archiveAt.toISOString().slice(0, 10),
+        archiveType: v.archiveType,
+        archiveReason: v.archiveReason,
+        correctionReason: v.correctionReason,
+        recordedAt: v.recordedAt.toISOString(),
+        recordedByUserId: v.recordedByUserId,
+      })) ?? [];
+    const currentArchive = archiveHistory.find(
+      (v) => v.id === archiveRecord?.currentVersionId,
+    );
+    const invalidSource = () =>
+      new NotFoundException({
+        code: 'CASE_NOT_FOUND',
+        message: '案件归档来源不完整',
+      });
     if (
       closureRecord !== null &&
       (currentClosure === undefined ||
         closureHistory.at(-1)?.id !== currentClosure.id ||
-        currentClosure.toVersion !== record.version)
+        (archiveRecord === null && currentClosure.toVersion !== record.version))
     )
-      throw new NotFoundException({
-        code: 'CASE_NOT_FOUND',
-        message: '案件结案来源不完整',
-      });
+      throw invalidSource();
+    if (archiveRecord !== null) {
+      if (
+        record.stage !== 'ARCHIVED' ||
+        closureRecord === null ||
+        currentClosure === undefined ||
+        record.executionFinish == null ||
+        archiveRecord.closureId !== closureRecord.id ||
+        archiveRecord.closureVersionId !== currentClosure.id ||
+        currentArchive === undefined ||
+        archiveHistory.at(-1)?.id !== currentArchive.id
+      )
+        throw invalidSource();
+      let terminal = record.executionFinish.toVersion;
+      let prior: string | null = null;
+      for (const v of closureHistory) {
+        if (
+          v.finishId !== record.executionFinish.id ||
+          v.fromVersion !== terminal ||
+          v.toVersion !== terminal + 1 ||
+          v.priorVersionId !== prior ||
+          v.kind !== (prior === null ? 'REGISTER' : 'CORRECT')
+        )
+          throw invalidSource();
+        terminal = v.toVersion;
+        prior = v.id;
+      }
+      if (prior !== currentClosure.id) throw invalidSource();
+      prior = null;
+      for (const v of archiveHistory) {
+        if (
+          v.closureVersionId !== currentClosure.id ||
+          v.fromVersion !== terminal ||
+          v.toVersion !== terminal + 1 ||
+          v.priorVersionId !== prior ||
+          v.kind !== (prior === null ? 'ARCHIVE' : 'CORRECT')
+        )
+          throw invalidSource();
+        terminal = v.toVersion;
+        prior = v.id;
+      }
+      if (terminal !== record.version) throw invalidSource();
+    } else if (record.stage === 'ARCHIVED') throw invalidSource();
+    const archive =
+      archiveRecord === null
+        ? null
+        : {
+            id: archiveRecord.id,
+            closureId: archiveRecord.closureId,
+            closureVersionId: archiveRecord.closureVersionId,
+            current: currentArchive!,
+            history: archiveHistory,
+          };
     const closure =
       closureRecord === null
         ? null
@@ -1517,6 +1623,30 @@ export class CaseReadService {
               files: executionMailingFiles,
             },
       closure,
+      archive,
+      canArchive:
+        record.stage === 'WAITING_ARCHIVE' &&
+        record.archive == null &&
+        closure?.current.toVersion === record.version &&
+        (principal === 'LAWYER' ||
+          (await this.access.canAuthorizeCase(actor, 'case.archive', {
+            departmentId: actor.departmentId,
+            responsibleUserId: record.responsibleUserId,
+            ...(record.responsibleMembership.teamId
+              ? { teamId: record.responsibleMembership.teamId }
+              : {}),
+          }))),
+      canCorrectArchive:
+        principal === 'INTERNAL' &&
+        record.stage === 'ARCHIVED' &&
+        archive?.current.toVersion === record.version &&
+        (await this.access.canAuthorizeCase(actor, 'case.archive.correct', {
+          departmentId: actor.departmentId,
+          responsibleUserId: record.responsibleUserId,
+          ...(record.responsibleMembership.teamId
+            ? { teamId: record.responsibleMembership.teamId }
+            : {}),
+        })),
       canRecordClosure:
         record.stage === 'WAITING_ARCHIVE' &&
         closure === null &&
@@ -2233,6 +2363,20 @@ export class CaseReadService {
       ),
     };
     if (principal === 'LAWYER') {
+      const archiveVersion = (
+        v: NonNullable<typeof detail.archive>['current'],
+      ) => ({
+        id: v.id,
+        kind: v.kind,
+        priorVersionId: v.priorVersionId,
+        closureVersionId: v.closureVersionId,
+        fromVersion: v.fromVersion,
+        toVersion: v.toVersion,
+        archiveAt: v.archiveAt,
+        archiveType: v.archiveType,
+        archiveReason: v.archiveReason,
+        recordedAt: v.recordedAt,
+      });
       const closureVersion = (
         version: NonNullable<typeof detail.closure>['current'],
       ) => ({
@@ -2281,6 +2425,18 @@ export class CaseReadService {
         canFinishExecution: detail.canFinishExecution,
         canRecordClosure: detail.canRecordClosure,
         canCorrectClosure: false,
+        canArchive: detail.canArchive,
+        canCorrectArchive: false,
+        archive:
+          detail.archive === null
+            ? null
+            : {
+                id: detail.archive.id,
+                closureId: detail.archive.closureId,
+                closureVersionId: detail.archive.closureVersionId,
+                current: archiveVersion(detail.archive.current),
+                history: detail.archive.history.map(archiveVersion),
+              },
         closure:
           detail.closure === null
             ? null

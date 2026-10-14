@@ -1,3 +1,4 @@
+import { caseArchiveTypes } from './case-archive.dto';
 import { ApiProperty, ApiPropertyOptional, OmitType } from '@nestjs/swagger';
 import { Type } from 'class-transformer';
 import { IsIn, IsInt, IsOptional, Max, Min } from 'class-validator';
@@ -312,6 +313,7 @@ export class CasePageQueryDto {
       'WAITING_EXECUTION_FILING',
       'EXECUTING',
       'WAITING_ARCHIVE',
+      'ARCHIVED',
     ],
   })
   @IsOptional()
@@ -331,6 +333,7 @@ export class CasePageQueryDto {
     'WAITING_EXECUTION_FILING',
     'EXECUTING',
     'WAITING_ARCHIVE',
+    'ARCHIVED',
   ])
   stage?:
     | 'PENDING_MATCH'
@@ -347,7 +350,8 @@ export class CasePageQueryDto {
     | 'WAITING_EXECUTION_STAMP'
     | 'WAITING_EXECUTION_FILING'
     | 'EXECUTING'
-    | 'WAITING_ARCHIVE';
+    | 'WAITING_ARCHIVE'
+    | 'ARCHIVED';
   @ApiPropertyOptional({
     enum: ['COMPLAINT_PREPARATION', 'EXECUTION_PREPARATION'],
   })
@@ -468,6 +472,31 @@ class CaseClosureVersionDto {
   @ApiProperty({ type: [CaseCertificateFileDto] })
   files!: CaseCertificateFileDto[];
 }
+class CaseArchiveVersionDto {
+  @ApiProperty({ format: 'uuid' }) id!: string;
+  @ApiProperty({ enum: ['ARCHIVE', 'CORRECT'] }) kind!: 'ARCHIVE' | 'CORRECT';
+  @ApiProperty({ type: String, nullable: true, format: 'uuid' })
+  priorVersionId!: string | null;
+  @ApiProperty({ format: 'uuid' }) closureVersionId!: string;
+  @ApiProperty() fromVersion!: number;
+  @ApiProperty() toVersion!: number;
+  @ApiProperty({ format: 'date' }) archiveAt!: string;
+  @ApiProperty({ enum: caseArchiveTypes })
+  archiveType!: (typeof caseArchiveTypes)[number];
+  @ApiProperty() archiveReason!: string;
+  @ApiProperty({ type: String, nullable: true }) correctionReason!:
+    string | null;
+  @ApiProperty({ format: 'date-time' }) recordedAt!: string;
+  @ApiProperty({ format: 'uuid' }) recordedByUserId!: string;
+}
+class CaseArchiveDto {
+  @ApiProperty({ format: 'uuid' }) id!: string;
+  @ApiProperty({ format: 'uuid' }) closureId!: string;
+  @ApiProperty({ format: 'uuid' }) closureVersionId!: string;
+  @ApiProperty({ type: CaseArchiveVersionDto }) current!: CaseArchiveVersionDto;
+  @ApiProperty({ type: [CaseArchiveVersionDto] })
+  history!: CaseArchiveVersionDto[];
+}
 class CaseClosureDto {
   @ApiProperty({ format: 'uuid' }) id!: string;
   @ApiProperty({ format: 'uuid' }) finishId!: string;
@@ -499,6 +528,7 @@ class CaseListItemDto {
       'WAITING_EXECUTION_FILING',
       'EXECUTING',
       'WAITING_ARCHIVE',
+      'ARCHIVED',
     ],
   })
   stage!:
@@ -516,7 +546,8 @@ class CaseListItemDto {
     | 'WAITING_EXECUTION_STAMP'
     | 'WAITING_EXECUTION_FILING'
     | 'EXECUTING'
-    | 'WAITING_ARCHIVE';
+    | 'WAITING_ARCHIVE'
+    | 'ARCHIVED';
   @ApiProperty() version!: number;
   @ApiProperty() canMatch!: boolean;
   @ApiProperty() canSubmitComplaint!: boolean;
@@ -541,6 +572,8 @@ class CaseListItemDto {
   @ApiProperty() canFinishExecution!: boolean;
   @ApiProperty() canRecordClosure!: boolean;
   @ApiProperty() canCorrectClosure!: boolean;
+  @ApiProperty() canArchive!: boolean;
+  @ApiProperty() canCorrectArchive!: boolean;
   @ApiProperty({ type: CaseDisplaySummaryDto })
   displaySummary!: CaseDisplaySummaryDto;
   @ApiProperty({ type: CaseOwnerDto }) owner!: CaseOwnerDto;
@@ -569,6 +602,7 @@ export class CaseListResponseDto {
     WAITING_EXECUTION_FILING: number;
     EXECUTING: number;
     WAITING_ARCHIVE: number;
+    ARCHIVED: number;
   };
 }
 class CaseExecutionMailingDto {
@@ -662,6 +696,8 @@ export class CaseDetailResponseDto extends OmitType(CaseListItemDto, [
 ] as const) {
   @ApiProperty({ type: CaseClosureDto, nullable: true })
   closure!: CaseClosureDto | null;
+  @ApiProperty({ type: CaseArchiveDto, nullable: true })
+  archive!: CaseArchiveDto | null;
   @ApiProperty({ type: CaseExecutionConfirmationDto, nullable: true })
   executionConfirmation!: CaseExecutionConfirmationDto | null;
   @ApiProperty({ type: CaseExecutionSubmissionDto })

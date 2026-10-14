@@ -226,12 +226,13 @@ describe('closure commands', () => {
       }),
     });
   });
-  it('replays the original receipt after a later correction only after current authorization', async () => {
+  it('replays the original WAITING_ARCHIVE receipt after final archive only after current authorization', async () => {
     const f = fixture();
     const first = await f.service.record(actor, caseId, input);
     const receipt = f.tx.caseClosureReceipt.create.mock.calls[0][0].data;
     f.tx.caseClosureReceipt.findUnique.mockResolvedValue(receipt);
     f.record.version = 99;
+    f.record.stage = 'ARCHIVED';
     await expect(f.service.record(actor, caseId, input)).resolves.toEqual(
       first,
     );

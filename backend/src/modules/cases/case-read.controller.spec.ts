@@ -1,3 +1,4 @@
+import { CaseArchiveService } from './case-archive.service';
 import { CaseClosureService } from './case-closure.service';
 import { CaseExecutionFinishService } from './case-execution-finish.service';
 import { CaseExecutionMailingService } from './case-execution-mailing.service';
@@ -65,6 +66,7 @@ describe('lawyer execution route identity', () => {
       mailing as never,
       filing as never,
       finish as never,
+      {} as never,
       {} as never,
       {} as never,
     );
@@ -152,6 +154,7 @@ describe('internal complaint mailing route identity', () => {
       {} as never,
       {} as never,
       {} as never,
+      {} as never,
       {} as FilingCourtService,
     );
     expect(() =>
@@ -225,6 +228,13 @@ describe('case read OpenAPI contract', () => {
       controllers: [CaseReadController, LawyerCaseController],
       providers: [
         {
+          provide: CaseArchiveService,
+          useValue: {
+            archive: jest.fn().mockResolvedValue({ stage: 'ARCHIVED' }),
+            correct: jest.fn().mockResolvedValue({ stage: 'ARCHIVED' }),
+          },
+        },
+        {
           provide: CaseClosureService,
           useValue: closure,
         },
@@ -278,6 +288,52 @@ describe('case read OpenAPI contract', () => {
     try {
       configureApp(app);
       await app.init();
+      const archiveInput = {
+        expectedVersion: 26,
+        idempotencyKey: 'archive-route',
+        expectedClosureVersionId: routeCaseId,
+        archiveAt: '2020-01-01',
+        archiveType: 'SETTLEMENT',
+        archiveReason: '真实原因',
+      };
+      await request(app.getHttpServer())
+        .post(`/api/v1/cases/${routeCaseId}/archive`)
+        .send(archiveInput)
+        .expect(201);
+      await request(app.getHttpServer())
+        .post(`/api/v1/cases/${routeCaseId}/archive-correction`)
+        .send({
+          ...archiveInput,
+          expectedArchiveVersionId: routeCaseId,
+          correctionReason: '真实更正',
+        })
+        .expect(201);
+      await request(app.getHttpServer())
+        .post(`/api/v1/cases/${routeCaseId}/archive`)
+        .send({ ...archiveInput, extra: true })
+        .expect(400);
+      await request(app.getHttpServer())
+        .post('/api/v1/cases/invalid/archive')
+        .send(archiveInput)
+        .expect(400);
+      await request(app.getHttpServer())
+        .post(`/api/v1/cases/${routeCaseId}/archive`)
+        .send({ ...archiveInput, archiveAt: '2020-02-30' })
+        .expect(400);
+      lawyerRead = true;
+      await request(app.getHttpServer())
+        .post(`/api/v1/lawyer/cases/${routeCaseId}/archive`)
+        .send(archiveInput)
+        .expect(201);
+      await request(app.getHttpServer())
+        .post(`/api/v1/lawyer/cases/${routeCaseId}/archive-correction`)
+        .send({
+          ...archiveInput,
+          expectedArchiveVersionId: routeCaseId,
+          correctionReason: '真实更正',
+        })
+        .expect(404);
+      lawyerRead = false;
       const closureInput = {
         expectedVersion: 25,
         idempotencyKey: 'closure-route',

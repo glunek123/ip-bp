@@ -1,3 +1,9 @@
+import { CaseArchiveService } from './case-archive.service';
+import {
+  ArchiveCaseInput,
+  CorrectCaseArchiveInput,
+  CaseArchiveResult,
+} from './case-archive.dto';
 import { CaseClosureService } from './case-closure.service';
 import {
   RecordCaseClosureInput,
@@ -137,6 +143,7 @@ export class CaseReadController {
     private readonly executionFiling: CaseExecutionFilingService,
     private readonly executionFinish: CaseExecutionFinishService,
     private readonly closure: CaseClosureService,
+    private readonly archive: CaseArchiveService,
     private readonly courts: FilingCourtService,
   ) {}
 
@@ -180,6 +187,24 @@ export class CaseReadController {
     return this.executionMailing.mail(actor, id, body);
   }
 
+  @Post(':id/archive')
+  @ApiCreatedResponse({ type: CaseArchiveResult })
+  archiveCase(
+    @CurrentActor() actor: ActorContext,
+    @Param('id', new ParseUUIDPipe({ version: '4' })) id: string,
+    @Body() body: ArchiveCaseInput,
+  ) {
+    return this.archive.archive(actor, id, body);
+  }
+  @Post(':id/archive-correction')
+  @ApiCreatedResponse({ type: CaseArchiveResult })
+  correctArchive(
+    @CurrentActor() actor: ActorContext,
+    @Param('id', new ParseUUIDPipe({ version: '4' })) id: string,
+    @Body() body: CorrectCaseArchiveInput,
+  ) {
+    return this.archive.correct(actor, id, body);
+  }
   @Post(':id/closure')
   @ApiCreatedResponse({ type: CaseClosureResult })
   recordClosure(

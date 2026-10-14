@@ -1,3 +1,4 @@
+import { CaseArchiveService } from './modules/cases/case-archive.service';
 import { CaseClosureService } from './modules/cases/case-closure.service';
 import { CaseExecutionFinishService } from './modules/cases/case-execution-finish.service';
 import { CaseExecutionMailingService } from './modules/cases/case-execution-mailing.service';
@@ -149,6 +150,13 @@ describe('CORE-LD-002 OpenAPI contract', () => {
         CaseReadController,
       ],
       providers: [
+        {
+          provide: CaseArchiveService,
+          useValue: {
+            archive: jest.fn().mockResolvedValue({ stage: 'ARCHIVED' }),
+            correct: jest.fn().mockResolvedValue({ stage: 'ARCHIVED' }),
+          },
+        },
         {
           provide: CaseClosureService,
           useValue: { record: jest.fn(), correct: jest.fn() },

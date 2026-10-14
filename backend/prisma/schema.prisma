@@ -62,6 +62,8 @@ enum PermissionAction {
   CASE_EXECUTION_FINISH @map("case.execution.finish")
   CASE_CLOSURE_RECORD @map("case.closure.record")
   CASE_CLOSURE_CORRECT @map("case.closure.correct")
+  CASE_ARCHIVE @map("case.archive")
+  CASE_ARCHIVE_CORRECT @map("case.archive.correct")
   NOTARY_OFFICE_MANAGE         @map("notary.office.manage")
   CLIENT_LEAD_READ             @map("client.lead.read")
   CLIENT_LEAD_REVIEW           @map("client.lead.review")
@@ -315,6 +317,7 @@ enum CaseStage {
   WAITING_EXECUTION_FILING
   EXECUTING
   WAITING_ARCHIVE
+  ARCHIVED
 
   @@map("case_stage")
 }
@@ -556,6 +559,8 @@ model UserAccount {
   executionConfirmationReceipts CaseExecutionConfirmationReceipt[] @relation("ExecutionConfirmationReceiptActor")
   executionMailings CaseExecutionMailing[] @relation("ExecutionMailingActor")
   executionMailingReceipts CaseExecutionMailingReceipt[] @relation("ExecutionMailingReceiptActor")
+  archiveVersions CaseArchiveVersion[] @relation("ArchiveActor")
+  archiveReceipts CaseArchiveReceipt[] @relation("ArchiveReceiptActor")
   closureVersions CaseClosureVersion[] @relation("ClosureActor")
   closureReceipts CaseClosureReceipt[] @relation("ClosureReceiptActor")
   executionFinishes CaseExecutionFinish[] @relation("ExecutionFinishActor")
@@ -1832,6 +1837,8 @@ model Case {
   executionConfirmationReceipts CaseExecutionConfirmationReceipt[]
   executionMailing CaseExecutionMailing?
   executionMailingReceipts CaseExecutionMailingReceipt[]
+  archive CaseArchive?
+  archiveReceipts CaseArchiveReceipt[]
   closure CaseClosure?
   closureReceipts CaseClosureReceipt[]
   executionFinish CaseExecutionFinish?
@@ -3197,6 +3204,7 @@ model AuditEvent {
   executionSubmissions CaseExecutionSubmission[]
   executionConfirmations CaseExecutionConfirmation[]
   executionMailings CaseExecutionMailing[]
+  archiveVersions CaseArchiveVersion[]
   closureVersions CaseClosureVersion[]
   executionFinishes CaseExecutionFinish[]
   executionFilings CaseExecutionFiling[]
@@ -3279,6 +3287,7 @@ enum CaseClosureCommand {
  @@map("case_closure_command")
 }
 model CaseClosure {
+ archive CaseArchive?
  id String @id @default(uuid()) @db.Uuid
  caseId String @unique @map("case_id") @db.Uuid
  departmentId String @map("department_id") @db.Uuid
@@ -3292,9 +3301,11 @@ model CaseClosure {
  @@unique([finishId, caseId, departmentId])
  @@unique([currentVersionId, id, caseId, departmentId, finishId])
  @@unique([id, caseId, departmentId, finishId])
+ @@unique([id, caseId, departmentId])
  @@map("case_closures")
 }
 model CaseClosureVersion {
+ archives CaseArchive[]
  id String @id @default(uuid()) @db.Uuid
  closureId String @map("closure_id") @db.Uuid
  caseId String @map("case_id") @db.Uuid
@@ -3351,4 +3362,86 @@ model CaseClosureReceipt {
  actor UserAccount @relation("ClosureReceiptActor", fields: [actorUserId], references: [id], onDelete: Restrict, onUpdate: Restrict)
  @@unique([departmentId, actorUserId, command, idempotencyKey])
  @@map("case_closure_receipts")
+}
+
+enum CaseArchiveType {
+ VOIDED
+ SETTLEMENT
+ MEDIATION
+ JUDGMENT_PERFORMED
+ EXECUTION_COLLECTED
+ EXECUTION_CLOSED
+ @@map("case_archive_type")
+}
+enum CaseArchiveKind {
+ ARCHIVE
+ CORRECT
+ @@map("case_archive_kind")
+}
+enum CaseArchiveCommand {
+ ARCHIVE
+ CORRECT
+ @@map("case_archive_command")
+}
+model CaseArchive {
+ id String @id @default(uuid()) @db.Uuid
+ caseId String @unique @map("case_id") @db.Uuid
+ departmentId String @map("department_id") @db.Uuid
+ closureId String @unique @map("closure_id") @db.Uuid
+ closureVersionId String @map("closure_version_id") @db.Uuid
+ currentVersionId String? @unique @map("current_version_id") @db.Uuid
+ case Case @relation(fields: [caseId, departmentId], references: [id, departmentId], onDelete: Restrict, onUpdate: Restrict)
+ closure CaseClosure @relation(fields: [closureId, caseId, departmentId], references: [id, caseId, departmentId], onDelete: Restrict, onUpdate: Restrict)
+ closureVersion CaseClosureVersion @relation(fields: [closureVersionId, caseId, departmentId], references: [id, caseId, departmentId], onDelete: Restrict, onUpdate: Restrict)
+ currentVersion CaseArchiveVersion? @relation("ArchiveCurrent", fields: [currentVersionId, id, caseId, departmentId, closureVersionId], references: [id, archiveId, caseId, departmentId, closureVersionId], onDelete: Restrict, onUpdate: Restrict)
+ versions CaseArchiveVersion[] @relation("ArchiveVersions")
+ @@unique([closureId, caseId, departmentId])
+ @@unique([currentVersionId, id, caseId, departmentId, closureVersionId])
+ @@unique([id, caseId, departmentId, closureVersionId])
+ @@unique([caseId, departmentId])
+ @@map("case_archives")
+}
+model CaseArchiveVersion {
+ id String @id @default(uuid()) @db.Uuid
+ archiveId String @map("archive_id") @db.Uuid
+ caseId String @map("case_id") @db.Uuid
+ departmentId String @map("department_id") @db.Uuid
+ closureVersionId String @map("closure_version_id") @db.Uuid
+ kind CaseArchiveKind
+ priorVersionId String? @unique @map("prior_version_id") @db.Uuid
+ fromVersion Int @map("from_version")
+ toVersion Int @map("to_version")
+ archiveAt DateTime @map("archive_at") @db.Date
+ archiveType CaseArchiveType @map("archive_type")
+ archiveReason String @map("archive_reason") @db.VarChar(2000)
+ correctionReason String? @map("correction_reason") @db.VarChar(500)
+ recordedAt DateTime @default(now()) @map("recorded_at") @db.Timestamptz(3)
+ recordedByUserId String @map("recorded_by_user_id") @db.Uuid
+ auditEventId String @unique @map("audit_event_id") @db.Uuid
+ archive CaseArchive @relation("ArchiveVersions", fields: [archiveId, caseId, departmentId, closureVersionId], references: [id, caseId, departmentId, closureVersionId], onDelete: Restrict, onUpdate: Restrict)
+ currentFor CaseArchive? @relation("ArchiveCurrent")
+ prior CaseArchiveVersion? @relation("ArchivePrior", fields: [priorVersionId, archiveId, caseId, departmentId, closureVersionId], references: [id, archiveId, caseId, departmentId, closureVersionId], onDelete: Restrict, onUpdate: Restrict)
+ next CaseArchiveVersion[] @relation("ArchivePrior")
+ recordedBy UserAccount @relation("ArchiveActor", fields: [recordedByUserId], references: [id], onDelete: Restrict, onUpdate: Restrict)
+ auditEvent AuditEvent @relation(fields: [auditEventId], references: [id], onDelete: Restrict, onUpdate: Restrict)
+ @@unique([id, archiveId, caseId, departmentId, closureVersionId])
+ @@unique([id, caseId, departmentId])
+ @@unique([caseId, fromVersion])
+ @@unique([caseId, toVersion])
+ @@map("case_archive_versions")
+}
+model CaseArchiveReceipt {
+ id String @id @default(uuid()) @db.Uuid
+ departmentId String @map("department_id") @db.Uuid
+ actorUserId String @map("actor_user_id") @db.Uuid
+ caseId String @map("case_id") @db.Uuid
+ command CaseArchiveCommand
+ idempotencyKey String @map("idempotency_key") @db.VarChar(128)
+ requestFingerprint String @map("request_fingerprint") @db.Char(64)
+ resultSnapshot Json @map("result_snapshot")
+ createdAt DateTime @default(now()) @map("created_at") @db.Timestamptz(3)
+ case Case @relation(fields: [caseId, departmentId], references: [id, departmentId], onDelete: Restrict, onUpdate: Restrict)
+ actor UserAccount @relation("ArchiveReceiptActor", fields: [actorUserId], references: [id], onDelete: Restrict, onUpdate: Restrict)
+ @@unique([departmentId, actorUserId, command, idempotencyKey])
+ @@map("case_archive_receipts")
 }

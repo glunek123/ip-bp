@@ -170,6 +170,7 @@ describe('CaseReadService', () => {
         WAITING_EXECUTION_FILING: 0,
         EXECUTING: 0,
         WAITING_ARCHIVE: 0,
+        ARCHIVED: 0,
       },
     });
     expect(f.access.authorizeDepartmentAction).toHaveBeenCalledWith(
@@ -494,6 +495,85 @@ describe('CaseReadService', () => {
     expect(closedLawyer.closure?.history[0]).not.toHaveProperty(
       'correctionReason',
     );
+    const archiveVersion = {
+      id: 'archive-v1',
+      kind: 'ARCHIVE',
+      priorVersionId: null,
+      closureVersionId: closureVersion.id,
+      fromVersion: 26,
+      toVersion: 27,
+      archiveAt: new Date('2020-01-01T00:00:00Z'),
+      archiveType: 'EXECUTION_COLLECTED',
+      archiveReason: '真实归档分类',
+      correctionReason: null,
+      recordedAt: new Date('2026-10-14T01:00:00Z'),
+      recordedByUserId: actor.userId,
+    };
+    const archivedRecord = {
+      ...record,
+      stage: 'ARCHIVED',
+      version: 27,
+      executionFinish: { ...executionFinish, toVersion: 25 },
+      closure: {
+        id: 'closure',
+        finishId: executionFinish.id,
+        currentVersionId: closureVersion.id,
+        versions: [closureVersion],
+      },
+      archive: {
+        id: 'archive',
+        closureId: 'closure',
+        closureVersionId: closureVersion.id,
+        currentVersionId: archiveVersion.id,
+        versions: [archiveVersion],
+      },
+    };
+    f.db.case.findFirst.mockResolvedValue(archivedRecord);
+    const archivedLawyer = await f.service.get(
+      { ...actor, lawyerAccountId: actor.userId },
+      'case-1',
+    );
+    expect(archivedLawyer.canArchive).toBe(false);
+    expect(archivedLawyer.canCorrectArchive).toBe(false);
+    expect(archivedLawyer.canCorrectClosure).toBe(false);
+    expect(archivedLawyer.archive?.current).toMatchObject({
+      archiveReason: '真实归档分类',
+      archiveAt: '2020-01-01',
+    });
+    expect(archivedLawyer.archive?.current).not.toHaveProperty(
+      'recordedByUserId',
+    );
+    expect(archivedLawyer.archive?.history[0]).not.toHaveProperty(
+      'correctionReason',
+    );
+    f.db.userAccount.findUnique.mockResolvedValue({
+      accountType: 'INTERNAL',
+      active: true,
+    });
+    const archivedInternal = await f.service.get(actor, 'case-1');
+    expect(archivedInternal.canCorrectArchive).toBe(true);
+    expect(archivedInternal.canRecordClosure).toBe(false);
+    expect(archivedInternal.archive?.current).toMatchObject({
+      recordedByUserId: actor.userId,
+    });
+    f.db.case.findFirst.mockResolvedValue({
+      ...archivedRecord,
+      archive: {
+        ...archivedRecord.archive,
+        versions: [{ ...archiveVersion, fromVersion: 25 }],
+      },
+    });
+    await expect(f.service.get(actor, 'case-1')).rejects.toMatchObject({
+      response: { code: 'CASE_NOT_FOUND' },
+    });
+    f.db.case.findFirst.mockResolvedValue({ ...archivedRecord, archive: null });
+    await expect(f.service.get(actor, 'case-1')).rejects.toMatchObject({
+      response: { code: 'CASE_NOT_FOUND' },
+    });
+    f.db.userAccount.findUnique.mockResolvedValue({
+      accountType: 'LAWYER',
+      active: true,
+    });
     const judgment = {
       id: 'judgment-1',
       trialRoundId: 'round-1',

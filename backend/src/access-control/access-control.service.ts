@@ -57,6 +57,8 @@ export type PermissionAction =
   | 'case.execution.filing.submit'
   | 'case.closure.record'
   | 'case.closure.correct'
+  | 'case.archive'
+  | 'case.archive.correct'
   | 'case.execution.finish'
   | 'client.case.read'
   | 'client.case.complaint.mail'
@@ -335,6 +337,8 @@ export class AccessControlService {
       | 'case.execution.filing.submit'
       | 'case.closure.record'
       | 'case.closure.correct'
+      | 'case.archive'
+      | 'case.archive.correct'
       | 'case.execution.finish',
     facts: CaseResourceFacts,
     reader?: AccessControlSnapshotReader,
@@ -374,6 +378,8 @@ export class AccessControlService {
       | 'case.execution.filing.submit'
       | 'case.closure.record'
       | 'case.closure.correct'
+      | 'case.archive'
+      | 'case.archive.correct'
       | 'case.execution.finish',
     facts: CaseResourceFacts,
     reader?: AccessControlSnapshotReader,

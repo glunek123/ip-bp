@@ -43,6 +43,7 @@ export class ClientCaseListItemDto {
       'WAITING_EXECUTION_FILING',
       'EXECUTING',
       'WAITING_ARCHIVE',
+      'ARCHIVED',
     ],
   })
   stage!:
@@ -57,7 +58,8 @@ export class ClientCaseListItemDto {
     | 'WAITING_EXECUTION_STAMP'
     | 'WAITING_EXECUTION_FILING'
     | 'EXECUTING'
-    | 'WAITING_ARCHIVE';
+    | 'WAITING_ARCHIVE'
+    | 'ARCHIVED';
   @ApiProperty() version!: number;
   @ApiProperty() canMailComplaint!: boolean;
   @ApiProperty() canMailExecution!: boolean;

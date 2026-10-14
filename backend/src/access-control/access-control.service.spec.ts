@@ -22,7 +22,12 @@ function createStore(
 }
 
 describe('AccessControlService', () => {
-  it.each(['case.closure.record', 'case.closure.correct'] as const)(
+  it.each([
+    'case.closure.record',
+    'case.closure.correct',
+    'case.archive',
+    'case.archive.correct',
+  ] as const)(
     'requires the independent live %s grant and its own scope',
     async (action) => {
       const snapshot: AccessControlSnapshot = {

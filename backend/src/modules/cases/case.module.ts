@@ -1,3 +1,4 @@
+import { CaseArchiveService } from './case-archive.service';
 import { CaseClosureService } from './case-closure.service';
 import { CaseExecutionFinishService } from './case-execution-finish.service';
 import { CaseExecutionMailingService } from './case-execution-mailing.service';
@@ -68,6 +69,7 @@ import { LawyerCaseController } from './lawyer-case.controller';
     CaseExecutionFilingService,
     CaseExecutionFinishService,
     CaseClosureService,
+    CaseArchiveService,
     CaseHearingSchedulerService,
     CaseHearingSignal,
     { provide: CASE_HEARING_CLOCK, useClass: SystemCaseHearingClock },
