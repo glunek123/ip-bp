@@ -687,7 +687,16 @@ test('authorization and ownership are checked before replay and a newly authoriz
   expect(contactContinued.contactRevision).toBe(2);
   expect(correctionContinued.acceptanceRevision).toBe(2);
   const continued = await recordEditSnapshot(first.caseId);
-  expect(continued.case).toEqual(historical.case);
+  expect(historical.case).toHaveLength(1);
+  expect((historical.case[0] as Record<string, unknown>).court_case_no).toBe(
+    correction.courtCaseNo,
+  );
+  expect(continued.case).toEqual(
+    historical.case.map((row) => ({
+      ...(row as Record<string, unknown>),
+      court_case_no: nextCorrection.courtCaseNo,
+    })),
+  );
   expect(continued.originalAcceptances).toEqual(historical.originalAcceptances);
   expect(continued.contactChanges).toHaveLength(2);
   expect(continued.acceptanceCorrections).toHaveLength(2);
