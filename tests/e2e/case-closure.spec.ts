@@ -1,4 +1,7 @@
-import { openCaseWorkspaceCommand } from '../support/case-workspace-browser.js';
+import {
+  closeCaseWorkspaceDrawer,
+  openCaseWorkspaceCommand,
+} from '../support/case-workspace-browser.js';
 import { randomUUID } from 'node:crypto';
 import {
   expect,
@@ -129,6 +132,7 @@ async function signIn(
   return { 'X-CSRF-Token': session.csrfToken };
 }
 async function signOut(page: Page) {
+  await closeCaseWorkspaceDrawer(page);
   await page.getByRole('button', { name: '退出登录', exact: true }).click();
   await expect(page).toHaveURL(/\/login$/u);
 }

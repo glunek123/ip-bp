@@ -29,6 +29,7 @@ import {
 } from '../support/core-lead-database.mjs';
 import { createLawyerAccountThroughApi } from '../support/case-lawyer-account.mjs';
 import {
+  closeCaseWorkspaceDrawer,
   openCaseWorkspaceCommand,
   revealCaseWorkspaceSection,
 } from '../support/case-workspace-browser.js';
@@ -989,11 +990,20 @@ test('UI002 normal operator explicitly replays original matching and complaint r
     const retry = page.locator(`[data-test="${command}-retry-original"]`);
     await expect(retry).toBeVisible();
     expect(bodies).toHaveLength(1);
+    await closeCaseWorkspaceDrawer(page);
     await page.locator('[data-test="case-refresh"]').click();
+    await openCaseWorkspaceCommand(
+      page,
+      command,
+      `[data-test="${command}-retry-original"]`,
+    );
     await expect(retry).toBeVisible();
     expect(bodies).toHaveLength(1);
+    await closeCaseWorkspaceDrawer(page);
     await page.locator('[data-test="calendar-nav"]').click();
-    await expect(page.locator('.case-workspace-editors')).not.toBeVisible();
+    await expect(
+      page.locator('.case-workspace-editors[role="dialog"]'),
+    ).not.toBeVisible();
     expect(bodies).toHaveLength(1);
     await page.goBack();
     await expect(page).toHaveURL(new RegExp(`/cases/${caseId}$`, 'u'));

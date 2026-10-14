@@ -1,4 +1,5 @@
 import {
+  closeCaseWorkspaceDrawer,
   openCaseWorkspaceCommand,
   revealCaseWorkspaceSection,
 } from '../support/case-workspace-browser.js';
@@ -153,6 +154,7 @@ async function signIn(
   return { 'X-CSRF-Token': session.csrfToken };
 }
 async function signOut(page: Page) {
+  await closeCaseWorkspaceDrawer(page);
   await page.getByRole('button', { name: '退出登录', exact: true }).click();
   await expect(page).toHaveURL(/\/login$/u);
 }
@@ -854,6 +856,7 @@ test('lost archive success retains the original body through refresh and SPA rem
   await panel.locator('[data-test="archive-refresh"]').click();
   await expect(panel.locator('[data-test="archive-retry"]')).toBeVisible();
   expect(requests).toHaveLength(1);
+  await closeCaseWorkspaceDrawer(page);
   await page.locator('[data-test="calendar-nav"]').click();
   await expect(page.locator('[data-test="archive-panel"]')).not.toBeVisible();
   await page.goBack();

@@ -1,4 +1,5 @@
 import {
+  closeCaseWorkspaceDrawer,
   openCaseWorkspaceCommand,
   revealCaseWorkspaceSection,
 } from '../support/case-workspace-browser.js';
@@ -86,6 +87,7 @@ async function login(
 }
 
 async function logout(page: Page) {
+  await closeCaseWorkspaceDrawer(page);
   const responsePromise = page.waitForResponse(
     (response) =>
       response.request().method() === 'POST' &&

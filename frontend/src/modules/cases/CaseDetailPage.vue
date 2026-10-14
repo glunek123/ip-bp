@@ -17,6 +17,7 @@ import {
 import { RouterLink, useRoute, useRouter } from 'vue-router';
 import { ElButton } from 'element-plus/es/components/button/index.mjs';
 import { ElDrawer } from 'element-plus/es/components/drawer/index.mjs';
+import 'element-plus/es/components/drawer/style/css';
 import { ApiError, type RequestOptions } from '../../api/http';
 import { getLead, type LeadDetail } from '../../api/leads';
 import CaseWorkspaceShell from './CaseWorkspaceShell.vue';

@@ -6,7 +6,10 @@ import {
   type Page,
 } from '@playwright/test';
 import { disconnectCustomerTestDatabase } from '../support/customer-database.mjs';
-import { openCaseWorkspaceCommand } from '../support/case-workspace-browser.js';
+import {
+  closeCaseWorkspaceDrawer,
+  openCaseWorkspaceCommand,
+} from '../support/case-workspace-browser.js';
 import {
   coreLeadFixtures,
   resetCoreLeadE2eData,
@@ -85,6 +88,7 @@ async function login(
 }
 
 async function logout(page: Page): Promise<void> {
+  await closeCaseWorkspaceDrawer(page);
   const response = page.waitForResponse(
     (candidate) =>
       candidate.request().method() === 'POST' &&
