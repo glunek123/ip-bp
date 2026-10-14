@@ -2635,6 +2635,7 @@ export class CaseReadService {
         businessNo: detail.businessNo,
         stage: detail.stage,
         version: detail.version,
+        origin: externalEntry === null ? {kind:'NOTARY' as const} : {kind:'EXTERNAL_ENTRY' as const,entryKind:externalEntry.entryKind,stageReachedOn:externalEntry.stageReachedOn.toISOString().slice(0,10)},
         matchedAt: detail.matchedAt,
         matchedOn: detail.matchedOn,
         defendants: detail.defendants,

@@ -12,6 +12,7 @@ import { ActorContext } from '../../access-control/actor-context';
 import { currentLawyerBindingId } from '../../access-control/lawyer-case-access';
 import { DatabaseService } from '../../database/database.service';
 import { MaterialService } from '../materials';
+import { readCaseSourceAnchor, isEntryStartingAt } from './case-entry-source';
 import {
   SubmitCaseFilingDto,
   SubmitCaseFilingResponseDto,
@@ -151,13 +152,15 @@ export class CaseFilingService {
                 recordedAt: snapshot.recordedAt,
               };
             }
+            const source = await readCaseSourceAnchor(tx,caseId,actor.departmentId);
             if (
               record.stage !== 'WAITING_FILING' ||
-              record.complaintMailing === null
+              (record.complaintMailing === null && !isEntryStartingAt(source,'WAITING_FILING'))
             )
               throw this.invalidState();
             if (record.version !== value.expectedVersion)
               throw this.versionConflict();
+            if (source.kind === 'EXTERNAL_ENTRY' && value.submittedAt < source.stageReachedOn) throw this.validation();
             const court = await tx.filingCourt.findFirst({
               where: { id: value.courtId, departmentId: actor.departmentId },
               select: { id: true, name: true },
@@ -227,6 +230,7 @@ export class CaseFilingService {
             });
             const submission = await tx.caseFilingSubmission.create({
               data: {
+                externalEntryId: source.kind === 'EXTERNAL_ENTRY' ? source.entryId : null,
                 departmentId: actor.departmentId,
                 caseId,
                 courtId: court.id,

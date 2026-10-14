@@ -50,7 +50,10 @@ export class CaseExternalEntryService {
     if (!uuid.test(input.customerId) || !uuid.test(input.rightsHolderId)) throw this.invalid();
     if ((input.lawyerAccountId === null) !== (input.lawyerProfileId === null) || (input.lawyerAccountId !== null && (!uuid.test(input.lawyerAccountId) || !uuid.test(input.lawyerProfileId!)))) throw this.invalid();
     if (!Array.isArray(input.defendants) || input.defendants.length > 20 || (input.initialStage === 'PENDING_MATCH' && (input.defendants.length !== 0 || input.lawyerAccountId !== null))) throw this.invalid();
-    for (const part of input.defendants) if (part === null || !['PERSON','ORGANIZATION'].includes(part.kind) || typeof part.name !== 'string' || part.name.trim() !== part.name || part.name.length < 1 || part.name.length > 200) throw this.invalid();
+    for (const part of input.defendants) {
+      if (part === null || !['PERSON','ORGANIZATION'].includes(part.kind) || typeof part.name !== 'string' || part.name.trim() !== part.name || part.name.length < 1 || part.name.length > 200 || Object.keys(part).some((key) => !['kind','name','idNo','phone','address'].includes(key))) throw this.invalid();
+      for (const [value,max] of [[part.idNo,100],[part.phone,100],[part.address,500]] as const) if (value !== undefined && (typeof value !== 'string' || value.trim() !== value || value.length < 1 || value.length > max)) throw this.invalid();
+    }
     if (known.courtId !== null && !uuid.test(known.courtId)) throw this.invalid();
     if (known.courtCaseNo !== null && (known.courtCaseNo.trim() !== known.courtCaseNo || known.courtCaseNo.length < 1 || known.courtCaseNo.length > 100)) throw this.invalid();
     if ((known.acceptedOn !== null && !this.date(known.acceptedOn)) || (known.secondInstanceAcceptedOn !== null && !this.date(known.secondInstanceAcceptedOn))) throw this.invalid();
@@ -59,7 +62,13 @@ export class CaseExternalEntryService {
     if (known.caseType !== null && !Object.values(LeadCaseType).includes(known.caseType)) throw this.invalid();
     for (const [value,max] of [[known.shopName,200],[known.shopExternalId,100]] as const) if (value !== null && (value.trim() !== value || value.length < 1 || value.length > max)) throw this.invalid();
     if (known.infringementTypes !== null && (!Array.isArray(known.infringementTypes) || known.infringementTypes.length < 1 || known.infringementTypes.length > 12 || new Set(known.infringementTypes).size !== known.infringementTypes.length || known.infringementTypes.some((value) => !Object.values(InfringementType).includes(value)))) throw this.invalid();
-    return input;
+    return {
+      idempotencyKey:input.idempotencyKey,entryKind:input.entryKind,initialStage:input.initialStage,stageReachedOn:input.stageReachedOn,
+      source:input.source,reason:input.reason,customerId:input.customerId,rightsHolderId:input.rightsHolderId,
+      defendants:input.defendants.map((part) => ({kind:part.kind,name:part.name,idNo:part.idNo ?? null,phone:part.phone ?? null,address:part.address ?? null})),
+      lawyerAccountId:input.lawyerAccountId,lawyerProfileId:input.lawyerProfileId,
+      known:{courtId:known.courtId,courtCaseNo:known.courtCaseNo,acceptedOn:known.acceptedOn,secondInstanceAcceptedOn:known.secondInstanceAcceptedOn,platform:known.platform,shopName:known.shopName,shopExternalId:known.shopExternalId,caseType:known.caseType,infringementTypes:known.infringementTypes},
+    };
   }
   async options(actor: ActorContext) {
     const {account,membership} = await this.database.$transaction((tx) => this.actorMembership(tx,actor));

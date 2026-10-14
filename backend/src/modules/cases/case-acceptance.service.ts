@@ -12,6 +12,7 @@ import { ActorContext } from '../../access-control/actor-context';
 import { currentLawyerBindingId } from '../../access-control/lawyer-case-access';
 import { DatabaseService } from '../../database/database.service';
 import { MaterialService } from '../materials';
+import { readCaseSourceAnchor, isEntryStartingAt } from './case-entry-source';
 import {
   RegisterCaseAcceptanceDto,
   RegisterCaseAcceptanceResponseDto,
@@ -148,17 +149,18 @@ export class CaseAcceptanceService {
                 recordedAt: snapshot.recordedAt,
               };
             }
+            const source = await readCaseSourceAnchor(tx,caseId,actor.departmentId);
             if (
               record.stage !== 'WAITING_FORMAL_ACCEPTANCE' ||
-              record.filingSubmission === null ||
+              (record.filingSubmission === null && !isEntryStartingAt(source,'WAITING_FORMAL_ACCEPTANCE')) ||
               record.currentAcceptanceId !== null
             )
               throw this.invalidState();
             if (record.version !== value.expectedVersion)
               throw this.versionConflict();
             if (
-              value.acceptedAt <
-              record.filingSubmission.submittedAt.toISOString().slice(0, 10)
+              value.acceptedAt < (record.filingSubmission?.submittedAt.toISOString().slice(0, 10) ?? (source.kind === 'EXTERNAL_ENTRY' ? source.stageReachedOn : '9999-12-31')) ||
+              (source.kind === 'EXTERNAL_ENTRY' && source.known.acceptedOn !== null && value.acceptedAt < source.known.acceptedOn)
             )
               throw this.validation();
             const versions = [];
@@ -233,6 +235,7 @@ export class CaseAcceptanceService {
             });
             const acceptance = await tx.caseAcceptance.create({
               data: {
+                externalEntryId: source.kind === 'EXTERNAL_ENTRY' ? source.entryId : null,
                 departmentId: actor.departmentId,
                 caseId,
                 trialRoundId,

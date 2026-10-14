@@ -13,6 +13,7 @@ import { currentLawyerBindingId } from '../../access-control/lawyer-case-access'
 import { DatabaseService } from '../../database/database.service';
 import { Prisma } from '../../generated/prisma/client';
 import { MaterialService } from '../materials';
+import { readCaseSourceAnchor, isEntryStartingAt } from './case-entry-source';
 import {
   ConfirmCaseComplaintDto,
   ConfirmCaseComplaintResponseDto,
@@ -130,6 +131,9 @@ export class CaseComplaintConfirmationService {
             }
             if (record.stage !== 'WAITING_COMPLAINT_CONFIRMATION')
               throw this.invalidState();
+            const source = await readCaseSourceAnchor(tx,caseId,actor.departmentId);
+            const directEntry = isEntryStartingAt(source,'WAITING_COMPLAINT_CONFIRMATION');
+            if (source.kind === 'EXTERNAL_ENTRY' && record.complaintAmountState === null && !directEntry) throw this.invalidState();
             if (record.version !== normalized.expectedVersion)
               throw this.versionConflict();
             const complaint = await this.materials.assertAvailableVersions(
@@ -165,7 +169,7 @@ export class CaseComplaintConfirmationService {
               record.complaintAmountState !== normalized.amountState ||
               priorAmount !== normalized.amount ||
               record.complaintPendingReason !== normalized.pendingReason;
-            if (changed && normalized.changeNote === null)
+            if (changed && !directEntry && normalized.changeNote === null)
               throw this.validation();
             const confirmedAt = new Date();
             const updated = await tx.case.updateMany({
@@ -214,6 +218,7 @@ export class CaseComplaintConfirmationService {
             );
             await tx.caseComplaintConfirmation.create({
               data: {
+                externalEntryId: source.kind === 'EXTERNAL_ENTRY' ? source.entryId : null,
                 departmentId: actor.departmentId,
                 caseId,
                 confirmedComplaintContentVersionId:

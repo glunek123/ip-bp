@@ -13,6 +13,7 @@ import { currentLawyerBindingId } from '../../access-control/lawyer-case-access'
 import { DatabaseService } from '../../database/database.service';
 import { Prisma } from '../../generated/prisma/client';
 import { MaterialService } from '../materials';
+import { readCaseSourceAnchor } from './case-entry-source';
 import {
   SubmitCaseComplaintDto,
   SubmitCaseComplaintResponseDto,
@@ -126,6 +127,8 @@ export class CaseComplaintService {
               return snapshot as SubmitCaseComplaintResponseDto;
             }
             if (record.stage !== 'WAITING_COMPLAINT') throw this.invalidState();
+            const source = await readCaseSourceAnchor(tx,caseId,actor.departmentId);
+            if (source.kind === 'EXTERNAL_ENTRY' && source.initialStage !== 'WAITING_COMPLAINT' && normalized.expectedVersion === 1) throw this.invalidState();
             if (record.version !== normalized.expectedVersion)
               throw this.versionConflict();
             const complaint = await this.materials.assertAvailableVersions(

@@ -1937,6 +1937,7 @@ model CaseExternalEntryReceipt {
   case               Case        @relation(fields: [caseId, departmentId], references: [id, departmentId], onDelete: Restrict, onUpdate: Restrict)
 
   @@unique([departmentId, actorUserId, idempotencyKey])
+  @@unique([caseId, departmentId])
   @@map("case_external_entry_receipts")
 }
 
@@ -3478,11 +3479,12 @@ model CaseClosure {
  currentVersionId String? @unique @map("current_version_id") @db.Uuid
  case Case @relation(fields: [caseId, departmentId], references: [id, departmentId], onDelete: Restrict, onUpdate: Restrict)
  finish CaseExecutionFinish? @relation(fields: [finishId, caseId, departmentId], references: [id, caseId, departmentId], onDelete: Restrict, onUpdate: Restrict)
- currentVersion CaseClosureVersion? @relation("ClosureCurrent", fields: [currentVersionId, id, caseId, departmentId, finishId], references: [id, closureId, caseId, departmentId, finishId], onDelete: Restrict, onUpdate: Restrict)
+ currentVersion CaseClosureVersion? @relation("ClosureCurrent", fields: [currentVersionId, id, caseId, departmentId], references: [id, closureId, caseId, departmentId], onDelete: Restrict, onUpdate: Restrict)
  versions CaseClosureVersion[] @relation("ClosureVersions")
  @@unique([caseId, departmentId])
  @@unique([finishId, caseId, departmentId])
  @@unique([currentVersionId, id, caseId, departmentId, finishId])
+ @@unique([currentVersionId, id, caseId, departmentId])
  @@unique([id, caseId, departmentId, finishId])
  @@unique([id, caseId, departmentId])
  @@map("case_closures")
@@ -3507,14 +3509,15 @@ model CaseClosureVersion {
  recordedAt DateTime @default(now()) @map("recorded_at") @db.Timestamptz(3)
  recordedByUserId String @map("recorded_by_user_id") @db.Uuid
  auditEventId String @unique @map("audit_event_id") @db.Uuid
- closure CaseClosure? @relation("ClosureVersions", fields: [closureId, caseId, departmentId, finishId], references: [id, caseId, departmentId, finishId], onDelete: Restrict, onUpdate: Restrict)
+ closure CaseClosure @relation("ClosureVersions", fields: [closureId, caseId, departmentId], references: [id, caseId, departmentId], onDelete: Restrict, onUpdate: Restrict)
  currentFor CaseClosure? @relation("ClosureCurrent")
- prior CaseClosureVersion? @relation("ClosurePrior", fields: [priorVersionId, closureId, caseId, departmentId, finishId], references: [id, closureId, caseId, departmentId, finishId], onDelete: Restrict, onUpdate: Restrict)
+ prior CaseClosureVersion? @relation("ClosurePrior", fields: [priorVersionId, closureId, caseId, departmentId], references: [id, closureId, caseId, departmentId], onDelete: Restrict, onUpdate: Restrict)
  next CaseClosureVersion[] @relation("ClosurePrior")
  recordedBy UserAccount @relation("ClosureActor", fields: [recordedByUserId], references: [id], onDelete: Restrict, onUpdate: Restrict)
  auditEvent AuditEvent @relation(fields: [auditEventId], references: [id], onDelete: Restrict, onUpdate: Restrict)
  documents CaseClosureDocument[]
  @@unique([id, closureId, caseId, departmentId, finishId])
+ @@unique([id, closureId, caseId, departmentId])
  @@unique([id, caseId, departmentId])
  @@unique([caseId, fromVersion])
  @@unique([caseId, toVersion])

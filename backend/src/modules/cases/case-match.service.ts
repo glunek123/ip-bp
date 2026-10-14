@@ -11,6 +11,7 @@ import { AccessControlService } from '../../access-control/access-control.servic
 import { ActorContext } from '../../access-control/actor-context';
 import { DatabaseService } from '../../database/database.service';
 import { MatchCaseDto, MatchCaseResponseDto } from './case-match.dto';
+import { readCaseSourceAnchor } from './case-entry-source';
 
 @Injectable()
 export class CaseMatchService {
@@ -118,6 +119,8 @@ export class CaseMatchService {
             if (normalized.lawyerAccountId === undefined)
               throw this.validation();
             if (record.stage !== 'PENDING_MATCH') throw this.invalidState();
+            const anchor = await readCaseSourceAnchor(tx,caseId,actor.departmentId);
+            if (anchor.kind === 'EXTERNAL_ENTRY' && (anchor.initialStage !== 'PENDING_MATCH' || normalized.matchedOn! < anchor.stageReachedOn)) throw this.invalidState();
             if (record.version !== normalized.expectedVersion)
               throw this.versionConflict();
             const candidates = await tx.lawyerAccountBinding.findMany({
