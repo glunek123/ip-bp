@@ -960,6 +960,7 @@ test('browser saves and cancels contact, corrects acceptance with a reason, and 
     .locator('[data-test="defendant-contact-phone"]')
     .fill('取消的号码');
   await contactPanel.locator('[data-test="defendant-contact-cancel"]').click();
+  await expect(contactPanel).not.toBeVisible();
   expect((await recordEditSnapshot(caseId)).contactChanges).toHaveLength(0);
   await openCaseWorkspaceCommand(
     page,
