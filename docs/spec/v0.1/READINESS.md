@@ -1,6 +1,6 @@
 # 审核与技术设计交接清单
 
-2026-10-14：SD-55／CORE-CE-001已交付；追加SD-56，当前CORE-CE-002二审独立受理字段最小契约冻结、隔离实施中，未验收。范围见[案件Spec](modules/cases.md)，证据见VALIDATION；CA018仍暂停，新Action不自动扩真实Grant。
+2026-10-14：SD-55／CORE-CE-001已交付；追加SD-56，当前CORE-CE-002二审独立受理字段最小契约冻结、实现草稿已保全，Worker待恢复，未验收。范围见[案件Spec](modules/cases.md)，证据见VALIDATION；CA018仍暂停，新Action不自动扩真实Grant。
 
 2026-10-13追加SD-54：执行结束及最小业务归档／资料更正子范围已批准、尚未实现；规则与批准来源只见[决定](DECISIONS.md#执行结束与最小业务归档决定2026-10-13)，实施边界见[案件Spec](modules/cases.md)，不得推导支付、重开或已验收。
 
