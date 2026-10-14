@@ -1,6 +1,6 @@
 {
   "version": 1,
-  "recordedAt": "2026-10-14T05:59:48.679Z",
+  "recordedAt": "2026-10-14T06:00:34.028Z",
   "files": {
     ".cursor/rules/verified-feature-integration.mdc": "da673301f0440a6a9615786027dffc8e01f739a97f81cd97accef1580ac51f98",
     ".env.example": "07211cde5c2b59efc21b619b752d4c9b871f0980d2d64ca3c146ad6151fd27ca",
@@ -632,7 +632,7 @@
     "docs/superpowers/specs/2026-10-09-customer-agreements-invoice-contract.md": "704112cfa08186faed13bf300d19b6409ec71caa49e54660e1666a131dde5d10",
     "docs/superpowers/specs/2026-10-09-customer-contacts-contract.md": "b9cb70f429b34fdace8184af3f0d99dea2f82bc73a26026623f54895cedfd429",
     "docs/superpowers/specs/2026-10-10-customer-settlements-contract.md": "b44c41f8f50556660e09c00b140259924d86604abc8cead5c918374c1817701d",
-    "docs/superpowers/specs/2026-10-14-case-workspace-ui-contract.md": "854b8a309edc572fb989e49f0bcf26c63fce16c5251f210c246fc9956edb38ef",
+    "docs/superpowers/specs/2026-10-14-case-workspace-ui-contract.md": "429efc3c5dae2a39b8c46e1bf14e8909bf66b26799eeed3636ebcbd3d6004e87",
     "eslint.config.mjs": "daf2a32e995b6fe0ec4648d5e116ddb6e028a2dfa04df23914b3bef88e3fc3d2",
     "frontend/index.html": "d39846e0c586d9b779c4eab746d32f690b878c293128e824cfee6170623b14d8",
     "frontend/package.json": "11be5d17686715dce6637d942b3fa994380b34de28216c4134935f040f40b44b",
