@@ -77,12 +77,12 @@ const archiveLabels: Record<
   NonNullable<CaseDetail['archive']>['current']['archiveType'],
   string
 > = {
-  VOIDED: '作废',
-  SETTLEMENT: '和解',
-  MEDIATION: '调解',
+  VOIDED: '案件作废',
+  SETTLEMENT: '和解结案',
+  MEDIATION: '调解结案',
   JUDGMENT_PERFORMED: '判决履行',
-  EXECUTION_COLLECTED: '执行回款',
-  EXECUTION_CLOSED: '执行终结',
+  EXECUTION_COLLECTED: '执行到款',
+  EXECUTION_CLOSED: '执行终本',
 };
 const caseTypeLabels: Record<LeadDetail['caseType'], string> = {
   CIVIL: '民事',
@@ -530,23 +530,37 @@ export function buildCaseWorkspaceEvents(item: CaseDetail): WorkspaceEvent[] {
 
 function eventGroup(event: WorkspaceEvent, current: boolean): WorkspaceGroup {
   const primaryJudgmentLabels = new Set(['判决金额', '已缴诉讼费']);
-  const fields =
-    event.source === 'judgment'
+  const businessDateLabels: Record<string, string> = {
+    filing: '法院提交日期',
+    acceptance: '正式立案日期',
+    hearing: '开庭日期',
+    'hearing-advance': '开庭推进日期',
+    'complaint-mailing': '诉状邮寄日期',
+    judgment: '一审判决收到日期',
+    'second-progress': '二审开庭日期',
+    'second-result': '二审结果收到日期',
+    'execution-mailing': '执行材料邮寄日期',
+    'execution-filing': '执行申请提交日期',
+    'execution-finish': '执行结束日期',
+    closure: '结案日期',
+    archive: '归档日期',
+  };
+  const fields = [
+    ...(event.businessAt !== null
+      ? [date(businessDateLabels[event.source] ?? '业务日期', event.businessAt)]
+      : []),
+    ...(event.source === 'judgment'
       ? [
-          date('收到判决日期', event.businessAt),
           ...event.fields.filter((value) =>
             primaryJudgmentLabels.has(value.label),
           ),
           ...event.fields.filter(
             (value) => !primaryJudgmentLabels.has(value.label),
           ),
-          date('记录时间', event.recordedAt),
         ]
-      : [
-          date('业务日期／时间', event.businessAt),
-          date('记录时间', event.recordedAt),
-          ...event.fields,
-        ];
+      : event.fields),
+    ...(event.recordedAt !== null ? [date('记录时间', event.recordedAt)] : []),
+  ];
   return {
     id: `${event.source}:${event.id}`,
     title: `${event.title}${current ? '（当前）' : '（历史）'}`,
@@ -611,6 +625,23 @@ export function buildCaseWorkspaceSections(
         ),
       );
   }
+  function roundTitle(trialRoundId: string): string {
+    const round = item.secondInstance.rounds.find(
+      (value) => value.id === trialRoundId,
+    );
+    if (round)
+      return `发回重审第 ${round.sequence} 轮 · ${round.id}${round.sourceResultId ? ` · 来源二审结果 ${round.sourceResultId}` : ''}`;
+    return `初审轮次 · ${trialRoundId}`;
+  }
+  function eventRoundId(event: WorkspaceEvent): string | null {
+    const direct = event.fields.find((value) => value.label === '审理轮次标识')?.value;
+    if (direct && direct !== '未登记') return direct;
+    if (event.source === 'second-revocation') {
+      const resultId = event.fields.find((value) => value.label === '结果标识')?.value;
+      return item.secondInstance.results.find((value) => value.id === resultId)?.trialRoundId ?? null;
+    }
+    return null;
+  }
   section(
     'case-info',
     '案件信息',
@@ -619,29 +650,18 @@ export function buildCaseWorkspaceSections(
         id: 'case',
         title: '基本资料',
         fields: [
-          field('案件编号', item.businessNo),
+          field('案件单号', item.businessNo),
           field('法院案号', item.courtCaseNo),
           field('部门', item.department.name),
           field('客户', item.customer.name),
           field('权利主体', item.rightsHolder.name),
-          field('负责人', item.owner.displayName),
+          field('负责运营', item.owner.displayName),
+          field('被告', item.defendants.map((value) => value.name).join('、') || null),
           field('当前阶段', stageLabels[item.stage]),
           date('创建时间', item.createdAt),
           date('实际匹配日期', item.matchedOn),
           date('匹配记录时间', item.matchedAt),
           field('来源公证业务号', item.sourceNotaryMatter.businessNo),
-        ],
-      },
-      {
-        id: 'certificate',
-        title: '来源公证事实',
-        fields: [
-          field('公证书编号', item.certificate.certificateNo),
-          date('公证日期', item.certificate.certificateDate),
-          date('出证时间', item.certificate.issuedAt),
-          field('需披露', item.certificate.needDisclose ? '是' : '否'),
-          ...files('公证文件', item.certificate.files),
-          ...files('披露文件', item.certificate.disclosureFiles),
         ],
       },
       ...item.defendants.map((value) => ({
@@ -655,11 +675,6 @@ export function buildCaseWorkspaceSections(
           field('地址', value.address),
         ],
       })),
-      {
-        id: 'defendant-state',
-        title: '被告登记',
-        fields: [field('被告', item.defendants.length ? '已登记' : '未登记')],
-      },
       ...item.lawyers.map((value) => ({
         id: `lawyer:${value.id}`,
         title: '当前承办律师',
@@ -671,11 +686,16 @@ export function buildCaseWorkspaceSections(
         ],
       })),
       {
-        id: 'lawyer-state',
-        title: '律师分派',
-        fields: [field('承办律师', item.lawyers.length ? '已分派' : '未分派')],
+        id: 'archive-summary',
+        title: '归档摘要',
+        fields: item.archive
+          ? [
+              date('归档日期', item.archive.current.archiveAt),
+              field('归档类型', archiveLabels[item.archive.current.archiveType]),
+              field('归档原因', item.archive.current.archiveReason),
+            ]
+          : [field('归档状态', '未归档')],
       },
-      ...groups(['closure', 'archive']),
     ],
     '编号、客户、权利主体、阶段及负责人只读；匹配、结案和归档仅通过已有业务命令登记或更正。',
   );
@@ -684,7 +704,7 @@ export function buildCaseWorkspaceSections(
   const leadMessages: Record<LeadState, string> = {
     idle: '来源线索尚未加载',
     loading: '正在加载来源线索',
-    ready: '未取得本案来源线索资料',
+    ready: '未取得与本案来源编号匹配的线索资料，不能据此判断字段未登记',
     denied: '无来源线索读取权限；案件自身资料仍可查看',
     failed: '来源线索加载失败；不能据此判断资料为空',
   };
@@ -696,6 +716,18 @@ export function buildCaseWorkspaceSections(
         id: 'lead-source',
         title: '案件来源',
         fields: [field('来源线索编号', item.sourceLead.businessNo)],
+      },
+      {
+        id: 'certificate',
+        title: '案件公证资料',
+        fields: [
+          field('公证书编号', item.certificate.certificateNo),
+          date('公证日期', item.certificate.certificateDate),
+          date('出证时间', item.certificate.issuedAt),
+          field('需披露', item.certificate.needDisclose ? '是' : '否'),
+          ...files('公证文件', item.certificate.files),
+          ...files('披露文件', item.certificate.disclosureFiles),
+        ],
       },
       ...(source
         ? [
@@ -719,6 +751,13 @@ export function buildCaseWorkspaceSections(
                 field('负责人', source.displayNames.responsibleUserName),
                 field('需披露', source.needDisclose ? '是' : '否'),
                 field('备注', source.remark),
+                field(
+                  '来源截图引用',
+                  source.leadScreenshotContentVersionIds.length
+                    ? source.leadScreenshotContentVersionIds.join('、')
+                    : '当前无来源截图版本引用',
+                  '仅展示来源返回的版本引用，不代表已读取或核对图片内容',
+                ),
               ],
             },
             ...source.products.map((value) => ({
@@ -737,8 +776,8 @@ export function buildCaseWorkspaceSections(
         : []),
     ],
     source?.capabilities.edit
-      ? '编辑进入来源线索的既有表单；受保护字段仍遵守来源状态与权限规则。'
-      : '来源线索只读；无来源编辑能力时不能修改，也不能保存为案件副本。',
+      ? '编辑进入来源线索的既有表单；受保护字段仍遵守来源状态与权限规则。来源截图仅显示引用，实物／纸证展示尚未接入。'
+      : '来源线索只读；无来源编辑能力时不能修改，也不能保存为案件副本。来源截图仅显示引用，实物／纸证展示尚未接入。',
     source ? null : leadMessages[leadState],
   );
   const acceptanceFiles = Object.entries(item.acceptanceMaterials).flatMap(
@@ -755,16 +794,44 @@ export function buildCaseWorkspaceSections(
       ];
     },
   );
+  const firstInstanceEvents = events.filter((event) =>
+    ['acceptance', 'hearing'].includes(event.source),
+  );
+  const roundIds = [...new Set(firstInstanceEvents.map(eventRoundId).filter((value): value is string => value !== null))];
   const firstInstanceGroups = groups([
     'complaint',
     'complaint-confirmation',
     'complaint-mailing',
     'filing',
-    'acceptance',
-    'hearing',
     'hearing-advance',
     'hearing-correction',
   ]);
+  for (const trialRoundId of roundIds)
+    firstInstanceGroups.push(
+      ...firstInstanceEvents
+        .filter((event) => eventRoundId(event) === trialRoundId)
+        .map((event) => {
+          const group = eventGroup(event, currentIds.has(event.id));
+          return {
+            ...group,
+            id: `first-instance-round:${trialRoundId}:${event.id}`,
+            title: `${roundTitle(trialRoundId)} · ${group.title}`,
+          };
+        }),
+    );
+  for (const round of item.secondInstance.rounds.filter(
+    (value) => !roundIds.includes(value.id),
+  ))
+    firstInstanceGroups.push({
+      id: `first-instance-round:${round.id}`,
+      title: roundTitle(round.id),
+      fields: [
+        field('本轮资料', '尚未返回本轮正式立案或开庭资料'),
+        field('来源二审结果标识', round.sourceResultId),
+        date('轮次撤销时间', round.revokedAt),
+      ],
+      ...(round.revokedAt ? { historical: true } : {}),
+    });
   if (
     item.acceptance ||
     Object.values(item.acceptanceMaterials).some(
@@ -773,14 +840,14 @@ export function buildCaseWorkspaceSections(
   )
     firstInstanceGroups.push({
       id: 'acceptance-files',
-      title: '受理材料',
+      title: '当前立案材料池',
       fields: acceptanceFiles,
     });
   section(
     'first-instance',
     '一审信息',
     firstInstanceGroups,
-    '材料、确认、邮寄、立案和开庭使用已有登记／更正命令；受理日期及案号不能通用覆盖。',
+    '显示真实提交、正式立案及各审理轮次开庭事实。正式立案日／案号按实际轮次归属；第一审开庭地点、法官及预缴金额当前没有独立来源。',
   );
   section(
     'second-instance',
@@ -795,9 +862,16 @@ export function buildCaseWorkspaceSections(
           date('撤销时间', value.revokedAt),
         ],
       })),
-      ...groups(['second-progress', 'second-result', 'second-revocation']),
+      ...groups(['second-progress']),
     ],
-    '复用二审资料、结果登记及带原因撤销；历史记录只读。',
+    '展示真实二审进展、开庭日期／地点／法官、文书及送达材料；二审正式立案日期和案号没有独立来源。历史记录只读。',
+  );
+  const judgmentEvents = events.filter((event) =>
+    ['judgment', 'second-result', 'second-revocation'].includes(event.source),
+  );
+  const judgmentRoundIds = [...new Set(judgmentEvents.map(eventRoundId).filter((value): value is string => value !== null))];
+  const unassignedJudgmentEvents = judgmentEvents.filter(
+    (event) => eventRoundId(event) === null,
   );
   section(
     'judgment',
@@ -810,13 +884,26 @@ export function buildCaseWorkspaceSections(
           field('登记状态', item.judgment.current ? '已登记' : '未登记'),
         ],
       },
-      ...groups([
-        'judgment',
-        'judgment-next-step',
-        'judgment-next-step-revocation',
-      ]),
+      ...groups(['judgment-next-step', 'judgment-next-step-revocation']),
+      ...judgmentRoundIds.flatMap((trialRoundId) =>
+        judgmentEvents
+          .filter((event) => eventRoundId(event) === trialRoundId)
+          .map((event) => {
+            const group = eventGroup(event, currentIds.has(event.id));
+            return {
+              ...group,
+              id: `judgment-round:${trialRoundId}:${event.id}`,
+              title: `${roundTitle(trialRoundId)} · ${group.title}`,
+            };
+          }),
+      ),
+      ...unassignedJudgmentEvents.map((event) => ({
+        ...eventGroup(event, false),
+        id: `judgment-round-unmatched:${event.id}`,
+        title: `未能匹配审理轮次 · ${event.title}（历史）`,
+      })),
     ],
-    '判决及后续选择仅使用已有登记、带原因更正与撤销命令；未登记金额不按零展示。',
+    '按初审及发回重审轮次分段展示一审判决、二审结果金额／实缴诉讼费、精确材料和撤销历史；未登记金额不按零展示。',
   );
   section(
     'execution',
@@ -827,9 +914,60 @@ export function buildCaseWorkspaceSections(
       'execution-mailing',
       'execution-filing',
       'execution-finish',
-      'closure',
     ]),
-    '复用执行提交、确认、邮寄、立案、结束及结案命令；冻结材料和历史记录只读。',
+    '显示执行提交、确认、邮寄、申请提交凭证及结束事实。正式执行立案日期／案号没有独立来源，不以提交日期代替。',
+  );
+  const closureGroups = [
+    ...(item.closure
+      ? uniqueById(item.closure.history, item.closure.current).map((value) => ({
+          id: `closure:${value.id}`,
+          title: value.kind === 'CORRECT' ? '结案更正' : '结案登记',
+          fields: [
+            date('结案日期', value.closeAt),
+            money('结案金额', value.closeAmountState, value.closeAmt),
+            field('备注', value.note),
+            ...files('结案材料', value.files),
+            ...(value.correctionReason
+              ? [field('结案更正原因', value.correctionReason)]
+              : []),
+            ...actor(value.recordedByUserId),
+          ],
+          ...(value.id !== item.closure?.current.id ? { historical: true } : {}),
+        }))
+      : []),
+    ...(item.archive
+      ? uniqueById(item.archive.history, item.archive.current).map((value) => ({
+          id: `archive:${value.id}`,
+          title: value.kind === 'CORRECT' ? '归档更正' : '归档登记',
+          fields: [
+            date('归档日期', value.archiveAt),
+            field('归档类型', archiveLabels[value.archiveType]),
+            field('归档原因', value.archiveReason),
+            ...(value.correctionReason
+              ? [field('归档更正原因', value.correctionReason)]
+              : []),
+            ...actor(value.recordedByUserId),
+          ],
+          ...(value.id !== item.archive?.current.id ? { historical: true } : {}),
+        }))
+      : []),
+    {
+      id: 'settlement-status',
+      title: '收款与结清状态',
+      fields: [
+        field('案件实收', '尚未接入案件级实收来源'),
+        field('实际回款', '尚未接入'),
+        field('客户／律师结算', '尚未接入案件级结算公式与事实'),
+        field('结清状态', '尚未接入'),
+      ],
+    },
+  ];
+  section(
+    'closure-info',
+    '结案信息',
+    closureGroups,
+    '只读展示真实结案版本及归档记录；结案金额不表示实收，归档不表示结清。',
+    closureGroups.length > 1 ? null : '结案及归档尚未登记',
   );
   section(
     'timeline',

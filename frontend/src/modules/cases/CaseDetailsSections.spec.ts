@@ -102,6 +102,7 @@ const keys: SectionKey[] = [
   'second-instance',
   'judgment',
   'execution',
+  'closure-info',
   'timeline',
 ];
 function actions(): Record<SectionKey, SectionAction> {
@@ -117,6 +118,7 @@ function actions(): Record<SectionKey, SectionAction> {
     'second-instance': readonly,
     judgment: readonly,
     execution: readonly,
+    'closure-info': readonly,
     timeline: readonly,
   };
 }
@@ -138,7 +140,7 @@ function mountSections() {
 }
 
 describe('CaseDetailsSections with the real A2 section shell', () => {
-  it('renders seven sections in order, all closed, with readable labels, values and helpers', () => {
+  it('renders eight sections in order, all closed, with readable labels, values and helpers', () => {
     const wrapper = mountSections();
     expect(
       wrapper
@@ -156,15 +158,19 @@ describe('CaseDetailsSections with the real A2 section shell', () => {
         .every((body) => !body.isVisible()),
     ).toBe(true);
     const caseBody = wrapper.get('[data-section="case-info"]');
-    expect(caseBody.get('.case-workspace-field__label').text()).toBe(
-      '案件编号',
-    );
+    expect(caseBody.get('.case-workspace-field__label').text()).toBe('案件单号');
     expect(caseBody.get('.case-workspace-field__value').text()).toBe('CA-1');
     expect(caseBody.text()).toContain('未登记');
     expect(caseBody.text()).toContain('实际匹配日期');
     expect(caseBody.text()).toContain('未记录');
     expect(wrapper.find('input, select, textarea, form').exists()).toBe(false);
     expect(wrapper.find('button button').exists()).toBe(false);
+    expect(
+      wrapper
+        .get('[data-section="closure-info"]')
+        .find('.case-workspace-section__edit')
+        .exists(),
+    ).toBe(false);
   });
 
   it('emits controlled edit without expanding the section and suppresses disabled commands', async () => {

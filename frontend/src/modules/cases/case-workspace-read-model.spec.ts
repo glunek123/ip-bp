@@ -201,12 +201,12 @@ describe('case workspace read model', () => {
           .find((event) => event.source === 'second-result')
           ?.fields.map((field) => field.label),
       ).not.toContain('记录人');
-      expect(
-        JSON.stringify(buildCaseWorkspaceSections(item, null, 'idle')[3]),
-      ).toContain('二审结果登记（当前）');
+      const sections = buildCaseWorkspaceSections(item, null, 'idle');
+      expect(JSON.stringify(sections[4])).toContain('二审结果登记（当前）');
+      expect(JSON.stringify(sections[3])).not.toContain('二审结果登记');
     },
   );
-  it('projects exactly seven ordered sections and missing facts without stage inference', () => {
+  it('projects eight ordered sections and keeps archived cases readable without stage inference', () => {
     const item = caseFixture();
     item.stage = 'ARCHIVED';
     const sections = buildCaseWorkspaceSections(item, null, 'idle');
@@ -217,6 +217,7 @@ describe('case workspace read model', () => {
       'second-instance',
       'judgment',
       'execution',
+      'closure-info',
       'timeline',
     ]);
     expect(sections[0]?.groups[0]?.fields).toContainEqual({
@@ -232,7 +233,9 @@ describe('case workspace read model', () => {
       label: '登记状态',
       value: '未登记',
     });
-    expect(sections[6]?.message).toBeNull();
+    expect(sections[6]?.groups[0]?.title).toBe('收款与结清状态');
+    expect(sections[6]?.message).toBe('结案及归档尚未登记');
+    expect(sections[7]?.message).toBeNull();
     expect(buildCaseWorkspaceEvents(item)).toHaveLength(1);
   });
 
@@ -258,7 +261,7 @@ describe('case workspace read model', () => {
         state,
       )[1]!;
       expect(section.message).not.toBeNull();
-      expect(section.groups).toHaveLength(1);
+      expect(section.groups).toHaveLength(2);
       expect(JSON.stringify(section)).not.toContain('真实店铺');
     }
     expect(
@@ -270,7 +273,7 @@ describe('case workspace read model', () => {
     lead.id = 'other-lead';
     expect(
       buildCaseWorkspaceSections(caseFixture(), lead, 'ready')[1]?.groups,
-    ).toHaveLength(1);
+    ).toHaveLength(2);
   });
 
   it('projects actual source fields and zero values, with capability-specific help', () => {
@@ -507,9 +510,12 @@ describe('case workspace read model', () => {
     expect(JSON.stringify(sections[4])).toContain('判决更正（当前）');
     expect(JSON.stringify(sections[4])).toContain('判决登记（历史）');
     expect(JSON.stringify(sections[4])).toContain('选择撤销原因');
-    expect(JSON.stringify(sections[3])).toContain('不适用（发回重审）');
-    expect(JSON.stringify(sections[3])).toContain('已撤销');
-    expect(JSON.stringify(sections[3])).toContain('结果撤销原因');
+    expect(JSON.stringify(sections[4])).toContain('不适用（发回重审）');
+    expect(JSON.stringify(sections[4])).toContain('已撤销');
+    expect(JSON.stringify(sections[4])).toContain('结果撤销原因');
+    expect(JSON.stringify(sections[2])).toContain('发回重审第 2 轮 · round-2');
+    expect(JSON.stringify(sections[2])).toContain('尚未返回本轮正式立案或开庭资料');
+    expect(JSON.stringify(sections[3])).not.toContain('判决金额');
     expect(
       buildCaseWorkspaceEvents(item).filter(
         (value) => value.source === 'second-progress',
@@ -517,8 +523,83 @@ describe('case workspace read model', () => {
     ).toHaveLength(1);
   });
 
+  it('assigns acceptance, hearing and judgments to their own first or remand round', () => {
+    const item = caseFixture();
+    item.secondInstance.rounds = [
+      {
+        id: 'round-2',
+        sequence: 2,
+        sourceResultId: 'result-1',
+        revokedAt: null,
+      },
+    ];
+    const firstAcceptance = {
+      id: 'acceptance-1',
+      trialRoundId: 'round-1',
+      acceptedAt: '2026-01-10',
+      courtCaseNo: '初审案号',
+      recordedAt,
+      files: [{ ...file, category: 'ACCEPTANCE_NOTICE' as const }],
+    };
+    const remandAcceptance = {
+      ...firstAcceptance,
+      id: 'acceptance-2',
+      trialRoundId: 'round-2',
+      acceptedAt: '2026-05-10',
+      courtCaseNo: '重审案号',
+    };
+    item.acceptances = [firstAcceptance, remandAcceptance];
+    item.acceptance = remandAcceptance;
+    item.hearing.arrangements = [
+      {
+        id: 'hearing-1',
+        trialRoundId: 'round-1',
+        hearingAt: '2026-02-10',
+        source: 'SCHEDULE',
+        recordedAt,
+      },
+      {
+        id: 'hearing-2',
+        trialRoundId: 'round-2',
+        hearingAt: '2026-06-10',
+        source: 'SCHEDULE',
+        recordedAt,
+      },
+    ];
+    item.hearing.currentArrangement = item.hearing.arrangements[1]!;
+    item.judgment.current = {
+      id: 'judgment-2',
+      trialRoundId: 'round-2',
+      kind: 'REGISTER',
+      priorFactId: null,
+      judgmentReceivedAt: '2026-07-10',
+      judgmentAmountState: 'KNOWN',
+      judgmentAmount: '0.00',
+      paidLitigationFeeState: 'PENDING',
+      paidLitigationFee: null,
+      fromVersion: 2,
+      toVersion: 3,
+      recordedAt,
+      files: [file],
+    };
+    item.judgment.history = [item.judgment.current];
+    const sections = buildCaseWorkspaceSections(item, null, 'idle');
+    const firstInstance = JSON.stringify(sections[2]);
+    const judgment = JSON.stringify(sections[4]);
+    expect(firstInstance).toContain('初审轮次 · round-1');
+    expect(firstInstance).toContain('正式立案日期');
+    expect(firstInstance).toContain('初审案号');
+    expect(firstInstance).toContain('开庭日期');
+    expect(firstInstance).toContain('发回重审第 2 轮 · round-2 · 来源二审结果 result-1');
+    expect(firstInstance).toContain('重审案号');
+    expect(firstInstance).toContain('2026-06-10');
+    expect(judgment).toContain('发回重审第 2 轮 · round-2');
+    expect(judgment).toContain('2026-07-10');
+  });
+
   it('projects execution, null closure business day, immutable version history and archive without settlement inference', () => {
     const item = caseFixture();
+    item.stage = 'ARCHIVED';
     item.executionSubmission.current = {
       id: 'submission-2',
       trialRoundId: 'round-1',
@@ -634,7 +715,12 @@ describe('case workspace read model', () => {
       recordedAt,
     });
     const sections = buildCaseWorkspaceSections(item, null, 'idle');
-    expect(JSON.stringify(sections[5])).toContain('结案更正原因');
+    expect(JSON.stringify(sections[5])).not.toContain('结案更正原因');
+    expect(JSON.stringify(sections[6])).toContain('结案更正原因');
+    expect(JSON.stringify(sections[6])).toContain('案件实收');
+    expect(JSON.stringify(sections[6])).toContain('尚未接入案件级实收来源');
+    expect(JSON.stringify(sections[6])).toContain('归档日期');
+    expect(JSON.stringify(sections[6])).toContain('执行终本');
     expect(JSON.stringify(sections[0])).toContain('归档原因');
     expect(JSON.stringify(sections)).not.toContain('已结清');
     expect(
