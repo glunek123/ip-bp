@@ -538,7 +538,7 @@ test('acceptance correction chains exact root and rejects invalid values, old re
   expect(await file.body()).toEqual(pdf);
 });
 
-test('authorization and ownership are checked before replay, including same-department read-only and external sessions', async ({
+test('authorization and ownership are checked before replay and a newly authorized colleague can extend historical facts', async ({
   request,
 }) => {
   test.setTimeout(300_000);
@@ -596,6 +596,10 @@ test('authorization and ownership are checked before replay, including same-depa
     await request.post(correctionUrl, { headers: operator, data: correction }),
     201,
   );
+  const historical = await recordEditSnapshot(first.caseId);
+  expect(historical.contactChanges).toHaveLength(1);
+  expect(historical.acceptanceCorrections).toHaveLength(1);
+  expect(historical.recordEditReceipts).toHaveLength(2);
   await setRecordEditGrant(
     coreLeadFixtures.roleA,
     'case.defendant-contact.update',
@@ -616,6 +620,25 @@ test('authorization and ownership are checked before replay, including same-depa
     await request.post(correctionUrl, { headers: operator, data: correction }),
     [403],
   );
+  const nextContact = {
+    ...contactInput(first.detail.defendants[0].id, 1),
+    phone: '010-43210001',
+  };
+  const nextCorrection = correctionInput(first.detail.acceptance!.id, 1);
+  await reject(
+    await request.post(contactUrl, {
+      headers: operator,
+      data: nextContact,
+    }),
+    [403],
+  );
+  await reject(
+    await request.post(correctionUrl, {
+      headers: operator,
+      data: nextCorrection,
+    }),
+    [403],
+  );
   expect(contactSaved.contactRevision).toBe(1);
   expect(correctionSaved.acceptanceRevision).toBe(1);
   const revoked = await read(request, first.caseId);
@@ -626,6 +649,111 @@ test('authorization and ownership are checked before replay, including same-depa
   expect(
     (await recordEditSnapshot(first.caseId)).recordEditReceipts,
   ).toHaveLength(2);
+  await setRecordEditGrant(
+    coreLeadFixtures.roleSelf,
+    'case.defendant-contact.update',
+    'DEPARTMENT',
+    true,
+  );
+  await setRecordEditGrant(
+    coreLeadFixtures.roleSelf,
+    'case.acceptance.correct',
+    'DEPARTMENT',
+    true,
+  );
+  const nextActor = readOnly;
+  expect(
+    (await read(request, first.caseId, nextActor)).recordEdits,
+  ).toMatchObject({
+    canUpdateDefendantContact: true,
+    canCorrectAcceptance: true,
+  });
+  const contactContinued = await body<ContactResult>(
+    await request.post(contactUrl, {
+      headers: nextActor,
+      data: nextContact,
+    }),
+    201,
+  );
+  const correctionContinued = await body<CorrectionResult>(
+    await request.post(correctionUrl, {
+      headers: nextActor,
+      data: nextCorrection,
+    }),
+    201,
+  );
+  expect(contactContinued.contactRevision).toBe(2);
+  expect(correctionContinued.acceptanceRevision).toBe(2);
+  const continued = await recordEditSnapshot(first.caseId);
+  expect(continued.case).toEqual(historical.case);
+  expect(continued.originalAcceptances).toEqual(historical.originalAcceptances);
+  expect(continued.contactChanges).toHaveLength(2);
+  expect(continued.acceptanceCorrections).toHaveLength(2);
+  expect(continued.recordEditReceipts).toHaveLength(4);
+  expect(continued.contactChanges).toEqual(
+    expect.arrayContaining([
+      historical.contactChanges[0],
+      expect.objectContaining({
+        id: contactContinued.changeId,
+        recorded_by_user_id: coreLeadFixtures.userSelf,
+        from_revision: 1,
+        to_revision: 2,
+      }),
+    ]),
+  );
+  expect(continued.acceptanceCorrections).toEqual(
+    expect.arrayContaining([
+      historical.acceptanceCorrections[0],
+      expect.objectContaining({
+        id: correctionContinued.correctionId,
+        recorded_by_user_id: coreLeadFixtures.userSelf,
+        prior_correction_id: correctionSaved.correctionId,
+        from_revision: 1,
+        to_revision: 2,
+      }),
+    ]),
+  );
+  expect(continued.recordEditReceipts).toEqual(
+    expect.arrayContaining([
+      ...historical.recordEditReceipts,
+      expect.objectContaining({
+        actor_user_id: coreLeadFixtures.userSelf,
+        command: 'DEFENDANT_CONTACT_UPDATE',
+        result_snapshot: expect.objectContaining({
+          changeId: contactContinued.changeId,
+        }),
+      }),
+      expect.objectContaining({
+        actor_user_id: coreLeadFixtures.userSelf,
+        command: 'ACCEPTANCE_CORRECTION',
+        result_snapshot: expect.objectContaining({
+          correctionId: correctionContinued.correctionId,
+        }),
+      }),
+    ]),
+  );
+  expect(continued.audits).toEqual(
+    expect.arrayContaining([
+      ...historical.audits,
+      expect.objectContaining({
+        actor_user_id: coreLeadFixtures.userSelf,
+        action: 'case.defendant-contact.updated',
+      }),
+      expect.objectContaining({
+        actor_user_id: coreLeadFixtures.userSelf,
+        action: 'case.acceptance.corrected',
+      }),
+    ]),
+  );
+  await reject(
+    await request.post(contactUrl, { headers: operator, data: contact }),
+    [403],
+  );
+  await reject(
+    await request.post(correctionUrl, { headers: operator, data: correction }),
+    [403],
+  );
+  expect(await recordEditSnapshot(first.caseId)).toEqual(continued);
 });
 
 test('archived case accepts data corrections without changing its archive anchor, old receipts or file bytes', async ({
