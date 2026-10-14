@@ -278,19 +278,13 @@ export class CaseExecutionConfirmationService {
                 maxCount: 10,
               });
             else
-              directFacts = await this.materials.assertAvailableVersions(
-                tx,
-                actor,
-                {
-                  ownerType: 'CASE',
-                  ownerId: caseId,
-                  category: 'EXECUTION_APPLICATION',
-                  contentVersionIds:
-                    input.executionApplicationContentVersionIds ?? [],
-                  minCount: 1,
-                  maxCount: 10,
-                },
-              );
+              directFacts =
+                await this.materials.assertCompleteCurrentCaseExecutionApplicationBundle(
+                  tx,
+                  actor,
+                  caseId,
+                  input.executionApplicationContentVersionIds ?? [],
+                );
             const confirmationId = randomUUID();
             const auditId = randomUUID();
             const confirmedAt = new Date();

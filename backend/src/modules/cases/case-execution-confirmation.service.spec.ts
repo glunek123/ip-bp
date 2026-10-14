@@ -83,6 +83,9 @@ describe('CaseExecutionConfirmationService', () => {
       assertAvailableVersions: jest
         .fn()
         .mockResolvedValue([{ contentVersionId: fileId }]),
+      assertCompleteCurrentCaseExecutionApplicationBundle: jest
+        .fn()
+        .mockResolvedValue([{ contentVersionId: fileId }]),
       freezeCaseExecutionConfirmationReferences: jest.fn(),
     };
     return {
@@ -114,18 +117,10 @@ describe('CaseExecutionConfirmationService', () => {
       expect.any(Object),
       f.tx,
     );
-    expect(f.materials.assertAvailableVersions).toHaveBeenCalledWith(
-      f.tx,
-      actor,
-      {
-        ownerType: 'CASE',
-        ownerId: caseId,
-        category: 'EXECUTION_APPLICATION',
-        contentVersionIds: [fileId],
-        minCount: 1,
-        maxCount: 10,
-      },
-    );
+    expect(
+      f.materials.assertCompleteCurrentCaseExecutionApplicationBundle,
+    ).toHaveBeenCalledWith(f.tx, actor, caseId, [fileId]);
+    expect(f.materials.assertAvailableVersions).not.toHaveBeenCalled();
     expect(f.tx.case.updateMany).toHaveBeenCalledWith(
       expect.objectContaining({
         where: expect.objectContaining({
@@ -148,6 +143,55 @@ describe('CaseExecutionConfirmationService', () => {
         resultSnapshot: result,
       }),
     });
+  });
+
+  it('does not record a direct confirmation when the complete current bundle is rejected', async () => {
+    const f = fixture();
+    const failure = new Error('bundle incomplete');
+    Object.assign(f.record, {
+      sourceLeadId: null,
+      sourceNotaryMatterId: null,
+      certificateId: null,
+      externalEntry: {
+        id: fileId,
+        caseId,
+        departmentId: actor.departmentId,
+        initialStage: 'WAITING_EXECUTION_CONFIRMATION',
+        stageReachedOn: new Date('2026-09-30T00:00:00.000Z'),
+        known: {
+          courtId: null,
+          courtCaseNo: null,
+          acceptedOn: null,
+          secondInstanceAcceptedOn: null,
+          platform: null,
+          shopName: null,
+          shopExternalId: null,
+          caseType: null,
+          infringementTypes: null,
+        },
+      },
+      version: 1,
+      currentJudgmentNextStepId: null,
+      currentJudgmentNextStep: null,
+      currentExecutionSubmissionId: null,
+      currentExecutionSubmission: null,
+    });
+    f.materials.assertCompleteCurrentCaseExecutionApplicationBundle.mockRejectedValue(
+      failure,
+    );
+    await expect(
+      f.service.confirm(actor, caseId, {
+        ...input,
+        expectedVersion: 1,
+        expectedSubmissionId: null,
+        executionApplicationContentVersionIds: [fileId],
+      }),
+    ).rejects.toBe(failure);
+    expect(f.tx.caseExecutionConfirmation.create).not.toHaveBeenCalled();
+    expect(f.tx.auditEvent.create).not.toHaveBeenCalled();
+    expect(
+      f.materials.freezeCaseExecutionConfirmationReferences,
+    ).not.toHaveBeenCalled();
   });
   it('confirms an imported current execution bundle without inventing a submission', async () => {
     const f = fixture();
