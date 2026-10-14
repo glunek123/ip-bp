@@ -1,5 +1,5 @@
 import { randomUUID } from 'node:crypto';
-import { mkdirSync } from 'node:fs';
+import { mkdirSync, readFileSync } from 'node:fs';
 import { resolve } from 'node:path';
 import {
   expect,
@@ -162,6 +162,150 @@ test.beforeEach(async () => {
 });
 test.afterEach(clean);
 test.afterAll(disconnectCustomerTestDatabase);
+
+test('internal case workspace keeps seven closed sections, real file bytes and pending amounts across compact viewports without case writes', async ({
+  page,
+  request,
+}, testInfo) => {
+  test.setTimeout(180_000);
+  const source = await createClosedCaseArchiveSourceThroughApi(request, {
+    bytes,
+  });
+  const before = await read(request, source.caseId);
+  expect(before.closure.current.closeAt).toBeNull();
+  expect(before.closure.current.closeAmountState).toBe('PENDING');
+  const caseWrites: string[] = [];
+  page.on('request', (r) => {
+    if (
+      new URL(r.url()).pathname.startsWith(`/api/v1/cases/${source.caseId}`) &&
+      !['GET', 'HEAD', 'OPTIONS'].includes(r.method())
+    )
+      caseWrites.push(r.method());
+  });
+  const path = `/cases/${source.caseId}?view=department&page=2&stage=WAITING_ARCHIVE`;
+  await signIn(
+    page,
+    path,
+    coreLeadFixtures.operatorUsername,
+    coreLeadFixtures.operatorPassword,
+  );
+  const workspace = page.locator('.case-workspace').first();
+  const toggles = workspace.locator('.case-workspace-section__toggle');
+  await expect(toggles).toHaveCount(7);
+  await expect(toggles).toHaveText([
+    /案件信息/u,
+    /线索信息/u,
+    /一审信息/u,
+    /二审信息/u,
+    /判决信息/u,
+    /执行信息/u,
+    /流程时间轴/u,
+  ]);
+  for (const toggle of await toggles.all())
+    await expect(toggle).toHaveAttribute('aria-expanded', 'false');
+  await toggles.first().click();
+  await expect(toggles.first()).toHaveAttribute('aria-expanded', 'true');
+  await expect(
+    workspace.locator(
+      '[data-section="case-info"] .case-workspace-section__body',
+    ),
+  ).toContainText('未记录');
+  await expect(
+    workspace.locator(
+      '.case-workspace-section__body :is(input,select,textarea)',
+    ),
+  ).toHaveCount(0);
+  await page.getByRole('tab', { name: '文件管理', exact: true }).click();
+  await expect(page).toHaveURL(/[?&]tab=files(?:&|$)/u);
+  const file = source.file;
+  if (file === null) throw new Error('Synthetic exact-version file missing');
+  const row = workspace
+    .locator('[data-test="workspace-file"]')
+    .filter({ hasText: file.contentVersionId });
+  await expect(row).toHaveCount(1);
+  const downloaded = page.waitForEvent('download');
+  await row.getByRole('button', { name: /^下载 /u }).click();
+  const download = await downloaded;
+  expect(download.suggestedFilename()).toBe(file.originalFilename);
+  const downloadPath = await download.path();
+  if (downloadPath === null) throw new Error('Browser download path missing');
+  expect(readFileSync(downloadPath).equals(bytes)).toBe(true);
+  await page.getByRole('tab', { name: '费用管理', exact: true }).click();
+  await expect(workspace.locator('[data-test="amount-closure"]')).toContainText(
+    'PENDING',
+  );
+  await expect(
+    workspace.locator('[data-test="amount-closure"]'),
+  ).not.toContainText('¥ 0');
+  await expect(workspace.locator('[data-test="case-payments"]')).toContainText(
+    '未提供',
+  );
+  await page.getByRole('tab', { name: '费用管理', exact: true }).focus();
+  await page.keyboard.press('Home');
+  await expect(
+    page.getByRole('tab', { name: '案件详情', exact: true }),
+  ).toHaveAttribute('aria-selected', 'true');
+  await expect(toggles.first()).toHaveAttribute('aria-expanded', 'true');
+  await page.keyboard.press('End');
+  await expect(
+    page.getByRole('tab', { name: '费用管理', exact: true }),
+  ).toHaveAttribute('aria-selected', 'true');
+  await page.keyboard.press('ArrowLeft');
+  await expect(
+    page.getByRole('tab', { name: '文件管理', exact: true }),
+  ).toHaveAttribute('aria-selected', 'true');
+  await page.keyboard.press('Home');
+  await expect(
+    page.getByRole('tab', { name: '案件详情', exact: true }),
+  ).toHaveAttribute('aria-selected', 'true');
+  await toggles.first().click();
+  for (const [label, width, height, padding] of [
+    ['desktop', 1440, 900, 16],
+    ['tablet', 1024, 768, 12],
+    ['mobile', 390, 844, 10],
+  ] as const) {
+    await page.setViewportSize({ width, height });
+    await page.goto(path);
+    await expect(toggles).toHaveCount(7);
+    for (const toggle of await toggles.all())
+      await expect(toggle).toHaveAttribute('aria-expanded', 'false');
+    expect(
+      await workspace.evaluate((element) =>
+        Number.parseFloat(getComputedStyle(element).paddingLeft),
+      ),
+    ).toBe(padding);
+    expect(
+      await page.evaluate(() => document.body.scrollWidth),
+    ).toBeLessThanOrEqual(width + 1);
+    await page.screenshot({
+      path: testInfo.outputPath(`workspace-${label}-closed.png`),
+      fullPage: true,
+    });
+    await page.getByRole('tab', { name: '文件管理', exact: true }).click();
+    await expect(row).toHaveCount(1);
+    await page.screenshot({
+      path: testInfo.outputPath(`workspace-${label}-files.png`),
+      fullPage: true,
+    });
+    await page.getByRole('tab', { name: '费用管理', exact: true }).click();
+    await expect(
+      workspace.locator('[data-test="amount-closure"]'),
+    ).toContainText('PENDING');
+    await page.screenshot({
+      path: testInfo.outputPath(`workspace-${label}-fees.png`),
+      fullPage: true,
+    });
+    const query = new URL(page.url()).searchParams;
+    expect(query.get('view')).toBe('department');
+    expect(query.get('page')).toBe('2');
+    expect(query.get('stage')).toBe('WAITING_ARCHIVE');
+  }
+  expect(caseWrites).toEqual([]);
+  const after = await read(request, source.caseId);
+  expect(after.version).toBe(before.version);
+  expect(after.closure).toEqual(before.closure);
+  expect(after.archive).toBeNull();
+});
 
 test('normal operator archives pending amount and unknown closure date, appends reason history, keeps exact bytes and exposes only client stage', async ({
   page,

@@ -1362,3 +1362,11 @@ I在AppShell.spec.ts补内部工作页进入／离开密度class边界；实际�
 R2源f886ab72c0a3142776e1aa0a413aa536c204cfd5、M2源e0fb389ff1f7eee8f1301b015cc1376cb31bcc9b均由父级确认停写；I核目录干净／四文件白名单并只cherry-pick实现提交为4efae18／a3fe4f9，跳过已接纳的A2类型／组件依赖。八个接入blob与源逐个一致；随后I仅将CaseWorkspaceFiles.vue的ElButton包根导入改成既有按需button入口，符合AGENTS，不增依赖或API。R2／M2原refs及目录未改。
 
 I实际四文件32/32测试、完整前端typecheck:prepared、八文件Lint／格式及diff exit0；原Worker报告（R2 15＋A2 18、M2 17）与I结果分开留痕。A2／D2／R2／M2固定依赖齐备，F2准备复用已停写D2的ca016-frontend-integration并建立codex/ui002-f2-case-host，原被旧E3占用的ui002-f2-host候选保留。最终准备SHA／目录／runtime／strict与clean结果只据ignored `.local/ui002-evidence/f2-ready.json`；源接纳和一行修正证据见r2-m2-acceptance.json。尚未宿主接线、完整UI Review／verify／真实字节下载或PG／Chromium验收，不升级持久预览。
+
+### UI002 I并行E2E准备与编辑缺口核对（尚未浏览器实跑）
+
+父级已派F2 `01a1389e-d6d9-7354-b76e-e71965e64026`从b1b1866接线，I不改其目录或白名单。在既有case-archive.spec.ts和真实API来源／清理流程上新增只读工作页验收：七栏默认关闭及展开保留、三个tab／键盘、精确版本去重及真实浏览器下载bytes、PENDING不变0、1440／1024／390密度／无横溢出和三页签截图，核浏览器交互不写案件及原版本／结案／未归档事实保持。原三个归档角色／未知回执用例保留，实际入口适配待F2固定交付。
+
+新增测试准备实过根TypeScript、文件Lint／格式、diff和项目受控pnpm test:e2e --list（4用例、1文件），不等于四用例执行通过。首次直接Playwright --list因未加载独立测试环境被模块保护拒绝、0用例；未绕过，改用既有脚本捕获backend/.env.test及资源锁后发现成功。没有运行测试钩子、服务／浏览器、DB写入或预览操作，没有本批验收截图。证据ignored `.local/ui002-evidence/i-e2e-preparation.json`。
+
+源码核对确认Case无整体PATCH／PUT，匹配仅PENDING_MATCH；有表单入口不代表已匹配后的基础字段、已登记受理日／法院案号或冻结来源均能普通编辑。最小后续补缺建议仅见UI002合同末段，未批准字段／新Command／迁移／权限／实施Task；本批只能按实际已有命令报告修改能力，不扩大“各栏全字段可修改”的完成声明。
