@@ -182,6 +182,9 @@ async function matchCaseThroughBrowser(
   });
   await page.getByRole('button', { name: '确认匹配并进入待写诉状' }).click();
   await expect(page.getByRole('status')).toContainText('待写诉状');
+  await expect(
+    page.locator('.case-workspace-editors[role="dialog"]'),
+  ).not.toBeVisible();
   await openCaseWorkspaceCommand(
     page,
     'complaint',

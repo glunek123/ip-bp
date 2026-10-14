@@ -1399,4 +1399,6 @@ SPA固定源f46a0c2／f2cb2ac／9de1248分别接为7173e16／8748f4b／41fb15367
 
 15恢复后完整14项受控PG／Chromium于08:45:49～08:51:15 UTC exit1，11通过／1失败／2未运行。第12项原matching请求显式重放成功、原body和固定回执断言已过；CaseDetail确认成功后正常移除retry并关闭drawer，测试立即打开complaint时helper把尚处于关闭过渡的drawer当打开并点击已隐藏关闭按钮，120秒超时。仅在原重放成功断言后等待dialog隐藏，不增超时、force click或重试，不改产品／API／权限；聚焦复验及最终14项尚待完成。实际head/tree/exit/clean及前后环境HMAC见ignored reconnected-15-pg.json、reconnected-environment-{before,after}.json；完整失败trace另存reconnected-15-failure-artifacts，中断副本final-15-interrupted-0749.log及原失败记录均保留。
 
+b73b82a506958da535bc16f0cb6f579eb25eb88e固定聚焦三项实际2通过／1失败：原请求丢响应／SPA显式回执恢复与同部门只读／跨部门404均通过，普通密码多文件兼容在旧matchCaseThroughBrowser正常匹配成功后紧接打开complaint时命中同一关闭过渡抢点，240秒超时。进一步仅在该真实匹配成功状态断言后等待dialog隐藏，不改产品/helper、不增加超时、不绕过点击；原两处完整断言保留。完整log／trace／JSON见ignored focused-recovery-pg及focused-recovery-failure-artifacts；该失败不计为通过，下一步先复验最后兼容用例，再固定最终14项组合。
+
 持久预览已为fc1c9f3c03c532eb26ae6c0f1c9859cb5da01f6c／146，原144→146前向升级记录保留。原start入口恢复后再次核124张业务／凭据／授权原表、2案／6凭据、材料及私密配置保持，归档新增事实0；不reset／seed／改密码或扩权。146新完整备份runtime/ui002-reconnected-146.dump为1,113,990字节，SHA256 ef27cb222f02c0afb7eff51d16cbdf121dc8a934c0220abf05af51274f1b65b5，pg_restore TOC可读、未演练恢复；旧1,074,833字节备份及旧dist保留。预览尚缺最终抽屉CSS，UI002未推送／合并；08:50 UTC远端main实核696fad75，主仓原.pnpm-store和stash保留。
