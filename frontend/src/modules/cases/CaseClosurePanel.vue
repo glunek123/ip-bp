@@ -156,6 +156,7 @@ function clearDraft() {
 const canRecord = computed(
   () =>
     !projectionBlocked.value &&
+    props.item.stage === 'WAITING_ARCHIVE' &&
     props.item.canRecordClosure &&
     !!props.item.executionFinish &&
     !props.item.closure,
@@ -163,6 +164,7 @@ const canRecord = computed(
 const canCorrect = computed(
   () =>
     !projectionBlocked.value &&
+    props.item.stage === 'WAITING_ARCHIVE' &&
     !props.lawyer &&
     props.item.canCorrectClosure &&
     !!props.item.executionFinish &&

@@ -80,6 +80,8 @@ function base(): CaseDetail {
     canFinishExecution: false,
     canRecordClosure: true,
     canCorrectClosure: false,
+    canArchive: false,
+    canCorrectArchive: false,
     canSubmitComplaint: false,
     canConfirmComplaint: false,
     canMailComplaint: false,
@@ -157,6 +159,7 @@ function base(): CaseDetail {
       files: [],
     },
     closure: null,
+    archive: null,
   };
 }
 function registered(
@@ -195,6 +198,8 @@ function registered(
     version: current.toVersion,
     canRecordClosure: false,
     canCorrectClosure: true,
+    canArchive: false,
+    canCorrectArchive: false,
     closure: {
       id: closureId,
       finishId,
@@ -232,6 +237,8 @@ function lawyerProjection(item: CaseDetail): LawyerCaseDetail {
     canRevokeJudgmentNextStep: false,
     canRevokeSecondInstanceResult: false,
     canCorrectClosure: false,
+    canArchive: false,
+    canCorrectArchive: false,
     closure: closure
       ? {
           ...closure,

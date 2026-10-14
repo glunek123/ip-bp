@@ -150,6 +150,26 @@ async function upload(wrapper: Panel) {
   await flushPromises();
 }
 describe('injected closure panel', () => {
+  it('keeps exact closure history and files readable after archive with no editing', async () => {
+    const wrapper = panel({
+      item: { ...closed(), stage: 'ARCHIVED', canCorrectClosure: false },
+    });
+    await flushPromises();
+    expect(control(wrapper, 'current').text()).toContain(file.originalFilename);
+    expect(control(wrapper, 'history').text()).toContain(file.originalFilename);
+    expect(exists(wrapper, 'form')).toBe(false);
+    expect(exists(wrapper, 'correct')).toBe(false);
+    await control(wrapper, 'history').get('button').trigger('click');
+    await flushPromises();
+    expect(api.downloadClosureFile).toHaveBeenCalledWith(
+      item.id,
+      file,
+      expect.any(AbortSignal),
+    );
+    expect(api.recordClosure).not.toHaveBeenCalled();
+    expect(api.correctClosure).not.toHaveBeenCalled();
+    wrapper.unmount();
+  });
   it.each([
     { canRecordClosure: false },
     { stage: 'ARCHIVED' },

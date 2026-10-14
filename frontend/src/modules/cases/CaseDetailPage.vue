@@ -3,12 +3,20 @@ import CaseExecutionMailingPanel from './CaseExecutionMailingPanel.vue';
 import CaseExecutionFilingPanel from './CaseExecutionFilingPanel.vue';
 import CaseExecutionFinishPanel from './CaseExecutionFinishPanel.vue';
 import CaseClosurePanel from './CaseClosurePanel.vue';
+import CaseArchivePanel from './CaseArchivePanel.vue';
 
 import { computed, onBeforeUnmount, onMounted, ref, watch } from 'vue';
 import { RouterLink, useRoute } from 'vue-router';
 import { ElButton } from 'element-plus/es/components/button/index.mjs';
 import { ApiError } from '../../api/http';
 import {
+  archiveCase,
+  caseArchiveSession,
+  type ArchiveCaseInput,
+  type CorrectCaseArchiveInput,
+  type CaseArchiveResult,
+  type CaseArchivePendingRequest,
+  correctCaseArchive,
   recordCaseClosure,
   correctCaseClosure,
   caseClosureSession,
@@ -151,6 +159,7 @@ const finishCallbacks = computed(() => {
       request?.abort();
       finishSession.clear();
       closureSession.clear();
+      archiveSession.clear();
       clearContext();
       await load();
     }
@@ -284,6 +293,109 @@ const finishCallbacks = computed(() => {
   };
 });
 
+const archiveSession = caseArchiveSession(auth, () => identity.value);
+const archivePending = computed(() => archiveSession.pending(id.value));
+const archiveCallbacks = computed(() => {
+  const caseId = item.value?.id ?? id.value;
+  const closureId = item.value?.closure?.id;
+  const archiveId = item.value?.archive?.id;
+  const contextKey = identity.value;
+  const revision = contextRevision;
+  const current = () =>
+    caseId === id.value &&
+    contextKey === identity.value &&
+    revision === contextRevision;
+  const denied = async (reason: unknown) => {
+    if (
+      current() &&
+      reason instanceof ApiError &&
+      (reason.status === 401 || reason.status === 403)
+    ) {
+      contextRevision += 1;
+      readRevision += 1;
+      request?.abort();
+      finishSession.clear();
+      closureSession.clear();
+      archiveSession.clear();
+      clearContext();
+      await load();
+    }
+    throw reason;
+  };
+  return {
+    pending: (request: CaseArchivePendingRequest | null) => {
+      if (current()) archiveSession.setPending(caseId, request);
+    },
+    archive: async (targetId: string, input: ArchiveCaseInput) => {
+      if (!current() || targetId !== caseId)
+        throw new ApiError(
+          '案件办理身份已变化，请重新读取',
+          409,
+          'INVALID_STATE',
+        );
+      archiveSession.setPending(caseId, { command: 'ARCHIVE', input });
+      try {
+        const result = await archiveCase(caseId, input, 'internal');
+        if (!current())
+          throw new ApiError(
+            '案件办理身份已变化，请重新读取',
+            409,
+            'INVALID_STATE',
+          );
+        if (
+          result.closureId !== closureId ||
+          (archiveId && result.archiveId !== archiveId)
+        )
+          throw new ApiError(
+            '服务返回了无效的归档锚点',
+            200,
+            'INVALID_RESPONSE',
+          );
+        return result;
+      } catch (reason) {
+        return denied(reason);
+      }
+    },
+    correct: async (targetId: string, input: CorrectCaseArchiveInput) => {
+      if (!current() || targetId !== caseId)
+        throw new ApiError('当前身份不能更正该案件', 403, 'ACTION_FORBIDDEN');
+      archiveSession.setPending(caseId, { command: 'CORRECT', input });
+      try {
+        const result = await correctCaseArchive(caseId, input);
+        if (!current())
+          throw new ApiError(
+            '案件办理身份已变化，请重新读取',
+            409,
+            'INVALID_STATE',
+          );
+        if (
+          result.closureId !== closureId ||
+          (archiveId && result.archiveId !== archiveId)
+        )
+          throw new ApiError(
+            '服务返回了无效的归档锚点',
+            200,
+            'INVALID_RESPONSE',
+          );
+        return result;
+      } catch (reason) {
+        return denied(reason);
+      }
+    },
+    changed: (result: CaseArchiveResult) => {
+      if (!current() || result.id !== caseId) return;
+      archiveSession.setPending(caseId, null);
+      if (archiveSession.markChanged(result.archiveVersionId)) {
+        notifyWorkflowChanged();
+        void load();
+      }
+    },
+    refresh: () => {
+      if (current()) void load();
+    },
+  };
+});
+
 const closureSession = caseClosureSession(auth, () => identity.value);
 const closurePending = computed(() => closureSession.pending(id.value));
 const closureCallbacks = computed(() => {
@@ -305,6 +417,7 @@ const closureCallbacks = computed(() => {
       request?.abort();
       finishSession.clear();
       closureSession.clear();
+      archiveSession.clear();
       clearContext();
       await load();
     }
@@ -551,6 +664,7 @@ async function load() {
       request = undefined;
       finishSession.clear();
       closureSession.clear();
+      archiveSession.clear();
       clearContext();
       state.value = reason.status === 404 ? 'missing' : 'failed';
       error.value =
@@ -617,8 +731,10 @@ function clearContext(): void {
 watch(
   [id, identity],
   ([caseId], [priorCaseId]) => {
-    if (caseId !== priorCaseId && route.params.id !== undefined)
+    if (caseId !== priorCaseId && route.params.id !== undefined) {
       closureSession.clear();
+      archiveSession.clear();
+    }
     contextRevision += 1;
     readRevision += 1;
     request?.abort();
@@ -696,6 +812,7 @@ function stageLabel(stage: CaseDetail['stage']): string {
   if (stage === 'WAITING_EXECUTION_FILING') return '待申请执行';
   if (stage === 'EXECUTING') return '强制执行中';
   if (stage === 'WAITING_ARCHIVE') return '待归档';
+  if (stage === 'ARCHIVED') return '已归档';
   return '待开庭';
 }
 function removeDefendant(index: number) {
@@ -1184,6 +1301,21 @@ onBeforeUnmount(() => {
           @pending-change="finishCallbacks.pending"
           @changed="finishCallbacks.changed"
           @refresh="finishCallbacks.refresh"
+        />
+        <CaseArchivePanel
+          v-if="
+            item.stage === 'WAITING_ARCHIVE' ||
+            item.stage === 'ARCHIVED' ||
+            archivePending
+          "
+          :item="item"
+          :context-key="identity"
+          :pending-request="archivePending"
+          :archive-case="archiveCallbacks.archive"
+          :correct-archive="archiveCallbacks.correct"
+          @pending-change="archiveCallbacks.pending"
+          @changed="archiveCallbacks.changed"
+          @refresh="archiveCallbacks.refresh"
         />
         <CaseClosurePanel
           v-if="

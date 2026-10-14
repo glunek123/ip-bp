@@ -67,6 +67,8 @@ function detail(
     canFinishExecution: false,
     canRecordClosure: false,
     canCorrectClosure: false,
+    canArchive: false,
+    canCorrectArchive: false,
     canSubmitFiling: false,
     canRegisterAcceptance: false,
     canUploadAcceptanceMaterials: false,
@@ -132,6 +134,7 @@ function detail(
     executionFiling: null,
     executionFinish: null,
     closure: null,
+    archive: null,
   };
 }
 function materials() {
@@ -901,8 +904,11 @@ describe('lawyer execution finish caller', () => {
       canFinishExecution: false,
       canRecordClosure: false,
       canCorrectClosure: false,
+      canArchive: false,
+      canCorrectArchive: false,
       executionFinish: null,
       closure: null,
+      archive: null,
     });
     panel.vm.$emit('refresh');
     await flushPromises();
@@ -982,6 +988,8 @@ it('connects the actual E2 panel to lawyer file-only finish and reads the retain
     canFinishExecution: false,
     canRecordClosure: false,
     canCorrectClosure: false,
+    canArchive: false,
+    canCorrectArchive: false,
     version: 19,
     executionFinish: {
       id: finishResult.finishId,
