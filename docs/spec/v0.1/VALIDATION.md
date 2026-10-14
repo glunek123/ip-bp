@@ -1318,3 +1318,19 @@ Task C实际提交`0cc238bdffc930aecc2be7058425b2d45ee14b00`，tree`c4934c0a904b
 四执行目录复用原CA016干净停写目录，旧任务成果仍在原refs；共同锁文件／运行时输入须与基线逐字相同，B17的既有生成schema再核同一性，前端目录不把未生成后端Client视为依赖坏。冻结候选及正常格式／Spec／严格context检查实际结果、复用输入／目录就绪、精确HEAD／tree均保存ignored `.local/ca017-evidence/{freeze-checks,freeze,worktrees,dispatch-ready}.json`，不在正文写自身提交SHA或预称尚未返回的操作完成。首次只读复用检查误将前端P17旧后端schema当共同运行输入而停止，无修改；按职责分别核共享九项与B17 schema后继续，不为前端目录重新安装后端生成物。各目录实际准备只切干净工作区到固定冻结新分支、保留原refs，依赖输入未变时不重复安装；如缺失才按冻结离线入口补齐，不运行setup／bootstrap／seed或DB。
 
 CORE-CA-018仅为已批准SD-23外部转入／历史补录后续入口预留跟踪标识，没有新业务批准、技术冻结或实现。本轮只交父级CA017派发准备；5186／3206／15436保持已验3f636ea、144迁移和原数据／账号／授权，Worker不得写入。真实新Action权限仍需明确目标授权，隔离测试只用backend/.env.test的15433合成流程。
+
+## CA017实现及隔离集成验收（2026-10-14）
+
+固定候选`4487f9bd87a4b19fd3155e6d3d70cfcbf42dbc6c`／tree`2076936e64420f2690b178271a7903a64efd8410`，产品与单位／构建输入最终不再改变。四作者自身固定源为B17 `714675b07701878789eb487feb36a471763e067d`、P17 `e1032f351778d22d3ce4a4537de73238c0529b9f`、F17 API `e16420ba1d3ee35fcb8b59d984ef70cee5fba79c`／详情`860c2dbeca3db4934a1c57854ae202289101d44f`、N17 `379b5ec82f0bd992a9022249924c215281879f72`＋`7b6fc3d4a34fc0d6de7c089e633ae19973973b1f`，依赖副本未重复接纳。源提交仅作为作者交接证据；I固定组合独立Review两轴ACCEPTED，未关闭C/I/M0/0/0。Reviewer发现SPA用例整页导航错误，I修复站内RouterLink／同document history返回后复核关闭。
+
+实现本案精确当前Closure锚下WAITING_ARCHIVE→ARCHIVED、内部带原因追加更正、六业务分类、真实归档业务日和完整原因；PENDING金额／null结案日／空附件不阻断。内部有权运营和当前PRIMARY律师分别按即时Action／scope／binding授权，原因更正仅内部。八键固定原回执、逐案串行CAS、immutable版本／审计／回执及三模型精确末端链前向接续完整matching→Finish／Closure守卫。原Closure／Finish回执与准确旧材料保持，金额及分类不推实收／结清。内外投影、ARCHIVED阶段／计数、N1／N2及已有分页接续；新两权限不自动回填真实Grant／Boundary。未修改已执行的144份旧SQL。
+
+完整`pnpm verify`实际02:30:06.031～02:34:16.907 UTC exit0：工具80/80、前端105文件1672/1672、后端112文件1451/1451、全部静态及双构建，Vite既有>500kB告警保留。启动名义HEAD为abdc084；运行中修正同一browser E2E三行（展开折叠段／真实日历hook），因此不能称该次为最终干净tree完整verify。`stable-reuse-proof.json`逐项核17组产品／单元／构建输入相同，独立Reviewer确认限定复用；最终4487f9b另实跑根E2E types、受影响Lint／格式、严格context和Spec全部exit0（02:40:57 UTC）。没有自动affected推导或复用CA016整片通过。
+
+风险正式首轮02:35:59.085～02:39:14.720 UTC对9文件16个明确selector实跑，15过1失败；执行期间仅browser文件和快照漂移，不能写干净16/16。失败为operator客户端旧附件拒绝断言期望403实际404，既有CA016合同及测试允许403／404遮蔽；实际归档、更正、刷新／重登、历史、原律师精确下载和客户最小投影均已成功。I仅对齐此测试拒绝预期并禁用截图过渡动画，无产品修改。最后02:40:44.260～02:41:29.647 UTC在同干净4487f9b／tree前后`case-archive.spec.ts` 3/3 exit0（正常运营、当前律师及撤权、丢失成功原参重放）。余下13项为CA017 PG3＋迁移1、CA016 Closure3＋PG2＋迁移1、旧Finish PG1、真实14列/N2列表1、21条内部/客户分页1；9组包含整个tests/support及全部具体旧/PG验收文件、另17组产品／配置输入逐项同一，Reviewer核接受限定复用13项。不是三方作者证据拼成同树16/16。
+
+CA017 PG证明grant/scope不拼接、撤权原键重放拒绝、旧Closure／Finish固定回执、准确结案锚、竞争更正仅一方成功、六分类不推财务；五个已到达写点分别对归档与更正注入故障，头／历史／审计／CAS／回执全部回滚，原参再提交成功；11个直接SQL反例拒绝并保持快照。迁移先在15433受控随机schema完整146空链通过，再正常public deploy成功；恢复后的public实际空库且无_prisma_migrations，未据旧环境指纹虚称144数据恢复。正常API完成的真实Closure来源／旧事实／审计／回执／精确元数据／材料字节复制到独立144schema，146向前升级、第二DDL注入失败保留enum但DDL原子回滚、向前重放及stage-only绕过拒绝全部通过，无真实Grant回填。全部只用backend/.env.test／15433和独立私有测试文件根。最终环境HMAC`343c59891dfe4d82e03a5c91faac2e1de7325b9c847f35fbaa3819c72290a627`、Node24.21.0／pnpm11.27.0，仅环境旁证，不代表数据库内容连续性。
+
+ignored证据入口`.local/ca017-evidence/`：b17-review、combination-candidate、empty-migration-probe、public-deploy、verify-fixed、final-risk-16、browser-final-3、stable-static、stable-reuse-proof、environment-current及各日志。三视口1440／1024／390截图browser-artifacts/archive-*.png已实际读图；正常读取真实归档与原结案数据，手机页面无水平溢出；fullPage固定栏出现位置是拍摄时滚动位置，最后截图关闭过渡动画。
+
+本地已验收；Git收口／远端实核回执只按后续实际结果记录，不提前称push/main完成。用户02:33 UTC预告、02:38 UTC开始人工测试，父级要求保持持久演示5186／3206／15436的CA016 `3f636ea5f7f1adfef0adaf215dd97384ac87a318`、144迁移、原2案／6凭据／授权／文件；本轮没有预览迁移／重启／密码或权限更改。CA017预览更新等待协调测试窗口，不将5174／3101隔离验收入口当演示入口。不做生产／真实资金／新长期凭据、reset、seed或历史删除。Next CA018仅独立合同与独占任务建议，未冻结或实现。
