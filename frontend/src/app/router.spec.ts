@@ -20,6 +20,84 @@ beforeEach(async () => {
   await router.push('/health');
 });
 
+describe('internal case workspace routing', () => {
+  beforeEach(() => {
+    auth.session = { principalType: 'INTERNAL', user: { id: 'operator-user' } };
+  });
+
+  it.each(['details', 'files', 'fees'])(
+    'keeps the %s tab and the original case bookmark',
+    async (tab) => {
+      await router.push(
+        `/cases/case-1?tab=${tab}&view=department&page=3&stage=WAITING_HEARING#records`,
+      );
+      expect(router.currentRoute.value.meta.caseWorkspace).toBe(true);
+      expect(router.currentRoute.value.query).toEqual({
+        tab,
+        view: 'department',
+        page: '3',
+        stage: 'WAITING_HEARING',
+      });
+      expect(router.currentRoute.value.hash).toBe('#records');
+    },
+  );
+
+  it.each(['tab', 'tab=', 'tab=history', 'tab=files&tab=fees'])(
+    'normalizes %s to default details without changing list filters',
+    async (invalidTab) => {
+      await router.push(
+        `/cases/case-1?${invalidTab}&view=mine&page=2&stageGroup=EXECUTION_PREPARATION#records`,
+      );
+      expect(router.currentRoute.value.path).toBe('/cases/case-1');
+      expect(router.currentRoute.value.query).toEqual({
+        view: 'mine',
+        page: '2',
+        stageGroup: 'EXECUTION_PREPARATION',
+      });
+      expect(router.currentRoute.value.hash).toBe('#records');
+    },
+  );
+
+  it.each(['/cases', '/customers/customer-1', '/leads/lead-1'])(
+    'does not apply workspace metadata or tab normalization to %s',
+    async (path) => {
+      await router.push(`${path}?tab=history`);
+      expect(router.currentRoute.value.meta.caseWorkspace).not.toBe(true);
+      expect(router.currentRoute.value.query.tab).toBe('history');
+    },
+  );
+
+  it.each([
+    ['LAWYER', '/lawyer/cases/case-1'],
+    ['CLIENT', '/client/cases/case-1'],
+    ['NOTARY', '/notary-portal/matters/matter-1'],
+  ] as const)(
+    'keeps the existing %s projection separate from the internal workspace',
+    async (principalType, path) => {
+      auth.session = { principalType, user: { id: 'external-user' } };
+      await router.push(`${path}?tab=history`);
+      expect(router.currentRoute.value.path).toBe(path);
+      expect(router.currentRoute.value.meta.caseWorkspace).not.toBe(true);
+      expect(router.currentRoute.value.query.tab).toBe('history');
+    },
+  );
+
+  it('retains an unauthenticated workspace URL for login before normalizing it', async () => {
+    auth.session = null;
+    await router.push('/cases/case-1?tab=history&view=department&page=3');
+    expect(router.currentRoute.value.path).toBe('/login');
+    expect(router.currentRoute.value.query.returnTo).toBe(
+      '/cases/case-1?tab=history&view=department&page=3',
+    );
+    auth.session = { principalType: 'INTERNAL', user: { id: 'operator-user' } };
+    await router.push('/cases/case-1?tab=history&view=department&page=3');
+    expect(router.currentRoute.value.query).toEqual({
+      view: 'department',
+      page: '3',
+    });
+  });
+});
+
 describe('authentication routing', () => {
   it.each([
     ['INTERNAL', '/calendar'],

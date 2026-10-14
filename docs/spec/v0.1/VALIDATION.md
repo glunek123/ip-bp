@@ -1344,3 +1344,9 @@ CA017 Git实际交付回执：六份必要docs/context收口commit`f9d6201f1160b
 独立gpt-6-sol只读准备Review先拒绝contextKey缺caseId、刷新含义及下载参数不准确；I逐项修订，并在复核中补准列表total与下载Promise<void>、单文件403/404只移该文件。现Spec Compliance／Quality均ACCEPTED，未关闭C/I/M=0/0/0。A2／R2／M2／D2／F2独占文件、Interface、顺序及最终新组合Level3验收见合同，不把准备Review冒称UI、PG或浏览器门禁通过。
 
 03:34:05 UTC文档格式、context record／strict、Spec和diff实际exit0，Spec为57 REQ／66 AC／11 BQ／54 SD；后续本次最小修订的最终专项结果与准确冻结SHA只据ignored `.local/ui002-evidence/freeze.json`，不得预写本提交SHA。没有重复产品verify或数据库E2E。Demo现有Edge file://tab只读选择被浏览器URL安全策略拒绝，未输入、点击或绕过；独立的本地源码及父级已核截图用于准备。持久预览仍CA016 3f/144，本轮不操作5186／3206／15436的进程、数据、账号、密码、权限或文件；人工测试窗口结束，未来稳定候选验收后仍先备份并保全原数据。
+
+### UI002 I路由与导航开发检查（组合验收仍待实施）
+
+父级正式派发A2／D2后，I只修改frontend/src/app/router.ts、router.spec.ts、AppShell.spec.ts及必要状态／证据。内部/cases/:id增加caseWorkspace meta；认证／受众检查后只规范非法、空或重复tab为默认details，保留原筛选、页码及hash，其他资源与身份不套工作页规则。侧栏返回明确不携带工作页tab，保留正常案件阶段／范围并沿已有规则重置侧栏分页。A2／D2白名单、分支和现场未改。
+
+router＋AppShell两文件定向Vitest实际101/101通过，pnpm check:fast:prepared实际exit0（架构、前／后／根类型及Lint），受影响格式与diff检查通过。首次sandbox运行router用例前因Temp子目录mkdir EPERM停止、0用例；获准同一聚焦命令后通过，未把该失败当产品故障。没有运行本批完整verify、真实PG／浏览器验收或预览升级。现有真实归档／结案／列表与导航E2E准备映射留在ignored `.local/ui002-evidence/e2e-mapping.json`；等待F2真实入口落盘再适配和执行，不从Mock成功推断可用。精确提交／源码blob及检查回执只见i-router.json。

@@ -172,7 +172,11 @@ async function mountShell(
       {
         path: '/cases/:id',
         component: { template: '<div />' },
-        meta: { section: '案件', breadcrumbs: ['案件', '案件详情'] },
+        meta: {
+          caseWorkspace: true,
+          section: '案件',
+          breadcrumbs: ['案件', '案件详情'],
+        },
       },
       {
         path: '/lawyer/cases',
@@ -793,6 +797,35 @@ describe('case route context', () => {
       view: 'department',
     });
   });
+
+  it.each(['details', 'files', 'fees'])(
+    'drops the %s workspace tab when returning through case scope navigation',
+    async (tab) => {
+      for (const filter of [
+        'stage=WAITING_HEARING',
+        'stageGroup=EXECUTION_PREPARATION',
+      ]) {
+        const listFilter = Object.fromEntries(new URLSearchParams(filter));
+        const query = new URLSearchParams({
+          ...listFilter,
+          tab,
+          view: 'mine',
+          page: '3',
+        });
+        const { wrapper, router } = await mountShell(`/cases/case-1?${query}`);
+        await wrapper
+          .get('[data-test="case-view-department"]')
+          .trigger('click');
+        await flushPromises();
+        expect(router.currentRoute.value.path).toBe('/cases');
+        expect(router.currentRoute.value.query).toEqual({
+          ...listFilter,
+          view: 'department',
+        });
+        expect(router.currentRoute.value.meta.caseWorkspace).not.toBe(true);
+      }
+    },
+  );
 
   it.each([
     'stage=WAITING_HEARING',

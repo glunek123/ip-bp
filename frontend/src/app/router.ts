@@ -105,6 +105,7 @@ export const router = createRouter({
       component: CaseDetailPage,
       meta: {
         audience: 'INTERNAL',
+        caseWorkspace: true,
         section: '案件',
         breadcrumbs: ['案件', '案件详情'],
       },
@@ -297,6 +298,17 @@ router.beforeEach(async (to) => {
       audience !== auth.session.principalType
     )
       return homeFor(auth.session.principalType);
+    if (
+      to.meta.caseWorkspace === true &&
+      to.query.tab !== undefined &&
+      to.query.tab !== 'details' &&
+      to.query.tab !== 'files' &&
+      to.query.tab !== 'fees'
+    ) {
+      const query = { ...to.query };
+      delete query.tab;
+      return { path: to.path, query, hash: to.hash, replace: true };
+    }
     return true;
   }
   const returnTo =
