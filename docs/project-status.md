@@ -4,17 +4,17 @@
 
 ## 当前阶段
 
-唯一Current／Next只见路线图。Current为CA016最小结案资料＋案件既有字段受权摘要＋N2导航，固定候选验收完成，正在交付收口；Next为CA017业务归档及归档后原因更正，尚未冻结／实施。实际候选、证据复用及Git／预览回执只见VALIDATION。
+唯一Current／Next只见路线图。Current为CA016最小结案资料＋案件既有字段受权摘要＋N2导航，固定候选验收完成，已集成main并保留原数据更新持久预览；Next为CA017业务归档及归档后原因更正，尚未冻结／实施。实际候选、证据复用及Git／预览回执只见VALIDATION。
 
 ## 当前任务
 
-**CORE-CA-016＋案件字段摘要＋N2已验收，接替I独占交付收口。** 2026-10-14实际终端／文件恢复；原I目录`.local/worktrees/ca015-integration`、分支`codex/ca016-closure-display-integration`、HEAD`8cc3a8e88a9ce7305e4dee7714f05b81e8268cd2`干净且与最终证据一致，没有挂起文档改动或运行中本片验证。所有Worker已停止；主仓只有已知未跟踪.pnpm-store，原恢复stash保留。
+**CORE-CA-016＋案件字段摘要＋N2已验收、集成并更新持久预览。** 2026-10-14实际终端／文件恢复；原I目录`.local/worktrees/ca015-integration`、分支`codex/ca016-closure-display-integration`、HEAD`8cc3a8e88a9ce7305e4dee7714f05b81e8268cd2`干净且与最终证据一致，没有挂起文档改动或运行中本片验证。所有Worker已停止；主仓只有已知未跟踪.pnpm-store，原恢复stash保留。
 
 固定候选tree`3a7e0054218b08d4405939ba6bd48c3ed6ff607c`同树PG／Chromium9/9、五项静态实际通过，独立Spec／Quality ACCEPTED，未关闭C/I/M0/0/0。完整verify在fc0a514实跑80工具／1586前端／1411后端及双构建，通过后只有E2E增量和非执行性记录；17组工程输入逐字一致，复用经独立审查接受，不能称8cc或收口HEAD实跑完整verify。失败／修复及准确UTC、tree见[CA016验证记录](spec/v0.1/VALIDATION.md#core-ca-016最小结案资料案件摘要与n2集成2026-10-13)及ignored `.local/ca016-evidence/`。
 
 登记／带原因更正仍WAITING_ARCHIVE，未知日期null，结案额KNOWN／PENDING与实收独立；内部14列真实来源摘要、真实courtCaseNo与N2路由已验收。新两迁移不增真实Grant／Boundary，不改旧142文件。CA017、实收／结清、历史补录、资金发起及生产仍未完成。本次只交付CA016并给CA017简报。
 
-恢复时远端main1471bfa，未含本片；持久预览b26cdfe源码干净，旧进程和15436库均未运行，已按原README恢复专用数据库供备份核验。仅备份、原数据校验及前向升级，不reset／seed／初始化／改密码／扩权；Git与预览实际回执后补。禁止触及Demo8123、其他库或生产。
+恢复时远端main1471bfa，未含本片；持久预览b26cdfe源码干净，旧进程和15436库均未运行，已按原README恢复专用数据库供备份核验。仅备份、原数据校验及前向升级，不reset／seed／初始化／改密码／扩权；实际原子推送main／任务分支至299cd7c已核，5186／3206为200，15436前向142→144成功；升级前122张原表及原142迁移记录逐字保持，正常私密登录只读三页后120张业务／凭据／授权原表仍一致（仅会话／限流表按登录变动），原2案／6凭据、材料字节及私密配置保持。未新增结案事实、未扩真实新Action授权；完整备份及恢复入口见本机预览README，具体回执只见VALIDATION。禁止触及Demo8123、其他库或生产。
 
 ### 已完成CORE-UI-001恢复证据
 

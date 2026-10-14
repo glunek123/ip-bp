@@ -1292,3 +1292,19 @@ Task C实际提交`0cc238bdffc930aecc2be7058425b2d45ee14b00`，tree`c4934c0a904b
 本轮收口只补完成状态、以上实际结果、证据引用及对应已核快照，累计白名单为docs/feature-roadmap.md、docs/project-status.md、docs/spec/v0.1/VALIDATION.md、docs/spec/v0.1/modules/cases.md与docs/context-snapshot.json，不改变合同／AC／权限／业务或工程输入。产品、全tests与既有142迁移须逐字保持8cc；文档专项和独立收口检查完成后才提交／集成。CA017不在本轮实现。详细恢复、Git及预览回执存于同一ignored证据目录并在后续真实完成后回填，不能预称已推送或已升级。
 
 独立收口Reviewer `/root/ca016_closeout_review` 未参与该五文件修改，自行核累计diff、17组Git输入及原日志；首次报M1（历史CA015派发段仍用现在时），I仅改历史叙述／当前Spec锚。2026-10-14 01:11 UTC文档格式、strict context、Spec及git diff检查均exit0，证据`recovery-doc-checks.json`；Reviewer复核关闭M1，最终Spec／Quality两轴ACCEPTED、C0/I0/M0。此审查只覆盖非执行性收口／证据边界，未重复全产品审查或旧完整门禁。本段实际结果回填后重新记录对应快照并核文档专项，不能沿用变更前快照。
+
+### CA016 Git集成及持久预览交付回执（2026-10-14）
+
+文档收口`299cd7cde2e221c7be5be02a5039e453d061d537`／tree`05716602b860c3aa21a2368699f2801e0b31737b`相对8cc完整差异仅上述五份完成态文档／快照；独立收口两轴接受后再回填真实结果并于01:13 UTC重做格式、context record／strict、Spec、diff专项全部exit0。主仓main由1471bfa快进到299cd7c，合并tree逐字相同，无新产品组合；01:13:43 UTC原子push main及codex/ca016-closure-display-integration exit0，ls-remote两头均为299cd7c。未强推、改历史或清主仓.pnpm-store／stash。准确回执`.local/ca016-evidence/recovery-{closeout,first-push}.json`；本段后续只追加实际交付结果及对应快照，最终远端SHA在同目录末次push回执核实，不把299cd7c或末次文档HEAD称为实跑旧完整门禁。
+
+持久预览复用`.local/worktrees/ca013-014-integration`及原私密runtime，目标固定127.0.0.1:15436/dev_cor_test，应用5186／3206。原服务断连后停止；旧前端PID已被svchost复用，仅保留过期services记录，没有kill其他进程。先恢复同一Compose数据库、核122张原表与上批已保存哈希／计数及原2案／6凭据／142迁移一致，再pg_dump自定义格式备份`runtime/ca016-before.dump`（1,028,262字节、SHA256 `00afc3289628035bdb75e1140228742ff1c56e0a55e1cbd76a1fae647f60e7ca`）；pg_restore --list exit0且包含cases／local_credentials，未演练恢复。旧backend/dist另存`runtime/ca016-backend-dist-before`，原源码b26cdfe保留于Git。回退须停本预览应用、核精确库并另存当前备份，再按授权恢复全库及旧应用；不能只降源码、删enum或迁移行。
+
+预览从已验8cc生成匹配Prisma Client及后端prepared构建exit0，随后对齐同产品收口299cd7c。官方Prisma migrate deploy由原backend.env注入，只前向应用两份新迁移，exit0；144记录含原142整行／checksum不变，新两份checksum与最终SQL一致。迁移后122张原表哈希／计数、私密配置／login文件、原材料全部字节保持，四新结案表0行，无自动Grant／Boundary／账号写入。核验脚本首次查询不存在的Case结案锚列而失败，数据库迁移已成功；仅修ignored检查脚本后只读复核exit0，不重复迁移／重置／业务写入，记录`recovery-preview-check-repair.json`。
+
+原start入口启动后frontend/login及backend/health均200；正常原私密密码／cookie只读案件14列2行、公证17列2行和线索空态，exit0、0业务写入，没有使用fixture身份或输出秘密。迁移后／浏览器后分别核122张原表和120张业务／凭据／授权表相同；浏览器核对排除auth_sessions／auth_throttles这两张正常登录会变动的表，其余所有原数据、账号凭据、授权、142迁移记录、材料及配置保持，两案阶段未推进，新结案事实仍0。截图实际读图，案件宽表在容器横滚；线索为空是原事实，无假数据。证据分别在本机preview/runtime/ca016-{before,backup,after,browser-readonly,after-browser}.json与I `recovery-preview-health.json`。真实原账号未加结案Action，不能将普通页面可读称为真实账号结案办理已获权；需明确目标账号／角色／范围才另行授权。
+
+恢复旧15433验收服务初次在I因缺主仓Compose环境值未执行；改用主仓既有私密配置恢复同一服务，没有初始化／迁移／reset。只读环境指纹恢复为原8cc HMAC `343c59891dfe4d82e03a5c91faac2e1de7325b9c847f35fbaa3819c72290a627`（01:16:09 UTC），Node／pnpm／镜像／浏览器／输入未漂移；未重跑已通过的业务验收或完整verify。生产、Demo8123及其他业务库未操作。
+
+本轮交付已完成CA016＋案件字段摘要＋N2；唯一Next仍CA017，尚未冻结／实施。下一批先从末次实核main冻结ARCHIVED及准确结案版本锚、归档业务日／类型／原因和追加原因更正，再按既有独占文件边界划分后端／迁移高风险Task、独立面板、共享API与详情接线、I组合验收；支付、案件实收／结清、历史补录、重开和真实扩权不夹带。这里只给任务建议，不提前修改归档模型或验收合同。
+
+末次实际交付回执由同一独立Reviewer只读核对Git、备份、122／120表逐项哈希及计数、旧142迁移行、私密配置／文件哈希、两案／六凭据、浏览器exit0／0业务写入和环境指纹。另报M1（Next标题残留“待CA016完成”），I仅改为待领取、未冻结／实施并更新快照，01:20 UTC文档专项四项exit0；复核关闭后最终Spec／Quality ACCEPTED、C0/I0/M0。范围只为非执行性收口／回执，不重新宣称全产品审查或旧完整门禁。本实际记录回填后的文档专项及末次远端SHA另保留`recovery-final-*`回执，产品／tests／工程输入继续逐字保持8cc。
