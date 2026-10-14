@@ -89,10 +89,6 @@ export async function setRecordEditGrant(
           'DELETE FROM role_grants WHERE role_template_id=$1 AND action=$2::permission_action AND scope=$3::permission_scope',
           [roleId, action, scope],
         );
-      await client.query(
-        'UPDATE user_accounts SET authorization_revision=authorization_revision+1 WHERE id IN (SELECT user_id FROM role_assignments WHERE role_template_id=$1 AND active=true)',
-        [roleId],
-      );
       await client.query('COMMIT');
     } catch (error) {
       await client.query('ROLLBACK');
@@ -115,10 +111,6 @@ export async function grantRecordEditPredecessorActions(): Promise<void> {
         'INSERT INTO role_grants(id,role_template_id,action,scope) VALUES($1,$2,$3::permission_action,$4::permission_scope) ON CONFLICT DO NOTHING',
         [randomUUID(), coreLeadFixtures.roleA, action, 'TEAM'],
       );
-    await client.query(
-      'UPDATE user_accounts SET authorization_revision=authorization_revision+1 WHERE id=$1',
-      [coreLeadFixtures.userA],
-    );
   });
 }
 

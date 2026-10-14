@@ -3,7 +3,9 @@ import {
   expect,
   test,
   type APIRequestContext,
+  type Locator,
   type Page,
+  type TestInfo,
 } from '@playwright/test';
 import {
   coreLeadFixtures,
@@ -1057,10 +1059,54 @@ test('real remand round keeps separate acceptance revisions and restores the cor
   expect(final.recordEdits.acceptanceCorrections).toHaveLength(2);
 });
 
+async function captureRecordEditDrawer(
+  page: Page,
+  testInfo: TestInfo,
+  panel: Locator,
+  name: string,
+  controls: string[],
+): Promise<void> {
+  for (const { width, height } of [
+    { width: 1440, height: 900 },
+    { width: 390, height: 844 },
+  ]) {
+    await page.setViewportSize({ width, height });
+    const drawer = page.locator('.case-workspace-editors[role="dialog"]');
+    await expect(drawer).toBeVisible();
+    await expect(panel).toBeVisible();
+    await expect
+      .poll(() => page.evaluate(() => document.documentElement.scrollWidth))
+      .toBeLessThanOrEqual(width + 1);
+    await expect
+      .poll(async () => {
+        const bounds = await drawer.boundingBox();
+        return (
+          bounds !== null &&
+          bounds.x >= -1 &&
+          bounds.x + bounds.width <= width + 1
+        );
+      })
+      .toBe(true);
+    for (const selector of controls) {
+      const control = panel.locator(`[data-test="${selector}"]`);
+      await control.scrollIntoViewIfNeeded();
+      await expect(control).toBeInViewport();
+      const box = await control.boundingBox();
+      expect(box).not.toBeNull();
+      expect(box!.x).toBeGreaterThanOrEqual(-1);
+      expect(box!.x + box!.width).toBeLessThanOrEqual(width + 1);
+    }
+    await page.screenshot({
+      path: testInfo.outputPath(`case-record-edit-${name}-${width}.png`),
+    });
+  }
+  await page.setViewportSize({ width: 1440, height: 900 });
+}
+
 test('browser saves and cancels contact, corrects acceptance with a reason, and refreshes effective values', async ({
   page,
   request,
-}) => {
+}, testInfo) => {
   test.setTimeout(300_000);
   const { caseId, detail } = await acceptedCase(request);
   await setRecordEditGrant(
@@ -1101,6 +1147,12 @@ test('browser saves and cancels contact, corrects acceptance with a reason, and 
   await contactPanel
     .locator('[data-test="defendant-contact-address"]')
     .fill('北京市测试街道');
+  await captureRecordEditDrawer(page, testInfo, contactPanel, 'contact', [
+    'defendant-contact-phone',
+    'defendant-contact-address',
+    'defendant-contact-save',
+    'defendant-contact-cancel',
+  ]);
   const saveContact = page.waitForResponse(
     (r) =>
       r.request().method() === 'POST' &&
@@ -1132,6 +1184,13 @@ test('browser saves and cancels contact, corrects acceptance with a reason, and 
   await correctionPanel
     .locator('[data-test="acceptance-correction-reason"]')
     .fill('核对受理通知书');
+  await captureRecordEditDrawer(page, testInfo, correctionPanel, 'acceptance', [
+    'acceptance-correction-date',
+    'acceptance-correction-court-case-no',
+    'acceptance-correction-reason',
+    'acceptance-correction-save',
+    'acceptance-correction-cancel',
+  ]);
   const saveCorrection = page.waitForResponse(
     (r) =>
       r.request().method() === 'POST' &&
