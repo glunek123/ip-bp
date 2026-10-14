@@ -55,6 +55,7 @@ describe('CaseExecutionMailingService', () => {
       executionConfirmation: {
         id: confirmationId,
         submissionId,
+        fromVersion: 21,
         toVersion: 22,
       },
       executionMailing: null,

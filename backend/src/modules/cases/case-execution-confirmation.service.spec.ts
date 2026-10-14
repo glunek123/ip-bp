@@ -198,7 +198,9 @@ describe('CaseExecutionConfirmationService', () => {
         maxCount: 10,
       },
     );
-    expect(f.materials.freezeCaseExecutionConfirmationReferences).toHaveBeenCalledWith(
+    expect(
+      f.materials.freezeCaseExecutionConfirmationReferences,
+    ).toHaveBeenCalledWith(
       f.tx,
       actor,
       caseId,

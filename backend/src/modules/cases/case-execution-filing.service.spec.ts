@@ -50,9 +50,20 @@ describe('CaseExecutionFilingService', () => {
         trialRoundId: roundId,
         judgmentNextStepId: choiceId,
         secondInstanceResultId: null,
+        toVersion: 21,
       },
-      executionConfirmation: { id: confirmationId, submissionId },
-      executionMailing: { id: mailingId, confirmationId, toVersion: 23 },
+      executionConfirmation: {
+        id: confirmationId,
+        submissionId,
+        fromVersion: 21,
+        toVersion: 22,
+      },
+      executionMailing: {
+        id: mailingId,
+        confirmationId,
+        fromVersion: 22,
+        toVersion: 23,
+      },
       executionFiling: null,
     };
     const tx = {

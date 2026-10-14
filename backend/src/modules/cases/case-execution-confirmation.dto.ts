@@ -26,7 +26,12 @@ export class ConfirmExecutionRequestDto {
   @ValidateIf((_input, value) => value !== null)
   @IsUUID('4')
   expectedSubmissionId!: string | null;
-  @ApiPropertyOptional({ type: [String], format: 'uuid', minItems: 1, maxItems: 10 })
+  @ApiPropertyOptional({
+    type: [String],
+    format: 'uuid',
+    minItems: 1,
+    maxItems: 10,
+  })
   @ValidateIf((_input, value) => value !== undefined)
   @IsArray()
   @ArrayMinSize(1)
