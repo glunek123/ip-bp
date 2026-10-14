@@ -991,7 +991,16 @@ test('UI002 normal operator explicitly replays original matching and complaint r
     await expect(retry).toBeVisible();
     expect(bodies).toHaveLength(1);
     await closeCaseWorkspaceDrawer(page);
+    const refreshed = page.waitForResponse(
+      (response) =>
+        response.request().method() === 'GET' &&
+        new URL(response.url()).pathname === `/api/v1/cases/${caseId}`,
+    );
     await page.locator('[data-test="case-refresh"]').click();
+    expect((await refreshed).status()).toBe(200);
+    await expect(page.locator('[data-test="case-refresh"]')).not.toHaveClass(
+      /is-loading/u,
+    );
     await openCaseWorkspaceCommand(
       page,
       command,

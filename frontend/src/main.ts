@@ -5,6 +5,7 @@ import { pinia } from './app/pinia';
 import { onUnauthorized } from './api/http';
 import { useAuthStore } from './stores/auth';
 import 'element-plus/es/components/button/style/css';
+import 'element-plus/es/components/drawer/style/css';
 import './styles/global.css';
 import './styles/case-workspace.css';
 

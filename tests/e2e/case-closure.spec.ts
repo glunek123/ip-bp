@@ -522,6 +522,7 @@ test('lost closure success keeps the exact original request through refresh and 
     '保留原键和原输入',
   );
   await expect(panel.locator('[data-test="closure-retry"]')).toBeVisible();
+  await closeCaseWorkspaceDrawer(page);
   await page.locator('[data-test="case-nav"]').click();
   const link = page
     .locator(`[data-test="case-list"] a[href^="/cases/${source.caseId}"]`)
