@@ -798,6 +798,25 @@ describe('case route context', () => {
     });
   });
 
+  it('applies compact density only to the internal case workspace and clears it on list navigation', async () => {
+    const { wrapper, router } = await mountShell('/cases/case-1?tab=files');
+    expect(wrapper.get('.app-content').classes()).toContain(
+      'app-content--case-workspace',
+    );
+    for (const path of ['/cases', '/customers', '/leads']) {
+      await router.push(path);
+      await flushPromises();
+      expect(wrapper.get('.app-content').classes()).not.toContain(
+        'app-content--case-workspace',
+      );
+    }
+    await router.push('/cases/case-2?tab=fees');
+    await flushPromises();
+    expect(wrapper.get('.app-content').classes()).toContain(
+      'app-content--case-workspace',
+    );
+  });
+
   it.each(['details', 'files', 'fees'])(
     'drops the %s workspace tab when returning through case scope navigation',
     async (tab) => {

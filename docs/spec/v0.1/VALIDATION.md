@@ -1350,3 +1350,9 @@ CA017 Git实际交付回执：六份必要docs/context收口commit`f9d6201f1160b
 父级正式派发A2／D2后，I只修改frontend/src/app/router.ts、router.spec.ts、AppShell.spec.ts及必要状态／证据。内部/cases/:id增加caseWorkspace meta；认证／受众检查后只规范非法、空或重复tab为默认details，保留原筛选、页码及hash，其他资源与身份不套工作页规则。侧栏返回明确不携带工作页tab，保留正常案件阶段／范围并沿已有规则重置侧栏分页。A2／D2白名单、分支和现场未改。
 
 router＋AppShell两文件定向Vitest实际101/101通过，pnpm check:fast:prepared实际exit0（架构、前／后／根类型及Lint），受影响格式与diff检查通过。首次sandbox运行router用例前因Temp子目录mkdir EPERM停止、0用例；获准同一聚焦命令后通过，未把该失败当产品故障。没有运行本批完整verify、真实PG／浏览器验收或预览升级。现有真实归档／结案／列表与导航E2E准备映射留在ignored `.local/ui002-evidence/e2e-mapping.json`；等待F2真实入口落盘再适配和执行，不从Mock成功推断可用。精确提交／源码blob及检查回执只见i-router.json。
+
+### UI002 A2／D2部分组合接纳（完整组合未验收）
+
+A2公共类型源beab784dbfcf65a7c3c32fdd27e7ec35b53faa0b、骨架源56b6254cbda50aa9e42ad20bd0564820b378068b，D2源9b8c77e8e7684eefd7d66bee3a2cb4df16e8a5e5；父级确认三源完成停写，I核两个目录干净及八个白名单文件后，分别无冲突接入5968e37／443d580／d0e5fb37f9ce7630fec4208303780d1c181c7a77。八个源码blob与各源逐个一致。Worker报告A2 18单测／前端类型／五文件Lint格式，D2 65 AppShell／快速静态／构建；这与I实际组合检查分开记录，不冒称原Worker tree包含I路由。
+
+I在AppShell.spec.ts补内部工作页进入／离开密度class边界；实际四文件120/120单测、完整前端typecheck:prepared、十个受影响TS／Vue的Lint、十一文件格式及diff通过。这是A2／D2与I路由的部分组合开发检查，没有跑本批完整verify、PG／Chromium或完整UI独立Review。普通任务按自审／聚焦检查接纳，稳定完整组合仍按冻结合同进行独立Review与最终门禁。R2／M2已由父级派发，R2需要A2完整固定组件而非只有类型；F2待其固定依赖后复用已停写D2目录，Teleport密度class须在实际drawer根节点。证据ignored `.local/ui002-evidence/a2-d2-acceptance.json`，未改变旧refs／Worker分支、main或持久预览。
