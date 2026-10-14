@@ -16,12 +16,31 @@ const roles = [
   coreLeadFixtures.roleB,
   coreLeadFixtures.roleSelf,
 ];
+const customers = [
+  coreLeadFixtures.draftCustomer,
+  coreLeadFixtures.admittedCustomer,
+  coreLeadFixtures.foreignCustomer,
+  coreLeadFixtures.selfCustomer,
+];
+const holders = [
+  coreLeadFixtures.holder,
+  coreLeadFixtures.unlinkedHolder,
+  coreLeadFixtures.foreignHolder,
+  coreLeadFixtures.selfHolder,
+];
+const users = [
+  coreLeadFixtures.userA,
+  coreLeadFixtures.userB,
+  coreLeadFixtures.userSelf,
+];
 
 async function withDatabase(operation) {
   const url = process.env.DATABASE_URL;
   if (process.env.NODE_ENV !== 'test' || !url)
     throw new Error('External-entry fixture requires isolated test database');
-  validateIsolatedTestDatabaseUrl(url);
+  const database = validateIsolatedTestDatabaseUrl(url);
+  if (database.port !== 15433)
+    throw new Error('External-entry fixture requires protected port 15433');
   const client = new Client({ connectionString: url });
   await client.connect();
   try {
@@ -36,6 +55,124 @@ async function withDatabase(operation) {
   } finally {
     await client.end();
   }
+}
+
+async function assertSyntheticCaseRows(client) {
+  const cases = (
+    await client.query(
+      `SELECT c.id,c.department_id,c.customer_id,c.rights_holder_id,
+              c.responsible_user_id,c.source_lead_id,c.source_notary_matter_id,
+              c.certificate_id AS case_certificate_id,
+              l.id AS lead_id,m.id AS matter_id,
+              cert.id AS linked_certificate_id,
+              e.id AS external_entry_id,e.source
+       FROM cases c
+       LEFT JOIN leads l ON l.id=c.source_lead_id
+         AND l.department_id=c.department_id
+       LEFT JOIN notary_matters m ON m.id=c.source_notary_matter_id
+         AND m.department_id=c.department_id
+       LEFT JOIN notary_certificates cert ON cert.id=c.certificate_id
+         AND cert.department_id=c.department_id
+       LEFT JOIN case_external_entries e ON e.case_id=c.id`,
+    )
+  ).rows;
+  for (const row of cases) {
+    if (
+      !departments.includes(row.department_id) ||
+      !customers.includes(row.customer_id) ||
+      !holders.includes(row.rights_holder_id) ||
+      !users.includes(row.responsible_user_id)
+    )
+      throw new Error(
+        'Refusing to clear a case outside fixed synthetic fixtures',
+      );
+
+    if (row.external_entry_id !== null) {
+      if (
+        !row.source?.startsWith('CA018 E2E:') ||
+        row.source_lead_id !== null ||
+        row.source_notary_matter_id !== null ||
+        row.case_certificate_id !== null
+      )
+        throw new Error(
+          'Refusing to clear an unrecognized external-entry source',
+        );
+      continue;
+    }
+
+    const validLead =
+      row.source_lead_id !== null && row.lead_id === row.source_lead_id;
+    const validMatter =
+      row.source_notary_matter_id !== null &&
+      row.matter_id === row.source_notary_matter_id;
+    const validCertificate =
+      row.case_certificate_id !== null &&
+      row.linked_certificate_id === row.case_certificate_id;
+    if (
+      (row.source_lead_id !== null && !validLead) ||
+      (row.source_notary_matter_id !== null && !validMatter) ||
+      (row.case_certificate_id !== null && !validCertificate) ||
+      (!validLead && !validMatter && !validCertificate)
+    )
+      throw new Error(
+        'Refusing to clear a case without fixed synthetic provenance',
+      );
+  }
+
+  const externalEntries = (
+    await client.query(
+      `SELECT e.case_id,e.department_id,e.source,c.id AS linked_case_id,
+              c.department_id AS case_department_id
+       FROM case_external_entries e
+       LEFT JOIN cases c ON c.id=e.case_id`,
+    )
+  ).rows;
+  for (const entry of externalEntries) {
+    if (
+      entry.linked_case_id === null ||
+      !departments.includes(entry.department_id) ||
+      entry.case_department_id !== entry.department_id ||
+      !entry.source?.startsWith('CA018 E2E:')
+    )
+      throw new Error('Refusing to clear an unrecognized external-entry row');
+  }
+  return cases.map((row) => row.id);
+}
+
+async function caseForeignKeyClosure(client) {
+  const closure = (
+    await client.query(
+      `WITH RECURSIVE closure(table_oid) AS (
+         SELECT 'public.cases'::regclass::oid
+         UNION
+         SELECT fk.conrelid
+         FROM pg_constraint fk
+         JOIN closure parent ON fk.confrelid=parent.table_oid
+         JOIN pg_class child ON child.oid=fk.conrelid
+         JOIN pg_namespace n ON n.oid=child.relnamespace
+         WHERE fk.contype='f' AND n.nspname='public'
+       )
+       SELECT DISTINCT n.nspname,c.relname,c.relkind
+       FROM closure x
+       JOIN pg_class c ON c.oid=x.table_oid
+       JOIN pg_namespace n ON n.oid=c.relnamespace
+       ORDER BY n.nspname,c.relname`,
+    )
+  ).rows;
+  if (
+    closure.length === 0 ||
+    closure.some(
+      (row) =>
+        row.nspname !== 'public' ||
+        !['r', 'p'].includes(row.relkind) ||
+        !(row.relname === 'cases' || /^case_[a-z0-9_]+$/u.test(row.relname)) ||
+        /(customer|user|role|grant|credential|audit|auth)/u.test(row.relname),
+    )
+  )
+    throw new Error(
+      'Refusing to truncate a foreign-key closure outside case tables',
+    );
+  return closure.map((row) => `"${row.nspname}"."${row.relname}"`);
 }
 
 export async function setCaseExternalEntryGrant(
@@ -76,48 +213,10 @@ export async function clearCaseExternalEntryFixture() {
   await withDatabase(async (client) => {
     await client.query('BEGIN');
     try {
-      const caseIds = (
-        await client.query(
-          `SELECT id FROM cases
-           WHERE department_id=ANY($1::uuid[])
-             AND id IN (SELECT case_id FROM case_external_entries WHERE source LIKE 'CA018 E2E:%')`,
-          [departments],
-        )
-      ).rows.map((row) => row.id);
-      if (caseIds.length) {
-        const auditIds = (
-          await client.query(
-            'SELECT audit_event_id FROM case_external_entries WHERE case_id=ANY($1::uuid[])',
-            [caseIds],
-          )
-        ).rows.map((row) => row.audit_event_id);
-        await client.query(
-          'ALTER TABLE case_external_entry_receipts DISABLE TRIGGER USER',
-        );
-        await client.query(
-          'ALTER TABLE case_external_entries DISABLE TRIGGER USER',
-        );
-        await client.query('ALTER TABLE audit_events DISABLE TRIGGER USER');
-        await client.query(
-          'DELETE FROM case_external_entry_receipts WHERE case_id=ANY($1::uuid[])',
-          [caseIds],
-        );
-        await client.query(
-          'DELETE FROM case_external_entries WHERE case_id=ANY($1::uuid[])',
-          [caseIds],
-        );
-        if (auditIds.length)
-          await client.query(
-            'DELETE FROM audit_events WHERE id=ANY($1::uuid[])',
-            [auditIds],
-          );
-        await client.query('ALTER TABLE audit_events ENABLE TRIGGER USER');
-        await client.query(
-          'ALTER TABLE case_external_entries ENABLE TRIGGER USER',
-        );
-        await client.query(
-          'ALTER TABLE case_external_entry_receipts ENABLE TRIGGER USER',
-        );
+      const caseIds = await assertSyntheticCaseRows(client);
+      if (caseIds.length > 0) {
+        const tables = await caseForeignKeyClosure(client);
+        await client.query(`TRUNCATE TABLE ${tables.join(', ')}`);
       }
       await client.query('COMMIT');
     } catch (error) {

@@ -1,5 +1,10 @@
 import { randomUUID } from 'node:crypto';
-import { expect, test, type APIRequestContext } from '@playwright/test';
+import {
+  expect,
+  test,
+  type APIRequestContext,
+  type Page,
+} from '@playwright/test';
 import {
   coreLeadFixtures,
   resetCoreLeadE2eData,
@@ -176,6 +181,23 @@ async function readCase(
   return body<CaseView>(
     await request.get(`/api/v1/cases/${caseId}`, { headers }),
   );
+}
+
+async function login(page: Page, path: string, self = false) {
+  await page.goto(path);
+  await expect(page).toHaveURL(/\/login\?returnTo=/u);
+  await page
+    .getByLabel('用户名')
+    .fill(
+      self ? coreLeadFixtures.selfUsername : coreLeadFixtures.operatorUsername,
+    );
+  await page
+    .getByLabel('密码')
+    .fill(
+      self ? coreLeadFixtures.selfPassword : coreLeadFixtures.operatorPassword,
+    );
+  await page.getByRole('button', { name: '登录', exact: true }).click();
+  await expect.poll(() => new URL(page.url()).pathname).toBe(path);
 }
 
 async function uploadCaseFile(
@@ -646,6 +668,314 @@ async function finishExecution(
 
 test.beforeEach(clean);
 test.afterEach(clean);
+
+test('creates and refreshes an external entry in the browser and hides entry access without grant', async ({
+  page,
+  request,
+}) => {
+  await login(page, '/cases');
+  const listEntryButton = page.getByRole('button', {
+    name: /外部转入|转入.*补录/u,
+  });
+  await expect(listEntryButton).toBeVisible();
+  await listEntryButton.click();
+  await expect(page).toHaveURL(/\/cases\/external-entry$/u);
+  await expect(
+    page.getByRole('heading', { name: /外部转入|转入.*补录/u }),
+  ).toBeVisible();
+  await page.getByLabel('录入类型').selectOption('EXTERNAL_TRANSFER');
+  await page.getByLabel('当前阶段').selectOption('PENDING_MATCH');
+  await page.getByLabel('当前阶段真实业务日期').fill(shanghaiToday());
+  await page.getByLabel('资料来源').fill(`CA018 browser ${randomUUID()}`);
+  await page.getByLabel('转入／补录原因').fill('浏览器录入真实当前状态');
+  await page.getByLabel('客户').selectOption(coreLeadFixtures.admittedCustomer);
+  await page.getByLabel('权利主体').selectOption(coreLeadFixtures.holder);
+  const createResponse = page.waitForResponse(
+    (response) =>
+      response.request().method() === 'POST' &&
+      response.url().includes('/api/v1/cases/external-entries'),
+  );
+  await page.locator('form.case-entry-form button[type="submit"]').click();
+  const created = await (await createResponse).json();
+  await expect(page).toHaveURL(new RegExp(`/cases/${created.id}$`, 'u'));
+  const stored = await readCase(request, created.id);
+  expect(stored.origin).toMatchObject({
+    source: expect.stringMatching(/^CA018 browser/u),
+    reason: '浏览器录入真实当前状态',
+  });
+  await page.reload();
+  await page.goto('/cases');
+  const row = page.getByRole('row').filter({ hasText: created.businessNo });
+  await expect(row).toBeVisible();
+  await row.locator('details summary').click();
+  await expect(row).toContainText('外部转入');
+  await expect(row).toContainText(shanghaiToday());
+
+  await page.getByRole('button', { name: '退出登录' }).click();
+  await login(page, '/cases', true);
+  await expect(
+    page.getByRole('button', { name: /外部转入|转入.*补录/u }),
+  ).toHaveCount(0);
+  await page.goto('/cases/external-entry');
+  await expect(page.getByRole('status')).toContainText(
+    '当前账号没有转入／补录权限',
+  );
+  await expect(page.locator('form.case-entry-form')).toHaveCount(0);
+  await expect(page.getByLabel('客户')).toHaveCount(0);
+});
+
+test('registers direct external acceptance through the browser with its real court', async ({
+  page,
+  request,
+}) => {
+  const seed = await createEntry(request, input('WAITING_FILING'));
+  const court = await createFilingCourt(request, seed.id);
+  const date = shanghaiToday();
+  const root = await createEntry(
+    request,
+    input('WAITING_FORMAL_ACCEPTANCE', {
+      stageReachedOn: date,
+      known: {
+        courtId: court.id,
+        courtCaseNo: `CA018-BROWSER-${randomUUID().slice(0, 8)}`,
+        acceptedOn: date,
+        secondInstanceAcceptedOn: null,
+        platform: null,
+        shopName: null,
+        shopExternalId: null,
+        caseType: null,
+        infringementTypes: null,
+      },
+    }),
+  );
+  const notice = await uploadCaseFile(
+    request,
+    root.id,
+    'ACCEPTANCE_NOTICE',
+    Buffer.from('%PDF-1.7\nCA018 browser acceptance notice\n%%EOF\n'),
+  );
+  await login(page, `/cases/${root.id}`);
+  await page
+    .locator('[data-test="acceptance-court-id"]')
+    .selectOption(court.id);
+  await page.locator('[data-test="acceptance-accepted-at"]').fill(date);
+  await page
+    .locator('[data-test="acceptance-court-case-no"]')
+    .fill(`CA018-BROWSER-REGISTER-${randomUUID().slice(0, 8)}`);
+  await page
+    .locator('[data-test="case-acceptance-panel"] li')
+    .filter({ hasText: 'ca018-ACCEPTANCE_NOTICE.pdf' })
+    .locator('input[type="checkbox"]')
+    .check();
+  const action = page.waitForRequest(
+    (req) =>
+      req.method() === 'POST' &&
+      req.url().includes(`/cases/${root.id}/acceptance-register`),
+  );
+  await page.locator('[data-test="acceptance-register"]').click();
+  const payload = (await action).postDataJSON() as Record<string, unknown>;
+  expect(payload.courtId).toBe(court.id);
+  await expect(
+    page.locator('[data-test="case-acceptance-record"]'),
+  ).toBeVisible();
+  expect((await readCase(request, root.id)).acceptance).toBeTruthy();
+  await expectExactDownload(
+    request,
+    notice,
+    Buffer.from('%PDF-1.7\nCA018 browser acceptance notice\n%%EOF\n'),
+  );
+});
+
+test('submits and confirms a real direct execution material bundle in the browser', async ({
+  page,
+  request,
+}) => {
+  const root = await createEntry(
+    request,
+    input('WAITING_EXECUTION_CONFIRMATION'),
+  );
+  const bytes = Buffer.from(
+    '%PDF-1.7\nCA018 browser execution application\n%%EOF\n',
+  );
+  const secondBytes = Buffer.from(
+    '%PDF-1.7\nCA018 browser execution schedule\n%%EOF\n',
+  );
+  await login(page, `/cases/${root.id}`);
+  const uploadFromBrowser = async (name: string, fileBytes: Buffer) => {
+    const uploadedResponse = page.waitForResponse(
+      (response) =>
+        response.request().method() === 'PUT' &&
+        response.url().includes('/api/v1/materials/upload-drafts/') &&
+        response.url().endsWith('/content'),
+    );
+    await page.getByLabel(/执行申请材料/).setInputFiles({
+      name,
+      mimeType: 'application/pdf',
+      buffer: fileBytes,
+    });
+    return (await (await uploadedResponse).json()) as {
+      materialId: string;
+      contentVersionId: string;
+    };
+  };
+  const uploaded = await uploadFromBrowser(
+    'ca018-execution-application.pdf',
+    bytes,
+  );
+  const materialRow = page.locator('li').filter({
+    hasText: 'ca018-execution-application.pdf',
+  });
+  await expect(materialRow).toBeVisible();
+  await materialRow.locator('input[type="checkbox"]').check();
+  const uploadedSecond = await uploadFromBrowser(
+    'ca018-execution-schedule.pdf',
+    secondBytes,
+  );
+  const secondRow = page.locator('li').filter({
+    hasText: 'ca018-execution-schedule.pdf',
+  });
+  await expect(secondRow).toBeVisible();
+  const incompleteResponse = page.waitForResponse(
+    (response) =>
+      response.request().method() === 'POST' &&
+      response.url().includes(`/cases/${root.id}/execution-submit`),
+  );
+  await page.locator('[data-test="submit-execution"]').click();
+  expect([400, 422]).toContain((await incompleteResponse).status());
+  expect(await readCase(request, root.id)).toMatchObject({
+    stage: 'WAITING_EXECUTION_CONFIRMATION',
+    version: root.version,
+  });
+  await secondRow.locator('input[type="checkbox"]').check();
+  const submitRequest = page.waitForRequest(
+    (req) =>
+      req.method() === 'POST' &&
+      req.url().includes(`/cases/${root.id}/execution-submit`),
+  );
+  await page.locator('[data-test="submit-execution"]').click();
+  const submitted = (await submitRequest).postDataJSON() as {
+    expectedSubmissionId: string | null;
+    executionApplicationContentVersionIds: string[];
+  };
+  expect(submitted.expectedSubmissionId).toBeNull();
+  expect(submitted.executionApplicationContentVersionIds).toHaveLength(2);
+  await expect(
+    page.locator('[data-test="execution-confirmation-panel"]'),
+  ).toBeVisible();
+  await page.reload();
+  const confirmation = page.locator(
+    '[data-test="execution-confirmation-panel"]',
+  );
+  await expect(confirmation).toBeVisible();
+  const confirmRequest = page.waitForRequest(
+    (req) =>
+      req.method() === 'POST' &&
+      req.url().includes(`/cases/${root.id}/execution-confirm`),
+  );
+  await page.locator('[data-test="confirm-execution"]').click();
+  const confirmBody = (await confirmRequest).postDataJSON() as {
+    expectedSubmissionId: string;
+  };
+  expect(confirmBody.expectedSubmissionId).toEqual(expect.any(String));
+  const after = await readCase(request, root.id);
+  expect(after.stage).toBe('WAITING_EXECUTION_STAMP');
+  const exact = await request.get(
+    `/api/v1/materials/${uploaded.materialId}/versions/${uploaded.contentVersionId}/content`,
+    { headers: operator },
+  );
+  expect(exact.status(), await exact.text()).toBe(200);
+  expect((await exact.body()).equals(bytes)).toBe(true);
+  const exactSecond = await request.get(
+    `/api/v1/materials/${uploadedSecond.materialId}/versions/${uploadedSecond.contentVersionId}/content`,
+    { headers: operator },
+  );
+  expect(exactSecond.status(), await exactSecond.text()).toBe(200);
+  expect((await exactSecond.body()).equals(secondBytes)).toBe(true);
+});
+
+for (const amountState of ['KNOWN', 'PENDING'] as const) {
+  test(`registers a direct AFFIRM result with ${amountState} amount in the browser`, async ({
+    page,
+    request,
+  }) => {
+    const seed = await createEntry(request, input('WAITING_FILING'));
+    const court = await createFilingCourt(request, seed.id);
+    const acceptedOn = shanghaiDaysAgo(4);
+    const secondAcceptedOn = shanghaiDaysAgo(1);
+    const root = await createEntry(
+      request,
+      input('SECOND_INSTANCE', {
+        stageReachedOn: secondAcceptedOn,
+        known: {
+          courtId: court.id,
+          courtCaseNo: `CA018-FIRST-${randomUUID().slice(0, 8)}`,
+          acceptedOn,
+          secondInstanceAcceptedOn: secondAcceptedOn,
+          platform: null,
+          shopName: null,
+          shopExternalId: null,
+          caseType: null,
+          infringementTypes: null,
+        },
+      }),
+    );
+    await login(page, `/cases/${root.id}`);
+    await page
+      .locator('input[name="second-instance-result"][value="AFFIRM"]')
+      .check();
+    await page
+      .locator('[data-test="second-instance-received-at"]')
+      .fill(shanghaiToday());
+    await page
+      .locator(
+        'input[name="changed-amount-state"][value="' + amountState + '"]',
+      )
+      .check();
+    if (amountState === 'KNOWN')
+      await page.getByLabel('二审判决金额').fill('321.50');
+    await page
+      .locator('input[name="second-instance-fee-state"][value="PENDING"]')
+      .check();
+    const judgmentBytes = Buffer.from(
+      `%PDF-1.7\nCA018 direct AFFIRM ${amountState}\n%%EOF\n`,
+    );
+    await page
+      .locator('[data-test="second-instance-judgment-upload"]')
+      .setInputFiles({
+        name: `ca018-affirm-${amountState}.pdf`,
+        mimeType: 'application/pdf',
+        buffer: judgmentBytes,
+      });
+    const fileChoice = page.locator(
+      '[data-test="second-instance-result-file-choice"]',
+    );
+    await expect(fileChoice).toHaveCount(1);
+    await fileChoice.check();
+    const resultRequest = page.waitForRequest(
+      (req) =>
+        req.method() === 'POST' &&
+        req.url().includes(`/cases/${root.id}/second-instance-result`),
+    );
+    await page.locator('[data-test="second-instance-result-submit"]').click();
+    await page.locator('[data-test="second-instance-confirm-result"]').click();
+    const payload = (await resultRequest).postDataJSON() as {
+      choiceId: string | null;
+      trialRoundId: string;
+      result: string;
+      judgmentAmount: { state: string; amount: string | null };
+    };
+    expect(payload).toMatchObject({
+      choiceId: null,
+      trialRoundId: expect.any(String),
+      result: 'AFFIRM',
+      judgmentAmount:
+        amountState === 'KNOWN'
+          ? { state: 'KNOWN', amount: '321.50' }
+          : { state: 'PENDING', amount: null },
+    });
+    expect((await readCase(request, root.id)).stage).toBe('SECOND_INSTANCE');
+  });
+}
 
 test('creates all sixteen stages as explicit external roots without invented prior facts', async ({
   request,
