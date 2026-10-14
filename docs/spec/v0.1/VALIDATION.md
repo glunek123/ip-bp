@@ -1333,4 +1333,6 @@ CA017 PG证明grant/scope不拼接、撤权原键重放拒绝、旧Closure／Fin
 
 ignored证据入口`.local/ca017-evidence/`：b17-review、combination-candidate、empty-migration-probe、public-deploy、verify-fixed、final-risk-16、browser-final-3、stable-static、stable-reuse-proof、environment-current及各日志。三视口1440／1024／390截图browser-artifacts/archive-*.png已实际读图；正常读取真实归档与原结案数据，手机页面无水平溢出；fullPage固定栏出现位置是拍摄时滚动位置，最后截图关闭过渡动画。
 
-本地已验收；Git收口／远端实核回执只按后续实际结果记录，不提前称push/main完成。用户02:33 UTC预告、02:38 UTC开始人工测试，父级要求保持持久演示5186／3206／15436的CA016 `3f636ea5f7f1adfef0adaf215dd97384ac87a318`、144迁移、原2案／6凭据／授权／文件；本轮没有预览迁移／重启／密码或权限更改。CA017预览更新等待协调测试窗口，不将5174／3101隔离验收入口当演示入口。不做生产／真实资金／新长期凭据、reset、seed或历史删除。Next CA018仅独立合同与独占任务建议，未冻结或实现。
+本片已验收并原子交付main，实际Git回执见末段；演示升级依用户测试窗口另行协调。用户02:33 UTC预告、02:38 UTC开始人工测试，父级要求保持持久演示5186／3206／15436的CA016 `3f636ea5f7f1adfef0adaf215dd97384ac87a318`、144迁移、原2案／6凭据／授权／文件；本轮没有预览迁移／重启／密码或权限更改。CA017预览更新等待协调测试窗口，不将5174／3101隔离验收入口当演示入口。不做生产／真实资金／新长期凭据、reset、seed或历史删除。Next CA018仅独立合同与独占任务建议，未冻结或实现。
+
+CA017 Git实际交付回执：六份必要docs/context收口commit`f9d6201f1160bc27a960e32c9e88a0581601bf7a`／tree`56ef4d137218727c2a2c852fe1c556078008dae7`相对已验4487f9b只非执行性收口，产品及验收文件逐字未改；独立文档Review发现路线图／Spec当前态残留未完成，I修正后M1关闭，双轴ACCEPTED、C/I/M0/0/0，文档格式／严格context／Spec／diff实际通过。02:49:59.582～02:50:05.435 UTC `git push --atomic` main＋codex/ca017-archive-integration exit0，随后ls-remote两个ref精确f9d6201；主仓已核3f基线且只有原.pnpm-store，快进至f9d6201，原stash仍保留。证据ignored `.local/ca017-evidence/{closeout,push-first}.json`及日志。本段是实际操作后的文档回填，最终文档回填SHA/远端复核以同目录final-push回执为准，不反写自身提交SHA、不重复产品门禁、不称未查询的CI已过。持久预览保持3f/144，用户人工测试中，本轮无15436数据迁移或服务重启。
