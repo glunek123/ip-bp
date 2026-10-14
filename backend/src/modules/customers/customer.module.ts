@@ -4,6 +4,7 @@ import { DatabaseModule } from '../../database/database.module';
 import { CustomerController } from './customer.controller';
 import { CustomerService } from './customer.service';
 import { CustomerCalendarSourceService } from './customer-calendar-source.service';
+import { CustomerCaseEntrySourceService } from './customer-case-entry-source.service';
 import { RightsHolderController } from './rights-holder.controller';
 import { RightsHolderService } from './rights-holder.service';
 import { AuthModule } from '../../auth/auth.module';
@@ -34,6 +35,7 @@ import { CustomerSettlementService } from './customer-settlement.service';
     RightAssetController,
   ],
   providers: [
+    CustomerCaseEntrySourceService,
     CustomerCalendarSourceService,
     CustomerService,
     CustomerLifecycleService,
@@ -47,6 +49,7 @@ import { CustomerSettlementService } from './customer-settlement.service';
     RightAssetService,
   ],
   exports: [
+    CustomerCaseEntrySourceService,
     CustomerCalendarSourceService,
     CustomerService,
     CustomerAdmissionService,
