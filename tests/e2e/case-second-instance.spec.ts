@@ -627,7 +627,7 @@ async function selectCaseWorkspaceGroup(
   await button.click();
   const group = section.locator('.case-workspace-group:visible');
   await expect(group).toHaveCount(1);
-  const summary = group.locator('summary');
+  const summary = group.locator(':scope > summary');
   if (
     (await summary.count()) > 0 &&
     (await group.getAttribute('open')) === null
@@ -635,7 +635,7 @@ async function selectCaseWorkspaceGroup(
     await summary.click();
   const technical = group.locator('[data-test="workspace-technical-details"]');
   if ((await technical.count()) > 0) {
-    const technicalSummary = technical.locator('summary');
+    const technicalSummary = technical.locator(':scope > summary');
     if ((await technical.getAttribute('open')) === null)
       await technicalSummary.click();
   }
@@ -665,7 +665,7 @@ async function expectCaseWorkspaceFileAssociation(
   await expect(row).toHaveCount(1);
   const details = row.locator('[data-test="workspace-file-details"]');
   if ((await details.getAttribute('open')) === null)
-    await details.locator('summary').click();
+    await details.locator(':scope > summary').click();
   await expect(details).toContainText(source);
   await expect(details).toContainText(contentVersionId);
 }
