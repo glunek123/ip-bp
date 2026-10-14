@@ -1,8 +1,6 @@
 import { randomUUID } from 'node:crypto';
 import { createRequire } from 'node:module';
 import { resolve } from 'node:path';
-// @ts-expect-error The existing runtime guard is JavaScript without a declaration file.
-import { validateIsolatedTestDatabaseUrl } from '../../scripts/test-environment.mjs';
 import { coreLeadFixtures } from './core-lead-database.mjs';
 
 type QueryRow = Record<string, unknown>;
@@ -14,6 +12,14 @@ type DbClient = {
 const backendRequire = createRequire(
   resolve(process.cwd(), 'backend/package.json'),
 );
+const testEnvironmentRequire = createRequire(
+  resolve(process.cwd(), 'package.json'),
+);
+const testEnvironment = testEnvironmentRequire(
+  './scripts/test-environment.mjs',
+) as {
+  validateIsolatedTestDatabaseUrl(value: string): unknown;
+};
 const PgClient = backendRequire('pg').Client as new (options: {
   connectionString: string;
 }) => DbClient;
@@ -38,7 +44,7 @@ export async function withRecordEditDatabase<T>(
   const url = process.env.DATABASE_URL;
   if (process.env.NODE_ENV !== 'test' || !url)
     throw new Error('Record-edit fixture requires isolated test database');
-  validateIsolatedTestDatabaseUrl(url);
+  testEnvironment.validateIsolatedTestDatabaseUrl(url);
   const client = new PgClient({ connectionString: url });
   await client.connect();
   try {
@@ -97,6 +103,7 @@ export async function setRecordEditGrant(
 
 export async function grantRecordEditPredecessorActions(): Promise<void> {
   const actions = [
+    'case.hearing.schedule',
     'case.judgment.register',
     'case.judgment.next_step',
     'case.second_instance.result',

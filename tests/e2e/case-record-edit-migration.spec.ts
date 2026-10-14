@@ -240,53 +240,85 @@ test('CE-001 replays 146 predecessors, preserves archived old facts/receipts/gra
           [source.caseId],
         )
       )[0];
-      const sqlCode = async (statement: string, parameters: unknown[]) => {
+      const sqlFailure = async (statement: string, parameters: unknown[]) => {
         await client.query('BEGIN');
-        let code: string | null = null;
+        let failure: {
+          code: string | null;
+          message: string | null;
+          constraint: string | null;
+        } | null = null;
         try {
           await client.query(statement, parameters);
           await client.query('SET CONSTRAINTS ALL IMMEDIATE');
         } catch (error) {
-          code = (error as { code?: string }).code ?? null;
+          const databaseError = error as {
+            code?: string;
+            message?: string;
+            constraint?: string;
+          };
+          failure = {
+            code: databaseError.code ?? null,
+            message: databaseError.message ?? null,
+            constraint: databaseError.constraint ?? null,
+          };
         } finally {
           await client.query('ROLLBACK');
         }
-        return code;
+        return failure;
       };
       expect(
-        await sqlCode(
+        await sqlFailure(
           'UPDATE case_acceptances SET court_case_no=court_case_no WHERE id=$1',
           [root.id],
         ),
-      ).toBe('23514');
+      ).toMatchObject({
+        code: '23514',
+        message: 'case acceptance fact is immutable',
+      });
       expect(
-        await sqlCode('DELETE FROM case_acceptances WHERE id=$1', [root.id]),
-      ).toBe('23514');
+        await sqlFailure('DELETE FROM case_acceptances WHERE id=$1', [root.id]),
+      ).toMatchObject({
+        code: '23514',
+        message: 'case acceptance fact is immutable',
+      });
       expect(
-        await sqlCode(
+        await sqlFailure(
           'UPDATE case_archive_versions SET case_id=case_id WHERE case_id=$1',
           [source.caseId],
         ),
-      ).toBe('23514');
+      ).toMatchObject({
+        code: '23514',
+        message: 'judgment fact, version, receipt, or audit is immutable',
+      });
       expect(
-        await sqlCode('UPDATE case_defendants SET phone=$2 WHERE case_id=$1', [
-          source.caseId,
-          '非法绕过',
-        ]),
-      ).toBe('23514');
+        await sqlFailure(
+          'UPDATE case_defendants SET phone=$2 WHERE case_id=$1',
+          [source.caseId, '非法绕过'],
+        ),
+      ).toMatchObject({
+        code: '23514',
+        message:
+          'case defendant identity is immutable and contacts require a revision',
+      });
       expect(
-        await sqlCode(
+        await sqlFailure(
           'UPDATE case_defendants SET name=name||$2 WHERE case_id=$1',
           [source.caseId, '非法身份变更'],
         ),
-      ).toBe('23514');
+      ).toMatchObject({
+        code: '23514',
+        message: 'case defendant identity is immutable',
+      });
       expect(
-        await sqlCode('DELETE FROM case_defendants WHERE case_id=$1', [
+        await sqlFailure('DELETE FROM case_defendants WHERE case_id=$1', [
           source.caseId,
         ]),
-      ).toBe('23514');
+      ).toMatchObject({
+        code: '23514',
+        message: 'case defendant identity is immutable',
+      });
       expect(
-        await sqlCode(
+        await sqlFailure(
           'INSERT INTO case_acceptance_corrections(id,case_id,department_id,acceptance_id,trial_round_id,from_revision,to_revision,accepted_at,court_case_no,reason,recorded_by_user_id,audit_event_id) VALUES($1,$2,$3,$4,$5,1,2,$6,$7,$8,$9,$10)',
           [
             randomUUID(),
@@ -301,7 +333,10 @@ test('CE-001 replays 146 predecessors, preserves archived old facts/receipts/gra
             originalAudit.id,
           ],
         ),
-      ).toBe('23514');
+      ).toMatchObject({
+        code: '23514',
+        message: 'broken acceptance correction chain',
+      });
       expect(await snapshot(source.caseId)).toEqual(publicSnapshot);
 
       const defendant = (
@@ -323,7 +358,7 @@ test('CE-001 replays 146 predecessors, preserves archived old facts/receipts/gra
       const receiptSql =
         "INSERT INTO case_record_edit_receipts(id,department_id,actor_user_id,case_id,command,idempotency_key,request_fingerprint,result_snapshot) VALUES($1,$2,$3,$4,'DEFENDANT_CONTACT_UPDATE',$5,$6,$7::jsonb)";
       expect(
-        await sqlCode(receiptSql, [
+        await sqlFailure(receiptSql, [
           randomUUID(),
           defendant.department_id,
           root.recorded_by_user_id,
@@ -332,7 +367,10 @@ test('CE-001 replays 146 predecessors, preserves archived old facts/receipts/gra
           'a'.repeat(64),
           JSON.stringify(fakeResult),
         ]),
-      ).toBe('23514');
+      ).toMatchObject({
+        code: '23514',
+        message: 'contact receipt lacks exact fact',
+      });
       expect(
         await rows('SELECT count(*)::int AS n FROM case_record_edit_receipts'),
       ).toEqual([{ n: 0 }]);
@@ -404,7 +442,7 @@ test('CE-001 replays 146 predecessors, preserves archived old facts/receipts/gra
         await rows('SELECT count(*)::int AS n FROM case_record_edit_receipts'),
       ).toEqual([{ n: 1 }]);
       expect(
-        await sqlCode(receiptSql, [
+        await sqlFailure(receiptSql, [
           randomUUID(),
           defendant.department_id,
           root.recorded_by_user_id,
@@ -413,7 +451,10 @@ test('CE-001 replays 146 predecessors, preserves archived old facts/receipts/gra
           'c'.repeat(64),
           JSON.stringify(contactResult),
         ]),
-      ).toBe('23505');
+      ).toMatchObject({
+        code: '23505',
+        constraint: 'case_record_edit_contact_fact_receipt_key',
+      });
       expect(
         await rows('SELECT count(*)::int AS n FROM case_record_edit_receipts'),
       ).toEqual([{ n: 1 }]);

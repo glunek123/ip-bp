@@ -42,6 +42,7 @@ import {
   recordEditSnapshot,
   rejectRecordEditWrite,
   clearRecordEditFault,
+  grantRecordEditPredecessorActions,
   setRecordEditGrant,
 } from '../support/case-record-edit-database.js';
 
@@ -56,6 +57,12 @@ const today = () =>
     month: '2-digit',
     day: '2-digit',
   }).format(new Date());
+const pastWorkflowDate = () => {
+  const past = new Date(`${today()}T00:00:00.000Z`);
+  past.setUTCDate(past.getUTCDate() - 2);
+  const date = past.toISOString().slice(0, 10);
+  return date > '2026-09-28' ? date : '2026-09-28';
+};
 type HttpResponse = {
   status(): number;
   text(): Promise<string>;
@@ -709,6 +716,217 @@ test('archived case accepts data corrections without changing its archive anchor
   const finalFile = await request.get(fileUrl, { headers: operator });
   expect(finalFile.status()).toBe(200);
   expect(await finalFile.body()).toEqual(bytesBefore);
+});
+
+test('real remand round keeps separate acceptance revisions and restores the corrected source number after an empty-child revocation', async ({
+  request,
+}) => {
+  test.setTimeout(300_000);
+  const businessDate = pastWorkflowDate();
+  const source = await acceptedCase(request, businessDate);
+  const url = `/api/v1/cases/${source.caseId}`;
+  await grantRecordEditPredecessorActions();
+  await setRecordEditGrant(
+    coreLeadFixtures.roleA,
+    'case.acceptance.correct',
+    'TEAM',
+    true,
+  );
+  const oldId = source.detail.acceptance!.id;
+  const oldCorrection = {
+    ...correctionInput(oldId, 0),
+    acceptedAt: businessDate,
+    courtCaseNo: 'CE001 原轮更正案号',
+  };
+  await body<CorrectionResult>(
+    await request.post(`${url}/acceptance-correction`, {
+      headers: operator,
+      data: oldCorrection,
+    }),
+    201,
+  );
+  await body(
+    await request.post(`${url}/hearing-schedule`, {
+      headers: operator,
+      data: {
+        expectedVersion: source.detail.version,
+        idempotencyKey: randomUUID(),
+        hearingAt: businessDate,
+      },
+    }),
+    201,
+  );
+  await expect
+    .poll(async () => (await read(request, source.caseId)).stage, {
+      timeout: 20_000,
+    })
+    .toBe('WAITING_JUDGMENT');
+  const beforeJudgment = await read(request, source.caseId);
+  const judgmentFile = await upload(request, source.caseId, 'JUDGMENT');
+  const judgment = await body<{ judgmentId: string; version: number }>(
+    await request.post(`${url}/judgment-register`, {
+      headers: operator,
+      data: {
+        expectedVersion: beforeJudgment.version,
+        idempotencyKey: randomUUID(),
+        judgmentReceivedAt: businessDate,
+        judgmentAmountState: 'KNOWN',
+        judgmentAmount: '88.00',
+        paidLitigationFeeState: 'KNOWN',
+        paidLitigationFee: '0.00',
+        judgmentContentVersionIds: [judgmentFile.contentVersionId],
+      },
+    }),
+    201,
+  );
+  const choice = await body<{ version: number }>(
+    await request.post(`${url}/judgment-next-step`, {
+      headers: operator,
+      data: {
+        expectedVersion: judgment.version,
+        idempotencyKey: randomUUID(),
+        judgmentId: judgment.judgmentId,
+        next: 'APPEAL',
+        plaintiffAppeals: true,
+        defendantIds: [],
+      },
+    }),
+    201,
+  );
+  type AppealDetail = CaseDetail & {
+    judgmentNextStep: { current: { id: string } };
+    secondInstance: { currentTrialRoundId: string };
+  };
+  const appeal = await body<AppealDetail>(
+    await request.get(url, { headers: operator }),
+  );
+  const sourceRoundId = appeal.secondInstance.currentTrialRoundId;
+  const resultFile = await upload(
+    request,
+    source.caseId,
+    'SECOND_INSTANCE_JUDGMENT',
+  );
+  const resultInput = (version: number) => ({
+    expectedVersion: version,
+    idempotencyKey: randomUUID(),
+    trialRoundId: sourceRoundId,
+    choiceId: appeal.judgmentNextStep.current.id,
+    expectedProgressId: null,
+    progress: {
+      hearingAt: null,
+      hearingPlace: null,
+      judgeName: null,
+      documentContentVersionIds: [],
+      serviceContentVersionIds: [],
+    },
+    result: 'REMAND',
+    resultReceivedAt: businessDate,
+    judgmentContentVersionIds: [resultFile.contentVersionId],
+    paidLitigationFee: { state: 'PENDING', amount: null },
+  });
+  const firstRemand = await body<{
+    version: number;
+    resultId: string;
+    currentTrialRoundId: string;
+    stage: string;
+  }>(
+    await request.post(`${url}/second-instance-result`, {
+      headers: operator,
+      data: resultInput(choice.version),
+    }),
+    201,
+  );
+  expect(firstRemand.stage).toBe('WAITING_FORMAL_ACCEPTANCE');
+  const emptyChildId = firstRemand.currentTrialRoundId;
+  const remanded = await read(request, source.caseId);
+  expect(remanded.acceptance).toBeNull();
+  await reject(
+    await request.post(`${url}/acceptance-correction`, {
+      headers: operator,
+      data: {
+        ...oldCorrection,
+        idempotencyKey: randomUUID(),
+        expectedAcceptanceRevision: 1,
+        acceptedAt: today(),
+        courtCaseNo: '晚于真实开庭日期',
+      },
+    }),
+    [400],
+  );
+  const revoked = await body<{ stage: string; version: number }>(
+    await request.post(`${url}/second-instance-result-revoke`, {
+      headers: operator,
+      data: {
+        expectedVersion: firstRemand.version,
+        idempotencyKey: randomUUID(),
+        trialRoundId: sourceRoundId,
+        resultId: firstRemand.resultId,
+        reason: '空子轮撤销后恢复原轮',
+      },
+    }),
+    201,
+  );
+  expect(revoked.stage).toBe('SECOND_INSTANCE');
+  const restored = await read(request, source.caseId);
+  expect(restored.courtCaseNo).toBe(oldCorrection.courtCaseNo);
+  expect(restored.acceptance?.id).toBe(oldId);
+  const secondRemand = await body<{
+    version: number;
+    currentTrialRoundId: string;
+    stage: string;
+  }>(
+    await request.post(`${url}/second-instance-result`, {
+      headers: operator,
+      data: resultInput(revoked.version),
+    }),
+    201,
+  );
+  expect(secondRemand.currentTrialRoundId).not.toBe(emptyChildId);
+  expect(secondRemand.stage).toBe('WAITING_FORMAL_ACCEPTANCE');
+  const childFile = await upload(request, source.caseId, 'ACCEPTANCE_NOTICE');
+  const childAccepted = await body<{ version: number }>(
+    await request.post(`${url}/acceptance-register`, {
+      headers: operator,
+      data: {
+        expectedVersion: secondRemand.version,
+        idempotencyKey: randomUUID(),
+        acceptedAt: businessDate,
+        courtCaseNo: 'CE001 发回新轮案号',
+        acceptanceNoticeContentVersionIds: [childFile.contentVersionId],
+      },
+    }),
+    201,
+  );
+  const child = await read(request, source.caseId);
+  expect(child.acceptance?.id).not.toBe(oldId);
+  const childCorrection = {
+    ...correctionInput(child.acceptance!.id, 0),
+    acceptedAt: businessDate,
+    courtCaseNo: 'CE001 发回轮更正案号',
+  };
+  await body<CorrectionResult>(
+    await request.post(`${url}/acceptance-correction`, {
+      headers: operator,
+      data: childCorrection,
+    }),
+    201,
+  );
+  const final = await read(request, source.caseId);
+  expect(final).toMatchObject({
+    stage: 'WAITING_HEARING',
+    version: childAccepted.version,
+    courtCaseNo: childCorrection.courtCaseNo,
+  });
+  expect(final.recordEdits.acceptanceCorrections).toEqual(
+    expect.arrayContaining([
+      expect.objectContaining({ acceptanceId: oldId, acceptanceRevision: 1 }),
+      expect.objectContaining({
+        acceptanceId: child.acceptance!.id,
+        acceptanceRevision: 1,
+      }),
+    ]),
+  );
+  expect(final.recordEdits.acceptanceCorrections).toHaveLength(2);
 });
 
 test('browser saves and cancels contact, corrects acceptance with a reason, and refreshes effective values', async ({
