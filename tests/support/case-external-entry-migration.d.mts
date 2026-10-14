@@ -32,8 +32,10 @@ export function snapshotOldCaseRows(
   client: MigrationClient,
   schema: string,
   caseId: string,
+  priorColumns?: Record<string, string[]>,
 ): Promise<{
   cases: Array<Record<string, unknown>>;
+  columnManifest: Record<string, string[]>;
   [table: string]: unknown;
 }>;
 export function externalEntryActionGrantRows(

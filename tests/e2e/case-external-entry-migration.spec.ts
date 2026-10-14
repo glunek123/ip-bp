@@ -104,9 +104,6 @@ test('CA018 upgrades an actual 150-migration case without changing old facts and
     const retry = newCaseExternalEntrySchema('ca018_retry');
     const schemas = [empty, upgrade, retry];
     try {
-      for (const schema of schemas)
-        await client.query(`CREATE SCHEMA "${schema}"`);
-
       await createCaseExternalEntrySchema(client, empty);
       await replayOldCaseMigrations(client);
       const emptyOldObjects = Number(
@@ -146,9 +143,14 @@ test('CA018 upgrades an actual 150-migration case without changing old facts and
         client,
         externalEntryFoundationMigration,
       );
-      expect(await snapshotOldCaseRows(client, upgrade, prior.caseId)).toEqual(
-        before,
-      );
+      expect(
+        await snapshotOldCaseRows(
+          client,
+          upgrade,
+          prior.caseId,
+          before.columnManifest,
+        ),
+      ).toEqual(before);
       expect(await externalEntryActionGrantRows(client, upgrade)).toEqual([]);
 
       await createCaseExternalEntrySchema(client, retry);
@@ -210,7 +212,6 @@ test('CA018 upgrades an actual 150-migration case without changing old facts and
       ).toBe('1');
       expect(await externalEntryActionGrantRows(client, retry)).toEqual([]);
 
-      await createCaseExternalEntrySchema(client, upgrade);
       await assertSqlRejected(client, () =>
         client.query(
           `UPDATE cases SET source_lead_id=NULL,source_notary_matter_id=NULL,
@@ -218,9 +219,14 @@ test('CA018 upgrades an actual 150-migration case without changing old facts and
           [prior.caseId],
         ),
       );
-      expect(await snapshotOldCaseRows(client, upgrade, prior.caseId)).toEqual(
-        before,
-      );
+      expect(
+        await snapshotOldCaseRows(
+          client,
+          upgrade,
+          prior.caseId,
+          before.columnManifest,
+        ),
+      ).toEqual(before);
     } finally {
       for (const schema of schemas)
         await dropCaseExternalEntrySchema(client, schema).catch(

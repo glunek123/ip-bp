@@ -388,13 +388,7 @@ async function submitFiling(
   caseId: string,
   expectedVersion: number,
 ) {
-  const court = await body<{ id: string }>(
-    await request.post(`/api/v1/cases/${caseId}/filing-courts`, {
-      headers: operator,
-      data: { name: `CA018 court ${randomUUID().slice(0, 8)}` },
-    }),
-    201,
-  );
+  const court = await createFilingCourt(request, caseId);
   const evidence = await uploadCaseFile(
     request,
     caseId,
@@ -428,6 +422,7 @@ async function submitFiling(
   );
   return {
     result,
+    court,
     evidence,
     evidenceBytes: Buffer.from(
       '%PDF-1.7\nCA018 actual filing evidence\n%%EOF\n',
@@ -439,40 +434,49 @@ async function submitFiling(
   };
 }
 
-async function registerAcceptance(
+async function createFilingCourt(request: APIRequestContext, caseId: string) {
+  return body<{ id: string; name?: string }>(
+    await request.post(`/api/v1/cases/${caseId}/filing-courts`, {
+      headers: operator,
+      data: { name: `CA018 court ${randomUUID().slice(0, 8)}` },
+    }),
+    201,
+  );
+}
+
+function acceptancePayload(
+  expectedVersion: number,
+  acceptedAt: string,
+  courtCaseNo: string,
+  noticeContentVersionId: string,
+  courtId?: string,
+) {
+  return {
+    expectedVersion,
+    idempotencyKey: randomUUID(),
+    acceptedAt,
+    courtCaseNo,
+    acceptanceNoticeContentVersionIds: [noticeContentVersionId],
+    ...(courtId === undefined ? {} : { courtId }),
+  };
+}
+
+async function submitAcceptance(
   request: APIRequestContext,
   caseId: string,
-  expectedVersion: number,
-  acceptedAt = shanghaiToday(),
+  payload: ReturnType<typeof acceptancePayload>,
 ) {
-  const notice = await uploadCaseFile(
-    request,
-    caseId,
-    'ACCEPTANCE_NOTICE',
-    Buffer.from('%PDF-1.7\nCA018 actual acceptance notice\n%%EOF\n'),
-  );
-  const result = await body<{
+  return body<{
     stage: string;
     version: number;
     acceptanceId: string;
   }>(
     await request.post(`/api/v1/cases/${caseId}/acceptance-register`, {
       headers: operator,
-      data: {
-        expectedVersion,
-        idempotencyKey: randomUUID(),
-        acceptedAt,
-        courtCaseNo: `CA018-${randomUUID().slice(0, 8)}`,
-        acceptanceNoticeContentVersionIds: [notice.contentVersionId],
-      },
+      data: payload,
     }),
     201,
   );
-  return {
-    result,
-    notice,
-    bytes: Buffer.from('%PDF-1.7\nCA018 actual acceptance notice\n%%EOF\n'),
-  };
 }
 
 async function submitExecution(
@@ -929,38 +933,102 @@ test('continues filing and acceptance roots through real command successors', as
     stage: 'WAITING_FORMAL_ACCEPTANCE',
     version: 2,
   });
-  const acceptanceAfterFiling = await registerAcceptance(
+  const filingNotice = await uploadCaseFile(
     request,
     filingRoot.id,
-    filing.result.version,
+    'ACCEPTANCE_NOTICE',
+    Buffer.from('%PDF-1.7\nCA018 actual acceptance notice\n%%EOF\n'),
   );
-  expect(acceptanceAfterFiling.result).toMatchObject({
+  const filingSnapshot = await caseExternalEntrySnapshot(filingRoot.id);
+  const filingAcceptanceFields = acceptancePayload(
+    filing.result.version,
+    shanghaiToday(),
+    `CA018-${randomUUID().slice(0, 8)}`,
+    filingNotice.contentVersionId,
+  );
+  const suppliedCourt = await request.post(
+    `/api/v1/cases/${filingRoot.id}/acceptance-register`,
+    {
+      headers: operator,
+      data: { ...filingAcceptanceFields, courtId: filing.court.id },
+    },
+  );
+  expect(suppliedCourt.status(), await suppliedCourt.text()).toBe(400);
+  expect(await caseExternalEntrySnapshot(filingRoot.id)).toEqual(
+    filingSnapshot,
+  );
+  const acceptanceAfterFiling = await submitAcceptance(
+    request,
+    filingRoot.id,
+    filingAcceptanceFields,
+  );
+  expect(acceptanceAfterFiling).toMatchObject({
     stage: 'WAITING_HEARING',
     version: 3,
   });
   await expectExactDownload(
     request,
-    acceptanceAfterFiling.notice,
-    acceptanceAfterFiling.bytes,
+    filingNotice,
+    Buffer.from('%PDF-1.7\nCA018 actual acceptance notice\n%%EOF\n'),
   );
 
   const acceptanceDate = shanghaiDaysAgo(1);
+  const courtSeed = await createEntry(
+    request,
+    input('WAITING_FILING', {
+      defendants: [
+        { kind: 'ORGANIZATION', name: 'CA018 acceptance court seed' },
+      ],
+    }),
+  );
+  const acceptanceCourt = await createFilingCourt(request, courtSeed.id);
+  const firstInstanceAcceptedOn = shanghaiDaysAgo(3);
   const acceptanceRoot = await createEntry(
     request,
     input('WAITING_FORMAL_ACCEPTANCE', {
       stageReachedOn: acceptanceDate,
+      known: {
+        courtId: acceptanceCourt.id,
+        courtCaseNo: `CA018-FIRST-${randomUUID().slice(0, 8)}`,
+        acceptedOn: firstInstanceAcceptedOn,
+        secondInstanceAcceptedOn: null,
+        platform: null,
+        shopName: null,
+        shopExternalId: null,
+        caseType: null,
+        infringementTypes: null,
+      },
       defendants: [
         { kind: 'ORGANIZATION', name: 'CA018 acceptance defendant' },
       ],
     }),
   );
-  const accepted = await registerAcceptance(
+  const rootNotice = await uploadCaseFile(
     request,
     acceptanceRoot.id,
+    'ACCEPTANCE_NOTICE',
+    Buffer.from('%PDF-1.7\nCA018 direct external acceptance notice\n%%EOF\n'),
+  );
+  const rootAcceptanceFields = acceptancePayload(
     acceptanceRoot.version,
     acceptanceDate,
+    `CA018-ROOT-${randomUUID().slice(0, 8)}`,
+    rootNotice.contentVersionId,
   );
-  expect(accepted.result).toMatchObject({
+  const rootSnapshot = await caseExternalEntrySnapshot(acceptanceRoot.id);
+  const missingCourt = await request.post(
+    `/api/v1/cases/${acceptanceRoot.id}/acceptance-register`,
+    { headers: operator, data: rootAcceptanceFields },
+  );
+  expect(missingCourt.status(), await missingCourt.text()).toBe(400);
+  expect(await caseExternalEntrySnapshot(acceptanceRoot.id)).toEqual(
+    rootSnapshot,
+  );
+  const accepted = await submitAcceptance(request, acceptanceRoot.id, {
+    ...rootAcceptanceFields,
+    courtId: acceptanceCourt.id,
+  });
+  expect(accepted).toMatchObject({
     stage: 'WAITING_HEARING',
     version: 2,
   });
@@ -972,7 +1040,7 @@ test('continues filing and acceptance roots through real command successors', as
     await request.post(`/api/v1/cases/${acceptanceRoot.id}/hearing-schedule`, {
       headers: operator,
       data: {
-        expectedVersion: accepted.result.version,
+        expectedVersion: accepted.version,
         idempotencyKey: randomUUID(),
         hearingAt: acceptanceDate,
       },
@@ -980,7 +1048,11 @@ test('continues filing and acceptance roots through real command successors', as
     201,
   );
   expect(scheduled).toMatchObject({ stage: 'WAITING_HEARING', version: 3 });
-  await expectExactDownload(request, accepted.notice, accepted.bytes);
+  await expectExactDownload(
+    request,
+    rootNotice,
+    Buffer.from('%PDF-1.7\nCA018 direct external acceptance notice\n%%EOF\n'),
+  );
   await expect
     .poll(async () => (await sourceView(request, acceptanceRoot.id)).stage, {
       timeout: 30_000,
@@ -1617,8 +1689,28 @@ test('continues a WAITING_HEARING entry with an actual hearing, system advance, 
 test('continues a SECOND_INSTANCE entry through real REMAND, child acceptance, and hearing', async ({
   request,
 }) => {
+  const courtSeed = await createEntry(
+    request,
+    input('WAITING_FILING', {
+      defendants: [{ kind: 'ORGANIZATION', name: 'CA018 remand court seed' }],
+    }),
+  );
+  const remandCourt = await createFilingCourt(request, courtSeed.id);
+  const firstInstanceAcceptedOn = shanghaiDaysAgo(5);
+  const secondInstanceAcceptedOn = shanghaiDaysAgo(2);
   const payload = input('SECOND_INSTANCE', {
-    stageReachedOn: shanghaiDaysAgo(2),
+    stageReachedOn: secondInstanceAcceptedOn,
+    known: {
+      courtId: remandCourt.id,
+      courtCaseNo: `CA018-FIRST-${randomUUID().slice(0, 8)}`,
+      acceptedOn: firstInstanceAcceptedOn,
+      secondInstanceAcceptedOn,
+      platform: null,
+      shopName: null,
+      shopExternalId: null,
+      caseType: null,
+      infringementTypes: null,
+    },
   });
   const created = await createEntry(request, payload);
   const initial = await readCase(request, created.id);
@@ -1699,6 +1791,12 @@ test('continues a SECOND_INSTANCE entry through real REMAND, child acceptance, a
     kind: 'EXTERNAL_ENTRY',
     entryId: created.entryId,
     initialStage: 'SECOND_INSTANCE',
+    known: {
+      courtId: remandCourt.id,
+      courtCaseNo: payload.known.courtCaseNo,
+      acceptedOn: firstInstanceAcceptedOn,
+      secondInstanceAcceptedOn,
+    },
   });
 
   const acceptanceBytes = Buffer.from(
@@ -1710,22 +1808,16 @@ test('continues a SECOND_INSTANCE entry through real REMAND, child acceptance, a
     'ACCEPTANCE_NOTICE',
     acceptanceBytes,
   );
-  const accepted = await body<{
-    acceptanceId: string;
-    stage: string;
-    version: number;
-  }>(
-    await request.post(`/api/v1/cases/${created.id}/acceptance-register`, {
-      headers: operator,
-      data: {
-        expectedVersion: remanded.version,
-        idempotencyKey: randomUUID(),
-        acceptedAt: shanghaiToday(),
-        courtCaseNo: `CA018-RMD-${randomUUID().slice(0, 8)}`,
-        acceptanceNoticeContentVersionIds: [acceptanceFile.contentVersionId],
-      },
-    }),
-    201,
+  const accepted = await submitAcceptance(
+    request,
+    created.id,
+    acceptancePayload(
+      remanded.version,
+      shanghaiToday(),
+      `CA018-RMD-${randomUUID().slice(0, 8)}`,
+      acceptanceFile.contentVersionId,
+      remandCourt.id,
+    ),
   );
   expect(accepted).toMatchObject({
     stage: 'WAITING_HEARING',

@@ -15,6 +15,7 @@ const old150PrismaRoot = process.env.CA018_OLD150_PRISMA_DIR;
 if (!old150PrismaRoot)
   throw new Error('CA018 requires the preserved old150 Prisma directory');
 const migrationRoot = resolve(old150PrismaRoot, 'migrations');
+const currentMigrationRoot = resolve(root, 'backend/prisma/migrations');
 export const externalEntryActionMigration =
   '20261014170000_case_external_entry_actions';
 export const externalEntryFoundationMigration =
@@ -81,15 +82,20 @@ export async function dropCaseExternalEntrySchema(client, schema) {
 
 export async function applyCaseExternalEntryMigration(client, name) {
   const sql = readFileSync(
-    resolve(migrationRoot, name, 'migration.sql'),
+    resolve(currentMigrationRoot, name, 'migration.sql'),
     'utf8',
   );
   await client.query(sql);
 }
 
 export async function replayOldCaseMigrations(client) {
-  for (const name of oldCaseMigrations)
-    await applyCaseExternalEntryMigration(client, name);
+  for (const name of oldCaseMigrations) {
+    const sql = readFileSync(
+      resolve(migrationRoot, name, 'migration.sql'),
+      'utf8',
+    );
+    await client.query(sql);
+  }
 }
 
 export async function copyOldCaseSchema(client, schema) {
@@ -98,39 +104,78 @@ export async function copyOldCaseSchema(client, schema) {
   await client.query(`SET search_path TO ${quote(schema)}`);
 }
 
-export async function snapshotOldCaseRows(client, schema, caseId) {
-  const tables = (
-    await client.query(
-      `SELECT DISTINCT table_name FROM information_schema.columns
-       WHERE table_schema=$1 AND column_name='case_id'
-       UNION SELECT 'cases' ORDER BY table_name`,
-      [schema],
-    )
-  ).rows.map((row) => row.table_name);
+export async function snapshotOldCaseRows(
+  client,
+  schema,
+  caseId,
+  priorColumns,
+) {
+  const tables = priorColumns
+    ? Object.keys(priorColumns)
+    : (
+        await client.query(
+          `SELECT DISTINCT table_name FROM information_schema.columns
+           WHERE table_schema=$1 AND column_name='case_id'
+           UNION SELECT 'cases' ORDER BY table_name`,
+          [schema],
+        )
+      ).rows.map((row) => row.table_name);
+  const columns = priorColumns ? { ...priorColumns } : {};
   const result = {};
   for (const table of tables) {
+    columns[table] ??= (
+      await client.query(
+        `SELECT column_name FROM information_schema.columns
+         WHERE table_schema=$1 AND table_name=$2 ORDER BY ordinal_position`,
+        [schema, table],
+      )
+    ).rows.map((row) => row.column_name);
     const column = table === 'cases' ? 'id' : 'case_id';
     result[table] = (
       await client.query(
-        `SELECT to_jsonb(t) AS row FROM ${quote(schema)}.${quote(table)} t WHERE ${quote(column)}=$1 ORDER BY to_jsonb(t)::text`,
-        [caseId],
+        `SELECT to_jsonb(t) - ARRAY(
+           SELECT column_name FROM information_schema.columns
+           WHERE table_schema=$1 AND table_name=$2
+             AND NOT (column_name = ANY($3::text[]))
+         ) AS row
+         FROM ${quote(schema)}.${quote(table)} t
+         WHERE ${quote(column)}=$4 ORDER BY to_jsonb(t)::text`,
+        [schema, table, columns[table], caseId],
       )
     ).rows.map((row) => row.row);
   }
+  for (const table of ['audit_events', 'material_references']) {
+    columns[table] ??= (
+      await client.query(
+        `SELECT column_name FROM information_schema.columns
+         WHERE table_schema=$1 AND table_name=$2 ORDER BY ordinal_position`,
+        [schema, table],
+      )
+    ).rows.map((row) => row.column_name);
+  }
   result.auditEvents = (
     await client.query(
-      `SELECT to_jsonb(t) AS row FROM ${quote(schema)}.audit_events t
-       WHERE resource_type='CASE' AND resource_id=$1 ORDER BY id`,
-      [caseId],
+      `SELECT to_jsonb(t) - ARRAY(
+         SELECT column_name FROM information_schema.columns
+         WHERE table_schema=$1 AND table_name='audit_events'
+           AND NOT (column_name = ANY($2::text[]))
+       ) AS row FROM ${quote(schema)}.audit_events t
+       WHERE resource_type='CASE' AND resource_id=$3 ORDER BY id`,
+      [schema, columns.audit_events, caseId],
     )
   ).rows.map((row) => row.row);
   result.materialReferences = (
     await client.query(
-      `SELECT to_jsonb(t) AS row FROM ${quote(schema)}.material_references t
-       WHERE resource_type='case' AND resource_id=$1 ORDER BY id`,
-      [caseId],
+      `SELECT to_jsonb(t) - ARRAY(
+         SELECT column_name FROM information_schema.columns
+         WHERE table_schema=$1 AND table_name='material_references'
+           AND NOT (column_name = ANY($2::text[]))
+       ) AS row FROM ${quote(schema)}.material_references t
+       WHERE resource_type='case' AND resource_id=$3 ORDER BY id`,
+      [schema, columns.material_references, caseId],
     )
   ).rows.map((row) => row.row);
+  result.columnManifest = columns;
   return result;
 }
 
