@@ -532,6 +532,10 @@ stageReachedOn仅标明真实当前阶段业务发生日；首个新动作不早
 
 初始SECOND_INSTANCE外部根没有真实前判时，AFFIRM必须像CHANGE一样明示本次真实结果金额组judgmentAmount={state:KNOWN,amount:十进制字符串}或{state:PENDING,amount:null}；不得从不存在的一审判决复制金额或默认0，不新增额外金额原因字段。仅匹配本案entry／EXTERNAL_CURRENT初始二审、无真实当前前判的来源支路允许此请求；有真实前判的正常AFFIRM（含外部入库后真实新上诉）保持旧请求不带judgmentAmount并复制实际前判，CHANGE仍显式金额，REMAND仍不带金额。公共字段组沿用现有类型，所有日期／真实费用／精确文件和权限门槛保持。
 
+初始WAITING_EXECUTION_CONFIRMATION缺真实执行提交时，确认请求仅在严格匹配本案entry初始阶段的来源分支允许expectedSubmissionId:null，并必须提供executionApplicationContentVersionIds（1..10个去重真实UUID），精确等于本次操作者有权看到、当前可用的完整EXECUTION_APPLICATION材料包。版本必须来自正式上传；缺包、漏项、替换、越权、失效或竞争变化拒绝，不能凭entry免除实际材料。真实CaseExecutionConfirmation及CaseExecutionConfirmationVersion保存本次精确冻结引用，不生成伪CaseExecutionSubmission。有真实submission的正常或后续来源链必须精确引用该ID、按既有SD-52整包快照确认且禁止额外数组；新确认后邮寄、执行立案等只引用实际返回的确认及后续事实，材料字节、事务回滚、CAS、幂等与当前权限约束保持。
+
+外部续办真实受理且无真实filingSubmission时，登记受理请求必须显式提供本次真实courtId，使用同部门有效正式法院字典，即使entry.known.courtId已知也由本次事实确认。CaseAcceptance.courtId在这个来源分支保存真实法院，不伪造立案提交；有真实filingSubmission的正常或后续外部链必须省略该请求字段，继续从真实立案取法院且CaseAcceptance.courtId保持null。读取／摘要优先实际受理事实及实际立案，不把entry已知字段当作已经在系统办理的受理。known.courtId、courtCaseNo、acceptedOn仅表示已知原审法院、原审案号、原审受理日；二审受理日另用secondInstanceAcceptedOn，真实二审资料的法院与案号按现有二审事实登记，不覆盖原审案号。
+
 ### 读取、界面与验收
 
 内部列表／详情新增origin：正常{kind:NOTARY}且旧来源／证书完整；外部{kind:EXTERNAL_ENTRY,entryId,entryKind,initialStage,stageReachedOn,source,reason,recordedAt,recordedByUserId,known}且sourceLead／sourceNotaryMatter／certificate为null。正常旧后端缺origin时仍按旧全真来源兼容；外部缺明确origin或混合来源严格拒绝。摘要只使用真实已知平台／店铺／案号／法院，其余null；内部来源说明和理由可见。律师仅当前PRIMARY授权下的必要来源标签／业务日期及本案真实资料，不返回内部补录原因、操作者、审计正文或存储键；客户继续本企业最小投影，不扩内部来源正文。无来源不调用线索、公证及费用读取，也不包装外部文件为公证书。
@@ -540,4 +544,4 @@ stageReachedOn仅标明真实当前阶段业务发生日；首个新动作不早
 
 AC-CA-016：合成授权真实内部账号从独立入口录入各16实际阶段，客户／权利主体／承办真实关联、刷新／重登及内部／律师／客户隔离成立。每个有后续动作的阶段验证首动作及至少下一步真实可办，重点以EXECUTING→WAITING_ARCHIVE→结案资料→ARCHIVED和二审真实REMAND→子受理／后续展示证明来源链延续；历史ARCHIVED独立高风险Action、无正常推进／伪更正。当前材料由正式上传产生并核精确版本／字节，记录本动作事实而非假前序。普通／跨范围／外部身份、失效主体／绑定、撤权后重放、同键异参、未来／冲突日期、非法前序替代／另一entry、CAS竞争和审计／事实／回执注入失败都拒绝或原子回滚。迁移先随机schema验证空链及150前驱真实正常事实升级、第二DDL失败回滚／前向重试、SQL直接混合来源／缺entry／越权／跳新事实反例；旧已执行150迁移不改。固定候选独立Sol双轴审查后实际完整工程和相关PG／Chromium验收；未实现／未验收不得标完成。
 
-实施Level 3：I唯一文档／集成／数据库作者，Sol独占backend及151／152前向迁移（20261014170000_case_external_entry_actions、20261014170100_case_external_entry_foundation）；Luna独占frontend；独立测试Task只写本片E2E／新support。持久预览150原2案／6凭据／现有权限保持，代码验收不授予真实新Action；隔离验收15433。CE002新编辑授权仍待用户确认。本片不生产部署、批量导入、OCR、历史时间轴逐项编辑或扩展未定资金规则。
+实施Level 3：I唯一文档／集成／数据库操作作者，Sol后台入口Task独占共享Schema及151／152前向迁移（20261014170000_case_external_entry_actions、20261014170100_case_external_entry_foundation）、来源／读取／匹配至受理；另两个Sol Task独占审理／判决／二审和执行／结案／归档，SQL片段交共享Schema作者集成；Luna独占frontend；独立测试Task只写本片E2E／新support。I新增客户模块公开来源接口，禁止案件入口跨模块读取客户私有表。持久预览150原2案／6凭据／现有权限保持，代码验收不授予真实新Action；隔离验收15433。CE002新编辑授权仍待用户确认。本片不生产部署、批量导入、OCR、历史时间轴逐项编辑或扩展未定资金规则。
