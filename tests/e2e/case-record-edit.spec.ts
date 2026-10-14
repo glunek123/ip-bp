@@ -38,7 +38,7 @@ import {
   prepareCoreCaseHearingAdmin,
 } from '../support/case-hearing-database.mjs';
 import { disconnectCustomerTestDatabase } from '../support/customer-database.mjs';
-import { openCaseWorkspaceCommand } from '../support/case-workspace-browser.js';
+import { closeCaseWorkspaceDrawer } from '../support/case-workspace-browser.js';
 import {
   clearRecordEditFixture,
   recordEditSnapshot,
@@ -1139,6 +1139,36 @@ async function captureRecordEditDrawer(
   await page.setViewportSize({ width: 1440, height: 900 });
 }
 
+async function openRecordEditPanel(
+  page: Page,
+  command: 'defendant-contact-update' | 'acceptance-correction',
+  panelSelector: string,
+): Promise<void> {
+  const panel = page.locator(panelSelector);
+  const drawer = page.locator('.case-workspace-editors[role="dialog"]');
+  if (await panel.isVisible()) {
+    await expect(drawer).toBeVisible();
+    return;
+  }
+  await closeCaseWorkspaceDrawer(page);
+  await page.locator('[data-workspace-tab="details"]').click();
+  const section =
+    command === 'defendant-contact-update' ? 'case-info' : 'first-instance';
+  const edit = page.locator(
+    `[data-section="${section}"] .case-workspace-section__edit`,
+  );
+  await expect(edit).toBeEnabled();
+  await edit.click();
+  await expect(drawer).toBeVisible();
+  const select = drawer.locator('[data-test="workspace-command"]');
+  await expect(select).toBeVisible();
+  await expect(select.locator(`option[value="${command}"]`)).toHaveCount(1);
+  if ((await select.inputValue()) !== command)
+    await select.selectOption(command);
+  await expect(panel).toBeVisible();
+  await expect(drawer).toHaveCSS('right', '0px');
+}
+
 test('browser saves and cancels contact, corrects acceptance with a reason, and refreshes effective values', async ({
   page,
   request,
@@ -1158,7 +1188,7 @@ test('browser saves and cancels contact, corrects acceptance with a reason, and 
     true,
   );
   await signIn(page, `/cases/${caseId}`);
-  await openCaseWorkspaceCommand(
+  await openRecordEditPanel(
     page,
     'defendant-contact-update',
     '[data-test="case-defendant-contact-panel"]',
@@ -1172,7 +1202,7 @@ test('browser saves and cancels contact, corrects acceptance with a reason, and 
   await contactPanel.locator('[data-test="defendant-contact-cancel"]').click();
   await expect(contactPanel).not.toBeVisible();
   expect((await recordEditSnapshot(caseId)).contactChanges).toHaveLength(0);
-  await openCaseWorkspaceCommand(
+  await openRecordEditPanel(
     page,
     'defendant-contact-update',
     '[data-test="case-defendant-contact-panel"]',
@@ -1206,7 +1236,7 @@ test('browser saves and cancels contact, corrects acceptance with a reason, and 
     address: '北京市测试街道',
   });
   expect(contact.contactRevision).toBe(1);
-  await openCaseWorkspaceCommand(
+  await openRecordEditPanel(
     page,
     'acceptance-correction',
     '[data-test="case-acceptance-correction-panel"]',
@@ -1281,7 +1311,7 @@ test('browser keeps the original body and key after a committed response is lost
     true,
   );
   await signIn(page, `/cases/${caseId}`);
-  await openCaseWorkspaceCommand(
+  await openRecordEditPanel(
     page,
     'defendant-contact-update',
     '[data-test="case-defendant-contact-panel"]',
