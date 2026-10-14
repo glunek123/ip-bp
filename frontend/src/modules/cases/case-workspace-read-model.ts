@@ -785,7 +785,14 @@ export function buildCaseWorkspaceSections(
                 field('需披露', source.needDisclose ? '是' : '否'),
                 field('备注', source.remark),
                 field(
-                  '来源截图引用',
+                  '来源截图',
+                  source.leadScreenshotContentVersionIds.length
+                    ? `${source.leadScreenshotContentVersionIds.length} 个文件版本引用`
+                    : '未提供来源截图版本引用',
+                  '仅展示来源返回的版本引用，不代表已读取或核对图片内容',
+                ),
+                field(
+                  '来源截图版本标识',
                   source.leadScreenshotContentVersionIds.length
                     ? source.leadScreenshotContentVersionIds.join('、')
                     : '当前无来源截图版本引用',

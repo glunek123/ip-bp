@@ -191,6 +191,12 @@ describe('CaseWorkspaceFees', () => {
     expect(rows[0]!.text()).toContain('¥ 0.00');
     expect(rows[0]!.text()).toContain('KNOWN');
     expect(rows[0]!.text()).toContain('certificate-fee');
+    const sourceDetails = rows[0]!.get('[data-test="fee-source-details"]');
+    expect(sourceDetails.attributes('open')).toBeUndefined();
+    expect(sourceDetails.get('p').isVisible()).toBe(false);
+    sourceDetails.element.setAttribute('open', '');
+    expect(sourceDetails.get('p').isVisible()).toBe(true);
+    expect(sourceDetails.get('p').text()).toContain('certificate-fee');
     expect(rows[1]!.text()).toContain('PENDING');
     expect(rows[1]!.text()).not.toContain('¥');
     expect(rows[2]!.text()).toContain('¥ 90071992547409.99');

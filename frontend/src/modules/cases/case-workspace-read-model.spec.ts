@@ -155,6 +155,32 @@ const file: CaseFile = {
 const recordedAt = '2026-10-02T00:00:00Z';
 
 describe('case workspace read model', () => {
+  it('keeps exact screenshot versions in technical details and shows an honest reference count', () => {
+    const lead = leadFixture();
+    lead.leadScreenshotContentVersionIds = [
+      'screenshot-version-1',
+      'screenshot-version-2',
+    ];
+    const section = buildCaseWorkspaceSections(
+      caseFixture(),
+      lead,
+      'ready',
+    ).find((entry) => entry.key === 'lead-info')!;
+    const fields = section.groups.flatMap((group) => group.fields);
+    expect(fields).toContainEqual(
+      expect.objectContaining({ label: '来源截图', value: '2 个文件版本引用' }),
+    );
+    expect(fields).toContainEqual(
+      expect.objectContaining({
+        label: '来源截图版本标识',
+        value: 'screenshot-version-1、screenshot-version-2',
+        technical: true,
+      }),
+    );
+    expect(
+      JSON.stringify(fields.filter((field) => !field.technical)),
+    ).not.toContain('screenshot-version-1');
+  });
   it.each([
     ['ARCHIVED', '已归档'],
     ['WAITING_ARCHIVE', '待归档'],

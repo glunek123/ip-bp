@@ -9,6 +9,7 @@ type AmountRow = {
   state: 'KNOWN' | 'PENDING' | 'UNRECORDED';
   amount: string | null;
   source: string;
+  sourceId?: string;
 };
 const categoryLabels = {
   NOTARY: '公证费',
@@ -22,7 +23,11 @@ const sourceFees = computed<AmountRow[]>(() => {
     label: categoryLabels[fee.category],
     state: fee.state,
     amount: fee.amount,
-    source: `${fee.sourceType === 'NOTARY_CERTIFICATE_FEE' ? '公证书费用' : '公证事项证据费用'} · ${fee.sourceId}`,
+    source:
+      fee.sourceType === 'NOTARY_CERTIFICATE_FEE'
+        ? '公证书费用'
+        : '公证事项证据费用',
+    sourceId: fee.sourceId,
   }));
   for (const category of [
     'NOTARY',
@@ -54,24 +59,27 @@ const amounts = computed<AmountRow[]>(() => {
       state: claim?.amountState ?? 'UNRECORDED',
       amount: claim?.amount ?? null,
       source: item.complaintConfirmation
-        ? `已确认诉状 · ${item.complaintConfirmation.confirmedComplaintContentVersionId}`
+        ? '已确认诉状'
         : item.complaint
           ? `起诉提交 · ${item.complaint.submittedAt}`
           : '尚未登记诉状金额',
+      sourceId: item.complaintConfirmation?.confirmedComplaintContentVersionId,
     },
     {
       key: 'judgment',
       label: '一审判决金额',
       state: judgment?.judgmentAmountState ?? 'UNRECORDED',
       amount: judgment?.judgmentAmount ?? null,
-      source: judgment ? `一审判决 · ${judgment.id}` : '尚未登记一审判决金额',
+      source: judgment ? '一审判决' : '尚未登记一审判决金额',
+      sourceId: judgment?.id,
     },
     {
       key: 'judgment-fee',
       label: '一审已交诉讼费（登记事实）',
       state: judgment?.paidLitigationFeeState ?? 'UNRECORDED',
       amount: judgment?.paidLitigationFee ?? null,
-      source: judgment ? `一审判决 · ${judgment.id}` : '尚未登记一审诉讼费',
+      source: judgment ? '一审判决' : '尚未登记一审诉讼费',
+      sourceId: judgment?.id,
     },
     {
       key: 'second',
@@ -79,22 +87,25 @@ const amounts = computed<AmountRow[]>(() => {
       state: second?.judgmentAmountState ?? 'UNRECORDED',
       amount: second?.judgmentAmount ?? null,
       source: second
-        ? `二审结果 · ${second.id}${second.result === 'REMAND' ? ' · 发回重审，无赔偿金额记录' : ''}`
+        ? `二审结果${second.result === 'REMAND' ? ' · 发回重审，无赔偿金额记录' : ''}`
         : '尚未登记二审裁判金额',
+      sourceId: second?.id,
     },
     {
       key: 'second-fee',
       label: '二审已交诉讼费（登记事实）',
       state: second?.paidLitigationFeeState ?? 'UNRECORDED',
       amount: second?.paidLitigationFee ?? null,
-      source: second ? `二审结果 · ${second.id}` : '尚未登记二审诉讼费',
+      source: second ? '二审结果' : '尚未登记二审诉讼费',
+      sourceId: second?.id,
     },
     {
       key: 'closure',
       label: '结案金额',
       state: closure?.closeAmountState ?? 'UNRECORDED',
       amount: closure?.closeAmt ?? null,
-      source: closure ? `结案版本 · ${closure.id}` : '尚未登记结案金额',
+      source: closure ? '结案版本' : '尚未登记结案金额',
+      sourceId: closure?.id,
     },
   ];
 });
@@ -121,6 +132,12 @@ function displayAmount(row: AmountRow): string {
           <span>（{{ row.state }} · {{ stateLabels[row.state] }}）</span>
         </dd>
         <dd class="case-workspace-field__help">来源：{{ row.source }}</dd>
+        <dd v-if="row.sourceId" class="case-workspace-field__help">
+          <details data-test="fee-source-details">
+            <summary>来源详情</summary>
+            <p>来源标识：{{ row.sourceId }}</p>
+          </details>
+        </dd>
       </div>
     </dl>
     <h2>案件金额事实</h2>
@@ -139,6 +156,12 @@ function displayAmount(row: AmountRow): string {
           <span>（{{ row.state }} · {{ stateLabels[row.state] }}）</span>
         </dd>
         <dd class="case-workspace-field__help">来源：{{ row.source }}</dd>
+        <dd v-if="row.sourceId" class="case-workspace-field__help">
+          <details data-test="fee-source-details">
+            <summary>来源详情</summary>
+            <p>来源标识：{{ row.sourceId }}</p>
+          </details>
+        </dd>
       </div>
     </dl>
     <h2>案件收付明细</h2>
