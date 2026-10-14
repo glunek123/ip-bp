@@ -149,10 +149,11 @@ BEGIN
   ELSE target_defendant:=NEW."defendant_id"; target_case:=NEW."case_id"; target_department:=NEW."department_id"; new_change_id:=NEW."id"; END IF;
   SELECT * INTO d FROM "case_defendants" WHERE "id"=target_defendant AND "case_id"=target_case AND "department_id"=target_department;
   IF d."id" IS NULL THEN RAISE EXCEPTION 'missing defendant contact root' USING ERRCODE='23514'; END IF;
-  IF TG_TABLE_NAME='case_defendants' AND (
-    NEW."contact_revision"<>OLD."contact_revision"+1 OR
-    NOT EXISTS (SELECT 1 FROM "case_defendant_contact_changes" x WHERE x."defendant_id"=target_defendant AND x."case_id"=target_case AND x."department_id"=target_department AND x."to_revision"=NEW."contact_revision" AND x."before_phone" IS NOT DISTINCT FROM OLD."phone" AND x."before_address" IS NOT DISTINCT FROM OLD."address" AND x."phone" IS NOT DISTINCT FROM NEW."phone" AND x."address" IS NOT DISTINCT FROM NEW."address")
-  ) THEN RAISE EXCEPTION 'invalid defendant contact transition' USING ERRCODE='23514'; END IF;
+  IF TG_TABLE_NAME='case_defendants' THEN
+    IF NEW."contact_revision"<>OLD."contact_revision"+1 OR
+      NOT EXISTS (SELECT 1 FROM "case_defendant_contact_changes" x WHERE x."defendant_id"=target_defendant AND x."case_id"=target_case AND x."department_id"=target_department AND x."to_revision"=NEW."contact_revision" AND x."before_phone" IS NOT DISTINCT FROM OLD."phone" AND x."before_address" IS NOT DISTINCT FROM OLD."address" AND x."phone" IS NOT DISTINCT FROM NEW."phone" AND x."address" IS NOT DISTINCT FROM NEW."address")
+    THEN RAISE EXCEPTION 'invalid defendant contact transition' USING ERRCODE='23514'; END IF;
+  END IF;
   FOR c IN SELECT * FROM "case_defendant_contact_changes" WHERE "defendant_id"=target_defendant AND "case_id"=target_case AND "department_id"=target_department ORDER BY "to_revision" LOOP
     SELECT * INTO a FROM "audit_events" WHERE "id"=c."audit_event_id";
     SELECT * INTO r FROM "case_record_edit_receipts" WHERE "command"='DEFENDANT_CONTACT_UPDATE' AND "case_id"=target_case AND "department_id"=target_department AND "actor_user_id"=c."recorded_by_user_id" AND "result_snapshot"->>'changeId'=c."id"::text;
