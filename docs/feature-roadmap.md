@@ -1,6 +1,6 @@
 # 功能开发路线图
 
-更新日期：2026-10-14。CORE-CA-001～017、N1／N2及CORE-UI-001已集成main；Current CORE-UI-002已通过最终八栏14项PG／Chromium组合，预览146已保全数据同步，正在文档及原子交付收口。Next CA018继续只读暂停；下一阶段先冻结已确认案件字段编辑补缺，不提前派发。实际候选、限定门禁复用及远端回执只见VALIDATION，不扩大为全部Demo或生产完成。
+更新日期：2026-10-14。CORE-CA-001～017、N1／N2及CORE-UI-001已集成main；Current CORE-UI-002已通过最终八栏14项PG／Chromium组合，预览146已保全数据同步，已原子交付main与任务分支，末次仅补实际回执及快照。Next CA018继续只读暂停；下一阶段先冻结已确认案件字段编辑补缺，不提前派发。实际候选、限定门禁复用及远端回执只见VALIDATION，不扩大为全部Demo或生产完成。
 
 本文只回答“已经做到哪里、下一步做什么、之后按什么依赖顺序做”。详细业务规则仍以 [`docs/spec/`](spec/) 为准，核心主线的编码级字段、附件与存储边界以[核心业务字段、附件与存储契约](superpowers/specs/2026-09-21-core-flow-field-material-contract.md)为准，技术方案以设计文档为准，当前切片的技术任务以实施计划为准，实际验证结果以 [`docs/spec/v0.1/VALIDATION.md`](spec/v0.1/VALIDATION.md) 为准；[`docs/project-status.md`](project-status.md)仅保留当前恢复摘要。
 
@@ -164,7 +164,7 @@
 
 ### Current Slice
 
-**CORE-UI-002｜案件工作页三页签、八栏折叠／合法编辑入口与紧凑密度；已组合验收，待原子交付确认。**
+**CORE-UI-002｜案件工作页三页签、八栏折叠／合法编辑入口与紧凑密度；已组合验收并原子交付main与任务分支。**
 
 基线main696fad75；I复用ca015-integration／codex/ui002-case-workspace-integration。全部实现Worker已停写接纳，八栏／生命周期分段、字段和值布局、内容分组导航、动作语义、drawer样式和SPA原意图恢复均已通过独立累计审查及真实验收。稳定源码／测试候选`648faa1da8a625a7d450a8d999ab7e292deaa446`；完整verify实际441候选80／1779／1451及双构建，17组工程输入限定复用，根静态及最终14项PG／Chromium同候选通过。详细证据及失败记录只见[VALIDATION](spec/v0.1/VALIDATION.md#ui002八栏与抽屉最终组合验收2026-10-14)，业务／呈现合同只见[UI002合同](superpowers/specs/2026-10-14-case-workspace-ui-contract.md)。
 
