@@ -4,12 +4,14 @@ import {
   ArrayMinSize,
   IsArray,
   IsDateString,
+  IsDefined,
   IsInt,
   IsString,
   IsUUID,
   MaxLength,
   Min,
   MinLength,
+  ValidateIf,
 } from 'class-validator';
 
 export class MailCaseExecutionDto {
@@ -19,7 +21,11 @@ export class MailCaseExecutionDto {
   @MinLength(1)
   @MaxLength(128)
   idempotencyKey!: string;
-  @ApiProperty({ format: 'uuid' }) @IsUUID('4') expectedConfirmationId!: string;
+  @ApiProperty({ type: String, nullable: true, format: 'uuid' })
+  @IsDefined()
+  @ValidateIf((_input, value) => value !== null)
+  @IsUUID('4')
+  expectedConfirmationId!: string | null;
   @ApiProperty({ format: 'date' }) @IsDateString() mailedAt!: string;
   @ApiProperty({ type: [String], format: 'uuid', minItems: 1, maxItems: 10 })
   @IsArray()
@@ -32,7 +38,8 @@ export class MailCaseExecutionDto {
 export class MailCaseExecutionResponseDto {
   @ApiProperty({ format: 'uuid' }) id!: string;
   @ApiProperty({ format: 'uuid' }) mailingId!: string;
-  @ApiProperty({ format: 'uuid' }) confirmationId!: string;
+  @ApiProperty({ type: String, nullable: true, format: 'uuid' })
+  confirmationId!: string | null;
   @ApiProperty({ enum: ['WAITING_EXECUTION_FILING'] })
   stage!: 'WAITING_EXECUTION_FILING';
   @ApiProperty() version!: number;

@@ -11,6 +11,8 @@ import { AccessControlService } from '../../access-control/access-control.servic
 import { ActorContext } from '../../access-control/actor-context';
 import { currentLawyerBindingId } from '../../access-control/lawyer-case-access';
 import { DatabaseService } from '../../database/database.service';
+import { readCaseSourceAnchor } from './case-entry-source';
+import { assertExecutionSourceChain } from './case-execution-source';
 import {
   CaseArchiveResult,
   CorrectCaseArchiveInput,
@@ -236,18 +238,23 @@ export class CaseArchiveService {
             }
             if (record.version !== input.expectedVersion)
               throw failure('VERSION_CONFLICT');
+            const source = await readCaseSourceAnchor(
+              tx,
+              caseId,
+              actor.departmentId,
+            );
+            await assertExecutionSourceChain(
+              tx,
+              caseId,
+              actor.departmentId,
+              source,
+            );
             const finish = record.executionFinish;
             const closure = record.closure;
-            const filing = record.executionFiling;
-            const mailing = record.executionMailing;
-            const confirmation = record.executionConfirmation;
-            const submission = record.currentExecutionSubmission;
-            const choice = record.currentJudgmentNextStep;
             const archive = record.archive;
             if (
-              finish === null ||
               closure === null ||
-              closure.finishId !== finish.id ||
+              closure.finishId !== (finish?.id ?? null) ||
               closure.currentVersion === null ||
               closure.currentVersionId !== input.expectedClosureVersionId ||
               closure.currentVersion.id !== input.expectedClosureVersionId ||
@@ -262,52 +269,26 @@ export class CaseArchiveService {
                   !('expectedArchiveVersionId' in input) ||
                   archive.currentVersionId !==
                     input.expectedArchiveVersionId) ||
-              filing === null ||
-              filing.id !== finish.filingId ||
-              filing.toVersion !== finish.fromVersion ||
-              finish.toVersion !== finish.fromVersion + 1 ||
-              mailing === null ||
-              filing.mailingId !== mailing.id ||
-              filing.fromVersion !== mailing.toVersion ||
-              confirmation === null ||
-              mailing.confirmationId !== confirmation.id ||
-              mailing.fromVersion !== confirmation.toVersion ||
-              submission === null ||
-              confirmation.submissionId !== submission.id ||
-              confirmation.fromVersion !== submission.toVersion ||
-              record.currentExecutionSubmissionId !== submission.id ||
-              record.currentTrialRoundId !== submission.trialRoundId ||
-              record.currentJudgmentNextStepId !==
-                submission.judgmentNextStepId ||
-              record.currentSecondInstanceResultId !==
-                submission.secondInstanceResultId ||
-              choice === null ||
-              choice.id !== submission.judgmentNextStepId ||
-              choice.trialRoundId !== submission.trialRoundId ||
-              choice.revocation !== null
+              (source.kind === 'EXTERNAL_ENTRY' &&
+                input.archiveAt < source.stageReachedOn)
             )
               throw failure('INVALID_STATE');
-            if (choice.next === 'EXECUTION') {
-              if (submission.secondInstanceResultId !== null)
-                throw failure('INVALID_STATE');
-            } else if (choice.next === 'APPEAL') {
-              const result = record.currentSecondInstanceResult;
-              if (
-                result === null ||
-                result.id !== submission.secondInstanceResultId ||
-                result.choiceId !== choice.id ||
-                result.trialRoundId !== submission.trialRoundId ||
-                !['CHANGE', 'AFFIRM'].includes(result.result) ||
-                result.revocation !== null
-              )
-                throw failure('INVALID_STATE');
-            } else throw failure('INVALID_STATE');
             // Verify both immutable chains from the exact finish, never a >= terminal shortcut.
-            let terminal = finish.toVersion;
+            const firstClosureVersion = closure.versions[0];
+            if (
+              finish === null &&
+              (source.kind !== 'EXTERNAL_ENTRY' ||
+                source.initialStage !== 'WAITING_ARCHIVE' ||
+                firstClosureVersion === undefined ||
+                firstClosureVersion.fromVersion < 1)
+            )
+              throw failure('INVALID_STATE');
+            let terminal =
+              finish?.toVersion ?? firstClosureVersion?.fromVersion ?? 0;
             let prior: string | null = null;
             for (const v of closure.versions) {
               if (
-                v.finishId !== finish.id ||
+                v.finishId !== (finish?.id ?? null) ||
                 v.fromVersion !== terminal ||
                 v.toVersion !== terminal + 1 ||
                 v.priorVersionId !== prior ||
@@ -413,14 +394,15 @@ export class CaseArchiveService {
                 departmentId: actor.departmentId,
                 stage: command === 'ARCHIVE' ? 'WAITING_ARCHIVE' : 'ARCHIVED',
                 version: input.expectedVersion,
-                currentTrialRoundId: submission.trialRoundId,
-                currentJudgmentNextStepId: choice.id,
+                currentTrialRoundId: record.currentTrialRoundId,
+                currentJudgmentNextStepId: record.currentJudgmentNextStepId,
                 currentSecondInstanceResultId:
-                  submission.secondInstanceResultId,
-                currentExecutionSubmissionId: submission.id,
-                executionFinish: {
-                  is: { id: finish.id, fromVersion: filing.toVersion },
-                },
+                  record.currentSecondInstanceResultId,
+                currentExecutionSubmissionId:
+                  record.currentExecutionSubmissionId,
+                ...(finish === null
+                  ? { executionFinish: { is: null } }
+                  : { executionFinish: { is: { id: finish.id } } }),
                 closure: {
                   is: {
                     id: closure.id,

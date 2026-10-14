@@ -13,6 +13,8 @@ import { currentLawyerBindingId } from '../../access-control/lawyer-case-access'
 import { DatabaseService } from '../../database/database.service';
 import { Prisma } from '../../generated/prisma/client';
 import { MaterialService } from '../materials';
+import { readCaseSourceAnchor } from './case-entry-source';
+import { assertExecutionSourceChain } from './case-execution-source';
 import {
   CaseClosureResult,
   CorrectCaseClosureInput,
@@ -227,66 +229,45 @@ export class CaseClosureService {
             }
             if (record.version !== input.expectedVersion)
               throw failure('VERSION_CONFLICT');
+            const source = await readCaseSourceAnchor(
+              tx,
+              caseId,
+              actor.departmentId,
+            );
+            await assertExecutionSourceChain(
+              tx,
+              caseId,
+              actor.departmentId,
+              source,
+            );
             const finish = record.executionFinish;
             const closure = record.closure;
-            const filing = record.executionFiling;
-            const mailing = record.executionMailing;
-            const confirmation = record.executionConfirmation;
-            const submission = record.currentExecutionSubmission;
-            const choice = record.currentJudgmentNextStep;
             if (
               record.stage !== 'WAITING_ARCHIVE' ||
-              finish === null ||
-              finish.id !== input.expectedFinishId ||
+              (finish === null
+                ? source.kind !== 'EXTERNAL_ENTRY' ||
+                  source.initialStage !== 'WAITING_ARCHIVE' ||
+                  input.expectedFinishId !== null ||
+                  record.currentExecutionSubmissionId !== null ||
+                  record.currentJudgmentNextStepId !== null ||
+                  record.currentSecondInstanceResultId !== null
+                : finish.id !== input.expectedFinishId) ||
               (command === 'RECORD'
-                ? closure !== null || finish.toVersion !== input.expectedVersion
+                ? closure !== null ||
+                  (finish !== null &&
+                    finish.toVersion !== input.expectedVersion)
                 : closure === null ||
-                  closure.finishId !== finish.id ||
+                  closure.finishId !== (finish?.id ?? null) ||
                   closure.currentVersion === null ||
                   closure.currentVersion.toVersion !== input.expectedVersion ||
                   !('expectedClosureVersionId' in input) ||
                   closure.currentVersionId !==
                     input.expectedClosureVersionId) ||
-              filing === null ||
-              filing.id !== finish.filingId ||
-              filing.toVersion !== finish.fromVersion ||
-              finish.toVersion !== finish.fromVersion + 1 ||
-              mailing === null ||
-              filing.mailingId !== mailing.id ||
-              filing.fromVersion !== mailing.toVersion ||
-              confirmation === null ||
-              mailing.confirmationId !== confirmation.id ||
-              mailing.fromVersion !== confirmation.toVersion ||
-              submission === null ||
-              confirmation.submissionId !== submission.id ||
-              confirmation.fromVersion !== submission.toVersion ||
-              record.currentExecutionSubmissionId !== submission.id ||
-              record.currentTrialRoundId !== submission.trialRoundId ||
-              record.currentJudgmentNextStepId !==
-                submission.judgmentNextStepId ||
-              record.currentSecondInstanceResultId !==
-                submission.secondInstanceResultId ||
-              choice === null ||
-              choice.id !== submission.judgmentNextStepId ||
-              choice.trialRoundId !== submission.trialRoundId ||
-              choice.revocation !== null
+              (source.kind === 'EXTERNAL_ENTRY' &&
+                input.closeAt !== null &&
+                input.closeAt < source.stageReachedOn)
             )
               throw failure('INVALID_STATE');
-            if (choice.next === 'EXECUTION') {
-              if (submission.secondInstanceResultId !== null)
-                throw failure('INVALID_STATE');
-            } else if (choice.next === 'APPEAL') {
-              const result = record.currentSecondInstanceResult;
-              if (
-                result === null ||
-                result.id !== submission.secondInstanceResultId ||
-                result.choiceId !== choice.id ||
-                result.trialRoundId !== submission.trialRoundId ||
-                !['CHANGE', 'AFFIRM'].includes(result.result) ||
-                result.revocation !== null
-              )
-                throw failure('INVALID_STATE');
-            } else throw failure('INVALID_STATE');
             const facts =
               input.closeContentVersionIds.length === 0
                 ? []
@@ -325,7 +306,7 @@ export class CaseClosureService {
                 details: {
                   closureId,
                   closureVersionId,
-                  finishId: finish.id,
+                  finishId: finish?.id ?? null,
                   priorVersionId,
                   fromVersion: input.expectedVersion,
                   toVersion: input.expectedVersion + 1,
@@ -348,7 +329,9 @@ export class CaseClosureService {
                   id: closureId,
                   caseId,
                   departmentId: actor.departmentId,
-                  finishId: finish.id,
+                  finishId: finish?.id ?? null,
+                  externalEntryId:
+                    source.kind === 'EXTERNAL_ENTRY' ? source.entryId : null,
                 },
               });
             await tx.caseClosureVersion.create({
@@ -357,7 +340,9 @@ export class CaseClosureService {
                 closureId,
                 caseId,
                 departmentId: actor.departmentId,
-                finishId: finish.id,
+                finishId: finish?.id ?? null,
+                externalEntryId:
+                  source.kind === 'EXTERNAL_ENTRY' ? source.entryId : null,
                 kind: command === 'RECORD' ? 'REGISTER' : 'CORRECT',
                 priorVersionId,
                 fromVersion: input.expectedVersion,
@@ -382,14 +367,15 @@ export class CaseClosureService {
                 departmentId: actor.departmentId,
                 stage: 'WAITING_ARCHIVE',
                 version: input.expectedVersion,
-                currentTrialRoundId: submission.trialRoundId,
-                currentJudgmentNextStepId: choice.id,
+                currentTrialRoundId: record.currentTrialRoundId,
+                currentJudgmentNextStepId: record.currentJudgmentNextStepId,
                 currentSecondInstanceResultId:
-                  submission.secondInstanceResultId,
-                currentExecutionSubmissionId: submission.id,
-                executionFinish: {
-                  is: { id: finish.id, fromVersion: filing.toVersion },
-                },
+                  record.currentSecondInstanceResultId,
+                currentExecutionSubmissionId:
+                  record.currentExecutionSubmissionId,
+                ...(finish === null
+                  ? { executionFinish: { is: null } }
+                  : { executionFinish: { is: { id: finish.id } } }),
                 closure: {
                   is: { id: closureId, currentVersionId: priorVersionId },
                 },
@@ -402,7 +388,7 @@ export class CaseClosureService {
                 id: closureId,
                 caseId,
                 departmentId: actor.departmentId,
-                finishId: finish.id,
+                finishId: finish?.id ?? null,
                 currentVersionId: priorVersionId,
               },
               data: { currentVersionId: closureVersionId },
@@ -421,7 +407,7 @@ export class CaseClosureService {
               id: caseId,
               closureId,
               closureVersionId,
-              finishId: finish.id,
+              finishId: finish?.id ?? null,
               stage: 'WAITING_ARCHIVE',
               version: input.expectedVersion + 1,
               recordedAt: recordedAt.toISOString(),
@@ -505,8 +491,9 @@ export class CaseClosureService {
       input.idempotencyKey.trim() !== input.idempotencyKey ||
       input.idempotencyKey.length < 1 ||
       input.idempotencyKey.length > 128 ||
-      typeof input.expectedFinishId !== 'string' ||
-      !uuid.test(input.expectedFinishId) ||
+      (input.expectedFinishId !== null &&
+        (typeof input.expectedFinishId !== 'string' ||
+          !uuid.test(input.expectedFinishId))) ||
       !['KNOWN', 'PENDING'].includes(input.closeAmountState) ||
       (input.closeAmountState === 'KNOWN'
         ? typeof input.closeAmt !== 'string' ||
@@ -575,8 +562,8 @@ export class CaseClosureService {
       typeof value.closureVersionId !== 'string' ||
       !uuid.test(value.closureVersionId) ||
       !('finishId' in value) ||
-      typeof value.finishId !== 'string' ||
-      !uuid.test(value.finishId) ||
+      (value.finishId !== null &&
+        (typeof value.finishId !== 'string' || !uuid.test(value.finishId))) ||
       !('stage' in value) ||
       value.stage !== 'WAITING_ARCHIVE' ||
       !('version' in value) ||

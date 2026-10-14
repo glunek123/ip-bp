@@ -21,6 +21,10 @@ describe('CaseExecutionConfirmationService', () => {
   function fixture() {
     const record = {
       departmentId: actor.departmentId,
+      sourceLeadId: caseId,
+      sourceNotaryMatterId: caseId,
+      certificateId: caseId,
+      externalEntry: null,
       responsibleUserId: actor.userId,
       responsibleMembership: { teamId: null },
       stage: 'WAITING_EXECUTION_CONFIRMATION',
@@ -41,10 +45,15 @@ describe('CaseExecutionConfirmationService', () => {
         trialRoundId: roundId,
         judgmentNextStepId: choiceId,
         secondInstanceResultId: null,
+        externalEntryId: null,
         toVersion: 21,
         versions: [{ contentVersionId: fileId }],
       },
       executionConfirmation: null,
+      executionMailing: null,
+      executionFiling: null,
+      executionFinish: null,
+      closure: null,
     };
     const tx = {
       $queryRawUnsafe: jest.fn().mockResolvedValue([{ id: caseId }]),
@@ -74,6 +83,7 @@ describe('CaseExecutionConfirmationService', () => {
       assertAvailableVersions: jest
         .fn()
         .mockResolvedValue([{ contentVersionId: fileId }]),
+      freezeCaseExecutionConfirmationReferences: jest.fn(),
     };
     return {
       record,
@@ -136,6 +146,70 @@ describe('CaseExecutionConfirmationService', () => {
     expect(f.tx.caseExecutionConfirmationReceipt.create).toHaveBeenCalledWith({
       data: expect.objectContaining({
         resultSnapshot: result,
+      }),
+    });
+  });
+  it('confirms an imported current execution bundle without inventing a submission', async () => {
+    const f = fixture();
+    Object.assign(f.record, {
+      sourceLeadId: null,
+      sourceNotaryMatterId: null,
+      certificateId: null,
+      externalEntry: {
+        id: fileId,
+        caseId,
+        departmentId: actor.departmentId,
+        initialStage: 'WAITING_EXECUTION_CONFIRMATION',
+        stageReachedOn: new Date('2026-09-30T00:00:00.000Z'),
+        known: {
+          courtId: null,
+          courtCaseNo: null,
+          acceptedOn: null,
+          secondInstanceAcceptedOn: null,
+          platform: null,
+          shopName: null,
+          shopExternalId: null,
+          caseType: null,
+          infringementTypes: null,
+        },
+      },
+      version: 1,
+      currentJudgmentNextStepId: null,
+      currentJudgmentNextStep: null,
+      currentExecutionSubmissionId: null,
+      currentExecutionSubmission: null,
+    });
+    const result = await f.service.confirm(actor, caseId, {
+      ...input,
+      expectedVersion: 1,
+      expectedSubmissionId: null,
+      executionApplicationContentVersionIds: [fileId],
+    });
+    expect(result).toMatchObject({ submissionId: null, version: 2 });
+    expect(f.materials.assertAvailableVersions).toHaveBeenCalledWith(
+      f.tx,
+      actor,
+      {
+        ownerType: 'CASE',
+        ownerId: caseId,
+        category: 'EXECUTION_APPLICATION',
+        contentVersionIds: [fileId],
+        minCount: 1,
+        maxCount: 10,
+      },
+    );
+    expect(f.materials.freezeCaseExecutionConfirmationReferences).toHaveBeenCalledWith(
+      f.tx,
+      actor,
+      caseId,
+      result.confirmationId,
+      [{ contentVersionId: fileId }],
+      expect.any(String),
+    );
+    expect(f.tx.caseExecutionConfirmation.create).toHaveBeenCalledWith({
+      data: expect.objectContaining({
+        submissionId: null,
+        externalEntryId: fileId,
       }),
     });
   });

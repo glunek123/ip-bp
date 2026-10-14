@@ -19,7 +19,11 @@ export class SubmitExecutionRequestDto {
   @MaxLength(128)
   idempotencyKey!: string;
   @ApiProperty({ format: 'uuid' }) @IsUUID('4') trialRoundId!: string;
-  @ApiProperty({ format: 'uuid' }) @IsUUID('4') judgmentNextStepId!: string;
+  @ApiProperty({ type: String, nullable: true, format: 'uuid' })
+  @IsDefined()
+  @ValidateIf((_input, value) => value !== null)
+  @IsUUID('4')
+  judgmentNextStepId!: string | null;
   @ApiProperty({ type: String, nullable: true, format: 'uuid' })
   @IsDefined()
   @ValidateIf((_input, value) => value !== null)

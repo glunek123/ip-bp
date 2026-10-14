@@ -12,6 +12,8 @@ import { ActorContext } from '../../access-control/actor-context';
 import { currentLawyerBindingId } from '../../access-control/lawyer-case-access';
 import { DatabaseService } from '../../database/database.service';
 import { MaterialService } from '../materials';
+import { isEntryStartingAt, readCaseSourceAnchor } from './case-entry-source';
+import { assertExecutionSourceChain } from './case-execution-source';
 import {
   SubmitExecutionRequestDto,
   SubmitExecutionResultDto,
@@ -23,7 +25,7 @@ type Submission = {
   expectedVersion: number;
   idempotencyKey: string;
   trialRoundId: string;
-  judgmentNextStepId: string;
+  judgmentNextStepId: string | null;
   secondInstanceResultId: string | null;
   expectedSubmissionId: string | null;
   executionApplicationContentVersionIds: string[];
@@ -85,6 +87,7 @@ export class CaseExecutionSubmissionService {
                     id: true,
                     trialRoundId: true,
                     choiceId: true,
+                    externalEntryId: true,
                     result: true,
                     revocation: { select: { id: true } },
                   },
@@ -155,16 +158,49 @@ export class CaseExecutionSubmissionService {
             }
             if (record.version !== value.expectedVersion)
               throw this.versionConflict();
+            const source = await readCaseSourceAnchor(
+              tx,
+              caseId,
+              actor.departmentId,
+            );
+            await assertExecutionSourceChain(
+              tx,
+              caseId,
+              actor.departmentId,
+              source,
+            );
             const choice = record.currentJudgmentNextStep;
             if (
               record.currentTrialRoundId !== value.trialRoundId ||
               record.currentJudgmentNextStepId !== value.judgmentNextStepId ||
-              choice === null ||
-              choice.trialRoundId !== value.trialRoundId ||
-              choice.revocation !== null
+              (choice === null
+                ? value.judgmentNextStepId !== null ||
+                  !(
+                    (isEntryStartingAt(source, 'WAITING_EXECUTION_DOCUMENTS') &&
+                      value.secondInstanceResultId === null &&
+                      record.currentSecondInstanceResultId === null) ||
+                    (isEntryStartingAt(source, 'SECOND_INSTANCE') &&
+                      record.currentSecondInstanceResult !== null &&
+                      record.currentSecondInstanceResult.externalEntryId ===
+                        source.entryId &&
+                      record.currentSecondInstanceResult.id ===
+                        value.secondInstanceResultId &&
+                      record.currentSecondInstanceResult.choiceId === null &&
+                      record.currentSecondInstanceResult.trialRoundId ===
+                        value.trialRoundId &&
+                      ['CHANGE', 'AFFIRM'].includes(
+                        record.currentSecondInstanceResult.result,
+                      ) &&
+                      record.currentSecondInstanceResult.revocation === null)
+                  )
+                : choice.id !== value.judgmentNextStepId ||
+                  choice.trialRoundId !== value.trialRoundId ||
+                  choice.revocation !== null)
             )
               throw this.invalidState();
-            if (choice.next === 'EXECUTION') {
+            if (choice === null) {
+              // An imported execution stage or a real imported-appeal result anchors the absent choice.
+            } else if (choice.next === 'EXECUTION') {
               if (
                 value.secondInstanceResultId !== null ||
                 record.currentSecondInstanceResultId !== null
@@ -256,6 +292,8 @@ export class CaseExecutionSubmissionService {
                 departmentId: actor.departmentId,
                 trialRoundId: value.trialRoundId,
                 judgmentNextStepId: value.judgmentNextStepId,
+                externalEntryId:
+                  source.kind === 'EXTERNAL_ENTRY' ? source.entryId : null,
                 secondInstanceResultId: value.secondInstanceResultId,
                 priorSubmissionId: value.expectedSubmissionId,
                 changeReason: value.changeReason,
@@ -350,7 +388,8 @@ export class CaseExecutionSubmissionService {
       input.idempotencyKey.length < 1 ||
       input.idempotencyKey.length > 128 ||
       !uuid.test(input.trialRoundId) ||
-      !uuid.test(input.judgmentNextStepId) ||
+      (input.judgmentNextStepId !== null &&
+        !uuid.test(input.judgmentNextStepId)) ||
       (input.secondInstanceResultId !== null &&
         !uuid.test(input.secondInstanceResultId)) ||
       (input.expectedSubmissionId !== null &&

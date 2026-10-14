@@ -4,6 +4,7 @@ import {
   ArrayUnique,
   IsArray,
   IsDateString,
+  IsDefined,
   IsIn,
   IsInt,
   IsString,
@@ -28,7 +29,11 @@ export class RecordCaseClosureInput {
   @MaxLength(128)
   @Matches(/^\S(?:[\s\S]*\S)?$/u)
   idempotencyKey!: string;
-  @ApiProperty({ format: 'uuid' }) @IsUUID('4') expectedFinishId!: string;
+  @ApiProperty({ type: String, nullable: true, format: 'uuid' })
+  @IsDefined()
+  @ValidateIf((_input, value) => value !== null)
+  @IsUUID('4')
+  expectedFinishId!: string | null;
   @ApiProperty({ type: String, nullable: true, format: 'date' })
   @ValidateIf((_o, value) => value !== null)
   @IsDateString()
@@ -71,7 +76,8 @@ export class CaseClosureResult {
   @ApiProperty({ format: 'uuid' }) id!: string;
   @ApiProperty({ format: 'uuid' }) closureId!: string;
   @ApiProperty({ format: 'uuid' }) closureVersionId!: string;
-  @ApiProperty({ format: 'uuid' }) finishId!: string;
+  @ApiProperty({ type: String, nullable: true, format: 'uuid' })
+  finishId!: string | null;
   @ApiProperty({ enum: ['WAITING_ARCHIVE'] }) stage!: 'WAITING_ARCHIVE';
   @ApiProperty() version!: number;
   @ApiProperty({ format: 'date-time' }) recordedAt!: string;

@@ -21,6 +21,10 @@ const input = {
 function fixture() {
   const record = {
     departmentId: actor.departmentId,
+    sourceLeadId: caseId,
+    sourceNotaryMatterId: caseId,
+    certificateId: caseId,
+    externalEntry: null,
     responsibleUserId: actor.userId,
     responsibleMembership: { teamId: null },
     stage: 'WAITING_ARCHIVE',
@@ -178,6 +182,61 @@ describe('closure commands', () => {
     });
     expect(f.materials.assertAvailableVersions).not.toHaveBeenCalled();
     expect(f.materials.freezeCaseClosureReferences).not.toHaveBeenCalled();
+  });
+  it('records a real closure for imported WAITING_ARCHIVE without a fictitious finish', async () => {
+    const f = fixture();
+    Object.assign(f.record, {
+      sourceLeadId: null,
+      sourceNotaryMatterId: null,
+      certificateId: null,
+      externalEntry: {
+        id: id('f'),
+        caseId,
+        departmentId: actor.departmentId,
+        initialStage: 'WAITING_ARCHIVE',
+        stageReachedOn: new Date('2019-12-31T00:00:00.000Z'),
+        known: {
+          courtId: null,
+          courtCaseNo: null,
+          acceptedOn: null,
+          secondInstanceAcceptedOn: null,
+          platform: null,
+          shopName: null,
+          shopExternalId: null,
+          caseType: null,
+          infringementTypes: null,
+        },
+      },
+      version: 1,
+      currentJudgmentNextStepId: null,
+      currentJudgmentNextStep: null,
+      currentExecutionSubmissionId: null,
+      currentExecutionSubmission: null,
+      executionConfirmation: null,
+      executionMailing: null,
+      executionFiling: null,
+      executionFinish: null,
+    });
+    const result = await f.service.record(actor, caseId, {
+      ...input,
+      expectedVersion: 1,
+      expectedFinishId: null,
+    });
+    expect(result).toMatchObject({ finishId: null, version: 2 });
+    expect(f.tx.caseClosure.create).toHaveBeenCalledWith({
+      data: expect.objectContaining({
+        finishId: null,
+        externalEntryId: id('f'),
+      }),
+    });
+    expect(f.tx.caseClosureVersion.create).toHaveBeenCalledWith({
+      data: expect.objectContaining({
+        finishId: null,
+        externalEntryId: id('f'),
+        fromVersion: 1,
+        toVersion: 2,
+      }),
+    });
   });
   it('keeps a true zero and canonical audit decimal, then appends a full correction', async () => {
     const f = fixture();

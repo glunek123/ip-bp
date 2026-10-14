@@ -166,6 +166,10 @@ describe('CaseExecutionFinishService', () => {
   function fixture() {
     const record = {
       departmentId: actor.departmentId,
+      sourceLeadId: caseId,
+      sourceNotaryMatterId: caseId,
+      certificateId: caseId,
+      externalEntry: null,
       responsibleUserId: actor.userId,
       responsibleMembership: { teamId: null },
       stage: 'EXECUTING',
@@ -280,6 +284,56 @@ describe('CaseExecutionFinishService', () => {
     expect(f.tx.caseExecutionFinishReceipt.create).toHaveBeenCalledTimes(1);
     expect(f.database.$transaction).toHaveBeenCalledWith(expect.any(Function), {
       isolationLevel: 'Serializable',
+    });
+  });
+
+  it('finishes an imported EXECUTING case without inventing a filing', async () => {
+    const f = fixture();
+    Object.assign(f.record, {
+      sourceLeadId: null,
+      sourceNotaryMatterId: null,
+      certificateId: null,
+      externalEntry: {
+        id: filingId,
+        caseId,
+        departmentId: actor.departmentId,
+        initialStage: 'EXECUTING',
+        stageReachedOn: new Date('2026-09-30T00:00:00.000Z'),
+        known: {
+          courtId: null,
+          courtCaseNo: null,
+          acceptedOn: null,
+          secondInstanceAcceptedOn: null,
+          platform: null,
+          shopName: null,
+          shopExternalId: null,
+          caseType: null,
+          infringementTypes: null,
+        },
+      },
+      currentJudgmentNextStepId: null,
+      currentJudgmentNextStep: null,
+      currentSecondInstanceResultId: null,
+      currentExecutionSubmissionId: null,
+      currentExecutionSubmission: null,
+      executionConfirmation: null,
+      executionMailing: null,
+      executionFiling: null,
+      version: 1,
+    });
+    const result = await f.service.finish(actor, caseId, {
+      ...input,
+      expectedVersion: 1,
+      expectedFilingId: null,
+    });
+    expect(result).toMatchObject({ filingId: null, version: 2 });
+    expect(f.tx.caseExecutionFinish.create).toHaveBeenCalledWith({
+      data: expect.objectContaining({
+        filingId: null,
+        externalEntryId: filingId,
+        fromVersion: 1,
+        toVersion: 2,
+      }),
     });
   });
 

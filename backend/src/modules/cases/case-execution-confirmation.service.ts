@@ -12,6 +12,8 @@ import { ActorContext } from '../../access-control/actor-context';
 import { currentLawyerBindingId } from '../../access-control/lawyer-case-access';
 import { DatabaseService } from '../../database/database.service';
 import { MaterialService } from '../materials';
+import { isEntryStartingAt, readCaseSourceAnchor } from './case-entry-source';
+import { assertExecutionSourceChain } from './case-execution-source';
 import {
   ConfirmExecutionRequestDto,
   ConfirmExecutionResultDto,
@@ -43,6 +45,7 @@ export class CaseExecutionConfirmationService {
             'expectedVersion',
             'idempotencyKey',
             'expectedSubmissionId',
+            'executionApplicationContentVersionIds',
           ].includes(key),
       ) ||
       !Number.isSafeInteger(input.expectedVersion) ||
@@ -51,8 +54,19 @@ export class CaseExecutionConfirmationService {
       input.idempotencyKey.trim() !== input.idempotencyKey ||
       input.idempotencyKey.length < 1 ||
       input.idempotencyKey.length > 128 ||
-      typeof input.expectedSubmissionId !== 'string' ||
-      !uuid.test(input.expectedSubmissionId)
+      (input.expectedSubmissionId !== null &&
+        (typeof input.expectedSubmissionId !== 'string' ||
+          !uuid.test(input.expectedSubmissionId))) ||
+      (input.expectedSubmissionId === null
+        ? !Array.isArray(input.executionApplicationContentVersionIds) ||
+          input.executionApplicationContentVersionIds.length < 1 ||
+          input.executionApplicationContentVersionIds.length > 10 ||
+          new Set(input.executionApplicationContentVersionIds).size !==
+            input.executionApplicationContentVersionIds.length ||
+          input.executionApplicationContentVersionIds.some(
+            (id) => typeof id !== 'string' || !uuid.test(id),
+          )
+        : input.executionApplicationContentVersionIds !== undefined)
     )
       throw this.validation();
     if (
@@ -66,6 +80,12 @@ export class CaseExecutionConfirmationService {
           caseId,
           expectedVersion: input.expectedVersion,
           expectedSubmissionId: input.expectedSubmissionId,
+          ...(input.expectedSubmissionId === null
+            ? {
+                executionApplicationContentVersionIds:
+                  input.executionApplicationContentVersionIds,
+              }
+            : {}),
         }),
       )
       .digest('hex');
@@ -114,6 +134,7 @@ export class CaseExecutionConfirmationService {
                     trialRoundId: true,
                     judgmentNextStepId: true,
                     secondInstanceResultId: true,
+                    externalEntryId: true,
                     toVersion: true,
                     versions: { select: { contentVersionId: true } },
                   },
@@ -176,30 +197,56 @@ export class CaseExecutionConfirmationService {
             }
             if (record.version !== input.expectedVersion)
               throw this.versionConflict();
+            const source = await readCaseSourceAnchor(
+              tx,
+              caseId,
+              actor.departmentId,
+            );
+            await assertExecutionSourceChain(
+              tx,
+              caseId,
+              actor.departmentId,
+              source,
+            );
             const submission = record.currentExecutionSubmission;
             const choice = record.currentJudgmentNextStep;
             if (
               record.stage !== 'WAITING_EXECUTION_CONFIRMATION' ||
               record.currentExecutionSubmissionId !==
                 input.expectedSubmissionId ||
-              submission === null ||
-              submission.id !== input.expectedSubmissionId ||
-              submission.toVersion !== input.expectedVersion ||
-              submission.versions.length < 1 ||
-              submission.versions.length > 10 ||
               record.executionConfirmation !== null ||
-              record.currentTrialRoundId !== submission.trialRoundId ||
-              record.currentJudgmentNextStepId !==
-                submission.judgmentNextStepId ||
-              record.currentSecondInstanceResultId !==
-                submission.secondInstanceResultId ||
-              choice === null ||
-              choice.id !== submission.judgmentNextStepId ||
-              choice.trialRoundId !== submission.trialRoundId ||
-              choice.revocation !== null
+              (submission === null
+                ? input.expectedSubmissionId !== null ||
+                  !isEntryStartingAt(
+                    source,
+                    'WAITING_EXECUTION_CONFIRMATION',
+                  ) ||
+                  record.currentJudgmentNextStepId !== null ||
+                  record.currentSecondInstanceResultId !== null ||
+                  choice !== null
+                : submission.id !== input.expectedSubmissionId ||
+                  submission.toVersion !== input.expectedVersion ||
+                  submission.versions.length < 1 ||
+                  submission.versions.length > 10 ||
+                  (submission.externalEntryId ?? null) !==
+                    (source.kind === 'EXTERNAL_ENTRY'
+                      ? source.entryId
+                      : null) ||
+                  record.currentTrialRoundId !== submission.trialRoundId ||
+                  record.currentJudgmentNextStepId !==
+                    submission.judgmentNextStepId ||
+                  record.currentSecondInstanceResultId !==
+                    submission.secondInstanceResultId ||
+                  (choice === null
+                    ? submission.judgmentNextStepId !== null
+                    : choice.id !== submission.judgmentNextStepId ||
+                      choice.trialRoundId !== submission.trialRoundId ||
+                      choice.revocation !== null))
             )
               throw this.invalidState();
-            if (choice.next === 'EXECUTION') {
+            if (choice === null) {
+              // The source chain check already verified the exact imported root.
+            } else if (choice.next === 'EXECUTION') {
               if (submission.secondInstanceResultId !== null)
                 throw this.invalidState();
             } else if (choice.next === 'APPEAL') {
@@ -214,16 +261,34 @@ export class CaseExecutionConfirmationService {
               )
                 throw this.invalidState();
             } else throw this.invalidState();
-            await this.materials.assertAvailableVersions(tx, actor, {
-              ownerType: 'CASE',
-              ownerId: caseId,
-              category: 'EXECUTION_APPLICATION',
-              contentVersionIds: submission.versions.map(
-                (version) => version.contentVersionId,
-              ),
-              minCount: 1,
-              maxCount: 10,
-            });
+            let directFacts:
+              | Awaited<ReturnType<MaterialService['assertAvailableVersions']>>
+              | null = null;
+            if (submission !== null)
+              await this.materials.assertAvailableVersions(tx, actor, {
+                ownerType: 'CASE',
+                ownerId: caseId,
+                category: 'EXECUTION_APPLICATION',
+                contentVersionIds: submission.versions.map(
+                  (version) => version.contentVersionId,
+                ),
+                minCount: 1,
+                maxCount: 10,
+              });
+            else
+              directFacts = await this.materials.assertAvailableVersions(
+                tx,
+                actor,
+                {
+                  ownerType: 'CASE',
+                  ownerId: caseId,
+                  category: 'EXECUTION_APPLICATION',
+                  contentVersionIds:
+                    input.executionApplicationContentVersionIds ?? [],
+                  minCount: 1,
+                  maxCount: 10,
+                },
+              );
             const confirmationId = randomUUID();
             const auditId = randomUUID();
             const confirmedAt = new Date();
@@ -240,7 +305,13 @@ export class CaseExecutionConfirmationService {
                 action: 'case.execution.confirmed',
                 details: {
                   confirmationId,
-                  submissionId: submission.id,
+                  submissionId: submission?.id ?? null,
+                  ...(submission === null
+                    ? {
+                        executionApplicationContentVersionIds:
+                          input.executionApplicationContentVersionIds,
+                      }
+                    : {}),
                   fromVersion: input.expectedVersion,
                   toVersion: input.expectedVersion + 1,
                 },
@@ -251,7 +322,9 @@ export class CaseExecutionConfirmationService {
                 id: confirmationId,
                 caseId,
                 departmentId: actor.departmentId,
-                submissionId: submission.id,
+                submissionId: submission?.id ?? null,
+                externalEntryId:
+                  source.kind === 'EXTERNAL_ENTRY' ? source.entryId : null,
                 fromVersion: input.expectedVersion,
                 toVersion: input.expectedVersion + 1,
                 confirmedAt,
@@ -265,11 +338,11 @@ export class CaseExecutionConfirmationService {
                 departmentId: actor.departmentId,
                 stage: 'WAITING_EXECUTION_CONFIRMATION',
                 version: input.expectedVersion,
-                currentTrialRoundId: submission.trialRoundId,
-                currentJudgmentNextStepId: submission.judgmentNextStepId,
+                currentTrialRoundId: record.currentTrialRoundId,
+                currentJudgmentNextStepId: record.currentJudgmentNextStepId,
                 currentSecondInstanceResultId:
-                  submission.secondInstanceResultId,
-                currentExecutionSubmissionId: submission.id,
+                  record.currentSecondInstanceResultId,
+                currentExecutionSubmissionId: submission?.id ?? null,
               },
               data: {
                 stage: 'WAITING_EXECUTION_STAMP',
@@ -277,10 +350,19 @@ export class CaseExecutionConfirmationService {
               },
             });
             if (updated.count !== 1) throw this.versionConflict();
+            if (directFacts !== null)
+              await this.materials.freezeCaseExecutionConfirmationReferences(
+                tx,
+                actor,
+                caseId,
+                confirmationId,
+                directFacts,
+                auditId,
+              );
             const response: ConfirmExecutionResultDto = {
               id: caseId,
               confirmationId,
-              submissionId: submission.id,
+              submissionId: submission?.id ?? null,
               stage: 'WAITING_EXECUTION_STAMP',
               version: input.expectedVersion + 1,
               confirmedAt: confirmedAt.toISOString(),
@@ -329,8 +411,9 @@ export class CaseExecutionConfirmationService {
       typeof snapshot.confirmationId !== 'string' ||
       !uuid.test(snapshot.confirmationId) ||
       !('submissionId' in snapshot) ||
-      typeof snapshot.submissionId !== 'string' ||
-      !uuid.test(snapshot.submissionId) ||
+      (snapshot.submissionId !== null &&
+        (typeof snapshot.submissionId !== 'string' ||
+          !uuid.test(snapshot.submissionId))) ||
       !('stage' in snapshot) ||
       snapshot.stage !== 'WAITING_EXECUTION_STAMP' ||
       !('version' in snapshot) ||

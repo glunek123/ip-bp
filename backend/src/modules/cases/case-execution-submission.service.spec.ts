@@ -16,6 +16,10 @@ describe('CaseExecutionSubmissionService', () => {
     const record = {
       id: caseId,
       departmentId: actor.departmentId,
+      sourceLeadId: caseId,
+      sourceNotaryMatterId: caseId,
+      certificateId: caseId,
+      externalEntry: null,
       stage: 'WAITING_EXECUTION_DOCUMENTS',
       version: 20,
       currentTrialRoundId: trialRoundId,
@@ -33,6 +37,11 @@ describe('CaseExecutionSubmissionService', () => {
         id: string;
         versions: { contentVersionId: string }[];
       },
+      executionConfirmation: null,
+      executionMailing: null,
+      executionFiling: null,
+      executionFinish: null,
+      closure: null,
       responsibleUserId: actor.userId,
       responsibleMembership: { teamId: null },
     };
@@ -119,6 +128,49 @@ describe('CaseExecutionSubmissionService', () => {
         },
       }),
     );
+  });
+
+  it('starts from an imported documents stage with a real local round and no choice', async () => {
+    const f = fixture();
+    Object.assign(f.record, {
+      sourceLeadId: null,
+      sourceNotaryMatterId: null,
+      certificateId: null,
+      externalEntry: {
+        id: priorId,
+        caseId,
+        departmentId: actor.departmentId,
+        initialStage: 'WAITING_EXECUTION_DOCUMENTS',
+        stageReachedOn: new Date('2026-09-30T00:00:00.000Z'),
+        known: {
+          courtId: null,
+          courtCaseNo: null,
+          acceptedOn: null,
+          secondInstanceAcceptedOn: null,
+          platform: null,
+          shopName: null,
+          shopExternalId: null,
+          caseType: null,
+          infringementTypes: null,
+        },
+      },
+      version: 1,
+      currentJudgmentNextStepId: null,
+      currentJudgmentNextStep: null,
+    });
+    const result = await f.service.submit(actor, caseId, {
+      ...input(),
+      expectedVersion: 1,
+      judgmentNextStepId: null,
+    });
+    expect(result).toMatchObject({ version: 2 });
+    expect(f.tx.caseExecutionSubmission.create).toHaveBeenCalledWith({
+      data: expect.objectContaining({
+        trialRoundId,
+        judgmentNextStepId: null,
+        externalEntryId: priorId,
+      }),
+    });
   });
 
   it('rejects the same file set on resubmission before creating history', async () => {

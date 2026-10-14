@@ -26,6 +26,10 @@ describe('CaseExecutionFilingService', () => {
   function fixture() {
     const record = {
       departmentId: actor.departmentId,
+      sourceLeadId: caseId,
+      sourceNotaryMatterId: caseId,
+      certificateId: caseId,
+      externalEntry: null,
       responsibleUserId: actor.userId,
       responsibleMembership: { teamId: null },
       stage: 'WAITING_EXECUTION_FILING',

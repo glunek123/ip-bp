@@ -4,6 +4,7 @@ import {
   ArrayUnique,
   IsArray,
   IsDateString,
+  IsDefined,
   IsInt,
   IsString,
   IsUUID,
@@ -26,7 +27,11 @@ export class FinishCaseExecutionDto {
   @MaxLength(128)
   @Matches(/^\S(?:[\s\S]*\S)?$/u)
   idempotencyKey!: string;
-  @ApiProperty({ format: 'uuid' }) @IsUUID('4') expectedFilingId!: string;
+  @ApiProperty({ type: String, nullable: true, format: 'uuid' })
+  @IsDefined()
+  @ValidateIf((_input, value) => value !== null)
+  @IsUUID('4')
+  expectedFilingId!: string | null;
   @ApiProperty({ format: 'date' })
   @IsDateString()
   @Matches(/^\d{4}-\d{2}-\d{2}$/u)
@@ -52,7 +57,8 @@ export class FinishCaseExecutionDto {
 export class FinishCaseExecutionResponseDto {
   @ApiProperty({ format: 'uuid' }) id!: string;
   @ApiProperty({ format: 'uuid' }) finishId!: string;
-  @ApiProperty({ format: 'uuid' }) filingId!: string;
+  @ApiProperty({ type: String, nullable: true, format: 'uuid' })
+  filingId!: string | null;
   @ApiProperty({ enum: ['WAITING_ARCHIVE'] }) stage!: 'WAITING_ARCHIVE';
   @ApiProperty() version!: number;
   @ApiProperty({ format: 'date' }) finishedAt!: string;

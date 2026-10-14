@@ -12,6 +12,8 @@ import { ActorContext } from '../../access-control/actor-context';
 import { currentLawyerBindingId } from '../../access-control/lawyer-case-access';
 import { DatabaseService } from '../../database/database.service';
 import { MaterialService } from '../materials';
+import { readCaseSourceAnchor } from './case-entry-source';
+import { assertExecutionSourceChain } from './case-execution-source';
 import {
   FinishCaseExecutionDto,
   FinishCaseExecutionResponseDto,
@@ -201,53 +203,34 @@ export class CaseExecutionFinishService {
             }
             if (record.version !== input.expectedVersion)
               throw error('conflict', 'VERSION_CONFLICT');
+            const source = await readCaseSourceAnchor(
+              tx,
+              caseId,
+              actor.departmentId,
+            );
+            await assertExecutionSourceChain(
+              tx,
+              caseId,
+              actor.departmentId,
+              source,
+            );
             const filing = record.executionFiling;
-            const mailing = record.executionMailing;
-            const confirmation = record.executionConfirmation;
-            const submission = record.currentExecutionSubmission;
-            const choice = record.currentJudgmentNextStep;
             if (
               record.stage !== 'EXECUTING' ||
-              filing === null ||
-              filing.id !== input.expectedFilingId ||
-              filing.toVersion !== input.expectedVersion ||
               record.executionFinish !== null ||
-              mailing === null ||
-              filing.mailingId !== mailing.id ||
-              filing.fromVersion !== mailing.toVersion ||
-              confirmation === null ||
-              mailing.confirmationId !== confirmation.id ||
-              mailing.fromVersion !== confirmation.toVersion ||
-              submission === null ||
-              confirmation.submissionId !== submission.id ||
-              confirmation.fromVersion !== submission.toVersion ||
-              record.currentExecutionSubmissionId !== submission.id ||
-              record.currentTrialRoundId !== submission.trialRoundId ||
-              record.currentJudgmentNextStepId !==
-                submission.judgmentNextStepId ||
-              record.currentSecondInstanceResultId !==
-                submission.secondInstanceResultId ||
-              choice === null ||
-              choice.id !== submission.judgmentNextStepId ||
-              choice.trialRoundId !== submission.trialRoundId ||
-              choice.revocation !== null
+              (filing === null
+                ? source.kind !== 'EXTERNAL_ENTRY' ||
+                  source.initialStage !== 'EXECUTING' ||
+                  input.expectedFilingId !== null ||
+                  record.currentExecutionSubmissionId !== null ||
+                  record.currentJudgmentNextStepId !== null ||
+                  record.currentSecondInstanceResultId !== null
+                : filing.id !== input.expectedFilingId ||
+                  filing.toVersion !== input.expectedVersion) ||
+              (source.kind === 'EXTERNAL_ENTRY' &&
+                input.finishedAt < source.stageReachedOn)
             )
               throw error('conflict', 'INVALID_STATE');
-            if (choice.next === 'EXECUTION') {
-              if (submission.secondInstanceResultId !== null)
-                throw error('conflict', 'INVALID_STATE');
-            } else if (choice.next === 'APPEAL') {
-              const result = record.currentSecondInstanceResult;
-              if (
-                result === null ||
-                result.id !== submission.secondInstanceResultId ||
-                result.choiceId !== choice.id ||
-                result.trialRoundId !== submission.trialRoundId ||
-                !['CHANGE', 'AFFIRM'].includes(result.result) ||
-                result.revocation !== null
-              )
-                throw error('conflict', 'INVALID_STATE');
-            } else throw error('conflict', 'INVALID_STATE');
             const facts =
               input.basisContentVersionIds.length === 0
                 ? []
@@ -275,7 +258,7 @@ export class CaseExecutionFinishService {
                 action: 'case.execution.finished',
                 details: {
                   finishId,
-                  filingId: filing.id,
+                  filingId: filing?.id ?? null,
                   reason: input.reason,
                   basisNote: input.basisNote,
                   fromVersion: input.expectedVersion,
@@ -290,7 +273,9 @@ export class CaseExecutionFinishService {
                 id: finishId,
                 caseId,
                 departmentId: actor.departmentId,
-                filingId: filing.id,
+                filingId: filing?.id ?? null,
+                externalEntryId:
+                  source.kind === 'EXTERNAL_ENTRY' ? source.entryId : null,
                 reason: input.reason,
                 basisNote: input.basisNote,
                 fromVersion: input.expectedVersion,
@@ -307,14 +292,19 @@ export class CaseExecutionFinishService {
                 departmentId: actor.departmentId,
                 stage: 'EXECUTING',
                 version: input.expectedVersion,
-                currentTrialRoundId: submission.trialRoundId,
-                currentJudgmentNextStepId: submission.judgmentNextStepId,
+                currentTrialRoundId: record.currentTrialRoundId,
+                currentJudgmentNextStepId: record.currentJudgmentNextStepId,
                 currentSecondInstanceResultId:
-                  submission.secondInstanceResultId,
-                currentExecutionSubmissionId: submission.id,
-                executionFiling: {
-                  is: { id: filing.id, toVersion: input.expectedVersion },
-                },
+                  record.currentSecondInstanceResultId,
+                currentExecutionSubmissionId:
+                  record.currentExecutionSubmissionId,
+                ...(filing === null
+                  ? { executionFiling: { is: null } }
+                  : {
+                      executionFiling: {
+                        is: { id: filing.id, toVersion: input.expectedVersion },
+                      },
+                    }),
               },
               data: { stage: 'WAITING_ARCHIVE', version: { increment: 1 } },
             });
@@ -332,7 +322,7 @@ export class CaseExecutionFinishService {
             const response: FinishCaseExecutionResponseDto = {
               id: caseId,
               finishId,
-              filingId: filing.id,
+              filingId: filing?.id ?? null,
               stage: 'WAITING_ARCHIVE',
               version: input.expectedVersion + 1,
               finishedAt: input.finishedAt,
@@ -393,8 +383,9 @@ export class CaseExecutionFinishService {
       input.idempotencyKey.trim() !== input.idempotencyKey ||
       input.idempotencyKey.length < 1 ||
       input.idempotencyKey.length > 128 ||
-      typeof input.expectedFilingId !== 'string' ||
-      !uuid.test(input.expectedFilingId) ||
+      (input.expectedFilingId !== null &&
+        (typeof input.expectedFilingId !== 'string' ||
+          !uuid.test(input.expectedFilingId))) ||
       typeof input.finishedAt !== 'string' ||
       !/^\d{4}-\d{2}-\d{2}$/u.test(input.finishedAt) ||
       typeof input.reason !== 'string' ||
@@ -443,8 +434,9 @@ export class CaseExecutionFinishService {
       !('id' in snapshot) ||
       snapshot.id !== caseId ||
       !('filingId' in snapshot) ||
-      typeof snapshot.filingId !== 'string' ||
-      !uuid.test(snapshot.filingId) ||
+      (snapshot.filingId !== null &&
+        (typeof snapshot.filingId !== 'string' ||
+          !uuid.test(snapshot.filingId))) ||
       !('finishId' in snapshot) ||
       typeof snapshot.finishId !== 'string' ||
       !uuid.test(snapshot.finishId) ||

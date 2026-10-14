@@ -19,6 +19,10 @@ const input = {
 function fixture() {
   const record = {
     departmentId: actor.departmentId,
+    sourceLeadId: caseId,
+    sourceNotaryMatterId: caseId,
+    certificateId: caseId,
+    externalEntry: null,
     responsibleUserId: actor.userId,
     responsibleMembership: { teamId: null },
     stage: 'WAITING_ARCHIVE',
@@ -219,6 +223,55 @@ describe('archive commands', () => {
     });
     expect(f.materials.assertAvailableVersions).not.toHaveBeenCalled();
     expect(f.materials.freezeCaseClosureReferences).not.toHaveBeenCalled();
+  });
+  it('archives a real closure created after an imported WAITING_ARCHIVE root', async () => {
+    const f = fixture();
+    Object.assign(f.record, {
+      sourceLeadId: null,
+      sourceNotaryMatterId: null,
+      certificateId: null,
+      externalEntry: {
+        id: id('f'),
+        caseId,
+        departmentId: actor.departmentId,
+        initialStage: 'WAITING_ARCHIVE',
+        stageReachedOn: new Date('2019-12-31T00:00:00.000Z'),
+        known: {
+          courtId: null,
+          courtCaseNo: null,
+          acceptedOn: null,
+          secondInstanceAcceptedOn: null,
+          platform: null,
+          shopName: null,
+          shopExternalId: null,
+          caseType: null,
+          infringementTypes: null,
+        },
+      },
+      version: 2,
+      currentJudgmentNextStepId: null,
+      currentJudgmentNextStep: null,
+      currentExecutionSubmissionId: null,
+      currentExecutionSubmission: null,
+      executionConfirmation: null,
+      executionMailing: null,
+      executionFiling: null,
+      executionFinish: null,
+    });
+    Object.assign(f.record.closure, {
+      finishId: null,
+      externalEntryId: id('f'),
+    });
+    f.record.closure.currentVersion.toVersion = 2;
+    Object.assign(f.record.closure.versions[0], {
+      finishId: null,
+      externalEntryId: id('f'),
+      fromVersion: 1,
+      toVersion: 2,
+    });
+    await expect(
+      f.service.archive(actor, caseId, { ...input, expectedVersion: 2 }),
+    ).resolves.toMatchObject({ stage: 'ARCHIVED', version: 3 });
   });
   it('appends an internal correction while retaining the frozen closure anchor and original receipt', async () => {
     const f = fixture();

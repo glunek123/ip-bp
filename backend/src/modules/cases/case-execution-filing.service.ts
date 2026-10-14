@@ -12,6 +12,8 @@ import { ActorContext } from '../../access-control/actor-context';
 import { currentLawyerBindingId } from '../../access-control/lawyer-case-access';
 import { DatabaseService } from '../../database/database.service';
 import { MaterialService } from '../materials';
+import { readCaseSourceAnchor } from './case-entry-source';
+import { assertExecutionSourceChain } from './case-execution-source';
 import {
   SubmitCaseExecutionFilingDto,
   SubmitCaseExecutionFilingResponseDto,
@@ -181,47 +183,34 @@ export class CaseExecutionFilingService {
             }
             if (record.version !== input.expectedVersion)
               throw error('conflict', 'VERSION_CONFLICT');
+            const source = await readCaseSourceAnchor(
+              tx,
+              caseId,
+              actor.departmentId,
+            );
+            await assertExecutionSourceChain(
+              tx,
+              caseId,
+              actor.departmentId,
+              source,
+            );
             const mailing = record.executionMailing;
-            const confirmation = record.executionConfirmation;
-            const submission = record.currentExecutionSubmission;
-            const choice = record.currentJudgmentNextStep;
             if (
               record.stage !== 'WAITING_EXECUTION_FILING' ||
-              mailing === null ||
-              mailing.id !== input.expectedMailingId ||
-              mailing.toVersion !== input.expectedVersion ||
               record.executionFiling !== null ||
-              confirmation === null ||
-              mailing.confirmationId !== confirmation.id ||
-              submission === null ||
-              confirmation.submissionId !== submission.id ||
-              record.currentExecutionSubmissionId !== submission.id ||
-              record.currentTrialRoundId !== submission.trialRoundId ||
-              record.currentJudgmentNextStepId !==
-                submission.judgmentNextStepId ||
-              record.currentSecondInstanceResultId !==
-                submission.secondInstanceResultId ||
-              choice === null ||
-              choice.id !== submission.judgmentNextStepId ||
-              choice.trialRoundId !== submission.trialRoundId ||
-              choice.revocation !== null
+              (mailing === null
+                ? source.kind !== 'EXTERNAL_ENTRY' ||
+                  source.initialStage !== 'WAITING_EXECUTION_FILING' ||
+                  input.expectedMailingId !== null ||
+                  record.currentExecutionSubmissionId !== null ||
+                  record.currentJudgmentNextStepId !== null ||
+                  record.currentSecondInstanceResultId !== null
+                : mailing.id !== input.expectedMailingId ||
+                  mailing.toVersion !== input.expectedVersion) ||
+              (source.kind === 'EXTERNAL_ENTRY' &&
+                input.submittedAt < source.stageReachedOn)
             )
               throw error('conflict', 'INVALID_STATE');
-            if (choice.next === 'EXECUTION') {
-              if (submission.secondInstanceResultId !== null)
-                throw error('conflict', 'INVALID_STATE');
-            } else if (choice.next === 'APPEAL') {
-              const result = record.currentSecondInstanceResult;
-              if (
-                result === null ||
-                result.id !== submission.secondInstanceResultId ||
-                result.choiceId !== choice.id ||
-                result.trialRoundId !== submission.trialRoundId ||
-                !['CHANGE', 'AFFIRM'].includes(result.result) ||
-                result.revocation !== null
-              )
-                throw error('conflict', 'INVALID_STATE');
-            } else throw error('conflict', 'INVALID_STATE');
             const facts = await this.materials.assertAvailableVersions(
               tx,
               actor,
@@ -250,7 +239,7 @@ export class CaseExecutionFilingService {
                 action: 'case.execution.filing.submitted',
                 details: {
                   filingId,
-                  mailingId: mailing.id,
+                  mailingId: mailing?.id ?? null,
                   fromVersion: input.expectedVersion,
                   toVersion: input.expectedVersion + 1,
                   submittedAt: input.submittedAt,
@@ -264,7 +253,9 @@ export class CaseExecutionFilingService {
                 id: filingId,
                 caseId,
                 departmentId: actor.departmentId,
-                mailingId: mailing.id,
+                mailingId: mailing?.id ?? null,
+                externalEntryId:
+                  source.kind === 'EXTERNAL_ENTRY' ? source.entryId : null,
                 fromVersion: input.expectedVersion,
                 toVersion: input.expectedVersion + 1,
                 submittedAt: new Date(`${input.submittedAt}T00:00:00.000Z`),
@@ -279,11 +270,12 @@ export class CaseExecutionFilingService {
                 departmentId: actor.departmentId,
                 stage: 'WAITING_EXECUTION_FILING',
                 version: input.expectedVersion,
-                currentTrialRoundId: submission.trialRoundId,
-                currentJudgmentNextStepId: submission.judgmentNextStepId,
+                currentTrialRoundId: record.currentTrialRoundId,
+                currentJudgmentNextStepId: record.currentJudgmentNextStepId,
                 currentSecondInstanceResultId:
-                  submission.secondInstanceResultId,
-                currentExecutionSubmissionId: submission.id,
+                  record.currentSecondInstanceResultId,
+                currentExecutionSubmissionId:
+                  record.currentExecutionSubmissionId,
               },
               data: { stage: 'EXECUTING', version: { increment: 1 } },
             });
@@ -300,7 +292,7 @@ export class CaseExecutionFilingService {
             const response: SubmitCaseExecutionFilingResponseDto = {
               id: caseId,
               filingId,
-              mailingId: mailing.id,
+              mailingId: mailing?.id ?? null,
               stage: 'EXECUTING',
               version: input.expectedVersion + 1,
               submittedAt: input.submittedAt,
@@ -359,8 +351,9 @@ export class CaseExecutionFilingService {
       input.idempotencyKey.trim() !== input.idempotencyKey ||
       input.idempotencyKey.length < 1 ||
       input.idempotencyKey.length > 128 ||
-      typeof input.expectedMailingId !== 'string' ||
-      !uuid.test(input.expectedMailingId) ||
+      (input.expectedMailingId !== null &&
+        (typeof input.expectedMailingId !== 'string' ||
+          !uuid.test(input.expectedMailingId))) ||
       typeof input.submittedAt !== 'string' ||
       !/^\d{4}-\d{2}-\d{2}$/u.test(input.submittedAt) ||
       !Array.isArray(input.executionFilingProofContentVersionIds) ||
@@ -402,8 +395,9 @@ export class CaseExecutionFilingService {
       typeof snapshot.filingId !== 'string' ||
       !uuid.test(snapshot.filingId) ||
       !('mailingId' in snapshot) ||
-      typeof snapshot.mailingId !== 'string' ||
-      !uuid.test(snapshot.mailingId) ||
+      (snapshot.mailingId !== null &&
+        (typeof snapshot.mailingId !== 'string' ||
+          !uuid.test(snapshot.mailingId))) ||
       !('stage' in snapshot) ||
       snapshot.stage !== 'EXECUTING' ||
       !('version' in snapshot) ||
