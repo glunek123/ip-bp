@@ -59,6 +59,13 @@ import { CaseComplaintConfirmationService } from './case-complaint-confirmation.
 import { CaseComplaintMailingService } from './case-complaint-mailing.service';
 import { CaseFilingService } from './case-filing.service';
 import { CaseAcceptanceService } from './case-acceptance.service';
+import { CaseRecordEditService } from './case-record-edit.service';
+import {
+  AcceptanceCorrectionResultDto,
+  CorrectCaseAcceptanceDto,
+  DefendantContactUpdateResultDto,
+  UpdateDefendantContactDto,
+} from './case-record-edit.dto';
 import { CaseHearingService } from './case-hearing.service';
 import { CaseJudgmentService } from './case-judgment.service';
 import { CaseJudgmentNextStepService } from './case-judgment-next-step.service';
@@ -133,6 +140,7 @@ export class CaseReadController {
     private readonly mailing: CaseComplaintMailingService,
     private readonly filing: CaseFilingService,
     private readonly acceptance: CaseAcceptanceService,
+    private readonly recordEdit: CaseRecordEditService,
     private readonly hearing: CaseHearingService,
     private readonly judgment: CaseJudgmentService,
     private readonly judgmentNextStep: CaseJudgmentNextStepService,
@@ -167,6 +175,26 @@ export class CaseReadController {
     @Param('id', new ParseUUIDPipe()) id: string,
   ) {
     return this.cases.get(actor, id);
+  }
+
+  @Post(':id/defendant-contact-update')
+  @ApiCreatedResponse({ type: DefendantContactUpdateResultDto })
+  updateDefendantContact(
+    @CurrentActor() actor: ActorContext,
+    @Param('id', new ParseUUIDPipe({ version: '4' })) id: string,
+    @Body() body: UpdateDefendantContactDto,
+  ) {
+    return this.recordEdit.updateContact(actor, id, body);
+  }
+
+  @Post(':id/acceptance-correction')
+  @ApiCreatedResponse({ type: AcceptanceCorrectionResultDto })
+  correctAcceptance(
+    @CurrentActor() actor: ActorContext,
+    @Param('id', new ParseUUIDPipe({ version: '4' })) id: string,
+    @Body() body: CorrectCaseAcceptanceDto,
+  ) {
+    return this.recordEdit.correctAcceptance(actor, id, body);
   }
 
   @Post(':id/execution-mail')

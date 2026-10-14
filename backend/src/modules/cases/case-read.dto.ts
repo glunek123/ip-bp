@@ -674,6 +674,52 @@ class CaseDefendantDto {
   @ApiProperty({ type: String, nullable: true }) phone!: string | null;
   @ApiProperty({ type: String, nullable: true }) address!: string | null;
 }
+class CaseDefendantContactChangeDto {
+  @ApiProperty({ format: 'uuid' }) id!: string;
+  @ApiProperty() fromRevision!: number;
+  @ApiProperty() toRevision!: number;
+  @ApiProperty({ type: String, nullable: true }) beforePhone!: string | null;
+  @ApiProperty({ type: String, nullable: true }) beforeAddress!: string | null;
+  @ApiProperty({ type: String, nullable: true }) phone!: string | null;
+  @ApiProperty({ type: String, nullable: true }) address!: string | null;
+  @ApiProperty({ format: 'date-time' }) recordedAt!: string;
+  @ApiProperty({ format: 'uuid' }) recordedByUserId!: string;
+}
+class CaseDefendantContactHistoryDto {
+  @ApiProperty({ format: 'uuid' }) defendantId!: string;
+  @ApiProperty() contactRevision!: number;
+  @ApiProperty({ type: [CaseDefendantContactChangeDto] })
+  history!: CaseDefendantContactChangeDto[];
+}
+class CaseAcceptanceCorrectionHistoryItemDto {
+  @ApiProperty({ format: 'uuid' }) id!: string;
+  @ApiProperty({ type: String, nullable: true, format: 'uuid' })
+  priorCorrectionId!: string | null;
+  @ApiProperty() fromRevision!: number;
+  @ApiProperty() toRevision!: number;
+  @ApiProperty({ format: 'date' }) acceptedAt!: string;
+  @ApiProperty() courtCaseNo!: string;
+  @ApiProperty() reason!: string;
+  @ApiProperty({ format: 'date-time' }) recordedAt!: string;
+  @ApiProperty({ format: 'uuid' }) recordedByUserId!: string;
+}
+class CaseAcceptanceCorrectionHistoryDto {
+  @ApiProperty({ format: 'uuid' }) acceptanceId!: string;
+  @ApiProperty({ format: 'uuid' }) trialRoundId!: string;
+  @ApiProperty() acceptanceRevision!: number;
+  @ApiProperty({ format: 'date' }) originalAcceptedAt!: string;
+  @ApiProperty() originalCourtCaseNo!: string;
+  @ApiProperty({ type: [CaseAcceptanceCorrectionHistoryItemDto] })
+  history!: CaseAcceptanceCorrectionHistoryItemDto[];
+}
+class CaseRecordEditsDto {
+  @ApiProperty() canUpdateDefendantContact!: boolean;
+  @ApiProperty() canCorrectAcceptance!: boolean;
+  @ApiProperty({ type: [CaseDefendantContactHistoryDto] })
+  defendantContacts!: CaseDefendantContactHistoryDto[];
+  @ApiProperty({ type: [CaseAcceptanceCorrectionHistoryDto] })
+  acceptanceCorrections!: CaseAcceptanceCorrectionHistoryDto[];
+}
 class CaseLawyerDto {
   @ApiProperty({ format: 'uuid' }) id!: string;
   @ApiProperty() fullName!: string;
@@ -694,6 +740,8 @@ class CaseFeeDto {
 export class CaseDetailResponseDto extends OmitType(CaseListItemDto, [
   'displaySummary',
 ] as const) {
+  @ApiPropertyOptional({ type: CaseRecordEditsDto })
+  recordEdits?: CaseRecordEditsDto;
   @ApiProperty({ type: CaseClosureDto, nullable: true })
   closure!: CaseClosureDto | null;
   @ApiProperty({ type: CaseArchiveDto, nullable: true })

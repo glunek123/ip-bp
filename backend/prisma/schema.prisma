@@ -46,6 +46,8 @@ enum PermissionAction {
   CASE_COMPLAINT_MAIL          @map("case.complaint.mail")
   CASE_FILING_SUBMIT           @map("case.filing.submit")
   CASE_ACCEPTANCE_REGISTER     @map("case.acceptance.register")
+  CASE_ACCEPTANCE_CORRECT      @map("case.acceptance.correct")
+  CASE_DEFENDANT_CONTACT_UPDATE @map("case.defendant-contact.update")
   CASE_HEARING_SCHEDULE        @map("case.hearing.schedule")
   CASE_HEARING_CORRECT         @map("case.hearing.correct")
   CASE_JUDGMENT_REGISTER       @map("case.judgment.register")
@@ -1799,6 +1801,9 @@ model Case {
   filingReceipts                CaseFilingReceipt[]
   acceptances                   CaseAcceptance[]
   acceptanceReceipts            CaseAcceptanceReceipt[]
+  recordEditReceipts             CaseRecordEditReceipt[]
+  acceptanceCorrections          CaseAcceptanceCorrection[]
+  defendantContactChanges        CaseDefendantContactChange[]
   trialRounds                   CaseTrialRound[]                  @relation("CaseTrialRounds")
   currentTrialRoundId           String?                           @map("current_trial_round_id") @db.Uuid
   currentTrialRound             CaseTrialRound?                   @relation("CaseCurrentTrialRound", fields: [currentTrialRoundId, id, departmentId], references: [id, caseId, departmentId], onDelete: Restrict, onUpdate: Restrict)
@@ -1911,6 +1916,8 @@ model CaseDefendant {
   idNo         String?       @map("id_no") @db.VarChar(100)
   phone        String?       @db.VarChar(100)
   address      String?       @db.VarChar(500)
+  contactRevision Int        @default(0) @map("contact_revision")
+  contactChanges CaseDefendantContactChange[]
   createdAt    DateTime      @default(now()) @map("created_at") @db.Timestamptz(3)
   case         Case          @relation(fields: [caseId, departmentId], references: [id, departmentId], onDelete: Restrict, onUpdate: Restrict)
   judgmentAppeals CaseJudgmentAppealDefendant[]
@@ -2151,6 +2158,7 @@ model CaseAcceptance {
   recordedBy       UserAccount             @relation("CaseAcceptanceRecorder", fields: [recordedByUserId], references: [id], onDelete: Restrict, onUpdate: Restrict)
   auditEvent       AuditEvent              @relation(fields: [auditEventId], references: [id], onDelete: Restrict, onUpdate: Restrict)
   versions         CaseAcceptanceVersion[]
+  corrections      CaseAcceptanceCorrection[]
 
   @@unique([id, caseId, departmentId])
   @@unique([id, caseId, departmentId, trialRoundId])
@@ -2186,6 +2194,74 @@ model CaseAcceptanceReceipt {
 
   @@unique([departmentId, actorUserId, idempotencyKey])
   @@map("case_acceptance_receipts")
+}
+
+enum CaseRecordEditCommand {
+  DEFENDANT_CONTACT_UPDATE
+  ACCEPTANCE_CORRECTION
+
+  @@map("case_record_edit_command")
+}
+
+model CaseDefendantContactChange {
+  id String @id @default(uuid()) @db.Uuid
+  caseId String @map("case_id") @db.Uuid
+  departmentId String @map("department_id") @db.Uuid
+  defendantId String @map("defendant_id") @db.Uuid
+  fromRevision Int @map("from_revision")
+  toRevision Int @map("to_revision")
+  beforePhone String? @map("before_phone") @db.VarChar(100)
+  beforeAddress String? @map("before_address") @db.VarChar(500)
+  phone String? @db.VarChar(100)
+  address String? @db.VarChar(500)
+  recordedAt DateTime @default(now()) @map("recorded_at") @db.Timestamptz(3)
+  recordedByUserId String @map("recorded_by_user_id") @db.Uuid
+  auditEventId String @unique @map("audit_event_id") @db.Uuid
+  case Case @relation(fields: [caseId, departmentId], references: [id, departmentId], onDelete: Restrict, onUpdate: Restrict)
+  defendant CaseDefendant @relation(fields: [defendantId, caseId, departmentId], references: [id, caseId, departmentId], onDelete: Restrict, onUpdate: Restrict)
+
+  @@unique([defendantId, caseId, departmentId, toRevision], map: "case_contact_to_revision_key")
+  @@unique([defendantId, caseId, departmentId, fromRevision], map: "case_contact_from_revision_key")
+  @@map("case_defendant_contact_changes")
+}
+
+model CaseAcceptanceCorrection {
+  id String @id @default(uuid()) @db.Uuid
+  caseId String @map("case_id") @db.Uuid
+  departmentId String @map("department_id") @db.Uuid
+  acceptanceId String @map("acceptance_id") @db.Uuid
+  trialRoundId String @map("trial_round_id") @db.Uuid
+  priorCorrectionId String? @unique @map("prior_correction_id") @db.Uuid
+  fromRevision Int @map("from_revision")
+  toRevision Int @map("to_revision")
+  acceptedAt DateTime @map("accepted_at") @db.Date
+  courtCaseNo String @map("court_case_no") @db.VarChar(100)
+  reason String @db.VarChar(500)
+  recordedAt DateTime @default(now()) @map("recorded_at") @db.Timestamptz(3)
+  recordedByUserId String @map("recorded_by_user_id") @db.Uuid
+  auditEventId String @unique @map("audit_event_id") @db.Uuid
+  case Case @relation(fields: [caseId, departmentId], references: [id, departmentId], onDelete: Restrict, onUpdate: Restrict)
+  acceptance CaseAcceptance @relation(fields: [acceptanceId, caseId, departmentId, trialRoundId], references: [id, caseId, departmentId, trialRoundId], onDelete: Restrict, onUpdate: Restrict)
+
+  @@unique([acceptanceId, caseId, departmentId, toRevision], map: "case_acceptance_correct_to_revision_key")
+  @@unique([acceptanceId, caseId, departmentId, fromRevision], map: "case_acceptance_correct_from_revision_key")
+  @@map("case_acceptance_corrections")
+}
+
+model CaseRecordEditReceipt {
+  id String @id @default(uuid()) @db.Uuid
+  departmentId String @map("department_id") @db.Uuid
+  actorUserId String @map("actor_user_id") @db.Uuid
+  caseId String @map("case_id") @db.Uuid
+  command CaseRecordEditCommand
+  idempotencyKey String @map("idempotency_key") @db.VarChar(128)
+  requestFingerprint String @map("request_fingerprint") @db.Char(64)
+  resultSnapshot Json @map("result_snapshot")
+  createdAt DateTime @default(now()) @map("created_at") @db.Timestamptz(3)
+  case Case @relation(fields: [caseId, departmentId], references: [id, departmentId], onDelete: Restrict, onUpdate: Restrict)
+
+  @@unique([departmentId, actorUserId, command, idempotencyKey])
+  @@map("case_record_edit_receipts")
 }
 
 model CaseHearingArrangement {

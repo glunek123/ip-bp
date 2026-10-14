@@ -33,7 +33,10 @@ describe('CaseJudgmentService', () => {
           version: 9,
           responsibleUserId: actor.userId,
           responsibleMembership: { teamId: null },
-          acceptance: { acceptedAt: new Date('2026-10-01T00:00:00.000Z') },
+          acceptance: {
+            acceptedAt: new Date('2026-10-01T00:00:00.000Z'),
+            corrections: [],
+          },
           currentJudgmentId: null,
           currentJudgmentNextStepId: null,
         }),
@@ -127,6 +130,22 @@ describe('CaseJudgmentService', () => {
       f.service.register(actor, caseId, input),
     ).rejects.toMatchObject({ response: { code: 'ACTION_FORBIDDEN' } });
     expect(f.tx.caseJudgmentReceipt.findUnique).not.toHaveBeenCalled();
+  });
+
+  it('compares judgment dates with the effective corrected acceptance date', async () => {
+    const f = fixture();
+    const record = await f.tx.case.findFirst();
+    f.tx.case.findFirst.mockResolvedValue({
+      ...record,
+      acceptance: {
+        acceptedAt: new Date('2026-10-01T00:00:00.000Z'),
+        corrections: [{ acceptedAt: new Date('2026-10-09T00:00:00.000Z') }],
+      },
+    });
+    await expect(
+      f.service.register(actor, caseId, input),
+    ).rejects.toMatchObject({ response: { code: 'VALIDATION_ERROR' } });
+    expect(f.tx.caseJudgmentFact.create).not.toHaveBeenCalled();
   });
 
   it('returns the original immutable receipt on same-key replay', async () => {

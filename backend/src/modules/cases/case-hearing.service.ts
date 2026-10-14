@@ -135,7 +135,16 @@ export class CaseHearingService {
                 currentTrialRoundId: true,
                 responsibleUserId: true,
                 responsibleMembership: { select: { teamId: true } },
-                acceptance: { select: { acceptedAt: true } },
+                acceptance: {
+                  select: {
+                    acceptedAt: true,
+                    corrections: {
+                      orderBy: { toRevision: 'desc' },
+                      take: 1,
+                      select: { acceptedAt: true },
+                    },
+                  },
+                },
                 currentHearingArrangementId: true,
                 currentHearingAdvanceId: true,
                 currentJudgmentId: true,
@@ -212,7 +221,11 @@ export class CaseHearingService {
               throw this.versionConflict();
             if (
               value.hearingAt !== null &&
-              value.hearingAt < isoDate(record.acceptance.acceptedAt)!
+              value.hearingAt <
+                isoDate(
+                  record.acceptance.corrections[0]?.acceptedAt ??
+                    record.acceptance.acceptedAt,
+                )!
             )
               throw this.validation();
             let priorAdvanceId: string | null = null;

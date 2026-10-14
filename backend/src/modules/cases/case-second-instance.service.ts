@@ -66,7 +66,7 @@ type LockedCase = {
   currentJudgmentNextStepId: string | null;
   currentSecondInstanceProgressId: string | null;
   currentSecondInstanceResultId: string | null;
-  acceptance: { acceptedAt: Date } | null;
+  acceptance: { acceptedAt: Date; corrections: { acceptedAt: Date }[] } | null;
   currentJudgment: {
     judgmentAmountState: 'KNOWN' | 'PENDING';
     judgmentAmount: Prisma.Decimal | null;
@@ -160,7 +160,16 @@ export class CaseSecondInstanceService {
                 currentJudgmentNextStepId: true,
                 currentSecondInstanceProgressId: true,
                 currentSecondInstanceResultId: true,
-                acceptance: { select: { acceptedAt: true } },
+                acceptance: {
+                  select: {
+                    acceptedAt: true,
+                    corrections: {
+                      orderBy: { toRevision: 'desc' },
+                      take: 1,
+                      select: { acceptedAt: true },
+                    },
+                  },
+                },
                 currentJudgment: {
                   select: { judgmentAmountState: true, judgmentAmount: true },
                 },
@@ -448,7 +457,12 @@ export class CaseSecondInstanceService {
     const input = value as ResultValue;
     if (
       input.resultReceivedAt <
-      record.acceptance.acceptedAt.toISOString().slice(0, 10)
+      (
+        record.acceptance.corrections[0]?.acceptedAt ??
+        record.acceptance.acceptedAt
+      )
+        .toISOString()
+        .slice(0, 10)
     )
       throw this.validation();
     const judgmentFiles = await this.materials.assertAvailableVersions(
@@ -729,7 +743,15 @@ export class CaseSecondInstanceService {
         caseId,
         departmentId: actor.departmentId,
       },
-      select: { id: true, courtCaseNo: true },
+      select: {
+        id: true,
+        courtCaseNo: true,
+        corrections: {
+          orderBy: { toRevision: 'desc' },
+          take: 1,
+          select: { courtCaseNo: true },
+        },
+      },
     });
     const sourceHearing = await tx.caseHearingArrangement.findFirst({
       where: {
@@ -816,7 +838,9 @@ export class CaseSecondInstanceService {
               currentHearingAdvanceId: sourceAdvance?.id ?? null,
               currentJudgmentId: sourceChoice.judgmentId,
               currentJudgmentNextStepId: sourceChoice.id,
-              courtCaseNo: sourceAcceptance.courtCaseNo,
+              courtCaseNo:
+                sourceAcceptance.corrections[0]?.courtCaseNo ??
+                sourceAcceptance.courtCaseNo,
             }),
       },
     });

@@ -42,7 +42,10 @@ describe('CaseSecondInstanceService', () => {
         progressId: string | null;
       },
       courtCaseNo: '（2026）京0101民初1号',
-      acceptance: { acceptedAt: new Date('2026-01-01T00:00:00.000Z') },
+      acceptance: {
+        acceptedAt: new Date('2026-01-01T00:00:00.000Z'),
+        corrections: [] as { acceptedAt: Date }[],
+      },
       currentJudgment: {
         id: judgmentId,
         judgmentAmountState: 'KNOWN',
@@ -269,6 +272,18 @@ describe('CaseSecondInstanceService', () => {
     },
   );
 
+  it('compares second-instance result dates with corrected first-instance acceptance', async () => {
+    const f = fixture();
+    f.record.acceptance = {
+      acceptedAt: new Date('2026-01-01T00:00:00.000Z'),
+      corrections: [{ acceptedAt: new Date('2026-01-03T00:00:00.000Z') }],
+    };
+    await expect(
+      f.service.registerResult(actor, caseId, resultInput('AFFIRM')),
+    ).rejects.toMatchObject({ response: { code: 'VALIDATION_ERROR' } });
+    expect(f.tx.caseSecondInstanceResult.create).not.toHaveBeenCalled();
+  });
+
   it('atomically saves unsaved progress before result with consecutive versions', async () => {
     const f = fixture();
     const response = await f.service.registerResult(actor, caseId, {
@@ -432,6 +447,7 @@ describe('CaseSecondInstanceService', () => {
       .mockResolvedValueOnce({
         id: f.record.currentAcceptanceId,
         courtCaseNo: f.record.courtCaseNo,
+        corrections: [{ courtCaseNo: 'CORRECTED-SOURCE-NO' }],
       });
     const response = await f.service.revokeResult(actor, caseId, {
       expectedVersion: 12,
@@ -459,6 +475,7 @@ describe('CaseSecondInstanceService', () => {
           currentAcceptanceId: f.record.currentAcceptanceId,
           currentJudgmentId: judgmentId,
           currentJudgmentNextStepId: choiceId,
+          courtCaseNo: 'CORRECTED-SOURCE-NO',
         }),
       }),
     );
@@ -510,6 +527,7 @@ describe('CaseSecondInstanceService', () => {
     f.tx.caseAcceptance.findFirst.mockResolvedValue({
       id: f.record.currentAcceptanceId,
       courtCaseNo: f.record.courtCaseNo,
+      corrections: [],
     });
     await expect(
       f.service.revokeResult(actor, caseId, {

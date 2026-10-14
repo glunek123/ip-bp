@@ -50,6 +50,8 @@ const actionMap = {
   CASE_COMPLAINT_MAIL: 'case.complaint.mail',
   CASE_FILING_SUBMIT: 'case.filing.submit',
   CASE_ACCEPTANCE_REGISTER: 'case.acceptance.register',
+  CASE_ACCEPTANCE_CORRECT: 'case.acceptance.correct',
+  CASE_DEFENDANT_CONTACT_UPDATE: 'case.defendant-contact.update',
   CASE_HEARING_SCHEDULE: 'case.hearing.schedule',
   CASE_HEARING_CORRECT: 'case.hearing.correct',
   CASE_JUDGMENT_REGISTER: 'case.judgment.register',

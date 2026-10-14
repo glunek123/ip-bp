@@ -44,6 +44,7 @@ import { CaseComplaintConfirmationService } from './modules/cases/case-complaint
 import { CaseComplaintMailingService } from './modules/cases/case-complaint-mailing.service';
 import { CaseFilingService } from './modules/cases/case-filing.service';
 import { CaseAcceptanceService } from './modules/cases/case-acceptance.service';
+import { CaseRecordEditService } from './modules/cases/case-record-edit.service';
 import { CaseHearingService } from './modules/cases/case-hearing.service';
 import { CaseJudgmentService } from './modules/cases/case-judgment.service';
 import { CaseJudgmentNextStepService } from './modules/cases/case-judgment-next-step.service';
@@ -192,6 +193,7 @@ describe('CORE-LD-002 OpenAPI contract', () => {
         { provide: CaseComplaintMailingService, useValue: {} },
         { provide: CaseFilingService, useValue: {} },
         { provide: CaseAcceptanceService, useValue: {} },
+        { provide: CaseRecordEditService, useValue: {} },
         { provide: CaseHearingService, useValue: {} },
         { provide: CaseJudgmentService, useValue: {} },
         { provide: CaseJudgmentNextStepService, useValue: {} },
@@ -409,6 +411,18 @@ describe('CORE-LD-002 OpenAPI contract', () => {
     ],
     [
       'post',
+      '/api/v1/cases/{id}/defendant-contact-update',
+      '201',
+      'DefendantContactUpdateResultDto',
+    ],
+    [
+      'post',
+      '/api/v1/cases/{id}/acceptance-correction',
+      '201',
+      'AcceptanceCorrectionResultDto',
+    ],
+    [
+      'post',
       '/api/v1/cases/{id}/hearing-schedule',
       '201',
       'CaseHearingCommandResultDto',
@@ -596,6 +610,29 @@ describe('CORE-LD-002 OpenAPI contract', () => {
   );
 
   it.each([
+    [
+      '/api/v1/cases/{id}/defendant-contact-update',
+      'UpdateDefendantContactDto',
+      [
+        'defendantId',
+        'expectedContactRevision',
+        'idempotencyKey',
+        'phone',
+        'address',
+      ],
+    ],
+    [
+      '/api/v1/cases/{id}/acceptance-correction',
+      'CorrectCaseAcceptanceDto',
+      [
+        'acceptanceId',
+        'expectedAcceptanceRevision',
+        'idempotencyKey',
+        'acceptedAt',
+        'courtCaseNo',
+        'reason',
+      ],
+    ],
     [
       '/api/v1/cases/{id}/hearing-schedule',
       'SaveCaseHearingDto',

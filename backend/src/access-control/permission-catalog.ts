@@ -46,6 +46,8 @@ export const internalAssignablePermissionActions = [
   'CASE_COMPLAINT_MAIL',
   'CASE_FILING_SUBMIT',
   'CASE_ACCEPTANCE_REGISTER',
+  'CASE_ACCEPTANCE_CORRECT',
+  'CASE_DEFENDANT_CONTACT_UPDATE',
   'CASE_HEARING_SCHEDULE',
   'CASE_HEARING_CORRECT',
   'CASE_JUDGMENT_REGISTER',
@@ -208,6 +210,16 @@ const catalog: PermissionCatalogItem[] = [
   {
     action: 'CASE_ACCEPTANCE_REGISTER',
     label: '登记正式立案',
+    scopes: allScopes,
+  },
+  {
+    action: 'CASE_ACCEPTANCE_CORRECT',
+    label: '更正一审受理信息',
+    scopes: allScopes,
+  },
+  {
+    action: 'CASE_DEFENDANT_CONTACT_UPDATE',
+    label: '更新被告联系方式',
     scopes: allScopes,
   },
   { action: 'CASE_HEARING_SCHEDULE', label: '登记开庭安排', scopes: allScopes },

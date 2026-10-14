@@ -29,7 +29,10 @@ describe('CaseHearingService', () => {
           currentTrialRoundId: trialRoundId,
           responsibleUserId: actor.userId,
           responsibleMembership: { teamId: null },
-          acceptance: { acceptedAt: new Date('2026-10-01T00:00:00.000Z') },
+          acceptance: {
+            acceptedAt: new Date('2026-10-01T00:00:00.000Z'),
+            corrections: [],
+          },
           currentHearingArrangementId: null,
           currentHearingAdvanceId: null,
         }),
@@ -104,6 +107,25 @@ describe('CaseHearingService', () => {
     expect(f.tx.caseHearingArrangement.create).not.toHaveBeenCalled();
   });
 
+  it('compares hearing dates with the effective corrected acceptance date', async () => {
+    const f = fixture();
+    const record = await f.tx.case.findFirst();
+    f.tx.case.findFirst.mockResolvedValue({
+      ...record,
+      acceptance: {
+        acceptedAt: new Date('2026-10-01T00:00:00.000Z'),
+        corrections: [{ acceptedAt: new Date('2026-10-04T00:00:00.000Z') }],
+      },
+    });
+    await expect(
+      f.service.schedule(actor, caseId, {
+        ...request,
+        hearingAt: '2026-10-03',
+      }),
+    ).rejects.toMatchObject({ response: { code: 'VALIDATION_ERROR' } });
+    expect(f.tx.caseHearingArrangement.create).not.toHaveBeenCalled();
+  });
+
   it('allows an explicit null date while keeping the case in waiting-hearing', async () => {
     const f = fixture();
     const result = await f.service.schedule(actor, caseId, {
@@ -137,7 +159,10 @@ describe('CaseHearingService', () => {
       version: 7,
       responsibleUserId: actor.userId,
       responsibleMembership: { teamId: null },
-      acceptance: { acceptedAt: new Date('2026-10-01T00:00:00.000Z') },
+      acceptance: {
+        acceptedAt: new Date('2026-10-01T00:00:00.000Z'),
+        corrections: [],
+      },
       currentHearingArrangementId: arrangementId,
       currentHearingAdvanceId: advanceId,
       currentJudgmentId: '77777777-7777-4777-8777-777777777777',

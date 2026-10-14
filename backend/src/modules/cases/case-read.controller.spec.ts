@@ -23,6 +23,7 @@ import { CaseComplaintConfirmationService } from './case-complaint-confirmation.
 import { CaseComplaintMailingService } from './case-complaint-mailing.service';
 import { CaseFilingService } from './case-filing.service';
 import { CaseAcceptanceService } from './case-acceptance.service';
+import { CaseRecordEditService } from './case-record-edit.service';
 import { CaseHearingService } from './case-hearing.service';
 import { CaseJudgmentService } from './case-judgment.service';
 import { CaseJudgmentNextStepService } from './case-judgment-next-step.service';
@@ -144,6 +145,7 @@ describe('internal complaint mailing route identity', () => {
       mailing as never,
       {} as CaseFilingService,
       {} as CaseAcceptanceService,
+      {} as CaseRecordEditService,
       {} as CaseHearingService,
       {} as never,
       {} as never,
@@ -201,6 +203,10 @@ describe('case read OpenAPI contract', () => {
       record: jest.fn().mockResolvedValue({ id: routeCaseId }),
       correct: jest.fn().mockResolvedValue({ id: routeCaseId }),
     };
+    const recordEdit = {
+      updateContact: jest.fn().mockResolvedValue({ caseId: routeCaseId }),
+      correctAcceptance: jest.fn().mockResolvedValue({ caseId: routeCaseId }),
+    };
     const reads = new CaseReadService(
       {
         userAccount: {
@@ -254,6 +260,7 @@ describe('case read OpenAPI contract', () => {
         { provide: CaseComplaintMailingService, useValue: {} },
         { provide: CaseFilingService, useValue: {} },
         { provide: CaseAcceptanceService, useValue: {} },
+        { provide: CaseRecordEditService, useValue: recordEdit },
         { provide: CaseHearingService, useValue: {} },
         { provide: CaseJudgmentService, useValue: {} },
         { provide: CaseJudgmentNextStepService, useValue: {} },
@@ -288,6 +295,47 @@ describe('case read OpenAPI contract', () => {
     try {
       configureApp(app);
       await app.init();
+      const contactInput = {
+        defendantId: routeCaseId,
+        expectedContactRevision: 0,
+        idempotencyKey: 'contact-route',
+        phone: null,
+        address: 'new address',
+      };
+      await request(app.getHttpServer())
+        .post(`/api/v1/cases/${routeCaseId}/defendant-contact-update`)
+        .send(contactInput)
+        .expect(201);
+      expect(recordEdit.updateContact).toHaveBeenCalledWith(
+        expect.any(Object),
+        routeCaseId,
+        contactInput,
+      );
+      await request(app.getHttpServer())
+        .post(`/api/v1/cases/${routeCaseId}/defendant-contact-update`)
+        .send({ ...contactInput, expectedVersion: 1 })
+        .expect(400);
+      const correctionInput = {
+        acceptanceId: routeCaseId,
+        expectedAcceptanceRevision: 0,
+        idempotencyKey: 'acceptance-route',
+        acceptedAt: '2026-10-01',
+        courtCaseNo: 'A-1',
+        reason: 'recording correction',
+      };
+      await request(app.getHttpServer())
+        .post(`/api/v1/cases/${routeCaseId}/acceptance-correction`)
+        .send(correctionInput)
+        .expect(201);
+      expect(recordEdit.correctAcceptance).toHaveBeenCalledWith(
+        expect.any(Object),
+        routeCaseId,
+        correctionInput,
+      );
+      await request(app.getHttpServer())
+        .post(`/api/v1/cases/${routeCaseId}/acceptance-correction`)
+        .send({ ...correctionInput, courtId: routeCaseId })
+        .expect(400);
       const archiveInput = {
         expectedVersion: 26,
         idempotencyKey: 'archive-route',

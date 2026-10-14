@@ -235,6 +235,19 @@ describe('CaseReadService', () => {
       trialRoundId: 'round-1',
       acceptedAt: new Date('2026-10-01T00:00:00.000Z'),
       courtCaseNo: 'OLD-CASE-NO',
+      corrections: [
+        {
+          id: 'acceptance-correction-1',
+          priorCorrectionId: null,
+          fromRevision: 0,
+          toRevision: 1,
+          acceptedAt: new Date('2026-10-02T00:00:00.000Z'),
+          courtCaseNo: 'CORRECTED-CASE-NO',
+          reason: 'recording correction',
+          recordedAt: new Date('2026-10-12T01:00:00.000Z'),
+          recordedByUserId: actor.userId,
+        },
+      ],
       recordedAt: new Date('2026-10-01T01:00:00.000Z'),
       recordedByUserId: actor.userId,
       versions: [
@@ -364,7 +377,7 @@ describe('CaseReadService', () => {
     expect(result.acceptance).toBeNull();
     expect(result.acceptances[0]).toMatchObject({
       trialRoundId: 'round-1',
-      courtCaseNo: 'OLD-CASE-NO',
+      courtCaseNo: 'CORRECTED-CASE-NO',
       recordedByUserId: actor.userId,
       files: [{ category: 'ACCEPTANCE_NOTICE', contentVersionId: 'version-1' }],
     });
@@ -377,6 +390,21 @@ describe('CaseReadService', () => {
       executedAt: '2026-10-08T16:00:01.000Z',
     });
     expect(result.hearing.corrections[0]).toMatchObject({ reason: '改期' });
+    expect(result).toMatchObject({
+      recordEdits: {
+        acceptanceCorrections: [
+          {
+            acceptanceId: 'acceptance-1',
+            originalAcceptedAt: '2026-10-01',
+            originalCourtCaseNo: 'OLD-CASE-NO',
+            acceptanceRevision: 1,
+            history: [
+              { acceptedAt: '2026-10-02', courtCaseNo: 'CORRECTED-CASE-NO' },
+            ],
+          },
+        ],
+      },
+    });
     f.db.userAccount.findUnique.mockResolvedValue({
       accountType: 'LAWYER',
       active: true,
@@ -391,6 +419,11 @@ describe('CaseReadService', () => {
       'case-1',
     );
     expect(lawyerDetail.acceptances[0]).not.toHaveProperty('recordedByUserId');
+    expect(lawyerDetail.acceptances[0]).toMatchObject({
+      acceptedAt: '2026-10-02',
+      courtCaseNo: 'CORRECTED-CASE-NO',
+    });
+    expect(lawyerDetail).not.toHaveProperty('recordEdits');
     expect(lawyerDetail.acceptances[0].files[0]).toMatchObject({
       category: 'ACCEPTANCE_NOTICE',
       contentVersionId: 'version-1',

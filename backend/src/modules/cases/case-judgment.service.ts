@@ -79,7 +79,16 @@ export class CaseJudgmentService {
                 currentJudgmentNextStepId: true,
                 responsibleUserId: true,
                 responsibleMembership: { select: { teamId: true } },
-                acceptance: { select: { acceptedAt: true } },
+                acceptance: {
+                  select: {
+                    acceptedAt: true,
+                    corrections: {
+                      orderBy: { toRevision: 'desc' },
+                      take: 1,
+                      select: { acceptedAt: true },
+                    },
+                  },
+                },
               },
             });
             if (record === null) throw this.notFound();
@@ -151,7 +160,12 @@ export class CaseJudgmentService {
               throw this.versionConflict();
             if (
               value.judgmentReceivedAt <
-              record.acceptance.acceptedAt.toISOString().slice(0, 10)
+              (
+                record.acceptance.corrections[0]?.acceptedAt ??
+                record.acceptance.acceptedAt
+              )
+                .toISOString()
+                .slice(0, 10)
             )
               throw this.validation();
             const versions = await this.materials.assertAvailableVersions(

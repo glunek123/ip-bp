@@ -14,6 +14,8 @@ import {
   caseListDisplaySelect,
 } from './case-list-display-read';
 
+const isoDate = (value: Date) => value.toISOString().slice(0, 10);
+
 @Injectable()
 export class CaseReadService {
   constructor(
@@ -786,6 +788,20 @@ export class CaseReadService {
             courtCaseNo: true,
             recordedAt: true,
             recordedByUserId: true,
+            corrections: {
+              orderBy: { toRevision: 'asc' },
+              select: {
+                id: true,
+                priorCorrectionId: true,
+                fromRevision: true,
+                toRevision: true,
+                acceptedAt: true,
+                courtCaseNo: true,
+                reason: true,
+                recordedAt: true,
+                recordedByUserId: true,
+              },
+            },
             versions: {
               select: {
                 category: true,
@@ -799,7 +815,7 @@ export class CaseReadService {
           },
         },
         acceptances: {
-          orderBy: [{ acceptedAt: 'asc' }, { id: 'asc' }],
+          orderBy: [{ recordedAt: 'asc' }, { id: 'asc' }],
           select: {
             id: true,
             trialRoundId: true,
@@ -807,6 +823,20 @@ export class CaseReadService {
             courtCaseNo: true,
             recordedAt: true,
             recordedByUserId: true,
+            corrections: {
+              orderBy: { toRevision: 'asc' },
+              select: {
+                id: true,
+                priorCorrectionId: true,
+                fromRevision: true,
+                toRevision: true,
+                acceptedAt: true,
+                courtCaseNo: true,
+                reason: true,
+                recordedAt: true,
+                recordedByUserId: true,
+              },
+            },
             versions: {
               select: {
                 category: true,
@@ -1105,6 +1135,21 @@ export class CaseReadService {
             idNo: true,
             phone: true,
             address: true,
+            contactRevision: true,
+            contactChanges: {
+              orderBy: { toRevision: 'asc' },
+              select: {
+                id: true,
+                fromRevision: true,
+                toRevision: true,
+                beforePhone: true,
+                beforeAddress: true,
+                phone: true,
+                address: true,
+                recordedAt: true,
+                recordedByUserId: true,
+              },
+            },
           },
         },
         lawyers: {
@@ -1791,7 +1836,73 @@ export class CaseReadService {
       },
       matchedAt: record.matchedAt?.toISOString() ?? null,
       matchedOn: record.matchedOn?.toISOString().slice(0, 10) ?? null,
-      defendants: record.defendants,
+      defendants: record.defendants.map((defendant) => ({
+        id: defendant.id,
+        kind: defendant.kind,
+        name: defendant.name,
+        idNo: defendant.idNo,
+        phone: defendant.phone,
+        address: defendant.address,
+      })),
+      ...(principal === 'INTERNAL'
+        ? {
+            recordEdits: {
+              canUpdateDefendantContact:
+                record.defendants.length > 0 &&
+                (await this.access.canAuthorizeCase(
+                  actor,
+                  'case.defendant-contact.update',
+                  {
+                    departmentId: actor.departmentId,
+                    responsibleUserId: record.responsibleUserId,
+                    ...(record.responsibleMembership.teamId
+                      ? { teamId: record.responsibleMembership.teamId }
+                      : {}),
+                  },
+                )),
+              canCorrectAcceptance:
+                record.acceptances.length > 0 &&
+                (await this.access.canAuthorizeCase(
+                  actor,
+                  'case.acceptance.correct',
+                  {
+                    departmentId: actor.departmentId,
+                    responsibleUserId: record.responsibleUserId,
+                    ...(record.responsibleMembership.teamId
+                      ? { teamId: record.responsibleMembership.teamId }
+                      : {}),
+                  },
+                )),
+              defendantContacts: record.defendants.map((defendant) => ({
+                defendantId: defendant.id,
+                contactRevision: defendant.contactRevision,
+                history: defendant.contactChanges.map((change) => ({
+                  ...change,
+                  recordedAt: change.recordedAt.toISOString(),
+                })),
+              })),
+              acceptanceCorrections: record.acceptances.map((acceptance) => ({
+                acceptanceId: acceptance.id,
+                trialRoundId: acceptance.trialRoundId,
+                acceptanceRevision:
+                  acceptance.corrections.at(-1)?.toRevision ?? 0,
+                originalAcceptedAt: isoDate(acceptance.acceptedAt),
+                originalCourtCaseNo: acceptance.courtCaseNo,
+                history: acceptance.corrections.map((correction) => ({
+                  id: correction.id,
+                  priorCorrectionId: correction.priorCorrectionId,
+                  fromRevision: correction.fromRevision,
+                  toRevision: correction.toRevision,
+                  acceptedAt: isoDate(correction.acceptedAt),
+                  courtCaseNo: correction.courtCaseNo,
+                  reason: correction.reason,
+                  recordedAt: correction.recordedAt.toISOString(),
+                  recordedByUserId: correction.recordedByUserId,
+                })),
+              })),
+            },
+          }
+        : {}),
       lawyers: record.lawyers.map((assignment) => ({
         id: assignment.lawyer.id,
         fullName: assignment.lawyer.fullName,
@@ -2223,10 +2334,15 @@ export class CaseReadService {
           : {
               id: record.acceptance.id,
               trialRoundId: record.acceptance.trialRoundId,
-              acceptedAt: record.acceptance.acceptedAt
+              acceptedAt: (
+                record.acceptance.corrections.at(-1)?.acceptedAt ??
+                record.acceptance.acceptedAt
+              )
                 .toISOString()
                 .slice(0, 10),
-              courtCaseNo: record.acceptance.courtCaseNo,
+              courtCaseNo:
+                record.acceptance.corrections.at(-1)?.courtCaseNo ??
+                record.acceptance.courtCaseNo,
               recordedAt: record.acceptance.recordedAt.toISOString(),
               recordedByUserId: record.acceptance.recordedByUserId,
               files: record.acceptance.versions.map((version) => ({
@@ -2240,8 +2356,10 @@ export class CaseReadService {
       acceptances: record.acceptances.map((value) => ({
         id: value.id,
         trialRoundId: value.trialRoundId,
-        acceptedAt: value.acceptedAt.toISOString().slice(0, 10),
-        courtCaseNo: value.courtCaseNo,
+        acceptedAt: (value.corrections.at(-1)?.acceptedAt ?? value.acceptedAt)
+          .toISOString()
+          .slice(0, 10),
+        courtCaseNo: value.corrections.at(-1)?.courtCaseNo ?? value.courtCaseNo,
         recordedAt: value.recordedAt.toISOString(),
         ...(principal === 'INTERNAL'
           ? { recordedByUserId: value.recordedByUserId }
