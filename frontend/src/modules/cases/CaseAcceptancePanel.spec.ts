@@ -7,6 +7,7 @@ import CaseAcceptancePanel from './CaseAcceptancePanel.vue';
 
 const api = vi.hoisted(() => ({
   registerCaseAcceptance: vi.fn(),
+  listFilingCourts: vi.fn(),
   todayShanghai: vi.fn(() => '2026-10-06'),
   uploadMaterialFile: vi.fn(),
   downloadMaterialVersion: vi.fn(),
@@ -14,6 +15,7 @@ const api = vi.hoisted(() => ({
 vi.mock('../../api/cases', async (importOriginal) => ({
   ...(await importOriginal<typeof import('../../api/cases')>()),
   registerCaseAcceptance: api.registerCaseAcceptance,
+  listFilingCourts: api.listFilingCourts,
   todayShanghai: api.todayShanghai,
 }));
 vi.mock('../../api/materials', async (importOriginal) => ({
@@ -24,6 +26,7 @@ vi.mock('../../api/materials', async (importOriginal) => ({
 
 type TestItem = CaseWorkflowItem & {
   filingSubmission: { submittedAt: string } | null;
+  origin?: import('../../api/cases').CaseOrigin;
 };
 const baseItem: TestItem = {
   id: 'case-1',
@@ -56,6 +59,7 @@ const acceptedFact: NonNullable<TestItem['acceptance']> = {
   trialRoundId: '80000000-0000-4000-8000-000000000032',
   acceptedAt: '2026-10-05',
   courtCaseNo: '甲0101民初1号',
+  court: null,
   recordedAt: '2026-10-06T01:00:00.000Z',
   files: [
     {
@@ -78,12 +82,16 @@ beforeEach(() => {
   window.addEventListener(workflowChangedEvent, recordWorkflowRefresh);
   vi.resetAllMocks();
   api.todayShanghai.mockReturnValue('2026-10-06');
+  api.listFilingCourts.mockResolvedValue([
+    { id: '80000000-0000-4000-8000-000000000041', name: '真实受理法院' },
+  ]);
   api.registerCaseAcceptance.mockResolvedValue({
     id: 'case-1',
     stage: 'WAITING_HEARING',
     version: 7,
     acceptedAt: '2026-10-05',
     courtCaseNo: '甲0101民初1号',
+    court: null,
     recordedAt: '2026-10-06T01:00:00.000Z',
   });
   api.uploadMaterialFile.mockImplementation(async ({ category, file }) => ({
@@ -154,6 +162,9 @@ describe('case acceptance panel', () => {
       }),
       'internal',
     );
+    expect(api.registerCaseAcceptance.mock.calls[0]?.[1]).not.toHaveProperty(
+      'courtId',
+    );
     expect(wrapper.text()).toContain('正式立案登记已完成');
     expect(wrapper.emitted('changed')).toHaveLength(1);
     expect(wrapper.emitted('refresh')).toBeUndefined();
@@ -193,6 +204,71 @@ describe('case acceptance panel', () => {
     await flushPromises();
     expect(api.registerCaseAcceptance).toHaveBeenCalledTimes(2);
     expect(api.registerCaseAcceptance.mock.calls[1]).toEqual(original);
+  });
+
+  it('requires and submits the real court only for an external entry without filing', async () => {
+    const item: TestItem = {
+      ...baseItem,
+      filingSubmission: null,
+      origin: {
+        kind: 'EXTERNAL_ENTRY',
+        entryId: '80000000-0000-4000-8000-000000000042',
+        entryKind: 'EXTERNAL_TRANSFER',
+        initialStage: 'WAITING_FORMAL_ACCEPTANCE',
+        stageReachedOn: '2026-10-02',
+        source: '外部系统',
+        reason: '迁入在办案件',
+        recordedAt: '2026-10-06T01:00:00.000Z',
+        recordedByUserId: '80000000-0000-4000-8000-000000000043',
+        known: {
+          courtId: null,
+          courtCaseNo: null,
+          acceptedOn: null,
+          secondInstanceAcceptedOn: null,
+          platform: null,
+          shopName: null,
+          shopExternalId: null,
+          caseType: null,
+          infringementTypes: null,
+        },
+      },
+    };
+    const wrapper = mountPanel(item);
+    await flushPromises();
+    expect(api.listFilingCourts).toHaveBeenCalledWith('case-1', 'internal');
+    expect(
+      (
+        wrapper.get('[data-test="acceptance-register"]')
+          .element as HTMLButtonElement
+      ).disabled,
+    ).toBe(true);
+    await wrapper
+      .get('[data-test="acceptance-accepted-at"]')
+      .setValue('2026-10-01');
+    await wrapper
+      .get('[data-test="acceptance-accepted-at"]')
+      .setValue('2026-10-03');
+    await wrapper
+      .get('[data-test="acceptance-court-case-no"]')
+      .setValue('真实案号');
+    await wrapper
+      .get('[data-test="acceptance-court-id"]')
+      .setValue('80000000-0000-4000-8000-000000000041');
+    expect(
+      (
+        wrapper.get('[data-test="acceptance-register"]')
+          .element as HTMLButtonElement
+      ).disabled,
+    ).toBe(false);
+    await wrapper.get('[data-test="acceptance-register"]').trigger('click');
+    await flushPromises();
+    expect(api.registerCaseAcceptance).toHaveBeenCalledWith(
+      'case-1',
+      expect.objectContaining({
+        courtId: '80000000-0000-4000-8000-000000000041',
+      }),
+      'internal',
+    );
   });
 
   it.each(['version-selected', 'version-other'])(

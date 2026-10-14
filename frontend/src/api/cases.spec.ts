@@ -20,6 +20,8 @@ import {
   submitCaseExecutionFiling,
   submitComplaint,
   chooseCaseJudgmentNextStep,
+  createExternalCaseEntry,
+  getExternalEntryOptions,
   revokeCaseJudgmentNextStep,
   saveSecondInstance,
   registerSecondInstanceResult,
@@ -522,6 +524,7 @@ describe('cases API', () => {
       trialRoundId: '90000000-0000-4000-8000-000000000022',
       acceptedAt: '2026-10-06',
       courtCaseNo: 'CN-2',
+      court: null,
       recordedAt: '2026-10-05T01:00:00.000Z',
       recordedByUserId: '90000000-0000-4000-8000-000000000030',
       files: [],
@@ -1241,8 +1244,13 @@ describe('cases API', () => {
     const request = fetchMock.mock.calls[0]?.[1] as RequestInit;
     expect(JSON.parse(String(request.body))).toEqual(input);
 
+    const {
+      executionApplicationContentVersionIds: _initialVersions,
+      ...initialAnchor
+    } = input;
+    void _initialVersions;
     const changedInput = {
-      ...input,
+      ...initialAnchor,
       expectedVersion: 15,
       expectedSubmissionId: '80000000-0000-4000-8000-000000000103',
       changeReason: '补充执行申请材料',
@@ -1594,6 +1602,39 @@ describe('cases API', () => {
     });
   });
 
+  it('sends the direct external round with a null choiceId and a real round UUID', async () => {
+    const roundId = '70000000-0000-4000-8000-000000000081';
+    const receipt = {
+      id: 'case-1',
+      stage: 'SECOND_INSTANCE',
+      version: 3,
+      currentTrialRoundId: roundId,
+      progressId: null,
+      resultId: null,
+      recordedAt: '2026-10-10T03:00:00Z',
+    };
+    const fetch = mockJson(receipt, 201);
+    const input = {
+      expectedVersion: 3,
+      idempotencyKey: 'external-round-save-key',
+      trialRoundId: roundId,
+      choiceId: null,
+      expectedProgressId: null,
+      progress: {
+        hearingAt: null,
+        hearingPlace: null,
+        judgeName: null,
+        documentContentVersionIds: [],
+        serviceContentVersionIds: [],
+      },
+    };
+    await expect(saveSecondInstance('case-1', input)).resolves.toEqual(receipt);
+    expect(JSON.parse(String(fetch.mock.calls[0]?.[1]?.body))).toEqual(input);
+    expect(fetch.mock.calls[0]?.[1]?.headers).toMatchObject({
+      'Idempotency-Key': input.idempotencyKey,
+    });
+  });
+
   it('accepts unchanged existing SAVE only at +0 and new progress only at +1', async () => {
     const roundId = '70000000-0000-4000-8000-000000000001';
     const oldProgressId = '70000000-0000-4000-8000-000000000002';
@@ -1639,6 +1680,50 @@ describe('cases API', () => {
         code: 'INVALID_RESPONSE',
       });
     }
+  });
+
+  it('requires an explicit amount for direct external AFFIRM and sends a null choiceId', async () => {
+    const roundId = '70000000-0000-4000-8000-000000000082';
+    const input = {
+      expectedVersion: 3,
+      idempotencyKey: 'external-round-result-key',
+      trialRoundId: roundId,
+      choiceId: null,
+      expectedProgressId: null,
+      result: 'AFFIRM' as const,
+      resultReceivedAt: '2026-10-10',
+      judgmentContentVersionIds: ['70000000-0000-4000-8000-000000000083'],
+      paidLitigationFee: { state: 'PENDING' as const, amount: null },
+      judgmentAmount: { state: 'PENDING' as const, amount: null },
+      progress: {
+        hearingAt: null,
+        hearingPlace: null,
+        judgeName: null,
+        documentContentVersionIds: [],
+        serviceContentVersionIds: [],
+      },
+    };
+    const receipt = {
+      id: 'case-1',
+      stage: 'WAITING_EXECUTION_DOCUMENTS',
+      version: 4,
+      currentTrialRoundId: roundId,
+      progressId: null,
+      resultId: '70000000-0000-4000-8000-000000000084',
+      recordedAt: '2026-10-10T03:00:00Z',
+    };
+    const fetch = mockJson(receipt, 201);
+    await expect(
+      registerSecondInstanceResult('case-1', input),
+    ).resolves.toEqual(receipt);
+    expect(JSON.parse(String(fetch.mock.calls[0]?.[1]?.body))).toEqual(input);
+    await expect(
+      registerSecondInstanceResult('case-1', {
+        ...input,
+        judgmentAmount: undefined,
+      }),
+    ).rejects.toMatchObject({ code: 'VALIDATION_ERROR' });
+    expect(fetch).toHaveBeenCalledTimes(1);
   });
 
   it('accepts and replays a RESULT receipt at +2 only when it creates progress', async () => {
@@ -2370,6 +2455,7 @@ describe('cases API', () => {
         trialRoundId: '80000000-0000-4000-8000-000000000032',
         acceptedAt: '2026-10-05',
         courtCaseNo: '（2026）甲0101民初1号',
+        court: null,
         recordedAt: '2026-10-05T01:00:00.000Z',
         recordedByUserId: '80000000-0000-4000-8000-000000000006',
         files: [{ category: 'ACCEPTANCE_NOTICE', ...file }],
@@ -2394,6 +2480,7 @@ describe('cases API', () => {
       trialRoundId: '80000000-0000-4000-8000-000000000032',
       acceptedAt: '2026-10-05',
       courtCaseNo: '（2026）甲0101民初1号',
+      court: null,
       recordedAt: '2026-10-05T01:00:00.000Z',
       recordedByUserId: '80000000-0000-4000-8000-000000000006',
       files: [],
@@ -2434,6 +2521,7 @@ describe('cases API', () => {
       trialRoundId: '80000000-0000-4000-8000-000000000032',
       acceptedAt: '2026-10-05',
       courtCaseNo: '（2026）甲0101民初1号',
+      court: null,
       recordedAt: '2026-10-05T01:00:00.000Z',
       recordedByUserId: '80000000-0000-4000-8000-000000000006',
       files: [
@@ -2476,6 +2564,7 @@ describe('cases API', () => {
         trialRoundId: '80000000-0000-4000-8000-000000000032',
         acceptedAt: '2026-10-05',
         courtCaseNo: '（2026）甲0101民初1号',
+        court: null,
         recordedAt: '2026-10-05T01:00:00.000Z',
         recordedByUserId: '80000000-0000-4000-8000-000000000006',
         files: [
@@ -3343,6 +3432,7 @@ describe('cases API', () => {
         trialRoundId: '80000000-0000-4000-8000-000000000032',
         acceptedAt: '2026-10-05',
         courtCaseNo: '（2026）甲0101民初1号',
+        court: null,
         recordedAt: '2026-10-05T01:00:00.000Z',
         files: [
           {
@@ -3389,6 +3479,7 @@ describe('cases API', () => {
       trialRoundId: '80000000-0000-4000-8000-000000000032',
       acceptedAt: '2026-10-05',
       courtCaseNo: '（2026）甲0101民初1号',
+      court: null,
       recordedAt: '2026-10-05T01:00:00.000Z',
       files: [],
     };
@@ -3618,6 +3709,7 @@ describe('cases API', () => {
         idempotencyKey: 'acceptance-key',
         acceptedAt: '2026-10-05',
         courtCaseNo: ' 甲0101民初1号 ',
+        courtId: '70000000-0000-4000-8000-000000000002',
         acceptanceNoticeContentVersionIds: [selected],
         paymentListContentVersionIds: [],
         serviceDocumentContentVersionIds: [],
@@ -3632,6 +3724,7 @@ describe('cases API', () => {
       idempotencyKey: 'acceptance-key',
       acceptedAt: '2026-10-05',
       courtCaseNo: '甲0101民初1号',
+      courtId: '70000000-0000-4000-8000-000000000002',
       acceptanceNoticeContentVersionIds: [selected],
       paymentListContentVersionIds: [],
       serviceDocumentContentVersionIds: [],
@@ -3712,6 +3805,182 @@ describe('cases API', () => {
     expect(fetchMock.mock.calls[0]?.[0]).toBe(
       '/api/v1/lawyer/cases?page=1&pageSize=20&stage=WAITING_FILING',
     );
+  });
+});
+
+describe('CA018 external case entry API', () => {
+  const stages: casesApi.CaseStage[] = [
+    'PENDING_MATCH',
+    'WAITING_COMPLAINT',
+    'WAITING_COMPLAINT_CONFIRMATION',
+    'WAITING_COMPLAINT_STAMP',
+    'WAITING_FILING',
+    'WAITING_FORMAL_ACCEPTANCE',
+    'WAITING_HEARING',
+    'WAITING_JUDGMENT',
+    'SECOND_INSTANCE',
+    'WAITING_EXECUTION_DOCUMENTS',
+    'WAITING_EXECUTION_CONFIRMATION',
+    'WAITING_EXECUTION_STAMP',
+    'WAITING_EXECUTION_FILING',
+    'EXECUTING',
+    'WAITING_ARCHIVE',
+    'ARCHIVED',
+  ];
+  const caseId = '90000000-0000-4000-8000-000000000101';
+  const entryId = '90000000-0000-4000-8000-000000000102';
+  const input: casesApi.ExternalCaseEntryInput = {
+    idempotencyKey: 'ca018-original-key',
+    entryKind: 'EXTERNAL_TRANSFER',
+    initialStage: 'PENDING_MATCH',
+    stageReachedOn: '2026-10-13',
+    source: '外部案件台账',
+    reason: '接手正在办理的案件',
+    customerId: '90000000-0000-4000-8000-000000000103',
+    rightsHolderId: '90000000-0000-4000-8000-000000000104',
+    defendants: [],
+    lawyerAccountId: null,
+    lawyerProfileId: null,
+    known: {
+      courtId: null,
+      courtCaseNo: null,
+      acceptedOn: null,
+      secondInstanceAcceptedOn: null,
+      platform: null,
+      shopName: null,
+      shopExternalId: null,
+      caseType: null,
+      infringementTypes: null,
+    },
+  };
+
+  it('strictly decodes the authorized options contract', async () => {
+    const response = {
+      canCreate: true,
+      canCreateArchived: false,
+      currentUser: {
+        id: '90000000-0000-4000-8000-000000000105',
+        displayName: '运营甲',
+      },
+      customers: [
+        {
+          id: input.customerId,
+          name: '客户甲',
+          rightsHolders: [{ id: input.rightsHolderId, name: '权利人甲' }],
+        },
+      ],
+      lawyers: [],
+      dictionaries: {
+        stages: stages.map((stage) => ({ value: stage, label: stage })),
+        courts: [
+          { id: '90000000-0000-4000-8000-000000000106', name: '法院甲' },
+        ],
+        platforms: [{ value: 'TAOBAO', label: '淘宝' }],
+        caseTypes: [{ value: 'CIVIL', label: '民事' }],
+        infringementTypes: [{ value: 'TRADEMARK', label: '商标权' }],
+      },
+    };
+    const fetchMock = mockJson(response);
+    await expect(getExternalEntryOptions()).resolves.toEqual(response);
+    expect(fetchMock.mock.calls[0]?.[0]).toBe(
+      '/api/v1/cases/external-entry-options',
+    );
+
+    mockJson({ ...response, unexpected: true });
+    await expect(getExternalEntryOptions()).rejects.toMatchObject({
+      code: 'INVALID_RESPONSE',
+    });
+  });
+
+  it('posts the exact body and validates the created case receipt', async () => {
+    const receipt = {
+      id: caseId,
+      businessNo: 'CA-2026-0001',
+      stage: input.initialStage,
+      version: 1,
+      entryId,
+      recordedAt: '2026-10-14T01:02:03.000Z',
+    };
+    const fetchMock = mockJson(receipt, 201);
+    await expect(createExternalCaseEntry(input)).resolves.toEqual(receipt);
+    expect(fetchMock.mock.calls[0]?.[0]).toBe('/api/v1/cases/external-entries');
+    expect(JSON.parse(String(fetchMock.mock.calls[0]?.[1]?.body))).toEqual(
+      input,
+    );
+  });
+
+  it('does not send a pending-match entry with invented parties or lawyer IDs', async () => {
+    const fetchMock = mockJson({});
+    await expect(
+      createExternalCaseEntry({
+        ...input,
+        defendants: [{ kind: 'ORGANIZATION', name: '被告甲' }],
+      }),
+    ).rejects.toMatchObject({ code: 'VALIDATION_ERROR' });
+    expect(fetchMock).not.toHaveBeenCalled();
+  });
+
+  it('requires explicit external origin for null source records and permits unknown display source', async () => {
+    const origin = {
+      kind: 'EXTERNAL_ENTRY',
+      entryId,
+      entryKind: 'EXTERNAL_TRANSFER',
+      initialStage: 'PENDING_MATCH',
+      stageReachedOn: '2026-10-13',
+      source: '外部案件台账',
+      reason: '承接当前在办案件',
+      recordedAt: '2026-10-14T01:02:03.000Z',
+      recordedByUserId: '90000000-0000-4000-8000-000000000105',
+      known: input.known,
+    };
+    const externalDetail = {
+      ...detail,
+      origin,
+      sourceLead: null,
+      sourceNotaryMatter: null,
+      certificate: null,
+      fees: [],
+    };
+    mockJson(externalDetail);
+    await expect(getCase('case-1')).resolves.toMatchObject({
+      origin,
+      sourceLead: null,
+      sourceNotaryMatter: null,
+      certificate: null,
+    });
+    const externalSummary = {
+      ...summary,
+      origin,
+      sourceLead: null,
+      sourceNotaryMatter: null,
+      displaySummary: {
+        ...displaySummary,
+        source: { platform: null, shopName: null, shopExternalId: null },
+      },
+    };
+    mockJson({
+      items: [externalSummary],
+      total: 1,
+      page: 1,
+      pageSize: 20,
+      counts: Object.fromEntries(stages.map((stage) => [stage, 0])),
+    });
+    await expect(listCases()).resolves.toMatchObject({
+      items: [
+        {
+          origin,
+          displaySummary: {
+            source: { platform: null, shopName: null, shopExternalId: null },
+          },
+        },
+      ],
+    });
+    const { origin: _origin, ...withoutOrigin } = externalDetail;
+    void _origin;
+    mockJson(withoutOrigin);
+    await expect(getCase('case-1')).rejects.toMatchObject({
+      code: 'INVALID_RESPONSE',
+    });
   });
 });
 

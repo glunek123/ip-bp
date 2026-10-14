@@ -402,6 +402,7 @@ describe('case workspace read model', () => {
       trialRoundId: 'round-1',
       acceptedAt: '2026-10-01',
       courtCaseNo: '真实案号',
+      court: null,
       recordedAt,
       files: [{ ...file, category: 'ACCEPTANCE_NOTICE' }],
     };
@@ -605,6 +606,7 @@ describe('case workspace read model', () => {
       trialRoundId: 'round-1',
       acceptedAt: '2026-01-10',
       courtCaseNo: '初审案号',
+      court: null,
       recordedAt,
       files: [{ ...file, category: 'ACCEPTANCE_NOTICE' as const }],
     };
@@ -614,6 +616,7 @@ describe('case workspace read model', () => {
       trialRoundId: 'round-2',
       acceptedAt: '2026-05-10',
       courtCaseNo: '重审案号',
+      court: null,
     };
     item.acceptances = [firstAcceptance, remandAcceptance];
     item.acceptance = remandAcceptance;
@@ -863,6 +866,7 @@ describe('case workspace read model', () => {
       trialRoundId: 'round-1',
       acceptedAt: '2026-10-06',
       courtCaseNo: 'CN-2',
+      court: null,
       recordedAt: '2026-10-05T01:00:00Z',
       recordedByUserId: 'operator-1',
       files: [],

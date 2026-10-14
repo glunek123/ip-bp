@@ -463,7 +463,9 @@ const sectionActions = computed<Record<SectionKey, SectionAction>>(() => {
     },
     'lead-info': {
       enabled:
-        leadState.value === 'ready' && lead.value?.capabilities.edit === true,
+        item.value?.origin?.kind !== 'EXTERNAL_ENTRY' &&
+        leadState.value === 'ready' &&
+        lead.value?.capabilities.edit === true,
       label: '编辑',
       hint:
         leadState.value === 'denied'
@@ -560,7 +562,7 @@ function editSection(section: SectionKey): void {
   if (section === 'lead-info') {
     if (
       lead.value &&
-      lead.value.id === item.value?.sourceLead.id &&
+      lead.value.id === item.value?.sourceLead?.id &&
       lead.value.capabilities.edit
     )
       void router.push(`/leads/${encodeURIComponent(lead.value.id)}/edit`);
@@ -635,7 +637,7 @@ const activationRevision = ref(0);
 watch(
   [
     workspaceContext,
-    () => item.value?.sourceLead.id,
+    () => item.value?.sourceLead?.id,
     () => item.value?.version,
     accessVerified,
   ],
@@ -650,7 +652,7 @@ watch(
       if (
         controller.signal.aborted ||
         workspaceContext.value !== contextKey ||
-        item.value?.sourceLead.id !== leadId ||
+        item.value?.sourceLead?.id !== leadId ||
         item.value?.version !== version
       )
         return;
@@ -660,7 +662,7 @@ watch(
       if (
         controller.signal.aborted ||
         workspaceContext.value !== contextKey ||
-        item.value?.sourceLead.id !== leadId ||
+        item.value?.sourceLead?.id !== leadId ||
         item.value?.version !== version
       )
         return;

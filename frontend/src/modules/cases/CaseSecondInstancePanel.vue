@@ -46,6 +46,8 @@ type PanelItem = Pick<
   | 'id'
   | 'stage'
   | 'version'
+  | 'origin'
+  | 'origin'
   | 'acceptance'
   | 'acceptances'
   | 'hearing'
@@ -125,13 +127,18 @@ const currentChoice = computed(() => {
     ? choice
     : null;
 });
+const directExternalRound = computed(
+  () =>
+    props.item.origin?.kind === 'EXTERNAL_ENTRY' &&
+    currentChoice.value === null,
+);
 const canSaveCurrent = computed(
   () =>
     !accessDenied.value &&
     props.item.stage === 'SECOND_INSTANCE' &&
     props.item.canSaveSecondInstance &&
     currentRoundId.value !== null &&
-    currentChoice.value !== null,
+    (currentChoice.value !== null || directExternalRound.value),
 );
 const canRegister = computed(
   () =>
@@ -139,7 +146,7 @@ const canRegister = computed(
     props.item.stage === 'SECOND_INSTANCE' &&
     props.item.canRegisterSecondInstanceResult &&
     currentRoundId.value !== null &&
-    currentChoice.value !== null &&
+    (currentChoice.value !== null || directExternalRound.value) &&
     second.value.currentResult === null,
 );
 const canRevoke = computed(
@@ -158,13 +165,29 @@ const secondAcceptance = computed(() =>
       value.trialRoundId === currentRoundId.value,
   ),
 );
-const minReceivedDate = computed(
-  () =>
-    [props.item.acceptance?.acceptedAt, secondAcceptance.value?.acceptedAt]
+const minReceivedDate = computed(() => {
+  const dates = [
+    props.item.acceptance?.acceptedAt,
+    secondAcceptance.value?.acceptedAt,
+  ];
+  if (
+    directExternalRound.value &&
+    props.item.origin?.kind === 'EXTERNAL_ENTRY'
+  ) {
+    dates.push(
+      'known' in props.item.origin
+        ? (props.item.origin.known.secondInstanceAcceptedOn ?? undefined)
+        : undefined,
+      props.item.origin.stageReachedOn,
+    );
+  }
+  return (
+    dates
       .filter((value): value is string => value !== null && value !== undefined)
       .sort()
-      .at(-1) ?? '',
-);
+      .at(-1) ?? ''
+  );
+});
 const validReceivedDate = computed(
   () =>
     /^\d{4}-\d{2}-\d{2}$/u.test(receivedAt.value) &&
@@ -214,7 +237,8 @@ const resultReady = computed(
     feeState.value !== '' &&
     validFee.value &&
     selectedJudgmentIds.value.length > 0 &&
-    (resultChoice.value !== 'CHANGE' ||
+    ((resultChoice.value !== 'CHANGE' &&
+      !(resultChoice.value === 'AFFIRM' && directExternalRound.value)) ||
       (changedAmountState.value !== '' && validChangedAmount.value)),
 );
 const confirmationText = computed(() => {
@@ -445,7 +469,7 @@ function makeProgressInput(): SaveSecondInstanceInput {
     expectedVersion: props.item.version,
     idempotencyKey: globalThis.crypto.randomUUID(),
     trialRoundId: currentRoundId.value!,
-    choiceId: currentChoice.value!.id,
+    choiceId: currentChoice.value?.id ?? null,
     expectedProgressId: second.value.currentProgress?.id ?? null,
     progress: progressPayload(),
   };
@@ -459,13 +483,14 @@ function makeResultInput(): RegisterSecondInstanceResultInput {
     expectedVersion: props.item.version,
     idempotencyKey: globalThis.crypto.randomUUID(),
     trialRoundId: currentRoundId.value!,
-    choiceId: currentChoice.value!.id,
+    choiceId: currentChoice.value?.id ?? null,
     expectedProgressId: second.value.currentProgress?.id ?? null,
     result: resultChoice.value as Exclude<ResultChoice, ''>,
     resultReceivedAt: receivedAt.value,
     judgmentContentVersionIds: selectedJudgmentIds.value,
     paidLitigationFee,
-    ...(resultChoice.value === 'CHANGE'
+    ...(resultChoice.value === 'CHANGE' ||
+    (resultChoice.value === 'AFFIRM' && directExternalRound.value)
       ? {
           judgmentAmount:
             changedAmountState.value === 'PENDING'
@@ -1167,9 +1192,16 @@ function roundLabel(round: (typeof roundHistory.value)[number]): string {
         <p v-else-if="resultChoice === 'CHANGE' || resultChoice === 'AFFIRM'">
           案件将进入准备执行文书。
         </p>
-        <div v-if="resultChoice === 'CHANGE'">
+        <div
+          v-if="
+            resultChoice === 'CHANGE' ||
+            (resultChoice === 'AFFIRM' && directExternalRound)
+          "
+        >
           <fieldset>
-            <legend>改判金额状态</legend>
+            <legend>
+              {{ directExternalRound ? '二审判决金额状态' : '改判金额状态' }}
+            </legend>
             <label
               ><input
                 v-model="changedAmountState"
@@ -1187,10 +1219,11 @@ function roundLabel(round: (typeof roundHistory.value)[number]): string {
             >
           </fieldset>
           <label v-if="changedAmountState === 'KNOWN'"
-            >改判金额<input v-model="changedAmount" inputmode="decimal"
+            >{{ directExternalRound ? '二审判决金额' : '改判金额'
+            }}<input v-model="changedAmount" inputmode="decimal"
           /></label>
         </div>
-        <div v-if="resultChoice === 'AFFIRM'">
+        <div v-if="resultChoice === 'AFFIRM' && !directExternalRound">
           <p>
             维持原判金额（只读）：{{
               item.judgment.current

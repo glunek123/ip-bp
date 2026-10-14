@@ -53,8 +53,10 @@ const rows = computed(() => {
     }
   }
   const item = props.item;
-  add(item.certificate.files, '来源公证书');
-  add(item.certificate.disclosureFiles, '来源披露材料');
+  if (item.certificate) {
+    add(item.certificate.files, '来源公证书');
+    add(item.certificate.disclosureFiles, '来源披露材料');
+  }
   add(item.complaint?.complaintFiles ?? [], '起诉诉状');
   add(item.complaint?.authorizationFiles ?? [], '起诉授权材料');
   add(

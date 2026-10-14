@@ -588,6 +588,7 @@ describe('LawyerCaseDetailPage', () => {
       trialRoundId: '70000000-0000-4000-8000-000000000032',
       acceptedAt: '2026-10-01',
       courtCaseNo: '甲0101民初1号',
+      court: null,
       recordedAt: '2026-10-01T01:00:00Z',
       files: [
         {

@@ -10,10 +10,13 @@ import CaseListPage from './CaseListPage.vue';
 
 const api = vi.hoisted(() => ({
   listCases: vi.fn<typeof import('../../api/cases').listCases>(),
+  getExternalEntryOptions:
+    vi.fn<typeof import('../../api/cases').getExternalEntryOptions>(),
 }));
 vi.mock('../../api/cases', async (importOriginal) => ({
   ...(await importOriginal<typeof import('../../api/cases')>()),
   listCases: api.listCases,
+  getExternalEntryOptions: api.getExternalEntryOptions,
 }));
 const sourceIds = {
   confirmation: '91000000-0000-4000-8000-000000000001',
@@ -169,6 +172,20 @@ async function mountList(
 beforeEach(() => {
   vi.resetAllMocks();
   api.listCases.mockResolvedValue(result());
+  api.getExternalEntryOptions.mockResolvedValue({
+    canCreate: false,
+    canCreateArchived: false,
+    currentUser: { id: 'user-1', displayName: '运营' },
+    customers: [],
+    lawyers: [],
+    dictionaries: {
+      stages: [],
+      courts: [],
+      platforms: [],
+      caseTypes: [],
+      infringementTypes: [],
+    },
+  });
 });
 afterEach(() => {
   wrappers.splice(0).forEach((wrapper) => wrapper.unmount());
@@ -192,10 +209,10 @@ describe('authorized internal case list display', () => {
     const { wrapper } = await mountList(
       '/cases?view=department&stage=ARCHIVED',
     );
-    const url = new URL(
-      String(fetchMock.mock.calls[0]?.[0]),
-      'http://localhost',
+    const caseRequest = fetchMock.mock.calls.find(([url]) =>
+      String(url).includes('/api/v1/cases?'),
     );
+    const url = new URL(String(caseRequest?.[0]), 'http://localhost');
     expect(url.searchParams.get('stage')).toBe('ARCHIVED');
     expect(url.searchParams.get('view')).toBe('department');
     expect(wrapper.findAll('thead th')).toHaveLength(14);
@@ -274,7 +291,11 @@ describe('authorized internal case list display', () => {
     vi.stubGlobal('fetch', fetchMock);
     api.listCases.mockImplementation(actual.listCases);
     const { wrapper } = await mountList();
-    expect(fetchMock.mock.calls[0]?.[0]).toContain('/api/v1/cases?');
+    expect(
+      fetchMock.mock.calls.some(([url]) =>
+        String(url).includes('/api/v1/cases?'),
+      ),
+    ).toBe(true);
     expect(wrapper.get('tbody').text()).toContain('合成客户甲有限公司');
     expect(wrapper.get('tbody').text()).toContain('99999999999999.99');
     expect(wrapper.get('tbody').text()).toContain(sourceIds.closure);

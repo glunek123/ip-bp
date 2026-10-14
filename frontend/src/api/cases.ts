@@ -1,6 +1,11 @@
 import { effectScope, shallowRef, watch } from 'vue';
 import { ApiError, getJson, requestJson, type RequestOptions } from './http';
-import type { LeadPlatform } from './leads';
+import type {
+  InfringementType,
+  LeadCaseType,
+  LeadPlatform,
+  LeadOption,
+} from './leads';
 
 export type CaseStage =
   | 'PENDING_MATCH'
@@ -22,7 +27,70 @@ export type CaseStage =
 export type CaseView = 'mine' | 'department';
 export type CaseStageFilter = CaseStage | 'all';
 export type CaseStageGroup = 'COMPLAINT_PREPARATION' | 'EXECUTION_PREPARATION';
-export type CaseSummary = {
+export type ExternalEntryKind = 'EXTERNAL_TRANSFER' | 'HISTORICAL_BACKFILL';
+export type ExternalEntryKnown = {
+  courtId: string | null;
+  courtCaseNo: string | null;
+  acceptedOn: string | null;
+  secondInstanceAcceptedOn: string | null;
+  platform: LeadPlatform | null;
+  shopName: string | null;
+  shopExternalId: string | null;
+  caseType: LeadCaseType | null;
+  infringementTypes: InfringementType[] | null;
+};
+export type ExternalCaseEntryInput = {
+  idempotencyKey: string;
+  entryKind: ExternalEntryKind;
+  initialStage: CaseStage;
+  stageReachedOn: string;
+  source: string;
+  reason: string;
+  customerId: string;
+  rightsHolderId: string;
+  defendants: Array<{
+    kind: 'PERSON' | 'ORGANIZATION';
+    name: string;
+    idNo?: string;
+    phone?: string;
+    address?: string;
+  }>;
+  lawyerAccountId: string | null;
+  lawyerProfileId: string | null;
+  known: ExternalEntryKnown;
+};
+export type ExternalCaseEntryResult = {
+  id: string;
+  businessNo: string;
+  stage: CaseStage;
+  version: 1;
+  entryId: string;
+  recordedAt: string;
+};
+export type ExternalEntryOptions = {
+  canCreate: boolean;
+  canCreateArchived: boolean;
+  currentUser: { id: string; displayName: string };
+  customers: Array<{
+    id: string;
+    name: string;
+    rightsHolders: Array<{ id: string; name: string }>;
+  }>;
+  lawyers: Array<{
+    accountId: string;
+    profileId: string;
+    fullName: string;
+    firm: string | null;
+  }>;
+  dictionaries: {
+    stages: LeadOption<CaseStage>[];
+    courts: Array<{ id: string; name: string }>;
+    platforms: LeadOption<LeadPlatform>[];
+    caseTypes: LeadOption<LeadCaseType>[];
+    infringementTypes: LeadOption<InfringementType>[];
+  };
+};
+type CaseSummaryBase = {
   id: string;
   businessNo: string;
   stage: CaseStage;
@@ -55,9 +123,34 @@ export type CaseSummary = {
   canSaveSecondInstance: boolean;
   canRegisterSecondInstanceResult: boolean;
   canRevokeSecondInstanceResult: boolean;
-  sourceLead: { id: string; businessNo: string };
-  sourceNotaryMatter: { id: string; businessNo: string };
 };
+export type CaseOrigin =
+  | { kind: 'NOTARY' }
+  | {
+      kind: 'EXTERNAL_ENTRY';
+      entryId: string;
+      entryKind: ExternalEntryKind;
+      initialStage: CaseStage;
+      stageReachedOn: string;
+      source: string;
+      reason: string;
+      recordedAt: string;
+      recordedByUserId: string;
+      known: ExternalEntryKnown;
+    };
+export type CaseSummary = CaseSummaryBase &
+  (
+    | {
+        origin?: { kind: 'NOTARY' };
+        sourceLead: { id: string; businessNo: string };
+        sourceNotaryMatter: { id: string; businessNo: string };
+      }
+    | {
+        origin: Extract<CaseOrigin, { kind: 'EXTERNAL_ENTRY' }>;
+        sourceLead: null;
+        sourceNotaryMatter: null;
+      }
+  );
 export type CaseList = {
   items: CaseSummary[];
   total: number;
@@ -148,7 +241,7 @@ export type CaseLawyer = {
   role: 'PRIMARY';
   assignedAt: string;
 };
-export type CaseDetail = Omit<CaseSummary, 'displaySummary'> & {
+type CaseDetailBase = Omit<CaseSummaryBase, 'displaySummary'> & {
   courtCaseNo: string | null;
   department: { id: string; name: string };
   customer: { id: string; name: string };
@@ -193,6 +286,24 @@ export type CaseDetail = Omit<CaseSummary, 'displaySummary'> & {
   archive: CaseArchive | null;
   recordEdits?: CaseRecordEdits;
 };
+export type CaseDetail = Omit<CaseDetailBase, 'certificate' | 'fees'> &
+  (
+    | {
+        origin?: { kind: 'NOTARY' };
+        sourceLead: { id: string; businessNo: string };
+        sourceNotaryMatter: { id: string; businessNo: string };
+        certificate: NonNullable<CaseDetailBase['certificate']>;
+        fees: CaseDetailBase['fees'];
+      }
+    | {
+        origin: Extract<CaseOrigin, { kind: 'EXTERNAL_ENTRY' }>;
+        sourceLead: null;
+        sourceNotaryMatter: null;
+        certificate: null;
+        fees: [];
+      }
+  );
+export type CaseCertificate = NonNullable<CaseDetailBase['certificate']>;
 export type ExecutionSubmissionFile = CaseFile & { uploadedAt: string };
 export type ExecutionSubmissionSummary = {
   id: string;
@@ -269,8 +380,8 @@ export type CaseDisplaySummary = {
   customerName: string;
   rightsHolderName: string;
   source: {
-    platform: LeadPlatform;
-    shopName: string;
+    platform: LeadPlatform | null;
+    shopName: string | null;
     shopExternalId: string | null;
   };
   defendants: Array<{ id: string; name: string }>;
@@ -561,6 +672,7 @@ export type CaseAcceptance = {
   acceptedAt: string;
   courtCaseNo: string;
   recordedAt: string;
+  court: FilingCourt | null;
   recordedByUserId?: string;
   files: Array<CaseFile & { category: 'ACCEPTANCE_NOTICE' }>;
 };
@@ -670,13 +782,14 @@ export type LawyerMatchCandidate = {
 };
 export type LawyerCaseDetail = CaseWorkflowItem &
   LawyerCaseSummary & {
+    origin?: LawyerCaseOrigin;
     matchedAt: string | null;
     matchedOn: string | null;
     defendants: CaseDefendant[];
     lawyers: CaseLawyer[];
     customer: { id: string; name: string };
     rightsHolder: { id: string; name: string };
-    certificate: CaseDetail['certificate'];
+    certificate: CaseCertificate | null;
     complaint: Omit<ComplaintSubmission, 'submittedByUserId'> | null;
     complaintConfirmation: Omit<
       ComplaintConfirmation,
@@ -706,6 +819,13 @@ export type LawyerCaseDetail = CaseWorkflowItem &
     closure: LawyerCaseClosure | null;
     archive: LawyerCaseArchive | null;
   };
+export type LawyerCaseOrigin =
+  | { kind: 'NOTARY' }
+  | {
+      kind: 'EXTERNAL_ENTRY';
+      entryKind: ExternalEntryKind;
+      stageReachedOn: string;
+    };
 
 export type SubmitExecutionInput = {
   expectedVersion: number;
@@ -714,7 +834,7 @@ export type SubmitExecutionInput = {
   judgmentNextStepId: string;
   secondInstanceResultId: string | null;
   expectedSubmissionId: string | null;
-  executionApplicationContentVersionIds: string[];
+  executionApplicationContentVersionIds?: string[];
   changeReason?: string;
 };
 export type SubmitExecutionResult = {
@@ -781,11 +901,15 @@ export type SaveSecondInstanceInput = {
   expectedVersion: number;
   idempotencyKey: string;
   trialRoundId: string;
-  choiceId: string;
+  choiceId: string | null;
   expectedProgressId: string | null;
   progress: SecondInstanceProgressInput;
 };
-export type RegisterSecondInstanceResultInput = SaveSecondInstanceInput & {
+export type RegisterSecondInstanceResultInput = Omit<
+  SaveSecondInstanceInput,
+  'choiceId'
+> & {
+  choiceId: string | null;
   result: 'REMAND' | 'CHANGE' | 'AFFIRM';
   resultReceivedAt: string;
   judgmentContentVersionIds: string[];
@@ -818,7 +942,7 @@ export type CaseSecondInstanceRound = {
 type SecondInstanceProgressBase = {
   id: string;
   trialRoundId: string;
-  choiceId: string;
+  choiceId: string | null;
   priorProgressId: string | null;
   hearingAt: string | null;
   hearingPlace: string | null;
@@ -976,6 +1100,112 @@ function validStage(value: unknown): value is CaseStage {
     value === 'ARCHIVED'
   );
 }
+function validEntryKind(value: unknown): value is ExternalEntryKind {
+  return value === 'EXTERNAL_TRANSFER' || value === 'HISTORICAL_BACKFILL';
+}
+function validOrigin(value: unknown): value is CaseOrigin {
+  if (!record(value)) return false;
+  if (exact(value, ['kind']) && value.kind === 'NOTARY') return true;
+  return (
+    exact(value, [
+      'kind',
+      'entryId',
+      'entryKind',
+      'initialStage',
+      'stageReachedOn',
+      'source',
+      'reason',
+      'recordedAt',
+      'recordedByUserId',
+      'known',
+    ]) &&
+    value.kind === 'EXTERNAL_ENTRY' &&
+    uuidV4(value.entryId) &&
+    validEntryKind(value.entryKind) &&
+    validStage(value.initialStage) &&
+    businessDate(value.stageReachedOn) &&
+    nonempty(value.source) &&
+    nonempty(value.reason) &&
+    utcTimestamp(value.recordedAt) &&
+    uuidV4(value.recordedByUserId) &&
+    validExternalEntryKnown(value.known)
+  );
+}
+function validExternalEntryKnown(value: unknown): value is ExternalEntryKnown {
+  return (
+    record(value) &&
+    exact(value, [
+      'courtId',
+      'courtCaseNo',
+      'acceptedOn',
+      'secondInstanceAcceptedOn',
+      'platform',
+      'shopName',
+      'shopExternalId',
+      'caseType',
+      'infringementTypes',
+    ]) &&
+    (value.courtId === null || uuidV4(value.courtId)) &&
+    (value.courtCaseNo === null || nonempty(value.courtCaseNo)) &&
+    (value.acceptedOn === null || businessDate(value.acceptedOn)) &&
+    (value.secondInstanceAcceptedOn === null ||
+      businessDate(value.secondInstanceAcceptedOn)) &&
+    (value.platform === null || validLeadPlatform(value.platform)) &&
+    (value.shopName === null || nonempty(value.shopName)) &&
+    (value.shopExternalId === null || nonempty(value.shopExternalId)) &&
+    (value.caseType === null || validLeadCaseType(value.caseType)) &&
+    (value.infringementTypes === null ||
+      (Array.isArray(value.infringementTypes) &&
+        value.infringementTypes.length > 0 &&
+        value.infringementTypes.every(validInfringementType) &&
+        new Set(value.infringementTypes).size ===
+          value.infringementTypes.length))
+  );
+}
+function validLeadPlatform(value: unknown): value is LeadPlatform {
+  return (
+    value === 'TAOBAO' ||
+    value === 'TMALL' ||
+    value === 'PINDUODUO' ||
+    value === 'JD' ||
+    value === 'DOUYIN' ||
+    value === 'ALIBABA_1688' ||
+    value === 'XIAOHONGSHU' ||
+    value === 'KUAISHOU' ||
+    value === 'XIANYU' ||
+    value === 'WECHAT' ||
+    value === 'MEITUAN' ||
+    value === 'DIANPING' ||
+    value === 'MAP' ||
+    value === 'OTHER'
+  );
+}
+function validLeadCaseType(value: unknown): value is LeadCaseType {
+  return (
+    value === 'CIVIL' ||
+    value === 'CRIMINAL' ||
+    value === 'ADMINISTRATIVE' ||
+    value === 'INVESTIGATION' ||
+    value === 'NOTARIZATION' ||
+    value === 'HEARING_REPRESENTATION'
+  );
+}
+function validInfringementType(value: unknown): value is InfringementType {
+  return (
+    value === 'TRADEMARK' ||
+    value === 'SOFTWARE_COPYRIGHT' ||
+    value === 'ART_COPYRIGHT' ||
+    value === 'AUDIOVISUAL_COPYRIGHT' ||
+    value === 'TEXT_COPYRIGHT' ||
+    value === 'INVENTION_PATENT' ||
+    value === 'DESIGN_PATENT' ||
+    value === 'UTILITY_MODEL_PATENT' ||
+    value === 'UNFAIR_COMPETITION' ||
+    value === 'NETWORK_DISSEMINATION' ||
+    value === 'PORTRAIT_RIGHT' ||
+    value === 'OTHER'
+  );
+}
 function source(value: unknown): value is { id: string; businessNo: string } {
   return (
     record(value) &&
@@ -995,47 +1225,53 @@ function named(value: unknown, lastKey: 'name' | 'displayName'): boolean {
 function summary(value: unknown): value is CaseSummary {
   if (!record(value)) return false;
   const { displaySummary: projection, ...fields } = value;
-  return summaryFields(fields) && displaySummary(projection);
+  const external =
+    record(fields.origin) && fields.origin.kind === 'EXTERNAL_ENTRY';
+  return summaryFields(fields) && displaySummary(projection, external);
 }
 
 function summaryFields(value: unknown): boolean {
   return (
     record(value) &&
-    exact(value, [
-      'id',
-      'businessNo',
-      'stage',
-      'createdAt',
-      'version',
-      'owner',
-      'canMatch',
-      'canSubmitExecution',
-      'canConfirmExecution',
-      'canMailExecution',
-      'canSubmitExecutionFiling',
-      'canFinishExecution',
-      'canRecordClosure',
-      'canCorrectClosure',
-      'canArchive',
-      'canCorrectArchive',
-      'canSubmitComplaint',
-      'canConfirmComplaint',
-      'canMailComplaint',
-      'canSubmitFiling',
-      'canRegisterAcceptance',
-      'canUploadAcceptanceMaterials',
-      'canScheduleHearing',
-      'canCorrectHearing',
-      'canRegisterJudgment',
-      'canCorrectJudgment',
-      'canChooseJudgmentNextStep',
-      'canRevokeJudgmentNextStep',
-      'canSaveSecondInstance',
-      'canRegisterSecondInstanceResult',
-      'canRevokeSecondInstanceResult',
-      'sourceLead',
-      'sourceNotaryMatter',
-    ]) &&
+    exactWithOptional(
+      value,
+      [
+        'id',
+        'businessNo',
+        'stage',
+        'createdAt',
+        'version',
+        'owner',
+        'canMatch',
+        'canSubmitExecution',
+        'canConfirmExecution',
+        'canMailExecution',
+        'canSubmitExecutionFiling',
+        'canFinishExecution',
+        'canRecordClosure',
+        'canCorrectClosure',
+        'canArchive',
+        'canCorrectArchive',
+        'canSubmitComplaint',
+        'canConfirmComplaint',
+        'canMailComplaint',
+        'canSubmitFiling',
+        'canRegisterAcceptance',
+        'canUploadAcceptanceMaterials',
+        'canScheduleHearing',
+        'canCorrectHearing',
+        'canRegisterJudgment',
+        'canCorrectJudgment',
+        'canChooseJudgmentNextStep',
+        'canRevokeJudgmentNextStep',
+        'canSaveSecondInstance',
+        'canRegisterSecondInstanceResult',
+        'canRevokeSecondInstanceResult',
+        'sourceLead',
+        'sourceNotaryMatter',
+      ],
+      ['origin'],
+    ) &&
     nonempty(value.id) &&
     nonempty(value.businessNo) &&
     validStage(value.stage) &&
@@ -1068,8 +1304,10 @@ function summaryFields(value: unknown): boolean {
     typeof value.canSaveSecondInstance === 'boolean' &&
     typeof value.canRegisterSecondInstanceResult === 'boolean' &&
     typeof value.canRevokeSecondInstanceResult === 'boolean' &&
-    source(value.sourceLead) &&
-    source(value.sourceNotaryMatter)
+    (value.origin === undefined || validOrigin(value.origin)) &&
+    (value.origin?.kind === 'EXTERNAL_ENTRY'
+      ? value.sourceLead === null && value.sourceNotaryMatter === null
+      : source(value.sourceLead) && source(value.sourceNotaryMatter))
   );
 }
 function decimalAmount(value: unknown, canonical: boolean): value is string {
@@ -1099,7 +1337,10 @@ function displayAmount(value: unknown, sources: readonly string[]): boolean {
       : value.state === 'KNOWN' && decimalAmount(value.amount, true))
   );
 }
-function displaySummary(value: unknown): value is CaseDisplaySummary {
+function displaySummary(
+  value: unknown,
+  external = false,
+): value is CaseDisplaySummary {
   return (
     record(value) &&
     exact(value, [
@@ -1118,23 +1359,28 @@ function displaySummary(value: unknown): value is CaseDisplaySummary {
     nonempty(value.rightsHolderName) &&
     record(value.source) &&
     exact(value.source, ['platform', 'shopName', 'shopExternalId']) &&
-    [
-      'TAOBAO',
-      'TMALL',
-      'PINDUODUO',
-      'JD',
-      'DOUYIN',
-      'ALIBABA_1688',
-      'XIAOHONGSHU',
-      'KUAISHOU',
-      'XIANYU',
-      'WECHAT',
-      'MEITUAN',
-      'DIANPING',
-      'MAP',
-      'OTHER',
-    ].includes(String(value.source.platform)) &&
-    nonempty(value.source.shopName) &&
+    (external
+      ? value.source.platform === null ||
+        validLeadPlatform(value.source.platform)
+      : [
+          'TAOBAO',
+          'TMALL',
+          'PINDUODUO',
+          'JD',
+          'DOUYIN',
+          'ALIBABA_1688',
+          'XIAOHONGSHU',
+          'KUAISHOU',
+          'XIANYU',
+          'WECHAT',
+          'MEITUAN',
+          'DIANPING',
+          'MAP',
+          'OTHER',
+        ].includes(String(value.source.platform))) &&
+    (external
+      ? value.source.shopName === null || nonempty(value.source.shopName)
+      : nonempty(value.source.shopName)) &&
     (value.source.shopExternalId === null ||
       nonempty(value.source.shopExternalId)) &&
     Array.isArray(value.defendants) &&
@@ -2117,7 +2363,7 @@ function validCaseDetail(value: unknown, id: string): value is CaseDetail {
         'closure',
         'archive',
       ],
-      ['recordEdits'],
+      ['recordEdits', 'origin'],
     ) &&
     value.id === id &&
     summaryFields({
@@ -2152,6 +2398,7 @@ function validCaseDetail(value: unknown, id: string): value is CaseDetail {
       canSaveSecondInstance: value.canSaveSecondInstance,
       canRegisterSecondInstanceResult: value.canRegisterSecondInstanceResult,
       canRevokeSecondInstanceResult: value.canRevokeSecondInstanceResult,
+      origin: value.origin,
       sourceLead: value.sourceLead,
       sourceNotaryMatter: value.sourceNotaryMatter,
     }) &&
@@ -2159,28 +2406,37 @@ function validCaseDetail(value: unknown, id: string): value is CaseDetail {
     named(value.department, 'name') &&
     named(value.customer, 'name') &&
     named(value.rightsHolder, 'name') &&
-    record(value.certificate) &&
-    exact(value.certificate, [
-      'certificateNo',
-      'certificateDate',
-      'issuedAt',
-      'needDisclose',
-      'files',
-      'disclosureFiles',
-    ]) &&
-    nonempty(value.certificate.certificateNo) &&
-    typeof value.certificate.certificateDate === 'string' &&
-    /^\d{4}-\d{2}-\d{2}$/u.test(value.certificate.certificateDate) &&
-    typeof value.certificate.issuedAt === 'string' &&
-    !Number.isNaN(Date.parse(value.certificate.issuedAt)) &&
-    typeof value.certificate.needDisclose === 'boolean' &&
-    Array.isArray(value.certificate.files) &&
-    value.certificate.files.length > 0 &&
-    value.certificate.files.every(caseFile) &&
-    Array.isArray(value.certificate.disclosureFiles) &&
-    value.certificate.disclosureFiles.every(caseFile) &&
-    (!value.certificate.needDisclose ||
-      value.certificate.disclosureFiles.length > 0) &&
+    (value.origin === undefined || validOrigin(value.origin)) &&
+    (value.origin?.kind === 'EXTERNAL_ENTRY'
+      ? value.sourceLead === null &&
+        value.sourceNotaryMatter === null &&
+        value.certificate === null &&
+        Array.isArray(value.fees) &&
+        value.fees.length === 0
+      : source(value.sourceLead) &&
+        source(value.sourceNotaryMatter) &&
+        record(value.certificate) &&
+        exact(value.certificate, [
+          'certificateNo',
+          'certificateDate',
+          'issuedAt',
+          'needDisclose',
+          'files',
+          'disclosureFiles',
+        ]) &&
+        nonempty(value.certificate.certificateNo) &&
+        typeof value.certificate.certificateDate === 'string' &&
+        /^\d{4}-\d{2}-\d{2}$/u.test(value.certificate.certificateDate) &&
+        typeof value.certificate.issuedAt === 'string' &&
+        !Number.isNaN(Date.parse(value.certificate.issuedAt)) &&
+        typeof value.certificate.needDisclose === 'boolean' &&
+        Array.isArray(value.certificate.files) &&
+        value.certificate.files.length > 0 &&
+        value.certificate.files.every(caseFile) &&
+        Array.isArray(value.certificate.disclosureFiles) &&
+        value.certificate.disclosureFiles.every(caseFile) &&
+        (!value.certificate.needDisclose ||
+          value.certificate.disclosureFiles.length > 0)) &&
     Array.isArray(value.fees) &&
     value.fees.every(
       (fee) =>
@@ -2243,7 +2499,11 @@ function validCaseDetail(value: unknown, id: string): value is CaseDetail {
         value.secondInstance,
         value.judgmentNextStep,
       )) &&
-    validSecondInstance(value.secondInstance, true) &&
+    validSecondInstance(
+      value.secondInstance,
+      true,
+      value.origin?.kind === 'EXTERNAL_ENTRY',
+    ) &&
     typeof value.canSubmitExecution === 'boolean' &&
     executionSubmissionState(value.executionSubmission) &&
     typeof value.canConfirmExecution === 'boolean' &&
@@ -2303,6 +2563,7 @@ function validSecondInstanceRound(value: unknown): boolean {
 function validSecondInstanceProgress(
   value: unknown,
   internal: boolean,
+  externalRootRoundId: string | null = null,
 ): boolean {
   if (!record(value)) return false;
   const required = [
@@ -2324,7 +2585,10 @@ function validSecondInstanceProgress(
     exactWithOptional(value, required, optional) &&
     uuidV4(value.id) &&
     uuidV4(value.trialRoundId) &&
-    uuidV4(value.choiceId) &&
+    (uuidV4(value.choiceId) ||
+      (value.choiceId === null &&
+        externalRootRoundId !== null &&
+        value.trialRoundId === externalRootRoundId)) &&
     (value.priorProgressId === null || uuidV4(value.priorProgressId)) &&
     (value.hearingAt === null || businessDate(value.hearingAt)) &&
     (value.hearingPlace === null ||
@@ -2349,7 +2613,11 @@ function validSecondInstanceProgress(
     value.serviceFiles.every(caseFile)
   );
 }
-function validSecondInstanceResult(value: unknown, internal: boolean): boolean {
+function validSecondInstanceResult(
+  value: unknown,
+  internal: boolean,
+  externalRootRoundId: string | null = null,
+): boolean {
   if (!record(value)) return false;
   const required = [
     'id',
@@ -2381,7 +2649,10 @@ function validSecondInstanceResult(value: unknown, internal: boolean): boolean {
     exactWithOptional(value, required, optional) &&
     uuidV4(value.id) &&
     uuidV4(value.trialRoundId) &&
-    uuidV4(value.choiceId) &&
+    (uuidV4(value.choiceId) ||
+      (value.choiceId === null &&
+        externalRootRoundId !== null &&
+        value.trialRoundId === externalRootRoundId)) &&
     uuidV4(value.judgmentId) &&
     (value.progressId === null || uuidV4(value.progressId)) &&
     ['REMAND', 'CHANGE', 'AFFIRM'].includes(String(value.result)) &&
@@ -2435,7 +2706,11 @@ function validSecondInstanceRevocation(
       (internal && uuidV4(value.recordedByUserId)))
   );
 }
-function validSecondInstance(value: unknown, internal: boolean): boolean {
+function validSecondInstance(
+  value: unknown,
+  internal: boolean,
+  external = false,
+): boolean {
   if (
     !record(value) ||
     !exactWithOptional(
@@ -2453,20 +2728,40 @@ function validSecondInstance(value: unknown, internal: boolean): boolean {
     )
   )
     return false;
+  const externalRootRoundId =
+    external && Array.isArray(value.rounds)
+      ? (value.rounds.find(
+          (round) =>
+            record(round) &&
+            round.sequence === 1 &&
+            round.sourceResultId === null &&
+            uuidV4(round.id),
+        )?.id ?? null)
+      : null;
   return (
     validRoundId(value.currentTrialRoundId) &&
     (value.currentProgress === null ||
-      validSecondInstanceProgress(value.currentProgress, internal)) &&
+      validSecondInstanceProgress(
+        value.currentProgress,
+        internal,
+        externalRootRoundId,
+      )) &&
     (value.currentResult === null ||
-      validSecondInstanceResult(value.currentResult, internal)) &&
+      validSecondInstanceResult(
+        value.currentResult,
+        internal,
+        externalRootRoundId,
+      )) &&
     Array.isArray(value.rounds) &&
     value.rounds.every(validSecondInstanceRound) &&
     Array.isArray(value.progresses) &&
     value.progresses.every((item) =>
-      validSecondInstanceProgress(item, internal),
+      validSecondInstanceProgress(item, internal, externalRootRoundId),
     ) &&
     Array.isArray(value.results) &&
-    value.results.every((item) => validSecondInstanceResult(item, internal)) &&
+    value.results.every((item) =>
+      validSecondInstanceResult(item, internal, externalRootRoundId),
+    ) &&
     Array.isArray(value.revocations) &&
     value.revocations.every((item) =>
       validSecondInstanceRevocation(item, internal),
@@ -2505,6 +2800,7 @@ function validAcceptanceHistory(value: unknown, internal: boolean): boolean {
     'trialRoundId',
     'acceptedAt',
     'courtCaseNo',
+    'court',
     'recordedAt',
     'files',
   ];
@@ -2517,6 +2813,7 @@ function validAcceptanceHistory(value: unknown, internal: boolean): boolean {
     nonempty(value.courtCaseNo) &&
     value.courtCaseNo.trim() === value.courtCaseNo &&
     value.courtCaseNo.length <= 100 &&
+    (value.court === null || validFilingCourt(value.court)) &&
     typeof value.recordedAt === 'string' &&
     !Number.isNaN(Date.parse(value.recordedAt)) &&
     (!('recordedByUserId' in value) ||
@@ -3242,6 +3539,16 @@ function lawyerCertificate(value: unknown): boolean {
     (!value.needDisclose || value.disclosureFiles.length > 0)
   );
 }
+function validLawyerOrigin(value: unknown): value is LawyerCaseOrigin {
+  if (!record(value)) return false;
+  if (exact(value, ['kind']) && value.kind === 'NOTARY') return true;
+  return (
+    exact(value, ['kind', 'entryKind', 'stageReachedOn']) &&
+    value.kind === 'EXTERNAL_ENTRY' &&
+    validEntryKind(value.entryKind) &&
+    businessDate(value.stageReachedOn)
+  );
+}
 
 export async function listLawyerCases(
   page = 1,
@@ -3283,64 +3590,68 @@ export async function getLawyerCase(
   );
   if (
     !record(result) ||
-    !exact(result, [
-      'id',
-      'businessNo',
-      'stage',
-      'version',
-      'canMatch',
-      'canSubmitComplaint',
-      'canConfirmComplaint',
-      'canMailComplaint',
-      'canSubmitFiling',
-      'canRegisterAcceptance',
-      'canUploadAcceptanceMaterials',
-      'canScheduleHearing',
-      'canCorrectHearing',
-      'canRegisterJudgment',
-      'canCorrectJudgment',
-      'canChooseJudgmentNextStep',
-      'canRevokeJudgmentNextStep',
-      'canSaveSecondInstance',
-      'canRegisterSecondInstanceResult',
-      'canRevokeSecondInstanceResult',
-      'createdAt',
-      'matchedAt',
-      'matchedOn',
-      'defendants',
-      'lawyers',
-      'customer',
-      'rightsHolder',
-      'certificate',
-      'complaint',
-      'complaintConfirmation',
-      'complaintMailing',
-      'filingSubmission',
-      'courtCaseNo',
-      'acceptance',
-      'acceptanceMaterials',
-      'hearing',
-      'judgment',
-      'judgmentNextStep',
-      'acceptances',
-      'secondInstance',
-      'canSubmitExecution',
-      'executionSubmission',
-      'canConfirmExecution',
-      'executionConfirmation',
-      'canMailExecution',
-      'canSubmitExecutionFiling',
-      'canFinishExecution',
-      'canRecordClosure',
-      'canCorrectClosure',
-      'canArchive',
-      'canCorrectArchive',
-      'executionMailing',
-      'executionFiling',
-      'executionFinish',
-      'closure',
-      'archive',
-    ]) ||
+    !exactWithOptional(
+      result,
+      [
+        'id',
+        'businessNo',
+        'stage',
+        'version',
+        'canMatch',
+        'canSubmitComplaint',
+        'canConfirmComplaint',
+        'canMailComplaint',
+        'canSubmitFiling',
+        'canRegisterAcceptance',
+        'canUploadAcceptanceMaterials',
+        'canScheduleHearing',
+        'canCorrectHearing',
+        'canRegisterJudgment',
+        'canCorrectJudgment',
+        'canChooseJudgmentNextStep',
+        'canRevokeJudgmentNextStep',
+        'canSaveSecondInstance',
+        'canRegisterSecondInstanceResult',
+        'canRevokeSecondInstanceResult',
+        'createdAt',
+        'matchedAt',
+        'matchedOn',
+        'defendants',
+        'lawyers',
+        'customer',
+        'rightsHolder',
+        'certificate',
+        'complaint',
+        'complaintConfirmation',
+        'complaintMailing',
+        'filingSubmission',
+        'courtCaseNo',
+        'acceptance',
+        'acceptanceMaterials',
+        'hearing',
+        'judgment',
+        'judgmentNextStep',
+        'acceptances',
+        'secondInstance',
+        'canSubmitExecution',
+        'executionSubmission',
+        'canConfirmExecution',
+        'executionConfirmation',
+        'canMailExecution',
+        'canSubmitExecutionFiling',
+        'canFinishExecution',
+        'canRecordClosure',
+        'canCorrectClosure',
+        'canArchive',
+        'canCorrectArchive',
+        'executionMailing',
+        'executionFiling',
+        'executionFinish',
+        'closure',
+        'archive',
+      ],
+      ['origin'],
+    ) ||
     result.id !== id ||
     !validLawyerSummary({
       id: result.id,
@@ -3384,7 +3695,10 @@ export async function getLawyerCase(
     !result.lawyers.every(lawyer) ||
     !named(result.customer, 'name') ||
     !named(result.rightsHolder, 'name') ||
-    !lawyerCertificate(result.certificate) ||
+    (result.origin !== undefined && !validLawyerOrigin(result.origin)) ||
+    (result.origin?.kind === 'EXTERNAL_ENTRY'
+      ? result.certificate !== null
+      : !lawyerCertificate(result.certificate)) ||
     (result.complaint !== null && !lawyerComplaint(result.complaint)) ||
     (result.complaintConfirmation !== null &&
       !lawyerComplaintConfirmation(result.complaintConfirmation)) ||
@@ -3400,7 +3714,11 @@ export async function getLawyerCase(
     !validNextStep(result.judgmentNextStep, false) ||
     !Array.isArray(result.acceptances) ||
     !result.acceptances.every((item) => validAcceptanceHistory(item, false)) ||
-    !validSecondInstance(result.secondInstance, false) ||
+    !validSecondInstance(
+      result.secondInstance,
+      false,
+      result.origin?.kind === 'EXTERNAL_ENTRY',
+    ) ||
     typeof result.canSubmitExecution !== 'boolean' ||
     !executionSubmissionState(result.executionSubmission) ||
     typeof result.canConfirmExecution !== 'boolean' ||
@@ -3584,6 +3902,7 @@ export type RegisterCaseAcceptanceInput = {
   idempotencyKey: string;
   acceptedAt: string;
   courtCaseNo: string;
+  courtId?: string;
   acceptanceNoticeContentVersionIds?: string[];
   paymentListContentVersionIds?: string[];
   serviceDocumentContentVersionIds?: string[];
@@ -3838,13 +4157,14 @@ function validateSecondInstanceCommon(
     SaveSecondInstanceInput,
     'expectedVersion' | 'idempotencyKey' | 'trialRoundId' | 'choiceId'
   >,
+  allowNullChoice = false,
 ): boolean {
   return (
     Number.isInteger(input.expectedVersion) &&
     input.expectedVersion >= 1 &&
     validIdempotencyKey(input.idempotencyKey) &&
     uuidV4(input.trialRoundId) &&
-    uuidV4(input.choiceId)
+    (uuidV4(input.choiceId) || (allowNullChoice && input.choiceId === null))
   );
 }
 export async function saveSecondInstance(
@@ -3854,7 +4174,7 @@ export async function saveSecondInstance(
 ): Promise<SecondInstanceCommandResult> {
   const progress = normalizeSecondInstanceProgress(input.progress);
   if (
-    !validateSecondInstanceCommon(input) ||
+    !validateSecondInstanceCommon(input, true) ||
     (input.expectedProgressId !== null && !uuidV4(input.expectedProgressId)) ||
     !progress
   )
@@ -3901,9 +4221,12 @@ export async function registerSecondInstanceResult(
   const resultShape =
     input.result === 'CHANGE'
       ? input.judgmentAmount !== undefined && amountValid(input.judgmentAmount)
-      : input.judgmentAmount === undefined;
+      : input.result === 'AFFIRM' && input.choiceId === null
+        ? input.judgmentAmount !== undefined &&
+          amountValid(input.judgmentAmount)
+        : input.judgmentAmount === undefined;
   if (
-    !validateSecondInstanceCommon(input) ||
+    !validateSecondInstanceCommon(input, true) ||
     (input.expectedProgressId !== null && !uuidV4(input.expectedProgressId)) ||
     !progress ||
     !['REMAND', 'CHANGE', 'AFFIRM'].includes(input.result) ||
@@ -4377,6 +4700,7 @@ export async function registerCaseAcceptance(
     input.idempotencyKey.length > 128 ||
     !businessDate(input.acceptedAt) ||
     input.acceptedAt > todayShanghai() ||
+    (input.courtId !== undefined && !uuidV4(input.courtId)) ||
     courtCaseNo.length < 1 ||
     courtCaseNo.length > 100 ||
     categoryIds.some((ids) => !uniqueVersions(ids, 0, 10)) ||
@@ -4393,6 +4717,7 @@ export async function registerCaseAcceptance(
     idempotencyKey: input.idempotencyKey,
     acceptedAt: input.acceptedAt,
     courtCaseNo,
+    ...(input.courtId === undefined ? {} : { courtId: input.courtId }),
     ...(input.acceptanceNoticeContentVersionIds === undefined
       ? {}
       : { acceptanceNoticeContentVersionIds: categoryIds[0] }),
@@ -4883,6 +5208,180 @@ export async function getCase(
   return response;
 }
 
+function validEntryOption<T extends string>(
+  value: unknown,
+  isValue: (candidate: unknown) => candidate is T,
+): value is LeadOption<T> {
+  return (
+    record(value) &&
+    exact(value, ['value', 'label']) &&
+    isValue(value.value) &&
+    nonempty(value.label)
+  );
+}
+function validEntryOptions(value: unknown): value is ExternalEntryOptions {
+  if (
+    !record(value) ||
+    !exact(value, [
+      'canCreate',
+      'canCreateArchived',
+      'currentUser',
+      'customers',
+      'lawyers',
+      'dictionaries',
+    ]) ||
+    typeof value.canCreate !== 'boolean' ||
+    typeof value.canCreateArchived !== 'boolean' ||
+    !named(value.currentUser, 'displayName') ||
+    !Array.isArray(value.customers) ||
+    !value.customers.every(
+      (customer) =>
+        record(customer) &&
+        exact(customer, ['id', 'name', 'rightsHolders']) &&
+        uuidV4(customer.id) &&
+        nonempty(customer.name) &&
+        Array.isArray(customer.rightsHolders) &&
+        customer.rightsHolders.every((holder) => named(holder, 'name')),
+    ) ||
+    !Array.isArray(value.lawyers) ||
+    !value.lawyers.every(
+      (lawyer) =>
+        record(lawyer) &&
+        exact(lawyer, ['accountId', 'profileId', 'fullName', 'firm']) &&
+        uuidV4(lawyer.accountId) &&
+        uuidV4(lawyer.profileId) &&
+        nonempty(lawyer.fullName) &&
+        (lawyer.firm === null || nonempty(lawyer.firm)),
+    ) ||
+    !record(value.dictionaries) ||
+    !exact(value.dictionaries, [
+      'stages',
+      'courts',
+      'platforms',
+      'caseTypes',
+      'infringementTypes',
+    ])
+  )
+    return false;
+  const dictionaries = value.dictionaries;
+  return (
+    Array.isArray(dictionaries.stages) &&
+    dictionaries.stages.length === caseStages.length &&
+    dictionaries.stages.every((item) => validEntryOption(item, validStage)) &&
+    Array.isArray(dictionaries.courts) &&
+    dictionaries.courts.every((court) => named(court, 'name')) &&
+    Array.isArray(dictionaries.platforms) &&
+    dictionaries.platforms.every((item) =>
+      validEntryOption(item, validLeadPlatform),
+    ) &&
+    Array.isArray(dictionaries.caseTypes) &&
+    dictionaries.caseTypes.every((item) =>
+      validEntryOption(item, validLeadCaseType),
+    ) &&
+    Array.isArray(dictionaries.infringementTypes) &&
+    dictionaries.infringementTypes.every((item) =>
+      validEntryOption(item, validInfringementType),
+    ) &&
+    (value.canCreate || value.customers.length === 0) &&
+    (value.canCreate || value.lawyers.length === 0)
+  );
+}
+
+export async function getExternalEntryOptions(
+  options: RequestOptions = {},
+): Promise<ExternalEntryOptions> {
+  const response = await getJson('/cases/external-entry-options', options);
+  if (!validEntryOptions(response)) throw invalidResponse();
+  return response;
+}
+
+function validExternalEntryInput(input: ExternalCaseEntryInput): boolean {
+  return (
+    record(input) &&
+    exact(input, [
+      'idempotencyKey',
+      'entryKind',
+      'initialStage',
+      'stageReachedOn',
+      'source',
+      'reason',
+      'customerId',
+      'rightsHolderId',
+      'defendants',
+      'lawyerAccountId',
+      'lawyerProfileId',
+      'known',
+    ]) &&
+    input.idempotencyKey.length >= 1 &&
+    input.idempotencyKey.length <= 128 &&
+    validEntryKind(input.entryKind) &&
+    validStage(input.initialStage) &&
+    businessDate(input.stageReachedOn) &&
+    input.stageReachedOn <= todayShanghai() &&
+    nonempty(input.source) &&
+    input.source.trim() === input.source &&
+    input.source.length <= 500 &&
+    nonempty(input.reason) &&
+    input.reason.trim() === input.reason &&
+    input.reason.length <= 500 &&
+    uuidV4(input.customerId) &&
+    uuidV4(input.rightsHolderId) &&
+    Array.isArray(input.defendants) &&
+    (input.initialStage !== 'PENDING_MATCH' ||
+      (input.defendants.length === 0 &&
+        input.lawyerAccountId === null &&
+        input.lawyerProfileId === null)) &&
+    input.defendants.every(
+      (defendant) =>
+        record(defendant) &&
+        exactWithOptional(
+          defendant,
+          ['kind', 'name'],
+          ['idNo', 'phone', 'address'],
+        ) &&
+        (defendant.kind === 'PERSON' || defendant.kind === 'ORGANIZATION') &&
+        nonempty(defendant.name) &&
+        (!('idNo' in defendant) || nonempty(defendant.idNo)) &&
+        (!('phone' in defendant) || nonempty(defendant.phone)) &&
+        (!('address' in defendant) || nonempty(defendant.address)),
+    ) &&
+    ((input.lawyerAccountId === null && input.lawyerProfileId === null) ||
+      (uuidV4(input.lawyerAccountId) && uuidV4(input.lawyerProfileId))) &&
+    validExternalEntryKnown(input.known)
+  );
+}
+export async function createExternalCaseEntry(
+  input: ExternalCaseEntryInput,
+  options: RequestOptions = {},
+): Promise<ExternalCaseEntryResult> {
+  if (!validExternalEntryInput(input))
+    throw new ApiError('转入／补录案件信息无效', 400, 'VALIDATION_ERROR');
+  const response = await requestJson('/cases/external-entries', {
+    ...writeRequestOptions(input.idempotencyKey, options),
+    method: 'POST',
+    body: input,
+  });
+  if (
+    !record(response) ||
+    !exact(response, [
+      'id',
+      'businessNo',
+      'stage',
+      'version',
+      'entryId',
+      'recordedAt',
+    ]) ||
+    !uuidV4(response.id) ||
+    !nonempty(response.businessNo) ||
+    response.stage !== input.initialStage ||
+    response.version !== 1 ||
+    !uuidV4(response.entryId) ||
+    !utcTimestamp(response.recordedAt)
+  )
+    throw invalidResponse();
+  return response as ExternalCaseEntryResult;
+}
+
 export type UpdateCaseDefendantContactInput = {
   defendantId: string;
   expectedContactRevision: number;
@@ -5261,14 +5760,14 @@ export async function submitExecution(
       !uuidV4(input.secondInstanceResultId)) ||
     (input.expectedSubmissionId !== null &&
       !uuidV4(input.expectedSubmissionId)) ||
-    !Array.isArray(versions) ||
-    versions.length < 1 ||
-    versions.length > 10 ||
-    !versions.every(uuidV4) ||
-    new Set(versions).size !== versions.length ||
     (input.expectedSubmissionId === null
-      ? input.changeReason !== undefined
-      : !reason || reason.length > 500)
+      ? input.changeReason !== undefined ||
+        !Array.isArray(versions) ||
+        versions.length < 1 ||
+        versions.length > 10 ||
+        !versions.every(uuidV4) ||
+        new Set(versions).size !== versions.length
+      : versions !== undefined || !reason || reason.length > 500)
   ) {
     throw new ApiError('执行材料提交信息无效', 400, 'VALIDATION_ERROR');
   }

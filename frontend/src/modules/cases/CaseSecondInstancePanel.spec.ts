@@ -662,6 +662,66 @@ describe('CaseSecondInstancePanel', () => {
     );
   });
 
+  it('saves a direct external current round with explicit null choiceId', async () => {
+    api.saveSecondInstance.mockResolvedValueOnce({});
+    const direct = {
+      ...item(),
+      origin: {
+        kind: 'EXTERNAL_ENTRY',
+        entryId: id('41'),
+        entryKind: 'EXTERNAL_TRANSFER',
+        initialStage: 'SECOND_INSTANCE',
+        stageReachedOn: '2026-10-05',
+        source: '外部案件台账',
+        reason: '承接当前在办案件',
+        recordedAt: '2026-10-06T01:00:00Z',
+        recordedByUserId: id('42'),
+        known: {
+          courtId: null,
+          courtCaseNo: null,
+          acceptedOn: null,
+          secondInstanceAcceptedOn: null,
+          platform: null,
+          shopName: null,
+          shopExternalId: null,
+          caseType: null,
+          infringementTypes: null,
+        },
+      },
+      acceptance: null,
+      judgment: { current: null, history: [], availableFiles: [] },
+      judgmentNextStep: { current: null, history: [], revocations: [] },
+      secondInstance: {
+        currentTrialRoundId: round2,
+        currentProgress: null,
+        currentResult: null,
+        rounds: [
+          { id: round2, sequence: 1, sourceResultId: null, revokedAt: null },
+        ],
+        progresses: [],
+        results: [],
+        revocations: [],
+      },
+    } as unknown as CaseDetail;
+    const wrapper = mountPanel({ item: direct });
+    expect(
+      wrapper.find('[data-test="second-instance-progress-form"]').exists(),
+    ).toBe(true);
+    await wrapper
+      .get('[data-test="second-instance-progress-form"]')
+      .trigger('submit');
+    await flushPromises();
+    expect(api.saveSecondInstance).toHaveBeenCalledWith(
+      id('20'),
+      expect.objectContaining({
+        trialRoundId: round2,
+        choiceId: null,
+        expectedProgressId: null,
+      }),
+      'internal',
+    );
+  });
+
   it('registers a REMAND with selected file versions and explicit empty progress', async () => {
     api.registerSecondInstanceResult.mockResolvedValueOnce({});
     const wrapper = mountPanel();

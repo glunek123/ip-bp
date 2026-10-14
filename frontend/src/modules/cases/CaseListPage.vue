@@ -6,6 +6,7 @@ import { ApiError } from '../../api/http';
 import { useAuthStore } from '../../stores/auth';
 import { labelLeadPlatform } from '../leads/index';
 import {
+  getExternalEntryOptions,
   listCases,
   type CaseStageGroup,
   type CaseStageFilter,
@@ -116,6 +117,7 @@ function amountSourceLabel(source: DisplayAmount['sourceType']): string {
   return '未登记';
 }
 const state = ref<'loading' | 'ready' | 'failed'>('loading');
+const canCreateExternalEntry = ref(false);
 const items = ref<CaseSummary[]>([]);
 const total = ref(0);
 const error = ref('');
@@ -141,6 +143,16 @@ async function load() {
   }
   const currentPage = page.value;
   const currentKey = requestKey.value;
+  canCreateExternalEntry.value = false;
+  void getExternalEntryOptions({ signal: controller.signal })
+    .then((result) => {
+      if (!controller.signal.aborted && currentKey === requestKey.value)
+        canCreateExternalEntry.value = result.canCreate;
+    })
+    .catch(() => {
+      if (!controller.signal.aborted && currentKey === requestKey.value)
+        canCreateExternalEntry.value = false;
+    });
   try {
     const result = await listCases(currentPage, pageSize, {
       signal: controller.signal,
@@ -265,9 +277,17 @@ onBeforeUnmount(() => request?.abort());
             }}
           </p>
         </div>
-        <ElButton text :loading="state === 'loading'" @click="load"
-          >刷新</ElButton
-        >
+        <div class="case-list-head-actions">
+          <ElButton
+            v-if="canCreateExternalEntry"
+            type="primary"
+            @click="router.push('/cases/external-entry')"
+            >转入／补录案件</ElButton
+          >
+          <ElButton text :loading="state === 'loading'" @click="load"
+            >刷新</ElButton
+          >
+        </div>
       </div>
       <div
         class="segmented-control business-list-toolbar"
@@ -365,15 +385,23 @@ onBeforeUnmount(() => request?.abort());
                       负责人：{{ item.owner.displayName }}
                     </summary>
                     <p>负责人：{{ item.owner.displayName }}</p>
-                    <p>
+                    <p v-if="item.sourceLead">
                       来源线索：<span class="mono case-list-identifier">{{
                         item.sourceLead.businessNo
                       }}</span>
                     </p>
-                    <p>
+                    <p v-if="item.sourceNotaryMatter">
                       公证事项：<span class="mono case-list-identifier">{{
                         item.sourceNotaryMatter.businessNo
                       }}</span>
+                    </p>
+                    <p v-if="item.origin?.kind === 'EXTERNAL_ENTRY'">
+                      案件来源：{{
+                        item.origin.entryKind === 'EXTERNAL_TRANSFER'
+                          ? '外部转入'
+                          : '历史补录'
+                      }}
+                      · {{ item.origin.stageReachedOn }}
                     </p>
                   </details>
                 </td>
@@ -396,14 +424,20 @@ onBeforeUnmount(() => request?.abort());
                   </details>
                 </td>
                 <td class="business-list-cell--nowrap">
-                  {{ labelLeadPlatform(item.displaySummary.source.platform) }}
+                  {{
+                    item.displaySummary.source.platform
+                      ? labelLeadPlatform(item.displaySummary.source.platform)
+                      : '未提供'
+                  }}
                 </td>
                 <td class="business-list-cell--text">
                   <details class="case-list-name">
-                    <summary :title="item.displaySummary.source.shopName">
-                      {{ item.displaySummary.source.shopName }}
+                    <summary
+                      :title="item.displaySummary.source.shopName ?? '未提供'"
+                    >
+                      {{ item.displaySummary.source.shopName ?? '未提供' }}
                     </summary>
-                    <p>{{ item.displaySummary.source.shopName }}</p>
+                    <p>{{ item.displaySummary.source.shopName ?? '未提供' }}</p>
                   </details>
                 </td>
                 <td class="mono business-list-cell--nowrap">

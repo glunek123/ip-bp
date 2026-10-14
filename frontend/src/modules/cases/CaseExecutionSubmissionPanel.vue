@@ -120,12 +120,11 @@ const canConfirm = computed(
     !uploadUnknown.value &&
     !pendingCommand.value &&
     !conflict.value &&
-    selected.value.length >= 1 &&
-    selected.value.length <= 10 &&
-    (!current.value ||
-      (!!changeReason.value.trim() &&
+    (!current.value
+      ? selected.value.length >= 1 && selected.value.length <= 10
+      : !!changeReason.value.trim() &&
         changeReason.value.trim().length <= 500 &&
-        !isSameFileSet.value)),
+        !isSameFileSet.value),
 );
 
 function resetContext(): void {
@@ -422,15 +421,20 @@ function buildInput(): SubmitExecutionInput | null {
       ? latestResult.id
       : null;
   const sortedIds = [...selected.value].sort();
-  if (!next || !trialRoundId || selected.value.length === 0) return null;
+  if (!next || !trialRoundId) return null;
   const reSubmitting = item.executionSubmission.current !== null;
+  if (
+    !reSubmitting &&
+    (selected.value.length < 1 || selected.value.length > 10)
+  )
+    return null;
   const fingerprint = JSON.stringify([
     item.version,
     trialRoundId,
     next.id,
     secondInstanceResultId,
     item.executionSubmission.current?.id ?? null,
-    sortedIds,
+    reSubmitting ? [] : sortedIds,
   ]);
   if (fingerprint !== keyFingerprint) {
     keyFingerprint = fingerprint;
@@ -443,7 +447,9 @@ function buildInput(): SubmitExecutionInput | null {
     judgmentNextStepId: next.id,
     secondInstanceResultId,
     expectedSubmissionId: item.executionSubmission.current?.id ?? null,
-    executionApplicationContentVersionIds: sortedIds,
+    ...(!reSubmitting
+      ? { executionApplicationContentVersionIds: sortedIds }
+      : {}),
     ...(reSubmitting ? { changeReason: changeReason.value.trim() } : {}),
   };
 }
@@ -653,7 +659,9 @@ onBeforeUnmount(() => {
           class="text-input"
           multiple
           accept=".pdf,.doc,.docx,application/pdf,application/msword,application/vnd.openxmlformats-officedocument.wordprocessingml.document"
-          :disabled="uploading || uploadUnknown || !!pendingCommand"
+          :disabled="
+            !!current || uploading || uploadUnknown || !!pendingCommand
+          "
           @change="fileInput"
         />
       </label>
@@ -669,6 +677,7 @@ onBeforeUnmount(() => {
               type="checkbox"
               :value="file.contentVersionId"
               :disabled="
+                !!current ||
                 uploadUnknown ||
                 !!pendingCommand ||
                 (selected.length >= 10 &&

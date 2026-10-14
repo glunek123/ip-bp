@@ -780,7 +780,18 @@ export function buildCaseWorkspaceSections(
           date('创建时间', item.createdAt),
           date('实际匹配日期', item.matchedOn),
           date('匹配记录时间', item.matchedAt),
-          field('来源公证业务号', item.sourceNotaryMatter.businessNo),
+          field('来源公证业务号', item.sourceNotaryMatter?.businessNo ?? null),
+          ...(item.origin?.kind === 'EXTERNAL_ENTRY'
+            ? [
+                field(
+                  '转入／补录类型',
+                  item.origin.entryKind === 'EXTERNAL_TRANSFER'
+                    ? '外部转入'
+                    : '历史补录',
+                ),
+                date('当前阶段真实业务日期', item.origin.stageReachedOn),
+              ]
+            : []),
         ],
       },
       ...item.defendants.map((value) => ({
@@ -821,8 +832,14 @@ export function buildCaseWorkspaceSections(
     ],
     '编号、客户、权利主体、阶段及负责人只读；匹配、结案和归档仅通过已有业务命令登记或更正。',
   );
+  const isExternalEntry = item.origin?.kind === 'EXTERNAL_ENTRY';
   const source =
-    leadState === 'ready' && lead?.id === item.sourceLead.id ? lead : null;
+    !isExternalEntry &&
+    item.sourceLead !== null &&
+    leadState === 'ready' &&
+    lead?.id === item.sourceLead.id
+      ? lead
+      : null;
   const leadMessages: Record<LeadState, string> = {
     idle: '来源线索尚未加载',
     loading: '正在加载来源线索',
@@ -834,23 +851,56 @@ export function buildCaseWorkspaceSections(
     'lead-info',
     '线索信息',
     [
-      {
-        id: 'lead-source',
-        title: '案件来源',
-        fields: [field('来源线索编号', item.sourceLead.businessNo)],
-      },
-      {
-        id: 'certificate',
-        title: '案件公证资料',
-        fields: [
-          field('公证书编号', item.certificate.certificateNo),
-          date('公证日期', item.certificate.certificateDate),
-          date('出证时间', item.certificate.issuedAt),
-          field('需披露', item.certificate.needDisclose ? '是' : '否'),
-          ...files('公证文件', item.certificate.files),
-          ...files('披露文件', item.certificate.disclosureFiles),
-        ],
-      },
+      ...(isExternalEntry && item.origin?.kind === 'EXTERNAL_ENTRY'
+        ? [
+            {
+              id: 'external-entry',
+              title: '转入／补录来源',
+              fields: [
+                field(
+                  '来源类型',
+                  item.origin.entryKind === 'EXTERNAL_TRANSFER'
+                    ? '外部转入'
+                    : '历史补录',
+                ),
+                field('资料来源', item.origin.source),
+                field('转入／补录原因', item.origin.reason),
+                date('当前阶段真实业务日期', item.origin.stageReachedOn),
+                date('系统记录时间', item.origin.recordedAt),
+                field('已知法院案号', item.origin.known.courtCaseNo),
+                field('已知店铺', item.origin.known.shopName),
+                field('已知店铺ID', item.origin.known.shopExternalId),
+              ],
+            },
+          ]
+        : [
+            {
+              id: 'lead-source',
+              title: '案件来源',
+              fields: [
+                field('来源线索编号', item.sourceLead?.businessNo ?? null),
+              ],
+            },
+            ...(item.certificate
+              ? [
+                  {
+                    id: 'certificate',
+                    title: '案件公证资料',
+                    fields: [
+                      field('公证书编号', item.certificate.certificateNo),
+                      date('公证日期', item.certificate.certificateDate),
+                      date('出证时间', item.certificate.issuedAt),
+                      field(
+                        '需披露',
+                        item.certificate.needDisclose ? '是' : '否',
+                      ),
+                      ...files('公证文件', item.certificate.files),
+                      ...files('披露文件', item.certificate.disclosureFiles),
+                    ],
+                  },
+                ]
+              : []),
+          ]),
       ...(source
         ? [
             {
@@ -907,7 +957,7 @@ export function buildCaseWorkspaceSections(
     source?.capabilities.edit
       ? '编辑进入来源线索的既有表单；受保护字段仍遵守来源状态与权限规则。来源截图仅显示引用，实物／纸证展示尚未接入。'
       : '来源线索只读；无来源编辑能力时不能修改，也不能保存为案件副本。来源截图仅显示引用，实物／纸证展示尚未接入。',
-    source ? null : leadMessages[leadState],
+    source || isExternalEntry ? null : leadMessages[leadState],
   );
   const acceptanceFiles = Object.entries(item.acceptanceMaterials).flatMap(
     ([category, value]) => {

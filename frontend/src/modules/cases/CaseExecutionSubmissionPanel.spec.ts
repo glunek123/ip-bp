@@ -181,9 +181,11 @@ describe('CaseExecutionSubmissionPanel', () => {
         expectedVersion: 14,
         expectedSubmissionId: current.id,
         changeReason: '更正执行材料',
-        executionApplicationContentVersionIds: [file.contentVersionId],
       }),
       'internal',
+    );
+    expect(api.submitExecution.mock.calls[0]?.[1]).not.toHaveProperty(
+      'executionApplicationContentVersionIds',
     );
   });
 

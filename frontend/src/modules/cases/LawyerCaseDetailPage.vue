@@ -844,7 +844,10 @@ onBeforeUnmount(() => {
         <section class="demo-card demo-card--pad">
           <h2 class="form-section-title">案件信息</h2>
           <p>权利人：{{ item.rightsHolder.name }}</p>
-          <p>
+          <p v-if="item.origin?.kind === 'EXTERNAL_ENTRY'">
+            外部转入案件 · 阶段日期 {{ item.origin.stageReachedOn }}
+          </p>
+          <p v-if="item.certificate">
             证书编号：{{ item.certificate.certificateNo }} ·
             {{ item.certificate.certificateDate }}
           </p>
@@ -862,7 +865,7 @@ onBeforeUnmount(() => {
             </li>
           </ul>
           <h3>证书材料</h3>
-          <ul>
+          <ul v-if="item.certificate">
             <li
               v-for="file in [
                 ...item.certificate.files,

@@ -23,6 +23,7 @@ type PanelItem = Pick<
   | 'id'
   | 'stage'
   | 'version'
+  | 'origin'
   | 'acceptance'
   | 'canScheduleHearing'
   | 'canCorrectHearing'
@@ -96,7 +97,8 @@ const canSchedule = computed(
   () =>
     props.item.stage === 'WAITING_HEARING' &&
     props.item.canScheduleHearing &&
-    props.item.acceptance !== null,
+    (props.item.acceptance !== null ||
+      props.item.origin?.kind === 'EXTERNAL_ENTRY'),
 );
 const canCorrect = computed(
   () =>
@@ -104,7 +106,23 @@ const canCorrect = computed(
     props.item.stage === 'WAITING_JUDGMENT' &&
     props.item.canCorrectHearing,
 );
-const acceptanceDate = computed(() => props.item.acceptance?.acceptedAt ?? '');
+const acceptanceDate = computed(() => {
+  const dates = [props.item.acceptance?.acceptedAt];
+  if (props.item.origin?.kind === 'EXTERNAL_ENTRY') {
+    dates.push(
+      'known' in props.item.origin
+        ? (props.item.origin.known.acceptedOn ?? undefined)
+        : undefined,
+      props.item.origin.stageReachedOn,
+    );
+  }
+  return (
+    dates
+      .filter((date): date is string => date !== undefined)
+      .sort()
+      .at(-1) ?? ''
+  );
+});
 const selectedDate = computed(() => (clearDate.value ? null : hearingAt.value));
 const validDate = computed(() => {
   if (clearDate.value) return true;

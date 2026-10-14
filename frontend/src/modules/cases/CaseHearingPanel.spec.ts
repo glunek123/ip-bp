@@ -83,6 +83,7 @@ const baseItem: CaseDetail = {
     trialRoundId: '80000000-0000-4000-8000-000000000032',
     acceptedAt: '2026-10-05',
     courtCaseNo: '（2026）甲0101民初1号',
+    court: null,
     recordedAt: '2026-10-05T01:00:00.000Z',
     recordedByUserId: '80000000-0000-4000-8000-000000000007',
     files: [
@@ -152,6 +153,63 @@ function mountPanel(
 }
 
 describe('case hearing panel', () => {
+  it('allows a real hearing date for a direct external entry without formal acceptance', async () => {
+    const { sourceLead, sourceNotaryMatter, certificate, fees, ...base } =
+      baseItem;
+    void sourceLead;
+    void sourceNotaryMatter;
+    void certificate;
+    void fees;
+    const item: CaseDetail = {
+      ...base,
+      origin: {
+        kind: 'EXTERNAL_ENTRY',
+        entryId: '80000000-0000-4000-8000-000000000080',
+        entryKind: 'EXTERNAL_TRANSFER',
+        initialStage: 'WAITING_HEARING',
+        stageReachedOn: '2026-10-05',
+        source: '外部案件台账',
+        reason: '承接当前在办案件',
+        recordedAt: '2026-10-06T00:00:00.000Z',
+        recordedByUserId: '80000000-0000-4000-8000-000000000007',
+        known: {
+          courtId: null,
+          courtCaseNo: null,
+          acceptedOn: '2026-10-04',
+          secondInstanceAcceptedOn: null,
+          platform: null,
+          shopName: null,
+          shopExternalId: null,
+          caseType: null,
+          infringementTypes: null,
+        },
+      },
+      sourceLead: null,
+      sourceNotaryMatter: null,
+      certificate: null,
+      fees: [],
+      acceptance: null,
+    };
+    const wrapper = mountPanel(item);
+    await wrapper.get('[data-test="hearing-date"]').setValue('2026-10-04');
+    expect(
+      (wrapper.get('[data-test="hearing-save"]').element as HTMLButtonElement)
+        .disabled,
+    ).toBe(true);
+    await wrapper.get('[data-test="hearing-date"]').setValue('2026-10-05');
+    expect(
+      (wrapper.get('[data-test="hearing-save"]').element as HTMLButtonElement)
+        .disabled,
+    ).toBe(false);
+    await wrapper.get('[data-test="hearing-save"]').trigger('click');
+    await flushPromises();
+    expect(api.scheduleCaseHearing).toHaveBeenCalledWith(
+      'case-1',
+      expect.objectContaining({ hearingAt: '2026-10-05' }),
+      'internal',
+    );
+  });
+
   it('allows a valid past date and explains automatic next-day advancement before save', async () => {
     const wrapper = mountPanel();
     expect(wrapper.text()).toContain('次日 00:00（北京时间）');

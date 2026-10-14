@@ -25,6 +25,7 @@ import NotaryPortalListPage from '../modules/notary/NotaryPortalListPage.vue';
 import NotaryPortalDetailPage from '../modules/notary/NotaryPortalDetailPage.vue';
 import CaseListPage from '../modules/cases/CaseListPage.vue';
 import CaseDetailPage from '../modules/cases/CaseDetailPage.vue';
+import CaseExternalEntryPage from '../modules/cases/CaseExternalEntryPage.vue';
 import LawyerAccountsPage from '../modules/organization/LawyerAccountsPage.vue';
 import LawyerCaseListPage from '../modules/cases/LawyerCaseListPage.vue';
 import LawyerCaseDetailPage from '../modules/cases/LawyerCaseDetailPage.vue';
@@ -93,6 +94,15 @@ export const router = createRouter({
         audience: 'NOTARY',
         section: '待开箱',
         breadcrumbs: ['公证事项', '事项详情'],
+      },
+    },
+    {
+      path: '/cases/external-entry',
+      component: CaseExternalEntryPage,
+      meta: {
+        audience: 'INTERNAL',
+        section: '案件',
+        breadcrumbs: ['案件', '转入／补录案件'],
       },
     },
     {

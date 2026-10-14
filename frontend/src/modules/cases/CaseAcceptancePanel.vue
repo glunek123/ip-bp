@@ -10,9 +10,13 @@ import {
 import { ElButton } from 'element-plus/es/components/button/index.mjs';
 import {
   registerCaseAcceptance,
+  listFilingCourts,
   todayShanghai,
   type AcceptanceMaterials,
   type CaseFile,
+  type CaseOrigin,
+  type LawyerCaseOrigin,
+  type FilingCourt,
   type CaseWorkflowItem,
   type RegisterCaseAcceptanceInput,
 } from '../../api/cases';
@@ -26,6 +30,7 @@ import { notifyWorkflowChanged } from '../../app/workflow-events';
 type Category = keyof AcceptanceMaterials;
 type PanelItem = CaseWorkflowItem & {
   filingSubmission: { submittedAt: string } | null;
+  origin?: CaseOrigin | LawyerCaseOrigin;
 };
 const categories: ReadonlyArray<{ value: Category; label: string }> = [
   { value: 'ACCEPTANCE_NOTICE', label: '受理通知书' },
@@ -42,6 +47,9 @@ const emit = defineEmits<{ changed: []; refresh: [] }>();
 
 const acceptedAt = ref(todayShanghai());
 const courtCaseNo = ref('');
+const courtId = ref('');
+const courts = ref<FilingCourt[]>([]);
+const courtsLoading = ref(false);
 const selected = ref(new Set<string>());
 const uploaded = ref<Record<Category, CaseFile[]>>({
   ACCEPTANCE_NOTICE: [],
@@ -83,6 +91,8 @@ function abortDownloads(): void {
 function clearContext(): void {
   acceptedAt.value = todayShanghai();
   courtCaseNo.value = '';
+  courtId.value = '';
+  courts.value = [];
   selected.value = new Set();
   uploaded.value = {
     ACCEPTANCE_NOTICE: [],
@@ -108,9 +118,46 @@ watch(
     revision += 1;
     abortDownloads();
     clearContext();
+    if (
+      props.item.origin?.kind === 'EXTERNAL_ENTRY' &&
+      !props.item.filingSubmission
+    )
+      void loadCourts();
   },
   { immediate: true, flush: 'sync' },
 );
+const needsCourt = computed(
+  () =>
+    props.item.origin?.kind === 'EXTERNAL_ENTRY' &&
+    props.item.filingSubmission === null,
+);
+const minimumAcceptedAt = computed(() => {
+  const candidates = [props.item.filingSubmission?.submittedAt];
+  if (props.item.origin?.kind === 'EXTERNAL_ENTRY')
+    candidates.push(props.item.origin.stageReachedOn);
+  return (
+    candidates
+      .filter((value): value is string => value !== undefined)
+      .sort()
+      .at(-1) ?? ''
+  );
+});
+async function loadCourts(): Promise<void> {
+  const context = captureContext();
+  courtsLoading.value = true;
+  try {
+    const result = await listFilingCourts(
+      context.caseId,
+      props.lawyer ? 'lawyer' : 'internal',
+    );
+    if (isCurrent(context)) courts.value = result;
+  } catch {
+    if (isCurrent(context))
+      error.value = '无法读取可选法院，请刷新案件后重试。';
+  } finally {
+    if (isCurrent(context)) courtsLoading.value = false;
+  }
+}
 watch(
   [() => props.item.stage, () => unknownRequest.value !== null] as const,
   ([stage, hasUnknownRequest], [previousStage, previouslyUnknown]) => {
@@ -192,8 +239,10 @@ const ready = computed(
     canRegister.value &&
     validBusinessDate(acceptedAt.value) &&
     acceptedAt.value <= todayShanghai() &&
-    props.item.filingSubmission !== null &&
-    acceptedAt.value >= props.item.filingSubmission.submittedAt &&
+    acceptedAt.value >= minimumAcceptedAt.value &&
+    (needsCourt.value
+      ? courts.value.some((court) => court.id === courtId.value)
+      : props.item.filingSubmission !== null) &&
     courtCaseNo.value.trim().length >= 1 &&
     courtCaseNo.value.trim().length <= 100 &&
     uploading.value === null &&
@@ -216,6 +265,7 @@ function makeInput(): RegisterCaseAcceptanceInput {
     idempotencyKey: requestKey || (requestKey = makeKey()),
     acceptedAt: acceptedAt.value,
     courtCaseNo: courtCaseNo.value.trim(),
+    ...(needsCourt.value ? { courtId: courtId.value } : {}),
     acceptanceNoticeContentVersionIds: selectedIds('ACCEPTANCE_NOTICE'),
     paymentListContentVersionIds: selectedIds('PAYMENT_LIST'),
     serviceDocumentContentVersionIds: selectedIds('SERVICE_DOCUMENT'),
@@ -399,7 +449,7 @@ async function download(file: CaseFile): Promise<void> {
           data-test="acceptance-accepted-at"
           type="date"
           required
-          :min="item.filingSubmission?.submittedAt"
+          :min="minimumAcceptedAt"
           :max="todayShanghai()"
           :disabled="unknownRequest !== null || submitting"
           @input="
@@ -421,6 +471,25 @@ async function download(file: CaseFile): Promise<void> {
             success = '';
           "
         />
+      </label>
+      <label v-if="needsCourt">
+        <span>受理法院 <span class="required-mark">*</span></span>
+        <select
+          v-model="courtId"
+          data-test="acceptance-court-id"
+          required
+          :disabled="courtsLoading || unknownRequest !== null || submitting"
+          @change="
+            error = '';
+            success = '';
+          "
+        >
+          <option value="" disabled>请选择案件实际受理法院</option>
+          <option v-for="court in courts" :key="court.id" :value="court.id">
+            {{ court.name }}
+          </option>
+        </select>
+        <span v-if="courtsLoading" class="field-help">正在读取可选法院…</span>
       </label>
       <ElButton
         type="primary"
