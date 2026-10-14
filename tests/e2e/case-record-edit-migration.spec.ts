@@ -307,7 +307,8 @@ test('CE-001 replays 146 predecessors, preserves archived old facts/receipts/gra
         ),
       ).toMatchObject({
         code: '23514',
-        message: 'case defendant identity is immutable',
+        message:
+          'case defendant identity is immutable and contacts require a revision',
       });
       expect(
         await sqlFailure('DELETE FROM case_defendants WHERE case_id=$1', [
