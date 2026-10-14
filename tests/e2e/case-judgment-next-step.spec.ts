@@ -29,7 +29,10 @@ import {
   prepareCoreCaseHearingAdmin,
 } from '../support/case-hearing-database.mjs';
 import { disconnectCustomerTestDatabase } from '../support/customer-database.mjs';
-import { openCaseWorkspaceCommand } from '../support/case-workspace-browser.js';
+import {
+  closeCaseWorkspaceDrawer,
+  openCaseWorkspaceCommand,
+} from '../support/case-workspace-browser.js';
 
 const origin = 'http://127.0.0.1:5174';
 const pdf = Buffer.from('%PDF-1.4\nCA009 judgment fixture\n%%EOF\n');
@@ -618,7 +621,10 @@ test('operator chooses, revokes, corrects, and chooses a new judgment path', asy
   await execution.locator('[data-confirm-choice]').click();
   await status(await chooseExecution, 201);
   await expect(execution).toContainText('待写执行材料');
-  await expect(page.locator('.page-head .pill')).toContainText('待写执行材料');
+  await expect(page.locator('.case-workspace-actions .pill')).toContainText(
+    '待写执行材料',
+  );
+  await closeCaseWorkspaceDrawer(page);
   await expect(
     page.locator('[data-test="execution-preparation-stage"]'),
   ).toContainText('准备执行文书');
@@ -634,9 +640,13 @@ test('operator chooses, revokes, corrects, and chooses a new judgment path', asy
       .filter({ hasText: '待写执行材料' }),
   ).toHaveCount(1);
   await internalStageLink.click();
-  await expect(page.locator('.page-head .pill')).toContainText('待写执行材料');
+  await expect(page.locator('.case-workspace-actions .pill')).toContainText(
+    '待写执行材料',
+  );
   await page.reload();
-  await expect(page.locator('.page-head .pill')).toContainText('待写执行材料');
+  await expect(page.locator('.case-workspace-actions .pill')).toContainText(
+    '待写执行材料',
+  );
 
   await logout(page);
   await login(
@@ -646,7 +656,9 @@ test('operator chooses, revokes, corrects, and chooses a new judgment path', asy
     coreLeadFixtures.operatorPassword,
   );
   await page.goto(`/cases/${internalCase.caseId}`);
-  await expect(page.locator('.page-head .pill')).toContainText('待写执行材料');
+  await expect(page.locator('.case-workspace-actions .pill')).toContainText(
+    '待写执行材料',
+  );
 });
 
 test('assigned lawyer registers a judgment and chooses an execution path', async ({

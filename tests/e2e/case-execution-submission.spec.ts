@@ -32,7 +32,10 @@ import {
 } from '../support/case-hearing-database.mjs';
 import { clearCoreCaseSecondInstanceFixture } from '../support/case-second-instance-database.mjs';
 import { disconnectCustomerTestDatabase } from '../support/customer-database.mjs';
-import { openCaseWorkspaceCommand } from '../support/case-workspace-browser.js';
+import {
+  closeCaseWorkspaceDrawer,
+  openCaseWorkspaceCommand,
+} from '../support/case-workspace-browser.js';
 
 const origin = 'http://127.0.0.1:5174';
 const applicationPdf = Buffer.from(
@@ -345,7 +348,10 @@ async function chooseExecution(page: Page, caseId: string) {
   );
   await panel.locator('[data-confirm-choice]').click();
   await status(await responsePromise, 201);
-  await expect(page.locator('.page-head .pill')).toContainText('待写执行材料');
+  await expect(page.locator('.case-workspace-actions .pill')).toContainText(
+    '待写执行材料',
+  );
+  await closeCaseWorkspaceDrawer(page);
 }
 
 async function prepareOperatorExecutionCase(
