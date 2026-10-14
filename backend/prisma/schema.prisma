@@ -2641,11 +2641,13 @@ model CaseSecondInstanceAcceptanceChange {
   auditEventId String @unique @map("audit_event_id") @db.Uuid
   case Case @relation(fields: [caseId, departmentId], references: [id, departmentId], onDelete: Restrict, onUpdate: Restrict)
   choice CaseJudgmentNextStep? @relation(fields: [choiceId, caseId, departmentId, trialRoundId], references: [id, caseId, departmentId, trialRoundId], onDelete: Restrict, onUpdate: Restrict)
-  priorChange CaseSecondInstanceAcceptanceChange? @relation("SecondAcceptanceChain", fields: [priorChangeId, choiceId, caseId, departmentId, trialRoundId], references: [id, choiceId, caseId, departmentId, trialRoundId], onDelete: Restrict, onUpdate: Restrict)
+  priorChange CaseSecondInstanceAcceptanceChange? @relation("SecondAcceptanceChain", fields: [priorChangeId, caseId, departmentId, trialRoundId], references: [id, caseId, departmentId, trialRoundId], onDelete: Restrict, onUpdate: Restrict)
   nextChange CaseSecondInstanceAcceptanceChange? @relation("SecondAcceptanceChain")
 
   @@unique([id, choiceId, caseId, departmentId, trialRoundId])
+  @@unique([id, caseId, departmentId, trialRoundId])
   @@unique([priorChangeId, choiceId, caseId, departmentId, trialRoundId], map: "second_acceptance_prior_composite_key")
+  @@unique([priorChangeId, caseId, departmentId, trialRoundId])
   @@unique([choiceId, caseId, departmentId, fromRevision], map: "second_acceptance_from_revision_key")
   @@unique([choiceId, caseId, departmentId, toRevision], map: "second_acceptance_to_revision_key")
   @@map("case_second_instance_acceptance_changes")
