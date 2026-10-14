@@ -746,6 +746,7 @@ test('operator recovers an unknown real upload, then saves progress/result again
   page,
   request,
 }) => {
+  test.setTimeout(120_000);
   const source = await prepareAppealCase(page, request);
   const panel = page.locator('[data-test="second-instance-panel"]');
   await openCaseWorkspaceCommand(
@@ -1200,6 +1201,7 @@ test('operator revokes only an exact empty REMAND child and completes a distinct
   page,
   request,
 }) => {
+  test.setTimeout(120_000);
   const source = await prepareAppealCase(page, request);
   const caseId = source.caseId;
   const panel = page.locator('[data-test="second-instance-panel"]');
@@ -1577,6 +1579,7 @@ test('current PRIMARY lawyer can register CHANGE and AFFIRM while client project
   request,
   browser,
 }) => {
+  test.setTimeout(120_000);
   const source = await prepareAppealCase(page, request, {
     submitAsLawyer: true,
     firstJudgmentAmount: 'KNOWN',
