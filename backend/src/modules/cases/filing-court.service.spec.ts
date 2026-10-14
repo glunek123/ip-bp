@@ -1,3 +1,4 @@
+import { ForbiddenException } from '@nestjs/common';
 import { FilingCourtService } from './filing-court.service';
 
 const actor = {
@@ -62,6 +63,31 @@ describe('FilingCourtService', () => {
       orderBy: [{ name: 'asc' }, { id: 'asc' }],
       select: { id: true, name: true },
     });
+  });
+  it('lets an acceptance actor list real courts for an imported case without filing', async () => {
+    const f = fixture();
+    f.db.case.findFirst.mockResolvedValue({
+      stage: 'WAITING_FORMAL_ACCEPTANCE',
+      departmentId: actor.departmentId,
+      responsibleUserId: actor.userId,
+      responsibleMembership: { teamId: null },
+    });
+    f.access.authorizeDepartmentAction.mockRejectedValueOnce(
+      new ForbiddenException(),
+    );
+    await expect(f.service.list(actor, caseId)).resolves.toEqual({ items: [] });
+    expect(f.access.authorizeCase).toHaveBeenCalledWith(
+      actor,
+      'case.acceptance.register',
+      expect.objectContaining({
+        departmentId: actor.departmentId,
+        responsibleUserId: actor.userId,
+      }),
+    );
+    expect(f.access.authorizeDepartmentAction).toHaveBeenCalledWith(
+      actor,
+      'case.read',
+    );
   });
   it('creates a court only for an actor with the filing action', async () => {
     const f = fixture();

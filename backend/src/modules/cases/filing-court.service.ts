@@ -152,7 +152,20 @@ export class FilingCourtService {
           },
           reader as Prisma.TransactionClient,
         );
-      else await this.access.authorizeDepartmentAction(actor, 'case.read');
+      else if (record.stage === 'WAITING_FORMAL_ACCEPTANCE') {
+        try {
+          await this.access.authorizeDepartmentAction(actor, 'case.read');
+        } catch (error) {
+          if (!(error instanceof ForbiddenException)) throw error;
+          await this.access.authorizeCase(actor, 'case.acceptance.register', {
+            departmentId: record.departmentId,
+            responsibleUserId: record.responsibleUserId,
+            ...(record.responsibleMembership.teamId
+              ? { teamId: record.responsibleMembership.teamId }
+              : {}),
+          });
+        }
+      } else await this.access.authorizeDepartmentAction(actor, 'case.read');
     } catch (error) {
       if (error instanceof ForbiddenException)
         throw new ForbiddenException({

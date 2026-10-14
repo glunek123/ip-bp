@@ -12,6 +12,8 @@ function displaySource(leadId: string, matterId: string) {
     rightsHolderId: 'holder',
     sourceLeadId: leadId,
     sourceNotaryMatterId: matterId,
+    certificateId: 'certificate-1',
+    externalEntry: null,
     customer: {
       id: 'customer',
       departmentId: actor.departmentId,
@@ -342,6 +344,7 @@ describe('CaseReadService', () => {
         id: 'lead-1',
         businessNo: 'LD-1',
       },
+      externalEntry: null,
       sourceNotaryMatter: {
         id: 'matter-1',
         businessNo: 'NT-1',
