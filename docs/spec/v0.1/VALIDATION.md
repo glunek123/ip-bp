@@ -1380,3 +1380,13 @@ I实际使用项目锁定15433、5174／3101及Chromium执行开发回归：最�
 新增正常密码运营真实匹配＋起诉请求恢复反例，在aaf前端实跑RED：真实匹配POST201并故意丢响应，GET已前进，离开calendar再返回原匹配重试命令消失；未静默重发。证据ignored `.local/ui002-evidence/matching-spa-red/`保存原trace、错误上下文、源码／测试哈希和真实15433目标。独立Sol任务ui002_spa_intent_recovery正在隔离目录修复App案件缓存、稳定caseId、授权重验、Hearing迟到结果及旧Panel离页后请求链，I不并行修改该范围。不能把尚未通过的匹配反例记为完成。
 
 另适配原case-hearing.spec.ts，仅沿真实命令打开工作区受理／开庭抽屉及新标题位置，保持原角色、过期登记、带原因更正、自动推进、历史与越权断言；项目受控PG／Chromium实际1/1通过（30.3秒用例），根类型和文件Lint／格式通过。缓存修复仍在进行，最终固定组合需复验受影响用例。这一开发结果不含前端未集成修复，也不代表生产发布。
+
+### UI002稳定组合审查与开发GREEN（完整门禁待执行）
+
+SPA固定源f46a0c2／f2cb2ac／9de1248分别接为7173e16／8748f4b／41fb153677faa4a3dea0a9b55e88b5e15d1c54f6；29／2／10文件均在获准frontend白名单，源目录干净停写，无后端、API或迁移变化。Worker分别报告405／28／200定向测试及类型／Lint／格式通过；I独立Final Reviewer核main696fad75至41fb153完整组合，Spec Compliance与Code Quality双轴ACCEPTED，未关闭C/I/M0/0/0。原Minor（成功后的空旧表单入口）与Important（inactive／active身份变更抢先材料GET）均已由审查主体核关闭，实际App请求计数RED／GREEN直接测试随源保留。
+
+用户后续实图要求已在e6e1b4e实现：三／二／一组字段标签和值对齐、淡横线、无竖线／灰底；判决收到日期、待确认金额、已缴0.00元同行；长字段及文件独占行、历史可折叠。两只读投影组件／模型15直接测试通过；实际三屏宽展开截图烟雾1/1通过，I已读桌面案件／判决与移动执行图，数据来自真实隔离API链，未补Demo虚构字段。开发截图在ignored ui002-evidence/fields-development2，最终固定候选须再留验收图。
+
+原cases匹配、同部门只读／跨部门404、普通密码匹配上传起诉三条沿新入口保留原断言，开发检查2＋1通过；新正常密码匹配＋起诉先真实POST201再丢响应、GETahead／calendar离返／原body/key显式回执比对实际1/1 GREEN（8748产品）通过。期间新测试误等不存在POST/materials，随后误把真实PUT完成200期望为201，两次测试准备错误均已修，不记为产品缺陷，业务POST仍严格断言201。完整verify与固定14项PG／Chromium尚未执行，不提前写通过。
+
+持久预览仍3f636ea／144，按原私密正常登录只读核两案、0业务写入：0001处于WAITING_EXECUTION_STAMP、canMailExecution=true；0002处于WAITING_EXECUTION_FILING、canSubmitExecutionFiling=true。两现有面板及受必填约束的核对按钮存在，旧标题只有刷新，不是完全无推进权限；新版主动作应分别为登记执行邮寄／登记执行立案。真实账号不扩权、不代办两案，升级后再核主动作打开并取消与数据保持。数据来源与后续最小编辑缺口结论只在UI002合同，不声称联系方式或受理更正已实现。

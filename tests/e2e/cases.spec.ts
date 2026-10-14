@@ -1020,14 +1020,16 @@ test('UI002 normal operator explicitly replays original matching and complaint r
   ].entries()) {
     const uploaded = page.waitForResponse(
       (response) =>
-        response.request().method() === 'POST' &&
-        new URL(response.url()).pathname === '/api/v1/materials',
+        response.request().method() === 'PUT' &&
+        /^\/api\/v1\/materials\/upload-drafts\/[^/]+\/content$/u.test(
+          new URL(response.url()).pathname,
+        ),
     );
     await complaintForm
       .locator('input[type="file"]')
       .nth(index)
       .setInputFiles({ name, mimeType: 'application/pdf', buffer: pdfBytes });
-    expect((await uploaded).status()).toBe(201);
+    expect((await uploaded).status()).toBe(200);
     await expect(complaintForm).toContainText(name);
   }
   await complaintForm
