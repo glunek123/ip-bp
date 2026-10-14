@@ -75,6 +75,8 @@ export const permissionActionValues = [
   'CASE_COMPLAINT_MAIL',
   'CASE_FILING_SUBMIT',
   'CASE_ACCEPTANCE_REGISTER',
+  'CASE_ACCEPTANCE_CORRECT',
+  'CASE_DEFENDANT_CONTACT_UPDATE',
   'CASE_HEARING_SCHEDULE',
   'CASE_HEARING_CORRECT',
   'CASE_JUDGMENT_REGISTER',
@@ -303,11 +305,13 @@ function isPermissionCatalog(
       (item.action === 'CASE_READ' &&
         (item.scopes.length !== 1 || item.scopes[0] !== 'DEPARTMENT')) ||
       ((item.action === 'CASE_MATCH' ||
+        item.action === 'CASE_DEFENDANT_CONTACT_UPDATE' ||
         item.action === 'CASE_COMPLAINT_SUBMIT' ||
         item.action === 'CASE_COMPLAINT_CONFIRM' ||
         item.action === 'CASE_COMPLAINT_MAIL' ||
         item.action === 'CASE_FILING_SUBMIT' ||
         item.action === 'CASE_ACCEPTANCE_REGISTER' ||
+        item.action === 'CASE_ACCEPTANCE_CORRECT' ||
         item.action === 'CASE_HEARING_SCHEDULE' ||
         item.action === 'CASE_HEARING_CORRECT' ||
         item.action === 'CASE_JUDGMENT_REGISTER' ||

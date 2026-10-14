@@ -211,6 +211,51 @@ export function buildCaseWorkspaceEvents(item: CaseDetail): WorkspaceEvent[] {
   add('case', item.id, '案件创建', null, item.createdAt);
   if (item.matchedAt !== null || item.matchedOn !== null)
     add('match', item.id, '案件匹配', item.matchedOn, item.matchedAt);
+  for (const entry of item.recordEdits?.defendantContacts ?? []) {
+    const defendant = item.defendants.find(
+      (value) => value.id === entry.defendantId,
+    );
+    for (const edit of entry.history)
+      add(
+        'defendant-contact',
+        edit.id,
+        '被告联系方式更正',
+        null,
+        edit.recordedAt,
+        [
+          field('被告', defendant?.name ?? '无法匹配的被告'),
+          field('更正前电话', edit.beforePhone),
+          field('更正后电话', edit.phone),
+          field('更正前地址', edit.beforeAddress),
+          field('更正后地址', edit.address),
+          ...actor(edit.recordedByUserId),
+        ],
+      );
+  }
+  for (const edit of item.recordEdits?.acceptanceCorrections ?? []) {
+    let beforeAcceptedAt = edit.originalAcceptedAt;
+    let beforeCourtCaseNo = edit.originalCourtCaseNo;
+    for (const correction of edit.history) {
+      add(
+        'acceptance-correction',
+        correction.id,
+        '一审受理更正',
+        correction.acceptedAt,
+        correction.recordedAt,
+        [
+          field('审理轮次标识', edit.trialRoundId),
+          field('更正前受理日期', beforeAcceptedAt),
+          field('更正前法院案号', beforeCourtCaseNo),
+          field('更正后受理日期', correction.acceptedAt),
+          field('更正后法院案号', correction.courtCaseNo),
+          field('更正原因', correction.reason),
+          ...actor(correction.recordedByUserId),
+        ],
+      );
+      beforeAcceptedAt = correction.acceptedAt;
+      beforeCourtCaseNo = correction.courtCaseNo;
+    }
+  }
   if (item.complaint) {
     const value = item.complaint;
     add('complaint', item.id, '诉状提交', null, value.submittedAt, [
@@ -263,20 +308,28 @@ export function buildCaseWorkspaceEvents(item: CaseDetail): WorkspaceEvent[] {
       ...actor(value.recordedByUserId),
     ]);
   }
-  for (const value of uniqueById(item.acceptances, item.acceptance))
+  for (const value of uniqueById(item.acceptances, item.acceptance)) {
+    const recordEdit = item.recordEdits?.acceptanceCorrections.find(
+      (entry) => entry.acceptanceId === value.id,
+    );
+    const originalAcceptedAt =
+      recordEdit?.originalAcceptedAt ?? value.acceptedAt;
+    const originalCourtCaseNo =
+      recordEdit?.originalCourtCaseNo ?? value.courtCaseNo;
     add(
       'acceptance',
       value.id,
       '正式立案',
-      value.acceptedAt,
+      originalAcceptedAt,
       value.recordedAt,
       [
         field('审理轮次标识', value.trialRoundId),
-        field('法院案号', value.courtCaseNo),
+        field('法院案号', originalCourtCaseNo),
         ...files('受理通知书', value.files),
         ...actor(value.recordedByUserId),
       ],
     );
+  }
   for (const value of uniqueById(
     item.hearing.arrangements,
     item.hearing.currentArrangement,
@@ -619,7 +672,13 @@ export function buildCaseWorkspaceSections(
     });
   }
   const latestRecordIds = new Set([
-    item.acceptance?.id,
+    ...(item.acceptance?.id &&
+    !item.recordEdits?.acceptanceCorrections.some(
+      (entry) =>
+        entry.acceptanceId === item.acceptance?.id && entry.history.length > 0,
+    )
+      ? [item.acceptance.id]
+      : []),
     item.hearing.currentArrangement?.id,
     item.hearing.currentAdvance?.id,
     item.judgment.current?.id,
@@ -633,6 +692,9 @@ export function buildCaseWorkspaceSections(
     item.executionFinish?.id,
     item.closure?.current.id,
     item.archive?.current.id,
+    ...(item.recordEdits?.acceptanceCorrections.flatMap((entry) =>
+      entry.history.length ? [entry.history.at(-1)!.id] : [],
+    ) ?? []),
   ]);
   function groups(sources: readonly string[]): WorkspaceGroup[] {
     return events
@@ -835,7 +897,7 @@ export function buildCaseWorkspaceSections(
     },
   );
   const firstInstanceEvents = events.filter((event) =>
-    ['acceptance', 'hearing'].includes(event.source),
+    ['acceptance', 'acceptance-correction', 'hearing'].includes(event.source),
   );
   const roundIds = [
     ...new Set(

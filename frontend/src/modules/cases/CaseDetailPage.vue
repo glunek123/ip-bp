@@ -76,6 +76,8 @@ import CaseComplaintMailingPanel from './CaseComplaintMailingPanel.vue';
 import CaseComplaintSubmissionForm from './CaseComplaintSubmissionForm.vue';
 import CaseFilingPanel from './CaseFilingPanel.vue';
 import CaseAcceptancePanel from './CaseAcceptancePanel.vue';
+import CaseDefendantContactPanel from './CaseDefendantContactPanel.vue';
+import CaseAcceptanceCorrectionPanel from './CaseAcceptanceCorrectionPanel.vue';
 import CaseHearingPanel from './CaseHearingPanel.vue';
 import CaseJudgmentPanel from './CaseJudgmentPanel.vue';
 import CaseJudgmentNextStepPanel from './CaseJudgmentNextStepPanel.vue';
@@ -359,6 +361,24 @@ const commands = computed<WorkspaceCommand[]>(() => {
     actor: secondInstanceActorKey.value,
     caseId: current.id,
   };
+  add(
+    current.recordEdits?.canUpdateDefendantContact === true &&
+      current.defendants.length > 0 &&
+      current.recordEdits.defendantContacts.length ===
+        current.defendants.length,
+    'defendant-contact-update',
+    'case-info',
+    '\u66f4\u65b0\u88ab\u544a\u8054\u7cfb\u65b9\u5f0f',
+  );
+  add(
+    current.recordEdits?.canCorrectAcceptance === true &&
+      current.acceptances.length > 0 &&
+      current.recordEdits.acceptanceCorrections.length ===
+        current.acceptances.length,
+    'acceptance-correction',
+    'first-instance',
+    '\u66f4\u6b63\u4e00\u5ba1\u53d7\u7406\u4fe1\u606f',
+  );
   if (
     (pendingSecondInstanceCommand(recoveryIdentity) ||
       hasUnclearedSecondInstanceUpload(recoveryIdentity)) &&
@@ -386,6 +406,13 @@ const priorEditors = computed(() =>
     (previous) => !commands.value.some((entry) => entry.id === previous.id),
   ),
 );
+const businessCommands = computed(() =>
+  commands.value.filter(
+    (entry) =>
+      entry.id !== 'defendant-contact-update' &&
+      entry.id !== 'acceptance-correction',
+  ),
+);
 const sectionActions = computed<Record<SectionKey, SectionAction>>(() => {
   const action = (section: SectionKey): SectionAction => ({
     enabled: commands.value.some((command) => command.section === section),
@@ -394,8 +421,35 @@ const sectionActions = computed<Record<SectionKey, SectionAction>>(() => {
       ? '使用已有业务命令；字段只读。'
       : '当前无可办命令；字段只读。',
   });
+  const hasCommand = (section: SectionKey) =>
+    commands.value.some((command) => command.section === section);
+  const current = item.value;
+  const caseEditHint = !current?.recordEdits
+    ? '\u5f53\u524d\u63a5\u53e3\u672a\u63d0\u4f9b\u8054\u7cfb\u65b9\u5f0f\u7248\u672c\u4e0e\u64cd\u4f5c\u6743\u9650\uff0c\u8054\u7cfb\u65b9\u5f0f\u7f16\u8f91\u6682\u4e0d\u53ef\u7528\u3002'
+    : !current.recordEdits.canUpdateDefendantContact
+      ? '\u5f53\u524d\u8d26\u53f7\u6ca1\u6709\u66f4\u65b0\u88ab\u544a\u8054\u7cfb\u65b9\u5f0f\u7684\u6848\u4ef6\u6743\u9650\u3002'
+      : current.defendants.length === 0
+        ? '\u5f53\u524d\u6848\u4ef6\u6ca1\u6709\u53ef\u7f16\u8f91\u7684\u88ab\u544a\u8d44\u6599\u3002'
+        : current.recordEdits.defendantContacts.length !==
+            current.defendants.length
+          ? '\u88ab\u544a\u8054\u7cfb\u65b9\u5f0f\u7248\u672c\u4fe1\u606f\u4e0d\u5b8c\u6574\uff0c\u6682\u4e0d\u80fd\u7f16\u8f91\u3002'
+          : '\u9009\u62e9\u5339\u914d\u529e\u7406\u6216\u66f4\u65b0\u88ab\u544a\u8054\u7cfb\u65b9\u5f0f\u3002';
+  const acceptanceEditHint = !current?.recordEdits
+    ? '\u5f53\u524d\u63a5\u53e3\u672a\u63d0\u4f9b\u53d7\u7406\u66f4\u6b63\u7248\u672c\u4e0e\u64cd\u4f5c\u6743\u9650\uff0c\u53d7\u7406\u66f4\u6b63\u6682\u4e0d\u53ef\u7528\u3002'
+    : !current.recordEdits.canCorrectAcceptance
+      ? '\u5f53\u524d\u8d26\u53f7\u6ca1\u6709\u66f4\u6b63\u4e00\u5ba1\u53d7\u7406\u4fe1\u606f\u7684\u6848\u4ef6\u6743\u9650\u3002'
+      : current.acceptances.length === 0
+        ? '\u5f53\u524d\u6848\u4ef6\u6ca1\u6709\u5df2\u767b\u8bb0\u7684\u4e00\u5ba1\u53d7\u7406\u4e8b\u5b9e\uff0c\u4e0d\u80fd\u66f4\u6b63\u3002'
+        : current.recordEdits.acceptanceCorrections.length !==
+            current.acceptances.length
+          ? '\u53d7\u7406\u66f4\u6b63\u7248\u672c\u4fe1\u606f\u4e0d\u5b8c\u6574\uff0c\u6682\u4e0d\u80fd\u66f4\u6b63\u3002'
+          : '\u9009\u62e9\u4e00\u5ba1\u529e\u7406\u6216\u66f4\u6b63\u5df2\u767b\u8bb0\u53d7\u7406\u3002';
   return {
-    'case-info': action('case-info'),
+    'case-info': {
+      enabled: hasCommand('case-info'),
+      label: '编辑',
+      hint: caseEditHint,
+    },
     'lead-info': {
       enabled:
         leadState.value === 'ready' && lead.value?.capabilities.edit === true,
@@ -405,7 +459,11 @@ const sectionActions = computed<Record<SectionKey, SectionAction>>(() => {
           ? '无权读取来源线索；案件仍可查看。'
           : '仅在来源线索可编辑时进入原编辑页。',
     },
-    'first-instance': action('first-instance'),
+    'first-instance': {
+      enabled: hasCommand('first-instance'),
+      label: '编辑',
+      hint: acceptanceEditHint,
+    },
     'second-instance': action('second-instance'),
     judgment: action('judgment'),
     execution: action('execution'),
@@ -451,19 +509,21 @@ const primaryCommand = computed(() => {
   };
   if (item.value?.stage === 'WAITING_ARCHIVE')
     return (
-      commands.value.find((entry) => entry.id === 'archive') ??
-      commands.value.find((entry) => entry.id === 'closure')
+      businessCommands.value.find((entry) => entry.id === 'archive') ??
+      businessCommands.value.find((entry) => entry.id === 'closure')
     );
   return (
-    commands.value.find(
+    businessCommands.value.find(
       (entry) => stage && entry.id === stageCommands[stage],
     ) ??
-    commands.value.find((entry) => entry.id !== 'next-step') ??
-    commands.value[0]
+    businessCommands.value.find((entry) => entry.id !== 'next-step') ??
+    businessCommands.value[0]
   );
 });
 const moreCommands = computed(() =>
-  commands.value.filter((entry) => entry.id !== primaryCommand.value?.id),
+  businessCommands.value.filter(
+    (entry) => entry.id !== primaryCommand.value?.id,
+  ),
 );
 const timelineEvents = computed(() =>
   item.value ? buildCaseWorkspaceEvents(item.value) : [],
@@ -495,13 +555,18 @@ function editSection(section: SectionKey): void {
       void router.push(`/leads/${encodeURIComponent(lead.value.id)}/edit`);
     return;
   }
-  const command = commands.value.find(
+  const choices = commands.value.filter(
     (entry) => section === 'timeline' || entry.section === section,
   );
-  if (command) {
-    openCommand(command);
-    editorSection.value = section;
+  if (choices.length === 0) return;
+  timelineView.value = false;
+  editorSection.value = section;
+  if (choices.length === 1) {
+    openCommand(choices[0]);
+    return;
   }
+  selectedCommand.value = '';
+  drawerOpen.value = true;
 }
 function chooseCommand(commandId: string): void {
   const command = editorCommands.value.find((entry) => entry.id === commandId);
@@ -513,6 +578,14 @@ function chooseCommand(commandId: string): void {
 function viewTimeline(): void {
   timelineView.value = true;
   drawerOpen.value = true;
+}
+function recordEditAccessLost(): void {
+  contextRevision += 1;
+  readRevision += 1;
+  request?.abort();
+  request = undefined;
+  clearContext();
+  void load();
 }
 function openUpload(): void {
   const stage = item.value?.stage;
@@ -1935,6 +2008,9 @@ onBeforeUnmount(() => {
                 chooseCommand(($event.target as HTMLSelectElement).value)
               "
             >
+              <option v-if="!selectedCommand" value="" disabled>
+                请选择具体操作
+              </option>
               <option
                 v-for="command in editorCommands"
                 :key="command.id"
@@ -1999,6 +2075,34 @@ onBeforeUnmount(() => {
               :context-key="identity"
               @changed="load"
               @refresh="load"
+            />
+          </div>
+          <div
+            v-if="openedCommands.has('defendant-contact-update')"
+            v-show="
+              !timelineView && selectedCommand === 'defendant-contact-update'
+            "
+          >
+            <CaseDefendantContactPanel
+              :item="item"
+              :context-key="workspaceContext"
+              @changed="load"
+              @refresh="load"
+              @access-lost="recordEditAccessLost"
+            />
+          </div>
+          <div
+            v-if="openedCommands.has('acceptance-correction')"
+            v-show="
+              !timelineView && selectedCommand === 'acceptance-correction'
+            "
+          >
+            <CaseAcceptanceCorrectionPanel
+              :item="item"
+              :context-key="workspaceContext"
+              @changed="load"
+              @refresh="load"
+              @access-lost="recordEditAccessLost"
             />
           </div>
           <div

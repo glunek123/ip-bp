@@ -845,4 +845,134 @@ describe('case workspace read model', () => {
     ]);
     expect(events.at(-1)?.recordedAt).toBeNull();
   });
+
+  it('projects contact changes and acceptance corrections with before and after values', () => {
+    const item = caseFixture();
+    item.defendants = [
+      {
+        id: 'defendant-1',
+        kind: 'PERSON',
+        name: '被告甲',
+        idNo: null,
+        phone: '222',
+        address: '新地址',
+      },
+    ];
+    const acceptance = {
+      id: 'acceptance-1',
+      trialRoundId: 'round-1',
+      acceptedAt: '2026-10-06',
+      courtCaseNo: 'CN-2',
+      recordedAt: '2026-10-05T01:00:00Z',
+      recordedByUserId: 'operator-1',
+      files: [],
+    };
+    item.acceptance = acceptance;
+    item.acceptances = [acceptance];
+    item.courtCaseNo = acceptance.courtCaseNo;
+    item.recordEdits = {
+      canUpdateDefendantContact: true,
+      canCorrectAcceptance: true,
+      defendantContacts: [
+        {
+          defendantId: 'defendant-1',
+          contactRevision: 1,
+          history: [
+            {
+              id: 'contact-change-1',
+              fromRevision: 0,
+              toRevision: 1,
+              beforePhone: '111',
+              beforeAddress: '旧地址',
+              phone: '222',
+              address: '新地址',
+              recordedAt: '2026-10-05T02:00:00Z',
+              recordedByUserId: 'operator-1',
+            },
+          ],
+        },
+      ],
+      acceptanceCorrections: [
+        {
+          acceptanceId: 'acceptance-1',
+          trialRoundId: 'round-1',
+          acceptanceRevision: 1,
+          originalAcceptedAt: '2026-10-05',
+          originalCourtCaseNo: 'CN-1',
+          history: [
+            {
+              id: 'acceptance-correction-1',
+              priorCorrectionId: null,
+              fromRevision: 0,
+              toRevision: 1,
+              acceptedAt: '2026-10-06',
+              courtCaseNo: 'CN-2',
+              reason: '登记信息订正',
+              recordedAt: '2026-10-05T03:00:00Z',
+              recordedByUserId: 'operator-1',
+            },
+          ],
+        },
+      ],
+    };
+
+    const events = buildCaseWorkspaceEvents(item);
+    const originalAcceptance = events.find(
+      (event) => event.source === 'acceptance' && event.id === 'acceptance-1',
+    );
+    expect(originalAcceptance?.businessAt).toBe('2026-10-05');
+    expect(originalAcceptance?.fields.map((field) => field.value)).toContain(
+      'CN-1',
+    );
+    expect(
+      originalAcceptance?.fields.map((field) => field.value),
+    ).not.toContain('CN-2');
+    expect(
+      events.find((event) => event.id === 'acceptance-correction-1')
+        ?.businessAt,
+    ).toBe('2026-10-06');
+    expect(events).toEqual(
+      expect.arrayContaining([
+        expect.objectContaining({
+          source: 'defendant-contact',
+          id: 'contact-change-1',
+          fields: expect.arrayContaining([
+            expect.objectContaining({ label: '更正前电话', value: '111' }),
+            expect.objectContaining({ label: '更正后电话', value: '222' }),
+            expect.objectContaining({ label: '更正前地址', value: '旧地址' }),
+            expect.objectContaining({ label: '更正后地址', value: '新地址' }),
+          ]),
+        }),
+        expect.objectContaining({
+          source: 'acceptance-correction',
+          id: 'acceptance-correction-1',
+          fields: expect.arrayContaining([
+            expect.objectContaining({
+              label: '更正前受理日期',
+              value: '2026-10-05',
+            }),
+            expect.objectContaining({ label: '更正前法院案号', value: 'CN-1' }),
+            expect.objectContaining({
+              label: '更正后受理日期',
+              value: '2026-10-06',
+            }),
+            expect.objectContaining({
+              label: '更正原因',
+              value: '登记信息订正',
+            }),
+          ]),
+        }),
+      ]),
+    );
+    const sections = buildCaseWorkspaceSections(item, null, 'idle');
+    expect(
+      sections.find((section) => section.key === 'first-instance')?.groups,
+    ).toEqual(
+      expect.arrayContaining([
+        expect.objectContaining({
+          id: 'first-instance-round:round-1:acceptance-correction-1',
+        }),
+      ]),
+    );
+  });
 });

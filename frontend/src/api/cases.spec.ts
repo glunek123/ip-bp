@@ -5,6 +5,8 @@ import {
   confirmCaseExecution,
   createFilingCourt,
   getCase,
+  updateCaseDefendantContact,
+  correctCaseAcceptance,
   listFilingCourts,
   listCases,
   listLawyerCases,
@@ -511,6 +513,174 @@ function mockJson(payload: unknown, status = 200) {
 }
 
 describe('cases API', () => {
+  it('decodes optional record-edit projections and rejects broken revision chains', async () => {
+    const acceptanceId = '90000000-0000-4000-8000-000000000021';
+    const defendantId = '90000000-0000-4000-8000-000000000011';
+    const acceptance = {
+      id: acceptanceId,
+      trialRoundId: '90000000-0000-4000-8000-000000000022',
+      acceptedAt: '2026-10-06',
+      courtCaseNo: 'CN-2',
+      recordedAt: '2026-10-05T01:00:00.000Z',
+      recordedByUserId: '90000000-0000-4000-8000-000000000030',
+      files: [],
+    };
+    const recordEdits = {
+      canUpdateDefendantContact: true,
+      canCorrectAcceptance: true,
+      defendantContacts: [
+        {
+          defendantId,
+          contactRevision: 1,
+          history: [
+            {
+              id: '90000000-0000-4000-8000-000000000012',
+              fromRevision: 0,
+              toRevision: 1,
+              beforePhone: null,
+              beforeAddress: null,
+              phone: '123',
+              address: 'Street',
+              recordedAt: '2026-10-05T02:00:00.000Z',
+              recordedByUserId: '90000000-0000-4000-8000-000000000030',
+            },
+          ],
+        },
+      ],
+      acceptanceCorrections: [
+        {
+          acceptanceId,
+          trialRoundId: acceptance.trialRoundId,
+          acceptanceRevision: 1,
+          originalAcceptedAt: '2026-10-05',
+          originalCourtCaseNo: 'CN-1',
+          history: [
+            {
+              id: '90000000-0000-4000-8000-000000000023',
+              priorCorrectionId: null,
+              fromRevision: 0,
+              toRevision: 1,
+              acceptedAt: acceptance.acceptedAt,
+              courtCaseNo: acceptance.courtCaseNo,
+              reason: '登记信息订正',
+              recordedAt: '2026-10-05T03:00:00.000Z',
+              recordedByUserId: '90000000-0000-4000-8000-000000000030',
+            },
+          ],
+        },
+      ],
+    };
+    const payload = {
+      ...detail,
+      id: archiveCaseId,
+      courtCaseNo: acceptance.courtCaseNo,
+      defendants: [
+        {
+          id: defendantId,
+          kind: 'PERSON',
+          name: '被告甲',
+          idNo: null,
+          phone: '123',
+          address: 'Street',
+        },
+      ],
+      acceptance,
+      acceptances: [acceptance],
+      recordEdits,
+    };
+    mockJson(payload);
+    await expect(getCase(archiveCaseId)).resolves.toMatchObject({
+      recordEdits: { defendantContacts: [{ contactRevision: 1 }] },
+      acceptance: { acceptedAt: '2026-10-06', courtCaseNo: 'CN-2' },
+    });
+
+    mockJson({
+      ...payload,
+      recordEdits: {
+        ...recordEdits,
+        acceptanceCorrections: [
+          {
+            ...recordEdits.acceptanceCorrections[0],
+            acceptanceRevision: 2,
+          },
+        ],
+      },
+    });
+    await expect(getCase(archiveCaseId)).rejects.toMatchObject({
+      code: 'INVALID_RESPONSE',
+    });
+  });
+
+  it('posts only the stable defendant contact fields with the original idempotency key', async () => {
+    const response = {
+      caseId: archiveCaseId,
+      defendantId: '90000000-0000-4000-8000-000000000011',
+      changeId: '90000000-0000-4000-8000-000000000012',
+      contactRevision: 2,
+      phone: '123',
+      address: null,
+      recordedAt: '2026-10-14T01:00:00.000Z',
+    };
+    const fetch = mockJson(response, 201);
+    await expect(
+      updateCaseDefendantContact(archiveCaseId, {
+        defendantId: response.defendantId,
+        expectedContactRevision: 1,
+        idempotencyKey: 'contact-original-key',
+        phone: ' 123 ',
+        address: '   ',
+      }),
+    ).resolves.toEqual(response);
+    const [url, init] = fetch.mock.calls[0] as [string, RequestInit];
+    expect(url).toBe(`/api/v1/cases/${archiveCaseId}/defendant-contact-update`);
+    expect(JSON.parse(String(init.body))).toEqual({
+      defendantId: response.defendantId,
+      expectedContactRevision: 1,
+      idempotencyKey: 'contact-original-key',
+      phone: '123',
+      address: null,
+    });
+    expect(new Headers(init.headers).get('Idempotency-Key')).toBe(
+      'contact-original-key',
+    );
+  });
+
+  it('posts a trimmed reason to the acceptance correction endpoint and validates its receipt', async () => {
+    const response = {
+      caseId: archiveCaseId,
+      acceptanceId: '90000000-0000-4000-8000-000000000021',
+      correctionId: '90000000-0000-4000-8000-000000000023',
+      acceptanceRevision: 1,
+      acceptedAt: '2026-10-06',
+      courtCaseNo: 'CN-2',
+      recordedAt: '2026-10-14T02:00:00.000Z',
+    };
+    const fetch = mockJson(response, 201);
+    await expect(
+      correctCaseAcceptance(archiveCaseId, {
+        acceptanceId: response.acceptanceId,
+        expectedAcceptanceRevision: 0,
+        idempotencyKey: 'acceptance-correction-key',
+        acceptedAt: response.acceptedAt,
+        courtCaseNo: ' CN-2 ',
+        reason: ' 登记信息订正 ',
+      }),
+    ).resolves.toEqual(response);
+    const [url, init] = fetch.mock.calls[0] as [string, RequestInit];
+    expect(url).toBe(`/api/v1/cases/${archiveCaseId}/acceptance-correction`);
+    expect(JSON.parse(String(init.body))).toEqual({
+      acceptanceId: response.acceptanceId,
+      expectedAcceptanceRevision: 0,
+      idempotencyKey: 'acceptance-correction-key',
+      acceptedAt: response.acceptedAt,
+      courtCaseNo: 'CN-2',
+      reason: '登记信息订正',
+    });
+    expect(new Headers(init.headers).get('Idempotency-Key')).toBe(
+      'acceptance-correction-key',
+    );
+  });
+
   it('strictly decodes execution submission history and execution-only timestamps', async () => {
     const empty = {
       ...detail,

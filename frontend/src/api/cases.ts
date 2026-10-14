@@ -73,6 +73,45 @@ export type CaseDefendant = {
   phone: string | null;
   address: string | null;
 };
+export type DefendantContactEdit = {
+  defendantId: string;
+  contactRevision: number;
+  history: Array<{
+    id: string;
+    fromRevision: number;
+    toRevision: number;
+    beforePhone: string | null;
+    beforeAddress: string | null;
+    phone: string | null;
+    address: string | null;
+    recordedAt: string;
+    recordedByUserId: string;
+  }>;
+};
+export type AcceptanceCorrectionEdit = {
+  acceptanceId: string;
+  trialRoundId: string;
+  acceptanceRevision: number;
+  originalAcceptedAt: string;
+  originalCourtCaseNo: string;
+  history: Array<{
+    id: string;
+    priorCorrectionId: string | null;
+    fromRevision: number;
+    toRevision: number;
+    acceptedAt: string;
+    courtCaseNo: string;
+    reason: string;
+    recordedAt: string;
+    recordedByUserId: string;
+  }>;
+};
+export type CaseRecordEdits = {
+  canUpdateDefendantContact: boolean;
+  canCorrectAcceptance: boolean;
+  defendantContacts: DefendantContactEdit[];
+  acceptanceCorrections: AcceptanceCorrectionEdit[];
+};
 export type CaseLawyer = {
   id: string;
   fullName: string;
@@ -124,6 +163,7 @@ export type CaseDetail = Omit<CaseSummary, 'displaySummary'> & {
   executionFinish: ExecutionFinish | null;
   closure: CaseClosure | null;
   archive: CaseArchive | null;
+  recordEdits?: CaseRecordEdits;
 };
 export type ExecutionSubmissionFile = CaseFile & { uploadedAt: string };
 export type ExecutionSubmissionSummary = {
@@ -1982,69 +2022,73 @@ function validHearing(value: unknown, internal: boolean): boolean {
 function validCaseDetail(value: unknown, id: string): value is CaseDetail {
   if (!record(value)) return false;
   return (
-    exact(value, [
-      'id',
-      'businessNo',
-      'stage',
-      'createdAt',
-      'version',
-      'owner',
-      'canMatch',
-      'sourceLead',
-      'sourceNotaryMatter',
-      'courtCaseNo',
-      'department',
-      'customer',
-      'rightsHolder',
-      'certificate',
-      'fees',
-      'defendants',
-      'lawyers',
-      'matchedAt',
-      'matchedOn',
-      'canSubmitComplaint',
-      'complaint',
-      'canConfirmComplaint',
-      'canMailComplaint',
-      'canSubmitFiling',
-      'canRegisterAcceptance',
-      'canUploadAcceptanceMaterials',
-      'canScheduleHearing',
-      'canCorrectHearing',
-      'canRegisterJudgment',
-      'canCorrectJudgment',
-      'canChooseJudgmentNextStep',
-      'canRevokeJudgmentNextStep',
-      'canSaveSecondInstance',
-      'canRegisterSecondInstanceResult',
-      'canRevokeSecondInstanceResult',
-      'complaintConfirmation',
-      'complaintMailing',
-      'filingSubmission',
-      'acceptance',
-      'acceptanceMaterials',
-      'hearing',
-      'judgment',
-      'judgmentNextStep',
-      'acceptances',
-      'secondInstance',
-      'canSubmitExecution',
-      'executionSubmission',
-      'canConfirmExecution',
-      'executionConfirmation',
-      'canMailExecution',
-      'canSubmitExecutionFiling',
-      'canFinishExecution',
-      'canRecordClosure',
-      'canCorrectClosure',
-      'canArchive',
-      'canCorrectArchive',
-      'executionMailing',
-      'executionFiling',
-      'executionFinish',
-      'closure',
-      'archive',
-    ]) &&
+    exactWithOptional(
+      value,
+      [
+        'id',
+        'businessNo',
+        'stage',
+        'createdAt',
+        'version',
+        'owner',
+        'canMatch',
+        'sourceLead',
+        'sourceNotaryMatter',
+        'courtCaseNo',
+        'department',
+        'customer',
+        'rightsHolder',
+        'certificate',
+        'fees',
+        'defendants',
+        'lawyers',
+        'matchedAt',
+        'matchedOn',
+        'canSubmitComplaint',
+        'complaint',
+        'canConfirmComplaint',
+        'canMailComplaint',
+        'canSubmitFiling',
+        'canRegisterAcceptance',
+        'canUploadAcceptanceMaterials',
+        'canScheduleHearing',
+        'canCorrectHearing',
+        'canRegisterJudgment',
+        'canCorrectJudgment',
+        'canChooseJudgmentNextStep',
+        'canRevokeJudgmentNextStep',
+        'canSaveSecondInstance',
+        'canRegisterSecondInstanceResult',
+        'canRevokeSecondInstanceResult',
+        'complaintConfirmation',
+        'complaintMailing',
+        'filingSubmission',
+        'acceptance',
+        'acceptanceMaterials',
+        'hearing',
+        'judgment',
+        'judgmentNextStep',
+        'acceptances',
+        'secondInstance',
+        'canSubmitExecution',
+        'executionSubmission',
+        'canConfirmExecution',
+        'executionConfirmation',
+        'canMailExecution',
+        'canSubmitExecutionFiling',
+        'canFinishExecution',
+        'canRecordClosure',
+        'canCorrectClosure',
+        'canArchive',
+        'canCorrectArchive',
+        'executionMailing',
+        'executionFiling',
+        'executionFinish',
+        'closure',
+        'archive',
+      ],
+      ['recordEdits'],
+    ) &&
     value.id === id &&
     summaryFields({
       id: value.id,
@@ -2160,6 +2204,13 @@ function validCaseDetail(value: unknown, id: string): value is CaseDetail {
     validNextStep(value.judgmentNextStep, true) &&
     Array.isArray(value.acceptances) &&
     value.acceptances.every((item) => validAcceptanceHistory(item, true)) &&
+    (value.recordEdits === undefined ||
+      validRecordEdits(
+        value.recordEdits,
+        value.defendants,
+        value.acceptances,
+        value.acceptance,
+      )) &&
     validSecondInstance(value.secondInstance, true) &&
     typeof value.canSubmitExecution === 'boolean' &&
     executionSubmissionState(value.executionSubmission) &&
@@ -2428,6 +2479,186 @@ function validAcceptanceHistory(value: unknown, internal: boolean): boolean {
           mimeType: file.mimeType,
         }),
     )
+  );
+}
+function validRecordEdits(
+  value: unknown,
+  defendants: unknown,
+  acceptances: unknown,
+  acceptance: unknown,
+): value is CaseRecordEdits {
+  if (
+    !record(value) ||
+    !exact(value, [
+      'canUpdateDefendantContact',
+      'canCorrectAcceptance',
+      'defendantContacts',
+      'acceptanceCorrections',
+    ]) ||
+    typeof value.canUpdateDefendantContact !== 'boolean' ||
+    typeof value.canCorrectAcceptance !== 'boolean' ||
+    !Array.isArray(defendants) ||
+    !Array.isArray(acceptances) ||
+    !Array.isArray(value.defendantContacts) ||
+    !Array.isArray(value.acceptanceCorrections)
+  )
+    return false;
+  const defendantById = new Map<string, CaseDefendant>();
+  for (const defendant of defendants) {
+    if (!record(defendant) || !nonempty(defendant.id)) return false;
+    defendantById.set(defendant.id, defendant as unknown as CaseDefendant);
+  }
+  if (
+    value.defendantContacts.length !== defendantById.size ||
+    value.acceptanceCorrections.length !== acceptances.length
+  )
+    return false;
+  const seenDefendants = new Set<string>();
+  for (const entry of value.defendantContacts) {
+    if (
+      !record(entry) ||
+      !exact(entry, ['defendantId', 'contactRevision', 'history']) ||
+      !uuidV4(entry.defendantId) ||
+      !defendantById.has(entry.defendantId) ||
+      seenDefendants.has(entry.defendantId) ||
+      !Number.isInteger(entry.contactRevision) ||
+      (entry.contactRevision as number) < 0 ||
+      !Array.isArray(entry.history)
+    )
+      return false;
+    seenDefendants.add(entry.defendantId);
+    let revision = 0;
+    let phone: string | null | undefined;
+    let address: string | null | undefined;
+    for (const edit of entry.history) {
+      if (
+        !record(edit) ||
+        !exact(edit, [
+          'id',
+          'fromRevision',
+          'toRevision',
+          'beforePhone',
+          'beforeAddress',
+          'phone',
+          'address',
+          'recordedAt',
+          'recordedByUserId',
+        ]) ||
+        !uuidV4(edit.id) ||
+        edit.fromRevision !== revision ||
+        edit.toRevision !== revision + 1 ||
+        ![edit.beforePhone, edit.phone].every(
+          (field) => field === null || typeof field === 'string',
+        ) ||
+        ![edit.beforeAddress, edit.address].every(
+          (field) => field === null || typeof field === 'string',
+        ) ||
+        (revision > 0 &&
+          (edit.beforePhone !== phone || edit.beforeAddress !== address)) ||
+        typeof edit.recordedAt !== 'string' ||
+        Number.isNaN(Date.parse(edit.recordedAt)) ||
+        !uuidV4(edit.recordedByUserId)
+      )
+        return false;
+      revision += 1;
+      phone = edit.phone as string | null;
+      address = edit.address as string | null;
+    }
+    const current = defendantById.get(entry.defendantId)!;
+    if (
+      revision !== entry.contactRevision ||
+      (revision > 0 && (phone !== current.phone || address !== current.address))
+    )
+      return false;
+  }
+  const acceptanceById = new Map<string, CaseAcceptanceHistory>();
+  for (const item of acceptances) {
+    if (!record(item) || !nonempty(item.id) || !nonempty(item.trialRoundId))
+      return false;
+    acceptanceById.set(item.id, item as unknown as CaseAcceptanceHistory);
+  }
+  const seenAcceptances = new Set<string>();
+  for (const entry of value.acceptanceCorrections) {
+    if (
+      !record(entry) ||
+      !exact(entry, [
+        'acceptanceId',
+        'trialRoundId',
+        'acceptanceRevision',
+        'originalAcceptedAt',
+        'originalCourtCaseNo',
+        'history',
+      ]) ||
+      !uuidV4(entry.acceptanceId) ||
+      !uuidV4(entry.trialRoundId) ||
+      !acceptanceById.has(entry.acceptanceId) ||
+      seenAcceptances.has(entry.acceptanceId) ||
+      acceptanceById.get(entry.acceptanceId)?.trialRoundId !==
+        entry.trialRoundId ||
+      !Number.isInteger(entry.acceptanceRevision) ||
+      (entry.acceptanceRevision as number) < 0 ||
+      !businessDate(entry.originalAcceptedAt) ||
+      !nonempty(entry.originalCourtCaseNo) ||
+      entry.originalCourtCaseNo.trim() !== entry.originalCourtCaseNo ||
+      entry.originalCourtCaseNo.length > 100 ||
+      !Array.isArray(entry.history)
+    )
+      return false;
+    seenAcceptances.add(entry.acceptanceId);
+    let revision = 0;
+    let priorId: string | null = null;
+    let acceptedAt = entry.originalAcceptedAt;
+    let courtCaseNo = entry.originalCourtCaseNo;
+    for (const correction of entry.history) {
+      if (
+        !record(correction) ||
+        !exact(correction, [
+          'id',
+          'priorCorrectionId',
+          'fromRevision',
+          'toRevision',
+          'acceptedAt',
+          'courtCaseNo',
+          'reason',
+          'recordedAt',
+          'recordedByUserId',
+        ]) ||
+        !uuidV4(correction.id) ||
+        correction.priorCorrectionId !== priorId ||
+        correction.fromRevision !== revision ||
+        correction.toRevision !== revision + 1 ||
+        !businessDate(correction.acceptedAt) ||
+        !nonempty(correction.courtCaseNo) ||
+        correction.courtCaseNo.trim() !== correction.courtCaseNo ||
+        correction.courtCaseNo.length > 100 ||
+        !nonempty(correction.reason) ||
+        correction.reason.trim() !== correction.reason ||
+        correction.reason.length > 500 ||
+        typeof correction.recordedAt !== 'string' ||
+        Number.isNaN(Date.parse(correction.recordedAt)) ||
+        !uuidV4(correction.recordedByUserId)
+      )
+        return false;
+      revision += 1;
+      priorId = correction.id;
+      acceptedAt = correction.acceptedAt;
+      courtCaseNo = correction.courtCaseNo;
+    }
+    const current = acceptanceById.get(entry.acceptanceId)!;
+    if (
+      revision !== entry.acceptanceRevision ||
+      current.acceptedAt !== acceptedAt ||
+      current.courtCaseNo !== courtCaseNo
+    )
+      return false;
+  }
+  return (
+    acceptance === null ||
+    (record(acceptance) &&
+      acceptanceById.get(String(acceptance.id))?.acceptedAt ===
+        acceptance.acceptedAt &&
+      acceptanceById.get(String(acceptance.id))?.courtCaseNo ===
+        acceptance.courtCaseNo)
   );
 }
 function validFilingCourt(value: unknown): value is FilingCourt {
@@ -4424,6 +4655,172 @@ export async function getCase(
   const response = await getJson(`/cases/${encodeURIComponent(id)}`, options);
   if (!validCaseDetail(response, id)) throw invalidResponse();
   return response;
+}
+
+export type UpdateCaseDefendantContactInput = {
+  defendantId: string;
+  expectedContactRevision: number;
+  idempotencyKey: string;
+  phone: string | null;
+  address: string | null;
+};
+export type UpdateCaseDefendantContactResult = {
+  caseId: string;
+  defendantId: string;
+  changeId: string;
+  contactRevision: number;
+  phone: string | null;
+  address: string | null;
+  recordedAt: string;
+};
+export type CorrectCaseAcceptanceInput = {
+  acceptanceId: string;
+  expectedAcceptanceRevision: number;
+  idempotencyKey: string;
+  acceptedAt: string;
+  courtCaseNo: string;
+  reason: string;
+};
+export type CorrectCaseAcceptanceResult = {
+  caseId: string;
+  acceptanceId: string;
+  correctionId: string;
+  acceptanceRevision: number;
+  acceptedAt: string;
+  courtCaseNo: string;
+  recordedAt: string;
+};
+
+function writeRequestOptions(
+  idempotencyKey: string,
+  options: RequestOptions,
+): RequestOptions {
+  const { headers, ...rest } = options;
+  return {
+    ...rest,
+    headers: { ...headers, 'Idempotency-Key': idempotencyKey },
+  };
+}
+
+export async function updateCaseDefendantContact(
+  id: string,
+  input: UpdateCaseDefendantContactInput,
+  options: RequestOptions = {},
+): Promise<UpdateCaseDefendantContactResult> {
+  if (
+    (input.phone !== null && typeof input.phone !== 'string') ||
+    (input.address !== null && typeof input.address !== 'string')
+  )
+    throw new ApiError('被告联系方式无效', 400, 'VALIDATION_ERROR');
+  const phone = input.phone?.trim() || null;
+  const address = input.address?.trim() || null;
+  if (
+    !uuidV4(id) ||
+    !uuidV4(input.defendantId) ||
+    !Number.isInteger(input.expectedContactRevision) ||
+    input.expectedContactRevision < 0 ||
+    !validIdempotencyKey(input.idempotencyKey) ||
+    (phone !== null && phone.length > 100) ||
+    (address !== null && address.length > 500)
+  )
+    throw new ApiError('被告联系方式无效', 400, 'VALIDATION_ERROR');
+  const response = await requestJson(
+    `/cases/${encodeURIComponent(id)}/defendant-contact-update`,
+    {
+      ...writeRequestOptions(input.idempotencyKey, options),
+      method: 'POST',
+      body: {
+        defendantId: input.defendantId,
+        expectedContactRevision: input.expectedContactRevision,
+        idempotencyKey: input.idempotencyKey,
+        phone,
+        address,
+      },
+    },
+  );
+  if (
+    !record(response) ||
+    !exact(response, [
+      'caseId',
+      'defendantId',
+      'changeId',
+      'contactRevision',
+      'phone',
+      'address',
+      'recordedAt',
+    ]) ||
+    response.caseId !== id ||
+    response.defendantId !== input.defendantId ||
+    !uuidV4(response.changeId) ||
+    response.contactRevision !== input.expectedContactRevision + 1 ||
+    response.phone !== phone ||
+    response.address !== address ||
+    typeof response.recordedAt !== 'string' ||
+    Number.isNaN(Date.parse(response.recordedAt))
+  )
+    throw invalidResponse();
+  return response as UpdateCaseDefendantContactResult;
+}
+
+export async function correctCaseAcceptance(
+  id: string,
+  input: CorrectCaseAcceptanceInput,
+  options: RequestOptions = {},
+): Promise<CorrectCaseAcceptanceResult> {
+  if (typeof input.courtCaseNo !== 'string' || typeof input.reason !== 'string')
+    throw new ApiError('受理更正信息无效', 400, 'VALIDATION_ERROR');
+  const courtCaseNo = input.courtCaseNo.trim();
+  const reason = input.reason.trim();
+  if (
+    !uuidV4(id) ||
+    !uuidV4(input.acceptanceId) ||
+    !Number.isInteger(input.expectedAcceptanceRevision) ||
+    input.expectedAcceptanceRevision < 0 ||
+    !validIdempotencyKey(input.idempotencyKey) ||
+    !businessDate(input.acceptedAt) ||
+    courtCaseNo.length < 1 ||
+    courtCaseNo.length > 100 ||
+    reason.length < 1 ||
+    reason.length > 500
+  )
+    throw new ApiError('受理更正信息无效', 400, 'VALIDATION_ERROR');
+  const response = await requestJson(
+    `/cases/${encodeURIComponent(id)}/acceptance-correction`,
+    {
+      ...writeRequestOptions(input.idempotencyKey, options),
+      method: 'POST',
+      body: {
+        acceptanceId: input.acceptanceId,
+        expectedAcceptanceRevision: input.expectedAcceptanceRevision,
+        idempotencyKey: input.idempotencyKey,
+        acceptedAt: input.acceptedAt,
+        courtCaseNo,
+        reason,
+      },
+    },
+  );
+  if (
+    !record(response) ||
+    !exact(response, [
+      'caseId',
+      'acceptanceId',
+      'correctionId',
+      'acceptanceRevision',
+      'acceptedAt',
+      'courtCaseNo',
+      'recordedAt',
+    ]) ||
+    response.caseId !== id ||
+    response.acceptanceId !== input.acceptanceId ||
+    !uuidV4(response.correctionId) ||
+    response.acceptanceRevision !== input.expectedAcceptanceRevision + 1 ||
+    response.acceptedAt !== input.acceptedAt ||
+    response.courtCaseNo !== courtCaseNo ||
+    typeof response.recordedAt !== 'string' ||
+    Number.isNaN(Date.parse(response.recordedAt))
+  )
+    throw invalidResponse();
+  return response as CorrectCaseAcceptanceResult;
 }
 
 export async function matchCase(
