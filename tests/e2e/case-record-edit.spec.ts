@@ -253,12 +253,16 @@ function contactInput(defendantId: string, revision: number) {
     address: '  北京市合成地址  ',
   };
 }
-function correctionInput(acceptanceId: string, revision: number) {
+function correctionInput(
+  acceptanceId: string,
+  revision: number,
+  acceptedAt: string,
+) {
   return {
     acceptanceId,
     expectedAcceptanceRevision: revision,
     idempotencyKey: randomUUID(),
-    acceptedAt: today(),
+    acceptedAt,
     courtCaseNo: `CE001 更正案号 ${revision + 1}`,
     reason: `核对法院受理回执 ${revision + 1}`,
   };
@@ -415,7 +419,11 @@ test('acceptance correction chains exact root and rejects invalid values, old re
   );
   const before = await recordEditSnapshot(caseId);
   const url = `/api/v1/cases/${caseId}/acceptance-correction`;
-  const firstInput = correctionInput(acceptanceId, 0);
+  const firstInput = correctionInput(
+    acceptanceId,
+    0,
+    detail.acceptance!.acceptedAt,
+  );
   for (const invalid of [
     { ...firstInput, idempotencyKey: randomUUID(), reason: '  ' },
     { ...firstInput, idempotencyKey: randomUUID(), courtCaseNo: '  ' },
@@ -439,7 +447,7 @@ test('acceptance correction chains exact root and rejects invalid values, old re
     caseId,
     acceptanceId,
     acceptanceRevision: 1,
-    acceptedAt: today(),
+    acceptedAt: firstInput.acceptedAt,
     courtCaseNo: firstInput.courtCaseNo,
   });
   expect(
@@ -462,7 +470,11 @@ test('acceptance correction chains exact root and rejects invalid values, old re
     }),
     [409],
   );
-  const secondInput = correctionInput(acceptanceId, 1);
+  const secondInput = correctionInput(
+    acceptanceId,
+    1,
+    detail.acceptance!.acceptedAt,
+  );
   await rejectRecordEditWrite('acceptance');
   await reject(
     await request.post(url, { headers: operator, data: secondInput }),
@@ -485,7 +497,7 @@ test('acceptance correction chains exact root and rejects invalid values, old re
   });
   expect(current.acceptance).toMatchObject({
     id: acceptanceId,
-    acceptedAt: today(),
+    acceptedAt: secondInput.acceptedAt,
     courtCaseNo: secondInput.courtCaseNo,
   });
   expect(current.recordEdits.acceptanceCorrections[0]).toMatchObject({
@@ -561,7 +573,11 @@ test('authorization and ownership are checked before replay and a newly authoriz
     true,
   );
   const contact = contactInput(first.detail.defendants[0].id, 0);
-  const correction = correctionInput(first.detail.acceptance!.id, 0);
+  const correction = correctionInput(
+    first.detail.acceptance!.id,
+    0,
+    first.detail.acceptance!.acceptedAt,
+  );
   for (const [url, value] of [
     [contactUrl, contact],
     [correctionUrl, correction],
@@ -626,7 +642,11 @@ test('authorization and ownership are checked before replay and a newly authoriz
     ...contactInput(first.detail.defendants[0].id, 1),
     phone: '010-43210001',
   };
-  const nextCorrection = correctionInput(first.detail.acceptance!.id, 1);
+  const nextCorrection = correctionInput(
+    first.detail.acceptance!.id,
+    1,
+    first.detail.acceptance!.acceptedAt,
+  );
   await reject(
     await request.post(contactUrl, {
       headers: operator,
@@ -826,7 +846,11 @@ test('archived case accepts data corrections without changing its archive anchor
   await body<CorrectionResult>(
     await request.post(`/api/v1/cases/${source.caseId}/acceptance-correction`, {
       headers: operator,
-      data: correctionInput(detail.acceptance!.id, 0),
+      data: correctionInput(
+        detail.acceptance!.id,
+        0,
+        detail.acceptance!.acceptedAt,
+      ),
     }),
     201,
   );
@@ -873,8 +897,7 @@ test('real remand round keeps separate acceptance revisions and restores the cor
   );
   const oldId = source.detail.acceptance!.id;
   const oldCorrection = {
-    ...correctionInput(oldId, 0),
-    acceptedAt: businessDate,
+    ...correctionInput(oldId, 0, source.detail.acceptance!.acceptedAt),
     courtCaseNo: 'CE001 原轮更正案号',
   };
   await body<CorrectionResult>(
@@ -1039,8 +1062,7 @@ test('real remand round keeps separate acceptance revisions and restores the cor
   const child = await read(request, source.caseId);
   expect(child.acceptance?.id).not.toBe(oldId);
   const childCorrection = {
-    ...correctionInput(child.acceptance!.id, 0),
-    acceptedAt: businessDate,
+    ...correctionInput(child.acceptance!.id, 0, child.acceptance!.acceptedAt),
     courtCaseNo: 'CE001 发回轮更正案号',
   };
   await body<CorrectionResult>(
@@ -1187,6 +1209,9 @@ test('browser saves and cancels contact, corrects acceptance with a reason, and 
   const correctionPanel = page.locator(
     '[data-test="case-acceptance-correction-panel"]',
   );
+  await expect(
+    correctionPanel.locator('[data-test="acceptance-correction-date"]'),
+  ).toHaveValue(detail.acceptance!.acceptedAt);
   await correctionPanel
     .locator('[data-test="acceptance-correction-court-case-no"]')
     .fill('CE001 浏览器更正案号');
