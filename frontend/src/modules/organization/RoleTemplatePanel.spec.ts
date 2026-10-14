@@ -18,7 +18,12 @@ const permissionCatalog = [
 ];
 
 describe('RoleTemplatePanel', () => {
-  it.each(['CASE_CLOSURE_RECORD', 'CASE_CLOSURE_CORRECT'] as const)(
+  it.each([
+    'CASE_CLOSURE_RECORD',
+    'CASE_CLOSURE_CORRECT',
+    'CASE_ARCHIVE',
+    'CASE_ARCHIVE_CORRECT',
+  ] as const)(
     'uses the catalog label for %s without granting new actions',
     (action) => {
       const wrapper = mount(RoleTemplatePanel, {

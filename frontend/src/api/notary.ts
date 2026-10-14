@@ -438,6 +438,7 @@ function isNotaryDisplay(
     'WAITING_EXECUTION_FILING',
     'EXECUTING',
     'WAITING_ARCHIVE',
+    'ARCHIVED',
   ];
   return (
     isRecord(source) &&

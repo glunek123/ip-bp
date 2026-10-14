@@ -293,6 +293,23 @@ describe('notary operational display contract', () => {
     http.getJson.mockResolvedValue(issued);
     const result = await getNotaryMatter('matter-1');
     expect(result.certificateFiles).toEqual(certificateFiles);
+    const archived = {
+      ...issued,
+      linkedCase: { ...issued.linkedCase, stage: 'ARCHIVED' },
+    };
+    http.getJson.mockResolvedValue(archived);
+    await expect(getNotaryMatter('matter-1')).resolves.toMatchObject({
+      linkedCase: archived.linkedCase,
+    });
+    for (const key of ['archive', 'archiveReason', 'closure', 'canArchive']) {
+      http.getJson.mockResolvedValue({
+        ...archived,
+        linkedCase: { ...archived.linkedCase, [key]: 'private' },
+      });
+      await expect(getNotaryMatter('matter-1')).rejects.toMatchObject({
+        code: 'INVALID_RESPONSE',
+      });
+    }
     http.getJson.mockResolvedValue({
       ...issued,
       certificateFiles: certificateFiles.map((file) => ({

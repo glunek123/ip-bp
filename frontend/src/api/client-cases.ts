@@ -19,7 +19,8 @@ export type ClientCaseStage =
   | 'WAITING_EXECUTION_STAMP'
   | 'WAITING_EXECUTION_FILING'
   | 'EXECUTING'
-  | 'WAITING_ARCHIVE';
+  | 'WAITING_ARCHIVE'
+  | 'ARCHIVED';
 export type ClientCase = {
   id: string;
   businessNo: string;
@@ -118,7 +119,8 @@ function validCase(value: unknown): value is ClientCase {
       value.stage === 'WAITING_EXECUTION_STAMP' ||
       value.stage === 'WAITING_EXECUTION_FILING' ||
       value.stage === 'EXECUTING' ||
-      value.stage === 'WAITING_ARCHIVE') &&
+      value.stage === 'WAITING_ARCHIVE' ||
+      value.stage === 'ARCHIVED') &&
     Number.isInteger(value.version) &&
     typeof value.canMailComplaint === 'boolean' &&
     typeof value.canMailExecution === 'boolean' &&

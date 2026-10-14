@@ -79,6 +79,16 @@ const context = {
       scopes: ['SELF', 'TEAM', 'DEPARTMENT'],
     },
     {
+      action: 'CASE_ARCHIVE',
+      label: '归档案件',
+      scopes: ['SELF', 'TEAM', 'DEPARTMENT'],
+    },
+    {
+      action: 'CASE_ARCHIVE_CORRECT',
+      label: '更正归档资料',
+      scopes: ['SELF', 'TEAM', 'DEPARTMENT'],
+    },
+    {
       action: 'CASE_EXECUTION_FINISH',
       label: '登记执行结束',
       scopes: ['SELF', 'TEAM', 'DEPARTMENT'],

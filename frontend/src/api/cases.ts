@@ -17,7 +17,8 @@ export type CaseStage =
   | 'WAITING_EXECUTION_STAMP'
   | 'WAITING_EXECUTION_FILING'
   | 'EXECUTING'
-  | 'WAITING_ARCHIVE';
+  | 'WAITING_ARCHIVE'
+  | 'ARCHIVED';
 export type CaseView = 'mine' | 'department';
 export type CaseStageFilter = CaseStage | 'all';
 export type CaseStageGroup = 'COMPLAINT_PREPARATION' | 'EXECUTION_PREPARATION';
@@ -36,6 +37,8 @@ export type CaseSummary = {
   canFinishExecution: boolean;
   canRecordClosure: boolean;
   canCorrectClosure: boolean;
+  canArchive: boolean;
+  canCorrectArchive: boolean;
   displaySummary: CaseDisplaySummary;
   canSubmitComplaint: boolean;
   canConfirmComplaint: boolean;
@@ -120,6 +123,7 @@ export type CaseDetail = Omit<CaseSummary, 'displaySummary'> & {
   executionFiling: ExecutionFiling | null;
   executionFinish: ExecutionFinish | null;
   closure: CaseClosure | null;
+  archive: CaseArchive | null;
 };
 export type ExecutionSubmissionFile = CaseFile & { uploadedAt: string };
 export type ExecutionSubmissionSummary = {
@@ -269,6 +273,67 @@ export type LawyerCaseClosure = Omit<CaseClosure, 'current' | 'history'> & {
 export type CaseClosurePendingRequest =
   | { command: 'RECORD'; input: RecordCaseClosureInput }
   | { command: 'CORRECT'; input: CorrectCaseClosureInput };
+export type CaseArchiveType =
+  | 'VOIDED'
+  | 'SETTLEMENT'
+  | 'MEDIATION'
+  | 'JUDGMENT_PERFORMED'
+  | 'EXECUTION_COLLECTED'
+  | 'EXECUTION_CLOSED';
+export type ArchiveCaseInput = {
+  expectedVersion: number;
+  idempotencyKey: string;
+  expectedClosureVersionId: string;
+  archiveAt: string;
+  archiveType: CaseArchiveType;
+  archiveReason: string;
+};
+export type CorrectCaseArchiveInput = ArchiveCaseInput & {
+  expectedArchiveVersionId: string;
+  correctionReason: string;
+};
+export type CaseArchiveResult = {
+  id: string;
+  archiveId: string;
+  archiveVersionId: string;
+  closureId: string;
+  closureVersionId: string;
+  stage: 'ARCHIVED';
+  version: number;
+  recordedAt: string;
+};
+export type CaseArchiveVersion = {
+  id: string;
+  kind: 'ARCHIVE' | 'CORRECT';
+  priorVersionId: string | null;
+  closureVersionId: string;
+  fromVersion: number;
+  toVersion: number;
+  archiveAt: string;
+  archiveType: CaseArchiveType;
+  archiveReason: string;
+  correctionReason: string | null;
+  recordedAt: string;
+  recordedByUserId: string;
+};
+export type LawyerCaseArchiveVersion = Omit<
+  CaseArchiveVersion,
+  'correctionReason' | 'recordedByUserId'
+>;
+export type CaseArchive = {
+  id: string;
+  closureId: string;
+  closureVersionId: string;
+  current: CaseArchiveVersion;
+  history: CaseArchiveVersion[];
+};
+export type LawyerCaseArchive = Omit<CaseArchive, 'current' | 'history'> & {
+  current: LawyerCaseArchiveVersion;
+  history: LawyerCaseArchiveVersion[];
+};
+export type CaseArchivePendingRequest =
+  | { command: 'ARCHIVE'; input: ArchiveCaseInput }
+  | { command: 'CORRECT'; input: CorrectCaseArchiveInput };
 export type CaseHearingArrangement = {
   id: string;
   trialRoundId: string;
@@ -503,6 +568,8 @@ export type LawyerCaseSummary = {
   canFinishExecution: boolean;
   canRecordClosure: boolean;
   canCorrectClosure: false;
+  canArchive: boolean;
+  canCorrectArchive: false;
   canSubmitComplaint: boolean;
   canConfirmComplaint: boolean;
   canMailComplaint: boolean;
@@ -569,6 +636,7 @@ export type LawyerCaseDetail = CaseWorkflowItem &
     executionFiling: ExecutionFiling | null;
     executionFinish: ExecutionFinish | null;
     closure: LawyerCaseClosure | null;
+    archive: LawyerCaseArchive | null;
   };
 
 export type SubmitExecutionInput = {
@@ -834,7 +902,8 @@ function validStage(value: unknown): value is CaseStage {
     value === 'WAITING_EXECUTION_STAMP' ||
     value === 'WAITING_EXECUTION_FILING' ||
     value === 'EXECUTING' ||
-    value === 'WAITING_ARCHIVE'
+    value === 'WAITING_ARCHIVE' ||
+    value === 'ARCHIVED'
   );
 }
 function source(value: unknown): value is { id: string; businessNo: string } {
@@ -877,6 +946,8 @@ function summaryFields(value: unknown): boolean {
       'canFinishExecution',
       'canRecordClosure',
       'canCorrectClosure',
+      'canArchive',
+      'canCorrectArchive',
       'canSubmitComplaint',
       'canConfirmComplaint',
       'canMailComplaint',
@@ -911,6 +982,7 @@ function summaryFields(value: unknown): boolean {
     typeof value.canFinishExecution === 'boolean' &&
     typeof value.canRecordClosure === 'boolean' &&
     typeof value.canCorrectClosure === 'boolean' &&
+    archiveCapabilities(value) &&
     typeof value.canSubmitComplaint === 'boolean' &&
     typeof value.canConfirmComplaint === 'boolean' &&
     typeof value.canMailComplaint === 'boolean' &&
@@ -1016,6 +1088,135 @@ function displaySummary(value: unknown): value is CaseDisplaySummary {
       'SECOND_INSTANCE_RESULT',
     ]) &&
     displayAmount(value.closureAmount, ['CASE_CLOSURE_VERSION'])
+  );
+}
+function archiveType(value: unknown): value is CaseArchiveType {
+  return [
+    'VOIDED',
+    'SETTLEMENT',
+    'MEDIATION',
+    'JUDGMENT_PERFORMED',
+    'EXECUTION_COLLECTED',
+    'EXECUTION_CLOSED',
+  ].includes(String(value));
+}
+function archiveCapabilities(value: Record<string, unknown>): boolean {
+  return (
+    typeof value.canArchive === 'boolean' &&
+    typeof value.canCorrectArchive === 'boolean' &&
+    (!value.canArchive || value.stage === 'WAITING_ARCHIVE') &&
+    (!value.canCorrectArchive || value.stage === 'ARCHIVED') &&
+    (value.stage !== 'ARCHIVED' ||
+      (value.canRecordClosure === false && value.canCorrectClosure === false))
+  );
+}
+function archiveVersion(
+  value: unknown,
+  internal: boolean,
+): value is CaseArchiveVersion | LawyerCaseArchiveVersion {
+  return (
+    record(value) &&
+    exact(value, [
+      'id',
+      'kind',
+      'priorVersionId',
+      'closureVersionId',
+      'fromVersion',
+      'toVersion',
+      'archiveAt',
+      'archiveType',
+      'archiveReason',
+      'recordedAt',
+      ...(internal ? ['correctionReason', 'recordedByUserId'] : []),
+    ]) &&
+    uuidV4(value.id) &&
+    uuidV4(value.closureVersionId) &&
+    Number.isSafeInteger(value.fromVersion) &&
+    Number(value.fromVersion) >= 1 &&
+    Number.isSafeInteger(value.toVersion) &&
+    value.toVersion === Number(value.fromVersion) + 1 &&
+    (value.kind === 'ARCHIVE'
+      ? value.priorVersionId === null &&
+        (!internal || value.correctionReason === null)
+      : value.kind === 'CORRECT' &&
+        uuidV4(value.priorVersionId) &&
+        (!internal ||
+          (nonempty(value.correctionReason) &&
+            value.correctionReason.length <= 500))) &&
+    businessDate(value.archiveAt) &&
+    archiveType(value.archiveType) &&
+    finishText(value.archiveReason) &&
+    utcTimestamp(value.recordedAt) &&
+    (!internal || uuidV4(value.recordedByUserId))
+  );
+}
+function closureTerminalVersion(value: Record<string, unknown>): unknown {
+  if (
+    record(value.archive) &&
+    Array.isArray(value.archive.history) &&
+    record(value.archive.history[0])
+  )
+    return value.archive.history[0].fromVersion;
+  return value.version;
+}
+function archiveMatches(
+  value: Record<string, unknown>,
+  internal: boolean,
+): boolean {
+  const archive = value.archive;
+  if (archive === null)
+    return (
+      value.stage !== 'ARCHIVED' &&
+      value.canCorrectArchive === false &&
+      (!value.canArchive ||
+        (record(value.closure) &&
+          record(value.closure.current) &&
+          value.closure.current.toVersion === value.version))
+    );
+  if (
+    value.stage !== 'ARCHIVED' ||
+    value.canArchive !== false ||
+    !record(archive) ||
+    !exact(archive, [
+      'id',
+      'closureId',
+      'closureVersionId',
+      'current',
+      'history',
+    ]) ||
+    !uuidV4(archive.id) ||
+    !uuidV4(archive.closureId) ||
+    !uuidV4(archive.closureVersionId) ||
+    !record(value.closure) ||
+    archive.closureId !== value.closure.id ||
+    !record(value.closure.current) ||
+    archive.closureVersionId !== value.closure.current.id ||
+    !archiveVersion(archive.current, internal) ||
+    !Array.isArray(archive.history) ||
+    archive.history.length === 0 ||
+    !archive.history.every((entry) => archiveVersion(entry, internal))
+  )
+    return false;
+  const history = archive.history as Array<
+    CaseArchiveVersion | LawyerCaseArchiveVersion
+  >;
+  const last = history[history.length - 1]!;
+  const current: unknown = archive.current;
+  return (
+    record(current) &&
+    new Set(history.map((entry) => entry.id)).size === history.length &&
+    last.toVersion === value.version &&
+    history[0]!.fromVersion === value.closure.current.toVersion &&
+    Object.entries(last).every(([key, field]) => current[key] === field) &&
+    history.every(
+      (entry, index) =>
+        entry.closureVersionId === archive.closureVersionId &&
+        (index === 0
+          ? entry.kind === 'ARCHIVE'
+          : entry.kind === 'CORRECT' &&
+            entry.priorVersionId === history[index - 1]!.id &&
+            entry.fromVersion === history[index - 1]!.toVersion),
+    )
   );
 }
 function closureVersion(
@@ -1247,13 +1448,14 @@ function executionFinishMatches(
   if (finish === null)
     return (
       stage !== 'WAITING_ARCHIVE' &&
+      stage !== 'ARCHIVED' &&
       (canFinish !== true || (stage === 'EXECUTING' && executionFiling(filing)))
     );
   return (
     executionFinish(finish) &&
     executionFiling(filing) &&
     finish.filingId === filing.id &&
-    stage === 'WAITING_ARCHIVE' &&
+    (stage === 'WAITING_ARCHIVE' || stage === 'ARCHIVED') &&
     canFinish === false
   );
 }
@@ -1835,10 +2037,13 @@ function validCaseDetail(value: unknown, id: string): value is CaseDetail {
       'canFinishExecution',
       'canRecordClosure',
       'canCorrectClosure',
+      'canArchive',
+      'canCorrectArchive',
       'executionMailing',
       'executionFiling',
       'executionFinish',
       'closure',
+      'archive',
     ]) &&
     value.id === id &&
     summaryFields({
@@ -1856,6 +2061,8 @@ function validCaseDetail(value: unknown, id: string): value is CaseDetail {
       canFinishExecution: value.canFinishExecution,
       canRecordClosure: value.canRecordClosure,
       canCorrectClosure: value.canCorrectClosure,
+      canArchive: value.canArchive,
+      canCorrectArchive: value.canCorrectArchive,
       canSubmitComplaint: value.canSubmitComplaint,
       canConfirmComplaint: value.canConfirmComplaint,
       canMailComplaint: value.canMailComplaint,
@@ -1962,15 +2169,17 @@ function validCaseDetail(value: unknown, id: string): value is CaseDetail {
     typeof value.canFinishExecution === 'boolean' &&
     typeof value.canRecordClosure === 'boolean' &&
     typeof value.canCorrectClosure === 'boolean' &&
+    archiveCapabilities(value) &&
     (value.executionMailing === null ||
       executionMailing(value.executionMailing)) &&
     (value.executionFiling === null ||
       executionFiling(value.executionFiling)) &&
+    archiveMatches(value, true) &&
     closureMatches(
       value.closure,
       value.executionFinish,
-      value.stage,
-      value.version,
+      value.stage === 'ARCHIVED' ? 'WAITING_ARCHIVE' : value.stage,
+      closureTerminalVersion(value),
       value.canRecordClosure,
       value.canCorrectClosure,
       true,
@@ -2374,6 +2583,7 @@ const caseStages: CaseStage[] = [
   'WAITING_EXECUTION_FILING',
   'EXECUTING',
   'WAITING_ARCHIVE',
+  'ARCHIVED',
 ];
 function validLawyerSummary(value: unknown): value is LawyerCaseSummary {
   return (
@@ -2391,6 +2601,8 @@ function validLawyerSummary(value: unknown): value is LawyerCaseSummary {
       'canFinishExecution',
       'canRecordClosure',
       'canCorrectClosure',
+      'canArchive',
+      'canCorrectArchive',
       'canSubmitComplaint',
       'canConfirmComplaint',
       'canMailComplaint',
@@ -2421,6 +2633,8 @@ function validLawyerSummary(value: unknown): value is LawyerCaseSummary {
     typeof value.canFinishExecution === 'boolean' &&
     typeof value.canRecordClosure === 'boolean' &&
     value.canCorrectClosure === false &&
+    archiveCapabilities(value) &&
+    value.canCorrectArchive === false &&
     typeof value.canSubmitComplaint === 'boolean' &&
     typeof value.canConfirmComplaint === 'boolean' &&
     typeof value.canMailComplaint === 'boolean' &&
@@ -2662,10 +2876,13 @@ export async function getLawyerCase(
       'canFinishExecution',
       'canRecordClosure',
       'canCorrectClosure',
+      'canArchive',
+      'canCorrectArchive',
       'executionMailing',
       'executionFiling',
       'executionFinish',
       'closure',
+      'archive',
     ]) ||
     result.id !== id ||
     !validLawyerSummary({
@@ -2681,6 +2898,8 @@ export async function getLawyerCase(
       canFinishExecution: result.canFinishExecution,
       canRecordClosure: result.canRecordClosure,
       canCorrectClosure: result.canCorrectClosure,
+      canArchive: result.canArchive,
+      canCorrectArchive: result.canCorrectArchive,
       canSubmitComplaint: result.canSubmitComplaint,
       canConfirmComplaint: result.canConfirmComplaint,
       canMailComplaint: result.canMailComplaint,
@@ -2735,11 +2954,12 @@ export async function getLawyerCase(
       !executionMailing(result.executionMailing)) ||
     (result.executionFiling !== null &&
       !executionFiling(result.executionFiling)) ||
+    !archiveMatches(result, false) ||
     !closureMatches(
       result.closure,
       result.executionFinish,
-      result.stage,
-      result.version,
+      result.stage === 'ARCHIVED' ? 'WAITING_ARCHIVE' : result.stage,
+      closureTerminalVersion(result),
       result.canRecordClosure,
       result.canCorrectClosure,
       false,
@@ -2847,6 +3067,7 @@ export async function listCases(
       'WAITING_EXECUTION_FILING',
       'EXECUTING',
       'WAITING_ARCHIVE',
+      'ARCHIVED',
     ]) ||
     !Number.isInteger(response.counts.PENDING_MATCH) ||
     (response.counts.PENDING_MATCH as number) < 0 ||
@@ -2874,6 +3095,8 @@ export async function listCases(
     (response.counts.WAITING_EXECUTION_STAMP as number) < 0 ||
     !Number.isInteger(response.counts.WAITING_EXECUTION_FILING) ||
     (response.counts.WAITING_EXECUTION_FILING as number) < 0 ||
+    !Number.isInteger(response.counts.ARCHIVED) ||
+    Number(response.counts.ARCHIVED) < 0 ||
     !Number.isInteger(response.counts.WAITING_ARCHIVE) ||
     Number(response.counts.WAITING_ARCHIVE) < 0 ||
     !Number.isInteger(response.counts.EXECUTING) ||
@@ -4480,4 +4703,140 @@ export async function confirmCaseComplaint(
     version: number;
     confirmedAt: string;
   };
+}
+
+async function submitArchive(
+  id: string,
+  input: ArchiveCaseInput | CorrectCaseArchiveInput,
+  command: 'ARCHIVE' | 'CORRECT',
+  audience: 'internal' | 'lawyer',
+): Promise<CaseArchiveResult> {
+  if (
+    !uuidV4(id) ||
+    !record(input) ||
+    !exact(input, [
+      'expectedVersion',
+      'idempotencyKey',
+      'expectedClosureVersionId',
+      'archiveAt',
+      'archiveType',
+      'archiveReason',
+      ...(command === 'CORRECT'
+        ? ['expectedArchiveVersionId', 'correctionReason']
+        : []),
+    ]) ||
+    !Number.isSafeInteger(input.expectedVersion) ||
+    input.expectedVersion < 1 ||
+    input.expectedVersion >= Number.MAX_SAFE_INTEGER ||
+    !validIdempotencyKey(input.idempotencyKey) ||
+    !uuidV4(input.expectedClosureVersionId) ||
+    !businessDate(input.archiveAt) ||
+    input.archiveAt > todayShanghai() ||
+    !archiveType(input.archiveType) ||
+    !finishText(input.archiveReason) ||
+    (command === 'CORRECT' &&
+      (!('expectedArchiveVersionId' in input) ||
+        !uuidV4(input.expectedArchiveVersionId) ||
+        !('correctionReason' in input) ||
+        !nonempty(input.correctionReason) ||
+        input.correctionReason.length > 500)) ||
+    (audience !== 'internal' && audience !== 'lawyer') ||
+    (command === 'CORRECT' && audience !== 'internal')
+  )
+    throw new ApiError('归档信息无效', 400, 'VALIDATION_ERROR');
+  const response = await requestJson(
+    `/${audience === 'lawyer' ? 'lawyer/cases' : 'cases'}/${encodeURIComponent(id)}/${command === 'CORRECT' ? 'archive-correction' : 'archive'}`,
+    {
+      method: 'POST',
+      headers: { 'Idempotency-Key': input.idempotencyKey },
+      body: input,
+    },
+  );
+  if (
+    !record(response) ||
+    !exact(response, [
+      'id',
+      'archiveId',
+      'archiveVersionId',
+      'closureId',
+      'closureVersionId',
+      'stage',
+      'version',
+      'recordedAt',
+    ]) ||
+    response.id !== id ||
+    !uuidV4(response.archiveId) ||
+    !uuidV4(response.archiveVersionId) ||
+    !uuidV4(response.closureId) ||
+    response.closureVersionId !== input.expectedClosureVersionId ||
+    response.stage !== 'ARCHIVED' ||
+    !Number.isSafeInteger(response.version) ||
+    response.version !== input.expectedVersion + 1 ||
+    !utcTimestamp(response.recordedAt)
+  )
+    throw invalidResponse();
+  return response as CaseArchiveResult;
+}
+export function archiveCase(
+  id: string,
+  input: ArchiveCaseInput,
+  audience: 'internal' | 'lawyer' = 'internal',
+): Promise<CaseArchiveResult> {
+  return submitArchive(id, input, 'ARCHIVE', audience);
+}
+export function correctCaseArchive(
+  id: string,
+  input: CorrectCaseArchiveInput,
+): Promise<CaseArchiveResult> {
+  return submitArchive(id, input, 'CORRECT', 'internal');
+}
+type ArchiveSessionState = {
+  pending: (caseId: string) => CaseArchivePendingRequest | null;
+  setPending: (
+    caseId: string,
+    request: CaseArchivePendingRequest | null,
+  ) => void;
+  markChanged: (versionId: string) => boolean;
+  clear: () => void;
+};
+function copyArchiveRequest(
+  request: CaseArchivePendingRequest,
+): CaseArchivePendingRequest {
+  return request.command === 'ARCHIVE'
+    ? { command: 'ARCHIVE', input: { ...request.input } }
+    : { command: 'CORRECT', input: { ...request.input } };
+}
+const archiveSessions = new WeakMap<object, ArchiveSessionState>();
+export function caseArchiveSession(
+  owner: object,
+  context: () => string,
+): ArchiveSessionState {
+  const existing = archiveSessions.get(owner);
+  if (existing) return existing;
+  const requests = shallowRef(new Map<string, CaseArchivePendingRequest>());
+  const notified = new Set<string>();
+  const state: ArchiveSessionState = {
+    pending: (caseId) => {
+      const request = requests.value.get(caseId);
+      return request ? copyArchiveRequest(request) : null;
+    },
+    setPending: (caseId, request) => {
+      const next = new Map(requests.value);
+      if (request) next.set(caseId, copyArchiveRequest(request));
+      else next.delete(caseId);
+      requests.value = next;
+    },
+    markChanged: (versionId) => {
+      if (notified.has(versionId)) return false;
+      notified.add(versionId);
+      return true;
+    },
+    clear: () => {
+      requests.value = new Map();
+      notified.clear();
+    },
+  };
+  effectScope(true).run(() => watch(context, state.clear, { flush: 'sync' }));
+  archiveSessions.set(owner, state);
+  return state;
 }

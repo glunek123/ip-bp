@@ -101,6 +101,16 @@ const permissionCatalog = [
     label: '更正结案资料',
     scopes: ['SELF', 'TEAM', 'DEPARTMENT'] as const,
   },
+  {
+    action: 'CASE_ARCHIVE' as const,
+    label: '归档案件',
+    scopes: ['SELF', 'TEAM', 'DEPARTMENT'] as const,
+  },
+  {
+    action: 'CASE_ARCHIVE_CORRECT' as const,
+    label: '更正归档资料',
+    scopes: ['SELF', 'TEAM', 'DEPARTMENT'] as const,
+  },
 ].map((item) => ({ ...item, scopes: [...item.scopes] }));
 
 afterEach(() => vi.clearAllMocks());
@@ -136,7 +146,12 @@ describe('RoleTemplateEditor', () => {
     expect(
       wrapper.find('[data-test="grant-CASE_EXECUTION_FINISH"]').exists(),
     ).toBe(true);
-    for (const action of ['CASE_CLOSURE_RECORD', 'CASE_CLOSURE_CORRECT']) {
+    for (const action of [
+      'CASE_CLOSURE_RECORD',
+      'CASE_CLOSURE_CORRECT',
+      'CASE_ARCHIVE',
+      'CASE_ARCHIVE_CORRECT',
+    ]) {
       const field = wrapper.get<HTMLInputElement>(
         `[data-test="grant-${action}"]`,
       );

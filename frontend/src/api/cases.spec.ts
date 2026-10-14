@@ -31,6 +31,322 @@ import type {
 
 afterEach(() => vi.unstubAllGlobals());
 
+const archiveCaseId = '90000000-0000-4000-8000-000000000001';
+const archiveInput: casesApi.ArchiveCaseInput = {
+  expectedVersion: 20,
+  idempotencyKey: 'archive-original-key',
+  expectedClosureVersionId: '80000000-0000-4000-8000-000000000202',
+  archiveAt: '2026-10-13',
+  archiveType: 'EXECUTION_COLLECTED',
+  archiveReason: '  保留原文，不推定结清  ',
+};
+const archiveReceipt: casesApi.CaseArchiveResult = {
+  id: archiveCaseId,
+  archiveId: '90000000-0000-4000-8000-000000000002',
+  archiveVersionId: '90000000-0000-4000-8000-000000000003',
+  closureId: '80000000-0000-4000-8000-000000000201',
+  closureVersionId: archiveInput.expectedClosureVersionId,
+  stage: 'ARCHIVED',
+  version: 21,
+  recordedAt: '2026-10-14T01:00:00.000Z',
+};
+function archiveDetailPayload() {
+  const closure = closureDetailPayload();
+  const current: casesApi.CaseArchiveVersion = {
+    id: archiveReceipt.archiveVersionId,
+    kind: 'ARCHIVE',
+    priorVersionId: null,
+    closureVersionId: archiveReceipt.closureVersionId,
+    fromVersion: 20,
+    toVersion: 21,
+    archiveAt: archiveInput.archiveAt,
+    archiveType: archiveInput.archiveType,
+    archiveReason: archiveInput.archiveReason,
+    correctionReason: null,
+    recordedAt: archiveReceipt.recordedAt,
+    recordedByUserId: '90000000-0000-4000-8000-000000000004',
+  };
+  return {
+    ...closure,
+    id: archiveCaseId,
+    stage: 'ARCHIVED',
+    version: 21,
+    canArchive: false,
+    canCorrectArchive: true,
+    canRecordClosure: false,
+    canCorrectClosure: false,
+    archive: {
+      id: archiveReceipt.archiveId,
+      closureId: closure.closure.id,
+      closureVersionId: closure.closure.current.id,
+      current,
+      history: [current],
+    },
+  };
+}
+describe('CA-017 fixed archive API', () => {
+  it.each(['internal', 'lawyer'] as const)(
+    'posts the exact body once for %s',
+    async (audience) => {
+      const fetch = mockJson(archiveReceipt, 201);
+      await expect(
+        casesApi.archiveCase(archiveCaseId, archiveInput, audience),
+      ).resolves.toEqual(archiveReceipt);
+      expect(fetch).toHaveBeenCalledTimes(1);
+      expect(fetch.mock.calls[0]?.[0]).toBe(
+        `/api/v1/${audience === 'lawyer' ? 'lawyer/cases' : 'cases'}/${archiveCaseId}/archive`,
+      );
+      expect(JSON.parse(String(fetch.mock.calls[0]?.[1]?.body))).toEqual(
+        archiveInput,
+      );
+      expect(fetch.mock.calls[0]?.[1]?.headers['Idempotency-Key']).toBe(
+        archiveInput.idempotencyKey,
+      );
+    },
+  );
+  it.each([
+    'VOIDED',
+    'SETTLEMENT',
+    'MEDIATION',
+    'JUDGMENT_PERFORMED',
+    'EXECUTION_COLLECTED',
+    'EXECUTION_CLOSED',
+  ] as const)(
+    'accepts classification %s without adding financial fields',
+    async (archiveType) => {
+      const fetch = mockJson(archiveReceipt, 201);
+      await casesApi.archiveCase(archiveCaseId, {
+        ...archiveInput,
+        archiveType,
+      });
+      expect(
+        Object.keys(JSON.parse(String(fetch.mock.calls[0]?.[1]?.body))),
+      ).toEqual(Object.keys(archiveInput));
+    },
+  );
+  it('requires all explicit input keys, strict dates and anchors before transport', async () => {
+    const invalid: unknown[] = [
+      ...Object.keys(archiveInput).map((key) => {
+        const copy: Record<string, unknown> = { ...archiveInput };
+        delete copy[key];
+        return copy;
+      }),
+      ...[
+        { expectedVersion: 0 },
+        { expectedVersion: Number.MAX_SAFE_INTEGER },
+        { expectedClosureVersionId: 'bad' },
+        { archiveAt: '2026-02-30' },
+        { archiveAt: '2099-01-01' },
+        { archiveType: 'OTHER' },
+        { archiveReason: ' ' },
+        { archiveReason: 'x'.repeat(2001) },
+        { idempotencyKey: ' key ' },
+        { unexpected: true },
+      ].map((fields) => ({ ...archiveInput, ...fields })),
+    ];
+    for (const input of invalid) {
+      const fetch = mockJson(archiveReceipt, 201);
+      await expect(
+        casesApi.archiveCase(archiveCaseId, input as casesApi.ArchiveCaseInput),
+      ).rejects.toMatchObject({ code: 'VALIDATION_ERROR' });
+      expect(fetch).not.toHaveBeenCalled();
+    }
+  });
+  it('posts complete internal correction with original whitespace and fixed anchors', async () => {
+    const input: casesApi.CorrectCaseArchiveInput = {
+      ...archiveInput,
+      expectedArchiveVersionId: archiveReceipt.archiveVersionId,
+      correctionReason: '  核实登记错误  ',
+    };
+    const fetch = mockJson(archiveReceipt, 201);
+    await casesApi.correctCaseArchive(archiveCaseId, input);
+    expect(fetch.mock.calls[0]?.[0]).toBe(
+      `/api/v1/cases/${archiveCaseId}/archive-correction`,
+    );
+    expect(JSON.parse(String(fetch.mock.calls[0]?.[1]?.body))).toEqual(input);
+    for (const fields of [
+      { expectedArchiveVersionId: 'bad' },
+      { correctionReason: ' ' },
+      { correctionReason: 'x'.repeat(501) },
+    ]) {
+      fetch.mockClear();
+      await expect(
+        casesApi.correctCaseArchive(archiveCaseId, { ...input, ...fields }),
+      ).rejects.toMatchObject({ code: 'VALIDATION_ERROR' });
+      expect(fetch).not.toHaveBeenCalled();
+    }
+  });
+  it.each([
+    { id: 'other' },
+    { archiveId: 'bad' },
+    { archiveVersionId: 'bad' },
+    { closureId: 'bad' },
+    { closureVersionId: archiveReceipt.archiveVersionId },
+    { stage: 'WAITING_ARCHIVE' },
+    { version: 22 },
+    { recordedAt: '2026-02-30T00:00:00Z' },
+    { archiveReason: 'private' },
+  ])('refuses incompatible fixed receipt %j', async (fields) => {
+    mockJson({ ...archiveReceipt, ...fields }, 201);
+    await expect(
+      casesApi.archiveCase(archiveCaseId, archiveInput),
+    ).rejects.toMatchObject({ code: 'INVALID_RESPONSE' });
+  });
+  it('decodes the exact finish → closure → archive chain with pending amount, null date and empty attachments', async () => {
+    const payload = archiveDetailPayload();
+    mockJson(payload);
+    await expect(getCase(archiveCaseId)).resolves.toMatchObject({
+      archive: payload.archive,
+      closure: payload.closure,
+    });
+    const corrected: casesApi.CaseArchiveVersion = {
+      ...payload.archive.current,
+      id: '90000000-0000-4000-8000-000000000005',
+      kind: 'CORRECT',
+      priorVersionId: payload.archive.current.id,
+      fromVersion: 21,
+      toVersion: 22,
+      correctionReason: '更正',
+    };
+    const archive = {
+      ...payload.archive,
+      current: corrected,
+      history: [payload.archive.current, corrected],
+    };
+    mockJson({ ...payload, version: 22, archive });
+    await expect(getCase(archiveCaseId)).resolves.toMatchObject({
+      archive,
+      closure: payload.closure,
+    });
+    for (const invalid of [
+      { ...archive, closureId: archive.id },
+      { ...archive, closureVersionId: corrected.id },
+      { ...archive, current: { ...corrected, archiveReason: 'tamper' } },
+      { ...archive, history: [corrected, payload.archive.current] },
+      {
+        ...archive,
+        history: [
+          payload.archive.current,
+          { ...corrected, fromVersion: 20, toVersion: 21 },
+        ],
+      },
+      {
+        ...archive,
+        history: [
+          payload.archive.current,
+          { ...corrected, closureVersionId: corrected.id },
+        ],
+      },
+      {
+        ...archive,
+        current: { ...corrected, toVersion: 23 },
+        history: [payload.archive.current, { ...corrected, toVersion: 23 }],
+      },
+      {
+        ...archive,
+        history: [
+          payload.archive.current,
+          { ...corrected, priorVersionId: corrected.id },
+        ],
+      },
+    ]) {
+      mockJson({ ...payload, version: 22, archive: invalid });
+      await expect(getCase(archiveCaseId)).rejects.toMatchObject({
+        code: 'INVALID_RESPONSE',
+      });
+    }
+    for (const fields of [
+      { archive: null },
+      { closure: null },
+      { executionFinish: null },
+      { version: 23 },
+      { stage: 'WAITING_ARCHIVE' },
+      { canArchive: true },
+      { canCorrectClosure: true },
+    ]) {
+      mockJson({ ...payload, ...fields });
+      await expect(getCase(archiveCaseId)).rejects.toMatchObject({
+        code: 'INVALID_RESPONSE',
+      });
+    }
+  });
+  it('accepts lawyer minimal archive history while refusing actor, correction reason and correction capability', async () => {
+    const {
+      owner: _owner,
+      department: _department,
+      fees: _fees,
+      sourceLead: _lead,
+      sourceNotaryMatter: _matter,
+      ...base
+    } = archiveDetailPayload();
+    const {
+      recordedByUserId: _closureActor,
+      correctionReason: _closureReason,
+      ...closureCurrent
+    } = base.closure.current;
+    const {
+      recordedByUserId: _actor,
+      correctionReason: _reason,
+      ...current
+    } = base.archive.current;
+    void [
+      _owner,
+      _department,
+      _fees,
+      _lead,
+      _matter,
+      _closureActor,
+      _closureReason,
+      _actor,
+      _reason,
+    ];
+    const payload = {
+      ...base,
+      canMatch: false,
+      canCorrectArchive: false,
+      closure: {
+        ...base.closure,
+        current: closureCurrent,
+        history: [closureCurrent],
+      },
+      archive: { ...base.archive, current, history: [current] },
+    };
+    mockJson(payload);
+    await expect(casesApi.getLawyerCase(archiveCaseId)).resolves.toMatchObject({
+      archive: { current },
+    });
+    for (const fields of [
+      { canCorrectArchive: true },
+      { archive: base.archive },
+    ]) {
+      mockJson({ ...payload, ...fields });
+      await expect(casesApi.getLawyerCase(archiveCaseId)).rejects.toMatchObject(
+        { code: 'INVALID_RESPONSE' },
+      );
+    }
+  });
+  it('retains detached original requests on remount and isolates identity changes synchronously', () => {
+    const auth = {};
+    const identity = ref('operator:department:1');
+    const session = casesApi.caseArchiveSession(auth, () => identity.value);
+    session.setPending(archiveCaseId, {
+      command: 'ARCHIVE',
+      input: archiveInput,
+    });
+    const request = session.pending(archiveCaseId)!;
+    request.input.archiveReason = 'mutated';
+    expect(
+      casesApi
+        .caseArchiveSession(auth, () => identity.value)
+        .pending(archiveCaseId)?.input.archiveReason,
+    ).toBe(archiveInput.archiveReason);
+    expect(session.markChanged(archiveReceipt.archiveVersionId)).toBe(true);
+    expect(session.markChanged(archiveReceipt.archiveVersionId)).toBe(false);
+    identity.value = 'operator:department:2';
+    expect(session.pending(archiveCaseId)).toBeNull();
+  });
+});
+
 const summaryBase = {
   id: 'case-1',
   businessNo: 'CA-1',
@@ -46,6 +362,8 @@ const summaryBase = {
   canFinishExecution: false,
   canRecordClosure: false,
   canCorrectClosure: false,
+  canArchive: false,
+  canCorrectArchive: false,
   canSubmitComplaint: false,
   canConfirmComplaint: false,
   canMailComplaint: false,
@@ -93,11 +411,14 @@ const detail = {
   canFinishExecution: false,
   canRecordClosure: false,
   canCorrectClosure: false,
+  canArchive: false,
+  canCorrectArchive: false,
   executionConfirmation: null,
   executionMailing: null,
   executionFiling: null,
   executionFinish: null,
   closure: null,
+  archive: null,
   courtCaseNo: null,
   department: { id: 'department-1', name: '知产部' },
   customer: { id: 'customer-1', name: '客户甲' },
@@ -205,11 +526,14 @@ describe('cases API', () => {
       canFinishExecution: false,
       canRecordClosure: false,
       canCorrectClosure: false,
+      canArchive: false,
+      canCorrectArchive: false,
       executionConfirmation: null,
       executionMailing: null,
       executionFiling: null,
       executionFinish: null,
       closure: null,
+      archive: null,
     };
     mockJson(empty);
     await expect(getCase('case-1')).resolves.toMatchObject({
@@ -251,6 +575,8 @@ describe('cases API', () => {
       canFinishExecution: false,
       canRecordClosure: false,
       canCorrectClosure: false,
+      canArchive: false,
+      canCorrectArchive: false,
       executionSubmission: {
         current: submission,
         submissions: [submission],
@@ -272,6 +598,8 @@ describe('cases API', () => {
       canFinishExecution: false,
       canRecordClosure: false,
       canCorrectClosure: false,
+      canArchive: false,
+      canCorrectArchive: false,
       executionConfirmation: {
         id: '80000000-0000-4000-8000-000000000106',
         submissionId: submission.id,
@@ -549,6 +877,7 @@ describe('cases API', () => {
         WAITING_EXECUTION_FILING: 0,
         EXECUTING: 0,
         WAITING_ARCHIVE: 0,
+        ARCHIVED: 0,
       };
       const fetchMock = mockJson({
         items: [],
@@ -1351,11 +1680,14 @@ describe('cases API', () => {
       canFinishExecution: false,
       canRecordClosure: false,
       canCorrectClosure: false,
+      canArchive: false,
+      canCorrectArchive: false,
       executionConfirmation: null,
       executionMailing: null,
       executionFiling: null,
       executionFinish: null,
       closure: null,
+      archive: null,
       createdAt: '2026-09-28T00:00:00.000Z',
       matchedAt: null,
       matchedOn: null,
@@ -1889,6 +2221,7 @@ describe('cases API', () => {
         WAITING_EXECUTION_FILING: 0,
         EXECUTING: 0,
         WAITING_ARCHIVE: 0,
+        ARCHIVED: 0,
       },
     });
     await expect(
@@ -1911,6 +2244,7 @@ describe('cases API', () => {
         WAITING_EXECUTION_FILING: 0,
         EXECUTING: 0,
         WAITING_ARCHIVE: 0,
+        ARCHIVED: 0,
       },
     });
     expect(fetchMock.mock.calls[0]?.[0]).toBe(
@@ -1947,6 +2281,7 @@ describe('cases API', () => {
         WAITING_EXECUTION_FILING: 0,
         EXECUTING: 0,
         WAITING_ARCHIVE: 0,
+        ARCHIVED: 0,
       },
     });
     await expect(
@@ -1973,6 +2308,7 @@ describe('cases API', () => {
       WAITING_EXECUTION_FILING: 0,
       EXECUTING: 0,
       WAITING_ARCHIVE: 0,
+      ARCHIVED: 0,
     };
     const item = {
       ...summary,
@@ -1984,6 +2320,8 @@ describe('cases API', () => {
       canFinishExecution: false,
       canRecordClosure: false,
       canCorrectClosure: false,
+      canArchive: false,
+      canCorrectArchive: false,
     };
     mockJson({ items: [item], total: 1, page: 1, pageSize: 20, counts });
     await expect(listCases()).resolves.toMatchObject({
@@ -1997,6 +2335,8 @@ describe('cases API', () => {
           canFinishExecution: false,
           canRecordClosure: false,
           canCorrectClosure: false,
+          canArchive: false,
+          canCorrectArchive: false,
         },
       ],
     });
@@ -2054,6 +2394,7 @@ describe('cases API', () => {
       WAITING_EXECUTION_FILING: 0,
       EXECUTING: 0,
       WAITING_ARCHIVE: 0,
+      ARCHIVED: 0,
     };
     const item = {
       id: 'case-1',
@@ -2083,6 +2424,8 @@ describe('cases API', () => {
       canFinishExecution: false,
       canRecordClosure: false,
       canCorrectClosure: false,
+      canArchive: false,
+      canCorrectArchive: false,
       createdAt: '2026-09-28T00:00:00.000Z',
     };
     mockJson({ items: [item], total: 1, page: 1, pageSize: 20, counts });
@@ -2097,6 +2440,8 @@ describe('cases API', () => {
           canFinishExecution: false,
           canRecordClosure: false,
           canCorrectClosure: false,
+          canArchive: false,
+          canCorrectArchive: false,
         },
       ],
     });
@@ -2159,6 +2504,7 @@ describe('cases API', () => {
         WAITING_EXECUTION_FILING: 0,
         EXECUTING: 0,
         WAITING_ARCHIVE: 0,
+        ARCHIVED: 0,
       },
     });
     await listCases(1, 20, { stage: 'all' });
@@ -2538,11 +2884,14 @@ describe('cases API', () => {
       canFinishExecution: false,
       canRecordClosure: false,
       canCorrectClosure: false,
+      canArchive: false,
+      canCorrectArchive: false,
       executionConfirmation: null,
       executionMailing: null,
       executionFiling: null,
       executionFinish: null,
       closure: null,
+      archive: null,
       createdAt: '2026-09-28T00:00:00.000Z',
       matchedAt: '2026-09-29T01:00:00Z',
       matchedOn: '2026-09-28',
@@ -2692,11 +3041,14 @@ describe('cases API', () => {
       canFinishExecution: false,
       canRecordClosure: false,
       canCorrectClosure: false,
+      canArchive: false,
+      canCorrectArchive: false,
       executionConfirmation: null,
       executionMailing: null,
       executionFiling: null,
       executionFinish: null,
       closure: null,
+      archive: null,
     };
     mockJson(response);
     await expect(casesApi.getLawyerCase('case-1')).resolves.toMatchObject({
@@ -2944,6 +3296,7 @@ describe('cases API', () => {
         WAITING_EXECUTION_FILING: 0,
         EXECUTING: 0,
         WAITING_ARCHIVE: 0,
+        ARCHIVED: 0,
       },
     });
     const read = Reflect.get(casesApi, 'listLawyerCases') as
@@ -3399,6 +3752,8 @@ describe('CA-016 closure and list display contract', () => {
       ...payload,
       version: 21,
       canCorrectClosure: true,
+      canArchive: false,
+      canCorrectArchive: false,
       closure: {
         ...payload.closure,
         current: corrected,
@@ -3482,6 +3837,7 @@ describe('CA-016 closure and list display contract', () => {
       'WAITING_EXECUTION_FILING',
       'EXECUTING',
       'WAITING_ARCHIVE',
+      'ARCHIVED',
     ];
     const counts = Object.fromEntries(
       stages.map((stage) => [stage, stage === 'PENDING_MATCH' ? 1 : 0]),

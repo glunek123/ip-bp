@@ -275,56 +275,64 @@ describe('client cases API', () => {
   });
 });
 
-it('keeps WAITING_ARCHIVE client projection minimal and rejects each internal finish field', async () => {
-  const summary = {
-    ...item,
-    stage: 'WAITING_ARCHIVE',
-    canMailComplaint: false,
-  };
-  mock({ items: [summary], total: 1, page: 1, pageSize: 20 });
-  await expect(listClientCases(1, 20, 'RECORDED')).resolves.toMatchObject({
-    items: [summary],
-  });
-  const payload = {
-    ...summary,
-    confirmedAmountState: 'PENDING',
-    confirmedAmount: null,
-    confirmedAt: '2026-10-01T00:00:00Z',
-    complaintFile: file,
-    authorizationFiles: [],
-    pendingReceiptFiles: [],
-    complaintMailing: null,
-    executionConfirmationId: null,
-    executionMailing: null,
-  };
-  mock(payload);
-  await expect(getClientCase('case-1')).resolves.toMatchObject({
-    stage: 'WAITING_ARCHIVE',
-    confirmedAmount: null,
-  });
-  for (const key of [
-    'finishedAt',
-    'reason',
-    'basisNote',
-    'finishId',
-    'executionFinish',
-    'canFinishExecution',
-    'recordedByUserId',
-    'audit',
-    'fees',
-  ]) {
-    mock({ ...payload, [key]: 'private' });
-    await expect(getClientCase('case-1')).rejects.toMatchObject({
-      code: 'INVALID_RESPONSE',
+it.each(['WAITING_ARCHIVE', 'ARCHIVED'])(
+  'keeps %s client projection minimal and rejects internal archive/finish fields',
+  async (stage) => {
+    const summary = {
+      ...item,
+      stage,
+      canMailComplaint: false,
+    };
+    mock({ items: [summary], total: 1, page: 1, pageSize: 20 });
+    await expect(listClientCases(1, 20, 'RECORDED')).resolves.toMatchObject({
+      items: [summary],
     });
-    mock({
-      items: [{ ...summary, [key]: 'private' }],
-      total: 1,
-      page: 1,
-      pageSize: 20,
+    const payload = {
+      ...summary,
+      confirmedAmountState: 'PENDING',
+      confirmedAmount: null,
+      confirmedAt: '2026-10-01T00:00:00Z',
+      complaintFile: file,
+      authorizationFiles: [],
+      pendingReceiptFiles: [],
+      complaintMailing: null,
+      executionConfirmationId: null,
+      executionMailing: null,
+    };
+    mock(payload);
+    await expect(getClientCase('case-1')).resolves.toMatchObject({
+      stage,
+      confirmedAmount: null,
     });
-    await expect(listClientCases(1, 20, 'RECORDED')).rejects.toMatchObject({
-      code: 'INVALID_RESPONSE',
-    });
-  }
-});
+    for (const key of [
+      'finishedAt',
+      'reason',
+      'basisNote',
+      'finishId',
+      'executionFinish',
+      'canFinishExecution',
+      'recordedByUserId',
+      'audit',
+      'fees',
+      'archive',
+      'archiveReason',
+      'closure',
+      'canArchive',
+      'canCorrectArchive',
+    ]) {
+      mock({ ...payload, [key]: 'private' });
+      await expect(getClientCase('case-1')).rejects.toMatchObject({
+        code: 'INVALID_RESPONSE',
+      });
+      mock({
+        items: [{ ...summary, [key]: 'private' }],
+        total: 1,
+        page: 1,
+        pageSize: 20,
+      });
+      await expect(listClientCases(1, 20, 'RECORDED')).rejects.toMatchObject({
+        code: 'INVALID_RESPONSE',
+      });
+    }
+  },
+);
