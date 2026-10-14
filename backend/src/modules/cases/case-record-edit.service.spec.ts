@@ -151,6 +151,32 @@ describe('CaseRecordEditService', () => {
     expect(f.tx.auditEvent.create).not.toHaveBeenCalled();
   });
 
+  it('applies contact length limits after trimming', async () => {
+    const f = fixture();
+    const result = await f.service.updateContact(actor, caseId, {
+      ...contactInput,
+      phone: `  ${'1'.repeat(100)}  `,
+      address: `  ${'a'.repeat(500)}  `,
+    });
+    expect(result).toMatchObject({
+      phone: '1'.repeat(100),
+      address: 'a'.repeat(500),
+    });
+    await expect(
+      f.service.updateContact(actor, caseId, {
+        ...contactInput,
+        phone: ` ${'1'.repeat(101)} `,
+      }),
+    ).rejects.toMatchObject({ response: { code: 'VALIDATION_ERROR' } });
+    await expect(
+      f.service.updateContact(actor, caseId, {
+        ...contactInput,
+        address: ` ${'a'.repeat(501)} `,
+      }),
+    ).rejects.toMatchObject({ response: { code: 'VALIDATION_ERROR' } });
+    expect(f.tx.caseDefendantContactChange.create).toHaveBeenCalledTimes(1);
+  });
+
   it('rechecks current authorization before returning a saved receipt', async () => {
     const f = fixture();
     const saved = await f.service.updateContact(actor, caseId, contactInput);
@@ -202,6 +228,32 @@ describe('CaseRecordEditService', () => {
     expect(f.tx.case.updateMany.mock.calls[0][0].data).not.toHaveProperty(
       'version',
     );
+  });
+
+  it('applies court number and reason limits after trimming', async () => {
+    const f = fixture();
+    const result = await f.service.correctAcceptance(actor, caseId, {
+      ...acceptanceInput,
+      courtCaseNo: `  ${'C'.repeat(100)}  `,
+      reason: `  ${'r'.repeat(500)}  `,
+    });
+    expect(result.courtCaseNo).toBe('C'.repeat(100));
+    expect(
+      f.tx.caseAcceptanceCorrection.create.mock.calls[0][0].data.reason,
+    ).toBe('r'.repeat(500));
+    await expect(
+      f.service.correctAcceptance(actor, caseId, {
+        ...acceptanceInput,
+        courtCaseNo: ` ${'C'.repeat(101)} `,
+      }),
+    ).rejects.toMatchObject({ response: { code: 'VALIDATION_ERROR' } });
+    await expect(
+      f.service.correctAcceptance(actor, caseId, {
+        ...acceptanceInput,
+        reason: ` ${'r'.repeat(501)} `,
+      }),
+    ).rejects.toMatchObject({ response: { code: 'VALIDATION_ERROR' } });
+    expect(f.tx.caseAcceptanceCorrection.create).toHaveBeenCalledTimes(1);
   });
 
   it('corrects a historical round without changing the current court number', async () => {

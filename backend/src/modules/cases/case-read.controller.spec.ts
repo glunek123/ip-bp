@@ -311,6 +311,24 @@ describe('case read OpenAPI contract', () => {
         routeCaseId,
         contactInput,
       );
+      const paddedContactInput = {
+        ...contactInput,
+        phone: `  ${'1'.repeat(100)}  `,
+        address: `  ${'a'.repeat(500)}  `,
+      };
+      await request(app.getHttpServer())
+        .post(`/api/v1/cases/${routeCaseId}/defendant-contact-update`)
+        .send(paddedContactInput)
+        .expect(201);
+      expect(recordEdit.updateContact).toHaveBeenLastCalledWith(
+        expect.any(Object),
+        routeCaseId,
+        paddedContactInput,
+      );
+      await request(app.getHttpServer())
+        .post(`/api/v1/cases/${routeCaseId}/defendant-contact-update`)
+        .send({ ...contactInput, phone: 123 })
+        .expect(400);
       await request(app.getHttpServer())
         .post(`/api/v1/cases/${routeCaseId}/defendant-contact-update`)
         .send({ ...contactInput, expectedVersion: 1 })
@@ -332,6 +350,24 @@ describe('case read OpenAPI contract', () => {
         routeCaseId,
         correctionInput,
       );
+      const paddedCorrectionInput = {
+        ...correctionInput,
+        courtCaseNo: `  ${'C'.repeat(100)}  `,
+        reason: `  ${'r'.repeat(500)}  `,
+      };
+      await request(app.getHttpServer())
+        .post(`/api/v1/cases/${routeCaseId}/acceptance-correction`)
+        .send(paddedCorrectionInput)
+        .expect(201);
+      expect(recordEdit.correctAcceptance).toHaveBeenLastCalledWith(
+        expect.any(Object),
+        routeCaseId,
+        paddedCorrectionInput,
+      );
+      await request(app.getHttpServer())
+        .post(`/api/v1/cases/${routeCaseId}/acceptance-correction`)
+        .send({ ...correctionInput, reason: 123 })
+        .expect(400);
       await request(app.getHttpServer())
         .post(`/api/v1/cases/${routeCaseId}/acceptance-correction`)
         .send({ ...correctionInput, courtId: routeCaseId })

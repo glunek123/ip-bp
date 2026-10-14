@@ -1,12 +1,5 @@
 import { ApiProperty } from '@nestjs/swagger';
-import {
-  IsInt,
-  IsString,
-  IsUUID,
-  MaxLength,
-  Min,
-  ValidateIf,
-} from 'class-validator';
+import { IsInt, IsString, IsUUID, Min, ValidateIf } from 'class-validator';
 
 export class UpdateDefendantContactDto {
   @ApiProperty({ format: 'uuid' })
@@ -19,15 +12,21 @@ export class UpdateDefendantContactDto {
   @ApiProperty({ minLength: 1, maxLength: 128 })
   @IsString()
   idempotencyKey!: string;
-  @ApiProperty({ type: String, nullable: true, maxLength: 100 })
+  @ApiProperty({
+    type: String,
+    nullable: true,
+    description: '去除首尾空格后最多100字符；空串保存为null',
+  })
   @ValidateIf((_object, value) => value !== null)
   @IsString()
-  @MaxLength(100)
   phone!: string | null;
-  @ApiProperty({ type: String, nullable: true, maxLength: 500 })
+  @ApiProperty({
+    type: String,
+    nullable: true,
+    description: '去除首尾空格后最多500字符；空串保存为null',
+  })
   @ValidateIf((_object, value) => value !== null)
   @IsString()
-  @MaxLength(500)
   address!: string | null;
 }
 
@@ -45,13 +44,11 @@ export class CorrectCaseAcceptanceDto {
   @ApiProperty({ format: 'date' })
   @IsString()
   acceptedAt!: string;
-  @ApiProperty({ minLength: 1, maxLength: 100 })
+  @ApiProperty({ description: '去除首尾空格后1至100字符' })
   @IsString()
-  @MaxLength(100)
   courtCaseNo!: string;
-  @ApiProperty({ minLength: 1, maxLength: 500 })
+  @ApiProperty({ description: '去除首尾空格后1至500字符' })
   @IsString()
-  @MaxLength(500)
   reason!: string;
 }
 

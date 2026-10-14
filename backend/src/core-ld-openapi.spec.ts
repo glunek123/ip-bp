@@ -683,6 +683,30 @@ describe('CORE-LD-002 OpenAPI contract', () => {
     },
   );
 
+  it('documents case record edit limits as applying after trimming', () => {
+    const document = SwaggerModule.createDocument(
+      app,
+      new DocumentBuilder().setTitle('test').setVersion('1').build(),
+    );
+    for (const [schemaName, fields] of [
+      ['UpdateDefendantContactDto', ['phone', 'address']],
+      ['CorrectCaseAcceptanceDto', ['courtCaseNo', 'reason']],
+    ] as const) {
+      const schema = document.components?.schemas?.[schemaName] as {
+        properties: Record<
+          string,
+          { description?: string; maxLength?: number }
+        >;
+      };
+      for (const field of fields) {
+        expect(schema.properties[field].description).toContain(
+          '去除首尾空格后',
+        );
+        expect(schema.properties[field].maxLength).toBeUndefined();
+      }
+    }
+  });
+
   it('documents the CA-011 execution submission result schema', () => {
     const document = SwaggerModule.createDocument(
       app,
