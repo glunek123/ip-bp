@@ -106,11 +106,39 @@ export type AcceptanceCorrectionEdit = {
     recordedByUserId: string;
   }>;
 };
+export type SecondInstanceAcceptanceEdit = {
+  choiceId: string;
+  trialRoundId: string;
+  acceptanceRevision: number;
+  acceptedAt: string | null;
+  courtCaseNo: string | null;
+  canEdit: boolean;
+  history: Array<{
+    id: string;
+    priorChangeId: string | null;
+    fromRevision: number;
+    toRevision: number;
+    acceptedAt: string | null;
+    courtCaseNo: string | null;
+    reason: string | null;
+    recordedAt: string;
+    recordedByUserId: string;
+  }>;
+};
+export type SecondInstanceAcceptance = {
+  choiceId: string;
+  trialRoundId: string;
+  acceptedAt: string | null;
+  courtCaseNo: string | null;
+  recordedAt: string | null;
+};
 export type CaseRecordEdits = {
   canUpdateDefendantContact: boolean;
   canCorrectAcceptance: boolean;
   defendantContacts: DefendantContactEdit[];
   acceptanceCorrections: AcceptanceCorrectionEdit[];
+  canSaveSecondInstanceAcceptance?: boolean;
+  secondInstanceAcceptances?: SecondInstanceAcceptanceEdit[];
 };
 export type CaseLawyer = {
   id: string;
@@ -853,6 +881,7 @@ export type CaseSecondInstance = {
   progresses: CaseSecondInstanceProgress[];
   results: CaseSecondInstanceResult[];
   revocations: CaseSecondInstanceRevocation[];
+  acceptances?: SecondInstanceAcceptance[];
 };
 export type LawyerCaseSecondInstance = {
   currentTrialRoundId: string | null;
@@ -862,6 +891,7 @@ export type LawyerCaseSecondInstance = {
   progresses: LawyerSecondInstanceProgress[];
   results: LawyerSecondInstanceResult[];
   revocations: LawyerSecondInstanceRevocation[];
+  acceptances?: SecondInstanceAcceptance[];
 };
 export type CaseAcceptanceHistory = CaseAcceptance;
 export type LawyerCaseAcceptanceHistory = Omit<
@@ -2210,6 +2240,8 @@ function validCaseDetail(value: unknown, id: string): value is CaseDetail {
         value.defendants,
         value.acceptances,
         value.acceptance,
+        value.secondInstance,
+        value.judgmentNextStep,
       )) &&
     validSecondInstance(value.secondInstance, true) &&
     typeof value.canSubmitExecution === 'boolean' &&
@@ -2406,15 +2438,19 @@ function validSecondInstanceRevocation(
 function validSecondInstance(value: unknown, internal: boolean): boolean {
   if (
     !record(value) ||
-    !exact(value, [
-      'currentTrialRoundId',
-      'currentProgress',
-      'currentResult',
-      'rounds',
-      'progresses',
-      'results',
-      'revocations',
-    ])
+    !exactWithOptional(
+      value,
+      [
+        'currentTrialRoundId',
+        'currentProgress',
+        'currentResult',
+        'rounds',
+        'progresses',
+        'results',
+        'revocations',
+      ],
+      ['acceptances'],
+    )
   )
     return false;
   return (
@@ -2434,7 +2470,36 @@ function validSecondInstance(value: unknown, internal: boolean): boolean {
     Array.isArray(value.revocations) &&
     value.revocations.every((item) =>
       validSecondInstanceRevocation(item, internal),
-    )
+    ) &&
+    (!('acceptances' in value) ||
+      (Array.isArray(value.acceptances) &&
+        value.acceptances.every(validSecondInstanceAcceptanceProjection)))
+  );
+}
+function validSecondInstanceAcceptanceProjection(value: unknown): boolean {
+  return (
+    record(value) &&
+    exact(value, [
+      'choiceId',
+      'trialRoundId',
+      'acceptedAt',
+      'courtCaseNo',
+      'recordedAt',
+    ]) &&
+    uuidV4(value.choiceId) &&
+    uuidV4(value.trialRoundId) &&
+    (value.acceptedAt === null || businessDate(value.acceptedAt)) &&
+    (value.courtCaseNo === null ||
+      (typeof value.courtCaseNo === 'string' &&
+        value.courtCaseNo.length > 0 &&
+        value.courtCaseNo.trim() === value.courtCaseNo &&
+        value.courtCaseNo.length <= 100)) &&
+    (value.recordedAt === null ||
+      (typeof value.recordedAt === 'string' &&
+        !Number.isNaN(Date.parse(value.recordedAt)))) &&
+    (value.acceptedAt !== null || value.courtCaseNo !== null) &&
+    (value.recordedAt !== null ||
+      (value.acceptedAt === null && value.courtCaseNo === null))
   );
 }
 function validAcceptanceHistory(value: unknown, internal: boolean): boolean {
@@ -2486,15 +2551,23 @@ function validRecordEdits(
   defendants: unknown,
   acceptances: unknown,
   acceptance: unknown,
+  secondInstance: unknown,
+  judgmentNextStep: unknown,
 ): value is CaseRecordEdits {
   if (
     !record(value) ||
-    !exact(value, [
-      'canUpdateDefendantContact',
-      'canCorrectAcceptance',
-      'defendantContacts',
-      'acceptanceCorrections',
-    ]) ||
+    !exactWithOptional(
+      value,
+      [
+        'canUpdateDefendantContact',
+        'canCorrectAcceptance',
+        'defendantContacts',
+        'acceptanceCorrections',
+      ],
+      ['canSaveSecondInstanceAcceptance', 'secondInstanceAcceptances'],
+    ) ||
+    'canSaveSecondInstanceAcceptance' in value !==
+      'secondInstanceAcceptances' in value ||
     typeof value.canUpdateDefendantContact !== 'boolean' ||
     typeof value.canCorrectAcceptance !== 'boolean' ||
     !Array.isArray(defendants) ||
@@ -2652,13 +2725,170 @@ function validRecordEdits(
     )
       return false;
   }
-  return (
+  const legacyValid =
     acceptance === null ||
     (record(acceptance) &&
       acceptanceById.get(String(acceptance.id))?.acceptedAt ===
         acceptance.acceptedAt &&
       acceptanceById.get(String(acceptance.id))?.courtCaseNo ===
-        acceptance.courtCaseNo)
+        acceptance.courtCaseNo);
+  if (!legacyValid) return false;
+  if (!('canSaveSecondInstanceAcceptance' in value)) return true;
+  return (
+    typeof value.canSaveSecondInstanceAcceptance === 'boolean' &&
+    Array.isArray(value.secondInstanceAcceptances) &&
+    validSecondInstanceAcceptanceEdits(
+      value.secondInstanceAcceptances,
+      secondInstance,
+      judgmentNextStep,
+    )
+  );
+}
+function validSecondInstanceAcceptanceEdits(
+  value: unknown,
+  secondInstance: unknown,
+  judgmentNextStep: unknown,
+): boolean {
+  if (
+    !Array.isArray(value) ||
+    !record(secondInstance) ||
+    !Array.isArray(secondInstance.acceptances) ||
+    !record(judgmentNextStep) ||
+    !Array.isArray(judgmentNextStep.history)
+  )
+    return false;
+  const choices = [
+    ...judgmentNextStep.history,
+    ...(judgmentNextStep.current === null ? [] : [judgmentNextStep.current]),
+  ];
+  const appealChoices = new Map<string, string>();
+  for (const choice of choices) {
+    if (
+      !record(choice) ||
+      choice.next !== 'APPEAL' ||
+      !uuidV4(choice.id) ||
+      !uuidV4(choice.trialRoundId)
+    )
+      continue;
+    appealChoices.set(choice.id, choice.trialRoundId);
+  }
+  const projections = new Map<string, SecondInstanceAcceptance>();
+  for (const entry of secondInstance.acceptances) {
+    if (!validSecondInstanceAcceptanceProjection(entry)) return false;
+    const item = entry as unknown as SecondInstanceAcceptance;
+    if (
+      appealChoices.get(item.choiceId) !== item.trialRoundId ||
+      projections.has(item.choiceId)
+    )
+      return false;
+    projections.set(item.choiceId, item);
+  }
+  if (value.length !== appealChoices.size) return false;
+  const seen = new Set<string>();
+  for (const entry of value) {
+    if (
+      !record(entry) ||
+      !exact(entry, [
+        'choiceId',
+        'trialRoundId',
+        'acceptanceRevision',
+        'acceptedAt',
+        'courtCaseNo',
+        'canEdit',
+        'history',
+      ]) ||
+      !uuidV4(entry.choiceId) ||
+      !uuidV4(entry.trialRoundId) ||
+      appealChoices.get(entry.choiceId) !== entry.trialRoundId ||
+      seen.has(entry.choiceId) ||
+      !Number.isInteger(entry.acceptanceRevision) ||
+      (entry.acceptanceRevision as number) < 0 ||
+      typeof entry.canEdit !== 'boolean' ||
+      !Array.isArray(entry.history) ||
+      ![entry.acceptedAt, entry.courtCaseNo].every(
+        (field) => field === null || typeof field === 'string',
+      ) ||
+      (entry.acceptedAt !== null && !businessDate(entry.acceptedAt)) ||
+      (entry.courtCaseNo !== null &&
+        (typeof entry.courtCaseNo !== 'string' ||
+          !entry.courtCaseNo ||
+          entry.courtCaseNo.trim() !== entry.courtCaseNo ||
+          entry.courtCaseNo.length > 100))
+    )
+      return false;
+    seen.add(entry.choiceId);
+    const projection = projections.get(entry.choiceId);
+    if (entry.acceptanceRevision === 0) {
+      if (
+        projection ||
+        entry.acceptedAt !== null ||
+        entry.courtCaseNo !== null ||
+        entry.history.length > 0
+      )
+        return false;
+    } else if (
+      !projection ||
+      projection.trialRoundId !== entry.trialRoundId ||
+      projection.acceptedAt !== entry.acceptedAt ||
+      projection.courtCaseNo !== entry.courtCaseNo
+    )
+      return false;
+    let revision = 0;
+    let priorChangeId: string | null = null;
+    let acceptedAt: string | null = null;
+    let courtCaseNo: string | null = null;
+    for (const change of entry.history) {
+      if (
+        !record(change) ||
+        !exact(change, [
+          'id',
+          'priorChangeId',
+          'fromRevision',
+          'toRevision',
+          'acceptedAt',
+          'courtCaseNo',
+          'reason',
+          'recordedAt',
+          'recordedByUserId',
+        ]) ||
+        !uuidV4(change.id) ||
+        change.priorChangeId !== priorChangeId ||
+        change.fromRevision !== revision ||
+        change.toRevision !== revision + 1 ||
+        (change.acceptedAt !== null && !businessDate(change.acceptedAt)) ||
+        (change.courtCaseNo !== null &&
+          (typeof change.courtCaseNo !== 'string' ||
+            !change.courtCaseNo ||
+            change.courtCaseNo.trim() !== change.courtCaseNo ||
+            change.courtCaseNo.length > 100)) ||
+        (revision === 0
+          ? change.reason !== null
+          : typeof change.reason !== 'string' ||
+            !change.reason.trim() ||
+            change.reason.trim() !== change.reason ||
+            change.reason.length > 500) ||
+        typeof change.recordedAt !== 'string' ||
+        Number.isNaN(Date.parse(change.recordedAt)) ||
+        !uuidV4(change.recordedByUserId)
+      )
+        return false;
+      revision += 1;
+      priorChangeId = change.id;
+      acceptedAt = change.acceptedAt as string | null;
+      courtCaseNo = change.courtCaseNo as string | null;
+    }
+    if (
+      revision !== entry.acceptanceRevision ||
+      (revision === 0 &&
+        (entry.acceptedAt !== null || entry.courtCaseNo !== null)) ||
+      (revision > 0 &&
+        (entry.acceptedAt !== acceptedAt || entry.courtCaseNo !== courtCaseNo))
+    )
+      return false;
+  }
+  return (
+    seen.size === value.length &&
+    [...projections.keys()].every((choiceId) => seen.has(choiceId))
   );
 }
 function validFilingCourt(value: unknown): value is FilingCourt {
@@ -4690,6 +4920,25 @@ export type CorrectCaseAcceptanceResult = {
   courtCaseNo: string;
   recordedAt: string;
 };
+export type SaveSecondInstanceAcceptanceInput = {
+  choiceId: string;
+  trialRoundId: string;
+  expectedAcceptanceRevision: number;
+  idempotencyKey: string;
+  acceptedAt: string | null;
+  courtCaseNo: string | null;
+  reason: string | null;
+};
+export type SaveSecondInstanceAcceptanceResult = {
+  caseId: string;
+  choiceId: string;
+  trialRoundId: string;
+  changeId: string;
+  acceptanceRevision: number;
+  acceptedAt: string | null;
+  courtCaseNo: string | null;
+  recordedAt: string;
+};
 
 function writeRequestOptions(
   idempotencyKey: string,
@@ -4821,6 +5070,77 @@ export async function correctCaseAcceptance(
   )
     throw invalidResponse();
   return response as CorrectCaseAcceptanceResult;
+}
+
+export async function saveSecondInstanceAcceptance(
+  id: string,
+  input: SaveSecondInstanceAcceptanceInput,
+  options: RequestOptions = {},
+): Promise<SaveSecondInstanceAcceptanceResult> {
+  if (
+    (input.acceptedAt !== null && !businessDate(input.acceptedAt)) ||
+    (input.courtCaseNo !== null && typeof input.courtCaseNo !== 'string') ||
+    (input.reason !== null && typeof input.reason !== 'string')
+  )
+    throw new ApiError('二审受理信息无效', 400, 'VALIDATION_ERROR');
+  const courtCaseNo = input.courtCaseNo?.trim() || null;
+  const reason = input.reason?.trim() || null;
+  if (
+    !uuidV4(id) ||
+    !uuidV4(input.choiceId) ||
+    !uuidV4(input.trialRoundId) ||
+    !Number.isInteger(input.expectedAcceptanceRevision) ||
+    input.expectedAcceptanceRevision < 0 ||
+    !validIdempotencyKey(input.idempotencyKey) ||
+    (courtCaseNo !== null && courtCaseNo.length > 100) ||
+    (input.expectedAcceptanceRevision === 0 &&
+      input.acceptedAt === null &&
+      courtCaseNo === null) ||
+    (input.expectedAcceptanceRevision === 0
+      ? reason !== null
+      : reason === null || reason.length > 500)
+  )
+    throw new ApiError('二审受理信息无效', 400, 'VALIDATION_ERROR');
+  const response = await requestJson(
+    `/cases/${encodeURIComponent(id)}/second-instance-acceptance-save`,
+    {
+      ...writeRequestOptions(input.idempotencyKey, options),
+      method: 'POST',
+      body: {
+        choiceId: input.choiceId,
+        trialRoundId: input.trialRoundId,
+        expectedAcceptanceRevision: input.expectedAcceptanceRevision,
+        idempotencyKey: input.idempotencyKey,
+        acceptedAt: input.acceptedAt,
+        courtCaseNo,
+        reason,
+      },
+    },
+  );
+  if (
+    !record(response) ||
+    !exact(response, [
+      'caseId',
+      'choiceId',
+      'trialRoundId',
+      'changeId',
+      'acceptanceRevision',
+      'acceptedAt',
+      'courtCaseNo',
+      'recordedAt',
+    ]) ||
+    response.caseId !== id ||
+    response.choiceId !== input.choiceId ||
+    response.trialRoundId !== input.trialRoundId ||
+    !uuidV4(response.changeId) ||
+    response.acceptanceRevision !== input.expectedAcceptanceRevision + 1 ||
+    response.acceptedAt !== input.acceptedAt ||
+    response.courtCaseNo !== courtCaseNo ||
+    typeof response.recordedAt !== 'string' ||
+    Number.isNaN(Date.parse(response.recordedAt))
+  )
+    throw invalidResponse();
+  return response as SaveSecondInstanceAcceptanceResult;
 }
 
 export async function matchCase(

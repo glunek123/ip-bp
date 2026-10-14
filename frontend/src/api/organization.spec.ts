@@ -247,6 +247,11 @@ const context = {
       scopes: ['SELF', 'TEAM', 'DEPARTMENT'],
     },
     {
+      action: 'CASE_SECOND_INSTANCE_ACCEPTANCE_UPDATE',
+      label: '\u66f4\u65b0\u4e8c\u5ba1\u53d7\u7406\u4fe1\u606f',
+      scopes: ['SELF', 'TEAM', 'DEPARTMENT'],
+    },
+    {
       action: 'CASE_DEFENDANT_CONTACT_UPDATE',
       label: '\u66f4\u65b0\u88ab\u544a\u8054\u7cfb\u65b9\u5f0f',
       scopes: ['SELF', 'TEAM', 'DEPARTMENT'],
@@ -466,6 +471,7 @@ describe('organization API', () => {
       'CASE_FILING_SUBMIT',
       'CASE_ACCEPTANCE_REGISTER',
       'CASE_ACCEPTANCE_CORRECT',
+      'CASE_SECOND_INSTANCE_ACCEPTANCE_UPDATE',
       'CASE_DEFENDANT_CONTACT_UPDATE',
       'CASE_HEARING_SCHEDULE',
       'CASE_HEARING_CORRECT',
@@ -663,6 +669,7 @@ describe('organization API', () => {
     'CASE_EXECUTION_FILING_SUBMIT',
     'CASE_EXECUTION_FINISH',
     'CASE_ACCEPTANCE_CORRECT',
+    'CASE_SECOND_INSTANCE_ACCEPTANCE_UPDATE',
     'CASE_DEFENDANT_CONTACT_UPDATE',
     'CASE_CLOSURE_RECORD',
     'CASE_CLOSURE_CORRECT',

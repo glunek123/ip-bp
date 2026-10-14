@@ -176,6 +176,35 @@ function mountPanel(
 }
 
 describe('CaseSecondInstancePanel', () => {
+  it('uses the matching appeal and round acceptance as the result lower bound', () => {
+    const detail = item();
+    detail.acceptance!.acceptedAt = '2026-10-01';
+    detail.secondInstance.acceptances = [
+      {
+        choiceId: choice1,
+        trialRoundId: round1,
+        acceptedAt: '2026-10-12',
+        courtCaseNo: 'CN-OLD-ROUND',
+        recordedAt: '2026-10-12T01:00:00Z',
+      },
+      {
+        choiceId: choice2,
+        trialRoundId: round2,
+        acceptedAt: '2026-10-08',
+        courtCaseNo: 'CN-CURRENT-ROUND',
+        recordedAt: '2026-10-08T01:00:00Z',
+      },
+    ];
+
+    const wrapper = mountPanel({ item: detail });
+
+    expect(
+      wrapper
+        .get('[data-test="second-instance-received-at"]')
+        .attributes('min'),
+    ).toBe('2026-10-08');
+  });
+
   it('uses only the current appeal after a same-round revoke and rechoose', async () => {
     api.saveSecondInstance.mockResolvedValueOnce({});
     api.registerSecondInstanceResult.mockResolvedValueOnce({});

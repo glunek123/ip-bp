@@ -870,6 +870,29 @@ describe('case workspace read model', () => {
     item.acceptance = acceptance;
     item.acceptances = [acceptance];
     item.courtCaseNo = acceptance.courtCaseNo;
+    item.judgmentNextStep.current = {
+      id: 'choice-2',
+      trialRoundId: 'round-2',
+      judgmentId: 'judgment-2',
+      next: 'APPEAL',
+      plaintiffRightsHolderId: null,
+      plaintiffName: null,
+      defendants: [],
+      executionReadinessConfirmed: false,
+      fromVersion: 1,
+      toVersion: 2,
+      recordedAt: '2026-10-05T00:30:00Z',
+    };
+    item.judgmentNextStep.history = [item.judgmentNextStep.current];
+    item.secondInstance.acceptances = [
+      {
+        choiceId: 'choice-2',
+        trialRoundId: 'round-2',
+        acceptedAt: '2026-10-08',
+        courtCaseNo: 'CN-SECOND-2',
+        recordedAt: '2026-10-08T01:00:00Z',
+      },
+    ];
     item.recordEdits = {
       canUpdateDefendantContact: true,
       canCorrectAcceptance: true,
@@ -909,6 +932,41 @@ describe('case workspace read model', () => {
               courtCaseNo: 'CN-2',
               reason: '登记信息订正',
               recordedAt: '2026-10-05T03:00:00Z',
+              recordedByUserId: 'operator-1',
+            },
+          ],
+        },
+      ],
+      canSaveSecondInstanceAcceptance: true,
+      secondInstanceAcceptances: [
+        {
+          choiceId: 'choice-2',
+          trialRoundId: 'round-2',
+          acceptanceRevision: 2,
+          acceptedAt: '2026-10-08',
+          courtCaseNo: 'CN-SECOND-2',
+          canEdit: true,
+          history: [
+            {
+              id: 'second-acceptance-change-1',
+              priorChangeId: null,
+              fromRevision: 0,
+              toRevision: 1,
+              acceptedAt: '2026-10-07',
+              courtCaseNo: 'CN-SECOND-1',
+              reason: null,
+              recordedAt: '2026-10-07T01:00:00Z',
+              recordedByUserId: 'operator-1',
+            },
+            {
+              id: 'second-acceptance-change-2',
+              priorChangeId: 'second-acceptance-change-1',
+              fromRevision: 1,
+              toRevision: 2,
+              acceptedAt: '2026-10-08',
+              courtCaseNo: 'CN-SECOND-2',
+              reason: '更正案号',
+              recordedAt: '2026-10-08T01:00:00Z',
               recordedByUserId: 'operator-1',
             },
           ],
@@ -962,9 +1020,34 @@ describe('case workspace read model', () => {
             }),
           ]),
         }),
+        expect.objectContaining({
+          source: 'second-instance-acceptance',
+          id: 'second-acceptance-change-2',
+          fields: expect.arrayContaining([
+            expect.objectContaining({
+              label: '二审受理日期',
+              value: '2026-10-08',
+            }),
+            expect.objectContaining({
+              label: '二审案号',
+              value: 'CN-SECOND-2',
+            }),
+            expect.objectContaining({ label: '更正原因', value: '更正案号' }),
+          ]),
+        }),
       ]),
     );
     const sections = buildCaseWorkspaceSections(item, null, 'idle');
+    expect(
+      JSON.stringify(
+        sections.find((section) => section.key === 'second-instance'),
+      ),
+    ).toContain('CN-SECOND-2');
+    expect(
+      JSON.stringify(
+        sections.find((section) => section.key === 'first-instance'),
+      ),
+    ).toContain('CN-2');
     expect(
       sections.find((section) => section.key === 'first-instance')?.groups,
     ).toEqual(

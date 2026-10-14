@@ -7,6 +7,7 @@ import {
   getCase,
   updateCaseDefendantContact,
   correctCaseAcceptance,
+  saveSecondInstanceAcceptance,
   listFilingCourts,
   listCases,
   listLawyerCases,
@@ -570,6 +571,37 @@ describe('cases API', () => {
         },
       ],
     };
+    const choiceId = '90000000-0000-4000-8000-000000000031';
+    const trialRoundId = '90000000-0000-4000-8000-000000000032';
+    const appealChoice = {
+      id: choiceId,
+      trialRoundId,
+      judgmentId: '90000000-0000-4000-8000-000000000034',
+      next: 'APPEAL',
+      plaintiffRightsHolderId: '90000000-0000-4000-8000-000000000035',
+      plaintiffName: '测试权利人',
+      defendants: [],
+      executionReadinessConfirmed: false,
+      fromVersion: 1,
+      toVersion: 2,
+      recordedAt: '2026-10-06T03:00:00.000Z',
+      recordedByUserId: '90000000-0000-4000-8000-000000000030',
+    };
+    const updatedRecordEdits = {
+      ...recordEdits,
+      canSaveSecondInstanceAcceptance: true,
+      secondInstanceAcceptances: [
+        {
+          choiceId,
+          trialRoundId,
+          acceptanceRevision: 0,
+          acceptedAt: null,
+          courtCaseNo: null,
+          canEdit: true,
+          history: [],
+        },
+      ],
+    };
     const payload = {
       ...detail,
       id: archiveCaseId,
@@ -586,21 +618,104 @@ describe('cases API', () => {
       ],
       acceptance,
       acceptances: [acceptance],
-      recordEdits,
+      recordEdits: updatedRecordEdits,
+      judgmentNextStep: {
+        current: appealChoice,
+        history: [appealChoice],
+        revocations: [],
+      },
+      secondInstance: {
+        ...detail.secondInstance,
+        acceptances: [],
+      },
     };
     mockJson(payload);
     await expect(getCase(archiveCaseId)).resolves.toMatchObject({
-      recordEdits: { defendantContacts: [{ contactRevision: 1 }] },
       acceptance: { acceptedAt: '2026-10-06', courtCaseNo: 'CN-2' },
+      secondInstance: { acceptances: [] },
+      recordEdits: {
+        canSaveSecondInstanceAcceptance: true,
+        secondInstanceAcceptances: [
+          { choiceId, acceptanceRevision: 0, canEdit: true },
+        ],
+      },
+    });
+
+    const change = {
+      id: '90000000-0000-4000-8000-000000000036',
+      priorChangeId: null,
+      fromRevision: 0,
+      toRevision: 1,
+      acceptedAt: '2026-10-07',
+      courtCaseNo: 'CN-SECOND-1',
+      reason: null,
+      recordedAt: '2026-10-07T03:00:00.000Z',
+      recordedByUserId: '90000000-0000-4000-8000-000000000030',
+    };
+    const registeredProjection = {
+      choiceId,
+      trialRoundId,
+      acceptedAt: change.acceptedAt,
+      courtCaseNo: change.courtCaseNo,
+      recordedAt: change.recordedAt,
+    };
+    mockJson({
+      ...payload,
+      secondInstance: {
+        ...payload.secondInstance,
+        acceptances: [registeredProjection],
+      },
+      recordEdits: {
+        ...updatedRecordEdits,
+        secondInstanceAcceptances: [
+          {
+            choiceId,
+            trialRoundId,
+            acceptanceRevision: 1,
+            acceptedAt: change.acceptedAt,
+            courtCaseNo: change.courtCaseNo,
+            canEdit: true,
+            history: [change],
+          },
+        ],
+      },
+    });
+    await expect(getCase(archiveCaseId)).resolves.toMatchObject({
+      secondInstance: { acceptances: [registeredProjection] },
+      recordEdits: {
+        secondInstanceAcceptances: [
+          { acceptanceRevision: 1, history: [change] },
+        ],
+      },
+    });
+
+    mockJson({ ...payload, recordEdits });
+    const legacyResponse = await getCase(archiveCaseId);
+    expect(legacyResponse.recordEdits).not.toHaveProperty(
+      'canSaveSecondInstanceAcceptance',
+    );
+    expect(legacyResponse.recordEdits).not.toHaveProperty(
+      'secondInstanceAcceptances',
+    );
+
+    mockJson({
+      ...payload,
+      recordEdits: {
+        ...updatedRecordEdits,
+        secondInstanceAcceptances: undefined,
+      },
+    });
+    await expect(getCase(archiveCaseId)).rejects.toMatchObject({
+      code: 'INVALID_RESPONSE',
     });
 
     mockJson({
       ...payload,
       recordEdits: {
-        ...recordEdits,
+        ...updatedRecordEdits,
         acceptanceCorrections: [
           {
-            ...recordEdits.acceptanceCorrections[0],
+            ...updatedRecordEdits.acceptanceCorrections[0],
             acceptanceRevision: 2,
           },
         ],
@@ -678,6 +793,67 @@ describe('cases API', () => {
     });
     expect(new Headers(init.headers).get('Idempotency-Key')).toBe(
       'acceptance-correction-key',
+    );
+  });
+
+  it('saves the separate second-instance acceptance record with revision-bound body and allows a justified clear', async () => {
+    const input = {
+      choiceId: '90000000-0000-4000-8000-000000000021',
+      trialRoundId: '90000000-0000-4000-8000-000000000022',
+      expectedAcceptanceRevision: 0,
+      idempotencyKey: 'second-acceptance-first-key',
+      acceptedAt: '2026-10-06',
+      courtCaseNo: ' CN-2 ',
+      reason: null,
+    };
+    const firstResponse = {
+      caseId: archiveCaseId,
+      choiceId: input.choiceId,
+      trialRoundId: input.trialRoundId,
+      changeId: '90000000-0000-4000-8000-000000000023',
+      acceptanceRevision: 1,
+      acceptedAt: input.acceptedAt,
+      courtCaseNo: 'CN-2',
+      recordedAt: '2026-10-14T01:00:00.000Z',
+    };
+    const fetch = mockJson(firstResponse, 201);
+    await expect(
+      saveSecondInstanceAcceptance(archiveCaseId, input),
+    ).resolves.toEqual(firstResponse);
+    const [url, init] = fetch.mock.calls[0] as [string, RequestInit];
+    expect(url).toBe(
+      `/api/v1/cases/${archiveCaseId}/second-instance-acceptance-save`,
+    );
+    expect(JSON.parse(String(init.body))).toEqual({
+      ...input,
+      courtCaseNo: 'CN-2',
+    });
+    expect(new Headers(init.headers).get('Idempotency-Key')).toBe(
+      input.idempotencyKey,
+    );
+
+    const clearInput = {
+      ...input,
+      expectedAcceptanceRevision: 1,
+      idempotencyKey: 'second-acceptance-correction-key',
+      acceptedAt: null,
+      courtCaseNo: null,
+      reason: '更正误录的二审受理信息',
+    };
+    const clearResponse = {
+      ...firstResponse,
+      changeId: '90000000-0000-4000-8000-000000000024',
+      acceptanceRevision: 2,
+      acceptedAt: null,
+      courtCaseNo: null,
+      recordedAt: '2026-10-14T02:00:00.000Z',
+    };
+    const clearFetch = mockJson(clearResponse, 201);
+    await expect(
+      saveSecondInstanceAcceptance(archiveCaseId, clearInput),
+    ).resolves.toEqual(clearResponse);
+    expect(JSON.parse(String(clearFetch.mock.calls[0]?.[1]?.body))).toEqual(
+      clearInput,
     );
   });
 

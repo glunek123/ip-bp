@@ -256,6 +256,30 @@ export function buildCaseWorkspaceEvents(item: CaseDetail): WorkspaceEvent[] {
       beforeCourtCaseNo = correction.courtCaseNo;
     }
   }
+  for (const entry of item.recordEdits?.secondInstanceAcceptances ?? []) {
+    let beforeAcceptedAt: string | null = null;
+    let beforeCourtCaseNo: string | null = null;
+    for (const change of entry.history) {
+      add(
+        'second-instance-acceptance',
+        change.id,
+        '二审受理信息更正',
+        change.acceptedAt,
+        change.recordedAt,
+        [
+          field('choice标识', entry.choiceId),
+          field('二审前受理日期', beforeAcceptedAt),
+          field('二审前案号', beforeCourtCaseNo),
+          field('二审受理日期', change.acceptedAt),
+          field('二审案号', change.courtCaseNo),
+          field('更正原因', change.reason),
+          ...actor(change.recordedByUserId),
+        ],
+      );
+      beforeAcceptedAt = change.acceptedAt;
+      beforeCourtCaseNo = change.courtCaseNo;
+    }
+  }
   if (item.complaint) {
     const value = item.complaint;
     add('complaint', item.id, '诉状提交', null, value.submittedAt, [
@@ -695,6 +719,9 @@ export function buildCaseWorkspaceSections(
     ...(item.recordEdits?.acceptanceCorrections.flatMap((entry) =>
       entry.history.length ? [entry.history.at(-1)!.id] : [],
     ) ?? []),
+    ...(item.recordEdits?.secondInstanceAcceptances?.flatMap((entry) =>
+      entry.history.length ? [entry.history.at(-1)!.id] : [],
+    ) ?? []),
   ]);
   function groups(sources: readonly string[]): WorkspaceGroup[] {
     return events
@@ -962,6 +989,15 @@ export function buildCaseWorkspaceSections(
     'second-instance',
     '二审信息',
     [
+      ...(item.secondInstance.acceptances ?? []).map((value) => ({
+        id: `acceptance:${value.choiceId}:${value.trialRoundId}`,
+        title: '二审受理信息',
+        fields: [
+          field('二审受理日期', value.acceptedAt),
+          field('二审案号', value.courtCaseNo),
+          date('记录时间', value.recordedAt),
+        ],
+      })),
       ...item.secondInstance.rounds.map((value) => ({
         id: `round:${value.id}`,
         title: `审理轮次 ${value.sequence}`,
@@ -971,7 +1007,7 @@ export function buildCaseWorkspaceSections(
           date('撤销时间', value.revokedAt),
         ],
       })),
-      ...groups(['second-progress']),
+      ...groups(['second-instance-acceptance', 'second-progress']),
     ],
     '查看二审进展、开庭及文书资料；二审正式立案日期和案号暂未提供。历史记录只读。',
   );

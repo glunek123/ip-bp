@@ -151,7 +151,20 @@ const canRevoke = computed(
     activeResult.value !== null,
 );
 const activeResult = computed(() => second.value.currentResult);
-const minReceivedDate = computed(() => props.item.acceptance?.acceptedAt ?? '');
+const secondAcceptance = computed(() =>
+  second.value.acceptances?.find(
+    (value) =>
+      value.choiceId === currentChoice.value?.id &&
+      value.trialRoundId === currentRoundId.value,
+  ),
+);
+const minReceivedDate = computed(
+  () =>
+    [props.item.acceptance?.acceptedAt, secondAcceptance.value?.acceptedAt]
+      .filter((value): value is string => value !== null && value !== undefined)
+      .sort()
+      .at(-1) ?? '',
+);
 const validReceivedDate = computed(
   () =>
     /^\d{4}-\d{2}-\d{2}$/u.test(receivedAt.value) &&
@@ -923,7 +936,8 @@ function roundLabel(round: (typeof roundHistory.value)[number]): string {
           )"
           :key="acceptance.id"
         >
-          正式立案：{{ acceptance.acceptedAt }} · {{ acceptance.courtCaseNo }}
+          一审正式立案：{{ acceptance.acceptedAt }} ·
+          {{ acceptance.courtCaseNo }}
           <button
             v-for="file in acceptance.files"
             :key="file.contentVersionId"

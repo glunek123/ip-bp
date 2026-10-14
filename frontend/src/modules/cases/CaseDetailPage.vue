@@ -78,6 +78,7 @@ import CaseFilingPanel from './CaseFilingPanel.vue';
 import CaseAcceptancePanel from './CaseAcceptancePanel.vue';
 import CaseDefendantContactPanel from './CaseDefendantContactPanel.vue';
 import CaseAcceptanceCorrectionPanel from './CaseAcceptanceCorrectionPanel.vue';
+import CaseSecondInstanceAcceptancePanel from './CaseSecondInstanceAcceptancePanel.vue';
 import CaseHearingPanel from './CaseHearingPanel.vue';
 import CaseJudgmentPanel from './CaseJudgmentPanel.vue';
 import CaseJudgmentNextStepPanel from './CaseJudgmentNextStepPanel.vue';
@@ -258,6 +259,15 @@ const commands = computed<WorkspaceCommand[]>(() => {
       : '二审登记／结果／撤销',
   );
   add(
+    current.recordEdits?.canSaveSecondInstanceAcceptance === true &&
+      current.recordEdits.secondInstanceAcceptances?.some(
+        (entry) => entry.canEdit,
+      ) === true,
+    'second-instance-acceptance',
+    'second-instance',
+    '登记或更正二审受理信息',
+  );
+  add(
     (stage === 'WAITING_EXECUTION_DOCUMENTS' ||
       stage === 'WAITING_EXECUTION_CONFIRMATION') &&
       current.canSubmitExecution &&
@@ -410,7 +420,8 @@ const businessCommands = computed(() =>
   commands.value.filter(
     (entry) =>
       entry.id !== 'defendant-contact-update' &&
-      entry.id !== 'acceptance-correction',
+      entry.id !== 'acceptance-correction' &&
+      entry.id !== 'second-instance-acceptance',
   ),
 );
 const sectionActions = computed<Record<SectionKey, SectionAction>>(() => {
@@ -2153,6 +2164,21 @@ onBeforeUnmount(() => {
               :actor-key="secondInstanceActorKey"
               @changed="load"
               @refresh="load"
+            />
+          </div>
+          <div
+            v-if="openedCommands.has('second-instance-acceptance')"
+            v-show="
+              !timelineView && selectedCommand === 'second-instance-acceptance'
+            "
+          >
+            <CaseSecondInstanceAcceptancePanel
+              :item="item"
+              :context-key="workspaceContext"
+              @changed="load"
+              @refresh="load"
+              @access-lost="recordEditAccessLost"
+              @cancel="closeRecordEdit"
             />
           </div>
           <div
