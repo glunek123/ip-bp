@@ -1179,7 +1179,7 @@ test('browser cancels and saves distinct second-instance values; lawyer sees eff
   page,
   request,
   browser,
-}) => {
+}, testInfo) => {
   test.setTimeout(300_000);
   const source = await appealCase(request, true);
   await setSecondInstanceAcceptanceGrant(coreLeadFixtures.roleA, 'TEAM', true);
@@ -1196,12 +1196,28 @@ test('browser cancels and saves distinct second-instance values; lawyer sees eff
   await expect(
     page.locator('[data-test="second-instance-panel"]'),
   ).toContainText('一审');
-  await openAcceptancePanel(page);
+  // Switch within the already open drawer; its modal blocks the page behind it.
+  await page
+    .locator('.case-workspace-editors [data-test="workspace-command"]')
+    .selectOption('second-instance-acceptance');
   const panel = page.locator('[data-test="second-instance-acceptance-panel"]');
   await expect(panel).toBeVisible();
   await panel
     .locator('[data-test="second-instance-acceptance-case-no"]')
     .fill('取消的二审案号');
+  for (const width of [1440, 390]) {
+    await page.setViewportSize({ width, height: width === 390 ? 844 : 900 });
+    expect(
+      await page.evaluate(
+        () => document.documentElement.scrollWidth <= innerWidth,
+      ),
+    ).toBe(true);
+    await page.screenshot({
+      path: testInfo.outputPath(`second-instance-acceptance-${width}.png`),
+      fullPage: true,
+    });
+  }
+  await page.setViewportSize({ width: 1440, height: 900 });
   await panel
     .locator('[data-test="second-instance-acceptance-cancel"]')
     .click();
