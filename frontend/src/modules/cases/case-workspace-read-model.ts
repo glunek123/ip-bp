@@ -993,8 +993,8 @@ export function buildCaseWorkspaceSections(
         id: `acceptance:${value.choiceId}:${value.trialRoundId}`,
         title: '二审受理信息',
         fields: [
-          field('二审受理日期', value.acceptedAt),
-          field('二审案号', value.courtCaseNo),
+          field('二审受理日期', value.acceptedAt ?? '未确定'),
+          field('二审案号', value.courtCaseNo ?? '未提供'),
           date('记录时间', value.recordedAt),
         ],
       })),
@@ -1009,7 +1009,9 @@ export function buildCaseWorkspaceSections(
       })),
       ...groups(['second-instance-acceptance', 'second-progress']),
     ],
-    '查看二审进展、开庭及文书资料；二审正式立案日期和案号暂未提供。历史记录只读。',
+    item.secondInstance.acceptances === undefined
+      ? '二审受理资料暂未提供；可查看已有开庭和文书资料。历史办理记录只读。'
+      : '查看二审受理、开庭及文书资料；日期和案号按实际记录显示。历史办理记录只读。',
   );
   const judgmentEvents = events.filter((event) =>
     ['judgment', 'second-result', 'second-revocation'].includes(event.source),

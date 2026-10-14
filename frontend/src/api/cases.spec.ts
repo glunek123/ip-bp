@@ -689,6 +689,64 @@ describe('cases API', () => {
       },
     });
 
+    const cleared = {
+      ...change,
+      id: '90000000-0000-4000-8000-000000000037',
+      priorChangeId: change.id,
+      fromRevision: 1,
+      toRevision: 2,
+      acceptedAt: null,
+      courtCaseNo: null,
+      reason: '清除误填受理资料',
+      recordedAt: '2026-10-08T03:00:00.000Z',
+    };
+    const clearedProjection = {
+      ...registeredProjection,
+      acceptedAt: null,
+      courtCaseNo: null,
+      recordedAt: cleared.recordedAt,
+    };
+    const clearedPayload = {
+      ...payload,
+      secondInstance: {
+        ...payload.secondInstance,
+        acceptances: [clearedProjection],
+      },
+      recordEdits: {
+        ...updatedRecordEdits,
+        secondInstanceAcceptances: [
+          {
+            choiceId,
+            trialRoundId,
+            acceptanceRevision: 2,
+            acceptedAt: null,
+            courtCaseNo: null,
+            canEdit: true,
+            history: [change, cleared],
+          },
+        ],
+      },
+    };
+    mockJson(clearedPayload);
+    await expect(getCase(archiveCaseId)).resolves.toMatchObject({
+      secondInstance: { acceptances: [clearedProjection] },
+      recordEdits: {
+        secondInstanceAcceptances: [
+          { acceptanceRevision: 2, history: [change, cleared] },
+        ],
+      },
+    });
+    mockJson({
+      ...clearedPayload,
+      secondInstance: {
+        ...payload.secondInstance,
+        acceptances: [{ ...clearedProjection, recordedAt: null }],
+      },
+    });
+    await expect(getCase(archiveCaseId)).rejects.toMatchObject({
+      code: 'INVALID_RESPONSE',
+    });
+
     mockJson({ ...payload, recordEdits });
     const legacyResponse = await getCase(archiveCaseId);
     expect(legacyResponse.recordEdits).not.toHaveProperty(

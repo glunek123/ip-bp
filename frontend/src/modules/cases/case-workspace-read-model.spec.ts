@@ -1043,6 +1043,29 @@ describe('case workspace read model', () => {
         sections.find((section) => section.key === 'second-instance'),
       ),
     ).toContain('CN-SECOND-2');
+    item.secondInstance.acceptances = [
+      {
+        choiceId: 'second-choice-1',
+        trialRoundId: 'round-1',
+        acceptedAt: null,
+        courtCaseNo: null,
+        recordedAt: '2026-10-09T03:00:00Z',
+      },
+    ];
+    const clearedSection = buildCaseWorkspaceSections(item, null, 'idle').find(
+      (section) => section.key === 'second-instance',
+    );
+    expect(clearedSection?.groups).toEqual(
+      expect.arrayContaining([
+        expect.objectContaining({
+          title: '二审受理信息',
+          fields: expect.arrayContaining([
+            expect.objectContaining({ label: '二审受理日期', value: '未确定' }),
+            expect.objectContaining({ label: '二审案号', value: '未提供' }),
+          ]),
+        }),
+      ]),
+    );
     expect(
       JSON.stringify(
         sections.find((section) => section.key === 'first-instance'),

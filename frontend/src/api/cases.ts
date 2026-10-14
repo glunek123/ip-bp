@@ -130,7 +130,7 @@ export type SecondInstanceAcceptance = {
   trialRoundId: string;
   acceptedAt: string | null;
   courtCaseNo: string | null;
-  recordedAt: string | null;
+  recordedAt: string;
 };
 export type CaseRecordEdits = {
   canUpdateDefendantContact: boolean;
@@ -2494,12 +2494,8 @@ function validSecondInstanceAcceptanceProjection(value: unknown): boolean {
         value.courtCaseNo.length > 0 &&
         value.courtCaseNo.trim() === value.courtCaseNo &&
         value.courtCaseNo.length <= 100)) &&
-    (value.recordedAt === null ||
-      (typeof value.recordedAt === 'string' &&
-        !Number.isNaN(Date.parse(value.recordedAt)))) &&
-    (value.acceptedAt !== null || value.courtCaseNo !== null) &&
-    (value.recordedAt !== null ||
-      (value.acceptedAt === null && value.courtCaseNo === null))
+    typeof value.recordedAt === 'string' &&
+    !Number.isNaN(Date.parse(value.recordedAt))
   );
 }
 function validAcceptanceHistory(value: unknown, internal: boolean): boolean {

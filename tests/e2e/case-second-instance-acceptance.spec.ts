@@ -1187,6 +1187,12 @@ test('browser cancels and saves distinct second-instance values; lawyer sees eff
   await expect(page.locator('[data-section="first-instance"]')).toContainText(
     'CE002原一审案号',
   );
+  await page
+    .locator('[data-section="second-instance"] .case-workspace-section__edit')
+    .click();
+  await page
+    .locator('.case-workspace-editors [data-test="workspace-command"]')
+    .selectOption('second-instance-save');
   await expect(
     page.locator('[data-test="second-instance-panel"]'),
   ).toContainText('一审');
@@ -1227,9 +1233,12 @@ test('browser cancels and saves distinct second-instance values; lawyer sees eff
       courtCaseNo: 'CE002浏览器二审案号',
     }),
   );
+  const secondSection = page.locator('[data-section="second-instance"]');
+  await secondSection.locator('.case-workspace-section__toggle').click();
   await expect(
-    page.locator('[data-test="second-instance-panel"]'),
-  ).toContainText('CE002浏览器二审案号');
+    secondSection.locator('.case-workspace-section__body'),
+  ).toBeVisible();
+  await expect(secondSection).toContainText('CE002浏览器二审案号');
   await expect(page.locator('[data-section="first-instance"]')).toContainText(
     'CE002原一审案号',
   );
