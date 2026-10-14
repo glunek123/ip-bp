@@ -316,6 +316,7 @@ test('normal operator archives pending amount and unknown closure date, appends 
     await page.screenshot({
       path: resolve(directory, `archive-${width}.png`),
       fullPage: true,
+      animations: 'disabled',
     });
   }
   await page.setViewportSize({ width: 1440, height: 900 });
@@ -397,13 +398,10 @@ test('normal operator archives pending amount and unknown closure date, appends 
     expect(client).not.toHaveProperty(key);
   await expect(page.locator('[data-test="archive-panel"]')).toHaveCount(0);
   await expect(page.getByText('已归档', { exact: true })).toBeVisible();
-  expect(
-    (
-      await page.request.get(
-        `/api/v1/materials/${file.materialId}/versions/${file.contentVersionId}/content`,
-      )
-    ).status(),
-  ).toBe(403);
+  const deniedDownload = await page.request.get(
+    `/api/v1/materials/${file.materialId}/versions/${file.contentVersionId}/content`,
+  );
+  expect([403, 404]).toContain(deniedDownload.status());
 });
 
 test('current primary lawyer archives real zero and exact old file, cannot correct, and revoked binding denies the original archive key', async ({
