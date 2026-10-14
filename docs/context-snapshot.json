@@ -1,6 +1,6 @@
 {
   "version": 1,
-  "recordedAt": "2026-10-14T17:18:34.827Z",
+  "recordedAt": "2026-10-14T17:20:39.262Z",
   "files": {
     ".cursor/rules/verified-feature-integration.mdc": "da673301f0440a6a9615786027dffc8e01f739a97f81cd97accef1580ac51f98",
     ".env.example": "07211cde5c2b59efc21b619b752d4c9b871f0980d2d64ca3c146ad6151fd27ca",
@@ -758,7 +758,7 @@
     "frontend/src/modules/cases/CasePages.spec.ts": "e5fcd46e0a0cd5c5772ff008a4a1d0d83a79acb6d88520ccdc6555f735eb19f9",
     "frontend/src/modules/cases/CaseRecordEditPanels.spec.ts": "36149ec03e71108ca1e6d1096bf30e941dc9c40fe49d266a46cc7688c5701334",
     "frontend/src/modules/cases/CaseSecondInstanceAcceptancePanel.spec.ts": "a4c985aa4976ed4fa3c6f36420dd3dedd1d31bcb3d669a5cf591d3cbf1216aea",
-    "frontend/src/modules/cases/CaseSecondInstanceAcceptancePanel.vue": "38502d650f5bb95ab9420cb4571e6df196b2cd8c56b75edb068334137b7e4e83",
+    "frontend/src/modules/cases/CaseSecondInstanceAcceptancePanel.vue": "b1bea827457e8758287ce83927b3f7dd96418f64f1d7d3a6dca2983f99642e53",
     "frontend/src/modules/cases/CaseSecondInstancePanel.spec.ts": "0b6b4c45660a8a56b7a1a0bb5cc8f83afc06c3ec52e8a953ee938817abe96cd0",
     "frontend/src/modules/cases/CaseSecondInstancePanel.vue": "9fd29f17a0f4a74d9bd3b688493808882f7b45d6dc62749978a15562ecada206",
     "frontend/src/modules/cases/CaseWorkspaceFees.spec.ts": "bf984f7b0e8ffc61cf49fff6f87825601c02e021d84c0924a50ba8ebc2df7590",

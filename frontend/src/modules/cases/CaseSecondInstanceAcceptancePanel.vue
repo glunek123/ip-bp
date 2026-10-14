@@ -335,7 +335,6 @@ onBeforeUnmount(() => {
           <input
             v-model="courtCaseNo"
             class="text-input"
-            maxlength="100"
             data-test="second-instance-acceptance-case-no"
             :disabled="!allowed || unknownRequest !== null || submitting"
           />
@@ -346,7 +345,6 @@ onBeforeUnmount(() => {
             v-model="reason"
             class="text-input"
             rows="3"
-            maxlength="500"
             data-test="second-instance-acceptance-reason"
             :disabled="!allowed || unknownRequest !== null || submitting"
           />
