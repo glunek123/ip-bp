@@ -140,6 +140,29 @@ function mountSections() {
 }
 
 describe('CaseDetailsSections with the real A2 section shell', () => {
+  it('shows one selected information group, retains it on refresh and resets it on identity changes', async () => {
+    const wrapper = mountSections();
+    const section = wrapper.get('[data-section="case-info"]');
+    await section.get('.case-workspace-section__toggle').trigger('click');
+    const buttons = section.findAll('.case-workspace-group-nav button');
+    expect(buttons).toHaveLength(2);
+    await buttons[1]!.trigger('click');
+    expect(buttons[1]!.attributes('aria-pressed')).toBe('true');
+    expect(
+      section
+        .findAll('.case-workspace-group')
+        .filter((group) => group.isVisible()),
+    ).toHaveLength(1);
+    await wrapper.setProps({ item: { ...caseFixture(), version: 2 } });
+    expect(buttons[1]!.attributes('aria-pressed')).toBe('true');
+    await wrapper.setProps({ contextKey: 'case-1:user-1:revision-2' });
+    expect(buttons[0]!.attributes('aria-pressed')).toBe('true');
+    expect(
+      section
+        .get('.case-workspace-section__toggle')
+        .attributes('aria-expanded'),
+    ).toBe('false');
+  });
   it('renders eight sections in order, all closed, with readable labels, values and helpers', () => {
     const wrapper = mountSections();
     expect(

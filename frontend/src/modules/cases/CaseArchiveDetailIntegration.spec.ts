@@ -502,7 +502,7 @@ describe('actual CA017 archive detail integration', () => {
         expect(wrapper.find('[data-test="archive-form"]').exists()).toBe(false);
         const closure =
           audience === 'internal'
-            ? wrapper.get('[data-section="execution"]')
+            ? wrapper.get('[data-section="closure-info"]')
             : wrapper.findComponent(CaseClosurePanel);
         expect(closure.text()).toContain(file.originalFilename);
         expect(closure.find('[data-test="closure-correct"]').exists()).toBe(

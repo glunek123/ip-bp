@@ -886,7 +886,11 @@ test('an operator matches a real notary case and the result survives refresh', a
   await expect(
     page.getByRole('heading', { name: '当前承办律师', exact: true }),
   ).toBeVisible();
-  await expect(page.getByText(/杭州真实匹配测试公司/u)).toBeVisible();
+  await expect(
+    page
+      .locator('[data-section="case-info"] .case-workspace-group:visible')
+      .getByText('杭州真实匹配测试公司', { exact: true }),
+  ).toBeVisible();
   await expect(page.getByText(/张律师/u)).toBeVisible();
   await expect(
     page

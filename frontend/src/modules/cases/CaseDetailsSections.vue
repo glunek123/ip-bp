@@ -1,5 +1,5 @@
 <script setup lang="ts">
-import { computed } from 'vue';
+import { computed, ref, watch } from 'vue';
 import type { CaseDetail } from '../../api/cases';
 import type { LeadDetail } from '../../api/leads';
 import CaseWorkspaceSection from './CaseWorkspaceSection.vue';
@@ -26,6 +26,25 @@ const sections = computed(() =>
   buildCaseWorkspaceSections(props.item, props.lead, props.leadState),
 );
 const events = computed(() => buildCaseWorkspaceEvents(props.item));
+const selectedGroups = ref<Partial<Record<SectionKey, string>>>({});
+watch(
+  () => props.contextKey,
+  () => {
+    selectedGroups.value = {};
+  },
+  { flush: 'sync' },
+);
+function activeGroup(
+  section: (typeof sections.value)[number],
+): string | undefined {
+  const selected = selectedGroups.value[section.key];
+  if (section.groups.some((group) => group.id === selected)) return selected;
+  return (
+    section.groups.find(
+      (group) => !group.historical && group.id !== 'judgment-state',
+    ) ?? section.groups[0]
+  )?.id;
+}
 function edit(key: SectionKey): void {
   if (props.actions[key].enabled) emit('edit', key);
 }
@@ -59,10 +78,27 @@ function edit(key: SectionKey): void {
       >
         {{ section.message }}
       </p>
+      <nav
+        v-if="section.groups.length > 1"
+        class="case-workspace-group-nav"
+        :aria-label="`${section.title}资料分组`"
+      >
+        <button
+          v-for="(group, index) in section.groups"
+          :key="group.id"
+          type="button"
+          :aria-pressed="activeGroup(section) === group.id"
+          :aria-label="`${group.title}，第${index + 1}组`"
+          @click="selectedGroups[section.key] = group.id"
+        >
+          {{ group.title }}
+        </button>
+      </nav>
       <component
         :is="group.historical ? 'details' : 'div'"
         v-for="group in section.groups"
         :key="group.id"
+        v-show="activeGroup(section) === group.id"
         class="case-workspace-group"
         :class="{ 'case-workspace-group--history': group.historical }"
       >

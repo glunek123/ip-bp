@@ -226,7 +226,7 @@ test('internal case workspace keeps eight closed sections, real file bytes and p
     workspace.locator(
       '[data-section="closure-info"] .case-workspace-section__body',
     ),
-  ).toContainText('尚未登记');
+  ).toContainText('未记录');
   await expect(
     workspace.locator(
       '[data-section="closure-info"] .case-workspace-section__edit',
@@ -332,6 +332,10 @@ test('internal case workspace keeps eight closed sections, real file bytes and p
       .locator('[data-section="execution"] .case-workspace-section__toggle')
       .click();
     await revealCaseWorkspaceSection(page, 'judgment');
+    await page
+      .locator('[data-section="judgment"] .case-workspace-group-nav button')
+      .filter({ hasText: /判决登记（当前）$/u })
+      .click();
     const currentJudgment = page
       .locator('[data-section="judgment"] .case-workspace-group')
       .filter({
@@ -851,7 +855,7 @@ test('lost archive success retains the original body through refresh and SPA rem
   await expect(panel.locator('[data-test="archive-retry"]')).toBeVisible();
   expect(requests).toHaveLength(1);
   await page.locator('[data-test="calendar-nav"]').click();
-  await expect(page.locator('[data-test="archive-panel"]')).toHaveCount(0);
+  await expect(page.locator('[data-test="archive-panel"]')).not.toBeVisible();
   await page.goBack();
   await expect(page).toHaveURL(new RegExp(`/cases/${source.caseId}$`, 'u'));
   expect(requests).toHaveLength(1);
