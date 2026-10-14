@@ -1,4 +1,10 @@
 import { CaseSecondInstanceService } from './case-second-instance.service';
+import { readCaseSourceAnchor } from './case-entry-source';
+
+jest.mock('./case-entry-source', () => ({
+  ...jest.requireActual('./case-entry-source'),
+  readCaseSourceAnchor: jest.fn().mockResolvedValue({ kind: 'NORMAL' }),
+}));
 
 const actor = {
   userId: '11111111-1111-4111-8111-111111111111',
@@ -11,6 +17,7 @@ const choiceId = '55555555-5555-4555-8555-555555555555';
 const judgmentId = '66666666-6666-4666-8666-666666666666';
 const resultId = '99999999-9999-4999-8999-999999999999';
 const documentVersionId = 'aaaaaaaa-aaaa-4aaa-8aaa-aaaaaaaaaaaa';
+const entryId = 'bbbbbbbb-bbbb-4bbb-8bbb-bbbbbbbbbbbb';
 const blank = {
   hearingAt: null,
   hearingPlace: null,
@@ -27,7 +34,14 @@ describe('CaseSecondInstanceService', () => {
       stage: 'SECOND_INSTANCE',
       version: 12,
       currentTrialRoundId: trialRoundId,
-      currentAcceptanceId: '77777777-7777-4777-8777-777777777777',
+      currentTrialRound: {
+        origin: 'NORMAL',
+        externalEntryId: null as string | null,
+        sourceResultId: null as string | null,
+        revokedAt: null,
+      },
+      currentAcceptanceId: '77777777-7777-4777-8777-777777777777' as
+        string | null,
       currentHearingArrangementId: null,
       currentHearingAdvanceId: null,
       currentJudgmentId: judgmentId,
@@ -38,7 +52,8 @@ describe('CaseSecondInstanceService', () => {
         id: string;
         result: 'REMAND' | 'CHANGE' | 'AFFIRM';
         trialRoundId: string;
-        choiceId: string;
+        choiceId: string | null;
+        externalEntryId?: string | null;
         progressId: string | null;
       },
       courtCaseNo: '（2026）京0101民初1号',
@@ -48,6 +63,9 @@ describe('CaseSecondInstanceService', () => {
       },
       currentJudgment: {
         id: judgmentId,
+        trialRoundId,
+        externalEntryId: null as string | null,
+        judgmentReceivedAt: new Date('2026-01-01T00:00:00.000Z'),
         judgmentAmountState: 'KNOWN',
         judgmentAmount: '100.00',
       },
@@ -153,6 +171,230 @@ describe('CaseSecondInstanceService', () => {
     ...(kind === 'CHANGE'
       ? { judgmentAmount: { state: 'KNOWN' as const, amount: '0' } }
       : {}),
+  });
+
+  function directEntryFixture() {
+    const f = fixture();
+    jest.mocked(readCaseSourceAnchor).mockResolvedValueOnce({
+      kind: 'EXTERNAL_ENTRY',
+      entryId,
+      initialStage: 'SECOND_INSTANCE',
+      stageReachedOn: '2026-01-01',
+      known: { acceptedOn: null, secondInstanceAcceptedOn: null },
+    } as never);
+    f.record.currentTrialRound = {
+      origin: 'EXTERNAL_CURRENT',
+      externalEntryId: entryId,
+      sourceResultId: null,
+      revokedAt: null,
+    };
+    f.record.currentAcceptanceId = null;
+    f.record.acceptance = null as never;
+    f.record.currentJudgmentId = null as never;
+    f.record.currentJudgment = null as never;
+    f.record.currentJudgmentNextStepId = null as never;
+    f.record.currentJudgmentNextStep = null as never;
+    return f;
+  }
+
+  it('saves direct second-instance progress with a null choice and exact entry', async () => {
+    const f = directEntryFixture();
+    await f.service.save(actor, caseId, {
+      ...saveInput('external-save'),
+      choiceId: null,
+    });
+    expect(f.tx.caseSecondInstanceProgress.create).toHaveBeenCalledWith(
+      expect.objectContaining({
+        data: expect.objectContaining({
+          choiceId: null,
+          externalEntryId: entryId,
+          trialRoundId,
+        }),
+      }),
+    );
+  });
+
+  it('registers a direct second-instance result and a real REMAND child', async () => {
+    const f = directEntryFixture();
+    const result = await f.service.registerResult(actor, caseId, {
+      ...resultInput('REMAND', 'external-remand'),
+      choiceId: null,
+    });
+    expect(result.stage).toBe('WAITING_FORMAL_ACCEPTANCE');
+    expect(f.tx.caseSecondInstanceResult.create).toHaveBeenCalledWith(
+      expect.objectContaining({
+        data: expect.objectContaining({
+          choiceId: null,
+          judgmentId: null,
+          externalEntryId: entryId,
+        }),
+      }),
+    );
+    expect(f.tx.caseTrialRound.create).toHaveBeenCalledWith(
+      expect.objectContaining({
+        data: expect.objectContaining({
+          sourceResultId: result.resultId,
+          externalEntryId: entryId,
+          origin: 'NORMAL',
+        }),
+      }),
+    );
+  });
+
+  it('registers a direct second-instance CHANGE without a synthetic choice', async () => {
+    const f = directEntryFixture();
+    const result = await f.service.registerResult(actor, caseId, {
+      ...resultInput('CHANGE', 'external-change'),
+      choiceId: null,
+    });
+    expect(result.stage).toBe('WAITING_EXECUTION_DOCUMENTS');
+    expect(f.tx.caseSecondInstanceResult.create).toHaveBeenCalledWith(
+      expect.objectContaining({
+        data: expect.objectContaining({
+          choiceId: null,
+          judgmentId: null,
+          externalEntryId: entryId,
+          judgmentAmountState: 'KNOWN',
+          judgmentAmount: '0.00',
+        }),
+      }),
+    );
+  });
+
+  it.each([
+    [{ state: 'KNOWN' as const, amount: '125.40' }, 'KNOWN', '125.40'],
+    [{ state: 'PENDING' as const, amount: null }, 'PENDING', null],
+  ])(
+    'registers a direct AFFIRM with an explicit %s amount',
+    async (money, state, amount) => {
+      const f = directEntryFixture();
+      const result = await f.service.registerResult(actor, caseId, {
+        ...resultInput('AFFIRM', `external-affirm-${state}`),
+        choiceId: null,
+        judgmentAmount: money,
+      });
+      expect(result.stage).toBe('WAITING_EXECUTION_DOCUMENTS');
+      expect(f.tx.caseSecondInstanceResult.create).toHaveBeenCalledWith(
+        expect.objectContaining({
+          data: expect.objectContaining({
+            choiceId: null,
+            judgmentId: null,
+            externalEntryId: entryId,
+            judgmentAmountState: state,
+            judgmentAmount: amount,
+          }),
+        }),
+      );
+    },
+  );
+
+  it('rejects a direct AFFIRM without an explicit amount state', async () => {
+    const f = directEntryFixture();
+    await expect(
+      f.service.registerResult(actor, caseId, {
+        ...resultInput('AFFIRM', 'external-affirm-missing'),
+        choiceId: null,
+      }),
+    ).rejects.toThrow();
+    expect(f.tx.caseSecondInstanceResult.create).not.toHaveBeenCalled();
+  });
+
+  it('rejects a supplied AFFIRM amount when a real first judgment exists', async () => {
+    const f = fixture();
+    await expect(
+      f.service.registerResult(actor, caseId, {
+        ...resultInput('AFFIRM', 'real-appeal-affirm-supplied'),
+        judgmentAmount: { state: 'KNOWN', amount: '125.40' },
+      }),
+    ).rejects.toThrow();
+    expect(f.tx.caseSecondInstanceResult.create).not.toHaveBeenCalled();
+  });
+
+  it('revokes an untouched direct-entry REMAND and restores null source pointers', async () => {
+    const f = directEntryFixture();
+    const childRoundId = documentVersionId;
+    f.record.stage = 'WAITING_FORMAL_ACCEPTANCE';
+    f.record.currentTrialRoundId = childRoundId;
+    f.record.currentTrialRound = {
+      origin: 'NORMAL',
+      externalEntryId: entryId,
+      sourceResultId: resultId,
+      revokedAt: null,
+    };
+    f.record.currentSecondInstanceResultId = resultId;
+    f.record.currentSecondInstanceResult = {
+      id: resultId,
+      result: 'REMAND',
+      trialRoundId,
+      choiceId: null as never,
+      externalEntryId: entryId,
+      progressId: null,
+    };
+    f.tx.caseTrialRound.findFirst
+      .mockResolvedValueOnce({ id: childRoundId, revokedAt: null })
+      .mockResolvedValueOnce({
+        id: trialRoundId,
+        origin: 'EXTERNAL_CURRENT',
+        externalEntryId: entryId,
+      });
+    const response = await f.service.revokeResult(actor, caseId, {
+      expectedVersion: 12,
+      idempotencyKey: 'external-revoke',
+      trialRoundId,
+      resultId,
+      reason: '真实结果登记错误',
+    });
+    expect(response.stage).toBe('SECOND_INSTANCE');
+    expect(f.tx.case.updateMany).toHaveBeenCalledWith(
+      expect.objectContaining({
+        data: expect.objectContaining({
+          currentTrialRoundId: trialRoundId,
+          currentAcceptanceId: null,
+          currentJudgmentId: null,
+          currentJudgmentNextStepId: null,
+        }),
+      }),
+    );
+  });
+
+  it('rejects a null choice for a normal second-instance case', async () => {
+    const f = fixture();
+    await expect(
+      f.service.save(actor, caseId, {
+        ...saveInput('normal-null-choice'),
+        choiceId: null,
+      }),
+    ).rejects.toMatchObject({ response: { code: 'INVALID_STATE' } });
+    expect(f.tx.caseSecondInstanceProgress.create).not.toHaveBeenCalled();
+  });
+
+  it('continues a real appeal after an external judgment without invented acceptance', async () => {
+    const f = fixture();
+    jest.mocked(readCaseSourceAnchor).mockResolvedValueOnce({
+      kind: 'EXTERNAL_ENTRY',
+      entryId,
+      initialStage: 'WAITING_JUDGMENT',
+      stageReachedOn: '2025-12-31',
+      known: { acceptedOn: null, secondInstanceAcceptedOn: null },
+    } as never);
+    f.record.currentTrialRound = {
+      origin: 'EXTERNAL_CURRENT',
+      externalEntryId: entryId,
+      sourceResultId: null,
+      revokedAt: null,
+    };
+    f.record.currentAcceptanceId = null;
+    f.record.acceptance = null as never;
+    f.record.currentJudgment.externalEntryId = entryId;
+    await f.service.save(actor, caseId, saveInput('real-external-appeal'));
+    expect(f.tx.caseSecondInstanceProgress.create).toHaveBeenCalledWith(
+      expect.objectContaining({
+        data: expect.objectContaining({
+          choiceId,
+          externalEntryId: entryId,
+        }),
+      }),
+    );
   });
 
   it('saves a real progress revision and leaves the case in second instance', async () => {

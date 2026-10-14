@@ -11,6 +11,7 @@ import { AccessControlService } from '../../access-control/access-control.servic
 import { ActorContext } from '../../access-control/actor-context';
 import { currentLawyerBindingId } from '../../access-control/lawyer-case-access';
 import { DatabaseService } from '../../database/database.service';
+import { isEntryStartingAt, readCaseSourceAnchor } from './case-entry-source';
 import { Prisma } from '../../generated/prisma/client';
 import { MaterialService } from '../materials';
 import {
@@ -75,7 +76,25 @@ export class CaseJudgmentService {
                 stage: true,
                 version: true,
                 currentTrialRoundId: true,
+                currentTrialRound: {
+                  select: {
+                    origin: true,
+                    externalEntryId: true,
+                    sourceResultId: true,
+                    revokedAt: true,
+                  },
+                },
+                currentHearingAdvance: {
+                  select: {
+                    trialRoundId: true,
+                    externalEntryId: true,
+                    arrangement: { select: { hearingAt: true } },
+                  },
+                },
                 currentJudgmentId: true,
+                currentJudgment: {
+                  select: { trialRoundId: true, externalEntryId: true },
+                },
                 currentJudgmentNextStepId: true,
                 responsibleUserId: true,
                 responsibleMembership: { select: { teamId: true } },
@@ -92,6 +111,29 @@ export class CaseJudgmentService {
               },
             });
             if (record === null) throw this.notFound();
+            const source = await readCaseSourceAnchor(
+              tx,
+              caseId,
+              actor.departmentId,
+            );
+            const entryId =
+              source.kind === 'EXTERNAL_ENTRY' ? source.entryId : null;
+            const round = record.currentTrialRound;
+            if (
+              (source.kind === 'EXTERNAL_ENTRY' &&
+                (round === null ||
+                  round.revokedAt !== null ||
+                  round.externalEntryId !== entryId ||
+                  (round.origin !== 'EXTERNAL_CURRENT' &&
+                    round.sourceResultId === null))) ||
+              (source.kind === 'NORMAL' && round?.origin === 'EXTERNAL_CURRENT')
+            )
+              throw this.invalidState();
+            const realAdvance = record.currentHearingAdvance;
+            const validAdvance =
+              realAdvance != null &&
+              realAdvance.trialRoundId === record.currentTrialRoundId &&
+              realAdvance.externalEntryId === entryId;
             const account = await tx.userAccount.findUnique({
               where: { id: actor.userId },
               select: { active: true, accountType: true },
@@ -149,23 +191,46 @@ export class CaseJudgmentService {
             }
             if (
               record.stage !== 'WAITING_JUDGMENT' ||
-              record.acceptance === null ||
+              (record.acceptance === null &&
+                !(
+                  isEntryStartingAt(source, 'WAITING_JUDGMENT') ||
+                  (isEntryStartingAt(source, 'WAITING_HEARING') && validAdvance)
+                )) ||
               record.currentTrialRoundId === null ||
               (action === 'REGISTER' && record.currentJudgmentId !== null) ||
               (action === 'CORRECT' && record.currentJudgmentId === null) ||
+              (action === 'CORRECT' &&
+                source.kind === 'EXTERNAL_ENTRY' &&
+                (record.currentJudgment?.trialRoundId !==
+                  record.currentTrialRoundId ||
+                  record.currentJudgment?.externalEntryId !== entryId)) ||
               record.currentJudgmentNextStepId !== null
             )
               throw this.invalidState();
             if (record.version !== value.expectedVersion)
               throw this.versionConflict();
+            const acceptedOn = record.acceptance
+              ? (
+                  record.acceptance.corrections[0]?.acceptedAt ??
+                  record.acceptance.acceptedAt
+                )
+                  .toISOString()
+                  .slice(0, 10)
+              : source.kind === 'EXTERNAL_ENTRY'
+                ? source.known.acceptedOn
+                : null;
+            const stageFloor = isEntryStartingAt(source, 'WAITING_JUDGMENT')
+              ? source.stageReachedOn
+              : null;
+            const hearingOn = validAdvance
+              ? realAdvance?.arrangement.hearingAt?.toISOString().slice(0, 10)
+              : null;
             if (
-              value.judgmentReceivedAt <
-              (
-                record.acceptance.corrections[0]?.acceptedAt ??
-                record.acceptance.acceptedAt
-              )
-                .toISOString()
-                .slice(0, 10)
+              (acceptedOn !== null && value.judgmentReceivedAt < acceptedOn) ||
+              (stageFloor !== null && value.judgmentReceivedAt < stageFloor) ||
+              (hearingOn !== null &&
+                hearingOn !== undefined &&
+                value.judgmentReceivedAt < hearingOn)
             )
               throw this.validation();
             const versions = await this.materials.assertAvailableVersions(
@@ -221,6 +286,7 @@ export class CaseJudgmentService {
                 departmentId: actor.departmentId,
                 caseId,
                 trialRoundId: record.currentTrialRoundId,
+                externalEntryId: entryId,
                 kind: action,
                 priorFactId:
                   action === 'CORRECT' ? record.currentJudgmentId : null,

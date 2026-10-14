@@ -14,6 +14,7 @@ import { ActorContext } from '../../access-control/actor-context';
 import { currentLawyerBindingId } from '../../access-control/lawyer-case-access';
 import { DatabaseService } from '../../database/database.service';
 import { hearingIsDue } from './case-hearing-date';
+import { isEntryStartingAt, readCaseSourceAnchor } from './case-entry-source';
 import {
   CaseHearingCommandResultDto,
   CorrectCaseHearingDto,
@@ -133,6 +134,14 @@ export class CaseHearingService {
                 stage: true,
                 version: true,
                 currentTrialRoundId: true,
+                currentTrialRound: {
+                  select: {
+                    origin: true,
+                    externalEntryId: true,
+                    sourceResultId: true,
+                    revokedAt: true,
+                  },
+                },
                 responsibleUserId: true,
                 responsibleMembership: { select: { teamId: true } },
                 acceptance: {
@@ -151,6 +160,24 @@ export class CaseHearingService {
               },
             });
             if (record === null) throw this.notFound();
+            const source = await readCaseSourceAnchor(
+              tx,
+              caseId,
+              actor.departmentId,
+            );
+            const entryId =
+              source.kind === 'EXTERNAL_ENTRY' ? source.entryId : null;
+            if (
+              (source.kind === 'EXTERNAL_ENTRY' &&
+                (record.currentTrialRound == null ||
+                  record.currentTrialRound.revokedAt !== null ||
+                  record.currentTrialRound.externalEntryId !== entryId ||
+                  (record.currentTrialRound.origin !== 'EXTERNAL_CURRENT' &&
+                    record.currentTrialRound.sourceResultId === null))) ||
+              (source.kind === 'NORMAL' &&
+                record.currentTrialRound?.origin === 'EXTERNAL_CURRENT')
+            )
+              throw this.invalidState();
             const account = await tx.userAccount.findUnique({
               where: { id: actor.userId },
               select: { active: true, accountType: true },
@@ -209,7 +236,8 @@ export class CaseHearingService {
               return this.receipt(prior.resultSnapshot, caseId);
             }
             if (
-              record.acceptance === null ||
+              (record.acceptance === null &&
+                !isEntryStartingAt(source, 'WAITING_HEARING')) ||
               record.currentTrialRoundId === null ||
               (action === 'SCHEDULE' && record.stage !== 'WAITING_HEARING') ||
               (action === 'CORRECT' &&
@@ -219,13 +247,21 @@ export class CaseHearingService {
               throw this.invalidState();
             if (record.version !== value.expectedVersion)
               throw this.versionConflict();
-            if (
-              value.hearingAt !== null &&
-              value.hearingAt <
-                isoDate(
+            const acceptedOn = record.acceptance
+              ? isoDate(
                   record.acceptance.corrections[0]?.acceptedAt ??
                     record.acceptance.acceptedAt,
-                )!
+                )
+              : source.kind === 'EXTERNAL_ENTRY'
+                ? source.known.acceptedOn
+                : null;
+            const stageFloor = isEntryStartingAt(source, 'WAITING_HEARING')
+              ? source.stageReachedOn
+              : null;
+            if (
+              value.hearingAt !== null &&
+              ((acceptedOn !== null && value.hearingAt < acceptedOn) ||
+                (stageFloor !== null && value.hearingAt < stageFloor))
             )
               throw this.validation();
             let priorAdvanceId: string | null = null;
@@ -237,9 +273,21 @@ export class CaseHearingService {
                 throw this.invalidState();
               const advance = await tx.caseHearingAdvance.findUnique({
                 where: { id: record.currentHearingAdvanceId },
-                select: { id: true, caseId: true, arrangementId: true },
+                select: {
+                  id: true,
+                  caseId: true,
+                  arrangementId: true,
+                  trialRoundId: true,
+                  externalEntryId: true,
+                },
               });
-              if (advance?.caseId !== caseId) throw this.invalidState();
+              if (
+                advance?.caseId !== caseId ||
+                advance.arrangementId !== record.currentHearingArrangementId ||
+                advance.trialRoundId !== record.currentTrialRoundId ||
+                advance.externalEntryId !== entryId
+              )
+                throw this.invalidState();
               priorAdvanceId = advance.id;
             }
             const recordedAt = this.clock.now();
@@ -284,6 +332,7 @@ export class CaseHearingService {
                 departmentId: actor.departmentId,
                 caseId,
                 trialRoundId: record.currentTrialRoundId,
+                externalEntryId: entryId,
                 hearingAt:
                   value.hearingAt === null
                     ? null
@@ -402,6 +451,15 @@ export class CaseHearingService {
                 version: true,
                 currentHearingArrangementId: true,
                 currentTrialRoundId: true,
+                currentAcceptanceId: true,
+                currentTrialRound: {
+                  select: {
+                    origin: true,
+                    externalEntryId: true,
+                    sourceResultId: true,
+                    revokedAt: true,
+                  },
+                },
                 currentHearingAdvanceId: true,
                 currentHearingArrangement: {
                   select: {
@@ -409,17 +467,37 @@ export class CaseHearingService {
                     hearingAt: true,
                     toVersion: true,
                     trialRoundId: true,
+                    externalEntryId: true,
                   },
                 },
               },
             });
             const arrangement = record?.currentHearingArrangement;
+            const source = await readCaseSourceAnchor(
+              tx,
+              candidate.id,
+              candidate.departmentId,
+            );
+            const entryId =
+              source.kind === 'EXTERNAL_ENTRY' ? source.entryId : null;
             if (
               record?.stage !== 'WAITING_HEARING' ||
               record.currentHearingAdvanceId !== null ||
               record.currentTrialRoundId === null ||
+              (source.kind === 'EXTERNAL_ENTRY' &&
+                (record.currentTrialRound == null ||
+                  record.currentTrialRound.revokedAt !== null ||
+                  record.currentTrialRound.externalEntryId !== entryId ||
+                  (record.currentTrialRound.origin !== 'EXTERNAL_CURRENT' &&
+                    record.currentTrialRound.sourceResultId === null))) ||
+              (source.kind === 'NORMAL' &&
+                record.currentTrialRound?.origin === 'EXTERNAL_CURRENT') ||
+              (source.kind === 'EXTERNAL_ENTRY' &&
+                record.currentAcceptanceId === null &&
+                source.initialStage !== 'WAITING_HEARING') ||
               arrangement?.hearingAt == null ||
               arrangement.trialRoundId !== record.currentTrialRoundId ||
+              (arrangement.externalEntryId ?? null) !== entryId ||
               record.version !== arrangement.toVersion
             )
               return false;
@@ -465,6 +543,7 @@ export class CaseHearingService {
                 caseId: candidate.id,
                 trialRoundId: record.currentTrialRoundId,
                 arrangementId: arrangement.id,
+                externalEntryId: entryId,
                 dueAt: due[0].due_at,
                 executedAt,
                 fromVersion: record.version,

@@ -1,5 +1,11 @@
 import { ForbiddenException } from '@nestjs/common';
 import { CaseJudgmentService } from './case-judgment.service';
+import { readCaseSourceAnchor } from './case-entry-source';
+
+jest.mock('./case-entry-source', () => ({
+  ...jest.requireActual('./case-entry-source'),
+  readCaseSourceAnchor: jest.fn().mockResolvedValue({ kind: 'NORMAL' }),
+}));
 
 const actor = {
   userId: '11111111-1111-4111-8111-111111111111',
@@ -9,6 +15,7 @@ const actor = {
 const caseId = '33333333-3333-4333-8333-333333333333';
 const versionId = '44444444-4444-4444-8444-444444444444';
 const priorId = '55555555-5555-4555-8555-555555555555';
+const entryId = 'aaaaaaaa-aaaa-4aaa-8aaa-aaaaaaaaaaaa';
 const input = {
   expectedVersion: 9,
   idempotencyKey: 'judgment-1',
@@ -121,6 +128,39 @@ describe('CaseJudgmentService', () => {
       }),
     );
     expect(f.tx.caseJudgmentReceipt.create).toHaveBeenCalledTimes(1);
+  });
+
+  it('registers a real judgment from an external waiting-judgment root', async () => {
+    const f = fixture();
+    jest.mocked(readCaseSourceAnchor).mockResolvedValueOnce({
+      kind: 'EXTERNAL_ENTRY',
+      entryId,
+      initialStage: 'WAITING_JUDGMENT',
+      stageReachedOn: '2026-10-05',
+      known: { acceptedOn: null },
+    } as never);
+    const record = await f.tx.case.findFirst();
+    f.tx.case.findFirst.mockResolvedValue({
+      ...record,
+      acceptance: null,
+      currentTrialRound: {
+        origin: 'EXTERNAL_CURRENT',
+        externalEntryId: entryId,
+        sourceResultId: null,
+        revokedAt: null,
+      },
+      currentHearingAdvance: null,
+    });
+    await f.service.register(actor, caseId, input);
+    expect(f.tx.caseJudgmentFact.create).toHaveBeenCalledWith(
+      expect.objectContaining({
+        data: expect.objectContaining({
+          kind: 'REGISTER',
+          externalEntryId: entryId,
+          trialRoundId: record.currentTrialRoundId,
+        }),
+      }),
+    );
   });
 
   it('rechecks authorization before reading a saved receipt', async () => {

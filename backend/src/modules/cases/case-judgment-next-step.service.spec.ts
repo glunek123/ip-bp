@@ -1,5 +1,11 @@
 import { ForbiddenException } from '@nestjs/common';
 import { CaseJudgmentNextStepService } from './case-judgment-next-step.service';
+import { readCaseSourceAnchor } from './case-entry-source';
+
+jest.mock('./case-entry-source', () => ({
+  ...jest.requireActual('./case-entry-source'),
+  readCaseSourceAnchor: jest.fn().mockResolvedValue({ kind: 'NORMAL' }),
+}));
 
 const actor = {
   userId: '11111111-1111-4111-8111-111111111111',
@@ -114,6 +120,40 @@ describe('CaseJudgmentNextStepService', () => {
       } as never),
     ).rejects.toMatchObject({ response: { code: 'VALIDATION_ERROR' } });
     expect(f.tx.caseJudgmentNextStep.create).not.toHaveBeenCalled();
+  });
+
+  it('anchors a real post-entry judgment choice to the external source', async () => {
+    const f = fixture();
+    const entryId = 'aaaaaaaa-aaaa-4aaa-8aaa-aaaaaaaaaaaa';
+    jest.mocked(readCaseSourceAnchor).mockResolvedValueOnce({
+      kind: 'EXTERNAL_ENTRY',
+      entryId,
+      initialStage: 'WAITING_JUDGMENT',
+      stageReachedOn: '2026-10-01',
+      known: {},
+    } as never);
+    f.tx.case.findFirst.mockResolvedValue({
+      ...f.record,
+      currentJudgment: {
+        trialRoundId: f.record.currentTrialRoundId,
+        externalEntryId: entryId,
+      },
+    });
+    await f.service.choose(actor, caseId, {
+      expectedVersion: 10,
+      idempotencyKey: 'external-choice',
+      judgmentId,
+      next: 'EXECUTION',
+      executionReadinessConfirmed: true,
+    });
+    expect(f.tx.caseJudgmentNextStep.create).toHaveBeenCalledWith(
+      expect.objectContaining({
+        data: expect.objectContaining({
+          judgmentId,
+          externalEntryId: entryId,
+        }),
+      }),
+    );
   });
 
   it('rejects empty and foreign defendant appeal sets', async () => {

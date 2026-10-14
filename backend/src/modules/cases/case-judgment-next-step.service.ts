@@ -11,6 +11,7 @@ import { AccessControlService } from '../../access-control/access-control.servic
 import { ActorContext } from '../../access-control/actor-context';
 import { currentLawyerBindingId } from '../../access-control/lawyer-case-access';
 import { DatabaseService } from '../../database/database.service';
+import { readCaseSourceAnchor } from './case-entry-source';
 import { Prisma } from '../../generated/prisma/client';
 import {
   ChooseJudgmentNextStepDto,
@@ -90,10 +91,18 @@ export class CaseJudgmentNextStepService {
                 stage: true,
                 version: true,
                 currentJudgmentId: true,
+                currentJudgment: {
+                  select: { trialRoundId: true, externalEntryId: true },
+                },
                 currentTrialRoundId: true,
                 currentJudgmentNextStepId: true,
                 currentJudgmentNextStep: {
-                  select: { id: true, judgmentId: true, next: true },
+                  select: {
+                    id: true,
+                    judgmentId: true,
+                    next: true,
+                    externalEntryId: true,
+                  },
                 },
                 rightsHolderId: true,
                 rightsHolder: { select: { name: true } },
@@ -103,6 +112,13 @@ export class CaseJudgmentNextStepService {
               },
             });
             if (record === null) throw this.notFound();
+            const source = await readCaseSourceAnchor(
+              tx,
+              caseId,
+              actor.departmentId,
+            );
+            const entryId =
+              source.kind === 'EXTERNAL_ENTRY' ? source.entryId : null;
             const account = await tx.userAccount.findUnique({
               where: { id: actor.userId },
               select: { active: true, accountType: true },
@@ -167,6 +183,10 @@ export class CaseJudgmentNextStepService {
                 record.stage !== 'WAITING_JUDGMENT' ||
                 record.currentJudgmentId === null ||
                 record.currentTrialRoundId === null ||
+                (source.kind === 'EXTERNAL_ENTRY' &&
+                  (record.currentJudgment?.trialRoundId !==
+                    record.currentTrialRoundId ||
+                    record.currentJudgment?.externalEntryId !== entryId)) ||
                 record.currentJudgmentNextStepId !== null
               )
                 throw this.invalidState();
@@ -217,6 +237,7 @@ export class CaseJudgmentNextStepService {
                   caseId,
                   departmentId: actor.departmentId,
                   trialRoundId: record.currentTrialRoundId,
+                  externalEntryId: entryId,
                   judgmentId: value.judgmentId,
                   next: value.next,
                   plaintiffRightsHolderId: value.plaintiffAppeals
@@ -288,6 +309,9 @@ export class CaseJudgmentNextStepService {
             if (
               choice === null ||
               choice === undefined ||
+              choice.judgmentId === null ||
+              (source.kind === 'EXTERNAL_ENTRY' &&
+                choice.externalEntryId !== entryId) ||
               record.currentJudgmentNextStepId !== value.choiceId ||
               (record.stage !== 'SECOND_INSTANCE' &&
                 record.stage !== 'WAITING_EXECUTION_DOCUMENTS') ||

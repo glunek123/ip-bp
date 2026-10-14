@@ -14,6 +14,11 @@ import { DatabaseService } from '../../database/database.service';
 import { Prisma } from '../../generated/prisma/client';
 import { MaterialService } from '../materials';
 import {
+  CaseSourceAnchor,
+  isEntryStartingAt,
+  readCaseSourceAnchor,
+} from './case-entry-source';
+import {
   KnownMoneyDto,
   RegisterSecondInstanceResultDto,
   RevokeSecondInstanceResultDto,
@@ -35,7 +40,7 @@ type Anchor = {
   expectedVersion: number;
   idempotencyKey: string;
   trialRoundId: string;
-  choiceId: string;
+  choiceId: string | null;
   expectedProgressId: string | null;
 };
 type SaveValue = Anchor & { progress: Progress };
@@ -66,14 +71,23 @@ type LockedCase = {
   currentJudgmentNextStepId: string | null;
   currentSecondInstanceProgressId: string | null;
   currentSecondInstanceResultId: string | null;
+  currentTrialRound: {
+    origin: 'NORMAL' | 'EXTERNAL_CURRENT';
+    externalEntryId: string | null;
+    sourceResultId: string | null;
+    revokedAt: Date | null;
+  } | null;
   acceptance: { acceptedAt: Date; corrections: { acceptedAt: Date }[] } | null;
   currentJudgment: {
+    trialRoundId: string;
+    externalEntryId: string | null;
+    judgmentReceivedAt: Date;
     judgmentAmountState: 'KNOWN' | 'PENDING';
     judgmentAmount: Prisma.Decimal | null;
   } | null;
   currentJudgmentNextStep: {
     id: string;
-    judgmentId: string;
+    judgmentId: string | null;
     trialRoundId: string;
     next: 'APPEAL' | 'EXECUTION';
   } | null;
@@ -81,7 +95,8 @@ type LockedCase = {
     id: string;
     result: 'REMAND' | 'CHANGE' | 'AFFIRM';
     trialRoundId: string;
-    choiceId: string;
+    choiceId: string | null;
+    externalEntryId: string | null;
     progressId: string | null;
   } | null;
   responsibleUserId: string;
@@ -153,6 +168,14 @@ export class CaseSecondInstanceService {
                 version: true,
                 courtCaseNo: true,
                 currentTrialRoundId: true,
+                currentTrialRound: {
+                  select: {
+                    origin: true,
+                    externalEntryId: true,
+                    sourceResultId: true,
+                    revokedAt: true,
+                  },
+                },
                 currentAcceptanceId: true,
                 currentHearingArrangementId: true,
                 currentHearingAdvanceId: true,
@@ -171,7 +194,13 @@ export class CaseSecondInstanceService {
                   },
                 },
                 currentJudgment: {
-                  select: { judgmentAmountState: true, judgmentAmount: true },
+                  select: {
+                    trialRoundId: true,
+                    externalEntryId: true,
+                    judgmentReceivedAt: true,
+                    judgmentAmountState: true,
+                    judgmentAmount: true,
+                  },
                 },
                 currentJudgmentNextStep: {
                   select: {
@@ -187,6 +216,7 @@ export class CaseSecondInstanceService {
                     result: true,
                     trialRoundId: true,
                     choiceId: true,
+                    externalEntryId: true,
                     progressId: true,
                   },
                 },
@@ -195,6 +225,24 @@ export class CaseSecondInstanceService {
               },
             });
             if (record === null) throw this.notFound();
+            const source = await readCaseSourceAnchor(
+              tx,
+              caseId,
+              actor.departmentId,
+            );
+            const entryId =
+              source.kind === 'EXTERNAL_ENTRY' ? source.entryId : null;
+            const round = record.currentTrialRound;
+            if (
+              (source.kind === 'EXTERNAL_ENTRY' &&
+                (round === null ||
+                  round.revokedAt !== null ||
+                  round.externalEntryId !== entryId ||
+                  (round.origin !== 'EXTERNAL_CURRENT' &&
+                    round.sourceResultId === null))) ||
+              (source.kind === 'NORMAL' && round?.origin === 'EXTERNAL_CURRENT')
+            )
+              throw this.invalidState();
             const account = await tx.userAccount.findUnique({
               where: { id: actor.userId },
               select: { active: true, accountType: true },
@@ -261,6 +309,7 @@ export class CaseSecondInstanceService {
                 caseId,
                 value as RevokeValue,
                 record,
+                source,
                 fingerprint,
               );
             return this.saveOrResultLocked(
@@ -270,6 +319,7 @@ export class CaseSecondInstanceService {
               action,
               value as SaveValue | ResultValue,
               record,
+              source,
               lawyerBindingId,
               fingerprint,
             );
@@ -296,19 +346,38 @@ export class CaseSecondInstanceService {
     action: 'SAVE' | 'RESULT',
     value: SaveValue | ResultValue,
     record: LockedCase,
+    source: CaseSourceAnchor,
     lawyerBindingId: string | undefined,
     fingerprint: string,
   ): Promise<SecondInstanceCommandResultDto> {
+    const entryId = source.kind === 'EXTERNAL_ENTRY' ? source.entryId : null;
+    const directEntry =
+      isEntryStartingAt(source, 'SECOND_INSTANCE') &&
+      record.currentTrialRound?.origin === 'EXTERNAL_CURRENT' &&
+      record.currentTrialRound.externalEntryId === source.entryId &&
+      value.choiceId === null &&
+      record.currentJudgmentNextStepId === null &&
+      record.currentJudgmentId === null &&
+      record.acceptance === null;
+    const realAppeal =
+      value.choiceId !== null &&
+      record.currentJudgmentNextStepId === value.choiceId &&
+      record.currentJudgmentId !== null &&
+      (record.acceptance !== null ||
+        (source.kind === 'EXTERNAL_ENTRY' &&
+          (source.initialStage === 'WAITING_JUDGMENT' ||
+            source.initialStage === 'WAITING_HEARING'))) &&
+      (source.kind !== 'EXTERNAL_ENTRY' ||
+        (record.currentJudgment?.trialRoundId === value.trialRoundId &&
+          record.currentJudgment.externalEntryId === entryId)) &&
+      record.currentJudgmentNextStep?.next === 'APPEAL' &&
+      record.currentJudgmentNextStep.trialRoundId === value.trialRoundId &&
+      record.currentJudgmentNextStep.judgmentId === record.currentJudgmentId;
     if (
       record.stage !== 'SECOND_INSTANCE' ||
       record.currentTrialRoundId !== value.trialRoundId ||
-      record.currentJudgmentNextStepId !== value.choiceId ||
       record.currentSecondInstanceResultId !== null ||
-      record.currentJudgmentId === null ||
-      record.acceptance === null ||
-      record.currentJudgmentNextStep?.next !== 'APPEAL' ||
-      record.currentJudgmentNextStep.trialRoundId !== value.trialRoundId ||
-      record.currentJudgmentNextStep.judgmentId !== record.currentJudgmentId
+      (!directEntry && !realAppeal)
     )
       throw this.invalidState();
     if (record.currentSecondInstanceProgressId !== value.expectedProgressId)
@@ -319,22 +388,43 @@ export class CaseSecondInstanceService {
           caseId,
           departmentId: actor.departmentId,
           choiceId: value.choiceId,
+          externalEntryId: entryId,
         },
         orderBy: { toRevision: 'desc' },
         select: { acceptedAt: true },
       });
-    const firstAcceptanceDate = (
-      record.acceptance.corrections[0]?.acceptedAt ??
-      record.acceptance.acceptedAt
-    )
-      .toISOString()
-      .slice(0, 10);
+    const firstAcceptanceDate = record.acceptance
+      ? (
+          record.acceptance.corrections[0]?.acceptedAt ??
+          record.acceptance.acceptedAt
+        )
+          .toISOString()
+          .slice(0, 10)
+      : source.kind === 'EXTERNAL_ENTRY'
+        ? source.known.acceptedOn
+        : null;
+    const secondAcceptanceDate = secondAcceptance?.acceptedAt
+      ? secondAcceptance.acceptedAt.toISOString().slice(0, 10)
+      : source.kind === 'EXTERNAL_ENTRY'
+        ? source.known.secondInstanceAcceptedOn
+        : null;
+    const stageFloor =
+      directEntry && source.kind === 'EXTERNAL_ENTRY'
+        ? source.stageReachedOn
+        : null;
+    const judgmentDate = realAppeal
+      ? record.currentJudgment?.judgmentReceivedAt.toISOString().slice(0, 10)
+      : null;
     if (
       value.progress.hearingAt !== null &&
-      (value.progress.hearingAt < firstAcceptanceDate ||
-        (secondAcceptance?.acceptedAt &&
-          value.progress.hearingAt <
-            secondAcceptance.acceptedAt.toISOString().slice(0, 10)))
+      ((firstAcceptanceDate !== null &&
+        value.progress.hearingAt < firstAcceptanceDate) ||
+        (secondAcceptanceDate !== null &&
+          value.progress.hearingAt < secondAcceptanceDate) ||
+        (stageFloor !== null && value.progress.hearingAt < stageFloor) ||
+        (judgmentDate !== null &&
+          judgmentDate !== undefined &&
+          value.progress.hearingAt < judgmentDate))
     )
       throw this.validation();
     const current =
@@ -347,6 +437,7 @@ export class CaseSecondInstanceService {
               departmentId: actor.departmentId,
               trialRoundId: value.trialRoundId,
               choiceId: value.choiceId,
+              externalEntryId: entryId,
             },
             select: {
               id: true,
@@ -414,6 +505,7 @@ export class CaseSecondInstanceService {
           departmentId: actor.departmentId,
           trialRoundId: value.trialRoundId,
           choiceId: value.choiceId,
+          externalEntryId: entryId,
           priorProgressId: value.expectedProgressId,
           hearingAt:
             value.progress.hearingAt === null
@@ -480,10 +572,23 @@ export class CaseSecondInstanceService {
     }
     const input = value as ResultValue;
     if (
-      input.resultReceivedAt < firstAcceptanceDate ||
-      (secondAcceptance?.acceptedAt &&
-        input.resultReceivedAt <
-          secondAcceptance.acceptedAt.toISOString().slice(0, 10))
+      input.result === 'AFFIRM' &&
+      (directEntry
+        ? input.judgmentAmount === null
+        : input.judgmentAmount !== null)
+    )
+      throw this.validation();
+    if (
+      (firstAcceptanceDate !== null &&
+        input.resultReceivedAt < firstAcceptanceDate) ||
+      (secondAcceptanceDate !== null &&
+        input.resultReceivedAt < secondAcceptanceDate) ||
+      (stageFloor !== null && input.resultReceivedAt < stageFloor) ||
+      (judgmentDate !== null &&
+        judgmentDate !== undefined &&
+        input.resultReceivedAt < judgmentDate) ||
+      (input.progress.hearingAt !== null &&
+        input.resultReceivedAt < input.progress.hearingAt)
     )
       throw this.validation();
     const judgmentFiles = await this.materials.assertAvailableVersions(
@@ -502,10 +607,13 @@ export class CaseSecondInstanceService {
     const childRoundId = input.result === 'REMAND' ? randomUUID() : null;
     const amount =
       input.result === 'AFFIRM'
-        ? {
-            state: record.currentJudgment!.judgmentAmountState,
-            amount: record.currentJudgment!.judgmentAmount?.toString() ?? null,
-          }
+        ? directEntry
+          ? input.judgmentAmount
+          : {
+              state: record.currentJudgment!.judgmentAmountState,
+              amount:
+                record.currentJudgment!.judgmentAmount?.toString() ?? null,
+            }
         : input.judgmentAmount;
     if (
       input.result === 'AFFIRM' &&
@@ -531,6 +639,7 @@ export class CaseSecondInstanceService {
           resultId,
           trialRoundId: value.trialRoundId,
           choiceId: value.choiceId,
+          externalEntryId: entryId,
           judgmentId: record.currentJudgmentId,
           progressId,
           childRoundId,
@@ -554,6 +663,7 @@ export class CaseSecondInstanceService {
         departmentId: actor.departmentId,
         trialRoundId: value.trialRoundId,
         choiceId: value.choiceId,
+        externalEntryId: entryId,
         judgmentId: record.currentJudgmentId,
         progressId,
         result: input.result,
@@ -591,6 +701,8 @@ export class CaseSecondInstanceService {
           departmentId: actor.departmentId,
           sequence: (latest?.sequence ?? 0) + 1,
           sourceResultId: resultId,
+          origin: 'NORMAL',
+          externalEntryId: entryId,
         },
       });
     }
@@ -651,12 +763,15 @@ export class CaseSecondInstanceService {
     caseId: string,
     value: RevokeValue,
     record: LockedCase,
+    source: CaseSourceAnchor,
     fingerprint: string,
   ): Promise<SecondInstanceCommandResultDto> {
     const result = record.currentSecondInstanceResult;
+    const entryId = source.kind === 'EXTERNAL_ENTRY' ? source.entryId : null;
     if (
       result === null ||
       result.id !== value.resultId ||
+      (result.externalEntryId ?? null) !== entryId ||
       result.trialRoundId !== value.trialRoundId ||
       record.currentSecondInstanceResultId !== value.resultId ||
       record.stage !==
@@ -738,26 +853,34 @@ export class CaseSecondInstanceService {
         throw this.invalidState();
       childRoundId = child.id;
     }
-    const source = await tx.caseTrialRound.findFirst({
+    const sourceRound = await tx.caseTrialRound.findFirst({
       where: {
         id: result.trialRoundId,
         caseId,
         departmentId: actor.departmentId,
         revokedAt: null,
       },
-      select: { id: true },
+      select: { id: true, origin: true, externalEntryId: true },
     });
-    if (source === null) throw this.invalidState();
-    const sourceChoice = await tx.caseJudgmentNextStep.findFirst({
-      where: {
-        id: result.choiceId,
-        caseId,
-        departmentId: actor.departmentId,
-        trialRoundId: result.trialRoundId,
-        next: 'APPEAL',
-      },
-      select: { id: true, judgmentId: true },
-    });
+    if (sourceRound === null) throw this.invalidState();
+    const directEntry =
+      isEntryStartingAt(source, 'SECOND_INSTANCE') &&
+      result.choiceId === null &&
+      sourceRound.origin === 'EXTERNAL_CURRENT' &&
+      sourceRound.externalEntryId === source.entryId;
+    const sourceChoice =
+      result.choiceId === null
+        ? null
+        : await tx.caseJudgmentNextStep.findFirst({
+            where: {
+              id: result.choiceId,
+              caseId,
+              departmentId: actor.departmentId,
+              trialRoundId: result.trialRoundId,
+              next: 'APPEAL',
+            },
+            select: { id: true, judgmentId: true },
+          });
     const sourceAcceptance = await tx.caseAcceptance.findFirst({
       where: {
         trialRoundId: result.trialRoundId,
@@ -792,7 +915,7 @@ export class CaseSecondInstanceService {
       orderBy: [{ toVersion: 'desc' }, { id: 'desc' }],
       select: { id: true },
     });
-    if (sourceChoice === null || sourceAcceptance === null)
+    if (!directEntry && (sourceChoice === null || sourceAcceptance === null))
       throw this.invalidState();
     const revocationId = randomUUID();
     const recordedAt = new Date();
@@ -854,14 +977,17 @@ export class CaseSecondInstanceService {
           ? {}
           : {
               currentTrialRoundId: result.trialRoundId,
-              currentAcceptanceId: sourceAcceptance.id,
+              currentAcceptanceId: sourceAcceptance?.id ?? null,
               currentHearingArrangementId: sourceHearing?.id ?? null,
               currentHearingAdvanceId: sourceAdvance?.id ?? null,
-              currentJudgmentId: sourceChoice.judgmentId,
-              currentJudgmentNextStepId: sourceChoice.id,
+              currentJudgmentId: sourceChoice?.judgmentId ?? null,
+              currentJudgmentNextStepId: sourceChoice?.id ?? null,
               courtCaseNo:
-                sourceAcceptance.corrections[0]?.courtCaseNo ??
-                sourceAcceptance.courtCaseNo,
+                sourceAcceptance?.corrections[0]?.courtCaseNo ??
+                sourceAcceptance?.courtCaseNo ??
+                (source.kind === 'EXTERNAL_ENTRY'
+                  ? source.known.courtCaseNo
+                  : null),
             }),
       },
     });
@@ -934,8 +1060,8 @@ export class CaseSecondInstanceService {
       !this.key(input.idempotencyKey) ||
       typeof input.trialRoundId !== 'string' ||
       !uuid.test(input.trialRoundId) ||
-      typeof input.choiceId !== 'string' ||
-      !uuid.test(input.choiceId) ||
+      (input.choiceId !== null &&
+        (typeof input.choiceId !== 'string' || !uuid.test(input.choiceId))) ||
       (input.expectedProgressId !== null &&
         (typeof input.expectedProgressId !== 'string' ||
           !uuid.test(input.expectedProgressId)))
@@ -973,9 +1099,8 @@ export class CaseSecondInstanceService {
       !['REMAND', 'CHANGE', 'AFFIRM'].includes(input.result) ||
       !this.date(input.resultReceivedAt, true) ||
       !this.ids(input.judgmentContentVersionIds, 1) ||
-      (input.result === 'CHANGE'
-        ? input.judgmentAmount === undefined
-        : input.judgmentAmount !== undefined)
+      (input.result === 'CHANGE' && input.judgmentAmount === undefined) ||
+      (input.result === 'REMAND' && input.judgmentAmount !== undefined)
     )
       throw this.validation();
     return {
@@ -985,7 +1110,9 @@ export class CaseSecondInstanceService {
       judgmentContentVersionIds: [...input.judgmentContentVersionIds].sort(),
       paidLitigationFee: this.money(input.paidLitigationFee),
       judgmentAmount:
-        input.result === 'CHANGE' ? this.money(input.judgmentAmount!) : null,
+        input.result === 'CHANGE' || input.judgmentAmount !== undefined
+          ? this.money(input.judgmentAmount!)
+          : null,
     };
   }
   private normalizeRevoke(input: RevokeSecondInstanceResultDto): RevokeValue {

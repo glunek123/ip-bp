@@ -1,5 +1,11 @@
 import { ForbiddenException, Logger } from '@nestjs/common';
 import { CaseHearingService } from './case-hearing.service';
+import { readCaseSourceAnchor } from './case-entry-source';
+
+jest.mock('./case-entry-source', () => ({
+  ...jest.requireActual('./case-entry-source'),
+  readCaseSourceAnchor: jest.fn().mockResolvedValue({ kind: 'NORMAL' }),
+}));
 
 const actor = {
   userId: '11111111-1111-4111-8111-111111111111',
@@ -10,6 +16,14 @@ const caseId = '33333333-3333-4333-8333-333333333333';
 const arrangementId = '44444444-4444-4444-8444-444444444444';
 const advanceId = '55555555-5555-4555-8555-555555555555';
 const trialRoundId = '99999999-9999-4999-8999-999999999999';
+const entryId = 'aaaaaaaa-aaaa-4aaa-8aaa-aaaaaaaaaaaa';
+const externalHearing = {
+  kind: 'EXTERNAL_ENTRY' as const,
+  entryId,
+  initialStage: 'WAITING_HEARING' as const,
+  stageReachedOn: '2026-10-03',
+  known: { acceptedOn: '2026-10-04' },
+};
 const request = {
   expectedVersion: 7,
   idempotencyKey: 'hearing-1',
@@ -107,6 +121,60 @@ describe('CaseHearingService', () => {
     expect(f.tx.caseHearingArrangement.create).not.toHaveBeenCalled();
   });
 
+  it('schedules the real external current round without creating acceptance', async () => {
+    const f = fixture();
+    jest
+      .mocked(readCaseSourceAnchor)
+      .mockResolvedValueOnce(externalHearing as never);
+    const record = await f.tx.case.findFirst();
+    f.tx.case.findFirst.mockResolvedValue({
+      ...record,
+      acceptance: null,
+      currentTrialRound: {
+        origin: 'EXTERNAL_CURRENT',
+        externalEntryId: entryId,
+        sourceResultId: null,
+        revokedAt: null,
+      },
+    });
+    await f.service.schedule(actor, caseId, request);
+    expect(f.tx.caseHearingArrangement.create).toHaveBeenCalledWith(
+      expect.objectContaining({
+        data: expect.objectContaining({
+          trialRoundId,
+          externalEntryId: entryId,
+          source: 'SCHEDULE',
+        }),
+      }),
+    );
+    expect(f.tx.caseHearingAdvance.create).not.toHaveBeenCalled();
+  });
+
+  it('enforces both entry date and known accepted date before external schedule', async () => {
+    const f = fixture();
+    jest
+      .mocked(readCaseSourceAnchor)
+      .mockResolvedValueOnce(externalHearing as never);
+    const record = await f.tx.case.findFirst();
+    f.tx.case.findFirst.mockResolvedValue({
+      ...record,
+      acceptance: null,
+      currentTrialRound: {
+        origin: 'EXTERNAL_CURRENT',
+        externalEntryId: entryId,
+        sourceResultId: null,
+        revokedAt: null,
+      },
+    });
+    await expect(
+      f.service.schedule(actor, caseId, {
+        ...request,
+        hearingAt: '2026-10-03',
+      }),
+    ).rejects.toMatchObject({ response: { code: 'VALIDATION_ERROR' } });
+    expect(f.tx.caseHearingArrangement.create).not.toHaveBeenCalled();
+  });
+
   it('compares hearing dates with the effective corrected acceptance date', async () => {
     const f = fixture();
     const record = await f.tx.case.findFirst();
@@ -171,6 +239,8 @@ describe('CaseHearingService', () => {
       id: advanceId,
       arrangementId,
       caseId,
+      trialRoundId,
+      externalEntryId: null,
     });
     await expect(
       f.service.correct(actor, caseId, {
@@ -198,6 +268,8 @@ describe('CaseHearingService', () => {
       id: advanceId,
       arrangementId,
       caseId,
+      trialRoundId,
+      externalEntryId: null,
     });
     const correction = {
       expectedVersion: 9,
@@ -288,6 +360,8 @@ describe('CaseHearingService', () => {
       id: advanceId,
       arrangementId,
       caseId,
+      trialRoundId,
+      externalEntryId: null,
     });
     const result = await f.service.correct(actor, caseId, {
       expectedVersion: 9,
@@ -380,6 +454,60 @@ describe('CaseHearingService', () => {
       await f.service.advanceDue(new Date('2026-10-09T00:00:00.000Z')),
     ).toEqual({ advanced: 0, failed: 0 });
     expect(f.tx.caseHearingAdvance.create).not.toHaveBeenCalled();
+  });
+
+  it('advances only the current real external arrangement with matching entry', async () => {
+    const f = fixture();
+    jest
+      .mocked(readCaseSourceAnchor)
+      .mockResolvedValueOnce(externalHearing as never);
+    f.database.case.findMany.mockResolvedValue([
+      { id: caseId, departmentId: actor.departmentId },
+    ]);
+    f.tx.$queryRawUnsafe.mockImplementation((sql: string) =>
+      sql.includes('FOR UPDATE')
+        ? Promise.resolve([{ id: caseId }])
+        : Promise.resolve([{ due_at: new Date('2026-10-08T16:00:00.000Z') }]),
+    );
+    f.tx.case.findFirst.mockResolvedValue({
+      stage: 'WAITING_HEARING',
+      version: 8,
+      currentTrialRoundId: trialRoundId,
+      currentTrialRound: {
+        origin: 'EXTERNAL_CURRENT',
+        externalEntryId: entryId,
+        sourceResultId: null,
+        revokedAt: null,
+      },
+      currentHearingArrangementId: arrangementId,
+      currentHearingAdvanceId: null,
+      currentHearingArrangement: {
+        id: arrangementId,
+        hearingAt: new Date('2026-10-08T00:00:00.000Z'),
+        toVersion: 8,
+        trialRoundId,
+        externalEntryId: entryId,
+      },
+    });
+    const service = new CaseHearingService(
+      f.database as never,
+      f.access as never,
+      f.signal as never,
+      { now: () => new Date('2026-10-08T16:01:00.000Z') } as never,
+    );
+    const result = await service.advanceDue(
+      new Date('2026-10-09T00:00:00.000Z'),
+    );
+    expect(result).toEqual({ advanced: 1, failed: 0 });
+    expect(f.tx.caseHearingAdvance.create).toHaveBeenCalledWith(
+      expect.objectContaining({
+        data: expect.objectContaining({
+          arrangementId,
+          trialRoundId,
+          externalEntryId: entryId,
+        }),
+      }),
+    );
   });
 
   it('logs a failed case and a safe error code while continuing with the next case', async () => {

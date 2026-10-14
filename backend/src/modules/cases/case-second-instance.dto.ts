@@ -66,7 +66,10 @@ class SecondInstanceAnchorDto {
   @MaxLength(128)
   idempotencyKey!: string;
   @ApiProperty({ format: 'uuid' }) @IsUUID('4') trialRoundId!: string;
-  @ApiProperty({ format: 'uuid' }) @IsUUID('4') choiceId!: string;
+  @ApiProperty({ type: String, nullable: true, format: 'uuid' })
+  @ValidateIf((_input, value) => value !== null)
+  @IsUUID('4')
+  choiceId!: string | null;
   @ApiProperty({ type: String, nullable: true, format: 'uuid' })
   @ValidateIf((_input, value) => value !== null)
   @IsUUID('4')
@@ -99,7 +102,8 @@ export class RegisterSecondInstanceResultDto extends SaveSecondInstanceDto {
   paidLitigationFee!: KnownMoneyDto;
   @ApiPropertyOptional({ type: KnownMoneyDto })
   @ValidateIf(
-    (input: RegisterSecondInstanceResultDto) => input.result === 'CHANGE',
+    (input: RegisterSecondInstanceResultDto, value: unknown) =>
+      input.result === 'CHANGE' || value !== undefined,
   )
   @IsDefined()
   @ValidateNested()
