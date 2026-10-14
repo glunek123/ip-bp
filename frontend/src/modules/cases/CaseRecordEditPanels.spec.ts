@@ -75,6 +75,7 @@ describe('case record edit panels', () => {
       .get('[data-test="defendant-contact-cancel"]')
       .trigger('click');
     expect(wrapper.find('[role="status"]').exists()).toBe(false);
+    expect(wrapper.emitted('cancel')).toHaveLength(1);
 
     await wrapper.get('[data-test="defendant-contact-phone"]').setValue('200');
     api.updateCaseDefendantContact.mockResolvedValue({
@@ -113,6 +114,7 @@ describe('case record edit panels', () => {
       .get('[data-test="acceptance-correction-cancel"]')
       .trigger('click');
     expect(wrapper.find('[role="status"]').exists()).toBe(false);
+    expect(wrapper.emitted('cancel')).toHaveLength(1);
 
     await wrapper
       .get('[data-test="acceptance-correction-date"]')
@@ -137,6 +139,117 @@ describe('case record edit panels', () => {
       .trigger('click');
     await flushPromises();
     expect(wrapper.find('[role="status"]').exists()).toBe(true);
+  });
+
+  it('trims before enforcing contact length limits without truncating valid values', async () => {
+    const phone = ` ${'p'.repeat(100)} `;
+    const address = ` ${'a'.repeat(500)} `;
+    api.updateCaseDefendantContact.mockResolvedValue({
+      caseId,
+      defendantId,
+      changeId: '50000000-0000-4000-8000-000000000002',
+      contactRevision: 1,
+      phone: 'p'.repeat(100),
+      address: 'a'.repeat(500),
+      recordedAt: '2026-10-14T00:00:00.000Z',
+    });
+    const wrapper = mount(CaseDefendantContactPanel, {
+      props: { item: detail(), contextKey: 'case:case-1:user:operator-1' },
+    });
+
+    expect(
+      wrapper
+        .get('[data-test="defendant-contact-phone"]')
+        .attributes('maxlength'),
+    ).toBeUndefined();
+    await wrapper.get('[data-test="defendant-contact-phone"]').setValue(phone);
+    await wrapper
+      .get('[data-test="defendant-contact-address"]')
+      .setValue(address);
+    expect(
+      (
+        wrapper.get('[data-test="defendant-contact-save"]')
+          .element as HTMLButtonElement
+      ).disabled,
+    ).toBe(false);
+    await wrapper.get('[data-test="defendant-contact-save"]').trigger('click');
+    await flushPromises();
+    expect(api.updateCaseDefendantContact.mock.calls[0]?.[1]).toMatchObject({
+      phone: 'p'.repeat(100),
+      address: 'a'.repeat(500),
+    });
+
+    await wrapper
+      .get('[data-test="defendant-contact-phone"]')
+      .setValue('p'.repeat(101));
+    expect(
+      (
+        wrapper.get('[data-test="defendant-contact-save"]')
+          .element as HTMLButtonElement
+      ).disabled,
+    ).toBe(true);
+  });
+
+  it('trims before enforcing acceptance correction length limits without truncating valid values', async () => {
+    const courtCaseNo = ` ${'n'.repeat(100)} `;
+    const reason = ` ${'r'.repeat(500)} `;
+    api.correctCaseAcceptance.mockResolvedValue({
+      caseId,
+      acceptanceId,
+      correctionId: '60000000-0000-4000-8000-000000000002',
+      acceptanceRevision: 1,
+      acceptedAt: '2026-10-02',
+      courtCaseNo: 'n'.repeat(100),
+      recordedAt: '2026-10-14T00:00:00.000Z',
+    });
+    const wrapper = mount(CaseAcceptanceCorrectionPanel, {
+      props: { item: detail(), contextKey: 'case:case-1:user:operator-1' },
+    });
+
+    expect(
+      wrapper
+        .get('[data-test="acceptance-correction-court-case-no"]')
+        .attributes('maxlength'),
+    ).toBeUndefined();
+    expect(
+      wrapper
+        .get('[data-test="acceptance-correction-reason"]')
+        .attributes('maxlength'),
+    ).toBeUndefined();
+    await wrapper
+      .get('[data-test="acceptance-correction-date"]')
+      .setValue('2026-10-02');
+    await wrapper
+      .get('[data-test="acceptance-correction-court-case-no"]')
+      .setValue(courtCaseNo);
+    await wrapper
+      .get('[data-test="acceptance-correction-reason"]')
+      .setValue(reason);
+    expect(
+      (
+        wrapper.get('[data-test="acceptance-correction-save"]')
+          .element as HTMLButtonElement
+      ).disabled,
+    ).toBe(false);
+    await wrapper
+      .get('[data-test="acceptance-correction-save"]')
+      .trigger('click');
+    await flushPromises();
+    expect(api.correctCaseAcceptance.mock.calls[0]?.[1]).toMatchObject({
+      acceptedAt: '2026-10-02',
+      courtCaseNo: 'n'.repeat(100),
+      reason: 'r'.repeat(500),
+    });
+
+    await wrapper
+      .get('[data-test="acceptance-correction-reason"]')
+      .setValue('r'.repeat(501));
+    expect(
+      (
+        wrapper.get('[data-test="acceptance-correction-save"]')
+          .element as HTMLButtonElement
+      ).disabled,
+    ).toBe(true);
   });
 
   it('submits both trimmed contact fields and preserves the original request for explicit retry', async () => {
@@ -172,6 +285,7 @@ describe('case record edit panels', () => {
           .element as HTMLButtonElement
       ).disabled,
     ).toBe(true);
+    expect(wrapper.emitted('cancel')).toBeUndefined();
     expect(api.updateCaseDefendantContact).toHaveBeenCalledTimes(1);
     const firstRequest = api.updateCaseDefendantContact.mock.calls[0];
     expect(firstRequest[0]).toBe(caseId);
@@ -247,6 +361,7 @@ describe('case record edit panels', () => {
           .element as HTMLButtonElement
       ).disabled,
     ).toBe(true);
+    expect(wrapper.emitted('cancel')).toBeUndefined();
     await wrapper
       .get('[data-test="acceptance-correction-retry-original"]')
       .trigger('click');

@@ -12,6 +12,8 @@ import CaseWorkspaceFiles from './CaseWorkspaceFiles.vue';
 import CaseDetailsSections from './CaseDetailsSections.vue';
 import CaseComplaintSubmissionForm from './CaseComplaintSubmissionForm.vue';
 import CaseHearingPanel from './CaseHearingPanel.vue';
+import CaseAcceptanceCorrectionPanel from './CaseAcceptanceCorrectionPanel.vue';
+import CaseDefendantContactPanel from './CaseDefendantContactPanel.vue';
 import { ElDrawer } from 'element-plus/es/components/drawer/index.mjs';
 
 const api = vi.hoisted(() => ({
@@ -312,6 +314,85 @@ async function tab(wrapper: VueWrapper, key: string) {
   await wrapper.get(`[data-workspace-tab="${key}"]`).trigger('click');
   await flushPromises();
 }
+
+it.each([
+  [
+    'case-info',
+    'defendant-contact-update',
+    'case-defendant-contact-panel',
+    'defendant-contact-cancel',
+  ],
+  [
+    'first-instance',
+    'acceptance-correction',
+    'case-acceptance-correction-panel',
+    'acceptance-correction-cancel',
+  ],
+])(
+  'closes the edit drawer when cancelling %s record edits',
+  async (section, command, panel, cancel) => {
+    const item = structuredClone(baseItem);
+    const defendantId = '10000000-0000-4000-8000-000000000001';
+    const acceptanceId = '20000000-0000-4000-8000-000000000001';
+    const roundId = '30000000-0000-4000-8000-000000000001';
+    item.defendants = [
+      {
+        id: defendantId,
+        kind: 'PERSON',
+        name: 'Defendant',
+        idNo: null,
+        phone: '100',
+        address: 'Address',
+      },
+    ];
+    item.acceptances = [
+      {
+        id: acceptanceId,
+        trialRoundId: roundId,
+        acceptedAt: '2026-10-01',
+        courtCaseNo: 'Case no',
+        files: [],
+        recordedAt: '2026-10-01T00:00:00Z',
+        recordedByUserId: 'operator-1',
+      },
+    ];
+    item.acceptance = item.acceptances[0]!;
+    item.recordEdits = {
+      canUpdateDefendantContact: true,
+      canCorrectAcceptance: true,
+      defendantContacts: [{ defendantId, contactRevision: 0, history: [] }],
+      acceptanceCorrections: [
+        {
+          acceptanceId,
+          trialRoundId: roundId,
+          acceptanceRevision: 0,
+          originalAcceptedAt: '2026-10-01',
+          originalCourtCaseNo: 'Case no',
+          history: [],
+        },
+      ],
+    };
+    const { wrapper } = await render(item);
+
+    await wrapper
+      .get(`[data-section="${section}"] .case-workspace-section__edit`)
+      .trigger('click');
+    await wrapper.get('[data-test="workspace-command"]').setValue(command);
+    await flushPromises();
+    expect(wrapper.find(`[data-test="${panel}"]`).exists()).toBe(true);
+    const drawer = wrapper.get('.case-workspace-editors');
+    expect(drawer.isVisible()).toBe(true);
+    await wrapper.get(`[data-test="${cancel}"]`).trigger('click');
+    await flushPromises();
+    const editedPanel =
+      panel === 'case-defendant-contact-panel'
+        ? wrapper.getComponent(CaseDefendantContactPanel)
+        : wrapper.getComponent(CaseAcceptanceCorrectionPanel);
+    expect(editedPanel.emitted('cancel')).toHaveLength(1);
+    expect(wrapper.getComponent(ElDrawer).props('modelValue')).toBe(false);
+  },
+);
+
 beforeEach(() => {
   vi.resetAllMocks();
   api.getLead.mockRejectedValue(new ApiError('来源无权', 403, 'FORBIDDEN'));

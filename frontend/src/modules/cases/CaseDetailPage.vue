@@ -587,6 +587,9 @@ function recordEditAccessLost(): void {
   clearContext();
   void load();
 }
+function closeRecordEdit(): void {
+  drawerOpen.value = false;
+}
 function openUpload(): void {
   const stage = item.value?.stage;
   const uploadCommands: Partial<Record<CaseDetail['stage'], string>> = {
@@ -2089,6 +2092,7 @@ onBeforeUnmount(() => {
               @changed="load"
               @refresh="load"
               @access-lost="recordEditAccessLost"
+              @cancel="closeRecordEdit"
             />
           </div>
           <div
@@ -2103,6 +2107,7 @@ onBeforeUnmount(() => {
               @changed="load"
               @refresh="load"
               @access-lost="recordEditAccessLost"
+              @cancel="closeRecordEdit"
             />
           </div>
           <div

@@ -17,7 +17,12 @@ import { ApiError } from '../../api/http';
 import { notifyWorkflowChanged } from '../../app/workflow-events';
 
 const props = defineProps<{ item: CaseDetail; contextKey: string }>();
-const emit = defineEmits<{ changed: []; refresh: []; 'access-lost': [] }>();
+const emit = defineEmits<{
+  changed: [];
+  refresh: [];
+  'access-lost': [];
+  cancel: [];
+}>();
 const acceptanceId = ref(props.item.acceptances[0]?.id ?? '');
 const acceptedAt = ref('');
 const courtCaseNo = ref('');
@@ -113,6 +118,7 @@ function reset(): void {
   error.value = '';
   success.value = '';
   setSelectedValues();
+  emit('cancel');
 }
 function unavailableReason(): string {
   if (!props.item.recordEdits)
@@ -274,7 +280,6 @@ onBeforeUnmount(() => {
         <input
           v-model="courtCaseNo"
           class="text-input"
-          maxlength="100"
           data-test="acceptance-correction-court-case-no"
           :disabled="!!unknownRequest"
         />
@@ -284,7 +289,6 @@ onBeforeUnmount(() => {
         <textarea
           v-model="reason"
           class="text-input"
-          maxlength="500"
           rows="3"
           data-test="acceptance-correction-reason"
           :disabled="!!unknownRequest"
