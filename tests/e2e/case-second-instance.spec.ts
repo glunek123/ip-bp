@@ -32,6 +32,11 @@ import {
   prepareCoreCaseHearingAdmin,
 } from '../support/case-hearing-database.mjs';
 import { disconnectCustomerTestDatabase } from '../support/customer-database.mjs';
+import {
+  closeCaseWorkspaceDrawer,
+  openCaseWorkspaceCommand,
+  revealCaseWorkspaceSection,
+} from '../support/case-workspace-browser';
 
 const origin = 'http://127.0.0.1:5174';
 const sourcePdf = Buffer.from('%PDF-1.4\nCA010 source attachment\n%%EOF\n');
@@ -345,6 +350,11 @@ async function registerFirstJudgment(
 ): Promise<string> {
   await page.goto(`/cases/${caseId}`);
   const panel = page.locator('[data-test="case-judgment-panel"]');
+  await openCaseWorkspaceCommand(
+    page,
+    'judgment',
+    '[data-test="case-judgment-panel"]',
+  );
   await expect(panel).toBeVisible();
   const filename = `CA010一审判决-${randomUUID().slice(0, 6)}.pdf`;
   await uploadInBrowserAndWaitForSelectableVersion(
@@ -378,6 +388,11 @@ async function registerFirstJudgment(
 }
 
 async function chooseAppeal(page: Page, caseId: string) {
+  await openCaseWorkspaceCommand(
+    page,
+    'next-step',
+    '[data-test="case-judgment-next-step-panel"]',
+  );
   const panel = page.locator('[data-test="case-judgment-next-step-panel"]');
   await expect(panel).toBeVisible();
   await panel.locator('input[value="APPEAL"]').check();
@@ -464,6 +479,7 @@ async function getInternalDetail(page: Page, caseId: string) {
     judgment: {
       current: null | {
         id: string;
+        trialRoundId: string;
         files: Array<{
           contentVersionId: string;
           originalFilename: string;
@@ -514,7 +530,12 @@ async function getInternalDetail(page: Page, caseId: string) {
           originalFilename: string;
         }>;
       };
-      rounds: Array<{ id: string; sequence: number; revokedAt: string | null }>;
+      rounds: Array<{
+        id: string;
+        sequence: number;
+        sourceResultId: string | null;
+        revokedAt: string | null;
+      }>;
       progresses: Array<{
         id: string;
         trialRoundId: string;
@@ -564,6 +585,89 @@ async function browserDownloadBytes(
   const path = await download.path();
   if (path === null) throw new Error('浏览器未生成附件下载文件');
   return readFile(path);
+}
+
+async function selectCaseWorkspaceFiles(page: Page): Promise<void> {
+  await closeCaseWorkspaceDrawer(page);
+  await page.locator('[data-workspace-tab="files"]').click();
+  await expect(page.locator('section.case-workspace-files')).toBeVisible();
+}
+
+async function revealCaseDetailsSection(
+  page: Page,
+  section: string,
+): Promise<void> {
+  await closeCaseWorkspaceDrawer(page);
+  await page.locator('[data-workspace-tab="details"]').click();
+  await expect(
+    page.locator('[role="tabpanel"].case-workspace-details'),
+  ).toBeVisible();
+  await revealCaseWorkspaceSection(page, section);
+}
+
+function workspaceRoundTitle(round: {
+  sequence: number;
+  sourceResultId: string | null;
+}): string {
+  return round.sourceResultId ? `发回重审第 ${round.sequence} 轮` : '初次一审';
+}
+
+async function selectCaseWorkspaceGroup(
+  page: Page,
+  sectionKey: string,
+  title: string,
+): Promise<Locator> {
+  await revealCaseDetailsSection(page, sectionKey);
+  const section = page.locator(`[data-section="${sectionKey}"]`);
+  const escapedTitle = title.replace(/[.*+?^${}()|[\]\\]/g, '\\$&');
+  const button = section.getByRole('button', {
+    name: new RegExp(`^${escapedTitle}，第\\d+组$`),
+  });
+  await expect(button).toHaveCount(1);
+  await button.click();
+  const group = section.locator('.case-workspace-group:visible');
+  await expect(group).toHaveCount(1);
+  const summary = group.locator('summary');
+  if (
+    (await summary.count()) > 0 &&
+    (await group.getAttribute('open')) === null
+  )
+    await summary.click();
+  const technical = group.locator('[data-test="workspace-technical-details"]');
+  if ((await technical.count()) > 0) {
+    const technicalSummary = technical.locator('summary');
+    if ((await technical.getAttribute('open')) === null)
+      await technicalSummary.click();
+  }
+  return group;
+}
+
+async function downloadCaseWorkspaceFile(
+  page: Page,
+  filename: string,
+): Promise<Buffer> {
+  const row = page
+    .locator('.case-workspace-files [data-test="workspace-file"]')
+    .filter({ hasText: filename });
+  await expect(row).toHaveCount(1);
+  return browserDownloadBytes(page, () => row.getByRole('button').click());
+}
+
+async function expectCaseWorkspaceFileAssociation(
+  page: Page,
+  filename: string,
+  contentVersionId: string,
+  source: string,
+): Promise<void> {
+  const row = page
+    .locator('.case-workspace-files [data-test="workspace-file"]')
+    .filter({ hasText: filename });
+  await expect(row).toHaveCount(1);
+  const details = row.locator('[data-test="workspace-file-details"]');
+  if ((await details.getAttribute('open')) === null)
+    await details.locator('summary').click();
+  await expect(details).toContainText(source);
+  await expect(details).toContainText(contentVersionId);
 }
 
 async function exactUploadedVersionId(
@@ -644,6 +748,11 @@ test('operator recovers an unknown real upload, then saves progress/result again
 }) => {
   const source = await prepareAppealCase(page, request);
   const panel = page.locator('[data-test="second-instance-panel"]');
+  await openCaseWorkspaceCommand(
+    page,
+    'second-instance',
+    '[data-test="second-instance-panel"]',
+  );
   const beforeBlankSave = await getInternalDetail(page, source.caseId);
   expect(beforeBlankSave.secondInstance.currentProgress).toBeNull();
   expect(beforeBlankSave.secondInstance.progresses).toHaveLength(0);
@@ -715,6 +824,11 @@ test('operator recovers an unknown real upload, then saves progress/result again
   const oldChoicePanel = page.locator(
     '[data-test="case-judgment-next-step-panel"]',
   );
+  await openCaseWorkspaceCommand(
+    page,
+    'next-step',
+    '[data-test="case-judgment-next-step-panel"]',
+  );
   await oldChoicePanel
     .locator('[data-revoke-reason]')
     .fill('CA010浏览器回归：撤销后重新选择');
@@ -733,6 +847,11 @@ test('operator recovers an unknown real upload, then saves progress/result again
   const currentChoiceId = currentBeforeProgress.judgmentNextStep.current!.id;
   expect(currentChoiceId).not.toBe(firstChoiceId);
 
+  await openCaseWorkspaceCommand(
+    page,
+    'second-instance',
+    '[data-test="second-instance-panel"]',
+  );
   await expect(panel).toBeVisible();
   const uploadName = 'CA010-丢失响应后恢复的普通文书.pdf';
   let didDropResponse = false;
@@ -846,23 +965,42 @@ test('operator recovers an unknown real upload, then saves progress/result again
   );
   expect(saved.stage).toBe('SECOND_INSTANCE');
   await page.reload();
-  await expect(panel).toContainText(uploadName);
-  await expect(panel).toContainText(serviceName);
-  await expect(panel).toContainText('二审法院第一法庭');
+  const progressGroup = await selectCaseWorkspaceGroup(
+    page,
+    'second-instance',
+    '二审资料登记',
+  );
+  const progressRound = saved.secondInstance.rounds.find(
+    (round) => round.id === saved.secondInstance.currentProgress!.trialRoundId,
+  )!;
+  await expect(progressGroup).toContainText(uploadName);
+  await expect(progressGroup).toContainText(serviceName);
+  await expect(progressGroup).toContainText(progressRound.id);
+  await expect(progressGroup).toContainText(
+    saved.secondInstance.currentProgress!.hearingPlace!,
+  );
   const currentRound = saved.secondInstance.currentTrialRoundId!;
   const sequence = saved.secondInstance.rounds.find(
     (round) => round.id === currentRound,
   )!.sequence;
-  const recoveredDocumentButton = panel
-    .locator(`[data-test="second-instance-round-${sequence}"]`)
-    .getByRole('button', { name: `${uploadName}（下载）` });
-  expect(
-    await browserDownloadBytes(page, () => recoveredDocumentButton.click()),
-  ).toEqual(progressPdf);
-  const serviceButton = panel
-    .locator(`[data-test="second-instance-round-${sequence}"]`)
-    .getByRole('button', { name: `${serviceName}（下载）` });
-  expect(await browserDownloadBytes(page, () => serviceButton.click())).toEqual(
+  expect(sequence).toBeGreaterThan(0);
+  await selectCaseWorkspaceFiles(page);
+  await expectCaseWorkspaceFileAssociation(
+    page,
+    uploadName,
+    recoveredVersionId,
+    '二审文书',
+  );
+  await expectCaseWorkspaceFileAssociation(
+    page,
+    serviceName,
+    serviceVersionId,
+    '二审送达材料',
+  );
+  expect(await downloadCaseWorkspaceFile(page, uploadName)).toEqual(
+    progressPdf,
+  );
+  expect(await downloadCaseWorkspaceFile(page, serviceName)).toEqual(
     servicePdf,
   );
 
@@ -874,20 +1012,18 @@ test('operator recovers an unknown real upload, then saves progress/result again
     coreLeadFixtures.selfPassword,
   );
   await page.goto(`/cases/${source.caseId}`);
-  const readOnlyPanel = page.locator('[data-test="second-instance-panel"]');
+  await revealCaseDetailsSection(page, 'second-instance');
+  await expect(page.locator('[data-test="case-read-only"]')).toBeVisible();
+  await expect(page.locator('[data-test="second-instance-panel"]')).toHaveCount(
+    0,
+  );
   await expect(
-    readOnlyPanel.locator('[data-test="second-instance-progress-form"]'),
-  ).toHaveCount(0);
-  await expect(
-    readOnlyPanel.locator('[data-test="second-instance-result-form"]'),
-  ).toHaveCount(0);
-  await expect(
-    readOnlyPanel.locator('[data-test="second-instance-revoke-section"]'),
-  ).toHaveCount(0);
-  const readOnlyFile = readOnlyPanel
-    .locator(`[data-test="second-instance-round-${sequence}"]`)
-    .getByRole('button', { name: `${uploadName}（下载）` });
-  expect(await browserDownloadBytes(page, () => readOnlyFile.click())).toEqual(
+    page.locator(
+      '[data-section="second-instance"] .case-workspace-section__edit',
+    ),
+  ).toBeDisabled();
+  await selectCaseWorkspaceFiles(page);
+  expect(await downloadCaseWorkspaceFile(page, uploadName)).toEqual(
     progressPdf,
   );
   await logout(page);
@@ -898,6 +1034,11 @@ test('operator recovers an unknown real upload, then saves progress/result again
     coreLeadFixtures.operatorPassword,
   );
   await page.goto(`/cases/${source.caseId}`);
+  await openCaseWorkspaceCommand(
+    page,
+    'second-instance',
+    '[data-test="second-instance-panel"]',
+  );
 
   const resultProgressForm = panel.locator(
     '[data-test="second-instance-progress-form"]',
@@ -1010,14 +1151,34 @@ test('operator recovers an unknown real upload, then saves progress/result again
     (round) =>
       round.id === afterResult.secondInstance.currentResult!.trialRoundId,
   )!.sequence;
-  const resultButton = panel
-    .locator(`[data-test="second-instance-round-${resultRoundSequence}"]`)
-    .getByRole('button', { name: `${resultName}（下载）` });
-  expect(await browserDownloadBytes(page, () => resultButton.click())).toEqual(
-    resultPdf,
+  expect(resultRoundSequence).toBeGreaterThan(0);
+  const resultRound = afterResult.secondInstance.rounds.find(
+    (round) =>
+      round.id === afterResult.secondInstance.currentResult!.trialRoundId,
+  )!;
+  const resultGroup = await selectCaseWorkspaceGroup(
+    page,
+    'judgment',
+    `${workspaceRoundTitle(resultRound)} · 二审结果登记`,
   );
+  await expect(resultGroup).toContainText(resultName);
+  await expect(resultGroup).toContainText(resultRound.id);
+  await selectCaseWorkspaceFiles(page);
+  await expectCaseWorkspaceFileAssociation(
+    page,
+    resultName,
+    resultVersionId,
+    '二审裁判',
+  );
+  expect(await downloadCaseWorkspaceFile(page, resultName)).toEqual(resultPdf);
   await page.reload();
-  await expect(panel).toContainText('改判');
+  const persistedResultGroup = await selectCaseWorkspaceGroup(
+    page,
+    'judgment',
+    `${workspaceRoundTitle(resultRound)} · 二审结果登记`,
+  );
+  await expect(persistedResultGroup).toContainText(resultName);
+  await expect(persistedResultGroup).toContainText(resultRound.id);
   await logout(page);
   await login(
     page,
@@ -1026,9 +1187,13 @@ test('operator recovers an unknown real upload, then saves progress/result again
     coreLeadFixtures.operatorPassword,
   );
   await page.goto(`/cases/${source.caseId}`);
-  await expect(
-    page.locator('[data-test="second-instance-panel"]'),
-  ).toContainText(resultName);
+  const reloadedResultGroup = await selectCaseWorkspaceGroup(
+    page,
+    'judgment',
+    `${workspaceRoundTitle(resultRound)} · 二审结果登记`,
+  );
+  await expect(reloadedResultGroup).toContainText(resultName);
+  await expect(reloadedResultGroup).toContainText(resultRound.id);
 });
 
 test('operator revokes only an exact empty REMAND child and completes a distinct same-case round', async ({
@@ -1038,6 +1203,11 @@ test('operator revokes only an exact empty REMAND child and completes a distinct
   const source = await prepareAppealCase(page, request);
   const caseId = source.caseId;
   const panel = page.locator('[data-test="second-instance-panel"]');
+  await openCaseWorkspaceCommand(
+    page,
+    'second-instance',
+    '[data-test="second-instance-panel"]',
+  );
   const submitRemand = async (filename: string) => {
     await uploadInBrowserAndWaitForSelectableVersion(
       page,
@@ -1089,6 +1259,12 @@ test('operator revokes only an exact empty REMAND child and completes a distinct
   const sourceRound = remanded.secondInstance.rounds.find(
     (round) => round.id !== canceledChildId,
   )!;
+  expect(remanded.secondInstance.currentResult!.trialRoundId).toBe(
+    sourceRound.id,
+  );
+  expect(remanded.secondInstance.currentResult!.childTrialRoundId).toBe(
+    canceledChildId,
+  );
   expect(remanded.secondInstance.currentResult).toMatchObject({
     result: 'REMAND',
     childTrialRoundId: canceledChildId,
@@ -1098,27 +1274,50 @@ test('operator revokes only an exact empty REMAND child and completes a distinct
       (file) => file.contentVersionId,
     ),
   ).toContain(firstRemandVersionId);
-  await expect(
-    panel.locator(
-      `[data-test="second-instance-round-${sourceRound.sequence}"]`,
+  const firstRemandGroup = await selectCaseWorkspaceGroup(
+    page,
+    'judgment',
+    `${workspaceRoundTitle(sourceRound)} · 二审结果登记`,
+  );
+  await expect(firstRemandGroup).toContainText(firstRemandFilename);
+  await expect(firstRemandGroup).toContainText(sourceRound.id);
+  const canceledChild = remanded.secondInstance.rounds.find(
+    (round) => round.id === canceledChildId,
+  )!;
+  const canceledChildGroup = await selectCaseWorkspaceGroup(
+    page,
+    'second-instance',
+    `审理轮次 ${canceledChild.sequence}`,
+  );
+  await expect(canceledChildGroup).toContainText(canceledChildId);
+  const sourceJudgmentGroup = await selectCaseWorkspaceGroup(
+    page,
+    'judgment',
+    `${workspaceRoundTitle(sourceRound)} · 判决登记`,
+  );
+  await expect(sourceJudgmentGroup).toContainText(source.firstJudgmentFile);
+  await selectCaseWorkspaceFiles(page);
+  await expectCaseWorkspaceFileAssociation(
+    page,
+    firstRemandFilename,
+    firstRemandVersionId,
+    '二审裁判',
+  );
+  expect(await downloadCaseWorkspaceFile(page, firstRemandFilename)).toEqual(
+    resultPdf,
+  );
+  expect(
+    await downloadCaseWorkspaceFile(
+      page,
+      source.acceptanceFile.originalFilename,
     ),
-  ).toContainText(source.firstJudgmentFile);
-  const sourceResultButton = panel
-    .locator(`[data-test="second-instance-round-${sourceRound.sequence}"]`)
-    .getByRole('button', { name: `${firstRemandFilename}（下载）` });
-  await expect(sourceResultButton).toBeVisible();
-  expect(
-    await browserDownloadBytes(page, () => sourceResultButton.click()),
-  ).toEqual(resultPdf);
-  const oldAcceptanceButton = panel
-    .locator(`[data-test="second-instance-round-${sourceRound.sequence}"]`)
-    .getByRole('button', {
-      name: `${source.acceptanceFile.originalFilename}（下载）`,
-    });
-  expect(
-    await browserDownloadBytes(page, () => oldAcceptanceButton.click()),
   ).toEqual(sourcePdf);
 
+  await openCaseWorkspaceCommand(
+    page,
+    'second-instance',
+    '[data-test="second-instance-panel"]',
+  );
   const revokeSection = panel.locator(
     '[data-test="second-instance-revoke-section"]',
   );
@@ -1148,6 +1347,15 @@ test('operator revokes only an exact empty REMAND child and completes a distinct
   const secondRemandVersionId = await submitRemand(secondRemandFilename);
   const secondRemand = await getInternalDetail(page, caseId);
   const newChildId = secondRemand.secondInstance.currentTrialRoundId!;
+  const newChildRound = secondRemand.secondInstance.rounds.find(
+    (round) => round.id === newChildId,
+  )!;
+  expect(secondRemand.secondInstance.currentResult!.childTrialRoundId).toBe(
+    newChildId,
+  );
+  expect(secondRemand.secondInstance.currentResult!.trialRoundId).toBe(
+    sourceRound.id,
+  );
   expect(
     secondRemand.secondInstance.currentResult!.files.map(
       (file) => file.contentVersionId,
@@ -1165,6 +1373,11 @@ test('operator revokes only an exact empty REMAND child and completes a distinct
 
   await page.goto(`/cases/${caseId}`);
   const acceptancePanel = page.locator('[data-test="case-acceptance-panel"]');
+  await openCaseWorkspaceCommand(
+    page,
+    'acceptance',
+    '[data-test="case-acceptance-panel"]',
+  );
   await expect(acceptancePanel).toBeVisible();
   const acceptanceFilename = 'CA010-发回后重新受理通知书.pdf';
   await uploadInBrowserAndWaitForSelectableVersion(
@@ -1220,12 +1433,11 @@ test('operator revokes only an exact empty REMAND child and completes a distinct
   const newRoundSequence = secondRemand.secondInstance.rounds.find(
     (round) => round.id === newChildId,
   )!.sequence;
-  const newAcceptanceButton = panel
-    .locator(`[data-test="second-instance-round-${newRoundSequence}"]`)
-    .getByRole('button', { name: `${acceptanceFilename}（下载）` });
-  expect(
-    await browserDownloadBytes(page, () => newAcceptanceButton.click()),
-  ).toEqual(sourcePdf);
+  expect(newRoundSequence).toBeGreaterThan(0);
+  await selectCaseWorkspaceFiles(page);
+  expect(await downloadCaseWorkspaceFile(page, acceptanceFilename)).toEqual(
+    sourcePdf,
+  );
 
   await logout(page);
   await scheduleHearingAsLawyer(
@@ -1258,18 +1470,10 @@ test('operator revokes only an exact empty REMAND child and completes a distinct
       (file) => file.contentVersionId,
     ),
   ).toContain(secondJudgmentVersionId);
-  const currentJudgment = page.locator(
-    '[data-test="case-judgment-panel"] [data-test="judgment-current"]',
+  await selectCaseWorkspaceFiles(page);
+  expect(await downloadCaseWorkspaceFile(page, secondJudgmentFilename)).toEqual(
+    sourcePdf,
   );
-  const currentJudgmentFile = currentJudgment
-    .locator('li')
-    .filter({ hasText: secondJudgmentFilename });
-  await expect(currentJudgmentFile).toBeVisible();
-  expect(
-    await browserDownloadBytes(page, () =>
-      currentJudgmentFile.getByRole('button', { name: '下载判决书' }).click(),
-    ),
-  ).toEqual(sourcePdf);
   const newChoice = await chooseAppeal(page, caseId);
   const chosenSecondJudgment = await getInternalDetail(page, caseId);
   expect(
@@ -1277,7 +1481,13 @@ test('operator revokes only an exact empty REMAND child and completes a distinct
       (file) => file.contentVersionId,
     ),
   ).toContain(secondJudgmentVersionId);
+  expect(chosenSecondJudgment.judgment.current?.trialRoundId).toBe(newChildId);
   const round2Panel = page.locator('[data-test="second-instance-panel"]');
+  await openCaseWorkspaceCommand(
+    page,
+    'second-instance',
+    '[data-test="second-instance-panel"]',
+  );
   await round2Panel
     .locator('[data-test="second-instance-hearing-at"]')
     .fill(todayShanghai());
@@ -1305,31 +1515,60 @@ test('operator revokes only an exact empty REMAND child and completes a distinct
     source.initialChoiceId,
   );
   await page.reload();
-  await expect(
-    round2Panel.locator(
-      `[data-test="second-instance-round-${sourceRound.sequence}"]`,
+  const currentRemandGroup = await selectCaseWorkspaceGroup(
+    page,
+    'judgment',
+    `${workspaceRoundTitle(sourceRound)} · 二审结果登记`,
+  );
+  await expect(currentRemandGroup).toContainText(secondRemandFilename);
+  await expect(currentRemandGroup).toContainText(sourceRound.id);
+  const priorRemandGroup = await selectCaseWorkspaceGroup(
+    page,
+    'judgment',
+    `${workspaceRoundTitle(sourceRound)} · 二审结果登记（历史）`,
+  );
+  await expect(priorRemandGroup).toContainText(firstRemandFilename);
+  await expect(priorRemandGroup).toContainText(sourceRound.id);
+  const secondJudgmentGroup = await selectCaseWorkspaceGroup(
+    page,
+    'judgment',
+    `${workspaceRoundTitle(newChildRound)} · 判决登记`,
+  );
+  await expect(secondJudgmentGroup).toContainText(secondJudgmentFilename);
+  await expect(secondJudgmentGroup).toContainText(newChildId);
+  await selectCaseWorkspaceFiles(page);
+  await expectCaseWorkspaceFileAssociation(
+    page,
+    firstRemandFilename,
+    firstRemandVersionId,
+    '二审裁判历史',
+  );
+  await expectCaseWorkspaceFileAssociation(
+    page,
+    secondRemandFilename,
+    secondRemandVersionId,
+    '二审裁判',
+  );
+  await expectCaseWorkspaceFileAssociation(
+    page,
+    secondJudgmentFilename,
+    secondJudgmentVersionId,
+    '一审判决',
+  );
+  expect(await downloadCaseWorkspaceFile(page, firstRemandFilename)).toEqual(
+    resultPdf,
+  );
+  expect(await downloadCaseWorkspaceFile(page, secondRemandFilename)).toEqual(
+    resultPdf,
+  );
+  expect(
+    await downloadCaseWorkspaceFile(
+      page,
+      source.acceptanceFile.originalFilename,
     ),
-  ).toContainText(firstRemandFilename);
-  await expect(round2Panel).toContainText(secondJudgmentFilename);
-  const oldRemandResultButton = round2Panel
-    .locator(`[data-test="second-instance-round-${sourceRound.sequence}"]`)
-    .getByRole('button', { name: `${firstRemandFilename}（下载）` });
-  expect(
-    await browserDownloadBytes(page, () => oldRemandResultButton.click()),
-  ).toEqual(resultPdf);
-  const oldAcceptanceAfterRoundTrip = round2Panel
-    .locator(`[data-test="second-instance-round-${sourceRound.sequence}"]`)
-    .getByRole('button', {
-      name: `${source.acceptanceFile.originalFilename}（下载）`,
-    });
-  expect(
-    await browserDownloadBytes(page, () => oldAcceptanceAfterRoundTrip.click()),
   ).toEqual(sourcePdf);
-  const oldJudgmentButton = round2Panel
-    .locator(`[data-test="second-instance-round-${sourceRound.sequence}"]`)
-    .getByRole('button', { name: `${source.firstJudgmentFile}（下载）` });
   expect(
-    await browserDownloadBytes(page, () => oldJudgmentButton.click()),
+    await downloadCaseWorkspaceFile(page, source.firstJudgmentFile),
   ).toEqual(sourcePdf);
 });
 
