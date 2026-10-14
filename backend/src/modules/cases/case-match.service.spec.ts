@@ -35,6 +35,10 @@ describe('CaseMatchService', () => {
       case: {
         findFirst: jest.fn().mockResolvedValue({
           id: caseId,
+          sourceLeadId: 'aaaaaaaa-aaaa-4aaa-8aaa-aaaaaaaaaaaa',
+          sourceNotaryMatterId: 'bbbbbbbb-bbbb-4bbb-8bbb-bbbbbbbbbbbb',
+          certificateId: 'cccccccc-cccc-4ccc-8ccc-cccccccccccc',
+          externalEntry: null,
           departmentId: actor.departmentId,
           stage: 'PENDING_MATCH',
           version: 1,
