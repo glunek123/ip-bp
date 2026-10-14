@@ -6,9 +6,25 @@ import CaseClosurePanel from './CaseClosurePanel.vue';
 import CaseArchivePanel from './CaseArchivePanel.vue';
 
 import { computed, onBeforeUnmount, onMounted, ref, watch } from 'vue';
-import { RouterLink, useRoute } from 'vue-router';
+import { RouterLink, useRoute, useRouter } from 'vue-router';
 import { ElButton } from 'element-plus/es/components/button/index.mjs';
-import { ApiError } from '../../api/http';
+import { ElDrawer } from 'element-plus/es/components/drawer/index.mjs';
+import { ApiError, type RequestOptions } from '../../api/http';
+import { getLead, type LeadDetail } from '../../api/leads';
+import CaseWorkspaceShell from './CaseWorkspaceShell.vue';
+import CaseDetailsSections from './CaseDetailsSections.vue';
+import CaseWorkspaceFiles from './CaseWorkspaceFiles.vue';
+import CaseWorkspaceFees from './CaseWorkspaceFees.vue';
+import type {
+  SectionKey,
+  SectionAction,
+  WorkspaceTab,
+} from './case-workspace-contract';
+import {
+  buildCaseWorkspaceEvents,
+  workspaceDate,
+  type LeadState,
+} from './case-workspace-read-model';
 import {
   archiveCase,
   caseArchiveSession,
@@ -36,6 +52,7 @@ import {
   type CaseFile,
   type CaseDetail,
   type MatchCaseInput,
+  type SubmitComplaintInput,
   type LawyerMatchCandidate,
 } from '../../api/cases';
 import {
@@ -57,8 +74,17 @@ import CaseJudgmentNextStepPanel from './CaseJudgmentNextStepPanel.vue';
 import CaseSecondInstancePanel from './CaseSecondInstancePanel.vue';
 import CaseExecutionSubmissionPanel from './CaseExecutionSubmissionPanel.vue';
 import CaseExecutionConfirmationPanel from './CaseExecutionConfirmationPanel.vue';
+import {
+  pendingSecondInstanceCommand,
+  hasUnclearedSecondInstanceUpload,
+} from './case-second-instance-recovery';
+import {
+  pendingExecutionCommand,
+  hasUnclearedExecutionUpload,
+} from './case-execution-recovery';
 
 const route = useRoute();
+const router = useRouter();
 const auth = useAuthStore();
 const id = computed(() => String(route.params.id));
 const identity = computed(() =>
@@ -71,11 +97,469 @@ const secondInstanceActorKey = computed(() =>
     ? ''
     : `${auth.session.principalType}:${auth.session.user.id}:${auth.session.department?.id ?? ''}`,
 );
-const backTo = computed(() => ({ path: '/cases', query: route.query }));
+const backTo = computed(() => ({
+  path: '/cases',
+  query: Object.fromEntries(
+    Object.entries(route.query).filter(([key]) =>
+      ['view', 'page', 'stage', 'stageGroup'].includes(key),
+    ),
+  ),
+}));
+const workspaceContext = computed(() => `${id.value}:${identity.value}`);
+const activeTab = computed<WorkspaceTab>(() =>
+  route.query.tab === 'files' || route.query.tab === 'fees'
+    ? route.query.tab
+    : 'details',
+);
+function selectTab(tab: WorkspaceTab): void {
+  void router.replace({ path: route.path, query: { ...route.query, tab } });
+}
+watch(
+  () => route.query.tab,
+  (tab) => {
+    if (
+      tab !== undefined &&
+      tab !== 'details' &&
+      tab !== 'files' &&
+      tab !== 'fees'
+    )
+      selectTab('details');
+  },
+  { immediate: true },
+);
+const lead = ref<LeadDetail | null>(null);
+const leadState = ref<LeadState>('idle');
+const drawerOpen = ref(false);
+const editorSection = ref<SectionKey>('case-info');
+const selectedCommand = ref('');
+const timelineView = ref(false);
+// Each command has one instance. Hiding the drawer or switching its view never resets it.
+const openedCommands = ref(new Set<string>());
+type WorkspaceCommand = { id: string; section: SectionKey; label: string };
+const commands = computed<WorkspaceCommand[]>(() => {
+  const current = item.value;
+  if (!current) return [];
+  const result: WorkspaceCommand[] = [];
+  const add = (
+    enabled: boolean,
+    command: string,
+    section: SectionKey,
+    label: string,
+  ) => {
+    if (enabled) result.push({ id: command, section, label });
+  };
+  const stage = current.stage;
+  add(
+    stage === 'PENDING_MATCH' && current.canMatch,
+    'match',
+    'case-info',
+    '匹配当事人与承办律师',
+  );
+  add(
+    stage === 'WAITING_COMPLAINT' && current.canSubmitComplaint,
+    'complaint',
+    'first-instance',
+    '提交起诉材料',
+  );
+  add(
+    stage === 'WAITING_COMPLAINT_CONFIRMATION' && current.canConfirmComplaint,
+    'confirm-complaint',
+    'first-instance',
+    '确认诉状',
+  );
+  add(
+    stage === 'WAITING_COMPLAINT_STAMP' &&
+      current.canMailComplaint &&
+      !current.complaintMailing,
+    'mail-complaint',
+    'first-instance',
+    '登记诉状邮寄',
+  );
+  add(
+    stage === 'WAITING_FILING' && current.canSubmitFiling,
+    'filing',
+    'first-instance',
+    '提交立案',
+  );
+  add(
+    (stage === 'WAITING_FORMAL_ACCEPTANCE' &&
+      current.canRegisterAcceptance &&
+      !current.acceptance) ||
+      ((stage === 'WAITING_FORMAL_ACCEPTANCE' || stage === 'WAITING_HEARING') &&
+        current.canUploadAcceptanceMaterials),
+    'acceptance',
+    'first-instance',
+    '正式立案／受理材料',
+  );
+  add(
+    !!current.acceptance &&
+      ((stage === 'WAITING_HEARING' && current.canScheduleHearing) ||
+        ((stage === 'WAITING_HEARING' || stage === 'WAITING_JUDGMENT') &&
+          current.canCorrectHearing)),
+    'hearing',
+    'first-instance',
+    '开庭登记／更正',
+  );
+  add(
+    stage === 'WAITING_JUDGMENT' &&
+      ((!current.judgment.current && current.canRegisterJudgment) ||
+        (!!current.judgment.current &&
+          !current.judgmentNextStep.current &&
+          current.canCorrectJudgment)),
+    'judgment',
+    'judgment',
+    current.judgment.current ? '更正判决' : '登记判决',
+  );
+  add(
+    !!current.judgment.current &&
+      ((stage === 'WAITING_JUDGMENT' &&
+        current.canChooseJudgmentNextStep &&
+        !current.judgmentNextStep.current) ||
+        (current.canRevokeJudgmentNextStep &&
+          !!current.judgmentNextStep.current &&
+          (stage === 'SECOND_INSTANCE' ||
+            stage === 'WAITING_EXECUTION_DOCUMENTS'))),
+    'next-step',
+    'judgment',
+    current.judgmentNextStep.current ? '撤销后续选择' : '选择判决后续流程',
+  );
+  add(
+    (stage === 'SECOND_INSTANCE' &&
+      !!current.secondInstance.currentTrialRoundId &&
+      current.judgmentNextStep.current?.next === 'APPEAL' &&
+      current.judgmentNextStep.current.trialRoundId ===
+        current.secondInstance.currentTrialRoundId &&
+      (current.canSaveSecondInstance ||
+        (current.canRegisterSecondInstanceResult &&
+          !current.secondInstance.currentResult))) ||
+      (current.canRevokeSecondInstanceResult &&
+        !!current.secondInstance.currentResult),
+    'second-instance',
+    'second-instance',
+    current.canRevokeSecondInstanceResult &&
+      current.secondInstance.currentResult
+      ? '撤销二审结果'
+      : '二审登记／结果／撤销',
+  );
+  add(
+    (stage === 'WAITING_EXECUTION_DOCUMENTS' ||
+      stage === 'WAITING_EXECUTION_CONFIRMATION') &&
+      current.canSubmitExecution &&
+      !current.executionConfirmation,
+    'execution-submission',
+    'execution',
+    '提交执行材料',
+  );
+  add(
+    stage === 'WAITING_EXECUTION_CONFIRMATION' &&
+      current.canConfirmExecution &&
+      !!current.executionSubmission.current &&
+      !current.executionConfirmation,
+    'execution-confirmation',
+    'execution',
+    '确认执行材料',
+  );
+  add(
+    stage === 'WAITING_EXECUTION_STAMP' &&
+      current.canMailExecution &&
+      !!current.executionConfirmation &&
+      !current.executionMailing,
+    'execution-mailing',
+    'execution',
+    '登记执行邮寄',
+  );
+  add(
+    stage === 'WAITING_EXECUTION_FILING' &&
+      current.canSubmitExecutionFiling &&
+      !!current.executionMailing &&
+      !current.executionFiling,
+    'execution-filing',
+    'execution',
+    '登记执行立案',
+  );
+  add(
+    stage === 'EXECUTING' &&
+      current.canFinishExecution &&
+      !!current.executionFiling &&
+      !current.executionFinish,
+    'finish',
+    'execution',
+    '登记执行结束',
+  );
+  add(
+    stage === 'WAITING_ARCHIVE' &&
+      !!current.executionFinish &&
+      ((!current.closure && current.canRecordClosure) ||
+        (!!current.closure && current.canCorrectClosure)),
+    'closure',
+    'case-info',
+    current.closure ? '更正结案资料' : '登记结案资料',
+  );
+  add(
+    !!current.closure &&
+      ((stage === 'WAITING_ARCHIVE' &&
+        current.canArchive &&
+        !current.archive) ||
+        (stage === 'ARCHIVED' &&
+          current.canCorrectArchive &&
+          !!current.archive)),
+    'archive',
+    'case-info',
+    current.archive ? '更正归档原因' : '归档案件',
+  );
+
+  if (finishPending.value && !result.some((entry) => entry.id === 'finish'))
+    result.push({
+      id: 'finish',
+      section: 'execution',
+      label: '核对执行结束原请求／显式重试',
+    });
+  if (closurePending.value && !result.some((entry) => entry.id === 'closure'))
+    result.push({
+      id: 'closure',
+      section: 'case-info',
+      label: '核对结案原请求／显式重试',
+    });
+  if (archivePending.value && !result.some((entry) => entry.id === 'archive'))
+    result.push({
+      id: 'archive',
+      section: 'case-info',
+      label: '核对归档原请求／显式重试',
+    });
+  if (
+    complaintUnknown.value &&
+    !result.some((entry) => entry.id === 'complaint')
+  )
+    result.push({
+      id: 'complaint',
+      section: 'first-instance',
+      label: '核对起诉材料原请求／显式重试',
+    });
+  if (matchUnknown.value && !result.some((entry) => entry.id === 'match'))
+    result.push({
+      id: 'match',
+      section: 'case-info',
+      label: '核对匹配原请求／显式重试',
+    });
+  const recoveryIdentity = {
+    actor: secondInstanceActorKey.value,
+    caseId: current.id,
+  };
+  if (
+    (pendingSecondInstanceCommand(recoveryIdentity) ||
+      hasUnclearedSecondInstanceUpload(recoveryIdentity)) &&
+    !result.some((entry) => entry.id === 'second-instance')
+  )
+    result.push({
+      id: 'second-instance',
+      section: 'second-instance',
+      label: '核对二审原请求／上传结果',
+    });
+  if (
+    (pendingExecutionCommand(recoveryIdentity) ||
+      hasUnclearedExecutionUpload(recoveryIdentity)) &&
+    !result.some((entry) => entry.id === 'execution-submission')
+  )
+    result.push({
+      id: 'execution-submission',
+      section: 'execution',
+      label: '核对执行材料原请求／上传结果',
+    });
+  return result;
+});
+const sectionActions = computed<Record<SectionKey, SectionAction>>(() => {
+  const action = (section: SectionKey): SectionAction => ({
+    enabled: commands.value.some(
+      (command) =>
+        command.section === section ||
+        (section === 'execution' && command.id === 'closure'),
+    ),
+    label: section === 'timeline' ? '登记／更正' : '编辑',
+    hint: commands.value.some(
+      (command) =>
+        command.section === section ||
+        (section === 'execution' && command.id === 'closure'),
+    )
+      ? '仅办理已有业务命令；其他字段只读。'
+      : '当前阶段或权限没有可办理命令；通用字段编辑尚未提供。',
+  });
+  return {
+    'case-info': action('case-info'),
+    'lead-info': {
+      enabled:
+        leadState.value === 'ready' && lead.value?.capabilities.edit === true,
+      label: '编辑',
+      hint:
+        leadState.value === 'denied'
+          ? '无权读取来源线索；案件资料仍可查看。'
+          : '仅来源线索允许编辑时进入原编辑页；受保护字段仍只读。',
+    },
+    'first-instance': action('first-instance'),
+    'second-instance': action('second-instance'),
+    judgment: action('judgment'),
+    execution: action('execution'),
+    timeline: {
+      enabled: commands.value.length > 0,
+      label: '登记／更正',
+      hint: '仅办理已有业务命令；没有手工时间轴保存能力，不能修改审计记录。',
+    },
+  };
+});
+const editorCommands = computed(() =>
+  editorSection.value === 'timeline'
+    ? commands.value
+    : commands.value.filter(
+        (command) =>
+          command.section === editorSection.value ||
+          (editorSection.value === 'execution' && command.id === 'closure'),
+      ),
+);
+const primaryCommand = computed(() => {
+  const stage = item.value?.stage;
+  const stageCommands: Partial<Record<CaseDetail['stage'], string>> = {
+    PENDING_MATCH: 'match',
+    WAITING_COMPLAINT: 'complaint',
+    WAITING_COMPLAINT_CONFIRMATION: 'confirm-complaint',
+    WAITING_COMPLAINT_STAMP: 'mail-complaint',
+    WAITING_FILING: 'filing',
+    WAITING_FORMAL_ACCEPTANCE: 'acceptance',
+    WAITING_HEARING: 'hearing',
+    WAITING_JUDGMENT: 'judgment',
+    SECOND_INSTANCE: 'second-instance',
+    WAITING_EXECUTION_DOCUMENTS: 'execution-submission',
+    WAITING_EXECUTION_CONFIRMATION: 'execution-confirmation',
+    WAITING_EXECUTION_STAMP: 'execution-mailing',
+    WAITING_EXECUTION_FILING: 'execution-filing',
+    EXECUTING: 'finish',
+    ARCHIVED: 'archive',
+  };
+  if (item.value?.stage === 'WAITING_ARCHIVE')
+    return (
+      commands.value.find((entry) => entry.id === 'archive') ??
+      commands.value.find((entry) => entry.id === 'closure')
+    );
+  return (
+    commands.value.find(
+      (entry) => stage && entry.id === stageCommands[stage],
+    ) ??
+    commands.value.find((entry) => entry.id !== 'next-step') ??
+    commands.value[0]
+  );
+});
+const moreCommands = computed(() =>
+  commands.value.filter((entry) => entry.id !== primaryCommand.value?.id),
+);
+const timelineEvents = computed(() =>
+  item.value ? buildCaseWorkspaceEvents(item.value) : [],
+);
+function openCommand(command: WorkspaceCommand): void {
+  if (!commands.value.some((entry) => entry.id === command.id)) return;
+  timelineView.value = false;
+  editorSection.value = command.section;
+  selectedCommand.value = command.id;
+  openedCommands.value.add(command.id);
+  drawerOpen.value = true;
+}
+function editSection(section: SectionKey): void {
+  if (!sectionActions.value[section].enabled) return;
+  if (section === 'lead-info') {
+    if (
+      lead.value &&
+      lead.value.id === item.value?.sourceLead.id &&
+      lead.value.capabilities.edit
+    )
+      void router.push(`/leads/${encodeURIComponent(lead.value.id)}/edit`);
+    return;
+  }
+  const command = commands.value.find(
+    (entry) =>
+      section === 'timeline' ||
+      entry.section === section ||
+      (section === 'execution' && entry.id === 'closure'),
+  );
+  if (command) {
+    openCommand(command);
+    editorSection.value = section;
+  }
+}
+function chooseCommand(commandId: string): void {
+  const command = editorCommands.value.find((entry) => entry.id === commandId);
+  if (!command) return;
+  selectedCommand.value = command.id;
+  openedCommands.value.add(command.id);
+}
+function viewTimeline(): void {
+  timelineView.value = true;
+  drawerOpen.value = true;
+}
+function openUpload(): void {
+  const stage = item.value?.stage;
+  const uploadCommands: Partial<Record<CaseDetail['stage'], string>> = {
+    WAITING_COMPLAINT: 'complaint',
+    WAITING_COMPLAINT_STAMP: 'mail-complaint',
+    WAITING_FILING: 'filing',
+    WAITING_FORMAL_ACCEPTANCE: 'acceptance',
+    WAITING_HEARING: 'acceptance',
+    WAITING_JUDGMENT: 'judgment',
+    SECOND_INSTANCE: 'second-instance',
+    WAITING_EXECUTION_DOCUMENTS: 'execution-submission',
+    WAITING_EXECUTION_CONFIRMATION: 'execution-submission',
+    WAITING_EXECUTION_STAMP: 'execution-mailing',
+    WAITING_EXECUTION_FILING: 'execution-filing',
+    EXECUTING: 'finish',
+    WAITING_ARCHIVE: 'closure',
+  };
+  const command = commands.value.find(
+    (entry) => stage && entry.id === uploadCommands[stage],
+  );
+  if (command) openCommand(command);
+}
+function listCaseMaterials(caseId: string, options?: RequestOptions) {
+  return listOwnerMaterials('CASE', caseId, options);
+}
 const state = ref<'loading' | 'ready' | 'missing' | 'failed'>('loading');
 const refreshing = ref(false);
 const refreshError = ref('');
 const item = ref<CaseDetail>();
+watch(
+  [
+    workspaceContext,
+    () => item.value?.sourceLead.id,
+    () => item.value?.version,
+  ],
+  async ([contextKey, leadId, version], _prior, onCleanup) => {
+    const controller = new AbortController();
+    onCleanup(() => controller.abort());
+    lead.value = null;
+    leadState.value = leadId ? 'loading' : 'idle';
+    if (!leadId) return;
+    try {
+      const result = await getLead(leadId, { signal: controller.signal });
+      if (
+        controller.signal.aborted ||
+        workspaceContext.value !== contextKey ||
+        item.value?.sourceLead.id !== leadId ||
+        item.value?.version !== version
+      )
+        return;
+      lead.value = result;
+      leadState.value = 'ready';
+    } catch (reason) {
+      if (
+        controller.signal.aborted ||
+        workspaceContext.value !== contextKey ||
+        item.value?.sourceLead.id !== leadId ||
+        item.value?.version !== version
+      )
+        return;
+      leadState.value =
+        reason instanceof ApiError && [401, 403, 404].includes(reason.status)
+          ? 'denied'
+          : 'failed';
+    }
+  },
+  { flush: 'sync' },
+);
 const error = ref('');
 const downloadError = ref('');
 const matchError = ref('');
@@ -91,6 +575,8 @@ const uploadLoading = ref<Record<string, boolean>>({});
 const complaintError = ref('');
 const complaintSuccess = ref('');
 const complaintSubmitting = ref(false);
+const complaintUnknown = ref<SubmitComplaintInput | null>(null);
+const matchUnknown = ref<MatchCaseInput | null>(null);
 let complaintFingerprint = '';
 let complaintIdempotencyKey = '';
 type DefendantDraft = {
@@ -120,6 +606,7 @@ type OperationContext = {
   caseId: string;
   identity: string;
   revision: number;
+  version: number | undefined;
 };
 
 function operationContext(): OperationContext {
@@ -127,15 +614,48 @@ function operationContext(): OperationContext {
     caseId: id.value,
     identity: identity.value,
     revision: contextRevision,
+    version: item.value?.version,
   };
 }
 
-function isCurrentOperation(context: OperationContext): boolean {
+function isCurrentOperation(
+  context: OperationContext,
+  checkVersion = true,
+): boolean {
   return (
     context.revision === contextRevision &&
     context.caseId === id.value &&
-    context.identity === identity.value
+    context.identity === identity.value &&
+    (!checkVersion || context.version === item.value?.version)
   );
+}
+
+async function readCommandDetail(
+  context: OperationContext,
+): Promise<CaseDetail> {
+  try {
+    return await getCase(context.caseId);
+  } catch (reason) {
+    if (
+      isCurrentOperation(context) &&
+      reason instanceof ApiError &&
+      [401, 403, 404].includes(reason.status)
+    ) {
+      contextRevision += 1;
+      readRevision += 1;
+      request?.abort();
+      finishSession.clear();
+      closureSession.clear();
+      archiveSession.clear();
+      clearContext();
+      state.value = reason.status === 404 ? 'missing' : 'failed';
+      error.value =
+        reason.status === 403
+          ? '当前账号无权读取该案件。'
+          : '案件不存在或已不可访问。';
+    }
+    throw reason;
+  }
 }
 
 const finishSession = executionFinishSession(auth, () => identity.value);
@@ -144,10 +664,12 @@ const finishCallbacks = computed(() => {
   const caseId = item.value?.id ?? id.value;
   const contextKey = identity.value;
   const revision = contextRevision;
+  const version = item.value?.version;
   const current = () =>
     caseId === id.value &&
     contextKey === identity.value &&
-    revision === contextRevision;
+    revision === contextRevision &&
+    version === item.value?.version;
   const denied = async (reason: unknown) => {
     if (
       current() &&
@@ -191,38 +713,34 @@ const finishCallbacks = computed(() => {
           409,
           'INVALID_STATE',
         );
-      try {
-        const materials = await listOwnerMaterials('CASE', caseId);
-        if (!current())
-          throw new ApiError(
-            '案件办理身份已变化，请重新读取',
-            409,
-            'INVALID_STATE',
+      const materials = await listOwnerMaterials('CASE', caseId);
+      if (!current())
+        throw new ApiError(
+          '案件办理身份已变化，请重新读取',
+          409,
+          'INVALID_STATE',
+        );
+      return materials.items
+        .filter(
+          (material) =>
+            material.status === 'ACTIVE' &&
+            material.category === 'EXECUTION_FINISH_BASIS',
+        )
+        .flatMap((material) => {
+          const version = material.contentVersions.find(
+            (entry) => entry.id === material.currentVersionId,
           );
-        return materials.items
-          .filter(
-            (material) =>
-              material.status === 'ACTIVE' &&
-              material.category === 'EXECUTION_FINISH_BASIS',
-          )
-          .flatMap((material) => {
-            const version = material.contentVersions.find(
-              (entry) => entry.id === material.currentVersionId,
-            );
-            return version
-              ? [
-                  {
-                    materialId: material.id,
-                    contentVersionId: version.id,
-                    originalFilename: version.originalFilename,
-                    mimeType: version.mimeType,
-                  },
-                ]
-              : [];
-          });
-      } catch (reason) {
-        return denied(reason);
-      }
+          return version
+            ? [
+                {
+                  materialId: material.id,
+                  contentVersionId: version.id,
+                  originalFilename: version.originalFilename,
+                  mimeType: version.mimeType,
+                },
+              ]
+            : [];
+        });
     },
     upload: async (
       targetId: string,
@@ -234,29 +752,25 @@ const finishCallbacks = computed(() => {
           409,
           'INVALID_STATE',
         );
-      try {
-        const result = await uploadMaterialFile({
-          ownerType: 'CASE',
-          ownerId: caseId,
-          category: 'EXECUTION_FINISH_BASIS',
-          purpose: 'EXECUTION_FINISH_BASIS',
-          file,
-        });
-        if (!current())
-          throw new ApiError(
-            '案件办理身份已变化，请重新读取',
-            409,
-            'INVALID_STATE',
-          );
-        return {
-          materialId: result.materialId,
-          contentVersionId: result.contentVersionId,
-          originalFilename: result.originalFilename,
-          mimeType: result.mimeType,
-        };
-      } catch (reason) {
-        return denied(reason);
-      }
+      const result = await uploadMaterialFile({
+        ownerType: 'CASE',
+        ownerId: caseId,
+        category: 'EXECUTION_FINISH_BASIS',
+        purpose: 'EXECUTION_FINISH_BASIS',
+        file,
+      });
+      if (!current())
+        throw new ApiError(
+          '案件办理身份已变化，请重新读取',
+          409,
+          'INVALID_STATE',
+        );
+      return {
+        materialId: result.materialId,
+        contentVersionId: result.contentVersionId,
+        originalFilename: result.originalFilename,
+        mimeType: result.mimeType,
+      };
     },
     download: async (
       targetId: string,
@@ -269,15 +783,11 @@ const finishCallbacks = computed(() => {
           409,
           'INVALID_STATE',
         );
-      try {
-        return await downloadMaterialVersion(
-          file.materialId,
-          file.contentVersionId,
-          signal,
-        );
-      } catch (reason) {
-        return denied(reason);
-      }
+      return await downloadMaterialVersion(
+        file.materialId,
+        file.contentVersionId,
+        signal,
+      );
     },
     changed: (result: FinishCaseExecutionResult) => {
       if (!current() || result.id !== caseId) return;
@@ -301,10 +811,12 @@ const archiveCallbacks = computed(() => {
   const archiveId = item.value?.archive?.id;
   const contextKey = identity.value;
   const revision = contextRevision;
+  const version = item.value?.version;
   const current = () =>
     caseId === id.value &&
     contextKey === identity.value &&
-    revision === contextRevision;
+    revision === contextRevision &&
+    version === item.value?.version;
   const denied = async (reason: unknown) => {
     if (
       current() &&
@@ -402,10 +914,12 @@ const closureCallbacks = computed(() => {
   const caseId = item.value?.id ?? id.value;
   const contextKey = identity.value;
   const revision = contextRevision;
+  const version = item.value?.version;
   const current = () =>
     caseId === id.value &&
     contextKey === identity.value &&
-    revision === contextRevision;
+    revision === contextRevision &&
+    version === item.value?.version;
   const denied = async (reason: unknown) => {
     if (
       current() &&
@@ -472,38 +986,34 @@ const closureCallbacks = computed(() => {
           409,
           'INVALID_STATE',
         );
-      try {
-        const materials = await listOwnerMaterials('CASE', caseId);
-        if (!current())
-          throw new ApiError(
-            '案件办理身份已变化，请重新读取',
-            409,
-            'INVALID_STATE',
+      const materials = await listOwnerMaterials('CASE', caseId);
+      if (!current())
+        throw new ApiError(
+          '案件办理身份已变化，请重新读取',
+          409,
+          'INVALID_STATE',
+        );
+      return materials.items
+        .filter(
+          (material) =>
+            material.status === 'ACTIVE' &&
+            material.category === 'CASE_CLOSURE_DOCUMENT',
+        )
+        .flatMap((material) => {
+          const version = material.contentVersions.find(
+            (entry) => entry.id === material.currentVersionId,
           );
-        return materials.items
-          .filter(
-            (material) =>
-              material.status === 'ACTIVE' &&
-              material.category === 'CASE_CLOSURE_DOCUMENT',
-          )
-          .flatMap((material) => {
-            const version = material.contentVersions.find(
-              (entry) => entry.id === material.currentVersionId,
-            );
-            return version
-              ? [
-                  {
-                    materialId: material.id,
-                    contentVersionId: version.id,
-                    originalFilename: version.originalFilename,
-                    mimeType: version.mimeType,
-                  },
-                ]
-              : [];
-          });
-      } catch (reason) {
-        return denied(reason);
-      }
+          return version
+            ? [
+                {
+                  materialId: material.id,
+                  contentVersionId: version.id,
+                  originalFilename: version.originalFilename,
+                  mimeType: version.mimeType,
+                },
+              ]
+            : [];
+        });
     },
     upload: async (
       targetId: string,
@@ -515,29 +1025,25 @@ const closureCallbacks = computed(() => {
           409,
           'INVALID_STATE',
         );
-      try {
-        const result = await uploadMaterialFile({
-          ownerType: 'CASE',
-          ownerId: caseId,
-          category: 'CASE_CLOSURE_DOCUMENT',
-          purpose: 'CASE_CLOSURE_DOCUMENT',
-          file,
-        });
-        if (!current())
-          throw new ApiError(
-            '案件办理身份已变化，请重新读取',
-            409,
-            'INVALID_STATE',
-          );
-        return {
-          materialId: result.materialId,
-          contentVersionId: result.contentVersionId,
-          originalFilename: result.originalFilename,
-          mimeType: result.mimeType,
-        };
-      } catch (reason) {
-        return denied(reason);
-      }
+      const result = await uploadMaterialFile({
+        ownerType: 'CASE',
+        ownerId: caseId,
+        category: 'CASE_CLOSURE_DOCUMENT',
+        purpose: 'CASE_CLOSURE_DOCUMENT',
+        file,
+      });
+      if (!current())
+        throw new ApiError(
+          '案件办理身份已变化，请重新读取',
+          409,
+          'INVALID_STATE',
+        );
+      return {
+        materialId: result.materialId,
+        contentVersionId: result.contentVersionId,
+        originalFilename: result.originalFilename,
+        mimeType: result.mimeType,
+      };
     },
     download: async (
       targetId: string,
@@ -550,15 +1056,11 @@ const closureCallbacks = computed(() => {
           409,
           'INVALID_STATE',
         );
-      try {
-        return await downloadMaterialVersion(
-          file.materialId,
-          file.contentVersionId,
-          signal,
-        );
-      } catch (reason) {
-        return denied(reason);
-      }
+      return await downloadMaterialVersion(
+        file.materialId,
+        file.contentVersionId,
+        signal,
+      );
     },
     changed: (result: CaseClosureResult) => {
       if (!current() || result.id !== caseId) return;
@@ -602,9 +1104,19 @@ async function load() {
     const result = await getCase(targetId, { signal: controller.signal });
     if (!isCurrentRead()) return;
     item.value = result;
-    if (result.stage === 'WAITING_COMPLAINT' && result.canSubmitComplaint) {
+    if (
+      result.stage === 'WAITING_COMPLAINT' &&
+      result.canSubmitComplaint &&
+      !complaintUnknown.value
+    ) {
       const materials = await listOwnerMaterials('CASE', result.id, {
         signal: controller.signal,
+      }).catch((reason) => {
+        if (!isCurrentRead()) throw reason;
+        uploadErrors.value = {
+          COMPLAINT: '本案上传池暂不可访问；案件资料仍可查看。',
+        };
+        return { items: [], total: 0 };
       });
       if (!isCurrentRead()) return;
       complaintUploads.value = materials.items
@@ -695,6 +1207,11 @@ async function load() {
 }
 
 function clearContext(): void {
+  drawerOpen.value = false;
+  openedCommands.value = new Set();
+  selectedCommand.value = '';
+  lead.value = null;
+  leadState.value = 'idle';
   item.value = undefined;
   state.value = 'loading';
   refreshing.value = false;
@@ -714,6 +1231,8 @@ function clearContext(): void {
   complaintError.value = '';
   complaintSuccess.value = '';
   complaintSubmitting.value = false;
+  complaintUnknown.value = null;
+  matchUnknown.value = null;
   complaintFingerprint = '';
   complaintIdempotencyKey = '';
   defendants.value = [
@@ -828,6 +1347,12 @@ async function uploadComplaintFiles(
   event: unknown,
 ) {
   if (
+    complaintUnknown.value ||
+    item.value?.stage !== 'WAITING_COMPLAINT' ||
+    !item.value.canSubmitComplaint
+  )
+    return;
+  if (
     typeof event !== 'object' ||
     event === null ||
     !('target' in event) ||
@@ -875,7 +1400,7 @@ async function uploadComplaintFiles(
       break;
     }
   }
-  if (isCurrentOperation(context))
+  if (isCurrentOperation(context, false))
     uploadLoading.value = { ...uploadLoading.value, [category]: false };
 }
 function downloadComplaintFile(file: CaseFile): void {
@@ -885,6 +1410,12 @@ function removeComplaintUpload(
   category: 'COMPLAINT' | 'AUTHORIZATION',
   index: number,
 ): void {
+  if (
+    complaintUnknown.value ||
+    item.value?.stage !== 'WAITING_COMPLAINT' ||
+    !item.value.canSubmitComplaint
+  )
+    return;
   const uploads =
     category === 'COMPLAINT' ? complaintUploads : authorizationUploads;
   uploads.value.splice(index, 1);
@@ -918,16 +1449,16 @@ async function submitComplaintMaterials() {
   const current = item.value;
   if (
     !current ||
-    current.stage !== 'WAITING_COMPLAINT' ||
-    !current.canSubmitComplaint ||
+    (!complaintUnknown.value &&
+      (current.stage !== 'WAITING_COMPLAINT' || !current.canSubmitComplaint)) ||
     complaintSubmitting.value
   )
     return;
   complaintError.value = '';
   complaintSuccess.value = '';
   if (
-    complaintUploads.value.length < 1 ||
-    authorizationUploads.value.length < 1
+    !complaintUnknown.value &&
+    (complaintUploads.value.length < 1 || authorizationUploads.value.length < 1)
   ) {
     complaintError.value = '请至少上传 1 份起诉状和 1 份授权材料。';
     return;
@@ -935,9 +1466,10 @@ async function submitComplaintMaterials() {
   const trimmedAmount = amount.value.trim();
   const trimmedReason = pendingReason.value.trim();
   if (
-    amountState.value === 'KNOWN'
+    !complaintUnknown.value &&
+    (amountState.value === 'KNOWN'
       ? !/^\d+(\.\d+)?$/u.test(trimmedAmount)
-      : !trimmedReason
+      : !trimmedReason)
   ) {
     complaintError.value =
       amountState.value === 'KNOWN'
@@ -945,7 +1477,7 @@ async function submitComplaintMaterials() {
         : '请填写待确认原因。';
     return;
   }
-  const input = {
+  const input: SubmitComplaintInput = complaintUnknown.value ?? {
     expectedVersion: current.version,
     idempotencyKey: '',
     amountState: amountState.value,
@@ -957,7 +1489,7 @@ async function submitComplaintMaterials() {
     authorizationContentVersionIds: authorizationUploads.value.map(
       (file) => file.contentVersionId,
     ),
-  } as const;
+  };
   const fingerprint = JSON.stringify({ ...input, idempotencyKey: undefined });
   if (fingerprint !== complaintFingerprint) {
     complaintFingerprint = fingerprint;
@@ -965,17 +1497,22 @@ async function submitComplaintMaterials() {
   }
   complaintSubmitting.value = true;
   const context = operationContext();
+  const requestInput = complaintUnknown.value ?? {
+    ...input,
+    idempotencyKey: complaintIdempotencyKey,
+  };
+  complaintUnknown.value = requestInput;
   try {
-    await submitComplaint(current.id, {
-      ...input,
-      idempotencyKey: complaintIdempotencyKey,
-    });
+    await submitComplaint(current.id, requestInput);
     if (!isCurrentOperation(context)) return;
-    const fresh = await getCase(current.id);
+    const fresh = await readCommandDetail(context);
     if (!isCurrentOperation(context)) return;
     item.value = fresh;
     if (fresh.stage === 'WAITING_COMPLAINT_CONFIRMATION' && fresh.complaint) {
       complaintSuccess.value = '起诉材料已确认提交，当前阶段为诉状待确认。';
+      complaintUnknown.value = null;
+      openedCommands.value.delete('complaint');
+      drawerOpen.value = false;
       complaintFingerprint = '';
       complaintIdempotencyKey = '';
       notifyWorkflowChanged();
@@ -988,10 +1525,17 @@ async function submitComplaintMaterials() {
     complaintError.value = complaintErrorMessage(reason);
     if (
       reason instanceof ApiError &&
+      !['NETWORK_ERROR', 'TIMEOUT'].includes(reason.code) &&
+      reason.status < 500 &&
+      reason.status !== 0
+    )
+      complaintUnknown.value = null;
+    if (
+      reason instanceof ApiError &&
       (reason.code === 'VERSION_CONFLICT' || reason.code === 'INVALID_STATE')
     ) {
       try {
-        const fresh = await getCase(current.id);
+        const fresh = await readCommandDetail(context);
         if (isCurrentOperation(context)) item.value = fresh;
       } catch {
         /* retain the last confirmed detail */
@@ -1000,34 +1544,40 @@ async function submitComplaintMaterials() {
       complaintIdempotencyKey = '';
     }
   } finally {
-    if (isCurrentOperation(context)) complaintSubmitting.value = false;
+    if (isCurrentOperation(context, false)) complaintSubmitting.value = false;
   }
 }
 async function submitMatch() {
   const current = item.value;
   if (
     !current ||
-    current.stage !== 'PENDING_MATCH' ||
-    !current.canMatch ||
+    (!matchUnknown.value &&
+      (current.stage !== 'PENDING_MATCH' || !current.canMatch)) ||
     submitting.value
   )
     return;
   matchError.value = '';
   matchSuccess.value = '';
-  if (defendants.value.some(({ name }) => !name.trim())) {
+  if (
+    !matchUnknown.value &&
+    defendants.value.some(({ name }) => !name.trim())
+  ) {
     matchError.value = '请填写每位被告的名称。';
     return;
   }
-  if (!selectedLawyer.value) {
+  if (!matchUnknown.value && !selectedLawyer.value) {
     matchError.value =
       '请选择已创建的律师账号；没有候选时请联系有权限的管理员创建账号。';
     return;
   }
-  if (!matchedOn.value || matchedOn.value > todayShanghai()) {
+  if (
+    !matchUnknown.value &&
+    (!matchedOn.value || matchedOn.value > todayShanghai())
+  ) {
     matchError.value = '请选择真实的实际匹配日期，不能晚于今天。';
     return;
   }
-  const input: MatchCaseInput = {
+  const input: MatchCaseInput = matchUnknown.value ?? {
     expectedVersion: current.version,
     idempotencyKey: '',
     matchedOn: matchedOn.value,
@@ -1040,29 +1590,33 @@ async function submitMatch() {
         address,
       }),
     ),
-    lawyerAccountId: selectedLawyer.value.lawyerAccountId,
-    lawyerProfileId: selectedLawyer.value.lawyerProfileId,
+    lawyerAccountId: selectedLawyer.value?.lawyerAccountId ?? '',
+    lawyerProfileId: selectedLawyer.value?.lawyerProfileId ?? '',
   };
   const fingerprint = JSON.stringify({ ...input, idempotencyKey: undefined });
   if (fingerprint !== submissionFingerprint) {
     submissionFingerprint = fingerprint;
     idempotencyKey = makeKey();
   }
-  input.idempotencyKey = idempotencyKey;
+  if (!matchUnknown.value) input.idempotencyKey = idempotencyKey;
+  matchUnknown.value = input;
   submitting.value = true;
   const context = operationContext();
   try {
     await matchCase(current.id, input);
     if (!isCurrentOperation(context)) return;
-    const fresh = await getCase(current.id);
+    const fresh = await readCommandDetail(context);
     if (!isCurrentOperation(context)) return;
     item.value = fresh;
     if (
       fresh.stage === 'WAITING_COMPLAINT' &&
       fresh.matchedAt !== null &&
-      fresh.matchedOn === matchedOn.value
+      fresh.matchedOn === input.matchedOn
     ) {
       matchSuccess.value = '案件匹配已完成，当前阶段为待写诉状。';
+      matchUnknown.value = null;
+      openedCommands.value.delete('match');
+      drawerOpen.value = false;
       submissionFingerprint = '';
       idempotencyKey = '';
       notifyWorkflowChanged();
@@ -1074,11 +1628,18 @@ async function submitMatch() {
     if (!isCurrentOperation(context)) return;
     if (
       reason instanceof ApiError &&
+      !['NETWORK_ERROR', 'TIMEOUT'].includes(reason.code) &&
+      reason.status < 500 &&
+      reason.status !== 0
+    )
+      matchUnknown.value = null;
+    if (
+      reason instanceof ApiError &&
       (reason.code === 'VERSION_CONFLICT' || reason.code === 'INVALID_STATE')
     ) {
       matchError.value = '案件状态或版本已变化，正在读取最新信息。';
       try {
-        const fresh = await getCase(current.id);
+        const fresh = await readCommandDetail(context);
         if (isCurrentOperation(context)) item.value = fresh;
       } catch {
         /* Keep the confirmed prior detail visible. */
@@ -1120,7 +1681,7 @@ async function submitMatch() {
       matchError.value = '案件匹配未能完成，请检查信息后重试。';
     }
   } finally {
-    if (isCurrentOperation(context)) submitting.value = false;
+    if (isCurrentOperation(context, false)) submitting.value = false;
   }
 }
 async function download(materialId: string, versionId: string) {
@@ -1142,37 +1703,52 @@ onBeforeUnmount(() => {
 </script>
 
 <template>
-  <div class="page-view page-view--narrow">
-    <main>
+  <div class="page-view">
+    <section v-if="state !== 'ready' || !item" class="state-panel ledger-panel">
       <p><RouterLink :to="backTo">返回案件列表</RouterLink></p>
-      <section v-if="state === 'loading'" class="state-panel ledger-panel">
-        <h1>正在读取案件</h1>
-      </section>
-      <section v-else-if="state === 'missing'" class="state-panel ledger-panel">
-        <h1>案件不存在或已不可访问</h1>
-        <p><RouterLink :to="backTo">返回案件列表</RouterLink></p>
-      </section>
-      <section v-else-if="state === 'failed'" class="state-panel ledger-panel">
+      <h1 v-if="state === 'loading'">正在读取案件</h1>
+      <h1 v-else-if="state === 'missing'">案件不存在或已不可访问</h1>
+      <template v-else>
         <h1>案件暂时无法读取</h1>
         <p class="submit-error" role="alert">{{ error }}</p>
         <ElButton type="primary" @click="load">重新加载</ElButton>
-      </section>
-      <template v-else-if="item">
-        <div class="page-head">
-          <div>
-            <p class="eyebrow">案件详情</p>
-            <h1>{{ item.businessNo }}</h1>
-            <p>
-              <span class="pill">{{ stageLabel(item.stage) }}</span>
-              · 创建于
-              {{
-                new Date(item.createdAt).toLocaleString('zh-CN', {
-                  timeZone: 'Asia/Shanghai',
-                  hour12: false,
-                })
-              }}
-            </p>
-          </div>
+      </template>
+    </section>
+    <CaseWorkspaceShell
+      v-else
+      :business-no="item.businessNo"
+      :subtitle="`${item.courtCaseNo ?? '法院案号未登记'} · ${item.customer.name} · ${stageLabel(item.stage)}`"
+      :active-tab="activeTab"
+      :context-key="workspaceContext"
+      @update:active-tab="selectTab"
+    >
+      <template #back
+        ><RouterLink :to="backTo">返回案件列表</RouterLink></template
+      >
+      <template #actions>
+        <div class="detail-actions">
+          <span class="pill">{{ stageLabel(item.stage) }}</span>
+          <ElButton
+            v-if="primaryCommand"
+            type="primary"
+            data-test="workspace-primary-action"
+            @click="openCommand(primaryCommand)"
+            >{{ primaryCommand.label }}</ElButton
+          >
+          <details
+            v-if="moreCommands.length > 0"
+            data-test="workspace-more-actions"
+          >
+            <summary>更多操作</summary>
+            <ElButton
+              v-for="command in moreCommands"
+              :key="command.id"
+              text
+              :data-command="command.id"
+              @click="openCommand(command)"
+              >{{ command.label }}</ElButton
+            >
+          </details>
           <ElButton
             text
             data-test="case-refresh"
@@ -1181,560 +1757,496 @@ onBeforeUnmount(() => {
             >刷新</ElButton
           >
         </div>
+      </template>
+      <template #details>
+        <p
+          v-if="commands.length === 0"
+          data-test="case-read-only"
+          class="case-workspace-field__help"
+        >
+          可以查看案件和下载获准材料；当前账号不能办理此案。{{
+            item.stage === 'WAITING_COMPLAINT' ? '匹配已完成。' : ''
+          }}
+        </p>
         <p v-if="refreshing" role="status">正在刷新案件详情…</p>
         <p v-if="refreshError" class="submit-error" role="alert">
           {{ refreshError }}
         </p>
         <p v-if="matchSuccess" role="status">{{ matchSuccess }}</p>
-        <CaseComplaintConfirmationPanel
-          v-if="
-            item.stage === 'WAITING_COMPLAINT_CONFIRMATION' ||
-            item.stage === 'WAITING_COMPLAINT_STAMP'
-          "
+        <CaseDetailsSections
           :item="item"
-          @changed="load"
-          @refresh="load"
+          :lead="lead"
+          :lead-state="leadState"
+          :actions="sectionActions"
+          :context-key="workspaceContext"
+          @edit="editSection"
+          @view-timeline="viewTimeline"
         />
-        <CaseComplaintMailingPanel
-          v-if="
-            item.stage === 'WAITING_COMPLAINT_STAMP' ||
-            item.stage === 'WAITING_FILING'
-          "
+      </template>
+      <template #files>
+        <CaseWorkspaceFiles
           :item="item"
-          @changed="load"
-          @refresh="load"
+          :context-key="`${workspaceContext}:${item.version}`"
+          :list-case-materials="listCaseMaterials"
+          :download-version="downloadMaterialVersion"
+          @open-upload="openUpload"
         />
-        <CaseFilingPanel
-          v-if="item.stage === 'WAITING_FILING'"
-          :item="item"
-          :context-key="identity"
-          @changed="load"
-          @refresh="load"
-        />
-        <CaseAcceptancePanel
-          v-if="
-            item.stage === 'WAITING_FORMAL_ACCEPTANCE' ||
-            item.stage === 'WAITING_HEARING'
-          "
-          :item="item"
-          :context-key="identity"
-          @changed="load"
-          @refresh="load"
-        />
-        <CaseHearingPanel
-          v-if="
-            item.acceptance !== null &&
-            (item.stage === 'WAITING_HEARING' ||
-              item.stage === 'WAITING_JUDGMENT')
-          "
-          :item="item"
-          :context-key="identity"
-          @changed="load"
-          @refresh="load"
-        />
-        <CaseJudgmentPanel
-          v-if="
-            item.stage === 'WAITING_JUDGMENT' ||
-            (item.judgment !== undefined && item.judgment.current !== null)
-          "
-          :item="item"
-          :context-key="identity"
-          @changed="load"
-          @refresh="load"
-        />
-        <CaseJudgmentNextStepPanel
-          v-if="item.judgment !== undefined && item.judgment.current !== null"
-          :item="item"
-          :context-key="identity"
-          @changed="load"
-          @refresh="load"
-        />
-        <CaseSecondInstancePanel
-          v-if="
-            item.secondInstance.rounds.length > 0 ||
-            item.canSaveSecondInstance ||
-            item.canRegisterSecondInstanceResult ||
-            item.canRevokeSecondInstanceResult
-          "
-          :item="item"
-          :context-key="identity"
-          :actor-key="secondInstanceActorKey"
-          @changed="load"
-          @refresh="load"
-        />
-        <CaseExecutionSubmissionPanel
-          v-if="
-            item.canSubmitExecution ||
-            item.executionSubmission.submissions.length > 0
-          "
-          :item="item"
-          :context-key="identity"
-          :actor-key="secondInstanceActorKey"
-          @changed="load"
-          @refresh="load"
-        />
-        <CaseExecutionMailingPanel
-          v-if="
-            item.canMailExecution ||
-            item.executionMailing ||
-            item.stage === 'WAITING_EXECUTION_STAMP'
-          "
-          :item="item"
-          :context-key="identity"
-          @changed="load"
-          @refresh="load"
-        />
-        <CaseExecutionFinishPanel
-          v-if="
-            item.canFinishExecution ||
-            item.executionFinish ||
-            finishPending ||
-            item.stage === 'EXECUTING'
-          "
-          :item="item"
-          :context-key="identity"
-          :pending-request="finishPending"
-          :submit-finish="finishCallbacks.submit"
-          :list-basis-files="finishCallbacks.list"
-          :upload-basis-file="finishCallbacks.upload"
-          :download-basis-file="finishCallbacks.download"
-          @pending-change="finishCallbacks.pending"
-          @changed="finishCallbacks.changed"
-          @refresh="finishCallbacks.refresh"
-        />
-        <CaseArchivePanel
-          v-if="
-            item.stage === 'WAITING_ARCHIVE' ||
-            item.stage === 'ARCHIVED' ||
-            archivePending
-          "
-          :item="item"
-          :context-key="identity"
-          :pending-request="archivePending"
-          :archive-case="archiveCallbacks.archive"
-          :correct-archive="archiveCallbacks.correct"
-          @pending-change="archiveCallbacks.pending"
-          @changed="archiveCallbacks.changed"
-          @refresh="archiveCallbacks.refresh"
-        />
-        <CaseClosurePanel
-          v-if="
-            item.stage === 'WAITING_ARCHIVE' || item.closure || closurePending
-          "
-          :item="item"
-          :context-key="identity"
-          :pending-request="closurePending"
-          :record-closure="closureCallbacks.record"
-          :correct-closure="closureCallbacks.correct"
-          :list-closure-files="closureCallbacks.list"
-          :upload-closure-file="closureCallbacks.upload"
-          :download-closure-file="closureCallbacks.download"
-          @pending-change="closureCallbacks.pending"
-          @changed="closureCallbacks.changed"
-          @refresh="closureCallbacks.refresh"
-        />
-
-        <CaseExecutionFilingPanel
-          v-if="
-            item.canSubmitExecutionFiling ||
-            item.executionFiling ||
-            item.stage === 'WAITING_EXECUTION_FILING'
-          "
-          :item="item"
-          :context-key="identity"
-          @changed="load"
-          @refresh="load"
-        />
-        <CaseExecutionConfirmationPanel
-          v-if="
-            item.canConfirmExecution ||
-            item.executionConfirmation ||
-            item.stage === 'WAITING_EXECUTION_STAMP'
-          "
-          :item="item"
-          :context-key="identity"
-          :actor-key="secondInstanceActorKey"
-          @changed="load"
-          @refresh="load"
-        />
-        <section
-          v-if="item.filingSubmission"
-          class="demo-card demo-card--pad"
-          data-test="case-filing-record"
+      </template>
+      <template #fees><CaseWorkspaceFees :item="item" /></template>
+      <template #editors>
+        <ElDrawer
+          v-model="drawerOpen"
+          class="case-workspace-editors"
+          :title="timelineView ? '流程时间轴记录' : '登记／更正案件资料'"
+          size="min(720px, 100vw)"
+          append-to-body
+          :destroy-on-close="false"
         >
-          <h2 class="form-section-title">提交立案记录</h2>
-          <p>法院：{{ item.filingSubmission.court.name }}</p>
-          <p>实际提交日期：{{ item.filingSubmission.submittedAt }}</p>
-          <p>诉调号：{{ item.filingSubmission.mediationNo ?? '未填写' }}</p>
-          <p>
-            系统登记时间：{{
-              new Date(item.filingSubmission.recordedAt).toLocaleString(
-                'zh-CN',
-                { timeZone: 'Asia/Shanghai', hour12: false },
-              )
-            }}
-          </p>
-          <p>
-            已确认金额：{{
-              item.complaintConfirmation?.amountState === 'KNOWN'
-                ? `¥ ${item.complaintConfirmation.amount}`
-                : '待确认'
-            }}（只读）
-          </p>
-          <h3>冻结的起诉及证据材料</h3>
-          <ul>
-            <li
-              v-for="file in item.filingSubmission.evidenceFiles"
-              :key="file.contentVersionId"
-            >
-              {{ file.originalFilename }}（{{ file.mimeType }}）
-              <ElButton
-                text
-                @click="download(file.materialId, file.contentVersionId)"
-                >下载</ElButton
-              >
-            </li>
-          </ul>
-          <h3>冻结的立案截图</h3>
-          <ul>
-            <li
-              v-for="file in item.filingSubmission.screenshotFiles"
-              :key="file.contentVersionId"
-            >
-              {{ file.originalFilename }}（{{ file.mimeType }}）
-              <ElButton
-                text
-                @click="download(file.materialId, file.contentVersionId)"
-                >下载</ElButton
-              >
-            </li>
-          </ul>
-        </section>
-        <section
-          v-if="item.stage === 'PENDING_MATCH' && item.canMatch"
-          class="demo-card demo-card--pad"
-          data-test="case-match-form"
-        >
-          <h2 class="form-section-title">匹配当事人与承办律师</h2>
           <p class="field-help">
-            提交后将保存全部被告和主办律师，并把案件推进到“待写诉状”。上述信息与阶段变更会一并保存。
+            通用字段编辑、手工时间轴保存和完整案件收付尚未提供。仅使用下方真实业务命令；关闭抽屉不提交、不清除待核对请求。
           </p>
-          <div class="demo-form-grid">
-            <label
-              >实际匹配日期 <span aria-hidden="true">*</span
-              ><input
-                v-model="matchedOn"
-                type="date"
-                class="text-input"
-                :max="todayShanghai()"
-                required
-                :aria-required="true"
-            /></label>
-            <p class="field-help">
-              默认今天；补录时可改为真实的过去日期。系统会另记本次登记时间。
-            </p>
+          <div v-show="timelineView" class="case-workspace-timeline">
+            <p>仅展示本案已返回的真实记录，不能修改或删除审计。</p>
+            <ol>
+              <li
+                v-for="event in timelineEvents"
+                :key="`${event.source}:${event.id}`"
+              >
+                <h3>{{ event.title }}</h3>
+                <p>业务日期／时间：{{ workspaceDate(event.businessAt) }}</p>
+                <p>记录时间：{{ workspaceDate(event.recordedAt) }}</p>
+                <p v-for="field in event.fields" :key="field.label">
+                  {{ field.label }}：{{ field.value }}
+                </p>
+              </li>
+            </ol>
+          </div>
+          <label v-show="!timelineView"
+            >业务命令
+            <select
+              class="text-input"
+              :value="selectedCommand"
+              data-test="workspace-command"
+              @change="
+                chooseCommand(($event.target as HTMLSelectElement).value)
+              "
+            >
+              <option
+                v-for="command in editorCommands"
+                :key="command.id"
+                :value="command.id"
+              >
+                {{ command.label }}
+              </option>
+              <option
+                v-if="
+                  !editorCommands.some(
+                    (command) => command.id === selectedCommand,
+                  )
+                "
+                :value="selectedCommand"
+                disabled
+              >
+                原请求待核对；请使用原表单刷新／显式重试
+              </option>
+            </select>
+          </label>
+
+          <div
+            v-if="openedCommands.has('confirm-complaint')"
+            v-show="!timelineView && selectedCommand === 'confirm-complaint'"
+          >
+            <CaseComplaintConfirmationPanel
+              :item="item"
+              @changed="load"
+              @refresh="load"
+            />
           </div>
           <div
-            v-for="(defendant, index) in defendants"
-            :key="index"
-            class="demo-form-grid"
+            v-if="openedCommands.has('mail-complaint')"
+            v-show="!timelineView && selectedCommand === 'mail-complaint'"
           >
-            <h3>被告 {{ index + 1 }}</h3>
-            <label
-              >主体类型
-              <select v-model="defendant.kind" class="text-input">
-                <option value="PERSON">自然人</option>
-                <option value="ORGANIZATION">组织</option>
-              </select></label
+            <CaseComplaintMailingPanel
+              :item="item"
+              @changed="load"
+              @refresh="load"
+            />
+          </div>
+          <div
+            v-if="openedCommands.has('filing')"
+            v-show="!timelineView && selectedCommand === 'filing'"
+          >
+            <CaseFilingPanel
+              :item="item"
+              :context-key="identity"
+              @changed="load"
+              @refresh="load"
+            />
+          </div>
+          <div
+            v-if="openedCommands.has('acceptance')"
+            v-show="!timelineView && selectedCommand === 'acceptance'"
+          >
+            <CaseAcceptancePanel
+              :item="item"
+              :context-key="identity"
+              @changed="load"
+              @refresh="load"
+            />
+          </div>
+          <div
+            v-if="openedCommands.has('hearing')"
+            v-show="!timelineView && selectedCommand === 'hearing'"
+          >
+            <CaseHearingPanel
+              :item="item"
+              :context-key="identity"
+              @changed="load"
+              @refresh="load"
+            />
+          </div>
+          <div
+            v-if="openedCommands.has('judgment')"
+            v-show="!timelineView && selectedCommand === 'judgment'"
+          >
+            <CaseJudgmentPanel
+              :item="item"
+              :context-key="identity"
+              @changed="load"
+              @refresh="load"
+            />
+          </div>
+          <div
+            v-if="openedCommands.has('next-step')"
+            v-show="!timelineView && selectedCommand === 'next-step'"
+          >
+            <CaseJudgmentNextStepPanel
+              :item="item"
+              :context-key="identity"
+              @changed="load"
+              @refresh="load"
+            />
+          </div>
+          <div
+            v-if="openedCommands.has('second-instance')"
+            v-show="!timelineView && selectedCommand === 'second-instance'"
+          >
+            <CaseSecondInstancePanel
+              :item="item"
+              :context-key="identity"
+              :actor-key="secondInstanceActorKey"
+              @changed="load"
+              @refresh="load"
+            />
+          </div>
+          <div
+            v-if="openedCommands.has('execution-submission')"
+            v-show="!timelineView && selectedCommand === 'execution-submission'"
+          >
+            <CaseExecutionSubmissionPanel
+              :item="item"
+              :context-key="identity"
+              :actor-key="secondInstanceActorKey"
+              @changed="load"
+              @refresh="load"
+            />
+          </div>
+          <div
+            v-if="openedCommands.has('execution-mailing')"
+            v-show="!timelineView && selectedCommand === 'execution-mailing'"
+          >
+            <CaseExecutionMailingPanel
+              :item="item"
+              :context-key="identity"
+              @changed="load"
+              @refresh="load"
+            />
+          </div>
+          <div
+            v-if="openedCommands.has('finish')"
+            v-show="!timelineView && selectedCommand === 'finish'"
+          >
+            <CaseExecutionFinishPanel
+              :item="item"
+              :context-key="identity"
+              :pending-request="finishPending"
+              :submit-finish="finishCallbacks.submit"
+              :list-basis-files="finishCallbacks.list"
+              :upload-basis-file="finishCallbacks.upload"
+              :download-basis-file="finishCallbacks.download"
+              @pending-change="finishCallbacks.pending"
+              @changed="finishCallbacks.changed"
+              @refresh="finishCallbacks.refresh"
+            />
+          </div>
+          <div
+            v-if="openedCommands.has('archive')"
+            v-show="!timelineView && selectedCommand === 'archive'"
+          >
+            <CaseArchivePanel
+              :item="item"
+              :context-key="identity"
+              :pending-request="archivePending"
+              :archive-case="archiveCallbacks.archive"
+              :correct-archive="archiveCallbacks.correct"
+              @pending-change="archiveCallbacks.pending"
+              @changed="archiveCallbacks.changed"
+              @refresh="archiveCallbacks.refresh"
+            />
+          </div>
+          <div
+            v-if="openedCommands.has('closure')"
+            v-show="!timelineView && selectedCommand === 'closure'"
+          >
+            <CaseClosurePanel
+              :item="item"
+              :context-key="identity"
+              :pending-request="closurePending"
+              :record-closure="closureCallbacks.record"
+              :correct-closure="closureCallbacks.correct"
+              :list-closure-files="closureCallbacks.list"
+              :upload-closure-file="closureCallbacks.upload"
+              :download-closure-file="closureCallbacks.download"
+              @pending-change="closureCallbacks.pending"
+              @changed="closureCallbacks.changed"
+              @refresh="closureCallbacks.refresh"
+            />
+          </div>
+          <div
+            v-if="openedCommands.has('execution-filing')"
+            v-show="!timelineView && selectedCommand === 'execution-filing'"
+          >
+            <CaseExecutionFilingPanel
+              :item="item"
+              :context-key="identity"
+              @changed="load"
+              @refresh="load"
+            />
+          </div>
+          <div
+            v-if="openedCommands.has('execution-confirmation')"
+            v-show="
+              !timelineView && selectedCommand === 'execution-confirmation'
+            "
+          >
+            <CaseExecutionConfirmationPanel
+              :item="item"
+              :context-key="identity"
+              :actor-key="secondInstanceActorKey"
+              @changed="load"
+              @refresh="load"
+            />
+          </div>
+          <section
+            v-if="openedCommands.has('match')"
+            v-show="!timelineView && selectedCommand === 'match'"
+            class="demo-card demo-card--pad"
+            data-test="case-match-form"
+            :inert="
+              !!matchUnknown || item.stage !== 'PENDING_MATCH' || !item.canMatch
+            "
+          >
+            <h2 class="form-section-title">匹配当事人与承办律师</h2>
+            <p class="field-help">
+              提交后将保存全部被告和主办律师，并把案件推进到“待写诉状”。上述信息与阶段变更会一并保存。
+            </p>
+            <div class="demo-form-grid">
+              <label
+                >实际匹配日期 <span aria-hidden="true">*</span
+                ><input
+                  v-model="matchedOn"
+                  type="date"
+                  class="text-input"
+                  :max="todayShanghai()"
+                  required
+                  :aria-required="true"
+              /></label>
+              <p class="field-help">
+                默认今天；补录时可改为真实的过去日期。系统会另记本次登记时间。
+              </p>
+            </div>
+            <div
+              v-for="(defendant, index) in defendants"
+              :key="index"
+              class="demo-form-grid"
             >
-            <label
-              >名称 <span aria-hidden="true">*</span
-              ><input
-                v-model="defendant.name"
-                class="text-input"
-                required
-                :aria-required="true"
-            /></label>
-            <label
-              >身份证号（选填）<input
-                v-model="defendant.idNo"
-                class="text-input"
-            /></label>
-            <label
-              >电话（选填）<input v-model="defendant.phone" class="text-input"
-            /></label>
-            <label
-              >地址（选填）<input
-                v-model="defendant.address"
-                class="text-input"
-            /></label>
+              <h3>被告 {{ index + 1 }}</h3>
+              <label
+                >主体类型
+                <select v-model="defendant.kind" class="text-input">
+                  <option value="PERSON">自然人</option>
+                  <option value="ORGANIZATION">组织</option>
+                </select></label
+              >
+              <label
+                >名称 <span aria-hidden="true">*</span
+                ><input
+                  v-model="defendant.name"
+                  class="text-input"
+                  required
+                  :aria-required="true"
+              /></label>
+              <label
+                >身份证号（选填）<input
+                  v-model="defendant.idNo"
+                  class="text-input"
+              /></label>
+              <label
+                >电话（选填）<input
+                  v-model="defendant.phone"
+                  class="text-input"
+              /></label>
+              <label
+                >地址（选填）<input
+                  v-model="defendant.address"
+                  class="text-input"
+              /></label>
+              <ElButton
+                v-if="defendants.length > 1"
+                text
+                @click="removeDefendant(index)"
+                >移除此被告</ElButton
+              >
+            </div>
             <ElButton
-              v-if="defendants.length > 1"
               text
-              @click="removeDefendant(index)"
-              >移除此被告</ElButton
+              :disabled="defendants.length >= 20"
+              @click="addDefendant"
+              >添加被告（最多 20 位）</ElButton
             >
-          </div>
-          <ElButton
-            text
-            :disabled="defendants.length >= 20"
-            @click="addDefendant"
-            >添加被告（最多 20 位）</ElButton
-          >
-          <div class="demo-form-grid">
-            <h3>主办律师账号</h3>
-            <label
-              >按姓名或用户名搜索<input
-                v-model="lawyerQuery"
-                class="text-input"
-                autocomplete="off"
-            /></label>
-            <label
-              >账号 <span aria-hidden="true">*</span
-              ><select
-                v-model="selectedLawyer"
-                class="text-input"
-                :disabled="
-                  lawyerCandidatesLoading || lawyerCandidates.length === 0
-                "
-              >
-                <option :value="undefined">
-                  {{
-                    lawyerCandidatesLoading
-                      ? '正在读取律师账号'
-                      : '请选择姓名（用户名）'
-                  }}
-                </option>
-                <option
-                  v-for="candidate in lawyerCandidates"
-                  :key="candidate.lawyerAccountId"
-                  :value="candidate"
+            <div class="demo-form-grid">
+              <h3>主办律师账号</h3>
+              <label
+                >按姓名或用户名搜索<input
+                  v-model="lawyerQuery"
+                  class="text-input"
+                  autocomplete="off"
+              /></label>
+              <label
+                >账号 <span aria-hidden="true">*</span
+                ><select
+                  v-model="selectedLawyer"
+                  class="text-input"
+                  :disabled="
+                    lawyerCandidatesLoading || lawyerCandidates.length === 0
+                  "
                 >
-                  {{ candidate.displayName }}（{{ candidate.username }}）
-                </option>
-              </select></label
+                  <option :value="undefined">
+                    {{
+                      lawyerCandidatesLoading
+                        ? '正在读取律师账号'
+                        : '请选择姓名（用户名）'
+                    }}
+                  </option>
+                  <option
+                    v-for="candidate in lawyerCandidates"
+                    :key="candidate.lawyerAccountId"
+                    :value="candidate"
+                  >
+                    {{ candidate.displayName }}（{{ candidate.username }}）
+                  </option>
+                </select></label
+              >
+              <p v-if="lawyerCandidatesError" class="submit-error" role="alert">
+                {{ lawyerCandidatesError }}
+              </p>
+              <p
+                v-else-if="
+                  !lawyerCandidatesLoading && lawyerCandidates.length === 0
+                "
+                class="field-help"
+              >
+                没有有效律师账号候选。请联系有权限的管理员先创建律师账号。
+              </p>
+              <p v-else-if="lawyerCandidates.length === 1" class="field-help">
+                已自动选择唯一候选账号。
+              </p>
+            </div>
+            <p v-if="matchError" class="submit-error" role="alert">
+              {{ matchError }}
+            </p>
+            <ElButton
+              type="primary"
+              :loading="submitting"
+              :disabled="submitting"
+              @click="submitMatch"
+              >确认匹配并进入待写诉状</ElButton
             >
-            <p v-if="lawyerCandidatesError" class="submit-error" role="alert">
-              {{ lawyerCandidatesError }}
-            </p>
-            <p
-              v-else-if="
-                !lawyerCandidatesLoading && lawyerCandidates.length === 0
-              "
-              class="field-help"
-            >
-              没有有效律师账号候选。请联系有权限的管理员先创建律师账号。
-            </p>
-            <p v-else-if="lawyerCandidates.length === 1" class="field-help">
-              已自动选择唯一候选账号。
-            </p>
-          </div>
-          <p v-if="matchError" class="submit-error" role="alert">
-            {{ matchError }}
+          </section>
+          <ElButton
+            v-if="matchUnknown && !timelineView && selectedCommand === 'match'"
+            :disabled="submitting"
+            data-test="match-retry-original"
+            @click="submitMatch"
+            >显式重试匹配原请求</ElButton
+          >
+          <p
+            v-if="matchUnknown && !timelineView && selectedCommand === 'match'"
+            class="field-help"
+          >
+            原请求：案件版本 {{ matchUnknown.expectedVersion }}；实际匹配日期
+            {{ matchUnknown.matchedOn }}；被告
+            {{
+              matchUnknown.defendants.map((entry) => entry.name).join('、')
+            }}；律师账号
+            {{ matchUnknown.lawyerAccountId }}。重试沿用原内容及请求键。
           </p>
           <ElButton
-            type="primary"
-            :loading="submitting"
-            :disabled="submitting"
-            @click="submitMatch"
-            >确认匹配并进入待写诉状</ElButton
+            v-if="
+              complaintUnknown &&
+              !timelineView &&
+              selectedCommand === 'complaint'
+            "
+            :disabled="complaintSubmitting"
+            data-test="complaint-retry-original"
+            @click="submitComplaintMaterials"
+            >显式重试起诉材料原请求</ElButton
           >
-        </section>
-        <section
-          v-else-if="
-            item.stage === 'PENDING_MATCH' ||
-            (item.stage === 'WAITING_COMPLAINT' && !item.canSubmitComplaint)
-          "
-          class="demo-card demo-card--pad"
-          data-test="case-read-only"
-        >
-          <h2 class="form-section-title">案件只读</h2>
-          <p>
-            你可以查看案件和下载获准材料；{{
-              item.stage === 'PENDING_MATCH'
-                ? '当前账号不能办理此案。'
-                : item.stage === 'WAITING_COMPLAINT'
-                  ? '匹配已完成；当前账号不能提交此案的起诉材料，可查看案件和下载获准附件。'
-                  : '当前阶段为诉状待盖章；本切片只展示已保存事实。'
-            }}
+          <p
+            v-if="
+              complaintUnknown &&
+              !timelineView &&
+              selectedCommand === 'complaint'
+            "
+            class="field-help"
+          >
+            原请求：案件版本 {{ complaintUnknown.expectedVersion }}；诉请金额
+            {{
+              complaintUnknown.amountState === 'KNOWN'
+                ? complaintUnknown.amount
+                : `待确认（${complaintUnknown.pendingReason}）`
+            }}；起诉状
+            {{ complaintUnknown.complaintContentVersionIds.length }}
+            份，授权材料
+            {{ complaintUnknown.authorizationContentVersionIds.length }}
+            份。重试沿用原内容及请求键。
           </p>
-        </section>
-        <CaseComplaintSubmissionForm
-          v-if="item.stage === 'WAITING_COMPLAINT' && item.canSubmitComplaint"
-          :complaint-files="complaintUploads"
-          :authorization-files="authorizationUploads"
-          v-model:amount-state="amountState"
-          v-model:amount="amount"
-          v-model:pending-reason="pendingReason"
-          :upload-loading="uploadLoading"
-          :upload-errors="uploadErrors"
-          :error="complaintError"
-          :success="complaintSuccess"
-          :submitting="complaintSubmitting"
-          :locked="uploadLoading.COMPLAINT || uploadLoading.AUTHORIZATION"
-          @upload="uploadComplaintFiles"
-          @download="downloadComplaintFile"
-          @remove="removeComplaintUpload"
-          @submit="submitComplaintMaterials"
-        />
-        <section
-          v-if="item.complaint"
-          class="demo-card demo-card--pad"
-          data-test="complaint-read-only"
-        >
-          <h2 class="form-section-title">已提交的起诉材料</h2>
-          <p>
-            标的额：{{
-              item.complaint.amountState === 'PENDING'
-                ? `待确认（${item.complaint.pendingReason}）`
-                : `¥ ${item.complaint.amount}`
-            }}
-          </p>
-          <p>
-            提交时间：{{
-              new Date(item.complaint.submittedAt).toLocaleString('zh-CN', {
-                timeZone: 'Asia/Shanghai',
-                hour12: false,
-              })
-            }}
-          </p>
-          <h3>起诉状</h3>
-          <ul>
-            <li
-              v-for="file in item.complaint.complaintFiles"
-              :key="file.contentVersionId"
-            >
-              {{ file.originalFilename }}（{{ file.mimeType }}）
-              <ElButton
-                text
-                @click="download(file.materialId, file.contentVersionId)"
-                >下载</ElButton
-              >
-            </li>
-          </ul>
-          <h3>授权材料</h3>
-          <ul>
-            <li
-              v-for="file in item.complaint.authorizationFiles"
-              :key="file.contentVersionId"
-            >
-              {{ file.originalFilename }}（{{ file.mimeType }}）
-              <ElButton
-                text
-                @click="download(file.materialId, file.contentVersionId)"
-                >下载</ElButton
-              >
-            </li>
-          </ul>
-        </section>
-        <section class="demo-card demo-card--pad">
-          <h2 class="form-section-title">来源与归属</h2>
-          <p>部门：{{ item.department.name }}</p>
-          <p>客户：{{ item.customer.name }}</p>
-          <p>权利主体：{{ item.rightsHolder.name }}</p>
-          <p>负责人：{{ item.owner.displayName }}</p>
-          <p>来源线索：{{ item.sourceLead.businessNo }}</p>
-          <p>来源公证事项：{{ item.sourceNotaryMatter.businessNo }}</p>
-          <p data-test="court-case-no">
-            法院案号：{{ item.courtCaseNo ?? '未登记' }}
-          </p>
-        </section>
-        <section class="demo-card demo-card--pad">
-          <h2 class="form-section-title">当事人与承办律师</h2>
-          <p v-if="item.defendants.length === 0" class="field-help">
-            尚未登记被告。
-          </p>
-          <ul v-else>
-            <li v-for="defendant in item.defendants" :key="defendant.id">
-              {{ defendant.kind === 'PERSON' ? '自然人' : '组织' }}：{{
-                defendant.name
-              }}
-              <span v-if="defendant.idNo"> · 证件号 {{ defendant.idNo }}</span>
-              <span v-if="defendant.phone"> · 电话 {{ defendant.phone }}</span>
-              <span v-if="defendant.address">
-                · 地址 {{ defendant.address }}</span
-              >
-            </li>
-          </ul>
-          <p v-if="item.lawyers.length === 0" class="field-help">
-            尚未登记承办律师。
-          </p>
-          <ul v-else>
-            <li v-for="entry in item.lawyers" :key="entry.id">
-              {{ entry.fullName
-              }}<span v-if="entry.lawFirm">（{{ entry.lawFirm }}）</span
-              ><span v-if="entry.phone"> · 电话 {{ entry.phone }}</span>
-            </li>
-          </ul>
-          <p v-if="item.matchedAt" class="field-help">
-            实际匹配日期：{{ item.matchedOn ?? '未记录' }} · 系统登记时间：{{
-              new Date(item.matchedAt).toLocaleString('zh-CN', {
-                timeZone: 'Asia/Shanghai',
-                hour12: false,
-              })
-            }}
-          </p>
-        </section>
-        <section class="demo-card demo-card--pad">
-          <h2 class="form-section-title">公证书</h2>
-          <p>证书编号：{{ item.certificate.certificateNo }}</p>
-          <p>出证日期：{{ item.certificate.certificateDate }}</p>
-          <p>披露：{{ item.certificate.needDisclose ? '需要' : '不需要' }}</p>
-          <ul>
-            <li
-              v-for="file in item.certificate.files"
-              :key="file.contentVersionId"
-            >
-              {{ file.originalFilename }}（{{ file.mimeType }}）<ElButton
-                text
-                @click="download(file.materialId, file.contentVersionId)"
-                >下载</ElButton
-              >
-            </li>
-          </ul>
-          <ul v-if="item.certificate.disclosureFiles.length">
-            <li
-              v-for="file in item.certificate.disclosureFiles"
-              :key="file.contentVersionId"
-            >
-              披露材料：{{ file.originalFilename
-              }}<ElButton
-                text
-                @click="download(file.materialId, file.contentVersionId)"
-                >下载</ElButton
-              >
-            </li>
-          </ul>
-          <p v-if="downloadError" class="submit-error" role="alert">
-            {{ downloadError }}
-          </p>
-        </section>
-        <section class="demo-card demo-card--pad">
-          <h2 class="form-section-title">来源费用（只读）</h2>
-          <ul>
-            <li
-              v-for="(fee, index) in item.fees"
-              :key="`${fee.category}-${fee.sourceId}-${index}`"
-            >
-              {{
-                fee.category === 'NOTARY'
-                  ? '公证费'
-                  : fee.category === 'SAMPLE'
-                    ? '样品费'
-                    : fee.category === 'INVESTIGATION'
-                      ? '调查费'
-                      : '披露费'
-              }}：{{
-                fee.state === 'PENDING' ? '待确认' : `¥ ${fee.amount}`
-              }}（来自{{
-                fee.sourceType === 'NOTARY_MATTER_EVIDENCE'
-                  ? '公证事项取证记录'
-                  : '公证出证'
-              }}）
-            </li>
-          </ul>
-        </section>
+          <CaseComplaintSubmissionForm
+            v-if="openedCommands.has('complaint')"
+            v-show="!timelineView && selectedCommand === 'complaint'"
+            :inert="
+              !!complaintUnknown ||
+              item.stage !== 'WAITING_COMPLAINT' ||
+              !item.canSubmitComplaint
+            "
+            :complaint-files="complaintUploads"
+            :authorization-files="authorizationUploads"
+            v-model:amount-state="amountState"
+            v-model:amount="amount"
+            v-model:pending-reason="pendingReason"
+            :upload-loading="uploadLoading"
+            :upload-errors="uploadErrors"
+            :error="complaintError"
+            :success="complaintSuccess"
+            :submitting="complaintSubmitting"
+            :locked="uploadLoading.COMPLAINT || uploadLoading.AUTHORIZATION"
+            @upload="uploadComplaintFiles"
+            @download="downloadComplaintFile"
+            @remove="removeComplaintUpload"
+            @submit="submitComplaintMaterials"
+          />
+        </ElDrawer>
       </template>
-    </main>
+    </CaseWorkspaceShell>
   </div>
 </template>

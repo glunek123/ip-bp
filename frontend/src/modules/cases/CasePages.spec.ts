@@ -1,4 +1,4 @@
-import { flushPromises, mount } from '@vue/test-utils';
+import { flushPromises, mount, config } from '@vue/test-utils';
 import type { Component } from 'vue';
 import { createPinia, setActivePinia } from 'pinia';
 import { createMemoryHistory, createRouter, RouterView } from 'vue-router';
@@ -30,6 +30,7 @@ vi.mock('./CaseExecutionFinishPanel.vue', () => ({
 const api = vi.hoisted(() => ({
   listCases: vi.fn(),
   getCase: vi.fn(),
+  getLead: vi.fn(),
   matchCase: vi.fn(),
   listLawyerMatchCandidates: vi.fn(),
   submitComplaint: vi.fn(),
@@ -48,6 +49,7 @@ const api = vi.hoisted(() => ({
   chooseCaseJudgmentNextStep: vi.fn(),
   revokeCaseJudgmentNextStep: vi.fn(),
 }));
+vi.mock('../../api/leads', () => ({ getLead: api.getLead }));
 vi.mock('../../api/cases', async (importOriginal) => ({
   ...(await importOriginal<typeof import('../../api/cases')>()),
   listCases: api.listCases,
@@ -75,6 +77,11 @@ vi.mock('../../api/materials', () => ({
 }));
 
 beforeEach(() => {
+  config.global.stubs.ElDrawer = {
+    props: ['modelValue'],
+    template:
+      '<div v-show="modelValue" role="dialog" class="case-workspace-editors"><slot /></div>',
+  };
   vi.resetAllMocks();
   api.listCases.mockResolvedValue({
     items: [
@@ -264,6 +271,7 @@ beforeEach(() => {
     executionFiling: null,
     executionFinish: null,
   } satisfies CaseDetail);
+  api.getLead.mockRejectedValue(new ApiError('来源不可读', 403, 'FORBIDDEN'));
   api.listOwnerMaterials.mockResolvedValue({ items: [], total: 0 });
   api.listFilingCourts.mockResolvedValue([]);
   api.createFilingCourt.mockResolvedValue({ id: 'court-1', name: '真实法院' });
@@ -281,6 +289,7 @@ beforeEach(() => {
   api.correctCaseJudgment.mockResolvedValue({});
 });
 afterEach(() => {
+  delete config.global.stubs.ElDrawer;
   vi.unstubAllGlobals();
   vi.restoreAllMocks();
 });
@@ -302,6 +311,7 @@ async function mountRoute(
   await router.isReady();
   const wrapper = mount(component, { global: { plugins: [pinia, router] } });
   await flushPromises();
+  await openWorkspaceCommands(wrapper);
   return wrapper;
 }
 
@@ -503,7 +513,24 @@ async function mountRoutedDetail(path: string, realPage?: Component) {
     },
   );
   await flushPromises();
+  await openWorkspaceCommands(wrapper);
   return { wrapper, router, auth, pinia };
+}
+
+async function openWorkspaceCommands(wrapper: ReturnType<typeof mount>) {
+  const primary = wrapper.find('[data-test="workspace-primary-action"]');
+  if (primary.exists()) {
+    await primary.trigger('click');
+    await flushPromises();
+  }
+  for (const button of wrapper.findAll('[data-command]')) {
+    await button.trigger('click');
+    await flushPromises();
+  }
+  if (primary.exists()) {
+    await primary.trigger('click');
+    await flushPromises();
+  }
 }
 
 async function createUnknownConfirmation(wrapper: ReturnType<typeof mount>) {
@@ -963,7 +990,9 @@ describe('case pages', () => {
     );
     const filter = api.listCases.mock.calls.at(-1)?.[2];
     expect(filter).not.toHaveProperty('stage');
-    expect(wrapper.get('.page-head').text()).toContain('准备执行文书');
+    expect(wrapper.get('.page-head, .case-workspace-header').text()).toContain(
+      '准备执行文书',
+    );
     expect(wrapper.get('a').attributes('href')).toContain(
       'stageGroup=EXECUTION_PREPARATION',
     );
@@ -1024,7 +1053,9 @@ describe('case pages', () => {
       '/cases?stage=WAITING_FORMAL_ACCEPTANCE',
       CaseListPage,
     );
-    expect(wrapper.get('.page-head').text()).toContain('待正式立案');
+    expect(wrapper.get('.page-head, .case-workspace-header').text()).toContain(
+      '待正式立案',
+    );
     expect(wrapper.get('[data-test="case-list"]').text()).toContain(
       '待正式立案',
     );
@@ -1040,7 +1071,9 @@ describe('case pages', () => {
       '/cases?stage=WAITING_JUDGMENT',
       CaseListPage,
     );
-    expect(wrapper.get('.page-head').text()).toContain('待判决');
+    expect(wrapper.get('.page-head, .case-workspace-header').text()).toContain(
+      '待判决',
+    );
     expect(wrapper.get('[data-test="case-list"]').text()).toContain('待判决');
     expect(wrapper.text()).not.toContain('法院已判决');
   });
@@ -1056,7 +1089,9 @@ describe('case pages', () => {
         items: [{ ...base.items[0], stage }],
       });
       const wrapper = await mountRoute(`/cases?stage=${stage}`, CaseListPage);
-      expect(wrapper.get('.page-head').text()).toContain(label);
+      expect(
+        wrapper.get('.page-head, .case-workspace-header').text(),
+      ).toContain(label);
       expect(wrapper.get('[data-test="case-list"]').text()).toContain(label);
     }
   });
@@ -1093,7 +1128,9 @@ describe('case pages', () => {
       20,
       expect.objectContaining({ stage: 'WAITING_EXECUTION_CONFIRMATION' }),
     );
-    expect(wrapper.get('.page-head').text()).toContain('执行材料待确认');
+    expect(wrapper.get('.page-head, .case-workspace-header').text()).toContain(
+      '执行材料待确认',
+    );
     const rows = wrapper.findAll('[data-test="case-list"] tbody tr');
     expect(rows).toHaveLength(2);
     expect(rows[0]!.text()).toContain('执行材料待确认');
@@ -1129,10 +1166,10 @@ describe('case pages', () => {
       '/cases/case-second-instance',
       CaseDetailPage,
     );
-    expect(wrapper.find('[data-test="second-instance-panel"]').exists()).toBe(
+    expect(wrapper.find('[data-section="second-instance"]').exists()).toBe(
       true,
     );
-    expect(wrapper.text()).toContain('第1轮办理');
+    expect(wrapper.text()).toContain('审理轮次 1');
     expect(wrapper.text()).not.toContain('三审');
   });
 
@@ -1142,7 +1179,9 @@ describe('case pages', () => {
       stage: 'WAITING_EXECUTION_CONFIRMATION',
     });
     const wrapper = await mountRoute('/cases/case-1', CaseDetailPage);
-    expect(wrapper.get('.page-head').text()).toContain('执行材料待确认');
+    expect(wrapper.get('.page-head, .case-workspace-header').text()).toContain(
+      '执行材料待确认',
+    );
   });
 
   it('shows judgment registration on the internal detail only when authorized', async () => {
@@ -1155,6 +1194,10 @@ describe('case pages', () => {
       canRegisterJudgment: true,
       canCorrectJudgment: false,
       acceptance: {
+        id: 'acceptance-1',
+        trialRoundId: null,
+        courtId: null,
+        files: [],
         acceptedAt: '2026-10-01',
         courtCaseNo: '甲0101民初1号',
         recordedAt: '2026-10-01T01:00:00Z',
@@ -1181,6 +1224,10 @@ describe('case pages', () => {
         canScheduleHearing: true,
         canCorrectHearing: false,
         acceptance: {
+          id: 'acceptance-1',
+          trialRoundId: null,
+          courtId: null,
+          files: [],
           acceptedAt: '2026-10-05',
           courtCaseNo: '甲0101民初1号',
           recordedAt: '2026-10-05T01:00:00.000Z',
@@ -1193,6 +1240,10 @@ describe('case pages', () => {
         canScheduleHearing: false,
         canCorrectHearing: true,
         acceptance: {
+          id: 'acceptance-1',
+          trialRoundId: null,
+          courtId: null,
+          files: [],
           acceptedAt: '2026-10-05',
           courtCaseNo: '甲0101民初1号',
           recordedAt: '2026-10-05T01:00:00.000Z',
@@ -1242,8 +1293,8 @@ describe('case pages', () => {
     });
     const wrapper = await mountRoute('/cases/case-1', CaseDetailPage);
     expect(wrapper.text()).toContain('待正式立案');
-    expect(wrapper.get('[data-test="case-filing-record"] h2').text()).toBe(
-      '提交立案记录',
+    expect(wrapper.get('[data-section="first-instance"]').text()).toContain(
+      '法院提交',
     );
     expect(wrapper.text()).toContain('甲市中级人民法院');
     expect(wrapper.text()).toContain('¥ 123.45');
@@ -1296,7 +1347,9 @@ describe('case pages', () => {
         20,
         expect.objectContaining({ view, stage: 'WAITING_FILING' }),
       );
-      expect(wrapper.get('.page-head').text()).toContain('待提交立案');
+      expect(
+        wrapper.get('.page-head, .case-workspace-header').text(),
+      ).toContain('待提交立案');
       expect(wrapper.get('[data-test="case-list"]').text()).toContain(
         `CA-FILING-${view}`,
       );
@@ -1310,9 +1363,9 @@ describe('case pages', () => {
   it('shows source, ownership, fee provenance and no invented court number', async () => {
     const wrapper = await mountRoute('/cases/case-1', CaseDetailPage);
     expect(wrapper.text()).toContain('客户甲');
-    expect(wrapper.text()).toContain('来源公证事项：NZ-1');
-    expect(wrapper.text()).toContain('来自公证事项取证记录');
-    expect(wrapper.text()).toContain('法院案号：未登记');
+    expect(wrapper.text()).toContain('来源公证业务号NZ-1');
+    expect(wrapper.text()).toContain('公证事项证据费用');
+    expect(wrapper.text()).toContain('法院案号未登记');
     expect(wrapper.text()).not.toContain('/notary-portal/matters/');
   });
 
@@ -1403,9 +1456,11 @@ describe('case pages', () => {
         authorizationContentVersionIds: ['authorization-v1'],
       }),
     );
-    expect(wrapper.get('.page-head').text()).toContain('诉状待确认');
-    const submitted = wrapper.get('[data-test="complaint-read-only"]');
-    expect(submitted.text()).toContain('标的额：¥ 0');
+    expect(wrapper.get('.page-head, .case-workspace-header').text()).toContain(
+      '诉状待确认',
+    );
+    const submitted = wrapper.get('[data-section="first-instance"]');
+    expect(submitted.text()).toContain('0 元');
     expect(submitted.text()).toContain('诉状.pdf');
     expect(submitted.text()).toContain('授权书.pdf');
     expect(wrapper.find('[data-test="complaint-submit-form"]').exists()).toBe(
@@ -1425,6 +1480,7 @@ describe('case pages', () => {
     const wrapper = await mountRoute('/cases/case-1', CaseDetailPage);
     const eventSpy = vi.spyOn(window, 'dispatchEvent');
     api.getCase.mockResolvedValueOnce({
+      ...confirmationDetail('case-1'),
       id: 'case-1',
       businessNo: 'CA-1',
       stage: 'WAITING_COMPLAINT',
@@ -1528,9 +1584,11 @@ describe('case pages', () => {
     });
     expect(api.getCase).toHaveBeenCalledTimes(2);
     expect(wrapper.text()).toContain('案件匹配已完成');
-    expect(wrapper.get('.page-head').text()).toContain('待写诉状');
-    expect(wrapper.text()).toContain('律师甲（甲律所）');
-    expect(wrapper.text()).toContain('实际匹配日期：2026-09-28');
+    expect(wrapper.get('.page-head, .case-workspace-header').text()).toContain(
+      '待写诉状',
+    );
+    expect(wrapper.text()).toContain('律师甲');
+    expect(wrapper.text()).toContain('2026-09-28');
     expect(wrapper.find('[data-test="case-match-form"]').exists()).toBe(false);
     expect(eventSpy).toHaveBeenCalledWith(
       expect.objectContaining({ type: workflowChangedEvent }),
@@ -1555,12 +1613,13 @@ describe('case pages', () => {
     expect(wrapper.get('[data-test="case-read-only"]').text()).toContain(
       '匹配已完成',
     );
-    expect(wrapper.text()).toContain('实际匹配日期：未记录');
-    expect(wrapper.text()).toContain('系统登记时间');
+    expect(wrapper.text()).toContain('未记录');
+    expect(wrapper.text()).toContain('匹配记录时间');
   });
 
   it('does not expose matching controls when the case is not actionable', async () => {
     api.getCase.mockResolvedValueOnce({
+      ...confirmationDetail('case-1'),
       id: 'case-1',
       businessNo: 'CA-1',
       stage: 'PENDING_MATCH',
@@ -2039,7 +2098,7 @@ describe('case pages', () => {
 
     await wrapper
       .findAll('button')
-      .find((button) => button.text() === '下载')!
+      .find((button) => button.text() === '下载此版本')!
       .trigger('click');
     await router.push('/cases/case-b');
     await flushPromises();
@@ -2128,6 +2187,7 @@ describe('internal execution finish caller', () => {
       global: { plugins: [pinia, router] },
     });
     await flushPromises();
+    await openWorkspaceCommands(remounted);
     panel = remounted.getComponent({ name: 'FinishContractPanel' });
     expect(panel.props('pendingRequest')).toEqual(finishRequest);
     api.finishCaseExecution.mockResolvedValue(finishResult);
@@ -2144,6 +2204,7 @@ describe('internal execution finish caller', () => {
     panel.vm.$emit('changed', result);
     panel.vm.$emit('changed', result);
     await flushPromises();
+    await openWorkspaceCommands(remounted);
     expect(changed).toHaveBeenCalledTimes(1);
     expect(api.getCase).toHaveBeenCalledTimes(reads + 1);
     expect(
@@ -2169,6 +2230,7 @@ describe('internal execution finish caller', () => {
         panel.props('submitFinish')('case-1', finishRequest),
       ).rejects.toMatchObject({ status });
       await flushPromises();
+      await openWorkspaceCommands(wrapper);
       panel = wrapper.getComponent({ name: 'FinishContractPanel' });
       expect(panel.props('pendingRequest')).toBeNull();
       api.finishCaseExecution.mockResolvedValue(finishResult);
@@ -2178,6 +2240,7 @@ describe('internal execution finish caller', () => {
       expect(panel.props('contextKey')).toContain('department-1');
       auth.session = { ...auth.session!, authorizationRevision: 2 };
       await flushPromises();
+      await openWorkspaceCommands(wrapper);
       expect(
         wrapper
           .getComponent({ name: 'FinishContractPanel' })
@@ -2202,6 +2265,7 @@ describe('internal execution finish caller', () => {
     });
     await router.push('/cases/case-2');
     await flushPromises();
+    await openWorkspaceCommands(wrapper);
     expect(
       wrapper
         .getComponent({ name: 'FinishContractPanel' })
@@ -2226,6 +2290,7 @@ describe('internal execution finish caller', () => {
       global: { plugins: [pinia, router] },
     });
     await flushPromises();
+    await openWorkspaceCommands(remounted);
     expect(
       remounted
         .getComponent({ name: 'FinishContractPanel' })
@@ -2256,6 +2321,7 @@ describe('internal execution finish caller', () => {
         },
       ],
     };
+    api.getLead.mockRejectedValue(new ApiError('来源不可读', 403, 'FORBIDDEN'));
     api.listOwnerMaterials.mockResolvedValue({
       items: [
         material,
@@ -2379,6 +2445,7 @@ it('connects the actual E2 panel to internal unknown recovery across remount and
     },
   });
   await flushPromises();
+  await openWorkspaceCommands(remounted);
   expect(
     remounted.get('[data-test="execution-finish-pending-summary"]').text(),
   ).toContain('实际结束原因');
@@ -2461,7 +2528,9 @@ describe.each([
         expect.objectContaining({ view, stageGroup: group }),
       );
       expect(api.listCases.mock.calls.at(-1)?.[2]).not.toHaveProperty('stage');
-      expect(wrapper.get('.page-head').text()).toContain(label);
+      expect(
+        wrapper.get('.page-head, .case-workspace-header').text(),
+      ).toContain(label);
       expect(
         wrapper
           .findAll('[data-test="case-list"] .pill')
@@ -2491,7 +2560,9 @@ describe.each([
         view,
         stageGroup: group,
       });
-      expect(wrapper.get('.page-head').text()).toContain(label);
+      expect(
+        wrapper.get('.page-head, .case-workspace-header').text(),
+      ).toContain(label);
       wrapper.unmount();
     },
   );
@@ -2517,6 +2588,7 @@ describe.each([
     );
     auth.session = { ...auth.session!, authorizationRevision: 2 };
     await flushPromises();
+    await openWorkspaceCommands(wrapper);
     expect(wrapper.text()).toContain('当前账号无权读取案件');
     resolveOld({
       ...base,

@@ -19,6 +19,7 @@ import { workflowChangedEvent } from '../../app/workflow-events';
 
 const api = vi.hoisted(() => ({
   getCase: vi.fn(),
+  getLead: vi.fn(),
   getLawyerCase: vi.fn(),
   recordCaseClosure: vi.fn(),
   correctCaseClosure: vi.fn(),
@@ -26,6 +27,7 @@ const api = vi.hoisted(() => ({
   uploadMaterialFile: vi.fn(),
   downloadMaterialVersion: vi.fn(),
 }));
+vi.mock('../../api/leads', () => ({ getLead: api.getLead }));
 vi.mock('../../api/cases', async (original) => ({
   ...(await original<typeof import('../../api/cases')>()),
   getCase: api.getCase,
@@ -285,6 +287,11 @@ async function open(
     global: {
       plugins: [pinia, router],
       stubs: {
+        ElDrawer: {
+          props: ['modelValue'],
+          template:
+            '<div v-show="modelValue" role="dialog" class="case-workspace-editors"><slot /></div>',
+        },
         CaseExecutionFinishPanel: true,
         CaseAcceptancePanel: true,
         CaseHearingPanel: true,
@@ -300,12 +307,21 @@ async function open(
   });
   wrappers.push(wrapper);
   await flushPromises();
+  if (audience === 'internal') {
+    const primary = wrapper.find('[data-test="workspace-primary-action"]');
+    if (primary.exists()) await primary.trigger('click');
+    for (const button of wrapper.findAll('[data-command]'))
+      await button.trigger('click');
+    if (primary.exists()) await primary.trigger('click');
+    await flushPromises();
+  }
   return { wrapper, auth, router, pinia };
 }
 beforeEach(() => {
   vi.clearAllMocks();
   api.getCase.mockResolvedValue(base());
   api.getLawyerCase.mockResolvedValue(lawyerProjection(base()));
+  api.getLead.mockRejectedValue(new ApiError('来源不可读', 403, 'FORBIDDEN'));
   api.listOwnerMaterials.mockResolvedValue({ items: [] });
   api.uploadMaterialFile.mockResolvedValue(file);
   api.downloadMaterialVersion.mockResolvedValue(undefined);
@@ -321,9 +337,11 @@ describe('real CA-016 closure detail integration', () => {
     async (audience) => {
       const { wrapper } = await open(audience);
       expect(wrapper.findComponent(CaseClosurePanel).exists()).toBe(true);
-      expect(wrapper.get('[data-test="court-case-no"]').text()).toContain(
-        base().courtCaseNo,
-      );
+      expect(
+        wrapper
+          .get('.case-workspace-subtitle, [data-test="court-case-no"]')
+          .text(),
+      ).toContain(base().courtCaseNo);
       expect(wrapper.get('[data-test="closure-date"]').element).toHaveProperty(
         'value',
         '',
@@ -376,6 +394,7 @@ describe('real CA-016 closure detail integration', () => {
     },
   );
   it('uses exact closure material versions, real zero and internal complete correction anchor', async () => {
+    api.getLead.mockRejectedValue(new ApiError('来源不可读', 403, 'FORBIDDEN'));
     api.listOwnerMaterials.mockResolvedValue({
       items: [
         {
@@ -696,9 +715,11 @@ describe('real CA-016 closure detail integration', () => {
         courtCaseNo: null,
       });
       const { wrapper } = await open(audience);
-      expect(wrapper.get('[data-test="court-case-no"]').text()).toBe(
-        '法院案号：未登记',
-      );
+      expect(
+        wrapper
+          .get('.case-workspace-subtitle, [data-test="court-case-no"]')
+          .text(),
+      ).toContain('未登记');
     },
   );
 });

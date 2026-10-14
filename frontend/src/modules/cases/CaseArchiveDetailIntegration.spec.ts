@@ -23,6 +23,7 @@ import { workflowChangedEvent } from '../../app/workflow-events';
 
 const api = vi.hoisted(() => ({
   getCase: vi.fn(),
+  getLead: vi.fn(),
   getLawyerCase: vi.fn(),
   recordCaseClosure: vi.fn(),
   correctCaseClosure: vi.fn(),
@@ -32,6 +33,7 @@ const api = vi.hoisted(() => ({
   uploadMaterialFile: vi.fn(),
   downloadMaterialVersion: vi.fn(),
 }));
+vi.mock('../../api/leads', () => ({ getLead: api.getLead }));
 vi.mock('../../api/cases', async (original) => ({
   ...(await original<typeof import('../../api/cases')>()),
   getCase: api.getCase,
@@ -293,6 +295,11 @@ async function open(
     global: {
       plugins: [pinia, router],
       stubs: {
+        ElDrawer: {
+          props: ['modelValue'],
+          template:
+            '<div v-show="modelValue" role="dialog" class="case-workspace-editors"><slot /></div>',
+        },
         CaseExecutionFinishPanel: true,
         CaseAcceptancePanel: true,
         CaseHearingPanel: true,
@@ -308,12 +315,21 @@ async function open(
   });
   wrappers.push(wrapper);
   await flushPromises();
+  if (audience === 'internal') {
+    const primary = wrapper.find('[data-test="workspace-primary-action"]');
+    if (primary.exists()) await primary.trigger('click');
+    for (const button of wrapper.findAll('[data-command]'))
+      await button.trigger('click');
+    if (primary.exists()) await primary.trigger('click');
+    await flushPromises();
+  }
   return { wrapper, auth, router, pinia };
 }
 beforeEach(() => {
   vi.clearAllMocks();
   api.getCase.mockResolvedValue(ready());
   api.getLawyerCase.mockResolvedValue(lawyerReady());
+  api.getLead.mockRejectedValue(new ApiError('来源不可读', 403, 'FORBIDDEN'));
   api.listOwnerMaterials.mockResolvedValue({ items: [] });
   api.uploadMaterialFile.mockResolvedValue(file);
   api.downloadMaterialVersion.mockResolvedValue(undefined);
@@ -484,15 +500,23 @@ describe('actual CA017 archive detail integration', () => {
         await flushPromises();
         expect(changed).toHaveBeenCalledTimes(1);
         expect(wrapper.find('[data-test="archive-form"]').exists()).toBe(false);
-        const closure = wrapper.findComponent(CaseClosurePanel);
+        const closure =
+          audience === 'internal'
+            ? wrapper.get('[data-section="execution"]')
+            : wrapper.findComponent(CaseClosurePanel);
         expect(closure.text()).toContain(file.originalFilename);
         expect(closure.find('[data-test="closure-correct"]').exists()).toBe(
           false,
         );
-        await closure
-          .get('[data-test="closure-history"]')
-          .get('button')
-          .trigger('click');
+        if (audience === 'internal') {
+          await wrapper.get('[data-workspace-tab="files"]').trigger('click');
+          await wrapper.get('.case-workspace-files button').trigger('click');
+        } else {
+          await closure
+            .get('[data-test="closure-history"]')
+            .get('button')
+            .trigger('click');
+        }
         await flushPromises();
         expect(api.downloadMaterialVersion).toHaveBeenCalledWith(
           file.materialId,
