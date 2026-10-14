@@ -122,9 +122,25 @@ export async function grantRecordEditPredecessorActions(): Promise<void> {
   });
 }
 
+async function recordEditTablesAvailable(client: DbClient): Promise<boolean> {
+  const row = (
+    await client.query(
+      `SELECT
+         to_regclass('public.case_record_edit_receipts') IS NOT NULL AS receipts,
+         to_regclass('public.case_defendant_contact_changes') IS NOT NULL AS contacts,
+         to_regclass('public.case_acceptance_corrections') IS NOT NULL AS corrections`,
+    )
+  ).rows[0];
+  const present = [row?.receipts, row?.contacts, row?.corrections];
+  if (present.every((value) => value === false)) return false;
+  if (present.every((value) => value === true)) return true;
+  throw new Error('Incomplete case record-edit tables in public schema');
+}
+
 export async function clearRecordEditFixture(): Promise<void> {
   await clearRecordEditFault();
   await withRecordEditDatabase(async (client) => {
+    if (!(await recordEditTablesAvailable(client))) return;
     await client.query('BEGIN');
     try {
       const tables = [
@@ -221,6 +237,7 @@ const faultTables = {
 
 export async function clearRecordEditFault(): Promise<void> {
   await withRecordEditDatabase(async (client) => {
+    if (!(await recordEditTablesAvailable(client))) return;
     for (const table of Object.values(faultTables))
       await client.query(
         `DROP TRIGGER IF EXISTS ce001_reject_insert ON "${table}"`,
