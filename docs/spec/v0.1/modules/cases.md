@@ -512,7 +512,7 @@ Level 3：后端Sol独占schema／前向迁移／服务／读模型／Action及�
 
 ### 来源、权限与最小录入
 
-- 内部POST /api/v1/cases/external-entries，严格body：idempotencyKey（原样1..128）、entryKind（EXTERNAL_TRANSFER／HISTORICAL_BACKFILL）、initialStage（既有16枚举）、stageReachedOn（真实当前阶段业务日YYYY-MM-DD，不默认今天且不得晚于上海今日）、source（trim1..500）、reason（trim1..500）、customerId、rightsHolderId、defendants（真实既有输入形状，可空不造“—”当事人）、lawyerAccountId及lawyerProfileId（显式null或真实有效同部门绑定）、known对象。负责人仅本次当前有效内部操作者；本片不增加转派功能。客户和关联权利主体须通过正式准入、匹配和当前读取范围核验。真实律师可选；缺律师不阻止有权运营办理，不给姓名自动绑定或扩大律师读取。
+- 内部POST /api/v1/cases/external-entries，严格body：idempotencyKey（原样1..128）、entryKind（EXTERNAL_TRANSFER／HISTORICAL_BACKFILL）、initialStage（既有16枚举）、stageReachedOn（真实当前阶段业务日YYYY-MM-DD，不默认今天且不得晚于上海今日）、source（trim1..500）、reason（trim1..500）、customerId、rightsHolderId、defendants（真实既有输入形状，不造“—”当事人）、lawyerAccountId及lawyerProfileId（显式null或真实有效同部门绑定）、known对象。负责人仅本次当前有效内部操作者；本片不增加转派功能。客户和关联权利主体须通过正式准入、匹配和当前读取范围核验。初始PENDING_MATCH只允许defendants=[]且lawyerAccountId／lawyerProfileId均null，界面提示当事人与真实律师在匹配时录入；这次建案不构成匹配、matchedOn／matchedAt仍null。其首次正常匹配保持真实非空被告、当前有效律师账号及matchedOn门槛，且只生成一次当事人和真实承办，不合并姓名或重复追加。其他初始阶段可录真实被告或保留空未知，律师可选；未有系统律师不阻止有权运营的该阶段正常办理，真实承办选择仍记录实际绑定，不扩大律师读取。
 - known固定键courtId、courtCaseNo、acceptedOn、secondInstanceAcceptedOn、platform、shopName、shopExternalId、caseType、infringementTypes；均显式null或真实已知值，不从阶段日期推造其他日期或金额。法院与律师使用正式字典／有效绑定；caseType／platform／infringementTypes复用已批准Code，无自由字典扩展；类型数组非null时非空且去重。已知信息不是普通前序事件。金额在真实后续动作登记前仍UNRECORDED，不能把缺值当0或PENDING事实。
 - 独立Action CASE_EXTERNAL_ENTRY_CREATE→case.external-entry.create（SELF／TEAM／DEPARTMENT）；直接ARCHIVED还须CASE_EXTERNAL_ENTRY_ARCHIVE→case.external-entry.archive（DEPARTMENT）。角色按可编辑Grant与范围判断，主管／授权运营是初始模板而非硬编码职位；内部-only，不借正常case.archive或律师固定能力。迁移只登记目录，不给任何真实账号／角色／Grant Boundary自动增权。新增权限可按后续明确授权设置，不阻塞合成授权账号的开发验收。
 - GET /api/v1/cases/external-entry-options提供canCreate／canCreateArchived、当前负责人身份、当前可读且已准入客户与已准入关联主体、去重的同部门有效律师账号候选及既有字典。无新Action仅返回能力关闭，不泄露候选；不接受跨部门客户端scope。提交时再次核验，不信任前端options。
@@ -525,6 +525,8 @@ CaseExternalEntry是不可变的已知当前状态来源，区分外部接办与
 每个初始阶段的后续首动作及延续链必须识别明确entry来源；仅入口设stage／只放开按钮不算完成。正常首动作仍要求本动作实际材料、日期、金额状态、权限、版本和原键回执；确实缺失的前序引用只能在与该entry初始阶段及本案／审次严格匹配的来源分支为null，并由数据库约束保存明确entry锚，不能用entryId伪装submission／confirmation／finish／choice等正常事实ID。已有真实前序存在时必须精确使用它，不能以entry跳过新事实、撤销或不合法阶段。后续第二步及更长链也须延续同一来源证明，不能第一步成功后落入旧链空引用。旧正常请求、旧150事实／材料／回执及其权限／日期约束保持。
 
 首动作对应为：PENDING_MATCH匹配；WAITING_COMPLAINT真实起诉提交；WAITING_COMPLAINT_CONFIRMATION确认真实当前诉状；WAITING_COMPLAINT_STAMP邮寄；WAITING_FILING提交立案；WAITING_FORMAL_ACCEPTANCE登记受理；WAITING_HEARING登记真实开庭／按既有定时规则推进；WAITING_JUDGMENT登记真实判决及独立下一步；SECOND_INSTANCE真实二审资料／结果（含来源锚下真实发回子审次）；WAITING_EXECUTION_DOCUMENTS真实执行整套提交；WAITING_EXECUTION_CONFIRMATION整套确认；WAITING_EXECUTION_STAMP邮寄；WAITING_EXECUTION_FILING申请执行；EXECUTING结束执行；WAITING_ARCHIVE登记真实结案资料后正常归档；ARCHIVED无正常推进。首次已归档仅记录真实补录根，不冒造旧closure/archive，也不进入要求真实旧事实的更正／重开入口。已有正常更正仅针对后续实际生成的事实。不得回退阶段、追造未知前序、补偿材料、付款或实收／结清。
+
+初始WAITING_HEARING的entry必须有本案同部门EXTERNAL_CURRENT本地审次，排期仍创建真实CaseHearingArrangement并绑定这个审次和本entry；缺真实CaseAcceptance时acceptanceId保持null，不以known.acceptedOn或stageReachedOn造受理记录／ID。已提供的真实known.acceptedOn以及当前阶段真实stageReachedOn只形成日期下界，排期日不早于这些已知界限；未知受理日期仍null。自动推进只能依据该本案当前真实排期，按北京开庭次日规则生成真实HearingAdvance并引用同排期／entry／审次；未知开庭日期或仅entry不得推进，过期／被替换排期不推进。排期和推进之后的判决等动作继续沿真实新增事实与entry来源证明，不退回要求虚构受理根的旧分支；正常案件仍走既有完整acceptance路径。
 
 stageReachedOn仅标明真实当前阶段业务发生日；首个新动作不早于这个当前阶段锚，但不把它显示／写成未提供的受理、判决或邮寄日。known中真实具体日期形成对应限制，互相矛盾拒绝，不错误重查已被更正的旧值；未来更正使用已有真实事实链规则。该日期口径直接落实SD-23的真实业务日，不采用系统录入时间代替。
 
