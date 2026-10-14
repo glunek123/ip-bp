@@ -1192,7 +1192,7 @@ test('browser cancels and saves distinct second-instance values; lawyer sees eff
     .click();
   await page
     .locator('.case-workspace-editors [data-test="workspace-command"]')
-    .selectOption('second-instance-save');
+    .selectOption('second-instance');
   await expect(
     page.locator('[data-test="second-instance-panel"]'),
   ).toContainText('一审');

@@ -1,6 +1,6 @@
 {
   "version": 1,
-  "recordedAt": "2026-10-14T17:15:01.255Z",
+  "recordedAt": "2026-10-14T17:18:34.827Z",
   "files": {
     ".cursor/rules/verified-feature-integration.mdc": "da673301f0440a6a9615786027dffc8e01f739a97f81cd97accef1580ac51f98",
     ".env.example": "07211cde5c2b59efc21b619b752d4c9b871f0980d2d64ca3c146ad6151fd27ca",
@@ -969,7 +969,7 @@
     "tests/e2e/case-record-edit-migration.spec.ts": "90c3daed4403f60b835ed522c43062d751dc668ac90049e8067f588dbfd222b3",
     "tests/e2e/case-record-edit.spec.ts": "ffce405bb5fa9d519f58ecbab12cf19ee796c39ba25389d63942874dac14aa6e",
     "tests/e2e/case-second-instance-acceptance-migration.spec.ts": "cb53bfaed8b9a7f2b29019e54740a781816640f5a23910cb7cbe691cf7878c7a",
-    "tests/e2e/case-second-instance-acceptance.spec.ts": "fa0a72df0e1085f8163154400b241f8d695893c64345c948949873923544f5cc",
+    "tests/e2e/case-second-instance-acceptance.spec.ts": "bcb7a4871f504a0c3f43165e3540ec073a03a2754cca8ece6694e5bb48332f1f",
     "tests/e2e/case-second-instance-cleanup-database.spec.ts": "b181b9b8980fbf485a67b6e44b855809b02a8879c30b250f8d874d52b3d7c6dd",
     "tests/e2e/case-second-instance-database.spec.ts": "d10fe5afdc0b663e0cc978ac428454dd5fb38507ae9ed0de5b61e8d47c697ea6",
     "tests/e2e/case-second-instance-migration.spec.ts": "2959c19cee7818291a67944f939f247a78c67d3c4f3c5d48ecd14f21e9bf512d",
