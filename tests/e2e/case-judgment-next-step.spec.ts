@@ -29,6 +29,7 @@ import {
   prepareCoreCaseHearingAdmin,
 } from '../support/case-hearing-database.mjs';
 import { disconnectCustomerTestDatabase } from '../support/customer-database.mjs';
+import { openCaseWorkspaceCommand } from '../support/case-workspace-browser.js';
 
 const origin = 'http://127.0.0.1:5174';
 const pdf = Buffer.from('%PDF-1.4\nCA009 judgment fixture\n%%EOF\n');
@@ -310,6 +311,12 @@ async function registerJudgment(
   const path = lawyer ? `/lawyer/cases/${caseId}` : `/cases/${caseId}`;
   await page.goto(path);
   const panel = page.locator('[data-test="case-judgment-panel"]');
+  if (!lawyer)
+    await openCaseWorkspaceCommand(
+      page,
+      'judgment',
+      '[data-test="case-judgment-panel"]',
+    );
   await expect(panel).toBeVisible();
   const filename = `CA009判决-${randomUUID().slice(0, 6)}.pdf`;
   await panel.locator('[data-test="judgment-file-input"]').setInputFiles({
@@ -440,6 +447,11 @@ test('operator chooses, revokes, corrects, and chooses a new judgment path', asy
     businessDate,
   );
   const next = page.locator('[data-test="case-judgment-next-step-panel"]');
+  await openCaseWorkspaceCommand(
+    page,
+    'next-step',
+    '[data-test="case-judgment-next-step-panel"]',
+  );
   await expect(next).toBeVisible();
   await expect(next.locator('input[type="radio"]:checked')).toHaveCount(0);
   await next.locator('input[value="APPEAL"]').check();
@@ -474,6 +486,11 @@ test('operator chooses, revokes, corrects, and chooses a new judgment path', asy
     internalJudgment.panel.locator('[data-test="judgment-correction-form"]'),
   ).toHaveCount(0);
   await page.reload();
+  await openCaseWorkspaceCommand(
+    page,
+    'next-step',
+    '[data-test="case-judgment-next-step-panel"]',
+  );
   await expect(
     page.locator('[data-test="case-judgment-next-step-panel"]'),
   ).toContainText('二审');
@@ -505,6 +522,11 @@ test('operator chooses, revokes, corrects, and chooses a new judgment path', asy
   await status(await revokeResponse, 201);
   await expect(revoke).toContainText('待判决');
   await expect(revoke).toContainText('二审材料核对后决定先修正判决事实');
+  await openCaseWorkspaceCommand(
+    page,
+    'judgment',
+    '[data-test="case-judgment-panel"]',
+  );
   await expect(
     internalJudgment.panel.locator('[data-test="judgment-correction-form"]'),
   ).toBeVisible();
@@ -572,6 +594,11 @@ test('operator chooses, revokes, corrects, and chooses a new judgment path', asy
     internalJudgment.panel.locator('[data-test="judgment-current"]'),
   ).toContainText('CA009更正判决.pdf');
   const execution = page.locator('[data-test="case-judgment-next-step-panel"]');
+  await openCaseWorkspaceCommand(
+    page,
+    'next-step',
+    '[data-test="case-judgment-next-step-panel"]',
+  );
   await execution.locator('input[value="EXECUTION"]').check();
   await expect(execution.locator('input[type="checkbox"]')).not.toBeChecked();
   await execution

@@ -32,6 +32,7 @@ import {
 } from '../support/case-hearing-database.mjs';
 import { clearCoreCaseSecondInstanceFixture } from '../support/case-second-instance-database.mjs';
 import { disconnectCustomerTestDatabase } from '../support/customer-database.mjs';
+import { openCaseWorkspaceCommand } from '../support/case-workspace-browser.js';
 
 const origin = 'http://127.0.0.1:5174';
 const applicationPdf = Buffer.from(
@@ -290,6 +291,11 @@ async function grantJudgmentAndExecutionActions(page: Page) {
 async function registerJudgment(page: Page, caseId: string, date: string) {
   await page.goto(`/cases/${caseId}`);
   const panel = page.locator('[data-test="case-judgment-panel"]');
+  await openCaseWorkspaceCommand(
+    page,
+    'judgment',
+    '[data-test="case-judgment-panel"]',
+  );
   await expect(panel).toBeVisible();
   const filename = `CA011判决-${randomUUID().slice(0, 8)}.pdf`;
   await panel.locator('[data-test="judgment-file-input"]').setInputFiles({
@@ -316,6 +322,11 @@ async function registerJudgment(page: Page, caseId: string, date: string) {
 
 async function chooseExecution(page: Page, caseId: string) {
   const panel = page.locator('[data-test="case-judgment-next-step-panel"]');
+  await openCaseWorkspaceCommand(
+    page,
+    'next-step',
+    '[data-test="case-judgment-next-step-panel"]',
+  );
   await expect(panel).toBeVisible();
   await panel.locator('input[value="EXECUTION"]').check();
   await panel
