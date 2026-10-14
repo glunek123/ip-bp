@@ -21,6 +21,14 @@ export class RegisterCaseAcceptanceDto {
   @MinLength(1)
   @MaxLength(128)
   idempotencyKey!: string;
+  @ApiPropertyOptional({
+    format: 'uuid',
+    description:
+      'Required when an external-entry acceptance has no filing submission',
+  })
+  @IsOptional()
+  @IsUUID('4')
+  courtId?: string;
   @ApiProperty({ format: 'date' })
   @IsString()
   acceptedAt!: string;

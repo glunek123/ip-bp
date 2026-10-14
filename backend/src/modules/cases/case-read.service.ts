@@ -221,7 +221,19 @@ export class CaseReadService {
           responsibleMembership: { select: { teamId: true } },
           sourceLead: { select: { id: true, businessNo: true } },
           sourceNotaryMatter: { select: { id: true, businessNo: true } },
-          externalEntry: { select: { id: true, entryKind: true, initialStage: true, stageReachedOn: true, source: true, reason: true, recordedAt: true, recordedByUserId: true, known: true } },
+          externalEntry: {
+            select: {
+              id: true,
+              entryKind: true,
+              initialStage: true,
+              stageReachedOn: true,
+              source: true,
+              reason: true,
+              recordedAt: true,
+              recordedByUserId: true,
+              known: true,
+            },
+          },
         },
       }),
       this.database.case.count({ where }),
@@ -262,9 +274,23 @@ export class CaseReadService {
                 owner: item.owner,
                 sourceLead: item.sourceLead,
                 sourceNotaryMatter: item.sourceNotaryMatter,
-                origin: item.externalEntry === null
-                  ? { kind: 'NOTARY' as const }
-                  : { kind: 'EXTERNAL_ENTRY' as const, entryId: item.externalEntry.id, entryKind: item.externalEntry.entryKind, initialStage: item.externalEntry.initialStage, stageReachedOn: item.externalEntry.stageReachedOn.toISOString().slice(0, 10), source: item.externalEntry.source, reason: item.externalEntry.reason, recordedAt: item.externalEntry.recordedAt.toISOString(), recordedByUserId: item.externalEntry.recordedByUserId, known: item.externalEntry.known },
+                origin:
+                  item.externalEntry === null
+                    ? { kind: 'NOTARY' as const }
+                    : {
+                        kind: 'EXTERNAL_ENTRY' as const,
+                        entryId: item.externalEntry.id,
+                        entryKind: item.externalEntry.entryKind,
+                        initialStage: item.externalEntry.initialStage,
+                        stageReachedOn: item.externalEntry.stageReachedOn
+                          .toISOString()
+                          .slice(0, 10),
+                        source: item.externalEntry.source,
+                        reason: item.externalEntry.reason,
+                        recordedAt: item.externalEntry.recordedAt.toISOString(),
+                        recordedByUserId: item.externalEntry.recordedByUserId,
+                        known: item.externalEntry.known,
+                      },
               }),
           canMatch:
             principal === 'INTERNAL' &&
@@ -793,6 +819,7 @@ export class CaseReadService {
           select: {
             id: true,
             trialRoundId: true,
+            court: { select: { id: true, name: true } },
             acceptedAt: true,
             courtCaseNo: true,
             recordedAt: true,
@@ -828,6 +855,7 @@ export class CaseReadService {
           select: {
             id: true,
             trialRoundId: true,
+            court: { select: { id: true, name: true } },
             acceptedAt: true,
             courtCaseNo: true,
             recordedAt: true,
@@ -1200,7 +1228,19 @@ export class CaseReadService {
         customer: { select: { id: true, name: true } },
         rightsHolder: { select: { id: true, name: true } },
         sourceLead: { select: { id: true, businessNo: true } },
-        externalEntry: { select: { id: true, entryKind: true, initialStage: true, stageReachedOn: true, source: true, reason: true, recordedAt: true, recordedByUserId: true, known: true } },
+        externalEntry: {
+          select: {
+            id: true,
+            entryKind: true,
+            initialStage: true,
+            stageReachedOn: true,
+            source: true,
+            reason: true,
+            recordedAt: true,
+            recordedByUserId: true,
+            known: true,
+          },
+        },
         sourceNotaryMatter: {
           select: {
             id: true,
@@ -1289,12 +1329,31 @@ export class CaseReadService {
         message: '案件不存在或不可访问',
       });
     const externalEntry = record.externalEntry;
-    const normalSource = record.sourceLead !== null && record.sourceNotaryMatter !== null && record.certificate !== null && externalEntry === null;
-    const externalSource = record.sourceLead === null && record.sourceNotaryMatter === null && record.certificate === null && externalEntry !== null;
-    if (!normalSource && !externalSource) throw new NotFoundException({ code: 'CASE_NOT_FOUND', message: 'Invalid case source' });
-    const frozen = normalSource && record.sourceNotaryMatter !== null && record.certificate !== null
-      ? await this.materials.listFrozenCertificateFiles(actor, record.sourceNotaryMatter.id, record.certificate.id)
-      : [];
+    const normalSource =
+      record.sourceLead !== null &&
+      record.sourceNotaryMatter !== null &&
+      record.certificate !== null &&
+      externalEntry === null;
+    const externalSource =
+      record.sourceLead === null &&
+      record.sourceNotaryMatter === null &&
+      record.certificate === null &&
+      externalEntry !== null;
+    if (!normalSource && !externalSource)
+      throw new NotFoundException({
+        code: 'CASE_NOT_FOUND',
+        message: 'Invalid case source',
+      });
+    const frozen =
+      normalSource &&
+      record.sourceNotaryMatter !== null &&
+      record.certificate !== null
+        ? await this.materials.listFrozenCertificateFiles(
+            actor,
+            record.sourceNotaryMatter.id,
+            record.certificate.id,
+          )
+        : [];
     const complaintFiles = record.complaintSubmittedAt
       ? await this.materials.listFrozenCaseComplaintFiles(actor, id)
       : [];
@@ -2452,6 +2511,14 @@ export class CaseReadService {
           : {
               id: record.acceptance.id,
               trialRoundId: record.acceptance.trialRoundId,
+              court:
+                record.acceptance.court ??
+                (record.filingSubmission === null
+                  ? null
+                  : {
+                      id: record.filingSubmission.courtId,
+                      name: record.filingSubmission.courtName,
+                    }),
               acceptedAt: (
                 record.acceptance.corrections.at(-1)?.acceptedAt ??
                 record.acceptance.acceptedAt
@@ -2474,6 +2541,14 @@ export class CaseReadService {
       acceptances: record.acceptances.map((value) => ({
         id: value.id,
         trialRoundId: value.trialRoundId,
+        court:
+          value.court ??
+          (record.filingSubmission === null
+            ? null
+            : {
+                id: record.filingSubmission.courtId,
+                name: record.filingSubmission.courtName,
+              }),
         acceptedAt: (value.corrections.at(-1)?.acceptedAt ?? value.acceptedAt)
           .toISOString()
           .slice(0, 10),
@@ -2543,61 +2618,89 @@ export class CaseReadService {
       customer: record.customer,
       rightsHolder: record.rightsHolder,
       owner: record.owner,
-      origin: externalEntry === null ? { kind: 'NOTARY' as const } : { kind: 'EXTERNAL_ENTRY' as const, entryId: externalEntry.id, entryKind: externalEntry.entryKind, initialStage: externalEntry.initialStage, stageReachedOn: externalEntry.stageReachedOn.toISOString().slice(0, 10), source: externalEntry.source, reason: externalEntry.reason, recordedAt: externalEntry.recordedAt.toISOString(), recordedByUserId: externalEntry.recordedByUserId, known: externalEntry.known },
-      sourceLead: record.sourceLead === null ? null : {
-        id: record.sourceLead.id,
-        businessNo: record.sourceLead.businessNo,
-      },
-      sourceNotaryMatter: record.sourceNotaryMatter === null ? null : {
-        id: record.sourceNotaryMatter.id,
-        businessNo: record.sourceNotaryMatter.businessNo,
-      },
-      certificate: record.certificate === null ? null : {
-        certificateNo: record.certificate.certificateNo,
-        certificateDate: record.certificate.certificateDate
-          .toISOString()
-          .slice(0, 10),
-        issuedAt: record.certificate.issuedAt.toISOString(),
-        needDisclose: record.certificate.needDisclose,
-        files: frozen
-          .filter((ref) => ref.purpose === 'NOTARY_CERTIFICATE')
-          .map(file),
-        disclosureFiles: frozen
-          .filter((ref) => ref.purpose === 'NOTARY_DISCLOSURE')
-          .map(file),
-      },
-      fees: record.certificate === null || record.sourceNotaryMatter === null ? [] : [
-        ...record.certificate.fees.map((fee) => ({
-          category: fee.category,
-          state: fee.state,
-          amount:
-            fee.amount === null
-              ? null
-              : new Prisma.Decimal(fee.amount.toString()).toFixed(2),
-          sourceType: 'NOTARY_CERTIFICATE_FEE' as const,
-          sourceId: record.certificate!.id,
-        })),
-        {
-          category: 'SAMPLE' as const,
-          state: sample?.sampleFeeState ?? 'PENDING',
-          amount:
-            sample?.sampleFeeAmount === null || sample === null
-              ? null
-              : new Prisma.Decimal(sample.sampleFeeAmount.toString()).toFixed(
-                  2,
+      origin:
+        externalEntry === null
+          ? { kind: 'NOTARY' as const }
+          : {
+              kind: 'EXTERNAL_ENTRY' as const,
+              entryId: externalEntry.id,
+              entryKind: externalEntry.entryKind,
+              initialStage: externalEntry.initialStage,
+              stageReachedOn: externalEntry.stageReachedOn
+                .toISOString()
+                .slice(0, 10),
+              source: externalEntry.source,
+              reason: externalEntry.reason,
+              recordedAt: externalEntry.recordedAt.toISOString(),
+              recordedByUserId: externalEntry.recordedByUserId,
+              known: externalEntry.known,
+            },
+      sourceLead:
+        record.sourceLead === null
+          ? null
+          : {
+              id: record.sourceLead.id,
+              businessNo: record.sourceLead.businessNo,
+            },
+      sourceNotaryMatter:
+        record.sourceNotaryMatter === null
+          ? null
+          : {
+              id: record.sourceNotaryMatter.id,
+              businessNo: record.sourceNotaryMatter.businessNo,
+            },
+      certificate:
+        record.certificate === null
+          ? null
+          : {
+              certificateNo: record.certificate.certificateNo,
+              certificateDate: record.certificate.certificateDate
+                .toISOString()
+                .slice(0, 10),
+              issuedAt: record.certificate.issuedAt.toISOString(),
+              needDisclose: record.certificate.needDisclose,
+              files: frozen
+                .filter((ref) => ref.purpose === 'NOTARY_CERTIFICATE')
+                .map(file),
+              disclosureFiles: frozen
+                .filter((ref) => ref.purpose === 'NOTARY_DISCLOSURE')
+                .map(file),
+            },
+      fees:
+        record.certificate === null || record.sourceNotaryMatter === null
+          ? []
+          : [
+              ...record.certificate.fees.map((fee) => ({
+                category: fee.category,
+                state: fee.state,
+                amount:
+                  fee.amount === null
+                    ? null
+                    : new Prisma.Decimal(fee.amount.toString()).toFixed(2),
+                sourceType: 'NOTARY_CERTIFICATE_FEE' as const,
+                sourceId: record.certificate!.id,
+              })),
+              {
+                category: 'SAMPLE' as const,
+                state: sample?.sampleFeeState ?? 'PENDING',
+                amount:
+                  sample?.sampleFeeAmount === null || sample === null
+                    ? null
+                    : new Prisma.Decimal(
+                        sample.sampleFeeAmount.toString(),
+                      ).toFixed(2),
+                sourceType: 'NOTARY_MATTER_EVIDENCE' as const,
+                sourceId: record.sourceNotaryMatter.id,
+              },
+            ].sort(
+              (a, b) =>
+                ['NOTARY', 'SAMPLE', 'INVESTIGATION', 'DISCLOSURE'].indexOf(
+                  a.category,
+                ) -
+                ['NOTARY', 'SAMPLE', 'INVESTIGATION', 'DISCLOSURE'].indexOf(
+                  b.category,
                 ),
-          sourceType: 'NOTARY_MATTER_EVIDENCE' as const,
-          sourceId: record.sourceNotaryMatter.id,
-        },
-      ].sort(
-        (a, b) =>
-          ['NOTARY', 'SAMPLE', 'INVESTIGATION', 'DISCLOSURE'].indexOf(
-            a.category,
-          ) -
-          ['NOTARY', 'SAMPLE', 'INVESTIGATION', 'DISCLOSURE'].indexOf(
-            b.category,
-          ),
-      ),
+            ),
     };
     if (principal === 'LAWYER') {
       const archiveVersion = (
@@ -2635,7 +2738,16 @@ export class CaseReadService {
         businessNo: detail.businessNo,
         stage: detail.stage,
         version: detail.version,
-        origin: externalEntry === null ? {kind:'NOTARY' as const} : {kind:'EXTERNAL_ENTRY' as const,entryKind:externalEntry.entryKind,stageReachedOn:externalEntry.stageReachedOn.toISOString().slice(0,10)},
+        origin:
+          externalEntry === null
+            ? { kind: 'NOTARY' as const }
+            : {
+                kind: 'EXTERNAL_ENTRY' as const,
+                entryKind: externalEntry.entryKind,
+                stageReachedOn: externalEntry.stageReachedOn
+                  .toISOString()
+                  .slice(0, 10),
+              },
         matchedAt: detail.matchedAt,
         matchedOn: detail.matchedOn,
         defendants: detail.defendants,
@@ -2745,6 +2857,7 @@ export class CaseReadService {
             : {
                 id: detail.acceptance.id,
                 trialRoundId: detail.acceptance.trialRoundId,
+                court: detail.acceptance.court,
                 acceptedAt: detail.acceptance.acceptedAt,
                 courtCaseNo: detail.acceptance.courtCaseNo,
                 recordedAt: detail.acceptance.recordedAt,

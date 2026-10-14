@@ -2148,6 +2148,7 @@ model FilingCourt {
   name         String                 @db.VarChar(200)
   department   Department             @relation(fields: [departmentId], references: [id], onDelete: Restrict, onUpdate: Restrict)
   submissions  CaseFilingSubmission[]
+  acceptances  CaseAcceptance[]
   createdAt    DateTime               @default(now()) @map("created_at") @db.Timestamptz(3)
 
   @@unique([id, departmentId])
@@ -2209,6 +2210,7 @@ model CaseFilingReceipt {
 
 model CaseAcceptance {
   externalEntryId String? @map("external_entry_id") @db.Uuid
+  courtId          String?                 @map("court_id") @db.Uuid
   id               String                  @id @default(uuid()) @db.Uuid
   departmentId     String                  @map("department_id") @db.Uuid
   caseId           String                  @map("case_id") @db.Uuid
@@ -2221,6 +2223,7 @@ model CaseAcceptance {
   case             Case                    @relation(fields: [caseId, departmentId], references: [id, departmentId], onDelete: Restrict, onUpdate: Restrict)
   currentForCase   Case?                   @relation("CaseCurrentAcceptance")
   trialRound       CaseTrialRound          @relation(fields: [trialRoundId, caseId, departmentId], references: [id, caseId, departmentId], onDelete: Restrict, onUpdate: Restrict)
+  court            FilingCourt?            @relation(fields: [courtId, departmentId], references: [id, departmentId], onDelete: Restrict, onUpdate: Restrict)
   recordedBy       UserAccount             @relation("CaseAcceptanceRecorder", fields: [recordedByUserId], references: [id], onDelete: Restrict, onUpdate: Restrict)
   auditEvent       AuditEvent              @relation(fields: [auditEventId], references: [id], onDelete: Restrict, onUpdate: Restrict)
   versions         CaseAcceptanceVersion[]

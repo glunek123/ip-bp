@@ -67,6 +67,14 @@ export class CaseAcceptanceService {
                 version: true,
                 currentTrialRoundId: true,
                 currentAcceptanceId: true,
+                currentTrialRound: {
+                  select: {
+                    externalEntryId: true,
+                    sourceResult: {
+                      select: { id: true, result: true, resultReceivedAt: true, externalEntryId: true, revocation: { select: { id: true } } },
+                    },
+                  },
+                },
                 responsibleUserId: true,
                 responsibleMembership: { select: { teamId: true } },
                 filingSubmission: { select: { submittedAt: true } },
@@ -149,18 +157,47 @@ export class CaseAcceptanceService {
                 recordedAt: snapshot.recordedAt,
               };
             }
-            const source = await readCaseSourceAnchor(tx,caseId,actor.departmentId);
+            const source = await readCaseSourceAnchor(
+              tx,
+              caseId,
+              actor.departmentId,
+            );
+            const externalRemand = source.kind === 'EXTERNAL_ENTRY' &&
+              record.currentTrialRound?.externalEntryId === source.entryId &&
+              record.currentTrialRound.sourceResult?.result === 'REMAND' &&
+              record.currentTrialRound.sourceResult.externalEntryId === source.entryId &&
+              record.currentTrialRound.sourceResult.revocation === null;
             if (
               record.stage !== 'WAITING_FORMAL_ACCEPTANCE' ||
-              (record.filingSubmission === null && !isEntryStartingAt(source,'WAITING_FORMAL_ACCEPTANCE')) ||
+              (record.filingSubmission === null &&
+                !isEntryStartingAt(source, 'WAITING_FORMAL_ACCEPTANCE') && !externalRemand) ||
               record.currentAcceptanceId !== null
             )
               throw this.invalidState();
+            const directExternalAcceptance =
+              record.filingSubmission === null &&
+              (isEntryStartingAt(source, 'WAITING_FORMAL_ACCEPTANCE') || externalRemand);
+            if (directExternalAcceptance !== (value.courtId !== null))
+              throw this.validation();
+            if (
+              value.courtId !== null &&
+              (await tx.filingCourt.count({
+                where: { id: value.courtId, departmentId: actor.departmentId },
+              })) !== 1
+            )
+              throw this.validation();
             if (record.version !== value.expectedVersion)
               throw this.versionConflict();
             if (
-              value.acceptedAt < (record.filingSubmission?.submittedAt.toISOString().slice(0, 10) ?? (source.kind === 'EXTERNAL_ENTRY' ? source.stageReachedOn : '9999-12-31')) ||
-              (source.kind === 'EXTERNAL_ENTRY' && source.known.acceptedOn !== null && value.acceptedAt < source.known.acceptedOn)
+              value.acceptedAt <
+                (record.filingSubmission?.submittedAt
+                  .toISOString()
+                  .slice(0, 10) ??
+                  (externalRemand ? record.currentTrialRound!.sourceResult!.resultReceivedAt.toISOString().slice(0,10) : source.kind === 'EXTERNAL_ENTRY'
+                    ? source.stageReachedOn : '9999-12-31')) ||
+              (source.kind === 'EXTERNAL_ENTRY' && !externalRemand &&
+                source.known.acceptedOn !== null &&
+                value.acceptedAt < source.known.acceptedOn)
             )
               throw this.validation();
             const versions = [];
@@ -223,6 +260,7 @@ export class CaseAcceptanceService {
                   toVersion: value.expectedVersion + 1,
                   acceptedAt: value.acceptedAt,
                   courtCaseNo: value.courtCaseNo,
+                  ...(value.courtId !== null ? { courtId: value.courtId } : {}),
                   acceptanceNoticeContentVersionIds:
                     value.acceptanceNoticeContentVersionIds,
                   paymentListContentVersionIds:
@@ -235,10 +273,12 @@ export class CaseAcceptanceService {
             });
             const acceptance = await tx.caseAcceptance.create({
               data: {
-                externalEntryId: source.kind === 'EXTERNAL_ENTRY' ? source.entryId : null,
+                externalEntryId:
+                  source.kind === 'EXTERNAL_ENTRY' ? source.entryId : null,
                 departmentId: actor.departmentId,
                 caseId,
                 trialRoundId,
+                courtId: value.courtId,
                 acceptedAt: new Date(`${value.acceptedAt}T00:00:00.000Z`),
                 courtCaseNo: value.courtCaseNo,
                 recordedAt,
@@ -316,6 +356,7 @@ export class CaseAcceptanceService {
     const allIds = arrays.flat();
     const courtCaseNo =
       typeof input.courtCaseNo === 'string' ? input.courtCaseNo.trim() : null;
+    const courtId = input.courtId === undefined ? null : input.courtId;
     if (
       !Number.isInteger(input.expectedVersion) ||
       input.expectedVersion < 1 ||
@@ -328,6 +369,8 @@ export class CaseAcceptanceService {
       date.toISOString().slice(0, 10) !== input.acceptedAt ||
       input.acceptedAt > today ||
       courtCaseNo === null ||
+      (courtId !== null &&
+        (typeof courtId !== 'string' || !uuid.test(courtId))) ||
       courtCaseNo.length < 1 ||
       courtCaseNo.length > 100 ||
       arrays.some((ids) => !Array.isArray(ids) || ids.length > 10) ||
@@ -340,6 +383,7 @@ export class CaseAcceptanceService {
       idempotencyKey: input.idempotencyKey,
       acceptedAt: input.acceptedAt,
       courtCaseNo,
+      courtId,
       acceptanceNoticeContentVersionIds: arrays[0],
       paymentListContentVersionIds: arrays[1],
       serviceDocumentContentVersionIds: arrays[2],
