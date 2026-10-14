@@ -173,7 +173,7 @@ function loseAccess() {
   emit('refresh');
 }
 async function loadFiles() {
-  if (!editable.value || pending.value) return;
+  if (!active || !editable.value || pending.value) return;
   const context = capture();
   const selection = selectionRevision;
   loading.value = true;

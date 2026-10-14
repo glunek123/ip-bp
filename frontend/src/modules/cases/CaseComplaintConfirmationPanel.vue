@@ -66,6 +66,7 @@ const identity = computed(() =>
     ? ''
     : `${auth.session.user.id}:${auth.session.authorizationRevision}`,
 );
+const verifiedIdentity = identity.value;
 const requestScopeKey = computed(() => `${props.item.id}:${identity.value}`);
 const factsKey = computed(() => `${props.item.version}:${props.item.stage}`);
 const canConfirm = computed(
@@ -160,6 +161,7 @@ function resetDraft(): void {
 }
 
 async function loadVersions(revision: number): Promise<void> {
+  if (!mounted || identity.value !== verifiedIdentity) return;
   versionsRequest?.abort();
   const controller = new AbortController();
   versionsRequest = controller;

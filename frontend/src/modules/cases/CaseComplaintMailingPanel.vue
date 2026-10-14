@@ -122,6 +122,7 @@ function setAvailable(next: CaseFile[]) {
   files.value = next.length === 1 ? [next[0]!] : [];
 }
 async function loadAvailable() {
+  if (!active) return;
   const context = captureContext();
   const attachments = attachmentRevision;
   if (props.client) {

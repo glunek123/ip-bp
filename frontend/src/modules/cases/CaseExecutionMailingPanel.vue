@@ -155,6 +155,7 @@ function setAvailable(next: VersionFile[]) {
   files.value = next.length === 1 ? [next[0]!] : [];
 }
 async function loadAvailable() {
+  if (!active) return;
   const context = captureContext();
   const attachment = attachmentRevision;
   if (

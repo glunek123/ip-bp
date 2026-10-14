@@ -168,6 +168,7 @@ function clearSensitive(): void {
 }
 
 async function loadFiles(): Promise<void> {
+  if (!mounted) return;
   const captured = context();
   try {
     const result = await listOwnerMaterials('CASE', captured.id);
@@ -307,7 +308,12 @@ async function uploadFiles(
 }
 
 async function refreshRecovery(): Promise<void> {
-  if (!uploadUnknown.value || recoveryLoading.value || accessDenied.value)
+  if (
+    !mounted ||
+    !uploadUnknown.value ||
+    recoveryLoading.value ||
+    accessDenied.value
+  )
     return;
   const marker = readExecutionUpload(recoveryIdentity());
   if (!marker) {

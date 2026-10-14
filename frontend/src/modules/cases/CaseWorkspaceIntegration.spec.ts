@@ -807,6 +807,73 @@ describe('UI002 real case workspace host', () => {
     await flushPromises();
     expect(api.listOwnerMaterials).toHaveBeenCalledTimes(2);
   });
+  it('does not list old complaint versions on an inactive authorization change and reads after return GET', async () => {
+    const item = structuredClone(baseItem);
+    item.stage = 'WAITING_COMPLAINT_CONFIRMATION';
+    item.canConfirmComplaint = true;
+    item.complaint = {
+      amountState: 'KNOWN',
+      amount: '12.30',
+      pendingReason: null,
+      submittedAt: '2026-10-14T01:00:00Z',
+      submittedByUserId: 'operator-1',
+      complaintFiles: [],
+      authorizationFiles: [],
+    };
+    const { wrapper, router, auth } = await renderSpa(item);
+    await wrapper
+      .get('[data-test="workspace-primary-action"]')
+      .trigger('click');
+    await flushPromises();
+    const beforeDeparture = api.listOwnerMaterials.mock.calls.length;
+    expect(beforeDeparture).toBeGreaterThan(0);
+    await router.push('/calendar');
+    await flushPromises();
+    auth.session = { ...auth.session!, authorizationRevision: 2 };
+    expect(api.listOwnerMaterials).toHaveBeenCalledTimes(beforeDeparture);
+    await flushPromises();
+    const authorized = deferred<CaseDetail>();
+    api.getCase.mockReturnValueOnce(authorized.promise);
+    await router.push('/cases/case-1');
+    await flushPromises();
+    expect(api.listOwnerMaterials).toHaveBeenCalledTimes(beforeDeparture);
+    authorized.resolve(item);
+    await flushPromises();
+    expect(api.listOwnerMaterials.mock.calls.length).toBeGreaterThan(
+      beforeDeparture,
+    );
+  });
+  it('waits for the parent GET before listing complaint versions on an active authorization change', async () => {
+    const item = structuredClone(baseItem);
+    item.stage = 'WAITING_COMPLAINT_CONFIRMATION';
+    item.canConfirmComplaint = true;
+    item.complaint = {
+      amountState: 'KNOWN',
+      amount: '12.30',
+      pendingReason: null,
+      submittedAt: '2026-10-14T01:00:00Z',
+      submittedByUserId: 'operator-1',
+      complaintFiles: [],
+      authorizationFiles: [],
+    };
+    const { wrapper, auth } = await renderSpa(item);
+    await wrapper
+      .get('[data-test="workspace-primary-action"]')
+      .trigger('click');
+    await flushPromises();
+    const beforeRevision = api.listOwnerMaterials.mock.calls.length;
+    const authorized = deferred<CaseDetail>();
+    api.getCase.mockReturnValue(authorized.promise);
+    auth.session = { ...auth.session!, authorizationRevision: 2 };
+    expect(api.listOwnerMaterials).toHaveBeenCalledTimes(beforeRevision);
+    await flushPromises();
+    expect(api.listOwnerMaterials).toHaveBeenCalledTimes(beforeRevision);
+    authorized.resolve(item);
+    await flushPromises();
+    expect(api.listOwnerMaterials.mock.calls.length).toBeGreaterThan(
+      beforeRevision,
+    );
+  });
   it('reloads filing courts after an interrupted read and authorized SPA return', async () => {
     const item = structuredClone(baseItem);
     item.stage = 'WAITING_FILING';

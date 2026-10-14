@@ -766,6 +766,7 @@ function recoveryFileKey(file: {
   return `${file.materialId}:${file.version.id}`;
 }
 async function refreshRecoveryFiles(): Promise<void> {
+  if (!mounted) return;
   if (
     !uploadUnknown.value ||
     recoveryLoading.value ||

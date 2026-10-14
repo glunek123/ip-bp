@@ -130,7 +130,7 @@ function setAvailable(next: VersionFile[]) {
   files.value = next.length === 1 ? [next[0]!] : [];
 }
 async function loadAvailable() {
-  if (!props.item.canSubmitExecutionFiling) return;
+  if (!active || !props.item.canSubmitExecutionFiling) return;
   const context = captureContext();
   const attachment = attachmentRevision;
   try {

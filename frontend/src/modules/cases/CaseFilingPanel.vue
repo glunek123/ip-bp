@@ -99,7 +99,7 @@ function clearContext() {
   requestKey = '';
 }
 async function loadCourts() {
-  if (!props.item.canSubmitFiling) return;
+  if (!active || !props.item.canSubmitFiling) return;
   const context = captureContext();
   courtsLoading.value = true;
   courtsError.value = '';
