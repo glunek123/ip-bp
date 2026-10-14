@@ -71,7 +71,13 @@ export class CaseAcceptanceService {
                   select: {
                     externalEntryId: true,
                     sourceResult: {
-                      select: { id: true, result: true, resultReceivedAt: true, externalEntryId: true, revocation: { select: { id: true } } },
+                      select: {
+                        id: true,
+                        result: true,
+                        resultReceivedAt: true,
+                        externalEntryId: true,
+                        revocation: { select: { id: true } },
+                      },
                     },
                   },
                 },
@@ -162,21 +168,25 @@ export class CaseAcceptanceService {
               caseId,
               actor.departmentId,
             );
-            const externalRemand = source.kind === 'EXTERNAL_ENTRY' &&
+            const externalRemand =
+              source.kind === 'EXTERNAL_ENTRY' &&
               record.currentTrialRound?.externalEntryId === source.entryId &&
               record.currentTrialRound.sourceResult?.result === 'REMAND' &&
-              record.currentTrialRound.sourceResult.externalEntryId === source.entryId &&
+              record.currentTrialRound.sourceResult.externalEntryId ===
+                source.entryId &&
               record.currentTrialRound.sourceResult.revocation === null;
             if (
               record.stage !== 'WAITING_FORMAL_ACCEPTANCE' ||
               (record.filingSubmission === null &&
-                !isEntryStartingAt(source, 'WAITING_FORMAL_ACCEPTANCE') && !externalRemand) ||
+                !isEntryStartingAt(source, 'WAITING_FORMAL_ACCEPTANCE') &&
+                !externalRemand) ||
               record.currentAcceptanceId !== null
             )
               throw this.invalidState();
             const directExternalAcceptance =
               record.filingSubmission === null &&
-              (isEntryStartingAt(source, 'WAITING_FORMAL_ACCEPTANCE') || externalRemand);
+              (isEntryStartingAt(source, 'WAITING_FORMAL_ACCEPTANCE') ||
+                externalRemand);
             if (directExternalAcceptance !== (value.courtId !== null))
               throw this.validation();
             if (
@@ -193,9 +203,15 @@ export class CaseAcceptanceService {
                 (record.filingSubmission?.submittedAt
                   .toISOString()
                   .slice(0, 10) ??
-                  (externalRemand ? record.currentTrialRound!.sourceResult!.resultReceivedAt.toISOString().slice(0,10) : source.kind === 'EXTERNAL_ENTRY'
-                    ? source.stageReachedOn : '9999-12-31')) ||
-              (source.kind === 'EXTERNAL_ENTRY' && !externalRemand &&
+                  (externalRemand
+                    ? record
+                        .currentTrialRound!.sourceResult!.resultReceivedAt.toISOString()
+                        .slice(0, 10)
+                    : source.kind === 'EXTERNAL_ENTRY'
+                      ? source.stageReachedOn
+                      : '9999-12-31')) ||
+              (source.kind === 'EXTERNAL_ENTRY' &&
+                !externalRemand &&
                 source.known.acceptedOn !== null &&
                 value.acceptedAt < source.known.acceptedOn)
             )
@@ -221,6 +237,12 @@ export class CaseAcceptanceService {
                     caseId,
                     departmentId: actor.departmentId,
                     sequence: 1,
+                    ...(source.kind === 'EXTERNAL_ENTRY'
+                      ? {
+                          origin: 'EXTERNAL_CURRENT' as const,
+                          externalEntryId: source.entryId,
+                        }
+                      : {}),
                   },
                   select: { id: true },
                 })
