@@ -1,6 +1,6 @@
 {
   "version": 1,
-  "recordedAt": "2026-10-14T06:46:34.521Z",
+  "recordedAt": "2026-10-14T06:49:43.497Z",
   "files": {
     ".cursor/rules/verified-feature-integration.mdc": "da673301f0440a6a9615786027dffc8e01f739a97f81cd97accef1580ac51f98",
     ".env.example": "07211cde5c2b59efc21b619b752d4c9b871f0980d2d64ca3c146ad6151fd27ca",
@@ -767,8 +767,8 @@
     "frontend/src/modules/cases/case-second-instance-recovery.spec.ts": "4835007e1a2646eaf4251fd0cfae01380a30122db0051b10722e28f157abdbfb",
     "frontend/src/modules/cases/case-second-instance-recovery.ts": "180aca777de9f04ea336c0109d87787c56181bdd26bd156e4ec64f12b2fc5030",
     "frontend/src/modules/cases/case-workspace-contract.ts": "65fc3bb2310d55ecd7210a3605e87e7d0996054eb8405099c2520535f7d5fdef",
-    "frontend/src/modules/cases/case-workspace-read-model.spec.ts": "a481a3dca58b9ac1f440e85c4c3761534d94cfce6e95a2ff66ca754cf8012a57",
-    "frontend/src/modules/cases/case-workspace-read-model.ts": "463fb1188e80ecf9ac1a70b9698f92112ac064dae1401787bba56408cece63b7",
+    "frontend/src/modules/cases/case-workspace-read-model.spec.ts": "abe8d11c3ca35ab9cacde3b5524330d827e1f0e885a34fd63e1b992fa078a18c",
+    "frontend/src/modules/cases/case-workspace-read-model.ts": "bed0c11bc6114ace70bac1566f727a2385534cb1c89be0a33bd77ffc80dc3512",
     "frontend/src/modules/cases/index.ts": "fdb6f25128d96366d60246e89796babda2dc83dcb848d09552f397fa1e4862de",
     "frontend/src/modules/client/ClientCaseDetailPage.vue": "a1ae8e67e132d20a5b618e0d4eb3a5b2c9adf51851f22d4473ad17c629c1480c",
     "frontend/src/modules/client/ClientCaseListPage.vue": "ae481c143901d1bb9fd5f56ef401602d9346e7ccbcb3791d73d9fd41cf1daf0d",

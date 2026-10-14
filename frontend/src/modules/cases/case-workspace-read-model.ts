@@ -629,9 +629,11 @@ export function buildCaseWorkspaceSections(
     const round = item.secondInstance.rounds.find(
       (value) => value.id === trialRoundId,
     );
-    if (round)
+    if (round?.sourceResultId)
       return `发回重审第 ${round.sequence} 轮 · ${round.id}${round.sourceResultId ? ` · 来源二审结果 ${round.sourceResultId}` : ''}`;
-    return `初审轮次 · ${trialRoundId}`;
+    return round
+      ? `初审轮次 · ${trialRoundId}`
+      : `未能匹配审理轮次 · ${trialRoundId}`;
   }
   function eventRoundId(event: WorkspaceEvent): string | null {
     const direct = event.fields.find(

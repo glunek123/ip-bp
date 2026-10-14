@@ -352,6 +352,9 @@ describe('case workspace read model', () => {
       files: [{ ...file, category: 'ACCEPTANCE_NOTICE' }],
     };
     item.acceptances = [item.acceptance];
+    item.secondInstance.rounds = [
+      { id: 'round-1', sequence: 1, sourceResultId: null, revokedAt: null },
+    ];
     item.acceptanceMaterials.PAYMENT_LIST.later = [file];
     item.hearing.currentArrangement = {
       id: 'hearing-1',
@@ -395,6 +398,13 @@ describe('case workspace read model', () => {
       events.find((value) => value.source === 'complaint-confirmation')?.fields,
     ).toContainEqual({ label: '确认诉请金额', value: '待确认' });
     const section = buildCaseWorkspaceSections(item, null, 'idle')[2]!;
+    expect(JSON.stringify(section)).toContain('初审轮次 · round-1');
+    expect(JSON.stringify(section)).not.toContain('发回重审');
+    item.secondInstance.rounds[0]!.sourceResultId = 'remand-result';
+    expect(
+      JSON.stringify(buildCaseWorkspaceSections(item, null, 'idle')[2]),
+    ).toContain('发回重审第 1 轮');
+    item.secondInstance.rounds[0]!.sourceResultId = null;
     expect(JSON.stringify(section)).toContain('exact-version-1');
     expect(JSON.stringify(section)).toContain('缴费清单（后补）');
     expect(JSON.stringify(section)).toContain('真实更正原因');
@@ -528,6 +538,7 @@ describe('case workspace read model', () => {
   it('assigns acceptance, hearing and judgments to their own first or remand round', () => {
     const item = caseFixture();
     item.secondInstance.rounds = [
+      { id: 'round-1', sequence: 1, sourceResultId: null, revokedAt: null },
       {
         id: 'round-2',
         sequence: 2,
