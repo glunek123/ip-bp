@@ -274,6 +274,14 @@ class CaseSecondInstanceRoundDto {
   @ApiProperty({ type: String, nullable: true, format: 'date-time' })
   revokedAt!: string | null;
 }
+class CaseSecondInstanceAcceptanceSummaryDto {
+  @ApiProperty({ format: 'uuid' }) choiceId!: string;
+  @ApiProperty({ format: 'uuid' }) trialRoundId!: string;
+  @ApiProperty({ type: String, nullable: true, format: 'date' }) acceptedAt!:
+    string | null;
+  @ApiProperty({ type: String, nullable: true }) courtCaseNo!: string | null;
+  @ApiProperty({ format: 'date-time' }) recordedAt!: string;
+}
 class CaseSecondInstanceDto {
   @ApiProperty({ type: String, format: 'uuid', nullable: true })
   currentTrialRoundId!: string | null;
@@ -289,6 +297,8 @@ class CaseSecondInstanceDto {
   results!: CaseSecondInstanceResultSummaryDto[];
   @ApiProperty({ type: [CaseSecondInstanceRevocationSummaryDto] })
   revocations!: CaseSecondInstanceRevocationSummaryDto[];
+  @ApiPropertyOptional({ type: [CaseSecondInstanceAcceptanceSummaryDto] })
+  acceptances?: CaseSecondInstanceAcceptanceSummaryDto[];
 }
 
 export class CasePageQueryDto {
@@ -712,6 +722,30 @@ class CaseAcceptanceCorrectionHistoryDto {
   @ApiProperty({ type: [CaseAcceptanceCorrectionHistoryItemDto] })
   history!: CaseAcceptanceCorrectionHistoryItemDto[];
 }
+class CaseSecondAcceptanceHistoryItemDto {
+  @ApiProperty({ format: 'uuid' }) id!: string;
+  @ApiProperty({ type: String, nullable: true, format: 'uuid' })
+  priorChangeId!: string | null;
+  @ApiProperty() fromRevision!: number;
+  @ApiProperty() toRevision!: number;
+  @ApiProperty({ type: String, nullable: true, format: 'date' }) acceptedAt!:
+    string | null;
+  @ApiProperty({ type: String, nullable: true }) courtCaseNo!: string | null;
+  @ApiProperty({ type: String, nullable: true }) reason!: string | null;
+  @ApiProperty({ format: 'date-time' }) recordedAt!: string;
+  @ApiProperty({ format: 'uuid' }) recordedByUserId!: string;
+}
+class CaseSecondAcceptanceHistoryDto {
+  @ApiProperty({ format: 'uuid' }) choiceId!: string;
+  @ApiProperty({ format: 'uuid' }) trialRoundId!: string;
+  @ApiProperty() acceptanceRevision!: number;
+  @ApiProperty({ type: String, nullable: true, format: 'date' }) acceptedAt!:
+    string | null;
+  @ApiProperty({ type: String, nullable: true }) courtCaseNo!: string | null;
+  @ApiProperty() canEdit!: boolean;
+  @ApiProperty({ type: [CaseSecondAcceptanceHistoryItemDto] })
+  history!: CaseSecondAcceptanceHistoryItemDto[];
+}
 class CaseRecordEditsDto {
   @ApiProperty() canUpdateDefendantContact!: boolean;
   @ApiProperty() canCorrectAcceptance!: boolean;
@@ -719,6 +753,9 @@ class CaseRecordEditsDto {
   defendantContacts!: CaseDefendantContactHistoryDto[];
   @ApiProperty({ type: [CaseAcceptanceCorrectionHistoryDto] })
   acceptanceCorrections!: CaseAcceptanceCorrectionHistoryDto[];
+  @ApiPropertyOptional() canSaveSecondInstanceAcceptance?: boolean;
+  @ApiPropertyOptional({ type: [CaseSecondAcceptanceHistoryDto] })
+  secondInstanceAcceptances?: CaseSecondAcceptanceHistoryDto[];
 }
 class CaseLawyerDto {
   @ApiProperty({ format: 'uuid' }) id!: string;

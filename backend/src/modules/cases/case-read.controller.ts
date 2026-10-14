@@ -64,6 +64,8 @@ import {
   AcceptanceCorrectionResultDto,
   CorrectCaseAcceptanceDto,
   DefendantContactUpdateResultDto,
+  SaveSecondInstanceAcceptanceDto,
+  SaveSecondInstanceAcceptanceResultDto,
   UpdateDefendantContactDto,
 } from './case-record-edit.dto';
 import { CaseHearingService } from './case-hearing.service';
@@ -195,6 +197,16 @@ export class CaseReadController {
     @Body() body: CorrectCaseAcceptanceDto,
   ) {
     return this.recordEdit.correctAcceptance(actor, id, body);
+  }
+
+  @Post(':id/second-instance-acceptance-save')
+  @ApiCreatedResponse({ type: SaveSecondInstanceAcceptanceResultDto })
+  saveSecondInstanceAcceptance(
+    @CurrentActor() actor: ActorContext,
+    @Param('id', new ParseUUIDPipe({ version: '4' })) id: string,
+    @Body() body: SaveSecondInstanceAcceptanceDto,
+  ) {
+    return this.recordEdit.saveSecondInstanceAcceptance(actor, id, body);
   }
 
   @Post(':id/execution-mail')

@@ -214,6 +214,7 @@ export class CaseReadService {
           },
           secondInstanceProgresses: { select: { choiceId: true } },
           secondInstanceResults: { select: { choiceId: true } },
+          secondInstanceAcceptanceChanges: { select: { choiceId: true } },
           createdAt: true,
           responsibleUserId: true,
           owner: { select: { id: true, displayName: true } },
@@ -440,6 +441,10 @@ export class CaseReadService {
                 !item.secondInstanceResults.some(
                   (result) =>
                     result.choiceId === item.currentJudgmentNextStepId,
+                ) &&
+                !(item.secondInstanceAcceptanceChanges ?? []).some(
+                  (change) =>
+                    change.choiceId === item.currentJudgmentNextStepId,
                 ))) &&
             (await this.access.canAuthorizeCase(
               actor,
@@ -1010,6 +1015,22 @@ export class CaseReadService {
             },
           },
         },
+        secondInstanceAcceptanceChanges: {
+          orderBy: [{ toRevision: 'asc' }, { id: 'asc' }],
+          select: {
+            id: true,
+            choiceId: true,
+            trialRoundId: true,
+            priorChangeId: true,
+            fromRevision: true,
+            toRevision: true,
+            acceptedAt: true,
+            courtCaseNo: true,
+            reason: true,
+            recordedAt: true,
+            recordedByUserId: true,
+          },
+        },
         judgmentNextSteps: {
           orderBy: [{ toVersion: 'asc' }, { id: 'asc' }],
           select: {
@@ -1486,6 +1507,37 @@ export class CaseReadService {
         ? { recordedByUserId: choice.recordedByUserId }
         : {}),
     }));
+    const secondAcceptanceChanges =
+      record.secondInstanceAcceptanceChanges ?? [];
+    const secondAcceptanceChoices = (record.judgmentNextSteps ?? []).filter(
+      (choice) => choice.next === 'APPEAL',
+    );
+    const canSaveSecondAcceptance =
+      principal === 'INTERNAL' &&
+      secondAcceptanceChoices.length > 0 &&
+      (await this.access.canAuthorizeCase(
+        actor,
+        'case.second-instance-acceptance.update',
+        {
+          departmentId: actor.departmentId,
+          responsibleUserId: record.responsibleUserId,
+          ...(record.responsibleMembership.teamId
+            ? { teamId: record.responsibleMembership.teamId }
+            : {}),
+        },
+      ));
+    const secondAcceptanceEligible = (choiceId: string) =>
+      !record.judgmentNextStepRevocations.some(
+        (revocation) => revocation.choiceId === choiceId,
+      ) &&
+      (record.currentJudgmentNextStepId === choiceId ||
+        record.secondInstanceProgresses.some(
+          (progress) => progress.choiceId === choiceId,
+        ) ||
+        record.secondInstanceResults.some(
+          (result) => result.choiceId === choiceId,
+        ) ||
+        secondAcceptanceChanges.some((change) => change.choiceId === choiceId));
     const secondProgresses = record.secondInstanceProgresses.map(
       (progress) => ({
         id: progress.id,
@@ -1797,6 +1849,25 @@ export class CaseReadService {
       },
       secondInstance: {
         currentTrialRoundId: record.currentTrialRoundId,
+        acceptances: secondAcceptanceChoices.flatMap((choice) => {
+          const latest = secondAcceptanceChanges
+            .filter((change) => change.choiceId === choice.id)
+            .at(-1);
+          return latest === undefined
+            ? []
+            : [
+                {
+                  choiceId: choice.id,
+                  trialRoundId: choice.trialRoundId,
+                  acceptedAt:
+                    latest.acceptedAt === null
+                      ? null
+                      : isoDate(latest.acceptedAt),
+                  courtCaseNo: latest.courtCaseNo,
+                  recordedAt: latest.recordedAt.toISOString(),
+                },
+              ];
+        }),
         currentProgress:
           secondProgresses.find(
             (progress) =>
@@ -1847,6 +1918,41 @@ export class CaseReadService {
       ...(principal === 'INTERNAL'
         ? {
             recordEdits: {
+              canSaveSecondInstanceAcceptance: canSaveSecondAcceptance,
+              secondInstanceAcceptances: secondAcceptanceChoices.map(
+                (choice) => {
+                  const changes = secondAcceptanceChanges.filter(
+                    (change) => change.choiceId === choice.id,
+                  );
+                  const latest = changes.at(-1);
+                  return {
+                    choiceId: choice.id,
+                    trialRoundId: choice.trialRoundId,
+                    acceptanceRevision: latest?.toRevision ?? 0,
+                    acceptedAt: latest?.acceptedAt
+                      ? isoDate(latest.acceptedAt)
+                      : null,
+                    courtCaseNo: latest?.courtCaseNo ?? null,
+                    canEdit:
+                      canSaveSecondAcceptance &&
+                      secondAcceptanceEligible(choice.id),
+                    history: changes.map((change) => ({
+                      id: change.id,
+                      priorChangeId: change.priorChangeId,
+                      fromRevision: change.fromRevision,
+                      toRevision: change.toRevision,
+                      acceptedAt:
+                        change.acceptedAt === null
+                          ? null
+                          : isoDate(change.acceptedAt),
+                      courtCaseNo: change.courtCaseNo,
+                      reason: change.reason,
+                      recordedAt: change.recordedAt.toISOString(),
+                      recordedByUserId: change.recordedByUserId,
+                    })),
+                  };
+                },
+              ),
               canUpdateDefendantContact:
                 record.defendants.length > 0 &&
                 (await this.access.canAuthorizeCase(
@@ -2067,6 +2173,9 @@ export class CaseReadService {
         ) &&
         !record.secondInstanceResults.some(
           (result) => result.choiceId === record.currentJudgmentNextStepId,
+        ) &&
+        !secondAcceptanceChanges.some(
+          (change) => change.choiceId === record.currentJudgmentNextStepId,
         ) &&
         (await this.access.canAuthorizeCase(
           actor,

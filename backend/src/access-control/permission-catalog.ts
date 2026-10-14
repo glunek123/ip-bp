@@ -57,6 +57,7 @@ export const internalAssignablePermissionActions = [
   'CASE_SECOND_INSTANCE_SAVE',
   'CASE_SECOND_INSTANCE_RESULT',
   'CASE_SECOND_INSTANCE_RESULT_REVOKE',
+  'CASE_SECOND_INSTANCE_ACCEPTANCE_UPDATE',
   'CASE_EXECUTION_SUBMIT',
   'CASE_EXECUTION_CONFIRM',
   'CASE_EXECUTION_MAIL',
@@ -253,6 +254,11 @@ const catalog: PermissionCatalogItem[] = [
   {
     action: 'CASE_SECOND_INSTANCE_RESULT_REVOKE',
     label: '撤销二审结果',
+    scopes: allScopes,
+  },
+  {
+    action: 'CASE_SECOND_INSTANCE_ACCEPTANCE_UPDATE',
+    label: '登记或更正二审受理信息',
     scopes: allScopes,
   },
   { action: 'CASE_EXECUTION_SUBMIT', label: '提交执行材料', scopes: allScopes },

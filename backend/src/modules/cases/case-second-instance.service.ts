@@ -313,6 +313,30 @@ export class CaseSecondInstanceService {
       throw this.invalidState();
     if (record.currentSecondInstanceProgressId !== value.expectedProgressId)
       throw this.versionConflict();
+    const secondAcceptance =
+      await tx.caseSecondInstanceAcceptanceChange.findFirst({
+        where: {
+          caseId,
+          departmentId: actor.departmentId,
+          choiceId: value.choiceId,
+        },
+        orderBy: { toRevision: 'desc' },
+        select: { acceptedAt: true },
+      });
+    const firstAcceptanceDate = (
+      record.acceptance.corrections[0]?.acceptedAt ??
+      record.acceptance.acceptedAt
+    )
+      .toISOString()
+      .slice(0, 10);
+    if (
+      value.progress.hearingAt !== null &&
+      (value.progress.hearingAt < firstAcceptanceDate ||
+        (secondAcceptance?.acceptedAt &&
+          value.progress.hearingAt <
+            secondAcceptance.acceptedAt.toISOString().slice(0, 10)))
+    )
+      throw this.validation();
     const current =
       record.currentSecondInstanceProgressId === null
         ? null
@@ -456,13 +480,10 @@ export class CaseSecondInstanceService {
     }
     const input = value as ResultValue;
     if (
-      input.resultReceivedAt <
-      (
-        record.acceptance.corrections[0]?.acceptedAt ??
-        record.acceptance.acceptedAt
-      )
-        .toISOString()
-        .slice(0, 10)
+      input.resultReceivedAt < firstAcceptanceDate ||
+      (secondAcceptance?.acceptedAt &&
+        input.resultReceivedAt <
+          secondAcceptance.acceptedAt.toISOString().slice(0, 10))
     )
       throw this.validation();
     const judgmentFiles = await this.materials.assertAvailableVersions(

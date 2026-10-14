@@ -83,6 +83,9 @@ describe('CaseSecondInstanceService', () => {
         findFirst: jest.fn().mockResolvedValue(null),
         create: jest.fn().mockResolvedValue({}),
       },
+      caseSecondInstanceAcceptanceChange: {
+        findFirst: jest.fn().mockResolvedValue(null),
+      },
       caseExecutionSubmission: { count: jest.fn().mockResolvedValue(0) },
       caseSecondInstanceResultRevocation: {
         create: jest.fn().mockResolvedValue({}),

@@ -61,6 +61,8 @@ const actionMap = {
   CASE_SECOND_INSTANCE_SAVE: 'case.second_instance.save',
   CASE_SECOND_INSTANCE_RESULT: 'case.second_instance.result',
   CASE_SECOND_INSTANCE_RESULT_REVOKE: 'case.second_instance.result.revoke',
+  CASE_SECOND_INSTANCE_ACCEPTANCE_UPDATE:
+    'case.second-instance-acceptance.update',
   CASE_EXECUTION_SUBMIT: 'case.execution.submit',
   CASE_EXECUTION_CONFIRM: 'case.execution.confirm',
   CASE_EXECUTION_MAIL: 'case.execution.mail',

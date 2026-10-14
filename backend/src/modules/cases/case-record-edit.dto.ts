@@ -71,3 +71,39 @@ export class AcceptanceCorrectionResultDto {
   @ApiProperty() courtCaseNo!: string;
   @ApiProperty({ format: 'date-time' }) recordedAt!: string;
 }
+
+export class SaveSecondInstanceAcceptanceDto {
+  @ApiProperty({ format: 'uuid' }) @IsUUID('4') choiceId!: string;
+  @ApiProperty({ format: 'uuid' }) @IsUUID('4') trialRoundId!: string;
+  @ApiProperty({ minimum: 0 })
+  @IsInt()
+  @Min(0)
+  expectedAcceptanceRevision!: number;
+  @ApiProperty({ minLength: 1, maxLength: 128 })
+  @IsString()
+  idempotencyKey!: string;
+  @ApiProperty({ type: String, nullable: true, format: 'date' })
+  @ValidateIf((_object, value) => value !== null)
+  @IsString()
+  acceptedAt!: string | null;
+  @ApiProperty({ type: String, nullable: true, maxLength: 100 })
+  @ValidateIf((_object, value) => value !== null)
+  @IsString()
+  courtCaseNo!: string | null;
+  @ApiProperty({ type: String, nullable: true, maxLength: 500 })
+  @ValidateIf((_object, value) => value !== null)
+  @IsString()
+  reason!: string | null;
+}
+
+export class SaveSecondInstanceAcceptanceResultDto {
+  @ApiProperty({ format: 'uuid' }) caseId!: string;
+  @ApiProperty({ format: 'uuid' }) choiceId!: string;
+  @ApiProperty({ format: 'uuid' }) trialRoundId!: string;
+  @ApiProperty({ format: 'uuid' }) changeId!: string;
+  @ApiProperty() acceptanceRevision!: number;
+  @ApiProperty({ type: String, nullable: true, format: 'date' }) acceptedAt!:
+    string | null;
+  @ApiProperty({ type: String, nullable: true }) courtCaseNo!: string | null;
+  @ApiProperty({ format: 'date-time' }) recordedAt!: string;
+}

@@ -54,6 +54,9 @@ describe('CaseJudgmentNextStepService', () => {
       caseSecondInstanceResult: {
         count: jest.fn().mockResolvedValue(0),
       },
+      caseSecondInstanceAcceptanceChange: {
+        count: jest.fn().mockResolvedValue(0),
+      },
       caseExecutionSubmission: {
         count: jest.fn().mockResolvedValue(0),
       },

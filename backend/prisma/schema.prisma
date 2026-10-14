@@ -57,6 +57,7 @@ enum PermissionAction {
   CASE_SECOND_INSTANCE_SAVE @map("case.second_instance.save")
   CASE_SECOND_INSTANCE_RESULT @map("case.second_instance.result")
   CASE_SECOND_INSTANCE_RESULT_REVOKE @map("case.second_instance.result.revoke")
+  CASE_SECOND_INSTANCE_ACCEPTANCE_UPDATE @map("case.second-instance-acceptance.update")
   CASE_EXECUTION_SUBMIT @map("case.execution.submit")
   CASE_EXECUTION_CONFIRM @map("case.execution.confirm")
   CASE_EXECUTION_MAIL @map("case.execution.mail")
@@ -1834,6 +1835,7 @@ model Case {
   secondInstanceResults CaseSecondInstanceResult[] @relation("CaseSecondResults")
   secondInstanceRevocations CaseSecondInstanceResultRevocation[]
   secondInstanceReceipts CaseSecondInstanceReceipt[]
+  secondInstanceAcceptanceChanges CaseSecondInstanceAcceptanceChange[]
   currentExecutionSubmissionId String? @map("current_execution_submission_id") @db.Uuid
   currentExecutionSubmission CaseExecutionSubmission? @relation("CaseCurrentExecutionSubmission", fields: [currentExecutionSubmissionId, id, departmentId], references: [id, caseId, departmentId], onDelete: Restrict, onUpdate: Restrict)
   executionSubmissions CaseExecutionSubmission[] @relation("CaseExecutionSubmissions")
@@ -2199,6 +2201,7 @@ model CaseAcceptanceReceipt {
 enum CaseRecordEditCommand {
   DEFENDANT_CONTACT_UPDATE
   ACCEPTANCE_CORRECTION
+  SECOND_INSTANCE_ACCEPTANCE_SAVE
 
   @@map("case_record_edit_command")
 }
@@ -2472,6 +2475,7 @@ model CaseJudgmentNextStep {
   revocation                  CaseJudgmentNextStepRevocation?
   secondInstanceProgresses CaseSecondInstanceProgress[]
   secondInstanceResults CaseSecondInstanceResult[]
+  secondInstanceAcceptanceChanges CaseSecondInstanceAcceptanceChange[]
   executionSubmissions CaseExecutionSubmission[]
   recordedBy                  UserAccount                       @relation("JudgmentNextStepActor", fields: [recordedByUserId], references: [id], onDelete: Restrict, onUpdate: Restrict)
   auditEvent                  AuditEvent                        @relation(fields: [auditEventId], references: [id], onDelete: Restrict, onUpdate: Restrict)
@@ -2549,6 +2553,33 @@ enum CaseSecondInstanceAction {
   REVOKE
 
   @@map("case_second_instance_action")
+}
+
+model CaseSecondInstanceAcceptanceChange {
+  id String @id @default(uuid()) @db.Uuid
+  caseId String @map("case_id") @db.Uuid
+  departmentId String @map("department_id") @db.Uuid
+  trialRoundId String @map("trial_round_id") @db.Uuid
+  choiceId String @map("choice_id") @db.Uuid
+  priorChangeId String? @unique @map("prior_change_id") @db.Uuid
+  fromRevision Int @map("from_revision")
+  toRevision Int @map("to_revision")
+  acceptedAt DateTime? @map("accepted_at") @db.Date
+  courtCaseNo String? @map("court_case_no") @db.VarChar(100)
+  reason String? @db.VarChar(500)
+  recordedAt DateTime @default(now()) @map("recorded_at") @db.Timestamptz(3)
+  recordedByUserId String @map("recorded_by_user_id") @db.Uuid
+  auditEventId String @unique @map("audit_event_id") @db.Uuid
+  case Case @relation(fields: [caseId, departmentId], references: [id, departmentId], onDelete: Restrict, onUpdate: Restrict)
+  choice CaseJudgmentNextStep @relation(fields: [choiceId, caseId, departmentId, trialRoundId], references: [id, caseId, departmentId, trialRoundId], onDelete: Restrict, onUpdate: Restrict)
+  priorChange CaseSecondInstanceAcceptanceChange? @relation("SecondAcceptanceChain", fields: [priorChangeId, choiceId, caseId, departmentId, trialRoundId], references: [id, choiceId, caseId, departmentId, trialRoundId], onDelete: Restrict, onUpdate: Restrict)
+  nextChange CaseSecondInstanceAcceptanceChange? @relation("SecondAcceptanceChain")
+
+  @@unique([id, choiceId, caseId, departmentId, trialRoundId])
+  @@unique([priorChangeId, choiceId, caseId, departmentId, trialRoundId], map: "second_acceptance_prior_composite_key")
+  @@unique([choiceId, caseId, departmentId, fromRevision], map: "second_acceptance_from_revision_key")
+  @@unique([choiceId, caseId, departmentId, toRevision], map: "second_acceptance_to_revision_key")
+  @@map("case_second_instance_acceptance_changes")
 }
 
 model CaseSecondInstanceProgress {

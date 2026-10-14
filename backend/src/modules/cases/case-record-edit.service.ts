@@ -14,6 +14,8 @@ import {
   AcceptanceCorrectionResultDto,
   CorrectCaseAcceptanceDto,
   DefendantContactUpdateResultDto,
+  SaveSecondInstanceAcceptanceDto,
+  SaveSecondInstanceAcceptanceResultDto,
   UpdateDefendantContactDto,
 } from './case-record-edit.dto';
 
@@ -42,6 +44,15 @@ type AcceptanceValue = {
   acceptedAt: string;
   courtCaseNo: string;
   reason: string;
+};
+type SecondAcceptanceValue = {
+  choiceId: string;
+  trialRoundId: string;
+  expectedAcceptanceRevision: number;
+  idempotencyKey: string;
+  acceptedAt: string | null;
+  courtCaseNo: string | null;
+  reason: string | null;
 };
 
 @Injectable()
@@ -372,11 +383,212 @@ export class CaseRecordEditService {
     throw this.conflict('VERSION_CONFLICT');
   }
 
+  async saveSecondInstanceAcceptance(
+    actor: ActorContext,
+    caseId: string,
+    input: SaveSecondInstanceAcceptanceDto,
+  ): Promise<SaveSecondInstanceAcceptanceResultDto> {
+    const value = this.secondAcceptanceInput(input);
+    const fingerprint = this.fingerprint(caseId, value);
+    for (let attempt = 0; attempt < 3; attempt++) {
+      try {
+        return await this.database.$transaction(
+          async (tx) => {
+            const record = await this.lockAndAuthorize(
+              tx,
+              actor,
+              caseId,
+              'case.second-instance-acceptance.update',
+            );
+            const prior = await tx.caseRecordEditReceipt.findUnique({
+              where: {
+                departmentId_actorUserId_command_idempotencyKey: {
+                  departmentId: actor.departmentId,
+                  actorUserId: actor.userId,
+                  command: 'SECOND_INSTANCE_ACCEPTANCE_SAVE',
+                  idempotencyKey: value.idempotencyKey,
+                },
+              },
+            });
+            if (prior !== null) {
+              if (
+                prior.caseId !== caseId ||
+                prior.requestFingerprint !== fingerprint
+              )
+                throw this.conflict('IDEMPOTENCY_CONFLICT');
+              return this.secondAcceptanceReceipt(prior.resultSnapshot, caseId);
+            }
+            const choice = await tx.caseJudgmentNextStep.findFirst({
+              where: {
+                id: value.choiceId,
+                caseId,
+                departmentId: actor.departmentId,
+                trialRoundId: value.trialRoundId,
+                next: 'APPEAL',
+                revocation: null,
+              },
+              select: {
+                id: true,
+                judgment: { select: { judgmentReceivedAt: true } },
+              },
+            });
+            if (choice === null) throw this.conflict('INVALID_STATE');
+            const latest =
+              await tx.caseSecondInstanceAcceptanceChange.findFirst({
+                where: {
+                  choiceId: value.choiceId,
+                  caseId,
+                  departmentId: actor.departmentId,
+                },
+                orderBy: { toRevision: 'desc' },
+              });
+            const revision = latest?.toRevision ?? 0;
+            if (revision !== value.expectedAcceptanceRevision)
+              throw this.conflict('VERSION_CONFLICT');
+            if (
+              record.currentJudgmentNextStepId !== value.choiceId &&
+              latest === null &&
+              (await tx.caseSecondInstanceProgress.count({
+                where: {
+                  caseId,
+                  departmentId: actor.departmentId,
+                  choiceId: value.choiceId,
+                },
+              })) === 0 &&
+              (await tx.caseSecondInstanceResult.count({
+                where: {
+                  caseId,
+                  departmentId: actor.departmentId,
+                  choiceId: value.choiceId,
+                },
+              })) === 0
+            )
+              throw this.conflict('INVALID_STATE');
+            if (
+              revision === 0 &&
+              value.acceptedAt === null &&
+              value.courtCaseNo === null
+            )
+              throw this.validation('首次登记至少填写一项真实受理信息');
+            if (revision === 0 ? value.reason !== null : value.reason === null)
+              throw this.validation('首次登记不填写原因，后续更正须填写原因');
+            const beforeDate = latest?.acceptedAt
+              ? isoDate(latest.acceptedAt)
+              : null;
+            const beforeNo = latest?.courtCaseNo ?? null;
+            if (
+              latest !== null &&
+              beforeDate === value.acceptedAt &&
+              beforeNo === value.courtCaseNo
+            )
+              throw this.validation('二审受理信息没有变化');
+            if (value.acceptedAt !== null) {
+              if (
+                value.acceptedAt < isoDate(choice.judgment.judgmentReceivedAt)
+              )
+                throw this.validation('二审受理日期不得早于原判决收到日');
+              const checked = await tx.$queryRaw<Array<{ valid: boolean }>>`
+              SELECT check_case_second_acceptance_dates(${value.choiceId}::uuid, ${caseId}::uuid,
+                ${actor.departmentId}::uuid, ${value.trialRoundId}::uuid, ${value.acceptedAt}::date) AS valid`;
+              if (checked[0]?.valid !== true)
+                throw this.validation('二审受理日期与已有后续业务日期冲突');
+            }
+            const changeId = randomUUID();
+            const recordedAt = new Date();
+            const audit = await tx.auditEvent.create({
+              data: {
+                departmentId: actor.departmentId,
+                actorUserId: actor.userId,
+                internalActorUserId: actor.userId,
+                resourceType: 'CASE',
+                resourceId: caseId,
+                action: 'case.second-instance-acceptance.updated',
+                details: {
+                  choiceId: value.choiceId,
+                  trialRoundId: value.trialRoundId,
+                  changeId,
+                  priorChangeId: latest?.id ?? null,
+                  fromRevision: revision,
+                  toRevision: revision + 1,
+                  beforeAcceptedAt: beforeDate,
+                  beforeCourtCaseNo: beforeNo,
+                  acceptedAt: value.acceptedAt,
+                  courtCaseNo: value.courtCaseNo,
+                  reason: value.reason,
+                },
+              },
+              select: { id: true },
+            });
+            await tx.caseSecondInstanceAcceptanceChange.create({
+              data: {
+                id: changeId,
+                caseId,
+                departmentId: actor.departmentId,
+                trialRoundId: value.trialRoundId,
+                choiceId: value.choiceId,
+                priorChangeId: latest?.id ?? null,
+                fromRevision: revision,
+                toRevision: revision + 1,
+                acceptedAt:
+                  value.acceptedAt === null
+                    ? null
+                    : new Date(`${value.acceptedAt}T00:00:00.000Z`),
+                courtCaseNo: value.courtCaseNo,
+                reason: value.reason,
+                recordedAt,
+                recordedByUserId: actor.userId,
+                auditEventId: audit.id,
+              },
+            });
+            const result: SaveSecondInstanceAcceptanceResultDto = {
+              caseId,
+              choiceId: value.choiceId,
+              trialRoundId: value.trialRoundId,
+              changeId,
+              acceptanceRevision: revision + 1,
+              acceptedAt: value.acceptedAt,
+              courtCaseNo: value.courtCaseNo,
+              recordedAt: recordedAt.toISOString(),
+            };
+            await tx.caseRecordEditReceipt.create({
+              data: {
+                departmentId: actor.departmentId,
+                actorUserId: actor.userId,
+                caseId,
+                command: 'SECOND_INSTANCE_ACCEPTANCE_SAVE',
+                idempotencyKey: value.idempotencyKey,
+                requestFingerprint: fingerprint,
+                resultSnapshot: { ...result },
+              },
+            });
+            return result;
+          },
+          { isolationLevel: 'Serializable' },
+        );
+      } catch (error) {
+        if (
+          this.hasCode(error, 'P2034') ||
+          this.hasCode(error, '40001') ||
+          this.hasCode(error, 'P2002')
+        ) {
+          if (attempt < 2) continue;
+          throw this.conflict('VERSION_CONFLICT');
+        }
+        if (this.hasCode(error, '23514')) throw this.conflict('INVALID_STATE');
+        throw error;
+      }
+    }
+    throw this.conflict('VERSION_CONFLICT');
+  }
+
   private async lockAndAuthorize(
     tx: Prisma.TransactionClient,
     actor: ActorContext,
     caseId: string,
-    action: 'case.defendant-contact.update' | 'case.acceptance.correct',
+    action:
+      | 'case.defendant-contact.update'
+      | 'case.acceptance.correct'
+      | 'case.second-instance-acceptance.update',
   ) {
     if (
       actor.clientCustomerId !== undefined ||
@@ -399,6 +611,7 @@ export class CaseRecordEditService {
         responsibleMembership: { select: { teamId: true } },
         currentAcceptanceId: true,
         currentTrialRoundId: true,
+        currentJudgmentNextStepId: true,
       },
     });
     if (record === null) throw this.notFound();
@@ -588,7 +801,67 @@ export class CaseRecordEditService {
     );
   }
 
-  private fingerprint(caseId: string, value: ContactValue | AcceptanceValue) {
+  private secondAcceptanceInput(
+    input: SaveSecondInstanceAcceptanceDto,
+  ): SecondAcceptanceValue {
+    const keys = [
+      'choiceId',
+      'trialRoundId',
+      'expectedAcceptanceRevision',
+      'idempotencyKey',
+      'acceptedAt',
+      'courtCaseNo',
+      'reason',
+    ];
+    if (
+      input === null ||
+      typeof input !== 'object' ||
+      Object.keys(input).length !== keys.length ||
+      Object.keys(input).some((key) => !keys.includes(key)) ||
+      typeof input.choiceId !== 'string' ||
+      !uuid.test(input.choiceId) ||
+      typeof input.trialRoundId !== 'string' ||
+      !uuid.test(input.trialRoundId) ||
+      !Number.isSafeInteger(input.expectedAcceptanceRevision) ||
+      input.expectedAcceptanceRevision < 0 ||
+      !this.validKey(input.idempotencyKey) ||
+      (input.acceptedAt !== null && typeof input.acceptedAt !== 'string') ||
+      (input.courtCaseNo !== null && typeof input.courtCaseNo !== 'string') ||
+      (input.reason !== null && typeof input.reason !== 'string')
+    )
+      throw this.validation('二审受理信息请求不合法');
+    if (input.acceptedAt !== null) {
+      const parsed = new Date(`${input.acceptedAt}T00:00:00.000Z`);
+      if (
+        !/^\d{4}-\d{2}-\d{2}$/u.test(input.acceptedAt) ||
+        Number.isNaN(parsed.getTime()) ||
+        isoDate(parsed) !== input.acceptedAt ||
+        input.acceptedAt > todayShanghai()
+      )
+        throw this.validation('二审受理日期不合法');
+    }
+    const courtCaseNo = input.courtCaseNo?.trim() || null;
+    const reason = input.reason?.trim() || null;
+    if (
+      (courtCaseNo !== null && courtCaseNo.length > 100) ||
+      (reason !== null && reason.length > 500)
+    )
+      throw this.validation('二审受理案号或原因超长');
+    return {
+      choiceId: input.choiceId,
+      trialRoundId: input.trialRoundId,
+      expectedAcceptanceRevision: input.expectedAcceptanceRevision,
+      idempotencyKey: input.idempotencyKey,
+      acceptedAt: input.acceptedAt,
+      courtCaseNo,
+      reason,
+    };
+  }
+
+  private fingerprint(
+    caseId: string,
+    value: ContactValue | AcceptanceValue | SecondAcceptanceValue,
+  ) {
     return createHash('sha256')
       .update(JSON.stringify({ caseId, ...value }))
       .digest('hex');
@@ -643,6 +916,43 @@ export class CaseRecordEditService {
       caseId,
       acceptanceId: snapshot.acceptanceId,
       correctionId: snapshot.correctionId,
+      acceptanceRevision: snapshot.acceptanceRevision,
+      acceptedAt: snapshot.acceptedAt,
+      courtCaseNo: snapshot.courtCaseNo,
+      recordedAt: snapshot.recordedAt,
+    };
+  }
+
+  private secondAcceptanceReceipt(
+    snapshot: Prisma.JsonValue,
+    caseId: string,
+  ): SaveSecondInstanceAcceptanceResultDto {
+    if (
+      snapshot === null ||
+      typeof snapshot !== 'object' ||
+      Array.isArray(snapshot) ||
+      snapshot.caseId !== caseId ||
+      typeof snapshot.choiceId !== 'string' ||
+      !uuid.test(snapshot.choiceId) ||
+      typeof snapshot.trialRoundId !== 'string' ||
+      !uuid.test(snapshot.trialRoundId) ||
+      typeof snapshot.changeId !== 'string' ||
+      !uuid.test(snapshot.changeId) ||
+      typeof snapshot.acceptanceRevision !== 'number' ||
+      !Number.isSafeInteger(snapshot.acceptanceRevision) ||
+      snapshot.acceptanceRevision < 1 ||
+      (snapshot.acceptedAt !== null &&
+        typeof snapshot.acceptedAt !== 'string') ||
+      (snapshot.courtCaseNo !== null &&
+        typeof snapshot.courtCaseNo !== 'string') ||
+      typeof snapshot.recordedAt !== 'string'
+    )
+      throw this.conflict('RECEIPT_CORRUPT');
+    return {
+      caseId,
+      choiceId: snapshot.choiceId,
+      trialRoundId: snapshot.trialRoundId,
+      changeId: snapshot.changeId,
       acceptanceRevision: snapshot.acceptanceRevision,
       acceptedAt: snapshot.acceptedAt,
       courtCaseNo: snapshot.courtCaseNo,

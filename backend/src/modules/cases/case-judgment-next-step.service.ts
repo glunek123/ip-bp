@@ -312,6 +312,13 @@ export class CaseJudgmentNextStepService {
                     departmentId: actor.departmentId,
                     choiceId: value.choiceId,
                   },
+                })) > 0 ||
+                (await tx.caseSecondInstanceAcceptanceChange.count({
+                  where: {
+                    caseId,
+                    departmentId: actor.departmentId,
+                    choiceId: value.choiceId,
+                  },
                 })) > 0)
             )
               throw this.invalidState();
