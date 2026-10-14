@@ -306,7 +306,7 @@ const commands = computed<WorkspaceCommand[]>(() => {
       ((!current.closure && current.canRecordClosure) ||
         (!!current.closure && current.canCorrectClosure)),
     'closure',
-    'case-info',
+    'closure-info',
     current.closure ? '更正结案资料' : '登记结案资料',
   );
   add(
@@ -318,7 +318,7 @@ const commands = computed<WorkspaceCommand[]>(() => {
           current.canCorrectArchive &&
           !!current.archive)),
     'archive',
-    'case-info',
+    'closure-info',
     current.archive ? '更正归档原因' : '归档案件',
   );
 
@@ -331,13 +331,13 @@ const commands = computed<WorkspaceCommand[]>(() => {
   if (closurePending.value && !result.some((entry) => entry.id === 'closure'))
     result.push({
       id: 'closure',
-      section: 'case-info',
+      section: 'closure-info',
       label: '核对结案原请求／显式重试',
     });
   if (archivePending.value && !result.some((entry) => entry.id === 'archive'))
     result.push({
       id: 'archive',
-      section: 'case-info',
+      section: 'closure-info',
       label: '核对归档原请求／显式重试',
     });
   if (
@@ -417,6 +417,11 @@ const sectionActions = computed<Record<SectionKey, SectionAction>>(() => {
     'second-instance': action('second-instance'),
     judgment: action('judgment'),
     execution: action('execution'),
+    'closure-info': {
+      enabled: false,
+      label: '只读',
+      hint: '结案与归档记录；不表示财务结清。',
+    },
     timeline: {
       enabled: commands.value.length > 0,
       label: '登记／更正',

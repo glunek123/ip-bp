@@ -47,6 +47,7 @@ function edit(): void {
       <div class="case-workspace-section__tools">
         <slot name="tools" />
         <button
+          v-if="sectionKey !== 'closure-info'"
           type="button"
           class="case-workspace-section__edit"
           :disabled="!action.enabled"

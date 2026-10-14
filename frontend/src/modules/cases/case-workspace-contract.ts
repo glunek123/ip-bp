@@ -7,6 +7,7 @@ export type SectionKey =
   | 'second-instance'
   | 'judgment'
   | 'execution'
+  | 'closure-info'
   | 'timeline';
 
 export interface SectionAction {
