@@ -525,38 +525,54 @@ describe('client case pages', () => {
   });
 });
 
-it('shows only WAITING_ARCHIVE in the client recorded list and detail, without an internal finish form or inferred financial completion', async () => {
-  const archived = {
-    ...list.items[0],
-    stage: 'WAITING_ARCHIVE',
-    canMailComplaint: false,
-    canMailExecution: false,
-  };
-  api.listClientCases.mockResolvedValue({ ...list, items: [archived] });
-  api.getClientCase.mockResolvedValue({
-    ...detail,
-    ...archived,
-    confirmedAmountState: 'PENDING',
-    confirmedAmount: null,
-    executionConfirmationId: null,
-    executionMailing: null,
-  });
-  const { wrapper, router } = await mountPage('/client/cases?view=RECORDED');
-  expect(wrapper.text()).toContain('待归档');
-  await router.push('/client/cases/case-1');
-  await flushPromises();
-  expect(wrapper.text()).toContain('待归档');
-  expect(wrapper.text()).toContain('确认标的额：待确认');
-  expect(wrapper.find('[data-test="execution-finish-panel"]').exists()).toBe(
-    false,
-  );
-  for (const forbidden of [
-    '结束原因',
-    '依据说明',
-    '执行结束',
-    '已结清',
-    '已结算',
-    '操作者',
-  ])
-    expect(wrapper.text()).not.toContain(forbidden);
-});
+it.each([
+  ['WAITING_ARCHIVE', '待归档'],
+  ['ARCHIVED', '已归档'],
+] as const)(
+  'shows %s in the client recorded list and detail, without internal archive facts or inferred financial completion',
+  async (stage, label) => {
+    const archived = {
+      ...list.items[0],
+      stage,
+      canMailComplaint: false,
+      canMailExecution: false,
+    };
+    api.listClientCases.mockResolvedValue({ ...list, items: [archived] });
+    api.getClientCase.mockResolvedValue({
+      ...detail,
+      ...archived,
+      confirmedAmountState: 'PENDING',
+      confirmedAmount: null,
+      executionConfirmationId: null,
+      executionMailing: null,
+    });
+    const { wrapper, router } = await mountPage('/client/cases?view=RECORDED');
+    expect(wrapper.text()).toContain(label);
+    expect(api.listClientCases).toHaveBeenLastCalledWith(
+      1,
+      20,
+      'RECORDED',
+      expect.objectContaining({ signal: expect.any(AbortSignal) }),
+    );
+    await router.push('/client/cases/case-1');
+    await flushPromises();
+    expect(wrapper.text()).toContain(label);
+    expect(wrapper.text()).toContain('确认标的额：待确认');
+    expect(wrapper.find('[data-test="execution-finish-panel"]').exists()).toBe(
+      false,
+    );
+    for (const forbidden of [
+      '结束原因',
+      '依据说明',
+      '执行结束',
+      '已结清',
+      '已结算',
+      '操作者',
+      '归档原因',
+      '更正原因',
+      '确认归档',
+      '结案额',
+    ])
+      expect(wrapper.text()).not.toContain(forbidden);
+  },
+);

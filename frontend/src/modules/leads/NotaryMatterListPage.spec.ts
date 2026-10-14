@@ -288,51 +288,57 @@ describe('NotaryMatterListPage', () => {
       expect(row.get(`[data-column="${column}"]`).text()).toBe(label);
   });
 
-  it('links only a real frozen opening count and an authorized linked case', async () => {
-    api.listNotaryMatters.mockResolvedValue({
-      ...result,
-      items: [
-        {
-          ...result.items[0],
-          openingSummary: {
-            photoCount: 3,
-            senderName: '真实寄件人',
-            senderPhone: '13800000000',
-            senderAddress: '来源登记地址',
+  it.each([
+    ['PENDING_MATCH', '待匹配'],
+    ['ARCHIVED', '已归档'],
+  ] as const)(
+    'links only a real frozen opening count and authorized %s case',
+    async (stage, label) => {
+      api.listNotaryMatters.mockResolvedValue({
+        ...result,
+        items: [
+          {
+            ...result.items[0],
+            openingSummary: {
+              photoCount: 3,
+              senderName: '真实寄件人',
+              senderPhone: '13800000000',
+              senderAddress: '来源登记地址',
+            },
+            certificateSummary: {
+              id: 'certificate-1',
+              certificateNo: '（2026）真实公证字第001号',
+              certificateDate: '2026-09-27',
+              issuedAt: '2026-09-27T01:00:00.000Z',
+              needDisclose: false,
+            },
+            linkedCase: {
+              id: 'case-1',
+              businessNo: 'CA-001',
+              stage,
+            },
           },
-          certificateSummary: {
-            id: 'certificate-1',
-            certificateNo: '（2026）真实公证字第001号',
-            certificateDate: '2026-09-27',
-            issuedAt: '2026-09-27T01:00:00.000Z',
-            needDisclose: false,
-          },
-          linkedCase: {
-            id: 'case-1',
-            businessNo: 'CA-001',
-            stage: 'PENDING_MATCH',
-          },
-        },
-      ],
-    });
-    const { wrapper } = await mountPage('/notary-matters');
-    expect(
-      wrapper.get('[data-test="opening-photos-link"]').attributes('href'),
-    ).toBe('/notary-matters/matter-1#saved-opening');
-    expect(wrapper.get('[data-test="opening-photos-link"]').text()).toBe(
-      '3 张 · 查看',
-    );
-    expect(wrapper.text()).not.toContain('OCR');
-    expect(wrapper.get('[data-test="linked-case"]').attributes('href')).toBe(
-      '/cases/case-1',
-    );
-    expect(wrapper.get('[data-test="linked-case"]').text()).toContain(
-      '已流转诉讼 · 待匹配',
-    );
-    expect(wrapper.get('tbody [data-column="certificateNo"]').text()).toBe(
-      '（2026）真实公证字第001号',
-    );
-  });
+        ],
+      });
+      const { wrapper } = await mountPage('/notary-matters');
+      expect(
+        wrapper.get('[data-test="opening-photos-link"]').attributes('href'),
+      ).toBe('/notary-matters/matter-1#saved-opening');
+      expect(wrapper.get('[data-test="opening-photos-link"]').text()).toBe(
+        '3 张 · 查看',
+      );
+      expect(wrapper.text()).not.toContain('OCR');
+      expect(wrapper.get('[data-test="linked-case"]').attributes('href')).toBe(
+        '/cases/case-1',
+      );
+      expect(wrapper.get('[data-test="linked-case"]').text()).toContain(
+        '已流转诉讼 · ' + label,
+      );
+      expect(wrapper.get('tbody [data-column="certificateNo"]').text()).toBe(
+        '（2026）真实公证字第001号',
+      );
+    },
+  );
 
   it('shows no photo or case link and no invented certificate action without a fact or capability', async () => {
     api.listNotaryMatters.mockResolvedValue({

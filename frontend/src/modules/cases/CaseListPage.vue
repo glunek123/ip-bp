@@ -39,7 +39,8 @@ const stage = computed<CaseStageFilter>(() =>
   route.query.stage === 'WAITING_EXECUTION_STAMP' ||
   route.query.stage === 'WAITING_EXECUTION_FILING' ||
   route.query.stage === 'EXECUTING' ||
-  route.query.stage === 'WAITING_ARCHIVE'
+  route.query.stage === 'WAITING_ARCHIVE' ||
+  route.query.stage === 'ARCHIVED'
     ? route.query.stage
     : 'all',
 );
@@ -85,6 +86,7 @@ function stageLabel(value: CaseSummary['stage']): string {
   if (value === 'WAITING_EXECUTION_FILING') return '待申请执行';
   if (value === 'EXECUTING') return '强制执行中';
   if (value === 'WAITING_ARCHIVE') return '待归档';
+  if (value === 'ARCHIVED') return '已归档';
   return '待开庭';
 }
 function canHandle(item: CaseSummary): boolean {

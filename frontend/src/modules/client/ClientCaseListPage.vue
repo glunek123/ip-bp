@@ -92,6 +92,7 @@ function stageLabel(stage: ClientCase['stage']) {
   if (stage === 'WAITING_EXECUTION_FILING') return '待申请执行';
   if (stage === 'EXECUTING') return '强制执行中';
   if (stage === 'WAITING_ARCHIVE') return '待归档';
+  if (stage === 'ARCHIVED') return '已归档';
   return '待开庭';
 }
 load();

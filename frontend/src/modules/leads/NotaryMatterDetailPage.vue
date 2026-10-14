@@ -135,6 +135,7 @@ const caseStageLabels: Record<CaseStage, string> = {
   WAITING_EXECUTION_FILING: '待申请执行',
   EXECUTING: '强制执行中',
   WAITING_ARCHIVE: '待归档',
+  ARCHIVED: '已归档',
 };
 
 function feeLabel(fee: NotaryMatterDetail['fees']['notary']): string {

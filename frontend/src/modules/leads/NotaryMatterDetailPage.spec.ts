@@ -419,78 +419,84 @@ describe('NotaryMatterDetailPage', () => {
     ).toContain('未登记公证书');
   });
 
-  it('keeps pending, zero and positive fees distinct and reads frozen certificate files through the existing download API', async () => {
-    api.getNotaryMatter.mockResolvedValueOnce({
-      ...matter,
-      stage: 'ARCHIVED',
-      capabilities: { recordEvidence: false, recordOpening: false },
-      evidenceAt: '2026-09-25',
-      fees: {
-        notary: { state: 'KNOWN', amount: '0.00' },
-        investigation: { state: 'PENDING', amount: null },
-        sample: { state: 'KNOWN', amount: '12345678901234.56' },
-      },
-      certificateSummary: {
-        id: 'certificate-1',
-        certificateNo: '真实公证书001',
-        certificateDate: '2026-09-26',
-        issuedAt: '2026-09-26T01:00:00.000Z',
-        needDisclose: true,
-      },
-      certificateFiles: [
-        {
-          materialId: 'certificate-material',
-          contentVersionId: 'certificate-frozen',
-          originalFilename: '真实公证书.pdf',
-          mimeType: 'application/pdf',
-          purpose: 'NOTARY_CERTIFICATE',
+  it.each([
+    ['WAITING_COMPLAINT', '待写诉状'],
+    ['ARCHIVED', '已归档'],
+  ] as const)(
+    'keeps fees and frozen files distinct for a linked %s case',
+    async (stage, label) => {
+      api.getNotaryMatter.mockResolvedValueOnce({
+        ...matter,
+        stage: 'ARCHIVED',
+        capabilities: { recordEvidence: false, recordOpening: false },
+        evidenceAt: '2026-09-25',
+        fees: {
+          notary: { state: 'KNOWN', amount: '0.00' },
+          investigation: { state: 'PENDING', amount: null },
+          sample: { state: 'KNOWN', amount: '12345678901234.56' },
         },
-        {
-          materialId: 'disclosure-material',
-          contentVersionId: 'disclosure-frozen',
-          originalFilename: '披露.pdf',
-          mimeType: 'application/pdf',
-          purpose: 'NOTARY_DISCLOSURE',
+        certificateSummary: {
+          id: 'certificate-1',
+          certificateNo: '真实公证书001',
+          certificateDate: '2026-09-26',
+          issuedAt: '2026-09-26T01:00:00.000Z',
+          needDisclose: true,
         },
-      ],
-      linkedCase: {
-        id: 'case-1',
-        businessNo: 'CA-真实001',
-        stage: 'WAITING_COMPLAINT',
-      },
-    });
-    const wrapper = await mountPage();
-    expect(
-      wrapper
-        .get('[data-test="notary-fee-summary"]')
-        .findAll('dd')
-        .map((cell) => cell.text()),
-    ).toEqual(['0.00 元', '待定', '12345678901234.56 元']);
-    expect(
-      wrapper.get('[data-test="notary-certificate-summary"]').text(),
-    ).toContain('本事项已出证归档');
-    expect(
-      wrapper.get('[data-test="notary-certificate-summary"]').text(),
-    ).toContain('披露材料：披露.pdf');
-    expect(wrapper.get('[data-test="notary-case-summary"]').text()).toContain(
-      '已流转诉讼 · 待写诉状',
-    );
-    expect(wrapper.get('[data-test="linked-case"]').attributes('href')).toBe(
-      '/cases/case-1',
-    );
-    await wrapper
-      .get('[data-test="download-certificate-certificate-frozen"]')
-      .trigger('click');
-    await wrapper
-      .get('[data-test="download-certificate-disclosure-frozen"]')
-      .trigger('click');
-    await flushPromises();
-    expect(materials.downloadMaterialVersion.mock.calls).toEqual([
-      ['certificate-material', 'certificate-frozen', expect.any(AbortSignal)],
-      ['disclosure-material', 'disclosure-frozen', expect.any(AbortSignal)],
-    ]);
-    expect(materials.listOwnerMaterials).not.toHaveBeenCalled();
-  });
+        certificateFiles: [
+          {
+            materialId: 'certificate-material',
+            contentVersionId: 'certificate-frozen',
+            originalFilename: '真实公证书.pdf',
+            mimeType: 'application/pdf',
+            purpose: 'NOTARY_CERTIFICATE',
+          },
+          {
+            materialId: 'disclosure-material',
+            contentVersionId: 'disclosure-frozen',
+            originalFilename: '披露.pdf',
+            mimeType: 'application/pdf',
+            purpose: 'NOTARY_DISCLOSURE',
+          },
+        ],
+        linkedCase: {
+          id: 'case-1',
+          businessNo: 'CA-真实001',
+          stage,
+        },
+      });
+      const wrapper = await mountPage();
+      expect(
+        wrapper
+          .get('[data-test="notary-fee-summary"]')
+          .findAll('dd')
+          .map((cell) => cell.text()),
+      ).toEqual(['0.00 元', '待定', '12345678901234.56 元']);
+      expect(
+        wrapper.get('[data-test="notary-certificate-summary"]').text(),
+      ).toContain('本事项已出证归档');
+      expect(
+        wrapper.get('[data-test="notary-certificate-summary"]').text(),
+      ).toContain('披露材料：披露.pdf');
+      expect(wrapper.get('[data-test="notary-case-summary"]').text()).toContain(
+        '已流转诉讼 · ' + label,
+      );
+      expect(wrapper.get('[data-test="linked-case"]').attributes('href')).toBe(
+        '/cases/case-1',
+      );
+      await wrapper
+        .get('[data-test="download-certificate-certificate-frozen"]')
+        .trigger('click');
+      await wrapper
+        .get('[data-test="download-certificate-disclosure-frozen"]')
+        .trigger('click');
+      await flushPromises();
+      expect(materials.downloadMaterialVersion.mock.calls).toEqual([
+        ['certificate-material', 'certificate-frozen', expect.any(AbortSignal)],
+        ['disclosure-material', 'disclosure-frozen', expect.any(AbortSignal)],
+      ]);
+      expect(materials.listOwnerMaterials).not.toHaveBeenCalled();
+    },
+  );
 
   it('keeps certificate download failures visible', async () => {
     api.getNotaryMatter.mockResolvedValueOnce({

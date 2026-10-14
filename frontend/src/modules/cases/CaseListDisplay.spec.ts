@@ -57,6 +57,8 @@ function summary(): CaseSummary {
     canFinishExecution: false,
     canRecordClosure: false,
     canCorrectClosure: false,
+    canArchive: false,
+    canCorrectArchive: false,
     displaySummary: {
       customerName: '合成客户甲有限公司',
       rightsHolderName: '合成权利主体乙有限公司',
@@ -118,7 +120,9 @@ function result(items = [summary()]): CaseList {
       WAITING_EXECUTION_STAMP: 0,
       WAITING_EXECUTION_FILING: 0,
       EXECUTING: 0,
-      WAITING_ARCHIVE: items.length,
+      WAITING_ARCHIVE: items.filter((item) => item.stage === 'WAITING_ARCHIVE')
+        .length,
+      ARCHIVED: items.filter((item) => item.stage === 'ARCHIVED').length,
     },
   };
 }
@@ -172,6 +176,91 @@ afterEach(() => {
 });
 
 describe('authorized internal case list display', () => {
+  it('reads ARCHIVED through the fixed API, preserving the 14-column projection and source amounts', async () => {
+    const actual =
+      await vi.importActual<typeof import('../../api/cases')>(
+        '../../api/cases',
+      );
+    const item: CaseSummary = { ...summary(), stage: 'ARCHIVED', version: 16 };
+    const fetchMock = vi
+      .fn()
+      .mockResolvedValue(
+        new Response(JSON.stringify(result([item])), { status: 200 }),
+      );
+    vi.stubGlobal('fetch', fetchMock);
+    api.listCases.mockImplementation(actual.listCases);
+    const { wrapper } = await mountList(
+      '/cases?view=department&stage=ARCHIVED',
+    );
+    const url = new URL(
+      String(fetchMock.mock.calls[0]?.[0]),
+      'http://localhost',
+    );
+    expect(url.searchParams.get('stage')).toBe('ARCHIVED');
+    expect(url.searchParams.get('view')).toBe('department');
+    expect(wrapper.findAll('thead th')).toHaveLength(14);
+    expect(wrapper.get('tbody').text()).toContain('已归档');
+    expect(wrapper.get('tbody').text()).toContain(sourceIds.closure);
+    expect(wrapper.get('tbody').text()).toContain('0.00');
+    expect(wrapper.get('tbody a').attributes('href')).toBe(
+      '/cases/case-1?view=department&stage=ARCHIVED',
+    );
+    for (const text of ['已结清', '已结算', '归档原因', '确认归档'])
+      expect(wrapper.text()).not.toContain(text);
+  });
+
+  it('preserves archived scope and bookmark across 21-row pagination and removes a competing stage group', async () => {
+    const item: CaseSummary = { ...summary(), stage: 'ARCHIVED', version: 16 };
+    const archivedItems = Array.from({ length: 21 }, (_, index) => ({
+      ...item,
+      id: 'archived-' + (index + 1),
+      businessNo: 'CA-ARCHIVED-' + (index + 1),
+    }));
+    api.listCases.mockImplementation(async (page, pageSize) => ({
+      ...result(archivedItems),
+      page,
+      pageSize,
+      items: archivedItems.slice((page - 1) * pageSize, page * pageSize),
+    }));
+    const { wrapper, router } = await mountList(
+      '/cases?view=department&stage=ARCHIVED&stageGroup=COMPLAINT_PREPARATION&page=2',
+    );
+    expect(router.currentRoute.value.query).toEqual({
+      view: 'department',
+      stage: 'ARCHIVED',
+      page: '2',
+    });
+    expect(api.listCases).toHaveBeenLastCalledWith(
+      2,
+      20,
+      expect.objectContaining({ view: 'department', stage: 'ARCHIVED' }),
+    );
+    expect(api.listCases.mock.calls.every((call) => !call[2]?.stageGroup)).toBe(
+      true,
+    );
+    expect(wrapper.get('tbody a').attributes('href')).toContain(
+      'stage=ARCHIVED&page=2',
+    );
+    expect(wrapper.findAll('tbody tr')).toHaveLength(1);
+    expect(wrapper.get('tbody a').text()).toBe('CA-ARCHIVED-21');
+    await wrapper
+      .findAll('button')
+      .find((button) => button.text() === '上一页')!
+      .trigger('click');
+    await flushPromises();
+    expect(api.listCases).toHaveBeenLastCalledWith(
+      1,
+      20,
+      expect.objectContaining({ view: 'department', stage: 'ARCHIVED' }),
+    );
+    expect(router.currentRoute.value.query).toEqual({
+      view: 'department',
+      stage: 'ARCHIVED',
+      page: '1',
+    });
+    expect(wrapper.findAll('tbody tr')).toHaveLength(20);
+  });
+
   it('renders the real strict API projection with the frozen typed fixture', async () => {
     const actual =
       await vi.importActual<typeof import('../../api/cases')>(

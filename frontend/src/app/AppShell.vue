@@ -78,6 +78,7 @@ const caseStageCards: readonly CaseStageCard[] = [
   },
   { stage: 'EXECUTING', stages: ['EXECUTING'], label: '强制执行中' },
   { stage: 'WAITING_ARCHIVE', stages: ['WAITING_ARCHIVE'], label: '待归档' },
+  { stage: 'ARCHIVED', stages: ['ARCHIVED'], label: '已归档' },
 ];
 function caseCardSelected(card: CaseStageCard): boolean {
   return selectedCaseStage.value !== undefined

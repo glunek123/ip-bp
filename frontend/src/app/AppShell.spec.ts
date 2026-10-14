@@ -6,7 +6,10 @@ import type { AuthSession } from '../api/auth';
 import { ApiError } from '../api/http';
 import { useAuthStore } from '../stores/auth';
 import AppShell from './AppShell.vue';
-import { notifyCalendarSummaryRead } from './workflow-events';
+import {
+  notifyCalendarSummaryRead,
+  workflowChangedEvent,
+} from './workflow-events';
 
 const api = vi.hoisted(() => ({
   getOrganizationManagementContext: vi.fn(),
@@ -79,6 +82,7 @@ beforeEach(() => {
       WAITING_EXECUTION_FILING: 0,
       EXECUTING: 0,
       WAITING_ARCHIVE: 0,
+      ARCHIVED: 0,
     },
   });
   api.listNotaryOffices.mockResolvedValue({
@@ -135,6 +139,7 @@ beforeEach(() => {
       WAITING_EXECUTION_FILING: 0,
       EXECUTING: 0,
       WAITING_ARCHIVE: 0,
+      ARCHIVED: 0,
     },
   });
 });
@@ -309,7 +314,7 @@ describe('AppShell', () => {
     expect(stages.map((link) => link.text())).toContain('待正式立案2');
     expect(stages.map((link) => link.text())).toContain('待开庭1');
     expect(stages.map((link) => link.text())).toContain('待判决3');
-    expect(stages).toHaveLength(9);
+    expect(stages).toHaveLength(10);
     expect(
       wrapper.get('[data-test="execution-preparation-nav"]').text(),
     ).toContain('准备执行文书3');
@@ -381,6 +386,7 @@ describe('AppShell', () => {
         WAITING_EXECUTION_FILING: 0,
         EXECUTING: 0,
         WAITING_ARCHIVE: 0,
+        ARCHIVED: 0,
       },
     });
     const { wrapper } = await mountShell('/lawyer/cases', lawyerSession);
@@ -458,7 +464,7 @@ describe('AppShell', () => {
     expect(
       wrapper.get('[data-test="case-view-mine"]').attributes('href'),
     ).toContain('view=mine');
-    expect(wrapper.findAll('[data-test="case-stage"]')).toHaveLength(9);
+    expect(wrapper.findAll('[data-test="case-stage"]')).toHaveLength(10);
     expect(wrapper.get('[data-test="case-nav"]').text()).toContain('19');
     expect(api.listCases).toHaveBeenCalledWith(1, 1, {
       signal: expect.any(AbortSignal),
@@ -661,9 +667,58 @@ const navigationLabels = [
   '待申请执行',
   '强制执行中',
   '待归档',
+  '已归档',
 ];
 const lawyerSession: AuthSession = { ...session, principalType: 'LAWYER' };
 describe('case route context', () => {
+  it.each(['/cases?view=mine', '/cases?view=department', '/lawyer/cases'])(
+    'refreshes the real archived count in the current scope after workflow changes in %s',
+    async (path) => {
+      const lawyer = path.startsWith('/lawyer');
+      const listApi = lawyer ? api.listLawyerCases : api.listCases;
+      const base = await listApi();
+      listApi.mockClear();
+      listApi.mockResolvedValue({
+        ...base,
+        counts: { ...base.counts, ARCHIVED: 2 },
+      });
+      const { wrapper } = await mountShell(
+        `${path}${path.includes('?') ? '&' : '?'}stage=ARCHIVED`,
+        lawyer ? lawyerSession : session,
+      );
+      const archivedLink = () =>
+        wrapper
+          .findAll('[data-test="case-stage"]')
+          .find((link) => link.get('span').text() === '已归档')!;
+      expect(archivedLink().text()).toBe('已归档2');
+      expect(archivedLink().classes()).toContain('active');
+      listApi.mockResolvedValue({
+        ...base,
+        counts: { ...base.counts, ARCHIVED: 3 },
+      });
+      window.dispatchEvent(new Event(workflowChangedEvent));
+      await flushPromises();
+      expect(archivedLink().text()).toBe('已归档3');
+      if (lawyer) {
+        expect(listApi).toHaveBeenLastCalledWith(
+          1,
+          1,
+          undefined,
+          expect.objectContaining({ signal: expect.any(AbortSignal) }),
+        );
+        expect(api.listCases).not.toHaveBeenCalled();
+      } else {
+        expect(listApi).toHaveBeenLastCalledWith(
+          1,
+          1,
+          expect.objectContaining({
+            view: path.includes('department') ? 'department' : 'mine',
+          }),
+        );
+      }
+      expect(wrapper.text()).not.toContain('已结清');
+    },
+  );
   it.each([
     ['PENDING_MATCH', '案件待匹配'],
     ['WAITING_FILING', '待提交立案'],
@@ -674,6 +729,7 @@ describe('case route context', () => {
     ['WAITING_EXECUTION_FILING', '待申请执行'],
     ['EXECUTING', '强制执行中'],
     ['WAITING_ARCHIVE', '待归档'],
+    ['ARCHIVED', '已归档'],
   ])(
     'selects only the bookmarked atomic stage %s in both case shells',
     async (stage, label) => {
@@ -782,7 +838,7 @@ describe('case route context', () => {
   );
 
   it.each([
-    'stage=ARCHIVED',
+    'stage=UNKNOWN',
     'stage=WAITING_HEARING&stage=WAITING_JUDGMENT',
     'stage',
     'stageGroup=UNKNOWN',
@@ -903,7 +959,7 @@ it.each(['/cases?view=mine', '/cases?view=department', '/lawyer/cases'])(
         .filter((link) => link.find('span').exists())
         .map((link) => link.get('span').text()),
     ).toEqual(navigationLabels);
-    expect(nav.text()).not.toContain('已归档');
+    expect(nav.text()).toContain('已归档');
     expect(nav.text()).not.toContain('诉状待确认');
     expect(nav.text()).not.toContain('执行材料待盖章');
     wrapper.unmount();

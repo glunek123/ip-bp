@@ -28,6 +28,8 @@ const emptyResult: LawyerCaseList = {
       canFinishExecution: false,
       canRecordClosure: false,
       canCorrectClosure: false,
+      canArchive: false,
+      canCorrectArchive: false,
       canSubmitFiling: true,
       canRegisterAcceptance: false,
       canUploadAcceptanceMaterials: false,
@@ -62,6 +64,7 @@ const emptyResult: LawyerCaseList = {
     WAITING_EXECUTION_FILING: 0,
     EXECUTING: 0,
     WAITING_ARCHIVE: 0,
+    ARCHIVED: 0,
   },
 };
 
@@ -143,6 +146,7 @@ describe('LawyerCaseListPage', () => {
     'canSubmitExecutionFiling',
     'canFinishExecution',
     'canRecordClosure',
+    'canArchive',
     'canSubmitComplaint',
     'canConfirmComplaint',
     'canMailComplaint',
@@ -398,34 +402,43 @@ describe('LawyerCaseListPage', () => {
   });
 });
 
-it('offers WAITING_ARCHIVE in the lawyer route filter and keeps a finished case read-only', async () => {
-  api.listLawyerCases.mockResolvedValue({
-    ...emptyResult,
-    items: [
-      {
-        ...emptyResult.items[0],
-        stage: 'WAITING_ARCHIVE',
-        canFinishExecution: false,
-        canRecordClosure: false,
-        canCorrectClosure: false,
-        canSubmitFiling: false,
-      },
-    ],
-    counts: { ...emptyResult.counts, WAITING_ARCHIVE: 1 },
-  });
-  const { wrapper, router } = await mountPage();
-  await router.push('/lawyer/cases?stage=WAITING_ARCHIVE');
-  await flushPromises();
-  expect(api.listLawyerCases).toHaveBeenLastCalledWith(
-    1,
-    20,
-    'WAITING_ARCHIVE',
-    expect.objectContaining({ signal: expect.any(AbortSignal) }),
-  );
-  expect(wrapper.text()).toContain('待归档');
-  expect(wrapper.get('tbody tr').findAll('td')[2]!.text()).toBe('只读');
-  wrapper.unmount();
-});
+it.each([
+  ['WAITING_ARCHIVE', '待归档'],
+  ['ARCHIVED', '已归档'],
+] as const)(
+  'offers %s in the lawyer route filter and keeps a case without capabilities read-only',
+  async (stage, label) => {
+    api.listLawyerCases.mockResolvedValue({
+      ...emptyResult,
+      items: [
+        {
+          ...emptyResult.items[0],
+          stage,
+          canFinishExecution: false,
+          canRecordClosure: false,
+          canCorrectClosure: false,
+          canArchive: false,
+          canCorrectArchive: false,
+          canSubmitFiling: false,
+        },
+      ],
+      counts: { ...emptyResult.counts, [stage]: 1 },
+    });
+    const { wrapper, router } = await mountPage();
+    await router.push('/lawyer/cases?stage=' + stage);
+    await flushPromises();
+    expect(api.listLawyerCases).toHaveBeenLastCalledWith(
+      1,
+      20,
+      stage,
+      expect.objectContaining({ signal: expect.any(AbortSignal) }),
+    );
+    expect(wrapper.text()).toContain(label);
+    expect(wrapper.text()).not.toContain('已结清');
+    expect(wrapper.get('tbody tr').findAll('td')[2]!.text()).toBe('只读');
+    wrapper.unmount();
+  },
+);
 
 describe.each([
   [

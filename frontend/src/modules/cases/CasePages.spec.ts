@@ -93,6 +93,8 @@ beforeEach(() => {
         canFinishExecution: false,
         canRecordClosure: false,
         canCorrectClosure: false,
+        canArchive: false,
+        canCorrectArchive: false,
         canSubmitComplaint: false,
         canConfirmComplaint: false,
         canMailComplaint: false,
@@ -162,6 +164,7 @@ beforeEach(() => {
       WAITING_EXECUTION_FILING: 0,
       EXECUTING: 0,
       WAITING_ARCHIVE: 0,
+      ARCHIVED: 0,
     },
   });
   api.listLawyerMatchCandidates.mockResolvedValue([]);
@@ -174,7 +177,10 @@ beforeEach(() => {
     canMatch: true,
     canRecordClosure: false,
     canCorrectClosure: false,
+    canArchive: false,
+    canCorrectArchive: false,
     closure: null,
+    archive: null,
     courtCaseNo: null,
     department: { id: 'department-1', name: '知产部' },
     customer: { id: 'customer-1', name: '客户甲' },
@@ -321,7 +327,10 @@ function confirmationDetail(
     canFinishExecution: false,
     canRecordClosure: false,
     canCorrectClosure: false,
+    canArchive: false,
+    canCorrectArchive: false,
     closure: null,
+    archive: null,
     canSubmitFiling: false,
     canRegisterAcceptance: false,
     canUploadAcceptanceMaterials: false,
@@ -1424,7 +1433,10 @@ describe('case pages', () => {
       canMatch: false,
       canRecordClosure: false,
       canCorrectClosure: false,
+      canArchive: false,
+      canCorrectArchive: false,
       closure: null,
+      archive: null,
       owner: { id: 'user-1', displayName: '负责人' },
       courtCaseNo: null,
       department: { id: 'department-1', name: '知产部' },
@@ -1557,7 +1569,10 @@ describe('case pages', () => {
       canMatch: false,
       canRecordClosure: false,
       canCorrectClosure: false,
+      canArchive: false,
+      canCorrectArchive: false,
       closure: null,
+      archive: null,
       owner: { id: 'user-1', displayName: '同部门负责人' },
       courtCaseNo: null,
       department: { id: 'department-1', name: '知产部' },
@@ -2277,23 +2292,26 @@ describe('internal execution finish caller', () => {
     );
     wrapper.unmount();
   });
-  it('retains WAITING_ARCHIVE as the internal route filter and stage label', async () => {
-    const result = await api.listCases();
-    api.listCases.mockClear();
-    api.listCases.mockResolvedValue({
-      ...result,
-      items: [{ ...result.items[0], stage: 'WAITING_ARCHIVE' }],
-    });
-    const wrapper = await mountRoute(
-      '/cases?stage=WAITING_ARCHIVE',
-      CaseListPage,
-    );
-    expect(api.listCases.mock.calls[0]?.[2]).toMatchObject({
-      stage: 'WAITING_ARCHIVE',
-    });
-    expect(wrapper.text()).toContain('待归档');
-    wrapper.unmount();
-  });
+  it.each([
+    ['WAITING_ARCHIVE', '待归档'],
+    ['ARCHIVED', '已归档'],
+  ] as const)(
+    'retains %s as the internal route filter and stage label',
+    async (stage, label) => {
+      const result = await api.listCases();
+      api.listCases.mockClear();
+      api.listCases.mockResolvedValue({
+        ...result,
+        items: [{ ...result.items[0], stage }],
+      });
+      const wrapper = await mountRoute('/cases?stage=' + stage, CaseListPage);
+      expect(api.listCases.mock.calls[0]?.[2]).toMatchObject({
+        stage,
+      });
+      expect(wrapper.text()).toContain(label);
+      wrapper.unmount();
+    },
+  );
 });
 
 it('connects the actual E2 panel to internal unknown recovery across remount and emits one workflow change on exact retry', async () => {
