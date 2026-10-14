@@ -1339,6 +1339,10 @@ test('browser explicitly recovers the original body and key after a committed re
   await expect(
     panel.locator('[data-test="second-instance-acceptance-retry"]'),
   ).toBeVisible();
+  await expect.poll(() => committed).toBe(true);
+  await expect(
+    panel.locator('[data-test="second-instance-acceptance-retry"]'),
+  ).toBeEnabled();
   expect(
     (await secondInstanceAcceptanceSnapshot(source.caseId)).changes,
   ).toHaveLength(1);
