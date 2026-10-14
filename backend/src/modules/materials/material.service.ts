@@ -969,6 +969,51 @@ export class MaterialService {
     );
   }
 
+  async assertCompleteCurrentCaseExecutionApplicationBundle(
+    transaction: MaterialTransactionClient,
+    actor: ActorContext,
+    caseId: string,
+    requestedContentVersionIds: readonly string[],
+  ): Promise<readonly ValidatedMaterialVersionFact[]> {
+    const selected = await this.assertAvailableVersions(transaction, actor, {
+      ownerType: 'CASE',
+      ownerId: caseId,
+      category: 'EXECUTION_APPLICATION',
+      contentVersionIds: requestedContentVersionIds,
+      minCount: 1,
+      maxCount: 10,
+    });
+    if (selected.some((fact) => fact.purpose !== 'EXECUTION_APPLICATION'))
+      throw this.invalidVersion();
+    // The caller holds the case row lock in a Serializable transaction.
+    // Ordered row locks stabilize the currently visible bundle against edits.
+    const current = await transaction.$queryRawUnsafe<
+      Array<{ content_version_id: string }>
+    >(
+      `SELECT version."id" AS "content_version_id"
+       FROM "materials" material
+       JOIN "content_versions" version
+         ON version."id"=material."current_version_id" AND version."material_id"=material."id"
+       WHERE material."department_id"=$1::uuid AND material."owner_type"='CASE'
+         AND material."owner_id"=$2::uuid AND material."category"='EXECUTION_APPLICATION'
+         AND material."purpose"='EXECUTION_APPLICATION' AND material."status"='ACTIVE'
+         AND version."status"='AVAILABLE'
+       ORDER BY material."id" FOR SHARE OF material, version`,
+      actor.departmentId,
+      caseId,
+    );
+    if (
+      current.length !== selected.length ||
+      new Set(current.map((item) => item.content_version_id)).size !==
+        current.length ||
+      current.some(
+        (item) => !requestedContentVersionIds.includes(item.content_version_id),
+      )
+    )
+      throw this.invalidVersion();
+    return selected;
+  }
+
   async freezeReferences(
     transaction: MaterialTransactionClient,
     input: FreezeMaterialReferencesInput,
@@ -2679,20 +2724,33 @@ export class MaterialService {
       if (
         validation?.transaction !== transaction ||
         canonical?.departmentId !== actor.departmentId ||
-        canonical.ownerType !== 'CASE' || canonical.ownerId !== caseId ||
+        canonical.ownerType !== 'CASE' ||
+        canonical.ownerId !== caseId ||
         canonical.category !== 'EXECUTION_APPLICATION' ||
         canonical.purpose !== 'EXECUTION_APPLICATION' ||
         !allowedMimeTypes.EXECUTION_APPLICATION.has(canonical.mimeType) ||
         canonical.sizeBytes > BigInt(materialFileLimit('EXECUTION_APPLICATION'))
-      ) throw this.invalidVersion();
+      )
+        throw this.invalidVersion();
       await transaction.caseExecutionConfirmationVersion.create({
-        data: { confirmationId, caseId, departmentId: actor.departmentId,
-          materialId: canonical.materialId, contentVersionId: canonical.contentVersionId },
+        data: {
+          confirmationId,
+          caseId,
+          departmentId: actor.departmentId,
+          materialId: canonical.materialId,
+          contentVersionId: canonical.contentVersionId,
+        },
       });
       await transaction.materialReference.create({
-        data: { departmentId: actor.departmentId, resourceType: 'case', resourceId: caseId,
-          purpose: 'EXECUTION_APPLICATION', materialId: canonical.materialId,
-          contentVersionId: canonical.contentVersionId, actionEventId },
+        data: {
+          departmentId: actor.departmentId,
+          resourceType: 'case',
+          resourceId: caseId,
+          purpose: 'EXECUTION_APPLICATION',
+          materialId: canonical.materialId,
+          contentVersionId: canonical.contentVersionId,
+          actionEventId,
+        },
       });
     }
   }

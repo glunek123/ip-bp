@@ -26,6 +26,73 @@ const customerId = '33333333-3333-4333-8333-333333333333';
 const now = new Date('2026-09-21T04:00:00.000Z');
 
 describe('MaterialService', () => {
+  it('freezes only the complete currently available execution application bundle', async () => {
+    const f = createFixture();
+    f.transaction.case.findFirst.mockResolvedValue({
+      departmentId: actor.departmentId,
+      stage: 'WAITING_EXECUTION_CONFIRMATION',
+      responsibleUserId: actor.userId,
+      responsibleMembership: { teamId: null },
+    });
+    const materials = ['v1', 'v2'].map((id) => ({
+      id: `material-${id}`,
+      departmentId: actor.departmentId,
+      ownerType: 'CASE',
+      ownerId: customerId,
+      category: 'EXECUTION_APPLICATION',
+      purpose: 'EXECUTION_APPLICATION',
+      status: 'ACTIVE',
+      currentVersionId: id,
+      contentVersions: [
+        {
+          id,
+          status: 'AVAILABLE',
+          mimeType: 'application/pdf',
+          sizeBytes: 12n,
+        },
+      ],
+    }));
+    f.transaction.material.findMany.mockResolvedValue(materials);
+    f.transaction.$queryRawUnsafe.mockResolvedValue([
+      { content_version_id: 'v1' },
+      { content_version_id: 'v2' },
+    ]);
+    const tx = asTransactionClient(f.transaction);
+    await expect(
+      f.service.assertCompleteCurrentCaseExecutionApplicationBundle(
+        tx,
+        actor,
+        customerId,
+        ['v1'],
+      ),
+    ).rejects.toMatchObject({ response: { code: 'MATERIAL_VERSION_INVALID' } });
+    await expect(
+      f.service.assertCompleteCurrentCaseExecutionApplicationBundle(
+        tx,
+        actor,
+        customerId,
+        ['v1', 'v2'],
+      ),
+    ).resolves.toHaveLength(2);
+    expect(f.transaction.$queryRawUnsafe).toHaveBeenCalledWith(
+      expect.stringContaining('FOR SHARE OF material, version'),
+      actor.departmentId,
+      customerId,
+    );
+
+    f.transaction.$queryRawUnsafe.mockResolvedValue([
+      { content_version_id: 'v2' },
+      { content_version_id: 'v3' },
+    ]);
+    await expect(
+      f.service.assertCompleteCurrentCaseExecutionApplicationBundle(
+        tx,
+        actor,
+        customerId,
+        ['v1', 'v2'],
+      ),
+    ).rejects.toMatchObject({ response: { code: 'MATERIAL_VERSION_INVALID' } });
+  });
   it('uploads closure documents under the correct independent action and refuses a missing exact source', async () => {
     const f = createFixture();
     const record = {
@@ -3780,7 +3847,12 @@ function createFixture() {
     caseClosureDocument: { create: jest.fn().mockResolvedValue({}) },
     caseExecutionFinishVersion: { create: jest.fn().mockResolvedValue({}) },
     $executeRawUnsafe: jest.fn(async () => 1),
-    $queryRawUnsafe: jest.fn(async () => [{ id: 'material-1' }]),
+    $queryRawUnsafe: jest
+      .fn<
+        Promise<Array<{ id?: string; content_version_id?: string }>>,
+        unknown[]
+      >()
+      .mockResolvedValue([{ id: 'material-1' }]),
     customer: { findFirst: customerFindFirst },
     lead: { findFirst: leadFindFirst },
     case: { findFirst: jest.fn() },

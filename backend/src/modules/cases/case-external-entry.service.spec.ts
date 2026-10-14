@@ -1,4 +1,5 @@
-import { BadRequestException } from '@nestjs/common';
+import { BadRequestException, NotFoundException } from '@nestjs/common';
+import { createHash } from 'node:crypto';
 import { AccessControlService } from '../../access-control/access-control.service';
 import { DatabaseService } from '../../database/database.service';
 import { CustomerCaseEntrySourceService } from '../customers';
@@ -59,5 +60,82 @@ describe('CaseExternalEntryService input boundary', () => {
     const input = validInput();
     input.defendants = [{ kind: 'PERSON', name: 'Actual party' }];
     expect(() => service['normalize'](input)).toThrow(BadRequestException);
+  });
+
+  it('rechecks current customer eligibility before returning a prior receipt', async () => {
+    const input = validInput();
+    const normalized = service['normalize'](input);
+    const fingerprint = createHash('sha256')
+      .update(JSON.stringify({ ...normalized, idempotencyKey: undefined }))
+      .digest('hex');
+    const actor = { userId: id, departmentId: id, authorizationRevision: 1 };
+    const tx = {
+      userAccount: {
+        findUnique: jest
+          .fn()
+          .mockResolvedValue({
+            id,
+            displayName: 'Internal',
+            active: true,
+            accountType: 'INTERNAL',
+          }),
+      },
+      departmentMembership: {
+        findUnique: jest.fn().mockResolvedValue({ active: true, teamId: null }),
+      },
+      caseExternalEntryReceipt: {
+        findUnique: jest
+          .fn()
+          .mockResolvedValue({
+            caseId: id,
+            requestFingerprint: fingerprint,
+            resultSnapshot: {
+              id,
+              businessNo: 'CA-1',
+              stage: 'PENDING_MATCH',
+              version: 1,
+              entryId: id,
+              recordedAt: '2026-01-01T00:00:00.000Z',
+            },
+          }),
+      },
+      case: {
+        findFirst: jest
+          .fn()
+          .mockResolvedValue({
+            id,
+            customerId: id,
+            rightsHolderId: id,
+            responsibleUserId: id,
+            responsibleMembership: { teamId: null },
+            externalEntry: { id, initialStage: 'PENDING_MATCH' },
+          }),
+      },
+      caseNumberCounter: { upsert: jest.fn() },
+    };
+    const db = {
+      $transaction: jest
+        .fn()
+        .mockImplementation((fn: (client: typeof tx) => unknown) => fn(tx)),
+    };
+    const access = { authorizeCase: jest.fn().mockResolvedValue(undefined) };
+    const customerSource = {
+      assertEligible: jest.fn().mockRejectedValue(new NotFoundException()),
+    };
+    const replay = new CaseExternalEntryService(
+      db as never,
+      access as never,
+      customerSource as never,
+    );
+    await expect(replay.create(actor, input)).rejects.toBeInstanceOf(
+      NotFoundException,
+    );
+    expect(customerSource.assertEligible).toHaveBeenCalledWith(
+      tx,
+      actor,
+      id,
+      id,
+    );
+    expect(tx.caseNumberCounter.upsert).not.toHaveBeenCalled();
   });
 });

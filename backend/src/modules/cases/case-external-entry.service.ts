@@ -423,10 +423,56 @@ export class CaseExternalEntryService {
             if (prior !== null) {
               if (prior.requestFingerprint !== fingerprint)
                 throw this.conflict();
+              const recordedCase = await tx.case.findFirst({
+                where: { id: prior.caseId, departmentId: actor.departmentId },
+                select: {
+                  id: true,
+                  customerId: true,
+                  rightsHolderId: true,
+                  responsibleUserId: true,
+                  responsibleMembership: { select: { teamId: true } },
+                  externalEntry: { select: { id: true, initialStage: true } },
+                },
+              });
+              if (
+                recordedCase === null ||
+                recordedCase.externalEntry === null ||
+                recordedCase.customerId !== input.customerId ||
+                recordedCase.rightsHolderId !== input.rightsHolderId ||
+                recordedCase.externalEntry.initialStage !== input.initialStage
+              )
+                throw this.forbidden();
+              const currentFacts = {
+                departmentId: actor.departmentId,
+                responsibleUserId: recordedCase.responsibleUserId,
+                ...(recordedCase.responsibleMembership.teamId === null
+                  ? {}
+                  : { teamId: recordedCase.responsibleMembership.teamId }),
+              };
+              await this.access.authorizeCase(
+                actor,
+                'case.external-entry.create',
+                currentFacts,
+                tx,
+              );
+              if (input.initialStage === 'ARCHIVED')
+                await this.access.authorizeCase(
+                  actor,
+                  'case.external-entry.archive',
+                  currentFacts,
+                  tx,
+                );
+              await this.customerSource.assertEligible(
+                tx,
+                actor,
+                recordedCase.customerId,
+                recordedCase.rightsHolderId,
+              );
               const snapshot =
                 prior.resultSnapshot as Partial<CreateCaseExternalEntryResultDto>;
               if (
                 snapshot.id !== prior.caseId ||
+                snapshot.entryId !== recordedCase.externalEntry.id ||
                 typeof snapshot.entryId !== 'string' ||
                 typeof snapshot.businessNo !== 'string' ||
                 !stages.includes(snapshot.stage!) ||

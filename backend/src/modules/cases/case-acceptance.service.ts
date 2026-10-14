@@ -187,7 +187,11 @@ export class CaseAcceptanceService {
               record.filingSubmission === null &&
               (isEntryStartingAt(source, 'WAITING_FORMAL_ACCEPTANCE') ||
                 externalRemand);
-            if (directExternalAcceptance !== (value.courtId !== null))
+            if (
+              directExternalAcceptance
+                ? value.courtId === null
+                : input.courtId !== undefined
+            )
               throw this.validation();
             if (
               value.courtId !== null &&
