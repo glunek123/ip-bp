@@ -1041,7 +1041,14 @@ async function logout(): Promise<void> {
           </template>
         </nav>
       </header>
-      <main class="app-content"><slot /></main>
+      <main
+        class="app-content"
+        :class="{
+          'app-content--case-workspace': route.meta.caseWorkspace === true,
+        }"
+      >
+        <slot />
+      </main>
     </div>
   </div>
 </template>

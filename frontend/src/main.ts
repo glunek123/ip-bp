@@ -6,6 +6,7 @@ import { onUnauthorized } from './api/http';
 import { useAuthStore } from './stores/auth';
 import 'element-plus/es/components/button/style/css';
 import './styles/global.css';
+import './styles/case-workspace.css';
 
 onUnauthorized(() => {
   useAuthStore(pinia).clear();

@@ -1,0 +1,311 @@
+/* Only the internal case workspace opts into this density. */
+.app-content--case-workspace > .page-view:not(.case-workspace) {
+  width: 100%;
+  max-width: none;
+  padding: 0;
+}
+
+.case-workspace {
+  width: 100%;
+  max-width: 1440px;
+  min-width: 0;
+  margin-inline: auto;
+  padding: var(--s-4);
+  color: var(--color-ink);
+  font-size: 13px;
+  line-height: 1.5;
+}
+
+.case-workspace-header {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  justify-content: space-between;
+  gap: var(--s-2) var(--s-3);
+  margin-bottom: var(--s-2);
+}
+
+.case-workspace-header > * {
+  min-width: 0;
+}
+
+.case-workspace-title {
+  margin: 0;
+  color: var(--color-ink);
+  font-size: 22px;
+  font-weight: 650;
+  line-height: 1.4;
+  overflow-wrap: anywhere;
+}
+
+.case-workspace-subtitle {
+  margin: var(--s-1) 0 0;
+  color: var(--color-ink-muted);
+  font-size: 12px;
+  font-weight: 400;
+  overflow-wrap: anywhere;
+}
+
+.case-workspace-tabs {
+  display: flex;
+  gap: var(--s-3);
+  max-width: 100%;
+  margin-bottom: var(--s-2);
+  overflow-x: auto;
+  border-bottom: 1px solid var(--color-hairline);
+}
+
+.case-workspace-tab {
+  flex: 0 0 auto;
+  min-height: 44px;
+  padding: var(--s-2) var(--s-3);
+  border: 0;
+  border-bottom: 2px solid transparent;
+  background: transparent;
+  color: var(--color-ink-muted);
+  font-size: 13px;
+  font-weight: 500;
+  white-space: nowrap;
+  cursor: pointer;
+}
+
+.case-workspace-tab[aria-selected='true'] {
+  border-bottom-color: var(--color-primary);
+  color: var(--color-primary);
+  font-weight: 600;
+}
+
+.case-workspace-tab:hover {
+  color: var(--color-primary-hover);
+}
+
+.case-workspace-tab:focus-visible {
+  outline-offset: -3px;
+}
+
+.case-workspace-section {
+  min-width: 0;
+  border: 1px solid var(--color-hairline);
+  border-radius: 6px;
+  background: var(--color-surface-1);
+}
+
+.case-workspace-section + .case-workspace-section {
+  margin-top: var(--s-2);
+}
+
+.case-workspace-section__header {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: var(--s-2);
+  min-height: 44px;
+  padding: var(--s-2) var(--s-3);
+  color: var(--color-ink);
+  font-size: 14px;
+  font-weight: 600;
+}
+
+.case-workspace-section__header :is(h2, h3) {
+  margin: 0;
+  font: inherit;
+}
+
+.case-workspace-section__header button {
+  min-width: 0;
+  border: 0;
+  background: transparent;
+  color: inherit;
+  text-align: left;
+  white-space: normal;
+  overflow-wrap: anywhere;
+  cursor: pointer;
+}
+
+.case-workspace-section__header button[aria-expanded] {
+  flex: 1;
+  font-size: 14px;
+  font-weight: 600;
+}
+
+.case-workspace-section__header button:not([aria-expanded]) {
+  flex-shrink: 0;
+  color: var(--color-primary);
+  font-size: 13px;
+  font-weight: 400;
+}
+
+.case-workspace-section__header button:disabled {
+  color: var(--color-ink-muted);
+  cursor: default;
+}
+
+.case-workspace-section__body {
+  min-width: 0;
+  padding: var(--s-3);
+  border-top: 1px solid var(--color-hairline);
+  overflow-wrap: anywhere;
+}
+
+.case-workspace-fields {
+  display: grid;
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+  gap: var(--s-2) var(--s-3);
+  margin: 0;
+}
+
+.case-workspace-fields > * {
+  min-width: 0;
+}
+
+.case-workspace-field__label {
+  margin: 0 0 var(--s-1);
+  color: var(--color-ink-muted);
+  font-size: 12px;
+  font-weight: 400;
+}
+
+.case-workspace-field__value {
+  margin: 0;
+  color: var(--color-ink);
+  font-size: 13px;
+  font-weight: 400;
+  overflow-wrap: anywhere;
+}
+
+.case-workspace-field__help {
+  margin: var(--s-1) 0 0;
+  color: var(--color-ink-muted);
+  font-size: 12px;
+  font-weight: 400;
+  overflow-wrap: anywhere;
+}
+
+.case-workspace :is(time, .case-workspace-fees .case-workspace-field__value) {
+  font-variant-numeric: tabular-nums;
+}
+
+.case-workspace
+  :is(.case-workspace-files, .case-workspace-fees, .case-workspace-timeline) {
+  min-width: 0;
+  overflow-wrap: anywhere;
+}
+
+.case-workspace
+  :is(.case-workspace-files, .case-workspace-fees, .case-workspace-timeline)
+  :is(h2, h3) {
+  margin: 0 0 var(--s-2);
+  font-size: 14px;
+  font-weight: 600;
+}
+
+/* The editors class must remain on the drawer root when it is teleported. */
+.case-workspace-editors {
+  min-width: 0;
+  max-width: 100%;
+  font-size: 13px;
+  line-height: 1.5;
+  overflow-wrap: anywhere;
+}
+
+.case-workspace-editors[role='dialog'] {
+  max-height: calc(100dvh - var(--s-6));
+  overflow-y: auto;
+}
+
+.case-workspace-editors :is(.demo-card--pad, .form-panel) {
+  padding: var(--s-3);
+}
+
+.case-workspace-editors :is(.demo-form-grid, .demo-detail-grid) {
+  gap: var(--s-2) var(--s-3);
+}
+
+.case-workspace-editors :is(.form-section-title, h2, h3) {
+  margin: 0 0 var(--s-2);
+  font-size: 14px;
+  font-weight: 600;
+}
+
+.case-workspace-editors :is(.field-help, .field-guidance) {
+  color: var(--color-ink-muted);
+  font-size: 12px;
+  font-weight: 400;
+}
+
+.case-workspace-editors :is(.el-drawer__body, [role='document']) {
+  min-height: 0;
+  padding: var(--s-3);
+  overflow-y: auto;
+}
+
+@media (min-width: 1280px) {
+  .case-workspace-fields {
+    grid-template-columns: repeat(3, minmax(0, 1fr));
+  }
+}
+
+@media (min-width: 768px) and (max-width: 1279px) {
+  .case-workspace {
+    padding: var(--s-3);
+  }
+}
+
+@media (max-width: 767px) {
+  .case-workspace {
+    padding: 10px;
+  }
+
+  .case-workspace-fields,
+  .case-workspace-editors :is(.demo-form-grid, .demo-detail-grid) {
+    grid-template-columns: 1fr;
+  }
+
+  .case-workspace-section__header button,
+  .case-workspace
+    :is(
+      button,
+      .el-button,
+      select,
+      input:not([type='checkbox'], [type='radio'], [type='hidden'])
+    ),
+  .case-workspace-editors
+    :is(
+      button,
+      .el-button,
+      select,
+      input:not([type='checkbox'], [type='radio'], [type='hidden'])
+    ) {
+    min-height: 44px;
+  }
+
+  .case-workspace :is(button, a),
+  .case-workspace-editors :is(button, a) {
+    min-width: 44px;
+  }
+
+  .case-workspace a,
+  .case-workspace-editors a {
+    display: inline-flex;
+    align-items: center;
+    min-height: 44px;
+    overflow-wrap: anywhere;
+  }
+
+  .case-workspace .el-button + .el-button,
+  .case-workspace-editors .el-button + .el-button {
+    margin-left: 0;
+  }
+
+  .case-workspace-header .detail-actions,
+  .case-workspace-editors :is(.demo-form-actions, .detail-actions) {
+    display: flex;
+    flex-wrap: wrap;
+    gap: var(--s-2);
+  }
+
+  .case-workspace-editors :is(input, select, textarea) {
+    min-width: 0;
+    max-width: 100%;
+  }
+}
