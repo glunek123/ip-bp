@@ -216,7 +216,7 @@ describe('authorized internal case list display', () => {
       id: 'archived-' + (index + 1),
       businessNo: 'CA-ARCHIVED-' + (index + 1),
     }));
-    api.listCases.mockImplementation(async (page, pageSize) => ({
+    api.listCases.mockImplementation(async (page = 1, pageSize = 20) => ({
       ...result(archivedItems),
       page,
       pageSize,
