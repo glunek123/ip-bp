@@ -116,10 +116,10 @@ CREATE FUNCTION "case_record_edit_actor_authorized"(target_actor uuid,target_cas
       SELECT 1 FROM "department_memberships" membership
       JOIN "role_assignments" assignment ON assignment."user_id"=membership."user_id" AND assignment."department_id"=membership."department_id" AND assignment."active"
       JOIN "role_templates" template ON template."id"=assignment."role_template_id" AND template."department_id"=assignment."department_id" AND template."active"
-      JOIN "role_grants" grant ON grant."role_template_id"=template."id" AND grant."action"=target_action
+      JOIN "role_grants" action_grant ON action_grant."role_template_id"=template."id" AND action_grant."action"=target_action
       JOIN "department_memberships" owner ON owner."user_id"=c."responsible_user_id" AND owner."department_id"=c."department_id"
       WHERE membership."user_id"=target_actor AND membership."department_id"=target_department AND membership."active" AND
-        (grant."scope"='DEPARTMENT' OR (grant."scope"='SELF' AND c."responsible_user_id"=target_actor) OR (grant."scope"='TEAM' AND assignment."team_id"=owner."team_id"))
+        (action_grant."scope"='DEPARTMENT' OR (action_grant."scope"='SELF' AND c."responsible_user_id"=target_actor) OR (action_grant."scope"='TEAM' AND assignment."team_id"=owner."team_id"))
     )
   )
 $$;
