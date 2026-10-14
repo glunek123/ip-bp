@@ -188,6 +188,14 @@ describe('CaseWorkspaceFiles', () => {
     expect(rows[0]!.text()).toContain('来源公证书');
     expect(rows[0]!.text()).toContain('一审判决历史 j-old');
     expect(rows[0]!.text()).toContain('历史版本');
+    const details = rows[0]!.get('[data-test="workspace-file-details"]');
+    expect(details.attributes('open')).toBeUndefined();
+    expect(details.findAll('p').every((entry) => !entry.isVisible())).toBe(
+      true,
+    );
+    details.element.setAttribute('open', '');
+    expect(details.findAll('p').every((entry) => entry.isVisible())).toBe(true);
+    expect(details.text()).toContain('版本标识：v1');
     expect(list).toHaveBeenCalledWith('case-1', {
       signal: expect.any(AbortSignal),
     });

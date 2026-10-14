@@ -109,7 +109,9 @@ function edit(key: SectionKey): void {
         >
         <dl class="case-workspace-fields">
           <div
-            v-for="(field, index) in group.fields"
+            v-for="(field, index) in group.fields.filter(
+              (value) => !value.technical,
+            )"
             :key="`${field.label}:${index}`"
             class="case-workspace-field"
             :class="{ 'case-workspace-field--wide': field.wide }"
@@ -120,9 +122,34 @@ function edit(key: SectionKey): void {
               <p v-if="field.help" class="case-workspace-field__help">
                 {{ field.help }}
               </p>
+              <details
+                v-if="field.versionId"
+                class="case-workspace-field__help"
+                data-test="workspace-file-version"
+              >
+                <summary>文件版本详情</summary>
+                <p>版本标识：{{ field.versionId }}</p>
+              </details>
             </dd>
           </div>
         </dl>
+        <details
+          v-if="group.fields.some((field) => field.technical)"
+          class="case-workspace-field__help"
+          data-test="workspace-technical-details"
+        >
+          <summary>记录关联详情</summary>
+          <dl class="case-workspace-fields">
+            <div
+              v-for="field in group.fields.filter((value) => value.technical)"
+              :key="field.label"
+              class="case-workspace-field case-workspace-field--wide"
+            >
+              <dt class="case-workspace-field__label">{{ field.label }}</dt>
+              <dd class="case-workspace-field__value">{{ field.value }}</dd>
+            </div>
+          </dl>
+        </details>
       </component>
       <ol v-if="section.key === 'timeline'" class="case-workspace-timeline">
         <li
@@ -145,7 +172,9 @@ function edit(key: SectionKey): void {
               </dd>
             </div>
             <div
-              v-for="(field, index) in event.fields"
+              v-for="(field, index) in event.fields.filter(
+                (value) => !value.technical,
+              )"
               :key="`${field.label}:${index}`"
               class="case-workspace-field"
               :class="{ 'case-workspace-field--wide': field.wide }"
@@ -156,12 +185,43 @@ function edit(key: SectionKey): void {
                 <p v-if="field.help" class="case-workspace-field__help">
                   {{ field.help }}
                 </p>
+                <details
+                  v-if="field.versionId"
+                  class="case-workspace-field__help"
+                  data-test="workspace-file-version"
+                >
+                  <summary>文件版本详情</summary>
+                  <p>版本标识：{{ field.versionId }}</p>
+                </details>
               </dd>
             </div>
           </dl>
+          <details
+            v-if="event.fields.some((field) => field.technical)"
+            class="case-workspace-field__help"
+            data-test="workspace-technical-details"
+          >
+            <summary>记录关联详情</summary>
+            <dl class="case-workspace-fields">
+              <div
+                v-for="field in event.fields.filter((value) => value.technical)"
+                :key="field.label"
+                class="case-workspace-field case-workspace-field--wide"
+              >
+                <dt class="case-workspace-field__label">{{ field.label }}</dt>
+                <dd class="case-workspace-field__value">{{ field.value }}</dd>
+              </div>
+            </dl>
+          </details>
         </li>
       </ol>
-      <p class="case-workspace-field__help">{{ section.help }}</p>
+      <details
+        class="case-workspace-field__help"
+        data-test="workspace-section-note"
+      >
+        <summary>资料说明</summary>
+        <p>{{ section.help }}</p>
+      </details>
     </CaseWorkspaceSection>
   </div>
 </template>

@@ -573,7 +573,9 @@ describe('CaseSecondInstancePanel', () => {
   it('groups history by trial round and distinguishes a real zero from pending', () => {
     const wrapper = mountPanel();
     expect(wrapper.text()).toContain('第1轮办理');
-    expect(wrapper.text()).toContain('第2轮办理（当前）');
+    expect(wrapper.text()).toContain('第2轮办理');
+    expect(wrapper.text()).not.toContain('（当前）');
+    expect(wrapper.text()).not.toContain('（本轮）');
     expect(wrapper.text()).toContain('¥ 0.00');
     expect(wrapper.text()).toContain('诉讼费：待确认');
     expect(wrapper.text()).not.toContain(round1);

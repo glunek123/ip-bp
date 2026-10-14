@@ -64,16 +64,14 @@ const amounts = computed<AmountRow[]>(() => {
       label: '一审判决金额',
       state: judgment?.judgmentAmountState ?? 'UNRECORDED',
       amount: judgment?.judgmentAmount ?? null,
-      source: judgment
-        ? `当前一审判决 · ${judgment.id}`
-        : '尚未登记一审判决金额',
+      source: judgment ? `一审判决 · ${judgment.id}` : '尚未登记一审判决金额',
     },
     {
       key: 'judgment-fee',
       label: '一审已交诉讼费（登记事实）',
       state: judgment?.paidLitigationFeeState ?? 'UNRECORDED',
       amount: judgment?.paidLitigationFee ?? null,
-      source: judgment ? `当前一审判决 · ${judgment.id}` : '尚未登记一审诉讼费',
+      source: judgment ? `一审判决 · ${judgment.id}` : '尚未登记一审诉讼费',
     },
     {
       key: 'second',
@@ -81,7 +79,7 @@ const amounts = computed<AmountRow[]>(() => {
       state: second?.judgmentAmountState ?? 'UNRECORDED',
       amount: second?.judgmentAmount ?? null,
       source: second
-        ? `当前二审结果 · ${second.id}${second.result === 'REMAND' ? ' · 发回重审，无赔偿金额记录' : ''}`
+        ? `二审结果 · ${second.id}${second.result === 'REMAND' ? ' · 发回重审，无赔偿金额记录' : ''}`
         : '尚未登记二审裁判金额',
     },
     {
@@ -89,14 +87,14 @@ const amounts = computed<AmountRow[]>(() => {
       label: '二审已交诉讼费（登记事实）',
       state: second?.paidLitigationFeeState ?? 'UNRECORDED',
       amount: second?.paidLitigationFee ?? null,
-      source: second ? `当前二审结果 · ${second.id}` : '尚未登记二审诉讼费',
+      source: second ? `二审结果 · ${second.id}` : '尚未登记二审诉讼费',
     },
     {
       key: 'closure',
       label: '结案金额',
       state: closure?.closeAmountState ?? 'UNRECORDED',
       amount: closure?.closeAmt ?? null,
-      source: closure ? `当前结案版本 · ${closure.id}` : '尚未登记结案金额',
+      source: closure ? `结案版本 · ${closure.id}` : '尚未登记结案金额',
     },
   ];
 });

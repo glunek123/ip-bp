@@ -336,13 +336,13 @@ test('internal case workspace keeps eight closed sections, real file bytes and p
     await revealCaseWorkspaceSection(page, 'judgment');
     await page
       .locator('[data-section="judgment"] .case-workspace-group-nav button')
-      .filter({ hasText: /判决登记（当前）$/u })
+      .filter({ hasText: /判决登记$/u })
       .click();
     const currentJudgment = page
       .locator('[data-section="judgment"] .case-workspace-group')
       .filter({
         has: page.getByRole('heading', {
-          name: /判决登记（当前）$/u,
+          name: /判决登记$/u,
           exact: true,
         }),
       });

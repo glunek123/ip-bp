@@ -79,6 +79,36 @@ beforeEach(() => {
 });
 
 describe('CaseExecutionConfirmationPanel', () => {
+  it.each(['EXECUTING', 'WAITING_ARCHIVE', 'ARCHIVED'] as const)(
+    'shows the retained confirmation fact at %s without claiming it is still waiting for a stamp',
+    (stage) => {
+      const wrapper = mountPanel(
+        detail({
+          stage,
+          canConfirmExecution: false,
+          canSubmitExecution: false,
+          executionConfirmation: {
+            id: 'confirmation-1',
+            submissionId: submission.id,
+            confirmedAt: '2026-10-12T02:00:00.000Z',
+            files: [file],
+          },
+        }),
+      );
+      const status = wrapper.get('[role="status"]');
+      expect(status.text()).toContain('已确认本次提交的整套执行材料');
+      expect(status.text()).not.toContain('当前阶段');
+      expect(status.text()).not.toContain('待盖章');
+      expect(
+        wrapper
+          .get('[data-test="execution-confirmed-at"]')
+          .attributes('datetime'),
+      ).toBe('2026-10-12T02:00:00.000Z');
+      expect(wrapper.text()).toContain(file.originalFilename);
+      expect(api.confirmCaseExecution).not.toHaveBeenCalled();
+      wrapper.unmount();
+    },
+  );
   it('confirms the current whole submission once and shows immutable files after refresh', async () => {
     const wrapper = mountPanel();
     expect(wrapper.text()).toContain(file.originalFilename);

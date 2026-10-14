@@ -164,6 +164,8 @@
 
 ### Current Slice
 
+**CORE-UI-002后续展示小修复｜全前端“当前”语义盘查及最小修正进行中，原批已交付。** 独占codex/ui002-record-label-followup，从eccd28e干净基线恢复；不新建并行业务Worker。盘查及修复边界见project-status和UI002合同；新候选按展示风险完成定向回归、check:fast与必要只读浏览器，旧14项及完整verify不冒称覆盖新前端。CA018仍只读暂停。
+
 **CORE-UI-002｜案件工作页三页签、八栏折叠／合法编辑入口与紧凑密度；已组合验收并原子交付main与任务分支。**
 
 基线main696fad75；I复用ca015-integration／codex/ui002-case-workspace-integration。全部实现Worker已停写接纳，八栏／生命周期分段、字段和值布局、内容分组导航、动作语义、drawer样式和SPA原意图恢复均已通过独立累计审查及真实验收。稳定源码／测试候选`648faa1da8a625a7d450a8d999ab7e292deaa446`；完整verify实际441候选80／1779／1451及双构建，17组工程输入限定复用，根静态及最终14项PG／Chromium同候选通过。详细证据及失败记录只见[VALIDATION](spec/v0.1/VALIDATION.md#ui002八栏与抽屉最终组合验收2026-10-14)，业务／呈现合同只见[UI002合同](superpowers/specs/2026-10-14-case-workspace-ui-contract.md)。

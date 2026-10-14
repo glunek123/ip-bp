@@ -155,6 +155,34 @@ const file: CaseFile = {
 const recordedAt = '2026-10-02T00:00:00Z';
 
 describe('case workspace read model', () => {
+  it.each([
+    ['ARCHIVED', '已归档'],
+    ['WAITING_ARCHIVE', '待归档'],
+    ['EXECUTING', '强制执行中'],
+    ['WAITING_EXECUTION_FILING', '待申请执行'],
+    ['WAITING_HEARING', '待开庭'],
+    ['SECOND_INSTANCE', '二审'],
+    ['PENDING_MATCH', '待匹配'],
+  ] as const)(
+    'uses the real %s stage without inventing current-step facts for missing information',
+    (stage, label) => {
+      const item = caseFixture();
+      item.stage = stage;
+      const sections = buildCaseWorkspaceSections(item, null, 'idle');
+      expect(sections[0]?.groups[0]?.fields).toContainEqual({
+        label: '当前阶段',
+        value: label,
+      });
+      expect(
+        sections
+          .flatMap((section) => section.groups)
+          .map((group) => group.title)
+          .join(' '),
+      ).not.toContain('（当前）');
+      expect(sections[5]?.groups).toEqual([]);
+      expect(sections[5]?.message).toBe('尚未登记相关资料');
+    },
+  );
   it.each(['CHANGE', 'AFFIRM'] as const)(
     'projects a current %s result amount while omitting unreturned audit fields',
     (result) => {
@@ -202,7 +230,7 @@ describe('case workspace read model', () => {
           ?.fields.map((field) => field.label),
       ).not.toContain('记录人');
       const sections = buildCaseWorkspaceSections(item, null, 'idle');
-      expect(JSON.stringify(sections[4])).toContain('二审结果登记（当前）');
+      expect(JSON.stringify(sections[4])).toContain('二审结果登记');
       expect(JSON.stringify(sections[3])).not.toContain('二审结果登记');
     },
   );
@@ -398,7 +426,7 @@ describe('case workspace read model', () => {
       events.find((value) => value.source === 'complaint-confirmation')?.fields,
     ).toContainEqual({ label: '确认诉请金额', value: '待确认' });
     const section = buildCaseWorkspaceSections(item, null, 'idle')[2]!;
-    expect(JSON.stringify(section)).toContain('初审轮次 · round-1');
+    expect(JSON.stringify(section)).toContain('初次一审');
     expect(JSON.stringify(section)).not.toContain('发回重审');
     item.secondInstance.rounds[0]!.sourceResultId = 'remand-result';
     expect(
@@ -517,13 +545,13 @@ describe('case workspace read model', () => {
       },
     ];
     const sections = buildCaseWorkspaceSections(item, null, 'idle');
-    expect(JSON.stringify(sections[4])).toContain('判决更正（当前）');
+    expect(JSON.stringify(sections[4])).toContain('判决更正');
     expect(JSON.stringify(sections[4])).toContain('判决登记（历史）');
     expect(JSON.stringify(sections[4])).toContain('选择撤销原因');
     expect(JSON.stringify(sections[4])).toContain('不适用（发回重审）');
     expect(JSON.stringify(sections[4])).toContain('已撤销');
     expect(JSON.stringify(sections[4])).toContain('结果撤销原因');
-    expect(JSON.stringify(sections[2])).toContain('发回重审第 2 轮 · round-2');
+    expect(JSON.stringify(sections[2])).toContain('发回重审第 2 轮');
     expect(JSON.stringify(sections[2])).toContain(
       '尚未返回本轮正式立案或开庭资料',
     );
@@ -599,16 +627,14 @@ describe('case workspace read model', () => {
     const sections = buildCaseWorkspaceSections(item, null, 'idle');
     const firstInstance = JSON.stringify(sections[2]);
     const judgment = JSON.stringify(sections[4]);
-    expect(firstInstance).toContain('初审轮次 · round-1');
+    expect(firstInstance).toContain('初次一审');
     expect(firstInstance).toContain('正式立案日期');
     expect(firstInstance).toContain('初审案号');
     expect(firstInstance).toContain('开庭日期');
-    expect(firstInstance).toContain(
-      '发回重审第 2 轮 · round-2 · 来源二审结果 result-1',
-    );
+    expect(firstInstance).toContain('发回重审第 2 轮');
     expect(firstInstance).toContain('重审案号');
     expect(firstInstance).toContain('2026-06-10');
-    expect(judgment).toContain('发回重审第 2 轮 · round-2');
+    expect(judgment).toContain('发回重审第 2 轮');
     expect(judgment).toContain('2026-07-10');
   });
 
@@ -731,6 +757,28 @@ describe('case workspace read model', () => {
     });
     const sections = buildCaseWorkspaceSections(item, null, 'idle');
     expect(JSON.stringify(sections[5])).not.toContain('结案更正原因');
+    expect(
+      sections[5]?.groups
+        .filter((group) => !group.historical)
+        .map((group) => group.title)
+        .sort(),
+    ).toEqual(
+      [
+        '执行材料重新提交',
+        '执行材料确认',
+        '执行材料邮寄',
+        '执行立案',
+        '执行结束',
+      ].sort(),
+    );
+    expect(
+      sections[5]?.groups.some(
+        (group) => group.title === '执行材料提交（历史）',
+      ),
+    ).toBe(true);
+    expect(
+      sections[5]?.groups.map((group) => group.title).join(' '),
+    ).not.toContain('（当前）');
     expect(JSON.stringify(sections[6])).toContain('结案更正原因');
     expect(JSON.stringify(sections[6])).toContain('案件实收');
     expect(JSON.stringify(sections[6])).toContain('尚未接入案件级实收来源');

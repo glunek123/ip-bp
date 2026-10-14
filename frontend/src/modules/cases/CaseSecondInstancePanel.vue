@@ -902,9 +902,7 @@ function money(state: 'KNOWN' | 'PENDING', amount: string | null): string {
 }
 function roundLabel(round: (typeof roundHistory.value)[number]): string {
   if (round.revokedAt) return '第' + round.sequence + '轮办理（已撤销）';
-  return round.id === currentRoundId.value
-    ? '第' + round.sequence + '轮办理（当前）'
-    : '第' + round.sequence + '轮办理';
+  return '第' + round.sequence + '轮办理';
 }
 </script>
 

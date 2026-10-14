@@ -8,6 +8,8 @@ export type WorkspaceField = {
   value: string;
   help?: string;
   wide?: boolean;
+  technical?: boolean;
+  versionId?: string;
 };
 export type WorkspaceGroup = {
   id: string;
@@ -137,6 +139,7 @@ function field(
     value: value ?? '未登记',
     ...(help ? { help } : {}),
     ...(wide ? { wide: true } : {}),
+    ...(/标识$/u.test(label) ? { technical: true } : {}),
   };
 }
 function date(label: string, value: string | null): WorkspaceField {
@@ -154,12 +157,13 @@ function money(
 }
 function files(label: string, items: readonly CaseFile[]): WorkspaceField[] {
   if (items.length === 0) return [field(label, null)];
-  return items.map((item) =>
-    field(label, item.originalFilename, `文件版本：${item.contentVersionId}`),
-  );
+  return items.map((item) => ({
+    ...field(label, item.originalFilename),
+    versionId: item.contentVersionId,
+  }));
 }
 function actor(id: string | undefined): WorkspaceField[] {
-  return id ? [field('记录人', id, '返回的是用户标识，未返回姓名')] : [];
+  return id ? [{ ...field('记录人标识', id), technical: true }] : [];
 }
 function uniqueById<T extends { id: string }>(
   history: readonly T[],
@@ -168,6 +172,14 @@ function uniqueById<T extends { id: string }>(
   const values = new Map(history.map((entry) => [entry.id, entry]));
   if (current) values.set(current.id, current);
   return [...values.values()];
+}
+
+function trialRoundName(item: CaseDetail, trialRoundId: string): string {
+  const round = item.secondInstance.rounds.find(
+    (value) => value.id === trialRoundId,
+  );
+  if (round?.sourceResultId) return `发回重审第 ${round.sequence} 轮`;
+  return round ? '初次一审' : '未能匹配审理轮次';
 }
 
 // Only CaseDetail facts feed this view. No audit mutation, API reads or clock fallback.
@@ -181,7 +193,20 @@ export function buildCaseWorkspaceEvents(item: CaseDetail): WorkspaceEvent[] {
     recordedAt: string | null,
     fields: WorkspaceField[] = [],
   ): void {
-    events.push({ source, id, title, businessAt, recordedAt, fields });
+    const round = fields.find((value) => value.label === '审理轮次标识');
+    events.push({
+      source,
+      id,
+      title,
+      businessAt,
+      recordedAt,
+      fields: [
+        ...(round && round.value !== '未登记'
+          ? [field('审理轮次', trialRoundName(item, round.value))]
+          : []),
+        ...fields,
+      ],
+    });
   }
   add('case', item.id, '案件创建', null, item.createdAt);
   if (item.matchedAt !== null || item.matchedOn !== null)
@@ -528,7 +553,7 @@ export function buildCaseWorkspaceEvents(item: CaseDetail): WorkspaceEvent[] {
   });
 }
 
-function eventGroup(event: WorkspaceEvent, current: boolean): WorkspaceGroup {
+function eventGroup(event: WorkspaceEvent, latest: boolean): WorkspaceGroup {
   const primaryJudgmentLabels = new Set(['判决金额', '已缴诉讼费']);
   const businessDateLabels: Record<string, string> = {
     filing: '法院提交日期',
@@ -563,9 +588,9 @@ function eventGroup(event: WorkspaceEvent, current: boolean): WorkspaceGroup {
   ];
   return {
     id: `${event.source}:${event.id}`,
-    title: `${event.title}${current ? '（当前）' : '（历史）'}`,
+    title: `${event.title}${latest ? '' : '（历史）'}`,
     fields,
-    ...(!current ? { historical: true } : {}),
+    ...(!latest ? { historical: true } : {}),
   };
 }
 
@@ -593,7 +618,7 @@ export function buildCaseWorkspaceSections(
         (groups.length || key === 'timeline' ? null : '尚未登记相关资料'),
     });
   }
-  const currentIds = new Set([
+  const latestRecordIds = new Set([
     item.acceptance?.id,
     item.hearing.currentArrangement?.id,
     item.hearing.currentAdvance?.id,
@@ -615,7 +640,7 @@ export function buildCaseWorkspaceSections(
       .map((event) =>
         eventGroup(
           event,
-          currentIds.has(event.id) ||
+          latestRecordIds.has(event.id) ||
             [
               'complaint',
               'complaint-confirmation',
@@ -626,14 +651,7 @@ export function buildCaseWorkspaceSections(
       );
   }
   function roundTitle(trialRoundId: string): string {
-    const round = item.secondInstance.rounds.find(
-      (value) => value.id === trialRoundId,
-    );
-    if (round?.sourceResultId)
-      return `发回重审第 ${round.sequence} 轮 · ${round.id}${round.sourceResultId ? ` · 来源二审结果 ${round.sourceResultId}` : ''}`;
-    return round
-      ? `初审轮次 · ${trialRoundId}`
-      : `未能匹配审理轮次 · ${trialRoundId}`;
+    return trialRoundName(item, trialRoundId);
   }
   function eventRoundId(event: WorkspaceEvent): string | null {
     const direct = event.fields.find(
@@ -832,7 +850,7 @@ export function buildCaseWorkspaceSections(
       ...firstInstanceEvents
         .filter((event) => eventRoundId(event) === trialRoundId)
         .map((event) => {
-          const group = eventGroup(event, currentIds.has(event.id));
+          const group = eventGroup(event, latestRecordIds.has(event.id));
           return {
             ...group,
             id: `first-instance-round:${trialRoundId}:${event.id}`,
@@ -848,6 +866,7 @@ export function buildCaseWorkspaceSections(
       title: roundTitle(round.id),
       fields: [
         field('本轮资料', '尚未返回本轮正式立案或开庭资料'),
+        field('轮次标识', round.id),
         field('来源二审结果标识', round.sourceResultId),
         date('轮次撤销时间', round.revokedAt),
       ],
@@ -861,14 +880,14 @@ export function buildCaseWorkspaceSections(
   )
     firstInstanceGroups.push({
       id: 'acceptance-files',
-      title: '当前立案材料池',
+      title: '立案材料',
       fields: acceptanceFiles,
     });
   section(
     'first-instance',
     '一审信息',
     firstInstanceGroups,
-    '显示真实提交、正式立案及各审理轮次开庭事实。正式立案日／案号按实际轮次归属；第一审开庭地点、法官及预缴金额当前没有独立来源。',
+    '按审理轮次查看已登记的立案及开庭资料。未登记的内容保持空缺。',
   );
   section(
     'second-instance',
@@ -885,7 +904,7 @@ export function buildCaseWorkspaceSections(
       })),
       ...groups(['second-progress']),
     ],
-    '展示真实二审进展、开庭日期／地点／法官、文书及送达材料；二审正式立案日期和案号没有独立来源。历史记录只读。',
+    '查看二审进展、开庭及文书资料；二审正式立案日期和案号暂未提供。历史记录只读。',
   );
   const judgmentEvents = events.filter((event) =>
     ['judgment', 'second-result', 'second-revocation'].includes(event.source),
@@ -906,7 +925,7 @@ export function buildCaseWorkspaceSections(
     [
       {
         id: 'judgment-state',
-        title: '当前有效判决',
+        title: '有效判决',
         fields: [
           field('登记状态', item.judgment.current ? '已登记' : '未登记'),
         ],
@@ -916,7 +935,7 @@ export function buildCaseWorkspaceSections(
         judgmentEvents
           .filter((event) => eventRoundId(event) === trialRoundId)
           .map((event) => {
-            const group = eventGroup(event, currentIds.has(event.id));
+            const group = eventGroup(event, latestRecordIds.has(event.id));
             return {
               ...group,
               id: `judgment-round:${trialRoundId}:${event.id}`,
@@ -942,7 +961,7 @@ export function buildCaseWorkspaceSections(
       'execution-filing',
       'execution-finish',
     ]),
-    '显示执行提交、确认、邮寄、申请提交凭证及结束事实。正式执行立案日期／案号没有独立来源，不以提交日期代替。',
+    '查看已登记的执行资料。执行立案日期及案号暂未提供。',
   );
   const closureGroups = [
     ...(item.closure

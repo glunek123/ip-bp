@@ -95,6 +95,50 @@ function caseFixture(): CaseDetail {
   };
 }
 
+function executionFixture(): CaseDetail {
+  const item = caseFixture();
+  const roundId = '11111111-1111-4111-8111-111111111111';
+  const recordedAt = '2026-10-02T00:00:00Z';
+  const file = {
+    materialId: 'material-1',
+    contentVersionId: '22222222-2222-4222-8222-222222222222',
+    originalFilename: '执行材料.pdf',
+    mimeType: 'application/pdf',
+  };
+  item.stage = 'WAITING_EXECUTION_FILING';
+  item.secondInstance.rounds = [
+    { id: roundId, sequence: 1, sourceResultId: null, revokedAt: null },
+  ];
+  item.executionSubmission.current = {
+    id: 'submission-1',
+    trialRoundId: roundId,
+    judgmentNextStepId: 'choice-1',
+    secondInstanceResultId: null,
+    priorSubmissionId: null,
+    changeReason: null,
+    fromVersion: 1,
+    toVersion: 2,
+    submittedAt: recordedAt,
+    files: [{ ...file, uploadedAt: recordedAt }],
+  };
+  item.executionSubmission.submissions = [item.executionSubmission.current];
+  item.executionConfirmation = {
+    id: 'confirmation-1',
+    submissionId: 'submission-1',
+    confirmedAt: '2026-10-02T01:00:00Z',
+    confirmedByUserId: 'user-1',
+    files: item.executionSubmission.current.files,
+  };
+  item.executionMailing = {
+    id: 'mailing-1',
+    confirmationId: 'confirmation-1',
+    mailedAt: '2026-10-01',
+    recordedAt: '2026-10-02T02:00:00Z',
+    files: [file],
+  };
+  return item;
+}
+
 const keys: SectionKey[] = [
   'case-info',
   'lead-info',
@@ -140,6 +184,65 @@ function mountSections() {
 }
 
 describe('CaseDetailsSections with the real A2 section shell', () => {
+  it('keeps selected groups distinct from real stage and puts technical IDs behind explicit details', async () => {
+    const wrapper = mountSections();
+    const item = executionFixture();
+    await wrapper.setProps({ item });
+    const section = wrapper.get('[data-section="execution"]');
+    await section.get('.case-workspace-section__toggle').trigger('click');
+    const buttons = section.findAll('.case-workspace-group-nav button');
+    expect(buttons.map((button) => button.text())).toEqual([
+      '执行材料提交',
+      '执行材料确认',
+      '执行材料邮寄',
+    ]);
+    expect(buttons.map((button) => button.attributes('aria-pressed'))).toEqual([
+      'true',
+      'false',
+      'false',
+    ]);
+    const group = section
+      .findAll('.case-workspace-group')
+      .find((value) => value.isVisible())!;
+    expect(group.get('h3').text()).toBe('执行材料提交');
+    expect(group.text()).toContain('初次一审');
+    const technical = group.get('[data-test="workspace-technical-details"]');
+    expect(technical.attributes('open')).toBeUndefined();
+    expect(technical.get('dd').text()).toBe(
+      '11111111-1111-4111-8111-111111111111',
+    );
+    expect(technical.get('dd').isVisible()).toBe(false);
+    const version = group.get('[data-test="workspace-file-version"]');
+    expect(version.attributes('open')).toBeUndefined();
+    expect(version.get('p').isVisible()).toBe(false);
+    expect(version.get('p').text()).toContain(
+      '22222222-2222-4222-8222-222222222222',
+    );
+    technical.element.setAttribute('open', '');
+    version.element.setAttribute('open', '');
+    expect(technical.get('dd').isVisible()).toBe(true);
+    expect(version.get('p').isVisible()).toBe(true);
+    expect(
+      section.get('[data-test="workspace-section-note"] p').isVisible(),
+    ).toBe(false);
+    await buttons[2]!.trigger('click');
+    expect(buttons.map((button) => button.attributes('aria-pressed'))).toEqual([
+      'false',
+      'false',
+      'true',
+    ]);
+    await wrapper.setProps({
+      item: { ...item, stage: 'ARCHIVED', version: 3 },
+    });
+    expect(buttons[2]!.attributes('aria-pressed')).toBe('true');
+    expect(wrapper.get('[data-section="case-info"]').text()).toContain(
+      '已归档',
+    );
+    expect(buttons.map((button) => button.text()).join(' ')).not.toContain(
+      '（当前）',
+    );
+    expect(wrapper.emitted('edit')).toBeUndefined();
+  });
   it('shows one selected information group, retains it on refresh and resets it on identity changes', async () => {
     const wrapper = mountSections();
     const section = wrapper.get('[data-section="case-info"]');

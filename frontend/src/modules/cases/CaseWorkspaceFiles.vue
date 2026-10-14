@@ -66,7 +66,7 @@ const rows = computed(() => {
   add(item.complaintMailing?.receiptFiles ?? [], '诉状邮寄回执');
   add(item.filingSubmission?.evidenceFiles ?? [], '立案证据');
   add(item.filingSubmission?.screenshotFiles ?? [], '立案截图');
-  add(item.acceptance?.files ?? [], '当前受理材料');
+  add(item.acceptance?.files ?? [], '受理材料');
   for (const entry of item.acceptances)
     add(entry.files, `受理历史 ${entry.id}`);
   for (const [category, group] of Object.entries(item.acceptanceMaterials)) {
@@ -74,21 +74,21 @@ const rows = computed(() => {
     add(group.frozen, `${category} 冻结材料`);
     add(group.later, `${category} 后续材料`);
   }
-  add(item.judgment.current?.files ?? [], '当前一审判决');
+  add(item.judgment.current?.files ?? [], '一审判决');
   for (const entry of item.judgment.history)
     add(entry.files, `一审判决历史 ${entry.id}`);
   add(item.judgment.availableFiles, '可用判决材料');
   const second = item.secondInstance;
-  add(second.currentProgress?.documentFiles ?? [], '当前二审文书');
-  add(second.currentProgress?.serviceFiles ?? [], '当前二审送达材料');
+  add(second.currentProgress?.documentFiles ?? [], '二审文书');
+  add(second.currentProgress?.serviceFiles ?? [], '二审送达材料');
   for (const entry of second.progresses) {
     add(entry.documentFiles, `二审文书历史 ${entry.id}`);
     add(entry.serviceFiles, `二审送达历史 ${entry.id}`);
   }
-  add(second.currentResult?.files ?? [], '当前二审裁判');
+  add(second.currentResult?.files ?? [], '二审裁判');
   for (const entry of second.results)
     add(entry.files, `二审裁判历史 ${entry.id}`);
-  add(item.executionSubmission.current?.files ?? [], '当前执行申请');
+  add(item.executionSubmission.current?.files ?? [], '执行申请');
   for (const entry of item.executionSubmission.submissions)
     add(entry.files, `执行申请历史 ${entry.id}`);
   add(item.executionSubmission.availableFiles, '可用执行材料');
@@ -96,7 +96,7 @@ const rows = computed(() => {
   add(item.executionMailing?.files ?? [], '执行邮寄回执');
   add(item.executionFiling?.files ?? [], '执行立案凭证');
   add(item.executionFinish?.files ?? [], '执行结束依据');
-  add(item.closure?.current.files ?? [], '当前结案材料');
+  add(item.closure?.current.files ?? [], '结案材料');
   for (const entry of item.closure?.history ?? [])
     add(entry.files, `结案历史 ${entry.id}`);
   for (const material of pool.value) {
@@ -326,11 +326,17 @@ async function download(row: FileRow): Promise<void> {
           row.originalFilename
         }}</span>
         <p class="case-workspace-field__help">
-          {{ row.mimeType }} · 精确版本：{{ row.contentVersionId }}
+          {{ row.mimeType }}
         </p>
-        <p class="case-workspace-field__help">
-          来源：{{ row.sources.join('；') }}
-        </p>
+        <details
+          class="case-workspace-field__help"
+          data-test="workspace-file-details"
+        >
+          <summary>来源与版本详情</summary>
+          <p>来源：{{ row.sources.join('；') }}</p>
+          <p>材料标识：{{ row.materialId }}</p>
+          <p>版本标识：{{ row.contentVersionId }}</p>
+        </details>
         <ElButton
           :loading="downloading.has(row.key)"
           :disabled="downloading.has(row.key)"

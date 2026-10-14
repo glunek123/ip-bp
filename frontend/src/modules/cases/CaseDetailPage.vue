@@ -1557,7 +1557,7 @@ async function submitComplaintMaterials() {
     if (!isCurrentOperation(context)) return;
     item.value = fresh;
     if (fresh.stage === 'WAITING_COMPLAINT_CONFIRMATION' && fresh.complaint) {
-      complaintSuccess.value = '起诉材料已确认提交，当前阶段为诉状待确认。';
+      complaintSuccess.value = '起诉材料已确认提交，提交完成时为诉状待确认。';
       complaintUnknown.value = null;
       openedCommands.value.delete('complaint');
       openedCommandEntries.value.delete('complaint');
@@ -1662,7 +1662,7 @@ async function submitMatch() {
       fresh.matchedAt !== null &&
       fresh.matchedOn === input.matchedOn
     ) {
-      matchSuccess.value = '案件匹配已完成，当前阶段为待写诉状。';
+      matchSuccess.value = '案件匹配已完成，匹配完成时为待写诉状。';
       matchUnknown.value = null;
       openedCommands.value.delete('match');
       openedCommandEntries.value.delete('match');

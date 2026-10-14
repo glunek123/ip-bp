@@ -267,7 +267,7 @@ async function register(input: RegisterCaseAcceptanceInput): Promise<void> {
     );
     if (!isCurrent(context)) return;
     unknownRequest.value = null;
-    success.value = '正式立案登记已完成，案件当前阶段为待开庭。';
+    success.value = '正式立案登记已完成，登记完成时进入待开庭。';
     requestFingerprint = '';
     requestKey = '';
     notifyWorkflowChanged();

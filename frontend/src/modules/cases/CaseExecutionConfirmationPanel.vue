@@ -223,7 +223,7 @@ onBeforeUnmount(() => {
   >
     <h2 class="form-section-title">执行材料确认</h2>
     <p v-if="!accessDenied && confirmed" role="status">
-      已确认本次提交的整套执行材料，当前阶段：待盖章。确认时间：
+      已确认本次提交的整套执行材料。确认时间：
       <time
         data-test="execution-confirmed-at"
         :datetime="confirmed.confirmedAt"
