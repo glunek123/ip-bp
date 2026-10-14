@@ -3,6 +3,7 @@ import { createHash, randomUUID } from 'node:crypto';
 import { AccessControlService } from '../../access-control/access-control.service';
 import { ActorContext } from '../../access-control/actor-context';
 import { DatabaseService } from '../../database/database.service';
+import { CustomerCaseEntrySourceService } from '../customers';
 import { Prisma } from '../../generated/prisma/client';
 import { CaseStage, InfringementType, LeadCaseType, LeadPlatform } from '../../generated/prisma/enums';
 import { CreateCaseExternalEntryDto, CreateCaseExternalEntryResultDto } from './case-external-entry.dto';
@@ -14,7 +15,7 @@ const knownKeys = ['courtId', 'courtCaseNo', 'acceptedOn', 'secondInstanceAccept
 
 @Injectable()
 export class CaseExternalEntryService {
-  constructor(private readonly database: DatabaseService, private readonly access: AccessControlService) {}
+  constructor(private readonly database: DatabaseService, private readonly access: AccessControlService, private readonly customerSource: CustomerCaseEntrySourceService) {}
 
   private invalid(): BadRequestException { return new BadRequestException({code:'VALIDATION_ERROR',message:'Invalid external case entry'}); }
   private forbidden(): ForbiddenException { return new ForbiddenException({code:'FORBIDDEN',message:'External case entry unavailable'}); }
@@ -46,7 +47,8 @@ export class CaseExternalEntryService {
     const known = input.known;
     if (known === null || typeof known !== 'object' || JSON.stringify(Object.keys(known).sort()) !== JSON.stringify([...knownKeys].sort())) throw this.invalid();
     if (!this.date(input.stageReachedOn) || !stages.includes(input.initialStage) || !['EXTERNAL_TRANSFER','HISTORICAL_BACKFILL'].includes(input.entryKind)) throw this.invalid();
-    for (const value of [input.idempotencyKey,input.source,input.reason]) if (typeof value !== 'string' || value.trim() !== value || value.length < 1 || value.length > (value === input.idempotencyKey ? 128 : 500)) throw this.invalid();
+    if (typeof input.idempotencyKey !== 'string' || input.idempotencyKey.length < 1 || input.idempotencyKey.length > 128) throw this.invalid();
+    for (const value of [input.source,input.reason]) if (typeof value !== 'string' || value.trim() !== value || value.length < 1 || value.length > 500) throw this.invalid();
     if (!uuid.test(input.customerId) || !uuid.test(input.rightsHolderId)) throw this.invalid();
     if ((input.lawyerAccountId === null) !== (input.lawyerProfileId === null) || (input.lawyerAccountId !== null && (!uuid.test(input.lawyerAccountId) || !uuid.test(input.lawyerProfileId!)))) throw this.invalid();
     if (!Array.isArray(input.defendants) || input.defendants.length > 20 || (input.initialStage === 'PENDING_MATCH' && (input.defendants.length !== 0 || input.lawyerAccountId !== null))) throw this.invalid();
@@ -54,13 +56,13 @@ export class CaseExternalEntryService {
       if (part === null || !['PERSON','ORGANIZATION'].includes(part.kind) || typeof part.name !== 'string' || part.name.trim() !== part.name || part.name.length < 1 || part.name.length > 200 || Object.keys(part).some((key) => !['kind','name','idNo','phone','address'].includes(key))) throw this.invalid();
       for (const [value,max] of [[part.idNo,100],[part.phone,100],[part.address,500]] as const) if (value !== undefined && (typeof value !== 'string' || value.trim() !== value || value.length < 1 || value.length > max)) throw this.invalid();
     }
-    if (known.courtId !== null && !uuid.test(known.courtId)) throw this.invalid();
-    if (known.courtCaseNo !== null && (known.courtCaseNo.trim() !== known.courtCaseNo || known.courtCaseNo.length < 1 || known.courtCaseNo.length > 100)) throw this.invalid();
+    if (known.courtId !== null && (typeof known.courtId !== 'string' || !uuid.test(known.courtId))) throw this.invalid();
+    if (known.courtCaseNo !== null && (typeof known.courtCaseNo !== 'string' || known.courtCaseNo.trim() !== known.courtCaseNo || known.courtCaseNo.length < 1 || known.courtCaseNo.length > 100)) throw this.invalid();
     if ((known.acceptedOn !== null && !this.date(known.acceptedOn)) || (known.secondInstanceAcceptedOn !== null && !this.date(known.secondInstanceAcceptedOn))) throw this.invalid();
     if (known.acceptedOn !== null && known.acceptedOn > input.stageReachedOn || known.secondInstanceAcceptedOn !== null && known.secondInstanceAcceptedOn > input.stageReachedOn) throw this.invalid();
-    if (known.platform !== null && !Object.values(LeadPlatform).includes(known.platform)) throw this.invalid();
-    if (known.caseType !== null && !Object.values(LeadCaseType).includes(known.caseType)) throw this.invalid();
-    for (const [value,max] of [[known.shopName,200],[known.shopExternalId,100]] as const) if (value !== null && (value.trim() !== value || value.length < 1 || value.length > max)) throw this.invalid();
+    if (known.platform !== null && (typeof known.platform !== 'string' || !Object.values(LeadPlatform).includes(known.platform))) throw this.invalid();
+    if (known.caseType !== null && (typeof known.caseType !== 'string' || !Object.values(LeadCaseType).includes(known.caseType))) throw this.invalid();
+    for (const [value,max] of [[known.shopName,200],[known.shopExternalId,100]] as const) if (value !== null && (typeof value !== 'string' || value.trim() !== value || value.length < 1 || value.length > max)) throw this.invalid();
     if (known.infringementTypes !== null && (!Array.isArray(known.infringementTypes) || known.infringementTypes.length < 1 || known.infringementTypes.length > 12 || new Set(known.infringementTypes).size !== known.infringementTypes.length || known.infringementTypes.some((value) => !Object.values(InfringementType).includes(value)))) throw this.invalid();
     return {
       idempotencyKey:input.idempotencyKey,entryKind:input.entryKind,initialStage:input.initialStage,stageReachedOn:input.stageReachedOn,
@@ -78,11 +80,11 @@ export class CaseExternalEntryService {
       this.access.canAuthorizeCase(actor,'case.external-entry.archive',facts),
     ]);
     const [customers,lawyers,courts] = canCreate ? await Promise.all([
-      this.access.tryBuildCustomerScope(actor,'customer.read').then((scope) => scope === null ? [] : this.database.customer.findMany({where:{...scope,departmentId:actor.departmentId,profileStatus:'ADMITTED',deletedAt:null},select:{id:true,name:true,rightsHolderLinks:{select:{rightsHolder:{select:{id:true,name:true}}}}},orderBy:{name:'asc'},take:500})),
+      this.access.tryBuildCustomerScope(actor,'customer.read').then((scope) => scope === null ? [] : this.customerSource.list(actor)),
       this.database.lawyerAccountBinding.findMany({where:{departmentId:actor.departmentId,active:true,user:{active:true,accountType:'LAWYER',localCredential:{isNot:null}}},select:{userId:true,profileId:true,profile:{select:{fullName:true,lawFirm:true}}},orderBy:[{createdAt:'asc'},{id:'asc'}],take:500}),
       this.database.filingCourt.findMany({where:{departmentId:actor.departmentId},select:{id:true,name:true},orderBy:{name:'asc'},take:500}),
     ]) : [[],[],[]];
-    return {canCreate,canCreateArchived:canCreate && canCreateArchived,currentUser:{id:account.id,displayName:account.displayName},customers:customers.map((customer) => ({id:customer.id,name:customer.name,rightsHolders:customer.rightsHolderLinks.map((link) => link.rightsHolder)})),lawyers:lawyers.map((binding) => ({accountId:binding.userId,profileId:binding.profileId,fullName:binding.profile.fullName,firm:binding.profile.lawFirm})),dictionaries:{stages:stages.map((value) => ({value,label:value})),courts,platforms:Object.values(LeadPlatform).map((value) => ({value,label:value})),caseTypes:Object.values(LeadCaseType).map((value) => ({value,label:value})),infringementTypes:Object.values(InfringementType).map((value) => ({value,label:value}))}};
+    return {canCreate,canCreateArchived:canCreate && canCreateArchived,currentUser:{id:account.id,displayName:account.displayName},customers,lawyers:lawyers.map((binding) => ({accountId:binding.userId,profileId:binding.profileId,fullName:binding.profile.fullName,firm:binding.profile.lawFirm})),dictionaries:{stages:stages.map((value) => ({value,label:value})),courts,platforms:Object.values(LeadPlatform).map((value) => ({value,label:value})),caseTypes:Object.values(LeadCaseType).map((value) => ({value,label:value})),infringementTypes:Object.values(InfringementType).map((value) => ({value,label:value}))}};
   }
   async create(actor: ActorContext, raw: CreateCaseExternalEntryDto): Promise<CreateCaseExternalEntryResultDto> {
     const input = this.normalize(raw);
@@ -100,9 +102,7 @@ export class CaseExternalEntryService {
           if (snapshot.id !== prior.caseId || typeof snapshot.entryId !== 'string' || typeof snapshot.businessNo !== 'string' || !stages.includes(snapshot.stage!) || snapshot.version !== 1 || typeof snapshot.recordedAt !== 'string') throw this.conflict();
           return snapshot as CreateCaseExternalEntryResultDto;
         }
-        const customerScope = await this.access.buildCustomerScope(actor,'customer.read',tx);
-        const customer = await tx.customer.findFirst({where:{...customerScope,id:input.customerId,departmentId:actor.departmentId,profileStatus:'ADMITTED',deletedAt:null,rightsHolderLinks:{some:{rightsHolderId:input.rightsHolderId,departmentId:actor.departmentId}}},select:{id:true}});
-        if (customer === null) throw this.forbidden();
+        await this.customerSource.assertEligible(tx,actor,input.customerId,input.rightsHolderId);
         if (input.known.courtId !== null && await tx.filingCourt.count({where:{id:input.known.courtId,departmentId:actor.departmentId}}) !== 1) throw this.invalid();
         if (input.lawyerAccountId !== null) {
           const binding = await tx.lawyerAccountBinding.findFirst({where:{userId:input.lawyerAccountId,profileId:input.lawyerProfileId!,departmentId:actor.departmentId,active:true,user:{accountType:'LAWYER',active:true,localCredential:{isNot:null}}},select:{id:true}});

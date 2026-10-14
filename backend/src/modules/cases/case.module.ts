@@ -7,6 +7,7 @@ import { Module } from '@nestjs/common';
 import { AccessControlModule } from '../../access-control/access-control.module';
 import { AuthModule } from '../../auth/auth.module';
 import { DatabaseModule } from '../../database/database.module';
+import { CustomerModule } from '../customers';
 import { MaterialModule } from '../materials';
 import { CaseCreationService } from './case-creation.service';
 import { CaseExternalEntryService } from './case-external-entry.service';
@@ -43,7 +44,7 @@ import {
 import { LawyerCaseController } from './lawyer-case.controller';
 
 @Module({
-  imports: [AccessControlModule, AuthModule, DatabaseModule, MaterialModule],
+  imports: [AccessControlModule, AuthModule, DatabaseModule, CustomerModule, MaterialModule],
   controllers: [
     CaseReadController,
     ClientCaseController,
