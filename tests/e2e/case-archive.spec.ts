@@ -246,6 +246,7 @@ test('normal operator archives pending amount and unknown closure date, appends 
     '待定',
   );
   await expect(page.locator('[data-test="closure-correct"]')).toHaveCount(0);
+  await panel.locator('summary').first().click();
   await panel.locator('[data-test="archive-correct"]').click();
   await panel
     .locator('[data-test="archive-type"]')
@@ -299,6 +300,7 @@ test('normal operator archives pending amount and unknown closure date, appends 
   );
   const directory = resolve('.local/ca017-evidence/browser-artifacts');
   mkdirSync(directory, { recursive: true });
+  await panel.locator('summary').first().click();
   for (const [width, height] of [
     [1440, 900],
     [1024, 768],
@@ -538,7 +540,7 @@ test('lost archive success retains the original body through refresh and SPA rem
   await panel.locator('[data-test="archive-refresh"]').click();
   await expect(panel.locator('[data-test="archive-retry"]')).toBeVisible();
   expect(requests).toHaveLength(1);
-  await page.getByRole('link', { name: '日历', exact: true }).click();
+  await page.locator('[data-test="calendar-nav"]').click();
   await expect(page.locator('[data-test="archive-panel"]')).toHaveCount(0);
   await page.goBack();
   await expect(page).toHaveURL(new RegExp(`/cases/${source.caseId}$`, 'u'));

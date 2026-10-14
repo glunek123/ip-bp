@@ -1,6 +1,6 @@
 {
   "version": 1,
-  "recordedAt": "2026-10-14T02:29:37.272Z",
+  "recordedAt": "2026-10-14T02:35:08.470Z",
   "files": {
     ".cursor/rules/verified-feature-integration.mdc": "da673301f0440a6a9615786027dffc8e01f739a97f81cd97accef1580ac51f98",
     ".env.example": "07211cde5c2b59efc21b619b752d4c9b871f0980d2d64ca3c146ad6151fd27ca",
@@ -903,7 +903,7 @@
     "tests/e2e/case-acceptance.spec.ts": "e4a15e5fa4fd86bca45404a914114ef9b805a80a22e50e1a2b9159c37ae14389",
     "tests/e2e/case-archive-database.spec.ts": "8ab4e4438be5e6f7c40c17a38ab3316292b861f5127e1a0cba6ab2cd64044ad1",
     "tests/e2e/case-archive-migration.spec.ts": "7b954a6ba752a5f5441bbb779f215f4eba6c96e02657bbd01bb69f14b53342d8",
-    "tests/e2e/case-archive.spec.ts": "19d888a8147ee96a9d14293e41f2e203f7c9eca79cce509f12487ddedc80eac3",
+    "tests/e2e/case-archive.spec.ts": "1b4652dd3f79570fa49bae317d68d99e7f4b673e51efa04f5af40fbe0736bf90",
     "tests/e2e/case-closure-database.spec.ts": "7f37ce6af4e1fc10c8fb15bb3c26b3de598fc89791ad3161760378fae45dd759",
     "tests/e2e/case-closure-migration.spec.ts": "396fffe7e8eabce33c944bac93b64599e73cf48ff78f099d9760aba22f1195b9",
     "tests/e2e/case-closure.spec.ts": "1535f5d0d360135bd847138917a638a5af37e62b6b34e71effdfa2dd9c915993",
