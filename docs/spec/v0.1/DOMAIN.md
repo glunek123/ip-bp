@@ -150,3 +150,5 @@ CORE-CU-002实际字段：`CustomerRightAsset`保存稳定`assetId/customerId/de
 ## 不转成业务实体的内容
 
 颜色、样式类、列宽／列偏好、Set勾选集合、当前页面或当前选中ID、弹窗回调、ZIP临时条目、识别草稿命中标记、种子统计、旧无挂载看板归展示或技术实现。材料识别草稿确需持久化与否留技术设计，不从全局变量推导正式表。动态键残余按T08记录，不宣称完成全程序语义证明。
+
+2026-10-14 CORE-CA-018工程来源：CaseExternalEntry不可变记录EXTERNAL_TRANSFER／HISTORICAL_BACKFILL的初始真实阶段、stageReachedOn、资料来源／原因、已知字段及真实录入者／系统时间。正常Case三公证来源齐全，外部三来源全空并唯一同部门entry互斥；未提供前序保持未知。EXTERNAL_CURRENT本地审次只作引用坐标，不冒称完整外部轮次或正常一审／上诉事实。后续实际动作才产生真实审理／执行／归档及精确材料版本。合同见[CA018](modules/cases.md#core-ca-018独立转入历史录入sd-23572026-10-14技术冻结待实现)。

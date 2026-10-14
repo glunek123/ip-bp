@@ -505,3 +505,35 @@ CA-007一并交付专用“更正开庭安排”，而非任意状态编辑器�
 - 内部recordEdits追加成对兼容字段 `canSaveSecondInstanceAcceptance` 与 `secondInstanceAcceptances:[{choiceId,trialRoundId,acceptanceRevision,acceptedAt,courtCaseNo,canEdit,history}]`。列出真实APPEAL根；未登记为revision0／两值null／history空。历史项 `{id,priorChangeId,fromRevision,toRevision,acceptedAt,courtCaseNo,reason,recordedAt,recordedByUserId}` 按revision升序。canEdit结合当前授权与上述根资格；记录原因只在内部历史。前端接受旧四字段或完整新成对字段，严格白名单、归属、连续revision和有效投影一致性检查；缺新字段时禁用新编辑，不开放any／索引签名。
 
 Level 3：后端Sol独占schema／前向迁移／服务／读模型／Action及直接测试，另一Sol独立审查；前端Luna独占API类型／表单／精确展示及聚焦测试；独立测试任务只占本片E2E／support。主控独占文档、模型归属清单、集成及数据库环境。审查后固定候选完整verify、新增真实PG／浏览器组合及148前驱升级专项；重点覆盖部分未知／清除、历史发回、撤销屏障、日期竞争、权限撤销含重放、CAS／回滚、未知结果恢复、旧回执／归档锚／文件保持和律师最小读取。持久预览保留数据，隔离验收使用15433，不自动授权15436真实账号；CA018不并行改共享案件契约。
+
+## CORE-CA-018独立转入／历史录入（SD-23／57，2026-10-14，技术冻结待实现）
+
+父级在核实CE002交付e5e6fdd、150预览后明确接续CA018，解除为工作页及CE001／002优先所设的暂停；未发现其他未解除的用户暂停。依据SD-23／2026-09-29澄清、SD-22／28／33／44，建立独立“转入／补录案件”入口。Demo的newCase只参考客户、权利主体、当事人和初始阶段的简单表单；不复制其任意设stage、今日兜底、零金额或模拟历史。正常公证出证建案仍只能从PENDING_MATCH开始。
+
+### 来源、权限与最小录入
+
+- 内部POST /api/v1/cases/external-entries，严格body：idempotencyKey（原样1..128）、entryKind（EXTERNAL_TRANSFER／HISTORICAL_BACKFILL）、initialStage（既有16枚举）、stageReachedOn（真实当前阶段业务日YYYY-MM-DD，不默认今天且不得晚于上海今日）、source（trim1..500）、reason（trim1..500）、customerId、rightsHolderId、defendants（真实既有输入形状，可空不造“—”当事人）、lawyerAccountId及lawyerProfileId（显式null或真实有效同部门绑定）、known对象。负责人仅本次当前有效内部操作者；本片不增加转派功能。客户和关联权利主体须通过正式准入、匹配和当前读取范围核验。真实律师可选；缺律师不阻止有权运营办理，不给姓名自动绑定或扩大律师读取。
+- known固定键courtId、courtCaseNo、acceptedOn、secondInstanceAcceptedOn、platform、shopName、shopExternalId、caseType、infringementTypes；均显式null或真实已知值，不从阶段日期推造其他日期或金额。法院与律师使用正式字典／有效绑定；caseType／platform／infringementTypes复用已批准Code，无自由字典扩展；类型数组非null时非空且去重。已知信息不是普通前序事件。金额在真实后续动作登记前仍UNRECORDED，不能把缺值当0或PENDING事实。
+- 独立Action CASE_EXTERNAL_ENTRY_CREATE→case.external-entry.create（SELF／TEAM／DEPARTMENT）；直接ARCHIVED还须CASE_EXTERNAL_ENTRY_ARCHIVE→case.external-entry.archive（DEPARTMENT）。角色按可编辑Grant与范围判断，主管／授权运营是初始模板而非硬编码职位；内部-only，不借正常case.archive或律师固定能力。迁移只登记目录，不给任何真实账号／角色／Grant Boundary自动增权。新增权限可按后续明确授权设置，不阻塞合成授权账号的开发验收。
+- GET /api/v1/cases/external-entry-options提供canCreate／canCreateArchived、当前负责人身份、当前可读且已准入客户与已准入关联主体、去重的同部门有效律师账号候选及既有字典。无新Action仅返回能力关闭，不泄露候选；不接受跨部门客户端scope。提交时再次核验，不信任前端options。
+- 成功固定结果为{id,businessNo,stage,version:1,entryId,recordedAt}。编号复用CaseNumberCounter和既有业务号规则；独立entry、Case、真实当事人／可选承办、审计、原键原参回执同事务。未知结果由原body／key显式重试，换身份／部门不得静默重绑。重放先重验当前身份、新Action和本案当前范围；同键异参拒绝，不生成重复案或历史。
+
+### 不可变根与后续正常办理
+
+CaseExternalEntry是不可变的已知当前状态来源，区分外部接办与历史补录，记录目标阶段、真实业务日、资料来源／原因、操作者／系统时间及已知字段；Case正常三来源全有、外部三来源全空且存在本案同部门唯一entry形成精确互斥，不能混合来源或删除根。可建立标明EXTERNAL_CURRENT的当前本地审次作为后续引用坐标，不能把它展示为已在本系统办理的一审、判决、上诉或完整外部轮次计数。不得生成假线索、公证书、诉状提交／确认、邮寄、受理、判决／上诉、执行、结案、归档事件、费用或文件。
+
+每个初始阶段的后续首动作及延续链必须识别明确entry来源；仅入口设stage／只放开按钮不算完成。正常首动作仍要求本动作实际材料、日期、金额状态、权限、版本和原键回执；确实缺失的前序引用只能在与该entry初始阶段及本案／审次严格匹配的来源分支为null，并由数据库约束保存明确entry锚，不能用entryId伪装submission／confirmation／finish／choice等正常事实ID。已有真实前序存在时必须精确使用它，不能以entry跳过新事实、撤销或不合法阶段。后续第二步及更长链也须延续同一来源证明，不能第一步成功后落入旧链空引用。旧正常请求、旧150事实／材料／回执及其权限／日期约束保持。
+
+首动作对应为：PENDING_MATCH匹配；WAITING_COMPLAINT真实起诉提交；WAITING_COMPLAINT_CONFIRMATION确认真实当前诉状；WAITING_COMPLAINT_STAMP邮寄；WAITING_FILING提交立案；WAITING_FORMAL_ACCEPTANCE登记受理；WAITING_HEARING登记真实开庭／按既有定时规则推进；WAITING_JUDGMENT登记真实判决及独立下一步；SECOND_INSTANCE真实二审资料／结果（含来源锚下真实发回子审次）；WAITING_EXECUTION_DOCUMENTS真实执行整套提交；WAITING_EXECUTION_CONFIRMATION整套确认；WAITING_EXECUTION_STAMP邮寄；WAITING_EXECUTION_FILING申请执行；EXECUTING结束执行；WAITING_ARCHIVE登记真实结案资料后正常归档；ARCHIVED无正常推进。首次已归档仅记录真实补录根，不冒造旧closure/archive，也不进入要求真实旧事实的更正／重开入口。已有正常更正仅针对后续实际生成的事实。不得回退阶段、追造未知前序、补偿材料、付款或实收／结清。
+
+stageReachedOn仅标明真实当前阶段业务发生日；首个新动作不早于这个当前阶段锚，但不把它显示／写成未提供的受理、判决或邮寄日。known中真实具体日期形成对应限制，互相矛盾拒绝，不错误重查已被更正的旧值；未来更正使用已有真实事实链规则。该日期口径直接落实SD-23的真实业务日，不采用系统录入时间代替。
+
+### 读取、界面与验收
+
+内部列表／详情新增origin：正常{kind:NOTARY}且旧来源／证书完整；外部{kind:EXTERNAL_ENTRY,entryId,entryKind,initialStage,stageReachedOn,source,reason,recordedAt,recordedByUserId,known}且sourceLead／sourceNotaryMatter／certificate为null。正常旧后端缺origin时仍按旧全真来源兼容；外部缺明确origin或混合来源严格拒绝。摘要只使用真实已知平台／店铺／案号／法院，其余null；内部来源说明和理由可见。律师仅当前PRIMARY授权下的必要来源标签／业务日期及本案真实资料，不返回内部补录原因、操作者、审计正文或存储键；客户继续本企业最小投影，不扩内部来源正文。无来源不调用线索、公证及费用读取，也不包装外部文件为公证书。
+
+在内部案件列表增加独立“转入／补录案件”页面，必填字段一屏、已知资料折叠，业务日期无默认值；保留既有侧栏和真实阶段导航。提交前就地提示本阶段后续将要求哪些实际资料，不要求补齐外部未在本系统办理的每个旧步骤。保存／取消与重复、失权、冲突、未知恢复遵守现有写入规范；正常字段与null前序由来源分支严格校验，不使用any、skipLibCheck、宽松索引或伪ID绕过类型。
+
+AC-CA-016：合成授权真实内部账号从独立入口录入各16实际阶段，客户／权利主体／承办真实关联、刷新／重登及内部／律师／客户隔离成立。每个有后续动作的阶段验证首动作及至少下一步真实可办，重点以EXECUTING→WAITING_ARCHIVE→结案资料→ARCHIVED和二审真实REMAND→子受理／后续展示证明来源链延续；历史ARCHIVED独立高风险Action、无正常推进／伪更正。当前材料由正式上传产生并核精确版本／字节，记录本动作事实而非假前序。普通／跨范围／外部身份、失效主体／绑定、撤权后重放、同键异参、未来／冲突日期、非法前序替代／另一entry、CAS竞争和审计／事实／回执注入失败都拒绝或原子回滚。迁移先随机schema验证空链及150前驱真实正常事实升级、第二DDL失败回滚／前向重试、SQL直接混合来源／缺entry／越权／跳新事实反例；旧已执行150迁移不改。固定候选独立Sol双轴审查后实际完整工程和相关PG／Chromium验收；未实现／未验收不得标完成。
+
+实施Level 3：I唯一文档／集成／数据库作者，Sol独占backend及151／152前向迁移（20261014170000_case_external_entry_actions、20261014170100_case_external_entry_foundation）；Luna独占frontend；独立测试Task只写本片E2E／新support。持久预览150原2案／6凭据／现有权限保持，代码验收不授予真实新Action；隔离验收15433。CE002新编辑授权仍待用户确认。本片不生产部署、批量导入、OCR、历史时间轴逐项编辑或扩展未定资金规则。
