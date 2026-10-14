@@ -1356,3 +1356,9 @@ router＋AppShell两文件定向Vitest实际101/101通过，pnpm check:fast:prep
 A2公共类型源beab784dbfcf65a7c3c32fdd27e7ec35b53faa0b、骨架源56b6254cbda50aa9e42ad20bd0564820b378068b，D2源9b8c77e8e7684eefd7d66bee3a2cb4df16e8a5e5；父级确认三源完成停写，I核两个目录干净及八个白名单文件后，分别无冲突接入5968e37／443d580／d0e5fb37f9ce7630fec4208303780d1c181c7a77。八个源码blob与各源逐个一致。Worker报告A2 18单测／前端类型／五文件Lint格式，D2 65 AppShell／快速静态／构建；这与I实际组合检查分开记录，不冒称原Worker tree包含I路由。
 
 I在AppShell.spec.ts补内部工作页进入／离开密度class边界；实际四文件120/120单测、完整前端typecheck:prepared、十个受影响TS／Vue的Lint、十一文件格式及diff通过。这是A2／D2与I路由的部分组合开发检查，没有跑本批完整verify、PG／Chromium或完整UI独立Review。普通任务按自审／聚焦检查接纳，稳定完整组合仍按冻结合同进行独立Review与最终门禁。R2／M2已由父级派发，R2需要A2完整固定组件而非只有类型；F2待其固定依赖后复用已停写D2目录，Teleport密度class须在实际drawer根节点。证据ignored `.local/ui002-evidence/a2-d2-acceptance.json`，未改变旧refs／Worker分支、main或持久预览。
+
+### UI002 R2／M2接纳及F2依赖准备（宿主尚未接线）
+
+R2源f886ab72c0a3142776e1aa0a413aa536c204cfd5、M2源e0fb389ff1f7eee8f1301b015cc1376cb31bcc9b均由父级确认停写；I核目录干净／四文件白名单并只cherry-pick实现提交为4efae18／a3fe4f9，跳过已接纳的A2类型／组件依赖。八个接入blob与源逐个一致；随后I仅将CaseWorkspaceFiles.vue的ElButton包根导入改成既有按需button入口，符合AGENTS，不增依赖或API。R2／M2原refs及目录未改。
+
+I实际四文件32/32测试、完整前端typecheck:prepared、八文件Lint／格式及diff exit0；原Worker报告（R2 15＋A2 18、M2 17）与I结果分开留痕。A2／D2／R2／M2固定依赖齐备，F2准备复用已停写D2的ca016-frontend-integration并建立codex/ui002-f2-case-host，原被旧E3占用的ui002-f2-host候选保留。最终准备SHA／目录／runtime／strict与clean结果只据ignored `.local/ui002-evidence/f2-ready.json`；源接纳和一行修正证据见r2-m2-acceptance.json。尚未宿主接线、完整UI Review／verify／真实字节下载或PG／Chromium验收，不升级持久预览。

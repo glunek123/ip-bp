@@ -1,6 +1,6 @@
 <script setup lang="ts">
 import { computed, onBeforeUnmount, ref, watch } from 'vue';
-import { ElButton } from 'element-plus';
+import { ElButton } from 'element-plus/es/components/button/index.mjs';
 import type { CaseDetail, CaseFile } from '../../api/cases';
 import { ApiError, type RequestOptions } from '../../api/http';
 import type { OwnerMaterial } from '../../api/materials';

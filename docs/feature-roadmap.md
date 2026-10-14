@@ -1,6 +1,6 @@
 # 功能开发路线图
 
-更新日期：2026-10-14。CORE-CA-001～016、N2及CORE-UI-001已集成main；CA017已实现、验收并原子集成main。Current为CORE-UI-002三项案件工作页优化，A2／D2已接入I、R2／M2实施中、未完整组合验收；Next为CA018只读暂停、未冻结。人工测试窗口已结束，5186仍3f636ea／144；后续正常验收／备份保全后才升级。实际候选及Git／预览回执只见VALIDATION，不扩大为全部Demo或生产完成。
+更新日期：2026-10-14。CORE-CA-001～016、N2及CORE-UI-001已集成main；CA017已实现、验收并原子集成main。Current为CORE-UI-002三项案件工作页优化，A2／D2／R2／M2已接入I、F2依赖齐备待派发、未完整组合验收；Next为CA018只读暂停、未冻结。人工测试窗口已结束，5186仍3f636ea／144；后续正常验收／备份保全后才升级。实际候选及Git／预览回执只见VALIDATION，不扩大为全部Demo或生产完成。
 
 本文只回答“已经做到哪里、下一步做什么、之后按什么依赖顺序做”。详细业务规则仍以 [`docs/spec/`](spec/) 为准，核心主线的编码级字段、附件与存储边界以[核心业务字段、附件与存储契约](superpowers/specs/2026-09-21-core-flow-field-material-contract.md)为准，技术方案以设计文档为准，当前切片的技术任务以实施计划为准，实际验证结果以 [`docs/spec/v0.1/VALIDATION.md`](spec/v0.1/VALIDATION.md) 为准；[`docs/project-status.md`](project-status.md)仅保留当前恢复摘要。
 
@@ -166,7 +166,7 @@
 
 **CORE-UI-002｜案件工作页三页签、七栏折叠／合法编辑入口与紧凑密度；合同已冻结并开始实施，尚未组合验收。**
 
-基线main `696fad75ad427ce7431866c0710806983fdf9ba5`／tree `bd378946d0cf3d256816c7244340a271a35407b5`。I复用ca015-integration／codex/ui002-case-workspace-integration；当前只维护合同／任务边界、状态及证据，不能把准备检查称UI通过。唯一接口、来源编辑限制、A2/R2/M2/D2/F2五任务白名单及依赖、验收只见[UI002合同](superpowers/specs/2026-10-14-case-workspace-ui-contract.md)。A2先交公共Interface；R2/M2接其固定类型可并行，D2独立；F2唯一宿主作者再接线，I独占router／E2E／docs。冻结cb5efe7；A2／D2已完成停写并接入I，R2／M2已由父级派发、接纳固定A2公共类型；F2仍待其依赖固定组合后串行复用D2目录。任务标识与目录状态只见project-status及ignored UI002证据。
+基线main `696fad75ad427ce7431866c0710806983fdf9ba5`／tree `bd378946d0cf3d256816c7244340a271a35407b5`。I复用ca015-integration／codex/ui002-case-workspace-integration；当前只维护合同／任务边界、状态及证据，不能把准备检查称UI通过。唯一接口、来源编辑限制、A2/R2/M2/D2/F2五任务白名单及依赖、验收只见[UI002合同](superpowers/specs/2026-10-14-case-workspace-ui-contract.md)。A2先交公共Interface；R2/M2接其固定类型可并行，D2独立；F2唯一宿主作者再接线，I独占router／E2E／docs。冻结cb5efe7；A2／D2／R2／M2均已完成停写并接入I，F2依赖齐备，准备从固定组合串行复用已停写D2目录，不重复集成其A2依赖或重复派发。任务标识与目录状态只见project-status及ignored UI002证据。
 
 用户只要求本批三项前端优化，CA018停在只读核对阶段，未冻结／实现／派发。案件通用字段编辑、手工时间轴、完整案件财务没有当前Command，本批仅按真实can*复用已有登记／更正及来源Lead编辑，不做任意换阶段、历史覆盖、假费用或增权。浏览器file://Demo读取被安全策略拒绝，已停止该UI动作；合同只据本地Demo源码和父级已核截图，不称实际Demo操作已完成。人工测试窗口已结束，持久预览仍CA016的3f/144；待本批正常候选验收、备份及原数据保全后协调更新，无本轮预览操作。
 
