@@ -206,6 +206,9 @@ describe('case read OpenAPI contract', () => {
     const recordEdit = {
       updateContact: jest.fn().mockResolvedValue({ caseId: routeCaseId }),
       correctAcceptance: jest.fn().mockResolvedValue({ caseId: routeCaseId }),
+      saveSecondInstanceAcceptance: jest
+        .fn()
+        .mockResolvedValue({ caseId: routeCaseId }),
     };
     const reads = new CaseReadService(
       {
@@ -372,6 +375,32 @@ describe('case read OpenAPI contract', () => {
         .post(`/api/v1/cases/${routeCaseId}/acceptance-correction`)
         .send({ ...correctionInput, courtId: routeCaseId })
         .expect(400);
+      const secondAcceptanceInput = {
+        choiceId: routeCaseId,
+        trialRoundId: routeCaseId,
+        expectedAcceptanceRevision: 0,
+        idempotencyKey: 'second-acceptance-route',
+        acceptedAt: null,
+        courtCaseNo: '二审案号',
+        reason: null,
+      };
+      await request(app.getHttpServer())
+        .post(`/api/v1/cases/${routeCaseId}/second-instance-acceptance-save`)
+        .send(secondAcceptanceInput)
+        .expect(201);
+      expect(recordEdit.saveSecondInstanceAcceptance).toHaveBeenCalledWith(
+        expect.any(Object),
+        routeCaseId,
+        secondAcceptanceInput,
+      );
+      await request(app.getHttpServer())
+        .post(`/api/v1/cases/${routeCaseId}/second-instance-acceptance-save`)
+        .send({ ...secondAcceptanceInput, expectedVersion: 1 })
+        .expect(400);
+      await request(app.getHttpServer())
+        .post(`/api/v1/cases/${routeCaseId}/second-instance-acceptance-save`)
+        .send({ ...secondAcceptanceInput, acceptedAt: 123 })
+        .expect(400);
       const archiveInput = {
         expectedVersion: 26,
         idempotencyKey: 'archive-route',
@@ -479,6 +508,10 @@ describe('case read OpenAPI contract', () => {
         app,
         new DocumentBuilder().setTitle('test').setVersion('1').build(),
       );
+      expect(
+        document.paths['/api/v1/cases/{id}/second-instance-acceptance-save']
+          ?.post,
+      ).toBeDefined();
       expect(document.paths['/api/v1/cases']?.get?.parameters).toEqual(
         expect.arrayContaining([
           expect.objectContaining({

@@ -307,6 +307,15 @@ describe('CaseRecordEditService', () => {
     ).rejects.toMatchObject({ response: { code: 'VALIDATION_ERROR' } });
   });
 
+  it('rejects a remand child correction that would precede parent second acceptance', async () => {
+    const f = fixture();
+    f.tx.$queryRaw.mockResolvedValue([{ valid: false }]);
+    await expect(
+      f.service.correctAcceptance(actor, caseId, acceptanceInput),
+    ).rejects.toMatchObject({ response: { code: 'VALIDATION_ERROR' } });
+    expect(f.tx.caseAcceptanceCorrection.create).not.toHaveBeenCalled();
+  });
+
   it('records a partial second-instance acceptance without changing case workflow', async () => {
     const f = fixture();
     const result = await f.service.saveSecondInstanceAcceptance(

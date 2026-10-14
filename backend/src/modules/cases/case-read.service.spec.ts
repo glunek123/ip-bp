@@ -923,6 +923,81 @@ describe('CaseReadService', () => {
     await expect(f.service.get(actor, 'case-1')).resolves.toMatchObject({
       canRevokeJudgmentNextStep: false,
     });
+    const secondAcceptanceChanges = [
+      {
+        id: 'second-acceptance-1',
+        choiceId: 'choice-current',
+        trialRoundId: 'round-2',
+        priorChangeId: null,
+        fromRevision: 0,
+        toRevision: 1,
+        acceptedAt: new Date('2026-10-10T00:00:00.000Z'),
+        courtCaseNo: null,
+        reason: null,
+        recordedAt: new Date('2026-10-11T01:00:00.000Z'),
+        recordedByUserId: actor.userId,
+      },
+      {
+        id: 'second-acceptance-2',
+        choiceId: 'choice-current',
+        trialRoundId: 'round-2',
+        priorChangeId: 'second-acceptance-1',
+        fromRevision: 1,
+        toRevision: 2,
+        acceptedAt: new Date('2026-10-10T00:00:00.000Z'),
+        courtCaseNo: '二审案号',
+        reason: '补录案号',
+        recordedAt: new Date('2026-10-12T01:00:00.000Z'),
+        recordedByUserId: actor.userId,
+      },
+    ];
+    f.db.case.findFirst.mockResolvedValue({
+      ...record,
+      stage: 'SECOND_INSTANCE',
+      currentJudgmentNextStepId: 'choice-current',
+      judgmentNextSteps: [
+        { ...choices[0], id: 'choice-current', trialRoundId: 'round-2' },
+      ],
+      judgmentNextStepRevocations: [],
+      secondInstanceAcceptanceChanges: secondAcceptanceChanges,
+    });
+    const internalAcceptanceDetail = await f.service.get(actor, 'case-1');
+    expect(internalAcceptanceDetail.secondInstance.acceptances).toEqual([
+      {
+        choiceId: 'choice-current',
+        trialRoundId: 'round-2',
+        acceptedAt: '2026-10-10',
+        courtCaseNo: '二审案号',
+        recordedAt: '2026-10-12T01:00:00.000Z',
+      },
+    ]);
+    expect(internalAcceptanceDetail).toMatchObject({
+      recordEdits: {
+        secondInstanceAcceptances: [
+          {
+            acceptanceRevision: 2,
+            canEdit: true,
+            history: [{ reason: null }, { reason: '补录案号' }],
+          },
+        ],
+      },
+    });
+    f.db.userAccount.findUnique.mockResolvedValue({
+      accountType: 'LAWYER',
+      active: true,
+    });
+    const lawyerAcceptanceDetail = await f.service.get(
+      { ...actor, lawyerAccountId: actor.userId },
+      'case-1',
+    );
+    expect(lawyerAcceptanceDetail.secondInstance.acceptances).toEqual(
+      internalAcceptanceDetail.secondInstance.acceptances,
+    );
+    expect(lawyerAcceptanceDetail).not.toHaveProperty('recordEdits');
+    f.db.userAccount.findUnique.mockResolvedValue({
+      accountType: 'INTERNAL',
+      active: true,
+    });
     f.db.case.findFirst.mockResolvedValue(record);
     expect(result).toMatchObject({
       executionSubmission: {

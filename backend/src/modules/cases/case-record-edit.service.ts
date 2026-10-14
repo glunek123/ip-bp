@@ -284,6 +284,11 @@ export class CaseRecordEditService {
               acceptance.trialRoundId,
               value.acceptedAt,
             );
+            const parentDate = await tx.$queryRaw<Array<{ valid: boolean }>>`
+              SELECT case_second_child_acceptance_date_valid(${acceptance.trialRoundId}::uuid,
+                ${value.acceptedAt}::date) AS valid`;
+            if (parentDate[0]?.valid !== true)
+              throw this.validation('发回重审受理日期不得早于对应二审受理日期');
             const correctionId = randomUUID();
             const recordedAt = new Date();
             const audit = await tx.auditEvent.create({

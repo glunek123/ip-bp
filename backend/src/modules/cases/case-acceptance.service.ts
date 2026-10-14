@@ -186,6 +186,10 @@ export class CaseAcceptanceService {
                   select: { id: true },
                 })
               ).id;
+            const parentDate = await tx.$queryRaw<Array<{ valid: boolean }>>`
+              SELECT case_second_child_acceptance_date_valid(${trialRoundId}::uuid,
+                ${value.acceptedAt}::date) AS valid`;
+            if (parentDate[0]?.valid !== true) throw this.validation();
             const updated = await tx.case.updateMany({
               where: {
                 id: caseId,

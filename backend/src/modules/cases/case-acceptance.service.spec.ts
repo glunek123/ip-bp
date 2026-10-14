@@ -20,6 +20,7 @@ describe('CaseAcceptanceService', () => {
   function fixture() {
     const tx = {
       $queryRawUnsafe: jest.fn().mockResolvedValue([{ id: caseId }]),
+      $queryRaw: jest.fn().mockResolvedValue([{ valid: true }]),
       case: {
         findFirst: jest.fn().mockResolvedValue({
           id: caseId,
@@ -144,6 +145,22 @@ describe('CaseAcceptanceService', () => {
       data: expect.objectContaining({ trialRoundId: 'existing-round' }),
       select: { id: true },
     });
+  });
+
+  it('rejects a remand child acceptance earlier than its known parent second acceptance', async () => {
+    const f = fixture();
+    const before = await f.tx.case.findFirst();
+    f.tx.case.findFirst.mockResolvedValue({
+      ...before,
+      currentTrialRoundId: 'existing-round',
+    });
+    f.tx.$queryRaw.mockResolvedValue([{ valid: false }]);
+    await expect(
+      f.service.register(actor, caseId, input),
+    ).rejects.toMatchObject({
+      response: { code: 'VALIDATION_ERROR' },
+    });
+    expect(f.tx.caseAcceptance.create).not.toHaveBeenCalled();
   });
 
   it('allows no optional material and preserves the same receipt on replay', async () => {

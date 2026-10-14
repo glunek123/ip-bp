@@ -52,6 +52,34 @@ CREATE FUNCTION "case_effective_second_acceptance_date"(target_choice uuid) RETU
   WHERE c."choice_id"=target_choice ORDER BY c."to_revision" DESC LIMIT 1
 $$;
 
+CREATE FUNCTION "case_second_child_acceptance_date_valid"(target_round uuid, candidate date)
+RETURNS boolean LANGUAGE sql STABLE AS $$
+  SELECT coalesce(candidate >= case_effective_second_acceptance_date(parent."choice_id"), true)
+  FROM "case_trial_rounds" child
+  LEFT JOIN "case_second_instance_results" parent ON parent."id"=child."source_result_id"
+  WHERE child."id"=target_round
+$$;
+
+CREATE FUNCTION "check_case_second_child_acceptance_date"() RETURNS trigger LANGUAGE plpgsql AS $$
+DECLARE target_round uuid; candidate date;
+BEGIN
+  IF TG_TABLE_NAME='case_acceptances' THEN
+    target_round:=NEW."trial_round_id";
+    candidate:=case_effective_acceptance_date(NEW."id");
+  ELSE
+    target_round:=NEW."trial_round_id";
+    candidate:=case_effective_acceptance_date(NEW."acceptance_id");
+  END IF;
+  IF case_second_child_acceptance_date_valid(target_round,candidate) IS DISTINCT FROM true THEN
+    RAISE EXCEPTION 'remand acceptance precedes second acceptance' USING ERRCODE='23514';
+  END IF;
+  RETURN NEW;
+END; $$;
+CREATE CONSTRAINT TRIGGER "case_second_child_acceptance_root_guard" AFTER INSERT ON "case_acceptances"
+  DEFERRABLE INITIALLY DEFERRED FOR EACH ROW EXECUTE FUNCTION "check_case_second_child_acceptance_date"();
+CREATE CONSTRAINT TRIGGER "case_second_child_acceptance_correction_guard" AFTER INSERT ON "case_acceptance_corrections"
+  DEFERRABLE INITIALLY DEFERRED FOR EACH ROW EXECUTE FUNCTION "check_case_second_child_acceptance_date"();
+
 CREATE FUNCTION "check_case_second_acceptance_dates"(target_choice uuid, target_case uuid, target_department uuid, target_round uuid, candidate date)
 RETURNS boolean LANGUAGE plpgsql STABLE AS $$
 DECLARE source_received date;
