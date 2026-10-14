@@ -31,6 +31,11 @@ const submitting = ref(false);
 const error = ref('');
 const success = ref('');
 const unknownRequest = ref<CorrectCaseAcceptanceInput | null>(null);
+const draftBase = ref<{
+  acceptanceRevision: number;
+  acceptedAt: string;
+  courtCaseNo: string;
+} | null>(null);
 let revision = 0;
 let active = true;
 let requestController: AbortController | null = null;
@@ -69,16 +74,38 @@ const allowed = computed(
     selected.value !== undefined &&
     recordEdit.value !== undefined,
 );
+const canRetryOriginal = computed(
+  () =>
+    unknownRequest.value !== null &&
+    !submitting.value &&
+    props.item.recordEdits?.canCorrectAcceptance === true &&
+    selected.value !== undefined &&
+    recordEdit.value !== undefined,
+);
 function setSelectedValues(): void {
   acceptedAt.value = selected.value?.acceptedAt ?? '';
   courtCaseNo.value = selected.value?.courtCaseNo ?? '';
   reason.value = '';
+  draftBase.value =
+    selected.value && recordEdit.value
+      ? {
+          acceptanceRevision: recordEdit.value.acceptanceRevision,
+          acceptedAt: selected.value.acceptedAt,
+          courtCaseNo: selected.value.courtCaseNo,
+        }
+      : null;
 }
 const canSave = computed(() => {
   const nextNo = courtCaseNo.value.trim();
   const nextReason = reason.value.trim();
   return (
     allowed.value &&
+    draftBase.value !== null &&
+    recordEdit.value !== undefined &&
+    draftBase.value.acceptanceRevision ===
+      recordEdit.value.acceptanceRevision &&
+    draftBase.value.acceptedAt === selected.value?.acceptedAt &&
+    draftBase.value.courtCaseNo === selected.value?.courtCaseNo &&
     !submitting.value &&
     unknownRequest.value === null &&
     /^\d{4}-\d{2}-\d{2}$/u.test(acceptedAt.value) &&
@@ -113,6 +140,31 @@ watch(
   { immediate: true, flush: 'sync' },
 );
 watch(acceptanceId, setSelectedValues, { flush: 'sync' });
+watch(
+  [
+    () => recordEdit.value?.acceptanceRevision,
+    () => selected.value?.acceptedAt,
+    () => selected.value?.courtCaseNo,
+  ],
+  (next, previous) => {
+    if (!previous || unknownRequest.value) return;
+    const hasDraft =
+      acceptedAt.value !== (draftBase.value?.acceptedAt ?? '') ||
+      courtCaseNo.value !== (draftBase.value?.courtCaseNo ?? '') ||
+      reason.value.trim().length > 0;
+    setSelectedValues();
+    if (
+      hasDraft &&
+      !success.value &&
+      (next[0] !== previous[0] ||
+        next[1] !== previous[1] ||
+        next[2] !== previous[2])
+    )
+      error.value =
+        '\u8d44\u6599\u5df2\u66f4\u65b0\uff0c\u8bf7\u6838\u5bf9\u5f53\u524d\u503c\u540e\u91cd\u65b0\u7f16\u8f91\u3002';
+  },
+  { flush: 'sync' },
+);
 function reset(): void {
   if (unknownRequest.value) return;
   error.value = '';
@@ -194,7 +246,13 @@ async function send(input: CorrectCaseAcceptanceInput): Promise<void> {
   }
 }
 function save(): void {
-  if (!canSave.value || !selected.value || !recordEdit.value) return;
+  if (
+    !canSave.value ||
+    !selected.value ||
+    !recordEdit.value ||
+    !draftBase.value
+  )
+    return;
   const key = globalThis.crypto?.randomUUID?.();
   if (!key) {
     error.value = '当前浏览器不能生成安全请求键，请刷新后重试。';
@@ -202,7 +260,7 @@ function save(): void {
   }
   void send({
     acceptanceId: selected.value.id,
-    expectedAcceptanceRevision: recordEdit.value.acceptanceRevision,
+    expectedAcceptanceRevision: draftBase.value.acceptanceRevision,
     idempotencyKey: key,
     acceptedAt: acceptedAt.value,
     courtCaseNo: courtCaseNo.value.trim(),
@@ -210,7 +268,7 @@ function save(): void {
   });
 }
 function retryOriginal(): void {
-  if (unknownRequest.value && !submitting.value)
+  if (canRetryOriginal.value && unknownRequest.value)
     void send(unknownRequest.value);
 }
 function acceptanceLabel(value: CaseAcceptanceHistory): string {
@@ -321,7 +379,7 @@ onBeforeUnmount(() => {
         v-if="unknownRequest"
         type="button"
         data-test="acceptance-correction-retry-original"
-        :disabled="submitting"
+        :disabled="!canRetryOriginal"
         @click="retryOriginal"
       >
         &#x6309;&#x539f;&#x8bf7;&#x6c42;&#x91cd;&#x8bd5;

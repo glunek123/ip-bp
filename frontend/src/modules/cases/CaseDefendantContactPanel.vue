@@ -29,6 +29,11 @@ const submitting = ref(false);
 const error = ref('');
 const success = ref('');
 const unknownRequest = ref<UpdateCaseDefendantContactInput | null>(null);
+const draftBase = ref<{
+  contactRevision: number;
+  phone: string;
+  address: string;
+} | null>(null);
 let revision = 0;
 let active = true;
 let requestController: AbortController | null = null;
@@ -59,11 +64,24 @@ const allowed = computed(
     selected.value !== undefined &&
     recordEdit.value !== undefined,
 );
+const canRetryOriginal = computed(
+  () =>
+    unknownRequest.value !== null &&
+    !submitting.value &&
+    props.item.recordEdits?.canUpdateDefendantContact === true &&
+    selected.value !== undefined &&
+    recordEdit.value !== undefined,
+);
 const canSave = computed(() => {
   const nextPhone = phone.value.trim() || null;
   const nextAddress = address.value.trim() || null;
   return (
     allowed.value &&
+    draftBase.value !== null &&
+    recordEdit.value !== undefined &&
+    draftBase.value.contactRevision === recordEdit.value.contactRevision &&
+    draftBase.value.phone === (selected.value?.phone ?? '') &&
+    draftBase.value.address === (selected.value?.address ?? '') &&
     !submitting.value &&
     unknownRequest.value === null &&
     (nextPhone?.length ?? 0) <= 100 &&
@@ -75,6 +93,14 @@ const canSave = computed(() => {
 function setSelectedValues(): void {
   phone.value = selected.value?.phone ?? '';
   address.value = selected.value?.address ?? '';
+  draftBase.value =
+    selected.value && recordEdit.value
+      ? {
+          contactRevision: recordEdit.value.contactRevision,
+          phone: selected.value.phone ?? '',
+          address: selected.value.address ?? '',
+        }
+      : null;
 }
 watch(
   () => props.item.id,
@@ -99,6 +125,30 @@ watch(
   { immediate: true, flush: 'sync' },
 );
 watch(defendantId, setSelectedValues, { flush: 'sync' });
+watch(
+  [
+    () => recordEdit.value?.contactRevision,
+    () => selected.value?.phone,
+    () => selected.value?.address,
+  ],
+  (next, previous) => {
+    if (!previous || unknownRequest.value) return;
+    const hasDraft =
+      phone.value !== (draftBase.value?.phone ?? '') ||
+      address.value !== (draftBase.value?.address ?? '');
+    setSelectedValues();
+    if (
+      hasDraft &&
+      !success.value &&
+      (next[0] !== previous[0] ||
+        next[1] !== previous[1] ||
+        next[2] !== previous[2])
+    )
+      error.value =
+        '\u8d44\u6599\u5df2\u66f4\u65b0\uff0c\u8bf7\u6838\u5bf9\u5f53\u524d\u503c\u540e\u91cd\u65b0\u7f16\u8f91\u3002';
+  },
+  { flush: 'sync' },
+);
 function reset(): void {
   if (unknownRequest.value) return;
   unknownRequest.value = null;
@@ -179,21 +229,27 @@ async function send(input: UpdateCaseDefendantContactInput): Promise<void> {
   }
 }
 function save(): void {
-  if (!canSave.value || !selected.value || !recordEdit.value) return;
+  if (
+    !canSave.value ||
+    !selected.value ||
+    !recordEdit.value ||
+    !draftBase.value
+  )
+    return;
   const key =
     typeof globalThis.crypto?.randomUUID === 'function'
       ? globalThis.crypto.randomUUID()
       : `${Date.now()}-${Math.random().toString(16).slice(2)}`;
   void send({
     defendantId: selected.value.id,
-    expectedContactRevision: recordEdit.value.contactRevision,
+    expectedContactRevision: draftBase.value.contactRevision,
     idempotencyKey: key,
     phone: phone.value.trim() || null,
     address: address.value.trim() || null,
   });
 }
 function retryOriginal(): void {
-  if (unknownRequest.value && !submitting.value)
+  if (canRetryOriginal.value && unknownRequest.value)
     void send(unknownRequest.value);
 }
 onDeactivated(() => {
@@ -288,7 +344,7 @@ onBeforeUnmount(() => {
         v-if="unknownRequest"
         type="button"
         data-test="defendant-contact-retry-original"
-        :disabled="submitting"
+        :disabled="!canRetryOriginal"
         @click="retryOriginal"
       >
         &#x6309;&#x539f;&#x8bf7;&#x6c42;&#x91cd;&#x8bd5;
