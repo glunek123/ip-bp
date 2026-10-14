@@ -1,6 +1,6 @@
 # 功能开发路线图
 
-更新日期：2026-10-14。CORE-CA-001～016、N2及CORE-UI-001已集成main；CA017已实现、验收并原子集成main。Current为CORE-UI-002三项案件工作页优化，A2／D2／R2／M2／F2已接入I，已接入字段值布局与SPA恢复，Final Review已关闭finding、双轴ACCEPTED C/I/M0，正在冻结完整门禁候选，未完成组合测试验收；Next为CA018只读暂停、未冻结。人工测试窗口已结束，5186仍3f636ea／144；后续正常验收／备份保全后才升级。实际候选及Git／预览回执只见VALIDATION，不扩大为全部Demo或生产完成。
+更新日期：2026-10-14。CORE-CA-001～016、N2及CORE-UI-001已集成main；CA017已实现、验收并原子集成main。Current为CORE-UI-002三项案件工作页优化，A2／D2／R2／M2／F2已接入I，已接入字段值布局与SPA恢复，Final Review已关闭finding、双轴ACCEPTED C/I/M0，旧七栏ed767d1完整verify已实过；新增只读结案栏及生命周期分段已接入，尚未八栏最终验收；Next为CA018只读暂停、未冻结。人工测试窗口已结束，5186仍3f636ea／144；后续正常验收／备份保全后才升级。实际候选及Git／预览回执只见VALIDATION，不扩大为全部Demo或生产完成。
 
 本文只回答“已经做到哪里、下一步做什么、之后按什么依赖顺序做”。详细业务规则仍以 [`docs/spec/`](spec/) 为准，核心主线的编码级字段、附件与存储边界以[核心业务字段、附件与存储契约](superpowers/specs/2026-09-21-core-flow-field-material-contract.md)为准，技术方案以设计文档为准，当前切片的技术任务以实施计划为准，实际验证结果以 [`docs/spec/v0.1/VALIDATION.md`](spec/v0.1/VALIDATION.md) 为准；[`docs/project-status.md`](project-status.md)仅保留当前恢复摘要。
 
@@ -164,7 +164,7 @@
 
 ### Current Slice
 
-**CORE-UI-002｜案件工作页三页签、七栏折叠／合法编辑入口与紧凑密度；合同已冻结并开始实施，尚未组合验收。**
+**CORE-UI-002｜案件工作页三页签、八栏折叠／合法编辑入口与紧凑密度；合同已冻结并开始实施，尚未组合验收。**
 
 基线main `696fad75ad427ce7431866c0710806983fdf9ba5`／tree `bd378946d0cf3d256816c7244340a271a35407b5`。I复用ca015-integration／codex/ui002-case-workspace-integration；I维护公共路由／集成／E2E及必要状态证据，不能把准备或部分组合检查称完整UI通过。唯一接口、来源编辑限制、A2/R2/M2/D2/F2五任务白名单及依赖、验收只见[UI002合同](superpowers/specs/2026-10-14-case-workspace-ui-contract.md)。A2先交公共Interface；R2/M2接其固定类型可并行，D2独立；F2唯一宿主作者再接线，I独占router／E2E／docs。冻结cb5efe7；A2／D2／R2／M2均已完成停写并接入I，F2已固定交付并接纳；SPA恢复与字段值布局已接入，最终修复和组合验收由I主持；不重复集成A2依赖或重复派发。任务标识与目录状态只见project-status及ignored UI002证据。
 

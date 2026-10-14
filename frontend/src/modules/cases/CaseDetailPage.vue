@@ -388,17 +388,9 @@ const priorEditors = computed(() =>
 );
 const sectionActions = computed<Record<SectionKey, SectionAction>>(() => {
   const action = (section: SectionKey): SectionAction => ({
-    enabled: commands.value.some(
-      (command) =>
-        command.section === section ||
-        (section === 'execution' && command.id === 'closure'),
-    ),
+    enabled: commands.value.some((command) => command.section === section),
     label: section === 'timeline' ? '登记／更正' : '编辑',
-    hint: commands.value.some(
-      (command) =>
-        command.section === section ||
-        (section === 'execution' && command.id === 'closure'),
-    )
+    hint: commands.value.some((command) => command.section === section)
       ? '使用已有业务命令；字段只读。'
       : '当前无可办命令；字段只读。',
   });
@@ -436,11 +428,7 @@ const editorCommands = computed(() => {
       entries.push(previous);
   return editorSection.value === 'timeline'
     ? entries
-    : entries.filter(
-        (command) =>
-          command.section === editorSection.value ||
-          (editorSection.value === 'execution' && command.id === 'closure'),
-      );
+    : entries.filter((command) => command.section === editorSection.value);
 });
 const primaryCommand = computed(() => {
   const stage = item.value?.stage;
@@ -508,10 +496,7 @@ function editSection(section: SectionKey): void {
     return;
   }
   const command = commands.value.find(
-    (entry) =>
-      section === 'timeline' ||
-      entry.section === section ||
-      (section === 'execution' && entry.id === 'closure'),
+    (entry) => section === 'timeline' || entry.section === section,
   );
   if (command) {
     openCommand(command);

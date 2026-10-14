@@ -1109,7 +1109,7 @@ describe('UI002 real case workspace host', () => {
     expect(api.matchCase.mock.calls[1]).toEqual(['case-1', original]);
     expect(original.expectedVersion).toBe(7);
   });
-  it('connects all three actual subpages, defaults seven sections closed, and filters the return query', async () => {
+  it('connects all three actual subpages, defaults eight sections closed, and filters the return query', async () => {
     const { wrapper, router } = await render(
       undefined,
       '/cases/case-1?view=department&page=2&stage=WAITING_JUDGMENT&tab=files&customerId=other',
@@ -1127,6 +1127,7 @@ describe('UI002 real case workspace host', () => {
       'second-instance',
       'judgment',
       'execution',
+      'closure-info',
       'timeline',
     ]);
     expect(

@@ -634,11 +634,18 @@ export function buildCaseWorkspaceSections(
     return `初审轮次 · ${trialRoundId}`;
   }
   function eventRoundId(event: WorkspaceEvent): string | null {
-    const direct = event.fields.find((value) => value.label === '审理轮次标识')?.value;
+    const direct = event.fields.find(
+      (value) => value.label === '审理轮次标识',
+    )?.value;
     if (direct && direct !== '未登记') return direct;
     if (event.source === 'second-revocation') {
-      const resultId = event.fields.find((value) => value.label === '结果标识')?.value;
-      return item.secondInstance.results.find((value) => value.id === resultId)?.trialRoundId ?? null;
+      const resultId = event.fields.find(
+        (value) => value.label === '结果标识',
+      )?.value;
+      return (
+        item.secondInstance.results.find((value) => value.id === resultId)
+          ?.trialRoundId ?? null
+      );
     }
     return null;
   }
@@ -656,7 +663,10 @@ export function buildCaseWorkspaceSections(
           field('客户', item.customer.name),
           field('权利主体', item.rightsHolder.name),
           field('负责运营', item.owner.displayName),
-          field('被告', item.defendants.map((value) => value.name).join('、') || null),
+          field(
+            '被告',
+            item.defendants.map((value) => value.name).join('、') || null,
+          ),
           field('当前阶段', stageLabels[item.stage]),
           date('创建时间', item.createdAt),
           date('实际匹配日期', item.matchedOn),
@@ -691,7 +701,10 @@ export function buildCaseWorkspaceSections(
         fields: item.archive
           ? [
               date('归档日期', item.archive.current.archiveAt),
-              field('归档类型', archiveLabels[item.archive.current.archiveType]),
+              field(
+                '归档类型',
+                archiveLabels[item.archive.current.archiveType],
+              ),
               field('归档原因', item.archive.current.archiveReason),
             ]
           : [field('归档状态', '未归档')],
@@ -797,7 +810,13 @@ export function buildCaseWorkspaceSections(
   const firstInstanceEvents = events.filter((event) =>
     ['acceptance', 'hearing'].includes(event.source),
   );
-  const roundIds = [...new Set(firstInstanceEvents.map(eventRoundId).filter((value): value is string => value !== null))];
+  const roundIds = [
+    ...new Set(
+      firstInstanceEvents
+        .map(eventRoundId)
+        .filter((value): value is string => value !== null),
+    ),
+  ];
   const firstInstanceGroups = groups([
     'complaint',
     'complaint-confirmation',
@@ -869,7 +888,13 @@ export function buildCaseWorkspaceSections(
   const judgmentEvents = events.filter((event) =>
     ['judgment', 'second-result', 'second-revocation'].includes(event.source),
   );
-  const judgmentRoundIds = [...new Set(judgmentEvents.map(eventRoundId).filter((value): value is string => value !== null))];
+  const judgmentRoundIds = [
+    ...new Set(
+      judgmentEvents
+        .map(eventRoundId)
+        .filter((value): value is string => value !== null),
+    ),
+  ];
   const unassignedJudgmentEvents = judgmentEvents.filter(
     (event) => eventRoundId(event) === null,
   );
@@ -932,7 +957,9 @@ export function buildCaseWorkspaceSections(
               : []),
             ...actor(value.recordedByUserId),
           ],
-          ...(value.id !== item.closure?.current.id ? { historical: true } : {}),
+          ...(value.id !== item.closure?.current.id
+            ? { historical: true }
+            : {}),
         }))
       : []),
     ...(item.archive
@@ -948,7 +975,9 @@ export function buildCaseWorkspaceSections(
               : []),
             ...actor(value.recordedByUserId),
           ],
-          ...(value.id !== item.archive?.current.id ? { historical: true } : {}),
+          ...(value.id !== item.archive?.current.id
+            ? { historical: true }
+            : {}),
         }))
       : []),
     {

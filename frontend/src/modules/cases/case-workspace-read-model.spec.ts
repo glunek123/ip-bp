@@ -514,7 +514,9 @@ describe('case workspace read model', () => {
     expect(JSON.stringify(sections[4])).toContain('已撤销');
     expect(JSON.stringify(sections[4])).toContain('结果撤销原因');
     expect(JSON.stringify(sections[2])).toContain('发回重审第 2 轮 · round-2');
-    expect(JSON.stringify(sections[2])).toContain('尚未返回本轮正式立案或开庭资料');
+    expect(JSON.stringify(sections[2])).toContain(
+      '尚未返回本轮正式立案或开庭资料',
+    );
     expect(JSON.stringify(sections[3])).not.toContain('判决金额');
     expect(
       buildCaseWorkspaceEvents(item).filter(
@@ -590,7 +592,9 @@ describe('case workspace read model', () => {
     expect(firstInstance).toContain('正式立案日期');
     expect(firstInstance).toContain('初审案号');
     expect(firstInstance).toContain('开庭日期');
-    expect(firstInstance).toContain('发回重审第 2 轮 · round-2 · 来源二审结果 result-1');
+    expect(firstInstance).toContain(
+      '发回重审第 2 轮 · round-2 · 来源二审结果 result-1',
+    );
     expect(firstInstance).toContain('重审案号');
     expect(firstInstance).toContain('2026-06-10');
     expect(judgment).toContain('发回重审第 2 轮 · round-2');

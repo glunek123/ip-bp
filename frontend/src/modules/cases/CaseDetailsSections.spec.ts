@@ -158,7 +158,9 @@ describe('CaseDetailsSections with the real A2 section shell', () => {
         .every((body) => !body.isVisible()),
     ).toBe(true);
     const caseBody = wrapper.get('[data-section="case-info"]');
-    expect(caseBody.get('.case-workspace-field__label').text()).toBe('案件单号');
+    expect(caseBody.get('.case-workspace-field__label').text()).toBe(
+      '案件单号',
+    );
     expect(caseBody.get('.case-workspace-field__value').text()).toBe('CA-1');
     expect(caseBody.text()).toContain('未登记');
     expect(caseBody.text()).toContain('实际匹配日期');

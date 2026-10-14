@@ -53,6 +53,17 @@ type Receipt = {
   version: number;
   recordedAt: string;
 };
+type LifecycleFacts = Record<
+  | 'complaint'
+  | 'filingSubmission'
+  | 'acceptances'
+  | 'hearing'
+  | 'judgment'
+  | 'executionSubmission'
+  | 'executionFiling'
+  | 'executionFinish',
+  unknown
+> & { courtCaseNo: string | null };
 type ArchiveVersion = {
   id: string;
   kind: 'ARCHIVE' | 'CORRECT';
@@ -167,7 +178,7 @@ test.beforeEach(async () => {
 test.afterEach(clean);
 test.afterAll(disconnectCustomerTestDatabase);
 
-test('internal case workspace keeps seven closed sections, real file bytes and pending amounts across compact viewports without case writes', async ({
+test('internal case workspace keeps eight closed sections, real file bytes and pending amounts across compact viewports without case writes', async ({
   page,
   request,
 }, testInfo) => {
@@ -195,7 +206,7 @@ test('internal case workspace keeps seven closed sections, real file bytes and p
   );
   const workspace = page.locator('.case-workspace').first();
   const toggles = workspace.locator('.case-workspace-section__toggle');
-  await expect(toggles).toHaveCount(7);
+  await expect(toggles).toHaveCount(8);
   await expect(toggles).toHaveText([
     /案件信息/u,
     /线索信息/u,
@@ -203,17 +214,27 @@ test('internal case workspace keeps seven closed sections, real file bytes and p
     /二审信息/u,
     /判决信息/u,
     /执行信息/u,
+    /结案信息/u,
     /流程时间轴/u,
   ]);
   for (const toggle of await toggles.all())
     await expect(toggle).toHaveAttribute('aria-expanded', 'false');
   await toggles.first().click();
   await expect(toggles.first()).toHaveAttribute('aria-expanded', 'true');
+  await revealCaseWorkspaceSection(page, 'closure-info');
   await expect(
     workspace.locator(
-      '[data-section="case-info"] .case-workspace-section__body',
+      '[data-section="closure-info"] .case-workspace-section__body',
     ),
-  ).toContainText('未记录');
+  ).toContainText('尚未登记');
+  await expect(
+    workspace.locator(
+      '[data-section="closure-info"] .case-workspace-section__edit',
+    ),
+  ).toHaveCount(0);
+  await page
+    .locator('[data-section="closure-info"] .case-workspace-section__toggle')
+    .click();
   await expect(
     workspace.locator(
       '.case-workspace-section__body :is(input,select,textarea)',
@@ -270,7 +291,7 @@ test('internal case workspace keeps seven closed sections, real file bytes and p
   ] as const) {
     await page.setViewportSize({ width, height });
     await page.goto(path);
-    await expect(toggles).toHaveCount(7);
+    await expect(toggles).toHaveCount(8);
     for (const toggle of await toggles.all())
       await expect(toggle).toHaveAttribute('aria-expanded', 'false');
     expect(
@@ -315,7 +336,7 @@ test('internal case workspace keeps seven closed sections, real file bytes and p
       .locator('[data-section="judgment"] .case-workspace-group')
       .filter({
         has: page.getByRole('heading', {
-          name: '判决登记（当前）',
+          name: /判决登记（当前）$/u,
           exact: true,
         }),
       });
@@ -374,6 +395,9 @@ test('normal operator archives pending amount and unknown closure date, appends 
   );
   const before = await read(request, source.caseId);
   expect(before.archive).toBeNull();
+  const beforeFacts = await data<LifecycleFacts>(
+    await request.get(`/api/v1/cases/${source.caseId}`, { headers: operator }),
+  );
   await signIn(
     page,
     `/cases/${source.caseId}`,
@@ -435,8 +459,8 @@ test('normal operator archives pending amount and unknown closure date, appends 
     toVersion: archived.version,
   });
   await page.reload();
-  await revealCaseWorkspaceSection(page, 'case-info');
-  await expect(page.locator('[data-section="case-info"]')).toContainText(
+  await revealCaseWorkspaceSection(page, 'closure-info');
+  await expect(page.locator('[data-section="closure-info"]')).toContainText(
     '待确认',
   );
   await openCaseWorkspaceCommand(
@@ -511,6 +535,64 @@ test('normal operator archives pending amount and unknown closure date, appends 
   );
   await expect(panel.locator('[data-test="archive-current"]')).toContainText(
     '执行终本',
+  );
+  await page.locator('.case-workspace-editors .el-drawer__close-btn').click();
+  const archivedFacts = await data<LifecycleFacts>(
+    await request.get(`/api/v1/cases/${source.caseId}`, { headers: operator }),
+  );
+  for (const key of [
+    'complaint',
+    'filingSubmission',
+    'acceptances',
+    'hearing',
+    'judgment',
+    'executionSubmission',
+    'executionFiling',
+    'executionFinish',
+  ] as const)
+    expect(archivedFacts[key]).toEqual(beforeFacts[key]);
+  await expect(page.locator('.case-workspace-section__toggle')).toHaveCount(8);
+  for (const section of [
+    'case-info',
+    'lead-info',
+    'first-instance',
+    'second-instance',
+    'judgment',
+    'execution',
+    'closure-info',
+    'timeline',
+  ])
+    await revealCaseWorkspaceSection(page, section);
+  if (beforeFacts.courtCaseNo === null)
+    throw new Error('Synthetic first-instance court case number missing');
+  await expect(page.locator('[data-section="first-instance"]')).toContainText(
+    beforeFacts.courtCaseNo,
+  );
+  await expect(page.locator('[data-section="judgment"]')).toContainText(
+    '0.00 元',
+  );
+  await expect(page.locator('[data-section="execution"]')).toContainText(
+    '合成验收：执行程序已实际结束',
+  );
+  await expect(page.locator('[data-section="closure-info"]')).toContainText(
+    '待确认',
+  );
+  await expect(page.locator('[data-section="closure-info"]')).toContainText(
+    '执行终本',
+  );
+  await expect(
+    page.locator('[data-section="closure-info"] .case-workspace-section__edit'),
+  ).toHaveCount(0);
+  const lifecycleDirectory = resolve('.local/ui002-evidence/browser-artifacts');
+  mkdirSync(lifecycleDirectory, { recursive: true });
+  await page.screenshot({
+    path: resolve(lifecycleDirectory, 'archived-eight-lifecycle.png'),
+    fullPage: true,
+  });
+  await openCaseWorkspaceCommand(
+    page,
+    'archive',
+    '[data-test="archive-panel"]',
   );
   const directory = resolve('.local/ui002-evidence/browser-artifacts');
   mkdirSync(directory, { recursive: true });
