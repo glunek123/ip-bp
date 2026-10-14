@@ -275,6 +275,29 @@ describe('CaseJudgmentNextStepService', () => {
     expect(f.tx.caseJudgmentNextStepRevocation.create).not.toHaveBeenCalled();
   });
 
+  it('does not revoke an appeal after second-instance acceptance is registered', async () => {
+    const f = fixture();
+    const choiceId = 'aaaaaaaa-aaaa-4aaa-8aaa-aaaaaaaaaaaa';
+    f.tx.case.findFirst.mockResolvedValue({
+      ...f.record,
+      stage: 'SECOND_INSTANCE',
+      version: 11,
+      currentJudgmentNextStepId: choiceId,
+      currentJudgmentNextStep: { id: choiceId, judgmentId, next: 'APPEAL' },
+    });
+    f.tx.caseSecondInstanceAcceptanceChange.count.mockResolvedValue(1);
+    await expect(
+      f.service.revoke(actor, caseId, {
+        expectedVersion: 11,
+        idempotencyKey: 'revoke-after-second-acceptance',
+        choiceId,
+        reason: 'recorded acceptance',
+      }),
+    ).rejects.toMatchObject({ response: { code: 'INVALID_STATE' } });
+    expect(f.tx.caseJudgmentNextStepRevocation.create).not.toHaveBeenCalled();
+    expect(f.tx.case.updateMany).not.toHaveBeenCalled();
+  });
+
   it('does not revoke a direct execution choice with a historical formal submission', async () => {
     const f = fixture();
     const choiceId = 'aaaaaaaa-aaaa-4aaa-8aaa-aaaaaaaaaaaa';

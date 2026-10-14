@@ -127,7 +127,6 @@ BEGIN
        (revision=0 AND change_record."accepted_at" IS NULL AND change_record."court_case_no" IS NULL) OR
        (revision>0 AND change_record."accepted_at" IS NOT DISTINCT FROM prior_date AND change_record."court_case_no" IS NOT DISTINCT FROM prior_no) OR
        (revision>0 AND change_record."reason" IS NULL) OR
-       NOT check_case_second_acceptance_dates(root."id",root."case_id",root."department_id",root."trial_round_id",change_record."accepted_at") OR
        audit_record."id" IS NULL OR audit_record."department_id"<>root."department_id" OR audit_record."resource_type"<>'CASE' OR
        audit_record."resource_id"<>root."case_id" OR audit_record."actor_user_id" IS DISTINCT FROM change_record."recorded_by_user_id" OR
        audit_record."internal_actor_user_id" IS DISTINCT FROM change_record."recorded_by_user_id" OR
@@ -151,6 +150,9 @@ BEGIN
     END IF;
     revision:=change_record."to_revision"; prior_id:=change_record."id"; prior_date:=change_record."accepted_at"; prior_no:=change_record."court_case_no";
   END LOOP;
+  IF NOT check_case_second_acceptance_dates(root."id",root."case_id",root."department_id",root."trial_round_id",prior_date) THEN
+    RAISE EXCEPTION 'second acceptance date conflicts with effective history' USING ERRCODE='23514';
+  END IF;
   IF case_record."current_judgment_next_step_id" IS DISTINCT FROM root."id" AND
      NOT EXISTS (SELECT 1 FROM "case_second_instance_progresses" p WHERE p."choice_id"=root."id") AND
      NOT EXISTS (SELECT 1 FROM "case_second_instance_results" r WHERE r."choice_id"=root."id") THEN

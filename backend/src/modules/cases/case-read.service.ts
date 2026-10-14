@@ -1512,20 +1512,6 @@ export class CaseReadService {
     const secondAcceptanceChoices = (record.judgmentNextSteps ?? []).filter(
       (choice) => choice.next === 'APPEAL',
     );
-    const canSaveSecondAcceptance =
-      principal === 'INTERNAL' &&
-      secondAcceptanceChoices.length > 0 &&
-      (await this.access.canAuthorizeCase(
-        actor,
-        'case.second-instance-acceptance.update',
-        {
-          departmentId: actor.departmentId,
-          responsibleUserId: record.responsibleUserId,
-          ...(record.responsibleMembership.teamId
-            ? { teamId: record.responsibleMembership.teamId }
-            : {}),
-        },
-      ));
     const secondAcceptanceEligible = (choiceId: string) =>
       !record.judgmentNextStepRevocations.some(
         (revocation) => revocation.choiceId === choiceId,
@@ -1538,6 +1524,22 @@ export class CaseReadService {
           (result) => result.choiceId === choiceId,
         ) ||
         secondAcceptanceChanges.some((change) => change.choiceId === choiceId));
+    const canSaveSecondAcceptance =
+      principal === 'INTERNAL' &&
+      secondAcceptanceChoices.some((choice) =>
+        secondAcceptanceEligible(choice.id),
+      ) &&
+      (await this.access.canAuthorizeCase(
+        actor,
+        'case.second-instance-acceptance.update',
+        {
+          departmentId: actor.departmentId,
+          responsibleUserId: record.responsibleUserId,
+          ...(record.responsibleMembership.teamId
+            ? { teamId: record.responsibleMembership.teamId }
+            : {}),
+        },
+      ));
     const secondProgresses = record.secondInstanceProgresses.map(
       (progress) => ({
         id: progress.id,
