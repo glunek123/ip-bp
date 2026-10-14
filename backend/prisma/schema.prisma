@@ -1202,6 +1202,7 @@ model ContentVersion {
   caseSecondProgressVersions CaseSecondInstanceProgressVersion[]
   caseSecondResultVersions CaseSecondInstanceResultVersion[]
   caseExecutionSubmissionVersions CaseExecutionSubmissionVersion[]
+  caseExecutionConfirmationVersions CaseExecutionConfirmationVersion[]
   caseExecutionMailingVersions CaseExecutionMailingVersion[]
   closureDocuments CaseClosureDocument[]
   caseExecutionFinishVersions CaseExecutionFinishVersion[]
@@ -2866,6 +2867,7 @@ model CaseExecutionConfirmation {
   confirmedBy UserAccount @relation("ExecutionConfirmationActor", fields: [confirmedByUserId], references: [id], onDelete: Restrict, onUpdate: Restrict)
   auditEvent AuditEvent @relation(fields: [auditEventId], references: [id], onDelete: Restrict, onUpdate: Restrict)
   mailing CaseExecutionMailing?
+  versions CaseExecutionConfirmationVersion[]
 
   @@unique([caseId, fromVersion])
   @@unique([caseId, toVersion])
@@ -2873,6 +2875,20 @@ model CaseExecutionConfirmation {
   @@unique([submissionId, caseId, departmentId])
   @@map("case_execution_confirmations")
   @@unique([id, caseId, departmentId])
+}
+
+model CaseExecutionConfirmationVersion {
+  confirmationId String @map("confirmation_id") @db.Uuid
+  caseId String @map("case_id") @db.Uuid
+  departmentId String @map("department_id") @db.Uuid
+  materialId String @map("material_id") @db.Uuid
+  contentVersionId String @map("content_version_id") @db.Uuid
+  confirmation CaseExecutionConfirmation @relation(fields: [confirmationId, caseId, departmentId], references: [id, caseId, departmentId], onDelete: Restrict, onUpdate: Restrict)
+  contentVersion ContentVersion @relation(fields: [materialId, contentVersionId], references: [materialId, id], onDelete: Restrict, onUpdate: Restrict)
+
+  @@id([confirmationId, contentVersionId])
+  @@unique([confirmationId, materialId])
+  @@map("case_execution_confirmation_versions")
 }
 
 model CaseExecutionConfirmationReceipt {

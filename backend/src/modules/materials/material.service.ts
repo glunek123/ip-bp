@@ -2664,6 +2664,39 @@ export class MaterialService {
     }
   }
 
+  async freezeCaseExecutionConfirmationReferences(
+    transaction: MaterialTransactionClient,
+    actor: ActorContext,
+    caseId: string,
+    confirmationId: string,
+    facts: readonly ValidatedMaterialVersionFact[],
+    actionEventId: string,
+  ): Promise<void> {
+    if (facts.length < 1 || facts.length > 10) throw this.invalidVersion();
+    for (const fact of facts) {
+      const validation = this.validatedVersionFacts.get(fact);
+      const canonical = validation?.canonicalFact;
+      if (
+        validation?.transaction !== transaction ||
+        canonical?.departmentId !== actor.departmentId ||
+        canonical.ownerType !== 'CASE' || canonical.ownerId !== caseId ||
+        canonical.category !== 'EXECUTION_APPLICATION' ||
+        canonical.purpose !== 'EXECUTION_APPLICATION' ||
+        !allowedMimeTypes.EXECUTION_APPLICATION.has(canonical.mimeType) ||
+        canonical.sizeBytes > BigInt(materialFileLimit('EXECUTION_APPLICATION'))
+      ) throw this.invalidVersion();
+      await transaction.caseExecutionConfirmationVersion.create({
+        data: { confirmationId, caseId, departmentId: actor.departmentId,
+          materialId: canonical.materialId, contentVersionId: canonical.contentVersionId },
+      });
+      await transaction.materialReference.create({
+        data: { departmentId: actor.departmentId, resourceType: 'case', resourceId: caseId,
+          purpose: 'EXECUTION_APPLICATION', materialId: canonical.materialId,
+          contentVersionId: canonical.contentVersionId, actionEventId },
+      });
+    }
+  }
+
   async freezeCaseExecutionMailingReferences(
     transaction: MaterialTransactionClient,
     actor: ActorContext,
@@ -2894,6 +2927,10 @@ export class MaterialService {
         (await transaction.caseExecutionSubmissionVersion.findFirst({
           where: { caseId, departmentId, materialId, contentVersionId },
           select: { submissionId: true },
+        })) !== null ||
+        (await transaction.caseExecutionConfirmationVersion.findFirst({
+          where: { caseId, departmentId, materialId, contentVersionId },
+          select: { confirmationId: true },
         })) !== null
       );
     if (category === 'JUDGMENT')
