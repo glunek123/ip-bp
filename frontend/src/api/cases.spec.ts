@@ -3420,6 +3420,26 @@ describe('cases API', () => {
       canMatch: false,
       customer: { name: '客户甲' },
     });
+    const externalLawyerDetail = {
+      ...lawyerDetail,
+      origin: {
+        kind: 'EXTERNAL_ENTRY',
+        entryKind: 'EXTERNAL_TRANSFER',
+        stageReachedOn: '2026-10-01',
+      },
+      certificate: null,
+      courtCaseNo: '外部真实案号',
+    };
+    mockJson(externalLawyerDetail);
+    await expect(read('case-1')).resolves.toMatchObject({
+      origin: { kind: 'EXTERNAL_ENTRY' },
+      courtCaseNo: '外部真实案号',
+      acceptance: null,
+    });
+    mockJson({ ...externalLawyerDetail, courtCaseNo: '   ' });
+    await expect(read('case-1')).rejects.toMatchObject({
+      code: 'INVALID_RESPONSE',
+    });
     const acceptedLawyerDetail = {
       ...lawyerDetail,
       stage: 'WAITING_HEARING',
@@ -3947,6 +3967,29 @@ describe('CA018 external case entry API', () => {
       sourceLead: null,
       sourceNotaryMatter: null,
       certificate: null,
+    });
+    const knownCaseNo = '（2026）外部案号1号';
+    mockJson({
+      ...externalDetail,
+      courtCaseNo: knownCaseNo,
+      origin: {
+        ...origin,
+        known: { ...input.known, courtCaseNo: knownCaseNo },
+      },
+    });
+    await expect(getCase('case-1')).resolves.toMatchObject({
+      courtCaseNo: knownCaseNo,
+    });
+    mockJson({
+      ...externalDetail,
+      courtCaseNo: '（2026）错误案号2号',
+      origin: {
+        ...origin,
+        known: { ...input.known, courtCaseNo: knownCaseNo },
+      },
+    });
+    await expect(getCase('case-1')).rejects.toMatchObject({
+      code: 'INVALID_RESPONSE',
     });
     const externalSummary = {
       ...summary,

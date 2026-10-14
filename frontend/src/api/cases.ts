@@ -324,28 +324,28 @@ export type ExecutionSubmissionState = {
 };
 export type ExecutionConfirmation = {
   id: string;
-  submissionId: string;
+  submissionId: string | null;
   confirmedAt: string;
   confirmedByUserId: string;
   files: ExecutionSubmissionFile[];
 };
 export type ExecutionMailing = {
   id: string;
-  confirmationId: string;
+  confirmationId: string | null;
   mailedAt: string;
   recordedAt: string;
   files: CaseFile[];
 };
 export type ExecutionFiling = {
   id: string;
-  mailingId: string;
+  mailingId: string | null;
   submittedAt: string;
   recordedAt: string;
   files: CaseFile[];
 };
 export type ExecutionFinish = {
   id: string;
-  filingId: string;
+  filingId: string | null;
   finishedAt: string;
   reason: string;
   basisNote: string | null;
@@ -355,7 +355,7 @@ export type ExecutionFinish = {
 export type FinishCaseExecutionInput = {
   expectedVersion: number;
   idempotencyKey: string;
-  expectedFilingId: string;
+  expectedFilingId: string | null;
   finishedAt: string;
   reason: string;
   basisNote: string | null;
@@ -364,7 +364,7 @@ export type FinishCaseExecutionInput = {
 export type FinishCaseExecutionResult = {
   id: string;
   finishId: string;
-  filingId: string;
+  filingId: string | null;
   stage: 'WAITING_ARCHIVE';
   version: number;
   finishedAt: string;
@@ -399,7 +399,7 @@ export type CaseDisplaySummary = {
 export type RecordCaseClosureInput = {
   expectedVersion: number;
   idempotencyKey: string;
-  expectedFinishId: string;
+  expectedFinishId: string | null;
   closeAt: string | null;
   closeAmountState: 'KNOWN' | 'PENDING';
   closeAmt: string | null;
@@ -414,7 +414,7 @@ export type CaseClosureResult = {
   id: string;
   closureId: string;
   closureVersionId: string;
-  finishId: string;
+  finishId: string | null;
   stage: 'WAITING_ARCHIVE';
   version: number;
   recordedAt: string;
@@ -423,7 +423,7 @@ export type CaseClosureVersion = {
   id: string;
   kind: 'REGISTER' | 'CORRECT';
   priorVersionId: string | null;
-  finishId: string;
+  finishId: string | null;
   fromVersion: number;
   toVersion: number;
   closeAt: string | null;
@@ -441,7 +441,7 @@ export type LawyerCaseClosureVersion = Omit<
 >;
 export type CaseClosure = {
   id: string;
-  finishId: string;
+  finishId: string | null;
   current: CaseClosureVersion;
   history: CaseClosureVersion[];
 };
@@ -824,6 +824,7 @@ export type LawyerCaseOrigin =
   | {
       kind: 'EXTERNAL_ENTRY';
       entryKind: ExternalEntryKind;
+      initialStage: CaseStage;
       stageReachedOn: string;
     };
 
@@ -831,7 +832,7 @@ export type SubmitExecutionInput = {
   expectedVersion: number;
   idempotencyKey: string;
   trialRoundId: string;
-  judgmentNextStepId: string;
+  judgmentNextStepId: string | null;
   secondInstanceResultId: string | null;
   expectedSubmissionId: string | null;
   executionApplicationContentVersionIds?: string[];
@@ -839,7 +840,7 @@ export type SubmitExecutionInput = {
 };
 export type SubmitExecutionResult = {
   id: string;
-  submissionId: string;
+  submissionId: string | null;
   stage: 'WAITING_EXECUTION_CONFIRMATION';
   version: number;
   submittedAt: string;
@@ -847,12 +848,13 @@ export type SubmitExecutionResult = {
 export type ConfirmExecutionInput = {
   expectedVersion: number;
   idempotencyKey: string;
-  expectedSubmissionId: string;
+  expectedSubmissionId: string | null;
+  executionApplicationContentVersionIds?: string[];
 };
 export type ConfirmExecutionResult = {
   id: string;
   confirmationId: string;
-  submissionId: string;
+  submissionId: string | null;
   stage: 'WAITING_EXECUTION_STAMP';
   version: number;
   confirmedAt: string;
@@ -860,21 +862,21 @@ export type ConfirmExecutionResult = {
 export type MailCaseExecutionInput = {
   expectedVersion: number;
   idempotencyKey: string;
-  expectedConfirmationId: string;
+  expectedConfirmationId: string | null;
   mailedAt: string;
   mailReceiptContentVersionIds: string[];
 };
 export type SubmitCaseExecutionFilingInput = {
   expectedVersion: number;
   idempotencyKey: string;
-  expectedMailingId: string;
+  expectedMailingId: string | null;
   submittedAt: string;
   executionFilingProofContentVersionIds: string[];
 };
 export type MailCaseExecutionResult = {
   id: string;
   mailingId: string;
-  confirmationId: string;
+  confirmationId: string | null;
   stage: 'WAITING_EXECUTION_FILING';
   version: number;
   mailedAt: string;
@@ -883,7 +885,7 @@ export type MailCaseExecutionResult = {
 export type SubmitCaseExecutionFilingResult = {
   id: string;
   filingId: string;
-  mailingId: string;
+  mailingId: string | null;
   stage: 'EXECUTING';
   version: number;
   submittedAt: string;
@@ -961,7 +963,7 @@ type SecondInstanceResultBase = {
   id: string;
   trialRoundId: string;
   choiceId: string;
-  judgmentId: string;
+  judgmentId: string | null;
   progressId: string | null;
   resultReceivedAt: string;
   paidLitigationFeeState: 'KNOWN' | 'PENDING';
@@ -2128,8 +2130,21 @@ function validAcceptance(value: unknown, internal: boolean): boolean {
 function courtCaseNoMatchesAcceptance(
   courtCaseNo: unknown,
   acceptance: unknown,
+  origin?: unknown,
 ): boolean {
-  if (acceptance === null) return courtCaseNo === null;
+  if (acceptance === null) {
+    if (record(origin) && origin.kind === 'EXTERNAL_ENTRY') {
+      if (record(origin.known))
+        return courtCaseNo === origin.known.courtCaseNo;
+      return (
+        courtCaseNo === null ||
+        (nonempty(courtCaseNo) &&
+          courtCaseNo.trim() === courtCaseNo &&
+          courtCaseNo.length <= 100)
+      );
+    }
+    return courtCaseNo === null;
+  }
   return record(acceptance) && courtCaseNo === acceptance.courtCaseNo;
 }
 function validAcceptanceMaterials(
@@ -2402,7 +2417,11 @@ function validCaseDetail(value: unknown, id: string): value is CaseDetail {
       sourceLead: value.sourceLead,
       sourceNotaryMatter: value.sourceNotaryMatter,
     }) &&
-    courtCaseNoMatchesAcceptance(value.courtCaseNo, value.acceptance) &&
+    courtCaseNoMatchesAcceptance(
+      value.courtCaseNo,
+      value.acceptance,
+      value.origin,
+    ) &&
     named(value.department, 'name') &&
     named(value.customer, 'name') &&
     named(value.rightsHolder, 'name') &&
@@ -3706,7 +3725,11 @@ export async function getLawyerCase(
       !lawyerMailing(result.complaintMailing)) ||
     (result.filingSubmission !== null &&
       !lawyerFiling(result.filingSubmission)) ||
-    !courtCaseNoMatchesAcceptance(result.courtCaseNo, result.acceptance) ||
+    !courtCaseNoMatchesAcceptance(
+      result.courtCaseNo,
+      result.acceptance,
+      result.origin,
+    ) ||
     !validAcceptance(result.acceptance, false) ||
     !validAcceptanceMaterials(result.acceptanceMaterials) ||
     !validHearing(result.hearing, false) ||
