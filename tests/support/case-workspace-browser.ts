@@ -32,6 +32,7 @@ export async function openCaseWorkspaceCommand(
     await expectWorkspaceDrawer(page);
     return;
   }
+  await closeCaseWorkspaceDrawer(page);
   const previous = page.locator(
     `[data-test="workspace-prior-editor"][data-command="${command}"]`,
   );
@@ -46,7 +47,9 @@ export async function openCaseWorkspaceCommand(
     `[data-test="workspace-more-actions"] [data-command="${command}"]`,
   );
   if (await more.count()) {
-    await page.locator('[data-test="workspace-more-actions"] summary').click();
+    const menu = page.locator('[data-test="workspace-more-actions"]');
+    if ((await menu.getAttribute('open')) === null)
+      await menu.locator('summary').click();
     await more.click();
   } else await page.locator('[data-test="workspace-primary-action"]').click();
   await expect(page.locator('[data-test="workspace-command"]')).toBeVisible();

@@ -1,6 +1,6 @@
 {
   "version": 1,
-  "recordedAt": "2026-10-14T07:37:58.337Z",
+  "recordedAt": "2026-10-14T07:44:54.065Z",
   "files": {
     ".cursor/rules/verified-feature-integration.mdc": "da673301f0440a6a9615786027dffc8e01f739a97f81cd97accef1580ac51f98",
     ".env.example": "07211cde5c2b59efc21b619b752d4c9b871f0980d2d64ca3c146ad6151fd27ca",
@@ -1016,7 +1016,7 @@
     "tests/support/case-lawyer-migration.mjs": "c596f12f95eea366393955d2541cb39b29300d1c8c562e2ef104f40b9a0bf19f",
     "tests/support/case-second-instance-database.mjs": "30ed46e0f026cbab58869ffbc0ebc04179cfcbdcb7cb7ef1df8d94cf54bfb496",
     "tests/support/case-second-instance-migration.mjs": "c7057a8cfc62d3f81ed3a45a817dbd57925bed3419c94f8fcd92239081fef690",
-    "tests/support/case-workspace-browser.ts": "7cf0107c0b564016f3a40c454779f0bd4fa00070700cda32efab899fc8bc9467",
+    "tests/support/case-workspace-browser.ts": "a4a57b944c53211a1b7329887991be50238e7faf4d73f538d0c3da89be977d7f",
     "tests/support/core-lead-database.mjs": "96c7c0d3d6968ef0beb0e7a17332f0401ae5dd46061e1b17000ffb6ac3660f3e",
     "tests/support/customer-agreement-migration.mjs": "fba0e36a824756e2e8f4987d54f28853847e404c47c1b8b39b9bb8133728e787",
     "tests/support/customer-contact-migration.mjs": "ee251909b652a303fe2d9d37da823a0bbf3382b33875b3ae8edc446dd05ecf35",
