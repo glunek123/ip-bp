@@ -345,10 +345,11 @@ describe('OrganizationService management context', () => {
       assignTeamRoles: false,
       manageRoleTemplates: true,
     });
-    expect(result.permissionCatalog).toHaveLength(66);
+    expect(result.permissionCatalog).toHaveLength(67);
     for (const [action, label] of [
       ['CASE_DEFENDANT_CONTACT_UPDATE', '更新被告联系方式'],
       ['CASE_ACCEPTANCE_CORRECT', '更正一审受理信息'],
+      ['CASE_SECOND_INSTANCE_ACCEPTANCE_UPDATE', '登记或更正二审受理信息'],
       ['CUSTOMER_RESPONSIBLE_TRANSFER', '转派负责运营'],
       ['CUSTOMER_COOPERATION_PAUSE', '暂停客户合作'],
       ['CUSTOMER_COOPERATION_TERMINATE', '终止客户合作'],
