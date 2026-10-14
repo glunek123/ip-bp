@@ -462,6 +462,7 @@ export class NotaryCertificateService {
     if (
       stored === null ||
       stored.businessNo !== caseValue.businessNo ||
+      stored.certificate === null ||
       stored.certificate.toVersion !== result.version ||
       stored.certificate.certificateNo !== certificateValue.certificateNo ||
       stored.certificate.certificateDate.toISOString().slice(0, 10) !==

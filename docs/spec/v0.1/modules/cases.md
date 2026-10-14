@@ -530,6 +530,8 @@ CaseExternalEntry是不可变的已知当前状态来源，区分外部接办与
 
 stageReachedOn仅标明真实当前阶段业务发生日；首个新动作不早于这个当前阶段锚，但不把它显示／写成未提供的受理、判决或邮寄日。known中真实具体日期形成对应限制，互相矛盾拒绝，不错误重查已被更正的旧值；未来更正使用已有真实事实链规则。该日期口径直接落实SD-23的真实业务日，不采用系统录入时间代替。
 
+初始SECOND_INSTANCE外部根没有真实前判时，AFFIRM必须像CHANGE一样明示本次真实结果金额组judgmentAmount={state:KNOWN,amount:十进制字符串}或{state:PENDING,amount:null}；不得从不存在的一审判决复制金额或默认0，不新增额外金额原因字段。仅匹配本案entry／EXTERNAL_CURRENT初始二审、无真实当前前判的来源支路允许此请求；有真实前判的正常AFFIRM（含外部入库后真实新上诉）保持旧请求不带judgmentAmount并复制实际前判，CHANGE仍显式金额，REMAND仍不带金额。公共字段组沿用现有类型，所有日期／真实费用／精确文件和权限门槛保持。
+
 ### 读取、界面与验收
 
 内部列表／详情新增origin：正常{kind:NOTARY}且旧来源／证书完整；外部{kind:EXTERNAL_ENTRY,entryId,entryKind,initialStage,stageReachedOn,source,reason,recordedAt,recordedByUserId,known}且sourceLead／sourceNotaryMatter／certificate为null。正常旧后端缺origin时仍按旧全真来源兼容；外部缺明确origin或混合来源严格拒绝。摘要只使用真实已知平台／店铺／案号／法院，其余null；内部来源说明和理由可见。律师仅当前PRIMARY授权下的必要来源标签／业务日期及本案真实资料，不返回内部补录原因、操作者、审计正文或存储键；客户继续本企业最小投影，不扩内部来源正文。无来源不调用线索、公证及费用读取，也不包装外部文件为公证书。

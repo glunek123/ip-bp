@@ -1,6 +1,6 @@
 {
   "version": 1,
-  "recordedAt": "2026-10-14T19:54:32.089Z",
+  "recordedAt": "2026-10-14T20:10:40.579Z",
   "files": {
     ".cursor/rules/verified-feature-integration.mdc": "da673301f0440a6a9615786027dffc8e01f739a97f81cd97accef1580ac51f98",
     ".env.example": "07211cde5c2b59efc21b619b752d4c9b871f0980d2d64ca3c146ad6151fd27ca",
@@ -424,7 +424,7 @@
     "backend/src/modules/leads/notary-account-migration.spec.ts": "fa097fb82d7ee31bc7b3634de0c0f8137ac5566e81c8addcfca7537b3aa8309e",
     "backend/src/modules/leads/notary-certificate.dto.ts": "d4660c8130a15a8e7ae28573cc82fb1a733fdc21055be24c13951d53ee2a3258",
     "backend/src/modules/leads/notary-certificate.service.spec.ts": "eb2384ff032f1acc7f16e23f2cc8d4930d4958bccec8871a275004c6d888f457",
-    "backend/src/modules/leads/notary-certificate.service.ts": "b25ef7515e6878c6956861df5df667dbdb703c9e90b7ad5d72377585d61a1190",
+    "backend/src/modules/leads/notary-certificate.service.ts": "a912875643c448707de6fc7aad281f8dceab512c7380159b4bc5c80821884723",
     "backend/src/modules/leads/notary-display-read.spec.ts": "d6fb5b93066bcb9c1f33ec04158a8b5f7cb139075f9dae3ae7757b3aa1e5ced4",
     "backend/src/modules/leads/notary-display-read.ts": "ed6e70aec7ca06a6efe6d47e2285ea2de77a5613e057517ce3e1aeacf5a03ea5",
     "backend/src/modules/leads/notary-issuance-decision-read.spec.ts": "9fc4b3b1577d12fed56152381145497c4233ce1b96d49194d3c55f73cd6f8be4",
@@ -563,7 +563,7 @@
     "docs/spec/v0.1/TECHNICAL-DESIGN.md": "ab79bcc2f7232526b22d52a5bee6d334f0a0a7ab0d391ed315de092cb3516a45",
     "docs/spec/v0.1/VALIDATION.md": "8c4b61fb470982a378c498ada780c9f10a9b9f9521d27bfacc519a724eeb5904",
     "docs/spec/v0.1/modules/calendar.md": "3991b1148b13e2bf2daad951caa48935c5ed6a202b12817b3c47624ad3e0c774",
-    "docs/spec/v0.1/modules/cases.md": "d8d4b4dfa2065d47b2cf7a66ce3d73ae2655a98e8f29170a9824b882505dcb5a",
+    "docs/spec/v0.1/modules/cases.md": "0203608c944872ae9b2147b15b1aeded30617272776fd2792adbdedee36b1404",
     "docs/spec/v0.1/modules/customers.md": "dda577688b5c64baeb1dd2bb3787cbb4263f3f5868cf51b90bc39493f625f0b0",
     "docs/spec/v0.1/modules/evidence.md": "90684046854c53d233ce4225ca25043dbbf60a0195566202604d8b37398294ef",
     "docs/spec/v0.1/modules/fees.md": "076f9aaab42a8b43370a487e535baa889ca7db0eff1d338bab3ef50882af53d2",
