@@ -1812,7 +1812,9 @@ onBeforeUnmount(() => {
           <span class="pill">{{ stageLabel(item.stage) }}</span>
           <ElButton
             v-if="primaryCommand"
-            type="primary"
+            :type="
+              primaryCommand.label.startsWith('撤销') ? 'danger' : 'primary'
+            "
             data-test="workspace-primary-action"
             @click="openCommand(primaryCommand)"
             >{{ primaryCommand.label }}</ElButton
@@ -1825,14 +1827,15 @@ onBeforeUnmount(() => {
             <ElButton
               v-for="command in moreCommands"
               :key="command.id"
-              text
+              :type="command.label.startsWith('撤销') ? 'danger' : 'primary'"
+              plain
               :data-command="command.id"
               @click="openCommand(command)"
               >{{ command.label }}</ElButton
             >
           </details>
           <ElButton
-            text
+            plain
             data-test="case-refresh"
             :loading="refreshing"
             @click="load"

@@ -371,6 +371,10 @@ test('operator finishes through the real panel with an explanation and customer 
   });
   await page.reload();
   await revealCaseWorkspaceSection(page, 'execution');
+  await page
+    .locator('[data-section="execution"] .case-workspace-group-nav button')
+    .filter({ hasText: '执行结束（当前）' })
+    .click();
   const finishFact = page
     .locator('[data-section="execution"] .case-workspace-group')
     .filter({
@@ -397,6 +401,10 @@ test('operator finishes through the real panel with an explanation and customer 
     reason: '合成验收案件已完成执行，记录实际履行结果。',
   });
   await revealCaseWorkspaceSection(page, 'execution');
+  await page
+    .locator('[data-section="execution"] .case-workspace-group-nav button')
+    .filter({ hasText: '执行结束（当前）' })
+    .click();
   await expect(finishFact).toBeVisible();
 
   await logout(page);

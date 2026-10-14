@@ -884,19 +884,27 @@ test('an operator matches a real notary case and the result survives refresh', a
   await page.reload();
   await revealCaseWorkspaceSection(page, 'case-info');
   await expect(
-    page.getByRole('heading', { name: '当前承办律师', exact: true }),
-  ).toBeVisible();
-  await expect(
     page
       .locator('[data-section="case-info"] .case-workspace-group:visible')
       .getByText('杭州真实匹配测试公司', { exact: true }),
   ).toBeVisible();
-  await expect(page.getByText(/张律师/u)).toBeVisible();
   await expect(
     page
       .locator('[data-section="case-info"] .case-workspace-field')
       .filter({ has: page.getByText('实际匹配日期', { exact: true }) }),
   ).toContainText('2026-09-28');
+  await page
+    .locator('[data-section="case-info"] .case-workspace-group-nav button')
+    .filter({ hasText: '当前承办律师' })
+    .click();
+  await expect(
+    page.getByRole('heading', { name: '当前承办律师', exact: true }),
+  ).toBeVisible();
+  await expect(
+    page
+      .locator('[data-section="case-info"] .case-workspace-group:visible')
+      .getByText('张律师', { exact: true }),
+  ).toBeVisible();
   await expect(page.getByText('匹配记录时间', { exact: true })).toBeVisible();
   const detail = await request.get(`/api/v1/cases/${caseId}`, {
     headers: authorizationA,

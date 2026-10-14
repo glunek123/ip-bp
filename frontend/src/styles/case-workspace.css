@@ -162,6 +162,9 @@
 
 .case-workspace-section__header button:disabled {
   color: var(--color-ink-muted);
+  background: #f2f3f5;
+  border-color: #d9dce2;
+  opacity: 0.7;
   cursor: default;
 }
 
