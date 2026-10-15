@@ -1,5 +1,37 @@
 # SPEC-001 文档验证
 
+## H首项实际Origin阻断与本轮独立收口（2026-10-15）
+
+原runner仅在新ignored配置修正cwd及锁proof取证顺序后继续同clean2a99。protected发现精确H首项1/1，正式仅一次、0retry，首次POST /api/v1/auth/login到3101、Origin5174即403 ORIGIN_FORBIDDEN，requestId50be9c6d-245b-4a1f-905d-592647c13a96；未到业务权限或资料API，不能称缺Action403。冻结factory仅留下新合成user/credential/membership/role/assignment各1及35条本轮role_grants，无hold external-entry.create，Case/Lead0。旧全149表原行、157链、结构/sequence及22source/target文件保持，H只读closure6/6，正常服务/端口/标准锁收尾。E65秒已证结果复用、未重跑；另两项H和UI未执行。
+
+service-h-api-cwd-2a99bba-20261015共57份，manifest SHAa5307e17af39d842c1ed01b59acae261de8eee16a5454685a8d9137978c340af，summary SHAc5f8ba22857b2e9d34fb6f855c94c05ba82c9a89a8a004cc68a897c715807b3b；主控及原Reviewer全部bytes/hash核对，证据边界Spec/Quality C/I/M0，H业务仍BLOCKED。原H Owner仅静态诊断合法同源入口，禁止关闭/绕过产品Origin、防护配置放宽、泄露token或补权；不再实跑已知缺权限准备链，真实业务等用户授权。已审c11/212只作为测试安全修正接入另树独立候选，与必要文档收口；不合入/发布未验收分栏产品，不把新的测试/配置组合冒称实跑2a99旧完整门禁。
+
+## 2a99 v6真实周期补证与UI启动准入（2026-10-15）
+
+原runner按新单从现存v6继续，20:36:16.890至20:37:31.005 UTC总74115ms，正常后台PID32568从health成功起真实monotonic存活65446.4402ms；原149表全当前行/结构/29Case列/安全/157账本/sequence/22source及target字节不变，精确advance21/audit915不再增加，12新表仍空。四类cleanup安全窗口重查通过，无手动扫描/业务API/时钟修改或禁用任务；自有后台停止、端口与锁释放。E32份证据在service-h-v6-cycle-2a99bba-20261015，E-hash-manifest SHA00be7f70533d494d75e1bb4bb71328805219c1dceec7128ba31fafeb16586c76由主控核全部bytes/hash，不伪称取得raw扫描{0,0}。
+
+同单H前检安全、固定工厂35Action无hold但缺已知三Action，protected发现恰1。正式第一次在启动webServer前因runner ignored配置未设项目cwd而找不到evidence/backend/dist/main.js，未进入测试/API、actor及Grant0；reporter未先保存formal token的证据缺口如实保留，不能称得到403或H业务失败。原runner已成功收到仅ignored配置cwd/reporter取证顺序修正的续办，fresh安全窗口后仍仅原首项，403即停不补Grant，不重E或verify。
+
+UI原Owner固定212b270a4b896d7e5340ae3ec6216afb2b5eee53/tree83caa350b12cf91150b7e01f859f15ba1b6a2f13，父c11；八文件增量只含已授权六入口路径及原support两处勘误。主控/原Sol核8源码+22证据共30份bytes/hash，原spec全文blob56b749c7a329320a1a199fe0fa8ff0cbfadf99af不变，16项/135断言保持。48/48入口纯测、79/79原source纯测及类型静态通过；三种正常离线counter配置均固定Pending、启动0，真实list16/启动0；dummy H无服务框架重放1/1只是配置兼容。原Sol Spec/Quality C/I/M0，可关闭受保护runner及默认root config的webServer-before-spec Important，不宣称覆盖任意外部自定义配置。全部16真实业务与待批权限仍Pending；未合入正在运行的2a99，旧完整门禁不扩大到此新八文件组合。根回执ui-webserver-212-root-receipt.json。
+
+## 2a99正常服务首次推进及未完成周期（2026-10-15）
+
+原唯一runner同clean2a99bba完成四类cleanup只读盘点（当前候选、非时间条件对象均0，deadline null）后启动正常自有后台。20:19:53.060 UTC，旧案d16c2ee8-9a31-456f-9836-79e1908636f9合法WAITING_HEARING/v5→WAITING_JUDGMENT/v6，精确advance5203c56f-f82e-4cda-955d-79615c270920、SYSTEM audit1e801808-a163-4768-bce4-eb0c87d4c1ec各追加1；原安排/轮次/entry/dueAt不变。主控执行单误列cases.updated_at，冻结实际29列没有该列，故原断言BLOCKED/exit1保留，不改schema。原只读收尾4644/4644证明其余旧行/安全/sequence/157账本/22份两端bytes不变，新12表仍空；推进总21、审计915。健康仅约5.2秒，60秒周期NOT_PROVEN，H未运行/Grant0；自有后台已停止，端口和锁释放。
+
+34份证据service-h-2a99bba-20261015的manifest SHA3960f48a7e77e4cf7eb22d0a1077c8226d90928c8615e47fe3cea619a6c74983、summary SHA6d34569689cd036cd47f82627b2d18f5b07dc0703771c0053ab26b250333ab85由主控及原Reviewer核bytes/hash，既有转移与恢复边界源码审C/I/M0，不是完整服务验收。新runner-2a99bba-v6-cycle-continuation.md SHA8b43e415f58d3468836bcb7bfb8fc74c4a202210ca5ce7ca1d94c566c40a2bca已独立窄审：以真实v6及既有advance/audit为基线，fresh cleanup安全窗口后观察health起至少65秒无任何再变；成功再按原范围H首API1项，403即停不补Grant。发送原runner遇AbsolutePathBuf路由错误，未确认接单；旧失败不覆盖，待父级有效通道续办。全部实际UI及待批权限仍hold。
+
+## 2a99正式Prisma部署与真实历史、文件保持（2026-10-15）
+
+固定clean2a99bba578a0a98743302478c8312d4a36a9bf8c/tree3f594e58ebe0eda47accad405725e280da090692，原唯一runner按精确执行单完成A/B/C。A在单标准锁内用COPYFILE_EXCL复制22文件3886bytes（来源列表16/公证4/开庭2），每项copy前后原source与新target stream SHA/size匹配、逐层no-reparse/escape，无覆盖/move/delete，旧137列投影及安全/Case/sequence保持、锁释放。B在A锁释放后一次正常pnpm db:test:migrate:deploy，通过固定pnpm→scripts/run-test-migration.mjs→Prisma7.10.0自行取锁，19:46:11.437至19:46:15.039 UTC实际exit0，原输出明确应用156/157；实际ownerPID21712/token f17c1246-91e8-4abb-a726-1d1bf7437988被观察live并结束释放。没有rawSQL替代、alternateURL、修改SQL、retry/resolve/rollback/reset；正式CLI发送边界由这次实际部署独立证明，不再只依据owned replay推定。
+
+C独立READ ONLY后检确认public账本157完整名/checksum/finished/noRollback、原155全账本整行hash不变，仅新增156/157两成功行；原137表按原列/PK投影4336行逐项保持（账本对原155行单独投影），全部67Case头、旧轮次/来源/事实/回执/audit/材料/ref、9完整安全表及baseline3用户/3角色/66Grant、sequence不变。新增12模型表全0、旧draft5新列及旧CV1新FK共6列均null；四旧函数pg_get_functiondef只精确日期输入literal替换，其余旧函数/索引/触发器/ACL等已核。22原source及runtime target真实bytes全匹配，原due案d16c2ee8仍v5/WAITING_HEARING，无服务调度。closure/archive及DELETED/PURGED等旧零行覆盖限制沿预检据实保留，不虚构这些历史或恢复证明。
+
+原post-result.json必须保留为BLOCKED/exit1（3788/3789）：唯一new-constraints-within-frozen-ddl检查漏计旧表上的合法CREATE CONSTRAINT TRIGGER对应pg_constraint contype=t行，不是产品迁移或旧数据失败。原SHA a65ee1ad99468deeb4f988fe17fedc42ffad6df9bc700c324b8153f767ffeb87未覆盖。仅使用已保存schema-before/after与冻结156/157做离线补证，未再连DB/重迁移：旧1210约束0漂移；新增162中36个t精确对应156静态14、157静态2及动态20consumer，旧表18，逐表/名称/时点/deferrable/函数/动态列参数一致；其余126普通约束为12新表123及旧表明确3项。普通约束中49个63字符名称为PG截断，按DDL类别/定义核对，不以原长字符串直接猜名。addendum SHA47666d04e04f43a0a0354c950adc9a057d85244f550a5171692d82564931dfdd绑定原post SHA，仅处理本批已核字面量不含空白/引号/public限定的deparse呈现，不是通用SQL parser。主控及原Reviewer据原3788项与严格补证综合接受阶段C，不能改写为原3789项同轮全过。
+
+最终证据section-record-edit-frontend-integration/.local/ui003-evidence/public-upgrade-2a99bba-20261015/含52份manifest，主控及原Reviewer逐项bytes/SHA匹配；manifest SHA071d761e2e7d7bbd11cd5cdcfe0c8732922474c67f315d4da835bba0431f2446，summary SHA4b6e9da68582fbe03958b49dd977aa882b4106ed5b4072a72bf4d87f9cf64c3f。阶段Spec/Quality ACCEPTED C/I/M0，根回执.local/ui003-evidence/public-upgrade-2a99bba-root-receipt.json；同1197 tracked输入/737构建hash不变，限定复用2a99完整verify，不重跑。旧28/36/39/53/50/18份证据不变，备份两文件只核byte未移/restore，端口与锁最终空闲，未Grant/新actor/服务/UI/预览操作。
+
+后续边界：服务启动前除hearing due盘点，还须按MaterialCleanupService四类真实where核当前与下一到期时刻并覆盖启动/观察安全窗口，不能只凭当前0推断未来0；不得改日期/禁scheduler或清理旧bytes。父级已允许把旧due案自然推进独立记录，H首条API可按既有冻结factory（无external-entry Action）范围实际验证，失败停、不临时补Grant。E/156bridge/S当前factory显式含hold的case.external-entry.create，暂不可运行。合并权限请求.local/ui003-evidence/section-validation-permission-request.md/.json准确记录基线roleA/B/SELF为23/23/20=66（不是22×3），管理user.manage/lawyer.account.manage已在基线A/B但不可私复制，正常UI另缺5流程Action；前三新执行更正标签无自动Grant。既有UI c11四文件移除S/H外部工厂，79纯回归、类型静态与发现16通过，只关闭测试源码unsafe委托风险。Playwright1.63正常run在load/beforeAll前先启动webServer，故不能声称整个运行在capture/DB前拒；该独立Important开放、c11暂不合入、全部16真实UI继续Pending。日期硬规则和持久预览冻结。
+
 ## 2a99历史只读预检与后续准入边界（2026-10-15）
 
 19:28:00.769至19:28:04.190 UTC，同clean2a99bba578a0a98743302478c8312d4a36a9bf8c/tree3f594e58ebe0eda47accad405725e280da090692，唯一runner完成只读历史预检exit0，结论READY_FOR_EXACT_COPY_REVIEW。标准锁实际PID42748/token d84824d5-9b80-43a3-8c20-735f7b76b850，结束释放，3101/5174前后空闲。PG快照为REPEATABLE READ READ ONLY，137表4336行按全部原列/类型/PK逐行hash、完整结构/enum/ACL/sequence/155账本前后相同；包含67Case头、65round、全部原typed/receipt/audit/material/reference和9完整安全表，另列baseline3用户/3角色/66Grant，不仅保护baseline。closure/archive等实际零行表明确记覆盖限制，不虚构这些历史事实。既有Temp dump/TOC字节与canonical备份摘要相容，未restore、不含库外blob。
