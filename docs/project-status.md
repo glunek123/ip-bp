@@ -1,5 +1,13 @@
 # 当前开发状态
 
+最新恢复检查点（2026-10-15，14:41 UTC后）：上次远端main/任务分支与本地主main实核1dd4034，仍只是文档交付，产品边界269c73c不变。R2首次155独立开庭专项在a539ae4/tree48eae422实际执行exit1；生成及本树构建通过，前后clean、标准指纹及155完整名称/checksum/完成状态不变，实例healthy、标准锁正常释放。失败是seedOwner合成客户缺少联系人兼容投影关联触发既有23514，案件0→0，未到开庭或竞争验证。原开庭Owner已由父级恢复修专属fixture；禁止修改生产约束迁就夹具。原失败及trace保留，未重跑、未执行156/157，旧库及持久预览未操作。
+
+C2原文件更正列表候选35055d37c11cd49586a567f10521432e3266e146/tree274bb276a406cd8ba3de6c902a466d0d9bbbb245已按五文件哈希代提交、clean；作者真实组件128/128、两类型及静态通过，原Reviewer终核C/I/M0。两个registered record浏览器场景尚未运行且只适用156。已审hook d584+740、材料API3db、C2及上传UI c253接源码组合afb0f4b2865f5b78f380ab7352ceb153bb3835c7/treee697bcbda763fe306aa3fbbf4af9ae09195fa7b1，无该组合最终门禁。上传UI两文件增量原Sol补审C/I/M0、作者213项聚焦通过；C2目录已仅接API与Panel为clean5499b44，上传prep宿主仍需独立续接，发送接口AbsolutePathBuf拒绝，未声称已启动。
+
+追加式R2 baseline6825d52三文件已审、7项离线通过，接独立155列表组合482f56e64f3525c56f936467d468a24d4e837475/treef8e6c803cc1dfde6d83d0bc61f2a0cdb31b2c58c。此组合原无node_modules，已正常离线冻结安装自己的依赖exit0；原baseline实施树的三个node_modules是指向主仓的junction，未在其上安装。baseline实际prepare未执行，可与开庭fixture解耦，由唯一runner串行调度；prepare自身持标准锁，外层不得重入。发runner续办也被AbsolutePathBuf拒绝，完整runner/C2/N续办指令已留.local/ui003-evidence/runtime-and-upload-host-relay-20261015.md供父级有效通道转交。N精确R2绑定仍待回执。
+
+S上传157仍WIP、未迁移：三阶段权限与首次消费闭环实施/源码审持续，律师材料list/open及案件JUDGMENT availableFiles旁路已由S独占最小过滤，后者37项读取测试通过。PUT保持原200、新POST201；专用三类待选池精确当前冻结证明排除及外部证明前隐藏边界已写正式上传合同，普通无context路径不变。尚无最终S候选、157 SQL实际验证或真实上传字节证据，I-SECTION-MAT-01不关闭。下文旧“未启动/未构建/未运行”是历史检查点，不能覆盖本段实际回执。
+
 最新恢复检查点（2026-10-15，R2实际155与上传合同冻结）：远端main和任务分支、本地主main已核d72dd4c，最近仅文档检查点交付，产品仍为已验收269c73c边界。R2项目dev-cor-ui003-r2已实际healthy，完整新容器45addc0179e929dd1dcd4f835b6c6c14c36c2ac4aed5e6cd5842648bf5db5236，唯一loopback15438、持久卷dev-cor-ui003-r2-pgdata、无tmpfs；新空库155/155正常部署exit0，完整名称/checksum/完成状态匹配，实际指纹87ddb629496fbfadd83a201c2518d2ed3406badfff2fd3843d2804f93e18cd42前后一致。主控已核runner回执及六日志哈希，未重新运行DB。尚未seed、构建或suite，156/157未执行。旧15437 tmpfs停止且事实不能声明保留，未start/up/rebuild/delete，预览及用户数据未操作。原runner继续唯一环境/实际执行Owner，追加式baseline/纯disconnect新模块分配ui003-r2-baseline独占树；实际启动待父级通道回执，不调用旧dropFaults链。155开庭专项自建随机owner且纯断连，可在R2绑定补审/源码构建后独立先跑，不依赖列表baseline。
 
 源集成进展：三列表I-LNC-01源码finding关闭，L/C2的R2重绑已审并分别代提交562e4c5/d5835ef，接三列表652aaee；N重绑待回执，真实列表验收未跑。开庭有效日期bridge2db96c7源码审C0/I0/M1，155/156 support精确R2重绑及持久纯反例由原开庭Owner续办，不改变产品/旧链。六栏API最终143f744的217项/两类型/Lint/格式与原Sol0已回执，原body/key及POST abort未知恢复保持；连同已审UI及R2准入增量接全源码组合6b73451，尚无组合门禁。原UI候选a46f593九文件350项/类型/Lint/格式/build已回执，累计独立源码审ACCEPTED C0/I0/M0并接组合；新上传/列表入口/真实浏览器未完成，截图未物化。材料上传合同C4647435经原Sol补审关闭I-UMAT01/02，已同步[精确上传正式合同](superpowers/specs/2026-10-15-case-section-record-upload-contract.md)，S可在新树0d44b52实施157及四E/H新service/spec五处target接线，API仅新增materials两文件、UI随后接线；发送失败由父级转达，未声称实施启动或完成。专用版本首次消费必须精确匹配目标/revision/closure锚，全部20消费表闭合current捷径；旧规则、Grant、stage/Case.version不变。真正功能缺口I-SECTION-MAT-01仍待实现/运行验收关闭。

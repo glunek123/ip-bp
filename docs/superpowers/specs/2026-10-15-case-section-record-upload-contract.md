@@ -45,7 +45,7 @@ type CaseSectionRecordUploadTarget =
 
 响应的 `recordCorrection` 只是服务端已持久化事实的回显，不接受任意 JSON，也不是令牌。普通旧草稿响应保持原样。
 
-文件使用既有 `PUT /api/v1/materials/upload-drafts/:id/content`，`application/octet-stream`，真实字节流；请求不接受重传 context。成功201返回原 `materialId, contentVersionId, originalFilename, purpose, mimeType, sizeBytes, sha256`，专用分支另返回相同 `recordCorrection`。前端须逐项核对 case、kind、目标、revision、round/closure锚及文件元数据，再把 contentVersionId 传给原更正命令。开庭没有文件，不新增上传入口。
+文件使用既有 `PUT /api/v1/materials/upload-drafts/:id/content`，`application/octet-stream`，真实字节流；请求不接受重传 context。沿原HTTP行为成功200返回 `materialId, contentVersionId, originalFilename, purpose, mimeType, sizeBytes, sha256`，专用分支另返回相同 `recordCorrection`；创建草稿POST仍为201。前端须逐项核对 case、kind、目标、revision、round/closure锚及文件元数据，再把 contentVersionId 传给原更正命令。开庭没有文件，不新增上传入口。
 
 ## 3. 最小结构化持久绑定（157）
 
@@ -55,6 +55,8 @@ type CaseSectionRecordUploadTarget =
 - 专用草稿硬性 `ownerType=CASE`，`internalActorUserId=actorUserId`，所有外部 binding 均空；同案、同部门、目标、精确 round、真实 closure/version 与 command->category/purpose 映射由数据库 guard 校验。内部用户当前状态/权限由服务在每阶段重新核实，绑定不是授权快照。
 - ContentVersion 新增 nullable `caseSectionRecordUploadDraftId` UUID UNIQUE、FK UploadDraft.id RESTRICT，UploadDraft 反向 optional 一对一。新专用上传必须关联自己的已 claim 草稿；旧普通上传保持 null。一个 draft 最多一份 final version，不可追加、解绑、改绑；专用上下文字段及身份、owner、category、purpose、文件声明创建后不可修改。FINALIZED 与具体版本匹配、上传人、真实 material.case/department/category/purpose 均有数据库完整性守卫。
 - 不使用自由 JSON、可手改 consumed boolean、新 Grant 或 Case.version 表达授权/消费。
+
+专用上传的待选池与单动作上限继续为10。仅在专用更正finalize的`EXECUTION_FILING_PROOF`、`EXECUTION_FINISH_BASIS`、`CASE_CLOSURE_DOCUMENT`计数分支，排除同案/部门/类别且**当前精确内容版本**已有真实typed冻结及精确MaterialReference/audit证明的历史材料，使原事实满10件时仍能追加更正；没有冻结证明、只有任意旧版本或伪引用、跨范围材料都不能排除。未消费待选材料仍占池，锁内计数与并发上限保持，单次更正材料数量不增。这不改变普通上传或restore的原quota、其它类别限制，也不新增历史删除策略。
 
 ## 4. 三阶段重新授权与并发
 
@@ -95,6 +97,8 @@ PUT 开始先读持久草稿定位案，但这次无锁读取不算传输前校�
 材料内部接口新增 `sectionRecordTarget?: CaseSectionRecordUploadTarget`，与既有 `sectionRecordKind` 同时匹配；未绑定旧版本保持兼容。E/H 在已验证精确目标/revision后传入该值；`freezeCaseSectionRecordCorrectionReferences` 的外部签名保持稳定，内部再读取真实 correction验证绑定首次消费。事实 WeakMap 继续绑定同一事务/规范字段，并记录该首次消费校验信息，禁止换目标、换事务或把私有 fact 用于旧冻结入口绕过。
 
 ## 6. 状态、失败与回执例子
+
+专用context版本在精确首次冻结证明提交前属于内部文件准备，不进入律师或其它外部材料列表，也不得由外部下载；该限制同时覆盖案件读取的`JUDGMENT availableFiles`元数据入口。证明提交后仍按原角色、当前案件绑定、文件类别及精确版本白名单重新授权，首次冻结证明本身不授予读取权限。普通无context材料和原禁止类别的读取规则不变，外部响应不增加内部context、更正原因或操作者字段。必须验证合法律师在证明前列表不可见且下载拒绝、证明后按原白名单可读精确字节，普通材料回归及伪引用不能替代证明。
 
 | 情形                                                                 | 处理                                                                                                                                     |
 | -------------------------------------------------------------------- | ---------------------------------------------------------------------------------------------------------------------------------------- |
