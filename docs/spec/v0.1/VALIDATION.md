@@ -1485,3 +1485,11 @@ b73b82a506958da535bc16f0cb6f579eb25eb88e固定聚焦三项实际2通过／1失�
 **CORE-CE-002正常Git首交付及非执行性收口。** 独立最终收口候选9d96ac8f553d76bbbee038214666b725af6a6a42／treeeffcc397337816d21a92785b6094974145f66f8d，Spec／Quality ACCEPTED、C/I/M0；81eb源候选后仅七份必要当前态文档与已核快照，整个tests目录tree均c49fc4e18246b10c7479ab52ebe74c0dd063dd4c。受影响文档格式、diff检查、严格上下文、Spec（57REQ／66AC／11BQ／56SD）实际通过，产品、测试、依赖及运行／构建输入不变，证据docs-closeout-check、verify-input-reuse-recovery-pointer-closeout及closeout-review。预览README的旧当前指针发现后已修为source81e／680文件／150，旧CE001明确历史，独立复核finding关闭，未改恢复命令或数据。
 
 于10/14/2026 19:23:27～10/14/2026 19:23:32 UTC实际正常git push --atomic（非force）exit0，远端main／codex/ce002-second-instance-acceptance及本地主main均实核9d96ac8f553d76bbbee038214666b725af6a6a42，原stash及未跟踪.pnpm-store保持。交付回执push-first.json／log、main-ff-first.log；未查询CI，不称远端CI通过、Release或生产上线。末次只补这份真实回执、完成态及对应已核快照，未改业务要求或验收输入；最终远端SHA以实际Git及本机push-final回执为准，不在本记录自指未来提交。预览仍已验source81eb，后续完成态文档差异不改变产品、原数据或新Action待用户确认的边界。
+
+### CE002用户明确批准后的原测试账号授权（2026-10-15）
+
+用户00:58 UTC消息Sentinel_2fb4ce946f3081919f743d4cf68a4c0b明确允许给原测试账号开通二审登记／更正权限。01:39:07.222 UTC仅向原ca013_preview_admin在原CA013 preview部门既有独占角色增加case.second-instance-acceptance.update的DEPARTMENT Grant一条及授权审计一条，role版本与authorizationRevision均3→4；原角色历史及当前分配均仅该账号，不新增账号／管理员、不改密码或其他账号／角色。132项原业务、凭据、迁移、配置、材料及其他账号／角色子集前后保持，原Grant与审计另核不变；原2案／6凭据／150迁移保持。
+
+实际预览编译后的AccessControlService和PrismaAccessControlStore对两原案件授权通过、跨部门拒绝；5186／3206健康200。原两案分别处于WAITING_EXECUTION_STAMP与WAITING_EXECUTION_FILING，无真实APPEAL，故canSaveSecondInstanceAcceptance仍为false：Action已开通，业务来源资格未满足，没有伪造上诉或冒称二审表单已打开。五分钟原账号内存会话用于1440／390只读核验，两案0表单打开、0业务POST，01:41:31.756 UTC已撤销，不读密码、不称正常密码登录、不创建长期凭据。
+
+准确证据在P本机runtime/ce002-permission-20261015-{inspected,planned,before,granted,after,access,browser,session-cleanup,final}.json及四张截图；rollback.sql仅准备、未执行。本次独立本地配置授权不改变已验CE002源码／迁移，不覆盖CA018来源分支验收或授予其新Action。此前“待用户确认”均为历史交付时状态，当前授权按本段为准。

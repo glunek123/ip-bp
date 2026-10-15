@@ -118,4 +118,4 @@ dev_cor/
 
 官方依据：[Vue TypeScript](https://vuejs.org/guide/typescript/overview)、[Vue 状态管理](https://vuejs.org/guide/scaling-up/state-management.html)、[Vue 测试](https://vuejs.org/guide/scaling-up/testing.html)、[NestJS 模块](https://docs.nestjs.com/modules)、[NestJS Prisma](https://docs.nestjs.com/recipes/prisma)、[NestJS OpenAPI](https://docs.nestjs.com/openapi/introduction)、[pnpm workspace](https://pnpm.io/workspaces)。具体安装以第二步核实的版本文档为准。
 
-2026-10-14 CA018独立来源仍归cases模块：CaseExternalEntry不可变当前阶段根隔离公证正常来源与外部接办／历史录入；正常三来源不再假套给外部案。后续服务和数据库同时核验明确entry锚与实际产生的正常事实，读取只聚合真实来源，不访问不存在的外部公证／线索。没有新增模块／依赖／通用工作流，接口与来源不变量以案件Spec为准；本条为待实现设计，不称已验收。
+2026-10-14 CA018独立来源仍归cases模块：CaseExternalEntry不可变当前阶段根隔离公证正常来源与外部接办／历史录入；正常三来源不再假套给外部案。后续服务和数据库同时核验明确entry锚与实际产生的正常事实，读取只聚合真实来源，不访问不存在的外部公证／线索。customers模块公开CustomerCaseEntrySourceService，提供当前可读准入客户／真实关联主体候选及事务内锁定重验；cases调用公开接口，不读取客户私有表。直接执行确认的真实版本集合由CaseExecutionConfirmationVersion与材料引用共同冻结；来源受理无真实立案时单独保存实际法院，不编造立案。没有新增模块／依赖／通用工作流，接口与来源不变量以案件Spec为准；实现仍在组合验收前，不称已验收。

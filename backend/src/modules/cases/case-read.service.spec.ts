@@ -73,6 +73,7 @@ describe('CaseReadService', () => {
         groupBy: jest.fn().mockResolvedValue([]),
       },
       material: { findMany: jest.fn().mockResolvedValue([]) },
+      filingCourt: { findMany: jest.fn().mockResolvedValue([]) },
       $transaction: jest.fn(),
     };
     const access = {
@@ -85,6 +86,8 @@ describe('CaseReadService', () => {
       canAuthorizeCase: jest.fn().mockResolvedValue(true),
     };
     const materials = {
+      listOwnerMaterials: jest.fn().mockResolvedValue({ items: [] }),
+      listFrozenCaseAcceptanceFiles: jest.fn().mockResolvedValue([]),
       listFrozenCertificateFiles: jest.fn().mockResolvedValue([]),
       listFrozenCaseComplaintFiles: jest.fn().mockResolvedValue([]),
       listFrozenCaseComplaintConfirmationFile: jest
@@ -113,6 +116,351 @@ describe('CaseReadService', () => {
       ),
     };
   }
+  function externalRecord(stage: string) {
+    const hasRound = ![
+      'PENDING_MATCH',
+      'WAITING_COMPLAINT',
+      'WAITING_COMPLAINT_CONFIRMATION',
+      'WAITING_COMPLAINT_STAMP',
+      'WAITING_FILING',
+      'ARCHIVED',
+    ].includes(stage);
+    return {
+      ...displaySource('lead', 'matter'),
+      id: 'case-1',
+      businessNo: 'CA-1',
+      stage,
+      version: 1,
+      sourceLeadId: null,
+      sourceNotaryMatterId: null,
+      certificateId: null,
+      sourceLead: null,
+      sourceNotaryMatter: null,
+      certificate: null,
+      externalEntry: {
+        id: 'entry-1',
+        caseId: 'case-1',
+        departmentId: actor.departmentId,
+        entryKind: 'HISTORICAL_BACKFILL',
+        initialStage: stage,
+        stageReachedOn: new Date('2026-10-01T00:00:00Z'),
+        source: '内部来源说明',
+        reason: '内部录入原因',
+        recordedAt: new Date('2026-10-02T01:00:00Z'),
+        recordedByUserId: actor.userId,
+        known: {
+          courtId: null,
+          courtCaseNo: null,
+          acceptedOn: null,
+          secondInstanceAcceptedOn: null,
+          platform: null,
+          shopName: null,
+          shopExternalId: null,
+          caseType: null,
+          infringementTypes: null,
+        },
+      },
+      responsibleUserId: actor.userId,
+      responsibleMembership: { teamId: null },
+      owner: { id: actor.userId, displayName: '负责人' },
+      department: { id: actor.departmentId, name: '部门' },
+      createdAt: new Date('2026-10-02T01:00:00Z'),
+      matchedAt: null,
+      matchedOn: null,
+      currentTrialRoundId: hasRound ? 'round-1' : null,
+      trialRounds: hasRound
+        ? [
+            {
+              id: 'round-1',
+              sequence: 1,
+              origin: 'EXTERNAL_CURRENT',
+              externalEntryId: 'entry-1',
+              sourceResultId: null,
+              revokedAt: null,
+            },
+          ]
+        : [],
+      currentAcceptanceId: null,
+      acceptance: null,
+      acceptances: [],
+      currentJudgmentId: null,
+      judgmentFacts: [],
+      currentJudgmentNextStepId: null,
+      judgmentNextSteps: [],
+      judgmentNextStepRevocations: [],
+      currentHearingArrangementId: null,
+      currentHearingArrangement: null,
+      currentHearingAdvanceId: null,
+      currentHearingAdvance: null,
+      hearingArrangements: [],
+      hearingAdvances: [],
+      hearingCorrections: [],
+      currentSecondInstanceProgressId: null,
+      currentSecondInstanceResultId: null,
+      secondInstanceProgresses: [],
+      secondInstanceResults: [],
+      secondInstanceAcceptanceChanges: [],
+      currentExecutionSubmissionId: null,
+      executionSubmissions: [],
+      executionConfirmation: null,
+      executionMailing: null,
+      executionFiling: null,
+      executionFinish: null,
+      archive: null,
+      complaintMailing: null,
+    };
+  }
+  it.each([
+    ['SECOND_INSTANCE', 'canSaveSecondInstance'],
+    ['WAITING_EXECUTION_DOCUMENTS', 'canSubmitExecution'],
+    ['WAITING_EXECUTION_CONFIRMATION', 'canConfirmExecution'],
+    ['WAITING_EXECUTION_STAMP', 'canMailExecution'],
+    ['WAITING_EXECUTION_FILING', 'canSubmitExecutionFiling'],
+    ['EXECUTING', 'canFinishExecution'],
+    ['WAITING_ARCHIVE', 'canRecordClosure'],
+  ])(
+    'exposes only authorized direct-source %s capabilities in list and detail',
+    async (stage, capability) => {
+      const f = fixture();
+      const record = externalRecord(stage);
+      f.db.case.findMany.mockResolvedValue([record]);
+      f.db.case.findFirst.mockResolvedValue(record);
+      expect(await f.service.get(actor, record.id)).toMatchObject({
+        [capability]: true,
+        sourceLead: null,
+        sourceNotaryMatter: null,
+        certificate: null,
+        fees: [],
+      });
+      expect((await f.service.list(actor, 1, 20)).items[0]).toMatchObject({
+        [capability]: true,
+      });
+      f.access.canAuthorizeCase.mockResolvedValue(false);
+      expect(await f.service.get(actor, record.id)).toMatchObject({
+        [capability]: false,
+      });
+      expect((await f.service.list(actor, 1, 20)).items[0]).toMatchObject({
+        [capability]: false,
+      });
+      f.access.canAuthorizeCase.mockResolvedValue(true);
+      record.externalEntry.initialStage = 'PENDING_MATCH';
+      expect(await f.service.get(actor, record.id)).toMatchObject({
+        [capability]: false,
+      });
+      expect((await f.service.list(actor, 1, 20)).items[0]).toMatchObject({
+        [capability]: false,
+      });
+    },
+  );
+  it('resolves known court names only within authorized case department and without an acceptance fact', async () => {
+    const f = fixture();
+    const base = externalRecord('SECOND_INSTANCE');
+    const record = {
+      ...base,
+      externalEntry: {
+        ...base.externalEntry,
+        known: { ...base.externalEntry.known, courtId: 'known-court' },
+      },
+    };
+    f.db.case.findMany.mockResolvedValue([record]);
+    f.db.filingCourt.findMany.mockResolvedValue([
+      { id: 'known-court', name: '原审已知法院' },
+    ]);
+    expect((await f.service.list(actor, 1, 20)).items[0]).toMatchObject({
+      displaySummary: { court: { id: 'known-court', name: '原审已知法院' } },
+    });
+    expect(f.db.filingCourt.findMany).toHaveBeenCalledWith({
+      where: { departmentId: actor.departmentId, id: { in: ['known-court'] } },
+      select: { id: true, name: true },
+    });
+    f.db.filingCourt.findMany.mockResolvedValue([]);
+    expect((await f.service.list(actor, 1, 20)).items[0]).toMatchObject({
+      displaySummary: { court: null },
+    });
+  });
+  it('keeps direct archived entry read-only without fabricating terminal facts and rejects normal missing archives', async () => {
+    const f = fixture();
+    const record = externalRecord('ARCHIVED');
+    f.db.case.findFirst.mockResolvedValue(record);
+    expect(await f.service.get(actor, record.id)).toMatchObject({
+      stage: 'ARCHIVED',
+      archive: null,
+      closure: null,
+      executionFinish: null,
+      canArchive: false,
+      canCorrectArchive: false,
+      canRecordClosure: false,
+      canCorrectClosure: false,
+    });
+    record.version = 2;
+    await expect(f.service.get(actor, record.id)).rejects.toMatchObject({
+      response: { code: 'CASE_NOT_FOUND' },
+    });
+    f.db.case.findFirst.mockResolvedValue({
+      ...record,
+      version: 1,
+      externalEntry: null,
+      sourceLead: { id: 'lead' },
+      sourceNotaryMatter: { id: 'matter' },
+      certificate: { id: 'certificate' },
+    });
+    await expect(f.service.get(actor, record.id)).rejects.toMatchObject({
+      response: { code: 'CASE_NOT_FOUND' },
+    });
+  });
+  it('reads real closure and archive after a waiting-archive entry without fabricating an execution finish', async () => {
+    const f = fixture();
+    const closureVersion = {
+      id: 'closure-version',
+      kind: 'REGISTER',
+      priorVersionId: null,
+      finishId: null,
+      fromVersion: 1,
+      toVersion: 2,
+      closeAt: null,
+      closeAmountState: 'PENDING',
+      closeAmt: null,
+      note: '真实结案登记',
+      correctionReason: null,
+      recordedAt: new Date('2026-10-03T00:00:00Z'),
+      recordedByUserId: actor.userId,
+    };
+    const record = {
+      ...externalRecord('WAITING_ARCHIVE'),
+      stage: 'ARCHIVED',
+      version: 3,
+      closure: {
+        id: 'closure',
+        finishId: null,
+        currentVersionId: closureVersion.id,
+        versions: [closureVersion],
+      },
+      archive: {
+        id: 'archive',
+        closureId: 'closure',
+        closureVersionId: closureVersion.id,
+        currentVersionId: 'archive-version',
+        versions: [
+          {
+            id: 'archive-version',
+            kind: 'ARCHIVE',
+            priorVersionId: null,
+            closureVersionId: closureVersion.id,
+            fromVersion: 2,
+            toVersion: 3,
+            archiveAt: new Date('2026-10-04T00:00:00Z'),
+            archiveType: 'OTHER',
+            archiveReason: '真实归档原因',
+            correctionReason: null,
+            recordedAt: new Date('2026-10-04T01:00:00Z'),
+            recordedByUserId: actor.userId,
+          },
+        ],
+      },
+    };
+    f.db.case.findFirst.mockResolvedValue(record);
+    expect(await f.service.get(actor, record.id)).toMatchObject({
+      executionFinish: null,
+      closure: { finishId: null },
+      archive: { closureId: 'closure', closureVersionId: closureVersion.id },
+      canCorrectArchive: true,
+    });
+    record.externalEntry.initialStage = 'EXECUTING';
+    await expect(f.service.get(actor, record.id)).rejects.toMatchObject({
+      response: { code: 'CASE_NOT_FOUND' },
+    });
+    record.externalEntry.initialStage = 'WAITING_ARCHIVE';
+    closureVersion.fromVersion = 9;
+    await expect(f.service.get(actor, record.id)).rejects.toMatchObject({
+      response: { code: 'CASE_NOT_FOUND' },
+    });
+  });
+  it('provides direct second-instance acceptance coordinates without an invented appeal and restricts lawyer origin metadata', async () => {
+    const f = fixture();
+    const record = externalRecord('SECOND_INSTANCE');
+    f.db.case.findFirst.mockResolvedValue(record);
+    expect(await f.service.get(actor, record.id)).toMatchObject({
+      recordEdits: {
+        canSaveSecondInstanceAcceptance: true,
+        secondInstanceAcceptances: [
+          {
+            choiceId: null,
+            trialRoundId: 'round-1',
+            acceptanceRevision: 0,
+            acceptedAt: null,
+            courtCaseNo: null,
+            canEdit: true,
+            history: [],
+          },
+        ],
+      },
+      judgmentNextStep: { current: null, history: [] },
+    });
+    f.access.canAuthorizeCase.mockResolvedValue(false);
+    expect(await f.service.get(actor, record.id)).toMatchObject({
+      recordEdits: {
+        canSaveSecondInstanceAcceptance: false,
+        secondInstanceAcceptances: [{ canEdit: false }],
+      },
+    });
+    f.db.userAccount.findUnique.mockResolvedValue({
+      accountType: 'LAWYER',
+      active: true,
+    });
+    const lawyer = await f.service.get(
+      { ...actor, lawyerAccountId: actor.userId },
+      record.id,
+    );
+    expect(lawyer.origin).toEqual({
+      kind: 'EXTERNAL_ENTRY',
+      entryKind: 'HISTORICAL_BACKFILL',
+      initialStage: 'SECOND_INSTANCE',
+      stageReachedOn: '2026-10-01',
+    });
+    expect(lawyer).not.toHaveProperty('recordEdits');
+    expect(lawyer.origin).not.toHaveProperty('known');
+    expect(lawyer.origin).not.toHaveProperty('reason');
+  });
+  it('reads a directly confirmed frozen package from real confirmation versions without a fake submission', async () => {
+    const f = fixture();
+    const record = {
+      ...externalRecord('WAITING_EXECUTION_CONFIRMATION'),
+      stage: 'WAITING_EXECUTION_STAMP',
+      version: 2,
+      executionConfirmation: {
+        id: 'confirmation-1',
+        submissionId: null,
+        confirmedAt: new Date('2026-10-02T02:00:00Z'),
+        confirmedByUserId: actor.userId,
+        versions: [
+          {
+            materialId: 'material-1',
+            contentVersionId: 'version-1',
+            contentVersion: {
+              originalFilename: 'real.pdf',
+              mimeType: 'application/pdf',
+              createdAt: new Date('2026-10-02T01:00:00Z'),
+            },
+          },
+        ],
+      },
+    };
+    f.db.case.findFirst.mockResolvedValue(record);
+    expect(await f.service.get(actor, record.id)).toMatchObject({
+      executionSubmission: { current: null, submissions: [] },
+      executionConfirmation: {
+        submissionId: null,
+        files: [
+          {
+            materialId: 'material-1',
+            contentVersionId: 'version-1',
+            originalFilename: 'real.pdf',
+          },
+        ],
+      },
+      canMailExecution: true,
+    });
+  });
   it('authorizes before a repeatable-read detail aggregate for internal and lawyer', async () => {
     const f = fixture();
     await expect(f.service.get(actor, 'case-1')).rejects.toMatchObject({

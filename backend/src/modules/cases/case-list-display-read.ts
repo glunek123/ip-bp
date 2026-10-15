@@ -10,7 +10,13 @@ export const caseListDisplaySelect = {
   sourceNotaryMatterId: true,
   certificateId: true,
   externalEntry: {
-    select: { id: true, caseId: true, departmentId: true, known: true },
+    select: {
+      id: true,
+      caseId: true,
+      departmentId: true,
+      initialStage: true,
+      known: true,
+    },
   },
   customer: { select: { id: true, departmentId: true, name: true } },
   rightsHolder: { select: { id: true, departmentId: true, name: true } },
@@ -41,6 +47,7 @@ export const caseListDisplaySelect = {
     orderBy: { id: 'asc' },
   },
   filingSubmission: { select: { courtId: true, courtName: true } },
+  acceptance: { select: { court: { select: { id: true, name: true } } } },
   courtCaseNo: true,
   complaintSubmittedAt: true,
   complaintAmountState: true,
@@ -113,7 +120,19 @@ function amount(
     message: '案件摘要来源不完整',
   });
 }
-export function caseListDisplay(record: CaseListDisplayRecord) {
+export function caseKnownCourtId(record: CaseListDisplayRecord): string | null {
+  const known = record.externalEntry?.known;
+  return typeof known === 'object' &&
+    known !== null &&
+    !Array.isArray(known) &&
+    typeof known.courtId === 'string'
+    ? known.courtId
+    : null;
+}
+export function caseListDisplay(
+  record: CaseListDisplayRecord,
+  knownCourt: { id: string; name: string } | null = null,
+) {
   const {
     customer,
     rightsHolder,
@@ -192,7 +211,14 @@ export function caseListDisplay(record: CaseListDisplayRecord) {
     second.choiceId === record.currentJudgmentNextStepId &&
     second.trialRoundId === record.currentTrialRoundId
   ) {
-    if (second.result === 'CHANGE')
+    if (
+      second.result === 'CHANGE' ||
+      (second.result === 'AFFIRM' &&
+        judgment === null &&
+        isExternal &&
+        external?.initialStage === 'SECOND_INSTANCE' &&
+        second.choiceId === null)
+    )
       judgmentAmount = amount(
         second.judgmentAmountState,
         second.judgmentAmount,
@@ -205,24 +231,51 @@ export function caseListDisplay(record: CaseListDisplayRecord) {
   return {
     customerName: customer.name,
     rightsHolderName: rightsHolder.name,
-    source: isNormal && lead !== null
-      ? { platform: lead.platform, shopName: lead.shopName, shopExternalId: lead.shopExternalId }
-      : {
-          platform: typeof external?.known === 'object' && external.known !== null && !Array.isArray(external.known) && typeof external.known.platform === 'string' ? external.known.platform : null,
-          shopName: typeof external?.known === 'object' && external.known !== null && !Array.isArray(external.known) && typeof external.known.shopName === 'string' ? external.known.shopName : null,
-          shopExternalId: typeof external?.known === 'object' && external.known !== null && !Array.isArray(external.known) && typeof external.known.shopExternalId === 'string' ? external.known.shopExternalId : null,
-        },
+    source:
+      isNormal && lead !== null
+        ? {
+            platform: lead.platform,
+            shopName: lead.shopName,
+            shopExternalId: lead.shopExternalId,
+          }
+        : {
+            platform:
+              typeof external?.known === 'object' &&
+              external.known !== null &&
+              !Array.isArray(external.known) &&
+              typeof external.known.platform === 'string'
+                ? external.known.platform
+                : null,
+            shopName:
+              typeof external?.known === 'object' &&
+              external.known !== null &&
+              !Array.isArray(external.known) &&
+              typeof external.known.shopName === 'string'
+                ? external.known.shopName
+                : null,
+            shopExternalId:
+              typeof external?.known === 'object' &&
+              external.known !== null &&
+              !Array.isArray(external.known) &&
+              typeof external.known.shopExternalId === 'string'
+                ? external.known.shopExternalId
+                : null,
+          },
     defendants: record.defendants.map(({ id, name }) => ({ id, name })),
     lawyers: record.lawyers.map(({ lawyer }) => ({
       id: lawyer.id,
       fullName: lawyer.fullName,
     })),
-    court: record.filingSubmission
-      ? {
-          id: record.filingSubmission.courtId,
-          name: record.filingSubmission.courtName,
-        }
-      : null,
+    court:
+      record.acceptance?.court ??
+      (record.filingSubmission
+        ? {
+            id: record.filingSubmission.courtId,
+            name: record.filingSubmission.courtName,
+          }
+        : isExternal && knownCourt?.id === caseKnownCourtId(record)
+          ? knownCourt
+          : null),
     courtCaseNo: record.courtCaseNo,
     claimAmount,
     judgmentAmount,

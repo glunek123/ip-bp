@@ -44,6 +44,7 @@ function fixture(): CaseListDisplayRecord {
       { lawyer: { id: 'lawyer-2', fullName: '律师二' } },
     ],
     filingSubmission: null,
+    acceptance: null,
     courtCaseNo: null,
     complaintSubmittedAt: null,
     complaintAmountState: null,
@@ -154,5 +155,60 @@ describe('authorized case list display', () => {
     record.sourceLead!.departmentId = 'department';
     record.sourceNotaryMatter!.sourceLeadId = 'same-shop-other-lead';
     expect(() => caseListDisplay(record)).toThrow();
+  });
+  it('shows actual direct acceptance court and direct AFFIRM amount without inventing prior facts', () => {
+    const record = fixture();
+    record.sourceLeadId = null;
+    record.sourceNotaryMatterId = null;
+    record.certificateId = null;
+    record.sourceLead = null;
+    record.sourceNotaryMatter = null;
+    record.externalEntry = {
+      id: 'entry',
+      caseId: record.id,
+      departmentId: record.departmentId,
+      initialStage: 'SECOND_INSTANCE',
+      known: { courtId: 'known-court' },
+    };
+    record.currentJudgmentNextStepId = null;
+    record.currentSecondInstanceResult = {
+      id: 'real-second',
+      trialRoundId: 'round',
+      choiceId: null,
+      result: 'AFFIRM',
+      judgmentAmountState: 'KNOWN',
+      judgmentAmount: new Prisma.Decimal('0'),
+      revocation: null,
+    };
+    expect(caseListDisplay(record)).toMatchObject({
+      court: null,
+      judgmentAmount: {
+        state: 'KNOWN',
+        amount: '0.00',
+        sourceType: 'SECOND_INSTANCE_RESULT',
+        sourceId: 'real-second',
+      },
+    });
+    record.acceptance = { court: { id: 'actual-court', name: '真实受理法院' } };
+    expect(caseListDisplay(record).court).toEqual({
+      id: 'actual-court',
+      name: '真实受理法院',
+    });
+    record.acceptance = null;
+    expect(
+      caseListDisplay(record, { id: 'known-court', name: '原审已知法院' })
+        .court,
+    ).toEqual({ id: 'known-court', name: '原审已知法院' });
+    expect(
+      caseListDisplay(record, { id: 'other-court', name: '不匹配法院' }).court,
+    ).toBeNull();
+    record.currentSecondInstanceResult.judgmentAmountState = 'PENDING';
+    record.currentSecondInstanceResult.judgmentAmount = null;
+    expect(caseListDisplay(record).judgmentAmount).toMatchObject({
+      state: 'PENDING',
+      amount: null,
+    });
+    record.externalEntry.initialStage = 'WAITING_EXECUTION_DOCUMENTS';
+    expect(caseListDisplay(record).judgmentAmount.state).toBe('UNRECORDED');
   });
 });

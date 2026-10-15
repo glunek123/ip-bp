@@ -538,7 +538,7 @@ stageReachedOn仅标明真实当前阶段业务发生日；首个新动作不早
 
 ### 读取、界面与验收
 
-内部列表／详情新增origin：正常{kind:NOTARY}且旧来源／证书完整；外部{kind:EXTERNAL_ENTRY,entryId,entryKind,initialStage,stageReachedOn,source,reason,recordedAt,recordedByUserId,known}且sourceLead／sourceNotaryMatter／certificate为null。正常旧后端缺origin时仍按旧全真来源兼容；外部缺明确origin或混合来源严格拒绝。摘要只使用真实已知平台／店铺／案号／法院，其余null；内部来源说明和理由可见。律师仅当前PRIMARY授权下的必要来源标签／业务日期及本案真实资料，不返回内部补录原因、操作者、审计正文或存储键；客户继续本企业最小投影，不扩内部来源正文。无来源不调用线索、公证及费用读取，也不包装外部文件为公证书。
+内部列表／详情新增origin：正常{kind:NOTARY}且旧来源／证书完整；外部{kind:EXTERNAL_ENTRY,entryId,entryKind,initialStage,stageReachedOn,source,reason,recordedAt,recordedByUserId,known}且sourceLead／sourceNotaryMatter／certificate为null。正常旧后端缺origin时仍按旧全真来源兼容；外部缺明确origin或混合来源严格拒绝。摘要只使用真实已知平台／店铺／案号／法院，其余null；内部来源说明和理由可见。律师仅当前PRIMARY授权下的必要来源标签、initialStage、业务日期及本案真实资料；initialStage用于严格识别允许真实null前序的办理与历史读取分支，不返回known、内部补录原因、操作者、审计正文或存储键。客户继续本企业最小投影，不扩内部来源正文。无来源不调用线索、公证及费用读取，也不包装外部文件为公证书。
 
 在内部案件列表增加独立“转入／补录案件”页面，必填字段一屏、已知资料折叠，业务日期无默认值；保留既有侧栏和真实阶段导航。提交前就地提示本阶段后续将要求哪些实际资料，不要求补齐外部未在本系统办理的每个旧步骤。保存／取消与重复、失权、冲突、未知恢复遵守现有写入规范；正常字段与null前序由来源分支严格校验，不使用any、skipLibCheck、宽松索引或伪ID绕过类型。
 

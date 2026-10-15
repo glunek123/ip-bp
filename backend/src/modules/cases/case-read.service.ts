@@ -10,6 +10,7 @@ import { DatabaseService } from '../../database/database.service';
 import { Prisma } from '../../generated/prisma/client';
 import { MaterialService } from '../materials';
 import {
+  caseKnownCourtId,
   caseListDisplay,
   caseListDisplaySelect,
 } from './case-list-display-read';
@@ -250,8 +251,35 @@ export class CaseReadService {
             select: caseListDisplaySelect,
           })
         : [];
+    const knownCourtIds = [
+      ...new Set(
+        displayRecords.flatMap((item) => {
+          const courtId = caseKnownCourtId(item);
+          return courtId === null ? [] : [courtId];
+        }),
+      ),
+    ];
+    const knownCourts =
+      knownCourtIds.length === 0
+        ? []
+        : await this.database.filingCourt.findMany({
+            where: {
+              departmentId: actor.departmentId,
+              id: { in: knownCourtIds },
+            },
+            select: { id: true, name: true },
+          });
+    const knownCourtMap = new Map(
+      knownCourts.map((court) => [court.id, court]),
+    );
     const displays = new Map(
-      displayRecords.map((item) => [item.id, caseListDisplay(item)]),
+      displayRecords.map((item) => [
+        item.id,
+        caseListDisplay(
+          item,
+          knownCourtMap.get(caseKnownCourtId(item) ?? '') ?? null,
+        ),
+      ]),
     );
     return {
       items: await Promise.all(
@@ -1003,6 +1031,8 @@ export class CaseReadService {
           select: {
             id: true,
             sequence: true,
+            origin: true,
+            externalEntryId: true,
             sourceResultId: true,
             revokedAt: true,
           },
@@ -1470,6 +1500,33 @@ export class CaseReadService {
         code: 'CASE_NOT_FOUND',
         message: '案件归档来源不完整',
       });
+    const directClosureWithoutFinish =
+      externalSource &&
+      externalEntry?.initialStage === 'WAITING_ARCHIVE' &&
+      record.executionFinish == null &&
+      closureRecord?.finishId === null;
+    const directArchivedRoot =
+      externalSource &&
+      externalEntry?.initialStage === 'ARCHIVED' &&
+      record.version === 1 &&
+      closureRecord === null &&
+      record.executionFinish == null &&
+      archiveRecord === null &&
+      record.currentTrialRoundId === null &&
+      record.trialRounds.length === 0 &&
+      record.judgmentFacts.length === 0 &&
+      record.judgmentNextSteps.length === 0 &&
+      record.secondInstanceProgresses.length === 0 &&
+      record.secondInstanceResults.length === 0 &&
+      record.executionSubmissions.length === 0 &&
+      record.executionConfirmation === null &&
+      record.executionMailing === null &&
+      record.executionFiling === null &&
+      record.acceptances.length === 0 &&
+      record.complaintSubmittedAt == null &&
+      record.complaintConfirmation == null &&
+      record.complaintMailing == null &&
+      record.filingSubmission == null;
     if (
       closureRecord !== null &&
       (currentClosure === undefined ||
@@ -1482,18 +1539,22 @@ export class CaseReadService {
         record.stage !== 'ARCHIVED' ||
         closureRecord === null ||
         currentClosure === undefined ||
-        record.executionFinish == null ||
+        (record.executionFinish == null &&
+          (!directClosureWithoutFinish ||
+            closureHistory[0]?.fromVersion !== 1)) ||
         archiveRecord.closureId !== closureRecord.id ||
         archiveRecord.closureVersionId !== currentClosure.id ||
         currentArchive === undefined ||
         archiveHistory.at(-1)?.id !== currentArchive.id
       )
         throw invalidSource();
-      let terminal = record.executionFinish.toVersion;
+      let terminal =
+        record.executionFinish?.toVersion ?? closureHistory[0]?.fromVersion;
+      if (terminal === undefined) throw invalidSource();
       let prior: string | null = null;
       for (const v of closureHistory) {
         if (
-          v.finishId !== record.executionFinish.id ||
+          v.finishId !== (record.executionFinish?.id ?? null) ||
           v.fromVersion !== terminal ||
           v.toVersion !== terminal + 1 ||
           v.priorVersionId !== prior ||
@@ -1518,7 +1579,8 @@ export class CaseReadService {
         prior = v.id;
       }
       if (terminal !== record.version) throw invalidSource();
-    } else if (record.stage === 'ARCHIVED') throw invalidSource();
+    } else if (record.stage === 'ARCHIVED' && !directArchivedRoot)
+      throw invalidSource();
     const archive =
       archiveRecord === null
         ? null
@@ -1615,25 +1677,69 @@ export class CaseReadService {
     }));
     const secondAcceptanceChanges =
       record.secondInstanceAcceptanceChanges ?? [];
-    const secondAcceptanceChoices = (record.judgmentNextSteps ?? []).filter(
-      (choice) => choice.next === 'APPEAL',
-    );
-    const secondAcceptanceEligible = (choiceId: string) =>
-      !record.judgmentNextStepRevocations.some(
-        (revocation) => revocation.choiceId === choiceId,
-      ) &&
-      (record.currentJudgmentNextStepId === choiceId ||
-        record.secondInstanceProgresses.some(
-          (progress) => progress.choiceId === choiceId,
-        ) ||
-        record.secondInstanceResults.some(
-          (result) => result.choiceId === choiceId,
-        ) ||
-        secondAcceptanceChanges.some((change) => change.choiceId === choiceId));
+    const directSecondRound =
+      externalSource && externalEntry?.initialStage === 'SECOND_INSTANCE'
+        ? record.trialRounds.find(
+            (round) =>
+              round.origin === 'EXTERNAL_CURRENT' &&
+              round.externalEntryId === externalEntry.id &&
+              round.sourceResultId === null &&
+              round.revokedAt === null,
+          )
+        : undefined;
+    const secondAcceptanceChoices: Array<{
+      id: string | null;
+      trialRoundId: string;
+    }> = [
+      ...(directSecondRound === undefined
+        ? []
+        : [{ id: null, trialRoundId: directSecondRound.id }]),
+      ...(record.judgmentNextSteps ?? [])
+        .filter((choice) => choice.next === 'APPEAL')
+        .map((choice) => ({
+          id: choice.id,
+          trialRoundId: choice.trialRoundId,
+        })),
+    ];
+    const secondAcceptanceEligible = (
+      choiceId: string | null,
+      trialRoundId: string,
+    ) =>
+      choiceId === null
+        ? directSecondRound?.id === trialRoundId &&
+          (record.currentTrialRoundId === trialRoundId ||
+            record.secondInstanceProgresses.some(
+              (progress) =>
+                progress.choiceId === null &&
+                progress.trialRoundId === trialRoundId,
+            ) ||
+            record.secondInstanceResults.some(
+              (result) =>
+                result.choiceId === null &&
+                result.trialRoundId === trialRoundId,
+            ) ||
+            secondAcceptanceChanges.some(
+              (change) =>
+                change.choiceId === null &&
+                change.trialRoundId === trialRoundId,
+            ))
+        : !record.judgmentNextStepRevocations.some(
+            (revocation) => revocation.choiceId === choiceId,
+          ) &&
+          (record.currentJudgmentNextStepId === choiceId ||
+            record.secondInstanceProgresses.some(
+              (progress) => progress.choiceId === choiceId,
+            ) ||
+            record.secondInstanceResults.some(
+              (result) => result.choiceId === choiceId,
+            ) ||
+            secondAcceptanceChanges.some(
+              (change) => change.choiceId === choiceId,
+            ));
     const canSaveSecondAcceptance =
       principal === 'INTERNAL' &&
       secondAcceptanceChoices.some((choice) =>
-        secondAcceptanceEligible(choice.id),
+        secondAcceptanceEligible(choice.id, choice.trialRoundId),
       ) &&
       (await this.access.canAuthorizeCase(
         actor,
@@ -1969,7 +2075,11 @@ export class CaseReadService {
         currentTrialRoundId: record.currentTrialRoundId,
         acceptances: secondAcceptanceChoices.flatMap((choice) => {
           const latest = secondAcceptanceChanges
-            .filter((change) => change.choiceId === choice.id)
+            .filter(
+              (change) =>
+                change.choiceId === choice.id &&
+                change.trialRoundId === choice.trialRoundId,
+            )
             .at(-1);
           return latest === undefined
             ? []
@@ -2040,7 +2150,9 @@ export class CaseReadService {
               secondInstanceAcceptances: secondAcceptanceChoices.map(
                 (choice) => {
                   const changes = secondAcceptanceChanges.filter(
-                    (change) => change.choiceId === choice.id,
+                    (change) =>
+                      change.choiceId === choice.id &&
+                      change.trialRoundId === choice.trialRoundId,
                   );
                   const latest = changes.at(-1);
                   return {
@@ -2053,7 +2165,7 @@ export class CaseReadService {
                     courtCaseNo: latest?.courtCaseNo ?? null,
                     canEdit:
                       canSaveSecondAcceptance &&
-                      secondAcceptanceEligible(choice.id),
+                      secondAcceptanceEligible(choice.id, choice.trialRoundId),
                     history: changes.map((change) => ({
                       id: change.id,
                       priorChangeId: change.priorChangeId,
@@ -2818,6 +2930,7 @@ export class CaseReadService {
             : {
                 kind: 'EXTERNAL_ENTRY' as const,
                 entryKind: externalEntry.entryKind,
+                initialStage: externalEntry.initialStage,
                 stageReachedOn: externalEntry.stageReachedOn
                   .toISOString()
                   .slice(0, 10),
