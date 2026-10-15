@@ -4,34 +4,48 @@ import {
   captureTestEnvironment,
   validateBrowserTestDatabaseUrl,
 } from '../../scripts/test-environment.mjs';
-let admitted;
+const r2ContainerId =
+  '45addc0179e929dd1dcd4f835b6c6c14c36c2ac4aed5e6cd5842648bf5db5236';
+function assertR2Target(value) {
+  let target;
+  try {
+    target = new URL(value);
+  } catch {
+    throw new Error('The exact coordinated UI003 R2 target is required');
+  }
+  if (
+    !['postgresql:', 'postgres:'].includes(target.protocol) ||
+    target.hostname !== '127.0.0.1' ||
+    target.port !== '15438' ||
+    target.pathname !== '/dev_cor_test' ||
+    target.search !== '' ||
+    target.hash !== ''
+  )
+    throw new Error('The exact coordinated UI003 R2 target is required');
+}
 export async function assertNotaryWorkflowEnvironment() {
-  if (admitted) return admitted;
+  // Recheck the full inherited tuple on every entry, before capture or loading
+  // the database driver. A previous successful admission cannot authorize drift.
   if (
     process.env.NODE_ENV !== 'test' ||
     !process.env.DEV_COR_TEST_DATABASE_URL ||
-    process.env.DEV_COR_TEST_DATABASE_PROJECT !== 'dev-cor-ui003' ||
-    !process.env.DEV_COR_TEST_DATABASE_CONTAINER_ID
+    process.env.DEV_COR_TEST_DATABASE_PROJECT !== 'dev-cor-ui003-r2' ||
+    process.env.DEV_COR_TEST_DATABASE_CONTAINER_ID !== r2ContainerId
   )
-    throw new Error('The coordinated UI003 isolated test instance is required');
+    throw new Error('The exact coordinated UI003 R2 instance is required');
+  assertR2Target(process.env.DEV_COR_TEST_DATABASE_URL);
+  if (process.env.DATABASE_URL !== undefined)
+    assertR2Target(process.env.DATABASE_URL);
   const root = process.cwd();
   const environment = captureTestEnvironment(root, { pnpmVersion: '11.27.0' });
   const connectionString = environment.childEnvironment.DATABASE_URL;
+  assertR2Target(connectionString);
   validateBrowserTestDatabaseUrl(connectionString, root);
-  const target = new URL(connectionString);
-  if (
-    !['127.0.0.1', 'localhost'].includes(target.hostname) ||
-    target.port !== '15437' ||
-    target.pathname !== '/dev_cor_test'
-  )
-    throw new Error(
-      'Notary workflow tests only admit the coordinated UI003 target',
-    );
   const requireBackend = createRequire(resolve(root, 'backend/package.json'));
   const { Client } = requireBackend('pg');
   const client = new Client({ connectionString });
-  await client.connect();
   try {
+    await client.connect();
     const result = await client.query(
       'SELECT count(*)::int AS count FROM "_prisma_migrations" WHERE finished_at IS NOT NULL AND rolled_back_at IS NULL',
     );
@@ -40,8 +54,7 @@ export async function assertNotaryWorkflowEnvironment() {
   } finally {
     await client.end();
   }
-  admitted = { connectionString, Client };
-  return admitted;
+  return { connectionString, Client };
 }
 export async function notaryWorkflowActors() {
   await assertNotaryWorkflowEnvironment();
@@ -59,8 +72,8 @@ export async function notaryWorkflowActors() {
 export async function readNotaryWorkflowState(id) {
   const { connectionString, Client } = await assertNotaryWorkflowEnvironment();
   const client = new Client({ connectionString });
-  await client.connect();
   try {
+    await client.connect();
     const result = await client.query(
       `SELECT m.stage, m.version,
       (SELECT count(*)::int FROM notary_matter_command_receipts r WHERE r.result_matter_id=m.id) AS commands,
