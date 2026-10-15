@@ -1,5 +1,23 @@
 # SPEC-001 文档验证
 
+## 48d发现入口修正、156真实回放失败（2026-10-15）
+
+原S在clean e9cc对相同配置进行真实离线CLI发现：.ts/.mjs均成功；继承root且无custom reporter的A成功，仅增加静态导入run-e2e的空reporter的B复现相同模块错误，删除该导入的C恢复成功。9项关键源输入raw hash与正式48d一致，未连接数据库。由原runner仅在新ignored目录修其reporter，使用内建os/path保持正式Temp锁根、固定resource key及实时owner读取/PID校验；正式源码、共享runner、SQL与测试不改，旧36份失败证据不覆盖。原48d发现阶段的runner-lock-proof.json实际448字节、SHA256dfbe9c1612bc8b49755a8ee4b05dc5521ab6b64deb0e8ccbb50bad508ce6b100，在18:18:16.164记录实时owner PID6184；此前“onBegin前失败且无owner”的summary表述错误，原Reviewer已撤回，保留旧原件并在此更正。
+
+同一clean48d5bbe/a3ff7341于18:29:58至18:29:59 UTC经protected --list实际发现1文件1项、exit0；18:30:00至18:30:04 UTC仅执行该DB-only专项，expected0/unexpected1、无skip/flaky/retry，exit1。唯一失败为empty原链重放20261015150000_case_section_record_edits；PG原时间窗只读日志18:30:03.792报invalid input value for enum case_judgment_kind: "HEARING"，character81546，未提供数字SQLSTATE，不作推断。独立Reviewer确认I-S-MIG02 Important：156:698在case_judgment_facts j作用域使用bare kind='HEARING'，列kind的既有enum仅REGISTER/CORRECT，遮蔽同名函数text参数。不得通过扩枚举、削弱守卫或修改155迁就；原S从正式48d独占修未发布156参数消歧，并同步严格156字节pin及直接测试，157保持正式218b原字节。尚无修复候选或真实迁移PASS。
+
+sanitized attachment记录source157、checks=[]、enumStaging=[]、memoryFile未到达；仅empty owned schema创建，按已审ownership/跨schema/public摘要守卫清理1个，upgrade未创建，最终schemas仅public、无手工清理。三次helper public摘要相同；外围前后public155全量名称/checksum/finished/noRollback、137表4336行、结构/事实/原安全cohort及标准指纹均不变，标准锁已释放、端口空闲。正式执行实时owner PID40056/token aa06dc1e-17a7-4098-8bbc-aad02371d313及trace留存。public升级、Grant、16项UI和持久预览均未执行，这不是Prisma部署或完整旧Case/blob升级证据。
+
+新证据在section-record-edit-frontend-integration/.local/ui003-evidence/migration-48d5bbe-reporter-fix-20261015/，主控逐项核39份hash/bytes匹配；manifest SHA256c552d5e37599c9a16deb657efa920bf45f43f8c799ba3abbb01d52e2830fd553，acceptance-summary SHA2568e081bcc6cbef86502e8feba9d2f7780132dda8910468e6da39a4dcd79c753fb。1197项tracked输入、737项原双构建产物和旧36份证据raw hash保持一致，完整verify为PASS_REUSED_NOT_RERUN，仅在相同48d输入限定复用94/2207/1850。原独立Reviewer本轮迁移Spec/Quality REJECTED、C0/I1/M0；loader问题已关闭，SQL缺陷仍开放，必须修复复审后再给唯一runner固定候选重验。
+
+## 48d完整verify通过、迁移发现未通过（2026-10-15）
+
+固定clean48d5bbe2cc3c6db39161a8a32e1ff88ba2882af0/treea3ff7341f7e2ee4824e4c53cc9f0d366f2177b2b，18:14:11至18:18:12 UTC仅一次正常pnpm verify，exit0：工具11套94项、前端124文件2207项、后端120套1850项全部通过；strict context、Spec、架构、类型、全Lint/格式、当前源Prisma生成和双构建均通过。NT006在全量后端实际执行，资源锁PID12220/token c65d2a2a-ae37-4127-8e03-e56e9cb69546于18:17:47 UTC被观察，结束已释放；本树source/build manifest留存，没有借其他tree dist。旧ebba单次失败与红绿修复证据保留，未改写为通过。
+
+随后准确protected单迁移spec --list于18:18:14至18:18:16 exit1：Node36504无法以当前加载模式导入scripts/test-environment.mjs，SyntaxError Cannot use import statement outside a module，support case-section-record-migration.mjs:6经spec:2触发，0文件0测试。正式SQL重放未运行，无owned schema/trace；实际reporter onBegin已读取并校验短命discovery活锁PID6184，tests=[]，原summary称未捕获的表述已在上节按sealed回执更正。R2前置、verify后、最终public155完整ledger、137表4336行、public结构/数据与安全cohort摘要相同，标准指纹87ddb629496fbfadd83a201c2518d2ed3406badfff2fd3843d2804f93e18cd42保持，最终无锁且端口空闲；没有public deploy/Grant/新UI/预览或备份还原。
+
+最终证据section-record-edit-frontend-integration/.local/ui003-evidence/migration-48d5bbe-20261015/含36项manifest、verify.log、退出码、发现错误、当前源构建manifest、NT006实际锁与三次capture。主控逐项hash/bytes匹配，manifest SHA256373f1514870c04169929a1d8c58190c530967eb45cc50b91f4428681db432a93；verify.log SHA25610643172082866a4ae48c273a5303c900302d60e15d25f6a3c14ed7b9bedd180。原S只离线诊断配置loader归属，正式源48d当前未改；该完整门禁可按精确不变输入限定复用，发现入口/相关受影响门禁和真实S专项仍待验证、独立审查与新精确指派。不得因单入口问题机械重跑已通过的全仓，也不得跳过模块错误执行未发现的测试。
+
 ## ebba正常完整门禁失败并安全停止（2026-10-15）
 
 固定clean ebba08631e3065a214a9f16a4221525d51f2fc11/tree1e4060cb9558330dd18007fbf6ec64fcff0f51c2，于17:06:34至17:09:42 UTC只执行一次正常pnpm verify，exit1。工具11文件94/94通过；前端124文件123过1失败、2207项2206过1失败；唯一失败CaseClosureDetailIntegration.spec.ts:469，uses exact closure material versions, real zero and internal complete correction anchor，点击closure-info分栏编辑后取不到旧closure-amount。该测试继续期望旧correctCaseClosure/Case.version推进契约，原UI需诊断准确既有workflow入口与新record编辑语义，尚未判定为纯断言或产品缺陷，禁止通过删除零金额/双锚/附件/历史断言掩盖。
