@@ -1,3 +1,6 @@
+export function assertCaseListWorkflowTarget(
+  environment: Record<string, string | undefined>,
+): void;
 export function prepareCaseListWorkflowActors(): Promise<{
   run: string;
   departmentId: string;
