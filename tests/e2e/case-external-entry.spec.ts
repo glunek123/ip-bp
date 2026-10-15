@@ -16,6 +16,7 @@ import {
 import { prepareCaseAcceptanceFixture } from '../support/case-acceptance-database.mjs';
 import { prepareCaseFilingFixture } from '../support/case-filing-database.mjs';
 import { allowOtherEnterpriseAccountSetup } from '../support/case-complaint-mailing-database.mjs';
+import { createLawyerAccountThroughApi } from '../support/case-lawyer-account.mjs';
 import {
   assertCaseExternalEntrySqlGuards,
   caseExternalEntryCreateCounts,
@@ -110,6 +111,16 @@ type CaseView = {
   secondInstance: { currentTrialRoundId: string | null };
   acceptance: unknown;
   hearing: unknown;
+  executionConfirmation: {
+    id: string;
+    submissionId: string | null;
+    files: Array<{
+      materialId: string;
+      contentVersionId: string;
+      originalFilename: string;
+      mimeType: string;
+    }>;
+  } | null;
   recordEdits?: {
     secondInstanceAcceptances?: Array<{
       choiceId: string | null;
@@ -417,6 +428,7 @@ async function confirmComplaint(
         amountState: 'KNOWN',
         amount: '123.45',
         pendingReason: null,
+        changeNote: '根据补充证据确认诉讼金额',
         confirmDisclose: true,
       },
     }),
@@ -867,7 +879,7 @@ test('registers direct external acceptance through the browser with its real cou
   );
 });
 
-test('submits and confirms a real direct execution material bundle in the browser', async ({
+test('uploads and confirms a complete direct execution material bundle in the browser', async ({
   page,
   request,
 }) => {
@@ -882,18 +894,16 @@ test('submits and confirms a real direct execution material bundle in the browse
     '%PDF-1.7\nCA018 browser execution schedule\n%%EOF\n',
   );
   await login(page, `/cases/${root.id}`);
-  const moreActions = page.locator('[data-test="workspace-more-actions"]');
-  await expect(moreActions).toBeVisible();
-  await moreActions.locator(':scope > summary').click();
-  const submitAction = moreActions.locator(
-    'button[data-command="execution-submission"]',
+  await page.goto(`/cases/${root.id}?tab=files`);
+  await page.locator('[data-test="open-upload"]').click();
+  const uploadPanel = page.locator(
+    '[data-test="execution-submission-panel"]',
   );
-  await expect(submitAction).toHaveCount(1);
-  await expect(submitAction).toBeVisible();
-  await submitAction.click();
-  await expect(
-    page.locator('[data-test="execution-submission-panel"]'),
-  ).toBeVisible();
+  await expect(uploadPanel).toBeVisible();
+  const uploadInput = page.locator(
+    '[data-test="execution-material-upload-only"]',
+  );
+  await expect(uploadInput).toBeVisible();
   const uploadFromBrowser = async (name: string, fileBytes: Buffer) => {
     const uploadedResponse = page.waitForResponse(
       (response) =>
@@ -901,7 +911,7 @@ test('submits and confirms a real direct execution material bundle in the browse
         response.url().includes('/api/v1/materials/upload-drafts/') &&
         response.url().endsWith('/content'),
     );
-    await page.getByLabel(/执行申请材料/).setInputFiles({
+    await uploadInput.setInputFiles({
       name,
       mimeType: 'application/pdf',
       buffer: fileBytes,
@@ -915,51 +925,41 @@ test('submits and confirms a real direct execution material bundle in the browse
     'ca018-execution-application.pdf',
     bytes,
   );
-  const materialRow = page.locator('li').filter({
-    hasText: 'ca018-execution-application.pdf',
-  });
-  await expect(materialRow).toBeVisible();
-  await materialRow.locator('input[type="checkbox"]').check();
   const uploadedSecond = await uploadFromBrowser(
     'ca018-execution-schedule.pdf',
     secondBytes,
   );
-  const secondRow = page.locator('li').filter({
-    hasText: 'ca018-execution-schedule.pdf',
-  });
-  await expect(secondRow).toBeVisible();
-  const incompleteResponse = page.waitForResponse(
-    (response) =>
-      response.request().method() === 'POST' &&
-      response.url().includes(`/cases/${root.id}/execution-submit`),
+  await expect(uploadPanel.locator('input[type="checkbox"]')).toHaveCount(0);
+  await expect(
+    uploadPanel.locator('[data-test="submit-execution"]'),
+  ).toHaveCount(0);
+  const beforeIncompleteConfirmation = await caseExternalEntrySnapshot(
+    root.id,
   );
-  await page.locator('[data-test="submit-execution"]').click();
-  expect([400, 422]).toContain((await incompleteResponse).status());
+  const incompleteResponse = await request.post(
+    `/api/v1/cases/${root.id}/execution-confirm`,
+    {
+      headers: operator,
+      data: {
+        expectedVersion: root.version,
+        idempotencyKey: randomUUID(),
+        expectedSubmissionId: null,
+        executionApplicationContentVersionIds: [uploaded.contentVersionId],
+      },
+    },
+  );
+  expect([400, 422]).toContain(incompleteResponse.status());
   expect(await readCase(request, root.id)).toMatchObject({
     stage: 'WAITING_EXECUTION_CONFIRMATION',
     version: root.version,
   });
-  await secondRow.locator('input[type="checkbox"]').check();
-  const submitRequest = page.waitForRequest(
-    (req) =>
-      req.method() === 'POST' &&
-      req.url().includes(`/cases/${root.id}/execution-submit`),
+  expect(await caseExternalEntrySnapshot(root.id)).toEqual(
+    beforeIncompleteConfirmation,
   );
-  await page.locator('[data-test="submit-execution"]').click();
-  const submitted = (await submitRequest).postDataJSON() as {
-    expectedSubmissionId: string | null;
-    executionApplicationContentVersionIds: string[];
-  };
-  expect(submitted.expectedSubmissionId).toBeNull();
-  expect(submitted.executionApplicationContentVersionIds).toHaveLength(2);
-  await expect(
-    page.locator('[data-test="execution-submission-panel"]'),
-  ).toBeVisible();
   await page.reload();
   const confirmationAction = page.getByTestId('workspace-primary-action');
   await expect(confirmationAction).toHaveCount(1);
   await expect(confirmationAction).toBeVisible();
-  await expect(confirmationAction).toHaveText('确认执行材料');
   await confirmationAction.click();
   const confirmation = page.locator(
     '[data-test="execution-confirmation-panel"]',
@@ -973,11 +973,62 @@ test('submits and confirms a real direct execution material bundle in the browse
   );
   await page.locator('[data-test="confirm-execution"]').click();
   const confirmBody = (await confirmRequest).postDataJSON() as {
-    expectedSubmissionId: string;
+    expectedSubmissionId: string | null;
+    executionApplicationContentVersionIds: string[];
   };
-  expect(confirmBody.expectedSubmissionId).toEqual(expect.any(String));
+  expect(confirmBody.expectedSubmissionId).toBeNull();
+  expect(confirmBody.executionApplicationContentVersionIds).toEqual(
+    [uploaded.contentVersionId, uploadedSecond.contentVersionId].sort(),
+  );
+  await expect(
+    confirmation.locator(
+      `[data-test="execution-confirmation-file-${uploaded.contentVersionId}"]`,
+    ),
+  ).toBeVisible();
+  await expect(
+    confirmation.locator(
+      `[data-test="execution-confirmation-file-${uploadedSecond.contentVersionId}"]`,
+    ),
+  ).toBeVisible();
   const after = await readCase(request, root.id);
   expect(after.stage).toBe('WAITING_EXECUTION_STAMP');
+  expect(after.version).toBe(root.version + 1);
+  expect(after.executionConfirmation).toMatchObject({
+    submissionId: null,
+    files: [
+      expect.objectContaining({
+        materialId: uploaded.materialId,
+        contentVersionId: uploaded.contentVersionId,
+      }),
+      expect.objectContaining({
+        materialId: uploadedSecond.materialId,
+        contentVersionId: uploadedSecond.contentVersionId,
+      }),
+    ],
+  });
+  expect(after.executionConfirmation?.files).toHaveLength(2);
+  const confirmedFacts = await caseExternalEntrySnapshot(root.id);
+  expect(confirmedFacts.confirmations).toHaveLength(1);
+  expect(confirmedFacts.confirmationVersions).toHaveLength(2);
+  expect(confirmedFacts.confirmationVersions).toEqual(
+    expect.arrayContaining([
+      expect.objectContaining({ content_version_id: uploaded.contentVersionId }),
+      expect.objectContaining({
+        content_version_id: uploadedSecond.contentVersionId,
+      }),
+    ]),
+  );
+  await page.reload();
+  await expect(
+    page
+      .locator('[data-test="workspace-file"]')
+      .filter({ hasText: 'ca018-execution-application.pdf' }),
+  ).toBeVisible();
+  await expect(
+    page
+      .locator('[data-test="workspace-file"]')
+      .filter({ hasText: 'ca018-execution-schedule.pdf' }),
+  ).toBeVisible();
   const exact = await request.get(
     `/api/v1/materials/${uploaded.materialId}/versions/${uploaded.contentVersionId}/content`,
     { headers: operator },
@@ -1233,6 +1284,9 @@ test('continues a PENDING_MATCH entry through real matching and actual complaint
 }) => {
   const payload = input('PENDING_MATCH');
   const created = await createEntry(request, payload);
+  const lawyer = await createLawyerAccountThroughApi(request, {
+    fullName: 'CA018 合成承办律师',
+  });
   const matched = await body<{ stage: string; version: number }>(
     await request.post(`/api/v1/cases/${created.id}/match`, {
       headers: operator,
@@ -1241,7 +1295,7 @@ test('continues a PENDING_MATCH entry through real matching and actual complaint
         idempotencyKey: randomUUID(),
         matchedOn: payload.stageReachedOn,
         defendants: [{ kind: 'ORGANIZATION', name: 'CA018 合成被告' }],
-        lawyer: { fullName: 'CA018 合成承办律师' },
+        lawyerAccountId: lawyer.id,
       },
     }),
     201,
@@ -2634,10 +2688,7 @@ test('keeps direct second-instance execution resubmission and frozen confirmatio
     submission_id: corrected.submissionId,
     external_entry_id: created.entryId,
   });
-  expect(facts.confirmationVersions).toHaveLength(1);
-  expect(facts.confirmationVersions[0]).toMatchObject({
-    content_version_id: correctedFile.contentVersionId,
-  });
+  expect(facts.confirmationVersions).toHaveLength(0);
   await expectExactDownload(request, firstFile, firstFile.bytes);
   await expectExactDownload(request, correctedFile, correctedFile.bytes);
   await expectExactDownload(request, judgmentFile, judgmentBytes);
