@@ -7,21 +7,11 @@ import {
 } from '@playwright/test';
 import {
   coreLeadFixtures,
-  resetCoreLeadE2eData,
+  seedCoreLeadE2eData,
   setRoleGrant,
 } from '../support/core-lead-database.mjs';
-import { clearCaseArchiveFixture } from '../support/case-archive-database.mjs';
-import { clearCaseClosureFixture } from '../support/case-closure-database.mjs';
-import { clearCaseExecutionFinishFixture } from '../support/case-execution-finish-database.mjs';
-import { clearCaseAcceptanceFixture } from '../support/case-acceptance-database.mjs';
-import { clearCaseFilingFixture } from '../support/case-filing-database.mjs';
-import { clearCaseComplaintMailingFixture } from '../support/case-complaint-mailing-database.mjs';
 import {
-  clearCoreCaseHearingAdmin,
-  clearCoreCaseHearingAdminSessions,
-} from '../support/case-hearing-database.mjs';
-import { clearCoreCaseSecondInstanceFixture } from '../support/case-second-instance-database.mjs';
-import {
+  assertCaseExternalEntrySqlGuards,
   caseExternalEntrySnapshot,
   clearCaseExternalEntryFixture,
   setCaseExternalEntryGrant,
@@ -109,6 +99,16 @@ type CaseView = {
   currentTrialRoundId?: string | null;
   acceptance?: unknown;
   hearing?: unknown;
+  recordEdits?: {
+    secondInstanceAcceptances?: Array<{
+      choiceId: string | null;
+      trialRoundId: string;
+      acceptanceRevision: number;
+      acceptedAt: string | null;
+      courtCaseNo: string | null;
+      history: unknown[];
+    }>;
+  };
 };
 
 function shanghaiToday() {
@@ -243,17 +243,8 @@ async function expectExactDownload(
 }
 
 async function clean() {
-  await clearCaseArchiveFixture();
-  await clearCaseClosureFixture();
-  await clearCaseExecutionFinishFixture();
-  await clearCoreCaseHearingAdminSessions();
-  await clearCoreCaseSecondInstanceFixture();
-  await clearCaseAcceptanceFixture();
-  await clearCaseFilingFixture();
-  await clearCaseComplaintMailingFixture();
   await clearCaseExternalEntryFixture();
-  await resetCoreLeadE2eData();
-  await clearCoreCaseHearingAdmin();
+  await seedCoreLeadE2eData({ reuseExisting: true });
   await setCaseExternalEntryGrant(
     coreLeadFixtures.roleA,
     'case.external-entry.create',
@@ -285,6 +276,11 @@ async function clean() {
   await setRoleGrant(
     coreLeadFixtures.roleA,
     'case.second_instance.result',
+    'TEAM',
+  );
+  await setRoleGrant(
+    coreLeadFixtures.roleA,
+    'case.second-instance-acceptance.update',
     'TEAM',
   );
   await setRoleGrant(
@@ -2014,6 +2010,410 @@ test('continues a WAITING_HEARING entry with an actual hearing, system advance, 
   );
   expect(downloaded.status(), await downloaded.text()).toBe(200);
   expect((await downloaded.body()).equals(judgmentBytes)).toBe(true);
+});
+
+test('records and revises direct second-instance acceptance against its real entry round', async ({
+  request,
+}) => {
+  const acceptedOn = shanghaiDaysAgo(2);
+  const acceptedAt = acceptedOn;
+  const created = await createEntry(
+    request,
+    input('SECOND_INSTANCE', {
+      stageReachedOn: acceptedOn,
+      known: {
+        courtId: null,
+        courtCaseNo: null,
+        acceptedOn: shanghaiDaysAgo(5),
+        secondInstanceAcceptedOn: acceptedOn,
+        platform: null,
+        shopName: null,
+        shopExternalId: null,
+        caseType: null,
+        infringementTypes: null,
+      },
+    }),
+  );
+  const initial = await readCase(request, created.id);
+  const trialRoundId = initial.currentTrialRoundId;
+  expect(trialRoundId).toEqual(expect.any(String));
+
+  const saveAcceptance = (input: {
+    expectedAcceptanceRevision: number;
+    acceptedAt: string | null;
+    courtCaseNo: string | null;
+    reason: string | null;
+    idempotencyKey?: string;
+  }) =>
+    request.post(
+      `/api/v1/cases/${created.id}/second-instance-acceptance-save`,
+      {
+        headers: operator,
+        data: {
+          choiceId: null,
+          trialRoundId,
+          idempotencyKey: input.idempotencyKey ?? randomUUID(),
+          ...input,
+        },
+      },
+    );
+
+  const firstInput = {
+    expectedAcceptanceRevision: 0,
+    acceptedAt,
+    courtCaseNo: `CA018-SECOND-${randomUUID().slice(0, 8)}`,
+    reason: null,
+    idempotencyKey: randomUUID(),
+  };
+  const first = await body<{
+    choiceId: string | null;
+    trialRoundId: string;
+    changeId: string;
+    acceptanceRevision: number;
+    acceptedAt: string | null;
+    courtCaseNo: string | null;
+  }>(await saveAcceptance(firstInput), 201);
+  expect(first).toMatchObject({
+    choiceId: null,
+    trialRoundId,
+    acceptanceRevision: 1,
+    acceptedAt,
+    courtCaseNo: firstInput.courtCaseNo,
+  });
+  const replay = await body(await saveAcceptance(firstInput), 201);
+  expect(replay).toEqual(first);
+
+  const stale = await saveAcceptance({
+    expectedAcceptanceRevision: 0,
+    acceptedAt: null,
+    courtCaseNo: 'CA018-STALE',
+    reason: 'stale acceptance revision',
+  });
+  expect(stale.status(), await stale.text()).toBe(409);
+  const beforeCorrection = await readCase(request, created.id);
+  expect(beforeCorrection.recordEdits?.secondInstanceAcceptances).toEqual([
+    expect.objectContaining({
+      choiceId: null,
+      trialRoundId,
+      acceptanceRevision: 1,
+      acceptedAt,
+      courtCaseNo: firstInput.courtCaseNo,
+      history: expect.any(Array),
+    }),
+  ]);
+
+  const clearedDate = await body(
+    await saveAcceptance({
+      expectedAcceptanceRevision: 1,
+      acceptedAt: null,
+      courtCaseNo: firstInput.courtCaseNo,
+      reason: 'CA018 correction clears an incorrect date',
+    }),
+    201,
+  );
+  expect(clearedDate).toMatchObject({
+    choiceId: null,
+    trialRoundId,
+    acceptanceRevision: 2,
+    acceptedAt: null,
+    courtCaseNo: firstInput.courtCaseNo,
+  });
+  const clearedNumber = await body(
+    await saveAcceptance({
+      expectedAcceptanceRevision: 2,
+      acceptedAt: null,
+      courtCaseNo: null,
+      reason: 'CA018 correction clears an unverified case number',
+    }),
+    201,
+  );
+  expect(clearedNumber).toMatchObject({
+    acceptanceRevision: 3,
+    acceptedAt: null,
+    courtCaseNo: null,
+  });
+  expect(
+    (await readCase(request, created.id)).recordEdits
+      ?.secondInstanceAcceptances?.[0]?.history,
+  ).toHaveLength(3);
+
+  const appealRoot = await createEntry(
+    request,
+    input('WAITING_HEARING', { stageReachedOn: shanghaiDaysAgo(2) }),
+  );
+  const scheduled = await body<{ arrangementId: string; version: number }>(
+    await request.post(`/api/v1/cases/${appealRoot.id}/hearing-schedule`, {
+      headers: operator,
+      data: {
+        expectedVersion: appealRoot.version,
+        idempotencyKey: randomUUID(),
+        hearingAt: shanghaiDaysAgo(1),
+      },
+    }),
+    201,
+  );
+  expect(scheduled.arrangementId).toEqual(expect.any(String));
+  await expect
+    .poll(async () => (await readCase(request, appealRoot.id)).stage, {
+      timeout: 30_000,
+    })
+    .toBe('WAITING_JUDGMENT');
+  const appealCase = await readCase(request, appealRoot.id);
+  const judgmentFile = await uploadCaseFile(
+    request,
+    appealRoot.id,
+    'JUDGMENT',
+    Buffer.from('%PDF-1.7\nCA018 appeal source judgment\n%%EOF\n'),
+  );
+  const judgment = await body<{ judgmentId: string; version: number }>(
+    await request.post(`/api/v1/cases/${appealRoot.id}/judgment-register`, {
+      headers: operator,
+      data: {
+        expectedVersion: appealCase.version,
+        idempotencyKey: randomUUID(),
+        judgmentReceivedAt: shanghaiToday(),
+        judgmentAmountState: 'PENDING',
+        judgmentAmount: null,
+        paidLitigationFeeState: 'PENDING',
+        paidLitigationFee: null,
+        judgmentContentVersionIds: [judgmentFile.contentVersionId],
+      },
+    }),
+    201,
+  );
+  const appeal = await body<{ choiceId: string; version: number }>(
+    await request.post(`/api/v1/cases/${appealRoot.id}/judgment-next-step`, {
+      headers: operator,
+      data: {
+        expectedVersion: judgment.version,
+        idempotencyKey: randomUUID(),
+        judgmentId: judgment.judgmentId,
+        next: 'APPEAL',
+        plaintiffAppeals: true,
+        defendantIds: [],
+      },
+    }),
+    201,
+  );
+  const appealSource = await readCase(request, appealRoot.id);
+  const beforeRejectedNull = await caseExternalEntrySnapshot(appealRoot.id);
+  const rejectedNull = await request.post(
+    `/api/v1/cases/${appealRoot.id}/second-instance-acceptance-save`,
+    {
+      headers: operator,
+      data: {
+        choiceId: null,
+        trialRoundId: appealSource.currentTrialRoundId,
+        expectedAcceptanceRevision: 0,
+        idempotencyKey: randomUUID(),
+        acceptedAt: shanghaiToday(),
+        courtCaseNo: `CA018-APPEAL-${randomUUID().slice(0, 8)}`,
+        reason: null,
+      },
+    },
+  );
+  expect(rejectedNull.status(), await rejectedNull.text()).toBe(409);
+  expect(await caseExternalEntrySnapshot(appealRoot.id)).toEqual(
+    beforeRejectedNull,
+  );
+  const acceptedAppeal = await body<{
+    choiceId: string;
+    acceptanceRevision: number;
+  }>(
+    await request.post(
+      `/api/v1/cases/${appealRoot.id}/second-instance-acceptance-save`,
+      {
+        headers: operator,
+        data: {
+          choiceId: appeal.choiceId,
+          trialRoundId: appealSource.currentTrialRoundId,
+          expectedAcceptanceRevision: 0,
+          idempotencyKey: randomUUID(),
+          acceptedAt: shanghaiToday(),
+          courtCaseNo: `CA018-APPEAL-${randomUUID().slice(0, 8)}`,
+          reason: null,
+        },
+      },
+    ),
+    201,
+  );
+  expect(acceptedAppeal).toMatchObject({
+    choiceId: appeal.choiceId,
+    acceptanceRevision: 1,
+  });
+  const beforeSqlProbes = await caseExternalEntrySnapshot(created.id);
+  await assertCaseExternalEntrySqlGuards(created.id, appealRoot.entryId);
+  expect(await caseExternalEntrySnapshot(created.id)).toEqual(beforeSqlProbes);
+});
+
+test('keeps direct second-instance execution resubmission and frozen confirmation on real IDs', async ({
+  request,
+}) => {
+  const acceptedOn = shanghaiDaysAgo(3);
+  const created = await createEntry(
+    request,
+    input('SECOND_INSTANCE', {
+      stageReachedOn: acceptedOn,
+      known: {
+        courtId: null,
+        courtCaseNo: null,
+        acceptedOn: shanghaiDaysAgo(6),
+        secondInstanceAcceptedOn: acceptedOn,
+        platform: null,
+        shopName: null,
+        shopExternalId: null,
+        caseType: null,
+        infringementTypes: null,
+      },
+    }),
+  );
+  const initial = await readCase(request, created.id);
+  const trialRoundId = initial.currentTrialRoundId;
+  expect(trialRoundId).toEqual(expect.any(String));
+  const progress = {
+    hearingAt: null,
+    hearingPlace: null,
+    judgeName: null,
+    documentContentVersionIds: [],
+    serviceContentVersionIds: [],
+  };
+  const saved = await body<{ progressId: string; version: number }>(
+    await request.post(`/api/v1/cases/${created.id}/second-instance-save`, {
+      headers: operator,
+      data: {
+        expectedVersion: initial.version,
+        idempotencyKey: randomUUID(),
+        trialRoundId,
+        choiceId: null,
+        expectedProgressId: null,
+        progress,
+      },
+    }),
+    201,
+  );
+  const judgmentBytes = Buffer.from(
+    '%PDF-1.7\nCA018 direct second-instance judgment bytes\n%%EOF\n',
+  );
+  const judgmentFile = await uploadCaseFile(
+    request,
+    created.id,
+    'SECOND_INSTANCE_JUDGMENT',
+    judgmentBytes,
+  );
+  const judgment = await body<{
+    resultId: string;
+    stage: string;
+    version: number;
+  }>(
+    await request.post(`/api/v1/cases/${created.id}/second-instance-result`, {
+      headers: operator,
+      data: {
+        expectedVersion: saved.version,
+        idempotencyKey: randomUUID(),
+        trialRoundId,
+        choiceId: null,
+        expectedProgressId: saved.progressId,
+        progress,
+        result: 'AFFIRM',
+        resultReceivedAt: shanghaiToday(),
+        judgmentContentVersionIds: [judgmentFile.contentVersionId],
+        judgmentAmount: { state: 'KNOWN', amount: '4200.00' },
+        paidLitigationFee: { state: 'PENDING', amount: null },
+      },
+    }),
+    201,
+  );
+  expect(judgment.stage).toBe('WAITING_EXECUTION_DOCUMENTS');
+
+  const uploadApplication = async (suffix: string) => {
+    const bytes = Buffer.from(`%PDF-1.7\nCA018 application ${suffix}\n%%EOF\n`);
+    const file = await uploadCaseFile(
+      request,
+      created.id,
+      'EXECUTION_APPLICATION',
+      bytes,
+    );
+    return { ...file, bytes };
+  };
+  const firstFile = await uploadApplication('first');
+  const first = await body<{ submissionId: string; version: number }>(
+    await request.post(`/api/v1/cases/${created.id}/execution-submit`, {
+      headers: operator,
+      data: {
+        expectedVersion: judgment.version,
+        idempotencyKey: randomUUID(),
+        trialRoundId,
+        judgmentNextStepId: null,
+        secondInstanceResultId: judgment.resultId,
+        expectedSubmissionId: null,
+        executionApplicationContentVersionIds: [firstFile.contentVersionId],
+      },
+    }),
+    201,
+  );
+  const beforeBadResubmit = await caseExternalEntrySnapshot(created.id);
+  const badResubmit = await request.post(
+    `/api/v1/cases/${created.id}/execution-submit`,
+    {
+      headers: operator,
+      data: {
+        expectedVersion: first.version,
+        idempotencyKey: randomUUID(),
+        trialRoundId,
+        judgmentNextStepId: null,
+        secondInstanceResultId: judgment.resultId,
+        expectedSubmissionId: null,
+        executionApplicationContentVersionIds: [firstFile.contentVersionId],
+        changeReason: 'must cite the real current submission',
+      },
+    },
+  );
+  expect(badResubmit.status(), await badResubmit.text()).toBe(409);
+  expect(await caseExternalEntrySnapshot(created.id)).toEqual(
+    beforeBadResubmit,
+  );
+
+  const correctedFile = await uploadApplication('corrected');
+  const corrected = await body<{ submissionId: string; version: number }>(
+    await request.post(`/api/v1/cases/${created.id}/execution-submit`, {
+      headers: operator,
+      data: {
+        expectedVersion: first.version,
+        idempotencyKey: randomUUID(),
+        trialRoundId,
+        judgmentNextStepId: null,
+        secondInstanceResultId: judgment.resultId,
+        expectedSubmissionId: first.submissionId,
+        executionApplicationContentVersionIds: [correctedFile.contentVersionId],
+        changeReason:
+          'CA018 replace the first execution package with a corrected current version',
+      },
+    }),
+    201,
+  );
+  const confirmation = await confirmExecution(
+    request,
+    created.id,
+    corrected.version,
+    corrected.submissionId,
+  );
+  expect(confirmation.stage).toBe('WAITING_EXECUTION_STAMP');
+
+  const facts = await caseExternalEntrySnapshot(created.id);
+  expect(facts.executionSubmissions).toHaveLength(2);
+  expect(facts.submissionVersions).toHaveLength(2);
+  expect(facts.confirmations).toHaveLength(1);
+  expect(facts.confirmations[0]).toMatchObject({
+    submission_id: corrected.submissionId,
+    external_entry_id: created.entryId,
+  });
+  expect(facts.confirmationVersions).toHaveLength(1);
+  expect(facts.confirmationVersions[0]).toMatchObject({
+    content_version_id: correctedFile.contentVersionId,
+  });
+  await expectExactDownload(request, firstFile, firstFile.bytes);
+  await expectExactDownload(request, correctedFile, correctedFile.bytes);
+  await expectExactDownload(request, judgmentFile, judgmentBytes);
 });
 
 test('continues a SECOND_INSTANCE entry through real REMAND, child acceptance, and hearing', async ({

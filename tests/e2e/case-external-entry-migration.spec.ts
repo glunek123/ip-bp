@@ -21,7 +21,7 @@ import {
   withCaseExternalEntryMigrationDatabase,
 } from '../support/case-external-entry-migration.mjs';
 import { allowOtherEnterpriseAccountSetup } from '../support/case-complaint-mailing-database.mjs';
-import { resetCoreLeadE2eData } from '../support/core-lead-database.mjs';
+import { seedCoreLeadE2eData } from '../support/core-lead-database.mjs';
 import { disconnectCustomerTestDatabase } from '../support/customer-database.mjs';
 import { clearCaseExternalEntryFixture } from '../support/case-external-entry-database.mjs';
 import { prepareCaseAcceptanceFixture } from '../support/case-acceptance-database.mjs';
@@ -38,7 +38,7 @@ const today = () =>
 
 async function clean() {
   await clearCaseExternalEntryFixture();
-  await resetCoreLeadE2eData();
+  await seedCoreLeadE2eData({ reuseExisting: true });
 }
 
 test.beforeEach(async () => {
