@@ -140,15 +140,23 @@ describe('LeadListPage', () => {
     await flushPromises();
     await first.wrapper.get('[data-test="quick-push-lead"]').trigger('click');
     await flushPromises();
-    const stored = JSON.parse(
+    const storedMap = JSON.parse(
       sessionStorage.getItem('dev-cor:lead-quick-actions:pending-push') ??
         'null',
-    ) as {
-      leadId: string;
-      expectedVersion: number;
-      idempotencyKey: string;
-      identity: string;
-    };
+    ) as Record<
+      string,
+      {
+        leadId: string;
+        expectedVersion: number;
+        idempotencyKey: string;
+        identity: string;
+        status: string;
+      }
+    >;
+    const stored = Object.values(storedMap).find(
+      (attempt) => attempt.status === 'PENDING',
+    );
+    expect(stored).toBeDefined();
     expect(stored).toMatchObject({
       leadId: summary.id,
       expectedVersion: summary.version,
@@ -175,6 +183,217 @@ describe('LeadListPage', () => {
       reopened.wrapper.findAll('[data-test="lead-quick-action"]'),
     ).toHaveLength(0);
     reopened.wrapper.unmount();
+  });
+
+  it('isolates pending pushes by identity and replays only that identity’s frozen request', async () => {
+    let activeUserId = 'operator-1';
+    const summaryB: Lead = {
+      ...summary,
+      id: 'lead-b',
+      businessNo: 'LD-B',
+      departmentId: 'department-2',
+      responsibleUserId: 'operator-2',
+      displayNames: {
+        customerName: '客户B',
+        rightsHolderName: '权利主体B',
+        responsibleUserName: '经办人B',
+      },
+    };
+    api.listLeads.mockImplementation(async () => ({
+      ...result,
+      items: [activeUserId === 'operator-1' ? summary : summaryB],
+      total: 1,
+    }));
+    api.getLead.mockImplementation(async (id: string) => ({
+      ...summary,
+      id,
+      businessNo: id === 'lead-b' ? 'LD-B' : summary.businessNo,
+      version: id === 'lead-b' ? 9 : summary.version,
+      capabilities: {
+        edit: true,
+        push: true,
+        withdrawApply: false,
+        evidenceDecide: false,
+        transferToNotary: false,
+        createEvidenceBatch: false,
+      },
+      evidenceDecision: null,
+      pendingWithdrawalApplication: null,
+      history: [],
+      notaryMatters: [],
+    }));
+    api.pushLead
+      .mockRejectedValueOnce(
+        new ApiError('lost A response', 0, 'NETWORK_ERROR'),
+      )
+      .mockRejectedValueOnce(
+        new ApiError('lost B response', 0, 'NETWORK_ERROR'),
+      )
+      .mockResolvedValue({ id: 'push-result' });
+    vi.spyOn(window, 'confirm').mockReturnValue(true);
+
+    const { auth, wrapper } = await mountWithRoute('/leads');
+    const identityA = auth.session!;
+    await wrapper.get('[data-test="lead-quick-action"]').trigger('click');
+    await flushPromises();
+    await wrapper.get('[data-test="quick-push-lead"]').trigger('click');
+    await flushPromises();
+    const requestA = api.pushLead.mock.calls[0] as [string, number, string];
+    expect(requestA[0]).toBe(summary.id);
+
+    activeUserId = 'operator-2';
+    auth.session = {
+      ...identityA,
+      user: { ...identityA.user, id: 'operator-2', displayName: '经办人B' },
+      department: { id: 'department-2', name: '部门B' },
+      departments: [{ id: 'department-2', name: '部门B' }],
+      authorizationRevision: 2,
+    };
+    await flushPromises();
+    expect(
+      wrapper.findAll('[data-test="lead-quick-actions-panel"]'),
+    ).toHaveLength(0);
+    expect(wrapper.text()).not.toContain(summary.businessNo);
+    expect(
+      wrapper.get('[data-test="lead-quick-action"]').attributes('disabled'),
+    ).toBeUndefined();
+    await wrapper.get('[data-test="lead-quick-action"]').trigger('click');
+    await flushPromises();
+    expect(wrapper.text()).toContain('LD-B');
+    await wrapper.get('[data-test="quick-push-lead"]').trigger('click');
+    await flushPromises();
+    const requestB = api.pushLead.mock.calls[1] as [string, number, string];
+    expect(requestB[0]).toBe('lead-b');
+    expect(requestB[1]).toBe(9);
+    const storedAfterB = JSON.parse(
+      sessionStorage.getItem('dev-cor:lead-quick-actions:pending-push') ??
+        'null',
+    ) as Record<string, { idempotencyKey: string; status: string }>;
+    expect(
+      Object.values(storedAfterB).filter(
+        (attempt) => attempt.status === 'PENDING',
+      ),
+    ).toHaveLength(2);
+
+    activeUserId = 'operator-1';
+    auth.session = identityA;
+    await flushPromises();
+    expect(wrapper.findAll('[data-test="retry-unknown-push"]')).toHaveLength(1);
+    await wrapper.get('[data-test="retry-unknown-push"]').trigger('click');
+    await flushPromises();
+    expect(api.pushLead.mock.calls[2]).toEqual(requestA);
+    const afterLateASettlement = JSON.parse(
+      sessionStorage.getItem('dev-cor:lead-quick-actions:pending-push') ??
+        'null',
+    ) as Record<string, { leadId: string; status: string }>;
+    expect(
+      Object.values(afterLateASettlement).some(
+        (attempt) => attempt.leadId === requestA[0],
+      ),
+    ).toBe(false);
+    expect(
+      Object.values(afterLateASettlement).find(
+        (attempt) => attempt.leadId === requestB[0],
+      )?.status,
+    ).toBe('PENDING');
+    expect(
+      Object.values(afterLateASettlement).filter(
+        (attempt) => attempt.status === 'PENDING',
+      ),
+    ).toHaveLength(1);
+    wrapper.unmount();
+  });
+
+  it('settles a late response only for its original identity', async () => {
+    let activeUserId = 'operator-1';
+    let resolveA!: (value: { id: string }) => void;
+    const summaryB: Lead = {
+      ...summary,
+      id: 'lead-b',
+      businessNo: 'LD-B',
+      departmentId: 'department-2',
+      responsibleUserId: 'operator-2',
+    };
+    api.listLeads.mockImplementation(async () => ({
+      ...result,
+      items: [activeUserId === 'operator-1' ? summary : summaryB],
+      total: 1,
+    }));
+    api.getLead.mockImplementation(async (id: string) => ({
+      ...summary,
+      id,
+      businessNo: id === 'lead-b' ? 'LD-B' : summary.businessNo,
+      version: id === 'lead-b' ? 9 : summary.version,
+      capabilities: {
+        edit: true,
+        push: true,
+        withdrawApply: false,
+        evidenceDecide: false,
+        transferToNotary: false,
+        createEvidenceBatch: false,
+      },
+      evidenceDecision: null,
+      pendingWithdrawalApplication: null,
+      history: [],
+      notaryMatters: [],
+    }));
+    api.pushLead
+      .mockImplementationOnce(
+        () =>
+          new Promise((resolve) => {
+            resolveA = resolve;
+          }),
+      )
+      .mockRejectedValueOnce(
+        new ApiError('lost B response', 0, 'NETWORK_ERROR'),
+      );
+    vi.spyOn(window, 'confirm').mockReturnValue(true);
+
+    const { auth, wrapper } = await mountWithRoute('/leads');
+    const identityA = auth.session!;
+    await wrapper.get('[data-test="lead-quick-action"]').trigger('click');
+    await flushPromises();
+    await wrapper.get('[data-test="quick-push-lead"]').trigger('click');
+    await flushPromises();
+    expect(api.pushLead.mock.calls[0]?.[0]).toBe(summary.id);
+
+    activeUserId = 'operator-2';
+    auth.session = {
+      ...identityA,
+      user: { ...identityA.user, id: 'operator-2', displayName: '经办人B' },
+      department: { id: 'department-2', name: '部门B' },
+      departments: [{ id: 'department-2', name: '部门B' }],
+      authorizationRevision: 2,
+    };
+    await flushPromises();
+    await wrapper.get('[data-test="lead-quick-action"]').trigger('click');
+    await flushPromises();
+    await wrapper.get('[data-test="quick-push-lead"]').trigger('click');
+    await flushPromises();
+    const requestB = api.pushLead.mock.calls[1] as [string, number, string];
+    expect(requestB[0]).toBe('lead-b');
+
+    resolveA({ id: 'push-a' });
+    await flushPromises();
+    expect(wrapper.findAll('[data-test="retry-unknown-push"]')).toHaveLength(1);
+    const stored = JSON.parse(
+      sessionStorage.getItem('dev-cor:lead-quick-actions:pending-push') ??
+        'null',
+    ) as Record<
+      string,
+      { leadId: string; idempotencyKey: string; status: string }
+    >;
+    expect(
+      stored[identityA.user.id + ':INTERNAL:department-1:1'],
+    ).toBeUndefined();
+    expect(Object.values(stored)).toContainEqual({
+      leadId: requestB[0],
+      expectedVersion: requestB[1],
+      idempotencyKey: requestB[2],
+      identity: 'operator-2:INTERNAL:department-2:2',
+      status: 'PENDING',
+    });
+    wrapper.unmount();
   });
 
   it('opens one-row actions from a fresh detail and keeps page/status after push', async () => {

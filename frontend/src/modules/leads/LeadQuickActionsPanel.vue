@@ -35,7 +35,7 @@ const returnTo = computed(() => {
 });
 const emit = defineEmits<{
   close: [];
-  pending: [value: FrozenLeadPush | null];
+  pending: [identity: string, value: FrozenLeadPush | null];
   succeeded: [];
 }>();
 
@@ -48,50 +48,73 @@ const errorMessage = ref('');
 let request: AbortController | undefined;
 let generation = 0;
 const pendingStorageKey = 'dev-cor:lead-quick-actions:pending-push';
+type StoredAttempt = FrozenLeadPush & { status: 'PENDING' | 'SETTLED' };
 
-function persistAttempt(value: FrozenLeadPush | null): boolean {
+function isRecord(value: unknown): value is Record<string, unknown> {
+  return typeof value === 'object' && value !== null && !Array.isArray(value);
+}
+
+function readStoredAttempts(): Record<string, StoredAttempt> | null {
+  try {
+    const raw = globalThis.sessionStorage?.getItem(pendingStorageKey);
+    if (!raw) return {};
+    const parsed: unknown = JSON.parse(raw);
+    if (!isRecord(parsed)) return null;
+    const entries: Record<string, StoredAttempt> = {};
+    for (const [identity, value] of Object.entries(parsed)) {
+      if (
+        !isRecord(value) ||
+        value.identity !== identity ||
+        typeof value.leadId !== 'string' ||
+        typeof value.expectedVersion !== 'number' ||
+        !Number.isInteger(value.expectedVersion) ||
+        typeof value.idempotencyKey !== 'string' ||
+        (value.status !== 'PENDING' && value.status !== 'SETTLED')
+      )
+        return null;
+      entries[identity] = {
+        leadId: value.leadId,
+        expectedVersion: value.expectedVersion,
+        idempotencyKey: value.idempotencyKey,
+        identity,
+        status: value.status,
+      };
+    }
+    return entries;
+  } catch {
+    return null;
+  }
+}
+
+function writeStoredAttempts(attempts: Record<string, StoredAttempt>): boolean {
   try {
     const storage = globalThis.sessionStorage;
     if (!storage) return false;
-    if (value) storage.setItem(pendingStorageKey, JSON.stringify(value));
-    else storage.removeItem(pendingStorageKey);
+    if (Object.keys(attempts).length === 0) {
+      storage.removeItem(pendingStorageKey);
+    } else {
+      storage.setItem(pendingStorageKey, JSON.stringify(attempts));
+    }
     return true;
   } catch {
     return false;
   }
 }
 
+function persistAttempt(value: FrozenLeadPush): boolean {
+  const attempts = readStoredAttempts();
+  if (!attempts) return false;
+  attempts[value.identity] = { ...value, status: 'PENDING' };
+  return writeStoredAttempts(attempts);
+}
+
 function persistSettledAttempt(value: FrozenLeadPush): void {
-  let storage:
-    | {
-        setItem(key: string, value: string): void;
-        removeItem(key: string): void;
-      }
-    | undefined;
-  try {
-    storage = globalThis.sessionStorage;
-  } catch {
-    return;
-  }
-  if (!storage) return;
-  try {
-    storage.setItem(
-      pendingStorageKey,
-      JSON.stringify({ ...value, status: 'SETTLED' }),
-    );
-  } catch {
-    try {
-      storage.removeItem(pendingStorageKey);
-    } catch {
-      // Keep the delivered success settled in memory.
-    }
-    return;
-  }
-  try {
-    storage.removeItem(pendingStorageKey);
-  } catch {
-    // A persisted SETTLED marker prevents stale state from looking unknown.
-  }
+  const attempts = readStoredAttempts();
+  if (!attempts) return;
+  attempts[value.identity] = { ...value, status: 'SETTLED' };
+  if (!writeStoredAttempts(attempts)) return;
+  delete attempts[value.identity];
+  writeStoredAttempts(attempts);
 }
 
 const matchingPending = () =>
@@ -176,7 +199,7 @@ async function pushCurrent(): Promise<void> {
       errorMessage.value = '无法安全保存原请求标识，尚未发起推送。';
       return;
     }
-    emit('pending', frozen);
+    emit('pending', capturedIdentity, frozen);
     state.value = 'unknown';
     await sendFrozen(frozen);
   } catch {
@@ -198,7 +221,7 @@ async function sendFrozen(frozen: FrozenLeadPush): Promise<void> {
       frozen.idempotencyKey,
     );
     persistSettledAttempt(frozen);
-    emit('pending', null);
+    emit('pending', frozen.identity, null);
     emit('succeeded');
   } catch (error) {
     if (isUnknown(error)) {
@@ -210,7 +233,7 @@ async function sendFrozen(frozen: FrozenLeadPush): Promise<void> {
           ? '推送权限已变化，请核对最新权限。'
           : '线索状态或版本已变化，请核对线索后再办理。';
       persistSettledAttempt(frozen);
-      emit('pending', null);
+      emit('pending', frozen.identity, null);
       await load();
       errorMessage.value = failureMessage;
     }

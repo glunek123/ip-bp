@@ -37,62 +37,56 @@ const pageSize = ref(20);
 const canCreate = ref(false);
 let request: AbortController | undefined;
 const pendingStorageKey = 'dev-cor:lead-quick-actions:pending-push';
-function readPendingPush(): FrozenLeadPush | null {
+function isRecord(value: unknown): value is Record<string, unknown> {
+  return typeof value === 'object' && value !== null && !Array.isArray(value);
+}
+function readPendingPushes(): Record<string, FrozenLeadPush> | null {
   try {
     const raw = globalThis.sessionStorage?.getItem(pendingStorageKey);
-    if (!raw) return null;
+    if (!raw) return {};
     const value: unknown = JSON.parse(raw);
-    if (
-      typeof value === 'object' &&
-      value !== null &&
-      'status' in value &&
-      value.status === 'SETTLED'
-    ) {
-      globalThis.sessionStorage?.removeItem(pendingStorageKey);
-      return null;
+    if (!isRecord(value)) return null;
+    const pending: Record<string, FrozenLeadPush> = {};
+    for (const [identityKey, candidate] of Object.entries(value)) {
+      if (
+        !isRecord(candidate) ||
+        candidate.identity !== identityKey ||
+        typeof candidate.leadId !== 'string' ||
+        typeof candidate.expectedVersion !== 'number' ||
+        !Number.isInteger(candidate.expectedVersion) ||
+        typeof candidate.idempotencyKey !== 'string' ||
+        (candidate.status !== 'PENDING' && candidate.status !== 'SETTLED')
+      )
+        return null;
+      if (candidate.status === 'PENDING') {
+        pending[identityKey] = {
+          leadId: candidate.leadId,
+          expectedVersion: candidate.expectedVersion,
+          idempotencyKey: candidate.idempotencyKey,
+          identity: identityKey,
+        };
+      }
     }
-    if (
-      typeof value !== 'object' ||
-      value === null ||
-      !('leadId' in value) ||
-      typeof value.leadId !== 'string' ||
-      !('expectedVersion' in value) ||
-      typeof value.expectedVersion !== 'number' ||
-      !Number.isInteger(value.expectedVersion) ||
-      !('idempotencyKey' in value) ||
-      typeof value.idempotencyKey !== 'string' ||
-      !('identity' in value) ||
-      typeof value.identity !== 'string'
-    )
-      return null;
-    return {
-      leadId: value.leadId,
-      expectedVersion: value.expectedVersion,
-      idempotencyKey: value.idempotencyKey,
-      identity: value.identity,
-    };
+    return pending;
   } catch {
     return null;
   }
 }
-const pendingPush = ref<FrozenLeadPush | null>(readPendingPush());
-const activeLeadId = ref<string | null>(
-  pendingPush.value?.identity === identity.value
-    ? pendingPush.value.leadId
-    : null,
+const initialPendingPushes = readPendingPushes();
+const pendingStorageUnavailable = ref(initialPendingPushes === null);
+const pendingPushes = ref<Record<string, FrozenLeadPush>>(
+  initialPendingPushes ?? {},
 );
-function savePendingPush(value: FrozenLeadPush | null): void {
-  pendingPush.value = value;
-  try {
-    if (value)
-      globalThis.sessionStorage?.setItem(
-        pendingStorageKey,
-        JSON.stringify(value),
-      );
-    else globalThis.sessionStorage?.removeItem(pendingStorageKey);
-  } catch {
-    // Keep the active lock in memory if browser storage is unavailable.
-  }
+const pendingPush = computed(() => pendingPushes.value[identity.value] ?? null);
+const activeLeadId = ref<string | null>(pendingPush.value?.leadId ?? null);
+function savePendingPush(
+  identityKey: string,
+  value: FrozenLeadPush | null,
+): void {
+  const next = { ...pendingPushes.value };
+  if (value) next[identityKey] = value;
+  else delete next[identityKey];
+  pendingPushes.value = next;
 }
 
 const selectedStatus = computed<LeadStatus | undefined>(() => {
@@ -178,11 +172,18 @@ watch(
   { immediate: true, flush: 'sync' },
 );
 watch(identity, (value) => {
-  activeLeadId.value =
-    pendingPush.value?.identity === value ? pendingPush.value.leadId : null;
+  const stored = readPendingPushes();
+  if (stored) {
+    pendingPushes.value = stored;
+    pendingStorageUnavailable.value = false;
+  } else {
+    pendingPushes.value = {};
+    pendingStorageUnavailable.value = true;
+  }
+  activeLeadId.value = pendingPushes.value[value]?.leadId ?? null;
 });
 watch(pendingPush, (value) => {
-  if (value?.identity === identity.value) activeLeadId.value = value.leadId;
+  if (value) activeLeadId.value = value.leadId;
 });
 onBeforeUnmount(() => request?.abort());
 </script>
@@ -267,7 +268,7 @@ onBeforeUnmount(() => request?.abort());
                 <td class="business-list-cell--nowrap">
                   <ElButton
                     data-test="lead-quick-action"
-                    :disabled="!!pendingPush"
+                    :disabled="!!pendingPush || pendingStorageUnavailable"
                     @click="activeLeadId = lead.id"
                     >办理</ElButton
                   >
@@ -371,6 +372,9 @@ onBeforeUnmount(() => request?.abort());
           >
         </nav>
       </section>
+      <p v-if="pendingStorageUnavailable" role="alert">
+        无法读取未决推送记录，快捷办理暂不可用。
+      </p>
     </main>
     <LeadQuickActionsPanel
       v-if="activeLeadId"

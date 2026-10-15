@@ -96,15 +96,15 @@ async function mountPanel(
 beforeEach(() => {
   vi.resetAllMocks();
   api.getLead.mockResolvedValue(lead);
-  api.pushLead.mockResolvedValue({
+  api.pushLead.mockImplementation(async (_leadId, expectedVersion) => ({
     id: 'push-1',
     businessNo: 'LD-1',
     status: 'WAITING_REVIEW',
-    version: 3,
+    version: expectedVersion + 1,
     pushedAt: '2026-10-15T00:00:00.000Z',
     pushedByUserId: 'operator-1',
     pushedByDisplayName: '经办人',
-  });
+  }));
   vi.spyOn(window, 'confirm').mockReturnValue(true);
 });
 
@@ -133,6 +133,9 @@ describe('LeadQuickActionsPanel', () => {
     expect(api.getLead).toHaveBeenCalledTimes(2);
     expect(api.pushLead).toHaveBeenCalledOnce();
     expect(api.pushLead).toHaveBeenCalledWith('lead-1', 4, expect.any(String));
+    await expect(api.pushLead.mock.results[0]?.value).resolves.toMatchObject({
+      version: 5,
+    });
     expect(wrapper.emitted('succeeded')).toHaveLength(1);
   });
 
@@ -151,7 +154,7 @@ describe('LeadQuickActionsPanel', () => {
     const { wrapper } = await mountPanel();
     await wrapper.get('[data-test="quick-push-lead"]').trigger('click');
     await flushPromises();
-    const attempt = wrapper.emitted('pending')?.[0]?.[0] as FrozenLeadPush;
+    const attempt = wrapper.emitted('pending')?.[0]?.[1] as FrozenLeadPush;
     await wrapper.setProps({ pendingPush: attempt });
     expect(attempt).toEqual({
       leadId: 'lead-1',
@@ -177,7 +180,7 @@ describe('LeadQuickActionsPanel', () => {
       2,
       attempt.idempotencyKey,
     );
-    expect(wrapper.emitted('pending')?.at(-1)?.[0]).toBeNull();
+    expect(wrapper.emitted('pending')?.at(-1)?.[1]).toBeNull();
   });
 
   it('does not expose stale details or retry a frozen request under another identity', async () => {
