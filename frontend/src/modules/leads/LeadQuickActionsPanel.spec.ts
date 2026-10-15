@@ -183,6 +183,54 @@ describe('LeadQuickActionsPanel', () => {
     expect(wrapper.emitted('pending')?.at(-1)?.[1]).toBeNull();
   });
 
+  it('does not settle a newer stored attempt when an older response arrives', async () => {
+    const oldAttempt: FrozenLeadPush = {
+      ...frozen,
+      expectedVersion: 3,
+      idempotencyKey: 'old-key',
+    };
+    const newerAttempt: FrozenLeadPush = {
+      ...frozen,
+      expectedVersion: 4,
+      idempotencyKey: 'new-key',
+    };
+    sessionStorage.setItem(
+      'dev-cor:lead-quick-actions:pending-push',
+      JSON.stringify({
+        [frozen.identity]: { ...newerAttempt, status: 'PENDING' },
+      }),
+    );
+    api.pushLead.mockResolvedValue({
+      id: 'push-1',
+      businessNo: 'LD-1',
+      status: 'WAITING_REVIEW',
+      version: oldAttempt.expectedVersion + 1,
+      pushedAt: '2026-10-15T00:00:00.000Z',
+      pushedByUserId: 'operator-1',
+      pushedByDisplayName: '运营员',
+    });
+
+    const { wrapper } = await mountPanel({ pendingPush: oldAttempt });
+    await wrapper.get('[data-test="retry-unknown-push"]').trigger('click');
+    await flushPromises();
+
+    expect(api.pushLead).toHaveBeenCalledWith(
+      oldAttempt.leadId,
+      oldAttempt.expectedVersion,
+      oldAttempt.idempotencyKey,
+    );
+    expect(wrapper.emitted('pending')).toBeUndefined();
+    expect(wrapper.emitted('succeeded')).toBeUndefined();
+    expect(
+      JSON.parse(
+        sessionStorage.getItem('dev-cor:lead-quick-actions:pending-push') ??
+          'null',
+      ),
+    ).toEqual({
+      [frozen.identity]: { ...newerAttempt, status: 'PENDING' },
+    });
+  });
+
   it('does not expose stale details or retry a frozen request under another identity', async () => {
     const { wrapper } = await mountPanel({
       identity: 'operator-2:INTERNAL:department-2:1',

@@ -82,11 +82,49 @@ const activeLeadId = ref<string | null>(pendingPush.value?.leadId ?? null);
 function savePendingPush(
   identityKey: string,
   value: FrozenLeadPush | null,
+  settledAttempt?: FrozenLeadPush,
 ): void {
   const next = { ...pendingPushes.value };
-  if (value) next[identityKey] = value;
-  else delete next[identityKey];
+  if (value) {
+    if (value.identity !== identityKey) return;
+    next[identityKey] = value;
+  } else {
+    const current = next[identityKey];
+    if (
+      !settledAttempt ||
+      settledAttempt.identity !== identityKey ||
+      !current ||
+      !sameFrozenAttempt(current, settledAttempt)
+    )
+      return;
+    delete next[identityKey];
+  }
   pendingPushes.value = next;
+}
+
+function sameFrozenAttempt(
+  left: FrozenLeadPush,
+  right: FrozenLeadPush,
+): boolean {
+  return (
+    left.identity === right.identity &&
+    left.leadId === right.leadId &&
+    left.expectedVersion === right.expectedVersion &&
+    left.idempotencyKey === right.idempotencyKey
+  );
+}
+
+function handlePushSucceeded(attempt: FrozenLeadPush): void {
+  if (
+    identity.value !== attempt.identity ||
+    activeLeadId.value !== attempt.leadId
+  )
+    return;
+  const current = pendingPushes.value[attempt.identity];
+  if (current && !sameFrozenAttempt(current, attempt)) return;
+  notifyWorkflowChanged();
+  activeLeadId.value = null;
+  void load();
 }
 
 const selectedStatus = computed<LeadStatus | undefined>(() => {
@@ -383,13 +421,7 @@ onBeforeUnmount(() => request?.abort());
       :pending-push="pendingPush"
       @close="activeLeadId = null"
       @pending="savePendingPush"
-      @succeeded="
-        () => {
-          notifyWorkflowChanged();
-          activeLeadId = null;
-          void load();
-        }
-      "
+      @succeeded="handlePushSucceeded"
     />
   </div>
 </template>

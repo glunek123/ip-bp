@@ -35,8 +35,12 @@ const returnTo = computed(() => {
 });
 const emit = defineEmits<{
   close: [];
-  pending: [identity: string, value: FrozenLeadPush | null];
-  succeeded: [];
+  pending: [
+    identity: string,
+    value: FrozenLeadPush | null,
+    settledAttempt?: FrozenLeadPush,
+  ];
+  succeeded: [attempt: FrozenLeadPush];
 }>();
 
 const detail = ref<LeadDetail>();
@@ -108,13 +112,25 @@ function persistAttempt(value: FrozenLeadPush): boolean {
   return writeStoredAttempts(attempts);
 }
 
-function persistSettledAttempt(value: FrozenLeadPush): void {
+function persistSettledAttempt(value: FrozenLeadPush): boolean {
   const attempts = readStoredAttempts();
-  if (!attempts) return;
-  attempts[value.identity] = { ...value, status: 'SETTLED' };
-  if (!writeStoredAttempts(attempts)) return;
+  if (!attempts) return false;
+  const current = attempts[value.identity];
+  if (!current || !sameFrozenAttempt(current, value)) return false;
   delete attempts[value.identity];
-  writeStoredAttempts(attempts);
+  return writeStoredAttempts(attempts);
+}
+
+function sameFrozenAttempt(
+  left: FrozenLeadPush,
+  right: FrozenLeadPush,
+): boolean {
+  return (
+    left.identity === right.identity &&
+    left.leadId === right.leadId &&
+    left.expectedVersion === right.expectedVersion &&
+    left.idempotencyKey === right.idempotencyKey
+  );
 }
 
 const matchingPending = () =>
@@ -220,9 +236,9 @@ async function sendFrozen(frozen: FrozenLeadPush): Promise<void> {
       frozen.expectedVersion,
       frozen.idempotencyKey,
     );
-    persistSettledAttempt(frozen);
-    emit('pending', frozen.identity, null);
-    emit('succeeded');
+    if (!persistSettledAttempt(frozen)) return;
+    emit('pending', frozen.identity, null, frozen);
+    emit('succeeded', frozen);
   } catch (error) {
     if (isUnknown(error)) {
       errorMessage.value =
@@ -232,8 +248,8 @@ async function sendFrozen(frozen: FrozenLeadPush): Promise<void> {
         error instanceof ApiError && error.status === 403
           ? '推送权限已变化，请核对最新权限。'
           : '线索状态或版本已变化，请核对线索后再办理。';
-      persistSettledAttempt(frozen);
-      emit('pending', frozen.identity, null);
+      if (!persistSettledAttempt(frozen)) return;
+      emit('pending', frozen.identity, null, frozen);
       await load();
       errorMessage.value = failureMessage;
     }
