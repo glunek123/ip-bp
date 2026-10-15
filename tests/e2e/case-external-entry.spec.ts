@@ -3077,6 +3077,18 @@ test('enforces strict body, internal-only scope, and authorization before receip
   });
   expect([400, 422], await unknownKey.text()).toContain(unknownKey.status());
 
+  const lawyer = await createLawyerAccountThroughApi(request, {
+    fullName: 'CA018 strict-read lawyer',
+  });
+  const lawyerProfile = lawyer.profiles[0];
+  if (!lawyerProfile)
+    throw new Error('Expected a real profile for the synthetic lawyer account');
+  const lawyerEntryInput = input('WAITING_EXECUTION_CONFIRMATION', {
+    lawyerAccountId: lawyer.id,
+    lawyerProfileId: lawyerProfile.profileId,
+  });
+  const lawyerEntry = await createEntry(request, lawyerEntryInput);
+
   const revokedPayload = input('WAITING_COMPLAINT');
   const created = await createEntry(request, revokedPayload);
   const before = await caseExternalEntrySnapshot(created.id);
@@ -3095,4 +3107,59 @@ test('enforces strict body, internal-only scope, and authorization before receip
     await replayAfterRevocation.text(),
   ).toBe(403);
   expect(await caseExternalEntrySnapshot(created.id)).toEqual(before);
+
+  const lawyerSession = await body<{ csrfToken: string }>(
+    await request.post('/api/v1/auth/login', {
+      headers: { Origin: 'http://127.0.0.1:5174' },
+      data: { username: lawyer.username, password: lawyer.password },
+    }),
+    200,
+  );
+  const lawyerReadResponse = await request.get(
+    `/api/v1/lawyer/cases/${lawyerEntry.id}`,
+  );
+  expect(lawyerReadResponse.status(), await lawyerReadResponse.text()).toBe(
+    200,
+  );
+  const lawyerRead = (await lawyerReadResponse.json()) as {
+    canSubmitExecution: boolean;
+    canUploadDirectExecutionMaterials: boolean;
+    origin: {
+      kind: 'EXTERNAL_ENTRY';
+      entryKind: EntryInput['entryKind'];
+      initialStage: Stage;
+      stageReachedOn: string;
+    };
+  };
+  expect(lawyerRead.canSubmitExecution).toBe(false);
+  expect(lawyerRead.canUploadDirectExecutionMaterials).toBe(true);
+  expect(lawyerRead.origin).toEqual({
+    kind: 'EXTERNAL_ENTRY',
+    entryKind: lawyerEntryInput.entryKind,
+    initialStage: lawyerEntryInput.initialStage,
+    stageReachedOn: lawyerEntryInput.stageReachedOn,
+  });
+
+  const lawyerCannotReadUnassignedCase = await request.get(
+    `/api/v1/lawyer/cases/${created.id}`,
+  );
+  expect(
+    lawyerCannotReadUnassignedCase.status(),
+    await lawyerCannotReadUnassignedCase.text(),
+  ).toBe(404);
+
+  const lawyerCannotCreateInternally = await request.post(
+    '/api/v1/cases/external-entries',
+    {
+      headers: {
+        Origin: 'http://127.0.0.1:5174',
+        'X-CSRF-Token': lawyerSession.csrfToken,
+      },
+      data: input('WAITING_COMPLAINT'),
+    },
+  );
+  expect(
+    lawyerCannotCreateInternally.status(),
+    await lawyerCannotCreateInternally.text(),
+  ).toBe(403);
 });
