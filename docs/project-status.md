@@ -4,13 +4,15 @@
 
 ## 当前阶段
 
-唯一Current为CORE-UI-003两项独立前端小闭环，已按用户要求并行开发；CA018已验收并原子交付，远端main／任务分支和本地主main实核1f375ea。持久预览source81ebfed／150人工测试窗口保持；CA019仍占位未定范围。
+唯一Current为CORE-UI-003两项前端闭环；CA018已原子交付，最后实核远端main／任务分支和本地主main为1f375ea。人工预览source81ebfed／150测试窗口保持，CA019占位未冻结。
 
-最新源码／测试组合6928a476532fa515290af36d2d94b52216df1757：环境修复c9c5e52及Compose e6b2fce30400cb04174c98d48ca1c4a8a3680911均已接入。所有显式数据库URL覆盖须PROJECT＋完整ID、非15433选择器也强制绑定，原无覆盖15433保留。原Reviewer累计Spec／Quality C/I/M0，I-ENV01关闭；作者86/86只在c9实跑，后续仅同blob复用，Compose合成渲染及独立审已交，不称根正式门禁。真实新容器尚未启动。UI产品9599、A浏览器2ff未变；I完成本次文档专项后冻结干净HEAD给根派独立执行任务，运行期间不合C／D或改HEAD。正式完整verify、新绑定／155链／UI003两项浏览器仍待该任务实际执行，不以源码接受冒充业务验收。
+当前源码／测试候选aa71ce5已接入原环境Owner增量39126f3e3f27863941fd5c1747e6e7fe441208de，仅环境夹具、NT006标准锁与Windows锁根／直接测试；生产environment.ts、NT006真实Jest断言、旧SQL未改。作者离线工具92/92、夹具18/18及四文件静态／隔离审C/I/M0，原累计Reviewer已核Spec／Quality C/I/M0，本次文档检查后再冻结新SHA；未称新候选完整verify或PG通过。UI产品9599和A浏览器2ff未变，原56/56／check:fast及源码接受证据保留。
 
-新增独立所有权：测试环境准入可见任务01a13e4a-4179-735e-923a-8129a0b040e1独占scripts/test-environment.mjs及直接测试，从1f375ea独立worktree实施，I等其回执后验收集成；只读入口核查01a13e49-2add-7514-9926-430be05b00d1负责端到端入口调查，本I不重复展开。用户确认主Agent只负责指挥、验收、合并及权威文档，实施由子任务完成，已同步ai-coding协作路由。现有A追加独立无reset浏览器专项代码，B第二轮03a6a02已接入9599b2a，原Reviewer累计源码／直接测试两轴ACCEPTED C/I/M0；根四文件56/56及check:fast于06:42～06:43 UTC实际通过，未混用原54项／失败静态。真实浏览器仍未通过，新环境未接纳，人工预览保持。
+旧冻结fc4a175／tree7029bbc两轮verify均失败，运行任务01a13e67-4068-778b-a1e9-9d808ecb50e8已idle／明确停止，I核现场后结束旧执行冻结，仅接环境修复与必要文档，C／D仍不合入。首轮Temp EPERM实际0测试；第二轮仅进程TMP/TEMP改ignored目录并恢复，静态／工具86／前端1887过，后端1529过2失败，双构建未执行，新库／155／浏览器未运行。两项根因为TMP依赖的非法私有路径夹具、verify内NT006真实PG探针缺Docker准入及锁准备，准确失败及新顺序见VALIDATION，不拼成门禁通过。
 
-前轮阻塞组合90e4d2ebd838b4f4e38894341a9c7a364b579472（已由上述6a修复）：环境d85ad2f接入9931583、A浏览器2ff1725接入90e4d2e，未运行DB。A专项源审C/I/M0；环境累计审发现I-ENV01，非15433仅改URL仍可回退legacy name/labels，原可见环境Task必须补强制PROJECT＋full ID后再接纳，I不自改、不启库。该Owner另分配测试专用compose.test-instance.yaml、项目dev-cor-ui003及127.0.0.1:15437（只读无监听，启动前再查），替换原15433映射且不启动postgres服务；实际启动及验收执行由子任务负责，在I指定冻结集成候选的验收目录只读源和输出ignored证据。UXQ-01-C“补齐案件列表办理入口”01a13e59-3cad-70a0-806c-aaede131b0cb及D“补齐跨模块流程交接”01a13e59-b7fb-71f0-8f13-a802319830ea已由根创建并启动，从1f375ea独立worktree实施，不与原A／B争文件；D实际目录uxq01-d-workflow-handoff、分支codex/uxq01-d-workflow-handoff已核，均无交付结论。
+Docker访问已由原运行任务经正式require_escalated审批路径只读docker ps exit0排除，未改ACL／用户组／配置／通道，无需用户处理，不再重复排查安装或引擎。原环境Owner 01a13e4a-4179-735e-923a-8129a0b040e1独占环境工具／直接测试及compose.test-instance.yaml，并获夹具、NT006 spec／probe、run-e2e／test范围；修复391只用了其中四文件。原执行Task等待新冻结候选，先新15437标准绑定及锁准备，再原失败范围／正式verify／UI003两项。NT006自行取得非重入锁，外层不得重复持有该锁；不回15433／不改保护／不自动清理。
+
+C“补齐案件列表办理入口”01a13e59-3cad-70a0-806c-aaede131b0cb在uxq01-c-case-action-entry／codex/uxq01-c-case-action-entry；D“补齐跨模块流程交接”01a13e59-b7fb-71f0-8f13-a802319830ea在uxq01-d-workflow-handoff／codex/uxq01-d-workflow-handoff，均从1f375ea独立worktree实施。C b40225a只读审查报I-UXQ-C01及C-UXQ-C02（误标只读／旧15433清理夹具），D a1bfc53报I-UXQ-D01（正式GET无关联仍留回执直链），均暂不接纳、交原Task修复；六项／两项浏览器未运行。主控仅指挥、验收、合并及权威文档，实施归子任务，具体所有权见路线图。
 
 ## 当前任务
 

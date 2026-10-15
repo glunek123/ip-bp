@@ -2,6 +2,12 @@
 
 检查日期：2026-09-15。范围：第一步复核、第二步版本选择与对齐、第三步工程环境实测。第三步验收结果见 [工程验收报告](engineering-verification.md)。
 
+## 当前验证前提补充（2026-10-15）
+
+`pnpm verify`虽不启动Playwright，但后台Jest的`core-nt-006-migration.spec.ts`会启动真实PG探针，由标准capture读取测试配置并在随机schema执行迁移验证；它不是纯静态SQL检查。没有显式实例绑定时使用原15433。保护旧测试事实期间，应先准备并核验新实例、设置完整URL／PROJECT／CONTAINER_ID绑定，再运行含此探针的聚焦检查与正常verify，不能为门禁方便回用旧库或跳过该测试。工具入口与保护见scripts/test-environment.mjs，当前分配与候选见project-status／VALIDATION。
+
+TMP／TEMP如因本机运行条件仅在进程内改至工作区ignored目录，只用于工具临时文件；它不自动成为安全的PRIVATE_FILE_ROOT。私有文件夹具须使用现有`.local/private-files`允许目录或其他已获校验的绝对非公开路径，保留对源码及普通工作区临时路径的拒绝。修复应针对夹具和运行顺序，不放宽environment.ts的生产校验，也不改ACL、提权或绕过访问限制。Docker检查失败先保留安全错误分类，不把被包装的通用错误直接认定为权限拒绝。
+
 ## 1. 第一步验收
 
 | 验收项                                 | 结果                                             |
