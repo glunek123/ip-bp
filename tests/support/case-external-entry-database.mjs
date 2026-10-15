@@ -321,6 +321,7 @@ export async function assertCaseExternalEntrySqlGuards(caseId, otherEntryId) {
         throw new Error(
           'Expected the external-entry SQL guard to reject write',
         );
+      if (!/^23[0-9]{3}$/u.test(failure.code ?? '')) throw failure;
     }
 
     await rejected(

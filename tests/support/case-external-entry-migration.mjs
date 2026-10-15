@@ -201,7 +201,8 @@ export async function assertSqlRejected(client, operation) {
   try {
     await operation();
     await client.query('SET CONSTRAINTS ALL IMMEDIATE');
-  } catch {
+  } catch (error) {
+    if (!/^23[0-9]{3}$/u.test(error.code ?? '')) throw error;
     rejected = true;
   } finally {
     await client.query('ROLLBACK');
