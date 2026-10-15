@@ -8,10 +8,9 @@ import {
   type Request,
 } from '@playwright/test';
 import {
+  assertSectionRecordUiSourceReady,
   assertSectionRecordUiRunner,
   createSectionRecordUiActor,
-  ownSectionRecordUiCase,
-  sectionRecordUiFixture,
   sectionRecordUiSnapshot,
   sectionRecordUiUploads,
   sectionRecordUiBaselineSecurity,
@@ -206,6 +205,7 @@ async function json<T>(response: APIResponse, status = 200): Promise<T> {
   return response.json() as Promise<T>;
 }
 async function login(page: Page, actor: SectionRecordUiActor) {
+  assertSectionRecordUiSourceReady();
   await page.goto('/cases');
   await expect(page).toHaveURL(/\/login\?returnTo=/u);
   await page.getByLabel('用户名').fill(actor.username);
@@ -218,8 +218,9 @@ const test = base.extend<{
   csrf: string;
 }>({
   actor: async ({ baseURL }, use) => {
+    assertSectionRecordUiSourceReady();
     expect(baseURL).toBe(origin);
-    // This gate precedes every fixture API/login and rejects current 155 without writing.
+    // Source permission admission precedes even the R2 environment capture.
     await assertSectionRecordUiRunner();
     const before = await sectionRecordUiBaselineSecurity();
     try {
@@ -229,16 +230,23 @@ const test = base.extend<{
     }
   },
   page: async ({ page, actor }, use) => {
+    assertSectionRecordUiSourceReady();
     await login(page, actor);
     await use(page);
   },
   csrf: async ({ page }, use) => {
+    assertSectionRecordUiSourceReady();
     const session = await json<{ csrfToken: string }>(
       await page.request.get('/api/v1/auth/session'),
     );
     expect(session.csrfToken).toBeTruthy();
     await use(session.csrfToken);
   },
+});
+test.beforeAll(() => {
+  // Discovery never executes this callback. Actual execution must refuse before
+  // any fixture, browser page, capture, PG connection, or account/Grant creation.
+  assertSectionRecordUiSourceReady();
 });
 const read = (page: Page, caseId: string) =>
   page.request
@@ -256,44 +264,10 @@ const post = (
     data,
   });
 
-async function external(
-  page: Page,
-  csrf: string,
-  actor: SectionRecordUiActor,
-  stage: string,
-) {
-  const entry = await json<{ id: string; version: number }>(
-    await page.request.post('/api/v1/cases/external-entries', {
-      headers: { Origin: origin, 'X-CSRF-Token': csrf },
-      data: {
-        idempotencyKey: randomUUID(),
-        entryKind: 'HISTORICAL_BACKFILL',
-        initialStage: stage,
-        stageReachedOn: date(-12),
-        source: sectionRecordUiFixture().sourcePrefix + randomUUID(),
-        reason: 'Synthetic browser section record source',
-        customerId: actor.customerId,
-        rightsHolderId: actor.rightsHolderId,
-        defendants: [],
-        lawyerAccountId: null,
-        lawyerProfileId: null,
-        known: {
-          courtId: null,
-          courtCaseNo: null,
-          acceptedOn: null,
-          secondInstanceAcceptedOn: null,
-          platform: null,
-          shopName: null,
-          shopExternalId: null,
-          caseType: null,
-          infringementTypes: null,
-        },
-      },
-    }),
-    201,
-  );
-  await ownSectionRecordUiCase(entry.id, actor.userId);
-  return entry;
+// Normal lead-to-case preparation is pending its finite Action admission.
+// Never replace this with external backfill, direct facts, or a fabricated case.
+async function ordinarySource(): Promise<{ id: string; version: number }> {
+  assertSectionRecordUiSourceReady();
 }
 function bytesFor(label: string) {
   return Buffer.from(`%PDF-1.7\nsynthetic section UI ${label}\n%%EOF\n`);
@@ -339,12 +313,8 @@ type Source = {
   caseId: string;
   originals: Array<{ file: FileVersion; bytes: Buffer }>;
 };
-async function executionSource(
-  page: Page,
-  csrf: string,
-  actor: SectionRecordUiActor,
-): Promise<Source> {
-  const entry = await external(page, csrf, actor, 'WAITING_EXECUTION_STAMP');
+async function executionSource(page: Page, csrf: string): Promise<Source> {
+  const entry = await ordinarySource();
   const originals = [];
   const mail = await originalUpload(page, csrf, entry.id, 'MAIL_RECEIPT');
   originals.push(mail);
@@ -428,12 +398,8 @@ async function executionSource(
   expect((await read(page, entry.id)).stage).toBe('ARCHIVED');
   return { caseId: entry.id, originals };
 }
-async function judgmentSource(
-  page: Page,
-  csrf: string,
-  actor: SectionRecordUiActor,
-): Promise<Source> {
-  const entry = await external(page, csrf, actor, 'WAITING_JUDGMENT');
+async function judgmentSource(page: Page, csrf: string): Promise<Source> {
+  const entry = await ordinarySource();
   const original = await originalUpload(page, csrf, entry.id, 'JUDGMENT');
   const registered = await json<{ judgmentId: string; version: number }>(
     await post(page, csrf, entry.id, 'judgment-register', {
@@ -463,15 +429,10 @@ async function judgmentSource(
   );
   return { caseId: entry.id, originals: [original] };
 }
-const sourceFor = (
-  page: Page,
-  csrf: string,
-  actor: SectionRecordUiActor,
-  variant: Variant,
-) =>
+const sourceFor = (page: Page, csrf: string, variant: Variant) =>
   variant.kind === 'judgment'
-    ? judgmentSource(page, csrf, actor)
-    : executionSource(page, csrf, actor);
+    ? judgmentSource(page, csrf)
+    : executionSource(page, csrf);
 function row(detail: Detail, variant: Variant): RecordRow {
   const rows = detail.recordEdits[variant.key];
   expect(rows).toHaveLength(1);
@@ -736,7 +697,7 @@ for (const variant of variants.filter((item) => item.kind !== 'hearing')) {
       actor,
       csrf,
     }) => {
-      const source = await sourceFor(page, csrf, actor, variant);
+      const source = await sourceFor(page, csrf, variant);
       const before = await read(page, source.caseId);
       const frozen = await sectionRecordUiSnapshot(source.caseId);
       const path = businessPath(source.caseId, variant);
@@ -802,7 +763,7 @@ for (const variant of variants.filter((item) => item.fileKey !== null)) {
     actor,
     csrf,
   }) => {
-    const source = await sourceFor(page, csrf, actor, variant);
+    const source = await sourceFor(page, csrf, variant);
     const before = await read(page, source.caseId);
     const oldRow = row(before, variant);
     const path = businessPath(source.caseId, variant);
@@ -979,7 +940,7 @@ test('real committed response is lost, reload/login restores exact original body
   csrf,
 }) => {
   const variant = variants[5];
-  const source = await executionSource(page, csrf, actor);
+  const source = await executionSource(page, csrf);
   const before = await read(page, source.caseId);
   const path = businessPath(source.caseId, variant);
   const bodies: string[] = [];
@@ -1046,7 +1007,7 @@ test('real stale closure CAS is rejected, refresh obtains new independent revisi
   csrf,
 }) => {
   const variant = variants[5];
-  const source = await executionSource(page, csrf, actor);
+  const source = await executionSource(page, csrf);
   const before = await read(page, source.caseId);
   let panel = await openDetail(page, source.caseId, variant);
   const path = businessPath(source.caseId, variant);
@@ -1104,7 +1065,7 @@ test('revoking only this run actor during an open editor rejects the real save a
   csrf,
 }) => {
   const variant = variants[0];
-  const source = await executionSource(page, csrf, actor);
+  const source = await executionSource(page, csrf);
   const before = await sectionRecordUiSnapshot(source.caseId);
   const panel = await openDetail(page, source.caseId, variant);
   await byTest(panel, 'section-record-date').fill(date(-2));
@@ -1123,10 +1084,8 @@ test('revoking only this run actor during an open editor rejects the real save a
 
 test('no registered information disables section editing with its reason and never redirects to the current workflow', async ({
   page,
-  actor,
-  csrf,
 }) => {
-  const source = await external(page, csrf, actor, 'WAITING_EXECUTION_STAMP');
+  const source = await ordinarySource();
   const before = await read(page, source.id);
   for (const variant of variants)
     expect(before.recordEdits[variant.key]).toEqual([]);
@@ -1161,11 +1120,10 @@ test('no registered information disables section editing with its reason and nev
 for (const cancel of [true, false]) {
   test(`real PUT succeeds but ${cancel ? 'user cancels before confirmation' : 'its response is lost'}: no confirmed version or automatic business request`, async ({
     page,
-    actor,
     csrf,
   }) => {
     const variant = variants[0];
-    const source = await executionSource(page, csrf, actor);
+    const source = await executionSource(page, csrf);
     const before = await read(page, source.caseId);
     const snapshot = await sectionRecordUiSnapshot(source.caseId);
     const commands = watchCommands(page, businessPath(source.caseId, variant));
