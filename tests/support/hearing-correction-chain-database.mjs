@@ -330,6 +330,21 @@ async function seedOwner(database) {
         admissionContactSnapshotFrozenAt: new Date(),
       },
     });
+    const contact = await tx.customerContact.create({
+      data: {
+        customerId,
+        departmentId,
+        name: 'Synthetic contact',
+        phone: '13800000000',
+        origin: 'ADMISSION_FREEFORM',
+        createdByUserId: userId,
+        updatedByUserId: userId,
+      },
+    });
+    await tx.customer.update({
+      where: { id: customerId },
+      data: { compatibilityContactId: contact.id },
+    });
     await tx.rightsHolder.create({
       data: {
         id: rightsHolderId,
