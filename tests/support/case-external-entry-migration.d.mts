@@ -1,6 +1,7 @@
 export const externalEntryActionMigration: string;
 export const externalEntryFoundationMigration: string;
 export const externalEntryNormalGuardMigration: string;
+export const externalEntryReferenceMigration: string;
 export const oldCaseMigrations: string[];
 export interface MigrationClient {
   query(
@@ -35,13 +36,14 @@ export function assertCaseExternalFactSourceProbe(
   departmentId: string,
   migrationApplied: boolean,
 ): Promise<void>;
-export function failExternalEntryNormalGuardMigrationAtomically(
+export function failCaseExternalEntryMigrationAtomically(
   client: MigrationClient,
   schema: string,
+  migrationName: string,
 ): Promise<{
   errorCode: string;
-  before: string;
-  after: string;
+  before: Record<string, string>;
+  after: Record<string, string>;
 }>;
 export function replayOldCaseMigrations(client: MigrationClient): Promise<void>;
 export function copyOldCaseSchema(

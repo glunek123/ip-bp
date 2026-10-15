@@ -22,6 +22,12 @@ export const externalEntryFoundationMigration =
   '20261014170100_case_external_entry_foundation';
 export const externalEntryNormalGuardMigration =
   '20261015114500_guard_normal_case_fact_source';
+export const externalEntryReferenceMigration =
+  '20261015123000_disambiguate_execution_reference_locals';
+const atomicExternalEntryMigrations = new Set([
+  externalEntryNormalGuardMigration,
+  externalEntryReferenceMigration,
+]);
 const quote = (value) => `"${value.replaceAll('"', '""')}"`;
 
 function assertMigrationSchema(client, schema) {
@@ -166,17 +172,32 @@ export async function assertCaseExternalFactSourceProbe(
   }
 }
 
-export async function failExternalEntryNormalGuardMigrationAtomically(
+export async function failCaseExternalEntryMigrationAtomically(
   client,
   schema,
+  migrationName,
 ) {
   await assertMigrationSchema(client, schema);
+  if (!atomicExternalEntryMigrations.has(migrationName))
+    throw new Error('Unsupported CA018 atomic migration probe');
   const migrationPath = resolve(
     currentMigrationRoot,
-    externalEntryNormalGuardMigration,
+    migrationName,
     'migration.sql',
   );
   const sql = readFileSync(migrationPath, 'utf8');
+  const functionNames = [
+    ...sql.matchAll(
+      /\bCREATE\s+OR\s+REPLACE\s+FUNCTION\s+(?:"?[a-z_][a-z0-9_]*"?\s*\.\s*)?"?([a-z_][a-z0-9_]*)"?\s*\(\s*\)/giu,
+    ),
+  ].map((match) => match[1]);
+  if (
+    functionNames.length === 0 ||
+    new Set(functionNames).size !== functionNames.length
+  )
+    throw new Error(
+      `${migrationName} must define unique zero-argument functions`,
+    );
   const commits = sql.match(/\bCOMMIT\s*;/giu) ?? [];
   const terminalCommit = /\bCOMMIT\s*;\s*$/iu;
   if (
@@ -184,23 +205,37 @@ export async function failExternalEntryNormalGuardMigrationAtomically(
     commits.length !== 1 ||
     !terminalCommit.test(sql)
   )
-    throw new Error('153 migration must have one BEGIN and terminal COMMIT');
+    throw new Error(
+      `${migrationName} must have one BEGIN and terminal COMMIT`,
+    );
   const forcedFailure = sql.replace(terminalCommit, 'SELECT 1 / 0;\nCOMMIT;');
   if (forcedFailure === sql)
-    throw new Error('Unable to place the 153 rollback probe before COMMIT');
+    throw new Error(
+      `Unable to place the ${migrationName} rollback probe before COMMIT`,
+    );
 
-  const functionDefinition = async () =>
-    (
-      await client.query(
-        `SELECT pg_get_functiondef(
-           to_regprocedure(format('%I.check_case_external_fact_source()', $1))
-         ) AS definition`,
-        [schema],
-      )
-    ).rows[0]?.definition;
-  const before = await functionDefinition();
-  if (typeof before !== 'string')
-    throw new Error('152 normal-fact source guard function is missing');
+  const functionDefinitions = async () => {
+    const definitions = {};
+    for (const functionName of functionNames) {
+      if (!/^[a-z_][a-z0-9_]*$/iu.test(functionName))
+        throw new Error('Unsafe CA018 migration function identifier');
+      const definition = (
+        await client.query(
+          `SELECT pg_get_functiondef(
+             to_regprocedure(format('%I.%I()', $1, $2))
+           ) AS definition`,
+          [schema, functionName],
+        )
+      ).rows[0]?.definition;
+      if (typeof definition !== 'string')
+        throw new Error(
+          `${migrationName} function ${functionName} is missing`,
+        );
+      definitions[functionName] = definition;
+    }
+    return definitions;
+  };
+  const before = await functionDefinitions();
 
   let failure;
   try {
@@ -211,11 +246,11 @@ export async function failExternalEntryNormalGuardMigrationAtomically(
   await client.query('ROLLBACK');
   if (failure?.code !== '22012')
     throw new Error(
-      `153 rollback probe expected SQLSTATE 22012, received ${failure?.code ?? 'success'}`,
+      `${migrationName} rollback probe expected SQLSTATE 22012, received ${failure?.code ?? 'success'}`,
     );
-  const after = await functionDefinition();
-  if (after !== before)
-    throw new Error('Failed 153 migration changed the 152 guard function');
+  const after = await functionDefinitions();
+  if (JSON.stringify(after) !== JSON.stringify(before))
+    throw new Error(`Failed ${migrationName} migration changed functions`);
   return { errorCode: failure.code, before, after };
 }
 
