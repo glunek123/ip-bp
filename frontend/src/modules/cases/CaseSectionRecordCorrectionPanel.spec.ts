@@ -340,19 +340,25 @@ function render(
   submitRequest = vi
     .fn<NonNullable<InstanceType<typeof Panel>['$props']['submitRequest']>>()
     .mockResolvedValue(undefined),
-  host: Pick<
-    InstanceType<typeof Panel>['$props'],
-    'initialTargetId' | 'beforeSubmit' | 'onState-change' | 'onChanged'
+  host: Partial<
+    Pick<
+      InstanceType<typeof Panel>['$props'],
+      | 'initialTargetId'
+      | 'beforeSubmit'
+      | 'onState-change'
+      | 'onChanged'
+      | 'contextKey'
+    >
   > = {},
 ) {
   const wrapper = mount(Panel, {
     props: {
-      ...host,
       item,
       kind,
       actorKey: 'INTERNAL:actor:department',
       contextKey: 'auth-revision-1',
       submitRequest,
+      ...host,
     },
   });
   wrappers.push(wrapper);
@@ -436,11 +442,17 @@ describe('exact section record corrections', () => {
     expect(
       wrapper.get('[data-test="section-record-pending"]').text(),
     ).toContain(second.input.idempotencyKey);
-    await wrapper.setProps({ initialTargetId: uid(5) });
+    expect(
+      wrapper.get('[data-test="section-record-target"]').attributes('disabled'),
+    ).toBeDefined();
+    await wrapper.setProps({
+      initialTargetId: uid(5),
+      contextKey: 'first-recovery-session',
+      item: structuredClone(item),
+    });
     expect(
       wrapper.get('[data-test="section-record-pending"]').text(),
     ).toContain(first.input.idempotencyKey);
-    await wrapper.get('[data-test="section-record-target"]').setValue(uid(55));
     await wrapper.setProps({ openRevision: 1 });
     expect(
       wrapper.get<HTMLSelectElement>('[data-test="section-record-target"]')
@@ -499,8 +511,12 @@ describe('exact section record corrections', () => {
     await wrapper.setProps({ initialTargetId: uid(55) });
     expect(signal.aborted).toBe(true);
     expect(
-      wrapper.get('[data-test="section-record-date"]').element,
-    ).toHaveProperty('value', '2026-10-08');
+      wrapper.get<HTMLSelectElement>('[data-test="section-record-target"]')
+        .element.value,
+    ).toBe(uid(5));
+    expect(wrapper.get('[data-test="section-record-error"]').text()).toContain(
+      '原目标请求结果待核对',
+    );
     old.resolve();
     await flushPromises();
     expect(wrapper.emitted('changed')).toBeUndefined();
@@ -574,6 +590,156 @@ describe('exact section record corrections', () => {
       expect(host.state.value.status).toBe('closed');
     },
   );
+  it.each([undefined, uid(5)])(
+    'invalidates a submitting openRevision-only reopen with hint %s and settles the real W as unknown until exact retry',
+    async (initialTargetId) => {
+      const item = fixture();
+      const host = createListWorkflowContext(async () => item);
+      await host.sync({
+        recordId: item.id,
+        actorKey: 'actor-auth-1',
+        actionKey: 'edit-section-records',
+        title: '资料更正',
+      });
+      const session = host.state.value.session!;
+      const states: string[] = [];
+      const late = deferred();
+      const { wrapper, submitRequest } = render('hearing', item, undefined, {
+        initialTargetId,
+        beforeSubmit: ({ recovery }) => session.beginSubmit({ recovery }),
+        'onState-change': (state) => {
+          states.push(state);
+          if (state === 'unknown') session.endSubmit('unknown');
+          else if (state === 'idle') session.endSubmit('failed');
+        },
+        onChanged: () => session.endSubmit('success'),
+      });
+      submitRequest.mockReturnValueOnce(late.promise);
+      await change(wrapper);
+      await wrapper.get('form').trigger('submit');
+      const original = submitRequest.mock.calls[0]![1];
+      const signal = submitRequest.mock.calls[0]![2].signal!;
+      await wrapper.setProps({ openRevision: 1 });
+      expect(signal.aborted).toBe(true);
+      expect(states).toEqual(['idle', 'submitting', 'unknown']);
+      expect(host.canLeave()).toBe(false);
+      late.resolve();
+      await flushPromises();
+      expect(wrapper.emitted('changed')).toBeUndefined();
+      expect(host.state.value.requestState).toBe('unknown');
+      expect(
+        readCaseSectionRecordRequests('INTERNAL:actor:department', uid(1))[0]!
+          .request,
+      ).toEqual(original);
+      await wrapper.get('[data-test="section-record-retry"]').trigger('click');
+      await flushPromises();
+      expect(submitRequest.mock.calls[1]![1]).toEqual(original);
+      expect(host.state.value.status).toBe('closed');
+      expect(sessionStorage.length).toBe(0);
+    },
+  );
+  it('blocks unknown user/forced same-session target switches and adopts a forced target only in a fresh W session, without dual terminal states', async () => {
+    const item = twoHearings();
+    const host = createListWorkflowContext(async () => item);
+    const context = {
+      recordId: item.id,
+      actorKey: 'actor-auth-1',
+      actionKey: 'edit-section-records',
+      title: '资料更正',
+    };
+    await host.sync(context);
+    const oldSession = host.state.value.session!;
+    const states: string[] = [];
+    const late = deferred();
+    const { wrapper, submitRequest } = render('hearing', item, undefined, {
+      contextKey: oldSession.contextKey,
+      initialTargetId: uid(5),
+      beforeSubmit: ({ recovery }) =>
+        host.state.value.session?.beginSubmit({ recovery }) ?? false,
+      'onState-change': (state) => {
+        states.push(state);
+        const session = host.state.value.session;
+        if (state === 'unknown') session?.endSubmit('unknown');
+        else if (state === 'idle') session?.endSubmit('failed');
+      },
+      onChanged: () => host.state.value.session?.endSubmit('success'),
+    });
+    submitRequest.mockReturnValueOnce(late.promise);
+    await change(wrapper);
+    await wrapper.get('form').trigger('submit');
+    const original = submitRequest.mock.calls[0]![1];
+    await wrapper.setProps({ initialTargetId: uid(55) });
+    expect(states).toEqual(['idle', 'submitting', 'unknown']);
+    expect(host.canLeave()).toBe(false);
+    expect(
+      wrapper.get('[data-test="section-record-target"]').attributes('disabled'),
+    ).toBeDefined();
+    expect(
+      wrapper.get<HTMLSelectElement>('[data-test="section-record-target"]')
+        .element.value,
+    ).toBe(uid(5));
+    expect(wrapper.get('[data-test="section-record-error"]').text()).toContain(
+      '原目标请求结果待核对',
+    );
+    await host.sync(context);
+    const newSession = host.state.value.session!;
+    expect(oldSession.isCurrent()).toBe(false);
+    await wrapper.setProps({
+      contextKey: newSession.contextKey,
+      initialTargetId: uid(55),
+      item: structuredClone(item),
+    });
+    expect(states).toEqual(['idle', 'submitting', 'unknown', 'idle']);
+    expect(host.state.value.requestState).toBe('idle');
+    expect(host.canLeave()).toBe(true);
+    expect(
+      wrapper.get<HTMLSelectElement>('[data-test="section-record-target"]')
+        .element.value,
+    ).toBe(uid(55));
+    expect(
+      wrapper.get('[data-test="section-record-target"]').attributes('disabled'),
+    ).toBeUndefined();
+    late.resolve();
+    await flushPromises();
+    expect(wrapper.emitted('changed')).toBeUndefined();
+    expect(host.state.value.session).toBe(newSession);
+    expect(host.state.value.requestState).toBe('idle');
+    expect(
+      readCaseSectionRecordRequests('INTERNAL:actor:department', uid(1))[0]!
+        .request,
+    ).toEqual(original);
+    await change(wrapper, '2026-10-09');
+    await wrapper.get('form').trigger('submit');
+    await flushPromises();
+    expect(submitRequest.mock.calls[1]![1].input).toMatchObject({
+      arrangementId: uid(55),
+    });
+    expect(host.state.value.status).toBe('closed');
+    expect(
+      readCaseSectionRecordRequests('INTERNAL:actor:department', uid(1))[0]!
+        .request,
+    ).toEqual(original);
+  });
+  it('applies idle hint changes and explicit reopen exactly while leaving unchanged props alone', async () => {
+    const { wrapper, submitRequest } = render(
+      'hearing',
+      twoHearings(),
+      undefined,
+      { initialTargetId: uid(55) },
+    );
+    await wrapper.get('[data-test="section-record-target"]').setValue(uid(5));
+    await wrapper.setProps({ openRevision: 1 });
+    expect(
+      wrapper.get<HTMLSelectElement>('[data-test="section-record-target"]')
+        .element.value,
+    ).toBe(uid(55));
+    await wrapper.setProps({ initialTargetId: uid(5) });
+    expect(
+      wrapper.get<HTMLSelectElement>('[data-test="section-record-target"]')
+        .element.value,
+    ).toBe(uid(5));
+    expect(submitRequest).not.toHaveBeenCalled();
+  });
   it.each([false, true])(
     'settles accepted host admission after local storage failure, preserving prior unknown=%s and sending zero POSTs',
     async (recovery) => {

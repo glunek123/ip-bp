@@ -595,6 +595,8 @@ function capture() {
     context: props.contextKey,
     kind: props.kind,
     targetId: selectedId.value,
+    hint: props.initialTargetId,
+    openRevision: props.openRevision,
     generation,
   };
 }
@@ -606,7 +608,9 @@ function current(context: ReturnType<typeof capture>): boolean {
     context.caseId === props.item.id &&
     context.context === props.contextKey &&
     context.kind === props.kind &&
-    context.targetId === selectedId.value
+    context.targetId === selectedId.value &&
+    context.hint === props.initialTargetId &&
+    context.openRevision === props.openRevision
   );
 }
 function fingerprint(): string {
@@ -798,26 +802,76 @@ function loadPending(): void {
       '无法核对原请求恢复记录，尚未发送新请求。请保留当前会话并联系管理员。';
   }
 }
+let stateTransition = false;
+function reportState(): void {
+  emit(
+    'state-change',
+    submitting.value ? 'submitting' : pending.value ? 'unknown' : 'idle',
+  );
+}
+function changeSession(update: () => void, notify: boolean): void {
+  stateTransition = true;
+  try {
+    update();
+  } finally {
+    stateTransition = false;
+    if (notify) reportState();
+  }
+}
 watch(
-  () => [props.actorKey, props.contextKey, props.item.id, props.kind],
+  () =>
+    [
+      props.actorKey,
+      props.contextKey,
+      props.item.id,
+      props.kind,
+      props.initialTargetId,
+      props.openRevision,
+    ] as const,
   (next, previous) => {
-    generation += 1;
-    requestController?.abort();
-    abortDownloads();
-    submitting.value = false;
-    denied.value = false;
-    projectionBlocked.value =
-      !!previous &&
-      (next[0] !== previous[0] || next[1] !== previous[1]) &&
-      props.item === trustedItem;
-    trustedItem = props.item;
-    error.value = success.value = '';
-    pendingRequests.value = [];
-    loadPending();
-    selectedId.value = defaultId();
-    resetDraft();
+    const contextChanged =
+      !previous ||
+      next.slice(0, 4).some((value, index) => value !== previous[index]);
+    const hintChanged = next[4] !== previous?.[4];
+    const reopened = next[5] !== previous?.[5];
+    if (!contextChanged && !hintChanged && !reopened) return;
+    const blockedTargetSwitch =
+      !contextChanged &&
+      hintChanged &&
+      next[4] !== undefined &&
+      next[4] !== selectedId.value &&
+      (submitting.value || !!pending.value);
+    changeSession(() => {
+      generation += 1;
+      requestController?.abort();
+      abortDownloads();
+      submitting.value = false;
+      if (contextChanged) {
+        denied.value = false;
+        projectionBlocked.value =
+          !!previous &&
+          (next[0] !== previous[0] || next[1] !== previous[1]) &&
+          props.item === trustedItem;
+        trustedItem = props.item;
+        error.value = success.value = '';
+        pendingRequests.value = [];
+      }
+      loadPending();
+      if (
+        !blockedTargetSwitch &&
+        (contextChanged || next[4] !== undefined || hintChanged)
+      )
+        selectedId.value = defaultId();
+      if (contextChanged || !pending.value) {
+        resetDraft();
+        success.value = '';
+      }
+      if (blockedTargetSwitch)
+        error.value =
+          '原目标请求结果待核对，请先核对原请求；切换资料需由宿主开启新的读取会话。';
+    }, !!previous);
   },
-  { immediate: true, flush: 'sync' },
+  { immediate: true, flush: 'pre' },
 );
 watch(
   selectedId,
@@ -838,7 +892,7 @@ watch(
       projectionBlocked.value = false;
     }
   },
-  { flush: 'sync' },
+  { flush: 'pre' },
 );
 watch(
   fingerprint,
@@ -850,35 +904,19 @@ watch(
   },
   { flush: 'sync' },
 );
-watch(
-  () => [props.initialTargetId, props.openRevision] as const,
-  ([hint], previous) => {
-    if (submitting.value) {
-      if (hint === undefined || hint === selectedId.value) return;
-      // A new explicit target is a different session. The old POST may have
-      // committed despite abort, so retain its complete original request.
-      generation += 1;
-      requestController?.abort();
-      abortDownloads();
-      submitting.value = false;
-    }
-    loadPending();
-    if (hint !== undefined || hint !== previous?.[0])
-      selectedId.value = defaultId();
-    if (!pending.value && !submitting.value) {
-      resetDraft();
-      success.value = '';
-    }
-  },
-  { flush: 'sync' },
-);
 const requestState = computed(() =>
   submitting.value ? 'submitting' : pending.value ? 'unknown' : 'idle',
 );
-watch(requestState, (state) => emit('state-change', state), {
-  flush: 'sync',
-  immediate: true,
-});
+watch(
+  requestState,
+  (state) => {
+    if (!stateTransition) emit('state-change', state);
+  },
+  {
+    flush: 'sync',
+    immediate: true,
+  },
+);
 const availableFiles = computed(() => {
   const target = selected.value;
   if (!target || target.kind === 'hearing') return [];
@@ -1288,7 +1326,7 @@ onBeforeUnmount(() => {
         v-model="selectedId"
         class="text-input"
         data-test="section-record-target"
-        :disabled="submitting"
+        :disabled="submitting || !!pending"
       >
         <option value="" disabled>请选择要更正的已登记记录</option>
         <option
