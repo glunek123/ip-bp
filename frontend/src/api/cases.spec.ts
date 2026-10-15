@@ -5998,6 +5998,26 @@ describe('six section record read projections', () => {
       p.closure.current.id = sectionId;
     },
     (p) => {
+      p.closure.current.finishId = sectionOtherId;
+    },
+    (p) => {
+      p.closure.current.fromVersion = 18;
+    },
+    (p) => {
+      p.closure.current.recordedByUserId = sectionId;
+    },
+    (p) => {
+      p.recordEdits.closures[0]!.effective.closeAmountState = 'PENDING';
+    },
+    (p) => {
+      p.recordEdits.judgments[0]!.history[0]!.judgmentAmount = null;
+    },
+    (p) => {
+      p.recordEdits.closures[0]!.effective.files = [
+        p.executionMailing.files[0]!,
+      ];
+    },
+    (p) => {
       p.recordEdits.executionMailings[0]!.effective.files[0]!.contentVersionId =
         sectionId;
     },
@@ -6039,6 +6059,57 @@ describe('six section record read projections', () => {
       },
     ]) {
       mockJson({ ...payload, recordEdits });
+      await expect(getCase(archiveCaseId)).rejects.toMatchObject({
+        code: 'INVALID_RESPONSE',
+      });
+    }
+  });
+  it('rejects altered current or claimed effective values without a record correction', async () => {
+    const payload = sectionDetailPayload(false);
+    const tamperedCurrent = {
+      ...payload.closure.current,
+      note: '无更正记录却变值',
+    };
+    for (const invalid of [
+      { ...payload, closure: { ...payload.closure, current: tamperedCurrent } },
+      {
+        ...payload,
+        closure: { ...payload.closure, current: tamperedCurrent },
+        recordEdits: {
+          ...payload.recordEdits,
+          closures: [
+            {
+              ...payload.recordEdits.closures[0]!,
+              effective: {
+                ...payload.recordEdits.closures[0]!.effective,
+                note: tamperedCurrent.note,
+              },
+            },
+          ],
+        },
+      },
+      {
+        ...payload,
+        closure: { ...payload.closure, current: tamperedCurrent },
+        recordEdits: {
+          ...payload.recordEdits,
+          closures: [
+            {
+              ...payload.recordEdits.closures[0]!,
+              original: {
+                ...payload.recordEdits.closures[0]!.original,
+                note: tamperedCurrent.note,
+              },
+              effective: {
+                ...payload.recordEdits.closures[0]!.effective,
+                note: tamperedCurrent.note,
+              },
+            },
+          ],
+        },
+      },
+    ]) {
+      mockJson(invalid);
       await expect(getCase(archiveCaseId)).rejects.toMatchObject({
         code: 'INVALID_RESPONSE',
       });
@@ -6255,6 +6326,34 @@ describe('CA-016 closure and list display contract', () => {
     for (const invalid of [
       { ...payload, displaySummary },
       { ...payload, recordEdits: sectionDetailPayload(true).recordEdits },
+      {
+        ...payload,
+        closure: {
+          ...payload.closure,
+          current: { ...effective, closeAmountState: 'PENDING' },
+        },
+      },
+      {
+        ...payload,
+        closure: {
+          ...payload.closure,
+          current: { ...effective, files: [{ contentVersionId: sectionId }] },
+        },
+      },
+      {
+        ...payload,
+        closure: {
+          ...payload.closure,
+          current: { ...effective, finishId: sectionOtherId },
+        },
+      },
+      {
+        ...payload,
+        closure: {
+          ...payload.closure,
+          current: { ...effective, fromVersion: 18 },
+        },
+      },
       {
         ...payload,
         closure: {
