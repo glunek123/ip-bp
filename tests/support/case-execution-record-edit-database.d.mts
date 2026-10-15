@@ -7,6 +7,9 @@ export type ExecutionRecordEditActor = {
   customerId: string;
   rightsHolderId: string;
 };
+export function assertExecutionRecordEditR2Binding(
+  environment: NodeJS.ProcessEnv,
+): void;
 export function createExecutionRecordEditActor(options?: {
   foreign?: boolean;
   readOnly?: boolean;

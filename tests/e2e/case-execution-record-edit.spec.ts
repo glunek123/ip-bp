@@ -112,7 +112,7 @@ test('execution corrections preserve archived workflow, exact evidence and old r
   baseURL,
 }) => {
   test.setTimeout(180_000);
-  // The dedicated support reuses exact managed-container admission for 15437.
+  // The dedicated support checks the complete R2 tuple before formal capture and requires 15438.
   // It appends fresh actors/cases only and has no reset, seed, clear or trigger-disabling path.
   const operator = await createExecutionRecordEditActor();
   const headers = await login(request, operator);
