@@ -1,5 +1,11 @@
 # SPEC-001 文档验证
 
+## SD-58列表表单批准与S合同复验（2026-10-15，非产品验收）
+
+用户已明确同意三模块列表原位真实表单、表单内选择合法分支、方向未定先保存已有资料及独立编辑不推进阶段。仅同步Decision／共享和模块Spec／拆分brief／状态路线图。B验收目录固定fa16b9d2aab2f4cb98bd86cf7506dd4143a9d758、tree a56a62978404d435e9edfe0605dbad47acf7f7a0，文档在独立ui003-list-workflow-docs目录；未新增实现或运行数据库／浏览器。新四Owner仍待父级创建，A已过/B待重验边界保持，不能写为新列表已交付。两张Library已prepare/read元数据但尚无实际可查看像素，不以caption/OCR称已看截图。
+
+S独立合同修后正式require_escalated代跑Prisma validate和generate，09:05:30.3870482～09:05:35.5311037 UTC均exit0，Prisma7.10.0，未用数据库。三合同文件前后hash相同，schema为4d5ee06af8b6338504c0582422e36feb463b6d0214047fb287dee77387d08ffe；证据S目录.local/contract-prisma-coordination/attempt-2/result.json及两日志。六prior/next编译finding关闭；expectedClosureVersionId仍缺，I-S01未关闭，合同尚未提交供E/H。原Reviewer撤回hearingAt缺失校验错误结论；邮寄/申请旧服务已有严格date-only校验，新服务必须复用并补timestamp反例，不据此宣称新服务已通过。新迁移、guard、材料/读接线及业务运行均未验收。
+
 ## CA-015执行结束＋N1导航（2026-10-13，本地组合已验收）
 
 实际集成：文档收口`66b85ce61a9b908957d18bee737b6ba8f0070bfd`／tree`662a13d55de206b4994fa8e3395d103575a1d4ee`相对已验8c2f45e仅project-status／feature-roadmap／cases Spec／VALIDATION及context五文件，文档格式、严格context、Spec、diff检查通过。用户已授权当前快进/推送，`git push --atomic origin HEAD:refs/heads/main HEAD:refs/heads/codex/ca015-execution-finish-integration`实际exit0，随后ls-remote两ref精确66b85ce；本地主main09:32:22 UTC从3f914ad ff至同SHA/tree，原stash b07482c2及.pnpm-store现场保留。最后实际记录提交仍只文档，不称其重跑产品门禁。没有PR/Release/生产部署，未查CI不写CI通过；人工预览之后按单独明确授权升级，实际结果见下段。

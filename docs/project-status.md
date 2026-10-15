@@ -2,6 +2,8 @@
 
 更新日期：2026-10-15。本文件只保留恢复当前工作的最小事实；历史状态见[历史状态](project-status-history-through-2026-09-18.md)，候选证据与集成事实见[验证记录](spec/v0.1/VALIDATION.md)。
 
+本次仅文档分支codex/ui003-list-workflow-docs，从B验收冻结fa16b9d2aab2f4cb98bd86cf7506dd4143a9d758另建独立目录，保持ca015-integration原tree a56a62978404d435e9edfe0605dbad47acf7f7a0不变。用户已批准SD-58；Spec／拆分brief／真实点击验收目标已同步，四新Owner待父级创建，不冒称已开工。文档分支不推送、不接入正在验收的B目录。
+
 ## 当前阶段
 
 唯一Current为CORE-UI-003两项前端闭环；CA018已原子交付，最后实核远端main／任务分支和本地主main为1f375ea。人工预览source81ebfed／150测试窗口保持，CA019占位未冻结。
@@ -18,13 +20,13 @@ C“补齐案件列表办理入口”01a13e59-3cad-70a0-806c-aaede131b0cb在uxq0
 
 分栏候选e6c4260a6fb15431ac360b2645a3ad910ee5e35d相对b402精确23文件，clean，源无后台/schema/文档/依赖越界；原Reviewer完整复审新增产品源Spec/Quality C/I/M0，315组合及末尾Closure51只按作者输入限定记录，未真正逐栏PG/浏览器。五个专项仍走旧TRUNCATE/reset/replica清理，C-SECTION-E2E01阻断运行，原C“只读”误导未关闭，不接当前A/B树。I审批开发期check:fast虽曾exit0但期间源变化，不能冒充e6最终门禁。
 
-S共享后端任务01a13eba-6a0b-74af-9ef0-852b446e40c0在独立section-record-edit-shared、base da37f88实施；I已代建目录。v1合同/DTO/schema未接根，独立审C1/I1/M1：实际Prisma validate P1012六条自关联缺复合unique、closure输入缺expectedClosureVersionId、精确日期/required边界需补；generate未执行，尚无可派E/H固定合同。materials/material.service.ts及直接测试的新增文书冻结/下载最小接线独占归S，E/H不得争写。仅修复后再验证/代提交，不亲写实现。
+S共享后端任务01a13eba-6a0b-74af-9ef0-852b446e40c0在独立section-record-edit-shared、base da37f88实施；I已代建目录。v1合同/DTO/schema未接根，首次实际Prisma validate P1012六条自关联失败后，S改next数组，09:05:30～09:05:35 UTC I正式代跑validate/generate均exit0、三文件hash稳定且无DB，原Reviewer关闭C-S00。I-S01缺expectedClosureVersionId仍阻断合同冻结，尚无E/H固定SHA。Reviewer撤回hearingAt缺失可通过的错误判断；执行日期严格校验及timestamp反例明确交新服务。materials/material.service.ts及直接测试的新增文书冻结/下载最小接线独占归S，E/H不得争写；S新摘要sourceType需前端decoder唯一Owner同步，不能称跨端已兼容。仅修复后复核/代提交三合同文件，不混catalog/迁移或亲写实现。
 
 用户最新列表验收要求覆盖线索/公证/案件：操作列用明确下一节点主按钮，在列表内填表提交，成功刷新原行并保持筛选分页；同一步多分支在表单明确选择，无默认/万能stage切换，资料编辑独立。判决可先保存而暂不决定后续，不强造二审受理。当前B仅待推送快捷、C跳详情、D交接导航不等于该新范围已实现；接续独立列表任务及共享弹层Owner由父级创建，当前原功能验收不打断。
 
 ## 当前任务
 
-**CORE-UI-003｜线索单条快捷办理与公证共用原因批填：源码审查及静态通过，候选待真实验收。** I复用ca015-integration／codex/ui003-quick-actions-integration，从已交付1f375ea开始；A在ca016-frontend-integration／codex/uxq01-notary-common-reason，业务只改NotaryReturnArchiveBatchPanel与spec，现追加独立浏览器专项；B在ca016-case-list-display／codex/uxq01-lead-quick-actions，独占List／新QuickPanel／EditPage各自vue和spec。两者基于79a同产品，旧分支保留、无写入者冲突。B现场确认原Edit保存／取消只回详情，I最小扩两文件补内部合法returnTo；禁止任意重定向、改原详情／API／后端。共用原因只填空白、逐项核对；快捷动作先getLead取最新真实能力和版本，未知结果原key恢复，关闭／对象／账号变化和迟到响应不串数据。详见路线图本批所有权表。尚无本批浏览器通过或交付结论；预览、CA018已交付候选和删除规则不变。
+**CORE-UI-003｜线索单条快捷办理与公证共用原因批填：源码审查及静态通过，候选待真实验收。** I复用ca015-integration／codex/ui003-quick-actions-integration，从已交付1f375ea开始；A在ca016-frontend-integration／codex/uxq01-notary-common-reason，业务只改NotaryReturnArchiveBatchPanel与spec，现追加独立浏览器专项；B在ca016-case-list-display／codex/uxq01-lead-quick-actions，独占List／新QuickPanel／EditPage各自vue和spec。两者基于79a同产品，旧分支保留、无写入者冲突。B现场确认原Edit保存／取消只回详情，I最小扩两文件补内部合法returnTo；禁止任意重定向、改原详情／API／后端。共用原因只填空白、逐项核对；快捷动作先getLead取最新真实能力和版本，未知结果原key恢复，关闭／对象／账号变化和迟到响应不串数据。详见路线图本批所有权表。尚无本批浏览器完整验收或交付结论；预览、CA018已交付候选和删除规则不变。
 
 **CORE-CA-018｜外部转入／历史案件录入：已验收并原子交付main及任务分支。** I独占集成、权威文档和DB操作；最终源码／测试7236c8e968e633613db2abd0d72580bc9fb3d4d0／tree75e7cfba61aafe5ac1b79624bb9aa76130ace23b，同干净候选PG／Chromium22/22及工具80/80实际通过。真实独立来源16阶段、后续合法Command、材料冻结／字节、金额未知、并发／回滚及撤权最小投影已验收。新155前向修复真实REMAND子轮受理后的守卫衔接，150→155空链／旧事实保持／失败原子及重试1/1，官方隔离15433 public155/155；旧142／150～154不改。完整verify实际2fc8ee8通过80工具／1862前端／1531后端及双构建，330后台／256前台／34工具配置逐blob一致限定复用单元／构建，79a严格context／Spec／全类型／Lint／格式实跑通过，不称723或收口HEAD完整verify。独立最终Spec／Quality ACCEPTED，未闭C/I/M0；2026-10-15 05:58 UTC两远端实核79a76d5，最终末次SHA见回执。详细候选、失败及证据只见VALIDATION。5186／3206／15436保持source81ebfed，原进程健康200，未重启／迁移／替换／增CA018真实Grant；历史2案／6凭据不冒充人工测试后的当前数量。OPS-01-A～E按用户要求仅设计入队，INPUT-016／UXQ-01～06仍未实施；CA019仍占位未冻结。
 

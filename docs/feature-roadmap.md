@@ -388,6 +388,8 @@ CA018已从原暂停队列领取，实际范围只见Current及案件Spec；原S
 
 #### UXQ-01优先入口实施brief（两个独立可见任务已启动，待交候选）
 
+2026-10-15接续决定SD-58已获用户明确同意。三列表原位真实表单的[四Owner精确brief](superpowers/plans/2026-10-15-list-workflow-task-briefs.md)已具备：W共享抽屉/上下文先交微合同，L线索、N内部公证与公证处、C2案件各自独占；父级创建新可见任务后再登记ID。L/N详情抽取先交接D，C2先交接C和分栏Panel，不争写；后台资料更正S/E/H与既有列表正常办理分开。当前判决先登记/二审进展保存已有正式Command，其他暂存差距由模块Owner逐项列出后另裁，不自造草稿或状态API。真实点击要求见[共享Spec](spec/v0.1/modules/shared.md#三模块列表流程表单sd-58)，本项尚未实现/验收，不替换当前A/B证据。
+
 用户人工测试及独立只读核查01a13e49-2add-7514-9926-430be05b00d1已确认：案件列表“办理”为文字，预览／最新都没有行内动作；两例案件顶部合法动作及归档公证的案件链接实际存在。优先补核心入口与交接，不以UI003的原因批填／线索便利替代。两个Task均从已交付1f375ea582f899d2033419b75c1f3ad1eba2dbd9独立worktree开始；I已核目标页面、路由及API与f96b08a输入一致，与A／B白名单不重叠。根会话已实际创建并启动下列可见任务，尚无实施交付／验收结论，不重复派发。
 
 唯一Owner：UXQ-01-C“补齐案件列表办理入口”01a13e59-3cad-70a0-806c-aaede131b0cb；UXQ-01-D“补齐跨模块流程交接”01a13e59-b7fb-71f0-8f13-a802319830ea。D实际worktree uxq01-d-workflow-handoff／分支codex/uxq01-d-workflow-handoff已核，基线1f375ea；C实际worktree uxq01-c-case-action-entry／分支codex/uxq01-c-case-action-entry也已核。先聚焦测试／自审及浏览器专项代码，不运行共享DB。
