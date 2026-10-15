@@ -1626,6 +1626,8 @@ NT006现自行取非重入标准锁，**外层不得再持有同一把锁运行�
 
 ### UI003新隔离实例实跑与浏览器support修复（2026-10-15）
 
+以下先记eb367f0及support修复的历史过程；da37f88实际执行及下一次只重验B的回执见本节末尾，不把历史“未执行”当最新状态。
+
 **eb367f0真实全门禁通过，浏览器收集失败。** 原执行Task 01a13e67-4068-778b-a1e9-9d808ecb50e8实际运行干净eb367f05806a6394e3415b65b107c2e694f63cbb／tree1e360de44d2c8557d2aef9362382083273c9ddbf。从既有本工作区backend/.env.test在内存提取测试密码，Compose插值缺失已解决，不运行setup:local、不生成凭据、不读开发／预览密码。新dev-cor-ui003-postgres-test-1、完整ID dbb1cbd29c6d65b5aa4fd85317c96167fbd94310c34946edc033fc4f2f9d3695，固定镜像、healthy、tmpfs、单一127.0.0.1:15437；public初始0表／0迁移，标准空链155项名称及完成态匹配、exit0。原失败两文件聚焦20/20，08:00:37.4118367～08:05:21.0959553 UTC正常pnpm verify exit0：静态、工具11文件92/92、前端116文件1887/1887、后端115 suites1532/1532、双构建通过；Vite大包为非阻断警告。迁移／聚焦／verify／浏览器前后同HEAD/tree、同容器、指纹919d10f4338f5f723f68cf337f91934034b22c56050e9d0ab1629ff65a2312d1。I逐项核acceptance-summary的14日志SHA256全部匹配，并读实际verify／focused／browser日志及JSON退出回执。
 
 UI003浏览器真实exit1，webServer已有输出，但ui003-quick-actions.spec.ts → core-lead-database.mjs → case-judgment-database.mjs:39在模块收集时按默认15433校验拒绝15437；后续No tests found为同一导入失败。suites0、执行0、A/B beforeAll及test body均未执行、trace0，仅.last-run.json，不能因unexpected0冒称通过。运行Task已停止、容器保留、环境恢复，回执原15433未写／持久预览未动／C/D未执行。本轮证据仅属于eb367f0，目录.local/ui003-evidence/acceptance-eb367f0-existing-config-20261015；不覆盖旧fc4失败，也不称后续SHA全量实跑。
@@ -1638,4 +1640,16 @@ UI003浏览器真实exit1，webServer已有输出，但ui003-quick-actions.spec.
 
 本次相对eb367f0的执行性增量仅上述三文件；原后台／前台业务、单元、schema／迁移、依赖锁及构建输入保持，逐组blob核验留ignored交接，因此只限定复用旧产品单元及双构建，不称新tree完整verify通过。I实核后台488／前台258／运行依赖配置9／标准runner锁迁移Compose5／未改UI003浏览器与support5个tracked entry逐blob一致；清单.local/ui003-evidence/support-a634a58-integration/input-comparison.json。08:26:53.1896734～08:27:33.3005048 UTC根正常pnpm三文件Lint／格式、E2E根tsc及diff均exit0，记录同目录static-result.json及三日志，补齐作者Lint证据缺口；无DB／浏览器／新全量执行。工具、共享准入／真实NT006及浏览器输入已变，必须补实际失效范围；C与分栏修复形成新产品组合后Final Review并集中一次所属完整门禁，D择机组合，不能以本次有限复用豁免新产品组合。
 
-**分栏编辑新增缺口与所有权。** 用户明确案件分栏编辑仅修改该栏已登记信息且阶段不变，流程另行办理；新独立01a13ea6-b164-746d-9c69-7f99b23de0c1从C b40225a接手CaseDetail映射及直接测试。原git worktree add因ref lock权限拒绝且未创建；I核目录／分支／锁均无残留后正式require_escalated审批一次创建section-record-edit-fix／codex/section-record-edit-fix exit0，现场干净b402，任务已接手。未改ACL／覆盖C；C后续同页需先协调单文件Owner与增量顺序，I只合独立增量、不写实施代码。验收必须逐栏真实点击、修改、保存、刷新核目标字段及阶段不变，取消无写入，并验证独立办理按钮；未适用栏解释，不仅测开窗。原Task核执行邮寄／立案／结束缺独立更正、开庭correct会改阶段、判决／结案／归档更正受实际阶段限制，二审save混结果登记须隔离；必要后端缺口由父级另派，当前错误未修复验收。Library截图materialize因Windows os.setxattr不可用失败，未产生可读文件，未作截图结论或绕过。C与分栏修复同批真实验收，D可后续组合。
+**分栏编辑新增缺口与所有权。** 用户明确案件分栏编辑仅修改该栏已登记信息且阶段不变，流程另行办理；新独立01a13ea6-b164-746d-9c69-7f99b23de0c1从C b40225a接手CaseDetail映射及直接测试。原git worktree add因ref lock权限拒绝且未创建；I核目录／分支／锁均无残留后正式require_escalated审批一次创建section-record-edit-fix／codex/section-record-edit-fix exit0，现场干净b402，任务已接手。未改ACL／覆盖C；C后续同页需先协调单文件Owner与增量顺序，I只合独立增量、不写实施代码。验收必须逐栏真实点击、修改、保存、刷新核目标字段及阶段不变，取消无写入，并验证独立办理按钮；未适用栏解释，不仅测开窗。原Task核执行邮寄／立案／结束缺独立更正、开庭correct会改阶段、判决／结案／归档更正受实际阶段限制；二审正式API本已区分second-instance-save和result，先拆前端意图，不据混合面板发明新后端Command。必要后端缺口由父级另派，当前错误未修复验收。Library截图materialize因Windows os.setxattr不可用失败，未产生可读文件，未作截图结论或绕过。C与分栏修复同批真实验收，D可后续组合。
+
+### da37f88真实A通过、B编码断言失败与单文件修复
+
+父级经原通道恢复runner turn01a13eb9-cce3-71fa-94e6-43a3319ed004，08:44:29.6655177～08:46:30.7451039 UTC在干净da37f8873a10c8dea12e3b383f47a2cee256d91f/treebf9704618a9ef47d818c61fd097c7c45f7079ef1实际执行正常工具94/94、NT006真实PG2/2，原同一dbb1cbd2完整容器、155历史、全阶段指纹919d10f4…一致，无重新建库/迁移/构建。浏览器expected1/unexpected1、skip/flaky0、exit1；A在7.6秒实际完成原因只填空/手填保持/清共用不回退/批量归档及刷新重登核原事实，有trace。B在446行要求returnTo全百分号编码的正则失败，实际URL通过标准URL.searchParams.get解码正为/leads?page=2&status=WAITING_PUSH，目标编辑页正确；取消/保存/未知推送和重放尚未执行，不称B产品已验。I核10份日志与A/B两trace的SHA256均匹配，保留完整失败，不把max-failures全局停报当额外产品故障。证据.local/ui003-evidence/acceptance-da37f88-20261015/acceptance-summary.json及browser-artifacts。
+
+原浏览器Owner /root/ca018_frontend 已经原内部任务成功续派，单文件c25987dcc356b88ddf69c7522c8d8a675fd933ba，I只合该增量为d4be97ac5d07b927aa54d535c316c5da0eab21c5。B以expect.poll和标准URL精确核origin、/leads/${editTarget.id}/edit、唯一returnTo键和严格解码值，拒绝错对象/外域/缺参/重复/错页或状态；不是删除语义断言。A正文、共同seed、B后续全部保持，作者版本核对、正常context（仅已知漂移）、根tsc/单文件Lint/格式/diff通过，无DB或浏览器。根源码审确认只有B两条旧URL断言替换，尚不预写B通过。
+
+文档专项后指定新固定SHA/tree，由父级原通道恢复同runner，只运行pnpm test:e2e tests/e2e/ui003-quick-actions.spec.ts --grep 'page-two quick edit preserves its query and an unknown real push replays the frozen command once' --workers=1 --retries=0 --max-failures=1，保留JSON/log/trace及同实例/指纹/前后HEAD/tree，必须expected1且unexpected/skipped/flaky0。A前缀正文/共同helper和产品/环境/工具输入不变，保留da37实际A/94/2及旧eb367产品单元/构建的准确候选证据，不因单文件B断言修复重跑A/全工具/NT006/完整verify，不冒称新树全量。用户最新三列表内办理另为接续范围，不在此修复中重做产品。
+
+分栏e6c4260相对C b402精确23文件（16前端、5E2E、2support），tree9f0e5d7c792498962c56ae6ee2d489afea4e997c干净，未合当前树。原Reviewer完整23增量复审产品源码Spec/Quality C/I/M0；已知执行/开庭/后续历史判决结案缺口保持OPEN。原C的I-UXQ-C01未触及；新增验收阻塞C-SECTION-E2E01：五专项仍接旧clear/reset，external helper TRUNCATE、closure/archive helper SET LOCAL session_replication_role=replica并改stage/version/删事实审计Grant，旧SQL非本次引入但本次测试不得在保留15437直接执行，不可只扩guard端口。315旧组合+最终Closure51为限定局部结果，根开发期审批check:fast通过时源仍变化，不称e6最终固定门禁过。
+
+后端S 01a13eba-6a0b-74af-9ef0-852b446e40c0首v1合同只在section-record-edit-shared。I通过正式审批实际Prisma validate exit1 P1012六处复合自关联唯一关系，generate未执行；原Reviewerv1 Spec/Quality REJECTED C1/I1/M1：除编译问题，还有closure输入缺expectedClosureVersionId的迟到编辑锚、date-only校验口径；hearing undefined推断待实际校验复核，不以猜测改nullable语义。S后报修反向next数组是新证据，尚待复验和I-S01关闭才可代提交schema/DTO/spec小基线给E/H。新增文书关系接MaterialService冻结/删除/恢复/下载及直接测试唯一归S；FK不等于材料权限与读路径已验。根不实施，不混catalog/新迁移或S产品到当前runner树。
