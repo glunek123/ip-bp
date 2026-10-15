@@ -26,6 +26,56 @@ const caseRow = {
 };
 
 describe('CaseCalendarSourceService', () => {
+  it('uses a corrected hearing date for client calendar without exposing internal metadata', async () => {
+    const { service, database } = fixture('CLIENT');
+    database.case.findMany.mockResolvedValue([
+      {
+        ...caseRow,
+        currentHearingArrangement: {
+          ...caseRow.currentHearingArrangement,
+          hearingAt: null,
+          recordCorrections: [
+            {
+              hearingAt: new Date('2026-10-14T00:00:00Z'),
+              correctionReason: '内部更正原因',
+              recordedByUserId: 'operator',
+            },
+          ],
+        },
+      },
+    ]);
+    const facts = await service.list({
+      ...actor,
+      clientCustomerId: 'customer-1',
+    });
+    expect(facts.find((fact) => fact.sourceId === 'h-1')).toEqual({
+      sourceType: 'FIRST_INSTANCE_HEARING',
+      sourceId: 'h-1',
+      date: '2026-10-14',
+      caseId: 'case-1',
+      businessNo: 'BUS-1',
+      party: '权利人',
+      defendant: '被告',
+      place: null,
+      judge: null,
+    });
+    expect(JSON.stringify(facts)).not.toContain('内部更正原因');
+  });
+  it('removes an effective unknown hearing date instead of falling back to its frozen date', async () => {
+    const { service, database } = fixture('INTERNAL');
+    database.case.findMany.mockResolvedValue([
+      {
+        ...caseRow,
+        currentHearingArrangement: {
+          ...caseRow.currentHearingArrangement,
+          recordCorrections: [{ hearingAt: null }],
+        },
+      },
+    ]);
+    expect(
+      (await service.list(actor)).some((fact) => fact.sourceId === 'h-1'),
+    ).toBe(false);
+  });
   function fixture(accountType: 'INTERNAL' | 'LAWYER' | 'CLIENT') {
     const database = {
       userAccount: {

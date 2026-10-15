@@ -128,7 +128,16 @@ export class CaseCalendarSourceService {
             }
           : {}),
       OR: [
-        { currentHearingArrangement: { is: { hearingAt: { not: null } } } },
+        {
+          currentHearingArrangement: {
+            is: {
+              OR: [
+                { hearingAt: { not: null } },
+                { recordCorrections: { some: { hearingAt: { not: null } } } },
+              ],
+            },
+          },
+        },
         { currentSecondInstanceProgress: { is: { hearingAt: { not: null } } } },
       ],
     };
@@ -142,7 +151,17 @@ export class CaseCalendarSourceService {
         businessNo: true,
         rightsHolder: { select: { name: true } },
         defendants: { orderBy: { id: 'asc' }, select: { name: true } },
-        currentHearingArrangement: { select: { id: true, hearingAt: true } },
+        currentHearingArrangement: {
+          select: {
+            id: true,
+            hearingAt: true,
+            recordCorrections: {
+              orderBy: { toRevision: 'desc' },
+              take: 1,
+              select: { hearingAt: true },
+            },
+          },
+        },
         currentSecondInstanceProgress: {
           select: {
             id: true,
@@ -169,11 +188,14 @@ export class CaseCalendarSourceService {
           item.defendants.map((entry) => entry.name).join('、') || null,
       };
       const first = item.currentHearingArrangement;
-      if (first?.hearingAt)
+      const correction = first?.recordCorrections?.[0];
+      const firstDate =
+        correction === undefined ? first?.hearingAt : correction.hearingAt;
+      if (first && firstDate)
         facts.push({
           sourceType: 'FIRST_INSTANCE_HEARING',
           sourceId: first.id,
-          date: calendarDate(first.hearingAt),
+          date: calendarDate(firstDate),
           ...common,
           place: null,
           judge: null,
