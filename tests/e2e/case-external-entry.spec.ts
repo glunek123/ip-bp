@@ -3139,9 +3139,10 @@ test('enforces strict body, internal-only scope, and authorization before receip
   const options = (await optionsDenied.json()) as Record<string, unknown>;
   expect(options.canCreate).toBe(false);
   expect(options.canCreateArchived).toBe(false);
-  expect(options).not.toHaveProperty('customers');
+  expect(options.customers).toEqual([]);
+  expect(options.lawyers).toEqual([]);
+  expect(options.dictionaries).toMatchObject({ courts: [] });
   expect(options).not.toHaveProperty('rightsHolders');
-  expect(options).not.toHaveProperty('lawyers');
 
   const noGrant = input('WAITING_COMPLAINT');
   const denied = await request.post('/api/v1/cases/external-entries', {
