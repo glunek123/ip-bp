@@ -1,5 +1,17 @@
 # SPEC-001 文档验证
 
+## R2实际155与上传设计审关闭（2026-10-15）
+
+runner在13:38:34至13:39:39 UTC实际建立新项目dev-cor-ui003-r2，完整CID45addc0179e929dd1dcd4f835b6c6c14c36c2ac4aed5e6cd5842648bf5db5236，唯一127.0.0.1:15438，持久卷dev-cor-ui003-r2-pgdata挂PGDATA，无tmpfs，healthy。新空库正常deploy155/155 exit0，逐名称/checksum/完成状态匹配；正式capture指纹87ddb629496fbfadd83a201c2518d2ed3406badfff2fd3843d2804f93e18cd42前后一致。主控已对准备summary和六份日志哈希逐项核对，未重新执行DB。源准备报告在hearing-correction-chain/.local/ui003-evidence/r2-environment-20261015/preparation-summary.json，主控核验回执在.local/ui003-evidence/r2-preparation-receipt.json。未生成新凭据、未seed或跑suite、未升级156/157；旧容器和预览未操作。
+
+L/C2精确R2三常量小修分别代提交562e4c5430a3e2b386d077e1892767de3a8edf38/d5835ef0a1f5f5d9af6a1c397533698b0cba6c16，原静态/纯反例和原Sol无新增finding；接三列表652aaee8e56882499a06feae70fadd62de6a541d/tree4917a97dcf7e01125aa5c1cde9d0cbeb5f030f68。C2 support自身不查迁移表，155完整性由runner准入负责，不能把formal capture或本次纯probe说成helper实查155。N重绑待回执，未运行三列表。
+
+开庭155/156各新增持久纯准入/迁移反例，各34/34、共68；六文件哈希与handoff相同，原累计Sol源码审C0/I0/M0。分别提交a539ae4fbce4c7a25c53af29e35a40795a21f0ae/tree48eae4221fc278239784e3ae7eac19010f5168b3和6a7ca02779d2f8db34a59ce2eefecc0b8a1f1ed2/tree2da9e7908071fe40a7913e086aef89435a9c5acb。除capture/纯guard外的既有函数、产品及E2E未改；原58未重复。作者语法/根类型/Lint/格式通过，纯测试拒绝分支的真实capture/PG调用0。155专项自建随机owner且finally只关闭本连接，可与通用baseline准备解耦；当前仍待本树实际生成/构建/PG运行。
+
+UI a46f593b62ab89d01f2dee0ddb75e18b7a8b5ccc/tree5d3b30d142e4ca51f38bd9aed4583b7c5ef173d3九白名单文件已原累计Sol源码审ACCEPTED C0/I0/M0；作者350/350、前端/根类型、定向Lint/格式/bundle通过，check:fast因Prisma缓存EPERM未全过。API最终143f7443352ad1ede528bc40fa31ec94255fb5be为217项及原Sol0，POST abort不等于未提交。UI/API及两套开庭/L/C2绑定接源码组合6b73451b7ff05e638af4af72b7081cc394207d4a/treec61c20a177861e89c2ccb533abe59135952853d1，干净但尚未运行组合门禁。列表宿主新增精确恢复hint/同步准入接口交原UI与C2，不在此冒称接好。
+
+材料微合同固定SHA256 C4647435DE6D00F5295F3FDF1025D41F0956B867CD7486AA76FD34DDA75EF79A，原Sol设计补审关闭I-UMAT01/02，C0/I0/M0，已同步[正式上传合同](../../superpowers/specs/2026-10-15-case-section-record-upload-contract.md)。它批准结构化target/revision/closure锚、三阶段短case锁及20消费表首次冻结守卫的实施，尚无157 SQL/服务/真实上传证据。I-SECTION-MAT-01功能缺口待实现验收；不能把设计finding关闭等同于功能关闭。
+
 ## R2前的恢复核验与源码边界（2026-10-15）
 
 - 三列表b1f0125cb529952b3b7b33f0fa376ddae79cbc80/tree c49a2e7f33a2cc1d15399799d21b77e63351347f：原累计Reviewer关闭I-LNC-01，Spec/Quality ACCEPTED C/I/M0。L清理链删除和C2写入前/afterAll精确绑定均已接入。这里是源码与离线反例结论，没有DB/浏览器结果；旧C-UXQ-C02/C-SECTION-E2E01破坏式fixture仍禁止运行。
