@@ -8,14 +8,14 @@ import {
 } from '../../scripts/test-environment.mjs';
 
 const approvedContainerId =
-  'dbb1cbd29c6d65b5aa4fd85317c96167fbd94310c34946edc033fc4f2f9d3695';
+  '45addc0179e929dd1dcd4f835b6c6c14c36c2ac4aed5e6cd5842648bf5db5236';
 
 // Admission is deliberately narrower than the shared random-port validator.
 // This suite may add synthetic actors only to the one approved UI003 instance.
 export function assertCaseListWorkflowTarget(environment) {
   if (
     environment.NODE_ENV !== 'test' ||
-    environment.DEV_COR_TEST_DATABASE_PROJECT !== 'dev-cor-ui003' ||
+    environment.DEV_COR_TEST_DATABASE_PROJECT !== 'dev-cor-ui003-r2' ||
     environment.DEV_COR_TEST_DATABASE_CONTAINER_ID !== approvedContainerId
   )
     throw new Error('Case list workflow requires the approved UI003 instance');
@@ -25,7 +25,7 @@ export function assertCaseListWorkflowTarget(environment) {
   );
   if (
     target.hostname !== '127.0.0.1' ||
-    target.port !== 15437 ||
+    target.port !== 15438 ||
     target.database !== 'dev_cor_test'
   )
     throw new Error('Case list workflow requires the approved UI003 database');
