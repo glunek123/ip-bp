@@ -345,8 +345,9 @@ describe('OrganizationService management context', () => {
       assignTeamRoles: false,
       manageRoleTemplates: true,
     });
-    expect(result.permissionCatalog).toHaveLength(67);
+    expect(result.permissionCatalog).toHaveLength(69);
     for (const [action, label] of [
+      ['CASE_EXTERNAL_ENTRY_CREATE', '外部案件转入与历史录入'],
       ['CASE_DEFENDANT_CONTACT_UPDATE', '更新被告联系方式'],
       ['CASE_ACCEPTANCE_CORRECT', '更正一审受理信息'],
       ['CASE_SECOND_INSTANCE_ACCEPTANCE_UPDATE', '登记或更正二审受理信息'],
@@ -368,6 +369,11 @@ describe('OrganizationService management context', () => {
         scopes: ['SELF', 'TEAM', 'DEPARTMENT'],
       });
     }
+    expect(result.permissionCatalog).toContainEqual({
+      action: 'CASE_EXTERNAL_ENTRY_ARCHIVE',
+      label: '直接录入已归档历史案件',
+      scopes: ['DEPARTMENT'],
+    });
     expect(result.permissionCatalog).toContainEqual({
       action: 'CUSTOMER_DELETE_DRAFT',
       label: '删除客户草稿',

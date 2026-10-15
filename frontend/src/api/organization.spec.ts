@@ -217,6 +217,16 @@ const context = {
       scopes: ['SELF', 'TEAM', 'DEPARTMENT'],
     },
     {
+      action: 'CASE_EXTERNAL_ENTRY_CREATE',
+      label: '外部案件转入与历史录入',
+      scopes: ['SELF', 'TEAM', 'DEPARTMENT'],
+    },
+    {
+      action: 'CASE_EXTERNAL_ENTRY_ARCHIVE',
+      label: '直接录入已归档历史案件',
+      scopes: ['DEPARTMENT'],
+    },
+    {
       action: 'CASE_COMPLAINT_SUBMIT',
       label: '提交起诉材料',
       scopes: ['SELF', 'TEAM', 'DEPARTMENT'],
@@ -465,6 +475,8 @@ describe('organization API', () => {
       'NOTARY_LIST_EXPORT',
       'CASE_READ',
       'CASE_MATCH',
+      'CASE_EXTERNAL_ENTRY_CREATE',
+      'CASE_EXTERNAL_ENTRY_ARCHIVE',
       'CASE_COMPLAINT_SUBMIT',
       'CASE_COMPLAINT_CONFIRM',
       'CASE_COMPLAINT_MAIL',
@@ -785,6 +797,24 @@ describe('organization API', () => {
     },
     {
       ...context,
+      roles: [
+        {
+          ...context.roles[0],
+          grants: [{ action: 'CASE_EXTERNAL_ENTRY_ARCHIVE', scope: 'SELF' }],
+        },
+      ],
+    },
+    {
+      ...context,
+      roles: [
+        {
+          ...context.roles[0],
+          grants: [{ action: 'CASE_EXTERNAL_ENTRY_ARCHIVE', scope: 'TEAM' }],
+        },
+      ],
+    },
+    {
+      ...context,
       permissionCatalog: [
         ...context.permissionCatalog,
         context.permissionCatalog[0],
@@ -806,6 +836,22 @@ describe('organization API', () => {
       ...context,
       permissionCatalog: context.permissionCatalog.map((item, index) =>
         index === 0 ? { ...item, action: 'CLIENT_LEAD_READ' } : item,
+      ),
+    },
+    {
+      ...context,
+      permissionCatalog: context.permissionCatalog.map((item) =>
+        item.action === 'CASE_EXTERNAL_ENTRY_ARCHIVE'
+          ? { ...item, scopes: ['SELF'] }
+          : item,
+      ),
+    },
+    {
+      ...context,
+      permissionCatalog: context.permissionCatalog.map((item) =>
+        item.action === 'CASE_EXTERNAL_ENTRY_ARCHIVE'
+          ? { ...item, scopes: ['TEAM'] }
+          : item,
       ),
     },
     {
@@ -929,6 +975,23 @@ describe('organization API', () => {
         }),
       }),
     );
+
+    const requestCount = fetch.mock.calls.length;
+    await expect(
+      copyRoleTemplate({
+        sourceRoleTemplateId: 'role-1',
+        name: '归档权限角色',
+        grants: [{ action: 'CASE_EXTERNAL_ENTRY_ARCHIVE', scope: 'SELF' }],
+      }),
+    ).rejects.toMatchObject({ code: 'INVALID_PERMISSION_GRANT' });
+    await expect(
+      updateRoleTemplate('role/1', {
+        name: '归档权限角色',
+        expectedVersion: 2,
+        grants: [{ action: 'CASE_EXTERNAL_ENTRY_ARCHIVE', scope: 'TEAM' }],
+      }),
+    ).rejects.toMatchObject({ code: 'INVALID_PERMISSION_GRANT' });
+    expect(fetch).toHaveBeenCalledTimes(requestCount);
   });
 
   it('rejects malformed impact and mutation responses', async () => {

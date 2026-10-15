@@ -70,6 +70,8 @@ export const permissionActionValues = [
   'NOTARY_LIST_EXPORT',
   'CASE_READ',
   'CASE_MATCH',
+  'CASE_EXTERNAL_ENTRY_CREATE',
+  'CASE_EXTERNAL_ENTRY_ARCHIVE',
   'CASE_COMPLAINT_SUBMIT',
   'CASE_COMPLAINT_CONFIRM',
   'CASE_COMPLAINT_MAIL',
@@ -278,8 +280,16 @@ function isGrant(value: unknown): value is OrganizationGrant {
     typeof value.action === 'string' &&
     permissionActions.has(value.action) &&
     typeof value.scope === 'string' &&
-    permissionScopes.has(value.scope)
+    permissionScopes.has(value.scope) &&
+    (value.action !== 'CASE_EXTERNAL_ENTRY_ARCHIVE' ||
+      value.scope === 'DEPARTMENT')
   );
+}
+
+function assertValidRoleGrants(grants: OrganizationGrant[]): void {
+  if (grants.some((grant) => !isGrant(grant))) {
+    throw new ApiError('权限范围与操作不匹配', 400, 'INVALID_PERMISSION_GRANT');
+  }
 }
 
 function isPermissionCatalog(
@@ -305,7 +315,10 @@ function isPermissionCatalog(
       new Set(item.scopes).size !== item.scopes.length ||
       (item.action === 'CASE_READ' &&
         (item.scopes.length !== 1 || item.scopes[0] !== 'DEPARTMENT')) ||
+      (item.action === 'CASE_EXTERNAL_ENTRY_ARCHIVE' &&
+        (item.scopes.length !== 1 || item.scopes[0] !== 'DEPARTMENT')) ||
       ((item.action === 'CASE_MATCH' ||
+        item.action === 'CASE_EXTERNAL_ENTRY_CREATE' ||
         item.action === 'CASE_DEFENDANT_CONTACT_UPDATE' ||
         item.action === 'CASE_COMPLAINT_SUBMIT' ||
         item.action === 'CASE_COMPLAINT_CONFIRM' ||
@@ -438,6 +451,7 @@ export async function getRoleTemplateImpact(
 export async function copyRoleTemplate(
   input: CopyRoleTemplateInput,
 ): Promise<OrganizationRole> {
+  assertValidRoleGrants(input.grants);
   const data = await requestJson('/organization/role-templates', {
     method: 'POST',
     body: input,
@@ -450,6 +464,7 @@ export async function updateRoleTemplate(
   roleTemplateId: string,
   input: UpdateRoleTemplateInput,
 ): Promise<OrganizationRole> {
+  assertValidRoleGrants(input.grants);
   const data = await requestJson(
     `/organization/role-templates/${encodeURIComponent(roleTemplateId)}`,
     { method: 'PATCH', body: input },
