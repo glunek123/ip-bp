@@ -76,6 +76,7 @@ const retryAllowed = computed(
   () => locked.value && frozenScope.value === props.scopeKey,
 );
 const sharedReasonError = computed(() => {
+  if (!sharedReason.value) return '';
   const normalized = sharedReason.value.trim();
   if (!normalized) return '请填写非空白的共用归档原因。';
   if ([...normalized].length > 5000)
@@ -89,6 +90,7 @@ const canFillSharedReason = computed(
     !submitBusy.value &&
     !locked.value &&
     loadedScopeKey.value === props.scopeKey &&
+    Boolean(sharedReason.value.trim()) &&
     !sharedReasonError.value,
 );
 const rowErrors = computed(() => drafts.value.map(validateDraft));

@@ -112,6 +112,9 @@ describe('NotaryReturnArchiveBatchPanel', () => {
     ).toContain('已填入 1 项');
 
     await shared.setValue('');
+    expect(wrapper.find('[data-test="shared-reason-error"]').exists()).toBe(
+      false,
+    );
     expect(
       (
         wrapper.get('[data-test="reason-matter-2"]')
@@ -141,8 +144,8 @@ describe('NotaryReturnArchiveBatchPanel', () => {
 
   it('requires a nonblank shared reason and enforces the Unicode codepoint limit', async () => {
     const { wrapper } = await mountPanel(['matter-1']);
-    expect(wrapper.get('[data-test="shared-reason-error"]').text()).toContain(
-      '非空白',
+    expect(wrapper.find('[data-test="shared-reason-error"]').exists()).toBe(
+      false,
     );
     expect(
       wrapper.get('[data-test="fill-blank-reasons"]').attributes('disabled'),
@@ -151,6 +154,26 @@ describe('NotaryReturnArchiveBatchPanel', () => {
     expect(wrapper.get('[data-test="shared-reason-error"]').text()).toContain(
       '非空白',
     );
+    expect(
+      wrapper.get('[data-test="fill-blank-reasons"]').attributes('disabled'),
+    ).toBeDefined();
+    await wrapper.get('[data-test="shared-reason"]').setValue('');
+    expect(wrapper.find('[data-test="shared-reason-error"]').exists()).toBe(
+      false,
+    );
+    await wrapper.get('[data-test="reason-matter-1"]').setValue('逐项原因');
+    await wrapper.get('[data-test="choice-matter-1"]').setValue('KEEP');
+    api.archive.mockRejectedValueOnce(new TypeError('network disconnected'));
+    await wrapper.get('form').trigger('submit');
+    await flushPromises();
+    expect(api.archive).toHaveBeenCalledTimes(1);
+    expect(api.archive.mock.calls[0]?.[0]).toEqual([
+      expect.objectContaining({ archiveReason: '逐项原因' }),
+    ]);
+  });
+
+  it('blocks shared reasons above the Unicode codepoint limit', async () => {
+    const { wrapper } = await mountPanel(['matter-1']);
     await wrapper
       .get('[data-test="shared-reason"]')
       .setValue('😀'.repeat(5001));
