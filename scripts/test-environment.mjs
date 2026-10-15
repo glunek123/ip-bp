@@ -36,6 +36,8 @@ const inheritedControlKeys = [
   'NODE_OPTIONS',
   'PLAYWRIGHT_BROWSERS_PATH',
   'PWDEBUG',
+  'DEV_COR_TEST_DATABASE_PROJECT',
+  'DEV_COR_TEST_DATABASE_CONTAINER_ID',
 ];
 
 const identityFixtures = JSON.stringify({
@@ -139,6 +141,7 @@ export function validateIsolatedTestDatabaseUrl(
     !Number.isInteger(port) ||
     port < 1 ||
     port > 65535 ||
+    [55432, 15436].includes(port) ||
     (!allowRandomPort && port !== 15433)
   ) {
     throw new Error('The URL must target the isolated local test database');
@@ -239,7 +242,21 @@ export function selectTestDatabaseContainer(
   target,
   containers,
   expectedImageId = expectedTestDatabaseImageId,
+  managedInstance,
 ) {
+  if (
+    target.hostname !== '127.0.0.1' ||
+    target.username !== 'dev_cor_test' ||
+    target.database !== 'dev_cor_test' ||
+    !Number.isInteger(target.port) ||
+    target.port < 1 ||
+    target.port > 65535 ||
+    [55432, 15436].includes(target.port)
+  ) {
+    throw new Error('The target must be the isolated local test database');
+  }
+  if (managedInstance !== undefined)
+    validateManagedTestInstance(managedInstance);
   const mappingMatches = containers.filter((container) =>
     (container.NetworkSettings?.Ports?.['5432/tcp'] ?? []).some(
       (mapping) =>
@@ -260,13 +277,30 @@ export function selectTestDatabaseContainer(
     labels['com.docker.compose.project'] === 'dev-cor' &&
     labels['com.docker.compose.service'] === 'postgres-test' &&
     labels['com.docker.compose.container-number'] === '1';
+  // An explicit binding never falls back to the legacy name/label alternatives.
+  const boundTestContainer = managedInstance
+    ? container.Id === managedInstance.containerId &&
+      name === `${managedInstance.project}-postgres-test-1` &&
+      labels['com.docker.compose.project'] === managedInstance.project &&
+      labels['com.docker.compose.service'] === 'postgres-test' &&
+      labels['com.docker.compose.container-number'] === '1'
+    : namedTestContainer || composeTestContainer;
   const environment = new Set(container.Config?.Env ?? []);
   if (
-    (!namedTestContainer && !composeTestContainer) ||
+    !boundTestContainer ||
     !environment.has('POSTGRES_USER=dev_cor_test') ||
     !environment.has('POSTGRES_DB=dev_cor_test')
   ) {
     throw new Error('The published port does not belong to the test container');
+  }
+  const mappings = container.NetworkSettings.Ports['5432/tcp'];
+  if (
+    mappings.some((mapping) => mapping.HostIp !== '127.0.0.1') ||
+    (managedInstance && mappings.length !== 1)
+  ) {
+    throw new Error(
+      'The test database port must be published only on loopback',
+    );
   }
   if (container.Image !== expectedImageId) {
     throw new Error(
@@ -289,7 +323,30 @@ export function selectTestDatabaseContainer(
   };
 }
 
-function actualExternalConditions(root, databaseTarget) {
+function validateManagedTestInstance(instance) {
+  if (
+    !/^dev-cor-[a-z0-9]+(?:-[a-z0-9]+)*$/u.test(instance?.project ?? '') ||
+    !/^[a-f0-9]{64}$/u.test(instance?.containerId ?? '')
+  ) {
+    throw new Error(
+      'A managed test instance requires a dev-cor project and full container ID',
+    );
+  }
+}
+
+function managedTestInstanceFromEnvironment(environment) {
+  const project = environment.DEV_COR_TEST_DATABASE_PROJECT;
+  const containerId = environment.DEV_COR_TEST_DATABASE_CONTAINER_ID;
+  if (project === undefined && containerId === undefined) return undefined;
+  const instance = { project, containerId };
+  validateManagedTestInstance(instance);
+  if (environment.DEV_COR_TEST_DATABASE_URL === undefined) {
+    throw new Error('A managed test instance requires an explicit test URL');
+  }
+  return instance;
+}
+
+function actualExternalConditions(root, databaseTarget, managedInstance) {
   let containers;
   try {
     const ids = execFileSync(
@@ -311,7 +368,12 @@ function actualExternalConditions(root, databaseTarget) {
   } catch {
     throw new Error('The shared test database must be running and inspectable');
   }
-  const database = selectTestDatabaseContainer(databaseTarget, containers);
+  const database = selectTestDatabaseContainer(
+    databaseTarget,
+    containers,
+    expectedTestDatabaseImageId,
+    managedInstance,
+  );
 
   let browserManifest;
   try {
@@ -336,6 +398,8 @@ function actualExternalConditions(root, databaseTarget) {
 
 export function captureTestEnvironment(root, options = {}) {
   const inheritedEnvironment = options.inheritedEnvironment ?? process.env;
+  const managedInstance =
+    managedTestInstanceFromEnvironment(inheritedEnvironment);
   const { bytes, values } = readTestEnvironmentFile(root);
   const { environment: effectiveEnvironment, databaseTarget } =
     validatedApplicationEnvironment(
@@ -355,7 +419,7 @@ export function captureTestEnvironment(root, options = {}) {
   const controls = relevantControls(inheritedEnvironment);
   const externalConditions =
     options.externalConditions ??
-    actualExternalConditions(root, databaseTarget);
+    actualExternalConditions(root, databaseTarget, managedInstance);
   for (const key of ['databaseImage', 'browserManifest']) {
     if (
       typeof externalConditions?.[key] !== 'string' ||
