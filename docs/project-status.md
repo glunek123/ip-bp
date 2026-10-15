@@ -1,5 +1,7 @@
 # 当前开发状态
 
+H纯修复收口：原H基线f83fc130仅两测试文件提交a6d3d59b91f437eee8badc6557a184c508d03970，专项origin/baseURL及局部adapter统一3101，内部actor映射、门户独立context、body/key/CSRF不变。旧配置纯RED两失败→47/47及类型/Lint/格式通过，原Reviewer窄审C/I/M0；仅关闭测试准备Origin错误，未HTTP/DB或业务重跑，缺三Action及全部真实分栏验收仍Pending。已接独立section-record-test-safety-closeout为af749d38，后续仅文档/快照与纯静态收口；冻结运行2a99和已追加actor保持，不推送/发布。
+
 本轮收口断点（2026-10-15，20:53 UTC后）：H修正runner cwd后首项真实登录403 ORIGIN_FORBIDDEN（3101请求/5174 Origin），尚未到业务权限或资料API；57份证据经主控/原Sol核hash C/I/M0。只留下新合成actor/role及35个冻结factory Grant，Case/Lead0，旧149表原行/157链/结构/sequence/22文件保持，端口/锁释放。E65秒已证结果复用。原H Owner仅静态诊断合法同源入口，发送因AbsolutePathBuf失败待父级中转；禁止放宽Origin、补权或再跑已知缺权限准备链。已从2a99另建section-record-test-safety-closeout，接c11/212已审测试安全修正与本轮文档形成独立未发布候选；分栏产品仍未验收，真实UI16/业务权限继续hold。
 
 最新服务与UI准入断点（2026-10-15，20:43 UTC后）：v6续办E已真实健康65446ms、总74115ms通过，149表当前全行/29Case列/全安全/157账本/sequence/22两端bytes均不变，advance21/audit915保持；主控核32份E证据。H第一次只在webServer启动前因ignored配置缺cwd而MODULE_NOT_FOUND，未进入API/actor/Grant，原失败保留。原runner已成功收到窄续办：仅ignored新配置显式项目cwd、先保存锁proof，fresh安全窗口后仅H首项，403即停无补权；不重E/verify。UI212b270八文件入口修复已原Sol审C/I/M0，主控核30份源码/证据，关闭受保护runner与默认root config提前启动Important；16真实业务及五项权限仍Pending，不合入正在运行的2a99。
