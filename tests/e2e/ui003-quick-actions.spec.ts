@@ -515,6 +515,8 @@ test('page-two quick edit preserves its query and an unknown real push replays t
   });
   await dataTest(page, 'quick-push-lead').click();
   await expect(dataTest(page, 'retry-unknown-push')).toBeVisible();
+  await expect(dataTest(page, 'retry-unknown-push')).toBeEnabled();
+  await expect.poll(() => commands.length).toBe(1);
   expect(commands).toHaveLength(1);
   expect(commands[0]).toMatchObject({
     body: { expectedVersion: latestPushTarget.version },
@@ -543,10 +545,12 @@ test('page-two quick edit preserves its query and an unknown real push replays t
   await expect(rowFor(pushTarget.businessNo)).toHaveCount(0);
   await expect(dataTest(page, 'lead-quick-actions-panel')).toBeVisible();
   await expect(dataTest(page, 'retry-unknown-push')).toBeVisible();
+  await expect(dataTest(page, 'retry-unknown-push')).toBeEnabled();
   await dataTest(page, 'retry-unknown-push').click();
   await expect(dataTest(page, 'lead-quick-actions-panel')).toHaveCount(0);
   await expect(page).toHaveURL(/\/leads\?page=2&status=WAITING_PUSH$/u);
   await expect(rowFor(pushTarget.businessNo)).toHaveCount(0);
+  await expect.poll(() => commands.length).toBe(2);
   expect(commands).toHaveLength(2);
   expect(commands[1]).toMatchObject({
     body: commands[0]!.body,
