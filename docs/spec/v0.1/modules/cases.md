@@ -540,6 +540,8 @@ stageReachedOn仅标明真实当前阶段业务发生日；首个新动作不早
 
 内部列表／详情新增origin：正常{kind:NOTARY}且旧来源／证书完整；外部{kind:EXTERNAL_ENTRY,entryId,entryKind,initialStage,stageReachedOn,source,reason,recordedAt,recordedByUserId,known}且sourceLead／sourceNotaryMatter／certificate为null。正常旧后端缺origin时仍按旧全真来源兼容；外部缺明确origin或混合来源严格拒绝。摘要只使用真实已知平台／店铺／案号／法院，其余null；内部来源说明和理由可见。律师仅当前PRIMARY授权下的必要来源标签、initialStage、业务日期及本案真实资料；initialStage用于严格识别允许真实null前序的办理与历史读取分支，不返回known、内部补录原因、操作者、审计正文或存储键。客户继续本企业最小投影，不扩内部来源正文。无来源不调用线索、公证及费用读取，也不包装外部文件为公证书。
 
+内部与当前承办律师的读取增加可选布尔canUploadDirectExecutionMaterials，只表示精确外部初始与当前阶段均为WAITING_EXECUTION_CONFIRMATION、本案当前本地审次有效、没有真实submission或confirmation时，按既有正式材料上传的case.execution.submit／当前承办律师及本案范围可上传材料；客户投影不增加此字段。字段缺失按false处理，非布尔拒绝。canSubmitExecution仍表示正常提交／重提资格，直接待确认且无提交时保持false，不用确认权限替代上传授权。文件页和案件动作使用独立上传入口，复用原正式上传／未知结果恢复，只上传并重新读取真实候选；不显示提交／重提按钮、不补造提交记录，整套确认仍由原canConfirmExecution与实际材料门槛决定。
+
 在内部案件列表增加独立“转入／补录案件”页面，必填字段一屏、已知资料折叠，业务日期无默认值；保留既有侧栏和真实阶段导航。提交前就地提示本阶段后续将要求哪些实际资料，不要求补齐外部未在本系统办理的每个旧步骤。保存／取消与重复、失权、冲突、未知恢复遵守现有写入规范；正常字段与null前序由来源分支严格校验，不使用any、skipLibCheck、宽松索引或伪ID绕过类型。
 
 AC-CA-016：合成授权真实内部账号从独立入口录入各16实际阶段，客户／权利主体／承办真实关联、刷新／重登及内部／律师／客户隔离成立。每个有后续动作的阶段验证首动作及至少下一步真实可办，重点以EXECUTING→WAITING_ARCHIVE→结案资料→ARCHIVED和二审真实REMAND→子受理／后续展示证明来源链延续；历史ARCHIVED独立高风险Action、无正常推进／伪更正。当前材料由正式上传产生并核精确版本／字节，记录本动作事实而非假前序。普通／跨范围／外部身份、失效主体／绑定、撤权后重放、同键异参、未来／冲突日期、非法前序替代／另一entry、CAS竞争和审计／事实／回执注入失败都拒绝或原子回滚。迁移先随机schema验证空链及150前驱真实正常事实升级、第二DDL失败回滚／前向重试、SQL直接混合来源／缺entry／越权／跳新事实反例；旧已执行150迁移不改。固定候选独立Sol双轴审查后实际完整工程和相关PG／Chromium验收；未实现／未验收不得标完成。
