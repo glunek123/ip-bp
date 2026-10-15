@@ -117,14 +117,29 @@ describe('CaseExecutionConfirmationService', () => {
       expect.any(Object),
       f.tx,
     );
+    expect(f.materials.assertAvailableVersions).toHaveBeenCalledWith(
+      f.tx,
+      actor,
+      {
+        ownerType: 'CASE',
+        ownerId: caseId,
+        category: 'EXECUTION_APPLICATION',
+        contentVersionIds: [fileId],
+        minCount: 1,
+        maxCount: 10,
+      },
+    );
     expect(
       f.materials.assertCompleteCurrentCaseExecutionApplicationBundle,
-    ).toHaveBeenCalledWith(f.tx, actor, caseId, [fileId]);
-    expect(f.materials.assertAvailableVersions).not.toHaveBeenCalled();
+    ).not.toHaveBeenCalled();
+    expect(
+      f.materials.freezeCaseExecutionConfirmationReferences,
+    ).not.toHaveBeenCalled();
     expect(f.tx.case.updateMany).toHaveBeenCalledWith(
       expect.objectContaining({
         where: expect.objectContaining({
           currentExecutionSubmissionId: submissionId,
+          stage: 'WAITING_EXECUTION_CONFIRMATION',
           version: 21,
         }),
         data: { stage: 'WAITING_EXECUTION_STAMP', version: { increment: 1 } },
@@ -187,6 +202,11 @@ describe('CaseExecutionConfirmationService', () => {
         executionApplicationContentVersionIds: [fileId],
       }),
     ).rejects.toBe(failure);
+    expect(
+      f.materials.assertCompleteCurrentCaseExecutionApplicationBundle,
+    ).toHaveBeenCalledWith(f.tx, actor, caseId, [fileId]);
+    expect(f.materials.assertAvailableVersions).not.toHaveBeenCalled();
+    expect(f.tx.case.updateMany).not.toHaveBeenCalled();
     expect(f.tx.caseExecutionConfirmation.create).not.toHaveBeenCalled();
     expect(f.tx.auditEvent.create).not.toHaveBeenCalled();
     expect(
@@ -230,18 +250,10 @@ describe('CaseExecutionConfirmationService', () => {
       executionApplicationContentVersionIds: [fileId],
     });
     expect(result).toMatchObject({ submissionId: null, version: 2 });
-    expect(f.materials.assertAvailableVersions).toHaveBeenCalledWith(
-      f.tx,
-      actor,
-      {
-        ownerType: 'CASE',
-        ownerId: caseId,
-        category: 'EXECUTION_APPLICATION',
-        contentVersionIds: [fileId],
-        minCount: 1,
-        maxCount: 10,
-      },
-    );
+    expect(
+      f.materials.assertCompleteCurrentCaseExecutionApplicationBundle,
+    ).toHaveBeenCalledWith(f.tx, actor, caseId, [fileId]);
+    expect(f.materials.assertAvailableVersions).not.toHaveBeenCalled();
     expect(
       f.materials.freezeCaseExecutionConfirmationReferences,
     ).toHaveBeenCalledWith(
@@ -256,6 +268,28 @@ describe('CaseExecutionConfirmationService', () => {
       data: expect.objectContaining({
         submissionId: null,
         externalEntryId: fileId,
+        fromVersion: 1,
+        toVersion: 2,
+      }),
+    });
+    expect(f.tx.case.updateMany).toHaveBeenCalledWith(
+      expect.objectContaining({
+        where: expect.objectContaining({
+          stage: 'WAITING_EXECUTION_CONFIRMATION',
+          currentExecutionSubmissionId: null,
+          version: 1,
+        }),
+        data: { stage: 'WAITING_EXECUTION_STAMP', version: { increment: 1 } },
+      }),
+    );
+    expect(f.tx.auditEvent.create).toHaveBeenCalledWith({
+      data: expect.objectContaining({
+        details: expect.objectContaining({
+          submissionId: null,
+          executionApplicationContentVersionIds: [fileId],
+          fromVersion: 1,
+          toVersion: 2,
+        }),
       }),
     });
   });
