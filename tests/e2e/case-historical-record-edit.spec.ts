@@ -1,7 +1,7 @@
 import { randomUUID } from 'node:crypto';
 import {
   expect,
-  test,
+  test as base,
   type APIRequestContext,
   type APIResponse,
 } from '@playwright/test';
@@ -9,7 +9,10 @@ import { coreLeadFixtures } from '../support/core-lead-database.mjs';
 import { createCaseExecutionFilingSourceThroughApi } from '../support/case-execution-filing-database.mjs';
 import { createSubmittedCaseThroughApi } from '../support/case-complaint-confirmation-database.mjs';
 import {
-  grantHistoricalRecordFixtureActions,
+  createHistoricalRecordActor,
+  ownHistoricalRecordCase,
+  historicalBaselineSecuritySnapshot,
+  type HistoricalRecordActor,
   historicalRecordFrozenSnapshot,
   historicalRecordSectionSnapshot,
   historicalRecordMutationProbe,
@@ -17,9 +20,131 @@ import {
 } from '../support/case-historical-record-edit-database.mjs';
 
 // Runner owns fixture bootstrap, instance binding, migration and execution. This spec only appends.
-const operator = { Authorization: `Bearer ${coreLeadFixtures.tokenA}` };
-const foreign = { Authorization: `Bearer ${coreLeadFixtures.tokenB}` };
-const readOnly = { Authorization: `Bearer ${coreLeadFixtures.tokenSelf}` };
+const origin = 'http://127.0.0.1:5174';
+let operator: Record<string, string>;
+let foreign: Record<string, string>;
+let readOnly: Record<string, string>;
+let foreignRequest: APIRequestContext;
+let readOnlyRequest: APIRequestContext;
+let builderRequest: APIRequestContext;
+let actor: HistoricalRecordActor;
+async function login(
+  request: APIRequestContext,
+  identity: HistoricalRecordActor,
+) {
+  const session = await body<{ csrfToken: string }>(
+    await request.post('/api/v1/auth/login', {
+      headers: { Origin: origin },
+      data: { username: identity.username, password: identity.password },
+    }),
+  );
+  if (typeof session.csrfToken !== 'string' || !session.csrfToken)
+    throw new Error('Historical actor login returned no CSRF token');
+  return { Origin: origin, 'X-CSRF-Token': session.csrfToken };
+}
+// Confine the legacy builders' fixed internal token/login to this new actor.
+// Client/notary/lawyer portal cookies stay in a separate context, as in their original API flows.
+function sourceBuilderRequest(
+  internal: APIRequestContext,
+  portal: APIRequestContext,
+): APIRequestContext {
+  async function route(
+    method: 'get' | 'post' | 'put',
+    url: string,
+    options?: Parameters<APIRequestContext['post']>[1],
+  ) {
+    const data = options?.data;
+    if (
+      method === 'post' &&
+      url === '/api/v1/auth/login' &&
+      data !== null &&
+      typeof data === 'object' &&
+      'username' in data &&
+      data.username === coreLeadFixtures.operatorUsername
+    ) {
+      const response = await internal.post(url, {
+        ...options,
+        data: { ...data, username: actor.username, password: actor.password },
+      });
+      const session = await body<{ csrfToken: string }>(response);
+      if (typeof session.csrfToken !== 'string' || !session.csrfToken)
+        throw new Error('Historical source login returned no CSRF token');
+      operator = { Origin: origin, 'X-CSRF-Token': session.csrfToken };
+      return response;
+    }
+    const headers = options?.headers ?? {};
+    const fixedInternal =
+      headers.Authorization === `Bearer ${coreLeadFixtures.tokenA}`;
+    const useInternal =
+      fixedInternal ||
+      headers['X-CSRF-Token'] === operator['X-CSRF-Token'] ||
+      url === '/api/v1/auth/session' ||
+      url.startsWith('/api/v1/cases/');
+    if (useInternal) {
+      const forwarded = { ...headers, ...(fixedInternal ? operator : {}) };
+      delete forwarded.Authorization;
+      return internal[method](url, { ...options, headers: forwarded });
+    }
+    return portal[method](url, options);
+  }
+  return new Proxy(portal, {
+    get(target, property) {
+      if (property === 'post' || property === 'put' || property === 'get')
+        return (
+          url: string,
+          options?: Parameters<APIRequestContext['post']>[1],
+        ) => route(property, url, options);
+      const value: unknown = Reflect.get(target, property);
+      return typeof value === 'function' ? value.bind(target) : value;
+    },
+  });
+}
+const test = base.extend<{ hRequest: APIRequestContext }>({
+  hRequest: async ({ playwright }, use, testInfo) => {
+    const before = await historicalBaselineSecuritySnapshot();
+    await testInfo.attach('h-baseline-security-before', {
+      body: Buffer.from(JSON.stringify(before)),
+      contentType: 'application/json',
+    });
+    const contexts: APIRequestContext[] = [];
+    try {
+      const context = async () => {
+        const value = await playwright.request.newContext({
+          baseURL: 'http://127.0.0.1:3101',
+          extraHTTPHeaders: { Origin: origin },
+        });
+        contexts.push(value);
+        return value;
+      };
+      actor = await createHistoricalRecordActor();
+      const request = await context();
+      operator = await login(request, actor);
+      foreignRequest = await context();
+      foreign = await login(
+        foreignRequest,
+        await createHistoricalRecordActor({ foreign: true }),
+      );
+      readOnlyRequest = await context();
+      readOnly = await login(
+        readOnlyRequest,
+        await createHistoricalRecordActor({ readOnly: true }),
+      );
+      builderRequest = sourceBuilderRequest(request, await context());
+      await use(request);
+    } finally {
+      try {
+        const after = await historicalBaselineSecuritySnapshot();
+        await testInfo.attach('h-baseline-security-after', {
+          body: Buffer.from(JSON.stringify(after)),
+          contentType: 'application/json',
+        });
+        expect(after).toEqual(before);
+      } finally {
+        await Promise.all(contexts.map((value) => value.dispose()));
+      }
+    }
+  },
+});
 const today = () =>
   new Intl.DateTimeFormat('en-CA', {
     timeZone: 'Asia/Shanghai',
@@ -126,16 +251,22 @@ const post = (
   route: string,
   data: object,
   headers = operator,
-) => request.post(`/api/v1/cases/${caseId}/${route}`, { headers, data });
+) =>
+  (headers === foreign
+    ? foreignRequest
+    : headers === readOnly
+      ? readOnlyRequest
+      : request
+  ).post(`/api/v1/cases/${caseId}/${route}`, { headers, data });
 async function code(response: APIResponse, status: number, value: string) {
   expect(await body<{ code: string }>(response, status)).toMatchObject({
     code: value,
   });
 }
 async function ordinarySource(request: APIRequestContext) {
-  const source = await createCaseExecutionFilingSourceThroughApi(request, {
-    onComplaintSubmitted: grantHistoricalRecordFixtureActions,
-  });
+  const source =
+    await createCaseExecutionFilingSourceThroughApi(builderRequest);
+  await ownHistoricalRecordCase(source.caseId, actor.userId);
   return { ...source, detail: await detail(request, source.caseId) };
 }
 async function anotherRealClosure(request: APIRequestContext) {
@@ -235,12 +366,12 @@ async function scheduledJudgment(
   return detail(request, caseId);
 }
 async function realRemandSource(request: APIRequestContext) {
-  const source = await createSubmittedCaseThroughApi(request);
+  const source = await createSubmittedCaseThroughApi(builderRequest);
   const { caseId } = source;
+  await ownHistoricalRecordCase(caseId, actor.userId);
   const business = new Date(`${today()}T00:00:00.000Z`);
   business.setUTCDate(business.getUTCDate() - 3);
   const businessDate = business.toISOString().slice(0, 10);
-  await grantHistoricalRecordFixtureActions();
   let current = await detail(request, caseId);
   await body(
     await post(request, caseId, 'complaint-confirm', {
@@ -371,12 +502,9 @@ async function realRemandSource(request: APIRequestContext) {
 
 test.describe('historical section record corrections: isolated append-only API/PG acceptance', () => {
   test.describe.configure({ mode: 'serial', timeout: 300_000 });
-  test.beforeAll(async () => {
-    await grantHistoricalRecordFixtureActions();
-  });
 
   test('real historical hearing/judgment edits preserve stage, original facts, receipts, execution source and files', async ({
-    request,
+    hRequest: request,
   }) => {
     const source = await ordinarySource(request);
     const { caseId } = source;
@@ -544,7 +672,7 @@ test.describe('historical section record corrections: isolated append-only API/P
   });
 
   test('real closure version advance with revision zero rejects stale/foreign anchors; archive retains exact frozen version', async ({
-    request,
+    hRequest: request,
   }) => {
     const source = await ordinarySource(request);
     const { caseId } = source;
@@ -772,7 +900,7 @@ test.describe('historical section record corrections: isolated append-only API/P
     }
   });
   test('real REMAND child corrections require exact parent/child round and retain both original chains', async ({
-    request,
+    hRequest: request,
   }) => {
     const { caseId, parent, child, result } = await realRemandSource(request);
     const frozen = await historicalRecordFrozenSnapshot(caseId);

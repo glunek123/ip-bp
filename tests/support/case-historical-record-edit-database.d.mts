@@ -1,5 +1,23 @@
 import type { APIResponse } from '@playwright/test';
-export function grantHistoricalRecordFixtureActions(): Promise<void>;
+export type HistoricalRecordActor = {
+  userId: string;
+  roleId: string;
+  departmentId: string;
+  username: string;
+  password: string;
+};
+export function assertHistoricalRecordR2Binding(
+  environment?: Record<string, string | undefined>,
+): { connectionString: string; port: number };
+export function createHistoricalRecordActor(options?: {
+  readOnly?: boolean;
+  foreign?: boolean;
+}): Promise<HistoricalRecordActor>;
+export function ownHistoricalRecordCase(
+  caseId: string,
+  actorUserId: string,
+): Promise<void>;
+export function historicalBaselineSecuritySnapshot(): Promise<unknown>;
 export function historicalRecordFrozenSnapshot(
   caseId: string,
 ): Promise<unknown>;
