@@ -514,6 +514,729 @@ function mockJson(payload: unknown, status = 200) {
   vi.stubGlobal('fetch', fetchMock);
   return fetchMock;
 }
+function directSecondDetail(roundId: string) {
+  return {
+    ...detail,
+    stage: 'SECOND_INSTANCE',
+    version: 3,
+    origin: {
+      kind: 'EXTERNAL_ENTRY',
+      entryId: '70000000-0000-4000-8000-000000000090',
+      entryKind: 'EXTERNAL_TRANSFER',
+      initialStage: 'SECOND_INSTANCE',
+      stageReachedOn: '2026-10-10',
+      source: '外部案件材料',
+      reason: '接办',
+      recordedAt: '2026-10-10T00:00:00.000Z',
+      recordedByUserId: '70000000-0000-4000-8000-000000000091',
+      known: {
+        courtId: null,
+        courtCaseNo: null,
+        acceptedOn: null,
+        secondInstanceAcceptedOn: null,
+        platform: null,
+        shopName: null,
+        shopExternalId: null,
+        caseType: null,
+        infringementTypes: null,
+      },
+    },
+    sourceLead: null,
+    sourceNotaryMatter: null,
+    certificate: null,
+    fees: [],
+    secondInstance: {
+      ...detail.secondInstance,
+      currentTrialRoundId: roundId,
+      rounds: [
+        { id: roundId, sequence: 1, sourceResultId: null, revokedAt: null },
+      ],
+    },
+  };
+}
+function directStageDetail(
+  initialStage: casesApi.CaseStage,
+  stage: casesApi.CaseStage = initialStage,
+  version = 1,
+) {
+  const base = directSecondDetail('70000000-0000-4000-8000-000000000081');
+  return {
+    ...base,
+    stage,
+    version,
+    origin: { ...base.origin, initialStage },
+  };
+}
+function mockReadThenReceipt(caseDetail: unknown, receipt: unknown) {
+  const fetchMock = vi.fn().mockImplementation(
+    async (_url: string, init?: RequestInit) =>
+      new Response(
+        JSON.stringify(init?.method === 'POST' ? receipt : caseDetail),
+        {
+          status: init?.method === 'POST' ? 201 : 200,
+        },
+      ),
+  );
+  vi.stubGlobal('fetch', fetchMock);
+  return fetchMock;
+}
+describe('CA-018 strict source-aware execution read boundary', () => {
+  const id = (value: number) =>
+    `70000000-0000-4000-8000-${String(value).padStart(12, '0')}`;
+  const file = {
+    materialId: id(101),
+    contentVersionId: id(102),
+    originalFilename: '真实执行申请.pdf',
+    mimeType: 'application/pdf',
+    uploadedAt: '2026-10-10T02:00:00.000Z',
+  };
+  const bareFile = {
+    materialId: file.materialId,
+    contentVersionId: file.contentVersionId,
+    originalFilename: file.originalFilename,
+    mimeType: file.mimeType,
+  };
+  it('admits direct initial stages without manufacturing preceding facts', async () => {
+    const cases = [
+      {
+        ...directStageDetail('WAITING_EXECUTION_DOCUMENTS'),
+        canSubmitExecution: true,
+      },
+      {
+        ...directStageDetail('WAITING_EXECUTION_CONFIRMATION'),
+        canConfirmExecution: true,
+        executionSubmission: {
+          current: null,
+          submissions: [],
+          availableFiles: [file],
+        },
+      },
+      {
+        ...directStageDetail('WAITING_EXECUTION_STAMP'),
+        canMailExecution: true,
+      },
+      {
+        ...directStageDetail('WAITING_EXECUTION_FILING'),
+        canSubmitExecutionFiling: true,
+      },
+      { ...directStageDetail('EXECUTING'), canFinishExecution: true },
+      { ...directStageDetail('WAITING_ARCHIVE'), canRecordClosure: true },
+      directStageDetail('ARCHIVED'),
+    ];
+    for (const payload of cases) {
+      mockJson(payload);
+      await expect(getCase('case-1')).resolves.toMatchObject({
+        stage: payload.stage,
+      });
+      const normal = {
+        ...payload,
+        origin: { kind: 'NOTARY' },
+        sourceLead: detail.sourceLead,
+        sourceNotaryMatter: detail.sourceNotaryMatter,
+        certificate: detail.certificate,
+        fees: detail.fees,
+      };
+      mockJson(normal);
+      if (
+        payload.stage === 'ARCHIVED' ||
+        payload.canConfirmExecution ||
+        payload.canFinishExecution ||
+        payload.canRecordClosure
+      )
+        await expect(getCase('case-1')).rejects.toMatchObject({
+          code: 'INVALID_RESPONSE',
+        });
+    }
+  });
+  it('requires exact true lineage when the first local fact is added', async () => {
+    const confirmation = {
+      id: id(103),
+      submissionId: null,
+      confirmedAt: '2026-10-10T03:00:00.000Z',
+      confirmedByUserId: id(104),
+      files: [file],
+    };
+    const mailing = {
+      id: id(105),
+      confirmationId: null,
+      mailedAt: '2026-10-10',
+      recordedAt: '2026-10-10T04:00:00.000Z',
+      files: [bareFile],
+    };
+    const filing = {
+      id: id(106),
+      mailingId: null,
+      submittedAt: '2026-10-10',
+      recordedAt: '2026-10-10T05:00:00.000Z',
+      files: [bareFile],
+    };
+    const finish = {
+      id: id(107),
+      filingId: null,
+      finishedAt: '2026-10-10',
+      reason: '实际执行结束',
+      basisNote: '真实依据',
+      recordedAt: '2026-10-10T06:00:00.000Z',
+      files: [],
+    };
+    const examples = [
+      {
+        ...directStageDetail(
+          'WAITING_EXECUTION_CONFIRMATION',
+          'WAITING_EXECUTION_STAMP',
+          2,
+        ),
+        executionSubmission: {
+          current: null,
+          submissions: [],
+          availableFiles: [file],
+        },
+        executionConfirmation: confirmation,
+      },
+      {
+        ...directStageDetail(
+          'WAITING_EXECUTION_STAMP',
+          'WAITING_EXECUTION_FILING',
+          2,
+        ),
+        executionMailing: mailing,
+      },
+      {
+        ...directStageDetail('WAITING_EXECUTION_FILING', 'EXECUTING', 2),
+        executionFiling: filing,
+      },
+      {
+        ...directStageDetail('EXECUTING', 'WAITING_ARCHIVE', 2),
+        executionFinish: finish,
+        canRecordClosure: true,
+      },
+    ];
+    for (const payload of examples) {
+      mockJson(payload);
+      await expect(getCase('case-1')).resolves.toMatchObject({
+        stage: payload.stage,
+      });
+    }
+    mockJson({
+      ...examples[0],
+      executionConfirmation: { ...confirmation, submissionId: id(999) },
+    });
+    await expect(getCase('case-1')).rejects.toMatchObject({
+      code: 'INVALID_RESPONSE',
+    });
+    mockJson({
+      ...examples[1],
+      executionMailing: { ...mailing, confirmationId: id(999) },
+    });
+    await expect(getCase('case-1')).rejects.toMatchObject({
+      code: 'INVALID_RESPONSE',
+    });
+    mockJson({
+      ...examples[2],
+      executionFiling: { ...filing, mailingId: id(999) },
+    });
+    await expect(getCase('case-1')).rejects.toMatchObject({
+      code: 'INVALID_RESPONSE',
+    });
+    mockJson({
+      ...examples[3],
+      executionFinish: { ...finish, filingId: id(999) },
+    });
+    await expect(getCase('case-1')).rejects.toMatchObject({
+      code: 'INVALID_RESPONSE',
+    });
+  });
+  it('accepts a direct SECOND result with no invented first judgment and rejects it for normal origin', async () => {
+    const roundId = id(81);
+    const result = {
+      id: id(120),
+      trialRoundId: roundId,
+      choiceId: null,
+      judgmentId: null,
+      progressId: null,
+      result: 'AFFIRM',
+      resultReceivedAt: '2026-10-10',
+      judgmentAmountState: 'PENDING',
+      judgmentAmount: null,
+      paidLitigationFeeState: 'PENDING',
+      paidLitigationFee: null,
+      fromVersion: 3,
+      toVersion: 4,
+      recordedAt: '2026-10-10T03:00:00.000Z',
+      files: [bareFile],
+      childTrialRoundId: null,
+      revocationId: null,
+    };
+    const source = directSecondDetail(roundId);
+    const payload = {
+      ...source,
+      stage: 'WAITING_EXECUTION_DOCUMENTS',
+      version: 4,
+      secondInstance: {
+        ...source.secondInstance,
+        currentResult: result,
+        results: [result],
+      },
+      canSubmitExecution: true,
+    };
+    mockJson(payload);
+    await expect(getCase('case-1')).resolves.toMatchObject({
+      secondInstance: { currentResult: { choiceId: null, judgmentId: null } },
+    });
+    mockJson({
+      ...payload,
+      origin: {
+        ...payload.origin,
+        initialStage: 'WAITING_EXECUTION_DOCUMENTS',
+      },
+    });
+    await expect(getCase('case-1')).rejects.toMatchObject({
+      code: 'INVALID_RESPONSE',
+    });
+    mockJson({
+      ...payload,
+      secondInstance: {
+        ...payload.secondInstance,
+        currentResult: { ...result, trialRoundId: id(999) },
+        results: [{ ...result, trialRoundId: id(999) }],
+      },
+    });
+    await expect(getCase('case-1')).rejects.toMatchObject({
+      code: 'INVALID_RESPONSE',
+    });
+  });
+  it('confirms only the complete available application package on a direct entry', async () => {
+    const input = {
+      expectedVersion: 1,
+      idempotencyKey: 'direct-confirm',
+      expectedSubmissionId: null,
+      executionApplicationContentVersionIds: [file.contentVersionId],
+    };
+    const source = {
+      ...directStageDetail('WAITING_EXECUTION_CONFIRMATION'),
+      canConfirmExecution: true,
+      executionSubmission: {
+        current: null,
+        submissions: [],
+        availableFiles: [file],
+      },
+    };
+    const receipt = {
+      id: 'case-1',
+      confirmationId: id(103),
+      submissionId: null,
+      stage: 'WAITING_EXECUTION_STAMP',
+      version: 2,
+      confirmedAt: '2026-10-10T03:00:00.000Z',
+    };
+    const fetch = mockReadThenReceipt(source, receipt);
+    await expect(confirmCaseExecution('case-1', input)).resolves.toEqual(
+      receipt,
+    );
+    expect(fetch).toHaveBeenCalledTimes(2);
+    for (const candidate of [
+      { ...input, executionApplicationContentVersionIds: [id(999)] },
+      { ...input, executionApplicationContentVersionIds: [] },
+    ]) {
+      const rejected = mockReadThenReceipt(source, receipt);
+      await expect(
+        confirmCaseExecution('case-1', candidate),
+      ).rejects.toMatchObject({ code: 'VALIDATION_ERROR' });
+      expect(
+        rejected.mock.calls.some((call) => call[1]?.method === 'POST'),
+      ).toBe(false);
+    }
+    const normal = {
+      ...source,
+      origin: { kind: 'NOTARY' },
+      sourceLead: detail.sourceLead,
+      sourceNotaryMatter: detail.sourceNotaryMatter,
+      certificate: detail.certificate,
+      fees: detail.fees,
+    };
+    const rejected = mockReadThenReceipt(normal, receipt);
+    await expect(confirmCaseExecution('case-1', input)).rejects.toMatchObject({
+      code: 'INVALID_RESPONSE',
+    });
+    expect(rejected.mock.calls.some((call) => call[1]?.method === 'POST')).toBe(
+      false,
+    );
+  });
+  it('submits a direct execution application with the true round and revises only its true submission', async () => {
+    const roundId = id(81);
+    const input: casesApi.SubmitExecutionInput = {
+      expectedVersion: 1,
+      idempotencyKey: 'direct-execution-submit',
+      trialRoundId: roundId,
+      judgmentNextStepId: null,
+      secondInstanceResultId: null,
+      expectedSubmissionId: null,
+      executionApplicationContentVersionIds: [file.contentVersionId],
+    };
+    const source = {
+      ...directStageDetail('WAITING_EXECUTION_DOCUMENTS'),
+      canSubmitExecution: true,
+    };
+    const receipt: casesApi.SubmitExecutionResult = {
+      id: 'case-1',
+      submissionId: id(140),
+      stage: 'WAITING_EXECUTION_CONFIRMATION',
+      version: 2,
+      submittedAt: '2026-10-10T04:00:00.000Z',
+    };
+    const fetch = mockReadThenReceipt(source, receipt);
+    await expect(casesApi.submitExecution('case-1', input)).resolves.toEqual(
+      receipt,
+    );
+    expect(fetch).toHaveBeenCalledTimes(2);
+    const normal = {
+      ...source,
+      origin: { kind: 'NOTARY' },
+      sourceLead: detail.sourceLead,
+      sourceNotaryMatter: detail.sourceNotaryMatter,
+      certificate: detail.certificate,
+      fees: detail.fees,
+    };
+    const rejected = mockReadThenReceipt(normal, receipt);
+    await expect(
+      casesApi.submitExecution('case-1', input),
+    ).rejects.toMatchObject({ code: 'VALIDATION_ERROR' });
+    expect(rejected.mock.calls.some((call) => call[1]?.method === 'POST')).toBe(
+      false,
+    );
+    const submission = {
+      id: receipt.submissionId,
+      trialRoundId: roundId,
+      judgmentNextStepId: null,
+      secondInstanceResultId: null,
+      priorSubmissionId: null,
+      changeReason: null,
+      fromVersion: 1,
+      toVersion: 2,
+      submittedAt: receipt.submittedAt,
+      files: [file],
+    };
+    const revisionSource = {
+      ...source,
+      stage: 'WAITING_EXECUTION_CONFIRMATION',
+      version: 2,
+      executionSubmission: {
+        current: submission,
+        submissions: [submission],
+        availableFiles: [],
+      },
+    };
+    mockJson(revisionSource);
+    await expect(getCase('case-1')).resolves.toMatchObject({
+      executionSubmission: { current: { judgmentNextStepId: null } },
+    });
+    const revision: casesApi.SubmitExecutionInput = {
+      expectedVersion: 2,
+      idempotencyKey: 'direct-execution-revision',
+      trialRoundId: roundId,
+      judgmentNextStepId: null,
+      secondInstanceResultId: null,
+      expectedSubmissionId: submission.id,
+      changeReason: '真实材料修订',
+    };
+    const revised = { ...receipt, submissionId: id(141), version: 3 };
+    const retry = mockReadThenReceipt(revisionSource, revised);
+    await expect(casesApi.submitExecution('case-1', revision)).resolves.toEqual(
+      revised,
+    );
+    expect(retry).toHaveBeenCalledTimes(2);
+  });
+  it('posts each direct null predecessor only from its precise initial phase', async () => {
+    const mailInput: casesApi.MailCaseExecutionInput = {
+      expectedVersion: 1,
+      idempotencyKey: 'direct-mail',
+      expectedConfirmationId: null,
+      mailedAt: '2026-10-10',
+      mailReceiptContentVersionIds: [file.contentVersionId],
+    };
+    const filingInput: casesApi.SubmitCaseExecutionFilingInput = {
+      expectedVersion: 1,
+      idempotencyKey: 'direct-filing',
+      expectedMailingId: null,
+      submittedAt: '2026-10-10',
+      executionFilingProofContentVersionIds: [file.contentVersionId],
+    };
+    const finishInput: casesApi.FinishCaseExecutionInput = {
+      expectedVersion: 1,
+      idempotencyKey: 'direct-finish',
+      expectedFilingId: null,
+      finishedAt: '2026-10-10',
+      reason: '真实执行结束',
+      basisNote: '真实依据',
+      basisContentVersionIds: [],
+    };
+    const closureInput: casesApi.RecordCaseClosureInput = {
+      expectedVersion: 1,
+      idempotencyKey: 'direct-closure',
+      expectedFinishId: null,
+      closeAt: null,
+      closeAmountState: 'PENDING',
+      closeAmt: null,
+      note: null,
+      closeContentVersionIds: [],
+    };
+    const cases = [
+      {
+        source: {
+          ...directStageDetail('WAITING_EXECUTION_STAMP'),
+          canMailExecution: true,
+        },
+        input: mailInput,
+        receipt: {
+          id: 'case-1',
+          mailingId: id(105),
+          confirmationId: null,
+          stage: 'WAITING_EXECUTION_FILING',
+          version: 2,
+          mailedAt: '2026-10-10',
+          recordedAt: '2026-10-10T04:00:00.000Z',
+        },
+        send: () => mailCaseExecution('case-1', mailInput),
+      },
+      {
+        source: {
+          ...directStageDetail('WAITING_EXECUTION_FILING'),
+          canSubmitExecutionFiling: true,
+        },
+        input: filingInput,
+        receipt: {
+          id: 'case-1',
+          filingId: id(106),
+          mailingId: null,
+          stage: 'EXECUTING',
+          version: 2,
+          submittedAt: '2026-10-10',
+          recordedAt: '2026-10-10T05:00:00.000Z',
+        },
+        send: () => submitCaseExecutionFiling('case-1', filingInput),
+      },
+      {
+        source: { ...directStageDetail('EXECUTING'), canFinishExecution: true },
+        input: finishInput,
+        receipt: {
+          id: 'case-1',
+          finishId: id(107),
+          filingId: null,
+          stage: 'WAITING_ARCHIVE',
+          version: 2,
+          finishedAt: '2026-10-10',
+          recordedAt: '2026-10-10T06:00:00.000Z',
+        },
+        send: () => casesApi.finishCaseExecution('case-1', finishInput),
+      },
+      {
+        source: {
+          ...directStageDetail('WAITING_ARCHIVE'),
+          canRecordClosure: true,
+        },
+        input: closureInput,
+        receipt: {
+          id: 'case-1',
+          closureId: id(108),
+          closureVersionId: id(109),
+          finishId: null,
+          stage: 'WAITING_ARCHIVE',
+          version: 2,
+          recordedAt: '2026-10-10T07:00:00.000Z',
+        },
+        send: () => casesApi.recordCaseClosure('case-1', closureInput),
+      },
+    ];
+    for (const candidate of cases) {
+      const fetch = mockReadThenReceipt(candidate.source, candidate.receipt);
+      await expect(candidate.send()).resolves.toEqual(candidate.receipt);
+      expect(fetch).toHaveBeenCalledTimes(2);
+      expect(JSON.parse(String(fetch.mock.calls[1]?.[1]?.body))).toEqual(
+        candidate.input,
+      );
+    }
+  });
+  it('decodes and saves second-instance acceptance only for the external root round', async () => {
+    const caseId = id(1);
+    const roundId = id(81);
+    const base = directSecondDetail(roundId);
+    const edit = {
+      choiceId: null,
+      trialRoundId: roundId,
+      acceptanceRevision: 0,
+      acceptedAt: null,
+      courtCaseNo: null,
+      canEdit: true,
+      history: [],
+    };
+    const source = {
+      ...base,
+      id: caseId,
+      defendants: [],
+      secondInstance: { ...base.secondInstance, acceptances: [] },
+      recordEdits: {
+        canUpdateDefendantContact: false,
+        canCorrectAcceptance: false,
+        defendantContacts: [],
+        acceptanceCorrections: [],
+        canSaveSecondInstanceAcceptance: true,
+        secondInstanceAcceptances: [edit],
+      },
+    };
+    mockJson(source);
+    await expect(getCase(caseId)).resolves.toMatchObject({
+      recordEdits: {
+        secondInstanceAcceptances: [{ choiceId: null, trialRoundId: roundId }],
+      },
+    });
+    const input: casesApi.SaveSecondInstanceAcceptanceInput = {
+      choiceId: null,
+      trialRoundId: roundId,
+      expectedAcceptanceRevision: 0,
+      idempotencyKey: 'direct-second-acceptance',
+      acceptedAt: '2026-10-10',
+      courtCaseNo: null,
+      reason: null,
+    };
+    const receipt: casesApi.SaveSecondInstanceAcceptanceResult = {
+      caseId,
+      choiceId: null,
+      trialRoundId: roundId,
+      changeId: id(130),
+      acceptanceRevision: 1,
+      acceptedAt: input.acceptedAt,
+      courtCaseNo: null,
+      recordedAt: '2026-10-10T04:00:00.000Z',
+    };
+    const fetch = mockReadThenReceipt(source, receipt);
+    await expect(saveSecondInstanceAcceptance(caseId, input)).resolves.toEqual(
+      receipt,
+    );
+    expect(fetch).toHaveBeenCalledTimes(2);
+    const change = {
+      id: receipt.changeId,
+      priorChangeId: null,
+      fromRevision: 0,
+      toRevision: 1,
+      acceptedAt: input.acceptedAt,
+      courtCaseNo: null,
+      reason: null,
+      recordedAt: receipt.recordedAt,
+      recordedByUserId: id(131),
+    };
+    const updated = {
+      ...source,
+      secondInstance: {
+        ...source.secondInstance,
+        acceptances: [
+          {
+            choiceId: null,
+            trialRoundId: roundId,
+            acceptedAt: input.acceptedAt,
+            courtCaseNo: null,
+            recordedAt: receipt.recordedAt,
+          },
+        ],
+      },
+      recordEdits: {
+        ...source.recordEdits,
+        secondInstanceAcceptances: [
+          {
+            ...edit,
+            acceptedAt: input.acceptedAt,
+            acceptanceRevision: 1,
+            history: [change],
+          },
+        ],
+      },
+    };
+    mockJson(updated);
+    await expect(getCase(caseId)).resolves.toMatchObject({
+      secondInstance: { acceptances: [{ choiceId: null }] },
+    });
+    mockJson({
+      ...updated,
+      origin: {
+        ...updated.origin,
+        initialStage: 'WAITING_EXECUTION_DOCUMENTS',
+      },
+    });
+    await expect(getCase(caseId)).rejects.toMatchObject({
+      code: 'INVALID_RESPONSE',
+    });
+  });
+  it('continues a direct WAITING_ARCHIVE entry through a real closure and archive chain', async () => {
+    const current = {
+      id: id(151),
+      kind: 'REGISTER',
+      priorVersionId: null,
+      finishId: null,
+      fromVersion: 1,
+      toVersion: 2,
+      closeAt: null,
+      closeAmountState: 'PENDING',
+      closeAmt: null,
+      note: null,
+      correctionReason: null,
+      recordedAt: '2026-10-10T04:00:00.000Z',
+      recordedByUserId: id(152),
+      files: [],
+    };
+    const closure = {
+      id: id(150),
+      finishId: null,
+      current,
+      history: [current],
+    };
+    const open = {
+      ...directStageDetail('WAITING_ARCHIVE', 'WAITING_ARCHIVE', 2),
+      canArchive: true,
+      closure,
+    };
+    mockJson(open);
+    await expect(getCase('case-1')).resolves.toMatchObject({
+      closure: { finishId: null },
+      canArchive: true,
+    });
+    const archiveVersion = {
+      id: id(154),
+      kind: 'ARCHIVE',
+      priorVersionId: null,
+      closureVersionId: current.id,
+      fromVersion: 2,
+      toVersion: 3,
+      archiveAt: '2026-10-10',
+      archiveType: 'EXECUTION_CLOSED',
+      archiveReason: '真实材料归档',
+      correctionReason: null,
+      recordedAt: '2026-10-10T05:00:00.000Z',
+      recordedByUserId: id(155),
+    };
+    const archived = {
+      ...open,
+      stage: 'ARCHIVED',
+      version: 3,
+      canArchive: false,
+      canCorrectArchive: true,
+      archive: {
+        id: id(153),
+        closureId: closure.id,
+        closureVersionId: current.id,
+        current: archiveVersion,
+        history: [archiveVersion],
+      },
+    };
+    mockJson(archived);
+    await expect(getCase('case-1')).resolves.toMatchObject({
+      stage: 'ARCHIVED',
+      archive: { closureVersionId: current.id },
+    });
+    mockJson({ ...archived, archive: null });
+    await expect(getCase('case-1')).rejects.toMatchObject({
+      code: 'INVALID_RESPONSE',
+    });
+  });
+});
 
 describe('cases API', () => {
   it('decodes optional record-edit projections and rejects broken revision chains', async () => {
@@ -1613,7 +2336,7 @@ describe('cases API', () => {
       resultId: null,
       recordedAt: '2026-10-10T03:00:00Z',
     };
-    const fetch = mockJson(receipt, 201);
+    const fetch = mockReadThenReceipt(directSecondDetail(roundId), receipt);
     const input = {
       expectedVersion: 3,
       idempotencyKey: 'external-round-save-key',
@@ -1629,8 +2352,8 @@ describe('cases API', () => {
       },
     };
     await expect(saveSecondInstance('case-1', input)).resolves.toEqual(receipt);
-    expect(JSON.parse(String(fetch.mock.calls[0]?.[1]?.body))).toEqual(input);
-    expect(fetch.mock.calls[0]?.[1]?.headers).toMatchObject({
+    expect(JSON.parse(String(fetch.mock.calls[1]?.[1]?.body))).toEqual(input);
+    expect(fetch.mock.calls[1]?.[1]?.headers).toMatchObject({
       'Idempotency-Key': input.idempotencyKey,
     });
   });
@@ -1712,18 +2435,18 @@ describe('cases API', () => {
       resultId: '70000000-0000-4000-8000-000000000084',
       recordedAt: '2026-10-10T03:00:00Z',
     };
-    const fetch = mockJson(receipt, 201);
+    const fetch = mockReadThenReceipt(directSecondDetail(roundId), receipt);
     await expect(
       registerSecondInstanceResult('case-1', input),
     ).resolves.toEqual(receipt);
-    expect(JSON.parse(String(fetch.mock.calls[0]?.[1]?.body))).toEqual(input);
+    expect(JSON.parse(String(fetch.mock.calls[1]?.[1]?.body))).toEqual(input);
     await expect(
       registerSecondInstanceResult('case-1', {
         ...input,
         judgmentAmount: undefined,
       }),
     ).rejects.toMatchObject({ code: 'VALIDATION_ERROR' });
-    expect(fetch).toHaveBeenCalledTimes(1);
+    expect(fetch).toHaveBeenCalledTimes(2);
   });
 
   it('accepts and replays a RESULT receipt at +2 only when it creates progress', async () => {
@@ -3425,6 +4148,7 @@ describe('cases API', () => {
       origin: {
         kind: 'EXTERNAL_ENTRY',
         entryKind: 'EXTERNAL_TRANSFER',
+        initialStage: 'WAITING_COMPLAINT',
         stageReachedOn: '2026-10-01',
       },
       certificate: null,

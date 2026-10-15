@@ -200,7 +200,7 @@ export type AcceptanceCorrectionEdit = {
   }>;
 };
 export type SecondInstanceAcceptanceEdit = {
-  choiceId: string;
+  choiceId: string | null;
   trialRoundId: string;
   acceptanceRevision: number;
   acceptedAt: string | null;
@@ -219,7 +219,7 @@ export type SecondInstanceAcceptanceEdit = {
   }>;
 };
 export type SecondInstanceAcceptance = {
-  choiceId: string;
+  choiceId: string | null;
   trialRoundId: string;
   acceptedAt: string | null;
   courtCaseNo: string | null;
@@ -308,7 +308,7 @@ export type ExecutionSubmissionFile = CaseFile & { uploadedAt: string };
 export type ExecutionSubmissionSummary = {
   id: string;
   trialRoundId: string;
-  judgmentNextStepId: string;
+  judgmentNextStepId: string | null;
   secondInstanceResultId: string | null;
   priorSubmissionId: string | null;
   changeReason: string | null;
@@ -962,7 +962,7 @@ export type LawyerSecondInstanceProgress = SecondInstanceProgressBase;
 type SecondInstanceResultBase = {
   id: string;
   trialRoundId: string;
-  choiceId: string;
+  choiceId: string | null;
   judgmentId: string | null;
   progressId: string | null;
   resultReceivedAt: string;
@@ -1482,9 +1482,18 @@ function archiveMatches(
   internal: boolean,
 ): boolean {
   const archive = value.archive;
+  const directArchived =
+    record(value.origin) &&
+    value.origin.kind === 'EXTERNAL_ENTRY' &&
+    value.origin.initialStage === 'ARCHIVED' &&
+    value.version === 1;
   if (archive === null)
     return (
-      value.stage !== 'ARCHIVED' &&
+      (value.stage !== 'ARCHIVED' || directArchived) &&
+      (!directArchived ||
+        (value.closure === null &&
+          value.executionFinish === null &&
+          value.canArchive === false)) &&
       value.canCorrectArchive === false &&
       (!value.canArchive ||
         (record(value.closure) &&
@@ -1540,6 +1549,7 @@ function archiveMatches(
 function closureVersion(
   value: unknown,
   internal: boolean,
+  directStart = false,
 ): value is CaseClosureVersion | LawyerCaseClosureVersion {
   if (
     !record(value) ||
@@ -1562,7 +1572,7 @@ function closureVersion(
     return false;
   return (
     uuidV4(value.id) &&
-    uuidV4(value.finishId) &&
+    (uuidV4(value.finishId) || (directStart && value.finishId === null)) &&
     Number.isSafeInteger(value.fromVersion) &&
     Number(value.fromVersion) >= 1 &&
     Number.isSafeInteger(value.toVersion) &&
@@ -1627,25 +1637,34 @@ function closureMatches(
   canRecord: unknown,
   canCorrect: unknown,
   internal: boolean,
+  directStart = false,
+  directFinish = false,
 ): boolean {
   if (value === null)
     return (
       canCorrect === false &&
       (canRecord !== true ||
-        (stage === 'WAITING_ARCHIVE' && executionFinish(finish)))
+        (stage === 'WAITING_ARCHIVE' &&
+          (executionFinish(finish, directFinish) ||
+            (directStart && finish === null))))
     );
   if (
     stage !== 'WAITING_ARCHIVE' ||
     canRecord !== false ||
-    !executionFinish(finish) ||
+    !(
+      executionFinish(finish, directFinish) ||
+      (directStart && finish === null)
+    ) ||
     !record(value) ||
     !exact(value, ['id', 'finishId', 'current', 'history']) ||
     !uuidV4(value.id) ||
-    value.finishId !== finish.id ||
-    !closureVersion(value.current, internal) ||
+    value.finishId !== (record(finish) ? finish.id : null) ||
+    !closureVersion(value.current, internal, directStart && finish === null) ||
     !Array.isArray(value.history) ||
     value.history.length === 0 ||
-    !value.history.every((entry) => closureVersion(entry, internal))
+    !value.history.every((entry) =>
+      closureVersion(entry, internal, directStart && finish === null),
+    )
   )
     return false;
   const history = value.history as Array<
@@ -1658,7 +1677,7 @@ function closureMatches(
     sameClosureVersion(value.current, last) &&
     history.every(
       (entry, index) =>
-        entry.finishId === finish.id &&
+        entry.finishId === (record(finish) ? finish.id : null) &&
         (index === 0
           ? entry.kind === 'REGISTER'
           : entry.kind === 'CORRECT' &&
@@ -1681,12 +1700,16 @@ function caseFile(value: unknown): value is CaseFile {
     )
   );
 }
-function executionMailing(value: unknown): value is ExecutionMailing {
+function executionMailing(
+  value: unknown,
+  directStart = false,
+): value is ExecutionMailing {
   return (
     record(value) &&
     exact(value, ['id', 'confirmationId', 'mailedAt', 'recordedAt', 'files']) &&
     uuidV4(value.id) &&
-    uuidV4(value.confirmationId) &&
+    (uuidV4(value.confirmationId) ||
+      (directStart && value.confirmationId === null)) &&
     businessDate(value.mailedAt) &&
     typeof value.recordedAt === 'string' &&
     !Number.isNaN(Date.parse(value.recordedAt)) &&
@@ -1698,12 +1721,15 @@ function executionMailing(value: unknown): value is ExecutionMailing {
       .size === value.files.length
   );
 }
-function executionFiling(value: unknown): value is ExecutionFiling {
+function executionFiling(
+  value: unknown,
+  directStart = false,
+): value is ExecutionFiling {
   return (
     record(value) &&
     exact(value, ['id', 'mailingId', 'submittedAt', 'recordedAt', 'files']) &&
     uuidV4(value.id) &&
-    uuidV4(value.mailingId) &&
+    (uuidV4(value.mailingId) || (directStart && value.mailingId === null)) &&
     businessDate(value.submittedAt) &&
     typeof value.recordedAt === 'string' &&
     !Number.isNaN(Date.parse(value.recordedAt)) &&
@@ -1726,7 +1752,10 @@ function utcTimestamp(value: unknown): value is string {
     new Date(value).toISOString().slice(0, 19) === value.slice(0, 19)
   );
 }
-function executionFinish(value: unknown): value is ExecutionFinish {
+function executionFinish(
+  value: unknown,
+  directStart = false,
+): value is ExecutionFinish {
   return (
     record(value) &&
     exact(value, [
@@ -1739,7 +1768,7 @@ function executionFinish(value: unknown): value is ExecutionFinish {
       'files',
     ]) &&
     uuidV4(value.id) &&
-    uuidV4(value.filingId) &&
+    (uuidV4(value.filingId) || (directStart && value.filingId === null)) &&
     businessDate(value.finishedAt) &&
     finishText(value.reason) &&
     (value.basisNote === null || finishText(value.basisNote)) &&
@@ -1762,17 +1791,22 @@ function executionFinishMatches(
   filing: unknown,
   stage: unknown,
   canFinish: unknown,
+  directExecuting = false,
+  directWaitingArchive = false,
+  directArchived = false,
 ): boolean {
   if (finish === null)
     return (
-      stage !== 'WAITING_ARCHIVE' &&
-      stage !== 'ARCHIVED' &&
-      (canFinish !== true || (stage === 'EXECUTING' && executionFiling(filing)))
+      (stage !== 'WAITING_ARCHIVE' || directWaitingArchive) &&
+      (stage !== 'ARCHIVED' || directArchived || directWaitingArchive) &&
+      (canFinish !== true ||
+        (stage === 'EXECUTING' &&
+          (executionFiling(filing) || (directExecuting && filing === null))))
     );
   return (
-    executionFinish(finish) &&
-    executionFiling(filing) &&
-    finish.filingId === filing.id &&
+    executionFinish(finish, directExecuting && filing === null) &&
+    (executionFiling(filing) || (directExecuting && filing === null)) &&
+    finish.filingId === (record(filing) ? filing.id : null) &&
     (stage === 'WAITING_ARCHIVE' || stage === 'ARCHIVED') &&
     canFinish === false
   );
@@ -1781,20 +1815,23 @@ function executionFactsMatch(
   mailing: unknown,
   filing: unknown,
   confirmation: unknown,
+  directStamp = false,
+  directFiling = false,
 ): boolean {
   if (
     mailing !== null &&
-    (!executionMailing(mailing) ||
-      !record(confirmation) ||
-      confirmation.id !== mailing.confirmationId)
+    (!executionMailing(mailing, directStamp && confirmation === null) ||
+      mailing.confirmationId !==
+        (record(confirmation) ? confirmation.id : null) ||
+      (confirmation === null && !directStamp))
   ) {
     return false;
   }
   if (
     filing !== null &&
-    (!executionFiling(filing) ||
-      !executionMailing(mailing) ||
-      filing.mailingId !== mailing.id)
+    (!executionFiling(filing, directFiling && mailing === null) ||
+      filing.mailingId !== (record(mailing) ? mailing.id : null) ||
+      (mailing === null && !directFiling))
   ) {
     return false;
   }
@@ -1824,6 +1861,7 @@ function executionSubmissionFile(
 }
 function executionSubmissionSummary(
   value: unknown,
+  directStart = false,
 ): value is ExecutionSubmissionSummary {
   return (
     record(value) &&
@@ -1841,7 +1879,8 @@ function executionSubmissionSummary(
     ]) &&
     uuidV4(value.id) &&
     uuidV4(value.trialRoundId) &&
-    uuidV4(value.judgmentNextStepId) &&
+    (uuidV4(value.judgmentNextStepId) ||
+      (directStart && value.judgmentNextStepId === null)) &&
     (value.secondInstanceResultId === null ||
       uuidV4(value.secondInstanceResultId)) &&
     (value.priorSubmissionId === null || uuidV4(value.priorSubmissionId)) &&
@@ -1869,13 +1908,17 @@ function executionSubmissionSummary(
 }
 function executionSubmissionState(
   value: unknown,
+  directStart = false,
 ): value is ExecutionSubmissionState {
   return (
     record(value) &&
     exact(value, ['current', 'submissions', 'availableFiles']) &&
-    (value.current === null || executionSubmissionSummary(value.current)) &&
+    (value.current === null ||
+      executionSubmissionSummary(value.current, directStart)) &&
     Array.isArray(value.submissions) &&
-    value.submissions.every(executionSubmissionSummary) &&
+    value.submissions.every((item) =>
+      executionSubmissionSummary(item, directStart),
+    ) &&
     (value.current === null ||
       value.submissions.some(
         (submission) =>
@@ -1891,7 +1934,10 @@ function executionSubmissionState(
     ).size === value.availableFiles.length
   );
 }
-function executionConfirmation(value: unknown): value is ExecutionConfirmation {
+function executionConfirmation(
+  value: unknown,
+  directStart = false,
+): value is ExecutionConfirmation {
   return (
     record(value) &&
     exact(value, [
@@ -1902,7 +1948,8 @@ function executionConfirmation(value: unknown): value is ExecutionConfirmation {
       'files',
     ]) &&
     uuidV4(value.id) &&
-    uuidV4(value.submissionId) &&
+    (uuidV4(value.submissionId) ||
+      (directStart && value.submissionId === null)) &&
     typeof value.confirmedAt === 'string' &&
     !Number.isNaN(Date.parse(value.confirmedAt)) &&
     nonempty(value.confirmedByUserId) &&
@@ -1920,18 +1967,26 @@ function executionConfirmation(value: unknown): value is ExecutionConfirmation {
 function executionConfirmationMatchesSubmission(
   confirmation: unknown,
   state: unknown,
+  directStart = false,
 ): boolean {
   if (confirmation === null) return true;
-  if (!executionConfirmation(confirmation) || !executionSubmissionState(state))
+  if (
+    !executionConfirmation(confirmation, directStart) ||
+    !executionSubmissionState(state)
+  )
     return false;
   const current = state.current;
-  if (!current || confirmation.submissionId !== current.id) return false;
+  if (
+    confirmation.submissionId !== (current?.id ?? null) ||
+    (current === null && !directStart)
+  )
+    return false;
   const confirmedFiles = new Map<string, ExecutionSubmissionFile>(
     confirmation.files.map((file) => [file.contentVersionId, file]),
   );
   return (
-    current.files.length === confirmedFiles.size &&
-    current.files.every((file) => {
+    (current?.files ?? state.availableFiles).length === confirmedFiles.size &&
+    (current?.files ?? state.availableFiles).every((file) => {
       const confirmedFile = confirmedFiles.get(file.contentVersionId);
       return (
         confirmedFile !== undefined &&
@@ -1942,6 +1997,101 @@ function executionConfirmationMatchesSubmission(
       );
     })
   );
+}
+function executionSourceMatches(
+  value: Record<string, unknown>,
+  internal: boolean,
+): boolean {
+  const initialStage =
+    record(value.origin) && value.origin.kind === 'EXTERNAL_ENTRY'
+      ? value.origin.initialStage
+      : null;
+  const directDocument = initialStage === 'WAITING_EXECUTION_DOCUMENTS';
+  const directSecond = initialStage === 'SECOND_INSTANCE';
+  const directConfirmation = initialStage === 'WAITING_EXECUTION_CONFIRMATION';
+  const directStamp = initialStage === 'WAITING_EXECUTION_STAMP';
+  const directFiling = initialStage === 'WAITING_EXECUTION_FILING';
+  const directExecuting = initialStage === 'EXECUTING';
+  const directArchive = initialStage === 'WAITING_ARCHIVE';
+  const directArchived =
+    initialStage === 'ARCHIVED' &&
+    value.stage === 'ARCHIVED' &&
+    value.version === 1;
+  if (
+    !executionSubmissionState(
+      value.executionSubmission,
+      directDocument || directSecond,
+    ) ||
+    (value.canConfirmExecution === true &&
+      value.executionSubmission.current === null &&
+      !directConfirmation) ||
+    (value.canMailExecution === true &&
+      value.executionConfirmation === null &&
+      !directStamp) ||
+    (value.canSubmitExecutionFiling === true &&
+      value.executionMailing === null &&
+      !directFiling) ||
+    !executionConfirmationMatchesSubmission(
+      value.executionConfirmation,
+      value.executionSubmission,
+      directConfirmation,
+    ) ||
+    !executionFactsMatch(
+      value.executionMailing,
+      value.executionFiling,
+      value.executionConfirmation,
+      directStamp,
+      directFiling,
+    ) ||
+    !executionFinishMatches(
+      value.executionFinish,
+      value.executionFiling,
+      value.stage,
+      value.canFinishExecution,
+      directExecuting,
+      directArchive,
+      directArchived,
+    ) ||
+    !closureMatches(
+      value.closure,
+      value.executionFinish,
+      value.stage === 'ARCHIVED' ? 'WAITING_ARCHIVE' : value.stage,
+      closureTerminalVersion(value),
+      value.canRecordClosure,
+      value.canCorrectClosure,
+      internal,
+      directArchive && value.executionFinish === null,
+      directExecuting && value.executionFiling === null,
+    )
+  )
+    return false;
+  const submission = value.executionSubmission;
+  if (!record(submission) || !Array.isArray(submission.submissions))
+    return false;
+  return submission.submissions.every((item, index) => {
+    if (!record(item) || item.judgmentNextStepId !== null) return true;
+    if (!directDocument && !directSecond) return false;
+    if (
+      index === 0
+        ? item.priorSubmissionId !== null
+        : item.priorSubmissionId !==
+          (record(submission.submissions[index - 1])
+            ? submission.submissions[index - 1].id
+            : null)
+    )
+      return false;
+    const second = value.secondInstance;
+    if (!record(second) || item.trialRoundId !== second.currentTrialRoundId)
+      return false;
+    return directDocument
+      ? item.secondInstanceResultId === null &&
+          record(value.judgmentNextStep) &&
+          value.judgmentNextStep.current === null &&
+          second.currentResult === null
+      : record(second.currentResult) &&
+          second.currentResult.id === item.secondInstanceResultId &&
+          second.currentResult.choiceId === null;
+  });
 }
 function validJudgmentFact(value: unknown, internal: boolean): boolean {
   if (!record(value)) return false;
@@ -2134,8 +2284,7 @@ function courtCaseNoMatchesAcceptance(
 ): boolean {
   if (acceptance === null) {
     if (record(origin) && origin.kind === 'EXTERNAL_ENTRY') {
-      if (record(origin.known))
-        return courtCaseNo === origin.known.courtCaseNo;
+      if (record(origin.known)) return courtCaseNo === origin.known.courtCaseNo;
       return (
         courtCaseNo === null ||
         (nonempty(courtCaseNo) &&
@@ -2517,14 +2666,16 @@ function validCaseDetail(value: unknown, id: string): value is CaseDetail {
         value.acceptance,
         value.secondInstance,
         value.judgmentNextStep,
+        value.origin,
       )) &&
     validSecondInstance(
       value.secondInstance,
       true,
-      value.origin?.kind === 'EXTERNAL_ENTRY',
+      value.origin?.kind === 'EXTERNAL_ENTRY'
+        ? value.origin.initialStage
+        : null,
     ) &&
     typeof value.canSubmitExecution === 'boolean' &&
-    executionSubmissionState(value.executionSubmission) &&
     typeof value.canConfirmExecution === 'boolean' &&
     typeof value.canMailExecution === 'boolean' &&
     typeof value.canSubmitExecutionFiling === 'boolean' &&
@@ -2532,35 +2683,8 @@ function validCaseDetail(value: unknown, id: string): value is CaseDetail {
     typeof value.canRecordClosure === 'boolean' &&
     typeof value.canCorrectClosure === 'boolean' &&
     archiveCapabilities(value) &&
-    (value.executionMailing === null ||
-      executionMailing(value.executionMailing)) &&
-    (value.executionFiling === null ||
-      executionFiling(value.executionFiling)) &&
     archiveMatches(value, true) &&
-    closureMatches(
-      value.closure,
-      value.executionFinish,
-      value.stage === 'ARCHIVED' ? 'WAITING_ARCHIVE' : value.stage,
-      closureTerminalVersion(value),
-      value.canRecordClosure,
-      value.canCorrectClosure,
-      true,
-    ) &&
-    executionFinishMatches(
-      value.executionFinish,
-      value.executionFiling,
-      value.stage,
-      value.canFinishExecution,
-    ) &&
-    executionFactsMatch(
-      value.executionMailing,
-      value.executionFiling,
-      value.executionConfirmation,
-    ) &&
-    executionConfirmationMatchesSubmission(
-      value.executionConfirmation,
-      value.executionSubmission,
-    )
+    executionSourceMatches(value, true)
   );
 }
 function validRoundId(value: unknown): boolean {
@@ -2672,7 +2796,11 @@ function validSecondInstanceResult(
       (value.choiceId === null &&
         externalRootRoundId !== null &&
         value.trialRoundId === externalRootRoundId)) &&
-    uuidV4(value.judgmentId) &&
+    (uuidV4(value.judgmentId) ||
+      (value.judgmentId === null &&
+        value.choiceId === null &&
+        externalRootRoundId !== null &&
+        value.trialRoundId === externalRootRoundId)) &&
     (value.progressId === null || uuidV4(value.progressId)) &&
     ['REMAND', 'CHANGE', 'AFFIRM'].includes(String(value.result)) &&
     businessDate(value.resultReceivedAt) &&
@@ -2728,7 +2856,7 @@ function validSecondInstanceRevocation(
 function validSecondInstance(
   value: unknown,
   internal: boolean,
-  external = false,
+  externalInitialStage: CaseStage | null = null,
 ): boolean {
   if (
     !record(value) ||
@@ -2748,7 +2876,7 @@ function validSecondInstance(
   )
     return false;
   const externalRootRoundId =
-    external && Array.isArray(value.rounds)
+    externalInitialStage === 'SECOND_INSTANCE' && Array.isArray(value.rounds)
       ? (value.rounds.find(
           (round) =>
             record(round) &&
@@ -2787,10 +2915,15 @@ function validSecondInstance(
     ) &&
     (!('acceptances' in value) ||
       (Array.isArray(value.acceptances) &&
-        value.acceptances.every(validSecondInstanceAcceptanceProjection)))
+        value.acceptances.every((item) =>
+          validSecondInstanceAcceptanceProjection(item, externalRootRoundId),
+        )))
   );
 }
-function validSecondInstanceAcceptanceProjection(value: unknown): boolean {
+function validSecondInstanceAcceptanceProjection(
+  value: unknown,
+  externalRootRoundId: string | null = null,
+): boolean {
   return (
     record(value) &&
     exact(value, [
@@ -2800,7 +2933,10 @@ function validSecondInstanceAcceptanceProjection(value: unknown): boolean {
       'courtCaseNo',
       'recordedAt',
     ]) &&
-    uuidV4(value.choiceId) &&
+    (uuidV4(value.choiceId) ||
+      (value.choiceId === null &&
+        externalRootRoundId !== null &&
+        value.trialRoundId === externalRootRoundId)) &&
     uuidV4(value.trialRoundId) &&
     (value.acceptedAt === null || businessDate(value.acceptedAt)) &&
     (value.courtCaseNo === null ||
@@ -2865,6 +3001,7 @@ function validRecordEdits(
   acceptance: unknown,
   secondInstance: unknown,
   judgmentNextStep: unknown,
+  origin: unknown,
 ): value is CaseRecordEdits {
   if (
     !record(value) ||
@@ -3053,6 +3190,7 @@ function validRecordEdits(
       value.secondInstanceAcceptances,
       secondInstance,
       judgmentNextStep,
+      origin,
     )
   );
 }
@@ -3060,6 +3198,7 @@ function validSecondInstanceAcceptanceEdits(
   value: unknown,
   secondInstance: unknown,
   judgmentNextStep: unknown,
+  origin: unknown,
 ): boolean {
   if (
     !Array.isArray(value) ||
@@ -3073,7 +3212,7 @@ function validSecondInstanceAcceptanceEdits(
     ...judgmentNextStep.history,
     ...(judgmentNextStep.current === null ? [] : [judgmentNextStep.current]),
   ];
-  const appealChoices = new Map<string, string>();
+  const appealChoices = new Map<string | null, string>();
   for (const choice of choices) {
     if (
       !record(choice) ||
@@ -3084,9 +3223,31 @@ function validSecondInstanceAcceptanceEdits(
       continue;
     appealChoices.set(choice.id, choice.trialRoundId);
   }
-  const projections = new Map<string, SecondInstanceAcceptance>();
+  if (
+    record(origin) &&
+    origin.kind === 'EXTERNAL_ENTRY' &&
+    origin.initialStage === 'SECOND_INSTANCE' &&
+    Array.isArray(secondInstance.rounds)
+  ) {
+    const root = secondInstance.rounds.find(
+      (round) =>
+        record(round) &&
+        round.sequence === 1 &&
+        round.sourceResultId === null &&
+        uuidV4(round.id),
+    );
+    if (!record(root)) return false;
+    appealChoices.set(null, root.id as string);
+  }
+  const projections = new Map<string | null, SecondInstanceAcceptance>();
   for (const entry of secondInstance.acceptances) {
-    if (!validSecondInstanceAcceptanceProjection(entry)) return false;
+    if (
+      !validSecondInstanceAcceptanceProjection(
+        entry,
+        appealChoices.get(null) ?? null,
+      )
+    )
+      return false;
     const item = entry as unknown as SecondInstanceAcceptance;
     if (
       appealChoices.get(item.choiceId) !== item.trialRoundId ||
@@ -3096,7 +3257,7 @@ function validSecondInstanceAcceptanceEdits(
     projections.set(item.choiceId, item);
   }
   if (value.length !== appealChoices.size) return false;
-  const seen = new Set<string>();
+  const seen = new Set<string | null>();
   for (const entry of value) {
     if (
       !record(entry) ||
@@ -3109,7 +3270,10 @@ function validSecondInstanceAcceptanceEdits(
         'canEdit',
         'history',
       ]) ||
-      !uuidV4(entry.choiceId) ||
+      !(
+        uuidV4(entry.choiceId) ||
+        (entry.choiceId === null && appealChoices.has(null))
+      ) ||
       !uuidV4(entry.trialRoundId) ||
       appealChoices.get(entry.choiceId) !== entry.trialRoundId ||
       seen.has(entry.choiceId) ||
@@ -3562,9 +3726,10 @@ function validLawyerOrigin(value: unknown): value is LawyerCaseOrigin {
   if (!record(value)) return false;
   if (exact(value, ['kind']) && value.kind === 'NOTARY') return true;
   return (
-    exact(value, ['kind', 'entryKind', 'stageReachedOn']) &&
+    exact(value, ['kind', 'entryKind', 'initialStage', 'stageReachedOn']) &&
     value.kind === 'EXTERNAL_ENTRY' &&
     validEntryKind(value.entryKind) &&
+    validStage(value.initialStage) &&
     businessDate(value.stageReachedOn)
   );
 }
@@ -3740,43 +3905,17 @@ export async function getLawyerCase(
     !validSecondInstance(
       result.secondInstance,
       false,
-      result.origin?.kind === 'EXTERNAL_ENTRY',
+      result.origin?.kind === 'EXTERNAL_ENTRY'
+        ? result.origin.initialStage
+        : null,
     ) ||
     typeof result.canSubmitExecution !== 'boolean' ||
-    !executionSubmissionState(result.executionSubmission) ||
     typeof result.canConfirmExecution !== 'boolean' ||
     typeof result.canMailExecution !== 'boolean' ||
     typeof result.canSubmitExecutionFiling !== 'boolean' ||
     typeof result.canFinishExecution !== 'boolean' ||
-    (result.executionMailing !== null &&
-      !executionMailing(result.executionMailing)) ||
-    (result.executionFiling !== null &&
-      !executionFiling(result.executionFiling)) ||
     !archiveMatches(result, false) ||
-    !closureMatches(
-      result.closure,
-      result.executionFinish,
-      result.stage === 'ARCHIVED' ? 'WAITING_ARCHIVE' : result.stage,
-      closureTerminalVersion(result),
-      result.canRecordClosure,
-      result.canCorrectClosure,
-      false,
-    ) ||
-    !executionFinishMatches(
-      result.executionFinish,
-      result.executionFiling,
-      result.stage,
-      result.canFinishExecution,
-    ) ||
-    !executionFactsMatch(
-      result.executionMailing,
-      result.executionFiling,
-      result.executionConfirmation,
-    ) ||
-    !executionConfirmationMatchesSubmission(
-      result.executionConfirmation,
-      result.executionSubmission,
-    )
+    !executionSourceMatches(result, false)
   )
     throw invalidResponse();
   return result as unknown as LawyerCaseDetail;
@@ -4082,6 +4221,26 @@ function validIdempotencyKey(value: unknown): value is string {
     value.length <= 128
   );
 }
+type ReadableCase = CaseDetail | LawyerCaseDetail;
+async function requireDirectSource(
+  id: string,
+  audience: 'internal' | 'lawyer',
+  version: number,
+  stage: CaseStage,
+  initialStages: readonly CaseStage[],
+  matches: (detail: ReadableCase) => boolean,
+): Promise<void> {
+  const detail =
+    audience === 'lawyer' ? await getLawyerCase(id) : await getCase(id);
+  if (
+    detail.version !== version ||
+    detail.stage !== stage ||
+    detail.origin?.kind !== 'EXTERNAL_ENTRY' ||
+    !initialStages.includes(detail.origin.initialStage) ||
+    !matches(detail)
+  )
+    throw new ApiError('当前案件来源或真实前序不匹配', 400, 'VALIDATION_ERROR');
+}
 function normalizeSecondInstanceProgress(
   value: SecondInstanceProgressInput,
 ): SecondInstanceProgressInput | null {
@@ -4206,6 +4365,23 @@ export async function saveSecondInstance(
       400,
       'VALIDATION_ERROR',
     );
+  if (input.choiceId === null)
+    await requireDirectSource(
+      id,
+      audience,
+      input.expectedVersion,
+      'SECOND_INSTANCE',
+      ['SECOND_INSTANCE'],
+      (detail) =>
+        detail.secondInstance.currentTrialRoundId === input.trialRoundId &&
+        detail.secondInstance.rounds.some(
+          (round) =>
+            round.id === input.trialRoundId &&
+            round.sequence === 1 &&
+            round.sourceResultId === null,
+        ) &&
+        detail.judgmentNextStep.current === null,
+    );
   const body = { ...input, progress };
   const response = await requestJson(
     `/${audience === 'lawyer' ? 'lawyer/cases' : 'cases'}/${encodeURIComponent(id)}/second-instance-save`,
@@ -4270,6 +4446,23 @@ export async function registerSecondInstanceResult(
       '二审结果无效，请检查结果、日期、金额和材料。',
       400,
       'VALIDATION_ERROR',
+    );
+  if (input.choiceId === null)
+    await requireDirectSource(
+      id,
+      audience,
+      input.expectedVersion,
+      'SECOND_INSTANCE',
+      ['SECOND_INSTANCE'],
+      (detail) =>
+        detail.secondInstance.currentTrialRoundId === input.trialRoundId &&
+        detail.secondInstance.rounds.some(
+          (round) =>
+            round.id === input.trialRoundId &&
+            round.sequence === 1 &&
+            round.sourceResultId === null,
+        ) &&
+        detail.judgmentNextStep.current === null,
     );
   const body = { ...input, progress };
   const response = await requestJson(
@@ -4847,10 +5040,21 @@ export async function mailCaseExecution(
 ): Promise<MailCaseExecutionResult> {
   const versions = input.mailReceiptContentVersionIds;
   if (
+    !record(input) ||
+    !exact(input, [
+      'expectedVersion',
+      'idempotencyKey',
+      'expectedConfirmationId',
+      'mailedAt',
+      'mailReceiptContentVersionIds',
+    ]) ||
     !Number.isInteger(input.expectedVersion) ||
     input.expectedVersion < 1 ||
     !validIdempotencyKey(input.idempotencyKey) ||
-    !uuidV4(input.expectedConfirmationId) ||
+    !(
+      uuidV4(input.expectedConfirmationId) ||
+      (audience !== 'client' && input.expectedConfirmationId === null)
+    ) ||
     !businessDate(input.mailedAt) ||
     input.mailedAt > todayShanghai() ||
     !Array.isArray(versions) ||
@@ -4860,6 +5064,18 @@ export async function mailCaseExecution(
     new Set(versions).size !== versions.length
   )
     throw new ApiError('执行邮寄登记信息无效', 400, 'VALIDATION_ERROR');
+
+  if (input.expectedConfirmationId === null && audience !== 'client')
+    await requireDirectSource(
+      id,
+      audience,
+      input.expectedVersion,
+      'WAITING_EXECUTION_STAMP',
+      ['WAITING_EXECUTION_STAMP'],
+      (detail) =>
+        detail.executionConfirmation === null &&
+        detail.executionMailing === null,
+    );
 
   const path =
     audience === 'client'
@@ -4901,10 +5117,18 @@ export async function submitCaseExecutionFiling(
 ): Promise<SubmitCaseExecutionFilingResult> {
   const versions = input.executionFilingProofContentVersionIds;
   if (
+    !record(input) ||
+    !exact(input, [
+      'expectedVersion',
+      'idempotencyKey',
+      'expectedMailingId',
+      'submittedAt',
+      'executionFilingProofContentVersionIds',
+    ]) ||
     !Number.isInteger(input.expectedVersion) ||
     input.expectedVersion < 1 ||
     !validIdempotencyKey(input.idempotencyKey) ||
-    !uuidV4(input.expectedMailingId) ||
+    !(uuidV4(input.expectedMailingId) || input.expectedMailingId === null) ||
     !businessDate(input.submittedAt) ||
     input.submittedAt > todayShanghai() ||
     !Array.isArray(versions) ||
@@ -4914,6 +5138,17 @@ export async function submitCaseExecutionFiling(
     new Set(versions).size !== versions.length
   )
     throw new ApiError('执行立案登记信息无效', 400, 'VALIDATION_ERROR');
+
+  if (input.expectedMailingId === null)
+    await requireDirectSource(
+      id,
+      audience,
+      input.expectedVersion,
+      'WAITING_EXECUTION_FILING',
+      ['WAITING_EXECUTION_FILING'],
+      (detail) =>
+        detail.executionMailing === null && detail.executionFiling === null,
+    );
 
   const response = await requestJson(
     `/${audience === 'lawyer' ? 'lawyer/cases' : 'cases'}/${encodeURIComponent(id)}/execution-filing-submit`,
@@ -4966,7 +5201,7 @@ export async function finishCaseExecution(
     !Number.isSafeInteger(input.expectedVersion) ||
     input.expectedVersion < 1 ||
     !validIdempotencyKey(input.idempotencyKey) ||
-    !uuidV4(input.expectedFilingId) ||
+    !(uuidV4(input.expectedFilingId) || input.expectedFilingId === null) ||
     !businessDate(input.finishedAt) ||
     input.finishedAt > todayShanghai() ||
     !finishText(input.reason) ||
@@ -4980,6 +5215,16 @@ export async function finishCaseExecution(
     (audience !== 'internal' && audience !== 'lawyer')
   )
     throw new ApiError('执行结束登记信息无效', 400, 'VALIDATION_ERROR');
+  if (input.expectedFilingId === null)
+    await requireDirectSource(
+      id,
+      audience,
+      input.expectedVersion,
+      'EXECUTING',
+      ['EXECUTING'],
+      (detail) =>
+        detail.executionFiling === null && detail.executionFinish === null,
+    );
   const response = await requestJson(
     '/' +
       (audience === 'lawyer' ? 'lawyer/cases' : 'cases') +
@@ -5092,7 +5337,7 @@ async function submitClosure(
     !Number.isSafeInteger(input.expectedVersion) ||
     input.expectedVersion < 1 ||
     !validIdempotencyKey(input.idempotencyKey) ||
-    !uuidV4(input.expectedFinishId) ||
+    !(uuidV4(input.expectedFinishId) || input.expectedFinishId === null) ||
     (input.closeAt !== null &&
       (!businessDate(input.closeAt) || input.closeAt > todayShanghai())) ||
     !(input.closeAmountState === 'PENDING'
@@ -5115,6 +5360,22 @@ async function submitClosure(
     (command === 'CORRECT' && audience !== 'internal')
   )
     throw new ApiError('结案登记信息无效', 400, 'VALIDATION_ERROR');
+  if (input.expectedFinishId === null)
+    await requireDirectSource(
+      id,
+      audience,
+      input.expectedVersion,
+      'WAITING_ARCHIVE',
+      ['WAITING_ARCHIVE'],
+      (detail) =>
+        detail.executionFinish === null &&
+        (command === 'RECORD'
+          ? detail.closure === null
+          : detail.closure?.current.id ===
+            ('expectedClosureVersionId' in input
+              ? input.expectedClosureVersionId
+              : null)),
+    );
   const response = await requestJson(
     `/${audience === 'lawyer' ? 'lawyer/cases' : 'cases'}/${encodeURIComponent(id)}/${command === 'CORRECT' ? 'closure-correction' : 'closure'}`,
     {
@@ -5439,7 +5700,7 @@ export type CorrectCaseAcceptanceResult = {
   recordedAt: string;
 };
 export type SaveSecondInstanceAcceptanceInput = {
-  choiceId: string;
+  choiceId: string | null;
   trialRoundId: string;
   expectedAcceptanceRevision: number;
   idempotencyKey: string;
@@ -5449,7 +5710,7 @@ export type SaveSecondInstanceAcceptanceInput = {
 };
 export type SaveSecondInstanceAcceptanceResult = {
   caseId: string;
-  choiceId: string;
+  choiceId: string | null;
   trialRoundId: string;
   changeId: string;
   acceptanceRevision: number;
@@ -5604,8 +5865,18 @@ export async function saveSecondInstanceAcceptance(
   const courtCaseNo = input.courtCaseNo?.trim() || null;
   const reason = input.reason?.trim() || null;
   if (
+    !record(input) ||
+    !exact(input, [
+      'choiceId',
+      'trialRoundId',
+      'expectedAcceptanceRevision',
+      'idempotencyKey',
+      'acceptedAt',
+      'courtCaseNo',
+      'reason',
+    ]) ||
     !uuidV4(id) ||
-    !uuidV4(input.choiceId) ||
+    !(uuidV4(input.choiceId) || input.choiceId === null) ||
     !uuidV4(input.trialRoundId) ||
     !Number.isInteger(input.expectedAcceptanceRevision) ||
     input.expectedAcceptanceRevision < 0 ||
@@ -5619,6 +5890,32 @@ export async function saveSecondInstanceAcceptance(
       : reason === null || reason.length > 500)
   )
     throw new ApiError('二审受理信息无效', 400, 'VALIDATION_ERROR');
+  if (input.choiceId === null) {
+    const detail = await getCase(id);
+    const root = detail.secondInstance.rounds.find(
+      (round) =>
+        round.id === input.trialRoundId &&
+        round.sequence === 1 &&
+        round.sourceResultId === null,
+    );
+    const edit = detail.recordEdits?.secondInstanceAcceptances?.find(
+      (entry) =>
+        entry.choiceId === null && entry.trialRoundId === input.trialRoundId,
+    );
+    if (
+      detail.origin?.kind !== 'EXTERNAL_ENTRY' ||
+      detail.origin.initialStage !== 'SECOND_INSTANCE' ||
+      !root ||
+      !edit ||
+      !edit.canEdit ||
+      edit.acceptanceRevision !== input.expectedAcceptanceRevision
+    )
+      throw new ApiError(
+        '当前案件来源或二审资料链不匹配',
+        400,
+        'VALIDATION_ERROR',
+      );
+  }
   const response = await requestJson(
     `/cases/${encodeURIComponent(id)}/second-instance-acceptance-save`,
     {
@@ -5774,11 +6071,24 @@ export async function submitExecution(
   const reason = input.changeReason?.trim();
   const versions = input.executionApplicationContentVersionIds;
   if (
+    !record(input) ||
+    !exactWithOptional(
+      input,
+      [
+        'expectedVersion',
+        'idempotencyKey',
+        'trialRoundId',
+        'judgmentNextStepId',
+        'secondInstanceResultId',
+        'expectedSubmissionId',
+      ],
+      ['executionApplicationContentVersionIds', 'changeReason'],
+    ) ||
     !Number.isInteger(input.expectedVersion) ||
     input.expectedVersion < 1 ||
     !validIdempotencyKey(input.idempotencyKey) ||
     !uuidV4(input.trialRoundId) ||
-    !uuidV4(input.judgmentNextStepId) ||
+    !(uuidV4(input.judgmentNextStepId) || input.judgmentNextStepId === null) ||
     (input.secondInstanceResultId !== null &&
       !uuidV4(input.secondInstanceResultId)) ||
     (input.expectedSubmissionId !== null &&
@@ -5794,6 +6104,28 @@ export async function submitExecution(
   ) {
     throw new ApiError('执行材料提交信息无效', 400, 'VALIDATION_ERROR');
   }
+  if (input.judgmentNextStepId === null)
+    await requireDirectSource(
+      id,
+      audience,
+      input.expectedVersion,
+      input.expectedSubmissionId === null
+        ? 'WAITING_EXECUTION_DOCUMENTS'
+        : 'WAITING_EXECUTION_CONFIRMATION',
+      ['WAITING_EXECUTION_DOCUMENTS', 'SECOND_INSTANCE'],
+      (detail) =>
+        (detail.executionSubmission.current?.id ?? null) ===
+          input.expectedSubmissionId &&
+        detail.judgmentNextStep.current === null &&
+        detail.secondInstance.currentTrialRoundId === input.trialRoundId &&
+        (detail.origin?.kind === 'EXTERNAL_ENTRY' &&
+        detail.origin.initialStage === 'SECOND_INSTANCE'
+          ? detail.secondInstance.currentResult?.id ===
+              input.secondInstanceResultId &&
+            detail.secondInstance.currentResult.choiceId === null
+          : input.secondInstanceResultId === null &&
+            detail.secondInstance.currentResult === null),
+    );
   const body: SubmitExecutionInput =
     input.changeReason === undefined
       ? input
@@ -5832,13 +6164,29 @@ export async function confirmCaseExecution(
   input: ConfirmExecutionInput,
   audience: 'internal' | 'lawyer' = 'internal',
 ): Promise<ConfirmExecutionResult> {
+  const versions = input.executionApplicationContentVersionIds;
   if (
+    !record(input) ||
+    !exactWithOptional(
+      input,
+      ['expectedVersion', 'idempotencyKey', 'expectedSubmissionId'],
+      ['executionApplicationContentVersionIds'],
+    ) ||
     !Number.isInteger(input.expectedVersion) ||
     input.expectedVersion < 1 ||
     !input.idempotencyKey ||
     input.idempotencyKey.trim() !== input.idempotencyKey ||
     input.idempotencyKey.length > 128 ||
-    !uuidV4(input.expectedSubmissionId)
+    !(
+      uuidV4(input.expectedSubmissionId) || input.expectedSubmissionId === null
+    ) ||
+    (input.expectedSubmissionId === null
+      ? !Array.isArray(versions) ||
+        versions.length < 1 ||
+        versions.length > 10 ||
+        !versions.every(uuidV4) ||
+        new Set(versions).size !== versions.length
+      : versions !== undefined)
   ) {
     throw new ApiError(
       '\u6267\u884c\u6750\u6599\u786e\u8ba4\u4fe1\u606f\u65e0\u6548',
@@ -5846,6 +6194,26 @@ export async function confirmCaseExecution(
       'VALIDATION_ERROR',
     );
   }
+  if (input.expectedSubmissionId === null)
+    await requireDirectSource(
+      id,
+      audience,
+      input.expectedVersion,
+      'WAITING_EXECUTION_CONFIRMATION',
+      ['WAITING_EXECUTION_CONFIRMATION'],
+      (detail) => {
+        const available = detail.executionSubmission.availableFiles.map(
+          (file) => file.contentVersionId,
+        );
+        return (
+          detail.executionSubmission.current === null &&
+          detail.executionConfirmation === null &&
+          versions !== undefined &&
+          versions.length === available.length &&
+          available.every((version) => versions.includes(version))
+        );
+      },
+    );
   const response = await requestJson(
     `/${audience === 'lawyer' ? 'lawyer/cases' : 'cases'}/${encodeURIComponent(id)}/execution-confirm`,
     {
