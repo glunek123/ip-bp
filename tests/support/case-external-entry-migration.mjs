@@ -85,7 +85,12 @@ export async function applyCaseExternalEntryMigration(client, name) {
     resolve(currentMigrationRoot, name, 'migration.sql'),
     'utf8',
   );
-  await client.query(sql);
+  try {
+    await client.query(sql);
+  } catch (error) {
+    await client.query('ROLLBACK');
+    throw error;
+  }
 }
 
 export async function replayOldCaseMigrations(client) {
