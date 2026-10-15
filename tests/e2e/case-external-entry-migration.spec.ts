@@ -24,6 +24,8 @@ import { allowOtherEnterpriseAccountSetup } from '../support/case-complaint-mail
 import { resetCoreLeadE2eData } from '../support/core-lead-database.mjs';
 import { disconnectCustomerTestDatabase } from '../support/customer-database.mjs';
 import { clearCaseExternalEntryFixture } from '../support/case-external-entry-database.mjs';
+import { prepareCaseAcceptanceFixture } from '../support/case-acceptance-database.mjs';
+import { prepareCaseFilingFixture } from '../support/case-filing-database.mjs';
 
 const operator = { Authorization: `Bearer ${coreLeadFixtures.tokenA}` };
 const today = () =>
@@ -41,6 +43,8 @@ async function clean() {
 
 test.beforeEach(async () => {
   await clean();
+  await prepareCaseFilingFixture();
+  await prepareCaseAcceptanceFixture();
   await allowOtherEnterpriseAccountSetup();
 });
 test.afterEach(clean);
