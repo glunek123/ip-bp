@@ -1113,6 +1113,7 @@ describe('CA-018 strict source-aware execution read boundary', () => {
       judgmentNextStepId: null,
       secondInstanceResultId: null,
       expectedSubmissionId: submission.id,
+      executionApplicationContentVersionIds: [id(142)],
       changeReason: '真实材料修订',
     };
     const revised = { ...receipt, submissionId: id(141), version: 3 };
@@ -2226,15 +2227,13 @@ describe('cases API', () => {
     const request = fetchMock.mock.calls[0]?.[1] as RequestInit;
     expect(JSON.parse(String(request.body))).toEqual(input);
 
-    const {
-      executionApplicationContentVersionIds: _initialVersions,
-      ...initialAnchor
-    } = input;
-    void _initialVersions;
     const changedInput = {
-      ...initialAnchor,
+      ...input,
       expectedVersion: 15,
       expectedSubmissionId: '80000000-0000-4000-8000-000000000103',
+      executionApplicationContentVersionIds: [
+        '80000000-0000-4000-8000-000000000113',
+      ],
       changeReason: '补充执行申请材料',
     };
     const retryMock = mockJson({
@@ -2250,6 +2249,31 @@ describe('cases API', () => {
     expect(JSON.parse(String(retryMock.mock.calls[0]?.[1]?.body))).toEqual(
       changedInput,
     );
+    const invalidFetch = mockJson({ unexpected: true });
+    const invalidPackages = [
+      [],
+      [
+        input.executionApplicationContentVersionIds[0]!,
+        input.executionApplicationContentVersionIds[0]!,
+      ],
+      Array.from(
+        { length: 11 },
+        (_, index) =>
+          `80000000-0000-4000-8000-${String(index + 200).padStart(12, '0')}`,
+      ),
+      ['not-a-version-uuid'],
+    ];
+    for (const anchor of [input, changedInput]) {
+      for (const executionApplicationContentVersionIds of invalidPackages) {
+        await expect(
+          call('case-1', {
+            ...anchor,
+            executionApplicationContentVersionIds,
+          }),
+        ).rejects.toMatchObject({ code: 'VALIDATION_ERROR' });
+      }
+    }
+    expect(invalidFetch).not.toHaveBeenCalled();
   });
 
   it.each(['COMPLAINT_PREPARATION', 'EXECUTION_PREPARATION'] as const)(

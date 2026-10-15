@@ -838,7 +838,7 @@ export type SubmitExecutionInput = {
   judgmentNextStepId: string | null;
   secondInstanceResultId: string | null;
   expectedSubmissionId: string | null;
-  executionApplicationContentVersionIds?: string[];
+  executionApplicationContentVersionIds: string[];
   changeReason?: string;
 };
 export type SubmitExecutionResult = {
@@ -6016,8 +6016,9 @@ export async function submitExecution(
         'judgmentNextStepId',
         'secondInstanceResultId',
         'expectedSubmissionId',
+        'executionApplicationContentVersionIds',
       ],
-      ['executionApplicationContentVersionIds', 'changeReason'],
+      ['changeReason'],
     ) ||
     !Number.isInteger(input.expectedVersion) ||
     input.expectedVersion < 1 ||
@@ -6028,14 +6029,14 @@ export async function submitExecution(
       !uuidV4(input.secondInstanceResultId)) ||
     (input.expectedSubmissionId !== null &&
       !uuidV4(input.expectedSubmissionId)) ||
+    !Array.isArray(versions) ||
+    versions.length < 1 ||
+    versions.length > 10 ||
+    !versions.every(uuidV4) ||
+    new Set(versions).size !== versions.length ||
     (input.expectedSubmissionId === null
-      ? input.changeReason !== undefined ||
-        !Array.isArray(versions) ||
-        versions.length < 1 ||
-        versions.length > 10 ||
-        !versions.every(uuidV4) ||
-        new Set(versions).size !== versions.length
-      : versions !== undefined || !reason || reason.length > 500)
+      ? input.changeReason !== undefined
+      : !reason || reason.length > 500)
   ) {
     throw new ApiError('执行材料提交信息无效', 400, 'VALIDATION_ERROR');
   }
