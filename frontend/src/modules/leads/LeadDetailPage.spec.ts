@@ -273,44 +273,11 @@ describe('LeadDetailPage', () => {
     expect(wrapper.text()).not.toContain('测试店铺');
     wrapper.unmount();
   });
-  it('creates the first notary matter from explicit goods, material, office and purpose selections', async () => {
-    const confirm = vi.spyOn(window, 'confirm').mockReturnValue(true);
-    leadApi.getLead.mockResolvedValue({
-      ...lead,
-      status: 'WAITING_EVIDENCE_DECISION',
-      version: 3,
-      capabilities: {
-        ...lead.capabilities,
-        edit: false,
-        push: false,
-        evidenceDecide: true,
-        transferToNotary: true,
-      },
-      reviewDecision: {
-        result: 'INFRINGEMENT',
-        reviewerDisplayName: '企业审核员',
-        decidedAt: '2026-09-22T03:00:00Z',
-      },
-    });
-    const transferred = {
-      ...lead,
-      status: 'TRANSFERRED_TO_NOTARY',
-      version: 4,
-      capabilities: { ...lead.capabilities, transferToNotary: false },
-      notaryMatters: [
-        {
-          id: 'matter-1',
-          businessNo: 'NT-20260924-001',
-          stage: 'PENDING_EVIDENCE',
-          notaryOfficeName: '广州市南方公证处',
-          batchPurpose: '首批线上取证',
-          createdAt: '2026-09-24T01:00:00.000Z',
-        },
-      ],
-    };
-    leadApi.getLead
-      .mockReset()
-      .mockResolvedValueOnce({
+  it.each([403, 404])(
+    'creates the exact first matter, keeps its receipt through read failures, and clears it on %s',
+    async (lostAccessStatus) => {
+      const confirm = vi.spyOn(window, 'confirm').mockReturnValue(true);
+      leadApi.getLead.mockResolvedValue({
         ...lead,
         status: 'WAITING_EVIDENCE_DECISION',
         version: 3,
@@ -326,36 +293,134 @@ describe('LeadDetailPage', () => {
           reviewerDisplayName: '企业审核员',
           decidedAt: '2026-09-22T03:00:00Z',
         },
-      })
-      .mockResolvedValueOnce(transferred);
+      });
+      const transferred = {
+        ...lead,
+        status: 'TRANSFERRED_TO_NOTARY',
+        version: 4,
+        capabilities: { ...lead.capabilities, transferToNotary: false },
+        notaryMatters: [
+          {
+            id: 'matter-1',
+            businessNo: 'NT-20260924-001',
+            stage: 'PENDING_EVIDENCE',
+            notaryOfficeName: '广州市南方公证处',
+            batchPurpose: '首批线上取证',
+            createdAt: '2026-09-24T01:00:00.000Z',
+          },
+          {
+            id: 'different-matter',
+            businessNo: 'NT-OTHER',
+            stage: 'PENDING_EVIDENCE',
+            notaryOfficeName: '另一公证处',
+            batchPurpose: '另一批次',
+            createdAt: '2026-09-24T02:00:00.000Z',
+          },
+        ],
+      };
+      leadApi.getLead
+        .mockReset()
+        .mockResolvedValueOnce({
+          ...lead,
+          status: 'WAITING_EVIDENCE_DECISION',
+          version: 3,
+          capabilities: {
+            ...lead.capabilities,
+            edit: false,
+            push: false,
+            evidenceDecide: true,
+            transferToNotary: true,
+          },
+          reviewDecision: {
+            result: 'INFRINGEMENT',
+            reviewerDisplayName: '企业审核员',
+            decidedAt: '2026-09-22T03:00:00Z',
+          },
+        })
+        .mockResolvedValueOnce(transferred);
+      const wrapper = await mountPage();
+      expect(wrapper.text()).toContain(
+        '确认侵权后，选择本次交给公证处的商品和截图',
+      );
+      await wrapper.get('[data-test="select-product-p"]').setValue(true);
+      await wrapper
+        .get('[data-test="select-evidence-version-1"]')
+        .setValue(true);
+      await wrapper.get('[data-test="notary-office"]').setValue('office-1');
+      await wrapper.get('[data-test="batch-purpose"]').setValue('首批线上取证');
+      await wrapper.get('[data-test="transfer-to-notary"]').trigger('click');
+      await flushPromises();
+      expect(confirm).toHaveBeenCalled();
+      expect(notaryApi.createNotaryMatter).toHaveBeenCalledWith(
+        'lead-1',
+        {
+          selectedProductIds: ['p'],
+          selectedContentVersionIds: ['version-1'],
+          notaryOfficeId: 'office-1',
+          evidenceMode: 'ONLINE_PURCHASE',
+          batchPurpose: '首批线上取证',
+          expectedVersion: 3,
+        },
+        expect.any(String),
+      );
+      expect(wrapper.text()).toContain('已移交公证');
+      expect(
+        wrapper.get('[data-test="handoff-matter-link"]').attributes('href'),
+      ).toBe('/notary-matters/matter-1');
+      expect(wrapper.get('[data-test="handoff-matter-link"]').text()).toContain(
+        'NT-20260924-001',
+      );
+      expect(
+        wrapper.get('[data-test="matter-link-matter-1"]').attributes('href'),
+      ).toBe('/notary-matters/matter-1');
+      leadApi.getLead.mockResolvedValue({ ...transferred, notaryMatters: [] });
+      await wrapper.get('[data-test="refresh"]').trigger('click');
+      await flushPromises();
+      expect(wrapper.find('[data-test="handoff-matter-link"]').exists()).toBe(
+        true,
+      );
+      leadApi.getLead.mockRejectedValue(
+        new ApiError('暂时不可用', 503, 'INTERNAL_ERROR'),
+      );
+      await wrapper.get('[data-test="refresh"]').trigger('click');
+      await flushPromises();
+      expect(
+        wrapper.get('[data-test="handoff-matter-link"]').attributes('href'),
+      ).toBe('/notary-matters/matter-1');
+      expect(wrapper.text()).toContain('线索详情暂时无法加载');
+      leadApi.getLead.mockRejectedValue(
+        new ApiError(
+          'unavailable',
+          lostAccessStatus,
+          lostAccessStatus === 404 ? 'RESOURCE_NOT_FOUND' : 'ACTION_FORBIDDEN',
+        ),
+      );
+      await wrapper.get('[data-test="refresh"]').trigger('click');
+      await flushPromises();
+      expect(wrapper.find('[data-test="handoff-matter-link"]').exists()).toBe(
+        false,
+      );
+      confirm.mockRestore();
+    },
+  );
+
+  it('assigns waiting review to the client without an internal confirmation action', async () => {
+    leadApi.getLead.mockResolvedValue({
+      ...lead,
+      status: 'WAITING_REVIEW',
+      capabilities: { ...lead.capabilities, push: false, edit: false },
+    });
     const wrapper = await mountPage();
-    expect(wrapper.text()).toContain(
-      '确认侵权后，选择本次交给公证处的商品和截图',
+    expect(wrapper.get('[data-test="lead-workflow"]').text()).toContain(
+      '下一步由客户',
     );
-    await wrapper.get('[data-test="select-product-p"]').setValue(true);
-    await wrapper.get('[data-test="select-evidence-version-1"]').setValue(true);
-    await wrapper.get('[data-test="notary-office"]').setValue('office-1');
-    await wrapper.get('[data-test="batch-purpose"]').setValue('首批线上取证');
-    await wrapper.get('[data-test="transfer-to-notary"]').trigger('click');
-    await flushPromises();
-    expect(confirm).toHaveBeenCalled();
-    expect(notaryApi.createNotaryMatter).toHaveBeenCalledWith(
-      'lead-1',
-      {
-        selectedProductIds: ['p'],
-        selectedContentVersionIds: ['version-1'],
-        notaryOfficeId: 'office-1',
-        evidenceMode: 'ONLINE_PURCHASE',
-        batchPurpose: '首批线上取证',
-        expectedVersion: 3,
-      },
-      expect.any(String),
+    expect(wrapper.get('[data-test="lead-workflow"]').text()).toContain(
+      '不能代客户确认',
     );
-    expect(wrapper.text()).toContain('已移交公证');
-    expect(
-      wrapper.get('[data-test="matter-link-matter-1"]').attributes('href'),
-    ).toBe('/notary-matters/matter-1');
-    confirm.mockRestore();
+    expect(wrapper.find('[data-test="handoff-form-link"]').exists()).toBe(
+      false,
+    );
+    expect(notaryApi.createNotaryMatter).not.toHaveBeenCalled();
   });
 
   it('lets a department office manager add and select a notary office in the workflow', async () => {

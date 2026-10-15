@@ -100,6 +100,95 @@ const matter = {
   ],
 };
 
+describe('notary workflow handoff guidance', () => {
+  it.each([
+    ['PENDING_EVIDENCE', '运营', 'recordEvidence', '#evidence-form'],
+    ['WAITING_UNBOX', '公证处', 'recordOpening', '#opening-form'],
+    ['UNBOX_REVIEW', '客户', 'reviewOpening', '#review-form'],
+    ['ISSUANCE_DECISION', '运营', 'decideIssuance', '#issuance-form'],
+    ['WAITING_RETURN', '不出证', 'archiveReturn', '#return-archive-form'],
+  ])(
+    'shows the real %s responsibility and existing form only when offered',
+    async (stage, responsible, capability, anchor) => {
+      api.getNotaryMatter.mockResolvedValue({
+        ...matter,
+        stage,
+        capabilities: { [capability!]: true },
+      });
+      const wrapper = await mountPage();
+      expect(wrapper.get('[data-test="notary-workflow"]').text()).toContain(
+        responsible,
+      );
+      expect(
+        wrapper.get('[data-test="notary-workflow-action"]').attributes('href'),
+      ).toContain(anchor);
+      api.getNotaryMatter.mockResolvedValue({
+        ...matter,
+        stage,
+        capabilities: {},
+      });
+      await wrapper.get('[data-test="refresh-matter"]').trigger('click');
+      await flushPromises();
+      expect(
+        wrapper.find('[data-test="notary-workflow-action"]').exists(),
+      ).toBe(false);
+    },
+  );
+
+  it('hands waiting certificate to the notary without an operator certificate action', async () => {
+    api.getNotaryMatter.mockResolvedValue({
+      ...matter,
+      stage: 'WAITING_CERTIFICATE',
+      capabilities: {},
+    });
+    const wrapper = await mountPage();
+    expect(wrapper.get('[data-test="notary-workflow"]').text()).toContain(
+      '下一步由公证处',
+    );
+    expect(wrapper.find('[data-test="notary-workflow-action"]').exists()).toBe(
+      false,
+    );
+    expect(wrapper.find('[data-test="certificate-submit"]').exists()).toBe(
+      false,
+    );
+  });
+
+  it('prominently links only the projected exact case and removes it after lost visibility', async () => {
+    api.getNotaryMatter.mockResolvedValue({
+      ...matter,
+      stage: 'ARCHIVED',
+      linkedCase: {
+        id: 'exact-case',
+        businessNo: 'CA-EXACT',
+        stage: 'PENDING_MATCH',
+      },
+      capabilities: {},
+    });
+    const wrapper = await mountPage();
+    expect(wrapper.get('[data-test="linked-case"]').attributes('href')).toBe(
+      '/cases/exact-case',
+    );
+    expect(wrapper.get('[data-test="notary-workflow"]').text()).toContain(
+      '下一步由运营',
+    );
+    api.getNotaryMatter.mockResolvedValue({
+      ...matter,
+      stage: 'ARCHIVED',
+      linkedCase: null,
+      capabilities: {},
+    });
+    await wrapper.get('[data-test="refresh-matter"]').trigger('click');
+    await flushPromises();
+    expect(wrapper.find('[data-test="linked-case"]').exists()).toBe(false);
+    expect(wrapper.get('[data-test="notary-case-summary"]').text()).toContain(
+      '暂无可见案件',
+    );
+    expect(wrapper.get('[data-test="notary-workflow"]').text()).not.toContain(
+      '已出证',
+    );
+  });
+});
+
 const firstEvidence = {
   evidenceAt: '2026-09-24',
   sampleFeeState: 'PENDING',

@@ -80,6 +80,29 @@ const transferSubmitting = ref(false);
 const transferRetryLocked = ref(false);
 const transferError = ref('');
 const transferSuccess = ref('');
+const transferredMatter = ref<{ id: string; businessNo: string }>();
+const workflowGuidance = computed(() => {
+  const current = lead.value;
+  if (!current) return '';
+  switch (current.status) {
+    case 'WAITING_PUSH':
+      return '下一步由运营核对线索后推送，客户在客户办理端的待审核线索中确认。';
+    case 'WAITING_REVIEW':
+      return '下一步由客户在客户办理端的待审核线索中审核；运营在此查看客户结论，不能代客户确认。';
+    case 'WAITING_EVIDENCE_DECISION':
+      return current.capabilities.transferToNotary
+        ? '下一步由运营选择商品、截图、公证处及用途，移交公证；也可按实际情况选择不取证归档。'
+        : '由运营核对后续安排。当前记录未提供可办理入口，请刷新核对最新记录。';
+    case 'TRANSFERRED_TO_NOTARY':
+      return '后续按每个公证取证批次分别推进。请打开对应事项查看当前阶段、下一责任人与办理入口。';
+    case 'ARCHIVED':
+      return current.pendingWithdrawalApplication
+        ? '线索保持归档，下一步由原客户企业在客户办理端确认撤回申请。'
+        : '线索已归档，归档结论见下方记录；本次流程已结束。';
+    default:
+      return '请核对当前线索记录后安排后续办理。';
+  }
+});
 let transferKey: string | undefined;
 let frozenTransferInput: CreateNotaryMatterInput | undefined;
 const normalizedEvidenceReason = computed(() => evidenceReason.value.trim());
@@ -236,6 +259,13 @@ async function load(): Promise<void> {
       state.value = 'ready';
   } catch (error) {
     if (controller.signal.aborted || generation !== contextGeneration) return;
+    if (
+      error instanceof ApiError &&
+      (error.status === 401 || error.status === 403 || error.status === 404)
+    ) {
+      transferredMatter.value = undefined;
+      transferSuccess.value = '';
+    }
     lead.value = undefined;
     screenshots.value = [];
     state.value =
@@ -437,10 +467,16 @@ async function transferToNotary(): Promise<void> {
   transferKey ??= makeTransferKey();
   transferError.value = '';
   transferSuccess.value = '';
+  transferredMatter.value = undefined;
   transferSubmitting.value = true;
   try {
-    await createNotaryMatter(lead.value.id, frozenTransferInput, transferKey);
+    const result = await createNotaryMatter(
+      lead.value.id,
+      frozenTransferInput,
+      transferKey,
+    );
     if (generation !== contextGeneration) return;
+    transferredMatter.value = { id: result.id, businessNo: result.businessNo };
     notifyWorkflowChanged();
     transferKey = undefined;
     frozenTransferInput = undefined;
@@ -655,6 +691,7 @@ function clearContext(): void {
   frozenEvidenceVersion = undefined;
   transferKey = undefined;
   frozenTransferInput = undefined;
+  transferredMatter.value = undefined;
 }
 watch(
   requestScopeKey,
@@ -671,6 +708,21 @@ onBeforeUnmount(clearContext);
   <div class="page-view page-view--narrow">
     <main>
       <RouterLink class="back-link" to="/leads">← 返回线索列表</RouterLink>
+      <section
+        v-if="transferredMatter"
+        class="demo-card demo-card--pad"
+        data-test="handoff-success"
+        role="status"
+      >
+        <h2 class="form-section-title">本次移交成功</h2>
+        <p>{{ transferSuccess }}</p>
+        <RouterLink
+          data-test="handoff-matter-link"
+          :to="`/notary-matters/${transferredMatter.id}`"
+          >打开 {{ transferredMatter.businessNo }}，继续办理</RouterLink
+        >
+        <p>请在该事项查看当前阶段、下一责任人与办理入口。</p>
+      </section>
       <section v-if="state === 'loading'" class="state-panel ledger-panel">
         <h1>正在读取线索</h1>
       </section>
@@ -738,12 +790,26 @@ onBeforeUnmount(clearContext);
         <p v-if="evidenceError" class="submit-error" role="alert">
           {{ evidenceError }}
         </p>
-        <p v-if="transferSuccess" class="submit-success" role="status">
-          {{ transferSuccess }}
-        </p>
         <p v-if="transferError" class="submit-error" role="alert">
           {{ transferError }}
         </p>
+        <section class="demo-card demo-card--pad" data-test="lead-workflow">
+          <h2 class="form-section-title">流程推进</h2>
+          <p>{{ workflowGuidance }}</p>
+          <a
+            v-if="transferAvailable"
+            href="#notary-transfer-form"
+            data-test="handoff-form-link"
+            >{{
+              lead.capabilities.createEvidenceBatch
+                ? '前往新建取证批次'
+                : '填写移交公证资料'
+            }}</a
+          >
+          <a v-else-if="lead.notaryMatters.length" href="#notary-matters"
+            >查看公证取证批次</a
+          >
+        </section>
         <section class="demo-card demo-card--pad">
           <dl class="demo-detail-grid" data-test="lead-facts">
             <div>
@@ -958,6 +1024,7 @@ onBeforeUnmount(clearContext);
         </section>
         <section
           v-if="lead.notaryMatters.length"
+          id="notary-matters"
           class="demo-card demo-card--pad"
           data-test="notary-matters"
         >
@@ -977,6 +1044,7 @@ onBeforeUnmount(clearContext);
         </section>
         <section
           v-if="transferAvailable"
+          id="notary-transfer-form"
           class="demo-card demo-card--pad"
           data-test="notary-transfer-form"
         >

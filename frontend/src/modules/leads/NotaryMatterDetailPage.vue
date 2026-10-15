@@ -138,6 +138,64 @@ const caseStageLabels: Record<CaseStage, string> = {
   ARCHIVED: '已归档',
 };
 
+const workflowGuidance = computed(() => {
+  const current = matter.value;
+  if (!current) return { text: '' };
+  const unavailable = '当前记录未提供本账号的办理入口，请刷新核对最新记录。';
+  switch (current.stage) {
+    case 'PENDING_EVIDENCE':
+      return {
+        text: '下一步由运营登记真实取证日期、样品费及物流，保存后进入开箱环节。',
+        ...(current.capabilities.recordEvidence
+          ? { anchor: 'evidence-form', action: '填写取证物流' }
+          : { text: `由运营核对取证物流。${unavailable}` }),
+      };
+    case 'WAITING_UNBOX':
+      return {
+        text: '下一步由公证处在公证处办理端登记开箱材料；获授权的运营也可在本页登记。',
+        ...(current.capabilities.recordOpening
+          ? { anchor: 'opening-form', action: '填写开箱材料' }
+          : {}),
+      };
+    case 'UNBOX_REVIEW':
+      return {
+        text: '下一步由客户在客户办理端审核开箱材料；获授权的运营也可在本页办理开箱审核。',
+        ...(current.capabilities.reviewOpening
+          ? { anchor: 'review-form', action: '查看并审核开箱材料' }
+          : {}),
+      };
+    case 'ISSUANCE_DECISION':
+      return {
+        text: '下一步由运营根据审核结论决定是否出证；不出证将进入退货归档分支。',
+        ...(current.capabilities.decideIssuance
+          ? { anchor: 'issuance-form', action: '办理出证决定' }
+          : { text: `下一步由运营决定是否出证。${unavailable}` }),
+      };
+    case 'WAITING_CERTIFICATE':
+      return {
+        text: '下一步由公证处在公证处办理端的待出证事项中登记真实公证书和所需材料。完成后由运营接手案件，运营在本页查看结果。',
+      };
+    case 'WAITING_RETURN':
+      return {
+        text: '已决定不出证，下一步由运营办理退货归档，按实际情况记录退货、保留或仅退款。',
+        ...(current.capabilities.archiveReturn
+          ? { anchor: 'return-archive-form', action: '填写退货归档资料' }
+          : {
+              text: `已决定不出证，下一步由运营核对退货归档安排。${unavailable}`,
+            }),
+      };
+    case 'ARCHIVED':
+      return {
+        text: current.linkedCase
+          ? '公证事项已归档，下一步由运营进入下方案件，按案件当前阶段继续办理。'
+          : current.certificateSummary
+            ? '公证事项已出证归档，由运营核对案件后续安排。当前没有可展示的关联案件入口，请刷新核对记录。'
+            : '公证事项已归档，本次公证流程结束；归档结论见下方记录。',
+      };
+  }
+  return { text: '当前阶段未提供办理说明，请刷新核对当前事项记录。' };
+});
+
 function feeLabel(fee: NotaryMatterDetail['fees']['notary']): string {
   return fee.state === 'KNOWN'
     ? `${fee.amount} 元`
@@ -1146,6 +1204,28 @@ watch(
         </div>
         <section
           class="demo-card demo-card--pad"
+          data-test="notary-case-summary"
+        >
+          <h2 class="form-section-title">流程推进与诉讼流转</h2>
+          <p data-test="notary-workflow">{{ workflowGuidance.text }}</p>
+          <RouterLink
+            v-if="workflowGuidance.anchor"
+            data-test="notary-workflow-action"
+            :to="{ hash: `#${workflowGuidance.anchor}` }"
+            >{{ workflowGuidance.action }}</RouterLink
+          >
+          <p v-if="matter.linkedCase">
+            已流转诉讼 · {{ caseStageLabels[matter.linkedCase.stage] }} ·
+            <RouterLink
+              data-test="linked-case"
+              :to="`/cases/${matter.linkedCase.id}`"
+              >进入案件 {{ matter.linkedCase.businessNo }}</RouterLink
+            >
+          </p>
+          <p v-else>暂无可见案件</p>
+        </section>
+        <section
+          class="demo-card demo-card--pad"
           data-test="notary-matter-detail"
         >
           <h2 class="form-section-title">批次信息</h2>
@@ -1252,21 +1332,7 @@ watch(
             </div>
           </dl>
         </section>
-        <section
-          class="demo-card demo-card--pad"
-          data-test="notary-case-summary"
-        >
-          <h2 class="form-section-title">诉讼流转</h2>
-          <p v-if="matter.linkedCase">
-            已流转诉讼 · {{ caseStageLabels[matter.linkedCase.stage] }} ·
-            <RouterLink
-              data-test="linked-case"
-              :to="`/cases/${matter.linkedCase.id}`"
-              >{{ matter.linkedCase.businessNo }}</RouterLink
-            >
-          </p>
-          <p v-else>暂无可见案件</p>
-        </section>
+
         <section
           id="certificate-summary"
           tabindex="-1"

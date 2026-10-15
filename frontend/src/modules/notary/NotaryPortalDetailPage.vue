@@ -23,6 +23,19 @@ import RequiredFieldMark from '../../app/RequiredFieldMark.vue';
 const route = useRoute();
 const state = ref<'loading' | 'ready' | 'missing' | 'failed'>('loading');
 const matter = ref<NotaryPortalMatter>();
+const workflowGuidance = computed(() => {
+  const current = matter.value;
+  if (!current) return '';
+  if (current.stage === 'WAITING_UNBOX')
+    return '下一步由公证处登记开箱照片及有来源的寄件人信息，提交后交客户或获授权运营审核。';
+  if (current.stage === 'UNBOX_REVIEW')
+    return '开箱材料已提交，下一步由客户或获授权运营审核。公证处可在此查看已保存记录，等待运营通知后续安排。';
+  if (current.stage === 'WAITING_CERTIFICATE')
+    return '下一步由公证处登记真实公证书及所需材料；完成后由运营接手案件，在内部案件页面继续办理。';
+  return current.certificate
+    ? '公证事项已出证归档。下一步由运营在内部案件页面接手办理；公证处可在此查看出证结果及附件。'
+    : '公证事项已归档。当前未提供出证结果，请联系运营核对归档结论及后续安排。';
+});
 const materials = ref<OwnerMaterial[]>([]);
 const excludedPhotoIds = ref<Set<string>>(new Set());
 const senderName = ref('');
@@ -153,6 +166,7 @@ async function load(): Promise<void> {
   const controller = new AbortController();
   request = controller;
   state.value = 'loading';
+  matter.value = undefined;
   error.value = '';
   try {
     const result = await getNotaryPortalMatter(matterId.value, {
@@ -459,13 +473,45 @@ onBeforeUnmount(() => request?.abort());
                     ? '开箱待审核'
                     : matter.stage === 'WAITING_CERTIFICATE'
                       ? '待出证'
-                      : '已出证'
+                      : matter.certificate
+                        ? '已出证'
+                        : '已归档'
               }}
               · 创建于 {{ formatTime(matter.createdAt) }}
             </p>
           </div>
           <ElButton text @click="load">刷新</ElButton>
         </div>
+        <section class="demo-card demo-card--pad" data-test="portal-workflow">
+          <h2 class="form-section-title">流程推进</h2>
+          <p>{{ workflowGuidance }}</p>
+          <a
+            v-if="
+              matter.stage === 'WAITING_UNBOX' &&
+              matter.capabilities.recordOpening
+            "
+            data-test="portal-workflow-action"
+            href="#portal-opening-form"
+            >填写开箱材料</a
+          >
+          <a
+            v-else-if="
+              matter.stage === 'WAITING_CERTIFICATE' &&
+              matter.capabilities.issueCertificate
+            "
+            data-test="portal-workflow-action"
+            href="#portal-certificate-form"
+            >填写公证书资料</a
+          >
+          <p
+            v-else-if="
+              matter.stage === 'WAITING_UNBOX' ||
+              matter.stage === 'WAITING_CERTIFICATE'
+            "
+          >
+            当前记录未提供可办理入口，请刷新核对最新记录。
+          </p>
+        </section>
         <p v-if="matter.issuanceDecision" class="field-help">
           已审核同意出证：{{ matter.issuanceDecision.actorDisplayName }} ·
           {{ formatTime(matter.issuanceDecision.decidedAt) }}
@@ -485,6 +531,7 @@ onBeforeUnmount(() => request?.abort());
         </section>
         <section
           v-if="matter.capabilities.recordOpening"
+          id="portal-opening-form"
           class="demo-card demo-card--pad"
           data-test="notary-opening-form"
         >
@@ -599,6 +646,7 @@ onBeforeUnmount(() => request?.abort());
         </section>
         <section
           v-if="matter.capabilities.issueCertificate"
+          id="portal-certificate-form"
           class="demo-card demo-card--pad"
           data-test="certificate-form"
         >

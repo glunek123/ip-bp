@@ -128,7 +128,10 @@ describe('notary portal pages', () => {
       'box.jpg',
     );
     expect(wrapper.text()).toContain('2026-09-27');
-    expect(wrapper.text()).not.toContain('客户');
+    expect(wrapper.get('[data-test="portal-workflow"]').text()).toContain(
+      '下一步由客户或获授权运营审核',
+    );
+    expect(wrapper.find('a[href^="/client/"]').exists()).toBe(false);
     expect(wrapper.text()).not.toContain('费用');
     expect(wrapper.find('[data-test="notary-opening-submit"]').exists()).toBe(
       false,
@@ -255,6 +258,62 @@ describe('notary portal pages', () => {
     expect(wrapper.text()).not.toContain('/cases/case-1');
     expect(wrapper.text()).not.toContain('审核员');
     expect(wrapper.text()).not.toContain('¥ 12.00');
+  });
+
+  it('explains an archived result without deriving an internal case link from caseId', async () => {
+    api.getNotaryPortalMatter.mockResolvedValue({
+      id: 'matter-1',
+      businessNo: 'NZ-001',
+      stage: 'ARCHIVED',
+      createdAt: '2026-09-28T00:00:00Z',
+      evidence: null,
+      opening: null,
+      issuanceDecision: null,
+      certificate: {
+        certificateNo: 'Z-100',
+        certificateDate: '2026-09-28',
+        issuedAt: '2026-09-28T00:00:00Z',
+        files: [],
+        disclosureFiles: [],
+        caseId: 'internal-secret-id',
+        caseBusinessNo: 'CA-1',
+      },
+      capabilities: { recordOpening: false, issueCertificate: false },
+    });
+    const wrapper = await mountRoute(
+      '/notary-portal/matters/matter-1',
+      NotaryPortalDetailPage,
+    );
+    expect(wrapper.get('[data-test="portal-workflow"]').text()).toContain(
+      '下一步由运营',
+    );
+    expect(wrapper.find('a[href^="/cases/"]').exists()).toBe(false);
+    expect(wrapper.html()).not.toContain('internal-secret-id');
+    expect(wrapper.find('[data-test="portal-workflow-action"]').exists()).toBe(
+      false,
+    );
+  });
+
+  it('uses a neutral archive explanation when no certificate result is provided', async () => {
+    api.getNotaryPortalMatter.mockResolvedValue({
+      id: 'matter-1',
+      businessNo: 'NZ-001',
+      stage: 'ARCHIVED',
+      createdAt: '2026-09-28T00:00:00Z',
+      evidence: null,
+      opening: null,
+      certificate: null,
+      capabilities: {},
+    });
+    const wrapper = await mountRoute(
+      '/notary-portal/matters/matter-1',
+      NotaryPortalDetailPage,
+    );
+    expect(wrapper.get('[data-test="portal-workflow"]').text()).toContain(
+      '当前未提供出证结果',
+    );
+    expect(wrapper.text()).not.toContain('已出证');
+    expect(wrapper.text()).not.toContain('权限不足');
   });
 
   it('requires disclosure when the source lead requires it and rejects an eleventh file', async () => {
