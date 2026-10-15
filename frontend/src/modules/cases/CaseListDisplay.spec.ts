@@ -193,6 +193,54 @@ afterEach(() => {
 });
 
 describe('authorized internal case list display', () => {
+  it('shows explicit judgment actions and carries only a named intent with list context', async () => {
+    const item: CaseSummary = {
+      ...summary(),
+      stage: 'WAITING_JUDGMENT',
+      canCorrectJudgment: true,
+      canChooseJudgmentNextStep: true,
+    };
+    api.listCases.mockResolvedValue({ ...result([item]), page: 2, total: 21 });
+    const { wrapper, router } = await mountList(
+      '/cases?view=department&stage=WAITING_JUDGMENT&page=2&action=jump-stage',
+    );
+    const row = wrapper.get('tbody tr');
+    expect(
+      row.findAll('[data-case-action]').map((button) => button.text()),
+    ).toEqual(['更正判决', '选择判决后续流程']);
+    expect(row.get('a').attributes('href')).toBe(
+      '/cases/case-1?view=department&stage=WAITING_JUDGMENT&page=2',
+    );
+    await row.get('[data-case-action="choose-next-step"]').trigger('click');
+    await flushPromises();
+    expect(router.currentRoute.value.path).toBe('/cases/case-1');
+    expect(router.currentRoute.value.query).toEqual({
+      view: 'department',
+      stage: 'WAITING_JUDGMENT',
+      page: '2',
+      tab: 'details',
+      action: 'choose-next-step',
+    });
+  });
+
+  it('ignores repeated clicks while the selected action navigation is pending', async () => {
+    api.listCases.mockResolvedValue(
+      result([{ ...summary(), canArchive: true }]),
+    );
+    const { wrapper, router } = await mountList();
+    let finish!: () => void;
+    const navigation = new Promise<void>((resolve) => {
+      finish = resolve;
+    });
+    const push = vi.spyOn(router, 'push').mockReturnValueOnce(navigation);
+    const action = wrapper.get('[data-case-action="archive"]');
+    await action.trigger('click');
+    await action.trigger('click');
+    expect(push).toHaveBeenCalledTimes(1);
+    finish();
+    await flushPromises();
+  });
+
   it('reads ARCHIVED through the fixed API, preserving the 14-column projection and source amounts', async () => {
     const actual =
       await vi.importActual<typeof import('../../api/cases')>(
@@ -364,7 +412,7 @@ describe('authorized internal case list display', () => {
     );
     expect(cells[0]!.text()).toContain('LD-20261013-00005678');
     expect(cells[0]!.text()).toContain('NZ-20261013-00009012');
-    expect(cells[1]!.text()).toContain('只读');
+    expect(cells[0]!.text()).toContain('只读');
     expect(wrapper.find('input[type="checkbox"]').exists()).toBe(false);
     expect(wrapper.text()).not.toMatch(/批量|已结清|未结清|实收额/);
   });

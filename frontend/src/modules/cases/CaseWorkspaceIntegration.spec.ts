@@ -315,6 +315,174 @@ async function tab(wrapper: VueWrapper, key: string) {
   await flushPromises();
 }
 
+describe('UXQ-01-C list action intents', () => {
+  it('waits for a fresh case version, opens one existing form and consumes only the intent', async () => {
+    const current = { ...structuredClone(baseItem), canRegisterJudgment: true };
+    const { wrapper, router } = await render(current);
+    const next = deferred<CaseDetail>();
+    api.getCase.mockReturnValueOnce(next.promise);
+    await router.push(
+      '/cases/case-1?view=department&stage=WAITING_JUDGMENT&page=3&action=register-judgment',
+    );
+    await flushPromises();
+    expect(wrapper.find('[data-test="case-judgment-panel"]').exists()).toBe(
+      false,
+    );
+    next.resolve({ ...current, version: 8 });
+    await flushPromises();
+    expect(wrapper.get('[data-test="case-judgment-panel"]').isVisible()).toBe(
+      true,
+    );
+    expect(
+      wrapper.getComponent({ name: 'CaseJudgmentPanel' }).props('item').version,
+    ).toBe(8);
+    expect(router.currentRoute.value.query).toEqual({
+      view: 'department',
+      stage: 'WAITING_JUDGMENT',
+      page: '3',
+    });
+    expect(wrapper.get('a[href^="/cases?"]').attributes('href')).toBe(
+      '/cases?view=department&stage=WAITING_JUDGMENT&page=3',
+    );
+    expect(api.submitComplaint).not.toHaveBeenCalled();
+    expect(api.matchCase).not.toHaveBeenCalled();
+    wrapper.getComponent(ElDrawer).vm.$emit('update:modelValue', false);
+    await flushPromises();
+    expect(wrapper.get('[role="dialog"]').isVisible()).toBe(false);
+    await router.push({
+      query: {
+        ...router.currentRoute.value.query,
+        action: 'register-judgment',
+      },
+    });
+    await flushPromises();
+    expect(wrapper.get('[data-test="case-judgment-panel"]').isVisible()).toBe(
+      true,
+    );
+    expect(wrapper.findAll('[data-test="case-judgment-panel"]')).toHaveLength(
+      1,
+    );
+  });
+
+  it.each([
+    'jump-stage',
+    'toString',
+    '',
+    'register-judgment&action=correct-judgment',
+  ])(
+    'consumes invalid intent %s without guessing permission or opening a form',
+    async (action) => {
+      const { wrapper, router } = await render(
+        { ...structuredClone(baseItem), canRegisterJudgment: true },
+        `/cases/case-1?view=department&page=2&action=${action}`,
+      );
+      expect(router.currentRoute.value.query).toEqual({
+        view: 'department',
+        page: '2',
+      });
+      expect(wrapper.get('[data-test="case-action-notice"]').text()).toContain(
+        '入口已失效',
+      );
+      expect(
+        wrapper.get('[data-test="case-action-notice"]').text(),
+      ).not.toMatch(/无权|权限/);
+      expect(wrapper.find('[data-test="case-judgment-panel"]').exists()).toBe(
+        false,
+      );
+    },
+  );
+
+  it('does not replace a lost registration intent with a correction or another available action', async () => {
+    const { wrapper, router } = await render({
+      ...structuredClone(baseItem),
+      canRegisterJudgment: true,
+    });
+    api.getCase.mockResolvedValueOnce({
+      ...structuredClone(baseItem),
+      version: 9,
+      canChooseJudgmentNextStep: true,
+    });
+    await router.push('/cases/case-1?action=register-judgment');
+    await flushPromises();
+    expect(wrapper.get('[data-test="case-action-notice"]').text()).toContain(
+      '入口已失效',
+    );
+    expect(wrapper.find('[data-test="case-judgment-panel"]').exists()).toBe(
+      false,
+    );
+    expect(
+      wrapper.find('[data-test="case-judgment-next-step-panel"]').exists(),
+    ).toBe(false);
+    expect(router.currentRoute.value.query.action).toBeUndefined();
+  });
+
+  it('discards a late action response after navigating to another case', async () => {
+    const { wrapper, router } = await render(structuredClone(baseItem));
+    const old = deferred<CaseDetail>();
+    api.getCase.mockReturnValueOnce(old.promise);
+    await router.push('/cases/case-1?action=register-judgment');
+    await flushPromises();
+    api.getCase.mockResolvedValueOnce({
+      ...structuredClone(baseItem),
+      id: 'case-2',
+      businessNo: 'CA-2',
+    });
+    await router.push('/cases/case-2');
+    await flushPromises();
+    old.resolve({ ...structuredClone(baseItem), canRegisterJudgment: true });
+    await flushPromises();
+    expect(wrapper.text()).toContain('CA-2');
+    expect(wrapper.find('[data-test="case-judgment-panel"]').exists()).toBe(
+      false,
+    );
+    expect(wrapper.find('[data-test="case-action-notice"]').exists()).toBe(
+      false,
+    );
+  });
+
+  it('revalidates an in-flight intent after identity revision changes and ignores the old grant', async () => {
+    const { wrapper, router, auth } = await render(structuredClone(baseItem));
+    const old = deferred<CaseDetail>();
+    api.getCase.mockReturnValueOnce(old.promise);
+    await router.push('/cases/case-1?action=register-judgment');
+    await flushPromises();
+    api.getCase.mockResolvedValueOnce(structuredClone(baseItem));
+    auth.session!.authorizationRevision += 1;
+    await flushPromises();
+    old.resolve({ ...structuredClone(baseItem), canRegisterJudgment: true });
+    await flushPromises();
+    expect(wrapper.get('[data-test="case-action-notice"]').text()).toContain(
+      '入口已失效',
+    );
+    expect(wrapper.find('[data-test="case-judgment-panel"]').exists()).toBe(
+      false,
+    );
+    expect(router.currentRoute.value.query.action).toBeUndefined();
+  });
+
+  it('consumes an unverifiable intent so a manual reload does not later open it', async () => {
+    const { wrapper, router } = await render(structuredClone(baseItem));
+    api.getCase.mockRejectedValueOnce(
+      new ApiError('unavailable', 0, 'NETWORK_ERROR'),
+    );
+    await router.push('/cases/case-1?action=register-judgment');
+    await flushPromises();
+    expect(router.currentRoute.value.query.action).toBeUndefined();
+    expect(wrapper.get('[data-test="case-action-notice"]').text()).toContain(
+      '无法核验',
+    );
+    api.getCase.mockResolvedValueOnce({
+      ...structuredClone(baseItem),
+      canRegisterJudgment: true,
+    });
+    await wrapper.get('[data-test="case-refresh"]').trigger('click');
+    await flushPromises();
+    expect(wrapper.find('[data-test="case-judgment-panel"]').exists()).toBe(
+      false,
+    );
+  });
+});
+
 it.each([
   [
     'case-info',

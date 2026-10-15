@@ -6,6 +6,11 @@ import { ApiError } from '../../api/http';
 import { useAuthStore } from '../../stores/auth';
 import { labelLeadPlatform } from '../leads/index';
 import {
+  primaryCaseAction,
+  resolveCaseListActions,
+  type CaseActionIntent,
+} from './case-workspace-actions';
+import {
   getExternalEntryOptions,
   listCases,
   type CaseStageGroup,
@@ -72,6 +77,13 @@ const requestKey = computed(
   () =>
     `${identity.value}:${view.value}:${stage.value}:${stageGroup.value ?? ''}:${page.value}`,
 );
+const listQuery = computed(() =>
+  Object.fromEntries(
+    Object.entries(route.query).filter(([key]) =>
+      ['view', 'page', 'stage', 'stageGroup'].includes(key),
+    ),
+  ),
+);
 function stageLabel(value: CaseSummary['stage']): string {
   if (value === 'PENDING_MATCH') return '待匹配';
   if (value === 'WAITING_COMPLAINT') return '待写诉状';
@@ -90,10 +102,25 @@ function stageLabel(value: CaseSummary['stage']): string {
   if (value === 'ARCHIVED') return '已归档';
   return '待开庭';
 }
-function canHandle(item: CaseSummary): boolean {
-  return Object.entries(item).some(
-    ([name, value]) => name.startsWith('can') && value === true,
-  );
+function listActions(item: CaseSummary) {
+  const actions = resolveCaseListActions(item);
+  const primary = primaryCaseAction(item.stage, actions);
+  return primary
+    ? [primary, ...actions.filter((action) => action !== primary)]
+    : actions;
+}
+const openingAction = ref(false);
+async function enterAction(item: CaseSummary, action: CaseActionIntent) {
+  if (openingAction.value) return;
+  openingAction.value = true;
+  try {
+    await router.push({
+      path: `/cases/${encodeURIComponent(item.id)}`,
+      query: { ...listQuery.value, tab: 'details', action },
+    });
+  } finally {
+    openingAction.value = false;
+  }
 }
 const amountColumns = [
   { key: 'claimAmount', label: '标的额' },
@@ -376,10 +403,28 @@ onBeforeUnmount(() => request?.abort());
                     class="mono"
                     :to="{
                       path: `/cases/${encodeURIComponent(item.id)}`,
-                      query: route.query,
+                      query: listQuery,
                     }"
                     >{{ item.businessNo }}</RouterLink
                   >
+                  <div class="case-list-actions">
+                    <ElButton
+                      v-for="action in listActions(item)"
+                      :key="action.intent"
+                      text
+                      type="primary"
+                      :data-case-action="action.intent"
+                      :disabled="openingAction"
+                      @click="enterAction(item, action.intent)"
+                    >
+                      {{ action.label }}
+                    </ElButton>
+                    <span
+                      v-if="listActions(item).length === 0"
+                      class="field-help"
+                      >只读</span
+                    >
+                  </div>
                   <details class="case-list-context">
                     <summary :title="item.owner.displayName">
                       负责人：{{ item.owner.displayName }}
@@ -407,9 +452,6 @@ onBeforeUnmount(() => request?.abort());
                 </td>
                 <td class="business-list-cell--nowrap">
                   <span class="pill">{{ stageLabel(item.stage) }}</span>
-                  <p class="field-help">
-                    {{ canHandle(item) ? '办理' : '只读' }}
-                  </p>
                 </td>
                 <td
                   v-for="column in nameColumns"
@@ -564,6 +606,17 @@ onBeforeUnmount(() => request?.abort());
 </template>
 
 <style scoped>
+.case-list-actions {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: var(--s-1);
+  white-space: normal;
+}
+.case-list-actions :deep(.el-button + .el-button) {
+  margin-left: 0;
+}
+
 .case-list-table {
   min-width: 2600px;
 }

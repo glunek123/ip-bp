@@ -4,6 +4,11 @@ import CaseExecutionFilingPanel from './CaseExecutionFilingPanel.vue';
 import CaseExecutionFinishPanel from './CaseExecutionFinishPanel.vue';
 import CaseClosurePanel from './CaseClosurePanel.vue';
 import CaseArchivePanel from './CaseArchivePanel.vue';
+import {
+  parseCaseActionIntent,
+  primaryCaseAction,
+  resolveCaseDetailActions,
+} from './case-workspace-actions';
 
 import {
   computed,
@@ -145,6 +150,7 @@ watch(
 const lead = ref<LeadDetail | null>(null);
 const leadState = ref<LeadState>('idle');
 const drawerOpen = ref(false);
+const actionNotice = ref('');
 const editorVisible = ref(true);
 const editorSection = ref<SectionKey>('case-info');
 const selectedCommand = ref('');
@@ -156,244 +162,7 @@ const openedCommandEntries = ref(new Map<string, WorkspaceCommand>());
 const commands = computed<WorkspaceCommand[]>(() => {
   const current = item.value;
   if (!current) return [];
-  const result: WorkspaceCommand[] = [];
-  const add = (
-    enabled: boolean,
-    command: string,
-    section: SectionKey,
-    label: string,
-  ) => {
-    if (enabled) result.push({ id: command, section, label });
-  };
-  const stage = current.stage;
-  add(
-    stage === 'PENDING_MATCH' && current.canMatch,
-    'match',
-    'case-info',
-    '匹配当事人与承办律师',
-  );
-  add(
-    stage === 'WAITING_COMPLAINT' && current.canSubmitComplaint,
-    'complaint',
-    'first-instance',
-    '提交起诉材料',
-  );
-  add(
-    stage === 'WAITING_COMPLAINT_CONFIRMATION' && current.canConfirmComplaint,
-    'confirm-complaint',
-    'first-instance',
-    '确认诉状',
-  );
-  add(
-    stage === 'WAITING_COMPLAINT_STAMP' &&
-      current.canMailComplaint &&
-      !current.complaintMailing,
-    'mail-complaint',
-    'first-instance',
-    '登记诉状邮寄',
-  );
-  add(
-    stage === 'WAITING_FILING' && current.canSubmitFiling,
-    'filing',
-    'first-instance',
-    '提交立案',
-  );
-  add(
-    (stage === 'WAITING_FORMAL_ACCEPTANCE' &&
-      current.canRegisterAcceptance &&
-      !current.acceptance) ||
-      ((stage === 'WAITING_FORMAL_ACCEPTANCE' || stage === 'WAITING_HEARING') &&
-        current.canUploadAcceptanceMaterials),
-    'acceptance',
-    'first-instance',
-    '正式立案／受理材料',
-  );
-  add(
-    ((!!current.acceptance ||
-      (current.origin?.kind === 'EXTERNAL_ENTRY' &&
-        current.origin.initialStage === 'WAITING_HEARING')) &&
-      stage === 'WAITING_HEARING' &&
-      current.canScheduleHearing) ||
-      (!!current.acceptance &&
-        (stage === 'WAITING_HEARING' || stage === 'WAITING_JUDGMENT') &&
-        current.canCorrectHearing),
-    'hearing',
-    'first-instance',
-    '开庭登记／更正',
-  );
-  add(
-    stage === 'WAITING_JUDGMENT' &&
-      ((!current.judgment.current && current.canRegisterJudgment) ||
-        (!!current.judgment.current &&
-          !current.judgmentNextStep.current &&
-          current.canCorrectJudgment)),
-    'judgment',
-    'judgment',
-    current.judgment.current ? '更正判决' : '登记判决',
-  );
-  add(
-    !!current.judgment.current &&
-      ((stage === 'WAITING_JUDGMENT' &&
-        current.canChooseJudgmentNextStep &&
-        !current.judgmentNextStep.current) ||
-        (current.canRevokeJudgmentNextStep &&
-          !!current.judgmentNextStep.current &&
-          (stage === 'SECOND_INSTANCE' ||
-            stage === 'WAITING_EXECUTION_DOCUMENTS'))),
-    'next-step',
-    'judgment',
-    current.judgmentNextStep.current ? '撤销后续选择' : '选择判决后续流程',
-  );
-  add(
-    (stage === 'SECOND_INSTANCE' &&
-      !!current.secondInstance.currentTrialRoundId &&
-      ((current.judgmentNextStep.current?.next === 'APPEAL' &&
-        current.judgmentNextStep.current.trialRoundId ===
-          current.secondInstance.currentTrialRoundId) ||
-        (current.origin?.kind === 'EXTERNAL_ENTRY' &&
-          current.origin.initialStage === 'SECOND_INSTANCE' &&
-          current.secondInstance.rounds.some(
-            (round) =>
-              round.id === current.secondInstance.currentTrialRoundId &&
-              round.sequence === 1 &&
-              round.sourceResultId === null,
-          ))) &&
-      (current.canSaveSecondInstance ||
-        (current.canRegisterSecondInstanceResult &&
-          !current.secondInstance.currentResult))) ||
-      (current.canRevokeSecondInstanceResult &&
-        !!current.secondInstance.currentResult),
-    'second-instance',
-    'second-instance',
-    current.canRevokeSecondInstanceResult &&
-      current.secondInstance.currentResult
-      ? '撤销二审结果'
-      : '二审登记／结果／撤销',
-  );
-  add(
-    current.recordEdits?.canSaveSecondInstanceAcceptance === true &&
-      (current.recordEdits.secondInstanceAcceptances?.some(
-        (entry) => entry.canEdit && entry.choiceId !== null,
-      ) === true ||
-        (current.origin?.kind === 'EXTERNAL_ENTRY' &&
-          current.origin.initialStage === 'SECOND_INSTANCE' &&
-          current.recordEdits.secondInstanceAcceptances?.some(
-            (entry) =>
-              entry.canEdit &&
-              entry.choiceId === null &&
-              entry.trialRoundId ===
-                current.secondInstance.currentTrialRoundId &&
-              current.secondInstance.rounds.some(
-                (round) =>
-                  round.id === entry.trialRoundId &&
-                  round.sequence === 1 &&
-                  round.sourceResultId === null,
-              ),
-          ) === true)),
-    'second-instance-acceptance',
-    'second-instance',
-    '登记或更正二审受理信息',
-  );
-  add(
-    stage === 'WAITING_EXECUTION_CONFIRMATION' &&
-      current.origin?.kind === 'EXTERNAL_ENTRY' &&
-      current.origin.initialStage === 'WAITING_EXECUTION_CONFIRMATION' &&
-      'canUploadDirectExecutionMaterials' in current &&
-      current.canUploadDirectExecutionMaterials === true &&
-      current.executionSubmission.current === null &&
-      !current.executionConfirmation,
-    'execution-upload',
-    'execution',
-    '上传执行材料',
-  );
-  add(
-    (stage === 'WAITING_EXECUTION_DOCUMENTS' ||
-      (stage === 'SECOND_INSTANCE' &&
-        current.origin?.kind === 'EXTERNAL_ENTRY' &&
-        current.origin.initialStage === 'SECOND_INSTANCE' &&
-        ['AFFIRM', 'CHANGE'].includes(
-          String(current.secondInstance.currentResult?.result),
-        )) ||
-      stage === 'WAITING_EXECUTION_CONFIRMATION') &&
-      current.canSubmitExecution &&
-      !(
-        current.origin?.kind === 'EXTERNAL_ENTRY' &&
-        current.origin.initialStage === 'WAITING_EXECUTION_CONFIRMATION' &&
-        current.executionSubmission.current === null
-      ) &&
-      !current.executionConfirmation,
-    'execution-submission',
-    'execution',
-    '提交执行材料',
-  );
-  add(
-    stage === 'WAITING_EXECUTION_CONFIRMATION' &&
-      current.canConfirmExecution &&
-      (!!current.executionSubmission.current ||
-        (current.origin?.kind === 'EXTERNAL_ENTRY' &&
-          current.origin.initialStage === 'WAITING_EXECUTION_CONFIRMATION')) &&
-      !current.executionConfirmation,
-    'execution-confirmation',
-    'execution',
-    '确认执行材料',
-  );
-  add(
-    stage === 'WAITING_EXECUTION_STAMP' &&
-      current.canMailExecution &&
-      (!!current.executionConfirmation ||
-        (current.origin?.kind === 'EXTERNAL_ENTRY' &&
-          current.origin.initialStage === 'WAITING_EXECUTION_STAMP')) &&
-      !current.executionMailing,
-    'execution-mailing',
-    'execution',
-    '登记执行邮寄',
-  );
-  add(
-    stage === 'WAITING_EXECUTION_FILING' &&
-      current.canSubmitExecutionFiling &&
-      (!!current.executionMailing ||
-        (current.origin?.kind === 'EXTERNAL_ENTRY' &&
-          current.origin.initialStage === 'WAITING_EXECUTION_FILING')) &&
-      !current.executionFiling,
-    'execution-filing',
-    'execution',
-    '登记执行立案',
-  );
-  add(
-    stage === 'EXECUTING' &&
-      current.canFinishExecution &&
-      (!!current.executionFiling ||
-        (current.origin?.kind === 'EXTERNAL_ENTRY' &&
-          current.origin.initialStage === 'EXECUTING')) &&
-      !current.executionFinish,
-    'finish',
-    'execution',
-    '登记执行结束',
-  );
-  add(
-    stage === 'WAITING_ARCHIVE' &&
-      (!!current.executionFinish ||
-        (current.origin?.kind === 'EXTERNAL_ENTRY' &&
-          current.origin.initialStage === 'WAITING_ARCHIVE')) &&
-      ((!current.closure && current.canRecordClosure) ||
-        (!!current.closure && current.canCorrectClosure)),
-    'closure',
-    'closure-info',
-    current.closure ? '更正结案资料' : '登记结案资料',
-  );
-  add(
-    !!current.closure &&
-      ((stage === 'WAITING_ARCHIVE' &&
-        current.canArchive &&
-        !current.archive) ||
-        (stage === 'ARCHIVED' &&
-          current.canCorrectArchive &&
-          !!current.archive)),
-    'archive',
-    'closure-info',
-    current.archive ? '更正归档原因' : '归档案件',
-  );
-
+  const result: WorkspaceCommand[] = resolveCaseDetailActions(current);
   if (finishPending.value && !result.some((entry) => entry.id === 'finish'))
     result.push({
       id: 'finish',
@@ -431,24 +200,7 @@ const commands = computed<WorkspaceCommand[]>(() => {
     actor: secondInstanceActorKey.value,
     caseId: current.id,
   };
-  add(
-    current.recordEdits?.canUpdateDefendantContact === true &&
-      current.defendants.length > 0 &&
-      current.recordEdits.defendantContacts.length ===
-        current.defendants.length,
-    'defendant-contact-update',
-    'case-info',
-    '\u66f4\u65b0\u88ab\u544a\u8054\u7cfb\u65b9\u5f0f',
-  );
-  add(
-    current.recordEdits?.canCorrectAcceptance === true &&
-      current.acceptances.length > 0 &&
-      current.recordEdits.acceptanceCorrections.length ===
-        current.acceptances.length,
-    'acceptance-correction',
-    'first-instance',
-    '\u66f4\u6b63\u4e00\u5ba1\u53d7\u7406\u4fe1\u606f',
-  );
+
   if (
     (pendingSecondInstanceCommand(recoveryIdentity) ||
       hasUnclearedSecondInstanceUpload(recoveryIdentity)) &&
@@ -561,38 +313,9 @@ const editorCommands = computed(() => {
     ? entries
     : entries.filter((command) => command.section === editorSection.value);
 });
-const primaryCommand = computed(() => {
-  const stage = item.value?.stage;
-  const stageCommands: Partial<Record<CaseDetail['stage'], string>> = {
-    PENDING_MATCH: 'match',
-    WAITING_COMPLAINT: 'complaint',
-    WAITING_COMPLAINT_CONFIRMATION: 'confirm-complaint',
-    WAITING_COMPLAINT_STAMP: 'mail-complaint',
-    WAITING_FILING: 'filing',
-    WAITING_FORMAL_ACCEPTANCE: 'acceptance',
-    WAITING_HEARING: 'hearing',
-    WAITING_JUDGMENT: 'judgment',
-    SECOND_INSTANCE: 'second-instance',
-    WAITING_EXECUTION_DOCUMENTS: 'execution-submission',
-    WAITING_EXECUTION_CONFIRMATION: 'execution-confirmation',
-    WAITING_EXECUTION_STAMP: 'execution-mailing',
-    WAITING_EXECUTION_FILING: 'execution-filing',
-    EXECUTING: 'finish',
-    ARCHIVED: 'archive',
-  };
-  if (item.value?.stage === 'WAITING_ARCHIVE')
-    return (
-      businessCommands.value.find((entry) => entry.id === 'archive') ??
-      businessCommands.value.find((entry) => entry.id === 'closure')
-    );
-  return (
-    businessCommands.value.find(
-      (entry) => stage && entry.id === stageCommands[stage],
-    ) ??
-    businessCommands.value.find((entry) => entry.id !== 'next-step') ??
-    businessCommands.value[0]
-  );
-});
+const primaryCommand = computed(() =>
+  primaryCaseAction(item.value?.stage, businessCommands.value),
+);
 const moreCommands = computed(() =>
   businessCommands.value.filter(
     (entry) => entry.id !== primaryCommand.value?.id,
@@ -1267,6 +990,8 @@ async function load() {
   const targetIdentity = identity.value;
   const targetContextRevision = contextRevision;
   const thisReadRevision = ++readRevision;
+  const requestedAction = route.query.action;
+  actionNotice.value = '';
   const preserveCurrent =
     state.value === 'ready' && item.value?.id === targetId;
   const isCurrentRead = () =>
@@ -1350,7 +1075,10 @@ async function load() {
     }
     state.value = 'ready';
     refreshError.value = '';
+    await consumeActionIntent(result);
   } catch (reason) {
+    if (!isCurrentRead()) return;
+    await consumeActionIntent();
     if (!isCurrentRead()) return;
     if (
       reason instanceof ApiError &&
@@ -1390,9 +1118,43 @@ async function load() {
       request = undefined;
     }
   }
+
+  async function consumeActionIntent(fresh?: CaseDetail): Promise<void> {
+    if (
+      requestedAction === undefined ||
+      !isCurrentRead() ||
+      route.query.action !== requestedAction ||
+      String(route.params.id) !== targetId
+    )
+      return;
+    const intent = parseCaseActionIntent(requestedAction);
+    const command =
+      fresh && fresh.id === targetId && intent
+        ? resolveCaseDetailActions(fresh).find(
+            (entry) => entry.intent === intent,
+          )
+        : undefined;
+    const query = { ...route.query };
+    delete query.action;
+    // Replace rather than push: Back and a refresh must not replay an intent.
+    await router.replace({ path: route.path, query });
+    if (!isCurrentRead() || route.query.action !== undefined) return;
+    if (
+      command &&
+      accessVerified.value &&
+      item.value?.version === fresh?.version
+    ) {
+      openCommand(command);
+    } else {
+      actionNotice.value = fresh
+        ? '此办理入口已失效，请查看当前案件可用操作。'
+        : '此办理入口暂时无法核验，请刷新详情后重新选择操作。';
+    }
+  }
 }
 
 function clearContext(): void {
+  actionNotice.value = '';
   accessVerified.value = false;
   drawerOpen.value = false;
   openedCommands.value = new Set();
@@ -1450,6 +1212,16 @@ watch(
     void load();
   },
   { flush: 'sync' },
+);
+
+watch(
+  () => route.query.action,
+  (intent) => {
+    if (intent === undefined || !active || String(route.params.id) !== id.value)
+      return;
+    drawerOpen.value = false;
+    void load();
+  },
 );
 
 watch(
@@ -1936,6 +1708,9 @@ onBeforeUnmount(() => {
 
 <template>
   <div class="page-view">
+    <p v-if="actionNotice" role="status" data-test="case-action-notice">
+      {{ actionNotice }}
+    </p>
     <section
       v-if="!accessVerified || state !== 'ready' || !item"
       class="state-panel ledger-panel"

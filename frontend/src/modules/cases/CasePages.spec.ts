@@ -652,8 +652,10 @@ describe('case pages', () => {
       });
       const wrapper = await mountRoute('/cases', CaseListPage);
       const rows = wrapper.findAll('tbody tr');
-      expect(rows[0]!.findAll('td')[1]!.get('.field-help').text()).toBe('办理');
-      expect(rows[1]!.findAll('td')[1]!.get('.field-help').text()).toBe('只读');
+      expect(rows[0]!.findAll('[data-case-action]')).toHaveLength(1);
+      expect(rows[0]!.get('[data-case-action]').text()).not.toBe('办理');
+      expect(rows[1]!.findAll('td')[0]!.get('.field-help').text()).toBe('只读');
+      expect(rows[1]!.find('[data-case-action]').exists()).toBe(false);
       wrapper.unmount();
     },
   );
@@ -698,7 +700,9 @@ describe('case pages', () => {
     expect(wrapper.get('[data-test="case-list"] a').attributes('href')).toBe(
       '/cases/case-21?view=department&page=2',
     );
-    expect(wrapper.get('[data-test="case-list"]').text()).toContain('办理');
+    expect(wrapper.get('[data-test="case-list"]').text()).toContain(
+      '匹配当事人与承办律师',
+    );
     expect(wrapper.text()).toContain('第 2 / 2 页');
     expect(
       wrapper.get('[data-test="next-page"]').attributes('disabled'),
@@ -1012,7 +1016,9 @@ describe('case pages', () => {
       ],
     });
     const wrapper = await mountRoute('/cases', CaseListPage);
-    expect(wrapper.get('[data-test="case-list"]').text()).toContain('办理');
+    expect(wrapper.get('[data-test="case-list"]').text()).toContain(
+      '提交起诉材料',
+    );
     expect(wrapper.get('[data-test="case-list"]').text()).not.toContain('只读');
   });
 
@@ -1033,7 +1039,9 @@ describe('case pages', () => {
       '/cases?stage=WAITING_EXECUTION_CONFIRMATION',
       CaseListPage,
     );
-    expect(wrapper.get('[data-test="case-list"]').text()).toContain('办理');
+    expect(wrapper.get('[data-test="case-list"]').text()).toContain(
+      '确认执行材料',
+    );
     expect(wrapper.get('[data-test="case-list"]').text()).not.toContain('只读');
   });
 
@@ -1134,7 +1142,9 @@ describe('case pages', () => {
     const rows = wrapper.findAll('[data-test="case-list"] tbody tr');
     expect(rows).toHaveLength(2);
     expect(rows[0]!.text()).toContain('执行材料待确认');
-    expect(rows[0]!.text()).toContain('办理');
+    expect(
+      rows[0]!.get('[data-case-action="execution-submission"]').text(),
+    ).toBe('提交执行材料');
     expect(rows[1]!.text()).toContain('只读');
   });
 
