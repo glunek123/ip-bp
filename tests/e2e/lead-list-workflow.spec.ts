@@ -19,7 +19,7 @@ const coreLeadFixtures = Object.freeze({
   operatorPassword: 'correct horse battery staple',
 });
 const approvedContainerId =
-  'dbb1cbd29c6d65b5aa4fd85317c96167fbd94310c34946edc033fc4f2f9d3695';
+  '45addc0179e929dd1dcd4f835b6c6c14c36c2ac4aed5e6cd5842648bf5db5236';
 type LeadReadClient = {
   connect(): Promise<void>;
   query(
@@ -44,7 +44,7 @@ const testEnvironment = requireProject('./scripts/test-environment.mjs') as {
 function assertLeadWorkflowTarget(): void {
   if (
     process.env.NODE_ENV !== 'test' ||
-    process.env.DEV_COR_TEST_DATABASE_PROJECT !== 'dev-cor-ui003' ||
+    process.env.DEV_COR_TEST_DATABASE_PROJECT !== 'dev-cor-ui003-r2' ||
     process.env.DEV_COR_TEST_DATABASE_CONTAINER_ID !== approvedContainerId ||
     !process.env.DEV_COR_TEST_DATABASE_URL
   )
@@ -58,7 +58,7 @@ function assertLeadWorkflowTarget(): void {
   if (
     !['postgresql:', 'postgres:'].includes(target.protocol) ||
     target.hostname !== '127.0.0.1' ||
-    target.port !== '15437' ||
+    target.port !== '15438' ||
     target.username !== 'dev_cor_test' ||
     target.pathname !== '/dev_cor_test' ||
     target.search ||
