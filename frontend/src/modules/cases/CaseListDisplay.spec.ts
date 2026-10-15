@@ -20,7 +20,8 @@ vi.mock('../../api/cases', async (importOriginal) => ({
   getCase: api.getCase,
   getExternalEntryOptions: api.getExternalEntryOptions,
 }));
-vi.mock('./CaseListWorkflowPanel.vue', () => ({
+vi.mock('./CaseListWorkflowPanel.vue', async (original) => ({
+  ...(await original<typeof import('./CaseListWorkflowPanel.vue')>()),
   default: {
     props: ['item', 'action'],
     template:

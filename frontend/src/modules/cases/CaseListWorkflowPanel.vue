@@ -4,6 +4,47 @@ import {
   parseCaseActionIntent,
   type CaseActionIntent,
 } from './case-workspace-actions';
+import {
+  caseSectionRecordStorageKey,
+  decodeCaseSectionRecordRequest,
+  sectionRecordTargetId,
+  readCaseSectionRecordRequests,
+  type CaseSectionRecordKind,
+  type CaseSectionRecordRequest,
+} from './CaseSectionRecordCorrectionPanel.vue';
+
+export type CaseListAction = CaseActionIntent | 'edit-section-records';
+export type CaseListRecordRecovery = {
+  caseId: string;
+  kind: CaseSectionRecordKind;
+  targetId: string;
+};
+export function readCaseListRecordRecoveries(
+  actor: string,
+): CaseListRecordRecovery[] {
+  if (!actor) return [];
+  const prefix = `case-section-record:v1:${encodeURIComponent(actor)}:`;
+  const result: CaseListRecordRecovery[] = [];
+  for (let index = 0; index < globalThis.sessionStorage.length; index += 1) {
+    const key = globalThis.sessionStorage.key(index);
+    if (!key?.startsWith(prefix)) continue;
+    const raw = globalThis.sessionStorage.getItem(key);
+    const value: unknown = raw === null ? null : JSON.parse(raw);
+    const stored = decodeCaseSectionRecordRequest(value);
+    if (
+      !stored ||
+      stored.actor !== actor ||
+      caseSectionRecordStorageKey(actor, stored.caseId, stored.request) !== key
+    )
+      throw new Error('Invalid section correction recovery record');
+    result.push({
+      caseId: stored.caseId,
+      kind: stored.request.kind,
+      targetId: sectionRecordTargetId(stored.request),
+    });
+  }
+  return result;
+}
 
 type Inputs = {
   match: api.MatchCaseInput;
@@ -276,7 +317,7 @@ export function decodeCaseListRequest(value: unknown): StoredRequest | null {
 </script>
 
 <script setup lang="ts">
-import { computed, onBeforeUnmount, ref, shallowRef } from 'vue';
+import { computed, nextTick, onBeforeUnmount, ref, shallowRef } from 'vue';
 import { ApiError } from '../../api/http';
 import type {
   ListWorkflowSession,
@@ -305,6 +346,11 @@ import CaseExecutionFilingPanel from './CaseExecutionFilingPanel.vue';
 import CaseExecutionFinishPanel from './CaseExecutionFinishPanel.vue';
 import CaseClosurePanel from './CaseClosurePanel.vue';
 import CaseArchivePanel from './CaseArchivePanel.vue';
+import CaseSectionRecordCorrectionPanel from './CaseSectionRecordCorrectionPanel.vue';
+import {
+  resolveCaseSectionEdits,
+  sectionRecordCommands,
+} from './case-workspace-section-edits';
 import { clearSecondInstanceCommand } from './case-second-instance-recovery';
 import {
   clearExecutionCommand,
@@ -313,7 +359,9 @@ import {
 
 const props = defineProps<{
   item: api.CaseDetail;
-  action: CaseActionIntent;
+  action: CaseListAction;
+  recordActorKey?: string;
+  recordRecovery?: CaseListRecordRecovery | null;
   session: ListWorkflowSession;
   requestState: ListWorkflowRequestState;
 }>();
@@ -330,6 +378,24 @@ const pending = shallowRef<StoredRequest | null>(null);
 const error = ref('');
 const storageBlocked = ref(false);
 const busy = computed(() => props.requestState !== 'idle');
+const recordMode = props.action === 'edit-section-records';
+const retainedRecords = shallowRef<
+  ReturnType<typeof readCaseSectionRecordRequests>
+>([]);
+const recordSelection = shallowRef<CaseListRecordRecovery | null>(
+  props.recordRecovery ?? null,
+);
+const recordCommands = computed(() => {
+  const available = resolveCaseSectionEdits(item.value);
+  return sectionRecordCommands.filter(
+    (command) =>
+      available.some((entry) => entry.id === command.id) ||
+      retainedRecords.value.some(
+        (entry) => entry.request.kind === command.kind,
+      ),
+  );
+});
+let recordAdmitted = false;
 let mounted = true;
 onBeforeUnmount(() => {
   mounted = false;
@@ -357,6 +423,146 @@ try {
   error.value =
     '无法读取原请求恢复记录。请保留当前会话并联系管理员核查，尚未发送新请求。';
 }
+if (recordMode) {
+  try {
+    if (!props.recordActorKey) throw new Error('Missing record actor');
+    retainedRecords.value = readCaseSectionRecordRequests(
+      props.recordActorKey,
+      item.value.id,
+    );
+    if (pending.value)
+      throw new Error('Resolve original workflow request first');
+    if (retainedRecords.value.length) {
+      const first = retainedRecords.value[0]!;
+      recordSelection.value ??= {
+        caseId: first.caseId,
+        kind: first.request.kind,
+        targetId: sectionRecordTargetId(first.request),
+      };
+      ownedSession.restoreUnknown();
+    }
+    if (recordSelection.value && recordSelection.value.caseId !== item.value.id)
+      throw new Error('Record recovery case mismatch');
+  } catch {
+    storageBlocked.value = true;
+    error.value =
+      '无法核对资料更正的原请求恢复记录。请保留当前会话并联系管理员，尚未发送新更正请求。';
+  }
+}
+function selectRecordKind(event: globalThis.Event) {
+  if (!current() || storageBlocked.value || busy.value) return;
+  const kind = (event.target as globalThis.HTMLSelectElement).value;
+  const command = recordCommands.value.find((entry) => entry.kind === kind);
+  if (
+    !command ||
+    (retainedRecords.value.length &&
+      !retainedRecords.value.some((entry) => entry.request.kind === kind))
+  )
+    return;
+  const retained = retainedRecords.value.find(
+    (entry) => entry.request.kind === kind,
+  );
+  recordSelection.value = {
+    caseId: item.value.id,
+    kind: command.kind,
+    targetId: retained ? sectionRecordTargetId(retained.request) : '',
+  };
+}
+function selectRecordRecovery(recovery: CaseListRecordRecovery) {
+  if (!current() || storageBlocked.value || busy.value) return;
+  recordSelection.value = recovery;
+}
+function beforeRecordSubmit(input: {
+  caseId: string;
+  request: CaseSectionRecordRequest;
+  recovery: boolean;
+}): boolean {
+  if (
+    !current() ||
+    storageBlocked.value ||
+    pending.value ||
+    recordAdmitted ||
+    input.caseId !== item.value.id ||
+    input.request.kind !== recordSelection.value?.kind ||
+    (!!recordSelection.value.targetId &&
+      sectionRecordTargetId(input.request) !== recordSelection.value.targetId)
+  )
+    return false;
+  try {
+    readCaseListRecordRecoveries(props.recordActorKey ?? '');
+    const retained = readCaseSectionRecordRequests(
+      props.recordActorKey ?? '',
+      item.value.id,
+    );
+    if (input.recovery) {
+      if (
+        !retained.some(
+          (entry) =>
+            JSON.stringify(entry.request) === JSON.stringify(input.request),
+        )
+      )
+        return false;
+    } else if (retained.length) {
+      error.value =
+        '当前案件另有资料更正原请求待核对，请返回列表选择该原请求。';
+      return false;
+    }
+    recordAdmitted = ownedSession.beginSubmit({ recovery: input.recovery });
+    if (recordAdmitted) error.value = '';
+    return recordAdmitted;
+  } catch {
+    storageBlocked.value = true;
+    error.value = '无法核对资料更正的原请求恢复记录，尚未发送请求。';
+    return false;
+  }
+}
+function recordStateChanged(state: ListWorkflowRequestState) {
+  if (!current()) return;
+  if (state === 'submitting') return;
+  try {
+    retainedRecords.value = readCaseSectionRecordRequests(
+      props.recordActorKey ?? '',
+      item.value.id,
+    );
+  } catch {
+    storageBlocked.value = true;
+    error.value =
+      '无法核对资料更正的原请求恢复记录，请保留当前会话并联系管理员。';
+  }
+  if (recordAdmitted) {
+    const activePending = retainedRecords.value.some(
+      (entry) =>
+        entry.request.kind === recordSelection.value?.kind &&
+        (!recordSelection.value.targetId ||
+          sectionRecordTargetId(entry.request) ===
+            recordSelection.value.targetId),
+    );
+    ownedSession.endSubmit(
+      state === 'unknown' || activePending || storageBlocked.value
+        ? 'unknown'
+        : 'failed',
+    );
+    recordAdmitted = false;
+  } else if (state === 'unknown') ownedSession.restoreUnknown();
+}
+function recordChanged() {
+  if (!current() || !recordAdmitted) return;
+  recordAdmitted = false;
+  ownedSession.endSubmit('success');
+}
+function recordAccessLost() {
+  if (current()) ownedSession.deny();
+}
+async function refreshRecord() {
+  // A version conflict requests a fresh read before the panel's finally settles W.
+  await nextTick();
+  await refresh();
+}
+function recordCancel() {
+  // The drawer owns navigation and only admits a cancel while idle.
+  if (current() && props.requestState === 'idle') emit('cancel');
+}
+const emit = defineEmits<{ cancel: [] }>();
 function unknown(reason: unknown) {
   return (
     !(reason instanceof ApiError) ||
@@ -526,7 +732,12 @@ async function retryOriginal() {
   }
 }
 async function refresh() {
-  if (!current() || busy.value || pending.value) return;
+  if (
+    !current() ||
+    props.requestState === 'submitting' ||
+    (!recordMode && (busy.value || pending.value))
+  )
+    return;
   try {
     const fresh = await api.getCase(item.value.id, {
       signal: detailRequest.signal,
@@ -935,11 +1146,88 @@ async function complaint() {
         使用原请求和请求键重试
       </button>
     </div>
-    <p v-if="!allowed && !pending" role="alert">
+    <template v-if="recordMode && !storageBlocked">
+      <p>仅更正已登记资料，保存不会推进案件阶段。</p>
+      <label
+        >资料类型
+        <select
+          data-test="case-list-record-kind"
+          :value="recordSelection?.kind ?? ''"
+          :disabled="busy"
+          @change="selectRecordKind"
+        >
+          <option value="" disabled>请选择已登记资料</option>
+          <option
+            v-for="command in recordCommands"
+            :key="command.id"
+            :value="command.kind"
+            :disabled="
+              retainedRecords.length > 0 &&
+              !retainedRecords.some(
+                (entry) => entry.request.kind === command.kind,
+              )
+            "
+          >
+            {{ command.label }}
+          </option>
+        </select>
+      </label>
+      <p
+        v-if="recordCommands.length === 0"
+        data-test="case-list-record-unavailable"
+        role="status"
+      >
+        当前没有可更正的已登记资料。请核对最新资料及权限。
+      </p>
+      <div v-if="retainedRecords.length" aria-label="当前案件资料更正原请求">
+        <button
+          v-for="(retained, index) in retainedRecords"
+          :key="
+            caseSectionRecordStorageKey(
+              retained.actor,
+              retained.caseId,
+              retained.request,
+            )
+          "
+          type="button"
+          :disabled="busy"
+          @click="
+            selectRecordRecovery({
+              caseId: retained.caseId,
+              kind: retained.request.kind,
+              targetId: sectionRecordTargetId(retained.request),
+            })
+          "
+        >
+          核对原请求 {{ index + 1 }} ·
+          {{
+            sectionRecordCommands.find(
+              (command) => command.kind === retained.request.kind,
+            )?.label
+          }}
+        </button>
+      </div>
+      <CaseSectionRecordCorrectionPanel
+        v-if="recordSelection && recordActorKey"
+        :key="`${recordSelection.kind}:${recordSelection.targetId}`"
+        :item="item"
+        :kind="recordSelection.kind"
+        :actor-key="recordActorKey"
+        :context-key="session.contextKey"
+        :initial-target-id="recordSelection.targetId || undefined"
+        :before-submit="beforeRecordSubmit"
+        @state-change="recordStateChanged"
+        @changed="recordChanged"
+        @access-lost="recordAccessLost"
+        @refresh="refreshRecord"
+        @cancel="recordCancel"
+      />
+    </template>
+    <p v-if="!recordMode && !allowed && !pending" role="alert">
       该操作当前不可办理，请重新读取资料并核对权限及阶段。
     </p>
     <fieldset
-      v-if="!storageBlocked && allowed"
+      v-if="!recordMode && !storageBlocked && allowed"
       :disabled="busy || !!pending"
       :inert="busy || !!pending"
     >

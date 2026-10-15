@@ -18,12 +18,16 @@ import type {
 } from '../../app/list-workflow-context';
 import CaseListWorkflowPanel, {
   decodeCaseListRequest,
+  readCaseListRecordRecoveries,
+  type CaseListAction,
+  type CaseListRecordRecovery,
 } from './CaseListWorkflowPanel.vue';
 import {
   primaryCaseAction,
   resolveCaseListActions,
   type CaseActionIntent,
 } from './case-workspace-actions';
+import { sectionRecordCommands } from './case-workspace-section-edits';
 import {
   getExternalEntryOptions,
   getCase,
@@ -41,6 +45,11 @@ const identity = computed(() =>
   auth.session === null
     ? ''
     : `${auth.session.user.id}:${auth.session.principalType}:${auth.session.department?.id ?? ''}:${auth.session.authorizationRevision}`,
+);
+const recordActorKey = computed(() =>
+  auth.session === null
+    ? ''
+    : `${auth.session.principalType}:${auth.session.user.id}:${auth.session.department?.id ?? ''}`,
 );
 const view = computed<CaseView>(() =>
   route.query.view === 'department' ? 'department' : 'mine',
@@ -137,6 +146,8 @@ function listActions(item: CaseSummary) {
     : actions;
 }
 const pendingActions = ref(new Map<string, CaseActionIntent>());
+const recordRecoveries = ref<CaseListRecordRecovery[]>([]);
+const recordRecoveryError = ref('');
 const missingPendingActions = computed(() =>
   [...pendingActions.value].filter(
     ([id]) => !items.value.some((item) => item.id === id),
@@ -168,10 +179,49 @@ function readPendingActions() {
     /* Storage restrictions must not prevent reading the case list. */
   }
   pendingActions.value = result;
+  try {
+    recordRecoveries.value = readCaseListRecordRecoveries(recordActorKey.value);
+    recordRecoveryError.value = '';
+  } catch {
+    recordRecoveries.value = [];
+    recordRecoveryError.value =
+      '无法核对资料更正的原请求恢复记录。请保留当前会话并联系管理员，尚未发送新更正请求。';
+  }
+}
+function enterRecordEditor(
+  item: Pick<CaseSummary, 'id' | 'businessNo'>,
+  recovery?: CaseListRecordRecovery,
+) {
+  if (
+    !identity.value ||
+    openingAction.value ||
+    recordRecoveryError.value ||
+    pendingActions.value.has(item.id)
+  )
+    return;
+  if (
+    drawerOpen.value &&
+    workflowContext.value?.recordId === item.id &&
+    selectedAction.value === 'edit-section-records'
+  )
+    return;
+  selectedAction.value = 'edit-section-records';
+  selectedRecordRecovery.value =
+    recovery ??
+    recordRecoveries.value.find((entry) => entry.caseId === item.id) ??
+    null;
+  workflowContext.value = {
+    recordId: item.id,
+    actorKey: identity.value,
+    actionKey: 'edit-section-records',
+    title: `${item.businessNo} · 编辑已登记资料`,
+  };
+  drawerOpen.value = true;
 }
 function enterRecovery(id: string, action: CaseActionIntent) {
   if (!identity.value || openingAction.value) return;
   selectedAction.value = action;
+  selectedRecordRecovery.value = null;
   workflowContext.value = {
     recordId: id,
     actorKey: identity.value,
@@ -186,7 +236,8 @@ const drawer = ref<{
 } | null>(null);
 const drawerOpen = ref(false);
 const workflowContext = ref<ListWorkflowContext | null>(null);
-const selectedAction = ref<CaseActionIntent | null>(null);
+const selectedAction = ref<CaseListAction | null>(null);
+const selectedRecordRecovery = ref<CaseListRecordRecovery | null>(null);
 const openingAction = computed(
   () => drawer.value !== null && !drawer.value.canLeave(),
 );
@@ -194,6 +245,8 @@ function enterAction(item: CaseSummary, action: CaseActionIntent) {
   if (
     !identity.value ||
     openingAction.value ||
+    (!pendingActions.value.has(item.id) &&
+      recordRecoveries.value.some((entry) => entry.caseId === item.id)) ||
     (drawerOpen.value &&
       workflowContext.value?.recordId === item.id &&
       selectedAction.value === action)
@@ -202,6 +255,7 @@ function enterAction(item: CaseSummary, action: CaseActionIntent) {
   const entry = listActions(item).find((entry) => entry.intent === action);
   if (!entry) return;
   selectedAction.value = action;
+  selectedRecordRecovery.value = null;
   workflowContext.value = {
     recordId: item.id,
     actorKey: identity.value,
@@ -217,6 +271,7 @@ function closeWorkflow() {
   drawerOpen.value = false;
   workflowContext.value = null;
   selectedAction.value = null;
+  selectedRecordRecovery.value = null;
 }
 function leaveWorkflow() {
   if (drawer.value && !drawer.value.canLeave()) return false;
@@ -426,6 +481,33 @@ onBeforeUnmount(() => request?.abort());
         </div>
       </div>
       <section
+        v-if="recordRecoveries.length || recordRecoveryError"
+        class="state-panel"
+        aria-label="资料更正原请求恢复"
+      >
+        <p v-if="recordRecoveryError" role="alert">{{ recordRecoveryError }}</p>
+        <p v-else>
+          资料更正原请求尚待核对；案件离开当前筛选后仍可打开原对象恢复。
+        </p>
+        <ElButton
+          v-for="(recovery, index) in recordRecoveries"
+          :key="`${recovery.caseId}:${recovery.kind}:${recovery.targetId}`"
+          :disabled="openingAction || pendingActions.has(recovery.caseId)"
+          @click="
+            enterRecordEditor(
+              { id: recovery.caseId, businessNo: '原案件' },
+              recovery,
+            )
+          "
+          >核对资料更正原请求 {{ index + 1 }} ·
+          {{
+            sectionRecordCommands.find(
+              (command) => command.kind === recovery.kind,
+            )?.label
+          }}</ElButton
+        >
+      </section>
+      <section
         v-if="missingPendingActions.length"
         class="state-panel"
         aria-label="未确认的案件办理请求"
@@ -537,11 +619,28 @@ onBeforeUnmount(() => request?.abort());
                       :text="index !== 0"
                       type="primary"
                       :data-case-action="action.intent"
-                      :disabled="openingAction"
+                      :disabled="
+                        openingAction ||
+                        (!pendingActions.has(item.id) &&
+                          recordRecoveries.some(
+                            (recovery) => recovery.caseId === item.id,
+                          ))
+                      "
                       @click="enterAction(item, action.intent)"
                     >
                       {{ action.label }}
                     </ElButton>
+                    <ElButton
+                      text
+                      data-case-record-edit
+                      :disabled="
+                        openingAction ||
+                        !!recordRecoveryError ||
+                        pendingActions.has(item.id)
+                      "
+                      @click="enterRecordEditor(item)"
+                      >编辑已登记资料</ElButton
+                    >
                     <span
                       v-if="listActions(item).length === 0"
                       class="field-help"
@@ -731,6 +830,7 @@ onBeforeUnmount(() => request?.abort());
       :context="workflowContext"
       :load-detail="loadWorkflow"
       @success="load"
+      @closed="readPendingActions"
     >
       <template #default="{ detail, session, requestState }">
         <CaseListWorkflowPanel
@@ -739,6 +839,9 @@ onBeforeUnmount(() => request?.abort());
           :action="selectedAction"
           :session="session"
           :request-state="requestState"
+          :record-actor-key="recordActorKey"
+          :record-recovery="selectedRecordRecovery"
+          @cancel="drawer?.requestClose()"
         />
       </template>
     </ListWorkflowDrawer>
