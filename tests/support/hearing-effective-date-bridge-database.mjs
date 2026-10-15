@@ -7,6 +7,7 @@ import { resolve } from 'node:path';
 import {
   captureTestEnvironment,
   validateBrowserTestDatabaseUrl,
+  validateIsolatedTestDatabaseUrl,
 } from '../../scripts/test-environment.mjs';
 const root = process.cwd();
 const requireBackend = createRequire(resolve(root, 'backend/package.json'));
@@ -54,20 +55,33 @@ function candidate() {
   };
 }
 
+export function assertHearingEffectiveDateBridgeR2Binding(environment) {
+  assert.ok(
+    environment.NODE_ENV === 'test' &&
+      environment.DEV_COR_TEST_DATABASE_PROJECT === 'dev-cor-ui003-r2' &&
+      environment.DEV_COR_TEST_DATABASE_CONTAINER_ID ===
+        '45addc0179e929dd1dcd4f835b6c6c14c36c2ac4aed5e6cd5842648bf5db5236',
+    'Hearing acceptance requires the exact authorized R2 project and container',
+  );
+  const target = validateIsolatedTestDatabaseUrl(
+    environment.DEV_COR_TEST_DATABASE_URL,
+    { allowRandomPort: true },
+  );
+  const effective = validateIsolatedTestDatabaseUrl(environment.DATABASE_URL, {
+    allowRandomPort: true,
+  });
+  assert.ok(
+    target.hostname === '127.0.0.1' &&
+      target.port === 15438 &&
+      effective.connectionString === target.connectionString &&
+      effective.connectionString === environment.DEV_COR_TEST_DATABASE_URL,
+    'Hearing acceptance requires matching effective and authorized R2 URLs on loopback port 15438',
+  );
+}
+
 function capture() {
-  assert.equal(process.env.NODE_ENV, 'test');
-  assert.ok(
-    process.env.DEV_COR_TEST_DATABASE_URL,
-    'Runner must supply the isolated URL',
-  );
-  assert.match(
-    process.env.DEV_COR_TEST_DATABASE_CONTAINER_ID ?? '',
-    /^[a-f0-9]{64}$/u,
-  );
-  assert.ok(
-    process.env.DEV_COR_TEST_DATABASE_PROJECT,
-    'Runner must bind the compose project',
-  );
+  // Reject stale or conflicting input before Docker capture or any DB connection.
+  assertHearingEffectiveDateBridgeR2Binding(process.env);
   const pnpmVersion = (process.env.npm_config_user_agent ?? '').match(
     /\bpnpm\/([^\s]+)/u,
   )?.[1];
@@ -79,10 +93,6 @@ function capture() {
     environment.childEnvironment.DATABASE_URL,
   );
   assert.equal(target.connectionString, process.env.DEV_COR_TEST_DATABASE_URL);
-  assert.ok(
-    ![15433, 15436, 3206, 5186].includes(target.port),
-    'A dedicated random-port instance is required',
-  );
   return environment;
 }
 
