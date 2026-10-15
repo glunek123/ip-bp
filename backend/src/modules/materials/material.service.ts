@@ -45,6 +45,58 @@ declare const VALIDATED_MATERIAL_VERSION: unique symbol;
 
 export type MaterialTransactionClient = Prisma.TransactionClient;
 
+export type CaseSectionRecordKind =
+  | 'EXECUTION_MAILING'
+  | 'EXECUTION_FILING'
+  | 'EXECUTION_FINISH'
+  | 'JUDGMENT'
+  | 'CLOSURE';
+
+export type CaseSectionRecordCorrectionReferenceTarget = Readonly<{
+  kind: CaseSectionRecordKind;
+  correctionId: string;
+}>;
+
+const sectionRecordMaterials = {
+  EXECUTION_MAILING: {
+    category: 'MAIL_RECEIPT',
+    actions: [
+      'case.execution.mailed',
+      'case.execution.mailing.record-corrected',
+    ],
+  },
+  EXECUTION_FILING: {
+    category: 'EXECUTION_FILING_PROOF',
+    actions: [
+      'case.execution.filing.submitted',
+      'case.execution.filing.record-corrected',
+    ],
+  },
+  EXECUTION_FINISH: {
+    category: 'EXECUTION_FINISH_BASIS',
+    actions: [
+      'case.execution.finished',
+      'case.execution.finish.record-corrected',
+    ],
+  },
+  JUDGMENT: {
+    category: 'JUDGMENT',
+    actions: [
+      'case.judgment.registered',
+      'case.judgment.corrected',
+      'case.judgment.record-corrected',
+    ],
+  },
+  CLOSURE: {
+    category: 'CASE_CLOSURE_DOCUMENT',
+    actions: [
+      'case.closure.recorded',
+      'case.closure.corrected',
+      'case.closure.record-corrected',
+    ],
+  },
+} as const;
+
 export type AssertAvailableVersionsInput = Readonly<{
   ownerType: MaterialOwnerTypeValue;
   ownerId: string;
@@ -52,6 +104,7 @@ export type AssertAvailableVersionsInput = Readonly<{
   contentVersionIds: readonly string[];
   minCount?: number;
   maxCount?: number;
+  sectionRecordKind?: CaseSectionRecordKind;
   leadAction?: Extract<
     LeadAction,
     'lead.read' | 'lead.edit' | 'lead.evidence.decide' | 'notary.unbox.record'
@@ -699,7 +752,12 @@ export class MaterialService {
                 : draft.category === 'JUDGMENT'
                   ? {
                       contentVersions: {
-                        none: { caseJudgmentVersions: { some: {} } },
+                        none: {
+                          OR: [
+                            { caseJudgmentVersions: { some: {} } },
+                            { judgmentRecordDocuments: { some: {} } },
+                          ],
+                        },
                       },
                     }
                   : draft.category === 'CUSTOMER_RIGHT_EVIDENCE'
@@ -818,6 +876,16 @@ export class MaterialService {
     const minCount = input.minCount ?? 1;
     const maxCount = input.maxCount ?? Number.MAX_SAFE_INTEGER;
     if (
+      input.sectionRecordKind !== undefined &&
+      (input.ownerType !== 'CASE' ||
+        actor.clientCustomerId !== undefined ||
+        actor.notaryOfficeId !== undefined ||
+        actor.lawyerAccountId !== undefined ||
+        sectionRecordMaterials[input.sectionRecordKind]?.category !==
+          input.category)
+    )
+      throw this.invalidVersion();
+    if (
       !Number.isSafeInteger(minCount) ||
       !Number.isSafeInteger(maxCount) ||
       minCount < 0 ||
@@ -911,6 +979,7 @@ export class MaterialService {
               actor.departmentId,
               material.id,
               version.id,
+              input.sectionRecordKind,
             ))) ||
           (input.ownerType === 'CASE' &&
             input.category === 'MAIL_RECEIPT' &&
@@ -1910,7 +1979,12 @@ export class MaterialService {
             : material.category === 'JUDGMENT'
               ? {
                   contentVersions: {
-                    none: { caseJudgmentVersions: { some: {} } },
+                    none: {
+                      OR: [
+                        { caseJudgmentVersions: { some: {} } },
+                        { judgmentRecordDocuments: { some: {} } },
+                      ],
+                    },
                   },
                 }
               : material.category === 'CUSTOMER_RIGHT_EVIDENCE'
@@ -2755,6 +2829,100 @@ export class MaterialService {
     }
   }
 
+  async freezeCaseSectionRecordCorrectionReferences(
+    transaction: MaterialTransactionClient,
+    actor: ActorContext,
+    caseId: string,
+    target: CaseSectionRecordCorrectionReferenceTarget,
+    facts: readonly ValidatedMaterialVersionFact[],
+    auditEventId: string,
+  ): Promise<void> {
+    const definition = sectionRecordMaterials[target.kind];
+    if (
+      definition === undefined ||
+      actor.clientCustomerId !== undefined ||
+      actor.notaryOfficeId !== undefined ||
+      actor.lawyerAccountId !== undefined ||
+      !caseId.trim() ||
+      !target.correctionId.trim() ||
+      !auditEventId.trim() ||
+      facts.length > 10 ||
+      (facts.length === 0 &&
+        target.kind !== 'EXECUTION_FINISH' &&
+        target.kind !== 'CLOSURE')
+    )
+      throw this.invalidVersion();
+    const canonicalFacts = facts.map((fact) => {
+      const validation = this.validatedVersionFacts.get(fact);
+      const canonical = validation?.canonicalFact;
+      if (
+        validation?.transaction !== transaction ||
+        canonical?.departmentId !== actor.departmentId ||
+        canonical.ownerType !== 'CASE' ||
+        canonical.ownerId !== caseId ||
+        canonical.category !== definition.category ||
+        canonical.purpose !== definition.category ||
+        !allowedMimeTypes[definition.category].has(canonical.mimeType) ||
+        canonical.sizeBytes <= 0n ||
+        canonical.sizeBytes > BigInt(materialFileLimit(definition.category))
+      )
+        throw this.invalidVersion();
+      return canonical;
+    });
+    if (
+      new Set(canonicalFacts.map((fact) => fact.materialId)).size !==
+        facts.length ||
+      new Set(canonicalFacts.map((fact) => fact.contentVersionId)).size !==
+        facts.length
+    ) {
+      throw this.invalidVersion();
+    }
+    for (const fact of canonicalFacts) {
+      const data = {
+        correctionId: target.correctionId,
+        caseId,
+        departmentId: actor.departmentId,
+        materialId: fact.materialId,
+        contentVersionId: fact.contentVersionId,
+      };
+      switch (target.kind) {
+        case 'EXECUTION_MAILING':
+          await transaction.caseExecutionMailingRecordCorrectionDocument.create(
+            { data },
+          );
+          break;
+        case 'EXECUTION_FILING':
+          await transaction.caseExecutionFilingRecordCorrectionDocument.create({
+            data,
+          });
+          break;
+        case 'EXECUTION_FINISH':
+          await transaction.caseExecutionFinishRecordCorrectionDocument.create({
+            data,
+          });
+          break;
+        case 'JUDGMENT':
+          await transaction.caseJudgmentRecordCorrectionDocument.create({
+            data,
+          });
+          break;
+        case 'CLOSURE':
+          await transaction.caseClosureRecordCorrectionDocument.create({
+            data,
+          });
+          break;
+      }
+    }
+    if (facts.length > 0)
+      await this.freezeReferences(transaction, {
+        departmentId: actor.departmentId,
+        resourceType: 'case',
+        resourceId: caseId,
+        facts,
+        actionEventId: auditEventId,
+      });
+  }
+
   async freezeCaseExecutionMailingReferences(
     transaction: MaterialTransactionClient,
     actor: ActorContext,
@@ -2972,7 +3140,31 @@ export class MaterialService {
     departmentId: string,
     materialId: string,
     contentVersionId: string,
+    sectionRecordKind?: CaseSectionRecordKind,
   ): Promise<boolean> {
+    if (sectionRecordKind !== undefined) {
+      const definition = sectionRecordMaterials[sectionRecordKind];
+      if (definition?.category !== category) return false;
+      return (
+        (await transaction.materialReference.findFirst({
+          where: {
+            departmentId,
+            resourceType: 'case',
+            resourceId: caseId,
+            materialId,
+            contentVersionId,
+            purpose: category,
+            actionEvent: {
+              departmentId,
+              resourceType: 'CASE',
+              resourceId: caseId,
+              action: { in: [...definition.actions] },
+            },
+          },
+          select: { id: true },
+        })) !== null
+      );
+    }
     if (category === 'CASE_CLOSURE_DOCUMENT')
       return (
         (await transaction.caseClosureDocument.findFirst({
@@ -4040,7 +4232,11 @@ export class MaterialService {
             },
             actionEvent: {
               action: {
-                in: ['case.complaint.mailed', 'case.execution.mailed'],
+                in: [
+                  'case.complaint.mailed',
+                  'case.execution.mailed',
+                  'case.execution.mailing.record-corrected',
+                ],
               },
               resourceType: 'CASE',
               resourceId: caseId,

@@ -12,6 +12,7 @@ import {
 import { MaterialCleanupService } from './material-cleanup.service';
 import {
   MaterialService,
+  CaseSectionRecordKind,
   MaterialTransactionClient,
   ValidatedMaterialVersionFact,
 } from './material.service';
@@ -26,6 +27,251 @@ const customerId = '33333333-3333-4333-8333-333333333333';
 const now = new Date('2026-09-21T04:00:00.000Z');
 
 describe('MaterialService', () => {
+  describe('section record correction references', () => {
+    const definitions = [
+      [
+        'EXECUTION_MAILING',
+        'MAIL_RECEIPT',
+        'caseExecutionMailingRecordCorrectionDocument',
+      ],
+      [
+        'EXECUTION_FILING',
+        'EXECUTION_FILING_PROOF',
+        'caseExecutionFilingRecordCorrectionDocument',
+      ],
+      [
+        'EXECUTION_FINISH',
+        'EXECUTION_FINISH_BASIS',
+        'caseExecutionFinishRecordCorrectionDocument',
+      ],
+      ['JUDGMENT', 'JUDGMENT', 'caseJudgmentRecordCorrectionDocument'],
+      [
+        'CLOSURE',
+        'CASE_CLOSURE_DOCUMENT',
+        'caseClosureRecordCorrectionDocument',
+      ],
+    ] as const;
+    function setup(
+      category: (typeof definitions)[number][1],
+      mimeType = 'application/pdf',
+      sizeBytes = 12n,
+    ) {
+      const f = createFixture();
+      f.transaction.case.findFirst.mockResolvedValue({
+        departmentId: actor.departmentId,
+        responsibleUserId: actor.userId,
+        responsibleMembership: { teamId: null },
+      });
+      f.transaction.material.findMany.mockResolvedValue([
+        {
+          id: 'material-1',
+          departmentId: actor.departmentId,
+          ownerType: 'CASE',
+          ownerId: customerId,
+          category,
+          purpose: category,
+          status: 'ACTIVE',
+          currentVersionId: 'newer-version',
+          contentVersions: [
+            { id: 'v1', status: 'AVAILABLE', mimeType, sizeBytes },
+          ],
+        },
+      ]);
+      f.transaction.materialReference.findFirst.mockResolvedValue({
+        id: 'frozen-reference',
+      });
+      return f;
+    }
+    it.each(definitions)(
+      'freezes %s documents and references only in the new typed facts',
+      async (kind, category, delegate) => {
+        const f = setup(category);
+        const tx = asTransactionClient(f.transaction);
+        const facts = await f.service.assertAvailableVersions(tx, actor, {
+          ownerType: 'CASE',
+          ownerId: customerId,
+          category,
+          contentVersionIds: ['v1'],
+          sectionRecordKind: kind,
+        });
+        await f.service.freezeCaseSectionRecordCorrectionReferences(
+          tx,
+          actor,
+          customerId,
+          { kind, correctionId: 'correction-1' },
+          facts,
+          'audit-1',
+        );
+        expect(f.transaction[delegate].create).toHaveBeenCalledWith({
+          data: {
+            correctionId: 'correction-1',
+            caseId: customerId,
+            departmentId: actor.departmentId,
+            materialId: 'material-1',
+            contentVersionId: 'v1',
+          },
+        });
+        expect(f.transaction.materialReference.createMany).toHaveBeenCalledWith(
+          {
+            data: [
+              {
+                departmentId: actor.departmentId,
+                resourceType: 'case',
+                resourceId: customerId,
+                purpose: category,
+                materialId: 'material-1',
+                contentVersionId: 'v1',
+                actionEventId: 'audit-1',
+              },
+            ],
+            skipDuplicates: true,
+          },
+        );
+        expect(f.transaction.caseClosureDocument.create).not.toHaveBeenCalled();
+        expect(
+          f.transaction.caseExecutionFinishVersion.create,
+        ).not.toHaveBeenCalled();
+        expect(f.transaction.materialReference.findFirst).toHaveBeenCalledWith(
+          expect.objectContaining({
+            where: expect.objectContaining({
+              materialId: 'material-1',
+              contentVersionId: 'v1',
+              resourceId: customerId,
+              purpose: category,
+              actionEvent: expect.objectContaining({
+                action: {
+                  in: expect.arrayContaining([
+                    expect.stringContaining('record-corrected'),
+                  ]),
+                },
+              }),
+            }),
+          }),
+        );
+      },
+    );
+    it.each(definitions)(
+      'allows empty %s only for optional document sections',
+      async (kind, category) => {
+        const f = setup(category);
+        const result = f.service.freezeCaseSectionRecordCorrectionReferences(
+          asTransactionClient(f.transaction),
+          actor,
+          customerId,
+          { kind, correctionId: 'correction-1' },
+          [],
+          'audit-1',
+        );
+        if (kind === 'EXECUTION_FINISH' || kind === 'CLOSURE')
+          await expect(result).resolves.toBeUndefined();
+        else
+          await expect(result).rejects.toMatchObject({
+            response: { code: 'MATERIAL_VERSION_INVALID' },
+          });
+        expect(
+          f.transaction.materialReference.createMany,
+        ).not.toHaveBeenCalled();
+      },
+    );
+    it.each([
+      { clientCustomerId: customerId },
+      { notaryOfficeId: 'office-1' },
+      { lawyerAccountId: 'lawyer-1' },
+    ])('rejects external opt-in before lookup: %p', async (external) => {
+      const f = setup('MAIL_RECEIPT');
+      await expect(
+        f.service.assertAvailableVersions(
+          asTransactionClient(f.transaction),
+          { ...actor, ...external },
+          {
+            ownerType: 'CASE',
+            ownerId: customerId,
+            category: 'MAIL_RECEIPT',
+            contentVersionIds: ['v1'],
+            sectionRecordKind: 'EXECUTION_MAILING',
+          },
+        ),
+      ).rejects.toMatchObject({
+        response: { code: 'MATERIAL_VERSION_INVALID' },
+      });
+      expect(f.transaction.material.findMany).not.toHaveBeenCalled();
+    });
+    it('keeps obsolete mailing versions unavailable without explicit correction opt-in', async () => {
+      const f = setup('MAIL_RECEIPT');
+      await expect(
+        f.service.assertAvailableVersions(
+          asTransactionClient(f.transaction),
+          actor,
+          {
+            ownerType: 'CASE',
+            ownerId: customerId,
+            category: 'MAIL_RECEIPT',
+            contentVersionIds: ['v1'],
+          },
+        ),
+      ).rejects.toMatchObject({
+        response: { code: 'MATERIAL_VERSION_INVALID' },
+      });
+      expect(f.transaction.materialReference.findFirst).not.toHaveBeenCalled();
+    });
+    it.each([
+      'case',
+      'department',
+      'kind',
+      'transaction',
+      'unbranded',
+      'duplicate',
+      'mime',
+      'size',
+    ] as const)(
+      'rejects %s mismatch before writing any reference or document',
+      async (failure) => {
+        const f = setup(
+          'MAIL_RECEIPT',
+          failure === 'mime' ? 'text/html' : 'application/pdf',
+          failure === 'size' ? 0n : 12n,
+        );
+        const tx = asTransactionClient(f.transaction);
+        const facts = await f.service.assertAvailableVersions(tx, actor, {
+          ownerType: 'CASE',
+          ownerId: customerId,
+          category: 'MAIL_RECEIPT',
+          contentVersionIds: ['v1'],
+          sectionRecordKind: 'EXECUTION_MAILING',
+        });
+        await expect(
+          f.service.freezeCaseSectionRecordCorrectionReferences(
+            failure === 'transaction'
+              ? asTransactionClient(createFixture().transaction)
+              : tx,
+            failure === 'department'
+              ? { ...actor, departmentId: 'other-department' }
+              : actor,
+            failure === 'case' ? 'other-case' : customerId,
+            {
+              kind: (failure === 'kind'
+                ? 'JUDGMENT'
+                : 'EXECUTION_MAILING') satisfies CaseSectionRecordKind,
+              correctionId: 'correction-1',
+            },
+            failure === 'unbranded'
+              ? [{ ...facts[0]! }]
+              : failure === 'duplicate'
+                ? [...facts, ...facts]
+                : facts,
+            'audit-1',
+          ),
+        ).rejects.toMatchObject({
+          response: { code: 'MATERIAL_VERSION_INVALID' },
+        });
+        for (const [, , delegate] of definitions)
+          expect(f.transaction[delegate].create).not.toHaveBeenCalled();
+        expect(
+          f.transaction.materialReference.createMany,
+        ).not.toHaveBeenCalled();
+      },
+    );
+  });
   it('freezes only the complete currently available execution application bundle', async () => {
     const f = createFixture();
     f.transaction.case.findFirst.mockResolvedValue({
@@ -2460,7 +2706,12 @@ describe('MaterialService', () => {
         category: 'JUDGMENT',
         status: 'ACTIVE',
         contentVersions: {
-          none: { caseJudgmentVersions: { some: {} } },
+          none: {
+            OR: [
+              { caseJudgmentVersions: { some: {} } },
+              { judgmentRecordDocuments: { some: {} } },
+            ],
+          },
         },
       }),
     });
@@ -2586,7 +2837,12 @@ describe('MaterialService', () => {
         category: 'JUDGMENT',
         status: 'ACTIVE',
         contentVersions: {
-          none: { caseJudgmentVersions: { some: {} } },
+          none: {
+            OR: [
+              { caseJudgmentVersions: { some: {} } },
+              { judgmentRecordDocuments: { some: {} } },
+            ],
+          },
         },
       }),
     });
@@ -3844,6 +4100,21 @@ function createFixture() {
   const leadFindFirst = jest.fn();
   const notaryMatterFindFirst = jest.fn();
   const transaction = {
+    caseExecutionMailingRecordCorrectionDocument: {
+      create: jest.fn().mockResolvedValue({}),
+    },
+    caseExecutionFilingRecordCorrectionDocument: {
+      create: jest.fn().mockResolvedValue({}),
+    },
+    caseExecutionFinishRecordCorrectionDocument: {
+      create: jest.fn().mockResolvedValue({}),
+    },
+    caseJudgmentRecordCorrectionDocument: {
+      create: jest.fn().mockResolvedValue({}),
+    },
+    caseClosureRecordCorrectionDocument: {
+      create: jest.fn().mockResolvedValue({}),
+    },
     caseClosureDocument: { create: jest.fn().mockResolvedValue({}) },
     caseExecutionFinishVersion: { create: jest.fn().mockResolvedValue({}) },
     $executeRawUnsafe: jest.fn(async () => 1),
@@ -3878,6 +4149,7 @@ function createFixture() {
     },
     materialReference: {
       create: jest.fn().mockResolvedValue({}),
+      findFirst: jest.fn().mockResolvedValue(null),
       count: materialReferenceCount,
       findMany: jest.fn(),
       deleteMany: jest.fn(),
