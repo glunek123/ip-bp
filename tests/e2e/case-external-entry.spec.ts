@@ -957,7 +957,9 @@ test('uploads and confirms a complete direct execution material bundle in the br
     beforeIncompleteConfirmation,
   );
   await page.reload();
-  const confirmationAction = page.getByTestId('workspace-primary-action');
+  const confirmationAction = page.locator(
+    '[data-test="workspace-primary-action"]',
+  );
   await expect(confirmationAction).toHaveCount(1);
   await expect(confirmationAction).toBeVisible();
   await confirmationAction.click();
@@ -993,9 +995,10 @@ test('uploads and confirms a complete direct execution material bundle in the br
   const after = await readCase(request, root.id);
   expect(after.stage).toBe('WAITING_EXECUTION_STAMP');
   expect(after.version).toBe(root.version + 1);
-  expect(after.executionConfirmation).toMatchObject({
-    submissionId: null,
-    files: [
+  expect(after.executionConfirmation?.submissionId).toBeNull();
+  expect(after.executionConfirmation?.files).toHaveLength(2);
+  expect(after.executionConfirmation?.files).toEqual(
+    expect.arrayContaining([
       expect.objectContaining({
         materialId: uploaded.materialId,
         contentVersionId: uploaded.contentVersionId,
@@ -1004,21 +1007,25 @@ test('uploads and confirms a complete direct execution material bundle in the br
         materialId: uploadedSecond.materialId,
         contentVersionId: uploadedSecond.contentVersionId,
       }),
-    ],
-  });
-  expect(after.executionConfirmation?.files).toHaveLength(2);
+    ]),
+  );
   const confirmedFacts = await caseExternalEntrySnapshot(root.id);
   expect(confirmedFacts.confirmations).toHaveLength(1);
   expect(confirmedFacts.confirmationVersions).toHaveLength(2);
   expect(confirmedFacts.confirmationVersions).toEqual(
     expect.arrayContaining([
-      expect.objectContaining({ content_version_id: uploaded.contentVersionId }),
+      expect.objectContaining({
+        content_version_id: uploaded.contentVersionId,
+      }),
       expect.objectContaining({
         content_version_id: uploadedSecond.contentVersionId,
       }),
     ]),
   );
-  await page.reload();
+  await page.goto(`/cases/${root.id}?tab=files`);
+  await expect(
+    page.locator('[data-workspace-tab="files"]'),
+  ).toHaveAttribute('aria-selected', 'true');
   await expect(
     page
       .locator('[data-test="workspace-file"]')
@@ -1070,7 +1077,9 @@ for (const amountState of ['KNOWN', 'PENDING'] as const) {
       }),
     );
     await login(page, `/cases/${root.id}`);
-    const secondInstanceAction = page.getByTestId('workspace-primary-action');
+    const secondInstanceAction = page.locator(
+      '[data-test="workspace-primary-action"]',
+    );
     await expect(secondInstanceAction).toHaveCount(1);
     await expect(secondInstanceAction).toBeVisible();
     await expect(secondInstanceAction).toHaveText('登记二审结果／进度');
