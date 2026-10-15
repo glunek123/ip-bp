@@ -13,6 +13,15 @@ export function verifyHearingEffectiveDateBridge(): Promise<{
   migrationCount: number;
   cases: string[];
   races: string[];
-  lockProofs: Array<{ race: string; events: string[] }>;
+  lockProofs: Array<{
+    race: string;
+    events: string[];
+    scanConflict: {
+      participant: 'second';
+      prismaCode: 'P2010';
+      sqlState: '40001';
+      driverKind: 'TransactionWriteConflict';
+    } | null;
+  }>;
   caseIds: string[];
 }>;

@@ -232,7 +232,14 @@ function deferred() {
   return { promise, resolve: () => resolvePromise() };
 }
 
-async function orderedRace(database, caseId, first, second) {
+async function orderedRace(
+  database,
+  caseId,
+  first,
+  second,
+  secondKind = 'command',
+) {
+  assert.ok(['command', 'scan'].includes(secondKind));
   const acquired = deferred(),
     attempted = deferred(),
     release = deferred();
@@ -288,11 +295,35 @@ async function orderedRace(database, caseId, first, second) {
   }
   const outcomes = await Promise.all([firstSettled, secondSettled]);
   if (barrierError) throw barrierError;
+  let scanConflict = null;
+  if (secondKind === 'scan' && lockEvents.includes('second:rejected')) {
+    const expected = {
+      participant: 'second',
+      prismaCode: 'P2010',
+      sqlState: '40001',
+      driverKind: 'TransactionWriteConflict',
+    };
+    assert.deepEqual(lockErrors, [expected]);
+    assert.deepEqual(lockEvents, [
+      'first:attempt',
+      'first:acquired',
+      'second:attempt',
+      'first:barrier-released',
+      'second:rejected',
+    ]);
+    assert.deepEqual(outcomes[1], {
+      status: 'fulfilled',
+      value: { advanced: 0, failed: 1 },
+    });
+    scanConflict = expected;
+  } else if (secondKind === 'scan') {
+    assert.deepEqual(lockErrors, []);
+  }
   const requiredEvents = [
     'first:acquired',
     'second:attempt',
     'first:barrier-released',
-    'second:acquired',
+    scanConflict === null ? 'second:acquired' : 'second:rejected',
   ];
   let previous = -1;
   for (const event of requiredEvents) {
@@ -303,7 +334,7 @@ async function orderedRace(database, caseId, first, second) {
     );
     previous = index;
   }
-  return { outcomes, lockEvents };
+  return { outcomes, lockEvents, scanConflict };
 }
 
 async function seedOwner(database) {
@@ -632,9 +663,34 @@ export async function verifyHearingEffectiveDateBridge() {
 
     const races = [],
       lockProofs = [];
-    for (const date of [future, null]) {
-      for (const first of ['edit', 'advance']) {
+    for (const date of [future, null, day(-1)]) {
+      for (const first of date === day(-1) ? ['edit'] : ['edit', 'advance']) {
         const fixture = await createCase(past);
+        const beforeCase = await head(fixture.caseId);
+        const originalArrangement =
+          await database.caseHearingArrangement.findUniqueOrThrow({
+            where: { id: fixture.arrangementId },
+          });
+        const factDelegates = [
+          database.caseHearingArrangement,
+          database.caseHearingCorrection,
+          database.caseHearingReceipt,
+          database.caseHearingRecordCorrection,
+          database.caseSectionRecordEditReceipt,
+          database.caseHearingAdvance,
+        ];
+        const beforeStable = await Promise.all(
+          factDelegates.slice(0, 3).map((delegate) =>
+            delegate.findMany({
+              where: { caseId: fixture.caseId },
+              orderBy: { id: 'asc' },
+            }),
+          ),
+        );
+        const beforeAudits = await database.auditEvent.findMany({
+          where: { resourceId: fixture.caseId },
+          orderBy: { id: 'asc' },
+        });
         const input = await correctionInput(
           fixture.caseId,
           fixture.arrangementId,
@@ -643,17 +699,194 @@ export async function verifyHearingEffectiveDateBridge() {
         const correctCommand = (db) =>
           edit(db).correctHearing(actor, fixture.caseId, input);
         const scan = (db) => hearing(db).advanceDue(now);
-        const { outcomes, lockEvents } = await orderedRace(
+        const { outcomes, lockEvents, scanConflict } = await orderedRace(
           database,
           fixture.caseId,
           first === 'edit' ? correctCommand : scan,
           first === 'edit' ? scan : correctCommand,
+          first === 'edit' ? 'scan' : 'command',
         );
         assert.equal(outcomes[0].status, 'fulfilled');
         if (first === 'edit') {
           assert.equal(outcomes[1].status, 'fulfilled');
-          assert.deepEqual(outcomes[1].value, { advanced: 0, failed: 0 });
-          await assertNoAdvance(fixture);
+          const dueDate = date === day(-1);
+          const advancedInitially = dueDate && scanConflict === null;
+          assert.deepEqual(outcomes[1].value, {
+            advanced: advancedInitially ? 1 : 0,
+            failed: scanConflict === null ? 0 : 1,
+          });
+          const committed = await head(fixture.caseId);
+          if (!advancedInitially) assert.deepEqual(committed, beforeCase);
+          assert.deepEqual(
+            await database.caseHearingArrangement.findUniqueOrThrow({
+              where: { id: fixture.arrangementId },
+            }),
+            originalArrangement,
+          );
+          const facts = [
+            ...(await Promise.all(
+              factDelegates.map((delegate) =>
+                delegate.findMany({
+                  where: { caseId: fixture.caseId },
+                  orderBy: { id: 'asc' },
+                }),
+              ),
+            )),
+            await database.auditEvent.findMany({
+              where: { resourceId: fixture.caseId },
+              orderBy: { id: 'asc' },
+            }),
+          ];
+          assert.deepEqual(facts.slice(0, 3), beforeStable);
+          assert.equal(facts[3].length, 1);
+          assert.equal(facts[3][0].id, outcomes[0].value.correctionId);
+          assert.equal(facts[3][0].arrangementId, fixture.arrangementId);
+          assert.equal(
+            facts[3][0].trialRoundId,
+            beforeCase.currentTrialRoundId,
+          );
+          assert.equal(facts[3][0].departmentId, actor.departmentId);
+          assert.equal(facts[3][0].fromRevision, 0);
+          assert.equal(facts[3][0].toRevision, 1);
+          assert.equal(
+            facts[3][0].hearingAt?.toISOString().slice(0, 10) ?? null,
+            date,
+          );
+          assert.equal(facts[4].length, 1);
+          assert.equal(facts[4][0].idempotencyKey, input.idempotencyKey);
+          assert.equal(facts[4][0].resultSnapshot.correctionId, facts[3][0].id);
+          assert.equal(facts[5].length, advancedInitially ? 1 : 0);
+          assert.equal(
+            facts[6].length,
+            beforeAudits.length + 1 + (advancedInitially ? 1 : 0),
+          );
+          assert.equal(
+            facts[6].filter(
+              (audit) => audit.action === 'case.hearing.record-corrected',
+            ).length,
+            1,
+          );
+          assert.equal(
+            facts[6].filter(
+              (audit) => audit.action === 'case.hearing.auto_advanced',
+            ).length,
+            advancedInitially ? 1 : 0,
+          );
+          assert.deepEqual(
+            facts[6].filter(
+              (audit) =>
+                audit.id !== facts[3][0].auditEventId &&
+                !facts[5].some((advance) => advance.auditEventId === audit.id),
+            ),
+            beforeAudits,
+          );
+          // This starts a fresh service scan, not an in-transaction retry. A
+          // committed past head must advance; future/null must remain pending.
+          assert.deepEqual(await hearing(fixture.db).advanceDue(now), {
+            advanced: dueDate && !advancedInitially ? 1 : 0,
+            failed: 0,
+          });
+          const afterScan = await head(fixture.caseId);
+          const afterFacts = [
+            ...(await Promise.all(
+              factDelegates.map((delegate) =>
+                delegate.findMany({
+                  where: { caseId: fixture.caseId },
+                  orderBy: { id: 'asc' },
+                }),
+              ),
+            )),
+            await database.auditEvent.findMany({
+              where: { resourceId: fixture.caseId },
+              orderBy: { id: 'asc' },
+            }),
+          ];
+          assert.deepEqual(afterFacts.slice(0, 5), facts.slice(0, 5));
+          if (dueDate) {
+            assert.equal(afterScan.stage, 'WAITING_JUDGMENT');
+            assert.equal(afterScan.version, beforeCase.version + 1);
+            assert.equal(
+              afterScan.currentHearingArrangementId,
+              fixture.arrangementId,
+            );
+            assert.equal(afterFacts[5].length, 1);
+            assert.equal(
+              afterScan.currentHearingAdvanceId,
+              afterFacts[5][0].id,
+            );
+            assert.equal(afterFacts[5][0].arrangementId, fixture.arrangementId);
+            assert.equal(afterFacts[5][0].caseId, fixture.caseId);
+            assert.equal(afterFacts[5][0].departmentId, actor.departmentId);
+            assert.equal(
+              afterFacts[5][0].trialRoundId,
+              beforeCase.currentTrialRoundId,
+            );
+            assert.equal(afterFacts[5][0].fromVersion, beforeCase.version);
+            assert.equal(afterFacts[5][0].toVersion, beforeCase.version + 1);
+            assert.equal(
+              afterFacts[5][0].dueAt.toISOString(),
+              `${date}T16:00:00.000Z`,
+            );
+            assert.equal(
+              afterFacts[6].filter(
+                (audit) => audit.action === 'case.hearing.auto_advanced',
+              ).length,
+              1,
+            );
+            assert.equal(afterFacts[6].length, beforeAudits.length + 2);
+            assert.deepEqual(afterScan, {
+              ...beforeCase,
+              stage: 'WAITING_JUDGMENT',
+              version: beforeCase.version + 1,
+              currentHearingAdvanceId: afterFacts[5][0].id,
+              updatedAt: afterScan.updatedAt,
+            });
+            const advanceAudit = afterFacts[6].find(
+              (audit) => audit.id === afterFacts[5][0].auditEventId,
+            );
+            assert.equal(advanceAudit.action, 'case.hearing.auto_advanced');
+            assert.equal(advanceAudit.actorKind, 'SYSTEM');
+            assert.equal(advanceAudit.details.advanceId, afterFacts[5][0].id);
+            assert.equal(
+              advanceAudit.details.arrangementId,
+              fixture.arrangementId,
+            );
+            if (advancedInitially) {
+              assert.deepEqual(afterScan, committed);
+              assert.deepEqual(afterFacts, facts);
+            } else {
+              assert.deepEqual(
+                afterFacts[6].filter((audit) => audit.id !== advanceAudit.id),
+                facts[6],
+              );
+            }
+          } else {
+            assert.deepEqual(afterScan, committed);
+            assert.deepEqual(afterFacts, facts);
+            await assertNoAdvance(fixture);
+          }
+          assert.deepEqual(await hearing(fixture.db).advanceDue(now), {
+            advanced: 0,
+            failed: 0,
+          });
+          assert.deepEqual(await head(fixture.caseId), afterScan);
+          assert.deepEqual(
+            [
+              ...(await Promise.all(
+                factDelegates.map((delegate) =>
+                  delegate.findMany({
+                    where: { caseId: fixture.caseId },
+                    orderBy: { id: 'asc' },
+                  }),
+                ),
+              )),
+              await database.auditEvent.findMany({
+                where: { resourceId: fixture.caseId },
+                orderBy: { id: 'asc' },
+              }),
+            ],
+            afterFacts,
+          );
           assert.equal(
             await database.caseHearingRecordCorrection.count({
               where: { caseId: fixture.caseId },
@@ -678,9 +911,9 @@ export async function verifyHearingEffectiveDateBridge() {
             1,
           );
         }
-        const race = `${date === null ? 'null' : 'future'}-${first}-first`;
+        const race = `${date === null ? 'null' : date === day(-1) ? 'past' : 'future'}-${first}-first`;
         races.push(race);
-        lockProofs.push({ race, events: lockEvents });
+        lockProofs.push({ race, events: lockEvents, scanConflict });
       }
     }
     assert.deepEqual(candidate(), source);

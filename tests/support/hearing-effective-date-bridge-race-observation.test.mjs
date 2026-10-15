@@ -176,7 +176,7 @@ test('non-lock query rejects unchanged without lock observations', async () => {
   assert.deepEqual(events, []);
 });
 
-function racingDatabase(secondError) {
+function racingDatabase(secondError, failOnce = false) {
   let transactions = 0;
   let releaseFirst;
   const firstFinished = new Promise((resolve) => {
@@ -193,7 +193,8 @@ function racingDatabase(secondError) {
               async () => {
                 if (index > 0) {
                   await firstFinished;
-                  if (secondError) throw secondError;
+                  if (secondError && (!failOnce || index === 1))
+                    throw secondError;
                 }
                 return [{ id: 'synthetic-case' }];
               },
@@ -262,5 +263,175 @@ test('caught scan failure still fails missing acquired assertion with sanitized 
       );
       return true;
     },
+  );
+});
+
+test('explicit scan contender proves the exact serialization abort without claiming acquired', async () => {
+  const original = Object.assign(new Error(secret), errorCases[0][1]);
+  const scanLike = async (database) => {
+    try {
+      await command(database);
+      return { advanced: 0, failed: 0 };
+    } catch (error) {
+      assert.equal(error, original);
+      return { advanced: 0, failed: 1 };
+    }
+  };
+  const result = await orderedRace(
+    racingDatabase(original),
+    'synthetic-case',
+    command,
+    scanLike,
+    'scan',
+  );
+  assert.deepEqual(result.scanConflict, {
+    participant: 'second',
+    prismaCode: 'P2010',
+    sqlState: '40001',
+    driverKind: 'TransactionWriteConflict',
+  });
+  assert.deepEqual(result.lockEvents, [
+    'first:attempt',
+    'first:acquired',
+    'second:attempt',
+    'first:barrier-released',
+    'second:rejected',
+  ]);
+  assert.deepEqual(result.outcomes[1], {
+    status: 'fulfilled',
+    value: { advanced: 0, failed: 1 },
+  });
+});
+
+for (const [label, code, sqlState, kind] of [
+  ['deadlock', 'P2010', '40P01', 'TransactionWriteConflict'],
+  ['constraint', 'P2010', '23514', 'TransactionWriteConflict'],
+  ['wrong Prisma code', 'P2034', '40001', 'TransactionWriteConflict'],
+  ['wrong driver kind', 'P2010', '40001', 'UniqueConstraintViolation'],
+  ['unclassified error', 'P2010', undefined, undefined],
+]) {
+  test('explicit scan contender rejects ' + label, async () => {
+    const original = Object.assign(new Error(secret), {
+      code,
+      meta: { driverAdapterError: { cause: { originalCode: sqlState, kind } } },
+    });
+    const scanLike = async (database) => {
+      try {
+        await command(database);
+      } catch (error) {
+        assert.equal(error, original);
+      }
+      return { advanced: 0, failed: 1 };
+    };
+    await assert.rejects(
+      orderedRace(
+        racingDatabase(original),
+        'synthetic-case',
+        command,
+        scanLike,
+        'scan',
+      ),
+    );
+  });
+}
+
+test('explicit scan abort rejects incorrect scan counters', async () => {
+  const original = Object.assign(new Error(secret), errorCases[0][1]);
+  const scanLike = async (database) => {
+    try {
+      await command(database);
+    } catch (error) {
+      assert.equal(error, original);
+    }
+    return { advanced: 0, failed: 0 };
+  };
+  await assert.rejects(
+    orderedRace(
+      racingDatabase(original),
+      'synthetic-case',
+      command,
+      scanLike,
+      'scan',
+    ),
+  );
+});
+
+test('explicit scan abort rejects an extra query failure', async () => {
+  const original = Object.assign(new Error(secret), errorCases[0][1]);
+  const scanLike = async (database) => {
+    for (let attempt = 0; attempt < 2; attempt++) {
+      try {
+        await command(database);
+      } catch (error) {
+        assert.equal(error, original);
+      }
+    }
+    return { advanced: 0, failed: 1 };
+  };
+  await assert.rejects(
+    orderedRace(
+      racingDatabase(original),
+      'synthetic-case',
+      command,
+      scanLike,
+      'scan',
+    ),
+  );
+});
+
+test('command retry must finally acquire the lock and never uses the scan exception', async () => {
+  const original = Object.assign(new Error(secret), errorCases[0][1]);
+  const retryingCommand = async (database) => {
+    try {
+      return await command(database);
+    } catch (error) {
+      assert.equal(error, original);
+    }
+    return command(database);
+  };
+  const result = await orderedRace(
+    racingDatabase(original, true),
+    'synthetic-case',
+    command,
+    retryingCommand,
+  );
+  assert.equal(result.scanConflict, null);
+  assert.equal(result.lockEvents.at(-1), 'second:acquired');
+  assert.deepEqual(
+    result.outcomes.map((outcome) => outcome.status),
+    ['fulfilled', 'fulfilled'],
+  );
+});
+
+test('a successful explicit scan still proves actual acquisition', async () => {
+  const scanLike = async (database) => {
+    await command(database);
+    return { advanced: 0, failed: 0 };
+  };
+  const result = await orderedRace(
+    racingDatabase(),
+    'synthetic-case',
+    command,
+    scanLike,
+    'scan',
+  );
+  assert.equal(result.scanConflict, null);
+  assert.equal(result.lockEvents.at(-1), 'second:acquired');
+  assert.deepEqual(result.outcomes[1], {
+    status: 'fulfilled',
+    value: { advanced: 0, failed: 0 },
+  });
+});
+
+test('an uncaught serialization exception is never a valid scan outcome', async () => {
+  const original = Object.assign(new Error(secret), errorCases[0][1]);
+  await assert.rejects(
+    orderedRace(
+      racingDatabase(original),
+      'synthetic-case',
+      command,
+      command,
+      'scan',
+    ),
   );
 });
