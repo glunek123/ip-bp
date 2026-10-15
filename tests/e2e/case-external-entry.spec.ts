@@ -5,7 +5,6 @@ import {
   type APIRequestContext,
   type Page,
 } from '@playwright/test';
-import type { CaseDetail } from '../../frontend/src/api/cases';
 import {
   coreLeadFixtures,
   seedCoreLeadE2eData,
@@ -86,6 +85,43 @@ type Created = {
   entryId: string;
   recordedAt: string;
 };
+type CaseView = {
+  id: string;
+  stage: Stage;
+  version: number;
+  sourceLead: unknown;
+  sourceNotaryMatter: unknown;
+  certificate: unknown;
+  origin:
+    | {
+        kind: 'EXTERNAL_ENTRY';
+        entryId: string;
+        entryKind: EntryInput['entryKind'];
+        initialStage: Stage;
+        stageReachedOn: string;
+        source: string;
+        reason: string;
+        recordedAt: string;
+        recordedByUserId: string;
+        known: EntryInput['known'];
+      }
+    | { kind: 'NOTARY' };
+  defendants: unknown[];
+  secondInstance: { currentTrialRoundId: string | null };
+  acceptance: unknown;
+  hearing: unknown;
+  recordEdits?: {
+    secondInstanceAcceptances?: Array<{
+      choiceId: string | null;
+      trialRoundId: string;
+      acceptanceRevision: number;
+      acceptedAt: string | null;
+      courtCaseNo: string | null;
+      history: unknown[];
+    }>;
+  };
+};
+
 function shanghaiToday() {
   return new Intl.DateTimeFormat('en-CA', {
     timeZone: 'Asia/Shanghai',
@@ -153,12 +189,12 @@ async function readCase(
   caseId: string,
   headers = operator,
 ) {
-  return body<CaseDetail>(
+  return body<CaseView>(
     await request.get(`/api/v1/cases/${caseId}`, { headers }),
   );
 }
 
-function requiredCurrentTrialRoundId(detail: CaseDetail): string {
+function requiredCurrentTrialRoundId(detail: CaseView): string {
   const id = detail.secondInstance.currentTrialRoundId;
   if (typeof id !== 'string')
     throw new Error('Expected a current second-instance trial round');

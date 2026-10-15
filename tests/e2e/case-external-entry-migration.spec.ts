@@ -165,15 +165,15 @@ test('CA018 upgrades an actual 150-migration case and guards normal fact sources
         priorDepartmentId,
         true,
       );
-      const failedReferenceMigration =
+      const failedUpgradeReferenceMigration =
         await failCaseExternalEntryMigrationAtomically(
           client,
           upgrade,
           externalEntryReferenceMigration,
         );
-      expect(failedReferenceMigration.errorCode).toBe('22012');
-      expect(failedReferenceMigration.after).toEqual(
-        failedReferenceMigration.before,
+      expect(failedUpgradeReferenceMigration.errorCode).toBe('22012');
+      expect(failedUpgradeReferenceMigration.after).toEqual(
+        failedUpgradeReferenceMigration.before,
       );
       expect(
         await snapshotOldCaseRows(
@@ -281,15 +281,15 @@ test('CA018 upgrades an actual 150-migration case and guards normal fact sources
         priorDepartmentId,
         true,
       );
-      const failedReferenceMigration =
+      const failedRetryReferenceMigration =
         await failCaseExternalEntryMigrationAtomically(
           client,
           retry,
           externalEntryReferenceMigration,
         );
-      expect(failedReferenceMigration.errorCode).toBe('22012');
-      expect(failedReferenceMigration.after).toEqual(
-        failedReferenceMigration.before,
+      expect(failedRetryReferenceMigration.errorCode).toBe('22012');
+      expect(failedRetryReferenceMigration.after).toEqual(
+        failedRetryReferenceMigration.before,
       );
       await applyCaseExternalEntryMigration(
         client,
