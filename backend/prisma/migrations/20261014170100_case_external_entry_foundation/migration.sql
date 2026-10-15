@@ -391,7 +391,7 @@ BEGIN
          AND c."current_trial_round_id"=r."id" AND r."source_result_id"=s."id" AND s."result"='REMAND'
          AND s."external_entry_id"=e."id" AND NEW."external_entry_id"=e."id"
          AND NEW."accepted_at">=s."result_received_at" AND NOT EXISTS (SELECT 1 FROM "case_second_instance_result_revocations" z WHERE z."result_id"=s."id")
-         AND NOT EXISTS (SELECT 1 FROM "case_filing_submissions" f WHERE f."case_id"=c."id" AND f."department_id"=c."department_id"))))
+         AND NOT EXISTS (SELECT 1 FROM "case_filing_submissions" f WHERE f."case_id"=c."id" AND f."department_id"=c."department_id")))))
   THEN RAISE EXCEPTION 'acceptance lacks filing or exact external stage' USING ERRCODE='23514'; END IF;
   IF NOT EXISTS (SELECT 1 FROM "audit_events" a WHERE a."id"=NEW."audit_event_id" AND a."department_id"=NEW."department_id"
     AND a."resource_type"='CASE' AND a."resource_id"=NEW."case_id" AND a."actor_user_id"=NEW."recorded_by_user_id"
