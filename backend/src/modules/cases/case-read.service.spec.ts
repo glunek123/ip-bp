@@ -74,6 +74,7 @@ describe('CaseReadService', () => {
         groupBy: jest.fn().mockResolvedValue([]),
       },
       material: { findMany: jest.fn().mockResolvedValue([]) },
+      $queryRawUnsafe: jest.fn().mockResolvedValue([]),
       filingCourt: { findMany: jest.fn().mockResolvedValue([]) },
       $transaction: jest.fn(),
     };
@@ -104,6 +105,7 @@ describe('CaseReadService', () => {
       operation({
         case: { findFirst: db.case.findFirst },
         material: db.material,
+        $queryRawUnsafe: db.$queryRawUnsafe,
       }),
     );
     return {
@@ -211,6 +213,73 @@ describe('CaseReadService', () => {
       complaintMailing: null,
     };
   }
+  it('hides prepared judgment metadata from lawyer details until exact first-consumption proof without changing ordinary files', async () => {
+    const f = fixture();
+    const record = externalRecord('ARCHIVED');
+    const pendingId = '33333333-3333-4333-8333-333333333333';
+    const ordinaryId = '44444444-4444-4444-8444-444444444444';
+    f.db.case.findFirst.mockResolvedValue(record);
+    f.db.userAccount.findUnique.mockResolvedValue({
+      accountType: 'LAWYER',
+      active: true,
+    });
+    const materials = [
+      {
+        id: 'pending-material',
+        currentVersionId: pendingId,
+        contentVersions: [
+          {
+            id: pendingId,
+            originalFilename: '内部未提交判决.pdf',
+            mimeType: 'application/pdf',
+            caseSectionRecordUploadDraftId: 'dedicated-draft',
+          },
+        ],
+      },
+      {
+        id: 'ordinary-material',
+        currentVersionId: ordinaryId,
+        contentVersions: [
+          {
+            id: ordinaryId,
+            originalFilename: '原普通判决.pdf',
+            mimeType: 'application/pdf',
+            caseSectionRecordUploadDraftId: null,
+          },
+        ],
+      },
+    ];
+    f.db.material.findMany.mockImplementation(async ({ where }) =>
+      where.category === 'JUDGMENT' ? structuredClone(materials) : [],
+    );
+    const lawyer = { ...actor, lawyerAccountId: actor.userId };
+    const before = await f.service.get(lawyer, record.id);
+    expect(
+      before.judgment.availableFiles.map((file) => file.contentVersionId),
+    ).toEqual([ordinaryId]);
+    expect(JSON.stringify(before)).not.toContain('内部未提交判决.pdf');
+    expect(f.db.$queryRawUnsafe).toHaveBeenCalledWith(
+      expect.stringContaining('case_section_upload_has_first_freeze(v.id)'),
+      [pendingId],
+    );
+    f.db.$queryRawUnsafe.mockResolvedValue([{ id: pendingId }]);
+    const after = await f.service.get(lawyer, record.id);
+    expect(
+      after.judgment.availableFiles.map((file) => file.contentVersionId),
+    ).toEqual([pendingId, ordinaryId]);
+    expect(after.judgment.availableFiles[0]).not.toHaveProperty(
+      'caseSectionRecordUploadDraftId',
+    );
+    f.db.userAccount.findUnique.mockResolvedValue({
+      accountType: 'INTERNAL',
+      active: true,
+    });
+    f.db.$queryRawUnsafe.mockClear();
+    expect(
+      (await f.service.get(actor, record.id)).judgment.availableFiles,
+    ).toHaveLength(2);
+    expect(f.db.$queryRawUnsafe).not.toHaveBeenCalled();
+  });
   it('projects corrected execution mailing separately from its frozen record and hides internal correction evidence from lawyers', async () => {
     const f = fixture();
     const originalFile = {

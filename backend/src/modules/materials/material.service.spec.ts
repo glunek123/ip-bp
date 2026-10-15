@@ -17,6 +17,7 @@ import {
   ValidatedMaterialVersionFact,
 } from './material.service';
 import { MaterialStorageKeyCoordinator } from './material-storage-key-coordinator';
+import type { CaseSectionRecordUploadTarget } from './case-section-record-upload.dto';
 
 const actor: ActorContext = {
   userId: '11111111-1111-4111-8111-111111111111',
@@ -27,6 +28,531 @@ const customerId = '33333333-3333-4333-8333-333333333333';
 const now = new Date('2026-09-21T04:00:00.000Z');
 
 describe('MaterialService', () => {
+  describe('dedicated section uploads', () => {
+    const targetId = '44444444-4444-4444-8444-444444444444';
+    const versionId = '55555555-5555-4555-8555-555555555555';
+    const roundId = '66666666-6666-4666-8666-666666666666';
+    const targets: CaseSectionRecordUploadTarget[] = [
+      { kind: 'EXECUTION_MAILING', targetId, expectedRevision: 0 },
+      { kind: 'EXECUTION_FILING', targetId, expectedRevision: 0 },
+      { kind: 'EXECUTION_FINISH', targetId, expectedRevision: 0 },
+      {
+        kind: 'JUDGMENT',
+        targetId,
+        expectedRevision: 0,
+        trialRoundId: roundId,
+      },
+      {
+        kind: 'CLOSURE',
+        targetId,
+        expectedRevision: 0,
+        expectedClosureVersionId: versionId,
+      },
+    ];
+    function setup(target = targets[0]!) {
+      const f = createFixture();
+      const categories = {
+        EXECUTION_MAILING: 'MAIL_RECEIPT',
+        EXECUTION_FILING: 'EXECUTION_FILING_PROOF',
+        EXECUTION_FINISH: 'EXECUTION_FINISH_BASIS',
+        JUDGMENT: 'JUDGMENT',
+        CLOSURE: 'CASE_CLOSURE_DOCUMENT',
+      } as const;
+      const commands = {
+        EXECUTION_MAILING: 'EXECUTION_MAILING_CORRECTION',
+        EXECUTION_FILING: 'EXECUTION_FILING_CORRECTION',
+        EXECUTION_FINISH: 'EXECUTION_FINISH_CORRECTION',
+        JUDGMENT: 'JUDGMENT_RECORD_CORRECTION',
+        CLOSURE: 'CLOSURE_RECORD_CORRECTION',
+      } as const;
+      const category = categories[target.kind];
+      f.transaction.case.findFirst.mockResolvedValue({
+        departmentId: actor.departmentId,
+        responsibleUserId: actor.userId,
+        responsibleMembership: { teamId: null },
+        stage: 'ARCHIVED',
+        version: 42,
+      });
+      f.transaction.userAccount.findUnique.mockResolvedValue({
+        active: true,
+        accountType: 'INTERNAL',
+      });
+      const state = {
+        consumed: false,
+        pendingCount: 0,
+        draft: {
+          id: 'draft-1',
+          departmentId: actor.departmentId,
+          actorUserId: actor.userId,
+          internalActorUserId: actor.userId,
+          notaryOfficeAccountBindingId: null,
+          customerAccountBindingId: null,
+          lawyerAccountBindingId: null,
+          ownerType: 'CASE' as const,
+          ownerId: customerId,
+          category,
+          purpose: category,
+          originalFilename: '更正.pdf',
+          declaredMimeType: 'application/pdf',
+          expiresAt: new Date(now.getTime() + 60_000),
+          createdAt: now,
+          updatedAt: now,
+          pendingStorageKey: null as string | null,
+          status: 'OPEN' as 'OPEN' | 'FINALIZED',
+          caseSectionRecordCommand: commands[target.kind],
+          caseSectionRecordTargetId: target.targetId,
+          caseSectionRecordRevision: target.expectedRevision,
+          caseSectionRecordTrialRoundId:
+            target.kind === 'JUDGMENT' ? target.trialRoundId : null,
+          caseSectionRecordClosureVersionId:
+            target.kind === 'CLOSURE' ? target.expectedClosureVersionId : null,
+        },
+      };
+      f.db.uploadDraft.findUnique.mockImplementation(async () => ({
+        ...state.draft,
+      }));
+      f.transaction.uploadDraft.findUnique.mockImplementation(async () => ({
+        ...state.draft,
+      }));
+      f.transaction.uploadDraft.updateMany.mockImplementation(
+        async ({ data }) => {
+          Object.assign(state.draft, data);
+          return { count: 1 };
+        },
+      );
+      f.transaction.$queryRawUnsafe.mockImplementation(async (sql) =>
+        typeof sql === 'string' && sql.includes('has_first_freeze')
+          ? [{ consumed: state.consumed }]
+          : typeof sql === 'string' &&
+              sql.includes('case_section_upload_current_is_frozen')
+            ? [{ count: state.pendingCount }]
+            : [{ id: customerId }],
+      );
+      f.transaction.caseClosure.findFirst.mockResolvedValue({
+        currentVersionId: versionId,
+      });
+      f.transaction.caseClosureVersion.findFirst.mockResolvedValue({
+        id: versionId,
+      });
+      f.storage.put.mockResolvedValue({
+        sizeBytes: 12,
+        sha256: 'a'.repeat(64),
+        detectedMimeType: 'application/pdf',
+      });
+      const material = availableMaterial(
+        'material-1',
+        versionId,
+        category,
+        'CASE',
+        customerId,
+        category,
+      );
+      const version = {
+        ...material.contentVersions[0],
+        mimeType: 'application/pdf',
+        sizeBytes: 12n,
+        uploadedBy: actor.userId,
+        caseSectionRecordUploadDraft: { ...state.draft, status: 'FINALIZED' },
+      };
+      f.transaction.material.findMany.mockResolvedValue([
+        {
+          ...material,
+          currentVersionId: versionId,
+          contentVersions: [version],
+        },
+      ]);
+      return {
+        ...f,
+        state,
+        category,
+        target,
+        version,
+        tx: asTransactionClient(f.transaction),
+        input: {
+          ownerType: 'CASE' as const,
+          ownerId: customerId,
+          category,
+          contentVersionIds: [versionId],
+          sectionRecordKind: target.kind,
+          sectionRecordTarget: target,
+        },
+      };
+    }
+    it.each(targets)(
+      'creates $kind from current internal action/scope and exact head at later stages',
+      async (target) => {
+        const f = setup(target);
+        const result = await f.service.createCaseSectionRecordUploadDraft(
+          actor,
+          customerId,
+          target,
+          { originalFilename: '更正.pdf', declaredMimeType: 'application/pdf' },
+        );
+        expect(result.recordCorrection).toEqual(target);
+        expect(result.ownerType).toBe('CASE');
+        expect(f.transaction.uploadDraft.create).toHaveBeenCalledWith({
+          data: expect.objectContaining({
+            ownerId: customerId,
+            category: f.category,
+            purpose: f.category,
+            internalActorUserId: actor.userId,
+            caseSectionRecordRevision: 0,
+          }),
+        });
+        expect(
+          f.transaction.$queryRawUnsafe.mock.invocationCallOrder[0],
+        ).toBeLessThan(f.access.authorizeCase.mock.invocationCallOrder[0]!);
+        expect(f.transaction.auditEvent.create).not.toHaveBeenCalled();
+      },
+    );
+    it.each([targets[1]!, targets[2]!, targets[4]!])(
+      'counts only the exact-current unconsumed pool for dedicated $kind uploads',
+      async (target) => {
+        const f = setup(target);
+        f.transaction.material.count.mockResolvedValue(10);
+        await expect(
+          f.service.finalizeUpload(actor, 'draft-1', Readable.from('bytes')),
+        ).resolves.toHaveProperty('recordCorrection', target);
+        expect(f.transaction.material.count).not.toHaveBeenCalled();
+        expect(f.transaction.$queryRawUnsafe).toHaveBeenCalledWith(
+          expect.stringContaining(
+            'NOT case_section_upload_current_is_frozen(m.id',
+          ),
+          actor.departmentId,
+          customerId,
+          f.category,
+        );
+        const full = setup(target);
+        full.state.pendingCount = 10;
+        await expect(
+          full.service.finalizeUpload(actor, 'draft-1', Readable.from('bytes')),
+        ).rejects.toMatchObject({ response: { code: 'VALIDATION_ERROR' } });
+        expect(full.transaction.contentVersion.create).not.toHaveBeenCalled();
+        expect(full.storage.delete).toHaveBeenCalledTimes(1);
+      },
+    );
+    it.each(targets)(
+      'checks $kind before streaming and again before finalization with server provenance',
+      async (target) => {
+        const f = setup(target);
+        const result = await f.service.finalizeUpload(
+          actor,
+          'draft-1',
+          Readable.from('bytes'),
+        );
+        expect(result).toMatchObject({
+          recordCorrection: target,
+          purpose: f.category,
+        });
+        expect(f.access.authorizeCase).toHaveBeenCalledTimes(2);
+        expect(f.access.authorizeCase.mock.invocationCallOrder[0]).toBeLessThan(
+          f.storage.put.mock.invocationCallOrder[0]!,
+        );
+        expect(
+          f.access.authorizeCase.mock.invocationCallOrder[1],
+        ).toBeGreaterThan(f.storage.put.mock.invocationCallOrder[0]!);
+        expect(f.db.uploadDraft.updateMany).not.toHaveBeenCalled();
+        expect(f.transaction.contentVersion.create).toHaveBeenCalledWith({
+          data: expect.objectContaining({
+            caseSectionRecordUploadDraftId: 'draft-1',
+            uploadedBy: actor.userId,
+          }),
+        });
+        expect(f.state.draft.status).toBe('FINALIZED');
+        await expect(
+          f.service.finalizeUpload(actor, 'draft-1', Readable.from('again')),
+        ).rejects.toMatchObject({ response: { code: 'VERSION_CONFLICT' } });
+        expect(f.storage.put).toHaveBeenCalledTimes(1);
+      },
+    );
+    it.each(['create', 'claim', 'finalize', 'consume'] as const)(
+      'denies revoked authorization at %s',
+      async (phase) => {
+        const f = setup();
+        const denied = new ForbiddenException({ code: 'ACTION_FORBIDDEN' });
+        if (phase === 'finalize')
+          f.storage.put.mockImplementation(async () => {
+            f.access.authorizeCase.mockRejectedValue(denied);
+            return {
+              sizeBytes: 12,
+              sha256: 'a'.repeat(64),
+              detectedMimeType: 'application/pdf',
+            };
+          });
+        else f.access.authorizeCase.mockRejectedValue(denied);
+        const operation =
+          phase === 'create'
+            ? f.service.createCaseSectionRecordUploadDraft(
+                actor,
+                customerId,
+                f.target,
+                {
+                  originalFilename: '更正.pdf',
+                  declaredMimeType: 'application/pdf',
+                },
+              )
+            : phase === 'consume'
+              ? f.service.assertAvailableVersions(f.tx, actor, f.input)
+              : f.service.finalizeUpload(
+                  actor,
+                  'draft-1',
+                  Readable.from('bytes'),
+                );
+        await expect(operation).rejects.toBeInstanceOf(ForbiddenException);
+        expect(f.transaction.contentVersion.create).not.toHaveBeenCalled();
+        if (phase === 'finalize')
+          expect(f.storage.delete).toHaveBeenCalledTimes(1);
+        else expect(f.storage.put).not.toHaveBeenCalled();
+      },
+    );
+    it('rejects stale claim and independent closure source changes before bytes', async () => {
+      const f = setup();
+      f.transaction.caseExecutionMailingRecordCorrection.findFirst.mockResolvedValue(
+        { toRevision: 1 },
+      );
+      await expect(
+        f.service.finalizeUpload(actor, 'draft-1', Readable.from('bytes')),
+      ).rejects.toMatchObject({ response: { code: 'VERSION_CONFLICT' } });
+      expect(f.storage.put).not.toHaveBeenCalled();
+      const c = setup(targets[4]);
+      c.transaction.caseClosure.findFirst.mockResolvedValue({
+        currentVersionId: roundId,
+      });
+      await expect(
+        c.service.finalizeUpload(actor, 'draft-1', Readable.from('bytes')),
+      ).rejects.toMatchObject({ response: { code: 'VERSION_CONFLICT' } });
+      expect(c.storage.put).not.toHaveBeenCalled();
+    });
+    it.each(targets)(
+      'rejects unconsumed $kind current AVAILABLE in old workflows and wrong target',
+      async (target) => {
+        const f = setup(target);
+        const {
+          sectionRecordKind: _kind,
+          sectionRecordTarget: _target,
+          ...legacy
+        } = f.input;
+        void _kind;
+        void _target;
+        await expect(
+          f.service.assertAvailableVersions(f.tx, actor, legacy),
+        ).rejects.toMatchObject({
+          response: { code: 'MATERIAL_VERSION_INVALID' },
+        });
+        await expect(
+          f.service.assertAvailableVersions(f.tx, actor, {
+            ...f.input,
+            sectionRecordTarget: { ...target, targetId: roundId },
+          }),
+        ).rejects.toMatchObject({
+          response: { code: 'MATERIAL_VERSION_INVALID' },
+        });
+        expect(
+          f.transaction.materialReference.createMany,
+        ).not.toHaveBeenCalled();
+      },
+    );
+    it.each(targets)(
+      'allows $kind precise first selection but prohibits generic freeze before matching correction',
+      async (target) => {
+        const f = setup(target);
+        const facts = await f.service.assertAvailableVersions(
+          f.tx,
+          actor,
+          f.input,
+        );
+        await expect(
+          f.service.freezeReferences(f.tx, {
+            departmentId: actor.departmentId,
+            resourceType: 'case',
+            resourceId: customerId,
+            actionEventId: 'event',
+            facts,
+          }),
+        ).rejects.toMatchObject({
+          response: { code: 'MATERIAL_VERSION_INVALID' },
+        });
+        await expect(
+          f.service.freezeCaseSectionRecordCorrectionReferences(
+            f.tx,
+            actor,
+            customerId,
+            { kind: target.kind, correctionId: 'correction' },
+            facts,
+            'event',
+          ),
+        ).rejects.toMatchObject({
+          response: { code: 'MATERIAL_VERSION_INVALID' },
+        });
+      },
+    );
+    it.each(targets)(
+      'keeps unconsumed $kind preparation out of a legitimate lawyer list/open until actual proof',
+      async (target) => {
+        const f = setup(target);
+        const lawyer = { ...actor, lawyerAccountId: actor.userId };
+        f.db.caseLawyerAssignment.findFirst.mockResolvedValue({
+          lawyer: { accountBinding: { id: 'lawyer-binding' } },
+        });
+        f.db.case.findFirst.mockResolvedValue({ stage: 'ARCHIVED' });
+        f.db.materialReference.findMany.mockResolvedValue([]);
+        f.db.materialReference.findFirst.mockResolvedValue(null);
+        f.db.$queryRawUnsafe.mockImplementation(async () => [
+          { id: customerId, consumed: f.state.consumed },
+        ]);
+        const version = {
+          id: versionId,
+          materialId: 'material-1',
+          originalFilename: '内部准备.pdf',
+          mimeType: 'application/pdf',
+          sizeBytes: 12n,
+          sha256: 'a'.repeat(64),
+          status: 'AVAILABLE',
+          createdAt: now,
+          caseSectionRecordUploadDraftId: 'draft-1' as string | null,
+        };
+        const material = {
+          id: 'material-1',
+          ownerType: 'CASE',
+          ownerId: customerId,
+          departmentId: actor.departmentId,
+          category: f.category,
+          purpose: f.category,
+          currentVersionId: versionId,
+          status: 'ACTIVE',
+          version: 1,
+          deletedAt: null,
+          createdAt: now,
+          updatedAt: now,
+          currentVersion: {
+            caseSectionRecordUploadDraftId: 'draft-1' as string | null,
+          },
+          contentVersions: [version],
+        };
+        f.db.material.findMany.mockResolvedValue([material]);
+        f.db.material.findFirst.mockResolvedValue(material);
+        f.storage.open.mockImplementation(async () =>
+          Readable.from('original bytes'),
+        );
+        await expect(
+          f.service.listOwnerMaterials(lawyer, 'CASE', customerId),
+        ).resolves.toEqual({ items: [], total: 0 });
+        await expect(
+          f.service.openVersion(lawyer, material.id, versionId),
+        ).rejects.toMatchObject({ response: { code: 'RESOURCE_NOT_FOUND' } });
+        expect(f.storage.open).not.toHaveBeenCalled();
+        f.state.consumed = true;
+        const visible = await f.service.listOwnerMaterials(
+          lawyer,
+          'CASE',
+          customerId,
+        );
+        expect(visible.total).toBe(1);
+        expect(visible.items[0]?.contentVersions[0]).not.toHaveProperty(
+          'recordCorrection',
+        );
+        await expect(
+          f.service.openVersion(lawyer, material.id, versionId),
+        ).resolves.toHaveProperty('mimeType', 'application/pdf');
+        f.state.consumed = false;
+        version.caseSectionRecordUploadDraftId = null;
+        material.currentVersion.caseSectionRecordUploadDraftId = null;
+        await expect(
+          f.service.listOwnerMaterials(lawyer, 'CASE', customerId),
+        ).resolves.toHaveProperty('total', 1);
+        await expect(
+          f.service.openVersion(lawyer, material.id, versionId),
+        ).resolves.toHaveProperty('mimeType', 'application/pdf');
+      },
+    );
+    it('reuses an actually consumed same-kind version after its original upload revision is stale', async () => {
+      const f = setup();
+      f.state.consumed = true;
+      f.transaction.caseExecutionMailingRecordCorrection.findFirst.mockResolvedValue(
+        { toRevision: 2 },
+      );
+      await expect(
+        f.service.assertAvailableVersions(f.tx, actor, {
+          ...f.input,
+          sectionRecordTarget: { ...f.target, expectedRevision: 2 },
+        }),
+      ).resolves.toHaveLength(1);
+      expect(
+        f.transaction.caseExecutionMailingRecordCorrection.findFirst,
+      ).not.toHaveBeenCalled();
+    });
+    it.each(targets)(
+      'freezes $kind first facts only against its actual correction before creating references',
+      async (target) => {
+        const f = setup(target);
+        const facts = await f.service.assertAvailableVersions(
+          f.tx,
+          actor,
+          f.input,
+        );
+        const delegates = {
+          EXECUTION_MAILING: f.transaction.caseExecutionMailingRecordCorrection,
+          EXECUTION_FILING: f.transaction.caseExecutionFilingRecordCorrection,
+          EXECUTION_FINISH: f.transaction.caseExecutionFinishRecordCorrection,
+          JUDGMENT: f.transaction.caseJudgmentRecordCorrection,
+          CLOSURE: f.transaction.caseClosureRecordCorrection,
+        };
+        delegates[target.kind].findFirst.mockResolvedValue({
+          id: 'correction',
+        });
+        await f.service.freezeCaseSectionRecordCorrectionReferences(
+          f.tx,
+          actor,
+          customerId,
+          { kind: target.kind, correctionId: 'correction' },
+          facts,
+          'event',
+        );
+        expect(delegates[target.kind].findFirst).toHaveBeenLastCalledWith({
+          where: expect.objectContaining({
+            id: 'correction',
+            fromRevision: 0,
+            recordedByUserId: actor.userId,
+            auditEventId: 'event',
+          }),
+          select: { id: true },
+        });
+        expect(f.transaction.materialReference.createMany).toHaveBeenCalledWith(
+          {
+            data: [
+              expect.objectContaining({
+                resourceId: customerId,
+                contentVersionId: versionId,
+                actionEventId: 'event',
+              }),
+            ],
+            skipDuplicates: true,
+          },
+        );
+      },
+    );
+    it('rechecks head and compensates bytes when a concurrent correction wins during transmission', async () => {
+      const f = setup();
+      f.storage.put.mockImplementation(async () => {
+        f.transaction.caseExecutionMailingRecordCorrection.findFirst.mockResolvedValue(
+          { toRevision: 1 },
+        );
+        return {
+          sizeBytes: 12,
+          sha256: 'a'.repeat(64),
+          detectedMimeType: 'application/pdf',
+        };
+      });
+      await expect(
+        f.service.finalizeUpload(actor, 'draft-1', Readable.from('bytes')),
+      ).rejects.toMatchObject({ response: { code: 'VERSION_CONFLICT' } });
+      expect(f.storage.delete).toHaveBeenCalledTimes(1);
+      expect(f.transaction.contentVersion.create).not.toHaveBeenCalled();
+      expect(f.db.uploadDraft.updateMany).toHaveBeenCalledWith(
+        expect.objectContaining({ data: { pendingStorageKey: null } }),
+      );
+    });
+  });
   describe('section record correction references', () => {
     const definitions = [
       [
@@ -4100,6 +4626,35 @@ function createFixture() {
   const leadFindFirst = jest.fn();
   const notaryMatterFindFirst = jest.fn();
   const transaction = {
+    caseExecutionMailing: {
+      findFirst: jest.fn().mockResolvedValue({ id: customerId }),
+    },
+    caseExecutionFiling: {
+      findFirst: jest.fn().mockResolvedValue({ id: customerId }),
+    },
+    caseExecutionFinish: {
+      findFirst: jest.fn().mockResolvedValue({ id: customerId }),
+    },
+    caseJudgmentFact: {
+      findFirst: jest.fn().mockResolvedValue({ id: customerId }),
+    },
+    caseClosure: { findFirst: jest.fn() },
+    caseClosureVersion: { findFirst: jest.fn() },
+    caseExecutionMailingRecordCorrection: {
+      findFirst: jest.fn().mockResolvedValue(null),
+    },
+    caseExecutionFilingRecordCorrection: {
+      findFirst: jest.fn().mockResolvedValue(null),
+    },
+    caseExecutionFinishRecordCorrection: {
+      findFirst: jest.fn().mockResolvedValue(null),
+    },
+    caseJudgmentRecordCorrection: {
+      findFirst: jest.fn().mockResolvedValue(null),
+    },
+    caseClosureRecordCorrection: {
+      findFirst: jest.fn().mockResolvedValue(null),
+    },
     caseExecutionMailingRecordCorrectionDocument: {
       create: jest.fn().mockResolvedValue({}),
     },
@@ -4120,7 +4675,14 @@ function createFixture() {
     $executeRawUnsafe: jest.fn(async () => 1),
     $queryRawUnsafe: jest
       .fn<
-        Promise<Array<{ id?: string; content_version_id?: string }>>,
+        Promise<
+          Array<{
+            id?: string;
+            content_version_id?: string;
+            count?: number;
+            consumed?: boolean;
+          }>
+        >,
         unknown[]
       >()
       .mockResolvedValue([{ id: 'material-1' }]),
@@ -4143,9 +4705,13 @@ function createFixture() {
     },
     contentVersion: { create: jest.fn(async ({ data }) => data) },
     uploadDraft: {
+      findUnique: jest.fn(),
       findFirst: uploadDraftFindFirst,
       create: jest.fn(async ({ data }) => ({ id: 'draft-1', ...data })),
-      updateMany: jest.fn(async () => ({ count: 1 })),
+      updateMany: jest.fn<
+        Promise<{ count: number }>,
+        [{ data: { pendingStorageKey?: string | null; status?: string } }]
+      >(async () => ({ count: 1 })),
     },
     materialReference: {
       create: jest.fn().mockResolvedValue({}),

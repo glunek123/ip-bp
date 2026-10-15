@@ -287,6 +287,11 @@ export class CaseExecutionRecordEditService {
                 ownerId: caseId,
                 category: definition.category,
                 sectionRecordKind: definition.material,
+                sectionRecordTarget: {
+                  kind: definition.material,
+                  targetId: value.targetId,
+                  expectedRevision: value.revision,
+                },
                 contentVersionIds: value.contentVersionIds,
                 minCount: value.kind === 'FINISH' ? 0 : 1,
                 maxCount: 10,

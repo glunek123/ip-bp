@@ -1403,6 +1403,7 @@ export class CaseReadService {
                       id: true,
                       originalFilename: true,
                       mimeType: true,
+                      caseSectionRecordUploadDraftId: true,
                     },
                   },
                 },
@@ -1432,6 +1433,29 @@ export class CaseReadService {
                   },
                 },
               });
+        if (principal === 'LAWYER') {
+          const preparedIds = judgmentMaterials.flatMap((material) =>
+            material.contentVersions
+              .filter(
+                (version) => version.caseSectionRecordUploadDraftId != null,
+              )
+              .map((version) => version.id),
+          );
+          const frozenIds =
+            preparedIds.length === 0
+              ? []
+              : await transaction.$queryRawUnsafe<Array<{ id: string }>>(
+                  'SELECT v.id FROM content_versions v WHERE v.id=ANY($1::uuid[]) AND case_section_upload_has_first_freeze(v.id)',
+                  preparedIds,
+                );
+          const allowed = new Set(frozenIds.map((row) => row.id));
+          for (const material of judgmentMaterials)
+            material.contentVersions = material.contentVersions.filter(
+              (version) =>
+                version.caseSectionRecordUploadDraftId == null ||
+                allowed.has(version.id),
+            );
+        }
         return { record, judgmentMaterials, executionMaterials };
       },
       { isolationLevel: 'RepeatableRead' },

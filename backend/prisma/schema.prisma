@@ -1133,6 +1133,12 @@ model RightsHolderCommandReceipt {
 }
 
 model UploadDraft {
+  caseSectionRecordCommand CaseSectionRecordEditCommand? @map("case_section_record_command")
+  caseSectionRecordTargetId String? @map("case_section_record_target_id") @db.Uuid
+  caseSectionRecordRevision Int? @map("case_section_record_revision")
+  caseSectionRecordTrialRoundId String? @map("case_section_record_trial_round_id") @db.Uuid
+  caseSectionRecordClosureVersionId String? @map("case_section_record_closure_version_id") @db.Uuid
+  caseSectionRecordContentVersion ContentVersion? @relation("CaseSectionRecordUpload")
   id                           String                      @id @default(uuid()) @db.Uuid
   departmentId                 String                      @map("department_id") @db.Uuid
   actorUserId                  String                      @map("actor_user_id") @db.Uuid
@@ -1188,6 +1194,8 @@ model Material {
 }
 
 model ContentVersion {
+  caseSectionRecordUploadDraftId String? @unique @map("case_section_record_upload_draft_id") @db.Uuid
+  caseSectionRecordUploadDraft UploadDraft? @relation("CaseSectionRecordUpload", fields: [caseSectionRecordUploadDraftId], references: [id], onDelete: Restrict, onUpdate: Restrict)
   closureRecordDocuments CaseClosureRecordCorrectionDocument[]
   judgmentRecordDocuments CaseJudgmentRecordCorrectionDocument[]
   executionFinishRecordDocuments CaseExecutionFinishRecordCorrectionDocument[]

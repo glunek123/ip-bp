@@ -319,6 +319,12 @@ describe('CaseHistoricalRecordEditService', () => {
       actor,
       expect.objectContaining({
         sectionRecordKind: 'JUDGMENT',
+        sectionRecordTarget: {
+          kind: 'JUDGMENT',
+          targetId,
+          expectedRevision: 0,
+          trialRoundId: roundId,
+        },
         category: 'JUDGMENT',
         contentVersionIds: [fileId],
       }),
@@ -350,7 +356,15 @@ describe('CaseHistoricalRecordEditService', () => {
     expect(f.materials.assertAvailableVersions).toHaveBeenLastCalledWith(
       f.tx,
       actor,
-      expect.objectContaining({ sectionRecordKind: 'CLOSURE' }),
+      expect.objectContaining({
+        sectionRecordKind: 'CLOSURE',
+        sectionRecordTarget: {
+          kind: 'CLOSURE',
+          targetId,
+          expectedRevision: 0,
+          expectedClosureVersionId: versionId,
+        },
+      }),
     );
   });
   it('reads the exact closure pointer and its scoped actual version after lock and authorization', async () => {
@@ -432,11 +446,16 @@ describe('CaseHistoricalRecordEditService', () => {
     async (kind) => {
       const f = fixture();
       const first = await invoke(f, kind);
+      const materialChecks =
+        f.materials.assertAvailableVersions.mock.calls.length;
       const saved =
         f.tx.caseSectionRecordEditReceipt.create.mock.calls[0]![0].data;
       f.tx.caseSectionRecordEditReceipt.findUnique.mockResolvedValue(saved);
       f.targetClosure.currentVersionId = id('9');
       expect(await invoke(f, kind)).toEqual(first);
+      expect(f.materials.assertAvailableVersions).toHaveBeenCalledTimes(
+        materialChecks,
+      );
       expect(f.tx.auditEvent.create).toHaveBeenCalledTimes(1);
       expect(f.access.authorizeCase).toHaveBeenCalledTimes(2);
       f.access.authorizeCase.mockRejectedValueOnce(

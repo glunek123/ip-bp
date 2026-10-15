@@ -252,6 +252,11 @@ describe.each(cases)('$method', (definition) => {
         ownerId: caseId,
         category: definition.category,
         sectionRecordKind: definition.material,
+        sectionRecordTarget: {
+          kind: definition.material,
+          targetId,
+          expectedRevision: 0,
+        },
         contentVersionIds: [fileId],
         minCount: definition.kind === 'FINISH' ? 0 : 1,
         maxCount: 10,
@@ -358,6 +363,7 @@ describe.each(cases)('$method', (definition) => {
     expect(f.tx[definition.corrections].create).toHaveBeenCalledTimes(1);
     expect(f.tx.auditEvent.create).toHaveBeenCalledTimes(1);
     expect(f.access.authorizeCase).toHaveBeenCalledTimes(2);
+    expect(f.materials.assertAvailableVersions).toHaveBeenCalledTimes(1);
   });
 
   it('rejects same-key changed bodies and revoked authorization before receipt replay', async () => {
