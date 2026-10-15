@@ -384,6 +384,17 @@ CA018已从原暂停队列领取，实际范围只见Current及案件Spec；原S
 
 各项领取前补齐真实按钮／步骤、字段来源、服务端权限和验收条件；批量NT010／线索推送沿既有整批原子，其余模式在各片冻结。这里只排队，无实际删除、改历史、终止、迁移或预览升级。
 
+#### UXQ-01优先入口实施brief（两个独立可见任务已启动，待交候选）
+
+用户人工测试及独立只读核查01a13e49-2add-7514-9926-430be05b00d1已确认：案件列表“办理”为文字，预览／最新都没有行内动作；两例案件顶部合法动作及归档公证的案件链接实际存在。优先补核心入口与交接，不以UI003的原因批填／线索便利替代。两个Task均从已交付1f375ea582f899d2033419b75c1f3ad1eba2dbd9独立worktree开始；I已核目标页面、路由及API与f96b08a输入一致，与A／B白名单不重叠。根会话已实际创建并启动下列可见任务，尚无实施交付／验收结论，不重复派发。
+
+唯一Owner：UXQ-01-C“补齐案件列表办理入口”01a13e59-3cad-70a0-806c-aaede131b0cb；UXQ-01-D“补齐跨模块流程交接”01a13e59-b7fb-71f0-8f13-a802319830ea。D实际worktree uxq01-d-workflow-handoff／分支codex/uxq01-d-workflow-handoff已核，基线1f375ea；C实际worktree uxq01-c-case-action-entry／分支codex/uxq01-c-case-action-entry也已核。先聚焦测试／自审及浏览器专项代码，不运行共享DB。
+
+- **UXQ-01-C｜案件行内办理与详情入口，Owner为上述C任务。** 独占frontend/src/modules/cases/CaseListPage.vue、CaseDetailPage.vue，新case-workspace-actions.ts及.spec.ts，直接CasePages.spec.ts／CaseListDisplay.spec.ts／CaseWorkspaceIntegration.spec.ts；浏览器只新增tests/e2e/case-action-entry.spec.ts及确需同名support。提取复用既有动作选择，显式区分列表摘要与详情事实，不构造假detail；行内显示合法明确动作及详情链接，保留分页／筛选。动作URL仅传白名单intent到/cases/:id，详情正式GET重取有效能力／版本／前序事实后才开原表单；不匹配时中性说明并只读，不自动POST／跳阶段／自动改开其他动作。消费intent后去掉该参数，保留批准查询及返回位置，切案／身份／迟到响应和原未知请求不串。无动作不能统一猜为无权限，当前字段无原因证据时只说明暂无可办理动作。验收含原各阶段动作映射、复杂判决／二审／归档／外部来源兼容、意图非法／失权／阶段或版本变化拒开、刷新返回及一次打开；独立环境须实际从行按钮进表单提交并刷新核同一事实，不只验证按钮或GET。
+- **UXQ-01-D｜线索→公证→案件交接，Owner为上述D任务。** 独占frontend/src/modules/leads/LeadDetailPage.vue及.spec.ts、NotaryMatterDetailPage.vue及.spec.ts，frontend/src/modules/notary/NotaryPortalDetailPage.vue及NotaryPortalPages.spec.ts；浏览器只新增tests/e2e/workflow-handoff-navigation.spec.ts及确需同名support。移交／新批次成功用本次精确回执指向事项，保留刷新后的正式关联；不可取数组末项猜目标。按真实阶段说明客户待审核、运营取证与移交、公证处待出证责任和出证后运营接手；NO_ISSUE退货分支不误指向出证。内部有权事项页突出已返回的linkedCase链接；公证处只沿已有最小投影显示结果及责任，不因可读caseId就链接其无权进入的内部/cases，不扩角色／读范围。异步提示按对象／身份隔离，保留冻结请求、正常失权／未知恢复。验收须在独立环境通过真实密码cookie／CSRF切换客户、公证处及运营／律师，从新线索经确认、取证、公证出证实际点至精确案件并完成合法下一步；无关联、未获返回投影、撤权或中间失败不得假成功或错误跳转。
+
+公共边界：router.ts、AppShell、CaseWorkspaceShell、共享样式、API／后端／schema／授权算法及权威文档仍归I协调，两Task只用现有路由和组件；必要扩围先回I裁决。UI003的List／QuickPanel／EditPage、批归档Panel及ui003-quick-actions.spec.ts仍由原A／B持有。两个Task先自审、聚焦组件／解析测试和类型／Lint／格式，I统一组合Review／门禁；真实跨角色验收依赖新隔离环境且串行执行，不写人工预览或旧受保护库。执行模型按既有协作路由，普通实现Luna，触及共享契约或高风险机制先升级Sol。完整验证不以API准备或按钮存在替代用户实际点击链路。
+
 #### 上线故障定位待排队列（2026-10-15）
 
 复用既有OPS-01，正式子任务为**OPS-01-A～E，均未领取／未实现**。A先冻结最小诊断契约，B页面提示和C安全日志可并行；D部署方案可离线并行准备，实际告警联调依赖C及目标环境；E最后做隔离故障演练。作为生产准入前置，不改变CA018收口、CA019占位、UXQ-01～06顺序或原结算／证物／报表依赖。任务范围、现有能力、验收和部署待定项统一见[OPS-01方案](deferred-design.md#ops-01上线异常提示与故障定位已入队未实现)，不接第三方、不自动重试通用写操作。
