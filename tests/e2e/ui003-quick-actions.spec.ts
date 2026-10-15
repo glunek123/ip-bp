@@ -442,10 +442,23 @@ test('page-two quick edit preserves its query and an unknown real push replays t
     .locator('[data-test="lead-quick-action"]')
     .click();
   await dataTest(page, 'quick-edit-lead').click();
-  await expect(page).toHaveURL(/\/leads\/.+\/edit\?returnTo=/u);
-  await expect(page).toHaveURL(
-    /returnTo=%2Fleads%3Fpage%3D2%26status%3DWAITING_PUSH/u,
-  );
+  await expect
+    .poll(() => {
+      const currentUrl = new URL(page.url());
+      const queryKeys = [...currentUrl.searchParams.keys()];
+      return {
+        origin: currentUrl.origin,
+        pathname: currentUrl.pathname,
+        queryKeys,
+        returnTo: currentUrl.searchParams.get('returnTo'),
+      };
+    })
+    .toEqual({
+      origin: loginOrigin,
+      pathname: `/leads/${editTarget.id}/edit`,
+      queryKeys: ['returnTo'],
+      returnTo: '/leads?page=2&status=WAITING_PUSH',
+    });
   await dataTest(page, 'edit-cancel').click();
   await expect(page).toHaveURL(/\/leads\?page=2&status=WAITING_PUSH$/u);
   await expect(rowFor(editTarget.businessNo)).toBeVisible();
