@@ -275,19 +275,76 @@ export class CaseHearingService {
                 where: { id: record.currentHearingAdvanceId },
                 select: {
                   id: true,
+                  departmentId: true,
                   caseId: true,
                   arrangementId: true,
                   trialRoundId: true,
                   externalEntryId: true,
+                  toVersion: true,
                 },
               });
               if (
                 advance?.caseId !== caseId ||
-                advance.arrangementId !== record.currentHearingArrangementId ||
+                advance.id !== record.currentHearingAdvanceId ||
+                advance.departmentId !== actor.departmentId ||
                 advance.trialRoundId !== record.currentTrialRoundId ||
                 advance.externalEntryId !== entryId
               )
                 throw this.invalidState();
+              if (
+                advance.arrangementId === record.currentHearingArrangementId
+              ) {
+                if (advance.toVersion !== record.version)
+                  throw this.invalidState();
+              } else {
+                // A past-date correction retains the original advance. Prove
+                // continuation from the exact current arrangement, never from
+                // the latest correction or advance elsewhere in the case.
+                const arrangement = await tx.caseHearingArrangement.findUnique({
+                  where: { id: record.currentHearingArrangementId },
+                  select: {
+                    id: true,
+                    caseId: true,
+                    departmentId: true,
+                    trialRoundId: true,
+                    externalEntryId: true,
+                    source: true,
+                    fromVersion: true,
+                    toVersion: true,
+                    correctionAsNew: {
+                      select: {
+                        caseId: true,
+                        departmentId: true,
+                        newArrangementId: true,
+                        priorAdvanceId: true,
+                        resultStage: true,
+                        fromVersion: true,
+                        toVersion: true,
+                      },
+                    },
+                  },
+                });
+                const correction = arrangement?.correctionAsNew;
+                if (
+                  arrangement?.id !== record.currentHearingArrangementId ||
+                  arrangement.caseId !== caseId ||
+                  arrangement.departmentId !== actor.departmentId ||
+                  arrangement.trialRoundId !== record.currentTrialRoundId ||
+                  arrangement.externalEntryId !== entryId ||
+                  arrangement.source !== 'CORRECTION' ||
+                  arrangement.toVersion !== record.version ||
+                  arrangement.fromVersion + 1 !== arrangement.toVersion ||
+                  arrangement.fromVersion < advance.toVersion ||
+                  correction?.caseId !== caseId ||
+                  correction.departmentId !== actor.departmentId ||
+                  correction.newArrangementId !== arrangement.id ||
+                  correction.priorAdvanceId !== advance.id ||
+                  correction.resultStage !== 'WAITING_JUDGMENT' ||
+                  correction.fromVersion !== arrangement.fromVersion ||
+                  correction.toVersion !== arrangement.toVersion
+                )
+                  throw this.invalidState();
+              }
               priorAdvanceId = advance.id;
             }
             const recordedAt = this.clock.now();
