@@ -1,6 +1,6 @@
 {
   "version": 1,
-  "recordedAt": "2026-10-15T01:59:09.311Z",
+  "recordedAt": "2026-10-15T02:04:54.716Z",
   "files": {
     ".cursor/rules/verified-feature-integration.mdc": "da673301f0440a6a9615786027dffc8e01f739a97f81cd97accef1580ac51f98",
     ".env.example": "07211cde5c2b59efc21b619b752d4c9b871f0980d2d64ca3c146ad6151fd27ca",
@@ -169,6 +169,7 @@
     "backend/prisma/migrations/20261014160000_second_instance_acceptance_enums/migration.sql": "3bbcf663fd233d3c399d22ceaea4f63bf52f964b16b63ef5025c3a6877044bfd",
     "backend/prisma/migrations/20261014160100_second_instance_acceptance_records/migration.sql": "ba300098ba7660c84d0238f6a0a614f15eaaea540ccd982e735e693c45596c0b",
     "backend/prisma/migrations/20261014170000_case_external_entry_actions/migration.sql": "c935a791fe0bc4d9e8dd5bdb112284cd38ec46dc1194fc209a046dbcd2b9196f",
+    "backend/prisma/migrations/20261014170100_case_external_entry_foundation/migration.sql": "e9f0cedb1a73cc3023757caba480e4d1d8fc6a88e0e4743fcf6eecdb0d0485d3",
     "backend/prisma/schema.prisma": "3e76435dccb23917568720115e297b73bf04257c81f34c00c57300de2822589f",
     "backend/src/access-control/access-control.module.ts": "3f4bf7e4b1d47df6a6a6e3a92311abad3769bb036ba5cd04c2bd62a48b401c4b",
     "backend/src/access-control/access-control.service.spec.ts": "db56c4c47f928a4c7f1083f9632235a9641a0b1ee80b34ea147354701c962c39",
@@ -571,7 +572,7 @@
     "docs/spec/v0.1/TECHNICAL-DESIGN.md": "ab79bcc2f7232526b22d52a5bee6d334f0a0a7ab0d391ed315de092cb3516a45",
     "docs/spec/v0.1/VALIDATION.md": "6dcf9fad63d40ca0b4b00980144eb383ec7212b750260bdb3da0f219aa3b6064",
     "docs/spec/v0.1/modules/calendar.md": "3991b1148b13e2bf2daad951caa48935c5ed6a202b12817b3c47624ad3e0c774",
-    "docs/spec/v0.1/modules/cases.md": "efa0e2d7eec1424f4c9c0ecb91311141f36cddaf81e26e67ed85a31457437cb4",
+    "docs/spec/v0.1/modules/cases.md": "b58223245886b4ef31b67608876bde1b4ba66300d6929dacc78338620791af00",
     "docs/spec/v0.1/modules/customers.md": "dda577688b5c64baeb1dd2bb3787cbb4263f3f5868cf51b90bc39493f625f0b0",
     "docs/spec/v0.1/modules/evidence.md": "90684046854c53d233ce4225ca25043dbbf60a0195566202604d8b37398294ef",
     "docs/spec/v0.1/modules/fees.md": "076f9aaab42a8b43370a487e535baa889ca7db0eff1d338bab3ef50882af53d2",
