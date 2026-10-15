@@ -2,12 +2,15 @@ import { mount, flushPromises, type VueWrapper } from '@vue/test-utils';
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 import type { CaseDetail, CaseFile } from '../../api/cases';
 import { ApiError } from '../../api/http';
+import { reactive } from 'vue';
+import { createListWorkflowContext } from '../../app/list-workflow-context';
 import Panel, {
   caseSectionRecordStorageKey,
   decodeCaseSectionRecordRequest,
   readCaseSectionRecordRequests,
   submitCaseSectionRecordRequest,
   type CaseSectionRecordKind,
+  type CaseSectionRecordRequest,
 } from './CaseSectionRecordCorrectionPanel.vue';
 const api = vi.hoisted(() => ({
   mailing: vi.fn(),
@@ -337,9 +340,14 @@ function render(
   submitRequest = vi
     .fn<NonNullable<InstanceType<typeof Panel>['$props']['submitRequest']>>()
     .mockResolvedValue(undefined),
+  host: Pick<
+    InstanceType<typeof Panel>['$props'],
+    'initialTargetId' | 'beforeSubmit' | 'onState-change' | 'onChanged'
+  > = {},
 ) {
   const wrapper = mount(Panel, {
     props: {
+      ...host,
       item,
       kind,
       actorKey: 'INTERNAL:actor:department',
@@ -375,6 +383,400 @@ afterEach(() => {
 });
 
 describe('exact section record corrections', () => {
+  function twoHearings(): CaseDetail {
+    const item = fixture();
+    const entry = item.recordEdits!.hearings![0]!;
+    item.recordEdits!.hearings!.push({
+      ...structuredClone(entry),
+      arrangementId: uid(55),
+      original: { hearingAt: '2026-10-08' },
+      effective: { hearingAt: '2026-10-08' },
+    });
+    item.hearing.arrangements.push({
+      ...item.hearing.arrangements[0]!,
+      id: uid(55),
+      hearingAt: '2026-10-08',
+    });
+    return item;
+  }
+  function retainHearing(target = uid(5)): CaseSectionRecordRequest {
+    const request: CaseSectionRecordRequest = {
+      kind: 'hearing',
+      input: {
+        arrangementId: target,
+        trialRoundId: uid(9),
+        expectedHearingRevision: 0,
+        hearingAt: target === uid(5) ? '2026-10-07' : '2026-10-09',
+        reason: '  原因原样保留  ',
+        idempotencyKey: `original-${target}`,
+      },
+    };
+    sessionStorage.setItem(
+      caseSectionRecordStorageKey('INTERNAL:actor:department', uid(1), request),
+      JSON.stringify({
+        version: 1,
+        actor: 'INTERNAL:actor:department',
+        caseId: uid(1),
+        request,
+      }),
+    );
+    return request;
+  }
+  it('adopts the exact hinted pending target on mount, hint/context changes and explicit reopen, without taking the first same-kind request', async () => {
+    const first = retainHearing();
+    const second = retainHearing(uid(55));
+    const item = twoHearings();
+    const { wrapper, submitRequest } = render('hearing', item, undefined, {
+      initialTargetId: uid(55),
+    });
+    expect(
+      wrapper.get<HTMLSelectElement>('[data-test="section-record-target"]')
+        .element.value,
+    ).toBe(uid(55));
+    expect(
+      wrapper.get('[data-test="section-record-pending"]').text(),
+    ).toContain(second.input.idempotencyKey);
+    await wrapper.setProps({ initialTargetId: uid(5) });
+    expect(
+      wrapper.get('[data-test="section-record-pending"]').text(),
+    ).toContain(first.input.idempotencyKey);
+    await wrapper.get('[data-test="section-record-target"]').setValue(uid(55));
+    await wrapper.setProps({ openRevision: 1 });
+    expect(
+      wrapper.get<HTMLSelectElement>('[data-test="section-record-target"]')
+        .element.value,
+    ).toBe(uid(5));
+    await wrapper.setProps({
+      contextKey: 'new-host-context',
+      initialTargetId: uid(55),
+    });
+    expect(
+      wrapper.get<HTMLSelectElement>('[data-test="section-record-target"]')
+        .element.value,
+    ).toBe(uid(55));
+    expect(wrapper.find('form').exists()).toBe(false);
+    await wrapper.setProps({ item: structuredClone(item) });
+    expect(
+      wrapper.get('[data-test="section-record-pending"]').text(),
+    ).toContain(second.input.idempotencyKey);
+    await wrapper.get('[data-test="section-record-retry"]').trigger('click');
+    await flushPromises();
+    expect(submitRequest.mock.calls[0]![1]).toEqual(second);
+    expect(
+      readCaseSectionRecordRequests('INTERNAL:actor:department', uid(1)).map(
+        (entry) => entry.request,
+      ),
+    ).toEqual([first]);
+  });
+  it('does not fall back from a missing explicit target to the current target or another pending request', async () => {
+    const original = retainHearing();
+    const { wrapper, submitRequest } = render('hearing', fixture(), undefined, {
+      initialTargetId: uid(999),
+    });
+    expect(wrapper.find('form').exists()).toBe(false);
+    expect(wrapper.find('[data-test="section-record-retry"]').exists()).toBe(
+      false,
+    );
+    expect(submitRequest).not.toHaveBeenCalled();
+    expect(
+      readCaseSectionRecordRequests('INTERNAL:actor:department', uid(1))[0]!
+        .request,
+    ).toEqual(original);
+  });
+  it('invalidates an in-flight old target on an explicit hint switch while retaining the original body and ignoring late success', async () => {
+    const old = deferred();
+    const { wrapper, submitRequest } = render(
+      'hearing',
+      twoHearings(),
+      undefined,
+      { initialTargetId: uid(5) },
+    );
+    submitRequest.mockReturnValue(old.promise);
+    await change(wrapper);
+    await wrapper.get('form').trigger('submit');
+    const original = submitRequest.mock.calls[0]![1];
+    const signal = submitRequest.mock.calls[0]![2].signal!;
+    await wrapper.setProps({ initialTargetId: uid(55) });
+    expect(signal.aborted).toBe(true);
+    expect(
+      wrapper.get('[data-test="section-record-date"]').element,
+    ).toHaveProperty('value', '2026-10-08');
+    old.resolve();
+    await flushPromises();
+    expect(wrapper.emitted('changed')).toBeUndefined();
+    expect(
+      readCaseSectionRecordRequests('INTERNAL:actor:department', uid(1))[0]!
+        .request,
+    ).toEqual(original);
+    expect(submitRequest).toHaveBeenCalledTimes(1);
+  });
+  it.each([false, true])(
+    'reports initial state synchronously and admits a %s recovery only once before the original transport, without transient unknown',
+    async (recovery) => {
+      const item = fixture();
+      const original = recovery ? retainHearing() : undefined;
+      const states: string[] = [];
+      const host = createListWorkflowContext(async () => item);
+      await host.sync({
+        recordId: item.id,
+        actorKey: 'actor-auth-1',
+        actionKey: 'edit-section-records',
+        title: '资料更正',
+      });
+      const session = host.state.value.session!;
+      const beforeSubmit = vi.fn<
+        NonNullable<InstanceType<typeof Panel>['$props']['beforeSubmit']>
+      >(({ recovery }) => session.beginSubmit({ recovery }));
+      const onState = (state: 'idle' | 'submitting' | 'unknown') => {
+        states.push(state);
+        if (state === 'unknown') {
+          if (host.state.value.requestState === 'idle')
+            session.restoreUnknown();
+          else session.endSubmit('unknown');
+        } else if (state === 'idle') session.endSubmit('failed');
+      };
+      const { wrapper, submitRequest } = render('hearing', item, undefined, {
+        beforeSubmit,
+        'onState-change': onState,
+        onChanged: () => session.endSubmit('success'),
+      });
+      expect(states).toEqual([recovery ? 'unknown' : 'idle']);
+      const pending = deferred();
+      submitRequest.mockImplementation(() => {
+        expect(host.state.value.requestState).toBe('submitting');
+        expect(states).toEqual([recovery ? 'unknown' : 'idle', 'submitting']);
+        return pending.promise;
+      });
+      if (recovery)
+        await wrapper
+          .get('[data-test="section-record-retry"]')
+          .trigger('click');
+      else {
+        await change(wrapper);
+        await wrapper.get('form').trigger('submit');
+        await wrapper.get('form').trigger('submit');
+      }
+      expect(beforeSubmit).toHaveBeenCalledTimes(1);
+      expect(beforeSubmit).toHaveBeenCalledWith({
+        caseId: item.id,
+        request: original ?? submitRequest.mock.calls[0]![1],
+        recovery,
+      });
+      expect(submitRequest).toHaveBeenCalledTimes(1);
+      expect(host.canLeave()).toBe(false);
+      pending.resolve();
+      await flushPromises();
+      expect(states).toEqual([
+        recovery ? 'unknown' : 'idle',
+        'submitting',
+        'idle',
+      ]);
+      expect(host.state.value.status).toBe('closed');
+    },
+  );
+  it.each([false, true])(
+    'settles accepted host admission after local storage failure, preserving prior unknown=%s and sending zero POSTs',
+    async (recovery) => {
+      const item = fixture();
+      const original = recovery ? retainHearing() : undefined;
+      const retained = sessionStorage.length
+        ? sessionStorage.getItem(sessionStorage.key(0)!)
+        : null;
+      const states: string[] = [];
+      const host = createListWorkflowContext(async () => item);
+      await host.sync({
+        recordId: item.id,
+        actorKey: 'actor-auth-1',
+        actionKey: 'edit-section-records',
+        title: '资料更正',
+      });
+      const session = host.state.value.session!;
+      const beforeSubmit = vi.fn<
+        NonNullable<InstanceType<typeof Panel>['$props']['beforeSubmit']>
+      >(({ recovery }) => session.beginSubmit({ recovery }));
+      const { wrapper, submitRequest } = render('hearing', item, undefined, {
+        beforeSubmit,
+        'onState-change': (state) => {
+          states.push(state);
+          if (state === 'unknown') {
+            if (host.state.value.requestState === 'idle')
+              session.restoreUnknown();
+            else session.endSubmit('unknown');
+          } else if (state === 'idle') session.endSubmit('failed');
+        },
+      });
+      vi.spyOn(Storage.prototype, 'setItem').mockImplementation(() => {
+        throw new Error('storage denied');
+      });
+      if (recovery)
+        await wrapper
+          .get('[data-test="section-record-retry"]')
+          .trigger('click');
+      else {
+        await change(wrapper);
+        await wrapper.get('form').trigger('submit');
+      }
+      await flushPromises();
+      expect(beforeSubmit).toHaveBeenCalledTimes(1);
+      expect(submitRequest).not.toHaveBeenCalled();
+      expect(host.state.value.requestState).toBe(recovery ? 'unknown' : 'idle');
+      expect(states).toEqual([
+        recovery ? 'unknown' : 'idle',
+        'submitting',
+        recovery ? 'unknown' : 'idle',
+      ]);
+      expect(sessionStorage.length).toBe(recovery ? 1 : 0);
+      if (original)
+        expect(
+          sessionStorage.getItem(
+            caseSectionRecordStorageKey(
+              'INTERNAL:actor:department',
+              item.id,
+              original,
+            ),
+          ),
+        ).toBe(retained);
+    },
+  );
+  it.each([false, true])(
+    'preserves all original pending data when synchronous host admission denies or throws, recovery=%s',
+    async (recovery) => {
+      const original = recovery ? retainHearing() : undefined;
+      const before = sessionStorage.length
+        ? sessionStorage.getItem(sessionStorage.key(0)!)
+        : null;
+      const gate = vi
+        .fn<NonNullable<InstanceType<typeof Panel>['$props']['beforeSubmit']>>()
+        .mockReturnValue(false);
+      const { wrapper, submitRequest } = render(
+        'hearing',
+        fixture(),
+        undefined,
+        { beforeSubmit: gate },
+      );
+      if (!recovery) await change(wrapper);
+      const click = async () => {
+        if (recovery)
+          await wrapper
+            .get('[data-test="section-record-retry"]')
+            .trigger('click');
+        else await wrapper.get('form').trigger('submit');
+      };
+      await click();
+      gate.mockImplementation(() => {
+        throw new Error('host denied');
+      });
+      await click();
+      await flushPromises();
+      expect(gate).toHaveBeenCalledTimes(2);
+      expect(submitRequest).not.toHaveBeenCalled();
+      expect(sessionStorage.length).toBe(recovery ? 1 : 0);
+      if (original)
+        expect(
+          sessionStorage.getItem(
+            caseSectionRecordStorageKey(
+              'INTERNAL:actor:department',
+              uid(1),
+              original,
+            ),
+          ),
+        ).toBe(before);
+    },
+  );
+  it.each([false, true])(
+    'settles an accepted host even when a synchronous permission preflight rejects before submitting becomes true, recovery=%s',
+    async (recovery) => {
+      if (recovery) retainHearing();
+      const item = reactive(fixture());
+      const host = createListWorkflowContext(async () => item);
+      await host.sync({
+        recordId: item.id,
+        actorKey: 'actor-auth-1',
+        actionKey: 'edit-section-records',
+        title: '资料更正',
+      });
+      const session = host.state.value.session!;
+      const states: string[] = [];
+      const { wrapper, submitRequest } = render('hearing', item, undefined, {
+        beforeSubmit: ({ recovery }) => {
+          const admitted = session.beginSubmit({ recovery });
+          item.recordEdits!.hearings![0]!.canEdit = false;
+          return admitted;
+        },
+        'onState-change': (state) => {
+          states.push(state);
+          if (state === 'unknown') {
+            if (host.state.value.requestState === 'idle')
+              session.restoreUnknown();
+            else session.endSubmit('unknown');
+          } else if (state === 'idle') session.endSubmit('failed');
+        },
+      });
+      if (recovery)
+        await wrapper
+          .get('[data-test="section-record-retry"]')
+          .trigger('click');
+      else {
+        await change(wrapper);
+        await wrapper.get('form').trigger('submit');
+      }
+      await flushPromises();
+      expect(states).toEqual([
+        recovery ? 'unknown' : 'idle',
+        recovery ? 'unknown' : 'idle',
+      ]);
+      expect(host.state.value.requestState).toBe(recovery ? 'unknown' : 'idle');
+      expect(submitRequest).not.toHaveBeenCalled();
+      expect(sessionStorage.length).toBe(recovery ? 1 : 0);
+    },
+  );
+  it.each([0, 400, 409])(
+    'settles the real host after original transport outcome %s without a transient unknown before POST',
+    async (status) => {
+      const item = fixture();
+      const host = createListWorkflowContext(async () => item);
+      await host.sync({
+        recordId: item.id,
+        actorKey: 'actor-auth-1',
+        actionKey: 'edit-section-records',
+        title: '资料更正',
+      });
+      const session = host.state.value.session!;
+      const states: string[] = [];
+      const { wrapper, submitRequest } = render('hearing', item, undefined, {
+        beforeSubmit: ({ recovery }) => session.beginSubmit({ recovery }),
+        'onState-change': (state) => {
+          states.push(state);
+          if (state === 'unknown') session.endSubmit('unknown');
+          else if (state === 'idle') session.endSubmit('failed');
+        },
+      });
+      submitRequest.mockImplementation(() => {
+        expect(states).toEqual(['idle', 'submitting']);
+        expect(host.state.value.requestState).toBe('submitting');
+        return Promise.reject(
+          new ApiError(
+            '结果',
+            status,
+            status === 0 ? 'NETWORK_ERROR' : 'VERSION_CONFLICT',
+          ),
+        );
+      });
+      await change(wrapper);
+      await wrapper.get('form').trigger('submit');
+      await flushPromises();
+      expect(states).toEqual([
+        'idle',
+        'submitting',
+        status === 0 ? 'unknown' : 'idle',
+      ]);
+      expect(host.state.value.requestState).toBe(
+        status === 0 ? 'unknown' : 'idle',
+      );
+      expect(wrapper.emitted('changed')).toBeUndefined();
+      expect(sessionStorage.length).toBe(status === 0 ? 1 : 0);
+    },
+  );
   it.each(kinds)(
     'prefills and saves only the exact %s record without a workflow version',
     async (kind) => {

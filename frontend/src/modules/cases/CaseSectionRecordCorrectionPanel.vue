@@ -525,6 +525,12 @@ const props = defineProps<{
   actorKey: string;
   contextKey: string;
   openRevision?: number;
+  initialTargetId?: string;
+  beforeSubmit?: (input: {
+    caseId: string;
+    request: CaseSectionRecordRequest;
+    recovery: boolean;
+  }) => boolean;
   submitRequest?: (
     caseId: string,
     request: CaseSectionRecordRequest,
@@ -615,6 +621,7 @@ function fingerprint(): string {
     : '';
 }
 function defaultId(): string {
+  if (props.initialTargetId !== undefined) return props.initialTargetId;
   const retained = pendingRequests.value.find(
     (stored) => stored.request.kind === props.kind,
   );
@@ -844,21 +851,34 @@ watch(
   { flush: 'sync' },
 );
 watch(
-  () => props.openRevision,
-  () => {
+  () => [props.initialTargetId, props.openRevision] as const,
+  ([hint], previous) => {
+    if (submitting.value) {
+      if (hint === undefined || hint === selectedId.value) return;
+      // A new explicit target is a different session. The old POST may have
+      // committed despite abort, so retain its complete original request.
+      generation += 1;
+      requestController?.abort();
+      abortDownloads();
+      submitting.value = false;
+    }
     loadPending();
+    if (hint !== undefined || hint !== previous?.[0])
+      selectedId.value = defaultId();
     if (!pending.value && !submitting.value) {
       resetDraft();
       success.value = '';
     }
   },
+  { flush: 'sync' },
 );
-watch([submitting, pending], () =>
-  emit(
-    'state-change',
-    submitting.value ? 'submitting' : pending.value ? 'unknown' : 'idle',
-  ),
+const requestState = computed(() =>
+  submitting.value ? 'submitting' : pending.value ? 'unknown' : 'idle',
 );
+watch(requestState, (state) => emit('state-change', state), {
+  flush: 'sync',
+  immediate: true,
+});
 const availableFiles = computed(() => {
   const target = selected.value;
   if (!target || target.kind === 'hearing') return [];
@@ -1050,15 +1070,58 @@ async function send(
     const prior = globalThis.sessionStorage.getItem(key);
     if (prior !== null && prior !== serialized)
       throw new Error('Different pending request');
-    globalThis.sessionStorage.setItem(key, serialized);
   } catch {
     storageBlocked.value = true;
     error.value = '无法保存完整原请求，尚未发送请求。请保留当前会话核查。';
     return;
   }
-  loadPending();
+  // Reserve the exact target before calling a synchronous, potentially
+  // reentrant host gate. Admission never delegates transport or its signal.
   inFlight.add(key);
+  try {
+    if (
+      props.beforeSubmit &&
+      props.beforeSubmit({
+        caseId: stored.caseId,
+        request: globalThis.structuredClone(stored.request),
+        recovery,
+      }) !== true
+    ) {
+      inFlight.delete(key);
+      return;
+    }
+  } catch {
+    inFlight.delete(key);
+    error.value = '当前操作未获提交准入，尚未发送请求。';
+    return;
+  }
+  if (!current(context) || !allowed.value || storageBlocked.value) {
+    inFlight.delete(key);
+    emit('state-change', requestState.value);
+    return;
+  }
+  // Host admission has succeeded. Report submitting before persisting a new
+  // pending record, so a synchronous observer never sees transient unknown.
   submitting.value = true;
+  try {
+    const prior = globalThis.sessionStorage.getItem(key);
+    if (prior !== null && prior !== serialized)
+      throw new Error('Different pending request');
+    globalThis.sessionStorage.setItem(key, serialized);
+  } catch {
+    inFlight.delete(key);
+    storageBlocked.value = true;
+    error.value = '无法保存完整原请求，尚未发送请求。请保留当前会话核查。';
+    submitting.value = false;
+    return;
+  }
+  loadPending();
+  if (!current(context) || !allowed.value || storageBlocked.value) {
+    inFlight.delete(key);
+    submitting.value = false;
+    emit('state-change', requestState.value);
+    return;
+  }
   error.value = success.value = '';
   const controller = new AbortController();
   requestController = controller;
