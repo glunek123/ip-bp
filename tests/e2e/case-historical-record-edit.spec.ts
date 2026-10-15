@@ -20,7 +20,7 @@ import {
 } from '../support/case-historical-record-edit-database.mjs';
 
 // Runner owns fixture bootstrap, instance binding, migration and execution. This spec only appends.
-const origin = 'http://127.0.0.1:5174';
+const origin = 'http://127.0.0.1:3101';
 let operator: Record<string, string>;
 let foreign: Record<string, string>;
 let readOnly: Record<string, string>;
@@ -54,6 +54,10 @@ function sourceBuilderRequest(
     options?: Parameters<APIRequestContext['post']>[1],
   ) {
     const data = options?.data;
+    const headers: NonNullable<typeof options>['headers'] = {
+      ...options?.headers,
+      Origin: origin,
+    };
     if (
       method === 'post' &&
       url === '/api/v1/auth/login' &&
@@ -64,6 +68,7 @@ function sourceBuilderRequest(
     ) {
       const response = await internal.post(url, {
         ...options,
+        headers,
         data: { ...data, username: actor.username, password: actor.password },
       });
       const session = await body<{ csrfToken: string }>(response);
@@ -72,7 +77,6 @@ function sourceBuilderRequest(
       operator = { Origin: origin, 'X-CSRF-Token': session.csrfToken };
       return response;
     }
-    const headers = options?.headers ?? {};
     const fixedInternal =
       headers.Authorization === `Bearer ${coreLeadFixtures.tokenA}`;
     const useInternal =
@@ -85,7 +89,7 @@ function sourceBuilderRequest(
       delete forwarded.Authorization;
       return internal[method](url, { ...options, headers: forwarded });
     }
-    return portal[method](url, options);
+    return portal[method](url, { ...options, headers });
   }
   return new Proxy(portal, {
     get(target, property) {
@@ -110,7 +114,7 @@ const test = base.extend<{ hRequest: APIRequestContext }>({
     try {
       const context = async () => {
         const value = await playwright.request.newContext({
-          baseURL: 'http://127.0.0.1:3101',
+          baseURL: origin,
           extraHTTPHeaders: { Origin: origin },
         });
         contexts.push(value);

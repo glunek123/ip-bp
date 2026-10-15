@@ -279,7 +279,7 @@ test('new actor insert failure rolls back without changing a baseline row', asyn
   assert.equal(f.state.ended, 1);
 });
 
-test('actual H source adapter uses owned internal login and keeps external portal flows separate', async () => {
+function executeHistoricalSpec(names, globals) {
   const source = readFileSync(
     new URL('../e2e/case-historical-record-edit.spec.ts', import.meta.url),
     'utf8',
@@ -290,12 +290,128 @@ test('actual H source adapter uses owned internal login and keeps external porta
     ts.ScriptTarget.Latest,
     true,
   );
-  const declaration = parsed.statements.find(
+  const declarations = parsed.statements.filter(
     (node) =>
-      ts.isFunctionDeclaration(node) &&
-      node.name?.text === 'sourceBuilderRequest',
+      (ts.isFunctionDeclaration(node) && names.includes(node.name?.text)) ||
+      (ts.isVariableStatement(node) &&
+        node.declarationList.declarations.some(
+          (declaration) =>
+            ts.isIdentifier(declaration.name) &&
+            names.includes(declaration.name.text),
+        )),
   );
-  assert.ok(declaration);
+  assert.equal(declarations.length, names.length);
+  return vm.runInNewContext(
+    ts.transpileModule(
+      declarations.map((node) => node.getText(parsed)).join('\n') +
+        `;({${names.join(',')}});`,
+      {
+        compilerOptions: {
+          target: ts.ScriptTarget.ES2022,
+          module: ts.ModuleKind.CommonJS,
+        },
+      },
+    ).outputText,
+    globals,
+  );
+}
+
+test('actual H fixture uses one backend origin and separate cookie contexts for all three actors and the portal', async () => {
+  const contexts = [];
+  const identities = ['owned', 'foreign', 'read-only'].map((username) => ({
+    username,
+    password: `offline-${username}`,
+  }));
+  const remaining = [...identities];
+  const snapshot = { baseline: 'unchanged' };
+  let snapshots = 0;
+  const globals = {
+    base: { extend: (fixtures) => fixtures },
+    actor: undefined,
+    operator: undefined,
+    foreign: undefined,
+    readOnly: undefined,
+    foreignRequest: undefined,
+    readOnlyRequest: undefined,
+    builderRequest: undefined,
+    Buffer,
+    body: async (response) => response.json(),
+    historicalBaselineSecuritySnapshot: async () => {
+      snapshots++;
+      return snapshot;
+    },
+    createHistoricalRecordActor: async () => remaining.shift(),
+    expect: (actual) => ({
+      toEqual: (expected) => assert.equal(actual, expected),
+    }),
+  };
+  const { test: fixture } = executeHistoricalSpec(
+    ['origin', 'login', 'sourceBuilderRequest', 'test'],
+    globals,
+  );
+  await fixture.hRequest(
+    {
+      playwright: {
+        request: {
+          async newContext(options) {
+            const calls = [];
+            const context = {
+              options,
+              calls,
+              disposed: false,
+              async post(url, request) {
+                calls.push({ url, request });
+                return {
+                  json: async () => ({ csrfToken: `csrf-${context.id}` }),
+                };
+              },
+              async dispose() {
+                context.disposed = true;
+              },
+              id: contexts.length,
+            };
+            contexts.push(context);
+            return context;
+          },
+        },
+      },
+    },
+    async (request) => {
+      assert.equal(request, contexts[0]);
+      assert.equal(contexts.length, 4);
+      assert.equal(new Set(contexts).size, 4);
+      for (const [index, context] of contexts.entries()) {
+        assert.equal(context.options.baseURL, 'http://127.0.0.1:3101');
+        assert.equal(
+          context.options.extraHTTPHeaders.Origin,
+          context.options.baseURL,
+        );
+        if (index === 3) {
+          assert.equal(context.calls.length, 0);
+          continue;
+        }
+        const call = context.calls[0];
+        assert.equal(call.url, '/api/v1/auth/login');
+        assert.equal(call.request.headers.Origin, context.options.baseURL);
+        assert.equal(call.request.data.username, identities[index].username);
+        assert.equal(call.request.data.password, identities[index].password);
+      }
+      for (const [index, headers] of [
+        globals.operator,
+        globals.foreign,
+        globals.readOnly,
+      ].entries())
+        assert.equal(headers['X-CSRF-Token'], `csrf-${index}`);
+      assert.equal(globals.foreignRequest, contexts[1]);
+      assert.equal(globals.readOnlyRequest, contexts[2]);
+    },
+    { attach: async () => {} },
+  );
+  assert.equal(snapshots, 2);
+  assert.ok(contexts.every((context) => context.disposed));
+});
+
+test('actual H source adapter uses owned internal login and keeps external portal flows separate', async () => {
   const calls = [];
   const response = {
     async json() {
@@ -313,7 +429,6 @@ test('actual H source adapter uses owned internal login and keeps external porta
       ]),
     );
   const globals = {
-    origin: 'synthetic-origin',
     actor: { username: 'owned-actor', password: 'offline-owned-password' },
     operator: { 'X-CSRF-Token': 'owned-csrf' },
     coreLeadFixtures: {
@@ -322,29 +437,36 @@ test('actual H source adapter uses owned internal login and keeps external porta
     },
     body: async (response) => response.json(),
   };
-  const factory = vm.runInNewContext(
-    ts.transpileModule(declaration.getText(parsed) + ';sourceBuilderRequest;', {
-      compilerOptions: {
-        target: ts.ScriptTarget.ES2022,
-        module: ts.ModuleKind.CommonJS,
-      },
-    }).outputText,
+  const { sourceBuilderRequest: factory } = executeHistoricalSpec(
+    ['origin', 'sourceBuilderRequest'],
     globals,
   );
   const request = factory(client('owned'), client('portal'));
   await request.post('/api/v1/leads', {
-    headers: { Authorization: 'Bearer baseline-token' },
+    headers: {
+      Origin: 'http://127.0.0.1:5174',
+      Authorization: 'Bearer baseline-token',
+      'Idempotency-Key': 'fixed-source-key',
+    },
     data: { exact: 'body' },
   });
   assert.equal(calls.at(-1).kind, 'owned');
   assert.equal(calls.at(-1).options.headers.Authorization, undefined);
   assert.equal(calls.at(-1).options.data.exact, 'body');
+  assert.equal(calls.at(-1).options.headers.Origin, 'http://127.0.0.1:3101');
+  assert.equal(calls.at(-1).options.headers['X-CSRF-Token'], 'owned-csrf');
+  assert.equal(
+    calls.at(-1).options.headers['Idempotency-Key'],
+    'fixed-source-key',
+  );
   await request.post('/api/v1/auth/login', {
+    headers: { Origin: 'http://127.0.0.1:5174' },
     data: { username: 'baseline-login', password: 'must-not-be-used' },
   });
   assert.equal(calls.at(-1).kind, 'owned');
   assert.equal(calls.at(-1).options.data.username, 'owned-actor');
   assert.equal(calls.at(-1).options.data.password, 'offline-owned-password');
+  assert.equal(calls.at(-1).options.headers.Origin, 'http://127.0.0.1:3101');
   await request.post('/api/v1/auth/login', {
     data: { username: 'new-client', password: 'client-offline' },
   });
@@ -359,4 +481,50 @@ test('actual H source adapter uses owned internal login and keeps external porta
   assert.equal(calls.at(-1).kind, 'owned');
   await request.get('/api/v1/lawyer/cases/x');
   assert.equal(calls.at(-1).kind, 'portal');
+  for (const portal of ['client', 'notary', 'lawyer']) {
+    const login = {
+      headers: { Origin: 'http://127.0.0.1:5174' },
+      data: { username: `new-${portal}`, password: `offline-${portal}` },
+    };
+    await request.post('/api/v1/auth/login', login);
+    const loginCall = calls.at(-1);
+    assert.equal(loginCall.kind, 'portal');
+    assert.equal(loginCall.options.headers.Origin, 'http://127.0.0.1:3101');
+    assert.equal(loginCall.options.data, login.data);
+    assert.equal(login.headers.Origin, 'http://127.0.0.1:5174');
+    const write = {
+      headers: {
+        Origin: 'http://127.0.0.1:5174',
+        'X-CSRF-Token': `${portal}-csrf`,
+        'Idempotency-Key': `${portal}-key`,
+      },
+      data: Buffer.from(`offline-${portal}-body`),
+    };
+    await request.put(`/api/v1/${portal}/records/x`, write);
+    const writeCall = calls.at(-1);
+    assert.equal(writeCall.kind, 'portal');
+    assert.equal(writeCall.options.headers.Origin, 'http://127.0.0.1:3101');
+    assert.equal(writeCall.options.headers['X-CSRF-Token'], `${portal}-csrf`);
+    assert.equal(writeCall.options.headers['Idempotency-Key'], `${portal}-key`);
+    assert.equal(writeCall.options.data, write.data);
+    assert.equal(write.headers.Origin, 'http://127.0.0.1:5174');
+  }
+  const internalWrite = {
+    headers: {
+      Origin: 'http://127.0.0.1:5174',
+      'X-CSRF-Token': 'rotated-owned-csrf',
+      'Idempotency-Key': 'internal-key',
+    },
+    data: Buffer.from('offline-internal-body'),
+  };
+  await request.put('/api/v1/materials/upload-drafts/x/content', internalWrite);
+  assert.equal(calls.at(-1).kind, 'owned');
+  assert.equal(calls.at(-1).options.headers.Origin, 'http://127.0.0.1:3101');
+  assert.equal(
+    calls.at(-1).options.headers['X-CSRF-Token'],
+    'rotated-owned-csrf',
+  );
+  assert.equal(calls.at(-1).options.headers['Idempotency-Key'], 'internal-key');
+  assert.equal(calls.at(-1).options.data, internalWrite.data);
+  assert.equal(internalWrite.headers.Origin, 'http://127.0.0.1:5174');
 });
