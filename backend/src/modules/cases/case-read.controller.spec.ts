@@ -627,6 +627,7 @@ describe('case read OpenAPI contract', () => {
       expect(document.components?.schemas?.CaseListItemDto).toMatchObject({
         properties: {
           canSubmitExecution: { type: 'boolean' },
+          canUploadDirectExecutionMaterials: { type: 'boolean' },
           canConfirmExecution: { type: 'boolean' },
         },
       });

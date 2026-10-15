@@ -576,6 +576,7 @@ class CaseListItemDto {
   @ApiProperty() canRegisterSecondInstanceResult!: boolean;
   @ApiProperty() canRevokeSecondInstanceResult!: boolean;
   @ApiProperty() canSubmitExecution!: boolean;
+  @ApiPropertyOptional() canUploadDirectExecutionMaterials?: boolean;
   @ApiProperty() canConfirmExecution!: boolean;
   @ApiProperty() canMailExecution!: boolean;
   @ApiProperty() canSubmitExecutionFiling!: boolean;

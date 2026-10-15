@@ -252,6 +252,75 @@ describe('CaseReadService', () => {
       });
     },
   );
+  it('exposes direct confirmation material upload separately from submit and confirm rights', async () => {
+    const f = fixture();
+    const record = externalRecord('WAITING_EXECUTION_CONFIRMATION');
+    f.db.case.findMany.mockResolvedValue([record]);
+    f.db.case.findFirst.mockResolvedValue(record);
+    const detail = await f.service.get(actor, record.id);
+    const item = (await f.service.list(actor, 1, 20)).items[0];
+    for (const value of [detail, item])
+      expect(value).toMatchObject({
+        canUploadDirectExecutionMaterials: true,
+        canSubmitExecution: false,
+      });
+    expect(f.access.canAuthorizeCase).toHaveBeenCalledWith(
+      actor,
+      'case.execution.submit',
+      { departmentId: actor.departmentId },
+    );
+    f.access.canAuthorizeCase.mockImplementation(
+      async (_actor, action) => action === 'case.execution.confirm',
+    );
+    expect(await f.service.get(actor, record.id)).toMatchObject({
+      canUploadDirectExecutionMaterials: false,
+      canConfirmExecution: true,
+    });
+    expect((await f.service.list(actor, 1, 20)).items[0]).toMatchObject({
+      canUploadDirectExecutionMaterials: false,
+      canConfirmExecution: true,
+    });
+    f.db.userAccount.findUnique.mockResolvedValue({
+      accountType: 'LAWYER',
+      active: true,
+    });
+    const lawyerActor = { ...actor, lawyerAccountId: actor.userId };
+    expect(await f.service.get(lawyerActor, record.id)).toMatchObject({
+      canUploadDirectExecutionMaterials: true,
+      canSubmitExecution: false,
+    });
+    expect((await f.service.list(lawyerActor, 1, 20)).items[0]).toMatchObject({
+      canUploadDirectExecutionMaterials: true,
+    });
+    const falseCases = [
+      {
+        externalEntry: {
+          ...record.externalEntry,
+          initialStage: 'WAITING_EXECUTION_DOCUMENTS',
+        },
+      },
+      { currentExecutionSubmissionId: 'submission-1' },
+      { executionConfirmation: { id: 'confirmation-1' } },
+      {
+        trialRounds: [
+          { ...record.trialRounds[0], externalEntryId: 'other-entry' },
+        ],
+      },
+      { stage: 'WAITING_EXECUTION_STAMP' },
+      displaySource('lead', 'matter'),
+    ];
+    f.db.userAccount.findUnique.mockResolvedValue({
+      accountType: 'INTERNAL',
+      active: true,
+    });
+    f.access.canAuthorizeCase.mockResolvedValue(true);
+    for (const change of falseCases) {
+      f.db.case.findMany.mockResolvedValue([{ ...record, ...change }]);
+      expect((await f.service.list(actor, 1, 20)).items[0]).toMatchObject({
+        canUploadDirectExecutionMaterials: false,
+      });
+    }
+  });
   it('resolves known court names only within authorized case department and without an acceptance fact', async () => {
     const f = fixture();
     const base = externalRecord('SECOND_INSTANCE');

@@ -99,6 +99,7 @@ type CaseSummaryBase = {
   owner: { id: string; displayName: string };
   canMatch: boolean;
   canSubmitExecution: boolean;
+  canUploadDirectExecutionMaterials?: boolean;
   canConfirmExecution: boolean;
   canMailExecution: boolean;
   canSubmitExecutionFiling: boolean;
@@ -742,6 +743,7 @@ export type LawyerCaseSummary = {
   version: number;
   canMatch: false;
   canSubmitExecution: boolean;
+  canUploadDirectExecutionMaterials?: boolean;
   canConfirmExecution: boolean;
   canMailExecution: boolean;
   canSubmitExecutionFiling: boolean;
@@ -1275,7 +1277,7 @@ function summaryFields(value: unknown): boolean {
         'sourceLead',
         'sourceNotaryMatter',
       ],
-      ['origin'],
+      ['origin', 'canUploadDirectExecutionMaterials'],
     ) &&
     nonempty(value.id) &&
     nonempty(value.businessNo) &&
@@ -1287,6 +1289,14 @@ function summaryFields(value: unknown): boolean {
     named(value.owner, 'displayName') &&
     typeof value.canMatch === 'boolean' &&
     typeof value.canSubmitExecution === 'boolean' &&
+    (value.canUploadDirectExecutionMaterials === undefined ||
+      typeof value.canUploadDirectExecutionMaterials === 'boolean') &&
+    (value.canUploadDirectExecutionMaterials !== true ||
+      (value.stage === 'WAITING_EXECUTION_CONFIRMATION' &&
+        value.canSubmitExecution === false &&
+        record(value.origin) &&
+        value.origin.kind === 'EXTERNAL_ENTRY' &&
+        value.origin.initialStage === 'WAITING_EXECUTION_CONFIRMATION')) &&
     typeof value.canConfirmExecution === 'boolean' &&
     typeof value.canMailExecution === 'boolean' &&
     typeof value.canSubmitExecutionFiling === 'boolean' &&
@@ -2543,7 +2553,7 @@ function validCaseDetail(value: unknown, id: string): value is CaseDetail {
         'closure',
         'archive',
       ],
-      ['recordEdits', 'origin'],
+      ['recordEdits', 'origin', 'canUploadDirectExecutionMaterials'],
     ) &&
     value.id === id &&
     summaryFields({
@@ -2555,6 +2565,8 @@ function validCaseDetail(value: unknown, id: string): value is CaseDetail {
       owner: value.owner,
       canMatch: value.canMatch,
       canSubmitExecution: value.canSubmitExecution,
+      canUploadDirectExecutionMaterials:
+        value.canUploadDirectExecutionMaterials,
       canConfirmExecution: value.canConfirmExecution,
       canMailExecution: value.canMailExecution,
       canSubmitExecutionFiling: value.canSubmitExecutionFiling,
@@ -2692,6 +2704,14 @@ function validCaseDetail(value: unknown, id: string): value is CaseDetail {
         : null,
     ) &&
     typeof value.canSubmitExecution === 'boolean' &&
+    (value.canUploadDirectExecutionMaterials === undefined ||
+      typeof value.canUploadDirectExecutionMaterials === 'boolean') &&
+    (value.canUploadDirectExecutionMaterials !== true ||
+      (value.origin?.kind === 'EXTERNAL_ENTRY' &&
+        value.origin.initialStage === 'WAITING_EXECUTION_CONFIRMATION' &&
+        record(value.executionSubmission) &&
+        value.executionSubmission.current === null &&
+        value.executionConfirmation === null)) &&
     typeof value.canConfirmExecution === 'boolean' &&
     typeof value.canMailExecution === 'boolean' &&
     typeof value.canSubmitExecutionFiling === 'boolean' &&
@@ -3541,38 +3561,42 @@ const caseStages: CaseStage[] = [
 function validLawyerSummary(value: unknown): value is LawyerCaseSummary {
   return (
     record(value) &&
-    exact(value, [
-      'id',
-      'businessNo',
-      'stage',
-      'version',
-      'canMatch',
-      'canSubmitExecution',
-      'canConfirmExecution',
-      'canMailExecution',
-      'canSubmitExecutionFiling',
-      'canFinishExecution',
-      'canRecordClosure',
-      'canCorrectClosure',
-      'canArchive',
-      'canCorrectArchive',
-      'canSubmitComplaint',
-      'canConfirmComplaint',
-      'canMailComplaint',
-      'canSubmitFiling',
-      'canRegisterAcceptance',
-      'canUploadAcceptanceMaterials',
-      'canScheduleHearing',
-      'canCorrectHearing',
-      'canRegisterJudgment',
-      'canCorrectJudgment',
-      'canChooseJudgmentNextStep',
-      'canRevokeJudgmentNextStep',
-      'canSaveSecondInstance',
-      'canRegisterSecondInstanceResult',
-      'canRevokeSecondInstanceResult',
-      'createdAt',
-    ]) &&
+    exactWithOptional(
+      value,
+      [
+        'id',
+        'businessNo',
+        'stage',
+        'version',
+        'canMatch',
+        'canSubmitExecution',
+        'canConfirmExecution',
+        'canMailExecution',
+        'canSubmitExecutionFiling',
+        'canFinishExecution',
+        'canRecordClosure',
+        'canCorrectClosure',
+        'canArchive',
+        'canCorrectArchive',
+        'canSubmitComplaint',
+        'canConfirmComplaint',
+        'canMailComplaint',
+        'canSubmitFiling',
+        'canRegisterAcceptance',
+        'canUploadAcceptanceMaterials',
+        'canScheduleHearing',
+        'canCorrectHearing',
+        'canRegisterJudgment',
+        'canCorrectJudgment',
+        'canChooseJudgmentNextStep',
+        'canRevokeJudgmentNextStep',
+        'canSaveSecondInstance',
+        'canRegisterSecondInstanceResult',
+        'canRevokeSecondInstanceResult',
+        'createdAt',
+      ],
+      ['canUploadDirectExecutionMaterials'],
+    ) &&
     nonempty(value.id) &&
     nonempty(value.businessNo) &&
     caseStages.includes(value.stage as CaseStage) &&
@@ -3580,6 +3604,11 @@ function validLawyerSummary(value: unknown): value is LawyerCaseSummary {
     Number(value.version) > 0 &&
     value.canMatch === false &&
     typeof value.canSubmitExecution === 'boolean' &&
+    (value.canUploadDirectExecutionMaterials === undefined ||
+      typeof value.canUploadDirectExecutionMaterials === 'boolean') &&
+    (value.canUploadDirectExecutionMaterials !== true ||
+      (value.stage === 'WAITING_EXECUTION_CONFIRMATION' &&
+        value.canSubmitExecution === false)) &&
     typeof value.canConfirmExecution === 'boolean' &&
     typeof value.canMailExecution === 'boolean' &&
     typeof value.canSubmitExecutionFiling === 'boolean' &&
@@ -3850,7 +3879,7 @@ export async function getLawyerCase(
         'closure',
         'archive',
       ],
-      ['origin'],
+      ['origin', 'canUploadDirectExecutionMaterials'],
     ) ||
     result.id !== id ||
     !validLawyerSummary({
@@ -3860,6 +3889,8 @@ export async function getLawyerCase(
       version: result.version,
       canMatch: result.canMatch,
       canSubmitExecution: result.canSubmitExecution,
+      canUploadDirectExecutionMaterials:
+        result.canUploadDirectExecutionMaterials,
       canConfirmExecution: result.canConfirmExecution,
       canMailExecution: result.canMailExecution,
       canSubmitExecutionFiling: result.canSubmitExecutionFiling,
@@ -3926,6 +3957,14 @@ export async function getLawyerCase(
         : null,
     ) ||
     typeof result.canSubmitExecution !== 'boolean' ||
+    (result.canUploadDirectExecutionMaterials !== undefined &&
+      typeof result.canUploadDirectExecutionMaterials !== 'boolean') ||
+    (result.canUploadDirectExecutionMaterials === true &&
+      (result.origin?.kind !== 'EXTERNAL_ENTRY' ||
+        result.origin.initialStage !== 'WAITING_EXECUTION_CONFIRMATION' ||
+        !record(result.executionSubmission) ||
+        result.executionSubmission.current !== null ||
+        result.executionConfirmation !== null)) ||
     typeof result.canConfirmExecution !== 'boolean' ||
     typeof result.canMailExecution !== 'boolean' ||
     typeof result.canSubmitExecutionFiling !== 'boolean' ||

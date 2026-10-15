@@ -171,6 +171,16 @@ export class CaseReadService {
             },
           },
           currentTrialRoundId: true,
+          trialRounds: {
+            select: {
+              id: true,
+              sequence: true,
+              origin: true,
+              externalEntryId: true,
+              sourceResultId: true,
+              revokedAt: true,
+            },
+          },
           currentSecondInstanceResultId: true,
           currentExecutionSubmissionId: true,
           executionConfirmation: { select: { id: true } },
@@ -637,6 +647,28 @@ export class CaseReadService {
                     ? { teamId: item.responsibleMembership.teamId }
                     : {}),
                 },
+              ))),
+          canUploadDirectExecutionMaterials:
+            item.stage === 'WAITING_EXECUTION_CONFIRMATION' &&
+            item.externalEntry?.initialStage ===
+              'WAITING_EXECUTION_CONFIRMATION' &&
+            item.currentTrialRoundId !== null &&
+            item.trialRounds.some(
+              (round) =>
+                round.id === item.currentTrialRoundId &&
+                round.sequence === 1 &&
+                round.origin === 'EXTERNAL_CURRENT' &&
+                round.externalEntryId === item.externalEntry?.id &&
+                round.sourceResultId === null &&
+                round.revokedAt === null,
+            ) &&
+            item.currentExecutionSubmissionId === null &&
+            item.executionConfirmation === null &&
+            (principal === 'LAWYER' ||
+              (await this.access.canAuthorizeCase(
+                actor,
+                'case.execution.submit',
+                { departmentId: actor.departmentId },
               ))),
           canConfirmExecution:
             item.stage === 'WAITING_EXECUTION_CONFIRMATION' &&
@@ -2543,6 +2575,26 @@ export class CaseReadService {
               ? { teamId: record.responsibleMembership.teamId }
               : {}),
           }))),
+      canUploadDirectExecutionMaterials:
+        record.stage === 'WAITING_EXECUTION_CONFIRMATION' &&
+        externalSource &&
+        externalEntry.initialStage === 'WAITING_EXECUTION_CONFIRMATION' &&
+        record.currentTrialRoundId !== null &&
+        record.trialRounds.some(
+          (round) =>
+            round.id === record.currentTrialRoundId &&
+            round.sequence === 1 &&
+            round.origin === 'EXTERNAL_CURRENT' &&
+            round.externalEntryId === externalEntry.id &&
+            round.sourceResultId === null &&
+            round.revokedAt === null,
+        ) &&
+        record.currentExecutionSubmissionId === null &&
+        record.executionConfirmation === null &&
+        (principal === 'LAWYER' ||
+          (await this.access.canAuthorizeCase(actor, 'case.execution.submit', {
+            departmentId: actor.departmentId,
+          }))),
       canConfirmExecution:
         record.stage === 'WAITING_EXECUTION_CONFIRMATION' &&
         (record.currentExecutionSubmissionId !== null ||
@@ -2956,6 +3008,8 @@ export class CaseReadService {
         canRegisterSecondInstanceResult: detail.canRegisterSecondInstanceResult,
         canRevokeSecondInstanceResult: false,
         canSubmitExecution: detail.canSubmitExecution,
+        canUploadDirectExecutionMaterials:
+          detail.canUploadDirectExecutionMaterials,
         canConfirmExecution: detail.canConfirmExecution,
         canMailExecution: detail.canMailExecution,
         canSubmitExecutionFiling: detail.canSubmitExecutionFiling,

@@ -600,6 +600,67 @@ describe('CA-018 strict source-aware execution read boundary', () => {
     originalFilename: file.originalFilename,
     mimeType: file.mimeType,
   };
+  it('strictly reads optional direct material upload capability without changing submit', async () => {
+    const source = {
+      ...directStageDetail('WAITING_EXECUTION_CONFIRMATION'),
+      canSubmitExecution: false,
+      canUploadDirectExecutionMaterials: true,
+      canConfirmExecution: true,
+    };
+    mockJson(source);
+    await expect(getCase('case-1')).resolves.toMatchObject({
+      canSubmitExecution: false,
+      canUploadDirectExecutionMaterials: true,
+    });
+    const { canUploadDirectExecutionMaterials: _cap, ...legacy } = source;
+    void _cap;
+    mockJson(legacy);
+    const oldRead = await getCase('case-1');
+    expect(oldRead.canUploadDirectExecutionMaterials ?? false).toBe(false);
+    mockJson({ ...source, canUploadDirectExecutionMaterials: 'true' });
+    await expect(getCase('case-1')).rejects.toMatchObject({
+      code: 'INVALID_RESPONSE',
+    });
+    mockJson({
+      ...source,
+      origin: { ...source.origin, initialStage: 'WAITING_EXECUTION_DOCUMENTS' },
+    });
+    await expect(getCase('case-1')).rejects.toMatchObject({
+      code: 'INVALID_RESPONSE',
+    });
+    mockJson({ ...source, executionConfirmation: { id: id(999) } });
+    await expect(getCase('case-1')).rejects.toMatchObject({
+      code: 'INVALID_RESPONSE',
+    });
+    const {
+      owner: _owner,
+      department: _department,
+      fees: _fees,
+      sourceLead: _lead,
+      sourceNotaryMatter: _matter,
+      ...lawyerFields
+    } = source;
+    void [_owner, _department, _fees, _lead, _matter];
+    const lawyerSource = {
+      ...lawyerFields,
+      canMatch: false,
+      origin: {
+        kind: 'EXTERNAL_ENTRY',
+        entryKind: source.origin.entryKind,
+        initialStage: source.origin.initialStage,
+        stageReachedOn: source.origin.stageReachedOn,
+      },
+    };
+    mockJson(lawyerSource);
+    await expect(casesApi.getLawyerCase('case-1')).resolves.toMatchObject({
+      canUploadDirectExecutionMaterials: true,
+      canSubmitExecution: false,
+    });
+    mockJson({ ...lawyerSource, canUploadDirectExecutionMaterials: null });
+    await expect(casesApi.getLawyerCase('case-1')).rejects.toMatchObject({
+      code: 'INVALID_RESPONSE',
+    });
+  });
   it('admits direct initial stages without manufacturing preceding facts', async () => {
     const cases = [
       {
@@ -3831,6 +3892,7 @@ describe('cases API', () => {
       ...summary,
       stage: 'WAITING_EXECUTION_DOCUMENTS',
       canSubmitExecution: true,
+      canUploadDirectExecutionMaterials: false,
       canConfirmExecution: false,
       canMailExecution: false,
       canSubmitExecutionFiling: false,
@@ -3846,6 +3908,7 @@ describe('cases API', () => {
         {
           stage: 'WAITING_EXECUTION_DOCUMENTS',
           canSubmitExecution: true,
+          canUploadDirectExecutionMaterials: false,
           canConfirmExecution: false,
           canMailExecution: false,
           canSubmitExecutionFiling: false,
@@ -3856,6 +3919,17 @@ describe('cases API', () => {
           canCorrectArchive: false,
         },
       ],
+    });
+
+    mockJson({
+      items: [{ ...item, canUploadDirectExecutionMaterials: 'false' }],
+      total: 1,
+      page: 1,
+      pageSize: 20,
+      counts,
+    });
+    await expect(listCases()).rejects.toMatchObject({
+      code: 'INVALID_RESPONSE',
     });
 
     mockJson({
