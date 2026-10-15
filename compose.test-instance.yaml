@@ -1,0 +1,9 @@
+# UI003 test-only override; never use it without compose.yaml.
+# Before starting, confirm 127.0.0.1:15437 is free. Start only postgres-test:
+# docker compose -f compose.yaml -f compose.test-instance.yaml --profile test up -d --wait postgres-test
+name: dev-cor-ui003
+services:
+  postgres: !reset null
+  postgres-test:
+    ports: !override
+      - '127.0.0.1:15437:5432'
